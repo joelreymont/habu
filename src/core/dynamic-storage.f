@@ -1,26 +1,9 @@
-\ Checked transient allocation behind DYNAMIC-BUFFER declarations.
-\ A control record is a declared head and a numeric control block. The head,
-\ NAME#base, is the PTR-VARIABLE the definer generates: it holds the mapping, so
-\ it arrives here as `ptr ptr a`, a pointer to that cell, and `a` stays a
-\ quantifier of these words, so a buffer whose cells hold pointers moves them as
-\ pointers. The control block, NAME#ctl, is CONTROL-CELLS numbers right behind
-\ the head: exact byte capacity, registry slot + 1, a width tag and the element
-\ bound for that width; it arrives as `ptr n`. No word here views a pointer cell
-\ as bytes or cells (dot habu-refuse-a-ptr-5ad2734e): the head is only fetched
-\ and stored as a pointer, and the counts are only read as numbers.
-\ The element width lives in the generated accessor; the block only caches a
-\ bound for one.
-\ THE BOUND IS WRITTEN ONLY WITH THE CAPACITY: PUBLISH stores the tag (the
-\ reserving width) and the bound (capacity / tag) beside the capacity, and
-\ RELEASE zeroes all three, each under LOCK; no other word writes the capacity,
-\ and it never changes between those writes. ADDRESS uses the bound only when
-\ the tag equals its own width, so the bound it reads is exactly its capacity /
-\ width. Any other record - grown through RESERVE with a foreign width, empty,
-\ released, or a stripped image's zero mapping - answers by the exact division.
-\ Membership follows live allocation, including a precompiled reserve after
-\ restore. Release zeroes the record; no process address survives capture.
-\ This runtime belongs below the core-prefix mark: generated declarations in
-\ a rewound build source already call it, before src/lib/errors.f is available.
+\ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER. A
+\ record is the head NAME#base (a PTR-VARIABLE holding the mapping, `ptr ptr a`)
+\ and the control block NAME#ctl behind it (capacity, registry slot + 1, width
+\ tag, bound for that width; `ptr n`). No word views a pointer cell as bytes or
+\ cells. Release zeroes the record, so no process address survives capture. It
+\ loads below the core-prefix mark: rewound generated declarations call it.
 package DYNAMIC-STORAGE
 public
 
@@ -69,10 +52,10 @@ $40 constant REG-INIT
    bytes CELL / 0 ?do src i cells + @ dst i cells + ! loop ;
 
 \ One registry per runtime instance. Empty capacity is retained until capture,
-\ so the pointer itself is the authority on whether the mapping is live. A row
-\ is two cells: row i holds a record's head address at cell 2i and its control
-\ block's address at cell 2i+1. Both are addresses, so the registry is a
-\ declared table of pointer cells and its capacity, in rows, lives in REG-CAP.
+\ so the pointer itself is the authority on whether the mapping is live.
+\ Membership follows live allocation, a precompiled reserve after restore
+\ included. Row i holds a record's head address at cell 2i and its control
+\ block's address at cell 2i+1; REG-CAP counts rows.
 PTR-U8-TABLE-VARIABLE REG
 variable REG-CAP
 variable REG-U
@@ -153,17 +136,13 @@ public
    idx count >= if E-BOUNDS throw then
    idx ;
 
-\ The checked offset and current mapping are one address operation. Growth can
-\ replace the mapping, so every access fetches the head after checking capacity.
-\ A negative index is refused before the record is read. A record tagged with
-\ this width bounds the index by its cached bound; any other is bounded by the
-\ exact division. The width guard sits on that division and keeps native and
-\ Wasm identical: a division by zero answers 0 on ARM64 and traps on Wasm.
-\ Since the index is checked first, a width <= 0 with a negative index, and a
-\ width of 0 on an empty record (tag 0), answer E-BOUNDS rather than E-SIZE;
-\ generated accessors always pass a positive width. The tag and bound are
-\ read inline at their offsets: TAG and BOUND are calls, and two of them per
-\ access cost more than the division they replace.
+\ Growth can replace the mapping, so every access fetches the head after checking
+\ capacity. The width guard on the exact division keeps native and Wasm
+\ identical: a division by zero answers 0 on ARM64 and traps on Wasm. Since the
+\ index is checked first, a width <= 0 with a negative index, and a width of 0 on
+\ an empty record (tag 0), answer E-BOUNDS rather than E-SIZE; generated
+\ accessors always pass a positive width. The tag and bound are read inline: two
+\ calls per access cost more than the division they replace.
 : ADDRESS ( n ptr ptr a ptr n n -- ptr a ) {: idx:n cb:ptr ctl:ptr width:n :}
    idx 0 < if E-BOUNDS throw then
    ctl TAG-OFF + @ width = if
@@ -174,7 +153,11 @@ public
    then
    cb @ idx width * + ;
 
-\ The capacity, its width tag and the bound for that width change together.
+\ The capacity, its width tag and the bound (capacity / tag) change together:
+\ PUBLISH and RELEASE are their only writers, each under LOCK. ADDRESS uses the
+\ bound only when the tag equals its width; any other record (grown with a
+\ foreign width, empty, released, or a stripped image's zero mapping) answers by
+\ exact division.
 : PUBLISH ( ptr a n ptr ptr a ptr n n -- )
    {: fresh:ptr cap:n cb:ptr ctl:ptr width:n :}
    fresh cb !
@@ -226,31 +209,22 @@ public
    0 ctl BOUND !
    UNLOCK ;
 
-\ Runs a fork with the registry held; PROC-FORK:RAW is its caller. A buffer's
-\ growth or release unmaps its old mapping before it publishes the new one or
-\ clears the control, a registry growth does the same to the registry, and a
-\ membership change is several stores. Each runs under this lock, since a child
-\ forked while another task was inside could neither wait for that task nor
-\ carry on where it stopped. Held, nobody is inside when the process is copied,
-\ and parent and child each free their own copy.
+\ Runs a fork with the registry held; PROC-FORK:RAW is its caller. Growth,
+\ release and membership changes each take several stores under this lock, and a
+\ child forked mid-change could neither wait for that task nor carry on where it
+\ stopped. Held, nobody is inside when the process is copied, and parent and
+\ child each free their own copy.
 : ACROSS-FORK ( [ -- n ] -- n )
    LOCK [: UNLOCK ;] finally ;
 
 : REGISTERED-N ( -- n ) REG-U @ ;
 : DIRTY-N ( -- n ) REG-U @ ;
 
-\ THE FOUR CELLS THIS REGISTRY IS, handed one at a time to a claim the caller
-\ supplies. The registry is per runtime instance, so an instance that starts with
-\ no mapping, no row capacity, no members and an open lock is correct - and that
-\ is the zero a fresh anonymous mapping already holds: REG-CAP's zero is the
-\ capacity of the absent mapping, and REG-ROOM maps afresh on the first reserve.
-\ A stripped AOT image therefore owns these four cells outright instead of being
-\ refused for naming them (src/habu/aot-owned-cells.f, dot
-\ habu-give-a-stripped-c1a6664a).
-\ THE NAMING HAPPENS HERE BECAUSE THE CELLS ARE DECLARED HERE. That list admits a
-\ cell only by name, the four are private, and a private cell of this package
-\ stays private: this hands out these four and nothing else - no entry, and no
-\ address that outlives the call.
+\ The four cells this registry is, handed one at a time to the caller's claim. A
+\ fresh instance's zero (no mapping, no rows, no members, open lock) is correct,
+\ so a stripped AOT image owns these cells outright (src/habu/aot-owned-cells.f).
+\ The naming happens here because the cells are private here: this hands out the
+\ four and nothing else, no entry and no address that outlives the call.
 : OWNED-CELLS ( [ ptr u8 -- ] -- ) {: claim :}
    REG CELL-BYTES claim execute
    REG-CAP BYTE-VIEW claim execute

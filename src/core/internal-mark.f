@@ -78,40 +78,19 @@ variable IMK-BUNDLE-MODE
    ndict@ swap ?do i IMK-CLASSIFY loop ;
 
 \ ---- package publics, under their qualified name ---------------------------
-\ A package word carries its wordlist, not 0, so IMK-WALK above never reaches
-\ one - and until dot habu-pkg-publics-escape-41532ee7 that left every package
-\ public top-level executable whatever the checker knew: `0 0 SCHEMA-REG:REWIND`
-\ wiped the schema registry and exited 0, the same unchecked execution class as
-\ the bare U-TYPE this file was written for.
-\
-\ THE QUALIFIED SPELLING REACHES PUBLICS AND NOTHING ELSE, so publics are the
-\ whole of the escape. habu1.f FIND-NMATCH resolves PKG:TAIL by taking the
-\ search wid from the package row's [0] - the package's PUBLIC wordlist - and a
-\ package PRIVATE word therefore has no top-level spelling at all: bare misses
-\ it because it is not global, and qualified misses it because the qualifier
-\ never names its wordlist. Nothing to mark, and test/internal-word-gate.f pins
-\ that a private stays E-UNDEFINED under its own qualified name.
-\
-\ THE QUESTION IS THE SAME QUESTION, spelled the way the token is: source arity of
-\ "PKG:TAIL". checker.f CHECKER-FIND-ACTIVE-SYM routes a qualified name straight
-\ to CHECKER-PUBLIC-SYM? -> SYM-FIND keyed on (package,
-\ SYM-PUBLIC, tail), which is the key PPRIM; interns and the key the checker
-\ itself uses at a reference site. So a package public the checker can type stays
-\ callable only when that effect carries authority, by the same rule as a global.
-\
-\ WHY THE PACKAGE ROWS DRIVE THE LOOP rather than a wid -> package map: the row
-\ IS the record that carries both halves of the answer, its public wordlist in
-\ [0] and the package name in its own name field, so reading it once per package
-\ needs no second table to fall out of step with the dictionary. The wid-0 arm
-\ above decides first, so the two passes partition the records no matter what a
-\ row's [0] holds. Each package's walk starts AT its own row because no earlier
-\ record can be in its public wordlist: habu2.f C-PACKAGE-NEW-RECORD allocates
-\ both wids and writes [0] as it publishes the row, so the id does not exist
-\ before the row does. Measured on the boot prefix, that is 112k record tests
-\ instead of 345k.
-\
-\ A namespace row carries DICT-WL:NAMESPACE, distinct from every allocated
-\ wordlist id, so the inner walk cannot classify the namespace itself.
+\ A package word carries its wordlist, not 0, so IMK-WALK never reaches one. The
+\ qualified spelling reaches publics and nothing else: habu1.f FIND-NMATCH
+\ searches the package row's [0], the public wordlist, so a private has no
+\ top-level spelling (test/internal-word-gate.f pins it E-UNDEFINED). The
+\ question is the one asked of a global, keyed as source spells it: checker.f
+\ CHECKER-FIND-ACTIVE-SYM routes PKG:TAIL to CHECKER-PUBLIC-SYM?, the key PPRIM:
+\ interns.
+\ The package rows drive the loop: a row holds its public wordlist in [0] and its
+\ name, so no wid -> package table can fall out of step. Each walk starts at its
+\ own row because habu2.f C-PACKAGE-NEW-RECORD allocates the wids as it publishes
+\ the row (112k record tests instead of 345k on the boot prefix). A namespace row
+\ carries DICT-WL:NAMESPACE, distinct from every wordlist id, so the inner walk
+\ cannot classify the namespace itself.
 1024 constant IMK-QCAP        \ qualified-name scratch: package + ':' + tail
 create IMK-QBUF IMK-QCAP allot
 variable IMK-QU
@@ -161,40 +140,31 @@ variable IMK-QI
 : IMK-SEAL-PRIM ( n -- )      \ close the loop: the marking prims are themselves internal
    0 ?do i IMK-PRIM? IF i -1 IMK-MARK THEN loop ;
 
-\ Registry write-protection (dot habu-protect-type-field-04d91409). A din=0
-\ registry control cell (variable/create) is a data record, so IMK-WALK exempts
-\ it and its bare name stays executable — a bare `<cell> !` mutates the registry
-\ past the public API. util.f's REG-PROTECT recorded each such cell's
-\ dictionary index in REG-PROT-IDX[0, REG-PROT-N); int-mark them so interpret /
-\ tick fail closed on the bare name exactly like a sig-less colon word, while the
-\ core compiled callers (resolved before this pass) keep working.
+\ Registry write-protection (src/core/util.f REG-PROTECT): int-mark each
+\ registered data record so interpret and tick fail closed on its bare name;
+\ compiled core callers resolved before this pass keep working.
 : IMK-SEAL-REGISTRY ( -- )
    REG-PROT-COUNT 0 ?do i REG-PROT-RECORD -1 IMK-MARK loop ;
 
 \ ---- the whitebox image ----------------------------------------------------
-\ The one build that asks for no seal is the gate's whitebox engine
-\ (hb-build --whitebox), whose suites reopen engine packages and tick internal
-\ words; the seal gates INTERPRET and TICK, so no TRUSTED: body reopens them.
-\ That build writes its request into the target's ENGINE-UNSEAL (src/core/util.f)
-\ before this file loads, and IMK-PASS reads it through ENGINE-UNSEAL?; every
-\ other load leaves the cell 0 and is sealed.
+\ The one build without the seal is the gate's whitebox engine (hb-build
+\ --whitebox): its suites reopen engine packages and tick internal words, and a
+\ TRUSTED: body does not help because the seal gates INTERPRET and TICK. That
+\ build sets the target's ENGINE-UNSEAL (src/core/util.f) before this file loads;
+\ IMK-PASS reads it through ENGINE-UNSEAL?, and every other load is sealed.
 
-\ The image says which it is: the pass writes its verdict into IMK-CLASS, the
-\ capture bakes it with DATA, and the build's smoke run, the whitebox engine
-\ suite and SEAL-PACKAGES below read the image, never the request.
-\ A cold engine answers for its boot, not its build: it reads this file from
-\ source at every start, so the pass runs again with a fresh cell. Only a
-\ seeded image carries a verdict its build wrote.
+\ The pass writes its verdict into IMK-CLASS and the capture bakes it, so later
+\ readers (the build's smoke run in tools/native-build-core.f,
+\ test/whitebox-engine-key-test.f, SEAL-PACKAGES below) read the image, never the
+\ request. A cold engine reruns the pass at every boot; only a seeded image
+\ carries a verdict its build wrote.
 0 constant IMAGE-SEALED         \ the pass ran: internal names are DNAME-INT
 1 constant IMAGE-WHITEBOX       \ the pass stood down: they are ordinary words
 variable IMK-CLASS
 
-\ THE CHECKER'S AUTHORITY GATE CLOSES WITH THE SEAL. Until this pass runs, a
-\ checked body that names an internal word is checked against the row the build
-\ recorded for it (src/core/checker.f CALL-AUTHORITY); a sealed image refuses
-\ that call, so the sealed arm closes the gate as it writes its verdict.
-\ The whitebox arm leaves the gate open, and the capture bakes either state with
-\ the rest of DATA.
+\ The sealed arm also closes the checker's authority gate: until the seal, a
+\ checked body naming an internal word is checked against the build's row
+\ (src/core/checker.f CALL-AUTHORITY). The whitebox arm leaves it open.
 : IMK-SEAL ( -- )
    IMAGE-SEALED IMK-CLASS !
    CHECKER-EFFECT-AUTHORITY:SEAL
@@ -238,16 +208,14 @@ EXPORT IMAGE-WHITEBOX
 
 \ Seal every package the capture ships: both wordlists of every namespace row at
 \ or above `first` take the protected bit, so `package NAME` and a definition
-\ into either wordlist exit ENGINE-ERROR:SEAL-PACKAGE, and the capture keeps
-\ none of their private symbols (src/core/checker-surface.f KEEP?). IMK-PASS
-\ cannot do this: it runs when this file loads, before the compiler, the REPL
-\ and the manifest's own packages exist. So the native build calls this at its
-\ capture with the window's first record (tools/native-build-core.f
-\ PREPARE-TARGET), before NATIVE-RUNTIME:CAPTURE-PREPARE sweeps; an application
-\ image (APP-IMAGE:SAVE) never calls it and keeps its packages reopenable. The
-\ whitebox image stands down here as IMK-PASS did, on the verdict it wrote. A
-\ package with no private wordlist holds 0 there, the global wordlist, which is
-\ never protected: the capture refuses an image that marks it.
+\ into either exit ENGINE-ERROR:SEAL-PACKAGE, and the capture keeps none of their
+\ private symbols (checker-surface.f KEEP?). IMK-PASS runs before the compiler,
+\ the REPL and the manifest's packages exist, so the native build calls this at
+\ capture (tools/native-build-core.f PREPARE-TARGET), before
+\ NATIVE-RUNTIME:CAPTURE-PREPARE sweeps; an application image (APP-IMAGE:SAVE)
+\ keeps its packages reopenable. The whitebox image stands down here too. A
+\ package with no private wordlist holds 0 there, the global wordlist: the
+\ capture refuses an image that protects it.
 : SEAL-PACKAGES ( n -- )
    {: first:n :}
    IMK-CLASS @ IMAGE-WHITEBOX = IF EXIT THEN

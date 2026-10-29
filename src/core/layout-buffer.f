@@ -1,21 +1,10 @@
-\ layout-buffer.f — generative typed fixed-capacity storage.
-\
-\ LAYOUT-BUFFER is the only public introduction form for `ptr layout`. It owns
-\ allocation, zero-image initialization, stride, and bounds; the checker arms a
-\ single generated-accessor authorization instead of allowing ptr variables to
-\ acquire layout identity through ordinary unification.
-\
-\ TYPED-VARIABLE and TYPED-BUFFER (dot habu-nominal-storage-typed) are the
-\ convenience definers built on the SAME generative boundary: a single typed
-\ cell, and a typed fixed-capacity buffer. They reuse LAYOUT-BUFFER's armed
-\ generated-accessor window (LBUF-EVAL / LBUF-PEND) and admit a broader
-\ CHECKER-STORAGE-INFO type surface — nominal scalars, closed non-linear layout
-\ families, AND closed typed pointers — without weakening LAYOUT-BUFFER, whose
-\ own narrower CHECKER-LAYOUT-INFO gate is unchanged.
+\ layout-buffer.f: the generative storage definers LAYOUT-BUFFER (the only
+\ introduction form for `ptr layout`), DEFER-LAYOUT-BUFFER, TYPED-VARIABLE,
+\ TYPED-BUFFER and DYNAMIC-BUFFER. Each evaluates a generated accessor the checker
+\ authorizes once, by name, in the armed window (LBUF-EVAL, checker.f LBUF-PEND!);
+\ a ptr variable never gains layout identity by unification. Admission: LAYOUT-BUFFER
+\ CHECKER-LAYOUT-INFO, TYPED-* CHECKER-STORAGE-INFO, DYNAMIC-BUFFER CHECKER-DYNAMIC-INFO.
 
-\ TDECL-EVAL-XT and TDECL-EVAL-ARMED are package TYPE-DECL's since dot
-\ habu-tfam-2b-sealed-1b77662c; imported bare here rather than qualified, per
-\ docs/forth.md's consumer rule.
 using TYPE-DECL
 
 $1000 constant LBUF-GEN-CAP
@@ -87,9 +76,8 @@ variable LBUF-BYTES
       LBUF-I @ CELL + LBUF-I !
    repeat ;
 
-\ Cell-wise move (bytes is a whole number of cells: live-count * width). src and
-\ dst are the abandoned and fresh column regions — always disjoint — so a forward
-\ copy is safe. Sibling of LBUF-ZERO, on the same @/! surface.
+\ bytes is a whole number of cells; src and dst are disjoint, so a forward copy
+\ is safe.
 : LBUF-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr bytes:n :}
    0 LBUF-I !
    begin LBUF-I @ bytes < while
@@ -103,41 +91,21 @@ variable LBUF-BYTES
    LBUF-GEN start + nameu ;
 
 \ ---- how a generated accessor reaches its storage ----------------------------
-\ EVERY GENERATED ACCESSOR ADDRESSES ITS STORAGE THROUGH A `create`d WORD, and
-\ that is a relocation statement, not a style choice.
-\
-\ A DATA address uses the recorded carrier that habu2.f C-DATA-ADDR emits for
-\ `create`/`variable` (RELOC-EMIT:MARK-SITE): a three-half shared DATA address,
-\ or the full absolute chain on an older host.
-\ Every pass that MOVES persisted DATA - the snapshot restore, the AOT seed's
-\ EM-AOT-RELOC-DATA, and aot-file.f's MERGE - rewrites those chains by one delta
-\ and touches nothing else. A scalar literal is emitted through a different path
-\ on purpose (habu2.f's literal note: minimal chain into x16), precisely so that
-\ a number which happens to land inside a DATA address range can never be taken
-\ for an address.
-\
-\ So `data-base <baked offset> +` - which is what these accessors used to emit -
-\ is a reference no relocation pass can see. It survives a snapshot, where the
-\ whole region moves together and every offset from the base keeps its meaning,
-\ and it does NOT survive a capture: an AOT window's DATA is copied to whatever
-\ DP the booting engine has reached, and a merged window is placed after the
-\ host's, so the window's bytes land at a DIFFERENT offset from `data-base` than
-\ they were compiled against. Measured on the compiler chain (dot
-\ habu-bmid-module-id-ec6c709b): the merged window sat 152 bytes lower than the
-\ baked offsets said, so BKEY's accessor wrote into BMID's cells and
-\ IR-BUILD:MODULE@ answered 5 where the source-loaded control answered 1.
-\
-\ `data-base <engine-layout constant> +` is a different thing and stays correct:
-\ those offsets name cells the engine reserves at a fixed place in every image
-\ (src/habu/layout.f), so they are not DP-derived and do not move with a window.
-\ The rule is about DP-derived offsets, which is exactly what a definer bakes.
+\ Every generated accessor addresses its storage through a `create`d word: habu2.f
+\ C-DATA-ADDR emits a recorded DATA carrier (RELOC-EMIT:MARK-SITE), and every pass
+\ that moves persisted DATA (snapshot restore, EM-AOT-RELOC-DATA, aot-file.f
+\ MERGE) rewrites those and nothing else; a scalar literal never reads as an
+\ address. `data-base <baked offset> +` is invisible to them: it survives a
+\ snapshot but not a capture, where a merged window lands at another offset
+\ (measured: 152 bytes low, so BKEY's accessor wrote BMID's cells).
+\ `data-base <engine-layout constant> +` stays correct: src/habu/layout.f cells do
+\ not move with a window.
 : LBUF-BASE$ ( -- ptr u8 n ) s" #base" ;
 
-\ Every name a definer derives from the declared one - the storage word, and
-\ NAME-BIND, NAME-GROW, NAME-RESERVE, NAME-RELEASE - is a definition like any
-\ other, so it is guarded the way the declared name is: a collision fails loudly
-\ here instead of silently rebinding somebody's word. LBUF-NAMES-OK? guards the
-\ declared name and its storage word, which every definer publishes.
+\ Every derived name (the storage word, NAME-BIND, NAME-GROW, NAME-RESERVE,
+\ NAME-RELEASE) is guarded like the declared one, so a collision fails loudly
+\ instead of rebinding a word. LBUF-NAMES-OK? guards the declared name and its
+\ storage word.
 : LBUF-SUFFIX-OK? ( ptr u8 n ptr u8 n -- bool ) {: name:ptr nameu:n sfx:ptr sfxu:n :}
    LBUF-CLEAR
    name nameu LBUF-APP  sfx sfxu LBUF-APP
@@ -198,27 +166,22 @@ PTR-VARIABLE STGT-START
    rc 0 <> if rc throw then
    handle ;
 
-\ Every region this file allots holds cells, so it starts on a cell: LBUF-ALIGN
-\ rounds the data pointer up before a definer measures it or a binder allots at
-\ it. `create` rounds the same way, so the generated `create` finds an aligned
-\ pointer and leaves it in place. The pad bytes are dictionary space nothing
-\ names.
+\ Every region here holds cells, so DP is rounded to a cell before a definer
+\ measures it; `create` rounds the same way and leaves it in place.
 : LBUF-ALIGN ( -- )
    align ;
 
-\ The `create` in the generated source publishes the storage word at the DP the
-\ definer measured, and the definer allots and zeroes against that same DP once
-\ the accessor has compiled. If anything moved DP in between, the accessor and
-\ the storage would name different places, so this refuses rather than allot
-\ into the gap. Only the alignment pad is allotted before the eval, so a
-\ rejected accessor leaves DP on the cell where it found it and needs no rewind.
+\ The generated `create` publishes the storage word at the DP the definer
+\ measured; if anything moved DP before the allot, accessor and storage would
+\ name different places, so this refuses. Only the alignment pad is allotted
+\ before the eval, so a rejected accessor needs no rewind.
 : LBUF-ALLOT ( ptr n -- ) {: base:ptr :}
    here base <> if E-LAYOUT-BUFFER throw then
    LBUF-BYTES @ allot ;
 
-\ Whole-record stores move ordinary cells. Walk the admitted instantiated term
-\ at capture, using the active sum tag so shared payload slots are classified
-\ as code only while their active alternative holds a quotation.
+\ Whole-record stores move ordinary cells. The capture walk uses the active sum
+\ tag, so a shared payload slot is a code cell only while its active alternative
+\ holds a quotation.
 : STORAGE-MARK-TERM ( ptr n n -- ) {: base:ptr term:n :}
    term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
    term TFAM:TFAM-STORAGE-PRODUCT? if
@@ -289,13 +252,11 @@ STORAGE-CAPTURE-INSTALL
    handle base count CHECKER-STORAGE-BIND ;
 
 \ ---- the stored type --------------------------------------------------------
-\ Every storage definer reads its type here, so a pointer chain, a family
-\ application and a spaced quotation or scheme reach the checker whole. The
-\ declaration ends with its line: a definer reads its name on its own line and
-\ the type's first token on the name's (STORAGE-LINE-TOKEN). With no name there
-\ the definer is refused at its own spelling (CHECKER-STORAGE-NAME-REFUSE). With
-\ no first token the span is empty, and the checker refuses that by name
-\ (CHECKER-STORAGE-TYPE-REFUSE).
+\ Every definer reads its type here, so pointer chains, family applications and
+\ spaced quotations reach the checker whole. The name stands on the definer's
+\ line and the type's first token on the name's (STORAGE-LINE-TOKEN); a missing
+\ name is refused at the definer (CHECKER-STORAGE-NAME-REFUSE), an empty type by
+\ the checker (CHECKER-STORAGE-TYPE-REFUSE).
 
 \ The engine's input cursor, src/habu/layout.f INP-CELL, spelled here because
 \ that file loads after this one. Pointing it back at a token parse-name read
@@ -314,8 +275,6 @@ $36A0 constant STGT-INP-CELL
    a gap - gap CHECKER-TYPE-SPAN-BREAK? if a STORAGE-UNREAD a 0 exit then
    a u ;
 
-\ Whether the spelling goes on past its last token: not when that token ended
-\ it, and not past its line.
 : STORAGE-MORE? ( bool -- bool ) {: ended:bool :}
    ended if LBUF-FALSE exit then
    STORAGE-LINE-TOKEN {: a:ptr u:n :}
@@ -324,7 +283,7 @@ $36A0 constant STGT-INP-CELL
 
 \ The whole spelling, ended where the checker ends one (CHECKER-TYPE-SPAN-STEP)
 \ or with its line.
-: STORAGE-PARSE-TYPE ( -- ptr u8 n )   \ capture the stored type's source span
+: STORAGE-PARSE-TYPE ( -- ptr u8 n )
    STORAGE-LINE-TOKEN STGT-U !  STGT-A !
    STGT-A @ STGT-START !
    0 begin STGT-A @ STGT-U @ CHECKER-TYPE-SPAN-STEP STORAGE-MORE? 0= until drop
@@ -344,63 +303,27 @@ $36A0 constant STGT-INP-CELL
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
    handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
 
-\ LAYOUT-BUFFER is the public top-level introduction form: it consumes the
-\ count operand and parses its own name + type tokens. The axiom keeps it
-\ checker-known so the seal-time internal-word marking pass
-\ (src/core/internal-mark.f) leaves it executable at top level (dot
-\ habu-hb-crash-bare-c5be6634). UNSAFE-TOK? rejects `layout-buffer` inside
-\ checked bodies (it evaluates generated accessor source via LBUF-EVAL), so
-\ the axiom adds no checked-code capability.
+\ The axiom keeps LAYOUT-BUFFER executable at top level after the internal-mark.f
+\ seal pass; UNSAFE-TOK? refuses it inside checked bodies (it evaluates generated
+\ source), so the axiom adds no checked-code capability.
 PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 
-\ ---- DEFER-LAYOUT-BUFFER: derive-from-model deferred-offset column -----------
-\ Sibling of LAYOUT-BUFFER whose storage is NOT allotted at library load: the
-\ definer reserves three control cells (offset, capacity, live-count; all 0 =
-\ unbound) and emits an accessor that reads them, plus a published NAME-BIND
-\ ( count -- ) that allots count*width cells at build time and stores the offset
-\ + count. So the table SIZE derives from the model (bound once per build from
-\ the counted need) instead of a compile-time constant.
-\
-\ The accessor body reads the rebindable offset/count cells; per the checker's
-\ armed LAYOUT-INTRO window (keyed on the pending accessor NAME + declared
-\ signature, checker.f LBUF-PEND-MATCH?, not the body's arithmetic form) it mints the
-\ SAME `( n -- ptr type )` as the immediate LAYOUT-BUFFER accessor. An access
-\ before the first NAME-BIND (count-cell 0) dies NAMED (E-LAYOUT-UNBOUND),
-\ red-first — never a silent zero-offset read.
-\
-\ Bind policy is grow-to-largest reuse, mirroring the landed executor arena
-\ (maki/executor.f EX-ARENA-ENSURE, stage 1): NAME-BIND reuses the current
-\ region when count fits the allotted capacity (cap-cell), else allots a fresh
-\ larger region and retires the predecessor — allocation bounded by the largest
-\ model, no copy, no mid-build base move (the region only grows before its cells
-\ are written). A bind past LDEFER-CELL-MAX dies NAMED (E-LAYOUT-CEIL) BEFORE
-\ any allot or cell store, so a too-big model leaves the prior tables intact
-\ (the transactional boundary).
-\
-\ NAME-GROW ( count -- ) is the copy-on-grow sibling of NAME-BIND for a two-phase
-\ table (bound once to a first-phase count, then extended incrementally): it
-\ carries the live cells into the fresh larger region before abandoning the old
-\ one, so nodes written before the grow survive. NAME-BIND stays fresh/zeroed
-\ (unchanged semantics); preservation is opt-in via NAME-GROW alone.
-\
-\ USAGE LAW: a deferred accessor reads the offset cell on EVERY call, so the
-\ column base may move between two accessor calls with no hazard — an index read
-\ before a grow and one after both resolve against the live base. The ONE unsafe
-\ act is holding a RAW pointer derived from an accessor across a NAME-GROW: the
-\ grow abandons the old region, so that pointer dangles. Re-derive through the
-\ accessor after any grow; never cache an accessor result across an append.
+\ ---- DEFER-LAYOUT-BUFFER: a column sized by the model at build time ----------
+\ Three control cells (offset, capacity, live count; all 0 = unbound) and an
+\ accessor that reads them; NAME-BIND ( count -- ) allots count*width cells. The
+\ armed window keys on the accessor name and signature (checker.f
+\ LBUF-PEND-MATCH?), not the body, so it mints the LAYOUT-BUFFER signature. An
+\ access before the first bind throws E-LAYOUT-UNBOUND, never a zero-offset read.
+\ NAME-BIND reuses the region when the count fits, else allots a larger one and
+\ retires the old; its cells are fresh and zeroed. NAME-GROW carries the live
+\ cells over. A count past LDEFER-CELL-MAX throws E-LAYOUT-CEIL before any allot
+\ or store. The accessor reads the offset cell on every call, so indices survive
+\ a grow; a raw pointer derived from an accessor dangles across NAME-GROW.
 
-\ Shared runtime binder: every generated NAME-BIND is `<NAME>#base <wc>
-\ LDEFER-BIND`, so the per-column emitted code stays tiny. The three control
-\ cells arrive as the address of the column's `create`d storage word - the one
-\ relocatable DATA-address form (see the note above LBUF-SOURCE) - and the
-\ region offset it stores is measured FROM THOSE CELLS, not from `data-base`,
-\ so it means the same thing wherever the pair ends up. It carries a certified
-\ signature, so the seal-time internal-word pass leaves it executable for the
-\ generated NAME-BIND callers.
-\ A moved column's old cells are no longer reachable through its accessor.
-\ Clear their declarations and bytes after publishing the new region; old raw
-\ accessor pointers were already invalid across a grow.
+\ Every generated NAME-BIND is `<NAME>#base <wc> LDEFER-BIND`. The region offset
+\ is measured from the control cells, not from `data-base`, so it relocates with
+\ them (the `create` rule above). Retiring a moved column clears its old cells'
+\ declarations and bytes after the new region is published.
 : LDEFER-RETIRE ( n n n ptr n -- ) {: oldoff:n oldcap:n wc:n cb:ptr :}
    oldcap 0= oldoff cb @ = or if exit then
    cb oldoff + {: oldbase:ptr :}
@@ -411,9 +334,9 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    {: count:n cb:ptr wc:n :}
    count 0 < if E-LAYOUT-BUFFER throw then
    count wc * {: need:n :}
-   need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then    \ transactional: die before any mutation
+   need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then
    cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
-   count  cb CELL + @  > if                             \ count > capacity: grow-to-largest
+   count  cb CELL + @  > if
       LBUF-ALIGN
       here {: base:ptr :}
       need cells allot
@@ -423,62 +346,49 @@ PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
    count  cb 2 CELL * +  !                             \ cnt-cell = live bound
    oldoff oldcap wc cb LDEFER-RETIRE ;
 
-\ The generated NAME-BIND words are user-level (minted at model load), so the
-\ shared binder must survive the seal-time internal-word pass. The axiom keeps it
-\ checker-known and top-level executable (LAYOUT-BUFFER parity); it is not a
-\ source-evaluating opener, so it is not UNSAFE-TOK? (raw-memory surface, like
-\ allot/!). Effect: ( count cbase wc -- ).
+\ The axiom keeps the shared binder executable for the generated NAME-BIND words
+\ after the seal pass; a raw-memory surface like allot and !, so not UNSAFE-TOK?.
+\ Effect: ( count cbase wc -- ).
 PRIM: LDEFER-BIND PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
-\ Copy-on-grow binder: extends a column already bound by LDEFER-BIND to `count`
-\ live cells, PRESERVING the cells written so far. Growing unbound (cnt-cell 0)
-\ dies NAMED (E-LAYOUT-UNBOUND) — the caller must BIND first (the MIR binds the
-\ forward count at capture-finish, then GROWs during backward-build). Grow-to-at-
-\ least lives here so callers stay dumb: when count outgrows the capacity the new
-\ region is `max(2*capacity, count)` cells (doubling floor, clamped to `count`
-\ when doubling would trip the ceiling), the live cells are carried over, and the
-\ tail past the old live count is zeroed (a within-capacity grow zeroes only the
-\ newly exposed [old-live, count) slots — a prior shrink may have left them dirty).
-\ Like LDEFER-BIND it dies NAMED past LDEFER-CELL-MAX BEFORE any allot or store,
-\ so a too-big grow leaves the prior region and its live data intact.
+\ NAME-GROW extends a bound column, preserving written cells; an unbound column
+\ throws E-LAYOUT-UNBOUND (a column binds before it grows). Past
+\ capacity the region becomes max(2*capacity, count), clamped to count when
+\ doubling would pass the ceiling. A within-capacity grow zeroes [old-live,
+\ count): a prior shrink may have left it dirty.
 : LDEFER-GROW ( n ptr n n -- )   \ count cbase wc
    {: count:n cb:ptr wc:n :}
    count 0 < if E-LAYOUT-BUFFER throw then
-   cb 2 CELL * + @ 0= if E-LAYOUT-UNBOUND throw then        \ grow requires a prior BIND
+   cb 2 CELL * + @ 0= if E-LAYOUT-UNBOUND throw then
    count wc * {: need:n :}
-   need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then       \ transactional: die before any mutation
+   need LDEFER-CELL-MAX > if E-LAYOUT-CEIL throw then
    cb @ {: oldoff:n :} cb CELL + @ {: oldcap:n :}
-   count  cb CELL + @  > if                                 \ count > capacity: copy-on-grow
-      cb 2 CELL * + @ {: live:n :}                          \ live cells to carry to the fresh region
-      cb  cb @  + {: obase:ptr :}                           \ current region base
-      cb CELL + @ 2 *  count max {: dbl:n :}                \ grow-to-at-least: doubling floor
+   count  cb CELL + @  > if
+      cb 2 CELL * + @ {: live:n :}
+      cb  cb @  + {: obase:ptr :}
+      cb CELL + @ 2 *  count max {: dbl:n :}
       dbl wc * LDEFER-CELL-MAX > if count else dbl then {: newcap:n :}   \ clamp so doubling never trips the ceiling
       LBUF-ALIGN
       here {: nbase:ptr :}
       newcap wc * cells allot                                \ allot hands the fresh region out zeroed
-      obase nbase  live wc * cells  LBUF-COPY                \ carry the live cells forward
-      nbase cb -  cb  !                                      \ off-cell = new region offset from cb
-      newcap  cb CELL +  !                                   \ cap-cell = new capacity
-   else count  cb 2 CELL * + @  > if                         \ fits capacity but exposes new slots
-      cb  cb @  +                                            \ region base
-      cb 2 CELL * + @ wc * cells +                           \ + old-live * width cells
-      count  cb 2 CELL * + @  -  wc * cells  LBUF-ZERO        \ zero [old-live, count)
+      obase nbase  live wc * cells  LBUF-COPY
+      nbase cb -  cb  !
+      newcap  cb CELL +  !
+   else count  cb 2 CELL * + @  > if
+      cb  cb @  +
+      cb 2 CELL * + @ wc * cells +
+      count  cb 2 CELL * + @  -  wc * cells  LBUF-ZERO
    then then
-   count  cb 2 CELL * +  !                                 \ cnt-cell = new live bound
+   count  cb 2 CELL * +  !
    oldoff oldcap wc cb LDEFER-RETIRE ;
 
-\ Same seal treatment as LDEFER-BIND: the axiom keeps the shared grow binder
-\ checker-known and top-level executable for the generated NAME-GROW callers; it
-\ is a raw-memory surface (allot/!), not a source-evaluating opener, so it is not
-\ UNSAFE-TOK?. Effect: ( count cbase wc -- ).
+\ Same seal treatment as LDEFER-BIND, for the generated NAME-GROW words.
+\ Effect: ( count cbase wc -- ).
 PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 
-\ Generate the deferred accessor plus its NAME-BIND and NAME-GROW into one source.
 \ The `create` comes first so the accessor and both binders can name the control
-\ cells; it runs no CHECK, so the accessor is still the first DEFINITION and
-\ LBUF-EVAL's one-shot armed window authorizes it by name. NAME-BIND and
-\ NAME-GROW are ordinary checked words (each pushes the control-cell address and
-\ the width, then calls LDEFER-BIND / LDEFER-GROW).
+\ cells; it runs no CHECK, so the accessor is still the first definition the
+\ armed window authorizes by name.
 : LDEFER-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
@@ -511,14 +421,14 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    nameu 0= if s" DEFER-LAYOUT-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
    STORAGE-PARSE-TYPE {: type:ptr typeu:n :}
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
-   name nameu LBUF-NAMES-OK? 0= if exit then              \ the name and its control-cell word
-   name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then   \ guard the published NAME-BIND too
-   name nameu s" -GROW" LBUF-SUFFIX-OK? 0= if exit then   \ guard the published NAME-GROW too
+   name nameu LBUF-NAMES-OK? 0= if exit then
+   name nameu s" -BIND" LBUF-SUFFIX-OK? 0= if exit then
+   name nameu s" -GROW" LBUF-SUFFIX-OK? 0= if exit then
    type typeu CHECKER-LAYOUT-INFO 0= if
       2drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE exit
    then
-   LBUF-W !  drop                                          \ width (cells) from the layout family
-   LDEFER-CTRL-CELLS cells LBUF-BYTES !                    \ the control cells this definer owns
+   LBUF-W !  drop
+   LDEFER-CTRL-CELLS cells LBUF-BYTES !
    LBUF-ALIGN
    here {: cbase:ptr :}
    name nameu type typeu LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
@@ -526,19 +436,13 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    cbase LBUF-ALLOT                                        \ all 0 = unbound
    handle cbase CHECKER-STORAGE-DEFER ;
 
-\ Like LAYOUT-BUFFER: the axiom keeps DEFER-LAYOUT-BUFFER checker-known so the
-\ seal-time internal-word pass leaves it top-level executable; it parses its own
-\ name + type and consumes nothing from the stack (the count arrives at bind).
+\ The axiom keeps DEFER-LAYOUT-BUFFER executable at top level after the seal
+\ pass; it takes nothing from the stack (the count arrives at bind).
 PRIM: DEFER-LAYOUT-BUFFER PRIM;
 
-\ ---- TYPED-VARIABLE / TYPED-BUFFER convenience definers ----------------------
-\ Same generative machinery as LAYOUT-BUFFER (name guard, allocation, zero image,
-\ generated-accessor evaluation under the armed window, transactional rollback),
-\ gated by the broader CHECKER-STORAGE-INFO admissibility. TYPED-BUFFER reuses
-\ LBUF-SOURCE (the indexed `( n -- ptr type )` accessor); TYPED-VARIABLE emits a
-\ single-cell `( -- ptr type )` accessor. Both read a multi-token stored type, so
-\ closed typed pointers (`ptr TARGET`, `ptr res<n,n>`) and spaced quotations are
-\ expressible.
+\ ---- TYPED-VARIABLE / TYPED-BUFFER --------------------------------------------
+\ LAYOUT-BUFFER's machinery gated by CHECKER-STORAGE-INFO, so closed typed
+\ pointers (`ptr TARGET`, `ptr res<n,n>`) and spaced quotations are expressible.
 
 : STORAGE-VALIDATE ( n ptr u8 n ptr u8 n -- bool )
    {: count:n name:ptr nameu:n type:ptr typeu:n :}
@@ -590,50 +494,22 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
    handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
 
-\ Axioms keep the two definers checker-known so the seal-time internal-word pass
-\ leaves them executable at top level (like LAYOUT-BUFFER); UNSAFE-TOK? rejects
-\ `typed-buffer`/`typed-variable` inside checked bodies (they evaluate generated
-\ accessor source), so the axioms add no checked-code capability.
+\ As for LAYOUT-BUFFER: top-level executable after the seal pass, refused inside
+\ checked bodies by UNSAFE-TOK?.
 PRIM: TYPED-BUFFER PE-N PE-IN PRIM;
 PRIM: TYPED-VARIABLE PRIM;
 
-\ ---- transient typed buffers -------------------------------------------------
-\ The control cells own an OS mapping and its byte capacity. The generated
-\ accessor is the same checked storage introduction as TYPED-BUFFER. A reserve
-\ preserves old cells and may move the mapping; callers retain indices across it.
-\
-\ The third control cell is the live registry handle. RESERVE registers
-\ on first allocation; RELEASE unregisters, so an existing declaration remains
-\ reusable after capture and restore without replaying this generated source.
-\ The fourth and fifth cache the element bound for the width that last grew
-\ the record; src/core/dynamic-storage.f states when the accessor trusts it.
-\
-\ THE CONTROL HEAD IS DECLARED, NOT `create`d (dot habu-refuse-a-ptr-5ad2734e).
-\ It holds the mapping's address, and a raw storage cell never holds an address:
-\ `NAME#base 0 ptr-field @` fetched a typed pointer out of an undeclared cell,
-\ which is exactly the launder the rule refuses. `PTR-VARIABLE` declares the
-\ head, and DYNAMIC-STORAGE receives `ptr ptr a`, a pointer to that declared
-\ cell. Its shared ADDRESS word checks the index and fetches the current mapping.
-\ The accessor's own pointee is minted from the declared signature the way every
-\ generated accessor's is (LBUF-EVAL's armed window), so
-\ a nominal or pointer element type reaches it exactly as it does through
-\ LAYOUT-BUFFER and TYPED-BUFFER. The definer's other three generative forms need
-\ no change at all: their accessors do pointer ARITHMETIC on the storage word and
-\ load counts, and never fetch a pointer out of it.
-\
-\ The record is a declared head and a numeric control block. The generated
-\ `PTR-VARIABLE NAME#base` commits the head's cell itself, and the generated
-\ `create NAME#ctl` right after it names the four count cells, which the definer
-\ allots behind the head (DBUF-ALLOT). Every generated call passes both words, so
-\ DYNAMIC-STORAGE reads the counts as numbers through NAME#ctl and never views
-\ the head's pointer cell as bytes or cells.
-\ THE DYNAMIC ELEMENT WIDTH IS BYTES, where LBUF-W holds cells: this definer
-\ allots no element storage, it scales the accessor's index and the reserve by
-\ the width, and DYNAMIC-STORAGE:RESERVE takes its width in bytes.
-\ A byte element is therefore expressible here and nowhere else, which is what
-\ CHECKER-DYNAMIC-INFO admits over CHECKER-STORAGE-INFO; every element the cell
-\ definers admit keeps the generated source it had, since DBUF-W is then
-\ exactly LBUF-W cells.
+\ ---- transient typed buffers (DYNAMIC-BUFFER) --------------------------------
+\ The control head owns an OS mapping; RESERVE preserves old cells and may move
+\ it, so callers keep indices, not pointers. The registry handle is registered on
+\ first allocation and unregistered by RELEASE, so a declaration stays reusable
+\ after capture and restore. dynamic-storage.f states when the accessor trusts
+\ the cached element bound.
+\ The head is a declared PTR-VARIABLE, not `create`d: a raw storage cell never
+\ holds an address. NAME#ctl names the numeric cells, so DYNAMIC-STORAGE never
+\ views the head's pointer cell as bytes.
+\ The element width is bytes, where LBUF-W holds cells, so a byte element is
+\ expressible only here (CHECKER-DYNAMIC-INFO over CHECKER-STORAGE-INFO).
 variable DBUF-W
 \ Every dynamic control record (src/core/dynamic-storage.f): the head cell, then
 \ the control block's exact byte capacity, registry slot + 1, width tag and
@@ -644,7 +520,6 @@ variable DBUF-W
 : DBUF-CTL, ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu LBUF-APP  DBUF-CTL$ LBUF-APP ;
 
-\ The record's two words, as every generated call passes them.
 : DBUF-RECORD, ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu LBUF-BASE,  s"  " LBUF-APP  name nameu DBUF-CTL, ;
 
@@ -671,15 +546,10 @@ variable DBUF-W
    s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
-\ LBUF-ALLOT one cell on: the generated `PTR-VARIABLE` publishes the control head
-\ AND commits its cell, and the generated `create NAME#ctl` names the next cell
-\ without allotting it, so the definer allots the four count cells behind the
-\ head, which `allot` hands out zeroed behind the head's `0 ,`. The same
-\ transactional check — if anything else
-\ moved DP between the measurement and here, the accessor and the storage would
-\ name different places, so this refuses instead of allotting into the gap. A
-\ rejected accessor leaves the head's cell allotted and unnamed, like the
-\ alignment pad; the declaration itself fails, so nothing reads it.
+\ The generated PTR-VARIABLE commits the head's cell and `create NAME#ctl` names
+\ the next cell without allotting, so this allots the count cells behind the
+\ head, refusing if DP moved since the measurement. A rejected accessor leaves
+\ the head's cell allotted and unnamed, like the alignment pad.
 : DBUF-ALLOT ( ptr n -- ) {: base:ptr :}
    here base CELL + <> if E-LAYOUT-BUFFER throw then
    LBUF-BYTES @ CELL - allot ;

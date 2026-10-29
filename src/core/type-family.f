@@ -1,66 +1,17 @@
-\ type-family.f — package-scoped type-family (TFAM), sum-variant (SUMV),
-\ product-field, and logical-layout registries for the checker (package TFAM).
-\ Records key on (package name, canonical
-\ lowercase tail), so two packages may define the same tail without aliasing.
-\ All names are interned as byte offsets into one growable string pool, so record
-\ arrays hold only integers: a grow is a plain cell copy and snapshot persist
-\ bakes stores verbatim with no rebase. Loaded unchecked in the checker prefix,
-\ right after type-schema.f, mirroring the VREC value-record registry. The
-\ declaration boundary rejects uppercase/mixed-case tails BEFORE storage, so the
-\ registry only ever stores already-canonical tails.
-\
-\ LAYOUT MODEL. A stack value is cells, so a family wider than one cell is not
-\ one checker cell. Under the default POLICY stack-cell-tag a sum is W = M + 1
-\ cells, M the widest variant payload: payload slots in declared order, slot0
-\ deepest, padding above a shorter payload, the tag on top. An enum is its tag
-\ alone; a product is its field cells in slot order, with no tag; a cell,
-\ evidence, boxed (one pointer) or niche-null (null is the empty variant) family
-\ is one cell. packed keeps the stack cells and adds only a memory descriptor
-\ (PACKED-DESC) that narrows the tag. TFAM-WIDTH@ is the declared width, every
-\ parameter one cell; TFAM-INST-WIDTH is the width of an instantiated term. In
-\ the checker (checker.f PUSH-LOGICAL) a layout type whose width is known, linear
-\ included, expands to its W hidden physical terms and generic stack words move
-\ whole bundles; one whose width reads an open argument stays one logical cell.
-\ A sum whose payload may be linear is linear. render.f compacts a hidden run back to family<args>. Every
-\ registry here rolls back through the checker's frame stack (RBF-PUSH /
-\ RBF-POP) and persists through REG-EXT-PERSIST (TFAM-SNAPSHOT-PERSIST); the
-\ frames are process-local and reset at a snapshot.
-\
-\ THE WHOLE FILE IS package TFAM (dot habu-tfam-2b-sealed-1b77662c). The split is
-\ measured, not chosen: a name something outside this package references is
-\ `public`, everything else is `private`, and no name was renamed to fit.
-\ "Outside this package" counts three kinds of caller: consumer files elsewhere
-\ in the tree, the checker's own `PPRIM: TFAM` axiom rows, and the inner
-\ packages this file itself opens — TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER,
-\ CHECKER-DECL-FRAME and SCHEMA-REG. Packages do not nest (habu2.f C-PACKAGE
-\ exits $4B on an open-inside-open), so each inner block closes TFAM and reopens
-\ it afterwards, and each reads what it needs through the file's own `using TFAM`
-\ — which reaches publics only, exactly like any other consumer.
-\
-\ WHAT THE SEAL BUYS is the disappearance of the private half. TF-RBF-P, the
-\ rollback-frame arena base, had no reference outside this file and no
-\ REG-PROTECT row, and `0 TF-RBF-P !` in an ordinary bin/hb --load program took
-\ the engine down with a SIGSEGV (rc 134) inside the next declaration. SVX-HI,
-\ the constructor-index watermark, had two readers outside the file and no
-\ REG-PROTECT either, and `99999 SVX-HI !` turned a clean catchable
-\ duplicate-family reject into `tfam: ctor index retired after its rows went`,
-\ exit 76. The first is private now and has no top-level spelling on any route;
-\ the second is public and carries REG-PROTECT, as does TF-RBF-DEPTH (dot
-\ habu-tf-rbf-depth-614c88e0).
-\
-\ FIVE NAMES STAY GLOBAL and each one is the engine's requirement, not a
-\ preference. TFAM-NAME$, TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are the
-\ `construct`/`match`/`;match` bridge: habu2.f resolves them through
-\ C-FIND-GLOBAL, which ZEROES the open package's wordlist cells before the lookup
-\ so a keyword's meaning cannot depend on where it is written, and
-\ bootstrap/cg/forth.fs mirrors the same four spellings.
-\ TFAM-CTOR-WORD? is named by an AOT-captured call site, and the boot seed re-resolves
-\ a baked callee only through a global scope. Each of the five sits between a
-\ `;package` and a `package TFAM` and reads the registry through `using TFAM`.
-\ test/internal-word-gate.f pins that the surface stops there.
+\ type-family.f: package TFAM, the family (TFAM), variant (SUMV), product-field
+\ and logical-layout registries for the checker; loaded unchecked in the checker
+\ prefix after type-schema.f. Records key on (package, canonical lowercase tail);
+\ names are byte offsets into one string pool, so records hold only integers and
+\ snapshot persist bakes stores verbatim. Registries roll back through RBF-PUSH /
+\ RBF-POP and persist through TFAM-SNAPSHOT-PERSIST. Five words stay global (TFAM-NAME$).
 
 using SCHEMA-REG
 
+\ A name referenced outside this package is public, everything else private;
+\ outside includes the checker's `PPRIM: TFAM` rows and the inner packages this
+\ file opens (TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER, CHECKER-DECL-FRAME,
+\ SCHEMA-REG). Packages do not nest (habu2.f C-PACKAGE exits $4B), so each inner
+\ block closes TFAM, reopens it after, and reads publics through `using TFAM`.
 package TFAM
 
 \ --- kind of a family (what its values are).
@@ -129,8 +80,7 @@ private
 4 constant TK-EVIDENCE      \ compile-only evidence family
 4 constant TK-MAX
 
-\ --- layout policy (physical representation). Default is the universal
-\ M-payload-cells + 1-tag-cell stack representation (file header).
+\ --- layout policy (physical representation); the default is TL-STACK-CELL-TAG.
 
 public
 
@@ -193,13 +143,11 @@ private
 
 variable TF-PUB               \ private first-public-match accumulator (-1 = none)
 
-\ ---------------------------------------------------------------------------
 \ declaration parameter spelling.  This is the one reversible alphabet used by
 \ every declaration parser and signature generator.  The concrete scalar tokens
 \ f, n, and r are deliberately absent, so their meaning never depends on arity.
 \ The registry may store wider internal schemas; this count bounds only the
 \ source-language spelling of positional declaration parameters.
-\ ---------------------------------------------------------------------------
 
 public
 
@@ -227,10 +175,8 @@ public
    REPEAT
    drop 0 RES-FALSE ;
 
-\ ---------------------------------------------------------------------------
 \ shared string pool. Names are interned as byte offsets; offsets stay valid
 \ across a pool grow, so no stored offset ever needs rebasing.
-\ ---------------------------------------------------------------------------
 
 private
 
@@ -254,7 +200,7 @@ private
    need TF-STR-CAP-V @ 2 * max {: nc:n :}
    TF-STR-P  TF-STR-CAP-V @  nc  REG-GROW1
    nc TF-STR-CAP-V ! ;
-: TF-STR-ENSURE ( n -- ) {: add:n :}      \ room for `add` more bytes
+: TF-STR-ENSURE ( n -- ) {: add:n :}
    TF-STR-U @ add + TF-STR-CAP-V @ <= IF exit THEN
    TF-STR-U @ add + TF-STR-GROW ;
 : TF-STR-SCRUB ( n n -- ) {: lo:n hi:n :} \ zero the pool bytes [lo,hi); see PF-SCRUB
@@ -262,7 +208,7 @@ private
 
 public
 
-: TF-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}   \ copy bytes into the pool -> offset
+: TF-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
    u TF-STR-ENSURE                        \ grow first, then cache a stable base
    TF-STR-U @ {: off:n :}
    0 BEGIN dup u < WHILE
@@ -272,13 +218,11 @@ public
    REPEAT drop
    TF-STR-U @ u + TF-STR-U !
    off ;
-: TF-OFF$ ( n n -- ptr u8 n ) {: off:n u:n :}   \ interned (offset,len) -> string
+: TF-OFF$ ( n n -- ptr u8 n ) {: off:n u:n :}
    TF-STR off + u ;
 
-\ ---------------------------------------------------------------------------
 \ canonical tail validation. Declarations accept only lowercase tokens; the
 \ registry never folds case, so an uppercase/mixed-case token is rejected here.
-\ ---------------------------------------------------------------------------
 
 private
 
@@ -325,9 +269,7 @@ public
 : TF-REQUIRE-CANON ( ptr u8 n -- )   \ reject uppercase/mixed-case at declaration
    TF-CANON? 0= IF E-TFAM-CASE throw THEN ;
 
-\ ---------------------------------------------------------------------------
 \ param-kind pool (one PK-* cell per parameter of every family, contiguous).
-\ ---------------------------------------------------------------------------
 
 private
 
@@ -353,14 +295,12 @@ private
    TF-PK-N @ 1 + TF-PK-GROW ;
 : TF-PK-SCRUB ( n n -- ) {: lo:n hi:n :}  \ zero the param-kind cells [lo,hi); see PF-SCRUB
    TF-PK-BASE lo hi ARENA-CELLS-ZERO ;
-: TF-PK+ ( n -- ) {: k:n :}             \ append one param-kind slot
+: TF-PK+ ( n -- ) {: k:n :}
    TF-PK-ENSURE
    k TF-PK-N @ cells TF-PK-BASE + !
    TF-PK-N @ 1 + TF-PK-N ! ;
 
-\ ---------------------------------------------------------------------------
 \ TFAM record arena.
-\ ---------------------------------------------------------------------------
 \ Every registry record below contains only scalar ids, counts, codes, or
 \ interned offsets, so its arena needs no pointer relocation.
 
@@ -388,7 +328,7 @@ private
 \ lives in the record rather than in a side table that could drift from it.
 19 cells constant TF.TAILNEXT-OFF
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
-\ placement (the OPAQUE header clause, src/core/structure-decl.f header).
+\ placement (the OPAQUE header clause, structure-decl.f OPAQUE-CLAUSE).
 20 cells constant TF.OPAQUE-OFF
 
 public
@@ -450,7 +390,7 @@ private
 
 public
 
-: TF-REC@ ( n -- ptr n ) {: id:n :}      \ address of family record `id`
+: TF-REC@ ( n -- ptr n ) {: id:n :}
    id 0 < IF s" tfam: bad family id" 76 die THEN
    id TFAM-N @ >= IF s" tfam: bad family id" 76 die THEN
    id TF-REC * TF-BASE + ;
@@ -467,6 +407,15 @@ public
 
 using TFAM
 
+\ Five names stay global because the engine needs them there. TFAM-NAME$,
+\ TFL-CON-FAM?, TFL-CVAR? and TFL-MATCH-FAM? are the `construct`/`match`/`;match`
+\ bridge: habu2.f resolves them through C-FIND-GLOBAL, which zeroes the open
+\ package's wordlist cells so a keyword's meaning cannot depend on where it is
+\ written, and bootstrap/cg/forth.fs mirrors the four spellings. TFAM-CTOR-WORD?
+\ is named by an AOT-captured call site, and the boot seed re-resolves a baked
+\ callee only through a global scope. Each sits between `;package` and
+\ `package TFAM` and reads the registry through `using TFAM`;
+\ test/internal-word-gate.f pins that the surface stops there.
 : TFAM-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
 
@@ -496,16 +445,15 @@ public
 : TFAM-PRODUCT? ( n -- bool ) TFAM-KIND@ TK-PRODUCT = ;
 : TFAM-SUM? ( n -- bool ) TFAM-KIND@ TK-SUM = ;
 : TFAM-ENUM? ( n -- bool ) TFAM-KIND@ TK-ENUM = ;
-: TFAM-LAYOUT? ( n -- bool ) {: id:n :}   \ true when the family occupies an ADT layout
+: TFAM-LAYOUT? ( n -- bool ) {: id:n :}
    id TFAM-PRODUCT? id TFAM-SUM? or id TFAM-ENUM? or ;
 
-\ --- opt-in derived words (derive S1, dot habu-checker-capability-derive):
-\ a `DERIVE eq` clause marks the family row; the sumtype generator then emits
-\ the family's derived words and the ctor-word predicate below recognizes
-\ their fixed generator-owned tails, exactly like generated constructors.
+\ --- opt-in derived words: a DERIVE clause marks the family row; the sumtype
+\ generator emits the derived words and the ctor-word predicate below recognizes
+\ their fixed tails like generated constructors.
 1 constant DRV-EQ
 2 constant DRV-HASH
-4 constant DRV-ADDR              \ address surface: one accessor per field (structure-decl.f header)
+4 constant DRV-ADDR              \ address surface: one accessor per field (sumtype.f TDECL-ADDR-FIELD-WORD)
 8 constant DRV-INIT              \ initialized-record field accessors
 DRV-EQ DRV-HASH or DRV-ADDR or DRV-INIT or constant DRV-ALL
 
@@ -537,14 +485,10 @@ public
 : TFAM-GEN-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-PUBLIC? fam TFAM-OPAQUE? 0= and ;
 
-\ a boxed value is a single heap/DATA pointer (file header `ptr fam-box`) and a
-\ niche value is a single cell with the discriminant folded into the payload
-\ (file header) — both collapse the stack width to one cell regardless of kind,
-\ so the width branch below keys on the policy before the kind. Reached today
-\ ONLY through the direct TFAM-LAYOUT! mutator (no declaration accepts boxed /
-\ niche-null yet — both reject at the POLICY clause), so this is check-sound
-\ metadata the boxed/niche accept slices consume; it never changes the width of
-\ a stack-cell-tag or packed family (packed keeps the cell width, file header).
+\ A boxed value is one pointer and a niche value one cell with the discriminant
+\ folded into the payload, so the width branch keys on the policy before the
+\ kind. Only TFAM-LAYOUT! reaches them (the POLICY clause refuses boxed and
+\ niche-null).
 
 private
 
@@ -552,9 +496,19 @@ private
    id TFAM-LAYOUT-POLICY@ {: p:n :}
    p TL-BOXED = p TL-NICHE = or ;
 
-\ logical width in stack cells:
-\ boxed/niche = one cell; sum = max payload slots + one tag cell; enum = tag only
-\ (slots 0); product = field cells, no tag; cell/evidence families are one cell.
+\ Logical width in stack cells. Under stack-cell-tag a sum is W = M + 1 cells, M
+\ the widest variant payload: payload slots in declared order, slot0 deepest,
+\ padding above a shorter payload, the tag on top. An enum is its tag alone; a
+\ product is its field cells in slot order, with no tag; a cell, evidence,
+\ boxed (one pointer) or niche-null (null is the empty variant) family is one
+\ cell. packed keeps the stack cells and adds only a memory descriptor
+\ (PACKED-DESC) that narrows the tag. TFAM-WIDTH@ is the declared width, every
+\ parameter one cell; TFAM-INST-WIDTH@ is the width of an instantiated term. In
+\ the checker (checker.f PUSH-LOGICAL) a layout type whose width is known,
+\ linear included, expands to its W hidden physical terms and generic stack
+\ words move whole bundles; one whose width reads an open argument stays one
+\ logical cell. A sum whose payload may be linear is linear. render.f compacts a
+\ hidden run back to family<args>.
 
 public
 
@@ -614,19 +568,12 @@ private
 : TFAM-NAME-MATCH? ( ptr u8 n n -- bool ) {: na:ptr nu:n id:n :}
    id TFAM-NAME$ na nu CORE-STR= ;
 
-\ --- tail index (TFX) ----------------------------------------------------------
-\ Both registry lookups below ask a question about ONE tail: TFAM-FIND-IN wants
-\ the row with that tail in a given package, TFAM-FIND-PUBLIC wants the public
-\ rows with that tail across packages. Every other row in the registry is
-\ irrelevant to both, so the walk over [0, TFAM-N) is replaced by a walk of the
-\ rows that share the tail's hash bucket — a handful, and independent of how many
-\ families the program declared.
-\
+\ --- tail index (TFX). TFAM-FIND-IN and TFAM-FIND-PUBLIC each ask about one
+\ tail, so they walk the rows sharing its hash bucket instead of [0, TFAM-N).
 \ Rows are pushed on their bucket in id order and retired newest-first, so a
-\ retired row is always at its bucket head and TFAM-N rewinding IS the chain's
-\ retirement — the property the rollback comment further down already relies on.
-\ The bucket count follows the record arena's own capacity; a capacity change or
-\ a rewind performed outside the retire seam rebuilds the whole index.
+\ retired row is always at its bucket head and rewinding TFAM-N is the chain's
+\ retirement. The bucket count follows the record arena's capacity; a capacity
+\ change or a rewind outside the retire seam rebuilds the whole index.
 
 public
 
@@ -726,17 +673,12 @@ variable TFX-CUR              \ private bucket-walk cursor
    TFAM-N @ TFX-HI @ < or
    TFX-CAP @ TF-CAP <> or IF TFX-BUILD THEN ;
 
-\ TFX-RETIRE ( n -- ) : pop rows [newn, TFAM-N) before TFAM-N rewinds to newn.
-\ Newest first, so each popped row is at its bucket head.
-\
-\ AND IT REFUSES TO RUN AFTER THE COUNTER HAS ALREADY REWOUND. Rows in
-\ [TFAM-N, TFX-HI) are chained under ids the store no longer holds, which can
-\ only mean somebody rewound TFAM-N without retiring first. Retiring then is
-\ worse than useless: the loop pops nothing, and the stamp below tells the index
-\ it is current, which erases the one signal TFX-ENSURE has for rebuilding a
-\ store that shrank under it. The chained row survives every later lookup until
-\ one walks it and TF-REC@ dies on an id past the end. Dying here instead names
-\ the caller that broke the order.
+\ Pops rows [newn, TFAM-N) before TFAM-N rewinds to newn, newest first so each
+\ popped row is at its bucket head. It dies when the counter has already
+\ rewound: rows in [TFAM-N, TFX-HI) are then chained under ids the store no
+\ longer holds, the loop would pop nothing, and the stamp would erase
+\ TFX-ENSURE's only rebuild signal, leaving a chained row that kills TF-REC@ on
+\ a later lookup. Dying here names the caller that broke the order.
 : TFX-RETIRE ( n -- ) {: newn:n :}
    TFX-READY @ 0= IF EXIT THEN
    TFX-HI @ TFAM-N @ > IF s" tfam: tail index retired after its rows went" 76 die THEN
@@ -900,9 +842,7 @@ public
    id ;
 NOMINAL-PROVIDER
 
-\ ---------------------------------------------------------------------------
 \ SUMV: sum/enum variant records, keyed by (family-id, variant tail).
-\ ---------------------------------------------------------------------------
 
 private
 
@@ -989,22 +929,16 @@ public
    id SUMV-REC@ {: r:ptr :}  r SV.CTOR-PKG-OFF @ r SV.CTOR-PKG-U @ TF-OFF$ ;
 : SUMV-CTOR-SYM@ ( n -- n ) SUMV-REC@ SV.CTOR-SYM @ ;
 
-\ --- constructor-symbol index (SVX) --------------------------------------------
-\ SUMV-FROM-CTOR-SYM runs on every resolved call token and answers "no" for
-\ almost all of them, so it must not cost a walk of the variant store. The
-\ answer it wants is the LOWEST variant id carrying that constructor symbol, and
-\ a variant's constructor symbol is written exactly once, so a per-symbol head
-\ that only ever takes its FIRST writer reproduces it exactly.
-\
-\ Retirement is the store's own: variant rows only leave by SUMV-N rewinding, and
-\ the lowest id for a symbol is the first to go, so a head pointing at a retired
-\ row means the symbol has no row left. SVX-TRUNCATE therefore needs no
-\ back-link — it clears the heads the retired rows own and nothing else.
-\ SVX-HI is the SUMV-N the index covers, and every seam that moves SUMV-N moves
-\ it too (SUMV-ADD, SVX-TRUNCATE, the unit imports, TFAM-RESET), so it differs
-\ from SUMV-N only after a rewind performed outside those seams, which it
-\ catches; SVX-GEN catches the shared mapping being dropped or re-laid-out
-\ under it.
+\ --- constructor-symbol index (SVX). SUMV-FROM-CTOR-SYM runs on every resolved
+\ call token and answers no for almost all, so it must not walk the variant
+\ store. It answers the lowest variant id carrying the symbol; a symbol is
+\ written once per variant, so a per-symbol head that keeps its first writer
+\ reproduces it. Variant rows leave only by SUMV-N rewinding, lowest id first,
+\ so a head at a retired row means the symbol has no row left and SVX-TRUNCATE
+\ needs no back-link. SVX-HI is the SUMV-N the index covers; every seam that
+\ moves SUMV-N moves it (SUMV-ADD, SVX-TRUNCATE, the unit imports, TFAM-RESET),
+\ so a difference catches a rewind outside those seams. SVX-GEN catches the
+\ shared mapping being dropped or re-laid out.
 
 private
 
@@ -1012,6 +946,8 @@ variable SVX-GEN
 
 public
 
+\ REG-PROTECT: `99999 SVX-HI !` turned a catchable duplicate-family reject into
+\ `tfam: ctor index retired after its rows went`, exit 76.
 variable SVX-HI   REG-PROTECT
 0 SVX-GEN !   0 SVX-HI !
 
@@ -1092,21 +1028,17 @@ public
    loop
    0 ;
 
-\ --- variant tail index (VNX) ---------------------------------------------------
-\ SUMV-FIND wants the row with one tail in one family, and the generated-word
-\ recognizer below wants every row spelled like one tail in any family. Both
-\ walked the whole variant store, and generating an ENUM's constructors asks
-\ each question once per variant, so the declaration cost the square of its
-\ variant count. Rows are chained by the hash of their FOLDED tail, which serves
-\ both: the exact comparison still rejects a non-canonical spelling, and every
-\ row the case-insensitive comparison could match sits in the one bucket.
-\
+\ --- variant tail index (VNX). SUMV-FIND wants one tail in one family and the
+\ generated-word recognizer every row spelled like one tail in any family;
+\ generating an ENUM's constructors asks each once per variant, so a store walk
+\ makes the declaration quadratic in its variants. Rows chain by the hash of
+\ their folded tail, which serves both: the exact comparison still rejects a
+\ non-canonical spelling, and every case-insensitive match sits in one bucket.
 \ Rows are pushed in id order by SUMV-ADD and retired newest-first by
-\ TFAM-REWIND, so a retired row is always its bucket's head (the TFX
-\ discipline). Buckets and links are process-local: a capture drops them, and a
-\ capacity change rebuilds them. A store that moved outside those two seams is
-\ rebuilt by the next lookup, and refused by a rewind that comes first
-\ (VNX-RETIRE).
+\ TFAM-REWIND, so a retired row is always its bucket's head. Buckets and links
+\ are process-local: a capture drops them and a capacity change rebuilds them. A
+\ store that moved outside those seams is rebuilt by the next lookup, and
+\ refused by a rewind that comes first (VNX-RETIRE).
 
 private
 
@@ -1181,16 +1113,12 @@ variable VNX-CUR              \ private bucket-walk cursor
    SUMV-N @ VNX-HI @ <> or
    VNX-CAP @ SUMV-CAP <> or IF VNX-BUILD THEN ;
 
-\ VNX-RETIRE ( n -- ) : pop rows [newn, SUMV-N) before SUMV-N rewinds to newn,
-\ newest first, so each popped row is at its bucket head.
-\
-\ IT REFUSES TO RUN ON CHAINS THAT DO NOT COVER EXACTLY THE LIVE ROWS, as
-\ TFX-RETIRE does. Every writer of SUMV-N keeps them in step: SUMV-ADD and
-\ TFAM-REWIND move VNX-HI with it, and TFAM-RESET and REG-AOT-INSTALL drop the
-\ chains. Unequal marks mean a caller moved the counter around those seams.
-\ Popping then would unlink rows the chains never held, or stamp chains that
-\ still hold rows past the end of the store as current, which erases the signal
-\ VNX-ENSURE rebuilds on. Dying here names the caller that broke the order.
+\ Pops rows [newn, SUMV-N) before SUMV-N rewinds to newn, newest first, so each
+\ popped row is at its bucket head. It dies, as TFX-RETIRE does, on chains that
+\ do not cover exactly the live rows: SUMV-ADD and TFAM-REWIND move VNX-HI with
+\ SUMV-N, and TFAM-RESET and REG-AOT-INSTALL drop the chains, so unequal marks
+\ mean a caller moved the counter around those seams, and popping would unlink
+\ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
 : VNX-RETIRE ( n -- ) {: newn:n :}
    VNX-READY @ 0= IF EXIT THEN
    VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" 76 die THEN
@@ -1207,11 +1135,10 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 public
 
-\ generated-constructor protection predicates. Names are
-\ matched case-insensitively against the recorded SV.CTOR-PKG spellings, so a
-\ folded alias cannot reopen a constructor package, extend it with a new
-\ tail, or undefine a generated word through any case variant. Installed into
-\ the checker's CTOR-*-XT friend cells at the end of this file.
+\ Generated-constructor protection: names match the recorded SV.CTOR-PKG
+\ spellings case-insensitively, so a folded alias cannot reopen a constructor
+\ package, extend it with a new tail, or undefine a generated word. Installed
+\ into the checker's CTOR-*-XT friend cells at the end of this file.
 private
 
 variable TF-CW-COL          \ first-colon split position
@@ -1338,23 +1265,16 @@ public
    TFM-EPOCH+
    id ;
 
-\ ---------------------------------------------------------------------------
-\ constructor package-name derivation (package shape: docs/forth.md "Structures And Enums").
-\ Maps the defining (package, family tail) to the reserved
-\ constructor package spelling — the same bytes native, habu1, and the Gforth
-\ mirror must produce (all three parse this one file). Readable escaped form:
-\ uppercase every joined segment (the package segment AND the family tail),
-\ double a literal '-' inside each ('-' -> '--'), join with single '-'
-\ separators. Escaping the tail too is what makes the map injective: canonical
-\ segments never start/end with '-', so hyphen runs inside escaped segments stay
-\ even-length and interior, and each single '-' separator decodes uniquely.
-\ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`; a
-\ top-level `a-b-c` derives `A--B--C` — all distinct. The escaped form is
-\ injective at every length. The checker stores package names up to 255 bytes
-\ (CHECKER-PACKAGE-CAP - 1); a longer derived package is refused by the same
-\ boundary as an explicit package name. The runtime dictionary and AOT
-\ snapshot both store names past their 16-byte inline cell.
-\ Top level (empty package) derives the bare escaped tail: `result` -> `RESULT`.
+\ Constructor package name (docs/forth.md "Structures And Enums"): the same bytes
+\ native, habu1 and the Gforth mirror produce (all three parse this file).
+\ Uppercase every segment (package and family tail), double a literal '-' inside
+\ each, join with single '-'. Escaping the tail too makes the map injective:
+\ canonical segments never start or end with '-', so hyphen runs inside escaped
+\ segments stay even-length and interior and each single '-' decodes uniquely.
+\ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`;
+\ top-level `a-b-c` derives `A--B--C`; top level derives the bare escaped tail
+\ (`result` -> `RESULT`). A derived package past 255 bytes (CHECKER-PACKAGE-CAP
+\ - 1) is refused like an explicit package name.
 
 private
 
@@ -1366,13 +1286,11 @@ public
 
 : TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
 
-\ THE LONGEST FAMILY, VARIANT OR FIELD NAME: 255 bytes, the longest package name
-\ (src/core/checker.f CHECKER-PACKAGE-CAP), so every spelling derived from these
-\ names fits TF-CTOR-BUF. The longest is an escaped package and tail joined by
-\ '-', at most 2*255 + 1 + 2*255 = 1021 bytes; a private member spelling is at
-\ most 255 + 1 + 255 + 12. The declaration front ends
-\ (sumtype.f, structure-decl.f, enum-decl.f) refuse a longer name with
-\ E-TDECL-CAP and TF-NAME-LONG$'s reason, so the dies in TF-CTOR-C, and
+\ The longest family, variant or field name is the longest package name
+\ (CHECKER-PACKAGE-CAP - 1), so every derived spelling fits TF-CTOR-BUF: at most
+\ 2*255 + 1 + 2*255 = 1021 bytes escaped, 255 + 1 + 255 + 12 for a private
+\ member. sumtype.f, structure-decl.f and enum-decl.f refuse a longer name with
+\ E-TDECL-CAP and TF-NAME-LONG$'s reason; the dies in `TF-CTOR-C,` and
 \ TFAM-INIT-MEMBER$ guard only that arithmetic.
 CHECKER-PACKAGE-CAP 1 - constant TF-NAME-MAX
 
@@ -1382,7 +1300,7 @@ CHECKER-PACKAGE-CAP 1 - constant TF-NAME-MAX
 
 private
 
-: TF-CTOR-C, ( n -- )            \ append one byte to the derived-name buffer
+: TF-CTOR-C, ( n -- )
    TF-CTOR-U @ TF-CTOR-CAP >= IF s" tfam: constructor name too long" 76 die THEN
    TF-CTOR-BUF TF-CTOR-U @ + c!
    TF-CTOR-U @ 1 + TF-CTOR-U ! ;
@@ -1406,8 +1324,7 @@ private
    pu 0 > IF pa pu TF-CTOR-ESC  45 TF-CTOR-C, THEN
    ta tu TF-CTOR-ESC ;
 
-\ TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ptr u8 n ) : derived constructor
-\ package name in TF-CTOR-BUF. The tail must already be a canonical lowercase tail.
+\ The tail must already be canonical lowercase.
 
 public
 
@@ -1417,31 +1334,19 @@ public
    TF-CTOR-U @ CHECKER-PACKAGE-CAP >= IF E-PACKAGE-NAME-CAP throw THEN
    TF-CTOR-BUF TF-CTOR-U @ ;
 
-\ TF-CTOR-PRIV$ ( fam-tail member -- ptr u8 n ) : the spelling a PRIVATE family's
-\ generated words carry. Two spellings exist and they differ on purpose:
-\
-\   public   PKG-FAMILY:MEMBER  a word in the reserved constructor NAMESPACE
-\                               TF-CTOR-PKG$ derives above — escaped and bounded
-\                               by the supported package-name length.
-\   private  FAMILY-MEMBER      a word in the DECLARING PACKAGE's private
-\                               wordlist: the uppercased family tail, '-', the
-\                               uppercased member.
-\
-\ The private form carries no package segment and needs no escaping.
-\ Every use of it is inside the one package that declared the family, where the
-\ package name says nothing the reader does not already know. It is not
-\ injective across packages and does not need to be: a collision with an existing
-\ private word, or between two families of one package, is refused loudly by the
-\ generator's own "generated declaration already defined" die — the same rule the
-\ public path applies to a variant named like a derived tail.
-\
-\ A QUALIFIED private spelling is structurally impossible, not merely unchosen.
-\ The engine routes a qualified definition name to the named namespace's PUBLIC
-\ wid (src/habu/habu2.f C-QUALIFY-DEF: "a qualified name cannot land in a private
-\ wordlist"), and the checker records ANY single-non-edge-colon name as that
-\ package's public symbol before it consults the open package at all
-\ (src/core/checker.f CHECKER-RECORD-SYM). So a generated word that must be
-\ package-private cannot wear a colon.
+\ Two spellings, on purpose:
+\   public   PKG-FAMILY:MEMBER  in the reserved constructor namespace
+\                               TF-CTOR-PKG$ derives, escaped and bounded.
+\   private  FAMILY-MEMBER      in the declaring package's private wordlist:
+\                               uppercased family tail, '-', uppercased member.
+\ The private form needs no package segment or escaping: every use is inside the
+\ declaring package. It is not injective across packages and need not be: a
+\ collision with an existing private word, or between two families of one
+\ package, dies "generated declaration already defined".
+\ A qualified private spelling is impossible: the engine routes a qualified
+\ definition name to the namespace's PUBLIC wid (habu2.f C-QUALIFY-DEF), and the
+\ checker records any single-non-edge-colon name as that package's public
+\ symbol before it consults the open package (checker.f CHECKER-RECORD-SYM).
 : TF-CTOR-PRIV$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: ta:ptr tu:n ma:ptr mu:n :}
    0 TF-CTOR-U !
@@ -1452,21 +1357,15 @@ public
 
 private
 
-\ THE PRIVATE MEMBER SET: the members a private family's generator publishes,
-\ and therefore the only names the by-name guard protects. It is a list on
-\ purpose — a generator that publishes a further private member extends it here
-\ and the recognizer needs no other change.
-\
-\ Today the list is the product pair src/core/structure-make.f SM-EMIT-ROWS adds
-\ and sumtype.f TDECL-PROD-PLAN generates: MAKE and UNMAKE. The tails a private
-\ product DERIVEs (eq, hash) are recognised beside it from the family's own
-\ derive flags (TFAM-DERIVED-PRIV-TAIL?), and its addr accessors from the field
-\ registry (TFAM-ADDR-WORD?). A private SUM or ENUM publishes no word at all —
-\ sumtype.f TDECL-GENERATES? generates for a public family or a private PRODUCT,
-\ and a private sum constructs through the checker-owned token instead. So a
-\ variant name is NOT a member: inside a package that declares a private
-\ `SUMTYPE colour`, an ordinary `COLOUR-RED` is the package's own word and stays
-\ undefinable (dot habu-protect-only-the-d1e2d4dc).
+\ The members a private family's generator publishes, and the only names the
+\ by-name guard protects: MAKE and UNMAKE (structure-make.f SM-EMIT-ROWS,
+\ sumtype.f TDECL-PROD-PLAN). A further private member extends this list and
+\ the recognizer needs no other change. Derived tails are recognized from the
+\ family's derive flags (TFAM-DERIVED-PRIV-TAIL?) and addr accessors from the
+\ field registry (TFAM-ADDR-WORD?). A private SUM or ENUM publishes no word, so
+\ a variant name is not a member: inside a package declaring a private `SUMTYPE
+\ colour`, an ordinary `COLOUR-RED` is the package's own word and stays
+\ undefinable.
 2 constant TF-PRIV-MEMBER-N
 : TF-PRIV-MEMBER$ ( n -- ptr u8 n ) {: i:n :}
    i 0= IF s" make" EXIT THEN
@@ -1482,11 +1381,9 @@ private
 
 public
 
-\ A private family derives too (`DERIVE eq hash` on a private STRUCTURE is the
-\ same generation with the private spelling), so the private scan answers for a
-\ derived tail exactly as the qualified one does through TFAM-DERIVED-AT?. The
-\ candidate spelling is DERIVED here as well — TF-CTOR-PRIV$ over the family tail
-\ and the member — so the recogniser cannot drift from TDGEN-DRV-REF.
+\ A private family derives too, so the private scan answers for a derived tail
+\ as the qualified one does through TFAM-DERIVED-AT?. The candidate spelling
+\ comes from TF-CTOR-PRIV$, so the recognizer cannot drift from TDGEN-DRV-REF.
 : TFAM-PRIV-MEMBER? ( ptr u8 n ptr u8 n n -- bool ) {: a:ptr u:n ma:ptr mu:n fam:n :}
    a u  fam TFAM-NAME$ ma mu TF-CTOR-PRIV$  CORE-STR=CI ;
 
@@ -1500,17 +1397,13 @@ public
 
 private
 
-\ A private family's generated word — and an OPAQUE family's, placed the same
-\ way — is recognised only while its DECLARING PACKAGE is open. That is the only
-\ scope the word resolves in, so it is the only scope in which the undefine
-\ guard has anything to protect; outside it the name belongs to whoever spells
-\ it. The three gates before that ask whether this family generated anything at
-\ all: a family whose generated words are public (TFAM-GEN-PUBLIC?) wears the
-\ qualified spelling, a private sum or enum publishes nothing, and a fieldless
-\ product published no variant rows and so no member pair either. Past the
-\ gates the name is a member of this family when it is the constructor pair or
-\ a tail the family derived; the addr accessors are the third membership, asked
-\ through TFAM-ADDR-WORD-XT below.
+\ A private (or OPAQUE) family's generated word is recognized only while its
+\ declaring package is open, the only scope it resolves in; outside it the name
+\ belongs to whoever spells it. Before that, a family with public generated
+\ words (TFAM-GEN-PUBLIC?) wears the qualified spelling, a private sum or enum
+\ publishes nothing, and a fieldless product published no member pair. Members
+\ are the constructor pair, the derived tails, and the addr accessors
+\ (TFAM-ADDR-WORD-XT).
 : TF-CTOR-PRIV-FAM? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    fam TFAM-GEN-PUBLIC? IF RES-FALSE EXIT THEN
    fam TFAM-PRODUCT? 0= IF RES-FALSE EXIT THEN
@@ -1527,14 +1420,12 @@ public
       a u i TF-CTOR-PRIV-FAM? IF RES-TRUE unloop EXIT THEN
    loop RES-FALSE ;
 
-\ The third membership — a `DERIVE addr` accessor — is recognised from the FIELD
-\ registry, which this file declares further down, so the predicate is reached
-\ through a friend xt bound at its definition (the TFCL-NODE-XT pattern below).
-\ It joins the two scans above rather than standing beside them because every
-\ consumer asks ONE question: is this name a word the generator owns? Widening
-\ the answer here widens the undefine guard, the closed-package extra-tail rule,
-\ the protected-WID assertions in src/habu/xref.f and the generated-declaration
-\ name preflight together, which is exactly the membership an accessor has.
+\ `DERIVE addr` accessors are recognized from the field registry, declared
+\ further down, so the predicate is a friend xt bound at its definition. It
+\ joins the two scans because every consumer asks one question (does the
+\ generator own this name): the undefine guard, the closed-package extra-tail
+\ rule, xref.f's protected-WID assertions and the generated-declaration name
+\ preflight.
 defer TFAM-ADDR-WORD-XT ( ptr u8 n -- bool )
 
 ;package
@@ -1566,12 +1457,10 @@ package TFAM
 
 public
 
-\ ---------------------------------------------------------------------------
 \ shared fields, keyed by (family-id, optional-variant-id, field tail).
 \ PF-N includes rows provisional in the active transaction; PF-COMMIT-N is the
 \ reflection high-water. ADD never returns a row id, so an id becomes observable
 \ only after the outer transaction commits.
-\ ---------------------------------------------------------------------------
 -1 constant PF-NO-VARIANT
 
 private
@@ -1604,14 +1493,10 @@ public
 : PF.FLAGS ( ptr a -- ptr a ) PF.FLAGS-OFF + ;
 
 
-\ --- Registry cell write-protection. REG-PROTECT / IMK-SEAL-REGISTRY (defined in
-\ src/core/util.f and src/core/internal-mark.f; see the util.f header) seal each
-\ registry control cell DNAME-INT so a bare `<cell> @`/`<cell> !` or `' <cell>`
-\ fails closed (`hb: internal engine word`, rc 70). The product-field arena is the
-\ first-sealed set (confirmed exploit `99 PF-COMMIT-N !` corrupted
-\ TYPE-FIELD:COUNT); the sibling family/variant/string/param/layout registries in
-\ this file and the schema registries in type-schema.f are sealed the same way at
-\ their own definition sites.
+\ --- REG-PROTECT / IMK-SEAL-REGISTRY (util.f, internal-mark.f) seal each
+\ registry control cell DNAME-INT, so a bare `<cell> @`/`<cell> !` or
+\ `' <cell>` fails closed (`hb: internal engine word`, rc 70). Measured on the
+\ product-field arena: `99 PF-COMMIT-N !` corrupted TYPE-FIELD:COUNT.
 
 private
 
@@ -1637,11 +1522,9 @@ private
 
 PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
 
-\ PF-SCRUB ( lo hi -- ) : zero the product-field records [lo,hi) back to canonical
-\ zero. Rows contain only scalar ids and offsets, so a zeroed row is the canonical
-\ "absent" row: retired provisional or rejected rows then leave no observable bytes
-\ in reflection or in snapshot/fixpoint identity. lo>=hi (nothing retired) is a
-\ no-op. Operates on the live arena (PF-BASE).
+\ Zeroes the product-field records [lo,hi): rows hold only scalar ids and
+\ offsets, so a zeroed row is the canonical absent row and retired rows leave no
+\ bytes in reflection or snapshot/fixpoint identity.
 
 public
 
@@ -1701,20 +1584,15 @@ public
 : PF-FLAGS@ ( n -- n ) PF-REC@ PF.FLAGS @ ;
 : PF-N@ ( -- n ) PF-COMMIT-N @ ;
 
-\ --- field owner index (FVX) ------------------------------------------------------
-\ Every question about one owner's fields — is this name taken, does this
-\ layout overlap, what is this variant's payload — wants the rows of one
-\ (family, variant) pair. They walked every field row, or every row of the
-\ family, and an ENUM asks them once per field or per variant, so declaring one
-\ field per variant cost the square of its variant count. Rows are chained by
-\ the hash of their owner; a bucket can hold other owners' rows, so a reader
-\ keeps only the rows whose owner it asked for. Chains run newest first.
-\
-\ The discipline is VNX's: ADD pushes each row in id order as it publishes it,
-\ PF-REWIND pops retired rows newest first while their owner cells are still
-\ intact, so a retired row is always its bucket's head. Buckets and links are
-\ process-local: a capture drops them, and a capacity change or a store that
-\ moved outside those two seams rebuilds them.
+\ --- field owner index (FVX). Every question about one owner's fields (is this
+\ name taken, does this layout overlap, what is this variant's payload) wants
+\ the rows of one (family, variant) pair; an ENUM asks once per field or
+\ variant, so a store walk is quadratic. Rows chain by the hash of their owner;
+\ a bucket can hold other owners' rows, so a reader keeps only its owner's.
+\ Chains run newest first. VNX's discipline: ADD pushes each row in id order,
+\ PF-REWIND pops retired rows newest first while their owner cells are intact.
+\ Buckets and links are process-local: a capture drops them, and a capacity
+\ change or a store moved outside those seams rebuilds them.
 
 private
 
@@ -1784,15 +1662,12 @@ variable FVX-CAP     0 FVX-CAP !     REG-PROTECT   \ PF-CAP the buckets were siz
    PF-N @ FVX-HI @ <> or
    FVX-CAP @ PF-CAP <> or IF FVX-BUILD THEN ;
 
-\ FVX-RETIRE ( n -- ) : pop rows [newn, PF-N) before PF-N rewinds to newn,
-\ newest first. Chains that no longer cover exactly the live rows are dropped
-\ for a rebuild instead: popping rows the chains never held would corrupt them.
-\ The field store has two rewinders, field transactions and checker frames, and
-\ they need not nest: a failed declaration rolls back its field transaction
-\ before it restores a checker scope its body leaked, whose mark lies above
-\ those rows (test/generated-declaration-transaction-suite.f,
-\ TEST-CHECKER-LEAK-PREPARE). That restore moves PF-N forward over scrubbed
-\ rows the chains no longer hold, so it drops them too.
+\ Pops rows [newn, PF-N) before PF-N rewinds to newn, newest first. Chains that
+\ no longer cover exactly the live rows are dropped for a rebuild instead. The
+\ field store has two rewinders that need not nest: a failed declaration rolls
+\ back its field transaction before it restores a checker scope its body
+\ leaked, whose mark lies above those rows, and that restore moves PF-N forward
+\ over scrubbed rows the chains no longer hold.
 : FVX-RETIRE ( n -- ) {: newn:n :}
    FVX-READY @ 0= IF EXIT THEN
    FVX-HI @ PF-N @ <>  newn PF-N @ > or IF 0 FVX-READY ! EXIT THEN
@@ -1836,16 +1711,14 @@ public
    pfn PF-N !
    commitn PF-COMMIT-N ! ;
 
-\ --- family facts memo (TFM) -----------------------------------------------------
-\ A checked use of a family's type asks three questions about the whole family:
-\ is its named payload sound (SUM-NAMED-PAYLOAD?), does it own a linear value
-\ (TFAM-CONCRETE-LINEAR?), and how wide is a family with no parameter
-\ (TFW-FAM-IMPL). Each walks every variant, and certifying one generated constructor asks
-\ them several times, so generating an ENUM's constructors cost the square of its
-\ variant count. Each answer is memoized per family under TFM-EPOCH (see the
-\ family mutators): a cell stamped with the current epoch holds the answer a walk
-\ would give now. A refusal is a throw and is never memoized, so a broken
-\ registry is re-proved on every query. Process-local, like VNX.
+\ --- family facts memo (TFM). A checked use of a family's type asks
+\ SUM-NAMED-PAYLOAD?, TFAM-CONCRETE-LINEAR? and TFW-FAM-IMPL (width of a family
+\ with no parameter); each walks every variant, and certifying one generated
+\ constructor asks several times, so without the memo an ENUM's constructors are
+\ quadratic in its variants.
+\ Each answer is memoized per family under TFM-EPOCH: a cell stamped with the
+\ current epoch holds the answer a walk would give. A refusal is a throw and is
+\ never memoized. Process-local, like VNX.
 
 private
 
@@ -1893,16 +1766,14 @@ variable TFM-CAP   TF-CAP-INIT TFM-CAP !   REG-PROTECT   \ families TFM-P holds
 
 public
 
-\ A variant has one declared-payload source. Legacy SUMTYPE declarations store
-\ positional roots in the SUMV schema range. The unified ENUM front end stores
-\ named rows in TYPE-FIELD and leaves that range empty. The accessors below are
-\ the single semantic seam for both representations. A sum/enum family with a
-\ nonzero declared field count uses TYPE-FIELD for every variant; invalid bounds,
-\ ownership, or a missing named index are invariant failures, never reasons to
-\ fall back into positional storage. PRODUCT keeps positional schemas for its
-\ generated make/unmake variants. An all-empty family has no payload under either
-\ representation and stays equivalent. Only a bounded, committed,
-\ variant-owned field slice is a valid named representation.
+\ A variant has one declared-payload source: SUMTYPE stores positional roots in
+\ the SUMV schema range; ENUM stores named rows in TYPE-FIELD and leaves that
+\ range empty. The accessors below are the one seam for both. A sum/enum family
+\ with a nonzero declared field count uses TYPE-FIELD for every variant; bad
+\ bounds, ownership or a missing named index are invariant failures, never a
+\ fallback into positional storage. PRODUCT keeps positional schemas for its
+\ make/unmake variants. An all-empty family has no payload either way. Only a
+\ bounded, committed, variant-owned field slice is a valid named representation.
 
 private
 
@@ -2016,19 +1887,17 @@ public
       FVX-NEXT
    REPEAT drop ;
 
-\ --- instantiated width (file header). A schema application's width is its
-\ family's width at its arguments' widths. Under a term, a parameter takes the
-\ term's argument width; at declaration (TFAM-SCH-WIDTH), a parameter counts as
-\ one cell. Every width follows that one rule, so a closed family's declared
-\ width equals its instantiated width, and a nested application such as
-\ opt<res<n,n>> is as wide as its arguments make it, never its family's
-\ registry width. A walk reads argument widths from a frame: the half-open cell
-\ range [base, top) of the TFW scratch row, cell base+i holding argument i's
-\ width. An application measures its arguments into the frame above top, so a
-\ nested frame never overlaps the one it reads and every cell is written before
-\ it is read; base and top are passed explicitly, so a throw leaks nothing.
-\ T-WIDTH (checker.f) reads TFAM-INST-WIDTH@, and typed storage, generated
-\ constructors and MATCH all read T-WIDTH.
+\ --- instantiated width. A schema application's width is its family's width at
+\ its arguments' widths. Under a term a parameter takes the term's argument
+\ width; at declaration (TFAM-SCH-WIDTH) it counts as one cell. So a closed
+\ family's declared width equals its instantiated width, and opt<res<n,n>> is as
+\ wide as its arguments make it, never its family's registry width. A walk reads
+\ argument widths from a frame [base, top) of the TFW scratch row, cell base+i
+\ holding argument i's width. An application measures its arguments into the
+\ frame above top, so frames never overlap and every cell is written before it
+\ is read; base and top are passed explicitly, so a throw leaks nothing. T-WIDTH
+\ (checker.f) reads TFAM-INST-WIDTH@; typed storage, generated constructors and
+\ MATCH read T-WIDTH.
 
 private
 
@@ -2069,7 +1938,7 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
    THEN
    1 ;
 
-: TFW-PRODUCT ( n n n -- n ) {: fam:n base:n top:n :}   \ sum of field widths (no tag)
+: TFW-PRODUCT ( n n n -- n ) {: fam:n base:n top:n :}
    fam TFAM-FLD-START@ {: fs:n :}
    0
    0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
@@ -2078,13 +1947,13 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
       1 +
    REPEAT drop ;
 
-: TFW-SUMV ( n n n -- n ) {: vid:n base:n top:n :}   \ legacy positional payload only
+: TFW-SUMV ( n n n -- n ) {: vid:n base:n top:n :}   \ positional payload only
    vid SUMV-SCH-COUNT@ {: count:n :}
    vid SUMV-SCH-START@ {: start:n :}
-   0                                            \ acc
-   0 BEGIN dup count < WHILE                     \ ( acc j )
-      start over + SCHEMA-ROOT@ base top TFW-NODE   \ ( acc j wj )
-      rot + swap                                 \ ( acc' j )
+   0
+   0 BEGIN dup count < WHILE
+      start over + SCHEMA-ROOT@ base top TFW-NODE
+      rot + swap
       1 +
    REPEAT drop ;
 
@@ -2104,14 +1973,13 @@ defer TFW-FAM ( n n n -- n )   \ ( fam base top -- width ) forward ref for a nes
 : TFW-SUM ( n n n -- n ) {: fam:n base:n top:n :}   \ tag + max variant payload width
    fam SUM-NAMED-PAYLOAD? {: named:bool :}
    fam TFAM-VAR-START@ {: vs:n :}
-   0                                            \ maxpay
-   0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE        \ ( maxpay j )
+   0
+   0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
       vs over + base top named IF TFW-SUMV-NAMED ELSE TFW-SUMV THEN
-                                                 \ ( maxpay j payj )
-      rot max swap                               \ ( maxpay' j )
+      rot max swap
       1 +
    REPEAT drop
-   1 + ;                                         \ + tag cell
+   1 + ;
 
 : TFW-FAM-WALK ( n n n -- n ) {: fam:n base:n top:n :}
    fam TFAM-BOXED-OR-NICHE? IF 1 EXIT THEN
@@ -2157,17 +2025,14 @@ private
    term 0 count TERM-FRAME
    fam 0 count TFW-FAM ;
 
-\ --- which argument slots the width above READS (dot habu-place-an-open-d7bcba49).
-\ TFW-NODE reads an argument's own width where a schema root reads its slot:
-\ directly, a root that IS that parameter node, or through a nested application
-\ whose family reads the slot that argument fills. Every other occurrence —
-\ under a pointer or a quotation, or in an argument slot its application never
-\ reads — contributes a width the declaration fixes, so a parameter occurring
-\ only there cannot move the family's width whatever it binds to. These words
-\ walk the SAME schema roots as TFW-PRODUCT and TFW-SUM, one slot at a time, and
-\ the checker uses the answer to decide whether an instance with that slot still
-\ OPEN has a width it may place (checker.f LAYOUT-WIDTH-OPEN?). Keep the two
-\ walks together: a width site added to TFW-NODE is an occurrence this must
+\ --- which argument slots the width above reads. TFW-NODE reads an argument's
+\ width where a schema root reads its slot: directly, a root that is that
+\ parameter node, or a nested application whose family reads the slot that
+\ argument fills. An occurrence under a pointer or a quotation, or in a slot its
+\ application never reads, has a width the declaration fixes. These words walk
+\ the same roots as TFW-PRODUCT and TFW-SUM; the checker uses the answer to
+\ decide whether an instance with that slot open has a placeable width (checker.f
+\ LAYOUT-WIDTH-OPEN?). A width site added to TFW-NODE is an occurrence this must
 \ report.
 defer TFAM-WIDTH-SLOT-FWD ( n n -- bool )   \ ( fam slot -- reads? ) forward ref for a nested application
 : SCH-ROOT-WIDTH-SLOT? ( n n -- bool ) {: node:n slot:n :}
@@ -2363,36 +2228,30 @@ PERSISTED-PTR-VARIABLE PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
 variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
 variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 
-\ PF-TX-ENSURE ( -- ) : room for one more field-transaction frame, doubling the
-\ store and giving back the grown mapping it replaces. Here because only this
-\ package sees PF-TX-BOOT.
+\ Here because only this package sees PF-TX-BOOT.
 : PF-TX-ENSURE ( -- )
    PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
    PF-TX-CAP-V @ 2 * {: nc:n :}
    PF-TX-P PF-TX-BOOT PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * ARENA-BOOT-GROW
    nc PF-TX-CAP-V ! ;
 
-\ Multi-frame cleanup seam. A declaration participant that finds frames opened
-\ above its own has to retire them, but only this owner may walk its own frame
-\ stack, and the walk must stay unreachable from ordinary source. So the entry
-\ point is one execution vector: the owner installs its private ROLLBACK-THROUGH
-\ into this deferred word below, the compiled declaration-event participant calls
-\ the vector, and src/core/generated-declaration-protection.f retires the name
-\ once every prefix caller is compiled. The vector is deliberately NOT a checker
-\ primitive row: a primitive axiom survives `undefine`, so retiring the name
-\ would leave the checker certifying calls the runtime can no longer resolve.
+\ A declaration participant that finds frames opened above its own must retire
+\ them, but only this owner may walk its frame stack, unreachable from ordinary
+\ source. The owner installs its private ROLLBACK-THROUGH here, the compiled
+\ declaration-event participant calls the vector, and
+\ generated-declaration-protection.f retires the name once every prefix caller
+\ is compiled. It is not a checker primitive row: a primitive axiom survives
+\ `undefine`, so the checker would keep certifying calls the runtime can no
+\ longer resolve.
 defer TDECL-FIELD-CLEANUP-XT ( n -- )
 
-\ Total release seam, same shape and lifetime as the cleanup vector above. The
-\ runner's release step runs after every reversible commit succeeded, so
-\ the declaration-event participant must discard its field frame without being
-\ able to reject: PREPARE already proved the frame is the live committed top.
-\ RELEASE below is that discard and nothing else. It stays private to this owner
-\ — a public FINALIZE-style entry would have to re-validate, which is exactly
-\ what a total release may not do — so the compiled participant reaches it
-\ through this one execution vector, and
-\ src/core/generated-declaration-protection.f retires the name once that sole
-\ caller is compiled.
+\ Total release, same shape and lifetime as the cleanup vector. The runner's
+\ release step runs after every reversible commit succeeded, so the
+\ participant must discard its field frame without being able to reject:
+\ PREPARE already proved the frame is the live committed top. RELEASE stays
+\ private because a public entry would have to re-validate, which a total
+\ release may not do; generated-declaration-protection.f retires the name once
+\ its sole caller is compiled.
 defer TDECL-FIELD-RELEASE-XT ( -- )
 
 ;package
@@ -2432,16 +2291,12 @@ package TYPE-FIELD-OWNER
 
 public
 
-\ The wrap guard stays although no test drives it. Reaching it needs 2^63 OPENs
-\ in one process, so the only way to observe it was the whitebox seam that poked
-\ PF-TX-SERIAL directly, and this leaf's contract retired that seam rather than
-\ publish a raw-state setter to keep it. Deleting the guard instead would make a
-\ wrapped serial mint token 0 or a negative token, which every phase compares by
-\ equality — a stale token could then alias a live frame, the one failure the
-\ whole token scheme exists to prevent. It is a cheap always-on precondition on
-\ the serial's one minting site (a FILE import only advances it by a delta
-\ UNIT-FAM-PLAN-OPEN bounds), so it is kept unexercised and deliberately not
-\ re-exposed through a TRUSTED boundary.
+\ The wrap guard has no test: reaching it needs 2^63 OPENs in one process, and no
+\ raw setter or TRUSTED seam for PF-TX-SERIAL is published to fake it. Without
+\ it a wrapped serial would mint token 0 or a negative token, and every phase
+\ compares tokens by equality, so a stale token could alias a live frame. A FILE
+\ import only advances the serial by a delta UNIT-FAM-PLAN-OPEN bounds, so this
+\ is the one minting site.
 : OPEN ( -- n )
    WRITE-WINDOW-CK
    TX-PARENT-REQUIRE
@@ -2471,8 +2326,7 @@ public
    TX-COMMITTED-MARKS-REQUIRE
    RELEASE ;
 \ A live frame is in exactly one of the two states OPEN sets and COMMIT moves it
-\ to, so the state selects which watermark check applies; there is no third value
-\ to reject.
+\ to; the state selects which watermark check applies.
 : ROLLBACK ( n -- ) {: tx:n :}
    WRITE-WINDOW-CK
    tx TX-REQUIRE
@@ -2501,13 +2355,11 @@ public
 private
 
 \ Cleanup for a failed declaration that left frames open above the caller's own.
-\ TX-INDEX proves the exact token is still one of the live frames BEFORE anything
-\ moves, so a stale or already-released token leaves every mark untouched; the
-\ retirement itself is the ordinary ROLLBACK path applied to each live frame from
-\ the top down, so descendants are retired strictly last-in first-out and the
-\ target frame's own marks are the last ones restored. This stays private and its
-\ only caller is the vector installed below: no source-level word may ever pick a
-\ frame out of the middle of this stack.
+\ TX-INDEX proves the token is still a live frame before anything moves, so a
+\ stale or released token leaves every mark untouched; each live frame then
+\ takes the ordinary ROLLBACK from the top down, the target's own marks last.
+\ Private; its only caller is the vector installed below, so no source-level
+\ word can pick a frame out of the middle of the stack.
 : TX-INDEX ( n -- n ) {: tx:n :}
    PF-TX-DEPTH @
    BEGIN dup 0 > WHILE
@@ -2532,8 +2384,7 @@ VECTORS-INSTALL
 package TFAM
 
 \ ADD validation. Field rows carry explicit logical-cell and memory-layout
-\ metadata under every registered family policy; no policy implies CELL-sized
-\ storage. Policy-specific lowering consumes these validated facts later.
+\ metadata under every policy; no policy implies CELL-sized storage.
 $7FFFFFFFFFFFFFFF constant PF-MAX-N
 
 public
@@ -2565,13 +2416,11 @@ package TYPE-NAME
 
 public
 
-\ CONTROL? is the ONE place the control-word list is written down. Every
-\ declaration name gate in the engine asks this word rather than keeping a list
-\ of its own: this package's RESERVED? (variant names), which FAMILY-RESERVED?
-\ extends for every family definer, and PF-RESERVED? below (field names).
-\ A name that spells a control word would compile into a definition body as that
-\ control word, so no declaration position may take one; keeping a second copy of
-\ the list is how the front ends and the legacy definers drifted apart before.
+\ CONTROL? is the one place the control-word list is written. Every declaration
+\ name gate asks it: this package's RESERVED? (variant names), FAMILY-RESERVED?
+\ for every family definer, and PF-RESERVED? (field names). A name that spells a
+\ control word would compile into a body as that control word, so no
+\ declaration position may take one.
 : CONTROL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" then" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -2610,28 +2459,25 @@ private
 
 public
 
-\ FAMILY-TAKEN? is the variant-name collision rule, asked by VARIANT-REQUIRE
-\ below and by SUMTYPE's variant gate (sumtype.f): the name matches a family
-\ the declaring scope can already resolve, the global scope always plus the
-\ active package's own rows when one is open. A family is taken wherever the
-\ declaring scope resolves it: a global family in every scope, a package family
-\ inside its package.
+\ The variant-name collision rule, asked by VARIANT-REQUIRE and by SUMTYPE's
+\ variant gate (sumtype.f): a family is taken wherever the declaring scope
+\ resolves it, a global family in every scope and a package family inside its
+\ package.
 : FAMILY-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
    CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
 
-\ FAMILY-RESERVED? is the family-name gate, the one list every family definer
-\ asks: SUMTYPE, PRODUCT and NEWTYPE (sumtype.f) and the STRUCTURE and ENUM front
-\ ends. A family tail must be one an effect reads as that family. The effect
-\ parser reads a value record name (checker.f PSTACK) and a bare `ptr`
-\ (SIG-PTR-TOK?) ahead of any family, and an atom-shaped tail as an atom wherever
-\ the family does not resolve; its other readings (`[`, stack syntax, row
-\ variables, split characters) are never canonical tails. A package may shadow
-\ a global family, so without the `ptr` row a package's `ptr` registered and its
-\ CAST: converter `( n -- ptr )` died as a pointer with no pointee; a front end
-\ without the value record row loaded `ENUM vr` in a package after
-\ `VALUE-RECORD vr`, one name naming two kinds.
+\ The family-name gate every family definer asks: SUMTYPE, PRODUCT and NEWTYPE
+\ (sumtype.f) and the STRUCTURE and ENUM front ends. A family tail must be one an
+\ effect reads as that family. The effect parser reads a value record name
+\ (checker.f PSTACK) and a bare `ptr` (SIG-PTR-TOK?) ahead of any family, and an
+\ atom-shaped tail as an atom wherever the family does not resolve; its other
+\ readings (`[`, stack syntax, row variables, split characters) are never
+\ canonical tails. A package may shadow a global family, so without the `ptr`
+\ row a package's `ptr` registered and its CAST: converter `( n -- ptr )` died
+\ as a pointer with no pointee; without the value record row `ENUM vr` loaded
+\ in a package after `VALUE-RECORD vr`, one name naming two kinds.
 : FAMILY-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u SIG-PTR-TOK? IF RES-TRUE EXIT THEN
    a u RESERVED? ;
@@ -2651,13 +2497,10 @@ get-current prot-wid-add
 
 package TFAM
 
-\ A field tail may not spell a grammar keyword, a control word, or one of the
-\ generated-operation names. The control-word arm comes from TYPE-NAME:CONTROL?,
-\ the single owner of that list, so a field named `if` is refused on every path
-\ that registers a field row: the legacy PRODUCT definer through
-\ TDECL-REQUIRE-FIELD-NAME and the unified STRUCTURE / ENUM front ends through
-\ TYPE-FIELD-OWNER:ADD. Before this arm existed the two family-name gates
-\ rejected `if` and the field gate accepted it.
+\ A field tail may not spell a grammar keyword, a control word (TYPE-NAME:CONTROL?)
+\ or a generated-operation name, on every path that registers a field row:
+\ PRODUCT through TDECL-REQUIRE-FIELD-NAME and the STRUCTURE / ENUM front ends
+\ through TYPE-FIELD-OWNER:ADD.
 : PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
    a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
@@ -2704,9 +2547,8 @@ private
       got PK-EVIDENCE <> got PF-NONVALUE? 0= and EXIT THEN
    got want = ;
 
-\ Validate one quotation effect side: a live SCH-ROW node whose element type nodes
-\ each pass PF-NODE-KIND?. Deferred so PF-NODE-KIND?'s SCH-QUOT case can reach it
-\ before the impl (which calls PF-NODE-KIND? back) is defined and installed below.
+\ Deferred so PF-NODE-KIND?'s SCH-QUOT case can reach it before its body, which
+\ calls PF-NODE-KIND? back, is defined.
 defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
 
 : PF-NODE-KIND? ( n n -- n bool ) {: owner:n node:n :}
@@ -2774,10 +2616,8 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
    THEN
    0 RES-FALSE ;
 
-\ A quotation side row is valid when it is a SCH-ROW node with an in-range element
-\ range and every element type node passes PF-NODE-KIND?. Elements are built before
-\ the row (parser order), so each must sit below the row id — the same acyclic guard
-\ PF-NODE-KIND? applies to APP/PTR children.
+\ Elements are built before their row (parser order), so each must sit below the
+\ row id: the acyclic guard PF-NODE-KIND? applies to APP/PTR children.
 : PF-QUOT-ROW-OK-IMPL ( n n -- bool ) {: owner:n rownode:n :}
    rownode SCHEMA-ROW? 0= IF RES-FALSE EXIT THEN
    rownode SCHEMA-ROW-COUNT@ {: cnt:n :}
@@ -2785,8 +2625,8 @@ defer PF-QUOT-ROW-OK? ( n n -- bool )   \ ( owner rownode -- bool )
    cnt 0 < IF RES-FALSE EXIT THEN
    estart 0 < estart SCH-ROOT-N @ > or IF RES-FALSE EXIT THEN
    cnt SCH-ROOT-N @ estart - > IF RES-FALSE EXIT THEN
-   0 BEGIN dup cnt < WHILE                          \ ( j )
-      dup estart + SCHEMA-ROOT@                     \ ( j elem )
+   0 BEGIN dup cnt < WHILE
+      dup estart + SCHEMA-ROOT@
       dup rownode >= IF 2drop RES-FALSE EXIT THEN
       owner swap PF-NODE-KIND? IF
          PF-NONVALUE? IF drop RES-FALSE EXIT THEN
@@ -2811,29 +2651,17 @@ public
 
 private
 
-\ --- declaration-time parameter-arity walk for SUM variant payload schemas
-\ (dot habu-declaration-time-arity-4c70e37c). PRODUCT fields validate their whole
-\ field-schema tree at declaration through PF-SCHEMA-OK? / PF-NODE-KIND?; SUM
-\ variant payloads had no equivalent authoritative whole-tree check, so the
-\ invariant "every payload parameter is within the declaring family's arity" held
-\ only as an emergent side effect of the per-token TDECL-LETTER arity gate
-\ (sumtype.f). TFC-SCH-TERM (the construct/MATCH consumer) indexes its minted-var
-\ scratch by the parameter index with no bounds guard, so a payload parameter
-\ beyond arity would be a silent out-of-bounds read rather than a fail-closed
-\ reject; this walk makes the arity invariant a structural whole-tree property
-\ enforced at declaration and keeps the parse gate as the front line.
-\
-\ It is deliberately NOT PF-NODE-KIND? reused verbatim: PF-NODE-KIND?'s SCH-APP
-\ branch also requires each argument's physical kind to match the applied
-\ family's parameter kind (PF-KIND-OK?), which would reject a valid nested-layout
-\ sum payload such as option<result<n,f>> (a layout-kind family argument in a
-\ cell parameter slot, which the checker's LOGHID width coercion makes sound).
-\ Sum payload validation is purely the parameter-index/arity concern, so this
-\ focused walk descends the same node kinds -- SCH-APP arguments, SCH-PTR
-\ pointee, SCH-QUOT effect-side rows (SCH-ROW elements) -- and resolves every
-\ SCH-PARAM index against the declaring family's arity, returning the first
-\ out-of-arity index or -1 when the whole subtree is in range (indices are 0..25,
-\ so -1 is an unambiguous "in range" sentinel).
+\ --- declaration-time parameter-arity walk for SUM variant payloads. TFC-SCH-TERM
+\ (construct/MATCH) indexes its minted-var scratch by parameter index with no
+\ bounds guard, so a payload parameter beyond arity would be a silent
+\ out-of-bounds read; this walk makes the arity invariant structural, with the
+\ per-token TDECL-LETTER gate (sumtype.f) as the front line. It is not
+\ PF-NODE-KIND?: that walk's SCH-APP branch also matches each argument's
+\ physical kind to the parameter kind (PF-KIND-OK?), which would reject a valid
+\ nested-layout payload such as option<result<n,f>> (a layout-kind argument in a
+\ cell parameter slot). This walk descends SCH-APP arguments, the SCH-PTR
+\ pointee and SCH-QUOT rows, and answers the first out-of-arity index, or -1
+\ when the subtree is in range (indices are 0..25).
 defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward ref for the SCH-QUOT recursion
 
 public
@@ -3003,22 +2831,15 @@ public
 get-current prot-wid-add
 ;package
 
-\ ---------------------------------------------------------------------------
-\ generated ADDRESS accessors (`DERIVE addr`, structure-decl.f header). A
-\ family with the addr bit publishes one word per field plus the three fixed
-\ members AT / BYTES / CELLS, in the same two spellings and the same two
-\ wordlists its constructors use. The protection predicates must recognise them
-\ for the same reason they recognise a constructor: a public family's accessors
-\ are new tails in its reserved constructor package, which TFAM-CTOR-EXTEND?
-\ would otherwise refuse, and an undefine of one must answer E-CTOR-PROTECTED.
-\
-\ This block sits after the field registry because a field tail is the member
-\ name: the recogniser reads the spelling from the declaration that generates
-\ it rather than restating it. Only COMMITTED field rows are consulted — the
-\ same range the generator reads — so a name asked about while the declaration
-\ is still provisional (the MAKE/UNMAKE generation the front end runs in the
-\ body phase) sees the fields that exist and no uncommitted row.
-\ ---------------------------------------------------------------------------
+\ generated ADDRESS accessors (`DERIVE addr`, sumtype.f TDECL-ADDR-FIELD-WORD):
+\ one word per field plus AT / BYTES / CELLS, in the spellings and wordlists the
+\ family's constructors use. A public family's accessors are new tails in its
+\ reserved constructor package, which TFAM-CTOR-EXTEND? would otherwise refuse,
+\ and an undefine of one must answer E-CTOR-PROTECTED. This block follows the
+\ field registry because a field tail is the member name. Only committed field
+\ rows are read, the range the generator reads, so a name asked about while the
+\ declaration is provisional (MAKE/UNMAKE generation in the body phase) sees no
+\ uncommitted row.
 package TFAM
 
 private
@@ -3051,8 +2872,7 @@ private
    a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-ADDR-TAIL? ;
 
 \ The private spelling carries no colon, so the member is recovered by deriving
-\ each candidate spelling and comparing — the same direction TFAM-CTOR-PRIV-AT?
-\ takes, and for the same reason: the derivation is the authority.
+\ each candidate spelling and comparing, as TFAM-PRIV-MEMBER? does.
 : TFAM-ADDR-PRIV-FIXED? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}
    a u  fam TFAM-NAME$ s" at"    TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
    a u  fam TFAM-NAME$ s" bytes" TF-CTOR-PRIV$ CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -3076,9 +2896,8 @@ private
    a u fam TFAM-ADDR-PRIV-FIXED? IF RES-TRUE EXIT THEN
    a u fam TFAM-ADDR-PRIV-FIELD? ;
 
-\ One scan, both spellings, over the variant rows every addr family owns (a
-\ STRUCTURE with fields always has its make/unmake pair, so a family is reached
-\ through either row; visiting it twice is free).
+\ Both spellings, over the variant rows every addr family owns (a STRUCTURE with
+\ fields always has its make/unmake pair; visiting a family twice is free).
 : TFAM-ADDR-QUAL-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: j:n :}
@@ -3250,9 +3069,7 @@ private
    [: TFAM-CONCRETE-LINEAR? ;] is TFAM-CON-LIN-XT ;
 TFCL-NODE-INSTALL
 
-\ ---------------------------------------------------------------------------
 \ logical layout records, one per family that has a resolved physical layout.
-\ ---------------------------------------------------------------------------
 0 cells constant LAY.FAM-OFF
 1 cells constant LAY.POLICY-OFF
 2 cells constant LAY.SIZE-OFF
@@ -3326,22 +3143,14 @@ public
    al r LAY.ALIGN !   tw r LAY.TAGW !
    id ;
 
-\ ---------------------------------------------------------------------------
-\ packed memory ABI descriptor (file header, policy TL-PACKED-TAG). packed keeps
-\ the STACK representation as cells (file header - the stack width W is
-\ unchanged, identical to stack-cell-tag); it ONLY adds a memory descriptor so a
-\ layout value can be marshalled into an ABI-stable buffer (arrays of ADTs, GPU
-\ buffers). v1 payloads are cell-kinded (file header: slot0..slot(M-1) tag, M cells),
-\ so the only field packed narrows is the TAG: a K-variant tag is stored in the
-\ smallest of u8/u16/u32/cell holding tags [0,K). Payloads stay CELL-wide (align
-\ CELL), so per-field byte offsets are implicit (slot i at byte i*CELL) and need
-\ no table; SIZE/ALIGN/TAGW fully specify the v1 ABI (a mixed narrow-payload tier
-\ with an explicit offset table is a later refinement). The tag sits AFTER the
-\ payload, matching the stack order (slot0..slot(M-1) tag); SIZE is the aligned
-\ record stride (align_up so an array is a stride*i walk). Pure compile-time
-\ metadata: no heap, no runtime cost. These compute the descriptor for ANY family
-\ independent of its declared policy, so the accept sub-slice can compute-then-
-\ LAY-ADD; the grammar keeps rejecting POLICY packed-tag until that lands.
+\ packed memory ABI descriptor (TL-PACKED-TAG). packed keeps the stack width W
+\ of stack-cell-tag and adds a memory descriptor for ABI-stable buffers. Payloads
+\ are cell-kinded, so the only field packed narrows is the tag: a K-variant tag
+\ is stored in the smallest of u8/u16/u32/cell holding [0,K). Payloads stay
+\ CELL-wide (slot i at byte i*CELL), so SIZE/ALIGN/TAGW specify the ABI. The tag
+\ sits after the payload, matching the stack order; SIZE is the aligned record
+\ stride. These compute the descriptor for any family, independent of its
+\ declared policy.
 
 private
 
@@ -3404,14 +3213,10 @@ public
    dup PARAM>FAM C2-INIT-FAM @ <> IF drop 0 0 RES-FALSE EXIT THEN
    1 PARAM>ARG INIT-ELEM-LAYOUT? ;
 
-\ ---------------------------------------------------------------------------
-\ base-state reset. Refuses to run while a field transaction is live (depth > 0)
-\ so an in-flight frame is never discarded out from under its token holder, and
-\ deliberately does NOT rewind PF-TX-SERIAL: the transaction-token generation
-\ counter stays monotonic for the whole process, so a token minted before a reset
-\ can never equal — and therefore never alias — a transaction begun after it.
-\ Depth is provably 0 past the guard, so it is not re-cleared here.
-\ ---------------------------------------------------------------------------
+\ base-state reset. Refuses while a field transaction is live, so a frame is
+\ never discarded under its token holder, and does not rewind PF-TX-SERIAL: the
+\ token counter stays monotonic for the process, so a token minted before a
+\ reset never aliases a transaction begun after it.
 : TFAM-RESET ( -- )
    PF-TX-DEPTH @ IF E-PF-TX throw THEN   \ live field transaction: reset would discard its frame
    UNIT-FAM-RESET-XT
@@ -3425,41 +3230,23 @@ public
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 SVX-HI !   0 PF-N !   0 PF-COMMIT-N !   0 LAY-N !
    -1 FIELD-FAM !  -1 LOAN-FIELD-FAM !  -1 C2-STOW-FAM !
-   EXT-FREE-CLEAR ;   \ BTC-7: drop free-extent marks with the families they name
+   EXT-FREE-CLEAR ;   \ drop free-extent marks with the families they name
 TFAM-RESET
 
-\ ---------------------------------------------------------------------------
-\ THE registry rewind. Every caller that puts the family and variant stores or
-\ the name pool back to an earlier mark goes through here, and there is nowhere
-\ else that writes those counters down.
-\
-\ WHY IT IS ONE WORD AND NOT FIVE STORES AT EACH CALL SITE. Two of these stores
-\ are read through three indexes — TFAM-FIND-IN through the family tail index,
-\ SUMV-FROM-CTOR-SYM through the constructor-symbol index and SUMV-FIND through
-\ the variant tail index — and an index chains rows by id. A row whose id has
-\ gone out of range but is still chained is found by the next lookup, which then
-\ reads a record past the end of the store and dies. So the rows must be
-\ unchained BEFORE the counters move, and that ordering is a property of the
-\ registry, not of whoever is rolling back.
-\
-\ The declaration layer used to write these counters itself (src/core/sumtype.f,
-\ TDECL-RESTORE) and skipped both retirements. What made that so hard to see is
-\ that it did not merely leave the index stale — the OUTER restore then ran its
-\ retirement against a counter that had already rewound, so the loops popped
-\ nothing and the stamps declared the index current. The rewind signal the two
-\ ENSURE paths rely on was erased, the chained rows became permanent, and the
-\ first lookup of that tail died 76 in TF-REC@. Every watermark assertion passed
-\ the whole time, because the watermarks were right; only the indexes were not.
-\
-\ IT SCRUBS WHAT IT RETIRES. The retired family, variant, param-kind and layout
-\ rows and string-pool bytes go back to canonical zero, as PF-SCRUB does for
-\ field rows: a zeroed row is the canonical absent row, so a rolled-back
-\ declaration leaves no bytes in reflection or snapshot identity. The indexes
-\ pop first, while the rows they walk still hold their links and symbols.
-\
-\ WHAT THIS DOES NOT OWN. Product-field rows (PF-*) and schema nodes (SCH-*) are
-\ other participants with their own frames; a caller that also owns those rewinds
-\ them itself, after this (the field rows through PF-REWIND).
+\ The registry rewind: every caller that puts the family and variant stores or
+\ the name pool back to an earlier mark goes through here. Three indexes chain
+\ rows by id (TFAM-FIND-IN's tail index, SUMV-FROM-CTOR-SYM's symbol index,
+\ SUMV-FIND's variant index); a chained row whose id is out of range is found by
+\ the next lookup, which reads past the store and dies. So rows are unchained
+\ before the counters move. A caller that wrote the counters itself and skipped
+\ the retirements left the outer restore popping nothing and stamping the index
+\ current; the first lookup of that tail died 76 in TF-REC@ while every
+\ watermark was right.
+\ The retired family, variant, param-kind and layout rows and pool bytes are
+\ scrubbed to zero, as PF-SCRUB does for field rows, after the indexes pop: the
+\ pops read the tail links and constructor symbols the scrub clears.
+\ Product-field rows and schema nodes have their own frames; a caller that owns
+\ them rewinds them after this (field rows through PF-REWIND).
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
    tfamn TFAM-N @ < stru TF-STR-U @ < or IF UNIT-FAM-RESET-XT THEN
    C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
@@ -3478,21 +3265,13 @@ TFAM-RESET
    sumvn SUMV-N !
    layn LAY-N ! ;
 
-\ ---------------------------------------------------------------------------
-\ rollback frame stack (TFAM half of the checker's transactional rollback).
-\ Each checker scope/candidate saves the family/variant/field/layout registry
-\ high-water marks plus the string-pool and param-kind pool ends; rejecting a
-\ scope/candidate pops them so a rejected family declaration leaves no family,
-\ variant, field, or layout row and no interned name behind. These registries use
-\ scans keyed on (package, tail), so restoring the counters IS entry retirement:
-\ PF-FIND/LAY-FIND only scan [0,N), and re-adding under the same name interns
-\ fresh at the restored pool end. The three lookups that now go through an index
-\ — TFAM-FIND-IN, SUMV-FROM-CTOR-SYM and SUMV-FIND — unchain their rows from that
-\ same restore (TFX-RETIRE, SVX-TRUNCATE, VNX-RETIRE), and the field owner index
-\ from the PF-REWIND that follows it (FVX-RETIRE), so each index retires exactly
-\ with the rows.
-\ Pushed/popped in lockstep with checker.f's core frame.
-\ ---------------------------------------------------------------------------
+\ rollback frame stack, pushed and popped in lockstep with checker.f's core
+\ frame. Each scope or candidate saves the family/variant/field/layout marks and
+\ the string-pool and param-kind ends; a reject pops them, leaving no row or
+\ interned name behind. Restoring the counters is retirement for the scans
+\ (PF-FIND/LAY-FIND scan [0,N)); the indexed lookups unchain from the same
+\ restore (TFX-RETIRE, SVX-TRUNCATE, VNX-RETIRE) and the field owner index from
+\ the PF-REWIND that follows (FVX-RETIRE).
 
 private
 
@@ -3523,6 +3302,8 @@ private
 16 constant TF-RBF-CAP-INIT
 variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
 create TF-RBF-BOOT   TF-RBF-CAP-INIT TF-RBF-REC * allot
+\ Private: `0 TF-RBF-P !` from a program took the engine down with SIGSEGV
+\ (rc 134) inside the next declaration.
 PERSISTED-PTR-VARIABLE TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
 : TF-RBF-BASE ( -- ptr n ) TF-RBF-P @ ;
 
@@ -3589,8 +3370,8 @@ package CHECKER-DECL-FRAME
 
 package TFAM
 
-\ TFAM-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
-\ at snapshot), so drop any grown arena back to the baked boot store.
+\ Frames are transient (depth 0 at snapshot): drop any grown arena back to the
+\ baked boot store.
 : TFAM-RBF-SNAP-RESET ( -- )
    TF-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    TF-RBF-BOOT TF-RBF-P !
@@ -3604,30 +3385,16 @@ package TFAM
    PF-TX-CAP-INIT PF-TX-CAP-V ! ;
 
 \ ---- the core-prefix boundary: this file's half -------------------------------
-\ THE TYPE REGISTRIES' PART OF THE ONE BOUNDARY. src/core/checker.f CHECKER-BOUND
-\ owns the mark and the seam; these two bodies are its extension halves, hung off
-\ REG-EXT-BND-SAVE-XT / REG-EXT-BND-RESTORE-XT exactly as EXT-SAVE/EXT-RESTORE
-\ below hang off the scope hooks. Left out of the boundary, these registries keep
-\ every family, variant, field, layout and schema node the boot declared after
-\ the mark - rows whose defining source the rewind removes - and a snapshot taken
-\ afterwards redeclares one on the first `require` and dies `duplicate family`
-\ (measured, at 'option').
-\
-\ IT IS A RECORDED SET, NOT A FRAME, because the seam it serves is not a scope.
-\ The SAVE/RESTORE stack above is pushed and popped in lockstep with the
-\ checker's core frame and checker.f asserts that lockstep; an unpaired push held
-\ open across the whole boot fails the first declaration after it (measured:
-\ throw 7113). So this moves no depth. It records the same counters TF-SAVE does
-\ and runs the same restore body TF-RESTORE-TOP runs, minus TF-RELEASE, which is
-\ the stack pop and has nothing to pop here. Restoring the counters IS
-\ retirement: the rows are pointer-free, and TFAM-REWIND unchains the three
-\ indexes and PF-REWIND the field owner index before they move.
-\
-\ AT REST IS PART OF THE CONTRACT. A recorded set only describes the registries
-\ when nothing is half-declared, so both halves refuse a live field transaction
-\ or an open rollback frame rather than record (or restore) a number some frame
-\ above them also holds. The sibling reset words on either side of this block
-\ make the same refusal for the same reason.
+\ checker.f CHECKER-BOUND owns the mark and the seam; these bodies hang off
+\ REG-EXT-BND-SAVE-XT / REG-EXT-BND-RESTORE-XT. Without them the registries keep
+\ every row the boot declared after the mark, and a later snapshot redeclares
+\ one on the first `require` and dies `duplicate family` (measured, at
+\ 'option'). It is a recorded set, not a frame: the SAVE/RESTORE stack moves in
+\ lockstep with the checker's core frame, and an unpaired push held across the
+\ boot fails the first declaration after it (measured: throw 7113). It records
+\ TF-SAVE's counters and runs TF-RESTORE-TOP's body minus TF-RELEASE (the pop).
+\ Both halves refuse a live field transaction or an open rollback frame: a
+\ recorded set describes the registries only when nothing is half-declared.
 
 ;package
 
@@ -3663,10 +3430,8 @@ variable BPF    variable BPFC   variable BSCH  variable BSCHR
    BTFAM @ BSTRU @ BPK @ BSUMV @ BLAY @ TFAM-REWIND
    BPF @ BPFC @ PF-REWIND ;
 
-\ Installed, not published: the boundary has ONE public seam and it is the
-\ checker's. These are its extension halves, reached exactly the way a scope's
-\ are (REG-EXT-RB-* below), so the registries this file owns cannot be rewound
-\ at the boundary by anything but the boundary.
+\ Installed, not published: the boundary's one public seam is the checker's, so
+\ these registries cannot be rewound at the boundary by anything else.
 : INSTALL-BOUND ( -- )
    [: PFX-MARK ;] is REG-EXT-BND-SAVE-XT
    [: PFX-REWIND ;] is REG-EXT-BND-RESTORE-XT ;
@@ -3676,8 +3441,8 @@ INSTALL-BOUND
 
 package TFAM
 
-\ combined registry rollback hooks: one SAVE/RESTORE pair the checker's core
-\ RBF-PUSH/POP drives, so TFAM + SCHEMA frames stay in lockstep with core marks.
+\ One SAVE/RESTORE pair the checker's core RBF-PUSH/POP drives, so TFAM and
+\ SCHEMA frames stay in lockstep with core marks.
 
 ;package
 
@@ -3725,21 +3490,15 @@ private
 
 package TFAM
 
-\ PF-PERSIST-CANONICAL ( -- ) : make the product-field capacity byte-canonical
-\ before it is baked, so retired/rejected declarations cannot leak observable bytes
-\ into snapshot/fixpoint identity. Persist runs at depth 0 (PF-TX-SNAP-RESET/
-\ TFAM-RBF-SNAP-RESET assert it), so PF-N == PF-COMMIT-N and everything at or above
-\ the committed high-water is dead capacity. Zero the live arena's unused tail
-\ [PF-COMMIT-N, PF-CAP). Only committed rows [0,PF-COMMIT-N) then carry
-\ information; identical logical registries bake byte-identically.
+\ Persist runs at depth 0 (PF-TX-SNAP-RESET / TFAM-RBF-SNAP-RESET assert it), so
+\ PF-N = PF-COMMIT-N and [PF-COMMIT-N, PF-CAP) is dead capacity: zeroed so that
+\ identical logical registries bake byte-identically.
 : PF-PERSIST-CANONICAL ( -- )
    PF-COMMIT-N @ PF-CAP-V @ PF-SCRUB ;
 
-\ ---------------------------------------------------------------------------
 \ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores
 \ into image DATA. All record fields are integers or interned offsets, so nothing
 \ rebases. Wired into CHECKER-CAPTURE-PREPARE through the REG-EXT-PERSIST-XT hook.
-\ ---------------------------------------------------------------------------
 
 public
 
@@ -3752,13 +3511,10 @@ public
    LAY-A-P   LAY-CAP-V @ LAY-REC *    REG-PERSIST-BUF drop
    TF-STR-P TF-STR-HOME TF-STR-HOME-CAP TF-STR-U TF-STR-CAP-V REG-POOL-PERSIST ;
 
-\ TFX-SNAP-RESET ( -- ) : snapshot prepare — the tail index's bucket array is a
-\ grown, process-local buffer, so it is dropped back to the baked boot store and
-\ marked not-ready. A not-ready index holds no chains: TFX-BUILD rewrites every
-\ row's TF.TAILNEXT, so each is zeroed here too. Left in place, a row's link would
-\ depend on the lookups that ran before capture (a cache hit installs the row with
-\ 0, a cold declaration pushes it), and two loads of one program would capture
-\ different bytes.
+\ The bucket array is grown and process-local: dropped back to the boot store
+\ and marked not-ready. TFX-BUILD rewrites every row's TF.TAILNEXT, so each is
+\ zeroed too; left in place, a row's link would depend on the lookups that ran
+\ before capture, and two loads of one program would capture different bytes.
 
 private
 
@@ -3771,25 +3527,17 @@ private
    0 TFX-H ! 0 TFX-I ! 0 TFX-CUR !
    TFAM-N @ 0 ?do 0 i TF-REC@ TF.TAILNEXT ! loop ;
 
-\ ---------------------------------------------------------------------------
-\ AOT capture: the registry delta a captured window declared, and putting it
-\ back in the engine that was seeded with that window.
-\
-\ WHY THE REGISTRY TRAVELS AT ALL. A seeded word's checker signature is text, and
-\ the intake parses it: `( IR-ARENA:view -- )` has to resolve the family `view`
-\ in package IR-ARENA. A window that declared families therefore has to carry
-\ them or its family-typed half stays uncallable from checked code while its
-\ scalar-typed half works.
-\
-\ Registry references are integer row IDs and interned string offsets. Partial
-\ payloads append new rows only after all eight captured prefixes compare equal
-\ to the live stores. Already-installed deltas must also compare equal; a count
-\ alone cannot prove identity. Only the rebuilt family tail link and scrubbed
-\ constructor-symbol cell are excluded from those comparisons.
-\
-\ Validate every store, reference and schema before reserving capacity. All
-\ capacity must exist before the first new count or row is published. A failure
-\ may leave private capacity, but cannot leave a partially installed registry.
+\ AOT capture: the registry delta a captured window declared, and installing it
+\ in the engine seeded with that window. A seeded word's signature is text the
+\ intake parses (`( IR-ARENA:view -- )` resolves `view` in IR-ARENA), so a
+\ window that declared families carries them.
+\ References are integer row ids and interned offsets. Partial payloads append
+\ rows only after all eight captured prefixes compare equal to the live stores;
+\ installed deltas must also compare equal, since a count cannot prove
+\ identity. Only the rebuilt family tail link and the scrubbed constructor-symbol
+\ cell are excluded. Every store, reference and schema is validated and all
+\ capacity exists before the first count or row is published: a failure may
+\ leave private capacity, never a partial registry.
 8 constant REG-AOT-N                      \ stores, in the order below
 24 constant REG-AOT-ROW                   \ base, delta count, complete-store bytes
 REG-AOT-N REG-AOT-ROW * 8 + constant REG-AOT-HDR
@@ -3889,16 +3637,12 @@ create REG-AOT-END-A REG-AOT-N cells allot
    0 REG-AOT-CLOSED !
    REG-AOT-N 0 ?do  i REG-AOT-COUNT  REG-AOT-MARK-A i cells +  !  loop ;
 
-\ AND THE HIGH-WATERS IT CLOSES ON, which is a different moment from the one the
-\ capture RUNS at. A capture tool loads its own sources after the window shuts -
-\ the assembler, the artifact writer - and those declare types of their own. Read
-\ live at capture time, the delta carried the tool's families as well as the
-\ window's, and the seeded engine then measured its own registry against a base
-\ that had counted types no target has (measured: the chain's window declares 70
-\ families and the capture read more). So the window's types end where its
-\ definitions end, at src/habu/aot-arm.f SIG-CLOSE, and this is that latch.
-\ It is a MEASUREMENT and not a one-shot: a build that captures the same window
-\ twice, each time carrying more of it, ends its types twice.
+\ The high-waters the window closes on, latched at aot-arm.f SIG-CLOSE. A capture
+\ tool loads its own sources after the window shuts and those declare types; read
+\ at capture time the delta carried them, and the seeded engine measured its
+\ registry against a base counting types no target has (measured: the window
+\ declares 70 families and the capture read more). A build that captures the
+\ same window twice ends its types twice.
 : REG-AOT-CLOSE ( -- )
    REG-AOT-N 0 ?do  i REG-AOT-COUNT  REG-AOT-END-A i cells +  !  loop
    -1 REG-AOT-CLOSED ! ;
@@ -3908,13 +3652,12 @@ create REG-AOT-END-A REG-AOT-N cells allot
 : REG-AOT-OVERFLOW ( -- )
    s" tfam: the captured type registry does not fit the artifact's buffer" 74 die ;
 
-\ Version 8 partial payloads carry each complete store through the closed end.
-\ The table retains (base, delta-count, bytes); bytes now includes the prefix.
-\ References into a prefix must prove its contents, even if no registry row was
-\ added by this window. Two prefixes with equal counts can have different types.
+\ A store's payload is its whole contents through the closed end, prefix
+\ included; a table row is (base, delta-count, bytes). The prefix is carried
+\ even when the window added no row: equal counts can hold different types.
 
-\ Schema constructor codes past the fixed primitive table are process-local.
-\ Partial payloads need a canonical constructor identity before carrying them.
+\ Schema constructor codes past the fixed primitive table are process-local:
+\ a capture holding one is refused.
 : REG-AOT-SCHEMA-CON-PORTABLE ( -- )
    6 REG-AOT-END@ 1 ?do
       i SCHEMA-CON? IF
@@ -3965,20 +3708,12 @@ variable REG-AOT-ERROR-U
    drop 2drop
    s" tfam: a seeded type registry does not start where its capture did" REG-AOT-REFUSE ;
 
-\ The eight stores reference one another by IDs bound to their exact prefixes.
-\ An external symbol ID has no such identity:
-\ the variant store's SV.CTOR-SYM is the one cell that does not - it names a
-\ row of the CHECKER'S SYMBOL STORE, which is interned on demand and has no
-\ base alignment between the capture engine and this one. Measured: seeded
-\ rows arrived carrying ctor-sym 7750 against a boot SYM-N of 3147, and once
-\ the ctor index served them, whatever fresh definition later interned sym
-\ 7750 inherited a stale seeded variant - a count-dependent mis-bind that
-\ wedged the install fixpoint. So the load makes the cell STRUCTURALLY
-\ ABSENT: 0 is the value SVX-LINK and SUMV-FROM-CTOR-SYM already refuse to
-\ key on. A seeded constructor is an ordinary word here - its calls certify
-\ through the signature row the intake takes, which every seeded suite
-\ proves - and a consumer that someday needs seeded ctor-hood must mint a
-\ TARGET id, not believe a carried one.
+\ SV.CTOR-SYM names a row of the checker's symbol store, which has no base
+\ alignment between the capture engine and this one. Measured: seeded rows
+\ carried ctor-sym 7750 against a boot SYM-N of 3147, and a later intern of
+\ 7750 bound the stale variant and wedged the install fixpoint. The load zeroes
+\ the cell; SVX-LINK and SUMV-FROM-CTOR-SYM refuse to key on 0. A seeded
+\ constructor is an ordinary word whose calls certify through its signature row.
 : REG-AOT-SCRUB ( n n n -- ) {: k:n base:n cnt:n :}
    k 2 <> IF EXIT THEN
    base REG-AOT-J !
@@ -4004,8 +3739,8 @@ variable REG-AOT-ERROR-U
    THEN
    src off + c@ ;
 
-\ Validate a captured table without consulting the active checker. Merge may
-\ compare two frozen windows after the live registry has changed owners.
+\ Validates a captured table without the active checker: merge may compare two
+\ frozen windows after the live registry has changed owners.
 : REG-AOT-SHAPE ( ptr u8 n -- bool ) {: src:ptr u:n :}
    u REG-AOT-HDR < IF
       s" tfam: captured registry is shorter than its table" REG-AOT-REFUSE THEN
@@ -4032,9 +3767,9 @@ variable REG-AOT-ERROR-U
 : REG-AOT-MERGE-REFUSE ( -- )
    s" tfam: captured registries have incompatible prefixes" REG-AOT-REFUSE ;
 
-\ Choose the incoming payload iff it is the one to retain. A prefix-only
-\ capture can accompany a delta at its opening or closed boundary. Compare
-\ canonical records, not byte lengths or the currently installed registry.
+\ True iff the incoming payload is the one to retain. A prefix-only capture can
+\ accompany a delta at its opening or closed boundary. Compares canonical
+\ records, not byte lengths or the installed registry.
 : REG-AOT-MERGE-INCOMING-BODY ( ptr u8 n ptr u8 n -- bool )
    {: host:ptr hu:n incoming:ptr iu:n :}
    hu 0= IF iu 0 <> IF incoming iu REG-AOT-SHAPE drop THEN RES-TRUE EXIT THEN
@@ -4159,8 +3894,8 @@ UNIT-FAM-NO-VIEW-INSTALL
    REG-AOT-CUR @ u <> IF
       s" tfam: a seeded type registry does not fill its own bytes" REG-AOT-REFUSE THEN ;
 
-\ Read a wholly prefix-owned or wholly incoming span without installing it.
-\ Registry table validation precedes this view; no live count is changed.
+\ Reads a wholly prefix-owned or wholly incoming span without installing it;
+\ table validation precedes it and no live count changes.
 : REG-AOT-VIEW ( ptr u8 n n n n -- ptr u8 )
    {: src:ptr u:n k:n first:n count:n :}
    first 0 < count 0 < or IF
@@ -4211,8 +3946,8 @@ UNIT-FAM-NO-VIEW-INSTALL
    THEN
    src u 1 rec TF.PK-START @ rec TF.ARITY @ REG-AOT-VIEW drop ;
 
-\ Keep the graph callback at the same named refusal boundary as the loader.
-\ Duplicate all four arguments so the quotation is balanced on both paths.
+\ A graph-callback refusal dies 76 like the loader's. 2over 2over keeps the
+\ quotation balanced on both paths.
 : REG-AOT-PARAM? ( ptr u8 ptr u8 ptr u8 n -- )
    0 REG-AOT-ERROR-U !
    [: 2over 2over REG-AOT-PARAM-CHECK ;] catch
@@ -4441,18 +4176,16 @@ UNIT-FAM-NO-VIEW-INSTALL
 PTR-VARIABLE REG-AOT-MEMO
 variable REG-AOT-MEMO-U
 
-\ The width walk shares closed families the same way. Cell fam of REG-AOT-FAMW
-\ holds 1 + the width REG-AOT-FAM-W-IMPL walked for arity-0 family fam, 0 until
-\ that walk completes: computed widths only, never a persisted slot count. A
-\ check maps it fresh and unmaps it with the memo; a signature graph's width
-\ (REG-AOT-GRAPH-WIDTH) maps its own for its walk unless a check holds one.
+\ Cell fam of REG-AOT-FAMW holds 1 + the walked width of arity-0 family fam, 0
+\ until that walk completes: computed widths only, never a persisted slot
+\ count. A parametric family is walked per frame. A check maps it with the
+\ memo; REG-AOT-GRAPH-WIDTH maps its own unless a check holds one.
 PTR-VARIABLE REG-AOT-FAMW
 variable REG-AOT-FAMW-U
 
-\ One cell per family id the payload can name: 0 up to row 0's base plus count,
-\ or the live registry's count for an empty payload, which REG-AOT-ITEM reads
-\ as the live registry (the graph check of the live signature pool). A
-\ registry without a family maps none.
+\ One cell per family id the payload can name: up to row 0's base plus count,
+\ or the live count for an empty payload, which REG-AOT-ITEM reads as the live
+\ registry. A registry without a family maps none.
 : REG-AOT-FAMW-START ( ptr u8 n -- ) {: src:ptr u:n :}
    u 0= IF 0 REG-AOT-COUNT ELSE src 0 REG-AOT-ROW@ drop + THEN
    cells {: bytes:n :}
@@ -4468,12 +4201,10 @@ variable REG-AOT-FAMW-U
    NULL-PTR REG-AOT-MEMO ! 0 REG-AOT-MEMO-U !
    REG-AOT-FAMW-DONE ;
 
-\ One row per schema node id the payload can name, 0 up to row 6's base plus
-\ count, so the size is never zero, the request ARENA-ALLOC dies on: before
-\ this runs, REG-AOT-CHECK's table check refuses a row 6 whose base and base
-\ plus count both differ from the live SCH-N, and SCH-N is at least 1. Node 0
-\ is the nil sentinel: SCHEMA-RESET sets 1, and every later store grows the
-\ count or restores one it had.
+\ One row per schema node id up to row 6's base plus count. The size is never
+\ zero, which ARENA-ALLOC dies on: REG-AOT-CHECK's table check refuses a row 6
+\ whose base and end both differ from the live SCH-N, and SCH-N is at least 1
+\ (node 0 is the nil sentinel).
 : REG-AOT-MEMO-START ( ptr u8 n -- ) {: src:ptr u:n :}
    src 6 REG-AOT-ROW@ drop + 2 cells * {: bytes:n :}
    bytes ARENA-ALLOC REG-AOT-MEMO ! bytes REG-AOT-MEMO-U !
@@ -4502,11 +4233,10 @@ variable REG-AOT-FAMW-U
    right $7FFFFFFFFFFFFFFE left - > IF ASIG-GRAPH-DIE THEN
    left right + ;
 
-\ Portable counterpart of TFW-NODE / TFW-FAM over the seeded rows, under the
-\ same frame. REG-AOT-OWNER-CHECK validates every family's members before any
-\ field schema, so this walk reaches roots nothing has validated yet: it refuses
-\ a parameter beyond its owner's arity and an application of a family that is
-\ not strictly older than its owner, the decreasing owner chain that bounds the
+\ Portable counterpart of TFW-NODE / TFW-FAM over the seeded rows. Members are
+\ validated before field schemas (REG-AOT-OWNER-CHECK), so this walk reaches
+\ unvalidated roots: it refuses a parameter beyond its owner's arity and an
+\ application of a family not strictly older than its owner, which bounds the
 \ recursion. REG-AOT-SHAPE-CHECK pins an application's argument count to its
 \ family's arity, so a nested frame holds exactly the applied family's arity.
 defer REG-AOT-FAM-W ( ptr u8 n n n n -- n )   \ ( src u fam base top -- width ) forward ref for a nested application
@@ -4569,9 +4299,6 @@ defer REG-AOT-FAM-W ( ptr u8 n n n n -- n )   \ ( src u fam base top -- width ) 
    THEN
    1 ;
 
-\ An arity-0 family is walked once while REG-AOT-FAMW is held (a check, or one
-\ signature graph's width), and every later application reads the width its
-\ walk recorded there; a parametric family is walked per frame.
 : REG-AOT-FAM-W-IMPL ( ptr u8 n n n n -- n ) {: src:ptr u:n fam:n base:n top:n :}
    src u 0 fam REG-AOT-ITEM {: family:ptr :}
    family TF.ARITY @ 0 >  fam cells REG-AOT-FAMW-U @ >= or IF
@@ -4592,20 +4319,16 @@ REG-AOT-FAM-W-INSTALL
    {: term:ptr graph:ptr widths:ptr src:ptr u:n :}
    src u 0 term EN.H @ REG-AOT-ITEM {: family:ptr :}
    \ The seeded slots are validated against the declared walk
-   \ (REG-AOT-FIELD-SCHEMA, REG-AOT-OWNER-WIDTH, REG-AOT-FAMILY-MEMBERS), and the
-   \ declared walk is this walk at an all-ones frame, so with every argument one
-   \ cell REG-AOT-FAM-WIDTH is the rule's answer. This also handles nullary
-   \ families without rescanning every field for each hidden physical slot of a
-   \ wide concrete value.
+   \ (REG-AOT-FIELD-SCHEMA, REG-AOT-OWNER-WIDTH, REG-AOT-FAMILY-MEMBERS), which is
+   \ this walk at an all-ones frame, so with every argument one cell
+   \ REG-AOT-FAM-WIDTH is the answer, without rescanning every field for each
+   \ hidden slot of a wide value.
    RES-TRUE term EN.C @ 0 ?do
       graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @ 1 = and
    loop IF family REG-AOT-FAM-WIDTH EXIT THEN
    term EN.C @ 0 ?do                             \ the graph's memoized argument widths
       graph term EN.D @ + i cells + CELL-VIEW @ widths + CELL-VIEW @  i TFW!
    loop
-   \ The walk reads the family record a check holds; otherwise this call holds
-   \ its own for the walk and releases it on return or throw, so each arity-0
-   \ family is walked once per call.
    src u term EN.H @ 0 term EN.C @
    REG-AOT-FAMW-U @ 0 > IF REG-AOT-FAM-W EXIT THEN
    src u REG-AOT-FAMW-START
@@ -4669,7 +4392,7 @@ REG-AOT-FAM-W-INSTALL
    THEN
    tag SCH-APP = IF
       \ Ordinary declarations resolve only already-declared families, including
-      \ pointer-wrapped references. Preserve that acyclic dependency boundary.
+      \ pointer-wrapped references: the dependency graph stays acyclic.
       a owner >= IF
          s" tfam: a seeded schema has a recursive or forward family" REG-AOT-REFUSE THEN
       src u 0 a REG-AOT-ITEM {: applied:ptr :}
@@ -4816,8 +4539,8 @@ REG-AOT-FAM-W-INSTALL
    REG-AOT-MEMO-DONE
    dup 0 <> IF throw THEN drop 2drop ;
 
-\ Keep the public fatal diagnostic while the private validation operation can
-\ be caught to prove that a late refusal leaves all published stores untouched.
+\ The refusal stays fatal (76) while the private REG-AOT-CHECK can be caught to
+\ prove that a late refusal leaves every published store untouched.
 : REG-AOT-VALIDATE ( ptr u8 n -- )
    0 REG-AOT-ERROR-U !
    [: 2dup REG-AOT-CHECK ;] catch
@@ -4876,8 +4599,8 @@ REG-AOT-FAM-W-INSTALL
    src u REG-AOT-CHECK
    src u REG-AOT-STATE @ REG-AOT-TAKE ;
 
-\ The loader's private operation throws before publication on invalid input.
-\ Keep the established named process refusal at the artifact-load boundary.
+\ REG-AOT-INSTALL throws before publication on invalid input; the artifact-load
+\ boundary keeps the named process refusal (76).
 : REG-AOT-LOAD ( ptr u8 n -- )
    0 REG-AOT-ERROR-U !
    [: 2dup REG-AOT-INSTALL ;] catch
@@ -4899,19 +4622,14 @@ REG-AOT-FAM-W-INSTALL
    [: TFAM-NAME$ ;] is REG-EXT-AOT-FAMILY-NAME-XT ;
 REG-EXT-AOT-INSTALL
 
-\ ---------------------------------------------------------------------------
-\ Built-in parametric cell families — the checker parser's parametric type
-\ constructors, replacing checker.f's old hard-coded PARAM-CTOR? whitelist. Every
-\ family is PUBLIC and global (empty package) so a bare `span<...>` resolves via
-\ TFAM-RESOLVE from any scope. `ptr` is dual (see its line comment): registered
-\ arity-2 for `ptr<space,elem>`, while bare `ptr elem` keeps the MK-PTR special
-\ case in checker.f. Registration runs at prefix load in every
-\ context (preverify parent + runtime child), so both see identical families.
-\ ---------------------------------------------------------------------------
+\ Built-in parametric cell families: the parser's parametric type constructors.
+\ Each is public and global (empty package), so a bare `span<...>` resolves
+\ through TFAM-RESOLVE from any scope. Registration runs at prefix load in every
+\ context (preverify parent and runtime child), so both see identical families.
 
 public
 
-: TFAM-REG-CELL ( ptr u8 n n -- )   \ public global TK-CELL family
+: TFAM-REG-CELL ( ptr u8 n n -- )
    {: na:ptr nu:n ar:n :}
    s" " CHECKER-PACKAGE-PUBLIC na nu ar TK-CELL TFAM-DECL drop ;
 
@@ -4920,7 +4638,7 @@ public
 \ checker.f SIG-TYPE. Registered arity 2 matches every `ptr<...>` in the tree.
 s" ptr"        2 TFAM-REG-CELL
 s" span"       3 TFAM-REG-CELL
-s" vspan"      3 TFAM-REG-CELL   \ M10: global span with a PROVEN 16B base alignment (tile-v4a.f)
+s" vspan"      3 TFAM-REG-CELL   \ global span with a proven 16-byte base alignment
 s" matrix"     4 TFAM-REG-CELL
 s" gridctx"    3 TFAM-REG-CELL
 s" fanctx"     3 TFAM-REG-CELL
@@ -4929,23 +4647,21 @@ s" uniqidxctx" 4 TFAM-REG-CELL
 s" coopctx"    3 TFAM-REG-CELL
 s" rowctx"     3 TFAM-REG-CELL
 s" tile"       3 TFAM-REG-CELL
-s" vtile"      3 TFAM-REG-CELL   \ M10: vec4 lane tile, DISTINCT from scalar tile<> (tile-v4a.f)
+s" vtile"      3 TFAM-REG-CELL   \ vec4 lane tile, distinct from scalar tile<>
 s" acc"        3 TFAM-REG-CELL
 s" mmctx"      3 TFAM-REG-CELL
-\ Pipelined register-blocked GEMM tile vocabulary (src/lib/ptx/tile-pipe.f):
-\ <t elem, b block, l layout-atom, w mask, p parity var> on the staged families;
-\ <t, b, g micro-geometry atom, w> on the micro-tile accumulator.
+\ Pipelined register-blocked GEMM tiles: <t elem, b block, l layout-atom, w mask,
+\ p parity var> on the staged families; <t, b, g micro-geometry atom, w> on the
+\ micro-tile accumulator.
 s" mmstage"    5 TFAM-REG-CELL   \ READY current-parity staged As+Bs tile-pair
 s" mmaslice"   5 TFAM-REG-CELL   \ strided A slice of a stage (scalar loads only)
 s" mmbslice"   5 TFAM-REG-CELL   \ contiguous 16B-proven B slice (v4 loads legal)
 s" mmafrag"    5 TFAM-REG-CELL   \ A operand fragment (4 regs, one k column)
 s" mmbfrag"    5 TFAM-REG-CELL   \ B operand fragment (4 regs, one vec4 row)
 s" mmracc"     4 TFAM-REG-CELL   \ register-blocked micro-tile accumulator
-\ cp.async pipeline-slot typestate (src/lib/ptx/cpp-slot.f, dot
-\ habu-checker-cp-async-6ba788a5): a staged-buffer slot threads
-\ pending<p> -> committed<p> -> ready<p> across the double-buffer protocol
-\ (p = symbolic buffer parity). The distinct state families make read-before-wait,
-\ missing-commit, double-wait, and parity mismatch fail-closed type errors.
+\ cp.async pipeline-slot typestate: a staged-buffer slot threads pending<p> ->
+\ committed<p> -> ready<p> (p = symbolic buffer parity). Distinct families make
+\ read-before-wait, missing-commit, double-wait and parity mismatch type errors.
 s" cpp-pending"   1 TFAM-REG-CELL   \ issued: cp.async copies in flight, not yet committed
 s" cpp-committed" 1 TFAM-REG-CELL   \ commit_group closed, wait_group + bar.sync not yet done
 s" cpp-ready"     1 TFAM-REG-CELL   \ waited + bar.sync fenced: the staged tile is block-visible
@@ -4958,32 +4674,24 @@ s" attn-stage-output"  0 TFAM-REG-CELL
 s" attn-stage-done"    0 TFAM-REG-CELL
 s" uniform"    1 TFAM-REG-CELL
 s" rowidx"     1 TFAM-REG-CELL
-\ BTC-7 extent-role product/factorization (docs/design.md "Type substrate"). `extprod<free,inner>` is the product former: an
-\ ORDERED arity-2 cell family so ix<extprod<extb,extt>> types a folded (B,T) row
-\ and its ordered args already reject a swapped or mismatched factor on the
-\ existing parametric unification. `redx`
-\ is the arity-1 contraction/reduction index: a value of ix<e> re-typed as
-\ redx<e> is an axis marked for summation. The checker's free-vs-inner rule
-\ (checker.f EXT-REDX-BAD-ARG? at SIG-END-PARAM) rejects redx over a free factor,
-\ which is what makes the cross-sequence contraction leak unrepresentable.
-\ `ix` is the arity-1 index family the other two are written in terms of: a value
-\ of ix<e> is one cell whose phantom argument names the extent it indexes. All
-\ three belong to the SAME core-owned substrate and are registered together here.
-\ They have to be: the checked retype ix<e> -> redx<e> (src/lib/type/extent-role.f
-\ `>RED`) is an
-\ INTRODUCTION into redx, and the checker only authorizes an introduction from
-\ the destination family's declaring package (checker.f CAST-OWNER?). While `ix`
-\ was declared by `package MAKI` and `redx` by the core, that retype had no legal
-\ home in either package and every load of maki/extent.f threw E-CAST-OWNER.
+\ Extent roles (docs/design.md "Type substrate"). `extprod<free,inner>` is an
+\ ordered arity-2 product: ix<extprod<extb,extt>> types a folded (B,T) row and
+\ ordinary unification rejects a swapped or mismatched factor. A value of
+\ redx<e> is an axis marked for summation; checker.f EXT-REDX-BAD-ARG? at
+\ SIG-END-PARAM rejects redx over a free factor. A value of ix<e> is one cell
+\ indexing extent e. The three register together in the core: the retype
+\ ix<e> -> redx<e> (src/lib/type/extent-role.f `>RED`) introduces redx, and
+\ checker.f CAST-OWNER? authorizes an introduction only from the destination
+\ family's declaring package.
 s" ix"         1 TFAM-REG-CELL
 s" extprod"    2 TFAM-REG-CELL
 s" redx"       1 TFAM-REG-CELL
 
-\ M5: capture the tile/uniform family ids into the checker's barrier-uniformity
-\ cells (declared in checker.f). A collective typed ( tile<..> -- uniform<..> )
-\ emits bar.sync and is only sound under block-uniform control (checker.f
-\ PTX-BARRIER-SIG?/BARRIER-CUR?). Runs in every load context, like the
-\ registrations above, so the parent verifier and runtime child agree.
+\ The tile/uniform family ids go into the checker's barrier-uniformity cells
+\ (declared in checker.f). A collective typed ( tile<..> -- uniform<..> ) emits
+\ bar.sync and is sound only under block-uniform control (checker.f
+\ PTX-BARRIER-ROWS?/BARRIER-CUR?). Runs in every load context, so the parent
+\ verifier and runtime child agree.
 
 private
 
@@ -4992,15 +4700,14 @@ private
    s" " na nu TFAM-RESOLVE IF ELSE drop 0 THEN ;
 s" tile"    PTX-FAM-ID PTX-TILE-FAM !
 s" uniform" PTX-FAM-ID PTX-UNIFORM-FAM !
-\ cp.async pipeline-slot barrier ids: the WAIT step ( cpp-committed<p> -- cpp-ready<p> )
-\ retires the copy group and bar.sync-fences it, so it composes with the M5
-\ barrier model (checker.f PTX-CPWAIT-ROWS?/BARRIER-CUR?) - a WAIT reached under
-\ divergent control is not block-uniform and rejects, exactly like BLOCK-MAX.
+\ The WAIT step ( cpp-committed<p> -- cpp-ready<p> ) retires the copy group and
+\ fences it with bar.sync: a WAIT under divergent control is not block-uniform
+\ and is rejected (checker.f PTX-CPWAIT-ROWS?/BARRIER-CUR?).
 s" cpp-committed" PTX-FAM-ID PTX-CPCOMMITTED-FAM !
 s" cpp-ready"     PTX-FAM-ID PTX-CPREADY-FAM !
-\ BTC-7: capture the product/contraction family ids into the checker's role
-\ registry cells (declared in checker.f). SIG-END-PARAM reads EXT-REDX-FAM to gate
-\ redx<..> forming, and EXT-PROD-FAM to reject contracting a whole product.
+\ Extent-role ids for the checker's role cells (declared in checker.f):
+\ SIG-END-PARAM reads EXT-REDX-FAM to gate forming redx<..>, and EXT-PROD-FAM
+\ to reject contracting a whole product.
 s" extprod" PTX-FAM-ID EXT-PROD-FAM !
 s" redx"    PTX-FAM-ID EXT-REDX-FAM !
 
@@ -5115,22 +4822,19 @@ REGISTER-RECORDS
 REGISTER-STOW
 public
 
-\ ---------------------------------------------------------------------------
-\ signature-token resolution (the checker's TFAM-RESOLVE-XT target). On top of
-\ TFAM-RESOLVE's package-scope rules this adds the signature-surface concerns:
-\ qualified `PKG:tail` references (fold the qualifier — package names are
-\ stored case-folded — require a canonical lowercase tail, resolve public rows
-\ plus the active package's own private rows), and unqualified ambiguity
-\ (E-TFAM-AMBIG) mapped to an unresolved token so the signature rejects with a
-\ diagnostic instead of aborting the load.
-\ ---------------------------------------------------------------------------
+\ Signature-token resolution, the checker's TFAM-RESOLVE-XT target, over
+\ TFAM-RESOLVE's package-scope rules. A qualified `PKG:tail` folds the qualifier
+\ (package names are stored case-folded), requires a lowercase tail, and
+\ resolves public rows plus the active package's own private rows. Unqualified
+\ ambiguity (E-TFAM-AMBIG) becomes an unresolved token, so the signature is
+\ rejected with a diagnostic instead of aborting the load.
 $100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
 create TFQ-BUF TFQ-CAP allot
 variable TFQ-U
 PTR-VARIABLE TFQ-TA   variable TFQ-TU  \ qualified tail token
 variable TFQ-COLON
 
-: TFQ-FOLD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}   \ folded qualifier -> TFQ-BUF
+: TFQ-FOLD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
    u TFQ-CAP > IF s" tfam: qualifier too long" 76 die THEN
    0 BEGIN dup u < WHILE
       {: i:n :}
@@ -5230,9 +4934,6 @@ private
    REPEAT
    RES-FALSE ;
 
-\ Install the checker registry's persist hook only after this module's final
-\ signature-resolution scratch has been declared, so the same owner clears the
-\ raw token spans before DATA is baked.
 create UNIT-FAM-MARKS REG-AOT-N cells allot
 create UNIT-FAM-STABLE REG-AOT-N cells allot
 PTR-VARIABLE UNIT-FAM-AT
@@ -5335,21 +5036,24 @@ private
 create TFC-VARS TFC-VAR-CAP cells allot
 variable TFC-I   variable TFC-J   variable TFC-ROW
 
+\ Installed after this file's last signature-resolution scratch is declared, so
+\ the same owner clears the raw token spans before DATA is baked. Every index,
+\ memo, frame and transaction reset here is process-local.
 : REG-EXT-PERSIST ( -- )
    \ An ordinary prepared checker unit still owns its family plans here.
    \ Its explicit prepare end releases them after installation or discard.
    UNIT-FAM-PROJECT-ON @ 0= IF UNIT-FAM-RESET-XT THEN
    TFAM-SNAPSHOT-PERSIST
    SCHEMA-SNAPSHOT-PERSIST
-   TFX-SNAP-RESET              \ tail-index buckets are process-local
-   VNX-SNAP-RESET              \ variant tail-index buckets and links too
-   FVX-SNAP-RESET              \ and the field owner index
-   TFM-SNAP-RESET              \ and the family facts memo
-   TFW-SNAP-RESET              \ and the argument-width frames
-   PF-TX-SNAP-RESET            \ field transactions are process-local
-   RBF-SNAP-RESET               \ core rollback frames are process-local
-   TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
-   SCHEMA-RBF-SNAP-RESET       \ SCHEMA registry rollback frames
+   TFX-SNAP-RESET
+   VNX-SNAP-RESET
+   FVX-SNAP-RESET
+   TFM-SNAP-RESET
+   TFW-SNAP-RESET
+   PF-TX-SNAP-RESET
+   RBF-SNAP-RESET
+   TFAM-RBF-SNAP-RESET
+   SCHEMA-RBF-SNAP-RESET
    UNIT-FAM-EXPORT-RESET ;
 
 : REG-EXT-PERSIST-INSTALL ( -- ) [: REG-EXT-PERSIST ;] is REG-EXT-PERSIST-XT ;
@@ -5378,28 +5082,19 @@ TFAM-SCRATCH-INSTALL
 
 public
 
-\ ---------------------------------------------------------------------------
-\ construct form (docs/forth.md "Structures And Enums"): resolution + step effect for the checker's
-\ reserved `construct family variant` token protocol. The ownership predicate
-\ is package identity: the family must live in the ACTIVE checker package (top
-\ level owns the global "" package), public or private — cross-package
-\ construction never resolves, so private families stay package-sealed and
-\ public cross-package callers use the generated constructor words. Only sum
-\ and enum kinds construct. The step effect is the generated-constructor call
-\ effect built inline from SUMV metadata: payload schema nodes instantiate
-\ against one fresh checker var per family parameter (concrete payloads map to
-\ themselves), the family output term carries those vars, and CHECKER-STEP
-\ applies din/dout with the same unification, diagnostics capture, and linear
-\ conservation as any word call. PUSH-LOGICAL keeps declared-sig parity:
-\ bundles whose width is known (incl. every arity-0 family) expand to hidden
-\ fields at the step; a parametric result whose width reads an open argument
-\ (checker.f LAYOUT-WIDTH-OPEN?) stays one logical cell and expands at the
-\ boundary through the LOGHID coercion.
-\ ---------------------------------------------------------------------------
+\ Construct form (docs/forth.md "Structures And Enums"): the checker's reserved
+\ `construct family variant` token. A family constructs only inside its own
+\ active checker package (top level owns the global "" package), public or
+\ private; cross-package callers use the generated constructor words. Only sum
+\ and enum kinds construct. The step effect instantiates SUMV payload schemas
+\ against one fresh var per family parameter and CHECKER-STEP applies it like
+\ any word call. A result of known width expands to hidden fields at the step;
+\ a parametric result whose width reads an open argument (checker.f
+\ LAYOUT-WIDTH-OPEN?) stays one logical cell and expands at the boundary.
 
 private
 
-: TFC-MINT-VARS ( n -- ) {: ar:n :}       \ one fresh checker var per family param
+: TFC-MINT-VARS ( n -- ) {: ar:n :}
    ar TFC-VAR-CAP > IF s" tfam: construct arity over cap" 76 die THEN
    0 TFC-I !
    BEGIN TFC-I @ ar < WHILE
@@ -5407,7 +5102,7 @@ private
       TFC-I @ 1 + TFC-I !
    REPEAT ;
 
-: TFC-ARGS! ( n -- ) {: term:n :}   \ copy a resolved family term's args into TFC-VARS
+: TFC-ARGS! ( n -- ) {: term:n :}
    term PARAM>ARGC TFC-VAR-CAP > IF s" tfam: layout arity over cap" 76 die THEN
    0 TFC-I !
    BEGIN TFC-I @ term PARAM>ARGC < WHILE
@@ -5415,11 +5110,9 @@ private
       TFC-I @ 1 + TFC-I !
    REPEAT ;
 
-\ Fold one quotation effect side (a SCH-ROW node) onto a shared base row: each
-\ element type node becomes a checker term (TFC-SCH-TERM, mutually recursive so a
-\ nested quotation element resolves) and is pushed in declaration order (element 0
-\ deepest), matching the checker's PSTACK/SIG-PARSE-QUOT bottom->top fold. Deferred
-\ because the SCH-QUOT case of TFC-SCH-TERM calls it before its impl is defined.
+\ Folds one quotation side (a SCH-ROW node) onto a base row, element 0 deepest,
+\ matching the checker's PSTACK/SIG-PARSE-QUOT fold. Deferred: the SCH-QUOT case
+\ of TFC-SCH-TERM calls it before its impl is defined.
 defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
 
 
@@ -5453,12 +5146,12 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
 
 
 : TFC-QUOT-ROW-IMPL ( n n -- n ) {: rownode:n base:n :}
-   base 0                                                \ ( row j )
-   BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE            \ ( row j )
-      dup rownode swap SCHEMA-ROW-ELEM@ TFC-SCH-TERM      \ ( row j term )
-      swap >r                                             \ ( row term ) R: j
-      swap PUSH-LOGICAL                                   \ ( row' )     R: j
-      r> 1 +                                              \ ( row' j+1 )
+   base 0
+   BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE
+      dup rownode swap SCHEMA-ROW-ELEM@ TFC-SCH-TERM
+      swap >r
+      swap PUSH-LOGICAL
+      r> 1 +
    REPEAT drop ;
 : TFC-QUOT-ROW-INSTALL ( -- ) [: TFC-QUOT-ROW-IMPL ;] is TFC-QUOT-ROW ;
 TFC-QUOT-ROW-INSTALL
@@ -5669,23 +5362,17 @@ TFAM-MEMBERS-INSTALL
    REPEAT
    base fam TFAM-NAME$ fam MK-PARAM ;
 
-\ layout-cap slice 4/5 (dot habu-checker-capability-layout-9b8540bd): width-aware
-\ construct/MATCH lowering. The checker records, per genuinely-wide CLOSED instantiation
-\ (a multi-cell layout arg, flat arity-0 OR nested named application), one
-\ extra-pad fact keyed at the construct/ctor-call/`of` token: w = instantiated_pads -
-\ declared_pads, flagged WF-XPAD-FLAG so pass-2 fires even when the difference is 1.
-\ Pass 2 (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, gforth mirror)
-\ adds those extra zero cells so the physical bundle matches the arg-aware width. A
-\ layout-cap slice 5 flips the flat-only gate to a recursive WIDTH-STABILITY check:
-\ a nested named instantiation (option<result<n,pkg:prod>>) lowers correctly under
-\ the SAME extra-pad model because every width site (TFAM-INST-WIDTH@, TFC-VAR-
-\ PAYCELLS, famterm T-WIDTH) already recurses through the arg tree — the inner
-\ bundle is constructed with its OWN extra pads at its own site, and the outer
-\ construct/match only adds the outer delta. The one soundness requirement is that
-\ every width be CLOSED (no unresolved type/row var below a family, pointer, or
-\ quotation): an open inner var (option<result<n,a>>) has an unstable width and
-\ MUST stay fail-closed, so TYPE-CLOSED? rejects it and CONSTRUCT-WIDE-STAGED-
-\ REJECT / declared-width match hold. The checker owns that one closure authority.
+\ Width-aware construct/MATCH lowering. For a wide closed instantiation (a
+\ multi-cell layout argument, flat or nested) the checker records an extra-pad
+\ fact at the construct, constructor-call or `of` token: w = instantiated pads -
+\ declared pads, flagged WF-XPAD-FLAG so pass 2 fires even when w is 1. Pass 2
+\ (native EM-ADT-CON-VAR / EM-COMPILE-CALL / EM-ADT-MATCH-OF, mirrored in
+\ bootstrap/cg/forth.fs) adds those zero cells. A nested instantiation
+\ (option<result<n,pkg:prod>>) needs nothing more: every width site
+\ (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, T-WIDTH) recurses through the argument
+\ tree, so the inner bundle gets its own pads at its own site. Every width must
+\ be closed: an open inner var (option<result<n,a>>) has an unstable width, so
+\ TYPE-CLOSED? rejects it and CONSTRUCT-WIDE-STAGED-REJECT holds.
 : TFC-VAR-PAYCELLS ( n -- n ) {: vid:n :}   \ sum of instantiated payload cell widths for a variant
    0
    0 TFC-J !
@@ -5694,29 +5381,16 @@ TFAM-MEMBERS-INSTALL
       TFC-J @ 1 + TFC-J !
    REPEAT ;
 
-\ Extra pads = instantiated pads - declared pads, where instantiated pads =
-\ instantiated payload SLOTS - instantiated payload cells. The payload slots are the
-\ bundle width MINUS the tag cell — but only a TAGGED family (SUM/ENUM) carries a tag;
-\ a STRUCTURE/PRODUCT is TAGLESS, so its whole width is payload. Subtracting a tag cell
-\ from a tagless family is the tagless-family regression: scg<scinr> (a parametric STRUCTURE at a width-2
-\ leaf) has width 3 all payload, but `width - 1` under-counts the slots to 2 and reports
-\ a spurious extra = -1, rejecting a value the width-aware lowering handles perfectly.
-\ TFC-TAG-CELLS keys the subtraction off the registry family kind, so a product computes
-\ extra = 0 and certifies with no exemption.
-\ A POSITIVE extra means the wide instantiation needs MORE zero cells than the declared
-\ family width reserves; add-only pass 2 supplies them (WF-XPAD-FLAG fact). A genuinely
-\ NEGATIVE extra (a tagged SUM variant whose instantiated payload needs FEWER cells than
-\ the declared family width reserves — the widest-DECLARED variant is not the
-\ widest-INSTANTIATED one, OR a non-widest variant grows more than the widest does) is a
-\ real contradiction: pass-1 keys pads off the DECLARED width and emits MORE pad cells
-\ than the certified instantiated width has, and the add-only pass-2 fact cannot REMOVE
-\ cells to correct it. The certified width and the only possible lowering permanently
-\ DISAGREE, so no sound construct/MATCH of that variant exists on the current engine.
-\ Such a width contradiction must NEVER certify — reject it unconditionally, including a
-\ CHECK-CANDIDATE probe. SIGNED pass-2 corrections (a native emitter that removes cells,
-\ not only adds) would make these lowerable; that capability is tracked by dot
-\ habu-construct-asymmetric-growth-0f4df0fa and will flip these rejects to exact-width
-\ construct/MATCH.
+\ Extra pads = instantiated pads - declared pads; instantiated pads =
+\ instantiated payload slots - instantiated payload cells. Only a SUM or ENUM
+\ has a tag cell; a PRODUCT's whole width is payload (scg<scinr>, a parametric
+\ STRUCTURE at a width-2 leaf, is width 3, all payload: subtracting a tag would
+\ report extra -1), so TFC-TAG-CELLS keys the subtraction off the family kind.
+\ A negative extra (the widest declared variant is not the widest instantiated
+\ one, or a non-widest variant grows more) is a contradiction: pass 1 emits the
+\ declared pads and add-only pass 2 cannot remove cells, so no sound lowering
+\ exists and it is refused unconditionally, a candidate probe included. Signed
+\ pass-2 corrections would make it lowerable.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    0 OK ! -1 FAILSET ! ;
 
@@ -5724,53 +5398,45 @@ TFAM-MEMBERS-INSTALL
    dup TFAM-SUM? IF drop 1 EXIT THEN
    TFAM-ENUM? IF 1 ELSE 0 THEN ;
 
-\ THE ONE SUBTRACTION BELOW ANSWERS BOTH LOWERINGS, WHICH IS WHY THE NUMBER IS
-\ LATCHED HERE AND NOT WORKED OUT AGAIN. Both of them push what the family
-\ DECLARES and can only ADD: the engine's pass 1 emits the declared pads and its
-\ pass 2 adds the WF row's cells at the same site, and the native chain either
-\ calls the generated constructor - whose body is the declared pads and the tag,
-\ whatever the instantiation - or reads the same declared pads out of the registry
-\ for a `construct`. So what both are missing at a wide instantiation is the same
-\ difference, and MWIN-CELLS! files it under the token this step is judging for
-\ src/compiler/native/elaborate.f while the WF row carries it to pass 2 exactly as
-\ before. A construction that adds nothing files nothing: absent is "this token
-\ adds no cells", which src/core/checker.f states in full above the table.
-: TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}   \ record the wide construct's extra-pad fact, or fail closed on a genuine narrower-than-declared contradiction
-   famterm T-WIDTH fam TFC-TAG-CELLS -          \ instantiated payload slots (subtract the tag cell only for a tagged family; a tagless product subtracts none)
-   vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
-   fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -        \ - declared pads = extra pads
+\ One subtraction answers both lowerings, so the number is latched here. Both
+\ push what the family declares and can only add: pass 1 emits the declared
+\ pads and pass 2 adds the WF row's cells at the same site; the native chain
+\ calls the generated constructor (declared pads and tag, whatever the
+\ instantiation) or reads the declared pads from the registry for a
+\ `construct`. MWIN-CELLS! files the difference under the judged token for
+\ src/compiler/native/elaborate.f; the WF row carries it to pass 2. A
+\ construction that adds nothing files nothing (src/core/checker.f states the
+\ absent case above the table).
+: TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}
+   famterm T-WIDTH fam TFC-TAG-CELLS -
+   vid TFC-VAR-PAYCELLS -
+   fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
    extra 0 > IF extra MWIN-CELLS!  0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower than declared: add-only lowering cannot remove the surplus (until signed pass-2, dot habu-construct-asymmetric-growth-0f4df0fa)
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ add-only lowering cannot remove the surplus
 
-\ MATCH only ever sees a TAGGED family: TFAM-MATCH-FAM and TFL-MATCH-FAM? both reject a
-\ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a product's UNMAKE is
-\ the reversed construct step, which records no pad fact: only SUM/ENUM MATCH reaches this
-\ word. So the tag cell is always present here and `rt T-WIDTH 1 -` needs no kind guard.
+\ MATCH sees only a SUM or ENUM family: TFAM-MATCH-FAM and TFL-MATCH-FAM? reject
+\ any other kind (MD-FAM-KIND) before an arm is recorded, and a product's UNMAKE
+\ records no pad fact. So `rt T-WIDTH 1 -` needs no kind guard.
 \
-\ THE SAME WALK ANSWERS BOTH CONSUMERS, WHICH IS WHY THE PAD COUNT IS LATCHED
-\ HERE AND NOT COMPUTED A SECOND TIME. Pass 2 needs the DIFFERENCE from the
-\ declared pads, because its lowering already emitted the declared ones and can
-\ only add; a compiler that models the data stack cell by cell needs the pad
-\ count ITSELF, because it has emitted nothing yet. Both come off the one
-\ subtraction below, so the two can never drift; MWIN-CELLS! files the count
+\ Pass 2 needs the difference from the declared pads (its lowering emitted them
+\ and can only add); a compiler that models the stack cell by cell needs the
+\ pad count itself. Both come off one subtraction: MWIN-CELLS! files the count
 \ under this `of` token for src/compiler/native/elaborate.f, and the WF row
-\ carries the difference to pass 2 exactly as before. An arm whose term is not
-\ closed latches nothing and reaches neither consumer: the cell-accurate one
-\ then refuses the definition by name rather than unpacking a width nobody
-\ proved.
-: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact, or fail closed on a genuine narrower-than-declared arm
+\ carries the difference to pass 2. An arm whose term is not closed latches
+\ nothing: the cell-accurate consumer then refuses the definition by name.
+: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}
    term T-RES {: rt:n :}
    rt TYPE-REP-CLOSED? 0= IF EXIT THEN           \ open value/row: leave declared width; scope identities do not affect padding
-   rt T-WIDTH 1 -                                \ instantiated payload slots (MATCH families are always tagged: subtract the one tag cell)
-   vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
+   rt T-WIDTH 1 -
+   vid TFC-VAR-PAYCELLS -
    {: ipads:n :}
-   ipads MWIN-CELLS!                             \ the pads this arm really drops, for a cell-accurate consumer
+   ipads MWIN-CELLS!
    ipads
-   vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
+   vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -
    {: extra:n :}
    extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower-than-declared arm: declared-width unpack would skip a pad the bundle lacks (until signed pass-2, dot habu-construct-asymmetric-growth-0f4df0fa)
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ declared-width unpack would skip a pad the bundle lacks
 
 public
 
@@ -5785,14 +5451,13 @@ private
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-\ TFC-CONSTRUCT-STEP-VID ( fam vid -- ) : apply the inline generated-constructor
-\ effect for a resolved (family,variant). One fresh checker var per family param,
-\ then — bidirectionally — the concrete args named by the declared output are
-\ recovered over those vars (CONSTRUCT-DECL-LAYOUT), so a DIRECT closed layout
-\ arg makes the payload input and the layout-bundle output PUSH-LOGICAL-expand to
-\ its representation even at width 1. Open/linear/scalar/pointer args keep the
-\ fresh var and ordinary boundary coercion. Shared by the reserved `construct`
-\ token and the generated-constructor CALL (TFAM-CTOR-STEP?).
+\ TFC-CONSTRUCT-STEP-VID ( fam vid -- ) : the inline generated-constructor
+\ effect for a resolved (family, variant). The concrete args named by the
+\ declared output are recovered over fresh vars (CONSTRUCT-DECL-LAYOUT), so a
+\ direct closed layout argument makes the payload input and the bundle output
+\ PUSH-LOGICAL-expand even at width 1; open, linear, scalar and pointer args keep
+\ the fresh var. Shared by the `construct` token and the generated-constructor
+\ call (TFAM-CTOR-STEP?).
 : TFC-CONSTRUCT-STEP-VID ( n n -- )
    {: fam:n vid:n :}
    \ The layout query walks ownership through TFC-VARS, so populate this
@@ -5802,7 +5467,7 @@ private
    FRESH MK-ROW {: base:n :}
    vid base TFC-PAY-ROW {: din:n :}
    fam TFC-FAM-TERM {: famterm:n :}
-   seeded IF                                           \ layout-cap slice 4/5: width-aware lowering for a CLOSED (stable-width) instantiation, incl. nested
+   seeded IF
       dt TYPE-REP-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
    THEN
    famterm base PUSH-LOGICAL {: dout:n :}
@@ -5866,18 +5531,13 @@ private
    fam vid TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
 
-\ ---------------------------------------------------------------------------
-\ MATCH resolution + payload instantiation (docs/forth.md "Structures And Enums"). MATCH
-\ resolution follows SIGNATURE scope, not construct's owner-only rule:
-\ eliminability = nameability. You may match any family you could name in a
-\ stack signature (own package private+public, else the unique public family,
-\ qualified PKG:tail included), because a value of that family can only reach
-\ you through such a signature — private families stay unmatchable outside
-\ their package by unnameability. Only sum/enum kinds match. The branch payload
-\ row instantiates the variant's schema against the SCRUTINEE's recovered arg
-\ terms (copied into the TFC scratch vars, consumed immediately at OF — no
-\ liveness across tokens, so construct and nested matches may interleave).
-\ ---------------------------------------------------------------------------
+\ MATCH resolution (docs/forth.md "Structures And Enums") follows signature
+\ scope, not construct's owner-only rule: a family matches wherever a stack
+\ signature can name it (own package private and public, else the unique public
+\ family, qualified PKG:tail included), since a value of it arrives only through
+\ such a signature. Only sum and enum kinds match. The arm payload row
+\ instantiates the variant schema over the scrutinee's argument terms in the TFC
+\ scratch vars, consumed at OF, so construct and nested matches may interleave.
 : TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
    TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -5889,24 +5549,16 @@ private
 
 : TFAM-MATCH-PAY ( n n n -- n ) {: vid:n term:n row:n :}   \ variant payload onto row
    term T-RES TFC-ARGS!
-   vid term TFAM-MATCH-XPAD-RECORD            \ layout-cap slice 4: wide arm records its extra-pad lowering fact
+   vid term TFAM-MATCH-XPAD-RECORD
    vid row TFC-PAY-ROW ;
 
-\ --- field projection (dot habu-checker-type-structure). The registry-reflection
-\ half of the checker's FIELD-PROJ-XT hook: given a committed field id, the baked
-\ byte offset from the accessor body, and the resolved family term of the input
-\ pointer (`ptr family<args>`), validate the projection against the committed
-\ layout and return the instantiated field type. The field id is the sole
-\ authority; the byte offset, family, byte extent, role, and schema all derive
-\ from it via TYPE-FIELD reflection, so a forged offset, an offset past the family
-\ width, a foreign family, a wrong generic arity, or a non-addressable field role
-\ each fail closed. TFC-ARGS!/TFC-SCH-TERM instantiate the field's schema over the
-\ input family's args, so a generic field yields the caller's substituted type.
-\ Lives here because the field/schema registries and TFC-SCH-TERM (which
-\ checker.f loads before) are this module's; the checker reaches it only through
-\ the sealed friend hook, exactly like TFAM-MATCH-PAY / TFAM-CONSTRUCT-STEP.
-\ Validate the request against the field's committed family FFAM and answer the
-\ instantiated field type, or 0 and false.
+\ Field projection, the registry half of the checker's FIELD-PROJ-XT hook. The
+\ committed field id is the sole authority: offset, family, extent, role and
+\ schema derive from it through TYPE-FIELD reflection, so a forged offset, an
+\ offset past the family width, a foreign family, a wrong generic arity or a
+\ non-addressable role each answer 0 and false. It lives here because the field
+\ and schema registries and TFC-SCH-TERM belong to this file; the checker
+\ reaches it only through the sealed friend hook.
 : TFAM-FIELD-PROJ-DO ( n n n n -- n bool )   \ fid off famterm ffam -- fieldterm ok
    {: fid:n off:n fam:n ffam:n :}
    ffam fam PARAM>FAM <> IF 0 RES-FALSE EXIT THEN                \ field not owned by the input family
@@ -5926,17 +5578,15 @@ private
    nip dup E-PF-ID <> IF throw THEN
    drop 0 RES-FALSE ;
 
-\ The width condition above is fail-closed defence on the ARMING boundary, like
-\ the forged-offset and role conditions beside it: those cannot be reached by a
-\ caller either, only by a generator that armed a window with an id its text does
-\ not describe. No caller reaches it today for a second reason as well — a type
-\ argument that is a family does not bind an accessor's parameter at all
-\ (measured: `expected: ptr sdagen<a> actual: ptr sdagen<sdaw1>`), and every
-\ other argument is one cell. Its judgeable twin is RECORD-AT-EXACT? in
-\ src/core/checker.f, which a written-out `record-at` call DOES reach with a
-\ concrete wide pointee; test/structure-decl-suite.f case 15 pins it there, and
-\ the two must keep the same condition or the halves of one address surface would
-\ describe different instantiations.
+\ The width condition above, like the forged-offset and role conditions, guards
+\ the arming boundary: only a generator that armed a window with an id its text
+\ does not describe reaches it. A family type argument does not bind an
+\ accessor's parameter (measured: `expected: ptr sdagen<a> actual: ptr
+\ sdagen<sdaw1>`), and every other argument is one cell. Its judgeable twin is
+\ RECORD-AT-EXACT? in src/core/checker.f, which a written-out `record-at` call
+\ reaches with a concrete wide pointee (test/structure-decl-suite.f case 15,
+\ SDAW3); the two must keep the same condition, or the two halves of one address
+\ surface describe different instantiations.
 
 \ Fixed storage walks the same instantiated schema that field projection uses,
 \ but computes its own offsets: a wide argument moves every following field.
@@ -5996,19 +5646,12 @@ public
 
 private
 
-\ ---------------------------------------------------------------------------
-\ compiler-facing lowering surface (dot
-\ habu-tfam-10-native design A). Pure resolution + metadata for the native
-\ construct/MATCH emitters, called by NAME through the engine's C-FIND-GLOBAL
-\ friend bridge at the captured token positions: same registry and scope rules
-\ as the checker's friend XTs (owner-only construct, signature-scope match),
-\ but NO diagnostic latch and NO checker-row effect — the checker still judges
-\ the definition at `;` through its own construct/MATCH machinery. Raw engine
-\ token spans fold here (TOKFOLD), so `construct ZRES OK` and the lowercase
-\ spelling agree, exactly like checker body tokens. The other metadata the
-\ emitters need (SUMV-TAG@, SUMV-PAYCELLS@, TFAM-SLOTS@, TFAM-VAR-COUNT@,
-\ TFAM-NAME$) is already named public words above.
-\ ---------------------------------------------------------------------------
+\ Compiler-facing lowering surface: resolution and metadata for the native
+\ construct/MATCH emitters, called by name through the engine's C-FIND-GLOBAL
+\ friend bridge at captured token positions. Same registry and scope rules as
+\ the checker's friend XTs, but no diagnostic latch and no checker-row effect:
+\ the checker still judges the definition at `;`. Raw engine token spans fold
+\ here (TOKFOLD), so `construct ZRES OK` and its lowercase spelling agree.
 
 public
 
@@ -6063,11 +5706,6 @@ public
    fa fu TFL-CON-FAM? 0= IF drop 0 0 RES-FALSE EXIT THEN
    {: fam:n :}
    va vu fam TFL-CVAR? ;
-
-\ Install the checker's friend hooks: checker.f loads before this file, so it
-\ resolves families / reads arities during signature parsing through these
-\ defers. Wrapped in a word so the `[: ;]` quotations compile (`is` binds each
-\ defer to the real query word, replacing the old raw-variable stores).
 
 private
 
@@ -7252,7 +6890,8 @@ UNIT-FAM-RESET-INSTALL
    THEN
    name nameu src u UNIT-FAMILY-NAME-IN ;
 
-
+\ The checker's friend hooks: checker.f loads before this file and reaches
+\ family resolution and arities through these defers during signature parsing.
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-N@ ;] is CHECKER-REG:UNIT-TFAM-N@
    [: UNIT-FAM-MARK ;] is CHECKER-REG:UNIT-TFAM-MARK
@@ -7278,7 +6917,7 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
    [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ nominal CAST introduction belongs to the declaring package
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ checker reads DECLARED logical widths (params-as-cells) for the boot fallback
-   [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
+   [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ arg-aware instantiated width for T-WIDTH and the WF fact surface
    [: INIT-RECORD? ;] is TFAM-INIT-RECORD-XT
    [: INIT-FIELD-NAME? ;] is TFAM-INIT-FIELD-XT
    [: TFAM-WIDTH-SLOT? ;] is TFAM-WIDTH-SLOT-XT   \ which argument slots that width reads: an open slot it does not read is still placeable
@@ -7288,7 +6927,7 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-STORE-SLOT? ;] is TFAM-STORE-SLOT-XT   \ which argument slots reach storage: a pair of one demands both sides
    [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ construct family resolution (active package only)
    [: TFAM-CONSTRUCT-STEP ;] is CONSTRUCT-STEP-XT  \ construct variant resolve + inline constructor effect
-   [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ layout-cap slice 3: generated-constructor CALL on a multi-cell layout arg routes through the arg-aware step
+   [: TFAM-CTOR-STEP? ;]     is CTOR-STEP-XT        \ a generated-constructor call on a multi-cell layout arg takes the arg-aware step
    [: SUMV-FROM-CTOR-SYM nip ;] is CTOR-ROW?-XT   \ a generated constructor row moves exactly its payload (checker.f LIN-EFF-PASS)
    [: TFAM-MATCH-FAM ;]     is MATCH-FAM-XT     \ MATCH family resolution (signature scope)
    [: TFAM-MATCH-VARIANT ;] is MATCH-VAR-XT     \ MATCH branch variant resolve
@@ -7296,7 +6935,7 @@ UNIT-FAM-RESET-INSTALL
    [: TFL-VPADS ;]          is VARIANT-PADS-XT  \ family id + variant id -> declared pads (the tape's construct and arm events)
    [: TFAM-VAR-COUNT@ ;]    is MATCH-VCOUNT-XT  \ exhaustiveness domain size
    [: TFAM-MATCH-PAY ;]     is MATCH-PAY-XT     \ branch payload row from the scrutinee's args
-   [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ dot habu-checker-type-structure: instantiated field type for the FAMILY:FIELD projection window
+   [: TFAM-FIELD-PROJ ;]    is FIELD-PROJ-XT ;  \ instantiated field type for the FAMILY:FIELD projection window
 TFAM-HOOK-INSTALL
 
 ;package

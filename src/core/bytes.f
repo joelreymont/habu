@@ -1,11 +1,7 @@
-\ bytes.f - core byte-buffer helpers.
-\
-\ The engine loads this file in its core prelude (tools/native-build-core.f
-\ LOAD-TARGET), so low-level code uses these words without ordering library
-\ requires, such as src/lib/string.f before src/lib/ffi-abi.f. The engine word
-\ BYTE-VIEW ( ptr a -- ptr u8 ) keeps the address and exposes its bytes: c@ and
-\ c! go through the view, and checked code refuses a cell @ or ! on it
-\ (src/lib/string-test.f BAD-BYTE-VIEW-LOAD).
+\ bytes.f - core byte-buffer helpers, loaded in the engine's core prelude
+\ (tools/native-build-core.f LOAD-TARGET) so low-level code needs no library
+\ require. BYTE-VIEW ( ptr a -- ptr u8 ) is an engine word: checked code refuses
+\ a cell @ or ! on its view (src/lib/string-test.f BAD-BYTE-VIEW-LOAD).
 
 $4C constant E-BYTE-RANGE
 

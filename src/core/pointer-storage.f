@@ -1,12 +1,9 @@
 \ pointer-storage.f - pointer-valued global storage definer.
 
-\ THE CLAUSES ARE EMPTY ON PURPOSE. `create` already leaves a word that pushes
-\ its own data address, and all a pointer definer adds is the type to read that
-\ address at: `0 ptr-field` was the identity on it, so spelling it cost every
-\ read a call, a branch and a frame. An empty clause declares the effect and
-\ nothing else, and the engine answers by leaving the word the body and the
-\ DKIND:ADDR stamp `create` gave it (habu2.f DOES-REC:ELIDE-EMPTY), so a read
-\ costs the one load a bare cell costs.
+\ The clauses are empty on purpose: an empty clause declares the effect only, and
+\ the engine leaves the word the body and DKIND:ADDR stamp `create` gave it
+\ (habu2.f DOES-REC:ELIDE-EMPTY), so a read costs one load (`0 ptr-field` cost a
+\ call, a branch and a frame).
 : PTR-VARIABLE ( -- )
    create 0 , does> ( -- ptr ptr a ) ;
 
@@ -29,30 +26,20 @@ public
    create here ptr-cell-mark 0 , does> ( -- ptr ptr a ) ;
 
 \ ---- a cell whose pointee the declaration chooses -----------------------------
-\ THE CLAUSE NAMES THE POINTEE, AND THAT IS THE WHOLE MECHANISM. `create`
-\ registers a published effect through `trust-raw`, which mints every type
-\ VARIABLE in it TVK-RAW, and a raw pointee absorbs a scalar and refuses a
-\ pointer (dot habu-refuse-a-ptr-5ad2734e): the two definers above therefore
-\ declare a cell that holds an address but never the address of an address, so
-\ neither can hold the base of a pointer TABLE. A clause that spells its pointee
-\ out has no variable to seal, so the cell's type is exactly what it says and the
-\ raw discipline never applies to it. Nothing is minted and nothing is trusted.
+\ The clause names the pointee. `create` publishes through `trust-raw`, which
+\ mints every type variable TVK-RAW, and a raw pointee absorbs a scalar and
+\ refuses a pointer: the definers above never hold the address of an address, so
+\ neither can hold a pointer table's base. A spelled-out pointee has no variable,
+\ so the cell's type is exactly what the clause says.
 \
-\ This is why the forms below live here rather than beside TYPED-VARIABLE. The
-\ general parsed form (`TYPED-VARIABLE NAME ptr t`, src/core/layout-buffer.f)
-\ computes its accessor's signature, so it needs the generative armed window and
-\ throws E-LAYOUT-BUFFER until src/core/include.f arms TDECL-EVAL-ARMED - after
-\ checker.f, layout-buffer.f and env-base.f. Include.f arms the evaluator before
-\ its first typed cell. A clause
-\ is compiled, not computed, so it asks nothing of the checker and works in the
-\ boot prefix, which is where the checker's own pointer tables are declared.
-\ Naming a definer per pointee is the price of that: add one when the prefix
-\ needs a pointee these two do not spell - AND GIVE IT ITS TWO ROWS, because a
-\ definer written before the checker exists is invisible to it. src/core/
-\ cell-effects.f states the definer's own effect (without it the seal marks the
+\ These live here, not beside TYPED-VARIABLE (src/core/layout-buffer.f), because
+\ that form computes its signature and throws E-LAYOUT-BUFFER until include.f
+\ arms TDECL-EVAL-ARMED; a clause is compiled, so it works in the boot prefix,
+\ where the checker's own pointer tables are declared. A new definer needs two
+\ rows, because a definer written before the checker exists is invisible to it:
+\ src/core/cell-effects.f states its own effect (without it the seal marks the
 \ name DNAME-INT and `hb --load` answers `internal engine word`), and
-\ src/habu/verify-source.f states what it publishes for the created word, so the
-\ source scanner agrees with what `trust-raw` records on the native path.
+\ src/habu/verify-source.f states what it publishes for the created word.
 
 \ A table of byte pointers: `n` cells, each holding a `ptr u8`. `n PTR-U8-TABLE
 \ NAME` publishes NAME as the table's BASE, so `i cells NAME + 0 ptr-field` takes
@@ -61,28 +48,18 @@ public
    create cells allot does> ( -- ptr ptr u8 ) ;
 
 \ A persisted cell holding a PTR-U8-TABLE's base: the head of an arena that
-\ starts in a boot table and is repointed at a grown allocation. Persisted for
-\ the same reason PERSISTED-PTR-VARIABLE is - the value must survive an image.
+\ starts in a boot table and is repointed at a grown allocation.
 : PERSISTED-PTR-U8-TABLE-VARIABLE ( -- )
    create here ptr-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
 
-\ Its scratch sibling: a cell holding a PTR-U8-TABLE's base that never joins the
-\ relocation table, as PTR-VARIABLE is PERSISTED-PTR-VARIABLE's.
 : PTR-U8-TABLE-VARIABLE ( -- )
    create 0 , does> ( -- ptr ptr ptr u8 ) ;
 
-\ A cell the ENGINE LAYOUT reserves, not the dictionary: `off
-\ RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell at
-\ `off`, declared as a `ptr ptr u8` the way the table definers above declare
-\ theirs. The offset lives in the created body and goes through
-\ POINTER-STORAGE:DATA-CELL on every read, so no absolute address is baked and
-\ `ptr-field` is the one door from an offset to a pointer cell; there is no
-\ cast.
-\
-\ THIS DEFINER IS THE TWO-ROW RULE'S OWN EXAMPLE. It has both rows, so the seal
-\ leaves the name alone; POINTER-STORAGE:DATA-CELL, in this same file and
-\ this same phase, has neither, is sealed, and does not resolve outside the
-\ engine (test/internal-word-gate.f).
+\ `off RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell
+\ the engine layout reserves at `off`, declared `ptr ptr u8`. The offset goes
+\ through POINTER-STORAGE:DATA-CELL on every read, so no absolute address is
+\ baked. This definer has both rows, so the seal leaves its name alone; DATA-CELL
+\ has neither and does not resolve outside the engine (test/internal-word-gate.f).
 \ test/pointer-storage-test.f measures the pair.
 : RESERVED-PTR-U8-CELL ( n -- )
    create , does> ( -- ptr ptr u8 ) @ POINTER-STORAGE:DATA-CELL ;

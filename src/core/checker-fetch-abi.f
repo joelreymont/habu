@@ -4,10 +4,9 @@ public
 
 $230 constant CERTIFICATE-OFF
 
-\ The record's TOTAL size, which every owner asks this file for. The owner table
-\ appends its own rows after the certificate cell (checker-owner-abi.f, last
-\ installed offset $5A0), so this is the end of the last appended field whichever table
-\ declared it; checker.f checks the two agree before it commits the storage.
+\ The record's total size: the end of the last field appended after the
+\ certificate cell (checker-owner-extension.f BODY-CLOSE-OFF). checker.f checks
+\ the two agree before it commits the storage.
 $5A8 constant BYTES
 
 ;package

@@ -1,79 +1,19 @@
-\ structure-make.f — STRUCTURE constructor generator (package STRUCTURE-MAKE).
-\
-\ ONE concern: given a validated product-kind family id in the current
-\ declaration transaction, generate the
-\ sealed FAMILY:MAKE and FAMILY:UNMAKE checked words from that family's
-\ declaration-order provisional field schemas. A STRUCTURE is a single-shape
-\ record (type-family.f header) — exactly the PRODUCT kind — so this
-\ reuses the shared sum/product constructor-seal machinery (sumtype.f
-\ TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS, the ordered constructor plan, the one
-\ audited complete-plan eval crossing, the CHECKER-RECORD-SYM records, and the
-\ closed-but-callable word-id protection) verbatim rather than re-implementing
-\ the security-critical publication discipline a second time. The only new
-\ logic here is the STRUCTURE adapter: validate the family the shared
-\ DECL-EVENT/TYPE-FIELD transaction produced (src/core/decl-event.f,
-\ src/core/type-family.f) and drive the shared generator over its provisional
-\ field rows.
-\
-\ SEAM the parse front end calls (reconciled at merge): after a STRUCTURE body
-\ has registered its family
-\ (TFAM-DECL), its layout width recorded (TFAM-SLOTS!), its field range recorded
-\ (TFAM-FLD-RANGE!), and its fields staged (TYPE-FIELD) — the front end's
-\ ;STRUCTURE calls STRUCTURE-MAKE:GENERATE with the family id. This file adds NO
-\ front end, NO parser state, and NO grammar: it owns MAKE/UNMAKE generation
-\ only. The reconciliation (dot habu-structure-generate-make-872a6e75) wired that
-\ ;STRUCTURE call; the front end gates it on a family WITH fields, so GENERATE is
-\ only reached when its whole contract already holds (see
-\ src/core/structure-decl.f's constructor-generation seam note). This module now
-\ loads baked in the post-hook DECL group immediately BEFORE
-\ src/core/structure-decl.f — the front end references STRUCTURE-MAKE:GENERATE, so
-\ the generator must be defined first.
-\
-\ Generation reads layout truth (field schemas, generic parameter slots, the
-\ product width, hidden-field expansion) straight from the shared transaction
-\ metadata; nothing is recomputed here. The generated MAKE effect is
-\ (declaration-order field values -- family value); UNMAKE is (family value --
-\ declaration-order field values). A product bundle IS its field cells in slot
-\ order (no tag, type-family.f header), so both bodies are physical no-ops the checker
-\ certifies against the field-derived metadata row; the generated text never
-\ contains TRUST, TRUSTED:, or set-check.
-\ Where the pair lands is the generator's choice, not this file's: a public
-\ family's words go to its constructor namespace unless it said OPAQUE, and an
-\ OPAQUE or private family's to the declaring package's private wordlist
-\ (src/core/sumtype.f TDECL-GEN-PLACED).
-\
-\ Atomic publication after validation. GENERATE decides every local condition
-\ in CHECKED code first — family liveness, product kind, at least one field,
-\ every field row present in the current transaction, and MAKE/UNMAKE not
-\ already generated — and only then runs SM-EMIT-ROWS and the generator.
-\ Evaluation and checker certification may still reject while TDECL-PROD-WORDS
-\ generates the words; the enclosing declaration transaction retains every
-\ registry and dictionary savepoint until that work succeeds, so either all
-\ metadata and both words publish or every participant rolls back.
-\
-\ SM-EMIT-ROWS performs the sealed mutation - build the field schema run, add
-\ the two variant rows, set the variant range, derive the constructor package -
-\ as checked code: it compiles before the seal, through the registry packages it
-\ uses below. Provisional field-schema reads go through DECL-EVENT with the exact
-\ live declaration token and family, so no uncommitted field row is globally
-\ readable.
-\ When the type-DSL cutover factors the shared
-\ generator into its own module, GENERATE re-points there; nothing else changes.
+\ structure-make.f: a STRUCTURE's sealed MAKE / UNMAKE (package STRUCTURE-MAKE),
+\ generated through sumtype.f's constructor machinery (TDECL-CTOR-PUBLISH,
+\ TDECL-PROD-WORDS), and its `DERIVE addr` accessor surface. Loads just before
+\ structure-decl.f, whose ;STRUCTURE calls GENERATE for a family with fields.
+\ A product bundle is its field cells in slot order, so both bodies are physical
+\ no-ops the checker certifies; the generated text has no TRUST, TRUSTED: or set-check.
 
 using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
-\ --- named reject codes (7101-7128 and 7148-7150 = tfam/schema/pf; 7161-7164 =
-\ decl-event; 7161/7172/7173 are the event token, field-range, and family-scope
-\ rejects for provisional reads). E-SM-DUP names the field record's duplicate
-\ code, E-TFAM-DUP, read at load time: that pre-hook constant is not visible
-\ from a post-hook checked body, but a top-level read is — the
-\ src/core/decl-event.f idiom for E-DEV-ARITY. 7190-7191 are this module's own.
+\ E-SM-DUP reads E-TFAM-DUP at top level: a post-hook checked body cannot see
+\ that pre-hook constant (decl-event.f does the same for E-DEV-ARITY).
 E-TFAM-DUP constant E-SM-DUP  \ MAKE/UNMAKE already generated
 7190 constant E-SM-FAM        \ family id is not a live, public, product-kind family
 7191 constant E-SM-EMPTY      \ product family declares no fields
-\ What a declaration reject reports for each code (generated-declaration.f).
 s" family cannot own generated make/unmake" E-SM-FAM DECL-REJECT:EXPLAIN
 s" a constructed family needs at least one field" E-SM-EMPTY DECL-REJECT:EXPLAIN
 
@@ -82,14 +22,8 @@ package STRUCTURE-MAKE
 : SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
    tok fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
 
-\ SM-EMIT-ROWS: the sealed REGISTRATION mutation for a validated provisional
-\ product. Rebuilds the current transaction's field schema nodes into one contiguous
-\ declaration-order root run (the payload-schema range the two generated variant rows
-\ carry — exactly the run shape the PRODUCT ctor path builds while parsing its fields),
-\ adds the make(0)/unmake(1) variant rows over it at the family's product width,
-\ sets the variant range, and derives the constructor package.
-\ GENERATE has already validated its local preconditions; any evaluator or checker
-\ rejection propagates to DECLARATION-TRANSACTION:RUN for full rollback.
+\ The field schemas are still provisional: they are read through DECL-EVENT with
+\ the live declaration token and family, so no uncommitted row is globally readable.
 : SM-EMIT-ROWS ( n n n n -- )
    {: tok:n fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
@@ -103,13 +37,9 @@ package STRUCTURE-MAKE
    fam vstart 2 TFAM-VAR-RANGE!
    fam vstart 2 TDECL-CTOR-PUBLISH ;
 
-\ --- validation pass (checked; no registry write). A reject here leaves every
-\ registry byte-identical, so publication is attempted only after it wholly passes.
-\ Live and product-kind. Visibility is NOT a condition: a private product
-\ publishes the same two words into its declaring package's private wordlist
-\ (dot habu-generate-a-private-80272413), so the only thing left to require is
-\ that the family is the single-shape record this generator knows how to build.
-: SM-REQUIRE-FAMILY ( n -- ) {: fam:n :}   \ live, product-kind
+\ Validation writes no registry. Visibility is not a condition: a private product
+\ publishes the same two words into its package's private wordlist.
+: SM-REQUIRE-FAMILY ( n -- ) {: fam:n :}
    fam PF-FAM-LIVE? 0= IF E-SM-FAM throw THEN
    fam TFAM-PRODUCT? 0= IF E-SM-FAM throw THEN ;
 
@@ -119,29 +49,18 @@ package STRUCTURE-MAKE
       1 +
    REPEAT drop ;
 
-: SM-REQUIRE-UNGENERATED ( n -- ) {: fam:n :}   \ MAKE/UNMAKE not already generated
+: SM-REQUIRE-UNGENERATED ( n -- ) {: fam:n :}
    fam s" make"   SUMV-FIND IF drop E-SM-DUP throw THEN drop
    fam s" unmake" SUMV-FIND IF drop E-SM-DUP throw THEN drop ;
 
 public
 
-\ GENERATE ( fam -- ) : define the sealed MAKE ( fields -- family ) and
-\ UNMAKE ( family -- fields ) checked words for a product family, from its
-\ declaration-order schemas in the current field transaction. A PUBLIC family
-\ gets FAMILY:MAKE / FAMILY:UNMAKE in its reserved constructor namespace; a
-\ PRIVATE one, or a public one that said OPAQUE, gets FAMILY-MAKE /
-\ FAMILY-UNMAKE in the declaring package's private wordlist
-\ (src/core/type-family.f TF-CTOR-PRIV$ owns both spellings, TFAM-GEN-PUBLIC?
-\ picks).
-\ Throws E-SM-FAM (not a live product family), E-SM-EMPTY (no fields),
-\ a DECL-EVENT scope error (the token does not own that family/field), or E-SM-DUP
-\ (MAKE/UNMAKE already generated) — every reject
-\ before any registry write, so a rejected call publishes nothing.
-\
-\ A REPLAYED declaration (tools/check-core.f's nominal pass, verify-source)
-\ registers the make/unmake rows and checks their generated bodies. Those
-\ effects allow later source to call the constructors without emitting code
-\ or adding runtime dictionary entries during verification.
+\ A public family gets FAMILY:MAKE / FAMILY:UNMAKE in its constructor namespace;
+\ a private or OPAQUE one gets FAMILY-MAKE / FAMILY-UNMAKE in the declaring
+\ package's private wordlist (type-family.f TF-CTOR-PRIV$, TFAM-GEN-PUBLIC?).
+\ Every reject comes before any registry write. A replayed declaration
+\ (tools/check-core.f, verify-source) registers the checked effects only: no code
+\ and no dictionary entries.
 : GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY
    fam TFAM-FLD-COUNT@ {: fc:n :}
@@ -149,42 +68,23 @@ public
    fam SM-REQUIRE-UNGENERATED
    tok fam fc SM-REQUIRE-READABLE
    tok fam  fam TFAM-FLD-START@  fc  SM-EMIT-ROWS
-   \ The GENERATION half: render, evaluate, certify and seal the MAKE/UNMAKE
-   \ pair. Replay uses the same plan to register checked effects only.
    DECL-REPLAY:RP-ACTIVE? IF fam TDECL-CTOR-REPLAY EXIT THEN
    fam TDECL-PROD-WORDS ;
 
 private
 
-\ ---------------------------------------------------------------------------
-\ The ADDRESS-SURFACE participant, for `DERIVE addr`.
-\
-\ MAKE / UNMAKE are generated from the still-provisional field schemas while the
-\ body parses, which is why GENERATE above reads them through DECL-EVENT. The
-\ accessors CANNOT be: each one is armed with a COMMITTED field id, and the
-\ checker's field-projection window reads that id through the committed
-\ reflection reader — a provisional id fails closed there, by design, because the
-\ id is the projection's whole authority. So this work runs one step later, in
-\ the reversible commit, where the runner's order does the arranging:
-\
-\   checker | DECL-EVENT | constructors | here | dictionary | protection
-\
-\ DECL-EVENT's commit has already advanced PF-COMMIT-N over this declaration's
-\ field rows by the time this participant commits, and the dictionary owner took
-\ its savepoint before the body ran, so a reject here truncates every accessor
-\ with the rest of the declaration and the registry stays byte-identical.
-\
-\ One armed family, in one cell: declarations never nest.
-\ ---------------------------------------------------------------------------
+\ The address-surface participant, for `DERIVE addr`. Each accessor is armed with
+\ a committed field id (the checker's projection window refuses a provisional
+\ one), so this work runs in the reversible commit, after DECL-EVENT's commit and
+\ inside the dictionary owner's savepoint: a reject truncates every accessor.
+\ One armed family in one cell: declarations never nest.
 -1 constant SM-NO-FAMILY
 variable SM-ARMED   SM-NO-FAMILY SM-ARMED !
 
 : SM-ARMED-FAM ( -- n ) SM-ARMED @ ;
 : SM-DISARM ( -- ) SM-NO-FAMILY SM-ARMED ! ;
 
-\ THE GATE. A family owns an address surface when it is a live product that
-\ declared `DERIVE addr` and has at least one field. Visibility is not a
-\ condition here either: it picks the spelling and the wordlist.
+\ Visibility is not a condition: it picks the spelling and the wordlist.
 : SM-ADDR-OK? ( n -- bool ) {: fam:n :}
    fam PF-FAM-LIVE? 0= IF 0 0= 0= EXIT THEN
    fam TFAM-PRODUCT? 0= IF 0 0= 0= EXIT THEN
@@ -198,16 +98,14 @@ public
 
 : PART-SNAPSHOT ( -- ) SM-DISARM ;
 
-\ Non-mutating re-proof: the front end proved this gate when it armed, and if
-\ anything since made the family ineligible the declaration fails before a word
-\ is rendered rather than publishing a surface nobody validated.
+\ Re-proves the gate ARM checked, so a family made ineligible since fails before
+\ any word renders.
 : PART-PREPARE ( -- )
    SM-ARMED-FAM {: fam:n :}
    fam SM-NO-FAMILY <> IF fam SM-ADDR-REQUIRE THEN ;
 
-\ Replay registers the accessors' checked effects from the same plan and emits
-\ no code, the way the constructor participant replays MAKE / UNMAKE — so
-\ a tool that pre-scans a source sees the record's own accessors.
+\ Replay registers the accessors' checked effects and emits no code, so a tool
+\ that pre-scans a source sees the record's accessors.
 : PART-COMMIT ( -- )
    SM-ARMED-FAM {: fam:n :}
    fam SM-NO-FAMILY = IF EXIT THEN
@@ -224,10 +122,8 @@ public
 
 : PART-RELEASE ( -- ) SM-DISARM ;
 
-\ ARM ( fam -- ) : the declaration front end names the family whose address
-\ surface this transaction owns. Legal only inside an open declaration
-\ transaction and only for a family that passes the gate, so a caller cannot arm
-\ a family this participant refuses and discover it two steps later.
+\ Legal only inside an open declaration transaction and for a family that passes
+\ the gate, so a refused family fails at ARM, not at commit.
 : ARM ( n -- ) {: fam:n :}
    DECLARATION-TRANSACTION:ACTIVE? 0= IF E-SM-FAM throw THEN
    fam SM-ADDR-REQUIRE
@@ -240,29 +136,15 @@ SM-INSTALL-INIT
 
 ;package
 
-\ ---------------------------------------------------------------------------
-\ The two runtime rows a generated address surface calls. Both are documented
-\ global language surface (the package-first exception the STRUCTURE opener
-\ itself takes) because a generated body names them unqualified from whatever
-\ package declared the record.
-\
-\ `field-project` is the accessor body's op. OUTSIDE the checker's armed window
-\ its row is exactly what it computes — a byte offset added to a pointer, no
-\ retype, layout-fenced like any other `+` — so the word is not a capability and
-\ user code gains nothing by calling it. INSIDE the window (armed only by the
-\ generator, per accessor, with a committed field id) the checker replaces that
-\ row with the schema-aware projection `ptr family<args> -- ptr field-type`.
-\
-\ `record-at` needs no window: it consumes `ptr F` and a CELL COUNT and answers
-\ `ptr F`, preserving the family. It forges nothing — bounds stay the caller's,
-\ exactly the contract `cells +` has on every other pointer — and it exists only
-\ because `+` and `cell+` refuse a layout pointee outright, which is what makes
-\ a record pointer safe in the first place. The generated `F:AT` bakes the
-\ family's committed width as the multiplier; the row itself scales nothing.
-\ INTRINSIC tags each as the engine word those checker rules type
-\ (src/core/checker.f CTL-INTRINSIC); a redefinition after `undefine`
-\ carries none.
-\ ---------------------------------------------------------------------------
+\ The two runtime words a generated address surface calls; global because a
+\ generated body names them unqualified from the declaring package.
+\ `field-project` outside the checker's window is a plain `+` with no retype;
+\ inside it, armed per accessor with a committed field id, the checker types it
+\ `ptr family<args> -- ptr field-type`.
+\ `record-at` ( ptr F cells -- ptr F ) exists because `+` and `cell+` refuse a
+\ layout pointee; bounds stay the caller's. `F:AT` bakes the family width.
+\ INTRINSIC tags each for the checker (checker.f CTL-INTRINSIC); a redefinition
+\ after `undefine` carries none.
 : field-project ( ptr a n -- ptr a ) + ;  INTRINSIC-FIELD-PROJECT INTRINSIC
 : record-at ( ptr a n -- ptr a ) cells + ;  INTRINSIC-RECORD-AT INTRINSIC
 

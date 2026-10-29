@@ -1,50 +1,8 @@
-\ src/core/sha256.f — SHA-256 in the STANDALONE's Forth ($hex constants, DO/LOOP,
-\ no move/fill/hex). Lets the standalone self-sign its
-\ own Mach-O with zero gforth and zero external codesign. Verified against FIPS-180.
-\
-\ A DIGEST IN PROGRESS IS THE CALLER'S BYTES. SHA256-BEGIN, SHA256-FEED and
-\ SHA256-END work on a context the caller owns: any writable span of
-\ SHA256-CTX-BYTES bytes, one per digest. Nothing on that path is process-wide,
-\ so two tasks (src/lib/task.f: tasks are pthreads) hash at the same time by
-\ holding a context each, and a context is a plain span: copying its bytes
-\ copies the digest state, and the copy finishes on its own.
-\
-\ THE LAYOUT, by byte offset into the span:
-\   H       $40 at $00     the eight hash words, a cell each
-\   TAIL    $40 at $40     the block being filled
-\   TAIL-U    8 at $80     how many of those tail bytes are live
-\   TOTAL     8 at $88     message bytes fed so far
-\   WS     $200 at $90     the sixty-four word message schedule, a cell each
-\   PBLK    $80 at $290    the padding block SHA256-END compresses
-\ THE HASH STATE IS CELLS, reached through CELL-VIEW (the declared view, as in
-\ src/core/checker.f SYM.PKG-U and src/lib/codegen.f CB-DATA): a word is one `@` or
-\ one `!` at a cell index, and a word that touches several takes the view once
-\ into a local. TAIL and PBLK stay byte regions reached with ZPTR+, BE32@ reads
-\ the caller's block words and BE32! writes the digest out, because the input
-\ and the output are byte spans by nature. Reading the schedule byte-wise cost
-\ 4.4x on a 4 MiB digest, which is what this accessor is for.
-\
-\ A CONTEXT MUST THEREFORE BE CELL-ALIGNED. `create` aligns, whatever was
-\ allotted before it, so `create CTX SHA256-CTX-BYTES allot` is aligned and so
-\ is a cell-offset field of a cell-aligned record; SHA256-CTX-BYTES is itself a
-\ multiple of the cell, so an array of contexts stays aligned. A misaligned span
-\ is NOT diagnosed: the checker sees a `ptr u8` and AArch64 user code does not
-\ fault on an unaligned cell access, so nothing would catch it at run time
-\ either. The rule is stated here because it can only be stated.
-\
-\ SHA256-END may be called once per SHA256-BEGIN. A second END on the same
-\ context reads a state the first one already padded; the result is undefined
-\ and nothing diagnoses it.
-\
-\ A FILE CONTEXT is the caller's bytes the same way: a span of
-\ SHA256-FILE-CTX-BYTES holding a digest context, the digest, the read buffer
-\ and the path scratch, so SHA256-FILE-IN and SHA256-FILE-HEX-IN hash two files
-\ in two tasks at once by holding one each.
-\
-\ SHA256-IN is BEGIN, FEED and END in one call for a caller that already holds
-\ every byte; it takes the same context. THIS FILE KEEPS NO DIGEST STATE OF ITS
-\ OWN — no static context, no shared digest buffer — so a digest belongs to the
-\ caller that declared the span it runs in and no second caller can disturb it.
+\ sha256.f — SHA-256 (FIPS-180) in the standalone's Forth ($hex constants,
+\ DO/LOOP, no move/fill/hex), used to self-sign the standalone's Mach-O. A digest
+\ runs in a context span the caller owns (SHA256-CTX-BYTES; a file context is
+\ SHA256-FILE-CTX-BYTES); this file keeps no digest state of its own, so tasks
+\ hash concurrently with a context each, and copying a context copies its state.
 $FFFFFFFF constant W32
 
 : M32 ( n -- n )
@@ -87,8 +45,13 @@ $19a4c116 , $1e376c08 , $2748774c , $34b0bcb5 , $391c0cb3 , $4ed8aa4a , $5b9cca4
 $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f7 , $c67178f2 ,
 create HH0 $6a09e667 , $bb67ae85 , $3c6ef372 , $a54ff53a , $510e527f , $9b05688c , $1f83d9ab , $5be0cd19 ,
 
-\ The cell fields are cell INDICES into the context's CELL-VIEW; the byte
-\ regions are byte offsets into the span itself.
+\ Context layout. Cell fields are cell indices into the context's CELL-VIEW;
+\ TAIL and PBLK are byte offsets into the span, byte regions because BE32@ reads
+\ the caller's block and BE32! writes the digest. Reading the schedule byte-wise
+\ cost 4.4x on a 4 MiB digest.
+\ A context must be cell-aligned, and nothing diagnoses a misaligned one (the
+\ checker sees a `ptr u8`; AArch64 does not fault): `create` aligns, and
+\ SHA256-CTX-BYTES is a cell multiple, so an array of contexts stays aligned.
 $00 constant SHA-H-CELL
 $40 constant SHA-TAIL-OFF
 $10 constant SHA-TAIL-U-CELL
@@ -160,7 +123,6 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 : SHA-TOTAL! ( n ptr n -- )
    SHA-TOTAL-CELL cells + ! ;
 
-\ compress one $40-byte block into the context's hash words
 : SHA-BLOCK ( ptr u8 ptr u8 -- ) {: ctx blk :}
    ctx CELL-VIEW {: cv :}
    \ The schedule is read and written 190 times a block, inline on purpose: the
@@ -212,7 +174,6 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    0 cv SHA-TAIL-U!
    0 cv SHA-TOTAL! ;
 
-\ append n bytes of [a,…) to the context tail, raising the live count
 : SHA-TAKE-TAIL ( ptr u8 ptr u8 n -- ) {: ctx a n:n :}
    ctx CELL-VIEW {: cv :}
    a  ctx SHA-TAIL-A cv SHA-TAIL-U@ ZPTR+  n BMOVE
@@ -258,7 +219,8 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    ub 8 *  pblk blen 8 - ZPTR+  BE64!
    blen $40 / ;
 
-\ finish the digest into dst, which is $20 bytes of the caller's
+\ Writes the $20-byte digest to out. Once per SHA256-BEGIN: a second END reads
+\ the state the first one padded, and nothing diagnoses it.
 : SHA256-END ( ptr u8 ptr u8 -- ) {: ctx out :}
    ctx CELL-VIEW {: cv :}
    ctx cv SHA-TOTAL@ SHA-PAD {: nblk:n :}
@@ -266,8 +228,6 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    nblk 1 > if ctx ctx SHA-PBLK-A $40 ZPTR+ SHA-BLOCK then
    8 0 DO  cv i SHA-H@  out i 4 * ZPTR+ BE32!  LOOP ;
 
-\ The whole message at once, through the caller's context: the same three words
-\ a streaming caller spells, for a caller that has nothing to stream.
 : SHA256-IN ( ptr u8 ptr u8 n ptr u8 -- ) {: ctx a u:n out :}
    ctx SHA256-BEGIN
    ctx a u SHA256-FEED
@@ -283,7 +243,6 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 : SHA256>HEX ( ptr u8 ptr u8 -- ) {: src dst :}
    $20 0 DO  src i ZBYTE@  dst i 2 * ZPTR+  BYTE>HEX  LOOP ;
 
-\ THE FILE CONTEXT'S PARTS.
 : SHA-FILE-DG ( ptr u8 -- ptr u8 )
    SHA-FILE-DG-OFF ZPTR+ ;
 
@@ -314,8 +273,6 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    dg out SHA256>HEX
    0 ;
 
-\ Hash the file at [a,u) into out through the caller's file context. The
-\ path form opens once, delegates the read to the descriptor form and closes.
 : SHA256-FILE-IN ( ptr u8 ptr u8 n ptr u8 -- n )
    {: fctx a u:n out :}
    fctx SHA-FILE-PATH {: pz :}

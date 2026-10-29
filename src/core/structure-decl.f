@@ -1,78 +1,9 @@
-\ structure-decl.f — the STRUCTURE typed-declaration front end (package
-\ STRUCTURE-DECL). This is the FIRST consumer of the shared declaration-event
-\ transaction (src/core/decl-event.f, package DECL-EVENT). It owns ONLY the
-\ STRUCTURE grammar loop and its reject dispatch; it holds NO declaration state.
-\ The token source, the parse cells and the guarded transaction run are
-\ DECL-FRONT's (src/core/generated-declaration.f); this file hands it its kind,
-\ terminator and body.
-\ The declaration events (the header clauses and every field) are owned by the
-\ event module, and the duplicate / reserved / case field-name gate is raised by
-\ the field record through the field-event path unchanged (docs/forth.md "Structures And
-\ Enums"; dot habu-structure-parse-typed-c5a01e1f).
-\
-\ Grammar:
-\   STRUCTURE type-name[<params>] header-clause* field* ;STRUCTURE
-\   header-clause = POLICY policy-name | DERIVE derive-name+ | OPAQUE
-\   field         = FIELD field-name type-expr
-\ A malformed, duplicate, reserved, unresolved, or mixed-legacy token rejects at
-\ the exact offending token with the E-TDECL-* family (values mirror sumtype.f)
-\ or the field record's own name-gate code, and the whole provisional
-\ declaration rolls back to a byte-identical registry.
-\
-\ DECLARATION-TRANSACTION:RUN owns the declaration savepoint. The checker,
-\ metadata, event, and constructor-protection participants keep their snapshots
-\ live until the complete declaration body has validated and every reversible
-\ commit succeeds.
-\ A reject therefore retires the family, schema, layout, field, event, generated
-\ dictionary, and staged protection state together.
-\
-\ Once SD-CLOSE has bound the family field range and width, it asks
-\ STRUCTURE-MAKE:GENERATE to define the MAKE / UNMAKE constructor words from the
-\ still-provisional field schemas. ONE condition gates the call:
-\   - FIELDS only. A zero-field structure is an opaque one-cell family that
-\     publishes no constructor (the authority-safe shape a bare
-\     NEWTYPE also declares); only a declaration WITH fields is a
-\     product with a MAKE/UNMAKE pair, so GENERATE is skipped when NFLD is zero.
-\ VISIBILITY IS NOT A CONDITION. It decides the SPELLING and the WORDLIST, not
-\ whether a structure has a construction surface: a public family publishes
-\ FAMILY:MAKE / FAMILY:UNMAKE into its reserved constructor namespace, a private
-\ one publishes FAMILY-MAKE / FAMILY-UNMAKE into the declaring package's private
-\ wordlist, where a second package cannot resolve them; nearly every memory
-\ record under src/lib/ is package-private. The OPAQUE header clause moves a
-\ PUBLIC family's generated words to that private placement while the type stays
-\ nameable everywhere (TFAM-GEN-PUBLIC? answers placement, TFAM-PUBLIC?
-\ visibility): another package constructs only through what the declaring
-\ package defines over the pair.
-\
-\ MEMORY RECORDS. `DERIVE addr` gives a family an address surface over this one
-\ field registry; there is no second record registry. It generates one accessor
-\ per field, F:f ( ptr F -- ptr T ) with body `<byte-offset> field-project`, plus
-\ F:AT ( ptr F n -- ptr F ) over record-at and the F:BYTES / F:CELLS sizes. An
-\ accessor yields an address, so @ ! c@ do the access. Spellings come from
-\ TF-CTOR-PKG$ (public: package then tail, hyphens doubled) and TF-CTOR-PRIV$
-\ (private: FAMILY-member, uppercased). A private generated word cannot wear a
-\ colon: the engine routes a qualified definition to the namespace's PUBLIC
-\ wordlist (habu2.f C-QUALIFY-DEF) and the checker records a colon name as a
-\ public symbol (CHECKER-RECORD-SYM). The declaring package's private wordlist
-\ is current at ;STRUCTURE, so the unqualified definition lands there.
-\ A public family's constructor namespace is a protected wid (prot-wid-add). A
-\ private family's wordlist cannot be one, since its package keeps defining into
-\ it, so its guard is by name: TFAM-CTOR-WORD? recognises the TF-PRIV-MEMBER$
-\ members while the package is open and the undefine guard refuses them with
-\ E-CTOR-PROTECTED. Each accessor is minted through FIELD-PROJ!, a single-shot
-\ window keyed on the accessor's name that disarms at its field-project token
-\ even on a reject. The committed field id is the sole authority for family,
-\ offset, extent, role and schema; the checker cross-checks the baked offset.
-\ Outside the window field-project is exactly `+`, and record-at preserves the
-\ family (both in structure-make.f).
-\ Generation remains inside the shared transaction. If evaluation or checker
-\ certification rejects either constructor, the runner restores every
-\ participant before the error returns to the caller.
-\
-\ Loaded AFTER the checker hook, AFTER decl-event.f (it drives DECL-EVENT:*), and
-\ AFTER structure-make.f (its ;STRUCTURE calls STRUCTURE-MAKE:GENERATE, so the
-\ generator must be defined first); the STRUCTURE opener is the only executable
-\ STRUCTURE declaration surface.
+\ structure-decl.f: the STRUCTURE front end (package STRUCTURE-DECL), grammar loop
+\ and reject dispatch only. DECL-FRONT (generated-declaration.f) owns the token
+\ source and the guarded run; DECL-EVENT (decl-event.f) owns every event.
+\   STRUCTURE type-name[<params>] (POLICY p | DERIVE f+ | OPAQUE)* (FIELD name type)* ;STRUCTURE
+\ A reject rolls the whole declaration back to a byte-identical registry. Loads
+\ after decl-event.f and structure-make.f, whose GENERATE and ARM ;STRUCTURE calls.
 
 using SCHEMA-REG
 using TFAM
@@ -80,10 +11,8 @@ using DECL-FRONT
 
 package STRUCTURE-DECL
 
-\ ---------------------------------------------------------------------------
-\ transient parse state (parse-loop bookkeeping, not declaration state). One
-\ declaration at a time: STRUCTURE is top-level interpret-only, never nested.
-\ ---------------------------------------------------------------------------
+\ Transient parse state, not declaration state: STRUCTURE is top-level
+\ interpret-only, so one declaration runs at a time.
 variable FAM        \ family id being declared
 variable TOK        \ declaration-event token; SD-RESET zeroes it at body start
 variable FLDBASE    \ committed field high-water at open (field range start)
@@ -95,50 +24,31 @@ $100 constant SD-ARG-CAP
 create SD-ARGS SD-ARG-CAP cells allot
 variable SD-ARG-N
 
-: SD-RESET ( -- )                      \ grammar scalars; re-seeded at load (process-local)
+: SD-RESET ( -- )
    0 TOK !   0 SEEN-FIELD ! ;
 SD-RESET
 : SD-MISSING! ( -- ) TYPE@ MISSING! ;
 
-\ ---------------------------------------------------------------------------
-\ name gate: a reserved family name is one TYPE-NAME:FAMILY-RESERVED? lists, the
-\ list every family definer asks, or a STRUCTURE opener. Case + duplicate are
-\ enforced by TFAM-DECL itself. A copy of the list kept here drifted from the
-\ legacy definers twice: it admitted the control words (`if`), then value
-\ record names (`STRUCTURE vr` after `VALUE-RECORD vr`).
-\ ---------------------------------------------------------------------------
+\ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
+\ asks: a copy kept here drifted twice (it admitted `if`, then value-record names).
+\ Case and duplicate are TFAM-DECL's.
 : NAME-RESERVED? ( ptr u8 n -- bool )
    2dup s" structure" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop YES EXIT THEN
    TYPE-NAME:FAMILY-RESERVED? ;
 
-: REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
+: REQUIRE-NAME ( ptr u8 n -- )
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ ---------------------------------------------------------------------------
-\ field type resolution -> a schema node. A type application records its child
-\ roots contiguously after nested applications have finished building theirs.
-\ Quotation effects are resolved through TYPE-DECL:PARSE-QUOT below.
-\
-\ A family that owns a linear value — directly or through its own fields — IS an
-\ accepted field type (dot habu-checker-enum-payload-9e1ae6cc). The structure then
-\ owns that obligation by containment, which is the same rule a field naming a
-\ bare DEFLINEAR con already relies on: TFAM-CONCRETE-LINEAR? walks the product's
-\ field schemas, follows an application node into the family it names, and reports
-\ the structure linear, so the checker counts the whole bundle as one linear unit.
-\ Refusing the family spelling while accepting the con spelling blocked the name
-\ and never the obligation, so it bought no soundness.
-\
-\ A parametric family named bare is the one resolved-but-unusable case source can
-\ reach, and it now says so. Calling a registered family "unknown field type" sent
-\ readers hunting for a missing declaration that was in fact right there. The
-\ remaining kind test still falls through to the unknown message because the only
-\ kind it excludes, TK-EVIDENCE, has no declarer any source can write.
-\ ---------------------------------------------------------------------------
+\ A family that owns a linear value is an accepted field type: the structure owns
+\ the obligation by containment (TFAM-CONCRETE-LINEAR? walks into it), the rule a
+\ field naming a DEFLINEAR con already relies on.
+\ The kind test falls through to "unknown field type" because the one kind it
+\ excludes, TK-EVIDENCE, has no declarer source can write.
 : FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
@@ -148,7 +58,7 @@ SD-RESET
       E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
-: LETTER-TYPE ( ptr u8 n n -- n )       \ single-char type: param / n / f / r
+: LETTER-TYPE ( ptr u8 n n -- n )
    {: want:n :}
    drop c@
    dup ASCII-N = IF drop CON-N SCHEMA-CON EXIT THEN
@@ -162,12 +72,10 @@ SD-RESET
       FAM @ idx want TFAM-PK! THEN
    SCHEMA-PARAM ;
 
-\ A pointer is a NON-OWNING boundary: TFCL-NODE? stops at a pointer node, so a
-\ field spelled `ptr <linear>` reads non-linear and the containing family would
-\ copy and drop freely while a linear resource sits behind the address. The
-\ family spelling and the con spelling launder identically, so both are refused
-\ here, at the declaration door, with one rule.
-: REQUIRE-POINTEE ( n -- n )                \ pointee node, or reject a linear owner behind the address
+\ A pointer is a non-owning boundary (TFCL-NODE? stops at it), so `ptr <linear>`
+\ would let the containing family copy and drop a linear resource: refused here,
+\ for the family and the con spelling alike.
+: REQUIRE-POINTEE ( n -- n )
    dup TFCL-NODE? IF
       s" field type is a pointer to a linear value and cannot own it"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
@@ -196,8 +104,6 @@ SD-RESET
 
 defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
 
-\ Argument K of FAM's application at cursor I and every one after it, each
-\ pushed as an argument row; answers the argument count and the cursor past `>`.
 : SD-APP-ARGS ( ptr u8 n n n n -- n n ) {: a:ptr u:n fam:n k:n i:n :}
    k fam TFAM-ARITY@ >= IF
       s" field type has too many arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
@@ -225,8 +131,6 @@ defer SD-PARSE-NODE ( ptr u8 n n n -- n n )
 
 defer SD-LOOSE-NODE ( ptr u8 n n -- n )
 
-\ The loose arguments at cursor I and every one after it; answers the cursor
-\ past `>`.
 : SD-LOOSE-ARGS ( ptr u8 n n -- n ) {: a:ptr u:n i:n :}
    a u i SD-LOOSE-NODE {: j:n :}
    j u >= IF
@@ -307,7 +211,7 @@ SD-PARSER-INSTALL
 defer SD-QUOT-ELEM ( ptr u8 n -- n )
 : SD-QUOT-FAIL ( ptr u8 n n -- ) DECL-REJECT:REJECT throw ;
 
-: RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
+: RESOLVE-TYPE ( ptr u8 n -- n )
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup TYPE!
    2dup s" [" CORE-STR= IF
@@ -324,11 +228,9 @@ defer SD-QUOT-ELEM ( ptr u8 n -- n )
 : SD-QUOT-INSTALL ( -- ) [: RESOLVE-TYPE ;] is SD-QUOT-ELEM ;
 SD-QUOT-INSTALL
 
-\ ---------------------------------------------------------------------------
-\ clause drivers. Each emits its event through DECL-EVENT (which owns duplicate /
-\ ordinal / selector state) and mutates only the fresh family record.
-\ ---------------------------------------------------------------------------
-: HEADER-ORDER ( -- )                   \ header clauses precede the first field
+\ Clause drivers emit through DECL-EVENT, which owns duplicate, ordinal and
+\ selector state; each mutates only the fresh family record.
+: HEADER-ORDER ( -- )
    SEEN-FIELD @ IF
       s" header clause after the first field" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
@@ -338,39 +240,31 @@ SD-QUOT-INSTALL
    FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
-\ OPAQUE: the family keeps its declared visibility and its generated words take
-\ the private-family placement (header above). The event validates
-\ (package, at most once), then the fresh family record is marked.
+\ OPAQUE keeps the family's visibility and moves its generated words to the
+\ private-family placement (TFAM-GEN-PUBLIC? answers placement, TFAM-PUBLIC?
+\ visibility).
 : OPAQUE-CLAUSE ( -- )
    HEADER-ORDER
    TOK @ FAM @ DECL-EVENT:OPAQUE TOK !
    FAM @ TFAM-OPAQUE! ;
 
-: DERIVE-FEATURE? ( ptr u8 n -- bool )  \ a known/recognised derive feature token
+: DERIVE-FEATURE? ( ptr u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" init" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
-\ VISIBILITY IS NOT A CONDITION, for the same reason it is not one for the
-\ MAKE/UNMAKE pair (see the generation note at the head of this file): it decides
-\ the spelling and the wordlist, not whether a family has a derived surface. A
-\ public family's derived words go into its reserved constructor namespace, a
-\ private family's into the declaring package's private wordlist as
-\ FAMILY-MEMBER (src/core/type-family.f TF-CTOR-PRIV$, rendered by
-\ src/core/sumtype.f TDGEN-DRV-REF). The gate that stood here refused a private
-\ family outright; nearly every memory record under src/lib/ is package-private, so
-\ it refused the facility to almost everything that needs it.
+\ Visibility is not a condition for a derived surface: it picks the spelling and
+\ the wordlist (type-family.f TF-CTOR-PRIV$, rendered by sumtype.f TDGEN-DRV-REF).
 : DERIVE-CONCRETE ( -- )                \ eq/hash compare whole values: arity 0 only
    FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
-: EMIT-DERIVE ( n n -- )                \ ( fam feature-code -- ) emit the DERIVE event
+: EMIT-DERIVE ( n n -- )
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
-\ `addr` carries no arity condition: an accessor projects the field schema at the
-\ caller's instantiation, which is the whole point of the projection window, and
-\ the checker refuses the one instantiation a baked offset would misdescribe (a
-\ type argument wider than one cell).
-: DERIVE-ONE ( ptr u8 n -- )            \ apply one feature + emit its event
+\ `addr` has no arity condition: an accessor projects the field schema at the
+\ caller's instantiation, and the checker refuses the one instantiation a baked
+\ offset would misdescribe (a type argument wider than one cell).
+: DERIVE-ONE ( ptr u8 n -- )
    2dup s" eq" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop DERIVE-CONCRETE FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" addr" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-ADDR! FAM @ DRV-ADDR EMIT-DERIVE EXIT THEN
@@ -378,7 +272,7 @@ SD-QUOT-INSTALL
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
-: DERIVE-CLAUSE ( -- )                  \ DERIVE feature+ : first mandatory, rest by lookahead
+: DERIVE-CLAUSE ( -- )
    HEADER-ORDER
    NEXT dup 0= IF
       2drop s" missing derive feature" E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
@@ -386,23 +280,19 @@ SD-QUOT-INSTALL
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
 
-: EMIT-FIELD ( ptr u8 n n -- )          \ ( na nu node -- ) layout + drive the field event
-   SCHEMA-ROOT+ {: sch:n :}                \ ( na nu )
+: EMIT-FIELD ( ptr u8 n n -- )
+   SCHEMA-ROOT+ {: sch:n :}
    FAM @ sch SCHEMA-ROOT@ TFAM-SCH-WIDTH {: fw:n :}
-   2dup DECL-REJECT:TOKEN!              \ the field name owns the field record's rejects
+   2dup DECL-REJECT:TOKEN!
    s" duplicate field name" E-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ 2swap sch                \ ( tok fam na nu sch )
+   TOK @ FAM @ 2swap sch
    SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD TOK !
    fw SD-CELLS @ + SD-CELLS !
    NFLD @ 1 + NFLD ! ;
-\ A generated member and a field share one namespace: with DERIVE addr the family
-\ publishes F:AT, F:BYTES and F:CELLS beside one word per field, and it already
-\ publishes F:MAKE / F:UNMAKE and any derived tail. A field named like one of
-\ those would make the generator render a name it had already defined, which is a
-\ process-killing die inside the plan. The declaration door is where it belongs,
-\ at the offending token, and only when the addr surface is actually asked for —
-\ header clauses precede fields, so the flag is final by the time a field is read.
+\ A field named like a generated member (MAKE, UNMAKE, F:AT, F:BYTES, F:CELLS, a
+\ derived tail) would make the generator define a name twice, a die inside the
+\ plan. Refused only under DERIVE addr, which header clauses have fixed by now.
 : MEMBER-CLASH? ( ptr u8 n -- bool )
    2dup s" make" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" unmake" CORE-STR=CI IF 2drop YES EXIT THEN
@@ -414,7 +304,7 @@ SD-QUOT-INSTALL
       s" field name is a generated member name" E-NAME DECL-REJECT:REJECT throw THEN ;
 : FIELD-CLAUSE ( -- )
    NEXT dup 0= IF
-      2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
+      2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    na nu REQUIRE-FIELD-NAME
@@ -425,12 +315,9 @@ SD-QUOT-INSTALL
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN
    -1 SEEN-FIELD ! ;
 
-\ ---------------------------------------------------------------------------
-\ transaction orchestration.
-\ ---------------------------------------------------------------------------
-: SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
+: SD-REGISTER ( ptr u8 n n -- )
    {: na:ptr nu:n ar:n :}
-   na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
+   na nu DECL-REJECT:TOKEN!
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-PRODUCT TFAM-DECL FAM !
@@ -440,14 +327,11 @@ SD-QUOT-INSTALL
    TOK @ FAM @ DECL-EVENT:DECL TOK !
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 
-: SD-MAKEABLE? ( -- bool )                 \ a structure WITH fields owns a MAKE/UNMAKE pair
+: SD-MAKEABLE? ( -- bool )
    NFLD @ 0 > ;
-\ `DERIVE addr` names the family whose address surface this transaction owns; the
-\ words themselves are generated one phase later, at commit, because an accessor
-\ is armed with a COMMITTED field id (src/core/structure-make.f). A
-\ fieldless structure is an opaque one-cell family with nothing to address, and
-\ the fields are what give it the MAKE/UNMAKE pair whose constructor package an
-\ accessor's public spelling is built from.
+\ Accessors are generated at commit because each is armed with a committed field
+\ id (structure-make.f). A fieldless structure has nothing to address and no
+\ MAKE / UNMAKE pair, whose constructor package the public accessor spelling uses.
 : SD-ADDR-ARM ( -- )
    FAM @ TFAM-DERIVE-ADDR? FAM @ TFAM-DERIVE-INIT? or 0= IF EXIT THEN
    SD-MAKEABLE? 0= IF
@@ -456,8 +340,8 @@ SD-QUOT-INSTALL
       s" derive init requires a canonical fixed-cell record"
       E-DERIVE DECL-REJECT:EXPECT THEN
    FAM @ STRUCTURE-MAKE:ARM ;
-: SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
-   DECL-REJECT:AT-FAMILY                   \ close-stage faults belong to the whole declaration
+: SD-CLOSE ( -- )
+   DECL-REJECT:AT-FAMILY
    NFLD @ 0 ?do
       TOK @ FAM @ FLDBASE @ i + DECL-EVENT:FIELD-SCHEMA@ FAM @ swap PF-SCHEMA-OK? 0= IF
          s" field type parameter has incompatible kinds"
@@ -468,8 +352,12 @@ SD-QUOT-INSTALL
    FAM @ SD-CELLS @ TFAM-SLOTS!
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
       s" opaque requires a family with fields" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   \ The constructor generator's rejects use the packet's code table. The
-   \ initialized accessor's fixed-layout gate arms its own reason in SD-ADDR-ARM.
+   \ Only a structure with fields gets MAKE / UNMAKE; a fieldless one is an opaque
+   \ one-cell family, as a bare NEWTYPE declares. A private family's generated
+   \ words carry no colon (habu2.f C-QUALIFY-DEF routes a qualified definition to
+   \ the public wordlist), and their package keeps defining into its wordlist, so
+   \ they are guarded by name (TFAM-CTOR-WORD?); a public family's constructor
+   \ namespace is a protected wid.
    SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN
    SD-ADDR-ARM ;
 
@@ -483,11 +371,11 @@ SD-QUOT-INSTALL
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" opaque" CORE-STR=CI IF 2drop OPAQUE-CLAUSE NO EXIT THEN
    2drop s" unexpected token in structure declaration" E-SYNTAX
-   DECL-REJECT:REJECT throw ;           \ unexpected / mixed-legacy token at the exact token
+   DECL-REJECT:REJECT throw ;
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
 
-: DRIVE ( -- )                          \ family header + register + body
-   NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
+: DRIVE ( -- )
+   NEXT 2dup DECL-REJECT:FAMILY!
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    TYPE-DECL:DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
@@ -499,7 +387,7 @@ SD-QUOT-INSTALL
    SD-REGISTER
    CLAUSES ;
 
-: SD-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )   \ kind, terminator and body for DECL-FRONT
+: SD-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )
    s" structure" s" ;structure" [: SD-RESET DRIVE ;] ;
 
 public
@@ -514,17 +402,11 @@ public
 
 : SD-RUN ( -- ) SD-FRONT DECL-FRONT:RUN ;
 
-\ SD-REPLAY ( name body -- ) : register a STRUCTURE from tokens a tool has
-\ already lexed, defining no word. Same grammar, same validation, same registry
-\ writes, same reject packet as SD-RUN — only the token source differs and the
-\ MAKE/UNMAKE pair is registered without being rendered (structure-make.f
-\ GENERATE). This is what lets tools/check-core.f and src/habu/verify-source.f
-\ see a STRUCTURE family at all, so a later signature in the same source can
-\ name it. The body buffer is the declaration body INCLUDING its ;STRUCTURE
-\ terminator; a buffer without one rejects through the front end's own
-\ "missing ;STRUCTURE" gate exactly as a truncated live declaration does.
-\ SD-REPLAY-OUTCOME answers the first type the body named that may still
-\ arrive instead of raising.
+\ SD-REPLAY registers a STRUCTURE from tokens a tool already lexed
+\ (tools/check-core.f, verify-source.f) with SD-RUN's grammar, validation and
+\ reject packet, defining no word: MAKE / UNMAKE are registered, not rendered.
+\ The body includes its ;STRUCTURE terminator. SD-REPLAY-OUTCOME answers the first
+\ type the body named that may still arrive instead of raising.
 : SD-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    SD-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 : SD-REPLAY ( ptr u8 n ptr u8 n -- )
@@ -532,11 +414,9 @@ public
 
 ;package
 
-\ STRUCTURE is the one executable composite-declaration keyword and therefore a
-\ documented global language surface (package-first exception, like the shipped
-\ SUMTYPE/PRODUCT openers): it parses its own body up to ;STRUCTURE at interpret
-\ time, so its checked effect is ( -- ).
-\ STRUCTURE type-name[<params>] [POLICY p] [DERIVE f+] [OPAQUE] (FIELD name type)* ;STRUCTURE
+\ STRUCTURE is a documented global (package-first exception, like the SUMTYPE and
+\ PRODUCT openers); it parses its body to ;STRUCTURE at interpret time, so its
+\ checked effect is ( -- ).
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;
 
 ;using

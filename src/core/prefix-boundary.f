@@ -17,12 +17,8 @@ public
 
 private
 
-\ The checker overlay asks the boundary when a replay opens (src/core/checker.f
-\ CHECKER-OVERLAY): a replayed definition of a name the engine holds below it
-\ duplicates a word the engine's builder made. checker.f loads before this
-\ file, so it asks through its defer FIRST-RECORD-XT, installed here; the
-\ installer and the defer are retired before the seal, as src/habu/xref.f
-\ retires its own.
+\ checker.f CHECKER-OVERLAY asks for the boundary when a replay opens; it loads
+\ before this file, so it asks through the defer FIRST-RECORD-XT.
 : INSTALL ( -- ) [: FIRST-RECORD ;] is FIRST-RECORD-XT ;
 INSTALL
 undefine INSTALL

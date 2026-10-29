@@ -1,73 +1,9 @@
-\ decl-event.f — shared typed-declaration syntax-event transaction (package
-\ DECL-EVENT). One transaction and provisional event scratch that both
-\ post-hook declarers (STRUCTURE and ENUM) drive.
-\ This file owns NO front end, no
-\ parser state, no cold descriptors, no legacy syntax: the two front ends
-\ (structure-decl.f / enum-decl.f, later dots) only recognise tokens and drive
-\ the words below; ALL declaration state lives here.
-\
-\ A declaration emits an ordered stream of syntax events into one growable,
-\ pointer-free record arena. Both front ends emit IDENTICAL field events: a
-\ STRUCTURE product field (current variant = NO-VARIANT) and an ENUM variant
-\ payload field (current variant = the open variant id) both produce one
-\ DEV-K-FIELD event and one field-record row with the SAME shape; only the
-\ variant selector — held here, not by the front end — differs. Downstream
-\ consumers inspect the provisional stream while the declaration is open;
-\ committed family, variant, schema, and field registries own the result.
-\
-\ Ownership (settled by the chain orchestrator):
-\  - Header clauses (arity, POLICY, DERIVE, OPAQUE) are events HERE, with
-\    duplicate-clause validation HERE (E-DEV-DUP-POLICY / E-DEV-DUP-DERIVE /
-\    E-DEV-DUP-OPAQUE), OPAQUE's package requirement HERE
-\    (E-DEV-OPAQUE-PACKAGE) and the arity value
-\    bound HERE (E-TDECL-ARITY). Their state is the event stream itself.
-\  - Variant open/close are events HERE; open enforces TYPE-NAME policy, performs
-\    SUMV-ADD duplicate registration, and surfaces the returned id as the
-\    CURRENT-VARIANT selector.
-\  - Field name-gate (duplicate / reserved / case) is NOT here: the field record
-\    raises those and this module surfaces the throw unchanged — no second gate.
-\
-\ Transaction shape mirrors the field record's strict last-in, first-out frames.
-\ DECLARATION-TRANSACTION:RUN opens this participant at its savepoint, keeps
-\ events and field rows provisional through body validation, preflights
-\ their contiguity, then commits the field rows reversibly. Rollback restores
-\ the event scratch, field ordinal, variant ordinal,
-\ current-variant selector, and the field registry. The checker participant owns
-\ the enclosing family, variant, schema, and layout registry savepoint.
-\
-\ Loaded AFTER the checker hook (the sole STRUCTURE/ENUM parser loads later
-\ still); state is process-local and re-seeded at load, like top-row.f, so
-\ snapshot re-arm rides the later snapshot and ahead-of-time compilation work.
-\
-\ ---------------------------------------------------------------------------
-\ FIELD-RECORD / VARIANT-REGISTRY INTEGRATION SEAM (reconcile at merge).
-\ ---------------------------------------------------------------------------
-\ The field record is habu-fields-add-shared-6b063c62 (landing as
-\ src/core/type-field.f on the Mac); on this base its contract lives in
-\ src/core/type-family.f as the pre-hook TYPE-FIELD-OWNER transaction + TYPE-FIELD
-\ package, and variant registration is SUMV-ADD there too.
-\
-\ The field-owner lifecycle is no longer consumed through TRUSTED forwarders.
-\ src/core/checker.f carries a PPRIM axiom for each public TYPE-FIELD-OWNER and
-\ TYPE-FIELD word, so the calls below are ordinary checked qualified calls whose
-\ argument roles the checker verifies at every site (dot
-\ habu-type-field-owner-619ec6b5). The two words with no axiom,
-\ TYPE-NAME:VARIANT-REQUIRE and the still-global SUMV-ADD, are called by name
-\ too: the core prefix loads before src/core/internal-mark.f seals, so the
-\ checker binds their declared rows.
-\ Consumed contract:
-\   TYPE-FIELD-OWNER:OPEN      ( -- tok )                   begin a field transaction
-\   TYPE-FIELD-OWNER:ADD       ( tok fam var na nu sch slot cells boff bytes al flags -- tok )
-\   TYPE-FIELD-OWNER:PREPARE   ( tok -- provisional-count ) validate without mutation
-\   TYPE-FIELD-OWNER:COMMIT    ( tok -- )                   publish while retaining rollback
-\   TYPE-FIELD-OWNER:FINALIZE  ( tok -- )                   release a committed frame
-\   TDECL-FIELD-RELEASE-XT     ( -- )                       total release of the top frame
-\   TYPE-FIELD-OWNER:ROLLBACK  ( tok -- )                   retire open or committed rows
-\   TYPE-FIELD-OWNER:TX-SCHEMA-FOR ( tok fam id -- sch )    provisional schema root
-\   TYPE-FIELD-OWNER:TX-CELLS-FOR  ( tok fam id -- cells )  provisional cell width
-\   TYPE-FIELD:COUNT ( -- n )                               committed field high-water
-\   TYPE-NAME:VARIANT-REQUIRE ( na nu -- )                  reserved/collision gate
-\   SUMV-ADD         ( fam na nu tag ss sc pc -- vid )      register one canonical, unique variant
+\ decl-event.f: the declaration-event transaction (package DECL-EVENT) holding all
+\ STRUCTURE and ENUM declaration state; the front ends only recognise tokens.
+\ Both emit the same DEV-K-FIELD event; only the variant selector, held here,
+\ differs. The field name gate is the field record's (type-family.f TYPE-FIELD),
+\ surfaced unchanged. State is process-local and re-seeded at load.
+\ TYPE-FIELD-OWNER and TYPE-FIELD calls are checked through checker.f PPRIM axioms.
 
 using TFAM
 
@@ -101,11 +37,9 @@ package DECL-EVENT
 0 constant DEV-FAMILY-USE
 1 constant DEV-FAMILY-BIND
 
-\ --- named reject codes (thrown, caught by the parser/CHECK path or unit `catch`).
-\ Field name-gate and variant duplicate/canonical codes (E-TFAM-DUP 7102,
-\ E-PF-NAME 7125, E-TFAM-CASE 7101) are raised by the field record / SUMV and
-\ pass through unchanged. TYPE-NAME raises variant syntax code 7107 or reserved
-\ name code 7110 before SUMV.
+\ The field record and SUMV raise the field name-gate and variant duplicate or
+\ canonical codes (E-TFAM-DUP, E-PF-NAME, E-TFAM-CASE) unchanged; TYPE-NAME raises
+\ 7107 or 7110 before SUMV.
 7161 constant E-DEV-TX          \ stale or non-LIFO declaration-event transaction token
 7162 constant E-DEV-STATE       \ field-record publication broke the field-id contiguity invariant
 7163 constant E-DEV-DUP-POLICY  \ a second POLICY clause in one declaration
@@ -114,7 +48,6 @@ package DECL-EVENT
 7173 constant E-DEV-FAMILY-SCOPE \ token does not own the requested declaration family
 7206 constant E-DEV-DUP-OPAQUE  \ a second OPAQUE clause in one declaration
 7207 constant E-DEV-OPAQUE-PACKAGE \ OPAQUE on a family declared outside any package
-\ What a declaration reject reports for each code (generated-declaration.f).
 s" stale or out-of-order declaration event" E-DEV-TX DECL-REJECT:EXPLAIN
 s" field publication broke field-id contiguity" E-DEV-STATE DECL-REJECT:EXPLAIN
 s" a second POLICY clause in one declaration" E-DEV-DUP-POLICY DECL-REJECT:EXPLAIN
@@ -124,22 +57,15 @@ s" declaration does not own this family" E-DEV-FAMILY-SCOPE DECL-REJECT:EXPLAIN
 s" a second OPAQUE clause in one declaration" E-DEV-DUP-OPAQUE DECL-REJECT:EXPLAIN
 s" OPAQUE requires a family declared in a package" E-DEV-OPAQUE-PACKAGE DECL-REJECT:EXPLAIN
 
-\ The shared malformed-arity code is sumtype.f's, read at load time: a post-hook
-\ checked body cannot name that pre-hook constant on a from-source build. The
-\ bound itself comes from type-family.f's canonical declaration alphabet through
-\ the normal post-hook seam below, so front ends and the event validator cannot
-\ drift.
+\ E-DEV-ARITY reads sumtype.f's malformed-arity code at top level: a post-hook
+\ checked body cannot name that pre-hook constant on a from-source build.
 TYPE-DECL:E-TDECL-ARITY constant E-DEV-ARITY  \ arity outside [0, cap] — the shared malformed-arity code
 
 72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
 
-\ ---------------------------------------------------------------------------
-\ event scratch (interleaved cells, pointer-free: KIND/FAM/VAR/FLD/OWNER are
-\ all integers, so a grow is a plain cell copy). OWNER is the first event id of
-\ the frame that emitted the row, so finalized nested declarations remain
-\ distinguishable from their still-open parent. One growable buffer is reused
-\ after the outer frame ends.
-\ ---------------------------------------------------------------------------
+\ Event scratch: interleaved integer cells, so a grow is a plain cell copy. OWNER
+\ is the first event id of the frame that emitted the row, so finalized nested
+\ declarations stay distinguishable from their still-open parent.
 0 cells constant DEV.KIND-OFF
 1 cells constant DEV.FAM-OFF
 2 cells constant DEV.VAR-OFF
@@ -169,21 +95,18 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
    need DEV-CAP-V @ 2 * max {: nc:n :}
    DEV-A-P DEV-A-BOOT  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  ARENA-BOOT-GROW
    nc DEV-CAP-V ! ;
-: DEV-ENSURE ( -- )               \ room for the next event id (DEV-N)
+: DEV-ENSURE ( -- )
    DEV-N @ DEV-CAP-V @ < IF exit THEN
    DEV-N @ 1 + DEV-GROW ;
 
-: DEV-ROW ( n -- ptr n ) {: id:n :}     \ address of provisional event `id`
+: DEV-ROW ( n -- ptr n ) {: id:n :}
    id 0 < IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-N @ >= IF s" decl-event: bad event id" DEV-BUG-RC die THEN
    id DEV-REC * DEV-BASE + ;
-\ ---------------------------------------------------------------------------
-\ strict-LIFO transaction frames. Nested COMMIT keeps events + field rows
-\ reversible; the outer release reuses the event scratch after every participant
-\ has committed. Every frame owns the event high-water, the field ordinal,
-\ the variant ordinal, the current-variant selector, the field-record token, and
-\ its own serial token.
-\ ---------------------------------------------------------------------------
+\ Strict-LIFO transaction frames. A nested COMMIT keeps events and field rows
+\ reversible; the outer release reuses the event scratch. Rollback restores the
+\ event scratch, both ordinals, the selector and the field registry; the checker
+\ participant owns the family, variant, schema and layout savepoint.
 0 cells constant DEVTX.EVN-OFF      \ DEV-N at open (event-arena watermark)
 1 cells constant DEVTX.FLDORD-OFF   \ DEV-FLD-ORD at open (field ordinal watermark)
 2 cells constant DEVTX.VARORD-OFF   \ DEV-VAR-ORD at open (variant ordinal watermark)
@@ -247,10 +170,8 @@ variable DEV-TX-SERIAL
    owner fam <> IF E-DEV-FAMILY-SCOPE throw THEN
    bind 0= 0= IF E-DEV-STATE throw THEN ;
 
-\ Kept unexercised for the same reason as the field owner's wrap guard (see
-\ src/core/type-family.f OPEN): only a whitebox poke of DEV-TX-SERIAL could
-\ reach it, that seam was retired by contract, and without the guard a wrapped
-\ serial would mint a token that equality-compares against a live frame.
+\ The serial-wrap guard is kept unexercised like the field owner's (type-family.f
+\ OPEN): a wrapped serial would mint a token that compares equal to a live frame.
 : DEV-OPEN ( -- n )
    DEV-TX-ENSURE
    DEV-TX-SERIAL @ 1 + dup 0 <= IF drop E-DEV-TX throw THEN
@@ -258,7 +179,7 @@ variable DEV-TX-SERIAL
    \ no event state changes before the field snapshot exists
    TYPE-FIELD-OWNER:OPEN {: fldtok:n :}
    tok DEV-TX-SERIAL !
-   DEV-TX-DEPTH @ 0= IF                     \ outer: pin the field base + reset ordinals/selector
+   DEV-TX-DEPTH @ 0= IF
       TYPE-FIELD:COUNT DEV-BASE-FLD !
       0 DEV-FLD-ORD !
       0 DEV-VAR-ORD !
@@ -277,8 +198,8 @@ variable DEV-TX-SERIAL
    DEV-TX-DEPTH @ 1 + DEV-TX-DEPTH !
    tok ;
 
-\ --- duplicate-clause scan over the current declaration's provisional events
-\ (this frame's [start, DEV-N) range; one declaration per transaction frame).
+\ Duplicate-clause scans cover this frame's [start, DEV-N) range: one declaration
+\ per frame.
 : DEV-CUR-START ( -- n ) DEV-TX-TOP DEVTX.EVN @ ;
 : DEV-CUR-OWNER ( -- n )
    DEV-TX-TOP DEVTX.OWNER @ dup DEV-NO-OWNER =
@@ -314,8 +235,7 @@ variable DEV-TX-SERIAL
    loop
    0 <> ;
 
-\ --- declaration open + header clauses.
-: DEV-DECL ( n n -- n ) {: tok:n fam:n :}          \ open one declaration
+: DEV-DECL ( n n -- n ) {: tok:n fam:n :}
    tok fam DEV-FAMILY-BIND DEV-FAMILY-REQUIRE
    DEV-K-DECL fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT
    tok ;
@@ -422,40 +342,36 @@ variable DEV-TX-SERIAL
    REPEAT
    nip ;
 
-: DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}   \ header: arity value (shared bound)
+: DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
    DEV-K-ARITY fam arity DEV-NO-FIELD DEV-EMIT
    tok ;
 
-: DEV-POLICY ( n n n -- n ) {: tok:n fam:n policy:n :}   \ header: POLICY clause (at most once)
+: DEV-POLICY ( n n n -- n ) {: tok:n fam:n policy:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-POLICY DEV-CUR-HAS-KIND? IF E-DEV-DUP-POLICY throw THEN
    DEV-K-POLICY fam policy DEV-NO-FIELD DEV-EMIT
    tok ;
 
-: DEV-DERIVE ( n n n -- n ) {: tok:n fam:n feature:n :}   \ header: DERIVE feature (each once)
+: DEV-DERIVE ( n n n -- n ) {: tok:n fam:n feature:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-DERIVE feature DEV-CUR-HAS-KIND-VAR? IF E-DEV-DUP-DERIVE throw THEN
    DEV-K-DERIVE fam feature DEV-NO-FIELD DEV-EMIT
    tok ;
 
 \ OPAQUE needs a package: the generated words land in the declaring package's
-\ private wordlist, which a top-level family does not have (DERIVE init asks the
-\ same of its family, sumtype.f TDINIT-REQUIRE). The clause refuses that before
-\ any name is checked.
-: DEV-OPAQUE ( n n -- n ) {: tok:n fam:n :}   \ header: OPAQUE clause (at most once)
+\ private wordlist, which a top-level family lacks (DERIVE init asks the same,
+\ sumtype.f TDINIT-REQUIRE).
+: DEV-OPAQUE ( n n -- n ) {: tok:n fam:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    fam TFAM-PKG$ nip 0= IF E-DEV-OPAQUE-PACKAGE throw THEN
    DEV-K-OPAQUE DEV-CUR-HAS-KIND? IF E-DEV-DUP-OPAQUE throw THEN
    DEV-K-OPAQUE fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT
    tok ;
 
-\ --- variant open/close. Open validates the variant tail before SUMV-ADD's
-\ canonical/duplicate registration and pins its id as the current-variant
-\ selector. Named-field variants carry no positional payload schema
-\ (ss=sc=pc=0); field rows are discovered downstream by (family, variant-id).
-\ Close clears the selector.
+\ Named-field variants carry no positional payload schema (ss=sc=pc=0); their
+\ field rows are found downstream by (family, variant id).
 : DEV-VARIANT ( n n ptr u8 n -- n ) {: tok:n fam:n na:ptr nu:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    na nu TYPE-NAME:VARIANT-REQUIRE
@@ -470,13 +386,10 @@ variable DEV-TX-SERIAL
    DEV-NO-VARIANT DEV-CUR-VAR !
    tok ;
 
-\ --- the shared field event. Adds the field to the field record FIRST under the
-\ current-variant selector (the record validates owner/name/schema/layout and
-\ throws — E-TFAM-DUP / E-PF-NAME / E-TFAM-CASE / E-PF-* — on any violation, so a
-\ malformed field emits NO event and leaves the ordinal untouched), then records
-\ the event with the field's eventual committed row id (base + ordinal, proven at
-\ PREPARE before any participant commits). STRUCTURE (selector NO-VARIANT) and
-\ ENUM (selector = open variant) produce the identical event + row shape.
+\ The field record validates and throws first (E-TFAM-DUP, E-PF-NAME, E-TFAM-CASE,
+\ E-PF-*), so a malformed field emits no event and leaves the ordinal untouched.
+\ The event carries the field's eventual committed row id (base + ordinal), proven
+\ at PREPARE before any participant commits.
 : DEV-FIELD ( n n ptr u8 n n n n n n n n -- n )
    {: tok:n fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
@@ -487,11 +400,9 @@ variable DEV-TX-SERIAL
    tok ;
 
 \ PREPARE proves the field rows are exactly the contiguous provisional range the
-\ event stream names, then delegates the field owner's mutation-free preflight.
-\ COMMIT retains both frames so a later participant failure can roll them back.
-\ Releasing them afterwards is the runner's release step (PART-RELEASE
-\ below); the public FINALIZE here is the standalone entry point and re-proves
-\ everything, which is why the participant does not use it.
+\ event stream names. COMMIT retains both frames for rollback. FINALIZE is the
+\ standalone release and re-proves everything, so the participant releases
+\ through PART-RELEASE instead.
 : DEV-PREPARE ( n -- ) {: tok:n :}
    tok DEV-TX-OPEN-REQUIRE
    DEV-FLD-PROVISIONAL-COUNT DEV-BASE-FLD @ DEV-FLD-ORD @ + <>
@@ -514,20 +425,15 @@ variable DEV-TX-SERIAL
    tok DEV-COMMIT
    tok DEV-FINALIZE ;
 
-\ roll back every watermark this frame owns and delegate the field-registry
-\ cursor to the field record. The family/variant/schema/layout cursors and the
-\ name pool are retired by the enclosing checker scope/candidate frame (see
-\ header).
-\ A live frame is always either open or reversibly committed — the only two
-\ states DEV-OPEN and DEV-COMMIT set — and both roll back the same way, so there
-\ is no third value to reject here.
-: DEV-FRAME-RESTORE ( ptr n -- ) {: r:ptr :}   \ every watermark one frame owns
+\ The family, variant, schema and layout cursors and the name pool are retired by
+\ the enclosing checker frame. Open and committed frames roll back alike.
+: DEV-FRAME-RESTORE ( ptr n -- ) {: r:ptr :}
    r DEVTX.EVN @ DEV-N !
    r DEVTX.FLDORD @ DEV-FLD-ORD !
    r DEVTX.VARORD @ DEV-VAR-ORD !
    r DEVTX.CURVAR @ DEV-CUR-VAR ! ;
 
-: DEV-FRAME-POP ( -- )            \ retire the live top frame's own watermarks
+: DEV-FRAME-POP ( -- )
    DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
    DEV-TX-DEPTH @ DEV-TX-AT DEV-FRAME-RESTORE ;
 
@@ -536,22 +442,17 @@ variable DEV-TX-SERIAL
    DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:ROLLBACK
    DEV-FRAME-POP ;
 
-: DEV-RESET ( -- )                \ base state; re-seeded at load (process-local)
+: DEV-RESET ( -- )
    0 DEV-N !
    0 DEV-TX-DEPTH !   0 DEV-TX-SERIAL !
    0 DEV-BASE-FLD !   0 DEV-FLD-ORD !   0 DEV-VAR-ORD !
    DEV-NO-VARIANT DEV-CUR-VAR ! ;
 DEV-RESET
 
-\ Declaration-transaction participant.  Two cells hold the EXACT event token and
-\ field token this participant opened, both written before the declaration body
-\ can run.  Every later step proves and drives that saved pair.  Reading the live
-\ top instead — as this adapter used to — let any frame the body opened and never
-\ closed stand in for the participant's own frame: prepare then validated the
-\ wrong frame, commit and finalize published and released the wrong frame, and
-\ the participant's real frame survived the transaction.  Release cannot report
-\ anything, so a defect of that shape has to be caught where it belongs: at this
-\ participant's PREPARE.
+\ The participant holds the exact event and field tokens it opened, both saved
+\ before the body runs. Reading the live top instead let a frame the body opened
+\ and never closed stand in for its own; release cannot report, so PREPARE
+\ catches that shape.
 0 constant DEV-NO-TOKEN          \ cell sentinel; DEV-OPEN never mints a token <= 0
 variable DEV-PART-TOK
 variable DEV-PART-FLD
@@ -560,7 +461,7 @@ variable DEV-PART-FLD
    DEV-NO-TOKEN DEV-PART-TOK !
    DEV-NO-TOKEN DEV-PART-FLD ! ;
 
-: DEV-PART-BIND ( n -- ) {: tok:n :}   \ pin the frame OPEN just created
+: DEV-PART-BIND ( n -- ) {: tok:n :}
    tok DEV-PART-TOK !
    DEV-TX-TOP DEVTX.FLDTOK @ DEV-PART-FLD ! ;
 
@@ -570,41 +471,26 @@ variable DEV-PART-FLD
 : DEV-PART-TOKEN ( -- n ) DEV-PART-TOK @ ;
 : DEV-PART-FIELD-TOKEN ( -- n ) DEV-PART-FLD @ ;
 
-\ Kept unexercised, like the DEV-OPEN serial-wrap guard above.  No test drives it
-\ and none can today: DEVTX.FLDTOK is written once, by DEV-OPEN, and DEV-PART-BIND
-\ copies that same cell one step later, so once the caller has proved the saved
-\ event token IS the live top the two values are the same cell by construction.
-\ It stays because it is a free precondition on the pairing the whole participant
-\ rests on, and because DEVTX.FLDTOK gaining a second writer is exactly the change
-\ that would make it fire.  The reachable form of this check is the one in
-\ DEV-RETIRE-THROUGH below, which does have a negative fixture.
+\ Kept unexercised, like the DEV-OPEN serial-wrap guard: DEVTX.FLDTOK has one
+\ writer, DEV-OPEN, so this fires only if it gains a second. The reachable form,
+\ in DEV-RETIRE-THROUGH, has a negative fixture.
 : DEV-PART-FIELD-REQUIRE ( -- )
    DEV-TX-TOP DEVTX.FLDTOK @ DEV-PART-FIELD-TOKEN <> IF E-DEV-TX throw THEN ;
 
-\ Prepare is the participant's whole fallible boundary.  It proves the saved event
-\ token is the live open top, that its frame's field token is the one we saved,
-\ that the field frame is the live open top of the field owner's stack, and that
-\ the field rows are exactly the contiguous range the event stream names.  Commit
-\ and release then only advance and drop marks this proof already covered.
-\ DEV-PREPARE repeats the token proof because it is also the standalone public
-\ entry point, so a mutation that guts THIS word still rejects one step later,
-\ in PART-COMMIT.  The runner runs every prepare before any commit, and this
-\ participant commits first, so no participant has committed when that lands.
+\ PREPARE is the participant's whole fallible boundary; commit and release only
+\ advance and drop marks it proved. DEV-PREPARE repeats the token proof as the
+\ standalone entry, so gutting this word still rejects at PART-COMMIT, before any
+\ participant has committed (every prepare runs first and this one commits first).
 : DEV-PART-PROVE ( -- )
    DEV-PART-TOKEN DEV-TX-OPEN-REQUIRE
    DEV-PART-FIELD-REQUIRE
    DEV-PART-TOKEN DEV-PREPARE ;
 
-\ Cleanup for a failed declaration.  Retire the saved frame and every frame
-\ opened above it, strictly last-in first-out.  Everything is proved before the
-\ first mutation: the event token names a live frame, that frame's own field
-\ token is the one presented, and the field chain is checked inside the field
-\ owner's own cleanup vector.  The pair cross-check is not redundant with the two
-\ token lookups — each only proves its own stack has the token somewhere, so
-\ without it a caller can hand over frame A's event token with frame B's field
-\ token and retire different depths on the two stacks, leaving them desynchronised
-\ with no error.  The field owner remains the sole authority for retiring field
-\ frames: this never walks that stack itself.
+\ Failed-declaration cleanup retires the saved frame and every frame above it,
+\ LIFO, after proving everything. The pair cross-check is not redundant: each
+\ token lookup proves only that its own stack holds the token, so frame A's event
+\ token with frame B's field token would desynchronise the stacks silently. The
+\ field owner alone retires field frames.
 : DEV-TX-INDEX ( n -- n ) {: tok:n :}
    DEV-TX-DEPTH @
    BEGIN dup 0 > WHILE
@@ -642,15 +528,10 @@ public
       DEV-PART-CLEAR
    THEN ;
 
-\ Release. The runner calls this only after every participant's reversible
-\ commit succeeded, so it must not be able to reject and it is not caught. It is
-\ therefore NOT DEV-FINALIZE: that word is the standalone public entry point and
-\ re-proves the token, the frame state, and the field owner's watermarks, and
-\ any of those proofs can throw. Everything they would re-prove was already
-\ proved by this participant's own PREPARE (DEV-PART-PROVE) and then committed,
-\ so all that is left here is to drop the two frames this participant owns — the
-\ field frame through the owner's private total release vector, then our own
-\ event frame — and clear the saved token pair.
+\ The runner calls release only after every reversible commit succeeded, so it
+\ must not reject and is not caught: hence not DEV-FINALIZE, which re-proves and
+\ can throw. PART-PREPARE already proved the frames; this drops the field frame
+\ through the owner's total release vector, then the event frame.
 : PART-RELEASE ( -- )
    DEV-PART-OPEN? IF
       TDECL-FIELD-RELEASE-XT
@@ -661,27 +542,13 @@ public
 
 private
 
-\ ---------------------------------------------------------------------------
-\ IMAGE-SNAPSHOT RESET — a different "snapshot" from the participant step just
-\ above. PART-SNAPSHOT opens a DECLARATION savepoint; this word prepares the
-\ module to be written into a persisted engine IMAGE.
-\
-\ Both arenas here grow through ARENA-BOOT-GROW, which maps fresh pages in
-\ this process, so a grown base is a live address of THIS process and nothing
-\ else. The snapshot writer copies the DP heap verbatim, so a grown base
-\ left in place is persisted as a number that means nothing in the process that
-\ restores it: the restored image's first declaration reads DEV-BASE and stores
-\ through it. Measured, before this word existed: a warm image stored 1 into an
-\ unmapped page and died SIGSEGV/SIGBUS on its first ENUM, and on the runs where
-\ that address happened to land inside a mapped region it corrupted it silently
-\ instead. The three cursors go back to zero with the arenas because the boot
-\ stores they point at are the small baked ones. Event scratch has no durable
-\ contents; declarations publish their consequences into separate registries.
-\ The boot stores clear whole as well: rows the last declaration left in them
-\ would differ between a build that reuses its files and a fresh one.
-\
-\ It runs at depth 0 or not at all: an image captured mid-declaration would carry
-\ frames whose field-owner and checker savepoints no one will ever close.
+\ Image-snapshot reset, not the declaration PART-SNAPSHOT. Both arenas grow by
+\ ARENA-BOOT-GROW into fresh pages of this process and the snapshot copies the DP
+\ heap verbatim, so a grown base would persist as a dead address: measured, a warm
+\ image stored into an unmapped page and died SIGSEGV/SIGBUS on its first ENUM.
+\ The boot stores clear whole so a reusing build and a fresh one capture the same
+\ bytes. Runs only at depth 0: a mid-declaration image would carry frames whose
+\ savepoints no one closes.
 : DEV-SNAPSHOT-RESET ( -- )
    DECLARATION-TRANSACTION:ACTIVE? DEV-TX-DEPTH @ 0 <> or IF
       s" decl-event: snapshot inside declaration transaction" DEV-BUG-RC die
@@ -694,21 +561,12 @@ private
    DEV-TX-BOOT 0 DEV-TX-CAP-INIT DEV-TX-REC * CELL / ARENA-CELLS-ZERO
    DEV-RESET ;
 
-\ ---------------------------------------------------------------------------
-\ public API: the transaction both front ends drive.
-\ Phase constraints: CURRENT returns the frame opened by the declaration
-\ savepoint and rejects outside an open declaration; OPEN remains the explicit
-\ standalone interface. DECL/ARITY/
-\ POLICY/DERIVE/OPAQUE/VARIANT/END-VARIANT/FIELD and provisional FIELD-SCHEMA@/
-\ PAYLOAD-* queries are legal only between OPEN and its
-\ COMMIT or ROLLBACK, each takes and returns the same token, and each throws
-\ E-DEV-TX if the token is not the innermost open frame. COMMIT retains a
-\ reversible frame; FINALIZE releases it, ROLLBACK restores it, and PUBLISH
-\ performs PREPARE, COMMIT, and FINALIZE in one call. FINALIZE is the
-\ standalone release and re-proves the token, the frame state, and the field
-\ owner's watermarks, so it is not what the runner's total release step
-\ runs. The outer release or rollback discards the event scratch.
-\ ---------------------------------------------------------------------------
+\ Public API. CURRENT answers the frame the declaration savepoint opened and
+\ rejects outside one; OPEN is the standalone interface. The event words and the
+\ provisional FIELD-SCHEMA@ / PAYLOAD-* queries are legal only between OPEN and
+\ COMMIT or ROLLBACK, take and return the same token, and throw E-DEV-TX unless
+\ it is the innermost open frame. The outer release or rollback discards the
+\ event scratch.
 public
 
 \ In a native build a transaction cannot span a file load: every file boundary
@@ -749,11 +607,10 @@ public
 
 private
 
-\ The declaration front ends reach this module only through these hooks, and
-\ they go through the SAME public words an outside caller uses — CURRENT carries
-\ the declaration-frame and open-state guards that the private token reader does
-\ not. Installed after the public section because a quotation binds its target
-\ at compile time.
+\ The front ends reach this module only through these hooks, which go through the
+\ public words (CURRENT carries the frame and open-state guards the private reader
+\ lacks). Installed after the public section: a quotation binds its target at
+\ compile time.
 : DEV-EVENT-HOOKS-INSTALL ( -- )
    [: CURRENT ;] is TYPE-DECL:TDECL-EVENT-CURRENT-XT
    [: DECL ;] is TYPE-DECL:TDECL-EVENT-DECL-XT

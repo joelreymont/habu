@@ -1,7 +1,7 @@
-\ include.f - checked source include words.
-\
-\ `include` is source composition. Package reopening owns shared namespace;
-\ this file only gives source files a checked way to load dependencies.
+\ include.f: checked source loading. SOURCE-ROOT resolves paths against the owner
+\ root, REQUIRE-REG records loaded files (engine rows frozen at boot), the event
+\ log feeds a discovery pass, and the frames hold each open file. `include` only
+\ composes source; package reopening owns shared namespace.
 
 PATH-CAP constant INCLUDE-PATH-CAP
 \ A loader refusal's exit status, always after a line naming the refusal: an
@@ -10,10 +10,9 @@ $4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
 -2110 constant INCLUDE-RANGE-RC
 $37D8 constant INCLUDE-EVALERR-CELL
-\ Where this file publishes the innermost open source file's path for the engine's
-\ own refusal tail (src/habu/habu2.f LCOMPILEDIE, dot habu-name-the-file-70acbf10).
-\ Fixed offsets from data-base, spelled here the way INCLUDE-EVALERR-CELL is and
-\ reserved in src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
+\ The innermost open source file's path for the engine's refusal tail
+\ (src/habu/habu2.f LCOMPILEDIE): fixed data-base offsets, reserved in
+\ src/habu/layout.f as SRCLOC:PATH-CELL / SRCLOC:PATHLEN-CELL.
 $2800 constant INCLUDE-SRCLOC-PATH-CELL
 $2808 constant INCLUDE-SRCLOC-PATHLEN-CELL
 $2D68 constant INCLUDE-SRCLOC-OWNED-CELL
@@ -63,25 +62,21 @@ variable REQUIRE-SAVE-BASE
    0 0= ;
 
 \ Rows recorded while the boot registry is open describe what the ENGINE
-\ carries; every other row describes what a process went on to load. Only the
-\ boot prefix may open it, and it says so with a token of its own (habu2.f
-\ EMIT-REQUIRE-BOOT-OPEN-TOKEN) between the loader's own text and the first
-\ row. Loading this file is NOT the signal: a build re-loads it into a booted
-\ engine, and an engine that opened the registry there would record every
-\ later require portably and stop recognising its own canonical rows.
+\ carries; every other row, what a process loaded. Only the boot prefix opens
+\ it, with a token of its own (habu2.f EMIT-REQUIRE-BOOT-OPEN-TOKEN) between the
+\ loader's text and the first row. Loading this file is not the signal: a build
+\ re-loads it into a booted engine, which would then record every later require
+\ portably and stop recognising its own canonical rows.
 : REQUIRE-BOOT-OPEN ( -- )
    INCLUDE-TRUE REQUIRE-BOOT-V ! ;
 
 : REQUIRE-BOOT-OPEN? ( -- bool )
    REQUIRE-BOOT-V @ 0= 0= ;
 
-\ How many rows are the ENGINE's. While the registry is open every row recorded
-\ so far is one, because only the prefix records there; once it closes the
-\ frozen count says so for the rest of the process. The open case is not a
-\ nicety: the prefix requires engine files WHILE it is recording them, and a
-\ portable row answers no other question, so a bound of REQUIRE-BOOT-N alone
-\ made the prefix reload its own checker (measured: `duplicate definition:
-\ RAW-OFF`, src/core/checker.f loaded twice, exit 78).
+\ While the registry is open every row so far is the engine's, because only the
+\ prefix records there; once closed, the frozen count says. The prefix requires
+\ engine files while recording them, so bounding by REQUIRE-BOOT-N alone made it
+\ reload its own checker (`duplicate definition: RAW-OFF`, exit 78).
 : REQUIRE-BOOT-LIMIT ( -- n )
    REQUIRE-BOOT-OPEN? if REQUIRE-N @ exit then
    REQUIRE-BOOT-N @ ;
@@ -276,16 +271,15 @@ private
    repeat ;
 
 
-\ The program file `hb prog.f` runs: argv[1]'s string, which the launcher
-\ leaves in PROGRAM-FILE-CELL only on that route (src/habu/habu2.f SRC-FPLAIN,
-\ src/habu/main.f RUN). Its canonical path, resolved against the process's
-\ working directory, which no Habu word changes, is derived on the first
-\ question that needs it, as ENGINE$ is: its directory is the top-level root
-\ (CURRENT$) and the resolver counts it as loaded (PROGRAM?), so no stream row
-\ names it and no registry row holds it: a row appended on first use would
-\ vanish under the rollback of a failed require or a discovery pass. With the cell clear nothing is derived; RESET forgets
-\ the path, and a captured image starts with the cell clear. Deriving writes
-\ only PROGRAM-BUF, so the caller's scratch survives.
+\ The program file `hb prog.f` runs: argv[1], which the launcher leaves in
+\ PROGRAM-FILE-CELL only on that route (src/habu/habu2.f SRC-FPLAIN,
+\ src/habu/main.f RUN). Its canonical path, against the working directory no
+\ Habu word changes, is derived on first need, as ENGINE$ is. Its directory is
+\ the top-level root (CURRENT$) and PROGRAM? counts it as loaded, so no stream
+\ or registry row names it: a row appended on first use would vanish under the
+\ rollback of a failed require or a discovery pass. With the cell clear nothing
+\ is derived; RESET forgets the path, and a captured image starts with the cell
+\ clear. Deriving writes only PROGRAM-BUF, so the caller's scratch survives.
 PROGRAM-FILE-CELL RESERVED-PTR-U8-CELL PROGRAM-ARG
 create PROGRAM-BUF PATH-BYTES allot
 variable PROGRAM-U
@@ -311,7 +305,6 @@ variable PROGRAM-U
 
 public
 
-\ The top-level root: the program file's directory, else the working directory.
 : CURRENT$ ( -- ptr u8 n )
    CURRENT-U @ 0 > if CURRENT-PTR CURRENT-U @ exit then
    PROGRAM-INIT
@@ -477,10 +470,9 @@ private
    WORK-BUF n 2 + ZBUF WORK-BYTES PATHZ
    ZBUF 0 access 0= ;
 
-\ A root is a searchable directory, which ENGINE-DIR? decides on every platform
-\ and the canon of a path does not. Neither says why a path fails, so the
-\ refusal names the absolute spelling tried and what a missing, unsearchable or
-\ long directory and a file all are not.
+\ ENGINE-DIR? decides a root on every platform; the canon of a path does not.
+\ Neither says why a path fails, so the refusal names the absolute spelling
+\ tried and what a missing, unsearchable or long directory and a file all are not.
 : ROOT-DIE ( -- )
    s" source root: does not resolve to a searchable directory within PATH-CAP bytes: "
    JOIN-BUF JOIN-U @ PATH-DIE ;
@@ -633,7 +625,6 @@ public
    u ix SLOT-U!
    ix 1+ SLOT-N ! ;
 
-\ POPPATH restores the path PUSHPATH saved last.
 : POPPATH ( -- )
    s" POPPATH: only at top level" TOP-ONLY
    SLOT-N @ 0= if s" POPPATH: directory stack is empty" INCLUDE-IO-RC die then
@@ -1053,26 +1044,21 @@ public
 package SOURCE-ROOT
 private
 
-\ Whether a canonical path is loaded: the program file or a registry row.
 : LOADED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u PROGRAM? if INCLUDE-TRUE exit then
    a u REQUIRE-KNOWN? ;
 
 \ The engine's own source root: the working directory when it carries the
-\ engine's first row; else the executable's tree when that does (`%`, two
-\ levels above the executable, <tree>/bin/hb, as SwiftForth places it); else
-\ the working directory. The working directory comes first because a stdin
-\ session's top-level requires search it before the root, and only the root's
-\ physical copy of a row is frozen: with `%` first, a copied tree there would
-\ load as application source.
-\ A build's fresh registry holds no row, so nothing is a tree and the rows it
-\ records are relative to the working directory whatever host builds them.
-\ The root is derived on the first question that needs it, from the
-\ executable's path and realpath rather than through SOURCE-INPUT: it
-\ is a fact of this process, not a source file a view answers. RESET forgets
-\ it with the bytes, so a captured image derives the root of the executable
-\ that restores it. Deriving touches only JOIN, WORK, Z and CANON scratch, so a
-\ candidate held in NORMAL-BUF or CANDIDATE-BUF survives.
+\ engine's first row; else the executable's tree when that does (`%`, two levels
+\ above <tree>/bin/hb, as SwiftForth places it); else the working directory.
+\ The working directory comes first because a stdin session's requires search it
+\ before the root and only the root's physical copy of a row is frozen: with `%`
+\ first, a copied tree there would load as application source. A build's fresh
+\ registry holds no row, so its rows are relative to the working directory.
+\ Derived on first need from the executable's path and realpath, not through
+\ SOURCE-INPUT: it is a fact of this process. RESET forgets it, so a captured
+\ image derives the root of the executable that restores it. Deriving touches
+\ only JOIN, WORK, Z and CANON scratch, so NORMAL-BUF and CANDIDATE-BUF survive.
 
 \ The running engine's path: on macOS the one execve received, in the
 \ executable_path= apple string past envp's terminator; on Linux
@@ -1130,7 +1116,6 @@ private
 
 public
 
-\ The engine's source root, canonical.
 : ENGINE$ ( -- ptr u8 n )
    ENGINE-INIT
    ENGINE-U @ 0= if CWD$ exit then
@@ -1282,18 +1267,14 @@ public
    then
    path pathu CONFINE known ;
 
-\ Every boot row is portable now: each prefix that records one opens the
-\ registry first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
-\ EMIT-REQUIRE-BOOT-OPEN-TOKEN, bootstrap/cg/forth.fs's mirror of it) or
-\ literally (src/habu/native-runtime.f). So one question answers for every
-\ engine kind: BOOT-CANDIDATE, which asks the engine-root spelling the rows are
-\ stored in of the source a require would select.
-\ A canonical scan alongside it would answer for no engine and hide a prefix
-\ that had stopped opening the registry. The selection counts every frozen row
-\ whatever REQUIRE-BASE is, so a frozen row is the engine's even where its file
-\ is missing, and this process's own rows only steer where it stops. The
-\ question leaves the caller's RESOLVED-ROOT$ as the caller's own RESOLVE left
-\ it.
+\ Every boot row is portable: each prefix that records one opens the registry
+\ first, with REQUIRE-BOOT-OPEN as a source token (src/habu/habu2.f
+\ EMIT-REQUIRE-BOOT-OPEN-TOKEN, bootstrap/cg/forth.fs's mirror) or literally
+\ (src/habu/native-runtime.f), so BOOT-CANDIDATE answers for every engine kind.
+\ A canonical scan beside it would answer for no engine and hide a prefix that
+\ stopped opening the registry. The selection counts every frozen row whatever
+\ REQUIRE-BASE is, so a frozen row is the engine's even where its file is
+\ missing. RESOLVED-ROOT$ stays as the caller's own RESOLVE left it.
 : ENGINE-KNOWN? ( ptr u8 n -- bool )
    OWNER-BUF OWNER-SAVE OWNER-U @ BYTE-COPY
    OWNER-U @ {: owner:n :}
@@ -1323,20 +1304,14 @@ public
 
 ;package
 
-\ A boot row is recorded PORTABLY, in the one spelling BOOT-KNOWN? asks for,
-\ relative to the engine root (SOURCE-ROOT:BOOT-ROW). Store and query share that
-\ root deliberately. A build records the tree it compiles: its fresh registry
-\ holds no row, so its root is the working directory. Against the load's OWN
-\ owner root a nested
-\ require - one issued by a boot file rather than by the manifest - would shorten
-\ to a bare basename that no query ever spells, and a basename names a different
-\ file in every directory.
-\
-\ Recording the canonical absolute spelling instead baked the build directory
-\ into the engine binary, so two builds of one revision from two directories
-\ differed (dot habu-bake-prefix-src-1047b604). An application row keeps its
-\ canonical identity, so identical names in distinct roots still coexist. The two
-\ spellings cannot collide: a canonical name always begins with `/` and a
+\ A boot row is recorded portably, in the one spelling BOOT-KNOWN? asks for,
+\ relative to the engine root (SOURCE-ROOT:BOOT-ROW); a build's fresh registry
+\ makes that root the working directory. Against the load's own owner root a
+\ require issued by a boot file would shorten to a bare basename no query spells,
+\ naming a different file in every directory. A canonical absolute spelling
+\ would bake the build directory into the engine, so two builds of one revision
+\ from two directories would differ. An application row keeps its canonical
+\ identity; the two cannot collide, as a canonical name begins with `/` and a
 \ portable one never does. The path comes back in storage the store did not
 \ reuse, for the caller's load.
 : REQUIRE-STORE ( ptr u8 n -- ptr u8 n )
@@ -1381,13 +1356,8 @@ variable SCRIPT-NAMED-PEND
    SCRIPT-NAMED-PEND ! ;
 
 
-\ A failed open is almost always a typo or a moved file, and the one thing the
-\ reader needs is WHICH path. The message used to drop it even though
-\ INCLUDE-PATH holds the resolved path at exactly that moment, so a bad
-\ `require` said only "include: open failed". Now that `bin/hb --load` routes
-\ its argv files through `required` too (dot habu-make-load-consult-85c88fb3),
-\ this is the diagnostic a mistyped command line gets, and the raw argv reader
-\ it replaced always named the path.
+\ A failed open names the resolved path INCLUDE-PATH holds: it is the diagnostic
+\ a mistyped `require` or `bin/hb --load` argument gets.
 : INCLUDE-OPEN-DIE ( -- )
    INCLUDE-DIAG-RESET
    s" include: cannot open " INCLUDE-DIAG+
@@ -1458,14 +1428,11 @@ variable GEN
 
 SOURCE-UNIT:RESET
 
-\ ---- Ordered source-composition event log -------------------------------
-\ The loader words append one event per source-composition act so a restricted
-\ discovery pass can reconstruct include multiplicity and require/provided
-\ canonical registry state in order. Recording is gated by EVENT-ON? so a
-\ normal boot/gate records nothing (no overhead, no overflow). During discovery
-\ the walker sets DISCOVERY and supplies the loader-token byte span in
-\ DISC-TOK-A/DISC-TOK-U; a real load reads the live token span from the
-\ interpreter TKA/TKL cells instead.
+\ Source-composition event log: one event per loader act, so a restricted
+\ discovery pass can rebuild include multiplicity and require/provided registry
+\ state in order. Recorded only while EVENT-ON?. During discovery the walker
+\ runs DISCOVERY-ON and passes the loader-token span to DISC-TOK!; a real load
+\ reads TKA-CELL and TKL-CELL.
 
 8 constant EVENT-FIELDS
 EVENT-FIELDS cells constant EVENT-BYTES          \ one record
@@ -1546,7 +1513,6 @@ variable DISC-TOK-U
 
 : EVENT-POOL-AT ( n -- ptr u8 )  EVENT-POOL@ + ;
 
-\ A mapping that must hold NEED bytes doubles, or takes NEED if that is more.
 : EVENT-GROWN ( n n -- n ) {: need:n cap:n :}
    cap 2 * need max EVENT-ROOM-MIN max ;
 
@@ -1635,13 +1601,11 @@ public
 package SOURCE-ROOT
 private
 
-\ A frame carries its own path as well as its own bytes. INCLUDE-PATH cannot
-\ answer "which file is open": a nested include overwrites it before the inner
-\ file is even read, so the outer path is gone by the time an inner refusal or a
-\ POP needs it. The frame is the only per-load storage there is, so the resolved
-\ path is copied into it and the header grows by one length cell plus the path.
-\ The file's bytes follow the header in the same mapping, which is sized to the
-\ file (GROW): FR-ROOM counts the source bytes it can hold, FR-SIZE the file's.
+\ A frame carries its own resolved path: a nested include overwrites
+\ INCLUDE-PATH before the inner file is read, so only the frame names the outer
+\ file to an inner refusal or a POP. The file's bytes follow the header in the
+\ same mapping, sized to the file (GROW): FR-ROOM counts the source bytes it can
+\ hold, FR-SIZE the file's.
 0 constant FR-PREV
 CELL constant FR-NAMED
 2 cells constant FR-PATHLEN
@@ -1719,7 +1683,6 @@ variable LAST-LOAD-EVAL-OK
    frame FRAME-EXEC-SOURCE NULL-PTR -
       data-base INCLUDE-SRCLOC-OWNED-CELL + ! ;
 
-\ The bytes FRAME maps: its header and its room.
 : MAPPED ( ptr u8 -- n ) FR-ROOM + CELL-VIEW @ HEADER-BYTES + ;
 
 : ROOM ( -- n ) TOP@ FR-ROOM + CELL-VIEW @ ;
@@ -1984,7 +1947,6 @@ private
 
 create RESIDUE-DIGIT 1 allot
 
-\ A non-negative number's decimal digits on descriptor 2.
 : RESIDUE-DEC ( n -- )
    dup 10 >= if dup 10 / recurse then
    10 mod 48 + RESIDUE-DIGIT c!  2 RESIDUE-DIGIT 1 write drop ;
@@ -2201,7 +2163,6 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
    ENTRY-RESOLVE REQUIRE-BODY ;
 
-\ Is the file being loaded right now one the command line named?
 : SCRIPT-NAMED-LOAD? ( -- bool )
    SOURCE-ROOT:NAMED? ;
 
@@ -2307,13 +2268,11 @@ public
 
 ;package
 
-\ ---- Fresh discovery registry -------------------------------------------
-\ A restricted discovery pass must see a fresh require/provided registry so a
-\ tool's own preloaded paths cannot dedup-hide a later user require/provided.
-\ Raising REQUIRE-BASE to the current count makes REQUIRE-KNOWN? ignore the
-\ tool's entries while discovery records into slots above the base; RESTORE
-\ drops the discovery entries and reinstates the tool's registry unchanged, so
-\ warm-snapshot serialization of the registry stays intact.
+\ A restricted discovery pass sees a fresh require/provided registry, so a tool's
+\ preloaded paths cannot dedup-hide a later user require. Raising REQUIRE-BASE to
+\ the current count makes REQUIRE-KNOWN? ignore the tool's entries; RESTORE drops
+\ the discovery entries and reinstates the tool's registry unchanged, keeping
+\ warm-snapshot serialization intact.
 
 : REQUIRE-SNAPSHOT ( -- )
    REQUIRE-N @ REQUIRE-SAVE-N !
@@ -2336,14 +2295,11 @@ public
 
 \ The loader scratch a fresh pass may reset at any time: the open file, the read
 \ counters, the path buffer, the discovery base and the event log. None of it
-\ describes a load in flight, so resetting it underneath one is safe.
-\
-\ Resetting the path buffer is its BYTES and its copy cursor, not just its
-\ length. Either leftover describes the last pathname resolved, and a capture
-\ taken afterwards bakes it into the engine: the bytes as the absolute path of
-\ the directory the build ran in, and the cursor as that path's length - one
-\ byte, and the only one left between two builds of one revision from two
-\ directories (dot habu-bake-prefix-src-1047b604).
+\ describes a load in flight.
+\ The path buffer's bytes and copy cursor are reset, not just its length: a
+\ capture taken afterwards would bake the build directory's path, or its length,
+\ into the engine, the last difference between two builds of one revision from
+\ two directories.
 : INCLUDE-RESET-SCRATCH ( -- )
    INCLUDE-CLOSE
    0 INCLUDE-U !
@@ -2366,16 +2322,11 @@ public
    RESET
    REQUIRE-REG:PERSIST ;
 
-\ ---- what the ENGINE provides, as opposed to what this process has loaded ---
-\
-\ The boot prefix marks its own files `provided` before any user token runs, so
-\ the registry opens with exactly the engine's surface in it. Freezing the count
-\ at the end of the prefix is what lets a later question separate "the engine
-\ carries this" from "something in this process required it", which a plain
-\ REQUIRE-KNOWN? cannot: by the time a tool asks, its own dependencies are in
-\ the registry too. tools/bundle-lib-core.f needs exactly this separation - it
-\ must not bundle a copy of a file the engine already loaded, and must not skip
-\ one the engine does not have.
+\ What the ENGINE provides, as opposed to what this process loaded: the boot
+\ prefix marks its own files `provided` before any user token runs, and freezing
+\ the count at its end separates the two, which REQUIRE-KNOWN? cannot once a
+\ tool's own dependencies are in the registry. tools/bundle-lib-core.f relies on
+\ it: it bundles no file the engine loaded and skips none the engine lacks.
 : REQUIRE-BOOT-FREEZE ( -- )
    REQUIRE-N @ REQUIRE-BOOT-N !
    INCLUDE-FALSE REQUIRE-BOOT-V ! ;

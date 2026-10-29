@@ -12,8 +12,7 @@ private
 
 public
 
-\ Bound the descriptor before reading it, then the complete recorded extent
-\ before a caller reads any operation. `need` is the exclusive field end.
+\ `need` is the exclusive end of the fields the caller reads.
 : VALIDATE ( ptr u8 n -- ptr u8 ) {: owner:ptr need:n :}
    DATA-SPAN {: lo:n hi:n :}
    owner ADDRESS {: at:n :}

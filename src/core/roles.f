@@ -5,14 +5,11 @@
 \ nothing else: each one is declared with `CAST:`, which publishes an identity
 \ word and costs nothing at a call site.
 
-\ The DTC-* words below build a nominal cell type's no-op converter pair —
-\ >NAME ( n -- NAME ) and NAME>N ( NAME -- n ), matching the built-in role
-\ pattern (>IDX / IDX>N). A nominal is one cell wide, distinct from n and from
-\ every other nominal, with no widening; the converters are the only way across
-\ the boundary and the checker never collapses a nominal to n. The builder takes
-\ the UPPER-CASE surface name (the converter word spelling) and the lowercase
-\ family tail (the signature type) separately; the checker's source recorder
-\ (verify-source.f RECORD-DEFTYPE) registers their trust signatures.
+\ The DTC-* words build a nominal cell type's converter pair, >NAME ( n -- NAME )
+\ and NAME>N ( NAME -- n ). A nominal is one cell, distinct from n and every
+\ other nominal, with no widening. The builder takes the upper-case surface name
+\ and the lowercase family tail separately; verify-source.f RECORD-DEFTYPE
+\ registers their trust signatures.
 $200 constant DTC-CAP
 create DTC-BUF DTC-CAP allot
 variable DTC-U
@@ -63,33 +60,18 @@ variable DTC-SIG-U
    sa su DTC+ s" >N" DTC+ DTC-NAME-END
    ta tu DTC+ s"  -- n" DTC+ DTC-SIG-END ;
 
-\ The 34 role conversions below are CASTS, not trusted declarations, and the
-\ difference is where the refusal lands. `TRUSTED: L ( n -- idx idx ) ;` records
-\ whatever it is handed and only fails later, at a caller that happens to
-\ disagree — `TRUSTED: L ( n -- ptr u8 ) ;` let `8 L c@` compile and SIGSEGV.
-\ A cast is refused at the DECLARATION by its structural rules (checker.f
-\ CAST-CERTIFY), so a role conversion can no longer declare a shape the runtime
-\ cannot produce.
-\
-\ This file could not declare a cast at all while `cast:` was a WORD: the
-\ declarer crossed source through the evaluate boundary src/core/include.f arms
-\ at prefix row 902, and this file is row 894, so one converted row killed every
-\ boot with "defer: unset execution vector". A reader keyword needs no evaluate
-\ and works from the first prefix row that has a checker.
+\ The role conversions are casts, not trusted declarations: checker.f
+\ CAST-CERTIFY refuses a bad cast at its declaration, while
+\ `TRUSTED: L ( n -- ptr u8 ) ;` records any shape and fails only at a caller
+\ (`8 L c@` compiled and crashed).
 
-\ DEFLINEAR / VALUE-RECORD are top-level-interpret-only, like the sumtype.f
-\ block openers: executing one parses the live input stream and mutates the
-\ type registry — side effects their ( -- ) rows do not express. Unlike the
-\ openers (PRIM: axioms) these are checked words, so certifying this file
-\ records a usig per definer. UNSAFE-TOK? rejects the BARE tokens inside
-\ checked bodies BEFORE the usig is consulted (DO-TOK1 order), and EXPORT
-\ refuses to mint a qualified alias for these names (E-EXPORT-UNSAFE), so no
-\ spelling reaches the usig from a checked body. The usig therefore adds no
-\ checked-code capability — it only keeps the definers checker-known so the
-\ seal-time internal-word marking pass (src/core/internal-mark.f) leaves
-\ them executable at top level (LAYOUT-BUFFER parity, dots
-\ habu-checker-deftype-deflinear-8e9d1dc5,
-\ habu-checker-unsafety-must-d12bc784).
+\ DEFLINEAR / VALUE-RECORD are top-level-interpret-only: executing one parses
+\ the live input and mutates the type registry, which their ( -- ) rows do not
+\ express. UNSAFE-TOK? rejects the bare tokens in checked bodies before the usig
+\ is consulted (DO-TOK1 order) and EXPORT refuses a qualified alias
+\ (E-EXPORT-UNSAFE), so the usig adds no checked capability; it keeps the
+\ definers checker-known so src/core/internal-mark.f leaves them executable at
+\ top level.
 
 CAST: >IDX ( n -- idx )
 CAST: IDX>N ( idx -- n )
@@ -234,13 +216,8 @@ variable VRDEF-I
    AGAIN ;
 NOMINAL-PROVIDER
 
-\ `cast:` used to be defined here, as a word that rebuilt its declaration as text
-\ and drove it back through TDECL-EVAL-XT's evaluate. It is an engine reader
-\ keyword now (src/habu/habu2.f C-CAST).
-
-\ Seal the aliasable-unsafe words (this file's DEFLINEAR/VALUE-RECORD and
-\ the earlier sumtype.f/type-family.f openers) into the checker's identity set so
-\ EXPORT rejects re-exporting any of them BY SYMBOL, not just by their canonical
-\ spelling (dot habu-checker-unsafety-as-1c537c1f). Every definer/opener is
-\ interned by now, so each name resolves to its permanent symbol.
+\ Seal the aliasable-unsafe words (DEFLINEAR/VALUE-RECORD here and the sumtype.f
+\ and type-family.f openers) into the checker's identity set so EXPORT rejects
+\ re-exporting any of them by symbol, not only by canonical spelling. Every
+\ definer is interned by now, so each name resolves to its permanent symbol.
 UNSAFE-SET-SEAL

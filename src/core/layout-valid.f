@@ -13,15 +13,10 @@ $100 constant ENV-INIT
 $100 constant GUARD-INIT
 $100 constant TASK-INIT
 
-\ Every base below is PERSISTED, not scratch: each HOLDS A DATA ADDRESS across a
-\ capture, and only a marked cell is rebased when the capture relocates the
-\ window's DATA down to the image's base. As bare PTR-VARIABLEs all twelve kept
-\ the BUILD window's addresses, so a restored engine wrote certificate rows about
-\ 12 MB above its own heap top, into DATA that `allot` later handed out (measured
-\ 2026-09-13: DATA-P at 22,732,832 against a boot buffer at 5,533,288 and a heap
-\ top of 10,031,749). Each *-ENSURE also grows into process-local mmap, which no
-\ image may carry either - SNAP-RESET at the foot of this file is that half.
-\ Same defect and same fix as checker.f's LOC-HW-P (habu-let-a-restored-1ba4b713).
+\ Every base below is PERSISTED: each holds a data address across a capture, and
+\ only a marked cell is rebased when the capture moves the window's DATA to the
+\ image's base. Each *-ENSURE also grows into process-local mmap, which
+\ SNAP-RESET at the foot of this file undoes.
 create DATA-BOOT DATA-INIT cells allot
 PERSISTED-PTR-VARIABLE DATA-P   DATA-BOOT DATA-P !
 variable DATA-CAP DATA-INIT DATA-CAP !
@@ -221,21 +216,15 @@ variable CHECKS
    term PARAM>FAM TFAM-VAR-COUNT@
    TASK-PUSH ;
 
-\ THE TAG IS THE LAST CELL OF THE VALUE, AND HOW MANY CELLS THAT IS DEPENDS ON
-\ THE ARGUMENTS. src/core/checker.f PUSH-LOGICAL lays a layout value out as
-\ payload slots 0..W-2 with the tag at W-1, and W is the INSTANTIATED width:
-\ `opt2<pt>` reserves one payload slot in the registry and occupies two once
-\ `pt` is substituted. Taking the tag's slot from the declared count addressed a
-\ payload cell at such an instantiation, so the guard tested a field against the
-\ tag domain and ended the process on valid data (`hb: bad layout tag`,
-\ ENGINE-ERROR:BAD-TAG, on a store this same engine had written correctly).
+\ The tag is the value's last cell, and the cell count depends on the arguments:
+\ src/core/checker.f PUSH-LOGICAL lays a layout value out as payload slots
+\ 0..W-2 with the tag at W-1, W the instantiated width (`opt2<pt>` reserves one
+\ payload slot in the registry and occupies two once `pt` is substituted).
 \
-\ T-WIDTH IS THE SAME NUMBER THE ACCESS ITSELF MOVES: src/core/checker.f
-\ WF-MEM-RECORD files it under the access token as the row's width and
-\ src/habu/habu2.f EMIT-P2-FETCH moves exactly that many cells. Reading it here
-\ puts the certificate and the bundle it validates on ONE width by construction
-\ rather than by agreement between two derivations. It is read before this walk
-\ mints any term (SCHEMA-TERM below allocates), so it is answered against the
+\ T-WIDTH is the width the access moves: checker.f WF-MEM-RECORD files it as the
+\ row's width and src/habu/habu2.f EMIT-P2-FETCH moves that many cells, so the
+\ certificate and the bundle share one width by construction. It is read before
+\ this walk mints any term (SCHEMA-TERM allocates), so it answers against the
 \ argument terms the row was certified with.
 : QUEUE-SUM ( n n -- ) {: term:n off:n :}
    term ENV-TERM!
@@ -371,10 +360,10 @@ variable CHECKS
    verdict -1 = BWIN-UNJUDGED @ 0 <> or if a u MAKE exit then
    a u EMPTY ;
 
-\ SNAP-RESET ( -- ) : the certificate is dead when REG-CERT-SNAP-XT runs.
-\ Empty its boot buffers before capture and reset their cursors with the bases:
-\ MAKE rebuilds every row for the next definition. No certificate scratch or
-\ grown mmap address belongs in the image.
+\ The certificate is dead when REG-CERT-SNAP-XT runs: empty the boot buffers
+\ before capture and reset their cursors with the bases; MAKE rebuilds every row
+\ for the next definition. No certificate scratch or grown mmap address belongs
+\ in the image.
 : SNAP-RESET ( -- )
    BUF-SNAP-RESET
    DATA-P DATA-BOOT DATA-INIT ARENA-SNAP-BOOT
@@ -409,14 +398,9 @@ SNAP-RESET-INSTALL
 
 public
 
-\ ARENAS-STALE ( -- n ) : how many of the thirteen bases are not on their boot
-\ buffer, plus how many of the six caps are not at their init. A restored engine
-\ must answer 0: the boot buffers are what the image carries, and the capture's
-\ relocation of a marked cell is what keeps their addresses true across it. Any
-\ other answer is a base naming DATA this engine does not own, which is what a
-\ bare PTR-VARIABLE gave (all thirteen stale, 12 MB above the heap top). Public
-\ because test/engine-suite.f has to ask it of a BOOTED engine and no other
-\ surface can - the bases are this package's business, the invariant is not.
+\ The count of bases not on their boot buffer plus caps not at their init; a
+\ restored engine must answer 0. Public because test/engine-suite.f asks it of a
+\ booted engine.
 : ARENAS-STALE ( -- n )
    0
    BUF-P @ BUF-BOOT = 0= if 1 + then

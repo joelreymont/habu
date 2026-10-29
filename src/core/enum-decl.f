@@ -1,68 +1,9 @@
-\ enum-decl.f — the ENUM typed-declaration front end (package ENUM-DECL). This is
-\ the SECOND consumer of the shared declaration-event transaction
-\ (src/core/decl-event.f, package DECL-EVENT), binding to the same atomic
-\ declaration transaction used by STRUCTURE. It owns only the ENUM grammar loop
-\ and its reject dispatch; it holds NO declaration state (the events, the field
-\ rows, the variant registration and the current-variant selector live in the
-\ event module), and the token source, the parse cells and the guarded
-\ transaction run are DECL-FRONT's (src/core/generated-declaration.f): this
-\ file hands it its kind, terminator and body.
-\
-\ Grammar (docs/forth.md "Structures And Enums"):
-\   enum-decl    = ENUM type-name (full-enum | compact-enum) ;ENUM
-\   full-enum    = header-clause* variant-block+
-\   compact-enum = header-clause* compact-variant+
-\   header-clause = POLICY policy-name | DERIVE derive-name+
-\   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
-\   compact-variant = variant-name
-\ The first variant after optional header clauses chooses the form: VARIANT
-\ starts a full block declaration; a bare name starts a compact declaration.
-\ A parameter list requires full mode. The modes never mix, and header clauses
-\ must precede the first variant.
-\ Every malformed/duplicate/reserved/unresolved reject rolls the whole provisional
-\ declaration back to a byte-identical registry.
-\
-\ ---------------------------------------------------------------------------
-\ FAMILY KIND (settled). The kind is chosen by mode at registration, before the
-\ variants are parsed, because TFAM-DECL fixes the kind once (there is no kind
-\ mutator). A compact ENUM is all-payloadless by construction, so it registers
-\ TK-ENUM exactly like the legacy compact ENUM (type-family.f header): arity 0, slots 0. A
-\ full ENUM is the general named-variant sum surface, so it registers TK-SUM with
-\ the declared arity — the same kind test/decl-event-suite.f drives DECL-EVENT
-\ variants over, and the kind PF-OWNER-OK? requires for a named variant field
-\ (fam TFAM-SUM? or TFAM-ENUM?, type-family.f). The rule "all payloadless => enum
-\ layout" is a downstream LAYOUT selection derived from the payload slots, not the
-\ coarse registry kind: TFAM-WIDTH@ already treats TK-SUM and TK-ENUM identically
-\ for a zero-payload family, so a full ENUM whose variants happen to be payloadless
-\ is width-identical to a compact ENUM. Full-mode fields are named FIELD clauses
-\ carried by the shared field event under the open variant selector; each variant
-\ sets SV.SCH-COUNT=0 (the event module's DEV-VARIANT does this) and downstream
-\ discovers a variant's fields by scanning the TYPE-FIELD rows keyed (family,
-\ variant-id), per the settled seam, until the sumvfields rename lands.
-\
-\ ---------------------------------------------------------------------------
-\ TRANSACTION SCOPE.
-\ ---------------------------------------------------------------------------
-\ The checker, metadata, event, constructor-generation and constructor-protection
-\ participants retain one shared savepoint until the complete declaration has
-\ validated. A reject restores every owned registry in reverse participant order.
-\ This front end parses and publishes family, variant, and field metadata; it
-\ renders no constructor itself. Once the variant range, the field range and the
-\ payload width are bound, ED-CLOSE names the family to the constructor
-\ participant (src/core/generated-declaration.f) and the declaration transaction
-\ generates the per-variant checked constructor package (MESSAGE:QUIT, docs/forth.md "Structures And Enums")
-\ inside its commit phase, so a failure anywhere publishes no constructor at all.
-\
-\ ---------------------------------------------------------------------------
-\ GLOBAL-KEYWORD BINDING (landed). The global `ENUM` keyword IS this front end:
-\ `: ENUM ( -- ) ENUM-DECL:ED-RUN ;` at the end of this file is the sole global
-\ entry, written the way src/core/structure-decl.f writes `STRUCTURE`. The legacy
-\ compact parser and generator in src/core/sumtype.f, and its metadata-only
-\ CHECKER-DEFENUM entry, are deleted. ED-REPLAY below remains the checked entry
-\ for callers that have already lexed a declaration.
-\
-\ Loaded AFTER the checker hook and AFTER decl-event.f (it drives DECL-EVENT:*),
-\ in the post-hook DECL group after structure-decl.f.
+\ enum-decl.f: the ENUM front end (package ENUM-DECL), grammar loop and reject
+\ dispatch only. DECL-FRONT (generated-declaration.f) owns the token source and
+\ the guarded run; DECL-EVENT (decl-event.f) owns the events, field and variant
+\ rows and the current-variant selector. The constructor participant
+\ (generated-declaration.f) renders constructors at commit, so a reject publishes
+\ none. Loads after decl-event.f and structure-decl.f.
 
 using SCHEMA-REG
 using TFAM
@@ -71,10 +12,8 @@ using DECL-FRONT
 
 package ENUM-DECL
 
-\ ---------------------------------------------------------------------------
-\ transient parse state (parse-loop bookkeeping, not declaration state). One
-\ declaration at a time: ENUM is top-level interpret-only, never nested.
-\ ---------------------------------------------------------------------------
+\ Transient parse state, not declaration state: ENUM is top-level
+\ interpret-only, so one declaration runs at a time.
 variable FAM        \ family id being declared
 variable TOK        \ declaration-event token; ED-RESET zeroes it at body start
 variable VBASE      \ variant high-water at open (variant range start)
@@ -85,48 +24,27 @@ variable VCELLS     \ running payload cell width WITHIN the open variant
 variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots)
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
 
-: ED-RESET ( -- )                      \ grammar scalars; re-seeded at load (process-local)
+: ED-RESET ( -- )
    0 TOK !   0 SEEN-VARIANT ! ;
 ED-RESET
 
-\ ---------------------------------------------------------------------------
-\ name gate: a reserved family name is one TYPE-NAME:FAMILY-RESERVED? lists, the
-\ list every family definer asks; the ENUM openers are grammar keywords there.
-\ Case + duplicate are enforced by TFAM-DECL itself. A copy of the list kept
-\ here drifted from the legacy definers twice: it admitted the control words
-\ (`if`), then value record names (`ENUM vr` in a package after `VALUE-RECORD
-\ vr`).
-\ ---------------------------------------------------------------------------
+\ The reserved list is TYPE-NAME:FAMILY-RESERVED?, the one every family definer
+\ asks (the ENUM openers are grammar keywords there): a copy kept here drifted
+\ twice. Case and duplicate are TFAM-DECL's.
 
-: REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
+: REQUIRE-NAME ( ptr u8 n -- )
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    2dup TF-CANON? 0= IF
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    TYPE-NAME:FAMILY-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ ---------------------------------------------------------------------------
-\ field type resolution -> a schema node (type-schema.f header): concrete cell types (n/f/r +
-\ multi-char con names), positional letter params within arity, ptr T, and closed
-\ arity-0 layout/cell families. Everything else is unresolved. Mirrors
-\ structure-decl.f's resolver; a shared resolver module is future type-DSL work.
-\
-\ A family that owns a linear value — directly or through its own fields — IS an
-\ accepted payload type (dot habu-checker-enum-payload-9e1ae6cc). The enum then
-\ owns that obligation by containment, which is the same rule a variant naming a
-\ bare DEFLINEAR con already relies on: TFAM-CONCRETE-LINEAR? walks the variant
-\ payload schemas, follows an application node into the family it names, and
-\ reports the enum linear, so the checker counts the whole bundle as one linear
-\ unit. Refusing the family spelling while accepting the con spelling blocked the
-\ name and never the obligation, so it bought no soundness.
-\
-\ A parametric family named bare is the one resolved-but-unusable case source can
-\ reach, and it now says so. Calling a registered family "unknown payload type"
-\ sent readers hunting for a missing declaration that was in fact right there. The
-\ remaining kind test still falls through to the unknown message because the only
-\ kind it excludes, TK-EVIDENCE, has no declarer any source can write.
-\ ---------------------------------------------------------------------------
-: FIELD-FAM? ( ptr u8 n -- n bool )     \ resolve a closed arity-0 layout/cell family
+\ Payload types: n/f/r and con names, letter params within arity, ptr T, and
+\ closed arity-0 layout or cell families; anything else is unresolved. Mirrors
+\ structure-decl.f's resolver without type applications. A family owning a linear
+\ value is accepted, owned by containment as in structure-decl.f; TK-EVIDENCE
+\ falls through to "unknown payload type" because no source can declare it.
+: FIELD-FAM? ( ptr u8 n -- n bool )
    TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 NO EXIT THEN
@@ -134,7 +52,7 @@ ED-RESET
       s" payload type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
-: LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
+: LETTER-TYPE ( ptr u8 n -- n )
    drop c@
    dup ASCII-N = IF drop CON-N SCHEMA-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL SCHEMA-CON EXIT THEN
@@ -143,18 +61,14 @@ ED-RESET
       drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    SCHEMA-PARAM ;
 
-\ A pointer is a NON-OWNING boundary: TFCL-NODE? stops at a pointer node, so a
-\ payload spelled `ptr <linear>` reads non-linear and the containing family would
-\ copy and drop freely while a linear resource sits behind the address. The family
-\ spelling and the con spelling launder identically, so both are refused here, at
-\ the declaration door, with one rule — the same rule structure-decl.f applies to
-\ a field, because a variant payload carries exactly the same obligation.
-: REQUIRE-POINTEE ( n -- n )                \ pointee node, or reject a linear owner behind the address
+\ `ptr <linear>` is refused for a payload by the rule structure-decl.f
+\ REQUIRE-POINTEE applies to a field: TFCL-NODE? stops at a pointer node.
+: REQUIRE-POINTEE ( n -- n )
    dup TFCL-NODE? IF
       s" payload type is a pointer to a linear value and cannot own it"
       E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
 
-: RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
+: RESOLVE-TYPE ( ptr u8 n -- n )
    dup 0= IF 2drop s" missing payload type" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ptr" CORE-STR=CI IF
       2drop NEXT RECURSE
@@ -166,14 +80,12 @@ ED-RESET
    2dup TYPE-MAY-ARRIVE-XT IF MISSING! 0 EXIT THEN
    2drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
-: SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
+: SCH-WIDTH ( n -- n )
    dup SCHEMA-APP? IF SCHEMA-A@ TFAM-WIDTH@ EXIT THEN drop 1 ;
 
-\ ---------------------------------------------------------------------------
-\ header clauses. Each emits its event through DECL-EVENT (which owns duplicate /
-\ ordinal state) and mutates only the fresh family record.
-\ ---------------------------------------------------------------------------
-: HEADER-ORDER ( -- )                   \ header clauses precede the first variant
+\ Header clauses emit through DECL-EVENT, which owns duplicate and ordinal state;
+\ each mutates only the fresh family record.
+: HEADER-ORDER ( -- )
    SEEN-VARIANT @ IF
       s" header clause after the first variant" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
@@ -183,16 +95,17 @@ ED-RESET
    FAM @ code TFAM-LAYOUT!
    TOK @ FAM @ code DECL-EVENT:POLICY TOK ! ;
 
-: DERIVE-FEATURE? ( ptr u8 n -- bool )  \ a known/recognised derive feature token
+: DERIVE-FEATURE? ( ptr u8 n -- bool )
    2dup s" eq" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 
-\ Select the mode at the first variant, after optional header clauses. The
-\ engine and replay reader both return spans in one buffered source. Retain
-\ that prefix as a span and read it again through DECL-FRONT's token source
-\ (HEAD!), so registration still fixes the kind before any clause is applied
-\ and diagnostics keep their bytes.
+\ The first token after the header clauses picks the mode: VARIANT starts full
+\ blocks, a bare name a compact body; a parameter list forces full mode, and the
+\ modes never mix. The engine and the replay reader both return spans in one
+\ buffered source, so the prefix is kept as a span and re-read through
+\ DECL-FRONT's token source (HEAD!): registration fixes the kind before any clause
+\ applies, and diagnostics keep their bytes.
 : ED-LOOK-END? ( ptr u8 n -- bool )
    dup 0= IF 2drop YES EXIT THEN
    s" ;enum" CORE-STR=CI ;
@@ -218,21 +131,21 @@ ED-RESET
    first size ED-FIRST-VARIANT {: last:ptr lastu:n :}
    size 0 <> IF first  last lastu + first -  HEAD! THEN
    last lastu s" variant" CORE-STR=CI ;
-: DERIVE-GUARD ( -- )                   \ derive needs a public, concrete (arity 0) family
+: DERIVE-GUARD ( -- )
    FAM @ TFAM-PUBLIC? 0= IF
       s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
    FAM @ TFAM-ARITY@ 0 <> IF
       s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
-: EMIT-DERIVE ( n n -- )                \ ( fam feature-code -- ) emit the DERIVE event
+: EMIT-DERIVE ( n n -- )
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
-: DERIVE-ONE ( ptr u8 n -- )            \ apply one feature + emit its event
+: DERIVE-ONE ( ptr u8 n -- )
    DERIVE-GUARD
    2dup s" eq" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-EQ! FAM @ DRV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop FAM @ TFAM-DERIVE-HASH! FAM @ DRV-HASH EMIT-DERIVE EXIT THEN
    2dup s" order" CORE-STR=CI IF
       2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
    2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
-: DERIVE-CLAUSE ( -- )                  \ DERIVE feature+ : first mandatory, rest by lookahead
+: DERIVE-CLAUSE ( -- )
    HEADER-ORDER
    NEXT dup 0= IF
       2drop s" missing derive feature" E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
@@ -240,26 +153,22 @@ ED-RESET
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
 
-\ ---------------------------------------------------------------------------
-\ variant blocks (full mode). VARIANT opens a variant (DECL-EVENT:VARIANT
-\ registers the SUMV row and pins the current-variant selector), its FIELD clauses
-\ emit shared field events carrying that selector, ;VARIANT closes it. Each
-\ variant's payload cells restart at slot 0 (VCELLS), and the family's payload
-\ width is the widest variant (MAXSLOTS).
-\ ---------------------------------------------------------------------------
-: EMIT-FIELD ( ptr u8 n n -- )          \ ( na nu node -- ) layout + drive the field event
-   SCHEMA-ROOT+ {: sch:n :}                \ ( na nu )
+\ Full mode: DECL-EVENT:VARIANT registers the SUMV row and pins the current-variant
+\ selector the FIELD events carry; END-VARIANT clears it. Each variant's payload
+\ restarts at slot 0 (VCELLS); the family width is the widest variant (MAXSLOTS).
+: EMIT-FIELD ( ptr u8 n n -- )
+   SCHEMA-ROOT+ {: sch:n :}
    sch SCHEMA-ROOT@ SCH-WIDTH {: fw:n :}
-   2dup DECL-REJECT:TOKEN!              \ the field name owns the field record's rejects
+   2dup DECL-REJECT:TOKEN!
    s" duplicate field name" E-DUP DECL-REJECT:EXPECT
-   TOK @ FAM @ 2swap sch                \ ( tok fam na nu sch )
+   TOK @ FAM @ 2swap sch
    VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  PF-FLAGS-NONE
    DECL-EVENT:FIELD TOK !
    fw VCELLS @ + VCELLS !
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
    NEXT dup 0= IF
-      2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
+      2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    OUTCOME-NAMES @ 0 <> IF
@@ -268,47 +177,44 @@ ED-RESET
    NEXT RESOLVE-TYPE {: node:n :}
    FIELD-MISS @ 0= IF na nu node EMIT-FIELD THEN ;
 
-: VARIANT-NAME ( -- ptr u8 n )          \ next token = variant name (must be present)
+: VARIANT-NAME ( -- ptr u8 n )
    NEXT dup 0= IF
       2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup NAME-LONG? IF 2drop TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN ;
 : OPEN-VARIANT ( -- )
    SEEN-CLEAR
    VARIANT-NAME {: na:ptr nu:n :}
-   na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
+   na nu DECL-REJECT:TOKEN!
    s" duplicate variant" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ na nu
-   DECL-EVENT:VARIANT TOK !             \ SUMV-ADD + set current-variant selector
+   DECL-EVENT:VARIANT TOK !
    0 VCELLS ! ;
 : CLOSE-VARIANT ( -- )
    VCELLS @ MAXSLOTS @ max MAXSLOTS !
-   TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !     \ clear the current-variant selector
+   TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
 : VARIANT-CLAUSE ( -- bool )            \ read one variant-body token; YES = ;VARIANT
    NEXT dup 0= IF 2drop s" missing ;VARIANT" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2drop s" unexpected token in variant block" E-SYNTAX
-   DECL-REJECT:REJECT throw ;           \ anonymous payload token / stray token
+   DECL-REJECT:REJECT throw ;
 : VARIANT-BODY ( -- ) BEGIN VARIANT-CLAUSE UNTIL ;
 : VARIANT-BLOCK ( -- )
    -1 SEEN-VARIANT !
    OPEN-VARIANT VARIANT-BODY CLOSE-VARIANT ;
 
-\ ---------------------------------------------------------------------------
-\ compact body. POLICY and DERIVE use the shared header owner before the first
-\ payloadless variant. Full-mode block keywords always reject; a header after a
-\ variant rejects through HEADER-ORDER.
-\ ---------------------------------------------------------------------------
-: COMPACT-KW? ( ptr u8 n -- bool )      \ a block keyword illegal in a compact body
+\ Compact body: full-mode block keywords always reject; a header after a variant
+\ rejects through HEADER-ORDER.
+: COMPACT-KW? ( ptr u8 n -- bool )
    2dup s" variant" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
    s" field" CORE-STR=CI ;
-: COMPACT-VARIANT ( ptr u8 n -- )       \ register one payloadless variant
+: COMPACT-VARIANT ( ptr u8 n -- )
    {: na:ptr nu:n :}
    na nu NAME-LONG? IF TF-NAME-LONG$ E-CAP DECL-REJECT:REJECT throw THEN
    -1 SEEN-VARIANT !
-   na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
+   na nu DECL-REJECT:TOKEN!
    s" duplicate variant" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !
@@ -323,72 +229,54 @@ ED-RESET
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    COMPACT-VARIANT NO ;
 
-\ ---------------------------------------------------------------------------
-\ transaction orchestration.
-\ ---------------------------------------------------------------------------
-: OPEN-TX ( -- )                        \ capture bases, open the event tx, emit DECL
+\ The kind is fixed at registration, before any variant parses, because TFAM-DECL
+\ sets it once: compact registers TK-ENUM (arity 0), full registers TK-SUM with the
+\ declared arity (PF-OWNER-OK? admits a named variant field on either). TFAM-WIDTH@
+\ treats both alike at zero payload, so a payloadless full ENUM has the compact
+\ width. A variant's fields are the TYPE-FIELD rows keyed (family, variant id);
+\ DEV-VARIANT sets its SV.SCH-COUNT to 0.
+: OPEN-TX ( -- )
    SUMV-N@ VBASE !
    TYPE-FIELD:COUNT FLDBASE !
    0 NVAR !   0 NFLD !   0 MAXSLOTS !
    DECL-EVENT:CURRENT TOK !
    TOK @ FAM @ DECL-EVENT:DECL TOK ! ;
-: REGISTER-FULL ( ptr u8 n n -- )          \ ( na nu arity -- ) TK-SUM family, arity header event
+: REGISTER-FULL ( ptr u8 n n -- )
    {: na:ptr nu:n ar:n :}
-   na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
+   na nu DECL-REJECT:TOKEN!
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    ar TK-SUM TFAM-DECL FAM !
    OPEN-TX
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
-: REGISTER-COMPACT ( ptr u8 n -- )         \ ( na nu -- ) TK-ENUM family, arity 0, no header event
+: REGISTER-COMPACT ( ptr u8 n -- )
    {: na:ptr nu:n :}
-   na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
+   na nu DECL-REJECT:TOKEN!
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
    TFAM-ACTIVE-PKG$ VIS na nu
    0 TK-ENUM TFAM-DECL FAM !
    OPEN-TX ;
 
-\ ---------------------------------------------------------------------------
-\ constructor generation. This front end still renders nothing itself: once the
-\ variant range, the field range, and the payload width are bound, it names the
-\ family to the constructor participant and the declaration transaction
-\ does the work in its commit phase, after DECL-EVENT has promoted this
-\ declaration's TYPE-FIELD rows to the committed watermark the shared generator
-\ reads. So a rendering, evaluation, or certification failure anywhere in the set
-\ rolls every participant back and publishes no constructor at all.
-\
-\ The gate itself lives with the participant (GENERATED-DECL-CTOR:OWNS?) so that
-\ one predicate covers arming here and the participant's own re-proof, and both
-\ ENUM modes pass it. Both, because the global-token cutover's acceptance is that
-\ every existing plain ENUM behaves identically through this front end, and the
-\ legacy sumtype.f definer already publishes constructors for a compact
-\ payloadless enum: measured on the parent, a legacy-declared `LGC:RED` resolves
-\ while the same compact family through ED-RUN was E-UNDEFINED. Arming only the
-\ full TK-SUM mode would leave compact enums a parity gap the cutover could never
-\ close.
-\ ---------------------------------------------------------------------------
-\ The packed memory descriptor is baked HERE, at the same point the legacy
-\ definer bakes it (sumtype.f CHECKER-DEFENUM-BODY, between TFAM-VAR-RANGE! /
-\ TFAM-SLOTS! and the constructor publish): PACKED-DESC reads the variant count
-\ and the payload slot width, so both must already be bound, and a `POLICY
-\ stack-cell-tag` family bakes no row at all. LAY-ADD lands inside the checker
-\ participant's savepoint (LAY-N is one of the marks TF-SAVE/TF-RESTORE carry),
-\ so a later close-stage reject retires the descriptor with the family.
-: ED-CLOSE ( -- )                          \ bind variant + field ranges + width, bake layout, arm generation
-   DECL-REJECT:AT-FAMILY                    \ close-stage faults belong to the whole declaration
-   NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ needs a variant
+\ ED-CLOSE renders nothing: it arms the constructor participant, which generates
+\ at commit after DECL-EVENT has promoted this declaration's TYPE-FIELD rows to
+\ the committed watermark the generator reads. GENERATED-DECL-CTOR:OWNS? is the
+\ one gate for arming here and for the participant's re-proof; both modes pass it,
+\ since a compact payloadless enum publishes constructors too.
+\ The packed memory descriptor (TDECL-LAYOUT-DESC) needs the variant count and the
+\ slot width bound first; a `POLICY stack-cell-tag` family bakes none. LAY-ADD
+\ lands in the checker participant's savepoint (TF-SAVE carries LAY-N), so a later
+\ reject retires the descriptor with the family.
+: ED-CLOSE ( -- )
+   DECL-REJECT:AT-FAMILY
+   NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN
    MISSING? IF E-UNRESOLVED throw THEN
    FAM @ VBASE @ NVAR @ TFAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ TFAM-FLD-RANGE!
    FAM @ MAXSLOTS @ TFAM-SLOTS!
    FAM @ TDECL-LAYOUT-DESC
-   \ No reason is armed for the constructor participant's collide check. That
-   \ check runs two phases later, in the commit phase, and nothing between here
-   \ and there is a token this front end holds, so an arming made here would
-   \ have to cover the whole of generation and would then be inherited by any
-   \ other reserved-name reject generation raises. The packet answers that class
-   \ from its code table instead: less specific than sumtype.f's own wording,
-   \ and true for every reserved-name reject generation can produce.
+   \ No reason is armed for the constructor participant's collide check: it runs at
+   \ commit, where no token of this front end applies, so the packet answers a
+   \ reserved-name reject from its code table.
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
@@ -400,10 +288,10 @@ ED-RESET
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" variant" CORE-STR=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
    2drop s" unexpected token in enum declaration" E-SYNTAX
-   DECL-REJECT:REJECT throw ;           \ arity-then-compact / stray / mixed-legacy token
+   DECL-REJECT:REJECT throw ;
 : FULL-BODY ( -- ) BEGIN FULL-CLAUSE UNTIL ;
 
-: COMPACT-BODY ( ptr u8 n -- )          \ first variant token in hand, then loop to ;ENUM
+: COMPACT-BODY ( ptr u8 n -- )
    BEGIN
       dup 0= IF 2drop
          DECL-REJECT:AT-FAMILY
@@ -412,8 +300,8 @@ ED-RESET
       NEXT
    AGAIN ;
 
-: DRIVE ( -- )                          \ name + mode select + register + body
-   NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
+: DRIVE ( -- )
+   NEXT 2dup DECL-REJECT:FAMILY!
    dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
    DECL-HEADER 0= IF
       drop 2drop s" invalid type parameter header" E-ARITY DECL-REJECT:REJECT throw
@@ -431,7 +319,7 @@ ED-RESET
    THEN
    ED-CLOSE ;
 
-: ED-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )   \ kind, terminator and body for DECL-FRONT
+: ED-FRONT ( -- ptr u8 n ptr u8 n [ -- ] )
    s" enum" s" ;enum" [: ED-RESET DRIVE ;] ;
 
 public
@@ -445,18 +333,11 @@ public
 
 : ED-RUN ( -- ) ED-FRONT DECL-FRONT:RUN ;
 
-\ ED-REPLAY ( name body -- ) : register an ENUM from tokens a tool has already
-\ lexed, defining no word. Same grammar, same validation, same registry writes,
-\ same reject packet as ED-RUN — only the token source differs and the variant
-\ constructors are registered without being rendered (the constructor
-\ participant in generated-declaration.f). BOTH modes replay: the first body
-\ token still selects full or compact exactly as it does live, so this entry
-\ replaces the legacy compact-only CHECKER-DEFENUM that tools/check-core.f and
-\ src/habu/verify-source.f drive. The body buffer is the declaration body
-\ INCLUDING its ;ENUM terminator; a buffer without one rejects through the
-\ front end's own "missing ;ENUM" gate exactly as a truncated live declaration
-\ does. ED-REPLAY-OUTCOME answers the first type the body named that may still
-\ arrive instead of raising.
+\ ED-REPLAY registers an ENUM from tokens a tool already lexed (tools/check-core.f,
+\ verify-source.f) with ED-RUN's grammar, validation and reject packet, defining
+\ no word: constructors are registered, not rendered. Both modes replay. The body
+\ includes its ;ENUM terminator. ED-REPLAY-OUTCOME answers the first type the
+\ body named that may still arrive instead of raising.
 : ED-REPLAY-OUTCOME ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    ED-FRONT DECL-FRONT:REPLAY-OUTCOME ;
 : ED-REPLAY ( ptr u8 n ptr u8 n -- )
@@ -464,16 +345,12 @@ public
 
 ;package
 
-\ ENUM is the global sum/enum declaration keyword and therefore a documented
-\ global language surface (the same package-first exception STRUCTURE carries):
-\ it parses its own body up to ;ENUM at interpret time, so its checked effect is
-\ ( -- ). This is the sole global entry — there is no alias and no second parser.
-\ A compact body registers the TK-ENUM family sumtype.f's definer used to
-\ register; a body whose first variant starts with VARIANT registers the full TK-SUM form
-\ with named variants and named FIELD payloads, which the compact grammar could
-\ not express at all.
-\ ENUM type-name (variant)+ ;ENUM
-\ ENUM type-name[<params>] [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
+\ ENUM is a documented global (package-first exception, like STRUCTURE) and the
+\ only ENUM parser; it parses its body to ;ENUM at interpret time, so its checked
+\ effect is ( -- ).
+\   ENUM type-name[<params>] header-clause* (variant-name+ | variant-block+) ;ENUM
+\   header-clause = POLICY policy-name | DERIVE derive-name+
+\   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
 : ENUM ( -- ) ENUM-DECL:ED-RUN ;
 
 ;using

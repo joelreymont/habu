@@ -1,21 +1,9 @@
-\ generated-declaration-dictionary.f - reversible native dictionary owner.
-\
-\ A declaration retains the native dictionary record, code, and data high-waters
-\ until it succeeds, and a rollback truncates every word, package record, code
-\ byte, and data allocation created below its savepoint.  Declarations never
-\ nest, so the savepoint is one set of three cells.
-\ WIDN deliberately follows layout.f's process-wide monotonic allocation contract:
-\ rollback leaves an unreferenced hole instead of reusing an identity.  Truncating
-\ the dictionary records removes every lookup path to each consumed WID, while
-\ monotonic non-reuse prevents stale WID-bearing state from aliasing a later list.
-\
-\ The code high-water is the one watermark here that is NOT private to this
-\ owner: the bytes above it are handed back to the engine's code arena and
-\ rewritten by whatever is compiled next, so anything holding a fact keyed to a
-\ code address in that span is describing somebody else's routine afterwards.
-\ Rolling it back therefore goes through src/habu/xref.f's CODE-RECLAIM, which
-\ tells those holders the floor before the space is released. `ndict` and `dp`
-\ need no such notice - a truncated record is simply unreachable.
+\ generated-declaration-dictionary.f - a declaration's dictionary savepoint
+\ (record count, code and data high-waters), rolled back on reject. Declarations
+\ never nest, so the savepoint is three cells. WIDN is never rolled back
+\ (layout.f): a reused wordlist id would alias stale state. Code rollback goes
+\ through src/habu/xref.f CODE-RECLAIM, which tells holders of code-address facts
+\ the floor before the space is reused; a truncated record needs no notice.
 
 package GENERATED-DECL-DICTIONARY
 

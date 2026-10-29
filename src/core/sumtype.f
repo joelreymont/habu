@@ -1,39 +1,9 @@
-\ sumtype.f — NEWTYPE/SUMTYPE/PRODUCT declaration grammar (ENUM is
-\ src/core/enum-decl.f; the user grammar is docs/forth.md "Structures And
-\ Enums"). `NEWTYPE name[<params>]` registers a TK-CELL family; `PRODUCT name[<params>] FIELD f t ..
-\ ;PRODUCT` registers a TK-PRODUCT family (single-shape record, PF-* field rows,
-\ no tag); `SUMTYPE name[<params>] VARIANT v
-\ pay... ;VARIANT ... ;SUMTYPE` registers a TK-SUM family, one SUMV row per variant (tag =
-\ declaration order), payload schema nodes, the family's variant range, and its
-\ max payload width. Declarations are package-aware: rows carry the active
-\ checker package and visibility, so two packages may declare the same tail.
-\ Constructors are generated below; hidden layout rows and MATCH are the
-\ checker's. v1 payload elements are positional
-\ letter params (a.. within arity), concrete cell types, `ptr T`, and closed,
-\ non-linear, arity-0 layout or cell (nominal scalar) families, resolved in
-\ signature scope — qualified `PKG:tail` included. Parametric family applications,
-\ quotations, and atoms as payloads reject (E-TDECL-PAYLOAD). Comments are not supported
-\ inside a declaration block (VALUE-RECORD parity); stray tokens reject.
-\ Every failure path is transactional: the registry high-water marks are
-\ restored, the failure is reported through TDECL-DIAG (render.f), and the
-\ declaration either counts as a multi-error reject or throws its named code.
-\ Loaded unchecked in the checker prefix, right after render.f.
-\
-\ THE FILE IS `package TYPE-DECL` (dot habu-tfam-2b-sealed-1b77662c). Of the 316
-\ definitions it used to publish as globals, 45 are publics and 271 are privates;
-\ nothing was renamed except the seven implementations named below. SEVEN names
-\ stay global, at the foot of the file, and they are the declaration GRAMMAR:
-\ NEWTYPE, SUMTYPE and PRODUCT, because a user declaration must register from
-\ genuine top level without opening any package, and CHECKER-DEFFAMILY,
-\ CHECKER-DEFSUM, CHECKER-DEFSUM-NOEND and CHECKER-DEFPRODUCT, the same grammar
-\ reached with a body text instead of the input stream. Each is a one-line entry
-\ into the public it renamed (TDECL-NEWTYPE, TDECL-DEFSUM, ...), the shape
-\ src/core/enum-decl.f already ships for ENUM. Everything beneath them -- the
-\ declaration buffer, the plan arena, the payload capture vectors, the renderers,
-\ the transaction context -- is a private with no top-level spelling at all.
-\ test/internal-word-gate.f TYPE-DECL-SEAL-CASES pins
-\ that the surface stops there and that `0 TDPLAN-P !` before a declaration --
-\ rc 134 SIGSEGV on master -- is now E-UNDEFINED.
+\ sumtype.f: package TYPE-DECL, the NEWTYPE, SUMTYPE and PRODUCT declaration
+\ grammar (ENUM is enum-decl.f; the user grammar is docs/forth.md "Structures
+\ And Enums"). Loaded unchecked in the checker prefix, right after render.f.
+\ Every failure is transactional: the registry marks restore, TDECL-DIAG
+\ (render.f) reports, and the declaration counts as a multi-error reject or
+\ throws its code. The seven global entries are at the foot of the file.
 
 using SCHEMA-REG
 using TFAM
@@ -51,7 +21,7 @@ public
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy
 7118 constant E-TDECL-CAP       \ declaration body past TDECL-CAP, or a declared name past TF-NAME-MAX
-7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
+7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause
 7204 constant E-TDECL-UNRESOLVED \ quiet replay: a nominal payload declaration may arrive
 7210 constant E-TDECL-UNCHECKED \ a constructor-generating declaration while checking is suspended
 
@@ -136,9 +106,7 @@ TDECL-SEEN-CLEAR
    u TDECL-SEEN-N @ cells TDECL-SEEN-U + !
    TDECL-SEEN-N @ 1 + TDECL-SEEN-N ! ;
 
-\ --- declaration context (set before TDECL-RUN, read by bodies + diagnostics).
-\ The five -A cells hold token addresses, so they are declared pointer cells
-\ (dot habu-refuse-a-ptr-5ad2734e).
+\ --- declaration context, set before TDECL-RUN, read by bodies and diagnostics.
 PTR-VARIABLE TDK-A   variable TDK-U   \ decl kind token ("newtype"/"sumtype")
 PTR-VARIABLE TDN-A   variable TDN-U   \ family name token
 PTR-VARIABLE TDB-A   variable TDB-U   \ body (SUMTYPE token buffer / arity token)
@@ -158,24 +126,13 @@ public
    code throw ;
 
 \ --- transactional mark/restore over every store a declaration can grow.
-\
-\ THE FAMILY AND VARIANT STORES ARE PUT BACK BY THE REGISTRY, NOT HERE. Most of
-\ these registries retire by counter — the lookups are linear scans over [0, N)
-\ and names intern fresh at the restored pool end — but the family store and the
-\ variant store are each read through an index that chains rows by id, and a
-\ chained row whose id has gone out of range kills the next lookup that walks it.
-\ Unchaining has to happen before the counters move, so TFAM-REWIND
-\ (src/core/type-family.f) owns that order and this layer asks for it.
-\
-\ This file used to write those counters itself, and the bug it caused is the
-\ reason the rule is now stated in one place: a SUMTYPE that registered its
-\ family and then rejected on a duplicate variant left the family chained in the
-\ tail index under an id past the end of the store, and the very next lookup of
-\ that tail died 76 `tfam: bad family id`. The high-water marks were all exactly
-\ right, which is why the suite's own base-state assertions passed either way.
-\
-\ The schema store is not the registry's, so its two marks go back through the
-\ schema store's own rewind, SCHEMA-REG:REWIND, which scrubs what it retires.
+\ The family and variant stores go back through TFAM-REWIND (type-family.f), not
+\ here: their indexes chain rows by id, and a chained row whose id is out of
+\ range kills the next lookup, so unchaining must precede the counters. Writing
+\ the counters here left a rejected SUMTYPE's family chained past the store's
+\ end; the next lookup of its tail died 76 `tfam: bad family id` while every
+\ high-water mark was right. The schema store's marks go back through
+\ SCHEMA-REG:REWIND, which scrubs what it retires.
 
 private
 
@@ -338,7 +295,7 @@ private
 
 \ TFAM-DECL's one failure left here is a duplicate, unless a compile callback
 \ declares: the window refusal comes first, under the general reason.
-: TDECL-FAMILY ( n n -- n ) {: ar:n kind:n :}   \ register the family row
+: TDECL-FAMILY ( n n -- n ) {: ar:n kind:n :}
    TDN-A @ TDN-U @ TDECL-TOK!
    WRITE-WINDOW-CK                     \ src/core/checker.f WRITE-WINDOW
    s" duplicate family" TDECL-WHY!
@@ -350,8 +307,9 @@ private
    PKRESET ;
 : TDECL-NEXT ( -- ptr u8 n ) NEXT-SIG-TOK ;
 
-\ --- variant payload elements -> schema nodes (type-schema.f header). v1: positional letter
-\ params within arity, n/f/r + concrete CT cell types, and `ptr T`.
+\ --- variant payload elements -> schema nodes (type-schema.f header): positional
+\ letter params within arity, n/f/r and concrete CT cell types, and `ptr T`.
+\ Comments are not supported inside a declaration block; stray tokens reject.
 variable TDECL-FAM-ARITY
 
 : TDECL-HEADER! ( -- n )
@@ -375,33 +333,22 @@ variable TDECL-FAM-ARITY
    THEN
    SCHEMA-PARAM ;
 
-\ A DIRECT self-family reference is a payload token
-\ whose tail is the family being declared (TDN-A/TDN-U). An inline or ptr-wrapped
-\ self-reference makes the family recursive, which only the boxed policy can lay
-\ out (its pointer indirection breaks the width cycle); under any non-boxed policy
-\ it is unrepresentable. Since packed/niche/boxed all still reject at the POLICY
-\ clause, every family reaching payload parsing is stack-cell-tag, so a self-ref
-\ always rejects here with the recursive-sum diagnostic (was the generic
-\ E-TDECL-PAYLOAD "unknown payload type"). This token compare catches the exact
-\ bare spelling; a QUALIFIED self-reference (PKG:self inside PKG) resolves to the
-\ just-registered row instead, so TDECL-PAY-FAM? repeats the reject on resolved
-\ family identity (TDECL-CUR-FAM). The boxed accept sub-slice will route a
-\ boxed family's self-ref to a pointer layout before this reject. Mutual recursion
-\ (A -> B -> A) needs a schema cycle walk and is a later sub-slice; this is the
-\ direct case only.
+\ A direct self-family payload (its tail is the family being declared,
+\ TDN-A/TDN-U) makes the family recursive, which only a boxed policy could lay
+\ out; boxed rejects at the POLICY clause, so a self-reference always rejects
+\ here as recursive. This catches the bare spelling; TDECL-PAY-FAM? repeats the
+\ reject on the resolved id (TDECL-CUR-FAM) for a qualified one. Only the direct
+\ case: mutual recursion (A -> B -> A) is not detected.
 : TDECL-SELF-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TDN-A @ TDN-U @ CORE-STR= ;
 
 \ A bare family payload is one logical schema root whose physical width is the
-\ referenced closed width: an arity-0 layout family (sum/enum/product) or an
-\ arity-0 cell family (nominal scalar, one cell — the same reference a signature
-\ admits). Resolution is signature scope (TFAM-SIG-RESOLVE: own package
-\ private+public first, else the unique public; qualified PKG:tail folds the
-\ qualifier; a PRIVATE family in another package never resolves). A resolved id
-\ equal to the family being declared is the qualified self-reference and rejects
-\ recursive (the bare spelling already rejected at TDECL-SELF-REF?). Parametric
-\ applications need argument parsing and remain rejected; concrete linear
-\ payloads and evidence families remain forbidden.
+\ referenced closed width: an arity-0 layout family (sum/enum/product) or cell
+\ family (nominal scalar, the reference a signature admits). Resolution is
+\ signature scope (TFAM-SIG-RESOLVE): a private family in another package never
+\ resolves. A resolved id equal to the declared family is the qualified
+\ self-reference and rejects recursive. Linear payloads and evidence families
+\ are refused.
 : TDECL-PAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -433,22 +380,15 @@ variable TDECL-FAM-ARITY
    a u TDECL-ABSENT-MAY? IF a u SIG-UNRES! 0 EXIT THEN
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
 
-\ --- parametric family applications + quotation payloads as VARIANT payload
-\ elements (dot habu-universal-enum-parametric-ad011c21). A sum variant payload
-\ may now be a closed parametric family application `fam<arg,...>` -- each argument
-\ is itself a payload element (positional letter param, concrete type, `ptr T`,
-\ nested application, or quotation) -- or a quotation type
-\ `[ din -- dout | rin -- rout ]` for an xt-carrying variant. The application's
-\ schema is an SC-APP holding the resolved family id plus the argument schema
-\ roots; construct/MATCH/layout ride the landed nested-layout capability
-\ (type-family.f TFC-*, checker.f LOGHID/xpad), which resolves each argument
-\ against the declaring family's parameters and gates instantiated width and
-\ linearity at the construct/`of` site. A quotation payload is one xt cell whose
-\ SC-QUOT schema records full ordered din/dout/rin/rout rows, including empty
-\ sides. The quotation parser below is
-\ shared with STRUCTURE fields; parametric applications remain variant-only.
-\ PRODUCT fields keep the scalar/arity-0 grammar (TDECL-PAY-ELEM), because
-\ arg-aware PF byte layout is a distinct capability.
+\ --- a variant payload may also be a closed parametric application
+\ `fam<arg,...>` (each argument a payload element) or a quotation type
+\ `[ din -- dout | rin -- rout ]`. An application's schema is an SCH-APP of the
+\ family id and argument roots; construct, MATCH and layout resolve each
+\ argument against the declaring family's parameters (type-family.f TFC-*). A
+\ quotation is one xt cell whose SCH-QUOT schema records all four rows, empty
+\ sides included. The quotation parser is shared with STRUCTURE fields;
+\ applications are variant-only, and PRODUCT fields keep the scalar grammar
+\ (TDECL-PAY-ELEM).
 
 \ Reentrant scratch for ONE nesting level's argument nodes. Each TDECL-VPAY-ARGS
 \ invocation saves a base, pushes its fully-parsed argument node ids above it,
@@ -479,9 +419,6 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    id TFAM-LAYOUT? id TFAM-CELL? or 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-\ close a `fam<...>`: copy this level's collected argument nodes [base,top) into
-\ contiguous schema roots, arity-check against the family, build the SC-APP, and
-\ rewind the scratch to base.
 : TDV-ARGS-BUILD ( n n -- n ) {: fam:n base:n :}
    TDV-ARG-N @ base - {: cnt:n :}
    cnt fam TFAM-ARITY@ <> IF
@@ -498,9 +435,8 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
    base TDV-ARG-N !
    fam argbase cnt SCHEMA-APP ;
 
-\ parse `<arg,...>` (the opening `<` already consumed) after a resolved family
-\ head. A bare self-reference is caught in TDECL-PAY-ELEM; a QUALIFIED or applied
-\ self-reference resolves to the just-registered row, so reject recursion by id.
+\ A qualified or applied self-reference resolves to the just-registered row, so
+\ recursion is rejected by id.
 : TDECL-VPAY-ARGS ( n -- n ) {: fam:n :}
    fam TDECL-CUR-FAM @ = IF
       TDN-A @ TDN-U @ s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE TDECL-THROW
@@ -518,14 +454,11 @@ defer TDV-ELEM-XT ( ptr u8 n -- n )   \ forward ref for the ELEM<->ARGS<->QUOT r
       THEN THEN
    AGAIN ;
 
-\ quotation payload `[ din -- dout | rin -- rout ]`, the opening `[` consumed. Each
-\ effect side is a full ordered row of zero-or-more payload elements, so a multi-type
-\ side (`[ n n -- n ]`) or an empty side (`[ -- n ]`, `[ n -- ]`) is legal. Element
-\ node ids collect in a reentrant scratch — a nested quotation element reuses it and
-\ rewinds to its own base — then land as one contiguous run of schema roots per side
-\ (built after every element's own arg roots already interleaved during parsing), so
-\ each SCH-ROW element range stays contiguous. No `|` clause stores hasr 0 with two
-\ empty rin/rout rows (row-polymorphic neutral return); an explicit clause pins both.
+\ Each quotation side is an ordered row of zero or more payload elements.
+\ Element ids collect in a reentrant scratch and land as one contiguous run of
+\ schema roots per side, after every element's own argument roots, so each
+\ SCH-ROW range stays contiguous. No `|` clause stores hasr 0 with empty rin and
+\ rout rows; an explicit clause pins both.
 $100 constant TDV-QUOT-CAP
 create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
 : TDV-QUOT+ ( n [ ptr u8 n n -- ] -- ) {: node:n fail :}
@@ -534,7 +467,7 @@ create TDV-QUOT-SCR TDV-QUOT-CAP cells allot
    node 0= IF -1 TDV-QUOT-MISS ! THEN
    node TDV-QUOT-N @ cells TDV-QUOT-SCR + !
    TDV-QUOT-N @ 1 + TDV-QUOT-N ! ;
-: TDV-QUOT-BUILD-ROW ( n -- n ) {: base:n :}   \ [base,top) scratch node ids -> contiguous SCH-ROW
+: TDV-QUOT-BUILD-ROW ( n -- n ) {: base:n :}
    TDV-QUOT-MISS @ IF base TDV-QUOT-N ! 0 EXIT THEN
    SCHEMA-ROOT-N@ {: estart:n :}
    TDV-QUOT-N @ base - {: cnt:n :}
@@ -620,8 +553,6 @@ private
       THEN THEN
    AGAIN ;
 
-\ one variant payload element: quotation, `ptr T`, parametric application, else
-\ the shared scalar/arity-0 grammar (TDECL-PAY-ELEM).
 : TDECL-VPAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" [" CORE-STR= IF TDECL-VPAY-QUOT EXIT THEN
    a u s" ptr" CORE-STR= IF
@@ -641,7 +572,6 @@ private
 : TDV-ELEM-INSTALL ( -- ) [: TDECL-VPAY-ELEM ;] is TDV-ELEM-XT ;
 TDV-ELEM-INSTALL
 
-\ --- variants: name gate, payload run in the schema-root pool, SUMV row.
 variable TDV-TAG   variable TDV-N    variable TDV-MAX
 variable TDV-SS    variable TDV-PC   variable TDV-PW
 PTR-VARIABLE TDV-NA    variable TDV-NU
@@ -659,12 +589,10 @@ PTR-VARIABLE TDV-NA    variable TDV-NU
    TDV-TAG @ 1 + TDV-TAG !
    TDV-N @ 1 + TDV-N ! ;
 
-\ A parametric application / quotation payload element pushes its argument /
-\ effect-row roots into the shared schema-root pool WHILE it is parsed, so the
-\ element's own root is not contiguous with earlier elements. Collect the element
-\ NODES here and push them as one contiguous block after every argument root
-\ exists (TDECL-VARIANT-FINISH), so the variant payload range holds the elements,
-\ not their interleaved arguments. (Variants never nest, so one scratch suffices.)
+\ Application arguments and quotation effect rows push their roots into the
+\ schema-root pool while the element parses, so element nodes collect here and
+\ land as one contiguous block after every argument root (TDECL-VARIANT-FINISH).
+\ Variants never nest, so one scratch suffices.
 $100 constant TDV-PAY-CAP
 create TDV-PAY-SCR TDV-PAY-CAP cells allot
 variable TDV-PAY-N
@@ -673,20 +601,16 @@ variable TDV-PAY-N
       TDN-A @ TDN-U @ s" too many variant payload elements" E-TDECL-PAYLOAD TDECL-THROW THEN
    node TDV-PAY-N @ cells TDV-PAY-SCR + !
    TDV-PAY-N @ 1 + TDV-PAY-N ! ;
-\ Declaration-time arity gate (dot habu-declaration-time-arity-4c70e37c): once a
-\ variant's payload elements are landed as one contiguous schema-root block, walk
-\ each element's schema subtree and resolve every SCH-PARAM index against the
-\ declaring family's arity (TFAM-SCH-ARITY, type-family.f). An out-of-arity
-\ parameter -- in a plain element, a parametric application argument, or any
-\ quotation effect side -- rejects here, inside TDECL-RUN's transaction, so the
-\ standard high-water rollback leaves the registries byte-identical, and the
-\ authoritative structural check sits beside the PRODUCT field one (PF-SCHEMA-OK?)
-\ rather than living only as an emergent property of the TDECL-LETTER parse gate.
-\ The offending letter is rendered through the shared declaration alphabet.
+\ Every SCH-PARAM in a landed variant's payload subtree (plain element,
+\ application argument, quotation side) must lie within the declaring family's
+\ arity (TFAM-SCH-ARITY); an out-of-arity parameter rejects inside TDECL-RUN's
+\ transaction. This is the authoritative check, beside PRODUCT's PF-SCHEMA-OK?;
+\ the TDECL-LETTER parse gate is not. The letter renders through the shared
+\ declaration alphabet.
 create TDV-BADLETTER 1 allot
 : TDECL-VPAY-ARITY ( n n n -- ) {: fam:n base:n count:n :}
    0 BEGIN dup count < WHILE
-      base over + SCHEMA-ROOT@ fam swap TFAM-SCH-ARITY   \ ( i bad-idx )
+      base over + SCHEMA-ROOT@ fam swap TFAM-SCH-ARITY
       dup 0 >= IF
          TFAM-DECL-PARAM>CHAR 0= IF
             drop TDN-A @ TDN-U @ s" payload parameter has no declaration spelling"
@@ -736,16 +660,14 @@ create TDV-BADLETTER 1 allot
       2drop fam TDECL-VARIANT
    AGAIN ;
 
-\ --- constructor metadata: a PUBLIC family derives its reserved
-\ constructor package (Package Shape) once and records it in every variant's
-\ SV.CTOR-PKG slot, keyed by family id so same-tail families in different
-\ packages get disjoint constructor namespaces. A PRIVATE family reserves no
-\ namespace, so the slot stays empty and the early exit below is the whole rule:
-\ a private PRODUCT spells its generated words with TF-CTOR-PRIV$ into the
-\ declaring package's private wordlist instead, and a private SUM or ENUM still
-\ publishes no word at all and constructs through the `construct` form.
-\ The derived name is interned AFTER the escaped spelling is built, so the
-\ transient family package/tail pointers are consumed before any pool grow.
+\ A PUBLIC family derives its constructor package once and records it in every
+\ variant's SV.CTOR-PKG, keyed by family id so same-tail families in different
+\ packages get disjoint namespaces. A PRIVATE family's slot stays empty: a
+\ private PRODUCT spells its generated words with TF-CTOR-PRIV$ into the
+\ declaring package's private wordlist; a private SUM or ENUM publishes no word
+\ and constructs through `construct`. The name is interned after the escaped
+\ spelling is built, so the transient package/tail pointers are consumed before
+\ any pool grow.
 
 public
 
@@ -758,29 +680,19 @@ public
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
 
-\ --- optional layout-policy header clause (docs/design.md "Families and layout policies"): `POLICY <name>`
-\ after the arity (sum/product) or the name (enum), before the first VARIANT /
-\ FIELD. A missing clause leaves the TFAM-DECL default (TL-STACK-CELL-TAG, the
-\ universal M-payload + tag stack representation, type-family.f header). `stack-cell-tag`
-\ and `packed-tag` are accepted: packed keeps the STACK representation identical
-\ to the default (type-family.f header) and only bakes a memory ABI descriptor into the
-\ LAY registry at declaration close (TDECL-LAYOUT-DESC, once the variant/field
-\ counts exist). `niche-null`/`boxed` are recognised but reject as
-\ not-yet-supported until their per-policy lowering ships (a
-\ physical-layout policy is not exposed before codegen supports it),
-\ and each becomes its own follow-on slice. Any other token (including the v1
-\ non-goal `custom`, which the LAY-* registry tolerates but the grammar must
-\ not) is an unknown policy. A DIRECT self-family payload reference is recursive
-\ and rejects at TDECL-PAY-ELEM with the recursive-sum diagnostic
-\ (E-TDECL-RECURSIVE, boxed sub-slice 1 below); boxed — the only layout that
-\ admits recursion — will later route its self-references to a pointer layout.
+\ `POLICY <name>` follows the arity (sum/product) or the name (enum), before the
+\ first VARIANT/FIELD; a missing clause leaves TL-STACK-CELL-TAG. stack-cell-tag
+\ and packed-tag are accepted: packed keeps the stack representation and bakes a
+\ LAY memory descriptor at close (TDECL-LAYOUT-DESC). niche-null and boxed
+\ reject as not supported until codegen lowers them. Any other token, `custom`
+\ included (the LAY registry tolerates it), is an unknown policy.
 
 private
 
 : TDECL-POLICY-DEFERRED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" niche-null" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" boxed" CORE-STR=CI ;
-: TDECL-POLICY-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}   \ map a policy-name token onto the fresh family
+: TDECL-POLICY-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    a u s" stack-cell-tag" CORE-STR=CI IF fam TL-STACK-CELL-TAG TFAM-LAYOUT! EXIT THEN
    a u s" packed-tag" CORE-STR=CI IF fam TL-PACKED-TAG TFAM-LAYOUT! EXIT THEN
    a u TDECL-POLICY-DEFERRED? IF
@@ -797,26 +709,22 @@ public
 : TDECL-LAYOUT-DESC ( n -- ) {: fam:n :}
    fam TFAM-LAYOUT-POLICY@ TL-PACKED-TAG = 0= IF EXIT THEN
    fam TL-PACKED-TAG fam PACKED-DESC LAY-ADD drop ;
-: TDECL-POLICY ( n -- ) {: fam:n :}   \ consume an optional POLICY clause off the body cursor
+: TDECL-POLICY ( n -- ) {: fam:n :}
    TDECL-NEXT {: a:ptr u:n :}
    a u s" policy" CORE-STR=CI 0= IF a u PK! EXIT THEN     \ no clause: push the token back for the body loop
    TDECL-NEXT {: pa:ptr pu:n :}
    pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name" E-TDECL-POLICY TDECL-THROW THEN
    pa pu fam TDECL-POLICY-SET ;
 
-\ --- optional derived-word header clause (derive S1+S2, dot habu-checker-
-\ capability-derive): `DERIVE <feature>` after the POLICY position, before the
-\ variants/fields. Accepts exactly `eq` on a PUBLIC arity-0 ENUM, SUMTYPE, or
-\ PRODUCT; `order`/`hash` are recognised but deferred (their slices land later),
-\ anything else is unknown. One feature per clause keeps the grammar unambiguous
-\ against bare variant names; a later slice may repeat the clause for more
-\ features. Payload roles are validated per variant/field after the block parses
-\ (TDECL-DERIVE-REQUIRE below): integer scalars compare with `=`; pointer
-\ payloads have NO derived equality (identity-eq needs a checked
-\ pointer-equality surface that does not exist — fail closed, documented);
-\ non-integer/linear scalars reject (comparing a linear value consumes it;
-\ deferred until whole-bundle linear accounting); a product's enum-typed field
-\ requires that family to also derive eq (its PKG:TAG is the field comparator).
+\ `DERIVE <feature>...` follows the POLICY position, before the variants/fields.
+\ eq and hash need a PUBLIC arity-0 family, init a product; order rejects as not
+\ supported; an unknown first token rejects, and the list ends at the first
+\ non-feature token by pushback. With eq or hash, payload roles are checked per
+\ variant/field after the block parses (TDECL-DERIVE-REQUIRE): integer scalars
+\ compare with `=`; pointer payloads have no derived equality (no checked
+\ pointer-equality surface exists); other scalars reject, linear ones because
+\ comparing consumes them; a family-typed field requires that family to derive
+\ too (its words are the field comparator).
 
 private
 
@@ -837,7 +745,7 @@ private
    a u s" order" CORE-STR=CI IF
       a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
-: TDECL-DERIVE-MORE? ( n -- bool ) {: fam:n :}   \ consume one more KNOWN feature token
+: TDECL-DERIVE-MORE? ( n -- bool ) {: fam:n :}
    TDECL-NEXT {: a:ptr u:n :}
    u 0= IF RES-FALSE EXIT THEN
    a u s" eq" CORE-STR=CI
@@ -847,7 +755,7 @@ private
    0= IF a u PK! RES-FALSE EXIT THEN
    a u fam TDECL-DERIVE-SET
    RES-TRUE ;
-: TDECL-DERIVE ( n -- ) {: fam:n :}   \ consume an optional DERIVE clause off the body cursor
+: TDECL-DERIVE ( n -- ) {: fam:n :}
    TDECL-NEXT {: a:ptr u:n :}
    a u s" derive" CORE-STR=CI 0= IF a u PK! EXIT THEN
    TDECL-NEXT {: fa:ptr fu:n :}
@@ -867,7 +775,7 @@ public
          s" variant name collides with a derived word" E-TDECL-NAME TDECL-THROW THEN
    loop ;
 
-\ payload-role gate (derive S2): every payload/field schema node must be
+\ payload-role gate: every payload/field schema node must be
 \ derivably comparable, else the DECLARATION rejects naming the exact role.
 
 private
@@ -889,7 +797,7 @@ private
    TDN-A @ TDN-U @
    s" payload role has no derived equality" E-TDECL-DERIVE TDECL-THROW ;
 
-: TDECL-DERIVE-VARIANT ( n -- ) {: vid:n :}   \ every payload root of one variant
+: TDECL-DERIVE-VARIANT ( n -- ) {: vid:n :}
    vid SUMV-PAY-N 0 ?do
       vid i SUMV-PAY-ROOT SCHEMA-ROOT@ TDECL-DERIVE-NODE-OK
    loop ;
@@ -911,8 +819,8 @@ private
    TDB-A @ TDB-U @ TDECL-CURSOR!
    ar TK-SUM TDECL-FAMILY {: fam:n :}
    fam TDECL-CUR-FAM !                    \ payload self-references reject by id
-   fam TDECL-POLICY                       \ optional POLICY clause before the variants
-   fam TDECL-DERIVE                       \ optional DERIVE clause (derive S2)
+   fam TDECL-POLICY
+   fam TDECL-DERIVE
    SUMV-N @ {: vstart:n :}
    0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
    fam TDECL-SUM-VARIANTS
@@ -934,44 +842,24 @@ public
    s" sumtype" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
-\ --- enum families (type-family.f header) are no longer declared here. The global
-\ ENUM keyword is the unified front end (src/core/enum-decl.f, ENUM-DECL:ED-RUN),
-\ which registers the same TK-ENUM family for a compact body and additionally
-\ accepts the full named-variant payload grammar this file never had. The compact
-\ parser, its metadata-only entry CHECKER-DEFENUM, and their shared close path
-\ went with the cutover; a tool that has already lexed a declaration registers it
-\ through ENUM-DECL:ED-REPLAY instead. SUMTYPE and PRODUCT below are unchanged and
-\ still own their own bodies until their own migrations.
-
-\ --- product families (type-family.f header): a `PRODUCT name[<params>] FIELD f t ..
-\ ;PRODUCT` block is a single-shape record registered as TK-PRODUCT (no tag, no
-\ variants). Each `FIELD name type` becomes one PF-* row (fam, field tail, field
-\ schema root, physical slot) plus one cell of width; TFAM-SLOTS = field count, so
-\ TFAM-WIDTH(product) = field cells (no tag). Fields are the item-7/12 hidden
-\ layout the generic LAYOUT-PUSH-FIELDS already expands off TFAM-WIDTH@*. Field
-\ names are their own tail namespace: 1-char labels (x/y) are legal, so the family
-\ RESERVED gate (which blocks a..z) does not apply; TYPE-FIELD-OWNER:ADD's
-\ TF-REQUIRE-CANON +
-\ dup-reject enforce lowercase + no duplicate field within the product.
-\ A product's generated surface is two words with FIXED generator-owned tails,
-\ recorded as two SUMV rows so the whole item-8 publish/protection stack
-\ (ctor-package derivation, closed-but-callable WID wall, CTOR-SYM records) is
-\ shared verbatim with sums: `make` ( fields -- fam<..> ) and `unmake`
-\ ( fam<..> -- fields ), both compiled with EMPTY bodies under the k=0
-\ pending-constructor window — a product bundle IS its field cells in slot
-\ order (no tag, type-family.f header), so construction and destructure are physical
-\ no-ops and the declared sigs are checker-owned metadata truth. Parametric
-\ products publish both words. Each is an ordinary stored-effect call unless the
-\ instantiation has a layout argument (checker.f SEED-TERM?): one wider than a
-\ cell, or a direct layout-family argument of a closed non-linear instantiation,
-\ one cell wide included (onebox<oneleaf>). There MAKE takes the construct step
-\ seeded from the declared output and UNMAKE the same step reversed, seeded from
-\ the value it takes apart, its live input (checker.f CTOR-STEP-XT,
-\ type-family.f TFAM-UNMAKE-STEP?). Linear instantiations stay fail-closed at
-\ the sig/arg-bind layers. The rows are registered here (preverify parity);
-\ dictionary words are generated only by the engine PRODUCT definer below. MATCH and
-\ `construct` stay kind-gated to sum/enum, so product rows are never matchable
-\ variants and private products have no construction surface (fail-closed).
+\ A PRODUCT is a single-shape TK-PRODUCT record: no tag, no variants. Each
+\ `FIELD name type` adds one PF-* row (fam, tail, schema root, slot) and one cell
+\ of width, so TFAM-WIDTH@ is the field cell count. Field tails are their own
+\ namespace: one-letter names are legal (the family RESERVED gate does not
+\ apply); TYPE-FIELD-OWNER:ADD enforces lowercase and no duplicate.
+\ The generated surface is `make` ( fields -- fam<..> ) and `unmake`
+\ ( fam<..> -- fields ), two SUMV rows sharing the sum publish and protection
+\ path, compiled with empty bodies: a product bundle is its field cells in slot
+\ order. Each is an ordinary stored-effect call unless the instantiation has a
+\ layout argument (checker.f SEED-TERM?): one wider than a cell, or a direct
+\ layout-family argument of a closed non-linear instantiation, one cell wide
+\ included (onebox<oneleaf>). There MAKE takes the construct step seeded from
+\ the declared output and UNMAKE the reversed step seeded from its live input
+\ (checker.f CTOR-STEP-XT, type-family.f TFAM-UNMAKE-STEP?). Linear
+\ instantiations are refused at the sig and argument-bind layers. Only the
+\ engine PRODUCT definer generates dictionary words. MATCH and `construct`
+\ accept sum/enum only: product rows are never matchable variants and private
+\ products have no construction surface.
 
 private
 
@@ -982,11 +870,9 @@ variable TDP-EVT
 
 public
 
-\ TDECL-TXN-ARMED carries REG-PROTECT and the two flags further down do not, and
-\ the difference is one measured fact about their writers: this one is stored
-\ only by TXN-INSTALL below, a compiled reference inside this file, so
-\ REG-PROTECT (which closes interpret and the tick, not compile mode) leaves it
-\ alone. The note beside TDECL-EVAL-ARMED below has the other half.
+\ TDECL-TXN-ARMED carries REG-PROTECT and the two ARMED flags below do not: its
+\ only writer is TXN-INSTALL, a compiled reference in this file, and REG-PROTECT
+\ closes interpret and the tick, not compile mode.
 defer TDECL-TXN-XT ( [ -- ] -- )   REG-PROTECT
 variable TDECL-TXN-ARMED   REG-PROTECT
 \ The declaration owner installs its runner once, at load; a second install is refused,
@@ -1014,17 +900,15 @@ private
    s" reserved field name" TDECL-WHY!
    a u PF-NAME-REQUIRE ;
 
-\ --- layout-kinded product fields S1 (dot habu-checker-capability-layout-4e7f1f03):
-\ a PRODUCT field may be typed as an S1-tier layout family — sum/enum kind,
-\ arity 0, registry width 1 (the enum tier; arity 0 also means no arg can ever
-\ be linear). The field schema is a family application (SC-APP) holding the
-\ RESOLVED family-id, so the field is born typed: MAKE consumes it as its
-\ family, UNMAKE reproduces it, and a swapped same-width enum field is a
-\ checker reject. Resolution is signature scope (TFAM-SIG-RESOLVE: own package
-\ first, else the unique public; qualified PKG:tail accepted; ambiguity maps to
-\ unresolved). Everything else falls through to the payload grammar, which
-\ admits concrete non-linear layout/cell families (self-references reject
-\ recursive) and rejects parametric, linear, and unknown types (E-TDECL-PAYLOAD).
+\ A PRODUCT field may be typed as an arity-0 sum or enum family of registry
+\ width 1 (arity 0: no argument can be linear). Its schema is an SCH-APP holding
+\ the resolved family id, so MAKE consumes it as its family, UNMAKE reproduces
+\ it, and a swapped same-width enum field is a checker reject. Resolution is
+\ signature scope (TFAM-SIG-RESOLVE: own package first, else the unique public;
+\ qualified PKG:tail accepted; ambiguity is unresolved). Anything else falls
+\ through to the payload grammar, which admits concrete non-linear layout/cell
+\ families (self-references reject recursive) and rejects parametric, linear
+\ and unknown types (E-TDECL-PAYLOAD).
 : TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -1033,14 +917,12 @@ private
    id TFAM-WIDTH@ 1 <> IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-: TDECL-FIELD-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}   \ field type -> schema node
+: TDECL-FIELD-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u TDECL-FIELD-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
    a u TDECL-PAY-ELEM ;
 
-\ TDECL-PRODUCT-FIELD ( fam -- ) : the `field` keyword is already consumed; read
-\ the field tail + one field-shaped type into a schema root, atomically add the
-\ PF row. Existing PRODUCT fields use the canonical CELL payload ABI admitted
-\ by stack-cell-tag and packed-tag; other policies remain fail-closed in PF.
+\ The `field` keyword is already consumed. PRODUCT fields use the canonical CELL
+\ payload ABI of stack-cell-tag and packed-tag; other policies stay refused in PF.
 : TDECL-PRODUCT-FIELD ( n -- ) {: fam:n :}
    TDECL-NEXT {: fna:ptr fnu:n :}
    fna fnu TDECL-REQUIRE-FIELD-NAME
@@ -1093,18 +975,18 @@ private
    SIG-UNRES @ IF E-TDECL-UNRESOLVED throw THEN
    TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
    fam fstart TDP-N @ TFAM-FLD-RANGE!
-   fam TDP-W @ TFAM-SLOTS!               \ product width = field cell width sum (no tag)
+   fam TDP-W @ TFAM-SLOTS!
    fam TDECL-LAYOUT-DESC
    fam rstart TDECL-PRODUCT-ROWS
    fam fam TFAM-VAR-START@ 1 TDECL-DERIVE-REQUIRE ;
 
-\ Both entries run the body inside the one declaration transaction: the field
-\ rows go through DECL-EVENT, which only an open transaction admits. TDECL-RUN
-\ stays outside it, so a reject it swallows under a multi-error load is already
-\ rolled back -- DECL-EVENT rows, field rows, constructors -- as DECL-FRONT's
-\ driver stands outside the transaction it runs (generated-declaration.f). Each
-\ entry names its transaction step as a word because hb-stage0 compiles this
-\ file and cannot nest quotations.
+\ Both entries run the body inside one declaration transaction: field rows go
+\ through DECL-EVENT, which only an open transaction admits. TDECL-RUN stays
+\ outside it, so a reject it swallows under a multi-error load is already rolled
+\ back (DECL-EVENT rows, field rows, constructors), as DECL-FRONT's driver
+\ stands outside its transaction (generated-declaration.f). Each transaction step
+\ is a named word because hb-stage0 compiles this file and cannot nest
+\ quotations.
 : TDECL-PRODUCT-TXN ( [ -- ] -- )
    TDECL-EVENT-ARMED 0= TDECL-TXN-ARMED @ 0= or IF
       s" product: declaration event transaction not installed" 76 die
@@ -1118,8 +1000,8 @@ private
    TDB-A @ TDB-U @ TDECL-CURSOR!
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
    fam TDECL-CUR-FAM !                    \ field self-references reject by id
-   fam TDECL-POLICY                       \ optional POLICY clause before the fields
-   fam TDECL-DERIVE                       \ optional DERIVE clause (derive S2)
+   fam TDECL-POLICY
+   fam TDECL-DERIVE
    fam TDECL-PRODUCT-RECORD
    fam TDECL-FAM-REG ! ;
 
@@ -1149,51 +1031,39 @@ public
    s" newtype" na nu s" " TDECL-CTX!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
-\ --- runtime constructor generation (docs/forth.md "Structures And Enums"). Only the engine's
-\ SUMTYPE word below generates dictionary words; the direct TDECL-DEFSUM
-\ entry stays metadata-only, so preverify/all-errors dispatch never mutates
-\ the tool dictionary and checker rollback stays complete. Each PUBLIC variant
-\ becomes one checked qualified definition
+\ Only the engine's SUMTYPE word below generates dictionary words; TDECL-DEFSUM
+\ stays metadata-only, so preverify and all-errors dispatch never mutate the
+\ tool dictionary and checker rollback stays complete. Each PUBLIC variant
+\ becomes, from SUMV metadata only,
 \    : <CTOR-PKG>:<VARIANT> ( payload.. -- family<a,..> )
 \       construct <family> <variant> ;
-\ rendered from interned SUMV metadata only. Before any generated source reaches
-\ the evaluator, the generator renders every constructor and derived word,
-\ rejects duplicate, live, or visibility-invalid symbols, grows all
-\ plan-determined registry storage, and seals the checker's ordered constructor
-\ queue. It checks the complete dependency-ordered source in one candidate scope,
-\ where each row checked earlier is pending for the rows after it (a product's
-\ derived HASH calls its UNMAKE; src/core/checker.f CK-PENDING-SYM), discards
-\ every provisional checker row, and rewinds the queue. Only that fully
-\ accepted plan crosses the closed INCLUDE-EVALUATE boundary once. The generated
-\ text never contains TRUST, TRUSTED:, or set-check.
-\ Generated-plan eval crossing and protected-wordlist recorder, reached
-\ through `defer` hooks so the call is statically effect-known (no execute of a
-\ raw stored xt). include.f binds TDECL-EVAL-XT; xref.f binds
-\ TDECL-PROT-WID-XT. A separate ARMED flag records whether the real word is
-\ installed: a stage builder that omits those files leaves the flag 0, and the
-\ generator fails closed exactly as the old `hook @ 0=` guard did (a `defer`
-\ cannot be probed for its binding, so the flag carries that fact).
+\ Before any generated source reaches the evaluator, the generator renders every
+\ constructor and derived word, rejects duplicate, live or visibility-invalid
+\ symbols, grows all plan-determined registry storage and seals the checker's
+\ constructor queue. It checks the dependency-ordered source in one candidate
+\ scope, each earlier row pending for later ones (a product's derived HASH calls
+\ its UNMAKE; checker.f CK-PENDING-SYM), discards the provisional checker rows
+\ and rewinds the queue. Only the accepted plan crosses INCLUDE-EVALUATE, once.
+\ Generated text never contains TRUST, TRUSTED: or set-check.
+\ include.f binds TDECL-EVAL-XT and xref.f binds TDECL-PROT-WID-XT; a `defer`
+\ keeps the call effect-known but cannot be probed for its binding, so an ARMED
+\ flag records it: a stage builder that omits those files leaves it 0 and the
+\ generator refuses.
 defer TDECL-EVAL-XT ( ptr u8 n -- )   REG-PROTECT
 defer TDECL-PROT-WID-XT ( ptr u8 n -- )   REG-PROTECT
 defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )   REG-PROTECT
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )   REG-PROTECT
-\ These two flags are the only public records here that do NOT carry
-\ REG-PROTECT, and the reason is measured rather than chosen. Their writers are
-\ src/core/include.f, src/habu/xref.f and the three stage0
-\ test/bootstrap-wide-*-src.f fixtures, and every one of them arms at genuine
-\ TOP LEVEL. Two facts close the door on moving the store into a compiled body:
-\ this file is loaded UNCHECKED, so nothing it defines except a `defer` is
-\ checker-known, and include.f and xref.f are loaded AFTER the checker hook --
-\ measured, `-1 TDECL-EVAL-ARMED !` inside include.f's checked TDECL-EVAL-INSTALL
-\ answers `undefined word 'TDECL-EVAL-ARMED'`, rc 70. REG-PROTECT would then
-\ refuse the only remaining spelling: with it, the same store at top level in
-\ test/bootstrap-wide-memory-src.f answered `hb: internal engine word`, rc 70.
-\ What the seal still buys here is real and is what the sweep measured: the BARE
-\ name is gone, so `0 TDECL-EVAL-ARMED !` from user source is E-UNDEFINED, and
-\ the surviving qualified spelling names its owner and fails closed on a named
-\ rc 76 die rather than corrupting anything. The retirement condition is a
-\ checker-known arming surface: give this file a checked half (the
-\ lower-cert-effects.f shape) and the flags become privates behind an ARM word.
+\ TDECL-EVAL-ARMED and TDECL-PROT-WID-ARMED carry no REG-PROTECT. Their writers
+\ (include.f, xref.f, test/bootstrap-wide-*-src.f) arm at top level: this file
+\ loads unchecked, so nothing it defines except a `defer` is checker-known, and
+\ include.f and xref.f load after the checker hook. Measured: the store inside a
+\ checked word in include.f answers `undefined word 'TDECL-EVAL-ARMED'`, rc 70;
+\ with REG-PROTECT the top-level store in test/bootstrap-wide-memory-src.f
+\ answers `hb: internal engine word`, rc 70. The bare name is still hidden:
+\ `0 TDECL-EVAL-ARMED !` from user source is E-UNDEFINED, and the qualified
+\ spelling dies rc 76 naming its owner. Retiring this needs a checker-known
+\ arming surface: a checked half of this file with the flags private behind an
+\ ARM word.
 variable TDECL-EVAL-ARMED
 variable TDECL-PROT-WID-ARMED
 
@@ -1217,19 +1087,16 @@ create TDGEN-BUF TDGEN-CAP allot
 variable TDGEN-U
 PTR-VARIABLE TDGEN-NA   variable TDGEN-NU  \ word-name span inside TDGEN-BUF
 
-\ Generated declarations are planned and checked in full before the evaluator
-\ sees any source. The per-word renderer remains bounded by TDGEN-CAP, while this
-\ plan arena grows before publication so a large family cannot fail halfway
-\ through merely because the aggregate source outgrew one scratch page. Each row
-\ retains relocation-safe offsets for its name and checker definition span. The
-\ symbol table rejects collisions within the plan; post-xref name and capacity
-\ hooks validate live visibility and every plan-determined fixed registry.
-\ A row also carries the field-projection ARMING a generated address accessor
-\ needs (structure-decl.f header). The sealed window is single-shot and keyed
-\ on the accessor's name, and every generated definition is read twice — once by
-\ the candidate preflight, once by the evaluator — so the authority has to ride
-\ the row that names the word rather than a call site outside the plan. FID -1
-\ means "no arming", which is every constructor and derived row.
+\ The per-word renderer is bounded by TDGEN-CAP; this plan arena grows before
+\ publication, so a large family cannot fail halfway through. Each row keeps
+\ relocation-safe offsets for its name and checker definition span. The symbol
+\ table rejects collisions within the plan; post-xref name and capacity hooks
+\ validate live visibility and every plan-determined fixed registry.
+\ A row also carries the field-projection arming a generated address accessor
+\ needs (TDECL-ADDR-FIELD-WORD). The sealed window is single-shot and keyed on
+\ the accessor's name, and every generated definition is read twice (candidate
+\ preflight, evaluator), so the authority rides the row that names the word.
+\ FID -1 means no arming: every constructor and derived row.
 $1000 constant TDPLAN-CAP-INIT
 4 constant TDPLAN-ROW-CAP-INIT
 7 cells constant TDPLAN-REC
@@ -1457,20 +1324,17 @@ public
 
 private
 
-\ The whole row text, ": NAME ( sig ) body ;" — what the EVALUATOR reads. (The
-\ span TDPLAN-DEF$ answers is the same text without its ': ' and ';', which is
-\ the candidate form CHECK! takes.) Rebuilt from the recorded definition span so
-\ the two readings cannot drift.
+\ The whole row text, ": NAME ( sig ) body ;", as the evaluator reads it;
+\ TDPLAN-DEF$ is the same span without ': ' and ';', the candidate form CHECK!
+\ takes. Both come from the recorded definition span so they cannot drift.
 : TDPLAN-FULL$ ( n -- ptr u8 n )
    TDPLAN-ROW {: r:ptr :}
    r TDPLAN.DEF-OFF @ 2 -  r TDPLAN.DEF-U @ 3 +  TDPLAN-SPAN$ ;
 
-\ Arm the sealed field-projection window for this row, if it carries an arming.
-\ Called immediately before each of the two readings of the row's text; the
-\ window is single-shot and disarms at the `field-project` token even on a
-\ reject, so each reading arms for itself. Arming is the generative crossing the
-\ window exists for: FIELD-PROJ! binds TYPE-DECL's private row
-\ (src/core/checker.f), so this caller is checked code.
+\ Called before each of the two readings of the row's text: the window is
+\ single-shot and disarms at the `field-project` token even on a reject.
+\ FIELD-PROJ! binds TYPE-DECL's private row (checker.f), so this caller is
+\ checked code.
 : TDPLAN-FP-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
 
 : TDPLAN-ARM ( n -- ) {: i:n :}
@@ -1488,8 +1352,8 @@ private
    loop
    CTOR-PEND-REQUIRE-DONE ;
 
-\ A generated definition takes no declaration location in this commit: its
-\ rows are checked with the declaring registrar's latch paused (NAV-PAUSE).
+\ A generated definition takes no declaration location: its rows are checked
+\ with the declaring registrar's latch paused (NAV-PAUSE).
 : TDPLAN-PREFLIGHT-DEFINITIONS ( -- )
    NAV-PAUSE {: on:n new:n :}
    [: TDPLAN-PREFLIGHT-ROWS ;] catch {: rc:n :}
@@ -1517,7 +1381,7 @@ private
    TDGEN-U @ 1 + TDGEN-U ! ;
 : TDGEN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TDGEN-C, loop ;
-: TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}   \ variant tail -> word tail
+: TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ TF-UPPER-C TDGEN-C, loop ;
 : TDGEN-DEC ( n -- ) {: v:n :}           \ non-negative decimal (tag literal)
    v 10 >= IF v 10 / RECURSE THEN
@@ -1528,23 +1392,20 @@ private
    THEN
    TDGEN-C, ;
 
-\ a family-application field (SC-APP, arity 0 in the S1 tier) renders as its
-\ signature reference: PKG:tail when the family lives in a package (the sig
-\ parser resolves qualified refs; the generated eval runs while the declaring
-\ package is still open, so own-private fields resolve too), bare tail at top
-\ level.
+\ A family-application field renders as PKG:tail when the family lives in a
+\ package (the generated eval runs while the declaring package is still open,
+\ so own-private fields resolve too), else as the bare tail.
 : TDGEN-FAM-REF ( n -- ) {: fam:n :}
    fam TFAM-PKG$ {: pa:ptr pu:n :}
    pu 0 > IF pa pu TDGEN-APP 58 TDGEN-C, THEN
    fam TFAM-NAME$ TDGEN-APP ;
 
-\ render one quotation effect side (a SCH-ROW node): each element type node followed
-\ by a space, so an empty side emits nothing and a multi-type side reads back as its
-\ ordered tokens. Deferred so the SCH-QUOT case can reach it before its impl (which
-\ calls TDGEN-SCH back) is defined and installed below.
+\ A quotation side renders each element followed by a space, so an empty side
+\ emits nothing. Deferred because SCH-QUOT in TDGEN-SCH reaches it before its
+\ body, which calls TDGEN-SCH back, is defined.
 defer TDGEN-QUOT-ROW ( n -- )   \ ( rownode -- )
 
-: TDGEN-SCH ( n -- ) {: node:n :}        \ one payload schema node -> sig text
+: TDGEN-SCH ( n -- ) {: node:n :}
    node SCHEMA-PARAM? IF node SCHEMA-A@ TDGEN-LETTER EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ CT-NAME$ TDGEN-APP EXIT THEN
    node SCHEMA-PTR?   IF s" ptr " TDGEN-APP node SCHEMA-A@ RECURSE EXIT THEN
@@ -1585,36 +1446,23 @@ defer TDGEN-QUOT-ROW ( n -- )   \ ( rownode -- )
 : TDGEN-QUOT-ROW-INSTALL ( -- ) [: TDGEN-QUOT-ROW-IMPL ;] is TDGEN-QUOT-ROW ;
 TDGEN-QUOT-ROW-INSTALL
 
-\ --- the payload provider (dot habu-constructor-pass-payload-78c7069d).
-\ Everything below renders constructor and DERIVE text without reading payload
-\ metadata itself. Its caller supplies a PROVIDER: one opaque context cell and
-\ three quotation capabilities.
+\ --- payload provider. Everything below renders constructor and DERIVE text from
+\ a PROVIDER: one opaque context cell and three quotation capabilities.
 \   qn  [ n n n -- n ]    ( ctx fam vid -- count )       payload element count
 \   qr  [ n n n n -- n ]  ( ctx fam vid index -- root )  declaration-order schema root
 \   qc  [ n n n -- n ]    ( ctx fam vid -- cells )       payload cell width
-\ The legacy SUMTYPE / ENUM / PRODUCT definers pass TDECL-SUMV-PROVIDER, whose
-\ three capabilities read the COMMITTED SUMV rows, so their generated text is
-\ unchanged. A front end whose declaration has not been published yet passes
-\ capabilities over its own live declaration token instead; nothing below can
-\ tell the two apart, and nothing below can be satisfied by an ambient read.
-\
-\ The provider is asked for the whole family's payload view exactly ONCE, before
-\ any text is rendered, and its answers are validated together and copied into
-\ the snapshot below. Every render word and DERIVE walker then reads the
-\ snapshot. That is the point of the design, not an optimisation: the view that
-\ was validated is by construction the same view that is rendered, so a provider
-\ cannot answer one way for the check and another way for the render, and no
-\ untrusted quotation ever runs while a render cursor is live.
-\
-\ What the validation does and does not promise. It proves the answers are
-\ INTERNALLY CONSISTENT and fit the family: a non-negative count no larger than
-\ the family's payload slots, schema roots that exist and are at least one cell
-\ wide, and a cell width that equals the widths of the roots the same provider
-\ returned and still fits the slots. It does NOT prove the provider described
-\ the right payload -- the provider IS the authority for WHICH payload a variant
-\ carries, which is exactly what lets an unpublished declaration generate from
-\ its own live view. A caller owns the obligation that the view it supplies is
-\ the view that will be committed.
+\ The SUMTYPE / ENUM / PRODUCT definers pass TDECL-SUMV-PROVIDER, which reads the
+\ committed SUMV rows; a front end whose declaration is not yet published passes
+\ capabilities over its own live declaration token.
+\ The provider is asked once, before any text renders; its answers are validated
+\ together and copied into the snapshot every render word and DERIVE walker
+\ reads. The validated view is the rendered view, and no untrusted quotation runs
+\ while a render cursor is live. Validation proves the answers are consistent
+\ and fit the family (count within payload slots, roots exist and are at least
+\ one cell wide, cell width equals the roots' widths and fits the slots). It
+\ does not prove the provider described the right payload: the provider is the
+\ authority for which payload a variant carries, and its caller owns the
+\ obligation that the view it supplies is the view that will be committed.
 $40 constant TDPV-INIT                   \ initial snapshot slots (variants, roots)
 create TDPV-CNT-BOOT   TDPV-INIT cells allot
 create TDPV-CELLS-BOOT TDPV-INIT cells allot
@@ -1631,7 +1479,6 @@ variable TDPV-BASE                       \ its first variant row
 variable TDPV-VARS                       \ variants captured
 variable TDPV-NODES                      \ nodes captured
 
-\ The collected SUMTYPE / PRODUCT body, declared here for the reset below.
 create TDECL-BUF TDECL-CAP allot
 variable TDECL-U
 
@@ -1713,11 +1560,10 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
    TDPV-NODE-P TDPV-NODE-BOOT TDPV-NODE-CAP @ cells cap cells ARENA-BOOT-GROW
    cap TDPV-NODE-CAP ! ;
 
-\ --- capture. One variant at a time, each capability called exactly once per
-\ answer, every answer checked before the next is asked for. The count is
-\ bounded against the family's payload slots DIRECTLY, so the arena write and
-\ the loop below are bounded by the family's own metadata and do not rest on any
-\ property of the element widths.
+\ Each capability is called once per answer and every answer is checked before
+\ the next is asked for. The count is bounded against the family's payload
+\ slots directly, so the arena write and the loop do not rest on any property
+\ of the element widths.
 : TDPV-COUNT ( n [ n n n -- n ] n n -- n )   \ ctx qn fam slots -- validated count
    {: ctx:n qn fam:n slots:n :}
    ctx fam TDPV-BASE @ TDPV-VARS @ + qn execute {: k:n :}
@@ -1764,9 +1610,6 @@ TDECL-SCRATCH-SNAPSHOT-INSTALL
    cw TDPV-CELLS-P @ TDPV-VARS @ cells + !
    TDPV-VARS @ 1 + TDPV-VARS ! ;
 
-\ TDPV-CAPTURE ( ctx qn qr qc fam -- ) : take the family's whole payload view.
-\ Runs before any rendering; nothing below it calls a capability again.
-
 public
 
 : TDPV-CAPTURE ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- )
@@ -1779,14 +1622,10 @@ public
    vars 0 ?do ctx qn qr qc fam slots TDPV-VARIANT+ loop
    fam TDPV-FAM ! ;
 
-\ --- snapshot readers. The snapshot is module state, so every reader names the
-\ family it expects and the variant range that was captured; a render word
-\ reaching outside either fails closed with the named code instead of reading a
-\ stale row. The range check is the one a wrong variant row hits today, because
-\ variant rows are allocated per declaration and no two live families share one.
-\ The family check covers the case that ordering cannot rule out: a rolled-back
-\ declaration releases its variant rows, so a later family can be given the same
-\ row numbers, and then the range alone would not notice.
+\ Every snapshot reader names the family it expects and the captured variant
+\ range, and fails closed with the named code outside either. The family check
+\ is needed because a rolled-back declaration releases its variant rows, so a
+\ later family can reuse the same row numbers.
 
 private
 
@@ -1807,10 +1646,8 @@ private
       fam s" payload snapshot has no such payload element" TDPV-THROW THEN
    TDPV-NODE-P @ TDPV-OFF-P @ i cells + @ j + cells + @ ;
 
-\ The provider the legacy definers supply: the committed SUMV metadata. Each
-\ capability takes the full ( ctx fam vid .. ) argument list the renderer passes
-\ every provider and answers from the variant row alone, so the context and the
-\ family are deliberately unused here.
+\ Each capability takes the full ( ctx fam vid .. ) list every provider gets and
+\ answers from the variant row alone; ctx and fam are unused here.
 : TDECL-SUMV-N ( n n n -- n ) {: ctx:n fam:n vid:n :}
    vid SUMV-PAY-N ;
 : TDECL-SUMV-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :}
@@ -1836,15 +1673,11 @@ private
       32 TDGEN-C,
    loop ;
 
-\ The family's own spelling in a GENERATED declaration, and it is qualified for
-\ the same reason TDGEN-FAM-REF qualifies every payload family: the generated
-\ word is interned into the ctor package, not the package the declaration ran
-\ in, so its signature text has no scope in which a bare tail means this
-\ family. Bare `span` written here certified only because the checker context
-\ at generation was still the declaring package - a scope the finished word
-\ does not carry - and the same text re-parsed at AOT intake resolved the
-\ GLOBAL span instead (arity 3, refusal). Payload references never had this
-\ bug; the output type was the one bare spelling left.
+\ Qualified for the reason TDGEN-FAM-REF qualifies every payload family: the
+\ generated word is interned into the ctor package, so its signature text has no
+\ scope in which a bare tail means this family. A bare output type certified at
+\ generation (the checker context was still the declaring package) and resolved
+\ the GLOBAL family when the same text was re-parsed at AOT intake.
 : TDGEN-OUT-TYPE ( n -- ) {: fam:n :}    \ PKG:family<a,b,..>
    fam TDGEN-FAM-REF
    fam TFAM-ARITY@ {: ar:n :}
@@ -1858,10 +1691,9 @@ private
 
 \ ": PKG:VARIANT " when the family's generated words are public, ": FAMILY-MEMBER "
 \ for a private or OPAQUE family (TFAM-GEN-PUBLIC?), with the name span recorded
-\ either way. The two spellings and the reason they differ are TF-CTOR-PKG$ /
-\ TF-CTOR-PRIV$ in src/core/type-family.f; the short version is that those
-\ families' words go into the DECLARING PACKAGE's private wordlist, and a name
-\ carrying a colon can never land there.
+\ either way. Those families' words go into the declaring package's private
+\ wordlist, where a name carrying a colon can never land (TF-CTOR-PKG$ /
+\ TF-CTOR-PRIV$, type-family.f).
 : TDGEN-NAME ( n -- ) {: vid:n :}
    s" : " TDGEN-APP
    TDGEN-U @ {: n0:n :}
@@ -1891,7 +1723,7 @@ private
 
 \ The constructor queue is an authority, not scratch state. This inner boundary
 \ proves exact consumption on success and clears name/capacity/candidate/evaluator
-\ failures. TDECL-CTOR-WORDS-BODY starts the outer owner before plan rendering.
+\ failures; TDECL-CTOR-WORDS-BODY starts the outer owner before plan rendering.
 : TDECL-GEN-EVAL ( -- )
    [: TDECL-GEN-EVAL-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
@@ -1914,12 +1746,12 @@ public
 
 private
 
-\ A PRIVATE or OPAQUE family protects no wordlist. Its words live in the declaring
-\ package's own private wordlist, and marking that wid protected would refuse
-\ every later definition the package makes: in a sealed engine
-\ EMIT-STORE-DEF-NAME (src/habu/habu2.f) exits 84 ENGINE-ERROR:SEAL-PACKAGE on a
-\ publish into a protected wid. The generated words stay protected BY NAME
-\ instead, through TFAM-CTOR-WORD? / the checker's CTOR-WORD?-XT undefine guard.
+\ A PRIVATE or OPAQUE family protects no wordlist: its words live in the
+\ declaring package's private wordlist, and protecting that wid would refuse
+\ every later definition the package makes (in a sealed engine
+\ EMIT-STORE-DEF-NAME, habu2.f, exits 84 ENGINE-ERROR:SEAL-PACKAGE). The words
+\ stay protected by name through TFAM-CTOR-WORD? and the checker's CTOR-WORD?-XT
+\ undefine guard.
 : TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
    vid SUMV-FAM@ TFAM-GEN-PUBLIC? 0= IF EXIT THEN
    TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
@@ -1927,12 +1759,10 @@ private
    vid TDGEN-NAME
    TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT ;
 
-\ product generated words: `: PKG:MAKE ( fields -- fam<..> ) ;` and
-\ `: PKG:UNMAKE ( fam<..> -- fields ) ;`. Both bodies are EMPTY and the pending
-\ window is armed with k=0: a product bundle is its field cells in slot order
-\ (no pads, no tag), so the body must contribute exactly nothing and the
-\ declared sig is the checker-owned metadata truth rendered from the PF field
-\ schemas. mk:n picks the direction (nonzero = make).
+\ `: PKG:MAKE ( fields -- fam<..> ) ;` and `: PKG:UNMAKE ( fam<..> -- fields ) ;`:
+\ empty bodies under a k=0 pending window, because a product bundle is its field
+\ cells in slot order (no pads, no tag); the declared sig, rendered from the PF
+\ field schemas, is the checker's truth. mk nonzero means make.
 : TDECL-PROD-WORD ( n n n -- ) {: fam:n vid:n mk:n :}
    TDGEN-CLEAR
    vid TDGEN-NAME
@@ -1950,31 +1780,27 @@ private
    THEN
    vid TDPLAN-PROD-CTOR+ ;
 
-\ --- derived typed equality (derive S1+S2, dot habu-checker-capability-derive):
-\ `DERIVE eq` on a PUBLIC arity-0 ENUM/SUMTYPE/PRODUCT generates ORDINARY
-\ CHECKED words into the family's reserved constructor package — no pending
-\ window, no trust rows, no engine lowering: the bodies are plain checked
-\ MATCH/UNMAKE/call text the checker certifies exactly like user code, so
-\ equality is semantic and layout-policy agnostic. Derived eq CONSUMES both
-\ operands (ordinary non-linear values; callers keep copies as usual).
-\  - TAG ( fam -- n ): discriminant, declaration-order tag — public metadata
-\    any checked MATCH could already observe. Enums + sums only (no product tag).
-\  - EQ ( fam fam -- bool ): payload-free families compare tags (O(V) via TAG);
-\    payload sums compare diagonally — the outer MATCH binds one value's
-\    payloads to q-locals, the inner MATCH the other's to p-locals; the
-\    same-variant arm compares payload scalars with `=` (integer widening at
-\    the local bind makes every CT-INT payload an n), cross arms drop + false;
-\    products UNMAKE both values, bind fields top-down (an enum-typed field
-\    goes through ITS family's PKG:TAG first), and compare field-wise.
-\ The scalar `=`/`0=` wall on layout values is untouched (TD12-ZEQ stays the
-\ pinned negative); the extend/undefine protection recognizes the fixed tails
-\ through TFAM-DERIVED-AT? (products: eq only), and the words ride the ctor
-\ package's item-8 closed-but-callable WID protection and registry rollback.
-\ "PKG-FAMILY:TAIL" for a public family, "FAMILY-TAIL" for a private or OPAQUE
-\ one — the same two spellings, from the same two derivations, that TDGEN-NAME
-\ gives a constructor. Neither of those stamps a constructor package
-\ (TDECL-CTOR-PUBLISH exits early), so reading SUMV-CTOR-PKG$ would name nothing.
-: TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ member reference
+\ --- derived typed equality. `DERIVE eq` generates ordinary checked words into
+\ the family's constructor package: no pending window, no trust rows, no engine
+\ lowering, so equality is semantic and layout-policy agnostic. Derived eq
+\ consumes both operands.
+\  - TAG ( fam -- n ): declaration-order tag, which any checked MATCH already
+\    observes. Enums and sums only.
+\  - EQ ( fam fam -- bool ): payload-free families compare tags; payload sums
+\    compare diagonally (outer MATCH binds one value's payloads to q-locals,
+\    inner MATCH the other's to p-locals; the same-variant arm compares with `=`,
+\    integer widening at the bind making every CT-INT payload an n; cross arms
+\    drop and answer false); products UNMAKE both values, bind fields top-down
+\    (an enum-typed field goes through its family's PKG:TAG) and compare
+\    field-wise.
+\ The scalar `=`/`0=` wall on layout values stays (test/type-decl-suite.f
+\ TD12-ZEQ); extend/undefine protection recognizes the fixed tails through
+\ TFAM-DERIVED-AT? (products: eq only).
+\ A derived word is "PKG-FAMILY:TAIL" for a public family and "FAMILY-TAIL" for a
+\ private or OPAQUE one, as TDGEN-NAME spells a constructor. Neither stamps a
+\ constructor package (TDECL-CTOR-PUBLISH exits early), so SUMV-CTOR-PKG$ would
+\ name nothing.
+: TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}
    fam TFAM-GEN-PUBLIC? 0= IF
       fam TFAM-NAME$ ta tu TF-CTOR-PRIV$ TDGEN-APP EXIT THEN
    fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
@@ -2061,18 +1887,14 @@ private
    fam s" tag" TDGEN-DRV-REF  s"  swap " TDGEN-APP
    fam s" tag" TDGEN-DRV-REF  s"  = ;" TDGEN-APP ;
 
-\ derived hash (derive S3, design (a) — the checked SEMANTIC generator):
-\ FNV-1a folded over whole cells: h = BASIS, then per cell h = (h xor v) * PRIME.
-\ Sums/enums fold the variant tag then each bound payload scalar; products fold
-\ the fields (enum-typed fields through their family's PKG:TAG, exactly like
-\ derived eq), so equal values ALWAYS hash equal by construction. The constants
-\ render into the generated text as hex literals via TDGEN-HEX (single source
-\ of truth below). Hash VALUES are an in-memory contract only: a future
-\ flat-cell EM-ADT-HASH fast path may change them, so derived hashes must
-\ never be persisted across engine versions (docs 9.3.1).
+\ Derived hash: FNV-1a over whole cells, h = BASIS, then per cell
+\ h = (h xor v) * PRIME. Sums and enums fold the tag, then each bound payload
+\ scalar; products fold the fields (enum-typed fields through their family's
+\ PKG:TAG, as derived eq does), so equal values always hash equal. Hash values
+\ are an in-memory contract only: never persist them across engine versions.
 $cbf29ce484222325 constant DRV-FNV-BASIS   \ FNV-1a 64-bit offset basis
 $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
-: TDGEN-HEXD ( n -- ) {: d:n :}           \ one hex digit
+: TDGEN-HEXD ( n -- ) {: d:n :}
    d 10 < IF d 48 + ELSE d 87 + THEN TDGEN-C, ;
 : TDGEN-HEX ( n -- ) {: v:n :}            \ "$" + 16 nibbles + " "
    36 TDGEN-C,
@@ -2135,12 +1957,11 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    fam vstart 1 + 0 TDECL-PROD-WORD
    fam TDECL-DRV-WORDS ;
 
-\ A live declaration switches the engine's wordlist with `private` / `public`,
-\ and the engine passes each switch on to the checker (DECLARATIONS
-\ PRIVATE-OFF). A replay defines no word, and the pre-pass that runs it
-\ (src/habu/verify-source.f, tools/check-core.f) opens the source's package in
-\ the checker alone, so the engine has no package to switch: `private` there
-\ dies `private at tools/check.f:1`. A replay switches the checker's mode only.
+\ A live declaration's `private` / `public` switch reaches the checker through
+\ the engine (DECLARATIONS PRIVATE-OFF). A replay defines no word, and its
+\ pre-pass (verify-source.f, tools/check-core.f) opens the package in the
+\ checker alone, so an engine `private` there dies `private at
+\ tools/check.f:1`. A replay switches the checker's mode only.
 : TDECL-GEN-PRIVATE ( bool -- ) {: replay:bool :}
    replay IF CHECKER-PRIVATE EXIT THEN
    s" private" TDECL-EVAL-XT ;
@@ -2149,18 +1970,16 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    replay IF CHECKER-PUBLIC EXIT THEN
    s" public" TDECL-EVAL-XT ;
 
-\ Run Q, which renders, preflights and evaluates (or replays) a family's
-\ generated rows, in the section those rows are placed in: when the family's
-\ generated words are public (TFAM-GEN-PUBLIC?) Q runs as is; a private or
-\ OPAQUE family's rows go into the declaring package's private wordlist, so Q
-\ runs between a switch to private and a restore of the declaration's own
-\ section, on either exit. Everything that interns a name runs inside the
-\ switch: the name preflight asks the wordlist the name will LAND in
-\ (src/habu/xref.f TARGET-RECORD), and a plan's constructor authorities are
-\ record symbols, which CHECKER-RECORD-SYM interns per section, so a plan
-\ rendered in another section queues authorities CTOR-PEND-MATCH? never finds.
-\ Q receives the family and hands it back: a quotation cannot read this word's
-\ locals, and catch takes only a stack-preserving quotation.
+\ Q renders, preflights and evaluates (or replays) a family's generated rows. A
+\ private or OPAQUE family's rows (not TFAM-GEN-PUBLIC?) go into the declaring
+\ package's private wordlist, so Q runs between a switch to private and a
+\ restore of the declaration's section, on either exit. Everything that interns
+\ a name runs inside the switch: the name preflight asks the wordlist the name
+\ will land in (xref.f TARGET-RECORD), and CHECKER-RECORD-SYM interns a plan's
+\ constructor authorities per section, so a plan rendered in another section
+\ queues authorities CTOR-PEND-MATCH? never finds. Q takes and returns the
+\ family: a quotation cannot read this word's locals, and catch takes only a
+\ stack-preserving quotation.
 : TDECL-GEN-PLACED ( n bool [ n -- n ] -- ) {: fam:n replay:bool q :}
    fam TFAM-GEN-PUBLIC? IF fam q execute drop EXIT THEN
    replay TDECL-GEN-PRIVATE
@@ -2173,10 +1992,9 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    fam RES-FALSE [: dup TDECL-PROD-PLAN TDECL-GEN-EVAL ;] TDECL-GEN-PLACED
    fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID ;
 
-\ Legacy adapter for the product generator, kept so the STRUCTURE make/unmake
-\ publisher (src/core/structure-make.f) keeps its ( fam -- ) call: it declares its
-\ variant rows through SUMV-ADD before generating, so the committed view is
-\ already its own view.
+\ The ( fam -- ) product generator structure-make.f calls: it declares its
+\ variant rows through SUMV-ADD before generating, so the committed view is its
+\ own view.
 
 public
 
@@ -2184,25 +2002,23 @@ public
    TDECL-SUMV-PROVIDER fam TDPV-CAPTURE
    fam TDECL-PROD-WORDS-BODY ;
 
-\ --- generated ADDRESS accessors (`DERIVE addr`, structure-decl.f header).
+\ --- generated ADDRESS accessors (`DERIVE addr`).
 \ One word per field plus AT / BYTES / CELLS, in the family's own spelling:
 \
 \   : PKG-BUF:DATA ( ptr PKG:buf -- ptr ptr u8 ) 0 field-project ;
 \   : PKG-BUF:AT   ( ptr PKG:buf n -- ptr PKG:buf ) 3 * record-at ;
 \   : PKG-BUF:BYTES ( -- n ) 24 ;
 \
-\ The accessor bodies are ORDINARY CHECKED TEXT — no TRUST row, no set-check,
-\ no pending window. `field-project` outside the armed window is exactly `+` and
-\ `record-at` is `cells +`; the checker replaces the first row only while the
-\ window this plan arms is live, and the second only on a layout pointee, which
-\ the plain rows fence. The committed FIELD ID is the whole authority: the
-\ checker re-derives the family, the committed offset, the byte extent, the role
-\ and the schema from it and refuses a body whose baked offset, arity, role or
-\ output type disagrees, so a generator that lies publishes nothing.
-\
-\ Generation runs at COMMIT, not while the body parses: a field id is the
-\ authority only once TYPE-FIELD has committed the row, and the runner's commit
-\ order (DECL-EVENT before the address surface) is what makes that true.
+\ The bodies are ordinary checked text: no TRUST row, no set-check, no pending
+\ window. Outside the armed window `field-project` is `+` and `record-at` is
+\ `cells +`; the checker replaces the first only while this plan's window is
+\ live, and the second only on a layout pointee, which the plain rows fence. The
+\ committed field id is the whole authority: the checker re-derives family,
+\ offset, extent, role and schema from it and refuses a body whose baked offset,
+\ arity, role or output type disagrees.
+\ Generation runs at commit: a field id is an authority only once TYPE-FIELD has
+\ committed the row, which the runner's commit order (DECL-EVENT before the
+\ address surface) guarantees.
 
 private
 
@@ -2221,9 +2037,9 @@ private
    TDPLAN-DERIVED+
    fid fid PF-BYTE-OFF@ TDPLAN-ARM+ ;
 
-\ ( ptr F n -- ptr F ) : stride by the family's COMMITTED width. The multiply is
-\ baked because the row cannot scale — it preserves the pointee and adds cells,
-\ which is all `cells +` promises on any other pointer.
+\ Strides by the family's committed width. The multiply is baked because the row
+\ cannot scale: it keeps the pointee and adds cells, as `cells +` does on any
+\ other pointer.
 : TDECL-ADDR-AT-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" at" TDGEN-DRV-NAME
@@ -2253,9 +2069,9 @@ private
    fam s" cells" fam TFAM-SLOTS@        TDECL-ADDR-SIZE-WORD ;
 
 \ Evaluation is row by row, unlike the constructor set's single evaluator call,
-\ because each armed row must be armed again for the reading the evaluator does.
-\ The plan is still checked WHOLE first (TDPLAN-PREFLIGHT), so a set that cannot
-\ certify reaches no evaluator at all.
+\ because each armed row must be armed again for the evaluator's reading. The
+\ plan is checked whole first (TDPLAN-PREFLIGHT), so a set that cannot certify
+\ reaches no evaluator.
 : TDECL-ADDR-EVAL ( -- )
    TDECL-EVAL-ARMED @ 0= IF s" sumtype: accessor eval hook not installed" 76 die THEN
    TDPLAN-PREFLIGHT
@@ -2267,43 +2083,39 @@ private
 : TDECL-ADDR-BODY ( n -- )
    RES-FALSE [: dup TDECL-ADDR-PLAN TDECL-ADDR-EVAL ;] TDECL-GEN-PLACED ;
 
-\ Replay renders the same plan and takes only its FIRST reading: each row is
-\ armed and checked, so the accessor's effect is registered under its own name,
-\ and no row reaches TDECL-EVAL-XT, so no dictionary word is emitted. The arming
-\ is the live one — this participant commits after DECL-EVENT has advanced
-\ the committed field watermark, on the replay path exactly as on the live one,
-\ so the field ids the plan bakes are committed ids and the window reads them.
+\ Replay takes only the first reading: each row is armed and checked, so the
+\ accessor's effect registers under its own name, and no row reaches
+\ TDECL-EVAL-XT. The arming is live: this participant commits after DECL-EVENT
+\ advances the committed field watermark on both paths, so the baked field ids
+\ are committed ids.
 : TDECL-ADDR-REPLAY-BODY ( n -- )
    RES-TRUE [: dup TDECL-ADDR-PLAN TDPLAN-PREFLIGHT-DEFINITIONS ;] TDECL-GEN-PLACED ;
 
 public
 
-\ TDECL-ADDR-WORDS ( fam -- ) : publish one family's address surface. The window
-\ is disarmed on every exit — a rejected row leaves its arming live otherwise,
-\ and an arming outlives no generation.
+\ The window is disarmed on every exit: a rejected row leaves its arming live
+\ otherwise, and an arming outlives no generation.
 : TDECL-ADDR-WORDS ( n -- )
    [: dup TDECL-ADDR-BODY ;] catch {: rc:n :}
    FIELD-PROJ-CLEAR
    rc 0 <> IF rc throw THEN
    drop ;
 
-\ Replay (tools/check-core.f's nominal pass, src/habu/verify-source.f) registers
-\ the checked EFFECTS of a generated set without emitting code, and the address
-\ surface replays with the rest of the set: TDECL-ADDR-REPLAY publishes one
-\ accessor effect per field plus AT / BYTES / CELLS, from the same plan the live
-\ path evaluates, so a source file that uses its own record accessors is
-\ resolvable on the pre-scan.
+\ Replay (check-core.f's nominal pass, verify-source.f) registers the checked
+\ effects of a generated set without emitting code; the address surface replays
+\ from the same plan the live path evaluates, so a file that uses its own record
+\ accessors resolves on the pre-scan.
 : TDECL-ADDR-REPLAY ( n -- )
    [: dup TDECL-ADDR-REPLAY-BODY ;] catch {: rc:n :}
    FIELD-PROJ-CLEAR
    rc 0 <> IF rc throw THEN
    drop ;
 
-\ Initialized fields use a separate trusted publication path. A checked
-\ TDPLAN row is necessarily ": NAME ..." and CHECK! judges its body; neither
-\ operation describes the fixed representation crossing here. The rows below
-\ are rendered as complete TRUSTED: definitions and replay their declared
-\ effects through the same registrar as source TRUSTED: declarations.
+\ Initialized fields publish through a trusted path: a checked TDPLAN row is
+\ ": NAME ..." and CHECK! judges its body, and neither describes the fixed
+\ representation crossing here. The rows render as complete TRUSTED:
+\ definitions and replay their declared effects through the same registrar as
+\ source TRUSTED: declarations.
 private
 
 variable TDINIT-SIG-OFF
@@ -2445,9 +2257,8 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
 : TDINIT-NAME-PREFLIGHT ( -- )
    TDGEN-NA @ TDGEN-NU @ TDECL-NAME-PREFLIGHT-XT ;
 
-\ The receiver and helpers are private whatever the family's placement: their
-\ bracket is unconditional. The public GET/SET members follow the family
-\ (TDINIT-ROW below).
+\ The receiver and helpers are private whatever the family's placement; the
+\ public GET/SET members follow the family (TDINIT-ROW).
 : TDINIT-HELP-NAME-CHECK ( n bool -- ) {: fam:n replay:bool :}
    replay TDECL-GEN-PRIVATE
    [: TDINIT-NAME-PREFLIGHT ;] catch {: rc:n :}
@@ -2470,7 +2281,7 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
    fam RES-TRUE TDECL-GEN-RESTORE
    rc 0 <> IF rc throw THEN ;
 
-\ An initialized-field row is generated: it is declared paused (NAV-PAUSE).
+\ An initialized-field row is generated, so it is declared paused (NAV-PAUSE).
 : TDINIT-REPLAY-ROW ( -- )
    NAV-PAUSE {: on:n new:n :}
    [: TDGEN-NA @ TDGEN-NU @
@@ -2479,8 +2290,7 @@ TRUSTED: TDINIT-DECLARE ( ptr u8 n ptr u8 n -- ) TRUST-DECL ;
    on new NAV-RESUME
    rc 0 <> IF rc throw THEN ;
 
-\ One public member row (GET or SET), rendered in TDGEN-BUF, placed as the
-\ family's generated words are.
+\ Placed as the family's generated words are.
 : TDINIT-ROW ( n bool -- ) {: fam:n replay:bool :}
    replay IF fam replay [: TDINIT-REPLAY-ROW ;] TDECL-GEN-PLACED EXIT THEN
    fam replay [: TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT ;] TDECL-GEN-PLACED ;
@@ -2515,8 +2325,8 @@ public
 : TDECL-INIT-REPLAY ( n -- ) RES-TRUE TDINIT-GENERATE ;
 
 \ PRODUCT's outer declaration runner arms the same commit participant as
-\ STRUCTURE after its constructors exist. The participant itself is installed
-\ later by structure-make.f, after this pre-hook file has loaded.
+\ STRUCTURE after its constructors exist; structure-make.f installs the
+\ participant after this pre-hook file has loaded.
 defer TDECL-INIT-ARM-XT ( n -- )
 
 private
@@ -2527,26 +2337,20 @@ private
    [: TDECL-INIT-ARM-MISSING ;] is TDECL-INIT-ARM-XT ;
 TDECL-INIT-ARM-DEFAULT
 
-\ Generation for ONE family the caller names, reading that family's payload only
-\ through the provider the caller supplies. TDECL-GEN-BODY is the named helper
-\ that does the work with typed locals; TDECL-CTOR-WORDS-BODY is only the failure
-\ boundary around it. Rendering itself can fail after constructors have entered
-\ the authority queue, before TDECL-GEN-EVAL is reached, so that boundary owns the
-\ whole render/preflight/evaluate/protect lifetime and clears the queue before
-\ every result escapes. The provider and the family id travel on the data stack
-\ through it because a quotation cannot read its caller's locals, and the same
-\ family id comes back out on every normal branch.
+\ TDECL-GEN-BODY generates one family through the caller's provider;
+\ TDECL-CTOR-WORDS-BODY is its failure boundary. Rendering can fail after
+\ constructors have entered the authority queue, before TDECL-GEN-EVAL, so the
+\ boundary owns the whole render/preflight/evaluate/protect lifetime and clears
+\ the queue before every result escapes. Provider and family id travel on the
+\ data stack because a quotation cannot read its caller's locals.
 
 private
 
-\ Which families publish generated words. A PUBLIC family always has: its words
-\ go into the reserved constructor namespace, or, when it said OPAQUE, into its
-\ declaring package's private wordlist (TDECL-GEN-PLACED). A PRIVATE PRODUCT
-\ publishes into that private wordlist too (dot habu-generate-a-private-80272413)
-\ — most memory records in the tree are
-\ package-private, so a public-only generator serves almost nothing. A private
-\ SUM or ENUM still publishes nothing: those construct through the checker-owned
-\ `construct` token (docs/forth.md "Structures And Enums"), which needs no dictionary word.
+\ A PUBLIC family always publishes generated words: into the reserved
+\ constructor namespace, or, when OPAQUE, into the declaring package's private
+\ wordlist (TDECL-GEN-PLACED). A PRIVATE PRODUCT publishes into that private
+\ wordlist too. A private SUM or ENUM publishes nothing: it constructs through
+\ the checker-owned `construct` token, which needs no dictionary word.
 : TDECL-GENERATES? ( n -- bool ) {: fam:n :}
    fam TFAM-PUBLIC? IF RES-TRUE EXIT THEN
    fam TFAM-PRODUCT? ;
@@ -2557,11 +2361,10 @@ private
    ctx qn qr qc fam TDPV-CAPTURE          \ the whole payload view, once, validated
    fam TFAM-PRODUCT? IF
       fam TDECL-PROD-PLAN  ctx qn qr qc fam EXIT THEN
-   \ parametric (arity > 0) families publish too: a
-   \ constructor's parametric result expands to hidden fields wherever its
-   \ width is known, linear included (checker.f PUSH-LOGICAL), and stays one
-   \ logical cell only while its width reads an open argument, expanding at
-   \ the boundary through the checker.f LOGHID coercion.
+   \ Parametric families publish too: a constructor's parametric result expands
+   \ to hidden fields wherever its width is known, linear included (checker.f
+   \ PUSH-LOGICAL), and stays one logical cell only while its width reads an
+   \ open argument.
    TDPLAN-BEGIN
    fam TFAM-VAR-COUNT@ 0 ?do
       fam  fam TFAM-VAR-START@ i +  TDECL-CTOR-WORD
@@ -2596,7 +2399,7 @@ public
    rc 0 <> IF rc throw THEN
    drop ;
 
-: TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )   \ generate one live family's constructors
+: TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
    \ `catch` restores the DEPTH of both stacks and never their contents, so the
    \ five cells the body was handed come back stale: the family this word
    \ answers with is kept in a local BEFORE the catch, and the cells the
@@ -2608,14 +2411,12 @@ public
    2drop 2drop drop
    fam ;
 
-\ The legacy SUMTYPE / ENUM / PRODUCT definers below announce the family they
-\ just registered through TDECL-FAM-REG, so that ambient read lives here, in the
-\ two adapters below, and nowhere beneath them. TDECL-CTOR-WORDS is also where the
-\ committed payload view is chosen: a definer that has already published its
-\ rows reads them back through TDECL-SUMV-PROVIDER. A SUMTYPE refused under a
-\ multi-error load leaves -1 (the continue path in TDECL-RUN) and generates
-\ nothing; PRODUCT generates inside the body TDECL-RUN guards, so a refused one
-\ never reaches generation.
+\ The SUMTYPE / ENUM / PRODUCT definers announce their family through
+\ TDECL-FAM-REG; that ambient read lives only in the two adapters below, which
+\ also choose the committed payload view (TDECL-SUMV-PROVIDER). A SUMTYPE
+\ refused under a multi-error load leaves -1 (TDECL-RUN's continue path) and
+\ generates nothing; PRODUCT generates inside the body TDECL-RUN guards, so a
+\ refused one never reaches generation.
 
 private
 
@@ -2637,20 +2438,17 @@ private
 
 public
 
-\ The replay twin, for a tool that registered a SUMTYPE or PRODUCT from tokens it
-\ had already lexed (src/habu/verify-source.f): the checked effects of the words
-\ the definer would generate, so later source in that pass can call them, and no
-\ word. Those include a PRODUCT's initialized-field accessors when it derives
-\ init (TDECL-PRODUCT-INIT-ARM above); its rows are committed once the
-\ registration returns, which is all TDINIT-REQUIRE reads.
+\ The replay twin, for a tool that registered a SUMTYPE or PRODUCT from tokens
+\ it already lexed (verify-source.f): the checked effects of the words the
+\ definer would generate, and no word. These include a PRODUCT's
+\ initialized-field accessors when it derives init (TDECL-PRODUCT-INIT-ARM);
+\ its rows are committed once the registration returns, which is all
+\ TDINIT-REQUIRE reads.
 : TDECL-CTOR-WORDS-REPLAY ( -- )
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
    fam TDECL-CTOR-REPLAY
    fam TFAM-DERIVE-INIT? IF fam TDECL-INIT-REPLAY THEN ;
-
-\ --- public defining words. NEWTYPE consumes family header; SUMTYPE buffers
-\ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
 
 \ SUMTYPE, PRODUCT, STRUCTURE and ENUM generate constructor words, which the
 \ checker certifies: with the hook suspended (`0 set-check`) a product's
@@ -2659,9 +2457,9 @@ public
 \ declaration packet, after collecting the body and before registering
 \ anything: SUMTYPE and PRODUCT below, STRUCTURE and ENUM in DECL-FRONT:RUN. A
 \ NEWTYPE generates no word and is admitted. The replay entries (CHECKER-DEFSUM,
-\ *-REPLAY) define no word and stay open: src/habu/verify-source.f runs them
-\ hookless in the fixpoint's certify child (tools/build-fixpoint-certify.f).
-\ test/sumtype-unchecked-e2e.f.
+\ *-REPLAY) define no word and stay open: verify-source.f runs them hookless in
+\ the fixpoint's certify child (tools/build-fixpoint-certify.f).
+\ test/sumtype-unchecked-e2e.f pins this.
 : TDECL-UNCHECKED$ ( -- ptr u8 n )
    s" checking is suspended; declare it where checking is on" ;
 
@@ -2697,7 +2495,7 @@ private
 public
 
 \ Under a multi-error load TDECL-RUN counts a refusal and returns, so each
-\ refusal exits here before the transaction opens.
+\ refusal exits before the transaction opens.
 : TDECL-SUMTYPE ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
@@ -2712,16 +2510,6 @@ public
    TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
    [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ TDECL-DEFSUM TDECL-CTOR-WORDS ;]
       TDECL-TXN-XT ;
-
-\ ENUM used to buffer bare variant names here and hand them to CHECKER-DEFENUM.
-\ The global keyword is now the unified front end (`: ENUM ( -- )
-\ ENUM-DECL:ED-RUN ;` at the end of src/core/enum-decl.f), which reads the input
-\ stream itself rather than through a collection buffer, so there is no collector,
-\ no unterminated-body entry and no axiom row for it here.
-
-\ PRODUCT buffers the `arity FIELD f t ..` body up to ;PRODUCT (SUMTYPE's shape),
-\ then registers the whole block and generates the PKG:MAKE/PKG:UNMAKE words
-\ for a public product (TDECL-CTOR-WORDS branches on the family kind).
 
 private
 
@@ -2755,28 +2543,20 @@ public
 
 using TYPE-DECL
 
-\ --- the global declaration grammar. These seven names are the whole of this
-\ file's global surface and the only part of it a user program can spell. They
-\ stay global because a user declaration must register WITHOUT opening any
-\ package: test/type-decl-suite.f declares from genuine top level and that
-\ position is the thing it tests. Each one is a one-line entry into the sealed
-\ implementation above, the shape src/core/enum-decl.f already ships for ENUM
-\ (`: ENUM ( -- ) ENUM-DECL:ED-RUN ;`); the buffers, the plan arena, the
-\ transaction context and every renderer stay inside package TYPE-DECL, where
-\ neither a bare nor a qualified name reaches them.
-\ test/internal-word-gate.f SEAL-CASES pins that the surface stops there.
-
-\ NEWTYPE consumes family header. SUMTYPE and PRODUCT buffer their block up to
-\ the ;NAME closer (VALUE-RECORD's shape), then register it whole.
+\ --- the global surface: these seven names are the only part of this file a
+\ user program can spell. They stay global because a user declaration must
+\ register without opening any package (test/type-decl-suite.f declares from
+\ top level). Each is a one-line entry into package TYPE-DECL, as ENUM is in
+\ enum-decl.f; test/internal-word-gate.f SEAL-CASES pins that the surface
+\ stops there.
 : NEWTYPE ( -- ) TDECL-NEWTYPE ;
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
 : PRODUCT ( -- ) TDECL-PRODUCT ;
 
-\ The checker's own declaration entry points, reached by the preverify and
-\ all-errors replay paths (src/habu/verify-source.f, tools/check-core.f) and by
-\ the checked declarers that build on them (src/lib/type/deftype.f DEFTYPE,
-\ maki/extent.f EXTENT:). Their PRIM: rows live in src/core/checker.f and stay
-\ PRIM: because the names they describe stay global.
+\ Reached by the preverify and all-errors replay paths (verify-source.f,
+\ tools/check-core.f) and by checked declarers built on them
+\ (src/lib/type/deftype.f DEFTYPE). Their PRIM: rows live in checker.f and stay
+\ PRIM: because the names stay global.
 : CHECKER-DEFFAMILY ( ptr u8 n -- ) TDECL-DEFFAMILY ;
 NOMINAL-PROVIDER
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- ) TDECL-DEFSUM ;
@@ -2785,18 +2565,14 @@ NOMINAL-PROVIDER
 : CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- ) TDECL-DEFPRODUCT ;
 NOMINAL-PROVIDER
 
-\ Public top-level surface of the type-family DSL: the block openers parse
-\ their own body tokens up to the ;NAME closer, so their cell effect is ( -- ).
-\ The axiom rows keep them checker-known - the seal-time internal-word marking
-\ pass (src/core/internal-mark.f) fails closed on any engine-prefix word
-\ without a checker-known effect (dot habu-hb-crash-bare-c5be6634).
-\ UNSAFE-TOK? rejects the openers inside checked bodies (they parse the live
-\ input stream and mutate the type registry at run time, which ( -- ) does not
-\ express — dot habu-checker-in-body-af7cf855, LAYOUT-BUFFER parity), so the
-\ axioms add no checked-code capability.
-\ ENUM has no row: it is an ordinary checked ( -- ) definition over
-\ ENUM-DECL:ED-RUN, exactly like STRUCTURE, so the checker already knows its
-\ effect and the marking pass leaves it top-level executable without an axiom.
+\ The block openers parse their own body tokens up to the ;NAME closer, so their
+\ cell effect is ( -- ). The axiom rows keep them checker-known: the seal-time
+\ marking pass (internal-mark.f) fails closed on any engine-prefix word without
+\ a checker-known effect. UNSAFE-TOK? rejects the openers inside checked bodies
+\ (they parse the live input and mutate the type registry at run time, which
+\ ( -- ) does not express), so the axioms add no checked-code capability. ENUM
+\ has no row: it is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN,
+\ like STRUCTURE.
 PRIM: NEWTYPE PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: PRODUCT PRIM;

@@ -1,7 +1,10 @@
-\ Private aliases of the shared declaration-owner ABI loaded by the prefix.
-\ Fixed engine cells used before layout.f is available are mirrored here.
+\ The stack-effect checker: the declaration owner and its arenas, the scan of
+\ each definition, and the effect store and records the compiler reads.
+\ Loaded by the boot prefix (src/habu/boot-files.f) and
+\ tools/native-build-core.f ahead of src/habu/layout.f, so the fixed engine cells
+\ it uses are mirrored here as private aliases.
 package CHECKER-REG
-\ SOURCE-CELL (DECL-CELL) is the record the engine certifies through;
+\ SOURCE-CELL (layout.f DECL-CELL) is the record the engine certifies through;
 \ TARGET-CELL is the one a replacement checker publishes itself into.
 $360 constant SOURCE-CELL
 $368 constant TARGET-CELL
@@ -26,14 +29,10 @@ CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
 CHECKER-OWNER-ABI:WIDE-OFF constant WIDE-OFF
 CHECKER-OWNER-ABI:RESET-OFF constant RESET-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant CAPTURE-OFF
-\ The optimizing front end's half (src/habu/layout.f says what reaching it by
-\ name cost). Same offsets, stated here because this file is read before that
-\ one, and grouped the same way. A NEW field goes on the END and nowhere else,
-\ whatever group it belongs to by meaning: the compiler that reads this record is
-\ a baked routine of the PREVIOUS generation, so an offset that moves is read at
-\ its old number by the engine hosting the build that publishes the new one.
-\ --- the front end the checker IS: the scan, the tape it fills, the does> split,
-\ the declared-effect row and the retract of one
+\ The optimizing front end's half of the owner record; offsets come from
+\ checker-owner-abi.f. A new field goes on the end, whatever its group: the
+\ compiler that reads this record is a baked routine of the previous
+\ generation, so a moved offset is read at its old number.
 CHECKER-OWNER-ABI:CHECK-OFF constant CHECK-OFF
 CHECKER-OWNER-ABI:TAPE-INSTALL-OFF constant TAPE-INSTALL-OFF
 CHECKER-OWNER-ABI:TAPE-ARM-OFF constant TAPE-ARM-OFF
@@ -47,19 +46,15 @@ CHECKER-OWNER-ABI:DOES-IN-N-OFF constant DOES-IN-N-OFF
 CHECKER-OWNER-ABI:DOES-OUT-N-OFF constant DOES-OUT-N-OFF
 CHECKER-OWNER-ABI:DOES-IN-SLOT-OFF constant DOES-IN-SLOT-OFF
 CHECKER-OWNER-ABI:DOES-OUT-SLOT-OFF constant DOES-OUT-SLOT-OFF
-\ --- the finalized per-call-site facts the scan recorded
 CHECKER-OWNER-ABI:CALL-CELLS-OFF constant CALL-CELLS-OFF
 CHECKER-OWNER-ABI:CALL-GLUE-OFF constant CALL-GLUE-OFF
 CHECKER-OWNER-ABI:CALL-MATCH-OFF constant CALL-MATCH-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-IN-OFF constant CALL-QUOT-IN-OFF
 CHECKER-OWNER-ABI:CALL-QUOT-OUT-OFF constant CALL-QUOT-OUT-OFF
-\ --- the front end the checker IS: the scan, the tape it fills, the does> split,
-\ the declared-effect row and the retract of one
 CHECKER-OWNER-ABI:TRUST-DECL-OFF constant TRUST-DECL-OFF
 CHECKER-OWNER-ABI:PARSE-IMM-OFF constant PARSE-IMM-OFF
-\ --- the effect-store query group: EFFECT-QUERY resolves a name into the
-\ instance's query state and every reader below reads THAT state, so all of them
-\ have to reach the same owner or a reader answers about another instance's query
+\ EFFECT-QUERY resolves a name into the instance's query state and every reader
+\ below reads that state, so all of them must reach the same owner.
 CHECKER-OWNER-ABI:EFFECT-QUERY-OFF constant EFFECT-QUERY-OFF
 CHECKER-OWNER-ABI:EFFECT-DIN-N-OFF constant EFFECT-DIN-N-OFF
 CHECKER-OWNER-ABI:EFFECT-DOUT-N-OFF constant EFFECT-DOUT-N-OFF
@@ -79,10 +74,10 @@ CHECKER-OWNER-ABI:EFFECT-MATCH-CELLS-OFF constant EFFECT-MATCH-CELLS-OFF
 CHECKER-OWNER-ABI:CTL-DEAD-OFF constant CTL-DEAD-OFF
 CHECKER-OWNER-ABI:WF-W-AT-OFF constant WF-W-AT-OFF
 CHECKER-OWNER-ABI:FIELD-SPAN-OFF constant FIELD-SPAN-OFF
-\ --- what the record a definition publishes needs from the checker
 CHECKER-OWNER-ABI:REC-MIN-IN-OFF constant REC-MIN-IN-OFF
 CHECKER-OWNER-ABI:REC-WIDE-PUBLISH-OFF constant REC-WIDE-PUBLISH-OFF
-\ --- the scan whose verdict nobody enforces, with the render suppressed for it
+\ CHECK-UNJUDGED: the scan whose verdict nobody enforces, with its render
+\ suppressed.
 CHECKER-OWNER-ABI:CHECK-UNJUDGED-OFF constant CHECK-UNJUDGED-OFF
 \ Family and variant ids are local to this same checker owner.
 CHECKER-OWNER-ABI:FAMILY-MATCH-OFF constant FAMILY-MATCH-OFF
@@ -95,9 +90,9 @@ CHECKER-OWNER-ABI:VARIANT-TAG-OFF constant VARIANT-TAG-OFF
 CHECKER-OWNER-ABI:VARIANT-PADS-OFF constant VARIANT-PADS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-CELLS-OFF constant VARIANT-PAY-CELLS-OFF
 CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant VARIANT-PAY-TERMS-OFF
-\ The record's size is DERIVED from the field list above, and the cells below are
-\ checked against it: a field added without a cell, or a cell without a field, is
-\ a load failure here instead of a silent read past the end.
+\ The record's size is derived from the field list above and the cells below
+\ are checked against it: a field without a cell, or a cell without a field,
+\ is a load failure.
 CHECKER-FETCH-ABI:BYTES constant OWNER-BYTES
 create OWNER-STORAGE
    CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
@@ -166,8 +161,8 @@ create OWNER-STORAGE
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
-\ The captured declaration owner is validated by address and descriptor before
-\ compaction. Its dictionary name is not needed to recognize a complete runtime.
+\ The captured declaration owner is validated by address and descriptor, not by
+\ its dictionary name.
 : DECLARATIONS ( -- ptr u8 ) OWNER-STORAGE CHECKER-OWNER-ABI:HEADER-BYTES + ;
 private
 OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
@@ -175,10 +170,9 @@ OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record i
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
-\ The size is also the END of the last appended field, and a field appended
-\ without growing the size would be read past the record's recorded extent by
-\ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
-\ offset here so that mistake is a load failure and not a bounds refusal later.
+\ The size is the end of the last appended field: a field appended without
+\ growing it is read past the record's extent by every guard that trusts it
+\ (checker-owner-guard.f VALIDATE). This makes that a load failure.
 : OWNER-LAST-FIELD-AGREE ( -- )
    CHECKER-OWNER-EXT:BODY-CLOSE-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
@@ -191,29 +185,24 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
 3 constant S-ROW   4 constant S-PUSH
 5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
-\ T-STALE wraps the type a cell HAD before a caught throw path may have
-\ overwritten it (`catch` restores stack DEPTH, never contents). The eight
-\ original tags filled a 3-bit field, so the field is four bits wide: every term
-\ id is `payload << TAG-SHIFT | tag`, and TAG-SHIFT/TAG-MASK are the only two
-\ places that width is written down.
+\ T-STALE wraps the type a cell had before a caught throw path may have
+\ overwritten it (`catch` restores stack depth, never contents). Twelve tags
+\ need a four-bit field: every term id is `payload << TAG-SHIFT | tag`, and
+\ TAG-SHIFT/TAG-MASK are the only places that width is written.
 8 constant T-STALE
 9 constant T-FORALL  10 constant T-BVAR  11 constant T-SCOPE
 4 constant TAG-SHIFT   $F constant TAG-MASK
 -1 constant UNBOUND
-\ Trusted checker internals below are confined to typed views/nulls over
-\ checker arenas and one raw effect query.
-\ Engine primitive effects, including tok-imm?, live in the primitive table.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
+\ Trusted checker internals below are confined to typed views and nulls over
+\ checker arenas and one raw effect query. Engine primitive effects, including
+\ tok-imm?, live in the primitive table.
 \ --- growable checker arenas --------------------------------------------
-\ Shared mmap primitives for growable checker stores. Their owners decide the
-\ lifetime: persistent registries copy external storage into image DATA;
-\ scratch resets to its boot buffer, releases its owned mapping at capture, or
-\ takes from the scratch region, which SR-RETIRE gives back at each file
-\ boundary and at capture.
-\ No process-local mmap address may enter an image. Growth is geometric so
-\ regrow copies each store O(log n) times over a load, not once per grain.
-\ `map-anon` answers the mapping as a pointer whose element type the caller
-\ picks, so no refinement turns a syscall result into an address.
+\ Owners decide the lifetime: persistent registries copy external storage into
+\ image DATA; scratch resets to its boot buffer, releases its owned mapping at
+\ capture, or takes from the scratch region, which SR-RETIRE gives back at each
+\ file boundary and at capture. No process-local mmap address may enter an
+\ image. Growth is geometric, so a store is copied O(log n) times per load.
+\ `map-anon` answers a pointer whose element type the caller picks.
 : ARENA-ALLOC ( n -- ptr a )
    map-anon 0 <> IF drop s" checker: arena mmap failed" 76 die THEN ;
 
@@ -222,8 +211,8 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
 \ An address's DATA offset, measured from the null so neither pointer is viewed.
 : DATA-OFF ( ptr a -- n ) NULL-PTR - data-base NULL-PTR - - ;
 
-\ The checker's byte copier: n bytes, src->dst, cell-wise with a byte tail. arm64
-\ and x86-64 both take an unaligned cell access, so a span may start at any byte.
+\ arm64 and x86-64 both take an unaligned cell access, so a span may start at
+\ any byte.
 : ARENA-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
    0
    begin dup CELL + n <= while
@@ -236,7 +225,6 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
    repeat
    drop ;
 
-\ The checker's byte zeroer: n bytes at dst, cell-wise with a byte tail.
 : ARENA-ZERO ( ptr u8 n -- ) {: dst:ptr u:n :}
    u CELL / CELL * {: bulk:n :}
    0
@@ -247,13 +235,11 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
       0 over dst + c! 1+
    repeat drop ;
 
-\ ARENA-CELLS-COPY copies n cells, src->dst, of any element type, so neither
-\ side is viewed as bytes. A caller holding a byte count passes it rounded up
-\ to cells. The rounded read stays mapped because every source is a map-anon
-\ mapping (page-granular) or lies inside the fixed DATA region; the rounded
-\ write stays inside the destination because it is at least the old byte
-\ count: a fresh ARENA-ALLOC, and map-anon maps whole pages, or an SR-TAKE,
-\ which starts the next take on a cell boundary past it.
+\ A caller holding a byte count passes it rounded up to cells. The rounded read
+\ stays mapped because every source is a page-granular map-anon mapping or lies
+\ inside DATA; the rounded write stays inside the destination because that is a
+\ fresh ARENA-ALLOC (whole pages) or an SR-TAKE, which starts the next take on
+\ a cell boundary past it.
 : ARENA-CELLS-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}
    n 0 ?do src i cells + @ dst i cells + ! loop ;
 
@@ -269,56 +255,44 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
       i 1 +
    repeat drop ;
 
-\ REG-DATA-SPAN? ( base cap -- flag ) : CAP bytes at BASE lie inside image DATA.
-\ Validate the allocation capacity, not only the live prefix being copied.
-\ Subtraction after the ordered bounds checks avoids a wrapping end address.
+\ Validates the allocation capacity, not only the live prefix being copied. The
+\ subtraction follows the ordered bounds checks, so the end address cannot wrap.
 : REG-DATA-SPAN? ( ptr u8 n -- bool ) {: base:ptr cap:n :}
    cap 0 < 0=  base data-base < 0= and  base here <= and
    dup IF drop cap here base - <= THEN ;
 
-\ ARENA-BYTES-GROW ( ptr a n n -- ptr a ) : alloc newbytes, copy oldbytes from
-\ base rounded up to whole cells, return the new base. For record/cell stores counted in raw elements the
-\ callers reset counters per definition, so no tail init is needed.
-\ An old base in image DATA is zeroed: the abandoned store is still baked, so
-\ zeroing makes its bytes independent of how writes and the grow interleave (a
-\ cold load writes rows before the move, a file hit makes room first), and a
-\ stale pointer into it reads zeros.
+\ Copies OLDBYTES rounded up to cells. Callers reset their counters per
+\ definition, so no tail init is needed. An old base in image DATA is zeroed:
+\ the abandoned store is still baked, so its bytes do not depend on how writes
+\ and the grow interleave (a cold load writes rows before the move, a file hit
+\ makes room first), and a stale pointer into it reads zeros.
 : ARENA-BYTES-GROW ( ptr a n n -- ptr a ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes ARENA-ALLOC {: nb:ptr :}
    base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
    base BYTE-VIEW oldbytes REG-DATA-SPAN? IF base BYTE-VIEW oldbytes ARENA-ZERO THEN
    nb ;
 
-\ REG-GROW1 ( pvar oldbytes newbytes -- ) : grow the buffer held in pvar in place,
-\ storing the relocated base back. Shared by every parallel-array registry grow.
 : REG-GROW1 ( ptr ptr a n n -- ) {: pv:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW pv ! ;
 
-\ ARENA-UNMAP ( base bytes -- ) : give back a mapping of BYTES; 0 bytes is none.
+\ 0 bytes is no mapping.
 : ARENA-UNMAP ( ptr n n -- )
    {: base:ptr bytes:n :}
    bytes 0= IF EXIT THEN
    base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
 
-\ ARENA-BOOT-RESTORE ( pvar boot bytes -- ) : point pvar back at its boot
-\ buffer, giving back the grown mapping, BYTES long, it holds instead.
 : ARENA-BOOT-RESTORE ( ptr ptr n ptr n n -- )
    {: pv:ptr boot:ptr bytes:n :}
    pv @ boot <> IF pv @ bytes ARENA-UNMAP THEN
    boot pv ! ;
 
-\ ARENA-BOOT-GROW ( pvar boot oldbytes newbytes -- ) : grow the store pvar
-\ holds, which starts on its boot buffer, to NEWBYTES, keeping its bytes, and
-\ give back the grown mapping, OLDBYTES long, it replaces.
 : ARENA-BOOT-GROW ( ptr ptr n ptr n n n -- )
    {: pv:ptr boot:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW {: next:ptr :}
    pv @ boot <> IF pv @ ob ARENA-UNMAP THEN
    next pv ! ;
 
-\ ARENA-ROWS-ENSURE ( pvar capvar need row -- ) : grow the table of ROW-cell
-\ rows pvar holds, capvar rows long, to NEED rows, keeping its rows, and give
-\ the old mapping back. A table that holds none starts at 64 rows.
+\ A table that holds none starts at 64 rows.
 : ARENA-ROWS-ENSURE ( ptr ptr n ptr n n n -- )
    {: pv:ptr capv:ptr need:n row:n :}
    need capv @ <= IF EXIT THEN
@@ -327,28 +301,22 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
    pv @ capv @ row * cells ARENA-UNMAP
    next pv !  nc capv ! ;
 
-\ ARENA-ROWS-RELEASE ( pvar capvar row -- ) : give back the table pvar holds,
-\ leaving it none.
 : ARENA-ROWS-RELEASE ( ptr ptr n ptr n n -- )
    {: pv:ptr capv:ptr row:n :}
    pv @ capv @ row * cells ARENA-UNMAP
    NULL-PTR pv !  0 capv ! ;
 
 \ --- the scratch region ------------------------------------------------------
-\ Per-definition scratch stores take their storage from one region and keep
-\ their counter, pointer and capacity cells in spans of DATA that
-\ CHECKER-REG:SCRATCH{ and CHECKER-REG:}SCRATCH bracket. SR-RETIRE gives the
-\ region back and zeroes every span, so the stores rest at none, NULL and 0,
-\ both in a captured image and at each file boundary, and the first use after
-\ a retire maps afresh.
-\ A span record is two cells at the span's start: the link to the previous
-\ record and the span's end. Both are distances from the record, as the newest
-\ record's link in SCRATCH-SPANS is from that cell, so they hold wherever the
-\ checker's DATA is loaded or relocated; 0 is none, and an end of 0 an open
-\ span.
+\ Per-definition scratch stores take storage from one region and keep their
+\ counter, pointer and capacity cells in DATA spans that CHECKER-REG:SCRATCH{
+\ and CHECKER-REG:}SCRATCH bracket. SR-RETIRE gives the region back and zeroes
+\ every span, so stores rest at none, NULL and 0 in a captured image and at each
+\ file boundary. A span record is two cells at the span's start: the link to
+\ the previous record and the span's end, both distances from the record (as is
+\ SCRATCH-SPANS's link from that cell), so they hold wherever DATA is loaded;
+\ 0 is none, and an end of 0 an open span.
 variable SCRATCH-SPANS
 
-\ The self-relative link a cell holds; 0 is none.
 : SR-LINK@ ( ptr n -- ptr n ) {: cell:ptr :}
    cell @ {: d:n :}
    d 0= IF NULL-PTR EXIT THEN
@@ -378,18 +346,16 @@ public
 
 \ The region's chunks come from ARENA-ALLOC and are never reused before
 \ SR-RETIRE unmaps them, so a take answers zero bytes as map-anon does. A chunk
-\ header is two cells: the previous chunk's self-relative link (SR-LINK@),
-\ then the chunk's bytes. SR-GRAIN is the least size of a chunk SR-TAKE
-\ maps, not a limit: a larger take maps a chunk of its own size.
+\ header is two cells: the previous chunk's self-relative link, then the chunk's
+\ bytes. SR-GRAIN is the least chunk size, not a limit: a larger take maps a
+\ chunk of its own size.
 1024 1024 * constant SR-GRAIN
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE SR-CHUNK   variable SR-USED   variable SR-SIZE
 CHECKER-REG:}SCRATCH
 
-\ SR-CHUNK-NEW ( need bytes -- addr ) : map a chunk of BYTES, link it as the
-\ current one with NEED bytes used, and answer its payload. The header cells
-\ are written through a cell view, so the payload's element type stays the
-\ caller's.
+\ The header cells are written through a cell view, so the payload's element
+\ type stays the caller's.
 : SR-CHUNK-NEW ( n n -- ptr a ) {: need:n bytes:n :}
    bytes ARENA-ALLOC {: c:ptr :}
    c BYTE-VIEW CELL-VIEW {: h:ptr :}
@@ -407,18 +373,15 @@ CHECKER-REG:}SCRATCH
    THEN
    need  need 2 cells + SR-GRAIN max  SR-CHUNK-NEW ;
 
-\ SR-GROW ( base oldbytes newbytes -- base' ) : take NEWBYTES and copy OLDBYTES
-\ from BASE, rounded up to whole cells. The old bytes stay until SR-RETIRE.
+\ The old bytes stay until SR-RETIRE.
 : SR-GROW ( ptr n n n -- ptr n ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes SR-TAKE {: nb:ptr :}
    base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
    nb ;
 
-\ Unmap one chunk and answer the one before it.
 : SR-CHUNK-FREE ( ptr n -- ptr n ) {: c:ptr :}
    c SR-LINK@  c c CELL + @ ARENA-UNMAP ;
 
-\ Zero one span past its record and answer the record before it.
 : SR-SPAN-ZERO ( ptr n -- ptr n ) {: rec:ptr :}
    rec CELL + @ 0= IF s" checker: SCRATCH{ without }SCRATCH" 76 die THEN
    rec BYTE-VIEW 2 cells +  rec CELL + @ 2 cells -  ARENA-ZERO
@@ -431,24 +394,21 @@ CHECKER-REG:}SCRATCH
 
 \ TV arena: sixteen var-id planes share one owned mapping and one capacity.
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
-\ Measured high-water of
-\ FV over a whole self-build: 1112 vars in one definition (the pool resets per
-\ definition). 1280 leaves 15% headroom over that mark. A workload above it
-\ grows the arena exactly as it does today: test/type-decl-suite.f already peaks
-\ at 2573, above even the old 2048.
+\ Measured high-water over a self-build: 1112 vars in one definition (the pool
+\ resets per definition); 1280 leaves 15% headroom. A larger workload grows the
+\ arena: test/type-decl-suite.f peaks at 2573.
 1280 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
 16 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
 variable TV-CAP   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;    \ live cap; every var-id array is TV-CAP cells
 
-\ TVK: per-type-var KIND (nominal-storage raw discipline, habu-nominal-storage-raw).
-\ 0 = TVK-ANY (an ordinary polymorphic var); 1 = TVK-RAW (a var minted by a raw
-\ storage definer -- here/,/create/variable/constant -- whose cell admits only a
-\ plain scalar representation and must NEVER absorb a nominal atom, arity-0
-\ family, layout, or nominal-bearing pointer). It rides the shared TV arena so a
-\ fresh var id indexes it too, is zeroed (ANY) on grow/reset/trial-rollback, and
-\ persists on stored effect records (EN.B on var nodes) across snapshot/AOT.
+\ TVK: per-type-var kind. TVK-RAW marks a var minted by a raw storage definer
+\ (here , create variable constant): its cell admits only a plain scalar and
+\ never absorbs a nominal atom, arity-0 family, layout or nominal-bearing
+\ pointer. TVK rides the TV arena so a fresh var id indexes it too, is zeroed
+\ (TVK-ANY) on grow, reset and trial rollback, and persists on stored effect
+\ records (EN.B on var nodes) across snapshot and AOT.
 PERSISTED-PTR-VARIABLE TVT-P     PERSISTED-PTR-VARIABLE RVT-P
 PERSISTED-PTR-VARIABLE VRC-TV-P  PERSISTED-PTR-VARIABLE VRC-RV-P   PERSISTED-PTR-VARIABLE VRI-TV-P  PERSISTED-PTR-VARIABLE VRI-RV-P
 PERSISTED-PTR-VARIABLE EC-TV-P   PERSISTED-PTR-VARIABLE EC-RV-P    PERSISTED-PTR-VARIABLE EI-TV-P   PERSISTED-PTR-VARIABLE EI-RV-P
@@ -558,55 +518,48 @@ TV-CLEAR
 1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
 2 constant RVK-QUOT  \ implicit callback tail: fixed window when compared as a value
 3 constant RVK-INFERRED  \ literal tail: fresh per call, extensible to a declared window
-\ The two BASE-ADDRESS pointees: a pointer that is not the address OF anything
-\ (dot habu-fence-a-base-c6c1d71d). They are separate kinds because their honest
-\ uses are not the same.
+\ The two BASE-ADDRESS pointees: a pointer that is not the address of anything.
+\ They are separate kinds because their honest uses differ.
 \
-\ TVK-NULL is `NULL-PTR`. Fenced in VALUE position, permissive inside a POINTEE:
-\ the tree's honest uses -- `ptr thing NULL-PTR =`, `NULL-PTR X !`,
-\ `NULL-PTR 0=` -- each bind the pointee INSIDE a `ptr`, and the null is the one
-\ address every one of those shapes means literally. Nothing read THROUGH it is
-\ a nominal identity or an address. A distance `X NULL-PTR -` binds no pointee
-\ at all (TVK-BASE-ONLY below).
+\ TVK-NULL is `NULL-PTR`. Fenced in value position, permissive inside a pointee:
+\ `ptr thing NULL-PTR =`, `NULL-PTR X !` and `NULL-PTR 0=` each bind the pointee
+\ inside a `ptr`, and the null is the one address all of them mean literally.
+\ Nothing read through it is a nominal identity or an address. A distance
+\ `X NULL-PTR -` binds no pointee at all (TVK-BASE-ONLY below).
 \
-\ TVK-DBASE is `data-base`, the start of the running task's DATA region, and it
-\ is fenced at EVERY pointee depth. The first cut fenced only the first pointee,
-\ so `( -- ptr ptr n ) data-base 8 +` declared a DATA word to be the address of
-\ an address and `F @ @` then forged one out of whatever integer the region held
-\ (measured: `1 W  F @ @ @` certified and SIGSEGVed). Following the chain is the
-\ whole point -- a cell reached from DATA holds a plain value at any depth.
+\ TVK-DBASE is `data-base`, the start of the running task's DATA region, fenced
+\ at every pointee depth: a cell reached from DATA holds a plain value at any
+\ depth. Fencing only the first pointee let `( -- ptr ptr n ) data-base 8 +`
+\ forge an address with `F @ @` (`1 W  F @ @ @` certified and SIGSEGVed).
 4 constant TVK-NULL
 5 constant TVK-DBASE
-\ TVK-OFF is not a fence: it is PROVENANCE, carried by the pointee variable of
-\ every row that steps a pointer by an INTEGER offset (`+`, `-` with an n,
-\ `1+`, `1-`, `cell+`, `char+` -- src/habu/prims.f PE-PTR-A-OFF). It changes
-\ exactly one meet: a null that rides such a row comes out TVK-DBASE. An OFFSET
-\ null is no longer the one literal address every honest null shape means, it is
-\ an arbitrary address the caller computed, so it loses the permissive pointee
-\ arm and is fenced at every depth exactly as `data-base` is (dot
-\ habu-fence-an-offset-7372e836: `: F ( -- ptr ptr n ) NULL-PTR OFF + ; F @ @`
-\ certified and read an attacker-chosen `variable` -- measured, it printed 777).
-\ Against every other kind TVK-OFF is transparent (the meet answers the other
-\ kind), so an ordinary pointer keeps stepping and the LITERAL null keeps its arm.
+\ TVK-OFF is not a fence but provenance, carried by the pointee variable of
+\ every row that steps a pointer by an integer offset (`+`, `-` with an n, `1+`,
+\ `1-`, `cell+`, `char+`: src/habu/prims.f PE-PTR-A-OFF). It changes one meet:
+\ a null that rides such a row comes out TVK-DBASE, since an offset null is an
+\ arbitrary computed address, not the literal null, and is fenced at every
+\ depth (`: F ( -- ptr ptr n ) NULL-PTR OFF + ; F @ @` certified and read an
+\ attacker-chosen `variable`, printing 777). Against every other kind TVK-OFF is
+\ transparent, so an ordinary pointer keeps stepping and the literal null keeps
+\ its arm.
 6 constant TVK-OFF
 7 constant TVK-SCOPE   \ a non-value scope parameter, never an allocation identity
 8 constant TVK-REGION  \ a rigid allocation domain, never a value or scope
 9 constant TVK-CELL    \ a declared or fetched physical cell; cannot later become wide
-\ TVK-BASE-ONLY is a PATTERN, not a fence: the base operand of a pointer-distance
+\ TVK-BASE-ONLY is a pattern, not a fence: the base operand of a pointer-distance
 \ row (src/habu/prims.f PE-PTR-B-BASE). It binds only the pointee of a base
 \ address (BASE-KIND?) and refuses every other term, so that row matches
 \ `X NULL-PTR -` without equating X's pointee with the null's: a distance reads
-\ no storage, and X's pointee takes no kind from it. It never outlives its row:
-\ RAW-BLOCK? either binds it into the base address's class or raises it to that
-\ class's kind, and TRY-EFF fails the row when it did neither -- an unresolved
-\ operand bound to `ptr B` leaves B open, and the trial moves on.
+\ no storage. It never outlives its row: RAW-BLOCK? either binds it into the
+\ base address's class or raises it to that class's kind, and TRY-EFF fails the
+\ row when it did neither.
 10 constant TVK-BASE-ONLY
 : TVK@ ( n -- n ) cells TVK + @ ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )   \ is this KIND one of the two base addresses?
    dup TVK-NULL = swap TVK-DBASE = or ;
-\ permanent (untrailed) marks for build-time contexts (prim/signature build,
-\ freshening); the trailed TVK-RAISE below is used inside unification.
+\ Permanent (untrailed) marks for build-time contexts (prim and signature build,
+\ freshening); unification uses the trailed TVK-RAISE.
 : TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
 : TVK-NULL! ( n -- ) TVK-NULL swap cells TVK + ! ;
 : TVK-DBASE! ( n -- ) TVK-DBASE swap cells TVK + ! ;
@@ -616,20 +569,19 @@ TV-CLEAR
 : TVK-CELL! ( n -- ) TVK-CELL swap cells TVK + ! ;
 : TVK-BASE-ONLY! ( n -- ) TVK-BASE-ONLY swap cells TVK + ! ;
 
-\ The fence lattice: ANY < CELL < NULL < DBASE < RAW. A meet keeps the STRICTER of two
-\ kinds, so a null that meets a DATA-derived pointee comes out DBASE (the fence
-\ that follows every depth) and a base-derived value stored into a raw cell meets
-\ at RAW; no discipline is ever lowered to another. The row kinds are not on this
-\ lattice and rank 0 (a row var never meets a type var).
+\ The fence lattice: ANY < CELL < NULL < DBASE < RAW. A meet keeps the stricter
+\ kind, so a null meeting a DATA-derived pointee comes out DBASE and a
+\ base-derived value stored into a raw cell meets at RAW; no discipline is
+\ lowered. Row kinds are not on this lattice and rank 0 (a row var never meets a
+\ type var).
 : TVK-RANK ( n -- n )
    dup TVK-RAW = IF drop 4 EXIT THEN
    dup TVK-DBASE = IF drop 3 EXIT THEN
    dup TVK-NULL = IF drop 2 EXIT THEN
    TVK-CELL = IF 1 EXIT THEN
    0 ;
-\ TVK-OFF sits beside that lattice rather than on it: offset provenance meeting
-\ the null yields the DATA base's discipline (an arbitrary address, fenced at
-\ every depth), and meeting anything else answers the other kind unchanged.
+\ TVK-OFF sits beside the lattice: meeting the null yields DBASE, and meeting
+\ anything else answers the other kind unchanged.
 : TVK-MEET ( n n -- n ) {: k1:n k2:n :}
    k1 TVK-SCOPE = k2 TVK-SCOPE = or IF TVK-SCOPE EXIT THEN
    k1 TVK-REGION = k2 TVK-REGION = or IF TVK-REGION EXIT THEN
@@ -681,14 +633,12 @@ CHECKER-REG:}SCRATCH
 : PTR>INNER PAY cells PTRA + @ ;
 
 \ --- stale terms: the wrapper a caught throw leaves behind ---------------------
-\ `stale<t>` is the type of a cell that sat in a caught quotation's window and
-\ that some throw path of that body may have overwritten: the engine restores the
-\ stack DEPTH a `catch` was entered at and never the CONTENTS, so the cell is a
-\ machine word of no known type. It wraps its old type the way T-PTR wraps a
-\ pointee, so a diagnostic can still say WHICH type was lost. Its arena is a
-\ per-definition scratch store like PTRA (counter reset in NEW, storage in the
-\ scratch region, height saved and restored by a prim-overload trial). The three
-\ words that read it need T-RES and sit just below it.
+\ `stale<t>` types a cell that sat in a caught quotation's window and that some
+\ throw path of that body may have overwritten: `catch` restores stack depth,
+\ never contents. It wraps its old type as T-PTR wraps a pointee, so a
+\ diagnostic can name the lost type. Its arena is per-definition scratch like
+\ PTRA: counter reset in NEW, height saved and restored by a prim-overload
+\ trial. The three words that read it need T-RES and sit below it.
 1024 constant MAXSTALE-INIT     \ stale terms (grows on demand)
 CHECKER-REG:SCRATCH{
 variable STLN   PTR-VARIABLE STLA-P   variable STL-CAP
@@ -709,11 +659,9 @@ CHECKER-REG:}SCRATCH
 \ cell `catch` left stale (STALE-WHY).
 variable TOP-UNKNOWN
 
-\ --- unification trail: TV!/RV! record each speculative var binding here so a
-\ failed prim-overload trial undoes them by popping+unbinding (TRIAL-REST) instead
-\ of copying the whole TVT/RVT pool. Each entry packs (var-id << 4 | tag).
-\ Reset per definition in NEW; grows in the scratch region on demand
-\ (per-definition scratch, no live content across a file boundary or snapshot).
+\ Unification trail: TV!/RV! record each speculative binding here so a failed
+\ prim-overload trial undoes them (TRIAL-REST) instead of copying the TVT/RVT
+\ pool. Each entry packs (var-id << 4 | tag); per-definition scratch.
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE TRAIL-P   variable TRAIL-CAP   variable TRAIL-N
@@ -727,11 +675,9 @@ CHECKER-REG:}SCRATCH
    nc TRAIL-CAP ! ;
 
 
-\ A trail entry carries the var id and a 4-BIT tag. The tag says what to put
-\ back, so a kind raise restores the kind it displaced rather than assuming
-\ TVK-ANY: with three fenced kinds on one lattice (TVK-NULL < TVK-DBASE <
-\ TVK-RAW) a rolled back raise that reset a fenced var to ANY would drop the
-\ base-address fence on every row an abandoned prim-overload trial touched.
+\ The tag says what to put back, so a kind raise restores the kind it displaced:
+\ resetting a fenced var to TVK-ANY on rollback would drop the base-address
+\ fence on every row an abandoned prim-overload trial touched.
 : TRAIL-PUSH ( n n -- )   \ tag 0=TVT, 1=RVT, 2=TVK-ANY, 4=TVK-NULL, 5=TVK-DBASE, 6=TVK-OFF, 7=TVK-SCOPE, 8=NSCOPE, 9=TVK-REGION, 10=TVK-CELL, 11=TVK-BASE-ONLY
    {: id:n tag:n :}
    TRAIL-N @ 1 + TRAIL-ENSURE
@@ -760,10 +706,9 @@ CHECKER-REG:}SCRATCH
       tag TRAIL-KIND-OF
       id cells TVK + ! THEN THEN THEN
    REPEAT ;
-\ TVK-RAISE-TO ( id kind -- ) : meet var `id`'s kind with `kind` inside
-\ unification, trailed so a failed prim-overload trial (TRIAL-REST) or a
-\ definition reject puts the displaced kind back. Idempotent: a meet that
-\ changes nothing records nothing (so no spurious trail growth).
+\ TVK-RAISE-TO is trailed, so a failed prim-overload trial (TRIAL-REST) or a
+\ definition reject puts the displaced kind back; a meet that changes nothing
+\ records nothing.
 : TVK-KIND-TAG ( n -- n )
    dup TVK-SCOPE = IF drop 7 EXIT THEN
    dup TVK-REGION = IF drop 9 EXIT THEN
@@ -783,23 +728,21 @@ CHECKER-REG:}SCRATCH
    dup NSCOPE@ IF drop EXIT THEN
    dup 8 TRAIL-PUSH NSCOPE! ;
 
-\ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
-\ Concrete-count conservation only sees linear CONS on the stack. It is defeated
-\ by polymorphic laundering: a value copied/dropped while its type is still a VAR
-\ that only later unifies with a linear con (KEEP's `over`, an intra-quot
-\ `dup FREE`). The kind discipline tracks linearity THROUGH type vars:
-\   (a) polarity-aware multiplicity at effect application (LIN-EFF-PASS): a var
-\       in an applied effect that binds to a linear con must occur equally on the
-\       input and output sides across the whole effect INCL quotation sub-effects
-\       (KEEP: a is 1-in / 2-out -> reject; DIP/swap: 1-in / 1-out -> ok).
-\       A generated constructor, MAKE or UNMAKE row moves exactly its payload,
-\       so `LQ2:ERR ( b -- lq2<a,b> )` mints an err without an `a`; an ordinary
-\       word with the same effect is still counted;
-\   (b) deferred taint (LIN-TAINT / LIN-TAINT-SCAN): a var copied/dropped while
-\       still polymorphic is tainted; if it LATER resolves to a linear con the
-\       linear was laundered -> reject (catches `[: dup FREE ;]`).
-\ The whole discipline is gated on any DEFLINEAR type being declared, so
-\ non-linear code (the entire self-build) pays nothing and the hot path is clean.
+\ --- linear/affine kind discipline ---------------------------------------------
+\ Concrete-count conservation only sees linear cons on the stack; a value
+\ copied or dropped while its type is still a var that later unifies with a
+\ linear con (KEEP's `over`, an intra-quot `dup FREE`) escapes it. So:
+\   (a) LIN-EFF-PASS: a var in an applied effect that binds to a linear con must
+\       occur equally on the input and output sides across the whole effect,
+\       quotation sub-effects included (KEEP: 1-in / 2-out rejects; DIP/swap
+\       pass). A generated constructor, MAKE or UNMAKE row moves exactly its
+\       payload, so `LQ2:ERR ( b -- lq2<a,b> )` mints an err without an `a`; an
+\       ordinary word with the same effect is still counted;
+\   (b) LIN-TAINT / LIN-TAINT-SCAN: a var copied or dropped while polymorphic is
+\       tainted, and rejected if it later resolves to a linear con
+\       (`[: dup FREE ;]`).
+\ The discipline runs only once a DEFLINEAR type is declared, so non-linear code
+\ (the whole self-build) pays nothing.
 variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in scope)
 : LIN-ANY? ( -- bool ) LIN-NDECL @ 0 <> ;
 
@@ -825,10 +768,10 @@ CHECKER-REG:}SCRATCH
 
 \ TRIAL-DEPTH counts open prim-overload trials (TRY-EFF), HOLD-N open callable
 \ comparisons (QUOT-PAIR), whose refusal unwinds the bindings it made. T-RES/R-RES
-\ compress var chains ONLY when both are 0, where every binding is permanent, so a
-\ compression write needs no undo (it is a direct TVT/RVT store, not routed through
-\ the trail). While either is open compression is disabled, so it can never
-\ re-point a permanent var past a binding the unwind takes back.
+\ compress var chains only when both are 0, where every binding is permanent, so
+\ a compression write is a direct TVT/RVT store with no undo. While either is
+\ open compression is off, so it never re-points a permanent var past a binding
+\ the unwind takes back.
 variable TRIAL-DEPTH   0 TRIAL-DEPTH !
 CHECKER-REG:SCRATCH{
 variable HOLD-N
@@ -902,15 +845,11 @@ $10000 constant BVAR-REGION-BIT
 : Q>XHAS ( n -- bool ) PAY cells QXHA + @ 0 <> ;
 : Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 
-\ The two exceptional slots hold the INTACT MASKS of the quotation's window (see
-\ THROW-EDGE), stored with a self-describing low tag. Until this rule they held
-\ a data/return ROW id, and the persistence and freshening copies below carry
-\ these slots through unchanged -- including a record written by an OLDER engine
-\ and read back through E-INST-FROM, where there is no format version to consult.
-\ A row term's tag is always S-ROW or S-PUSH, so a field whose low bits are
-\ neither (T-QUOT's tag, which no row can carry) is the only shape this format
-\ writes, and anything else reads as "no cell proved intact" -- the conservative
-\ answer, never a mask made of somebody else's pointer bits.
+\ The two exceptional slots hold the intact masks of the quotation's window
+\ (THROW-EDGE), tagged with XMASK-MARK; the persistence and freshening copies
+\ carry them unchanged. A row term's tag is always S-ROW or S-PUSH, so only
+\ T-QUOT's tag, which no row carries, marks a mask, and any other field reads as
+\ "no cell proved intact", never a mask made of a pointer's bits.
 T-QUOT constant XMASK-MARK
 : XMASK ( n -- n ) TAG-SHIFT lshift XMASK-MARK or ;      \ mask -> stored field
 : XMASK> ( n -- n ) dup TAG XMASK-MARK = IF PAY ELSE drop 0 THEN ;
@@ -937,15 +876,14 @@ CHECKER-REG:SCRATCH{
 variable ATOMN
 CHECKER-REG:}SCRATCH
 variable RIGID-N
-\ Rigid host-allocation identity domains (dot habu-define-rigid-host). A host
-\ allocation is stamped by FRESH, RIGID, monotonic-nonreuse identities that ptr T
-\ and ordinary type vars cannot express: its host REGION (which allocation), its
-\ EXTENT (bounds), and its mutation GENERATION (epoch). Each domain owns a PRIVATE
-\ per-check counter (RGN-N/EXT-N/GEN-N); a numeric handle is never itself the
-\ authority — the atom's domain qualifies the id in ATOM-OK?, so equal ids from
-\ different domains never unify. RIGID-MAX bounds every domain BELOW the sign wrap
-\ so a counter EXHAUSTS (throws E-RIGID-EXHAUST) before it could wrap and re-grant
-\ a still-live id. Counters reset per check (RIGID-RESET); the bound is settable.
+\ Rigid host-allocation identity domains: a host allocation is stamped by fresh,
+\ rigid, never-reused identities that ptr T and type vars cannot express: its
+\ REGION (which allocation), EXTENT (bounds) and GENERATION (mutation epoch).
+\ Each domain owns a private per-check counter (RGN-N/EXT-N/GEN-N); the atom's
+\ domain qualifies the id in ATOM-OK?, so equal ids from different domains never
+\ unify. RIGID-MAX bounds every domain below the sign wrap, so a counter throws
+\ E-RIGID-EXHAUST before it could wrap and re-grant a live id. Counters reset
+\ per check (RIGID-RESET); the bound is settable.
 7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
 variable RGN-N   variable EXT-N   variable GEN-N
 variable SCOPE-N   1 SCOPE-N !
@@ -986,8 +924,7 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : RIGID-RESET ( -- )
    1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N ! ;
 \ Shared catch-all domain: fresh-mask-* and every non-domain fresh atom mint
-\ here. It EXHAUSTS at RIGID-MAX exactly like the per-domain counters below, so
-\ a wrap can never reuse a still-live id and unify two distinct identities.
+\ here.
 : RIGID-FRESH ( -- n )
    RIGID-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
    RIGID-N @ dup 1+ RIGID-N ! ;
@@ -1002,8 +939,6 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
    SCOPE-FRESH dup PAY cells SCOPE-PARENTS + parent swap ! ;
 : SCOPE-DOUBLE-FRESH ( n n -- n ) {: parent:n second:n :}
    parent SCOPE-CHILD-FRESH dup PAY cells SCOPE-SECONDS + second swap ! ;
-\ Per-domain mint. Each returns the current id then advances, but EXHAUSTS
-\ (throws) at RIGID-MAX rather than wrapping into a reused (or non-positive) id.
 : RGN-FRESH ( -- n )
    RGN-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
    RGN-N @ dup 1+ RGN-N ! ;
@@ -1013,9 +948,8 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : GEN-FRESH ( -- n )
    GEN-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
    GEN-N @ dup 1+ GEN-N ! ;
-\ Route a template fresh-atom's (stripped) name to its domain counter. The
-\ `fresh-` prefix is already stripped, so the tail begins with the domain word;
-\ mask- and any other fresh atom keep the shared RIGID-FRESH space.
+\ The `fresh-` prefix is already stripped, so the tail begins with the domain
+\ word; mask- and any other fresh atom keep the shared RIGID-FRESH space.
 : RIGID-AK-MINT ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 7 >= IF a 7 s" region-" CORE-STR= IF RGN-FRESH EXIT THEN THEN
    u 7 >= IF a 7 s" extent-" CORE-STR= IF EXT-FRESH EXIT THEN THEN
@@ -1035,16 +969,12 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
 512 constant MAXPARAM-INIT      \ param terms (grows on demand)
-\ PARGP is the flat per-param arg pool: each param term stores its arg terms as a
-\ contiguous run [PARAMOFF[p], PARAMOFF[p]+argc) here, so a family of ANY arity is
-\ stored without a fixed row cap. Cells hold term codes (pointer-free), so a grow
-\ is a plain byte copy and it resets in NEW alongside PARAMN. This replaces the old
-\ fixed PARAM-MAX-ARGS-strided PARAMARGS row.
+\ PARGP is the flat per-param arg pool: each param term stores its args as the
+\ run [PARAMOFF[p], PARAMOFF[p]+argc), so any arity fits. Cells hold term codes
+\ (pointer-free), so a grow is a byte copy; it resets in NEW with PARAMN.
 2048 constant PARG-INIT
-\ PARAM-SCR is the reentrant parse/replay scratch: it holds the arg terms pushed
-\ across ALL currently-open nesting levels, so its depth is a nesting-peak, not a
-\ per-param arg count. It grows on demand (a nested family whose args land at a
-\ non-zero base must not overflow); per-param arity is uncapped (PARGP grows).
+\ PARAM-SCR is the reentrant parse and replay scratch: it holds the args pushed
+\ across all open nesting levels, so its depth is a nesting peak, not an arity.
 32 constant PARAM-SCR-INIT
 CHECKER-REG:SCRATCH{
 variable PARAMN
@@ -1089,18 +1019,15 @@ CHECKER-REG:}SCRATCH
    PARAMHID-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMHID-P !
    nc PARAM-CAP ! ;
 
-\ --- resolved type-family (TFAM) identity for T-PARAM terms. The TFAM registry
-\ lives in src/core/type-family.f, loaded AFTER checker.f, so its query words are
-\ reached through friend hooks: each is a `defer` with a checker-visible declared
-\ effect, given a registry-not-loaded DEFAULT here and rebound with `is` to the
-\ real query word by type-family.f at prefix load. Declaring the effect makes a
-\ hook call statically effect-known, so the checker never models it as an opaque
-\ executed xt (dot habu-checker-exec-of-5923c543). Defaults bind below RES-FALSE
-\ (which several need). Hooks reached only after the registry is armed carry no
-\ default and stay unset (executing one before install fails closed via
-\ DEFER-UNSET) — these are the CONSTRUCT-STEP / MATCH-* / TFAM-CON-LIN /
-\ TFAM-MEMBERS query hooks, whose call sites never run before type-family.f
-\ installs them.
+\ --- resolved type-family (TFAM) identity for T-PARAM terms. The registry
+\ lives in src/core/type-family.f, loaded after checker.f, so its queries are
+\ friend hooks: each is a `defer` with a declared effect, so a hook call is
+\ statically effect-known rather than an opaque executed xt. Each gets a
+\ registry-not-loaded default here (below RES-FALSE, which several need) and is
+\ rebound by type-family.f at prefix load. The CONSTRUCT-STEP, MATCH-*,
+\ TFAM-CON-LIN and TFAM-MEMBERS hooks have no default: their call sites never
+\ run before type-family.f installs them, and an unset one fails closed
+\ (DEFER-UNSET).
 defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family id, true | false
 defer TFAM-CLAIMED?-XT ( ptr u8 n -- bool )             \ some scope reads the token as a family (any package, either visibility)
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
@@ -1109,8 +1036,8 @@ defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar 
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
 defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )      \ canonical persisted family spelling
 defer PKG-LIVE-XT ( -- ptr u8 n bool )                  \ authenticated engine open package name
-defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (type-family.f header)
-defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (type-family.f header)
+defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (type-family.f TFAM-WIDTH@)
+defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (type-family.f TFAM-WIDTH@)
 defer TFAM-WIDTH-SLOT-XT ( n n -- bool )                \ family id + arg slot -> the instantiated width READS that slot
 defer TFAM-SCOPE-SLOT-XT ( n n -- bool )                \ family id + arg slot -> a scope parameter
 defer TFAM-REGION-SLOT-XT ( n n -- bool )               \ family id + arg slot -> a region identity
@@ -1132,7 +1059,7 @@ defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaratio
 defer VARIANT-PADS-XT ( n n -- n )                       \ family id + SUMV id -> the pads its family declares for that variant
 defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant count (exhaustiveness domain)
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
-defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args (dot habu-checker-type-structure)
+defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM ! REG-PROTECT
 variable C2-READ-FAM   -1 C2-READ-FAM ! REG-PROTECT \ reserved bounded shared-view family
@@ -1141,29 +1068,24 @@ variable C2-INIT-FAM   -1 C2-INIT-FAM ! REG-PROTECT \ reserved initialized-stora
 variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! REG-PROTECT \ reserved initialized table control
 variable C2-STOW-FAM -1 C2-STOW-FAM ! REG-PROTECT \ private C2 descriptor product
 
-\ M5 barrier-uniformity: the `tile` and `uniform` family ids, captured by
-\ type-family.f at registration (loaded after checker.f). A word whose declared
-\ effect consumes a `tile` and produces a `uniform` is a block reduction whose
-\ emitter lowers to a shared-memory reduction with `bar.sync`; that barrier is
-\ only sound under block-uniform control. 0 = registry not loaded => no detection.
+\ The `tile` and `uniform` family ids, captured by type-family.f at
+\ registration. A word whose declared effect consumes a `tile` and produces a
+\ `uniform` is a block reduction lowered with `bar.sync`, sound only under
+\ block-uniform control. 0 means the registry is not loaded: no detection.
 variable PTX-TILE-FAM      0 PTX-TILE-FAM !
 variable PTX-UNIFORM-FAM   0 PTX-UNIFORM-FAM !
-\ cp.async pipeline-slot typestate (habu-checker-cp-async-6ba788a5): the
-\ `cpp-committed`/`cpp-ready` family ids, captured by type-family.f alongside
-\ tile/uniform. The WAIT step of the cp.async double-buffer protocol has the
-\ declared shape ( cpp-committed<p> -- cpp-ready<p> ): it retires the copy group
-\ and fences with `bar.sync` so the staged tile is block-visible. Like the M5
-\ tile->uniform reduction that is the ONLY sound way to make a uniform, this
-\ committed->ready shape is the ONLY sound way to make a ready slot, so it is the
-\ same block-uniform barrier and composes with CTL-BARRIER at the same choke
-\ (PTX-BARRIER-ROWS?/BARRIER-CUR?). 0 = registry not loaded => no detection.
+\ cp.async pipeline-slot typestate: the `cpp-committed` and `cpp-ready` family
+\ ids, captured with tile and uniform. The WAIT step ( cpp-committed<p> --
+\ cpp-ready<p> ) retires the copy group and fences with `bar.sync`; as the only
+\ sound way to make a ready slot it is the same block-uniform barrier as the
+\ tile->uniform reduction, and meets CTL-BARRIER at the same choke
+\ (PTX-BARRIER-ROWS?/BARRIER-CUR?). 0 means no detection.
 variable PTX-CPCOMMITTED-FAM   0 PTX-CPCOMMITTED-FAM !
 variable PTX-CPREADY-FAM       0 PTX-CPREADY-FAM !
-\ Forward hook ( n -- ): OR CTL-BARRIER into a symbol's control flags. A `defer`
-\ so E-ADD-EFFECT calls it with a statically-known effect; the registry-not-armed
-\ DEFAULT (bound below) drops the sym as a no-op, covering the window before
-\ PTX-BARRIER-SET installs. Reached from BOTH the checked `:` and the TRUSTED:
-\ publish paths through the one E-ADD-EFFECT choke.
+\ ( n -- ): OR CTL-BARRIER into a symbol's control flags. A `defer` so
+\ E-ADD-EFFECT calls it with a known effect; the default drops the sym until
+\ PTX-BARRIER-SET installs. Both the checked `:` and the TRUSTED: publish paths
+\ reach it through E-ADD-EFFECT.
 defer PTX-BARRIER-SET-XT ( n -- )
 
 \ A successful scan used only for native call shapes grants no source authority.
@@ -1197,23 +1119,22 @@ public
 : RECOVERY-USED! ( bool -- ) RECOVERY-USED ! ;
 : CERTIFIED? ( -- bool ) ENFORCED? RECOVERY-USED? 0= and ;
 
-\ THE GATE ON A ROW WITHOUT SOURCE AUTHORITY IS A SEAL STATE. Such a row - the
-\ one a build window or an unjudged scan records for an internal word - binds a
+\ The gate on a row without source authority is a seal state. Such a row (one a
+\ build window or an unjudged scan records for an internal word) binds a
 \ checked call (CALL-AUTHORITY) only while this checker is unsealed, so a
 \ whitebox image, and a prefix before src/core/internal-mark.f runs, check a
-\ body that names an internal word against that word's row. The pass's sealed
-\ arm calls SEAL, so a product image, a cold boot and every image saved from
-\ either refuse that call. Sealing changes no row's authority: ENFORCED?,
-\ CERTIFIED? and EFFECT-EXTERNAL answer as they did. No word opens the gate. On
-\ a whitebox image a reopen of this package can write SEALED; on a product the
-\ reopen exits 84.
+\ body naming an internal word against that word's row. The pass's sealed arm
+\ calls SEAL, so a product image, a cold boot and every image saved from either
+\ refuse that call. Sealing changes no row's authority (ENFORCED?, CERTIFIED?,
+\ EFFECT-EXTERNAL). No word opens the gate; on a whitebox image a reopen of this
+\ package can write SEALED, on a product the reopen exits 84.
 : SEALED? ( -- bool ) SEALED @ 0 <> ;
 : SEAL ( -- ) 0 0= SEALED ! ;
 ;package
 
-\ --- checker package scope state. Declared here (not with the package words
-\ further down) so signature parsing (SIG-FAM?) can resolve family tokens
-\ through the ACTIVE package scope. The mutators stay in the package block.
+\ --- checker package scope state, declared here so signature parsing (SIG-FAM?)
+\ resolves family tokens through the active package scope. The mutators stay in
+\ the package block.
 0 constant CHECKER-PACKAGE-NONE
 1 constant CHECKER-PACKAGE-PRIVATE
 2 constant CHECKER-PACKAGE-PUBLIC
@@ -1231,21 +1152,13 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
-\ The declared-visibility token a family declaration carries, under a public name
-\ with a declared effect. The three constants above are this file's own scope
-\ state; a caller outside the engine needs exactly one of their values - the one
-\ that says "declared public" - to declare a public family or to compare the
-\ visibility a declaration recorded.
-\
-\ WHY THE CONSTANT ITSELF IS NOT THAT NAME: it is created here, thousands of
-\ lines before src/core/check-hook.f installs the check hook, and a created word
-\ publishes its effect only once that hook exists (habu2.f
-\ LASTC-TRUST:FIND-ACTIVE). An engine that boots its prefix from source therefore
-\ knows the name in its dictionary and not in its checker, so a checked reference
-\ to it dies E-UNDEFINED there while the same reference certifies on an engine
-\ whose signature store a capture host baked. This word carries an axiom (the
-\ PRIM: block) and so means the same thing in every engine class
-\ (dot habu-give-the-recovery-447196a8).
+\ The declared-visibility token a family declaration carries, public and with a
+\ declared effect. The constant is not that name: it is created before
+\ src/core/check-hook.f installs the check hook, and a created word publishes
+\ its effect only once that hook exists (habu2.f LASTC-TRUST:FIND-ACTIVE), so an
+\ engine booting its prefix from source would refuse a checked reference
+\ E-UNDEFINED. This word carries an axiom (the PRIM: block) and means the same
+\ in every engine class.
 : CHECKER-VIS-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;
 
 \ The using depth the replayed source may close down to, as the engine's
@@ -1268,23 +1181,20 @@ CHECKER-PACKAGE-CAP CELL + constant CK-USE-SNAP-ROW
 CELL constant CK-USE-SNAP-HEADER
 CK-USE-SNAP-HEADER CK-USE-MAX CK-USE-SNAP-ROW * + constant CK-USE-SNAP-BYTES
 
-\ The mirror above records parser state and is rollback-aware. Every check,
-\ the verifier window's included, reads the engine's protected package
-\ record/WIDs through PKG-LIVE-XT, which names the open package, and the
-\ current target through CHECKER-RESOLVE:AUTHORITY, which places current in it:
-\ inside the window the checker overlay drives the engine's scope
-\ (CHECKER-OVERLAY).
-\ checker.f loads before layout.f, so the boot provider mirrors its fixed DATA
-\ offsets; xref.f replaces it with full record validation before user source.
+\ The mirror above records parser state and is rollback-aware. Every check, the
+\ verifier window's included, reads the engine's protected package record and
+\ WIDs through PKG-LIVE-XT, which names the open package, and the current target
+\ through CHECKER-RESOLVE:AUTHORITY; inside the window the checker overlay
+\ drives the engine's scope (CHECKER-OVERLAY). The boot provider mirrors
+\ layout.f's fixed DATA offsets; xref.f replaces it with full record validation
+\ before user source.
 $78 constant CK-PKG-PUB-OFF
 $80 constant CK-PKG-PRI-OFF
 $88 constant CK-PKG-PARENT-OFF
 $90 constant CK-PKG-REC-OFF
 48 constant CK-DREC                        \ = layout.f DREC (dictionary record bytes)
 131072 constant CK-DICT-CAP                \ = layout.f DICT-CAP (dictionary records)
-\ The engine's live `using` depth, read raw like the package cells above. The
-\ using mirror reads it, and inside the verifier window the checker overlay
-\ drives it with the rest of the engine's scope.
+\ The engine's live `using` depth, read raw like the package cells above.
 $9C08 constant CK-USE-DEPTH-OFF            \ = layout.f USE-DEPTH-CELL (DATA-relative); engine owns it
 : CK-USE-ENGINE-DEPTH ( -- n )  data-base CK-USE-DEPTH-OFF + @ ;
 \ The depth the engine's open package opened at: its using floor, which
@@ -1337,40 +1247,16 @@ variable CHECKER-VERIFY-PKG-DEPTH
    [: CHECKER-PKG-BOOT-LIVE ;] is PKG-LIVE-XT ;
 CHECKER-PKG-LIVE-DEFAULT
 
-\ The refusal surface for "this definition has no package context".
-\
-\ Every checked definition, and every declaration front end, asks
-\ CHECKER-PKG-CONTEXT below which package the code being compiled belongs to.
-\ When neither authority can name one, the definition has to be refused: that is
-\ the fail-closed direction, and an engine whose package bridge to the checker is
-\ missing depends on it.
-\
-\ Refusing with a bare `E-PKG-CONTEXT throw` made the refusal invisible. 7136 is
-\ far outside the [1,255] band a process exit status can carry, so it can only
-\ reach the top-level uncaught-throw reporter, which prints `hb: uncaught throw
-\ code 7136` and exits UNCAUGHT-RC (67) - the status the engine uses for a throw
-\ nobody handled and nobody named, not for a compile-time refusal. That is what
-\ test/engine-error-package.f measured: it corrupts the sole embedded
-\ `checker-package` lookup token so the engine can no longer tell the checker
-\ which package it has opened, loads package source under that engine, and got
-\ 67 where the designed fail-closed status is 70.
-\
-\ So the refusal is now stated the way the engine states every other
-\ compile-time reject: name the offending state on fd 2, then throw the reject
-\ rc. Being inside [1,255] that rc is carried unchanged by the top-level
-\ reporter on every load leg - baked source, a `--load` file, stdin batch - so an
-\ unhandled refusal exits exactly 70, while an enclosing `catch` (a nested
-\ `evaluate`, the check tool, a test harness) still receives a catchable reject
-\ instead of a process exit. Which programs are refused does not change here,
-\ only how the refusal surfaces. A bare word list is not a definition context:
-\ `wordlist set-current` followed by a checked definition is refused here, and
-\ test/gate-dictionary-lib.f WORDLIST-BARE pins that refusal beside the package
-\ that answers the same need.
-\
-\ The `write` result is dropped because the next thing this word does is raise,
-\ so a short or failed diagnostic write has no caller that could act on it, and
-\ reporting it instead of the refusal would replace a named refusal with an
-\ unrelated code. The refusal itself is never dropped.
+\ The refusal for "this definition has no package context". Every checked
+\ definition and declaration front end asks CHECKER-PKG-CONTEXT; when neither
+\ authority names one the definition is refused, fail closed (an engine whose
+\ package bridge to the checker is missing depends on it). It names the state
+\ on fd 2 and throws CHECKER-REJECT-RC: a bare E-PKG-CONTEXT (7136) is outside
+\ [1,255] and exits UNCAUGHT-RC (67) instead of 70 (test/engine-error-package.f),
+\ while an enclosing catch still receives a catchable reject. A bare word list
+\ is not a definition context: `wordlist set-current` then a checked definition
+\ is refused (test/gate-dictionary-lib.f WORDLIST-BARE). The `write` result is
+\ dropped because the next step raises; the refusal itself is never dropped.
 70 constant CHECKER-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
 
 : CHECKER-PKG-CONTEXT-REJECT ( -- )
@@ -1378,13 +1264,11 @@ CHECKER-PKG-LIVE-DEFAULT
    CHECKER-REJECT-RC throw ;
 
 \ A refusal whose diagnostic was just rendered throws its own code, so an
-\ enclosing catch - a nested `evaluate`, the check tool, a test - receives the
-\ refusal by name. Uncaught, a code outside 1..255 reaches the engine's reporter
-\ (src/habu/habu2.f LUNCAUGHT), which exits UNCAUGHT-RC (67) for a throw nothing
-\ named. The code is published here first, so the reporter exits
-\ CHECKER-REJECT-RC for this one, the status of every refusal. The offset is
-\ src/habu/layout.f REFUSAL-ABI:CODE-CELL, spelled here as CHECKER-REG spells SOURCE-CELL
-\ because layout.f loads after this file.
+\ enclosing catch (a nested `evaluate`, the check tool, a test) receives it by
+\ name. Uncaught, a code outside 1..255 reaches src/habu/habu2.f LUNCAUGHT,
+\ which exits UNCAUGHT-RC (67); the code published here makes it exit
+\ CHECKER-REJECT-RC instead. The offset is src/habu/layout.f
+\ REFUSAL-ABI:CODE-CELL, spelled here because layout.f loads after this file.
 $27F8 constant CHECKER-REFUSAL-CELL
 
 : CHECKER-REFUSE ( n -- ) {: code:n :}
@@ -1395,14 +1279,11 @@ $27F8 constant CHECKER-REFUSAL-CELL
 \ walk CHECKER-FIND-ACTIVE-SYM resolves through, answer without refusing; RAISE
 \ raises a refusal WALK answered, and REFUSES? asks whether WALK would refuse.
 \ AUTHORITY's bool says whether the engine's package record names a package
-\ context: the code is compiled where the engine says it is, and a replay's
-\ package words drive that record through the checker overlay
-\ (CHECKER-OVERLAY). PKG-LIVE-XT authenticates the record and names the open
-\ package, the empty name at top level; current then selects the mode, and a
-\ current that is none of the open scope's wordlists is no context. The record
-\ PKG-LIVE-XT accepted holds the package cells' WIDs, so comparing current with
-\ the cells compares it with the record. CHECKER-PKG-CONTEXT is the refusing
-\ form. src/habu/xref.f retires AUTHORITY with the other package-context words.
+\ context; a replay's package words drive that record through CHECKER-OVERLAY.
+\ PKG-LIVE-XT authenticates the record and names the open package (empty at top
+\ level); current then selects the mode, and a current that is none of the open
+\ scope's wordlists is no context. CHECKER-PKG-CONTEXT is the refusing form.
+\ src/habu/xref.f undefines AUTHORITY with the other package-context words.
 package CHECKER-RESOLVE
 public
 : AUTHORITY ( -- ptr u8 n n bool )
@@ -1479,12 +1360,9 @@ UK-EXACT UNIFY-KIND !
    PARAM-SCR-ENSURE
    PARAM-SCR-N @ cells PARAM-SCR + !
    PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
-\ MK-PARAM ( base a u fam -- t ) : build a T-PARAM from the scratch args pushed at
-\ [base, PARAM-SCR-N); argc = PARAM-SCR-N - base. `base` is the caller's scratch
-\ mark, so nested/replayed param builds are reentrant: MK-PARAM rewinds the shared
-\ scratch back to `base` (never to 0), so a parent's already-pushed args survive.
-\ The argc args are copied into a fresh contiguous run in the flat PARGP pool
-\ (uncapped arity); the run start is recorded in PARAMOFF.
+\ `base` is the caller's scratch mark: MK-PARAM rewinds the shared scratch to
+\ `base`, never to 0, so nested and replayed builds keep a parent's pushed args.
+\ The args are copied into a fresh run in PARGP recorded in PARAMOFF.
 : MK-PARAM {: base:n a:ptr u:n fam:n :}
    PARAMN @ 1 + PARAM-ENSURE
    PARAM-SCR-N @ base - {: argc:n :}
@@ -1625,37 +1503,31 @@ variable FM-CUR  variable FM-ACC
    a CP-OTHER b CP-OTHER = and ;
 
 \ ---- the compile window -------------------------------------------------------
-\ A CALLBACK THAT RUNS WHILE A DEFINITION COMPILES CHANGES NOTHING HERE. Once
+\ A callback that runs while a definition compiles changes nothing here. After
 \ the native compiler's scan returns, every row of the definition is recorded;
-\ what runs from then until publication's last callback is not the compiler's
-\ own: its elaborator and backend passes, an NBACK:OBSERVE! observer and an
-\ NPUB:WITH-UNIT observer. A write one of them made outlived the definition's
-\ refusal pointing at what the refusal cut: an observer's `generates:` row,
-\ whose created record the rollback took, left the definer's CREATES naming a
-\ later word's record, and a type an observer registered stayed, so a
-\ signature naming it went from rejected to certified. The compiler opens the
-\ window with the code a write is refused with (src/compiler/native/compiler.f
-\ WORK, through the owner's WRITE-WINDOW-OFF field) and shuts it, with 0,
-\ before its own writes and on every exit. Each refusal comes before the first
-\ state the pending definition still reads moves: the stores, and the latches
-\ publication consumes (RECW, RECMI and the does> effect machine). A scan
-\ refuses before a scan wrapper changes its pending state, and at CHECK-RESET,
-\ which every scan passes and which clears those
-\ latches. A write refuses at the stores' only appenders, so no writer, public
-\ or not, gets past them: E-REC-START for a record with its nodes and content,
-\ NORET-APPEND for a control entry with its CREATES reference, and
-\ DFER-ADD-SYM for a defer flag; and before them where a writer moves a latch
+\ its elaborator and backend passes and NPUB:WITH-UNIT observers
+\ run until publication's last callback, and a write of theirs outlived the
+\ definition's refusal (a `generates:` row left the definer's CREATES naming a
+\ later word's record; a registered type turned a rejected signature certified).
+\ The compiler opens the window with the code a write is refused with
+\ (src/compiler/native/compiler.f WORK, through the owner's WRITE-WINDOW-OFF
+\ field) and shuts it, with 0, before its own writes and on every exit. Each
+\ refusal comes before the first state the pending definition reads moves: the
+\ stores and the latches publication consumes (RECW, RECMI, the does> effect
+\ machine). A scan refuses before a scan wrapper changes its pending state, and
+\ at CHECK-RESET, which every scan passes and which clears those latches. A
+\ write refuses at the stores' only appenders: E-REC-START (a record with its
+\ nodes and content), NORET-APPEND (a control entry with its CREATES reference)
+\ and DFER-ADD-SYM (a defer flag); and before them where a writer moves a latch
 \ or the record symbol first: E-ADD-EFFECT, E-ADD-DELETED, USIG-ADD-BAD (a
-\ refused signature, which appends nothing), TRUST-DECL and
-\ CREATED-RECORD-BUILD. The type registries refuse at their only appenders:
-\ EXT-MARK-FREE (the extent free-set), CT-SET (the type table) and VREC-BEGIN
-\ (value records) here; TFAM-DECL (families), SUMV-ADD (variants), LAY-ADD
-\ (layouts) and TYPE-FIELD-OWNER's OPEN, ADD, COMMIT, FINALIZE and ROLLBACK
-\ (the field store) in src/core/type-family.f; SCHEMA-NEW (schema nodes) and
-\ SCHEMA-ROOT+ (schema roots) in src/core/type-schema.f. A registration's later
-\ writes (a family's own fields, a variant's constructor stamp, a linear type's
-\ package, an interned name) follow one of these in every flow that makes them.
-\ The block stands this early because EXT-MARK-FREE does.
+\ refused signature, which appends nothing), TRUST-DECL, CREATED-RECORD-BUILD.
+\ The type registries refuse at their only appenders: EXT-MARK-FREE, CT-SET and
+\ VREC-BEGIN here; TFAM-DECL, SUMV-ADD, LAY-ADD and TYPE-FIELD-OWNER's OPEN,
+\ ADD, COMMIT, FINALIZE and ROLLBACK in src/core/type-family.f; SCHEMA-NEW and
+\ SCHEMA-ROOT+ in src/core/type-schema.f. A registration's later writes (a
+\ family's fields, a variant's constructor stamp, a linear type's package, an
+\ interned name) follow one of these in every flow. The block stands this
+\ early because EXT-MARK-FREE does.
 variable WRITE-WINDOW   0 WRITE-WINDOW !   \ 0 shut, else the code a write throws
 
 : WRITE-WINDOW-CK ( -- )
@@ -1667,18 +1539,18 @@ variable WRITE-WINDOW   0 WRITE-WINDOW !   \ 0 shut, else the code a write throw
 : CHECKER-WRITE-WINDOW! ( n -- ) WRITE-WINDOW ! ;
 REG-PROTECT
 
-\ --- BTC-7 extent-role product/factorization role registry (dot
-\ habu-extent-role-product-8e364885, docs/design.md "Type substrate", BTC-7).
-\ EXT-PROD-FAM / EXT-REDX-FAM are the built-in `extprod`/`redx` family ids,
-\ captured by type-family.f after registration (0 = registry not loaded => no
-\ detection; the engine self-check never uses these families). The free-set records
-\ extent families that are FREE (outer / batch) factors of a product: EXTPROD:
-\ (maki/extent.f) marks a product's factor-0 free at declaration time. The
-\ contraction rule (EXT-REDX-BAD-ARG? at SIG-END-PARAM) rejects `redx<E>` when E is
-\ a free extent or a whole product, so a contraction (+Σ) over the free #B factor of
-\ a folded #B*#T row is a load-time type error — the cross-sequence leak is
-\ unrepresentable. Cleared with the family registry (type-family.f TFAM-RESET) so a
-\ recycled family id can never inherit a stale free mark.
+\ --- extent-role product registry (docs/design.md "Type substrate").
+\ EXT-PROD-FAM and EXT-REDX-FAM are the built-in `extprod` and `redx` family
+\ ids, captured by type-family.f after registration (0: registry not loaded, no
+\ detection; the engine self-check never uses these families). The free-set
+\ records extent families that are free (outer or batch) factors of a product;
+\ EXT-MARK-FREE marks the factor family it is handed free
+\ (test/extent-product-test.f marks factor 0 of extprod<xpb,xpt> through
+\ EXT-MARK-FREE-TAIL).
+\ EXT-REDX-BAD-ARG? at SIG-END-PARAM rejects `redx<E>` when E is a free extent
+\ or a whole product, so a contraction over the free #B factor of a folded
+\ #B*#T row is a load-time type error. Cleared with the family registry
+\ (type-family.f TFAM-RESET) so a recycled family id never inherits a free mark.
 variable EXT-PROD-FAM   0 EXT-PROD-FAM !
 variable EXT-REDX-FAM   0 EXT-REDX-FAM !
 $40 constant EXT-FREE-CAP
@@ -1691,7 +1563,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
       dup cells EXT-FREE-SET + @ f = IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
-: EXT-MARK-FREE ( n -- ) {: f:n :}      \ EXTPROD: marks a product's free factor family
+: EXT-MARK-FREE ( n -- ) {: f:n :}      \ mark a product's free factor family
    WRITE-WINDOW-CK
    f 0 <= IF EXIT THEN
    f EXT-FREE? IF EXIT THEN              \ idempotent
@@ -1699,8 +1571,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    f EXT-FREE-N @ cells EXT-FREE-SET + !
    EXT-FREE-N @ 1 + EXT-FREE-N ! ;
 
-\ The `*` query wrappers callers use: each invokes the effect-known defer, so
-\ callers stay unchanged while the fetch/execute of a raw variable is gone.
+\ The `*` query wrappers callers use: each invokes the effect-known defer.
 : TFAM-RESOLVE* ( ptr u8 n ptr u8 n -- n bool ) TFAM-RESOLVE-XT ;
 : TFAM-ARITY* ( n -- n ) TFAM-ARITY-XT ;
 : TFAM-LAYOUT?* ( n -- bool ) TFAM-LAYOUT?-XT ;
@@ -1709,14 +1580,10 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 : TFAM-WIDTH@* ( n -- n ) TFAM-WIDTH-XT ;
 
 
-\ Registry-not-loaded DEFAULTS for the TFAM query hooks (wrapped in a word so the
-\ `[: ;]` quotations compile; `[: ;] is` is not valid at interpret level). Each
-\ default reproduces the old 0-hook fallback: resolve nothing / arity 0 / not a
-\ layout / not a cell / one cell / the declared family width / no construct family
-\ / no match family / not a wide-ctor call / every argument slot width-bearing
-\ (the conservative answer, which keeps an open instance unexpanded without the
-\ registry). type-family.f rebinds each hook with
-\ `is` to the real query word once the registry exists.
+\ Registry-not-loaded defaults for the TFAM query hooks, in a word because
+\ `[: ;] is` is not valid at interpret level. Every argument slot answers
+\ width-bearing, the conservative answer, which keeps an open instance
+\ unexpanded. type-family.f rebinds each hook once the registry exists.
 : TFAM-QUERY-DEFAULTS ( -- )
    [: 2drop 2drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
    [: 2drop RES-FALSE ;] is TFAM-CLAIMED?-XT   \ no registry: no family claims a token
@@ -1741,9 +1608,8 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: 2drop drop 0 RES-FALSE ;] is FIELD-PROJ-XT ;   \ no registry: field projection fails closed
 TFAM-QUERY-DEFAULTS
 
-\ registry-not-armed default for the PTX block-barrier hook: drop the sym (do not
-\ flag), exactly what the old 0-hook guard did; checker.f rebinds it once
-\ PTX-BARRIER-SET is defined below.
+\ Registry-not-armed default for the PTX block-barrier hook: drop the sym.
+\ Rebound once PTX-BARRIER-SET is defined below.
 : PTX-BARRIER-DEFAULT ( -- ) [: drop ;] is PTX-BARRIER-SET-XT ;
 PTX-BARRIER-DEFAULT
 
@@ -1770,8 +1636,7 @@ PTX-BARRIER-DEFAULT
    v ISVAR 0= IF RES-FALSE EXIT THEN
    v PAY TV@ UNBOUND <> ;
 
-\ T-COMPRESS ( start root -- ) : point every bound var on start..root directly at
-\ root. Direct TVT stores (COMPRESS? only, so permanent — no trail entry).
+\ Direct TVT stores under COMPRESS? only, so permanent: no trail entry.
 : T-COMPRESS ( n n -- ) {: root:n :}
    TCMP !
    BEGIN TCMP @ T-BOUND-VAR? WHILE
@@ -1876,10 +1741,10 @@ CHECKER-REG:}SCRATCH
    T-RES dup TAG T-STALE = IF STALE>INNER T-RES THEN ;
 
 \ MAXUWL sizes six parallel worklist arrays (UWL and the five per-pair flag
-\ tables below), 48 bytes of boot DP per cell. Unlike the arenas this one has no
-\ grow path - U-PUSH refuses by name when it is full - so the cut keeps a wide
-\ margin: measured high-water of USP is 12 pairs over a whole self-build and 48
-\ over every checker suite (test/enum-decl-suite.f), and 1024 is 21x that.
+\ tables below), 48 bytes of boot DP per cell. There is no grow path (U-PUSH
+\ refuses by name when full), so the margin is wide: measured high-water of USP
+\ is 12 pairs over a self-build and 48 over every checker suite
+\ (test/enum-decl-suite.f); 1024 is 21x that.
 1024 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
 create UWL MAXUWL cells allot
 CHECKER-REG:SCRATCH{
@@ -1924,15 +1789,12 @@ variable REC-ON
 defer CALL-FREEZE-XT ( -- )
 defer CWIN-STATE ( -- ptr ptr n ptr n ptr n )
 
-\ The bootstrap call-window store, and the reason the cell has one: the scan
-\ records a row per call site through CWIN-STATE, and src/core/cell-effects.f --
-\ which owns the CHECKED storage - loads after src/core/check-hook.f. The
-\ optimizing front end asks this checker to scan from the moment it owns the
-\ source (layout.f NCOMP-DISPATCH), so the store exists from this file's own
-\ load. CWIN-STATE hands back three cells, each declared at its own type: the
-\ row arena's address (a PTR-VARIABLE), the live row count and the capacity.
-\ cell-effects.f INSTALL transfers all three and clears these without copying
-\ the arena.
+\ The bootstrap call-window store: the scan records a row per call site through
+\ CWIN-STATE, and src/core/cell-effects.f, which owns the checked storage, loads
+\ after src/core/check-hook.f, while the front end asks this checker to scan
+\ from layout.f NCOMP-DISPATCH on. CWIN-STATE hands back the row arena's
+\ address, the live row count and the capacity, each at its own type.
+\ cell-effects.f INSTALL takes all three and clears these without copying.
 PTR-VARIABLE CWIN-BOOT  variable CWIN-BOOT-N  variable CWIN-BOOT-CAP
 : CWIN-BOOT-DEFAULT ( -- ) [: CWIN-BOOT CWIN-BOOT-N CWIN-BOOT-CAP ;] is CWIN-STATE ;
 CWIN-BOOT-DEFAULT
@@ -2008,14 +1870,13 @@ CWIN-BOOT-DEFAULT
    t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t T-RES PARAM>FAM FIELD-FAM @ = ;   \ identity by reserved family-id, not spelling
 
-\ --- M5 barrier-uniformity shape classification -------------------------------
-\ A block collective (BLOCK-MAX/BLOCK-SUM) has the declared shape
-\ ( tile<..> -- uniform<..> ): it reduces a lane-varying tile to a block-uniform
-\ scalar, and its emitter lowers to a shared-memory reduction with `bar.sync`.
-\ That barrier is only sound under BLOCK-UNIFORM control (every lane of the block
-\ reaches it); a call reached under divergent predication deadlocks. E-ADD-EFFECT
-\ detects the shape from the recorded din/dout rows and flags CTL-BARRIER; the
-\ call-site check rejects any such call inside an open control frame (#CFC>0).
+\ --- barrier-uniformity shape classification ----------------------------------
+\ A block collective has the shape ( tile<..> -- uniform<..> ) and
+\ lowers to a shared-memory reduction with `bar.sync`, sound
+\ only under block-uniform control: reached under divergent predication it
+\ deadlocks. E-ADD-EFFECT detects the shape from the recorded din/dout rows and
+\ flags CTL-BARRIER; the call-site check rejects such a call inside an open
+\ control frame (#CFC>0).
 : ROW-ELT-FAM? ( n n -- bool ) {: t:n fam:n :}   \ term t resolves to a T-PARAM of family fam?
    t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t T-RES PARAM>FAM fam = ;
@@ -2033,10 +1894,8 @@ CWIN-BOOT-DEFAULT
    dout PTX-UNIFORM-FAM @ ROW-HAS-FAM? 0= IF RES-FALSE EXIT THEN
    din PTX-TILE-FAM @ ROW-HAS-FAM? ;
 
-\ cp.async WAIT: committed-in / ready-out. The only sound way to make a ready slot
-\ is to retire the copy group and bar.sync-fence it, so this shape is a block
-\ barrier exactly like the tile->uniform reduction (M5), and composes at the same
-\ choke rather than duplicating it.
+\ cp.async WAIT: committed-in / ready-out, a block barrier like the
+\ tile->uniform reduction, checked at the same choke.
 : PTX-CPWAIT-ROWS? ( n n -- bool ) {: din:n dout:n :}
    PTX-CPREADY-FAM @ 0= IF RES-FALSE EXIT THEN
    dout PTX-CPREADY-FAM @ ROW-HAS-FAM? 0= IF RES-FALSE EXIT THEN
@@ -2094,12 +1953,10 @@ CWIN-BOOT-DEFAULT
    RES-FALSE ;
 
 
-\ occurs check: does row var r occur in x, a row when row? is set, else a
-\ type? Binding a row var to a spine containing itself would make the row
-\ cyclic, and a held tail must not hide in a var (HOLD-ESCAPE?), whatever
-\ holds the occurrence: a row's values, a pointee, a forall's body, a family's
-\ arguments and a quotation's four rows are all walked (the ω-combinator must
-\ reject, never loop). Recursion depth is bounded by term size.
+\ Occurs check of row var r in x, a row when row? is set, else a type: binding a
+\ row var to a spine containing itself would make the row cyclic, and a held
+\ tail must not hide in a var (HOLD-ESCAPE?), whatever holds the occurrence (the
+\ omega combinator must reject, never loop). Depth is bounded by term size.
 : OCC-WALK ( n n bool -- bool )
    {: r:n x:n row?:bool :}
    row? IF
@@ -2159,20 +2016,17 @@ variable CT-STR-CAP-V   CT-STR-INIT CT-STR-CAP-V !
 3 constant CS-UNSIGNED
 4 constant CS-ADDR
 
-\ Registry stores keep a baked DATA boot buffer (stable, always baked because
-\ build-time defs never exceed the boot cap) and grow into anon mmap on demand
-\ via the shared ARENA-BYTES-GROW layer.
+\ Registry stores keep a baked DATA boot buffer (build-time defs never exceed
+\ the boot cap) and grow into anon mmap through ARENA-BYTES-GROW.
 \
-\ THE NAME COLUMN HOLDS OFFSETS INTO CT-STR, NOT POINTERS, and every reader adds
+\ The name column holds offsets into CT-STR, not pointers; every reader adds
 \ the pool base at use (CT-NAME$). An offset survives a pool relocation and a
-\ snapshot bake untouched, so there is no rebase pass and no cell to register
-\ with ptr-cell-mark - and the store is a plain table of numbers, which is what
-\ lets snapshot persist repoint its head at all: REG-PERSIST-MOVE grows the store
-\ with `here`, whose pointer is PE-PTR-A-RAW, and raw storage refuses to carry a
-\ pointer (dot habu-refuse-a-ptr-5ad2734e). VREC's node strings have always been
-\ interned this way (VREC-COPY-STR/VREC-I-STR).
+\ snapshot bake, so there is no rebase pass and no ptr-cell-mark, and the store
+\ is a plain table of numbers, which REG-PERSIST-MOVE needs: it grows the store
+\ with `here`, whose pointer is PE-PTR-A-RAW, and raw storage refuses a pointer.
+\ VREC's node strings are interned the same way (VREC-COPY-STR/VREC-I-STR).
 \
-\ THE OWNER COLUMN is the package that declared a DEFLINEAR type, interned the
+\ The owner column is the package that declared a DEFLINEAR type, interned the
 \ same way: `linear:` mints and erases only in that package (LINEAR-CERTIFY).
 \ CT-SET clears it, so every other row, and a linear type declared at top level
 \ or installed from an AOT graph, has none.
@@ -2225,8 +2079,6 @@ CT-ARENA-BOOT
 : CT-DST! ( ptr u8 -- )
    CT-DST ! ;
 
-\ CT-GROW ( need -- ) : geometric grow of the record arrays to hold code `need`.
-\ The arrays hold numbers, so a plain cell copy suffices.
 : CT-GROW ( n -- ) {: need:n :}
    need CT-CAP-V @ 2 * max {: nc:n :}
    CT-CAP-V @ cells {: ob:n :}   nc cells {: nb:n :}
@@ -2306,10 +2158,9 @@ CT-ARENA-BOOT
    ctn CTN !
    ctu CT-STR-U ! ;
 
-\ The built-in type table. A new type token needs a checker-only bootstrap
-\ stage: an older bin/hb rejects an unknown stack-comment token, so add the
-\ parser, renderer and CC-* support, refresh the native binary, then use the
-\ token in axioms and definitions.
+\ A new type token needs a checker-only bootstrap stage: an older bin/hb rejects
+\ an unknown stack-comment token, so add the parser, renderer and CC-* support,
+\ refresh the native binary, then use the token in axioms and definitions.
 : CT-INIT ( -- )
    s" n"       CC-N      CT-INT   64 CS-GENERIC CT-SET
    s" f"       CC-F      CT-BOOL   1 CS-NONE    CT-SET
@@ -2366,7 +2217,6 @@ CT-INIT
    dup CT-NAME-PTR
    swap cells CT-NAME-U + @ ;
 
-\ The package that declared code `n`, empty when none did (the owner column).
 : CT-PKG$ ( n -- ptr u8 n ) {: code:n :}
    code cells CT-PKG-A + @ CT-STR swap +
    code cells CT-PKG-U + @ ;
@@ -2405,16 +2255,13 @@ CT-INIT
    UNIFY-KIND @ UK-INPUT = IF RES-TRUE EXIT THEN
    UNIFY-KIND @ UK-COERCE = ;
 
-\ CON-OK? ( t1 t2 -- f ) : exact joins require the same concrete code except for
-\ generic n/int-family interaction. Input/output checks use the integer lattice:
-\ a narrower concrete int can flow into a wider one; widening never applies to
-\ nominal roles (pid/fd/rc/idx/len/...), which stay strict.
-\ A pointee (CUR-STRICT) admits NEITHER relaxation: an element type is part of
-\ the pointer's identity, so two concrete elements must carry the SAME code.
-\ Both the width lattice AND generic `n` absorption are value-position rules —
-\ `n` is the generic 64-bit stack cell, not a wildcard element — so allowing
-\ either one under a pointer let `ptr n` and `ptr u8` alias each other and a
-\ caller read a byte span with cell `@` (or a cell span with `c@`) uncaught.
+\ Exact joins require the same concrete code except for generic n/int-family
+\ interaction. Input/output checks use the integer lattice: a narrower concrete
+\ int flows into a wider one; widening never applies to nominal roles
+\ (pid/fd/rc/idx/len/...). A pointee (CUR-STRICT) admits neither relaxation: an
+\ element type is part of the pointer's identity, and `n` is the generic stack
+\ cell, not a wildcard element, so either rule under a pointer would let
+\ `ptr n` and `ptr u8` alias and read a byte span with cell `@`.
 : CON-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PAY t2 PAY = IF RES-TRUE EXIT THEN
    CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN
@@ -2426,10 +2273,9 @@ CT-INIT
 : ATOM-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN     \ kinds differ -> reject
    t1 ATOM>K 0 < IF RES-FALSE EXIT THEN              \ rigid template slot -> never unify
-   \ Equal non-negative kind is NOT sufficient authority: a fresh rigid id (kind>0)
-   \ carries a domain in its name, and per-domain counters can mint equal ids in
-   \ different domains, so the name must also match. Same id always implies same
-   \ name in the single shared-counter case, so this rejects nothing that unified.
+   \ Equal non-negative kind is not enough: a fresh rigid id (kind>0) carries a
+   \ domain in its name, and per-domain counters mint equal ids in different
+   \ domains, so the name must also match.
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
 : FRESH-REGION-NAME? ( ptr u8 n -- bool ) {: name:ptr bytes:n :}
@@ -2491,28 +2337,24 @@ defer FO-INPUT-XT ( n -- bool )
 
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
-\ bindings acyclic) whose type nesting is small — hundreds at most. A walk that
-\ recurses along a stack row (CK-GRAPH-NODE?) descends one level per entry as well,
-\ and a recorded effect is at most EFFECT-DEPTH-MAX levels deep, so a real walk
-\ stays below TWALK-MAX-DEPTH. A cyclic or mis-indexed term instead
-\ descends without bound; the guard trips far below the native stack limit and
-\ dies with a named diagnostic instead of overflowing the stack (SIGSEGV). A
-\ call-count budget cannot help: the native stack blows at ~80k frames, so the
-\ bound must track DEPTH, not total steps. TWALK-DEEPER/TWALK-SHALLOWER bracket
-\ each RECURSE (charge on descent, release when the child returns — exit-safe
-\ however the child returns); each public wrapper resets depth before descending.
+\ bindings acyclic) nested hundreds deep at most; a walk along a stack row
+\ (CK-GRAPH-NODE?) descends once per entry, and a recorded effect is at most
+\ EFFECT-DEPTH-MAX deep, so a real walk stays below TWALK-MAX-DEPTH. A cyclic or
+\ mis-indexed term dies with a named diagnostic instead of a SIGSEGV. The bound
+\ tracks depth, not total steps, since the native stack blows at ~80k frames.
+\ TWALK-DEEPER/TWALK-SHALLOWER bracket each RECURSE (exit-safe however the child
+\ returns); each public wrapper resets depth before descending.
 $2000 constant TWALK-MAX-DEPTH     \ 8192: >> any finite term depth, << native stack limit
 
-\ THE DEEPEST EFFECT A RECORD HOLDS: 4096 levels as TERM-DEPTH counts them, a
-\ row of 4096 plain entries. Recording an effect (E-COPY*) and instantiating it
-\ for a caller (E-INST-FROM) loop along a row and recurse only into a type's
-\ nesting, but walks over a recorded effect such as UIX-NODE-ADD recurse once
-\ per level, on the 8192-cell data and return stacks (src/habu/stack-abi.f). A definition
-\ whose effect is deeper is uncheckable, by name (CHECK-DEPTH-FITS), a stored
-\ signature that deep is refused as a bad one (USIG-ADD-AS), and half of each
-\ bound is left for what the stacks already hold: a definition leaving 10000
-\ cells died here, and one leaving 8191, as a `trust` row did, was recorded and
-\ then faulted the data stack of every checked caller (exit 102).
+\ The deepest effect a record holds: 4096 levels as TERM-DEPTH counts them, a
+\ row of 4096 plain entries. E-COPY* and E-INST-FROM loop along a row and
+\ recurse only into a type's nesting, but walks such as UIX-NODE-ADD recurse
+\ once per level, on the 8192-cell data and return stacks
+\ (src/habu/stack-abi.f). A deeper effect is uncheckable by name
+\ (CHECK-DEPTH-FITS) and a stored signature that deep is refused (USIG-ADD-AS);
+\ half of each bound is left for what the stacks already hold: a definition
+\ leaving 8191 cells, as a `trust` row did, faulted the data stack of every
+\ checked caller (exit 102).
 TWALK-MAX-DEPTH 2 / constant EFFECT-DEPTH-MAX
 variable TWALK-D
 : TWALK-RESET ( -- ) 0 TWALK-D ! ;
@@ -2521,9 +2363,8 @@ variable TWALK-D
    TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
-\ One resolved term/row variable walk for occurs checks and closedness.
-\ With any? false, find the named type variable for the occurs check.
-\ With any? true, find any unresolved type OR row variable for closedness.
+\ With any? false, find the named type variable for the occurs check; with any?
+\ true, find any unresolved type or row variable for closedness.
 \ Representation closedness excludes scope identities and the complete fixed
 \ read-view representation. Other unresolved type and row variables stay open.
 : TYPE-VAR-WALK ( n n bool bool -- bool ) {: v:n t:n any:bool rep:bool :}
@@ -2708,21 +2549,21 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    id 1 TRAIL-PUSH row 1+ id cells RVT + ! ;
 
 
-\ Bind type var id to term from a pair side: the var is provided when the
-\ side it takes its term from (CUR-ROLE bit mask) is.
+\ The var is provided when the side it takes its term from (CUR-ROLE bit mask)
+\ is.
 : TV-BIND ( n n n -- )
    {: term:n id:n mask:n :}
    term id TV!  id CUR-ROLE @ mask and 0= TV-PROV! ;
 
 
-\ --- layout cells (type-family.f header, reject-only): a logical
-\ sum/enum/product layout value whose width is known, linear or not, expands to
-\ hidden physical fields (layout expansion below); one whose width reads an open
-\ argument is ONE T-PARAM cell in a signature. An ordinary one-cell primitive
-\ (dup/drop/swap/over/nip/>r/...) that would bind or consume a logical layout
-\ cell fails closed in U-TYPE. Layout identity is the resolved family-id, so a
-\ layout cell unifying with the SAME family (the PARAM-PAIR-ARGS arm) flows
-\ fine; only a var/con/ptr/atom pairing reaches this guard.
+\ --- layout cells (type-family.f TFAM-WIDTH@, reject-only): a logical sum, enum or
+\ product layout value of known width, linear or not, expands to hidden
+\ physical fields (layout expansion below); one whose width reads an open
+\ argument is one T-PARAM cell in a signature. A one-cell primitive (dup, drop,
+\ swap, over, nip, >r, ...) that would bind or consume a logical layout cell
+\ fails closed in U-TYPE. Layout identity is the resolved family id, so pairing
+\ with the same family (the PARAM-PAIR-ARGS arm) flows; only a var, con, ptr or
+\ atom pairing reaches this guard.
 : LAYOUT-PARAM? ( n -- bool ) {: t:n :}
    t T-UNSTALE {: r:n :}                    \ a stale cell is still a cell of its family
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN
@@ -2732,11 +2573,11 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
    t2 LAYOUT-PARAM? ;
 
-\ A NOMINAL SCALAR is an arity-0 TK-CELL family T-PARAM (CAD-KIND ids and
-\ friends): one raw cell whose whole meaning is its family identity. Every raw
-\ bit pattern is a valid value of the family (id 0 included), so it lowers as a
-\ plain scalar cell; the family identity itself is introduction-governed like a
-\ layout — LAYOUT-BUFFER is the only checked source of `ptr <nominal-scalar>`.
+\ A nominal scalar is an arity-0 TK-CELL family T-PARAM: one raw cell whose
+\ meaning is its family identity. Every bit pattern is a valid value (id 0
+\ included), so it lowers as a plain scalar cell; the identity is
+\ introduction-governed like a layout: LAYOUT-BUFFER is the only checked source
+\ of `ptr <nominal-scalar>`.
 : NOM-SCALAR? ( n -- bool ) {: t0:n :}   \ term resolves to a nominal-scalar family param
    t0 T-RES {: t:n :}
    t TAG T-PARAM <> IF RES-FALSE EXIT THEN
@@ -2745,17 +2586,13 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    dup TFAM-CELL?* 0= IF drop RES-FALSE EXIT THEN
    TFAM-ARITY* 0 = ;
 
-\ T-WIDTH ( n -- n ) : logical width in stack cells of a resolved type term
-\ (type-family.f header WIDTH function). Every non-layout term is one cell; a layout-family
-\ T-PARAM asks the INSTANTIATED width (arg-aware): the registry walks the term's
-\ variant/product schemas substituting each param slot by its resolved arg width,
-\ so a layout arg widens the sum payload / product body. Every cell-kinded
-\ instantiation (all args width 1) yields the declared TFAM-WIDTH@, so this is
-\ behaviour-preserving groundwork while family parameters stay cell-kinded. The
-\ the registry-not-loaded default (bound in TFAM-QUERY-DEFAULTS) falls back to the
-\ declared family width verbatim (the term's own family, since a cell-kinded
-\ instantiation equals the declared width); type-family.f rebinds the hook to the
-\ arg-aware TFAM-INST-WIDTH@. This is the type-level fact the WF- surface records.
+\ Logical width in stack cells of a resolved type term (type-family.f TFAM-WIDTH@
+\ WIDTH function). Every non-layout term is one cell; a layout-family T-PARAM
+\ asks the instantiated width: the registry substitutes each param slot by its
+\ resolved arg width, so a layout arg widens the sum payload or product body.
+\ The registry-not-loaded default answers the declared family width;
+\ type-family.f rebinds the hook to TFAM-INST-WIDTH@. The WF- surface records
+\ this fact.
 : T-WIDTH ( n -- n ) {: t:n :}
    t T-UNSTALE {: r:n :}                         \ a stale cell occupies what it occupied
    r TAG T-PARAM <> IF 1 EXIT THEN
@@ -2764,24 +2601,21 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
    r TFAM-INST-WIDTH-XT ;
 
-\ --- hidden physical-field substrate (type-family.f header).
+\ --- hidden physical-field substrate (type-family.f TFAM-WIDTH@).
 \ PUSH-LOGICAL expands a logical layout T-PARAM in a signature into W hidden
-\ physical field terms: payload slots 0..W-2 then the tag at W-1 (type-family.f header). Each
-\ hidden term reuses the logical family-id, name string, and arg terms, but
-\ carries a slot+1 in PARAMHID (0 = logical). A hidden term is checker-owned: it
-\ pairs only with the SAME family AND slot and never binds a var/con/ptr/atom
-\ (type-family.f header), enforced in U-TYPE below. Whole-bundle transports move the W-cell
-\ group by direct row surgery (XPORT-STEP?, further down).
-\ THE PHYSICAL QUESTIONS SEE THROUGH A STALE WRAPPER, AND THE TYPE QUESTION DOES
-\ NOT. `catch` wraps each window cell it cannot vouch for one cell at a time
-\ (ROW-STALE-FROM), so an option<pt> window on the live row is THREE stale cells.
-\ Which family, which slot, how wide, is it hidden - those are questions about
-\ the cell, and a cell a throw left stale is still that hidden cell; answered on
-\ the wrapper instead, every group walker (XG-READ-GROUP, LOGHID-AT?,
-\ WF-POS-RECORD, locals capture, the renderer's compaction) stops seeing a group
-\ and a W-cell bundle becomes W cells no single `drop` can remove. U-TYPE keeps
-\ the type question: a stale cell pairs with a var or an equally stale cell and
-\ nothing else, so every typed use of the group is still E-STALE-READ.
+\ physical field terms: payload slots 0..W-2, then the tag at W-1. Each reuses
+\ the logical family id, name string and arg terms, and carries slot+1 in
+\ PARAMHID (0 = logical). A hidden term pairs only with the same family and
+\ slot and never binds a var, con, ptr or atom (U-TYPE). Whole-bundle transports
+\ move the W-cell group by row surgery (XPORT-STEP?).
+\ The physical questions see through a stale wrapper; the type question does
+\ not. `catch` wraps each window cell it cannot vouch for one cell at a time
+\ (ROW-STALE-FROM), so an option<pt> window is three stale cells. Answered on
+\ the wrapper, every group walker (XG-READ-GROUP, LOGHID-AT?, WF-POS-RECORD,
+\ locals capture, the renderer's compaction) would stop seeing a group and a
+\ W-cell bundle would become W cells no single `drop` removes. U-TYPE pairs a
+\ stale cell only with a var or an equally stale cell, so every typed use of the
+\ group is still E-STALE-READ.
 : HIDDEN-PARAM? ( n -- bool ) {: t:n :}     \ resolved term is a hidden physical field
    t T-UNSTALE {: r:n :}
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN
@@ -2789,19 +2623,16 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
 : HIDDEN-SLOT@ ( n -- n ) {: t:n :}         \ physical slot index; dies on a non-hidden term
    t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" 76 die THEN
    t T-UNSTALE PARAM>HID 1 - ;
-\ the family a row cell belongs to, stale or not: the group walkers pair it with
-\ the questions above, and a raw PARAM>FAM on a wrapper reads the stale arena
-\ index as a param index (a fail-OPEN garbage family).
+\ The family a row cell belongs to, stale or not: a raw PARAM>FAM on a wrapper
+\ reads the stale arena index as a param index (a fail-open garbage family).
 : CELL>FAM ( n -- n ) T-UNSTALE PARAM>FAM ;
 
 \ ---- the one authority for a row's width in stack cells ------------------------
-\ ROW-TERM-CELLS and ROW-CELLS sit HIGH IN THE FILE because three passes far
-\ apart have to ask one question the same way: E-COPY* records each fixed term's
-\ width as the copy walks past the live term, EFFECT-MIN-IN reads the floor a
-\ call must provide, and RSCATCH measures the window a caught quotation takes
-\ before the fit-check binds anything. There is no second implementation of the
-\ rule among source-checking callers, and this is their earliest dependency.
-\ Portable graphs revalidate the stored claim against their captured registry.
+\ ROW-TERM-CELLS and ROW-CELLS sit high in the file because three passes ask
+\ one question the same way: E-COPY* records each fixed term's width, EFFECT-
+\ MIN-IN reads the floor a call must provide, and RSCATCH measures the window a
+\ caught quotation takes before the fit-check binds anything. Portable graphs
+\ revalidate the stored claim against their captured registry.
 \
 \ A hidden layout parameter already denotes one physical cell; charging its
 \ family's full logical width again would turn a W-cell bundle into W^2 cells.
@@ -2809,17 +2640,14 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    t T-RES dup HIDDEN-PARAM? if drop 1 exit then
    T-WIDTH ;
 
-\ ROW-CELLS: total physical width of a row's fixed entries — the minimum stack
-\ depth any call must provide for that row. Row-polymorphic tails match zero
-\ cells, so the fixed prefix IS the floor (dot habu-habu-certified-words-84e84eaf).
+\ Total physical width of a row's fixed entries: the minimum depth any call
+\ must provide. Row-polymorphic tails match zero cells, so the fixed prefix is
+\ the floor.
 \
-\ IT FOLLOWS A BOUND TAIL, which is right for every caller and is the trap a
-\ fourth one has to know about. A row variable that unification has bound is the
-\ row it was bound TO, so a row measured after it was fit-checked against a
-\ deeper stack reports that whole stack. A caller that wants what a row's own
-\ entries occupy therefore has to ask BEFORE the check that binds the tail; there
-\ is no second reading of the graph afterwards that could tell the two apart,
-\ because after the unification the two rows are one row.
+\ It follows a bound tail: a bound row variable is the row it was bound to, so
+\ a row measured after a fit-check against a deeper stack reports that whole
+\ stack. A caller that wants a row's own entries asks before the check binds the
+\ tail; afterwards the two rows are one row.
 : ROW-CELLS ( n -- n ) {: s:n :}
    0 s                                   \ ( acc cur )
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -2832,10 +2660,8 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
 \ and RSCATCH answers it for the output row of a caught body that never returns.
 -1 constant CELLS-NONE
 
-\ MK-HIDDEN ( n n -- n ) : mint the hidden field term for slot `slot:n` of a
-\ resolved LOGICAL layout T-PARAM `src0:n`, copying src's name/family-id/arg terms
-\ and tagging PARAMHID = slot+1. `slot` ranges over [0,W): 0..W-2 payload slots,
-\ W-1 the tag. Non-layout src or out-of-range slot fails closed (die 76).
+\ `slot` ranges over [0,W): 0..W-2 payload slots, W-1 the tag. A non-layout src
+\ or an out-of-range slot fails closed (die 76).
 : MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
    src0 T-RES {: src:n :}
    src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" 76 die THEN
@@ -2849,12 +2675,10 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
    slot 1 + t PAY cells PARAMHID + !
    t ;
-\ MK-LOGICAL ( n -- n ) : the logical family term for a resolved hidden field —
-\ same name/family-id/arg terms, PARAMHID 0. Renderer compaction folds a full
-\ hidden run back to this logical type (type-family.f header); checking never consumes it.
-\ A STALE cell's logical type is stale: the wrapper belongs to the value, not to
-\ the physical cell, so a group `catch` left stale prints stale<option<pt>> and
-\ never three cells.
+\ Renderer compaction folds a full hidden run back to this logical type
+\ (type-family.f TFAM-WIDTH@); checking never consumes it. A stale cell's logical
+\ type is stale: the wrapper belongs to the value, so a group `catch` left stale
+\ prints stale<option<pt>>, never three cells.
 : MK-LOGICAL ( n -- n ) {: src0:n :}
    src0 T-UNSTALE {: src:n :}
    src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" 76 die THEN
@@ -2865,9 +2689,7 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
    REPEAT drop
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: lg:n :}
    src0 T-RES TAG T-STALE = IF lg MK-STALE ELSE lg THEN ;
-\ LAYOUT-PUSH-FIELDS ( n n -- n ) : push `type:n`'s W hidden fields onto `row:n`
-\ in physical order — slot0 deepest, tag (W-1) on top (type-family.f header). Slice 3b calls
-\ this from PUSH-LOGICAL; in slice 3a only the new fixtures drive it.
+\ Physical order: slot 0 deepest, tag (W-1) on top (type-family.f TFAM-WIDTH@).
 : LAYOUT-PUSH-FIELDS ( n n -- n ) {: type:n row:n :}
    type T-RES {: src:n :}
    src T-WIDTH {: w:n :}                     \ instantiated (arg-aware) hidden-field count
@@ -2876,44 +2698,38 @@ variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
       rot MK-PUSH swap                       \ push hid onto row -> ( row' slot )
       1 +
    REPEAT drop ;
-\ PARAM-HID-OK? ( n n -- bool ) : may two resolved T-PARAM terms pair? Neither
-\ hidden -> ordinary logical pair; exactly one hidden -> reject (a hidden field
-\ must not unify with the logical value); both hidden -> require the SAME slot
-\ (slot+1 equality). Family equality is still enforced by PARAM-PAIR-ARGS.
+\ Neither hidden: an ordinary logical pair; exactly one hidden: reject (a hidden
+\ field must not unify with the logical value); both hidden: the same slot.
+\ PARAM-PAIR-ARGS still enforces family equality.
 : PARAM-HID-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PARAM>HID t2 PARAM>HID {: h1:n h2:n :}
    h1 h2 or 0= IF RES-TRUE EXIT THEN
    h1 0 > h2 0 > and 0= IF RES-FALSE EXIT THEN
    h1 h2 = ;
 
-\ --- layout expansion (type-family.f header): a layout value whose width is
-\ known, linear included, expands to its W hidden physical fields (PUSH-LOGICAL),
-\ and whole-bundle transports move the group by direct row surgery (XPORT-STEP?).
-\ A layout whose width reads an open argument (LAYOUT-WIDTH-OPEN?) stays ONE
-\ logical T-PARAM cell; for it, a whole-bundle transport op
-\ (dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@ and
-\ friends, and locals capture) moves the value through its fresh transport var —
-\ LAYOUT-XPORT is set by DO-TOK1/LOC-BIND only while checking such an op, and
-\ LAYOUT-XPORT-ALLOW? rejects the bind when the layout may be linear, so that
-\ case stays fail-closed. Every OTHER touch (value-inspecting prims, ?dup,
-\ control predicates, higher-order apply, con/ptr/atom pairings) fails closed
-\ through the same guards.
+\ --- layout expansion (type-family.f TFAM-WIDTH@): a layout value of known width,
+\ linear included, expands to its W hidden physical fields (PUSH-LOGICAL), and
+\ whole-bundle transports move the group by row surgery (XPORT-STEP?). A layout
+\ whose width reads an open argument (LAYOUT-WIDTH-OPEN?) stays one logical
+\ T-PARAM cell; a whole-bundle transport op (dup drop swap over nip rot -rot
+\ tuck 2dup 2drop 2swap 2over, >r r> r@ and kin, locals capture) moves it
+\ through its fresh transport var: DO-TOK1/LOC-BIND set LAYOUT-XPORT only while
+\ checking such an op, and LAYOUT-XPORT-ALLOW? rejects the bind when the layout
+\ may be linear. Every other touch (value-inspecting prims, ?dup, control
+\ predicates, higher-order apply, con/ptr/atom pairings) fails closed.
 CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
 CHECKER-REG:}SCRATCH
-\ --- field-projection armed window (dot habu-checker-type-structure). A sealed,
-\ schema-aware window that lets a generated FAMILY:FIELD accessor body mint
-\ `ptr <field-type>` from a `ptr family<args>` input and a committed field id —
-\ the one shape (byte offset added to a layout pointer, retyped to the field's
-\ instantiated schema) that no checked operation otherwise performs (`+`/`cell+`
-\ preserve the pointee; a pointer CAST: is an unchecked private class mint).
-\ Armed ONLY by the generative crossing (the path
-\ structure-make.f/generate-field use) around the one audited accessor eval, and
-\ keyed on the accessor word name; it fires once at the `field-project` op token
-\ inside that word's body and disarms. Its explicit trusted-only effect and
-\ record protection keep the arming boundary closed even when source-owner
-\ transfer supplies a user signature for this pre-hook definition.
+\ --- field-projection armed window: a sealed, schema-aware window that lets a
+\ generated FAMILY:FIELD accessor body mint `ptr <field-type>` from a
+\ `ptr family<args>` input and a committed field id, the one retyping no checked
+\ operation performs (`+` and `cell+` keep the pointee; a pointer CAST: is an
+\ unchecked private class mint). Armed only by the generative crossing
+\ (structure-make.f) around the one audited accessor eval, keyed on the
+\ accessor word name; it fires once at the `field-project` token in that body
+\ and disarms. Its trusted-only effect and record protection keep the arming
+\ boundary closed even when source-owner transfer supplies a user signature.
 PTR-VARIABLE FIELD-PROJ-A   REG-PROTECT
 variable FIELD-PROJ-U   REG-PROTECT   0 FIELD-PROJ-U !   \ armed accessor word name span
 variable FIELD-PROJ-FID REG-PROTECT   \ committed field id (the authority: offset/type/role derive from it)
@@ -2962,23 +2778,17 @@ variable NMOFF                           \ its token's offset in the checked tex
       1 +
    REPEAT drop RES-FALSE ;
 
-\ --- an OPEN argument only hides the width when the WIDTH READS IT. The
-\ instantiated width (type-family.f TFW-NODE) reads an argument's own width
-\ where a schema root reads its slot: a root that IS the parameter node, or a
-\ nested application whose family reads the slot that argument fills. A
-\ parameter occurring only under a pointer, a quotation or an argument slot its
-\ application never reads therefore cannot move the family's width:
-\ `span<t>` — `FIELD base ptr t  FIELD len n` — is two cells for every `t`, and
-\ `sx<t>` for `FIELD f init<t,leaf>` is two cells for every `t`, since init
-\ reads only its element slot.
-\ Such an instance expands into its physical cells with the open argument still
-\ a var, so a declared row carrying it has one term per cell and the native
-\ chain can read the per-cell slots it places a row from (dict.f ROW-GLUE).
-\ A family whose parameter IS a payload cell (`FIELD a t`) has a width no one
-\ can know before the argument binds; that one still answers open and stays one
-\ conservative cell. A width-bearing argument may itself contain an open
-\ width-bearing argument, so recurse only through slots the width reads. The
-\ registry owns that occurrence question instead of a closedness guess.
+\ --- an open argument hides the width only when the width reads it. The
+\ instantiated width (type-family.f TFW-NODE) reads an argument where a schema
+\ root reads its slot: a root that is the parameter node, or a nested
+\ application whose family reads that slot. A parameter only under a pointer, a
+\ quotation or an unread slot cannot move the width: `span<t>` (`FIELD base
+\ ptr t  FIELD len n`) is two cells for every `t`, as is `sx<t>` for
+\ `FIELD f init<t,leaf>`. Such an instance expands into its physical cells with
+\ the argument still a var, so the native chain reads per-cell slots
+\ (dict.f ROW-GLUE). A family whose parameter is a payload cell (`FIELD a t`)
+\ answers open and stays one conservative cell. Recurse only through slots the
+\ width reads; the registry owns that occurrence question.
 : LAYOUT-WIDTH-OPEN? ( n -- bool ) {: p:n :}
    0 BEGIN dup p PARAM>ARGC < WHILE
       p PARAM>FAM over TFAM-WIDTH-SLOT-XT IF
@@ -2991,9 +2801,9 @@ variable NMOFF                           \ its token's offset in the checked tex
       1 +
    REPEAT drop RES-FALSE ;
 
-\ Typed memory keeps the earlier fail-closed rule for every family argument,
-\ including phantom arguments. A concrete payload count alone cannot establish
-\ that a generic instantiation is safe to store while an argument is open.
+\ Typed memory keeps the fail-closed rule for every family argument, phantom
+\ ones included: a payload count alone does not make a generic instantiation
+\ safe to store while an argument is open.
 : LAYOUT-MEM-ARG-BLOCK? ( n -- bool ) {: t:n :}
    t T-RES {: r:n :}
    r ISVAR IF r PAY TVK@ TVK-SCOPE <> EXIT THEN
@@ -3009,12 +2819,11 @@ variable NMOFF                           \ its token's offset in the checked tex
    r TAG T-CON <> IF RES-FALSE EXIT THEN
    r PAY CT-LINEAR? ;
 
-\ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): every
-\ closed non-linear layout with a physical cell may cross typed memory. W=1 uses
-\ scalar lowering; W>1 lowers from the token's WF fact. W=0 products have no
-\ addressable representation and reject. Possibly-linear, including open args
-\ that might later become linear, stays rejected until whole-bundle linear
-\ accounting covers it.
+\ --- storable layouts: every closed non-linear layout with a physical cell may
+\ cross typed memory. W=1 uses scalar lowering; W>1 lowers from the token's WF
+\ fact. W=0 products have no addressable representation and reject. Possibly
+\ linear, open args that might become linear included, stays rejected until
+\ whole-bundle linear accounting covers it.
 : LAYOUT-MEM-OK? ( n -- bool ) {: t:n :}        \ resolved logical layout T-PARAM
    t SCOPED-TYPE? IF RES-FALSE EXIT THEN
    t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
@@ -3066,64 +2875,50 @@ variable NMOFF                           \ its token's offset in the checked tex
    THEN
    RES-TRUE ;
 
-\ --- nominal-storage RAW value discipline (habu-nominal-storage-raw). A RAW type
-\ var is minted by a raw storage definer (here/create/variable/constant); a fetch
-\ from that cell yields the SAME (RAW) var, so `RAW-var ~ nominal-family` in value
-\ position is the mint the checker must refuse -- otherwise raw dictionary storage
-\ forges the validated arity-0 CAD-KIND identities (target/toolchain/region/node).
-\ This is the VALUE-position mirror of NOMPTR-BLOCK? (which governs the pointee
-\ position). Ordinary (TVK-ANY) vars are unaffected, so a typed LAYOUT-BUFFER
-\ fetch, a constructor, and role/converter words keep binding a family in value
-\ position -- only a raw-storage-minted var is fenced. RAW-OK? both DECIDES
-\ admissibility and PROPAGATES the kind (a var arg is raised RAW -- the meet).
-\ It REJECTS a NOMINAL-FAMILY / LAYOUT value (a T-PARAM), a LINEAR con, a
-\ POINTER and an EXECUTABLE value (a T-QUOT, see FENCE-EXEC below), and ADMITS a
-\ plain scalar/role con and an atom: the engine's own codegen legitimately
-\ raw-stores role cons (`LBL RT-LPOS !`). Fencing
-\ nominal ROLE atoms (idx/len) out of raw storage too needs that role
-\ scratch migrated to typed cells first, so it is a documented follow-on; this
-\ dot closes the arity-0 nominal-family / layout mint, the epic's forgery target.
+\ --- nominal-storage RAW value discipline. A RAW type var is minted by a raw
+\ storage definer (here create variable constant); a fetch from that cell yields
+\ the same var, so `RAW-var ~ nominal-family` in value position is a mint the
+\ checker refuses, else raw dictionary storage forges validated arity-0 family
+\ identities. This is the value-position mirror of NOMPTR-BLOCK? (the pointee
+\ position). TVK-ANY vars are unaffected, so a typed LAYOUT-BUFFER fetch, a
+\ constructor and role or converter words keep binding a family. RAW-OK?
+\ decides admissibility and propagates the kind (a var arg is raised RAW). It
+\ rejects a nominal-family or layout value (a T-PARAM), a linear con, a pointer
+\ and an executable value (a T-QUOT, FENCE-EXEC), and admits a plain scalar or
+\ role con and an atom: the engine's codegen raw-stores role cons
+\ (`LBL RT-LPOS !`). Fencing role atoms (idx/len) too needs that scratch moved
+\ to typed cells first.
 \
-\ A RAW CELL NEVER HOLDS AN ADDRESS (dot habu-refuse-a-ptr-5ad2734e). The T-PTR
-\ arm used to recurse into the pointee, which admitted a pointer into a raw cell
-\ and made an undeclared `variable`/`create`/`constant`/`here`/`data-base` cell
-\ an integer-to-address launder with no TRUST row: `V ! V @ @` stored an `n`
-\ through one mention and fetched an address through the next, because each
-\ mention re-freshens the published scheme's var (E-INST) and the fetched value
-\ is only ever fenced HERE. Refusing T-PTR fences the VALUE instead of each
-\ consumer, so `V @ @`, `V @ c@`, `V @ 8 + @`, `K @` and `here @ @` all die at
-\ the same binding, as does a pointer stored into a plain cell -- the same
-\ structural move RSEXEC made for an opaque xt. A cell that genuinely holds an
+\ A raw cell never holds an address. Each mention of an undeclared cell
+\ re-freshens the published scheme's var (E-INST), so a pointer admitted here
+\ would launder an integer into an address (`V ! V @ @`). Refusing T-PTR fences
+\ the value instead of each consumer, so `V @ @`, `V @ c@`, `V @ 8 + @`,
+\ `K @` and `here @ @` die at the same binding, as does a pointer stored into a
+\ plain cell (RSEXEC makes the same move for an opaque xt). A cell that holds an
 \ address is declared: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME
-\ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` keeps certifying:
-\ the pointee binds to the `u8` CON, which stays admissible.
+\ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` certifies: the
+\ pointee binds to the `u8` con.
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region. UF-CAPTURE names the one
 \ that hit, so the two rules answer with their own prose.
 variable BASE-PTR-HIT
-\ An undeclared cell or a base address was declared to hold an EXECUTABLE value
-\ in this token's unify (dot habu-refuse-an-executable-e8834546). Its own latch,
-\ because the E-RAW-CELL-PTR family answers it with its own reason and its own
-\ repair class: the repair is a declared code cell, not a declared pointer cell.
+\ An undeclared cell or a base address was declared to hold an executable value
+\ in this token's unify. Its own latch, because the E-RAW-CELL-PTR family gives
+\ it its own reason and repair: a declared code cell, not a pointer cell.
 variable RAW-EXEC-HIT
-\ A `stale<t>` met a type this token's unify demanded, so the token READ a cell a
-\ caught throw may have overwritten. Latched the same way and named the same way
-\ (CELL-DIAG!), because the answer is also a rule and not a shape mismatch: the
-\ cell has no type left to read. It holds the stale term read, 0 for none.
+\ A `stale<t>` met a type this token's unify demanded: the token read a cell a
+\ caught throw may have overwritten. Latched and named the same way (CELL-DIAG!),
+\ as a rule, not a shape mismatch. It holds the stale term read, 0 for none.
 variable STALE-HIT
 
-\ `xt!` IS THE SANCTIONED CODE-CELL MINT, and it is exempt from FENCE-EXEC for
-\ the same reason LAYOUT-INTRO is exempt from the nominal rules: it is the one
-\ prim whose whole purpose is to DECLARE that the cell it writes holds an
-\ execution token, for a persisted cell whose address the caller works out at
-\ run time from a table base and a row index (`' W DECLARATIONS <off> + xt!`,
-\ dot habu-declare-persisted-cb-b150b5d5). Its row cannot say so -- there is no
-\ quotation-kinded type variable (no TVK kind admits only quotations; dot
-\ habu-give-xt-a-9fc427a9) -- so the window is opened on the token, in
-\ DO-TOK1, and closed with the same token's latches. It covers that one step:
-\ every OTHER way of putting a quotation into an undeclared cell or a
-\ base-derived address, `!` included, is refused.
+\ `xt!` is the sanctioned code-cell mint, exempt from FENCE-EXEC as LAYOUT-INTRO
+\ is from the nominal rules: it declares that the persisted cell it writes, at
+\ an address computed from a table base and row index
+\ (`' W DECLARATIONS <off> + xt!`), holds an execution token. No TVK kind admits
+\ only quotations, so its row cannot say so: DO-TOK1 opens the window on the
+\ token and the token's latches close it. Every other way of putting a quotation
+\ into an undeclared cell or base-derived address, `!` included, is refused.
 variable XT-DECL
 
 \ FENCE-WHY's answers, and the whole vocabulary of the cell disciplines.
@@ -3142,24 +2937,20 @@ variable XT-DECL
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
    t ATOM>K 0= IF t ATOM>A t ATOM>U s" opaque-xt" CORE-STR= ELSE RES-FALSE THEN ;
 
-\ FENCE-WHY answers ONE question for all three fenced kinds, so neither base
-\ address can drift from TVK-RAW's admissibility. A var argument is MET with
+\ FENCE-WHY answers one question for all three fenced kinds, so neither base
+\ address drifts from TVK-RAW's admissibility. A var argument is met with
 \ `kind` (trailed) rather than judged, which is how the kind rides `+`, `-`,
-\ `cell+`, `char+`, `1+`, `1-` -- whose rows keep the base's pointee var -- and
-\ out through `@`. `term` is already resolved.
+\ `cell+`, `char+`, `1+`, `1-` (whose rows keep the base's pointee var) and out
+\ through `@`. `term` is already resolved.
 \
-\ AN UNDECLARED CELL HOLDS NO EXECUTABLE VALUE (FENCE-EXEC, dot
-\ habu-refuse-an-executable-e8834546). A quotation row used to be admitted here
-\ because the ENGINE raw-stores xts, but admissibility is about PROVENANCE, not
-\ about what the store instruction can carry: a DATA word or a `variable`
-\ declared `( -- ptr [ -- n ] )` handed its caller a certified code cell, the
-\ fetched value carried a declared quotation type so the opaque-execute rule
-\ (MD-EXEC-OPAQUE, which judges OPACITY) never fired, and `1 V ! FIRE` branched
-\ to address 1 (measured: SIGBUS). The declared code cells -- TYPED-VARIABLE /
-\ TYPED-BUFFER / DYNAMIC-BUFFER over `[ in -- out ]`, `defer`/`is`, `xt!` --
-\ mint the T-QUOT at the storage word, so nothing else may write the cell at
-\ another type; those keep certifying, and so does every quotation that never
-\ goes through raw storage.
+\ An undeclared cell holds no executable value (FENCE-EXEC). Admissibility is
+\ provenance, not what the store instruction carries: a DATA word or `variable`
+\ declared `( -- ptr [ -- n ] )` would hand its caller a certified code cell
+\ whose fetched value has a declared quotation type, so MD-EXEC-OPAQUE never
+\ fires and `1 V ! FIRE` branched to address 1 (SIGBUS). The declared code cells
+\ (TYPED-VARIABLE, TYPED-BUFFER and DYNAMIC-BUFFER over `[ in -- out ]`,
+\ `defer`/`is`, `xt!`) mint the T-QUOT at the storage word, so nothing else may
+\ write the cell at another type.
 : FENCE-WHY ( n n -- n ) {: t:n kind:n :}
    t ISVAR IF t PAY kind TVK-RAISE-TO FENCE-OK EXIT THEN
    t TAG T-PARAM = IF FENCE-FAMILY EXIT THEN
@@ -3178,43 +2969,32 @@ variable XT-DECL
    dup FENCE-STALE = IF t STALE-HIT ! THEN
    0= ;
 
-\ Neither base address addresses a declared element, so nothing READ through one
-\ may be a nominal identity or an address. The two kinds differ in how deep that
+\ Neither base address addresses a declared element, so nothing read through one
+\ may be a nominal identity or an address. The kinds differ in how deep that
 \ reaches.
 \
-\ TVK-NULL keeps the permissive POINTEE arm (CUR-STRICT): `ptr thing NULL-PTR =`
-\ binds `thing` inside a `ptr` and certifies, and so do the store, the distance
-\ and `0=`, because the null is the literal address those shapes mean. Only the
-\ value position is fenced -- `NULL-PTR + @` read as a `thing` or a `ptr n`.
+\ TVK-NULL keeps the permissive pointee arm (CUR-STRICT): `ptr thing NULL-PTR =`
+\ binds `thing` inside a `ptr` and certifies, as do the store, the distance and
+\ `0=`. Only the value position is fenced (`NULL-PTR + @` read as a `thing` or
+\ a `ptr n`).
 \
-\ TVK-DBASE has no permissive arm: a DATA cell holds a plain value at EVERY
-\ depth. The pointee chain is what carried the first cut's hole, since
-\ NOMPTR-BLOCK? stops a nominal only at the FIRST pointee: `( -- ptr ptr dthing )
-\ data-base 8 +` put the nominal one `ptr` deeper and `F @ @` minted it, and
-\ `( -- ptr ptr ptr n )` did the same for an address out of an arbitrary DATA
-\ word. Blocking the pointer term itself, strict or not, closes every depth at
-\ once.
+\ TVK-DBASE has no permissive arm. NOMPTR-BLOCK? stops a nominal only at the
+\ first pointee, so `( -- ptr ptr dthing ) data-base 8 +` with `F @ @` minted
+\ one a `ptr` deeper, and `( -- ptr ptr ptr n )` an address; blocking the
+\ pointer term itself, strict or not, closes every depth.
 \
-\ The permissive arm still MEETS, so a wrapper that publishes the derived
-\ pointer as `( -- ptr a )` restricts its own declared quantifier and NP-CHECK
-\ refuses it -- which is the point: such a wrapper mints whatever its caller asks
-\ for.
-\ AN EXECUTABLE VALUE IS FENCED THROUGH THE NULL'S PERMISSIVE ARM TOO, which is
-\ why the FENCE-EXEC arm below is tested BEFORE it. The permissive arm exists
-\ for the shapes that mean the one literal address -- compare, store, distance,
-\ `0=` -- and the null's pointee is where a code cell declared over the null
-\ lands: `( -- ptr [ -- n ] ) NULL-PTR 8 +` is a pointee bind, not a value one
-\ (TVK-DBASE needs no such arm, since it blocks at every depth), and without
-\ this the fetched value is executed at address 8. The price is measured and
-\ deliberate: a DECLARED code cell may no longer be compared with the null
-\ (`HK NULL-PTR =` and `<>` certify before this rule and are refused after it;
-\ the distance `HK NULL-PTR -` never pairs the two pointees, see
-\ TVK-BASE-ONLY). An empty code cell is read through a NUMBER-typed accessor
-\ of the same address instead -- the two-accessor shape src/lib/genio-core.f already uses
-\ for its device rows, where a cleared row is spelled ZERO.
-\ It is latched as the RAW rule's own refusal (RAW-EXEC-HIT), not as a
-\ base-address one, because the answer is the same at every base and at an
-\ undeclared cell: declare the cell that holds the xt.
+\ The permissive arm still meets, so a wrapper publishing the derived pointer as
+\ `( -- ptr a )` restricts its own declared quantifier and NP-CHECK refuses it:
+\ such a wrapper mints whatever its caller asks for.
+\ An executable value is fenced through the null's permissive arm too, so the
+\ FENCE-EXEC arm below is tested before it: `( -- ptr [ -- n ] ) NULL-PTR 8 +`
+\ is a pointee bind, and without this the fetched value executes at address 8.
+\ The price: a declared code cell cannot be compared with the null (`HK
+\ NULL-PTR =` and `<>` are refused; the distance `HK NULL-PTR -` never pairs the
+\ pointees, see TVK-BASE-ONLY). An empty code cell is read through a
+\ number-typed accessor of the same address, as src/lib/genio-core.f does for
+\ its device rows. It latches RAW-EXEC-HIT, the RAW rule's refusal, because the
+\ repair is the same at every base: declare the cell that holds the xt.
 : BASE-BLOCK? ( n n -- bool )   \ resolved term + base kind; may that cell NOT absorb the term?
    {: t:n kind:n :}
    t kind FENCE-WHY
@@ -3224,23 +3004,20 @@ variable XT-DECL
    drop
    kind TVK-NULL =  CUR-STRICT @ 0 <> and IF RES-FALSE EXIT THEN   \ the null inside a pointee: the pointer, not the cell
    kind BASE-PTR-HIT ! RES-TRUE ;
-\ THE ARMED WINDOW IS THE SANCTIONED MINT, and it is exempt here for the same
-\ reason NOMPTR-BLOCK? exempts it: LAYOUT-INTRO is set only while CHECK coerces
-\ the OUTPUT row of the accessor a storage definer just generated, keyed on the
-\ pending name, and user source cannot arm it (xref erases LBUF-PEND! and its
-\ siblings after boot). Without this clause a generated accessor could not name
-\ its storage through the `create`d word that owns it, and the only shape left
-\ was `data-base <baked offset> +` -- an address no relocation pass can see,
-\ which is what put another table's writes on BMID's cells in a merged engine
-\ (dot habu-bmid-module-id-ec6c709b, src/core/layout-buffer.f LBUF-SOURCE).
-\ OFFSET PROVENANCE RIDES THE OTHER WAY TOO. U-TYPE binds one var side to the
-\ other, and which side that is depends on the argument order at the call, so an
-\ offset row's pointee var is sometimes the var that SURVIVES (FENCE-WHY raises
-\ it to the null's kind, and the meet answers DBASE) and sometimes the var that
-\ is bound AWAY. In the second case nothing would carry the provenance across,
-\ and `NULL-PTR n +` would keep the null's permissive arm on the surviving var.
-\ Meeting the term with TVK-OFF closes it: the meet is identity for every kind
-\ but the null, so this raises nothing else.
+\ The armed window is the sanctioned mint, exempt here as in NOMPTR-BLOCK?:
+\ LAYOUT-INTRO is set only while CHECK coerces the output row of the accessor a
+\ storage definer just generated, keyed on the pending name, and user source
+\ cannot arm it (xref erases LBUF-PEND! and its siblings after boot). Without
+\ it a generated accessor could not name its storage through its `create`d
+\ word, and `data-base <baked offset> +` is an address no relocation pass sees
+\ (it put another table's writes on BMID's cells in a merged engine;
+\ src/core/layout-buffer.f LBUF-SOURCE).
+\ Offset provenance rides the other way too. U-TYPE binds one var side to the
+\ other in call-argument order, so an offset row's pointee var sometimes
+\ survives (FENCE-WHY raises it and the meet answers DBASE) and sometimes is
+\ bound away, where `NULL-PTR n +` would keep the null's permissive arm on the
+\ survivor. Meeting the term with TVK-OFF closes that: the meet is identity for
+\ every kind but the null.
 : OFF-RIDE ( n -- ) T-RES dup ISVAR IF PAY TVK-OFF TVK-RAISE-TO ELSE drop THEN ;
 : REGION-ATOM? ( n -- bool ) {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
@@ -3804,19 +3581,17 @@ defer U-DRAIN-XT ( n -- )
    ELSE STALE-NOTE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 
-\ --- logical<->hidden bundle coercion (type-family.f header). A stored
-\ effect keeps a layout value as ONE logical cell only when its width reads an
-\ open argument (PUSH-LOGICAL, LAYOUT-WIDTH-OPEN?). At a boundary or call site
-\ that cell can meet the W-cell hidden expansion of the SAME family, whose width
-\ is known and whose args may be linear. The logical cell expands to hidden
-\ fields at its own width (an open argument measures one cell) and the rows
-\ re-pair cell for cell: the hidden pairs bind its args to the group's, and a
-\ width that disagrees fails the slot pairing (PARAM-HID-OK?). Binding an arg to
-\ a linear payload is ordinary linear accounting: LIN-TYPE-COUNT counts the
-\ bundle once at its tag for each step's LIN-CHECK, and LIN-EFF-PASS rejects an
-\ effect var that resolves to a linear con with unequal in/out multiplicity
-\ (EN-MULT walks family args). Transport mode (LAYOUT-XPORT) keeps its own group
-\ surgery and is excluded.
+\ --- logical<->hidden bundle coercion (type-family.f TFAM-WIDTH@). A stored effect
+\ keeps a layout value as one logical cell only when its width reads an open
+\ argument (PUSH-LOGICAL, LAYOUT-WIDTH-OPEN?). At a boundary or call site that
+\ cell can meet the W-cell hidden expansion of the same family, whose width is
+\ known and whose args may be linear. The logical cell expands to hidden fields
+\ at its own width (an open argument measures one cell) and the rows re-pair
+\ cell for cell; a width that disagrees fails the slot pairing (PARAM-HID-OK?).
+\ A linear payload is ordinary linear accounting: LIN-TYPE-COUNT counts the
+\ bundle once at its tag for each LIN-CHECK, and LIN-EFF-PASS rejects unequal
+\ in/out multiplicity (EN-MULT walks family args). Transport mode
+\ (LAYOUT-XPORT) keeps its own group surgery and is excluded.
 : LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}   \ rh top = group tag, rl top = logical same-family layout
    LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
    rh P>TYPE T-RES {: th:n :}
@@ -3856,9 +3631,6 @@ defer U-DRAIN-XT ( n -- )
    THEN ;
 
 
-\ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells. Keep
-\ actual and required in their original order for directional input matching.
-\ The spine cursor is no longer slot-aligned past it: drop to no-position.
 \ Implicit callback tails describe a fixed window. During quotation comparison
 \ they may share another tail, but may not absorb a visible input or output.
 \ Executing the quotation still instantiates its tail against the caller stack.
@@ -3887,6 +3659,9 @@ defer U-DRAIN-XT ( n -- )
    THEN
    \ Zero terminates a closed evaluator row; it has no cell to descend into.
    over TAG S-PUSH <> over TAG S-PUSH <> or IF U-FAIL EXIT THEN
+   \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells, actual
+   \ and required kept in order for directional input matching. The spine
+   \ cursor is not slot-aligned past it: drop to no-position.
    2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND EXIT THEN
    2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND-REV EXIT THEN
    U-ROW-DESCEND ;
@@ -3987,12 +3762,11 @@ CHECKER-REG:}SCRATCH
    NEW-WALK ;
 variable DEXP   variable DACT   variable FAILSET
 variable DF-ACT   variable DF-EXP
-\ ADT variant capture (docs/forth.md "Structures And Enums"): the sum-variant/tag
-\ involved at a layout mismatch. CVLIVE holds the SUMV id of the variant a
-\ `construct family variant` step is applying (its payload row is what
-\ CHECKER-STEP unifies); UF>DIAG latches it into DVAR exactly when the first
-\ failure is captured (beside DF-ACT/DF-EXP). -1 = no variant in scope, so a
-\ pure-scalar or non-construct mismatch renders no variant/tag.
+\ ADT variant capture (docs/forth.md "Structures And Enums"): CVLIVE holds the
+\ SUMV id of the variant a `construct family variant` step is applying;
+\ UF>DIAG latches it into DVAR when the first failure is captured (beside
+\ DF-ACT/DF-EXP). -1 is no variant in scope, so a scalar or non-construct
+\ mismatch renders no variant or tag.
 variable DVAR    -1 DVAR !
 variable CVLIVE  -1 CVLIVE !
 \ The construct form's token state (CONSTRUCT-TOK).
@@ -4000,10 +3774,10 @@ variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant toke
 CHECKER-REG:SCRATCH{
 variable CONFAM    \ resolved family id while CONM = 2
 CHECKER-REG:}SCRATCH
-\ Payload slot of the captured mismatch: UF-POSN's slot-from-top of
-\ the failed expected-row element, latched beside DVAR. Render converts it to
-\ the declaration-order payload index; -1 = position unknown (row-level or
-\ post-LOGHID failure), so the packet omits payload_pos.
+\ Payload slot of the captured mismatch: UF-POSN's slot from the top of the
+\ failed expected-row element, latched beside DVAR. Render converts it to the
+\ declaration-order payload index; -1 is unknown (a row-level or post-LOGHID
+\ failure), and the packet omits payload_pos.
 variable DPOS    -1 DPOS !
 variable VSIG   variable SGSEEN   variable SGDECL-BAD   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
@@ -4016,28 +3790,23 @@ $7FFFFFFFFFFFFFFF constant TOKBUF-MAX-CAP
 create FAILTK-BOOT TOKBUF-INIT-CAP allot
 create TKF-BOOT TOKBUF-INIT-CAP allot
 create NMB-BOOT TOKBUF-INIT-CAP allot
-\ The fourth buffer of the family holds a string literal's DECODED body, and it
-\ rides the same growth because the same number bounds it: CHECK-RESET ensures
-\ the family for the whole scan text, and a decoded payload is never longer than
-\ the raw payload it came from, which is a slice of that text. So there is no
-\ separate ceiling here and no separate refusal — a body this cannot hold is a
-\ body the scan itself could not hold.
+\ The fourth buffer holds a string literal's decoded body and rides the same
+\ growth: CHECK-RESET ensures the family for the whole scan text, and a decoded
+\ payload is never longer than its raw slice of that text, so it needs no
+\ ceiling or refusal of its own.
 create SDEC-BOOT TOKBUF-INIT-CAP allot
 PERSISTED-PTR-VARIABLE FAILTK-P   PERSISTED-PTR-VARIABLE TKF-P   PERSISTED-PTR-VARIABLE NMB-P   PERSISTED-PTR-VARIABLE SDEC-P   variable TOKBUF-CAP-U
 variable FAILTU
 FAILTK-BOOT FAILTK-P !   TKF-BOOT TKF-P !   NMB-BOOT NMB-P !   SDEC-BOOT SDEC-P !
 TOKBUF-INIT-CAP TOKBUF-CAP-U !
-\ FAILTK-FIELD/TKF-FIELD/NMB-FIELD/SDEC-FIELD ( -- ptr ptr u8 )
 : FAILTK-FIELD FAILTK-P 0 ptr-field ;
 : TKF-FIELD TKF-P 0 ptr-field ;
 : NMB-FIELD NMB-P 0 ptr-field ;
 : SDEC-FIELD SDEC-P 0 ptr-field ;
-\ FAILTK/TKF/NMB/SDEC ( -- ptr u8 )
 : FAILTK FAILTK-FIELD @ ;
 : TKF TKF-FIELD @ ;
 : NMB NMB-FIELD @ ;
 : SDEC SDEC-FIELD @ ;
-\ FAILTK!/TKF!/NMB!/SDEC! ( ptr u8 -- )
 : FAILTK! FAILTK-FIELD ! ;
 : TKF! TKF-FIELD ! ;
 : NMB! NMB-FIELD ! ;
@@ -4082,8 +3851,8 @@ PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 CHECKER-REG:}SCRATCH
 variable JSON-DIAGS   0 JSON-DIAGS !
 
-\ TBASE holds the checked source base pointer, so its cell is declared storage
-\ (dot habu-refuse-a-ptr-5ad2734e) and a plain fetch keeps the ptr u8 role.
+\ TBASE's cell holds the checked source base pointer, so it is declared storage
+\ and a plain fetch keeps the ptr u8 role.
 : TBASE@ ( -- ptr u8 )
    TBASE @ ;
 
@@ -4106,9 +3875,8 @@ variable LINEXP
    T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
    PAY CT-LINEAR? ;
 
-\ Deferred taint scan (part of the linear kind discipline; storage/gate declared
-\ before NEW). Reject if any var tainted by a polymorphic copy/drop (LIN-TAINT)
-\ now resolves to a linear con — the linear was laundered (`[: dup FREE ;]`).
+\ Deferred taint scan: reject if any var tainted by a polymorphic copy or drop
+\ (LIN-TAINT) now resolves to a linear con (`[: dup FREE ;]`).
 variable LTNT-I
 : LIN-TAINT-SCAN ( -- )
    LIN-ANY? 0= IF exit THEN
@@ -4172,19 +3940,17 @@ CHECKER-REG:}SCRATCH
 : LIN-CHECK ( -- )
    DCUR @ RCUR @ LIN-TOTAL LINBEF @ <> IF 0 OK ! THEN ;
 
-\ --- reject reasons (docs/forth.md "Structures And Enums"). A failure site latches a reason
-\ code alongside the token pin; render.f maps it to a stable code, repair class,
-\ suggestion, and prose. First reason wins, and only while the token pin is
-\ still open (FAILSET clear), so the reason always describes the pinned token.
-\ The nonexhaustive reason also latches (family, seen-bitset offset, variant
-\ count) so the renderer can walk the unseen declaration-order tags to NAMES.
+\ --- reject reasons (docs/forth.md "Structures And Enums"). A failure site
+\ latches a reason code beside the token pin; render.f maps it to a stable
+\ code, repair class, suggestion and prose. The first reason wins, only while
+\ the pin is open (FAILSET clear), so it describes the pinned token. The
+\ nonexhaustive reason also latches family, seen-bitset offset and variant
+\ count so the renderer can name the unseen tags.
 \
-\ THE VOCABULARY SITS HERE, ABOVE THE FIRST-FAILURE CAPTURE, because that is the
-\ only place a VALUE-POSITION refusal can name itself: CHECKER-STEP sets FAILSET
-\ the instant UNIFY-IN fails, and after that MDIAG! has nothing to say (dot
-\ habu-latch-value-pos-373cad6b). UF-CAPTURE below names the refusal in the one
-\ instruction between the failure and the pin closing. The match/construct
-\ machinery that raises most of these codes is far below and unaffected.
+\ The vocabulary sits above the first-failure capture because that is the only
+\ place a value-position refusal can name itself: CHECKER-STEP sets FAILSET the
+\ instant UNIFY-IN fails, after which MDIAG! is silent. UF-CAPTURE names the
+\ refusal in the one instruction between the failure and the pin closing.
 1 constant MD-FAM-UNKNOWN     \ match family token resolves nothing in signature scope
 2 constant MD-FAM-KIND        \ match family is not a sum or enum
 3 constant MD-SCRUT           \ top of stack is not a sum/enum bundle
@@ -4192,18 +3958,18 @@ CHECKER-REG:}SCRATCH
 5 constant MD-VAR-UNKNOWN     \ variant not declared by the matched family
 6 constant MD-VAR-DUP         \ duplicate variant branch
 7 constant MD-MISSING-OF      \ variant token not followed by OF
-8 constant MD-NONEXH          \ ;MATCH with unseen variants (no default branch in v1)
+8 constant MD-NONEXH          \ ;MATCH with unseen variants
 9 constant MD-STRAY           \ stray ;match / closer over a foreign frame
 10 constant MD-TRUNC          \ unterminated match form at definition end
 11 constant MD-DEPTH          \ match cannot reserve its two control frames
 12 constant MD-QUOT           \ match inside a quotation: open rows carry no scrutinee
-13 constant MD-OPEN-ARGS      \ open-arg parametric scrutinee (v1 conservative cell)
+13 constant MD-OPEN-ARGS      \ open-arg parametric scrutinee (one conservative cell)
 14 constant MD-JOIN           \ branch outputs do not unify
 15 constant MD-CON-FAM        \ construct family not declared in the active package
 16 constant MD-CON-KIND       \ construct family is not a sum or enum
 17 constant MD-CON-VAR        \ construct variant not declared by the family
 18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
-19 constant MD-DIVBAR         \ M5: block collective/barrier reached under divergent control
+19 constant MD-DIVBAR         \ block collective/barrier reached under divergent control
 20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt: fetched from untyped memory (RSEXEC T-VAR) or the opaque-xt atom
 21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt (RSCATCH, as RSEXEC); same E-EXEC-OPAQUE-XT code, prose names 'catch'
 22 constant MD-RIGID-REGION   \ two host allocations differ in host region (which allocation)
@@ -4255,7 +4021,6 @@ variable MDIAG-WIDTH  \ input width: the cells of the input row a record would h
    THEN
    dup HIDDEN-PARAM? IF MK-LOGICAL THEN ;
 
-\ Forget the rows and the variant a failure captured.
 : CAPTURE-CLEAR ( -- )
    0 DF-ACT !  0 DF-EXP !  0 DEXP !  0 DACT !  -1 DVAR !  -1 DPOS ! ;
 
@@ -4298,27 +4063,24 @@ TAIL-CAPTURE-DEFAULT
    THEN ;
 
 
-\ THE FIRST FAILURE, CAPTURED ONCE. Every site that judges a row -- the token
-\ step, the locals annotation bind, and the three boundary unifies -- pins the
-\ same three things in the same order: the expected/actual pair the renderer
-\ prints, the reason the refusal itself raised, and then FAILSET, which freezes
-\ the token pin so nothing later can move it. The reason has to be named BEFORE
-\ that last store: MDIAG! is silent once the pin is closed, which is why the raw
-\ cell rule used to need a second latch path of its own.
+\ The first failure, captured once. Every site that judges a row (the token
+\ step, the locals annotation bind, the three boundary unifies) pins the
+\ expected/actual pair the renderer prints, then the reason the refusal raised,
+\ then FAILSET, which freezes the pin. The reason must be named before that last
+\ store: MDIAG! is silent once the pin is closed.
 : UF-CAPTURE ( n n -- ) {: exp:n act:n :}
    exp DEXP !  act DACT !
    UF>DIAG
    CELL-DIAG!
    -1 FAILSET ! ;
 
-\ THE RETURN ROW'S TWIN. The return row is judged by the same unifier and
-\ refused by the same cell rules, so a refusal there has to be named in the same
-\ instruction between the failure and the pin closing (dot
-\ habu-name-a-raw-09fe04d0: `variable RV  : RS3 ( | -- | ptr n ) RV @ >r ;`
-\ answered a bare return-stack imbalance). It latches the reason and RSBAD only:
-\ the row pair is already rendered from the declared and inferred return rows
-\ (`return_stack`), and claiming DEXP/DACT as well would relabel every ordinary
-\ return-stack mismatch as a value mismatch.
+\ The return row's twin: judged by the same unifier and cell rules, so its
+\ refusal is named in the same instruction between failure and pin closing
+\ (`variable RV  : RS3 ( | -- | ptr n ) RV @ >r ;` otherwise answers a bare
+\ return-stack imbalance). It latches the reason and RSBAD only: the row pair is
+\ rendered from the declared and inferred return rows (`return_stack`), and
+\ claiming DEXP/DACT too would relabel every return-stack mismatch as a value
+\ mismatch.
 variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below; 3 and 4 the same at a quotation literal's ;]
 \ The quotation literal's own return rows, base and current, latched with RSBAD
 \ 3 or 4: CF-SEMIQ restores the definition's before the field is rendered.
@@ -4329,10 +4091,9 @@ variable QRS-EXP   variable QRS-ACT
    -1 FAILSET ! ;
 
 
-\ The return row's twins of SUNI-JOIN and SUNI-IN. They sit here rather than
-\ beside those because the recorded call step -- where a called word's DECLARED
-\ return INPUT meets the caller's return row (RSUNI-IN) -- is written thousands
-\ of lines above them.
+\ The return row's twins of SUNI-JOIN and SUNI-IN, here rather than beside them
+\ because the recorded call step, where a called word's declared return input
+\ meets the caller's return row (RSUNI-IN), comes far above them.
 : RSUNI-JOIN ( n -- )   \ two branches' return rows meet (UK-JOIN)
    {: s:n :}
    RCUR @ s UNIFY-JOIN
@@ -4350,25 +4111,17 @@ variable QRS-EXP   variable QRS-ACT
    dup 0=  FAILSET @ 0=  and  OK @ and  IF RS-CAPTURE THEN
    OK @ and OK ! ;
 
-\ --- input underflow (dot habu-name-an-input-45ee675e) -------------------------
-\ The cells below a definition's declared inputs are the CALLER'S. A body that
+\ --- input underflow -------------------------------------------------------------
+\ The cells below a definition's declared inputs are the caller's. A body that
 \ reaches under them does not fail where it reaches: the declared base is an
-\ open row, so the step unifies by binding that row and checking continues as if
-\ the stack had always been deeper. CHECK-NO-BORROW catches it at the boundary,
-\ where the pin is on whatever token happened to run last and no reason survives
-\ -- measured, `: CONSUME ( n -- ) drop ;  : G ( -- n ) CONSUME 0 ;` answered
-\ `at '0'` and nothing else.
-\
-\ So ask the same question one step earlier, at the token that spends the frame.
-\ The two depths must be read BEFORE the unify: ROW-CELLS deliberately follows a
-\ bound tail, so after the step the borrowed row and the row it was measured
-\ against are one row and neither can be recovered.
-\
-\ WHY THE REFUSAL WAITS FOR THE UNIFY TO SUCCEED. A step can be short AND
-\ mistyped, and then the mismatch is the better answer: `( r -- n ) CONSUME2 0`
-\ already says `expected: n n actual: r`, which names the fix. Firing only when
-\ the row otherwise fit leaves every existing mismatch exactly where it was and
-\ takes over only the rejections that had no token and no reason.
+\ open row, so the step binds it and checking continues. CHECK-NO-BORROW
+\ catches it only at the boundary, where the pin is on the last token and no
+\ reason survives (`: CONSUME ( n -- ) drop ;  : G ( -- n ) CONSUME 0 ;`
+\ answered `at '0'`), so the token that spends the frame is asked. Both depths
+\ are read before the unify: ROW-CELLS follows a bound tail, so afterwards the
+\ two rows are one. The refusal waits for the unify to succeed: a step short
+\ and mistyped gets the better mismatch answer (`( r -- n ) CONSUME2 0` says
+\ `expected: n n actual: r`).
 CHECKER-REG:SCRATCH{
 variable UF-NEED   variable UF-HAVE
 CHECKER-REG:}SCRATCH
@@ -4388,17 +4141,14 @@ CHECKER-REG:}SCRATCH
    THEN
    0 OK ! ;
 
-\ CONSTRUCT-DECL-TERM ( fam -- term bool ) : the constructed value's type args are
-\ named only by the DECLARED output (a payloadless variant like `none`, or a
-\ variant that binds only some of the family params, has no other source). Scan
-\ SGOUT for a resolved hidden-field bundle of `fam` and return its term (its args
-\ are the family's instantiation). This is bidirectional: the construct step
-\ copies these args over its fresh param vars (TFC-ARGS!), so a concrete layout
-\ arg — e.g. option<tdpbw2> — makes the payload/output PUSH-LOGICAL-expand to the
-\ arg-aware width. An OPEN declared output (option<a>) stays one logical cell, is
-\ never a hidden field, and is skipped, so cell/open constructions keep their
-\ fresh-var behaviour and the boundary coercion unchanged. Nothing found = fall
-\ back to fresh vars (multi-cell then fails closed, exactly as before this slice).
+\ The constructed value's type args are named only by the declared output (a
+\ payloadless variant like `none`, or one binding only some family params, has
+\ no other source). Scans SGOUT for a resolved hidden-field bundle of `fam`;
+\ the construct step copies its args over its fresh param vars (TFC-ARGS!), so
+\ a concrete layout arg such as option<tdpbw2> makes the payload and output
+\ expand at the arg-aware width. An open declared output (option<a>) stays one
+\ logical cell and is skipped. Nothing found: fresh vars, and a multi-cell
+\ construction fails closed.
 : CONSTRUCT-DECL-TERM ( n -- n bool )
    {: fam:n :}
    SGOUT @
@@ -4409,15 +4159,13 @@ CHECKER-REG:}SCRATCH
    REPEAT
    drop 0 RES-FALSE ;
 
-\ CONSTRUCT-DECL-LAYOUT ( fam -- term bool ) : should the constructor pre-seed
-\ its fresh args from the declared output? Preserve the existing wide arm first:
-\ any direct argument wider than one cell needs the arg-aware construct path,
-\ including its established open/linear checks downstream. The W1 extension is
-\ narrower: a closed, non-linear declared instantiation with a DIRECT layout-
-\ family arg needs pre-seeding because its hidden input cannot bind an ordinary
-\ payload var. Pointer-wrapped families are not direct args; nominal scalars and
-\ plain con/pointer args stay on the ordinary stored-effect word path. SEED-TERM?
-\ is that rule over one resolved family term, wherever the term came from.
+\ Should the constructor pre-seed its fresh args from the declared output? Any
+\ direct argument wider than one cell takes the arg-aware construct path with
+\ its open and linear checks. A closed, non-linear declared instantiation with a
+\ direct layout-family arg also needs pre-seeding: its hidden input cannot bind
+\ an ordinary payload var. Pointer-wrapped families are not direct args; nominal
+\ scalars and plain con or pointer args stay on the stored-effect word path.
+\ SEED-TERM? is that rule over one resolved family term.
 : SEED-TERM? ( n -- bool ) {: t:n :}
    0 BEGIN dup t PARAM>ARGC < WHILE
       t over PARAM>ARG T-WIDTH 1 > IF drop RES-TRUE EXIT THEN
@@ -4437,10 +4185,10 @@ CHECKER-REG:}SCRATCH
    t SEED-TERM? IF t RES-TRUE EXIT THEN
    0 RES-FALSE ;
 
-\ UNMAKE-LIVE-TERM ( fam -- term bool ) : the live top of the data row when it is
-\ a term of FAM, a hidden cell of its bundle or a logical term alike. A row with
-\ no pushed top (a quotation body's fresh row), a stale cell (its wrapper is no
-\ T-PARAM), a variable or another type is no term.
+\ The live top of the data row when it is a term of FAM, a hidden cell of its
+\ bundle or a logical term. A row with no pushed top (a quotation body's fresh
+\ row), a stale cell (its wrapper is no T-PARAM), a variable or another type is
+\ no term.
 : UNMAKE-LIVE-TERM ( n -- n bool )
    {: fam:n :}
    DCUR @ R-RES dup TAG S-PUSH <> IF drop 0 RES-FALSE EXIT THEN
@@ -4449,14 +4197,12 @@ CHECKER-REG:}SCRATCH
    t PARAM>FAM fam <> IF 0 RES-FALSE EXIT THEN
    t RES-TRUE ;
 
-\ UNMAKE-SEED-LAYOUT ( fam -- term bool ) : the same question for a product's
-\ generated UNMAKE, which runs the construct step backwards (type-family.f
-\ TFAM-UNMAKE-STEP?). The seed is only the value it takes apart, the live input
-\ UNMAKE-LIVE-TERM finds, and SEED-TERM? decides as it does for MAKE, so the
-\ logical term an ordinary MAKE leaves is no seed. A quotation body starts on a
-\ fresh row with no live input, and the enclosing definition's declared input is
-\ no substitute for it: that value may be consumed before the UNMAKE runs. With
-\ no seed, UNMAKE keeps the ordinary stored-effect word path, where a stale live
+\ The same question for a product's generated UNMAKE, which runs the construct
+\ step backwards (type-family.f TFAM-UNMAKE-STEP?). The seed is only the live
+\ input it takes apart, so the logical term an ordinary MAKE leaves is no seed.
+\ The enclosing definition's declared input is no substitute for a quotation
+\ body's missing live input: that value may be consumed before UNMAKE runs.
+\ With no seed, UNMAKE keeps the stored-effect word path, where a stale live
 \ cell is refused as a stale read.
 : UNMAKE-SEED-LAYOUT ( n -- n bool )
    {: fam:n :}
@@ -4515,23 +4261,17 @@ CHECKER-REG:}SCRATCH
 variable QTT  variable QD2  variable QR2
 
 \ ---- what a throw path leaves of the window it was entered with ---------------
-\ `catch` puts the two stacks back to the DEPTH it was entered at and never to
-\ their CONTENTS, so every cell of the caught quotation's window -- its declared
-\ fixed input prefix, the cells CWIN-IN counts -- is only still worth its input
-\ type if EVERY throw path of that body provably left it alone. What is recorded
-\ per body is therefore one INTACT MASK per stack: bit j, counted from the TOP of
-\ the window, is set while every edge so far left window cell j where it was.
-\
-\ WHY FROM THE TOP. A quotation body starts on a fresh open row and its window
-\ grows DOWNWARD as the body pops: the window is only final at `;]`. A cell the
-\ body pops AFTER an edge was below that edge's stack pointer and could not have
-\ been touched before it, so it is intact at that edge by construction -- and
-\ counting from the top keeps every bit already recorded pointing at the same
-\ cell while the window deepens underneath it.
-\
-\ Bits above the recorded width mean "intact" too (same argument), so a window
-\ wider than the mask, or a row the edge cannot be compared against at all,
-\ records a zero: nothing proved, everything stale.
+\ `catch` restores both stacks' depth, never their contents, so a cell of the
+\ caught quotation's window (its declared fixed input prefix, the cells CWIN-IN
+\ counts) keeps its input type only if every throw path of the body left it
+\ alone. Each body records one intact mask per stack: bit j, counted from the
+\ top of the window, is set while every edge so far left window cell j alone.
+\ From the top because the window grows downward as the body pops and is final
+\ only at `;]`: a cell popped after an edge lay below that edge's stack pointer
+\ and is intact there by construction, and top-relative bits keep pointing at
+\ the same cell as the window deepens. Bits above the recorded width mean
+\ intact too, so a window wider than the mask, or a row an edge cannot be
+\ compared against, records zero: nothing proved, everything stale.
 48 constant XMASK-BITS          \ window cells a mask can speak for
 $FFFFFFFFFFFF constant XMASK-ALL         \ 2^48-1: every window cell intact
 
@@ -4544,16 +4284,13 @@ $FFFFFFFFFFFF constant XMASK-ALL         \ 2^48-1: every window cell intact
    k XMASK-BITS >= IF mask EXIT THEN
    mask 1 k lshift 1 - and ;
 
-\ A SYMBOL'S CONTROL WORD, ONE CELL. The control flags live in bits 0-15, a
-\ defer flag in bit 16, CTL-NAMES in bit 17 and CTL-GENERATES in bit 18 -- the
-\ shape the owner-ABI handover (CHECKED-ROW / TRANSFER-ROW) travels in. The
-\ intact masks ride above them, 20 bits each, and the NORET store keeps its
-\ entries in this same shape, so the fact a definition proved about its inputs
-\ reaches a later engine without a wider record or a second cell. Twenty is
-\ what fits beside the flags with room to spare: a word with more than 20
-\ declared inputs keeps no evidence for the deeper ones, which is the
-\ conservative answer, and it is the one a producer that never heard of masks
-\ gives by leaving those bits zero.
+\ A symbol's control word is one cell: control flags in bits 0-15, a defer flag
+\ in bit 16, CTL-NAMES in bit 17, CTL-GENERATES in bit 18, the shape the
+\ owner-ABI handover (CHECKED-ROW / TRANSFER-ROW) travels in. The intact masks
+\ ride above them, 20 bits each, and the NORET store keeps entries in this
+\ shape, so a proved fact reaches a later engine without a wider record. A word
+\ with more than 20 declared inputs keeps no evidence for the deeper ones, the
+\ conservative answer, which a producer that never sets masks also gives.
 20 constant XFER-MASK-BITS
 $FFFFF constant XFER-MASK-ALL
 20 constant XFER-DMASK-SHIFT
@@ -4832,22 +4569,16 @@ variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
    lost node P>LOST or copy P-LOST!
    copy ;
 
-\ THE EDGE A THROWING CALL LEAVES. `ROW-COMMON pre post` is what popping the
-\ callee's own declared inputs leaves of the caller's row, and nothing below it
-\ is within the callee's reach. The popped cells are the question, and the
-\ callee's own record answers it: `keep` bit i -- counted from the TOP of its
-\ declared input row, which is the top of `pre` -- says every throw path of its
-\ body left input i where it was, so the cell `catch`'s depth restore hands back
-\ still holds what the caller put there.
-\
-\ The edge is therefore `pre` measured against the base with the popped and NOT
-\ kept window positions cleared. Window position j holds `pre` position j + s,
-\ s = ROW-TERMS pre - ROW-TERMS base: both count from the top and the two rows
-\ end in the same tail. With keep = 0 this is exactly `XMASK-OF common base`,
-\ the rule before any evidence existed: XMASK-OF's own skip clears the top
-\ (ROW-TERMS base - ROW-TERMS common) positions, which is the same set
-\ { j : 0 <= j + s < popped }, and below the popped region `pre` and `common`
-\ are the same row nodes and compare the same.
+\ The edge a throwing call leaves. `ROW-COMMON pre post` is what popping the
+\ callee's declared inputs leaves of the caller's row; nothing below it is in
+\ the callee's reach. For the popped cells the callee's record answers: `keep`
+\ bit i, counted from the top of its declared input row (the top of `pre`),
+\ says every throw path of its body left input i in place. The edge is `pre`
+\ measured against the base with the popped and not kept window positions
+\ cleared: window position j holds `pre` position j + s, s = ROW-TERMS pre -
+\ ROW-TERMS base. With keep = 0 this equals `XMASK-OF common base`: XMASK-OF's
+\ own skip clears the same set { j : 0 <= j + s < popped }, and below the
+\ popped region `pre` and `common` are the same row nodes.
 CHECKER-REG:SCRATCH{
 variable XM-K
 CHECKER-REG:}SCRATCH
@@ -4880,8 +4611,7 @@ CHECKER-REG:}SCRATCH
    -1 THSET ! ;
 
 \ The edge a token leaves that proves nothing about the cells it popped: the
-\ exceptional rows measured against the bases, as every edge was before a callee
-\ could carry evidence.
+\ exceptional rows measured against the bases.
 : THROW-EDGE-ROWS ( n n -- )    \ exceptional data row, exceptional return row
    {: xd:n xr:n :}
    xd XBASE-D XMASK-OF  xr XBASE-R XMASK-OF  THROW-EDGE ;
@@ -4999,54 +4729,38 @@ variable QUOT-LOSS
         OK @  RSEXEC-EXP @ 0=  and IF LIN-CHECK THEN
      THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
-     \ Opaque xt: the executed value is a bare type variable, an xt fetched from
-     \ untyped memory (a raw variable or create cell), or the opaque-xt atom `'`
-     \ pushes for a word with no stack effect. Its true stack effect is not
-     \ statically known, so executing it in checked code is unsound (it launders
-     \ whatever the xt actually does past the checker) and is rejected here.
-     \ DO-TOK1 turns the flag into the named E-EXEC-OPAQUE-XT diagnostic on the
-     \ pinned `execute` token. The typed routes that stay checked are a quotation
-     \ parameter, a `defer` bound with `is`, and a typed `xt<effect>` storage cell
-     \ (all recover a T-QUOT here).
+     \ Opaque xt: a bare type variable, an xt fetched from untyped memory (a raw
+     \ variable or create cell), or the opaque-xt atom `'` pushes for a word with
+     \ no stack effect. Its effect is not statically known, so executing it in
+     \ checked code would launder whatever it does past the checker. DO-TOK1
+     \ turns the flag into E-EXEC-OPAQUE-XT on the pinned `execute` token. The
+     \ checked routes are a quotation parameter, a `defer` bound with `is`, and a
+     \ typed `xt<effect>` storage cell (all recover a T-QUOT here).
      0 OK !  -1 EXEC-OPAQUE !
    ELSE QTT @ XT-MISMATCH THEN THEN ;
 
 \ ---- how wide the window a catch site takes is, measured where it is knowable --
-\ WHAT THE NUMBER IS FOR. A compiler that turns a catch site into a call has to
-\ know how many stack cells the caught body may disturb, because the engine puts
-\ the stack back to its DEPTH on a throw and never to its CONTENTS: every cell in
-\ that window has to be in its data-stack home across the call, or the site
-\ answers the value it had before, which is the one answer the engine never
-\ gives. That number is the caught quotation's own input row in cells.
-\
-\ AND IT IS MEASURED BEFORE THE FIT-CHECK, WHICH IS THE WHOLE SUBTLETY. The
-\ quotation's din ends in a row variable, and UNIFY-IN below binds that variable
-\ to the rest of the live stack - so after the check the din row IS the live row,
-\ and ROW-CELLS asked then reports the whole compile-time stack depth rather than
-\ the window. Measured a moment earlier the tail is still open and ROW-CELLS
-\ stops at it, which is exactly the quotation's own fixed prefix, with every term
-\ already carrying its instantiated width. Measured: `[: 1 2 3 throw ;] catch`
-\ over a one-deep stack answers 0 here and would answer 1 after the check.
-\
-\ A BODY THAT NEVER RETURNS HAS NO OUTPUT ROW AND SAYS SO. The fit-check skips
-\ the dout of a quotation whose fall-through is dead, so there is no instantiated
-\ output row to measure and CELLS-NONE is what is recorded - not a zero, which is
-\ a real width a window-0 body has.
+\ A compiler that turns a catch site into a call must know how many cells the
+\ caught body may disturb: a throw restores depth, never contents, so every
+\ window cell must be in its data-stack home across the call. That number is
+\ the caught quotation's own input row in cells, measured before the fit-check:
+\ UNIFY-IN binds din's row variable to the rest of the live stack, after which
+\ ROW-CELLS reports the whole stack depth (`[: 1 2 3 throw ;] catch` over a
+\ one-deep stack answers 0 before the check and 1 after).
+\ A body that never returns has no instantiated output row (the fit-check skips
+\ a dead fall-through's dout), so CELLS-NONE is recorded, not 0, which is the
+\ real width of a window-0 body.
 
 \ ---- what the catch site hands back --------------------------------------------
-\ The fit-check above proves the caught body takes and leaves the same stack; it
-\ does NOT prove the throw paths leave the cells they were given. Each window cell
-\ the folded mask does not vouch for becomes `stale<t>` on the live row, which is
-\ the type of a cell that may be moved, dropped or bound to an untyped local and
-\ whose READ is refused by name. The throw code `catch` itself pushes is a plain
-\ `n` and is added after.
-\ A mask bit counts from the TOP of the window, so the rewrite walks DOWN to the
-\ window's bottom and rebuilds the entries above it on the way out: the entry at
-\ depth d takes bit d, and a depth past the mask's reach was never vouched for.
-\ Two base cases end the walk - the counted window, and a term that is not a push
-\ (the row's tail, so there is no further window entry to rewrite). The walk is
-\ as deep as the window is wide, which is why there is no scratch row and no
-\ width a rewrite quietly declines.
+\ The fit-check proves the caught body takes and leaves the same stack, not that
+\ the throw paths leave the cells they were given. Each window cell the folded
+\ mask does not vouch for becomes `stale<t>` on the live row; the throw code
+\ `catch` pushes is a plain `n` added after. Mask bits count from the top, so
+\ the rewrite walks down to the window's bottom and rebuilds the entries above
+\ it: the entry at depth d takes bit d, and a depth past the mask's reach was
+\ never vouched for. The walk ends at the counted window or a non-push term (the
+\ row's tail); it is as deep as the window is wide, so it needs no scratch row
+\ and declines no width.
 : ROW-FIRST-LOST ( n -- n )
    dup 0= IF EXIT THEN
    R-RES dup TAG S-PUSH = IF P>LOST ELSE drop 0 THEN ;
@@ -5203,12 +4917,10 @@ variable RSH
 
 64 constant VREC-CAP-INIT       \ value-record table records (grows on demand)
 512 constant VREC-FIELD-INIT     \ field-node index pool (grows on demand)
-\ VREC-NODE-INIT sizes NINE parallel node arrays (VRN-TAG plus VRN-A..VRN-H),
-\ 72 bytes of boot DP per node. The engine prefix declares no value record at
-\ all - its high-water is one node, the reserved id 0 - and the measured
-\ high-water over every checker suite is 64 nodes (test/engine-suite.f), so
-\ $4000 carried a megabyte of never-written capacity into every image. 512 is
-\ 8x the suite mark; past it VREC-NODE-GROW doubles as before.
+\ VREC-NODE-INIT sizes nine parallel node arrays (VRN-TAG plus VRN-A..VRN-H),
+\ 72 bytes of boot DP per node. The prefix's high-water is one node (the
+\ reserved id 0); the measured high-water over every checker suite is 64 nodes
+\ (test/engine-suite.f). 512 is 8x that; past it VREC-NODE-GROW doubles.
 $200 constant VREC-NODE-INIT    \ instantiation nodes (grows on demand)
 \ Value-record name bytes. Measured high-water: 0 in the prefix, 189 bytes over
 \ every checker suite (test/engine-suite.f). $2000 is 43x that mark.
@@ -5222,10 +4934,9 @@ variable VREC-NODE-CAP-V   VREC-NODE-INIT VREC-NODE-CAP-V !
 variable VREC-STR-CAP-V   VREC-STR-INIT VREC-STR-CAP-V !
 : VREC-STR-CAP ( -- n ) VREC-STR-CAP-V @ ;
 
-\ Boot buffers + P pointers. VREC-NAME-A holds OFFSETS into VREC-STR, the same
-\ way VR-ATOM/VR-PARAM node VN.A cells always have, so a pool relocation and a
-\ snapshot bake both leave the stored names alone (see the CT registry head for
-\ why a registry column that snapshot persist repoints cannot hold pointers).
+\ VREC-NAME-A holds offsets into VREC-STR, as VR-ATOM/VR-PARAM node VN.A cells
+\ do, so a pool relocation and a snapshot bake leave stored names alone (the CT
+\ registry head says why a column snapshot persist repoints holds no pointers).
 create VREC-NAME-A-BOOT VREC-CAP-INIT cells allot
 create VREC-NAME-U-BOOT VREC-CAP-INIT cells allot
 create VREC-START-BOOT VREC-CAP-INIT cells allot
@@ -5284,17 +4995,15 @@ create VRI-AK-BOOT VRI-AK-INIT cells allot
 PERSISTED-PTR-VARIABLE VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 : VRI-AK ( -- ptr n ) VRI-AK-P @ ;
 
-\ VNARG: flat per-node arg pool for persisted VR-PARAM nodes (uncapped arity).
-\ A VR-PARAM node stores argc in VN.C, the arg-run start (into VNARG) in VN.D, and
-\ the family-id in VN.H; the argc child node ids live at [start,start+argc). Cells
-\ hold node ids (pointer-free), so REG-GROW1 relocation and snapshot bake verbatim.
-\ VNARG-N rewinds through the rollback frame (RBF.VNARGN) in lockstep with
-\ VREC-NODE-N: a VR-PARAM node and its arg run are allocated together inside one
-\ VREC-COPY (never across a frame boundary), so at every RBF-PUSH/POP point all
-\ nodes below the VREC-NODE-N mark have runs entirely below the VNARG-N mark —
-\ rewinding both retires a rejected scope's runs without dangling a survivor.
-\ Measured high-water: 0 cells in the prefix, 44 over every checker suite
-\ (test/engine-suite.f). $200 is 11x that mark; VNARG-GROW doubles past it.
+\ VNARG: flat per-node arg pool for persisted VR-PARAM nodes. A VR-PARAM node
+\ stores argc in VN.C, the arg-run start in VN.D and the family id in VN.H; the
+\ child node ids live at [start,start+argc). Cells hold node ids, so REG-GROW1
+\ relocation and a snapshot bake copy them verbatim. VNARG-N rewinds through
+\ the rollback frame (RBF.VNARGN) in lockstep with VREC-NODE-N: a node and its
+\ run are allocated together inside one VREC-COPY, so at every RBF-PUSH/POP all
+\ nodes below the VREC-NODE-N mark have runs below the VNARG-N mark and
+\ rewinding both strands no survivor. Measured high-water: 0 cells in the
+\ prefix, 44 over every checker suite (test/engine-suite.f); $200 is 11x that.
 $200 constant VNARG-INIT
 create VNARG-BOOT VNARG-INIT cells allot
 PERSISTED-PTR-VARIABLE VNARG-P   VNARG-BOOT VNARG-P !
@@ -5430,8 +5139,6 @@ variable VRC-RVN
 : VN.F! ( n n -- ) VRN-F VREC-NODE-SLOT ! ;
 : VN.G! ( n n -- ) VRN-G VREC-NODE-SLOT ! ;
 : VN.H! ( n n -- ) VRN-H VREC-NODE-SLOT ! ;
-\ VN>ARG ( node i -- childnode ) : the i-th arg node of a persisted VR-PARAM node,
-\ read from the flat VNARG pool at [VN.D@, VN.D@+argc). (VN.C@ holds argc.)
 : VN>ARG ( n n -- n ) {: node:n i:n :}
    node VN.D@ i + cells VNARG + @ ;
 
@@ -5444,9 +5151,8 @@ variable VRC-RVN
 : VREC-STR-ENSURE ( n -- ) {: add:n :}   \ ensure room for `add` more string bytes
    VREC-STR-U @ add + VREC-STR-CAP-V @ <= IF exit THEN
    VREC-STR-U @ add + VREC-STR-GROW ;
-\ Intern `u` bytes in the pool and answer where they went as an OFFSET. The
-\ ENSURE may relocate the pool, so the base is read after it; the pool's used
-\ mark is not moved by a relocation, so it is the offset either way.
+\ The ENSURE may relocate the pool, so the base is read after it; the used mark
+\ is the offset either way.
 : VREC-STR-COPY ( ptr u8 n -- n n ) {: a:ptr u:n :}
    u VREC-STR-ENSURE
    VREC-STR-U @ {: off:n :}
@@ -5605,9 +5311,8 @@ variable VRC-RVN
          x VREC-RES PARAM>ARGC {: argc:n :}
          argc node VN.C!
          x VREC-RES PARAM>FAM node VN.H!            \ resolved family-id (identity)
-         \ reserve an argc-cell run in VNARG, then copy children into it. Children
-         \ (nested params) allocate their own runs after this one; the run start
-         \ index is stable across REG-GROW1 relocation, so re-fetch VNARG per store.
+         \ Children allocate their own VNARG runs after this one; the start index
+         \ survives REG-GROW1 relocation, so re-fetch VNARG per store.
          VNARG-N @ {: start:n :}
          argc VNARG-ENSURE
          start node VN.D!
@@ -5723,13 +5428,11 @@ variable VRC-RVN
       VREC-I @ 1 + VREC-I !
    REPEAT ;
 
-\ --- generic signature parser: build a step effect from a textual " in -- out "
-\ stack effect. A single lowercase letter is a polymorphic type variable (shared
-\ across in/out within one signature); `n` = int (con 1), `f` = flag (con 2).
-\ Unknown multi-char tokens mark the signature malformed; row variables are
-\ shared so the effect is row-polymorphic.
-\ Signature quantifiers retain their source-letter identity for generic effect
-\ parsing and diagnostics.  This is not the declaration parameter alphabet.
+\ Signature parser: a single lowercase letter is a type variable shared across
+\ in/out of one signature; `n` = int (con 1), `f` = flag (CC-BOOL); an unknown
+\ multi-char token marks the signature malformed. Row variables are shared, so
+\ the effect is row-polymorphic. Quantifiers keep their source letter; this is
+\ not the declaration parameter alphabet.
 create NMAP 26 cells allot
 variable BIND-DEPTH
 create BIND-DOMAINS 32 cells allot
@@ -5861,9 +5564,9 @@ variable TORDER-DEPTH
    rc 0 <> IF rc throw THEN
    uncertain ;
 REG-PROTECT
-\ --- declared-effect parametricity seal (habu-nominal-storage-effect). A rejected
-\ definition whose body specialized a declared quantifier to a sealed nominal/layout
-\ family, or unified two declared quantifiers together. Set by NP-CHECK post-body.
+\ Declared-effect parametricity seal, set by NP-CHECK after the body: the body
+\ specialized a declared quantifier to a sealed nominal or layout family, or
+\ unified two declared quantifiers.
 variable NPBAD               \ non-parametric declared effect detected?
 variable NPBAD-KIND          \ 0 = concrete specialization; 1 = alias; 2 = phantom mint; 3 = kind refinement;
                              \ 4 = DATA base; 5 = null; 6 = row alias; 7 = row given fixed cells
@@ -5872,21 +5575,16 @@ variable NPBAD-Q2            \ aliasing partner's letter (char code); 0 when kin
 variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family naming
 
 \ ---- the refusal a definition's diagnostic names -----------------------------
-\ One failure refuses a definition, and its code, token, position, repair class,
-\ suggestion, prose and per-code fields all describe that one. The load's order
-\ chooses it. The load compiles the body before it checks anything at `;`, so a
-\ body token it cannot compile (an undefined word, a retired global, a local it
-\ cannot bind, an unmodeled immediate, a construct or match it cannot read)
-\ refuses the definition at that token, the first in source order
-\ (CREFUSE, taken by REFUSAL-STEP). A name `using` makes the walk refuse
-\ (CHECKER-RESOLVE:RAISE) is such a token when it is ticked or no global binds
-\ it, for the load's lookup refuses it there. Otherwise the first name a used
-\ public shadows a global for, or makes ambiguous beside one, refuses it
-\ (CUSING): the load's checker refuses that name at `;` before it checks
-\ anything else. Otherwise a signature that does not parse refuses it
-\ (SGBAD-FAIL!), and otherwise the first token whose check fails (REFUSAL-OF on
-\ the flags that token raised), or the checks made at `;` when no token failed
-\ (REFUSAL@).
+\ One failure refuses a definition; every diagnostic field describes that one,
+\ chosen by load order. The body compiles before `;` checks anything, so the
+\ first body token the load cannot compile (undefined word, retired global,
+\ unbindable local, unmodeled immediate, unreadable construct or match) refuses
+\ it (CREFUSE, taken by REFUSAL-STEP). A name `using` makes the walk refuse
+\ (CHECKER-RESOLVE:RAISE) is such a token when ticked or when no global binds it.
+\ Otherwise, in order: the first name a used public shadows a global for or
+\ makes ambiguous beside one (CUSING); a signature that does not parse
+\ (SGBAD-FAIL!); the first token whose check fails (REFUSAL-OF); the checks at
+\ `;` (REFUSAL@).
 1 constant RF-IMM            \ an unmodeled compile-time immediate (IMMERR)
 2 constant RF-UNDEF          \ an undefined word or a retired global (UNDEFERR)
 3 constant RF-QUAL           \ a malformed qualified name
@@ -5914,9 +5612,8 @@ variable CUSING              \ the using refusal the walk raised at this token; 
    {: k:n :}
    k RF-USHADOW =  k RF-UAMBIG =  or ;
 
-\ The kind the flags of one failure name. A check raises its flag where it
-\ fails, so asked as the first failing token ends, or at `;` when no token
-\ failed, the flags present are that failure's.
+\ Asked when the first failing token ends, or at `;` when none failed: each
+\ check raises its flag where it fails, so the flags present are that failure's.
 : REFUSAL-OF ( -- n )
    DEADERR @ IF RF-DEAD EXIT THEN
    SGBAD @ IF RF-SIG EXIT THEN
@@ -5931,25 +5628,21 @@ variable CUSING              \ the using refusal the walk raised at this token; 
    RSBAD @ 0 <> IF RF-RETURN EXIT THEN
    RF-REJECTED ;
 
-\ The refusal a definition's diagnostic names: the one the checking of its
-\ tokens chose, else the one the checks made at `;` raised. render.f's code,
-\ repair class, suggestion, prose, verdict and per-code fields all name it.
+\ Every diagnostic field render.f writes names this refusal.
 : REFUSAL@ ( -- n )
    REFUSAL @ 0 <> IF REFUSAL @ EXIT THEN
    REFUSAL-OF ;
 
-\ The load refuses this token for KIND while compiling it. A token refused
-\ twice keeps the first: the load's preflight refuses an unmodeled immediate
-\ before anything resolves it, so one the checker cannot resolve either is
-\ refused as the immediate.
+\ A token refused twice keeps the first: preflight refuses an unmodeled
+\ immediate before anything resolves it, so one the checker cannot resolve
+\ either is refused as the immediate.
 : CREFUSE! ( n -- )
    CREFUSE @ 0 <> IF drop EXIT THEN
    CREFUSE ! ;
 
-\ A reason the load refuses while compiling, a construct or match family that
-\ resolves nothing: it names the refusal unless an earlier compile-time refusal
-\ holds the diagnostic or refused this token, whatever reason an earlier check
-\ latched.
+\ A compile-time reason (a construct or match family that resolves nothing)
+\ names the refusal unless an earlier compile-time refusal holds the diagnostic
+\ or refused this token, whatever reason an earlier check latched.
 : MDIAG-COMPILE! ( n -- )
    {: code:n :}
    RCOMPILE @  CREFUSE @ 0 <>  or IF EXIT THEN
@@ -5969,19 +5662,17 @@ variable CUSING              \ the using refusal the walk raised at this token; 
        1 + REPEAT drop THEN
    NRES @ ;
 
-\ SIG-RAW-MODE: while set, every type var minted by the signature parser is
-\ TVK-RAW. verify-source (and the two-stage native definer hook) bracket the
-\ effect string of a raw storage definer -- create/variable/constant,
-\ PTR-VARIABLE or PERSISTED-PTR-VARIABLE -- with SIG-RAW-DEFINER! so the created
-\ word's stored effect carries RAW vars,
-\ closing the VALUE-side mint that raw dictionary storage would otherwise publish
-\ as an unrestricted polymorphic effect. Off for ordinary sigs, prim builds, and
-\ user TRUST rows, so nothing else is affected.
+\ While set, every type var the signature parser mints is TVK-RAW.
+\ verify-source and the two-stage native definer hook bracket a raw storage
+\ definer's effect (create/variable/constant, PTR-VARIABLE,
+\ PERSISTED-PTR-VARIABLE) with SIG-RAW-DEFINER!, so raw dictionary storage does
+\ not publish an unrestricted polymorphic effect. Off for ordinary signatures,
+\ prim builds and TRUST rows.
 variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 : SIG-RAW-DEFINER! ( bool -- ) SIG-RAW-MODE ! ;
 
-\ NB: avoid a 2nd {: :} group here — `{: c :} … {: i :}` mis-reads the slot in the
-\ standalone, collapsing every var to one. Compute the slot address on the stack.
+\ One locals group only: a second `{: i :}` group mis-reads the slot in the
+\ standalone, collapsing every var to one.
 : VAR-OF ( n -- n ) {: c:n :}
    c 97 - cells NMAP +
    dup @ UNBOUND = IF FRESH over ! THEN
@@ -5990,11 +5681,10 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
       MK-BVAR-DOMAIN EXIT THEN
    SIG-RAW-MODE @ IF dup TVK-RAW! THEN MK-VAR ;
 
-\ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
-\ concrete width types get distinct con codes; n(1)/f(1) stay the GENERIC int
-\ (the prim DB and the toolchain's own body use n), and the unifier lets n
-\ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
-\ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
+\ Declare locals at word top, never inside IF or a loop (corrupts the frame).
+\ Concrete width types get distinct con codes; n stays the generic int (con 1),
+\ which the unifier lets subsume any int-family code, so `( i64 -- i64 )` over
+\ an n-typed prim checks. r (3) is float.
 : CON-OF ( ptr u8 n -- n ) CT-FIND ;   \ multi-char name -> con code, or 0
 : SGBAD-CLEAR ( -- )
    -1 SGBAD-AR-DECL !
@@ -6097,16 +5787,11 @@ defer TYPE-MAY-ARRIVE-XT ( ptr u8 n -- bool )
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
    a 6 + u 6 - FAM-K @ MK-ATOM-K ;
-\ The package a signature parse resolves bare family tails in. Normally the
-\ authenticated package of the definition being checked - signature text is
-\ written where the definition is, so its scope is the definition's scope. The
-\ ONE other case is a stored signature at AOT intake (CK-AOT-TAKE below): its
-\ text was written in the ROW'S package - `make` in package ir-source says
-\ `span`, not `IR-SOURCE:span`, and certified there - and re-parsing it in the
-\ intake's scope reads those tails in the wrong package. The intake already
-\ interns the word under the row's key for exactly this reason; the parse scope
-\ is the same fact, so it comes from the same row. Same resolver, same lexical
-\ order - only the package the walk starts from is the row's.
+\ The package a signature parse resolves bare family tails in: the checked
+\ definition's package, except a stored signature at AOT intake (CK-AOT-TAKE),
+\ whose text was written in the row's package (`make` in ir-source says `span`,
+\ not `IR-SOURCE:span`). The intake interns the word under the row's key for
+\ the same reason, so the scope comes from that row.
 variable SIGSCOPE-ON   0 SIGSCOPE-ON !
 PTR-VARIABLE SIGSCOPE-P
 variable SIGSCOPE-U
@@ -6116,60 +5801,52 @@ variable SIGSCOPE-U
 : SIG-SCOPE$ ( -- ptr u8 n )
    SIGSCOPE-ON @ IF SIGSCOPE-P @ SIGSCOPE-U @ ELSE CHECKER-AUTH-PACKAGE$ THEN ;
 
-\ A LENGTH THAT DESCRIBES NO MEMORY is refused before a byte is read: a negative
-\ one, or one that runs the span past the top of the address range. A false
-\ length inside the range cannot be told from a true one here, and a signature,
-\ a field text or a definition's source text has no bound of its own; a name
-\ has, CK-NAME-MAX below, and so has a stored type's text, CK-TEXT-SPAN?.
+\ Refuses a length that describes no memory before a byte is read: a negative
+\ one, or one that runs past the top of the address range. A false length inside
+\ the range cannot be detected; a signature, field text or source text has no
+\ bound of its own, a name has CK-NAME-MAX and a stored type CK-TEXT-SPAN?.
 : BYTE-SPAN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 < IF RES-FALSE EXIT THEN
    a u + a < IF RES-FALSE EXIT THEN
    RES-TRUE ;
 
-\ THE LONGEST NAME. A definer captures a word's name and one separator into the
-\ definition's body text before it writes the record, so `:` defines a name of
-\ BODYBUF-CAP - 1 bytes and refuses one byte more, rc 71. BODYBUF-CAP is
-\ src/habu/layout.f's, which loads after this file, so it is restated here.
+\ A definer captures a word's name and one separator into the body text before
+\ it writes the record, so `:` defines a name of BODYBUF-CAP - 1 bytes and
+\ refuses one byte more, rc 71. layout.f loads after this file, so its
+\ BODYBUF-CAP is restated here.
 8000 constant CK-BODYBUF-CAP               \ = layout.f BODYBUF-CAP
 CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
 
-\ A name source hands a checker word is a byte span no longer than the longest
-\ name the engine defines. The first reader of such a name asks this before it
-\ reads a byte, and its word refuses a false length as it refuses any name it
-\ cannot take (test/name-length-test.f drives every such word).
+\ The first reader of a name asks this before it reads a byte and refuses a
+\ false length as any name it cannot take (test/name-length-test.f drives every
+\ such word).
 : CK-NAME-SPAN? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u BYTE-SPAN? u CK-NAME-MAX <= and ;
 
-\ THE LONGEST STORED TYPE. The gates read a stored type's raw source span
-\ (src/core/layout-buffer.f STORAGE-PARSE-TYPE), which its definer then spells
-\ into a $1000-byte buffer: LBUF-GEN on the load path (E-LAYOUT-BUFFER past
-\ LBUF-GEN-CAP) and LBUF-SIG-BUF in the checker's own registration
-\ (LBUF-SIG-CAP), so no stored type the engine takes is longer than
-\ CK-BODYBUF-CAP; the definition capture, which drops runs of spaces, does not
-\ bound it.
-\ STORAGE-RESOLVE?, the first reader of such a text, asks this before it reads
-\ a byte (test/name-length-test.f drives every storage gate).
+\ The gates read a stored type's raw source span (layout-buffer.f
+\ STORAGE-PARSE-TYPE), which its definer spells into a $1000-byte buffer:
+\ LBUF-GEN on the load path (E-LAYOUT-BUFFER past LBUF-GEN-CAP) and LBUF-SIG-BUF
+\ in the checker's registration (LBUF-SIG-CAP), so no accepted stored type is
+\ longer than CK-BODYBUF-CAP; the definition capture, which drops runs of
+\ spaces, does not bound it. STORAGE-RESOLVE? asks this before it reads a byte
+\ (test/name-length-test.f drives every storage gate).
 : CK-TEXT-SPAN? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u BYTE-SPAN? u CK-BODYBUF-CAP <= and ;
 
-\ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
-\ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
-\ (0 false) — always two items, so every caller drops the id on the false path.
-\ Resolution is package-scoped: an active package resolves its own
-\ (private+public) families first, then the unique public tail; top level uses
-\ the global scope, where every built-in cell family lives public. Qualified
-\ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
-\ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE). A tail whose
-\ length no name has resolves nothing, and the resolver never reads it.
+\ Resolves a family token through the TFAM registry: (family-id true) or
+\ (0 false), always two items. An active package resolves its own families
+\ first, then the unique public tail; top level uses the global scope, where
+\ every built-in cell family is public. Qualified tokens, case validation,
+\ hidden `@` names and ambiguity live in type-family.f TFAM-SIG-RESOLVE. A tail
+\ whose length no name has is never read.
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    SIG-SCOPE$ a u TFAM-RESOLVE* ;
-\ EXT-MARK-FREE-TAIL ( ptr u8 n -- ) : BTC-7 — mark an extent family FREE by its
-\ lowercase tail, resolved through the SAME scope SIG-FAM? uses so the recorded id
-\ is exactly the one SIG-END-PARAM reads off a redx<..> arg. EXTPROD: (maki/extent.f)
-\ calls it for a product's free (outer) factor. An unresolvable tail is a no-op.
+\ Marks an extent family FREE by its lowercase tail, resolved in the scope
+\ SIG-FAM? uses so the id is the one SIG-END-PARAM reads off a redx<..> arg. An
+\ unresolvable tail is a no-op.
 : EXT-MARK-FREE-TAIL ( ptr u8 n -- )
    SIG-FAM? IF EXT-MARK-FREE ELSE drop THEN ;
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -6185,9 +5862,8 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
 
-\ Typed local annotations are parsed by LOCAL-TYPE, below SIG-TYPE: they share
-\ the signature type grammar rather than growing a second one (dot
-\ habu-parse-local-annotations).
+\ Typed local annotations (LOCAL-TYPE, below SIG-TYPE) share the signature type
+\ grammar.
 
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE SB variable SL variable SI PTR-VARIABLE SS
@@ -6220,20 +5896,18 @@ variable PKHAVE
 
 : PKRESET ( -- )
    0 PKHAVE ! ;
-\ NEXT-SIG-TOK ( -- a u ) : next signature token over the SB/SL/SI cursor.
-\ Whitespace separates tokens, and `<`, `>`, `,` are single-token delimiters so
-\ parametric types can be written without spaces: `span<space-global,f32,extent-n>`.
-\ ( a 0 ) at end. Honors one pushed-back token.
+\ Signature tokens: whitespace separates them and `<`, `>`, `,` are single-token
+\ delimiters, so `span<space-global,f32,extent-n>` needs no spaces. NEXT-SIG-TOK
+\ answers ( a 0 ) at end and honors one pushed-back token.
 : SIG-DELIM-CHAR? ( n -- bool ) {: c:n :}
    c 60 = IF RES-TRUE EXIT THEN
    c 62 = IF RES-TRUE EXIT THEN
    c 44 = IF RES-TRUE EXIT THEN
    c 91 = IF RES-TRUE EXIT THEN
    c 93 = ;
-\ Whether the byte at SI exists and is a space (SIG-SPACE?) or a token byte
-\ (SIG-INK?). Each reads it only when SI is inside SL: `and` evaluates both
-\ operands, so a bound test beside the read reads the byte past a signature
-\ that ends where its mapping does.
+\ Each reads the byte at SI only when SI is inside SL: `and` evaluates both
+\ operands, so a bound test beside the read would read past a signature that
+\ ends where its mapping does.
 : SIG-SPACE? ( -- bool )
    SI @ SL @ >= IF RES-FALSE EXIT THEN
    SB@ SI @ + c@ 32 = ;
@@ -6260,20 +5934,17 @@ variable PKHAVE
    a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
 
-\ SIG-PTR-TOK? ( ptr u8 n -- bool ) : the pointer constructor. SIG-TYPE reads a
-\ bare `ptr` as `ptr <pointee>` even where a family of that tail resolves, so
-\ TYPE-NAME:FAMILY-RESERVED? refuses the tail by this same word.
+\ SIG-TYPE reads a bare `ptr` as the pointer constructor even where a family of
+\ that tail resolves, so TYPE-NAME:FAMILY-RESERVED? refuses the tail by this word.
 : SIG-PTR-TOK? ( ptr u8 n -- bool )
    s" ptr" CORE-STR= ;
 
-\ A storage declaration reads its stored type token by token: run time in
-\ src/core/layout-buffer.f STORAGE-PARSE-TYPE, the gate in
-\ src/habu/verify-source.f SCAN-STORAGE-TYPE. The spelling ends at the first
-\ token other than a `ptr` prefix that leaves no bracket open, counting the `<`
-\ `[` and `>` `]` NEXT-SIG-TOK splits out, so a pointer chain, a family
-\ application and a spaced quotation or scheme reach SIG-TYPE whole. Given the
-\ depth open before a token, answer the depth after it and whether the spelling
-\ ends there. A stray closer ends it, and SIG-TYPE refuses the span.
+\ A storage declaration's stored type is read token by token at run time
+\ (layout-buffer.f STORAGE-PARSE-TYPE) and at the gate (verify-source.f
+\ SCAN-STORAGE-TYPE). The spelling ends at the first token other than a `ptr`
+\ prefix that leaves no bracket open, counting the `<` `[` `>` `]` NEXT-SIG-TOK
+\ splits out, so a pointer chain, family application and spaced quotation or
+\ scheme reach SIG-TYPE whole. A stray closer ends it and SIG-TYPE refuses it.
 : SIG-NEST ( n n -- n ) {: depth:n c:n :}   \ bracket depth after one character
    c 60 = c 91 = or IF depth 1 + EXIT THEN
    c 62 = c 93 = or IF depth 1 - EXIT THEN
@@ -6283,34 +5954,26 @@ variable PKHAVE
    after 0 > IF after RES-FALSE EXIT THEN
    after a u SIG-PTR-TOK? 0= ;
 \ The declaration also ends with its line: the name stands on the definer's
-\ line, the type's first token on the name's, and the spelling never goes past
-\ it. Given the bytes between one token and the next, answer whether they hold
-\ a line feed (10). Then, as when no token follows, the reader leaves that token
-\ to the next statement: a missing name or type is refused by name
-\ (CHECKER-STORAGE-NAME-REFUSE, CHECKER-STORAGE-TYPE-REFUSE), and SIG-TYPE
-\ refuses a span left open.
+\ line and the type's first token on the name's. A line feed between tokens, as
+\ no next token does, leaves the token to the next statement: a missing name or
+\ type is refused by name (CHECKER-STORAGE-NAME-REFUSE,
+\ CHECKER-STORAGE-TYPE-REFUSE) and SIG-TYPE refuses a span left open.
 : CHECKER-TYPE-SPAN-BREAK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    RES-FALSE u 0 ?do a i + c@ 10 = or loop ;
 
-\ TYPE-RESERVED? ( ptr u8 n -- bool ) : the names DEFLINEAR and VALUE-RECORD
-\ refuse, through their loaders and tools/check.f alike. An effect spells such a
-\ type exactly as declared, so `CELL` and `PTR` are types of their own beside
-\ `cell` and `ptr`. A name is refused when an effect would read it as something
-\ else: stack syntax, a row variable (one upper-case letter heading a stack), a
-\ type already in the table, a family tail some scope reads (TFAM-CLAIMED?), a
-\ type variable, or a token the signature lexer splits or the effect's closing
-\ `)` (41) cuts short. The family test spans the registry because the name is
-\ global: a private tail, or a public one two packages share, is not resolved
-\ from the declaring scope, yet its owning package reads it as the family.
+\ TYPE-RESERVED? answers the names DEFLINEAR and VALUE-RECORD refuse, in their
+\ loaders and tools/check.f alike. An effect spells a type exactly as declared,
+\ so `CELL` and `PTR` are types beside `cell` and `ptr`. A name is refused when
+\ an effect would read it as something else: stack syntax, a row variable (one
+\ upper-case letter heading a stack), a type already in the table, a family tail
+\ some scope reads (TFAM-CLAIMED?: the name is global, and a private tail or one
+\ two packages share is read by its owning package), a type variable, or a token
+\ the signature lexer splits or the closing `)` (41) cuts short.
 \ A name holding `(` (40), `"` (34) or `\` (92) is refused wherever that byte
-\ sits. Source names the type again after declaring it, and there a token
-\ holding one of these bytes can open a comment, a string or a line comment
-\ (`(`, `.(`, the `s"` family, a `\`-initial token) for tools/check.f's lexer,
-\ which reads it only where a declaring word takes its name raw: after
-\ `DEFLINEAR \`, a value-record field typed `\` loads, while check.f reads the
-\ rest of that line as a comment and reports a missing END-VALUE-RECORD.
-\ Refusing the byte spares the loader a copy of that lexer's opener list, so
-\ `a(b`, which both read as one word, is refused too.
+\ sits: where source names the type again, check.f's lexer can read such a token
+\ as a comment or string opener (after `DEFLINEAR \`, a value-record field typed
+\ `\` loads while check.f reports a missing END-VALUE-RECORD). Refusing the byte
+\ spares the loader a copy of that lexer's opener list, so `a(b` is refused too.
 : TYPE-BAD-BYTE? ( n -- bool ) {: c:n :}
    c SIG-DELIM-CHAR? IF RES-TRUE EXIT THEN
    c 41 = IF RES-TRUE EXIT THEN
@@ -6324,10 +5987,8 @@ variable PKHAVE
    repeat drop RES-FALSE ;
 
 \ A length no name has names no new type, like the empty name. CHECKER-TRY-RECORD
-\ and CHECKER-DEFLINEAR ask this first, so it is where their name is bounded:
-\ without it a length of -1 was taken and moved the value-record or
-\ signature-type string pool's used mark back, and the maximum cell died
-\ reading the name here.
+\ and CHECKER-DEFLINEAR ask this first, so it bounds their name: a length of -1
+\ would move the value-record or signature-type string pool's used mark back.
 : TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= IF RES-TRUE EXIT THEN
    a u DELIM? IF RES-TRUE EXIT THEN
@@ -6354,10 +6015,8 @@ variable PKHAVE
    LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 
 \ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
-\ argument (SC-QUOT). It needs PSTACK, defined below SIG-TYPE, so it is a `defer`
-\ bound with `is` to SIG-PARSE-QUOT just after PSTACK (same late-binding shape as
-\ TFAM-RESOLVE-XT). Left unset until then: it is never reached before install, so
-\ an unset call fails closed via DEFER-UNSET rather than the old execute-of-0.
+\ argument. It needs PSTACK, defined below SIG-TYPE, so it is bound to
+\ SIG-PARSE-QUOT just after PSTACK; nothing reaches it before then.
 defer SIG-QUOT-XT ( -- n )
 defer SIG-BINDER-BODY-XT ( -- n )
 defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
@@ -6420,11 +6079,10 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
 : SIG-FORALL ( -- n ) BIND-SCOPE SIG-FORALL-DOMAIN ;
 : SIG-FORALL-REGION ( -- n ) BIND-REGION SIG-FORALL-DOMAIN ;
 
-\ EXT-REDX-BAD-ARG? ( argterm -- bool ) : BTC-7 contraction rule. `redx<E>` marks
-\ extent E as a contraction (+Σ) axis; it is ill-formed when E is a FREE (outer /
-\ batch) extent or a whole product `extprod<..>`, because summing the free factor of
-\ a folded #B*#T row is the cross-sequence leak. A type-var arg (redx<e>, the generic
-\ contraction-entry cast) resolves to no concrete extent, so it is fine.
+\ `redx<E>` marks extent E as a contraction axis; it is ill-formed when E is a
+\ FREE (outer, batch) extent or a whole `extprod<..>`, because summing the free
+\ factor of a folded #B*#T row is the cross-sequence leak. A type-var arg
+\ (redx<e>, the generic contraction-entry cast) names no concrete extent and passes.
 : EXT-REDX-BAD-ARG? ( n -- bool ) {: t:n :}
    t T-RES {: r:n :}
    r TAG T-PARAM <> IF RES-FALSE EXIT THEN         \ var/con: not a concrete extent
@@ -6432,11 +6090,6 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
    f EXT-PROD-FAM @ = EXT-PROD-FAM @ 0 <> and IF RES-TRUE EXIT THEN   \ contracting a whole product
    f EXT-FREE? ;                                   \ contracting the free (batch) factor
 
-\ SIG-END-PARAM ( base a u fam -- t ) : close a parsed family application. Reject
-\ (family-specific arity diagnostic) when the arg count differs from the family's
-\ declared arity; reject a `redx<..>` over a free/product extent (BTC-7 contraction
-\ rule) before it can name a summable axis; then build the T-PARAM (MK-PARAM rewinds
-\ scratch to `base`).
 : SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
    PARAM-SCR-N @ base - {: got:n :}
    got fam TFAM-ARITY* <> IF a u fam TFAM-ARITY* got SGBAD-ARITY! THEN
@@ -6470,16 +6123,12 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
    THEN
    base a u fam MK-PARAM ;
 
-\ SIG-TYPE ( ptr u8 n -- n ) : one signature type. A registered family token opens
-\ `family<arg,...>`; each arg RECURSEs. `base` marks the shared scratch depth on
-\ entry so nested params are reentrant (a nested family's MK-PARAM rewinds to its
-\ own base, leaving the parent's already-pushed args intact). A bare family token
-\ (no `<`) builds a zero-arg application whose arity check rejects arity>0 families.
-\ `ptr` is dual: `ptr<space,elem>` resolves as a family here (a T-PARAM), while
-\ `ptr elem` (no `<`) must ALWAYS reach the MK-PTR special case below — even when
-\ `ptr` is not a live family (e.g. a suite that TFAM-RESETs the registry). So the
-\ family branch only builds a real `family<...>`; every no-`<` path (and the
-\ not-a-family path) falls through to the shared `ptr`/TOK-TYPE tail.
+\ `base` marks the shared scratch depth on entry, so a nested family's MK-PARAM
+\ rewinds to its own base and leaves the parent's pushed args intact. A bare
+\ family token builds a zero-arg application, which arity>0 families refuse.
+\ `ptr<space,elem>` resolves as a family, but `ptr elem` must always reach the
+\ MK-PTR case below, even when `ptr` is no live family (a suite that
+\ TFAM-RESETs the registry): only `family<...>` takes the family branch.
 : SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" [" CORE-STR= IF SIG-QUOT-XT EXIT THEN   \ `[ in -- out ]` xt<effect> quot (opener consumed)
    a u s" forall" CORE-STR= IF SIG-FORALL EXIT THEN
@@ -6490,7 +6139,7 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
          BEGIN
             NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
             2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
-            2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT ELSE RECURSE THEN  \ quotation arg (SC-QUOT) or nested type
+            2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT ELSE RECURSE THEN  \ quotation arg or nested type
             PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
             2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
@@ -6534,26 +6183,20 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
    [: SIG-TYPE ;] is SIG-BOUND-TYPE-XT ;
 SIG-BINDER-BODY-INSTALL
 
-\ ---- typed local annotations (dot habu-parse-local-annotations) --------------
-\ `{: name:type :}` reads its type with the SAME grammar a signature stack
-\ reads: family resolution, `<arg,...>` parameter lists, nested families, the
-\ definition's own declared type variables, arity checking and `ptr <pointee>`.
-\ There is no second annotation grammar; the parser is placed here, below
-\ SIG-TYPE, so the locals scanner (far below) can simply call it.
-\ The one spelling a signature does not have is the BARE `ptr`: an annotation
-\ is a single token, so `{: p:ptr :}` has no pointee to read and means an
-\ INFERRED one. SIG-TYPE would call that a bare pointer (SGBAD-BAREPTR!), so
+\ ---- typed local annotations -------------------------------------------------
+\ `{: name:type :}` reads its type with the signature grammar, including the
+\ definition's own type variables; it sits below SIG-TYPE so the locals scanner
+\ can call it. The one spelling a signature lacks is a bare `ptr`: `{: p:ptr :}`
+\ means an inferred pointee, which SIG-TYPE would refuse (SGBAD-BAREPTR!), so
 \ the shorthand is taken ahead of the delegation.
 : BAD-LOC-ANN ( ptr u8 n -- n )    \ unusable local annotation: fail fast so the
    BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
    0 OK !  -1 FAILSET ! ;
 
-\ The annotation owns the signature cursor for the length of one type: the
-\ cursor and its push-back are saved in LOCAL-TYPE's invocation, pointed at the
-\ annotation's bytes and restored. NMAP and the family registry are shared on
-\ purpose — that is how an annotation names the definition's own type variables.
-\ The body scanner does not hold the cursor today, but LOCAL-TYPE is a parser
-\ helper and must not make cursor ownership an implicit calling convention.
+\ LOCAL-TYPE saves the signature cursor and push-back, points them at the
+\ annotation's bytes and restores them, so cursor ownership is no implicit
+\ calling convention. NMAP and the family registry are shared on purpose: that
+\ is how an annotation names the definition's type variables.
 
 : LOC-ANN-END? ( -- bool )         \ the annotation held exactly one type
    NEXT-SIG-TOK {: ea:ptr eu:n :}
@@ -6639,24 +6282,20 @@ variable SG-ROWS-PUBLISH
    THEN
    id TVK@ ;
 
-\ SGBAD: the declared signature is malformed (a required '--'/']' delimiter was
-\ missing or wrong). A malformed contract must REJECT, never silently parse as
-\ some other effect. EXPECT-SIG consumes the next sig token and fails closed if
-\ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
+\ SGBAD: the declared signature is malformed. A malformed contract must refuse,
+\ never parse as some other effect: EXPECT-SIG fails closed when the next token
+\ is not the expected delimiter (end of text reads as a 0-length token).
 : EXPECT-SIG {: ea eu :}
    NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
 
-\ PUSH-LOGICAL ( type row -- row ) : push one parsed signature type onto a stack
-\ row — the single seam for logical-vs-physical layout (type-family.f header).
-\ Every ordinary type and cell family pushes one
-\ logical cell (== MK-PUSH). A resolved LOGICAL sum/enum/product layout family
-\ expands to its W hidden physical fields — slot0 deepest, tag on top (type-family.f header);
-\ the whole-bundle transport surgery (XPORT-STEP?) and U-TYPE's hidden-field
-\ discipline then keep the group intact. The one layout that stays ONE logical
-\ cell is the one whose WIDTH is not yet known: an open argument the width reads
-\ (LAYOUT-WIDTH-OPEN?). An open argument the width cannot read — a parameter
-\ that occurs only under a pointer — expands like a concrete one, so the
-\ declared row of `( span<t> n -- span<t> )` has one term per cell.
+\ The single seam for logical-vs-physical layout (type-family.f TFAM-WIDTH@): an
+\ ordinary type or cell family pushes one logical cell; a resolved logical
+\ sum/enum/product layout expands to its W hidden fields, slot0 deepest and tag
+\ on top, and XPORT-STEP? and U-TYPE keep the group intact. Only a layout whose
+\ width is not yet known, an open argument the width reads
+\ (LAYOUT-WIDTH-OPEN?), stays one cell; one the width cannot read (a parameter
+\ only under a pointer) expands, so `( span<t> n -- span<t> )` has one term per
+\ cell.
 : PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
    t T-RES {: r:n :}
    r ISVAR IF r PAY TVK-CELL TVK-RAISE-TO THEN
@@ -6670,12 +6309,10 @@ variable SG-ROWS-PUBLISH
 \ A source signature declares no return-stack cell (docs/forth.md "The
 \ return-stack clause"): a `|` clause, at the top or in a quotation type,
 \ carries one row, the same on both sides. A cell after `|`, two different rows,
-\ or a bar on one side only that pairs a written row with the implicit one
-\ would let a body read cells its caller parked, which the native compiler
-\ cannot reach. `>r`, `r>`, `2>r` and the loop words build their rows
-\ structurally and never come through here. Every quotation type is parsed by
-\ PSTACK or SIG-PARSE-QUOT, which ask this of its clause, and PSIG asks it of
-\ the top-level one.
+\ or a bar on one side only would let a body read cells its caller parked,
+\ which the native compiler cannot reach. `>r`, `r>`, `2>r` and the loop words
+\ build their rows structurally and never come here; PSTACK, SIG-PARSE-QUOT and
+\ PSIG ask it of every clause.
 : RCLAUSE-NEUTRAL? ( n n -- bool ) {: rin:n rout:n :}
    rin 0=  rout 0=  or IF RES-FALSE EXIT THEN
    rin R-RES TAG S-PUSH = IF RES-FALSE EXIT THEN
@@ -6683,11 +6320,9 @@ variable SG-ROWS-PUBLISH
 : RCLAUSE-CHECK ( n n -- )
    RCLAUSE-NEUTRAL? 0= IF SB@ SL @ SGBAD-RETURN! THEN ;
 
-\ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
-\ upper-case token names the row (shared by letter); else the passed implicit
-\ tail is used. Types fold bottom->top; '[' in -- out [ '|' rin -- rout ] ']'
-\ is a quot<effect> (RECURSE for nested stacks; no '|' means rin=rout).
-\ tail is a LOCAL so it survives RECURSE; the data stack holds only the row.
+\ A leading single upper-case token names the row (shared by letter), else the
+\ implicit tail is used; no '|' in a quotation means rin = rout. tail is a local
+\ so it survives RECURSE.
 : PSTACK ( n -- n ) {: tail:n :}
    NEXT-SIG-TOK 2dup ROW-LEAD? IF
       drop c@ RVAR-OF                                 \ row = named var
@@ -6731,13 +6366,9 @@ variable SG-ROWS-PUBLISH
      THEN
    AGAIN ;
 
-\ SIG-PARSE-QUOT ( -- n ) : parse a quotation as a family argument (SC-QUOT),
-\ with the opening '[' already consumed: "in -- out [ '|' rin -- rout ] ]". Each
-\ sub-stack is a full PSTACK; in/out share one fresh data base row and rin/rout
-\ share one fresh return base row (row-polymorphic tails). No '|' means the return
-\ effect is neutral (rin = rout = the empty return base). Malformed rows (a missing
-\ '--' or ']') set SGBAD-SYNTAX! through EXPECT-SIG so the whole signature rejects.
-\ Installed into SIG-QUOT-XT so SIG-TYPE (defined above PSTACK) can reach it.
+\ The opening '[' is already consumed. in/out share one fresh data base row and
+\ rin/rout one fresh return base row; no '|' means rin = rout = that base. A
+\ missing '--' or ']' sets SGBAD-SYNTAX! so the whole signature refuses.
 : SIG-PARSE-QUOT ( -- n )
    FRESH MK-QROW {: qdbase:n :}
    FRESH MK-QROW {: qrbase:n :}
@@ -6882,17 +6513,15 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 : RRTAIL ( -- n )                        \ shared return row (allocate once, on demand)
    RR-SHARED @ dup 0= IF drop FRESH MK-ROW dup RR-SHARED ! THEN ;
 
-\ PSIDE ( dtail -- drow rrow ) : one side = data stack [ '|' return stack ]. No
-\ '|' -> rrow = the shared return row so far (0 if no clause anywhere) — CHECK
-\ ignores it. The return row is allocated only when a '|' actually appears, so
-\ ordinary sigs cost no extra typevars.
+\ No '|' leaves the shared return row so far (0 when no clause anywhere), which
+\ CHECK ignores; the row is allocated only when a '|' appears, so ordinary
+\ signatures cost no extra type vars.
 : PSIDE ( n -- n n ) {: dtail:n :}
    dtail PSTACK                                   \ data part (stops at | -- ])
    NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
       2drop  -1 SGHASR !  RRTAIL PSTACK           \ ( drow rrow ) explicit return
    ELSE PK! RR-SHARED @ THEN ;                    \ no | here -> shared tail (untouched)
 
-\ PSIG ( -- din dout rin rout ) : data + return rows over the cursor.
 : PSIG ( -- n n n n )
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 BIND-DEPTH !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
@@ -6917,11 +6546,10 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    THEN
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
-\ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
-\ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
-\ CHECK-DOES! and CHECKER-DEFCAST hand it the signature their callers gave them,
-\ so a length that describes no memory parses as the empty text, which has no
-\ `--`: each refuses it as a signature that does not parse, and no byte is read.
+\ The declared effect as four rows without CHECKER-STEP, to verify a body
+\ against its own signature. CHECK-DOES! and CHECKER-DEFCAST pass their callers'
+\ signature, so a length that describes no memory parses as the empty text,
+\ which has no `--` and is refused unread.
 : PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
    SIG-UNRES-CLEAR
    a SB!
@@ -6954,12 +6582,10 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    SIG-UNRES @ IF RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
 
-\ Parse one type application for the generative LAYOUT-BUFFER definer. This is
-\ the allocation-certificate gate: only a closed, non-linear, addressable
-\ layout — or an arity-0 nominal-scalar cell family (width 1, no variants,
-\ zero image = family id 0, a valid id) — is admitted, and the exact family
-\ id/width are returned to the fixed definer implementation. Ordinary
-\ unification never receives this authority.
+\ The allocation-certificate gate for LAYOUT-BUFFER: only a closed, non-linear,
+\ addressable layout, or an arity-0 nominal-scalar cell family (width 1, no
+\ variants, zero image = family id 0), is admitted, and its family id and width
+\ go to the fixed definer. Ordinary unification never receives this authority.
 : CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool )
    STORAGE-RESOLVE? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ NOM-SCALAR? IF LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE EXIT THEN
@@ -6967,48 +6593,24 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
 
-\ Admissibility gate for the TYPED-VARIABLE / TYPED-BUFFER convenience definers
-\ (dot habu-nominal-storage-typed). Superset of CHECKER-LAYOUT-INFO: it admits
-\ everything LAYOUT-BUFFER does — an arity-0 nominal scalar family, or a closed
-\ non-linear addressable layout family — AND a CLOSED TYPED POINTER: a `ptr`
-\ whose pointee chain bottoms out at a nominal scalar or a closed non-linear
-\ layout family — AND a CLOSED xt<effect> QUOTATION CELL `[ in -- out ]` (dot
-\ habu-typed-xt-storage-ddad4af8): a persistent monomorphic code cell whose @
-\ recovers the declared T-QUOT so `HK @ execute` fit-checks the row against E and
-\ a typed store fit-checks a word's certified effect against E — AND a CLOSED
-\ STRUCTURAL CELL (dot habu-typed-storage-sweep-b2cd1a61), below. An open var/arg
-\ (`a`, `ptr a`), a linear value, a hidden field, and any trailing token all
-\ reject; a malformed quotation body rejects through SGBAD. LAYOUT-BUFFER keeps
-\ its own narrower CHECKER-LAYOUT-INFO gate unchanged, so the two capabilities
-\ stay distinct. Width is CELL-uniform (1) for nominal scalars, typed pointers
-\ and structural cells, and the registry width for a layout family.
-\
-\ WHY A BARE `n` IS ADMITTED HERE AND WAS NOT BEFORE. The original gate served
-\ one purpose — minting a NOMINAL cell — so a plain scalar was out of scope
-\ rather than unsound, and `variable` was held to be its answer. It is not: a
-\ raw cell's type is an open var each call site instantiates afresh, so ONE raw
-\ cell certifies `( n -- ) V !`, `( -- n ) V @`, `( ptr u8 -- ) V !`,
-\ `( -- ptr u8 ) V @`, `( -- bool ) V @` and `( -- ptr ptr u8 ) V @` — six
-\ contradictory readings, all -1. A cell whose honest type IS structural (a
-\ span, a counter, a flag) therefore had no way to state it except `TRUSTED:`.
-\ Pinning is what removes the trust, and the RAW discipline above already says
-\ so in as many words: it ADMITS a plain scalar/role con into a raw cell and
-\ fences only the nominal family, noting that fencing role atoms out of raw
-\ storage "needs that role/xt scratch migrated to typed cells first". This is
-\ that migration, so the nominal fence is untouched — a structural accessor
-\ never needs the LAYOUT-INTRO mint, because structural cons were never fenced.
-\
-\ SUB-CELL INTEGER CONS STAY OUT OF THE DIRECT STORED-TYPE POSITION. A stored
-\ `u8` would mint `( -- ptr u8 )`, and cell `@` over a concrete `ptr u8` is a
-\ checker error (byte spans use c@; measured: `( ptr u8 -- n ) @` rejects while
-\ `( ptr ptr u8 -- ptr u8 ) @` certifies) — the cell would be unreadable by the
-\ operator its own declaration implies, while the definer still allots a whole
-\ cell for it. Inside a POINTER chain they stay admissible, which is the shape
-\ the span cells actually hold: `ptr u8` stored yields `( -- ptr ptr u8 )`.
-\ THE DYNAMIC DEFINER IS THE EXCEPTION, through CHECKER-DYNAMIC-INFO below: its
-\ element is a byte and not a whole allotted cell, because its accessor scales
-\ the index by the element's own width, so a `u8` element mints `ptr u8` AT BYTE
-\ i — exactly what c@ and c! take.
+\ Gate for TYPED-VARIABLE / TYPED-BUFFER: everything CHECKER-LAYOUT-INFO admits,
+\ a closed typed pointer (pointee chain ending at a nominal scalar or closed
+\ non-linear layout), a closed `[ in -- out ]` code cell (its @ recovers the
+\ declared T-QUOT, so `HK @ execute` and a typed store fit-check against it),
+\ and a closed structural cell. An open var or arg (`a`, `ptr a`), a linear
+\ value, a hidden field or a trailing token refuses; a malformed quotation
+\ refuses through SGBAD. Width is 1 cell, or the registry width for a layout.
+\ A bare `n` is admitted: a raw cell's type is an open var each site
+\ instantiates, so one raw cell certifies six contradictory readings
+\ (`( n -- ) V !`, `( -- ptr u8 ) V @`, `( -- bool ) V @`, ...), and pinning is
+\ what removes the trust. The nominal fence is untouched: structural cons were
+\ never fenced, so a structural accessor never needs the LAYOUT-INTRO mint.
+\ A sub-cell integer con is refused as the direct stored type: a stored `u8`
+\ would mint `( -- ptr u8 )`, and cell `@` over `ptr u8` is refused (measured:
+\ `( ptr u8 -- n ) @` refuses, `( ptr ptr u8 -- ptr u8 ) @` certifies). Inside
+\ a pointer chain it is admitted (`ptr u8` yields `( -- ptr ptr u8 )`). The
+\ DYNAMIC definer (CHECKER-DYNAMIC-INFO) is the exception: its accessor scales
+\ the index by the element width, so a `u8` element mints `ptr u8` at byte i.
 : STORAGE-SUBCELL-CON? ( n -- bool ) {: c:n :}   \ con addresses bytes, not a whole cell
    c CC-U8 = c CC-U16 = or c CC-U32 = or c CC-CHAR = or ;
 : STORAGE-STRUCT-CON? ( n -- bool ) {: t:n :}   \ resolved term is a closed one-cell structural con
@@ -7028,8 +6630,8 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    PTR>INNER T-RES STORAGE-PTR-POINTEE-OK? ;
 : STORAGE-CELL-W ( -- n bool )   \ width in CELLS of the term STORAGE-RESOLVE? left in LBI-T
    LBI-T @ SCOPED-TYPE? IF 0 RES-FALSE EXIT THEN
-   LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell (dot habu-typed-xt-storage-ddad4af8)
-   LBI-T @ STORAGE-STRUCT-CON? IF 1 RES-TRUE EXIT THEN   \ closed structural cell: one cell (dot habu-typed-storage-sweep-b2cd1a61)
+   LBI-T @ TAG T-QUOT = IF 1 RES-TRUE EXIT THEN       \ closed xt<effect> cell: one code cell
+   LBI-T @ STORAGE-STRUCT-CON? IF 1 RES-TRUE EXIT THEN   \ closed structural cell: one cell
    LBI-T @ NOM-SCALAR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ STORAGE-TYPED-PTR? IF LBI-T @ T-WIDTH RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
@@ -7047,14 +6649,11 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    CHECKER-STORAGE-INFO 0= IF drop 0 RES-FALSE EXIT THEN
    drop LBI-T @ RES-TRUE ;
 
-\ Admissibility for the DYNAMIC definer (src/core/layout-buffer.f DBUF-VALIDATE),
-\ answered in BYTES because that definer's accessor scales the index by the
-\ element width rather than allotting a cell per element. It is
-\ CHECKER-STORAGE-INFO's surface, widened by the byte con alone: `u8` is the one
-\ sub-cell con the language has accessors for (c@ `( ptr u8 -- n )` and c!
-\ `( n ptr u8 -- )`), so a stored `u8` mints a `ptr u8` its own operators read.
-\ `u16`, `u32` and `char` have no accessor pair of their own, so they stay
-\ refused here exactly as they are for TYPED-BUFFER.
+\ Admissibility for the DYNAMIC definer (layout-buffer.f DBUF-VALIDATE), in
+\ bytes, because its accessor scales the index by the element width: the
+\ CHECKER-STORAGE-INFO surface plus `u8`, the one sub-cell con with an accessor
+\ pair (c@ `( ptr u8 -- n )`, c! `( n ptr u8 -- )`). `u16`, `u32` and `char`
+\ have none and stay refused, as for TYPED-BUFFER.
 : STORAGE-BYTE-CON? ( n -- bool ) {: t:n :}   \ resolved term is the byte con u8
    t TAG T-CON <> IF RES-FALSE EXIT THEN
    t PAY CC-U8 = ;
@@ -7332,11 +6931,10 @@ CHECKER-REG:}SCRATCH
    t MK-PTR swap MK-PUSH
    t rest MK-PUSH RECORDED-STEP ;
 
-\ user sigs: certified words recorded as effect records after the structural
-\ primitive-effect prefix. The renderer appends user records so later wins.
-\ The baked checker image stores canonical typed effect graphs for certified
-\ words, not rendered signature strings. The static boot arena must hold that
-\ snapshot without relying on process-local mmap state.
+\ Certified words' effect records follow the structural primitive-effect prefix;
+\ the renderer appends user records, so later wins. The baked image stores
+\ canonical typed effect graphs, not signature strings, and the static boot
+\ arena holds that snapshot without process-local mmap state.
 $800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
@@ -7345,29 +6943,26 @@ variable USIGS-USER-OFF
 variable USIGS-GROW-CAP   PTR-VARIABLE USIGS-GROW-NEXT
 variable CHK-CAND
 
-\ Per-symbol effect-record index state. The index itself lives in the symbol
-\ hash mapping (HT-USX, below); these are the three things it depends on.
-\ USX-GEN is the mapping generation the index was built at, so a dropped or
-\ re-laid-out mapping (HIDX-GEN below) invalidates it; USX-HI is the UEND it was
-\ last made exact at, so a rewind this file did not perform is detected as
-\ non-monotone growth; USX-BASE is the store the offsets were read against, so an
-\ arena swap is detected as identity change. Declared here because USIGS-CLEAR —
-\ far below the index words — has to be able to drop the index.
-\ Every index rebuilds on demand, so these rest at 0 at a file boundary: a
-\ generation of 0 is never HIDX-GEN's, and a null base is no store's.
+\ Per-symbol effect-record index state; the index lives in the symbol hash
+\ mapping (HT-USX). USX-GEN is the mapping generation it was built at (a dropped
+\ or re-laid-out mapping, HIDX-GEN, invalidates it); USX-HI is the UEND it was
+\ last exact at (a foreign rewind shows as non-monotone growth); USX-BASE is the
+\ store its offsets were read against (an arena swap shows as identity change).
+\ Declared here so USIGS-CLEAR, far below, can drop it. Every index rebuilds on
+\ demand, so these rest at 0 at a file boundary: generation 0 is never
+\ HIDX-GEN's, and a null base is no store's.
 CHECKER-REG:SCRATCH{
 variable USX-GEN   variable USX-HI
 PTR-VARIABLE USX-BASE
 \ The same three for the no-return/control-flag store (NORETS, far below).
 variable NRX-GEN   variable NRX-HI
 PTR-VARIABLE NRX-BASE
-\ The node-intern index's store stamp (UIX, far below). Its entries are store
-\ OFFSETS, so a relocation that copies the store verbatim leaves every one of
-\ them naming its own node and only the ADDRESS changes: USIGS-GROW carries this
-\ stamp down with the store, the way a hit in E-INTERN carries the table's end
-\ mark down with the rewind it performs. Declared here because USIGS-GROW is far
-\ above the index words, and read through a cell-indexed ptr-field view so the
-\ nested pointer role survives the fetch — the same shape USX-BASE uses.
+\ The node-intern index's store stamp (the UIX-* words). Its entries are store
+\ offsets, so a verbatim relocation changes only the address: USIGS-GROW carries
+\ this stamp down with the store, as an E-INTERN hit carries the table's end
+\ mark down with its rewind. Declared here because USIGS-GROW is far above the
+\ index words; read through a cell-indexed ptr-field view so the nested pointer
+\ role survives the fetch, as USX-BASE does.
 PTR-VARIABLE UIX-BASE
 PTR-VARIABLE CHX-BASE
 variable CHX-HI
@@ -7400,31 +6995,24 @@ CHECKER-REG:}SCRATCH
 0 USIGS-USER-OFF !
 0 CHK-CAND !
 
-\ CONSTRUCT-WIDE-STAGED-REJECT ( -- ) : staged lowering fail-closed for a
-\ parametric MULTI-CELL construct/constructor (layout-cap slice 3-4). The checker
-\ certifies the effect (the rows are sound), but v1 lowering keys pads off the
-\ DECLARED family width (TFL-VPADS / the generated ctor body), which is WRONG for
-\ a wide instantiation (option<tdpbw2> tag at slot 2, not slot 1) — the dual
-\ emitter is slice 4. So a REAL definition (CHK-CAND = 0) that would reach codegen
-\ fails closed here rather than emit declared-width pads; a CHECK-CANDIDATE probe
-\ (CHK-CAND ≠ 0) still certifies the type. No new diagnostic code: it renders the
-\ ordinary E-REJECTED and remains only a wide-lowering backstop.
+\ Staged lowering fails closed for a parametric multi-cell construct or
+\ constructor: lowering keys pads off the declared family width (TFL-VPADS, the
+\ generated constructor body), which is wrong for a wide instantiation
+\ (option<tdpbw2> has its tag at slot 2, not 1). A real definition
+\ (CHK-CAND = 0) that would reach codegen refuses with E-REJECTED; a
+\ CHECK-CANDIDATE probe still certifies the type.
 : CONSTRUCT-WIDE-STAGED-REJECT ( -- )
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
 
-\ HEADROOM IS NOT COUNTED HERE, AND A BOOT-TIME GROW IS A COST, NOT A DEFECT.
-\ The cap is the smallest grain multiple holding the content, so an image whose
-\ content lands just under a grain boundary boots with only a few hundred spare
-\ bytes and the engine's own boot appends grow the pool at once (measured: a
-\ gen-1 engine at content 2,292,824 cap 2,293,760 doubled to 4,587,520 during its
-\ first load). The grow is correct from a RESTORED pool as it is from a runtime
-\ one — the copy is verbatim, USIGS-GROW carries a valid intern stamp, and USX-BASE /
-\ NRX-BASE / HIDX-EFF-BASE each read the swap as an identity change and rebuild
-\ (test/engine-suite.f "usigs restored-pool grow" certifies and compiles across
-\ one). So the cap does NOT reserve the boot appends: doing that would need this
-\ word to know a quantity only the engine's own prefix decides, and the price of
-\ not knowing it is one extra copy of the pool at boot in the worst case.
+\ Headroom is not counted here, and a boot-time grow is a cost, not a defect:
+\ the cap is the smallest grain multiple holding the content, so an image just
+\ under a grain boundary grows at once on its boot appends (measured: a gen-1
+\ engine at content 2,292,824, cap 2,293,760, doubled to 4,587,520 in its first
+\ load). A grow from a restored pool is correct: the copy is verbatim, USIGS-GROW
+\ carries a valid intern stamp, and USX-BASE, NRX-BASE and HIDX-EFF-BASE rebuild
+\ on the identity change (test/engine-suite.f "usigs restored-pool grow"). Only
+\ the engine's prefix knows the boot appends; the worst case is one extra copy.
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
@@ -7435,15 +7023,13 @@ CHECKER-REG:}SCRATCH
 
 \ ---- navigation: where a named declaration was written ----------------------
 \ The armed location (CHECKER-DECL-AT!) is the declaring token of the statement
-\ being registered: the name it declares (borrowed: the arming caller owns the
-\ bytes), its file visit and byte range. Arming stamps nothing: a named
-\ registrar attaches it to the record it retained (DL-TAKE), copying the name.
-\ DECL-LOCS holds one row per located record, (offset, visit, start, end, name
-\ offset, name length), ascending by offset, with the names appended in row
-\ order to their own bytes, and a use copies a row out when it binds
-\ (NAV-USE). The tables are
-\ process-local mappings: no record field, wire format, unit file or image
-\ carries them (CHECKER-CAPTURE-PREPARE releases them).
+\ being registered: its name (borrowed from the arming caller), file visit and
+\ byte range. A named registrar attaches it to the record it retained (DL-TAKE),
+\ copying the name. DECL-LOCS holds one row per located record, ascending by
+\ offset, its names appended in row order to their own bytes; a use copies a row
+\ out when it binds (NAV-USE). The tables are process-local: no record field,
+\ wire format, unit file or image carries them (CHECKER-CAPTURE-PREPARE
+\ releases them).
 variable DL-ON   variable DL-VISIT   variable DL-START   variable DL-END
 PTR-VARIABLE DL-NA   variable DL-NU    \ the armed name, until DL-TAKE copies it
 variable DL-NEW                        \ offset+1 of the record E-ADD-EFFECT built last
@@ -7484,7 +7070,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    {: u:n :}
    DLB-P DLB-CAP DLB-N @ u + CELL + 1 - CELL / 1 ARENA-ROWS-ENSURE ;
 
-\ Append the U bytes at A to the names; their offset.
 : DLB-ADD ( ptr u8 n -- n )
    {: a:ptr u:n :}
    u DLB-ROOM
@@ -7493,8 +7078,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    off u + DLB-N !
    off ;
 
-\ Append a copy of the U name bytes at offset OFF; the copy's offset. The room
-\ comes first, so the source is read where the names now are.
+\ The room comes first, so the source is read where the names now are.
 : DLB-AGAIN ( n n -- n )
    {: off:n u:n :}
    u DLB-ROOM
@@ -7533,9 +7117,9 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
 : DL-TAKE ( -- )
    DL-NA @ DL-NU @ DL-TAKE-AS ;
 
-\ A generated registrar takes no location in this commit: it runs between
-\ NAV-PAUSE and NAV-RESUME, which put the declaring registrar's latch back on
-\ either exit, so neither its arming nor its newest record reaches DL-TAKE.
+\ A generated registrar takes no location: it runs between NAV-PAUSE and
+\ NAV-RESUME, which restore the declaring registrar's latch on either exit, so
+\ neither its arming nor its newest record reaches DL-TAKE.
 : NAV-PAUSE ( -- n n )
    DL-ON @  DL-NEW @  0 DL-ON !  0 DL-NEW ! ;
 
@@ -7551,7 +7135,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
       DL-P DL-N @ DL-ROW NAV-CELL 4 cells + @ DLB-N !
    REPEAT ;
 
-\ Row FROM's cells into row TO of the pending uses.
 : PU-MOVE ( n n -- )
    {: from:n to:n :}
    PU-P from PU-ROW NAV-CELL {: src:ptr :}
@@ -7590,7 +7173,6 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    DL-NAME-AT {: off:n u:n :}
    DLB-P @ off +  u ;
 
-\ The row that locates record REC1, and whether one does.
 : DL-ROW-OF ( n -- n bool )
    {: rec1:n :}
    rec1 0= IF 0 RES-FALSE EXIT THEN
@@ -7639,15 +7221,14 @@ USIGS-RUNTIME-INIT
    n allot
    dst ;
 
-\ Bake the store at the grain above its content, plus one grain of room. A
-\ power-of-two cap shipped up to 2 MB of zero padding per image; USIGS-GROW
-\ still doubles at runtime. The spare grain is zero and the grid stores no zero
-\ group, so it costs bitmap bytes, not heap bytes; without it a capture that
-\ landed just under a grain boundary left a restored engine a few rows of room,
-\ its first definitions regrew the store, and its own capture then copied the
-\ grown store into fresh DATA past everything the program laid last
-\ (measured on the NORETS of test/app-image-engine.f's image: 32 bytes left,
-\ and test/snapshot-writer-tail.f's heap no longer ended inside its cell).
+\ Bake the store at the grain above its content plus one grain of room;
+\ USIGS-GROW still doubles at runtime. The spare grain is zero and the grid
+\ stores no zero group, so it costs bitmap bytes, not heap. Without it a capture
+\ just under a grain boundary left a restored engine a few rows, its first
+\ definitions regrew the store, and its own capture copied the grown store into
+\ fresh DATA past everything the program laid last (measured on the NORETS of
+\ test/app-image-engine.f's image: 32 bytes left, and
+\ test/snapshot-writer-tail.f's heap no longer ended inside its cell).
 : USIGS-PERSIST-CAP ( n -- n )
    USIGS-GRAIN + USIGS-ROUND-CAP ;
 
@@ -7669,8 +7250,7 @@ USIGS-RUNTIME-INIT
    0 USIGS-GROW-CAP !
    NULL-PTR USIGS-GROW-NEXT ! ;
 
-\ USIGS-GROW ( n -- ) : geometric growth — at least double the current cap so
-\ regrowth copies the store O(log) times, not once per appended grain.
+\ At least double the cap, so regrowth copies the store O(log) times.
 : USIGS-GROW {: need :}
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
@@ -7697,17 +7277,14 @@ USIGS-RUNTIME-INIT
       1 +
    REPEAT drop ;
 
-\ UALIGN ( n -- n )
 : UALIGN 7 + $FFFFFFFFFFFFFFF8 and ;
 
-\ UALIGN! ( -- )
 : UALIGN! UEND @ UALIGN UEND ! ;
 
 : U!+ ( n -- ) {: x:n :}
    x UEND @ USIGS-CELL-AT !
    UEND @ CELL + UEND ! ;
 
-\ UTERM! ( -- )
 : UTERM! 0 UEND @ USIGS-CELL-AT ! ;
 
 \ USIGS-RESTORE-END is the store's truncation seam and is defined with the
@@ -7830,11 +7407,10 @@ variable SYM-ID
    SYM-STR-P @ SYM-STR-CAP-V @ nc ARENA-BYTES-GROW SYM-STR-P !
    nc SYM-STR-CAP-V ! ;
 
-\ Every name the checker records is copied here, from declaration words any
-\ source can call (CHECKER-DEFER and CHECKER-UNDEFINE among them), so the
-\ length is compared with the room left instead of added to the used mark: a
-\ length of -1 was taken and moved the mark back, and one whose end passes the
-\ largest cell would wrap the size the pool grows to.
+\ Every name the checker records is copied here from declaration words any
+\ source can call (CHECKER-DEFER, CHECKER-UNDEFINE), so the length is compared
+\ with the room left, never added to the used mark: a length of -1 would move
+\ the mark back, and one ending past the largest cell would wrap the grow size.
 : SYM-STR-OVERFLOW ( -- )
    s" checker: symbol string capacity overflow" 76 die ;
 
@@ -7882,19 +7458,16 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
    id SYM-PKG$ pkg pkgu SYM-STR=CI 0= IF RES-FALSE EXIT THEN
    id SYM-NAME$ name nameu SYM-STR=CI ;
 
-\ --- symbol hash index + current-state cache. SYMS and the USIGS/NORETS/
-\ DFERS/PES stores stay authoritative; this is a process-local mmap cache.
-\ Buckets map folded (pkg,vis,name) to a symbol id and mirror SYMS rows
-\ exactly: SYM-INTERN pushes new rows front, scope exit retires its rows
-\ newest-first (LIFO, so each retired row is at its bucket head), anything
-\ else rebuilds from SYMS. Per-symbol cells memoize the CURRENT effect
-\ record offset, control flags, defer flag, and first prim slot. A cached
-\ cell is valid only while its epoch cell equals HIDX-EPOCH; the sync words
-\ catch every store rewind or swap (UEND/USIGS-P for effects, NORET-END for
-\ control flags) and bump the epoch, so scope/candidate rollback, signature
-\ truncation, forget words, and arena swaps invalidate the whole cache at
-\ O(1) and the next lookup re-derives from the authoritative store.
-\ Snapshot prepare drops the mapping; a restored image rebuilds lazily.
+\ --- symbol hash index and current-state cache: a process-local mmap cache;
+\ SYMS and the USIGS/NORETS/DFERS/PES stores stay authoritative. Buckets map
+\ folded (pkg,vis,name) to a symbol id and mirror SYMS exactly: SYM-INTERN
+\ pushes new rows front, scope exit retires rows newest-first (each retired row
+\ is at its bucket head), anything else rebuilds from SYMS. Per-symbol cells
+\ memoize the current effect record offset, control flags, defer flag and first
+\ prim slot, valid only while their epoch cell equals HIDX-EPOCH; the sync
+\ words catch every store rewind or swap (UEND/USIGS-P, NORET-END) and bump the
+\ epoch, invalidating the whole cache in O(1). Snapshot prepare drops the
+\ mapping; a restored image rebuilds lazily.
 0 constant HT-BKT
 1 constant HT-NEXT
 2 constant HT-EFF-V
@@ -7905,12 +7478,10 @@ CAST: REG-PTR-CELLS ( ptr u8 -- ptr ptr u8 )
 7 constant HT-DFR-E
 8 constant HT-PRM-V
 9 constant HT-PRM-E
-\ HT-USX is NOT an epoch-memoized answer like the nine cells above it: it is the
-\ exact per-symbol head of the USIGS user region — offset+1 of the newest effect
-\ record for that symbol, 0 when the symbol has none. It is maintained at the
-\ store's own append and truncation seams and rebuilt only when it cannot be,
-\ so an epoch bump leaves it alone. It shares this mapping because it is sized
-\ and indexed by symbol id exactly like the memo cells.
+\ HT-USX is no epoch-memoized answer: it is the exact per-symbol head of the
+\ USIGS user region (offset+1 of the newest effect record, 0 for none),
+\ maintained at the store's append and truncation seams and rebuilt only when it
+\ cannot be, so an epoch bump leaves it alone.
 10 constant HT-USX
 \ HT-NRX is the same kind of head for the no-return/control-flag store: offset+1
 \ of the newest NORETS entry for the symbol, 0 when it has none.
@@ -8060,8 +7631,8 @@ HIDX-MEM-CLEAR
    nb @ id <> IF s" checker: name index corrupt" 76 die THEN
    id HT-NAME-NEXT HIDX-CELL @ nb ! ;
 
-\ HIDX-SYMS-RETIRE ( n -- ) : pop rows [n, SYM-N) before a scope restores SYM-N.
-\ A retired row was never pushed (HIDX-BUILD skips it), so it has nothing to pop.
+\ Pops rows [n, SYM-N) before a scope restores SYM-N; a retired row was never
+\ pushed (HIDX-BUILD skips it), so it has nothing to pop.
 : HIDX-SYMS-RETIRE {: keep:n :}
    HIDX-VALID @ 0= IF EXIT THEN
    SYM-N @ 1 -
@@ -8200,8 +7771,7 @@ HIDX-MEM-CLEAR
 : SYM-CAP-NEXT ( n -- n ) {: need:n :}   \ smallest pow2 >= need, growing from cap
    SYM-CAP-V @ BEGIN dup need < WHILE 2 * REPEAT ;
 
-\ SYM-GROW ( need -- ) : double (pow2) the record array to hold id `need` and drop
-\ the HIDX mapping so the next lookup rebuilds — rehashes — at the new cap/mask.
+\ Growing drops the HIDX mapping, so the next lookup rehashes at the new cap.
 : SYM-GROW ( n -- ) {: need:n :}
    need SYM-CAP-NEXT {: nc:n :}
    SYMS SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW
@@ -8226,11 +7796,8 @@ HIDX-MEM-CLEAR
    HIDX-VALID @ IF SYM-ID @ HIDX-SYM+ THEN
    SYM-ID @ ;
 
-\ checker-registry.f - typed checker effect store.
-\
-\ Loaded from checker.f after the signature parser and before callers need
-\ certified word lookup. Source strings are parsed once at boundary adapters;
-\ callers instantiate the stored effect graph.
+\ ---- typed checker effect store. Source strings are parsed once at boundary
+\ adapters; callers instantiate the stored effect graph.
 
 0 constant EFF-DELETED
 1 constant EFF-ACTIVE
@@ -8298,7 +7865,7 @@ $40 constant EFF-CONTENT
 : E-RVN@ ( ptr u8 -- n ) E-CONTENT EC.RVN @ ;
 : E-MINI@ ( ptr u8 -- n ) E-CONTENT EC.MINI @ ;
 
-\ The owner callback and serialized graph retain the legacy flat wire layout.
+\ The owner callback and serialized graph use this flat wire layout.
 $0 constant EW-NEXT-OFF
 $8 constant EW-ACTIVE-OFF
 $10 constant EW-DIN-OFF
@@ -8498,10 +8065,8 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
 : E-NODE-OFF ( n -- n )
    E-NODE-NEW E-WOFF ;
 
-\ E-ARGS-RESERVE ( n -- n ) : reserve a contiguous argc-cell run in USIGS
-\ for a persisted EN-PARAM node's arg offsets (uncapped arity). The run is a byte
-\ offset (E-OFF-relative), stable across USIGS relocation. Children copied after
-\ the reserve allocate past this run, so their offsets never overlap it.
+\ The run is a byte offset (E-OFF-relative), stable across USIGS relocation;
+\ children copied after the reserve allocate past it, so arity is uncapped.
 : E-ARGS-RESERVE ( n -- n ) {: argc:n :}
    E-WEND@ argc cells + CELL + E-WENSURE
    E-WEND@ dup argc cells + E-WEND! ;
@@ -8517,48 +8082,24 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
 \ --- node interning ------------------------------------------------------------
-\
-\ WHAT IT REMOVES. Loading the compiler chain used to leave 115,948 nodes in the
-\ store carrying 1,593 distinct shapes, and 48.86% of its bytes were a second
-\ copy of a signature the engine re-records at publish time. Both are the same
-\ fact — a node the store already holds gets copied again — so both go through
-\ one word: when E-COPY* has finished a subterm at the top of the arena, look for
-\ an identical one BELOW; on a hit rewind UEND over the fresh copy and hand back
-\ the older offset. Measured with tools/effect-store-census.f, the store after
-\ that load went from 10,462,080 bytes to 1,988,912, and its node count to 1,593
-\ — one node per shape, which is the floor.
-\
-\ WHY THE HASH ONLY CHOOSES A CHAIN. Deciding membership by hash alone is a memo
-\ that miscompiles silently on a collision: two unrelated effects would share one
-\ graph and a word would certify against another word's signature. Every hit is
-\ therefore decided by comparing the nodes themselves.
-\
-\ WHY COMPARING THE ROOTS IS A STRUCTURAL COMPARE. Children are interned before
-\ their parent, so a child cell holds the offset of the one node with that shape,
-\ and two roots that agree tag-for-tag and key-cell-for-key-cell describe the
-\ same subterm. The two fields that are NOT shared — an atom's or a param's name
-\ bytes, which every copy writes for itself — are compared by content. Shallow
-\ equality therefore implies structural equality whatever the table's history:
-\ interning the table has forgotten (a rewind, a snapshot) costs hits, never
-\ correctness.
-\
-\ THE KEY IS WRITTEN ONCE. E-KEY-N/E-KEY are the only description of what a node
-\ IS, and the hash and the compare both read it, so a field added to a node kind
-\ joins both by construction. A hash folded over one field list and a compare
-\ written over another is exactly the drift that would make this word wrong.
-\
-\ VAR IDS ARE THE STORED ONES, NEVER THE LIVE ONES. E-COPY* renumbers a record's
-\ type and row vars in first-appearance order as it writes them, so two records
-\ that mean the same rows agree here and two that differ in a var's position do
-\ not. E-TV-ID/E-RV-ID still run for a subterm that is then interned away,
-\ because the subterm is BUILT first and discarded after — E-TVN@/E-RVN@ keep
-\ counting the record's own vars.
-\
-\ WHY THE REWIND IS SAFE. A finished subterm occupies the contiguous span from
-\ its root to UEND, and every offset it names lies below that top: inside its own
-\ span, or in a record below it. So no surviving node ever names a byte above a
-\ truncation point — which is what makes USIGS-RESTORE-END's rewind, and this
-\ word's own, structural rather than a bet.
+\ When E-COPY* finishes a subterm at the top of the arena, an identical node
+\ below wins: UEND rewinds over the fresh copy and the older offset is answered.
+\ Measured on the compiler chain load: 115,948 nodes of 1,593 shapes and
+\ 10,462,080 bytes became 1,593 nodes (the floor) and 1,988,912 bytes.
+\ The hash only chooses a chain; every hit compares the nodes, since a hash
+\ collision would certify a word against another word's signature.
+\ Children are interned before their parent, so equal tags and key cells at the
+\ roots mean equal subterms; only an atom's or param's name bytes, written per
+\ copy, are compared by content. A forgotten intern (rewind, snapshot) costs
+\ hits, never correctness.
+\ E-KEY-N/E-KEY are the one description of a node's identity, read by both hash
+\ and compare, so a new field joins both.
+\ Var ids are the stored ones: E-COPY* renumbers vars in first-appearance order.
+\ E-TV-ID/E-RV-ID still run for a subterm interned away, since it is built
+\ before it is discarded.
+\ The rewind is safe: a finished subterm spans its root to UEND and names only
+\ offsets below that top, so no surviving node names a byte above a truncation
+\ point (USIGS-RESTORE-END relies on the same fact).
 $1000 constant UIX-BKT-INIT       \ buckets; a power of two
 $400 constant UIX-ENT-INIT        \ entries; grows geometrically
 3 constant UIX-ENT-CELLS
@@ -8712,9 +8253,8 @@ UIX-RESET
    nb UIX-ENT-P !
    nc UIX-ENT-CAP ! ;
 
-\ UIX-REHASH ( -- ) : re-chain every live entry into the freshly sized buckets,
-\ oldest first, so each bucket keeps its newest entry at the head — the ordering
-\ UIX-POP relies on. The nodes are all below UIX-HI, so re-reading them is safe.
+\ Re-chains oldest first, so each bucket keeps its newest entry at the head, the
+\ order UIX-POP relies on. The nodes are all below UIX-HI, so re-reading is safe.
 : UIX-REHASH ( -- )
    0 UIX-I !
    BEGIN UIX-I @ UIX-N @ < WHILE
@@ -8766,10 +8306,8 @@ UIX-RESET
    newend UIX-HI @ min UIX-HI ! ;
 
 \ --- finding the twin, and the one table state every caller asks for -----------
-\ UIX-BUCKET/UIX-CHAIN-FIND are the lookup written once: E-INTERN asks it of the
-\ subterm at the top of the arena, and the rebuild below asks it of a node the
-\ store already holds. A second copy of the chain walk is the drift the key's own
-\ comment warns about, one screen up.
+\ UIX-BUCKET/UIX-CHAIN-FIND are the one lookup: E-INTERN asks it of the arena
+\ top's subterm, the rebuild of a node the store already holds.
 : UIX-BUCKET ( n -- n )
    E-NODE-HASH UIX-BKT-CAP @ 1 - and ;
 
@@ -8787,37 +8325,20 @@ UIX-RESET
    0 ;
 
 \ --- rebuilding the index from the store it indexes ----------------------------
-\
-\ WHY A BAKED IMAGE NEEDS THIS. The table is process-local mmap memory, so the
-\ image carries none of it (UIX-RESET) while the store it describes is baked
-\ whole. An empty table over a full store is NOT a cold start: the product
-\ engine's first definitions re-record shapes the boot prefix already holds, and
-\ every one of them is written a second time. Measured on bin/hb before this
-\ word, tools/effect-store-census.f answered 1,717 nodes for 1,690 shapes — two
-\ clusters of the same 14 boot shapes, one from the empty table at boot and one
-\ from the drop that used to follow the first USIGS-GROW.
-\
-\ WHY REBUILD RATHER THAN BAKE THE TABLE. The offsets could be persisted — the
-\ store is — but the buckets are hash-keyed, so a baked table would still have to
-\ be re-chained entry by entry at boot, which costs the same hash per node this
-\ walk pays. And the walk answers for every OTHER way the table can end up empty
-\ over a full store, which a baked table does not.
-\
-\ THE STORE'S OWN LAYOUT IS THE VISITED SET, and that is what keeps the walk
-\ linear. A record owns the bytes between its header and the next record: they are
-\ exactly the nodes, name bytes and arg runs E-COPY wrote for its rows, because a
-\ node the interner discarded was rewound off the top before the next append. So
-\ every node in that span is reachable from that record's four row roots, and a
-\ child OUTSIDE the span is a node an older record wrote — one this walk has
-\ already visited, whose span it already covered. Walking each span once therefore
-\ reaches every node in the store exactly once with no visited set at all, and the
-\ store's 42,000 references to older nodes cost a range test each instead of a
-\ hash — most of them not even that, because a record that appended no bytes of
-\ its own cannot have interned anything and is skipped whole. The table's own
-\ lookup still gates the span, because a record MAY name one of its own nodes
-\ twice (a row that is both a data and a return row) and a subterm walked twice is
-\ work squared for nothing. Measured on this engine's own baked store: 1,688 nodes
-\ indexed over 20,567 records in 1.7 ms, once, at the first definition.
+\ An image carries no table (UIX-RESET) but bakes the whole store, and an empty
+\ table over a full store re-records every boot-prefix shape the first
+\ definitions name (measured: 1,717 nodes for 1,690 shapes without this walk).
+\ A baked table would still need re-chaining by hash at boot, the same cost,
+\ and the walk also covers every other way the table empties over a full store.
+\ The store's layout is the visited set: a record owns the bytes up to the next
+\ record, exactly the nodes, name bytes and arg runs E-COPY wrote for its rows
+\ (a discarded node was rewound before the next append), so each span is
+\ reachable from its record's four row roots and a child outside it is an older
+\ record's, already visited. Each span is walked once with a range test per
+\ older reference; a record that appended nothing is skipped whole. The table's
+\ lookup still gates the span, since a record may name one of its nodes twice.
+\ Measured on this engine's baked store: 1,688 nodes over 20,567 records in
+\ 1.7 ms, once, at the first definition.
 
 \ UIX-OWN? ( n -- bool ) : is this offset a whole live node of the span being
 \ walked? The span is clamped to UEND below, and a node needs every one of its
@@ -8860,19 +8381,14 @@ UIX-RESET
                                           \ may have re-sized the buckets, and an entry
                                           \ chained by a stale mask is invisible for good
 
-\ UIX-REC-ADD ( n n -- ) : every node in the span the record at `rec` owns,
-\ reached from its content. Empty content has four zero roots, so a record with
-\ no row effect names 0 in E-RIN@/E-ROUT@ and the walk skips it; reading them
-\ without the E-HASR@ gate can only make the index offer MORE nodes, never a
-\ wrong one, because every answer is decided by comparing the nodes themselves.
-\ A CONTENT CELL OF 0 IS A RECORD WITHOUT CONTENT, and has no rows to read:
-\ E-REC-INIT starts a record that way, and the capture's sweep (CHECKER-SWEEP
-\ RETIRE-BINDINGS) leaves a retired binding that way, zero but for its link.
-\ That sweep leaves a known gap here rather than a wrong entry: a node a kept
-\ record shares with a retired one stays in the retired record's span, which
-\ offers nothing now, and the kept record offers only its own span, so after a
-\ rebuild the index lacks that node and a later definition of its shape
-\ interns a twin.
+\ Empty content has four zero roots, so a record with no row effect names 0 in
+\ E-RIN@/E-ROUT@ and is skipped; reading them without the E-HASR@ gate can only
+\ offer more nodes, never a wrong one, since every answer compares the nodes. A
+\ content cell of 0 is a record without content: E-REC-INIT starts a record so,
+\ and the capture's sweep (CHECKER-SWEEP RETIRE-BINDINGS) leaves a retired
+\ binding so. Known gap: a node a kept record shares with a retired one stays in
+\ the retired record's span, so after a rebuild the index lacks it and a later
+\ definition of its shape interns a twin.
 : UIX-REC-ADD ( n n -- ) {: rec:n next:n :}
    rec EFF-REC + {: lo:n :}
    next UEND @ min {: hi:n :}             \ the span is the record's own bytes AND live: a
@@ -8888,20 +8404,14 @@ UIX-RESET
    rec E-PTR E-RIN@ UIX-NODE-ADD
    rec E-PTR E-ROUT@ UIX-NODE-ADD ;
 
-\ UIX-BUILD ( -- ) : the store's own chain, from the first record to the
-\ terminator — the same walk USX-BUILD makes for the per-symbol heads, and the
-\ same one tools/effect-store-census.f makes to count the store. A record still
-\ being built is not on it yet (its ER.NEXT is 0 until E-REC-FINISH), so the walk
-\ ends at the record in progress and the nodes above it belong to E-INTERN.
-\ UEND BOUNDS THE WALK, NOT THE CHAIN ALONE. UEND is the store's true top, and a
-\ rewind LEAVES THE BYTES ABOVE IT READABLE: E-INTERN's hit path assigns UEND
-\ directly, and a terminator only ends a chain that has not since been regrown
-\ over. So the walk states its own bound instead of trusting the
-\ links: a record is walked only while its whole header is below UEND, and a link
-\ that does not advance, or that leaves the live store, ends it. Otherwise the
-\ index would offer nodes in the dead region - entries the next append overwrites,
-\ which is the one thing a forgotten table never does and exactly what "exact for
-\ the store as it is now" forbids.
+\ Walks the store's chain from the first record to the terminator, as USX-BUILD
+\ does. A record still being built has ER.NEXT 0
+\ until E-REC-FINISH, so the walk ends there and the nodes above belong to
+\ E-INTERN. UEND bounds the walk, not the chain alone: a rewind leaves the bytes
+\ above UEND readable (E-INTERN's hit assigns UEND directly), so a record is
+\ walked only while its whole header is below UEND, and a link that does not
+\ advance or leaves the live store ends it; else the index would offer nodes the
+\ next append overwrites.
 : UIX-BUILD ( -- )
    0 UIX-BP !
    BEGIN UIX-BP @ EFF-REC + UEND @ <= WHILE
@@ -8912,46 +8422,31 @@ UIX-RESET
       UIX-BN @ UIX-BP !
    REPEAT ;
 
-\ UIX-EXACT ( -- ) : the index is exact for the store as it is now, which is the
-\ ONE question every caller has. Three cases:
-\   NO TABLE     a fresh process or a snapshot boot. The store may already be
-\                full of nodes, so the table is allocated AND built from it.
-\   STORE MOVED  a rewind this file did not perform (UEND below the mark), or a
-\                base no relocation carried the stamp to — a fresh mapping, or an
-\                arena swapped in under the store. Those entries describe bytes
-\                that are no longer theirs, so the table forgets them and is
-\                re-derived from the store that is there now. Re-deriving is not a
-\                bet on the history: UIX-BUILD reads offsets and shapes out of the
-\                CURRENT store and nothing else, so it is exactly as valid here as
-\                it is at boot.
-\   OTHERWISE    every entry is still exact at a store end that only grew; mark
-\                the new end.
-\ A VERBATIM RELOCATION IS NOT A MOVE in the sense above: USIGS-GROW carries the
-\ stamp, so the offsets stay the index's own and this word sees nothing to do.
-\ THE INVARIANT THE BASE AND THE MARK TOGETHER PROTECT: every entry names the node
-\ that was interned at that offset in the store being asked about. Nothing weaker
-\ would do — an entry over bytes that are no longer a node could answer a lookup
-\ with an offset the store never interned.
+\ UIX-EXACT makes the index exact for the store as it is now, the one question
+\ every caller has:
+\   no table      a fresh process or snapshot boot: allocate and build it from
+\                 the store, which may already be full.
+\   store moved   a rewind this file did not perform (UEND below the mark), or a
+\                 base no relocation carried the stamp to (a fresh mapping, an
+\                 arena swapped in): forget the entries and rebuild, which reads
+\                 only the current store and is as valid as at boot.
+\   otherwise     the store only grew: mark the new end.
+\ A verbatim relocation is no move: USIGS-GROW carries the stamp. The base and
+\ mark together keep every entry naming the node interned at that offset in the
+\ store being asked about.
 : UIX-EXACT ( -- )
    UIX-READY? 0= IF UIX-ALLOC UIX-BUILD EXIT THEN
    UEND @ UIX-HI @ <
    USIGS UIX-BASE@ <> or IF UIX-DROP UIX-BUILD EXIT THEN
    UIX-STAMP ;
 
-\ E-INTERN ( n -- n ) : the finished subterm at `noff` spans [noff, UEND). If the
-\ store already holds one just like it, rewind over this copy and answer with the
-\ older offset; otherwise keep it and remember it.
-\
-\ THE HIT CARRIES THE TABLE'S MARK DOWN WITH THE STORE. A bare `noff UEND !`
-\ leaves UIX-HI above the new end, and the very next sync reads this word's own
-\ rewind as one it did not perform and throws the whole table away — which is how
-\ the interner first measured a 22% saving instead of an 87% one. UIX-TRUNCATE is
-\ also what states, rather than assumes, that the discarded span holds no entry:
-\ a hit means every child hit too (a child the table had not seen would sit at a
-\ fresh offset that no older twin could name), so the loop finds nothing to pop.
-\ It does NOT go through USIGS-RESTORE-END: that seam also repairs the per-symbol
-\ record index, and this rewind happens mid-record, before the record being built
-\ has an ER.NEXT for a chain walk to follow.
+\ The finished subterm at `noff` spans [noff, UEND); a stored twin wins and this
+\ copy is rewound. The hit carries the table's mark down with the store
+\ (UIX-TRUNCATE): a bare `noff UEND !` leaves UIX-HI above the end, and the next
+\ sync drops the whole table as a foreign rewind (measured: 22% saving instead
+\ of 87%). A hit means every child hit too, so the discarded span holds no
+\ entry. It bypasses USIGS-RESTORE-END, which also repairs the per-symbol index:
+\ this rewind is mid-record, before the record has an ER.NEXT to follow.
 : E-INTERN ( n -- n ) {: noff:n :}
    TOP-COPYING @ IF noff EXIT THEN     \ the interpret row is scratch, never interned
    noff 0= IF 0 EXIT THEN
@@ -9009,16 +8504,11 @@ UIX-RESET
                EN-STALE E-NODE-OFF r@ E-WPTR EN.A !  -1 r@ E-WPTR EN.D !
             ELSE TOP-COPYING @ IF over P>LOST r@ E-WPTR EN.D ! THEN THEN
             TOP-SCOPE-SEEN @ or TOP-SCOPE-SEEN !     \ ( back cur )
-            \ This cell's PHYSICAL WIDTH, asked of ROW-TERM-CELLS while the live term
-            \ is still in hand — the same authority ROW-CELLS asks for E-MINI@, at the
-            \ same moment, so the two can never drift. The stored graph cannot answer
-            \ it afterwards: a width is a question about the TYPE (T-WIDTH walks the
-            \ family registry's schemas), and the copy keeps a term's identity, not
-            \ its layout registry. A portable graph therefore carries that registry
-            \ and revalidates the claim before publication. Held as width+1 so ZERO
-            \ means "this node was written by something that did not know the question", which is what a
-            \ snapshot taken before this field existed restores (EN.E on a param node
-            \ carries the same pre-3a story). Readers fail closed on it.
+            \ The cell's physical width, asked of ROW-TERM-CELLS while the live term
+            \ is in hand, the authority ROW-CELLS asks for E-MINI@, so the two cannot
+            \ drift: the stored graph keeps a term's identity, not its layout
+            \ registry, and a portable graph carries that registry and revalidates
+            \ the claim before publication. Held as width+1; readers fail closed on 0.
             dup P>TYPE ROW-TERM-CELLS 1 + r@ E-WPTR EN.C !
             swap r@ E-WPTR EN.B !                    \ ( cur )
             P>REST R-RES r> swap                     \ ( off rest )
@@ -9085,7 +8575,7 @@ UIX-RESET
          x E-RES PARAM>ARGC {: argc:n :}
          argc noff E-WPTR EN.C !
          x E-RES PARAM>FAM noff E-WPTR EN.H !         \ resolved family-id (identity)
-         x E-RES PARAM>HID noff E-WPTR EN.E !         \ hidden physical-field slot+1 (0 = logical; 0 in pre-3a snapshots)
+         x E-RES PARAM>HID noff E-WPTR EN.E !         \ hidden physical-field slot+1 (0 = logical)
          argc 0 > IF
             argc E-ARGS-RESERVE {: run:n :}          \ argc-cell run in USIGS
             run noff E-WPTR EN.D !
@@ -9102,14 +8592,12 @@ UIX-RESET
    E-INTERN ;                          \ the finished subterm; older twin wins
 : E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
-\ TERM-DEPTH ( n -- n ) : how many levels deep a recursive walk of a recorded
-\ term t (UIX-NODE-ADD) goes, the count EFFECT-DEPTH-MAX bounds. It goes down a
-\ level into an entry's type and the rest of its row, a quotation's rows, a
-\ pointer's target, a binder's parts and a family's arguments, so a row of k
-\ plain entries is k levels deep and a quotation's row starts below the entry
-\ holding it. A row is a loop here and only nesting recurses. Past
-\ EFFECT-DEPTH-MAX the walk goes no further down, so it recurses at most that
-\ deep, but a row it entered is counted to its end.
+\ TERM-DEPTH: the depth EFFECT-DEPTH-MAX bounds for a recursive walk of a
+\ recorded term (UIX-NODE-ADD). A level down is an entry's type and the rest of
+\ its row, a quotation's rows, a pointer's target, a binder's parts or a
+\ family's arguments, so a row of k plain entries is k deep. A row is a loop and
+\ only nesting recurses; past EFFECT-DEPTH-MAX the walk stops descending, but a
+\ row it entered is counted to its end.
 variable TD-MAX                         \ the deepest level TERM-DEPTH* reached
 
 : TERM-DEPTH* ( n n -- )
@@ -9346,24 +8834,18 @@ CHX-RESET
    ER.NEXT @ 0= ;
 
 \ --- per-symbol effect-record index (USX) --------------------------------------
-\ What a symbol lookup actually needs from the user region is ONE record: the
-\ NEWEST one carrying that symbol. Everything older is shadowed by it, and its
-\ state (active or deleted) is the whole answer. USX keeps that record's
-\ offset+1 per symbol id in HT-USX, so the answer costs one indexed load instead
-\ of a walk of every record in the store.
-\
-\ It is exact, not a memo. Three seams keep it so:
-\   append      E-REC-START pushes the new record onto its symbol's chain
-\               (ER.SYMPREV = the old head) and makes it the head.
-\   truncation  USIGS-RESTORE-END walks only the records being discarded and
-\               resets each affected head to the surviving record below them.
-\   rebuild     anything else — an arena swap, a rewind performed outside this
-\               file, a symbol-table grow that moves every index — is detected
-\               structurally (non-monotone UEND, changed store identity, dropped
-\               mapping) and the index is rebuilt from the store it indexes.
-\ Because the append seam syncs BEFORE it writes, a rewind cannot be masked by
-\ regrowth over the truncated offsets — the same discipline HIDX-EFF-SYNC keeps
-\ for the memo cells.
+\ A symbol lookup needs one record, the newest carrying that symbol; older ones
+\ are shadowed and its state (active or deleted) is the answer. HT-USX keeps its
+\ offset+1 per symbol id. It is exact, not a memo, kept by three seams:
+\   append      E-REC-START links the new record (ER.SYMPREV = old head) and
+\               makes it the head.
+\   truncation  USIGS-RESTORE-END walks only the discarded records and resets
+\               each affected head to the surviving record below.
+\   rebuild     an arena swap, a foreign rewind or a symbol-table grow is
+\               detected structurally (non-monotone UEND, changed store
+\               identity, dropped mapping) and the index is rebuilt.
+\ The append seam syncs before it writes, so regrowth over truncated offsets
+\ cannot mask a rewind (as HIDX-EFF-SYNC does for the memo cells).
 
 : USX-BASE-FIELD ( -- ptr ptr u8 )
    USX-BASE 0 ptr-field ;
@@ -9423,20 +8905,12 @@ CHECKER-REG:}SCRATCH
    sym USX@ off E-PTR ER.SYMPREV !
    off 1 + sym USX! ;
 
-\ UEND BOUNDS THIS WALK, NOT THE CHAIN ALONE - the same three admissions
-\ UIX-BUILD states, for the same reason. UEND is the store's true top and a
-\ rewind LEAVES THE BYTES ABOVE IT READABLE: E-INTERN's own hit rewinds
-\ mid-record without writing a terminator, and a terminator a rewind did write
-\ is overwritten by the very next append. Walking the chain alone therefore
-\ indexed the dead region and answered a symbol's newest record with an offset
-\ the store no longer holds - which the next definition of that name reads as a
-\ duplicate definition (measured: rc 78 on `CAST: >IMG`).
-\ THE LINEAR SPECIFICATION SHARED THE BLIND SPOT, which is why nothing caught it:
-\ USIG-NEWEST-LINEAR walked the same terminator, so the differential in
-\ test/checker-scan-index-suite.f compared two walks that agreed on the same wrong
-\ answer. It carries this bound too now, and the case that does catch a regression
-\ here is in test/effect-intern-suite.f beside the interner's, reading the answer
-\ AT the rebuild - before the store grows back over the dead offsets.
+\ UEND bounds this walk, not the chain alone, as in UIX-BUILD: E-INTERN's hit
+\ rewinds mid-record without a terminator, and the next append overwrites one a
+\ rewind wrote. An unbounded walk answers a symbol's newest record from the dead
+\ region, which the next definition of that name reads as a duplicate
+\ (measured: rc 78 on `CAST: >IMG`). test/effect-intern-suite.f catches it by
+\ reading the answer at the rebuild, before the store grows back.
 : USX-BUILD ( -- )
    HT-USX IDX-HEADS-CLEAR
    USIGS-USER-OFF @ USX-BP !
@@ -9457,12 +8931,10 @@ CHECKER-REG:}SCRATCH
    USX-SYNC
    USX-GEN @ HIDX-GEN @ <> IF USX-BUILD THEN ;
 
-\ USX-TRUNCATE ( n -- ) : repair the heads before the store rewinds to `newend`.
-\ Walking forward from newend visits the discarded records oldest-first, so for
-\ each symbol the FIRST discarded record is the one whose back-link names a
-\ record that survives — and that back-link is the symbol's restored head. Later
-\ discarded records of the same symbol link to discarded records and write
-\ nothing, so each affected symbol is written exactly once.
+\ Repairs the heads before the store rewinds to `newend`. Walking forward from
+\ newend visits discarded records oldest-first, so each symbol's first discarded
+\ record back-links to its surviving head; later ones link to discarded records
+\ and write nothing.
 : USX-TRUNCATE ( n -- ) {: newend:n :}
    USX-GEN @ HIDX-GEN @ <> IF EXIT THEN
    newend E-PTR USX-P !
@@ -9501,15 +8973,12 @@ RECORD-HOOK-DEFAULTS
    UEND !
    UTERM! ;
 
-\ USIG-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what USX answers — the
-\ newest user record for a symbol, offset+1, by walking every record the way the
-\ store is ordered. test/checker-scan-index-suite.f differentials the indexed
-\ answer against this one over shadowing, deletion and rollback corpora, and
-\ USX-BUILD is this same walk done for every symbol at once — SO IT CARRIES THE
-\ SAME UEND BOUND, stated the same way. A specification written by copying the
-\ implementation's traversal tests the code against itself: while this walk
-\ trusted the terminator alone, it named a dead record exactly as the unbounded
-\ index did, and no differential between the two could ever disagree.
+\ USIG-NEWEST-LINEAR is the specification of what USX answers: the newest user
+\ record for a symbol, offset+1, by walking every record in store order.
+\ test/checker-scan-index-suite.f checks the index against it over shadowing,
+\ deletion and rollback corpora. It carries USX-BUILD's UEND bound: a
+\ specification copying the implementation's traversal tests the code against
+\ itself, and a terminator-only walk named a dead record exactly as the index did.
 : USIG-NEWEST-LINEAR ( n -- n ) {: sym:n :}
    0
    USIGS-USER-OFF @ USX-BP !
@@ -9537,28 +9006,20 @@ RECORD-HOOK-DEFAULTS
    rec1 1 - visit start end noff nameu DL-ROW+ ;
 
 \ ---- source-order visibility under the binding horizon ------------------------
-\ A REPLAY checks a definition as the engine compiles it, so it sees exactly the
-\ records that existed then. A RECONSTRUCTION checks recorded source in an engine
-\ that already holds that source and everything after it, so a body token would
-\ bind to the NEWEST record of its spelling, which may be a later shadow: a
-\ package word declared after a definition that named its global twin. Inside a
-\ verifier scope CHECK therefore latches the definition's own record as
-\ BIND-HORIZON, and every lookup below sees only records recorded before it. A
-\ check outside one - the live load path, a candidate probe whose name is only
-\ a label - keeps the whole store. Nothing is hidden by name and
-\ nothing older is hidden, so an existing package dependency still binds; a
-\ definition the store does not know binds against the whole store, as before.
-\
-\ WHAT THE PASS ITSELF RECORDED IS ALWAYS VISIBLE. The text being verified may
-\ differ from the text on record - a build certifies the next source in the
-\ engine built from the last one - and a word it defined earlier in its own
-\ order is exactly what a cold compile would see, wherever the old record of
-\ that name sits (PASS-FLOOR).
-\
-\ A SEEDED RECORD IS ALWAYS VISIBLE. The pool is taken by reference, at whatever
-\ definition first misses on the name, so a seeded record's offset says when it
-\ was needed, not when its word was defined: the word has been in the engine
-\ since boot. (dot habu-preserve-src-order-0c9fe3d7)
+\ A replay checks a definition as the engine compiles it and sees exactly the
+\ records that existed then. A reconstruction checks recorded source in an engine
+\ already holding it and everything after, so a token would bind the newest
+\ record of its spelling, maybe a later shadow (a package word declared after a
+\ definition that named its global twin). Inside a verifier scope CHECK latches
+\ the definition's own record as BIND-HORIZON and lookups see only records
+\ before it. Outside one (the live load path, a candidate probe whose name is a
+\ label) the whole store is seen, and so is it for a definition the store does
+\ not know. Nothing is hidden by name or for being older, so a package
+\ dependency still binds.
+\ Always visible: what the pass itself recorded (PASS-FLOOR), since the text
+\ verified may differ from the text on record and a word it defined earlier is
+\ what a cold compile would see; and a seeded record, whose offset says when the
+\ pool was first missed on its name, not when the word was defined (boot).
 : HORIZON-VISIBLE? ( n -- bool ) {: off1:n :}   \ record offset+1: visible under the horizon?
    BIND-HORIZON @ 0= IF RES-TRUE EXIT THEN
    off1 BIND-HORIZON @ < IF RES-TRUE EXIT THEN
@@ -9879,15 +9340,13 @@ CUR-DEFAULT
    rec E-PTR E-REC-FINISH
    rec ;
 
-\ Interpret-gate wide scan (habu-tfam-12-interpret checker half): a word whose
-\ recorded effect mentions ANY wider-than-cell layout value — producers and
-\ consumers, on any of the four rows, including inside quotation sub-effects
-\ (a quotation value can be `execute`d at top level), including quotation
-\ effects under scope and region binders — must never run at the
-\ untyped interpret level: its dict record is marked DNAME-WIDE so
-\ EM-INTERPRET-FIND / interpret `'` fail closed before a bundle can land on
-\ (or be expected from) the interpret stack. A `ptr` to a layout is one cell
-\ and stays unmarked; pointers are deref'd only to reach nested quotations.
+\ A word whose recorded effect mentions any wider-than-cell layout value, on any
+\ of the four rows and inside quotation sub-effects (a quotation value can be
+\ `execute`d at top level, scope and region binders included), must never run
+\ at the untyped interpret level: its dict record is marked DNAME-WIDE so
+\ EM-INTERPRET-FIND and interpret `'` fail closed before a bundle can land on or
+\ be expected from the interpret stack. A `ptr` to a layout is one cell and
+\ stays unmarked; pointers are followed only to reach nested quotations.
 : ROW-WIDE? ( n -- bool ) {: s:n :}
    RES-FALSE s                           \ ( acc cur )
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -9908,39 +9367,26 @@ CUR-DEFAULT
      P>REST
    REPEAT drop ;
 
-\ DOESEFF: latch holding the effect a `create … does>` definer gives the words
-\ it creates — the clause signature, already parsed and certified against the
-\ clause body by CHECK-DOES! (below), built there into an ordinary anonymous
-\ effect record and held here as that record's offset+1.
-\
-\ WHY A LATCH AT ALL. The two facts arrive at the checker through two entry
-\ points and neither carries the other's half: CHECK-DOES! is given the clause
-\ body and the clause signature but NOT the definer's name, and the definer's
-\ own body check learns the name and records the effect but never sees the
-\ clause. The retained engine checks the clause first, then the definer's own
-\ body (habu2.f EM-COMPILE-PUBLISH-TRUSTED), so the created-word effect crosses
-\ to the parent record through this latch. The native compiler checks the parent
-\ first to keep its tape in source order, then takes state 1 explicitly at
-\ publication through CHECKER-NATIVE-DOES-FINISH.
-\
-\ DOESPEND IS WHAT MAKES IT FAIL CLOSED, and it has to, because the SOURCE
-\ pre-verifier runs the same two entry points in the OTHER order (verify-source
-\ VERIFY-DOES checks the definer's own body, then the clause), so a latch left
-\ armed there would be consumed by the NEXT definition's record and would teach
-\ the checker that an ordinary word creates something. The state machine admits
-\ only the retained engine's order for automatic record consumption:
+\ DOESEFF holds the effect a `create … does>` definer gives its created words:
+\ the clause signature, certified against the clause body by CHECK-DOES!, as an
+\ anonymous effect record's offset+1. A latch, because CHECK-DOES! sees the
+\ clause but not the definer's name, and the definer's body check sees the name
+\ but not the clause. The retained engine checks the clause first, then the
+\ definer's body (habu2.f EM-COMPILE-PUBLISH-TRUSTED); the native compiler checks
+\ the parent first, for source-order tape, and takes state 1 at publication
+\ through CHECKER-NATIVE-DOES-FINISH.
+\ DOESPEND fails closed, because verify-source VERIFY-DOES runs the two in the
+\ other order, and a latch left armed there would teach the next record that an
+\ ordinary word creates something:
 \   0  nothing latched
-\   1  a clause certified: the NEXT body check is the definer's own
-\   2  that body check is under way; its record — and only its record — takes it
-\ Every body check steps the machine (DOES-EFF-STEP, CHECK-RESET): 1 becomes 2
-\ and ANY other state clears, so a second check, a rejected definer body or a
-\ source-order clause never reaches a record. The record step takes state 2 and
-\ clears (DOES-EFF-TAKE, the E-ADD-EFFECT publish tail), a refused clause clears
-\ instead of arming, and REC-WIDE-PUBLISH below clears whatever a definition's
-\ publication left, so no latch outlives the definition that set it. The
-\ unjudged scan (CHECK-UNJUDGED!) is no body check here: when it returns it puts
-\ the machine back as it found it, and a TRUSTED: definer's publication steps it
-\ (TRUST-DECL); when it throws the definition is abandoned, and it clears.
+\   1  a clause certified: the next body check is the definer's own
+\   2  that body check is under way; only its record takes it
+\ Every body check steps it (DOES-EFF-STEP, CHECK-RESET): 1 becomes 2 and any
+\ other state clears. The record step takes state 2 and clears (DOES-EFF-TAKE in
+\ the E-ADD-EFFECT publish tail), a refused clause clears instead of arming, and
+\ REC-WIDE-PUBLISH clears what a publication left. The unjudged scan
+\ (CHECK-UNJUDGED!) is no body check: on return it restores the machine, and a
+\ TRUSTED: definer's publication steps it (TRUST-DECL); on a throw it clears.
 variable DOESEFF   0 DOESEFF !
 variable DOESPEND  0 DOESPEND !
 
@@ -9958,27 +9404,20 @@ variable DOESPEND  0 DOESPEND !
    DOESPEND @ 2 = IF DOESEFF @ ELSE 0 THEN
    DOES-EFF-CLEAR ;
 
-\ WRAPN/WRAPC/WRAPBENT: the same fact about a WRAPPER of a definer, learned
-\ where every certified body is walked. `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
-\ BUFFER-E ;` (src/lib/codegen.f) creates whatever BUFFER-E creates, because calling
-\ it reaches that one definer call on every path: the walk counts the definer
-\ calls a body makes (WRAPN, with WRAPC the created effect of the last one) and
-\ notes whether the line ever bent away from a straight one (WRAPBENT — any
-\ control frame, quotation, `exit`, `leave` or `recurse`; `[` and `]` are
-\ UNSAFE-TOK? and refuse the body). Exactly one call and no bend is the rule.
-\
-\ THE WALK IS WHERE THE RULE BELONGS, because a wrapper compiled in this process
-\ has no text for anyone else to read: the source pre-verifier learns a wrapper
-\ of a definer it READ from that text (verify-source WRAP-TOKEN), and a definer
-\ it read carries no CREATES cell to inherit, so the two rules never overlap.
-\
-\ The latch discipline is DOESEFF's: a fact belongs to the record of the body
-\ that armed it and to no other, so WRAP-TAKE always clears and every walk that
-\ is not a definition's own body clears too (CHECK-RESET at every body start,
-\ CHECK-DOES-RUN at a clause's end, CHECK-CANDIDATE-DONE at a candidate's).
-\ A candidate is refused by the take as well as cleared after it: its own record
-\ is truncated when the scope ends, so the fact has nothing to be written
-\ against, and the next real record is not the candidate's heir either.
+\ WRAPN/WRAPC/WRAPBENT: the same fact for a wrapper of a definer, learned where
+\ every certified body is walked. `: BUFFER ( n -- ) E-CG-CAP E-CG-VALUE
+\ BUFFER-E ;` (src/lib/codegen.f) creates what BUFFER-E creates: the walk counts
+\ definer calls (WRAPN, WRAPC the last one's created effect) and notes any bend
+\ from a straight line (WRAPBENT: a control frame, quotation, `exit`, `leave` or
+\ `recurse`; `[` and `]` are UNSAFE-TOK? and refuse the body). Exactly one call
+\ and no bend inherits. The rule lives in the walk because a wrapper compiled in
+\ this process has no text; verify-source WRAP-TOKEN learns wrappers of definers
+\ it read, which carry no CREATES cell, so the rules never overlap.
+\ DOESEFF's latch discipline: WRAP-TAKE always clears, and every walk that is not
+\ a definition's own body clears (CHECK-RESET at every body start, CHECK-DOES-RUN
+\ at a clause's end, CHECK-CANDIDATE-DONE at a candidate's). The take refuses a
+\ candidate too: its record is truncated when the scope ends, and the next real
+\ record is not its heir.
 variable WRAPN     0 WRAPN !
 variable WRAPC     0 WRAPC !
 variable WRAPBENT  0 WRAPBENT !
@@ -9990,28 +9429,23 @@ variable WRAPBENT  0 WRAPBENT !
    WRAPN @ 1 =  WRAPBENT @ 0=  and  CHK-CAND @ 0=  and IF WRAPC @ ELSE 0 THEN
    WRAP-CLEAR ;
 
-\ RECW: latch holding the wide? verdict of the LAST effect record, stored by
-\ VALUE at the single record choke point (E-ADD-EFFECT) so a stale value from
-\ a candidate/rolled-back check is always overwritten by the current record
-\ flow before any publish tail consumes it; CHECK-RESET zeroes it for hook
-\ paths that certify without recording. REC-WIDE-PUBLISH is called by the
-\ engine publish tails AFTER ndict++ (EM-COMPILE-PUBLISH-TRUSTED/-HOOKED and
-\ C-DEFER, habu2.f), where the `wide-mark` prim's newest-published target
-\ (ndict-1) is exactly the record whose effect was just recorded.
+\ RECW: the wide? verdict of the last effect record, stored by value at the one
+\ record choke point (E-ADD-EFFECT), so a candidate's or rolled-back check's
+\ value is overwritten before any publish tail reads it; CHECK-RESET zeroes it
+\ for hook paths that certify without recording. The engine publish tails call
+\ REC-WIDE-PUBLISH after ndict++ (habu2.f EM-COMPILE-PUBLISH-TRUSTED/-HOOKED,
+\ C-DEFER), where `wide-mark`'s newest target (ndict-1) is the record just made.
 variable RECW   0 RECW !
 : REC-WIDE-PUBLISH ( -- )
    RECW @ 0 <> IF wide-mark THEN
    0 RECW !
    DOES-EFF-CLEAR ;                   \ no definition's clause outlives its own publication
 
-\ RECMI: latch holding the din cell count of the LAST effect record — the
-\ certified minimum input arity (dot habu-habu-certified-words-84e84eaf).
-\ Same discipline as RECW above: stored BY VALUE at the single record choke
-\ point (E-ADD-EFFECT), zeroed on deleted/bad rows and by CHECK-RESET, and
-\ consumed by the engine publish tails after ndict++ (habu2.f
-\ EM-REC-WIDE-PUBLISH reads it through REC-MIN-IN@ and pokes DNAME-MIN-IN
-\ bits 52-59 of the just-published record) so EM-INTERPRET-FIND can fail
-\ closed on an underdepth bare call before the body runs.
+\ RECMI: the din cell count of the last effect record, the certified minimum
+\ input arity, with RECW's discipline: stored by value in E-ADD-EFFECT, zeroed
+\ on deleted or bad rows and by CHECK-RESET, read after ndict++ by habu2.f
+\ EM-REC-WIDE-PUBLISH through REC-MIN-IN@ into DNAME-MIN-IN bits 52-59, so
+\ EM-INTERPRET-FIND fails closed on an underdepth bare call before the body runs.
 variable RECMI   0 RECMI !
 : REC-MIN-IN@ ( -- n )
    RECMI @  0 RECMI ! ;
@@ -10045,7 +9479,7 @@ variable RECMI   0 RECMI !
    THEN
    CHECKER-REC-SYM @ 0 <>
    din dout PTX-BARRIER-ROWS? and IF
-      CHECKER-REC-SYM @ PTX-BARRIER-SET-XT   \ M5: flag the block collective (default no-op before armed)
+      CHECKER-REC-SYM @ PTX-BARRIER-SET-XT   \ flag the block collective (default no-op before armed)
    THEN
    CHECKER-REC-SYM @ external CHECKER-EFFECT-AUTHORITY:PUBLISH ;
 
@@ -10077,33 +9511,28 @@ variable RECMI   0 RECMI !
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
-\ --- stored-signature intake. USIG-ADD parses a declared/trusted signature
-\ into an effect row. A signature that does not parse stores no row and reports
-\ through BADSIG-XT (render.f), then refuses as a stale trust row does
-\ (TRUST-STALE): the ordinary load path throws E-BAD-STORED-SIGNATURE, since a
-\ baked or TRUSTed effect must never be silently wrong. A MULTI-ERROR load
-\ reports and counts the row (USIG-ADD-BAD), whatever it names. A colon
-\ definition's bad signature is CHECK's refusal and keeps no row
+\ --- stored-signature intake. USIG-ADD parses a declared or trusted signature
+\ into an effect row. One that does not parse stores no row, reports through
+\ BADSIG-XT (render.f) and refuses as a stale trust row does (TRUST-STALE): the
+\ load throws E-BAD-STORED-SIGNATURE, since a baked or TRUSTed effect must
+\ never be silently wrong. A MULTI-ERROR load reports and counts the row
+\ (USIG-ADD-BAD). A colon definition's bad signature is CHECK's refusal
 \ (MULTI-REFUSED); the engine registers declared text only for `TRUSTED:` and
-\ `defer`, which CHECK does not check. No row exists after a refusal, so later
-\ callers reject as undefined instead of trusting a malformed effect.
-\ The multi-error load mode is off by default so the ordinary load path
-\ (fixpoint build, gate) keeps the fail-on-first-reject HOOK behavior. When on,
-\ a refused definition, rejected or uncheckable (an undefined word in it
-\ included), still trusts its DECLARED signature (so later definitions check
-\ against a known effect instead of cascading undefined-word errors) unless that
-\ signature failed to parse, and the refusal is counted so the driver can exit
-\ nonzero at end of load.
+\ `defer`, which CHECK does not check. Without a row, later callers refuse as
+\ undefined.
+\ Multi-error mode is off by default, so the ordinary load keeps fail-on-first.
+\ When on, a refused definition (rejected or uncheckable, an undefined word
+\ included) still trusts its declared signature unless it failed to parse, so
+\ later definitions do not cascade, and the refusal is counted so the driver
+\ exits nonzero at end of load.
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ refused definitions counted this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
 7156 constant E-BAD-STORED-SIGNATURE   \ a stored signature does not parse
-\ bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG). It takes
-\ the signature, stored name, and declaring name as read by the caller. Until
-\ render.f loads, BADSIG-PLAIN writes `name: sig: bad stored signature` on fd 2,
-\ so a row the boot refuses still names itself before the throw. The write results are
-\ dropped because the refusal follows at once; a failed write has no caller
-\ that could act on it.
+\ Bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG), given the
+\ signature, stored name and declaring name. Until render.f loads, BADSIG-PLAIN
+\ writes `name: sig: bad stored signature` on fd 2 so a row the boot refuses
+\ names itself; its write results are dropped, since the refusal follows at once.
 defer BADSIG-XT ( ptr u8 n ptr u8 n ptr u8 n -- )
 : BADSIG-PLAIN ( ptr u8 n ptr u8 n ptr u8 n -- )
    2drop
@@ -10129,54 +9558,28 @@ BADSIG-DEFAULT
    EFF-RECOVERY CHECKER-REC-SYM @ USIG-NEWEST 1- E-PTR ER.ACTIVE ! ;
 
 \ ---- the AOT signature pool: the capture side --------------------------------
-\
-\ WHAT IT COLLECTS. One row per row that enters USIGS, carrying the SIGNATURE
-\ TEXT that built it and the key USIGS itself is under - the checker's own symbol
-\ row, (package, visibility, name), read back from CHECKER-REC-SYM. Re-deriving
-\ that key from the dictionary instead would get a package word wrong in exactly
-\ the way dot habu-bind-a-bare-69c2a5fd already cost this tree once.
-\
-\ WHERE THE PRODUCERS ARE, and how that set was arrived at. E-ADD-EFFECT is the
-\ one creator of a user record, but its arguments are ROWS, and rendering them
-\ back is not faithful: REND-SIG renders BROW and DCUR only, so a signature with
-\ a return-stack clause ( R [ ... ] ) would come back without it. So the text is
-\ taken where the text exists, at the three words that reach E-ADD-EFFECT:
-\   USIG-ADD             every row built from TEXT - a declared signature, a
-\                        TRUST row, TRUSTED:, `defer NAME ( E )`, and the typed
-\                        storage declarers all arrive here.
-\   render.f REC-SIG     the only row built from an INFERRED effect; the text is
-\                        REND-SIG's, which that word used to render and drop.
-\   CHECKER-EXPORT       re-publishes an existing record under a package tail and
-\                        has no text of its own, so the SOURCE row's text is
-\                        copied - exact, and no render.
-\ THAT LIST IS NOT TRUSTED, IT IS GATED. src/habu/aot-capture.f's audit walks the
-\ finished window and refuses by name if any checked record has no row here, so a
-\ fourth producer stops a capture instead of baking an engine whose checker
-\ cannot see one of its own words. The list above is what the audit measured to
-\ zero over the compiler chain; the first two alone left 17 records behind
-\ (eleven TRUSTED:, one defer, three typed-storage cells, two EXPORTs).
-\
-\ IT IS ARMED, NOT ALWAYS ON. Nothing is mapped and nothing is copied until ARM
-\ runs - src/habu/aot-arm.f OPEN arms it when a capture window opens and disarms
-\ it when the window shuts. Every other boot and every other build pays the
-\ variables below and not one byte more.
-\
-\ STRINGS ARE INTERNED ONLY WHERE INTERNING PAYS. A signature text and a package
-\ name repeat across thousands of definitions and are looked up in the distinct
-\ list before they are appended; a word NAME is very nearly unique (measured over
-\ the compiler chain: 7556 rows, 120,896 bytes of them, against 123,979 bytes of
-\ string), so a name is appended without the scan and never joins the list. That
-\ is what keeps the scan bounded by the distinct count instead of by the row
-\ count.
-\
-\ DUPLICATES ARE LEGAL AND NEWEST WINS, which is USIGS' own rule: a name recorded
-\ twice in one window leaves two rows and the intake takes the later, exactly as
-\ USIG-NEWEST does.
-\
-\ THE READER TAKES BYTES, NOT A SPAN. src/habu/aot-capture.f copies the two
-\ arenas out through CHECKER-ASIG-ROW-C@ / CHECKER-ASIG-STR-C@ rather than being
-\ handed a raw pointer, which is what lets this store stay an ordinary checked
-\ `ptr a` arena with no trusted role cast of its own.
+\ One row per row that enters USIGS: the signature text that built it and the
+\ checker's own symbol key (package, visibility, name) from CHECKER-REC-SYM, not
+\ re-derived from the dictionary, which gets a package word wrong. Rendering
+\ E-ADD-EFFECT's rows back is not faithful (REND-SIG drops a return-stack
+\ clause), so the text is taken at the three words that reach E-ADD-EFFECT:
+\   USIG-ADD             every row built from text: a declared signature, a
+\                        TRUST row, TRUSTED:, `defer NAME ( E )`, typed storage.
+\   render.f REC-SIG     the one row built from an inferred effect (REND-SIG's text).
+\   CHECKER-EXPORT       republishes a record under a package tail; the source
+\                        row's text is copied.
+\ The list is gated: aot-capture.f's audit refuses by name any checked record
+\ with no row here, so a fourth producer stops a capture (the first two alone
+\ left 17 records behind: eleven TRUSTED:, one defer, three typed-storage cells,
+\ two EXPORTs).
+\ Armed only while a capture window is open (aot-arm.f OPEN); otherwise nothing
+\ is mapped or copied.
+\ Signature texts and package names are interned through the distinct list; a
+\ word name is nearly unique (compiler chain: 7556 rows, 120,896 name bytes of
+\ 123,979 string bytes) and is appended unscanned, so the scan is bounded by the
+\ distinct count. Duplicates are legal and newest wins, as USIG-NEWEST does.
+\ aot-capture.f reads bytes through CHECKER-ASIG-ROW-C@ / CHECKER-ASIG-STR-C@,
+\ so this store stays a checked `ptr a` arena with no trusted cast.
 
 $10000 constant ASIG-ROW-INIT           \ bytes; grows geometrically
 $40000 constant ASIG-STR-INIT           \ bytes
@@ -10239,17 +9642,12 @@ PTR-VARIABLE ASIG-LAST-P
    sym ASIG-LAST-CAP-V @ >= IF EXIT THEN
    0 sym ASIG-LAST! ;
 
-\ ASIG-SYMS-RETIRE ( n -- ) : forget the newest-row index for symbols [n, SYM-N)
-\ before a scope restores SYM-N. This store is keyed by SYMBOL ID and a rollback
-\ HANDS THOSE IDS BACK, so an entry written inside the popped scope answers for
-\ whatever word interns next at the same id - a different word's row, served as
-\ this one's. HIDX-SYMS-RETIRE is the same fact about the other sym-keyed table,
-\ and this is its twin; the two are called together from SYM-REWIND.
-\
-\ IT IS NOT THE ROWS THAT ARE RETIRED, only the index. A row records the name,
-\ package and visibility it was written under, so it stays true about the word it
-\ names whatever happens to the symbol table afterwards; what cannot survive a
-\ rewind is the CLAIM that row is symbol N's newest.
+\ Forgets the newest-row index for symbols [n, SYM-N) before a scope restores
+\ SYM-N: a rollback hands those ids back, so a stale entry would serve the next
+\ word interned at that id another word's row. HIDX-SYMS-RETIRE is its twin;
+\ SYM-REWIND calls both. The rows stay: each records the name, package and
+\ visibility it was written under; only the claim that it is symbol N's newest
+\ goes.
 : ASIG-SYMS-RETIRE ( n -- ) {: keep:n :}
    ASIG-MAPPED @ 0= IF EXIT THEN
    SYM-N @ 1 -
@@ -10416,17 +9814,11 @@ PTR-VARIABLE ASIG-LAST-P
    ASIG-STR-P @ at + c@ ;
 
 \ ---- the names one check pass could not resolve ------------------------------
-\ WHY THE MISSES ARE COLLECTED RATHER THAN READ OFF FAILTK. The pinned token is
-\ not the unresolved one: DO-TOK1 pins EVERY token until a failure sets FAILSET,
-\ so a body whose seeded name is followed by one more token pins that other
-\ token instead (measured - `: T ( -- ) SEEDED dup ;` pins `dup`). The lazy
-\ intake below needs the names themselves, and it needs all of them: taking one
-\ per pass would re-check the body once per seeded name it mentions.
-\
-\ IT IS A BOUNDED QUEUE, NOT A RECORD. A pass that fills it drops the rest, and
-\ that costs a pass rather than an answer: the intake takes what it has, the
-\ retry re-checks, and the names that did not fit are collected again by the
-\ next pass. Cleared at CHECK-RESET, so it always describes the pass just run.
+\ Collected, not read off FAILTK: DO-TOK1 pins every token until a failure sets
+\ FAILSET, so `: T ( -- ) SEEDED dup ;` pins `dup` (measured), and the lazy
+\ intake needs every missed name, not one per pass. A bounded queue: a pass that
+\ fills it drops the rest, which costs a retry pass, not an answer. Cleared at
+\ CHECK-RESET, so it describes the pass just run.
 $800 constant ASIG-MISS-CAP
 create ASIG-MISS ASIG-MISS-CAP allot
 variable ASIG-MISS-U
@@ -10681,7 +10073,7 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
             1 +
          REPEAT drop
          np pool E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
-         dup np EN.E @ swap PAY cells PARAMHID + !  \ restore hidden slot+1 (0 in pre-3a snapshots)
+         dup np EN.E @ swap PAY cells PARAMHID + !  \ restore hidden slot+1
          r> drop
       endof
       r> drop 0 swap
@@ -10938,8 +10330,8 @@ variable PE-I
    flags #PE @ PE-ROW PE.FLAGS !
    #PE @ 1 + #PE ! ;
 
-\ mark the just-registered prim (last PES slot) as a TRUSTED-only trust boundary,
-\ so a CHECKED caller is rejected while a TRUSTED: body (never checked) may use it.
+\ Marks the just-registered prim a trust boundary: a checked caller is refused,
+\ a TRUSTED: body (never checked) may use it.
 : PRIM-TRUSTED-ONLY! ( -- )
    #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-TRUSTED-ONLY or swap ! ;
 
@@ -11069,25 +10461,17 @@ variable PE-EFF-ID
    PE-PKG-A @ PE-PKG-U @ SYM-PUBLIC PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
 
-\ The package row's OTHER closer: intern the axiom into the OWNER's private
-\ wordlist instead of its public one, so the row resolves only while that
-\ package is open (CHECKER-FIND-ACTIVE-SYM's private leg). A checked caller
-\ inside the owner is admitted; every other scope misses the symbol entirely.
-\
-\ IT IS GLOBAL BECAUSE THE CAPABILITY IS EVERY PACKAGE'S. This closer used to be
-\ defined inside package CHECKER-DECL-FRAME, which made the declaration frame's
-\ four rows the only private primitive rows the tree could spell: a second owner
-\ had to reopen that package to reach the closer. The token itself was already
-\ the toolchain's - src/habu/verify-source.f scans for it, src/lib/source-lex.f
-\ classifies it, tools/check-all-errors-core.f names it in the unterminated-row
-\ repair hint - so only the definition's scope was wrong.
-\
-\ A PRIMITIVE MAY BE ITS PRIVATE ROW ALONE. The global record such a row reaches
-\ has no row at top level, and src/core/internal-mark.f classifies it by this row
-\ (EFFECT-OWNED-MIN-IN) instead of marking it DNAME-INT, which
-\ src/compiler/native/dict.f CALL-BINDING would refuse from every checked body,
-\ the owner's included. So the owner's checked callers compile at both tiers and
-\ a checked caller anywhere else is refused by name (test/prim-owner-scope.f).
+\ The package row's other closer: interns the axiom into the owner's private
+\ wordlist, so the row resolves only while that package is open
+\ (CHECKER-FIND-ACTIVE-SYM's private leg); every other scope misses the symbol.
+\ It is global because every package may use it; the token is the toolchain's
+\ (verify-source.f scans it, source-lex.f classifies it, check-all-errors-core.f
+\ names it in the unterminated-row hint).
+\ A primitive may have its private row alone: its global record has no top-level
+\ row, and internal-mark.f classifies it by this row (EFFECT-OWNED-MIN-IN)
+\ instead of marking it DNAME-INT, which native/dict.f CALL-BINDING would refuse
+\ from every checked body. The owner's checked callers compile at both tiers;
+\ any other checked caller is refused by name (test/prim-owner-scope.f).
 : CLOSE-PRIVATE ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
@@ -11118,13 +10502,11 @@ variable PE-EFF-ID
 \ application.
 : PE-RAW! ( n -- n ) dup PAY TVK-RAW! ;
 
-\ Base-kinds a prototype var, for the two BASE-ADDRESS rows -- `NULL-PTR`
-\ and `data-base` (both src/habu/prims.f), the only
-\ pointers in the language that are not the address OF a declared element. The
-\ null keeps its pointee arm so a stored, compared or subtracted null still
-\ certifies; the DATA base is fenced at every depth. E-COPY reads the kind at
-\ PE-CLOSE and bakes it onto the stored effect (EN.B); E-INST re-freshens it per
-\ application, exactly as for PE-RAW!.
+\ Base-kinds a prototype var for the two base-address rows, `NULL-PTR` and
+\ `data-base` (src/habu/prims.f), the only pointers that are not the address of
+\ a declared element. The null keeps its pointee arm so a stored, compared or
+\ subtracted null still certifies; the DATA base is fenced at every depth. Baked
+\ and re-freshened as for PE-RAW!.
 : PE-NULL!  ( n -- n ) dup PAY TVK-NULL! ;
 : PE-DBASE! ( n -- n ) dup PAY TVK-DBASE! ;
 : PE-PTR-A-NULL ( -- n ) PE-A PE-NULL! PE-PTR ;
@@ -11138,17 +10520,12 @@ variable PE-EFF-ID
 \ Marks the base operand's pointee of a pointer-distance row (TVK-BASE-ONLY).
 : PE-BASE-ONLY! ( n -- n ) dup PAY TVK-BASE-ONLY! ;
 
-\ A QUOTATION operand for a prim row. `PE-Q` opens one, PE-QIN / PE-QOUT
-\ accumulate the quotation's own data rows exactly the way PE-IN / PE-OUT
-\ accumulate the prim's, and `;PE-Q` closes them into one `[ in -- out ]` term
-\ that PE-IN then takes as an operand. Data in and out share one fresh base row
-\ and the return effect is neutral, which is precisely what SIG-PARSE-QUOT
-\ builds from the same text in a signature string, so a prim row and a written
-\ signature describe the same term. Every other PE- atom builds a concrete term,
-\ so before this a prim could only name an installed execution token as a bare
-\ `n`: a cross-package producer installer had to declare an untyped xt where the
-\ producer's effect is exactly what its caller must be held to (dot
-\ habu-declare-persisted-producer-76fbce09).
+\ A quotation operand for a prim row: `PE-Q` opens one, PE-QIN / PE-QOUT
+\ accumulate its data rows as PE-IN / PE-OUT do the prim's, and `;PE-Q` closes
+\ them into one `[ in -- out ]` term PE-IN takes. Data in and out share one
+\ fresh base row and the return effect is neutral, exactly what SIG-PARSE-QUOT
+\ builds from the same text, so a prim row and a written signature describe the
+\ same term.
 variable PE-QDIN
 variable PE-QDOUT
 
@@ -11196,49 +10573,35 @@ variable PE-QDOUT
    UTERM! ;
 
 \ ---- package FFI's two retypes ----------------------------------------------
-\ A foreign call takes and returns raw machine cells: an argument buffer slot
-\ holds a pointer as a cell, and __errno_location hands back an address that has
-\ to be read as bytes. `( ptr a -- n )` is no CAST:, because a type-variable
-\ pointee is refused as possibly linear (E-CAST-LINEAR;
-\ test/cast-negative-suite.f pins it), and no primitive converts a pointer to a
-\ cell. `( n -- ptr u8 )` is the class mint a CAST: declares only in a
-\ package's private section; the axiom below gives package FFI that same
-\ private row. That is why package FFI carried a TRUSTED: PTR>CELL body and why
-\ src/lib/net/udp4.f had to wrap its errno pointer in another one.
-\
-\ These two are identity words: the retype IS the declaration, and their typed
-\ effects are the axiom rows near the end of this table, in package FFI's
-\ private section. They carry no signature, so no declaration types them; a
-\ window that parks the host hook scans each empty body into an ABI-only
-\ `( -- )` global row, which refuses outside checked callers after the seal.
+\ A foreign call takes and returns raw machine cells: a buffer slot holds a
+\ pointer as a cell, and __errno_location returns an address read as bytes.
+\ `( ptr a -- n )` cannot be a CAST:, since a type-variable pointee is refused
+\ as possibly linear (E-CAST-LINEAR; test/cast-negative-suite.f), and no
+\ primitive converts a pointer to a cell. `( n -- ptr u8 )` is the class mint a
+\ CAST: declares only in a private section; the axiom gives package FFI that row.
+\ Both are identity words whose effects are axiom rows near the end of this
+\ table, in package FFI's private section. With no signature, a window that
+\ parks the host hook scans each empty body into an ABI-only `( -- )` global
+\ row, which refuses outside checked callers after the seal.
 : FFI-PTR>CELL ;                         \ ( ptr a -- n ) by axiom
 : FFI-CELL>PTR ;                         \ ( n -- ptr u8 ) by axiom
 
 \ ---- the engine primitives' rows ---------------------------------------------
-\ Every primitive the engine implements as a machine body is specified once, in
-\ src/habu/prims.f: the name, the checker effect, the reference implementation
-\ that answers for it and the per-backend body that implements it. That file
-\ loads before this one and carries the effects as an atom-code stream; the words
-\ below replay it onto the row constructors above, so the row registered
-\ here IS the row written there and no second copy of an effect exists. A backend
-\ adds a body under a row's name and states nothing about its type.
-\
-\ THE REPLAY RUNS INSIDE THE PRIM REGION, immediately after PTABLE-START. A row
-\ appended after PTABLE-END is a USER effect record for its symbol - E-REC-START
-\ links every record it appends into the per-symbol index - and the newest user
-\ record answers alone, which would silently reduce `+`'s three rows to one. That
-\ is also why the table is data loaded ahead of this file rather than rows loaded
-\ after it: this file is one file, and a row source that follows it lands past
-\ the boundary.
-\ THE ATOMS HOLD THEIR OPERANDS IN A STACK OF THEIR OWN, not on the data stack,
-\ because a replayed atom does not have one stack effect: PE-A mints a term and
-\ PE-IN consumes one, so a dispatcher that left them on the data stack has a
-\ different depth down each branch and no inferable effect - measured,
-\ `ncomp: cannot compile PE-SPEC-ATOM`; the native elaborator cannot join such
-\ arms (E-NELAB-JOIN, test/compiler/native-hookless-reject.f SESSION-UNEVEN).
-\ Every atom below is ( n -- ), the pending operands live in
-\ PE-SPEC-TERMS, and a row that ends with one left over is malformed and says
-\ so.
+\ Every machine-body primitive is specified once, in src/habu/prims.f (name,
+\ checker effect, reference implementation, per-backend bodies), which loads
+\ before this file as an atom-code stream; the words below replay it onto the row
+\ constructors above, so no second copy of an effect exists. A backend adds a
+\ body under a row's name and states nothing about its type.
+\ The replay runs inside the prim region, right after PTABLE-START: a row
+\ appended after PTABLE-END is a user record, and the newest user record answers
+\ alone, which would reduce `+`'s three rows to one. That is why the table is
+\ data loaded ahead of this file.
+\ The atoms keep their operands in PE-SPEC-TERMS, not on the data stack: PE-A
+\ mints a term and PE-IN consumes one, so a data-stack dispatcher has a different
+\ depth per branch and no inferable effect (measured: `ncomp: cannot compile
+\ PE-SPEC-ATOM`; E-NELAB-JOIN, test/compiler/native-hookless-reject.f
+\ SESSION-UNEVEN). Every atom is ( n -- ), and a row ending with an operand left
+\ over is malformed and says so.
 $20 constant PE-SPEC-CAP
 create PE-SPEC-TERMS PE-SPEC-CAP cells allot
 variable PE-SPEC-TOS
@@ -11345,20 +10708,14 @@ PRIM: CHECKER-SCOPE-FINALIZE PRIM;
 PRIM: CHECKER-SCOPE-DONE PRIM;
 PRIM: CHECKER-SCOPE-DEPTH PE-N PE-OUT PRIM;
 PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
-\ CHECK-QUIET-CANDIDATE! is the probing form of the line above: one candidate
-\ verdict with the rejection text suppressed. It is an axiom for the same reason
-\ CHECK and CHECK! below are - the seal-time internal-word pass leaves only
-\ checker-known names callable, and a probe is called from test and library
-\ source, which every engine class loads after that seal.
-\
-\ WHY THE HARNESS MUST NOT DO THIS ITSELF by bumping DIAG-QUIET: that counter is
-\ a bare `variable` in this file, and a created word publishes its effect only
-\ once the check hook exists (habu2.f LASTC-TRUST:FIND-ACTIVE). An engine that
-\ boots its prefix from source runs the whole of this file before
-\ src/core/check-hook.f installs the hook, so DIAG-QUIET is checker-unknown
-\ there and a checked definition naming it dies E-UNDEFINED - while an engine
-\ whose signature store was baked by a capture host answers the same name. One
-\ public word with a declared effect is the same word in both.
+\ CHECK-QUIET-CANDIDATE! is the probing form of the line above: one verdict with
+\ the rejection text suppressed. An axiom, as CHECK and CHECK! are: the seal-time
+\ internal-word pass leaves only checker-known names callable, and probes are
+\ called from source loaded after that seal. A harness cannot bump DIAG-QUIET
+\ instead: a bare `variable` publishes its effect only once the check hook
+\ exists (habu2.f LASTC-TRUST:FIND-ACTIVE), so an engine booting its prefix from
+\ source has DIAG-QUIET checker-unknown (E-UNDEFINED) while a capture-baked one
+\ answers it.
 PRIM: CHECK-QUIET-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ The declared-public visibility token, for the same reason: the scope constant
 \ it answers is created before the hook and carries no effect on a from-source
@@ -11373,9 +10730,8 @@ PRIM: SYM-PRIVATE PE-N PE-OUT PRIM;
 PRIM: SYM-PUBLIC PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEF-STOPPED? PE-N PE-IN PE-F PE-OUT PRIM;
 \ CHECK / CHECK! are the public verdict words (`s" ..." CHECK! .` is the
-\ documented top-level probing idiom); the axioms keep them checker-known so
-\ the seal-time internal-word marking pass leaves them executable at top level
-\ (dot habu-hb-crash-bare-c5be6634).
+\ documented top-level probing idiom); the axioms keep them checker-known so the
+\ seal-time internal-word marking pass leaves them executable at top level.
 PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ TYPE-RESERVED? answers "may a DEFLINEAR or VALUE-RECORD declaration take this
@@ -11431,11 +10787,6 @@ PRIM: CHECKER-TRY-RECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  
 PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-\ CHECKER-DEFENUM had a row here until the global ENUM keyword moved to the
-\ unified front end. Its only caller was sumtype.f's own ENUM definer, and the
-\ two tools that used it for metadata-only registration (tools/check-core.f and
-\ src/habu/verify-source.f) now register through ENUM-DECL:ED-REPLAY, so the word
-\ and its axiom went together.
 PRIM: CHECKER-DEFPRODUCT PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LAYOUT-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: CHECKER-STORAGE-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
@@ -11482,16 +10833,12 @@ PRIM: E-CHECKER-IDENTITY-UNRESOLVED PE-N PE-OUT PRIM;
 PPRIM: TYPE-DECL E-TDECL-UNRESOLVED PE-N PE-OUT PPRIM;
 PRIM: CHECKER-VERIFY-SOURCE!
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
-\ Two name queries, because a query about a name asks one of two different
-\ questions and they need different answers. CHECKER-DEFINED-HERE? asks whether
-\ the name is already defined in the scope a NEW DEFINITION would land in - the
-\ duplicate-definition guards' question, and theirs alone. CHECKER-RESOLVES?
-\ asks whether the checker has a source-visible user effect for the word this
-\ token would BIND to here, through the same scope chain a reference site uses.
-\ They had one spelling, wired to the first question, so every caller asking the
-\ second got the first's answer: a global the engine resolves and runs inside an
-\ open package was reported absent, and a load-discipline guard inverted the
-\ moment its file gained a package (dot habu-checker-defined-answers-1504bbde).
+\ Two name queries, because they ask different questions. CHECKER-DEFINED-HERE?
+\ asks whether the name is defined in the scope a new definition would land in,
+\ the duplicate-definition guards' question alone. CHECKER-RESOLVES? asks whether
+\ the word this token would bind to here, through a reference site's scope
+\ chain, has a source-visible user effect: a global the engine resolves inside
+\ an open package is present for it, absent for the first.
 PRIM: CHECKER-DEFINED-HERE? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The duplicate guard's own question, asked before a definition is checked by
@@ -11508,14 +10855,11 @@ PRIM: CHECKER-CERT-SHAPE-DUP? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-F PE-OUT
 \ DNAME-INT, the product drops its name, and the loop would need a list of its
 \ own. It answers a question about a name and changes nothing.
 PRIM: CHECKER-SEALED-PKG? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-\ The AOT signature pool's own surface, for the same reason every axiom above it
-\ exists: this file's definitions are compiled with the hook off, so a checked
-\ caller outside it has no record to resolve against. The two callers are
-\ src/habu/aot-arm.f, which arms and disarms the store with the capture window it
-\ already owns, and src/habu/aot-capture.f, which copies the store out a byte at
-\ a time. Each word below is ordinary checked-typeable Habu; the axiom restates
-\ the signature it already carries and grants no capability the definition does
-\ not have.
+\ The AOT signature pool's surface, an axiom because this file compiles with the
+\ hook off, so a checked caller outside it has no record to resolve. Callers:
+\ aot-arm.f arms and disarms it with its capture window, aot-capture.f copies the
+\ store out a byte at a time. The axiom restates each word's own signature and
+\ grants no capability.
 PRIM: CHECKER-ASIG-ARM PRIM;
 PRIM: CHECKER-ASIG-DISARM PRIM;
 PRIM: CHECKER-ASIG-ARMED? PE-F PE-OUT PRIM;
@@ -11595,49 +10939,35 @@ PRIM: CHECK-DOES-DIN-SLOT PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-DOUT-SLOT PE-N PE-IN  PE-N PE-OUT PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
 \ The axiom keeps it checker-known so the seal-time internal-word marking pass
-\ (src/core/internal-mark.f) leaves it executable at top level (dot
-\ habu-hb-crash-bare-c5be6634); UNSAFE-TOK? still rejects `trust` inside
-\ checked bodies, so the axiom adds no checked-code capability.
-PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-\ TRUST-DECL ( name$ effect$ -- ) is the definer-facing half of TRUST: the same
-\ registration, called by the ENGINE from its publish tail and from the
-\ pre-trust defer drain rather than written in source. The engine reaches it
-\ through its declaration record's cell, stage0 by name through LFIND, and
-\ source not at all: the word is sealed (REG-PROTECT at its definition). The
-\ axiom gives the native compiler the call window for the TRUSTED: front end
-\ that registers a definer's row (checker-owner.f DECLARED-EFFECT); the source
-\ verifier reaches TRUST-DECL? through its declaration owner instead
-\ (verify-source.f DECL-SIGNATURE). UNSAFE-TOK? rejects `trust-decl` inside
-\ checked bodies exactly like `trust`, so the axiom adds no checked-code
+\ (src/core/internal-mark.f) leaves it executable at top level; UNSAFE-TOK?
+\ still rejects `trust` inside checked bodies, so it adds no checked-code
 \ capability.
+PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+\ TRUST-DECL ( name$ effect$ -- ): TRUST's registration, called by the engine
+\ from its publish tail and the pre-trust defer drain, never from source: the
+\ word is sealed (REG-PROTECT). The axiom gives the TRUSTED: front end
+\ (checker-owner.f DECLARED-EFFECT) its call window; the source verifier reaches
+\ TRUST-DECL? through its declaration owner (verify-source.f DECL-SIGNATURE).
+\ UNSAFE-TOK? rejects `trust-decl` in checked bodies like `trust`, so the axiom
+\ adds no checked-code capability.
 PRIM: TRUST-DECL PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-\ TRUST-RAW ( name$ effect$ -- ) is TRUST for a raw storage cell: same
-\ registration, every type variable in the effect minted TVK-RAW. The native
-\ engine reaches it through its declaration record's cell from each
-\ created-word publish site, stage0 by name; it is sealed like TRUST-DECL, and
-\ its axiom serves a TRUSTED: caller the same way. UNSAFE-TOK? rejects
-\ `trust-raw` inside checked bodies exactly like `trust`, so the axiom adds no
-\ checked-code capability.
+\ TRUST-RAW ( name$ effect$ -- ): TRUST for a raw storage cell; every type
+\ variable in the effect is minted TVK-RAW. Called from each created-word
+\ publish site and sealed like TRUST-DECL; UNSAFE-TOK? rejects `trust-raw` in
+\ checked bodies.
 PRIM: TRUST-RAW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-\ PTX-BARRIER! ( name$ -- ) is the top-level explicit barrier-declaration word
-\ (M5b): it marks a named word a block-uniform barrier so a call reached under
-\ divergent control rejects. The axiom keeps it checker-known so the seal-time
-\ internal-word marking pass leaves it executable at top level, exactly like
-\ TRUST; UNSAFE-TOK? rejects `ptx-barrier!` inside checked bodies, so the axiom
-\ adds no checked-code capability. Marking is monotone-safe: it only ever ADDS a
-\ rejection under control flow and can never force an unsound acceptance.
+\ PTX-BARRIER! ( name$ -- ) marks a word a block-uniform barrier: a call under
+\ divergent control rejects. The axiom keeps it executable at top level after
+\ the seal; UNSAFE-TOK? rejects it in checked bodies. Marking only adds
+\ rejections, so it cannot force an unsound acceptance.
 PRIM: PTX-BARRIER! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-\ The type-family registry rows below are PPRIM: rather than PRIM: because
-\ src/core/type-family.f is `package TFAM` (dot habu-tfam-2b-sealed-1b77662c), so
-\ the name the checker and the marking pass both key on is TFAM:TFAM-N@, not a
-\ bare global. TFAM-NAME$ is the one exception in this block and stays PRIM:
-\ because it is one of the six names the engine resolves by bare spelling
-\ (habu2.f C-FIND-GLOBAL, for `;match`), so it is still defined at global scope.
+\ type-family.f is `package TFAM`, so these rows are PPRIM: and the checker and
+\ the marking pass key on TFAM:TFAM-N@. TFAM-NAME$ stays PRIM: at global scope:
+\ habu2.f C-FIND-GLOBAL resolves it by bare spelling for `;match`.
 PPRIM: TFAM TFAM-N@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-\ Public-signature metadata: registry accessors so the checked public-signatures
-\ tool can synthesize constructor signatures from TFAM/SUMV metadata.
-\ Read-only registry reads (never hidden fields); NOT trust boundaries.
+\ Read-only registry reads for the public-signatures tool, which synthesizes
+\ constructor signatures from TFAM/SUMV metadata; not trust boundaries.
 PRIM: TFAM-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PPRIM: TFAM TFAM-ARITY@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM TFAM-DECL-PARAM-COUNT PE-N PE-OUT PPRIM;
@@ -11670,16 +11000,13 @@ PPRIM: TYPE-FIELD BYTE-OFF@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD BYTES@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD ALIGN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD FLAGS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-\ Product-field transaction lifecycle (dots habu-own-product-field-86660116 /
-\ habu-type-field-owner-619ec6b5). TYPE-FIELD-OWNER is a pre-hook package, so
-\ without these axioms every post-hook caller would need a TRUSTED shim; with
-\ them DECL-EVENT calls the qualified API as ordinary checked code. The token is
-\ an opaque `n` that OPEN mints and each later phase presents unchanged. PREPARE
-\ returns the validated provisional field count, which is what lets DECL-EVENT
-\ prove event/field contiguity without reading a raw registry cell. ADD's row is
-\ the full field record: token, family, variant, name string, schema root, then
-\ the logical slot/cells and physical byte-offset/bytes/alignment/flags, and it
-\ returns the same token so callers can thread it.
+\ TYPE-FIELD-OWNER loads before the hook; these axioms let DECL-EVENT call its
+\ qualified API as checked code without a TRUSTED: shim. The token is an opaque
+\ `n` that OPEN mints and each later phase takes unchanged. PREPARE returns the
+\ validated provisional field count, which proves event/field contiguity
+\ without a raw registry read. ADD takes token, family, variant, name string,
+\ schema root, logical slot/cells and physical byte-offset/bytes/alignment/flags,
+\ and returns the token.
 PPRIM: TYPE-FIELD-OWNER OPEN PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD-OWNER ADD PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD-OWNER PREPARE PE-N PE-IN  PE-N PE-OUT PPRIM;
@@ -11687,10 +11014,6 @@ PPRIM: TYPE-FIELD-OWNER COMMIT PE-N PE-IN PPRIM;
 PPRIM: TYPE-FIELD-OWNER FINALIZE PE-N PE-IN PPRIM;
 PPRIM: TYPE-FIELD-OWNER ROLLBACK PE-N PE-IN PPRIM;
 PPRIM: TYPE-FIELD-OWNER TX-SCHEMA-FOR PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
-\ TX-CELLS-FOR is the sibling token-scoped provisional query and the eighth
-\ public owner word DECL-EVENT calls. It needs its own axiom for the same reason
-\ TX-SCHEMA-FOR does: without it the payload-cell readers would keep the one
-\ DEV-FLD TRUSTED shim the migration is meant to remove entirely.
 PPRIM: TYPE-FIELD-OWNER TX-CELLS-FOR PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: DEF-OCC E-NONCALLABLE PE-N PE-OUT PPRIM;
 PRIM: WF-N@ PE-N PE-OUT PRIM;
@@ -11738,15 +11061,12 @@ PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT FOR-HASH PE-N PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
-\ The canonical re-arm, and the row says what src/core/check-hook.f already
-\ declares: `TRUSTED: INSTALL ( -- )` in that package's public section. The
-\ declaration alone cannot reach the effect store, because check-hook.f is the
-\ file that installs the hook and so loads before one exists - the same load-order
-\ accident that leaves HOOK above needing a row. Without it the seal-time pass
-\ (src/core/internal-mark.f) reads a public with no checker-known effect and marks
-\ it internal, and every top-level `LOWER-CERT-HOOK:INSTALL` dies rc 70:
-\ tools/check-core.f, tools/lint/text.f, the build source tools/build-fixpoint.f
-\ emits, and the re-arm tools/checked-boundary-lint-core.f tells authors to write.
+\ The canonical re-arm. check-hook.f declares `TRUSTED: INSTALL ( -- )`, but it
+\ loads before the hook it installs, so the declaration never reaches the
+\ effect store. Without this row the seal (internal-mark.f) marks INSTALL
+\ internal and every top-level `LOWER-CERT-HOOK:INSTALL` dies rc 70
+\ (tools/check-core.f, tools/lint/text.f, the tools/build-fixpoint.f output, the
+\ re-arm tools/checked-boundary-lint-core.f tells authors to write).
 PPRIM: LOWER-CERT-HOOK INSTALL PPRIM;
 PPRIM: CHECKER-CERT INSTALL PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
@@ -11758,18 +11078,17 @@ PPRIM: CHECKER-REG RECORD-SNAPSHOT-COPY PE-PTR-U8 PE-IN PE-N PE-IN PPRIM;
 \ public internal and an ARM64 product, which captures no caller, strips it.
 PPRIM: CHECKER-PREFIX BIND? PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
-\ The capture's keep policy (src/core/checker-surface.f), installed once. The
-\ policy answers for a symbol by its package, visibility and name - the scope key
-\ CHECKER-ASIG-ROW-FOR takes - and the sweep it arms retires the rest.
+\ The capture's keep policy (checker-surface.f), installed once. It answers per
+\ symbol by package, visibility and name (CHECKER-ASIG-ROW-FOR's scope key); the
+\ sweep it arms retires the rest.
 PPRIM: CHECKER-SWEEP INSTALL
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-F PE-QIN PE-PTR-U8 PE-QIN PE-N PE-QIN PE-F PE-QOUT ;PE-Q PE-IN
 PPRIM;
 \ ... and the policy asks the capture in progress whether a record ships named.
 PPRIM: CHECKER-SWEEP NAMED? PE-N PE-IN PE-F PE-OUT PPRIM;
-\ The source-tape observer's arming surface (dot habu-feed-the-src-f7ed8733).
-\ Checked callers may install and arm an observer: it is called after a token
-\ is judged and its answer is never read, so it can abort a compilation but
-\ never accept one, and it needs no trust boundary to hold the checker sound.
+\ The source-tape observer's arming surface. The observer runs after a token is
+\ judged and its answer is never read: it can abort a compilation but never
+\ accept one, so checked callers may install and arm it without a trust boundary.
 PPRIM: CHECKER-TAPE INSTALL
    PE-N PE-IN
    PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN ;PE-Q PE-IN
@@ -11789,8 +11108,8 @@ PPRIM: CHECKER-TAPE K-CHAR PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-COUNTED-STRING PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-TAPE K-PRINTED-STRING PE-N PE-OUT PPRIM;
 \ The FILE observer reads only copied rows and installs an observation callback;
-\ neither operation changes the checker's verdict. Give the post-hook source
-\ compiler the same explicit call authority as the tape observer above.
+\ neither changes the checker's verdict, so the post-hook source compiler calls
+\ them checked, like the tape observer.
 PPRIM: CHECKER-RESOLUTION COUNT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-RESOLUTION ROW PE-N PE-IN PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-RESOLUTION TOP PE-PTR-U8 PE-IN PE-N PE-IN
@@ -11806,12 +11125,10 @@ PPRIM: TFAM SUMV-N@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM TF-STR-U@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM TF-PK-N@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM LAY-N@ PE-N PE-OUT PPRIM;
-\ The schema registry's two high-water reads. They are PPRIM: rather than PRIM:
-\ because src/core/type-schema.f is package SCHEMA-REG, so the name the checker
-\ and the marking pass both key on is SCHEMA-REG:SCHEMA-N@, not a bare global.
-\ These two are the whole of the package's checked surface: every other public
-\ there is reached only from a compiled pre-hook body or a TRUSTED: forwarder,
-\ and stays DNAME-INT under its qualified name.
+\ type-schema.f is package SCHEMA-REG, so these rows are PPRIM: (key
+\ SCHEMA-REG:SCHEMA-N@). The two high-water reads are the package's whole
+\ checked surface; every other public is reached only from a pre-hook body or a
+\ TRUSTED: forwarder and stays DNAME-INT.
 PPRIM: SCHEMA-REG SCHEMA-N@ PE-N PE-OUT PPRIM;
 PPRIM: SCHEMA-REG SCHEMA-ROOT-N@ PE-N PE-OUT PPRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -11823,11 +11140,10 @@ PRIM: CHECKER-PUBLIC PRIM;
 PRIM: CHECKER-PRIVATE PRIM;
 PRIM: CHECKER-END-PACKAGE PRIM;
 \ ---- package FFI's two retypes ----------------------------------------------
-\ The axiom rows for the two identity words defined above PTABLE-START. Each is
-\ the word's only primitive row and package FFI owns it, so a CHECKED body
-\ compiled inside FFI resolves it and no other checked scope can call it. The
-\ seal classifies each record by that row (EFFECT-OWNED-MIN-IN), which keeps it
-\ callable for the owner.
+\ Rows for the two identity words defined above PTABLE-START. Each is the word's
+\ only primitive row and package FFI owns it, so only a CHECKED body compiled
+\ inside FFI resolves it. The seal classifies each record by that row
+\ (EFFECT-OWNED-MIN-IN), which keeps it callable for the owner.
 PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 \ FFI-CELL>PTR's result carries no length: every consumer pairs it with the
 \ width it knows (errno is 4 bytes).
@@ -11845,89 +11161,59 @@ PRIM: ."     PRIM;
 PRIM: s\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c\"    PE-PTR-U8 PE-OUT PRIM;
 PRIM: .\"    PRIM;
-\ The escape table's decoder (ESC-DECODE, beside ESC-BYTE? below), public: a
-\ checked reader of an escaped literal's bytes decodes them by the engine's
-\ table through this row, where without one the seal marks the word DNAME-INT,
-\ which no checked body may call. It reads the `ptr u8 n` source and writes at
-\ most n bytes at the destination, where the caller provides n bytes; it
-\ answers the count written and whether every escape was valid.
+\ ESC-DECODE's row, public: without it the seal marks the decoder DNAME-INT and
+\ no checked reader of an escaped literal could call it. It writes at most n
+\ bytes at the caller's n-byte destination and answers the count written and
+\ whether every escape was valid.
 PRIM: ESC-DECODE PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: [']    PE-N PE-OUT PRIM;
 PRIM: char   PE-N PE-OUT PRIM;
 PRIM: [char] PE-N PE-OUT PRIM;
 PRIM: constant PE-N PE-IN PRIM;
-\ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
-\ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
-\ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Its
-\ unique name makes row order immaterial; it only must be registered before PTABLE-END.
+\ EXT-MARK-FREE-TAIL marks a product's free factor; the row keeps it callable
+\ after the seal, like CHECKER-DEFFAMILY. Its unique name makes row order
+\ immaterial; it must be registered before PTABLE-END.
 PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 
 \ ---- what the boot prefix answers the native chain ---------------------------
-\ THE SAME AXIOM SHAPE AS EXT-MARK-FREE-TAIL ABOVE, FOR A WHOLE CLASS. The type
-\ family registry (src/core/type-family.f) and the effect store (this file) are
-\ read by src/compiler/native/{family,dict,reach}.f, and their readers are
-\ signature-less colon words the seal marks internal - so without a row here the
-\ checker has no symbol for one and a checked body naming it is E-UNDEFINED.
-\ That wall is why those three files carried twenty-one one-line `TRUSTED:`
-\ bridges whose whole body was the call: the only route the checker admitted.
-\ A row states the effect the reader's own definition declares, which is the
-\ same assertion the bridge made, made once and where the reader lives - so the
-\ bridges are gone and their callers are ordinary checked Habu
-\ (dot habu-turn-the-registry-4c064064).
+\ The type family registry (type-family.f) and the effect store (this file) are
+\ read by the native compiler (checker-owner.f) through signature-less colon
+\ words the seal marks internal; without a row a checked body naming one is
+\ E-UNDEFINED. A row states the effect the reader's own definition declares.
+\ Rows need not be engine primitives: a row interns a symbol and stores an
+\ effect, as for EXT-MARK-FREE-TAIL and CHECKER-DEFFAMILY.
 \
-\ THESE ARE NOT ENGINE PRIMITIVES and the table does not require them to be: a
-\ row interns a symbol and stores an effect, and EXT-MARK-FREE-TAIL (a colon
-\ word at line 2941 of this file) and CHECKER-DEFFAMILY (one in sumtype.f) have
-\ ridden that for as long as they have existed. What a row buys is exactly what
-\ its comment says - the checker knows the effect, and the seal-time
-\ internal-word marking pass leaves the word callable.
-\
-\ WHAT IS DELIBERATELY NOT HERE. `patch32`, `code-publish`, `callmap-set`,
-\ `addrmap-set`, `xref-retarget`, `int-mark` and `min-in-mark` already have rows
-\ (src/habu/prims.f) that refuse a CHECKED caller outside an owner package: a
-\ global row marked trusted-only, NPUB's private row, or both; `evaluate`
-\ belongs with them, and has the elaborator rule of its own that its dynamic
-\ stack effect needs. Giving any of those an OPEN row would delete the trust
-\ boundary rather than cross it, so their wrappers stay named boundaries.
-\ `execute` and the two raw-address casts stay for the reasons their own files
-\ give. Retirement: habu-sweep-trusted-out-41e973ce.
-\ The registry half of this block is PPRIM: TFAM now, for the reason the
-\ high-water block above gives. TFL-MATCH-FAM? and TFL-CON-FAM? keep PRIM: rows
-\ because those two words keep global scope: habu2.f compiles `match` and
-\ `construct` by looking them up through C-FIND-GLOBAL, which deliberately
-\ ignores the open package.
+\ Deliberately absent: `patch32`, `code-publish`, `callmap-set`, `addrmap-set`,
+\ `xref-retarget`, `int-mark` and `min-in-mark` have prims.f rows that refuse a
+\ CHECKED caller outside an owner package; `evaluate` has its own elaborator
+\ rule for its dynamic stack effect. An open row for any of them would delete
+\ the trust boundary. `execute` and the two raw-address casts stay for the
+\ reasons their own files give.
+\ TFL-MATCH-FAM? and TFL-CON-FAM? keep PRIM: rows at global scope: habu2.f
+\ compiles `match` and `construct` through C-FIND-GLOBAL, which ignores the
+\ open package. The other registry rows are PPRIM: TFAM.
 PRIM: TFL-MATCH-FAM?  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: TFL-CON-FAM?    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PPRIM: TFAM TFL-VAR?  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
 PPRIM: TFAM TFAM-SLOTS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
-\ TFAM-VAR-COUNT@ and TFAM-NAME$ are NOT repeated here: the public-signature
-\ metadata block above already states both, with the effects this file needs.
-\ family.f's VARIANTS and NAME$ read those rows. A second row for a symbol is
-\ dead - PRIM-FIRST-SCAN answers with the first slot - so it would be a name
-\ with two authorities and no way to tell which one a caller got.
+\ TFAM-VAR-COUNT@ and TFAM-NAME$ are not repeated: the metadata block above
+\ states both. PRIM-FIRST-SCAN answers a symbol's first row, so a second row
+\ would be dead, an authority no caller could tell apart.
 PPRIM: TFAM SUMV-TAG@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM TFL-VPADS PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM SUMV-PAYCELLS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TFAM SUMV-PAY-N PE-N PE-IN  PE-N PE-OUT PPRIM;
-\ THE BUILD CHAIN'S OWN TWO CALLEES, for the same reason and with one more of
-\ its own: a product image that strips the names the seal marks DNAME-INT has
-\ to be able to build the next generation, and until these rows existed the
-\ only route to either word was a TRUSTED: body naming it - which keeps the
-\ name alive in the image but states nothing, so the stripped image died
-\ `ncomp: cannot compile REG-INCOMING?` (dot habu-give-the-build-4b825045).
-\
+\ The build chain's own two callees: an image that strips DNAME-INT names must
+\ still build the next generation, and a TRUSTED: body naming a word keeps the
+\ name but states no effect (the stripped image's ncomp could not compile the
+\ merge callee).
 \ REG-AOT-MERGE-INCOMING? decides which of two captured type registries a merge
 \ retains; src/habu/aot-file.f MERGE-REG is its only caller and calls it checked.
 PPRIM: TFAM REG-AOT-MERGE-INCOMING? PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
-\ THE PRIMITIVE SPECIFICATION'S OWN READERS, for the same reason: src/habu/prims.f
-\ loads ahead of this file so it records no signature of its own, and its readers
-\ have four checked callers - src/habu/habu1.f, which refuses a machine body
-\ whose name has no row; src/habu/habu2.f, whose completeness gate refuses a row
-\ that no body answers; src/habu/primitive-registry.f DNAME, which bakes each
-\ row's minimum input depth into the primitive's seed record; and the parity
-\ gate that runs each row's reference
-\ implementation beside each backend's body. This file reads the same table
-\ pre-hook, through the private spellings, to build the rows themselves.
+\ The primitive specification's readers: prims.f loads ahead of this file and
+\ records no signature of its own, and its readers have checked callers
+\ (habu1.f, habu2.f's completeness gate, primitive-registry.f DNAME, the parity
+\ gate). This file reads the same table pre-hook through the private spellings.
 PPRIM: PRIM-SPEC COUNT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC KIND@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
@@ -11961,37 +11247,24 @@ PPRIM: PRIM-SPEC R-RUN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-IN PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-OUT PE-N PE-OUT PPRIM;
 PPRIM: PRIM-SPEC A-NUM PE-N PE-OUT PPRIM;
-\ CHECKER-BOUND REWIND is the core-prefix boundary's restore half, declared and
-\ its MARK half deliberately not: src/habu/prefix-rewind.f's top-level text is
-\ the one consumer and it only ever rewinds, so nothing outside this file can
-\ move the boundary. The rewind is guarded by its own body - it dies on an
-\ unrecorded boundary and inside a rollback scope — and what it restores is
-\ checker knowledge, so a caller that runs it in a booted engine loses the
-\ symbols above the prefix and every later reference fails closed with
-\ E-UNDEFINED (measured).
+\ CHECKER-BOUND REWIND is declared and MARK is not: prefix-rewind.f's top-level
+\ text only rewinds, so nothing outside this file moves the boundary. REWIND
+\ dies on an unrecorded boundary and inside a rollback scope; run in a booted
+\ engine it drops the symbols above the prefix and later references fail
+\ closed with E-UNDEFINED (measured).
 PPRIM: CHECKER-BOUND REWIND PPRIM;
-\ CHECKER-BOUND EMPTY-STORE is the same package's other answer, for the other
-\ kind of reloading host: tools/bootstrap.sh's boot-hide prologue, which every
-\ recovery stage interprets at boot. That text reloads the WHOLE core prefix,
-\ this file included, so it lowers the dictionary to the prefix's FIRST record
-\ and the signature store has to come back to offset zero with it. REWIND comes
-\ back to the prefix's END, which is where ITS consumer reloads from, and using
-\ it there builds a stage-1 engine that cannot boot (measured: silent rc 78,
-\ the fixed-region class, with the same tree's hand rewind building it). The
-\ prologue used to do it by hand from a TRUSTED: body naming `USIGS`, which is
-\ why this row exists at all: `USIGS` has no effect, so the seal marks it
-\ DNAME-INT and a stripped image drops the record that body needed (dot
-\ habu-route-the-recovery-4ef43bd9).
+\ CHECKER-BOUND EMPTY-STORE serves tools/bootstrap.sh's boot-hide prologue,
+\ which reloads the whole core prefix, this file included: the dictionary drops
+\ to the prefix's first record and the signature store must return to offset
+\ zero. REWIND returns to the prefix's end; used there it builds a stage-1
+\ engine that cannot boot (measured: silent rc 78). The row exists because
+\ `USIGS` has no effect, so the seal marks it DNAME-INT and a TRUSTED: body
+\ naming it loses the record in a stripped image.
 \
-\ IT TAKES NO ARGUMENT, and that is the row rather than a detail of it. The seam
-\ underneath, USIGS-RESTORE-END, takes the new end: declaring THAT would hand
-\ a trusted build word a store write at an offset of its choosing. Zero is
-\ the only end this caller wants, so zero is what the declared word means, and
-\ the seam keeps its seal. What it discards is checker knowledge, so a caller
-\ that runs it in a booted engine loses the effects the source recorded and the
-\ next reference to one fails closed with E-UNDEFINED (measured, and an engine
-\ that keeps interpreting after it stays sound: a following enum declaration and
-\ a following arithmetic body both certify), exactly as for REWIND.
+\ It takes no argument by design: the seam USIGS-RESTORE-END takes the new end,
+\ and declaring it would hand a trusted build word a store write at any offset.
+\ Run in a booted engine it fails closed like REWIND (measured; a following enum
+\ declaration and arithmetic body still certify).
 PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
 \ CHECKER-EFFECT-AUTHORITY SEAL closes the authority gate. Its caller is
 \ src/core/internal-mark.f's sealed arm, a checked body after the hook, which an
@@ -12000,7 +11273,7 @@ PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
 \ opens the gate.
 PPRIM: CHECKER-EFFECT-AUTHORITY SEAL PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-\ The scope probe a non-defining caller asks before EFFECT-QUERY (top-row.f).
+\ The scope probe a caller that only observes asks before EFFECT-QUERY (BY-EFFECT?).
 PPRIM: CHECKER-RESOLVE REFUSES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
 PRIM: E-USING-AMBIGUOUS  PE-N PE-OUT PRIM;
 PRIM: E-PKG-CONTEXT      PE-N PE-OUT PRIM;
@@ -12069,8 +11342,8 @@ variable DFER-END
    {: a:ptr u:n :}
    a u BYTE-SPAN? u CHECKER-PACKAGE-CAP >= and ;
 
-\ A package name is a name (CK-NAME-SPAN?) that fits the mirror's row: one of
-\ -1 bytes used to copy nothing and keep its length.
+\ A package name must be a name (CK-NAME-SPAN?) that fits the mirror's row: a
+\ -1 length would copy nothing and keep its length.
 : CHECKER-PACKAGE-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= u CHECKER-PACKAGE-CAP >= or IF
       s" checker: package name too long" 76 die
@@ -12081,14 +11354,12 @@ variable DFER-END
    REPEAT drop
    u CHECKER-PACKAGE-U! ;
 
-\ --- `using`-scope import mirror (dot habu-using-import-pkg-a07dd7ba). The engine owns
-\ the live using depth in one fixed DATA cell (layout.f USE-DEPTH-CELL); the checker reads
-\ it through data-base so this parallel table of folded package names is bounded by the
-\ identical depth. There is no separate checker counter to drift across the ;using /
-\ ;package / end-of-file / throw / REPL boundaries — every boundary just restores the shared
-\ engine depth and the checker automatically follows. CHECKER-USING (called by the engine
-\ C-USING before it increments the shared depth, and by verify-source likewise) records the
-\ name into the slot at the current depth; resolution reads names[0..depth).
+\ --- `using`-scope import mirror. The engine owns the live using depth in one
+\ DATA cell (layout.f USE-DEPTH-CELL); this table of folded package names is
+\ bounded by that depth, so no checker counter can drift across `;using`,
+\ `;package`, end of file, a throw or the REPL. CHECKER-USING (called by C-USING
+\ before it increments the depth, and by verify-source) records the name at the
+\ current depth; resolution reads names[0..depth).
 7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
 variable CK-USED-MASK                      \ bit i set when used-scan slot i matched, for the using diagnostics
 
@@ -12101,26 +11372,15 @@ variable CK-USED-MASK                      \ bit i set when used-scan slot i mat
 : CK-USE-SLOT ( n -- ptr u8 )  CHECKER-PACKAGE-CAP * CK-USE-NAMES + ;
 : CK-USE-LEN@ ( n -- n )  cells CK-USE-LENS + @ ;
 
-\ Slots the used-scope search may read, bounded by the physical CK-USE-MAX-slot
-\ mirror (CK-USE-NAMES / CK-USE-LENS). This bound is the invariant that keeps the
-\ search safe on EVERY engine, because checker.f is cold-prefix source re-read at
-\ every engine boot: an OLDER bootstrap engine that predates the using band (the
-\ seed that builds the first using-capable fixpoint) has no USE-DEPTH-CELL, so
-\ CK-USE-DEPTH-OFF aliases that engine's DP-heap base and the raw read is
-\ unrelated heap data, not a depth. Capping the scan at CK-USE-MAX makes the loop
-\ terminate and never index past the mirror no matter what that read returns.
-\ Correctness then rests on the mirror's CONTENTS, not on the raw depth value.
-\ Three writers fill it: CHECKER-USING, driven only by the engine's C-USING for
-\ a real `using` or by a replay's own `using` row; the throw-recovery resync
-\ (CHECKER-RESYNC below), which names each live slot from the engine's wid, the
-\ slots' authority; and CK-USE-RESTORE, which puts back rows a savepoint copied
-\ from the mirror. An engine that predates the using band runs neither a
-\ `using` nor the resync, a hook engine recovery gained after the band, so
-\ every scanned slot keeps its zero-initialised length and SYM-FIND matches
-\ nothing. On a using-capable engine the depth is always in [0,CK-USE-MAX] (C-USING
-\ dies on push overflow), so the cap never binds and the scan is exactly the live
-\ usings, unchanged. The owned depth is bounded by the same CK-USE-MAX at its own
-\ push, so the cap does not bind for a replay either.
+\ The scan is capped at CK-USE-MAX because checker.f is cold-prefix source
+\ re-read at every boot: a bootstrap engine older than the using band has no
+\ USE-DEPTH-CELL, so CK-USE-DEPTH-OFF reads unrelated heap data. The cap keeps
+\ the loop inside the mirror whatever that read returns; correctness rests on
+\ the mirror's contents. Its writers are CHECKER-USING (driven by C-USING or a
+\ replay's `using` row), CHECKER-RESYNC and CK-USE-RESTORE; an engine without
+\ the band runs none of them, so every slot keeps its zero length and SYM-FIND
+\ matches nothing. On a using-capable engine C-USING and the owned push both
+\ bound the depth by CK-USE-MAX, so the cap never binds.
 : CK-USE-SCAN-N ( -- n )
    CK-USE-DEPTH
    dup 0 < IF drop 0 EXIT THEN
@@ -12180,25 +11440,18 @@ package CHECKER-REG
 \ CHECKER-USE:SOURCE-FLOOR: the engine refuses that in an evaluated buffer.
 7146 constant E-USING-OUTER                \ `;using` closing an import its package or source did not open
 
-\ --- global-vs-used-public shadow rejection (dot habu-err-on-global-e62f806c).
-\ Resolution order puts the open-scope + global wordlist ahead of the used
-\ publics (docs/forth.md Packages), so a bare tail that already hits a global
-\ never consults the used scan: a `using` import of the same name is silently
-\ dead and the reference binds the GLOBAL with the global's effect. When the two
-\ effects differ the mismatch only surfaces later, far from the cause (the
-\ data-loader incident, where a kernel `LOAD` shadowed a loader's public `LOAD`);
-\ when they coincide the wrong word binds and certifies with no diagnostic at
-\ all. This extends the two-used-package ambiguity rule to the global-vs-used
-\ collision: a bare tail inside a live `using` scope that resolves to a global
-\ while a used package also exports it is ambiguous and fails closed AT THE
-\ REFERENCE SITE. Escape hatches: qualify the package word as PKG:WORD (still
-\ certifies), or rename the collision to reach the global (the grammar has no
-\ bare qualifier for the global "" wordlist).
+\ --- global-vs-used-public shadow rejection. Resolution puts the open scope and
+\ the global wordlist ahead of the used publics (docs/forth.md Packages), so a
+\ `using` import of a name a global already binds is silently dead: the
+\ reference binds the global, and a different effect surfaces far from the
+\ cause (a kernel `LOAD` shadowed a loader's public `LOAD`). A bare tail inside
+\ a live `using` scope that resolves to a global while a used package also
+\ exports it is therefore ambiguous and fails at the reference. Escapes: qualify
+\ PKG:WORD, or rename the collision (no qualifier names the global "" wordlist).
 7141 constant E-USING-SHADOW-GLOBAL
-\ A `trust` row whose name the engine's own scope chain resolves to nothing.
-\ It sits beside E-USING-SHADOW-GLOBAL because that is the diagnostic it exists
-\ to prevent: a stale row minted a bare global checker symbol out of nothing,
-\ and the collision surfaced at some later file's `using` instead of at the row.
+\ A `trust` row whose name the engine's scope chain resolves to nothing. Such a
+\ row would mint a bare global checker symbol, and the collision would surface
+\ as E-USING-SHADOW-GLOBAL at a later file's `using` instead of at the row.
 7143 constant E-TRUST-UNRESOLVED
 \ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
 7152 constant E-BAD-QUALIFIED
@@ -12221,14 +11474,10 @@ defer RECORD-DIAG-XT ( n -- )               \ render.f installs the three diagno
 : RECORD-DIAG-DEFAULT ( -- ) [: drop ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-DEFAULT
 
-\ A refused row behaves exactly like its sibling row error, the unparseable
-\ stored signature in USIG-ADD-BAD above: on the ordinary load path it is a hard
-\ stop, and under a MULTI-ERROR load it is rendered and COUNTED instead, so the
-\ pass reaches every other error in the file and the driver still exits nonzero
-\ at the end. Throwing here would abort the load at the first bad row and hide
-\ every finding behind it - which is what it did, silently, before this line.
-\ Neither path stores a row, so a later caller rejects as undefined rather than
-\ certifying against an effect nothing can reach.
+\ A refused row behaves like the unparseable stored signature in USIG-ADD-BAD:
+\ a hard stop on the ordinary load path; under a MULTI-ERROR load it is rendered
+\ and counted, so the pass reaches every other error and the driver still exits
+\ nonzero. Neither path stores a row, so a later caller rejects as undefined.
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
    a TSR-TOK-A !  u TSR-TOK-U !
    0 RECORD-DIAG-XT
@@ -12254,24 +11503,19 @@ defer SHADOW-DIAG-XT ( n -- )               \ render.f installs the diagnostics 
 SHADOW-DIAG-DEFAULT
 
 \ A refusal of the definition being checked that leaves its body's or does>
-\ clause's walk by a throw, its packet rendered where it was found: a using
-\ refusal (CHECKER-RESOLVE:RAISE; a body token's is held by the walk and raised
-\ at its end, USING-RAISE) or a shadowed arity (SHADOW-ARITY-CK). A using
-\ refusal leaves a top-level token's walk the same way, and refuses the token
-\ as it refuses a definition (CHECKER-VERIFY-TOP). The
-\ code is kept as it is raised, so the walk's entry (DEF-REFUSED) tells the
-\ definition's refusal from a throw nothing judged - an arena or capacity
-\ failure, a bug - which propagates. CHECKER-REFUSAL-CELL cannot tell them: it
-\ outlives the walk and holds refusals that are not the definition's.
+\ clause's walk by a throw, its packet rendered where found: a using refusal
+\ (CHECKER-RESOLVE:RAISE; a body token's is held and raised at the walk's end,
+\ USING-RAISE) or a shadowed arity (SHADOW-ARITY-CK); a top-level token's using
+\ refusal leaves the same way (CHECKER-VERIFY-TOP). The code is kept as raised,
+\ so DEF-REFUSED tells the definition's refusal from a throw nothing judged (an
+\ arena or capacity failure, a bug), which propagates. CHECKER-REFUSAL-CELL
+\ cannot: it outlives the walk and holds refusals that are not the definition's.
 variable DEF-REFUSAL
 : REFUSE-DEF ( n -- n ) dup DEF-REFUSAL ! ;
 
-\ A bare tail bound to the global gsym while the used public in slot ix also
-\ exports it: capture both candidates for the diagnostic and answer the
-\ refusal, E-USING-SHADOW-GLOBAL. CHECKER-RESOLVE:RAISE renders the captured
-\ candidates; a caller that only asks drops the answer. The token the packet
-\ names is the raiser's, the spelling the checked text holds, not the fold the
-\ walk asks about.
+\ Answers E-USING-SHADOW-GLOBAL with both candidates captured for
+\ CHECKER-RESOLVE:RAISE; a caller that only asks drops the answer. The packet
+\ names the raiser's token as the checked text spells it, not the walk's fold.
 : CK-SHADOW-CAPTURE ( n n n -- n ) {: gsym:n usym:n ix:n :}
    gsym USH-GSYM !  usym USH-USYM !
    ix 0 >= IF
@@ -12286,20 +11530,17 @@ variable DEF-REFUSAL
 : CK-WL-CLAIMS? ( ptr u8 n n -- bool ) {: a:ptr u:n wid:n :}
    a u wid search-wl 0 <> ;
 
-\ --- generated-constructor protection. The registry-backed
-\ predicates live in type-family.f (loads later) and install into these friend
-\ cells; empty cells fail open only in engines with no TFAM registry at all
-\ (stage builders, which never see user declarations). Guards: a recorded
-\ constructor package cannot be opened/reopened by `package`; a generated
-\ constructor word cannot be undefined; a new tail cannot certify into a
-\ constructor package (closed-but-callable).
+\ --- generated-constructor protection. The predicates live in type-family.f
+\ (loads later) and install into these cells; empty cells fail open only in
+\ engines with no TFAM registry (stage builders, which see no user
+\ declarations). Guards: `package` cannot open or reopen a recorded constructor
+\ package; a generated constructor word cannot be undefined; a new tail cannot
+\ certify into a constructor package (closed but callable).
 7111 constant E-CTOR-PROTECTED
 7121 constant E-CHECKER-LAYOUT-BUFFER
 7202 constant E-CHECKER-STORAGE-UNRESOLVED
 7205 constant E-CHECKER-IDENTITY-UNRESOLVED
-\ ctor-protection query hooks, rebound by type-family.f. The
-\ registry-not-loaded default reports "not a protected ctor", matching the old
-\ 0-hook guards which skipped the throw before the registry existed.
+\ Rebound by type-family.f; until then each reports "not a protected ctor".
 defer CTOR-PKG?-XT ( ptr u8 n -- bool )       \ name is a recorded ctor package?
 defer CTOR-WORD?-XT ( ptr u8 n -- bool )      \ name is a generated ctor word?
 defer CTOR-EXTEND?-XT ( ptr u8 n -- bool )    \ new tail in a closed ctor package?
@@ -12324,13 +11565,11 @@ USE-SLOT-BOOT
 \ src/habu/xref.f retires the name.
 package CHECKER-RESYNC
 
-\ The engine's wids are the slots' authority. A throw's recovery puts back the
-\ includer's wids (habu2.f LEVALREC and EM-REPL-RECOVER, src/habu/interpret.f
-\ RUN-CAUGHT), which a buffer that closed the includer's package and opened a
-\ using had overwritten, while the name that `using` recorded stays here; so
-\ each live slot's name is read back from its wid. A wid no live row publishes, or a
-\ name the slot cannot hold, names nothing: a bare tail through that slot is
-\ refused rather than certified against a stale name.
+\ The engine's wids are the slots' authority. A throw's recovery restores the
+\ includer's wids (habu2.f LEVALREC and EM-REPL-RECOVER, interpret.f RUN-CAUGHT)
+\ while the name an overwritten `using` recorded stays here, so each live slot's
+\ name is read back from its wid. A wid no live row publishes, or a name the
+\ slot cannot hold, names nothing: a bare tail through that slot is refused.
 : SLOT ( n -- ) {: d:n :}
    d USE-SLOT-XT {: a:ptr u:n ok:bool :}
    ok u CHECKER-PACKAGE-CAP < and IF a u d CHECKER-USE:NAME! EXIT THEN
@@ -12339,19 +11578,14 @@ package CHECKER-RESYNC
 : SLOTS ( -- )
    CK-USE-SCAN-N 0 ?DO i SLOT LOOP ;
 
-\ A throw's recovery puts the engine's package scope back to its boundary's
-\ (src/habu/habu2.f LEVALREC and EM-REPL-RECOVER, src/habu/interpret.f
-\ INTERPRET), but the notifications above told the mirror what the failed
-\ input did: a buffer that closed the package an earlier buffer opened and then
-\ threw left the mirror at top level while the engine had the package open
-\ again, and every inherited replay after it refused E-PKG-CONTEXT. The mirror
-\ is therefore set from the restored scope, which the live provider names. A
-\ scope the provider cannot authenticate names no package or mode to copy.
-\ With a package open (the current wordlist is neither of the package's own,
-\ say) the mirror keeps what the notifications set, so it agrees again once
-\ current is back; with none open it is top level. Inside a replay the checker
-\ overlay drives the engine's scope, and it sets the mirror the same way each
-\ time it moves that scope (CHECKER-OVERLAY).
+\ A throw's recovery restores the engine's package scope (habu2.f LEVALREC and
+\ EM-REPL-RECOVER, interpret.f INTERPRET), but the mirror holds what the failed
+\ input did; left alone, every inherited replay after it refused E-PKG-CONTEXT.
+\ The mirror is set from the restored scope the live provider names; a scope it
+\ cannot authenticate names nothing to copy. With a package open but current
+\ elsewhere the mirror keeps what the notifications set; with none open it is
+\ top level. Inside a replay CHECKER-OVERLAY sets the mirror each time it moves
+\ the engine's scope.
 public
 : MIRROR ( -- )
    SLOTS
@@ -12372,24 +11606,17 @@ private
 
 package CHECKER-CERT
 
-\ The lowering-certificate producer is reached through a DECLARED dispatch cell,
-\ not through a variable that an `execute` reads. The cell holds an execution
-\ token, which is an address in the JIT region, and it lives in the DP heap,
-\ which a snapshot persists byte for byte; `defer` and `is` are the only two
-\ points that tell the snapshot writer a persisted cell holds such an address
-\ (src/habu/layout.f SNAP-RELOC:XTCELL-*). A `variable` plus `execute` is
-\ outside both, so its token used to be persisted as the writing run's absolute
-\ address and a restored image jumped into nothing on its first checked
-\ definition (dot habu-declare-persisted-producer-76fbce09). Declaring the
-\ producer's effect here also means the installed producer is fit-checked
-\ against it instead of arriving as an opaque xt.
+\ The lowering-certificate producer is a declared dispatch cell, not a
+\ `variable` read by `execute`: the cell holds an xt (a JIT-region address) in
+\ the DP heap, which a snapshot persists byte for byte, and `defer` and `is` are
+\ the only points that tell the snapshot writer a cell holds such an address
+\ (layout.f SNAP-RELOC:XTCELL-*); a variable's xt would restore as a dead
+\ address. Declaring the effect also fit-checks the installed producer.
 defer PRODUCER-XT ( ptr u8 n n -- )
 
-\ Producer authority is granted exactly once and then erased by
-\ src/core/lower-cert-seal.f. `is` will store into the cell any number of times
-\ and an unset dispatch cell reports only the generic "unset execution vector",
-\ so the grant itself is tracked here in an ordinary integer flag. The flag never
-\ holds a token, so it is not an address cell and needs no relocation.
+\ Producer authority is granted once, then erased by lower-cert-seal.f. `is`
+\ stores any number of times and an unset cell reports only "unset execution
+\ vector", so the grant is tracked in an integer flag, which needs no relocation.
 variable PRODUCER-SET   0 PRODUCER-SET !
 
 public
@@ -12480,31 +11707,21 @@ public
 \ ---- the checker overlay ------------------------------------------------------
 \ A replay binds every name through the engine's own lookup, so while it runs
 \ the engine's dictionary holds what a compile of the replayed text would have
-\ defined. This package keeps that overlay through the engine writers only it
-\ may call (src/habu/prims.f, "the replay writers"): replay-open saves NDICT,
-\ CP, WIDN, CURRENT, the package cells and the using band; each definition the
-\ checker records is published as a codeless record (PUBLISH), a does>
-\ definer's clause beside it (CLAUSE); a replayed `undefine` retires the live
-\ records it names with wid -2 and logs them (RETIRE); the replay's package and
-\ using words move the engine's scope as the engine's own keywords do
-\ (src/habu/packages.f), and a replayed `package` gives a row with no private
-\ wordlist one and logs it (GRANT); a lookup under the binding
-\ horizon hides the records beyond it while it asks (HIDE, HORIZON-FIND). On
-\ every exit, clean or thrown, the log is undone newest first and replay-close
-\ zeroes the overlay's records and puts the saved state back.
+\ defined, kept through the replay writers only this package may call
+\ (src/habu/prims.f). replay-open saves NDICT, CP, WIDN, CURRENT, the package
+\ cells and the using band; on every exit, clean or thrown, the log is undone
+\ newest first and replay-close zeroes the overlay's records and restores them.
 \
-\ The outermost scope that asks opens the overlay: the verifier window (tag -1)
-\ or a package-neutral rollback scope (its frame depth). A scope opened inside
-\ it saves the engine scope in a snapshot row and puts it back when it closes,
-\ so the names a scope publishes bind until the overlay itself closes. A
-\ rollback frame keeps the overlay's NDICT, log count, CP and WIDN (MARKS) and
-\ goes back to them (ROLLBACK).
+\ The outermost asking scope opens the overlay: the verifier window (tag -1) or
+\ a package-neutral rollback scope (its frame depth). A scope opened inside it
+\ saves the engine scope in a snapshot row and restores it on close, so names a
+\ scope publishes bind until the overlay closes.
 \
 \ Between a logged record's restore and the drop of a replay record of the same
-\ name, one wordlist holds two live records of it (src/habu/habu2.f
-\ RECORD-WID): CLOSE ends that window with replay-close and ROLLBACK with
-\ ndict!, each before any lookup. Every writer refusal ends the process, so
-\ each refusal a replay can meet is checked here first and thrown by name.
+\ name, one wordlist holds two live records of it (habu2.f RECORD-WID): CLOSE
+\ ends that window with replay-close and ROLLBACK with ndict!, each before any
+\ lookup. Every writer refusal ends the process, so each refusal a replay can
+\ meet is checked here first and thrown by name.
 package CHECKER-OVERLAY
 
 variable ON                                \ nonzero while the overlay is open
@@ -12516,26 +11733,20 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 $4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
 -1 constant NAMESPACE                      \ = layout.f DICT-WL:NAMESPACE
 
-\ The undo log: the index and wid of each record a replayed `undefine` retired,
-\ and the index of each namespace row the replay gave a private wordlist
-\ (GRANT) with wid NAMESPACE, which record-wid! refuses, so no retirement is
-\ logged with it. A retired record has left its wordlist and a granted row has
-\ one of its own, so the log holds a record at most once, and only the
-\ dictionary bounds it, as it bounds the `undefine`s of a live load. It is a
-\ mapping of its own, grown as entries come (PAIR+) and given back by CLOSE.
+\ The undo log: index and wid of each record a replayed `undefine` retired, and
+\ of each namespace row the replay granted a private wordlist (GRANT), logged
+\ with wid NAMESPACE, which record-wid! refuses, so no retirement shares it. A
+\ record appears at most once, so only the dictionary bounds the log. Grown by
+\ PAIR+, given back by CLOSE.
 PTR-VARIABLE LOG-P
 variable LOG-CAP
 variable LOG-N
 : LOG ( -- ptr u8 ) LOG-P @ BYTE-VIEW ;
 
-\ The does> clauses the replay published (CLAUSE): each definer's or export's
-\ index, then its clause's, in the order they were made. The engine pairs a
-\ live definer or export with its clause by code containment
-\ (DOES-COMPANION?-XT), which a codeless replay record cannot meet, so the pair
-\ is kept where it is made. Each pair's clause is a record CLAUSE makes once
-\ ROOM admits it, so only the dictionary bounds the table, as it bounds the
-\ definers and exports of a live load. Like the log, it is a mapping of its
-\ own, grown as pairs come and given back by CLOSE.
+\ The does> clauses the replay published (CLAUSE): definer or export index, then
+\ clause index. The engine pairs a live definer with its clause by code
+\ containment (DOES-COMPANION?-XT), which a codeless replay record cannot meet,
+\ so the pair is kept here. Only the dictionary bounds it; given back by CLOSE.
 PTR-VARIABLE PAIRS-P
 variable PAIRS-CAP
 variable PAIRS-N
@@ -12562,10 +11773,8 @@ variable HIDDEN-N
 6 constant S-TAG                           \ the scope that pushed the row
 7 constant S-WIDS                          \ the used publics, CK-USE-MAX cells
 S-WIDS CK-USE-MAX + constant ROW-CELLS
-\ The snapshot rows, newest last: a scope opened while the overlay is on keeps
-\ the scope it entered from (SNAP-PUSH). The live engine nests checker scopes as
-\ deep as its memory holds (RBF-GROW), and so does a replay: the rows are a
-\ mapping of their own, grown as scopes open and given back by CLOSE.
+\ The snapshot rows, newest last (SNAP-PUSH). Scopes nest as deep as memory
+\ holds (RBF-GROW), so the rows are a growing mapping, given back by CLOSE.
 PTR-VARIABLE SNAPS-P
 variable SNAPS-CAP
 variable SNAP-N
@@ -12650,11 +11859,8 @@ variable SNAP-N
    0 CK-USE-DEPTH-OFF DATA!
    0 CK-USE-FLOOR-OFF DATA! ;
 
-\ Append record IX and WID to the log.
 : LOG! ( n n -- ) LOG-P LOG-CAP LOG-N PAIR+ ;
 
-\ Undo one log entry: a granted row loses its private wordlist, a retired
-\ record gets its wid back.
 : UNDO1 ( n n -- ) {: ix:n wid:n :}
    wid NAMESPACE = IF ix RES-FALSE replay-private EXIT THEN
    wid ix record-wid! ;
@@ -12735,7 +11941,6 @@ variable SNAP-N
    rec NULL-PTR = IF -1 EXIT THEN
    rec REC>IX ;
 
-\ Log record IX with its wid, then retire it.
 : LOG-RETIRE ( n n -- ) {: ix:n wid:n :}
    ix wid LOG!
    RETIRED ix record-wid! ;
@@ -12814,12 +12019,12 @@ public
    ndict@ LOG-N @ cp@ CK-WIDN-OFF DATA@ ;
 
 \ A scope opened inside the overlay closes here, not through replay-close, so
-\ ROLLBACK hands back the three counters replay-close restores: the records
-\ above ND, the bytes their long names took at CP and the wordlists their
-\ namespace rows took. Without CP and WIDN every replay nested under one open
-\ overlay kept them until the overlay closed. WIDN goes back last, once UNDO
-\ took back the private wids granted since the mark and ndict! dropped every
-\ record that held a wid at or above it (replay-widn!).
+\ ROLLBACK restores the three counters replay-close restores: records above ND,
+\ the bytes their long names took at CP and the wordlists their namespace rows
+\ took; without CP and WIDN a nested replay would hold them until the overlay
+\ closed. WIDN goes back last, after UNDO took back the private wids granted
+\ since the mark and ndict! dropped every record holding a wid at or above it
+\ (replay-widn!).
 : ROLLBACK ( n n n n -- )
    {: nd:n logn:n cp:n widn:n :}
    ON @ 0=  nd MARK @ <  or IF EXIT THEN
@@ -12874,18 +12079,14 @@ ROW-CELLS cells constant SCOPE-BYTES
    ROOM
    sym SYM-NAME$ wid replay-record ;
 
-\ Whether a definition of NAME, replayed here, duplicates the record the engine
-\ holds of it where the definition lands, as the live engine refuses a compile
-\ of the name there. A record the replay made does: a definition it published
-\ or a does> clause (CLAUSE), which has no checker record. So does one below
-\ the source prefix's first record (PREFIX): the engine's builder made it, a
-\ primitive or a helper, before any source loaded, so a live load of the text
-\ meets it too. So does a does> clause from before the overlay, its
-\ predecessor's by the engine's own test: no definition makes a clause, so it
-\ is no definition's loaded twin. Any other record between the two is a Habu
-\ source definition the engine loaded: in a warm engine, the twin of the
-\ definition being replayed when it has that definition's does> shape
-\ (OTHER-SHAPE?).
+\ Whether a replayed definition of NAME duplicates the record the engine holds
+\ where it lands, as the live engine refuses a compile there. Duplicates: a
+\ record the replay made (a published definition or a CLAUSE); one below the
+\ prefix's first record (PREFIX), which the builder made before any source
+\ loaded; a does> clause from before the overlay, which is no definition's
+\ twin. Any other record is a source definition the engine loaded: in a warm
+\ engine, the replayed definition's twin when it has that definition's does>
+\ shape (OTHER-SHAPE?).
 : DUPLICATE? ( ptr u8 n -- bool )
    LANDS {: ix:n :}
    ix 0 < IF RES-FALSE EXIT THEN
@@ -12908,20 +12109,17 @@ ROW-CELLS cells constant SCOPE-BYTES
    ix 0 <  ix MARK @ >=  or IF RES-FALSE EXIT THEN
    ix CLAUSE-OF 0 >=  clause xor ;
 
-\ The clause of the replayed `create ... does>` definer NAME, as the engine's
-\ `does>` makes it (src/habu/habu2.f DOES-REC), or of a replayed export NAME of
-\ such a definer, as the engine's EXPORT publishes it (C-EXPORT): a record of
-\ its own in NAME's wordlist, named NAME's tail with the companion suffix added,
-\ so a later `trust` or `undefine` of either binds as it would live. CNAME is
-\ NAME with DOES-CLAUSE:SUFFIX$ added, composed by the caller (CLAUSE-NAME)
-\ because the checker registers that word's effect after this package; past
-\ NAME's qualifier it spells the clause's tail. A live word already holding the
-\ clause's name refuses the definer, E-DUPLICATE-DEFINITION, as
-\ DOES-REC:REJECT-DUP does; an export's caller asks that first (EXPORT-ROOM). A
-\ definer or export from before the overlay is the loaded twin the replay keeps
-\ (PUBLISH), and it has the clause the engine made for it: one with none
-\ refused the definition before its clause (OTHER-SHAPE?). One the replay did
-\ not publish gets no clause.
+\ The clause of the replayed `create ... does>` definer NAME, as habu2.f
+\ DOES-REC makes it, or of a replayed export of one, as C-EXPORT publishes it:
+\ a record in NAME's wordlist named NAME's tail plus the companion suffix, so a
+\ later `trust` or `undefine` of either binds as it would live. The caller
+\ composes CNAME with DOES-CLAUSE:SUFFIX$ (CLAUSE-NAME) because that word's
+\ effect is registered after this package. A live word holding the clause's
+\ name refuses the definer, E-DUPLICATE-DEFINITION, as DOES-REC:REJECT-DUP does;
+\ an export's caller asks first (EXPORT-ROOM). A definer or export from before
+\ the overlay is the kept twin (PUBLISH) and has its engine-made clause; one
+\ with none was refused (OTHER-SHAPE?). One the replay did not publish gets no
+\ clause.
 : CLAUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n ca:ptr cu:n :}
    ON @ 0=  CK-DEF-PEND-OFF DATA@ 0 <>  or IF EXIT THEN
    a u TARGET 0= IF 2drop drop EXIT THEN
@@ -12982,16 +12180,14 @@ ROW-CELLS cells constant SCOPE-BYTES
    CK-USE-FLOOR-OFF DATA@ CK-USE-DEPTH-OFF DATA! ;
 
 \ `using NAME` (PKG-USING): the package's public wordlist joins the used ones
-\ at the current depth. The checker names that slot first (CHECKER-USING: a
-\ name over 255 bytes throws and an overflow ends the process, before any store
-\ here). A colon in the name throws the engine's own code for it
-\ (ENGINE-ERROR:USING-BAD-NAME), as the live statement does inside evaluate:
-\ no row can exist for such a name, since namespace-record refuses a colon, so
-\ `using A:B` and every `A:B:X` after it are refused here, at the statement the
-\ load refuses. A legal name with no row is the run's to refuse
-\ (USING-UNKNOWN), so the replay goes on with the empty row NS-ENSURE makes,
-\ which replay-close drops: no name binds through it. A source below its floor
-\ lowers the floor to meet its first using, as an evaluated buffer does.
+\ at the current depth. CHECKER-USING names the slot first (a name over 255
+\ bytes throws; an overflow ends the process) before any store here. A colon
+\ throws ENGINE-ERROR:USING-BAD-NAME, as the live statement does in evaluate:
+\ namespace-record refuses a colon, so no row exists for such a name. A legal
+\ name with no row is the run's to refuse (USING-UNKNOWN): the replay goes on
+\ with the empty row NS-ENSURE makes, which replay-close drops. A source below
+\ its floor lowers the floor to meet its first using, as an evaluated buffer
+\ does.
 : OPEN-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-USING
    a u CHECKER-COLON-SCAN drop 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
@@ -13071,30 +12267,23 @@ package CHECKER-REG
 
 \ --- the verifier window --------------------------------------------------
 \ These two names stay checker-internal: verify-source and the check driver's
-\ fixed scanners compile direct calls from named TRUSTED boundaries. Their
-\ effect rows are trusted-only, so checked code cannot activate the provider.
+\ fixed scanners call them from named TRUSTED boundaries, and their rows are
+\ trusted-only, so checked code cannot activate the provider.
 \
-\ THE ROW IS WHY THE NAME ALSO NEEDS A SEAL. Both carry a zero-cell PRIM: row
-\ marked PRIM-TRUSTED-ONLY! so the native compiler can compile the call window
-\ from that TRUSTED caller — and a row makes SIG-MIN-IN answer 0, which is what
-\ src/core/internal-mark.f's IMK-MARK reads as "known, and no minimum arity to
-\ record" and leaves executable. A file holding nothing but
-\ CHECKER-VERIFY-PKG-START therefore ran and exited 0, seeding the verifier's
-\ package mirror from top level. REG-PROTECT is the seal CHECKER-RESET-SOURCE
-\ takes for the same reason: it records this record for IMK-SEAL-REGISTRY, which
-\ marks it DNAME-INT, so interpret and tick fail closed (`hb: internal engine
-\ word`, rc 70) while a compile-mode reference from a TRUSTED: body still
-\ resolves — src/compiler/native/dict.f CALL-TARGET admits a DNAME-INT call
-\ while the TRUSTED compilation cell is armed, which is what the row is for.
+\ The row is why the name also needs a seal: a zero-cell PRIM: row marked
+\ PRIM-TRUSTED-ONLY! lets the native compiler compile the call from that
+\ TRUSTED caller, but it makes SIG-MIN-IN answer 0, which internal-mark.f
+\ IMK-MARK reads as known and leaves executable (a file holding only
+\ CHECKER-VERIFY-PKG-START ran and exited 0). REG-PROTECT records the word for
+\ IMK-SEAL-REGISTRY, which marks it DNAME-INT: interpret and tick fail closed
+\ (`hb: internal engine word`, rc 70) while dict.f CALL-TARGET admits a call
+\ from a TRUSTED: body.
 \
-\ WHY NOT TEACH THE PASS THAT A TRUSTED-ONLY ROW IS UNKNOWN. Because trusted-only
-\ states a different restriction: CHECKED CODE may not call the word, and some
-\ rows carry it precisely so a top-level build driver still can — `set-check`'s
-\ row (src/habu/prims.f) is one. The pass classifies colon records, so that
-\ rule would also seal CHECK-DOES! (this file) and LOWER-CERT:BYTES
-\ (src/core/lower-cert-base.f) on a judgement neither row makes. The seal belongs
-\ where the intent is stated, at the definition; REG-PROTECT takes the record it
-\ follows, so it cannot drift off the word it is about.
+\ The pass is not taught that a trusted-only row is unknown: trusted-only means
+\ checked code may not call the word, and some rows carry it so a top-level
+\ build driver still can (`set-check` in prims.f); that rule would also seal
+\ CHECK-DOES! and LOWER-CERT:BYTES. REG-PROTECT takes the record it follows, so
+\ the seal cannot drift off the word.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
    CHECKER-RESOLVE:AUTHORITY 0= IF E-PKG-CONTEXT throw THEN 2drop drop
@@ -13149,13 +12338,12 @@ package CHECKER-REG
 \ --- storage declaration refusals ---------------------------------------------
 \ A storage definer refuses a declaration whose type it cannot size, that has no
 \ name or one it cannot publish, or whose count is a literal outside its extent
-\ or a token the gate cannot certify (CHECKER-LBUF:COUNT-OK?). The gate pre-pass (CHECKER-DEF* below) and the run-time definers
-\ (src/core/layout-buffer.f) both refuse through CHECKER-STORAGE-REFUSE, so the
-\ declaration is reported, naming the declared word and the refused token,
-\ wherever it is refused; it used to throw E-CHECKER-LAYOUT-BUFFER with nothing
-\ reported. Like TRUST-STALE it is a hard stop on the ordinary load path, and
-\ rendered and COUNTED under a MULTI-ERROR load. Either way nothing is
-\ registered or defined: the refusing caller returns.
+\ or a token the gate cannot certify (CHECKER-LBUF:COUNT-OK?). The gate pre-pass
+\ (CHECKER-DEF* below) and the run-time definers (layout-buffer.f) both refuse
+\ through CHECKER-STORAGE-REFUSE, which reports the declared word and the
+\ refused token. Like TRUST-STALE it is a hard stop on the ordinary load path,
+\ and rendered and counted under a MULTI-ERROR load; either way nothing is
+\ registered or defined.
 \
 \ The diagnostic carries a file position only while the verifier window replays
 \ recorded source (CHECKER-VERIFY-PKG-DEPTH), for a token inside the buffer that
@@ -13180,7 +12368,7 @@ PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
 variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
 \ The renderer is its own hook because none of the four installed before it can
 \ carry a declaration: DIAGXT renders a definition with definition fields,
-\ BADSIG-XT a stored signature row, TSTALE-DIAG-XT a trust row, and
+\ BADSIG-XT a stored signature row, RECORD-DIAG-XT a refused record, and
 \ SHADOW-DIAG-XT selects among the diagnostics a token locates.
 defer STORAGE-DIAG-XT ( -- )                    \ render.f installs the declaration diagnostic
 : STORAGE-DIAG-DEFAULT ( -- ) [: ;] is STORAGE-DIAG-XT ;
@@ -13241,12 +12429,11 @@ STORAGE-DIAG-DEFAULT
 \ The storage registrars below record a definer's accessor for the source
 \ pre-pass, which replays the definer in the verifier window while the definer
 \ itself compiles the word. Outside the window nothing defines the name, and a
-\ record there certified callers against an effect the engine never binds -
-\ `( -- ptr n )` for a global that pushes one cell - so they refuse with the
-\ code the window's `using` steps refuse with (CHECKER-USING-PUSH). The refusal
-\ names itself at the call (RECORD-DIAG-XT 1, render.f REPLAY-ONLY-DIAG), as a
-\ stale `trust` row does: thrown bare, 7136 reached the reader and a
-\ --json-errors consumer only as `hb: uncaught throw code 7136`.
+\ record would certify callers against an effect the engine never binds
+\ (`( -- ptr n )` for a global that pushes one cell), so they refuse with the
+\ code the window's `using` steps refuse with (CHECKER-USING-PUSH), named at the
+\ call (RECORD-DIAG-XT 1, render.f REPLAY-ONLY-DIAG): thrown bare, a reader and
+\ a --json-errors consumer would see only `hb: uncaught throw code 7136`.
 PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid while rendering)
 
 \ Inside the window the name is then held to the definer's own name rule, which
@@ -13331,73 +12518,55 @@ public
    state EFF-DELETED = state EFF-SEEDED = or IF 0 EXIT THEN
    off1 ;
 
-\ ONE LOOKUP BINDS A NAME, and it is the engine's: `scope-find` (src/habu/habu2.f
-\ LSCOPEREC) runs the leaves the JIT's call site runs - LFIND, then the used
-\ publics - so the checker certifies the record the compiler calls. The checker
-\ answers only "which of MY symbols is that record": its wordlist names the
-\ scope, the tail names the row. A record the checker holds no symbol for is not
-\ certifiable (0, E-UNDEFINED at the call site).
+\ One lookup binds a name, and it is the engine's: `scope-find` (habu2.f
+\ LSCOPEREC) runs what the JIT's call site runs (LFIND, then the used publics),
+\ so the checker certifies the record the compiler calls. The checker answers
+\ only which of its symbols that record is: the wordlist names the scope, the
+\ tail names the row. A record with no checker symbol is not certifiable (0,
+\ E-UNDEFINED at the call site).
 \
-\ Compiled code binds a token to the record the lookup binds, to a definition
-\ recorded and not yet published (CK-PENDING-SYM), or to a keyword's axiom
-\ (CK-AXIOM-SYM). During a multi-error run only, a current-run recovery row
-\ can bind ahead of a lower-priority live record for diagnostics; any native
-\ definition that uses it remains unpublished. Other symbols the engine holds
-\ no record for - a TRUST with no body, a name only the source pre-verifier
-\ registered - bind nowhere, bare or qualified. An owner-private primitive row
-\ (CLOSE-PRIVATE) binds only as the
-\ owner's view of the global record the engine holds (CK-REC-BIND), so a row
-\ for a word the dictionary does not carry binds nowhere either.
+\ A token binds the record the lookup binds, a definition recorded and not yet
+\ published (CK-PENDING-SYM), or a keyword's axiom (CK-AXIOM-SYM). Only in a
+\ multi-error run a current-run recovery row can bind ahead of a lower-priority
+\ live record for diagnostics; a native definition using it stays unpublished.
+\ Other symbols with no engine record (a TRUST with no body, a name only the
+\ source pre-verifier registered) bind nowhere, bare or qualified. An
+\ owner-private primitive row (CLOSE-PRIVATE) binds only as the owner's view of
+\ the engine's global record (CK-REC-BIND).
 \
-\ A rule that types an engine word by what the word does is asked of a token
-\ only when the symbol this lookup binds carries that word's identity
-\ (CTL-INTRINSIC and CTL-CORE-OP, read by BIND-TOK): `@` inside a package that
-\ defines `@`, and a global `dup` defined after `undefine dup`, are other
-\ records with symbols of their own and are judged by their own effects
-\ (test/reopen-binding.f, test/undefine-binding.f).
+\ A rule that types an engine word by what it does applies only when the bound
+\ symbol carries that word's identity (CTL-INTRINSIC, CTL-CORE-OP, read by
+\ BIND-TOK): `@` inside a package that defines `@`, or a global `dup` defined
+\ after `undefine dup`, is judged by its own effect (test/reopen-binding.f,
+\ test/undefine-binding.f).
 \
-\ THE STORE IS ONE DEFINITION AHEAD OF THE DICTIONARY. A definition's facts are
-\ recorded when its check certifies it, or when TRUST-DECL registers its
-\ declared effect, and the engine publishes its record only after compiling it,
-\ so the lookup cannot see the definition in between. Both compilers ask about
-\ it by its name in that window - src/compiler/native/definition.f KEEP-ARITY,
-\ the frame glue and NO-RETURN? - and the answer is the definition being
-\ compiled, which is what the lookup answers once the record is published. So
-\ the definition recorded last answers a token whose record path in the current
-\ scope is its symbol (CK-PENDING-SYM), ahead of the lookup, whose answer is the
-\ word it is about to shadow. The window is a fact the stores state, not a flag
-\ anyone clears: the dictionary count has not moved since the record (`ndict@`),
-\ and the record is still its symbol's newest one. A recovery record opens no
-\ window: under a hook the native compiler abandons its definition, which leaves
-\ `ndict@` where it was, so the window would outlive it. A hookless compile
-\ publishes the refused definition under that record and finds it by the
-\ recovery bind, which serves the compile window (NATIVE MULTI-ERROR RECOVERY
-\ below). A publication, a truncation, a rollback and `undefine` each end the
-\ window. Only a check that runs while the engine holds the definition unpublished
-\ opens it (CK-CLOSE!): a check a program runs by hand publishes nothing.
+\ The store is one definition ahead of the dictionary: a definition is recorded
+\ when its check certifies it or TRUST-DECL registers it, and published only
+\ after compiling, yet both compilers ask about it by name in between
+\ (definition.f KEEP-ARITY, the frame glue, NO-RETURN?). So the definition
+\ recorded last answers a token whose record path in the current scope is its
+\ symbol (CK-PENDING-SYM), ahead of the lookup. The window is stated by the
+\ stores, not a flag: `ndict@` has not moved since the record, and the record
+\ is still its symbol's newest. A recovery record opens no window: under a hook
+\ the native compiler abandons its definition and leaves `ndict@`, so the
+\ window would outlive it; a hookless compile finds the refused definition by
+\ the recovery bind (NATIVE MULTI-ERROR RECOVERY below). A publication, a
+\ truncation, a rollback and `undefine` each end the window; only a check run
+\ while the engine holds the definition unpublished opens it (CK-CLOSE!).
 \
-\ A CANDIDATE SCOPE IS ITS ROWS AHEAD OF THE DICTIONARY. A candidate scope
-\ (CHECKER-CANDIDATE-SCOPE-START) checks definitions that are published together
-\ after it closes or not at all: src/core/sumtype.f TDPLAN-PREFLIGHT-CHECKER
-\ checks a whole generated plan before its one evaluate publishes a row, and a
-\ row may call an earlier one (a product's derived HASH calls its UNMAKE). So
-\ while a candidate scope is open, a symbol whose newest record lies past the
-\ floor the outermost scope opened at, with nothing published since, is pending
-\ (CK-SCOPE-PENDING?). A scope's close rewinds the records it added, so a row
-\ pends in the scope that recorded it and the scopes nested in it, never in an
-\ enclosing one, and nothing compiled after the scope can bind it. The window
-\ above belongs to the live path, and nothing inside a candidate scope writes it.
+\ A candidate scope (CHECKER-CANDIDATE-SCOPE-START) checks definitions published
+\ together after it closes or not at all (sumtype.f TDPLAN-PREFLIGHT-CHECKER
+\ checks a generated plan before its one evaluate), and a row may call an
+\ earlier one (a product's derived HASH calls its UNMAKE). While one is open, a
+\ symbol whose newest record lies past the outermost scope's floor, with
+\ nothing published since, is pending (CK-SCOPE-PENDING?). A scope's close
+\ rewinds its records, so a row pends only in its scope and those nested in
+\ it. Nothing inside a candidate scope writes the live window.
 \
-\ A REPLAY BINDS THROUGH THE ENGINE'S OVERLAY. Inside the verifier window the
-\ text is source the engine has not compiled (src/habu/verify-source.f
-\ VERIFY-DEFINITION hands it to CHECK!), so the checker overlay
-\ (CHECKER-OVERLAY) makes the engine's dictionary answer for it: the replay's
-\ package words drive the engine's package record and using band, a certified
-\ definition publishes a codeless record into its wordlist, and `undefine`
-\ retires the records it names. The replay asks the lookup above, as the live
-\ load does, and every exit of the window closes the overlay, so the engine's
-\ dictionary, scope and using band are as the window found them. A replay
-\ compiles nothing, so it opens no window (CK-CLOSE!).
+\ A replay binds through the engine's overlay: inside the verifier window
+\ (verify-source.f VERIFY-DEFINITION hands source to CHECK!) CHECKER-OVERLAY
+\ makes the engine's dictionary answer for text it has not compiled, and every
+\ exit closes the overlay. A replay compiles nothing, so it opens no window.
 CHECKER-REG:SCRATCH{
 variable CK-CLOSED-SYM     \ the symbol of the definition recorded last
 variable CK-CLOSED-IX      \ `ndict@` when it was recorded
@@ -13421,13 +12590,10 @@ CHECKER-REG:}SCRATCH
    CHK-CAND @ 0 = and
    data-base CK-DEF-PEND-OFF + @ 0 <> and ;
 
-\ The window bridges a definition the engine holds open and unpublished
-\ (CK-DEF-PEND-OFF), so only a check that runs while one is pending opens it:
-\ the compile hook's, and TRUST-DECL's. A check a program runs by hand
-\ (`s" W ( -- n ) 1" CHECK!`) and a replay (the verifier window) publish
-\ nothing, and a row recorded there would bind its symbol in compiled code. A
-\ candidate scope's rows pend through the scope's floor instead
-\ (CK-SCOPE-PENDING?).
+\ Only the compile hook's check and TRUST-DECL's run while a definition is
+\ pending (CK-DEF-PEND-OFF). A check run by hand (`s" W ( -- n ) 1" CHECK!`)
+\ or a replay publishes nothing, so a row recorded there would bind its symbol
+\ in compiled code; a candidate scope's rows pend through its floor instead.
 : CK-CLOSE! ( n -- ) {: sym:n :}
    CK-LIVE-PEND? 0= IF EXIT THEN
    sym USIG-NEWEST {: off:n :}
@@ -13510,18 +12676,15 @@ public
 ;package
 
 \ ---- the owner and fetch ABIs' constants ---------------------------------------
-\ CHECKER-FETCH-ABI (src/core/checker-fetch-abi.f), CHECKER-OWNER-EXT
-\ (src/core/checker-owner-extension.f) and CHECKER-OWNER-ABI
-\ (src/core/checker-owner-abi.f) load before this checker, so no declaration
-\ gives their constants a row, yet checked descriptor, capture and unit code
-\ names them. Each public word such a package holds when this file loads gets
-\ the row ( -- n ), read from the dictionary, so a field appended to the
-\ package needs no row of its own. A row goes only to the record `PKG:NAME`
-\ resolves to: one in the package's public wordlist that the public lookup
-\ finds under its own name. A private definition lives in another wordlist and
-\ gets none. The row rests on each package's constants-only contract: the
+\ CHECKER-FETCH-ABI, CHECKER-OWNER-EXT and CHECKER-OWNER-ABI (src/core/
+\ checker-fetch-abi.f, checker-owner-extension.f, checker-owner-abi.f) load
+\ before this checker, so no declaration gives their constants a row, yet
+\ checked code names them. Each public word such a package holds when this
+\ file loads gets the row ( -- n ), read from the dictionary, so an appended
+\ field needs no row of its own; a row goes only to the record `PKG:NAME`
+\ resolves to. The row rests on each package's constants-only contract: the
 \ Gforth seed stamps no value kind on a constant (bootstrap/cg/forth.fs
-\ C-CONSTANT), so a record cannot show it here.
+\ C-CONSTANT).
 
 \ Whether the record lies in public wordlist WID and is the one that wordlist
 \ binds under its name, a retired or shadowed record being neither.
@@ -13655,49 +12818,44 @@ variable BIND-PEND-OFF
 variable BIND-SEEDED
 1 constant BIND-SCOPE-SEEDED
 
-\ THE BINDER ANSWERS ITS REFUSALS RATHER THAN RAISING THEM: LIVE-BIND, the one
-\ binder, leaves ( sym why ), where why is 0 or the code of the refusal it
-\ reached -
-\ CHECKER-REJECT-RC when no authority names a package context for a bare token,
+\ The binder answers its refusals rather than raising them: LIVE-BIND leaves
+\ ( sym why ), why 0 or the code of the refusal it reached: CHECKER-REJECT-RC
+\ when no authority names a package context for a bare token,
 \ E-USING-SHADOW-GLOBAL when a used public also exports the tail a global
 \ binds, E-USING-AMBIGUOUS when two used publics export it and nothing earlier
-\ binds it or the global does. Under a refusal sym is not an answer, so no
-\ caller reads it when why is nonzero. It renders nothing: a using refusal
-\ leaves the used packages holding the tail marked in CK-USED-MASK
-\ (CK-USED-MARK) for the raise to name. CHECKER-BIND raises the refusal
-\ exactly as it always surfaced; a caller that only asks reads why.
+\ binds it or the global does. Under a refusal sym is no answer. It renders
+\ nothing: a using refusal leaves the used packages holding the tail marked in
+\ CK-USED-MASK for the raise to name. CHECKER-BIND raises the refusal; a
+\ caller that only asks reads why.
 \
 \ A name the split refuses (CHECKER-QBAD-TOK: a malformed qualified name, or a
 \ length no name has) binds nothing: the engine never binds it, and neither the
 \ pending row nor the lookup reads it.
 \
 \ A sym of 0 without a refusal is not proof the load cannot bind the name: the
-\ engine holds words no checker symbol names, as one defined without a
-\ declaration under `0 set-check`. So LIVE-BIND sets WALK-REC when its answer
-\ is the record the engine's lookup found, whether or not a symbol names it.
+\ engine holds words no checker symbol names (one defined undeclared under
+\ `0 set-check`), so LIVE-BIND sets WALK-REC when its answer is the record the
+\ engine's lookup found, whether or not a symbol names it.
 
 \ NATIVE MULTI-ERROR RECOVERY. Under a hook the native compiler abandons a
-\ refused definition instead of publishing it, so during a multi-error run the
-\ engine's lookup cannot see the current-run recovery row (RECOVERY-ROW?) of a word a later
-\ definition calls, and on x86-64 every definition is native. A recovery row is
-\ sound only while a definition body is being checked or compiled: the native
-\ compiler withholds publication of any body, trusted or not, that used one
-\ (CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?), and nothing else is withheld.
-\ Between that check and publication (the compile window, WRITE-WINDOW open)
-\ the compiler asks only about the definition and the words its body names. A
-\ body name binds what the walk bound, so a recovery row there was a use and
-\ withheld the definition before the window opened. The definition's own name
-\ binds its own recovery row, which opens no pending window (CK-CLOSE!): the
-\ row a hookless compile publishes a refused body under (src/compiler/native/
-\ definition.f DECLARE-HOOKLESS, KEEP-ARITY). A top-level step runs what it
-\ binds, and EXPORT publishes it, at once. So under MULTI-ERR? and only inside
-\ a body's walk (BODY-WALK) or the compile window, a recovery row in a scope
-\ the engine searches ahead of the record its lookup found binds instead;
-\ every other lookup binds the record the engine's lookup found. The order is the engine's: the open package's private
-\ then public wordlist, the globals, then the used publics in import order. A
+\ refused definition instead of publishing it, so in a multi-error run the
+\ engine's lookup cannot see the current-run recovery row (RECOVERY-ROW?) of a
+\ word a later definition calls; on x86-64 every definition is native. A
+\ recovery row is sound only while a body is checked or compiled: the native
+\ compiler withholds publication of any body that used one
+\ (CHECKER-EFFECT-AUTHORITY:RECOVERY-USED?). In the compile window
+\ (WRITE-WINDOW) the compiler asks only about the definition and the words its
+\ body names; a body name binds what the walk bound, so its use already
+\ withheld the definition. The definition's own name binds its own recovery
+\ row, which opens no pending window (CK-CLOSE!): the row a hookless compile
+\ publishes a refused body under (definition.f DECLARE-HOOKLESS, KEEP-ARITY).
+\ A top-level step runs what it binds, and EXPORT publishes it, at once. So
+\ only under MULTI-ERR? inside a body's walk (BODY-WALK) or the compile window
+\ does a recovery row in a scope the engine searches ahead of the lookup's
+\ record bind instead. The order is the engine's: the open package's private
+\ then public wordlist, the globals, then the used publics in import order; a
 \ qualified name asks its package's public row, and the global row when that
-\ package is the open one. Answers the recovery symbol, or 0 when the lookup's
-\ own answer stands.
+\ package is open. Answers the recovery symbol, or 0 when the lookup stands.
 variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
 
 : RECOVERY-USED-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -13833,9 +12991,8 @@ public
 \ The scope question for a caller that defines nothing: would resolving NAME here
 \ be refused? EFFECT-QUERY resolves through CHECKER-FIND-ACTIVE-SYM, so it
 \ refuses where this answers true, which is right for a definition and for the
-\ native compiler; the top-row tracker (src/core/top-row.f TR-CERT-DOUT-EMPTY?)
-\ only observes, so it asks this first and grays the word instead. It raises
-\ and renders nothing.
+\ native compiler; a caller that only observes (BY-EFFECT?) asks this first. It
+\ raises and renders nothing.
 : REFUSES? ( ptr u8 n -- bool )
    WALK nip 0 <> ;
 ;package
@@ -13888,23 +13045,19 @@ package CHECKER-REG
 ' CHECKER-TRUSTED-TICK? DECLARATIONS CHECKER-OWNER-ABI:TRUSTED-TICK-OFF + xt!
 ;package
 
-\ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ) : the same resolution, for a caller
-\ that is only ASKING — the source pre-verifier, of every token it scans, "does
-\ this name a definer?". The walk owns two used-scope refusals (a used public
-\ shadowing a global, a bare tail two used packages both export) and they belong
-\ to the definition being checked, not to a speculative question about a token:
-\ measured, asking it of every body token turned test/checker-verify-order.f's
-\ legal later-public case into E-USING-AMBIGUOUS (7144) during the SCAN, ahead
-\ of the check that decides it. A name this word cannot resolve is simply not a
-\ definer here; the body check that follows resolves the same token with the
-\ same authority it always had, and names the refusal then. A deferred refusal
-\ is not rendered: the scan prints nothing for a token it only asked about.
+\ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ): the same resolution for a caller
+\ that only asks (the source pre-verifier, of every token: "does this name a
+\ definer?"). The two used-scope refusals (a used public shadowing a global, a
+\ bare tail two used packages export) belong to the definition being checked:
+\ raised here, they turned test/checker-verify-order.f's legal later-public
+\ case into E-USING-AMBIGUOUS (7144) during the scan (measured). Such a name is
+\ not a definer here; the body check names the refusal. A deferred refusal is
+\ not rendered.
 \
-\ EXACTLY THOSE TWO REFUSALS ARE DEFERRED. A quiet ask does not make the
-\ resolver infallible: the package-context refusal is raised as
-\ CHECKER-FIND-ACTIVE-SYM raises it, and anything the walk throws - an arena
-\ or capacity failure, a bug - propagates, so the pre-pass reports it where it
-\ happened instead of silently classifying the token as "not a definer".
+\ Exactly those two are deferred: the package-context refusal is raised as
+\ CHECKER-FIND-ACTIVE-SYM raises it, and anything else the walk throws (an
+\ arena or capacity failure, a bug) propagates, so the pre-pass reports it
+\ instead of classifying the token as not a definer.
 : FQSYM-DEFERRED? ( n -- bool ) {: code:n :}
    code E-USING-SHADOW-GLOBAL =  code E-USING-AMBIGUOUS =  or ;
 
@@ -13922,24 +13075,21 @@ package CHECKER-REG
    CHECKER-QUIET-WALK drop ;
 
 \ ---- words a rendering statement may have defined ----------------------------
-\ A top-level statement that calls a CTL-RENDERS word defines words from text the
-\ source pre-pass never reads, and the loader compiles that text into the
-\ wordlist current at that moment (src/lib/ffi-abi.f CHECK-SCOPE asserts it for
-\ FUNCTION:). So the pre-pass has the checker mark that wordlist
-\ (CHECKER-VERIFY-RENDERS), and a body token that resolves nowhere defers its
-\ definition to the run (verdict 2) only when a bare token's lookup walks a
-\ marked wordlist: the statement's own section of its own package, read after
-\ the statement. A qualified token is covered as a bare one is, since the text
-\ may define its package too, and by a mark in its package's public wordlist.
-\ The mark is a symbol whose name holds a space, which no token can spell; it
-\ carries no effect, and a scope's exit retires it with the scope's other
-\ symbols.
-\ THE LIMIT: a word the checker already holds resolves before any of this is
-\ asked, so a product shadowing it is judged against it, a refusal the load
-\ does not make. That is every engine word on an engine with no seeded pool,
-\ bin/hb among them, and every row a seeded engine has taken. Without the
-\ product's name the pre-pass cannot tell the two apart, and deferring every
-\ name behind a mark would defer every global a marked section calls.
+\ A top-level statement that calls a CTL-RENDERS word defines words from text
+\ the source pre-pass never reads, compiled into the wordlist current then
+\ (src/lib/ffi-abi.f CHECK-SCOPE asserts it for FUNCTION:). The pre-pass marks
+\ that wordlist (CHECKER-VERIFY-RENDERS); a body token that resolves nowhere
+\ defers its definition to the run (verdict 2) only when a bare token's lookup
+\ walks a marked wordlist (the statement's own section of its own package,
+\ read after the statement). A qualified token is covered as a bare one is,
+\ and by a mark in its package's public wordlist. The mark is a symbol whose
+\ name holds a space, which no token can spell; it carries no effect and
+\ retires with its scope's symbols.
+\ The limit: a word the checker already holds resolves first, so a product
+\ shadowing it is judged against it, a refusal the load does not make (every
+\ engine word on an unseeded engine such as bin/hb, every row a seeded engine
+\ took). Deferring every name behind a mark would defer every global a marked
+\ section calls.
 : UNSEEN-MARK$ ( -- ptr u8 n ) s" unseen products" ;
 : TYPE-MARK$ ( -- ptr u8 n ) s" unresolved nominal types" ;
 : RENDER-TYPE-MARK$ ( -- ptr u8 n ) s" rendered nominal types" ;
@@ -14020,9 +13170,8 @@ package CHECKER-REG
    LOOP
    RES-FALSE ;
 
-\ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
-\ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the
-\ arena scan and memoizes both the answer and its watermark dependency.
+\ Cache value: record offset+1, 0 for none or deleted; a miss re-derives from
+\ the arena scan and memoizes the answer and its watermark dependency.
 : CHECKER-FIND-USIG-SYM ( n -- bool ) {: sym:n :}
    sym 0= IF RES-FALSE EXIT THEN
    BIND-HORIZON @ 0 <> IF
@@ -14042,27 +13191,18 @@ package CHECKER-REG
 
 \ ---- the capture audit's two questions ---------------------------------------
 \ src/habu/aot-capture.f asks these once per window dictionary record, with the
-\ record's own package and name - derived from its WORDLIST, not from whatever
-\ package happens to be open, because the wordlist is what SYM-FIND is keyed on.
-\
-\ THEY LIVE HERE BECAUSE THEY ARE QUESTIONS ABOUT TWO CHECKER TABLES, the effect
-\ store and the signature pool. Answering them outside would need SYM-FIND and
-\ CHECKER-FIND-USIG-SYM in the axiom list, and that list is the checker's trusted
-\ boundary rather than somewhere to widen for a caller's convenience.
-\
-\ THE SCOPE ARRIVES AS A PACKAGE NAME AND ONE BOOLEAN, never as a visibility
-\ number: SYM-GLOBAL/SYM-PRIVATE/SYM-PUBLIC are this file's encoding and this
-\ file's constants are not reachable from checked code, so a caller spelling them
-\ would be a second authority for one encoding - the drift the audit itself
-\ exists to stop. An EMPTY package name is the global scope, which is not a
-\ sentinel but the key CHECKER-GLOBAL-SYM already interns under.
+\ record's package and name taken from its WORDLIST, which SYM-FIND is keyed on.
+\ They read the effect store and the signature pool; answering them outside the
+\ checker would put SYM-FIND and CHECKER-FIND-USIG-SYM in the axiom list.
+\ The scope arrives as a package name and a public flag, never a visibility
+\ number: SYM-GLOBAL/SYM-PRIVATE/SYM-PUBLIC are not reachable from checked code.
+\ An empty package name is the global scope, the key CHECKER-GLOBAL-SYM uses.
 : ASIG-AUDIT-VIS ( n bool -- n ) {: pkgu:n pub:bool :}
    pkgu 0= IF SYM-GLOBAL EXIT THEN
    pub IF SYM-PUBLIC EXIT THEN
    SYM-PRIVATE ;
 
-\ The key all three questions ask with. A package name or a name whose length
-\ no name has keys no row, and is answered so before either is hashed.
+\ A package or name longer than any name keys no row; answered before hashing.
 : ASIG-AUDIT-SYM ( ptr u8 n bool ptr u8 n -- n bool )
    {: pkg:ptr pkgu:n pub:bool na:ptr nu:n :}
    pkg pkgu CK-NAME-SPAN? na nu CK-NAME-SPAN? and 0= IF 0 RES-FALSE EXIT THEN
@@ -14073,31 +13213,20 @@ package CHECKER-REG
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM ;
 
-\ True exactly when the checker knows an effect for the name and the pool carries
-\ no signature for it - the one condition a capture must refuse, because that
-\ word is callable from checked code here and would not be in the seeded engine.
+\ True when the checker knows an effect for the name and the pool has no
+\ signature: the word is callable here and would not be in the seeded engine.
 : CHECKER-ASIG-MISSING? ( ptr u8 n bool ptr u8 n -- bool )
    ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF RES-FALSE EXIT THEN
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym ASIG-LAST@ 0= ;
 
-\ The third question, asked with the same key: WHERE is this word's row, so the
-\ capture can copy it. The answer is the row's byte offset plus one, 0 for none,
-\ and the caller reads the sixteen bytes through CHECKER-ASIG-ROW-C@ - the row
-\ the artifact carries IS the row this store holds, so no field is re-encoded on
-\ the way out.
-\
-\ IT ANSWERS THE NEWEST ROW, which is what makes the copy window-scoped. The
-\ capture walks the window's dictionary records and asks this once per record,
-\ so the artifact carries a signature for a word the target engine HAS and for
-\ no other; copying the store whole put 723 rows naming the capture tool's own
-\ post-window words into an engine that has none of them, and a signature for an
-\ absent word is worse than a missing one - a definition naming it would certify
-\ and then call nothing. The duplicate rows the store keeps (a data record
-\ recorded `--` at definition time and `-- ptr a` when the engine auto-trusts it
-\ at publish) do not travel either: USIGS' newest-wins rule is answered HERE, so
-\ the artifact's reader never has to implement it a second time.
+\ The row's byte offset plus one, 0 for none; the caller reads its sixteen bytes
+\ through CHECKER-ASIG-ROW-C@, so no field is re-encoded. It answers the newest
+\ row (USIGS' newest-wins rule, so the artifact's reader need not apply it), once
+\ per window record: the artifact carries signatures only for words the target
+\ engine has. A signature for an absent word is worse than none: a definition
+\ naming it would certify and then call nothing.
 : CHECKER-ASIG-ROW-FOR ( ptr u8 n bool ptr u8 n -- n )
    ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF 0 EXIT THEN
@@ -14113,11 +13242,9 @@ package CHECKER-REG
    THEN
    off1 1 - USIGS-RESTORE-END ;
 
-\ A direct post-seal user call would forget the checker's signature for an
-\ engine word so it could be redefined (spoof). Reject it fail-closed; the open
-\ engine namespace (watermark 0) and the guarded FORGET/HIDE wrappers (which
-\ call -RAW only after the ndict-watermark guard passes) reach -RAW unchanged.
-\ The failure ABI comes from the earlier engine-error.f package.
+\ A direct post-seal user call would forget an engine word's signature so it
+\ could be redefined (spoof): refused fail-closed. The open engine namespace
+\ (watermark 0) and the guarded FORGET/HIDE wrappers reach -RAW unchanged.
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
    seal-captured? IF
@@ -14127,19 +13254,16 @@ package CHECKER-REG
 
 \ The native compiler's rollback of a refused definition
 \ (src/compiler/native/definition.f RETRACT) through the owner's ROWS-END-OFF
-\ and RETRACT-ROWS-OFF fields: the compiler reads the store's end when it begins
-\ the definition and, refusing it, cuts the store back to that end. The one mark
-\ both says what the definition recorded and bounds the cut, and the compile
-\ window (WRITE-WINDOW) admits only the compiler's own writes above it, so the
-\ cut takes exactly the definition's rows - certified, TRUSTED:, declared or a
-\ multi-error recovery fact, with the nodes they interned - and never a row
-\ recorded before it began: a twin's, or one of its own name that CHECK!
-\ recorded with no definition. An end at or below the mark holds nothing the
-\ definition recorded, and the store stays as it is. A cut that takes the
-\ record the live window names (CK-CLOSED-OFF, offset+1) ends the window: a
-\ later record of that symbol at the same offset, which a hand CHECK! can
-\ write, would otherwise reopen it. Sealed as CHECKER-DECLARED-ROW! is: from
-\ top level the cut would drop any name's rows.
+\ and RETRACT-ROWS-OFF fields: the compiler reads the store's end when the
+\ definition begins and cuts back to it on refusal. WRITE-WINDOW admits only the
+\ compiler's writes above the mark, so the cut takes exactly the definition's
+\ rows (certified, TRUSTED:, declared or a multi-error recovery fact, with their
+\ nodes) and never an earlier row: a twin's, or one CHECK! recorded with no
+\ definition. An end at or below the mark leaves the store as it is. A cut that
+\ takes the record the live window names (CK-CLOSED-OFF, offset+1) ends the
+\ window, since a hand CHECK! at the same offset would otherwise reopen it.
+\ Sealed as CHECKER-DECLARED-ROW! is: from top level the cut would drop any
+\ name's rows.
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
 REG-PROTECT
 
@@ -14172,28 +13296,21 @@ REG-PROTECT
    FIND-SIG 0= IF -1 EXIT THEN
    FEP @ E-MINI@ ;
 
-\ ---- effect-read export API (dot habu-expose-checker-effect-95e853eb) ---------
-\ A cold-prefix consumer (src/core/top-row.f, and the tier-2 typed top-row, dot
-\ habu-typed-top-tier-589c550f) cannot reach the effect store directly: FIND-SIG,
-\ E-DIN@/E-DOUT@, E-PTR and the EN-* node accessors are sig-less colon words, so
-\ internal-mark.f marks them DNAME-INT and they fail closed at interpret time. This
-\ is the ONE stable, minimal query surface the prefix sees. Each PUBLIC entry has a
-\ PRIM: row, so EFFECT-EXTERNAL-MIN-IN finds it and internal-mark leaves it
-\ top-level callable; the readers project the private EN-node graph onto a coarse,
-\ stable family enum, so the graph representation stays free to evolve behind them.
-\ They answer three different questions and a consumer has to know which it wants:
-\ a row's TERM count and per-term family, a row's width in STACK CELLS
-\ (EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS), and which cell of a multi-cell value
-\ each term is (EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT). The first two agree only
-\ while every term is one cell. A call site moves CELLS, so that is what
-\ src/compiler/native/dict.f asks for; the family enum is a shape identity; the
-\ slot says which cells may not be separated from one another, which is what a
-\ consumer reordering a stack needs and neither of the other two can tell it.
-\ Read-only: no store word is exposed and the query never mutates a persisted record.
-\ EFFECT-QUERY resolves a NAME's active effect (user row or prim axiom) into query
-\ state; the EFFECT-* readers report on the last successful query.
+\ ---- effect-read export API -------------------------------------------------
+\ The one query surface on the effect store outside this file (the native
+\ compiler reads it through the owner record, checker-owner-abi.f
+\ EFFECT-QUERY-OFF onward): FIND-SIG, E-DIN@/E-DOUT@, E-PTR and the EN-*
+\ accessors are sig-less, so internal-mark.f marks them DNAME-INT. Each PUBLIC
+\ PRIM: row, so internal-mark leaves it top-level callable. Read-only.
+\ Three answers: a row's term count and per-term family; its width in stack
+\ cells (EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS: what a call site moves and what
+\ src/compiler/native/dict.f asks for); and which cell of a multi-cell value
+\ each term is (EFFECT-DIN-SLOT / EFFECT-DOUT-SLOT: cells a stack reordering may
+\ not separate). Term and cell counts agree only while every term is one cell.
+\ EFFECT-QUERY resolves a name's active effect (user row or prim axiom); the
+\ EFFECT-* readers report on the last successful query.
 \
-\ Family enum (stable ABI; numerically equal to top-row.f TR-* by design):
+\ Family enum (stable ABI):
 0 constant EFAM-GRAY        \ EN-VAR / EN-ROW / EN-ATOM / EN-PARAM: no coarse family
 1 constant EFAM-SCALAR      \ EN-CON: a value cell
 2 constant EFAM-POINTER     \ EN-PTR: a byte / region pointer
@@ -14203,28 +13320,16 @@ variable EFFQ-OK            \ bool: last EFFECT-QUERY resolved an active effect
 variable EFFQ-DIN           \ din row offset (E-OFF) of the queried effect, 0 = none
 variable EFFQ-DOUT          \ dout row offset
 
-\ ---- reading INSIDE a quotation term -----------------------------------------
-\ A quotation is one term of a row and it carries a whole effect of its own: its
-\ own din and dout rows, its own return rows, and whether it can throw or never
-\ comes back. EFAM-XT says a term IS one and says nothing about what it takes and
-\ leaves, and that is exactly what a caller compiling the body needs - a
-\ quotation body is a routine, and a routine's arity is the number of cells its
-\ caller hands it.
-\
-\ THE TWO ROW CELLS ARE ONE LATCH, so reading a quotation means moving that latch
-\ onto its rows and moving it back. The move is explicit in both directions: a
-\ descent SAVES the row pair it displaced and EFFECT-QUOT-UP puts it back, so a
-\ consumer that wants the outer row again after reading a quotation does not have
-\ to resolve the name a second time and cannot get a different answer than it had.
-\ A second descent while one is open is REFUSED rather than nested: the save is
-\ one deep, and a save that silently overwrote itself would give the outer row
-\ back as the quotation's.
+\ ---- reading inside a quotation term -----------------------------------------
+\ A quotation term carries its own effect: din and dout rows, return rows, and
+\ whether it can throw or never returns. The two row cells are one latch: a
+\ descent saves the displaced row pair and EFFECT-QUOT-UP restores it. A second
+\ descent while one is open is refused: the save is one deep.
 variable EFFQ-QUOT          \ the EN-QUOT node the latch is currently inside, 0 = none
 variable EFFQ-SAVE-DIN      \ the row pair the open descent displaced
 variable EFFQ-SAVE-DOUT
 
-\ The EN-node graph lives in the byte-addressed USIGS arena: E-PTR addresses a node
-\ and each EN.x field word views its cell, so the readers are checked cell fetches.
+\ EN nodes live in the byte-addressed USIGS arena; E-PTR addresses one node.
 : EFF-TAG@ ( n -- n )   E-PTR EN.TAG @ ;    \ node tag at offset n
 : EFF-A@   ( n -- n )   E-PTR EN.A @ ;      \ EN.A field (head term offset)
 : EFF-B@   ( n -- n )   E-PTR EN.B @ ;      \ EN.B field (rest-of-row offset)
@@ -14241,23 +13346,11 @@ variable EFFQ-SAVE-DOUT
    EN-CON = if EFAM-SCALAR exit then
    EFAM-GRAY ;
 
-\ WHICH BUNDLE CELL A TERM IS, which is the one thing the family enum above
-\ cannot say. A value of a layout family occupies W stack cells, and the checker
-\ records the row as W separate terms — one per physical cell — each carrying its
+\ A layout-family value takes W stack cells, recorded as W terms, each with its
 \ position in PARAMHID, which E-COPY* stores on the term's EN-PARAM node as EN.E
-\ (slot+1, so 0 means an ordinary logical term). Without this the flattened form
-\ is indistinguishable from W unrelated one-cell terms: `( option<n> n -- )` and
-\ `( a b n -- )` agree on the term count, the cell count AND the family of every
-\ term, so a reader that has only those three cannot tell a bundle it must move
-\ whole from two values it may reorder freely.
-\
-\ A term that is not a param answers 0 for the same reason a missing node does:
-\ it is not part of a bundle, which is what the caller asked. A snapshot written
-\ before the field existed restores zeros throughout, and that is safe to read as
-\ "no bundles" HERE because it is not this reader that would be fooled by it: the
-\ checker's own MATCH needs the same marker (MATCH-SCRUT-CELL? requires
-\ HIDDEN-PARAM?) and rejects every scrutinee without it, so such an image fails
-\ loudly at the first `MATCH` long before a consumer of this reader sees a body.
+\ (slot+1, 0 = an ordinary term). Without it `( option<n> n -- )` and
+\ `( a b n -- )` agree on term count, cell count and every family. A term that
+\ is not a param answers 0.
 : EFF-TERM-SLOT ( n -- n )      \ n = term-node offset (E-OFF); 0 -> not a bundle cell
    dup 0= if drop 0 exit then
    dup EFF-TAG@ EN-PARAM = 0= if drop 0 exit then
@@ -14273,10 +13366,6 @@ variable EFFQ-SAVE-DOUT
       EFF-B@ swap 1 + swap
    repeat drop ;
 
-\ THE I-TH TERM OF A STORED ROW, AS ITS OWN NODE OFFSET, and 0 when the row does
-\ not have one. Every question about a term is this walk plus one field read, so
-\ the walk is written once: a second copy of it is a second place an off-by-one
-\ can live, and the three readers below would then agree only by inspection.
 : EFF-ROW-TERM ( n n -- n ) {: i:n off:n :}   \ the i-th term from the top (0-based), 0 = none
    off i
    begin dup 0 > while                        \ ( cur i ) advance i EN-PUSH terms
@@ -14285,10 +13374,9 @@ variable EFFQ-SAVE-DOUT
    repeat drop                                \ ( cur )
    dup EFF-IS-PUSH? if EFF-A@ else drop 0 then ;
 
-\ WHAT A ROW ENDS IN, once its fixed terms are walked off: the row VARIABLE its
-\ tail is. Two rows that hold the same fixed terms still describe two different
-\ stacks when their tails are two different variables, so the tail is half of
-\ "these two rows are the same row" and the term count is the other half.
+\ Two rows with the same fixed terms describe different stacks when their tail
+\ row variables differ: the tail is half of row identity, the term count the
+\ other half.
 : EFF-ROW-TAIL ( n -- n )                     \ the non-push node a row ends in
    begin dup EFF-IS-PUSH? while EFF-B@ repeat ;
 
@@ -14298,14 +13386,10 @@ variable EFFQ-SAVE-DOUT
 : EFF-ROW-SLOT ( n n -- n )                   \ bundle slot+1 of the i-th term from the top (0-based)
    EFF-ROW-TERM EFF-TERM-SLOT ;
 
-\ Every reader below EFFECT-QUERY is an ordinary checked word over EFF-ROW-N /
-\ EFF-ROW-TERM; internal-mark strips their names past the seal, but the query
-\ boundary (and the prefix consumers) reach them as compiled calls.
-\
-\ A FRESH QUERY IS A FRESH LATCH, so it closes any open quotation descent: the
-\ rows it installs are the queried NAME's, and leaving a descent marked open over
-\ them would make EFFECT-QUOT-SIMPLE? answer about a quotation of the PREVIOUS
-\ name and EFFECT-QUOT-UP put that name's rows back.
+\ Internal-mark strips these readers' names past the seal; the query boundary
+\ and prefix consumers reach them as compiled calls. A fresh query closes any
+\ open quotation descent, or EFFECT-QUOT-SIMPLE? and EFFECT-QUOT-UP would
+\ answer about the previous name.
 : EFFECT-QUERY ( ptr u8 n -- bool )    \ resolve NAME's active effect into query state
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    FIND-SIG dup EFFQ-OK !
@@ -14313,15 +13397,10 @@ variable EFFQ-SAVE-DOUT
    else 0 EFFQ-DIN !  0 EFFQ-DOUT ! then
    EFFQ-OK @ ;
 
-\ EFF-ROW-CELLS: the row's width in STACK CELLS — what a call site actually
-\ moves, which is the number the term count above only coincides with when every
-\ fixed term happens to be one cell wide. Each row cell carries the width
-\ ROW-TERM-CELLS gave it when the effect was recorded (E-COPY*, S-PUSH arm), so
-\ this sums stored facts rather than re-deriving a rule the checker already owns;
-\ a term whose family makes it three cells reports three here and is still ONE
-\ term above. CELLS-NONE when any fixed cell carries no recorded width, which is
-\ what a pre-field snapshot restores: the row is then unsizeable and says so,
-\ instead of reporting a total that silently omits the cells it could not see.
+\ A row's width in stack cells: the sum of the widths ROW-TERM-CELLS gave each
+\ row cell when the effect was recorded (E-COPY*, S-PUSH arm); a three-cell term
+\ counts three here and one term above. CELLS-NONE when any fixed cell has no
+\ recorded width.
 : EFF-ROW-CELLS ( n -- n ) {: off:n :}
    0 off                                     \ ( acc cur )
    begin dup EFF-IS-PUSH? while
@@ -14346,11 +13425,8 @@ variable EFFQ-SAVE-DOUT
 : EFFECT-DOUT-CON ( n -- n ) EFFQ-DOUT @ EFF-ROW-CON ;
 
 \ ---- the quotation descent ----------------------------------------------------
-\ Move the latch onto the rows of the quotation a term IS, so that every reader
-\ above then answers about the quotation instead of the word that mentions it.
-\ The term has to BE a quotation: EFAM-XT is the same question EFFECT-DIN-FAM
-\ answers, and asking it here rather than trusting the caller is what makes a
-\ wrong index a false rather than a walk down a node of another shape.
+\ The term must be a quotation (EFAM-XT, checked here): a wrong index answers
+\ false rather than walking a node of another shape.
 : EFF-DESCEND ( n -- bool )     \ n = term-node offset; latch its quot rows
    {: t:n :}
    EFFQ-QUOT @ 0= 0= if 0 0= 0= exit then     \ one descent at a time, fail closed
@@ -14366,9 +13442,6 @@ variable EFFQ-SAVE-DOUT
 : EFFECT-DIN-QUOT ( n -- bool )    EFFQ-DIN @ EFF-ROW-TERM EFF-DESCEND ;
 : EFFECT-DOUT-QUOT ( n -- bool )   EFFQ-DOUT @ EFF-ROW-TERM EFF-DESCEND ;
 
-\ Put the displaced row pair back. False when no descent is open, which is the
-\ same fail-closed answer a descent into a term that is not a quotation gives:
-\ neither one changed the latch, so neither one has anything to undo.
 : EFFECT-QUOT-UP ( -- bool )
    EFFQ-QUOT @ 0= if 0 0= 0= exit then
    EFFQ-SAVE-DIN @ EFFQ-DIN !
@@ -14376,13 +13449,10 @@ variable EFFQ-SAVE-DOUT
    0 EFFQ-QUOT !  0 EFFQ-SAVE-DIN !  0 EFFQ-SAVE-DOUT !
    0 0= ;
 
-\ DOES THE QUERIED WORD LEAVE ITS CALLER'S RETURN STACK ALONE? Every word does:
-\ no signature declares a return-stack cell (RCLAUSE-CHECK), and every body reads
-\ only the return cells it pushed and leaves the row as it found it
-\ (CHECK-NO-BORROW, CHECK-RBALANCE, QUOT-RSEAL). So the answer is whether a name
-\ was resolved: false when none was, since nothing was asked and nothing is
-\ promised - the same fail-closed direction EFFECT-QUOT-SIMPLE? takes with no
-\ descent open.
+\ Every word leaves its caller's return stack alone: no signature declares a
+\ return-stack cell (RCLAUSE-CHECK) and every body reads only the return cells
+\ it pushed (CHECK-NO-BORROW, CHECK-RBALANCE, QUOT-RSEAL). False when no name
+\ was resolved.
 : EFFECT-RET-NEUTRAL? ( -- bool )
    EFFQ-OK @ 0 <> ;
 
@@ -14394,18 +13464,11 @@ variable EFFQ-SAVE-DOUT
    a EFF-TAG@ EN-ROW = b EFF-TAG@ EN-ROW = and 0= if 0 0= 0= exit then
    a EFF-A@ b EFF-A@ = ;
 
-\ IS THE QUOTATION THE LATCH IS INSIDE ONE A CALLER MAY COMPILE AS AN ORDINARY
-\ ROUTINE? Two clauses, and neither is decoration. (Its return rows need none:
-\ every quotation leaves the return stack as it found it, EFFECT-RET-NEUTRAL?.)
-\   there is NO THROW EDGE (EN.E = 0): a body that can throw leaves by a path the
-\     caller's own control flow does not have, so its exit is not the one return.
-\   the FALL-THROUGH IS LIVE (EN.F = 0): a body that never comes back delivers
-\     nothing to the instruction after the call, and code emitted there would be
-\     unreachable code a caller believes in. This clause is NOT optional and is
-\     the one a reader is most likely to leave out, because a never-returning
-\     quotation has a perfectly ordinary din and dout.
-\ The simple callback rule is shared by a queried effect and an exact selected
-\ effect from an unjudged source scan. Zero admits neither.
+\ A quotation a caller may compile as an ordinary routine: no throw edge
+\ (EN.E = 0), since a throwing body leaves by a path the caller lacks; and a
+\ live fall-through (EN.F = 0), since a body that never returns has an ordinary
+\ din and dout but delivers nothing after the call. Shared by a queried effect
+\ and an exact selected effect from an unjudged source scan; zero admits neither.
 : EFF-QUOT-SIMPLE? ( n -- bool )
    {: q:n :}
    q 0= if 0 0= 0= exit then
@@ -14617,8 +13680,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
 6 constant CW-QUOT-OUT               \ + twice the output cell index from the top
 
 \ cell-effects.f owns the checked storage after the bootstrap checker starts.
-\ CWIN-STATE hands back the store's three declared cells: the arena pointer,
-\ the live row count and the capacity. Each reader takes its own cell.
+\ CWIN-STATE answers the arena pointer, the live row count and the capacity.
 : CWIN-P ( -- ptr ptr n ) CWIN-STATE drop drop ;
 : CWIN-N ( -- ptr n ) CWIN-STATE drop nip ;
 : CWIN-CAP ( -- ptr n ) CWIN-STATE nip nip ;
@@ -14670,14 +13732,10 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    i 1 + CWIN-N ! ;
 
 \ ---- the finalized call facts, read back by name-independent dispatch --------
-\ These read the rows CWIN-ADD wrote, and they live HERE, beside the writer,
-\ because the reader has to follow the same CWIN-STATE the writer used. They
-\ were in src/core/cell-effects.f, which reads its OWN storage block: correct
-\ while one checker is live, wrong the moment a second one owns the source and
-\ the compiler is still reading the first one's rows. The engine reaches them
-\ through the declaration-owner record (layout.f DECL-CALL-*-OFF), never by
-\ name. -1 -1 means the scan recorded no such site, which is the answer a
-\ caller with no site of that kind must get.
+\ These read the rows CWIN-ADD wrote through the same CWIN-STATE the writer used:
+\ a second checker may own the source while the compiler reads the first one's
+\ rows. The engine reaches them through the declaration-owner record (layout.f
+\ DECL-CALL-*-OFF), never by name. -1 -1: the scan recorded no such site.
 : CWIN-FIND? ( n n -- n n bool ) {: ord:n kind:n :}
    CWIN-N @ 0 ?do
       i CW-ORD CWIN-AT @ ord =  i CW-KIND CWIN-AT @ kind =  and if
@@ -14921,54 +13979,30 @@ CALL-FREEZE-INSTALL
    loop ;
 
 \ ---- the cells a recorded definition's layout forms really occupy -------------
-\ WHY RECORDED FACTS AND NOT A SECOND READING OF THE REGISTRY. A value of a
-\ parametric family instantiated with a multi-cell argument occupies MORE cells
-\ than the family's declaration reserves: `option<a>` reserves one payload slot,
-\ and `option<obj:line>` needs two because `obj:line` is two cells. The registry
-\ can only answer the DECLARED number - the instantiated one is a function of a
-\ resolved type TERM, which is this file's value and nobody else's - so a
-\ consumer that models the data stack cell by cell either gets the number from
-\ here or compiles the arms against the wrong width. src/compiler/native/family.f
-\ says exactly this at WIDTH, and src/compiler/native/elaborate.f BUNDLE-CK is
-\ where the two used to be held against each other and the disagreement refused.
+\ A parametric family instantiated with a multi-cell argument occupies more
+\ cells than its declaration reserves (`option<obj:line>` needs two payload
+\ cells). The registry answers only the declared number; the instantiated one is
+\ a function of a resolved type term, so a consumer modelling the stack cell by
+\ cell reads it here (src/compiler/native/family.f WIDTH).
 \
-\ THREE KINDS OF TOKEN CARRY A NUMBER: THE TWO A DISPATCH IS BUILT FROM, AND THE
-\ ONE THAT BUILDS THE VALUE A DISPATCH TAKES APART. The family token of a `MATCH`
-\ carries the instantiated bundle width, which is what MATCH-SCRUT? walked off the
-\ row a moment earlier; the `of` token of each arm carries that arm's instantiated
-\ PAD count, which TFAM-MATCH-XPAD-RECORD computes as it decides whether the
-\ engine's pass 2 needs extra cells; and a CONSTRUCTION's token - the variant of a
-\ `construct family variant`, or the generated-constructor call that is the same
-\ step under one token - carries the cells its instantiation adds beyond the
-\ DECLARED width, which is what TFC-CON-XPAD-RECORD computes for the same pass-2
-\ decision. Each is the count ITS consumer needs and none of the three is a number
-\ a consumer has to work out again.
+\ Three tokens carry a number: a MATCH family token its instantiated bundle width
+\ (what MATCH-SCRUT? walked off the row); an arm's `of` token its instantiated
+\ pad count (TFAM-MATCH-XPAD-RECORD); a construction's token (the variant of
+\ `construct family variant`, or a generated-constructor call) the cells its
+\ instantiation adds beyond the declared width (TFC-CON-XPAD-RECORD). The
+\ construction's number is a difference because its lowering already pushes the
+\ declared pads (TFL-VPADS, the expression TFC-CON-XPAD-RECORD subtracts); the
+\ engine's pass 2 and the chain both add the difference at the same site.
 \
-\ THE CONSTRUCTION'S NUMBER IS A DIFFERENCE BECAUSE THE THING IT CORRECTS IS ONE.
-\ A `MATCH` arm DROPS cells and its consumer has emitted nothing yet, so it needs
-\ the whole pad count; a construction is lowered by pushing what the family
-\ DECLARES - the generated constructor's own body does it, and the chain's
-\ `construct` reads the same declared pads out of the registry - so what is
-\ missing at a wide instantiation is exactly the difference, and both the engine's
-\ pass 2 and the chain add that many cells at the same site. It is one subtraction
-\ read twice, not two subtractions that could drift: the declared pads the chain
-\ adds it to are TFL-VPADS, the same registry expression TFC-CON-XPAD-RECORD
-\ subtracts.
+\ These are not lowering-certificate rows: pass 2 walks width facts with one
+\ in-order cursor (src/habu/habu2.f LOWER-TXN-LOOKUP:EMIT-WIDTH-LOOKUP), and a
+\ row at the family token would sit unconsumed before the arms' extra-pad rows
+\ and make the next arm query drift, which ends the build.
 \
-\ IT IS NOT A ROW OF THE LOWERING CERTIFICATE, AND THAT IS FORCED. The engine's
-\ pass-2 replay walks the certificate's width facts with a single in-order cursor
-\ (src/habu/habu2.f LOWER-TXN-LOOKUP EMIT-WIDTH-LOOKUP): a query whose offset is
-\ past the cursor's row is replay DRIFT and ends the build. A width row at the
-\ family token would sit BEFORE the arms' extra-pad rows, no pass-2 leg would
-\ consume it, and the next arm query would drift. So the fact the chain needs
-\ lives here, in the per-CHECK scratch the tape observer already resets, and the
-\ certificate keeps exactly the rows pass 2 consumes.
-\
-\ Layout facts share the growing CWIN owner with call facts, under their own
-\ kind. The definition reset, retry cursor and capture cleanup therefore cover
-\ both. Every published fact is retained; a missing query still means that no
-\ fact was recorded for that token. Dispatch requires a fact, while ordinary
-\ constructions need none unless their instantiation adds cells.
+\ Layout facts share the growing CWIN owner with call facts under their own
+\ kind, so the definition reset, retry cursor and capture cleanup cover both. A
+\ missing query means no fact was recorded for that token. Dispatch requires a
+\ fact; a construction needs none unless its instantiation adds cells.
 variable MWIN-HIT                    \ the token now being reported published a number
 variable MWIN-VAL                    \ and this is it
 
@@ -14980,9 +14014,8 @@ variable MWIN-VAL                    \ and this is it
    0 MWIN-HIT !
    REC-IX @ MWIN-VAL @ CELLS-NONE CW-MATCH-CELLS CWIN-ADD ;
 
-\ Latch the number the token now being read publishes. Outside a recording unit
-\ it writes nothing at all, which is every certification the engine does for
-\ itself; the row is filed by the report that follows, under that token's own
+\ Outside a recording unit (every certification the engine does for itself) this
+\ writes nothing. The report that follows files the row under the token's
 \ ordinal.
 : MWIN-CELLS! ( n -- ) {: w:n :}
    REC-ON @ 0= IF EXIT THEN
@@ -14990,22 +14023,18 @@ variable MWIN-VAL                    \ and this is it
 
 \ ---- what the source tape says each token was ---------------------------------
 \ The tape's events name what a codegen reads (docs/compilation.md "Defining a
-\ word"), so the checker records each fact where it judges the token and no
-\ codegen reads a checker internal. The table below holds them, one row per
-\ token, and the observer reads it through CHECKER-TAPE:EVENT.
+\ word"): the checker records each fact where it judges the token, and no codegen
+\ reads a checker internal. The observer reads them through CHECKER-TAPE:EVENT.
 package CHECKER-TAPE
 public
 
-\ The reader's own token vocabulary, as codes an observer can store. `name` is
-\ every token to be resolved later. String classes preserve the opener's
-\ counted, printed or address/length behavior, and the
-\ bytes reported for it are its BODY rather than the opener that introduced it —
-\ the opener is what the reader read, the body is what the literal is, and a
-\ stage that has to compile one needs the second. These classes are closed: an
-\ observer that meets something else has met a construct this reader does not
-\ have, which is a class to add here rather than a number to smuggle past.
-\ An event (CHECKER-TAPE:EVENT) is a kind and two arguments, a0 and a1, zero
-\ where none is named; a token no step judged further is an event of its class.
+\ The reader's token classes as storable codes. `name` is every token resolved
+\ later. String classes keep the opener's counted, printed or address/length
+\ behavior and report the literal's body, not its opener. The classes are
+\ closed: an observer meeting another has met a construct this reader lacks, a
+\ class to add here. An event (CHECKER-TAPE:EVENT) is a kind and two arguments,
+\ a0 and a1, zero where none is named; a token no step judged further is an
+\ event of its class.
 0 constant K-NAME               \ a0: a call's record index from 0, -1 for none
 1 constant K-INT                \ a0: the value
 2 constant K-REAL               \ a0: the value's bits
@@ -15051,12 +14080,11 @@ CHECKER-REG:}SCRATCH
    {: kind:n fam:n vid:n :}
    kind  vid MATCH-VTAG-XT  fam vid VARIANT-PADS-XT  EVENT! ;
 
-\ The table of events: one row, a kind, a0 and a1, per token a scan reports.
-\ Row i is the token at ordinal EV-LO + i. A scan starts the table at the
-\ ordinal its first token takes - 0 for a definition's body, and for every pass
-\ of it, since a retry rewinds REC-IX (CHECK-RETRY) - so the table holds one
-\ pass, and once the last pass is judged it holds the scan that publishes. It is
-\ a process-local mapping that REC-RELEASE gives back, so no image carries one.
+\ One row (kind, a0, a1) per reported token; row i is the token at ordinal
+\ EV-LO + i. A scan starts the table at its first token's ordinal (0 for a body,
+\ and for every pass, since CHECK-RETRY rewinds REC-IX), so after the last pass
+\ it holds the scan that publishes. A process-local mapping REC-RELEASE gives
+\ back: no image carries one.
 PTR-VARIABLE EV-P   variable EV-CAP
 variable EV-LO   variable EV-N
 3 constant EV-ROW
@@ -15076,9 +14104,8 @@ defer RESOLUTION-RELEASE-XT ( -- )
    ['] RESOLUTION-NOTHING is RESOLUTION-RELEASE-XT ;
 RESOLUTION-LIFETIME-DEFAULT
 
-\ File the event of the token at ordinal ORD. Every report files one row as it
-\ takes its ordinal, in order, so ORD is always the table's next row; one that
-\ is not would misfile every row after it, and dies instead.
+\ Every report files one row as it takes its ordinal, so ORD is always the next
+\ row; one that is not would misfile every later row, and dies instead.
 : EV-FILE ( n n n n -- )
    {: kind:n a0:n a1:n ord:n :}
    ord EV-LO @ EV-N @ + <> IF
@@ -15090,10 +14117,8 @@ RESOLUTION-LIFETIME-DEFAULT
    EV-N @ 1 + EV-N ! ;
 
 \ ---- the recording unit's lifecycle ------------------------------------------
-\ Opened by the observer that wants the tape, so all facts describe exactly the
-\ definition that tape is of. Recording stops with the unit; the rows stay,
-\ because the consumer reads them after the unit has closed and the readers'
-\ whole purpose is to be asked then.
+\ The observer that wants the tape opens the unit, so all facts describe that
+\ definition. The rows outlive the unit: the consumer reads them after it closes.
 : REC-RESET ( -- )
    0 REC-IX !  -1 REC-ON !
    CWIN-RESET  MWIN-RESET  BWIN-RESET  RESOLUTION-RESET-XT ;
@@ -15110,11 +14135,8 @@ RESOLUTION-LIFETIME-DEFAULT
    REC-ON @ 0= IF EXIT THEN
    CWIN-COMMIT  MWIN-COMMIT  BWIN-COMMIT ;
 
-\ What the catch on tape token `ix` instantiated: the cells its caught body takes,
-\ and the cells it leaves. CELLS-NONE twice for a token no catch was recorded on.
-\ A recorded site whose body never returns answers its real input width and
-\ CELLS-NONE for the output, which is the difference between "no catch here" and
-\ "this catch's body never comes back" without a second sentinel to know.
+\ CELLS-NONE twice when no catch was recorded on token ix; a catch whose body
+\ never returns answers its input width and CELLS-NONE.
 : EFFECT-QUOT-CALL-CELLS ( n n -- n n )
    {: ix:n kind:n :}
    0 BEGIN dup CWIN-N @ < WHILE
@@ -15135,17 +14157,14 @@ RESOLUTION-LIFETIME-DEFAULT
    ix -1 EFFECT-QUOT-CALL-CELLS
    ix -2 EFFECT-QUOT-CALL-CELLS nip ;
 
-\ How many cells the layout token `ix` really moves: a `MATCH` family token's
-\ instantiated bundle width, an arm's `of` token's instantiated pad count, or a
-\ construction's added cells. CELLS-NONE for a token that published no such
-\ number, or for a definition nobody recorded. A dispatch reader refuses missing
-\ facts; a construction with no added cells requires no correction.
+\ CELLS-NONE for a token that published no number, or a definition nobody
+\ recorded. A dispatch reader refuses a missing fact; a construction with no
+\ added cells needs no correction.
 : EFFECT-MATCH-CELLS ( n -- n )
    CW-MATCH-CELLS CWIN-FIND drop ;
 
-\ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
-\ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
-\ now-retired tail must be dropped before the stale answer masks the rewind.
+\ Rollback frames restore DFER-END: a cached defer answer whose scan reached a
+\ retired tail is dropped before it masks the rewind.
 : HIDX-DFR-SYNC
    DFER-END @ HIDX-DFR-HI @ < IF HIDX-EPOCH+ THEN ;
 
@@ -15161,10 +14180,9 @@ RESOLUTION-LIFETIME-DEFAULT
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
 
-\ DFER-REWIND ( n -- ) : THE defer table's rewind; the checker frame's restore
-\ and a source reset lower DFER-END only through here. The table is baked, so
-\ the rows [n, DFER-END) it retires are zeroed before the terminator is
-\ written: a later image then bakes no retired defer row.
+\ The only way DFER-END is lowered (checker frame restore, source reset). The
+\ table is baked, so the retired rows [n, DFER-END) are zeroed before the
+\ terminator is written.
 : DFER-REWIND ( n -- ) {: n:n :}
    n 0 < n DFER-END @ > or IF
       s" checker: defer table rewind outside the registry" 76 die
@@ -15245,15 +14263,12 @@ variable DFER-POS
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
 
-\ The symbol a declaration's rows are keyed by. CHECKER-RECORD-SYM answers 0 for
-\ a malformed qualified name, which keys no word, and no row may carry 0: a
-\ defer row keyed 0 is DFERS' terminator and hides every row after it from the
-\ scan, and an effect row keyed 0 is anonymous. So the name is refused, and
-\ named, before the caller writes anything. AT is the declaring name as read by
-\ the caller, which places the refusal if its bytes lie in the checked text.
-\ The refusal is a throw because source
-\ reaches it through the pre-pass (src/habu/verify-source.f), whose drivers
-\ report a throw at its statement after every diagnostic made before it.
+\ CHECKER-RECORD-SYM answers 0 for a malformed qualified name, and no row may
+\ carry 0: a defer row keyed 0 is DFERS' terminator and hides every later row,
+\ and an effect row keyed 0 is anonymous. The name is refused before the caller
+\ writes anything; AT places the refusal when its bytes lie in the checked text.
+\ The refusal throws: source reaches it through the pre-pass
+\ (src/habu/verify-source.f), whose drivers report a throw at its statement.
 : CHECKER-RECORD-NAME-AT ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: a:ptr u:n at:ptr atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
@@ -15290,21 +14305,18 @@ package CHECKER-REG
 : CHECKER-REC-U@ ( -- n )
    CHECKER-REC-U @ ;
 
-\ The duplicate guard of a certifying record: does the scope the name would be
-\ recorded into already hold a live record for it? Asked without interning, so
-\ a refused name leaves no symbol behind; a candidate probe records nothing.
-\ A replayed definition is a duplicate when the engine holds a record of the
-\ name where it lands that is no definition's loaded twin
-\ (CHECKER-OVERLAY:DUPLICATE?), as the engine refuses that compile: a
-\ definition the replay published, a does> clause made by the replay or before
-\ it, which no checker record holds, or a word the engine's builder made, such
-\ as a primitive. A candidate's scanned definition is one too when the verifier
-\ pass has already declared the name there: the name's own record (OWN-RECORD)
-\ is one the pass appended, at or above PASS-FLOOR. A record from before the
-\ pass is not the replay's - in a warm engine it is the loaded twin of the
-\ definition being replayed - and a deletion or a seeded record declares
-\ nothing. The check hook and the source scan ask it before a body is checked,
-\ so they refuse what the guard would and nothing more.
+\ The duplicate guard of a certifying record, asked without interning: a refused
+\ name leaves no symbol and a candidate probe records nothing. A replayed
+\ definition is a duplicate when the engine holds a record of the name where it
+\ lands that is no definition's loaded twin (CHECKER-OVERLAY:DUPLICATE?), as the
+\ engine refuses that compile: a definition the replay published, a does> clause
+\ made by the replay or before it (no checker record holds one), or a word the
+\ engine's builder made, such as a primitive. A candidate's scanned definition
+\ is one too when the verifier pass already declared the name there: its
+\ OWN-RECORD is at or above PASS-FLOOR. A record from before the pass (in a warm
+\ engine, the loaded twin), a deletion or a seeded record declares nothing. The
+\ check hook and the source scan ask this before a body is checked, so they
+\ refuse exactly what the guard would.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
@@ -15316,23 +14328,20 @@ package CHECKER-REG
    a u CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM ;
 
 \ The guard's shape question, for a replayed definition that makes a does>
-\ clause when CLAUSE is true (a definer, or an export of one). CHECKER-CERT-DUP?
-\ cannot ask it: at a colon definition's name nothing says yet whether it makes
-\ one. The definition is a duplicate when its name lands on a record from
-\ before the overlay of the other shape (CHECKER-OVERLAY:OTHER-SHAPE?), which is
-\ no loaded twin of it. The source scan asks where it first knows the shape
-\ (src/habu/verify-source.f REFUSE-SHAPE): for a colon definition at the `;`
-\ or `does>` that ends the body, before the body is checked, and for a TRUSTED:
-\ one once its body is read. An export asks before it is recorded
-\ (EXPORT-RECORD).
+\ clause when CLAUSE is true (a definer, or an export of one); CHECKER-CERT-DUP?
+\ cannot ask it because a colon definition's name does not say yet. A duplicate
+\ when the name lands on a record from before the overlay of the other shape
+\ (CHECKER-OVERLAY:OTHER-SHAPE?). Asked where the shape is first known: by
+\ src/habu/verify-source.f REFUSE-SHAPE at the `;` or `does>` ending a colon
+\ body, before the body is checked, and once a TRUSTED: body is read; by an
+\ export before it is recorded (EXPORT-RECORD).
 : CHECKER-CERT-SHAPE-DUP? ( ptr u8 n bool -- bool )
    CHECKER-OVERLAY:OTHER-SHAPE? ;
 
-\ The DEFINING-scope question: CHECKER-FIND-USIG resolves through
-\ CHECKER-RECORD-SYM, which names the wordlist a new definition would be
-\ recorded into. A duplicate guard must ask exactly this and nothing wider, or
-\ it would refuse a package-local tail that merely shadows an unrelated global -
-\ shadowing a global from inside a package is legal (docs/forth.md § Packages).
+\ The defining-scope question: CHECKER-FIND-USIG resolves through
+\ CHECKER-RECORD-SYM, the wordlist a new definition would be recorded into. A
+\ duplicate guard asks exactly this: a package-local tail may shadow an
+\ unrelated global (docs/forth.md § Packages).
 : CHECKER-DEFINED-HERE? ( ptr u8 n -- bool )
    CHECKER-FIND-USIG ;
 
@@ -15340,39 +14349,25 @@ package CHECKER-REG
    $4E throw ;
 
 \ --- a package public whose own bare tail a private word of the package claims --
-\ Both the engine (habu1.f EMIT-FIND) and the checker (CHECKER-FIND-ACTIVE-SYM)
-\ resolve a bare tail private-wordlist-first while a package is open, so such a
-\ public definition is NOT what its own name binds to. The native compiler reads
-\ a definition's own contract from exactly that binding — definition.f
-\ KEEP-ARITY asks NDICT:SPELL-ARITY with the bare name — so the public word is
-\ elaborated against the PRIVATE word's arity, minutes after a source run that
-\ certified both. That is where the Tender backend's -8303 E-NELAB-ARITY came
-\ from: a public `F ( n -- n )` beside a private `F ( n n -- n )`.
+\ The engine (habu1.f EMIT-FIND) and the checker (CHECKER-FIND-ACTIVE-SYM)
+\ resolve a bare tail private-first while a package is open, so such a public
+\ definition does not bind its own name. definition.f KEEP-ARITY asks
+\ NDICT:SPELL-ARITY with the bare name, so ncomp would elaborate the public word
+\ against the private word's arity (E-NELAB-ARITY on a public `F ( n -- n )`
+\ beside a private `F ( n n -- n )`). The pair stays legal (src/lib/task.f's
+\ `: PREPARE ( ptr n -- ) PREPARE ;` forwarders); the rule refuses only two
+\ effects moving different numbers of cells, at the second definition.
+\ E-NELAB-ARITY stays ncomp's backstop for every shape this cannot see.
 \
-\ THE PAIR ITSELF IS DELIBERATE AND STAYS LEGAL. src/lib/task.f publishes
-\ `: PREPARE ( ptr n -- ) PREPARE ;` over its private PREPARE, and thirteen such
-\ forwarders besides; the bare call in the body is the private word, which is the
-\ point of the pattern. What ncomp cannot survive is the two effects moving
-\ DIFFERENT numbers of cells, so that — and not the shared tail — is the rule, and
-\ it is refused at the second definition instead of at the build. ncomp keeps
-\ E-NELAB-ARITY as the backstop for every shape this cannot see.
-\
-\ WHERE IT IS ASKED, AND WHY NOT AT E-ADD-EFFECT. Only from PUBLISH-REFUSALS,
-\ before anything is written for a COLON DEFINITION whose body was just
-\ checked against a DECLARED signature — the one record whose contract ncomp
-\ later reads back through the bare binding, because KEEP-ARITY is asked for a
-\ compiled body. E-ADD-EFFECT is the one creator of a user record, but its rows
-\ are not always the word's declaration: a definer-made public twin reaches it
-\ through the inferred-effect intake (CHECKER-USIG-CERT-CURRENT, BROW/DCUR)
-\ carrying the DEFINER CALL's own effect — `20 constant SHARED` presents (1 -- 0)
-\ and `variable SHARED` presents (0 -- 0), not the `-- a` the source pre-pass
-\ declared for the created word — so a rule asked there judged a width the word
-\ never claimed and refused test/ndict-binding.f's legal public/private SHARED
-\ constants. A definer-made word has no body for ncomp to elaborate, so it is
-\ judged by its definer row and not by this rule; a colon definition with an
-\ INFERRED effect (no declared signature) is left to ncomp's backstop as well,
-\ and so is a `TRUSTED:` body, whose declaration arrives through the same text
-\ intake (USIG-ADD) a storage definer's does and cannot be told from it there.
+\ Asked only from PUBLISH-REFUSALS, for a colon definition checked against a
+\ declared signature: the one record ncomp reads back through the bare binding.
+\ Not at E-ADD-EFFECT: a definer-made public twin reaches it through the
+\ inferred-effect intake (CHECKER-USIG-CERT-CURRENT, BROW/DCUR) carrying the
+\ definer call's effect (`20 constant SHARED` presents (1 -- 0)), so a rule
+\ there would refuse test/ndict-binding.f's legal public/private SHARED
+\ constants. A definer-made word has no body for ncomp; a colon definition with
+\ an inferred effect and a `TRUSTED:` body (whose declaration arrives through
+\ USIG-ADD as a storage definer's does) are left to ncomp's backstop too.
 7145 constant E-SHADOWED-ARITY
 variable SBA-TWIN                          \ the private twin's sym: the refused public's package and tail
 variable SBA-NIN   variable SBA-NOUT       \ the refused declaration's width in cells
@@ -15388,12 +14383,10 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    IF CELLS-NONE CELLS-NONE EXIT THEN
    off E-PTR E-DIN@ EFF-ROW-CELLS  off E-PTR E-DOUT@ EFF-ROW-CELLS ;
 
-\ The private sym of the package and tail the name would be recorded under, 0
-\ when it would not be recorded as a package public or nothing private owns its
-\ tail. Asked in the record's scope, CHECKER-RECORD-SYM?'s arms, rather than by
-\ re-resolving the spelling: the bare-name resolver would answer about the
-\ token's scope instead of the record's. Nothing is interned, because the
-\ definition is judged here before anything for it is written.
+\ The private sym owning the tail of a name recorded as a package public, 0 when
+\ it is not recorded as one or nothing private owns its tail. Asked in the
+\ record's scope (CHECKER-RECORD-SYM?'s arms): the bare-name resolver answers
+\ about the token's scope. Nothing is interned: nothing is written yet.
 : SBA-PRIVATE-TWIN ( ptr u8 n -- n )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF
@@ -15460,15 +14453,12 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
    ELSE CHECKER-PUBLISH-PARSED THEN
    sa su CHECKER-ASIG-CAPTURE ;
 
-\ The cast declarer's publication of the rows IDENTITY-PARSE parsed and
-\ VIEW-CAST-CERTIFY admitted. A pack's output binds variables no input supplies,
-\ which the stored-signature intake (USIG-ADD-AS) refuses, so the rows are
-\ published as CHECKER-USIG-CERT-PARSED publishes CHECK's. The row is asserted
-\ (external), as CHECKER-USIG-CERT-ADD records it. USIG-ADD-AS's width and
-\ scheme refusals cannot trip: the shape is two cells a side and holds no
-\ forall. The depth bound applies here as in USIG-ADD-AS (USIG-DEPTH-FITS?):
-\ a view argument's type nests as deep as its text, and a refused row is
-\ neither published nor captured, as CHECKER-USIG-CERT-ADD-AS leaves it.
+\ Publishes the rows IDENTITY-PARSE parsed and VIEW-CAST-CERTIFY admitted. A
+\ pack's output binds variables no input supplies, which USIG-ADD-AS refuses, so
+\ the rows are published as CHECK's are, asserted (external). USIG-ADD-AS's
+\ width and scheme refusals cannot trip (two cells a side, no forall); its depth
+\ bound applies (USIG-DEPTH-FITS?): a view argument's type nests as deep as its
+\ text, and a refused row is neither published nor captured.
 : CHECKER-USIG-CERT-ROWS ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n na:ptr nu:n :}
    na nu na nu USIG-CERT-ADMIT
@@ -15500,28 +14490,19 @@ variable LBUF-INFO-W
    count LBUF-COUNT-MAX width / > IF RES-FALSE EXIT THEN
    count width * LBUF-COUNT-MAX CELL / <= ;
 
-\ A BUFFER COUNT IS THE TOKEN BEFORE THE DEFINER, READ AND NEVER RUN. The count
-\ is an interpret-stack value, and no static pass models that stack
-\ (src/habu/verify-source.f RECORD-DEFINER?, at `constant`), so the gate path
-\ hands over the token before the definer instead. A token the engine's number
-\ reader reads as an integer IS the count, so it is held to the definer's own
-\ extent bound. No token is no count.
-\ A COUNT NAMED BY A WORD CERTIFIES BY THAT WORD'S EFFECT, NOT BY ITS VALUE. The
-\ preverifier reads the token and never runs it, so a name has no value here;
-\ what it has is the effect the load will run. The name resolves as a body or
-\ the top-row tracker resolves it (CHECKER-RESOLVE:REFUSES?, then EFFECT-QUERY),
-\ so a name the scope refuses there, or one nothing defines, refuses here. A
-\ word that takes input ends an expression the line computes before the
-\ definer (`Q-MAX Q-SEM-N *`, src/lib/queue.f), whose value only the load has, so
-\ its count is the definer's to bound, as the load bounds it. A word that takes
-\ none is the count itself, so its effect has to be one a body could hand
-\ straight to a `( n -- )` consumer: the return stack untouched, and an output
-\ row that unifies, as a call's input row does, with its own input row plus one
-\ `n`. A `constant` (`-- a`, a raw cell `n` absorbs), an engine-held constant
-\ and a colon `( -- n )` qualify; a `variable` (an address) and a `bool` do not.
-\ The definer bounds the value at load (src/core/layout-buffer.f LBUF-EXTENT?,
-\ E-LAYOUT-BUFFER), so a constant of 0 certifies here and fails there. The
-\ unification binds only the variables it instantiates, in per-definition
+\ A buffer count is the token before the definer, read and never run: no static
+\ pass models the interpret stack (src/habu/verify-source.f RECORD-DEFINER?, at
+\ `constant`). An integer token is the count, held to the definer's extent
+\ bound. No token is no count.
+\ A count named by a word certifies by that word's effect: a refused or
+\ undefined name refuses. A word that takes input ends an expression the line
+\ computes (`Q-MAX Q-SEM-N *`, src/lib/queue.f), so the definer bounds it at
+\ load. A word that takes none must hand a `( n -- )` consumer its value: return
+\ stack untouched and an output row that unifies with its input row plus one
+\ `n`. A `constant`, an engine-held constant and a colon `( -- n )` qualify; a
+\ `variable` and a `bool` do not. The definer bounds the value at load
+\ (src/core/layout-buffer.f LBUF-EXTENT?, E-LAYOUT-BUFFER), so a constant of 0
+\ certifies here and fails there. The unification binds only in per-definition
 \ scratch that NEW clears.
 package CHECKER-LBUF
 : BY-EFFECT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -15533,11 +14514,9 @@ package CHECKER-LBUF
    EFFQ-DOUT @ E-INST  CC-N MK-CON din MK-PUSH  UNIFY-IN ;
 
 public
-\ The one count path of both definers that take a count: an integer literal
-\ certifies by its value and extent, any other token by the effect of the word
-\ it names, and no token is no count. A refused count is reported at its token, or at the name
-\ when no token precedes the definer (CHECKER-STORAGE-REFUSE), and answers
-\ false.
+\ The count path of both definers that take one. A refused count is reported at
+\ its token, or at the name when no token precedes the definer
+\ (CHECKER-STORAGE-REFUSE), and answers false.
 : COUNT-OK? ( ptr u8 n ptr u8 n n -- bool )
    {: na:ptr nu:n a:ptr u:n width:n :}
    u 0= IF na nu na nu STG-NO-COUNT CHECKER-STORAGE-REFUSE RES-FALSE EXIT THEN
@@ -15571,11 +14550,10 @@ public
    name nameu count countu LBUF-INFO-W @ CHECKER-LBUF:COUNT-OK? 0= IF EXIT THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
-\ Checker-side registration for the TYPED-BUFFER / TYPED-VARIABLE gate path
-\ (verify-source RECORD-TYPED-*). Mirrors CHECKER-DEFLAYOUT-BUFFER but gates on
-\ the broader CHECKER-STORAGE-INFO admissibility (typed pointers included) and
-\ publishes the convenience accessor's usig. A TYPED-BUFFER accessor is
-\ `( n -- ptr <type> )`; a TYPED-VARIABLE accessor is `( -- ptr <type> )`.
+\ Registration for the TYPED-BUFFER / TYPED-VARIABLE gate path (verify-source
+\ RECORD-TYPED-*): gates on CHECKER-STORAGE-INFO (typed pointers included) and
+\ publishes the accessor's usig: `( n -- ptr <type> )` for TYPED-BUFFER,
+\ `( -- ptr <type> )` for TYPED-VARIABLE.
 : CHECKER-STORAGE-VAR-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
    s" -- ptr " LBUF-SIG-APP
@@ -15677,15 +14655,13 @@ public
    count rec ER.STORAGE-N !
    STORAGE-GRID rec ER.STORAGE-KIND ! ;
 
-\ Checker-side registration for the DYNAMIC-BUFFER gate path (verify-source
-\ RECORD-DYNAMIC-BUFFER). That definer publishes THREE checked words from one
-\ line (src/core/layout-buffer.f DBUF-SOURCE): the accessor
-\ `NAME ( n -- ptr <type> )`, `NAME-RESERVE ( n -- )` and `NAME-RELEASE ( -- )`.
-\ Certification never executes the definer, so all three are registered here or a
-\ later definition in the same source that calls one of them is E-UNDEFINED -
-\ which is exactly what src/habu/aot-decl.f's AOT-NAMES-RESERVE hit.
-\ The derived name needs its own scratch: publishing one generated word holds its
-\ NAME and its SIGNATURE at the same moment, so they cannot share LBUF-SIG-BUF.
+\ Registration for the DYNAMIC-BUFFER gate path (verify-source
+\ RECORD-DYNAMIC-BUFFER). The definer publishes three checked words from one
+\ line (src/core/layout-buffer.f DBUF-SOURCE): `NAME ( n -- ptr <type> )`,
+\ `NAME-RESERVE ( n -- )` and `NAME-RELEASE ( -- )`. Certification never runs
+\ the definer, so all three are registered here, or a later call in the same
+\ source is E-UNDEFINED. Publishing a generated word holds its name and its
+\ signature at once, so the name has its own scratch beside LBUF-SIG-BUF.
 $100 constant LBUF-NM-CAP
 create LBUF-NM-BUF LBUF-NM-CAP allot
 variable LBUF-NM-U
@@ -15761,11 +14737,11 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
-\ Control-effect flags are append-only and later-wins so redefinitions can clear
-\ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
-\ means a call may reach a catchable throw edge. CTL-BARRIER (M5) means the call
-\ is a block collective whose emitter contains bar.sync, so it is only sound under
-\ block-uniform control (rejected inside an open control frame — see BARRIER-CUR?).
+\ Control-effect flags are append-only and later-wins, so a redefinition can
+\ clear stale metadata. CTL-DEAD: a call has no normal continuation. CTL-THROW:
+\ a call may reach a catchable throw edge. CTL-BARRIER: the call is a block
+\ collective whose emitter contains bar.sync, sound only under block-uniform
+\ control (refused inside an open control frame, BARRIER-CUR?).
 1 constant CTL-DEAD
 2 constant CTL-THROW
 4 constant CTL-BARRIER
@@ -15782,13 +14758,11 @@ $40 constant CTL-ZERO-FALSE
 \ (CHECKER-VERIFY-RENDERS) and leaves such words to the run.
 $80 constant CTL-RENDERS
 
-\ WHICH ENGINE WORD A SYMBOL IS: identity, not spelling. A rule that types an
-\ engine word by what the word does rather than by its row - CELL-FETCH-TOK for
-\ `@`, RECORD-AT-STEP for `record-at` - may judge a token only when the token
-\ binds that word, and a spelling does not say so: `@` inside a package that
-\ defines `@`, and a `dup` defined after `undefine dup`, are other words of the
-\ same spelling, and both compilers call them. So the identity is a fact the
-\ store keeps about the symbol, apart from its effect (a PRIM row), registered
+\ Which engine word a symbol is: identity, not spelling. A rule that types an
+\ engine word by what it does (CELL-FETCH-TOK for `@`, RECORD-AT-STEP for
+\ `record-at`) may judge a token only when the token binds that word: `@` in a
+\ package that defines `@`, or `dup` after `undefine dup`, is another word of
+\ the same spelling. The identity is kept apart from the effect and registered
 \ where the engine defines the word: NORET-AXIOMS for a primitive, INTRINSIC
 \ right after a source definition. Two forms carry it:
 \   CTL-CORE-OP    the engine's own word of a spelling within a family the
@@ -15797,10 +14771,10 @@ $80 constant CTL-RENDERS
 \                  zero tests, and `evaluate` (a top-level step, TOP-WORD-STEP).
 \   CTL-INTRINSIC  a five-bit id naming one engine word (the INTRINSIC-* rows
 \                  below), for the rules that dispatch on the word itself.
-\ Both sit inside XFER-FLAG-MASK, so they travel wherever the control flags do:
-\ the owner handover, the unit import and a captured graph. `undefine` retires
-\ them with every other fact (CHECKER-UNDEFINE), a redefinition records none,
-\ and an export does not copy them (EXPORT-META-COPY).
+\ Both sit inside XFER-FLAG-MASK and travel with the control flags (owner
+\ handover, unit import, captured graph). `undefine` retires them
+\ (CHECKER-UNDEFINE), a redefinition records none, and an export does not copy
+\ them (EXPORT-META-COPY).
 \ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
 \ CTL-PARSES and 14 CTL-CREATES (below), 15 CTL-NOMINAL, 16 the defer bit
 \ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17 CTL-NAMES and 18 CTL-GENERATES
@@ -15862,9 +14836,7 @@ CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
 $1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
 CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
    constant CTL-GRAPH-FLAGS
-\ $28000 not $10000: the entry carries three cells beyond (sym, flags) — the
-\ back-link, the created-word effect and the exported word below — so the byte
-\ cap is scaled with them and the store still holds the same number of entries.
+\ 4096 five-cell entries.
 $28000 constant NORET-INIT-CAP
 
 \ THE ENTRY IS FIVE CELLS, and this is where they are stated.
@@ -15921,12 +14893,10 @@ variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
    0 NORET-END @ NORET-CELL ! ;
 
 \ --- per-symbol control-flag index (NRX) ---------------------------------------
-\ NORET entries are append-only and later-wins, so a symbol's flags are decided
-\ entirely by its NEWEST entry — the same shape as the effect store, and kept
-\ exact by the same three seams (append, truncation, rebuild). The entry's
-\ NORET.SYMPREV back-link is what a truncation walks instead of the whole store.
-\ An entry's SYM cell doubles as the store terminator, so an entry keyed 0 would
-\ hide every entry after it; NORET-ADD-SYM refuses to write one.
+\ NORET entries are append-only and later-wins: a symbol's flags are its newest
+\ entry's, kept exact by the effect store's three seams (append, truncation,
+\ rebuild); a truncation walks NORET.SYMPREV instead of the whole store. An
+\ entry keyed 0 would terminate the store early; NORET-ADD-SYM refuses one.
 
 : NRX-BASE-FIELD ( -- ptr ptr u8 )
    NRX-BASE 0 ptr-field ;
@@ -15983,9 +14953,8 @@ CHECKER-REG:}SCRATCH
    NRX-SYNC
    NRX-GEN @ HIDX-GEN @ <> IF NRX-BUILD THEN ;
 
-\ NRX-TRUNCATE ( n -- ) : same argument as USX-TRUNCATE — walking the discarded
-\ entries oldest-first, each symbol's FIRST discarded entry is the one whose
-\ back-link names a surviving entry, so each affected symbol is written once.
+\ As USX-TRUNCATE: walking the discarded entries oldest-first, each symbol's
+\ first discarded entry back-links to a survivor, so each symbol is written once.
 : NRX-TRUNCATE ( n -- ) {: newend:n :}
    NRX-GEN @ HIDX-GEN @ <> IF EXIT THEN
    newend NRX-POS !
@@ -15998,9 +14967,8 @@ CHECKER-REG:}SCRATCH
    repeat
    newend NRX-HI ! ;
 
-\ NORET-RESTORE-END ( n -- ) : THE control-flag store's rewind. NRX-TRUNCATE
-\ walks the entries it retires, so they are zeroed after it: the store is baked,
-\ and a later image then carries no retired entry.
+\ The control-flag store's only rewind. The store is baked, so the entries
+\ NRX-TRUNCATE walked are zeroed after it: a later image carries none.
 : NORET-RESTORE-END ( n -- ) {: newend:n :}
    newend 0 < newend NORET-END @ > or IF
       s" checker: control-flag rewind outside the registry" 76 die
@@ -16011,10 +14979,8 @@ CHECKER-REG:}SCRATCH
    newend NORET-END !
    NORET-TERM ;
 
-\ NORET-NEWEST-LINEAR ( n -- n ) : the SPECIFICATION of what NRX answers — the
-\ newest entry for a symbol, offset+1, by walking the store the way the scan
-\ does. test/checker-scan-index-suite.f differentials the indexed answer
-\ against it.
+\ The specification of what NRX answers, by a linear walk;
+\ test/checker-scan-index-suite.f holds the index against it.
 : NORET-NEWEST-LINEAR ( n -- n ) {: sym:n :}
    0
    0 NRX-POS !
@@ -16063,16 +15029,13 @@ CHECKER-REG:}SCRATCH
    0 FV !
    0 EC-TV-HW !   0 EC-RV-HW ! ;
 
-\ ARENA-SNAP-BOOT ( pvar boot cells -- ) : restore one scratch arena to its boot
-\ buffer AND empty that buffer, in one step so neither can be done without the
-\ other. Capture copies these DATA buffers into the image; the last checked
-\ definition's scratch is dead by the caller's quiescent-capture contract.
+\ Restore a scratch arena to its boot buffer and empty that buffer in one step.
+\ Capture copies these DATA buffers into the image; the last definition's
+\ scratch is dead by the quiescent-capture contract.
 : ARENA-SNAP-BOOT ( ptr ptr n ptr n n -- ) {: pv:ptr boot:ptr cells:n :}
    boot 0 cells ARENA-CELLS-ZERO
    boot pv ! ;
 
-\ REG-POINTERS-CLEAR ( base from to -- ) : store NULL-PTR, the zero of a pointer
-\ cell, in cells [from, to).
 : REG-POINTERS-CLEAR ( ptr ptr a n n -- ) {: base:ptr from:n to:n :}
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
@@ -16082,11 +15045,10 @@ CHECKER-REG:}SCRATCH
    boot 0 count REG-POINTERS-CLEAR
    boot pv ! ;
 
-\ DECOUPLED-ARENA-SNAP-RESET ( -- ) : at capture, repoint the scope, atom and
-\ inst-key arenas at their emptied boot buffers and init caps, so no grown mmap
-\ address is persisted. The scope arena cannot rest at each file boundary as
-\ the scratch region does: SCOPE-N never rewinds (SCOPE-FRESH). The stores in
-\ the scratch region rest through SR-RETIRE.
+\ At capture, repoint the scope, atom and inst-key arenas at their emptied boot
+\ buffers and init caps, so no grown mmap address is persisted. The scope arena
+\ cannot rest at each file boundary: SCOPE-N never rewinds (SCOPE-FRESH).
+\ Scratch-region stores rest through SR-RETIRE.
 : DECOUPLED-ARENA-SNAP-RESET ( -- )
    SCOPE-PARENT-P SCOPE-PARENT-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-SECOND-P SCOPE-SECOND-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
@@ -16095,20 +15057,15 @@ CHECKER-REG:}SCRATCH
    ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
    VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V ! ;   \ transient inst scratch
 
-\ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS) must
-\ survive into a built image (later checked loads reference persisted signatures).
-\ A complete store already in image DATA survives the copy, including one
-\ persisted by an earlier capture. A grown store lives in process-local mmap,
-\ so bake it into fresh image DATA (here-allot + copy). CT, VREC and SYM records
-\ name their string pools by offset, so each pool may be persisted last and
-\ moved with nothing to fix up afterwards.
-\ THE DELTA TRAVELS ON THE STACK AND IS NEVER PARKED IN A DATA CELL. One of its
-\ two terms is the grown store's process-local mmap address, so a cell holding it
-\ differs between two builds of the same source, and the AOT capture bakes that
-\ cell into the image: four bytes of one such cell were the entire difference
-\ between two same-host tools/native-build.f products (dot
-\ habu-make-the-engine-9db99082). A build-time transient of this pass has no
-\ reader in a restored image, so it needs no cell at all.
+\ --- registry snapshot persist. The append-only registries (CT/VREC/SYMS)
+\ survive into a built image: later checked loads reference persisted
+\ signatures. A complete store in image DATA survives the copy; a grown store in
+\ process-local mmap is baked into fresh image DATA. CT, VREC and SYM records
+\ name their string pools by offset, so each pool may be persisted last with
+\ nothing to fix up.
+\ The delta travels on the stack, never in a DATA cell: one term is the grown
+\ store's mmap address, which differs between builds, and the AOT capture would
+\ bake that cell into the image.
 
 \ Registry persistence copies bytes through the byte-pool view of each slot.
 : REG-PERSIST-REFUSE ( -- )
@@ -16133,15 +15090,12 @@ CHECKER-REG:}SCRATCH
 : REG-PERSIST-BUF ( ptr ptr u8 n -- bool ) {: pvar:ptr bytes:n :}
    pvar bytes bytes REG-PERSIST-MOVE nip ;
 
-\ REG-POOL-PERSIST ( pvar home home-cap used cap -- ) : bake a string pool by
-\ its used size and its home alone. The home is the DATA block the pool was last
-\ baked in, its boot buffer until a capture rebakes it; every reset of the pool
-\ to its boot buffer resets the home with it. A grow moved the pool to a mapping
-\ and zeroed the home it left. A pool whose used bytes still fit that home goes
-\ back there: a rolled-back declaration's interns grew the pool and its rewind
-\ gave the bytes back, so the image is the one a load without that declaration
-\ bakes, which is what a file hit of the load leaves. A pool that outgrew its
-\ home is baked at its used size, and that block becomes the home.
+\ Bake a string pool by its used size and its home: the DATA block it was last
+\ baked in, its boot buffer until a capture rebakes it (a reset to boot resets
+\ the home; a grow zeroes it). A pool whose used bytes fit its home goes back
+\ there, so a rolled-back declaration's interns leave the image a load without
+\ it bakes, as a file hit leaves. A pool that outgrew its home is baked at its
+\ used size, and that block becomes the home.
 : REG-POOL-PERSIST ( ptr ptr u8 ptr ptr u8 ptr n ptr n ptr n -- )
    {: pvar:ptr home:ptr hcap:ptr used:ptr cap:ptr :}
    pvar @ home @ = IF EXIT THEN
@@ -16194,11 +15148,9 @@ CHECKER-REG:}SCRATCH
    SYMS-P SYM-CAP-V @ SYM-REC * REG-PERSIST-BUF drop
    SYM-STR-P SYM-STR-HOME SYM-STR-HOME-CAP SYM-STR-U SYM-STR-CAP-V REG-POOL-PERSIST ;
 
-\ Friend-only extension hook: the package-scoped TFAM/SCHEMA registries live in
-\ files loaded after checker.f (src/core/type-schema.f, src/core/type-family.f),
-\ so they cannot be named here. They install their combined persist word into
-\ this cell; a 0 cell keeps the call a no-op before they load. Same late-binding
-\ shape the checker already uses for the source-check hook (`set-check`).
+\ Friend-only hook: the TFAM/SCHEMA registries load after checker.f
+\ (src/core/type-schema.f, src/core/type-family.f) and install their persist
+\ word here; a 0 cell keeps the call a no-op before they load.
 defer REG-EXT-PERSIST-XT ( -- )
 \ Scratch hooks, one per owning file (render.f, sumtype.f, type-family.f). Each
 \ runs at every file boundary (FILE-SCRATCH-RETIRE) and once at image capture
@@ -16206,17 +15158,12 @@ defer REG-EXT-PERSIST-XT ( -- )
 defer REG-SCRATCH-SNAP-XT ( -- )
 defer REG-LATE-SCRATCH-SNAP-XT ( -- )
 defer REG-EXT-SCRATCH-XT ( -- )
-\ REG-CERT-SNAP-XT is a cell of its own rather than a share of one above it because
-\ each of those already has an owner that loads earlier (type-family.f,
-\ render.f, sumtype.f), and a second `is` on one cell silently RETIRES the first
-\ file's reset - no diagnostic, just a scratch store that stops being reset. The
-\ lowering-certificate producer (src/core/lower-cert-base.f +
-\ src/core/layout-valid.f, the last of the four to load) owns this one: thirteen
-\ per-definition arena bases that must be back on their baked boot buffers before
-\ the capture: a grown base lives in process-local mmap, which no image may carry.
+\ A cell of its own: a second `is` on a cell above would silently retire the
+\ earlier owner's reset. The lowering-certificate producer
+\ (src/core/lower-cert-base.f, src/core/layout-valid.f) owns it: per-definition
+\ arena bases that must be back on their baked boot buffers before capture,
+\ since a grown base lives in process-local mmap.
 defer REG-CERT-SNAP-XT ( -- )
-\ registry-not-loaded defaults: no extension registry to persist / no scratch to
-\ snapshot before type-schema.f / type-family.f / render.f install the real words.
 : REG-EXT-DEFAULTS ( -- )
    [: ;] is REG-EXT-PERSIST-XT
    [: ;] is REG-SCRATCH-SNAP-XT
@@ -16226,29 +15173,17 @@ defer REG-CERT-SNAP-XT ( -- )
 REG-EXT-DEFAULTS
 
 \ ---- the type registry an AOT capture has to carry ---------------------------
-\ WHY IT TRAVELS WITH THE SIGNATURES. A seeded word's signature is TEXT, and the
-\ intake parses it: `( IR-ARENA:view -- )` resolves the family named `view` in
-\ package IR-ARENA through the type-family registry. A window that declared
-\ families has to carry them, or every signature naming one is refused at intake
-\ instead of certified - which would leave the family-typed half of a captured
-\ chain uncallable while the scalar-typed half worked.
-\
-\ THE BASE IS ASSERTED, NEVER REMAPPED. Family ids, schema node ids and interned
-\ type-name offsets are identities: the records name each other by id and by
-\ offset and nothing in them rebases (type-family.f says so for every store).
-\ The engine that seeds and the engine that captured both reach the window with
-\ the same registry, because the cold prefix is the only thing that builds it -
-\ measured equal over the compiler chain - so the window's delta appends at a
-\ base the two agree on. A disagreement has no remap and is refused by name, the
-\ way src/habu/aot-file.f ?BASES refuses a code base that is not the canonical
-\ zero it shifts against.
-\
-\ THE ENUMERATION LIVES WITH THE STORES, exactly as REG-EXT-PERSIST-XT below
-\ does and for the same reason: the TFAM and SCHEMA registries are in files that
-\ load after this one, so this file cannot name them. MARK latches the
-\ high-waters a capture window opens at, SAVE writes those marks and the delta
-\ into the caller's buffer, and LOAD asserts the marks against the live stores
-\ and appends.
+\ A seeded word's signature is text the intake parses: `( IR-ARENA:view -- )`
+\ resolves family `view` through the type-family registry, so a window that
+\ declared families carries them, or every signature naming one is refused.
+\ The base is asserted, never remapped: family ids, schema node ids and interned
+\ type-name offsets are identities (type-family.f). The seeding and capturing
+\ engines reach the window with the same registry, built only by the cold
+\ prefix, so the delta appends at an agreed base; a disagreement is refused by
+\ name, as src/habu/aot-file.f ?BASES refuses a non-canonical code base.
+\ The TFAM and SCHEMA registries load after this file and install these: MARK
+\ latches the high-waters a capture window opens at, SAVE writes those marks and
+\ the delta into the caller's buffer, LOAD asserts the marks and appends.
 defer REG-EXT-AOT-MARK-XT ( -- )
 defer REG-EXT-AOT-CLOSE-XT ( -- )
 defer REG-EXT-AOT-SAVE-XT ( ptr u8 n -- n )
@@ -16265,10 +15200,8 @@ defer REG-EXT-AOT-REGION-XT ( ptr u8 ptr u8 n n -- bool )
 \ and the same future registry view. Hidden row fields are charged separately.
 defer REG-EXT-AOT-WIDTH-XT ( ptr u8 ptr u8 ptr u8 ptr u8 n -- n )
 
-\ A build with no type registry loaded has no delta to write. Reading one is a
-\ different matter: bytes that no store can take are a seeded engine whose
-\ signatures cannot resolve, so that direction dies by name rather than
-\ silently leaving the families out.
+\ A build with no type registry has no delta to write. Reading bytes no store
+\ can take dies by name: the seeded signatures could not resolve.
 : REG-EXT-AOT-NO-SAVE ( ptr u8 n -- n ) 2drop 0 ;
 : REG-EXT-AOT-NO-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF EXIT THEN
@@ -16342,27 +15275,21 @@ REG-EXT-AOT-DEFAULTS
 : NORET-CTL@ ( ptr n -- n )
    NORET.FLAG @ ;
 
-\ NORET-NEWEST@ ( n n -- n ) : the cell at byte offset OFF of sym's NEWEST
-\ entry, 0 when sym has no entry.
+\ The cell at byte offset OFF of sym's newest entry; 0 when sym has none.
 : NORET-NEWEST@ ( n n -- n )
    {: sym:n off:n :}
    sym 0= IF 0 EXIT THEN
    sym NORET-NEWEST dup 0= IF drop 0 EXIT THEN
    1 - off + NORET-CELL @ ;
 
-\ NORET-CREATES@ ( n -- n ) : the effect sym's definer gives the words it
-\ creates, as an effect-record offset+1, 0 when sym is not a definer. Read from
-\ the NEWEST entry like the flags beside it, so a redefinition that publishes no
-\ created effect retires the old one instead of leaving a fact behind. Not
-\ cached in HIDX, which holds the packed control word: the per-symbol head
-\ already answers this one in a single load, which is all an append's
-\ carry-forward and a pre-pass token that resolved to a definer need.
+\ The effect sym's definer gives its created words, as an effect-record
+\ offset+1, 0 for a non-definer. Read from the newest entry, so a redefinition
+\ publishing no created effect retires the old one. Not cached in HIDX (the
+\ packed control word): the per-symbol head answers in one load.
 : NORET-CREATES@ ( n -- n ) NORET-CREATES-OFF NORET-NEWEST@ ;
 
-\ NORET-SOURCE@ ( n -- n ) : for an export, the symbol of the word it is
-\ (EXPORT-META-COPY); 0 otherwise. Read from the NEWEST entry like CREATES, so
-\ the entry an `undefine` appends retires it and the name defined afresh is its
-\ own word.
+\ For an export, the symbol of the word it is (EXPORT-META-COPY), else 0. Read
+\ from the newest entry, so the entry an `undefine` appends retires it.
 : NORET-SOURCE@ ( n -- n ) NORET-SOURCE-OFF NORET-NEWEST@ ;
 
 \ The word a symbol is: for an export, the symbol of the word it exports,
@@ -16372,23 +15299,19 @@ REG-EXT-AOT-DEFAULTS
 : CHECKER-SYM-SOURCE ( n -- n ) {: sym:n :}
    sym NORET-SOURCE@ dup 0= IF drop sym THEN ;
 
-\ HIDX-CTL-SYNC ( -- ) : flush the cache when NORETS rewound below a cached
-\ dependency. The store swap paths (persist/reset) keep values or rewind END.
+\ Flush the cache when NORETS rewound below a cached dependency. The store swap
+\ paths (persist/reset) keep values or rewind END.
 : HIDX-CTL-SYNC
    NORET-END @ HIDX-CTL-HI @ < IF HIDX-EPOCH+ THEN ;
 
-\ NORET-APPEND syncs first for the same reason as E-REC-START: it is the only
-\ NORETS appender, and appending over a rewound tail must flush stale flags
-\ before the new entry masks the rewind.
-\ A 0 symbol is not a fact about any word — CTL-FLAGS-SYM answers 0 for it
-\ without ever reading the store — and its SYM cell is the store terminator, so
-\ writing one would hide every entry appended after it. Record nothing.
-\ THE ENTRY CARRIES EVERY FACT THE STORE KEEPS, so every appender goes through
-\ this one word and each carries forward the facts it has nothing to say about.
-\ Newest-entry-wins is what makes the store readable in one load, and an
-\ appender that wrote only its own part would retire the rest by silence: a
-\ definition records its flags and its intact masks, and on the same record the
-\ effect authority appends its provenance flag and the created-word effect.
+\ The only NORETS appender; it syncs first, as E-REC-START does, so stale flags
+\ are flushed before a new entry over a rewound tail masks the rewind.
+\ A 0 symbol records nothing: CTL-FLAGS-SYM answers 0 for it without reading the
+\ store, and its SYM cell would terminate the store.
+\ Every appender carries forward the facts it has nothing to say about: the
+\ newest entry wins, so an appender writing only its own part would retire the
+\ rest (a definition records flags and masks, and the effect authority appends
+\ its provenance flag and the created-word effect on the same record).
 : NORET-APPEND {: sym:n flag:n dmask:n rmask:n creates:n source:n :}
    WRITE-WINDOW-CK
    sym 0= IF EXIT THEN
@@ -16795,23 +15718,17 @@ variable PENDING-MARKED      0 PENDING-MARKED !
    ord PENDING-OWNER-RECORD
    ord PENDING-DIRTY+ ;
 
-\ CREATED-RECORD-BUILD ( sig-a sig-u -- off+1 | 0 ) : the record a created word
-\ carries, built from the effect its definer states - a certified `does>`
-\ clause's (DOES-EFF-LATCH! below) or a `generates:` row's (CHECKER-GENERATES).
-\ 0 when the effect does not parse, with SGBAD saying why.
-\
-\ IT PARSES THE SIGNATURE ITSELF, for two reasons. After a clause check the rows
-\ in SGIN/SGOUT have been unified with the body it just verified, so a clause
-\ declaring a variable would be latched at whatever the body happened to
-\ produce instead of at what it declared; and this parse runs under the
-\ raw-definer seal, which is what `trust-raw` (TRUST-RAW below) puts on every
-\ created word at run time, so the record holds the same TVK-RAW variables the
-\ engine's own registration of this definer's words would hold.
-\
-\ THE RECORD IS ANONYMOUS. It is not an effect OF the definer — the definer's
-\ own effect is recorded by its body's publication — so it is built with
-\ CHECKER-REC-SYM 0 and no cache update, the way SIG-EFF-CACHE! builds the
-\ recurse cache: sym 0 keeps it out of every per-symbol lookup.
+\ The record a created word carries, built from the effect its definer states:
+\ a certified `does>` clause's (DOES-EFF-LATCH!) or a `generates:` row's
+\ (CHECKER-GENERATES). 0 when the effect does not parse, with SGBAD saying why.
+\ It parses the signature itself: after a clause check SGIN/SGOUT have been
+\ unified with the body, so a declared variable would be latched at what the
+\ body produced; and this parse runs under the raw-definer seal `trust-raw`
+\ puts on every created word at run time, so the record holds the same TVK-RAW
+\ variables the engine's own registration would.
+\ The record is anonymous (CHECKER-REC-SYM 0, no cache update, as SIG-EFF-CACHE!
+\ builds the recurse cache): it is not the definer's effect, and sym 0 keeps it
+\ out of every per-symbol lookup.
 : CREATED-RECORD-BUILD ( ptr u8 n -- n )
    {: sa:ptr su:n :}
    WRITE-WINDOW-CK                       \ before the record symbol and parser move
@@ -17241,36 +16158,24 @@ private
 : NORET-AXIOM {: a:ptr u:n flag:n :}
    a u PE-SYM-OF flag 0 0 NORET-ADD-SYM ;
 
-\ The two path-ending words the engine owns. `throw` leaves through the catch
-\ edge, so it carries both flags; `die` ends the process and is dead only. They
-\ are RECORDED here, in the same store every other word's control flags live in,
-\ rather than recognised by spelling where the flags are read.
-\
-\ WHY THE SPELLING TEST HAD TO GO. The store is keyed by the SYMBOL a token
-\ resolves to and a spelling is not: a package that defines its own `throw`
-\ binds that word for every bare mention inside it, and the spelling test killed
-\ the path anyway. `package P public : throw ( n -- ) drop ; : T2 ( n n -- n )
-\ 0 = if drop 5 throw then ;` certified with the true arm treated as dead, and
-\ `7 0 P:T2` returned NOTHING where the signature promised a cell - the next
-\ word underflowed. One authority for "does this call end the path", and it is
-\ the record of the word the token really names.
-\
-\ The loader's evaluate boundary and its public file-loading words are
-\ recorded the same way: src/core/include.f INCLUDE-EVALUATE and
-\ INCLUDE-EVALUATE-RANGE turn source into definitions, as do included,
-\ required and script-required when they read a file; `evaluate`,
-\ `evaluate-closed` and `evaluate-range` do so for a top-level statement. The words
-\ that read the source after a call are recorded alike: parse-name, and
-\ `create`, which also defines the name it reads (CTL-CREATES). A body takes
-\ `create` by its identity (DEFINER-TOK) and inherits its facts all the same
-\ (DO-TOK-BODY); the word `create` makes takes none (TRUST-RAW). No other word
-\ a body takes by its identity reads the source or defines a word: `variable`
-\ and `constant` are refused there, and the word `execute`, `catch` or
-\ `finally` runs is an execution token no walk binds. The rows after them are
-\ the same authority for "is this the engine's word": the primitives the walk
-\ types by what they do, named by identity (CTL-CORE-OP, CTL-INTRINSIC above);
-\ `create`'s one row carries both its identity and its facts, since the newest
-\ row of a symbol wins.
+\ The two path-ending words the engine owns: `throw` leaves through the catch
+\ edge and carries both flags; `die` ends the process and is dead only. They are
+\ recorded in the control-flag store, not recognised by spelling: a package that
+\ defines its own `throw` binds that word for every bare mention inside it, and
+\ a spelling test would treat its caller's path as dead.
+\ The loader's evaluate boundary and its file-loading words are recorded the
+\ same way: src/core/include.f INCLUDE-EVALUATE and INCLUDE-EVALUATE-RANGE, and
+\ included, required and script-required when they read a file; `evaluate`,
+\ `evaluate-closed` and `evaluate-range` for a top-level statement. So are the
+\ words that read the source after a call: parse-name, and `create`, which also
+\ defines the name it reads (CTL-CREATES). A body takes `create` by its identity
+\ (DEFINER-TOK) and inherits its facts (DO-TOK-BODY); the word `create` makes
+\ takes none (TRUST-RAW). No other word a body takes by identity reads the
+\ source or defines a word: `variable` and `constant` are refused there, and
+\ the word `execute`, `catch` or `finally` runs is an execution token no walk
+\ binds. The later rows name by identity the primitives the walk types by what
+\ they do (CTL-CORE-OP, CTL-INTRINSIC); `create`'s one row carries its identity
+\ and its facts, since a symbol's newest row wins.
 : NORET-AXIOMS ( -- )
    s" throw" CTL-DEAD CTL-THROW or NORET-AXIOM
    s" die" CTL-DEAD NORET-AXIOM
@@ -17334,18 +16239,14 @@ NORET-END @ constant NORET-PRIM-END
    sym ctl XFER-FLAGS ctl XFER-DMASK ctl XFER-RMASK
    off NORET-CELL NORET.CREATES @ 0 NORET-APPEND ;
 
-\ Undefining retires every fact the name carried, the created-word effect and
-\ the exported word with them: the entry is appended through NORET-APPEND
-\ rather than NORET-ADD-SYM precisely because the carry-forward there would
-\ keep a definer's created effect, or an export's link, alive under a name
-\ that no longer exists. It retires every link that names the word as well:
-\ the symbol outlives the name, and the name defined afresh takes it, while an
-\ export of the old word still runs that word. The walk reads the entries
-\ present before it and appends past them (NORET-SOURCE-RETIRE); a rollback
-\ rewinds those entries and a capture compacts them as it does any other.
-\ Inside the verifier window
-\ the replayed `undefine` also retires the engine records of the name, as the
-\ engine's own does (CHECKER-OVERLAY:RETIRE).
+\ Undefining retires every fact the name carried, through NORET-APPEND: the
+\ carry-forward of NORET-ADD-SYM would keep a definer's created effect or an
+\ export's link alive under a retired name. It also retires every link naming
+\ the word (NORET-SOURCE-RETIRE): the name defined afresh takes the symbol,
+\ while an export of the old word still runs that word. The walk reads the
+\ entries present before it and appends past them; a rollback rewinds them and
+\ a capture compacts them. Inside the verifier window the replayed `undefine`
+\ also retires the engine records of the name (CHECKER-OVERLAY:RETIRE).
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
@@ -17374,10 +16275,9 @@ CHECKER-REG:SCRATCH{
 variable NORET-FMEND
 CHECKER-REG:}SCRATCH
 
-\ NORET-SCAN-SYM ( n -- ) : NORET-CTL = the newest packed control word for sym
-\ (later wins, 0 when the symbol has no entry); NORET-FMEND = that entry's end
-\ offset (the cache dependency). Older entries are shadowed by the newest one and
-\ cannot change either value, so the per-symbol head answers both in one load.
+\ NORET-CTL = sym's newest packed control word (0 with no entry); NORET-FMEND =
+\ that entry's end offset (the cache dependency). The per-symbol head answers
+\ both in one load.
 : NORET-SCAN-SYM {: sym:n :}
    0 NORET-CTL !
    0 NORET-FMEND !
@@ -17408,7 +16308,7 @@ CHECKER-REG:}SCRATCH
    a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
 
 \ The return-stack transfers and the control words the walk types by spelling.
-\ `>r` `r>` `r@` are compile keywords the JIT matches before any lookup (habu2.f
+\ `>r` `r>` `r@` are compile keywords the engine matches before any lookup (habu2.f
 \ EM-COMPILE-META-KEYWORDS), so their spelling is the word. Every other row is
 \ an engine word a package or a redefinition can shadow, asked only when `core`
 \ says the token binds the engine's own word (CTL-CORE-OP, TOK-CORE-OP?).
@@ -17444,20 +16344,18 @@ CHECKER-REG:}SCRATCH
    a u CHECKER-FIND-ACTIVE-SYM CTL-MASKS-SYM ;
 
 \ `id INTRINSIC`, at top level right after the source definition of an engine
-\ word the walk types by what it does, tags the definition just closed as that
-\ engine word (CTL-INTRINSIC above), the way `immediate` marks the latest
-\ word. It parses nothing and resolves no spelling: the symbol is
-\ CK-CLOSED-SYM, the definition recorded last, cleared by a live check that
-\ certified nothing, and the entry carries that symbol's other facts forward
-\ (later-wins, as PTX-BARRIER-SET does). A replay of the same source never
-\ runs this line; the definition's end keeps the identity its symbol already
-\ carries instead. It has no PRIM row on purpose: the seal's internal-word
-\ pass leaves it callable by the engine's own source alone, so no program can
-\ claim that its word is an engine word. An id the field cannot hold, or no
-\ recorded definition to tag, is a broken registration.
-\ The row declarers' ids also publish CTL-PARSES (INTRINSIC-CTL): each reads
-\ its row after it, but its trusted body calls the registrar the scan refuses,
-\ so no checked body records the flag its parse-name calls give.
+\ word the walk types by what it does, tags it as that engine word
+\ (CTL-INTRINSIC above), as `immediate` marks the latest word. The symbol is
+\ CK-CLOSED-SYM (the definition recorded last, cleared by a live check that
+\ certified nothing), and the entry carries its other facts forward. A replay
+\ never runs this line; the definition's end keeps the identity its symbol
+\ carries. It has no PRIM row on purpose: the seal's internal-word pass leaves
+\ it callable by the engine's own source alone, so no program can claim its word
+\ is an engine word. An id the field cannot hold, or no recorded definition to
+\ tag, is a broken registration.
+\ The row declarers' ids also publish CTL-PARSES (INTRINSIC-CTL): each reads its
+\ row, but its trusted body calls the registrar the scan refuses, so no checked
+\ body records the flag its parse-name calls give.
 : INTRINSIC-CTL ( n -- n ) {: id:n :}
    id INTRINSIC>CTL
    id INTRINSIC-PARSES =  id INTRINSIC-PARSES-THROUGH =  or  id INTRINSIC-NAMES =  or IF
@@ -17479,12 +16377,11 @@ CHECKER-REG:}SCRATCH
 : EFFECT-EXTERNAL-SYM? ( n -- bool )
    CTL-FLAGS-SYM EFFECT-EXTERNAL and 0 <> ;
 
-\ The engine word a bare token names: when the engine's global wordlist claims
-\ the token, the global symbol under which the store keeps what it knows of
-\ that engine word, which no row makes bindable (`evaluate` has no effect row,
-\ and NORET-AXIOMS gives it CTL-RENDERS) - 0 when the store holds nothing for
-\ it - and true; 0 and false when the wordlist does not claim the token or the
-\ source has explicitly retired it.
+\ When the engine's global wordlist claims the token: the global symbol the
+\ store keeps that engine word's facts under (0 when it holds none; no row makes
+\ it bindable: `evaluate` has no effect row, NORET-AXIOMS gives it CTL-RENDERS)
+\ and true. 0 and false when the wordlist does not claim the token or the source
+\ retired it.
 : ENGINE-WORD-SYM ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
    a u CHECKER-GLOBAL-SYM? SYM-DELETED? IF 0 RES-FALSE EXIT THEN
@@ -17643,8 +16540,8 @@ defer CK-AOT-REC-CONTROL ( ptr n -- n bool )
 
 \ Reference-scoped existence for source callers and load guards. A private or
 \ ABI-only row is not a callable source effect; EFFECT-QUERY still exposes ABI
-\ facts. Primitive-only rows stay excluded, as this query has always promised.
-\ The common resolver preserves package/using binding order and ambiguity errors.
+\ facts. Primitive-only rows are excluded. The common resolver preserves
+\ package/using binding order and ambiguity errors.
 : CHECKER-RESOLVES? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
@@ -17652,29 +16549,19 @@ defer CK-AOT-REC-CONTROL ( ptr n -- n bool )
 
 package CHECKER-EFFECT-AUTHORITY
 private
-\ The publish tail of E-ADD-EFFECT, and so the one place a user record's
-\ per-symbol facts are written — which is why the created-word latches are
-\ consumed HERE and nowhere else: the record whose publication takes a latch
-\ is the record whose symbol the fact belongs to. Both takes are unconditional
-\ so that a latch can never outlive one record, and the VALUE is kept only for a
-\ certified record: a rejected definition re-recorded in multi-error mode
-\ (CHECK, source authority) publishes with external false and must teach the
-\ checker nothing about what it would have created.
-\
-\ A DEFINER'S OWN CLAUSE WINS over the wrapper rule, which is only reached when
-\ the record is not a definer's: a definer whose body also calls a definer arms
-\ both latches, and what it creates is what its own `does>` clause declared.
-\ A new record clears CTL-GENERATES: only a `generates:` row after the
-\ definition states its effect (CHECKER-GENERATES), and a wrapper, which takes
-\ its definer's effect, states nothing about the rest of its body.
-\
-\ A TRUSTED definer's clause reaches this word too. It has no body check of its
-\ own to step the latch, so TRUST-DECL steps it at the publication instead and
-\ the take below sees the same state 2 a checked definer's record does.
-\
-\ Later-wins: an entry appended for the authority bit alone must carry the
-\ symbol's existing masks forward, or it would silently retract evidence the
-\ definition end recorded a moment earlier.
+\ The publish tail of E-ADD-EFFECT, the one place a user record's per-symbol
+\ facts are written, so the created-word latches are consumed here: the record
+\ whose publication takes a latch is the record the fact belongs to. Both takes
+\ are unconditional, so a latch never outlives one record; the value is kept
+\ only for a certified record (a rejected definition re-recorded in multi-error
+\ mode publishes with external false and teaches nothing).
+\ A definer's own clause wins over the wrapper rule: a definer whose body also
+\ calls a definer arms both latches. A new record clears CTL-GENERATES: only a
+\ `generates:` row after the definition states its effect (CHECKER-GENERATES).
+\ A TRUSTED definer has no body check to step the latch, so TRUST-DECL steps it
+\ at publication and the take sees the state 2 a checked definer's record does.
+\ An entry appended for the authority bit alone carries the symbol's masks
+\ forward, or it would retract evidence the definition end just recorded.
 : STORE ( n bool -- ) {: sym:n external:bool :}
    DOES-EFF-TAKE WRAP-TAKE {: latched:n wrapped:n :}
    external IF latched 0 <> IF latched ELSE wrapped THEN ELSE 0 THEN {: creates:n :}
@@ -17692,19 +16579,15 @@ get-current prot-wid-add
 ;package
 
 \ ---- what a definer creates, asked about a resident definer -------------------
-\ A definer the source pre-verifier READ is in its own table with the clause
-\ text (verify-source DEFINER-EFFECT); a definer that is RESIDENT — compiled in
-\ this process, its clause never scanned — is known only here, through the latch
-\ above — a definer's own clause through DOESEFF, a straight-line wrapper of one
-\ through WRAPC. These two words are that store's whole surface, and the pre-pass
-\ is their only caller.
-\
-\ THE CREATED WORD IS REGISTERED FROM THE ROWS, not from re-parsed text, because
-\ the rows are what the clause certified: instantiating them keeps each type
-\ variable's kind (E-INST-FROM restores the persisted TVK-RAW a raw definer
-\ minted), which is exactly the seal `trust-raw` puts on a created word at run
-\ time, and it keeps a family the clause named without re-resolving that name in
-\ a scope that is not the definer's.
+\ A definer the source pre-verifier read is in its own table with the clause
+\ text (verify-source DEFINER-EFFECT); a resident definer, compiled in this
+\ process, is known only through the latch above (its own clause through
+\ DOESEFF, a straight-line wrapper through WRAPC). The pre-pass is the only
+\ caller of these two words. The created word is registered from the rows the
+\ clause certified, not re-parsed text: instantiating them keeps each type
+\ variable's kind (E-INST-FROM restores a raw definer's TVK-RAW, the seal
+\ `trust-raw` puts on a created word at run time) and keeps a family the clause
+\ named without resolving it again in a scope that is not the definer's.
 : CHECKER-CREATES-SYM? ( n -- n )           \ sym's created effect, offset+1, 0 = not a definer
    NORET-CREATES@ ;
 
@@ -17731,19 +16614,13 @@ get-current prot-wid-add
    sym PRIM-FIRST-IDX dup 0= IF drop -1 EXIT THEN
    1 - PE-EFF@ E-PTR E-MINI@ ;
 
-\ Whether control comes back from a call to the word this spelling denotes.
-\
-\ THE MASK BELONGS WITH THE ENCODING IT READS. Which bit means dead is this
-\ file's, and src/compiler/native/dict.f's own comment says so - it wants to know
-\ whether the call comes back, not which bit says it. That file used to hold a
-\ second copy of `CTL-DEAD and 0 <>` behind a trusted boundary because a boot
-\ prefix reader was all it could reach; with the axiom row above it reaches this,
-\ and the copy is gone. DEAD-CUR? below asks the same question of the walk's
-\ current symbol, which is the other half of the same encoding and stays here too.
+\ Whether control comes back from a call to the word this spelling denotes. The
+\ bit encoding is this file's: src/compiler/native/dict.f asks through this
+\ word, and DEAD-CUR? asks the same of the walk's current symbol.
 : CTL-DEAD? ( ptr u8 n -- bool )
    CTL-FLAGS CTL-DEAD and 0 <> ;
 
-\ M5: OR CTL-BARRIER into a symbol's control flags (append later-wins, preserving
+\ OR CTL-BARRIER into a symbol's control flags (append later-wins, preserving
 \ any dead/throw already recorded), then arm the E-ADD-EFFECT hook.
 : PTX-BARRIER-SET ( n -- ) {: sym:n :}
    sym CTL-FLAGS-SYM CTL-BARRIER or {: flags:n :}
@@ -17751,22 +16628,20 @@ get-current prot-wid-add
 : PTX-BARRIER-SET-INSTALL ( -- ) [: PTX-BARRIER-SET ;] is PTX-BARRIER-SET-XT ;
 PTX-BARRIER-SET-INSTALL
 
-\ M5b explicit per-word barrier declaration. Some block-uniform-barrier words do
-\ not carry the tile->uniform (or committed->ready) SHAPE the E-ADD-EFFECT
-\ detector keys on: BLOCK-MAX-SELECT emits bar.sync internally but RETURNS a tile
-\ (a masked scatter of the arg-max cotangent), so the structural detector misses
-\ it. Mark such a word BY NAME after its definition; it then flags CTL-BARRIER and
-\ composes at the same BARRIER-CUR?/ALL-CF-UNIFORM? choke as the shape-detected
-\ collectives — no parallel registry, the same NORET control-flag path. Unknown
-\ names fail closed so a typo can never silently leave a barrier unmarked.
+\ Explicit per-word barrier declaration, for a block-uniform barrier word
+\ without the tile->uniform (or committed->ready) shape the E-ADD-EFFECT
+\ detector keys on, such as one that emits bar.sync but returns a tile. The word
+\ then flags CTL-BARRIER through the same NORET path and composes at the same
+\ BARRIER-CUR?/ALL-CF-UNIFORM? choke. Unknown names fail closed, so a typo
+\ cannot leave a barrier unmarked.
 : PTX-BARRIER! ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM dup 0= IF
       drop s" PTX-BARRIER!: unknown word" 76 die
    ELSE PTX-BARRIER-SET THEN ;
 
-\ CURSYM: the resolved symbol of the current body token (set by DO-TOK, 0 for
-\ literals/definers/memory tokens), so the throw/dead classification after the
-\ effect application reuses one symbol resolution instead of re-scanning.
+\ The resolved symbol of the current body token (DO-TOK; 0 for literals,
+\ definers and memory tokens), so the throw/dead classification after the
+\ effect application reuses one resolution.
 variable CURSYM
 0 CURSYM !
 
@@ -17792,22 +16667,19 @@ variable CURSYM
    XE-PR @ RCUR @ rk XBASE-R CALL-EDGE-MASK
    THROW-EDGE ;
 
-\ M5: current token is a block collective (CTL-BARRIER, set by E-ADD-EFFECT). The
-\ classification helpers (ROW-HAS-FAM?/PTX-BARRIER-ROWS?) live above E-ADD-EFFECT.
+\ The current token is a block collective (CTL-BARRIER, set by E-ADD-EFFECT).
+\ ROW-HAS-FAM? and PTX-BARRIER-ROWS? live above E-ADD-EFFECT.
 : BARRIER-CUR? ( -- bool )
    CTL-FLAGS-CUR CTL-BARRIER and 0 <> ;
 
-\ Tokens whose execution from a checked body is unsound whatever their
-\ admitting row says: the type-DSL block openers (sumtype.f, PRIM: axioms)
-\ and the roles.f nominal definers (checked words with certified ( -- )
-\ usigs) parse the live input stream and mutate the type registry (or throw
-\ at EOF) — side effects no effect row expresses (dots
-\ habu-checker-in-body-af7cf855, habu-checker-deftype-deflinear-8e9d1dc5).
-\ DO-TOK1 consults this set before DO-TOK's usig/prim lookup, so BARE
-\ spellings reject in bodies via both admission paths; qualified spellings
-\ cannot arise because EXPORT refuses to mint an alias for these names
-\ (E-EXPORT-UNSAFE below). CI compares: DO-TOK1 passes folded tokens,
-\ EXPORT-RESOLVE passes raw source tails.
+\ Tokens whose execution from a checked body is unsound whatever their row says:
+\ the type-DSL block openers (sumtype.f, PRIM: axioms) and the roles.f nominal
+\ definers parse the live input and mutate the type registry (or throw at EOF),
+\ side effects no effect row expresses. DO-TOK1 asks this before DO-TOK's
+\ usig/prim lookup, so bare spellings reject through both admission paths;
+\ EXPORT refuses an alias for these names (E-EXPORT-UNSAFE), so no qualified
+\ spelling arises. Compared case-insensitively: DO-TOK1 passes folded tokens,
+\ EXPORT-RESOLVE raw source tails.
 : UNSAFE-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -17846,27 +16718,18 @@ variable CURSYM
    a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ]" CORE-STR=CI ;
 
-\ --- retired-token set (dots habu-own-product-field-86660116 /
-\ habu-type-field-owner-619ec6b5) --------------------------------------------
-\ The raw GLOBAL product-field lifecycle words were retired when package
-\ TYPE-FIELD-OWNER became the sole authority over field transactions. Deleting
-\ them from the dictionary is NOT the enforcement: an undefined token only makes
-\ CHECK return 1 (uncheckable), and any later source can define a global word
-\ with the same spelling and get it admitted through an ordinary signature. The
-\ rows below make the rejection structural instead — DO-TOK1 consults them
-\ BEFORE DO-TOK's usig/prim lookup, so a bare global use rejects with verdict 0
-\ whatever a future admitting row might say.
-\
-\ The invariant is about the retired GLOBAL words, not about the spelling. A
-\ package that owns its own word with one of these tails owns a DIFFERENT word,
-\ and it must stay live and certifiable. So RETIRED-GLOBAL? matches the spelling first (exact and
-\ case-folded — it is handed the raw token and folds here, as the symbol table
-\ does — never a prefix, so PF-COMMIT-N
-\ and PF-NO-VARIANT are untouched), then asks the ordinary resolver where the
-\ token actually binds. It rejects only at the two positions that would have
-\ reached the retired raw global: the token resolves at global position, or it
-\ resolves nowhere at all. An open-package or used-package hit is someone else's
-\ word and passes straight through.
+\ --- retired-token set --------------------------------------------------------
+\ The raw global product-field lifecycle words are retired: package
+\ TYPE-FIELD-OWNER is the sole authority over field transactions. An undefined
+\ token only makes CHECK return 1, and later source could define a global of the
+\ same spelling, so DO-TOK1 asks these rows before DO-TOK's usig/prim lookup and
+\ a bare global use rejects with verdict 0.
+\ A package word with one of these tails is a different word and stays
+\ certifiable. RETIRED-GLOBAL? (beside REJECT-RETIRED, where the locals table is
+\ in scope) matches the spelling here, case-folded and never as a prefix
+\ (PF-COMMIT-N and PF-NO-VARIANT are untouched), then rejects only where the
+\ token would reach the retired global: it resolves at global position or
+\ nowhere. An open-package or used-package hit passes.
 : RETIRED-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" pf-begin" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" pf-add" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -17876,25 +16739,17 @@ variable CURSYM
    a u s" pf-commit" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" pf-rollback" CORE-STR=CI ;
 
-\ RETIRED-GLOBAL? (the position test) lives beside REJECT-RETIRED below, where
-\ the locals table is already in scope.
-
-\ --- unsafe-symbol set (dot habu-checker-unsafety-as-1c537c1f) ----------------
-\ Unsafety is a property of the WORD, not its spelling. UNSAFE-TOK? above keeps
-\ the canonical name list for the DO-TOK1 body reject and for the symbol-less
-\ engine/syntax tokens ([, ], immediate, evaluate, trust,
-\ set-check, set-preflight) that never intern a checker symbol. The
-\ definers/openers (deflinear, value-record, sumtype, enum, product,
-\ newtype, layout-buffer)
-\ DO intern a symbol, and those are exactly the words that carry a checked
-\ signature or a prim axiom — so they are the only ones an EXPORT alias could
-\ mint. UNSAFE-SET-SEAL interns their symbol IDs here at seal time; the EXPORT
-\ gate (EXPORT-RESOLVE) then refuses to re-export any of them BY IDENTITY: a
-\ qualified reference (PKG:DEFLINEAR), a differently-spelled reference, or any
-\ future rename that still resolves to the same symbol is rejected, not just the
-\ bare canonical spelling the tail-name check catches. Storing IDs (not
-\ pointers) keeps the set snapshot-stable; it is monotonic and never rolled back
-\ because these are permanent engine-prefix words above every checking watermark.
+\ --- unsafe-symbol set --------------------------------------------------------
+\ Unsafety is a property of the word, not its spelling. UNSAFE-TOK? keeps the
+\ name list for the DO-TOK1 body reject and for the engine and syntax tokens
+\ that never intern a checker symbol ([, ], immediate, evaluate, trust,
+\ set-check, set-preflight). The definers and openers (deflinear, value-record,
+\ sumtype, enum, product, newtype, layout-buffer) intern one, so only they could
+\ get an EXPORT alias: UNSAFE-SET-SEAL interns their symbol ids at seal time and
+\ EXPORT-RESOLVE refuses to re-export any of them by identity, under any
+\ spelling or qualification. Ids keep the set snapshot-stable; it is monotonic
+\ and never rolled back, since these are permanent engine-prefix words above
+\ every checking watermark.
 32 constant UNSAFE-SYM-CAP
 create UNSAFE-SYMS UNSAFE-SYM-CAP cells allot
 variable UNSAFE-SYM-N
@@ -17979,13 +16834,11 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    na nu  na nu CLAUSE-NAME  CHECKER-OVERLAY:CLAUSE ;
 
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
-\ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section
-\ publishes NAME's effect under NAME's tail in the CURRENT package scope: one
-\ word, two names. The alias is a FRESH scheme copy — E-INST instantiates the
-\ source record into working terms, E-ADD-EFFECT re-records them (alpha-
-\ equivalent) under the new sym — plus the source's defer flag and control-
-\ effect flags. Rollback safety is inherited: the alias's SYM/USIG/DFER/NORET
-\ rows sit under the standard RBF-PUSH/POP watermarks. Fail-closed:
+\ `EXPORT NAME` in an open package section publishes NAME's effect under NAME's
+\ tail in the current package scope: one word, two names. The alias is a fresh
+\ scheme copy (E-INST into working terms, E-ADD-EFFECT under the new sym) plus
+\ the source's defer and control-effect flags; its SYM/USIG/DFER/NORET rows sit
+\ under the RBF-PUSH/POP watermarks. Fail-closed:
 \ - E-EXPORT-NO-PACKAGE: no open package (outside a package there is no target
 \   scope, and a global re-export would un-namespace a package word);
 \ - E-EXPORT-SEALED: source qualified into a sealed system package (checker
@@ -17994,13 +16847,10 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 \   overloaded; copying the first row would silently narrow the effect);
 \ - E-EXPORT-UNDEFINED: source has no checked signature (undefined, private in
 \   a closed package — qualified lookup is public-only — or uncertified);
-\ - E-EXPORT-UNSAFE: the source is an unsafe word, caught two ways — its tail is
-\   an UNSAFE-TOK? name (openers, roles.f definers, trust/evaluate class), and
-\   its resolved symbol is in the UNSAFE-SYM? identity set (dot
-\   habu-checker-unsafety-as-1c537c1f). Either way the alias would give the
-\   unsafe word a second spelling that escapes the name-keyed body reject; the
-\   symbol leg rejects by IDENTITY so a qualified or renamed reference that
-\   resolves to the same symbol cannot launder it past this gate;
+\ - E-EXPORT-UNSAFE: the tail is an UNSAFE-TOK? name (openers, roles.f definers,
+\   trust/evaluate class) or the resolved symbol is in the UNSAFE-SYM? identity
+\   set: the alias would give the word a second spelling past the name-keyed
+\   body reject, and the symbol leg catches a qualified or renamed reference;
 \ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E);
 \ - in a replay, a loaded record of the tail with a does> clause where the
 \   source carries none, or with none where it carries one
@@ -18018,25 +16868,21 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 7115 constant E-EXPORT-PRIM
 7120 constant E-EXPORT-UNSAFE    \ 7116-7119 = sumtype.f E-TDECL block
 
-\ CAST: legality rejects (dot habu-checked-cast-primitive). A cast declares a
-\ retype between two single-cell machine types; the gate below refuses anything
-\ wider than that class (7121-7128 = layout-buffer/type-family blocks).
+\ CAST: legality rejects. A cast retypes between two single-cell machine types;
+\ the gate refuses anything wider (7121-7128 are the layout-buffer and
+\ type-family blocks).
 7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
 7135 constant E-CAST-OWNER    \ the output introduces a foreign cell family
-\ 7136 is E-PKG-CONTEXT above; the linear rule took the next free code in this
-\ block rather than sharing 7135, so a test can tell the two rejects apart.
 7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
-\ 7138-7146 are taken (dynamic storage, E-RIGID-EXHAUST, the using/trust/shadow
-\ rejects); the mint rule took the next free code.
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
 \ E-CAST-SCOPE: a cast would erase or introduce a scope dependency (a scoped
 \ term on either side, outside the view representation casts VIEW-CAST-CERTIFY
 \ admits: C2-MEM's private packs and unpacks, a private read-view unpack).
 7151 constant E-CAST-SCOPE
-\ `linear:` rejects (dot habu-mint-and-erase): the arity and unknown-type shapes
-\ are the cast block's own E-CAST-ARITY and E-CAST-FAM.
+\ `linear:` rejects: the arity and unknown-type shapes are the cast block's own
+\ E-CAST-ARITY and E-CAST-FAM.
 7195 constant E-LINEAR-PAYLOAD \ not one linear con and one non-linear payload
 7196 constant E-LINEAR-OWNER  \ the linear type was not declared by this package
 7197 constant E-LINEAR-SCOPE  \ the row is outside its owner's private section
@@ -18063,8 +16909,8 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
    E-EXPORT-UNDEFINED throw ;
 
-\ EXPORT-EFF-INST ( ptr u8 -- n n n n bool ) : instantiate the source record's
-\ rows into fresh working terms (din dout rin rout hasr, E-ADD-EFFECT intake).
+\ din dout rin rout hasr: the source record's rows in fresh working terms, as
+\ E-ADD-EFFECT takes them.
 : EXPORT-EFF-INST ( ptr u8 -- n n n n bool ) {: h:ptr :}
    h E-INST-RESET
    h E-DIN@ E-INST
@@ -18233,8 +17079,6 @@ CHECKER-REG:}SCRATCH
    IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REST RES-FALSE THEN
    TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;     \ (stack-neutral; the bool stays on top)
 
-\ TRY-PRIMS ( n -- bool ) : try each prim overload for sym until one unifies.
-\ Starts at the cached first slot and stops at the first success.
 defer C2-STOW-BORROW-HOOK ( -- )
 
 : TRY-PRIMS ( n -- bool ) {: sym:n :}
@@ -18259,8 +17103,9 @@ defer C2-STOW-BORROW-HOOK ( -- )
 \ digits-before-dot optional. Admission is asked separately of num-parse so an
 \ overflowing decimal stays claimed here instead of falling through as a name.
 \ dot-leading spellings (.5 -.5 .0) ARE engine float literals, and the checker
-\ must claim precisely the tokens the runtime claims (GD-LITERAL-FIRST) or a
-\ number-shaped word certifies as a call the runtime can never reach.
+\ must claim precisely the tokens the runtime claims (test/gate-dictionary-lib.f
+\ LITERAL-FIRST) or a number-shaped word certifies as a call the runtime can
+\ never reach.
 : FLODIG-CHAR ( n bool u8 -- n bool )
    {: dots:n valid:bool c:u8 :}
    c 46 = IF dots 1 + valid dots 0= and EXIT THEN
@@ -18331,7 +17176,7 @@ defer C2-STOW-BORROW-HOOK ( -- )
 : ROW-TOP-BYTE-PTR? ( n -- bool )
    R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop RES-FALSE ;
 
-\ --- width facts (the emitter fact surface, type-family.f header) -------------
+\ --- width facts -------------
 \ Per checked definition the checker records one row for every operation whose
 \ lowering needs a logical layout width. Transport/locals rows use logical
 \ operand positions; layout-memory rows use position 0 as the operation's
@@ -18361,7 +17206,7 @@ CHECKER-REG:}SCRATCH
 
 1 constant WF-FETCH-FLAG
 2 constant WF-STORE-FLAG
-4 constant WF-XPAD-FLAG   \ layout-cap slice 4: construct/MATCH extra-pad fact (w = instantiated_pads - declared_pads)
+4 constant WF-XPAD-FLAG   \ construct/MATCH extra-pad fact (w = instantiated_pads - declared_pads)
 8 constant WF-INIT-FLAG   \ authenticated WITH-INIT call's fixed record width
 16 constant WF-FIELD-FLAG \ an authenticated initialized-field loan needs pass 2
 
@@ -18442,19 +17287,16 @@ CHECKER-REG:}SCRATCH
 : WF-MEM-RECORD ( n n -- ) {: t:n flags:n :}
    0 t PARAM>FAM t t T-WIDTH flags WF-ADD-FULL ;
 
-\ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): `!`/`@`
-\ through a `ptr family<..>` address move the pointee's whole logical value.
-\ The ADDRESS type picks the arm — family identity lives in the pointer, so a
-\ bare `ptr a` store of a layout value stays rejected, a mismatched family
-\ rejects in ordinary unification, an `n` cannot enter an enum slot, and a
-\ fetched value is born typed (never a bare n). LAYOUT-MEM-OK? admits every
-\ closed non-linear layout width; WF-MEM-RECORD gives pass 2 the registry width
-\ before CHECKER-STEP mutates the row. The effect rows push the family's hidden
-\ expansion, so the value side pairs hidden-to-hidden like every checked row.
-\ A nominal-scalar pointee (arity-0 TK-CELL param) takes the same arm with
-\ param-to-param rows, but
-\ records no width fact: every raw cell is a valid value of the family, so it
-\ lowers as a plain scalar with no fetch-validation program.
+\ --- storable layouts: `!`/`@` through a `ptr family<..>` address move the
+\ pointee's whole logical value. The address type picks the arm: a bare `ptr a`
+\ store of a layout value stays refused, a mismatched family fails ordinary
+\ unification, an `n` cannot enter an enum slot, and a fetched value is born
+\ typed. LAYOUT-MEM-OK? admits every closed non-linear layout width;
+\ WF-MEM-RECORD gives pass 2 the registry width before CHECKER-STEP mutates the
+\ row. The effect rows push the family's hidden expansion, so the value side
+\ pairs hidden-to-hidden. A nominal-scalar pointee (arity-0 TK-CELL param) takes
+\ the same arm with param-to-param rows but records no width fact: every raw
+\ cell is a valid value of the family, so it lowers as a plain scalar.
 : LAYOUT-MEM-INNER ( -- n bool )   \ resolved DCUR top `ptr fam<..>` -> logical pointee
    DCUR @ R-RES {: node:n :}
    node TAG S-PUSH <> IF 0 RES-FALSE EXIT THEN
@@ -18481,14 +17323,12 @@ CHECKER-REG:}SCRATCH
    t MK-PTR swap MK-PUSH
    rest RECORDED-STEP ;
 
-\ Byte-pointer cell-op reject (dot habu-checker-diag-for-4c443fcf). `!`/`@` need
-\ a cell-width `ptr a`, but ROW-TOP-BYTE-PTR? found a `ptr u8`. STEP-STORE/
-\ STEP-FETCH unify a fresh-var pointee, so a byte pointer clears their unify and
-\ only the width rule rejects — with no captured pair, so the diagnostic named
-\ just the token. Populate the mismatch pair (expected `ptr a`, actual `ptr u8`)
-\ so text and JSON render expected/actual like every other mismatch, unless an
-\ earlier failure already owns the diagnostic (FAILSET). UF-SET is 0 after a
-\ cleared unify, so UF>DIAG clears the ADT family/variant fields.
+\ `!`/`@` need a cell-width `ptr a`; ROW-TOP-BYTE-PTR? found a `ptr u8`.
+\ STEP-STORE/STEP-FETCH unify a fresh-var pointee, so a byte pointer clears
+\ their unify and only the width rule rejects, with no captured pair. Populate
+\ the mismatch pair (expected `ptr a`, actual `ptr u8`) so text and JSON render
+\ expected/actual, unless an earlier failure owns the diagnostic (FAILSET).
+\ UF-SET is 0 after a cleared unify, so UF>DIAG clears the ADT fields.
 : MEM-BYTE-PTR-REJECT ( -- )
    0 OK !
    FAILSET @ 0= IF
@@ -18539,16 +17379,14 @@ CHECKER-REG:}SCRATCH
    retained OK @ and IF QCON-OK? 0= IF 0 OK ! -1 FAILSET ! THEN THEN
    bad IF MEM-BYTE-PTR-REJECT THEN ;
 
-\ `ptr-field` on an undeclared raw cell (dot habu-refuse-a-ptr-5ad2734e). Its row
-\ is `ptr a n -- ptr ptr b` with `b` a FREE variable unrelated to `a`, so taking
-\ the field of a raw cell answers a fully typed pointer-to-pointer the RAW
-\ discipline never sees -- `V ! V 0 ptr-field @ @` forged a nominal value that
-\ `V ! V @` is refused. The pointee cannot carry the refusal (`ptr-field` is one
-\ prim row for every base), so the BASE is checked here, before the row is
-\ applied: a base whose pointee is still a RAW var is a raw cell and is refused.
-\ A declared cell (PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE, LAYOUT
-\ storage) has a TVK-ANY or concrete pointee and falls through to the prim row
-\ unchanged. The base sits UNDER the index: `( ptr a n -- )`.
+\ `ptr-field` on an undeclared raw cell. Its row is `ptr a n -- ptr ptr b` with
+\ `b` free, so the field of a raw cell would answer a typed pointer-to-pointer
+\ the RAW discipline never sees (`V ! V 0 ptr-field @ @` would forge a nominal
+\ value that `V ! V @` is refused). `ptr-field` is one prim row for every base,
+\ so the base is checked here before the row applies: a base whose pointee is
+\ still a RAW var is refused. A declared cell (PTR-VARIABLE,
+\ PERSISTED-PTR-VARIABLE, TYPED-VARIABLE, LAYOUT storage) has a TVK-ANY or
+\ concrete pointee and takes the prim row. The base sits under the index.
 : RAW-FIELD-BASE? ( n -- bool )   \ row: is the cell under the top a raw storage cell?
    R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN        \ the field index
    P>REST R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN \ the base
@@ -19334,7 +18172,7 @@ defer NAMED-OPERAND-XT ( -- )
    BIND-TOK  TOK-CTL @ CTL-CORE-OP and 0 <> ;
 
 \ ---- what a checked call may do with the row its symbol's lookup found --------
-\ Asked once FEP holds that row (FEP-HIT). A trusted-only primitive behind the
+\ Asked once FEP holds that row (FEP-HIT?). A trusted-only primitive behind the
 \ symbol refuses the call by name (E-CAP-TRUSTED). This run's recovery fact
 \ applies and is a recovery use under any authority, an unjudged scan's too: the
 \ native compiler withholds the definition that used it. Otherwise the row
@@ -19563,11 +18401,10 @@ variable CHECKER-PREFIX-ROLLBACK
       1 +
    REPEAT drop ;
 
-\ WF-POS-RECORD ( n -- n ) : one LOGICAL operand at a resolved S-PUSH node —
-\ record a width fact when it is a layout value (an expanded hidden group, whose
-\ width = group cell count = registry width, or the one logical cell of a layout
-\ whose width reads an open argument, LAYOUT-WIDTH-OPEN?) and return the row
-\ below the whole operand.
+\ One logical operand at a resolved S-PUSH node: record a width fact when it is
+\ a layout value (an expanded hidden group, whose width = group cell count =
+\ registry width, or the one logical cell of a layout whose width reads an open
+\ argument, LAYOUT-WIDTH-OPEN?) and return the row below the whole operand.
 : WF-POS-RECORD ( n -- n ) {: node:n :}
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
@@ -19622,7 +18459,7 @@ variable CHECKER-PREFIX-ROLLBACK
       dup WF-WIDTH@ 1 > IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
-: WF-XPAD? ( -- bool )   \ layout-cap slice 4: any construct/MATCH extra-pad fact (triggers pass-2 even at extra=1)
+: WF-XPAD? ( -- bool )   \ any construct/MATCH extra-pad fact (triggers pass-2 even at extra=1)
    0 BEGIN dup WF-N @ < WHILE
       dup WF-FLAGS@ WF-XPAD-FLAG and 0 <> IF drop RES-TRUE EXIT THEN
       1 +
@@ -19656,22 +18493,20 @@ variable CHECKER-PREFIX-ROLLBACK
       1 +
    REPEAT drop 1 ;
 
-\ --- whole-bundle transport row surgery (type-family.f header) ----------
-\ With hidden-field expansion a layout value is W consecutive hidden cells (tag
-\ on top, slot0 deepest). A transport op whose top-k logical operands include
-\ such a group cannot use the var-based prim effect (a hidden field never binds
-\ a var), so the checker rebuilds the consumed row directly: read k logical
-\ GROUPS (a hidden tag opens an exactly-W run, validated slot W-1..0 same
-\ family — die 76 on a malformed run, an internal invariant; any other cell is
-\ a 1-cell group; a row var materializes a fresh 1-cell var group through the
-\ normal FRESH+UNIFY mechanism, exactly as the prim effect would — underflow
-\ against a short concrete row is the normal UNIFY reject), then write the op's
-\ output permutation with MK-PUSH from the group lists. Pure-scalar rows never
-\ reach this path: the prim/RS effects stay byte-for-byte. A logical layout
-\ cell (its width reads an open argument, LAYOUT-WIDTH-OPEN?) among the operands
+\ --- whole-bundle transport row surgery (type-family.f TFAM-WIDTH@) ----------
+\ A layout value is W consecutive hidden cells (tag on top, slot0 deepest). A
+\ transport op whose top-k logical operands include such a group cannot use the
+\ var-based prim effect (a hidden field never binds a var), so the checker
+\ rebuilds the consumed row: read k logical groups (a hidden tag opens an
+\ exactly-W run validated slot W-1..0 as one family, die 76 on a malformed run;
+\ any other cell is a 1-cell group; a row var materializes a fresh 1-cell var
+\ group through FRESH+UNIFY, and underflow is the normal UNIFY reject), then
+\ write the op's output permutation with MK-PUSH. Pure-scalar rows never reach
+\ this path. A logical layout cell (LAYOUT-WIDTH-OPEN?) among the operands
 \ rejects here (XG-READ-GROUP); without a hidden group or proof/lost metadata
-\ among the operands (XPORT-STEP?) it takes the one-cell path, which LAYOUT-XPORT-ALLOW? refuses when the layout may be linear
-\ (TDLIN-VAR-TOR, TDLIN-VAR-DUP).
+\ among the operands (XPORT-STEP?) the op takes the one-cell path, which
+\ LAYOUT-XPORT-ALLOW? refuses when the layout may be linear (TDLIN-VAR-TOR,
+\ TDLIN-VAR-DUP).
 64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
 256 constant XG-TCAP           \ max total cells across one op's groups
 create XG-TERMS XG-TCAP cells allot
@@ -19944,9 +18779,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
    REPEAT drop RES-FALSE ;
 
 \ depth/.s report raw physical cells: over a row holding hidden fields they
-\ would expose the physical expansion of a logical value, so they fail closed
-\ PERMANENTLY (type-family.f header sanctions reject over logical-shape
-\ reporting).
+\ would expose a logical value's expansion, so they fail closed.
 : HIDROW-STEP? ( -- bool )
    DCUR @ ROW-ANY-HIDDEN? 0= IF RES-FALSE EXIT THEN
    0 OK !  -1 FAILSET !
@@ -20046,9 +18879,8 @@ variable P2SEQ
    0 LOC-CAP-HEAD !
    0 #LOC !  0 LMODE !  0 LGRP !  0 LI !  0 LRF !
    0 P2SEQ ! ;
-\ per-local type display hook (render.f installs SHOW-LOCAL-TYPE). A `defer` with a
-\ no-op DEFAULT so the call is statically effect-known; the default drops the
-\ name span + length + type, matching the old 0-hook skip before render binds it.
+\ Per-local type display hook (render.f installs SHOW-LOCAL-TYPE). The no-op
+\ default keeps the call effect-known and drops the name span, length and type.
 defer LOCSHOWXT ( ptr u8 n n -- )
 : LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
@@ -20101,16 +18933,14 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
       1 +
    repeat drop ;
 
-\ Over-cap locals fail CLOSED (reject) rather than silently uncheckable: a
-\ definition whose local count or name width exceeds the compiler-matched frame
-\ was previously skipped by the checker (-1 UNCK !), hiding every stack error in
-\ it. LOCALBAD forces verdict 0 so the definition is rejected with a diagnostic
-\ that names the exceeded limit (LOCALBAD-KIND selects the text in render.f).
-\ The load refuses such a local while compiling the body, so the fault refuses
-\ the definition at its token unless an earlier compile-time refusal holds the
-\ diagnostic (REFUSAL-STEP); only then are its kind and width recorded, so a
-\ later local fault cannot relabel the refused token. The verdict is forced
-\ either way.
+\ Over-cap locals fail closed: a definition whose local count or name width
+\ exceeds the compiler-matched frame is rejected (LOCALBAD forces verdict 0)
+\ with a diagnostic naming the limit (LOCALBAD-KIND selects the text in
+\ render.f), not left uncheckable. The load refuses such a local while
+\ compiling the body, so the fault refuses the definition at its token unless
+\ an earlier compile-time refusal holds the diagnostic (REFUSAL-STEP); only then
+\ are its kind and width recorded, so a later local fault cannot relabel the
+\ refused token. The verdict is forced either way.
 : LOC-REJECT ( n n -- ) {: len:n kind:n :}
    RCOMPILE @ 0= IF
       kind LOCALBAD-KIND !  len LOCALBAD-LEN !  RF-LOCAL CREFUSE!
@@ -20138,14 +18968,10 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
      THEN
      #LOC @ 1 + #LOC ! THEN THEN ;
 
-\ Linear values may not launder through locals. A local reference re-pushes its
-\ binding without a LIN-SNAPSHOT/LIN-CHECK-covered step, so the concrete-count
-\ conservation discipline never sees the copy (two references duplicate) or the
-\ drop (an unreferenced local leaks). Binding a linear con into a local — where
-\ the value CONCRETELY resolves linear at bind time — is therefore rejected
-\ outright with a dedicated E-LINEAR-LOCAL diagnostic (keep the linear on the
-\ stack and factor). Path-sensitive per-reference accounting (consume-exactly-
-\ once across every branch) is a separate capability tracked by dot.
+\ Linear values may not launder through locals: a local reference re-pushes its
+\ binding outside LIN-SNAPSHOT/LIN-CHECK, so two references would duplicate and
+\ an unreferenced local would leak. Binding a value that concretely resolves
+\ linear at bind time is refused (E-LINEAR-LOCAL); keep the linear on the stack.
 : LIN-LOCAL-REJECT ( -- )  0 OK !  -1 FAILSET !  -1 LINLOCBAD ! ;
 
 : LIN-LOCAL-BIND-CHECK ( -- )       \ reject if any just-bound local resolves linear
@@ -20380,12 +19206,12 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
    QDEPTH @ 0 >  DEADP @ or IF 0 0 LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
-\ LOC-PUSH-REF ( n -- ) : push local idx's binding. A bundle local (LOCW > 1)
-\ re-expands its whole group — slot0 deepest up to the stored tag term on top
-\ (type-family.f header); a scalar local pushes its var/term with the deferred-linear taint.
-\ A STALE bundle re-pushes stale in EVERY cell: the captured cells were all
-\ wrapped, MK-HIDDEN mints from the family term the wrapper hides, and a payload
-\ cell minted plain would launder the value a throw path may have overwritten.
+\ LOC-PUSH-REF: a bundle local (LOCW > 1) re-expands its whole group, slot0
+\ deepest up to the stored tag term on top; a scalar local pushes its var/term
+\ with the deferred-linear taint. A stale bundle re-pushes stale in every cell:
+\ the captured cells were all wrapped, MK-HIDDEN mints from the family term the
+\ wrapper hides, and a payload cell minted plain would launder the value a
+\ throw path may have overwritten.
 : LOC-REF-ROW ( n n -- n ) {: head:n rest:n :}
    head 0= IF rest EXIT THEN
    head CP-OTHER rest RECURSE {: tail:n :}
@@ -20460,10 +19286,9 @@ $A8 constant CFS-REC
 : CF.TXD ( ptr a -- ptr a ) CF.TXD-OFF + ;
 : CF.TXR ( ptr a -- ptr a ) CF.TXR-OFF + ;
 : CF.TXS ( ptr a -- ptr a ) CF.TXS-OFF + ;
-\ CF.UNI: M5b per-frame block-uniformity. Nonzero when the frame is a control
-\ branch whose condition is provably block-uniform (a uniform<bool> predicate),
-\ so every lane of the block takes the same path. A block-collective/barrier is
-\ sound only when EVERY open frame is uniform (ALL-CF-UNIFORM?).
+\ CF.UNI: nonzero when the frame is a branch whose condition is provably
+\ block-uniform (a uniform<bool> predicate). A block collective or barrier is
+\ sound only when every open frame is uniform (ALL-CF-UNIFORM?).
 : CF.UNI ( ptr a -- ptr a ) CF.UNI-OFF + ;
 : CF.LA ( ptr a -- ptr a ) CF.LA-OFF + ;
 : CF.LB ( ptr a -- ptr a ) CF.LB-OFF + ;
@@ -20627,10 +19452,9 @@ SCOPE-INTRO-FENCE-INSTALL
 
 : CF-MT? #CFC @ 0 > 0= ;
 
-\ M5b: is EVERY open control frame a proven block-uniform branch? A block
-\ collective/barrier is block-uniform-reachable only when no enclosing frame can
-\ diverge lanes — one non-uniform frame (a lane-varying if, or ANY begin/do/case/
-\ quotation/match frame, which never sets CF.UNI) makes the reach unsound.
+\ A block collective is block-uniform-reachable only when no enclosing frame can
+\ diverge lanes: a lane-varying if, or any begin/do/case/quotation/match frame
+\ (which never sets CF.UNI), makes the reach unsound.
 : ALL-CF-UNIFORM? ( -- bool )
    0 BEGIN dup #CFC @ < WHILE
       dup CF-ROW CF.UNI @ 0= IF drop RES-FALSE EXIT THEN
@@ -20729,9 +19553,9 @@ SCOPE-INTRO-FENCE-INSTALL
 \ A quotation literal declares no return clause, so `;]` seals its return row as
 \ `;` seals a definition's that has none (CHECK-NO-BORROW, CHECK-RBALANCE): it
 \ reads only the cells it pushed and leaves the row as it found it. Unsealed,
-\ `[: >r ;] execute r>` and `>r [: r> ;] execute` certified and failed in the
-\ native compiler (-8304, -8503). Asked with the literal's own rows, before
-\ CF-SEMIQ restores the outer ones.
+\ `[: >r ;] execute r>` and `>r [: r> ;] execute` would certify and fail in the
+\ native compiler (E-NELAB-UNDER, E-NELAB-JOIN). Asked with the literal's own
+\ rows, before CF-SEMIQ restores the outer ones.
 : QUOT-RSEAL ( -- )
    RBROW @ ROW-BORROWED? IF 4 ELSE
       CHECK-RETURNS? 0= IF EXIT THEN
@@ -20773,7 +19597,6 @@ CHECKER-REG:}SCRATCH
    w EFFECT-MIN-IN-MAX > IF w MDIAG-WIDTH !  -1 UNFIT !  RES-FALSE EXIT THEN
    RES-TRUE ;
 
-\ The reason an unfit effect is refused with.
 : UNFIT-WHY ( -- n )
    MDIAG-DEPTH @ 0 <> IF MD-EFFECT-DEPTH ELSE MD-INPUT-WIDTH THEN ;
 
@@ -20783,11 +19606,11 @@ CHECKER-REG:}SCRATCH
    {: why:n :}
    why MD-EFFECT-DEPTH =  why MD-INPUT-WIDTH =  or ;
 
-\ SIG-EFF-CACHE! ( -- ) : cache the parsed declared sig as an arena effect record
-\ so recurse sites instantiate it via E-INST instead of re-parsing the sig text.
-\ The record carries sym 0 so signature lookup never sees it. The declared rows
-\ are measured here, before the body binds their tails: a sig too deep or too
-\ wide to record has no cache, and its definition is unfit (CHECK-DEPTH-FITS).
+\ Cache the parsed declared sig as an arena effect record so recurse sites
+\ instantiate it via E-INST. The record carries sym 0 so signature lookup never
+\ sees it. The declared rows are measured here, before the body binds their
+\ tails: a sig too deep or too wide to record has no cache, and its definition
+\ is unfit (CHECK-DEPTH-FITS).
 : SIG-EFF-CACHE!
    SGBAD @ IF EXIT THEN
    SGIN @ SGOUT @ SGRIN @ SGROUT @ ROWS-FIT? 0= IF EXIT THEN
@@ -20798,7 +19621,6 @@ CHECKER-REG:}SCRATCH
    RECEFF-SYM @ CHECKER-REC-SYM !
    -1 RECEFF-ON ! ;
 
-\ SIG-EFF-DROP ( -- ) : truncate the recurse cache record once the body scan is done.
 : SIG-EFF-DROP
    RECEFF-ON? 0= IF EXIT THEN
    RECEFF-UEND @ USIGS-RESTORE-END
@@ -20827,13 +19649,12 @@ CHECKER-REG:}SCRATCH
    UNFIT @ IF UNFIT-WHY MDIAG! THEN
    -1 UNCK ! ;
 
-\ M5b uniform-branch acceptance. `if` normally consumes a plain `bool`. A GPU
-\ predicate that is provably identical across every lane of the block is a
-\ DISTINCT family `uniform<bool>` (the M2 uniform<T> vs tile<..> split). When the
-\ pending condition on top of DCUR is exactly `uniform<bool>`, the `if` is a
+\ Uniform-branch acceptance. A GPU predicate provably identical across every
+\ lane of the block is the distinct family `uniform<bool>`. When the pending
+\ condition on top of DCUR is exactly `uniform<bool>`, the `if` is a
 \ block-uniform branch: consume it and mark the frame CF.UNI so a collective
-\ inside certifies. Any other flag (a bare `bool` from a lane-varying compare, or
-\ a `uniform<f32>` which is not a flag at all) keeps the plain STEP-BOOL-IN path.
+\ inside certifies. Any other flag (a bare `bool`, or a `uniform<f32>`, which
+\ is not a flag) keeps the plain STEP-BOOL-IN path.
 : COND-UNIFORM? ( -- bool )   \ top of DCUR resolves to uniform<bool>?
    PTX-UNIFORM-FAM @ 0= IF RES-FALSE EXIT THEN
    DCUR @ R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
@@ -21128,9 +19949,9 @@ CHECKER-REG:}SCRATCH
 : CF-J ( -- )
    1 CF-LOOP-FIND 0 < IF CF-FAIL ELSE STEP-N-OUT THEN ;
 
-\ CF-FINDDO returns the nearest enclosing DO frame, or -1.
-\ Scans top-down and stops at the first DO (kind 5) or quotation boundary
-\ (kind 6) — a `leave` inside [: ;] does not escape to an outer loop.
+\ The nearest enclosing DO frame, or -1. Stops at the first DO (kind 5) or
+\ quotation boundary (kind 6): a `leave` inside [: ;] does not escape to an
+\ outer loop.
 : CF-FINDDO ( -- n )
    #CFC @ 1 -
    BEGIN dup 0 >= WHILE
@@ -21150,9 +19971,9 @@ CHECKER-REG:}SCRATCH
    REPEAT drop RES-FALSE ;
 
 
-\ CF-LEAVE : early loop exit. The stack at `leave` must match the loop-exit row
-\ (= the DO-point row CF.SA, since the body is stack-neutral); likewise the return
-\ row. Then the path to `loop` is dead (CF-LOOP revives the live loop exit).
+\ The stack at `leave` must match the loop-exit row (the DO-point row CF.SA,
+\ since the body is stack-neutral), as must the return row. The path to `loop`
+\ is then dead (CF-LOOP revives the live loop exit).
 : CF-LEAVE
    -1 WRAPBENT !
    CF-FINDDO {: doidx:n :}
@@ -21214,24 +20035,22 @@ CHECKER-REG:}SCRATCH
      CF-LOC-REST
      CF-DROP THEN ;
 
-\ --- MATCH eliminator (docs/forth.md "Structures And Enums"). `MATCH
-\ family  variant OF ... ENDOF ...  ;MATCH` is a checker control form: the
-\ family and variant tokens are captured in DO-TOK1 before locals/control/word
-\ dispatch (the construct discipline), OF/ENDOF are shared with CASE and
-\ distinguished by the enclosing CFS frame kind (9 = match, 10 = match
-\ branch; CASE stays 7/8). MATCH pops the scrutinee's hidden-field bundle
-\ (slot0..tag, verified cell by cell against the resolved family), recovers
-\ the family type args from the tag term, and each branch checks with
-\ DCUR = base + that variant's instantiated payload. Branch outputs unify at
-\ ENDOF; ;MATCH enforces exhaustiveness over the declaration-order tag bitset
-\ (v1 has no default branch) and installs the joined rows. Frames live in a
-\ growable side arena (MF) with a growable seen-bitset pool (MSEEN) — never a
-\ silent-uncheckable path: every structural failure latches MREJ, which
-\ CHECK-VERDICT ranks as a hard reject above UNCK, and the CFS headroom check
-\ (two frames per match) rejects instead of tripping CF-PUSH's UNCK overflow.
-\ v1 scrutinee rule: only a width-expanded bundle matches, linear included; a
-\ layout whose width reads an open argument (LAYOUT-WIDTH-OPEN?) is one logical
-\ cell with no payload cells to place and rejects (MD-OPEN-ARGS).
+\ --- MATCH eliminator (docs/forth.md "Structures And Enums"). `MATCH family
+\ variant OF ... ENDOF ... ;MATCH` is a checker control form: DO-TOK1 captures
+\ the family and variant tokens before locals/control/word dispatch; OF/ENDOF
+\ are shared with CASE and told apart by the CFS frame kind (9 = match, 10 =
+\ match branch; CASE is 7/8). MATCH pops the scrutinee's hidden-field bundle
+\ (slot0..tag, verified cell by cell against the resolved family), recovers the
+\ family's type args from the tag term, and each branch checks with DCUR = base
+\ + that variant's instantiated payload. Branch outputs unify at ENDOF; ;MATCH
+\ enforces exhaustiveness over the declaration-order tag bitset (there is no
+\ default branch) and installs the joined rows. Frames live in a growable side
+\ arena (MF) with a growable seen-bitset pool (MSEEN). Every structural failure
+\ latches MREJ, which CHECK-VERDICT ranks as a hard reject above UNCK, and the
+\ CFS headroom check (two frames per match) rejects instead of tripping
+\ CF-PUSH's UNCK overflow. Only a width-expanded bundle matches, linear
+\ included; a layout whose width reads an open argument (LAYOUT-WIDTH-OPEN?) is
+\ one logical cell with no payload cells and rejects (MD-OPEN-ARGS).
 $0 constant MF.FAM-OFF
 $8 constant MF.TERM-OFF
 $10 constant MF.BASE-OFF
@@ -21327,12 +20146,11 @@ variable MPEND   \ pending variant SUMV id between the variant token and its OF 
 variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
 variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHECKER-MATCH-MODE 4)
 
-\ Rigid host-identity mismatch naming (dot habu-define-rigid-host). RIGID-ATOM-DOMAIN
-\ classifies a resolved term as a rigid-identity atom of a given domain (0 = none).
-\ RIGID-DIAG-CLASSIFY runs on the captured mismatch pair after the verdict is a
-\ reject: when the mismatch is the refusal and both sides are rigid-domain atoms
-\ it names WHICH bug it is, so a stale index, a wrong region, and a wrong extent
-\ are distinguishable rejects; the named reason is then the refusal.
+\ Rigid host-identity mismatch naming. RIGID-ATOM-DOMAIN classifies a resolved
+\ term as a rigid-identity atom of a domain (0 = none). RIGID-DIAG-CLASSIFY runs
+\ on the captured mismatch pair after a reject verdict: when the mismatch is the
+\ refusal and both sides are rigid-domain atoms it names the kind (stale index,
+\ wrong region, wrong extent), and that reason becomes the refusal.
 : RIGID-ATOM-DOMAIN ( n -- n )   \ 0 none / 1 region / 2 extent / 3 gen
    T-RES dup TAG T-ATOM <> IF drop 0 EXIT THEN
    dup ATOM>K 0 <= IF drop 0 EXIT THEN            \ only an instantiated fresh id carries a domain
@@ -21603,17 +20421,14 @@ variable MTCH-W                      \ the bundle width the walk below really co
    a u s" unloop" 23 CF-IS? IF CF-UNLOOP RES-TRUE EXIT THEN
    a u s" recurse" 24 CF-IS? IF CF-RECURSE RES-TRUE EXIT THEN
    RES-FALSE ;
-\ first token of the checked text is the word's NAME (skipped, kept for the
-\ recorder). RECXT (installed by render.f) records certified sigs by name; DIAGXT
-\ (installed by render.f) renders a reject/uncheckable diagnostic. Both are
-\ `defer`s with no-op DEFAULTS so the calls are statically effect-known and render
-\ rebinds each to the real word. DIAG-QUIET counts nested quiet-check scopes:
-\ CHECK-QUIET-CANDIDATE! and CHECK-UNJUDGED! bump it around a probe, and the firer
-\ skips the render while it is non-zero — replacing the old "zero the hook to
-\ suppress" trick, which a `defer` cannot express as data. The counter is an
-\ engine internal and stays one: it is created before the check hook exists, so a
-\ from-source prefix boot publishes no effect for it and no caller outside this
-\ file can name it. Callers name the probe words above instead.
+\ The first token of the checked text is the word's name (skipped, kept for the
+\ recorder). RECXT records certified sigs by name and DIAGXT renders a
+\ reject/uncheckable diagnostic; render.f installs both over no-op defaults that
+\ keep the calls effect-known. DIAG-QUIET counts nested quiet-check scopes:
+\ CHECK-QUIET-CANDIDATE! and CHECK-UNJUDGED! bump it around a probe and the
+\ firer skips the render while it is non-zero. It is created before the check
+\ hook exists, so no effect is published for it and only this file names it;
+\ callers name the probe words above.
 variable TOK0
 defer RECXT ( ptr u8 n -- )
 defer DIAGXT ( -- )
@@ -21706,12 +20521,10 @@ CHECKER-REG:}SCRATCH
    c $61 >= c $66 <= and IF RES-TRUE EXIT THEN
    c $41 >= c $46 <= and ;
 
-\ THE ONE ESCAPE TABLE. Both readers below come off this word — the validator
-\ that decides whether a payload is well formed, and the decoder that produces
-\ the payload's bytes — so a spelling the checker accepts and a byte the checker
-\ produces cannot disagree, and one of them cannot drift from the engine's own
-\ decoder while the other stays right. The bytes are C-ESC-DECODE-BASIC's
-\ (habu2.f), value for value; note that \l and \n are both line feed there.
+\ The one escape table: the validator and the decoder both read it, so a
+\ spelling the checker accepts and a byte it produces cannot disagree. The
+\ bytes are C-ESC-DECODE-BASIC's (habu2.f), value for value; \l and \n are both
+\ line feed there.
 : ESC-BYTE? ( n -- n bool ) {: c:n :}
    c $22 = IF $22 RES-TRUE EXIT THEN
    c $71 = IF $22 RES-TRUE EXIT THEN
@@ -21737,8 +20550,8 @@ CHECKER-REG:}SCRATCH
 : SKIP-ESC-BYTE@ ( -- n )
    SKI @ TBYTE@ ;
 
-\ SKIP-ESC-BAD ( -- ) : invalid escape — spend the rest of the payload so the
-\ tail branch rejects the definition exactly like an unterminated string.
+\ An invalid escape spends the rest of the payload, so the tail branch rejects
+\ the definition as it rejects an unterminated string.
 : SKIP-ESC-BAD
    TBLEN @ SKI ! ;
 
@@ -21765,30 +20578,18 @@ CHECKER-REG:}SCRATCH
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! 0 PARSE-COMPLETE ! THEN ;
 
 \ ---- the payload a string literal carried --------------------------------------
-\ WHY THE READER HAS TO RECORD IT. The reader consumes a string literal as an
-\ opener token and then SPENDS its payload bytes without tokenising them, which
-\ is exactly what stops a quoted word from being read as code. A stage that has
-\ to COMPILE the literal needs those bytes, and it must not re-derive them by
-\ re-lexing the source: a second reader that merely agrees with this one is not
-\ the same reader, and the first payload the two disagree about is a compiled
-\ string that is not the string the programmer wrote. So the reader that spends
-\ the bytes is the one that reports them.
-\
-\ THE SPAN IS RAW AND THE BYTES MAY NOT BE. An escaped literal's body is what its
-\ escapes DECODE to, and that is shorter than the text it was written as, so the
-\ two are recorded apart: the span says where the literal was read from, and the
-\ bytes say what it IS. That is the division a tape row already makes between its
-\ span and its spelling, and it is why the decoded bytes need a buffer of their
-\ own rather than being described as a slice of the source.
-\
-\ AND THE AUTHORITY FOR "A PAYLOAD WAS SPENT" IS THE SKIP'S OWN CLOSE FLAG. Not
-\ the token's spelling, which the reader may never have reached the payload for
-\ (a name token, a match arm, a token inside a locals group), and not the check
-\ verdict, which is about the definition rather than about these bytes. SKF is
-\ set by exactly the two loops that walked a payload to its closing quote, so a
-\ recorded span is always a payload some loop really consumed and always one
-\ whose escapes really validated - SKIP-ESC-BAD spends the rest of the payload
-\ and leaves SKF clear.
+\ The reader spends a string literal's payload without tokenising it, and the
+\ stage that compiles the literal needs those bytes: the reader that spends them
+\ reports them, since a second lexer that merely agrees is not the same reader.
+\ The span is raw and the bytes may not be: an escaped body is what its escapes
+\ decode to, shorter than its text, so span and bytes are recorded apart, as a
+\ tape row separates span and spelling.
+\ The authority for "a payload was spent" is SKF, the skip's close flag, set by
+\ exactly the two loops that walked a payload to its closing quote: not the
+\ token's spelling (the reader may never reach the payload of a name token, a
+\ match arm or a token in a locals group), nor the verdict. A recorded span was
+\ consumed and its escapes validated; SKIP-ESC-BAD spends the rest and leaves
+\ SKF clear.
 variable SPAY-ON      \ did the token just judged spend a payload?
 variable SPAY-ESC     \ was it the escaped spelling?
 CHECKER-REG:SCRATCH{
@@ -21852,13 +20653,11 @@ variable SPAY-ARMED   \ was the token before this one? (CHECK-SCAN-WALK hands it
       THEN
    AGAIN ;
 
-\ The literal's body. A plain literal's body IS the recorded span, so it is
-\ handed over where it already lies; an escaped one is decoded into the buffer
-\ the token family grew for it. A bad escape cannot be reached from a recorded
-\ span, because the validator walked the same table over the same bytes before
-\ SKF was set. It is a refusal rather than ignored so that a future table edit
-\ that reaches only one of the two readers stops the definition instead of
-\ quietly emitting a byte nobody chose.
+\ A plain literal's body is the recorded span itself; an escaped one is decoded
+\ into the buffer the token family grew for it. A bad escape cannot be reached
+\ from a recorded span (the validator walked the same table over the same bytes
+\ before SKF was set); it refuses so a table edit that reaches only one reader
+\ stops the definition instead of emitting a byte nobody chose.
 : SPAY-BYTES ( -- ptr u8 n )
    SPAY-ESC @ 0= IF SPAY-B @ TADDR  SPAY-U @ EXIT THEN
    SPAY-B @ TADDR  SPAY-U @  SDEC  ESC-DECODE 0= IF 0 OK ! THEN
@@ -21979,7 +20778,6 @@ create DIAGLB PATH-CAP allot   variable DIAGLU
    DIAG-FILE-COPY
    LOWER-CERT-HOOK:TOP-SITE-PATH$ DIAGLB DIAG-COPY DIAGLU !
    -1 DIAG-LABELED ! ;
-\ Does the label a tool set name the file at path?
 : DIAG-LABELS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    DIAG-LABELED @ 0= IF RES-FALSE EXIT THEN
    a u DIAGLB DIAGLU @ CORE-STR= ;
@@ -22011,21 +20809,18 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
    DIAG-POS DIAG-ORIGIN! ;
 
 \ Where a packet's token lies in the checked file. A driver that checks text it
-\ copied out of a file arms DIAG-SOURCE! with the bytes it scans and the file
+\ copied out of a file arms DIAG-SOURCE! with the scanned bytes and the file
 \ line, column and byte of their first byte, and hands DIAG-MAP! the text it
-\ built before each check, with its own table of the runs it copied into that
-\ text: one two-cell row per run, the text offset the run starts at and the
-\ source offset it was read from, ascending from text offset 0. DIAG-LOCATE
-\ takes a pointer into that text, or straight into the source, to the file
-\ position of the byte the scanner read there.
-\ Text with no map keeps the DIAG-ORIGIN! rule above, the definition's origin
-\ plus the token's offset in the checked text: the engine's own load, whose
-\ captured definitions keep no source addresses, text built by `evaluate`, and
-\ the definitions the checker generates for a declaration.
-\ After DIAG-MAP! the driver hands DIAG-CLOSER! the token in the source that
-\ closes the mapped text's definition, its `;` or the `does>` ending a
-\ definer's body, which the text does not hold: a control structure still open
-\ there is refused at that token, as the load's compiler refuses it (CLOSER-REFUSE).
+\ built before each check with a table of the runs it copied: one two-cell row
+\ per run (text offset, source offset), ascending from text offset 0.
+\ DIAG-LOCATE maps a pointer into that text, or into the source, to a file
+\ position. Text with no map keeps the DIAG-ORIGIN! rule: the engine's own load
+\ (captured definitions keep no source addresses), `evaluate` text, and the
+\ definitions the checker generates for a declaration.
+\ DIAG-CLOSER! takes the source token that closes the mapped definition (its `;`
+\ or a definer's `does>`), which the text does not hold: a control structure
+\ still open there is refused at that token, as the load's compiler refuses it
+\ (CLOSER-REFUSE).
 PTR-VARIABLE DSRC-A  variable DSRC-U
 variable DSRC-L  variable DSRC-C  variable DSRC-B
 PTR-VARIABLE DMAP-A  variable DMAP-U
@@ -22054,9 +20849,8 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
 : DROW@ ( n -- n )
    DROW-A @ {: i:n rows:ptr :}
    i cells rows + @ ;
-\ The source offset of text offset x: the last row starting at or before x,
-\ plus x's distance into that run. The separator after a run maps to the byte
-\ after the run, where its last token ends.
+\ The separator after a run maps to the byte after the run, where its last
+\ token ends.
 : DMAP>SRC ( n -- n )
    {: x:n :}
    0 BEGIN
@@ -22070,8 +20864,6 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
 : DSRC-POS ( n -- n n n )
    {: off:n :}
    DSRC-A @  DSRC-A @ off +  DSRC-L @ DSRC-C @ DSRC-B @  DIAG-POS ;
-\ The source offset of the byte p points at, true when p lies in the mapped
-\ text or in the source; 0 false when there is no map for it.
 : DIAG>SRC ( ptr u8 -- n bool )
    {: p:ptr :}
    DSRC-U @ 0 = IF 0 0 0= 0= EXIT THEN
@@ -22087,7 +20879,7 @@ REG-PROTECT
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report
 \ the clause only if the parent was not deferred. BODY$ arms the source map for
-\ every check here, so both ends of the selected token must locate in it.
+\ every check, so both ends of the selected token must locate in it.
 : CHECKER-VERIFY-DEFERRED-BODY ( -- ptr u8 n )
    TBASE@ FAILB @ + DIAG>SRC 0= IF
       drop s" checker: deferred body pin outside source" 76 die
@@ -22096,8 +20888,7 @@ REG-PROTECT
       drop s" checker: deferred body end outside source" 76 die
    THEN {: end:n :}
    DSRC-A @ start +  end start - ;
-\ The file line, column and byte of the byte p points at; 0 0 0 false when
-\ there is no map for it.
+\ 0 0 0 false when there is no map for p.
 : DIAG-LOCATE ( ptr u8 -- n n n bool )
    DIAG>SRC 0= IF drop 0 0 0 0 0= 0= EXIT THEN
    DSRC-POS 0 0= ;
@@ -22107,82 +20898,49 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 1 1 0 DIAG-ORIGIN!
 
 \ A NAME whose length no name has (CK-NAME-SPAN?) spells no word, so TRUST,
-\ TRUST-RAW and TRUST-DECL each refuse its row as E-TRUST-UNRESOLVED with no
-\ spelling rendered, and each does so first: TRUST before its dictionary walk,
-\ whose colon scan ran until the process was killed given the maximum cell;
-\ TRUST-RAW before it turns on raw-definer mode, which a caught refusal would
-\ leave on; TRUST-DECL before it steps the definer latch for a row that is never
-\ stored.
-\ Without the guard those two recorded the row under a length of -1, and died
-\ folding a name of the maximum cell.
+\ TRUST-RAW and TRUST-DECL each refuse its row first as E-TRUST-UNRESOLVED with
+\ no spelling rendered: TRUST before its dictionary walk (whose colon scan never
+\ ends given the maximum cell), TRUST-RAW before it turns on raw-definer mode
+\ (which a caught refusal would leave on), TRUST-DECL before it steps the
+\ definer latch for a row that is never stored.
 
-\ The registration the two declaration words share. It is factored out rather than
-\ copied because TRUST and TRUST-RAW must record the same row from the same
-\ code; only the signature parser's raw-definer mode differs between them.
-\ TRUST-RAW cannot reach the registration by calling TRUST, because `trust` is
-\ one of the tokens refused inside a checked body (UNSAFE-TOK?) and these bodies
-\ are themselves checked.
-\ Like CHECKER-USIG-ADD below it, this helper is an ordinary checker-internal
-\ definition with no primitive axiom, so user code cannot resolve it at all —
-\ the effect-declaration capability stays exactly where it was, behind `trust`
-\ and `trust-raw` at top level.
-\ A signature whose length describes no memory gets the refusal of one that does
-\ not parse, with no text: the parser would read past it, and the refusal would
-\ print it. Given the maximum cell, the parser read on until the process was
-\ killed. Nothing is parsed, so the parser's state is cleared first: the
+\ The registration TRUST and TRUST-RAW share; only the parser's raw-definer mode
+\ differs. TRUST-RAW cannot call TRUST: `trust` is refused inside a checked body
+\ (UNSAFE-TOK?). No primitive axiom, so user code cannot resolve it.
+\ A signature whose length describes no memory is refused as one that does not
+\ parse, with no text rendered; the parser's state is cleared first, since the
 \ refusal's class is otherwise the one an earlier refused signature left.
-\ The folded key in TKF is separate from the declaring name read by the caller.
-\ It answers whether the row was retained, as USIG-ADD-AS does: false when the
-\ refusal of a span no memory has returns.
+\ The folded key in TKF is separate from the caller's declaring name.
+\ Answers whether the row was retained, as USIG-ADD-AS does.
 : TRUST-USIG! ( ptr u8 n ptr u8 n -- bool )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu TOKFOLD drop
    sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ na nu USIG-ADD-BAD RES-FALSE EXIT THEN
    sa su  TKF TKFU @ na nu CHECKER-RECORD-NAME-AT na nu RES-TRUE USIG-ADD-AS ;
 
-\ TRUST-DECL: record the effect a DEFINER just declared for the word it is
-\ publishing. The engine calls it by name from its publish tail and from the
+\ TRUST-DECL: record the effect a DEFINER declared for the word it is
+\ publishing. The engine calls it by name from its publish tail and the
 \ pre-trust defer drain, and from nowhere else.
-\
-\ WHY IT IS NOT `trust`. One spelling was answering two different questions.
-\ A definer re-recording its own declared signature knows the word exists — it
-\ is publishing it — and asks for the row to be stored. Source writing
-\ `s" NAME" s" SIG" trust` is asserting an effect for a word it CLAIMS already
-\ exists, and that claim can be wrong: a stale row for a word that has been
-\ renamed or deleted used to be accepted in silence, minting a global checker
-\ symbol out of nothing (dot habu-make-trust-refuse-cc8e19de). Only the second
-\ question can be answered by asking the dictionary, and it can only be asked
-\ of a word with one caller class. So the two questions get two words, rather
-\ than one word inspecting who called it.
-\
-\ The order here is not free. The engine's publish tail runs BEFORE the record
-\ becomes findable — measured: a definition is absent from `search-wl` at its
-\ own tail and present one statement later — so a definer-facing registration
-\ must never consult the dictionary, and `trust` may only start doing so once
-\ nothing but source reaches it. That is why the retarget below lands a stage
-\ ahead of the check on TRUST.
-\ A TRUSTED DEFINER'S CLAUSE IS TAKEN HERE, by stepping the latch the clause
-\ armed. `TRUSTED: D ( … ) create … does> ( … ) ;` runs CHECK-DOES! at its `;`
-\ like every other definer (habu2.f EM-COMPILE-PUBLISH-TRUSTED calls it ahead of
-\ the trusted branch), so the created-word effect is latched — but a trusted
-\ definition has no body check of its own to step the latch past state 1, and the
-\ record that follows is its OWN. This step is that missing one: the registration
-\ below then reaches CHECKER-EFFECT-AUTHORITY STORE in state 2, and the clause
-\ lands on the trusted symbol's CREATES cell through the one writer of that cell.
-\ Before it, the state-1 latch was taken for nothing and cleared right here (the
-\ take in STORE), so `TASK:TASK T1` left T1 undefined for the source pre-verifier.
-\ The native compiler registers a trusted parent before checking its clause;
-\ its later publication explicitly associates the accepted pair instead.
-\ This step is unconditional: a latch in any other state dies here rather than
-\ waiting for a record that is not its definer's.
-\
-\ SOURCE CANNOT CALL IT. A row registered here asks nothing, so from source it
-\ recorded any effect for a name in the open section's wordlist, whatever word
-\ the engine binds that name to - inside a package, a global's name gained a
-\ private record the engine never defined. The engine and stage0 reach it
-\ without the dictionary's interpret path, so REG-PROTECT seals it as it seals
-\ CHECKER-VERIFY-PKG-START: interpret and tick refuse it (`hb: internal engine
-\ word`, rc 70), and only a TRUSTED: body compiles a call.
+\ It is not `trust` because the two answer different questions: a definer knows
+\ the word exists and asks for the row to be stored; source `trust` claims a
+\ word exists, and only that claim is checked against the dictionary.
+\ The engine's publish tail runs before the record is findable (absent from
+\ `search-wl` at its own tail, present one statement later), so a definer-facing
+\ registration must never consult the dictionary.
+\ A trusted definer's clause is taken here by stepping the latch the clause
+\ armed: `TRUSTED: D ( … ) create … does> ( … ) ;` runs CHECK-DOES! at its `;`
+\ (habu2.f EM-COMPILE-PUBLISH-TRUSTED calls it ahead of the trusted branch), but
+\ a trusted definition has no body check to step the latch past state 1. This
+\ step lets the registration reach CHECKER-EFFECT-AUTHORITY STORE in state 2, so
+\ the clause lands on the trusted symbol's CREATES cell through its one writer.
+\ The native compiler registers a trusted parent before checking its clause; its
+\ later publication associates the accepted pair instead.
+\ The step is unconditional: a latch in any other state dies here.
+\ Source cannot call it: a row registered here asks nothing, so it would record
+\ any effect for a name in the open section's wordlist. REG-PROTECT seals it as
+\ it seals CHECKER-VERIFY-PKG-START: interpret and tick refuse it (`hb: internal
+\ engine word`, rc 70), and only a TRUSTED: body compiles a call. The engine and
+\ stage0 call it without the interpret path.
 : TRUST-DECL? ( ptr u8 n ptr u8 n -- bool )
    {: na:ptr nu:n sa:ptr su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
@@ -22203,10 +20961,8 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
    CHECKER-REC-SYM @ CK-CLOSE!                  \ published after this, as a checked one is
    kept ;
 
-\ TRUST-DECL? answers whether the registration retained the row; only the
-\ source verifier asks, through its declaration owner (VERIFY-DECL-OFF,
-\ src/habu/verify-source.f DECL-SIGNATURE). The engine's and stage0's entry
-\ asks nothing back.
+\ TRUST-DECL? answers whether the row was retained; only the source verifier
+\ asks, through VERIFY-DECL-OFF (src/habu/verify-source.f DECL-SIGNATURE).
 : TRUST-DECL ( ptr u8 n ptr u8 n -- )
    TRUST-DECL? drop ;
 REG-PROTECT
@@ -22215,31 +20971,24 @@ package CHECKER-REG
 ;package
 
 \ CHECKER-DECLARED-ROW!: the row of a definition compiled with the hook cell
-\ empty is its declaration, active and WITHOUT authority. No check judged the
-\ body, so the declaration is all the checker knows of it: an unsealed checker
+\ empty is its declaration, active and WITHOUT authority: an unsealed checker
 \ binds the row and checks callers against it, a sealed one refuses it by
 \ authority (CALL-AUTHORITY), and EFFECT-QUERY and the native compiler's arity
-\ read it. A TRUSTED: declaration is the assertion and goes through TRUST-DECL
-\ instead. The engine's empty-hook publish arm calls this at tier 0 (habu2.f
-\ EM-COMPILE-PUBLISH-HOOKED) and the native compiler after its unjudged scan at
-\ tier 1 (definition.f DECLARE-HOOKLESS), both through the source owner's
-\ DECLARED-ROW-OFF field, so a cold boot records from this file's claim on.
-\
-\ A LIVE ROW WINS. At tier 1 the scan's own row (certified, deferred, or a
-\ multi-error recovery fact) already states the symbol, and keeps it; after
-\ `undefine` the tombstone is not live and the redefinition records. A
-\ declaration the checker cannot parse, or one with a scope scheme, records
-\ nothing - an unverified declaration carries no lexical binder (USIG-ADD-AS) -
-\ and its symbol stays interned without a row, as TRUST-DECL's bad signature
-\ leaves it. No DOES-EFF-STEP: no clause check ran for the definition, and
-\ STORE keeps no created-word value for a row without authority. Sealed as
-\ TRUST-DECL is: only the engine and the owner record reach it.
-\
+\ read it. A TRUSTED: declaration goes through TRUST-DECL instead. Callers: the
+\ engine's empty-hook publish arm at tier 0 (habu2.f EM-COMPILE-PUBLISH-HOOKED)
+\ and the native compiler after its unjudged scan at tier 1 (definition.f
+\ DECLARE-HOOKLESS), both through DECLARED-ROW-OFF.
+\ A live row wins: at tier 1 the scan's own row (certified, deferred, or a
+\ multi-error recovery fact) keeps the symbol; after `undefine` the tombstone is
+\ not live and the redefinition records. A declaration that does not parse, or
+\ one with a scope scheme, records nothing (an unverified declaration carries no
+\ lexical binder, USIG-ADD-AS) and its symbol stays interned without a row. No
+\ DOES-EFF-STEP: no clause check ran, and STORE keeps no created-word value for
+\ a row without authority. Sealed as TRUST-DECL is.
 \ CK-DECLARED-SYM! records the row once the symbol is known and no live row
-\ states it. A cold boot's claim (CK-DECLARED-LOG-DRAIN) names each definition
-\ logged before it by its dictionary record rather than by a token in the open
-\ scope, so it keys the symbol itself and records through the same word. It
-\ writes a row for any symbol it is handed, so it is sealed as well.
+\ states it. A cold boot's claim (CK-DECLARED-LOG-DRAIN) keys each definition
+\ logged before it by its dictionary record, not by a token in the open scope.
+\ It writes a row for any symbol it is handed, so it is sealed as well.
 : CK-DECLARED-SYM! ( n ptr u8 n -- )
    {: sym:n sa:ptr su:n :}
    sym CHECKER-REC-SYM !
@@ -22268,40 +21017,27 @@ REG-PROTECT
 REG-PROTECT
 
 
-\ TRUST: declare a word's effect without checking its body — the native escape
-\ hatch (TRUSTED:). Callers are checked against the declared sig.
-\ Usage:  s" myword" s" n n -- n" trust
-\ ---- what a `trust` row may assert ------------------------------------------
-\ A row is a CLAIM that a word exists, so the dictionary gets to answer it.
-\ Resolution is the ENGINE's and not the checker's tables: the wordlist the
-\ row's record lands in - for a bare name the open section's, private or public,
-\ or the global wordlist outside a package (TRUST-RECORD-WL), for PKG:TAIL the
-\ package's public one (below) - asked through `search-wl`, which hides internal
-\ rows (src/habu/habu1.f BSWL). Not the whole scope chain:
-\ a global claimed from inside a package recorded its effect on a package
-\ symbol of the open section, which the engine never defined and which then
-\ bound every bare use there, so checked callers were certified against the row
-\ while the engine ran the global. The checker's own tables answer a different
-\ question - what a word's effect is - and a row naming a word with no effect
-\ recorded yet is the ordinary case, so asking them here would refuse almost
-\ every row in the tree.
-\
-\ A REPLAY IS ASKED THE SAME WAY. Inside the verifier window the checker
-\ overlay points the engine's package record at the replayed package and
-\ publishes each definition the replay certifies into its wordlist
-\ (CHECKER-OVERLAY), so the row's wordlist holds what a compile of the text has
-\ defined by then, and a row under its own definition finds it.
-\
-\ A QUALIFIED SPELLING lands on PKG's public symbol (CHECKER-RECORD-NAME), so
-\ PKG's public wordlist is the one asked, open or closed, and it is found the
-\ way the engine's FIND finds it (habu1.f EMIT-FIND, FIND-QTAILOK): a package's
+\ TRUST: declare a word's effect without checking its body (TRUSTED:). Callers
+\ are checked against the declared sig.  Usage:  s" myword" s" n n -- n" trust
+\ A row CLAIMS that a word exists, so the engine's dictionary answers it, not
+\ the checker's tables: asked through `search-wl` (which hides internal rows,
+\ src/habu/habu1.f BSWL) in the wordlist the row's record lands in, for a bare
+\ name the open section's or the global one outside a package
+\ (TRUST-RECORD-WL), for PKG:TAIL the package's public one. Not the whole scope
+\ chain: a global claimed from inside a package would record on a package
+\ symbol the engine never defined. The checker's tables answer what a word's
+\ effect is, and a row naming a word with no effect yet is the ordinary case.
+\ A replay is asked the same way: inside the verifier window the overlay points
+\ the engine's package record at the replayed package and publishes each
+\ certified definition into its wordlist (CHECKER-OVERLAY).
+\ A qualified spelling lands on PKG's public symbol (CHECKER-RECORD-NAME), found
+\ as the engine's FIND finds it (habu1.f EMIT-FIND, FIND-QTAILOK): a package's
 \ namespace row sits in DICT-WL:NAMESPACE, -1 (src/habu/layout.f, loaded after
-\ this file), and its code cell, which `search-wl` answers, is the package's
-\ public wid. No package answers 0, which must not reach CK-WL-CLAIMS? as the
-\ global wordlist. A private tail is in no public wordlist, so it is refused
-\ as a missing one is. A malformed token is asked as a bare one: the engine
-\ defines no word spelled that way, so no wordlist claims it and the row names no
-\ word. Where nothing is asked, CHECKER-RECORD-NAME refuses it as malformed.
+\ this file), and its code cell is the package's public wid. No package answers
+\ 0, which must not reach CK-WL-CLAIMS? as the global wordlist. A private tail
+\ is in no public wordlist and is refused as a missing one is. A malformed token
+\ is asked as a bare one, which no wordlist claims; where nothing is asked,
+\ CHECKER-RECORD-NAME refuses it as malformed.
 : TRUST-RECORD-WL ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    mode CHECKER-PACKAGE-PRIVATE = IF data-base CK-PKG-PRI-OFF + @ EXIT THEN
@@ -22339,15 +21075,12 @@ REG-PROTECT
 \ The source pre-pass's question about a `trust` row (src/habu/verify-source.f
 \ RECORD-TRUST): is the row the run's to judge? It is when the row names no word
 \ in the wordlist its record lands in (TRUST-RESOLVES?) and a rendering statement
-\ read before it marked that same wordlist (CHECKER-VERIFY-RENDERS): for a bare
-\ name the open section's, or the global one outside a package, for PKG:TAIL
-\ PKG's public one. There a word the run defines and a misspelt name look alike,
-\ so the load's TRUST judges both. A mark only a use walks to (UNSEEN-COVERS?) -
-\ the global one from inside a package, a used public's, the other section's -
-\ is no answer, and nor is any mark for a name no word can have: a false length,
-\ one holding a blank (CK-HOLDS-BLANK?), the mark's own spelling among them, or
-\ a malformed qualified one. Nothing is recorded: the row's effect, and each use
-\ of its name, stay the run's.
+\ read before it marked that same wordlist (CHECKER-VERIFY-RENDERS): there a
+\ word the run defines and a misspelt name look alike, so the load's TRUST
+\ judges both. A mark only a use walks to (UNSEEN-COVERS?: the global one from
+\ inside a package, a used public's, the other section's) is no answer, nor is
+\ any mark for a name no word can have (a false length, one holding a blank, a
+\ malformed qualified one). Nothing is recorded.
 : CHECKER-VERIFY-TRUST ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
@@ -22357,40 +21090,21 @@ REG-PROTECT
    CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
    UNSEEN-MARK$ CHECKER-RECORD-SYM? 0 <> ;
 
-\ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
-\ that seals a storage cell at the moment its definer publishes it.
-\
-\ It registers exactly the effect TRUST would, except that the signature parser
-\ runs in raw-definer mode, so every type variable in that effect is minted
-\ TVK-RAW instead of TVK-ANY. A TVK-RAW variable admits plain scalars and
-\ refuses to bind a nominal family, so reading the cell back can never
-\ manufacture a nominal identity that nothing ever converted into one.
-\
-\ WHY THIS WORD EXISTS. The seal used to be applied by the caller: the shared
-\ source pre-verifier (verify-source RAW-TRUST-NEXT) bracketed its own call to
-\ the signature parser with SIG-RAW-DEFINER!. That made the seal a property of
-\ which front end happened to run, and the native `bin/hb --load` path -- the
-\ one every tool and gate uses -- published created words through plain TRUST
-\ and so published them unsealed. Bracketing is now inside the registration
-\ word, so a definer cannot register a raw cell and forget to seal it: the only
-\ way to publish a created word is to call this, and calling it seals.
-\
-\ The mode is restored to off rather than to its previous value on purpose.
-\ Raw registration is a top-level definer act; it never nests inside another
-\ signature parse, and leaving the mode latched on would silently seal ordinary
-\ signatures registered afterwards. So the mode ends however the registration
-\ ends, including the throw that refuses a signature that does not parse.
-\
-\ Source cannot call it, for the reason TRUST-DECL is sealed: it asks nothing.
-\
-\ A CREATED WORD TAKES NO CTL-INHERITED FACT. When it runs it pushes its cell,
-\ or runs its definer's clause, whose reach it is not given. The facts come
-\ from the engine's record of an interpret-mode `create` or `variable` (habu2.f
-\ C-DEFHOOK), the word's name and the definer's keyword: the check hook walks
-\ it as a definition's text, where `create` is a call, and records `create`'s
-\ axiom on the word. A `:` definition that calls `create` does read and define
-\ when it runs, and its walk cannot be told apart from that record's; this
-\ publication is the created word's, so they are dropped here.
+\ TRUST-RAW: TRUST with the signature parser in raw-definer mode, the single
+\ authority that seals a storage cell when its definer publishes it. Every type
+\ variable is minted TVK-RAW instead of TVK-ANY: it admits plain scalars and
+\ refuses to bind a nominal family, so reading the cell back cannot manufacture
+\ a nominal identity. Publishing a created word goes only through here, so it
+\ cannot be registered unsealed.
+\ The mode is reset to off, not to its previous value: raw registration never
+\ nests inside another signature parse, and a latched mode would seal later
+\ ordinary signatures. It ends however the registration ends, throw included.
+\ Sealed for the reason TRUST-DECL is: it asks nothing.
+\ A created word takes no CTL-INHERITED fact: when it runs it pushes its cell or
+\ runs its definer's clause. The facts come from the engine's record of an
+\ interpret-mode `create` or `variable` (habu2.f C-DEFHOOK), which the check
+\ hook walks as a definition's text where `create` is a call; that walk cannot
+\ be told apart from a `:` definition that calls `create`, so they are dropped.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    RES-TRUE SIG-RAW-DEFINER!
@@ -22411,26 +21125,15 @@ package CHECKER-REG
 ;package
 
 
-\ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust-decl`
-\ (above) and `checker-defer` (5208) are both defined now — the earliest safe
-\ point — so drain the pending table, replaying trust-decl+checker-defer for every
-\ defer declared before this line. The drain replays a DEFINER's registration, so
-\ it goes through `trust-decl` and not `trust`, and `trust-decl` is defined above
-\ `trust`, which is why this point still satisfies the precondition and the
-\ sentinels below did not have to move. DRAIN-PRETRUST is a baked engine
-\ primitive (native habu2.f + stage0 mirror forth.fs); it is called here by its
-\ bare token at exactly the boot-prefix point where the pending table must be
-\ flushed. The engine backstop
-\ (BSEALCAP, src/habu/habu1.f) dies fail-closed at SEAL-CAPTURE (exit 73, naming
-\ each undrained defer) if the table is non-empty because the drain never ran, so
-\ a removed or botched drain can never boot silently.
-\ The primitive is called by its bare token, never looked up at run time: this
-\ prefix declares pre-trust defers of its own (the TFAM query hooks
-\ TFAM-RESOLVE-XT.. above, before `: TRUST-DECL`), so an engine without
-\ DRAIN-PRETRUST cannot load it either way. The bare token is E-UNDEFINED (exit
-\ 70) there, and a `search-wl` lookup that missed would leave the table undrained
-\ and hit the exit-73 backstop, while costing a trusted execute-of-plain-n
-\ boundary (RSEXEC).
+\ Pre-trust defer drain: `trust-decl` and `checker-defer` are both defined here,
+\ the earliest point, so the pending table is replayed through `trust-decl` (a
+\ definer's registration, not `trust`). DRAIN-PRETRUST is a baked engine
+\ primitive (habu2.f and the stage0 mirror forth.fs). If the drain never ran,
+\ BSEALCAP (src/habu/habu1.f) dies at SEAL-CAPTURE (exit 73, naming each
+\ undrained defer). It is called by bare token, not looked up: this prefix
+\ declares pre-trust defers of its own (TFAM-RESOLVE-XT.. above), so an engine
+\ without it cannot load either way (E-UNDEFINED, exit 70), and a lookup would
+\ cost a trusted execute-of-plain-n boundary (RSEXEC).
 DRAIN-PRETRUST
 
 \ UNSAFE-TOK? lives above the EXPORT block (it also gates alias minting there).
@@ -22450,13 +21153,9 @@ variable RTL-I                        \ retired-token local scan index
       RTL-I @ 1 + RTL-I !
    REPEAT RES-FALSE ;
 
-\ Where a retired-spelling token actually binds. Reject only at the two
-\ positions that would have reached the retired raw global: it resolves at
-\ global position, or it resolves nowhere. A local, an open-package word, or a
-\ used-package public is a DIFFERENT word and passes through — locals shadow
-\ retirement exactly as they shadow every other resolution, and the checker
-\ resolves a local before any dictionary lookup, so a local reference can never
-\ reach global position.
+\ A retired spelling is refused only where it resolves at global position or
+\ nowhere. Locals shadow retirement as they shadow every other resolution: the
+\ checker resolves a local before any dictionary lookup.
 : RETIRED-GLOBAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u RETIRED-TOK? 0= IF RES-FALSE EXIT THEN
    a u LOC-NAME? IF RES-FALSE EXIT THEN
@@ -22465,45 +21164,37 @@ variable RTL-I                        \ retired-token local scan index
    a u CHECKER-GLOBAL-SYM? = ;
 
 \ A retired token is reported as undefined, not as an unsafe boundary: UNSAFE's
-\ repair advice is "move it behind audited TRUST", which is exactly the wrong
-\ instruction here — the word is gone for good and the caller must move to the
-\ owning package API. Latching UNDEFERR reuses the existing E-UNDEFINED
-\ diagnostic, so the checker verdict and the interpreter's own error name the
-\ same failure; RETIRED is what forces verdict 0 in CHECK-VERDICT.
+\ repair advice ("move it behind audited TRUST") is wrong for a word gone for
+\ good, whose caller must move to the owning package API. Latching UNDEFERR
+\ reuses E-UNDEFINED, so the checker and the interpreter name the same failure;
+\ RETIRED forces verdict 0 in CHECK-VERDICT.
 : REJECT-RETIRED ( -- )
    -1 RETIRED !  -1 UNDEFERR !  RF-UNDEF CREFUSE!  0 OK !  -1 FAILSET ! ;
 
-\ M5: a block collective/barrier reached inside an open control frame is not
-\ block-uniform-reachable; latch the reason, then reject. CAP-FAIL pinned this
-\ token if it is the first failure; MDIAG! must precede FAILSET (it latches only
-\ while the pin is open).
+\ A block collective or barrier reached inside an open control frame is not
+\ block-uniform-reachable. CAP-FAIL pinned this token if it is the first
+\ failure; MDIAG! must precede FAILSET (it latches only while the pin is open).
 : REJECT-DIVBAR ( -- )
    MD-DIVBAR MDIAG!
    0 OK !  -1 FAILSET ! ;
 
-\ p5 certificate soundness (dot habu-checker-fitting-arity-70dc94e4): an
-\ IMMEDIATE word executes at COMPILE time, so a checked body that names one
-\ contributes an EMPTY runtime step while the checker would apply the word's
-\ DECLARED effect - a wrong certificate that downstream checked callers then
-\ unify against. Until immediates' compile-time expansion is modeled, a
-\ signature-carrying live-dictionary immediate in a checked body is a
-\ fail-closed reject (the design doc's interim, mirroring the opener
-\ treatment). Modeled parsing immediates ([char]/char, which DO-TOK1 types
-\ as literals first) stay green; engine prims are modeled by TRY-PRIMS and
-\ carry no usig row.
+\ An IMMEDIATE word executes at compile time, so a checked body that names one
+\ contributes an empty runtime step while the checker would apply its declared
+\ effect: a wrong certificate. A signature-carrying live-dictionary immediate in
+\ a checked body is therefore refused, as openers are, until immediates'
+\ compile-time expansion is modeled. Modeled parsing immediates ([char]/char,
+\ which DO-TOK1 types as literals first) pass; engine prims are modeled by
+\ TRY-PRIMS and carry no usig row.
 
 variable IMMERR
 
-\ --- declared parsing immediates (modeled compile-time expansion, minimal form).
-\ A parsing immediate consumes a fixed number of source tokens at COMPILE time
+\ --- declared parsing immediates.
+\ A parsing immediate consumes a fixed number of source tokens at compile time
 \ and contributes no runtime step (GRID: eats one header token, WHERE eats
-\ three). Only a live immediate with an exact `( -- )` semantic row is admitted;
-\ declaring one teaches the body scan to skip its payload. The declaration is
-\ itself a checking-soundness boundary (a wrong count skips live code or eats
-\ real tokens), so `parse-imm` is UNSAFE-TOK?-listed: top-level declarations
-\ only, never a checked body step. Symbol-keyed like UNSAFE-SYMS;
-\ monotonic, never rolled back (a retired symbol id is never reused, so a stale
-\ entry can never match a new word).
+\ three). Only a live immediate with an exact `( -- )` semantic row is admitted.
+\ A wrong count skips live code or eats real tokens, so `parse-imm` is
+\ UNSAFE-TOK?-listed: top-level declarations only. Symbol-keyed like
+\ UNSAFE-SYMS and never rolled back: a retired symbol id is never reused.
 16 constant PIMM-CAP
 create PIMM-SYMS PIMM-CAP cells allot
 create PIMM-NS PIMM-CAP cells allot
@@ -22520,12 +21211,12 @@ variable PIMM-N
 : PIMM-CNT@ ( n -- n )             \ payload token count at declaration index
    cells PIMM-NS + @ ;
 
-\ A frozen primitive schema is supplied by CHECKER-ROLE. A primitive call
-\ must name the live global record it actually bound, either through its
-\ original global symbol or a private primitive row that reaches that record.
-\ The mutable facts attached to that symbol form one complete control cell.
-\ Initial overloads belong to the frozen schema; a later same-tail row in any
-\ package can change which schema a source call selects.
+\ A frozen primitive schema is supplied by CHECKER-ROLE. A primitive call must
+\ name the live global record it bound, through its original global symbol or a
+\ private primitive row that reaches that record. The mutable facts attached to
+\ that symbol form one control cell. Initial overloads belong to the frozen
+\ schema; a later same-tail row in any package can change which schema a source
+\ call selects.
 : PRIMITIVE-STATE ( n n -- n bool )
    {: ord:n sym:n :}
    sym 0= ord 0 < or ord ndict@ >= or IF 0 RES-FALSE EXIT THEN
@@ -22626,9 +21317,9 @@ variable ACTIVE
    sym PIMM-N @ cells PIMM-SYMS + !
    cnt PIMM-N @ cells PIMM-NS + !
    PIMM-N @ 1 + PIMM-N ! ;
-\ the TRUST row keeps parse-imm out of the internal-word marking (a library
-\ declares its parsing immediates at top level; UNSAFE-TOK? already bars it
-\ from checked bodies).
+\ The TRUST row keeps parse-imm out of the internal-word marking: a library
+\ declares its parsing immediates at top level (UNSAFE-TOK? bars it from
+\ checked bodies).
 s" parse-imm" s" ptr u8 n n --" TRUST
 
 : PIMM-SKIP ( n -- ) {: cnt:n :}   \ skip cnt payload tokens of a declared parsing immediate
@@ -22637,15 +21328,13 @@ s" parse-imm" s" ptr u8 n n --" TRUST
       1 +
    REPEAT drop ;
 
-\ PIMM-STREAM: -1 while checking an ENGINE-RECONSTRUCTED definition buffer: the
-\ engine already EXECUTED each immediate during compilation, so its parsed
-\ payload is structurally ABSENT from the buffer and the scan must NOT skip (it
-\ would eat live body tokens - proven by GRID: ceil-n-256 {: x .. :} losing its
-\ locals opener at load). This is the DEFAULT, because every hook-driven load
-\ path hands reconstructed buffers - including user-installed strict hooks
-\ (tools/lint/text.f) the checker cannot see. Only the explicit CANDIDATE scans
-\ (CHECK-CANDIDATE!/CHECKER-CANDIDATE-SCOPE-*) receive raw source text where
-\ the payload is still present, and they bracket the flag to 0 themselves.
+\ PIMM-STREAM is -1 while checking an engine-reconstructed definition buffer:
+\ the engine already executed each immediate, so its payload is absent and the
+\ scan must not skip (it would eat live body tokens: GRID: ceil-n-256 {: x .. :}
+\ lost its locals opener). This is the default, since every hook-driven load
+\ hands reconstructed buffers, user strict hooks (tools/lint/text.f) included.
+\ Only the CANDIDATE scans (CHECK-CANDIDATE!/CHECKER-CANDIDATE-SCOPE-*) see raw
+\ source with the payload present, and they bracket the flag to 0.
 variable PIMM-STREAM
 -1 PIMM-STREAM !
 
@@ -22666,34 +21355,22 @@ public
    -1 IMMERR !  RF-IMM CREFUSE!  0 OK !  -1 FAILSET ! ;
 
 \ ---- completion: the spellings that bind at a position -------------------------
-\ CHECKER-RESOLVE:EACH-VISIBLE ( prefix kind visitor ) gives the visitor, once
-\ each, every spelling that starts with the prefix, folded, and that the
-\ position's own selection binds: a body token's walk (VISIBLE-BODY), a
-\ top-level token's (VISIBLE-TOP), or a body's named operand's - a tick or `is`
-\ target, which no local answers (VISIBLE-NAMED). A word goes with where its
-\ selected record was declared - the visit, start and end of that record's
-\ DECL-LOCS row, 0 0 0 for none - and a local as itself with 0 0 0. The
-\ symbol and record a selection binds stay private to it. A spelling is
-\ taken only when its walk answers why = 0 and
-\ binds: a symbol, or under live authority the record the engine's lookup
-\ found (WALK-REC). Each distinct folded spelling is selected once, through a
-\ request-local set, and every walk output is put back after it, so the token
-\ at the cursor binds as it would unasked. Nothing is interned or kept. A word
-\ is spelled as its selection names it (VIS-NAME): as its declaration wrote it,
-\ else as its dictionary record does, else folded, the one case the store keeps
-\ for a name only the checker generated.
-\
-\ The candidates are the names the sources hold: every dictionary record's and
-\ every live symbol's. A prefix PKG:tail asks each behind its PKG. Any other
-\ prefix asks each bare, each behind the open package's name - the engine's
-\ top-level find takes PKG:TAIL for a global TAIL while PKG is open
-\ (OPEN-TAIL-GLOBAL?) - and each public symbol and each record of a package's
-\ public wordlist behind its package: a word the store holds no symbol for too.
-\ The whole spelling is compared with the whole prefix, so L, LSP and LSP: each
-\ reach LSP:MAIN. A source proves nothing; the selection decides. A qualified
-\ word is spelled behind its candidate's qualifier: the prefix's own as typed
-\ for PKG:tail and PKG:, else its package's namespace record's spelling, else
-\ the source's.
+\ CHECKER-RESOLVE:EACH-VISIBLE ( prefix kind visitor ) visits once each folded
+\ spelling starting with the prefix that the position's own selection binds: a
+\ body token's walk (VISIBLE-BODY), a top-level token's (VISIBLE-TOP), or a
+\ body's named operand, a tick or `is` target no local answers (VISIBLE-NAMED).
+\ A word comes with its selected record's DECL-LOCS row (visit, start, end; 0 0 0
+\ for none), a local with 0 0 0. A spelling is taken only when its walk answers
+\ why = 0 and binds a symbol or, under live authority, the record the engine's
+\ lookup found (WALK-REC). Every walk output is put back after it, so the token
+\ at the cursor binds as it would unasked; nothing is interned or kept.
+\ Candidates are every dictionary record's and every live symbol's name. A
+\ prefix PKG:tail asks each behind its PKG. Any other prefix asks each bare,
+\ behind the open package's name (the engine's top-level find takes PKG:TAIL for
+\ a global TAIL while PKG is open, OPEN-TAIL-GLOBAL?), and each public symbol
+\ and public-wordlist record behind its package. The whole spelling is compared
+\ with the whole prefix, so L, LSP and LSP: each reach LSP:MAIN. The selection
+\ decides, not the source.
 PTR-VARIABLE VS-P   variable VS-CAP   variable VS-N   variable VS-I   \ slots: entry+1
 PTR-VARIABLE VE-P   variable VE-CAP                   \ entries: byte offset, length
 PTR-VARIABLE VB-P   variable VB-CAP   variable VB-N   \ their bytes: cells, bytes
@@ -22730,7 +21407,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    REPEAT
    VS-I @ ;
 
-\ A fresh, empty slot table of N cells, N a power of two.
+\ N is a power of two.
 : VS-MAP ( n -- )
    {: n:n :}
    NULL-PTR VS-P !  0 VS-CAP !
@@ -22765,7 +21442,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    VB-P VB-CAP 1 ARENA-ROWS-RELEASE  0 VB-N !
    VQ-P VQ-CAP 1 ARENA-ROWS-RELEASE ;
 
-\ A U starts with the prefix, folded.
 : VIS-PREFIX? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    u VIS-U @ < IF RES-FALSE EXIT THEN
@@ -22779,7 +21455,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    VIS-A @ qu + c@ 58 <> IF RES-FALSE EXIT THEN
    qa qu VIS-A @ qu CORE-STR=CI ;
 
-\ PKG:A U starts with the prefix, folded.
 : VIS-QPREFIX? ( ptr u8 n ptr u8 n -- bool )
    {: qa:ptr qu:n a:ptr u:n :}
    qa qu VIS-PKG? 0= IF RES-FALSE EXIT THEN
@@ -22896,7 +21571,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 : VIS-LOCALS? ( -- bool )
    VIS-KIND @ CHECKER-OWNER-ABI:VISIBLE-BODY =  QDEPTH @ 0 = and  VIS-QUAL @ 0 = and ;
 
-\ Local IX is spelled A U exactly.
 : VIS-LOCAL= ( ptr u8 n n -- bool )
    {: a:ptr u:n ix:n :}
    a u  LOCNB ix LOC-NAME-W * +  ix cells LOCLN + @  CORE-STR= ;
@@ -22963,7 +21637,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    sa su #LOC @ VIS-HELD? IF EXIT THEN
    sa su v s e VIS-VISIT ;
 
-\ Offer NAME behind PKG when PKG:NAME starts with the prefix.
 : VIS-QWORD ( ptr u8 n ptr u8 n -- )
    {: qa:ptr qu:n a:ptr u:n :}
    qu 0= IF EXIT THEN
@@ -22983,7 +21656,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
       i SYM-RETIRED? 0= IF i SYM-NAME$ VIS-WORD THEN
    loop ;
 
-\ Each live public symbol behind its package.
 : VIS-PSYMS ( -- )
    SYM-N @ 1 ?do
       i SYM-RETIRED? 0= IF
@@ -22991,7 +21663,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
       THEN
    loop ;
 
-\ Each named record of wordlist WID behind PKG.
 : VIS-WL ( ptr u8 n n -- )
    {: qa:ptr qu:n wid:n :}
    ndict@ 0 ?do
@@ -23002,8 +21673,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
       THEN
    loop ;
 
-\ Namespace record REC's public records behind its name, when one can start
-\ with the prefix. Its first cell is its public wordlist, 0 for none.
+\ A namespace record's first cell is its public wordlist, 0 for none.
 : VIS-PACKAGE ( ptr n -- )
    {: rec:ptr :}
    rec @ {: wid:n :}
@@ -23086,9 +21756,9 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 package CHECKER-RESOLVE
 public
 \ The owner slot (VERIFY-EACH-VISIBLE-OFF): the spellings that bind under
-\ PREFIX at a position of KIND (CHECKER-OWNER-ABI:VISIBLE-*), each to VISIT
-\ once with its location, as the section above says. Refused while a check
-\ owns a cursor or a visitor runs, before it touches either.
+\ PREFIX at a position of KIND (CHECKER-OWNER-ABI:VISIBLE-*), each to VISIT once
+\ with its location. Refused while a check owns a cursor or a visitor runs,
+\ before it touches either.
 : EACH-VISIBLE ( ptr u8 n n [ ptr u8 n n n n -- ] -- )
    CUR-OWNED @ 0 <>  VIS-OPEN @ 0 <> or  IF E-CURSOR-NESTED throw THEN
    is VIS-VISIT
@@ -23111,31 +21781,13 @@ variable IS-TU
 CHECKER-REG:}SCRATCH
 
 \ ---- the token a keyword swallows -------------------------------------------
-\ TWO KEYWORDS READ A TOKEN OF THEIR OWN out of the middle of the judgement:
-\ `is NAME` reads the deferred word it binds, and `['] W` reads the word it
-\ ticks. Both do it with IS-NEXT-TOKEN below, which walks TI past the token
-\ itself, so the scan loop resumes AFTER it and the source-tape observer - which
-\ the loop notifies once per turn, for the token that turn read - is never told
-\ about it.
-\
-\ THAT IS A HOLE IN THE TAPE AND NOT A CHOICE. src/compiler/native/tape.f is
-\ "the exact token stream the compiler consumed" and src/compiler/native/feed.f
-\ appends "one row per token that reader consumed, in consumption order". These
-\ two tokens ARE consumed by this reader, so a tape without them says the
-\ definition wrote something it did not. Measured before the repair: the tape for
-\ `: X ( -- ) [: I ;] is H ;` held five rows ending at `is`, and the native
-\ chain's elaborator therefore had no name to bind - it cannot ask a second
-\ lexer, because a second lexer is exactly what the tape exists to make
-\ unnecessary.
-\
-\ SO THE TOKEN IS REPORTED, AFTER THE KEYWORD'S OWN ROW. Consumption order is
-\ the keyword and then its target, and the row for the keyword is written by
-\ SCAN-REPORT after the judgement - so the target's row is written straight
-\ after it, from the offset and length recorded here as the target was read.
-\ It is the same shape a string literal's payload already uses: the judgement
-\ spends the bytes and reports what it spent, because only the judgement knows.
-\
-\ IS-TARGET-TOK? records each consumed target for the source tape.
+\ `is NAME` and `['] W` read their target with IS-NEXT-TOKEN, which walks TI
+\ past it, so the scan loop's once-per-turn tape notify never sees it. The tape
+\ (src/compiler/native/tape.f, feed.f) holds every token this reader consumed in
+\ consumption order, and the native elaborator binds the name from it, so the
+\ target's row is written straight after the keyword's (SCAN-REPORT, after the
+\ judgement) from the offset and length recorded here. A string literal's
+\ payload is reported the same way: only the judgement knows what it spent.
 variable IS-TOFF                     \ where the token IS-NEXT-TOKEN last read starts
 variable IS-PEND                     \ a swallowed token is waiting to be reported
 variable IS-PEND-OFF                 \ its offset in the scanned text
@@ -23146,8 +21798,8 @@ variable IS-PEND-U                   \ and its length
    IS-TU @ IS-PEND-U !
    -1 IS-PEND ! ;
 
-\ IS-TA holds a token-start pointer, so its cell is declared storage (dot
-\ habu-refuse-a-ptr-5ad2734e) and the emitted token span keeps its ptr u8 role.
+\ IS-TA holds a token-start pointer, so its cell is declared storage and the
+\ emitted token span keeps its ptr u8 role.
 : IS-TA@ ( -- ptr u8 )
    IS-TA @ ;
 
@@ -23252,32 +21904,25 @@ variable IS-PEND-U                   \ and its length
 : BTICK-PUSH ( n -- )                    \ push one row term (known or opaque xt)
    DCUR @ MK-PUSH DCUR ! ;
 
-\ THE EDGE A TICKED CALLEE CARRIES. `['] W` names a body, so the term it pushes
-\ takes the exceptional edge W's own definition proved, exactly as the `[: W ;]`
-\ literal's term does: the has-edge flag from W's control word and the intact
-\ masks the NORET store recorded for it. W IS that body, so its masks need no
-\ recomposition — a mask bit counts from the TOP of W's declared input row, and
-\ that row (instantiated by TICK-QUOT) is this term's own din, which is the
-\ window RSCATCH measures the mask against (CWIN-DTERMS / ROW-STALE-TOP).
-\ A symbol with no entry, or one whose flags carry no CTL-THROW, answers 0 and
-\ the term stays edge-free — including a recovery record, which a failed body
-\ appends with no control claims at all. The edge is not part of the quotation
-\ TYPE: it lives on this one term and does not survive a typed `xt<effect>`
-\ cell, a quotation parameter or a `defer`, whose terms are fresh instances of
-\ a declared type (test/xt-cell-test.f, test/xt-effect-test.f pin that).
-\
-\ THE DEAD FLAG IS NOT TAKEN, and the tick keeps modelling W's declared
-\ fall-through as reachable. A quotation whose fall-through is dead publishes no
-\ result row to its site (CWIN-OUT = CELLS-NONE), and the native elaborator
-\ turns that into the body's own calling convention: for a LITERAL it is the
-\ function it is about to emit, but for a tick the row already carries the
-\ declared ABI of an existing routine and the two disagree, which
-\ src/compiler/native/elaborate.f QFILL refuses (E-NELAB-QUOT, named on the
-\ `[']`). Taking the flag here would certify `['] WDEAD catch` and leave `hb`
-\ unable to compile it — measured on `['] W ['] CLEAN finally` (AOT) and on
-\ `( ptr u8 -- n ) ['] WDEAD catch {: v code:n :} code`. A tick of a
-\ never-returning callee therefore stays what it has always been: the fit-check
-\ against its declared output row, refusing the non-preserving ones.
+\ THE EDGE A TICKED CALLEE CARRIES. `['] W` pushes a term that takes the
+\ exceptional edge W's own definition proved, as the `[: W ;]` literal's term
+\ does: the has-edge flag from W's control word and the intact masks the NORET
+\ store recorded. The masks need no recomposition: a mask bit counts from the
+\ top of W's declared input row, which (instantiated by TICK-QUOT) is this term's
+\ own din, the window RSCATCH measures against (CWIN-DTERMS / ROW-STALE-TOP).
+\ A symbol with no entry or no CTL-THROW, a recovery record included, answers 0.
+\ The edge is not part of the quotation type: it does not survive a typed
+\ `xt<effect>` cell, a quotation parameter or a `defer` (test/xt-cell-test.f,
+\ test/xt-effect-test.f).
+\ THE DEAD FLAG IS NOT TAKEN: the tick models W's declared fall-through as
+\ reachable. A quotation with a dead fall-through publishes no result row
+\ (CWIN-OUT = CELLS-NONE) and the native elaborator gives it the body's own
+\ calling convention, but a tick's row already carries an existing routine's
+\ ABI, which src/compiler/native/elaborate.f QFILL refuses (E-NELAB-QUOT).
+\ Taking the flag would certify `['] WDEAD catch` that `hb` cannot compile
+\ (measured on `['] W ['] CLEAN finally` (AOT) and on
+\ `( ptr u8 -- n ) ['] WDEAD catch {: v code:n :} code`). A tick of a
+\ never-returning callee is fit-checked against its declared output row.
 : BTICK-EDGE ( n n -- n ) {: q:n sym:n :}
    sym CTL-WORD-SYM {: ctl:n :}
    ctl XFER-FLAGS CTL-THROW and 0= IF q EXIT THEN
@@ -23285,7 +21930,6 @@ variable IS-PEND-U                   \ and its length
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
 
-\ Pin the word a tick consumed where it stands.
 : TARGET-PIN! ( -- )
    IS-TA@ IS-TU @ FAIL-PIN!
    IS-TOFF @ FAILB !
@@ -23297,14 +21941,13 @@ variable IS-PEND-U                   \ and its length
    FAILSET @ 0 <> IF EXIT THEN
    TARGET-PIN! ;
 
-\ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY, NOT ITS INPUT STACK. The row
-\ gives the tick its quotation signature below, but an ABI-only row cannot
-\ authorize that quotation any more than it can authorize a direct call. The
-\ seal keeps a global record reached by an owner-private primitive row visible
-\ in every scope. Inside the owner its private row binds and CALL-AUTHORITY
-\ admits the tick. Outside, a bound ABI row refuses E-CAP-TRUSTED, including an
-\ EXPORT alias; with no row, only an owner-private primitive target needs the
-\ named E-UNDEFINED refusal here. EXPORT-TAIL$ finds that owner's source tail.
+\ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY: an ABI-only row cannot
+\ authorize the quotation any more than a direct call. The seal keeps a global
+\ record reached by an owner-private primitive row visible in every scope.
+\ Inside the owner its private row binds and CALL-AUTHORITY admits the tick.
+\ Outside, a bound ABI row refuses E-CAP-TRUSTED, an EXPORT alias included; with
+\ no row, only an owner-private primitive target needs the named E-UNDEFINED
+\ refusal here. EXPORT-TAIL$ finds that owner's source tail.
 : OWNED-TICK-REFUSED? ( n -- bool ) {: sym:n :}
    FEP-HIT? IF
       sym CALL-AUTHORITY CALL-REFUSED = IF
@@ -23358,18 +22001,16 @@ variable IS-PEND-U                   \ and its length
    THEN ;
 
 
-\ --- layout stack-op typing (type-family.f header) -------------------
-\ Whole-bundle transport tokens. For an EXPANDED layout (width known, linear
-\ included) the group moves by direct row surgery (XPORT-STEP? above), whose
-\ LIN-CHECK conserves a linear bundle; for the one logical cell of a layout
-\ whose width reads an open argument (LAYOUT-WIDTH-OPEN?) the op's effect var
-\ may absorb the cell, gated by LAYOUT-XPORT-ALLOW? (which rejects the bind
-\ when the layout may be linear). ?dup
-\ is excluded on purpose — it branches on the top (tag) cell, width-breaking
-\ for a sum whose tag 0 is a valid variant.
-\ Transport mode keys on the FOLDED TOKEN NAME, and DO-TOK consults user sigs
-\ before prims. The token is admitted to transport mode only when its binding
-\ is the engine's own word of that spelling (TOK-CORE-OP?).
+\ --- layout stack-op typing (type-family.f TFAM-WIDTH@) -------------------
+\ Whole-bundle transport tokens. An EXPANDED layout (width known, linear
+\ included) moves by direct row surgery (XPORT-STEP?), whose LIN-CHECK conserves
+\ a linear bundle; the one logical cell of a layout whose width reads an open
+\ argument (LAYOUT-WIDTH-OPEN?) may be absorbed by the op's effect var, gated by
+\ LAYOUT-XPORT-ALLOW? (refused when the layout may be linear). ?dup is excluded:
+\ it branches on the top (tag) cell, width-breaking for a sum whose tag 0 is a
+\ valid variant. Transport mode keys on the folded token name and DO-TOK consults
+\ user sigs before prims, so a token is admitted only when its binding is the
+\ engine's own word of that spelling (TOK-CORE-OP?).
 : LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN
@@ -23392,7 +22033,7 @@ variable IS-PEND-U                   \ and its length
 
 : DCUR-TOP-LAYOUT? ( -- bool )     \ resolved top of the data row is a layout param?
    \ LAYOUT-PARAM? is true for a HIDDEN field too (same layout family-id), so an
-   \ expanded bundle's tag cell on top rejects ?dup exactly like the old logical cell.
+   \ expanded bundle's tag cell on top refuses ?dup as a logical cell does.
    DCUR @ R-RES dup TAG S-PUSH = IF P>TYPE LAYOUT-PARAM? EXIT THEN drop RES-FALSE ;
 
 : QDUP-STEP ( -- )  \ ?dup: reject on a layout value; scalar stays unmodeled
@@ -23403,23 +22044,20 @@ variable IS-PEND-U                   \ and its length
    THEN ;
 
 \ --- construct form (docs/forth.md "Structures And Enums"): `construct family
-\ variant` is a reserved checker token protocol, not a word lookup. The two
-\ operand tokens are captured in DO-TOK1 BEFORE locals reference, control
-\ dispatch, and dictionary lookup (family/variant tokens must not
-\ collide with locals or words) and resolved through the registry xts installed
-\ by type-family.f: the family in the ACTIVE package only (the ownership
-\ predicate — cross-package construction never resolves), the variant within
-\ that family. The step effect is then applied inline exactly like a generated
-\ constructor call (payloads consumed, layout bundle produced, CHECKER-STEP
-\ conservation). Stage engines without the registry keep the 0 hooks and fail
-\ closed. test/match-factor-pin.f pins native construct execution.
+\ variant` is a reserved checker token protocol, not a word lookup. DO-TOK1
+\ captures both operands before locals, control dispatch and dictionary lookup,
+\ and resolves them through the registry xts type-family.f installs: the family
+\ in the ACTIVE package only (cross-package construction never resolves), the
+\ variant within that family. The step is applied inline as a generated
+\ constructor call is. Stage engines without the registry keep the 0 hooks and
+\ fail closed. test/match-factor-pin.f pins native construct execution.
 : CONSTRUCT-BEGIN ( -- )
    EV-OPERAND
    1 CONM ! ;   \ enter family-token mode; an unarmed registry rejects at the family resolve (CONSTRUCT-FAM-XT default)
 
-\ A failed family resolve still consumes the variant token (poisoned CONFAM
-\ -1): the three-token form always captures whole, so the trailing operand can
-\ never fall through to locals/word lookup and blur the hard reject into an
+\ A failed family resolve still consumes the variant token (CONFAM -1): the
+\ three-token form always captures whole, so the trailing operand never falls
+\ through to locals or word lookup and blurs the reject into an
 \ uncheckable-undefined verdict.
 : CONSTRUCT-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -23437,17 +22075,14 @@ variable IS-PEND-U                   \ and its length
    THEN
    0 CONM ! ;
 
-\ --- field-projection op (dot habu-checker-type-structure, structure-decl.f
-\ header). `field-project` is a reserved checker operation: inside the sealed armed
-\ window it consumes `ptr family<args>` plus a baked byte-offset literal and
-\ produces `ptr <instantiated field type>`, deriving the field's family, offset,
-\ byte extent, role, and schema from the committed field id via TYPE-FIELD
-\ reflection (FIELD-PROJ-XT, bound in type-family.f). It is the single shape the
-\ ordinary layout fence refuses (`+`/`cell+` preserve the pointee), so it is the
-\ only checked retype of a layout pointer; a pointer CAST: is an unchecked
-\ private class mint. Runtime is a plain pointer+offset add (the
-\ generator/consumer supplies the `( ptr n -- ptr )` word); the checker judges
-\ only the type effect here.
+\ --- field-projection op (structure-make.f field-project). `field-project` is a
+\ reserved checker operation: inside the sealed armed window it consumes
+\ `ptr family<args>` plus a baked byte-offset literal and produces
+\ `ptr <instantiated field type>`, deriving the field's family, offset, extent,
+\ role and schema from the committed field id (FIELD-PROJ-XT, bound in
+\ type-family.f). It is the only checked retype of a layout pointer: the layout
+\ fence refuses `+`/`cell+` on one, and a pointer CAST: is an unchecked private
+\ class mint. The runtime is a plain pointer+offset add the generator supplies.
 TRUSTED: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
    a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
 REG-PROTECT
@@ -23457,12 +22092,10 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    u 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
    a u NMA @ NMU @ CORE-STR=CI ;   \ NMA is case-folded; the armed name is verbatim
 : FIELD-PROJ-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;   \ pin the field-project token, fail closed
-\ Row surgery: peek `ptr family<args>` (second from top; the offset literal is on
-\ top), validate the pointer shape, ask FIELD-PROJ-XT for the instantiated field
-\ type, then consume (ptr family, offset) and produce (ptr field-type) through
-\ RECORDED-STEP so the native call gets its physical widths and glue. The peeked
-\ family term is used verbatim in the step's input row so its `family ~ family`
-\ pairing is the sanctioned same-family bind, not a fenced var<->layout bind.
+\ The step goes through RECORDED-STEP so the native call gets its widths and
+\ glue. The peeked family term is used verbatim in the step's input row, so its
+\ `family ~ family` pairing is the sanctioned same-family bind, not a fenced
+\ var<->layout bind.
 : FIELD-PROJ-STEP ( -- )
    FIELD-PROJ-CLEAR                                       \ single shot, even on reject
    DCUR @ R-RES {: r0:n :}                                \ top = baked offset literal
@@ -23483,24 +22116,16 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    FIELD-PROJ-MATCH? 0= IF RES-FALSE EXIT THEN
    FIELD-PROJ-STEP RES-TRUE ;
 
-\ --- record-at (structure-decl.f header). The second half of the record
-\ address surface, and the one that needs NO window: it consumes `ptr F` and a
-\ cell count and answers `ptr F`, preserving the family. Preserving it is what
-\ makes it safe — nothing is retyped, bounds stay the caller's, and the contract
-\ is the one `cells +` already has on every other pointer. It exists because the
-\ layout fence refuses `+` and `cell+` on a layout pointee outright (a var never
-\ binds a layout param outside a transport op), which is exactly what keeps a
-\ record pointer from being reinterpreted; a record still has to be indexable.
-\ Outside a layout pointee this handles nothing and the word's ordinary
-\ `( ptr a n -- ptr a )` row judges the call.
-\
-\ A WIDE INSTANTIATION IS REFUSED. `F:AT` bakes the family's committed width, and
-\ the committed width describes the layout only while every type argument is one
-\ cell; a wider arg expands the product and moves every field past the first. The
-\ same condition refuses a projection (type-family.f TFAM-FIELD-PROJ-DO), so the
-\ two halves of the surface agree on which instantiations they describe.
-\ Record the accepted call's pointer/count widths and result glue for native
-\ compilation; the rejected wide case publishes no call fact.
+\ --- record-at (structure-make.f record-at): the record-address half that needs no
+\ window. It consumes `ptr F` and a cell count and answers `ptr F`, preserving
+\ the family, so nothing is retyped and bounds stay the caller's, as with
+\ `cells +` elsewhere. It exists because the layout fence refuses `+` and `cell+`
+\ on a layout pointee, yet a record must be indexable. Outside a layout pointee
+\ the word's ordinary `( ptr a n -- ptr a )` row judges the call.
+\ A WIDE INSTANTIATION IS REFUSED: `F:AT` bakes the family's committed width,
+\ which describes the layout only while every type argument is one cell. The
+\ same condition refuses a projection (type-family.f TFAM-FIELD-PROJ-DO). The
+\ rejected wide case publishes no call fact.
 : RECORD-AT-REJECT ( -- ) TKF TKFU @ CAP-FAIL  0 OK ! ;   \ pin the record-at token, fail closed
 : RECORD-AT-EXACT? ( n -- bool ) {: famterm:n :}   \ declared layout == instantiated layout
    famterm TFAM-INST-WIDTH-XT  famterm PARAM>FAM TFAM-WIDTH@*  = ;
@@ -23538,13 +22163,12 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    id INTRINSIC-FIELD-PROJECT = IF FIELD-PROJ-STEP? EXIT THEN   \ armed FAMILY:FIELD projection
    RES-FALSE ;
 
-\ The first token names the definition. Inside a verifier scope the text is a
-\ replay of recorded source, so the name's own record bounds what the body
-\ binds; on the live load path, and for a candidate probe wherever it runs, the
-\ name is a label that claims nothing and the body binds against the whole
-\ store. Measured: inside the verifier, the probe `PAIR ( n n -- sdrep:pair )
-\ SDREP-PAIR:MAKE` took the checker's own PAIR record as its horizon and lost the
-\ replayed MAKE behind it (E-UNDEFINED, verdict 1).
+\ The first token names the definition. Inside a verifier scope the text replays
+\ recorded source, so the name's own record bounds what the body binds; on the
+\ live load path, and for a candidate probe anywhere, the name claims nothing
+\ and the body binds against the whole store. Measured: inside the verifier,
+\ the probe `PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE` took the checker's own
+\ PAIR record as its horizon and lost the replayed MAKE (E-UNDEFINED).
 : NAME-TOK ( -- )
    TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  TSTART @ NMOFF !  0 TOK0 !
    CHECKER-VERIFY-PKG-DEPTH @ 0 <>  CHK-PROBE @ 0=  and IF
@@ -23574,21 +22198,18 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    THEN
    FAILSET @ 0 <>  REFUSAL @ 0=  and  UNSEEN @ 0=  and IF REFUSAL-OF REFUSAL ! THEN ;
 
-\ A structure is open: a locals declaration, a control frame, a construct or a
-\ match.
 : CF-OPEN? ( -- bool )
    LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  CHECKER-MATCH-MODE @ 0 <>  or ;
 
-\ The closer DIAG-CLOSER! names is the load's last token of the mapped text's
+\ The closer DIAG-CLOSER! names is the load's last token of the mapped
 \ definition, and the load's compiler refuses a structure still open there
-\ (src/habu/habu2.f EM-COMPILE-SEMI) before its checker sees the definition.
-\ So at the walk's end (CHECK-SCAN), before a held using refusal raises and
-\ the checks at `;` run, this takes the pin and the diagnostic as REFUSAL-STEP
-\ takes a compile refusal, unless an earlier one holds them, and fails the
-\ definition, so no later check moves the pin. The walk drops only openers
-\ (DEADERR, CF-OVER), so a structure open here is open in the load. A
-\ truncated construct or match keeps its reason; any other open structure is
-\ RF-REJECTED.
+\ (src/habu/habu2.f EM-COMPILE-SEMI) before its checker sees it. At the walk's
+\ end (CHECK-SCAN), before a held using refusal raises and the checks at `;`
+\ run, this takes the pin and diagnostic as REFUSAL-STEP takes a compile
+\ refusal, unless an earlier one holds them, and fails the definition. The walk
+\ drops only openers (DEADERR, CF-OVER), so a structure open here is open in
+\ the load. A truncated construct or match keeps its reason; any other open
+\ structure is RF-REJECTED.
 : CLOSER-REFUSE ( -- )
    CF-OPEN? 0=  DCLOSE-U @ 0=  or  TBASE @ DMAP-A @ - 0 <>  or  RCOMPILE @ 0 <>  or IF EXIT THEN
    CONM @ 0 <> IF MD-CON-TRUNC ELSE
@@ -23667,7 +22288,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    TKF TKFU @ CF-TOK? 0= IF
    TKF TKFU @ SPELLED-STEP? 0= IF
-   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject (p5)
+   TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
    TKF TKFU @ DO-TOK
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
@@ -23684,9 +22305,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
-   \ raised: the value position in UF-CAPTURE, the return row in RS-CAPTURE,
-   \ `ptr-field` in RAW-FIELD-TOK?.
-   \ Nothing is left to collect here -- the flags only have to be dropped,
+   \ raised (UF-CAPTURE, RS-CAPTURE, RAW-FIELD-TOK?). The flags are dropped here
    \ because TRY-PRIMS applies candidate rows in turn (`V @ cell+` raises one on
    \ the `ptr a -- ptr a` row and then succeeds on `n -- n`) and the next token
    \ must start clean.
@@ -23854,26 +22473,22 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
    NP-VARSET @ IF NP-OUTVARS+ ELSE NP-INVARS+ THEN ;
 
 \ THE NULL that reached a declared quantifier through an INPUT is not a
-\ restriction the signature has to spell. `: RELEASE ( ptr ptr a -- ) ...
-\ NULL-PTR cb ! ;` stores the null the language's own reset code stores, and `a`
-\ is the pointee of a cell the word was HANDED, not something the body minted;
-\ the kind still rides the published effect, so every caller's fetch through
-\ that quantifier is fenced where it lands. A quantifier the body raises and
-\ then PUBLISHES has no such excuse -- `( -- ptr a ) data-base OFF +` hands its
-\ caller the choice of element type for engine DATA, which is the wrapper this
-\ rule exists to refuse, and it is named here rather than at each of its uses.
+\ restriction the signature has to spell: `: RELEASE ( ptr ptr a -- ) ...
+\ NULL-PTR cb ! ;` stores the null reset code stores into a cell the word was
+\ handed; the kind still rides the published effect, so every caller's fetch
+\ through that quantifier is fenced. A quantifier the body raises and then
+\ PUBLISHES has no such excuse: `( -- ptr a ) data-base OFF +` hands its caller
+\ the choice of element type for engine DATA, the wrapper this rule refuses.
 \ INPUT-ONLY, not merely input: `: LEAK ( ptr a -- ptr a ) drop data-base 8 + ;`
-\ mentions `a` on both sides, and excusing it let the caller pick the pointee
-\ again through `ptr thing LEAK @` -- measured, it forged.
-\
-\ TVK-DBASE is NEVER excused, whatever position it arrived through. An input-only
-\ quantifier is still a quantifier the CALLER instantiates, and
-\ `: STASH ( ptr ptr a -- ) data-base 8 + swap ! ;` therefore wrote an arbitrary
-\ DATA word into `TYPED-VARIABLE PP ptr ptr n` and `PP @ @` read it back as an
-\ address (measured: `1 W  PP @ @ @` SIGSEGVed). The same shape through a
-\ quotation parameter -- `: FEED ( [ ptr a -- ] -- ) data-base 8 + swap execute ;`
-\ -- handed it to the caller's own consumer. The null has no such reach: it is
-\ one fixed address, and the only value read through it is the trap.
+\ let the caller pick the pointee again through `ptr thing LEAK @` (measured,
+\ it forged).
+\ TVK-DBASE is never excused, whatever position it arrived through: an
+\ input-only quantifier is still one the caller instantiates.
+\ `: STASH ( ptr ptr a -- ) data-base 8 + swap ! ;` wrote a DATA word into
+\ `TYPED-VARIABLE PP ptr ptr n` and `1 W  PP @ @ @` SIGSEGVed; the same shape
+\ through a quotation parameter (`: FEED ( [ ptr a -- ] -- ) data-base 8 + swap
+\ execute ;`) hands it to the caller's consumer. The null has no such reach: it
+\ is one fixed address, and the only value read through it is the trap.
 : NP-KIND-EXCUSED? ( n n -- bool ) {: oid:n newk:n :}
    newk TVK-NULL <> IF RES-FALSE EXIT THEN
    oid NP-OUTVARS-HAS? IF RES-FALSE EXIT THEN
@@ -23902,27 +22517,24 @@ variable NP-VARSET   \ which set NP-INVARS-WALK fills: 0 = inputs, 1 = outputs
       oid swap cells NP-ROOT-OID + @ NP-FAIL-ALIAS    \ root already claimed by another quantifier
    THEN ;
 
-\ --- checked-mint output-provenance seal (dot habu-ptx-phantom-preserving,
-\ leg 2b). A CHECKED (:) definition may not introduce, as an argument of a
-\ register-phantom CELL family in an OUTPUT, a declared type variable that is
-\ unbound in its inputs. Producing a cell value of input-unrelated type is a
-\ MINT — sound only behind an audited TRUSTED: boundary, whose register<->phantom
-\ coercion the checker cannot witness. TRUSTED: words bypass CHECK, so a genuine
-\ mint (GRID-CTX minting a fresh block, MK-SPAN minting a span) stays legal there;
-\ a `:` wrapper that forges a free-typed phantom through a mint combinator
-\ (`( span<..,t,..> gridctx<b,e,m> -- tile<u,b,m> )`, u free) rejects here.
-\ Complements NP-CHECK's specialization and alias checks on all declared types. Raw declared identity (PAY, no T-RES): the body's speculative
-\ binds (a laundering combinator that unified u:=t) do not hide a var whose
-\ declared occurrences are all outputs.
+\ --- checked-mint output-provenance seal. A checked `:` definition may not
+\ introduce, as an argument of a register-phantom CELL family in an OUTPUT, a
+\ declared type variable unbound in its inputs: producing a cell of
+\ input-unrelated type is a MINT, sound only behind an audited TRUSTED: boundary
+\ (a grid context minting a block, a span constructor a span). A `:` wrapper
+\ forging a free-typed phantom through a mint combinator (`( span<..,t,..>
+\ gridctx<b,e,m> -- tile<u,b,m> )`, u free) is refused. Complements NP-CHECK's
+\ specialization and alias checks. Raw declared identity (PAY, no T-RES): a
+\ body's speculative bind (a laundering combinator that unified u:=t) does not
+\ hide a var whose declared occurrences are all outputs.
 CHECKER-REG:SCRATCH{
 variable NP-CELL-TERM   \ output cell-family term currently scanned (for the diagnostic)
 CHECKER-REG:}SCRATCH
 variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recursive)
 
 
-\ NP-INVARS-WALK ( t -- ) : raw-collect every declared var id reachable in a term
-\ OR a stack row, descending through ptr pointees, quotation effect rows, and
-\ family arguments. No T-RES: a bound declared var keeps its raw PAY identity.
+\ Descends through ptr pointees, quotation effect rows and family arguments. No
+\ T-RES: a bound declared var keeps its raw PAY identity.
 : NP-INVARS-WALK ( n -- ) {: t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -23960,9 +22572,9 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    -1 NPBAD !  2 NPBAD-KIND !
    vid NP-LETTER NPBAD-Q1 !  0 NPBAD-Q2 !  ct NPBAD-TERM ! ;
 
-\ NP-FREE-SCAN ( t -- ) : flag any input-unbound var inside a term nested under the
-\ output cell family stashed in NP-CELL-TERM. Raw (no T-RES) — a body bind cannot
-\ launder the declared var's absence from the inputs.
+\ Flags an input-unbound var nested under the output cell family in
+\ NP-CELL-TERM. Raw (no T-RES): a body bind cannot launder the declared var's
+\ absence from the inputs.
 : NP-FREE-SCAN ( n -- ) {: t:n :}
    t ISVAR IF
       \ only a USER-DECLARED quantifier (a..z, NP-LETTER != '?') can forge a mint;
@@ -23997,16 +22609,13 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
       P>REST R-RES
    REPEAT drop ;
 
-\ NP-ROW-HAS-FIELD? ( row -- bool ) : does a declared input row consume a
-\ VALUE-RECORD? A record is carried as a reserved `field<rec,name,inner>` term
-\ (FIELD-PARAM?), and it can EXISTENTIALLY hold a polymorphic cell field. So a
-\ checker-native field accessor (`( rec -- fam<a,..> )`, empty body = width
-\ coercion) legitimately surfaces cell vars unbound at the sig surface — a
-\ checker-governed introduction, NOT a register mint. The register-phantom
-\ families this seal protects (span / gridctx / tile / …) are plain cells and
-\ never appear as accessor inputs, so the PTX mint surface is unaffected.
-\ (Conservative boundary: a wrapper mixing a record input with a register mint is
-\ not sealed — an audited, contrived shape.)
+\ A VALUE-RECORD input (a reserved `field<rec,name,inner>` term, FIELD-PARAM?)
+\ can existentially hold a polymorphic cell field, so a checker-native field
+\ accessor (`( rec -- fam<a,..> )`, empty body = width coercion) surfaces cell
+\ vars unbound at the sig surface: a checker-governed introduction, not a
+\ register mint. The register-phantom families (span, gridctx, tile) are plain
+\ cells and never accessor inputs. A wrapper mixing a record input with a
+\ register mint is not sealed.
 : NP-ROW-HAS-FIELD? ( n -- bool )
    R-RES BEGIN dup TAG S-PUSH = WHILE
       dup P>TYPE FIELD-PARAM? IF drop RES-TRUE EXIT THEN
@@ -24077,59 +22686,39 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    NP-ROWS-CHECK
    NP-MINT-CHECK ;
 
-\ ---- the source-tape observer (dot habu-feed-the-src-f7ed8733) ---------------
-\ The compiler's source tape (src/compiler/native/tape.f) needs checking,
-\ elaboration, diagnostics and code generation to talk about the same tokens. CHECK-SCAN
-\ below is the reader that turns a checked definition's text into tokens, so it
-\ is where the stage N0 source tape has to be filled: any other producer would
-\ be a second lexer, and the certificate would bind a token stream the checker
-\ never read.
-\
-\ WHAT THIS PACKAGE OWNS. Three event points on the one reader - the text a
-\ scan is about to consume, each token as it is consumed, and the verdict that
-\ scan reached - and the classification of a token into the reader's own
-\ literal vocabulary, which is ALLDIG?/FLODIG? and nothing new. Beside them,
-\ what the checker judged each token of the scan to be (EVENT), which the
-\ observer reads by the token's ordinal while it is told the verdict.
-\
-\ WHAT IT REFUSES. Installing a second observer over a live one, and arming an
-\ observer that was never installed. Both die by name rather than dispatching
-\ into an unset cell. So does asking for an event outside the verdict, or for a
-\ token the scan did not report, rather than reading a row no scan published.
-\
-\ WHAT IT DOES NOT DECIDE. Nothing about a verdict. The observer is called
-\ after the token is judged and its answer is never read, so it can abort a
-\ compilation by throwing but it can never turn a rejected definition into an
-\ accepted one. Off, it is one variable fetch and a branch per token.
+\ ---- the source-tape observer ---------------------------------------------------
+\ CHECK-SCAN is the reader that turns a checked definition into tokens, so it
+\ fills the compiler's source tape (src/compiler/native/tape.f): any other
+\ producer would be a second lexer, and the certificate would bind a token
+\ stream the checker never read. Three events on the one reader (the text a
+\ scan is about to consume, each token, the verdict) plus the token class
+\ (ALLDIG?/FLODIG?) and what the checker judged each token (EVENT, read by
+\ ordinal while the verdict is told). Arming an armed observer, arming one never
+\ installed, and asking for an event outside the verdict or for an unreported
+\ token die by name. The observer is called after the token is judged and its
+\ answer is never read: it can abort a compilation but never accept one. Off,
+\ it costs one variable fetch and a branch per token.
 package CHECKER-TAPE
 private
 
-\ The three events reach the observer through DECLARED dispatch cells for the
-\ reason CHECKER-CERT:PRODUCER-XT does: the cell holds an execution token, a
-\ snapshot persists it byte for byte, and `defer`/`is` are the only two points
-\ that tell the snapshot writer so.
-\
-\ INSTALL IS LAST-WRITER-WINS, unlike the certificate producer's one-shot grant,
-\ and the difference is what the observer may do: it is called before a token is
-\ judged and its answer is never read, so it can abort a compilation and never
-\ accept one. Two compilers legitimately reach one live checker - the engine's
-\ baked front end, and the one a window loads from source while that engine is
-\ still hosting the build - and each arms this tape with its own three
-\ quotations. Refusing the second one dies on a correct sequence; and a seeded
-\ engine, whose captured cells arrive trapped, needs the first ARM to refill
-\ them (src/compiler/native/feed.f OBSERVE).
+\ The events go through declared dispatch cells for the reason
+\ CHECKER-CERT:PRODUCER-XT does: the cell holds an xt a snapshot persists, and
+\ `defer`/`is` are the two points that tell the snapshot writer so.
+\ INSTALL is last-writer-wins, unlike the certificate producer's one-shot grant:
+\ two compilers legitimately reach one live checker (the engine's baked front
+\ end, and one a window loads from source while that engine hosts the build),
+\ each arming the tape with its own quotations, and a seeded engine, whose
+\ captured cells arrive trapped, needs the first ARM to refill them
+\ (src/compiler/native/feed.f OBSERVE).
 defer SCAN-XT ( ptr u8 n -- )
 defer TOKEN-XT ( ptr u8 n n n n n -- )
 defer DONE-XT ( ptr u8 n n -- )
 
-\ Whether an observer was installed is a question ARM has to ASK, and a
-\ dispatch cell cannot be interrogated, so the grant is an ordinary flag.
+\ A dispatch cell cannot be interrogated, so ARM asks this flag.
 variable SET   0 SET !
 
-\ WHICH unit installed the observer that is live, so a takeover is a stated fact
-\ rather than a silent overwrite. The installer names itself; nothing here
-\ interprets the number, and INSTALLED-BY below is how a test or a diagnostic
-\ reads it back.
+\ The installer's unit id, so a takeover is a stated fact; nothing here
+\ interprets it (INSTALLED-BY reads it back).
 variable BY   0 BY !
 
 \ Whether the observer is being told a verdict (DONE): the one time the table of
@@ -24191,33 +22780,21 @@ public
    a u FLODIG? IF K-REAL EXIT THEN
    K-NAME ;
 
-\ The reader is about to consume this text.
 : SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SCAN-XT ;
 
-\ One token, as the reader consumed it: its bytes, its byte offset in the
-\ scanned text, how many bytes of that text it spans, its class, and whether it
-\ is the definition's name token - the one token of a colon definition the outer
-\ interpreter parses before the parser switches to compiling.
-\
-\ THE SPANNED LENGTH IS A SEPARATE NUMBER FROM THE BYTE COUNT, and for these
-\ three classes it is the same number: the bytes ARE the text at that offset. It
-\ is carried anyway because the fourth class below cannot say that, and an
-\ observer must not have to know which class it is holding to know what the
-\ offset means.
+\ One token as the reader consumed it: bytes, byte offset in the scanned text,
+\ bytes of text spanned, class, and whether it is the definition's name token
+\ (parsed by the outer interpreter before compiling starts). The spanned length
+\ equals the byte count for these three classes and is carried because the
+\ string class differs.
 : TOKEN ( ptr u8 n n n -- ) {: a:ptr u:n off:n first:n :}
    a u off u  first 0 = IF a u KIND ELSE K-NAME THEN  first TOKEN-XT
    REC-STEP ;
 
-\ One string literal, as the reader consumed it: the literal's BODY, and the
-\ span of source the literal's payload occupied. The two differ whenever an
-\ escape decoded, which is why both are passed; a plain literal hands over the
-\ span's own bytes and the two agree.
-\
-\ IT IS NEVER A NAME TOKEN. A colon definition's name is parsed by the outer
-\ interpreter before the parser switches to compiling, and the reader reports
-\ that one token before it has consumed any payload at all, so `first` is not a
-\ question this event can be asked.
+\ One string literal: its decoded BODY and the source span its payload
+\ occupied, which differ whenever an escape decoded. It is never a name token:
+\ the name is reported before any payload is consumed.
 
 \ The reader already recognized the opener; preserve its behavior with its body.
 : STRING-KIND ( -- n )
@@ -24257,49 +22834,36 @@ public
 ;package
 
 \ ---- the baked signature pool, and the lazy intake that reads it -------------
-\
-\ WHAT THE POOL IS FOR. An AOT seed puts a word in the RUNTIME dictionary; it
-\ does not put the checker's record of that word's effect anywhere, so a `:`
-\ definition naming a seeded word dies E-UNDEFINED at that token even though the
-\ engine can call it. The capture now carries the window's signatures beside its
-\ records and the seed publishes them here, and the checker takes ONE row at the
-\ moment it needs it.
-\
-\ WHY IT IS LAZY AND NOT REPLAYED AT BOOT. Replaying the whole pool costs 85 ms on
-\ every boot of a seeded engine (measured over the compiler chain's 6798 words);
-\ taking one row costs 12.5 us and a boot that never names a seeded word pays
-\ nothing at all.
-\
-\ The legacy signature sidecar still mirrors these two fixed cells until that
-\ sidecar is deleted.
+\ An AOT seed puts a word in the runtime dictionary but not the checker's record
+\ of its effect, so a `:` definition naming a seeded word would die E-UNDEFINED.
+\ The capture carries the window's signatures beside its records, the seed
+\ publishes them here, and the checker takes one row when it needs it: replaying
+\ the whole pool costs 85 ms per boot of a seeded engine (measured over the
+\ compiler chain's 6798 words); one row costs 12.5 us.
+\ The signature sidecar mirrors these two fixed cells.
 $47D0 constant CK-AOT-SIG-POOL-OFF      \ = layout.f AOT-CELLS:SIG-POOL-CELL
 $47D8 constant CK-AOT-SIG-LEN-OFF       \ = layout.f AOT-CELLS:SIG-LEN-CELL
 
-\ The pool base is a POINTER the seed stored, so its cell is declared as a
-\ reserved pointer cell rather than read through a plain `@`: the cell holds an
-\ address in __text and the role has to survive the read. The length is an
-\ ordinary count.
+\ The pool base is a pointer into __text the seed stored, so its cell is a
+\ reserved pointer cell and the role survives the read. The length is a count.
 CK-AOT-SIG-POOL-OFF RESERVED-PTR-U8-CELL CK-AOT-SIG-POOL-FIELD
 : CK-AOT-SIG-POOL ( -- ptr u8 ) CK-AOT-SIG-POOL-FIELD @ ;
 : CK-AOT-SIG-LEN ( -- n ) data-base CK-AOT-SIG-LEN-OFF + @ ;
 
 \ ---- what the two cells point at ---------------------------------------------
-\ ONE PAYLOAD, THREE SECTIONS, because the seed has two cells to publish with and
-\ the checker needs three spans: the rows, the strings they name, and the type
-\ registry those signatures resolve against. So the payload carries its own
-\ table, in the shape src/habu/aot-file.f uses for the artifact - a count, then a
-\ row of (offset, length) per section, then the sections contiguous behind it -
-\ and every malformation is refused by name before a byte of it is believed.
-\
+\ One payload, three sections (rows, the strings they name, the type registry
+\ they resolve against), because the seed has two cells to publish with. The
+\ payload carries its own table in the shape src/habu/aot-file.f uses (a count,
+\ an (offset, length) row per section, the sections contiguous behind it), and
+\ every malformation is refused by name before a byte of it is believed.
 \ A row has four u32 fields (name, graph, package, visibility). Name/package
 \ offsets point at `[len u16][bytes]`; the graph offset points at the aligned
-\ binary object below. The artifact and seed copy this pool without re-encoding.
-\ A signature row points at one versioned, self-contained verified graph.
-\ The E record/node shapes are reused; their references are blob-relative.
-\ EW.ACTIVE carries the version magic, EW.NEXT the byte length, and EW.SYM
-\ carries control/defer flags. No source symbol id or history link travels.
-\ Version 2 carries storage restrictions on variable nodes. Older generic
-\ setter graphs cannot safely enter the checker without rechecking their bodies.
+\ self-contained verified graph below. The artifact and seed copy this pool
+\ without re-encoding. The E record/node shapes are reused with blob-relative
+\ references: EW.ACTIVE carries the magic, EW.NEXT the byte length, EW.SYM the
+\ control/defer flags. No source symbol id or history link travels. Variable
+\ nodes carry storage restrictions: a generic setter graph without them could
+\ not enter the checker without rechecking its body.
 $4842470000000003 constant ASIG-GRAPH-MAGIC
 $10000 constant ASIG-GRAPH-DEFER
 \ The node map is owned and reused across copies and files; its slots carry
@@ -24402,9 +22966,9 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
       src E-PTR EN.B @ RECURSE dst ASIG-GRAPH-PTR EN.B !
       src E-PTR EN.C @ RECURSE dst ASIG-GRAPH-PTR EN.C !
       src E-PTR EN.D @ RECURSE dst ASIG-GRAPH-PTR EN.D !
-      \ Old effect records contain transient exception-row IDs in G/H. Their
-      \ type/last-write contract must be made persistent before it can travel.
-      \ Do not certify a graph that silently discards those exceptional rows.
+      \ Effect records hold transient exception-row IDs in G/H, whose
+      \ type/last-write contract does not travel: a graph carrying them is
+      \ refused rather than silently dropping those exceptional rows.
       src E-PTR EN.E @ 0 <> IF ASIG-GRAPH-EXCEPTION-DIE THEN
       0 dst ASIG-GRAPH-PTR EN.G !
       0 dst ASIG-GRAPH-PTR EN.H !
@@ -24539,10 +23103,10 @@ variable CK-AOT-CUR variable CK-AOT-GOT variable CK-AOT-ANY
 : CK-AOT-OFF ( n -- n ) {: k:n :} k 16 * 8 + CK-AOT-U64@ ;
 : CK-AOT-LEN ( n -- n ) {: k:n :} k 16 * 16 + CK-AOT-U64@ ;
 
-\ Every clause a malformed payload can fail, each with its own refusal: the
-\ table has to fill the span exactly, the sections have to follow one another
-\ without a gap, and the row section has to be a whole number of rows. A seeded
-\ engine that fails any of them is a build defect, not a runtime condition.
+\ Every clause a malformed payload can fail has its own refusal: the table fills
+\ the span exactly, the sections follow one another without a gap, and the row
+\ section is a whole number of rows. A failure is a build defect, not a runtime
+\ condition.
 : CK-AOT-VALIDATE ( -- )
    CK-AOT-SIG-LEN CK-AOT-TBL-END < IF
       s" checker: the seeded signature payload is shorter than its own table" CK-AOT-DIE THEN
@@ -25058,13 +23622,13 @@ ASIG-GRAPH-CHECK-INSTALL
       i 4 CK-AOT-FIELD CK-GRAPH-VALIDATE
    loop ;
 
-\ Validation may reserve scratch, but publishes no symbol/effect/registry.
-\ The existing catch boundary releases that scratch on a thrown refusal.
+\ Validation may reserve scratch but publishes no symbol, effect or registry;
+\ the catch boundary releases that scratch on a thrown refusal.
 \ AN EMPTY POOL IS NOT LATCHED: a partial capture's cold boot compiles the
 \ engine prefix with this checker live and publishes the pool only at the end of
 \ that prefix (habu2.f AOT-SIG PUBLISH,), so a prefix TRUSTED: body whose
-\ unjudged scan misses a name asks here before the cells are written. Latching
-\ that answer left every later reference E-UNDEFINED against a published pool.
+\ unjudged scan misses a name asks here before the cells are written. A latched
+\ answer would leave every later reference E-UNDEFINED against a published pool.
 : CK-AOT-READY? ( -- bool )
    CK-AOT-STATE @ 0 <> IF RES-TRUE EXIT THEN
    CK-AOT-SIG-LEN 0 <= IF RES-FALSE EXIT THEN
@@ -25111,42 +23675,28 @@ ASIG-GRAPH-CHECK-INSTALL
    [: CK-AOT-REC-CONTROL-READ ;] is CK-AOT-REC-CONTROL ;
 CK-AOT-REC-CONTROL-INSTALL
 
-\ The registry the signatures resolve against. A signature naming a
-\ window-declared family would otherwise be refused as a bad stored signature
-\ rather than taken.
-\
-\ THE SEED CALLS THIS, AT THE SEED POINT, AND NOTHING ELSE DOES. It used to run
-\ from the intake instead, and that was wrong for a reason no acceptance could
-\ see until bin/hb was the product: the carried rows name families by ABSOLUTE
-\ id, so they only mean those families while the live registry still ends where
-\ the capture's did. An intake happens whenever source first names a chain word,
-\ and source is free to declare a type before that - `NEWTYPE zz1` and then a
-\ chain call is ordinary - which moves the high-water off the recorded base and
-\ turns an ordinary program into a refusal.
-\
-\ src/habu/habu2.f AOT-SIG:INSTALL, calls it at the end of the engine prefix,
-\ after AOT-SIG:PUBLISH, has filled the two cells and before the first user
-\ token. That is where the base equality below is true BY CONSTRUCTION, and it
-\ is also the answer to the objection that used to live here: a latch could be
-\ undone by a checker rollback frame rewinding the type registries, but at the
-\ seed point no such frame is open, so there is nothing to undo.
-\
-\ THE REFUSAL STAYS, and it is not dead weight. It still answers for a
-\ genuinely foreign payload - an artifact captured against a different engine
-\ prefix - which is the case the base equality was written for and the one the
-\ seed point cannot rule out.
+\ The registry the signatures resolve against; without it a signature naming a
+\ window-declared family is refused as a bad stored signature.
+\ Only the seed calls this, at the seed point: src/habu/habu2.f AOT-SIG:INSTALL
+\ at the end of the engine prefix, after AOT-SIG:PUBLISH, has filled the two
+\ cells and before the first user token. The carried rows name families by
+\ absolute id, so they mean those families only while the live registry ends
+\ where the capture's did; source may declare a type (`NEWTYPE zz1`) before it
+\ first names a chain word, so a lazy intake would refuse an ordinary program.
+\ At the seed point the base equality holds by construction and no checker
+\ rollback frame is open to undo the latch. The refusal answers a foreign
+\ payload, an artifact captured against a different engine prefix.
 : CK-AOT-REG-INSTALL ( -- )
    CK-AOT-READY? 0= IF EXIT THEN
    CK-AOT-REG$ REG-EXT-AOT-LOAD-XT ;
 
 \ ---- taking one row ----------------------------------------------------------
-\ THE KEY IS THE ROW'S OWN SCOPE, not the scope the failing reference was
-\ resolved in. A row carries (package, visibility, name) - the key SYM-FIND is
-\ keyed on - so the intake re-interns the word where it actually lives and lets
-\ the RETRY do the scope walk, exactly as it would for a word compiled from
-\ source here. Deriving a scope from the failing token instead would be a second
-\ resolver, and the two would disagree the first time a bare tail resolved
-\ through a used package.
+\ The key is the row's own scope, not the scope the failing reference resolved
+\ in: a row carries (package, visibility, name), SYM-FIND's key, so the intake
+\ re-interns the word where it lives and the retry does the scope walk as for a
+\ word compiled from source. A scope derived from the failing token would be a
+\ second resolver, wrong the first time a bare tail resolved through a used
+\ package.
 : CK-AOT-ROW-SYM ( n -- n ) {: r:n :}
    r 8 CK-AOT-FIELD CK-AOT-STR$        \ package
    r 12 CK-AOT-FIELD                   \ visibility, this file's own encoding
@@ -25255,16 +23805,12 @@ CK-AOT-REC-CONTROL-INSTALL
    CK-GRAPH-RELEASE ;
 
 \ ---- taking every row one pass could have used -------------------------------
-\ EVERY row whose name the pass could not resolve, not the newest one: the same
-\ tail lives in many packages of a captured chain, and taking only the last of
-\ them would leave the reference that named one of the others unresolved while
-\ reporting progress. Taking them all adds effects for words the seeded engine
-\ really has, under the scopes it really has them in, so nothing is invented and
-\ the retry's own scope walk picks the one the reference meant.
-\
-\ Rows hold the folded name the symbol store keeps (SYM-COPY-FOLD); a probe
-\ may arrive as written, so both comparisons fold the probe byte as the store
-\ does (SYM-FOLD-C).
+\ Every row whose name the pass could not resolve, not the newest: the same
+\ tail lives in many packages of a captured chain, and the retry's own scope
+\ walk picks the one the reference meant. Nothing is invented: each row is a
+\ word the seeded engine has, in the scope it has it. Rows hold the folded name
+\ the symbol store keeps (SYM-COPY-FOLD); a probe may arrive as written, so both
+\ comparisons fold the probe byte as the store does (SYM-FOLD-C).
 : CK-AOT-NAME= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
    r 0 CK-AOT-FIELD {: at:n :}
    at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
@@ -25275,9 +23821,8 @@ CK-AOT-REC-CONTROL-INSTALL
    REPEAT
    RES-TRUE ;
 
-\ A qualified token names its own package, so only that package's row answers
-\ for it; the split is CHECKER-QUALIFIED?'s, the one this file already resolves
-\ qualified references with.
+\ A qualified token names its own package, so only that package's row answers;
+\ the split is CHECKER-QUALIFIED?'s.
 : CK-AOT-PKG= ( n ptr u8 n -- bool ) {: r:n a:ptr u:n :}
    r 8 CK-AOT-FIELD {: at:n :}
    at CK-AOT-STR-U u <> IF RES-FALSE EXIT THEN
@@ -25295,12 +23840,11 @@ CK-AOT-REC-CONTROL-INSTALL
    THEN
    r a u CK-AOT-NAME= ;
 
-\ `take` distinguishes the two callers: the retry decision asks whether a row
-\ would be taken and must leave the tables alone, and the intake takes them. One
-\ walk answers both, so the two can never disagree about what is available.
-\ A name a rendering statement's mark covers (UNSEEN-COVERS?) takes no row: the
-\ load may bind a product of that name ahead of the seeded word, so the
-\ definition stays deferred to the run.
+\ With `take` false the retry decision asks whether a row would be taken and the
+\ tables stay untouched; the intake takes them. One walk answers both, so they
+\ cannot disagree. A name a rendering statement's mark covers (UNSEEN-COVERS?)
+\ takes no row: the load may bind a product of that name ahead of the seeded
+\ word, so the definition stays deferred to the run.
 : CK-AOT-SERVE ( ptr u8 n bool -- bool ) {: a:ptr u:n take:bool :}
    a u UNSEEN-COVERS? IF RES-FALSE EXIT THEN
    0 CK-AOT-GOT !
@@ -25327,8 +23871,7 @@ CK-AOT-REC-CONTROL-INSTALL
    REPEAT
    CK-AOT-ANY @ 0 <> ;
 
-\ Would a seeded row answer a name the pass just run could not resolve? The
-\ queue is walked without taking, so the tables are left alone.
+\ The miss queue is walked without taking, so the tables are left alone.
 : CK-AOT-MISS-SERVED? ( -- bool )
    ASIG-MISS-U @ 0= IF RES-FALSE EXIT THEN
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
@@ -25340,34 +23883,30 @@ CK-AOT-REC-CONTROL-INSTALL
 1 constant VERDICT-UNCHECKABLE
 2 constant VERDICT-DEFERRED
 
-\ Would another pass see something this one could not? Asked inside CHECK, at
-\ the moment the verdict is reached, because that is where the two facts it
-\ needs already are: the pass latched E-UNDEFINED and the queue holds the names
-\ it could not resolve. It takes nothing - CHECK must not publish an effect
-\ while its own diagnostic is still pending.
+\ Would another pass see something this one could not? Asked inside CHECK when
+\ the verdict is reached: the pass latched E-UNDEFINED and the queue holds the
+\ names it could not resolve. It takes nothing: CHECK must not publish an
+\ effect while its own diagnostic is pending.
 : CK-AOT-RETRY-DUE? ( n -- bool )
    {: verdict:n :}
    verdict VERDICT-CHECKED = IF RES-FALSE EXIT THEN
    UNDEFERR @ 0= IF RES-FALSE EXIT THEN
    CK-AOT-MISS-SERVED? ;
 
-\ Latched where the verdict is reached, so the diagnostic below it can ask one
-\ variable instead of re-deriving the answer, and so a bare CHECK - one with no
-\ retry loop above it - reports exactly as it always did.
+\ Latched where the verdict is reached so the diagnostic asks one variable, and
+\ a bare CHECK with no retry loop above it reports unchanged.
 : CK-AOT-LATCH-RETRY ( n -- n ) {: verdict:n :}
    0 CK-AOT-RETRY-DUE !
    CK-AOT-RETRY-ARMED @ 0= IF verdict EXIT THEN
    verdict CK-AOT-RETRY-DUE? IF -1 CK-AOT-RETRY-DUE ! THEN
    verdict ;
 
-\ The intake itself. It runs between passes, never at the token that missed: the
-\ pass has already judged the name unbound, so the pass runs again once the row
-\ is in. Its callers are CHECK-RETRY at a definition's boundary, CHECKER-PREFIX's
-\ SCAN between re-reads and TOP-STEP-RETRY between passes of one step.
-\ Between passes is safe: the intake appends effect records and table entries
-\ and moves no pool counter.
-\ The registry is NOT installed here: the seed put it in before this engine read
-\ a user token (CK-AOT-REG-INSTALL above says why it has to be that early).
+\ The intake runs between passes, never at the token that missed: the pass has
+\ already judged the name unbound, so it runs again once the row is in. Its
+\ callers are CHECK-RETRY at a definition's boundary, CHECKER-PREFIX's SCAN
+\ between re-reads and TOP-STEP-RETRY between passes of one step. Between passes
+\ is safe: the intake appends effect records and table entries and moves no pool
+\ counter. The registry is installed by the seed (CK-AOT-REG-INSTALL), not here.
 : CK-AOT-INTAKE ( -- bool )
    CK-AOT-READY? 0= IF RES-FALSE EXIT THEN
    RES-TRUE CK-AOT-MISSES ;
@@ -25410,8 +23949,7 @@ CHECKER-REG:}SCRATCH
 \ Every scan starts here, so a scan inside the compile window is refused first,
 \ before the reset clears the latches the pending definition's publication
 \ reads (WRITE-WINDOW-CK). A length that describes no memory (BYTE-SPAN?) is
-\ refused before any state is reset, with the refusal the token buffers gave the
-\ maximum cell.
+\ refused before any state is reset.
 : CHECK-CLEAR ( -- )                  \ the per-check diagnostic and walk state
    WRAP-CLEAR
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 CF-OVER !  0 QDEPTH !  0 CONM !  0 FIELD-LOAN-PENDING !
@@ -25453,46 +23991,32 @@ CHECKER-REG:}SCRATCH
    DOES-EFF-STEP ;                     \ only the check that FOLLOWS a clause is its definer's
 
 \ ---- reporting one token to the source-tape observer ---------------------------
-\ WHY THE REPORT MOVED BEHIND THE JUDGEMENT. A string literal's body is not known
-\ until its payload has been spent, and spending it is DO-TOK1's work, so a
-\ report made before the judgement can only ever describe the opener. Asking the
-\ spelling instead - "does this token look like a string opener?" - would be a
-\ second opinion about a decision DO-TOK1 has already made for its own reasons: a
-\ definition's name token, a token inside a locals group, a match arm and a
-\ construct arm all reach the judgement without ever reaching the payload skip,
-\ and each of those would then lose its row. So the one authority is whether a
-\ payload was actually spent, and that is only knowable afterwards.
-\
-\ THE OBSERVER STILL DECIDES NOTHING. Its answer is not read here either, so it
-\ can still abort a compilation and still never accept one; what changed is only
-\ that the abort now lands after the token was judged rather than before, and a
-\ judgement makes no record an abort would have to undo.
-\
-\ TWO FACTS ARE KEPT ACROSS THE JUDGEMENT because the judgement moves them. TI
-\ walks past a spent payload, so the token's own length has to be taken before;
-\ and TOK0 is cleared by the name branch, so whether this was the name has to be
-\ taken before too.
+\ The report follows the judgement: a string literal's body is known only after
+\ DO-TOK1 spends its payload, and the spelling cannot tell (a name token, a
+\ token in a locals group, a match arm and a construct arm reach the judgement
+\ without the payload skip). The authority is whether a payload was spent. The
+\ observer's answer is not read, so an abort lands after the judgement, which
+\ makes no record an abort would have to undo.
+\ Two facts are taken before the judgement because it moves them: TI walks past
+\ a spent payload (the token's own length), and the name branch clears TOK0.
 variable SCAN-U       \ the token's own byte length, taken before the judgement
 variable SCAN-TOK0    \ was it the definition's name token?
 
-\ THE OBSERVER SEES ONE SCAN PER CHECKED BODY, and a lazy signature intake makes
-\ the checker scan some bodies twice. src/compiler/native/feed.f ON-SCAN refuses
-\ a retry of a body it is already recording: that would duplicate its tape rows.
-\ What it is owed is the token stream, and that is a function of the TEXT alone -
-\ the reader splits on spaces and decides a payload skip from the token's own
-\ spelling, so an intake between passes changes which words resolve and not which
-\ tokens exist. So the first pass gives the observer the whole stream, every later
-\ pass is silent, and CHECK! hands over the one verdict at the end. CHECK-RETRY
-\ asserts the streams matched rather than assuming it. A defining word has two
-\ distinct checked bodies; feed joins those around its one verified `does>` row.
+\ THE OBSERVER SEES ONE SCAN PER CHECKED BODY, though a lazy signature intake
+\ scans some bodies twice: src/compiler/native/feed.f ON-SCAN refuses a retry
+\ of a body it is recording (duplicate tape rows). The token stream is a
+\ function of the text alone (an intake changes which words resolve, not which
+\ tokens exist), so the first pass gives the observer the stream, later passes
+\ are silent, and CHECK! hands over the one verdict at the end. CHECK-RETRY
+\ asserts the streams matched. A defining word has two checked bodies; feed
+\ joins them around its one verified `does>` row.
 variable RESCAN       \ this pass is a retry; the observer already has the stream
 variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 
 \ The token this turn's judgement swallowed, reported after the judgement's own
-\ row so the tape reads in consumption order. It is never the definition's name
-\ token: the name is parsed before the parser switches to compiling, and neither
-\ keyword can stand there. The row is cleared as it is written, so a keyword that
-\ swallowed nothing this turn reports nothing.
+\ row (consumption order). It is never the name token: neither keyword can stand
+\ there. The row is cleared as it is written, so a keyword that swallowed
+\ nothing this turn reports nothing.
 : SCAN-PEND-REPORT ( -- )
    IS-PEND @ 0= IF EXIT THEN
    0 IS-PEND !
@@ -25506,20 +24030,19 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    SPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
    TSTART @ TADDR  SCAN-U @  CHECKER-TAPE:KIND 0 0 ;
 
-\ This turn's events, filed under the ordinals the reports below take, on every
-\ pass: the token's, which is what the step that judged it latched, else
-\ EV-UNJUDGED; and a swallowed token's, an operand, since it compiles nothing of
-\ its own and its keyword's event names what it resolved to. A literal's payload
-\ is what it compiles, so a string or character token reports its class even
-\ though its opener bound a call (BIND-SOURCE-CALL).
+\ This turn's events, filed under the ordinals the reports take, on every pass:
+\ the token's (what its judging step latched, else EV-UNJUDGED), and a swallowed
+\ token's as an operand, since its keyword's event names what it resolved to. A
+\ string or character token reports its class though its opener bound a call
+\ (BIND-SOURCE-CALL): a literal's payload is what it compiles.
 : EV-COMMIT ( -- )
    EV-HIT @  CPAY-ON @ SPAY-ON @ or 0=  and IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
    REC-IX @ EV-FILE
    IS-PEND @ IF CHECKER-TAPE:K-OPERAND 0 0 REC-IX @ 1 + EV-FILE THEN ;
 
-\ What THIS token instantiated is filed before the token is reported, so the row
-\ and the ordinal it is filed under are made in one step: the ordinal a report is
-\ about is the one the observer has not yet advanced.
+\ What this token instantiated is filed before the token is reported, so the
+\ row and its ordinal are made in one step: the ordinal is the one the observer
+\ has not yet advanced.
 : SCAN-REPORT ( -- )
    REC-COMMIT
    EV-COMMIT
@@ -25868,11 +24391,10 @@ variable CUR-OPEN   variable CUR-PSIG
    CUR-END ;
 
 \ The walk holds a body's using refusals (USING-HOLD) and its end raises the one
-\ that refuses the definition, before the checks at `;` and a retry, as a raise
-\ in the walk did; a structure open at the closer is refused first, as the
-\ load's compiler refuses it (CLOSER-REFUSE). A throw out of the walk leaves the
-\ hold off. Every definition body's check walks here, and nothing else does, so
-\ BODY-WALK is on for exactly that walk.
+\ that refuses the definition, before the checks at `;` and a retry; a structure
+\ open at the closer is refused first (CLOSER-REFUSE). A throw out of the walk
+\ leaves the hold off. Only definition bodies walk here, so BODY-WALK is on for
+\ exactly that walk.
 : CHECK-SCAN ( -- )
    BODY-WALK @ {: walk0:n :}
    -1 BODY-WALK !
@@ -25941,7 +24463,7 @@ variable CUR-OPEN   variable CUR-PSIG
    UNSAFE @ RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  QUALBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF VERDICT-REFUSED ELSE
    UNCK @ 0 <> IF VERDICT-UNCHECKABLE ELSE OK @ THEN THEN ;
 
-\ --- generated-product certification (type-family.f header).
+\ --- generated-product certification.
 \ A product bundle is exactly its field cells in slot order, so generated MAKE
 \ and UNMAKE have empty bodies. Their sealed plan queues the two symbols;
 \ boundary unification then records the declared product effect
@@ -26011,7 +24533,6 @@ variable CTOR-PEND-POS
    sym CTOR-PEND-COUNT @ CTOR-PEND-SYM !
    CTOR-PEND-COUNT @ 1 + CTOR-PEND-COUNT ! ;
 
-\ Take the plan row at the cursor when it is SYM's.
 : CTOR-PEND-TAKE? ( n -- bool ) {: sym:n :}
    CTOR-PEND-POS @ CTOR-PEND-COUNT @ < 0= IF RES-FALSE EXIT THEN
    CTOR-PEND-POS @ CTOR-PEND-SYM @ sym <> IF RES-FALSE EXIT THEN
@@ -26027,32 +24548,24 @@ variable CTOR-PEND-POS
       s" checker: incomplete generated constructor plan" 76 die
    THEN ;
 
-\ --- checked nominal/family cast certification (dot habu-checked-cast-primitive).
-\ `cast: NAME ( in -- out )` is a DECLARATION: the engine's own reader keyword
-\ publishes an identity word and asks CHECKER-DEFCAST (below, beside CHECK-DOES!)
-\ to prove the declared retype legal. The refusals here are therefore properties
-\ of the two declared TERMS and of nothing else — there is no body in this path
-\ to certify, in either front end.
-\
-\ The one-shot CAST-PEND window this replaced is deleted rather than repaired. It
-\ armed a name and let whatever definition arrived next match it, with no
-\ positional bound, so an armed window could survive unrelated definitions and
-\ still certify a later same-named one. A window that cannot be armed cannot
-\ drift.
+\ --- checked nominal/family cast certification.
+\ `cast: NAME ( in -- out )` is a declaration: the engine's reader keyword
+\ publishes an identity word and asks CHECKER-DEFCAST (beside CHECK-DOES!) to
+\ prove the declared retype legal. The refusals are properties of the two
+\ declared terms only; there is no body to certify in either front end. No
+\ window is armed for a later definition to match.
 
-\ CAST-ROW-1? : the row is exactly one term deep over its base (open or closed).
 : CAST-ROW-1? ( n -- bool )
    R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
    P>REST R-RES TAG S-ROW = ;
-\ CAST-ROW-TERM : the single top term of a one-deep row.
 : CAST-ROW-TERM ( n -- n ) R-RES P>TYPE ;
-\ CAST-TERM? : the term is one machine cell a cast may retype - a con or type
-\ var (CAST-MAY-LINEAR? refuses the var), a width-1 family, a pointer, or a
-\ quotation. A pointer chain must end at storage: an atom is a phantom index,
-\ so it is refused there as it is bare, on either side. The pointee carries no
-\ width rule, since a layout of any width is one pointer cell away. A W>1 layout
-\ term is refused as a width reinterpret. The destination's other introduction
-\ positions refuse an atom through CAST-INTRO? (INTRO-ATOM).
+\ A cast may retype one machine cell: a con or type var (CAST-MAY-LINEAR?
+\ refuses the var), a width-1 family, a pointer, or a quotation. A pointer chain
+\ must end at storage: an atom is a phantom index, refused there as it is bare,
+\ on either side. The pointee carries no width rule, since a layout of any width
+\ is one pointer cell away. A W>1 layout term is refused as a width
+\ reinterpret. The destination's other introduction positions refuse an atom
+\ through CAST-INTRO? (INTRO-ATOM).
 : CAST-TERM? ( n -- bool ) {: t0:n :}
    t0 T-RES {: t:n :}
    t TAG T-CON = IF RES-TRUE EXIT THEN
@@ -26064,14 +24577,13 @@ variable CTOR-PEND-POS
       TAG T-ATOM <> EXIT
    THEN
    RES-FALSE ;
-\ CAST-OWNER? ( term -- bool ) : projection out of a cell family is
-\ unrestricted. Introduction into one is authorized only when the family's
-\ declaring package is the engine's real open namespace record and the actual
-\ definition wordlist is one of that record's public/private pair. xref.f
-\ installs that read-only identity check and retires the mutable defer name. The
-\ pre-xref default admits only the real global scope. CHECKER-PACKAGE-* is a
-\ parser mirror, never authority. CAST-INTRO? asks it of every introduction
-\ position of the destination.
+\ Projection out of a cell family is unrestricted. Introduction into one is
+\ authorized only when the family's declaring package is the engine's real open
+\ namespace record and the definition wordlist is one of that record's
+\ public/private pair. xref.f installs that read-only identity check and
+\ retires the mutable defer name; the pre-xref default admits only the real
+\ global scope. CHECKER-PACKAGE-* is a parser mirror, never authority.
+\ CAST-INTRO? asks it of every introduction position of the destination.
 : CAST-OWNER? ( n -- bool ) {: t:n :}
    t NP-CELLFAM? 0= IF RES-TRUE EXIT THEN
    t PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
@@ -26108,7 +24620,6 @@ variable CAST-PATH-N
    CAST-PATH-TERM 0 CAST-PATH-CAP ARENA-CELLS-ZERO
    CAST-PATH-POS 0 CAST-PATH-CAP ARENA-CELLS-ZERO
    CAST-WALK-RESET ;
-\ CAST-SAME-INSTANCE? ( term term -- bool ) : one family over identical terms.
 : CAST-SAME-INSTANCE? ( n n -- bool ) {: a:n b:n :}
    a PARAM>FAM b PARAM>FAM <> IF RES-FALSE EXIT THEN
    a PARAM>ARGC b PARAM>ARGC <> IF RES-FALSE EXIT THEN
@@ -26116,10 +24627,7 @@ variable CAST-PATH-N
       a over PARAM>ARG  over b swap PARAM>ARG  <> IF drop RES-FALSE EXIT THEN
       1 +
    REPEAT drop RES-TRUE ;
-\ CAST-DIR ( positive? -- n ) : the direction as the path stores it.
 : CAST-DIR ( bool -- n ) IF 1 ELSE 0 THEN ;
-\ CAST-ON-PATH? ( layout positive? -- bool ) : this walk is already expanding
-\ the instance in this direction.
 : CAST-ON-PATH? ( n bool -- bool ) {: t:n pos:bool :}
    pos CAST-DIR {: dir:n :}
    0 BEGIN dup CAST-PATH-N @ < WHILE
@@ -26135,17 +24643,15 @@ variable CAST-PATH-N
    pos CAST-DIR CAST-PATH-N @ cells CAST-PATH-POS + !
    CAST-PATH-N @ 1 + CAST-PATH-N ! ;
 : CAST-PATH-POP ( -- ) CAST-PATH-N @ 1 - CAST-PATH-N ! ;
-\ CAST-INTRO? ( term-or-row positive? question -- bool ) : whether the question
-\ holds at an introduction position of the destination. Those are the positive
-\ positions: the destination itself, a pointer's pointee (a read through the
-\ pointer yields it), a layout family's arguments and its members, every field
-\ and variant payload instantiated over those arguments (a projection or a
-\ MATCH arm yields them), and a quotation's produced rows. A quotation's
-\ consumed rows flip the sign, so a consumer handed to a minted quotation is fed
-\ by it. A cell family's arguments are phantom, and each row ends in the
-\ quotation's own base: neither yields a value. A pointer or a quotation found
-\ positive is a class mint whatever it points at or produces, and an atom or a
-\ foreign family found there is one the cast hands out.
+\ Introduction positions of the destination are the positive ones: the
+\ destination itself, a pointer's pointee (a read yields it), a layout family's
+\ arguments and members, every field and variant payload instantiated over those
+\ arguments (a projection or a MATCH arm yields them), and a quotation's
+\ produced rows. A quotation's consumed rows flip the sign, so a consumer handed
+\ to a minted quotation is fed by it. A cell family's arguments are phantom, and
+\ each row ends in the quotation's own base: neither yields a value. A pointer
+\ or quotation found positive is a class mint whatever it points at or
+\ produces, and an atom or foreign family found there is one the cast hands out.
 : CAST-INTRO? ( n bool n -- bool ) {: t0:n pos:bool q:n :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -26172,25 +24678,20 @@ variable CAST-PATH-N
    t pos CAST-PATH-PUSH
    t TFAM-MEMBERS-XT pos q TWALK-DEEPER RECURSE TWALK-SHALLOWER
    CAST-PATH-POP ;
-\ CAST-INTRODUCES? ( term question -- bool ) : the question over a whole
-\ destination term, which starts positive.
+\ A whole destination term starts positive.
 : CAST-INTRODUCES? ( n n -- bool ) {: t:n q:n :}
    CAST-WALK-RESET t RES-TRUE q CAST-INTRO? ;
-\ CAST-MAY-LINEAR? ( term-or-row -- bool ) : fail closed over the complete
-\ signature term. CAST is an authority boundary, so its question is stricter
-\ than LIN-TYPE-COUNT's runtime ownership accounting: a direct unresolved var
-\ may later bind linear, and every value-bearing family argument subtree can
-\ carry that possibility. Cell-family parameters are structurally phantom, so
-\ their terms contain no owned payload. TFAM-CON-LIN-XT answers for a family
-\ linear as a whole, the reserved views that own by declaration rather than
-\ through a field included. Pointers, quotations and atoms own nothing
-\ themselves, but a pointer's pointee is what a read through it yields and a
-\ quotation's four rows are what a call consumes and produces, so both are
-\ walked, and so are a layout's members, every field and variant payload
-\ instantiated over its arguments: a linear value behind a field's pointer or in
-\ a field's quotation row is one a projection hands out. A quotation in a
-\ signature shares one base between its in and out rows, so the tail it passes
-\ through owns nothing.
+\ Fail closed over the complete signature term: CAST is an authority boundary,
+\ stricter than LIN-TYPE-COUNT's runtime accounting. A direct unresolved var may
+\ later bind linear, and every value-bearing family argument subtree can carry
+\ that possibility. Cell-family parameters are phantom and own no payload.
+\ TFAM-CON-LIN-XT answers for a family linear as a whole, the reserved views
+\ that own by declaration included. Pointers, quotations and atoms own nothing
+\ themselves, but a pointee, a quotation's four rows, a layout's members and
+\ every field and variant payload are walked: a linear value behind a field's
+\ pointer or in a field's quotation row is one a projection hands out. A
+\ quotation in a signature shares one base between its in and out rows, so the
+\ tail it passes through owns nothing.
 : CAST-MAY-LINEAR? ( n -- bool ) {: t0:n :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -26223,14 +24724,11 @@ variable CAST-PATH-N
       CAST-PATH-POP EXIT
    THEN
    RES-FALSE ;
-\ CAST-CERTIFY : the legality gate, in refusal order, over a declaration
-\ IDENTITY-ROWS has left as one input and one output term. Every clause reads
-\ the parsed rows (SGIN/SGOUT) and throws the named reject; a cast that survives
-\ every clause is legal and its declared row is registered by the caller. The
-\ answer is whether its output mints a pointer or a quotation: a cast that
-\ mints none is a representation cast (layout.f DNAME-REP).
-\ Nothing here observes a body. No term here carries a scope: CHECKER-DEFCAST
-\ sends every scoped row to VIEW-CAST-CERTIFY.
+\ The legality gate, in refusal order, over a declaration IDENTITY-ROWS left as
+\ one input and one output term (SGIN/SGOUT); the caller registers a surviving
+\ cast's row. Answers whether the output mints a pointer or a quotation: a cast
+\ that mints none is a representation cast (layout.f DNAME-REP). No term here
+\ carries a scope: CHECKER-DEFCAST sends every scoped row to VIEW-CAST-CERTIFY.
 : CAST-CERTIFY ( -- bool )
    SGIN @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
@@ -26252,7 +24750,6 @@ variable CAST-PATH-N
    THEN
    mint ;
 
-\ CAST-SCOPED? : a scope dependency anywhere in the declared rows.
 : CAST-SCOPED? ( -- bool )
    SGIN @ SCOPED-TYPE? SGOUT @ SCOPED-TYPE? or
    SGHASR @ IF SGRIN @ SCOPED-TYPE? or SGROUT @ SCOPED-TYPE? or THEN ;
@@ -26260,13 +24757,10 @@ variable CAST-PATH-N
 \ mut-view<p,q,a,T>, as the two cells that represent it, `ptr u8 n` (base and
 \ length), or back, over the same tail. A view in a row is two pushes, the
 \ hidden cells of one instance (PUSH-LOGICAL): the base cell under the length.
-\ ROW-UNDER : the row below a row's top term.
 : ROW-UNDER ( n -- n ) R-RES P>REST R-RES ;
-\ ROW-2? : the row is exactly two terms deep over its base.
 : ROW-2? ( n -- bool )
    R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
    P>REST CAST-ROW-1? ;
-\ VIEW-PAIR? : a two-deep row's terms are both cells of one view.
 : VIEW-PAIR? ( n -- bool ) {: row:n :}
    row CAST-ROW-TERM T-RES {: hi:n :}
    row ROW-UNDER CAST-ROW-TERM T-RES {: lo:n :}
@@ -26274,21 +24768,19 @@ variable CAST-PATH-N
    hi HIDDEN-PARAM? lo HIDDEN-PARAM? and 0= IF RES-FALSE EXIT THEN
    hi HIDDEN-SLOT@ 1 =  lo HIDDEN-SLOT@ 0 =  and 0= IF RES-FALSE EXIT THEN
    hi lo CAST-SAME-INSTANCE? ;
-\ VIEW-REP? : a two-deep row's terms are `ptr u8 n`.
 : VIEW-REP? ( n -- bool ) {: row:n :}
    row CAST-ROW-TERM T-RES {: hi:n :}
    hi TAG T-CON <> IF RES-FALSE EXIT THEN
    hi PAY CC-N <> IF RES-FALSE EXIT THEN
    row ROW-UNDER CAST-ROW-TERM BYTE-PTR? ;
-\ VIEW-CAST-CERTIFY : the gate for a cast with a scope dependency, in refusal
-\ order. Only a view representation cast in a private section is legal: an
-\ unpack ( V -- ptr u8 n ) or a pack ( ptr u8 n -- V ). The pack, and the unpack
-\ of a mut-view, are the owner's: only C2-MEM's private section produces a view
-\ or takes the raw address of an exclusive one. Any package may unpack a
-\ read-view in its private section: the projection erases the type and can
-\ neither widen bounds nor forge a scope. Every other scoped cast is
-\ E-CAST-SCOPE. A pack's view variables are free in its input and, like any
-\ callee's, instantiate fresh at each call.
+\ The gate for a cast with a scope dependency, in refusal order. Only a view
+\ representation cast in a private section is legal: an unpack
+\ ( V -- ptr u8 n ) or a pack ( ptr u8 n -- V ). The pack, and the unpack of a
+\ mut-view, are the owner's: only C2-MEM's private section produces a view or
+\ takes the raw address of an exclusive one. Any package may unpack a read-view
+\ in its private section: the projection erases the type and can neither widen
+\ bounds nor forge a scope. Every other scoped cast is E-CAST-SCOPE. A pack's
+\ view variables are free in its input and instantiate fresh at each call.
 : VIEW-CAST-CERTIFY ( -- )
    SGHASR @ IF E-CAST-SCOPE throw THEN
    SGIN @ ROW-2? SGOUT @ ROW-2? and 0= IF E-CAST-SCOPE throw THEN
@@ -26306,20 +24798,19 @@ variable CAST-PATH-N
    \ this literal too.
    CHECKER-AUTH-PACKAGE$ s" C2-MEM" CORE-STR=CI 0= IF E-CAST-SCOPE throw THEN ;
 
-\ LINEAR-PAYLOAD? : what a `linear:` row carries beside its token, a non-linear
-\ con or a pointer chain ending at one. A type variable, a family, a quotation
-\ or an atom is refused: the token stands for one payload of a declared type.
+\ What a `linear:` row carries beside its token: a non-linear con or a pointer
+\ chain ending at one. A type variable, family, quotation or atom is refused:
+\ the token stands for one payload of a declared type.
 : LINEAR-PAYLOAD? ( n -- bool )
    T-RES BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
    dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
    PAY CT-LINEAR? 0= ;
 
-\ LINEAR-CERTIFY : the `linear:` legality gate, in refusal order, over the one
-\ input and one output term IDENTITY-ROWS left. One side is the token, a linear
-\ con, and the other its payload, so the row mints a token from its payload or
-\ erases one back into it. The package that declared the token's type alone
-\ may say so (a type declared at top level has no owner, so nothing mints it),
-\ and only in its private section, so no other scope mints or erases.
+\ The `linear:` legality gate, in refusal order, over the one input and one
+\ output term IDENTITY-ROWS left. One side is the token, a linear con, and the
+\ other its payload: the row mints a token or erases one. Only the package that
+\ declared the token's type may say so (a type declared at top level has no
+\ owner, so nothing mints it), and only in its private section.
 : LINEAR-CERTIFY ( -- )
    SGIN @ CAST-ROW-TERM {: in:n :}
    SGOUT @ CAST-ROW-TERM {: out:n :}
@@ -26332,8 +24823,8 @@ variable CAST-PATH-N
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state
 \ dictionary name after compiling the allocator and CHECK, leaving only their
-\ baked direct references. User source therefore cannot arm or mutate the
-\ one-shot boundary.
+\ baked direct references, so user source cannot arm or mutate the one-shot
+\ boundary.
 : LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
    0 LBUF-EVAL-OFF !
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
@@ -26350,26 +24841,24 @@ variable CAST-PATH-N
    0 FO-ON ! ;
 
 \ The refusals a recorded name meets, a closed constructor package and a
-\ duplicate tail, asked before the record step's first write. Its control entry
-\ goes in ahead of the effect record and that store is later-wins, so a refusal
-\ asked after the append left the refused body's flags as the name's newest
-\ entry: a duplicate stripped the first definition of its source authority, and
-\ every later caller of it failed E-CAP-TRUSTED (test/checker-dup-record.f). The
-\ constructor refusal is asked only for a declared signature, as the writers
-\ that publish one ask it; the inferred effect's writer (RECXT) does not.
-\ CHECKER-CERT-DUP? asks without interning, so the step goes on with the
-\ symbols it found. The deferred and multi-error branches of CHECK ask these
-\ before their NORET row; the certified branch asks them in PUBLISH-REFUSALS.
+\ duplicate tail, are asked before the record step's first write: its control
+\ entry goes in ahead of the effect record and that store is later-wins, so a
+\ refusal asked after the append would leave the refused body's flags as the
+\ name's newest entry and strip the first definition of its source authority
+\ (test/checker-dup-record.f). The constructor refusal is asked only for a
+\ declared signature, as the writers that publish one ask it; RECXT does not.
+\ CHECKER-CERT-DUP? asks without interning. The deferred and multi-error
+\ branches of CHECK ask these before their NORET row; the certified branch
+\ asks them in PUBLISH-REFUSALS.
 : CHECK-REC-ADMIT ( ptr u8 n -- )
    {: a:ptr u:n :}
    CHECK-SIG? IF a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN THEN
    a u CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
 
 \ Every refusal a certified definition can meet at publication, asked before its
-\ first write to the store: its NORET row, the symbol it is recorded under and
-\ the record. A refusal asked after one of them left that write behind, and a
-\ later verdict read it: a public refused E-SHADOWED-ARITY had already interned
-\ the symbol that then hid the global its name binds (E-USING-SHADOW-GLOBAL).
+\ first write to the store (its NORET row, its symbol, its record): a write left
+\ behind is read by a later verdict, as a public refused E-SHADOWED-ARITY whose
+\ interned symbol hid the global its name binds (E-USING-SHADOW-GLOBAL).
 : PUBLISH-REFUSALS ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u CHECK-REC-ADMIT
@@ -26522,14 +25011,14 @@ variable CAST-PATH-N
    THEN ;
 
 \ ---------------------------------------------------------------------------
-\ Transactional rollback-frame STACK. Depth-safe replacement for the old single
-\ CAND-*/CSCOPE- slots: every checker scope (CHECKER-SCOPE-START) and candidate
-\ probe (CHECK-CANDIDATE-START) pushes a frame holding every mutable high-water
-\ mark, and DONE pops it. Nested candidates/scopes (all-errors replay, preverify,
-\ CHK-RUN-STATIC-LINTS inside CHK-RUN-SCOPED) therefore cannot overwrite a
-\ parent's saved marks. Core marks live in the RBF frame; the TFAM/SUMV/SCHEMA
-\ registries hang parallel marks off the REG-EXT-RB-* hooks that type-schema.f /
-\ type-family.f install, kept in lockstep because every push pairs with one pop.
+\ Transactional rollback-frame STACK: every checker scope (CHECKER-SCOPE-START)
+\ and candidate probe (CHECK-CANDIDATE-START) pushes a frame holding every
+\ mutable high-water mark, and DONE pops it, so nested candidates and scopes
+\ (all-errors replay, preverify, CHK-RUN-STATIC-LINTS inside CHK-RUN-SCOPED)
+\ cannot overwrite a parent's marks. Core marks live in the RBF frame; the
+\ TFAM/SUMV/SCHEMA registries keep parallel marks through the REG-EXT-RB-* hooks
+\ type-schema.f and type-family.f install, in lockstep since every push pairs
+\ with one pop.
 \ ---------------------------------------------------------------------------
 : REG-EXT-RB-NOOP ( -- )   \ default: no extension registries installed yet
 ;
@@ -26671,9 +25160,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    src CHECKER-PACKAGE-NAME u ARENA-COPY
    src CHECKER-PACKAGE-CAP + CK-USE-RESTORE ;
 
-\ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
-\ snapshot), so drop any grown arena buffer back to the baked boot store; the
-\ next scope re-grows lazily.
+\ Frames are transient (depth 0 at snapshot), so snapshot prepare drops a grown
+\ arena buffer back to the baked boot store; the next scope re-grows lazily.
 : RBF-SNAP-RESET ( -- )
    RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    RBF-A-BOOT RBF-A-P !
@@ -26692,12 +25180,10 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    0 MSEEN-N !
    0 MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !  0 MTCH-W ! ;
 
-\ THE FIELD LIST, WRITTEN ONCE. Both the frame stack below and the core-prefix
-\ boundary further down record and restore through this pair, so a mark added
-\ here joins both by construction: a later field cannot be pushed by a scope and
-\ silently missed by the boundary, which is how the boundary came to restore
-\ four cursor families out of twenty and leave a warm image whose first
-\ declaration stored through a stale pointer.
+\ THE FIELD LIST, WRITTEN ONCE. The frame stack and the core-prefix boundary
+\ both record and restore through this pair, so a mark added here joins both: a
+\ boundary that restores fewer cursor families than a scope leaves a warm image
+\ whose first declaration stores through a stale pointer.
 : RBF-SAVE-INTO ( ptr n -- ) {: r:ptr :}
    UEND @ r RBF.UEND !
    NORET-END @ r RBF.NEND !
@@ -26773,12 +25259,11 @@ package CHECKER-REG
    RBF-DEPTH @ 1 + RBF-DEPTH !
    REG-EXT-RB-SAVE-XT ;
 
-\ Restore the top frame, running the caller's registry restore first.  The
-\ restore action is a parameter rather than a mode flag: an ordinary scope hands
-\ over the installed extension hook (which rejects a stale product-field depth),
-\ while a declaration frame hands over its own throw-free restore.  A throw
-\ inside either action can therefore never leave a latch behind that disables
-\ product-field validation for every later pop.
+\ Restore the top frame, running the caller's registry restore first. The
+\ restore is a parameter, not a mode flag: an ordinary scope hands over the
+\ installed extension hook (which rejects a stale product-field depth), a
+\ declaration frame its own throw-free restore, so a throw inside either cannot
+\ leave a latch that disables product-field validation for later pops.
 : RBF-POP-WITH ( [ -- ] -- )
    0 BWIN-VALID !  0 UWIN-VALID !
    execute                 \ registry restore for the frame this pop retires
@@ -26798,25 +25283,15 @@ package CHECKER-REG
 \ ---------------------------------------------------------------------------
 \ THE CORE-PREFIX BOUNDARY. One mark, taken once at the end of the boot prefix
 \ (src/core/lower-cert-seal.f) and rewound to once at the head of a generated
-\ engine source (src/habu/prefix-rewind.f's top-level text), which returns a
-\ compiling host to the end of its own boot instead of orphaning that prefix and
-\ recompiling it.
-\
-\ IT IS A RECORD, NOT A FRAME. A frame held open across the whole boot is one
-\ frame deeper than the core for its entire life, and the depth-lockstep assert
-\ (RBF-DEPTH @ TYPES-READY-XT) fails on the first declaration past the mark -
-\ measured, throw 7113. So this moves no depth, holds no savepoint, and stacks
-\ with nothing: it reads and writes the same field list a scope does, through
-\ the pair above, from storage of its own.
-\
-\ WHY IT LIVES HERE AND NOT IN THE REWIND. The list of marks a scope invalidates
-\ is this file's, and it changes when this file changes. Enumerating it at the
-\ call site made the boundary a second, older copy of the list: it carried four
-\ of the cursor families and left the rest, and a warm snapshot image built that
-\ way segfaulted on its first type declaration - a store through a pointer into
-\ records the rewind had taken away. Derived from one list, that cannot recur.
-\ The extension registries ride the same way they do for a scope, through hooks
-\ their owners install (src/core/type-family.f), so they cannot drift either.
+\ engine source (src/habu/prefix-rewind.f), which returns a compiling host to
+\ the end of its own boot instead of recompiling the prefix.
+\ It is a record, not a frame: a frame open across the boot is one deeper than
+\ the core, and the depth-lockstep assert (RBF-DEPTH @ TYPES-READY-XT) fails on
+\ the first declaration past the mark (measured, throw 7113). It moves no depth,
+\ holds no savepoint, and reads and writes the scope's field list through the
+\ pair above. The list lives in this file because it changes with this file;
+\ the extension registries ride through hooks their owners install
+\ (src/core/type-family.f).
 create RBF-BND-REC    RBF-REC allot
 create RBF-BND-NAME   RBF-NAME-REC allot
 variable RBF-BND-N   0 RBF-BND-N !
@@ -26825,10 +25300,9 @@ package CHECKER-BOUND
 
 public
 
-\ How many marks the boundary carries, off the record rather than a hand count,
-\ so the number cannot go stale the way a written-out one does. Zero until MARK
-\ has run, which is what makes it the build's capability probe: an engine whose
-\ boundary carries nothing cannot host a source that rewinds to one.
+\ How many marks the boundary carries, counted off the record. Zero until MARK
+\ has run, which makes it the build's capability probe: an engine whose boundary
+\ carries nothing cannot host a source that rewinds to one.
 : CURSORS ( -- n )
    RBF-BND-N @ ;
 
@@ -26848,15 +25322,12 @@ public
    RBF-BND-REC RBF-RESTORE-FROM ;
 
 \ THE COARSER REWIND, for a host that reloads the prefix from its first record
-\ instead of from the mark: the signature store back to empty, through the
+\ instead of from the mark: the signature store back to empty through the
 \ store's own truncation seam, so the interned-node table and the per-symbol
-\ record index are repaired rather than left pointing above the store the way a
-\ bare `0 UEND !` left them. tools/bootstrap.sh's boot-hide prologue is the one
-\ consumer; the row for it in this file's primitive table says why it is a row
-\ and why it takes no argument. It moves no depth and touches no other cursor,
-\ which is the whole difference from REWIND: the caller is discarding the
-\ dictionary those other cursors describe, not returning to a recorded moment
-\ in it.
+\ record index are repaired too. tools/bootstrap.sh's boot-hide prologue is the
+\ one consumer (its row in this file's primitive table says why it takes no
+\ argument). Unlike REWIND it moves no depth and touches no other cursor: the
+\ caller is discarding the dictionary those cursors describe.
 : EMPTY-STORE ( -- )
    RBF-DEPTH @ IF s" checker: store reset inside rollback scope" 76 die THEN
    0 BWIN-VALID !  0 UWIN-VALID !
@@ -26957,19 +25428,14 @@ TYPES-DEFAULTS
 : CHECKER-SCOPE-START ( -- )
    RBF-PUSH ;
 
-\ The scope opener for replaying STANDALONE source. CHECKER-SCOPE-START saves
-\ the caller's package mirror but leaves it live, which is right for a scope
-\ that continues checking the caller's own code. A tool that replays a separate
-\ file needs the opposite: that file's package context is whatever the file
-\ itself declares, so the scope starts at top level. Neutrality belongs here,
-\ in the one word that opens such a scope, rather than in a rule each call site
-\ has to remember. Top level means no open package AND no imports: a standalone
-\ file starts with the global dictionary and whatever it goes on to declare for
-\ itself. The checker overlay moves the engine there, holding the caller's
-\ scope (CHECKER-OVERLAY:OPEN-SCOPE), and every pop of the frame puts the scope
-\ back on the clean and the throwing path alike, as RBF-POP puts back the
-\ caller's mirror; the names the scope's replays publish bind until then. An
-\ overlay that cannot open takes the frame with it.
+\ The scope opener for replaying STANDALONE source. CHECKER-SCOPE-START keeps
+\ the caller's package mirror live, right for checking the caller's own code; a
+\ separate file's package context is whatever it declares, so this scope starts
+\ at top level: no open package and no imports. The checker overlay moves the
+\ engine there, holding the caller's scope (CHECKER-OVERLAY:OPEN-SCOPE), and
+\ every pop of the frame puts the scope back on the clean and throwing paths
+\ alike, as RBF-POP puts back the caller's mirror; names the scope's replays
+\ publish bind until then. An overlay that cannot open takes the frame with it.
 : CHECKER-SCOPE-START-NEUTRAL ( -- )
    RBF-PUSH
    [: RES-TRUE RBF-DEPTH @ CHECKER-OVERLAY:OPEN-SCOPE ;] catch {: rc:n :}
@@ -27011,30 +25477,21 @@ variable CAND-VERDICT
 : CHECKER-CANDIDATE-SCOPE-DONE ( -- )
    0 CHECK-CANDIDATE-DONE drop ;
 
-\ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
-\ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
 \ ---- checking a body that names a seeded word --------------------------------
 \ A body naming a seeded word whose row is not yet taken queues the name
 \ (CALL-UNDEFINED) and its pass judges the name unbound. So the pass runs, the
 \ names it could not resolve are taken between passes (CK-AOT-INTAKE), and the
-\ pass runs again.
-\
-\ TERMINATION IS STRUCTURAL, NOT A BOUND. Every pass either creates an effect for
-\ a (package, visibility, name) the checker did not have - and the pool holds
-\ finitely many - or creates none, and a pass that creates none is the last one.
-\ So no name is ever taken twice and no body can loop.
-\
-\ IT WRAPS CHECK AND NOT CHECK!, so the source tape's verdict and the certificate
-\ producer below see the definition's answer once instead of once per pass.
+\ pass runs again. Termination is structural: every pass either creates an
+\ effect for a (package, visibility, name) the checker did not have, of which
+\ the pool holds finitely many, or creates none and is the last. It wraps CHECK,
+\ not CHECK!, so the source tape's verdict and the certificate producer see the
+\ definition's answer once.
 variable CK-RETRY-V
 
-\ What is compared is the token COUNT, not the tokens. That is enough because the
-\ split is a function of the TEXT alone (argued at SCAN-TOKS above: the reader
-\ splits on spaces and decides a payload skip from the token's own spelling), so
-\ two passes over the same bytes cut the same tokens and a differing count is the
-\ only way the streams can part. The message says count for the same reason: a
-\ death that claims more than it checked sends the next reader looking for a
-\ difference in the tokens themselves.
+\ The token COUNT is compared, not the tokens: the split is a function of the
+\ text alone, so two passes over the same bytes cut the same tokens and a
+\ differing count is the only way the streams can part. The message says count
+\ so it claims no more than it checked.
 : CK-RETRY-STREAM-CK ( n -- )
    SCAN-TOKS @ = IF EXIT THEN
    s" checker: a re-checked body read a different NUMBER of tokens than the observer holds"
@@ -27065,20 +25522,14 @@ variable CK-RETRY-V
    0 CK-AOT-RETRY-ARMED !
    CK-RETRY-V @ ;
 
-\ A candidate answers through the SAME retry loop a definition does, because a
-\ seeded engine must give a candidate the verdict the source engine gives it: a
-\ bare CHECK cannot see a seeded word whose row was never taken in this
-\ process, and reported it E-UNDEFINED - ir-context.f's seal battery read that
-\ 1 where the source engine's refusal reads 0. The rows a retry takes inside
-\ the candidate's rollback frame are popped with it; the next miss re-takes
-\ them, so nothing depends on the probe having happened.
-\
-\ Throw-safe, mirroring CHK-RUN-SCOPED: a throw inside CHECK must not unwind
-\ past the candidate pop, or the rollback frame leaks (RBF-DEPTH stuck,
-\ rejected rows survive) and the next probe runs on corrupted state. The retry
-\ loop's own driving state is snapshotted here too, where the catch is: a
-\ candidate may run inside an enclosing CHECK-RETRY pass, and the inner loop
-\ finishing - or dying - must not disarm or misread the outer one.
+\ A candidate answers through the same retry loop a definition does, so a seeded
+\ engine gives it the source engine's verdict: a bare CHECK cannot see a seeded
+\ word whose row was never taken in this process. Rows a retry takes inside the
+\ candidate's rollback frame are popped with it and re-taken at the next miss.
+\ Throw-safe, as CHK-RUN-SCOPED is: a throw inside CHECK must not unwind past
+\ the candidate pop (RBF-DEPTH stuck, rejected rows surviving). The retry loop's
+\ driving state is snapshotted where the catch is: a candidate may run inside an
+\ enclosing CHECK-RETRY pass, which the inner loop must not disarm or misread.
 : CHECK-CANDIDATE-BODY ( -- )        \ ( -- ) closure: check the stashed source, stash the verdict
    CAND-A @ CAND-U @ CHECK-RETRY CAND-VERDICT ! ;
 
@@ -27173,15 +25624,12 @@ public
 
 ;package
 
-\ The quiet probe. A caller that wants a verdict and not a rejection diagnostic
-\ - every certify/refuse fixture in test/ and src/lib/ - asks here, so the render
-\ counter stays inside this file.
-\
-\ Throw-safe, and restoring BEFORE the rethrow: CHECK-CANDIDATE! re-throws what
-\ the check threw, and a caught refusal must not leave the renderer muted for the
-\ rest of the load. The count nests, so a probe inside an enclosing quiet scope
-\ leaves that scope quiet. Stash-and-body rather than a capturing quotation,
-\ which is the shape CHECK-CANDIDATE! above and CHECK-UNJUDGED! below both take.
+\ The quiet probe: a caller that wants a verdict without a rejection diagnostic
+\ (every certify/refuse fixture in test/ and src/lib/) asks here, so the render
+\ counter stays inside this file. Throw-safe, restoring before the rethrow: a
+\ caught refusal must not leave the renderer muted for the rest of the load.
+\ The count nests. Stash-and-body rather than a capturing quotation, as
+\ CHECK-CANDIDATE! and CHECK-UNJUDGED! are.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE QCAND-A   variable QCAND-U   variable QCAND-VERDICT
 CHECKER-REG:}SCRATCH
@@ -27219,12 +25667,11 @@ variable DEF-STOPPED
 
 : CHECKER-DEF-STOPPED? ( n -- bool ) DEF-STOPPED @ = ;
 
-\ The rule shared by the walks a refusal of the definition leaves by a throw, a
-\ body's here, a does> clause's (CHECKER-SOURCE-DOES! below) and a top-level
-\ token's (CHECKER-VERIFY-TOP below): the caught
-\ code is rethrown unless it is that refusal in a multi-error load, and what the
-\ walk left set where it was refused is cleared. Outside a multi-error load the
-\ refusal stops the load, and DEF-STOPPED keeps it.
+\ The rule shared by the walks a refusal of the definition leaves by a throw (a
+\ body's here, a does> clause's in CHECKER-SOURCE-DOES!, a top-level token's in
+\ CHECKER-VERIFY-TOP): the caught code is rethrown unless it is that refusal in
+\ a multi-error load, and what the walk left set is cleared. Outside a
+\ multi-error load the refusal stops the load, and DEF-STOPPED keeps it.
 : DEF-REFUSED ( n -- )
    {: rc:n :}
    rc DEF-REFUSAL @ <> IF rc throw THEN
@@ -27238,6 +25685,8 @@ variable DEF-STOPPED
    MULTI-REFUSED
    0 CK-DEF-VERDICT ! ;
 
+\ Like CHECK, but verifies the body against a leading ( in -- out ) declared
+\ sig and rejects on mismatch. The standalone REPL hook.
 : CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
    WRITE-WINDOW-CK
    0 BWIN-VALID !  0 UWIN-VALID !
@@ -27268,31 +25717,23 @@ variable DEF-STOPPED
    verdict ;
 
 \ ---- the scan whose verdict nobody enforces ----------------------------------
-\ A TRUSTED: definition's declared effect IS the assertion: the body is scanned
-\ only to fill the source tape the optimizing elaborator reads, and the verdict
-\ that scan reports is never acted on (src/compiler/native/compiler.f RECORD
-\ enforces one only for a CHECKED definition). A diagnostic about it therefore
-\ names a refusal nothing refuses, so the render is suppressed for the scan's
-\ duration and restored on either exit.
-\
-\ THE SCOPE BELONGS TO THE INSTANCE THAT RENDERS, which is why this word exists
-\ at all rather than the compiler bumping DIAG-QUIET itself. That compiler is a
-\ BAKED routine in a product engine: a counter reached by name is the counter of
-\ the checker it was compiled into, while the scan runs in whichever checker owns
-\ the source - so the suppression landed on one instance and the render on the
-\ other, and a product-hosted build printed a rejection for every trusted body in
-\ the window it was rebuilding.
-\
-\ A SCAN THAT RETURNS LEAVES THE CLAUSE LATCH AS IT FOUND IT. Its record grants
-\ no authority, so it is not the record a `does>` clause's created effect belongs
-\ to: that is the definition's own publication, which steps the latch
-\ (TRUST-DECL). Tier 0 certifies a trusted definer's clause BEFORE this scan
-\ (habu2.f EM-COMPILE-PUBLISH-TRUSTED); the scan's CHECK-RESET step and its own
-\ record's take would consume that effect first, and the definer would create
-\ nothing. Tier 1 scans before the clause, where the latch is already clear. A
-\ scan that throws abandons the definition at either tier and nothing after it
-\ steps the latch, so it clears the latch: a restored arm would be stepped by
-\ the next body check into the record of whatever is defined next.
+\ A TRUSTED: definition's declared effect is the assertion: the body is scanned
+\ only to fill the source tape the optimizing elaborator reads, and its verdict
+\ is never acted on (src/compiler/native/compiler.f RECORD enforces one only for
+\ a CHECKED definition), so the render is suppressed for the scan and restored
+\ on either exit.
+\ The scope belongs to the instance that renders: the compiler is a baked
+\ routine in a product engine, so a counter it reached by name would be its own
+\ checker's while the scan runs in the checker that owns the source, and a
+\ product-hosted build would print a rejection for every trusted body.
+\ A SCAN THAT RETURNS LEAVES THE CLAUSE LATCH AS IT FOUND IT: its record grants
+\ no authority, and the definition's own publication steps the latch
+\ (TRUST-DECL). Tier 0 certifies a trusted definer's clause before this scan
+\ (habu2.f EM-COMPILE-PUBLISH-TRUSTED), and the scan's CHECK-RESET step and
+\ record would otherwise consume that effect; tier 1 scans before the clause,
+\ with the latch clear. A scan that throws abandons the definition at either
+\ tier, so it clears the latch: a restored arm would be stepped by the next body
+\ check into the record of whatever is defined next.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE UNJ-A   variable UNJ-U
 CHECKER-REG:}SCRATCH
@@ -27357,19 +25798,15 @@ public
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
-\ Capture the stable physical widths, the wide-layout fact and the per-cell
-\ VALUE BOUNDARIES of both rows before checking binds either row tail. A does>
-\ clause's rows are rows like any other: PUSH-LOGICAL has already expanded every
-\ layout value of a known width into one hidden field term per physical cell, so
-\ the term count and each term's slot are exactly what a placer needs to tell a
-\ bundle it must move whole from that many unrelated cells. They are read after
-\ the scan, and the scan binds the row tails (ROW-CELLS' note above), so they are
-\ taken by value here for the same reason the cell counts are.
-\
-\ The slot arrays are bounded by what a glue mask can describe at all (dict.f
-\ GLUE-MAX). A row longer than that has more CELLS than a mask has bits and is
-\ refused by the reader that asks, before any slot of it is read, so the cap
-\ costs no answer anything could have used.
+\ Capture both rows' physical widths, the wide-layout fact and the per-cell
+\ value boundaries before checking binds either row tail; they are read after
+\ the scan, so they are taken by value (ROW-CELLS' note). PUSH-LOGICAL has
+\ already expanded every known-width layout value into one hidden field term per
+\ physical cell, so the term count and slots are what a placer needs to tell a
+\ bundle it must move whole from unrelated cells.
+\ The slot arrays are bounded by what a glue mask can describe (dict.f
+\ GLUE-MAX): a row with more cells than a mask has bits is refused by the reader
+\ that asks before any slot is read, so the cap loses no usable answer.
 64 constant CD-SLOT-CAP
 variable CD-DIN-CELLS
 variable CD-DOUT-CELLS
@@ -27387,8 +25824,7 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    t HIDDEN-PARAM? 0= IF 0 EXIT THEN
    t HIDDEN-SLOT@ 1 + ;
 
-\ Walk one row head (top) first, recording each term's slot, and answer the
-\ row's fixed term count. Terms past the cap are counted and not recorded.
+\ Terms past the cap are counted and not recorded.
 : CD-ROW-CAPTURE ( n ptr n -- n ) {: s:n a:ptr :}
    0 CD-I !
    s
@@ -27432,33 +25868,26 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
       2drop  SGOUT !  SGIN !
    THEN ;
 
-\ IDENTITY-PARSE ( name$ effect$ -- ) : parse the declared row of `cast:` or
-\ `linear:` and refuse a signature that did not parse, before a gate reads the
-\ row. IDENTITY-ROWS ( name$ effect$ -- ) then refuses a parsed row that is not
-\ one term per side.
-\
-\ PARSE-SIG-RAW/RAW-SIG! is CHECK-DOES!'s own move, for the same reason: it is
-\ how this file parses a declared effect OUTSIDE a definition and lands
-\ SGIN/SGOUT/SGHASR, which is exactly what the gates read. Family tails
-\ resolve through SIG-SCOPE$, which is off outside the AOT intake and therefore
-\ reads the engine's real open namespace — the same scope CAST-OWNER? asks
-\ about. An unresolvable family name lands in SGBAD and is named by E-CAST-FAM,
-\ so a mistyped type cannot mint a row.
-\
-\ A signature that did not parse is refused before anything reads its row: the
-\ cast walks instantiate a layout's members over its arguments, and a bad row
-\ could not be registered. Its first fault names the class. A family unknown or
-\ applied to the wrong number of arguments is E-CAST-FAM; any other fault, bad
-\ syntax or a bare `ptr`, is refused as a definition with that signature is, by
+\ IDENTITY-PARSE parses the declared row of `cast:` or `linear:` and refuses a
+\ signature that did not parse before a gate reads the row; IDENTITY-ROWS then
+\ refuses a parsed row that is not one term per side.
+\ PARSE-SIG-RAW/RAW-SIG! is CHECK-DOES!'s move for parsing a declared effect
+\ outside a definition into SGIN/SGOUT/SGHASR. Family tails resolve through
+\ SIG-SCOPE$, off outside the AOT intake, so they read the engine's real open
+\ namespace, the scope CAST-OWNER? asks about. An unresolvable family name lands
+\ in SGBAD and is named by E-CAST-FAM, so a mistyped type cannot mint a row.
+\ A bad row could not be registered and the cast walks instantiate a layout's
+\ members over it, so it is refused first, its first fault naming the class: a
+\ family unknown or of the wrong arity is E-CAST-FAM; any other fault (bad
+\ syntax, a bare `ptr`) is refused as a definition with that signature is, by
 \ its bad-signature diagnostic and CHECKER-REJECT-RC. One fault waits for the
-\ gate: an output scope or region variable no input supplies (SGBAD-UNSUPPLIED?)
-\ is the shape of a view representation pack. Such a row is always scoped, so
-\ CHECKER-DEFCAST routes it to VIEW-CAST-CERTIFY before IDENTITY-ROWS, which
-\ refuses it as a bad signature on the one path that reaches it, `linear:`.
-\
-\ A row that parsed is one term in and one term out over the same resolved tail,
-\ else E-CAST-ARITY: neither declarer's emitted identity changes cells below
-\ that term. A view is two pushes, so a view cast is certified before this.
+\ gate: an output scope or region variable no input supplies
+\ (SGBAD-UNSUPPLIED?) is the shape of a view representation pack, always
+\ scoped, so CHECKER-DEFCAST routes it to VIEW-CAST-CERTIFY before
+\ IDENTITY-ROWS, which refuses it as a bad signature on its one path, `linear:`.
+\ A parsed row is one term in and one out over the same resolved tail, else
+\ E-CAST-ARITY: neither declarer's identity changes cells below that term. A
+\ view is two pushes, so a view cast is certified before this.
 : IDENTITY-PARSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su BYTE-SPAN? 0= IF E-CAST-ARITY throw THEN
    NEW
@@ -27476,31 +25905,26 @@ create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
    SGOUT @ R-RES P>REST R-RES <> IF E-CAST-ARITY throw THEN
    SIG-UNRES @ IF E-CHECKER-IDENTITY-UNRESOLVED throw THEN ;
 
-\ CHECKER-DEFCAST ( name$ effect$ -- ) : the checker half of `cast: NAME
-\ ( in -- out )`, and CHECKER-LINEAR the half of `linear: NAME ( in -- out )`.
-\ Both front ends land here — the engine's reader keyword through its publish
-\ path (habu2.f DEF-TRUST:REGISTER-IDENTITY) and the source pre-pass through
-\ verify-source — so one set of refusals runs on one set of parsed rows
-\ whichever front end read the declaration.
-\
-\ A cast with a scope dependency on either side (CAST-SCOPED?) is certified by
-\ VIEW-CAST-CERTIFY, which admits only a view representation cast, and is
-\ registered from the rows IDENTITY-PARSE parsed (CHECKER-USIG-CERT-ROWS): a
-\ pack's output binds variables no input supplies, which the stored-signature
-\ intake refuses, so its text cannot be parsed again. Its name is unqualified,
-\ else E-CAST-SCOPE, as CHECKER-LINEAR refuses one: a qualified name publishes
-\ into that package's public wordlist, past the private section the gate asked.
-\
-\ THE ORDER IS THE CONTRACT: refuse first, register second. A refusal throws out
-\ of here before CHECKER-USIG-CERT-ADD or CHECKER-USIG-CERT-ROWS, and the engine
-\ calls this BEFORE it counts the record into NDICT, so a rejected declaration
-\ leaves no name behind in either the checker's tables or the dictionary.
-\
-\ An unscoped cast whose output mints nothing is a representation cast, and its
-\ pending record, at ndict@, takes DNAME-REP: the native compiler lowers a call
-\ of it as the identity it is. The engine's definers call this with the record
-\ pending (CK-LIVE-PEND?); the source pre-pass (verify-source.f) has none, and
-\ marks nothing. A view cast is no scalar retype and is never marked.
+\ CHECKER-DEFCAST is the checker half of `cast: NAME ( in -- out )`, and
+\ CHECKER-LINEAR the half of `linear: NAME ( in -- out )`. Both front ends land
+\ here (the engine's reader keyword through habu2.f DEF-TRUST:REGISTER-IDENTITY,
+\ the source pre-pass through verify-source), so one set of refusals runs on one
+\ set of parsed rows.
+\ A scoped cast (CAST-SCOPED?) is certified by VIEW-CAST-CERTIFY and registered
+\ from the rows IDENTITY-PARSE parsed (CHECKER-USIG-CERT-ROWS): a pack's output
+\ binds variables no input supplies, which the stored-signature intake refuses,
+\ so its text cannot be parsed again. Its name is unqualified, else
+\ E-CAST-SCOPE, as CHECKER-LINEAR refuses one: a qualified name publishes into
+\ that package's public wordlist, past the private section the gate asked.
+\ THE ORDER IS THE CONTRACT: refuse first, register second. A refusal throws
+\ before CHECKER-USIG-CERT-ADD or CHECKER-USIG-CERT-ROWS, and the engine calls
+\ this before it counts the record into NDICT, so a rejected declaration leaves
+\ no name in the checker's tables or the dictionary.
+\ An unscoped cast whose output mints nothing is a representation cast: its
+\ pending record, at ndict@, takes DNAME-REP and the native compiler lowers a
+\ call of it as the identity. The engine's definers call this with the record
+\ pending (CK-LIVE-PEND?); the source pre-pass has none and marks nothing. A
+\ view cast is no scalar retype and is never marked.
 TRUSTED: MARK-REP ( n -- ) rep-mark ;
 
 : CHECKER-DEFCAST ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
@@ -27556,16 +25980,12 @@ package CHECKER-REG
    THEN
    ord base count CHECKER-GRID-ATTACH ;
 
-\ DOES-EFF-LATCH! ( sig-a sig-u -- ) : the tail of CHECK-DOES! below, and the
-\ only writer of the DOESEFF latch. The clause has been certified against the
-\ clause body by then, so what is left to record is the effect the created WORD
-\ carries — the clause signature itself, as CREATED-RECORD-BUILD builds it.
-\
-\ A CANDIDATE SCOPE LATCHES NOTHING. Its records are truncated when the scope
-\ ends (CHECK-CANDIDATE-DONE), so an offset stored from inside one would name a
-\ record that no longer exists. That is a fact about the RECORD, not about the
-\ caller: the source pre-verifier has its own entry point below and never
-\ reaches this word at all.
+\ The tail of CHECK-DOES! and the only writer of the DOESEFF latch: the clause
+\ is certified against its body by then, so what is left is the effect the
+\ created word carries, the clause signature as CREATED-RECORD-BUILD builds it.
+\ A candidate scope latches nothing: its records are truncated when it ends
+\ (CHECK-CANDIDATE-DONE), so a stored offset would name a record that no longer
+\ exists. The source pre-verifier has its own entry and never reaches this word.
 : DOES-EFF-LATCH! ( ptr u8 n -- ) {: sa:ptr su:n :}
    DOES-EFF-CLEAR                            \ a refused clause latches nothing
    DVERD @ VERDICT-CHECKED <> IF EXIT THEN
@@ -27575,11 +25995,10 @@ package CHECKER-REG
    rec 0= IF EXIT THEN                       \ unresolvable family: no row, no latch
    rec DOES-EFF-ARM ;
 
-\ CHECK-DOES! ( body-a body-u sig-a sig-u -- verdict ) verifies a DOES> body
-\ against a created-word runtime effect.  If the created word is declared
-\ `( in -- out )`, the DOES> body must type as `( in ptr a -- out )`: the native
-\ CREATE stub pushes the created word's data-field address before branching to
-\ the DOES> body.
+\ CHECK-DOES! verifies a DOES> body against a created-word runtime effect: a
+\ created word declared `( in -- out )` needs a DOES> body typing as
+\ `( in ptr a -- out )`, since the native CREATE stub pushes the data-field
+\ address before branching to the body.
 : CHECK-DOES-RUN {: ba bu sa su :}
    ba bu CHECK-RESET
    0 TOK0 !
@@ -27608,18 +26027,16 @@ package CHECKER-REG
    WRAP-CLEAR
    ba bu DVERD @ CHECKER-CERT:PRODUCE ;
 
-\ THE TWO FRONT ENDS ARE TWO WORDS, because only one of them may latch. The
-\ retained ENGINE reaches CHECK-DOES! at the `;` of a definition it is compiling,
-\ BEFORE that definition's own body is checked and recorded, so the created-word
-\ effect it certifies here belongs to the record that follows. Native compilation
-\ scans the parent first and uses CHECKER-NATIVE-DOES-FINISH. The SOURCE pre-verifier
-\ reaches the clause AFTER the definer's own body (verify-source VERIFY-DOES):
-\ the next record it publishes belongs to the NEXT definition, and a latch left
-\ armed here would be taken by it — measured, a conditional wrapper in
-\ test/certify-does-definer.f section 3 was handed the preceding definer's
-\ clause. So the pre-verifier's entry point cannot arm the latch at all, and
-\ clears it instead; what the pre-pass learns from a source it READ it learns
-\ from the text, in its own table.
+\ THE TWO FRONT ENDS ARE TWO WORDS, because only one may latch. The retained
+\ engine reaches CHECK-DOES! at the `;` of a definition it is compiling, before
+\ that definition's own body is checked and recorded, so the certified effect
+\ belongs to the record that follows. Native compilation scans the parent first
+\ and uses CHECKER-NATIVE-DOES-FINISH. The source pre-verifier reaches the
+\ clause after the definer's body (verify-source VERIFY-DOES), so its next
+\ record is the next definition's, which would take a latch left armed
+\ (measured: a conditional wrapper in test/certify-does-definer.f section 3 was
+\ handed the preceding definer's clause). Its entry clears the latch instead;
+\ the pre-pass learns from the text, in its own table.
 : CHECK-DOES! {: ba bu sa su :}
    ba bu sa su CHECK-DOES-RUN
    sa su DOES-EFF-LATCH! ;            \ last: that parse reopens the term arena
@@ -27628,7 +26045,7 @@ package CHECKER-REG
 \ of a TRUSTED: or hookless definer with CHECK-UNJUDGED! and reads both halves'
 \ call bindings from the unjudged window (src/compiler/native/checker-owner.f
 \ SOURCE-BINDING), so its clause is scanned the same way: unjudged bindings and
-\ no call authority, as tier 0 checks it. A clause scanned with authority was
+\ no call authority, as tier 0 checks it. With authority, a clause would be
 \ refused a call its parent's body may make (E-CAP-TRUSTED on a colon word
 \ defined with checking off). The compiler still requires the clause's verdict,
 \ so its diagnostic is not suppressed; the parent's window validity stands, as
@@ -27649,15 +26066,13 @@ PTR-VARIABLE UNJ-DOES-SA   variable UNJ-DOES-SU   variable UNJ-DOES-VERDICT
    sa su DOES-EFF-LATCH!
    UNJ-DOES-VERDICT @ ;
 
-\ THE PRE-VERIFIER'S ENTRY ALSO REPORTS what it refuses. CHECK renders a refused
-\ body itself, but CHECK-DOES-RUN renders nothing, and a clause this entry
-\ refused ended tools/check.f's pre-pass with no diagnostic. It is reported as CHECK reports a body: rendered unless the scope
-\ is quiet, and counted in a multi-error load, rejected or uncheckable, under
-\ the name of the record the clause publishes - the definer's, folded as a
-\ definition's name is, with the companion suffix (CLAUSE-NAME). An uncheckable
-\ clause is rendered here too: CHECK leaves that verdict to its callers outside
-\ JSON and a multi-error load, and the pre-pass renders nothing of its own for a
-\ clause.
+\ The pre-verifier's entry also reports what it refuses, since CHECK-DOES-RUN
+\ renders nothing: as CHECK reports a body (rendered unless the scope is quiet,
+\ counted in a multi-error load), under the name of the record the clause
+\ publishes, the definer's folded with the companion suffix (CLAUSE-NAME). An
+\ uncheckable clause is rendered here too: CHECK leaves that verdict to its
+\ callers outside JSON and a multi-error load, and the pre-pass renders nothing
+\ of its own for a clause.
 : DOES-NAME! ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu TOKFOLD drop
    TKF nu CLAUSE-NAME NMU !  NMA ! ;
@@ -27808,14 +26223,14 @@ variable TOP-ASK-ANSWER
    TOP-ASK-ANSWER @ ;
 
 \ Native compilation scans the parent first to keep the observer tape in source
-\ order. Its accepted clause therefore arrives after the parent's effect record.
-\ The existing checker rollback frame spans that split and native publication:
-\ a failed clause or later compile error restores the prior effect, control and
-\ symbol state together, including any earlier version of the same symbol.
-\ An open frame keeps RBF-DEPTH nonzero, so snapshot/compaction cannot relocate
-\ its saved cursors. On success, the publisher associates the accepted clause
-\ with the accepted parent, then finalizes the frame after all dictionary rows
-\ and pending facts publish.
+\ order, so its accepted clause arrives after the parent's effect record. The
+\ checker rollback frame spans that split and native publication: a failed
+\ clause or later compile error restores the prior effect, control and symbol
+\ state together, any earlier version of the same symbol included. An open
+\ frame keeps RBF-DEPTH nonzero, so snapshot/compaction cannot relocate its
+\ saved cursors. On success the publisher associates the accepted clause with
+\ the accepted parent, then finalizes the frame after all dictionary rows and
+\ pending facts publish.
 : CHECKER-NATIVE-DOES-BEGIN ( -- )
    RBF-PUSH ;
 
@@ -27842,21 +26257,18 @@ variable TOP-ASK-ANSWER
    RBF-FINALIZE ;
 
 \ ---- generates: rows ----------------------------------------------------------
-\ A DEFINER THAT WRITES ITS WORD AS TEXT HAS NO CLAUSE. src/lib/task.f +USER
-\ builds a colon definition and evaluates it, so what it makes exists only once
-\ that text runs, which the source pre-verifier never
-\ does. `generates: D ( effect )` states it instead: the row's record lands on
-\ D's CREATES cell exactly as a certified clause's does, so every reader of a
-\ clause (the wrapper walk, the pre-pass's resident lookup) reads the row
-\ unchanged. The row cannot be compared with the text, which only exists per
-\ call, so it is checked for its own three claims under one code: that D names
-\ a word here, that nothing already states what D makes (its clause, an
-\ earlier row, or the definer it wraps), and that the effect parses. It is the
-\ third writer of the cell, beside STORE's latch take and
-\ CHECKER-NATIVE-DOES-PUBLISH, and appends through NORET-ADD-CREATES like them,
-\ carrying D's flags and masks forward, with CTL-GENERATES set: the word a call
-\ of D makes is the one the row declares, so the pre-pass reads the call as
-\ declared (verify-source.f DECLARED-RENDER?).
+\ A definer that writes its word as text (src/lib/task.f +USER evaluates a
+\ colon definition) has no clause, and the source pre-verifier never runs that
+\ text. `generates: D ( effect )` states it: the row's record lands on D's
+\ CREATES cell as a certified clause's does, so every clause reader (the
+\ wrapper walk, the pre-pass's resident lookup) reads it unchanged. The row is
+\ checked for its own three claims under one code: D names a word here, nothing
+\ already states what D makes (its clause, an earlier row, the definer it
+\ wraps), and the effect parses. It is the third writer of the cell, beside
+\ STORE's latch take and CHECKER-NATIVE-DOES-PUBLISH, and appends through
+\ NORET-ADD-CREATES like them, carrying D's flags and masks forward with
+\ CTL-GENERATES set, so the pre-pass reads a call of D as declared
+\ (verify-source.f DECLARED-RENDER?).
 0 constant GENR-UNRESOLVED                \ D names no word here
 1 constant GENR-CREATES                   \ something already states what D makes
 2 constant GENR-BADSIG                    \ the effect does not parse; SGBAD says why
@@ -27876,16 +26288,14 @@ GENERATES-DIAG-DEFAULT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-GENERATES-ROW throw ;
 
-\ CHECKER-GENERATES ( name$ effect$ already -- sym rec ) : the checks every row
-\ passes, for the engine's `generates:` below and for the source pre-verifier,
-\ which reads rows it never runs (verify-source GENERATES-SIGNATURE). It
-\ resolves D itself, through CHECKER-BIND as a use does, so a name the used
-\ scopes refuse (E-USING-SHADOW-GLOBAL, E-USING-AMBIGUOUS) is that refusal on
-\ both paths, not an unknown name: the pre-pass's resolver defers those two to
-\ the check that follows a use (CHECKER-FIND-QUIET-SYM), and a row has none.
-\ `already` is what the caller knows of D beyond the checker (the pre-pass's
-\ table of the definers it read). Answers D's symbol and the created word's
-\ record offset+1, the record 0 for a refused row.
+\ The checks every row passes, for the engine's `generates:` and for the source
+\ pre-verifier (verify-source GENERATES-SIGNATURE). D resolves through
+\ CHECKER-BIND as a use does, so a name the used scopes refuse
+\ (E-USING-SHADOW-GLOBAL, E-USING-AMBIGUOUS) is that refusal on both paths: the
+\ pre-pass's resolver defers those two to the check after a use
+\ (CHECKER-FIND-QUIET-SYM), and a row has none. `already` is what the caller
+\ knows of D beyond the checker (the pre-pass's definer table). Answers D's
+\ symbol and the created word's record offset+1, 0 for a refused row.
 : CHECKER-GENERATES ( ptr u8 n ptr u8 n bool -- n n )
    {: na:ptr nu:n sa:ptr su:n already:bool :}
    na nu CHECKER-FIND-ACTIVE-SYM
@@ -27898,16 +26308,14 @@ GENERATES-DIAG-DEFAULT
    rec 0= IF na nu GENR-BADSIG GENERATES-REFUSE THEN
    sym rec ;
 
-\ A SIGNATURE IS READ AS A DEFINITION HEAD READS ONE (habu2.f C-SIG-START,
-\ C-SIG-END): past the blanks, bytes up to 32 with line feeds among them, a `(`
-\ opens it whether a token is glued to it or not, and the first `)` byte closes
-\ it, on that line or a later one, whatever follows it. The effect is the bytes
-\ between as they stand: PARSE-SIG-RAW splits them at spaces only, so a line
-\ feed inside the effect fuses the tokens around it. Given the text after a
-\ head, answer the offset of the `(` and the offset just past the `)`: the
-\ text's length for the first when no `(` opens a signature, 0 for the second
-\ when no `)` closes it. `generates:` below and the source pre-verifier
-\ (verify-source.f SCAN-SIG) read a signature here.
+\ A signature is read as a definition head reads one (habu2.f C-SIG-START,
+\ C-SIG-END): past the blanks (bytes up to 32, line feeds included), a `(` opens
+\ it whether or not a token is glued to it, and the first `)` byte closes it on
+\ any later line, whatever follows it. PARSE-SIG-RAW splits the effect at spaces
+\ only, so a line feed inside it fuses the tokens around it. Answers the offset
+\ of the `(` (the text's length when none opens) and the offset just past the
+\ `)` (0 when none closes). `generates:` and verify-source.f SCAN-SIG read a
+\ signature here.
 : CHECKER-SIG-SPAN ( ptr u8 n -- n n )
    {: a:ptr u:n :}
    0 BEGIN dup u < IF a over + c@ 33 < ELSE RES-FALSE THEN WHILE 1 + REPEAT
@@ -27948,13 +26356,12 @@ $100 constant GENR-SIG-CAP
    at close + NULL-PTR - data-base CK-INP-OFF + !
    at open + 1 +  su ;
 
-\ generates: D ( effect ) - at top level, after D's definition. A declared
-\ boundary, not a checked body: UNSAFE-TOK? bars `checker-generates` from every
-\ checked body, and this is the engine's one caller of the registrar, as
-\ verify-source.f GENERATES-SIGNATURE is the pre-pass's. UNSAFE-TOK? bars
-\ `generates:` from checked bodies too, so the boundary is reached from top level
-\ only, and its header is the word's whole published effect, which the axiom
-\ row beside CHECKER-GENERATES's states where no checker reads this header.
+\ generates: D ( effect ) at top level, after D's definition: a declared
+\ boundary, not a checked body. UNSAFE-TOK? bars both `checker-generates` and
+\ `generates:` from checked bodies; this is the engine's one caller of the
+\ registrar, as verify-source.f GENERATES-SIGNATURE is the pre-pass's. Its
+\ header is the word's whole published effect, which the axiom row beside
+\ CHECKER-GENERATES's states where no checker reads this header.
 TRUSTED: generates: ( -- )
    parse-name
    {: na:ptr nu:n :}
@@ -27969,16 +26376,15 @@ TRUSTED: generates: ( -- )
    selected sym RECORD-CONTROL-AT! ;
 
 \ ---- parses: rows -------------------------------------------------------------
-\ A TOP-LEVEL WORD THAT READS THE SOURCE AFTER IT (CTL-PARSES) TAKES TOKENS NO
-\ SCAN KNOWS WITHOUT RUNNING IT. `parses: W n` states that W reads n raw tokens,
+\ A top-level word that reads the source after it (CTL-PARSES) takes tokens no
+\ scan knows without running it. `parses: W n` states that W reads n raw tokens,
 \ `parses-through: W n ( E1 E2 )` that it reads n and then every token through
-\ the first one equal to a listed terminator. Only the source pre-verifier
-\ keeps the shape, for the source it checks (verify-source.f PARSES-ROW); the
-\ engine words (src/core/cell-effects.f) read and check a row and keep nothing.
-\ Both paths check a row here, so a row the pre-pass accepts is a row the load
-\ accepts, under one code whose kind says which check failed: the first five
-\ are the target's (fix_parses_row), the last three the row's syntax
-\ (fix_parses_syntax).
+\ the first one equal to a listed terminator. Only the source pre-verifier keeps
+\ the shape (verify-source.f PARSES-ROW); the engine words
+\ (src/core/cell-effects.f) check a row and keep nothing. Both check here, so
+\ the pre-pass and the load accept the same rows, under one code whose kind says
+\ which check failed: the first five the target's (fix_parses_row), the last
+\ three the row's syntax (fix_parses_syntax).
 0 constant PARSES-UNDEFINED               \ the target names no word here
 1 constant PARSES-QUALIFIED               \ the target is a malformed qualified name
 2 constant PARSES-SHADOW                  \ a used public shadows the global it names
@@ -28045,15 +26451,13 @@ PARSES-DIAG-DEFAULT
    eff1 0= IF 0 0 EXIT THEN
    sym eff1 ;
 
-\ CHECKER-PARSES-ROW ( keyword$ target$ count$ bad -- sym eff1 n ) : the checks
-\ every row passes, for the engine words (src/core/cell-effects.f) and for the
-\ source pre-verifier
-\ (verify-source.f PARSES-CHECK), each of which has read the whole row first, so
-\ that a row refused under --all-errors leaves none of its tokens to what
-\ follows. BAD is what the reader found of the terminator list: true when the
-\ row has one and it is malformed (PARSES-LIST). The packet names
-\ the target, or the keyword when no target follows it. Answers the binding
-\ the row bounds and its count, the symbol 0 when it bounds nothing.
+\ The checks every row passes, for the engine words (src/core/cell-effects.f)
+\ and the source pre-verifier (verify-source.f PARSES-CHECK), each of which has
+\ read the whole row first, so a row refused under --all-errors leaves none of
+\ its tokens to what follows. BAD is true when the row has a malformed
+\ terminator list (PARSES-LIST). The packet names the target, or the keyword
+\ when no target follows. Answers the binding the row bounds and its count, the
+\ symbol 0 when it bounds nothing.
 : CHECKER-PARSES-ROW ( ptr u8 n ptr u8 n ptr u8 n bool -- n n n )
    {: ka:ptr ku:n ta:ptr tu:n ca:ptr cu:n bad:bool :}
    tu 0= IF ka ku PARSES-NO-TARGET PARSES-REFUSE 0 0 0 EXIT THEN
@@ -28129,15 +26533,14 @@ NAMES-DIAG-DEFAULT
    off 0= IF RES-FALSE EXIT THEN
    off E-PTR STRING-IN? ;
 
-\ CHECKER-NAMES-ROW ( keyword$ target$ -- ) : the check of a row, for the engine
-\ word (src/core/cell-effects.f names:) and for the source pre-verifier
-\ (verify-source.f NAMES-CHECK). A target the top-level find binds is a use.
-\ Its symbol takes the mark when its declared input row ends in the string
-\ pair ( ptr u8 n ) XREF-FIND takes, and a word whose row does not, one with
-\ no inputs among them, refuses the row (NAMES-NO-STRING), so that a row on
-\ the wrong word cannot make every string before it a use. A cold selected
-\ record, with control but no checker symbol to key the mark, leaves the row
-\ standing and binding nothing, as a parses: row (PARSES-TARGET).
+\ The check of a names: row, for the engine word (src/core/cell-effects.f
+\ names:) and the source pre-verifier (verify-source.f NAMES-CHECK). A target
+\ the top-level find binds is a use. Its symbol takes the mark when its declared
+\ input row ends in the string pair ( ptr u8 n ) XREF-FIND takes; any other
+\ word, one with no inputs among them, refuses the row (NAMES-NO-STRING), so a
+\ row on the wrong word cannot make every string before it a use. A cold
+\ selected record with no checker symbol to key the mark leaves the row standing
+\ and binding nothing, as a parses: row does (PARSES-TARGET).
 : CHECKER-NAMES-ROW ( ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n ta:ptr tu:n :}
    tu 0= IF ka ku PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
@@ -28178,9 +26581,9 @@ NAMES-DIAG-DEFAULT
 : NAMED-OPERAND-INSTALL ( -- ) [: NAMED-OPERAND-USE ;] is NAMED-OPERAND-XT ;
 NAMED-OPERAND-INSTALL
 
-\ CHECKER-NAMED-USE ( ptr u8 n -- ) : a top-level literal's body the source
-\ pre-verifier found before a call of a marked word (verify-source.f
-\ TOP-NAMED) is a use of the word it names, published at once.
+\ A top-level literal's body the source pre-verifier found before a call of a
+\ marked word (verify-source.f TOP-NAMED) is a use of the word it names,
+\ published at once.
 : CHECKER-NAMED-USE ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u NAMED-SYM a u NAV-USE-NOW ;
@@ -28310,19 +26713,17 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
    sym flags TRANSFER-DEFER and 0= 0= DFER-ADD-SYM
    sym USIG-NEWEST sym NORET-NEWEST ;
 
-\ THE COPIES LAND IN THE SOURCE'S RECORD ORDER, NOT IN ITS SYMBOL ORDER. Each
-\ copy appends a record and a no-return row here, a defer row for a deferred
-\ word, and interns its name when this owner does not hold it yet, so the order
-\ of the copies is the order those take in the image. A host numbers every name
-\ it holds a PRIM: row for ahead of all others. Walked by source id, a host with
-\ one row fewer than this tree moved that word's record and rows, and a host
-\ with one row more renumbered every symbol interned after its name, in the
-\ engine built from the same source. The host certified the prefix in source
-\ order after CHECKER-RESET-SOURCE rewound its user records, so the store offset
-\ just past each record, EW.NEXT, orders the copies the same way on every host.
-\ ORDER-P holds source order and the exact handle associations from copied rows.
-\ It is a private mapping that TRANSFER-CHECKED releases on every way out: none
-\ of it reaches the image.
+\ THE COPIES LAND IN THE SOURCE'S RECORD ORDER, NOT ITS SYMBOL ORDER. Each copy
+\ appends a record and a no-return row, a defer row for a deferred word, and
+\ interns its name when this owner lacks it, so copy order is image order. A
+\ host numbers every name it holds a PRIM: row for ahead of all others, so a
+\ walk by source id makes the image depend on the host's primitive count. The
+\ host certified the prefix in source order after CHECKER-RESET-SOURCE rewound
+\ its user records, so EW.NEXT (the store offset just past each record) orders
+\ the copies the same way on every host.
+\ ORDER-P holds source order and the exact handle associations from copied
+\ rows: a private mapping TRANSFER-CHECKED releases on every way out, none of it
+\ reaching the image.
 6 cells constant ORDER-ROW
 2 constant ORDER-SOURCE-EFFECT
 3 constant ORDER-TARGET-EFFECT
@@ -28480,13 +26881,11 @@ CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
    0 owner CHECKER-OWNER-EXT:PUBLICATION-USE-OFF + CELL-VIEW ! ;
 
 \ CLAIMING IS NOT CONDITIONAL ON HAVING SOMETHING TO IMPORT. A host that never
-\ published an owner record - a bootstrap seed, whose dispatch predates it -
-\ leaves nothing to transfer, and this used to return without claiming: the
-\ window then compiled its own source with no source owner at all, which the
-\ optimizing front end reads as "no checker owns this" and refuses by name
-\ (src/compiler/native/checker-owner.f). A seed-hosted build and a
-\ product-hosted build have to reach the same state, so the claim happens either
-\ way; re-claiming when this record is already the owner is the same store.
+\ published an owner record (a bootstrap seed) leaves nothing to transfer; a
+\ window that did not claim would compile its own source with no source owner,
+\ which the optimizing front end refuses by name
+\ (src/compiler/native/checker-owner.f). Seed-hosted and product-hosted builds
+\ reach the same state; re-claiming an owned record is the same store.
 : TRANSFER-CHECKED ( ptr u8 -- ) {: owner:ptr :}
    owner 0= if CLAIM-SOURCE-OWNER exit then
    owner DECLARATIONS = if CLAIM-SOURCE-OWNER exit then
@@ -28506,15 +26905,14 @@ CAST: AS-PENDING-DISCARD ( n -- [ -- ] )
    0 CK-AOT-STATE !
    CLAIM-SOURCE-OWNER ;
 
-\ THE HANDOVER, FROM INSIDE THE LOAD THAT REPLACES THIS CHECKER. Until it runs,
-\ the source cell still holds the engine's certifier, and every signed
-\ definition the hook-less load makes from src/core/checker.f on records its row
-\ there (CLAIM-COLD-SOURCE claims only an empty cell). Each load that replaces a
+\ THE HANDOVER, FROM INSIDE THE LOAD THAT REPLACES THIS CHECKER. Until it runs
+\ the source cell holds the engine's certifier, and every signed definition the
+\ hook-less load makes from src/core/checker.f on records its row there
+\ (CLAIM-COLD-SOURCE claims only an empty cell). Each load that replaces a
 \ running checker calls this by name after src/core/layout-valid.f and before
 \ src/core/check-hook.f: tools/native-build-core.f LOAD-TARGET in its target
-\ window and tools/bootstrap.sh's recovery reload alike. It is the only way in:
-\ the owner record carries no transfer callback (src/core/checker-owner-abi.f,
-\ $48).
+\ window and tools/bootstrap.sh's recovery reload. It is the only way in: the
+\ owner record carries no transfer callback (src/core/checker-owner-abi.f, $48).
 public
 : HANDOVER ( -- )
    SOURCE-OWNER-A @ TRANSFER-CHECKED ;
@@ -28926,9 +27324,9 @@ variable UNIT-ASIG-U   variable UNIT-ASIG-CAP
    off 1+ swap UNIT-GRAPH-ROW+ ;
 
 \ A contract borrows this buffer until the next contract question. Graphs use
-\ the checker's existing canonical graph encoder; the header adds the exact
-\ control row's packed facts, the exact grid declaration and the callable
-\ and created graphs, never live offsets.
+\ the checker's canonical graph encoder; the header adds the exact control row's
+\ packed facts, the exact grid declaration and the callable and created graphs,
+\ never live offsets.
 CHECKER-OWNER-ABI:RECORD-CONTRACT-MAGIC constant RECORD-CONTRACT-MAGIC
 PTR-VARIABLE RECORD-BUF-P
 NULL-PTR RECORD-BUF-P !
@@ -30391,7 +28789,6 @@ UNIT-CON-PROJECT-INSTALL
       1 PIMM-N +!
    loop ;
 
-\ The live symbol an imported variant's constructor ordinal names.
 : UP-CTOR-SYM ( ptr u8 n -- n ) {: plan:ptr v:n :}
    plan v 1 - UP-SYM-ID@ UP-ACTUAL-SYM ;
 
@@ -30982,7 +29379,6 @@ variable TG-GEN
    TOP-RROW-OFF @ TOP-READ-P @ BYTE-VIEW E-INST-FROM {: rrow:n :}
    rrow rrow ROW-TERMS RBROW @ TOP-ROW-REBASE RCUR ! ;
 
-\ The read buffer's node at offset off.
 : TOP-READ-AT ( n -- ptr u8 ) TOP-READ-P @ BYTE-VIEW + ;
 
 \ The cells a stored entry fills when a load reads it back: its recorded width,
@@ -30993,7 +29389,6 @@ variable TG-GEN
    ty EN.TAG @ EN-STALE =  ty EN.A @ 0=  and IF 1 EXIT THEN
    off TOP-READ-AT EN.C @ 1 - ;
 
-\ The saved row's cells, counted as a load counts them.
 : TOP-ROW-COUNT ( -- n )
    0 TOP-ROW-OFF @ BEGIN dup TOP-READ-AT EN.TAG @ EN-PUSH = WHILE
       dup TOP-PUSH-CELLS rot + swap  TOP-READ-AT EN.B @
@@ -31154,42 +29549,32 @@ PPRIM: TOP-ROW CHECKER-TOP-PUSH PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
 \ ---- the surface a capture keeps ---------------------------------------------
 \ A capture keeps a checker symbol, and every row keyed on it, only when some
 \ spelling can still reach it in the engine it writes. Two reasons are this
-\ file's own and hold whether or not a dictionary record carries the name: a
-\ primitive axiom row names the symbol (PES), or the primitive control prefix
-\ does (NORETS below NORET-PRIM-END), which is how `>r` or `2>r` resolve at all.
-\ Every other symbol is decided by src/core/checker-surface.f, which reads the
-\ dictionary and the seal pass's verdict; this file loads before both. Until
-\ that file installs its policy the sweep does nothing, so an engine whose
-\ closure does not load it - the recovery engine, built from src/habu/repl.f -
-\ captures every symbol it holds.
-\
-\ WHICH RECORDS SHIP WITH A NAME IS THE CAPTURE'S ANSWER, NOT THE POLICY'S. The
-\ policy finds the record a symbol's spelling resolves to and asks NAMED? of its
-\ dictionary index, and the capture in progress answers. A snapshot (src/habu/
-\ snap-lib.f, APP-IMAGE:SAVE) writes the whole dictionary, every live record
-\ with its name, so SWEEP - the capture seam's call - answers yes for every
-\ record. The native build's capture strips names afterwards, deciding in
-\ src/habu/aot-capture.f which records keep theirs, a DNAME-INT word it retains
-\ by name included; once that decision is final it runs STRIP with its own
-\ answer, before it copies DATA. A name it strips leaves no spelling, so its
-\ symbol goes; a name it keeps is one a TRUSTED: body can still call, and the
-\ native compiler asks this checker for that callee's arity.
-\
+\ file's own, with or without a dictionary record: a primitive axiom row names
+\ the symbol (PES), or the primitive control prefix does (NORETS below
+\ NORET-PRIM-END), which is how `>r` or `2>r` resolve at all. Every other symbol
+\ is decided by src/core/checker-surface.f, which reads the dictionary and the
+\ seal pass's verdict and loads after this file. Until it installs its policy
+\ the sweep does nothing, so an engine whose closure does not load it (the
+\ recovery engine, built from src/habu/repl.f) captures every symbol it holds.
+\ Which records ship with a name is the capture's answer: the policy asks NAMED?
+\ of the record a symbol's spelling resolves to. A snapshot (src/habu/
+\ snap-lib.f, APP-IMAGE:SAVE) writes every live record with its name, so SWEEP,
+\ the capture seam's call, answers yes for every record. The native build's
+\ capture decides in src/habu/aot-capture.f which records keep their names (a
+\ retained DNAME-INT word included) and then runs STRIP with its own answer,
+\ before it copies DATA. A stripped name leaves no spelling, so its symbol goes;
+\ a kept one is a callee a TRUSTED: body can call, whose arity the native
+\ compiler asks this checker for.
 \ A DROPPED SYMBOL IS RETIRED IN PLACE, never renumbered: ids are held outside
-\ this table - a variant's constructor symbol (src/core/type-family.f), the
-\ core-prefix boundary's SYM-N - and a retired row answers no lookup, so a stale
-\ id names nothing rather than some other word. Its strings go with it: the pool
-\ is rebuilt from the kept rows in id order, so the rows below the boundary keep
-\ their strings below the boundary's pool mark, which moves with them.
-\
-\ ITS ROWS GO WITH IT, OR NAME NOTHING. Control rows go at NORET-COMPACT; defer,
-\ unsafe and parse-immediate rows are filtered here. An effect binding is zeroed
-\ where it stands down to its link to the next record, with every content and
-\ node only retired bindings reached (RETIRE-BINDINGS below), and nothing moves.
-\ Its symbol and back-link are gone, so no index, scan or owner transfer can
-\ reach it through the retired id. CHECKER-REG CHECKED-ROW walks every id of a
-\ product host that builds an engine, and a binding still keyed on a retired row
-\ would hand the target a symbol with an empty name.
+\ this table (a variant's constructor symbol in src/core/type-family.f, the
+\ core-prefix boundary's SYM-N), and a retired row answers no lookup, so a stale
+\ id names nothing. The string pool is rebuilt from the kept rows in id order,
+\ so rows below the boundary keep their strings below its pool mark.
+\ Its rows go with it: control rows at NORET-COMPACT; defer, unsafe and
+\ parse-immediate rows filtered here; effect bindings zeroed in place
+\ (RETIRE-BINDINGS). CHECKER-REG CHECKED-ROW walks every id of a product host
+\ that builds an engine, and a binding still keyed on a retired row would hand
+\ the target a symbol with an empty name.
 package CHECKER-SWEEP
 private
 
@@ -31269,24 +29654,18 @@ variable CUR                             \ the binding walk's record cursor
    map BYTE-VIEW oldu cells ASIG-RELEASE ;
 
 \ ---- retired bindings, zeroed in place ------------------------------------------
-\ A retired symbol's bindings answer no lookup, so the bytes only they reach can
-\ go. The chain cannot: every walker of the store steps from record to record
-\ through ER.NEXT, and every saved store position is a record boundary. So a
-\ retired binding keeps its link and nothing moves - no offset, position,
-\ USIGS-USER-OFF or UEND changes, and nothing has to be remapped.
-\
-\ WHAT STAYS IS MARKED FROM WHAT STAYS. Every record of a kept symbol, and every
-\ record a root names - a definer's created effect in its control row, the
-\ DOESEFF and WRAPC latches, the recursion latch RECEFF, a primitive's effect in
-\ PES - keeps its header, its content and every node, name string and argument
-\ run its rows reach, by the shape walk UIX-NODE-ADD and the census
-\ (tools/effect-store-census.f) make. Every other granule of the user region is
-\ zeroed, which leaves a retired binding its ER.NEXT alone: ACTIVE 0, which is
-\ EFF-DELETED, SYM 0, SYMPREV 0 and CONTENT 0, the record without content that
-\ UIX-REC-ADD skips. A content or node a kept record shares with a retired one
-\ stays where it lies. A store offset any other cell holds must be a root here,
-\ or its reader finds zeros.
-\
+\ Every walker of the store steps record to record through ER.NEXT and every
+\ saved store position is a record boundary, so a retired binding keeps its link
+\ and nothing moves: no offset, position, USIGS-USER-OFF or UEND changes.
+\ What stays is marked from what stays: every record of a kept symbol and every
+\ record a root names (a definer's created effect in its control row, the
+\ DOESEFF and WRAPC latches, RECEFF, a primitive's effect in PES) keeps its
+\ header, content and every node, name string and argument run its rows reach,
+\ by the shape walk UIX-NODE-ADD makes. Every other granule of the user region
+\ is zeroed, leaving a retired binding its ER.NEXT alone: ACTIVE 0
+\ (EFF-DELETED), SYM 0, SYMPREV 0 and CONTENT 0, the record without content
+\ UIX-REC-ADD skips. A content or node a kept record shares stays. A store offset any other cell holds must be a root
+\ here, or its reader finds zeros.
 \ The map is one byte per eight-byte granule of [0, UEND), mmap scratch released
 \ before the sweep returns, so the sweep allots nothing in the image it cleans.
 PTR-VARIABLE MARK-P
@@ -31397,8 +29776,7 @@ variable MARK-U                          \ the map's length in bytes
    RECEFF-ON @ 0 <> IF RECEFF @ MARK-REC THEN
    #PE @ 0 ?do i PE-EFF@ MARK-REC loop ;
 
-\ EACH-REC ( xt -- ) : every record of the user region, in chain order, bounded
-\ by UEND the way USX-BUILD walks it: a link of 0, one that does not advance, or
+\ Bounded by UEND as USX-BUILD walks: a link of 0, one that does not advance, or
 \ one past UEND ends the walk.
 : EACH-REC ( [ n -- ] -- ) {: visit :}
    USIGS-USER-OFF @ CUR !
@@ -31493,8 +29871,7 @@ variable MARK-U                          \ the map's length in bytes
 public
 
 \ The sweep itself, for the policy it is handed. It has no axiom row, so the seal
-\ marks it internal and the product cannot spell it; the whitebox census
-\ (test/effect-store-census-test.f) runs it on a policy of its own.
+\ marks it internal and the product cannot spell it.
 : RUN ( [ ptr u8 n bool ptr u8 n -- bool ] -- ) {: policy :}
    RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN   \ NORET-COMPACT-CHECK's refusal, met first
    policy DECIDE
@@ -31512,7 +29889,6 @@ public
    is KEEP-XT
    -1 KEEP-SET ! ;
 
-\ Whether the capture in progress ships dictionary record n with its name.
 : NAMED? ( n -- bool )
    NAMED-XT ;
 
@@ -31676,13 +30052,12 @@ package CHECKER-REG
 ;package
 
 \ ---- the optimizing front end's half of the owner record ---------------------
-\ Installed here, at this file's own load, for the reason
-\ src/core/lower-cert-base.f installs its certificate producer at its own: every
-\ checker instance wires its own seams, so whichever instance OWNS the source is
-\ complete no matter who loaded it. The compiler reads these through
-\ NCOMP-DISPATCH:DECL-*-OFF and never by name (src/habu/layout.f says what the
-\ name cost), and a field this file forgets is a named refusal there rather than
-\ a silent answer from the retired instance.
+\ Installed at this file's own load, as src/core/lower-cert-base.f installs its
+\ certificate producer at its own: every checker instance wires its own seams,
+\ so the instance that owns the source is complete whoever loaded it. The
+\ compiler reads these through NCOMP-DISPATCH:DECL-*-OFF, never by name
+\ (src/habu/layout.f says what the name cost); a field this file forgets is a
+\ named refusal there, not a silent answer from the retired instance.
 package CHECKER-REG
 ' CHECK!                            DECLARATIONS CHECK-OFF + xt!
 ' CHECKER-TAPE:INSTALL              DECLARATIONS TAPE-INSTALL-OFF + xt!
@@ -31812,10 +30187,8 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
 1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
 
 \ The cell holding the log's address while the log holds entries, 0 otherwise.
-\ It holds an address, so it is declared as a reserved pointer cell.
 CK-DECLARED-LOG-CELL RESERVED-PTR-U8-CELL CK-DLOG-FIELD
 
-\ Field OFF of slot I of the log at LOG: a count cell, then the slots.
 : CK-DLOG-AT ( ptr n n n -- ptr n )
    {: log:ptr i:n off:n :}
    log CK-DLOG-SLOTS-REL + i CK-DLOG-SLOT * + off + ;
@@ -31823,15 +30196,13 @@ CK-DECLARED-LOG-CELL RESERVED-PTR-U8-CELL CK-DLOG-FIELD
 \ A slot's REC, PKG and SIG-A fields hold addresses (layout.f DECLARED-LOG).
 CAST: DLOG-CELL ( ptr n -- ptr ptr n )
 
-\ A logged record in neither the global wordlist nor the open package's own is
-\ a qualified definition, which no file before the claim makes. Its row would
-\ be keyed in a scope no lookup of the engine reaches, so the boot stops.
-
 \ The symbol a logged definition's row is keyed by. REC names the word and the
-\ wordlist it was published into; NS is the namespace record of the package
-\ that was open, NULL-PTR outside one, and holds that package's public and
-\ private wordlist ids where a word keeps its code span (xref.f
-\ XREF-PKG-PUBLIC, XREF-PKG-PRIVATE).
+\ wordlist it was published into; NS is the open package's namespace record,
+\ NULL-PTR outside one, holding that package's public and private wordlist ids
+\ in the slots where a word keeps its code span (xref.f XREF-PKG-PUBLIC,
+\ XREF-PKG-PRIVATE). A record in neither the global wordlist nor NS's is a
+\ qualified definition, which no file before the claim makes: its row would be
+\ keyed in a scope no lookup of the engine reaches, so the boot stops.
 : CK-DLOG-SYM ( ptr n ptr n -- n )
    {: rec:ptr ns:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
@@ -31847,8 +30218,8 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
    THEN
    s" checker: qualified definition before the source claim" 76 die ;
 
-\ Record slot I's row. A record `undefine` has retired since has none. A live
-\ row wins, the question CHECKER-CERT-DUP? asks; no candidate is open here.
+\ A record `undefine` has retired since has no row. A live row wins, the
+\ question CHECKER-CERT-DUP? asks; no candidate is open here.
 : CK-DLOG-ROW ( ptr n n -- )
    {: log:ptr i:n :}
    log i CK-DLOG-REC-OFF CK-DLOG-AT DLOG-CELL @ {: rec:ptr :}
@@ -31860,10 +30231,10 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
    log i CK-DLOG-SIG-U-OFF CK-DLOG-AT @
    CK-DECLARED-SYM! ;
 
-\ Record every logged row in log order, then empty the log - its slots, count
-\ and address cell - so no process-local address outlives the claim in DATA.
-\ The last row's wide and arity latches would mark the next definition the
-\ engine publishes (REC-WIDE-PUBLISH, REC-MIN-IN@), so they are cleared too.
+\ The log is emptied - slots, count and address cell - so no process-local
+\ address outlives the claim in DATA. The last row's wide and arity latches
+\ would mark the next definition the engine publishes (REC-WIDE-PUBLISH,
+\ REC-MIN-IN@), so they are cleared too.
 : CK-DECLARED-LOG-DRAIN ( -- )
    CK-DLOG-FIELD @ CELL-VIEW {: log:ptr :}
    log NULL-PTR = IF EXIT THEN
@@ -31885,11 +30256,6 @@ CLAIM-COLD-SOURCE
 ;package
 
 
-\ Internal engine-build annotation, called immediately after a real registrar
-\ definition. The dictionary's last record and its defining wordlist identify
-\ the binding; neither the source spelling nor an active-package guess does.
-\ It has no PRIM row and the prefix's internal-word gate keeps it unavailable to
-\ ordinary source. Only the control may-effect is added, never an effect row.
 : NOMINAL-REC-SYM ( ptr n -- n ) {: rec:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}
@@ -31915,6 +30281,11 @@ CLAIM-COLD-SOURCE
    sym sym CTL-FLAGS-SYM CTL-NOMINAL or
       sym CTL-MASKS-SYM NORET-ADD-SYM
    rec sym RECORD-CONTROL-AT! ;
+\ Engine-build annotation, run immediately after a real registrar definition.
+\ The dictionary's last record and its defining wordlist identify the binding;
+\ neither the source spelling nor an active-package guess does. It has no PRIM
+\ row and the prefix's internal-word gate keeps it from ordinary source. Only
+\ the control may-effect is added, never an effect row.
 : NOMINAL-PROVIDER ( -- )
    ndict@ 0= IF s" checker: nominal provider has no dictionary record" 76 die THEN
    ndict@ 1- CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC ;

@@ -20,18 +20,12 @@ package LOWER-CERT-HOOK
    CHECK-RC throw ;
 
 \ ---- a duplicate only the checker sees ----------------------------------------
-\ The engine's duplicate wall (habu2.f C-REJECT-DUP-DEF) asks the dictionary and
-\ writes `duplicate definition: NAME` and the location before it exits $4E. A
-\ replay entry the program runs itself (the scanner's CHECKER-DEFPRODUCT with
-\ GENERATED-DECL-CTOR:REPLAY-LEGACY, STRUCTURE-DECL:SD-REPLAY, ...) publishes a
-\ word's checked effect without defining the word, so a later definition of that
-\ name passes the wall, and the checker's record step (checker.f
-\ CHECK-REC-ADMIT) refuses it once its body is checked, with the same code and
-\ no message. The engine exits an uncaught code in [1,255] without a word of
-\ its own, so the hook, the load path's way to the checker, asks the guard's
-\ question (CHECKER-CERT-DUP?, which interns nothing) before checking, as the
-\ wall does, and writes what the wall writes. The source tools classify $4E
-\ themselves (check-all-errors-core.f DUP-RC) and never come through here.
+\ A replay entry (CHECKER-DEFPRODUCT with GENERATED-DECL-CTOR:REPLAY-LEGACY,
+\ STRUCTURE-DECL:SD-REPLAY, ...) publishes a checked effect without defining the
+\ word, so a later definition passes the engine's wall (habu2.f C-REJECT-DUP-DEF)
+\ and checker.f CHECK-REC-ADMIT refuses it with $4E and no message. The hook asks
+\ CHECKER-CERT-DUP? (which interns nothing) first and writes what the wall writes.
+\ The source tools classify $4E themselves (check-all-errors-core.f DUP-RC).
 $4E constant DUP-RC
 
 \ This file loads before src/habu/layout.f, so the cells the engine's refusal
@@ -95,13 +89,10 @@ create DIGIT 1 allot
    AT-SOURCE
    S\" \n" SAY ;
 
-\ In multi-error mode CHECK already emitted the diagnostic, counted the reject,
-\ and retained the declared signature for recovery analysis. Return -1 so the
-\ engine publishes the
-\ definition (a non-zero hook return commits it; zero rejects and unpublishes
-\ it) — the name must resolve for later definitions to keep checking. The body
-\ is compiled but never run on a check-only load; the driver exits nonzero via
-\ MULTI-ERR-END.
+\ In multi-error mode CHECK already emitted the diagnostic, counted the reject
+\ and kept the declared signature. A non-zero hook return publishes the
+\ definition (zero rejects and unpublishes it), so the name resolves for later
+\ definitions; the driver exits nonzero via MULTI-ERR-END.
 public
 
 : HOOK ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -123,7 +114,6 @@ public
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation.
-\ Retirement: habu-sweep-trusted-out-41e973ce.
 TRUSTED: INSTALL ( -- )
    ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;

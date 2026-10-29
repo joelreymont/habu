@@ -1,12 +1,6 @@
-\ lower-cert-base.f — boot-safe lowering-certificate ABI and dispatcher.
-\ Loaded immediately after checker.f. Until the full producer installs, only
+\ lower-cert-base.f — boot-safe lowering-certificate ABI and dispatcher, loaded
+\ right after checker.f. Until the full producer installs (layout-valid.f), only
 \ definitions with no lowering facts may publish a source-bound empty cert.
-\ Header cells: magic, version, total bytes, needs-p2, width-fact count,
-\ bind-width count, fetch count, descriptor cells, body bytes, body FNV-1a64.
-\ Width rows are {source-byte-offset, operand-position, width, flags}; fetch
-\ rows are {source-byte-offset, absolute descriptor-cell offset, cell count}.
-\ Each descriptor starts with a check count; checks are {offset,limit,guards}
-\ followed by guard triples {offset,tag,limit}.
 
 package LOWER-CERT
 
@@ -30,13 +24,17 @@ $4841425543455254 constant MAGIC-V
 7 constant FETCH-DATA-CELLS-I
 8 constant BODY-LEN-I
 9 constant BODY-HASH-I
+\ Width rows are {source-byte-offset, operand-position, width, flags}; fetch
+\ rows are {source-byte-offset, absolute descriptor-cell offset, cell count}.
+\ Each descriptor starts with a check count; checks are {offset,limit,guards}
+\ followed by guard triples {offset,tag,limit}.
 4 constant WF-NCELLS
 3 constant FETCH-NCELLS
 3 constant CHECK-NCELLS
 3 constant GUARD-NCELLS
 1 constant FETCH-BIT
 2 constant STORE-BIT
-4 constant XPAD-BIT      \ layout-cap slice 4: construct/MATCH extra-pad fact flag
+4 constant XPAD-BIT      \ construct/MATCH extra-pad fact flag
 $CBF29CE484222325 constant FNV-OFFSET-V
 $100000001B3 constant FNV-PRIME-V
 
@@ -44,13 +42,9 @@ $400 constant BUF-INIT
 $0FFFFFFFFFFFFFFF constant MAX-CELLS
 
 create BUF-BOOT BUF-INIT cells allot
-\ PERSISTED because this slot HOLDS A DATA ADDRESS across a capture, and marked
-\ cells are the only ones the capture's relocation rebases when the window's DATA
-\ moves down to the image's base; a bare PTR-VARIABLE kept the BUILD window's
-\ address of BUF-BOOT, so a restored engine wrote certificate cells above its own
-\ heap top, into DATA that `allot` later handed out. BUF-ENSURE also grows into
-\ process-local mmap, which no image may carry either - BUF-SNAP-RESET below is
-\ that half. Same defect and same fix as checker.f's LOC-HW-P.
+\ PERSISTED: the slot holds a data address across a capture, and only marked
+\ cells are rebased when the window's DATA moves to the image's base.
+\ BUF-ENSURE also grows into process-local mmap, which BUF-SNAP-RESET undoes.
 PERSISTED-PTR-VARIABLE BUF-P   BUF-BOOT BUF-P !
 variable BUF-CAP BUF-INIT BUF-CAP !
 variable BUF-N
@@ -64,16 +58,14 @@ variable KEPT-N
 variable BODY-LEN
 variable BODY-HASH
 
-\ The full producer is reached through a DECLARED dispatch cell for the same
-\ reason CHECKER-CERT:PRODUCER-XT is: the cell holds an execution token, it is
-\ persisted in the DP heap, and only `defer`/`is` declare such a cell to the
-\ snapshot address-cell table (dot habu-declare-persisted-producer-76fbce09).
+\ FULL-XT is a defer, as CHECKER-CERT:PRODUCER-XT is: the cell holds an
+\ execution token persisted in the DP heap, and only `defer`/`is` declare such a
+\ cell to the snapshot address-cell table.
 defer FULL-XT ( ptr u8 n n -- )
 
-\ Whether the full producer has been installed is a question DISPATCH has to
-\ ASK — with no full producer it must still emit a boot-safe empty certificate,
-\ and a dispatch cell cannot be interrogated. So the grant is recorded in an
-\ ordinary integer flag, which also keeps the single-assignment guard below.
+\ DISPATCH must ask whether the full producer is installed, and a dispatch cell
+\ cannot be asked, so the grant is an integer flag, also the single-assignment
+\ guard below.
 variable FULL-SET   0 FULL-SET !
 
 : BUF ( -- ptr n ) BUF-P @ ;
@@ -96,11 +88,9 @@ variable FULL-SET   0 FULL-SET !
    BUF-P @ BUF-CAP @ cells cap cells ARENA-BYTES-GROW BUF-P !
    cap BUF-CAP ! ;
 
-\ BUF-SNAP-RESET ( -- ) : put the certificate buffer back on its baked boot
-\ buffer for the capture. MAKE rewinds BUF-N and re-emits the whole certificate
-\ per definition, so nothing live is lost. src/core/layout-valid.f's SNAP-RESET
-\ calls this one - it reopens this package and is the file that installs the
-\ producer, so it installs the whole family's reset too.
+\ Put the certificate buffer back on its boot buffer for the capture; MAKE
+\ re-emits the whole certificate per definition, so nothing live is lost.
+\ layout-valid.f SNAP-RESET calls this.
 : BUF-SNAP-RESET ( -- )
    BUF-BOOT BUF-P !   BUF-INIT BUF-CAP !
    BUF-BOOT 0 BUF-INIT ARENA-CELLS-ZERO

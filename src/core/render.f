@@ -1,22 +1,9 @@
-\ render.f — render the checker's inferred residual stack (DCUR) back to readable
-\ type names. Type variables get canonical letters a,b,c… (assigned bottom-to-top),
-\ generic int=n, old flag=f, float=r; concrete types render by name. The "render"
-\ half of the native sigparse/checker. Needs
-\ checker.f. Standalone has no emit/+!; chars go through a 1-byte buffer + type.
-\ Also the checker's sig RECORDER (REC-SIG, installed via RECXT): a certified
-\ sig-less word records its inferred effect under its name, so callers of
-\ certified words certify too. Rendering only decides whether that effect is
-\ declarable (RQM, NLET).
-\
-\ REPAIR CLASSES. A refused definition's JSON packet names one refusal
-\ (checker.f REFUSAL@) with its code, verdict, repair_class and suggestion.
-\ repair_class is the stable machine name a consumer keys its repair on:
-\ REPAIR-CLASS picks it here for checker refusals, and tools/check-core.f and
-\ tools/diag-code.f pick it for the refusals the check tool finds itself. A
-\ class means what the suggestion beside it says (SUGGEST-TEXT and the
-\ *-SUGGEST$ words): short prose for choosing the action, which may name the
-\ rule that refused; the raw evidence stays in the expected, actual and
-\ return_stack fields.
+\ render.f: renders checker types and rows as text: a residual stack (DCUR), a
+\ refusal's diagnostic line and JSON packet. REC-SIG (installed via RECXT)
+\ records a certified sig-less word's inferred effect under its name, so its
+\ callers certify; rendering only decides whether that effect is declarable
+\ (RQM, NLET). Compiles after checker.f and before any src/lib/ file: no emit or
+\ +!, so bytes go out through the one-byte ECH buffer.
 using TFAM
 
 create ECH 1 allot
@@ -33,11 +20,10 @@ variable RDIAG-CAP
 variable RDIAG-U
 variable RDIAG-I
 
-\ A record that does not fit its buffer, the renderer's own or the caller's, is
-\ refused by this code. src/lib/errors.f owns it; this file compiles before any src/lib/
-\ file exists, so the same (code, name) pair is re-registered here -- the one
-\ form tools/error-code-lint.f admits -- and test/diag-buffer-capacity.f keeps
-\ the two spellings equal.
+\ E-DIAG-CAPACITY refuses a record that does not fit RSBUF or the caller's
+\ buffer. src/lib/errors.f owns it but compiles after this file, so the same
+\ (code, name) pair is re-registered here, the one form tools/error-code-lint.f
+\ admits.
 package RDIAG
 public
 -2901 constant E-DIAG-CAPACITY
@@ -48,10 +34,9 @@ public
 variable RTAILS   0 RTAILS !
 
 
-\ RSBUF holds one record whole, a diagnostic or a recorded effect. A record
-\ past it is refused by a throw, with rendering back on stdout, outside any JSON
-\ string and without row tails, so a refused record leaves the renderer as a
-\ delivered one does.
+\ A record past RSBUF is refused whole by a throw; the reset before it leaves the
+\ renderer on stdout, outside any JSON string and without row tails, as a
+\ delivered record does.
 : EMIT-RAW ( n -- )
    {: c:n :}
    c 63 = IF 1 RQM ! THEN
@@ -67,10 +52,7 @@ variable RTAILS   0 RTAILS !
 : JHEX ( n -- ) {: d:n :}
    d 10 < IF d 48 + ELSE d 55 + THEN EMIT-RAW ;
 
-\ JCHAR writes one byte as the inside of a JSON string: `"`, `\` and every byte
-\ below 32 escaped, as RFC 8259 section 7 requires. LF, CR and TAB take their
-\ short escapes and every other one \u00XX in upper-case hex, the form
-\ src/lib/json-write.f writes.
+\ Escapes per RFC 8259 section 7, in the form src/lib/json-write.f writes.
 : JCHAR {: c :}
    c case
       10 of 92 EMIT-RAW 110 EMIT-RAW endof
@@ -84,9 +66,7 @@ variable RTAILS   0 RTAILS !
       ELSE c EMIT-RAW THEN
    endcase ;
 
-\ Between JOPEN and JCLOSE every byte EMIT1 writes is escaped, so a rendered
-\ type, row or family name is a well-formed JSON string whatever its names
-\ spell: a package may be named `\`, and its families render as `\:tail`.
+\ Between JOPEN and JCLOSE every byte is escaped: a package may be named `\`.
 : EMIT1 {: c :}
    RJSON @ IF c JCHAR ELSE c EMIT-RAW THEN ;
 : JOPEN ( -- )   34 EMIT-RAW  -1 RJSON ! ;
@@ -103,13 +83,11 @@ variable RTAILS   0 RTAILS !
    0 RDIAG-ON !
    0 RDIAG-U ! ;
 
-\ Write each unbuffered diagnostic to FD as it is rendered, 2 until set.
 : DIAG-FD! ( n -- )
    RDIAG-FD ! ;
 
-\ The diagnostic buffer pointer lives in a declared pointer cell (dot
-\ habu-refuse-a-ptr-5ad2734e), so a plain fetch keeps the checked ptr u8 view
-\ the byte store below needs.
+\ RDIAG-A is a pointer cell, so a plain fetch keeps the ptr u8 view the byte
+\ store in RDIAG-COPY needs.
 : DIAG-BUFFER$ ( -- ptr u8 n )
    RDIAG-A @ RDIAG-U @ ;
 
@@ -122,9 +100,8 @@ variable RTAILS   0 RTAILS !
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
 
-\ The buffer is the caller's and cannot grow, so a record that does not fit is
-\ refused whole by a throw the caller's catch recovers from: the buffer keeps
-\ every record before it.
+\ The caller's buffer cannot grow: a record that does not fit is refused whole by
+\ a throw, and the buffer keeps every record before it.
 : RDIAG-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
    RDIAG-ON @ 0= IF RDIAG-FD @ a u write drop EXIT THEN
@@ -132,8 +109,8 @@ variable RTAILS   0 RTAILS !
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
 
-\ Hand the record rendered in RSBUF on, with rendering back on stdout first,
-\ so a refused record leaves the renderer as a delivered one does.
+\ Rendering returns to stdout before the append, so a refused record leaves the
+\ renderer as a delivered one does.
 : RSBUF-FLUSH ( -- )
    RSBUF RSN @
    0 RDST !  0 RSN !
@@ -185,7 +162,6 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
 
 : SEEN ( -- ptr n ) SEEN-ENSURE SEEN-P @ ;
 
-\ Every entry into the renderer clears only the span written by LET-OF.
 : SEEN-RESET ( -- )
    SEEN-ENSURE
    0 BEGIN dup SEEN-HW @ < WHILE
@@ -202,10 +178,9 @@ REG-SCRATCH-SNAP-INSTALL
 : RATOM-RESET ( -- )
    0 RATOM-N ! ;
 
-\ Diagnostic alpha-renaming has its own a..z namespace.  It renders generic
-\ checker variables and is deliberately independent of declaration positions.
-\ Signature variables and binders share one printable alphabet. The parser
-\ reserves f, n and r as built-in types, so no inferred name may use them.
+\ Diagnostic letters are their own a..z namespace, independent of declaration
+\ positions. The parser reserves f, n and r as built-in types, so no inferred
+\ name may use them.
 : RLETTER ( n -- n ) {: idx:n :}
    idx 0 < idx 22 > or IF 63 EXIT THEN
    idx 97 +
@@ -238,18 +213,15 @@ REG-SCRATCH-SNAP-INSTALL
 : RSTR ( ptr u8 n -- ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
-\ RFOLD is RSTR for a name whose stored capitalisation is incidental: it emits
-\ the canonical case-folded spelling. Diagnostics name identifiers folded — the
-\ rejected word renders as its folded symbol tail, and the used-package
-\ collision row prints a package the checker already folded on the way in
-\ (checker.f CHECKER-USING). Only a declaring-package name reaches the renderer
-\ unfolded, because TFAM-DECL interns whatever the source `package` line typed.
+\ RFOLD emits the case-folded spelling. Diagnostics name identifiers folded; only
+\ a declaring-package name reaches the renderer unfolded, because TFAM-DECL
+\ interns the spelling the source `package` line typed.
 : RFOLD ( ptr u8 n -- ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE dup a + c@ CORE-FOLD-C EMIT1 1 + REPEAT drop ;
 
 : CON-OUT ( n -- ) {: p:n :}
    p 2 = IF 102 EMIT1 ELSE
-   p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user-declared CT type)
+   p 0 > p CTN @ < and IF
       p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop 63 EMIT1 THEN
    ELSE 63 EMIT1 THEN THEN ;
 
@@ -264,36 +236,18 @@ REG-SCRATCH-SNAP-INSTALL
    dup 10 >= IF dup 10 / RECURSE THEN
    10 mod 48 + EMIT1 ;
 
-\ a T-PARAM's stored name span may point into a transient scan buffer (the TKF
-\ token-fold buffer for a {: :} annotation, a callee-sig scratch for an
-\ on-stack term) that later tokens overwrite before DIAG-PRINT/REC-SIG render.
-\ The family id is the term's identity, so the renderer reads the interned
-\ registry name instead — qualified `pkg:tail` for a foreign named package;
-\ the global "" package and the reserved internal "@" package render the bare
-\ tail. An out-of-range id (negative, or >= TFAM-N: a term minted before the
-\ registry loads) takes the stored-span fallback; a partial rollback that
-\ repurposes a still-in-range slot renders the new occupant's name — no crash,
-\ wrong spelling, and unreachable on the command path because a mismatch
-\ diagnostic renders inline, before any rollback.
-\
-\ The package half of that qualified name renders case-folded (RFOLD). The tail
-\ half is already canonical lowercase because TFAM-DECL runs TF-REQUIRE-CANON,
-\ but the declaring package name is interned exactly as the source `package`
-\ line typed it, and that capitalisation carries no meaning: a package is
-\ identified case-insensitively everywhere it is compared (TFAM-PKG-MATCH?,
-\ TFQ-FOLD-COPY on a signature's `PKG:tail` qualifier, TFAM-QUAL-RESOLVE,
-\ SYM-STR=CI, the checker's CAST-OWNER?). Folding on output is what makes one
-\ family render one way no matter which file's `package` line the reader is
-\ looking at, and it matches how the renderer already spells every other
-\ identifier: the rejected word prints as its folded tail, and the used-package
-\ collision row prints an already-folded package. The printed `pkg:tail` still
-\ names the family back exactly, since the qualifier folds on the way in. Raw
-\ source echoes are a different thing and stay verbatim: `token`,
-\ `definition_source` and `declared_effect_source` quote what the author wrote.
-\ FAM-FOREIGN? below still compares exactly, and that is not an inconsistency:
-\ the engine canonicalises a package to its first-registered spelling, so
-\ reopening `package MEM` as `package mem` reports `MEM` either way and both
-\ sides of this compare read the one interned string.
+\ A T-PARAM's stored name span may point into a transient scan buffer (TKF, a
+\ callee-sig scratch) that later tokens overwrite before DIAG-PRINT or REC-SIG
+\ renders, so the name comes from the family registry: `pkg:tail` for a foreign
+\ package, the bare tail for "" and "@". An id outside the registry (a term
+\ minted before it loads) uses the stored span. A partial rollback that reuses an
+\ in-range slot renders the new occupant's name; the command path never sees it,
+\ because a mismatch diagnostic renders before any rollback.
+\ The package half folds because a package compares case-insensitively
+\ everywhere (TFAM-PKG-MATCH?, TFAM-QUAL-RESOLVE, CAST-OWNER?); raw source echoes
+\ (`token`, `definition_source`, `declared_effect_source`) stay verbatim.
+\ FAM-FOREIGN? compares exactly: the engine keeps a package's first-registered
+\ spelling, and both sides read the one interned string.
 : FAM-INTERNED? ( n -- f ) {: fam:n :}
    fam 0 >=  fam TFAM-N@ <  and ;
 : FAM-FOREIGN? ( n -- f ) {: fam:n :}
@@ -301,7 +255,7 @@ REG-SCRATCH-SNAP-INSTALL
    pu 0 = IF RES-FALSE EXIT THEN
    pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
    pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
-: FAM-QNAME-REND ( n -- ) {: fam:n :}    \ interned qualified name: folded pkg:tail if foreign, else bare tail
+: FAM-QNAME-REND ( n -- ) {: fam:n :}
    fam FAM-FOREIGN? IF fam TFAM-PKG$ RFOLD 58 EMIT1 THEN
    fam TFAM-NAME$ RSTR ;
 : FAM-NAME-REND ( n -- ) {: t:n :}
@@ -309,11 +263,10 @@ REG-SCRATCH-SNAP-INSTALL
    fam FAM-INTERNED? 0= IF t PARAM>NAME-A t PARAM>NAME-U RSTR EXIT THEN
    fam FAM-QNAME-REND ;
 
-\ PARAM-HEAD renders a family application's name; QREND adds the argument list.
-\ A hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
-\ '@family.tag<args>' form (type-family.f header) and sets RQM so REC-SIG never records a
-\ sig containing a lone hidden cell. Full runs never reach here: row rendering
-\ (REND-COLLECT / QREND's row mode) compacts them to the logical family type.
+\ A hidden physical field renders as the diagnostic-only '@family.slotN<args>'
+\ or '@family.tag<args>' form and sets RQM, so REC-SIG never records a lone
+\ hidden cell. A full run never reaches here: REND-COLLECT compacts it to the
+\ logical family type.
 : PARAM-HEAD {: t:n :}
    t HIDDEN-PARAM? IF
       1 RQM !
@@ -329,14 +282,11 @@ REG-SCRATCH-SNAP-INSTALL
       t FAM-NAME-REND
    THEN ;
 
-\ HID-RUN-REST ( n -- n bool ) : from a resolved S-PUSH node whose type is a
-\ hidden field, walk the whole run (tag W-1 on top down to slot0, one family).
-\ true: row below the full W-cell run (compact to the logical type). false:
-\ lone/malformed run — row below the single cell (render the '@' form).
-\ HRS: does the run just walked hold a cell `catch` left stale? A stale group is
-\ ONE stale logical value — a throw path that clobbered any one of its payload
-\ cells left the whole value unusable — so the compaction below wraps the logical
-\ type once and the row prints `stale<option<pt>>`, never three cells.
+\ HID-RUN-REST ( node -- rest f ): f is true for a full W-cell run of one family
+\ (tag W-1 on top down to slot0), rest the row below it; else rest is the row
+\ below the one cell, which renders in its '@' form.
+\ HRS: the run holds a cell `catch` left stale. The whole logical value is
+\ unusable, so the row prints `stale<option<pt>>` once, never three cells.
 variable HRC  variable HRI  variable HRF  variable HRS
 : HID-RUN-CELL? ( n n n -- bool ) {: node:n fam:n slot:n :}
    node TAG S-PUSH <> IF RES-FALSE EXIT THEN
@@ -364,19 +314,10 @@ variable HRC  variable HRI  variable HRF  variable HRS
    REPEAT
    HRF @ 0 <> IF HRC @ P>REST RES-TRUE ELSE node P>REST RES-FALSE THEN ;
 
-\ a quot type renders [ in -- out ] or [ in -- out | rin -- rout ] when the
-\ quotation has a non-neutral return-stack effect. Rendering is fully recursive
-\ to a bounded nesting depth (QDEPTH-MAX levels) with a cycle guard, so a deeply
-\ nested quot (combinator over combinator, typed loop/tile combinators) renders
-\ in full instead of capping the 3rd level at '?'.
-\ Quot-bearing effects record (REC-SIG below), so combinator call sites (dip,
-\ keep) are checked against them. Only a genuine '?' (an unmodeled tag, via
-\ RQM) blocks recording.
-\ A quotation's row renders its top RBUF-CAP values, as REND-COLLECT keeps a
-\ top-level row's: the renderer recurses once per value of a row, so a
-\ quotation leaving 10000 cells faulted the data stack (exit 102) and one
-\ leaving 8000 filled RSBUF.
-6 constant QDEPTH-MAX                        \ quotation nesting render budget
+\ A quotation's row renders its top RBUF-CAP values, as a top-level row does: the
+\ renderer recurses once per value, so a quotation leaving 10000 cells faulted
+\ the data stack (exit 102) and one leaving 8000 filled RSBUF.
+6 constant QDEPTH-MAX
 64 constant RBUF-CAP                         \ row render budget (values), top-level or nested
 create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
 create RBIND QDEPTH-MAX cells allot
@@ -391,7 +332,7 @@ create RBIND QDEPTH-MAX cells allot
 create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 
 
-: RROW-LETTER ( n -- n )   \ the letter of row tail t
+: RROW-LETTER ( n -- n )
    {: t:n :}
    t PAY {: id:n :}
    0 BEGIN dup RROW-N @ < WHILE
@@ -408,7 +349,7 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
    row ROW-TAIL RROW-LETTER EMIT1  32 EMIT1 ;
 
 
-\ is quot node r already being rendered above depth d (a type-graph cycle)?
+\ A quot node already on QPATH below depth d is a type-graph cycle.
 : QANCESTOR? {: r:n d:n :}
    0 BEGIN dup d < WHILE
       dup cells QPATH + @ r = IF drop -1 EXIT THEN
@@ -416,15 +357,14 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
    REPEAT drop 0 ;
 
 
-\ QREND ( x d mode -- ) : one recursive renderer. mode>0 renders a row
-\ bottom-to-top, each value followed by a space, from its mode-th value down to
-\ its RBUF-CAP-th; mode=0 renders a type. RECURSE re-enters with the mode, so
-\ nested quots reuse it at depth d+1 up to QDEPTH-MAX.
+\ QREND ( x d mode -- ): mode>0 renders a row bottom-to-top, each value followed
+\ by a space, from its mode-th value down to its RBUF-CAP-th; mode=0 renders a
+\ type.
 : QREND ( n n n -- )
    {: x:n d:n mode:n :}
    mode 0 > IF
       x R-RES dup TAG S-PUSH = IF                 \ ( node )
-         dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (type-family.f header)
+         dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (type-family.f TFAM-WIDTH@)
             dup HID-RUN-REST IF                   \ ( node rest ) full run -> logical type
                swap P>TYPE T-RES MK-LOGICAL        \ read HRS before a nested run resets it
                HRS @ IF MK-STALE THEN              \ ( rest logical )
@@ -454,9 +394,9 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
       T-VAR of r PAY LET-OF EMIT1 endof
       T-CON of r PAY CON-OUT endof
       T-PTR of s" ptr " RSTR  r PTR>INNER d 0 RECURSE endof
-      \ A cell a caught throw may have overwritten. It names the type it lost so
-      \ the diagnostic can say which one, and it sets RQM so REC-SIG never
-      \ records a row carrying one: `stale<...>` is not a declarable type.
+      \ A cell a caught throw may have overwritten names the type it lost.
+      \ `stale<...>` is not a declarable type, so it sets RQM: REC-SIG never
+      \ records a row carrying one.
       T-STALE of
         1 RQM !
         s" stale<" RSTR  r STALE>INNER d 0 RECURSE  62 EMIT1
@@ -501,9 +441,8 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
         s" <live-scope-" RSTR r PAY RNUM 62 EMIT1
       endof
       T-ATOM of r ATOM-REND endof
-      \ Brackets only around arguments: a family applied to none renders as its
-      \ bare name, the spelling a signature uses and SIG-TYPE reads back (a bare
-      \ family token builds the same zero-argument application as `name<>`).
+      \ A family applied to no arguments renders as its bare name, the spelling a
+      \ signature uses: a bare family token reads back as `name<>`.
       T-PARAM of
         d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
            r d cells QPATH + !
@@ -526,16 +465,13 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 create RBUF RBUF-CAP cells allot   variable RBN
 variable RSHOW-DST
 
-\ RBUF+ appends one collected row value; a reject diagnostic must fail closed, so
-\ a pathological row (>RBUF-CAP values) is truncated here rather than overflowing
-\ RBUF into adjacent DATA (which produced garbage type pointers -> SIGSEGV in the
-\ later REND-TYPE walk). The checker still rejects with its normal diagnostic + rc.
+\ A row past RBUF-CAP values is truncated: a reject diagnostic must fail closed,
+\ and overflowing RBUF into adjacent DATA gave garbage type pointers and a SIGSEGV
+\ in REND-TYPE. The checker still rejects with its normal diagnostic and rc.
 : RBUF+ ( n -- )
    RBN @ RBUF-CAP >= IF drop EXIT THEN
    RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
 
-\ REND-COLLECT compacts each full hidden-field run to ONE logical family term
-\ (type-family.f header); a lone/malformed hidden cell stays and renders as its '@' form.
 : REND-COLLECT {: s:n :}  0 RBN !  s
    BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
      dup P>TYPE T-RES HIDDEN-PARAM? IF
@@ -549,7 +485,6 @@ variable RSHOW-DST
      THEN
    REPEAT drop ;
 
-\ RENDER ( -- ) : print DCUR's residual stack bottom-to-top, space-separated.
 : RENDER  SEEN-RESET RATOM-RESET 0 NLET !  DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
@@ -566,8 +501,8 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-\ REND-SIG ( -- a u ) : render the just-checked word's effect "in -- out" —
-\ inputs from the base row's instantiation (BROW), outputs from DCUR.
+\ REND-SIG ( -- a u ): inputs from the base row's instantiation (BROW), outputs
+\ from DCUR.
 : REND-SIG
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET RATOM-RESET 0 NLET !
    BROW @ REND-COLLECT
@@ -577,20 +512,17 @@ LOCSHOW-INSTALL
    RBN @ BEGIN dup 0 > WHILE 1 - 32 EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
    0 RDST !  RSBUF RSN @ ;
 
-\ DIAG-PRINT ( -- ) : reject diagnostic, one line to stderr —
+\ DIAG-PRINT writes one reject line to stderr:
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row>
-\ A top-level step's refusal names its file and line instead (DSITE):
-\   habu: PATH:LINE: at 'TOK' ...
-\ Rows render bottom-to-top with the shared var-letter naming; expected/actual
-\ only appear when the failing unify was captured.
+\ A top-level step's line names its place instead (DSITE): habu: PATH:LINE: ...
+\ expected and actual appear only when the failing unify was captured.
 : DTXT ( ptr u8 n -- ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
-\ structured diagnostics: `JSON-DIAGS ON` emits one JSON object per reject or
-\ uncheckable verdict for LLM repair.
+\ `JSON-DIAGS ON` emits one JSON object per reject or uncheckable verdict.
 create JNBUF 20 allot  variable JNV  variable JNN
 variable DSUGE  variable DSUGA
 : JNUM
@@ -604,17 +536,14 @@ variable DSUGE  variable DSUGA
    JNN @ BEGIN dup 0 > WHILE
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
-\ The file a top step's refusal names: the label a tool set (checker.f
-\ DIAG-FILE!) while the load read the step's file, or read no file for a step
-\ with none; else the step's own path, empty for no file.
+\ A tool's label (checker.f DIAG-FILE!) names a top step's file in place of its
+\ path while the load reads that file or none.
 : TOP-FILE$ ( -- ptr u8 n )
    LOWER-CERT-HOOK:TOP-SITE-PATH$ {: pa:ptr pu:n :}
    pa pu DIAG-LABELS? IF DIAGFB DIAGFU @ EXIT THEN
    pa pu ;
-\ Where a refusal is: a body's definition, or a top step's file and line
-\ (checker.f TOP-SITE). A token outside the file's bytes, read from a string
-\ `evaluate` runs, names the file alone; a step with no file and no label
-\ names no place.
+\ A token outside the file's bytes, read from a string `evaluate` runs, names the
+\ file alone; a step with no file and no label names no place.
 : DSITE ( -- )
    TOP-STEP @ 0= IF s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : " DTXT EXIT THEN
    s" habu: " DTXT
@@ -658,16 +587,15 @@ variable DSUGE  variable DSUGA
    SGHASR @ JEFFECT-TEXT ;
 
 
-\ The escape refusal (MD-TAIL-ESCAPE) as it stood when checker.f CELL-DIAG!
-\ named it: the inferred effect, then the declared callable and the argument
-\ compared with it, rendered in DIAG-PRINT's letter order into TCAP before
-\ later tokens bind their rows. It names the callable pair, not the stacks
-\ around it, so it reads the same whatever the definition holds beneath.
-\ The held row then names the tail that escaped (checker.f TAIL-SKOLEM) and the
-\ row that would have come to equal or hold it (TAIL-ROW), in the same letters,
-\ so a join whose two callables read alike still says which side escaped.
-\ TCAP-INF, TCAP-EXP, TCAP-ACT and TCAP-HELD are each piece's end offset; MDIAG
-\ gates every read, so a capture an abandoned trial made is never rendered.
+\ The escape refusal (MD-TAIL-ESCAPE) as checker.f CELL-DIAG! named it: the
+\ inferred effect, then the declared callable and the argument compared with it,
+\ rendered in DIAG-PRINT's letter order into TCAP before later tokens bind their
+\ rows. Naming the callable pair, not the stacks around it, it reads the same
+\ whatever the definition holds beneath. The held row names the tail that
+\ escaped (checker.f TAIL-SKOLEM) and the row that would have come to equal or
+\ hold it (TAIL-ROW), so a join whose two callables read alike still says which
+\ side escaped. MDIAG gates every read, so a capture an abandoned trial made is
+\ never rendered.
 create TCAP RSBUF-CAP allot
 variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 : TCAP-INF$ ( -- ptr u8 n ) TCAP TCAP-INF @ ;
@@ -700,11 +628,10 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 
 : TAIL-CAPTURE-INSTALL ( -- ) [: TAIL-CAPTURE ;] is TAIL-CAPTURE-XT ;
 TAIL-CAPTURE-INSTALL
-\ --- match/construct reason surface (docs/forth.md "Structures And Enums"). The checker
-\ latches an MDIAG reason code with the token pin; these words map it to a
-\ stable JSON code, repair class, suggestion, and reason prose. MD-NONEXH also
-\ walks the latched (family, seen-bitset, count) to the missing variant NAMES
-\ (declaration-order tags index the family's contiguous SUMV rows).
+\ Match/construct reasons (docs/forth.md "Structures And Enums"): MDIAG's latched
+\ code maps to a JSON code, repair class, suggestion and prose. MD-NONEXH names
+\ the missing variants from the latched (family, seen-bitset, count):
+\ declaration-order tags index the family's contiguous SUMV rows.
 variable MDV-I   variable MDV-F
 
 
@@ -798,9 +725,7 @@ variable MDV-I   variable MDV-F
    endcase ;
 
 
-\ An effect too deep or an input row too wide to record, a definition's
-\ (MD-EFFECT-DEPTH, MD-INPUT-WIDTH) or a stored signature's (BADSIG-REASON):
-\ the reason each carries.
+\ Shared by a definition's refusal and a stored signature's (BADSIG-REASON).
 : DEPTH-REASON$ ( -- ptr u8 n )
    s" effect too deep to record" ;
 
@@ -921,12 +846,10 @@ variable MDV-I   variable MDV-F
 : MDIAG-MISSING-PROSE ( -- )
    0 0= 0= MDIAG-MISSING-WALK ;
 
-\ The counts a reason latches with it: the underflow's shortfall, and the depth
-\ of an effect too deep to record or the width of an input row too wide to
-\ record against its ceiling. Digits, letters and spaces only, so the one word
-\ serves the prose line and the inside of the JSON reason string. The depth and
-\ the width are a definition's (MDIAG-DEPTH, MDIAG-WIDTH) or a stored
-\ signature's (SGBAD-SIZE).
+\ The counts a reason latches: the underflow's shortfall, or a too-deep effect's
+\ depth or a too-wide input row's width against its ceiling, a definition's
+\ (MDIAG-DEPTH, MDIAG-WIDTH) or a stored signature's (SGBAD-SIZE). Digits,
+\ letters and spaces only, so one word serves the prose line and the JSON string.
 : MDIAG-UF-COUNTS ( -- )
    s"  (needs " DTXT  MDIAG-NEED @ JNUM
    s" , has " DTXT  MDIAG-HAVE @ JNUM  s" )" DTXT ;
@@ -958,9 +881,7 @@ variable MDV-I   variable MDV-F
 : IMM-SUGGEST$ ( -- ptr u8 n )
    s" Declare a stack-neutral parsing immediate with parse-imm, or remove it from the compiled body." ;
 
-\ The three LOCALBAD kinds (checker.f LOC-REJECT) carry their own code, class
-\ and text: an over-wide name and an over-count group name the exceeded limit,
-\ the shape reject keeps its placement text.
+\ The LOCALBAD kinds come from checker.f LOC-REJECT.
 : LOCALBAD-CODE$ ( -- ptr u8 n )
    LOCALBAD-KIND @ 2 = IF s" E-LOCAL-NAME-TOO-LONG" EXIT THEN
    LOCALBAD-KIND @ 1 = IF s" E-TOO-MANY-LOCALS" EXIT THEN
@@ -976,9 +897,8 @@ variable MDV-I   variable MDV-F
    LOCALBAD-KIND @ 1 = IF s" Bind at most 64 locals in one definition, or factor a helper." EXIT THEN
    s" Move locals to a live top-level path or factor a helper." ;
 
-\ One diagnostic line for a LOCALBAD reject; FAILTK is the declaration token
-\ pinned by the first failure, so a later body reference to the rejected name
-\ cannot relabel the reject as an undefined word.
+\ FAILTK is the declaration token pinned by the first failure, so a later body
+\ reference to the rejected name cannot relabel the reject as an undefined word.
 : LOCALBAD-PROSE ( -- )
    LOCALBAD-CODE$ DTXT  s"  " DTXT  DSITE
    LOCALBAD-KIND @ 2 = IF
@@ -992,9 +912,8 @@ variable MDV-I   variable MDV-F
    s" at '" DTXT  FAILTK FAILTU @ DTXT
    s" ': a local cannot be bound or referenced inside a quotation, or bound on a dead path" DTXT ;
 
-\ The refusal of a signature type that does not parse: a definition's
-\ signature, a local's type or a stored signature. SGBAD's state from the
-\ failed parse names the kind.
+\ A definition's signature, a local's type or a stored signature that does not
+\ parse; SGBAD's state from the failed parse names the kind.
 : SGBAD-CODE$ ( -- ptr u8 n )
    SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" EXIT THEN
    SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" EXIT THEN
@@ -1007,7 +926,6 @@ variable MDV-I   variable MDV-F
    SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
    SGBAD-SIZE? IF s" fix_signature_size" EXIT THEN
    s" fix_signature_syntax" ;
-\ The repair a `|` clause that moves the return stack names (SGBAD-RETURN?).
 : RCLAUSE-FIX$ ( -- ptr u8 n )
    s" after '|' write one row variable, the same on both sides, or no '|'" ;
 \ A syntax fault has no line of its own: it reads as a refusal at its token.
@@ -1028,8 +946,8 @@ variable MDV-I   variable MDV-F
    THEN
    s" at '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT ;
 
-\ The code, the repair class, the suggestion, the prose, the verdict and the
-\ per-code JSON fields all name the one refusal checker.f's REFUSAL@ chose.
+\ The code, repair class, suggestion, prose, verdict and per-code JSON fields all
+\ name the one refusal checker.f REFUSAL@ chose.
 : DCODE ( -- ptr u8 n )
    REFUSAL@ {: k:n :}
    k RF-IMM = IF IMM-CODE$ EXIT THEN
@@ -1046,14 +964,17 @@ variable MDV-I   variable MDV-F
    k RF-UNCHECKABLE = IF s" E-UNCHECKABLE" EXIT THEN
    k RF-MISMATCH = IF s" E-MISMATCH" EXIT THEN
    s" E-REJECTED" ;
-\ The verdict of the refusal the diagnostic names: a token the checker cannot
-\ model or an effect too big to record (UNFIT-REASON?) leaves the definition
-\ uncheckable, and every other refusal rejects it.
 : DVERDICT ( -- ptr u8 n )
    REFUSAL@ {: k:n :}
    k RF-UNCHECKABLE = IF s" uncheckable" EXIT THEN
    k RF-REASON =  MDIAG @ UNFIT-REASON?  and IF s" uncheckable" EXIT THEN
    s" rejected" ;
+\ repair_class is the stable machine name a consumer keys its repair on. This
+\ word picks it for checker refusals; tools/check-core.f and tools/diag-code.f
+\ pick it for the refusals the check tool finds itself. A class means what its
+\ suggestion says (SUGGEST-TEXT, the *-SUGGEST$ words): short prose for choosing
+\ the action; the raw evidence stays in the expected, actual and return_stack
+\ fields.
 : REPAIR-CLASS ( -- ptr u8 n )
    REFUSAL@ {: k:n :}
    k RF-IMM = IF IMM-CLASS$ EXIT THEN
@@ -1075,8 +996,7 @@ variable MDV-I   variable MDV-F
    DSUGA @ DSUGE @ > IF s" remove_producer" ELSE
    DSUGA @ DSUGE @ < IF s" add_producer" ELSE
    s" fix_type" THEN THEN ;
-\ The repair for a signature the parser refused, by SGBAD's kind: shared by
-\ SUGGEST-TEXT below, a bad stored signature's diagnostic and a refused
+\ Shared by SUGGEST-TEXT, a bad stored signature's diagnostic and a refused
 \ `generates:` row's.
 : SGBAD-SUGGEST$ ( -- ptr u8 n )
    SGBAD-RETURN? IF s" Declare no return-stack effect: after '|' write one row variable, the same on both sides, or no '|'; park a value with >r and take it back with r> in one definition." EXIT THEN
@@ -1085,7 +1005,6 @@ variable MDV-I   variable MDV-F
    SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
    SGBAD-SIZE? IF s" Declare fewer cells: keep bulk values in a buffer, not on the stack." EXIT THEN
    s" Repair the stack-effect comment syntax, including --." ;
-\ The repair for a non-parametric declared effect, by NPBAD's kind.
 : NP-SUGGEST$ ( -- ptr u8 n )
    NPBAD-KIND @ 4 = IF
       s" Declare the pointee this base address really reaches (ptr n, ptr u8, ...); a pointer derived from data-base cannot be published under a type variable, nor handed to one a caller instantiates." EXIT
@@ -1109,8 +1028,6 @@ variable MDV-I   variable MDV-F
       s" Declare the cells the body leaves on the row, or keep the body polymorphic over the row variable." EXIT
    THEN
    s" Bind the minted phantom's type arguments to the inputs, or mint it behind an audited TRUSTED: boundary." ;
-\ Short repair hint derived from the stable class. Raw stack rows stay in their
-\ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- ptr u8 n )
    REFUSAL@ {: k:n :}
    k RF-IMM = IF IMM-SUGGEST$ EXIT THEN
@@ -1141,9 +1058,8 @@ variable MDV-I   variable MDV-F
 \ A packet's position: the file line, column and byte of its token's first byte,
 \ and the byte after its last.
 variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
-\ Locate the token [a, e) in the file (src/core/checker.f DIAG-LOCATE); false
-\ when its text has no map. The end needs only its byte: the file byte of the
-\ source's first byte plus the end's offset in the source.
+\ False when the token's text has no map (src/core/checker.f DIAG-LOCATE). The
+\ end is the source's first file byte plus the end's offset in the source.
 : JLOCATE ( ptr u8 ptr u8 -- bool )
    {: a:ptr e:ptr :}
    e DIAG>SRC 0= IF drop 0 0= 0= EXIT THEN
@@ -1151,8 +1067,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    a DIAG-LOCATE 0= IF drop drop drop 0 0= 0= EXIT THEN
    JLOC-B !  JLOC-C !  JLOC-L !
    0 0= ;
-\ The checked token with no map: the definition's origin plus the token's
-\ offset in the checked text.
+\ With no map: the definition's origin plus the token's offset in the checked text.
 : JLOC-ORIGIN ( -- )
    TBASE@  TBASE@ FAILB @ +  DIAGL0 @ DIAGC0 @ DIAGB0 @  DIAG-POS
    JLOC-B !  JLOC-C !  JLOC-L !
@@ -1162,22 +1077,18 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    s" column" JKEY  JLOC-C @ JNUM  44 EMIT1
    s" byte_start" JKEY  JLOC-B @ JNUM  44 EMIT1
    s" byte_end" JKEY  JLOC-E @ JNUM  44 EMIT1 ;
-\ The position fields of a packet that names its token by pointer, present only
-\ when the token locates in the file.
 : JTOKEN-FIELDS ( ptr u8 n -- )
    {: a:ptr u:n :}
    u 0 > IF
       a  a u +  JLOCATE IF JLOC-FIELDS THEN
    THEN ;
-\ The checked definition's name token, where the scanner read it.
 : NM-SPAN ( -- ptr u8 n )
    NMOFF @ TADDR NMU @ ;
-\ Every packet opens with JSTART: the schema version and its code. A refusal's
-\ packet opens with JHEAD, which adds the repair class and verdict, and JTAIL
-\ closes one with the file, the place of a span when it locates, and the
-\ suggestion; a code's own fields go between the two. DIAG-JSON, USING-JSON and
-\ STGR-JSON close themselves, because fields or a differently sourced place
-\ follow the file.
+\ A packet opens with JSTART (schema version and code), or JHEAD for a refusal
+\ (adds repair class and verdict); JTAIL closes it with the file, the span's
+\ place when it locates, and the suggestion. A code's own fields go between.
+\ DIAG-JSON, USING-JSON and STGR-JSON close themselves: fields or a differently
+\ sourced place follow the file.
 : JSTART ( ptr u8 n -- )
    {: ca:ptr cu:n :}
    123 EMIT1                                              \ {
@@ -1194,7 +1105,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    aa au JTOKEN-FIELDS
    s" suggestion" JKEY sa su JSTR
    125 EMIT1 ;                                            \ }
-: NP-FAM-REND ( -- )   \ append the specialized family's qualified name to the diagnostic
+: NP-FAM-REND ( -- )
    NPBAD-TERM @ NP-FAM {: fam:n :}
    fam 0 >= IF s" family '" DTXT  fam FAM-QNAME-REND  s" '" DTXT
    ELSE s" a concrete type" DTXT THEN ;
@@ -1242,15 +1153,12 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    RSBAD @ 3 >= IF QRS-EXP @ QRS-ACT @ EXIT THEN
    SGHASR @ IF SGROUT @ ELSE RBROW @ THEN  RCUR @ ;
 
-\ Why the return row refused (RSBAD), as the prose names it.
 : RS-REASON$ ( -- ptr u8 n )
    RSBAD @ 2 = IF s" return stack: this reads below the return-stack cells pushed here" EXIT THEN
    RSBAD @ 3 = IF s" return stack: the quotation leaves its return row unbalanced" EXIT THEN
    RSBAD @ 4 = IF s" return stack: the quotation reads below the return-stack cells it pushed" EXIT THEN
    s" return stack: the return row does not balance at exit" ;
 
-\ The rows a refusal captured carry a mismatch or a latched reason; no other
-\ refusal shows them.
 : ROWS-REFUSAL? ( n -- bool )
    {: k:n :}
    k RF-MISMATCH =  k RF-REASON = or ;
@@ -1309,30 +1217,23 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
      s"  actual: " DTXT  DF-ACT @ REND-TYPE THEN ;
 
 
-\ ADT family field: the exact failed type pair captured by U-FAIL.
-\ Expected takes precedence over actual; unrelated matched row cells cannot leak
-\ into the diagnostic, and a scalar pair emits no family. The hint carries the
-\ interned qualified spelling (FAM-QNAME-REND: pkg:tail for a foreign package,
-\ bare tail for the global/internal package) so it matches the expected/actual
-\ rows and resolves from the failing definition's scope. Family and package
-\ names are registry-validated lowercase identifiers, so the quoted raw emit
-\ needs no JSON escaping (the JROW pattern).
+\ Expected takes precedence over actual, so unrelated matched row cells cannot
+\ leak into the diagnostic; a scalar pair emits no family. The hint spells the
+\ family as FAM-QNAME-REND does, matching the rows and resolving from the
+\ failing definition's scope.
 : TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
    T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
    drop -1 ;
-\ ADT variant field: the sum-variant/tag captured by the checker at the
-\ mismatch point (DVAR = SUMV id, -1 = none). A `construct family variant` payload
-\ mismatch latches the variant being built; a pure-scalar or non-construct
-\ mismatch leaves DVAR -1 and emits no variant/tag.
-: DIAG-FAM-ID ( n n -- n )               \ term family: expected precedence, then actual, else the captured variant's family
+\ DVAR is the SUMV id a `construct family variant` payload mismatch latched, -1
+\ for none: a scalar or non-construct mismatch emits no variant or tag.
+: DIAG-FAM-ID ( n n -- n )
    {: efam:n afam:n :}
    efam 0 >= IF efam EXIT THEN
    afam 0 >= IF afam EXIT THEN
    DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
-\ Payload slot: the checker's DPOS is the slot-from-top of the failed
-\ expected-row element; the packet reports the declaration-order payload index
-\ (0-based, first declared payload = 0). Absent when the position is unknown or
-\ the failure was not inside the variant's payload cells.
+\ DPOS is the slot-from-top of the failed expected-row element; the packet
+\ reports the 0-based declaration-order payload index, absent when the position
+\ is unknown or outside the variant's payload cells.
 : DIAG-PAYLOAD-POS ( -- )                \ "payload_pos":<decl-order slot> when captured
    DPOS @ 0 < IF EXIT THEN
    DVAR @ SUMV-PAY-N {: cnt:n :}
@@ -1353,9 +1254,9 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
       44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
    THEN
    DIAG-VARIANT ;
-\ A packet's file and position: a top step's as its prose names them (DSITE),
-\ its line alone and no line for a token outside the file's bytes; else the
-\ checked token in its mapped or origin source.
+\ A top step's place as its prose names it (DSITE): its line alone, no line for a
+\ token outside the file's bytes; else the checked token in its mapped or origin
+\ source.
 : DFILE$ ( -- ptr u8 n )
    TOP-STEP @ 0= IF DIAGFB DIAGFU @ EXIT THEN
    TOP-FILE$ dup 0 > IF EXIT THEN drop drop
@@ -1379,8 +1280,7 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    k RF-DEAD = IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
    k RF-REASON = IF
      s" reason" JKEY
-     \ A reason's counts belong IN it, so the string is the reason's text
-     \ and then its counts.
+     \ A reason's counts go inside its string, after its text.
      JOPEN  MDIAG-REASON$ DTXT  MDIAG-COUNTS  JCLOSE
      44 EMIT1
      MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
@@ -1445,14 +1345,12 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
 : DIAG-PRINT-INSTALL ( -- ) [: DIAG-PRINT ;] is DIAGXT ;
 DIAG-PRINT-INSTALL
 
-\ --- bad stored-signature diagnostics (checker.f USIG-ADD-BAD, in every mode).
-\ SGBAD state from the failed parse is still live, so class + suggestion are a
-\ signature's (SGBAD-CLASS$, SGBAD-SUGGEST$). A row that parsed but is too deep
-\ or too wide to record has a class of its own and a reason naming the bound it
-\ passed, with its count and limit. The JSON is a refused record
-\ (shape: its tools/diag-code.f row): the row's name is its token, placed where the
-\ declaring name AT lies in the checked text, and the signature as written is
-\ the field its code adds.
+\ Bad stored-signature diagnostics (checker.f USIG-ADD-BAD, every mode). SGBAD's
+\ state from the failed parse is still live, so class and suggestion are a
+\ signature's; a row that parsed but is too deep or too wide to record has its
+\ own class and a reason naming the bound, count and limit. The JSON is a refused
+\ record (its tools/diag-code.f row), placed at the declaring name AT in the
+\ checked text.
 : BADSIG-REASON ( -- )
    SGBAD-DEPTH? IF DEPTH-REASON$ DTXT  SGBAD-SIZE @ DEPTH-COUNTS EXIT THEN
    WIDTH-REASON$ DTXT  SGBAD-SIZE @ WIDTH-COUNTS ;
@@ -1478,11 +1376,8 @@ DIAG-PRINT-INSTALL
 : BADSIG-DIAG-INSTALL ( -- ) [: BADSIG-DIAG ;] is BADSIG-XT ;
 BADSIG-DIAG-INSTALL
 
-\ --- top-level type-family declaration diagnostics. A bad
-\ NEWTYPE/SUMTYPE reports a declaration-shaped packet: decl kind, family,
-\ offending token, and reason — with NO invented definition fields (no
-\ declared_effect, definition_source, or return_stack). The
-\ token's position follows `file` when it locates in the file.
+\ A bad NEWTYPE or SUMTYPE declaration reports a declaration-shaped packet (kind,
+\ family, token, reason) with no definition fields.
 : TDECL-SUGGEST$ ( -- ptr u8 n )
    s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." ;
 : TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
@@ -1506,10 +1401,9 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ REC-SIG ( ptr u8 n -- ) : record a certified sig-less word. Refuses
-\ (conservatively, the word stays unrecorded) on unknown tags or absurd var
-\ counts — and reports which word and why, since callers otherwise fail later
-\ as undefined with no hint that the producer was the problem.
+\ A certified sig-less word with an unknown tag or an absurd var count stays
+\ unrecorded, and the refusal names the word and why: its callers otherwise fail
+\ later as undefined with no hint that the producer was the problem.
 : REC-REFUSE-WHY ( -- ptr u8 n )
    \ RLETTER emits '?' when names run out; the count distinguishes that
    \ placeholder from an unmodeled type tag.
@@ -1522,10 +1416,9 @@ BADSIG-DIAG-INSTALL
    s" habu: in " DTXT  na nu DTXT
    s" : effect not recorded: " DTXT  wa wu DTXT ;
 
-\ W-EFFECT-NOT-RECORDED is a warning, outside the repair contract: the word
-\ certified and loaded, but its inferred effect cannot be recorded (the reasons
-\ above), so a later call refuses it as undefined. The JSON carries no verdict,
-\ repair class or suggestion, and the run's status stands.
+\ W-EFFECT-NOT-RECORDED is a warning outside the repair contract: the word
+\ certified and loaded, but a later call refuses it as undefined. The JSON
+\ carries no verdict, repair class or suggestion, and the run's status stands.
 : REC-REFUSE-JSON ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
    s" W-EFFECT-NOT-RECORDED" JSTART
    s" word" JKEY na nu JSTR 44 EMIT1
@@ -1540,21 +1433,17 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ The checker writes a warning, a packet with no verdict, while WARN-DIAGS is
-\ on. tools/check.f's run turns it off: the run loads what the check before it
-\ checked, and that check wrote the warnings with their files and positions.
+\ tools/check.f's run turns WARN-DIAGS off: the run loads what the check before
+\ it checked, and that check wrote the warnings with their positions.
 variable WARN-DIAGS   -1 WARN-DIAGS !
 
 : REC-REFUSE-DIAG ( ptr u8 n -- )
    WARN-DIAGS @ 0= IF 2drop EXIT THEN
    REC-REFUSE-WHY REC-REFUSE-EMIT ;
 
-\ The render is no longer thrown away. It was here only to detect unmodeled tags
-\ and an absurd var count, and it is ALSO the text an AOT capture has to carry
-\ for a word whose effect was inferred rather than declared - the other arm of
-\ CHECK's fork hands the declared text straight to CHECKER-USIG-CERT-ADD. The
-\ capture runs after the record exists, because it reads the symbol that record
-\ was written under; when nothing is armed it is a single flag test.
+\ The render is also the text an AOT capture carries for a word whose effect was
+\ inferred; CHECK's declared arm hands its text to CHECKER-USIG-CERT-ADD. The
+\ capture runs after the record exists, because it reads the record's symbol.
 : REC-SIG ( ptr u8 n -- ) {: na:ptr nu:n :}
    REND-SIG {: sa:ptr su:n :}
    RQM @ 0 =  NLET @ 24 <  and IF
@@ -1566,13 +1455,10 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 : REC-SIG-INSTALL ( -- ) [: REC-SIG ;] is RECXT ;
 REC-SIG-INSTALL
 
-\ --- global-vs-used-public shadow diagnostic (dot habu-err-on-global-e62f806c).
-\ CK-SHADOW-CAPTURE captured the ambiguous bare token and the two colliding
-\ candidates (global and used public); this renders the reference-site reject
-\ naming both with their effect arity so the author knows to qualify (PKG:WORD)
-\ or rename the collision. The sym effects read through the read-only USIGS
-\ accessors (CHECKER-FIND-USIG-SYM / E-DIN@ / E-DOUT@ / EFF-ROW-N), never through
-\ the bare-name resolver, so rendering cannot re-trigger the shadow throw.
+\ Global-vs-used-public shadow (CK-SHADOW-CAPTURE): the reject names both
+\ candidates with their arity. Effects read through the read-only USIGS accessors
+\ (CHECKER-FIND-USIG-SYM, E-DIN@, E-DOUT@, EFF-ROW-N), never the bare-name
+\ resolver, so rendering cannot re-trigger the shadow throw.
 : USH-EFF ( n -- )                        \ append " (Din -- Dout)" for a sym's effect, " (?)" if none
    {: sym:n :}
    sym CHECKER-FIND-USIG-SYM 0= IF s"  (?)" DTXT EXIT THEN
@@ -1589,9 +1475,8 @@ REC-SIG-INSTALL
    USH-USYM @ USH-EFF
    s"  export the same name; qualify " DTXT  USH-PKG-A @ USH-PKG-U @ DTXT  58 EMIT1  USH-TOK-A @ USH-TOK-U @ DTXT
    s"  for the package word, or rename the collision to reach the global" DTXT ;
-\ The used packages a bare token resolves in: the used-scan slots the checker's
-\ walk marked in CK-USED-MASK (checker.f CK-USED-MARK), in the order the using
-\ scan reads them, each package once however often it is used.
+\ The used packages a bare token resolves in: the slots checker.f CK-USED-MARK
+\ set in CK-USED-MASK, in using-scan order, each package once.
 : UPKG-MATCHED? ( n -- bool )             \ used-scan slot n exports the token
    1 swap lshift CK-USED-MASK @ and 0 <> ;
 : UPKG-NAME$ ( n -- ptr u8 n )            \ slot n's folded package name
@@ -1608,12 +1493,9 @@ REC-SIG-INSTALL
    CK-USE-MAX 0 ?DO
       i UPKG-FIRST? IF  i over xt execute  drop RES-FALSE  THEN
    LOOP drop ;
-\ The packet of a bare token refused at its reference under `using`, this
-\ refusal's and the ambiguity's below, located at the token USH-TOK-A/-U. As
-\ `used_packages` it lists each used package the token resolves in, between
-\ the token's place and the suggestion, so this packet closes itself. For the
-\ shadow that is one package: every slot that matched holds its one used
-\ public.
+\ `used_packages` lists each used package the token resolves in, between the
+\ token's place and the suggestion, so this packet closes itself. For the shadow
+\ that is one package: every matched slot holds its one used public.
 : USING-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    code codeu class classu s" rejected" JHEAD
@@ -1635,21 +1517,11 @@ REC-SIG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ --- a package public its own private tail shadows (checker.f SHADOW-ARITY-CK).
-\ The definition-site twin of the diagnostic above: there two scopes claimed one
-\ bare token, here one package does, and the reject again names both candidates
-\ with their arity so the author can see which of the two to change. The widths
-\ come from the check itself rather than from the store, because the refused
-\ record is never written: the rule runs before the append, so the public word has
-\ no row here to read.
-\
-\ CELLS on both sides, because cells are what the compiler reads a definition's
-\ contract in and what this rule compares. The package and the tail are read
-\ from the private twin's symbol, which carries the refused public's own: the
-\ same package and the same tail, in the checker's folded spellings, as the
-\ shadow diagnostic above renders a package. Every name reaches the record
-\ intake already folded, so no raw token survives this far, and a word is found
-\ by a case-insensitive search anyway.
+\ A package public its own private tail shadows (checker.f SHADOW-ARITY-CK). The
+\ widths come from the check, not the store: the rule runs before the append, so
+\ the public has no row to read. Both sides are in cells, what the compiler reads
+\ a contract in. Package and tail come from the private twin's symbol, already
+\ folded.
 : SBA-CELLS-TXT ( n n -- )                \ append " (in -- out)"
    {: in:n out:n :}
    s"  (" DTXT  in RNUM  s"  -- " DTXT  out RNUM  41 EMIT1 ;
@@ -1675,11 +1547,8 @@ REC-SIG-INSTALL
    JSON-DIAGS @ IF SBARITY-JSON ELSE SBARITY-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ --- a bare token two used publics export (checker.f CHECKER-RESOLVE:RAISE).
-\ The twin of the using-shadow reference site above: there a global and one
-\ used public claim the token, here used publics of two packages do. The reject
-\ names each package the token resolves in (UPKG-EACH above), so the author
-\ can qualify the word meant.
+\ A bare token two used publics export (checker.f CHECKER-RESOLVE:RAISE): the
+\ reject names each package it resolves in.
 : UAMB-PROSE ( -- )
    s" E-USING-AMBIGUOUS habu: bare '" DTXT  USH-TOK-A @ USH-TOK-U @ DTXT
    s" ' is ambiguous under using: used publics " DTXT
@@ -1696,13 +1565,11 @@ REC-SIG-INSTALL
    JSON-DIAGS @ IF UAMB-JSON ELSE UAMB-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ --- a top-level token the load refuses, or the stretch after one the source
-\ pre-pass deferred to the run, or a definition the checker deferred to it
-\ (checker.f CHECKER-VERIFY-TOP, CHECKER-VERIFY-DEFERRED and
-\ CHECKER-VERIFY-DEFERRED-BODY): records at the token, with no definition fields.
-\ A refusal is a span under a code of its own (tools/diag-code.f), with the
-\ repair class and suggestion a body's reference to the name gets (DCODE
-\ above); a deferral is no refusal, under W-CHECK-DEFERRED.
+\ A top-level token the load refuses, a stretch the pre-pass deferred, or a
+\ deferred definition (checker.f CHECKER-VERIFY-TOP, CHECKER-VERIFY-DEFERRED,
+\ CHECKER-VERIFY-DEFERRED-BODY): records at the token, no definition fields. A
+\ refusal has its own code (tools/diag-code.f) with the class and suggestion a
+\ body's reference gets; a deferral is no refusal, under W-CHECK-DEFERRED.
 : TOP-SPAN-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: c:ptr cu:n k:ptr ku:n v:ptr vu:n g:ptr gu:n :}
    c cu k ku v vu JHEAD
@@ -1739,13 +1606,11 @@ REC-SIG-INSTALL
    s" Rewrite with modeled words or isolate an audited primitive." TOP-SPAN-JSON
    10 EMIT1
    RSBUF-FLUSH ;
-\ The diagnostics a token locates ride ONE checker hook, selected by its
-\ argument (checker.f SHADOW-DIAG-XT: 0 = the using-shadow reference site, 1 =
-\ the arity-shadow definition site, 2 = a using ambiguity, 3 and 4 = a
-\ top-level token undefined or malformed, 5 = a deferred top-level stretch or
-\ definition),
-\ because every defer written before `: TRUST` takes a slot of the engine's
-\ pre-trust pending table (src/habu/layout.f PD-CAP).
+\ checker.f SHADOW-DIAG-XT selects: 0 the using-shadow reference site, 1 the
+\ arity-shadow definition site, 2 a using ambiguity, 3 and 4 a top-level token
+\ undefined or malformed, 5 a deferred top-level stretch or definition. One hook
+\ because every defer before `: TRUST` takes a slot of the engine's pre-trust
+\ pending table (src/habu/layout.f PD-CAP).
 : SHADOW-DIAG ( n -- )
    {: sel:n :}
    sel 1 = IF SBARITY-DIAG EXIT THEN
@@ -1757,10 +1622,9 @@ REC-SIG-INSTALL
 : SHADOW-DIAG-INSTALL ( -- ) [: SHADOW-DIAG ;] is SHADOW-DIAG-XT ;
 SHADOW-DIAG-INSTALL
 
-\ --- a `trust` row naming a word the engine resolves to nothing. Rendered on
-\ the same template as the shadow diagnostic above, and beside it on purpose:
-\ this is the refusal that stops a stale row from becoming that one. Its
-\ position is the row's name (checker.f TRUST) when that lies in checked text.
+\ A `trust` row naming a word the engine resolves to nothing. It sits beside the
+\ shadow diagnostic because it stops a stale row from becoming one. Placed at the
+\ row's name (checker.f TRUST) when that lies in checked text.
 : TSTALE-PROSE ( -- )
    s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' names no word where its record lands: nothing in the open" DTXT
@@ -1780,11 +1644,9 @@ SHADOW-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ --- a checker storage registrar called outside the verifier window (checker.f
-\ CHECKER-REPLAY-NAME-OK?), on the same template: it names the word the
-\ registrar would have recorded and the definer that makes that word soundly.
-\ The name is the run's, so nothing recorded its place and the packet carries
-\ none.
+\ A storage registrar called outside the verifier window (checker.f
+\ CHECKER-REPLAY-NAME-OK?): names the word and the definer that makes it soundly.
+\ The name is the run's, so the packet carries no place.
 : REPLAY-ONLY-PROSE ( -- )
    s" E-PKG-CONTEXT habu: storage record for '" DTXT  RPL-TOK-A @ RPL-TOK-U @ DTXT
    s" ' refused outside the engine's verifier window: a checker storage" DTXT
@@ -1803,12 +1665,10 @@ SHADOW-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ --- a record for a malformed qualified name (checker.f CHECKER-RECORD-NAME), on
-\ the same template, with the repair class and suggestion a call to such a name
-\ gets (E-BAD-QUALIFIED above). The record has a code of its own, in a refused
-\ record's shape, where the call's is a definition's (tools/diag-code.f); its
-\ refusal still throws E-BAD-QUALIFIED. Its position is the declaring name
-\ (TSR-AT-A, checker.f CHECKER-RECORD-NAME-AT) when that lies in checked text.
+\ A malformed qualified name's record (checker.f CHECKER-RECORD-NAME) has the
+\ class and suggestion of E-BAD-QUALIFIED, and a code of its own in a refused
+\ record's shape (tools/diag-code.f); the refusal still throws E-BAD-QUALIFIED.
+\ Placed at TSR-AT-A (checker.f CHECKER-RECORD-NAME-AT) when in checked text.
 : BADQUAL-PROSE ( -- )
    s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
    s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
@@ -1823,9 +1683,8 @@ SHADOW-DIAG-INSTALL
    JSON-DIAGS @ IF BADQUAL-JSON ELSE BADQUAL-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
-\ The three refused-record diagnostics ride ONE checker hook (checker.f
-\ RECORD-DIAG-XT: 0 = the stale trust row, 1 = the storage record, 2 = the
-\ malformed name).
+\ checker.f RECORD-DIAG-XT selects: 0 the stale trust row, 1 the storage
+\ record, 2 the malformed name.
 : RECORD-DIAG ( n -- ) {: which:n :}
    which 1 = IF REPLAY-ONLY-DIAG EXIT THEN
    which 2 = IF BADQUAL-DIAG EXIT THEN
@@ -1833,13 +1692,9 @@ SHADOW-DIAG-INSTALL
 : RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-INSTALL
 
-\ --- storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE). A refused
-\ LAYOUT-BUFFER, DEFER-LAYOUT-BUFFER, TYPED-BUFFER, TYPED-VARIABLE or
-\ DYNAMIC-BUFFER line names the declared word, the refused token and the reason;
-\ with no name on its line the definer stands in for the word and the token.
-\ It is not a definition, so it carries no definition fields. A refusal the
-\ verifier located carries the token's place in its file; a run-time refusal,
-\ whose place nothing recorded, carries none.
+\ Storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE): the declared
+\ word, refused token and reason, the definer standing in for both when the line
+\ has no name; no definition fields. A run-time refusal carries no place.
 : STGR-NAME$ ( -- ptr u8 n )  STGR-NAME-A @ STGR-NAME-U @ ;
 : STGR-TOK$ ( -- ptr u8 n )  STGR-TOK-A @ STGR-TOK-U @ ;
 : STGR-NAME-WHY? ( -- f )
@@ -1900,12 +1755,10 @@ RECORD-DIAG-INSTALL
 : STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
 STGR-DIAG-INSTALL
 
-\ --- a `generates:` row the checker cannot keep (checker.f CHECKER-GENERATES),
-\ on the trust row's template above (TSTALE-JSON): the kind says which of the
-\ row's three claims failed, and each has its own repair: a name to correct, a
-\ row to delete, or the effect, which takes the signature refusal's own class
-\ and text. The pre-pass hands the registrar the name where its scanner read
-\ it, so the packet locates it as the shadow diagnostic's does.
+\ A `generates:` row the checker cannot keep (checker.f CHECKER-GENERATES), on
+\ TSTALE-JSON's template: the kind says which of three claims failed, each with
+\ its own repair (correct the name, delete the row, or the signature refusal's
+\ class and text). Placed at the name where the pre-pass scanner read it.
 : GENR-BADSIG-PROSE ( -- )
    SGBAD-UNKNOWN? IF
       s" unknown type '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" ' in its effect" DTXT EXIT
@@ -1957,10 +1810,9 @@ STGR-DIAG-INSTALL
 : GENERATES-DIAG-INSTALL ( -- ) [: GENR-DIAG ;] is GENERATES-DIAG-XT ;
 GENERATES-DIAG-INSTALL
 
-\ A `parses:` or `parses-through:` row the checker refused
-\ (checker.f CHECKER-PARSES-ROW), named at its target, or at its keyword when it
-\ has none. The kind says which check failed: the target's take
-\ fix_parses_row, the row's syntax fix_parses_syntax.
+\ A `parses:` or `parses-through:` row the checker refused (checker.f
+\ CHECKER-PARSES-ROW), named at its target or else its keyword: a target fault
+\ takes fix_parses_row, a syntax fault fix_parses_syntax.
 : PRS-SYNTAX? ( n -- bool )
    PARSES-NO-TARGET >= ;
 : PRS-REASON ( n -- )
@@ -2002,8 +1854,6 @@ GENERATES-DIAG-INSTALL
 : PRS-CLASS$ ( n -- ptr u8 n )
    PRS-SYNTAX? IF s" fix_parses_syntax" EXIT THEN
    s" fix_parses_row" ;
-\ A refused row's packet, at the token PRS-TOK holds: its code, repair class
-\ and suggestion.
 : ROW-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: ca:ptr cu:n la:ptr lu:n sa:ptr su:n :}
    ca cu la lu s" rejected" JHEAD
@@ -2022,8 +1872,7 @@ GENERATES-DIAG-INSTALL
 : PARSES-DIAG-INSTALL ( -- ) [: PRS-DIAG ;] is PARSES-DIAG-XT ;
 PARSES-DIAG-INSTALL
 
-\ A `names:` row the checker refused (checker.f CHECKER-NAMES-ROW), named and
-\ explained as a parses: row is, or as a word that takes no string: with no
+\ A `names:` row the checker refused (checker.f CHECKER-NAMES-ROW): with no
 \ target fix_names_syntax, else fix_names_row.
 : NMS-SYNTAX? ( n -- bool )
    PARSES-NO-TARGET = ;

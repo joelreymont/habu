@@ -1,13 +1,8 @@
-\ lower-cert-seal.f — erase lowering-certificate producer authority.
-\ Loaded after xref installs `undefine`; compiled calls retain direct xts.
-\
-\ Both producers are now reached through declared dispatch cells (`defer`), so
-\ this file retires the two things that can still GRANT authority: the name of
-\ each dispatch cell, without which no later source can write `is` at it, and
-\ the flag that records the grant. Undefining a name never removes the cell or
-\ the code, which is why the already-compiled callers below the seal keep
-\ dispatching and why the cells stay in the snapshot address-cell table and go
-\ on being relocated (dot habu-declare-persisted-producer-76fbce09).
+\ lower-cert-seal.f — erase lowering-certificate producer authority, and record
+\ the end of the core prefix (PREFIX-MARK). Loaded after xref installs
+\ `undefine`. Undefining a dispatch cell's name stops a later `is` at it; the
+\ cell and its code stay, so compiled callers keep dispatching and the snapshot
+\ address-cell table keeps relocating the cell.
 
 undefine CHECKER-CERT:INSTALL
 undefine CHECKER-CERT:PRODUCE
@@ -27,48 +22,24 @@ undefine FULL-XT
 undefine FULL-SET
 ;package
 
-\ ---------------------------------------------------------------------------
-\ THE CORE PREFIX ENDS HERE, and this records where.
+\ The core prefix ends here, and the mark must be taken at the end of this file:
+\ src/habu/habu2.f EMIT-HOST-LOAD-PREFIX loads it after the core files and their
+\ provided rows, before the stdlib. src/habu/prefix-rewind.f, at the head of
+\ every generated engine source, rewinds to it so the compiling host's boot copy
+\ stays live.
 \
-\ The mark's invariant is POSITION: it must be taken at the boundary, and the
-\ boundary is the end of this file. src/habu/habu2.f EMIT-HOST-LOAD-PREFIX
-\ loads it after the core files and their provided rows, before the stdlib.
+\ Every cursor that advances past this point goes back through its owner's
+\ truncation seam: the checker owns the marks a scope invalidates
+\ (src/core/checker.f CHECKER-BOUND) and CURSORS reports how many. The dictionary
+\ end and the include registry's row count are read here. Each one left out is a
+\ store describing records the rewind removed (measured three times: a missing
+\ stdlib, `duplicate family at 'option'`, a store through a stale pointer).
 \
-\ WHO READS IT. src/habu/prefix-rewind.f's top-level text, at the head of every
-\ generated engine source. That source used to truncate the dictionary back to
-\ util.f's first record and recompile this whole prefix on top of the orphaned
-\ copy; it rewinds to HERE instead, so the compiling host's own boot copy stays
-\ live.
-\
-\ EVERY CURSOR THAT ADVANCES PAST THIS POINT goes back through its owner's
-\ truncation seam, and the count is not written down here: the checker owns the
-\ list of marks a scope invalidates, so it owns the boundary that carries them
-\ (src/core/checker.f CHECKER-BOUND), and CURSORS reports how many off the record
-\ rather than from a sentence that ages. Two more are the engine's own and are
-\ read here: the dictionary end, and the include registry's row count. Each one
-\ left out is a store still describing records the rewind removes - measured,
-\ three times: an image that claimed to carry the stdlib and did not, a
-\ `duplicate family at 'option'` on the first `require`, and a warm image whose
-\ first type declaration stored through a stale pointer and died.
-\
-\ The dictionary boundary follows this package's final private word, BOUNDARY,
-\ and the mark is that word's CODE ENTRY, taken the moment it exists. An entry
-\ is what survives what an ordinal does not: an AOT restore re-registers every
-\ record, so the index moves, while the entry is relocated with the code and
-\ the engine's own address-cell table carries the cell that holds it (`xt!`).
-\ The boundary is then the position of the record whose entry this is, which
-\ the read below walks the dictionary to find.
-\ IT USED TO BE A NAME. The read resolved this package's namespace record and
-\ then looked BOUNDARY up in its private wordlist, which made a private name
-\ something a shipped engine had to keep alive for one caller - the last such
-\ name the engine itself resolved at runtime (habu-ship-no-dictionary-2fee2dea).
-\ The package is protected at the mark, so ordinary source can neither reopen it
-\ nor rebind the marker; `undefine` may retire a record, but retiring leaves the
-\ record and its entry in place, so it cannot move the boundary either. The
-\ include registry and checker marks remain their owners' counts.
-\
-\ The capture is this file's last act, so the package's own records are below
-\ the mark and survive the rewind that reads them.
+\ The mark is BOUNDARY's code entry, not an ordinal: an AOT restore re-registers
+\ every record, so the index moves, while the entry is relocated with the code
+\ (`xt!` declares the cell). The package is protected at the mark and `undefine`
+\ leaves the record in place, so neither can move the boundary. The capture is
+\ this file's last act, so the package's own records survive the rewind.
 
 package PREFIX-MARK
 

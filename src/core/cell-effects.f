@@ -55,17 +55,12 @@ TRUSTED: MULTI-ERR-BEGIN ( -- )
    MULTI-ERR-N @  0 MULTI-ERR ! ;
 
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
-\ definition. Each reads its row by parse-name, as the source pre-verifier reads
-\ it (src/habu/verify-source.f PARSES-ROW), has the checker check it
-\ (src/core/checker.f CHECKER-PARSES-ROW) and keeps nothing: the shape is the
-\ pre-verifier's contract alone. The keyword is the token the engine read last
-\ when the word starts (CK-TKA-OFF), where a row with no target is named.
-\ UNSAFE-TOK? bars both from checked bodies, so they run from top level only.
-\ They load after the hook so that this checker records them and INTRINSIC tags
-\ each as the engine word the pre-pass knows it by, and as a word that reads
-\ the source after it (CTL-PARSES, INTRINSIC-CTL): a word src/core/checker.f
-\ defines is recorded by the checker the build kept, whose identities its
-\ handover copies, and that checker may know no such word.
+\ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked
+\ by src/core/checker.f CHECKER-PARSES-ROW; nothing is kept. The keyword is the
+\ last token the engine read when the word starts (CK-TKA-OFF). UNSAFE-TOK? bars
+\ both from checked bodies. They load after the hook so this checker records them
+\ and INTRINSIC tags each (CTL-PARSES, INTRINSIC-CTL): a word checker.f defines is
+\ recorded by the build's checker, which may know no such word.
 TRUSTED: parses: ( -- )
    data-base CK-TKA-OFF + @  data-base CK-TKL-OFF + @
    parse-name parse-name RES-FALSE CHECKER-PARSES-ROW drop drop drop ;
@@ -91,9 +86,6 @@ INTRINSIC-NAMES INTRINSIC
 \ readers (the owner record's CALL-*-OFF rows); this package only installs it.
 package CHECKER-CALLS
 
-\ The store is three cells, each declared at its own type: STATE holds the row
-\ arena's address, so it is a PTR-VARIABLE; STATE-N (live rows) and STATE-CAP
-\ (capacity) are numbers.
 PTR-VARIABLE STATE  variable STATE-N  variable STATE-CAP
 
 \ The owner can record calls before this checked header is loaded. Transfer

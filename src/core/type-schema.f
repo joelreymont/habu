@@ -1,31 +1,9 @@
-\ type-schema.f — persistent type-schema node arena for the checker's type-family
-\ system (package TFAM). Schema nodes are a generic type tree that families,
-\ variants, and product fields reference as "schema roots": a family stores
-\ schemas, never live checker type variables, and the checker instantiates them
-\ per use. Every node field holds only integers
-\ (con codes, family ids, root indices) — never a relocating pointer — so a grow
-\ is a plain cell copy and snapshot persist bakes stores verbatim with no rebase.
-\ Loaded unchecked in the checker prefix, right after checker.f, mirroring the
-\ VREC value-record registry it is modelled on.
-\
-\ THE WHOLE FILE IS package SCHEMA-REG (dot habu-seal-type-schema-c65f76cc).
-\ The split is measured, not chosen: a name the rest of the tree references is
-\ `public`, everything else is `private`, and no name was renamed to fit. The
-\ arena bases, the grow/ensure ladder, the record-address arithmetic and the
-\ rollback-frame store have no reference outside this file and are therefore
-\ private, which means they have no top-level spelling at all — bare misses them
-\ because they are not global, and PKG:TAIL misses them because a qualifier
-\ selects the PUBLIC wordlist (habu1.f FIND-NMATCH). That is the seal: before it,
-\ a plain user program could write `0 SCH-RBF-P !` and take the engine down with
-\ a SIGSEGV inside the next declaration.
-\
-\ The publics are not thereby callable from user source either. They carry no
-\ checker effect (this file loads before the check hook), so src/core/internal-
-\ mark.f marks each one DNAME-INT under its SCHEMA-REG:TAIL spelling and the
-\ interpret dispatch fails closed rc 70 — the same answer their bare names gave
-\ as globals. The two exceptions are SCHEMA-N@ and SCHEMA-ROOT-N@, which carry
-\ PPRIM: SCHEMA-REG axioms in checker.f because suites read the high-water marks
-\ at top level; they are the only two names measured to need it.
+\ type-schema.f — persistent schema node arena for the checker's type families
+\ (TFAM): families, variants and product fields store schema roots, never live
+\ checker variables, and the checker instantiates them per use. Node fields hold
+\ integers only (con codes, family ids, root indices), so a grow is a cell copy
+\ and snapshot persist bakes stores with no rebase. Loaded unchecked right after
+\ checker.f, as package SCHEMA-REG: a name used outside this file is public.
 
 \ --- schema node kinds (node tag values). Node id 0 is the reserved nil node.
 \ SCH-NIL is the reserved sentinel and SCH-KIND-MAX the creatable-tag ceiling
@@ -62,8 +40,6 @@ public
 7103 constant E-SCHEMA-BAD
 
 \ --- node record layout (interleaved cell arena, one grow buffer).
-\ Schema records contain only scalar ids/codes, so their arena needs no
-\ pointer relocation.
 private
 
 0 cells constant SCH.TAG-OFF
@@ -84,12 +60,8 @@ private
 4 constant SCH-CAP-INIT         \ small seed; grows geometrically (doubles) on demand
 4 constant SCH-ROOT-INIT        \ small seed schema-root pool cells; grows on demand
 
-\ Registry control cells are sealed DNAME-INT by REG-PROTECT / IMK-SEAL-REGISTRY
-\ (src/core/util.f, src/core/internal-mark.f): a `<cell> @`/`<cell> !` or
-\ `' <cell>` fails closed rc 70 under either spelling, because the flag is on the
-\ record and a `variable` is a data record the package walk cannot reach through
-\ its colon test. Read the schema registry through the certified
-\ SCHEMA-REG:SCHEMA-N@ / SCHEMA-REG:SCHEMA-ROOT-N@ accessors, never the raw cell.
+\ Registry control cells are REG-PROTECTed (src/core/util.f): read them through
+\ SCHEMA-N@ / SCHEMA-ROOT-N@.
 public
 
 variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !   REG-PROTECT
@@ -140,8 +112,6 @@ public
    0 SCH-ROOT-N ! ;
 SCHEMA-RESET
 
-\ --- geometric grow. Node/root cells are pointer-free, so a straight cell copy
-\ (REG-GROW1) suffices and no stored value needs rebasing.
 : SCH-GROW ( n -- ) {: need:n :}
    need SCH-CAP-V @ 2 * max {: nc:n :}
    SCH-A-P  SCH-CAP-V @ SCH-REC *  nc SCH-REC *  REG-GROW1
@@ -186,12 +156,12 @@ public
    tag r SCH.TAG !   a r SCH.A !   b r SCH.B !   c r SCH.C !
    id ;
 
-: SCHEMA-PARAM ( n -- n )                  \ paramref schema node
+: SCHEMA-PARAM ( n -- n )
    dup 0 < IF drop E-SCHEMA-BAD throw THEN
    SCH-PARAM swap 0 0 SCHEMA-NEW ;
-: SCHEMA-CON ( n -- n )                    \ concrete-type schema node
+: SCHEMA-CON ( n -- n )
    SCH-CON swap 0 0 SCHEMA-NEW ;
-: SCHEMA-APP ( n n n -- n )                \ family application node
+: SCHEMA-APP ( n n n -- n )
    {: fam:n start:n count:n :}
    count 0 < IF E-SCHEMA-BAD throw THEN
    \ A nullary application (`fam<>`) has an empty argument range: start 0,
@@ -202,6 +172,9 @@ public
 : SCHEMA-A@ ( n -- n ) SCH-REC@ SCH.A @ ;
 : SCHEMA-B@ ( n -- n ) SCH-REC@ SCH.B @ ;
 : SCHEMA-C@ ( n -- n ) SCH-REC@ SCH.C @ ;
+\ Publics carry no checker effect (loaded before the hook), so internal-mark.f
+\ marks them DNAME-INT; SCHEMA-N@ and SCHEMA-ROOT-N@ alone carry PPRIM: axioms
+\ in checker.f, because suites read the high-water marks at top level.
 : SCHEMA-N@ ( -- n ) SCH-N @ ;             \ node high-water (for rollback/tests)
 
 : SCHEMA-PARAM? ( n -- bool ) SCHEMA-TAG@ SCH-PARAM = ;
@@ -245,12 +218,10 @@ public
 : SCHEMA-ROW-OK? ( n -- bool )                     \ live SCH-ROW node (no die on nil/oob)
    dup SCHEMA-NODE-OK? IF SCHEMA-ROW? ELSE drop RES-FALSE THEN ;
 
-\ --- SCH-QUOT quotation payload node. Mirrors the checker's VR-QUOT/EN-QUOT/MK-QUOT
-\ effect sides (din, dout, rin, rout) as four SCH-ROW roots plus a hasr flag, so a
-\ family or product schema can carry a quotation-typed argument without collapsing it
-\ to a string. Each side is a full ordered row (multi-type or empty). A side that is
-\ not a live SCH-ROW node throws E-SCHEMA-BAD so parse/CHECK and unit tests can trap
-\ it with `catch`.
+\ --- SCH-QUOT quotation payload node: the checker's quotation effect sides (din,
+\ dout, rin, rout) as four SCH-ROW roots plus a hasr flag, so a schema can carry a
+\ quotation-typed argument. A side that is not a live SCH-ROW node throws
+\ E-SCHEMA-BAD.
 private
 
 : SCH-FLAG ( n -- n )                       \ canonical 0/-1 flag as a plain cell (any nonzero -> -1)
@@ -278,22 +249,17 @@ public
 : SCHEMA-QUOT-RIN@ ( n -- n ) 2 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-ROUT@ ( n -- n ) 3 SCHEMA-QUOT-ROW@ ;
 
-\ --- SCH-PTR pointer payload node: a `ptr T` variant payload
-\ element. A malformed child (nil / out-of-range) throws E-SCHEMA-BAD so the
-\ declaration parser and unit tests can trap it with `catch`.
+\ --- SCH-PTR: a `ptr T` variant payload element. A malformed child (nil or out
+\ of range) throws E-SCHEMA-BAD.
 : SCHEMA-PTR ( n -- n )
    dup SCHEMA-NODE-OK? 0= IF drop E-SCHEMA-BAD throw THEN
    SCH-PTR swap 0 0 SCHEMA-NEW ;
 : SCHEMA-PTR? ( n -- bool ) SCHEMA-TAG@ SCH-PTR = ;
 
-\ ---------------------------------------------------------------------------
-\ rollback frame stack (SCHEMA half of the checker's transactional rollback).
-\ Each checker scope/candidate saves the node + schema-root high-water marks;
-\ rejecting a scope/candidate pops them so a rejected family's schema nodes are
-\ retired (a later scan/new-node reuses the freed ids). Node/root fields are
-\ pointer-free, so restoring the counters fully retires the entries. Pushed/popped
-\ in lockstep with checker.f's core frame via the REG-EXT-RB-* hooks.
-\ ---------------------------------------------------------------------------
+\ Rollback frame stack: the schema half of the checker's transactional rollback,
+\ pushed and popped in lockstep with checker.f's core frame through the
+\ REG-EXT-RB-* hooks. Rejecting a scope retires its nodes; later nodes reuse the
+\ ids.
 private
 
 0 cells constant SCHRB.N-OFF
@@ -314,13 +280,9 @@ create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
 PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
 : SCH-RBF-BASE ( -- ptr n ) SCH-RBF-P @ ;
 
-\ The frame depth is the one rollback cell with a reader outside this file
-\ (type-family.f SCHEMA-REG:AT-REST and CHECKER-DECL-FRAME:TYPES-READY both ask
-\ whether the schema half is at rest), so it is public and its raw cell is
-\ REG-PROTECTed like every other exported control cell here — the compiled
-\ readers resolve before the marking pass, while `SCHEMA-REG:SCH-RBF-DEPTH !`
-\ from user source fails closed rc 70. The sibling PF-TX-DEPTH carries the same
-\ pairing (type-family.f:1325).
+\ The frame depth has readers outside this file (type-family.f
+\ SCHEMA-REG:AT-REST, CHECKER-DECL-FRAME:TYPES-READY), so it is public and
+\ REG-PROTECTed, as PF-TX-DEPTH is.
 public
 
 variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !   REG-PROTECT
@@ -337,17 +299,12 @@ private
 : SCH-RBF-CUR ( -- ptr n ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
 
 \ ---- rewind to a recorded pair ----------------------------------------------
-\ Every place that lowers the schema counts retires nodes and roots, so every
-\ one comes through here: SCHEMA-ROLLBACK-RESTORE below (the checker frame),
-\ src/core/sumtype.f TDECL-RESTORE (a rejected declaration) and the core-prefix
-\ boundary block in src/core/type-family.f (PFX-REWIND). SCHEMA-RESET above is
-\ the one exception: it runs at load, before REWIND exists, and scrubs the same
-\ way itself. REWIND moves no frame
-\ depth. The node and root fields are pointer-free, so putting the counts back
-\ retires every entry above them; it first scrubs the retired nodes and roots.
-\ The prefix boundary is not a scope: it returns a compiling host to a boundary
-\ its own boot crossed long before, so it records COUNTS alongside the family
-\ registry's own counters instead of holding a frame open across the whole boot.
+\ Every place that lowers the schema counts comes through REWIND, which scrubs
+\ the retired nodes and roots and moves no frame depth: SCHEMA-ROLLBACK-RESTORE
+\ (the checker frame), src/core/sumtype.f TDECL-RESTORE and type-family.f
+\ PFX-REWIND. SCHEMA-RESET runs at load, before REWIND exists, and scrubs itself.
+\ The prefix boundary is not a scope: it records COUNTS beside the family
+\ registry's counters instead of holding a frame open across the boot.
 
 : COUNTS ( -- n n )
    SCH-N @ SCH-ROOT-N @ ;
@@ -376,8 +333,8 @@ public
 : SCHEMA-ROLLBACK-FINALIZE ( -- )
    SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH ! ;
 
-\ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
-\ at snapshot), so drop any grown arena back to the baked boot store.
+\ Snapshot prepare: frames are transient (depth 0 at snapshot), so drop any grown
+\ arena back to the baked boot store.
 : SCHEMA-RBF-SNAP-RESET ( -- )
    SCH-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    SCH-RBF-BOOT SCH-RBF-P !
@@ -385,8 +342,8 @@ public
    SCH-RBF-BOOT 0 SCH-RBF-CAP-INIT SCH-RBF-REC * CELL / ARENA-CELLS-ZERO
    0 SCH-RBF-DEPTH ! ;
 
-\ --- snapshot persist: bake any grown store into fresh image DATA. Fields hold no
-\ pointers, so nothing rebases. Called through the checker's REG-EXT-PERSIST hook.
+\ --- snapshot persist: bake any grown store into fresh image DATA, through the
+\ checker's REG-EXT-PERSIST hook.
 : SCHEMA-SNAPSHOT-PERSIST ( -- )
    SCH-A-P    SCH-CAP-V @ SCH-REC *  REG-PERSIST-BUF drop
    SCH-ROOT-P SCH-ROOT-CAP-V @ cells REG-PERSIST-BUF drop ;

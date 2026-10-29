@@ -9,7 +9,7 @@ public
 86 constant CALLABLE-ABI
 87 constant CATCH-STACK
 88 constant CODE-CERT
-\ `using NAME` / `;using` consumer-import failures (dot habu-using-import-pkg-a07dd7ba).
+\ `using NAME` / `;using` consumer-import failures.
 \ Each is recoverable inside `evaluate` (a catchable throw of the same code) and a
 \ fail-closed process exit at top level, mirroring the package-keyword failure ABI.
 89 constant USING-NO-NAME       \ `using` with no following token

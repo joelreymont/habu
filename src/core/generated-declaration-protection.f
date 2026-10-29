@@ -1,24 +1,15 @@
-\ generated-declaration-protection.f - atomic constructor protection owner, and
-\ the declaration runner.
-\
-\ Generated declarations stage constructor wordlists here.  PREPARE proves the
-\ irreversible engine registry has capacity, and this owner publishes last,
-\ after every reversible owner committed.  This is the last participant to load,
-\ so the runner, DECLARATION-TRANSACTION:RUN, is defined below it; once it is
-\ installed, every participant step word and the field owner's cleanup and
-\ release seams are retired, and the compiled runner retains the only live
-\ capabilities.
+\ generated-declaration-protection.f - atomic constructor protection owner and
+\ the declaration runner DECLARATION-TRANSACTION:RUN. PREPARE proves the
+\ irreversible engine registry has room; this owner publishes last, after every
+\ reversible owner committed. This is the last participant to load: once the
+\ runner is installed, every participant step word and the field owner's cleanup
+\ and release seams are retired, and the compiled runner holds the only capabilities.
 
 package GENERATED-DECL-PROTECTION
 
 7169 constant E-PROTECTION-CAP
-\ One code for one condition: there is no room left to protect the constructor
-\ wordlists a declaration needs.  It went unexplained for a long time, so an
-\ exhausted registry printed the generic "declaration failed" against whatever
-\ family happened to declare next -- the maki competitive-evidence red was
-\ misattributed to an innocent enum for two days because of exactly that.  The
-\ reason names the registry, so the reader looks at capacity instead of at the
-\ declaration in front of them.
+\ The reason names the registry, so a full registry is not blamed on whichever
+\ declaration comes next.
 s" the protected-wordlist registry is full" E-PROTECTION-CAP DECL-REJECT:EXPLAIN
 $FFFFFFFF constant WID-MAX
 4 constant CAP-INIT
@@ -109,23 +100,18 @@ private
       data-base WIDN-CELL + @ dup 0 < swap WID-MAX > or
          IF E-PROTECTION-CAP throw THEN
    THEN
-   \ `words` counts the dictionary entries this declaration generates, NOT the
-   \ wordlists it protects -- a family generating twenty words still protects one
-   \ constructor wordlist. So the early gate is "generates anything at all, and the
-   \ registry has no room", and PREPARE does the exact arithmetic later against the
-   \ STAGED wordlist count, which is the quantity that matches prot-wid-room.
+   \ `words` counts generated dictionary entries, not protected wordlists (a
+   \ family of twenty words protects one), so this gate refuses only a declaration
+   \ that generates anything when the registry is full; PREPARE checks the staged
+   \ wordlist count against prot-wid-room.
    words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
    STAGE-ENSURE ;
 
-\ The generated-declaration participants' image-snapshot reset: protection
-\ (this file), then dictionary, the event transaction, the STRUCTURE and ENUM
-\ front ends and the reject packet. This word is the
-\ chain's anchor because this file is the last participant to load and therefore
-\ the one that owns TDECL-OWNER-SNAPSHOT-XT, the hook CHECKER-CAPTURE-PREPARE
-\ reaches all of them through; an earlier participant cannot name a later one,
-\ so the tail is a call and not a hook. Each link drops its own grown,
-\ process-local buffers back to their baked boot stores - a persisted host
-\ address is a wild pointer in the process that restores the image.
+\ This file anchors the participants' snapshot-reset chain: it loads last, so it
+\ owns TDECL-OWNER-SNAPSHOT-XT, which CHECKER-CAPTURE-PREPARE reaches; an earlier
+\ participant cannot name a later one, so each tail is a call. Each link drops
+\ its grown buffers back to its boot store: a persisted host address is a wild
+\ pointer in the process that restores the image.
 : SNAPSHOT-RESET ( -- )
    DECLARATION-TRANSACTION:ACTIVE? STAGE-N @ 0 <> or IF E-PROTECTION-CAP throw THEN
    STAGE-P STAGE-BOOT STAGE-CAP @ cells ARENA-BOOT-RESTORE
@@ -157,11 +143,9 @@ get-current prot-wid-add
 
 package DECLARATION-TRANSACTION
 
-\ Savepoints in participant order: checker frame, DECL-EVENT, constructors,
-\ address surface, dictionary, protection. DECL-EVENT's can refuse (DEV-OPEN ->
-\ TYPE-FIELD-OWNER:OPEN TX-PARENT-REQUIRE throws E-PF-TX, decl-event-suite §14);
-\ the checker frame is the only savepoint taken before it. The four after it
-\ store cells and cannot fail.
+\ DECL-EVENT's savepoint can refuse (DEV-OPEN -> TYPE-FIELD-OWNER:OPEN
+\ TX-PARENT-REQUIRE throws E-PF-TX); only the checker frame's is taken before
+\ it, and the four after it store cells and cannot fail.
 : SAVEPOINTS ( -- )
    CHECKER-DECL-FRAME:PART-SNAPSHOT
    [: DECL-EVENT:PART-SNAPSHOT ;] catch {: rc:n :}
@@ -214,10 +198,8 @@ package DECLARATION-TRANSACTION
 
 public
 
-\ Run one declaration body as one transaction: every participant's savepoint,
-\ the body, every prepare, every commit, every release. A failure before the
-\ commits finish rolls every participant back in reverse order and rethrows the
-\ failure's own code. A declaration opened inside another is E-ACTIVE.
+\ A failure before the commits finish rolls every participant back in reverse
+\ order and rethrows its own code; a declaration opened inside another is E-ACTIVE.
 : RUN ( [ -- ] -- )
    {: body :}
    OPEN
@@ -272,13 +254,9 @@ undefine GENERATED-DECL-PROTECTION:PREPARE
 undefine GENERATED-DECL-PROTECTION:PUBLISH
 undefine GENERATED-DECL-PROTECTION:ROLLBACK
 
-\ The field owner's multi-frame cleanup vector and its total release vector are
-\ now bound into the compiled declaration-event participant, the only caller
-\ either is ever meant to have, so retire their source-level names here with the
-\ other one-shot install seams above. They are retired outside the package block,
-\ and by their QUALIFIED names: `undefine` resolves an unqualified name in the
-\ CURRENT wordlist, and since dot habu-tfam-2b-sealed-1b77662c these two live in
-\ TFAM's public wordlist rather than the global one. A `using` would not help --
-\ `undefine` is a parsing word and parsing words resolve outside using-imports.
+\ The field owner's cleanup and release vectors are bound into the compiled
+\ declaration-event participant, their only caller, so they are retired too, by
+\ qualified name since they live in TFAM's public wordlist (a `using` would not
+\ help: `undefine` parses, and parsing words resolve outside using-imports).
 undefine TFAM:TDECL-FIELD-CLEANUP-XT
 undefine TFAM:TDECL-FIELD-RELEASE-XT

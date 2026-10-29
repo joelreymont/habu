@@ -1,19 +1,8 @@
-\ structures.f - checked structure and field defining words.
-\
-\ BEGIN-STRUCTURE threads a byte offset through +FIELD / PTR-FIELD: / CFIELD:
-\ and closes it at END-STRUCTURE.
-\
-\ EVERY FIELD NAME IS NOW AN ORDINARY CHECKED COLON WORD. A field offset is known
-\ when the field is declared, so the definer parses the name, bakes the offset into
-\ ": NAME ( in -- out ) <off> ... ;" and hands that text to sumtype.f's audited
-\ TDECL-EVAL-XT boundary - the shape src/core/layout-buffer.f and src/core/roles.f
-\ CAST: already use. A field word is pure offset arithmetic on the address its
-\ caller supplies: it reads no storage and names no base, so it means the same
-\ thing in every thread.
-\
-\ BEGIN-STRUCTURE ITSELF STILL USES create/does>, because the size it publishes is
-\ not known until END-STRUCTURE runs and must therefore be read from storage. See
-\ the note on that word for why generated source cannot express that read yet.
+\ structures.f - checked structure and field defining words. Each field name is
+\ an ordinary checked colon word: the definer bakes the known offset into
+\ ": NAME ( in -- out ) <off> ... ;" and hands it to sumtype.f's TDECL-EVAL-XT.
+\ A field word reads no storage and names no base, so it means the same in every
+\ thread. BEGIN-STRUCTURE stays create/does> (see its note).
 
 $4C constant STRUCT-RC
 $100 constant STRUCT-GEN-CAP
@@ -74,18 +63,12 @@ using TYPE-DECL
 
 \ ---- the defining words -----------------------------------------------------
 
-\ NOT CONVERTED, and the reason is an address kind rather than a shape. The size
-\ word is the only one here that reads STORAGE; the field words are pure offset
-\ arithmetic. A generated `data-base <off> + @` reads the CALLING thread's data
-\ region - register 20, which src/lib/task.f's thread entry points at the task's own
-\ 64 KiB region - so a structure size read inside a task lands at region-base +
-\ dictionary-offset and faults (measured). `create ... does>` publishes the
-\ absolute address instead, and the tree has no checked source expression for one
-\ (`dbase@` holds it, typed `-- n`). Converting this word needs either that
-\ expression or END-STRUCTURE publishing the size as a LITERAL - which is the
-\ better answer, since the size is a compile-time constant by then, but it narrows
-\ the three definers' `( ptr a n )` threading effects to `( n )`. Both are open
-\ design, not something this conversion may decide on its own.
+\ BEGIN-STRUCTURE publishes its size through create/does>: a generated
+\ `data-base <off> + @` reads the calling thread's data region (register 20, the
+\ task's own region under src/lib/task.f), so a size read inside a task faults
+\ (measured). Checked source has no expression for the absolute address (`dbase@`
+\ is typed `-- n`); END-STRUCTURE publishing the size as a literal would narrow
+\ the three definers' `( ptr a n )` threading effects to `( n )`.
 : BEGIN-STRUCTURE ( -- ptr n n )
    STRUCT-REQUIRE-CLOSED
    -1 STRUCT-ACTIVE !
