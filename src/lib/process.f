@@ -32,7 +32,7 @@ s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
-s" src/lib/spawn.f" required                 \ SPAWN:request and PROCESS:SPAWN, the spawn every RAW word makes
+s" src/lib/spawn.f" required                 \ PROCESS:request and PROCESS:SPAWN, the spawn every RAW word makes
 s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
 \ outcome - how a child process completed (switchover wave C): a clean exit
@@ -197,10 +197,11 @@ FUNCTION: PROC-WAITPID-CALL waitpid ( n ptr u8 n -- i32 )
    1 4 WRITES-BYTES                    \ wait status is a C int, not a cell
 ;FUNCTION
 
-\ The bodies the RAW spawn words run under catch. Each builds a SPAWN request
-\ from a RAW word's arguments, spawns it and leaves the pid in the PROC row; the
-\ RAW word answers it through ANSWER. A negative stdio fd leaves that slot
-\ inheriting the parent's fd. process-argv.f, process-env.f and process-cwd.f
+\ The bodies the RAW spawn words run under catch. Each builds a HERMETIC PROCESS
+\ request from a RAW word's arguments, so the child's environment is only the
+\ rows it is given, spawns it and leaves the pid in the PROC row; the RAW word
+\ answers it through ANSWER. A negative stdio fd leaves that slot inheriting the
+\ parent's fd. process-argv.f, process-env.f and process-cwd.f
 \ add the bodies for their shapes.
 package PROC-RAW
 private
@@ -212,15 +213,15 @@ CAST: >ROWS ( n -- ptr ptr u8 )
 
 : PID ( -- ptr n ) PROC-ROW PROC-RAW-PID-OFF + CELL-VIEW ;
 
-: FD ( SPAWN:request n fd -- SPAWN:request ) {: child parent :}
-   parent FD>N 0 >= if child >FD parent SPAWN:FD then ;
+: FD ( PROCESS:request n fd -- PROCESS:request ) {: child parent :}
+   parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
 
-: STDIO ( SPAWN:request fd fd fd -- SPAWN:request ) {: infd outfd errfd :}
+: STDIO ( PROCESS:request fd fd fd -- PROCESS:request ) {: infd outfd errfd :}
    0 infd FD
    1 outfd FD
    2 errfd FD ;
 
-: LAUNCH ( SPAWN:request fd fd fd -- )
+: LAUNCH ( PROCESS:request fd fd fd -- )
    STDIO PROCESS:SPAWN PID>N PID ! ;
 
 public
@@ -230,11 +231,11 @@ public
 : ANSWER ( n -- pid ) {: rc :}
    rc 0= if PID @ >PID exit then
    rc E-PROC-SPAWN <> if rc throw then
-   SPAWN:ERRNO negate >PID ;
+   PROCESS:ERRNO negate >PID ;
 
 : SPAWN ( ptr u8 fd fd fd -- ptr u8 fd fd fd )
    {: pathz:ptr infd outfd errfd :}
-   pathz dup ZLEN SPAWN:NEW
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
    infd outfd errfd LAUNCH
    pathz infd outfd errfd ;
 

@@ -73,8 +73,8 @@ public
 
 : SPAWN-ARGV ( ptr u8 ptr a fd fd fd -- ptr u8 ptr a fd fd fd )
    {: pathz:ptr argv:ptr infd outfd errfd :}
-   pathz dup ZLEN SPAWN:NEW
-   argv ROWS SPAWN:ARGV
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   argv ROWS PROCESS:ARGV-ROWS
    infd outfd errfd LAUNCH
    pathz argv infd outfd errfd ;
 

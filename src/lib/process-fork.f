@@ -285,7 +285,7 @@ public
 \ killing, so it can never signal the arming parent's own group. After a
 \ successful join it closes every inherited fd but the pool-death read end and
 \ blocks; when the pool parent is SIGKILLed the write end EOFs and the reaper
-\ SIGKILLs the child's group. A failed fork throws E-PROC-SPAWN: no reaper
+\ SIGKILLs the child's group. A failed fork throws E-PROC-SPAWN; no reaper
 \ watches the child, and its caller ends it (PROC-CAPTURE-PID! kills the
 \ capture child, the gate pool kills every slot).
 : SPAWN-REAPER ( fd pid -- pid ) {: pd:fd cpid:pid :}

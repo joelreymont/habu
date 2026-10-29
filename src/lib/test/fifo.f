@@ -54,8 +54,8 @@ FUNCTION: READ-CALL read ( n ptr u8 n -- n )
 ;FUNCTION
 
 \ The child's fd n is the parent's fd; a negative parent fd maps nothing.
-: SLOT ( SPAWN:request n fd -- SPAWN:request ) {: child:n parent:fd :}
-   parent FD>N 0 >= if child >FD parent SPAWN:FD then ;
+: SLOT ( PROCESS:request n fd -- PROCESS:request ) {: child:n parent:fd :}
+   parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
 
 : READ-END ( ptr u8 n -- fd ) {: a:ptr u:n :}
    a u FS-PATHZ O-NONBLOCK 0 open {: rd:n :}
@@ -97,9 +97,9 @@ public
 : SPAWN ( ptr u8 len fd fd fd fd -- pid ) {: a:ptr u in:fd out:fd err:fd w:fd :}
    a u PROC-ARGV-PREPARE {: pathz:ptr argv :}
    PROC-ENV-PREPARE {: envp :}
-   pathz dup ZLEN SPAWN:NEW
-   argv SPAWN:ARGV
-   envp SPAWN:ENV
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   argv PROCESS:ARGV-ROWS
+   envp PROCESS:ENV-ROWS
    0 in SLOT
    1 out SLOT
    2 err SLOT

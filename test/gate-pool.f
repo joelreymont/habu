@@ -818,7 +818,7 @@ false GT-POOL-CATCHING !
    s" FAIL: test pool spawn" type cr
    s" test" idx GT-POOL-LABEL$ GT-POOL-LINE$
    s" path" path pathu GT-POOL-LINE$
-   s" errno" SPAWN:ERRNO GT-POOL-LINE-N
+   s" errno" PROCESS:ERRNO GT-POOL-LINE-N
    s" argv-count" PROC-ARGV-N @ COUNT>N GT-POOL-LINE-N
    s" env-count" PROC-ENV-N @ COUNT>N GT-POOL-LINE-N
    s" pool-live" GT-POOL-LIVE @ GT-POOL-LINE-N
@@ -847,19 +847,20 @@ false GT-POOL-CATCHING !
    drop
    code 0<> if code GT-POOL-THROW then ;
 
-\ Spawns path with the staged argv and env as slot idx's child, its stdin on
+\ Spawns path with the staged argv and only the staged env, which its caller
+\ has already inherited into, as slot idx's child, its stdin on
 \ stdin (a negative one inherits this process's) and its stdout and stderr on
 \ the slot's pipes, and records its pid. Stack-preserving under catch, so a
 \ refusal is reported with the staging it refused.
 : GT-POOL-LAUNCH ( idx ptr u8 n fd -- idx ptr u8 n fd ) {: idx:idx path:ptr pathu:n stdin:fd :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   pathz dup ZLEN SPAWN:NEW
-   argv SPAWN:ARGV
-   envp SPAWN:ENV
-   stdin FD>N 0 >= if 0 >FD stdin SPAWN:FD then
-   1 >FD idx GT-POOL-OUT-W-PTR @ SPAWN:FD
-   2 >FD idx GT-POOL-ERR-W-PTR @ SPAWN:FD
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   argv PROCESS:ARGV-ROWS
+   envp PROCESS:ENV-ROWS
+   stdin FD>N 0 >= if 0 >FD stdin PROCESS:FD then
+   1 >FD idx GT-POOL-OUT-W-PTR @ PROCESS:FD
+   2 >FD idx GT-POOL-ERR-W-PTR @ PROCESS:FD
    PROCESS:SPAWN idx GT-POOL-PID-PTR !
    idx path pathu stdin ;
 

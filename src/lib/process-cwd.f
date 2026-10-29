@@ -28,10 +28,10 @@ public
 
 : SPAWN-ARGV-ENV-CWD ( ptr u8 ptr a ptr a ptr u8 fd fd fd -- ptr u8 ptr a ptr a ptr u8 fd fd fd )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr infd outfd errfd :}
-   pathz dup ZLEN SPAWN:NEW
-   argv ROWS SPAWN:ARGV
-   envp ROWS SPAWN:ENV
-   cwdz dup ZLEN SPAWN:CWD
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   argv ROWS PROCESS:ARGV-ROWS
+   envp ROWS PROCESS:ENV-ROWS
+   cwdz dup ZLEN PROCESS:CWD
    infd outfd errfd LAUNCH
    pathz argv envp cwdz infd outfd errfd ;
 

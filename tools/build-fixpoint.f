@@ -242,13 +242,14 @@ variable BF-CERT-PATH-U
 : BF-FINISH-PID ( pid -- n )
    PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code (ok 0 / err nonzero)
 
-\ The request for pathz with the staged argv and env, which are reset once the
-\ request holds its copy; the child inherits stdin, stdout and stderr.
-: BF-REQUEST ( ptr u8 ptr ptr u8 ptr ptr u8 -- SPAWN:request )
+\ The request for pathz with the staged argv and only the staged env, which are
+\ reset once the request holds its copy; the child inherits stdin, stdout and
+\ stderr.
+: BF-REQUEST ( ptr u8 ptr ptr u8 ptr ptr u8 -- PROCESS:request )
    {: pathz:ptr argv:ptr envp:ptr :}
-   pathz dup ZLEN SPAWN:NEW
-   argv SPAWN:ARGV
-   envp SPAWN:ENV
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   argv PROCESS:ARGV-ROWS
+   envp PROCESS:ENV-ROWS
    PROC-ARGV-ENV-RESET ;
 
 \ Spawns pathz with the staged argv and env. A refusal throws E-PROC-SPAWN.
@@ -262,7 +263,7 @@ variable BF-CERT-PATH-U
 \ answers or throws.
 : BF-SPAWN-IN ( ptr u8 ptr ptr u8 ptr ptr u8 n -- pid )
    BF-IN !
-   [: BF-REQUEST 0 >FD BF-IN @ >FD SPAWN:FD PROCESS:SPAWN ;] [: BF-CLOSE-IN ;] finally ;
+   [: BF-REQUEST 0 >FD BF-IN @ >FD PROCESS:FD PROCESS:SPAWN ;] [: BF-CLOSE-IN ;] finally ;
 
 : BF-RUN-ENV-EXE ( ptr u8 n -- n ) {: exe:ptr exeu :}
    BF-PREPARE-ENV
@@ -282,8 +283,8 @@ variable BF-CERT-PATH-U
 : BF-OUTFD-LAUNCH ( ptr u8 ptr ptr u8 ptr ptr u8 n -- ptr u8 ptr ptr u8 ptr ptr u8 n )
    {: pathz:ptr argv:ptr envp:ptr outfd:n :}
    pathz argv envp BF-REQUEST
-   1 >FD outfd >FD SPAWN:FD
-   2 >FD PROC-ERR-W @ >FD SPAWN:FD
+   1 >FD outfd >FD PROCESS:FD
+   2 >FD PROC-ERR-W @ >FD PROCESS:FD
    PROCESS:SPAWN PID>N PROC-PID !
    pathz argv envp outfd ;
 

@@ -121,9 +121,9 @@ public
 
 : SPAWN-ARGV-ENV ( ptr u8 ptr a ptr a fd fd fd -- ptr u8 ptr a ptr a fd fd fd )
    {: pathz:ptr argv:ptr envp:ptr infd outfd errfd :}
-   pathz dup ZLEN SPAWN:NEW
-   argv ROWS SPAWN:ARGV
-   envp ROWS SPAWN:ENV
+   pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   argv ROWS PROCESS:ARGV-ROWS
+   envp ROWS PROCESS:ENV-ROWS
    infd outfd errfd LAUNCH
    pathz argv envp infd outfd errfd ;
 

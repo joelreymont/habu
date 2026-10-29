@@ -87,19 +87,20 @@ variable GE-EVAL-SRC-U
    GE-ARGV-BUF GE-ARGV-U @ ;
 
 : GE-SPAWN-FAIL. ( -- )
-   s" spawn errno: " type SPAWN:ERRNO FMT:.INT cr ;
+   s" spawn errno: " type PROCESS:ERRNO FMT:.INT cr ;
 
-\ Spawns pathz with argv and envp as the capture child, its stdin on in and its
+\ Spawns pathz with argv and envp, over this process's environment, as the
+\ capture child, its stdin on in and its
 \ stdout and stderr on the capture pipes, and records its pid. Stack-preserving
 \ under catch, so GE-LAUNCH-RC answers a refusal's code.
 : GE-LAUNCH ( ptr u8 ptr ptr u8 ptr ptr u8 fd -- ptr u8 ptr ptr u8 ptr ptr u8 fd )
    {: pathz:ptr argv:ptr envp:ptr in:fd :}
-   pathz dup ZLEN SPAWN:NEW
-   argv SPAWN:ARGV
-   envp SPAWN:ENV
-   0 >FD in SPAWN:FD
-   1 >FD PROC-OUT-W @ >FD SPAWN:FD
-   2 >FD PROC-ERR-W @ >FD SPAWN:FD
+   pathz dup ZLEN PROCESS:NEW
+   argv PROCESS:ARGV-ROWS
+   envp PROCESS:ENV-ROWS
+   0 >FD in PROCESS:FD
+   1 >FD PROC-OUT-W @ >FD PROCESS:FD
+   2 >FD PROC-ERR-W @ >FD PROCESS:FD
    PROCESS:SPAWN PID>N PROC-PID !
    pathz argv envp in ;
 
@@ -123,7 +124,6 @@ variable GE-EVAL-SRC-U
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu:n timeout:n :}
-   PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
@@ -133,7 +133,6 @@ variable GE-EVAL-SRC-U
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n in:ptr inu:n timeout:n :}
-   PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    timeout >MS PROC-STDIN-CAPTURE-BEGIN
@@ -150,7 +149,6 @@ variable GE-EVAL-SRC-U
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-STDIN-FILE ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n inpath:ptr inpathu:n timeout:n :}
-   PROC-ENV-INHERIT-MISSING
    inpath inpathu FS-PATHZ open-rd GE-INFD !
    GE-INFD @ 0 < if E-FS-OPEN throw then
    GT-OUT-CAP >LEN GT-ERR-CAP >LEN PROC-CAPTURE-CHECK-CAPS

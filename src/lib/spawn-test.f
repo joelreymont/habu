@@ -1,75 +1,52 @@
 \ spawn-test.f - focused tests for src/lib/spawn.f.
 \ Run: bin/hb --load src/lib/spawn-test.f
 \
-\ Children run /bin/sh -c or /usr/bin/env; each pipe is read to EOF and each
-\ child waited. A script names the child's fds by digit, which a single-digit
-\ shell redirection needs, so tests that place a pipe on a chosen parent fd take
-\ a closed one below 9 and patch its digit into the script.
+\ Children run /bin/sh -c, /bin/echo, /usr/bin/env or /usr/bin/printenv; each
+\ pipe is read to EOF and each child waited. A script names the child's fds by
+\ digit, which a single-digit shell redirection needs, so tests that place a
+\ pipe on a chosen parent fd take a closed one below 9 and patch its digit into
+\ the script. The environment cases use this process's first inherited row with
+\ a name and an `=` whose name does not start with DYLD_ (macOS strips those
+\ from /usr/bin/env and printenv); without one, each records a failure.
 
 require src/lib/errors.f
+require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
-require src/lib/process-env.f
 require src/lib/spawn.f
 
 package SPAWN-TEST
 private
 
-$100 constant CAP
 1 constant F-GETFD                       \ fcntl's F_GETFD on Darwin and Linux alike
 2 constant ENOENT
 9 constant EBADF
 9 constant FD-CEILING                    \ single-digit fds a script can name
+$3D constant EQUAL-BYTE
+$0A constant LF-BYTE
 
 $1000 constant READ-CHUNK                \ the bytes DRAIN asks each read for
 DYNAMIC-BUFFER OUT u8                    \ a child's output, grown to its EOF
 variable OUT-LEN
-$4000 constant ROW-CAP                   \ room for five rows past one 4 KiB chunk
+$1000 constant ROW-CAP
 ROW-CAP BUFFER: ROW-BYTES
-variable ROW-USED
-variable ROW-N
-16 PTR-U8-TABLE ROWS
-CAP BUFFER: SCRIPT-BYTES
+$100 constant SCRIPT-CAP
+SCRIPT-CAP BUFFER: SCRIPT-BYTES
 variable SCRIPT-LEN
 
-: ROWS-RESET ( -- )
-   0 ROW-USED !
-   0 ROW-N !
-   NULL-PTR ROWS 0 ptr-field ! ;
 
-
-: ROW-SLOT ( -- ptr u8 ) ROW-BYTES ROW-USED @ + ;
-
-\ Ends the len bytes at ROW-SLOT with a NUL, appends them to ROWS and keeps
-\ ROWS NULL-terminated.
-: ROW-END ( n -- )
-   {: len :}
-   0 ROW-SLOT len + c!
-   ROW-SLOT ROWS ROW-N @ ptr-field !
-   len 1+ ROW-USED +!
-   1 ROW-N +!
-   NULL-PTR ROWS ROW-N @ ptr-field ! ;
-
-: ROW+ ( ptr u8 n -- )
-   {: src:ptr len :}
-   src ROW-SLOT len BYTE-COPY
-   len ROW-END ;
-
-\ Appends a row of len copies of byte c.
-: FILL+ ( n n -- )
-   {: len c :}
-   len 0 ?do c ROW-SLOT i + c! loop
-   len ROW-END ;
-
-
-\ argv for `sh -c script`.
-: SH-ROWS ( ptr u8 n -- ptr ptr u8 )
+\ Appends `-c script` to the request's arguments.
+: SH ( PROCESS:request ptr u8 n -- PROCESS:request )
    {: script:ptr len :}
-   ROWS-RESET
-   s" sh" ROW+
-   s" -c" ROW+
-   script len ROW+
-   ROWS ;
+   s" -c" PROCESS:ARG
+   script len PROCESS:ARG ;
+
+
+\ len copies of byte c.
+: FILL$ ( n n -- ptr u8 n )
+   {: len c :}
+   len 0 ?do c ROW-BYTES i + c! loop
+   ROW-BYTES len ;
 
 
 : SCRIPT! ( ptr u8 n -- )
@@ -112,6 +89,83 @@ variable SCRIPT-LEN
 : WAIT ( pid -- n ) PROC-WAIT-STATUS PROC-STATUS>RC RC>N ;
 
 
+\ ---- the inherited environment row the environment cases use --------------------
+: NAME-LEN ( ptr u8 n -- n )
+   {: z:ptr u :}
+   0 begin dup u < if dup z + c@ EQUAL-BYTE <> else false then while 1+ repeat ;
+
+\ Row n has a non-empty name and an `=`, and its name does not start with DYLD_.
+: SAFE-ROW? ( n -- bool )
+   ENVP dup ZLEN {: z:ptr u :}
+   z u NAME-LEN {: nu :}
+   nu 0 > nu u < and
+   z nu s" DYLD_" STARTS-WITH? 0= and ;
+
+\ The first safe row's index, or -1 when there is none.
+: PARENT-ROW ( -- n )
+   0 begin
+      dup ENVP 0= if drop -1 exit then
+      dup SAFE-ROW? 0= while 1+ repeat ;
+
+: PARENT-NAME$ ( n -- ptr u8 n )
+   ENVP dup ZLEN {: z:ptr u :}
+   z z u NAME-LEN ;
+
+: PARENT-VALUE$ ( n -- ptr u8 n )
+   ENVP dup ZLEN {: z:ptr u :}
+   z u NAME-LEN {: nu :}
+   z nu + 1+ u nu - 1- ;
+
+
+\ ---- lines of OUT$ ---------------------------------------------------------------
+\ The bytes of OUT$ at pos are the string.
+: AT? ( n ptr u8 n -- bool )
+   {: pos s:ptr u :}
+   pos u + OUT-LEN @ > if false exit then
+   pos OUT u s u STR= ;
+
+\ The line of OUT$ at pos is the string and its LF.
+: LINE-IS? ( n ptr u8 n -- bool )
+   {: pos s:ptr u :}
+   pos s u AT? 0= if false exit then
+   pos u + OUT-LEN @ < if pos u + OUT c@ LF-BYTE = else false then ;
+
+\ The position just past name= when the line at pos starts with it, else -1.
+: PAST-NAME ( n ptr u8 n -- n )
+   {: pos name:ptr u :}
+   pos name u AT? 0= if -1 exit then
+   pos u + {: at :}
+   at OUT-LEN @ < if at OUT c@ EQUAL-BYTE = if at 1+ exit then then
+   -1 ;
+
+\ The line of OUT$ at pos is name=value and its LF.
+: ROW-LINE? ( n ptr u8 n ptr u8 n -- bool )
+   {: pos name:ptr u val:ptr vu :}
+   pos name u PAST-NAME dup 0< if drop false exit then
+   val vu LINE-IS? ;
+
+\ The position just past the line at pos and its LF.
+: NEXT-LINE ( n -- n )
+   begin dup OUT-LEN @ < if dup OUT c@ LF-BYTE <> else false then while 1+ repeat
+   1+ ;
+
+\ The lines of OUT$ that start with name=.
+: NAME-LINES ( ptr u8 n -- n )
+   {: name:ptr u :}
+   0 0 begin dup OUT-LEN @ < while
+      dup name u PAST-NAME 0 >= if swap 1+ swap then
+      NEXT-LINE
+   repeat drop ;
+
+\ The lines of OUT$ that are name=value.
+: ROW-LINES ( ptr u8 n ptr u8 n -- n )
+   {: name:ptr u val:ptr vu :}
+   0 0 begin dup OUT-LEN @ < while
+      dup name u val vu ROW-LINE? if swap 1+ swap then
+      NEXT-LINE
+   repeat drop ;
+
+
 \ 1: each target is the other's source, so a source must survive the first
 \ placement.
 : TEST-CROSSING ( -- )
@@ -127,11 +181,11 @@ variable SCRIPT-LEN
    s" printf A >&@; printf B >&#" SCRIPT!
    a [char] @ PATCH
    b [char] # PATCH
-   s" /bin/sh" SPAWN:NEW
-   SCRIPT$ SH-ROWS SPAWN:ARGV
-   a >FD b >FD SPAWN:FD
-   b >FD a >FD SPAWN:FD
-   SPAWN:SPAWN {: pid :}
+   s" /bin/sh" PROCESS:NEW
+   SCRIPT$ SH
+   a >FD b >FD PROCESS:FD
+   b >FD a >FD PROCESS:FD
+   PROCESS:SPAWN {: pid :}
    a close
    b close
    r1 DRAIN
@@ -149,10 +203,10 @@ variable SCRIPT-LEN
    w FD>N d dup2 drop
    s" exec 2>/dev/null; echo x >&9; echo y >&@ || exit 7" SCRIPT!
    d [char] @ PATCH
-   s" /bin/sh" SPAWN:NEW
-   SCRIPT$ SH-ROWS SPAWN:ARGV
-   9 >FD w SPAWN:FD
-   SPAWN:SPAWN {: pid :}
+   s" /bin/sh" PROCESS:NEW
+   SCRIPT$ SH
+   9 >FD w PROCESS:FD
+   PROCESS:SPAWN {: pid :}
    w FD>N close
    d close
    r DRAIN
@@ -161,104 +215,163 @@ variable SCRIPT-LEN
 
 
 \ 3
-: TEST-CLOSE ( -- )
-   s" CLOSE 1 starts the child with fd 1 closed" T-LABEL
-   s" /bin/sh" SPAWN:NEW
-   s" exec 2>/dev/null; printf z || exit 7" SH-ROWS SPAWN:ARGV
-   1 >FD SPAWN:CLOSE
-   SPAWN:SPAWN WAIT 7 T= ;
+: TEST-CLOSED ( -- )
+   s" CLOSED 1 starts the child with fd 1 closed" T-LABEL
+   s" /bin/sh" PROCESS:NEW
+   s" exec 2>/dev/null; printf z || exit 7" SH
+   1 >FD PROCESS:CLOSED
+   PROCESS:SPAWN WAIT 7 T= ;
 
 
 \ 4
 : TEST-CWD ( -- )
    s" CWD starts the child in the directory" T-LABEL
    PIPE-PAIR {: r:fd w:fd :}
-   s" /bin/sh" SPAWN:NEW
-   s" pwd" SH-ROWS SPAWN:ARGV
-   s" /" SPAWN:CWD
-   1 >FD w SPAWN:FD
-   SPAWN:SPAWN {: pid :}
+   s" /bin/sh" PROCESS:NEW
+   s" pwd" SH
+   s" /" PROCESS:CWD
+   1 >FD w PROCESS:FD
+   PROCESS:SPAWN {: pid :}
    w FD>N close
    r DRAIN
    OUT$ S\" /\n" T$=
    pid WAIT 0 T= ;
 
 
-\ 5: the process-wide env staging rewrites the same bytes after a reset; the
-\ request keeps copies of its own.
-: TEST-ENV-OWNED ( -- )
-   s" ENV copies rows the process-wide staging later rewrites" T-LABEL
+\ 5: the arguments reach the child in the order ARG gave them, after the path.
+: TEST-ARG-ORDER ( -- )
+   s" ARG appends argv[1] onward in order" T-LABEL
    PIPE-PAIR {: r:fd w:fd :}
-   PROC-ENV-RESET
-   s" SPAWNT" >LEN s" one" >LEN PROC-ENV+
-   s" /usr/bin/env" SPAWN:NEW
-   PROC-ENV-PREPARE SPAWN:ENV
-   PROC-ENV-RESET
-   s" SPAWNT" >LEN s" two" >LEN PROC-ENV+
-   1 >FD w SPAWN:FD
-   SPAWN:SPAWN {: pid :}
-   PROC-ENV-RESET
+   s" /bin/echo" PROCESS:NEW
+   s" a" PROCESS:ARG
+   s" b" PROCESS:ARG
+   s" c" PROCESS:ARG
+   1 >FD w PROCESS:FD
+   PROCESS:SPAWN {: pid :}
+   w FD>N close
+   r DRAIN
+   OUT$ S\" a b c\n" T$=
+   pid WAIT 0 T= ;
+
+
+\ 6: the value bytes are rewritten before the spawn; the request keeps a copy.
+: TEST-HERMETIC ( -- )
+   s" HERMETIC gives the child only the request's rows, copied" T-LABEL
+   PIPE-PAIR {: r:fd w:fd :}
+   s" one" SCRIPT!
+   s" /usr/bin/env" PROCESS:NEW
+   PROCESS:HERMETIC
+   s" SPAWNT" SCRIPT$ PROCESS:ENV
+   s" two" SCRIPT!
+   1 >FD w PROCESS:FD
+   PROCESS:SPAWN {: pid :}
    w FD>N close
    r DRAIN
    OUT$ S\" SPAWNT=one\n" T$=
    pid WAIT 0 T= ;
 
 
-\ 6: five 3000-byte rows need five 4 KiB chunks, so the request's chunk table
+\ 7
+: TEST-INHERIT ( -- )
+   s" a request inherits this process's environment" T-LABEL
+   PARENT-ROW {: row :}
+   row 0 >= dup TTRUE 0= if exit then
+   PIPE-PAIR {: r:fd w:fd :}
+   s" /usr/bin/printenv" PROCESS:NEW
+   row PARENT-NAME$ PROCESS:ARG
+   1 >FD w PROCESS:FD
+   PROCESS:SPAWN {: pid :}
+   w FD>N close
+   r DRAIN
+   row PARENT-VALUE$ {: val:ptr vu :}
+   OUT-LEN @ vu 1+ T=
+   0 val vu LINE-IS? TTRUE
+   pid WAIT 0 T= ;
+
+
+\ 8: one row of the name reaches the child, the request's.
+: TEST-OVERRIDE ( -- )
+   s" an ENV row replaces the inherited row of its name" T-LABEL
+   PARENT-ROW {: row :}
+   row 0 >= dup TTRUE 0= if exit then
+   PIPE-PAIR {: r:fd w:fd :}
+   s" /usr/bin/env" PROCESS:NEW
+   row PARENT-NAME$ s" over" PROCESS:ENV
+   1 >FD w PROCESS:FD
+   PROCESS:SPAWN {: pid :}
+   w FD>N close
+   r DRAIN
+   row PARENT-NAME$ NAME-LINES 1 T=
+   row PARENT-NAME$ s" over" ROW-LINES 1 T=
+   pid WAIT 0 T= ;
+
+
+: ARGV-CHUNKS ( PROCESS:request -- PROCESS:request )
+   s\" for a; do printf '%s%.1s ' \"${#a}\" \"$a\"; done" SH
+   s" sh" PROCESS:ARG
+   3000 [char] a FILL$ PROCESS:ARG
+   3000 [char] b FILL$ PROCESS:ARG
+   3000 [char] c FILL$ PROCESS:ARG
+   3000 [char] d FILL$ PROCESS:ARG
+   3000 [char] e FILL$ PROCESS:ARG
+   s" f" PROCESS:ARG ;
+
+
+\ 9: five 3000-byte rows need five 4 KiB chunks, so the request's chunk table
 \ grows and copies its entries more than once.
 : TEST-ARGV-CHUNKS ( -- )
    s" argv rows past one chunk reach the child whole" T-LABEL
-   s\" for a; do printf '%s%.1s ' \"${#a}\" \"$a\"; done" SH-ROWS drop
-   s" sh" ROW+
-   3000 [char] a FILL+
-   3000 [char] b FILL+
-   3000 [char] c FILL+
-   3000 [char] d FILL+
-   3000 [char] e FILL+
-   s" f" ROW+
    PIPE-PAIR {: r:fd w:fd :}
-   s" /bin/sh" SPAWN:NEW
-   ROWS SPAWN:ARGV
-   1 >FD w SPAWN:FD
-   SPAWN:SPAWN {: pid :}
+   s" /bin/sh" PROCESS:NEW
+   ARGV-CHUNKS
+   1 >FD w PROCESS:FD
+   PROCESS:SPAWN {: pid :}
    w FD>N close
    r DRAIN
    OUT$ s" 3000a 3000b 3000c 3000d 3000e 1f " T$=
    pid WAIT 0 T= ;
 
 
-\ 7
+\ 10
 : TEST-MISSING ( -- )
    s" a missing program throws ENOENT in ERRNO and the next spawn clears it" T-LABEL
-   [: s" /nonexistent" SPAWN:NEW SPAWN:SPAWN drop ;] E-PROC-SPAWN TTHROWSQ
-   SPAWN:ERRNO ENOENT T=
-   s" /bin/sh" SPAWN:NEW
-   s" exit 0" SH-ROWS SPAWN:ARGV
-   SPAWN:SPAWN {: pid :}
-   SPAWN:ERRNO 0 T=
+   [: s" /nonexistent" PROCESS:NEW PROCESS:SPAWN drop ;] E-PROC-SPAWN TTHROWSQ
+   PROCESS:ERRNO ENOENT T=
+   s" /bin/sh" PROCESS:NEW
+   s" exit 0" SH
+   PROCESS:SPAWN {: pid :}
+   PROCESS:ERRNO 0 T=
    pid WAIT 0 T= ;
 
 
 variable DEAD-FD
 
-\ 8: an explicit slot keeps its closed parent fd, unlike a default one (case 9).
+\ 11: an explicit slot keeps its closed parent fd, unlike a default one (case 12).
+\ The second closed fd is the one pipe2 gives the Linux error pipe's write end,
+\ so a source equal to it must still be EBADF, not the pipe placed on the slot.
 : TEST-REFUSALS ( -- )
-   s" a negative child fd, an empty directory and a closed parent fd are refused" T-LABEL
-   [: s" /bin/sh" SPAWN:NEW -1 >FD 1 >FD SPAWN:FD SPAWN:SPAWN drop ;] E-PROC-OUTPUT TTHROWSQ
-   [: s" /bin/sh" SPAWN:NEW s" " SPAWN:CWD SPAWN:SPAWN drop ;] E-PROC-PATH TTHROWSQ
+   s" a negative child fd, an empty directory, a bad name and a closed parent fd are refused" T-LABEL
+   [: s" /bin/sh" PROCESS:NEW -1 >FD 1 >FD PROCESS:FD PROCESS:SPAWN drop ;] E-PROC-OUTPUT TTHROWSQ
+   [: s" /bin/sh" PROCESS:NEW s" " PROCESS:CWD PROCESS:SPAWN drop ;] E-PROC-PATH TTHROWSQ
+   [: s" /bin/sh" PROCESS:NEW s" " s" v" PROCESS:ENV PROCESS:SPAWN drop ;] E-PROC-ENV TTHROWSQ
+   [: s" /bin/sh" PROCESS:NEW s" A=B" s" v" PROCESS:ENV PROCESS:SPAWN drop ;] E-PROC-ENV TTHROWSQ
    3 CLOSED-FD DEAD-FD !
-   [: s" /bin/sh" SPAWN:NEW 0 >FD DEAD-FD @ >FD SPAWN:FD SPAWN:SPAWN drop ;]
+   [: s" /bin/sh" PROCESS:NEW 0 >FD DEAD-FD @ >FD PROCESS:FD PROCESS:SPAWN drop ;]
    E-PROC-SPAWN TTHROWSQ
-   SPAWN:ERRNO EBADF T= ;
+   PROCESS:ERRNO EBADF T=
+   DEAD-FD @ 1+ CLOSED-FD DEAD-FD !
+   [: s" /bin/sh" PROCESS:NEW 0 >FD DEAD-FD @ >FD PROCESS:FD PROCESS:SPAWN drop ;]
+   E-PROC-SPAWN TTHROWSQ
+   PROCESS:ERRNO EBADF T= ;
 
 
 : CLOSED-STDOUT-CHILD ( -- n )
-   s" /bin/sh" SPAWN:NEW
-   s" exec 2>/dev/null; printf z || exit 7" SH-ROWS SPAWN:ARGV
-   SPAWN:SPAWN WAIT ;
+   s" /bin/sh" PROCESS:NEW
+   s" exec 2>/dev/null; printf z || exit 7" SH
+   PROCESS:SPAWN WAIT ;
 
 
-\ 9: this process's fd 1 is closed for the spawn and restored after it.
+\ 12: this process's fd 1 is closed for the spawn and restored after it.
 : TEST-CLOSED-STDIO ( -- )
    s" a default stdio slot whose parent fd is closed starts closed" T-LABEL
    1 F-DUPFD-CLOEXEC 10 fcntl {: saved :}
@@ -275,9 +388,12 @@ public
 : SPAWN-TEST-MAIN ( -- )
    TEST-CROSSING
    TEST-GAP
-   TEST-CLOSE
+   TEST-CLOSED
    TEST-CWD
-   TEST-ENV-OWNED
+   TEST-ARG-ORDER
+   TEST-HERMETIC
+   TEST-INHERIT
+   TEST-OVERRIDE
    TEST-ARGV-CHUNKS
    TEST-MISSING
    TEST-REFUSALS
