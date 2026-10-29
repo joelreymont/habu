@@ -1,41 +1,44 @@
 \ t0-install.f - T0 as the runtime compiler on arm64: T0:INSTALL stores
-\ T0:COMPILE in the cell the tier 1 `:` dispatches through, so every
-\ definition this file loads after `1 set-tier`, the test words included, is
-\ compiled by T0 through the normal Habu loop. The fixtures cover `:` and
-\ TRUSTED: bodies, quotations, strings, locals, loops, case and recursion, and
-\ each is run for its result. The does> definers cover a clause, an empty
-\ clause whose child keeps its address kind, quotations nested in the parent
-\ and one in the clause, clause locals and a definer chained on another, each
-\ through a child it made. The MATCH rows dispatch over an enum and a sum type
-\ whose `construct`ed values carry pads, with a cell under each value proving
-\ its width; a MATCH nested in an arm, one in a case arm, one in a does>
-\ clause, and one over option<pt>, whose `none` comes from a call that pushes
-\ the pad the instantiation adds; a `construct` at wrap<pt> pushes that pad
-\ itself; a MATCH over a 65-cell payload; one in a quotation after character
-\ literals and a string, whose facts sit at the ordinals those tokens advance;
-\ and a hostile tag, in a child, reaches T0's trap and exits
-\ ENGINE-ERROR:BAD-TAG. The wide rows run each stack word T0 compiles over a
-\ two-cell product with a cell under the result, a swap in a does> parent and
-\ in its clause, a 2swap and a 2over in a does> parent whose deepest operand
-\ is two cells, a three-cell product among one-cell values, and a swap of two
-\ eight-cell values, whose copies fill the virtual stack; `@` and `!` of a
-\ two-, a three- and a sixteen-cell value through typed slots, with the cells
-\ beside each store unchanged and the fetch reading cells written through a
-\ raw view, the sixteen cells spilling the virtual stack, and a store and
-\ fetch in one body. The checker refuses every other operation over a wide
-\ value, so no row reaches E-T0-BUNDLE. A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
-\ a row through it, and its C entry lies between its
-\ accessor's code and the next definition's: the stub T0 appended to the
-\ accessor's emission. The refusal rows evaluate definitions T0 refuses with
-\ its own codes, which tier 1 accepts or refuses otherwise: a non-neutral
-\ immediate in a TRUSTED: body (E-T0-IMMEDIATE), a counted string past 255
-\ bytes in a does> clause (E-T0-LITERAL; the checker refuses a non-neutral
-\ immediate in a clause even under TRUSTED:), after which the checker's
-\ rollback depth is back where it was and the definer's name defined cleanly
-\ compiles and its child runs, so the refusal rolled back the checker frame,
-\ and a definition while a target shadow is open (E-T0-SHADOW); a tick of an
-\ undefined word is the engine's undefined refusal, as under tier 1; a
-\ definition after them proves a refusal leaves the compiler idle.
+\ T0:COMPILE in the cell the tier 1 `:` dispatches through, so every definition
+\ this file loads after `1 set-tier`, the test words included, is compiled by
+\ T0 through the normal Habu loop. The fixtures cover `:` and TRUSTED: bodies,
+\ quotations, strings, locals, loops, case and recursion, and each is run for
+\ its result. The does> definers cover a clause, an empty clause whose child
+\ keeps its address kind, quotations nested in the parent and one in the
+\ clause, clause locals and a definer chained on another, each through a child
+\ it made. The MATCH rows dispatch over an enum and a sum type whose
+\ `construct`ed values carry pads, with a cell under each value proving its
+\ width; a MATCH nested in an arm, one in a case arm, one in a does> clause,
+\ and one over option<pt>, whose `none` comes from a call that pushes the pad
+\ the instantiation adds; a `construct` at wrap<pt> pushes that pad itself; a
+\ MATCH over a 65-cell payload; one in a quotation after character literals and
+\ a string, whose facts sit at the ordinals those tokens advance; and a hostile
+\ tag, in a child, reaches T0's trap and exits ENGINE-ERROR:BAD-TAG. The wide
+\ rows run each stack word T0 compiles over a two-cell product with a cell
+\ under the result, a swap in a does> parent and in its clause, a 2swap and a
+\ 2over in a does> parent whose deepest operand is two cells, a three-cell
+\ product among one-cell values, and a swap of two eight-cell values, whose
+\ copies fill the virtual stack; `@` and `!` of a two-, a three- and a
+\ sixteen-cell value through typed slots, with the cells beside each store
+\ unchanged and the fetch reading cells written through a raw view, the sixteen
+\ cells spilling the virtual stack, and a store and fetch in one body. The
+\ checker refuses every other operation over a wide value, so no row reaches
+\ E-T0-BUNDLE. A fetch from a sum-type and an enum slot checks the stored tag
+\ and loads the value with the cell under it kept; a forged tag fetched in a
+\ child, from an enum slot and from a product's enum field, ends the process
+\ `hb: bad layout tag` with ENGINE-ERROR:BAD-TAG. A CALLBACK: declaration
+\ compiled by T0 is handed to libc's qsort, which sorts a row through it, and
+\ its C entry lies between its accessor's code and the next definition's: the
+\ stub T0 appended to the accessor's emission. The refusal rows evaluate
+\ definitions T0 refuses with its own codes, which tier 1 accepts or refuses
+\ otherwise: a non-neutral immediate in a TRUSTED: body (E-T0-IMMEDIATE), a
+\ counted string past 255 bytes in a does> clause (E-T0-LITERAL; the checker
+\ refuses a non-neutral immediate in a clause even under TRUSTED:), after which
+\ the checker's rollback depth is back where it was and the definer's name
+\ defined cleanly compiles and its child runs, so the refusal rolled back the
+\ checker frame, and a definition while a target shadow is open (E-T0-SHADOW);
+\ a tick of an undefined word is the engine's undefined refusal, as under tier
+\ 1; a definition after them proves a refusal leaves the compiler idle.
 \
 \ PROCESS BOUNDARY. T0:INSTALL replaces the dispatch for the rest of the
 \ process and nothing restores it, so this file is its suite row's only file:
@@ -346,6 +349,15 @@ CAST: TWIN>CELLS ( ptr twin -- ptr n )
       b i + k 16 * i + 8 + TWIN-CELL !
    loop ;
 
+\ Typed slots of a sum type and an enum: every `@` of one checks the stored
+\ tag (NFETCH-CHECK:TAGS) before it loads, on a copy of the address.
+4 TYPED-BUFFER BOX-AT box
+4 TYPED-BUFFER HUE-AT hue
+: BOX@ ( n -- box ) BOX-AT @ ;
+: BOX! ( box n -- ) BOX-AT ! ;
+: HUE@ ( n -- hue ) HUE-AT @ ;
+: HUE! ( hue n -- ) HUE-AT ! ;
+
 \ The probe's three: a one-cell value over and under a two-cell one.
 : W-DROP ( n pt -- n ) drop ;
 : W-NIP ( pt n -- n ) nip ;
@@ -429,9 +441,9 @@ TYPED-VARIABLE DESCRIPTOR [ -- FFI-CB:callback ]
 ' T0-CMP DESCRIPTOR !
 
 \ ---- a hostile tag in a child ------------------------------------------------
-\ PROCESS BOUNDARY. The bad-tag trap exits the process, so the row runs
-\ test/compiler/native-match-forge.f in a child under test/t0-child.f: T0
-\ installed there compiles the MATCH the hostile tag reaches.
+\ PROCESS BOUNDARY. A bad tag exits the process, so these rows run their
+\ fixture in a child under test/t0-child.f: T0 installed there compiles the
+\ MATCH or the fetch the bad tag reaches.
 $4000 constant CAP-CAP
 30000 constant CHILD-MS
 
@@ -439,6 +451,7 @@ create ERR-BUF CAP-CAP allot
 create OUT-BUF CAP-CAP allot
 create PRODUCT-PATH FS-PATH-CAP allot
 
+variable CHILD-OUT-N
 variable CHILD-ERR-N
 variable CHILD-RC
 
@@ -466,7 +479,7 @@ variable CHILD-RC
    RUN-ARGV-ENV-CAPTURE-OUTCOME
    PROC-OUTCOME>RC RC>N CHILD-RC !
    LEN>N CHILD-ERR-N !
-   drop ;
+   LEN>N CHILD-OUT-N ! ;
 
 public
 
@@ -623,7 +636,24 @@ private
    77 10 20 TWIN 1 TWIN! 77 T=
    1 10 20 TWIN-HITS 16 T=  15 TWIN-CELL @ 11 T=  32 TWIN-CELL @ 44 T=
    2 30 40 TWIN-SEED
-   77 2 TWIN@ TWIN-V 40 T= 30 T= 77 T= ;
+   77 2 TWIN@ TWIN-V 40 T= 30 T= 77 T=
+   s" a checked fetch of a valid tag loads the value, the cell under it kept" T-LABEL
+   10 3 DUO 1 BOX!  AZUL 2 HUE!
+   77 1 BOX@ BOX-SUM 7 T= 77 T=
+   77 2 HUE@ HUE-CODE 30 T= 77 T= ;
+
+\ A forged tag in an enum slot and in a product's enum field: the fetch's tag
+\ check ends the child after the fixture armed it.
+: FETCH-FORGED ( -- )
+   OUT-BUF CHILD-OUT-N @ s" LAYOUT-VALID-ARMED" CONTAINS? TTRUE
+   ERR-BUF CHILD-ERR-N @ s" hb: bad layout tag" CONTAINS? TTRUE
+   CHILD-RC @ ENGINE-ERROR:BAD-TAG T= ;
+
+: FETCH-FORGE-CASE ( -- )
+   s" a fetch of a forged one-cell tag ends the process at the fetch" T-LABEL
+   s" test/layout-valid-w1-bad.f" CHILD-RUN FETCH-FORGED
+   s" a fetch of a forged tag in a product ends the process at the fetch" T-LABEL
+   s" test/layout-valid-product-bad.f" CHILD-RUN FETCH-FORGED ;
 
 public
 
@@ -634,6 +664,7 @@ public
    MATCH-CASE
    FORGE-CASE
    WIDE-CASE
+   FETCH-FORGE-CASE
    CALLBACK-CASE
    REFUSAL-CASE
    T-REPORT ;

@@ -123,9 +123,12 @@
 \ checker certified at the token, as tier 1's WIDE-LOAD and WIDE-STORE
 \ (src/compiler/native/elaborate.f): `@` loads from the address plus i cells for
 \ each cell, and `!` calls the primitive, the engine's guarded store, once per
-\ cell with the address kept under the copies. Any other operation T0 inlines
-\ over a width other than one cell, and `@` or `!` under one cell, is
-\ E-T0-BUNDLE, as tier 1's DO-OP refuses it E-NELAB-BUNDLE.
+\ cell with the address kept under the copies. Before it loads, an `@` the
+\ checker filed a layout fact for (NFETCH:AT) calls NFETCH-CHECK:TAGS with a
+\ copy of the address and the fact's descriptor, as tier 1's VALIDATE-FETCH;
+\ a fact whose width is not the token's is E-T0-BUNDLE. Any other operation
+\ T0 inlines over a width other than one cell, and `@` or `!` under one cell,
+\ is E-T0-BUNDLE, as tier 1's DO-OP refuses it E-NELAB-BUNDLE.
 \
 \ THE LOCALS. Each `{: ... :}` group binds its names once, left to right from
 \ the deepest cell, into slots of the body's machine-stack frame (T0-EMIT:SLOTS,
@@ -950,10 +953,34 @@ variable TAILED
    k 0= if exit then
    k cells PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 ;
 
+\ Push data address v, whose row files origin o.
+: PUSH-ADDR ( n n -- ) {: v:n o:n :}
+   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   v o r T0-EMIT:ADDR-DATA
+   r PUSH-REG ;
+
+\ A fetch the checker filed a layout fact for calls NFETCH-CHECK:TAGS with a
+\ copy of the address and the fact's descriptor before any cell is loaded, as
+\ tier 1's VALIDATE-FETCH (src/compiler/native/elaborate.f), whose comment says
+\ why the descriptor's address literal is the compiler's own trusted producer of
+\ a frozen value. NFETCH:CAPTURE keys each fact by its offset in the whole text,
+\ the clause's base added, so the key is the token's offset with no cut taken.
+: VALIDATE ( ptr u8 n -- ) {: a:ptr w:n :}
+   a TXT$ - {: at:n :}
+   at NFETCH:AT {: address:n bytes:n width:n origin:n :}
+   bytes 0= if exit then
+   width w <> if E-T0-BUNDLE throw then
+   s" NFETCH-CHECK:TAGS" NDICT:CALL-TARGET {: entry:n :}
+   entry 0= if E-HIR-UNMODELED throw then
+   0 DEEP
+   address origin PUSH-ADDR
+   SPILL-ALL  entry at T0-EMIT:CALL ;
+
 : DO-FETCH ( ptr u8 -- ) {: a:ptr :}
    a CELLS0 {: w:n :}
-   w 1 = if T0-EMIT:CELL-W FETCH exit then
    w 1 < if E-T0-BUNDLE throw then
+   a w VALIDATE
+   w 1 = if T0-EMIT:CELL-W FETCH exit then
    w 0 ?do i DEEP i ADDR+ T0-EMIT:CELL-W FETCH loop
    w 1 NIP-CELLS ;
 
@@ -1021,12 +1048,6 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
    esc if s q at STR-BUF ESCAPE:COPY else s at STR-BUF u BYTE-COPY then
    counted if u 0 STR-BUF c! then
    0 STR-BUF at u + NSTR:INTERN-SOURCE u ;
-
-\ Push data address v, whose row files origin o.
-: PUSH-ADDR ( n n -- ) {: v:n o:n :}
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
-   v o r T0-EMIT:ADDR-DATA
-   r PUSH-REG ;
 
 \ `."` calls the engine's `type` whatever the source's package scope, as tier
 \ 1 does (src/compiler/native/elaborate.f TYPE-ENTRY).
