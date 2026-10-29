@@ -31,7 +31,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/spawn.f
-require src/lib/fd-io.f
+require src/lib/fd.f
 require src/lib/adt/option.f
 
 package TEST-FIFO
@@ -84,7 +84,7 @@ public
 : WRITER ( ptr u8 n -- fd ) {: name:ptr nameu:n :}
    name nameu GETENV {: a:ptr u:n :}
    u 0= if E-FS-OPEN throw then
-   a u FD-IO:TRY-FIFO-WRITER MATCH option
+   a u FD:TRY-FIFO-WRITER MATCH option
       none OF E-FS-OPEN throw ENDOF
       some OF ENDOF
    ;MATCH ;
