@@ -172,10 +172,6 @@ private
 
 : BUILD-RUN ( -- )
    PROC-ARGV-ENV-RESET
-   \ The capture reads HABU_WHITEBOX_IMAGE (src/habu/aot-capture.f
-   \ ACAP-WHITEBOX?) and no key folds it: it is cleared before the inherit, so
-   \ no parent environment decides the bytes of a keyed image.
-   s" HABU_WHITEBOX_IMAGE" >LEN s" " >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --" >LEN PROC-ARGV+
    TMP$ ARGS-XT @ execute

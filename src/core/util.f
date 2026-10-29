@@ -57,6 +57,14 @@ variable REG-PROT-N   0 REG-PROT-N !
    REG-PROT-N @ 0 ?do 0 i cells REG-PROT-IDX + ! loop
    0 REG-PROT-N ! ;
 
+\ Set by the build that loads this prefix as its target when the product keeps
+\ its internal words reachable; every other load leaves it 0.
+variable ENGINE-UNSEAL
+REG-PROTECT
+\ The seal pass reads the request through this: a checked body on a cold boot
+\ cannot name the cell, which has no row.
+: ENGINE-UNSEAL? ( -- bool ) ENGINE-UNSEAL @ 0= 0= ;
+
 : CORE-STR= {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
    u v <> IF 0 0= 0= EXIT THEN
    u 0 ?do  a i + c@  b i + c@  <> if 0 0= 0= unloop exit then  loop 0 0= ;

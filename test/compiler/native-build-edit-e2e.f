@@ -74,7 +74,6 @@ variable PREFIX-WANT
 variable DIV-WANT
 variable MEM-WANT
 variable LIVE-OVERRIDE
-variable ENGINE-WHITEBOX
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : HOST$ ( -- ptr u8 n ) HOST HOST-U @ ;
@@ -369,7 +368,6 @@ variable ENGINE-WHITEBOX
    s" HABU_OUT" >LEN CACHE$ >LEN PROC-ENV+
    s" HABU_UNDER_TEST" >LEN HOST$ >LEN PROC-ENV+
    s" HABU_FIXPOINT_ENGINE" >LEN HOST$ >LEN PROC-ENV+
-   s" HABU_WHITEBOX_IMAGE" >LEN s" " drop 0 >LEN PROC-ENV+
    s" HB_BUILD_TIMEOUT_MS" >LEN s" 1800000" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
@@ -404,9 +402,6 @@ variable ENGINE-WHITEBOX
 : ENGINE-BUILD ( ptr u8 n ptr u8 n ptr u8 n bool -- n )
    {: label:ptr labelu:n output:ptr outputu:n cache:ptr cacheu:n json:bool :}
    output outputu cache cacheu BUILD-SETUP
-   ENGINE-WHITEBOX @ if
-      s" HABU_WHITEBOX_IMAGE" >LEN s" 1" >LEN PROC-ENV-SET
-   then
    s" --load" ARG s" tools/hb-build.f" AT ARG
    s" --" ARG s" --engine" ARG
    json if s" --report-json" ARG then
@@ -946,12 +941,6 @@ variable ENGINE-WHITEBOX
       ENGINE-BUILD ENGINE-SUCCESS
    OUT$ s" support-B" CONTAINS? TFALSE
    SAVE-BASE-PRODUCT
-   \ --engine forces a product child even when its caller asks for whitebox.
-   true ENGINE-WHITEBOX !
-   s" engine-whitebox-caller" s" cached/hb" s" cache" false
-      ENGINE-BUILD ENGINE-SUCCESS
-   false ENGINE-WHITEBOX !
-   SAME-BASE-PRODUCT
    ENGINE-RUNTIME-EDIT
    s" engine-edited" s" cached/hb" s" cache" true
       ENGINE-BUILD ENGINE-JSON-SUCCESS

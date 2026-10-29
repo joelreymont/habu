@@ -108,7 +108,6 @@ variable RC
 
 : ENV! ( -- )
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
-   s" HABU_WHITEBOX_IMAGE" >LEN NULL$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ engine builds the tree it runs in into path.

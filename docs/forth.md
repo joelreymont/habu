@@ -2253,8 +2253,7 @@ sections above.
   top-level use is `E-UNDEFINED` or `hb: internal engine word: NAME` before
   the checker runs. A `TRUSTED:` or data word before the hook gains no such
   declaration. A constant without one may be read at top level into a
-  file-owned constant. An unsealed prefix can bind a signed colon word by its
-  declaration.
+  file-owned constant.
 - **A signature compiled with the hook empty is a row without authority.**
   This applies to cold prefix and `0 set-check` definitions at either tier.
   An unsealed checker can use the declared effect to check callers, rejecting

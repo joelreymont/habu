@@ -2,7 +2,7 @@
 \ "Structures And Enums"). A WHITEBOX-SUITE row, like the type-decl suite: the
 \ record queries are checker internals, which the unsealed engine binds by their
 \ recorded rows. The gate runs it on that engine, which test/whitebox-engine.f
-\ builds, and tools/bootstrap.sh runs it on the recovery chain's hb-stdin:
+\ builds:
 \     <unsealed engine> --load test/type-ctor-suite.f
 \ A PUBLIC arity-0 SUMTYPE generates one checked constructor word per variant in
 \ its derived constructor package (RESULT:OK shape): payload cells stay, M-p
@@ -37,10 +37,9 @@ variable TCF   variable TCOK
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the suite names the
 \ checker-internal colon words it probes, at top level and in checked bodies;
 \ on the unsealed engine a checked body binds each one's recorded row. The
-\ TWX- words are checked aliases. tools/bootstrap.sh also runs this file,
-\ unsealed, on the recovery engine hb-stdin, where the same bodies bind.
-\ A constant src/core/checker.f creates without a PRIM: row has none on that
-\ engine's cold prefix (docs/forth.md "A sealed from-source prefix needs
+\ TWX- words are checked aliases.
+\ A constant src/core/checker.f creates without a PRIM: row has none on a
+\ cold prefix (docs/forth.md "A sealed from-source prefix needs
 \ external rows for pre-hook words"): a top-level read of one is an unknown
 \ cell, which `T=` refuses. Each one the suite compares is read once into a
 \ file-owned constant.

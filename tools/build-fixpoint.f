@@ -1293,33 +1293,6 @@ variable BF-DRV-R
    BF-STAGE-FIXPOINT
    BF-BUILD-STDIN-FROM-STAGE ;
 
-\ ---- the product's own refusal ------------------------------------------------
-\ src/core/internal-mark.f's seal stands down when HABU_WHITEBOX_IMAGE=1 is set
-\ for a target load, which is how test/whitebox-engine.f builds the unsealed
-\ host the gate's whitebox suites run on. Nothing about this file wants one: the
-\ engine it builds is the product, and every verb below either installs it or
-\ leaves it where a later install will find it.
-\
-\ WHY THE REFUSAL IS ON THE REQUEST HERE AND ON THE IMAGE THERE. The image
-\ tools/native-build.f writes is seeded, so it carries the class its build wrote
-\ and that build reads it back out of the finished binary before promoting it
-\ (native-build-core.f SMOKE). The engine THIS file builds boots its prefix from
-\ source, so it runs the seal pass again at every start and its class is a
-\ property of whoever runs it, not of this build - reading it back would answer
-\ about the probe. So the request is what is refused, before a byte is emitted,
-\ in the same word at the four build verbs.
-: BF-WHITEBOX-REQUESTED? ( -- bool )
-   s" HABU_WHITEBOX_IMAGE" GETENV s" 1" STR= ;
-
-: BF-ASSERT-PRODUCT ( -- )
-   BF-WHITEBOX-REQUESTED? if
-      s" build-fixpoint: HABU_WHITEBOX_IMAGE is set; this builds the product engine, and an unsealed one must come from tools/native-build.f with `whitebox`" BF-BUILD-RC die
-   then ;
-
-: BF-BUILD-ALL ( -- )
-   BF-ASSERT-PRODUCT
-   BF-BUILD-STDIN-FRESH ;
-
 \ Rebuild the complete native runtime before taking its snapshot. APP-IMAGE owns
 \ preparation and provenance; the source-only recovery host is not an image.
 : BF-BUILD-NATIVE ( -- )
@@ -1348,7 +1321,6 @@ variable BF-DRV-R
    s" hb-new" BF-CODESIGN-VERIFY-TMP ;
 
 : BF-BUILD-SNAP-FRESH ( -- )
-   BF-ASSERT-PRODUCT
    BF-BUILD-NATIVE
    BF-SAVE-SNAPSHOT
    s" snapshot image OK: candidate validated" type cr ;
@@ -1453,7 +1425,6 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    s" bin" [: BF-REMOVE-BIN-OTHER ;] FS:WALK-FILES ;
 
 : BF-INSTALL ( -- )
-   BF-ASSERT-PRODUCT
    BF-BUILD-STDIN-FRESH
    BF-INSTALL-HB
    BF-INSTALL-HOST
@@ -1654,7 +1625,7 @@ variable CHAIN-I
 : BF-BUILD-ALL-CACHED ( -- )
    BF-STAMP-MATCH? if BF-STAMP-CACHED exit then
    BF-RECORD-RESET
-   BF-BUILD-ALL
+   BF-BUILD-STDIN-FRESH
    BF-ALL-STAMP ;
 
 : BF-INSTALL-CACHED ( -- )
@@ -1682,7 +1653,6 @@ variable CHAIN-I
    SCRIPT-ARGC ;
 
 : BF-MAIN ( -- )
-   BF-ASSERT-PRODUCT
    BF-PARSE-FORCE {: argn:n :}
    BF-PIN-RESET BF-PIN-ON!
    argn 0= if BF-RECOVERY-ONLY BF-BUILD-ALL-CACHED exit then

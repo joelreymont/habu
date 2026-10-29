@@ -172,38 +172,19 @@ variable IMK-QI
    REG-PROT-COUNT 0 ?do i REG-PROT-RECORD -1 IMK-MARK loop ;
 
 \ ---- the whitebox image ----------------------------------------------------
-\ THE ONE BUILD THAT ASKS FOR NO SEAL. A whitebox suite reaches inside the
-\ engine it tests - it reopens an engine package, names a pre-hook global, ticks
-\ an internal word - and this pass is what closes every one of those doors in the
-\ shipped image. Wrapping each probe in a TRUSTED: body does not reopen them
-\ either: the seal gates INTERPRET and TICK, so the refusal lands on the bare
-\ token whatever the body around it is.
-\
-\ So the honest whitebox host is an engine built without this pass, and the
-\ builder asks for one here:
-\ test/whitebox-engine.f sets HABU_WHITEBOX_IMAGE=1 in the environment of the
-\ ONE tools/native-build.f run whose image the gate hands to whitebox suites,
-\ under its own content key and never over bin/hb. The variable is read at
-\ target-load time and nowhere else, so no shipped engine can be unsealed after
-\ the fact: an installed image carries the marks its build wrote, and
-\ test/internal-word-gate.f keeps pinning that the product's are there.
-: IMK-WHITEBOX? ( -- bool )
-   s" HABU_WHITEBOX_IMAGE" GETENV s" 1" CORE-STR= ;
+\ The one build that asks for no seal is the gate's whitebox engine
+\ (hb-build --whitebox), whose suites reopen engine packages and tick internal
+\ words; the seal gates INTERPRET and TICK, so no TRUSTED: body reopens them.
+\ That build writes its request into the target's ENGINE-UNSEAL (src/core/util.f)
+\ before this file loads, and IMK-PASS reads it through ENGINE-UNSEAL?; every
+\ other load leaves the cell 0 and is sealed.
 
-\ AND THE IMAGE SAYS WHICH IT IS. An environment variable is a request, not a
-\ property: once the pass has answered it, what the image IS has to be readable
-\ from the image, or a build that was never asked for a whitebox host cannot
-\ tell that it made one. So the pass writes its own verdict into this cell, the
-\ capture bakes the cell with the rest of DATA, and every later reader - the
-\ build's own smoke run before it promotes the binary
-\ (tools/native-build-core.f), test/whitebox-engine-suite.f on both engines -
-\ asks the engine instead of the environment. The package seal the native build
-\ applies at capture (SEAL-PACKAGES below) reads this same verdict.
-\
-\ A COLD ENGINE ANSWERS FOR ITS BOOT, not for its build, and that is the honest
-\ answer for one: it reads this file from source every time it starts, so the
-\ pass runs again and the cell is set again. Only a seeded image - the product,
-\ and the whitebox host beside it - carries a verdict its build wrote.
+\ The image says which it is: the pass writes its verdict into IMK-CLASS, the
+\ capture bakes it with DATA, and the build's smoke run, the whitebox engine
+\ suite and SEAL-PACKAGES below read the image, never the request.
+\ A cold engine answers for its boot, not its build: it reads this file from
+\ source at every start, so the pass runs again with a fresh cell. Only a
+\ seeded image carries a verdict its build wrote.
 0 constant IMAGE-SEALED         \ the pass ran: internal names are DNAME-INT
 1 constant IMAGE-WHITEBOX       \ the pass stood down: they are ordinary words
 variable IMK-CLASS
@@ -240,7 +221,7 @@ variable IMK-CLASS
 \ image has no seal to read them.
 : IMK-PASS ( -- )
    IMK-BUNDLE? IF IMK-PLAN-SEAL ELSE
-      IMK-WHITEBOX? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
+      ENGINE-UNSEAL? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
    THEN
    REG-PROT-RETIRE ;
 

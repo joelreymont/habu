@@ -1077,8 +1077,6 @@ defer HBB-REPORT-HOOK ( -- )
    rc 0<> if rc throw then
    HBB-ENGINE-SUPPORT-SELECT!
    HBB-CMD-RESET
-   s" HABU_WHITEBOX_IMAGE" >LEN
-   HBB-WHITEBOX @ if s" 1" else s" " drop 0 then >LEN PROC-ENV-SET
    s" --" >LEN PROC-ARGV+
    HBB-GOT-NAME$ BF-A$ >LEN PROC-ARGV+
    HBB-WHITEBOX @ if s" whitebox" >LEN PROC-ARGV+ then

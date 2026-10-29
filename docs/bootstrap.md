@@ -101,7 +101,7 @@ refuses with `E-UNDEFINED`. Stage a fresh checker-bearing whitebox host once
 through the same compiler preload, then build the product on that host:
 
 ```sh
-HABU_WHITEBOX_IMAGE=1 TMPDIR="$TMP" \
+TMPDIR="$TMP" \
   HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" \
   "$HOST" --load "$TMP/native-preload.f" tools/native-build.f \
   -- "$TMP/hb-whitebox" whitebox
@@ -109,8 +109,7 @@ TMPDIR="$TMP" \
   "$TMP/hb-whitebox" --load tools/hb-build.f -- --engine -o "$OUT"
 ```
 
-Keep `HABU_WHITEBOX_IMAGE` unset for the second command, which builds the
-ordinary sealed product and its matching `.map`.
+The second command builds the ordinary sealed product and its matching `.map`.
 
 These builds, like every build and gate run from the checkout, write their
 objects under its out root ([gate.md](gate.md#scratch-and-cache)).

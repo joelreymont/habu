@@ -186,6 +186,7 @@ CAST: SOURCE-INPUT-USE-XT
 CAST: SOURCE-INPUT-OBSERVER-XT
    ( n -- [ [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] -- ] )
 CAST: SOURCE-READ-XT ( n -- [ ptr u8 n ptr u8 n -- ptr u8 n ] )
+CAST: CELL-XT ( n -- [ -- ptr n ] )
 
 \ Before the fresh include.f creates another SOURCE-INPUT, observe the real
 \ buffers through the retained loader. The FILE reader then carries the same
@@ -228,6 +229,12 @@ CAST: SOURCE-READ-XT ( n -- [ ptr u8 n ptr u8 n -- ptr u8 n ] )
 : TARGET-ENGINE-ROOT ( -- )
    SOURCE-ROOT:ENGINE$
    s" SOURCE-ROOT:ENGINE!" OPEN-TARGET-XT SOURCE-ENGINE-XT execute ;
+
+\ A whitebox build asks the target's seal pass (src/core/internal-mark.f) to
+\ stand down through the target's own ENGINE-UNSEAL cell.
+: TARGET-ENGINE-UNSEAL ( -- )
+   WHITEBOX? 0= if exit then
+   s" ENGINE-UNSEAL" OPEN-TARGET-XT CELL-XT execute -1 swap ! ;
 
 \ Find a private word of a package in the FRESHLY LOADED target's pool, which
 \ did not exist when this file was compiled: the package's namespace record,
@@ -610,6 +617,7 @@ variable PRE-ROWS-N
    \ The fresh loader needs its canon callback before it can accept the host root.
    s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
    TARGET-ENGINE-ROOT
+   TARGET-ENGINE-UNSEAL
    SOURCE-BIND @ execute
    NDEF-CACHE:REBIND
    1 TARGET-SOURCE-BOUND !
@@ -805,7 +813,7 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
       NSHADOW:OPEN? if
          AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE
       else
-         AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE
+         AOT-ARM:WINDOW$ WHITEBOX? AOT-CAPTURE:CAPTURE-WITH-NAMES
       then
    then
    NSHADOW:CLOSE
@@ -1039,10 +1047,10 @@ variable WRITER-OVERRIDE?
 \ before PROMOTE, so the refusal costs a temp file and nothing that was named.
 : SMOKE-CLASS-REFUSE ( -- )
    CLASS-WANTED @ CLASS-WHITEBOX = if
-      S\" native-build: `whitebox` was asked for and the image came back sealed; the target load needs HABU_WHITEBOX_IMAGE=1\n" type
+      S\" native-build: `whitebox` was asked for and the image came back sealed; the target's ENGINE-UNSEAL was not set before its seal pass\n" type
       BUILD-RC throw
    then
-   S\" native-build: refusing to promote a whitebox image as the product - the seal pass stood down for this build, so HABU_WHITEBOX_IMAGE=1 was set in its environment. Pass `whitebox` after the output path to build one on purpose.\n" type
+   S\" native-build: refusing to promote a whitebox image as the product - the seal pass stood down for a build that did not ask for `whitebox`. Pass `whitebox` after the output path to build one on purpose.\n" type
    BUILD-RC throw ;
 
 : SMOKE ( -- )

@@ -757,13 +757,6 @@ variable ACAP-ENTRY-N
    a u s" INSTALL" CORE-STR=CI or
    k s" ENGINE-ORIGIN" ACAP-KEEP-PKG? and ;
 
-\ The whitebox image keeps every name, on the seal pass's switch
-\ (src/core/internal-mark.f IMK-WHITEBOX?): test/whitebox-engine.f sets
-\ HABU_WHITEBOX_IMAGE=1 for the one tools/native-build.f run whose image goes to
-\ whitebox suites, which reopen a package and call private words by name.
-: ACAP-WHITEBOX? ( -- bool )
-   s" HABU_WHITEBOX_IMAGE" GETENV s" 1" CORE-STR= ;
-
 variable ACAP-ALL-NAMES
 
 : ACAP-INTERNAL? ( ptr u8 -- bool )
@@ -2464,6 +2457,12 @@ public
    d0 ACAP-COPY-DATA
    ACAP-FINISH ;
 
+\ The whitebox image keeps every name: its build passes true here, as its seal
+\ pass stands down (src/core/util.f ENGINE-UNSEAL?). Whitebox suites are
+\ the callers the derived keep rule cannot see - a suite reopens the package it
+\ audits and calls a private word by name - and an engine that strips them has
+\ nothing for the suite to name. Stripping is a property of the image a build
+\ writes, so the build answers it here rather than through a widening keep-set.
 : CAPTURE-WITH-NAMES ( n n n n n n bool -- )
    {: bstart:n bend:n rstart:n rend:n d0:n d1:n all:bool :}
    all ACAP-ALL-NAMES !
@@ -2471,6 +2470,6 @@ public
    bstart bend d0 CAPTURE-COMPLETE ;
 
 : CAPTURE ( n n n n n n -- )
-   ACAP-WHITEBOX? CAPTURE-WITH-NAMES ;
+   false CAPTURE-WITH-NAMES ;
 
 ;package

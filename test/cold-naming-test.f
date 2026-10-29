@@ -10,14 +10,12 @@
 \ boot shows the refusal, so every case here is a load on the cold fixture host
 \ (test/cold-engine.f), which reads this tree's prefix.
 \
-\ Two rules meet at a signed `:` word of the prefix. Its declaration is its row,
-\ recorded without authority: after src/core/checker.f claims the source the
-\ owner records it at the definition, and before the claim the engine logs it
-\ and the claim records it (CK-DECLARED-LOG-DRAIN). The sealed boot marks it
+\ A signed `:` word of the prefix has its declaration as its row, recorded
+\ without authority: after src/core/checker.f claims the source the owner
+\ records it at the definition, and before the claim the engine logs it and the
+\ claim records it (CK-DECLARED-LOG-DRAIN). The boot's seal pass marks it
 \ internal all the same (no external row, no axiom), so the engine refuses the
-\ name before the checker asks; with the seal pass stood down
-\ (HABU_WHITEBOX_IMAGE=1, src/core/internal-mark.f) the checker binds the row
-\ and checks the body against it.
+\ name before the checker asks.
 \
 \ Run: bin/hb --load test/cold-naming-test.f
 
@@ -73,13 +71,6 @@ create ERR IO-CAP allot
 \ Load one definition on the cold host, after its own prefix.
 : LOAD ( ptr u8 n -- n n ) PROBE! SPAWN ;
 
-\ The same load with the seal pass stood down, set before the inherited
-\ environment so an outer value cannot reach past it.
-: LOAD-UNSEALED ( ptr u8 n -- n n )
-   PROBE!
-   s" HABU_WHITEBOX_IMAGE" >LEN s" 1" >LEN PROC-ENV+
-   SPAWN ;
-
 \ Four pre-hook words with axiom rows, in one load: SCOPE-FIND-AMBIGUOUS is
 \ the one src/core/dict.f names in SCOPE-REC.
 : AXIOM-CASES ( -- )
@@ -101,35 +92,13 @@ create ERR IO-CAP allot
    rc REJECT-RC T=
    ERR erru s" E-UNDEFINED: SCHEMA-REG:SCHEMA-CON" CONTAINS? TTRUE ;
 
-\ The mismatch text render names no code; its JSON diagnostic does.
-: UNSEALED-ROW-CASES ( -- )
-   s" an unsealed boot binds the declared row" T-LABEL
-   S\" : CN-SCH ( n -- n ) SCHEMA-REG:SCHEMA-CON ;\n" LOAD-UNSEALED nip 0 T=
-   S\" 0 0= DIAG-JSON!\n: CN-SCH ( n -- bool ) SCHEMA-REG:SCHEMA-CON ;\n"
-   LOAD-UNSEALED {: erru:n rc:n :}
-   s" ... and refuses a caller the row does not fit" T-LABEL
-   rc REJECT-RC T=
-   ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE ;
-
-\ Declared before checker.f claims the source: CORE-FOLD-C ( n -- n ) in
-\ src/core/util.f, the first prefix file, and in src/core/checker.f
-\ CHECKER-EFFECT-AUTHORITY:SEALED? ( -- bool ), in a package, and CON-OF
-\ ( ptr u8 n -- n ).
+\ CON-OF ( ptr u8 n -- n ) in src/core/checker.f is declared before checker.f
+\ claims the source.
 : SEALED-PRE-CLAIM-CASE ( -- )
    S\" : CN-CON ( ptr u8 n -- n ) CON-OF ;\n" LOAD {: erru:n rc:n :}
    s" a sealed boot refuses a word declared before the claim by name" T-LABEL
    rc REJECT-RC T=
    ERR erru s" E-UNDEFINED: CON-OF" CONTAINS? TTRUE ;
-
-: UNSEALED-PRE-CLAIM-CASES ( -- )
-   s" an unsealed boot binds rows declared before the claim, from the first file and in a package" T-LABEL
-   S\" : CN-FOLD ( n -- n ) CORE-FOLD-C ;\n: CN-SEALED ( -- bool ) CHECKER-EFFECT-AUTHORITY:SEALED? ;\n: CN-CON ( ptr u8 n -- n ) CON-OF ;\n"
-   LOAD-UNSEALED nip 0 T=
-   S\" 0 0= DIAG-JSON!\n: CN-CON ( ptr u8 n -- bool ) CON-OF ;\n"
-   LOAD-UNSEALED {: erru:n rc:n :}
-   s" ... and refuses a caller the row does not fit" T-LABEL
-   rc REJECT-RC T=
-   ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE ;
 
 \ The source verifier tools/check.f loads names checker cells defined before the
 \ hook (VERIFY-DEFINER-N, MULTI-ERR), so it loads only while each has its row,
@@ -166,9 +135,7 @@ public
    AXIOM-CASES
    NO-AXIOM-CASE
    SEALED-NAME-CASE
-   UNSEALED-ROW-CASES
    SEALED-PRE-CLAIM-CASE
-   UNSEALED-PRE-CLAIM-CASES
    VERIFIER-CASE
    INTERPRETER-CASE
    FS:CLEANUP-RUN

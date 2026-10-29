@@ -375,7 +375,6 @@ create TEXT CAP allot                  variable TEXT-U
 
 : ENV! ( -- )
    s" TMPDIR" >LEN TMP$ >LEN PROC-ENV+
-   s" HABU_WHITEBOX_IMAGE" >LEN NULL$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The copy's util.f is the checkout's with one definition appended. The entry

@@ -22,14 +22,11 @@ package NATIVE-BUILD
 $4A constant BUILD-RC
 
 \ ---- the image class this build was asked for ---------------------------------
-\ src/core/internal-mark.f's seal stands down when HABU_WHITEBOX_IMAGE=1 is set
-\ for the target load, which is how test/whitebox-engine.f gets the unsealed
-\ host the gate's whitebox suites run on. An environment variable reaches this
-\ build whether or not anyone meant it to, so it cannot be the authority for
-\ what gets promoted: the REQUEST is an argument, spelled after the output path,
-\ and the ANSWER comes back out of the finished image in the driver's SMOKE
-\ (tools/native-build-core.f). A build that was not asked for a whitebox host
-\ and made one anyway stops before it renames the binary into place.
+\ The REQUEST is an argument, spelled after the output path: the build writes
+\ it into the target's ENGINE-UNSEAL before the seal pass
+\ (tools/native-build-core.f TARGET-ENGINE-UNSEAL). The ANSWER comes back out
+\ of the finished image in the driver's SMOKE, and a build whose image class
+\ differs from its request stops before it renames the binary into place.
 \
 \ The two values are ENGINE-INTERNAL:IMAGE-SEALED and :IMAGE-WHITEBOX, which
 \ this file cannot name: it is compiled by the host engine, and an older host
