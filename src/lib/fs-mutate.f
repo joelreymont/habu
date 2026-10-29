@@ -1,8 +1,8 @@
 \ fs-mutate.f - checked filesystem mutation helpers.
 \
 \ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
-\ path PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's and the stream copy's
-\ destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE,
+\ path PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's, MAKE-LINK's and the stream
+\ copy's destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE,
 \ FS:RESERVE-SIBLING and REPLACE-STAGED name, ATOMIC-PATH, and
 \ FS:MKTEMP-DIR-IN's and FS:MKTEMP's TMP-PATH-BUF - the one this module
 \ RETURNS a span into - are the FS-MUT-ABI band of the per-task DATA region, so
@@ -139,8 +139,8 @@ CAST: >CELL ( n -- ptr n )
 \ THE STAGED PATHS ARE TASK-LOCAL, in the FS-MUT-ABI band of the per-task DATA
 \ region: every accessor reads `data-base`, which is the RUNNING task's region,
 \ so the path FS:MKTEMP-DIR-IN or FS:MKTEMP hands back stays this task's until
-\ it calls either again, and two tasks in RENAME-FILE, MAKE-SYMLINK or
-\ ATOMIC-WRITE-FILE at once share nothing. The band is declared in
+\ it calls either again, and two tasks in RENAME-FILE, MAKE-SYMLINK, MAKE-LINK
+\ or ATOMIC-WRITE-FILE at once share nothing. The band is declared in
 \ src/habu/layout.f below FS-ABI and asserted there against every other DATA
 \ claim. It is a declared band and not TASK:+USER rows for src/lib/fs.f's
 \ reason: tools/native-build-core.f requires this file to build the engine, so
@@ -258,6 +258,12 @@ public
 
 : MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
    target targetu >PATHZ link linku >PATHZ2 symlink 0 < if E-FS-IO throw then ;
+
+\ LINK becomes a second name of TARGET's file (a hard link); an existing LINK
+\ is E-FS-IO, never replaced.
+: MAKE-LINK ( ptr u8 n ptr u8 n -- )
+   {: target:ptr targetu link:ptr linku :}
+   target targetu >PATHZ link linku >PATHZ2 LINK-CALL 0<> if E-FS-IO throw then ;
 
 private
 \ mkdir(2) is bound through libc, the way LINK-CALL binds link(2), so a

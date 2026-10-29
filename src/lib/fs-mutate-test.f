@@ -482,6 +482,29 @@ public
 : FMT-MAKE-SYMLINK-EXISTS ( -- )
    FMT-LINK-TARGET FMT-LINK FS:MAKE-SYMLINK ;
 
+package FS-TEST
+: MAKE-LINK-EXISTS ( -- )
+   FMT-LINK-TARGET FMT-LINK FS:MAKE-LINK ;
+
+public
+\ A hard link is a second name of the target's file, not a symbolic link.
+: HARD-LINK ( -- )
+   s" a hard link names its target's file" T-LABEL
+   FMT-LINK-TARGET s" link-target" FS:WRITE-ALL
+   FMT-LINK-TARGET FMT-LINK FS:MAKE-LINK
+   FMT-LINK FS:SYMLINK? TFALSE
+   FMT-LINK FS:PATH-IDENTITY FMT-LINK-TARGET FS:PATH-IDENTITY
+   {: link-dev:n link-ino:n dev:n ino:n :}
+   link-dev dev T=
+   link-ino ino T=
+   s" an existing hard-link name is refused" T-LABEL
+   [: MAKE-LINK-EXISTS ;] E-FS-IO TTHROWSQ
+   FMT-LINK FS:REMOVE-FILE
+   FMT-LINK-TARGET FMT-READ-BUF 64 FS:READ-ALL 11 T=
+   FMT-READ-BUF 11 s" link-target" T$=
+   FMT-LINK-TARGET FS:REMOVE-FILE ;
+;package
+
 : FMT-LINK-READ-TOO-SMALL ( -- )
    FMT-LINK FMT-LINK-READ-BUF 3 SPAN:TAKE FS-TEST:READ-LINK drop ;
 
@@ -1867,6 +1890,7 @@ public
    FMT-CHMOD-PATH FS:STAT-MODE FS-TEST:MODE-EXEC and FS-TEST:MODE-EXEC = TTRUE
    FMT-CHMOD-PATH FS:MODE-PRIVATE-DIR FS:CHMOD-MODE
    FMT-CHMOD-PATH FS:STAT-MODE FS-TEST:MODE-PERM and FS:MODE-PRIVATE-DIR T=
+   FS-TEST:HARD-LINK
    FMT-TEST-COPY
    FMT-TEST-NUL-SECOND-PATH
    FMT-TEST-STREAM-COPY
