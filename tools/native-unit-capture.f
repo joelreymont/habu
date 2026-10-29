@@ -57,6 +57,11 @@ public
    s" NEMIT:ADDR-SITE@" false BIND-ONE
    s" NEMIT:ADDR-SITE-KIND@" false BIND-ONE
    s" NEMIT:ADDR-SITE-ORIGIN@" true BIND-ONE
+   \ The window's numbering of the site kinds, which capture translates.
+   s" NEMIT:CALL" true BIND-ONE
+   s" NEMIT:TAIL" true BIND-ONE
+   s" NEMIT:ADDR-DATA" true BIND-ONE
+   s" NEMIT:ADDR-CODE" true BIND-ONE
    s" NEMIT:BYTES" false BIND-ONE
    s" NEMIT:FUNCTION-OFFSET@" false BIND-ONE
    s" NEMIT:CALL-IMPL@" false BIND-ONE

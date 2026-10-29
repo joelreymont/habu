@@ -26,7 +26,6 @@ require tools/native-file-reference.f
 require tools/native-unit-dependency.f
 require tools/native-unit-file.f
 require tools/native-file-inputs.f
-require src/compiler/native/emission.f
 
 package NUNIT-OBJECT
 
@@ -1571,6 +1570,22 @@ TASK-OBSERVER-CELL
 40 constant DEF-CALL-BYTES
 40 constant DEF-ADDR-BYTES
 80 constant DEF-META-BYTES
+\ The site kinds section 2 call rows and section 3 address rows carry: the
+\ format's own numbering, equal to the values the objects already on disk hold.
+\ Named here because the tool runs on the host, the window is the tree's
+\ compiler, and the object outlives both.
+0 constant CALL
+1 constant TAIL
+1 constant ADDR-DATA
+2 constant ADDR-CODE
+\ The window's numbering of the same kinds, read at each definition's begin
+\ because BIND-PRODUCER re-points the bound names when src/habu/native-runtime.f
+\ finishes (tools/native-definition-cache.f), and cleared by DEF-RESET: a
+\ builder saved after a cold build must match one saved after a warm build.
+variable WIN-CALL
+variable WIN-TAIL
+variable WIN-ADDR-DATA
+variable WIN-ADDR-CODE
 DYNAMIC-BUFFER DEF-CODE u8
 DYNAMIC-BUFFER DEF-CALL u8
 DYNAMIC-BUFFER DEF-ADDR u8
@@ -1761,11 +1776,36 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    0 dst 32 + LE:U64!
    DEF-ADDR-BYTES DEF-ADDR-U +! ;
 
+\ Whether the window names the four site kinds; one without them caches no
+\ definition.
+: WIN-KINDS? ( -- bool )
+   s" NEMIT:CALL" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<>
+   s" NEMIT:TAIL" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NEMIT:ADDR-DATA" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and
+   s" NEMIT:ADDR-CODE" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT 0<> and ;
+: WIN-KINDS-READ ( -- )
+   s" NEMIT:CALL" DEF-NUM WIN-CALL !
+   s" NEMIT:TAIL" DEF-NUM WIN-TAIL !
+   s" NEMIT:ADDR-DATA" DEF-NUM WIN-ADDR-DATA !
+   s" NEMIT:ADDR-CODE" DEF-NUM WIN-ADDR-CODE ! ;
+
+\ The object's kind of the window's call kind and address kind.
+: >CALL-KIND ( n -- n )
+   {: kind:n :}
+   kind WIN-CALL @ = if CALL
+   else kind WIN-TAIL @ = if TAIL
+   else BAD then then ;
+: >ADDR-KIND ( n -- n )
+   {: kind:n :}
+   kind WIN-ADDR-CODE @ = if ADDR-CODE
+   else kind WIN-ADDR-DATA @ = if ADDR-DATA
+   else BAD then then ;
+
 : DEF-CAPTURE-CALLS ( n n -- )
    {: fn:n size:n :}
    s" NEMIT:CALL-SITES" DEF-NUM 0 ?do
       i s" NEMIT:CALL-SITE@" DEF-ONE {: site:n :}
-      i s" NEMIT:CALL-KIND@" DEF-ONE {: kind:n :}
+      i s" NEMIT:CALL-KIND@" DEF-ONE >CALL-KIND {: kind:n :}
       i s" NEMIT:CALL-TARGET@" DEF-ONE {: target:n :}
       site 0 < site 4 + size > or if BAD then
       target NFILE-REF:REF-CODE {: ref:n :}
@@ -1775,7 +1815,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
       site kind ref loc known DEF-CALL+
       target fn < target fn size + >= or if
          site DEF-CODE {: at:ptr :}
-         kind NEMIT:CALL = if
+         kind CALL = if
             fn site + target NBR:BL-WORD at LE:U32!
          else
             fn site + target NBR:B-WORD at LE:U32!
@@ -1785,7 +1825,7 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
 
 : DEF-ADDR-REF ( n n n -- n )
    {: kind:n target:n owner:n :}
-   kind NEMIT:ADDR-CODE = if target NFILE-REF:REF-CODE exit then
+   kind ADDR-CODE = if target NFILE-REF:REF-CODE exit then
    owner -2 <= if
       owner negate 2 - {: row:n :}
       row DEF-SOURCE-COUNT >= if BAD then
@@ -1804,11 +1844,10 @@ CAST: DEF-REPLAY-XT ( n -- [ n n n n -- ] )
    {: size:n :}
    s" NEMIT:ADDR-SITES" DEF-NUM 0 ?do
       i s" NEMIT:ADDR-SITE@" DEF-ONE {: site:n :}
-      i s" NEMIT:ADDR-SITE-KIND@" DEF-ONE {: kind:n :}
+      i s" NEMIT:ADDR-SITE-KIND@" DEF-ONE >ADDR-KIND {: kind:n :}
       i s" NEMIT:ADDR-SITE-ORIGIN@" DEF-ONE {: owner:n :}
-      kind NEMIT:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-      else kind NEMIT:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
-      else BAD then then {: width:n :}
+      kind ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+      else ADDRESS-CARRIER:DATA-CHAIN-BYTES then {: width:n :}
       site 0 < site width + size > or if BAD then
       site DEF-CODE {: carrier:ptr :}
       carrier 0 DEF-CODE size + ADDRESS-CARRIER:CHAIN-SIZE
@@ -1947,7 +1986,8 @@ variable DEF-HELD-SIZE
    0 DEF-MODULE-DELTA ! 0 DEF-GEN-DELTA !
    0 DEF-EPOCH-DELTA ! 0 DEF-BUILD-DELTA !
    0 DEF-HELD-IDX ! 0 DEF-HELD-FN ! 0 DEF-HELD-SIZE !
-   0 DEF-PLAN-ON ! ;
+   0 DEF-PLAN-ON !
+   0 WIN-CALL ! 0 WIN-TAIL ! 0 WIN-ADDR-DATA ! 0 WIN-ADDR-CODE ! ;
 
 : DEF-DROP-PLAN ( -- n )
    DEF-SOURCE-END
@@ -2063,13 +2103,13 @@ variable DEF-HELD-SIZE
    src 8 + LE:U64@ {: kind:n :}
    site 0 < DEF-CODE-U @ 4 < or if BAD then
    site DEF-CODE-U @ 4 - > if BAD then
-   kind NEMIT:CALL <> kind NEMIT:TAIL <> and if BAD then
+   kind CALL <> kind TAIL <> and if BAD then
    src 16 + LE:U64@ NFILE-REF:REF>CODE {: target:n :}
    row DEF-CALL-BYTES * DEF-CALL {: dst:ptr :}
    src dst DEF-CALL-BYTES BYTE-COPY
    target dst 16 + LE:U64!
    site DEF-CODE {: at:ptr :}
-   kind NEMIT:CALL = if
+   kind CALL = if
       at LE:U32@ NBR:BL? 0= if BAD then
       DEF-CODE-BASE @ site + target NBR:BL-WORD at LE:U32!
       target dbase@ < target dbase@ REGION + >= or if
@@ -2102,14 +2142,14 @@ variable DEF-HELD-SIZE
    3 NUNIT-FILE:SECTION$ drop row DEF-ADDR-BYTES * + {: src:ptr :}
    src LE:U64@ {: site:n :}
    src 8 + LE:U64@ {: kind:n :}
-   kind NEMIT:ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
-   else kind NEMIT:ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
+   kind ADDR-CODE = if ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+   else kind ADDR-DATA = if ADDRESS-CARRIER:DATA-CHAIN-BYTES
    else BAD then then {: width:n :}
    site 0 < width DEF-CODE-U @ > or if BAD then
    site DEF-CODE-U @ width - > if BAD then
    src 16 + LE:U64@ 0<> src 32 + LE:U64@ 0<> or if BAD then
    src 24 + LE:U64@ {: ref:n :}
-   kind NEMIT:ADDR-CODE = if ref NFILE-REF:REF>CODE else
+   kind ADDR-CODE = if ref NFILE-REF:REF>CODE else
       ref NFILE-REF:REF-KIND NFILE-REF:LITERAL = if
          ref DEF-LIT-REF
       else ref 0 NFILE-REF:REF>DATA NULL-PTR BYTE-VIEW - then
@@ -2148,7 +2188,10 @@ public
 
 : DEFINITION-BEGIN ( -- )
    DEF-RESET
-   DEF-ELIGIBLE? 0= if s" begin-ineligible" ndict@ REFUSED exit then
+   DEF-ELIGIBLE? WIN-KINDS? and 0= if
+      s" begin-ineligible" ndict@ REFUSED exit
+   then
+   WIN-KINDS-READ
    ndict@ DEF-PENDING !
    1 DEF-ACTIVE !
    DEF-CACHEABLE-NOW? if 1 DEF-CACHEABLE ! then
