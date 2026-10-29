@@ -75,6 +75,7 @@ CAST: AS-NAME-PREDICATE ( n -- [ ptr u8 n -- bool ] )
 CAST: AS-SLOT ( n -- [ n -- n ] )
 CAST: AS-SLOT-PREDICATE ( n -- [ n -- bool ] )
 CAST: AS-FINALLY-CELLS ( n -- [ n -- n n n ] )
+CAST: AS-EVENT ( n -- [ n -- n n n ] )
 CAST: AS-WIDTH ( n -- [ n n -- n ] )
 CAST: AS-FAMILY ( n -- [ ptr u8 n -- n bool ] )
 CAST: AS-VARIANT ( n -- [ ptr u8 n n -- n bool ] )
@@ -221,6 +222,11 @@ TRUSTED: RECOVERY-USED? ( -- bool )
    NCOMP-DISPATCH:DECL-TAPE-ADVANCE-OFF s" tape advance" FIELD
    dup 0= if drop CHECKER-TAPE:ADVANCE exit then
    AS-ACTION execute ;
+
+: TAPE-EVENT ( n -- n n n )
+   CHECKER-OWNER-EXT:TAPE-EVENT-OFF s" tape event" FIELD
+   dup 0= if drop CHECKER-TAPE:EVENT exit then
+   AS-EVENT execute ;
 
 \ A clause is scanned in its parent's regime (BIND-REGIME!, set by the parent's
 \ scan): unjudged under a TRUSTED: or hookless parent, so it binds and

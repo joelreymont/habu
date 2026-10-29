@@ -57,7 +57,9 @@ $568 constant CERT-KEEP-OFF
 $570 constant CERT-KEPT-OFF
 \ ( -- n ) the unit-export fact count (checker.f CHECKER-UNIT-FACTS).
 $578 constant UNIT-FACTS-OFF
-UNIT-FACTS-OFF CELL + constant OWNER-BYTES
+\ ( n -- n n n ) the checker tape's event at an ordinal (checker.f CHECKER-TAPE:EVENT).
+$580 constant TAPE-EVENT-OFF
+TAPE-EVENT-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

@@ -160,6 +160,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -177,7 +178,7 @@ OWNER-SIZE-AGREE
 \ every guard that trusts it (checker-owner-guard.f VALIDATE). Name the last
 \ offset here so that mistake is a load failure and not a bounds refusal later.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:UNIT-FACTS-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:TAPE-EVENT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -31231,6 +31232,7 @@ package CHECKER-REG
 ' CHECK-DOES-UNJUDGED! DECLARATIONS CHECKER-OWNER-ABI:DOES-UNJUDGED-OFF + xt!
 ' CHECKER-NATIVE-DOES-REPORT DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-REPORT-OFF + xt!
 ' CHECKER-UNIT-FACTS DECLARATIONS CHECKER-OWNER-EXT:UNIT-FACTS-OFF + xt!
+' CHECKER-TAPE:EVENT DECLARATIONS CHECKER-OWNER-EXT:TAPE-EVENT-OFF + xt!
 
 \ ---- the declared-row log of a cold boot ------------------------------------
 \ Before the claim below a cold boot has no source owner, so the engine's
