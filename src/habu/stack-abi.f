@@ -17,7 +17,7 @@ $47F8 constant REPL-CAP-CELL
 \ with (64 KiB), not this host's 16 KiB: a guard smaller than the running page
 \ size is not a separate page at all and the protection silently disappears,
 \ while a guard larger than it is still a whole number of real pages. layout.f's
-\ PROT-PAGE-MAX is this same number under the name the protection window uses.
+\ PROT-PAGE-MAX is this same number under the name the region mapping uses.
 $10000 constant PAGE-BYTES
 
 \ Boot data stack: one guarded page of cells (8192).

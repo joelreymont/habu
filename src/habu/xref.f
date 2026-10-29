@@ -132,8 +132,8 @@ public
 \ carries a wider-than-cell layout value, so interpret dispatch and interpret '
 \ fail closed before such a bundle lands on the untyped interpret stack, where
 \ scalar dup/drop/swap would corrupt it. Marked by the engine prim `wide-mark`
-\ (habu1.f BWIDEMARK, inside the engine's mprotect bracket: the dict region is
-\ read-only at run time); monotonic, no unmark.
+\ (habu1.f BWIDEMARK, which stores through the region alias because a record's
+\ own address is read-only); monotonic, no unmark.
 : XREF-WIDE? ( ptr n -- bool )
    XREF-FLAGS DNAME-WIDE and 0= 0= ;
 

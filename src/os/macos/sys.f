@@ -8,6 +8,8 @@ $1012 constant MAP-ANON-PRIVATE-FIXED
 \ MAP-DATA-RESERVE maps the DATA window: Darwin's MAP_ANON|MAP_PRIVATE|MAP_FIXED
 \ is already lazy, charged only for touched pages.
 $1012 constant MAP-DATA-RESERVE
+$01  constant MAP-SHARED
+$11  constant MAP-SHARED-FIXED
 
 $1   constant NR-EXIT
 $2   constant NR-FORK
@@ -40,6 +42,7 @@ $53  constant NR-SETITIMER
 $35  constant NR-SIGALTSTACK
 $74  constant NR-GETTIMEOFDAY
 $C5  constant NR-MMAP
+$C9  constant NR-FTRUNCATE
 $E6  constant NR-POLL
 $F4  constant NR-SPAWN     \ posix_spawn(&pid, path, 0, 0, argv, envp)
 $80  constant NR-RENAME
@@ -52,14 +55,22 @@ $1D9 constant NR-READLINKAT
 $1DA constant NR-SYMLINKAT
 $7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 $3B  constant NR-EXECVE    \ execve(path, argv, envp) — BSD syscall 59
-0    constant NR-CHDIR
-0    constant NR-CLOSE-RANGE  \ Linux-only, as NR-CHDIR: named by habu1.f LINUX-SPAWN-FDS-CHILD
+$C   constant NR-CHDIR     \ chdir(path) — BSD syscall 12; only Linux emitters use it today
+0    constant NR-CLOSE-RANGE  \ Linux-only, no Darwin call: named by habu1.f LINUX-SPAWN-FDS-CHILD
 $1   constant NR-EXIT-GROUP
 
--2 constant AT-FDCWD
-0 constant AT-SYMLINK-NOFOLLOW
+\ Darwin has no memfd_create, and syscall 0 is its indirect `syscall` entry,
+\ which dispatches on x0: NR-MEMFD-CREATE is a number no Darwin call has, and
+\ SYS, refuses to emit it by name instead of reaching the kernel. Only Linux
+\ arms emit it.
+-1   constant NR-MEMFD-CREATE
 
-: SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
+-2 constant AT-FDCWD
+$20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux emitters use it today
+
+: SYS, ( n -- )
+   dup NR-MEMFD-CREATE = if s" hb: sys: NR-MEMFD-CREATE has no Darwin syscall" 76 die then
+   16 swap MOVZ,  $80 SVC, ;
 
 \ Runtime-emit syscall stencils: the MATCH bad-tag die is
 \ EMITTED into the user word, so its write+exit syscall words are baked here at

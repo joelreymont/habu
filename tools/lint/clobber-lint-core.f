@@ -194,12 +194,10 @@ variable RX  variable RACC
    a u s" Lvbit" LINT-STR=CI if 0 7 CL-ADD exit then
    a u s" Lbcap" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
-   \ EMIT-CEMIT frames x1/x12/x13/x30; EMIT-PROT-GROW frames the rest.
+   \ EMIT-CEMIT frames x12/x13 and writes no other register but CP.
    a u s" Lcemit" LINT-STR=CI if
       0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
         16 CL-ADD 30 CL-ADD exit then
-   a u s" PROT-EMIT:LGROW" LINT-STR=CI if
-      0 0 CL-ADD 2 CL-ADD 8 CL-ADD 16 CL-ADD 30 CL-ADD exit then
    a u s" Laotwidgate" LINT-STR=CI if 0 11 CL-ADD exit then
    \ INTERP-EMIT:LFINDSHADOW reloads LFIND's outputs from its frame before it returns.
    a u s" INTERP-EMIT:Lfindshadow" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
@@ -270,7 +268,6 @@ package CLOBBER
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" TADR," LINT-STR=CI if LINT-TRUE exit then
-   a u s" PROT-EMIT:reserve" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-save" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-restore" LINT-STR=CI if LINT-TRUE exit then
    a u s" mark-header" LINT-STR=CI if LINT-TRUE exit then
@@ -365,10 +362,6 @@ variable RK
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
    \ TADR, writes its destination and scratch; the text base is read via DATA.
    a u s" TADR," LINT-STR=CI if 0 EW 1 EW 0 20 CL-ADD CL-ROR exit then
-   \ PROT-EMIT:RESERVE reads the byte count in x1 and CP, preserves its LR, and
-   \ calls LGROW, whose only unpreserved register is x1.
-   a u s" PROT-EMIT:reserve" LINT-STR=CI if
-      0 1 CL-ADD 28 CL-ADD CL-ROR 0 1 CL-ADD CL-WOR exit then
    \ These inline registrar helpers use a fixed machine-register ABI.
    a u s" mark-save" LINT-STR=CI if
       $3FFFF 31 CL-ADD CL-ROR 0 31 CL-ADD CL-WOR exit then

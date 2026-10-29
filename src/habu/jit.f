@@ -64,7 +64,7 @@ $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
    LVSPILL LABEL@ LBL,
    LBL LBL {: vl vd :}
    SP SP 16 SUBI,  30 SP 0 STR,
-   \ Empty flushes emit nothing, including outside an open code-write window.
+   \ Empty flushes emit nothing.
    \ A nonempty flush is one physical transfer, including constant slots.
    6 DATA VSP-CELL LDR,  6 vd CBZ,
    5 0 MOVZ,  6 6 3 LSLI,

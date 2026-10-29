@@ -1929,7 +1929,7 @@ $44000000000 constant ES-MACOS-DATA-VA
    HB-TARGET-MACOS? if ES-MACOS-DATA-VA exit then
    ES-TARGET-UNKNOWN ;
 dbase@ rbase > TTRUE                                 \ live JIT region sits above __text (hinted at __text + REGION-OFF)
-dbase@ PROT-PAGE-MAX 1 - and 0= TTRUE                \ region base is PROT-PAGE-MAX-aligned (LPROT protection granularity)
+dbase@ PROT-PAGE-MAX 1 - and 0= TTRUE                \ region base is PROT-PAGE-MAX-aligned (the mapping alignment)
 dbase@ REGION + rbase - BL-REACH < TTRUE             \ whole region within BL's +/-128 MiB of __text
 data-base NULL-PTR - ES-DATA-VA = TTRUE
 cp@ dbase@ - 0 > TTRUE

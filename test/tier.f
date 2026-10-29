@@ -809,12 +809,13 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ ---- 7. a failed definition under a top-level catch is recoverable ----------
 \ `' evaluate catch` at top level installs its handler at the SP B-EVAL records
-\ as the eval-frame boundary. Recovery that treated equal as inside the frame
-\ never popped it, and the next token was emitted into a re-protected band
-\ (SIGSEGV, rc 134, after a correct rejection). Real processes: the in-process
-\ fork does not reach that boundary. A top-level `catch` of `evaluate` has no
-\ row, so each text turns the checker off for the catch, restores it inside the
-\ evaluated text, and drops the text's two cells under `0 set-check`.
+\ as the eval-frame boundary. A handler at that boundary is outside the frame:
+\ recovery pops the frame and rolls CP back from the abandoned definition, so
+\ the rejection prints its code and the session keeps compiling. Real processes:
+\ the in-process fork does not reach that boundary. A top-level `catch` of
+\ `evaluate` has no row, so each text turns the checker off for the catch,
+\ restores it inside the evaluated text, and drops the text's two cells under
+\ `0 set-check`.
 : TEST-EVAL-RECOVERY ( -- )
    LEGACY? if
       s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL

@@ -1,5 +1,7 @@
 \ process-fork-test.f - a forked child's cleanup table, a child run as its own
-\ process root, and reapers whose forks fail.
+\ process root that defines code of its own and keeps the code it was forked
+\ with while the parent recompiles over it, a task's child that runs a word
+\ main defined after the task's PREPARE, and reapers whose forks fail.
 \ A forked child starts with an EMPTY fs cleanup table: inherited entries name
 \ paths the live parent still owns. The pid contract of PROC-FORK:CHECKED and
 \ RAW and 0 0 PROC-FORK:SET-PGID are proved where they are used
@@ -15,6 +17,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-fork.f
+require src/lib/task.f
 
 \ The private FS words this test reads, forwarded into its own package.
 package FS
@@ -210,13 +213,157 @@ variable REFUSAL-CODE
    s" a child throwing the parent's caught refusal exits UNCAUGHT-RC" T-LABEL
    rc UNCAUGHT-RC T= ;
 
+\ Parent and child each define a word after the fork, at the same code address,
+\ and each runs its own and finds the other's absent. The child defines first
+\ and the parent second, so a region the two shared would hand the child the
+\ parent's code, and a child left without its own region alias would fault on
+\ its first code store. The child's release is the parent closing its end of
+\ TO-CHILD, which cannot raise SIGPIPE in a parent whose child has died.
+variable OWN-RESULT
+variable TO-PARENT-R
+variable TO-PARENT-W
+variable TO-CHILD-R
+variable TO-CHILD-W
+create SYNC-BYTE 1 allot
+
+: AWAITED? ( n -- bool )
+   SYNC-BYTE 1 read 1 = ;
+
+: FOUND? ( ptr u8 n -- bool )
+   get-current search-wl 0<> ;
+
+\ "<who> own|other absent|sees" on fd: whether the word just run answered
+\ want, and whether the other process's word is in this dictionary.
+: OWN-LINE ( n ptr u8 n n ptr u8 n -- ) {: fd who:ptr whon want other:ptr othern :}
+   fd who whon write drop
+   OWN-RESULT @ want = if fd s"  own" write drop else fd s"  other" write drop then
+   other othern FOUND? if fd s"  sees" write drop else fd s"  absent" write drop then
+   fd s\" \n" write drop ;
+
+: CHILD-DEFINES ( -- )
+   TO-PARENT-R @ close
+   TO-CHILD-W @ close
+   s" : CHILD-W ( -- n ) 22 ;" evaluate-closed
+   TO-PARENT-W @ s" x" write drop
+   TO-CHILD-R @ AWAITED? drop
+   s" CHILD-W OWN-RESULT !" evaluate-closed
+   2 s" child" 22 s" PARENT-W" OWN-LINE ;
+
+: CHECK-CHILD-OWN-CODE ( -- )
+   PIPE-PAIR {: pr:fd pw:fd :}
+   PIPE-PAIR {: cr:fd cw:fd :}
+   pr FD>N TO-PARENT-R !
+   pw FD>N TO-PARENT-W !
+   cr FD>N TO-CHILD-R !
+   cw FD>N TO-CHILD-W !
+   [: CHILD-DEFINES ;] FORK-MAIN
+   pw FD>N close
+   cr FD>N close
+   s" the child defined its word after the fork" T-LABEL
+   pr FD>N AWAITED? TTRUE
+   s" : PARENT-W ( -- n ) 11 ;" evaluate-closed
+   s" PARENT-W OWN-RESULT !" evaluate-closed
+   1 s" parent" 11 s" CHILD-W" OWN-LINE
+   s" the parent runs its own word" T-LABEL
+   OWN-RESULT @ 11 T=
+   s" and finds the child's absent" T-LABEL
+   s" CHILD-W" FOUND? TFALSE
+   cw FD>N close
+   MAIN-RC {: rc errn :}
+   CHILD-ERR errn type
+   s" the child ran its own word and found the parent's absent" T-LABEL
+   CHILD-ERR errn s\" child own absent\n" STR= TTRUE
+   s" and exits 0" T-LABEL
+   rc 0 T=
+   pr FD>N close ;
+
+\ The parent defines a word, forks, rolls its dictionary and code back to
+\ before that word and compiles a different one at the same record slot and
+\ code address, and only then releases the child, which runs the pre-fork word
+\ by name. Its answer is the pre-fork body's: a child whose views were the
+\ parent's live region would run the parent's new bytes, or find the record
+\ gone. The marks after each definition prove the two words stood at one place.
+: CHILD-RUNS-PRE-WORD ( -- )
+   TO-CHILD-W @ close
+   TO-CHILD-R @ AWAITED? drop
+   s" PRE-W OWN-RESULT !" evaluate-closed
+   2 s" child" 33 s" POST-W" OWN-LINE ;
+
+: CHECK-CHILD-PRE-FORK-CODE ( -- )
+   PIPE-PAIR {: cr:fd cw:fd :}
+   cr FD>N TO-CHILD-R !
+   cw FD>N TO-CHILD-W !
+   ndict@ cp@ {: nmark:n cmark:n :}
+   s" : PRE-W ( -- n ) 33 ;" evaluate-closed
+   ndict@ cp@ {: npre:n cpre:n :}
+   [: CHILD-RUNS-PRE-WORD ;] FORK-MAIN
+   cr FD>N close
+   nmark ndict!
+   cmark cp!
+   s" : POST-W ( -- n ) 44 ;" evaluate-closed
+   s" the parent's new word stands where the pre-fork word stood" T-LABEL
+   ndict@ npre T=
+   cp@ cpre T=
+   s" PRE-W" FOUND? TFALSE
+   cw FD>N s" x" write drop
+   cw FD>N close
+   MAIN-RC {: rc errn :}
+   CHILD-ERR errn type
+   s" the child ran the pre-fork word's own body and found the new word absent" T-LABEL
+   CHILD-ERR errn s\" child own absent\n" STR= TTRUE
+   s" and exits 0" T-LABEL
+   rc 0 T= ;
+
 : CHECK-CHILD-MAIN ( -- )
    s" hb-fork-main" FS:MKTEMP-DIR FIX-ROOT!
    FIX-ROOT$ s" err" MAIN-ERR MAIN-ERR-U SUB!
    CHECK-CHILD-RETURNS
    CHECK-CHILD-THROWS
    CHECK-CHILD-REFUSAL
+   CHECK-CHILD-OWN-CODE
+   CHECK-CHILD-PRE-FORK-CODE
    FIX-ROOT$ FS:REMOVE-TREE ;
+
+\ Main prepares a task, then defines a word that forks, and activates the task
+\ with it. The child returns from `fork` into that word, so its region has to
+\ hold the code main compiled between TASK:PREPARE and TASK:ACTIVATE. Only Linux
+\ can fail here: its child gets a copy bounded by the task's dictionary snapshot
+\ (LIBC-OS:FORK), and one taken at PREPARE leaves the word as zero bytes the
+\ child dies on. A macOS child has a copy-on-write image of the whole region and
+\ passes either way.
+TASK:MIN-STACK TASK:TASK FORK-TASK
+variable TASK-PIPE-W
+create TASK-LINE CHILD-ERR-CAP allot
+
+: TASK-CHILD-LINE$ ( -- ptr u8 n )
+   s\" task child ran\n" ;
+
+: TASK-CHILD-WRITES ( -- )
+   TASK-PIPE-W @ TASK-CHILD-LINE$ write drop
+   0 FORK-EXIT ;
+
+: CHECK-TASK-CHILD-LATE-WORD ( -- )
+   PIPE-PAIR {: r:fd w:fd :}
+   w FD>N TASK-PIPE-W !
+   FORK-TASK TASK:PREPARE
+   s" : TASK-FORKS ( -- ) PROC-FORK:CHECKED PID>N {: pid:n :} pid 0= if TASK-CHILD-WRITES then pid TASK:RETURN ;"
+      evaluate-closed
+   s" ' TASK-FORKS FORK-TASK TASK:ACTIVATE" evaluate-closed
+   FORK-TASK TASK:JOIN MATCH result
+     ok  OF ENDOF
+     err OF drop -1 ENDOF
+   ;MATCH {: pid:n :}
+   w FD>N close
+   s" the task forked a child" T-LABEL
+   pid 0 > TTRUE
+   pid 0 > if pid >PID PROC-WAIT-STATUS-RAW else -1 then {: status:n :}
+   r FD>N TASK-LINE CHILD-ERR-CAP read {: n :}
+   r FD>N close
+   TASK-LINE n type
+   s" the task's child ran the word main defined after the task's PREPARE" T-LABEL
+   TASK-LINE n TASK-CHILD-LINE$ STR= TTRUE
+   s" and exits 0" T-LABEL
+   status PROC-STATUS>RC RC>N 0 T= ;
 
 \ A refused fork answers a negative pid: -1 from macOS's libc fork, -EAGAIN from
 \ Linux's raw clone. That pid must reach neither a wait, where wait4(-1) blocks
@@ -394,6 +541,7 @@ variable SAVED-WATCH
    T-RESET
    CHECK-CHILD-CLEANUP
    CHECK-CHILD-MAIN
+   CHECK-TASK-CHILD-LATE-WORD
    CHECK-REAPER-FORK-FAILS
    CHECK-INTERMEDIATE-FORK-FAILS
    CHECK-CAPTURE-REAPER-FAILS

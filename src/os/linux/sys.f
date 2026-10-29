@@ -17,6 +17,9 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 \ in the set. A kernel before 4.17 treats NOREPLACE as a hint and may map
 \ elsewhere; the boot's compare of the result with DATA-VA refuses that too.
 $104022 constant MAP-DATA-RESERVE
+\ The code region's two views map one memfd (habu2.f EM-MMAP-CODE-REGION).
+$01 constant MAP-SHARED
+$11 constant MAP-SHARED-FIXED
 
 93  constant NR-EXIT
 63  constant NR-READ
@@ -45,6 +48,8 @@ $104022 constant MAP-DATA-RESERVE
 132 constant NR-SIGALTSTACK
 169 constant NR-GETTIMEOFDAY
 222 constant NR-MMAP
+279 constant NR-MEMFD-CREATE
+46  constant NR-FTRUNCATE
 73  constant NR-POLL
 220 constant NR-SPAWN
 220 constant NR-FORK      \ clone(SIGCHLD, 0, 0, 0, 0)

@@ -472,12 +472,11 @@ private
 \ A captured token LFIND resolves to an immediate word runs now when the
 \ checker calls it a stack-neutral parsing immediate (parse-imm): it may read
 \ the input after it or end the definition, and the compiler passes over it at
-\ `;`. Any other immediate waits in the capture for the compiler. The code
-\ window is closed already: def-open closes its own, and evaluate's return
-\ closes the one an engine head opened. The live checker owner answers
-\ (CHECKER-OWNER:PARSE-IMM?), as the compiler asks at `;` (elaborate.f): a
-\ binding fixed at this file's load would ask the retained checker, which never
-\ saw a `parse-imm` a build window's replacement checker recorded.
+\ `;`. Any other immediate waits in the capture for the compiler. The live
+\ checker owner answers (CHECKER-OWNER:PARSE-IMM?), as the compiler asks at `;`
+\ (elaborate.f): a binding fixed at this file's load would ask the retained
+\ checker, which never saw a `parse-imm` a build window's replacement checker
+\ recorded.
 : DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then

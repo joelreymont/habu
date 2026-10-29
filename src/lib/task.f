@@ -1081,13 +1081,14 @@ variable ROW-N
 \ release until the capture sweep (PARK-CREATE). The mailbox and the done
 \ semaphore are destroyed, the five mappings go back, and the five cells cleared
 \ last are what the run acquired: the pthread_t, the value the join wrote, and
-\ PREPARE's data base, record count and code end. An image restores none of
-\ them, and a stripped link refuses a captured cell holding one, the later ones
-\ unnamed because a `create … does>` body spells only cell 0 (measured on a
-\ load-time activate/join/kill: `holds a pointer into memory the build mapped
-\ word=<unknown> data-off=12219368` for TCB.THREAD, then `holds an undeclared
-\ code/dict pointer` for TCB.DBASE). Clearing them changes no run: ACTIVATE
-\ writes THREAD again, the join writes RET and PREPARE writes the other three.
+\ the data base, record count and code end ACTIVATE or EXPOSE took. An image
+\ restores none of them, and a stripped link refuses a captured cell holding
+\ one, the later ones unnamed because a `create … does>` body spells only cell 0
+\ (measured on a load-time activate/join/kill: `holds a pointer into memory the
+\ build mapped word=<unknown> data-off=12219368` for TCB.THREAD, then `holds an
+\ undeclared code/dict pointer` for TCB.DBASE). Clearing them changes no run:
+\ ACTIVATE writes THREAD again, the join writes RET and ACTIVATE or EXPOSE
+\ writes the other three.
 : TASK-RELEASE-MEM ( ptr n -- ) {: tcb:ptr :}
    tcb MBOX-DESTROY
    tcb DONE-DESTROY
@@ -1415,6 +1416,7 @@ variable SWEEP-ARMED
    0 reg GENIO-ABI:BUSY-CELL + !
    0 reg GENIO-ABI:ACTIVE-CELL + !
    rbase reg RBASE-CELL + !
+   data-base reg REGION-ALIAS:DELTA-CELL TASK-COPY-CELL
    tcb TCB.STACK @ reg STACK-ABI:BASE-CELL TASK-PTR!
    tcb TCB.STACK-U @ reg STACK-ABI:CAP-CELL + !
    tcb TCB.RSTACK @ reg STACK-ABI:RETURN-BASE-CELL TASK-PTR!
@@ -1443,9 +1445,6 @@ variable SWEEP-ARMED
    TASK-REGION-BYTES 8 / >COUNT MEM-ALLOC-CELLS
    TASK-REGION-BYTES tcb TCB.REGION-U !
    tcb TCB.REGION !
-   dbase@ tcb TCB.DBASE !
-   ndict@ tcb TCB.NDICT !
-   cp@ tcb TCB.CP !
    \ This clear and ACTIVATE's are plain stores: both run in the owner's thread
    \ before pthread_create, which orders them into the new thread, and only that
    \ thread writes the cell afterwards (HALT-PENDING?).
@@ -1509,6 +1508,13 @@ variable SWEEP-ARMED
    tcb TASK-STATE@ TASK-EXPOSED = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-DONE = if tcb TASK-JOIN-RELEASE then
    tcb PREPARE
+   \ The dictionary the task runs on is taken here, as it goes live, not at
+   \ PREPARE: main may still compile between a public PREPARE and this ACTIVATE,
+   \ or after a failed create, and the task's NDICT and CP registers, loaded
+   \ from these (BTASK-ENTRY), bound what LIBC-OS:FORK copies on the task.
+   dbase@ tcb TCB.DBASE !
+   ndict@ tcb TCB.NDICT !
+   cp@ tcb TCB.CP !
    \ The park outlives this TCB's earlier runs and exposures (PARK-CREATE), so it
    \ may hold a hint posted while exposed, after a run ended, or around a create
    \ that failed.
@@ -1606,17 +1612,20 @@ variable SWEEP-ARMED
 \ An EXPOSED task runs no body of its own: its prepared region is a context a
 \ foreign thread enters through a callback slot bound to it. The resting frame
 \ is the one BTASK-ENTRY would start the task on - the base of its data stack
-\ and the dictionary PREPARE recorded - so a callback arriving with no outbound
-\ call in flight still has a VM to run on. The region counts as live on main
-\ while exposed, as an activated task does, so no definition moves the
-\ dictionary under it. EXPOSED goes out with a release store: another task's
-\ CONTEXT-BIND reads it. An exposure is woken like a run, so it opens its park
+\ and the dictionary as it stands when EXPOSE runs - so a callback arriving
+\ with no outbound call in flight still has a VM to run on. The region counts
+\ as live on main while exposed, as an activated task does, so no definition
+\ moves the dictionary under it. EXPOSED goes out with a release store: another
+\ task's CONTEXT-BIND reads it. An exposure is woken like a run, so it opens its park
 \ at zero as ACTIVATE does: a hint left by an earlier run or exposure of this
 \ TCB is not this exposure's.
 : EXPOSE ( ptr n -- ) {: tcb:ptr :}
    tcb PREPARE
    tcb TASK-STATE@ TASK-CONSTRUCTED <> if E-TASK-STATE throw then
    tcb PARK-DRAIN
+   dbase@ tcb TCB.DBASE !
+   ndict@ tcb TCB.NDICT !
+   cp@ tcb TCB.CP !
    tcb TCB.REGION @ {: reg:ptr :}
    tcb TCB.STACK @ FFI:>CELL reg CB-XDS + !
    tcb TCB.DBASE @ reg CB-DBASE + !

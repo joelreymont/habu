@@ -1633,8 +1633,7 @@ variable WANT-RC
 
 \ A neutral immediate runs as the body reads it, after its capture, and reads
 \ the input after it; one the checker does not call neutral waits in the
-\ capture for `;`. OI-N lies in the unit the head holds open, so it runs with
-\ the code window closed.
+\ capture for `;`.
 : BODY-IMMEDIATES ( -- )
    GE-SRC-RESET
    s" 1 set-tier ' OI-BODY. OI-SHOWN !" GE-SRC-LINE

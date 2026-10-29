@@ -114,7 +114,7 @@ variable FP-WID
 
 \ label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LHOSTROW  variable LHOSTDIVROW  variable LSRC  variable SRCN
-variable LCEMIT   variable LCEMITBL  variable LCEMITB  variable LCINLINE  variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LFLUSH variable LNCOUNT
+variable LCEMIT   variable LCEMITBL  variable LCEMITB  variable LCINLINE  variable LTOK   variable LPROTSPAN  variable LFLUSH variable LFLUSHTO variable LNCOUNT
 variable LDIVZERO                       \ the (DIV-ZERO) refusal the dividing bodies branch to
 \ The count EMIT-DICT bakes into LNCOUNT. The AOT call-site binder (habu2.f)
 \ reads this, not the registry: a payload record's dictionary index is the
@@ -128,14 +128,6 @@ variable LEXITHOOK
 \ before callback-entry is emitted, then register its own span afterward.
 variable LCALLBACKTHUNK
 variable LCALLBACKADDR
-\ Label ids of the write-band bodies (EMIT-PROT-WINDOW) for dictionary-record,
-\ control-flow and code spans; the definition, publication and patch brackets
-\ here and in habu2.f call them. The band cells are layout.f's PROT, which the
-\ engine bakes (habu2.f RELOC-EMIT says why the halves split).
-package PROT-EMIT
-public
-variable LOPEN   variable LCLOSE   variable LGROW   variable LSPAN   variable LCF
-;package
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES  variable LAOTNAMESLEN
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
@@ -329,26 +321,6 @@ public
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
-
-package PROT-EMIT
-
-public
-
-\ Reserve the region bytes a direct write is about to place at CP (x1 = the
-\ byte count, clobbered). LCEMIT extends the open bracket's write window
-\ itself; the sites that spill bytes rather than instructions (string literals,
-\ the inline bad-tag message, defer metadata, a long name) declare their length
-\ here once. The length arrives in x1 so the macro adds no operand tokens: a
-\ bare register number left in the token stream is read as the next
-\ instruction's operand by tools/lint/clobber-lint.f. Frames x30; clobbers the
-\ flags.
-: RESERVE ( -- )
-   SP SP 16 SUBI,  30 SP 0 STR,
-   1 CP 1 ADD,
-   LGROW LABEL@ BL,
-   30 SP 0 LDR,  SP SP 16 ADDI, ;
-
-;package
 
 \ Every target selector below names the Linux-aarch64 and macOS arms and calls
 \ this otherwise: this file holds primitive bodies for those two targets only,
@@ -2921,8 +2893,9 @@ package LIBC-OS
 
 \ Read this process's loader slot, as src/os/*/layout.f DLSYM-SLOT does.
 \ Neither a library handle nor a resolved function survives this call.
-: DLSYM ( -- )
-   16 DATA RBASE-CELL LDR,  15 CODE-OFF LIT64,  16 16 15 SUB,
+\ x16 = this run's __text base, x1 = the NUL-terminated symbol name.
+: DLSYM-AT ( -- )
+   15 CODE-OFF LIT64,  16 16 15 SUB,
    17 16 IMAGE-TEXT-SIZE-OFF LDR,
    HB-TARGET-LINUX? if
       16 16 17 ADD,  16 16 $B8 LDR,
@@ -2937,7 +2910,96 @@ package LIBC-OS
    then then
    16 BLR, ;
 
+: DLSYM ( -- )   16 DATA RBASE-CELL LDR,  DLSYM-AT ;
+
+\ Copy [x1, x2) of the region to the same offsets x12 bytes away, a cell at a
+\ time; x1 and x2 are 8-byte aligned. Clobbers x1, x3, x4.
+: ALIAS-COPY, ( -- )
+   LBL LBL {: top:label done:label :}
+   top LBL,  1 2 CMP,  C-CS done BCOND,
+      3 1 0 LDR,  4 1 12 ADD,  3 4 0 STR,
+      1 1 8 ADDI,  top B,
+   done LBL, ;
+
+\ The text's eight bytes from off as one little-endian cell, zero past len.
+: TEXT-CELL ( ptr u8 n n -- n )
+   {: a:ptr off:n len:n :}
+   0
+   8 0 ?do
+      8 lshift
+      off 7 + i -  dup len < if a swap + c@ or else drop then
+   loop ;
+
+\ Write the text to fd 2 from a stack frame filled by immediates, then release
+\ the frame. A member the AOT linker copies holds only instructions:
+\ src/habu/aot-link-arm.f RELOC-W32 decodes each of its words as one, so text
+\ inline in the code is read as branches. Clobbers x0-x2, x9 and the system
+\ call's registers.
+: ERR-TEXT, ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 15 + -16 and {: frame:n :}
+   SP SP frame SUBI,
+   frame 8 / 0 ?do
+      9 a i 8 * u TEXT-CELL LIT64,  9 SP i 8 * STR,
+   loop
+   0 2 MOVZ,  1 SP 0 ADDI,  2 u MOVZ,  NR-WRITE SYS,
+   SP SP frame ADDI, ;
+
 public
+
+\ ( label -- ) Linux: x0 = a new memfd "hb-region" of REGION bytes,
+\ close-on-exec and executable. A kernel before 6.3 refuses MFD_EXEC with
+\ EINVAL, and that answer alone retries without it; any other failure jumps to
+\ fail with no descriptor left open. Clobbers x0, x1, x5, x8, x16.
+: REGION-MEMFD ( label -- ) {: fail:label :}
+   LBL LBL LBL {: made:label retry:label sized:label :}
+   SP SP 16 SUBI,
+   1 $6F696765722D6268 LIT64,  1 SP 0 STR,          \ "hb-region" + NUL
+   1 $6E MOVZ,  1 SP 8 STR,
+   0 SP 0 ADDI,  1 $11 MOVZ,  NR-MEMFD-CREATE SYS,   \ MFD_CLOEXEC | MFD_EXEC
+   C-CC made BCOND,
+   1 21 MOVN,  0 1 CMP,  C-EQ retry BCOND,           \ -EINVAL
+      SP SP 16 ADDI,  fail B,
+   retry LBL,
+   0 SP 0 ADDI,  1 1 MOVZ,  NR-MEMFD-CREATE SYS,     \ MFD_CLOEXEC
+   made LBL,  SP SP 16 ADDI,  C-CS fail BCOND,
+   5 0 0 ADDI,  1 REGION LIT64,  NR-FTRUNCATE SYS,  C-CC sized BCOND,
+      0 5 0 ADDI,  NR-CLOSE SYS,  fail B,
+   sized LBL,  0 5 0 ADDI, ;
+
+\ ( fixed label -- ) macOS: map the region's RW alias over [x0, x0+REGION) with
+\ mach_vm_remap (copy FALSE) and leave x0 = alias - x0. x16 = __text base on
+\ entry. fixed maps the alias at exactly x1, else anywhere. The alias is made
+\ with inheritance NONE: a forked child gets a private copy of the RX view and
+\ no alias, and maps its own at the parent's address (FORK below).
+\ Clobbers x0-x17; jumps to fail with SP restored if a lookup or the remap fails.
+\ Frame: [0] &cur [8] &max [16] inheritance (the call's stack arguments),
+\ [24] task port, [32] "mach_vm_remap", [48] "mach_task_self_", [64] alias,
+\ [72] cur [76] max, [80] RX base, [88] __text base.
+: REGION-REMAP ( bool label -- ) {: fixed:bool fail:label :}
+   LBL LBL {: bad:label ok:label :}
+   SP SP 96 SUBI,
+   0 SP 80 STR,  16 SP 88 STR,
+   9 SP 72 ADDI,  9 SP 0 STR,  9 SP 76 ADDI,  9 SP 8 STR,
+   9 2 MOVZ,  9 SP 16 STR,                          \ VM_INHERIT_NONE
+   fixed if 1 SP 64 STR, else 9 0 MOVZ,  9 SP 64 STR, then
+   9 $5F6D765F6863616D LIT64,  9 SP 32 STR,
+   9 $70616D6572 LIT64,  9 SP 40 STR,
+   9 $7361745F6863616D LIT64,  9 SP 48 STR,
+   9 $005F666C65735F6B LIT64,  9 SP 56 STR,
+   1 SP 48 ADDI,  DLSYM-AT
+   0 bad CBZ,  0 0 0 LDRW,  0 SP 24 STR,
+   16 SP 88 LDR,  1 SP 32 ADDI,  DLSYM-AT
+   0 bad CBZ,  16 0 0 ADDI,
+   0 SP 24 LDR,  1 SP 64 ADDI,  2 REGION LIT64,  3 0 MOVZ,
+   fixed if 4 0 MOVZ, else 4 1 MOVZ, then           \ VM_FLAGS_FIXED or _ANYWHERE
+   5 0 0 ADDI,  6 SP 80 LDR,  7 0 MOVZ,             \ copy FALSE
+   16 BLR,
+   0 0 $FFFFFFFF ANDI,  0 bad CBNZ,                 \ kern_return_t
+   0 SP 64 LDR,  1 SP 80 LDR,  0 0 1 SUB,
+   SP SP 96 ADDI,  ok B,
+   bad LBL,  SP SP 96 ADDI,  fail B,
+   ok LBL, ;
 
 \ ( pathz dst capacity -- length | -1 | -2 )
 \ libc allocates its realpath result. Only a fitting result, including its NUL,
@@ -2985,20 +3047,114 @@ public
 \ Darwin's libc fork reinitializes libSystem's child state, including Mach
 \ reply ports. A raw syscall child can execute Habu but subsequent Mach VM
 \ queries fail; the same query succeeds after libc fork. Linux keeps clone.
+\ Each child owns its region before any Habu code runs, so its compiles stay
+\ out of the parent's code and the parent's patches out of the child's. On
+\ macOS libc fork gives the child a private copy of the RX view and no alias
+\ (REGION-REMAP's inheritance NONE), and the child maps its own alias. On Linux
+\ both views are MAP_SHARED, so a child would alias the parent's live memfd,
+\ which the parent keeps writing once `fork` has returned to it: the parent
+\ fills a fresh memfd with its region's used extent BEFORE the clone and the
+\ child maps that memfd over both views, so the child's region is the parent's
+\ as it stood when the parent made the copy, and no byte the parent writes
+\ afterwards reaches it. A failure before the clone answers -1, as a refused
+\ clone does; a child that cannot map its views dies named with exit 78.
 : FORK ( -- )                         \ ( -- pid|-1 )
    HB-TARGET-LINUX? IF
+      LBL LBL LBL LBL LBL {: unfd:label failed:label parent:label done:label dead:label :}
+      LBL LBL LBL LBL LBL {: scan:label next:label full:label scanned:label plain:label :}
+      SP SP 32 SUBI,                    \ [0] the child's memfd, [8] its filling view, [16] code end
+      \ Delta 0 = no alias (a stripped image): the startup maps one anywhere but DBASE.
+      9 DATA REGION-ALIAS:DELTA-CELL LDR,  9 plain CBZ,
+      failed REGION-MEMFD  0 SP 0 STR,
+      4 0 0 ADDI,  0 0 MOVZ,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED LIT64,  5 0 MOVZ,
+      NR-MMAP SYS,  C-CS unfd BCOND,
+      0 SP 8 STR,  12 0 DBASE SUB,                          \ x12 = view - DBASE
+      \ The used extent, every region byte a Habu word in the child can reach:
+      \ the records below the larger of NDICT + 1 (DEF-OPEN keeps the open
+      \ definition's record at NDICT) and the high-water (a raising ndict!
+      \ re-exposes the retired ones), within DICT-CAP; then the control-flow stack
+      \ and the code up to the larger of CP and the end of every record's span
+      \ below the high-water (after a rollback a retired record's code sits above
+      \ CP). CP and NDICT are this thread's registers; a task's are the snapshot
+      \ ACTIVATE or EXPOSE took as it went live, and the live-task refusals
+      \ B-TASK-LIVE-GUARD (stores, appends, evaluate) and C-TASK-LIVE-GUARD
+      \ (definers) keep main's counts there while any task is live (lifting them
+      \ so main compiles beside live tasks has to revisit this bound). The high-water is main's
+      \ cell, read at DATA-VA: a task region does not hold it.
+      2 DATA-VA VA>N LIT64,  2 2 NDICT-HW-CELL LDR,  3 NDICT 1 ADDI,  2 3 CMP,  2 2 3 C-HI CSEL,
+      3 DICT-CAP LIT64,  2 3 CMP,  2 2 3 C-LS CSEL,
+      3 DREC MOVZ,  2 2 3 MUL,  2 DBASE 2 ADD,  1 DBASE 0 ADDI,
+      ALIAS-COPY,
+      9 CP 0 ADDI,
+      2 DATA-VA VA>N LIT64,  2 2 NDICT-HW-CELL LDR,  2 NDICT CMP,  2 2 NDICT C-HI CSEL,
+      10 0 MOVZ,
+      scan LBL,
+         10 2 CMP,  C-CS scanned BCOND,
+         11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
+         13 11 40 LDR,  14 DICT-WL:NAMESPACE invert MOVN,  13 14 CMP,  C-EQ next BCOND,
+         13 11 0 LDR,  14 11 8 LDR,
+         15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
+         3 CODE-SPAN:FULL LIT64,  3 14 3 AND,  3 full CBNZ,  15 15 CODE-SPAN:INSN-BYTES ADDI,
+         full LBL,
+         15 13 15 ADD,  15 9 CMP,  C-LS next BCOND,  9 15 0 ADDI,
+      next LBL,
+         10 10 1 ADDI,  scan B,
+      scanned LBL,
+      9 9 7 ADDI,  9 9 3 LSRI,  9 9 3 LSLI,  9 SP 16 STR,
+      1 CFSTK-OFF LIT64,  1 DBASE 1 ADD,  2 9 0 ADDI,
+      ALIAS-COPY,
+      0 SP 8 LDR,  1 REGION LIT64,  NR-MUNMAP SYS,  C-CS unfd BCOND,
       0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
-      NR-FORK SYS,  SYS-PUSH
+      NR-FORK SYS,
+      C-CS unfd BCOND,  0 parent CBNZ,
+      \ The child: the filled memfd mapped RW at the parent's alias address, DBASE
+      \ + delta, so every region's inherited delta cell stays true and none is
+      \ rewritten, then RX over the inherited RX view, whose bytes the copy
+      \ repeats under the code running here; the copied code is then flushed.
+      10 SP 0 LDR,  12 DATA REGION-ALIAS:DELTA-CELL LDR,
+      0 DBASE 12 ADD,  1 REGION LIT64,  2 3 MOVZ,  3 MAP-SHARED-FIXED LIT64,
+      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS dead BCOND,
+      0 DBASE 0 ADDI,  1 REGION LIT64,  2 5 MOVZ,  3 MAP-SHARED-FIXED LIT64,
+      4 10 0 ADDI,  5 0 MOVZ,  NR-MMAP SYS,  C-CS dead BCOND,
+      0 10 0 ADDI,  NR-CLOSE SYS,  C-CS dead BCOND,
+      9 DICT-SIZE LIT64,  9 DBASE 9 ADD,  11 SP 16 LDR,  LFLUSHTO LABEL@ BL,
+      0 0 MOVZ,  done B,
+      dead LBL,
+         S\" hb: fork: cannot map the child's own region\n" ERR-TEXT,
+         0 78 MOVZ,  NR-EXIT-GROUP SYS,
+      parent LBL,                       \ the descriptor is released whatever close answers
+         9 0 0 ADDI,  0 SP 0 LDR,  NR-CLOSE SYS,  0 9 0 ADDI,  done B,
+      plain LBL,                        \ nothing to re-establish: a plain fork
+         0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
+         NR-FORK SYS,  C-CC done BCOND,  failed B,
+      unfd LBL,  0 SP 0 LDR,  NR-CLOSE SYS,
+      failed LBL,  0 0 MOVN,
+      done LBL,
+      SP SP 32 ADDI,  0 G-PUSH
       exit
    THEN
    HB-TARGET-MACOS? IF
-      LBL LBL {: failed:label done:label :}
+      LBL LBL LBL {: failed:label done:label dead:label :}
       SP SP 16 SUBI,
       9 $6B726F66 LIT64,  9 SP 0 STR,    \ "fork" + NUL
       1 SP 0 ADDI,  DLSYM
       0 failed CBZ,  16 0 0 ADDI,  16 BLR,
       0 0 32 LSLI,  0 0 32 ASRI,        \ signed pid_t -> Habu cell
-      done B,
+      0 done CBNZ,
+      \ The child: its RX view is a private copy and it inherited no alias, so it
+      \ maps its own over that copy at the parent's alias address, DBASE + delta,
+      \ which the inherited NONE alias left free, and makes it RW. The alias
+      \ address and delta are the same in parent and child, so every region's
+      \ inherited delta cell stays true and none is rewritten.
+      1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 done CBZ,   \ delta 0: no alias to re-establish (a stripped image)
+      1 1 DBASE ADD,
+      0 DBASE 0 ADDI,  16 DATA RBASE-CELL LDR,  true dead REGION-REMAP
+      0 0 DBASE ADD,  1 REGION LIT64,  2 3 MOVZ,  NR-MPROTECT SYS,
+      C-CS dead BCOND,
+      0 0 MOVZ,  done B,
+      dead LBL,
+         S\" hb: fork: cannot map the child's region alias\n" ERR-TEXT,
+         0 78 MOVZ,  NR-EXIT-GROUP SYS,
       failed LBL,  0 0 MOVN,
       done LBL,
       SP SP 16 ADDI,  0 G-PUSH
@@ -3115,22 +3271,17 @@ public
    30 SP 144 LDR,  SP SP 160 ADDI,
    done LBL, ;
 
-: BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
-   A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
-   SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
+: BPATCH32 ( -- )                \ ( w addr -- ): store through the alias, cache-sync
+   A G-POP  B G-POP
+   SP SP 32 SUBI,
    A SP 8 STR,  B SP 16 STR,     \ save w/addr first: the guard call clobbers x10 (B)
    7 4 MOVZ,  A 7 PROT-GUARD:CALL \ x9 is the target; protect its exact 4-byte write
    \ A generic instruction write carries no optimizer proof, even if its old
    \ bytes belonged to a native body. Invalidate before the write can publish.
    9 SP 8 LDR,  10 9 4 ADDI,  HOST-INVALIDATE,
-   \ The flip is keyed on the target word, not the open bracket: the target does
-   \ not move between the two flips (LPROTREC's precondition). This primitive
-   \ can run inside an open compile bracket, where PROT-EMIT:LCLOSE would close
-   \ another writer's bands and clear their record.
-   2 3 MOVZ,  LPROTREC LABEL@ BL,
-   9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
-   2 5 MOVZ,  LPROTREC LABEL@ BL,
-   9 SP 8 LDR,  C-FLUSH-X9-LINE
+   9 SP 8 LDR,  10 SP 16 LDR,
+   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  10 11 0 STRW,   \ through the alias
+   C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
 \ Both relocation maps are keyed on region offset, and their readers refuse the
@@ -3168,10 +3319,9 @@ package NPUBWIN
 
 private
 
-\ BPATCH32 costs two protection syscalls per instruction; the primitives below
-\ open one window per routine. They live in engine text for BPATCH32's reason:
-\ a JIT-resident caller flipping the region to RW removes execute permission
-\ from its own page, so a Habu caller cannot compose "RW, copy, RX, flush".
+\ BPATCH32 is the isolated writer: one instruction and its own line flush. The
+\ three primitives below publish a whole routine or record pair as one guarded
+\ copy through the RW alias and one flush.
 
 \ Guard one aligned SPAN of the writable code interval, the span-wise form of
 \ GUARD-CODE-WORD above: x9 = length, x10 = start. A zero length, a length or a
@@ -3204,12 +3354,12 @@ private
 public
 
 \ code-publish ( src dst len -- ): write a whole emission into the code arena in
-\ one protection window: guard the span, open the code band over [CP, dst+len),
-\ copy, close, clear the call map over the span, advance CP, flush. A
-\ publication is an append: dst must equal CP or it fails closed, and CP
-\ advances inside the window, so a throw never sees CP disagree with the arena.
-\ Rewriting a published instruction is `patch32`. LFLUSH walks [x9, CP) once CP
-\ has advanced, the order EM-SEED-AOT uses.
+\ one copy: guard the span, copy through the region's RW alias, clear the call
+\ map over the span, advance CP, flush. A publication is an append: dst must
+\ equal CP or it fails closed, and CP advances in the same primitive, so a throw
+\ never sees CP disagree with the arena. Rewriting a published instruction is
+\ `patch32`. LFLUSH walks [x9, CP) once CP has advanced, the order EM-SEED-AOT
+\ uses.
 : BCODEPUBLISH ( -- )
    A G-POP  B G-POP  C G-POP     \ x9 = len, x10 = dst, x11 = src
    LBL LBL LBL {: loop:label done:label atcp:label :}
@@ -3220,17 +3370,16 @@ public
    10 CP CMP,  C-EQ atcp BCOND,                 \ a publication is an append, or nothing
       0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    atcp LBL,
-   1 CP 9 ADD,  PROT-EMIT:LOPEN LABEL@ BL,      \ code band -> RW over [CP, CP+len), once
    9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
    12 0 MOVZ,                                    \ x12 = byte offset into the copy
+   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 10 15 ADD,   \ x15 = dst through the alias
    loop LBL,
    12 9 CMP,  C-CS done BCOND,
    13 11 12 ADD,  14 13 0 LDRW,
-   13 10 12 ADD,  14 13 0 STRW,
+   13 15 12 ADD,  14 13 0 STRW,
    12 12 4 ADDI,
    loop B,
    done LBL,
-   PROT-EMIT:LCLOSE LABEL@ BL,                  \ region -> RX, once
    9 SP 8 LDR,  10 SP 16 LDR,
    CLEAR-CALLMAP-SPAN                            \ the span's relocation record, reset with it
    9 SP 8 LDR,  10 SP 16 LDR,
@@ -3240,10 +3389,9 @@ public
 
 \ Install one prepared native package unit. The caller has relocated its code
 \ and complete dictionary rows before this engine-owned publication boundary.
-\ The code and record bands open together and close together; no dictionary
-\ name becomes live until both copies and the instruction-cache flush finish.
-\ A namespace-only unit has records but no code; it opens only the record band
-\ and leaves CP and relocation maps unchanged.
+\ No dictionary name becomes live until both copies and the instruction-cache
+\ flush finish. A namespace-only unit has records but no code; it copies only
+\ the records and leaves CP and relocation maps unchanged.
 : BNATIVEUNITPUBLISH ( -- ) B-TASK-LIVE-GUARD
    OVERLAY-EMIT:GUARD,
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
@@ -3270,24 +3418,23 @@ public
    widdone LBL,
    9 SP 16 LDR,  9 records CBZ,
    10 CP 0 ADDI,  GUARD-CODE-SPAN
-   9 SP 16 LDR,  1 CP 9 ADD,  PROT-EMIT:LOPEN LABEL@ BL,
    records LBL,
-   1 SP 40 LDR,  2 SP 48 LDR,  PROT-EMIT:LSPAN LABEL@ BL,
    9 SP 32 LDR,  10 SP 24 LDR,  11 SP 16 LDR,  12 0 MOVZ,
+   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,    \ x15 = CP through the alias
    cloop LBL,
       12 11 CMP,  C-CS cdone BCOND,
       13 10 12 ADD,  14 13 0 LDRW,
-      13 9 12 ADD,  14 13 0 STRW,
+      13 15 12 ADD,  14 13 0 STRW,
       12 12 4 ADDI,  cloop B,
    cdone LBL,
    9 SP 40 LDR,  10 SP 8 LDR,  11 SP 48 LDR,  12 0 MOVZ,
+   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,    \ x15 = the rows through the alias
    rloop LBL,
       12 11 CMP,  C-CS rdone BCOND,
       13 10 12 ADD,  14 13 0 LDR,
-      13 9 12 ADD,  14 13 0 STR,
+      13 15 12 ADD,  14 13 0 STR,
       12 12 8 ADDI,  rloop B,
    rdone LBL,
-   PROT-EMIT:LCLOSE LABEL@ BL,
    9 SP 16 LDR,  9 indexed CBZ,
    10 SP 32 LDR,
    SNAP-RELOC:CALLMAP-OFF RELOC-EMIT:CLEAR-SPAN,
@@ -3356,10 +3503,10 @@ public
 
 \ xref-retarget ( start len recidx -- ): point one record at one routine. A
 \ record's first two cells (entry address, CODE-SPAN length) mean something
-\ only together; patch32 pokes would tear each cell across two protection
-\ windows, so one primitive writes both whole. Length first, then the address
-\ by STLR: a reader that LDARs START sees the length that belongs to it and the
-\ code code-publish flushed.
+\ only together; patch32 pokes would tear each cell across two stores, so one
+\ primitive writes both whole. Length first, then the address by STLR: a
+\ reader that LDARs START sees the length that belongs to it and the code
+\ code-publish flushed.
 : BXREFRETARGET ( -- )
    LBL LBL LBL LBL {: checked:label pending:label done:label bad:label :}
    A G-POP  B G-POP  C G-POP     \ x9 = record index, x10 = len, x11 = start
@@ -3384,10 +3531,9 @@ public
    15 0 MOVZ,  15 14 8 STR,
    pending LBL,
    14 DREC MOVZ,  9 9 14 MUL,  9 DBASE 9 ADD,   \ x9 = &record[idx]
-   2 3 MOVZ,  LPROTREC LABEL@ BL,               \ the record's two pages -> RW
-   10 9 8 STR,                                   \ length first
-   11 9 STLR,                                    \ then release-publish the address
-   2 5 MOVZ,  LPROTREC LABEL@ BL,
+   15 DATA REGION-ALIAS:DELTA-CELL LDR,  15 9 15 ADD,   \ x15 = the record through the alias
+   10 15 8 STR,                                  \ length first
+   11 15 STLR,                                   \ then release-publish the address
    9 SP 8 LDR,  9 NDICT CMP,  C-EQ done BCOND,
    EM-DEF-OCC:LISSUE LABEL@ BL,
    done LBL,
@@ -4367,53 +4513,50 @@ package ENGINE-EMIT
 
 \ wide-mark ( -- ): set DNAME-WIDE on the newest record: its effect carries a
 \ wider-than-cell layout value, so interpret-mode execute and tick refuse it
-\ (habu2.f LWIDE). Like `immediate` (habu2.f C-IMMEDIATE) it brackets the
-\ store with LPROT: the dict region is read-only at runtime. The checker calls
+\ (habu2.f LWIDE). Like `immediate` (habu2.f C-IMMEDIATE) it stores through the
+\ region's RW alias: the record's own address is read-only. The checker calls
 \ it at signature-record time.
 : BWIDEMARK ( -- )
    9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1]
-   2 3 MOVZ,  LPROTREC LABEL@ BL,
-   10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
-   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
+   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 9 12 ADD,   \ x12 = the record through the alias
+   10 12 16 LDR,  10 10 DNAME-WIDE ORRI,  10 12 16 STR, ;
 
 \ int-mark ( n -- ): set DNAME-INT on record n, for the seal-time internal-word
 \ pass (src/core/internal-mark.f), which marks engine-prefix records with no
 \ checker-known effect; interpret-mode execute and tick refuse them (habu2.f
-\ LINTERNAL). LPROT bracket as in BWIDEMARK. Monotonic: no clear prim exists.
-\ The pass marks its host record last; the primitive registry also marks the
-\ newly emitted record so saved images stay sealed.
+\ LINTERNAL). Stored through the alias as in BWIDEMARK. Monotonic: no clear
+\ prim exists. The pass marks its host record last; the primitive registry also
+\ marks the newly emitted record so saved images stay sealed.
 : BINTMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
-   2 3 MOVZ,  LPROTREC LABEL@ BL,
-   C A 16 LDR,  C C DNAME-INT ORRI,  C A 16 STR,
-   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
+   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
+   C 12 16 LDR,  C C DNAME-INT ORRI,  C 12 16 STR, ;
 
 \ rep-mark ( n -- ): set DNAME-REP on dictionary record n, the CAST: record the
 \ checker certified as a representation cast (src/core/checker.f
-\ CHECKER-DEFCAST). The twin of BINTMARK: the same LPROT bracket, no index
+\ CHECKER-DEFCAST). The twin of BINTMARK: the same alias store, no index
 \ check, monotonic (no clear prim exists).
 : BREPMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
-   2 3 MOVZ,  LPROTREC LABEL@ BL,
-   C A 16 LDR,  C C DNAME-REP ORRI,  C A 16 STR,
-   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
+   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
+   C 12 16 LDR,  C C DNAME-REP ORRI,  C 12 16 STR, ;
 
 \ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
 \ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The seal-time pass
 \ (src/core/internal-mark.f) sets it on every engine-prefix record with a
 \ checker-known effect, and EM-INTERPRET-FIND refuses a bare call with fewer
-\ interpret-stack cells. LPROT bracket as in BINTMARK; monotonic. The pass
-\ marks this prim's own record internal, so user source cannot re-drive it.
+\ interpret-stack cells. Stored through the alias as in BINTMARK; monotonic.
+\ The pass marks this prim's own record internal, so user source cannot
+\ re-drive it.
 : BMININMARK ( -- )
    B G-POP                               \ x10 = min-in cells
    A G-POP                               \ x9  = record index
-   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n] (x10 min-in survives via kernel x2-x15)
-   2 3 MOVZ,  LPROTREC LABEL@ BL,
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
    B B $FF ANDI,  B B 52 LSLI,
-   C A 16 LDR,  C C B ORR,  C A 16 STR,
-   2 5 MOVZ,  LPROTREC LABEL@ BL, ;
+   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
+   C 12 16 LDR,  C C B ORR,  C 12 16 STR, ;
 
 package ENGINE-EMIT
 public
@@ -5055,29 +5198,15 @@ package ENGINE-EMIT
    s" f." ['] BFDOT FPRIM-L ;
 
 \ LCEMIT ( x9 = instruction word ): the one store every emission funnels
-\ through. It tests whether CP is inside the open code band (PROT:WLO,
-\ PROT:WINDOW, EMIT-PROT-WINDOW); a miss extends the band by one unit. A range
-\ test, not just the end: pass 2 rewinds CP to the colon entry after its
-\ bracket opens (habu2.f EM-P2-START) and the compile loop reopens at the CP a
-\ checker call left, so CP can sit below the band's start. x12 rides the saved
-\ pair, so LCEMIT stays register-transparent. A cell of 0 (nothing open) is a
-\ miss that opens nothing, so emitting outside a bracket traps on the RX page.
+\ through. It guards the word at CP and stores it through the region's RW
+\ alias, so the code at CP's own address stays executable and never writable.
 : EMIT-CEMIT ( -- )
-   LBL LBL {: inwin:label grow:label :}
    LCEMIT LABEL@ LBL,
    SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,
    28 GUARD-CODE-WORD
-   12 DATA PROT:WINDOW LDR,
-   28 12 CMP,  C-CS grow BCOND,                  \ at or past the band's end
-   12 DATA PROT:WLO LDR,
-   28 12 CMP,  C-CS inwin BCOND,                 \ and at or above its start
-   grow LBL,
-      SP SP 16 SUBI,  30 SP 0 STR,  1 SP 8 STR,
-      1 CP 4 ADDI,  PROT-EMIT:LGROW LABEL@ BL,
-      30 SP 0 LDR,  1 SP 8 LDR,  SP SP 16 ADDI,
-   inwin LBL,
+   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 28 12 ADD,  9 12 0 STRW,   \ through the alias
    12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
-   9 28 0 STRW,  28 28 4 ADDI,  RET, ;
+   28 28 4 ADDI,  RET, ;
 
 \ LBCAP ( -- ): append TKA/TKL + ' ' to the body capture; LBCS ( x11=a x12=u )
 \ is the general entry (defining-word kind tokens). Overflow is fatal, exit 71:
@@ -5161,215 +5290,9 @@ package ENGINE-EMIT
    end LBL,
    DIVISION-PRIM-ROW @ dup 0<> if 1- ENGINE-PRIMS:MARK-DIVISION else drop then ;
 
-\ Three bands of the region are RX at rest and RW only while a bracket writes
-\ them: dictionary records [DBASE, DBASE+CFSTK-OFF), the control-flow stack (one
-\ PROT-PAGE-MAX unit at CFSTK-OFF, latched) and the code at CP. State: layout.f
-\ PROT:WLO/WINDOW (code band), PROT:RLO/RHI (record band), PROT:CF (control-flow
-\ latch), all 0 at rest. One range from DBASE, or from the record up to CP, pays
-\ the page faults of the whole dictionary between them (measured in layout.f
-\ beside the cells).
-\ Each writer declares its extent: EM-AOT-REGISTER-RECS and
-\ C-PACKAGE-EXISTING-PRIVATE write far from CP, so no fixed window fits. An
-\ undeclared write faults on an RX page, and `install --force` runs every definer
-\ over the whole prefix, so a missing declaration fails the install.
-\ The close flips the ranges recorded at open, never ones recomputed from CP,
-\ which moves in between. Nothing outside them is made writable, so the region
-\ tail stays RX from boot (habu2.f EM-SNAPSHOT-RX-FLUSH) and a raw store far
-\ above CP traps.
-\ Flips align outward to PROT-PAGE-MAX, the alignment EM-MMAP-CODE-REGION gives
-\ DBASE. DICT-SIZE is not unit-aligned, so the code band's lowest unit can be the
-\ control-flow unit: safe only because LCLOSE flips every band together (a
-\ mutation that skips the control-flow close kills the fixpoint build).
-
-\ Aligns x0 (start) down and x1 (end) up to PROT-PAGE-MAX units; x2 is scratch.
-: PAGE-OUT, ( -- )
-   0 0 16 LSRI,  0 0 16 LSLI,
-   2 PROT-PAGE-MAX 1 - MOVZ,  1 1 2 ADD,
-   1 1 16 LSRI,  1 1 16 LSLI, ;
-
-\ Union the unit-aligned span in x0/x1 into the band recorded at (locell, hicell)
-\ and flip the result RW. Branches to `done` without a syscall when the band
-\ already covers the span. x2 is scratch; x0/x1 are dead afterwards.
-: BAND-WIDEN, ( n n label -- ) {: locell:n hicell:n done:label :}
-   LBL LBL LBL {: fresh:label keeplo:label keephi:label :}
-   2 DATA locell LDR,
-   2 fresh CBZ,                                  \ nothing open -> this span opens the band
-      0 2 CMP,  C-LS keeplo BCOND,               \ an open band only ever grows
-         0 2 0 ADDI,
-      keeplo LBL,
-      2 DATA hicell LDR,
-      1 2 CMP,  C-CS keephi BCOND,
-         1 2 0 ADDI,
-      keephi LBL,
-      2 DATA locell LDR,  0 2 CMP,  C-NE fresh BCOND,
-      2 DATA hicell LDR,  1 2 CMP,  C-EQ done BCOND,   \ unchanged -> already covered
-   fresh LBL,
-   0 DATA locell STR,  1 DATA hicell STR,
-   1 1 0 SUB,  2 3 MOVZ,
-   LPROT LABEL@ BL, ;
-
-\ Clears the band's record before the flip to RX: after it no band is claimed open.
-: BAND-CLOSE, ( n n -- ) {: locell:n hicell:n :}
-   LBL {: skip:label :}
-   0 DATA locell LDR,
-   1 DATA hicell LDR,
-   1 skip CBZ,
-   2 0 MOVZ,  2 DATA locell STR,  2 DATA hicell STR,
-   1 1 0 SUB,  2 5 MOVZ,
-   LPROT LABEL@ BL,
-   skip LBL, ;
-
-: CF-FLIP, ( n -- ) {: prot:n :}
-   0 CFSTK-OFF LIT64,  0 DBASE 0 ADD,
-   1 PROT-PAGE-MAX LIT64,
-   2 prot MOVZ,
-   LPROT LABEL@ BL, ;
-
-\ PROT-EMIT:LSPAN ( x1 = address, x2 = byte length ) widens each band the span
-\ reaches; a span that reaches none declares nothing. Bands only grow while open,
-\ so the close covers every declaration in any order, and a span already covered
-\ costs no syscall. Clobbers x0-x2 and x30, the same set as LOPEN.
-: EMIT-PROT-SPAN-DECL ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: rlo:label rhi:label rskip:label
-      flo:label fhi:label fskip:label
-      clo:label chi:label cskip:label :}
-   PROT-EMIT:LSPAN LABEL@ LBL,
-   SP SP 32 SUBI,  30 SP 0 STR,  3 SP 8 STR,  4 SP 16 STR,
-   3 1 0 ADDI,                                   \ x3 = span start
-   4 1 2 ADD,                                    \ x4 = span end
-   \ the dictionary-record band [DBASE, DBASE+CFSTK-OFF)
-   0 3 0 ADDI,  1 4 0 ADDI,
-   0 DBASE CMP,  C-CS rlo BCOND,
-      0 DBASE 0 ADDI,
-   rlo LBL,
-   2 CFSTK-OFF LIT64,  2 DBASE 2 ADD,
-   1 2 CMP,  C-LS rhi BCOND,
-      1 2 0 ADDI,
-   rhi LBL,
-   1 0 CMP,  C-LS rskip BCOND,                   \ the span reaches no record
-      PAGE-OUT,
-      PROT:RLO PROT:RHI rskip BAND-WIDEN,
-   rskip LBL,
-   \ the control-flow band [DBASE+CFSTK-OFF, DBASE+DICT-SIZE): one unit, latched
-   0 3 0 ADDI,  1 4 0 ADDI,
-   2 CFSTK-OFF LIT64,  2 DBASE 2 ADD,
-   0 2 CMP,  C-CS flo BCOND,
-      0 2 0 ADDI,
-   flo LBL,
-   2 DICT-SIZE LIT64,  2 DBASE 2 ADD,
-   1 2 CMP,  C-LS fhi BCOND,
-      1 2 0 ADDI,
-   fhi LBL,
-   1 0 CMP,  C-LS fskip BCOND,                   \ the span reaches no control-flow cell
-      2 DATA PROT:CF LDR,
-      2 fskip CBNZ,                              \ already declared -> no syscall
-      2 1 MOVZ,  2 DATA PROT:CF STR,
-      3 CF-FLIP,
-   fskip LBL,
-   \ the code band [the unit holding DBASE+DICT-SIZE, DBASE+REGION)
-   0 3 0 ADDI,  1 4 0 ADDI,
-   2 DICT-SIZE LIT64,  2 DBASE 2 ADD,
-   0 2 CMP,  C-CS clo BCOND,
-      0 2 0 ADDI,
-   clo LBL,
-   2 REGION LIT64,  2 DBASE 2 ADD,
-   1 2 CMP,  C-LS chi BCOND,
-      1 2 0 ADDI,
-   chi LBL,
-   1 0 CMP,  C-LS cskip BCOND,                   \ the span reaches no code word
-      PAGE-OUT,
-      PROT:WLO PROT:WINDOW cskip BAND-WIDEN,
-   cskip LBL,
-   30 SP 0 LDR,  3 SP 8 LDR,  4 SP 16 LDR,  SP SP 32 ADDI,  RET, ;
-
-\ PROT-EMIT:LOPEN ( x1 = one past the last region byte the bracket writes ) is
-\ LSPAN over [CP, x1).
-: EMIT-PROT-OPEN ( -- )
-   LBL {: ok:label :}
-   PROT-EMIT:LOPEN LABEL@ LBL,
-   1 CP CMP,  C-HI ok BCOND,                     \ an end at or below CP means the word at CP
-      1 CP 4 ADDI,
-   ok LBL,
-   2 1 CP SUB,  1 CP 0 ADDI,
-   PROT-EMIT:LSPAN LABEL@ B, ;                   \ tail: declare [CP, end)
-
-\ PROT-EMIT:LCLOSE ( -- ) flips every open band back and clears its record. With
-\ nothing open it is a no-op: the compile-error paths close unconditionally.
-: EMIT-PROT-CLOSE ( -- )
-   LBL {: xcf:label :}
-   PROT-EMIT:LCLOSE LABEL@ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,
-   1 DATA PROT:CF LDR,
-   1 xcf CBZ,
-      0 0 MOVZ,  0 DATA PROT:CF STR,             \ cleared BEFORE the flip
-      5 CF-FLIP,
-   xcf LBL,
-   PROT:RLO PROT:RHI BAND-CLOSE,
-   PROT:WLO PROT:WINDOW BAND-CLOSE,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
-
-\ PROT-EMIT:LGROW ( x1 = one past the last byte that must be writable ) serves a
-\ writer inside another's bracket: LCEMIT leaving the code band and the
-\ PROT-EMIT:RESERVE spills. It extends the code band to the unit holding x1, one
-\ mprotect per PROT-PAGE-MAX bytes of code. With no code band open it returns and
-\ the write faults: a region write outside a bracket is a bug. It clobbers only x1
-\ and the flags, because LCEMIT is register-transparent to every emitter; x0, x2,
-\ x8/x16 (the syscall-number registers) and x30 are saved.
-: EMIT-PROT-GROW ( -- )
-   LBL LBL {: gnone:label gopen:label :}
-   PROT-EMIT:LGROW LABEL@ LBL,
-   SP SP 48 SUBI,
-   30 SP 0 STR,  0 SP 8 STR,  2 SP 16 STR,  8 SP 24 STR,  16 SP 32 STR,
-   0 DATA PROT:WINDOW LDR,
-   0 gnone CBZ,                                  \ nothing open -> let the write fault
-   1 0 CMP,  C-HI gopen BCOND,                   \ past the band's end -> extend
-   0 DATA PROT:WLO LDR,
-   CP 0 CMP,  C-CS gnone BCOND,                  \ CP still inside the band -> no syscall
-   gopen LBL,
-      PROT-EMIT:LOPEN LABEL@ BL,
-   gnone LBL,
-   30 SP 0 LDR,  0 SP 8 LDR,  2 SP 16 LDR,  8 SP 24 LDR,  16 SP 32 LDR,
-   SP SP 48 ADDI,  RET, ;
-
-\ PROT-EMIT:LCF ( -- ) declares the whole control-flow band, register-transparent
-\ so LCFPUSH/LCFPOP can call it mid-emission.
-: EMIT-PROT-CF ( -- )
-   LBL {: fret:label :}
-   PROT-EMIT:LCF LABEL@ LBL,
-   SP SP 48 SUBI,
-   30 SP 0 STR,  0 SP 8 STR,  1 SP 16 STR,  2 SP 24 STR,  8 SP 32 STR,  16 SP 40 STR,
-   0 DATA PROT:CF LDR,
-   0 fret CBNZ,                                  \ already declared -> no syscall
-      1 CFSTK-OFF LIT64,  1 DBASE 1 ADD,
-      2 DICT-SIZE CFSTK-OFF - MOVZ,
-      PROT-EMIT:LSPAN LABEL@ BL,
-   fret LBL,
-   30 SP 0 LDR,  0 SP 8 LDR,  1 SP 16 LDR,  2 SP 24 LDR,  8 SP 32 LDR,  16 SP 40 LDR,
-   SP SP 48 ADDI,  RET, ;
-
-: EMIT-PROT-WINDOW ( -- )
-   EMIT-PROT-SPAN-DECL
-   EMIT-PROT-OPEN
-   EMIT-PROT-CLOSE
-   EMIT-PROT-GROW
-   EMIT-PROT-CF ;
-
-\ LPROT ( x0 = address, x1 = byte length, x2 = prot ): mprotect of the caller's
-\ extent. Callers: the band bodies above and EM-SNAPSHOT-RX-FLUSH (the whole
-\ region). x0/x1 are clobbered; the kernel preserves x2-x15, which habu2.f
-\ LUNCAUGHT relies on.
+\ The shared bodies this file emits beside the span guard: (PROT-SPAN), then the
+\ dividing primitives' (DIV-ZERO).
 : EMIT-PROT ( -- )
-   LPROT LABEL@ LBL,
-   NR-MPROTECT SYS,  RET,
-   \ LPROTREC ( x9 = target, x2 = prot ) flips the two 16 KB pages ($8000) holding
-   \ x9 and records nothing. Sound only for a single fixed cell or word whose
-   \ writer owns no other span (the dict-record flag pokes, `patch32`): open and
-   \ close then flip the same pages. x9 is in the kernel-preserved x2-x15, so it
-   \ survives the syscall.
-   LPROTREC LABEL@ LBL,
-   0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
-   EMIT-PROT-WINDOW
    EMIT-PROT-SPAN
    EMIT-DIV-ZERO ;
 
@@ -5405,8 +5328,21 @@ package ENGINE-EMIT
 
 ;package
 
+\ LFLUSH makes the code in [x9, CP) visible to instruction fetch; LFLUSHTO takes
+\ the end in x11 instead, for code that stands above CP (LIBC-OS:FORK's child).
+\ Clobbers x9 (rounded down to its line), x10, x11.
+\ LFLUSHTO is registered as the sealed (FLUSHTO) engine helper for the reason
+\ (DIV-ZERO) is one: the fork primitive's Linux child branches to it directly,
+\ and a direct branch out of a primitive has to be a record the ahead-of-time
+\ closure walker can follow (aot-closure.f FINDADDR-PTR). LFLUSH needs none:
+\ every primitive that reaches it writes code, which a stripped image cannot.
 : EMIT-FLUSH ( -- )
+   LFLUSHTO LABEL@ {: start:label :}
+   LBL {: end:label :}
+   s" (FLUSHTO)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    LFLUSH LABEL@ LBL,
+   11 CP 0 ADDI,
+   start LBL,
    LBL FL-DL !
    LBL FL-DD !
    LBL FL-IL !
@@ -5414,11 +5350,12 @@ package ENGINE-EMIT
    9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
    10 9 0 ADDI,                                             \ line, or the 64-byte
                                                             \ stride skips the last one
-   FL-DL LABEL@ LBL,  10 CP CMP,  C-GE FL-DD LABEL@ BCOND,  10 DCCVAU,  10 10 64 ADDI,  FL-DL LABEL@ B,
+   FL-DL LABEL@ LBL,  10 11 CMP,  C-GE FL-DD LABEL@ BCOND,  10 DCCVAU,  10 10 64 ADDI,  FL-DL LABEL@ B,
    FL-DD LABEL@ LBL,  DSB-ISH,
    10 9 0 ADDI,
-   FL-IL LABEL@ LBL,  10 CP CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 64 ADDI,  FL-IL LABEL@ B,
-   FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET, ;
+   FL-IL LABEL@ LBL,  10 11 CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 64 ADDI,  FL-IL LABEL@ B,
+   FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET,
+   end LBL, ;
 
 variable LHIDXBUILD
 
@@ -5627,9 +5564,8 @@ variable LHIDXBUILD
    LBL LBL LBL LBL LBL LBL LBL LBL
    {: room-ok:label lower:label raise:label loop:label raised:label
       done:label clear-loop:label reset:label :}
-   LBL LBL LBL LBL LBL LBL LBL
-   {: reset-loop:label init-bad:label init-msg:label append-done:label
-      append-records:label append-cf:label append-restored:label :}
+   LBL LBL LBL LBL
+   {: reset-loop:label init-bad:label init-msg:label append-done:label :}
    S\" hb: definition occurrence alloc failed\n" {: ma:ptr mu:n :}
    EM-DEF-OCC:LROOM LABEL@ LBL,
       SP SP 32 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
@@ -5686,7 +5622,7 @@ variable LHIDXBUILD
       12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
       SP SP 64 ADDI,  RET,
    EM-DEF-OCC:LAPPEND LABEL@ LBL,
-      SP SP 128 SUBI,
+      SP SP 80 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,
       12 SP 32 STR,  13 SP 40 STR,  14 SP 48 STR,  15 SP 56 STR,
       16 SP 64 STR,  17 SP 72 STR,
@@ -5700,33 +5636,11 @@ variable LHIDXBUILD
       13 12 8 LDR,  14 $440 LIT64,
       13 14 CMP,  C-LT append-done BCOND,
       11 11 $438 LDR,  11 append-done CBZ,
-         \ The forwarded checker can share the code page just written.
-         \ Execute it RX, then restore the caller's declared write spans;
-         \ bulk record publication still owns the rest of its open bracket.
-         0 DATA PROT:WLO LDR,     0 SP 80 STR,
-         0 DATA PROT:WINDOW LDR,  0 SP 88 STR,
-         0 DATA PROT:RLO LDR,     0 SP 96 STR,
-         0 DATA PROT:RHI LDR,     0 SP 104 STR,
-         0 DATA PROT:CF LDR,      0 SP 112 STR,
-         11 SP 120 STR,
-         PROT-EMIT:LCLOSE LABEL@ BL,
-         11 SP 120 LDR,
          9 NDICT 1 SUBI,  9 G-PUSH  11 BLR,
-         0 SP 80 LDR,  1 SP 88 LDR,  1 append-records CBZ,
-            0 DATA PROT:WLO STR,  1 DATA PROT:WINDOW STR,
-            1 1 0 SUB,  2 3 MOVZ,  LPROT LABEL@ BL,
-         append-records LBL,
-         0 SP 96 LDR,  1 SP 104 LDR,  1 append-cf CBZ,
-            0 DATA PROT:RLO STR,  1 DATA PROT:RHI STR,
-            1 1 0 SUB,  2 3 MOVZ,  LPROT LABEL@ BL,
-         append-cf LBL,
-         0 SP 112 LDR,  0 append-restored CBZ,
-            PROT-EMIT:LCF LABEL@ BL,
-         append-restored LBL,
       append-done LBL,
       30 SP 0 LDR,  9 SP 8 LDR,  10 SP 16 LDR,  11 SP 24 LDR,
       12 SP 32 LDR,  13 SP 40 LDR,  14 SP 48 LDR,  15 SP 56 LDR,
-      16 SP 64 LDR,  17 SP 72 LDR,  SP SP 128 ADDI,  RET,
+      16 SP 64 LDR,  17 SP 72 LDR,  SP SP 80 ADDI,  RET,
    EM-DEF-OCC:LRESET LABEL@ LBL,
       SP SP 64 SUBI,
       30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,  11 SP 24 STR,

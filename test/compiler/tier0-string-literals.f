@@ -108,8 +108,8 @@ private
 : SL-INTERNER! ( [ ptr u8 n -- n ] -- )
    data-base NSTR-ABI:INTERN-CELL + xt! ;
 
-\ A region-resident interner runs in LNSTRINTERN's RX window; one that throws
-\ fails its definition with its code and the next definition compiles.
+\ A region-resident interner interns; one that throws fails its definition
+\ with its code and the next definition compiles.
 : TEST-REGION-INTERNER ( -- )
    s" a region-resident interner interns, and its throw fails the definition" T-LABEL
    ['] SL-WRAP SL-INTERNER!

@@ -55,8 +55,8 @@ variable ERR-U
    HB-TARGET-LINUX-X86-64? if native nativeu else old oldu then ;
 
 \ Construct then MATCH inside one word, scalar and wide in one fork: exit 0 with
-\ the pinned stdout proves the shared legs' RW/RX flips are exact (a wrong LPROT
-\ state SIGBUSes on the checker-bridge call or faults the run).
+\ the pinned stdout proves the shared legs store code only through the region's
+\ writable alias (a store into the executable view faults).
 
 : RT-CASES ( -- )
    s" rt/roundtrip"

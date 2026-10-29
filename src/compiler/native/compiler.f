@@ -797,7 +797,7 @@ public
    kind FIXED-DEFER <> and if E-NCOMP-STATE throw then
    val kind [: FIXED-LEASED ;] NLEASE:WITH ;
 
-\ LCREATE has already published its ARM body and closed its write window.
+\ LCREATE has already published its ARM body.
 \ Compile the same fixed one-row HIR for the open target shadow, then attach
 \ that emission to the created record. No second ARM publication occurs.
 : SHADOW-FIXED ( n n n -- ) {: val:n kind:n idx:n :}

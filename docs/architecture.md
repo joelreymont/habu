@@ -73,7 +73,10 @@ A word's header and its data are laid down at `HERE` as it is defined, and
 ### Code space
 
 Code has its own space and pointer because a page is writable or executable,
-never both ([xcomp.md](xcomp.md#linking-and-publication)).
+never both ([xcomp.md](xcomp.md#linking-and-publication)). On arm64 the engine
+maps the code region twice: code runs from a read-execute view, and every store
+into the region goes to a read-write alias of the same memory. Neither view
+changes protection after boot: compiling a word never calls mprotect.
 
 ### Stacks
 

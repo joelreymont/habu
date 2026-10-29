@@ -23,7 +23,7 @@ DSTACK-AGREE
 
 \ The guard granule is stated twice for the same reason: stack-abi.f is loaded
 \ ahead of layout.f by every window, so layout.f cannot name it, and layout.f's
-\ PROT-PAGE-MAX is what the protection window and the image writers round to.
+\ PROT-PAGE-MAX is what the region mapping and the image writers round to.
 : PAGE-AGREE ( -- )
    STACK-ABI:PAGE-BYTES PROT-PAGE-MAX <>
    if s" rt: stack-abi.f PAGE-BYTES and layout.f PROT-PAGE-MAX disagree" EXIT-RC die then ;

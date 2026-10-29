@@ -575,29 +575,7 @@ package HIDX
 public
 $27C8 constant CLAIMS
 ;package
-\ The region's three write bands.
-\ Dictionary records [DBASE, DBASE+CFSTK-OFF), the control-flow stack
-\ [DBASE+CFSTK-OFF, DBASE+DICT-SIZE) and code [DBASE+DICT-SIZE, DBASE+REGION) are
-\ RX at rest; a bracket makes writable each band it writes and flips it back at
-\ the close. src/habu/habu1.f EMIT-PROT-WINDOW owns every read and write of these
-\ cells; engine-emitted code is their only writer.
-\ The bands are tracked separately because one [lo, hi) from a record to CP spans
-\ the dictionary between. Measured on a source-prefix boot (macos-arm64): 14044
-\ flips per boot over a mean 2.06 MB; splitting the bands took the boot from
-\ 335 ms to 243 ms, minor faults from 122968 to 29277 and system time from
-\ 0.14 s to 0.05 s. Replaying the captured mprotect sequence on a bare mapping
-\ costs only 67-80 ms: the rest is RW->RX->RW dropping the page-table entries of
-\ the running JIT code and the dictionary, which a replay cannot see.
-\ PROT:WINDOW / PROT:WLO: end and start of the code band's RW window, 0 at rest;
-\ both ends are recorded because CP moves between open and close.
-\ PROT:RLO / PROT:RHI: the same pair for the record band, 0 when no record span
-\ is declared. PROT:CF: a latch, since the control-flow band's extent is the
-\ constant [CFSTK-OFF, DICT-SIZE).
-\ WINDOW/WLO/RLO take the last three cells of $27C0..$27E8; RHI and CF sit at
-\ $47C0/$47C8 above the evaluator-pointer band ($43C0..$47C0), not in the
-\ $40C8..$43A8 gap reserved for widening the protected-WID bitmap. All five are
-\ below $7FF8 (the band bodies read them with `DATA <off> LDR`, a 12-bit
-\ immediate scaled by eight) and below DATA-START.
+\ PROT: the x86-64 kernel's write-window cells (src/habu/kernel-x64.f).
 package PROT
 public
 $27D0 constant WINDOW
@@ -605,6 +583,23 @@ $27D8 constant WLO
 $27E0 constant RLO
 $47C0 constant RHI
 $47C8 constant CF
+;package
+
+\ REGION-ALIAS:DELTA-CELL: the region's RW alias minus its RX base (DBASE). The
+\ region is mapped twice (habu2.f EM-MMAP-CODE-REGION): code runs from DBASE and
+\ every store into the region goes to its address plus this delta. Each run maps
+\ its own alias, so the cell is live state: EM-DATA-INIT publishes it, the boot
+\ republishes it after a snapshot restore and every task region copies it. A
+\ forked child maps its own alias at the parent's alias address, so the delta it
+\ inherits stays true (habu1.f LIBC-OS:FORK). Below $7FF8 so `DATA <off> LDR`
+\ names it directly.
+\ Neither view changes protection after boot: compiling never calls mprotect.
+\ Measured on macos-arm64 with `/usr/bin/time -l`: a source-prefix boot (the
+\ hb-stdin engine `install` promotes) takes 2101 page reclaims and 0.01 s system
+\ time, and `install --force` 40120 page reclaims and 0.5 s system time.
+package REGION-ALIAS
+public
+$43B0 constant DELTA-CELL
 ;package
 
 \ AOT-CELLS:SIG-POOL-CELL / SIG-LEN-CELL: the baked signature pool's address and
@@ -1473,7 +1468,7 @@ $5000 constant TXN-STATE-OFF
 \ it, and data-claims.f refuses a transaction cell past it: growing the
 \ transaction is a layout edit the build checks.
 $300 constant TXN-STATE-LEN
-$10000 constant PROT-PAGE-MAX          \ = STACK-ABI:PAGE-BYTES; rt.f executes the agreement
+$10000 constant PROT-PAGE-MAX          \ the mapping alignment (= STACK-ABI:PAGE-BYTES; rt.f executes the agreement)
 
 TXN-STATE-OFF       constant TXN-ACTIVE-CELL
 TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL
@@ -1854,7 +1849,7 @@ $43A0 constant XT-CELL
 
 \ AOT-ARM:OPEN writes B0-CELL, and WINDOW-CLOSE clears it. Tier 0 reads it to
 \ keep a mention of a created word made before the window opened a call
-\ (habu2.f EM-COMPILE-CALL). $43B0 is free.
+\ (habu2.f EM-COMPILE-CALL).
 \ T0 is latched when the seed allocates its wordlists: later boot-run entries
 \ can allocate more, so the sealed-wordlist gate cannot derive it from WIDN.
 package AOT-CELLS

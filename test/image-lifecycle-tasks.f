@@ -133,7 +133,7 @@ TASK-ABI:STATUS-OFF CELL 2 * + constant RET-OFF
 
 \ After the kill the TCB holds nothing this process took but its park, which the
 \ capture sweep destroys (src/lib/task.f PARK-CREATE): the thread handle, the
-\ join's answer and PREPARE's data base, record count and code end are zero,
+\ join's answer and ACTIVATE's data base, record count and code end are zero,
 \ which lets a task that ran at load time be captured (TASK-RELEASE-MEM). The
 \ activated TCB is read first, so the offsets are shown to reach cells the kill
 \ clears; the worker never writes them.

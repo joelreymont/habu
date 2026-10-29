@@ -95,10 +95,11 @@ HABU_UNDER_TEST="$HOST" HABU_FIXPOINT_ENGINE="$HOST" TMPDIR="$TMP" \
 This route emits the ordinary native product and its `.map`; qualify that
 pair against the matching sources before promotion.
 
-When a source update adds a baked checker API that snapshot support uses, an
-older native host cannot save the new builder support: its ordinary build
-refuses with `E-UNDEFINED`. Stage a fresh checker-bearing whitebox host once
-through the same compiler preload, then build the product on that host:
+When a source update adds a baked checker API that snapshot support uses, or
+a layout cell that SND-ZERO-LIVE clears, an older native host cannot save the
+new builder support: its ordinary build refuses with `E-UNDEFINED`. Stage a
+fresh checker-bearing whitebox host once through the same compiler preload,
+then build the product on that host:
 
 ```sh
 TMPDIR="$TMP" \
