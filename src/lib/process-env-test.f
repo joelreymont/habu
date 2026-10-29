@@ -384,6 +384,13 @@ DYNAMIC-BUFFER ERR u8
    0 OUT 10 s" before-out" T$=
    0 ERR 10 s" before-err" T$= ;
 
+\ The child closes its pipes and lives on, so the reap after EOF waits on a
+\ running child with no deadline (PROC-REAP-CAPTURE-BOUNDED).
+: NO-DEADLINE ( -- )
+   s" printf out; printf err >&2; exec >&- 2>&-; exec /bin/sleep 0.2" SHELL
+   s" " >LEN [: OUT-ROOM ;] [: ERR-ROOM ;] PROCESS:WAIT-FOREVER CAPTURE
+   PROC-OUTCOME>RC RC>N 0 T= LEN>N 3 T= LEN>N 3 T= ;
+
 \ Each sink yields while the child fills the other pipe. Readiness therefore
 \ continues past the deadline: poll(0) alone cannot end this capture.
 : BUSY-TIMEOUT ( -- )
@@ -415,6 +422,7 @@ public
 : RUN ( -- )
    LARGE
    TIMEOUT
+   NO-DEADLINE
    BUSY-TIMEOUT
    CLEANED
    [: [: REFUSE ;] [: ERR-ROOM ;] SINK-FAILS ;] E-STR-CAPACITY TTHROWSQ

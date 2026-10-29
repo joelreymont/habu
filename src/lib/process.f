@@ -676,11 +676,22 @@ PROC-REAP-ARM-DEFAULT
    PROC-IN-W @ >FD PROC-NOSIGPIPE!
    PROC-IN-W @ >FD PROC-NONBLOCK! ;
 
+\ The one window PROC-CAPTURE-DEADLINE! never times out on: a capture given it
+\ waits for the child to finish however long that takes.
+package PROCESS
+public
+: WAIT-FOREVER ( -- ms ) MEM-MAX-N >MS ;
+;package
+
 : PROC-CAPTURE-DEADLINE! ( ms -- ) {: timeout :}
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then
+   timeout MS>N MEM-MAX-N = if MEM-MAX-N PROC-DEADLINE ! exit then
    timeout PROC-DEADLINE-AT PROC-DEADLINE ! ;
 
+\ With no deadline this answers a negative ms: the capture loops never see zero
+\ left, and poll(2) waits unbounded (PROC-POLL-RESTART).
 : PROC-REMAINING-MS ( -- ms )
+   PROC-DEADLINE @ MEM-MAX-N = if -1 >MS exit then
    PROC-DEADLINE @ PROC-LEFT-MS ;
 
 \ ---- a capture that hears a stop ---------------------------------------------
@@ -957,7 +968,7 @@ $10000 constant PROC-GROW-CHUNK          \ bytes asked of one growing read
          \ A halt at PAUSE would unwind out of this loop and leave the child
          \ unreaped. SLEEP returns here to reap it, and does not burn a core while
          \ the child runs.
-         left 1 min >MS TASK:SLEEP
+         1 >MS TASK:SLEEP
       then
    repeat
    PROC-REAP-DISARM ;
