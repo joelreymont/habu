@@ -1,9 +1,11 @@
 ---
 title: Declare checker scalar scratch inside spans
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-26T15:50:44.483527+02:00"
+closed-at: "2026-10-29T09:51:15.987933+02:00"
+close-reason: "3c landed 518398d5 'Declare checker index scratch inside spans' (review ACCEPT; fold-ins: epoch-restart test, seam and UIX/CHX comments, dead USX-P store). 3c proof: engine and whitebox builds rc 0; engine-suite ok; frame and slots e2e ok; full suite 495/495 suites, no red; census unchanged at 184 refused / 8 reused. Lanes 3a-3c complete. PRM-FIRST site growth (9 -> 28 files) noted on the parent dot."
 blocks:
   - habu-move-the-remaining-95400204
 ---
