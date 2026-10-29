@@ -108,19 +108,23 @@
 \ THE VIRTUAL STACK. The top of the data stack lives in at most T0-EMIT:VREGS
 \ entries, each a vreg or a constant; below them the stack is in memory. A
 \ constant becomes code only when an operation needs it in a register or the
-\ stack is spilled. The paths that meet at `else` and `then` of an `if` keep
-\ their values in registers: `if` records the layout its skipped path carries
-\ (SNAPSHOT, every entry settled into a vreg of its own) and the paths that
-\ join reconcile to it (RECONCILE). Every call, loop head, loop exit and other
-\ join spills the whole virtual stack to memory, so those paths meet with it
-\ empty. A push onto a full virtual stack spills its bottom
-\ entry. Entries may share a vreg: a copy (`dup`, `over`, a wide move's cell)
-\ is a second entry holding the same vreg, and a vreg is free only once no
-\ entry holds it (RELEASE). An operation that writes an entry's vreg in place
-\ takes it through OWN, which first copies a shared vreg into a fresh one; one
-\ that overwrites it whole, reading the old value only as an input, takes it
-\ through WRITE-TARGET, which relabels the entry to a fresh vreg with no copy.
-\ A comparison writes no operand: it pushes its flag into a fresh vreg.
+\ stack is spilled. The paths that meet at an `if`'s `else` and `then` and at a
+\ `begin` loop's head and exits keep their values in registers: `if` records
+\ the layout its skipped path carries, `begin` the loop head's and `while` its
+\ exit's (SNAPSHOT, every entry settled into a vreg of its own), and the paths
+\ that join there reconcile to it (RECONCILE): the arms at `else` and `then`,
+\ the back edge at `repeat`, `until` and `again`, and the fallthrough at a
+\ `then` that lands a `while` exit. Every call spills the whole virtual stack
+\ to memory, and so does every counted loop's head and exit and every `case`
+\ and MATCH join, so those paths meet with it empty. A push onto a full virtual
+\ stack spills its bottom entry. Entries may share a vreg: a copy (`dup`,
+\ `over`, a wide move's cell) is a second entry holding the same vreg, and a
+\ vreg is free only once no entry holds it (RELEASE). An operation that writes
+\ an entry's vreg in place takes it through OWN, which first copies a shared
+\ vreg into a fresh one; one that overwrites it whole, reading the old value
+\ only as an input, takes it through WRITE-TARGET, which relabels the entry to
+\ a fresh vreg with no copy. A comparison writes no operand: it pushes its flag
+\ into a fresh vreg.
 \
 \ THE WIDTHS. A stack word moves whole values: the checker measured each
 \ operand's cells at the token, and the capture of each split's certificate
@@ -817,8 +821,9 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 \ ---- joins -------------------------------------------------------------------
 \ A layout is the virtual stack as registers alone: count n and n distinct
 \ vregs, the top n cells of the data stack bottom first, the rest in memory.
-\ `if` records the layout its skipped path carries; the paths that meet at
-\ `else` and `then` reconcile to the layout recorded first.
+\ `if` records the layout its skipped path carries, `begin` its loop head's and
+\ `while` its exit's; the paths that meet there reconcile to the layout
+\ recorded first.
 
 \ Whether an entry below k holds k's vreg.
 : HELD-BELOW? ( n -- bool ) {: k:n :}
@@ -967,52 +972,87 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
    CS-ELSE L-N @ CS-PUSH
    live if k 1+ k LAY-COPY then ;
 
-\ `then` of a `while` lands with the stack spilled; of an `if` or `else` it
-\ reconciles to the layout recorded, and with none recorded every other
-\ arrival was dead, so the virtual stack continues.
+\ `then` reconciles to the layout its opener recorded: a `while`'s exit, or
+\ an `if` or `else` path, and with none recorded every other arrival was
+\ dead, so the virtual stack continues.
 : DO-THEN ( -- )
-   CS-TOP-KIND CS-WHILE = if
-      CS-WHILE CS-POP
-      SCOPE-END
-      LAND
-      T0-EMIT:THEN, exit
-   then
-   CS-IF CS-ELSE CS-POP2
+   CS-TOP-KIND CS-WHILE = if CS-WHILE else CS-IF then
+   CS-ELSE CS-POP2
    SCOPE-END
    CS-N @ {: k:n :}
    k CS-LAY-N @ 0 >= if k RECONCILE then
    T0-EMIT:THEN, ;
 
+\ The loop head's layout is the one every back edge reconciles to.
 : DO-BEGIN ( -- )
-   LAND
-   T0-EMIT:BEGIN,
-   CS-BEGIN L-N @ CS-PUSH ;
+   CS-N @ {: k:n :}
+   CS-BEGIN L-N @ CS-PUSH  k SNAPSHOT
+   T0-EMIT:BEGIN, ;
 
+\ The exit's layout is recorded under the head's, which moves up a slot; the
+\ body continues in the exit's.
 : DO-WHILE ( -- )
    CS-BEGIN CS-POP
    CS-LOC@ {: loc:n :}
-   CC? if TAKE-CC T0-EMIT:WHILE-CC, else TAKE SPILL-ALL T0-EMIT:WHILE, then
-   CS-WHILE loc CS-PUSH
-   CS-BEGIN loc CS-PUSH ;
+   CS-N @ {: k:n :}
+   k CS-LAY-N @ {: head:n :}
+   k 1+ LAY-ROOM  k k 1+ LAY-COPY
+   CC? if
+      CC-TAKE {: c:T0-EMIT:cc :}
+      CS-WHILE loc CS-PUSH  k SNAPSHOT
+      CS-BEGIN loc CS-PUSH  head k 1+ CS-LAY-N !
+      c T0-EMIT:WHILE-CC, exit
+   then
+   TAKE {: f:T0-EMIT:vreg :}
+   CS-WHILE loc CS-PUSH  k SNAPSHOT
+   CS-BEGIN loc CS-PUSH  head k 1+ CS-LAY-N !
+   f T0-EMIT:WHILE,
+   f RELEASE ;
 
+\ The back edge reconciles to the head; the exit continues in its layout.
 : DO-REPEAT ( -- )
    CS-BEGIN CS-POP
+   CS-N @ RECONCILE
    CS-WHILE CS-POP
    SCOPE-END
-   LAND
-   T0-EMIT:REPEAT, ;
+   T0-EMIT:REPEAT,
+   CS-N @ ADOPT ;
 
+\ Whether layout k holds vreg r.
+: LAY-HOLDS? ( n T0-EMIT:vreg -- bool ) {: k:n r:T0-EMIT:vreg :}
+   r T0-EMIT:VREG>N {: v:n :}
+   false k CS-LAY-N @ 0 ?do k i LAY@ v = or loop ;
+
+\ The back edge reconciles to the head, and the fallthrough continues in its
+\ layout. RECONCILE keeps the condition codes, so a pending compare is taken
+\ after it; a flag in a vreg the head holds is compared first, and the loop
+\ goes back while it is zero, the compare's NE failing.
 : DO-UNTIL ( -- )
    CS-BEGIN CS-POP
    SCOPE-END
-   CC? if TAKE-CC T0-EMIT:UNTIL-CC, exit then
-   TAKE SPILL-ALL T0-EMIT:UNTIL, ;
+   CS-N @ {: k:n :}
+   CC? if
+      CC-TAKE {: c:T0-EMIT:cc :}
+      k RECONCILE
+      c T0-EMIT:UNTIL-CC, exit
+   then
+   TAKE {: f:T0-EMIT:vreg :}
+   k f LAY-HOLDS? if
+      f 0 T0-EMIT:CMP-LIT
+      f RELEASE
+      k RECONCILE
+      T0-EMIT:CC-NE T0-EMIT:UNTIL-CC, exit
+   then
+   k RECONCILE
+   f T0-EMIT:UNTIL,
+   f RELEASE ;
 
 : DO-AGAIN ( -- )
    CS-BEGIN CS-POP
    SCOPE-END
-   SPILL-ALL
-   T0-EMIT:AGAIN, ;
+   CS-N @ RECONCILE
+   T0-EMIT:AGAIN,
+   1 DEAD ! ;
 
 \ ---- loops -------------------------------------------------------------------
 variable DO-N                       \ the open levels

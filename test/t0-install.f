@@ -48,6 +48,13 @@
 \ in either arm, an if/else nested in each arm, sixteen live values evicted in
 \ one arm, a copy live across an `if` whose arm writes one copy, and a fused
 \ compare whose copy and constant settle between the compare and its branch.
+\ The loop rows run `begin` loops whose values stay in registers around the
+\ back edge, each with a cell under its result: a byte counted in a string, a
+\ 2-cycle and a 3-cycle at the back edge, two `while` exits that leave
+\ different register counts, constants below a loop, a call in the body,
+\ sixteen live values evicted in the body, loops in each arm of an if/else,
+\ `until` on a compare of a loop value and on the loop value itself, `again`
+\ left by `exit` and by a `while`, and a fused `while` with a constant below.
 \ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
 \ a row through it, and its C entry lies between its accessor's code and the
 \ next definition's: the stub T0 appended to the accessor's emission. The
@@ -568,6 +575,81 @@ W-DEF-2OVER W-PO
 \ A copy and a constant settled between the compare and its branch.
 : J-FUSE ( n n -- n n n ) >r 1+ dup 7 r> 0< if + 1 else * 2 then ;
 
+\ ---- loops that keep registers ------------------------------------------------
+\ Each loop keeps its values in vregs at `begin`, its exits' at `while`, and the
+\ back edge and the exits reconcile to them. A body reads its inputs from
+\ locals or moves them before `begin`, so the loop head holds them in vregs.
+: L-SMALL ( n -- bool ) 100 < ;
+
+\ The bytes equal to ch in a string, SCAN-CHAR's shape.
+: L-COUNT ( ptr u8 n n -- n )
+   {: ch:n :}
+   0 rot rot
+   begin dup 0 > while
+      over c@ ch = if rot 1+ rot rot then
+      swap 1+ swap 1-
+   repeat 2drop ;
+
+: L-SWAP ( n n n -- n n )
+   {: a:n b:n k:n :}
+   a b begin swap 1+ dup k > until ;
+
+: L-ROT ( n n n n -- n n n )
+   {: a:n b:n c:n k:n :}
+   a b c begin rot 1+ dup k > until ;
+
+\ Two exits: the first with both values in vregs, the second after a call.
+\ The checker refuses a second `while`, so the body is TRUSTED:.
+TRUSTED: L-TWO ( n n -- n n )
+   {: a:n k:n :}
+   a k begin dup 0 > while over L-SMALL while swap 2 * swap 1- repeat then ;
+
+: L-KONST ( n -- n n n n ) 1 swap 2 swap 3 swap begin 1- dup 0= until ;
+
+: L-CALL ( n n -- n )
+   {: a:n k:n :}
+   a k begin swap J-TWICE swap 1- dup 0= until drop ;
+
+\ Sixteen values live around a loop whose body evicts the bottom ones.
+: L-FULL ( n n -- n )
+   >r
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+ dup 1+
+   begin dup dup dup + + + 2 / r> 1- dup >r 0= until r> drop
+   + + + + + + + + + + + + + + + ;
+
+: L-NEST ( n n bool -- n )
+   {: a:n b:n f:bool :}
+   a b f if begin dup 100 < while swap 1+ swap 2 * repeat
+   else begin 1+ dup 10 > until then - ;
+
+: L-IF-UNTIL ( n n bool -- n n )
+   {: a:n b:n f:bool :}
+   a b f if begin swap 1+ swap 2 * dup 50 > until then ;
+
+\ The flag a compare of a loop value leaves, and a loop value that is a flag,
+\ whose body's compare leaves condition codes that `until` must not read.
+: L-UNTIL-CC ( n n -- n n )
+   {: a:n b:n :}
+   a b begin 1- swap dup 0= until ;
+
+: L-UNTIL-REG ( n bool bool -- n bool bool )
+   {: k:n a:bool b:bool :}
+   k a b begin rot dup 0 < if negate then 1+ rot rot swap dup until ;
+
+: L-AGAIN ( n n -- n )
+   {: a:n k:n :}
+   a k begin swap 1+ swap 1- dup 0= if drop exit then again ;
+
+\ The checker refuses a `while` closed by `again`, so the body is TRUSTED:.
+TRUSTED: L-WAGAIN ( n n -- n n )
+   {: a:n k:n :}
+   a k begin dup 0 > while swap 1+ swap 1- again then ;
+
+: L-WCONST ( n -- n n )
+   {: a:n :}
+   a begin 0 swap dup 10 < while nip 2 * repeat ;
+
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
 : INC ( n -- n ) 1+ ;
@@ -932,6 +1014,34 @@ private
    s" a copy and a constant settled between a compare and its branch" T-LABEL
    77 3 -1 J-FUSE 1 T= 11 T= 4 T= 77 T=   77 3 1 J-FUSE 2 T= 28 T= 4 T= 77 T= ;
 
+\ Each loop with a cell under its result.
+: LOOP-REG-CASE ( -- )
+   s" a byte counted in a string" T-LABEL
+   77 s" a,b,,c," [char] , L-COUNT 4 T= 77 T=   77 s" abc" [char] , L-COUNT 0 T= 77 T=
+   s" a 2-cycle and a 3-cycle at the back edge" T-LABEL
+   77 1 10 5 L-SWAP 11 T= 2 T= 77 T=
+   77 1 10 100 50 L-ROT 101 T= 11 T= 2 T= 77 T=
+   s" two exits that leave different register counts" T-LABEL
+   77 3 5 L-TWO 0 T= 96 T= 77 T=   77 30 5 L-TWO 3 T= 120 T= 77 T=
+   s" three constants below a loop" T-LABEL
+   77 3 L-KONST 0 T= 3 T= 2 T= 1 T= 77 T=
+   s" a call in the loop body" T-LABEL
+   77 3 4 L-CALL 48 T= 77 T=
+   s" sixteen live values around a loop" T-LABEL
+   77 1 2 L-FULL 184 T= 77 T=   77 1 1 L-FULL 152 T= 77 T=
+   s" loops nested in each arm of an if and else" T-LABEL
+   77 3 10 true L-NEST -153 T= 77 T=   77 3 10 false L-NEST -8 T= 77 T=
+   77 3 10 true L-IF-UNTIL 80 T= 6 T= 77 T=   77 3 10 false L-IF-UNTIL 10 T= 3 T= 77 T=
+   s" until on a compare of a loop value and on the value itself" T-LABEL
+   77 3 5 L-UNTIL-CC 0 T= 1 T= 77 T=
+   77 0 false true L-UNTIL-REG TTRUE TFALSE 2 T= 77 T=
+   77 0 true false L-UNTIL-REG TTRUE TFALSE 1 T= 77 T=
+   s" again left by exit and by a while" T-LABEL
+   77 3 4 L-AGAIN 7 T= 77 T=
+   77 3 4 L-WAGAIN 0 T= 7 T= 77 T=
+   s" a while on a fused compare with a constant below" T-LABEL
+   77 3 L-WCONST 12 T= 0 T= 77 T= ;
+
 \ A forged tag in an enum slot and in a product's enum field: the fetch's tag
 \ check ends the child after the fixture armed it.
 : FETCH-FORGED ( -- )
@@ -958,6 +1068,7 @@ public
    SHARE-CASE
    FUSE-CASE
    JOIN-CASE
+   LOOP-REG-CASE
    FETCH-FORGE-CASE
    IS-CASE
    CALLBACK-CASE

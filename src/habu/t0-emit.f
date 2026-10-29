@@ -381,10 +381,11 @@ ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
 \ writing no vreg; SET-FLAG makes d -1 when condition c of the last compare
 \ holds, else 0: a Habu flag. IF-CC,, WHILE-CC, and UNTIL-CC, branch on the
 \ codes instead. Between a compare and the word that reads its codes the
-\ front end emits only moves: PUSH, PUSH-LIT, SPILL, SPILL-LIT, LIT,
+\ front end emits only moves: PUSH, PUSH-LIT, SPILL, SPILL-LIT, FILL, POP, LIT,
 \ ADDR-DATA, ADDR-CODE, ADDR-QUOT, DSP+, MOV and EXCHANGE. Every emitter keeps
 \ those condition-preserving (x86-64's DSP+ is an lea, its zero literal a mov,
-\ its exchange an xchg; arm64's exchange is three movs).
+\ its exchange an xchg, its pop an lea and a mov; arm64's exchange is three
+\ movs, its stack and address offsets add and sub without flags).
 : CMP ( vreg vreg -- ) CUR @ CMP-XT @ execute ;
 : CMP-LIT ( vreg n -- ) CUR @ CMP-LIT-XT @ execute ;
 : SET-FLAG ( vreg cc -- ) CUR @ SET-FLAG-XT @ execute ;

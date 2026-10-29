@@ -320,6 +320,37 @@ private
    4 +loop TTRUE
    NEMIT:CLEAR ;
 
+\ The byte offset the word at byte at branches back to: a `b` or `b.cond`
+\ with a negative offset; at itself for any other word.
+: BACK-TARGET ( n -- n ) {: at:n :}
+   at WORD@ {: w:n :}
+   w $FC000000 and $14000000 =  w 25 rshift 1 and 1 =  and if
+      w $3FFFFFF and 1 26 lshift - 4 * at + exit
+   then
+   w $FF000010 and $54000000 =  w 23 rshift 1 and 1 =  and if
+      w 5 rshift $7FFFF and 1 19 lshift - 4 * at + exit
+   then
+   at ;
+
+\ A loop shaped as SCAN-CHAR keeps its values in registers around the back
+\ edge: nothing between the loop head and the branch back to it loads or
+\ stores through x19.
+: LOOP-CASE ( -- )
+   ARCH-A64
+   s" CNT ( ptr u8 n -- n ptr u8 n ) 0 rot rot begin dup 0 > while over c@ 44 = if rot 1+ rot rot then swap 1+ swap 1- repeat " BODY
+   0 0 NEMIT:SIZE 0 ?do
+      i BACK-TARGET {: t:n :}
+      t i <> if 2drop t i then
+   4 +loop {: head:n back:n :}
+   s" the body branches back to its loop head" T-LABEL
+   back head > TTRUE
+   s" no word between them loads or stores through x19" T-LABEL
+   true back head ?do
+      i WORD@ {: w:n :}
+      w 25 rshift 5 and 4 =  w 5 rshift 31 and DS =  and 0= and
+   4 +loop TTRUE
+   NEMIT:CLEAR ;
+
 \ The x86-64 stack moves leave the condition codes alone: the stack pointer
 \ moves by lea r12,[r12+8] and lea r12,[r12-8], and zero loads by mov ecx,0.
 create X86-MOVES
@@ -366,6 +397,7 @@ public
    SLOT-REFUSED-CASE
    FUSE-CASE
    JOIN-CASE
+   LOOP-CASE
    X86-FLAGS-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
