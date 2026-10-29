@@ -97,9 +97,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ A forward rel32 at the end of what was just emitted: its field's offset.
 : FWD-SITE ( -- T0-LABEL:branch ) HERE-OFF 4 - T0-LABEL:>BRANCH ;
 
-\ Load the constant n into r with the shortest form that holds it.
+\ Load the constant n into r with the shortest form that holds it and leaves
+\ the condition codes alone: zero is a mov, not an xor.
 : LIT-R ( n r64 -- ) {: v:n r:r64 :}
-   v 0 = if r R64>N >R32 r R64>N >R32 SINK ENC-XOR32-RR exit then
    v 0 >= v $FFFFFFFF <= and if r R64>N >R32 v >IMM32 SINK ENC-MOV32-RI32 exit then
    v IMM? if r v >IMM32 SINK ENC-MOV-RI32 exit then
    r v >IMM64 SINK ENC-MOV-RI64 ;
@@ -200,17 +200,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    HERE-OFF T0-EMIT:ADDR-QUOT-KIND n -1 T0-EMIT:ADDR-ROW+
    d REG 0 >IMM64 SINK ENC-MOV-RI64 ;
 
-\ The stack pointer moved by k cells: an add or a sub of the bytes, an imm8
-\ while they fit one.
+\ The stack pointer moved by k cells: an lea, which leaves the condition codes
+\ alone, as T0-EMIT:CMP requires.
 : DSP+ ( n -- ) {: k:n :}
    k 0 = if exit then
-   k abs CELL * {: m:n :}
-   m 127 <= if
-      k 0 > if DSP m >IMM8 SINK ENC-ADD-RI8 exit then
-      DSP m >IMM8 SINK ENC-SUB-RI8 exit
-   then
-   k 0 > if DSP m >IMM32 SINK ENC-ADD-RI32 exit then
-   DSP m >IMM32 SINK ENC-SUB-RI32 ;
+   DSP DSP k CELL * MEM-OFF SINK ENC-LEA ;
 
 \ x86-64 has no writeback: a push stores and then moves the pointer, and a pop
 \ moves it and then loads, as G-PUSH and G-POP do.
@@ -382,6 +376,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    s REG l REG SINK ENC-CMP-RR
    C-GE FWD-JCC ;
 
+: FWD-CC ( T0-EMIT:cc -- T0-LABEL:branch ) COND FWD-JCC ;
+
 \ The branch's jcc becomes je: its opcode byte is just before the field.
 : ENTRY-EQ ( T0-LABEL:branch -- ) T0-LABEL:BRANCH>N {: at:n :}
    C-E CONDITION>N $80 +  SINK BUF:SPAN$ drop at 1 - + c! ;
@@ -398,6 +394,10 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : BACK-ZERO ( T0-EMIT:vreg T0-LABEL:head -- )
    {: c:T0-EMIT:vreg m:T0-LABEL:head :}
    c TEST C-E m BACK-JCC ;
+
+: BACK-CC ( T0-EMIT:cc T0-LABEL:head -- )
+   {: c:T0-EMIT:cc m:T0-LABEL:head :}
+   c COND m BACK-JCC ;
 
 \ ---- the return stack --------------------------------------------------------
 \ TOR goes through rax; RFROM and RFETCH through the destination alone.
@@ -545,6 +545,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] T0-LABEL:WHILE, k T0-EMIT:WHILE,-XT !
    ['] T0-LABEL:REPEAT, k T0-EMIT:REPEAT,-XT !
    ['] T0-LABEL:UNTIL, k T0-EMIT:UNTIL,-XT !
+   ['] T0-LABEL:IF-CC, k T0-EMIT:IF-CC,-XT !
+   ['] T0-LABEL:WHILE-CC, k T0-EMIT:WHILE-CC,-XT !
+   ['] T0-LABEL:UNTIL-CC, k T0-EMIT:UNTIL-CC,-XT !
    ['] T0-LABEL:AGAIN, k T0-EMIT:AGAIN,-XT !
    ['] T0-LABEL:CASE, k T0-EMIT:CASE,-XT !
    ['] T0-LABEL:OF, k T0-EMIT:OF,-XT !
@@ -570,8 +573,10 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    ['] FWD-NE k T0-LABEL:FWD-NE-XT !
    ['] FWD-NE-LIT k T0-LABEL:FWD-NE-LIT-XT !
    ['] FWD-GE k T0-LABEL:FWD-GE-XT !
+   ['] FWD-CC k T0-LABEL:FWD-CC-XT !
    ['] BACK-JUMP k T0-LABEL:BACK-JUMP-XT !
    ['] BACK-ZERO k T0-LABEL:BACK-ZERO-XT !
+   ['] BACK-CC k T0-LABEL:BACK-CC-XT !
    ['] RESOLVE k T0-LABEL:RESOLVE-XT !
    ['] ENTRY-EQ k T0-LABEL:ENTRY-EQ-XT !
    ['] LOOP-NEXT k T0-LABEL:LOOP-NEXT-XT !

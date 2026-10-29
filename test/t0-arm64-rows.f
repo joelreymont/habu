@@ -5,11 +5,12 @@
 \ `cmp #imm`, a variable into its data address row) while a does> child stays
 \ a call, the writeback transfers that move the data stack pointer with a
 \ spill's or fill's last cell, a copy that shares its vreg until a load
-\ writes a fresh one, and the refusals that keep the patch slot last
-\ and an operation x86-64 does not provide from running. Bodies are compiled
-\ by T0:COMPILE-TEXT or driven through the seam, sealed into NEMIT, and
-\ checked by decoding the words NEMIT answers against the assembler's
-\ encodings.
+\ writes a fresh one, a compare that branches on its condition codes, the
+\ x86-64 stack moves that leave those codes alone, and the refusals that keep
+\ the patch slot last and an operation x86-64 does not provide from running.
+\ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
+\ into NEMIT, and checked by decoding the words NEMIT answers against the
+\ assembler's encodings.
 
 require src/lib/test.f
 require src/arch/arm64/asm.f
@@ -284,6 +285,43 @@ private
    [: T0-EMIT:SEAL-UNPLACED ;] T0-EMIT:E-T0-SLOT TTHROWSQ
    NCBSTUB:CLEAR ;
 
+\ A compare followed by `if` branches on its condition: cmp, then b.ge past
+\ the arm, with no csetm flag and no cbz test of one.
+: FUSE-CASE ( -- )
+   ARCH-A64
+   s" F ( n n -- n ) < if 1 else 2 then " BODY
+   s" the compare is cmp x10,x9" T-LABEL
+   8 WORD@ 10 9 A64ASM:ENC-CMP T=
+   s" and its branch is b.ge, past the arm when < fails" T-LABEL
+   12 WORD@ $FF00001F and  0 A64ASM:C-GE A64ASM:ENC-BCOND T=
+   s" no word is a csetm or a cbz" T-LABEL
+   0 0 A64ASM:ENC-CSETM $FFFF0FE0 and {: csetm:n :}
+   0 0 A64ASM:ENC-CBZ $FF000000 and {: cbz:n :}
+   true NEMIT:SIZE 4 / 0 ?do
+      i 4 * WORD@ {: w:n :}
+      w $FFFF0FE0 and csetm <>  w $FF000000 and cbz <> and and
+   loop TTRUE
+   NEMIT:CLEAR ;
+
+\ The x86-64 stack moves leave the condition codes alone: the stack pointer
+\ moves by lea r12,[r12+8] and lea r12,[r12-8], and zero loads by mov ecx,0.
+create X86-MOVES
+$4D c, $8D c, $64 c, $24 c, $08 c,
+$4D c, $8D c, $64 c, $24 c, $F8 c,
+$B9 c, $00 c, $00 c, $00 c, $00 c,
+15 constant X86-MOVES-LEN
+
+: X86-FLAGS-CASE ( -- )
+   CTARGET-ARCH:X86-64 T0-EMIT:SELECT
+   T0-EMIT:OPEN
+   1 T0-EMIT:DSP+  -1 T0-EMIT:DSP+  0 V0 T0-EMIT:LIT
+   T0-EMIT:RETURN
+   T0-EMIT:SEAL-UNPLACED
+   s" x86-64 DSP+ is an lea and a zero literal a mov" T-LABEL
+   NEMIT:BYTES NEMIT:SIZE X86-MOVES X86-MOVES-LEN CONTAINS? TTRUE
+   NEMIT:CLEAR
+   ARCH-A64 ;
+
 \ x86-64 provides neither operation yet: each is refused, not run.
 : X86-UNFILLED-CASE ( -- )
    CTARGET-ARCH:X86-64 T0-EMIT:SELECT
@@ -309,6 +347,8 @@ public
    WRITEBACK-CASE
    SHARE-CASE
    SLOT-REFUSED-CASE
+   FUSE-CASE
+   X86-FLAGS-CASE
    X86-UNFILLED-CASE
    T-REPORT ;
 

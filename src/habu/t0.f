@@ -488,39 +488,8 @@ variable FREE                       \ bit k set: no entry holds vreg k
 
 : REMOVE2 ( -- ) TOP REMOVE TOP REMOVE ;
 
-\ The flag of condition c, from the compare just emitted, pushed in a fresh
-\ vreg. The compare's operands are removed, so a vreg is free and ALLOC emits
-\ nothing between the compare and SET-FLAG, as T0-EMIT:CMP requires.
-: PUSH-FLAG ( T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
-   ALLOC {: d:T0-EMIT:vreg :}
-   d c T0-EMIT:SET-FLAG
-   d PUSH-REG ;
-
-: CMP2 ( [ n n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
-   2 ENSURE
-   CONST2? if FOLD2 exit then
-   drop
-   TOP IMM? if
-      TOP 1- MAT TOP VS-VAL @ T0-EMIT:CMP-LIT
-      REMOVE2 c PUSH-FLAG exit
-   then
-   TOP 1- IMM? if
-      TOP MAT TOP 1- VS-VAL @ T0-EMIT:CMP-LIT
-      REMOVE2 c T0-EMIT:CC-SWAP PUSH-FLAG exit
-   then
-   TOP 1- MAT TOP MAT T0-EMIT:CMP
-   REMOVE2 c PUSH-FLAG ;
-
 \ Fold the top constant entry through a quotation.
 : FOLD1 ( [ n -- n ] -- ) TOP VS-VAL @ swap execute TOP VS-VAL ! ;
-
-\ A comparison with zero.
-: CMP0 ( [ n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
-   1 ENSURE
-   TOP CONST? if FOLD1 exit then
-   drop
-   TOP MAT 0 T0-EMIT:CMP-LIT
-   TOP REMOVE c PUSH-FLAG ;
 
 : UNARY ( [ n -- n ] [ T0-EMIT:vreg -- ] -- )
    1 ENSURE
@@ -720,6 +689,60 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
       r PUSH-REG
    loop ;
 
+\ ---- comparisons -------------------------------------------------------------
+\ The flag of condition c, from the compare just emitted, pushed in a fresh
+\ vreg. The compare's operands are removed, so a vreg is free and ALLOC emits
+\ nothing between the compare and SET-FLAG, as T0-EMIT:CMP requires.
+: PUSH-FLAG ( T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+   ALLOC {: d:T0-EMIT:vreg :}
+   d c T0-EMIT:SET-FLAG
+   d PUSH-REG ;
+
+\ The condition (T0-EMIT:CC>N) of a compare whose flag is still in the
+\ condition codes, -1 none. A compare leaves it only when the next token is
+\ `if`, `while` or `until`, whose DO-IF, DO-WHILE or DO-UNTIL takes it, so no
+\ other word ever finds it set.
+variable PENDING
+
+\ Whether the next token is the keyword `if`, `while` or `until`, matched as
+\ COMPILE-TOKEN matches it: a local of that name shadows it, then KW2 and KW5
+\ compare it case-blind. POS and ORD are restored as AT-END? restores them.
+: BRANCH-NEXT? ( -- bool )
+   POS @ ORD @ {: saved:n ord:n :}
+   TOKEN {: a:ptr u:n :}
+   saved POS !  ord ORD !
+   a u FIND-LOCAL 0 >= if false exit then
+   a u s" if" STR=CI  a u s" while" STR=CI or  a u s" until" STR=CI or ;
+
+\ The flag of condition c from the compare just emitted: left in the condition
+\ codes for the branch that follows, else pushed.
+: CMP-FLAG ( T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+   BRANCH-NEXT? if c T0-EMIT:CC>N PENDING ! exit then
+   c PUSH-FLAG ;
+
+: CMP2 ( [ n n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+   2 ENSURE
+   CONST2? if FOLD2 exit then
+   drop
+   TOP IMM? if
+      TOP 1- MAT TOP VS-VAL @ T0-EMIT:CMP-LIT
+      REMOVE2 c CMP-FLAG exit
+   then
+   TOP 1- IMM? if
+      TOP MAT TOP 1- VS-VAL @ T0-EMIT:CMP-LIT
+      REMOVE2 c T0-EMIT:CC-SWAP CMP-FLAG exit
+   then
+   TOP 1- MAT TOP MAT T0-EMIT:CMP
+   REMOVE2 c CMP-FLAG ;
+
+\ A comparison with zero.
+: CMP0 ( [ n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+   1 ENSURE
+   TOP CONST? if FOLD1 exit then
+   drop
+   TOP MAT 0 T0-EMIT:CMP-LIT
+   TOP REMOVE c CMP-FLAG ;
+
 \ ---- the control stack -------------------------------------------------------
 0 constant CS-IF
 1 constant CS-ELSE
@@ -764,10 +787,17 @@ variable CS-N
 \ The names the popped structure's block bound go out of scope.
 : SCOPE-END ( -- ) CS-LOC@ L-N ! ;
 
+\ Whether a compare left its condition pending for this branch.
+: CC? ( -- bool ) PENDING @ 0 >= ;
+
+\ The pending condition, taken, with the virtual stack spilled.
+: TAKE-CC ( -- T0-EMIT:cc )
+   PENDING @ T0-EMIT:>CC
+   -1 PENDING !
+   SPILL-ALL ;
+
 : DO-IF ( -- )
-   TAKE {: c:T0-EMIT:vreg :}
-   SPILL-ALL
-   c T0-EMIT:IF,
+   CC? if TAKE-CC T0-EMIT:IF-CC, else TAKE SPILL-ALL T0-EMIT:IF, then
    CS-IF L-N @ CS-PUSH ;
 
 : DO-ELSE ( -- )
@@ -792,9 +822,7 @@ variable CS-N
 : DO-WHILE ( -- )
    CS-BEGIN CS-POP
    CS-LOC@ {: loc:n :}
-   TAKE {: c:T0-EMIT:vreg :}
-   SPILL-ALL
-   c T0-EMIT:WHILE,
+   CC? if TAKE-CC T0-EMIT:WHILE-CC, else TAKE SPILL-ALL T0-EMIT:WHILE, then
    CS-WHILE loc CS-PUSH
    CS-BEGIN loc CS-PUSH ;
 
@@ -808,9 +836,8 @@ variable CS-N
 : DO-UNTIL ( -- )
    CS-BEGIN CS-POP
    SCOPE-END
-   TAKE {: c:T0-EMIT:vreg :}
-   SPILL-ALL
-   c T0-EMIT:UNTIL, ;
+   CC? if TAKE-CC T0-EMIT:UNTIL-CC, exit then
+   TAKE SPILL-ALL T0-EMIT:UNTIL, ;
 
 : DO-AGAIN ( -- )
    CS-BEGIN CS-POP
@@ -1488,7 +1515,8 @@ $29 constant CLOSE-PAREN
 : RESET ( n -- )
    UNIT !
    T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE
-   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED ! ;
+   0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
+   -1 PENDING ! ;
 
 : FINISH ( -- )
    CS-N @ 0<> if E-T0-CONTROL throw then

@@ -145,6 +145,10 @@ DEFTYPE WIDTH      \ the width LOAD moves
    k 4 = if CC-GE exit then
    c ;
 
+\ The comparison that holds exactly when c fails: the numbering pairs each
+\ comparison with its negation, EQ NE, LT GE, LE GT.
+: CC-NOT ( cc -- cc ) CC>N 1 xor >CC ;
+
 \ The address row kind of a quotation, past every NEMIT address kind: sealing
 \ files it as NEMIT:ADDR-CODE.
 NEMIT:ADDR-KIND-MAX 1+ constant ADDR-QUOT-KIND
@@ -372,9 +376,11 @@ ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
 
 \ CMP and CMP-LIT compare a with b (or with n) and set the condition codes,
 \ writing no vreg; SET-FLAG makes d -1 when condition c of the last compare
-\ holds, else 0: a Habu flag. Nothing is emitted between a compare and the
-\ SET-FLAG that reads it: a stack move may set the codes too (x86-64's DSP+
-\ adds, and its zero literal is an xor).
+\ holds, else 0: a Habu flag. IF-CC,, WHILE-CC, and UNTIL-CC, branch on the
+\ codes instead. Between a compare and the word that reads its codes the
+\ front end emits only SPILL-ALL's moves: PUSH, PUSH-LIT, SPILL, SPILL-LIT,
+\ LIT, ADDR-DATA, ADDR-CODE, ADDR-QUOT, DSP+ and MOV. Every emitter keeps
+\ those condition-preserving (x86-64's DSP+ is an lea, its zero literal a mov).
 : CMP ( vreg vreg -- ) CUR @ CMP-XT @ execute ;
 : CMP-LIT ( vreg n -- ) CUR @ CMP-LIT-XT @ execute ;
 : SET-FLAG ( vreg cc -- ) CUR @ SET-FLAG-XT @ execute ;
@@ -407,6 +413,9 @@ ARCHES TYPED-BUFFER BEGIN,-XT [ -- ]
 ARCHES TYPED-BUFFER WHILE,-XT [ vreg -- ]
 ARCHES TYPED-BUFFER REPEAT,-XT [ -- ]
 ARCHES TYPED-BUFFER UNTIL,-XT [ vreg -- ]
+ARCHES TYPED-BUFFER IF-CC,-XT [ cc -- ]
+ARCHES TYPED-BUFFER WHILE-CC,-XT [ cc -- ]
+ARCHES TYPED-BUFFER UNTIL-CC,-XT [ cc -- ]
 ARCHES TYPED-BUFFER AGAIN,-XT [ -- ]
 ARCHES TYPED-BUFFER CASE,-XT [ -- ]
 ARCHES TYPED-BUFFER OF,-XT [ vreg vreg -- ]
@@ -416,6 +425,9 @@ ARCHES TYPED-BUFFER ENDCASE,-XT [ -- ]
 
 \ `if`: past the arm when the vreg is zero.
 : IF, ( vreg -- ) CUR @ IF,-XT @ execute ;
+
+\ `if` on condition c of the last compare: past the arm when c fails.
+: IF-CC, ( cc -- ) CUR @ IF-CC,-XT @ execute ;
 
 \ `else`: past the second arm, then the open `if` lands here.
 : ELSE, ( -- ) CUR @ ELSE,-XT @ execute ;
@@ -430,11 +442,17 @@ ARCHES TYPED-BUFFER ENDCASE,-XT [ -- ]
 \ repeat then` resolves.
 : WHILE, ( vreg -- ) CUR @ WHILE,-XT @ execute ;
 
+\ `while` on condition c of the last compare: out of the loop when c fails.
+: WHILE-CC, ( cc -- ) CUR @ WHILE-CC,-XT @ execute ;
+
 \ `repeat`: back to the head, then the innermost `while` exit lands here.
 : REPEAT, ( -- ) CUR @ REPEAT,-XT @ execute ;
 
 \ `until`: back to the head when the vreg is zero.
 : UNTIL, ( vreg -- ) CUR @ UNTIL,-XT @ execute ;
+
+\ `until` on condition c of the last compare: back to the head when c fails.
+: UNTIL-CC, ( cc -- ) CUR @ UNTIL-CC,-XT @ execute ;
 
 : AGAIN, ( -- ) CUR @ AGAIN,-XT @ execute ;
 

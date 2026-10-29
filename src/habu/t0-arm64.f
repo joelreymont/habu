@@ -693,6 +693,8 @@ DYNAMIC-BUFFER BR-ARG n
    s REG l REG ENC-CMP W
    C-GE FWD-BCOND ;
 
+: FWD-CC ( T0-EMIT:cc -- T0-LABEL:branch ) T0-EMIT:CC>N CONDS @ FWD-BCOND ;
+
 \ The b.cond branch becomes b.eq.
 : ENTRY-EQ ( T0-LABEL:branch -- ) T0-LABEL:BRANCH>N {: k:n :}  C-EQ k BR-ARG ! ;
 
@@ -705,6 +707,10 @@ DYNAMIC-BUFFER BR-ARG n
 : BACK-ZERO ( T0-EMIT:vreg T0-LABEL:head -- )
    T0-LABEL:HEAD>N {: c:T0-EMIT:vreg m:n :}
    FORM-CBZ c REG m BR+ drop ;
+
+: BACK-CC ( T0-EMIT:cc T0-LABEL:head -- )
+   {: c:T0-EMIT:cc m:T0-LABEL:head :}
+   c T0-EMIT:CC>N CONDS @ m BACK-BCOND ;
 
 \ ---- loops -------------------------------------------------------------------
 \ x16 holds the loop stack's depth and x17 the address one frame past the
@@ -827,6 +833,9 @@ DYNAMIC-BUFFER BR-ARG n
    ['] T0-LABEL:WHILE, k T0-EMIT:WHILE,-XT !
    ['] T0-LABEL:REPEAT, k T0-EMIT:REPEAT,-XT !
    ['] T0-LABEL:UNTIL, k T0-EMIT:UNTIL,-XT !
+   ['] T0-LABEL:IF-CC, k T0-EMIT:IF-CC,-XT !
+   ['] T0-LABEL:WHILE-CC, k T0-EMIT:WHILE-CC,-XT !
+   ['] T0-LABEL:UNTIL-CC, k T0-EMIT:UNTIL-CC,-XT !
    ['] T0-LABEL:AGAIN, k T0-EMIT:AGAIN,-XT !
    ['] T0-LABEL:CASE, k T0-EMIT:CASE,-XT !
    ['] T0-LABEL:OF, k T0-EMIT:OF,-XT !
@@ -849,8 +858,10 @@ DYNAMIC-BUFFER BR-ARG n
    ['] FWD-NE k T0-LABEL:FWD-NE-XT !
    ['] FWD-NE-LIT k T0-LABEL:FWD-NE-LIT-XT !
    ['] FWD-GE k T0-LABEL:FWD-GE-XT !
+   ['] FWD-CC k T0-LABEL:FWD-CC-XT !
    ['] BACK-JUMP k T0-LABEL:BACK-JUMP-XT !
    ['] BACK-ZERO k T0-LABEL:BACK-ZERO-XT !
+   ['] BACK-CC k T0-LABEL:BACK-CC-XT !
    ['] RESOLVE k T0-LABEL:RESOLVE-XT !
    ['] ENTRY-EQ k T0-LABEL:ENTRY-EQ-XT !
    ['] LOOP-NEXT k T0-LABEL:LOOP-NEXT-XT !

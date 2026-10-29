@@ -26,7 +26,9 @@ DEFTYPE HEAD       \ a loop head, the target of a backward branch
 \ the vreg is zero, FWD-NE when the two vregs differ, FWD-NE-LIT when the vreg
 \ differs from n (which answers T0-EMIT:IMM? true), FWD-GE when the first vreg
 \ is at least the second; each answers the branch, which RESOLVE lands here.
-\ BACK-JUMP branches to the head always and BACK-ZERO when the vreg is zero.
+\ FWD-CC branches forward when condition c of the last compare holds.
+\ BACK-JUMP branches to the head always, BACK-ZERO when the vreg is zero and
+\ BACK-CC when condition c of the last compare holds.
 \ ENTRY-EQ makes a FWD-GE branch on equal operands only. LOOP-NEXT and
 \ LOOP-STEP are T0-EMIT:LOOP-NEXT and T0-EMIT:LOOP-STEP to the head, without
 \ the entry.
@@ -36,8 +38,10 @@ T0-EMIT:ARCHES TYPED-BUFFER FWD-ZERO-XT [ T0-EMIT:vreg -- branch ]
 T0-EMIT:ARCHES TYPED-BUFFER FWD-NE-XT [ T0-EMIT:vreg T0-EMIT:vreg -- branch ]
 T0-EMIT:ARCHES TYPED-BUFFER FWD-NE-LIT-XT [ T0-EMIT:vreg n -- branch ]
 T0-EMIT:ARCHES TYPED-BUFFER FWD-GE-XT [ T0-EMIT:vreg T0-EMIT:vreg -- branch ]
+T0-EMIT:ARCHES TYPED-BUFFER FWD-CC-XT [ T0-EMIT:cc -- branch ]
 T0-EMIT:ARCHES TYPED-BUFFER BACK-JUMP-XT [ head -- ]
 T0-EMIT:ARCHES TYPED-BUFFER BACK-ZERO-XT [ T0-EMIT:vreg head -- ]
+T0-EMIT:ARCHES TYPED-BUFFER BACK-CC-XT [ T0-EMIT:cc head -- ]
 T0-EMIT:ARCHES TYPED-BUFFER RESOLVE-XT [ branch -- ]
 T0-EMIT:ARCHES TYPED-BUFFER ENTRY-EQ-XT [ branch -- ]
 T0-EMIT:ARCHES TYPED-BUFFER LOOP-NEXT-XT [ T0-EMIT:vreg head -- ]
@@ -53,8 +57,10 @@ private
 : FWD-NE ( T0-EMIT:vreg T0-EMIT:vreg -- branch ) SLOT FWD-NE-XT @ execute ;
 : FWD-NE-LIT ( T0-EMIT:vreg n -- branch ) SLOT FWD-NE-LIT-XT @ execute ;
 : FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- branch ) SLOT FWD-GE-XT @ execute ;
+: FWD-CC ( T0-EMIT:cc -- branch ) SLOT FWD-CC-XT @ execute ;
 : BACK-JUMP ( head -- ) SLOT BACK-JUMP-XT @ execute ;
 : BACK-ZERO ( T0-EMIT:vreg head -- ) SLOT BACK-ZERO-XT @ execute ;
+: BACK-CC ( T0-EMIT:cc head -- ) SLOT BACK-CC-XT @ execute ;
 : RESOLVE ( branch -- ) SLOT RESOLVE-XT @ execute ;
 : ENTRY-EQ ( branch -- ) SLOT ENTRY-EQ-XT @ execute ;
 
@@ -103,6 +109,8 @@ public
 \ ---- control -----------------------------------------------------------------
 : IF, ( T0-EMIT:vreg -- ) FWD-ZERO BRANCH>N AT+ ;
 
+: IF-CC, ( T0-EMIT:cc -- ) T0-EMIT:CC-NOT FWD-CC BRANCH>N AT+ ;
+
 : ELSE, ( -- ) FWD-JUMP CF-POP >BRANCH RESOLVE BRANCH>N AT+ ;
 
 : THEN, ( -- ) CF-POP >BRANCH RESOLVE ;
@@ -115,9 +123,17 @@ public
    s BRANCH>N AT+
    m AT+ ;
 
+: WHILE-CC, ( T0-EMIT:cc -- )
+   T0-EMIT:CC-NOT FWD-CC {: s:branch :}
+   CF-POP {: m:n :}
+   s BRANCH>N AT+
+   m AT+ ;
+
 : REPEAT, ( -- ) CF-POP >HEAD BACK-JUMP CF-POP >BRANCH RESOLVE ;
 
 : UNTIL, ( T0-EMIT:vreg -- ) CF-POP >HEAD BACK-ZERO ;
+
+: UNTIL-CC, ( T0-EMIT:cc -- ) T0-EMIT:CC-NOT CF-POP >HEAD BACK-CC ;
 
 : AGAIN, ( -- ) CF-POP >HEAD BACK-JUMP ;
 

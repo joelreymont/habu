@@ -38,7 +38,10 @@
 \ The share rows run bodies whose copies share a vreg with their source, each
 \ with a cell under its result: in-place arithmetic, a negate and loads on a
 \ copy, a copy parked on the return stack, comparisons of a copy, and fifteen
-\ copies that fill the virtual stack and evict a shared vreg.
+\ copies that fill the virtual stack and evict a shared vreg. The fuse rows run
+\ each compare straight into `if`, `while` and `until`, which branch on its
+\ condition codes, both ways and over counted loops, with a cell under each
+\ result.
 \ A CALLBACK: declaration compiled by T0 is handed to libc's qsort, which sorts
 \ a row through it, and its C entry lies between its accessor's code and the
 \ next definition's: the stub T0 appended to the accessor's emission. The
@@ -455,6 +458,75 @@ W-DEF-2OVER W-PO
    dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup
    + + + + + + + + + + + + + + + ;
 
+\ ---- compares fused into their branches -------------------------------------
+\ A compare right before `if`, `while` or `until` branches on its condition.
+: FU-EQ ( n n -- n ) = if 1 else 2 then ;
+: FU-NE ( n n -- n ) <> if 1 else 2 then ;
+: FU-LT ( n n -- n ) < if 1 else 2 then ;
+: FU-GT ( n n -- n ) > if 1 else 2 then ;
+: FU-LE ( n n -- n ) <= if 1 else 2 then ;
+: FU-GE ( n n -- n ) >= if 1 else 2 then ;
+: FU-ZEQ ( n -- n ) 0= if 1 else 2 then ;
+: FU-ZLT ( n -- n ) 0< if 1 else 2 then ;
+: FU-IMM ( n -- n ) 5 < if 1 else 2 then ;
+: FU-NEG ( n -- n ) -5 > if 1 else 2 then ;
+: FU-LEFT ( n -- n ) 5 swap < if 1 else 2 then ;
+: FU-UNDER ( n -- n n ) 7 swap 0< if 1 else 2 then ;
+: FU-TWICE ( n n -- n ) < dup if drop 1 else drop 2 then ;
+
+\ A local named `if` shadows the keyword: the compare before it stays a flag.
+: FU-SHADOW ( n n -- bool n )
+   {: x:n if:n :}
+   x 3 < if ;
+
+: WH-EQ ( n -- n )
+   {: n:n :}
+   n begin dup n = while 1+ repeat ;
+
+: WH-NE ( n -- n )
+   {: n:n :}
+   0 begin dup n <> while 1+ repeat ;
+
+: WH-LT ( n -- n )
+   {: n:n :}
+   0 begin dup n < while 1+ repeat ;
+
+: WH-GT ( n -- n )
+   {: n:n :}
+   0 begin n over > while 1+ repeat ;
+
+: WH-LE ( n -- n )
+   {: n:n :}
+   0 begin dup n <= while 1+ repeat ;
+
+: WH-GE ( n -- n )
+   {: n:n :}
+   0 begin n over >= while 1+ repeat ;
+
+: UN-EQ ( n -- n )
+   {: n:n :}
+   0 begin 1+ dup n = until ;
+
+: UN-NE ( n -- n )
+   {: n:n :}
+   n begin 1+ dup n <> until ;
+
+: UN-LT ( n -- n )
+   {: n:n :}
+   0 begin 1+ n over < until ;
+
+: UN-GT ( n -- n )
+   {: n:n :}
+   0 begin 1+ dup n > until ;
+
+: UN-LE ( n -- n )
+   {: n:n :}
+   0 begin 1+ n over <= until ;
+
+: UN-GE ( n -- n )
+   {: n:n :}
+   0 begin 1+ dup n >= until ;
+
 \ ---- is ------------------------------------------------------------------------
 defer HOOK ( n -- n )
 : INC ( n -- n ) 1+ ;
@@ -757,6 +829,38 @@ private
    s" fifteen copies fill the virtual stack and evict a shared vreg" T-LABEL
    77 3 S-FILL 48 T= 77 T= ;
 
+\ Each compare through `if` both ways, through `while` and `until` loops that
+\ run a counted number of turns, with an immediate operand, a negative one, one
+\ on the left, a literal spilled between the compare and its branch, a flag
+\ read twice, which stays a flag, and a compare before a local named `if`; a
+\ cell under each result.
+: FUSE-CASE ( -- )
+   s" each compare through if, true and false" T-LABEL
+   77 3 3 FU-EQ 1 T= 77 T=   77 3 4 FU-EQ 2 T= 77 T=
+   77 3 4 FU-NE 1 T= 77 T=   77 3 3 FU-NE 2 T= 77 T=
+   77 3 4 FU-LT 1 T= 77 T=   77 4 3 FU-LT 2 T= 77 T=   77 3 3 FU-LT 2 T= 77 T=
+   77 4 3 FU-GT 1 T= 77 T=   77 3 4 FU-GT 2 T= 77 T=   77 3 3 FU-GT 2 T= 77 T=
+   77 3 3 FU-LE 1 T= 77 T=   77 3 4 FU-LE 1 T= 77 T=   77 4 3 FU-LE 2 T= 77 T=
+   77 3 3 FU-GE 1 T= 77 T=   77 4 3 FU-GE 1 T= 77 T=   77 3 4 FU-GE 2 T= 77 T=
+   77 0 FU-ZEQ 1 T= 77 T=   77 9 FU-ZEQ 2 T= 77 T=
+   77 -1 FU-ZLT 1 T= 77 T=   77 0 FU-ZLT 2 T= 77 T=
+   s" an immediate operand, a negative one and one on the left" T-LABEL
+   77 4 FU-IMM 1 T= 77 T=   77 5 FU-IMM 2 T= 77 T=
+   77 -4 FU-NEG 1 T= 77 T=   77 -5 FU-NEG 2 T= 77 T=
+   77 6 FU-LEFT 1 T= 77 T=   77 5 FU-LEFT 2 T= 77 T=
+   s" a literal spilled between the compare and its branch" T-LABEL
+   77 -3 FU-UNDER 1 T= 7 T= 77 T=   77 3 FU-UNDER 2 T= 7 T= 77 T=
+   s" a flag read twice before its if" T-LABEL
+   77 3 4 FU-TWICE 1 T= 77 T=   77 4 3 FU-TWICE 2 T= 77 T=
+   s" a compare before a local named if" T-LABEL
+   77 1 9 FU-SHADOW 9 T= TTRUE 77 T=   77 4 9 FU-SHADOW 9 T= TFALSE 77 T=
+   s" each compare through while" T-LABEL
+   77 4 WH-EQ 5 T= 77 T=   77 4 WH-NE 4 T= 77 T=   77 4 WH-LT 4 T= 77 T=
+   77 4 WH-GT 4 T= 77 T=   77 4 WH-LE 5 T= 77 T=   77 4 WH-GE 5 T= 77 T=
+   s" each compare through until" T-LABEL
+   77 4 UN-EQ 4 T= 77 T=   77 4 UN-NE 5 T= 77 T=   77 4 UN-LT 5 T= 77 T=
+   77 4 UN-GT 5 T= 77 T=   77 4 UN-LE 4 T= 77 T=   77 4 UN-GE 4 T= 77 T= ;
+
 \ A forged tag in an enum slot and in a product's enum field: the fetch's tag
 \ check ends the child after the fixture armed it.
 : FETCH-FORGED ( -- )
@@ -781,6 +885,7 @@ public
    FORGE-CASE
    WIDE-CASE
    SHARE-CASE
+   FUSE-CASE
    FETCH-FORGE-CASE
    IS-CASE
    CALLBACK-CASE
