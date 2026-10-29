@@ -10,10 +10,11 @@
 \ that keep their values in registers across the join and the back edge, a
 \ value filled after a call into the register its loop's back edge expects,
 \ stack words over one-cell values, and cells, cell+ and ptr-field, that call
-\ nothing, the x86-64 stack moves that leave those codes alone, a divide by a
-\ literal (an arm64 sdiv and msub in a leap-year test, the x86-64 idiv bytes
-\ with the register it saves), and the refusals that keep the patch slot last
-\ and an operation x86-64 does not provide from running.
+\ nothing, return-stack pair moves that touch the depth cell once each, the
+\ x86-64 stack moves that leave those codes alone, a divide by a literal (an
+\ arm64 sdiv and msub in a leap-year test, the x86-64 idiv bytes with the
+\ register it saves), and the refusals that keep the patch slot last and an
+\ operation x86-64 does not provide from running.
 \ Bodies are compiled by T0:COMPILE-TEXT or driven through the seam, sealed
 \ into NEMIT, and checked by decoding the words NEMIT answers against the
 \ assembler's encodings.
@@ -429,6 +430,30 @@ private
    T0-EMIT:CALL-ROWS 0 T=
    NEMIT:CLEAR ;
 
+\ How many words of the sealed emission equal w.
+: COUNT-WORD ( n -- n ) {: w:n :}
+   0 NEMIT:SIZE 0 ?do i WORD@ w = if 1+ then 4 +loop ;
+
+\ The return stack's depth cell is read once and written once per `2>r` or
+\ `2r>` over one-cell values, and `2r@` only reads it: x16 through the user
+\ area's RSP-CELL.
+: RS-CASE ( -- )
+   ARCH-A64
+   LT XREG-RBASE RSP-CELL A64ASM:ENC-LDR {: ld:n :}
+   LT XREG-RBASE RSP-CELL A64ASM:ENC-STR {: st:n :}
+   s" RS ( n n -- n n ) 2>r 2r> " BODY
+   s" 2>r and 2r> each read the depth once" T-LABEL
+   ld COUNT-WORD 2 T=
+   s" and each write it once" T-LABEL
+   st COUNT-WORD 2 T=
+   NEMIT:CLEAR
+   s" RS2 ( n n -- n n n n ) 2>r 2r@ 2r> " BODY
+   s" 2r@ reads the depth once more" T-LABEL
+   ld COUNT-WORD 3 T=
+   s" and never writes it" T-LABEL
+   st COUNT-WORD 2 T=
+   NEMIT:CLEAR ;
+
 \ A value filled after a call lands in the register the innermost structure
 \ with a recorded layout keeps it in, as the JIT's NEED-ALLOC, steers a pull:
 \ the body calls, and no register move follows the call. An entry filled
@@ -595,6 +620,7 @@ public
    IDX-CASE
    MOVE-CASE
    CELLS-CASE
+   RS-CASE
    STEER-CASE
    LEAP-CASE
    X86-FLAGS-CASE

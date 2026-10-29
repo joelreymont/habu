@@ -140,19 +140,20 @@
 \ through MOVE-WIDE, which copies each output cell on top from the entry or
 \ memory cell it comes from, leaving in place the bottom operands the word
 \ keeps, and then removes the cells it consumed from under the copies, and
-\ 2>r 2r> 2r@ through their swap and >r composition. `>r`
-\ and `r>` move every cell of the value one at a time, so a value's cells sit
-\ on the return stack in reverse and `r>` restores their order; `r@` of a
-\ wider value is `r>` and a copy pushed back. `@` and `!` move the cells the
-\ checker certified at the token, as tier 1's WIDE-LOAD and WIDE-STORE
-\ (src/compiler/native/elaborate.f): `@` loads from the address plus i cells for
-\ each cell, and `!` calls the primitive, the engine's guarded store, once per
-\ cell with the address kept under the copies. Before it loads, an `@` the
-\ checker filed a layout fact for (NFETCH:AT) calls NFETCH-CHECK:TAGS with a
-\ copy of the address and the fact's descriptor, as tier 1's VALIDATE-FETCH;
-\ a fact whose width is not the token's is E-T0-BUNDLE. Any other operation
-\ T0 inlines over a width other than one cell, and `@` or `!` under one cell,
-\ is E-T0-BUNDLE, as tier 1's DO-OP refuses it E-NELAB-BUNDLE.
+\ 2>r 2r> 2r@ through their swap and >r composition. `>r` and `r>` move a
+\ value's cells as one cell each would, so its cells sit on the return stack in
+\ reverse and `r>` restores their order, in one return-stack move per VREGS
+\ cells; `r@` and `2r@` read the cells `r>` and `2r>` would pop. `@` and `!`
+\ move the cells the checker certified at the token, as tier 1's WIDE-LOAD and
+\ WIDE-STORE (src/compiler/native/elaborate.f): `@` loads from the address
+\ plus i cells for each cell, and `!` calls the primitive, the engine's guarded
+\ store, once per cell with the address kept under the copies. Before it
+\ loads, an `@` the checker filed a layout fact for (NFETCH:AT) calls
+\ NFETCH-CHECK:TAGS with a copy of the address and the fact's descriptor, as
+\ tier 1's VALIDATE-FETCH; a fact whose width is not the token's is
+\ E-T0-BUNDLE. Any other operation T0 inlines over a width other than one
+\ cell, and `@` or `!` under one cell, is E-T0-BUNDLE, as tier 1's DO-OP
+\ refuses it E-NELAB-BUNDLE.
 \
 \ THE LOCALS. Each `{: ... :}` group binds its names once, left to right from
 \ the deepest cell, into slots of the body's machine-stack frame (T0-EMIT:SLOTS,
@@ -1280,35 +1281,56 @@ variable TAILED
 : DO-EXIT ( -- ) SPILL-ALL T0-EMIT:RETURN 1 DEAD ! ;
 : DO-RECURSE ( -- ) SPILL-ALL T0-EMIT:CALL-SELF ;
 
-: DO-TOR ( -- )
-   TAKE {: r:T0-EMIT:vreg :}
-   r T0-EMIT:TOR
-   r RELEASE ;
+DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
+                                     \ return-stack move's vregs, the deepest
+                                     \ slot first
 
-: DO-RFROM ( -- )
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
-   r T0-EMIT:RFROM
-   r PUSH-REG ;
+\ How many of n cells one move carries: one per vreg.
+: RS-PART ( n -- n ) T0-EMIT:VREGS min ;
 
-: DO-RFETCH ( -- )
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
-   r T0-EMIT:RFETCH
-   r PUSH-REG ;
+\ The top c cells, the top into the deepest slot, pushed by one move.
+: TOR-PART ( n -- ) {: c:n :}
+   c 0 ?do TAKE i RS-V ! loop
+   0 RS-V c T0-EMIT:TOR
+   c 0 ?do i RS-V @ RELEASE loop ;
 
-: TOR-CELLS ( n -- ) 0 ?do DO-TOR loop ;
-: RFROM-CELLS ( n -- ) 0 ?do DO-RFROM loop ;
+\ c free vregs in RS-V, with room for an entry each.
+: RS-ALLOC ( n -- ) {: c:n :}
+   begin VS-N @ c + T0-EMIT:VREGS > while EVICT repeat
+   c 0 ?do ALLOC i RS-V ! loop ;
 
-\ The top cells of the w-cell value on the return stack, pushed back top first.
-: RE-TOR ( n -- ) 0 ?do i DEEP DO-TOR loop ;
+\ RS-V's c vregs pushed in the order `r>` leaves cells: the top slot's deepest.
+: RS-PUSH ( n -- ) {: c:n :}
+   c 0 ?do c 1- i - RS-V @ PUSH-REG loop ;
 
-: DO-R@ ( ptr u8 -- ) {: a:ptr :}
-   a 1 WIDTHS
-   WIDE? 0= if DO-RFETCH exit then
-   0 WS @ RFROM-CELLS  0 WS @ RE-TOR ;
+: RFROM-PART ( n -- ) {: c:n :}
+   c RS-ALLOC  0 RS-V c T0-EMIT:RFROM  c RS-PUSH ;
 
-\ `2>r` is `swap >r >r`, `2r>` is `r> r> swap`, `2r@` is `2r> 2dup 2>r`.
-: 2TOR ( -- ) SWAP-OP  1 WS @ TOR-CELLS  0 WS @ TOR-CELLS ;
-: 2RFROM ( -- ) 0 WS @ RFROM-CELLS  1 WS @ RFROM-CELLS  WS-SWAP SWAP-OP WS-SWAP ;
+\ The c cells k under the top, copied as RFROM-PART would pop them.
+: RFETCH-PART ( n n -- ) {: c:n k:n :}
+   c RS-ALLOC  0 RS-V c k T0-EMIT:RFETCH  c RS-PUSH ;
+
+\ `>r` and `r>` of n cells, each cell as one `>r` or `r>`, a value's cells
+\ landing on the return stack in reverse; a move per RS-PART cells.
+: TOR-CELLS ( n -- )
+   begin dup 0 > while dup RS-PART dup TOR-PART - repeat drop ;
+
+: RFROM-CELLS ( n -- )
+   begin dup 0 > while dup RS-PART dup RFROM-PART - repeat drop ;
+
+\ The top n cells copied as RFROM-CELLS would pop them.
+: RFETCH-CELLS ( n -- ) {: n:n :}
+   0 begin dup n < while dup n swap - RS-PART  2dup swap RFETCH-PART  + repeat drop ;
+
+\ The cells of the two operands.
+: PAIR-CELLS ( -- n ) 0 WS @ 1 WS @ + ;
+
+\ `2>r` is `swap >r >r`, `2r>` is `r> r> swap`, `2r@` is `2r> 2dup 2>r`: over
+\ one-cell operands one move, the deeper operand in the deeper slot, as the
+\ primitives order them (habu1.f B2TOR).
+: 2TOR ( -- ) SWAP-OP PAIR-CELLS TOR-CELLS ;
+: 2RFROM ( -- ) PAIR-CELLS RFROM-CELLS  WS-SWAP SWAP-OP WS-SWAP ;
+: 2RFETCH ( -- ) PAIR-CELLS RFETCH-CELLS  WS-SWAP SWAP-OP WS-SWAP ;
 
 : DO-TICK ( -- )
    TOKEN {: a:ptr u:n :}
@@ -1343,11 +1365,6 @@ variable TAILED
 \ The stack word at token a over k operands, moved as outs, MOVE-WIDE's digits.
 : MOVE-OP ( ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
    a k WIDTHS  outs u MOVE-WIDE ;
-
-\ The two-operand return-stack word at token a, as the composition xt.
-: PAIR-OP ( [ -- ] ptr u8 -- ) {: a:ptr :} a 2 WIDTHS execute ;
-
-: 2RFETCH ( -- ) 2RFROM s" 1010" MOVE-WIDE 2TOR ;
 
 \ ---- whole-width memory -------------------------------------------------------
 \ The cells of the top operand of the operation at token a.
@@ -1653,7 +1670,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" [:" STR=CI if DO-QUOT true exit then
    a u s" >r" STR=CI if a 1 WIDTHS 0 WS @ TOR-CELLS true exit then
    a u s" r>" STR=CI if a 1 WIDTHS 0 WS @ RFROM-CELLS true exit then
-   a u s" r@" STR=CI if a DO-R@ true exit then
+   a u s" r@" STR=CI if a 1 WIDTHS 0 WS @ RFETCH-CELLS true exit then
    a u s" or" CELL-OP? if [: or ;] T0-EMIT:OP-OR true ALU2 true exit then
    a u s" 1+" CELL-OP? if 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true exit then
    a u s" 1-" CELL-OP? if 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true exit then
@@ -1671,9 +1688,9 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    a u s" dup" OP? if [: DUP1 ;] a 1 s" 00" SHUFFLE true exit then
    a u s" rot" OP? if [: ROT1 ;] a 3 s" 102" SHUFFLE true exit then
    a u s" nip" OP? if [: NIP1 ;] a 2 s" 0" SHUFFLE true exit then
-   a u s" 2>r" OP? if [: 2TOR ;] a PAIR-OP true exit then
-   a u s" 2r>" OP? if [: 2RFROM ;] a PAIR-OP true exit then
-   a u s" 2r@" OP? if [: 2RFETCH ;] a PAIR-OP true exit then
+   a u s" 2>r" OP? if a 2 WIDTHS 2TOR true exit then
+   a u s" 2r>" OP? if a 2 WIDTHS 2RFROM true exit then
+   a u s" 2r@" OP? if a 2 WIDTHS 2RFETCH true exit then
    a u s" and" CELL-OP? if [: and ;] T0-EMIT:OP-AND true ALU2 true exit then
    a u s" mod" CELL-OP? if [: mod ;] [: T0-EMIT:MOD-LIT ;] DIV2 exit then
    a u s" xor" CELL-OP? if [: xor ;] T0-EMIT:OP-XOR true ALU2 true exit then
@@ -1819,7 +1836,7 @@ $29 constant CLOSE-PAREN
 \ Begin unit k with nothing open and no local in scope.
 : RESET ( n -- )
    UNIT !
-   T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE
+   T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE  T0-EMIT:VREGS RS-V-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
    0 DEAD !  0 PENDING ! ;
 

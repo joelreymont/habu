@@ -427,30 +427,33 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    c COND m BACK-JCC ;
 
 \ ---- the return stack --------------------------------------------------------
-\ TOR goes through rax; RFROM and RFETCH through the destination alone.
-: TOR ( T0-EMIT:vreg -- )
-   {: s:T0-EMIT:vreg :}
+\ Each goes through rax. Vreg i of p moved to or from the slot off bytes above
+\ rax.
+: RS-XFER ( ptr T0-EMIT:vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
+   p i T0-EMIT:VREG-AT REG RAX off MEM-OFF SINK
+   st if ENC-MOV-MR exit then ENC-MOV-RM ;
+
+\ The depth in rax moved by k.
+: RDEPTH+ ( n -- ) {: k:n :} RAX RAX k MEM-OFF SINK ENC-LEA ;
+
+: TOR ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
    RAX RDEPTH
-   RAX SINK ENC-INC
+   n RDEPTH+
    RAX RDEPTH!
    RAX RTOP
-   s REG RAX CELL negate MEM-OFF SINK ENC-MOV-MR ;
+   n 0 ?do p i i n - CELL * true RS-XFER loop ;
 
-: RFROM ( T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg :}
-   d REG {: r:r64 :}
-   r RDEPTH
-   r SINK ENC-DEC
-   r RDEPTH!
-   r RTOP
-   r r MEM-AT SINK ENC-MOV-RM ;
+: RFROM ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
+   RAX RDEPTH
+   n negate RDEPTH+
+   RAX RDEPTH!
+   RAX RTOP
+   n 0 ?do p i i CELL * false RS-XFER loop ;
 
-: RFETCH ( T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg :}
-   d REG {: r:r64 :}
-   r RDEPTH
-   r RTOP
-   r r CELL negate MEM-OFF SINK ENC-MOV-RM ;
+: RFETCH ( ptr T0-EMIT:vreg n n -- ) {: p:ptr n:n k:n :}
+   RAX RDEPTH
+   RAX RTOP
+   n 0 ?do p i i n - k - CELL * false RS-XFER loop ;
 
 
 \ ---- loops ---------------------------------------------------------------------

@@ -485,16 +485,23 @@ ARCHES TYPED-BUFFER ENDCASE,-XT [ -- ]
 : ENDCASE, ( -- ) CUR @ ENDCASE,-XT @ execute ;
 
 \ ---- the return stack --------------------------------------------------------
-ARCHES TYPED-BUFFER TOR-XT [ vreg -- ]
-ARCHES TYPED-BUFFER RFROM-XT [ vreg -- ]
-ARCHES TYPED-BUFFER RFETCH-XT [ vreg -- ]
+ARCHES TYPED-BUFFER TOR-XT [ ptr vreg n -- ]
+ARCHES TYPED-BUFFER RFROM-XT [ ptr vreg n -- ]
+ARCHES TYPED-BUFFER RFETCH-XT [ ptr vreg n n -- ]
 
-\ `>r`, `r>` and `r@` move a cell between a vreg and the return stack, which
-\ is RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL (src/habu/layout.f
-\ RSP-CELL).
-: TOR ( vreg -- ) CUR @ TOR-XT @ execute ;
-: RFROM ( vreg -- ) CUR @ RFROM-XT @ execute ;
-: RFETCH ( vreg -- ) CUR @ RFETCH-XT @ execute ;
+\ The return stack grows up from STACK-ABI:RETURN-BASE-CELL and is RSP-CELL
+\ cells deep (src/habu/layout.f RSP-CELL). Each operation moves the cells of
+\ the n vregs at p, at most VREGS, the first the deepest of n adjacent slots,
+\ and reads the depth once, as the JIT's LP2RS (src/habu/habu2.f) moves a
+\ block: TOR stores them in the slots above the top and RFROM loads the top n
+\ slots, each writing the depth once; RFETCH loads the n slots whose
+\ highest is k under the top and writes nothing.
+: TOR ( ptr vreg n -- ) CUR @ TOR-XT @ execute ;
+: RFROM ( ptr vreg n -- ) CUR @ RFROM-XT @ execute ;
+: RFETCH ( ptr vreg n n -- ) CUR @ RFETCH-XT @ execute ;
+
+\ Vreg i of the vregs at p.
+: VREG-AT ( ptr vreg n -- vreg ) cells + @ ;
 
 \ ---- loops -------------------------------------------------------------------
 ARCHES TYPED-BUFFER LOOP-PUSH-XT [ vreg vreg -- ]

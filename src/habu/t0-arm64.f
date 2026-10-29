@@ -650,24 +650,29 @@ DYNAMIC-BUFFER BR-ARG n
    d REG a REG 0 ENC-LDR W ;
 
 \ ---- the return stack --------------------------------------------------------
-: TOR ( T0-EMIT:vreg -- )
-   {: s:T0-EMIT:vreg :}
+\ Vreg i of p moved to or from the slot at x17 + off.
+: RS-XFER ( ptr T0-EMIT:vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
+   p i T0-EMIT:VREG-AT REG ADR off st ACCESS ;
+
+: TOR ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
    RDEPTH RSLOT
-   s REG ADR 0 ENC-STR W
-   TMP TMP 1 ENC-ADDI W
+   n 0 ?do p i i CELL * true RS-XFER loop
+   TMP TMP n ENC-ADDI W
    RDEPTH! ;
 
-: RFROM ( T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg :}
+: RFROM ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
    RDEPTH
-   TMP TMP 1 ENC-SUBI W
+   TMP TMP n ENC-SUBI W
    RDEPTH! RSLOT
-   d REG ADR 0 ENC-LDR W ;
+   n 0 ?do p i i CELL * false RS-XFER loop ;
 
-: RFETCH ( T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg :}
+\ Unscaled offsets under x17, the slot past the top, while the lowest fits nine
+\ bits; otherwise x17 moves down to the lowest slot first.
+: RFETCH ( ptr T0-EMIT:vreg n n -- ) {: p:ptr n:n k:n :}
    RDEPTH RSLOT
-   d REG ADR CELL negate ENC-LDUR W ;
+   n k + CELL * negate {: lo:n :}
+   lo SIMM9? if lo else ADR ADR lo ADD-IMM 0 then {: at:n :}
+   n 0 ?do p i at i CELL * + false RS-XFER loop ;
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
