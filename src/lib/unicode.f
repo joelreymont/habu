@@ -9,7 +9,8 @@
 \ scratch. Folding is GNU libunistring's u8_casecmp and u8_casefold with NULL
 \ language and normalization, so the casefold data is the installed library's;
 \ each FUNCTION: symbol resolves at its first call (E-FFI-DLSYM) and again in a
-\ restored image. WHITE-SPACE? re-exports src/lib/unicode/class.f's predicate.
+\ restored image. WHITE-SPACE?, ALPHABETIC?, UPPERCASE? and MARK? (General
+\ Category M) re-export src/lib/unicode/class.f's predicates.
 \
 \ STORAGE CLASS. TASK-LOCAL: the foreign calls use per-task FFI scratch and
 \ release their temporary allocation on success and failure alike.
@@ -32,6 +33,7 @@ public
 EXPORT UNICODE-CLASS:WHITE-SPACE?
 EXPORT UNICODE-CLASS:ALPHABETIC?
 EXPORT UNICODE-CLASS:UPPERCASE?
+EXPORT UNICODE-CLASS:MARK?
 
 private
 

@@ -27,6 +27,7 @@ $DFFF constant SURROGATE-LAST
 2 constant CLASS-NUMBER
 3 constant CLASS-LETTER-NUMBER
 4 constant CLASS-UPPERCASE
+5 constant CLASS-MARK
 
 create STAGE-LETTER-LO RANGE-CAPACITY cells allot
 create STAGE-LETTER-HI RANGE-CAPACITY cells allot
@@ -49,6 +50,9 @@ variable STAGE-OTHER-N
 create STAGE-OTHER-UPPER-LO RANGE-CAPACITY cells allot
 create STAGE-OTHER-UPPER-HI RANGE-CAPACITY cells allot
 variable STAGE-OTHER-UPPER-N
+create STAGE-MARK-LO RANGE-CAPACITY cells allot
+create STAGE-MARK-HI RANGE-CAPACITY cells allot
+variable STAGE-MARK-N
 
 create LETTER-LO RANGE-CAPACITY cells allot
 create LETTER-HI RANGE-CAPACITY cells allot
@@ -71,6 +75,9 @@ variable OTHER-N
 create OTHER-UPPER-LO RANGE-CAPACITY cells allot
 create OTHER-UPPER-HI RANGE-CAPACITY cells allot
 variable OTHER-UPPER-N
+create MARK-LO RANGE-CAPACITY cells allot
+create MARK-HI RANGE-CAPACITY cells allot
+variable MARK-N
 variable UNICODE-READY
 variable SPACE-READY
 
@@ -132,7 +139,7 @@ variable PENDING-NAME-U
       a 1+ c@ s" dlo" CATEGORY-SECOND? 0= if E-SYNTAX throw then
       a 1+ c@ 108 = if CLASS-LETTER-NUMBER else CLASS-NUMBER then exit
    then
-   a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
+   a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-SYNTAX throw then CLASS-MARK exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    a c@ 83 = if a 1+ c@ s" mcko" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
    a c@ 90 = if a 1+ c@ s" slp" CATEGORY-SECOND? 0= if E-SYNTAX throw then 0 exit then
@@ -171,6 +178,10 @@ variable PENDING-NAME-U
    then
    class CLASS-LETTER = class CLASS-UPPERCASE = or if
       lo hi STAGE-LETTER-LO STAGE-LETTER-HI STAGE-LETTER-N STAGE-APPEND
+      exit
+   then
+   class CLASS-MARK = if
+      lo hi STAGE-MARK-LO STAGE-MARK-HI STAGE-MARK-N STAGE-APPEND
       exit
    then
    class CLASS-LETTER-NUMBER = if
@@ -229,7 +240,7 @@ variable PENDING-NAME-U
 : STAGE-UNICODE-RESET ( -- )
    0 STAGE-LETTER-N !
    0 STAGE-NUMBER-N !
-   0 STAGE-NL-N ! 0 STAGE-UPPER-N !
+   0 STAGE-NL-N ! 0 STAGE-UPPER-N ! 0 STAGE-MARK-N !
    -1 SOURCE-PREV !
    FALSE-VALUE PENDING ! ;
 
@@ -260,6 +271,8 @@ variable PENDING-NAME-U
    STAGE-NL-N @ NL-N !
    STAGE-UPPER-LO STAGE-UPPER-HI STAGE-UPPER-N @ UPPER-LO UPPER-HI COPY-RANGES
    STAGE-UPPER-N @ UPPER-N !
+   STAGE-MARK-LO STAGE-MARK-HI STAGE-MARK-N @ MARK-LO MARK-HI COPY-RANGES
+   STAGE-MARK-N @ MARK-N !
    TRUE-VALUE UNICODE-READY ! ;
 
 : RANGE-PART ( ptr u8 n -- n n ) {: a:ptr u:n :}
@@ -325,7 +338,7 @@ public
    FALSE-VALUE SPACE-READY !
    0 LETTER-N !
    0 NUMBER-N !
-   0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! 0 UPPER-N ! 0 OTHER-UPPER-N ! ;
+   0 SPACE-N ! 0 NL-N ! 0 OTHER-N ! 0 UPPER-N ! 0 OTHER-UPPER-N ! 0 MARK-N ! ;
 
 : PARSE-UNICODE ( ptr u8 n -- )
    STAGE-UNICODE-RESET
@@ -372,5 +385,10 @@ public
 
 : OTHER-UPPERCASE-RANGE@ ( n -- n n )
    OTHER-UPPER-LO OTHER-UPPER-HI OTHER-UPPER-N @ RANGE@ ;
+
+: MARK-COUNT ( -- n ) MARK-N @ ;
+
+: MARK-RANGE@ ( n -- n n )
+   MARK-LO MARK-HI MARK-N @ RANGE@ ;
 
 ;package

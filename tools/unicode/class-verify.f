@@ -23,6 +23,7 @@ $DFFF constant SURROGATE-LAST
 4 constant SPACE-BIT
 8 constant ALPHABETIC-BIT
 16 constant UPPERCASE-BIT
+32 constant MARK-BIT
 10 constant LINE-FEED
 59 constant SEMICOLON
 35 constant HASH
@@ -89,7 +90,7 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest cont
       a 1+ c@ s" dlo" CATEGORY-SECOND? 0= if E-MISMATCH throw then
       a 1+ c@ 108 = if NUMBER-BIT ALPHABETIC-BIT or else NUMBER-BIT then exit
    then
-   a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
+   a c@ 77 = if a 1+ c@ s" nce" CATEGORY-SECOND? 0= if E-MISMATCH throw then MARK-BIT exit then
    a c@ 80 = if a 1+ c@ s" cdseifo" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
    a c@ 83 = if a 1+ c@ s" mcko" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
    a c@ 90 = if a 1+ c@ s" slp" CATEGORY-SECOND? 0= if E-MISMATCH throw then 0 exit then
@@ -230,7 +231,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest cont
    UNICODE-CLASS-DATA:LETTER-NUMBER-RANGES CHECK-TABLE
    UNICODE-CLASS-DATA:OTHER-ALPHABETIC-RANGES CHECK-TABLE
    UNICODE-CLASS-DATA:UPPERCASE-LETTER-RANGES CHECK-TABLE
-   UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGES CHECK-TABLE ;
+   UNICODE-CLASS-DATA:OTHER-UPPERCASE-RANGES CHECK-TABLE
+   UNICODE-CLASS-DATA:MARK-RANGES CHECK-TABLE ;
 
 : TRUTH-BIT? ( n n -- bool ) {: cp:n bit:n :}
    TRUTH @ cp + c@ bit and 0= 0= ;
@@ -243,7 +245,8 @@ create UCV-FSHA-CTX SHA256-FILE-CTX-BYTES allot   \ this tool's file-digest cont
    cp NUMBER-BIT TRUTH-BIT? cp UNICODE-CLASS:NUMBER? SAME-BOOL? 0= if E-MISMATCH throw then
    cp SPACE-BIT TRUTH-BIT? cp UNICODE-CLASS:WHITE-SPACE? SAME-BOOL? 0= if E-MISMATCH throw then
    cp ALPHABETIC-BIT TRUTH-BIT? cp UNICODE-CLASS:ALPHABETIC? SAME-BOOL? 0= if E-MISMATCH throw then
-   cp UPPERCASE-BIT TRUTH-BIT? cp UNICODE-CLASS:UPPERCASE? SAME-BOOL? 0= if E-MISMATCH throw then ;
+   cp UPPERCASE-BIT TRUTH-BIT? cp UNICODE-CLASS:UPPERCASE? SAME-BOOL? 0= if E-MISMATCH throw then
+   cp MARK-BIT TRUTH-BIT? cp UNICODE-CLASS:MARK? SAME-BOOL? 0= if E-MISMATCH throw then ;
 
 : CHECK-ALL-SCALARS ( -- )
    0 begin dup SCALAR-MAX <= while

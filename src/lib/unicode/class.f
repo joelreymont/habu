@@ -42,6 +42,11 @@ public
    cp SCALAR? 0= if false exit then
    cp UNICODE-CLASS-DATA:NUMBER-RANGES RANGE-SEARCH ;
 
+\ Unicode General_Category M: Mn, Mc and Me.
+: MARK? ( n -- bool ) {: cp:n :}
+   cp SCALAR? 0= if false exit then
+   cp UNICODE-CLASS-DATA:MARK-RANGES RANGE-SEARCH ;
+
 : WHITE-SPACE? ( n -- bool ) {: cp:n :}
    cp SCALAR? 0= if false exit then
    cp UNICODE-CLASS-DATA:WHITE-SPACE-RANGES RANGE-SEARCH ;
