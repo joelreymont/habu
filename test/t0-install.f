@@ -925,7 +925,7 @@ $4000 constant CAP-CAP
 
 create ERR-BUF CAP-CAP allot
 create OUT-BUF CAP-CAP allot
-create PRODUCT-PATH FS-PATH-CAP allot
+create PRODUCT-PATH PATH-CAP allot
 
 variable CHILD-OUT-N
 variable CHILD-ERR-N
