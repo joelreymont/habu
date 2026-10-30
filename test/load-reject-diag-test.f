@@ -1,7 +1,7 @@
 \ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself: a
-\ checked load refusal exits 70 with a named diagnostic on stderr; native
-\ lowering of an unmodeled immediate in a
-\ TRUSTED body refuses with its own named -8286. Covers the direct --load,
+\ checked load refusal exits 70 with a named diagnostic on stderr; an
+\ unmodeled immediate in a TRUSTED body is refused by the checker's preflight
+\ as it is read, before any compiler sees it. Covers the direct --load,
 \ require-chain and checked-body legs on generated fixtures; the child engine is
 \ HABU_UNDER_TEST when set, else the running engine.
 require src/lib/errors.f
@@ -449,14 +449,6 @@ LOWER-CERT-HOOK:INSTALL
 : TEST-IMM-TRUSTED ( -- )
    s" trusted body cannot bypass unmodeled immediate refusal" T-LABEL
    TRUSTED$ RUN
-   HB-TARGET-LINUX-X86-64? if
-      EXITED @ TTRUE
-      RC @ 67 T=
-      OUT-U @ 0 T=
-      ERR$ s" ncomp: cannot compile LRD-TRUST-BODY at LRD-TRUST-IMM" CONTAINS? TTRUE
-      ERR$ s" -8286" CONTAINS? TTRUE
-      exit
-   then
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 

@@ -30,7 +30,6 @@ public
 -9609 constant E-LAST
 -9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: UNSUPPORTED$
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
--9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
 -9607 constant E-T0-DEFER        \ `is` names no deferred word
@@ -1544,10 +1543,10 @@ OPS-MAP
 \ (src/habu/definers.f DEF-IMMEDIATE) and left only its own token, its operands
 \ read from the input and text it evaluated captured after it, so T0 passes
 \ over the token as tier 1 does (src/compiler/native/elaborate.f WALK-SKIP?).
-\ Any other is refused by name.
+\ Any other is refused by name, as tier 1 refuses it: E-HIR-UNMODELED.
 : IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-OWNER:PARSE-IMM? if exit then
-   a u E-T0-IMMEDIATE REFUSE ;
+   a u E-HIR-UNMODELED REFUSE ;
 
 \ A fixed word, one whose definer stamped what its body pushes, is that value,
 \ as tier 1 folds it (src/compiler/native/hir-word.f RESOLVE-SITE): a constant's
@@ -1685,7 +1684,7 @@ OPS-MAP
 
 public
 
-\ The token the last E-T0-UNSUPPORTED or E-T0-IMMEDIATE named.
+\ The token the last REFUSE named, E-T0-UNSUPPORTED's or E-HIR-UNMODELED's.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
 using NDEFINITION
@@ -1845,9 +1844,11 @@ variable SCAN-LO                     \ the ordinal of its first row
    E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally ;
 
-\ The token a refusal names: T0's own for its refusals, else none.
+\ The token a refusal names: the one REFUSE named in this compile for its
+\ code, else none (COMPILE clears BAD-LEN; a shared word's E-HIR-UNMODELED
+\ names none).
 : REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
-   rc E-T0-UNSUPPORTED = rc E-T0-IMMEDIATE = or if UNSUPPORTED$ exit then
+   rc E-T0-UNSUPPORTED = rc E-HIR-UNMODELED = or if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 
 public
@@ -1858,7 +1859,7 @@ public
    false STAGE-UNIT
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    CHECKER-OWNER:RESET-REPORT
-   0 MISSING !
+   0 MISSING !  0 BAD-LEN !
    1 M-OPEN !
    [: RUN ;] catch {: rc:n :}
    0 M-OPEN !
