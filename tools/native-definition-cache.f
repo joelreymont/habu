@@ -1031,7 +1031,7 @@ variable TEE-ERR
    path pathu answer answeru found NFILE-INPUTS:ADD-CANON
    answer answeru found ;
 
-: FILE-INPUT ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-MTIME ;
+: FILE-INPUT ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-CTIME ;
 
 : UNIT-RUN ( [ n n -- ] -- )
    {: q :}

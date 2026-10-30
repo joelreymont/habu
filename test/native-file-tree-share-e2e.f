@@ -3,7 +3,8 @@
 \ at another path, built into the same out root, reuses every file and compiles
 \ none, and a copy whose library value changed under the same contract
 \ recompiles the library under the shared key and reuses its caller, which
-\ then calls the recompiled value.
+\ then calls the recompiled value. Inputs are stamped by change time, so an edit
+\ that keeps the size and restores the modification time recompiles too.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -22,6 +23,8 @@ create DIR-PATH PATH-CAP allot
 create SRC-PATH PATH-CAP allot
 create PROD-PATH PATH-CAP allot
 create CACHE-PATH PATH-CAP allot
+create LIB-PATH PATH-CAP allot
+create OLD-PATH PATH-CAP allot
 create OUT-A CAP allot  variable OUT-A-U
 create OUT-B CAP allot  variable OUT-B-U
 create OUT-C CAP allot  variable OUT-C-U
@@ -81,6 +84,25 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
    s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ [: NOTE-OBJ ;] FS-LIST:EACH
    OBJ-N @ ;
 
+\ c/lib.f becomes BASE 98 at the same size, and touch -r gives it back the
+\ modification time of a copy taken before the write, as rsync -t or a
+\ time-preserving editor would.
+: SAME-STAT-EDIT ( -- )
+   ROOT$ s" c" DIR-PATH FS:JOIN-PATH {: u:n :}
+   DIR-PATH u s" lib.f" LIB-PATH FS:JOIN-PATH {: libu:n :}
+   ROOT$ s" old-lib.f" OLD-PATH FS:JOIN-PATH {: oldu:n :}
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   s" -p" ARG LIB-PATH libu ARG OLD-PATH oldu ARG
+   s" /bin/cp" s" " CAPTURE SUCCESS
+   s" 98" LIB {: body:ptr bodyu:n :}
+   LIB-PATH libu body bodyu FS:WRITE-ALL
+   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
+   s" -r" ARG OLD-PATH oldu ARG LIB-PATH libu ARG
+   s" /usr/bin/touch" s" " CAPTURE SUCCESS
+   OLD-PATH oldu FS:FILE-META 2drop {: size:n sec:n ns:n :}
+   LIB-PATH libu FS:FILE-META 2drop {: lsize:n lsec:n lns:n :}
+   lsize size T= lsec sec T= lns ns T= ;
+
 public
 : MAIN ( -- )
    T-RESET
@@ -116,6 +138,13 @@ public
    OUT-C OUT-C-U KEEP
    OBJS OBJS-C !
    OBJS-C @ OBJS-A @ T=
+
+   s" a same-size edit that keeps the modification time recompiles" T-LABEL
+   SAME-STAT-EDIT
+   s" c" BUILD SUCCESS
+   OUT$ S\" files reused 1\n compiled 1\n" CONTAINS? TTRUE
+   s" c" RUN
+   OUT$ S\" 99\n" T$=
 
    T-REPORT ;
 ;package

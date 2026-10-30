@@ -63,7 +63,7 @@ s\" tick-order@\n1 set-tier\ns\" " PROGRAM+
 ENTRY$ PROGRAM+
 s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\n" PROGRAM+
 
-: STAMP ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-MTIME ;
+: STAMP ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-CTIME ;
 : OUT-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : FILL-KEY ( CONTENT-KEY:fold -- )
@@ -76,9 +76,9 @@ s\" \" required\nCHECK-VERIFY-SAVE:TICK!\n0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE\
 
 \ The key: the version text, the engine's bytes, the canonical engine path the
 \ image bakes, the program, and the content and canonical path of every file in the
-\ entry's closure (tools/keyed-image.f CLOSURE-IN-EACH+). Mtime and size stamps
-\ (tools/native-file-inputs.f FILE rows) are kept and PATH$ checks them on every
-\ call; an edit racing a build belongs to the next re-key.
+\ entry's closure (tools/keyed-image.f CLOSURE-IN-EACH+). Change time and size
+\ stamps (tools/native-file-inputs.f FILE rows) are kept and PATH$ checks them on
+\ every call; an edit racing a build belongs to the next re-key.
 : RESOLVE-IN ( -- )
    ENGINE$ STAMP
    [: FILL-KEY ;] CONTENT-KEY:WITH-FOLD

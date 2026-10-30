@@ -234,7 +234,7 @@ text differs keys apart, and an entry whose consumed facts no longer hold is
 refused.
 
 **An entry is valid while what it consumed still holds.** In order: the file's
-size and modification time match, or else its bytes hash the same; the
+size and change time match, or else its bytes hash the same; the
 environment and path-resolution inputs it read answer the same; and every fact
 it consumed from earlier files still holds. A consumed fact is a record of an
 earlier file that the compilation looked up (its contract, immediacy, fixed

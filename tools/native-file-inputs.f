@@ -18,8 +18,9 @@ private
 2 constant QUERY-ROW
 3 constant CONTENT-ROW
 4 constant ENV-ROW
-\ A file's own source: the stat at capture (sec, ns, size at row+32) and, as
-\ the answer, the SHA-256 of the bytes that ran.
+\ A file's own source: the stat at capture (change time sec, ns and size at
+\ row+32) and, as the answer, the SHA-256 of the bytes that ran. Change time,
+\ not modification time: every write moves it and no user tool sets it back.
 5 constant SOURCE-ROW
 64 constant ROW-BYTES
 create CONTENT-SHA SHA256-FILE-CTX-BYTES allot
@@ -68,10 +69,9 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
 
 : STAT= ( ptr u8 ptr u8 n -- bool )
    {: row:ptr path:ptr pathu:n :}
-   path pathu FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
-   csec drop cns drop
-   sec row 32 + LE:U64@ =
-   ns row 40 + LE:U64@ = and
+   path pathu FS:FILE-META {: csec:n cns:n :} 2drop {: size:n :}
+   csec row 32 + LE:U64@ =
+   cns row 40 + LE:U64@ = and
    size row 48 + LE:U64@ = and ;
 
 : CHECK-FILE ( ptr u8 ptr u8 n -- )
@@ -83,10 +83,9 @@ CAST: ENV-CURRENT-XT ( n -- [ ptr u8 n -- ptr u8 n ] )
 : STAMP-FILE ( ptr u8 ptr u8 n -- )
    {: row:ptr path:ptr pathu:n :}
    path pathu FS:FILE? 0= if 0 row 24 + LE:U64! exit then
-   path pathu FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
-   csec drop cns drop
-   sec row 32 + LE:U64!
-   ns row 40 + LE:U64!
+   path pathu FS:FILE-META {: csec:n cns:n :} 2drop {: size:n :}
+   csec row 32 + LE:U64!
+   cns row 40 + LE:U64!
    size row 48 + LE:U64! ;
 
 : CONTENT-FILE ( ptr u8 ptr u8 n -- )
@@ -159,7 +158,7 @@ private
    CONTENT-ROW path pathu root rootu true ROW {: row:ptr :}
    digest row 32 + 32 BYTE-COPY ;
 
-: STORE-MTIME ( ptr u8 n ptr u8 n -- )
+: STORE-CTIME ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n root:ptr rootu:n :}
    FILE-ROW path pathu root rootu true ROW {: row:ptr :}
    row path pathu STAMP-FILE ;
@@ -168,13 +167,6 @@ private
    {: path:ptr pathu:n root:ptr rootu:n :}
    CONTENT-ROW path pathu root rootu true ROW {: row:ptr :}
    row path pathu CONTENT-FILE ;
-
-: STORE-STAMP ( ptr u8 n ptr u8 n n n n -- )
-   {: path:ptr pathu:n root:ptr rootu:n size:n sec:n ns:n :}
-   FILE-ROW path pathu root rootu true ROW {: row:ptr :}
-   sec row 32 + LE:U64!
-   ns row 40 + LE:U64!
-   size row 48 + LE:U64! ;
 
 : STORE-CANON ( ptr u8 n ptr u8 n bool -- )
    {: path:ptr pathu:n answer:ptr answeru:n exists:bool :}
@@ -220,14 +212,11 @@ public
 : ADD-HASH ( ptr u8 n ptr u8 n ptr u8 -- )
    LOCK ['] STORE-HASH ['] UNLOCK finally ;
 
-: ADD-MTIME ( ptr u8 n ptr u8 n -- )
-   LOCK ['] STORE-MTIME ['] UNLOCK finally ;
+: ADD-CTIME ( ptr u8 n ptr u8 n -- )
+   LOCK ['] STORE-CTIME ['] UNLOCK finally ;
 
 : ADD-CONTENT ( ptr u8 n ptr u8 n -- )
    LOCK ['] STORE-CONTENT ['] UNLOCK finally ;
-
-: ADD-STAMP ( ptr u8 n ptr u8 n n n n -- )
-   LOCK ['] STORE-STAMP ['] UNLOCK finally ;
 
 : ADD-CANON ( ptr u8 n ptr u8 n bool -- )
    LOCK ['] STORE-CANON ['] UNLOCK finally ;
