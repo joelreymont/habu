@@ -1766,8 +1766,8 @@ create GE-END-AT 16 allot
 
 \ hb-end.f's immediate word evaluates the `;`: the line counts in the string.
 \ TRUSTED: admits the evaluate, and parse-imm is what lets a checked body run
-\ the immediate: tier 0 refuses any other one there (E-UNMODELED-IMMEDIATE)
-\ and tier 1 captures it unrun.
+\ the immediate: both tiers refuse any other one at its token, unrun
+\ (E-UNMODELED-IMMEDIATE, rc 70).
 : GE-CLOSE-EVAL ( n -- )
    {: tier:n :}
    GE-SRC-RESET

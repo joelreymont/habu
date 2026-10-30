@@ -1770,10 +1770,9 @@ variable WANT-RC
    s" OI-ROOM 5 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-full.f" HEAD
    76 s" hb: data space out of range: DP " S\" oi-does-data-full.f:1\n" DIED-AT ;
 
-\ LFIND finds a word before the engine reads its keywords: one spelled `does>`
-\ that is not immediate is called, the body not split and the comment after it
-\ a comment, while an immediate one the checker does not call neutral leaves
-\ `does>` the keyword.
+\ LFIND finds a word before the engine reads its keywords: a non-immediate one
+\ spelled `does>` is called and the body not split; an immediate one the checker
+\ does not call neutral leaves `does>` the keyword, unrefused by the preflight.
 : CALLED ( ptr u8 n ptr u8 n -- ) {: def:ptr defu:n name:ptr nameu:n :}
    GE-SRC-RESET
    s" 1 set-tier ' OI-DOES. OI-SHOWN !" GE-SRC-LINE
