@@ -121,8 +121,6 @@ SUITE ffi-callback-file-cache
    test/ffi-callback-file-cache.f
 ;SUITE
 
-\ Each C2 acceptance row waits for the compiler bundle, copies its rooted and
-\ ordinary images into its owned source tree, then tests both consumers.
 SUITE c2-memory
    test/c2-memory-e2e.f
 ;SUITE

@@ -3,11 +3,13 @@
 \ loader, prints PATH$ and KEY$ and saves; on macOS KEY$ also leaves the
 \ pathname in the digest context's path field and the mapped-region answer. The
 \ saved process writes its restored DATA to a file, where the parent counts the
-\ printed path and key: every count must be 0.
+\ printed path and key: every count must be 0. A relative HABU_UNDER_TEST
+\ makes ENGINE-CANDIDATE:PATH$ answer an absolute path to the same file.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fs-identity.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require test/pcap-result.f
@@ -24,6 +26,7 @@ create ENGINE PATH-CAP allot variable ENGINE-U
 create SAVED PATH-CAP allot variable SAVED-U
 create DUMP PATH-CAP allot variable DUMP-U
 create SEEN PATH-CAP allot variable SEEN-U
+create REL PATH-CAP allot variable REL-U
 create KEY KEY-LEN allot variable KEY-U
 create LOG PATH-CAP allot
 create OUT IO-CAP allot variable OUT-U
@@ -39,6 +42,7 @@ variable AT
 : DUMP$ ( -- ptr u8 n ) DUMP DUMP-U @ ;
 : SEEN$ ( -- ptr u8 n ) SEEN SEEN-U @ ;
 : KEY-HEX$ ( -- ptr u8 n ) KEY KEY-U @ ;
+: REL$ ( -- ptr u8 n ) REL REL-U @ ;
 
 : SETUP ( -- )
    s" hb-engine-id-capture" FS:MKTEMP-DIR {: a:ptr u:n :}
@@ -152,11 +156,34 @@ variable AT
 : KEY-SOURCE$ ( -- ptr u8 n )
    S\" require src/habu/app-image.f\nrequire src/lib/engine-id.f\nENGINE-ID:PATH$ type cr\nENGINE-ID:KEY$ type cr\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
+\ ENGINE$ from the working directory: one ../ per separator in CWD$ reaches /.
+: RELATIVE-ENGINE ( -- )
+   SOURCE-ROOT:CWD$ {: cwd:ptr cwdu:n :}
+   0 REL-U !
+   cwdu 0 ?do
+      cwd i + c@ [char] / = if
+         REL-U @ 3 + PATH-CAP > if E-FS-CAPACITY throw then
+         s" ../" drop REL REL-U @ + 3 BYTE-COPY 3 REL-U +!
+      then
+   loop
+   REL-U @ ENGINE-U @ + 1- PATH-CAP > if E-FS-CAPACITY throw then
+   ENGINE 1+ REL REL-U @ + ENGINE-U @ 1- BYTE-COPY ENGINE-U @ 1- REL-U +! ;
+
+: RELATIVE-OVERRIDE ( -- )
+   RELATIVE-ENGINE
+   s" HABU_UNDER_TEST" >LEN REL$ >LEN PROC-ENV-DEFAULT+
+   ENGINE-CANDIDATE:PATH$ {: p:ptr pu:n :}
+   PROC-ENV-DEFAULT-RESET
+   s" relative override: the answer is absolute" T-LABEL p c@ [char] / = TTRUE
+   s" relative override: the answer names the engine" T-LABEL
+   p pu ENGINE$ FS:SAMEFILE TTRUE ;
+
 public
 
 : RUN ( -- )
    T-RESET SETUP
    KEY-SOURCE$ SAVE-IMAGE KEEP-PRINTED CHECK-CASE
+   RELATIVE-OVERRIDE
    s" engine-id capture tree: " type ROOT$ type cr
    T-REPORT ;
 

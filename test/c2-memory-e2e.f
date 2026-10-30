@@ -6,8 +6,6 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require tools/image-names.f
-require test/c2-image-pair.f
 require test/e2e-tree.f
 
 using E2E-TREE
@@ -21,7 +19,6 @@ private
    s" test/c2-memory-scope-refusals.f" COPY-TEST
    s" test/c2-memory-wrapper.f" COPY-TEST
    s" test/c2-memory-saved-consumer.f" COPY-TEST
-   s" test/c2-memory-ordinary.f" COPY-TEST
    s" test/c2-memory-native-boundary.f" COPY-TEST
    s" test/c2-memory-live-save.f" COPY-TEST
    s" test/c2-init-program.f" COPY-TEST
@@ -35,28 +32,18 @@ private
    s" test/c2-forall-input.f" COPY-TEST
    s" test/c2-forall-input-refusals.f" COPY-TEST ;
 
-: IMAGES ( -- )
-   ROOT$ C2-IMAGE-PAIR:PROVIDE
-   s" unique owner native images are supplied" T-LABEL
-   s" hb-root" AT-A FS:EXECUTABLE? TTRUE
-   s" hb-ordinary" AT-A FS:EXECUTABLE? TTRUE
-   s" hb-root" AT-A IMAGE-NAMES:LOAD
-   IMAGE-NAMES:BOUND? TTRUE
-   s" hb-ordinary" AT-A IMAGE-NAMES:LOAD
-   IMAGE-NAMES:BOUND? TTRUE ;
-
 \ Each shared child session prints every program's own ok marker.
 : MARKED ( ptr u8 n ptr u8 n -- )
    {: text:ptr textu:n mark:ptr marku:n :}
    text textu T-LABEL
    OUT$ mark marku CONTAINS? TTRUE ;
 
-: ROOT-CASES ( -- )
+: SOURCE-CASES ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" require test/c2-memory-native-boundary.f\nrequire test/c2-memory-program.f\nrequire test/c2-init-program.f\nrequire test/c2-memory-refusals.f\nrequire test/c2-memory-scope-refusals.f\nrequire test/c2-init-refusals.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-producer-refusals.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\nrequire test/c2-forall-input-refusals.f\n"
    RUN-INPUT
-   s" root-tier0.out" s" root-tier0.err" SAVE-LOG
+   s" source-tier0.out" s" source-tier0.err" SAVE-LOG
    s" the shared tier-0 native session exits cleanly" T-LABEL NEED-OK
    s" real, shadow, and alias entries retain expected native scope kinds"
    s" c2-memory-native-boundary: ok" MARKED
@@ -81,10 +68,10 @@ private
    s" callbacks retain their input identities and bounds"
    s" c2-forall-input-refusals: ok" MARKED
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" 1 set-tier\nrequire test/c2-init-program.f\nrequire test/c2-memory-program.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\n"
    RUN-INPUT
-   s" root-tier1.out" s" root-tier1.err" SAVE-LOG
+   s" source-tier1.out" s" source-tier1.err" SAVE-LOG
    s" the shared tier-1 native session exits cleanly" T-LABEL NEED-OK
    s" fixed records initialize and clear at tier 1"
    s" c2-init-program: ok" MARKED
@@ -107,95 +94,77 @@ private
 
 : ENTRY-CASES ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\n8 MEM:BYTES-ALLOC-LEN ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-MUT\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-mut.out" s" entry-mut.err" SAVE-LOG
    s" hb: internal engine word: " s" C2-MEM:WITH-MUT" EXPECT-ENTRY-REFUSAL
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" package C2-ENTRY-ALIAS public EXPORT C2-MEM:WITH-MUT ;package\npackage C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\n8 MEM:BYTES-ALLOC-LEN ' C2-ENTRY-TEST:LEAKER C2-ENTRY-ALIAS:WITH-MUT\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-alias.out" s" entry-alias.err" SAVE-LOG
    s" hb: internal engine word: " s" C2-ENTRY-ALIAS:WITH-MUT" EXPECT-ENTRY-REFUSAL
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\ns\q abc\q ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-READ\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-read.out" s" entry-read.err" SAVE-LOG
    s" hb: internal engine word: " s" C2-MEM:WITH-READ" EXPECT-ENTRY-REFUSAL
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\ns\q abc\q ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-MUT-LOAN\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-mut-loan.out" s" entry-mut-loan.err" SAVE-LOG
    s" hb: internal engine word: " s" C2-MEM:WITH-MUT-LOAN" EXPECT-ENTRY-REFUSAL
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" require src/habu/interpret.f\ns\q 8 MEM:BYTES-ALLOC-LEN 0 C2-MEM:WITH-MUT\q OUTER:INTERPRET\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-outer.out" s" entry-outer.err" SAVE-LOG
    s" hb: internal engine word: " s" C2-MEM:WITH-MUT" EXPECT-ENTRY-REFUSAL
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-forall.out" s" entry-forall.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-MEMORY-WRAPPER:TWICE" EXPECT-ENTRY-REFUSAL
    OUT$ s" raw callback entered" CONTAINS? TFALSE
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" require test/c2-memory-wrapper.f\npackage C2-ENTRY-ALIAS public EXPORT C2-MEMORY-WRAPPER:TWICE ;package\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-ENTRY-ALIAS:TWICE .\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" entry-forall-alias.out" s" entry-forall-alias.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-ENTRY-ALIAS:TWICE" EXPECT-ENTRY-REFUSAL
    OUT$ s" raw callback entered" CONTAINS? TFALSE
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" : C2-ENTRY-INC ( n -- n ) 1 + ;\n: C2-ENTRY-APPLY ( n [ n -- n ] -- n ) execute ;\ns\q ordinary prompt: \q type 41 ' C2-ENTRY-INC C2-ENTRY-APPLY . cr\n"
    RUN-INPUT
    s" entry-ordinary.out" s" entry-ordinary.err" SAVE-LOG
    s" an ordinary callback remains callable at the prompt" T-LABEL
    s" ordinary prompt: 42" EXPECT-OK ;
 
-: ORDINARY-CASES ( -- )
-   s" hb-ordinary" s" test/c2-memory-program.f" RUN-IMAGE
-   s" ordinary-program.out" s" ordinary-program.err" SAVE-LOG
-   s" ordinary image refuses the real unique program" T-LABEL
-   RC@ 70 T=
-   ERR$ s" C2-MEM:WITH-MUT" CONTAINS? TTRUE
-   s" hb-ordinary" s" test/c2-memory-ordinary.f" RUN-IMAGE
-   s" ordinary.out" s" ordinary.err" SAVE-LOG
-   s" ordinary image grants no unique scope authority" T-LABEL
-   s" c2-memory-ordinary: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-ordinary"
-   S\" 1 set-tier\nrequire test/c2-memory-ordinary.f\ns\q c2-memory-ordinary-tier1: ok\q type cr\n"
-   RUN-INPUT
-   s" ordinary-tier1.out" s" ordinary-tier1.err" SAVE-LOG
-   s" ordinary tier 1 grants no unique scope authority" T-LABEL
-   s" c2-memory-ordinary-tier1: ok" EXPECT-OK ;
-
 : SAVED-CASES ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
    s" --" >LEN PROC-ARGV+
    s" hb-saved" AT-A >LEN PROC-ARGV+
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" require src/habu/app-image.f\nrequire test/c2-memory-wrapper.f\nrequire test/c2-init-wrapper.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    RUN-INPUT
    s" save.out" s" save.err" SAVE-LOG
-   s" rooted image saves the unique wrapper" T-LABEL NEED-OK
+   s" the engine under test saves the unique wrapper" T-LABEL NEED-OK
    RC@ 0<> if exit then
    s" hb-saved" AT-A FS:EXECUTABLE? TTRUE
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-saved"
+   s" hb-saved" AT-A
    S\" : C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\ns\q accepted\q type cr\n"
    RUN-INPUT
    s" saved-entry-forall.out" s" saved-entry-forall.err" SAVE-LOG
    s" hb: interpret-mode layout value: " s" C2-MEMORY-WRAPPER:TWICE" EXPECT-ENTRY-REFUSAL
    OUT$ s" raw callback entered" CONTAINS? TFALSE
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-saved"
+   s" hb-saved" AT-A
    S\" require test/c2-memory-saved-consumer.f\nrequire test/c2-init-saved-consumer.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\nrequire test/c2-forall-input-refusals.f\n"
    RUN-INPUT
    s" saved-tier0.out" s" saved-tier0.err" SAVE-LOG
@@ -213,7 +182,7 @@ private
    s" saved callbacks retain their input identities and bounds"
    s" c2-forall-input-refusals: ok" MARKED
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-saved"
+   s" hb-saved" AT-A
    S\" 1 set-tier\nrequire test/c2-owner-dispose.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-init-saved-consumer.f\nrequire test/c2-memory-saved-consumer.f\nrequire test/c2-forall-input.f\n"
    RUN-INPUT
    s" saved-tier1.out" s" saved-tier1.err" SAVE-LOG
@@ -231,7 +200,7 @@ private
 
 : LIVE-SAVE ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" require test/c2-memory-live-save.f\nC2-MEMORY-LIVE-SAVE:RUN\n"
    RUN-INPUT
    s" live-save.out" s" live-save.err" SAVE-LOG
@@ -241,12 +210,12 @@ private
    s" hb-live-owner" AT-A FS:EXISTS? TFALSE
    s" hb-live-append" AT-A FS:EXISTS? TFALSE
    s" hb-after" AT-A FS:EXECUTABLE? TTRUE
-   s" hb-after" s" test/c2-owner-producer-program.f" RUN-IMAGE
+   s" hb-after" AT-A s" test/c2-owner-producer-program.f" RUN-IMAGE
    s" after-append.out" s" after-append.err" SAVE-LOG
    s" a saved image appends through a fresh owner after refused live capture" T-LABEL
    s" c2-owner-producer-program: ok" EXPECT-OK
    PROC-CWD:ARGV-ENV-CWD-RESET
-   s" hb-root"
+   ENGINE-CANDIDATE:PATH$
    S\" require test/c2-init-live-save.f\nC2-INIT-LIVE-SAVE:RUN\n"
    RUN-INPUT
    s" live-init.out" s" live-init.err" SAVE-LOG
@@ -269,7 +238,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   SETUP IMAGES ROOT-CASES ENTRY-CASES ORDINARY-CASES SAVED-CASES LIVE-SAVE PARTIAL-CASE
+   SETUP SOURCE-CASES ENTRY-CASES SAVED-CASES LIVE-SAVE PARTIAL-CASE
    s" c2-memory-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 

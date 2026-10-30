@@ -1,9 +1,8 @@
 \ e2e-tree.f - a scratch source tree for an end-to-end row: the checkout's src/
 \ and tools/ linked in, a test/ directory for the sources the row copies, and
 \ children run in it with their stdout, stderr and exit code kept for the
-\ row's asserts and logs. The c2 acceptance rows and test/structure-opaque-e2e.f
-\ share it; a row still names the images it needs (test/c2-image-pair.f) itself,
-\ so this file requires none.
+\ row's asserts and logs. Rows share it; a row passes the engine each child runs,
+\ the engine under test (ENGINE-CANDIDATE:PATH$) or an image it saved in the tree.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -67,14 +66,14 @@ public
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
 : RUN-IMAGE ( ptr u8 n ptr u8 n -- )
-   {: image:ptr imageu:n source:ptr sourceu:n :}
+   {: engine:ptr engineu:n source:ptr sourceu:n :}
    source sourceu ARGS
-   image imageu AT-A ROOT$ RUN-ON ;
+   engine engineu ROOT$ RUN-ON ;
 
 : RUN-INPUT ( ptr u8 n ptr u8 n -- )
-   {: image:ptr imageu:n input:ptr inputu:n :}
+   {: engine:ptr engineu:n input:ptr inputu:n :}
    PROC-ENV-INHERIT-MISSING
-   image imageu AT-A >LEN ROOT$ >LEN input inputu >LEN
+   engine engineu >LEN ROOT$ >LEN input inputu >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE CAPTURE-RESULT ;
 
