@@ -1219,6 +1219,8 @@
 \ T0.
 \ Tier 0 emitter seam: -9590..-9599, minted in src/habu/t0-emit.f, which owns
 \ package T0-EMIT.
+\ A task to each job: -9620..-9629, minted in src/lib/crew.f, which owns
+\ package CREW.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

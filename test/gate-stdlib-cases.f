@@ -1196,6 +1196,10 @@ SUITE bearer
    src/lib/net/bearer-test.f
 ;SUITE
 
+SUITE crew
+   src/lib/crew-test.f
+;SUITE
+
 \ The HTTP listener through an accept refused for want of descriptors. Its own
 \ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
 SUITE http-accept-starved

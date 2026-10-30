@@ -2334,8 +2334,8 @@ TASK-MIN-STACK constant MIN-STACK
 \ Releases the task: a task that was activated is halted if it is still running,
 \ joined, and its memory given back, whichever of those states it reaches first
 \ - a body ending under the KILL is the teardown shape, not an error. A task
-\ that was never activated or was already released is the no-op it is after a
-\ TASK:JOIN.
+\ only prepared gives its memory back; one never prepared or already released
+\ is the no-op it is after a TASK:JOIN.
 : KILL ( ptr n -- )
    TASK-KILL ;
 
