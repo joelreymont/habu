@@ -888,24 +888,15 @@ TYPED-VARIABLE WRITER-NAME-SPAN [ n -- n n ]
 \ process shares. A window for another machine cannot compile a writer this
 \ engine runs (a linux-x86-64 window refused src/arch/arm64/icode.f's first
 \ definition with E-X64EMIT-PLACE), so its writer must be compiled before the
-\ window opens. The ordinary entry checks before opening the window; other
-\ source-writer callers check here. NABI:BINDING, compiled with this file,
-\ answers for the building engine.
-: OUTPUT-LAUNCH-CK ( -- )
-   BUILD-TARGET:ACTION@ {: action:RTARGET:build-action :}
-   action RTARGET:EXECUTION@ action RTARGET:BODY-TARGET@
-      RTARGET:EXECUTABLE-HERE? if exit then
-   s" native-build: target process ABI or image format is not executable here" type cr
-   BUILD-RC throw ;
-
+\ window opens, and WRITER-MACHINE-CK refuses one that is not. NABI:BINDING,
+\ compiled with this file, answers for the building engine.
 : FOREIGN? ( -- bool )
    TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ 0= ;
 
 : WRITER-MACHINE-CK ( -- )
    FOREIGN? if
       s" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine" BUILD-RC die
-   then
-   OUTPUT-LAUNCH-CK ;
+   then ;
 
 CAST: OPENER-XT ( n -- [ bool -- ] )
 TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
@@ -1052,6 +1043,14 @@ variable WRITER-OVERRIDE?
       SMOKE-OUT outu SMOKE-OTHER$ ENDS-WITH? if SMOKE-CLASS-REFUSE then
       BUILD-RC throw
    then ;
+
+\ A product this host cannot run, another architecture or another OS's process
+\ ABI or image format, is written and promoted without the smoke run.
+: LAUNCHABLE? ( -- bool )
+   FOREIGN? if false exit then
+   BUILD-TARGET:ACTION@ {: action:RTARGET:build-action :}
+   action RTARGET:EXECUTION@ action RTARGET:BODY-TARGET@
+      RTARGET:EXECUTABLE-HERE? ;
 
 : SIGN-TEMP ( -- )
    TEMP$ CODESIGN:ENSURE ;
@@ -1432,7 +1431,7 @@ variable SEALED-NAMES-U
 : IMAGE-INSTALL ( -- )
    X64-TARGET? if BUILD-NAMES then
    SIGN-TEMP
-   FOREIGN? 0= if OUTPUT-LAUNCH-CK SMOKE then
+   LAUNCHABLE? if SMOKE then
    PROMOTE
    WRITE-NAMES ;
 
@@ -1453,10 +1452,7 @@ variable SEALED-NAMES-U
    CHECK-HOST-LAYOUT
    \ An x86-64 target's writer runs in this host, so it may be another
    \ machine's: bind it and open its shadow before the window loads.
-   X64-TARGET? if
-      FOREIGN? 0= if OUTPUT-LAUNCH-CK then
-      HOLD-X64
-   else WRITER-MACHINE-CK then
+   X64-TARGET? if HOLD-X64 else WRITER-MACHINE-CK then
    RETAIN-HOST-PRODUCERS ;
 
 : RUN-FILE-INNER ( -- n )

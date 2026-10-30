@@ -1,14 +1,15 @@
 \ The production entry refuses a bad command line before it loads the build
-\ closure (tools/native-build-args.f). No output argument is refused by name;
-\ so is a bad second argument:
-\ the class the build is being asked for is settled before the target load, so
-\ a typo cannot quietly produce a product. So are an unknown `--target` profile
-\ and one whose machine this engine has no backend for. With that backend
-\ loaded, the selected action refuses an unavailable writer before the full
-\ compiler window loads; an x86-64 window's writer is loaded before that window,
-\ so a build for it writes an x86-64 ELF from either host. The entry's accepted
-\ path, the closure compiling in the executable-build scope, is every gate's
-\ whitebox engine build (test/whitebox-engine.f runs this entry with
+\ closure (tools/native-build-args.f). A missing output argument is refused by
+\ name, and so is a bad second argument: the class the build is being asked for
+\ is settled before the target load, so a typo cannot quietly produce a product.
+\ So are an unknown `--target` profile and one whose machine this engine has no
+\ backend for. With that backend loaded, the selected action refuses an
+\ unavailable writer before the full compiler window loads; an x86-64 window's
+\ writer is loaded before that window, so a build for it writes an x86-64 ELF
+\ from either host. A same-ISA product for another OS is written without the
+\ smoke run, which only a product this host can launch gets. The entry's
+\ accepted path, the closure compiling in the executable-build scope, is every
+\ gate's whitebox engine build (test/whitebox-engine.f runs this entry with
 \ `whitebox`).
 require src/lib/test.f
 require src/lib/process.f
@@ -192,21 +193,35 @@ create CONTENT 64 allot
    HB-TARGET-MACOS? if s" linux-aarch64" exit then
    s" macos-aarch64" ;
 
+
+\ A stale file at the output path, which the build's product must replace.
 : FOREIGN-SEED ( ptr u8 n -- )
    FOREIGN-OUT!
-   FOREIGN-OUT$ s" retained native output" FS:WRITE-ALL ;
+   FOREIGN-OUT$ s" stale native output" FS:WRITE-ALL ;
 
-: FOREIGN-RESULT ( -- )
-   RC @ 74 <> if OUT OUT-U @ type ERR$ type then
-   RC @ 74 T=
-   ERR-U @ 0 T=
-   OUT OUT-U @ s" native-build: target process ABI or image format is not executable here" CONTAINS? TTRUE
-   OUT OUT-U @ s" native-build: uncaught throw code 74" CONTAINS? TTRUE
-   FOREIGN-OUT$ CONTENT 64 FS:READ-ALL 22 T=
-   CONTENT 22 s" retained native output" T$= ;
+
+\ The build succeeds only without the smoke run, which fails a build whose
+\ product this host cannot launch, so rc 0 proves no smoke run happened. The
+\ product's head is the other OS's AArch64 image: an ELF from a macOS host, a
+\ 64-bit Mach-O from a Linux one.
+: OTHER-OS-IMAGE ( -- )
+   RC @ 0<> if OUT OUT-U @ type ERR$ type then
+   RC @ 0 T=
+   FOREIGN-OUT$ FS:FILE? TTRUE
+   FOREIGN-OUT$ FS:>PATHZ open-rd {: fd:n :}
+   fd 0 >= TTRUE
+   fd CONTENT 64 read 64 T=
+   fd close
+   HB-TARGET-MACOS? if
+      CONTENT LE:U32@ $464C457F T=
+      CONTENT 18 + LE:U16@ $B7 T=
+      exit
+   then
+   CONTENT LE:U32@ $FEEDFACF T= ;
+
 
 : FOREIGN-DEFAULT ( -- )
-   s" same-ISA foreign default writer reaches process ABI refusal" T-LABEL
+   s" a same-ISA build for another OS writes its product without the smoke run" T-LABEL
    s" default-hb" FOREIGN-SEED
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
@@ -217,7 +232,8 @@ create CONTENT 64 allot
    s" --target" ARG
    ABI-TARGET$ ARG
    DRIVE
-   FOREIGN-RESULT ;
+   OTHER-OS-IMAGE ;
+
 
 : FOREIGN-ABI-CASE ( -- )
    HB-TARGET-MACOS? HB-TARGET-LINUX? or 0= if

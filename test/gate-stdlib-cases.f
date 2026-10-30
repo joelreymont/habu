@@ -87,8 +87,8 @@ SUITE source-root-exe
    test/source-root-exe-test.f
 ;SUITE
 
-\ native-build-entry loads and captures the x86 window (about 55 s alone) and
-\ needs no image, so it leads.
+\ native-build-entry builds two whole engines on an AArch64 host, the x86-64
+\ window's and the other OS's, and needs no image, so it leads.
 SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
