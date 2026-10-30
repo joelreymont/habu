@@ -1316,6 +1316,17 @@ TR-ME-BEGIN
 s" : MEA1 ( n -- n ) drop ; : MEA2 ( n -- n ) drop drop ; : MEA3 ( n -- n ) MEA1 ;" evaluate
 s" multi-err collects both rejects" T-LABEL
 TR-ME-END 2 T=
+\ Tier 1's `;` abandons MEC1 without dropping the catch the later throw reaches
+\ or the return stack its caller holds.
+: MEC-KEEP ( -- n n ) 5 >r s" : MEC1 ( n -- n ) drop ; 77 throw" ES-RES-REFUSE:OUTCOME r> ;
+TR-ME-BEGIN
+tier@ 1 set-tier MEC-KEEP rot set-tier
+s" multi-err abandoned definition keeps the caller's return stack" T-LABEL
+5 T=
+s" multi-err abandoned definition keeps the outer catch" T-LABEL
+77 T=
+s" multi-err counts the abandoned definition" T-LABEL
+TR-ME-END 1 T=
 s" multi-err mode cleared after end" T-LABEL
 MULTI-ERR? 0= TTRUE
 \ --- user-declarable nominal integer types.
