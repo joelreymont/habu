@@ -1081,7 +1081,7 @@ variable RC
    GJA-LINE# @ 2 T=
    0 s" E-UNDEFINED" s" NO-SUCH" 1 12 11 18 VERIFY-REJECTED-AT
    1 s" E-UNTERMINATED-STRING" s\" s\"" 2 1 21 23 VERIFY-REJECTED-AT
-   s" E-UNDEFINED: NO-SUCH" REJECT-RC LOADED ;
+   s" E-UNDEFINED habu: in x: undefined word 'NO-SUCH'" REJECT-RC LOADED ;
 
 \ The u bytes at a end the fixture text, built in place for a fixture longer
 \ than the string builder holds.
@@ -1279,10 +1279,10 @@ variable RC
    s" x at 'MADE'" REJECT-RC LOADED
    s" a signature that does not parse and a word nothing defines" T-LABEL
    s" : X ( -- zz ) NOPE ;" s" made-nope.f" MADE-FIXTURE
-   s" E-UNDEFINED: NOPE" REJECT-RC LOADED
+   s" E-UNDEFINED habu: in x: undefined word 'NOPE'" REJECT-RC LOADED
    s" that signature, a call of MADE and a word nothing defines" T-LABEL
    s" : X ( -- zz ) MADE NOPE ;" s" made-call-nope.f" MADE-FIXTURE
-   s" E-UNDEFINED: NOPE" REJECT-RC LOADED
+   s" E-UNDEFINED habu: in x: undefined word 'NOPE'" REJECT-RC LOADED
    s" that signature and a call of MADE, with no row for MK" T-LABEL
    s" : MK ( -- ) create ;" s" : X ( -- zz ) MADE ;" s" made-stop.f" MK-FIXTURE
    s" E-UNKNOWN-SIGNATURE-TYPE" s" zz" 3 10 38 40 RUN-REFUSED-AT

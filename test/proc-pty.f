@@ -656,7 +656,7 @@ variable PTY-LONG-U
 \ (global here). A dangling PRP would make the next `package PRQ` nest-reject.
 : PTY-PKGSCOPE-FAIL ( -- )
    s" package PRP public : PRFOO ( -- ) NOPEWORD ;" STEP-LN
-   s" E-UNDEFINED: NOPEWORD" PROMPT-AFTER
+   s" E-UNDEFINED habu: in prfoo: undefined word 'NOPEWORD'" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT ;
 

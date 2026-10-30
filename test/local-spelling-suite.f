@@ -1,8 +1,10 @@
 \ local-spelling-suite.f - a local answers to its DECLARED SPELLING, and a word
 \ written in its own case is that word.
-\ The checker (src/core/checker.f LOCNB, LOC-REF?) and the engine's lookup
-\ (src/habu/habu2.f EMIT-LOC-FIND) must agree: a body each reads differently
-\ refuses on its arithmetic, so a file that loads proves they agree.
+\ The checker (src/core/checker.f LOCNB, LOC-REF?) and the native compilers'
+\ local readers, tier 0 (src/habu/t0.f DO-LOCAL, which reads the checker's
+\ K-LOCAL-REF rows) and tier 1 (src/compiler/native/elaborate.f LOCAL-OF), must
+\ agree: a body each reads differently refuses on its arithmetic, so a file
+\ that loads proves they agree.
 
 require src/lib/errors.f
 require src/lib/prelude.f
@@ -180,7 +182,7 @@ private
 : UNDEFINED-CASE ( -- )
    s" a differently-cased mention with no word of that name is undefined by name" T-LABEL
    s" : LSP-BAD ( n -- n ) {: zork:n :} ZORK ;" LSP-CHILD:RUN LSP-CHILD:UNDEF-RC T=
-   LSP-CHILD:ERR$ s" E-UNDEFINED: ZORK" CONTAINS? TTRUE ;
+   LSP-CHILD:ERR$ s" E-UNDEFINED habu: in lsp-bad: undefined word 'ZORK'" CONTAINS? TTRUE ;
 
 : NCOMP-CASE ( -- )
    s" the tier-1 compiler reads the same two names the same way" T-LABEL

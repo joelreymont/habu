@@ -307,12 +307,18 @@ LOWER-CERT-HOOK:INSTALL
    OUT-U @ TEST-OUT-U T=
    ERR-U @ TEST-ERR-U T= ;
 
+\ The native compiler refuses LRD-X with the checker's diagnostic, naming the
+\ code and the word. Its refusal carries no file:line, so the definition's
+\ name, in the checker's lower-case rendering, identifies where it was refused.
+: ASSERT-UNDEF ( -- )
+   s" E-UNDEFINED" ASSERT-NAMED
+   ERR$ s" undefined word 'LRD-NO-SUCH-WORD-XYZ'" CONTAINS? TTRUE
+   ERR$ s" in lrd-x" CONTAINS? TTRUE ;
+
 : TEST-UNDEF ( -- )
    s" direct --load reject names the undefined word" T-LABEL
    UNDEF$ RUN
-   s" E-UNDEFINED" ASSERT-NAMED
-   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE
-   ERR$ s" undef.f:1" CONTAINS? TTRUE ;
+   ASSERT-UNDEF ;
 
 : TEST-BODY ( -- )
    s" checked-body reject names word and token" T-LABEL
@@ -382,9 +388,7 @@ LOWER-CERT-HOOK:INSTALL
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
-   s" E-UNDEFINED" ASSERT-NAMED
-   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE
-   ERR$ s" undef.f:1" CONTAINS? TTRUE ;
+   ASSERT-UNDEF ;
 
 \ A file that leaves cells is refused once, by one line naming the count and
 \ the innermost file, then the engine's uncaught throw. Paths are matched by
