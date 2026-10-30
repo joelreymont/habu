@@ -1310,8 +1310,8 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    \ published. TRUSTED: skips the hook; both native tiers refuse it, rc 70.
    s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSC ( -- ) [: 1 ;" 70 S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-TOP
-   s" 1 set-tier TRUSTED: RXSC ( -- ) [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC\n" GE-RXE-CATCH-USABLE
-   s" 1 set-tier TRUSTED: RXSC ( -- ) [: 1 ;" 70 S\" ncomp: cannot compile RXSC\n" GE-RXE-TOP
+   s" 1 set-tier TRUSTED: RXSC ( -- ) [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-CATCH-USABLE
+   s" 1 set-tier TRUSTED: RXSC ( -- ) [: 1 ;" 70 S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-TOP
    s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 70 S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-TOP
    \ `;` with a structure open: its unpatched branch spins, `do` leaves a frame.

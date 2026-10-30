@@ -1342,7 +1342,7 @@ variable LONG-J
 : TEST-RENDERED-DOES ( -- )
    RENDER-DOES-CLAUSE$ DIRECT-STDIN EXPECT-ACCEPTED
    RENDER-DOES-DEFINER$ DIRECT-STDIN EXPECT-ACCEPTED
-   RENDER-DOES-BAD$ DIRECT-STDIN s" ncomp: cannot compile CKR-DEFR" EXPECT-RUN-REFUSED ;
+   RENDER-DOES-BAD$ DIRECT-STDIN s" ncomp: cannot compile CKR-DEFR at +" EXPECT-RUN-REFUSED ;
 
 \ A clause the pre-pass refuses is reported as a refused body is: by the name of
 \ the record it would publish, the definer's with `;does`, the code, the token
@@ -1783,7 +1783,7 @@ variable LONG-J
    FWDREF$ HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" E-UNDEFINED habu: in ckt-fwdref: undefined word 'CKT-MISSING'" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-UNDEFINED: CKT-MISSING" CONTAINS? TTRUE ;
 
 : TEST-DUP-ALL ( -- )
    DUP$SRC CORE-JSON $4E T=
@@ -3216,10 +3216,8 @@ create BIG $2000 allot   variable BIG-U
    s" CKT-TB drop 7 ." SB-APPEND
    SB$ ;
 
-\ An enclosing local is still that local inside a quotation: the loader and the
-\ check refuse it as a local in a quotation (E-BAD-LOCAL-SHAPE, rc 70), after
-\ the `;` that ends the definition. A pre-verifier that reads the `;` as the
-\ keyword's operand fails rc 74, unterminated definition.
+\ An enclosing local inside a quotation is refused at that token, located on
+\ its line; the `;` closing the definition is no operand of `char`.
 : LOCAL-QUOTATION$ ( -- ptr u8 n )
    s" : CKT-LQ ( n -- n ) {: char :} [: char ;" ;
 
@@ -3227,6 +3225,8 @@ create BIG $2000 allot   variable BIG-U
    LOCAL-QUOTATION$ HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    CAP-ERR erru s" E-BAD-LOCAL-SHAPE habu: in ckt-lq: at 'char'" CONTAINS? TTRUE
+   CAP-ERR erru s" ncomp: cannot compile CKT-LQ at char in /" CONTAINS? TTRUE
+   CAP-ERR erru S\" /bad.f:1\n" CONTAINS? TTRUE
    LOCAL-QUOTATION$ DIRECT-JSON-STDIN 70 T=
    {: outu2:n erru2:n :}
    outu2 0 T=
@@ -7199,7 +7199,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    SB$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" E-UNDEFINED habu: in ckt-guse: undefined word 'CKT-GHOLLOW'" CONTAINS? TTRUE
+   CAP-ERR erru s" E-UNDEFINED: CKT-GHOLLOW" CONTAINS? TTRUE
    CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
 \ A definer name the used scopes refuse is refused by the preverify as a use of

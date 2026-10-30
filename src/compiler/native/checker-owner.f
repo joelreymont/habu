@@ -60,6 +60,7 @@ CAST: AS-DOES-REPORT ( n -- [ n ptr u8 n -- n ] )
 CAST: AS-DOES-FINISH ( n -- [ ptr u8 n bool -- ] )
 CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
+CAST: AS-SPAN ( n -- [ -- n n bool ] )
 CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
@@ -281,6 +282,12 @@ TRUSTED: DOES-COMMIT ( -- )
 : SIG-REFUSED? ( -- bool )
    NCOMP-DISPATCH:DECL-SIG-COUNTED-OFF s" counted signature refusal" SOURCE-FIELD
    AS-BOOL execute ;
+
+\ The token the last scan refused: its offsets in the scanned text, equal when
+\ none was pinned, and whether it is undefined (checker.f PIN-SPAN).
+: REFUSED-SPAN ( -- n n bool )
+   NCOMP-DISPATCH:DECL-PIN-SPAN-OFF s" refused token span" SOURCE-FIELD
+   AS-SPAN execute ;
 
 : DOES-WIDE? ( -- bool )
    NCOMP-DISPATCH:DECL-DOES-WIDE-OFF s" does> width" FIELD

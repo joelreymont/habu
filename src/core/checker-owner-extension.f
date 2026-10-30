@@ -82,7 +82,10 @@ $5C0 constant SIG-COUNTED-OFF
 \ ( -- bool ) the last unjudged scan closed every construct it opened
 \ (checker.f UNJUDGED-CLOSED?).
 $5C8 constant UNJUDGED-CLOSED-OFF
-UNJUDGED-CLOSED-OFF CELL + constant OWNER-BYTES
+\ ( -- n n bool ) the last scan's refused token as offsets in its text, equal
+\ when none was pinned, and whether it is undefined (checker.f PIN-SPAN).
+$5D0 constant PIN-SPAN-OFF
+PIN-SPAN-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

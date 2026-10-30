@@ -94,6 +94,7 @@ align
 0 CWORK-VARIABLE PRIOR-CAST bool
 0 CWORK-VARIABLE PRIOR-CALLABLE n
 0 CWORK-VARIABLE M-RC n                        \ the code the run inside the context reached
+0 CWORK-VARIABLE M-AT-CLOSE bool               \ refused at the closing `;`
 0 CWORK-VARIABLE M-PUBLISHED-START n           \ committed parent's index for notification
 0 CWORK-VARIABLE M-DOES-ROW n                  \ the tape row that carries `does>`
 0 CWORK-VARIABLE DEF-MODULE-BEFORE n
@@ -251,7 +252,7 @@ private
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
    VERDICT-CK
-   CHECKER-OWNER:UNJUDGED-OPEN? if E-NELAB-CTRL throw then
+   CHECKER-OWNER:UNJUDGED-OPEN? if true M-AT-CLOSE ! E-NELAB-CTRL throw then
    TAPE NFEED:RECORD-WINDOW
    before ;
 
@@ -655,20 +656,26 @@ INSTALL-FORGET
 : LENGTH-CK ( -- )
    SRC$ nip TEXT-CAP > if E-NCOMP-TEXT throw then ;
 
+\ The refused token and its byte: the closing `;` when the body left a construct
+\ open, else the elaborator's, at its TXT offset (TXT holds SRC$ byte for byte).
+: REFUSED-AT ( -- ptr u8 n ptr u8 )
+   M-AT-CLOSE @ if CLOSE$ over exit then
+   NELAB:REFUSED-OFF {: off:n :}
+   off 0 < if NULL-PTR else SRC$ drop off + then {: p:ptr :}
+   NELAB:REFUSED$ p ;
+
 : RUN ( -- )
    LENGTH-CK
    CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
    0 M-RC !
+   false M-AT-CLOSE !
    [: IN-CONTEXT ;] catch {: entry-rc:n :}
    0 M-OPEN !
    STUB-END
    M-RC @ {: rc:n :}
-   \ TXT holds SRC$ byte for byte, so a TXT offset is one into the body text.
-   NELAB:REFUSED-OFF {: off:n :}
-   off 0 < if NULL-PTR else SRC$ drop off + then {: p:ptr :}
    entry-rc rc  rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and
-   NELAB:REFUSED$ p SETTLE-UNIT ;
+   REFUSED-AT SETTLE-UNIT ;
 
 : STAGE ( ptr u8 n bool -- )
    IDLE-CK

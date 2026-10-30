@@ -526,18 +526,22 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    LN$ ;
 
 \ This file: SUBJECT:RUN evaluates a case's text while the file loads, so a
-\ refusal located on the text's first line stands on line 1.
+\ refusal located on the text's line k stands on line k.
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
-\ Text a, then `<this file>:1` and a newline.
-: HERE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+\ Text a, then `<this file>` and the line suffix l.
+: AT-LINE+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n l:ptr lu:n :}
    a u LN+
    LOADING @ data-base SRCLOC:PATHLEN-CELL + @ LN+
-   S\" :1\n" LN+ ;
+   l lu LN+ ;
 
+\ Text a, then `<this file>:1` and a newline.
+: HERE+ ( ptr u8 n -- ) S\" :1\n" AT-LINE+ ;
+
+\ The checker refuses an uneven body at its name.
 : REFUSED-LINE$ ( n -- ptr u8 n )
    LN-OPEN
-   s" ncomp: cannot compile " LN+ NAME+ S\" \n" LN+ LN$ ;
+   s" ncomp: cannot compile " LN+ NAME+ s"  at " LN+ NAME+ s"  in " HERE+ LN$ ;
 
 : MISSING-LINE$ ( n -- ptr u8 n )
    LN-OPEN
@@ -703,7 +707,8 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    RUN  REJECT-RC ASSERT-RC
    ERR$ 0 LN-OPEN s" ncomp: cannot compile TN-ELAB at TN-ELAB-MISSING in " HERE+ LN$ CONTAINS? TTRUE
    ERR$ 0 LN-OPEN s" E-UNDEFINED: TN-ELAB-MISSING at " HERE+ LN$ CONTAINS? TTRUE
-   ERR$ S\" ncomp: cannot compile TN-UNEVEN\n" CONTAINS? TTRUE ;
+   ERR$ 0 LN-OPEN s" ncomp: cannot compile TN-UNEVEN at TN-UNEVEN in " S\" :5\n" AT-LINE+
+   LN$ CONTAINS? TTRUE ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
 \ A definer whose clause breaks its declared effect. Each tier reports the

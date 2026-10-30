@@ -162,6 +162,7 @@ create OWNER-STORAGE
    0 , 0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -178,7 +179,7 @@ OWNER-SIZE-AGREE
 \ growing it is read past the record's extent by every guard that trusts it
 \ (checker-owner-guard.f VALIDATE). This makes that a load failure.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:UNJUDGED-CLOSED-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:PIN-SPAN-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -5672,6 +5673,12 @@ variable CUSING              \ the using refusal the walk raised at this token; 
 : REFUSAL@ ( -- n )
    REFUSAL @ 0 <> IF REFUSAL @ EXIT THEN
    REFUSAL-OF ;
+
+\ The pinned token's span in the scanned text, offsets from TBASE, and whether
+\ the refusal is an undefined word; an empty span when no failure pinned one.
+: PIN-SPAN ( -- n n bool )
+   FAILSET @ 0= IF 0 0 RES-FALSE EXIT THEN
+   FAILB @ FAILE @ REFUSAL@ RF-UNDEF = ;
 
 \ A token refused twice keeps the first: preflight refuses an unmodeled
 \ immediate before anything resolves it, so one the checker cannot resolve
@@ -30279,6 +30286,7 @@ package CHECKER-REG
 ' REC-CALL-BINDING                  DECLARATIONS CHECKER-OWNER-ABI:CALL-BINDING-OFF + xt!
 ' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
 ' UNJUDGED-CLOSED?                  DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-CLOSED-OFF + xt!
+' PIN-SPAN                          DECLARATIONS CHECKER-OWNER-ABI:PIN-SPAN-OFF + xt!
 ' REC-BINDING-WINDOW                DECLARATIONS CHECKER-OWNER-ABI:BINDING-WINDOW-OFF + xt!
 ' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!

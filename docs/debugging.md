@@ -32,13 +32,13 @@ throw ends the load). The other interpret-level diagnostics
 its siblings) and the refusals that exit without the compile tail (boot
 source, CLI, uncaught throw, snapshot and AOT families) print no location.
 The checker's refusal in a body names the definition and the token
-(`habu: in g: at '2' expected: n actual: n n`, and a tier-1 undefined word in
-a checked body as `E-UNDEFINED habu: in f: undefined word 'x'`) but no file or
-line. A top-level refusal names the file and line instead
-(`habu: <path>:<line>: at '!' …`), the file alone for a token of a string
-`evaluate` runs, and no place outside a file; a tool's label replaces the
-path of the file it labels. For those that print no location, search the
-source for the named definition, or bisect.
+(`habu: in g: at '2' expected: n actual: n n`); the native line after it
+places the token (`ncomp: cannot compile G at 2 in <path>:<line>`), and an
+undefined word adds `E-UNDEFINED: x at <path>:<line>`. A top-level refusal
+names the file and line in its own line (`habu: <path>:<line>: at '!' …`),
+the file alone for a token of a string `evaluate` runs, and no place outside a
+file; a tool's label replaces the path of the file it labels. For those that
+print no location, search the source for the named definition, or bisect.
 
 ## Reading an exit status
 

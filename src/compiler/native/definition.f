@@ -67,6 +67,7 @@ private
 
 0 CWORK-VARIABLE M-SRC ptr u8
 0 CWORK-VARIABLE M-SRC-U n
+0 CWORK-VARIABLE M-SCAN ptr u8                 \ the text scanned last
 0 CWORK-VARIABLE M-UNJUDGED n                  \ a hook-cell-empty scan's verdict, else -1
 0 CWORK-VARIABLE M-ROWS n                      \ where the checker store ended at STAGE-UNIT
 0 CWORK-VARIABLE M-HEAD-RECOVERY bool          \ a split definition's head bound a recovery row
@@ -160,6 +161,7 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
 : CHECK-PARENT ( ptr u8 n -- n )
    {: a:ptr u:n :}
+   a M-SCAN !
    CHECKER-OWNER:RESET-REPORT
    TRUSTED? if -1 CHECKER-OWNER:BIND-REGIME!
       a u CHECKER-OWNER:CHECK-UNJUDGED exit then
@@ -213,6 +215,7 @@ public
    {: na:ptr nu:n :}
    CHECKER-OWNER:TAPE-ADVANCE
    M-DOES @ {: cut:n :}
+   M-SRC @ cut + M-SCAN !
    M-SRC @ cut +  M-SRC-U @ cut -  M-DOES-SIG @ M-DOES-SIG-U @
    CHECKER-OWNER:DOES-CHECK na nu CLAUSE-CK
    M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
@@ -429,6 +432,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 PENDTKA-CELL RESERVED-PTR-U8-CELL OPEN-NAME
+TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 
 \ Cell k of layout.f BODY-SOURCE row i: 0 its text offset, 1 its source offset.
 : SOURCE-ROW@ ( n n -- n )
@@ -504,6 +508,22 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL OPEN-NAME
    s"  at " p SAY-WHERE
    S\" \n" ERROR-TEXT ;
 
+\ The token the checker refused in the text it scanned last, and whether it is
+\ an undefined word; empty when no scan ran or none was pinned.
+: CHECKER-REFUSED$ ( -- ptr u8 n bool )
+   M-SCAN @ NULL-PTR = if NULL-PTR 0 false exit then
+   CHECKER-OWNER:REFUSED-SPAN {: b:n e:n undefined:bool :}
+   M-SCAN @ b +  e b -  undefined ;
+
+\ A reject with no compiler token is the checker's refusal of the body: name
+\ the token it refused instead.
+: REPORT-REFUSAL ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n p:ptr rc:n :}
+   rc RC-REJECT <>  u 0<> or if a u p REPORT-FAILURE exit then
+   CHECKER-REFUSED$ {: ca:ptr cu:n undefined:bool :}
+   ca cu ca REPORT-FAILURE
+   undefined if ca cu ca REPORT-UNDEFINED then ;
+
 \ A refusal of a body no scan certified (TRUSTED:, or refused by its hookless
 \ scan) for its own source: unclosed control flow or an unmodeled immediate.
 : MALFORMED? ( n -- bool ) {: rc:n :}
@@ -511,6 +531,10 @@ PENDTKA-CELL RESERVED-PTR-U8-CELL OPEN-NAME
    TRUSTED? M-UNJUDGED @ -1 <> or and ;
 
 public
+
+\ The `;` that ends the definition: the token the engine read last, whose
+\ address in the input places a refusal there on its line.
+: CLOSE$ ( -- ptr u8 n ) READ-AT @ data-base TKL-CELL + @ ;
 
 \ A word compiled code cannot reach and a MALFORMED? body take the reject
 \ status, as the JIT refuses them; p is the refused token's byte or NULL-PTR.
@@ -532,7 +556,7 @@ public
    then
    rc 0 <> if
       rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
-      if a u p REPORT-FAILURE then
+      if a u p rc REPORT-REFUSAL then
       RETRACT rc throw
    then ;
 
@@ -542,6 +566,7 @@ public
    0 CHECKER-OWNER:BIND-REGIME!
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
+   NULL-PTR M-SCAN !
    0 M-IN ! 0 M-OUT !
    UNCERTIFIED? NHOST:SOURCE-BEGIN
    0 M-VERDICT !

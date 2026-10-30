@@ -111,12 +111,6 @@ variable CUT                         \ the byte just past `does> `, or 0
    a BAD !  u BAD-LEN !
    code throw ;
 
-TKA-CELL RESERVED-PTR-U8-CELL READ-AT
-
-\ The `;` that ends the definition: the token the engine read last, whose
-\ address in the input places a refusal there on its line.
-: CLOSE$ ( -- ptr u8 n ) READ-AT @ data-base TKL-CELL + @ ;
-
 : CONTROL-FAULT ( -- ) ORD @ 1- ROW$ E-T0-CONTROL REFUSE ;
 
 : UNSUPPORTED ( ptr u8 n -- ) E-T0-UNSUPPORTED REFUSE ;
@@ -1279,7 +1273,7 @@ DYNAMIC-BUFFER QORD n               \ each quotation's first ordinal
 variable NESTED                     \ the `[:` rows skipped inside quotations so far
 
 : SKIP-ROW ( n -- n ) {: k:n :}
-   k ROWS @ >= if CLOSE$ E-T0-CONTROL REFUSE then
+   k ROWS @ >= if NDEFINITION:CLOSE$ E-T0-CONTROL REFUSE then
    k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if 0 exit then
    k ROW-A0 @ CF-QUOT-OPEN = if 1 NESTED +! 1 exit then
    k QUOT-END? if -1 exit then
@@ -1617,7 +1611,7 @@ OPS-MAP
 \ The token that ended a body short of a `;]`: the split's `does>`, or `;` past
 \ the last row.
 : END$ ( -- ptr u8 n )
-   ORD @ ROWS @ >= if CLOSE$ exit then
+   ORD @ ROWS @ >= if NDEFINITION:CLOSE$ exit then
    ORD @ ROW$ ;
 
 : FINISH ( ptr u8 n -- ) {: a:ptr u:n :}

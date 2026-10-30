@@ -174,7 +174,7 @@ create ERR IO-CAP allot
    s" the hook's refusal ends the child with the hook's code" T-LABEL
    src srcu OUT outu LEN>N ERR erru LEN>N oc HOOK-RC T-OUTCOME-EXITED=
    s" the native compiler's line names the definer the hook refused" T-LABEL
-   ERR erru LEN>N  S\" ncomp: cannot compile DR-BAD\n" CONTAINS? TTRUE ;
+   ERR erru LEN>N  S\" ncomp: cannot compile DR-BAD at DR-NO-SUCH-WORD\n" CONTAINS? TTRUE ;
 
 \ ---- the assertions ---------------------------------------------------------
 \ The clause of the definer named by a/u: the record one slot above it.
