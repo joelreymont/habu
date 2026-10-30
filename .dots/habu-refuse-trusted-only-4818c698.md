@@ -1,0 +1,9 @@
+---
+title: Refuse trusted-only words at top level
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-30T04:49:54.818105+02:00"
+---
+
+Problem: src/core/checker.f DO-TOK-BODY (:13393) and TRY-PRIMS (:17923) skip the trust refusal while a top-level step is being checked (`TOP-STEP @ 0= and`), so a trusted-only word at top level runs where the same call in a body is refused E-CAP-TRUSTED. Measured 2026-10-30 on the installed hb 1ce33220 and on the TOP-JUDGE engine (carl-topjudge/.out/tj2/): `reloc-maps-clear` at top level runs (rc 0); `0 callmap-set` at top level runs and exits 83 SEAL-VIOLATION; `reloc-maps-clear` in a body is E-CAP-TRUSTED; `' reloc-maps-clear` is refused 'hb: trusted-only tick' rc 70; a `0 set-check` word at top level is E-CAP-TRUSTED. Card row 156 and forth.md claimed E-CAP-TRUSTED at top level until TOP-JUDGE's lane reworded rows 156-158 to the measured conditions. Dot habu-refuse-a-top-1ea733e1 (`0 addrmap-set` exits 83 without a diagnostic) is one symptom. Acceptance: a trusted-only word at a checked top level is refused E-CAP-TRUSTED with the word named, as in a body; a `0 set-check` window keeps admitting it; first a census with tools/check.f over every tools/ and test/ file with the refusal in place, each refusal classified (a call to move into a set-check window, a word that needs a row, other) and reported with counts; then the rule lands with a regression row (a trusted-only word at top level before any body, refused by name) and the card rows 156-158 and forth.md rule restored to the refusal. Files: src/core/checker.f :13393 :17923, docs/forth-card.md rows 156-158, docs/forth.md 'Rules learned by refusal', test/outer-interpret.f (regression row beside ROWLESS-STEP). Verify: the regression row; tools/check.f over tools/ and test/; bin/hb --load test/run.f (checker behavior, engine-baked). Depends: habu-refuse-a-top-57851ac2 (lands first: its rows state the hole). Ownership: carl. Claim: unassigned.
