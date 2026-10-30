@@ -278,6 +278,13 @@ TRUSTED: DOES-COMMIT ( -- )
    dup 0= if drop CHECK-UNRECORDED-DOUT exit then
    AS-N execute ;
 
+\ Whether the checker counted a refusal of this definition's declared row
+\ (checker.f SIG-COUNTED). Read per call, not by name nor in BIND-SOURCE-CALLS:
+\ a build host's checker lacks the name and its record the field.
+: SIG-REFUSED? ( -- bool )
+   NCOMP-DISPATCH:DECL-SIG-COUNTED-OFF s" counted signature refusal" SOURCE-FIELD
+   AS-BOOL execute ;
+
 : DOES-WIDE? ( -- bool )
    NCOMP-DISPATCH:DECL-DOES-WIDE-OFF s" does> width" FIELD
    dup 0= if drop CHECK-DOES-WIDE? exit then

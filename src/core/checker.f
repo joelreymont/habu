@@ -160,6 +160,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 , 0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -176,7 +177,7 @@ OWNER-SIZE-AGREE
 \ growing it is read past the record's extent by every guard that trusts it
 \ (checker-owner-guard.f VALIDATE). This makes that a load failure.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:UNRECORDED-OUT-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:SIG-COUNTED-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -9570,6 +9571,12 @@ variable RECMI   0 RECMI !
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ refused definitions counted this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
+\ Set where a multi-error load reports and counts a refused declared row
+\ (USIG-ADD-BAD, TRUST-STALE); CHECK-RESET clears it at each scan.
+variable SIG-COUNTED
+0 SIG-COUNTED !
+: SIG-COUNTED? ( -- bool ) SIG-COUNTED @ 0 <> ;
+: SIG-COUNT ( -- ) -1 SIG-COUNTED !  1 MULTI-ERR-N +! ;
 7156 constant E-BAD-STORED-SIGNATURE   \ a stored signature does not parse
 \ Bad stored-signature diagnostic hook (render.f installs BADSIG-DIAG), given the
 \ signature, stored name and declaring name. Until render.f loads, BADSIG-PLAIN
@@ -9893,7 +9900,7 @@ variable ASIG-MISS-K
    0 RECW !                              \ no record stored: nothing to publish wide
    0 RECMI !                             \ ... and no min-in to poke
    sa su na nu at atu BADSIG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF SIG-COUNT EXIT THEN
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
 
 \ An effect with these rows deeper than a record holds is a stored signature
@@ -11522,7 +11529,7 @@ RECORD-DIAG-DEFAULT
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
    a TSR-TOK-A !  u TSR-TOK-U !
    0 RECORD-DIAG-XT
-   MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
+   MULTI-ERR? IF SIG-COUNT EXIT THEN
    E-TRUST-UNRESOLVED CHECKER-REFUSE ;
 PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written (valid while rendering)
 variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
@@ -21003,8 +21010,9 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 \ a trusted definition has no body check to step the latch past state 1. This
 \ step lets the registration reach CHECKER-EFFECT-AUTHORITY STORE in state 2, so
 \ the clause lands on the trusted symbol's CREATES cell through its one writer.
-\ The native compiler registers a trusted parent before checking its clause; its
-\ later publication associates the accepted pair instead.
+\ The native compiler registers a trusted parent after checking its clause
+\ (DECLARE-ROW ends t0.f and compiler.f SCAN); its later publication associates
+\ the accepted pair instead.
 \ The step is unconditional: a latch in any other state dies here.
 \ Source cannot call it: a row registered here asks nothing, so it would record
 \ any effect for a name in the open section's wordlist. REG-PROTECT seals it as
@@ -24077,6 +24085,7 @@ CHECKER-REG:}SCRATCH
    BWIN-EPOCH !
    a u BYTE-SPAN? 0= IF s" checker: token buffer too large" 76 die THEN
    RES-FALSE CHECKER-EFFECT-AUTHORITY:RECOVERY-USED!
+   0 SIG-COUNTED !
    FO-RESET
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
@@ -25793,6 +25802,7 @@ package CHECKER-REG
 ' CHECKER-PREFIX:BIND? DECLARATIONS CHECKER-OWNER-ABI:PREFIX-BIND-OFF + xt!
 ' CHECK-UNRECORDED-DIN DECLARATIONS CHECKER-OWNER-ABI:UNRECORDED-IN-OFF + xt!
 ' CHECK-UNRECORDED-DOUT DECLARATIONS CHECKER-OWNER-ABI:UNRECORDED-OUT-OFF + xt!
+' SIG-COUNTED? DECLARATIONS CHECKER-OWNER-ABI:SIG-COUNTED-OFF + xt!
 ;package
 
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic

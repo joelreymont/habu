@@ -78,7 +78,10 @@ $5A8 constant PREFIX-BIND-OFF
 \ (checker.f CHECK-UNRECORDED!).
 $5B0 constant UNRECORDED-IN-OFF
 $5B8 constant UNRECORDED-OUT-OFF
-UNRECORDED-OUT-OFF CELL + constant OWNER-BYTES
+\ ( -- bool ) the checker counted a refusal of the scanned definition's row
+\ (checker.f SIG-COUNTED).
+$5C0 constant SIG-COUNTED-OFF
+SIG-COUNTED-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF
