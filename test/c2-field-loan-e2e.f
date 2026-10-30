@@ -1,4 +1,4 @@
-\ Native embedded field loans, fresh source consumers and a saved wrapper at both tiers.
+\ A saved field-loan wrapper and its fresh source consumers at both tiers.
 \ The printed directory retains the saved image, source copies and child logs.
 require src/lib/test.f
 require src/lib/fs.f
@@ -13,37 +13,8 @@ private
 
 : SETUP ( -- )
    s" c2-field-loan-e2e" TREE
-   s" test/c2-field-loan-program.f" COPY-TEST
-   s" test/c2-field-loan-refusals.f" COPY-TEST
-   s" test/c2-field-loan-lifecycle.f" COPY-TEST
-   s" test/c2-field-loan-kind.f" COPY-TEST
    s" test/c2-field-loan-wrapper.f" COPY-TEST
    s" test/c2-field-loan-saved.f" COPY-TEST ;
-
-: SOURCE-CASES ( -- )
-   ENGINE-CANDIDATE:PATH$ s" test/c2-field-loan-kind.f" RUN-IMAGE
-   s" kind.out" s" kind.err" SAVE-LOG
-   s" the exact field entry has scope kind eight" T-LABEL
-   s" c2-field-loan-kind: ok" EXPECT-OK
-   ENGINE-CANDIDATE:PATH$ s" test/c2-field-loan-program.f" RUN-IMAGE
-   s" source.out" s" source.err" SAVE-LOG
-   s" a fresh source program edits an embedded field" T-LABEL
-   s" c2-field-loan-program: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" 1 set-tier\nrequire test/c2-field-loan-program.f\ns\q c2-field-loan-tier1: ok\q type cr\n"
-   RUN-INPUT
-   s" tier1.out" s" tier1.err" SAVE-LOG
-   s" fresh tier one code edits an embedded field" T-LABEL
-   s" c2-field-loan-tier1: ok" EXPECT-OK
-   ENGINE-CANDIDATE:PATH$ s" test/c2-field-loan-refusals.f" RUN-IMAGE
-   s" refusals.out" s" refusals.err" SAVE-LOG
-   s" field-loan authority refusals hold" T-LABEL
-   s" c2-field-loan-refusals: ok" EXPECT-OK
-   ENGINE-CANDIDATE:PATH$ s" test/c2-field-loan-lifecycle.f" RUN-IMAGE
-   s" lifecycle.out" s" lifecycle.err" SAVE-LOG
-   s" throw and task halt close the complete field-loan scope" T-LABEL
-   s" c2-field-loan-lifecycle: ok" EXPECT-OK ;
 
 : SAVED-CASES ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -73,7 +44,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   SETUP SOURCE-CASES SAVED-CASES
+   SETUP SAVED-CASES
    s" c2-field-loan-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 

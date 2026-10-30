@@ -1547,6 +1547,33 @@ SUITE c2-memory-runtime
    test/c2-memory-runtime.f
 ;SUITE
 
+SUITE c2-memory-source
+   test/c2-memory-native-boundary.f
+   test/c2-memory-program.f
+   test/c2-init-program.f
+   test/c2-memory-refusals.f
+   test/c2-memory-scope-refusals.f
+   test/c2-init-refusals.f
+   test/c2-owner-producer-program.f
+   test/c2-owner-producer-refusals.f
+   test/c2-owner-dispose.f
+   test/c2-forall-input.f
+   test/c2-forall-input-refusals.f
+   test/c2-memory-entry.f
+   test/c2-field-loan-kind.f
+   test/c2-field-loan-program.f
+   test/c2-field-loan-refusals.f
+   test/c2-field-loan-lifecycle.f
+;SUITE
+
+SUITE c2-memory-tier1
+   test/c2-memory-tier1.f
+;SUITE
+
+SUITE c2-field-loan-tier1
+   test/c2-field-loan-tier1.f
+;SUITE
+
 SUITE c2-view-record-mut
    test/c2-view-record-mut.f
 ;SUITE

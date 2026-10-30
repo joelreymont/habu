@@ -1,4 +1,4 @@
-\ End-to-end C2 unique storage through source, native and saved images.
+\ C2 unique storage through saved images, live capture and a partial write.
 \ The printed tree retains both products and every child log for replay.
 require src/lib/test.f
 require src/lib/string.f
@@ -14,20 +14,13 @@ private
 
 : SETUP ( -- )
    s" c2-memory-e2e" TREE
-   s" test/c2-memory-program.f" COPY-TEST
-   s" test/c2-memory-refusals.f" COPY-TEST
-   s" test/c2-memory-scope-refusals.f" COPY-TEST
    s" test/c2-memory-wrapper.f" COPY-TEST
    s" test/c2-memory-saved-consumer.f" COPY-TEST
-   s" test/c2-memory-native-boundary.f" COPY-TEST
    s" test/c2-memory-live-save.f" COPY-TEST
-   s" test/c2-init-program.f" COPY-TEST
-   s" test/c2-init-refusals.f" COPY-TEST
    s" test/c2-init-wrapper.f" COPY-TEST
    s" test/c2-init-saved-consumer.f" COPY-TEST
    s" test/c2-init-live-save.f" COPY-TEST
    s" test/c2-owner-producer-program.f" COPY-TEST
-   s" test/c2-owner-producer-refusals.f" COPY-TEST
    s" test/c2-owner-dispose.f" COPY-TEST
    s" test/c2-forall-input.f" COPY-TEST
    s" test/c2-forall-input-refusals.f" COPY-TEST ;
@@ -38,52 +31,6 @@ private
    text textu T-LABEL
    OUT$ mark marku CONTAINS? TTRUE ;
 
-: SOURCE-CASES ( -- )
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" require test/c2-memory-native-boundary.f\nrequire test/c2-memory-program.f\nrequire test/c2-init-program.f\nrequire test/c2-memory-refusals.f\nrequire test/c2-memory-scope-refusals.f\nrequire test/c2-init-refusals.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-producer-refusals.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\nrequire test/c2-forall-input-refusals.f\n"
-   RUN-INPUT
-   s" source-tier0.out" s" source-tier0.err" SAVE-LOG
-   s" the shared tier-0 native session exits cleanly" T-LABEL NEED-OK
-   s" real, shadow, and alias entries retain expected native scope kinds"
-   s" c2-memory-native-boundary: ok" MARKED
-   s" unique byte and loan behavior works in the native image"
-   s" c2-memory-program: ok" MARKED
-   s" a live owner initializes and clears fixed records"
-   s" c2-init-program: ok" MARKED
-   s" unique copy and escape refusals remain enforced"
-   s" c2-memory-refusals: ok" MARKED
-   s" scope schemes and shared loans retain their boundaries"
-   s" c2-memory-scope-refusals: ok" MARKED
-   s" initialization rejects invalid records and views"
-   s" c2-init-refusals: ok" MARKED
-   s" an owner appends and publishes scoped allocations"
-   s" c2-owner-producer-program: ok" MARKED
-   s" producer capabilities reject copying and mutation after publish"
-   s" c2-owner-producer-refusals: ok" MARKED
-   s" explicit owners release registered foreign resources"
-   s" c2-owner-dispose: ok" MARKED
-   s" supplied callbacks specialize from typed inputs"
-   s" c2-forall-input: ok" MARKED
-   s" callbacks retain their input identities and bounds"
-   s" c2-forall-input-refusals: ok" MARKED
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" 1 set-tier\nrequire test/c2-init-program.f\nrequire test/c2-memory-program.f\nrequire test/c2-owner-producer-program.f\nrequire test/c2-owner-dispose.f\nrequire test/c2-forall-input.f\n"
-   RUN-INPUT
-   s" source-tier1.out" s" source-tier1.err" SAVE-LOG
-   s" the shared tier-1 native session exits cleanly" T-LABEL NEED-OK
-   s" fixed records initialize and clear at tier 1"
-   s" c2-init-program: ok" MARKED
-   s" unique byte and loan behavior works at tier 1"
-   s" c2-memory-program: ok" MARKED
-   s" appended allocations work through the native compiler"
-   s" c2-owner-producer-program: ok" MARKED
-   s" owner disposal works through the native compiler"
-   s" c2-owner-dispose: ok" MARKED
-   s" callback specialization also compiles at tier 1"
-   s" c2-forall-input: ok" MARKED ;
-
 : EXPECT-ENTRY-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: reason:ptr reasonu:n name:ptr nameu:n :}
    s" a scoped entry rejects a prompt callback before it runs" T-LABEL
@@ -91,59 +38,6 @@ private
    ERR$ reason reasonu CONTAINS? TTRUE
    ERR$ name nameu CONTAINS? TTRUE
    OUT$ s" accepted" CONTAINS? TFALSE ;
-
-: ENTRY-CASES ( -- )
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\n8 MEM:BYTES-ALLOC-LEN ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-MUT\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-mut.out" s" entry-mut.err" SAVE-LOG
-   s" hb: internal engine word: " s" C2-MEM:WITH-MUT" EXPECT-ENTRY-REFUSAL
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" package C2-ENTRY-ALIAS public EXPORT C2-MEM:WITH-MUT ;package\npackage C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\n8 MEM:BYTES-ALLOC-LEN ' C2-ENTRY-TEST:LEAKER C2-ENTRY-ALIAS:WITH-MUT\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-alias.out" s" entry-alias.err" SAVE-LOG
-   s" hb: internal engine word: " s" C2-ENTRY-ALIAS:WITH-MUT" EXPECT-ENTRY-REFUSAL
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\ns\q abc\q ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-READ\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-read.out" s" entry-read.err" SAVE-LOG
-   s" hb: internal engine word: " s" C2-MEM:WITH-READ" EXPECT-ENTRY-REFUSAL
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" package C2-ENTRY-TEST public TRUSTED: LEAKER ( ptr u8 n -- ptr u8 n ) ; ;package\ns\q abc\q ' C2-ENTRY-TEST:LEAKER C2-MEM:WITH-MUT-LOAN\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-mut-loan.out" s" entry-mut-loan.err" SAVE-LOG
-   s" hb: internal engine word: " s" C2-MEM:WITH-MUT-LOAN" EXPECT-ENTRY-REFUSAL
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" require src/habu/interpret.f\ns\q 8 MEM:BYTES-ALLOC-LEN 0 C2-MEM:WITH-MUT\q OUTER:INTERPRET\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-outer.out" s" entry-outer.err" SAVE-LOG
-   s" hb: internal engine word: " s" C2-MEM:WITH-MUT" EXPECT-ENTRY-REFUSAL
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" require test/c2-memory-wrapper.f\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-MEMORY-WRAPPER:TWICE .\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-forall.out" s" entry-forall.err" SAVE-LOG
-   s" hb: interpret-mode layout value: " s" C2-MEMORY-WRAPPER:TWICE" EXPECT-ENTRY-REFUSAL
-   OUT$ s" raw callback entered" CONTAINS? TFALSE
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" require test/c2-memory-wrapper.f\npackage C2-ENTRY-ALIAS public EXPORT C2-MEMORY-WRAPPER:TWICE ;package\n: C2-ENTRY-RAW ( n ptr u8 n -- n ptr u8 n ) s\q raw callback entered\q type cr ;\n0 ' C2-ENTRY-RAW C2-ENTRY-ALIAS:TWICE .\ns\q accepted\q type cr\n"
-   RUN-INPUT
-   s" entry-forall-alias.out" s" entry-forall-alias.err" SAVE-LOG
-   s" hb: interpret-mode layout value: " s" C2-ENTRY-ALIAS:TWICE" EXPECT-ENTRY-REFUSAL
-   OUT$ s" raw callback entered" CONTAINS? TFALSE
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" : C2-ENTRY-INC ( n -- n ) 1 + ;\n: C2-ENTRY-APPLY ( n [ n -- n ] -- n ) execute ;\ns\q ordinary prompt: \q type 41 ' C2-ENTRY-INC C2-ENTRY-APPLY . cr\n"
-   RUN-INPUT
-   s" entry-ordinary.out" s" entry-ordinary.err" SAVE-LOG
-   s" an ordinary callback remains callable at the prompt" T-LABEL
-   s" ordinary prompt: 42" EXPECT-OK ;
 
 : SAVED-CASES ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -238,7 +132,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   SETUP SOURCE-CASES ENTRY-CASES SAVED-CASES LIVE-SAVE PARTIAL-CASE
+   SETUP SAVED-CASES LIVE-SAVE PARTIAL-CASE
    s" c2-memory-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 
