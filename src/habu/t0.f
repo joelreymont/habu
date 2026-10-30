@@ -32,7 +32,6 @@ public
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
 -9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
 -9607 constant E-T0-DEFER        \ `is` names no deferred word
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
@@ -1706,7 +1705,8 @@ private
 \ CALLBACK STUB); that compile ends the pending stub on every exit, as tier 1's
 \ does. T0 classifies no body for the host: each reason is UNKNOWN, and a
 \ quotation's arity is unknown (-1 -1), as tier 1 answers for one it has none
-\ for. A definition while a target shadow is open is E-T0-SHADOW.
+\ for. T0 compiles no shadow routine; a colon definition at tier 0 while a
+\ shadow is open has none, as test/x86-64-link-records.f 'stray' pins.
 \
 \ The scan's recording unit latches the facts the capture and the call targets
 \ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
@@ -1847,7 +1847,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    ndict@ {: before:n :}
    SCAN
    VERDICT-CK
-   NSHADOW:OPEN? if E-T0-SHADOW throw then
    E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally ;
 

@@ -245,9 +245,9 @@ public
 
 \ ---- opening and closing -----------------------------------------------------
 \ CLOSE gives everything back, and an image capture closes the shadow, so no map
-\ outlives the mappings it is stored in. ABANDON, run as every definition ends,
-\ drops a copy no publication claimed (the engine's own chain refused the
-\ definition after the shadow's sealed).
+\ outlives the mappings it is stored in. ABANDON, run as every tier-1
+\ definition ends, drops a copy no publication claimed (the engine's own chain
+\ refused the definition after the shadow's sealed).
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
    NLEASE:IDLE-CK
    OPENED @ 0<> if E-NSHADOW-STATE throw then
@@ -353,8 +353,8 @@ public
 
 \ File the taken emission under the record publication has just committed, and
 \ a definer's companion under the next. Nonthrowing: publication runs it past
-\ its code window, and TAKE made the room. With nothing taken - no shadow is
-\ open - there is nothing to file.
+\ its code window, and TAKE made the room. With nothing taken - no shadow open,
+\ or a definition tier 1 did not compile - there is nothing to file.
 : PUBLISH ( n -- ) {: idx:n :}
    PENDING @ 0= if exit then
    N-EMS @ {: e:n :}

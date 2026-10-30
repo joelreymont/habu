@@ -540,8 +540,8 @@ $20 constant NAME-END
 \ Asked INSIDE the context so the backend always leaves the ordinary way and
 \ gives its arenas back. A shadow emission no publication claimed goes too.
 : RETIRE-BODY ( -- )
-   NFETCH:RELEASE
    NSHADOW:ABANDON
+   NFETCH:RELEASE
    NHOST:SOURCE-ABANDON ;
 
 : BODY ( IR-CTX:ctx -- )
