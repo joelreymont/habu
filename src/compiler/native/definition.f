@@ -150,6 +150,11 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
+\ No hook enforces the body's scan: it is TRUSTED: or compiled with the hook
+\ cell empty. Known before the scan runs.
+: UNCERTIFIED? ( -- bool )
+   TRUSTED? CERTIFYING? 0= or ;
+
 70 constant RC-REJECT                 \ the check hook's reject status (check-hook.f CHECK-RC)
 
 \ A build-required scan refuses before the declaration is recorded; otherwise
@@ -208,7 +213,7 @@ public
    1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
    M-SRC @ cut DOES-SPAN - CHECK-PARENT
-   TRUSTED? CERTIFYING? 0= or if drop else -1 <> if E-NCOMP-VERDICT throw then then
+   UNCERTIFIED? if drop else -1 <> if E-NCOMP-VERDICT throw then then
    CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY !   \ the clause's scan starts its own
    M-SRC @ cut DOES-SPAN - 0 NFETCH:CAPTURE ;
 
@@ -418,22 +423,8 @@ public
 
 private
 
-\ A refusal after the scan truncates the checker store to M-ROWS, its end at
-\ STAGE-UNIT (checker.f CHECKER-RETRACT-ROWS): the definition is rolled back, so
-\ its row goes too, or the next definition of the name would be a duplicate.
-\ Nothing goes when nothing was recorded (a declaration that did not parse or
-\ had a scope scheme), and the refusal keeps its own code for a catch, TRUSTED:
-\ or not.
-\ The cut takes exactly the definition's rows because the caller opens
-\ CHECKER-OWNER:WRITE-WINDOW after VERDICT-CK and before anything it runs can
-\ call back (NCOMP WORK); inside the window a callback that would record a row
-\ is refused E-NCOMP-STATE. Rows recorded before STAGE-UNIT (a twin in another
-\ scope, a CHECK! row, a parsing immediate's) stay. No word outlives the cut
-\ pointing at a cut row: source a callback evaluates while the definition is
-\ pending is its body's capture (definers.f COMPILING?), where a `;` is refused
-\ (rc 74). Under a hook a scan that did not certify was refused before this and
-\ the checker rolled it back itself, so the cut finds nothing. A does> definer
-\ rolls back through its own checker frame (DOES-FINISH).
+\ A refused definition's checker rows go, from M-ROWS on, or its does> frame,
+\ so the next definition of the name is no duplicate.
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if
@@ -460,6 +451,12 @@ private
    ERROR-TEXT
    S\" \n" ERROR-TEXT ;
 
+\ A refusal of a body no scan certified (TRUSTED:, or refused by its hookless
+\ scan) for its own source: unclosed control flow or an unmodeled immediate.
+: MALFORMED? ( n -- bool ) {: rc:n :}
+   rc E-T0-CONTROL =  rc E-NELAB-CTRL = or  rc E-UNMODELED-IMMEDIATE = or
+   TRUSTED? M-UNJUDGED @ -1 <> or and ;
+
 public
 
 \ How a run ends, from the code its entry threw, the code the compilation
@@ -470,6 +467,8 @@ public
 \ reject status, as the JIT's lookup refuses it, though an unchecked body's
 \ scan only reported it. The refusal names the definition as well as the
 \ token: nothing else does for a TRUSTED: body or a call the checker admitted.
+\ A malformed body (MALFORMED?) is refused at its token with the reject status
+\ too.
 : SETTLE-UNIT ( n n bool ptr u8 n -- )
    {: entry-rc:n rc:n undefined:bool a:ptr u:n :}
    entry-rc 0<> if
@@ -480,6 +479,10 @@ public
    undefined if
       a u REPORT-FAILURE
       a u REPORT-UNDEFINED
+      RETRACT RC-REJECT throw
+   then
+   rc MALFORMED? if
+      a u REPORT-FAILURE
       RETRACT RC-REJECT throw
    then
    rc 0 <> if
@@ -495,7 +498,7 @@ public
    NFETCH:RELEASE
    sa M-SRC ! su M-SRC-U !
    0 M-IN ! 0 M-OUT !
-   TRUSTED? CERTIFYING? 0= or NHOST:SOURCE-BEGIN
+   UNCERTIFIED? NHOST:SOURCE-BEGIN
    0 M-VERDICT !
    -1 M-UNJUDGED !
    CHECKER-OWNER:ROWS-END M-ROWS !

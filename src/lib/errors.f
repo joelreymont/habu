@@ -549,7 +549,8 @@
 \ the return back, and it is only entitled to do that when the return is there.
 -8273 constant E-CODEGEN-PROBE-EXTENT     \ a word's record neither ends in a tail branch nor is followed by the return the engine's record convention puts after it
 
-\ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
+\ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299, but
+\ -8294 is the refusal NELAB and T0 both throw.
 \
 \ The straight-line subset: the closed opcode set the dialect registers and the
 \ source-word model. Schema records are IR-SCHEMA's and reject with its codes.
@@ -567,6 +568,7 @@
 -8291 constant E-HIR-DIALECT    \ a module whose schema table was created for another dialect or another schema version
 -8292 constant E-HIR-ADDR       \ a relocation kind for a literal that this dialect's hir.addr does not name
 -8293 constant E-HIR-VOCAB      \ a frozen module asked for a vocabulary entry it does not hold: it froze before HIR:ENSURE-VOCABULARY made the whole vocabulary present
+-8294 constant E-UNMODELED-IMMEDIATE  \ a body uses an immediate that is not parse-neutral and no native tier models: it ran as the engine read it
 
 \ Native stage N1 straight-line elaborator (package NELAB): -8300..-8319
 \
@@ -1215,8 +1217,6 @@
 \ which owns package WORD-DOCS.
 \ Scoped commands: -9580..-9589, minted in src/lib/process-command.f, which
 \ owns package CMD.
-\ Tier 0 compiler: -9600..-9609, minted in src/habu/t0.f, which owns package
-\ T0.
 \ Tier 0 emitter seam: -9590..-9599, minted in src/habu/t0-emit.f, which owns
 \ package T0-EMIT.
 \ A task to each job: -9620..-9629, minted in src/lib/crew.f, which owns
@@ -1227,3 +1227,15 @@
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
 \ WLINK -9830..-9834.
+
+\ Tier 0 compiler (src/habu/t0.f): -9600..-9609. Minted here rather than in
+\ package T0 because the step both native tiers share settles some of them
+\ (src/compiler/native/definition.f SETTLE-UNIT).
+-9600 constant E-T0-FIRST
+-9609 constant E-T0-LAST
+-9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: T0:UNSUPPORTED$
+-9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one: T0:UNSUPPORTED$
+-9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
+-9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
+-9607 constant E-T0-DEFER        \ `is` names no deferred word
+-9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE

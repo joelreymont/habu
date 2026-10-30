@@ -210,6 +210,32 @@ variable RC
    S\" 6\n1\n" PRINTS
    s" habu: in hr-kept: at '+'" SAYS ;
 
+\ ---- tier 1 refuses an uncertified body's own source at its token ------------
+\ An unchecked or TRUSTED: body with an unmodeled immediate or control flow that
+\ does not close ends with the reject status, naming the token
+\ (src/compiler/native/definition.f MALFORMED?).
+: SESSION-IMMEDIATE ( -- )
+   s" a tier-1 unchecked body's unmodeled immediate is refused at it" T-LABEL
+   s" 1 set-tier : HR-IMM ( -- ) ; immediate 0 set-check : HR-UNMOD ( -- n ) HR-IMM 73 ; HR-UNMOD . cr" SESSION
+   ERR$ S\" E-UNMODELED-IMMEDIATE habu: in hr-unmod: compile-time immediate 'HR-IMM' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile HR-UNMOD at HR-IMM\n" T$=
+   RC @ RC-REJECT T= ;
+
+\ Each refusal is caught, so one session covers the three loop words.
+: STRAY-LOOP$ ( -- ptr u8 n )
+   S\" 1 set-tier : HR-TRY-J ( -- n ) [: s\" TRUSTED: HR-XJ ( -- ) 1 0 do j drop loop ;\" evaluate-closed ;] catch ; : HR-TRY-U ( -- n ) [: s\" TRUSTED: HR-XU ( -- ) unloop ;\" evaluate-closed ;] catch ; : HR-TRY-I ( -- n ) [: s\" TRUSTED: HR-XI ( -- ) 1 i drop ;\" evaluate-closed ;] catch ; HR-TRY-J . HR-TRY-U . HR-TRY-I . cr" ;
+
+: SESSION-STRAY-LOOP ( -- )
+   s" tier-1 TRUSTED: bodies are refused at a loop word outside a loop" T-LABEL
+   STRAY-LOOP$ SESSION
+   ERR$ S\" ncomp: cannot compile HR-XJ at j\nncomp: cannot compile HR-XU at unloop\nncomp: cannot compile HR-XI at i\n" T$=
+   OUT$ S\" 70\n70\n70\n\n" T$= ;
+
+: SESSION-ORPHAN-THEN ( -- )
+   s" a tier-1 unchecked body is refused at a `then` with no `if`" T-LABEL
+   s" 1 set-tier 0 set-check : HR-ORPHAN ( n -- n ) [: 7 ;] then ;" SESSION
+   ERR$ S\" habu: in hr-orphan: at 'then'\nncomp: cannot compile HR-ORPHAN at then\n" T$=
+   RC @ RC-REJECT T= ;
+
 \ ---- a hook's zero verdict refuses the definition ----------------------------
 \ A hook that certifies a definition and answers 0 refuses it: the native
 \ compiler throws E-NCOMP-VERDICT at the definition, so uncaught the load ends
@@ -333,6 +359,9 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-UNSEEN
    SESSION-UNRECORDED
    SESSION-RECORDED
+   SESSION-IMMEDIATE
+   SESSION-STRAY-LOOP
+   SESSION-ORPHAN-THEN
    ZERO-UNCAUGHT
    ZERO-CAUGHT
    SETUP

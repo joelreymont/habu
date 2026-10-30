@@ -9,6 +9,7 @@
 \ by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?) and VALIDATE (NFETCH-CHECK:TAGS).
 
 require src/lib/prelude.f
+require src/lib/errors.f
 require src/core/bytes.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/dict.f
@@ -23,19 +24,6 @@ require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 
 package T0
-public
-
-\ Tier 0 compiler: -9600..-9609, the block src/lib/errors.f names.
--9600 constant E-FIRST
--9609 constant E-LAST
--9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: UNSUPPORTED$
--9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
--9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
--9607 constant E-T0-DEFER        \ `is` names no deferred word
--9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
-
-private
 
 \ ---- the tape ----------------------------------------------------------------
 \ THE ORDINALS. The checker files what it proved about a token under that
@@ -123,6 +111,9 @@ variable CUT                         \ the byte just past `does> `, or 0
    a BAD !  u BAD-LEN !
    code throw ;
 
+\ A control word that fits no structure open, named by the row just read.
+: CONTROL-FAULT ( -- ) ORD @ 1- ROW$ E-T0-CONTROL REFUSE ;
+
 : UNSUPPORTED ( ptr u8 n -- ) E-T0-UNSUPPORTED REFUSE ;
 
 \ ---- the control stack -------------------------------------------------------
@@ -132,6 +123,8 @@ variable CUT                         \ the byte just past `does> `, or 0
 \ then` closes. A structure that does not close, or a loop word outside the
 \ loops it needs, is E-T0-CONTROL, refused before the emitter is called: the
 \ T0-EMIT structured words (src/habu/t0-emit.f CONTROL) trust this nesting.
+\ The refusal names the closer, or for a structure still open at the end of a
+\ unit the token that ended it: the stack keeps no opener's row.
 0 constant CS-IF
 1 constant CS-ELSE
 2 constant CS-BEGIN
@@ -679,16 +672,16 @@ variable PENDING
    k 1+ CS-N ! ;
 
 : CS-POP2 ( n n -- ) {: a:n b:n :}
-   CS-N @ 0= if E-T0-CONTROL throw then
+   CS-N @ 0= if CONTROL-FAULT then
    CS-N @ 1- {: k:n :}
    k CS-KIND @ {: kind:n :}
-   kind a <> kind b <> and if E-T0-CONTROL throw then
+   kind a <> kind b <> and if CONTROL-FAULT then
    k CS-N ! ;
 
 : CS-POP ( n -- ) dup CS-POP2 ;
 
 : CS-TOP-KIND ( -- n )
-   CS-N @ 0= if E-T0-CONTROL throw then
+   CS-N @ 0= if CONTROL-FAULT then
    CS-N @ 1- CS-KIND @ ;
 
 \ Valid only after a pop: the popped structure's slot sits at CS-N.
@@ -933,7 +926,7 @@ variable PENDING
 \ outside it, and the emitter's loop words touch no other vreg.
 variable DO-N                       \ the open levels
 
-: LEVELS ( n -- ) DO-N @ > if E-T0-CONTROL throw then ;
+: LEVELS ( n -- ) DO-N @ > if CONTROL-FAULT then ;
 
 \ The body, the back edge, the `?do` entry's skip and every `leave` meet in the
 \ level's layout.
@@ -1028,7 +1021,7 @@ variable DO-N                       \ the open levels
 \ The case or MATCH whose arms the `endof`s on top close.
 : ARMS-AT ( -- n )
    CS-N @ 1- begin dup 0 >= if dup CS-KIND @ CS-ENDOF = else false then while 1- repeat
-   dup 0 < if E-T0-CONTROL throw then ;
+   dup 0 < if CONTROL-FAULT then ;
 
 : OF-TEST ( -- )
    2 ENSURE
@@ -1037,7 +1030,7 @@ variable DO-N                       \ the open levels
    CS-OF L-N @ CS-PUSH ;
 
 : DO-OF ( -- )
-   ARMS-AT CS-KIND @ CS-CASE <> if E-T0-CONTROL throw then
+   ARMS-AT CS-KIND @ CS-CASE <> if CONTROL-FAULT then
    OF-TEST ;
 
 : DO-ENDOF ( -- )
@@ -1284,7 +1277,7 @@ DYNAMIC-BUFFER QORD n               \ each quotation's first ordinal
 variable NESTED                     \ the `[:` rows skipped inside quotations so far
 
 : SKIP-ROW ( n -- n ) {: k:n :}
-   k ROWS @ >= if E-T0-CONTROL throw then
+   k ROWS @ >= if s" ;" E-T0-CONTROL REFUSE then
    k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if 0 exit then
    k ROW-A0 @ CF-QUOT-OPEN = if 1 NESTED +! 1 exit then
    k QUOT-END? if -1 exit then
@@ -1525,7 +1518,7 @@ OPS-MAP
       CF-TOR of a CELLS0 TOR-CELLS endof
       CF-RFROM of a CELLS0 RFROM-CELLS endof
       CF-RFETCH of a CELLS0 RFETCH-CELLS endof
-      E-T0-CONTROL throw
+      CONTROL-FAULT
    endcase ;
 
 \ ---- one token ---------------------------------------------------------------
@@ -1543,10 +1536,10 @@ OPS-MAP
 \ (src/habu/definers.f DEF-IMMEDIATE) and left only its own token, its operands
 \ read from the input and text it evaluated captured after it, so T0 passes
 \ over the token as tier 1 does (src/compiler/native/elaborate.f WALK-SKIP?).
-\ Any other is refused by name, as tier 1 refuses it: E-HIR-UNMODELED.
+\ Any other is refused by name, as tier 1 refuses it: E-UNMODELED-IMMEDIATE.
 : IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-OWNER:PARSE-IMM? if exit then
-   a u E-HIR-UNMODELED REFUSE ;
+   a u E-UNMODELED-IMMEDIATE REFUSE ;
 
 \ A fixed word, one whose definer stamped what its body pushes, is that value,
 \ as tier 1 folds it (src/compiler/native/hir-word.f RESOLVE-SITE): a constant's
@@ -1630,8 +1623,15 @@ OPS-MAP
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
    0 DEAD !  0 PENDING !  0 G-CELLS ! ;
 
-: FINISH ( -- )
-   CS-N @ 0<> if E-T0-CONTROL throw then
+\ The token that ended a unit BODY left with no `;]`: the split's `does>`, or the
+\ `;` past the tape.
+: END$ ( -- ptr u8 n )
+   ORD @ ROWS @ >= if s" ;" exit then
+   ORD @ ROW$ ;
+
+\ The unit ends at the token a u: a structure still open there is refused at it.
+: FINISH ( ptr u8 n -- ) {: a:ptr u:n :}
+   CS-N @ 0<> if a u E-T0-CONTROL REFUSE then
    TAILED @ 0= if SPILL-ALL T0-EMIT:RETURN then
    T0-EMIT:CLOSE ;
 
@@ -1639,8 +1639,8 @@ OPS-MAP
    k QORD @ ORD !
    RESET
    k T0-EMIT:QUOT-OPEN
-   BODY 0= if E-T0-CONTROL throw then
-   FINISH ;
+   BODY 0= if END$ E-T0-CONTROL REFUSE then
+   ORD @ 1- ROW$ FINISH ;
 
 : BINDS-CK ( n -- ) {: base:n :}
    BINDS @ 0= if exit then
@@ -1655,8 +1655,8 @@ OPS-MAP
 : DO-CLAUSE ( n -- ) {: k:n :}
    CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET  0 BINDS !
    EMPTY-CLAUSE @ if T0-EMIT:UNIT-OPEN else k T0-EMIT:QUOT-OPEN then
-   BODY if E-T0-CONTROL throw then
-   FINISH
+   BODY if CONTROL-FAULT then
+   END$ FINISH
    CUT @ BINDS-CK ;
 
 \ The name is row 0, so the body starts at row 1.
@@ -1669,22 +1669,23 @@ OPS-MAP
    1 ORD !
    RESET
    T0-EMIT:OPEN
-   BODY if E-T0-CONTROL throw then
+   BODY if CONTROL-FAULT then
    cut 0<> if
-      ORD @ SPLIT @ <> if E-T0-CONTROL throw then
+      ORD @ SPLIT @ <> if SPLIT @ ROW$ E-T0-CONTROL REFUSE then
       DOES-TAIL
    then
-   FINISH
+   END$ FINISH
    0 BINDS-CK
    1 UNITS
    cut 0= if drop exit then
-   CLAUSE @ <> if E-T0-CONTROL throw then
+   CLAUSE @ <> if SPLIT @ ROW$ E-T0-CONTROL REFUSE then
    CLAUSE @ DO-CLAUSE
    CLAUSE @ 1+ UNITS drop ;
 
 public
 
-\ The token the last REFUSE named, E-T0-UNSUPPORTED's or E-HIR-UNMODELED's.
+\ The token the last REFUSE named: E-T0-UNSUPPORTED's, E-UNMODELED-IMMEDIATE's
+\ or E-T0-CONTROL's.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
 using NDEFINITION
@@ -1845,10 +1846,10 @@ variable SCAN-LO                     \ the ordinal of its first row
    before [: LOWER ;] [: SHUT ;] finally ;
 
 \ The token a refusal names: the one REFUSE named in this compile for its
-\ code, else none (COMPILE clears BAD-LEN; a shared word's E-HIR-UNMODELED
-\ names none).
+\ code, else none (COMPILE clears BAD-LEN).
 : REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
-   rc E-T0-UNSUPPORTED = rc E-HIR-UNMODELED = or if UNSUPPORTED$ exit then
+   rc E-T0-UNSUPPORTED =  rc E-UNMODELED-IMMEDIATE = or  rc E-T0-CONTROL = or
+   if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 
 public

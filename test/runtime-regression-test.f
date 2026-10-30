@@ -1323,25 +1323,21 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    \ A `;]` with no quotation open is the checker's refusal at its token, rc 70.
    s" : RXSQ ( -- ) 5 ;] drop ;" s" 70" S\" habu: in rxsq: at ';]'\n" GE-RXE-CATCH-USABLE
    s" : RXSQ ( -- ) 5 ;] drop ;" 70 S\" habu: in rxsq: at ';]'\n" GE-RXE-TOP
-   \ The mirror: `;` with one or two quotations open. Published, the body's
-   \ unpatched b-over placeholder spins when called. TRUSTED: skips the checker
-   \ hook, so the engine's own refusal at `;` is the one that stops it.
-   s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSC ( -- ) [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
-   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 75" s" hb: ; with a quotation open: RXSC" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 75 s" hb: ; with a quotation open: RXSC" GE-RXE-TOP
-   \ `;` with a control structure open. Published, the forward branch that
-   \ `0 if`, `while` or `endof` left unpatched is a branch to itself, so the
-   \ word spins when called; `do` leaves its loop frame behind. An `if` left
-   \ open inside a closed quotation is still on the control stack at `;`. The
-   \ checker refuses a checked body at `;`, naming the last token it read, rc 70.
-   s" TRUSTED: RXSF ( -- ) 0 if ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSF ( -- ) 0 if ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) begin 0 while ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
-   s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
-   s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: control-flow word does not match the open structure: ;]" GE-RXE-TOP
+   \ The mirror: `;` with one or two quotations open, whose placeholder spins if
+   \ published. TRUSTED: skips the hook; the native tier refuses at `;`, rc 70.
+   s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSC ( -- ) [: 1 ;" 70 S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-TOP
+   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 70 S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-TOP
+   \ `;` with a structure open: its unpatched branch spins, `do` leaves a frame.
+   \ A checked body's refusal names the last token the checker read, not `;`.
+   s" TRUSTED: RXSF ( -- ) 0 if ;" s" 70" S\" ncomp: cannot compile RXSF at ;\n" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSF ( -- ) 0 if ;" 70 S\" ncomp: cannot compile RXSF at ;\n" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) begin 0 while ;" 70 S\" ncomp: cannot compile RXSF at ;\n" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) 1 case 1 of endof ;" 70 S\" ncomp: cannot compile RXSF at ;\n" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" S\" ncomp: cannot compile RXSF at ;\n" GE-RXE-CATCH-USABLE
+   s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 S\" ncomp: cannot compile RXSF at ;\n" GE-RXE-TOP
+   s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 S\" ncomp: cannot compile RXSF at ;]\n" GE-RXE-TOP
    s" : RXSF ( -- ) begin ;" 70 S\" habu: in rxsf: at 'begin'\n" GE-RXE-TOP
    s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
@@ -1750,6 +1746,17 @@ create GE-END-AT 16 allot
    s" macro evaluate" GE-EXPECT-OK
    S\" 5\n" s" macro evaluate" GE-EXPECT-OUT ;
 
+\ The same source at tier 0. The engine runs GEENDMAC as it reads GEENDUSE; tier
+\ 0 compiles only parse-neutral immediates and refuses GEENDUSE at it, rc 70.
+: GE-END-MACRO-T0 ( -- )
+   s" hb-end-macro-t0.f"
+      S\" 0 set-check\n: GEENDMAC ( -- ) s\" 5\" evaluate ; immediate\n: GEENDUSE ( -- n ) GEENDMAC ;\nGEENDUSE .\n"
+      GE-LOC-FIXTURE
+   GE-LOC-LOAD
+   S\" habu: in geendmac: at 'evaluate'\nE-UNMODELED-IMMEDIATE habu: in geenduse: compile-time immediate 'GEENDMAC' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile GEENDUSE at GEENDMAC\n"
+      s" macro evaluate at tier 0" GE-EXPECT-ERR
+   70 s" macro evaluate at tier 0" GE-EXPECT-RC ;
+
 \ The closing direction. A `;` in a buffer that an immediate word's evaluate or
 \ included began inside an open definition would close the outer buffer's
 \ definition while the immediate word still runs. It is refused at the `;` at
@@ -2038,17 +2045,6 @@ create GE-END-AT 16 allot
 \ loop top as a forward branch, ORing its offset into the call there.
 : GE-KIND$ ( -- ptr u8 n )  s" hb: control-flow word does not match the open structure: " ;
 
-create GE-KIND-LINE 96 allot
-
-\ The whole refusal line for token t.
-: GE-KIND-LINE$ ( ptr u8 n -- ptr u8 n )
-   {: t:ptr tu:n :}
-   GE-KIND$ {: m:ptr mu:n :}
-   m GE-KIND-LINE mu BYTE-COPY
-   t GE-KIND-LINE mu + tu BYTE-COPY
-   $0A GE-KIND-LINE mu + tu + c!
-   GE-KIND-LINE mu tu + 1 + ;
-
 \ Opener o, the text around the word under test in a body ( n -- n ). The
 \ body maps 5 to 13 only if the 7 that the word's own text pushed before it
 \ survives its refusal and the opener's entry is as it was.
@@ -2201,7 +2197,7 @@ variable GE-KIND-N
    c 2 < c 7 = or if 1 else 0 then ;
 
 \ Refusal text a, then GEKT's location in hb-end.f and the newline. GEKT is
-\ on line 1, or line 2 after the unchecked source's `0 set-check`.
+\ on line 1, or line 2 after an unchecked source's `0 set-check`.
 : GE-KIND-AT$ ( ptr u8 n bool -- ptr u8 n )
    {: a:ptr u:n chk:bool :}
    SB-RESET
@@ -2212,20 +2208,32 @@ variable GE-KIND-N
    GE-SB-LF
    SB$ ;
 
-\ The checker's refusal of a checked GEKT names the closer, or for `;` the
-\ last token of the `if` branch left open.
-: GE-KIND-CHECK-LINE$ ( n -- ptr u8 n )
+\ The checker's refusal of GEKT names the closer, or for `;` the last token of
+\ the `if` branch left open.
+: GE-KIND-CHECK+ ( n -- )
    {: c:n :}
-   SB-RESET
    s" habu: in gekt: at '" SB-APPEND
    c 13 = if s" 1+" else c GE-KIND-TOK then SB-APPEND
    s" '" SB-APPEND
+   GE-SB-LF ;
+
+: GE-KIND-CHECK-LINE$ ( n -- ptr u8 n )
+   SB-RESET GE-KIND-CHECK+ SB$ ;
+
+\ Unchecked: the scan's refusal, then tier 0's at the closer (`;` with `if`
+\ open). GEKT compiles before its quotations, so `;]` (12) fails at `then`.
+: GE-KIND-T0-ERR$ ( n -- ptr u8 n )
+   {: c:n :}
+   SB-RESET
+   c GE-KIND-CHECK+
+   s" ncomp: cannot compile GEKT at " SB-APPEND
+   c 12 = if s" then" else c 13 = if s" ;" else c GE-KIND-TOK then then
+   SB-APPEND
    GE-SB-LF
    SB$ ;
 
-\ Closer c straight in a definition at tier 0: rc 70. A checked body is the
-\ checker's refusal at its token; unchecked, the refusal naming its token is
-\ the whole of stderr, and `;` names the definition and its location as well.
+\ Closer c straight in a definition at tier 0: rc 70 and the checker's refusal
+\ at its token, then unchecked tier 0's (GE-KIND-T0-ERR$).
 \ The `does>` leg (11) has no clause signature: the engine's signature parse
 \ (C-SIG-BAD) refuses it first, rc 76, so neither the checker nor the
 \ control-flow check sees it.
@@ -2239,16 +2247,12 @@ variable GE-KIND-N
    GE-END-TOP
    c GE-KIND-TOK {: t:ptr tu:n :}
    c 11 = if
-      76 t tu GE-EXPECT-RC
-      s" does> at " chk GE-KIND-AT$ t tu GE-EXPECT-ERR exit
+      s" does> at " chk GE-KIND-AT$ t tu GE-EXPECT-ERR
+      76 t tu GE-EXPECT-RC exit
    then
-   70 t tu GE-EXPECT-RC
-   chk if c GE-KIND-CHECK-LINE$ t tu GE-EXPECT-ERR-HAS exit then
-   c 13 = if
-      s" hb: ; with a control structure open: GEKT at " false GE-KIND-AT$
-      t tu GE-EXPECT-ERR exit
-   then
-   t tu GE-KIND-LINE$ t tu GE-EXPECT-ERR ;
+   chk if c GE-KIND-CHECK-LINE$ t tu GE-EXPECT-ERR-HAS
+   else c GE-KIND-T0-ERR$ t tu GE-EXPECT-ERR then
+   70 t tu GE-EXPECT-RC ;
 
 : GE-CF-KIND ( -- )
    true GE-KIND-EVAL
@@ -2273,6 +2277,7 @@ variable GE-KIND-N
    0 GE-END-CAUGHT
    1 GE-END-CAUGHT
    GE-END-MACRO
+   HB-TARGET-LINUX-X86-64? 0= if GE-END-MACRO-T0 then
    GE-END-CLOSE
    GE-END-CATCH
    GE-END-EMIT

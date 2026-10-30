@@ -61,16 +61,20 @@ private
    {: flags:n :}
    flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0<> and ;
 
-\ The word at tape row ix is bound, on the exact-source path, to a
-\ representation cast's record.
-: REP-CAST? ( n -- bool )
+\ The flag cell of the dictionary record the word at tape row ix is bound to on
+\ the exact-source path, else 0.
+: DICT-FLAGS ( n -- n )
    {: ix:n :}
-   EXACT-SOURCE @ 0= if false exit then
+   EXACT-SOURCE @ 0= if 0 exit then
    ix CHECKER-OWNER:SOURCE-BINDING {: bound:ptr bytes:n :}
-   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells <> if false exit then
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells <> if 0 exit then
    bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
-      CHECKER-OWNER-ABI:BOUND-DICT <> if false exit then
-   bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ REP-FLAGS? ;
+      CHECKER-OWNER-ABI:BOUND-DICT <> if 0 exit then
+   bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ ;
+
+\ The word at tape row ix is bound to a representation cast's record.
+: REP-CAST? ( n -- bool )
+   DICT-FLAGS REP-FLAGS? ;
 
 : TOK-CELLS ( IR-ARENA:view n -- n )
    EXACT-SOURCE @ 0= if 2drop 1 exit then
@@ -83,7 +87,7 @@ private
 BODYBUF-CAP constant RF-CAP          \ bytes of one refused spelling the record holds
 
 align
--1 CWORK-VARIABLE RF-AT n                       \ the row of the admit in flight, or -1
+-1 CWORK-VARIABLE RF-AT n                       \ the row a refusal thrown now names, or -1
 -1 CWORK-VARIABLE RF-ROW n                      \ the row the record was taken for, or -1
 0 CWORK-VARIABLE RF-U n                        \ how many of that row's spelling bytes are held
 0 CWORK-VARIABLE RF-MISSING n                  \ the refused token names a word compiled code cannot reach
@@ -95,10 +99,14 @@ RF-CAP CWORK-SPAN RF-BUF u8
    -1 RF-ROW !
    0 RF-MISSING ! ;
 
-\ The one place this file asks the word model what a body token means.
+\ The one place this file asks the word model what a body token means. An
+\ unmodeled immediate ran as the engine read it, so its token is refused.
 : ADMIT-AT ( IR-ARENA:arena n -- HIR:meaning )
    {: r:IR-ARENA:arena ix:n :}
    ix RF-AT !
+   ix DICT-FLAGS DNAME-IMM and 0<> if
+      r ix WSYM HIR-WORD:MODELS? 0= if E-UNMODELED-IMMEDIATE throw then
+   then
    VW r ix  ix WSYM  HIR-WORD:ADMIT-TOKEN
    -1 RF-AT ! ;
 
@@ -2647,7 +2655,7 @@ align
    ix MOPERAND? if exit then
    ix IN-DECL? if exit then
    ix LOCAL-OF 0 >= if exit then
-   PATH-ENDED? if r ix SK-AFTER-END-CK then
+   PATH-ENDED? if ix RF-AT !  r ix SK-AFTER-END-CK  -1 RF-AT ! then
    r ix SK-DEAD-CALL? if
       NB @ 1+ NB !
       PATH-DEAD PATH-END !
@@ -2656,6 +2664,7 @@ align
    ix C2-STOW-SITE? if exit then
    r ix ADMIT-AT
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
+   ix RF-AT !
    r  ix WSYM  HIR-WORD:CTRL@
    MATCH HIR:ctrl
       open-if      OF HIR-CTRL:OPEN-IF ix SK-PUSH  NB @ 2 + NB ! ENDOF
@@ -2693,9 +2702,11 @@ align
       c2-invoke    OF ENDOF
       tick         OF ENDOF
       eval         OF ENDOF
-   ;MATCH ;
+   ;MATCH
+   -1 RF-AT ! ;
 
-\ A structure left open at the end of the body is a refusal.
+\ A structure left open at the end of the body is a refusal, named at its
+\ opener's row, which the skeleton keeps as the structure's join.
 : SKELETON ( IR-ARENA:arena n n -- )
    {: r:IR-ARENA:arena lo:n hi:n :}
    hi TMAX @ > if E-NELAB-BLOCK throw then
@@ -2707,7 +2718,7 @@ align
    hi lo ?do
       r i SK-STEP
    loop
-   CS-N @ 0<> if E-NELAB-CTRL throw then
+   CS-N @ 0<> if CS-TOP CS-JOIN@ RF-AT !  E-NELAB-CTRL throw then
    PATH-DEAD? {: dead:bool :}
    EXIT-USED @ 0<> if
       dead if NB @ else NB @ 1+ then EXIT-ORD !
@@ -3040,11 +3051,15 @@ align
 : DO-FRAME ( -- n )
    0 DO-INNER-NTH ;
 
-: DO-INDEX ( -- )
-   0 DO-ACTIVE-NTH CS-IDX @ VPUSH ;
+\ A loop word at row ix outside the loops it reads is refused at its token.
+: LOOP-NTH ( n n -- n )
+   swap RF-AT !  DO-ACTIVE-NTH  -1 RF-AT ! ;
 
-: DO-OUTER-INDEX ( -- )
-   1 DO-ACTIVE-NTH CS-IDX @ VPUSH ;
+: DO-INDEX ( n -- )
+   0 LOOP-NTH CS-IDX @ VPUSH ;
+
+: DO-OUTER-INDEX ( n -- )
+   1 LOOP-NTH CS-IDX @ VPUSH ;
 
 \ `leave` branches out of the INNERMOST counted loop, to the block that loop's
 \ own exit stub already branches to.
@@ -3704,8 +3719,8 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    k HIR-OPCODE:STORE HIR-OPCODE:EQ if ix w WIDE-STORE exit then
    E-NELAB-BUNDLE throw ;
 
-: DO-UNLOOP ( -- )
-   0 DO-ACTIVE-NTH CS-LOOP-BIT invert CS-LOOPS @ and CS-LOOPS ! ;
+: DO-UNLOOP ( n -- )
+   0 LOOP-NTH CS-LOOP-BIT invert CS-LOOPS @ and CS-LOOPS ! ;
 
 \ EXIT returns from the current function, including a quotation sibling.
 : DO-EXIT ( n -- )
@@ -3789,9 +3804,9 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
       open-do-skip OF ix DO-OPEN-DO-SKIP ENDOF
       close-loop   OF ix DO-CLOSE-LOOP ENDOF
       close-loop-step OF ix DO-CLOSE-LOOP-STEP ENDOF
-      index        OF DO-INDEX ENDOF
-      outer-index  OF DO-OUTER-INDEX ENDOF
-      drop-loop    OF DO-UNLOOP ENDOF
+      index        OF ix DO-INDEX ENDOF
+      outer-index  OF ix DO-OUTER-INDEX ENDOF
+      drop-loop    OF ix DO-UNLOOP ENDOF
       early-leave  OF ix DO-LEAVE ENDOF
       early-exit   OF ix DO-EXIT ENDOF
       self-call    OF ix DO-SELF-CALL ENDOF
