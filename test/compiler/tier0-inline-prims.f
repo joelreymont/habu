@@ -1,9 +1,9 @@
 \ tier0-inline-prims.f - the JIT copies a straight-line primitive's body into
 \ its caller (src/habu/habu2.f EMIT-CINLINE) when it holds no call, return,
 \ PC-relative address, literal load or branch leaving the body; any other body
-\ keeps its call (a BL, or a B in tail position). ARM's tier 0 is T0, so the file
-\ selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL. Spans come from the
-\ dictionary record (src/habu/xref.f) the compiler resolves calls against.
+\ keeps its call (a BL, or a B in tail position). Spans come from the dictionary
+\ record (src/habu/xref.f). arm64's tier 0 is T0, so the file selects the JIT by
+\ zeroing NCOMP-DISPATCH:COMP-CELL.
 
 require src/lib/test.f
 require src/lib/errors.f

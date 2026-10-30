@@ -1,6 +1,7 @@
-\ A multi-error load reports and counts each refused signature once: a colon
-\ definition's by the check, a `TRUSTED:` or `defer` one's by its stored row.
-\ The native `;` (T0, tier 1) abandons a refused `TRUSTED:` unpublished.
+\ program-diagnostic-badsig.f - one refused signature per definer, each in its
+\ own multi-error load, for test/program-diagnostics-test.f BADSIG-ONCE. The
+\ check refuses a colon definition's, the stored row a `TRUSTED:` or `defer`
+\ one's; the native `;` (T0, tier 1) abandons a refused `TRUSTED:` unpublished.
 package PROGRAM-DIAG-BADSIG
 public
 : START ( -- ) MULTI-ERR-BEGIN ;

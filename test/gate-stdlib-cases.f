@@ -719,15 +719,10 @@ SUITE genio
    src/lib/genio-test.f
 ;SUITE
 
-\ WHITEBOX-SUITE runs the file on the unsealed engine test/whitebox-engine.f
-\ builds once per gate, never on bin/hb. Declare one when the suite reaches
-\ inside the engine (a reopened engine package, a pre-hook global, a ticked
-\ internal word) and say here which: byte-buffer and deftype reopen BUF and VNOM,
-\ which the arm64 engine ships with T0. test/internal-word-gate.f stays on the
-\ product engine: it pins refusals the unsealed engine lacks. PRIM: / PPRIM: /
-\ CLOSE-PRIVATE and the fixture's owner packages are sealed in the product
-\ image, so this suite drives its fixture through a from-source child window
-\ that runs the production seal.
+\ WHITEBOX-SUITE rows follow docs/gate.md; each says why in its header or row.
+
+\ The owner packages are sealed in the product image: this suite runs its
+\ fixture in a from-source child window that applies the production seal.
 SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
@@ -1491,6 +1486,7 @@ SUITE friend-arena-seal
    test/seal.f
 ;SUITE
 
+\ On the product engine: it pins refusals the unsealed engine lacks.
 SUITE internal-word-gate
    test/internal-word-gate.f
 ;SUITE

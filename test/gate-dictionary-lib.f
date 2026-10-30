@@ -282,8 +282,7 @@ variable CANDIDATE-VERDICT
    76 s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
 
 \ Each failed `is` and `defer` names its cause; the message is asserted, as the
-\ exit codes alone are not distinct. The checker refuses a bad or missing `is`
-\ target in a definition, pinned on the target or, when none follows, on `is`.
+\ exit codes alone are not distinct. The checker refuses the three `is` cases.
 : BAD-IS ( -- )
    GE-HB-RESET
    GE-SRC-RESET

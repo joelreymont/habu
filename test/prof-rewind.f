@@ -52,9 +52,8 @@ create ERR ERR-CAP allot
    OUT outu s\" \qword\q:\qPROF-RECLAIM-TARGET\q,\qexcl\q:0" CONTAINS? TFALSE
    s" reused code never charges its reclaimed donor" T-LABEL
    OUT outu s\" \qword\q:\qPROF-RECLAIM-DONOR\q" CONTAINS? TFALSE
-   \ The child is `0 set-check`: the hookless scan (src/compiler/native/
-   \ definition.f CHECK-HOOKLESS) prints its reason for VERIFY's opaque
-   \ `execute`, and the program still runs.
+   \ test/prof-rewind-child.f runs `0 set-check`, so the hookless scan
+   \ (src/compiler/native/definition.f CHECK-HOOKLESS) reports and runs on.
    s" profiler child's only diagnostic is the hookless scan's reason for VERIFY" T-LABEL
    ERR erru s\" habu: in verify: at 'execute' execute: opaque xt of unknown provenance (fetched from untyped memory, or ticked from a primitive or a word with no stack effect)\n" STR= TTRUE
    s" prof-rewind report artifact:" type cr

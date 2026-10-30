@@ -1,10 +1,8 @@
 \ local-spelling-suite.f - a local answers to its DECLARED SPELLING, and a word
 \ written in its own case is that word.
-\ The checker (src/core/checker.f LOCNB, LOC-REF?) and the native compilers'
-\ local readers, tier 0 (src/habu/t0.f DO-LOCAL, which reads the checker's
-\ K-LOCAL-REF rows) and tier 1 (src/compiler/native/elaborate.f LOCAL-OF), must
-\ agree: a body each reads differently refuses on its arithmetic, so a file
-\ that loads proves they agree.
+\ The checker (src/core/checker.f LOC-REF?) and the local readers of tier 0
+\ (src/habu/t0.f DO-LOCAL) and tier 1 (src/compiler/native/elaborate.f
+\ LOCAL-OF) must resolve a spelling alike; each case's answer pins it.
 
 require src/lib/errors.f
 require src/lib/prelude.f

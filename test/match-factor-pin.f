@@ -1,5 +1,5 @@
 \ match-factor-pin.f - construct/MATCH execution and diagnostic regressions in
-\ the JIT's factored legs (src/habu/habu2.f). ARM's tier 0 is T0, so the file
+\ the JIT's factored legs (src/habu/habu2.f). arm64's tier 0 is T0, so the file
 \ selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL; the forked subjects
 \ inherit it.
 

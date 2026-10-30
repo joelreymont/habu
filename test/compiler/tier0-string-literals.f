@@ -1,10 +1,9 @@
-\ tier0-string-literals.f - the JIT interns a string literal's body through NSTR
-\ (src/habu/habu2.f C-SDQ, C-CQ, C-ESDQ, C-ECQ): once
-\ src/compiler/native/string.f installs NSTR:INTERN in NSTR-ABI:INTERN-CELL, the
-\ body lives in a DATA pool row NSTR:OWNER-ROW reports, equal bodies share one
-\ address, and a failed definition's row stays. Spans come from the dictionary
-\ record (src/habu/xref.f), as in test/compiler/tier0-join.f. ARM's tier 0 is
-\ T0, so the file selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL.
+\ tier0-string-literals.f - once src/compiler/native/string.f installs
+\ NSTR:INTERN in NSTR-ABI:INTERN-CELL, the JIT interns a string literal's body
+\ through it (src/habu/habu2.f C-SDQ, C-CQ, C-ESDQ, C-ECQ): the body is a DATA
+\ pool row, equal bodies share one address, and a failed definition's row stays.
+\ Spans come from the dictionary record (src/habu/xref.f). arm64's tier 0 is T0,
+\ so the file selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL.
 
 require src/lib/test.f
 require src/lib/string.f

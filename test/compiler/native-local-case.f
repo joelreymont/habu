@@ -97,8 +97,6 @@ variable EXITED
 
 public
 
-\ arm64 runs each child at tier 0 and tier 1, two native compilers; x86-64 at
-\ tier 1 only.
 : RUN ( -- )
    T-RESET
    HB-TARGET-LINUX-X86-64? 0= if
