@@ -3,6 +3,7 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
 require src/lib/task.f
+require src/lib/test/wait.f
 require test/c2-records-types.f
 
 package C2-RECORDS-LIFECYCLE
@@ -35,7 +36,7 @@ variable READY
 : HALT-RESULT ( -- bool )
    0 READY atomic!
    ['] HALT-CALL WORKER TASK:ACTIVATE
-   begin READY atomic@ 0= while TASK:PAUSE repeat
+   READY 1 WORKER TEST-WAIT:FOR-CELL
    WORKER TASK:HALT
    WORKER TASK:JOIN
    MATCH result

@@ -3,6 +3,7 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
 require src/lib/task.f
+require src/lib/test/wait.f
 
 package C2-INIT-PROGRAM
 public
@@ -78,7 +79,7 @@ variable READY
 : HALT-RESULT ( -- bool )
    0 READY atomic!
    ['] HALT-BODY INIT-WORKER TASK:ACTIVATE
-   begin READY atomic@ 0= while TASK:PAUSE repeat
+   READY 1 INIT-WORKER TEST-WAIT:FOR-CELL
    INIT-WORKER TASK:HALT
    INIT-WORKER TASK:JOIN
    MATCH result

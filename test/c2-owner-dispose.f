@@ -4,6 +4,7 @@ require src/lib/test.f
 require src/lib/c2-owner.f
 require src/lib/memory.f
 require src/lib/task.f
+require src/lib/test/wait.f
 require src/lib/fmt.f
 
 package C2-OWNER-DISPOSE
@@ -17,6 +18,7 @@ private
 variable RELEASES
 variable EMPTY-CALLS
 variable READY
+variable READY-B
 variable GO
 variable CAP-CALLS
 variable RESUMED
@@ -186,7 +188,7 @@ TASK:MIN-STACK TASK:TASK WORKER-C
 
 : TASK-A-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 16 ACQUIRE 16 ALLOC-ID TASK-A-INNER
-   1 READY atomic-add drop
+   1 READY atomic!
    begin GO atomic@ 0= while TASK:PAUSE repeat
    C2-MEM:UNBIND ;
 
@@ -199,7 +201,7 @@ TASK:MIN-STACK TASK:TASK WORKER-C
 
 : TASK-B-INNER-INIT ( mut-view<p,i,a,init<i,C2-MEM:owner-state>> -- mut-view<p,i,a,init<i,C2-MEM:owner-state>> )
    C2-MEM:BIND 19 ACQUIRE 19 ALLOC-ID
-   1 READY atomic-add drop
+   1 READY-B atomic!
    begin TASK:PAUSE again ;
 
 : TASK-B-INNER-ROOT
@@ -404,14 +406,14 @@ public
    4 ORDER @ 7 T=
    0 READY atomic!
    ['] HALT-CALL WORKER TASK:ACTIVATE
-   begin READY atomic@ 0= while TASK:PAUSE repeat
+   READY 1 WORKER TEST-WAIT:FOR-CELL
    WORKER TASK:HALT
    s" task halt drains a live owner's foreign acquisition" T-LABEL
    WORKER TASK:JOIN HALTED? TTRUE
    3 CALLS @ 1 T=
    0 READY atomic! 0 GO atomic!
    ['] PAUSE-CALL WORKER TASK:ACTIVATE
-   begin READY atomic@ 0= while TASK:PAUSE repeat
+   READY 1 WORKER TEST-WAIT:FOR-CELL
    WORKER TASK:HALT
    1 GO atomic!
    s" task halt waits for a yielding disposer to release its resource" T-LABEL
@@ -423,7 +425,7 @@ public
    9 ORDER @ 13 T= 10 ORDER @ 12 T= 11 ORDER @ 11 T= 12 ORDER @ 10 T=
    0 READY atomic! 0 GO atomic!
    ['] CHUNK-PAUSE-CALL WORKER TASK:ACTIVATE
-   begin READY atomic@ 0= while TASK:PAUSE repeat
+   READY 1 WORKER TEST-WAIT:FOR-CELL
    WORKER TASK:HALT
    1 GO atomic!
    s" halted chunk cleanup waits for a yielding disposer before older release" T-LABEL
@@ -441,10 +443,11 @@ public
    0 CAP-CALLS ! 16 CAP-NEST 0 T= CAP-CALLS @ 32 T=
    0 CAP-CALLS ! ['] CAP-OVER catch E-C2-CAPACITY T= CAP-CALLS @ 32 T=
    0 CAP-CALLS ! 16 CAP-NEST 0 T= CAP-CALLS @ 32 T=
-   0 READY atomic! 0 GO atomic!
+   0 READY atomic! 0 READY-B atomic! 0 GO atomic!
    ['] TASK-A-CALL WORKER TASK:ACTIVATE
    ['] TASK-B-CALL WORKER-B TASK:ACTIVATE
-   begin READY atomic@ 2 < while TASK:PAUSE repeat
+   READY 1 WORKER TEST-WAIT:FOR-CELL
+   READY-B 1 WORKER-B TEST-WAIT:FOR-CELL
    s" two tasks retain separate nested owner chains" T-LABEL
    17 CALLS @ 1 T= 16 CALLS @ 0 T=
    19 CALLS @ 0 T= 18 CALLS @ 0 T=
@@ -461,7 +464,7 @@ public
    0 READY atomic! 0 GO atomic! 0 RESUMED atomic!
    [: -9364 throw ;] WORKER-C TASK:AT-EXIT
    ['] DEFER-THROW-CATCH WORKER-C TASK:ACTIVATE
-   begin READY atomic@ 0= while TASK:PAUSE repeat
+   READY 1 WORKER-C TEST-WAIT:FOR-CELL
    WORKER-C TASK:HALT
    1 GO atomic!
    s" deferred halt preserves cleanup over body and exit errors without resuming catch" T-LABEL
@@ -470,7 +473,7 @@ public
    2 CALLS @ 1 T=
    0 READY atomic! 0 GO atomic! -1 SEEN-CALLS ! -1 SEEN-BYTE !
    ['] HALT-FIN-CALL WORKER TASK:ACTIVATE
-   begin READY atomic@ 0= while TASK:PAUSE repeat
+   READY 1 WORKER TEST-WAIT:FOR-CELL
    WORKER TASK:HALT
    s" a halt runs a finally inside an owner before its disposer" T-LABEL
    WORKER TASK:JOIN HALTED? TTRUE

@@ -1,7 +1,7 @@
-\ wait.f - a test's own bounded wait. A deadline that expires is no assertion
-\ result (docs/gate.md "How a suite runs, and what that demands of its files"):
-\ the wait names itself on stdout and throws E-PROC-TIMEOUT, so the row ends as
-\ a timeout and not as a FAIL.
+\ wait.f - a test's own waits. POLL's expired deadline is no assertion result
+\ (docs/gate.md "How a suite runs, and what that demands of its files"): it names
+\ itself on stdout and throws E-PROC-TIMEOUT, so the row ends as a timeout and
+\ not as a FAIL. FOR-CELL has no deadline: its worker's end ends it.
 \
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 
@@ -27,5 +27,21 @@ public
       mono-ns deadline >= if name len EXPIRED then
       TASK:PAUSE
    repeat ;
+
+
+\ The task is the cell's setter. DONE? is read before the cell, so a store it
+\ made before ending is seen; ending without it throws the task's code here.
+: FOR-CELL ( ptr n n ptr n -- )
+   {: cell:ptr want:n tcb:ptr :}
+   begin
+      tcb TASK:DONE?
+      cell atomic@ want <> while
+      if
+         tcb TASK:THROW@ dup 0= if drop E-TASK-NO-RESULT then
+         throw
+      then
+      TASK:PAUSE
+   repeat
+   drop ;
 
 ;package
