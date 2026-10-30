@@ -170,13 +170,11 @@ variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-
 \ so the cell already holds the zero its claim says is correct. A CARRIED claim
 \ emits nothing either, for the opposite reason: aot-common.f CARRY-CELLS already copied
 \ its bytes into the window, so EMIT-DATA-COPY restores them with the rest of the
-\ application's data and there is no cell here to publish. An IMAGE-BASE
-\ claim gets one store of x20 - this image's own DATA base, which is the value the
-\ declaring file wrote into the cell when the engine loaded it.
-\ The three fixed startup cells go with them, and are named by their layout
-\ constants rather than by a claim because no code spells out their address:
-\ src/os/env-base.f reaches them through the IMAGE-BASE cell, and habu2.f
-\ EM-DATA-INIT publishes them for the engine out of these same three registers.
+\ application's data and there is no cell here to publish.
+\ The three fixed startup cells are published out of the argc/argv/envp
+\ registers and named by their layout constants rather than by a claim:
+\ src/os/env-base.f reads them through data-base, and habu2.f EM-DATA-INIT
+\ publishes them for the engine out of these same three registers.
 \ They sit below DATA-START, so EMIT-DATA-COPY's restore cannot reach them.
 \ An ENTRY-XT claim gets the address of the word this image starts, which is the
 \ label the root call below branches to, and a TEXT-BASE claim this image's own
@@ -195,12 +193,10 @@ variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-
          i AOT-OWNED:ENTRY-XT? IF
             11 12 MLBL LABEL@ TEXT-ADR,           \ x11 = this image's entry word
             11 9 0 STR,                           \ *cell = the entry it starts at
-         ELSE i AOT-OWNED:TEXT-BASE? IF
+         ELSE
             11 LTEXT LABEL@ ADR,                  \ x11 = this image's code base
             11 9 0 STR,                           \ *cell = the text base `rbase` answers
-         ELSE
-            DATA 9 0 STR,                         \ *cell = x20, this image's DATA base
-         THEN THEN
+         THEN
       THEN
    loop ;
 

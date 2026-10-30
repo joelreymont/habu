@@ -225,7 +225,7 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
    AOT-CELL:RESET ;
 
 : OWNED-PUBLISHED? ( n -- bool ) {: k:n :}
-   k AOT-OWNED:IMAGE-BASE?  k AOT-OWNED:ENTRY-XT? or  k AOT-OWNED:TEXT-BASE? or ;
+   k AOT-OWNED:ENTRY-XT?  k AOT-OWNED:TEXT-BASE? or ;
 
 \ The span in whole cells: the grid the bitmap covers. The last cell may reach
 \ above the latched span end, and the writer reads those bytes as the zeros they

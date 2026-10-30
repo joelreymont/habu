@@ -60,13 +60,14 @@ package HB-BUILD-CLI
 
 \ The engine runtime cells a stripped image owns, in one program: the
 \ environment (one variable set explicitly, one inherited, both through GETENV,
-\ whose ENV-DATA-PTR is a baked engine cell below every window), the kernel's
-\ argv, and a src/lib/memory.f WITH-BYTES scope, whose head is the MEM-ABI band
-\ of the image's own fresh DATA region and needs no claim. Each engine cell
-\ below the window is named in src/habu/aot-owned-cells.f; nothing is admitted
-\ for being scratch. The image's own arguments start at argv[1] because the
-\ stripped entry publishes its claim on APP-ENTRY:XT-CELL; numbered lines make a
-\ dropped first argument show as a shifted index.
+\ which reaches the environment through data-base's fixed ENVP cell, published
+\ from the register by the stripped entry, aot-link-arm.f EMIT-OWNED-CELLS),
+\ the kernel's argv, and a src/lib/memory.f WITH-BYTES scope, whose head is the
+\ MEM-ABI band of the image's own fresh DATA region and needs no claim. Each
+\ engine cell below the window is named in src/habu/aot-owned-cells.f; nothing
+\ is admitted for being scratch. The image's own arguments start at argv[1]
+\ because the stripped entry publishes its claim on APP-ENTRY:XT-CELL; numbered
+\ lines make a dropped first argument show as a shifted index.
 : HBT-CELLS-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/memory.f\n: SHOW ( ptr u8 NUM:alloc-byte-len -- ) drop {: a:ptr :}\n" SB-APPEND

@@ -29,7 +29,7 @@ PTR-VARIABLE FFI-LIB-TABLE
 variable FFI-FN-CAP
 variable FFI-LIB-CAP
 
-\ Kinds: FRESH 0, IMAGE-BASE 1, ENTRY-XT 2, TEXT-BASE 3, CARRIED-CELLS 4, CARRIED-BYTES 5; the
+\ Kinds: FRESH 0, ENTRY-XT 1, TEXT-BASE 2, CARRIED-CELLS 3, CARRIED-BYTES 4; the
 \ entry emitter switches on the stored kind. Runtime inputs (argv, environment, per-instance state)
 \ are FRESH or published by the entry; CARRIED cells hold baked values no entry can recompute.
 \ OFFS is a DATA address in the linker's integer domain, that of BLOB-SRC/BLOB-END: offset from
@@ -57,15 +57,12 @@ public
    len 0 <= if s" aot: a fresh claim needs a positive byte length" 74 die then
    c 0 len CLAIM ;
 
-\ The entry publishes the image's DATA base, the value the declaring file stores at engine load.
-: IMAGE-BASE ( ptr a -- ) 1 8 CLAIM ;
-
 \ The entry publishes the xt of the image's start word, which a full image stores with
 \ APP-IMAGE:START!; a stripped image has no entry record to store it.
-: ENTRY-XT ( ptr a -- ) 2 8 CLAIM ;
+: ENTRY-XT ( ptr a -- ) 1 8 CLAIM ;
 
 \ The entry publishes the image's text content base, as habu2.f EM-DATA-INIT does for the engine.
-: TEXT-BASE ( ptr a -- ) 3 8 CLAIM ;
+: TEXT-BASE ( ptr a -- ) 2 8 CLAIM ;
 
 \ aot-common.f CARRY-CELLS copies the bytes into the window's carried run (sized by
 \ aot-window-latch.f CARRY-RESERVE); aot-closure.f CARRIED-TARGET maps addresses in the range to
@@ -73,11 +70,11 @@ public
 : CARRIED-CELLS ( ptr a n -- ) {: c:ptr len:n :}
    len 0 <= len CELL mod 0<> or if
       s" aot: a carried cell claim needs whole cells" 74 die then
-   c 4 len CLAIM ;
+   c 3 len CLAIM ;
 
 : CARRIED-BYTES ( ptr a n -- ) {: c:ptr len:n :}
    len 0 <= if s" aot: a carried claim needs a positive byte length" 74 die then
-   c 5 len CLAIM ;
+   c 4 len CLAIM ;
 
 \ FFI and TASK are baked into C2, but an application may load either inside its window: claim a
 \ field only when it lies wholly below the window.
@@ -97,11 +94,10 @@ public
 : N ( -- n ) COUNT @ ;
 : AT ( n -- n ) OFFS @ ;
 : LEN ( n -- n ) LENS @ ;
-: IMAGE-BASE? ( n -- bool ) KINDS @ 1 = ;
-: ENTRY-XT? ( n -- bool ) KINDS @ 2 = ;
-: TEXT-BASE? ( n -- bool ) KINDS @ 3 = ;
-: CARRIED? ( n -- bool ) {: i:n :} i KINDS @ 4 = i KINDS @ 5 = or ;
-: CARRIED-CELLS? ( n -- bool ) KINDS @ 4 = ;
+: ENTRY-XT? ( n -- bool ) KINDS @ 1 = ;
+: TEXT-BASE? ( n -- bool ) KINDS @ 2 = ;
+: CARRIED? ( n -- bool ) {: i:n :} i KINDS @ 3 = i KINDS @ 4 = or ;
+: CARRIED-CELLS? ( n -- bool ) KINDS @ 3 = ;
 
 \ Where CARRY-CELLS put the copy, same domain; zero until it runs, before any address maps into it.
 : DEST ( n -- n ) DESTS @ ;
@@ -156,8 +152,9 @@ public
 
 private
 
-\ ENV-DATA-PTR (src/os/env-base.f) is the DATA base ARGC-CELL/ARGV-CELL/ENVP-CELL are read through;
-\ the entry republishes it. GETENV and ENV=? keep their cursors on the stack. ENV-INPUT's observer
+\ ARGC-CELL/ARGV-CELL/ENVP-CELL are reached through data-base (src/os/env-base.f) and published by
+\ the entry out of the registers: nothing to claim. GETENV and ENV=? keep their cursors on the
+\ stack. ENV-INPUT's observer
 \ starts empty: source tracking belongs to the build process.
 \ DYNAMIC-STORAGE's four cells stay private: a private word of a baked package is unreachable by
 \ qualified name and by reopening the package (E-UNDEFINED for both), so
@@ -191,7 +188,6 @@ public
 : COLLECT ( n -- ) {: window:n :}
    window ENGINE-WINDOW !
    0 COUNT !
-   ENV-DATA-PTR IMAGE-BASE
    ENV-CELLS
    [: FRESH ;] DYNAMIC-STORAGE:OWNED-CELLS
    [: FRESH-BYTES ;] IMAGE-LIFECYCLE:OWNED-CELLS

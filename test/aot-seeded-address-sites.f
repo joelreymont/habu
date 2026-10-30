@@ -30,9 +30,9 @@ variable ADDR-SITES
    off rec XREF-CODE-BYTES SITE-MARKED? TTRUE ;
 
 : CHECK ( -- )
-   \ ENV-DATA-PTR comes from the engine's captured prefix, before this load.
-   s" ENV-DATA-PTR" 0 XREF-FIND-WL CHECK-FIELD
-   ENV-DATA-PTR @ data-base = TTRUE
+   \ TPP (src/os/env-base.f) is a seeded field: a PTR-VARIABLE the engine's
+   \ captured prefix declares in the global wordlist, before this load.
+   s" TPP" 0 XREF-FIND-WL CHECK-FIELD
    s" FRESH-FIELD" FIELD-WL XREF-FIND-WL CHECK-FIELD ;
 
 public

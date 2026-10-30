@@ -116,11 +116,9 @@ variable X64-I  variable X64-J  variable X64-RUNS
       i OWNED-PUBLISHED? if
          i AOT-OWNED:ENTRY-XT? if
             X64ASM:RAX root X64CODE:MOVABS,
-         else i AOT-OWNED:TEXT-BASE? if
-            X64ASM:RAX X64-TEXT-VA X64-IMM,
          else
-            X64ASM:RAX DATA-VA VA>N X64-IMM,
-         then then
+            X64ASM:RAX X64-TEXT-VA X64-IMM,
+         then
          X64ASM:RAX i AOT-OWNED:AT DATA-VA VA>N - X64-CELL!
       then
    loop

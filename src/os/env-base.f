@@ -1,8 +1,8 @@
-\ env-base.f - shared startup argv/envp access over captured DATA cells.
+\ env-base.f - startup argv/envp access. ARGC-CELL, ARGV-CELL and ENVP-CELL sit
+\ at fixed offsets below DATA-START; every process, image or task reads them
+\ through its own DATA base.
 
-PTR-VARIABLE ENV-DATA-PTR
-data-base ENV-DATA-PTR !
-: ENV-DATA ( -- ptr n ) ENV-DATA-PTR @ ;
+: ENV-DATA ( -- ptr n ) data-base ;
 $2D constant ENV-DASH
 
 : ARGC ( -- n )
