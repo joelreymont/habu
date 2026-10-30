@@ -8,7 +8,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: the issuer, written before HTTP serves; the key
 \ set, read and replaced under KEYS-LOCK and fetched over CURL outside it by
 \ one worker at a time; and tables indexed by HTTP:WORKER-SLOT holding each
-\ request's token and scratch.
+\ request's token and scratch. TASK-LOCAL: the admitted request, TASK:+USER rows.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -70,8 +70,13 @@ HTTP:MAX-WORKERS TYPED-BUFFER SIGNATURE SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER KID SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER MODULUS SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER EXPONENT SPAN:span<u8>
-HTTP:MAX-WORKERS TYPED-BUFFER PASSED bool            \ ADMIT? admitted FROM
-HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
+
+\ The running task's: PASSED is nonzero once ADMIT? admitted FROM, a request's
+\ number (HTTP:REQUEST>N).
+TASK:#USER
+CELL TASK:+USER PASSED
+CELL TASK:+USER FROM
+drop
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
 : CURSOR ( -- ptr JR:cursor ) SLOT READER ;
@@ -173,7 +178,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
    JR:CLOSE false ;
 
 \ The token's three segments decoded into the worker's scratch: a header and
-\ claims that are JSON objects, the header naming a kid.
+\ claims that are JSON objects repeating no member name (RFC 7519 §4), the
+\ header naming a kid.
 : OPEN ( -- bool )
    SLOT TOKEN @ SPAN:$ {: t:ptr u:n :}
    t u 0 DOT {: d1:n :}
@@ -189,6 +195,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
    body SLOT CLAIMS !
    head OBJECT? 0= if false exit then
    body OBJECT? 0= if false exit then
+   HEADER$ JR:REPEATS? if false exit then
+   CLAIMS$ JR:REPEATS? if false exit then
    HEADER$ s" kid" NOTE$ {: k:ptr ku:n named:bool :}
    k ku SPAN:MAKE SLOT KID ! named ;
 
@@ -386,11 +394,11 @@ public
 : ADMIT? ( HTTP:request HTTP:response -- bool )
    {: asked:HTTP:request answer:HTTP:response :}
    ISSUER @ SPAN:LEN 0= if E-HTTP-STATE throw then
-   false SLOT PASSED !
+   0 PASSED !
    asked OUTCOME {: outcome:n :}
    outcome ADMITTED <> if answer outcome REFUSE false exit then
-   asked SLOT FROM !
-   true SLOT PASSED !
+   asked HTTP:REQUEST>N FROM !
+   true bool>n PASSED !
    true ;
 
 
@@ -399,8 +407,8 @@ public
 \ borrowed until the worker's next CLAIM$ or ADMIT?.
 : CLAIM$ ( ptr u8 n -- ptr u8 n bool )
    {: name:ptr nu:n :}
-   SLOT PASSED @ 0= if s" " false exit then
-   SLOT FROM @ HTTP:SERVING? 0= if s" " false exit then
+   PASSED @ 0= if s" " false exit then
+   FROM @ HTTP:>REQUEST HTTP:SERVING? 0= if s" " false exit then
    CLAIMS$ name nu NOTE$ ;
 
 ;package

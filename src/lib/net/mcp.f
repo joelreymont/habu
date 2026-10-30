@@ -88,11 +88,12 @@ DYNAMIC-BUFFER TOOL-OUTPUT SPAN:span<u8>
 DYNAMIC-BUFFER TOOL-WHOLE bool              \ TOOL-OUTPUT's "type" is "object"
 DYNAMIC-BUFFER TOOL-HINT bool
 DYNAMIC-BUFFER TOOL-BODY [ ptr u8 n -- ]
-TYPED-VARIABLE EARLIER JR:cursor            \ SHAPE's second reader over a schema
 
 : EVERY ( ptr u8 n -- bool ) 2drop true ;
 TYPED-VARIABLE VISIBILITY [ ptr u8 n -- bool ]   \ VISIBLE!'s hook
 ' EVERY VISIBILITY !
+
+TYPED-VARIABLE SCHEMA-READER JR:cursor     \ ADD-TOOL's: tools are added before HTTP serves
 
 \ A row to each HTTP worker; spans borrow the request's body and headers.
 HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
@@ -616,55 +617,27 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    n TOOL-HINT-RESERVE
    n TOOL-BODY-RESERVE ;
 
-\ Whether a JSON text, read whole, is an object; text that is not one JSON value
-\ throws the reader's E-JR-* code.
-: OBJECT-TEXT? ( ptr u8 n -- bool )
-   {: text:ptr u:n :}
-   CURSOR text u JR:INIT JR:NEXT JR:T-OBJ = {: object:bool :}
+\ Whether a JSON text, read whole by reader, is an object; text that is not one
+\ JSON value throws the reader's E-JR-* code.
+: OBJECT-TEXT? ( ptr u8 n ptr JR:cursor -- bool )
+   {: text:ptr u:n reader :}
+   reader text u JR:INIT JR:NEXT JR:T-OBJ = {: object:bool :}
    JR:FINISH object ;
-
-
-\ Whether text's first top-level key that decodes to key holds a value other
-\ than the one at at.
-: EARLIER? ( ptr u8 n ptr u8 n ptr u8 -- bool )
-   {: text:ptr u:n key:ptr ku:n at:ptr :}
-   EARLIER text u JR:INIT JR:NEXT drop
-   key ku JR:FIND-KEY drop JR:SPAN$ drop at <> {: earlier:bool :}
-   JR:CLOSE earlier ;
-
-
-\ On a top-level key of text: E-SCHEMA when an earlier key decodes the same,
-\ else the reader moves past the key's value. room holds the decoded key.
-: ONCE ( JR:reader ptr u8 n ptr u8 n -- JR:reader )
-   {: text:ptr u:n room:ptr cap:n :}
-   room cap JR:STR {: ku:n :}
-   JR:NEXT drop JR:SPAN$ drop {: at:ptr :}
-   text u room ku at EARLIER? if E-SCHEMA throw then
-   JR:SKIP-VALUE ;
-
-
-\ A key decodes to no more bytes than the text holds.
-: KEYS ( ptr u8 n ptr u8 NUM:alloc-byte-len -- )
-   MEM:ALLOCATION>SPAN SPAN:$ {: text:ptr u:n room:ptr cap:n :}
-   CURSOR text u JR:INIT JR:NEXT drop
-   begin JR:NEXT JR:T-KEY = while text u room cap ONCE repeat
-   JR:FINISH ;
 
 
 \ E-SCHEMA unless one JSON object with no top-level key repeated once decoded:
 \ JSON.parse keeps a repeated key's last value, so a client would read another.
 : SHAPE ( ptr u8 n -- )
-   {: text:ptr u:n :}
-   text u [: 2dup OBJECT-TEXT? 0= if E-SCHEMA throw then ;] catch {: code:n :} 2drop
+   [: 2dup SCHEMA-READER OBJECT-TEXT? 0= if E-SCHEMA throw then
+      2dup JR:REPEATS? if E-SCHEMA throw then ;] catch {: code:n :} 2drop
    code E-JR-FIRST <= code E-JR-LAST >= and if E-SCHEMA throw then
-   code 0<> if code throw then
-   text u u MEM:BYTES-ALLOC-LEN [: KEYS ;] MEM:WITH-BYTES ;
+   code 0<> if code throw then ;
 
 
 \ Whether a schema object's "type" is the string "object".
 : WHOLE? ( ptr u8 n -- bool )
    {: text:ptr u:n :}
-   CURSOR text u JR:INIT JR:NEXT drop
+   SCHEMA-READER text u JR:INIT JR:NEXT drop
    s" type" JR:FIND-KEY if
       JR:TOKEN JR:T-STR = if s" object" JR:STR-EQ? else false then
    else false then {: whole:bool :}
@@ -675,7 +648,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    {: text:ptr u:n fault:bool :}
    SLOT STAGE @ CALLING <> if E-STATE throw then
    fault 0= if
-      text u OBJECT-TEXT? 0= SLOT CALLED @ TOOL-WHOLE @ and if E-SCHEMA throw then
+      text u CURSOR OBJECT-TEXT? 0= SLOT CALLED @ TOOL-WHOLE @ and if E-SCHEMA throw then
    then
    text u SPAN:MAKE SLOT TEXT !
    fault SLOT FAULT !

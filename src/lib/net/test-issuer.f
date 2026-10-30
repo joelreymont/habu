@@ -19,6 +19,7 @@ require src/lib/byte-buffer.f
 require src/lib/base64.f
 require src/lib/json-read.f
 require src/lib/json-write.f
+require src/lib/utf8-scalar.f
 require src/lib/crypto/evp.f
 require src/lib/crypto/jws-fixture.f
 require src/lib/net/http.f
@@ -385,12 +386,14 @@ private
    t end TRIM s" application/x-www-form-urlencoded" STR=CI ;
 
 \ The grant the form asks for, issued or refused as Entra v2 answers; no
-\ audience, no token (RFC 6749 §5.2).
+\ audience, or one that is not UTF-8 (claims are JSON text), no token
+\ (RFC 6749 §5.2).
 : GRANT ( HTTP:response -- )
    {: answer:HTTP:response :}
    GRANT-TYPE s" client_credentials" FIELD= {: credentials:bool :}
    credentials OBO? or 0= if answer 400 s" unsupported_grant_type" REFUSE exit then
-   AUDIENCE$ nip 0= if answer 400 s" invalid_request" REFUSE exit then
+   AUDIENCE$ {: aud:ptr au:n :}
+   au 0= aud au UTF8:VALID? 0= or if answer 400 s" invalid_request" REFUSE exit then
    credentials if CREDENTIALS answer ISSUE exit then
    [: drop VERIFIED? ;] STEP 0= if answer 400 s" invalid_grant" REFUSE exit then
    ON-BEHALF answer ISSUE ;

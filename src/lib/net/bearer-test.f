@@ -1,9 +1,10 @@
 \ bearer-test.f - BEARER:ADMIT? over a real loopback port: ADMIT? before
 \ ISSUER! and ISSUER! while serving, the 503 of a key set that cannot be
 \ fetched, key selection among an EC key, an encryption key and the token's,
-\ the 401 challenges, malformed tokens, alg none, crit and HS256, aud, iss,
-\ exp and nbf, claim strings, CLAIM$ after the admitted request, the refetch
-\ window, and the cached and unknown kids answered while a fetch is in flight.
+\ the 401 challenges, malformed tokens, alg none, crit and HS256, repeated
+\ member names, aud, iss, exp and nbf, claim strings, CLAIM$ after the admitted
+\ request and in a task it spawns, the refetch window, and the cached and
+\ unknown kids answered while a fetch is in flight.
 \ Run: bin/hb --load src/lib/net/bearer-test.f
 
 require src/lib/test.f
@@ -69,6 +70,7 @@ variable RELEASED                   \ the test lets the stalled /keys answer
 variable STALL-END                  \ RELEASED as the stalled /keys saw it on answering
 TYPED-VARIABLE PENDING CURL:handle  \ the request ASKER sends
 TASK:MIN-STACK TASK:TASK ASKER
+TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 \ The end of a wait's WAIT-MS window, an absolute mono-ns.
 : DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
@@ -137,6 +139,18 @@ TASK:MIN-STACK TASK:TASK ASKER
 
 : PLAIN-ROUTE ( HTTP:request HTTP:response -- )
    nip [: AZP-BODY ;] HTTP:JSON! ;
+
+: CLAIM-FLAG ( -- ) s" azp" BEARER:CLAIM$ nip nip bool>n TASK:RETURN ;
+
+\ Answers CLAIMER's flag; a throw in CLAIMER answers 500.
+: SPAWN-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer BEARER:ADMIT? 0= if exit then
+   ['] CLAIM-FLAG CLAIMER TASK:ACTIVATE
+   CLAIMER TASK:JOIN MATCH result
+      ok OF 0<> if answer s" true" HTTP:BODY! else answer s" false" HTTP:BODY! then ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
 
 \ Holds /keys until the test sets RELEASED or STALL-MS has passed.
 : STALL ( -- )
@@ -366,7 +380,9 @@ TASK:MIN-STACK TASK:TASK ASKER
    S\" {\"alg\":\"RS256\",\"kid\":\"a\",\"crit\":[\"urn:x\"],\"urn:x\":1}" CURRENT MINT
    SEND INVALID
    s" HS256 keyed with the public modulus is invalid" T-LABEL
-   S\" {\"alg\":\"HS256\",\"kid\":\"a\"}" CURRENT HS-MINT SEND INVALID ;
+   S\" {\"alg\":\"HS256\",\"kid\":\"a\"}" CURRENT HS-MINT SEND INVALID
+   s" a header repeating kid is invalid" T-LABEL
+   S\" {\"alg\":\"RS256\",\"kid\":\"a\",\"kid\":\"b\"}" CURRENT MINT SEND INVALID ;
 
 : AUDIENCES ( -- )
    s" an aud array holding the audience is admitted" T-LABEL
@@ -381,6 +397,10 @@ TASK:MIN-STACK TASK:TASK ASKER
    LATER WHO CLAIMS MINT SEND INVALID
    s" another iss is invalid" T-LABEL
    KID-A S\" {\"iss\":\"https://other.test\",\"aud\":\"api://bearer-test\",\"exp\":"
+   LATER WHO CLAIMS MINT SEND INVALID
+   s" claims repeating iss are invalid" T-LABEL
+   KID-A
+   S\" {\"iss\":\"https://issuer.test\",\"iss\":\"https://other.test\",\"aud\":\"api://bearer-test\",\"exp\":"
    LATER WHO CLAIMS MINT SEND INVALID ;
 
 \ exp a second inside the leeway, sent within one epoch second: the server's
@@ -425,6 +445,10 @@ TASK:MIN-STACK TASK:TASK ASKER
    h PERFORM S\" {\"azp\":null}" ANSWERED
    h CURL:CLEANUP ;
 
+: SPAWNED-CLAIM ( -- )
+   s" CLAIM$ in a task the admitted request spawns answers false" T-LABEL
+   KID-A CURRENT MINT s" /spawn" OPEN BEARING FINISH s" false" ANSWERED ;
+
 : ASK ( -- ) PENDING @ FINISH TASK:RETURN ;
 
 \ Past the window ASKER's kid b fetches and /keys stalls; meanwhile the cached
@@ -456,6 +480,7 @@ TASK:MIN-STACK TASK:TASK ASKER
    s" GET" s" /early" [: EARLY-ROUTE ;] HTTP:ROUTE
    s" GET" s" /claims" [: GUARDED-ROUTE ;] HTTP:ROUTE
    s" GET" s" /plain" [: PLAIN-ROUTE ;] HTTP:ROUTE
+   s" GET" s" /spawn" [: SPAWN-ROUTE ;] HTTP:ROUTE
    s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE ;
 
 \ Three workers: ADMIT? fetches /keys from this same server and waits for the
@@ -483,7 +508,7 @@ TASK:MIN-STACK TASK:TASK ASKER
    s" https://issuer.test" s" api://bearer-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER!
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
    UNAVAILABLE ADMITTED UNKNOWN-KID NO-TOKEN MALFORMED SIGNATURES AUDIENCES
-   TIMES STRINGS STALE-CLAIM WINDOW
+   TIMES STRINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
    HTTP:STOP
    AIO:STOP ;
 

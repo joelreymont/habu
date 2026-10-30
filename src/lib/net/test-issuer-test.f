@@ -308,7 +308,10 @@ MINTED $100 BUF:N>BLEN BUF:INIT
    ASK 400 s" invalid_request" REFUSED
    APP s" &grant_type=client_credentials&scope=/.default" FORM+
    ASK 400 s" invalid_request" REFUSED
-   s" app" LATER ASSERT UNSCOPED ASK 400 s" invalid_request" REFUSED ;
+   s" app" LATER ASSERT UNSCOPED ASK 400 s" invalid_request" REFUSED
+   s" a scope that is not UTF-8 is invalid_request" T-LABEL
+   APP s" &grant_type=client_credentials&scope=%FF%FE" FORM+
+   ASK 400 s" invalid_request" REFUSED ;
 
 : OBO ( -- )
    s" On-Behalf-Of copies the assertion's oid and tid" T-LABEL
