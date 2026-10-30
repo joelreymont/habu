@@ -576,12 +576,43 @@ variable PTY-LONG-U
    s" 8" EXPECT
    s"  ok" PROMPT-AFTER ;
 
+: PTY-STEP-LONG-LINE ( -- )
+   s" create SLONG 1100 allot" STEP-LN
+   s"  ok" PROMPT-AFTER
+   s" : SLONG-PUT ( ptr u8 n n -- ) {: a:ptr u:n at:n :} u 0 ?do a i + c@ SLONG at + i + c! loop ;" STEP-LN
+   s"  ok" PROMPT-AFTER
+   s" : SLONG-BLANK ( -- ) 1100 0 do 32 SLONG i + c! loop ;" STEP-LN
+   s"  ok" PROMPT-AFTER
+   s\" SLONG-BLANK s\" step\" 0 SLONG-PUT s\" 88 emit\" 1093 SLONG-PUT" STEP-LN
+   s"  ok" PROMPT-AFTER ;
+
+
+\ The tty editor takes 255 bytes a line, so the stepped line is evaluated: STEP
+\ takes all 1096 bytes after it, and its last word, past byte 1023, runs.
+: PTY-STEP-LONG ( -- )
+   PTY-STEP-LONG-LINE
+   s" SLONG 1100 evaluate" STEP-LN
+   PROBE-BARRIER
+   s" step> emit X" TCONTAINS ;
+
+
+\ The rest of a ':' line runs whole from the range STEP handed the REPL; its
+\ evaluate steps a longer line, so STEP grows its buffer under that range.
+: PTY-STEP-NESTED ( -- )
+   s" step : RY ; SLONG 1100 evaluate $1C03 ." STEP-LN
+   s" 7171" EXPECT
+   PROBE-BARRIER
+   s" step> emit X" TCONTAINS ;
+
+
 : PTY-STEPPER ( -- )
    PTY-STEP-BASELINE
    PTY-STEP-TOKENS
    PTY-STEP-DEFINE
    PTY-STEP-RUN
-   PTY-STEP-RECOVER ;
+   PTY-STEP-RECOVER
+   PTY-STEP-LONG
+   PTY-STEP-NESTED ;
 
 : PTY-THROW-LINE ( -- )
    s" 99 throw" STEP-LN
