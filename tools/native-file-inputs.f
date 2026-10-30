@@ -18,9 +18,11 @@ private
 2 constant QUERY-ROW
 3 constant CONTENT-ROW
 4 constant ENV-ROW
-\ A file's own source: the stat at capture (change time sec, ns and size at
-\ row+32) and, as the answer, the SHA-256 of the bytes that ran. Change time,
-\ not modification time: every write moves it and no user tool sets it back.
+\ A file's own source: as the answer, the SHA-256 of the bytes that ran, and,
+\ when row+24 is 1, a stat that vouches for them (change time sec, ns and size
+\ at row+32); 0 when the file no longer held those bytes at capture. Change
+\ time, not modification time: every write moves it and no user tool sets it
+\ back.
 5 constant SOURCE-ROW
 64 constant ROW-BYTES
 create CONTENT-SHA SHA256-FILE-CTX-BYTES allot
@@ -142,11 +144,19 @@ private
    CONTENT-ROW path pathu s" " true ROW {: row:ptr :}
    CONTENT-SHA source sourceu row 32 + SHA256-IN ;
 
+\ The stamp is taken after the loader read the source, so it vouches for those
+\ bytes only if the file still holds them: stamp, then hash the file. An edit
+\ after the stamp moves the change time past it; one before it shows in the
+\ file's digest, and then the row keeps no stamp, so the next build hashes.
 : STORE-OWN ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n source:ptr sourceu:n :}
    CONTENT-SHA source sourceu CONTENT-DIGEST SHA256-IN
-   SOURCE-ROW path pathu CONTENT-DIGEST 32 true ROW
-   path pathu STAMP-FILE ;
+   SOURCE-ROW path pathu CONTENT-DIGEST 32 true ROW {: row:ptr :}
+   row path pathu STAMP-FILE
+   row 24 + LE:U64@ 1 <> if exit then
+   CONTENT-SHA path pathu CONTENT-DIGEST SHA256-FILE-IN 0<>
+   row ROW-BYTES + pathu + 32 CONTENT-DIGEST 32 STR= 0= or
+   if 0 row 24 + LE:U64! then ;
 
 : STORE-ROOT ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n :}

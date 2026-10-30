@@ -1,5 +1,6 @@
 \ A truncated answer in a query row must refuse before reading past its bytes.
 \ A source row's stat stands for its bytes; only a changed stat hashes them.
+\ A row recorded after its file moved off the bytes read keeps no stat.
 
 require src/lib/test.f
 require src/lib/le.f
@@ -100,7 +101,11 @@ FUNCTION: MKFIFO-CALL mkfifo ( ptr u8 n -- i32 ) ;FUNCTION
    SOURCE$ s" : A 22 ;" FS:WRITE-ALL
    NFILE-INPUTS:BYTES$ NFILE-INPUTS:FRESH? TFALSE
    s" a truncated source row is malformed, not stale" T-LABEL
-   [: SROWS SROWS-U @ 1- NFILE-INPUTS:FRESH? drop ;] E-NUNIT-FILE TTHROWSQ ;
+   [: SROWS SROWS-U @ 1- NFILE-INPUTS:FRESH? drop ;] E-NUNIT-FILE TTHROWSQ
+   s" a source row recorded after its file moved off the bytes read is stale" T-LABEL
+   NFILE-INPUTS:RESET
+   SOURCE$ s" : A 1 ;" NFILE-INPUTS:ADD-SOURCE
+   NFILE-INPUTS:BYTES$ NFILE-INPUTS:FRESH? TFALSE ;
 
 public
 : MAIN ( -- )
