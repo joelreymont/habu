@@ -272,7 +272,9 @@ public
 \ Under a recovering reader a definition the checker refused, or any
 \ definition, trusted or not, whose body or does> clause bound a refused
 \ declaration's recovery row, is counted and abandoned unpublished:
-\ E-NCOMP-RECOVERY ends it without a second report.
+\ E-NCOMP-RECOVERY ends it without a second report. So is a TRUSTED: definition
+\ whose declaration recorded no row: the multi-error checker reported and
+\ counted its signature (checker.f USIG-ADD-BAD, TRUST-STALE).
 : VERDICT-CK ( -- )
    TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
@@ -282,6 +284,9 @@ public
    then then
    RECOVERING? if
       CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY @ or if E-NCOMP-RECOVERY throw then
+      TRUSTED? if
+         NAME$ NDICT:SPELL-ARITY drop NDICT:ARITY-NONE = if E-NCOMP-RECOVERY throw then
+      then
    then ;
 
 private
