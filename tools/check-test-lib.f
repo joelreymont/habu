@@ -1342,7 +1342,7 @@ variable LONG-J
 : TEST-RENDERED-DOES ( -- )
    RENDER-DOES-CLAUSE$ DIRECT-STDIN EXPECT-ACCEPTED
    RENDER-DOES-DEFINER$ DIRECT-STDIN EXPECT-ACCEPTED
-   RENDER-DOES-BAD$ DIRECT-STDIN s" does>" EXPECT-RUN-REFUSED ;
+   RENDER-DOES-BAD$ DIRECT-STDIN s" ncomp: cannot compile CKR-DEFR" EXPECT-RUN-REFUSED ;
 
 \ A clause the pre-pass refuses is reported as a refused body is: by the name of
 \ the record it would publish, the definer's with `;does`, the code, the token
@@ -1783,7 +1783,7 @@ variable LONG-J
    FWDREF$ HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" E-UNDEFINED: CKT-MISSING" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-UNDEFINED habu: in ckt-fwdref: undefined word 'CKT-MISSING'" CONTAINS? TTRUE ;
 
 : TEST-DUP-ALL ( -- )
    DUP$SRC CORE-JSON $4E T=
@@ -7194,7 +7194,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    SB$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" E-UNDEFINED: CKT-GHOLLOW" CONTAINS? TTRUE
+   CAP-ERR erru s" E-UNDEFINED habu: in ckt-guse: undefined word 'CKT-GHOLLOW'" CONTAINS? TTRUE
    CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
 \ A definer name the used scopes refuse is refused by the preverify as a use of
