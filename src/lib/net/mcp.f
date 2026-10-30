@@ -3,7 +3,9 @@
 \ 2025-11-25 initialize flow. No session ID, no event stream. The host states
 \ its name with SERVER-INFO! and its tools with ADD-TOOL before HTTP:START,
 \ authenticates each request, validates its Origin (403 when one is present and
-\ not allowed) and passes it to HANDLE. A tool body gets the arguments' object,
+\ not allowed) and passes it to HANDLE; a route guarded by bearer tokens is
+\ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. VISIBLE! hides a tool
+\ from a caller its hook refuses. A tool body gets the arguments' object,
 \ borrowed for the call, and answers once through ANSWER, or ANSWER-ERROR for a
 \ tool error, refused arguments included; bodies may run at once on several
 \ HTTP workers. An input schema's x-mcp-header is not supported: the server
@@ -11,11 +13,12 @@
 \ structuredContent when its output schema's "type" is "object"; any other
 \ schema describes the answer as structuredContent's "data". The client side,
 \ OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one server over
-\ CURL and takes a JSON or an event-stream reply.
-\ STORAGE CLASS. PROCESS-WIDE: the server info and tool registry, written before
-\ HTTP serves; tables indexed by HTTP:WORKER-SLOT holding each request's state;
-\ and the client table, a row per open client, read and written under its own
-\ lock.
+\ CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer token
+\ a client sends.
+\ STORAGE CLASS. PROCESS-WIDE: the server info, tool registry and visibility
+\ hook, written before HTTP serves; tables indexed by HTTP:WORKER-SLOT holding
+\ each request's state; and the client table, a row per open client, read and
+\ written under its own lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
 
 require src/lib/string.f
@@ -36,9 +39,9 @@ package MCP
 public
 -9480 constant E-FIRST
 -9489 constant E-LAST
-\ SERVER-INFO! or ADD-TOOL while HTTP serves, HANDLE before SERVER-INFO!, a
-\ body that does not answer exactly once, or a client word given a closed
-\ client.
+\ SERVER-INFO!, ADD-TOOL or VISIBLE! while HTTP serves, HANDLE before
+\ SERVER-INFO!, a body that does not answer exactly once, or a client word
+\ given a closed client.
 -9481 constant E-STATE
 -9482 constant E-DUPLICATE   \ ADD-TOOL of a registered name
 -9483 constant E-TRANSFER    \ a client's request could not be sent or its reply received
@@ -48,6 +51,7 @@ public
 \ An ADD-TOOL output schema that is not one JSON object or repeats a top-level
 \ key, or an answer under an object schema that is not an object.
 -9485 constant E-SCHEMA
+-9486 constant E-DENIED      \ the server refused a client's call with 401 or 403
 
 \ A client of one server's endpoint, from OPEN until CLOSE.
 NEWTYPE client
@@ -85,6 +89,10 @@ DYNAMIC-BUFFER TOOL-WHOLE bool              \ TOOL-OUTPUT's "type" is "object"
 DYNAMIC-BUFFER TOOL-HINT bool
 DYNAMIC-BUFFER TOOL-BODY [ ptr u8 n -- ]
 TYPED-VARIABLE EARLIER JR:cursor            \ SHAPE's second reader over a schema
+
+: EVERY ( ptr u8 n -- bool ) 2drop true ;
+TYPED-VARIABLE VISIBILITY [ ptr u8 n -- bool ]   \ VISIBLE!'s hook
+' EVERY VISIBILITY !
 
 \ A row to each HTTP worker; spans borrow the request's body and headers.
 HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
@@ -246,6 +254,10 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
 
 
+\ Whether the request's caller may see and call the registered tool.
+: SHOWN? ( n -- bool ) TOOL-NAME @ SPAN:$ VISIBILITY @ execute ;
+
+
 \ https://modelcontextprotocol.io/specification/2026-07-28/server/tools
 : LIST-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
@@ -253,10 +265,12 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
       s" resultType" s" complete" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    then
    s" tools" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
-   TOOL-COUNT @ 0 ?do
-      i 0<> if JSON-WRITE:COMMA then
-      i TOOL-ENTRY
-   loop
+   false TOOL-COUNT @ 0 ?do
+      i SHOWN? if
+         if JSON-WRITE:COMMA then
+         i TOOL-ENTRY true
+      then
+   loop drop
    JSON-WRITE:ARRAY-END
    LEGACY? 0= if PRIVATE-CACHE MODERN-META then
    JSON-WRITE:OBJECT-END ;
@@ -545,6 +559,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    PARAMS$ s" name" FIELD? 0= if E-INPUT throw then
    TOOL-OF {: idx:n :}
    idx 0< if UNKNOWN-TOOL SEND exit then
+   idx SHOWN? 0= if UNKNOWN-TOOL SEND exit then
    ARGUMENTS
    idx SLOT CALLED !
    CALLING SLOT STAGE !
@@ -677,6 +692,17 @@ public
    version vu SPAN:MAKE SERVER-VERSION ! ;
 
 
+\ The hook answering, given a tool's name, whether the caller of the request
+\ HANDLE answers may see and call it; the default admits every tool. tools/list
+\ leaves out a tool it refuses and tools/call answers it as an unknown tool. It
+\ runs on the worker after HANDLE's header checks, Mcp-Name's included, and may
+\ ask BEARER:CLAIM$; its throw passes to the host as a body's does. E-STATE
+\ while HTTP serves.
+: VISIBLE! ( [ ptr u8 n -- bool ] -- )
+   HTTP:RUNNING? if E-STATE throw then
+   VISIBILITY ! ;
+
+
 \ The texts are borrowed and outlive the server, as literals do. E-SCHEMA on a
 \ repeated top-level key; "#" in a schema without "type":"object" is the wrapper.
 : ADD-TOOL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool [ ptr u8 n -- ] -- )
@@ -728,12 +754,12 @@ public
 \ moves. A client's value is the generation OPEN gave its row from a
 \ process-wide count, and CLOSE clears the row's generation, so a closed
 \ client's value names no row even after another OPEN reuses it. The region
-\ holds a record, five BUFs and the SSE decoder's storage. The BUFs are the URL;
+\ holds a record, six BUFs and the SSE decoder's storage. The BUFs are the URL;
 \ the request, then, once BODY! has copied it, a header line and the reply's
-\ header block; the reply; the tool list TOOLS assembles; and the response an
-\ event-stream reply carried. The handle of the exchange in flight, none between
-\ exchanges, is the table's: a record that held it could not be cast from its
-\ region.
+\ header block; the reply; the tool list TOOLS assembles; the response an
+\ event-stream reply carried; and the token TOKEN! set, empty for none. The
+\ handle of the exchange in flight, none between exchanges, is the table's: a
+\ record that held it could not be cast from its region.
 
 private
 
@@ -758,7 +784,8 @@ URL-OFF BUF:HDR-BYTES + constant REQUEST-OFF
 REQUEST-OFF BUF:HDR-BYTES + constant REPLY-OFF
 REPLY-OFF BUF:HDR-BYTES + constant LIST-OFF
 LIST-OFF BUF:HDR-BYTES + constant MESSAGE-OFF
-MESSAGE-OFF BUF:HDR-BYTES + constant DECODER-OFF
+MESSAGE-OFF BUF:HDR-BYTES + constant TOKEN-OFF
+TOKEN-OFF BUF:HDR-BYTES + constant DECODER-OFF
 DECODER-OFF SSE:STORAGE-BYTES + constant REGION-BYTES
 
 \ No task is live while this file loads, so the lock is made ready here.
@@ -785,6 +812,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : REPLY-BUF ( n -- ptr n ) REPLY-OFF BUF-AT ;
 : LIST-BUF ( n -- ptr n ) LIST-OFF BUF-AT ;
 : MESSAGE-BUF ( n -- ptr n ) MESSAGE-OFF BUF-AT ;
+: TOKEN-BUF ( n -- ptr n ) TOKEN-OFF BUF-AT ;
 
 \ A decoder opened on the row's storage.
 : DECODER ( n -- SSE:decoder )
@@ -793,6 +821,14 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 : BUF$ ( ptr n -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 : BUF+ ( ptr u8 n ptr n -- ) {: a:ptr u:n buf:ptr :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+
+\ Zeroes every byte the buffer maps, then empties it: a line written over a
+\ longer one leaves the longer one's tail past the active bytes.
+: WIPE ( ptr n -- )
+   {: buf:ptr :}
+   buf BUF:CLEAR
+   0 buf buf BUF:CAP@ BUF:GROW SPAN:FILL
+   buf BUF:CLEAR ;
 
 
 \ The first free row, else -1; under LOCK.
@@ -858,6 +894,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx REPLY-BUF BUF:DISPOSE
    idx LIST-BUF BUF:DISPOSE
    idx MESSAGE-BUF BUF:DISPOSE
+   idx TOKEN-BUF BUF:DISPOSE
    idx REGION {: region :}
    LOCK TASK:GET
    s" " SPAN:MAKE idx ROW-REGION !
@@ -873,6 +910,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx REPLY-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx LIST-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    idx MESSAGE-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
+   idx TOKEN-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
    url uu idx URL-BUF BUF+
    idx url uu ;
 
@@ -964,7 +1002,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    REQUEST-END JSON-WRITE:CLOSE ;
 
 
-: VISIBLE? ( ptr u8 n -- bool )
+: PLAIN-NAME? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    u 0 ?do
       a i + c@ dup $21 < swap $7E > or if false unloop exit then
@@ -977,17 +1015,26 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx REQUEST-BUF {: buf:ptr :}
    buf BUF:CLEAR
    s" Mcp-Name: " buf BUF+
-   name nu VISIBLE? if name nu buf BUF+ else
+   name nu PLAIN-NAME? if name nu buf BUF+ else
       s" =?base64?" buf BUF+
       name nu buf nu 2 + 3 / 4 * BUF:N>BLEN BUF:GROW BASE64:ENCODE drop
       s" ?=" buf BUF+
    then
    buf BUF$ ;
 
+\ The Authorization line carrying the row's token, built in the request buffer.
+: BEARER-LINE ( n -- ptr u8 n )
+   {: idx:n :}
+   idx REQUEST-BUF {: buf:ptr :}
+   buf BUF:CLEAR
+   s" Authorization: Bearer " buf BUF+
+   idx TOKEN-BUF BUF$ buf BUF+
+   buf BUF$ ;
+
 
 \ A fresh handle, held by the row, posting the request buffer to the URL with
-\ the 2026-07-28 headers and the Mcp-Method line. A handle a halt left is
-\ retired first.
+\ the 2026-07-28 headers, the Mcp-Method line and, while the row holds a token,
+\ its Authorization line. A handle a halt left is retired first.
 : PREPARE ( n ptr u8 n ms -- CURL:handle )
    {: idx:n line:ptr lu:n limit:ms :}
    idx RETIRE
@@ -999,6 +1046,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    h OPTION:SOME idx HANDLE!
    h idx URL-BUF BUF$ CURL:URL! CHECK
    h idx REQUEST-BUF BUF$ CURL:BODY! CHECK
+   idx TOKEN-BUF BUF$ nip 0<> if h idx BEARER-LINE CURL:HEADER+ CHECK then
    h limit CURL:TIMEOUT! CHECK
    h s" Content-Type: application/json" CURL:HEADER+ CHECK
    h s" Accept: application/json, text/event-stream" CURL:HEADER+ CHECK
@@ -1145,10 +1193,12 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    else JR:CLOSE s" " JR:T-END false then ;
 
 
-\ The result object's text of a 2xx reply whose message answers the request.
+\ The result object's text of a 2xx reply whose message answers the request;
+\ E-DENIED for a 401 or 403.
 : RESULT$ ( n -- ptr u8 n )
    {: idx:n :}
    idx ROW PEER-STATUS @ {: status:n :}
+   status 401 = status 403 = or if E-DENIED throw then
    status 200 < status 299 > or if E-RESPONSE throw then
    idx MESSAGE$ {: m:ptr mu:n :}
    idx ROW PEER-CURSOR m mu JSON-RPC:>MESSAGE
@@ -1222,18 +1272,33 @@ public
 
 \ Ends a client in any state a throw or a TASK:HALT left it in: a transfer
 \ still in flight is cancelled and drained, then the handle, reader and buffers
-\ go. A caller that must survive a halt keeps the client in its own task
-\ storage and closes it in its own finally. E-STATE for a closed client.
+\ go, the token and the request buffer, which carries the Authorization line,
+\ wiped first. A caller that must survive a halt keeps the client in its own
+\ task storage and closes it in its own finally. E-STATE for a closed client.
 : CLOSE ( client -- )
    LIVE {: idx:n :}
    idx RETIRE
+   idx TOKEN-BUF WIPE
+   idx REQUEST-BUF WIPE
    idx RELEASE ;
+
+
+\ The token the client sends as `Authorization: Bearer <token>` on every
+\ exchange until the next TOKEN! or CLOSE; the text is copied, the token it
+\ replaces wiped, and an empty one sends none. A token holding CR or LF makes
+\ each exchange throw CURL:E-OPERAND. E-STATE for a closed client.
+: TOKEN! ( client ptr u8 n -- )
+   {: who:client token:ptr tu:n :}
+   who LIVE TOKEN-BUF {: buf:ptr :}
+   buf WIPE
+   token tu buf BUF+ ;
 
 
 \ Every tool the server lists, following nextCursor to the last page, the
 \ whole call within ms (0: no limit): one JSON array of the tool objects in
-\ order. E-TRANSFER when an exchange fails or the pages run past ms,
-\ E-RESPONSE for a reply that is no tools/list result.
+\ order. E-TRANSFER when an exchange fails or the pages run past ms, E-DENIED
+\ when the server refuses the client, E-RESPONSE for a reply that is no
+\ tools/list result.
 : TOOLS ( client ms -- ptr u8 n )
    {: who:client limit:ms :}
    TIME:MONO-NS {: start:n :}
@@ -1248,8 +1313,9 @@ public
 
 \ tools/call of the named tool with the arguments' JSON object, within ms for
 \ the whole transfer (0: no limit): answers the result object's JSON text and
-\ its isError. E-TRANSFER when the exchange fails or runs past ms, E-RESPONSE
-\ for a JSON-RPC error, an unknown tool included, or a reply that is no result.
+\ its isError. E-TRANSFER when the exchange fails or runs past ms, E-DENIED
+\ when the server refuses the client, E-RESPONSE for a JSON-RPC error, an
+\ unknown tool included, or a reply that is no result.
 : CALL ( client ptr u8 n ptr u8 n ms -- ptr u8 n bool )
    {: who:client name:ptr nu:n args:ptr au:n limit:ms :}
    who LIVE {: idx:n :}

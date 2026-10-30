@@ -9,7 +9,10 @@
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
 \ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
 \ pages, CLOSE after a halt mid-receive, and a closed client refused once its
-\ row is reused.
+\ row is reused. Then /mcp guarded by BEARER:ADMIT?: VISIBLE! hiding a tool by
+\ the caller's claim from tools/list and tools/call, and refused while HTTP
+\ serves; a client's TOKEN!, E-DENIED for no token, an empty one and a 403, and
+\ TOKEN! of a closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
 require src/lib/test.f
@@ -19,9 +22,13 @@ require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/task.f
 require src/lib/adt/result.f
+require src/lib/base64.f
+require src/lib/crypto/evp.f
+require src/lib/crypto/jws-fixture.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/mcp.f
+require src/lib/net/bearer.f
 
 package MCP-TEST
 private
@@ -82,17 +89,18 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ The end of a wait's WAIT-MS window, an absolute mono-ns.
 : DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
 
+\ A setter's refusal throws: an assertion here would take the case's T-LABEL.
 : OK ( CURL:status -- )
    MATCH CURL:status
-      ok OF true ENDOF
-      failed OF drop false ENDOF
-   ;MATCH TTRUE ;
+      ok OF ENDOF
+      failed OF drop CURL:E-STATE throw ENDOF
+   ;MATCH ;
 
 28 constant CURLE-TIMED-OUT             \ CURLE_OPERATION_TIMEDOUT
 
 \ The response's status, its body in BODY; -1 for a body past CAP, -2 for a
-\ failed transfer. CURLE 28 is libcurl's default connect timeout, met by a
-\ starved or stopped process: E-PROC-TIMEOUT, a timeout and not a FAIL.
+\ failed transfer. CURLE 28 is the handle's WAIT-MS timeout, met by a starved
+\ or stopped process: E-PROC-TIMEOUT, a timeout and not a FAIL.
 : PERFORM ( CURL:handle -- n )
    BODY CAP >LEN CURL:PERFORM
    MATCH CURL:fetch-result
@@ -122,6 +130,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    ;MATCH {: h:CURL:handle :}
    SB-RESET  s" http://127.0.0.1:" SB-APPEND  HTTP:PORT FMT:SB-U  s" /mcp" SB-APPEND
    h SB$ CURL:URL! OK
+   h WAIT-MS >MS CURL:TIMEOUT! OK
    h kind ku ADD accept au ADD ;
 
 : OPEN ( -- CURL:handle )
@@ -229,12 +238,14 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
+: UNKNOWN-ANSWER ( -- ptr u8 n )
+   S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602,\"message\":\"Unknown tool\"}}" ;
+
 : UNKNOWN-TOOL ( -- )
    s" an unregistered tool is 400 -32602 Unknown tool" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
-   400 S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602,\"message\":\"Unknown tool\"}}"
-   ANSWERED ;
+   400 UNKNOWN-ANSWER ANSWERED ;
 
 
 : TOOL-ERROR ( -- )
@@ -306,12 +317,15 @@ TASK:MIN-STACK TASK:TASK STALLER
 : NULLABLE ( -- ptr u8 n )
    S\" {\"type\":[\"object\",\"null\"],\"items\":{\"type\":\"object\"}}" ;
 
-\ Every registered tool, as tools/list answers them.
-: TOOL-ARRAY ( -- )
-   S\" [{\"name\":\"echo\"," W+
+\ echo's entry, the first tools/list answers.
+: ECHO-ITEM ( -- )
+   S\" {\"name\":\"echo\"," W+
    S\" \"description\":\"Echo the arguments.\",\"inputSchema\":{\"type\":\"object\"}," W+
-   s" {}" OUTPUT s" true}},{" W+
-   S\" \"name\":\"refuse\",\"description\":\"Refuse every call.\"," W+
+   s" {}" OUTPUT s" true}}" W+ ;
+
+\ The open phase's tools after echo, as tools/list answers them.
+: LATER-ITEMS ( -- )
+   S\" {\"name\":\"refuse\",\"description\":\"Refuse every call.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\",\"properties\":{}}," W+
    s" {}" OUTPUT s" false}},{" W+
    S\" \"name\":\"raw\",\"description\":\"Answer text that is not JSON.\"," W+
@@ -328,7 +342,13 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" {}" OUTPUT s" true}},{" W+
    S\" \"name\":\"shape\",\"description\":\"Answer sources.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"},\"outputSchema\":" W+ SOURCES W+
-   S\" ,\"annotations\":{\"readOnlyHint\":true}}]" W+ ;
+   S\" ,\"annotations\":{\"readOnlyHint\":true}}" W+ ;
+
+\ Every tool the open phase registers, as tools/list answers them, before the
+\ array's end.
+: TOOL-ITEMS ( -- ) s" [" W+ ECHO-ITEM s" ," W+ LATER-ITEMS ;
+
+: TOOL-ARRAY ( -- ) TOOL-ITEMS s" ]" W+ ;
 
 
 : LIST ( -- )
@@ -738,6 +758,189 @@ TYPED-VARIABLE NEVER MCP:client
    [: CURL:LOOP-STOP ;] catch 0 T= ;
 
 
+\ The protected phase: /mcp guarded by BEARER:ADMIT?, tokens signed by the
+\ fixture key under kid a.
+
+2 constant TWO-WORKERS
+600 constant LIFE-S                 \ how far past now a token's exp lies
+variable PORT                       \ the open phase's port, which /keys's URL names
+$40 constant URL-CAP
+URL-CAP BUFFER: KEYS-URL
+variable KEYS-URL-U
+
+$1000 constant TOKEN-CAP
+TOKEN-CAP SPAN-BUFFER: TOKEN
+variable TOKEN-U
+$800 constant KEY-SET-CAP
+KEY-SET-CAP SPAN-BUFFER: KEY-SET
+variable KEY-SET-U
+CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
+
+\ The bytes copied into the span at off; answers the offset past them.
+: PUT ( ptr u8 n SPAN:span<u8> n -- n )
+   {: a:ptr u:n row off:n :}
+   a row off u SPAN:SUB SPAN:$ drop u BYTE-COPY
+   off u + ;
+
+: KEY-SET+ ( ptr u8 n -- ) KEY-SET KEY-SET-U @ PUT KEY-SET-U ! ;
+: KEY-SET$ ( -- ptr u8 n ) KEY-SET 0 KEY-SET-U @ SPAN:SUB SPAN:$ ;
+
+: KEY-SET-FILL ( -- )
+   0 KEY-SET-U !
+   S\" {\"keys\":[{\"kty\":\"RSA\",\"kid\":\"a\",\"use\":\"sig\",\"alg\":\"RS256\",\"n\":\"" KEY-SET+
+   JWS-FIXTURE:MODULUS$ KEY-SET+
+   S\" \",\"e\":\"" KEY-SET+ JWS-FIXTURE:EXPONENT$ KEY-SET+
+   S\" \"}]}" KEY-SET+ ;
+
+: TOKEN+ ( ptr u8 n -- ) TOKEN TOKEN-U @ PUT TOKEN-U ! ;
+: TOKEN$ ( -- ptr u8 n ) TOKEN 0 TOKEN-U @ SPAN:SUB SPAN:$ ;
+
+: ENCODED+ ( ptr u8 n -- )
+   TOKEN TOKEN-U @ TOKEN-CAP TOKEN-U @ - SPAN:SUB BASE64:ENCODE-URL
+   TOKEN-U @ + TOKEN-U ! ;
+
+\ A current token in TOKEN for the caller's azp and oid.
+: MINT ( ptr u8 n ptr u8 n -- )
+   {: azp:ptr au:n oid:ptr ou:n :}
+   SB-RESET S\" {\"iss\":\"https://issuer.test\",\"aud\":\"api://mcp-test\",\"exp\":" SB-APPEND
+   epoch-seconds LIFE-S + FMT:SB-INT
+   S\" ,\"azp\":\"" SB-APPEND azp au SB-APPEND
+   S\" \",\"oid\":\"" SB-APPEND oid ou SB-APPEND S\" \"}" SB-APPEND
+   0 TOKEN-U !
+   S\" {\"alg\":\"RS256\",\"kid\":\"a\"}" ENCODED+ s" ." TOKEN+ SB$ ENCODED+
+   JWS-FIXTURE:PEM$ TOKEN$ SIGNATURE CRYPTO:RS256-MAX-BYTES CRYPTO:RS256-SIGN
+   {: su:n :}
+   s" ." TOKEN+ SIGNATURE su ENCODED+ ;
+
+: ZEN ( -- ) s" zen-app" s" o-1" MINT ;
+: OWNER ( -- ) s" owner-app" s" o-2" MINT ;
+
+\ The Authorization carrying the minted token.
+: BEARING ( CURL:handle -- CURL:handle )
+   SB-RESET s" Authorization: Bearer " SB-APPEND TOKEN$ SB-APPEND SB$ ADD ;
+
+
+: GUARDED-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer BEARER:ADMIT? if asked answer MCP:HANDLE then ;
+
+: DENIED-ROUTE ( HTTP:request HTTP:response -- ) nip 403 HTTP:STATUS! ;
+: KEYS-ROUTE ( HTTP:request HTTP:response -- ) nip KEY-SET$ HTTP:BODY! ;
+
+\ Hides echo, the first tool listed, and secret from every caller but owner-app.
+: OWNER-ONLY ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u s" echo" STR= a u s" secret" STR= or 0= if true exit then
+   s" azp" BEARER:CLAIM$ 0= if 2drop false exit then
+   s" owner-app" STR= ;
+
+: ADD-SECRET ( -- )
+   s" secret" s" Answer the owner." S\" {\"type\":\"object\"}" s" {}" true
+   [: 2drop s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
+
+\ A claim the caller lacks shows as an empty string.
+: CLAIM+ ( ptr u8 n -- ) BEARER:CLAIM$ drop NB+ ;
+
+: ADD-WHOAMI ( -- )
+   s" whoami" s" Answer the caller's claims." S\" {\"type\":\"object\"}" s" {}" true
+   [: 2drop 0 NB-U !
+      S\" {\"azp\":\"" NB+ s" azp" CLAIM+ S\" \",\"oid\":\"" NB+ s" oid" CLAIM+ S\" \"}" NB+
+      NB NB-U @ MCP:ANSWER ;] MCP:ADD-TOOL ;
+
+
+: SECRET-ENTRY ( -- )
+   S\" ,{\"name\":\"secret\",\"description\":\"Answer the owner.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+ s" {}" OUTPUT s" true}}" W+ ;
+
+: WHOAMI-ENTRY ( -- )
+   S\" ,{\"name\":\"whoami\",\"description\":\"Answer the caller's claims.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+ s" {}" OUTPUT s" true}}" W+ ;
+
+: LIST-HEAD ( -- ) W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{\"tools\":[" W+ ;
+: LIST-START ( -- ) LIST-HEAD ECHO-ITEM s" ," W+ LATER-ITEMS ;
+: LISTED ( -- n ) LEGACY BEARING S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/list\"}" POST ;
+
+: HIDDEN-LIST ( -- )
+   s" tools/list leaves out the tools the hook refuses the caller, the first listed among them" T-LABEL
+   ZEN LISTED LIST-HEAD LATER-ITEMS WHOAMI-ENTRY s" ]}}" W+
+   200 W$ ANSWERED ;
+
+: HIDDEN-CALL ( -- )
+   s" tools/call of a hidden tool answers as an unknown one" T-LABEL
+   ZEN LEGACY BEARING
+   S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}" POST
+   400 UNKNOWN-ANSWER ANSWERED ;
+
+: OWNER-LIST ( -- )
+   s" tools/list shows the tool to the caller the hook admits" T-LABEL
+   OWNER LISTED LIST-START SECRET-ENTRY WHOAMI-ENTRY s" ]}}" W+
+   200 W$ ANSWERED ;
+
+: OWNER-CALL ( -- )
+   s" tools/call runs the tool for the caller the hook admits" T-LABEL
+   OWNER LEGACY BEARING
+   S\" {\"jsonrpc\":\"2.0\",\"id\":23,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}" POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":23,\"result\":{\"content\":[{\"type\":\"text\"," SB-APPEND
+   S\" \"text\":\"{}\"}],\"structuredContent\":{\"data\":{}},\"isError\":false}}" SB-APPEND
+   200 SB$ ANSWERED ;
+
+
+: DENIED-CALL ( -- ) CLIENT @ s" whoami" s" {}" 0 >MS MCP:CALL 2drop drop ;
+
+: GUARDED-CLIENT ( -- )
+   CURL:LOOP-START OK
+   s" /mcp" URL MCP:OPEN CLIENT !
+   s" a client without a token is E-DENIED" T-LABEL
+   ['] DENIED-CALL MCP:E-DENIED TTHROWSQ
+   s" TOKEN! sends the token on TOOLS and CALL" T-LABEL
+   ZEN CLIENT @ TOKEN$ MCP:TOKEN!
+   OWNER
+   CLIENT @ 0 >MS MCP:TOOLS W-RESET s" [" W+ LATER-ITEMS WHOAMI-ENTRY s" ]" W+ W$ T$=
+   s" whoami" s" {}" ASK TFALSE
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":" W+
+   S\" \"{\\\"azp\\\":\\\"zen-app\\\",\\\"oid\\\":\\\"o-1\\\"}\"}]," W+
+   S\" \"structuredContent\":{\"data\":{\"azp\":\"zen-app\",\"oid\":\"o-1\"}},\"isError\":false," W+
+   W-SERVER s" }" W+ W$ T$=
+   s" TOKEN! of an empty text sends none" T-LABEL
+   CLIENT @ s" " MCP:TOKEN!
+   ['] DENIED-CALL MCP:E-DENIED TTHROWSQ
+   CLIENT @ MCP:CLOSE
+   s" a 403 is E-DENIED" T-LABEL
+   s" /denied" URL MCP:OPEN CLIENT !
+   ['] DENIED-CALL MCP:E-DENIED TTHROWSQ
+   CLIENT @ MCP:CLOSE
+   s" TOKEN! refuses a closed client" T-LABEL
+   [: CLIENT @ s" t" MCP:TOKEN! ;] MCP:E-STATE TTHROWSQ
+   s" no transfer is left in flight" T-LABEL
+   [: CURL:LOOP-STOP ;] catch 0 T= ;
+
+
+\ Keeps the open phase's port and names /keys on it, while HTTP serves.
+: KEEP-PORT ( -- )
+   HTTP:PORT PORT !
+   s" /keys" URL {: a:ptr u:n :}
+   a KEYS-URL u BYTE-COPY u KEYS-URL-U ! ;
+
+\ ISSUER! and VISIBLE! are refused while HTTP serves, so the server starts again
+\ on the port /keys's URL names, with two workers: ADMIT? fetches /keys from
+\ this same server and waits for the answer, which a sole worker could not give.
+: PROTECTED-CASES ( -- )
+   KEEP-PORT
+   HTTP:STOP
+   HTTP:ROUTES-RESET
+   s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /mcp" [: GUARDED-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /denied" [: DENIED-ROUTE ;] HTTP:ROUTE
+   KEY-SET-FILL
+   s" https://issuer.test" s" api://mcp-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER!
+   ['] OWNER-ONLY MCP:VISIBLE!
+   ADD-SECRET ADD-WHOAMI
+   LOOPBACK PORT @ TWO-WORKERS IDLE-MS HTTP:START
+   s" VISIBLE! while HTTP serves throws E-STATE" T-LABEL
+   [: ['] OWNER-ONLY MCP:VISIBLE! ;] MCP:E-STATE TTHROWSQ
+   HIDDEN-LIST HIDDEN-CALL OWNER-LIST OWNER-CALL GUARDED-CLIENT ;
+
+
 : SERVE-CASES ( -- )
    AIO:START
    HTTP:ROUTES-RESET
@@ -770,6 +973,7 @@ TYPED-VARIABLE NEVER MCP:client
    MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES NO-PARAMS MODERN-NOTIFICATION
    LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-ANSWER SILENT
    CLIENT-CASES
+   PROTECTED-CASES
    HTTP:STOP
    AIO:STOP ;
 
