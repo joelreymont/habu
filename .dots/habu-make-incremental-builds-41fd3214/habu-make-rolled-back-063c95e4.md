@@ -11,3 +11,5 @@ Workspace carl-roll (base qtstsksr). A STRUCTURE declaration rolled back inside 
 Status 2026-10-28: carl-roll is gone; no commit carries this title; 981b8ec1 and e772c139 (rollback scrubs) may cover it. Next: reproduce the two-cache cold compare at master; close if equal.
 
 Claim (carl, 2026-10-30): probe on the 11B engine in .jj-ws.noindex/carl-probe (brief-probes.md) blocked by -8597; resumes after habu-roll-back-definitions-42b88815.
+
+Result (carl, 2026-10-30): at the lane 11 tip mlluspps (ROLL merged), carl-probe's p3.f (STRUCTURE sdfail rolled back inside evaluate-closed and catch) builds cold twice into two cache roots: both rc 0, both print `1 7`, cold1-hb and cold2-hb byte-equal (14462864 bytes). Closes when lane 11 lands on master.
