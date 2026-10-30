@@ -866,8 +866,8 @@ variable LIVE-OVERRIDE
    RACE-CORE$ RACE-A$ FS:COPY-FILE-STREAM
    RACE-CORE$ RACE-B$ FS:COPY-FILE-STREAM
    s" scratch/core-b.f"
-      S\" : RUN ( -- )\n   BUILD-ARGS!"
-      S\" : RUN ( -- )\n   s\q support-B\q type cr\n   BUILD-ARGS!"
+      S\" : RUN ( bool -- )\n   {: report:bool :}\n   BUILD-ARGS!"
+      S\" : RUN ( bool -- )\n   {: report:bool :}\n   s\q support-B\q type cr\n   BUILD-ARGS!"
       PATCH-EMITTER
    s" tools/native-build-support.f"
       S\" 1 set-tier\nrequire tools/native-build-support-deps.f"
