@@ -3,7 +3,8 @@
 \ `0 set-check` session the quiet scan prints its reason and enforces nothing
 \ (CHECK-HOOKLESS); the declaration becomes the row without authority
 \ (DECLARE-HOOKLESS), and a body without a recordable declaration has no row:
-\ KEEP-ARITY refuses it with the reject status. Each subject sets its own tier.
+\ KEEP-ARITY refuses it with the reject status. A subject that needs tier 1
+\ sets it; the rest run at the default tier.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -209,153 +210,50 @@ variable RC
    S\" 6\n1\n" PRINTS
    s" habu: in hr-kept: at '+'" SAYS ;
 
-\ ---- a hook's zero verdict: the dropped definition keeps no row -------------
-\ A hook that certifies a definition and answers 0 drops it with its rows: tier
-\ 0 goes on without it, tier 1 refuses it (E-NCOMP-VERDICT), and a later word is
-\ checked against the word the engine binds. LIAR-FORGET certifies through the
-\ engine's hook, then answers 0 for a name that starts with W. The texts outrun
-\ a source line, so each is assembled in TEXT; each closes this package first,
-\ so its words are globals as in a file.
+\ ---- a hook's zero verdict refuses the definition ----------------------------
+\ A hook that certifies a definition and answers 0 refuses it: the native
+\ compiler throws E-NCOMP-VERDICT at the definition, so uncaught the load ends
+\ there, and caught the definition keeps no row and a later word is checked
+\ against the word the engine binds. LIAR-FORGET certifies through the engine's
+\ hook, then answers 0 for a name that starts with W. The texts outrun a source
+\ line, so each is assembled in TEXT; each closes this package first, so its
+\ words are globals as in a file.
 create TEXT CAP allot                  variable TEXT-U
 
 : TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
 : TEXT+ ( ptr u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
 
-: TIER-TEXT ( n -- ) {: tier:n :}
-   TEXT-U BUF-RESET
-   tier 0= if s" ;package 0 set-tier " else s" ;package 1 set-tier " then TEXT+ ;
+: ZERO-TEXT ( -- )
+   TEXT-U BUF-RESET  s" ;package " TEXT+ ;
 
-: GLOBAL-W+ ( -- ) s" : W-FORGET ( -- n ) 1 ; " TEXT+ ;
 : P-W+ ( -- ) s" package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+ ;
-: R-W+ ( -- ) s" package R-FORGET public : W-FORGET ( -- n ) 5 ; ;package " TEXT+ ;
 : Q-USING-P+ ( -- ) s" package Q-FORGET public using P-FORGET " TEXT+ ;
 
 : LIAR+ ( -- )
    s" : LIAR-FORGET ( ptr u8 n -- n ) over c@ [char] W = >r " TEXT+
    s" LOWER-CERT-HOOK:HOOK r> if drop 0 then ; ' LIAR-FORGET set-check " TEXT+ ;
 
-: SAYS-NOT ( ptr u8 n -- ) {: a:ptr u:n :}
-   ERR$ a u CONTAINS? 0= SHOW TTRUE ;
-
-\ The tier-1 refusal of the dropped definition, uncaught: the load ends there.
-: REFUSED-W ( -- )
+\ Uncaught, the refusal ends the load at W-FORGET.
+: ZERO-UNCAUGHT ( -- )
+   s" a definition its hook answers 0 for is refused" T-LABEL
+   ZERO-TEXT LIAR+  s" : W-FORGET 3 ; " TEXT+
+   TEXT$ SESSION
    RC @ RC-THROW T=
    s" ncomp: cannot compile W-FORGET" SAYS
    s" hb: uncaught throw code -8572" SAYS ;
 
-\ With a global W-FORGET and a used P-FORGET:W-FORGET, a bare W-FORGET is
-\ ambiguous to the engine: tier 0 refuses T-FORGET, which named it. A row of
-\ the dropped Q-FORGET:W-FORGET would bind T-FORGET's call instead. Tier 1
-\ refuses the dropped definition itself: the name it defines is no reference,
-\ so the ambiguity is not its refusal, and its hook runs.
-: SHADOWED ( n -- ) {: tier:n :}
-   tier 0= if
-      RC @ RC-REJECT T=
-      s" E-USING-SHADOW-GLOBAL" SAYS
-      OUT-U @ 0 T=
-   else REFUSED-W then ;
-
-: ZERO-CALL ( n -- ) {: tier:n :}
-   s" a dropped definition leaves a call to the engine's shadowed word" T-LABEL
-   tier TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 ; : T-FORGET ( -- n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
-   TEXT$ SESSION  tier SHADOWED ;
-
-\ At tier 1 this and ZERO-SHAPE end at W-FORGET, as ZERO-CALL does.
-: ZERO-TICK ( -- )
-   s" a dropped definition leaves a tick to the engine's shadowed word" T-LABEL
-   0 TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 ; : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;package " TEXT+
-   s" Q-FORGET:T-FORGET . cr" TEXT+
-   TEXT$ SESSION  0 SHADOWED ;
-
-\ Two used packages and a global: the engine's bare W-FORGET is ambiguous.
-\ Tier 1 refuses the dropped definition without naming that ambiguity.
-: AMBIGUOUS-TEXT ( n -- ) {: tier:n :}
-   tier TIER-TEXT GLOBAL-W+ P-W+ R-W+ LIAR+ Q-USING-P+
-   s" using R-FORGET : W-FORGET 3 ; " TEXT+ ;
-
-: AMBIGUOUS ( n -- ) {: tier:n :}
-   OUT-U @ 0 T=
-   tier 0= if
-      RC @ RC-THROW T=
-      s" E-USING-AMBIGUOUS" SAYS
-      s" hb: uncaught throw code 7144" SAYS
-   else
-      REFUSED-W
-      s" E-USING-AMBIGUOUS" SAYS-NOT
-   then ;
-
-: ZERO-AMBIGUOUS-CALL ( n -- ) {: tier:n :}
-   s" a dropped definition leaves a call to the engine's ambiguous word" T-LABEL
-   tier AMBIGUOUS-TEXT
-   s" : T-FORGET ( -- n ) W-FORGET ; ;using ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
-   TEXT$ SESSION  tier AMBIGUOUS ;
-
-: ZERO-AMBIGUOUS-TICK ( n -- ) {: tier:n :}
-   s" a dropped definition leaves a tick to the engine's ambiguous word" T-LABEL
-   tier AMBIGUOUS-TEXT
-   s" : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;using ;package " TEXT+
-   s" Q-FORGET:T-FORGET . cr" TEXT+
-   TEXT$ SESSION  tier AMBIGUOUS ;
-
-\ The dropped W-FORGET left two cells, the engine's one: typed against the
-\ dropped row, T-FORGET ( -- n n ) would certify and run one cell short.
-: ZERO-SHAPE ( -- )
-   s" a dropped definition's effect does not type a later caller" T-LABEL
-   0 TIER-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 4 ; : T-FORGET ( -- n n ) W-FORGET ; ;using ;package " TEXT+
-   s" Q-FORGET:T-FORGET . . cr" TEXT+
-   TEXT$ SESSION  0 SHADOWED
-   s" interpret stack underdepth" SAYS-NOT ;
-
-\ With no global, T-FORGET's W-FORGET is the used P-FORGET:W-FORGET ( -- n ):
-\ tier 0 refuses T-FORGET's ( -- n n ); tier 1 refuses the dropped definition.
-: ZERO-USED ( n -- ) {: tier:n :}
-   s" a dropped definition leaves a call to the used package's word" T-LABEL
-   tier TIER-TEXT P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 4 ; : T-FORGET ( -- n n ) W-FORGET ; ;using ;package " TEXT+
-   s" Q-FORGET:T-FORGET . . cr" TEXT+
-   TEXT$ SESSION
-   tier 0= if
-      RC @ RC-REJECT T=
-      s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS
-      s" interpret stack underdepth" SAYS-NOT
-   else REFUSED-W then ;
-
-\ The same refusal caught: the load goes on, and T-FORGET is still typed
-\ against P-FORGET:W-FORGET. Tier 0 drops the definition without a throw.
-: ZERO-USED-CAUGHT ( n -- ) {: tier:n :}
-   s" a caught drop leaves a call to the used package's word" T-LABEL
-   tier TIER-TEXT P-W+ LIAR+ Q-USING-P+
+\ The refusal caught: the load goes on, the refused W-FORGET keeps no row,
+\ and T-FORGET's ( -- n n ) is refused against P-FORGET:W-FORGET's ( -- n ).
+: ZERO-CAUGHT ( -- )
+   s" a caught refusal leaves a call to the used package's word" T-LABEL
+   ZERO-TEXT P-W+ LIAR+ Q-USING-P+
    S\" : TRY-FORGET ( -- n ) [: s\" : W-FORGET 3 4 ;\" evaluate-closed ;] catch ; " TEXT+
    s" TRY-FORGET . cr " TEXT+
    s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT$ SESSION
    RC @ RC-REJECT T=
-   tier 0= if S\" 0\n" else S\" -8572\n" then PRINTS
+   S\" -8572\n" PRINTS
    s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS ;
-
-\ A later definition of the dropped name in the same package is no duplicate.
-: ZERO-REDEFINE ( n -- ) {: tier:n :}
-   s" a dropped definition's name is free for the next one" T-LABEL
-   tier TIER-TEXT P-W+ LIAR+
-   s" package Q-FORGET public : W-FORGET 3 ; ;package LOWER-CERT-HOOK:INSTALL " TEXT+
-   s" package Q-FORGET public : W-FORGET ( -- n ) 7 ; ;package Q-FORGET:W-FORGET . cr" TEXT+
-   TEXT$ SESSION
-   tier 0= if
-      RC @ 0 T=
-      S\" 7\n" PRINTS
-      s" duplicate definition" SAYS-NOT
-   else REFUSED-W then ;
-
-: ZERO-VERDICT ( n -- ) {: tier:n :}
-   tier ZERO-CALL
-   tier ZERO-AMBIGUOUS-CALL
-   tier ZERO-AMBIGUOUS-TICK
-   tier ZERO-USED
-   tier ZERO-USED-CAUGHT
-   tier ZERO-REDEFINE ;
 
 \ ---- the window: a probe at the end of src/core/util.f ----------------------
 \ The engine under test builds a private copy of src/, src/lib/ and tools/; the
@@ -435,8 +333,8 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-UNSEEN
    SESSION-UNRECORDED
    SESSION-RECORDED
-   ZERO-TICK ZERO-SHAPE
-   2 0 do i ZERO-VERDICT loop
+   ZERO-UNCAUGHT
+   ZERO-CAUGHT
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
    TREE$ TREE-COPY:BUILD-SOURCES

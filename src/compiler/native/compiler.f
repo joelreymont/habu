@@ -185,8 +185,9 @@ private
 \ Parked rather than left on the stack, because this runs inside the quotation
 \ the recovery below catches. The tape's verdict is the scan's; a hook's zero
 \ verdict stands over it, so a hook that certifies through the checker and then
-\ answers 0 refuses the definition (RECORD), as tier 0 drops it (habu2.f
-\ EM-COMPILE-PUBLISH-HOOKED), and the refusal retracts the rows it recorded.
+\ answers 0 refuses the definition (RECORD), as T0 does (src/habu/t0.f SCAN),
+\ and the refusal retracts the rows it recorded. The JIT, when selected,
+\ drops the definition instead (habu2.f EM-COMPILE-PUBLISH-HOOKED).
 : END-RECORDED ( -- )
    NFEED:END-UNIT {: view:IR-ARENA:view verdict:n :}
    M-VERDICT @ 0<> if verdict M-VERDICT ! then
