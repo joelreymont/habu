@@ -2608,9 +2608,14 @@ package LOOP-EMIT
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 
-: C-TASK-LIVE-GUARD ( -- )
+\ C-TASK-GUARD is habu1.f B-TASK-GUARD's thread test; it names the keyword run
+\ on a task's thread. Every entry to the outer loop on a task thread (B-EVAL,
+\ the loaders) is refused before any text is read, so this keyword guard is the
+\ sink's own invariant, not a refusal a program reaches: `: x ;`, `create x`,
+\ `package PX` and `included` from a task all exit 79 with empty stderr.
+: C-TASK-GUARD ( -- )
    LBL {: ok:label :}
-   9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
+   9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
       $4F C-EXIT-TOKEN
    ok LBL, ;
 
@@ -3511,8 +3516,9 @@ public
 
 \ Store the name in record x9, whose room NAME-ROOM has already admitted: [16]
 \ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline, or
-\ [24] the address of a copy at CP, with CP moved past it. x10 = the name's address, x12 = its length, at least one byte. x9 and x12
-\ survive; x1, x10, x11 and x13-x16 are clobbered.
+\ [24] the address of a copy at CP, with CP moved past it. x10 = the name's
+\ address, x12 = its length, at least one byte. x9 and x12 survive; x10, x11
+\ and x13-x16 are clobbered.
 : NAME-COPY ( -- )
    LBL LBL LBL LBL LBL LBL {: short lcopy lcd scopy scd done :}
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = record x9 through the alias
@@ -3872,10 +3878,10 @@ package DEFWRITE
 : FRESH, ( label -- ) {: bad:label :}
    WLFIND:LENTRY LABEL@ BL,  12 bad CBNZ, ;
 
-\ Wid x2 is a namespace row's or a retired record's, not a wordlist.
+\ Wid x2 is one of layout.f's DICT-WL markers, not a wordlist: every wordlist id
+\ is at least 0.
 : REAL-WID, ( label -- ) {: bad:label :}
-   15 DICT-WL:NAMESPACE invert MOVN,  2 15 CMP,  C-EQ bad BCOND,
-   15 DICT-WL:RETIRED invert MOVN,  2 15 CMP,  C-EQ bad BCOND, ;
+   2 0 CMPI,  C-LT bad BCOND, ;
 
 \ After the seal, wid x2 is protected. LPROTWIDQ keeps x0-x4 and answers in x13.
 : OPEN-WID, ( label -- ) {: prot:label :}
@@ -3957,7 +3963,7 @@ variable LREPLAYTRAP
 \ namespace-record ( ptr u8 n bool -- n )
 : NAMESPACE-RECORD ( -- )
    LBL LBL LBL LBL LBL {: bad scan clean nopri done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    13 G-POP  1 G-POP  0 G-POP                         \ x13 = the flag, x1 = the length, x0 = the name
    bad NOT-PENDING,
    bad DICT-ROOM,
@@ -3990,7 +3996,7 @@ variable LREPLAYTRAP
 \ namespace-private ( n -- )
 : NAMESPACE-PRIVATE ( -- )
    LBL LBL {: bad done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    0 G-POP
    0 NDICT CMP,  C-CS bad BCOND,
@@ -4007,7 +4013,7 @@ variable LREPLAYTRAP
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid
 : ALIAS-RECORD ( -- )
    LBL LBL LBL LBL {: bad prot notval done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    2 G-POP  4 G-POP  1 G-POP  0 G-POP                 \ x2 = the wid, x4 = the source, x1/x0 = the name
    bad REAL-WID,
@@ -4015,9 +4021,7 @@ variable LREPLAYTRAP
    bad NOT-PENDING,
    4 NDICT CMP,  C-CS bad BCOND,
    5 4 REC-AT,
-   14 5 40 LDR,
-   15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
-   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   14 5 40 LDR,  14 0 CMPI,  C-LT bad BCOND,           \ a package row or a retired record has no live body
    14 5 16 LDR,  14 14 DNAME-INT ANDI,  14 bad CBNZ,  \ an internal body: the alias would drop its gate
    bad DICT-ROOM,
    bad NAME-SIZE,
@@ -4044,8 +4048,8 @@ variable LREPLAYTRAP
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
-\ package-scope! ( n n -- ) namespace index, parent wid. It stores while a
-\ task is live: the package keywords guard (C-TASK-LIVE-GUARD), and the Habu
+\ package-scope! ( n n -- ) namespace index, parent wid. It has no task guard
+\ of its own: the package keywords guard (C-TASK-GUARD), and the Habu
 \ loop's recovery puts the scope back through this row as LEVALREC stores the
 \ cells (src/habu/packages.f PKG-RECOVER).
 : PACKAGE-SCOPE ( -- )
@@ -4085,7 +4089,7 @@ variable LREPLAYTRAP
 \ replay-open ( -- )
 : REPLAY-OPEN ( -- )
    LBL LBL {: bad done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBNZ,   \ an overlay is open
    bad NOT-PENDING,
@@ -4103,7 +4107,7 @@ variable LREPLAYTRAP
 \ removes it.
 : REPLAY-RECORD ( -- )
    LBL LBL {: bad done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    2 G-POP  1 G-POP  0 G-POP                          \ x2 = the wid, x1/x0 = the name
    bad REAL-WID,
    8 BAND,
@@ -4142,7 +4146,7 @@ variable LREPLAYTRAP
 \ the replay record.
 : RECORD-WID ( -- )
    LBL LBL {: bad done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    3 G-POP  13 G-POP                                  \ x3 = the index, x13 = the wid
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -4168,7 +4172,7 @@ variable LREPLAYTRAP
 \ overlay.
 : REPLAY-PRIVATE ( -- )
    LBL LBL LBL {: bad give done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    13 G-POP  3 G-POP                                  \ x13 = the flag, x3 = the index
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -4193,14 +4197,15 @@ variable LREPLAYTRAP
 \ replay-close ( -- ): every check comes before the first store. It refuses
 \ NDICT below the saved count or above HW, CP below the saved CP and WIDN below
 \ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
-\ scope back and zeroes the band, the latch with it.
+\ scope back and zeroes the band, the latch with it. While a task is live it
+\ retires the records instead and keeps NDICT and CP (EM-DEF-OCC:LRETIRE).
 \ The WIDN refusal is defensive: every engine writer of WIDN but replay-widn!
 \ raises it, replay-widn! lowers it no further than the saved WIDN, and a raw
 \ store to WIDN-CELL or the band exits 83 after the seal. It keeps a WIDN the
 \ overlay did not leave from being restored over, as the NDICT and CP checks do.
 : REPLAY-CLOSE ( -- )
-   LBL LBL {: bad done :}
-   B-TASK-LIVE-GUARD
+   LBL LBL LBL {: bad kept done :}
+   B-TASK-GUARD
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
    bad NOT-PENDING,
@@ -4210,12 +4215,14 @@ variable LREPLAYTRAP
    14 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  15 DATA WIDN-CELL LDR,
    15 14 CMP,  C-CC bad BCOND,
    6 GUARD-CODE-WORD
-   9 4 0 ADDI,  EM-DEF-OCC:LCOUNT LABEL@ BL,  10 11 LASTC-TRIM,
+   9 4 0 ADDI,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 kept CBNZ,   \ a task live: retired, NDICT and CP kept
+   EM-DEF-OCC:LCOUNT LABEL@ BL,  10 11 LASTC-TRIM,
    CP 6 0 ADDI,
    10 DREC MOVZ,  11 5 10 MUL,  10 4 10 MUL,
    10 DBASE 10 ADD,  11 DBASE 11 ADD,                 \ records [x10, x11)
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  10 10 12 ADD,  11 11 12 ADD,   \ the records through the alias
    ZERO-SPAN,
+   kept LBL,
    8 BAND,
    0 0<> SCOPE,
    10 8 0 ADDI,  11 8 REPLAY-SCOPE:END BAND-OFF ADDI,
@@ -4234,7 +4241,7 @@ variable LREPLAYTRAP
 \ replay-close's WIDN check keeps holding.
 : REPLAY-WIDN ( -- )
    LBL LBL {: bad done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    13 G-POP                                           \ x13 = the mark
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
@@ -4248,7 +4255,7 @@ variable LREPLAYTRAP
 \ def-open ( ptr u8 n n n -- ) name, wid, kind
 : DEF-OPEN ( -- )
    LBL LBL LBL {: bad prot done :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
    14 DKIND:MASK DNAME-CELL or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
@@ -4724,7 +4731,7 @@ variable LTOPHOOK
 package INTERP-EMIT
 
 : C-CREATE ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    15 1 MOVZ,  LCREATE LABEL@ BL, ;
 
 \ The variable's cell is written zero: DP may come back over space a released
@@ -4743,7 +4750,7 @@ package INTERP-EMIT
 \ public-signatures / all-errors is locked by the check-all-errors-test
 \ const-layout-narrow fixture.
 : C-CONSTANT ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LTOK LABEL@ BL,
    LBL {: named:label :}
    0 named CBNZ,
@@ -4818,7 +4825,7 @@ package INTERP-EMIT
    nsig LBL, ;
 
 : C-TRUSTED ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL LBL LBL {: cpok ndok named :}
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
@@ -4968,7 +4975,7 @@ private
 
 : C-IDENTITY ( [ -- ] n -- )
    {: noname off:n :}
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL LBL LBL {: cpok:label ndok:label named:label :}
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       C-DIE-CODE-FULL
@@ -5094,6 +5101,9 @@ public
    11 DATA DEFER-XT-CELL LDR,
    C-DATA-ADDR-RAW                                 \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-LDRX C-EMITW
+   16 CP ENC-CMP C-EMITW                           \ habu1.f BCALLABLE's fence: `is` stores an xt
+   2 C-CC ENC-BCOND C-EMITW                        \ below CP: past the ISB
+   ENC-ISB C-EMITW
    C-CALL-BLR-X16 C-EMITW
    W-LINKREST C-EMITW
    W-RET C-EMITW ;
@@ -5188,7 +5198,7 @@ public
    done LBL, ;
 
 : C-DEFER ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL {: named :}
    C-DEFER-ROOM
    LTOK LABEL@ BL,  0 named CBNZ,
@@ -5571,7 +5581,7 @@ variable LCODEINV
    C-QUOTE-CONSUME
    LBL LBL {: cl cd :}
    12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
-   14 12 10 ADD,  B-TASK-LIVE-GUARD  14 DP-CHECK
+   14 12 10 ADD,  B-TASK-GUARD  14 DP-CHECK
    11 13 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
       14 11 0 LDRB,  14 12 0 STRB,  12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cl B,
@@ -5588,7 +5598,7 @@ variable LCODEINV
    10 255 CMPI,  C-LE capok BCOND,  LCSTR LABEL@ B,   \ c" over 255 bytes: named fd-2 label (LCSTR) then rc 76 via LCOMPILEDIE -- recoverable inside evaluate, fail-closed exit 76 at top level. Fires before the DP copy -> clean rollback
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
-   14 12 10 ADD,  14 14 1 ADDI,  B-TASK-LIVE-GUARD  14 DP-CHECK
+   14 12 10 ADD,  14 14 1 ADDI,  B-TASK-GUARD  14 DP-CHECK
    10 12 0 STRB,  12 12 1 ADDI,
    11 13 0 ADDI,  9 10 0 ADDI,
    cl LBL,  9 cd CBZ,
@@ -5610,7 +5620,7 @@ variable LCODEINV
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
    17 DATA 0 LDR,
-   14 17 10 ADD,  B-TASK-LIVE-GUARD  14 DP-CHECK
+   14 17 10 ADD,  B-TASK-GUARD  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,  11 17 10 SUB,
    11 G-PUSH  10 G-PUSH
@@ -5625,7 +5635,7 @@ variable LCODEINV
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
    17 DATA 0 LDR,
-   14 17 10 ADD,  14 14 1 ADDI,  B-TASK-LIVE-GUARD  14 DP-CHECK
+   14 17 10 ADD,  14 14 1 ADDI,  B-TASK-GUARD  14 DP-CHECK
    10 17 0 STRB,  17 17 1 ADDI,
    C-ESC-COPY-X17
    17 DATA 0 STR,  11 17 10 SUB,  11 11 1 SUBI,
@@ -5638,7 +5648,7 @@ variable LCODEINV
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
    17 DATA 0 LDR,
-   14 17 10 ADD,  B-TASK-LIVE-GUARD  14 DP-CHECK
+   14 17 10 ADD,  B-TASK-GUARD  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,
    1 17 10 SUB,  2 10 0 ADDI,  G-OUT ;
@@ -7481,7 +7491,8 @@ $47E0 constant HEAP-START-OFF
    LSNAPRBD LABEL@ LBL,
    9 8 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 15 CMP,  C-GE sdn2 BCOND,
-      13 9 40 LDR,  14 0 MOVN,  13 14 CMP,  C-EQ sds2 BCOND, \ package [0]/[8] are raw WID roles, never text pointers
+      13 9 40 LDR,  14 DICT-WL:NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND, \ package [0]/[8] are raw WID roles, never text pointers
+      14 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND,
       13 9 0 LDR,
       13 21 CMP,  C-LT sds2 BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
@@ -9385,7 +9396,7 @@ public
          0 2 MOVZ,  1 LP2NEST LABEL@ ADR,  2 P2NEST-MSG$ nip MOVZ,  NR-WRITE SYS,
          76 C-DIE-TOKEN
       p2ok LBL,
-      C-TASK-LIVE-GUARD
+      C-TASK-GUARD
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          C-DIE-CODE-FULL
       cpok LBL,
@@ -9603,7 +9614,7 @@ public
    ok LBL, ;
 
 : C-PACKAGE ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL LBL LBL {: inactive:label hastok:label cold:label :}
    14 DATA PKG-PUB-CELL LDR,  14 inactive CBZ,
       $4B C-PACKAGE-FAIL
@@ -9631,7 +9642,7 @@ public
    12 DATA CUR-CELL STR, ;
 
 : C-PUBLIC ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL {: active:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       $4B C-PACKAGE-FAIL
@@ -9641,7 +9652,7 @@ public
    9 DATA CUR-CELL STR, ;
 
 : C-PRIVATE ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL {: active:label :}
    9 DATA PKG-PRI-CELL LDR,  9 active CBNZ,
       $4B C-PACKAGE-FAIL
@@ -9651,7 +9662,7 @@ public
    9 DATA CUR-CELL STR, ;
 
 : C-END-PACKAGE ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL {: active:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       $4B C-PACKAGE-FAIL
@@ -9754,13 +9765,13 @@ public
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 ADDI,  8 7 0 STR, ;
 
 : C-USING ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    C-USING-NAME-GUARD
    C-USING-WID
    C-USING-PUSH ;
 
 : C-END-USING ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL LBL LBL LBL {: ok:label umsg:label own:label omsg:label :}
    LBL LBL {: mine:label fmsg:label :}
    s" hb: ;using would close a using opened outside the file" {: fm:ptr fu:n :}
@@ -10111,7 +10122,7 @@ public
 \ mark), duplicate tail (C-REJECT-DUP-DEF $4E, before the checker so the native
 \ diagnosis wins), protected-WID target (C-STORE-DEF-NAME).
 : C-EXPORT ( -- )
-   C-TASK-LIVE-GUARD
+   C-TASK-GUARD
    LBL LBL LBL LBL LBL LBL LBL
    {: active:label dnamed:label named:label found:label counted:label done:label notval:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
@@ -11890,19 +11901,22 @@ public
 \ gives back its input cursor, data-stack base (XDS), package and using scope,
 \ and EVALERR-CELL records the code. A frame begun with no definition open also
 \ rolls back everything compiled since: CP/NDICT, DP, compile state and the
-\ checker's records (EVAL-FRAME:ROWS). A frame begun inside an open definition
-\ (EVAL-FRAME:PEND) is an immediate's evaluate compiling into an outer buffer's
-\ definition, which it may not close (C-DEF-SOURCE-CLOSE): that definition stays
-\ open, put back to the token-start mark (layout.f TOKBODY-CELL: body capture,
-\ locals count, CP, virtual stack; C-CF-ROOM states why every refusal precedes
-\ any change). The mark is the innermost buffer's current token, or its end when
-\ it exited cleanly; frames begun in an open definition nest inside the one
-\ that owns the compile, so all pop while the mark holds. Popping stops when
-\ EVALD reaches 0 or the nearest handler (x11, read once because
-\ EM-RESET-COMPILE-STATE zeroes HND-CELL) is inside the current frame; delivery
-\ then matches the non-evaluate path.
+\ checker's records (EVAL-FRAME:ROWS); while a task is live it retires the
+\ dictionary records made since instead and keeps CP, NDICT and DP
+\ (EM-DEF-OCC:LRETIRE), rolling back the rest. A frame begun inside an open
+\ definition (EVAL-FRAME:PEND) is an immediate's evaluate compiling into an
+\ outer buffer's definition, which it may not close (C-DEF-SOURCE-CLOSE): that
+\ definition stays open, put back to the token-start mark (layout.f
+\ TOKBODY-CELL: body capture, locals count, CP, virtual stack; C-CF-ROOM states
+\ why every refusal precedes any change). The mark is the innermost buffer's
+\ current token, or its end when it exited cleanly; frames begun in an open
+\ definition nest inside the one that owns the compile, so all pop while the
+\ mark holds. Popping stops when EVALD reaches 0 or the nearest handler (x11,
+\ read once because EM-RESET-COMPILE-STATE zeroes HND-CELL) is inside the
+\ current frame; delivery then matches the non-evaluate path.
 : EM-EVAL-THROW-RECOVER ( -- )
    LBL LBL LBL LBL LBL LBL {: bounds:label owned:label scope:label unowned:label unrefused:label kept:label :}
+   LBL {: retired:label :}
    S\" hb: catch frame corrupt\n" {: ma:ptr mu:n :}
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
@@ -11954,14 +11968,15 @@ public
          12 0 MOVZ,  12 DATA LIDX-CELL STR,              \ the refused token's reload is gone
          scope B,
       owned LBL,
-      10 13 40 LDR,  LCODEINV LABEL@ BL,
       SP SP 32 SUBI,  11 SP 0 STR,  13 SP 8 STR,  15 SP 16 STR,
       \ The checker's records go with the definitions, back to the end as the
       \ buffer began (layout.f EVAL-FRAME:ROWS: end+1, 0 with no owner then).
       13 EVAL-FRAME:ROWS kept DECL-OWNER:RETRACT-TO
       kept LBL,
-      13 SP 8 LDR,  9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
-      11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  SP SP 32 ADDI,
+      13 SP 8 LDR,  9 13 48 LDR,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 retired CBNZ,
+      10 13 40 LDR,  LCODEINV LABEL@ BL,
+      9 13 40 LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
+      13 SP 8 LDR,
       CP 13 40 LDR,
       9 13 48 LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,  NDICT 13 48 LDR,
       12 13 56 LDR,  12 9 RELOC-EMIT:FLOOR-CLAMP,
@@ -11969,6 +11984,8 @@ public
       9 10 DP-LOWER,
       12 DATA DP-CELL STR,
       9 10 LASTC-TRIM,
+      retired LBL,
+      11 SP 0 LDR,  13 SP 8 LDR,  15 SP 16 LDR,  SP SP 32 ADDI,
       scope LBL,
       10 13 EVAL-PKG ADDI,
       9 10 PKGSNAP-CUR LDR,     9 DATA CUR-CELL STR,
@@ -12070,10 +12087,11 @@ public
    bounds LBL,  STACK-GUARD:EXIT-BOUNDS ;
 
 \ The recovery runs checked code (the invalidation callback and the checker's
-\ retract), so the region closes first as in LEVALREC: the underflow path
-\ (EM-INTERPRET-UNDERFLOW) arrives as an immediate word left it.
+\ retract) in place: the region stays executable through its read-execute view
+\ while stores go to its alias. The underflow path (EM-INTERPRET-UNDERFLOW)
+\ arrives as an immediate word left it.
 : EM-REPL-RECOVER ( -- )
-   LBL LBL {: bounds:label kept:label :}
+   LBL LBL LBL {: bounds:label kept:label retired:label :}
    LRREC LABEL@ LBL,
    14 DATA STACK-ABI:REPL-BASE-CELL LDR,  10 DATA STACK-ABI:REPL-CAP-CELL LDR,
    12 14 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
@@ -12081,10 +12099,11 @@ public
    12 DATA STACK-ABI:REPL-CAP-CELL LDR,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 14 0 ADDI,                                  \ callback argument needs the recovered cursor
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 QNL-LEN MOVZ,  NR-WRITE SYS,
-   10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
-   9 DATA RSAVCP-CELL LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
    DATA RSAVROWS-CELL kept DECL-OWNER:RETRACT-TO     \ the checker's records go with the line's definitions
    kept LBL,
+   9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LRETIRE LABEL@ BL,  14 retired CBNZ,
+   10 DATA RSAVCP-CELL LDR,  LCODEINV LABEL@ BL,
+   9 DATA RSAVCP-CELL LDR,  EM-DEF-OCC:LRECLAIM LABEL@ BL,
    CP DATA RSAVCP-CELL LDR,
    9 DATA RSAVND-CELL LDR,  EM-DEF-OCC:LCOUNT LABEL@ BL,
    NDICT DATA RSAVND-CELL LDR,
@@ -12093,6 +12112,7 @@ public
    9 10 DP-LOWER,
    12 DATA DP-CELL STR,
    9 10 LASTC-TRIM,
+   retired LBL,
    EM-RESET-COMPILE-STATE
    \ Roll the open-package scope back to this REPL line's boundary (RPKG
    \ snapshot) beside the RSAVCP/RSAVND/RSAVDP/RSAVSP rollback, and arm the resync.
@@ -13020,7 +13040,7 @@ package LABELS
    LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
    LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
-   LBL EM-DEF-OCC:LRECLAIM !
+   LBL EM-DEF-OCC:LRECLAIM !  LBL EM-DEF-OCC:LRETIRE !
    LBL RELOC-EMIT:LCALLS !  LBL RELOC-EMIT:LXT !  LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !
    LBL RELOC-EMIT:LINDEXRELEASE !
    LBL RELOC-EMIT:LROLLBACK !
@@ -13612,6 +13632,7 @@ variable KERNEL-CODE-END
    EMIT-DEF-OCC
    EMIT-DEF-OCC-OVERLAP
    EMIT-DEF-OCC-RECLAIM
+   EMIT-DEF-OCC-RETIRE
    EMIT-QUALIFY-DEF
    EMIT-STORE-DEF-NAME
    EMIT-NUM

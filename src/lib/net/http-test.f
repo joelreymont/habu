@@ -2,8 +2,7 @@
 \ CURL is the client for ordinary responses; raw TCP4 sends what a well-behaved
 \ client cannot and reads heads CURL does not hand back. A pinned raw head is
 \ compared whole through build/http-transcript.txt; that server runs one worker,
-\ so every request id and error body length repeats. Handlers are all defined
-\ before the server starts: Habu forbids dictionary mutation while a task lives.
+\ so every request id and error body length repeats.
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/prelude.f

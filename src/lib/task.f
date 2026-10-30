@@ -1,7 +1,34 @@
 \ task.f - checked CPU tasking over pthread, package TASK: an xt runs on its own
-\ thread, TCB, data stack and TASK:+USER region. NO COMPILATION WHILE A TASK IS
-\ LIVE (TASK-LIVE+); TASK:NEW defines nothing. Task-local storage: a band in
-\ src/habu/layout.f for a module the engine bakes, else TASK:+USER rows.
+\ thread, TCB, data stack and TASK:+USER region. THE MAIN THREAD COMPILES; TASKS
+\ RUN COMPILED CODE. A definition, `allot`, `,`, `c,`, `align`, an
+\ interpret-mode string literal that keeps its text, `evaluate`, a load and the
+\ package keywords run on the main thread while tasks are live, and exit $4F on
+\ a thread whose DATA holds a TCB in TASK-TCB-CELL: a task, an exposed region
+\ or a callback. `cp!`, `ndict!` and `seed-ndict!` also exit $4F on main while
+\ TASKS-LIVE-CELL (the main region's count, every exposed task and the AIO loop
+\ task included) is nonzero: lowering frees code a task may be running and
+\ records it may reference. A task's DBASE, NDICT and CP are registers loaded
+\ from its TCB as it starts, so a definition main has in progress is out of its
+\ reach. A word main finishes later reaches a task only as an xt through a
+\ channel that orders (a queue, a mailbox, an atomic cell, `is` on a defer):
+\ main flushes the code before the xt exists, and each indirect entry
+\ (`execute`, the catch family, a defer, a task's or a callback's start) runs
+\ an ISB first, the first three only for an xt at or above its CP (habu1.f
+\ BCALLABLE). Records and defer cells change only by single aligned stores
+\ (`is`, a record's flags or wordlist), so a task reads one old or new. A
+\ `does>` given to a created word or a patch32 rewrites an instruction in
+\ place: one a task is executing is outside the architecture's guarantee and
+\ is not fenced.
+\ LOOKUPS. A task's `search-wl`, `scope-find` and name lookups scan the records
+\ below its NDICT linearly: its region's HIDXP-CELL stays 0, since only main's
+\ appends build the hash index, so main's in-place compaction of the index
+\ never meets a task's probe; every probe on main bounds each slot's index by
+\ NDICT. A word published after a task started is not found by name in it. A
+\ rollback while tasks are live retires each row, a package row included, by one
+\ store of its wordlist cell (habu1.f EM-DEF-OCC:LRETIRE), so a lookup that
+\ began before the store finds only words whose code is kept.
+\ TASK:NEW defines nothing. Task-local storage: a band in src/habu/layout.f for
+\ a module the engine bakes, else TASK:+USER rows.
 \ STORAGE CLASS. TASK-LOCAL: SLEEP's timespecs (a TASK:+USER row). PROCESS-WIDE:
 \ semaphore pool, AT-EXIT rows, TCB chain and pool, callback rows; a CAS per move.
 
@@ -1058,16 +1085,15 @@ variable ROW-N
    data-base FFI:>CELL ROWS-END
    TASK-SELF TASK-DONE-SEM SEM-SIGNAL ;
 
-\ NO COMPILATION WHILE A TASK IS LIVE. A definition, `allot`, `,`, `c,`,
-\ `align`, an interpret-mode string literal that keeps its text, `evaluate`,
-\ `cp!` and `ndict!` exit $4F while this count is nonzero (habu1.f
-\ B-TASK-LIVE-GUARD), every exposed task and the AIO loop task included. A
-\ definition holds the code band writable from its colon to `;`, flipped in
-\ PROT-PAGE-MAX units (src/habu/layout.f), so a task running any word in that
-\ 64K unit faults; a forget frees code a task may be running. The count is the
-\ main region's, so a worker activating or exposing a task counts there too.
-\ Activations and releases race, so each moves it in one atomic step. No clamp
-\ below zero: a negative count is a pairing defect, which must surface as $4F.
+\ LOWERING WHILE A TASK IS LIVE. `cp!`, `ndict!` and `seed-ndict!` exit $4F
+\ while this count is nonzero (habu1.f B-LOWER-GUARD), every exposed task and
+\ the AIO loop task included: a forget frees code a task may be running. The
+\ count is the main region's, so a worker activating or exposing a task counts
+\ there too. Activations and releases race, so each moves it in one atomic
+\ step. No clamp below zero: a negative count is a pairing defect, which must
+\ surface as $4F. While it is nonzero the engine's own rollbacks (a failed
+\ `evaluate` or REPL line, replay-close) lower nothing either: they retire the
+\ text's records in place and keep CP, NDICT and DP (habu1.f EM-DEF-OCC:LRETIRE).
 : TASK-LIVE+ ( -- )
    1 MAIN-BASE TASKS-LIVE-CELL + atomic-add drop ;
 
@@ -1428,6 +1454,8 @@ variable SWEEP-ARMED
    0 reg EVALD-CELL + !
    0 reg EVALERR-CELL + !
    tcb reg TASK-TCB-CELL TASK-PTR!
+   \ x86-64's TASK-LIVE-GUARD (kernel-x64.f) reads this cell; arm64's
+   \ B-TASK-GUARD reads TASK-TCB-CELL.
    1 reg TASKS-LIVE-CELL + ! ;
 
 : TASK-CONSTRUCTED? ( ptr n -- bool )
@@ -1502,6 +1530,17 @@ variable SWEEP-ARMED
    TASK-LIVE-
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
+\ The code end a task takes as it goes live, in ACTIVATE and EXPOSE: the
+\ lowest code not yet flushed. An immediate word may activate or expose inside
+\ an open definition, whose body below CP is patched and flushed only at `;`,
+\ after the thread exists, and CP may move back within it (habu2.f LEVALREC's
+\ PEND leg). So with a definition pending it is the pending record's body
+\ start ([0] of the record PEND-CELL names), and an xt into that body fences
+\ (habu1.f BCALLABLE).
+: LIVE-CP ( -- n )
+   data-base PEND-CELL + @ {: pend:n :}
+   pend 0= if cp@ else pend TASK-N>PTR @ then ;
+
 : ACTIVATE ( [ -- ] ptr n -- ) {: xt tcb:ptr :}
    tcb TASK-STATE@ TASK-RUNNING = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-HALT-REQ = if E-TASK-STATE throw then
@@ -1514,7 +1553,7 @@ variable SWEEP-ARMED
    \ from these (BTASK-ENTRY), bound what LIBC-OS:FORK copies on the task.
    dbase@ tcb TCB.DBASE !
    ndict@ tcb TCB.NDICT !
-   cp@ tcb TCB.CP !
+   LIVE-CP tcb TCB.CP !
    \ The park outlives this TCB's earlier runs and exposures (PARK-CREATE), so it
    \ may hold a hint posted while exposed, after a run ended, or around a create
    \ that failed.
@@ -1625,7 +1664,7 @@ variable SWEEP-ARMED
    tcb PARK-DRAIN
    dbase@ tcb TCB.DBASE !
    ndict@ tcb TCB.NDICT !
-   cp@ tcb TCB.CP !
+   LIVE-CP tcb TCB.CP !
    tcb TCB.REGION @ {: reg:ptr :}
    tcb TCB.STACK @ FFI:>CELL reg CB-XDS + !
    tcb TCB.DBASE @ reg CB-DBASE + !

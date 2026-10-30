@@ -313,9 +313,8 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
 public
 
 \ AWAIT and AWAIT-BYTES wait on the AIO loop, so the loop runs for the body of
-\ RUN: it is started after the last definition, because a live task forbids
-\ compilation. It stops however the cases end, so a deadline's throw (DEADLINE)
-\ passes on with no loop running.
+\ RUN: it is started after the last definition. It stops however the cases
+\ end, so a deadline's throw (DEADLINE) passes on with no loop running.
 : RUN ( -- )
    T-RESET
    AIO:START

@@ -419,6 +419,13 @@ holds an address**.
   no-return, so nothing may follow a call to a word that ends in one. `throw`
   for recoverable and interactive paths, `die` for build makers and CLI
   boundaries.
+- Exit 79 (`$4F`) is compilation from a task: a definition, `create`, `allot`,
+  `,`, `evaluate`, a load or a package keyword run on a task's, an exposed
+  region's or a callback's thread, with nothing on fd 2: `evaluate` is refused
+  before its text is read, so a keyword in that text never runs. The main
+  thread compiles while tasks run; `cp!`, `ndict!` and `seed-ndict!` exit 79 on
+  it too, silently, while any task is live. `NLEASE`'s checks throw
+  `NLEASE:E-TASK` on a task's thread, and `NLEASE:IDLE?` answers false there.
 - `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:
   `[: 0 throw ;] catch` answers 109.
 - Arithmetic is modular and never refuses, with one exception: `/`, `mod` and
@@ -452,8 +459,8 @@ forth.md: **Errors**, **Integer arithmetic**.
   with cells on the stack is `E-EVAL-RESIDUE`, and one that ends inside a
   definition it opened is refused there, as every source is. A value crosses a load
   only as a word the file defines. `here` is cell-aligned when a loaded file
-  starts and when a `require` or `include` that ran a file returns, unless a
-  task is live: data never spans a load.
+  starts and when a `require` or `include` that ran a file returns: data never
+  spans a load.
 - At the top level of a stdin session or of a program file run as
   `bin/hb file.f`, `SOURCE-ROOT:CD <dir>` moves the first search root (a bare
   `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in

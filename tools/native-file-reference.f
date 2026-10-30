@@ -123,7 +123,6 @@ variable CAP-REC-U
 variable CAP-READY
 variable DEFINITION-ORD
 TYPED-VARIABLE RECORD-AT [ n -- ptr n ]
-: LIVE-WID ( n -- n ) XREF-REC XREF-WORDLIST ;
 defer LIVE-CONTRACT$ ( n -- ptr u8 n bool )
 : NO-CONTRACT ( n -- ptr u8 n bool ) drop NULL-PTR 0 false ;
 : CONTRACT-DEFAULT ( -- ) ['] NO-CONTRACT is LIVE-CONTRACT$ ;
@@ -671,7 +670,7 @@ public
 : PACKAGE-OF ( ptr n -- ptr u8 n n ) {: rec:ptr :}
    rec XREF-WORDLIST {: wid:n :}
    wid XREF-NAMESPACE-WL = if NULL-PTR 0 0 exit then
-   wid XREF-RETIRED-WL = if NULL-PTR 0 3 exit then
+   rec XREF-RETIRED? if NULL-PTR 0 3 exit then
    wid OWNER-API-PUB-WID = if s" hb-engine-api" 1 exit then
    wid OWNER-API-PRI-WID = if s" hb-engine-api" 2 exit then
    wid 0= if NULL-PTR 0 0 exit then
@@ -1119,7 +1118,7 @@ public
 : USE-LIVE-CONTRACT ( [ n -- ptr u8 n bool ] -- ) is LIVE-CONTRACT$ ;
 : USE-FIXED-READ ( [ n -- n n bool ] -- ) is FIXED-READ ;
 : RECORD-RETIRED? ( n -- bool )
-   LIVE-WID XREF-RETIRED-WL = ;
+   XREF-REC XREF-RETIRED? ;
 
 : REC-ORD ( ptr n -- n ) {: rec:ptr :}
    rec XREF-NULL = if -1 exit then

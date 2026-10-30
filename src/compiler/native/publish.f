@@ -206,8 +206,7 @@ create TRAILER TRAILER-BYTES allot
 : PENDING-CK ( n -- ) {: idx:n :}
    idx PENDING-IDX <> if E-NPUB-PENDING throw then
    idx XREF-REC XREF-WORDLIST {: wid:n :}
-   wid XREF-RETIRED-WL = if E-NPUB-PENDING throw then
-   wid XREF-NAMESPACE-WL = if E-NPUB-PENDING throw then
+   wid 0 < if E-NPUB-PENDING throw then           \ a package or retired row
    idx XREF-REC XREF-FLAGS {: f:n :}
    f DNAME-INT and 0<> if E-NPUB-PENDING throw then
    f DNAME-IMM and 0<> if E-NPUB-PENDING throw then ;

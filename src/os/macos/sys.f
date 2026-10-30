@@ -56,20 +56,21 @@ $1DA constant NR-SYMLINKAT
 $7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 $3B  constant NR-EXECVE    \ execve(path, argv, envp) — BSD syscall 59
 $C   constant NR-CHDIR     \ chdir(path) — BSD syscall 12; only Linux emitters use it today
-0    constant NR-CLOSE-RANGE  \ Linux-only, no Darwin call: named by habu1.f LINUX-SPAWN-FDS-CHILD
 $1   constant NR-EXIT-GROUP
 
-\ Darwin has no memfd_create, and syscall 0 is its indirect `syscall` entry,
-\ which dispatches on x0: NR-MEMFD-CREATE is a number no Darwin call has, and
-\ SYS, refuses to emit it by name instead of reaching the kernel. Only Linux
-\ arms emit it.
+\ A Linux-only call has no Darwin number: its constant is -1 and SYS, refuses
+\ every negative number, so a macOS arm that reaches one dies at engine build
+\ instead of reaching the kernel. 0 cannot mark an absent call: Darwin syscall
+\ 0 is the indirect `syscall` entry, which dispatches on x0. Only Linux arms
+\ emit these (habu1.f LINUX-SPAWN-FDS-CHILD and REGION-MEMFD, kernel-x64.f).
+-1   constant NR-CLOSE-RANGE
 -1   constant NR-MEMFD-CREATE
 
 -2 constant AT-FDCWD
 $20 constant AT-SYMLINK-NOFOLLOW   \ sys/fcntl.h AT_SYMLINK_NOFOLLOW; only Linux emitters use it today
 
 : SYS, ( n -- )
-   dup NR-MEMFD-CREATE = if s" hb: sys: NR-MEMFD-CREATE has no Darwin syscall" 76 die then
+   dup 0 < if s" hb: sys: a Linux-only syscall number" 76 die then
    16 swap MOVZ,  $80 SVC, ;
 
 \ Runtime-emit syscall stencils: the MATCH bad-tag die is

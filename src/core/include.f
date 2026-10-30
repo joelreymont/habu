@@ -1999,21 +1999,15 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
 \ the end align the parent's SEGMENT-OPEN after the load. A throw skips the
 \ end align, which does not matter: a load that threw refuses the parent's
 \ object, so no stored segment continues the parent's data from there.
-\ A live task freezes DATA (habu1.f B-TASK-LIVE-GUARD): the loader writes
-\ nothing then, as no writer may, and an object that starts off a cell is
-\ refused by its placement (tools/native-unit-object.f SEG-ALIGNED?).
-: LOAD-ALIGN ( -- )
-   data-base TASKS-LIVE-CELL + @ 0= if align then ;
-
 \ A created body the loader's file left pending closes before the loaded file
 \ runs, so its `,` grid belongs to the loader's file.
 : LOAD-UNIT ( -- )
    BODY-CLOSE
    LOAD-BYTES
    TOP@ RANGE-OWNER !
-   LOAD-ALIGN
+   align
    [: CALL-UNIT ;] source-file-run
-   LOAD-ALIGN ;
+   align ;
 
 : LOAD-CURRENT ( -- )
    PUSH

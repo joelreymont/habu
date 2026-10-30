@@ -10,6 +10,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
+require src/lib/task.f
 
 package NATIVE-EVAL-TEST
 
@@ -35,6 +36,12 @@ TRUSTED: PLUS-XT ( -- [ n -- n ] ) ['] + ;
 : INNER-UNDER$ ( -- ptr u8 n ) s" 1 ' NATIVE-EVAL-TEST:W execute" ;
 
 : INNER-OPEN$ ( -- ptr u8 n ) s" : NATIVE-EVAL-E ( -- n ) 1" ;
+
+\ The text EVAL-BODY evaluates would print; on a task's thread evaluation stops
+\ before it is read. The child activates the task: tasks do not cross a fork.
+TASK:MIN-STACK TASK:TASK EVALUATOR
+: EVAL-BODY ( -- ) s" 1 ." evaluate-closed ;
+: EVAL-IN-TASK ( -- ) ['] EVAL-BODY EVALUATOR TASK:ACTIVATE  EVALUATOR TASK:KILL ;
 
 \ The data-stack base each text of a nested pair sees.
 variable OUTER-BASE
@@ -299,16 +306,12 @@ create ERR IO-CAP allot
    ERR erru s" hb: source ended inside definition: NATIVE-EVAL-F at " CONTAINS?
    TTRUE ;
 
-$4F constant TASK-LIVE                  \ habu1.f B-TASK-LIVE-GUARD's exit
+$4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 
-\ The text would print; a live task must stop it before it is read.
-: LIVE$ ( -- ptr u8 n )
-   S\" 1 data-base TASKS-LIVE-CELL + ! s\" 1 .\" evaluate-closed" ;
-
-: LIVE ( -- )
-   s" a live task stops a closed text before it runs" T-LABEL
-   LIVE$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N TASK-LIVE T=
+: IN-TASK ( -- )
+   s" evaluation in a task exits before it reads the text" T-LABEL
+   s" NATIVE-EVAL-TEST:EVAL-IN-TASK" OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
+   PROC-OUTCOME>RC RC>N TASK-THREAD T=
    s" and nothing is printed" T-LABEL
    LEN>N 0 T=  LEN>N 0 T= ;
 
@@ -398,7 +401,7 @@ variable ERR-U
    UNFINISHED
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
    TOP-LEVEL
-   UNFINISHED-LINE LIVE
+   UNFINISHED-LINE IN-TASK
    2 0 do i THROWN-BACK loop
    CHECKED
    T-REPORT ;

@@ -1,8 +1,8 @@
 \ ffi-callback-test.f - C calling back into checked Habu: qsort and
 \ pthread_create are the C callers. Each case's facts, with every child's and
 \ the stripped image's exit status and streams, form a transcript written to
-\ build/ffi-callback-transcript.txt, read back and compared whole. Every word but
-\ one, a case of its own, is defined before the first task starts.
+\ build/ffi-callback-transcript.txt, read back and compared whole. A callback
+\ body that defines ends the process; that is a case of its own.
 \ Run: bin/hb --load src/lib/ffi-callback-test.f
 require src/lib/test.f
 require src/lib/string.f

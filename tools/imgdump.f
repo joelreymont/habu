@@ -204,11 +204,11 @@ variable HV  variable HP
 : E-L {: o :} ( n -- n )
    o E-F DNAME-LEN-MASK and ;
 : E-WID ( n -- n ) 40 + I@ ;
-\ A namespace record's slots 0 and 1 are the package's public and private WID
-\ roles, not a code span (src/habu/xref.f XREF-LEN), so no span is computed for
-\ one and its slot 1 is reported as stored.
+\ A package record's slots 0 and 1, live or retired, are its public and private
+\ WID roles, not a code span (src/habu/xref.f XREF-LEN), so no span is computed
+\ for one and its slot 1 is reported as stored.
 : E-CODE? {: o :} ( n -- bool )
-   o E-WID XREF-NAMESPACE-WL <> ;
+   o E-WID XREF:PACKAGE-WL? 0= ;
 
 : E-S {: o :} ( n -- n )
    o I@  HAS-SNAP @ 0= o E-CODE? and if XTBASE @ + then ;

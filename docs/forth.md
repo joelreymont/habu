@@ -1759,9 +1759,9 @@ ceiling is a named constant beside the code that enforces it.
   of range: DP <dp> of <cap> bytes`, catchable inside `evaluate`, both numbers
   offsets from `data-base`, with ` at <path>:<line>` when a source file is
   open. Hold bulk data in `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map
-  their own pages, not in the dictionary. While a task is live every one of
-  these sinks exits before it writes, as do `evaluate` and `evaluate-closed`
-  (the `src/lib/task.f` header).
+  their own pages, not in the dictionary. On a task's thread every one of
+  these sinks exits before it writes, as do `evaluate` and `evaluate-closed`;
+  the main thread uses them while tasks run (the `src/lib/task.f` header).
 
 ## Constants
 
@@ -2379,7 +2379,7 @@ sections above.
   an xt, `catch` or `finally`, and must leave no cells or open definition.
   Underflow is catchable; residue is `E-EVAL-RESIDUE`; an unfinished
   definition is refused as at the end of any source. Data-stack overflow
-  exits, and with a task live evaluation exits before reading text. The open
+  exits, and on a task's thread evaluation exits before reading text. The open
   cases are under **Checked code and primitive boundaries**.
 - **`TEST-EVAL` returns a measured value from text.** From
   `src/lib/test.f`, `TEST-EVAL:N ( ptr u8 n -- n )` takes exactly one cell,

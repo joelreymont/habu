@@ -75,7 +75,7 @@ X64LAYOUT:CODE-CEILING constant CODE-CEILING
 private
 
 $1000 constant PAGE-BYTES              \ the x86-64 Linux base page
-79 constant TASK-LIVE-RC               \ habu1.f B-TASK-LIVE-GUARD's $4F
+79 constant TASK-LIVE-RC               \ habu1.f B-TASK-GUARD's $4F
 2 constant STDERR
 
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
@@ -236,10 +236,11 @@ public
    s" x64kernel: no registered body named " type a u type cr
    s" x64kernel: ENTRY-LABEL names no registered body" REFUSE-RC die ;
 
-\ The twin of habu1.f B-TASK-LIVE-GUARD, for a body that moves engine state:
-\ while a task is live it exits TASK-LIVE-RC. It clobbers rax and the flags, as
-\ the ARM64 guard clobbers x9; X64ASM has no compare of memory with an
-\ immediate.
+\ The x86-64 guard for a body that moves engine state: while a task is live it
+\ exits TASK-LIVE-RC. arm64's habu1.f B-TASK-GUARD refuses only on a task's
+\ thread; x86-64 keeps the older rule until its own W^X lane. It clobbers rax
+\ and the flags, as the ARM64 guard clobbers x9; X64ASM has no compare of
+\ memory with an immediate.
 : TASK-LIVE-GUARD, ( -- )
    RAX DATA-REG TASKS-LIVE-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR

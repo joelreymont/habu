@@ -103,7 +103,7 @@ TASK:MIN-STACK TASK:TASK SLEEP-KILLED
 
 $4000 constant TASK-CAP
 60000 constant TASK-CAPTURE-MS       \ includes compiling src/lib/task.f in each child
-$4F constant TASK-LIVE-RC
+$4F constant TASK-REFUSED-RC
 $62 constant TASK-DIE-RC
 67 constant TASK-UNCAUGHT-RC
 $30 constant TASK-CODE-CAP
@@ -325,13 +325,146 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
       APP-KILL
    loop ;
 
-: TASK-LIVE-COMPILE$ ( -- ptr u8 n )
+\ MAIN COMPILES WHILE A TASK RUNS. The child starts a worker that runs every xt
+\ a queue brings it on 100 and sums the answers. With the worker running, main
+\ defines a word, allots a variable, evaluates a definition and points a defer
+\ at it with `is`, then sends the first word's xt and the defer's: 101 + 200.
+: TASK-MAIN-COMPILES$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" : TASK-GUARD-LOOP ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
-   s" TASK:MIN-STACK TASK:TASK TASK-GUARD-WORKER" SB-APPEND TASK-LF
-   s" ' TASK-GUARD-LOOP TASK-GUARD-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
-   s" variable TASK-GUARD-BAD" SB-APPEND TASK-LF
+   s" require src/lib/queue.f" SB-APPEND TASK-LF
+   s" package TMC" SB-APPEND TASK-LF
+   s" CAST: JOB> ( [ n -- n ] -- n )" SB-APPEND TASK-LF
+   s" CAST: >JOB ( n -- [ n -- n ] )" SB-APPEND TASK-LF
+   s" 4 QUEUE:QUEUE JOBS" SB-APPEND TASK-LF
+   s" variable SUM" SB-APPEND TASK-LF
+   s" : RUN ( -- ) begin JOBS QUEUE:POP dup 0<> while >JOB 100 swap execute SUM +! repeat drop ;" SB-APPEND TASK-LF
+   s" : JOINED ( result<n,n> -- ) MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK WORKER" SB-APPEND TASK-LF
+   s" public" SB-APPEND TASK-LF
+   s" : START ( -- ) JOBS QUEUE:INIT ['] RUN WORKER TASK:ACTIVATE ;" SB-APPEND TASK-LF
+   s" : SEND ( [ n -- n ] -- ) JOB> JOBS QUEUE:PUSH ;" SB-APPEND TASK-LF
+   s" : FINISH ( -- n ) 0 JOBS QUEUE:PUSH WORKER TASK:JOIN JOINED SUM @ ;" SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   s" TMC:START" SB-APPEND TASK-LF
+   s" package MC" SB-APPEND TASK-LF
+   s" variable ONE 1 ONE !" SB-APPEND TASK-LF
+   s" : ADD ( n -- n ) ONE @ + ;" SB-APPEND TASK-LF
+   S\" s\" : DOUBLE ( n -- n ) 2 * ;\" evaluate" SB-APPEND TASK-LF
+   s" defer D ( n -- n )" SB-APPEND TASK-LF
+   s" : SET ( [ n -- n ] -- ) is D ;" SB-APPEND TASK-LF
+   s" ' DOUBLE SET" SB-APPEND TASK-LF
+   s" ' ADD TMC:SEND ' D TMC:SEND TMC:FINISH ." SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   SB$ ;
+
+\ LOWERING IS REFUSED WHILE A TASK IS LIVE. Main defines and prints beside a
+\ parked worker, then `ndict!` exits $4F with no message: lowering frees records
+\ a task may hold. The printed word proves main compiled beside the live task.
+: TASK-LOWER-LIVE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" : TLL-IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TLL-WORKER" SB-APPEND TASK-LF
+   s" ' TLL-IDLE TLL-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" : TLL-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
+   s" TLL-AFTER ." SB-APPEND TASK-LF
+   s" ndict@ ndict!" SB-APPEND TASK-LF
+   SB$ ;
+
+\ A TASK MAY NOT COMPILE. The worker waits for main to define and print, then
+\ evaluates a colon definition: exit $4F before the text is read, no message.
+\ A worker that survived it would say so in TTC-DONE, and main would exit 0.
+: TASK-COMPILES$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" variable TTC-GO" SB-APPEND TASK-LF
+   s" variable TTC-DONE" SB-APPEND TASK-LF
+   S\" : TTC-BODY ( -- ) begin TTC-GO atomic@ 0= while TASK:PAUSE repeat s\" : TTC-IN ( -- ) ;\" evaluate-closed 1 TTC-DONE atomic! ;" SB-APPEND TASK-LF
+   s" : TTC-RUN ( -- ) 1 TTC-GO atomic! begin TTC-DONE atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK TTC-WORKER" SB-APPEND TASK-LF
+   s" ' TTC-BODY TTC-WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" : TTC-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
+   s" TTC-AFTER ." SB-APPEND TASK-LF
+   s" TTC-RUN" SB-APPEND TASK-LF
+   SB$ ;
+
+\ `create` IN A TASK exits $4F like any other definer, before it parses a name.
+\ The worker runs a definer once main has defined and printed; one that got
+\ past the guard would branch through the startup's create cell.
+: TASK-CREATES$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" package TTK" SB-APPEND TASK-LF
+   s" variable GO" SB-APPEND TASK-LF
+   s" variable DONE" SB-APPEND TASK-LF
+   s" : DEF ( -- ) create ;" SB-APPEND TASK-LF
+   s" : BODY ( -- ) begin GO atomic@ 0= while TASK:PAUSE repeat DEF 1 DONE atomic! ;" SB-APPEND TASK-LF
+   s" : RUN ( -- ) 1 GO atomic! begin DONE atomic@ 0= while TASK:PAUSE repeat ;" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK WORKER" SB-APPEND TASK-LF
+   s" ' BODY WORKER TASK:ACTIVATE" SB-APPEND TASK-LF
+   s" : AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
+   s" AFTER ." SB-APPEND TASK-LF
+   s" RUN" SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   SB$ ;
+
+\ A FAILED TEXT RETIRES ITS WORDS WHILE A TASK RUNS THEM. The text defines
+\ SPIN, starts a task on it, then fails on MISSING-WORD: the recovery retires
+\ SPIN by name and keeps its code, so the counter still advances, `' SPIN` is
+\ undefined, and the next four definitions land above the task's code instead
+\ of over it.
+: TASK-ROLLBACK-LIVE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" package RW" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
+   s" variable N" SB-APPEND TASK-LF
+   S\" : TRY ( -- n ) [: s\" : SPIN ( -- ) begin 1 N +! TASK:PAUSE again ; ' SPIN W TASK:ACTIVATE MISSING-WORD\" evaluate-closed ;] catch ;" SB-APPEND TASK-LF
+   s" : ADVANCE ( -- ) N atomic@ begin dup N atomic@ = while TASK:PAUSE repeat drop ;" SB-APPEND TASK-LF
+   S\" : GONE? ( -- bool ) [: s\" ' SPIN drop\" evaluate-closed ;] catch 0<> ;" SB-APPEND TASK-LF
+   s" TRY 0<> ADVANCE GONE? and bool>n ." SB-APPEND TASK-LF
+   s" : F1 ( n -- n ) 3 * 7 + 11 xor 13 and 5 lshift ;" SB-APPEND TASK-LF
+   s" : F2 ( n -- n ) F1 F1 F1 1 + ;" SB-APPEND TASK-LF
+   s" : F3 ( n n -- n ) + 2 * 9 - ;" SB-APPEND TASK-LF
+   s" : F4 ( n -- n ) dup F2 F3 ;" SB-APPEND TASK-LF
+   s" ADVANCE 5 F4 ." SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   SB$ ;
+
+\ A FAILED TEXT'S PACKAGES RETIRE AS PACKAGE ROWS. With a task live, a text
+\ that makes two packages and then fails leaves their rows marked
+\ DICT-WL:RETIRED-NAMESPACE with their public and private wids kept in [0] and
+\ [8]. Here an outer text runs that one, then makes a third package and fails,
+\ so its rollback meets the two rows already retired, which keep their marker.
+\ An image captured over the three must skip them as package rows. A capture
+\ that read one as a code record, [0] its start and [8] its encoded length,
+\ would refuse it as a malformed code length (exit 74) whenever the private wid
+\ is not a multiple of 4. A package takes two consecutive wids, so of the first
+\ two rows' private wids at most one is a multiple of 4.
+: TASK-RETIRED-PACKAGES$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/lib/task.f" SB-APPEND TASK-LF
+   s" require src/arch/arm64/asm.f" SB-APPEND TASK-LF
+   s" require src/arch/arm64/icode.f" SB-APPEND TASK-LF
+   s" require src/habu/layout.f" SB-APPEND TASK-LF
+   s" require src/habu/aot-decl.f" SB-APPEND TASK-LF
+   s" require src/habu/aot-arm.f" SB-APPEND TASK-LF
+   s" require src/habu/aot-capture.f" SB-APPEND TASK-LF
+   s" package TRP" SB-APPEND TASK-LF
+   s" : IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
+   s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
+   S\" : TRY ( -- n ) [: s\" TRP:INNER drop package RETIRED-THREE ;package MISSING-WORD\" evaluate-closed ;] catch ;" SB-APPEND TASK-LF
+   s" public" SB-APPEND TASK-LF
+   S\" : INNER ( -- n ) [: s\" package RETIRED-ONE ;package package RETIRED-TWO ;package MISSING-WORD\" evaluate-closed ;] catch ;" SB-APPEND TASK-LF
+   s" : RUN ( -- ) ['] IDLE W TASK:ACTIVATE TRY 0<> bool>n . W TASK:KILL ;" SB-APPEND TASK-LF
+   s" ;package" SB-APPEND TASK-LF
+   s" AOT-ARM:WINDOW-OPEN" SB-APPEND TASK-LF
+   s" TRP:RUN" SB-APPEND TASK-LF
+   s" AOT-ARM:WINDOW-CLOSE" SB-APPEND TASK-LF
+   s" AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK" SB-APPEND TASK-LF
+   s" AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE" SB-APPEND TASK-LF
+   s" 7 ." SB-APPEND TASK-LF
    SB$ ;
 
 : TASK-DIE$ ( -- ptr u8 n )
@@ -388,10 +521,36 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-OUTCOME-EXITED=
    outu erru ;
 
-: TASK-TEST-LIVE-COMPILE-GUARD ( -- )
-   TASK-LIVE-COMPILE$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
-   outu LEN>N 0 T=
-   TASK-ERR erru LEN>N S\" variable\n" T$= ;
+: TASK-TEST-MAIN-COMPILES ( -- )
+   TASK-MAIN-COMPILES$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" 301\n" T$=
+   erru LEN>N 0 T= ;
+
+\ Exit $4F, the word main defined printed and nothing on stderr.
+: TASK-EXPECT-REFUSED-EXIT ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   src srcu TASK-REFUSED-RC TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" 7\n" T$=
+   erru LEN>N 0 T= ;
+
+: TASK-TEST-LOWER-LIVE ( -- )
+   TASK-LOWER-LIVE$ TASK-EXPECT-REFUSED-EXIT ;
+
+: TASK-TEST-TASK-COMPILES ( -- )
+   TASK-COMPILES$ TASK-EXPECT-REFUSED-EXIT ;
+
+: TASK-TEST-TASK-CREATES ( -- )
+   TASK-CREATES$ TASK-EXPECT-REFUSED-EXIT ;
+
+: TASK-TEST-ROLLBACK-LIVE ( -- )
+   TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
+   TASK-OUT outu LEN>N S\" -1\n771\n" T$=
+   TASK-ERR erru LEN>N s" E-UNDEFINED: MISSING-WORD" CONTAINS? TTRUE ;
+
+\ The capture runs in the child: it needs a window the failed text's rows sit in.
+: TASK-TEST-RETIRED-PACKAGES ( -- )
+   TASK-RETIRED-PACKAGES$ 0 TASK-RUN-EXITS drop {: outu:len :}
+   TASK-OUT outu LEN>N S\" -1\n7\n" T$= ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
@@ -1565,7 +1724,7 @@ variable STOP-FOR-SEEN
 \ that still says RUNNING and finds it DONE a moment later, and KILL and HALT
 \ must both tolerate it. A KILL in that window that released nothing, or threw
 \ E-TASK-STATE through HALT's wake, left the task counted in TASKS-LIVE-CELL,
-\ and the next dictionary mutation - a suite's own ;package - exited $4F.
+\ which `cp!`, `ndict!` and a capture refuse on.
 
 TASK:MIN-STACK TASK:TASK KILL-ENDED
 TASK:MIN-STACK TASK:TASK HALT-ENDED
@@ -2316,12 +2475,12 @@ variable BIND-PAIR-Q-WON
 : TASK-TEST-EXPOSED-CAPTURE ( -- )
    TASK-EXPOSED-CAPTURE$ TASK-UNCAUGHT-RC s" exposed task at capture" TASK-EXPECT-FAIL ;
 
-\ THE LIVE COUNT IS THE MAIN REGION'S, WHOEVER ACTIVATES. The compiler's guard
+\ THE LIVE COUNT IS THE MAIN REGION'S, WHOEVER ACTIVATES. The lowering guard
 \ reads the main region's cell, so a worker that activates a worker counts
 \ there: counted in its own region, the inner task would be invisible once the
-\ outer one is released, and the main task would define a word beside a running
-\ thread. The child releases the outer worker and then defines, with the inner
-\ one still running: exit $4F at that definer.
+\ outer one is released, and main could free code beside a running thread. The
+\ child releases the outer worker, defines and prints, then lowers with `cp!`
+\ while the inner one still runs: exit $4F at `cp!`.
 : TASK-WORKER-ACTIVATES$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -2334,13 +2493,13 @@ variable BIND-PAIR-Q-WON
    s" ' TWW-START TWW-OUTER TASK:ACTIVATE" SB-APPEND TASK-LF
    s" TWW-WAIT" SB-APPEND TASK-LF
    s" TWW-OUTER TASK:KILL" SB-APPEND TASK-LF
-   s" variable TWW-LATE" SB-APPEND TASK-LF
+   s" : TWW-AFTER ( -- n ) 7 ;" SB-APPEND TASK-LF
+   s" TWW-AFTER ." SB-APPEND TASK-LF
+   s" cp@ cp!" SB-APPEND TASK-LF
    SB$ ;
 
 : TASK-TEST-WORKER-ACTIVATES ( -- )
-   TASK-WORKER-ACTIVATES$ TASK-LIVE-RC TASK-RUN-EXITS {: outu:len erru:len :}
-   outu LEN>N 0 T=
-   TASK-ERR erru LEN>N S\" variable\n" T$= ;
+   TASK-WORKER-ACTIVATES$ TASK-EXPECT-REFUSED-EXIT ;
 
 $30 constant NEW-N                   \ past one pool chunk of 42 records
 300 constant NEW-ROUNDS              \ records made and given back again and again
@@ -2613,7 +2772,12 @@ variable NEW-STRAY
    WORKER-A TASK:HALT
    WORKER-A TASK:KILL
    WORKER-A TASK:DONE? TFALSE
-   TASK-TEST-LIVE-COMPILE-GUARD
+   TASK-TEST-MAIN-COMPILES
+   TASK-TEST-LOWER-LIVE
+   TASK-TEST-TASK-COMPILES
+   TASK-TEST-TASK-CREATES
+   TASK-TEST-ROLLBACK-LIVE
+   TASK-TEST-RETIRED-PACKAGES
    TASK-TEST-APP-SOAK
    TASK-TEST-USER-ARENA
    TASK-TEST-BUILDERS

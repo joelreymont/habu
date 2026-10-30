@@ -166,11 +166,11 @@ $38 constant FR-DP
 \ The frame on its way into the catch that links it; empty at rest.
 TYPED-VARIABLE FRAME-ARG ptr u8
 
-\ `evaluate` while a task is live ends the process with no output, as the
-\ engine's does (habu1.f B-TASK-LIVE-GUARD).
+\ `evaluate` on a task's thread ends the process with no output, as the
+\ engine's does (habu1.f B-TASK-GUARD).
 : EVAL-TASK-GUARD ( -- )
-   TASKS-LIVE-CELL CELL@ 0= if exit then
-   s" " RC-TASK-LIVE FAIL-CLOSED ;
+   TASK-TCB-CELL CELL@ 0= if exit then
+   s" " RC-TASK-THREAD FAIL-CLOSED ;
 
 \ The source owner's record end and its cut, raw execution tokens in the owner
 \ record (layout.f EVAL-FRAME:ROWS).

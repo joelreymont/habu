@@ -89,12 +89,12 @@ CALLBACK: RAID ( n -- n ) 0 FALLBACK ;CALLBACK
    s" ffi-callback-child: unexposed was not refused" SURVIVED-RC die ;
 
 \ The ended worker's exposed CTX-TASK still counts on the main region, so the
-\ main task may not define.
+\ main task may not lower the code pointer.
 : DEFINES ( -- )
    ['] WORK-EXPOSES WORKER-A TASK:ACTIVATE
    WORKER-A TASK:JOIN JOINED 0= if s" defines: the exposing worker was joined" type cr then
    WAIT-INSIDE
-   s" variable CBC-LATE" INCLUDE-EVALUATE
+   s" cp@ cp!" INCLUDE-EVALUATE
    s" ffi-callback-child: defines was not refused" SURVIVED-RC die ;
 
 \ Defines once with no task live, so the definition is admitted. The thunk

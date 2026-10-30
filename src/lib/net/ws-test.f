@@ -2,7 +2,7 @@
 \ TCP4 shakes hands with src/lib/net/ws.f inside an HTTP server and speaks frames
 \ built and read with src/lib/net/ws-frame.f. One handler, NOTE, serves every
 \ socket and logs each `closed` with its socket; every handler is defined before
-\ the server starts, because Habu forbids dictionary mutation while a task is live.
+\ the server starts.
 \ Run: bin/hb --load src/lib/net/ws-test.f
 
 require src/lib/test.f

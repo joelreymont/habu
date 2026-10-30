@@ -1248,7 +1248,7 @@ $FFFFFFFF constant PKG-ROW
 \ length, [16] the flags cell, [24] the name bytes or a pointer to them, slot 5
 \ the wordlist id. src/habu/xref.f names the same slots for a running engine and
 \ tools/imgdump.f reads them out of a file exactly like this.
-\ A namespace record (wid XREF-NAMESPACE-WL) has no code: it spends slots 0 and 1
+\ A package record (xref.f XREF:PACKAGE-WL?) has no code: it spends slots 0 and 1
 \ on the two wordlist ids its package publishes, which is what makes the live
 \ records their own wid-to-package map.
 : PTR>OFF ( n -- n ) {: p:n :}
@@ -1269,7 +1269,7 @@ $FFFFFFFF constant PKG-ROW
 : LREC-RAW-LEN ( n -- n ) LREC 8 + U64@ ;
 : LREC-FLAGS ( n -- n ) LREC 16 + U64@ ;
 : LREC-WID ( n -- n ) LREC 40 + U64@ ;
-: LREC-PKG? ( n -- bool ) LREC-WID XREF-NAMESPACE-WL = ;
+: LREC-PKG? ( n -- bool ) LREC-WID XREF:PACKAGE-WL? ;
 : LREC-ADDR? ( n -- bool ) LREC-FLAGS DKIND:MASK and DKIND:ADDR = ;
 
 \ An out-of-line name (DNAME-EXT) is a canonical pointer like a code start, so it

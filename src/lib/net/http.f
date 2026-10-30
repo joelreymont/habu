@@ -828,15 +828,15 @@ public
 
 
 \ The address and port to listen on, how many request workers to run, and how
-\ long a connection may stay silent before it is closed. Every word a task runs
-\ is defined before START: Habu forbids dictionary mutation while a task is live
-\ (src/lib/task.f). Route strings must outlive the server. The AIO loop is a
+\ long a connection may stay silent before it is closed. Every hook and route is
+\ registered before START: a running server makes each hook word E-STATE, and a
+\ worker reads the route table unordered, while a word reaches a running task
+\ only through a channel that orders (src/lib/task.f). Route strings must
+\ outlive the server. The AIO loop is a
 \ precondition and not this package's to start: every readiness wait is an AIO
 \ submission, and one with no loop is E-AIO-STATE. Thrown inside the listener's
 \ task that code is a report nobody reads (no connection is accepted and the
-\ caller hangs on the idle deadline), so it is re-thrown here. The loop is a
-\ live task, so AIO:START, HTTP:START, HTTP:STOP and AIO:STOP run from one word:
-\ an interpreted s" after AIO:START ends the process.
+\ caller hangs on the idle deadline), so it is re-thrown here.
 : START ( n n n n -- ) {: address:n port:n workers:n idle:n :}
    RUNNING @ 0 <> if E-STATE throw then
    AIO:RUNNING? 0= if E-AIO-STATE throw then

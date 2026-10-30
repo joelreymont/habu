@@ -13,7 +13,7 @@ require src/habu/native-observer-cells.f
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
-\ The two non-wordlist values a record's wordlist cell can carry. They are
+\ Two of the non-wordlist values a record's wordlist cell can carry. They are
 \ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
 \ same cell, and XREF:RETIRE below and the checker overlay's record-wid! are
 \ the two writers that change it after a record is already in that index - see
@@ -95,6 +95,21 @@ public
 : XREF-PKG-PRIVATE ( ptr n -- n )
    XREF-LEN-SLOT XREF-CELL@ ;
 
+package XREF
+public
+\ Every marker is negative; NAMESPACE is the only live one and RETIRED the only
+\ one whose row keeps code, so each predicate excludes one marker. Capture
+\ (src/habu/aot-capture.f AOT-RPKG?) states the same rule.
+\ Whether a wordlist cell marks a package row, live or retired: its start and
+\ length cells hold wids, which no code span reader may take for a span.
+: PACKAGE-WL? ( n -- bool ) {: wid:n :}
+   wid 0 <  wid XREF-RETIRED-WL <>  and ;
+
+\ Whether a wordlist cell marks a retired row, a word's or a package's.
+: RETIRED-WL? ( n -- bool ) {: wid:n :}
+   wid 0 <  wid XREF-NAMESPACE-WL <>  and ;
+;package
+
 \ Whether wordlist `wid` is protected: the answer the engine's own guards read
 \ (src/habu/habu1.f EMIT-PROTWID). The two OWNER-API wordlists are protected by
 \ rule rather than by a bit; any other wid by its bit in the band at
@@ -107,20 +122,20 @@ public
    wid 6 rshift 8 * data-base PROT-BITS-OFF + + @
    wid 63 and rshift 1 and 0= 0= ;
 
-\ Keep the historical body length distinct from the exact code span. A namespace
-\ row's length cell holds a wordlist id, so it is answered raw rather than sent
-\ through CODE-SPAN; a package reader names that cell XREF-PKG-PRIVATE. A raw
-\ length is only for record serialization.
+\ Keep the historical body length distinct from the exact code span. A package
+\ row's length cell, live or retired, holds a wordlist id, so it is answered raw
+\ rather than sent through CODE-SPAN; a package reader names that cell
+\ XREF-PKG-PRIVATE. A raw length is only for record serialization.
 : XREF-LEN ( ptr n -- n ) {: rec:ptr :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL = if rec XREF-RAW-LEN exit then
+   rec XREF-WORDLIST XREF:PACKAGE-WL? if rec XREF-RAW-LEN exit then
    rec XREF-RAW-LEN dup CODE-SPAN:CHECK CODE-SPAN:BODY ;
 
 : XREF-CODE-BYTES ( ptr n -- n ) {: rec:ptr :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL = if 0 exit then
+   rec XREF-WORDLIST XREF:PACKAGE-WL? if 0 exit then
    rec XREF-RAW-LEN CODE-SPAN:BYTES ;
 
 : XREF-RETIRED? ( ptr n -- bool )
-   XREF-WORDLIST XREF-RETIRED-WL = ;
+   XREF-WORDLIST XREF:RETIRED-WL? ;
 
 : XREF-NAME-LEN ( ptr n -- n )
    XREF-FLAGS DNAME-LEN-MASK and ;

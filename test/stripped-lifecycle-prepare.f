@@ -33,8 +33,7 @@ variable POOL-U
       POOL-BUF FS:JOIN-PATH POOL-U ! ;
 
 \ Measured at IMAGE-LIFECYCLE:PREPARE, the word both capture paths run, and not
-\ through hb-build: hb-build's later phases mutate the dictionary, and a live
-\ task refuses that first with a bare exit $4F and no message.
+\ through hb-build.
 : CAPTURE-ERR ( ptr u8 n -- len n )
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+

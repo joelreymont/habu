@@ -11705,7 +11705,9 @@ public
 \ defined, kept through the replay writers only this package may call
 \ (src/habu/prims.f). replay-open saves NDICT, CP, WIDN, CURRENT, the package
 \ cells and the using band; on every exit, clean or thrown, the log is undone
-\ newest first and replay-close zeroes the overlay's records and restores them.
+\ newest first and replay-close zeroes the overlay's records and restores them;
+\ while a task is live it retires those records instead and keeps NDICT and CP
+\ (src/habu/habu1.f EM-DEF-OCC:LRETIRE), restoring the rest.
 \
 \ The outermost asking scope opens the overlay: the verifier window (tag -1) or
 \ a package-neutral rollback scope (its frame depth). A scope opened inside it
@@ -11888,7 +11890,9 @@ variable SNAP-N
 
 \ A snapshot a scope left is moot once replay-close has put the scope back. The
 \ snapshot rows', the log's and the clause pairs' mappings are given back, so an
-\ image captured afterwards holds the bytes one no replay ran in does.
+\ image captured afterwards holds the bytes one no replay ran in does, except
+\ that with a task live at replay-close it also holds the overlay's records,
+\ retired, and their code (src/habu/habu1.f EM-DEF-OCC:LRETIRE).
 : CLOSE ( -- )
    0 UNDO
    replay-close

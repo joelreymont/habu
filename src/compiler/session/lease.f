@@ -23,8 +23,9 @@ variable NEXT
 variable CURRENT
 variable WORKING
 
+\ The compiler is the main thread's: a task's thread holds a TCB in its DATA.
 : TASK-CK ( -- )
-   data-base TASKS-LIVE-CELL + @ 0 <> if E-TASK throw then ;
+   data-base TASK-TCB-CELL + @ 0 <> if E-TASK throw then ;
 
 : QUIET-CK ( -- )
    TASK-CK
@@ -63,7 +64,7 @@ public
    SERIAL dup 0 <> swap CURRENT @ = and ;
 
 : IDLE? ( -- bool )
-   CURRENT @ 0= data-base TASKS-LIVE-CELL + @ 0= and ;
+   CURRENT @ 0= data-base TASK-TCB-CELL + @ 0= and ;
 
 \ A FILE range may save a retired lease in DATA. Skipping the source must not
 \ let a later compiler admission reuse that lease's serial.

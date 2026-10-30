@@ -503,8 +503,8 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 
 public
 
-\ The loop is started after the last definition (a live task forbids
-\ compilation) and stopped at the end; every WAIT and PENDING? below runs on it.
+\ The loop is started after the last definition and stopped at the end; every
+\ WAIT and PENDING? below runs on it.
 : RUN ( -- )
    T-RESET
    AIO:START

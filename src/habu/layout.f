@@ -128,7 +128,11 @@ REGION DICT-SIZE - constant BYTES
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
-\ The wordlist cell's two non-wordlist values.
+\ The wordlist cell's three non-wordlist values. A package row keeps its public
+\ and private wids in the cells where a word keeps its code span; it is
+\ NAMESPACE while live and RETIRED-NAMESPACE once a rollback retires it
+\ (habu1.f EM-DEF-OCC:LRETIRE), so one aligned store retires it and every code
+\ span reader skips it by either value (xref.f XREF:PACKAGE-WL?).
 \ A record's wordlist cell is half the hash index's key (habu1.f C-HIDX-INS keys
 \ on the folded name XOR this cell). Publication writes the cell before the
 \ insert, and HIDX-EMIT:LREBUILD keys every record on its cell as it stands.
@@ -138,6 +142,8 @@ REGION DICT-SIZE - constant BYTES
 \ a rebuild. A lookup on a real wid still agrees with a scan, but one keyed on
 \ RETIRED cannot be answered by the table (retiring one name twice puts two rows
 \ under one key), so habu1.f BSWL keeps its linear scan for this wid.
+\ RETIRED-NAMESPACE leaves a row on NAMESPACE's chain the same way, and no
+\ lookup is keyed on it.
 \ habu2.f DEFWRITE:RECORD-WID writes a logged wid back after a retirement; a
 \ rebuild between them re-keys the row on RETIRED's chain, so record-wid!
 \ indexes the record under each wid it writes (HIDX-EMIT:LREKEY).
@@ -145,6 +151,7 @@ package DICT-WL
 public
 -1 constant NAMESPACE
 -2 constant RETIRED
+-3 constant RETIRED-NAMESPACE
 ;package
 
 \ WID:MAX is the largest value a wordlist id may take; it bounds every

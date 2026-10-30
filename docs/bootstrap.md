@@ -111,6 +111,10 @@ TMPDIR="$TMP" \
 ```
 
 The second command builds the ordinary sealed product and its matching `.map`.
+The first runs on the older host with that host's baked files, so a file the
+build driver loads from disk may name only words those baked files define: a
+new public word in `src/habu/xref.f` or a new `src/habu/layout.f` constant
+named by `src/habu/aot-capture.f` stops the stage with `E-UNDEFINED`.
 
 These builds, like every build and gate run from the checkout, write their
 objects under its out root ([gate.md](gate.md#scratch-and-cache)).

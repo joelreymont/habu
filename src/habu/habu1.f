@@ -189,6 +189,7 @@ variable LBEFORE
 variable LAFTER
 variable LMATCH
 variable LRECLAIM
+variable LRETIRE
 \ Builder-side mirrors of layout.f's process-local cell and engine-error.f's
 \ refusal ABI: the qualified predecessor that emits the first product bakes a
 \ layout without DEF-OCC. They add no captured DATA band.
@@ -1569,7 +1570,19 @@ $4000 constant POSIX-SPAWN-CLOEXEC-DEFAULT
 : BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 : BTOPCHECKFETCH ( -- ) 9 DATA TOP-HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live top-row hook — getter for set-top-check ([x20/DATA + TOP-HOOK-CELL])
 
-: B-TASK-LIVE-GUARD ( -- )
+\ The main thread is the compiler: only the thread whose DATA is the main
+\ region, TASK-TCB-CELL 0 (layout.f), defines, allots, evaluates or changes
+\ package scope. A task, an exposed region and a callback thread hold a TCB
+\ there, and B-TASK-GUARD exits $4F on one. B-LOWER-GUARD exits $4F while any
+\ task is live, for the sinks that lower CP or NDICT: lowering frees code a
+\ task may be running and records it may reference. Clobbers x9.
+: B-TASK-GUARD ( -- )
+   LBL {: ok:label :}
+   9 DATA TASK-TCB-CELL LDR,  9 ok CBZ,
+      0 $4F MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+: B-LOWER-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
@@ -1606,7 +1619,7 @@ variable LDIE
 \ redirects to, so a post-seal value in a sealed band fails at the sink
 \ (ENGINE-ERROR:SEAL-VIOLATION). FORGET marks are DBASE-relative and never
 \ inside a data-base band, so the guard admits them.
-: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD
+: BCPSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP  A GUARD-CODE-WORD
    EM-DEF-OCC:LRECLAIM LABEL@ BL,  CP A 0 ADDI, ;   \ ( addr -- ) set CP
 \ LASTC-CELL names the record the last create, variable or constant wrote;
 \ does> patches it (habu2.f DOESPATCH). A record at or above NDICT is retired
@@ -1614,19 +1627,24 @@ variable LDIE
 \ evaluate's error recovery, the REPL's) calls this after setting the count. A
 \ LASTC below the count is kept; one at or above it is cleared, not moved back:
 \ a does>-patched record no longer says a create made it (layout.f DKIND). A
-\ does> with none refuses by name. Clobbers the two scratch registers.
-: LASTC-TRIM, ( n n -- ) {: t:n u:n :}
+\ does> with none refuses by name. LASTC-CUT, cuts at the index in k instead,
+\ for a rollback that retires records and keeps the count (EM-DEF-OCC:LRETIRE).
+\ Clobbers the two scratch registers.
+: LASTC-CUT, ( n n n -- ) {: k:n t:n u:n :}
    LBL {: live:label :}
-   t DREC MOVZ,  t NDICT t MUL,  t DBASE t ADD,        \ first retired record
+   t DREC MOVZ,  t k t MUL,  t DBASE t ADD,            \ first retired record
    u DATA LASTC-CELL LDR,  u t CMP,  C-CC live BCOND,
    u 0 MOVZ,  u DATA LASTC-CELL STR,
    live LBL, ;
+
+: LASTC-TRIM, ( n n -- ) {: t:n u:n :}
+   NDICT t u LASTC-CUT, ;
 
 \ The name lookup reads an empty hash slot as proof a name is absent, which
 \ holds only while every record below NDICT is in the table. Raising NDICT
 \ re-exposes records whose slots later publications may have reused, so a raise
 \ rebuilds the table from [0,NDICT) in place (HIDX-EMIT:LREBUILD).
-: BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
+: BNDSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
    LBL LBL LBL LBL LBL {: bounded:label msg:label floor-ok:label keep:label done:label :}
    S\" hb: dictionary count out of range\n" {: ma:ptr mu:n :}
    \ NDICT is a count: DICT-CAP is valid. Unsigned comparison also rejects negatives.
@@ -1656,7 +1674,7 @@ variable LDIE
 \ index and checks pending ownership before changing either. DOES> publishes
 \ its parent, then its one prepared companion, which CLAUSE-CELL admits; no
 \ other row is eligible.
-: BNDAPPEND ( -- ) B-TASK-LIVE-GUARD  A G-POP                  \ ( expected-index -- )
+: BNDAPPEND ( -- ) B-TASK-GUARD  A G-POP                  \ ( expected-index -- )
    LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
@@ -1686,7 +1704,7 @@ variable LDIE
 \ `( n -- )` checker row is a top-level boundary: top-level text (evaluated
 \ text included) and TRUSTED: bodies call it, no checked body names it, and the
 \ engine refuses its tick.
-: BSEEDNDICTSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                         \ ( n -- )
+: BSEEDNDICTSET ( -- ) B-TASK-GUARD  B-LOWER-GUARD  A G-POP                         \ ( n -- )
    LBL LBL {: lower:label bad:label :}
    A 0 CMPI,  C-LT bad BCOND,
    A NDICT CMP,  C-LT lower BCOND,
@@ -1801,14 +1819,14 @@ variable LEVALBODY
 variable LSOURCEEXECFINISH
 
 : B-EVAL ( -- )
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    B G-POP  A G-POP
    13 0 MOVZ,
    6 0 MOVZ,  7 10 0 ADDI,
    LEVALBODY LABEL@ B, ;
 
 : B-EVAL-RANGE ( -- )
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    7 G-POP  6 G-POP  B G-POP  A G-POP
    13 0 MOVZ,
    LEVALBODY LABEL@ B, ;
@@ -1887,6 +1905,7 @@ variable LSOURCEEXECFINISH
    end LBL, ;
 
 : BCREATE ( -- )
+   B-TASK-GUARD                                   \ only main defines
    15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels;
                                      \ LCREATE publishes the word's `-- ptr a` in both modes
@@ -2162,7 +2181,7 @@ variable LSOURCEEXECFINISH
 
 \ `create` applies the same rounding itself.
 : BALIGN ( -- )
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    7 DATA 0 LDR,  7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 \ `,` keeps the latest run of its cells that starts at a created body
@@ -2170,7 +2189,7 @@ variable LSOURCEEXECFINISH
 \ even where the last run ended; one written at the run's end extends it.
 : BCOMMA ( -- )
    LBL LBL LBL {: more:label grow:label done:label :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR,
    A DATA COMMA-BASE-CELL LDR,  A 7 CMP,  C-NE more BCOND,
    7 DATA COMMA-RUN-CELL STR,  grow B,
@@ -2179,7 +2198,7 @@ variable LSOURCEEXECFINISH
    done LBL, ;
 
 : BCCOMMA ( -- )
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 : BTYPE ( -- )
@@ -2597,7 +2616,7 @@ variable LSOURCEEXECFINISH
    NDICT 0 TASK-ABI:NDICT-OFF LDR,
    CP 0 TASK-ABI:CP-OFF LDR,
    0 DATA TASK-TCB-CELL STR,
-   9 BLR,
+   ISB,  9 BLR,                            \ ISB: BCALLABLE's
    C-SIGNAL-STACK-OFF
    SP SP STACK-ABI:SIGNAL-BYTES ADDI-4K,   \ the band back: sp is the frame's again
    9 DATA TASK-TCB-CELL LDR,
@@ -2715,7 +2734,7 @@ $150 constant CBT-BYTES
       12 1 MOVZ,
    signal-had LBL,
    SP SP 16 SUBI,  12 SP 0 STR,                        \ 1 when the band below the frame is this entry's
-   13 BLR,
+   ISB,  13 BLR,                                       \ ISB: BCALLABLE's
    12 SP 0 LDR,  SP SP 16 ADDI,
    12 signal-kept CBZ,
       C-SIGNAL-STACK-OFF
@@ -3076,10 +3095,8 @@ public
       \ and the code up to the larger of CP and the end of every record's span
       \ below the high-water (after a rollback a retired record's code sits above
       \ CP). CP and NDICT are this thread's registers; a task's are the snapshot
-      \ ACTIVATE or EXPOSE took as it went live, and the live-task refusals
-      \ B-TASK-LIVE-GUARD (stores, appends, evaluate) and C-TASK-LIVE-GUARD
-      \ (definers) keep main's counts there while any task is live (lifting them
-      \ so main compiles beside live tasks has to revisit this bound). The high-water is main's
+      \ ACTIVATE or EXPOSE took as it went live, and main may have published
+      \ records and code past that snapshot since. The high-water is main's
       \ cell, read at DATA-VA: a task region does not hold it.
       2 DATA-VA VA>N LIT64,  2 2 NDICT-HW-CELL LDR,  3 NDICT 1 ADDI,  2 3 CMP,  2 2 3 C-HI CSEL,
       3 DICT-CAP LIT64,  2 3 CMP,  2 2 3 C-LS CSEL,
@@ -3092,6 +3109,7 @@ public
          10 2 CMP,  C-CS scanned BCOND,
          11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
          13 11 40 LDR,  14 DICT-WL:NAMESPACE invert MOVN,  13 14 CMP,  C-EQ next BCOND,
+         14 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 14 CMP,  C-EQ next BCOND,
          13 11 0 LDR,  14 11 8 LDR,
          15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
          3 CODE-SPAN:FULL LIT64,  3 14 3 AND,  3 full CBNZ,  15 15 CODE-SPAN:INSN-BYTES ADDI,
@@ -3392,7 +3410,7 @@ public
 \ No dictionary name becomes live until both copies and the instruction-cache
 \ flush finish. A namespace-only unit has records but no code; it copies only
 \ the records and leaves CP and relocation maps unchanged.
-: BNATIVEUNITPUBLISH ( -- ) B-TASK-LIVE-GUARD
+: BNATIVEUNITPUBLISH ( -- ) B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    9 G-POP  10 G-POP  11 G-POP  12 G-POP  \ records-n, records-a, code-u, code-a
    LBL LBL LBL LBL LBL LBL
@@ -3551,15 +3569,33 @@ public
    9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
 \ A typed quotation cell starts at zero. Reading it is valid, but no public
-\ quotation call may branch to that address, even beneath a catch handler.
+\ quotation call may branch to that address, even beneath a catch handler. The
+\ ISB is the reader's half of publication (src/lib/task.f header), and it runs
+\ only for an xt at or above the thread's CP register: an xt held as data may
+\ name code main compiled after this thread started, and no instruction fetched
+\ before the xt arrived may run in its place. An xt below CP needs none. On main
+\ every xt is below the live CP and main's flushes end in an ISB. A task's CP is
+\ the snapshot TASK:ACTIVATE took after every earlier flush, before the thread
+\ existed, so an xt below it names code published before the thread. With a
+\ definition pending the snapshot is that definition's body start, not CP: its
+\ body is flushed only at `;`, after the thread exists, and CP may move back
+\ within it. Everything below a live task's CP stays unwritten, since a rollback
+\ with a task live lowers nothing (EM-DEF-OCC:LRETIRE), except a `does>` or
+\ patch32 rewrite, which is outside the architecture's concurrent-modification
+\ guarantee anyway (only B, BL, BRK, HVC, ISB, NOP, SMC and SVC may be rewritten
+\ under a running thread). The compare is the control dependency that orders the
+\ fence after the xt's load; the comparison is unsigned. A direct BL needs no
+\ fence: its target was published before the caller was compiled. BEXECFLOOR and
+\ the defer stub (habu2.f C-DEFER-EMIT-CODE) fence the same way.
 : BCALLABLE ( -- )
-   LBL LBL {: live:label msg:label :}
+   LBL LBL LBL {: live:label msg:label old:label :}
    S\" hb: unset quotation\n" {: ma:ptr mu:n :}
    9 live CBNZ,
    0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:CALLABLE-ABI MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
-   live LBL, ;
+   live LBL,  A CP CMP,  C-CC old BCOND,  ISB,
+   old LBL, ;
 
 : BEXEC ( -- )
    A G-POP  BCALLABLE
@@ -3571,8 +3607,9 @@ public
 \ the push lands at the base and not in the low guard page. The FPRIM frame
 \ holds the caller's x30 across the BLR.
 : BEXECFLOOR ( -- )
-   LBL {: above:label :}
-   A G-POP  A BLR,
+   LBL LBL {: above:label old:label :}
+   A G-POP  A CP CMP,  C-CC old BCOND,  ISB,           \ BCALLABLE's fence
+   old LBL,  A BLR,
    B 0 MOVZ,
    A DATA S0-CELL LDR,  XDS A CMP,  C-CS above BCOND,   \ at or above the base: flag 0
       XDS A 0 ADDI,  B 0 MOVN,                          \ below: XDS := base, flag -1
@@ -3730,7 +3767,7 @@ public
 \ stay untouched. A negative count raises the high-water instead.
 : BALLOT ( -- )
    LBL LBL LBL LBL LBL {: grow:label zero:label store:label no-owner:label missing:label :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK
    A 0 CMPI,  C-GE grow BCOND,
    SP SP 32 SUBI,  30 SP 0 STR,  7 SP 8 STR,
@@ -3801,6 +3838,7 @@ public
       11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
       12 11 40 LDR,  13 DICT-WL:NAMESPACE invert MOVN,
       12 13 CMP,  C-EQ next BCOND,
+      13 DICT-WL:RETIRED-NAMESPACE invert MOVN,  12 13 CMP,  C-EQ next BCOND,
       13 11 0 LDR,  13 CP CMP,  C-CS next BCOND,
       14 11 8 LDR,
       15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
@@ -3883,7 +3921,7 @@ public
 \ as in BRUNSTACK.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have:label take:label back:label done:label :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP 32 SUBI,
    11 DATA STACK-ABI:BASE-CELL LDR,  11 SP 0 STR,
@@ -3933,7 +3971,7 @@ public
       {: have:label take:label caught:label restore:label done:label no-snap:label
          other:label unpended:label :}
    file if 48 else 32 then {: bytes:n :}
-   B-TASK-LIVE-GUARD
+   B-TASK-GUARD
    A G-POP  BCALLABLE
    \ The child uses a fresh guarded stack; retain the parent action's stack
    \ interval after the loader consumed its arguments and before that swap.
@@ -3972,8 +4010,8 @@ public
    XDS 13 0 ADDI,
    \ Same handler shape as BCATCH, but do not push its status on the callback's
    \ stack: the clean callback may have filled that stack exactly. It reads no
-   \ HALT-UNWIND-CELL: a task never reaches it, B-TASK-LIVE-GUARD above exits
-   \ while any task is live.
+   \ HALT-UNWIND-CELL: a task never reaches it, B-TASK-GUARD above exits
+   \ on a task's thread.
    SP SP STACK-ABI:CATCH-BYTES SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
@@ -5673,6 +5711,58 @@ variable LHIDXBUILD
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    init-msg LBL,  ma mu BYTES, ;
 
+\ The one lower-or-retire decision of a rollback: evaluate's and the REPL's
+\ recovery and replay-close (habu2.f) call it with x9 = the NDICT they lower to.
+\ With no task live it returns x14 = 0 and the caller lowers as before; a zero
+\ count cannot rise under it, since only main or a live task activates one.
+\ While TASKS-LIVE-CELL is nonzero the engine lowers nothing: a task may run the
+\ code above the caller's CP target and read the records above x9, and lowering
+\ hands both out again. So it retires each record in [x9, NDICT) as `undefine`
+\ does (xref.f XREF:RETIRE): DICT-WL:RETIRED over the wordlist cell, one aligned
+\ store through the alias, the row left on its old hash chain, where a lookup's
+\ wid compare passes it. It needs none of the rest of `undefine`: GRID-RETIRE's
+\ work is done by RETRACT-TO's effect rewind, which clears the grids above the
+\ mark (src/core/checker.f RECORD-LINK-REWIND-EFFECT); LCOUNT's CAPTURE-CUT
+\ cuts NDICT, which stays; and the BEFORE-RETIRE hook
+\ (NUNIT-OBJECT:FILE-RETIRE) refuses a chosen `undefine` of another file's
+\ record, and a rollback that lowered those records never asked it either. It
+\ clears a LASTC at or above x9 and returns x14 nonzero, and the caller keeps
+\ CP, NDICT, DP and the relocation rows: the code stays in the region,
+\ unreachable by name. LCODEINV and LRECLAIM do not run: both hand back code at
+\ or above a floor, and none is handed back. Preserves every register but x14.
+\ A package row gets DICT-WL:RETIRED-NAMESPACE by the same one store and keeps
+\ its wids in [0] and [8]: a task's qualified lookup that read the row before
+\ the store finds only the package's words, which are retiring too and whose
+\ code is kept. Skipping the row would not do: REPLAY-CLOSE's SCOPE restore
+\ puts WIDN back, and a live row would share its wid with the next package. A
+\ row already retired, by an inner rollback or `undefine`, keeps its marker.
+: EMIT-DEF-OCC-RETIRE ( -- )
+   LBL LBL LBL LBL LBL {: loop:label pkg:label next:label cut:label done:label :}
+   EM-DEF-OCC:LRETIRE LABEL@ LBL,
+      14 DATA TASKS-LIVE-CELL LDR,  14 done CBZ,
+      SP SP 48 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
+      13 SP 32 STR,  15 SP 40 STR,
+      11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 DBASE 11 ADD,   \ the records through the alias
+      12 DICT-WL:RETIRED invert MOVN,
+      15 DICT-WL:NAMESPACE invert MOVN,
+   loop LBL,
+      9 NDICT CMP,  C-CS cut BCOND,
+      10 DREC MOVZ,  10 9 10 MUL,  10 11 10 ADD,
+      13 10 40 LDR,
+      13 15 CMP,  C-EQ pkg BCOND,
+      13 0 CMPI,  C-LT next BCOND,                          \ retired already
+      12 10 40 STR,  next B,                                \ the wordlist cell
+   pkg LBL,
+      13 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 10 40 STR,
+   next LBL,
+      9 9 1 ADDI,  loop B,
+   cut LBL,
+      9 SP 0 LDR,  9 10 11 LASTC-CUT,
+      9 SP 0 LDR,  10 SP 8 LDR,  11 SP 16 LDR,  12 SP 24 LDR,
+      13 SP 32 LDR,  15 SP 40 LDR,
+      SP SP 48 ADDI,
+   done LBL,  RET, ;
+
 \ x9 names the four-byte patch (zero for an effect-only change); x10 names the
 \ created record. Every record covering changed bytes is replaced separately.
 : EMIT-DEF-OCC-OVERLAP ( -- )
@@ -5686,6 +5776,7 @@ variable LHIDXBUILD
       9 miss CBZ,
       15 11 40 LDR,  16 DICT-WL:NAMESPACE invert MOVN,
       15 16 CMP,  C-EQ miss BCOND,
+      16 DICT-WL:RETIRED-NAMESPACE invert MOVN,  15 16 CMP,  C-EQ miss BCOND,
       15 11 0 LDR,  15 9 CMP,  C-HI miss BCOND,
       16 11 8 LDR,  17 CODE-SPAN:MASK LIT64,  17 16 17 AND,
       12 CODE-SPAN:FULL LIT64,  16 16 12 AND,

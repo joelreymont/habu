@@ -804,8 +804,8 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \ registered with ENGINE-PRIMS:GLOBAL-INT-WID on both targets, so a checked
 \ body reaches one only through an owner-private row below: package OUTER's,
 \ the interpret loop written in Habu (src/habu/packages.f and
-\ src/habu/definers.f), and CHECKER-OVERLAY's. A refusal exits and never throws: 79 while a task
-\ is live (the five dictionary rows), 84 for a protected wid after
+\ src/habu/definers.f), and CHECKER-OVERLAY's. A refusal exits and never throws: 79 on a task's
+\ thread (the five dictionary rows), 84 for a protected wid after
 \ the seal (`alias-record`, `def-open`) and 83 for every other refusal. A
 \ caller checks first and prints the engine's own text. Two refusals are
 \ compile dies instead, which `evaluate` delivers as throws: while a checker
@@ -857,7 +857,7 @@ EPPRIM: OUTER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLO
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
 \ wid; `-1 0` clears all four. It refuses any other index at or above NDICT,
 \ unsigned, a row that is not a namespace row and one without a private wid.
-\ It stores while a task is live: the package keywords refuse one, and a throw
+\ It has no task guard of its own: the package keywords refuse one, and a throw
 \ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
@@ -951,7 +951,7 @@ ETRUSTED-ONLY!
 \ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
 \ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
 \ one at tier 0 only: tier 1 has no row to build its call from. A refusal
-\ exits: 79 while a task is live and 83 for every other.
+\ exits: 79 on a task's thread and 83 for every other.
 \
 \ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
 \ and the using band in the engine's REPLAY-SCOPE band (src/habu/layout.f). It

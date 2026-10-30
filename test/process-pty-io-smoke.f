@@ -332,8 +332,8 @@ variable STD-R  variable STD-W  \ report pipe: the owner writes, this process re
 \ src/lib/serial-test.f, src/lib/pty-test.f and src/lib/signal-test.f pin that
 \ refusal, and this suite does not.
 \
-\ The loop is started after the last definition (a live task forbids
-\ compilation) and after STD-CLOSED forks its owner, and stopped at the end.
+\ The loop is started after the last definition and after STD-CLOSED forks its
+\ owner, and stopped at the end.
 : RUN ( -- )
    T-RESET
    STD-CLOSED

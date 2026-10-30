@@ -498,12 +498,13 @@ public
 
 \ A deferred word's code record carries the trailer's exact location, retired
 \ or not: retirement leaves the cell and the code that dispatches through it.
-\ A data word cannot qualify by putting the magic in its body.
+\ A data word cannot qualify by putting the magic in its body, and a row with
+\ no code bytes, a package row live or retired, has no trailer.
 : TRAILER-CELL ( ptr n -- n )
    {: rec:ptr :}
    rec XREF-FOUND? 0= if 0 exit then
    rec XREF-START 0= if 0 exit then
-   rec XREF-WORDLIST XREF-NAMESPACE-WL = if 0 exit then
+   rec XREF-CODE-BYTES 0= if 0 exit then
    rec XREF-FLAGS DKIND:MASK and 0<> if 0 exit then
    rec XREF-START  rec XREF-LEN +  {: meta:n :}
    meta TRAILER@ DEFER-MAGIC <> if 0 exit then

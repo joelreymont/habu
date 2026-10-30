@@ -130,10 +130,8 @@ variable SPIN-U
    s" oi-prelude.f" PRELUDE-BUF GT-PATH PRELUDE-U !
    PRELUDE$ SRC>FILE ;
 
-\ A second prelude for the cases that need a live task: OI-SPIN starts one that
-\ spins until the process ends. A task this prelude started would end the load
-\ of test/outer-loop-on.f, whose `package` mutates the dictionary, so each such
-\ case starts its own.
+\ A second prelude for the cases that need a running task: OI-SPIN starts one
+\ that spins until the process ends.
 : SPIN-PRELUDE ( -- )
    GE-SRC-RESET
    s" require src/lib/task.f" GE-SRC-LINE
@@ -1165,54 +1163,49 @@ variable WANT-RC
    s" package OI-EX public get-current prot-wid-add export OI-TWO" s" oi-protected-export.f" ARMED
    S\" hb: cannot publish into protected word: OI-TWO\n" CASE$ GE-EXPECT-ERR ;
 
-\ ---- with a task live -----------------------------------------------------------------
-\ A literal that keeps its text in data space exits $4F with no output while a
-\ task is live, as `allot` does, after its own refusals: a counted string too
-\ long still refuses first. `."` keeps nothing and runs.
+\ ---- with a task running --------------------------------------------------------------
+\ The main thread compiles while a task runs: a literal that keeps its text in
+\ data space runs, and a counted string too long still refuses.
 : SPUN ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
    s" OI-SPIN " GE-SRC+  src srcu QLINE
    name nameu BOTH ;
 
-: TASK-LIVE ( -- )
-   SPIN-PRELUDE
-   s" s~ hi~ type cr" s" oi-live-str.f" SPUN
-   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
-   s" c~ hi~ count type cr" s" oi-live-cstr.f" SPUN
-   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
-   s" s\~ h\x69~ type cr" s" oi-live-esc-str.f" SPUN
-   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
-   s" c\~ h\x69~ count type cr" s" oi-live-esc-cstr.f" SPUN
-   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
-   s" .\~ h\x69~ cr" s" oi-live-esc-dot.f" SPUN
-   79 CASE$ GE-EXPECT-RC  CASE$ GE-EXPECT-SILENT
-   s" .~ ok~ cr" s" oi-live-dot.f" SPUN
+: HI ( -- )
    CASE$ GE-EXPECT-OK
-   S\" ok\n" CASE$ GE-EXPECT-OUT
+   S\" hi\n" CASE$ GE-EXPECT-OUT ;
+
+: TASK-RUNNING ( -- )
+   SPIN-PRELUDE
+   s" s~ hi~ type cr" s" oi-live-str.f" SPUN  HI
+   s" c~ hi~ count type cr" s" oi-live-cstr.f" SPUN  HI
+   s" s\~ h\x69~ type cr" s" oi-live-esc-str.f" SPUN  HI
+   s" c\~ h\x69~ count type cr" s" oi-live-esc-cstr.f" SPUN  HI
+   s" .\~ h\x69~ cr" s" oi-live-esc-dot.f" SPUN  HI
    GE-SRC-RESET
    s" OI-SPIN c~ " Q+ 256 [char] x GE-SRC-REPEAT-C s" ~" QLINE
    s" oi-live-too-long.f" BOTH
    76 s" hb: counted string too long (max 255) at " S\" oi-live-too-long.f:1\n" DIED-AT
    0 SPIN-U ! ;
 
-\ A package keyword exits 79 while a task is live, the keyword its whole
-\ diagnostic line, before it reads anything.
-: LIVE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n kw:ptr kwu:n name:ptr nameu:n :}
-   src srcu name nameu LINE-CASE
-   79 CASE$ GE-EXPECT-RC
-   kw kwu ERR-LINE ;
+\ A package keyword, a definer and a head run on the main thread while a task
+\ runs: each line ends by printing 1.
+: RUNS ( ptr u8 n ptr u8 n -- )
+   LINE-CASE
+   CASE$ GE-EXPECT-OK
+   S\" 1\n" CASE$ GE-EXPECT-OUT ;
 
-: TASK-LIVE-KEYWORDS ( -- )
+: TASK-RUNNING-KEYWORDS ( -- )
    SPIN-PRELUDE
-   s" OI-SPIN package OI-T" s" package" s" oi-live-package.f" LIVE
-   s" package OI-T OI-SPIN public" s" public" s" oi-live-public.f" LIVE
-   s" package OI-T OI-SPIN private" s" private" s" oi-live-private.f" LIVE
-   s" package OI-T OI-SPIN ;package" s" ;package" s" oi-live-end-package.f" LIVE
-   s" OI-SPIN using OI-FXA" s" using" s" oi-live-using.f" LIVE
-   s" using OI-FXA OI-SPIN ;using" s" ;using" s" oi-live-end-using.f" LIVE
-   s" package OI-T public OI-SPIN export OI-TWO" s" export" s" oi-live-export.f" LIVE
-   s" OI-SPIN create OI-T" s" create" s" oi-live-create.f" LIVE
-   s" OI-SPIN variable OI-T" s" variable" s" oi-live-variable.f" LIVE
+   s" OI-SPIN package OI-T ;package 1 ." s" oi-live-package.f" RUNS
+   s" package OI-T OI-SPIN public ;package 1 ." s" oi-live-public.f" RUNS
+   s" package OI-T OI-SPIN private ;package 1 ." s" oi-live-private.f" RUNS
+   s" package OI-T OI-SPIN ;package 1 ." s" oi-live-end-package.f" RUNS
+   s" OI-SPIN using OI-FXA ;using 1 ." s" oi-live-using.f" RUNS
+   s" using OI-FXA OI-SPIN ;using 1 ." s" oi-live-end-using.f" RUNS
+   s" package OI-T public OI-SPIN export OI-TWO ;package 1 ." s" oi-live-export.f" RUNS
+   s" OI-SPIN create OI-T 1 ." s" oi-live-create.f" RUNS
+   s" OI-SPIN variable OI-T 1 ." s" oi-live-variable.f" RUNS
    0 SPIN-U ! ;
 
 \ ---- the definition heads -------------------------------------------------------
@@ -1272,12 +1265,11 @@ variable WANT-RC
       76 s" hb: tier 0 is not in the Habu loop: 1 at " S\" oi-tier-0-nested.f:1\n" DIED-AT
    then ;
 
-\ A head exits 79 while a task is live, the keyword its whole diagnostic.
-: HEAD-TASK-LIVE ( -- )
+: HEAD-TASK-RUNNING ( -- )
    SPIN-PRELUDE
-   s" 1 set-tier OI-SPIN : OI-T" s" :" s" oi-live-colon.f" LIVE
-   s" 1 set-tier OI-SPIN Kernel: OI-T" s" Kernel:" s" oi-live-kernel.f" LIVE
-   s" 1 set-tier OI-SPIN TRUSTED: OI-T ( -- )" s" TRUSTED:" s" oi-live-trusted.f" LIVE
+   s" 1 set-tier OI-SPIN : OI-T ( -- n ) 1 ; OI-T ." s" oi-live-colon.f" RUNS
+   s" 1 set-tier OI-SPIN Kernel: OI-T ( -- n ) 1 ; OI-T ." s" oi-live-kernel.f" RUNS
+   s" 1 set-tier OI-SPIN TRUSTED: OI-T ( -- n ) 1 ; OI-T ." s" oi-live-trusted.f" RUNS
    0 SPIN-U ! ;
 
 \ CP at the code ceiling and a full dictionary refuse first, naming the
@@ -2075,11 +2067,9 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" OI-G create \n5\n" CASE$ GE-EXPECT-OUT ;
 
-\ While a task is live `cast:` exits 79, the keyword its whole diagnostic, and
-\ `immediate`, which checks nothing, marks.
-: CAST-LIVE ( -- )
+: CAST-TASK-RUNNING ( -- )
    SPIN-PRELUDE
-   s" 1 set-tier OI-SPIN CAST: OI-X ( n -- n )" s" CAST:" s" oi-live-cast.f" LIVE
+   s" 1 set-tier package OI-T OI-SPIN CAST: OI-X ( n -- n ) ;package 1 ." s" oi-live-cast.f" RUNS
    s" 1 set-tier : OI-A ( -- ) ; OI-SPIN immediate parse-name OI-A tok-imm? ." s" oi-live-immediate.f" LINE-CASE
    CASE$ GE-EXPECT-OK
    S\" 2\n" CASE$ GE-EXPECT-OUT
@@ -2185,12 +2175,12 @@ private
    EXPORT-DEFINER
    CAPACITY
    PROTECTED-PACKAGES
-   TASK-LIVE
-   TASK-LIVE-KEYWORDS
+   TASK-RUNNING
+   TASK-RUNNING-KEYWORDS
    SEAM
    HEAD-NO-NAME
    HEAD-TIER-0
-   HEAD-TASK-LIVE
+   HEAD-TASK-RUNNING
    HEAD-CAPACITY
    HEAD-NAME-REFUSALS
    HEAD-KEYWORD-WALL
@@ -2239,7 +2229,7 @@ private
    CAST-REFUSALS
    CAST-REGISTRAR
    CAST-HOOK
-   CAST-LIVE
+   CAST-TASK-RUNNING
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
    s"  cases agree with the engine's loop" type cr ;

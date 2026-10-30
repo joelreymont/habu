@@ -1,8 +1,9 @@
 \ aio.f - asynchronous I/O, package AIO: a task submits one operation, gets a
 \ ticket and AWAITs it; one loop task drains the ring and TASK:WAKEs each owner.
-\ START the loop after every definition (src/lib/task.f); a submission with no
-\ loop is E-AIO-STATE. Linux uses io_uring from 5.10, the first long-term kernel
-\ with every opcode used and IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
+\ START the loop before the first wait; main keeps compiling while it runs
+\ (src/lib/task.f). A submission with no loop is E-AIO-STATE. Linux uses
+\ io_uring from 5.10, the first long-term kernel with every opcode used and
+\ IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
 \ STORAGE CLASS. PROCESS-WIDE: ring, records and loop, under one TASK:FACILITY.
 
 require src/lib/errors.f
@@ -1268,9 +1269,8 @@ public
 : WRITABLE ( -- n )
    EV-WRITABLE ;
 
-\ Opens the ring and starts the completion task. A live task forbids
-\ compilation (src/lib/task.f), so a program starts the loop after it has
-\ finished defining words and not at load time. A second start is E-AIO-STATE.
+\ Opens the ring and starts the completion task. A second start is
+\ E-AIO-STATE.
 : START ( -- )
    RING-LIVE @ 0 <> if E-AIO-STATE throw then
    RING-READY @ 0= if AIO-LOCK TASK:FACILITY-INIT 1 RING-READY ! then

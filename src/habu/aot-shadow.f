@@ -390,7 +390,7 @@ variable SH-NATIVE-READY
 \ Copy that trailer into the shadow and mark the cell for the x86 linker.
 : SH-DEFER-CELL ( n -- n ) {: idx:n :}
    idx AOT-REC {: rec:ptr :}
-   rec AOT-RWID DICT-WL:NAMESPACE = if 0 exit then
+   rec AOT-RPKG? if 0 exit then
    rec AOT-RXT rec AOT-RBODY + {: meta:n :}
    meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if 0 exit then
    meta CELL + AOT-N>U8 CELL-VIEW AOT-CELL@ ;

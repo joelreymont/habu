@@ -1308,8 +1308,7 @@ public
 \ STOP and START. n below 1 or past SLOT-MASK is E-WS-LIMIT, and a refused
 \ mapping throws its code with nothing started. The AIO loop must be running
 \ (E-AIO-STATE), and a START while another starts, or before STOP has ended,
-\ is E-WS-STATE. A live task forbids compilation (src/lib/task.f), so a
-\ program starts WS once it has defined every word.
+\ is E-WS-STATE.
 : START ( n -- ) {: n:n :}
    LOCK TASK:GET
    CLAIM-START

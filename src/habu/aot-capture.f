@@ -50,7 +50,14 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS DNAME-EXT and 0= 0= ;
 : AOT-RNPTR ( ptr n -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else BYTE-VIEW 24 + then ;
-: AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or -1 package sentinel
+: AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or a DICT-WL marker
+\ Every marker is negative; NAMESPACE is the only live one and RETIRED the only
+\ one whose row keeps code. The stage host runs this file with its own baked
+\ layout.f, so it names only those two (src/habu/xref.f XREF:PACKAGE-WL?).
+: AOT-RPKG? ( ptr n -- bool )                                   \ package row, live or retired
+   AOT-RWID {: w:n :}  w 0 <  w DICT-WL:RETIRED <>  and ;
+: AOT-RRETIRED? ( ptr n -- bool )                               \ retired row, word or package
+   AOT-RWID {: w:n :}  w 0 <  w DICT-WL:NAMESPACE <>  and ;
 
 \ Direct calls: every statically known native call is one BL (habu2.f
 \ LCEMITBL). A site's original address is AOT-CODE-B0 plus its blob offset.
@@ -274,7 +281,7 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 \ The capture index, or -1 for a retired record, which is not copied; CAPTURE
 \ keeps the answer (ACAP-REC-OF).
 : ACAP-ADD-REC ( n n -- n ) {: k:n bstart:n :}
-   k AOT-REC AOT-RWID DICT-WL:RETIRED = if -1 exit then
+   k AOT-REC AOT-RRETIRED? if -1 exit then
    AOT-REC-N @ AOT-REC-MAX >= if k ACAP-REC-REFUSE then
    k AOT-REC BYTE-VIEW {: src:ptr :}
    AOT-REC-N @ ACAP-REC-DST {: d:ptr :}
@@ -395,7 +402,7 @@ private
 : ACAP-REC-AT ( n -- n ) {: boff:n :}
    ACAP-W-B0 @ boff + {: a:n :}
    ACAP-W-R1 @ ACAP-W-R0 @ ?do
-      i AOT-REC AOT-RWID -1 <> if
+      i AOT-REC AOT-RPKG? 0= if
          i AOT-REC AOT-RXT a <=
          i AOT-REC AOT-RXT i AOT-REC AOT-RBYTES + a > and if i unloop exit then
       then
@@ -579,10 +586,10 @@ variable ACAP-P
 \ are an enumeration a fourth would silently escape. Measured on the compiler
 \ chain: 6892 records = 94 package records + 6798 checked words, all carried;
 \ the collection's first version left 17 behind.
-\ Package and retired records are exempt by wordlist (DICT-WL:NAMESPACE,
-\ DICT-WL:RETIRED), never by name. A word with no checker effect (a `0
-\ set-check` span) is uncallable from checked code here and in the seed, so it
-\ is not a finding.
+\ Package and retired records are exempt by their wordlist cell, which holds a
+\ negative DICT-WL marker, never by name. A word with no checker effect (a
+\ `0 set-check` span) is uncallable from checked code here and in the seed, so
+\ it is not a finding.
 
 \ The scope half of SYM-FIND's key ( pkg$, public?, found? ) from the record's
 \ own wordlist, not the open package; an empty package name is the global
@@ -889,7 +896,7 @@ variable ACAP-NATIVE-MODE
 
 : ACAP-GRAPH-RAW-RECORD ( ptr n -- ) {: rec:ptr :}
    rec ACAP-GRAPH-RAW-NAME
-   rec AOT-RWID DICT-WL:NAMESPACE = if exit then
+   rec AOT-RPKG? if exit then
    rec AOT-RXT rec AOT-RBODY + AOT-CODE-B0 @ - {: off:n :}
    off 0< off 16 + AOT-BLOB-LEN @ > or if exit then
    AOT-BLOB-BUF@ off + CELL-VIEW AOT-CELL@ DEFER-MAGIC = if
@@ -1341,8 +1348,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
 
 : ACAP-?SIG ( n -- ) {: k:n :}
    k AOT-REC AOT-RWID {: w:n :}
-   w DICT-WL:NAMESPACE = if ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit then
-   w DICT-WL:RETIRED = if ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit then
+   w 0 < if ACAP-SIG-EXEMPT @ 1 + ACAP-SIG-EXEMPT ! exit then
    w ACAP-REC-PKG {: pa:ptr pu:n pub:bool ok:bool :}
    ok 0= if k w ACAP-REFUSE-SIG-WID then
    k AOT-REC AOT-RNPTR k AOT-REC AOT-RNLEN {: na:ptr nu:n :}
@@ -1600,8 +1606,8 @@ variable ACAP-SWEEP-B1
 : ACAP-DEFER-SITE ( n n n n n -- )
    {: k:n bstart:n bend:n d0:n d1:n :}
    k AOT-REC {: rec:ptr :}
-   \ Namespace [8] is a private wordlist ID, not a dictionary code length.
-   rec AOT-RWID DICT-WL:NAMESPACE = if exit then
+   \ A package row's [8] is a private wordlist ID, not a dictionary code length.
+   rec AOT-RPKG? if exit then
    rec AOT-RXT rec AOT-RBODY + {: meta:n :}
    meta bstart < meta 16 + bend > or if exit then
    meta AOT-N>U8 CELL-VIEW AOT-CELL@ DEFER-MAGIC <> if exit then
@@ -1803,8 +1809,10 @@ DYNAMIC-BUFFER ACAP-SMARK n          \ node -> 1 once reached
 DYNAMIC-BUFFER ACAP-SWORK n          \ the nodes reached and not yet scanned
 variable ACAP-SWORK-N
 
-\ Empty when the retired record's code is not the window's.
+\ Empty for a retired package row, whose [0] and [8] are wids, and when the
+\ retired record's code is not the window's.
 : ACAP-RETIRED-SPAN ( n -- n n ) {: idx:n :}
+   idx AOT-REC AOT-RPKG? if 0 0 exit then
    idx AOT-REC AOT-RXT AOT-CODE-B0 @ - {: start:n :}
    start idx AOT-REC AOT-RBYTES + {: end:n :}
    start 0 >=  end AOT-BLOB-LEN @ <=  and if start end else 0 0 then ;

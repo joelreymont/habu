@@ -269,7 +269,7 @@ private
 74 constant RC-NO-NAME           \ habu2.f C-DIE-KEYWORD-NAME: a keyword's operand is missing
 74 constant RC-UNCLOSED          \ habu2.f LSRCEND, LCOMEND, LSRCCLOSE: the input ends inside a definition or a ( comment, or closes one it did not open
 76 constant RC-TOO-LONG          \ habu2.f LCSTR: a counted string past CSTR-MAX bytes
-79 constant RC-TASK-LIVE         \ habu2.f C-TASK-LIVE-GUARD's $4F: a keyword while a task is live
+79 constant RC-TASK-THREAD       \ habu2.f C-TASK-GUARD's $4F: a keyword run on a task's thread
 52 constant MIN-IN-SHIFT         \ layout.f DNAME-MIN-IN-MASK: record flag bits 52-59
 32 constant BLANK                \ LTOK: every byte at or below it separates tokens
 $0A constant NEWLINE
@@ -389,12 +389,12 @@ variable DIGIT-AT
    0 EXIT-HOOK-CELL CELL!
    s" " rc die ;
 
-\ A keyword that changes the dictionary or its scope while a task is live
-\ ends the process, the keyword its whole diagnostic line (habu2.f
-\ C-TASK-LIVE-GUARD).
+\ A keyword that changes the dictionary or its scope, run on a task's thread
+\ (TASK-TCB-CELL nonzero), ends the process, the keyword its whole diagnostic
+\ line (habu2.f C-TASK-GUARD).
 : TASK-GUARD ( -- )
-   TASKS-LIVE-CELL CELL@ 0= if exit then
-   TOKEN$ RC-TASK-LIVE FAIL-CLOSED ;
+   TASK-TCB-CELL CELL@ 0= if exit then
+   TOKEN$ RC-TASK-THREAD FAIL-CLOSED ;
 
 \ While a checker overlay is open a definer head, a new package row or private
 \ wid, or an export throws by name: the overlay's close would drop what it
@@ -777,8 +777,8 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 \ it, and runs to a closing quote that INP then passes. A literal with no
 \ closing quote refuses with INP still after the keyword, so the refusal names
 \ the keyword's line. A literal a program keeps is copied into data space it
-\ allots first, after its own refusals. allot's task-live guard then exits $4F
-\ with no output while a task runs, and its DP-CHECK (habu1.f) refuses a literal
+\ allots first, after its own refusals. allot's task guard then exits $4F
+\ with no output on a task's thread, and its DP-CHECK (habu1.f) refuses a literal
 \ that does not fit, both before any of it is written, as the engine's copies
 \ do.
 

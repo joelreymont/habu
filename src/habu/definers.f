@@ -828,7 +828,7 @@ variable DEF-VALUE
    CHECKER-OWNER:MIN-IN {: mi:n :}
    mi 0<> if ndict@ 1- mi min-in-mark then ;
 
-\ The keyword refuses a live task, then a full code space or dictionary,
+\ The keyword refuses a task's thread, then a full code space or dictionary,
 \ naming itself, then a missing name, as the engine's does. Its name folds
 \ apart from the def-cast row: a word spelled DEF-CAST here would shadow the
 \ row for every later body, and DEF-LINEAR's def-cast would read a cast head.
@@ -871,7 +871,7 @@ variable DEF-VALUE
 \ `defer NAME ( in -- out )` declares a word that calls the execution token in
 \ its dispatch cell, an aligned DATA cell that starts with `defer-unset`'s and
 \ that `is` in a body re-points. It refuses in the engine's order and with its
-\ text: a live task, the room, the name, then the signature, which must be
+\ text: a task's thread, the room, the name, then the signature, which must be
 \ there, opened and closed, then `defer-unset`, whose cell is allotted before
 \ the qualifier, as the engine's is. The checker gets the effect before NCOMP
 \ compiles the body, which asks it whether the defer returns; NPUB lays the

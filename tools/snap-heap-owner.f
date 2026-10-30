@@ -29,7 +29,7 @@ package SNAP-HEAP-OWNER
 \ and length (habu2.f EM-SNAPSHOT-REBASE-DICT skips them too): reading its start
 \ as an address would fault.
 : CODE? ( ptr n -- bool ) {: rec:ptr :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL <> ;
+   rec XREF-WORDLIST XREF:PACKAGE-WL? 0= ;
 
 : CREATED? ( ptr n -- bool ) {: rec:ptr :}
    rec CODE? 0= if FALSE exit then

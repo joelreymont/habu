@@ -1,7 +1,7 @@
 \ pty-test.f - a pseudoterminal pair carries bytes both ways.
 \
 \ PTY:READ waits on the AIO loop, so RUN starts the loop after the last
-\ definition (a live task forbids compilation) and stops it at the end.
+\ definition and stops it at the end.
 \
 \ Run: bin/hb --load src/lib/pty-test.f
 require src/lib/errors.f
