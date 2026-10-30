@@ -19,7 +19,8 @@
 \ A throw out of the body loses the token with the stack, and the cleanup frees
 \ by pointer, so `catch` belongs outside the scope word.
 \
-\ A run inherits this process's environment unless ENV-HERMETIC turns that off.
+\ A run inherits this process's environment and the PROC-ENV defaults unless
+\ ENV-HERMETIC turns that off; UNSETENV keeps one named variable from both.
 \ No word here writes the process-wide argv/env staging of src/lib/process-argv.f
 \ and src/lib/process-env.f: a run spawns from the context's own vectors.
 \
@@ -109,7 +110,9 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 : ARG-OFF ( ptr n -- ptr n ) 29 cells + ;      \ each argument's offset in ARG-BUF
 : ENV-OFF ( ptr n -- ptr n ) 32 cells + ;      \ each caller row's offset in ENV-BUF
 : PLACED ( ptr n -- ptr n ) 35 cells + ;       \ FD+'s child/parent pairs, back to back
-38 constant HEAD-CELLS
+: UNSET-BUF ( ptr n -- ptr n ) 38 cells + ;    \ UNSETENV's NUL-terminated names, back to back
+: UNSET-OFF ( ptr n -- ptr n ) 41 cells + ;    \ each unset name's offset in UNSET-BUF
+44 constant HEAD-CELLS
 
 PROC-PATHZ-CAP constant PATHZ-CAP
 HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
@@ -157,6 +160,8 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ARG-OFF VEC:CLEAR
    h ENV-OFF VEC:CLEAR
    h PLACED VEC:CLEAR
+   h UNSET-BUF BUF:CLEAR
+   h UNSET-OFF VEC:CLEAR
    0 h CWD-LEN !
    1 h INHERIT !
    PROC-NO-FD h CANCEL-FD !
@@ -173,6 +178,8 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ARG-OFF ITEMS-START N>ITEM VEC:INIT
    h ENV-OFF ITEMS-START N>ITEM VEC:INIT
    h PLACED ITEMS-START N>ITEM VEC:INIT
+   h UNSET-BUF BYTES-START BUF:N>BLEN BUF:INIT
+   h UNSET-OFF ITEMS-START N>ITEM VEC:INIT
    h CLEAR-BUILD ;
 
 : RELEASE-REGION ( ptr u8 n -- ) {: base:ptr cap:n :}
@@ -192,6 +199,8 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h ARG-OFF VEC:DISPOSE
    h ENV-OFF VEC:DISPOSE
    h PLACED VEC:DISPOSE
+   h UNSET-BUF BUF:DISPOSE
+   h UNSET-OFF VEC:DISPOSE
    h OUT-BASE @ h OUT-CAP @ RELEASE-REGION
    h ERR-BASE @ h ERR-CAP @ RELEASE-REGION
    h CTX-CELLS MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
@@ -215,8 +224,8 @@ public
    OPEN
    [: RUN-BODY ;] [: CLOSE ;] finally ;
 
-\ Forget the arguments, rows, stdin, directory, placements, lent descriptor and
-\ last outcome; the storage stays for reuse.
+\ Forget the arguments, rows, unset names, stdin, directory, placements, lent
+\ descriptor and last outcome; the storage stays for reuse.
 : RESET ( CMD:command -- CMD:command )
    CTX CLEAR-BUILD ;
 
@@ -265,6 +274,20 @@ public
 : ENV-HERMETIC ( CMD:command -- CMD:command )
    CTX 0 swap INHERIT ! ;
 
+
+\ The next runs' child inherits no variable of this name, neither from this
+\ process's environment nor from the PROC-ENV defaults, until RESET. A caller row
+\ with the same name (ENV+, ENV-ENTRY+) still reaches the child: explicit beats
+\ unset. Under ENV-HERMETIC nothing is inherited, so UNSETENV changes nothing.
+\ An empty name, a name holding `=` or NUL, or a negative length: E-PROC-ENV.
+: UNSETENV ( CMD:command ptr u8 n -- CMD:command )
+   {: a:ptr u:n :}
+   CTX {: h:ptr :}
+   a u >LEN PROC-ENV-CHECK-NAME
+   h UNSET-BUF h UNSET-OFF MARK
+   a u BUF:N>BLEN h UNSET-BUF BUF:APPEND-SPAN
+   0 h UNSET-BUF BUF:APPEND-BYTE ;
+
 private
 
 : CWD-CHECK ( ptr u8 n -- )
@@ -309,14 +332,33 @@ private
    h ENV-BUF BUF-BASE off + h ENVP-VEC VEC:PUSH drop
    h ;
 
+
+: UNSET-NAME ( ptr n n -- ptr u8 len )
+   {: h:ptr i:n :}
+   h UNSET-BUF BUF-BASE h UNSET-OFF i VEC:N>INDEX VEC:@ + dup ZLEN >LEN ;
+
+
+: UNSET? ( ptr n ptr u8 -- bool )
+   {: h:ptr z:ptr :}
+   0 begin dup h UNSET-OFF VEC:LEN@ ITEM>N < while
+      h over UNSET-NAME z z ZLEN >LEN PROC-ENV-SAME-NAME? if drop PROC-ENV-TRUE exit then
+      1+
+   repeat drop PROC-ENV-FALSE ;
+
+
 \ Inheritance appends ADDRESSES, never copies: a default row is read where
 \ PROC-ENV-DEFAULT+ wrote it, in the process-wide read-only policy table, and a
 \ parent row is read in the parent's own environment. A row whose name is already
-\ present is skipped; the vector is re-read for each check because PUSH may move it.
-: INHERIT-Z ( ptr n ptr u8 -- ) {: h:ptr z:ptr :}
+\ present or unset is skipped; the vector is re-read for each check because PUSH
+\ may move it. Caller rows are pushed before inheritance and never checked against
+\ the unset names, so an explicit row beats UNSETENV.
+: INHERIT-Z ( ptr n ptr u8 -- )
+   {: h:ptr z:ptr :}
    z z ZLEN >LEN h ENVP-VEC VEC:DATA@ h ENVP-VEC VEC:LEN@ ITEM>N PROC-ENV-VEC-HAS-NAME?
    if exit then
+   h z UNSET? if exit then
    z h ENVP-VEC VEC:PUSH drop ;
+
 
 : INHERIT-DEFAULTS ( ptr n -- ) {: h:ptr :}
    0 begin dup PROC-ENV-DEF-N @ COUNT>N < while

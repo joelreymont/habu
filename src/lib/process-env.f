@@ -172,12 +172,17 @@ public
       1+
    repeat drop PROC-ENV-FALSE ;
 
-: PROC-ENV-CHECK-NAME ( ptr u8 len -- ) {: a:ptr u :}
+
+\ A name is refused empty or holding `=` or NUL: every reader of a row stops at
+\ its first NUL, so a NUL would make a shorter name of it.
+: PROC-ENV-CHECK-NAME ( ptr u8 len -- )
+   {: a:ptr u :}
    u LEN>N 0 <= if E-PROC-ENV throw then
    0 begin dup u LEN>N < while
-      dup a + c@ PROC-ENV-EQUAL = if E-PROC-ENV throw then
+      dup a + c@ dup PROC-ENV-EQUAL = swap 0= or if E-PROC-ENV throw then
       1+
    repeat drop ;
+
 
 : PROC-ENV-CHECK-ENTRY ( ptr u8 len -- ) {: a:ptr u :}
    u LEN>N 0 <= if E-PROC-ENV throw then

@@ -22,6 +22,8 @@ private
 
 create ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
+create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
+4 constant NUL-NAME-U
 
 5000 constant HB-TIMEOUT-MS
 1000 constant CMD-TIMEOUT-MS
@@ -90,6 +92,51 @@ create ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" HOME" GETENV CHECK-LINE
    s" PATH" GETENV CHECK-LINE
    nip 0 T= ;
+
+
+\ HABU_PROC_ENV_TEST comes from a PROC-ENV default, HOME from this process's
+\ environment; UNSETENV keeps both from the child, absent rather than empty (the
+\ shell's ${NAME+1} tells them apart), a name never set is harmless, and RESET
+\ forgets the unset names, so the next run inherits both again. The default
+\ HABU_PROC_ENV_TEST_X extends an unset name and still reaches the child: names
+\ match whole, and the rest of the environment is still inherited.
+: UNSET-RUN ( CMD:command -- CMD:command )
+   s" HABU_PROC_ENV_TEST" CMD:UNSETENV
+   s" HOME" CMD:UNSETENV
+   s" HABU_CMD_NEVER_SET" CMD:UNSETENV
+   s" -c" CMD:ARG+
+   s" test x${HOME+1}${HABU_PROC_ENV_TEST+2} = x && test x${HABU_PROC_ENV_TEST_X+1} = x1" CMD:ARG+
+   s" /bin/sh" CMD-TIMEOUT-MS RUN# 0 T=
+   CMD:RESET
+   s" test/process-env-child.f" CMD:ARG+
+   s" bin/hb" HB-TIMEOUT-MS RUN# 0 T=
+   CMD:OUT$
+   s" default" CHECK-LINE
+   s" HOME" GETENV CHECK-LINE
+   s" PATH" GETENV CHECK-LINE
+   nip 0 T= ;
+
+
+\ A caller row of an unset name still reaches the child.
+: UNSET-EXPLICIT ( CMD:command -- CMD:command )
+   s" test/process-env-child.f" CMD:ARG+
+   s" HABU_PROC_ENV_TEST" CMD:UNSETENV
+   s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
+   s" bin/hb" HB-TIMEOUT-MS RUN# 0 T=
+   CMD:OUT$
+   s" alpha" CHECK-LINE
+   s" HOME" GETENV CHECK-LINE
+   s" PATH" GETENV CHECK-LINE
+   nip 0 T= ;
+
+
+: UNSET-ENV ( -- )
+   s" HABU_PROC_ENV_TEST" >LEN s" default" >LEN PROC-ENV-DEFAULT+
+   s" HABU_PROC_ENV_TEST_X" >LEN s" kept" >LEN PROC-ENV-DEFAULT+
+   [: UNSET-RUN ;] CMD:WITH-COMMAND
+   [: UNSET-EXPLICIT ;] CMD:WITH-COMMAND
+   PROC-ENV-DEFAULT-RESET ;
+
 
 \ Both arms of the result<n,n>: a clean exit MATCHes ok carrying 0, a nonzero
 \ exit MATCHes err carrying the code, and RC@ answers the stored outcome again.
@@ -209,8 +256,27 @@ create REL PATH-CAP allot   variable REL-U
 : BAD-ENV-NAME ( CMD:command -- CMD:command )
    s" BAD=NAME" s" x" CMD:ENV+ ;
 
+
+: NUL-ENV-NAME ( CMD:command -- CMD:command )
+   NUL-NAME NUL-NAME-U s" x" CMD:ENV+ ;
+
+
 : BAD-ENV-ENTRY ( CMD:command -- CMD:command )
    s" MISSING_EQUALS" CMD:ENV-ENTRY+ ;
+
+
+: BAD-UNSET-NAME ( CMD:command -- CMD:command )
+   s" BAD=NAME" CMD:UNSETENV ;
+
+
+\ Read back to its NUL, this name would unset JJ.
+: NUL-UNSET-NAME ( CMD:command -- CMD:command )
+   NUL-NAME NUL-NAME-U CMD:UNSETENV ;
+
+
+: NEGATIVE-UNSET ( CMD:command -- CMD:command )
+   s" NAME" drop -1 CMD:UNSETENV ;
+
 
 \ ---- growth: no member has a ceiling ------------------------------------------------
 \ Both streams past any fixed buffer the old context had, captured whole.
@@ -656,6 +722,7 @@ public
    [: HERMETIC-ENV ;] CMD:WITH-COMMAND
    [: ENTRY-ENV ;] CMD:WITH-COMMAND
    [: INHERITED-ENV ;] CMD:WITH-COMMAND
+   UNSET-ENV
    [: RC-ARMS ;] CMD:WITH-COMMAND
    [: TIMEOUT ;] CMD:WITH-COMMAND
    [: [: TIMEOUT-RC@ ;] CMD:WITH-COMMAND ;] E-PROC-TIMEOUT TTHROWSQ
@@ -668,7 +735,11 @@ public
    CWD
    [: [: CWD-MISSING ;] CMD:WITH-COMMAND ;] E-PROC-PATH TTHROWSQ
    [: [: BAD-ENV-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
+   [: [: NUL-ENV-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
    [: [: BAD-ENV-ENTRY ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
+   [: [: BAD-UNSET-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
+   [: [: NUL-UNSET-NAME ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
+   [: [: NEGATIVE-UNSET ;] CMD:WITH-COMMAND ;] E-PROC-ENV TTHROWSQ
    [: BOTH-STREAMS ;] CMD:WITH-COMMAND
    IN-FILL
    [: BIG-STDIN ;] CMD:WITH-COMMAND
