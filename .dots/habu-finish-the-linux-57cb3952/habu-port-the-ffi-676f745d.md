@@ -18,3 +18,5 @@ Leaves: habu-sign-extend-c-c7f55f0e (R1), habu-marshal-ffi-calls-46dfd999 (R2), 
 Campaign lane only; do not dispatch. It lists its leaves under blocks: so it stays off dot ready until they close.
 Ownership: krait (Intel lane).
 Claim: unassigned.
+
+From the T0 location lane: src/habu/snap-x64.f (~15, 23, 33) and snap-decode-x64.f write and size the heap from the tree's DATA-START; a host building a tree that moves DATA-START lays its heap at its own floor (BOOT-LAYOUT:HEAP-START-CELL), as arm64 snap-lib.f HEAP-START now reads. The x86-64 capture records no body-source rows (kernel-x64.f BODY-APPEND-BODY), so its native refusals print no location.

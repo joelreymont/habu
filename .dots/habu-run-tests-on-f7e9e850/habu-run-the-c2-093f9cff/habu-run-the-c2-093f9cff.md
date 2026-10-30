@@ -1,9 +1,11 @@
 ---
 title: "Run the C2 record cases in the suite's process"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-30T20:40:26.504837+02:00"
+closed-at: "2026-10-30T23:55:27.675606+02:00"
+close-reason: "Landed 009315dc 'Build the suite compiler bundle as one engine' on master: the bundle writes only hb-whitebox-source; hb-root, hb-ordinary, the sealed capture, test/c2-image-pair.f, the seal plan and HABU_GATE_COMPILER_BUNDLE went; rg C2-IMAGE-PAIR empty. Proof: bundle build rc 0 92.2 s (93.9 s before), rows native-donor-map, gate-images-orchestration, whitebox-engine-key, aot-payload-graph, app-image, native-window-owner, c2-xml-source green; review FOLD-IN applied. Source and tier-1 C2 cases run in rows (c2src, c2mem landed); saved-image cases keep their children."
 ---
 
 Problem: test/c2-records-e2e.f, c2-field-loan-e2e.f, c2-memory-e2e.f and c2-view-record-e2e.f run case files as children of bundle variants (hb-root, hb-ordinary) copied by test/c2-image-pair.f; hb-root is written by the same writer as bin/hb (NATIVE-EMIT:WRITE-C2), so the children prove nothing bin/hb in-process cannot, except the saved-image cases (APP-IMAGE:SAVE then running the saved image), whose subject is the save boundary. Acceptance: lead design after the census: source and tier-1 cases run in the suite's process on bin/hb; saved-image cases keep one child with the boundary stated beside it; hb-ordinary cases either prove a shipped behavior in-process or go; C2-IMAGE-PAIR and the bundle go when no consumer remains. Files: the four e2e files, their case files, test/c2-image-pair.f, test/compiler-images*.f, test/run.f bundle rows. Verify: the four rows green on bin/hb; rg C2-IMAGE-PAIR returns nothing. Depends: census. Ownership: those files. Claim: unassigned.
@@ -17,3 +19,11 @@ Lane c2mem (c2-memory and field-loan source cases, prompt refusals as SUBJECT:RE
 c2src done: wuykvnuv edf4b292 (rows c2-records-source, c2-view-record-source, c2-xml-source, c2-records-tier1; three e2e rows 20.67 s -> 14.83 s + 1.64 s new rows). One c2-source row failed: VALUE-RECORD names ignore packages (records types.f public box vs c2-retained-contract-wide.f top-level VALUE-RECORD box: "checker: bad or duplicate value-record type"; two private value records box in two packages collide too). Joel 2026-10-30: scope value-record names per package (dot habu-scope-value-record). c2mem done: osowkqqn d1a0b224 (rows c2-memory-source with c2-memory-entry.f SUBJECT:REFUSED? cases, c2-memory-tier1, c2-field-loan-tier1; memory 16.40 -> 14.01 s, field-loan 5.53 -> 4.38 s, new rows 3.0 s).
 
 Lanes c2src (wuykvnuv) and c2mem (osowkqqn) reviewed, re-reviewed after fold-ins (ACCEPT) and landed 2026-10-30. Remaining: the saved-image children keep their boundary; hb-ordinary and hb-root go and the bundle shrinks to hb-whitebox-source (lead ruling above). No lane running. Claim: unassigned.
+
+Lane bundle (hb-ordinary goes; hb-root moves to hb-whitebox-source where measured green; c2-image-pair.f goes): workspace .jj-ws.noindex/jerry-bundle on master dc99aec7, brief /tmp/jerry-big/bundle-brief.md, worker launched 2026-10-30 23:10. Claim: jerry.
+
+Bundle lane rrxzusrp (jerry-bundle): the bundle writes only hb-whitebox-source and its map; hb-root, hb-ordinary, the sealed capture and test/c2-image-pair.f went; every whitebox row green on it; build 93.9 s before and after. Fold-in running (brief /tmp/jerry-big/bundle-fold-brief.md): delete internal-mark.f seal plan and HABU_GATE_COMPILER_BUNDLE, bundle asks for whitebox through ENGINE-UNSEAL. Then review and land on master.
+
+Lead rebuilt the bundle after deleting the uncalled NATIVE-BUILD:RUN-BUNDLE and passing WHITEBOX? in CAPTURE-NAMED: rc 0, 92.8 s. Under review.
+
+Bundle review FOLD-IN (/tmp/jerry-big/bundle-review.md): donor-map test reads the bundle's hb-whitebox-source; BUNDLE-CAPTURE calls CAPTURE; comments; dead requires. Fold-in worker in jerry-bundle, brief /tmp/jerry-big/bundle-fold2-brief.md.
