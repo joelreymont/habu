@@ -1196,7 +1196,6 @@
 \ which owns package NHOST.
 \ SSE owns -9450..-9459. DECIMAL owns -9460..-9469.
 \ JSONL framing (package JSONL, src/lib/jsonl.f): -9470..-9479.
-\ Scoped typed values: -9480..-9489, minted in src/lib/values.f.
 \ Secret store, native or host-bound: -9500..-9509, minted in src/lib/secret.f.
 
 \ Intel disassembly: -9510..-9519, minted by src/arch/x86-64/disasm.f,

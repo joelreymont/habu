@@ -3102,7 +3102,7 @@ variable XT-DECL
 
 
 \ A family argument's variance: one that reaches storage (TFAM-STORE-SLOT-XT:
-\ values<a>'s `FIELD data ptr a`, an OPAQUE record, an element-type slot) is
+\ a `FIELD data ptr a`, an OPAQUE record, an element-type slot) is
 \ read and written, so both sides are demanded, as a pointee's are; one held
 \ only by value (`FIELD fn a`) takes the pair's roles, so a family built around
 \ a literal is provided as the literal is. Each side pairs resolved, so

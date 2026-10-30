@@ -2082,7 +2082,7 @@ TFAM-WIDTH-SLOT-INSTALL
 
 \ --- which argument slots reach storage (checker.f PARAM-PAIR-SLOT). A slot
 \ reaches storage when its parameter occurs beneath a pointer, or in an
-\ argument a nested application's own storage slot takes (values<a>'s `FIELD
+\ argument a nested application's own storage slot takes (a `FIELD
 \ data ptr a`); a field, a variant payload or a quotation's row elsewhere
 \ holds it by value (`FIELD fn a`). An element-type slot (PK-TYPE: a C2
 \ view's, init's, records' or loan-field's, or a user family's parameter that

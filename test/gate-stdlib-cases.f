@@ -2095,10 +2095,6 @@ SUITE dynamic-buffer
    test/dynamic-buffer.f
 ;SUITE
 
-SUITE values
-   test/values.f
-;SUITE
-
 SUITE aot-capture-bound
    test/aot-capture-bound.f
 ;SUITE

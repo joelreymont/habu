@@ -8,7 +8,6 @@
 
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/values.f
 
 package CHECKER-SOUNDNESS
 public
@@ -62,13 +61,15 @@ TYPED-VARIABLE TAIL-QN [ R [ R -- S ] -- S ]
 TYPED-VARIABLE TAIL-QR [ R [ R -- R ] -- R ]
 defer TAIL-DF ( R [ R -- S ] -- S )
 \ A family argument is read and written, as a pointee is.
-: TAIL-VK ( R VALUES:values<[ R -- R ]> -- R ) [: ;] swap VALUES:ADD ;
-TYPED-VARIABLE TAIL-QV VALUES:values<[ -- S ]>
-TYPED-VARIABLE TAIL-QVV VALUES:values<VALUES:values<[ -- S ]>>
-: TAIL-VKN ( R VALUES:values<VALUES:values<[ R -- R ]>> -- R ) drop ;
+STRUCTURE tailvals<a> OPAQUE FIELD data ptr a ;STRUCTURE
+: TAIL-VPUT ( a tailvals<a> -- ) TAILVALS-UNMAKE ! ;
+: TAIL-VK ( R tailvals<[ R -- R ]> -- R ) [: ;] swap TAIL-VPUT ;
+TYPED-VARIABLE TAIL-QV tailvals<[ -- S ]>
+TYPED-VARIABLE TAIL-QVV tailvals<tailvals<[ -- S ]>>
+: TAIL-VKN ( R tailvals<tailvals<[ R -- R ]>> -- R ) drop ;
 \ Generic retags: each relabels its storage with a type it takes as a value.
-: TAIL-RETAG ( VALUES:values<a> a -- VALUES:values<a> ) drop ;
-: TAIL-RETAGN ( VALUES:values<VALUES:values<a>> a -- VALUES:values<VALUES:values<a>> ) drop ;
+: TAIL-RETAG ( tailvals<a> a -- tailvals<a> ) drop ;
+: TAIL-RETAGN ( tailvals<tailvals<a>> a -- tailvals<tailvals<a>> ) drop ;
 : TAIL-RETAGP ( ptr a a -- ptr a ) drop ;
 : TAIL-STORE ( R ptr [ R -- R ] -- R ) [: ;] swap ! ;
 \ A view's element type names its storage, whatever record holds the view.
