@@ -3,9 +3,15 @@
 \ 2025-11-25 initialize flow. No session ID, no event stream. The host states
 \ its name with SERVER-INFO! and its tools with ADD-TOOL before HTTP:START,
 \ authenticates each request, validates its Origin (403 when one is present and
-\ not allowed) and passes it to HANDLE. The client side, OPEN, TOOLS, CALL and
-\ CLOSE, speaks the 2026-07-28 era to one server over CURL and takes a JSON or
-\ an event-stream reply.
+\ not allowed) and passes it to HANDLE. A tool body gets the arguments' object,
+\ borrowed for the call, and answers once through ANSWER, or ANSWER-ERROR for a
+\ tool error, refused arguments included; bodies may run at once on several
+\ HTTP workers. An input schema's x-mcp-header is not supported: the server
+\ does not validate the headers it names. A tool's answer is its result's
+\ structuredContent when its output schema's "type" is "object"; any other
+\ schema describes the answer as structuredContent's "data". The client side,
+\ OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one server over
+\ CURL and takes a JSON or an event-stream reply.
 \ STORAGE CLASS. PROCESS-WIDE: the server info and tool registry, written before
 \ HTTP serves; tables indexed by HTTP:WORKER-SLOT holding each request's state;
 \ and the client table, a row per open client, read and written under its own
@@ -39,6 +45,9 @@ public
 \ A reply that is not a 2xx JSON-RPC success for the request, or whose result
 \ lacks the shape its method answers.
 -9484 constant E-RESPONSE
+\ An ADD-TOOL output schema that is not one JSON object or repeats a top-level
+\ key, or an answer under an object schema that is not an object.
+-9485 constant E-SCHEMA
 
 \ A client of one server's endpoint, from OPEN until CLOSE.
 NEWTYPE client
@@ -71,8 +80,11 @@ variable TOOL-COUNT
 DYNAMIC-BUFFER TOOL-NAME SPAN:span<u8>
 DYNAMIC-BUFFER TOOL-INFO SPAN:span<u8>
 DYNAMIC-BUFFER TOOL-SCHEMA SPAN:span<u8>
+DYNAMIC-BUFFER TOOL-OUTPUT SPAN:span<u8>
+DYNAMIC-BUFFER TOOL-WHOLE bool              \ TOOL-OUTPUT's "type" is "object"
 DYNAMIC-BUFFER TOOL-HINT bool
 DYNAMIC-BUFFER TOOL-BODY [ ptr u8 n -- ]
+TYPED-VARIABLE EARLIER JR:cursor            \ SHAPE's second reader over a schema
 
 \ A row to each HTTP worker; spans borrow the request's body and headers.
 HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
@@ -88,6 +100,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER STATUS n
 HTTP:MAX-WORKERS TYPED-BUFFER CODE n
 HTTP:MAX-WORKERS TYPED-BUFFER TEXT SPAN:span<u8>      \ an error's message, or a tool's result
 HTTP:MAX-WORKERS TYPED-BUFFER FAULT bool              \ the tool result is isError
+HTTP:MAX-WORKERS TYPED-BUFFER CALLED n                \ the tool a tools/call runs
 HTTP:MAX-WORKERS TYPED-BUFFER ASKED SPAN:span<u8>     \ an unsupported MCP-Protocol-Version
 \ A decoded Mcp-Name is no longer than the header block that carried it.
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
@@ -207,12 +220,15 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:OBJECT-END ;
 
 
-\ A tool's structuredContent is {"data": the body's JSON}.
-: OUTPUT-SCHEMA ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+\ The declared schema, or one whose structuredContent is {"data": the answer}.
+: OUTPUT-SCHEMA ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+   {: idx:n :}
+   idx TOOL-OUTPUT @ SPAN:$ {: text:ptr tu:n :}
+   idx TOOL-WHOLE @ if s" outputSchema" text tu JSON-WRITE:FIELD-RAW exit then
+   s" outputSchema" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START s" type" s" object" JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" properties" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START s" data" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END
+   JSON-WRITE:OBJECT-START s" data" text tu JSON-WRITE:FIELD-RAW JSON-WRITE:OBJECT-END
    JSON-WRITE:COMMA s" required" JSON-WRITE:KEY
    JSON-WRITE:ARRAY-START s" data" JSON-WRITE:STRING JSON-WRITE:ARRAY-END
    JSON-WRITE:OBJECT-END ;
@@ -224,7 +240,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    s" name" idx TOOL-NAME @ SPAN:$ JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" description" idx TOOL-INFO @ SPAN:$ JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" inputSchema" idx TOOL-SCHEMA @ SPAN:$ JSON-WRITE:FIELD-RAW
-   JSON-WRITE:COMMA s" outputSchema" JSON-WRITE:KEY OUTPUT-SCHEMA
+   JSON-WRITE:COMMA idx OUTPUT-SCHEMA
    JSON-WRITE:COMMA s" annotations" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START s" readOnlyHint" idx TOOL-HINT @ JSON-WRITE:FIELD-BOOL
    JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
@@ -247,7 +263,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ A tool result: TEXT as readable text and, unless isError, TEXT's JSON as
-\ structuredContent.data.
+\ structuredContent, or as its "data" for a tool without an object schema.
 : CALL-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
    LEGACY? 0= if
@@ -258,8 +274,13 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:COMMA s" text" TEXT$ JSON-WRITE:FIELD-S JSON-WRITE:OBJECT-END
    JSON-WRITE:ARRAY-END
    SLOT FAULT @ 0= if
-      JSON-WRITE:COMMA s" structuredContent" JSON-WRITE:KEY
-      JSON-WRITE:OBJECT-START s" data" TEXT$ JSON-WRITE:FIELD-RAW JSON-WRITE:OBJECT-END
+      JSON-WRITE:COMMA
+      SLOT CALLED @ TOOL-WHOLE @ if
+         s" structuredContent" TEXT$ JSON-WRITE:FIELD-RAW
+      else
+         s" structuredContent" JSON-WRITE:KEY
+         JSON-WRITE:OBJECT-START s" data" TEXT$ JSON-WRITE:FIELD-RAW JSON-WRITE:OBJECT-END
+      then
    then
    JSON-WRITE:COMMA s" isError" SLOT FAULT @ JSON-WRITE:FIELD-BOOL
    LEGACY? 0= if MODERN-META then
@@ -525,6 +546,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    TOOL-OF {: idx:n :}
    idx 0< if UNKNOWN-TOOL SEND exit then
    ARGUMENTS
+   idx SLOT CALLED !
    CALLING SLOT STAGE !
    idx TOOL-BODY @ execute
    SLOT STAGE @ SENT <> if E-STATE throw then ;
@@ -574,13 +596,72 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    n TOOL-NAME-RESERVE
    n TOOL-INFO-RESERVE
    n TOOL-SCHEMA-RESERVE
+   n TOOL-OUTPUT-RESERVE
+   n TOOL-WHOLE-RESERVE
    n TOOL-HINT-RESERVE
    n TOOL-BODY-RESERVE ;
+
+\ Whether a JSON text, read whole, is an object; text that is not one JSON value
+\ throws the reader's E-JR-* code.
+: OBJECT-TEXT? ( ptr u8 n -- bool )
+   {: text:ptr u:n :}
+   CURSOR text u JR:INIT JR:NEXT JR:T-OBJ = {: object:bool :}
+   JR:FINISH object ;
+
+
+\ Whether text's first top-level key that decodes to key holds a value other
+\ than the one at at.
+: EARLIER? ( ptr u8 n ptr u8 n ptr u8 -- bool )
+   {: text:ptr u:n key:ptr ku:n at:ptr :}
+   EARLIER text u JR:INIT JR:NEXT drop
+   key ku JR:FIND-KEY drop JR:SPAN$ drop at <> {: earlier:bool :}
+   JR:CLOSE earlier ;
+
+
+\ On a top-level key of text: E-SCHEMA when an earlier key decodes the same,
+\ else the reader moves past the key's value. room holds the decoded key.
+: ONCE ( JR:reader ptr u8 n ptr u8 n -- JR:reader )
+   {: text:ptr u:n room:ptr cap:n :}
+   room cap JR:STR {: ku:n :}
+   JR:NEXT drop JR:SPAN$ drop {: at:ptr :}
+   text u room ku at EARLIER? if E-SCHEMA throw then
+   JR:SKIP-VALUE ;
+
+
+\ A key decodes to no more bytes than the text holds.
+: KEYS ( ptr u8 n ptr u8 NUM:alloc-byte-len -- )
+   MEM:ALLOCATION>SPAN SPAN:$ {: text:ptr u:n room:ptr cap:n :}
+   CURSOR text u JR:INIT JR:NEXT drop
+   begin JR:NEXT JR:T-KEY = while text u room cap ONCE repeat
+   JR:FINISH ;
+
+
+\ E-SCHEMA unless one JSON object with no top-level key repeated once decoded:
+\ JSON.parse keeps a repeated key's last value, so a client would read another.
+: SHAPE ( ptr u8 n -- )
+   {: text:ptr u:n :}
+   text u [: 2dup OBJECT-TEXT? 0= if E-SCHEMA throw then ;] catch {: code:n :} 2drop
+   code E-JR-FIRST <= code E-JR-LAST >= and if E-SCHEMA throw then
+   code 0<> if code throw then
+   text u u MEM:BYTES-ALLOC-LEN [: KEYS ;] MEM:WITH-BYTES ;
+
+
+\ Whether a schema object's "type" is the string "object".
+: WHOLE? ( ptr u8 n -- bool )
+   {: text:ptr u:n :}
+   CURSOR text u JR:INIT JR:NEXT drop
+   s" type" JR:FIND-KEY if
+      JR:TOKEN JR:T-STR = if s" object" JR:STR-EQ? else false then
+   else false then {: whole:bool :}
+   JR:FINISH whole ;
+
 
 : RESULT! ( ptr u8 n bool -- )
    {: text:ptr u:n fault:bool :}
    SLOT STAGE @ CALLING <> if E-STATE throw then
-   fault 0= if CURSOR text u JR:INIT JR:FINISH then
+   fault 0= if
+      text u OBJECT-TEXT? 0= SLOT CALLED @ TOOL-WHOLE @ and if E-SCHEMA throw then
+   then
    text u SPAN:MAKE SLOT TEXT !
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
@@ -596,31 +677,28 @@ public
    version vu SPAN:MAKE SERVER-VERSION ! ;
 
 
-\ A tool: its name, description, input JSON Schema (an object's JSON text),
-\ read-only hint and body. The body gets the arguments' JSON object, borrowed for
-\ the call only, and answers once through ANSWER, or through ANSWER-ERROR for a
-\ tool error, arguments it refuses included. Bodies may run at once on several
-\ HTTP workers. The texts are borrowed and outlive the server, as literals do.
-\ A schema's x-mcp-header is not supported: the server does not validate the
-\ headers it names. E-STATE while HTTP serves; E-DUPLICATE for a registered
-\ name.
-: ADD-TOOL ( ptr u8 n ptr u8 n ptr u8 n bool [ ptr u8 n -- ] -- )
-   {: name:ptr nu:n info:ptr iu:n schema:ptr su:n hint:bool body :}
+\ The texts are borrowed and outlive the server, as literals do. E-SCHEMA on a
+\ repeated top-level key; "#" in a schema without "type":"object" is the wrapper.
+: ADD-TOOL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool [ ptr u8 n -- ] -- )
+   {: name:ptr nu:n info:ptr iu:n schema:ptr su:n output:ptr ou:n hint:bool body :}
    HTTP:RUNNING? if E-STATE throw then
    name nu REGISTERED? if E-DUPLICATE throw then
+   output ou SHAPE
+   output ou WHOLE? {: whole:bool :}
    TOOL-COUNT @ {: idx:n :}
    idx 1+ TOOLS-RESERVE
    name nu SPAN:MAKE idx TOOL-NAME !
    info iu SPAN:MAKE idx TOOL-INFO !
    schema su SPAN:MAKE idx TOOL-SCHEMA !
+   output ou SPAN:MAKE idx TOOL-OUTPUT !
+   whole idx TOOL-WHOLE !
    hint idx TOOL-HINT !
    body idx TOOL-BODY !
    idx 1+ TOOL-COUNT ! ;
 
 
-\ A body's result: one JSON value as structuredContent.data and as the text
-\ content. E-STATE outside a body or after its answer; text that is not one
-\ JSON value throws the reader's E-JR-* code, which HANDLE passes to the host.
+\ A body's result: one JSON value. E-STATE outside a body or after its answer;
+\ else the reader's E-JR-* code or E-SCHEMA, which HANDLE passes to the host.
 : ANSWER ( ptr u8 n -- ) false RESULT! ;
 
 \ A body's tool error: the message as text content, isError true.

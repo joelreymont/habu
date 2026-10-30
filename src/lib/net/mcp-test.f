@@ -1,7 +1,8 @@
 \ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras'
 \ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
 \ Mcp-Name checks, the transport check, unknown methods and tools, a body's
-\ result and tool error, bodies that answer badly or never, malformed
+\ result and tool error, an object schema's answer as structuredContent and a
+\ non-object answer under it, bodies that answer badly or never, malformed
 \ envelopes, arguments and JSON, tools/list and ping, and ADD-TOOL's refusals.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, isError, refusals, a reply past the first buffer, timeouts of
@@ -72,6 +73,7 @@ TYPED-VARIABLE CLIENT MCP:client
 TYPED-VARIABLE STALL-CLIENT MCP:client
 TYPED-VARIABLE ROUTE-CLIENT MCP:client
 variable ENTERED
+variable SHAPE-CODE                 \ what shape's ANSWER threw, 0 for nothing
 variable RELEASED
 variable CLOSED
 variable PAGES-END                  \ when /endless answers its last page, a mono-ns
@@ -264,6 +266,25 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
+: SHAPE-RESULT ( -- )
+   s" an object schema's answer is the structuredContent itself" T-LABEL
+   LEGACY
+   S\" {\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\",\"params\":{\"name\":\"shape\"}}" POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":21,\"result\":{\"content\":[{\"type\":\"text\"," SB-APPEND
+   S\" \"text\":\"{\\\"sources\\\":[\\\"a\\\"]}\"}],\"structuredContent\":{\"sources\":[\"a\"]}," SB-APPEND
+   S\" \"isError\":false}}" SB-APPEND
+   200 SB$ ANSWERED ;
+
+
+: SHAPE-NOT-OBJECT ( -- )
+   s" a body under an object schema answering a non-object faults to the host" T-LABEL
+   LEGACY
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\"," SB-APPEND
+   S\" \"params\":{\"name\":\"shape\",\"arguments\":{\"flat\":true}}}" SB-APPEND SB$ POST
+   FAULTED
+   SHAPE-CODE atomic@ MCP:E-SCHEMA T= ;
+
+
 : BAD-JSON ( -- )
    s" a body that is not JSON is -32700 with no id" T-LABEL
    LEGACY S\" {\"jsonrpc\":" POST
@@ -271,30 +292,43 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
-: OUTPUT ( -- )
-   S\" \"outputSchema\":{\"type\":\"object\",\"properties\":{\"data\":{}}," W+
-   S\" \"required\":[\"data\"]},\"annotations\":{\"readOnlyHint\":" W+ ;
+\ The advertised outputSchema wrapping a declared schema that is not an object's.
+: OUTPUT ( ptr u8 n -- )
+   {: declared:ptr du:n :}
+   S\" \"outputSchema\":{\"type\":\"object\",\"properties\":{\"data\":" W+ declared du W+
+   S\" },\"required\":[\"data\"]},\"annotations\":{\"readOnlyHint\":" W+ ;
+
+\ shape's declared output schema, advertised as declared.
+: SOURCES ( -- ptr u8 n )
+   S\" {\"typ\\u0065\":\"object\",\"properties\":{\"sources\":{\"type\":\"array\"}}}" ;
+
+\ silent's declared output schema: no string "type" "object", so it is wrapped.
+: NULLABLE ( -- ptr u8 n )
+   S\" {\"type\":[\"object\",\"null\"],\"items\":{\"type\":\"object\"}}" ;
 
 \ Every registered tool, as tools/list answers them.
 : TOOL-ARRAY ( -- )
    S\" [{\"name\":\"echo\"," W+
    S\" \"description\":\"Echo the arguments.\",\"inputSchema\":{\"type\":\"object\"}," W+
-   OUTPUT s" true}},{" W+
+   s" {}" OUTPUT s" true}},{" W+
    S\" \"name\":\"refuse\",\"description\":\"Refuse every call.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\",\"properties\":{}}," W+
-   OUTPUT s" false}},{" W+
+   s" {}" OUTPUT s" false}},{" W+
    S\" \"name\":\"raw\",\"description\":\"Answer text that is not JSON.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"}," W+
-   OUTPUT s" true}},{" W+
+   s" {}" OUTPUT s" true}},{" W+
    S\" \"name\":\"silent\",\"description\":\"Never answer.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"}," W+
-   OUTPUT s" true}},{" W+
+   NULLABLE OUTPUT s" true}},{" W+
    S\" \"name\":\"big\",\"description\":\"Answer a long string.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"}," W+
-   OUTPUT s" true}},{" W+
+   S\" {\"type\":\"string\"}" OUTPUT s" true}},{" W+
    S\" \"name\":\"stall\",\"description\":\"Answer once released.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"}," W+
-   OUTPUT s" true}}]" W+ ;
+   s" {}" OUTPUT s" true}},{" W+
+   S\" \"name\":\"shape\",\"description\":\"Answer sources.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"},\"outputSchema\":" W+ SOURCES W+
+   S\" ,\"annotations\":{\"readOnlyHint\":true}}]" W+ ;
 
 
 : LIST ( -- )
@@ -415,34 +449,56 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : ADD-ECHO ( -- )
-   s" echo" s" Echo the arguments." S\" {\"type\":\"object\"}" true
+   s" echo" s" Echo the arguments." S\" {\"type\":\"object\"}" s" {}" true
    [: MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 : ADD-REFUSE ( -- )
-   s" refuse" s" Refuse every call." S\" {\"type\":\"object\",\"properties\":{}}" false
+   s" refuse" s" Refuse every call." S\" {\"type\":\"object\",\"properties\":{}}" s" {}"
+   false
    [: 2drop s" nope" MCP:ANSWER-ERROR ;] MCP:ADD-TOOL ;
 
 : ADD-RAW ( -- )
-   s" raw" s" Answer text that is not JSON." S\" {\"type\":\"object\"}" true
+   s" raw" s" Answer text that is not JSON." S\" {\"type\":\"object\"}" s" {}" true
    [: 2drop s" not json" MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 : ADD-SILENT ( -- )
-   s" silent" s" Never answer." S\" {\"type\":\"object\"}" true
+   s" silent" s" Never answer." S\" {\"type\":\"object\"}" NULLABLE true
    [: 2drop ;] MCP:ADD-TOOL ;
 
 : ADD-BIG ( -- )
-   s" big" s" Answer a long string." S\" {\"type\":\"object\"}" true
+   s" big" s" Answer a long string." S\" {\"type\":\"object\"}"
+   S\" {\"type\":\"string\"}" true
    [: 2drop BIG BIG-U MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 \ Answers once the test sets RELEASED.
 : ADD-STALL ( -- )
-   s" stall" s" Answer once released." S\" {\"type\":\"object\"}" true
+   s" stall" s" Answer once released." S\" {\"type\":\"object\"}" s" {}" true
    [: 2drop 1 ENTERED atomic!
       [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test STALL" TEST-WAIT:POLL
       s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 : ADD-LATE ( -- )
-   s" late" s" Registered while serving." S\" {\"type\":\"object\"}" true
+   s" late" s" Registered while serving." S\" {\"type\":\"object\"}" s" {}" true
+   [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+
+
+\ ANSWER, keeping in SHAPE-CODE what it threw.
+: SHAPE-ANSWER ( ptr u8 n -- )
+   [: 2dup MCP:ANSWER ;] catch {: code:n :} 2drop
+   code SHAPE-CODE atomic!
+   code 0<> if code throw then ;
+
+
+\ Answers {"sources":["a"]}, or an array for arguments naming "flat".
+: ADD-SHAPE ( -- )
+   s" shape" s" Answer sources." S\" {\"type\":\"object\"}" SOURCES true
+   [: s" flat" CONTAINS? if s" []" else S\" {\"sources\":[\"a\"]}" then SHAPE-ANSWER ;]
+   MCP:ADD-TOOL ;
+
+
+: ADD-SCHEMA ( ptr u8 n -- )
+   {: output:ptr ou:n :}
+   s" listed" s" Declare a schema." S\" {\"type\":\"object\"}" output ou true
    [: MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 
@@ -694,16 +750,24 @@ TYPED-VARIABLE NEVER MCP:client
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    BIG-FILL
-   ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL
+   ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE
    s" ADD-TOOL refuses a registered name" T-LABEL
    [: ADD-ECHO ;] MCP:E-DUPLICATE TTHROWSQ
+   s" ADD-TOOL refuses an output schema that is not an object" T-LABEL
+   [: s" []" ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses an output schema that is not JSON" T-LABEL
+   [: s" not json" ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses an empty output schema" T-LABEL
+   [: s" " ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses an output schema repeating a top-level key, escaped" T-LABEL
+   [: S\" {\"type\":\"object\",\"typ\\u0065\":\"array\"}" ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    s" ADD-TOOL refuses while HTTP serves" T-LABEL
    [: ADD-LATE ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
    METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL TOOL-ERROR
-   TOOL-RESULT BAD-ENVELOPE BAD-JSON LIST PING MODERN-LIST NAME-MISMATCH
-   NAME-ABSENT META-MISMATCH NO-CAPABILITIES NO-PARAMS MODERN-NOTIFICATION
+   TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT BAD-ENVELOPE BAD-JSON LIST PING
+   MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES NO-PARAMS MODERN-NOTIFICATION
    LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-ANSWER SILENT
    CLIENT-CASES
    HTTP:STOP
