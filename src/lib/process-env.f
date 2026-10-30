@@ -119,26 +119,20 @@ CAST: PROC-CURSOR>OFF ( NUM:byte-off -- off )
 package PROC-RAW
 public
 
-\ fds holds n cells of child/parent placements (process.f LAUNCH-AT).
-: SPAWN-ARGV-ENV ( ptr u8 ptr a ptr a fd fd fd ptr n n -- ptr u8 ptr a ptr a fd fd fd ptr n n )
-   {: pathz:ptr argv:ptr envp:ptr infd outfd errfd fds:ptr n :}
+: SPAWN-ARGV-ENV ( ptr u8 ptr a ptr a fd fd fd -- ptr u8 ptr a ptr a fd fd fd )
+   {: pathz:ptr argv:ptr envp:ptr infd outfd errfd :}
    pathz dup ZLEN PROCESS:NEW PROCESS:HERMETIC
    argv ROWS PROCESS:ARGV-ROWS
    envp ROWS PROCESS:ENV-ROWS
-   infd outfd errfd fds n LAUNCH-AT
-   pathz argv envp infd outfd errfd fds n ;
-
-\ The spawn with n cells of child/parent placements at fds, its catch code
-\ answered as a pid (ANSWER).
-: SPAWN-ARGV-ENV-PLACED ( ptr u8 ptr a ptr a fd fd fd ptr n n -- pid )
-   [: SPAWN-ARGV-ENV ;] catch {: rc :}
-   drop drop drop drop drop drop drop drop
-   rc ANSWER ;
+   infd outfd errfd LAUNCH
+   pathz argv envp infd outfd errfd ;
 
 ;package
 
 : PROC-SPAWN-ARGV-ENV-RAW ( ptr u8 ptr a ptr a fd fd fd -- pid )
-   NULL-PTR 0 PROC-RAW:SPAWN-ARGV-ENV-PLACED ;
+   [: PROC-RAW:SPAWN-ARGV-ENV ;] catch {: rc :}
+   drop drop drop drop drop drop
+   rc PROC-RAW:ANSWER ;
 
 : PROC-ENV-RESET ( -- )
    0 >COUNT PROC-ENV-N !
@@ -344,19 +338,12 @@ public
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 
-\ The spawn alone, resetting no process-wide staging: a caller that owns its own
-\ argv and envp vectors (src/lib/process-command.f) passes them here, with n cells
-\ of child/parent placements at fds (process.f LAUNCH-AT), and adopts the child
-\ itself. The wrapper below keeps the staging reset for the callers that built
-\ their vectors in this module's tables, and keeps it ahead of the failed spawn's
-\ throw so a refused spawn cannot leave rows for the next one.
-: PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE ( ptr u8 ptr a ptr a ptr n n -- pid )
-   {: pathz:ptr argv:ptr envp:ptr fds:ptr n :}
-   pathz argv envp PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD fds n
-   PROC-RAW:SPAWN-ARGV-ENV-PLACED ;
-
+\ The staging is reset ahead of the failed spawn's throw, so a refused spawn
+\ cannot leave rows for the next one.
 : PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- )
-   NULL-PTR 0 PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE {: pid :}
+   {: pathz:ptr argv:ptr envp:ptr :}
+   pathz argv envp PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
+   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
    pid PROC-CAPTURE-ADOPT-SPAWN ;
 

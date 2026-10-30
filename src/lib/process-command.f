@@ -288,13 +288,14 @@ public
    u 0 < if E-PROC-OUTPUT throw then
    a u BUF:N>BLEN h IN-BUF BUF:REPLACE ;
 
+
 \ The child's fd child is the parent's fd parent in the next runs (PLACEMENT
 \ above). Either negative: E-PROC-OUTPUT.
-: FD+ ( CMD:command n fd -- CMD:command )
-   {: child:n parent:fd :}
+: FD+ ( CMD:command fd fd -- CMD:command )
+   {: child:fd parent:fd :}
    CTX {: h:ptr :}
-   child 0 < parent FD>N 0 < or if E-PROC-OUTPUT throw then
-   child h PLACED VEC:PUSH drop
+   child FD>N 0 < parent FD>N 0 < or if E-PROC-OUTPUT throw then
+   child FD>N h PLACED VEC:PUSH drop
    parent FD>N h PLACED VEC:PUSH drop ;
 
 private
@@ -348,24 +349,53 @@ private
    path pathu >LEN PROC-ARGV-CHECK-PATH
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;
 
-: CHECK-PLACED ( ptr n -- )
-   {: h:ptr :}
-   h PLACED VEC:DATA@ h PLACED VEC:LEN@ ITEM>N {: fds:ptr n :}
-   n 0 ?do fds i 1+ cells + @ >FD PROCESS:CHECK-FD 2 +loop ;
 
-\ The spawn cores take the context's own vectors and reset no process-wide
-\ staging; the capture machinery around them is src/lib/process.f's task-local row.
-: SPAWN ( ptr n -- )
+: PAIRS ( ptr n -- ptr n n )
    {: h:ptr :}
-   h PLACED VEC:DATA@ h PLACED VEC:LEN@ ITEM>N {: fds:ptr n :}
-   h CWD-LEN @ 0 > if
-      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ h CWDZ fds n
-      PROC-CWD:SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE-CORE
-   else
-      h PATHZ h ARGV-VEC VEC:DATA@ h ENVP-VEC VEC:DATA@ fds n
-      PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE-CORE
-   then
-   PROC-CAPTURE-ADOPT-SPAWN ;
+   h PLACED VEC:DATA@ h PLACED VEC:LEN@ ITEM>N 2 / ;
+
+
+\ The pair at idx of PLACED's array: the child's fd and the parent's.
+: PAIR ( ptr n n -- fd fd )
+   2 * cells + {: p:ptr :}
+   p @ >FD p cell+ @ >FD ;
+
+
+: CHECK-PLACED ( ptr n -- )
+   PAIRS 0 ?do dup i PAIR nip PROCESS:CHECK-FD loop drop ;
+
+
+\ The capture pipes at the child's 0, 1 and 2.
+: STDIO ( PROCESS:request -- PROCESS:request )
+   0 >FD PROC-IN-R @ >FD PROCESS:FD
+   1 >FD PROC-OUT-W @ >FD PROCESS:FD
+   2 >FD PROC-ERR-W @ >FD PROCESS:FD ;
+
+
+: PLACE ( PROCESS:request ptr n -- PROCESS:request )
+   PAIRS {: fds:ptr n :}
+   n 0 ?do fds i PAIR PROCESS:FD loop ;
+
+
+\ The run's request from the context's own storage; FD+'s placements apply after
+\ the stdio slots.
+: REQUEST ( ptr n -- PROCESS:request )
+   {: h:ptr :}
+   h PATHZ dup ZLEN PROCESS:NEW PROCESS:HERMETIC
+   h ARGV-VEC VEC:DATA@ PROCESS:ARGV-ROWS
+   h ENVP-VEC VEC:DATA@ PROCESS:ENV-ROWS
+   h CWD-LEN @ 0 > if h CWDZ h CWD-LEN @ PROCESS:CWD then
+   STDIO
+   h PLACE ;
+
+
+\ A refused request or spawn closes the capture descriptors before its code goes
+\ on (PROC-THROW-CAPTURE); a child becomes this task's capture child.
+: SPAWN ( ptr n -- )
+   0 >PID [: drop dup REQUEST PROCESS:SPAWN ;] catch {: rc:n :}
+   rc 0<> if drop drop rc PROC-THROW-CAPTURE then
+   nip PROC-CAPTURE-ADOPT-SPAWN ;
+
 
 \ ---- captures ---------------------------------------------------------------------
 \ process.f's growing loop asks for room for `need` bytes and keeps the length

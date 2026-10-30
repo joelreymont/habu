@@ -221,16 +221,8 @@ CAST: >ROWS ( n -- ptr ptr u8 )
    1 outfd FD
    2 errfd FD ;
 
-\ After the stdio slots, each child/parent pair of the n cells at fds, applied as
-\ PROCESS:FD applies it.
-: LAUNCH-AT ( PROCESS:request fd fd fd ptr n n -- )
-   {: fds:ptr n :}
-   STDIO
-   n 0 ?do fds i cells + @ >FD fds i 1+ cells + @ >FD PROCESS:FD 2 +loop
-   PROCESS:SPAWN PID>N PID ! ;
-
 : LAUNCH ( PROCESS:request fd fd fd -- )
-   NULL-PTR 0 LAUNCH-AT ;
+   STDIO PROCESS:SPAWN PID>N PID ! ;
 
 public
 

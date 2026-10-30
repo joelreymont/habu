@@ -218,13 +218,17 @@ HERM-AT 1+ constant RECORD-CELLS
    h fd ;
 
 
+\ Whether this process's fd n is open.
+: OPEN? ( n -- bool ) F-GETFD 0 fcntl 0 >= ;
+
+
 \ A stdio slot no FD set keeps the parent's fd only while that fd is open.
 : INHERIT-SLOT ( ptr n n -- )
    {: h:ptr slot :}
    h SET @ 1 slot lshift and 0<> if exit then
    h MAP slot VEC:N>INDEX VEC:@ {: parent :}
    parent 0 < if exit then
-   parent F-GETFD 0 fcntl 0 >= if exit then
+   parent OPEN? if exit then
    -1 h slot MAP! ;
 
 
@@ -367,7 +371,7 @@ public
 \ Refuses a closed parent fd as SPAWN refuses an FD naming one: E-PROC-SPAWN,
 \ EBADF in ERRNO. An open fd passes and leaves ERRNO as it was.
 : CHECK-FD ( fd -- )
-   FD>N F-GETFD 0 fcntl 0 >= if exit then
+   FD>N OPEN? if exit then
    EBADF ERRNO-CELL !
    E-PROC-SPAWN throw ;
 

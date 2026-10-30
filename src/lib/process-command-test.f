@@ -171,7 +171,7 @@ create ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    EXIT3-KEPT
    PIPE-PAIR-CLOEXEC FD>N {: w :} FD>N {: r :}
    r close  w close
-   3 w >FD CMD:FD+
+   3 >FD w >FD CMD:FD+
    [: s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-SPAWN T=
    EXIT3-KEPT ;
 
@@ -329,8 +329,8 @@ create PIPE-BUF PIPE-CAP allot
 \ directory, then a second, with no new FD+, from one, so the directory's spawn
 \ takes the placements too and they last until RESET.
 : PLACED ( CMD:command -- CMD:command )
-   3 W CMD:FD+
-   4 W4 CMD:FD+
+   3 >FD W CMD:FD+
+   4 >FD W4 CMD:FD+
    s" -c" CMD:ARG+
    s" { printf three >&3 && printf four >&4; } 2>/dev/null || exit 7" CMD:ARG+
    s" /bin/sh" CMD-TIMEOUT-MS RUN# BOTH-PLACED
@@ -338,13 +338,13 @@ create PIPE-BUF PIPE-CAP allot
    s" /bin/sh" CMD-TIMEOUT-MS RUN# BOTH-PLACED ;
 
 : PLACED-RESET ( CMD:command -- CMD:command )
-   3 W CMD:FD+
+   3 >FD W CMD:FD+
    CMD:RESET
    FD3-RUN 7 T= ;
 
 \ The outer scope runs while the inner one's placement is live.
 : PLACED-INNER ( CMD:command CMD:command -- CMD:command CMD:command )
-   3 W CMD:FD+
+   3 >FD W CMD:FD+
    FD3-RUN 0 T=
    PIPE$ s" placed|parent" T$=
    swap FD3-RUN 7 T= swap ;
@@ -355,7 +355,7 @@ create PIPE-BUF PIPE-CAP allot
 \ A placement at a stdio slot replaces the capture pipe there: the child's stdout
 \ reaches the placed pipe and the capture stays empty.
 : PLACED-STDOUT ( CMD:command -- CMD:command )
-   1 W CMD:FD+
+   1 >FD W CMD:FD+
    s" -c" CMD:ARG+
    s" printf slot" CMD:ARG+
    s" /bin/sh" CMD-TIMEOUT-MS RUN# 0 T=
@@ -364,14 +364,14 @@ create PIPE-BUF PIPE-CAP allot
 
 \ Two placements at one child slot: the later FD+ wins.
 : PLACED-TWICE ( CMD:command -- CMD:command )
-   3 W4 CMD:FD+
-   3 W CMD:FD+
+   3 >FD W4 CMD:FD+
+   3 >FD W CMD:FD+
    FD3-RUN 0 T=
    PIPE$ s" placed|parent" T$=
    PIPE4$ s" |parent" T$= ;
 
-: NEGATIVE-CHILD ( CMD:command -- CMD:command ) -1 W CMD:FD+ ;
-: NEGATIVE-PARENT ( CMD:command -- CMD:command ) 3 -1 >FD CMD:FD+ ;
+: NEGATIVE-CHILD ( CMD:command -- CMD:command ) -1 >FD W CMD:FD+ ;
+: NEGATIVE-PARENT ( CMD:command -- CMD:command ) 3 >FD -1 >FD CMD:FD+ ;
 
 \ A closed parent fd at child fd 3, beside the open pipe at fd 4: the run is
 \ refused before a capture pipe can take the closed number, so the child, which
@@ -379,8 +379,8 @@ create PIPE-BUF PIPE-CAP allot
 : PLACED-CLOSED ( CMD:command -- CMD:command )
    PIPE-PAIR-CLOEXEC FD>N {: w :} FD>N {: r :}
    r close  w close
-   3 w >FD CMD:FD+
-   4 W4 CMD:FD+
+   3 >FD w >FD CMD:FD+
+   4 >FD W4 CMD:FD+
    s" -c" CMD:ARG+
    s" printf ran >&4; printf placed >&3" CMD:ARG+
    s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;
