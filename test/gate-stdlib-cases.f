@@ -1521,8 +1521,11 @@ SUITE c2-xml-source
    test/c2-xml-consumer-refusals.f
 ;SUITE
 
-SUITE c2-records-tier1
-   test/c2-records-tier1.f
+SUITE c2-records-aot
+   src/lib/test.f
+   test/compiler/aot-mode.f
+   ENTRIES
+   test/c2-records-program.f
 ;SUITE
 
 SUITE c2-read-effects
@@ -1557,7 +1560,6 @@ SUITE c2-memory-source
    test/c2-owner-producer-program.f
    test/c2-owner-producer-refusals.f
    test/c2-owner-dispose.f
-   test/c2-forall-input.f
    test/c2-forall-input-refusals.f
    test/c2-memory-entry.f
    test/c2-field-loan-kind.f
@@ -1566,12 +1568,17 @@ SUITE c2-memory-source
    test/c2-field-loan-lifecycle.f
 ;SUITE
 
-SUITE c2-memory-tier1
-   test/c2-memory-tier1.f
-;SUITE
-
-SUITE c2-field-loan-tier1
-   test/c2-field-loan-tier1.f
+SUITE c2-memory-aot
+   src/lib/test.f
+   src/lib/test/wait.f
+   test/compiler/aot-mode.f
+   ENTRIES
+   test/c2-memory-program.f
+   test/c2-init-program.f
+   test/c2-owner-producer-program.f
+   test/c2-owner-dispose.f
+   test/c2-forall-input-refusals.f
+   test/c2-field-loan-program.f
 ;SUITE
 
 SUITE c2-view-record-mut
