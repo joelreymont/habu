@@ -8,11 +8,12 @@
 \ CALL's result, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
 \ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
-\ pages, CLOSE after a halt mid-receive, and a closed client refused once its
-\ row is reused. Then /mcp guarded by BEARER:ADMIT?: VISIBLE! hiding a tool by
-\ the caller's claim from tools/list and tools/call, and refused while HTTP
-\ serves; a client's TOKEN!, E-DENIED for no token, an empty one and a 403, and
-\ TOKEN! of a closed client.
+\ pages, CLOSE after a halt mid-receive, a closed client refused once its row
+\ is reused, and CANCEL of a CALL, of TOOLS's second page, of an idle client
+\ and of a closed one. Then /mcp guarded by BEARER:ADMIT?: VISIBLE! hiding a
+\ tool by the caller's claim from tools/list and tools/call, and refused while
+\ HTTP serves; a client's TOKEN!, E-DENIED for no token, an empty one and a
+\ 403, and TOKEN! of a closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
 require src/lib/test.f
@@ -79,15 +80,23 @@ BIG-U BUFFER: BIG
 TYPED-VARIABLE CLIENT MCP:client
 TYPED-VARIABLE STALL-CLIENT MCP:client
 TYPED-VARIABLE ROUTE-CLIENT MCP:client
+\ A server waiter sets ENTERED as it starts waiting for RELEASED and LEFT once
+\ it stops; a case that releases one SETTLEs, so the next case's ARM finds none.
 variable ENTERED
 variable SHAPE-CODE                 \ what shape's ANSWER threw, 0 for nothing
 variable RELEASED
+variable LEFT
 variable CLOSED
 variable PAGES-END                  \ when /endless answers its last page, a mono-ns
+variable CANCEL-CODE                \ what the cancelled TOOLS or CALL threw, 0 for none
+1 constant RUNNING                  \ CANCEL-CODE until that call ends: no throw code
 TASK:MIN-STACK TASK:TASK STALLER
 
 \ The end of a wait's WAIT-MS window, an absolute mono-ns.
 : DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
+
+: ARM ( -- ) 0 ENTERED atomic! 0 RELEASED atomic! 0 LEFT atomic! ;
+: SETTLE ( -- ) [: LEFT atomic@ 0<> ;] DEADLINE s" mcp-test LEFT" TEST-WAIT:POLL ;
 
 \ A setter's refusal throws: an assertion here would take the case's T-LABEL.
 : OK ( CURL:status -- )
@@ -495,6 +504,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" stall" s" Answer once released." S\" {\"type\":\"object\"}" s" {}" true
    [: 2drop 1 ENTERED atomic!
       [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test STALL" TEST-WAIT:POLL
+      1 LEFT atomic!
       s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 : ADD-LATE ( -- )
@@ -592,16 +602,18 @@ TASK:MIN-STACK TASK:TASK STALLER
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"more\"}}"
    HTTP:BODY! ;
 
-\ A first page with a nextCursor after FIRST-PAGE-MS, then a last, empty page
-\ once the test sets RELEASED or STALL-MS has passed, so a client that held its
-\ second page to the whole limit ends.
+\ A first page with a nextCursor after FIRST-PAGE-MS, then a last, empty page,
+\ setting ENTERED as it is asked, once the test sets RELEASED or STALL-MS has
+\ passed, so a client that held its second page to the whole limit ends.
 : LATE-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    answer JSON-HEADER
    asked HTTP:BODY$ S\" \"cursor\":\"late\"" CONTAINS? if
+      1 ENTERED atomic!
       mono-ns STALL-MS NS-PER-MS * +
       [: RELEASED atomic@ 0<> over mono-ns <= or ;] DEADLINE s" mcp-test STALL-PAGE"
       TEST-WAIT:POLL drop
+      1 LEFT atomic!
       answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! exit
    then
    mono-ns FIRST-PAGE-MS NS-PER-MS * +
@@ -613,6 +625,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 : SLOW-ROUTE ( HTTP:request HTTP:response -- )
    nip {: answer:HTTP:response :}
    [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test SLOW" TEST-WAIT:POLL
+   1 LEFT atomic!
    answer JSON-HEADER
    answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! ;
 
@@ -648,10 +661,10 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : CLIENT-TIMEOUT ( -- )
    s" a call past its limit is E-TRANSFER and the client serves the next call" T-LABEL
-   0 ENTERED atomic! 0 RELEASED atomic!
+   ARM
    [: CLIENT @ s" stall" s" {}" 300 >MS MCP:CALL 2drop drop ;] MCP:E-TRANSFER TTHROWSQ
    1 RELEASED atomic!
-   CLIENT @ s" echo" s" {}" 300 >MS MCP:CALL TFALSE 2drop ;
+   CLIENT @ s" echo" s" {}" 300 >MS MCP:CALL TFALSE 2drop SETTLE ;
 
 : CLIENT-PAGES ( -- )
    s" TOOLS follows nextCursor across pages" T-LABEL
@@ -684,12 +697,12 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : CLIENT-LIST-TIMEOUT ( -- )
    s" a tools/list past its limit is E-TRANSFER and the client serves the next call" T-LABEL
-   0 RELEASED atomic!
+   ARM
    s" /slow" URL MCP:OPEN ROUTE-CLIENT !
    [: ROUTE-CLIENT @ 300 >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
    1 RELEASED atomic!
    ROUTE-CLIENT @ 0 >MS MCP:TOOLS s" []" T$=
-   ROUTE-CLIENT @ MCP:CLOSE ;
+   ROUTE-CLIENT @ MCP:CLOSE SETTLE ;
 
 : CLIENT-LIST-PAGES-TIMEOUT ( -- )
    s" pages each inside its limit but past it together are E-TRANSFER" T-LABEL
@@ -705,7 +718,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : CLIENT-LIST-LATE-PAGE ( -- )
    s" a page after a slow one gets only what is left of TOOLS's limit" T-LABEL
-   0 RELEASED atomic!
+   ARM
    s" /late" URL MCP:OPEN ROUTE-CLIENT !
    mono-ns {: start:n :}
    [: ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
@@ -713,7 +726,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    1 RELEASED atomic!
    s" the client then serves a TOOLS to the last page" T-LABEL
    ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS s" []" T$=
-   ROUTE-CLIENT @ MCP:CLOSE ;
+   ROUTE-CLIENT @ MCP:CLOSE SETTLE ;
 
 
 : STALL-CALL ( -- ) STALL-CLIENT @ s" stall" s" {}" 0 >MS MCP:CALL 2drop drop ;
@@ -723,13 +736,13 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ The task halted inside CALL closes its client in its own cleanup.
 : CLIENT-HALTED ( -- )
    s" CLOSE of a call halted mid-receive" T-LABEL
-   0 ENTERED atomic! 0 RELEASED atomic! 0 CLOSED atomic!
+   ARM 0 CLOSED atomic!
    s" /mcp" URL MCP:OPEN STALL-CLIENT !
    ['] STALL-WORK STALLER TASK:ACTIVATE
    [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
    STALLER TASK:HALT
    STALLER TASK:JOIN MATCH result ok OF ENDOF err OF ENDOF ;MATCH E-TASK-NO-RESULT T=
-   1 RELEASED atomic!
+   1 RELEASED atomic! SETTLE
    CLOSED atomic@ 1 T=
    s" CLOSE refuses a closed client" T-LABEL
    [: STALL-CLIENT @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ
@@ -737,6 +750,44 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" /mcp" URL MCP:OPEN CLIENT !
    [: STALL-CLIENT @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ
    CLIENT @ MCP:CLOSE ;
+
+\ The task's TOOLS or CALL, its throw code kept in CANCEL-CODE.
+: CANCEL-STORE ( [ -- ] -- ) catch CANCEL-CODE atomic! ;
+: CANCEL-CALL ( -- ) [: STALL-CALL ;] CANCEL-STORE ;
+: CANCEL-TOOLS ( -- ) [: ROUTE-CLIENT @ 0 >MS MCP:TOOLS 2drop ;] CANCEL-STORE ;
+
+\ Runs the call on STALLER and cancels the client once the server has its
+\ request: the call ends E-TRANSFER while the server still holds it.
+: CANCELLED ( [ -- ] MCP:client -- )
+   {: work who:MCP:client :}
+   ARM RUNNING CANCEL-CODE atomic!
+   work STALLER TASK:ACTIVATE
+   [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
+   who MCP:CANCEL
+   [: CANCEL-CODE atomic@ RUNNING <> ;] DEADLINE s" mcp-test CANCEL" TEST-WAIT:POLL
+   CANCEL-CODE atomic@ MCP:E-TRANSFER T=
+   STALLER TASK:JOIN MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH
+   1 RELEASED atomic! SETTLE ;
+
+
+\ The one HTTP worker stays inside the stall tool, or /late's second page,
+\ until RELEASED: CANCEL ends the client's side alone.
+: CLIENT-CANCEL ( -- )
+   s" CANCEL from another task ends a CALL in flight with E-TRANSFER" T-LABEL
+   s" /mcp" URL MCP:OPEN STALL-CLIENT !
+   ['] CANCEL-CALL STALL-CLIENT @ CANCELLED
+   s" the cancelled client then serves a CALL" T-LABEL
+   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   s" CANCEL of an idle client leaves its next CALL to run" T-LABEL
+   STALL-CLIENT @ MCP:CANCEL
+   STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   STALL-CLIENT @ MCP:CLOSE
+   s" CANCEL refuses a closed client" T-LABEL
+   [: STALL-CLIENT @ MCP:CANCEL ;] MCP:E-STATE TTHROWSQ
+   s" CANCEL during TOOLS's second page ends it with E-TRANSFER" T-LABEL
+   s" /late" URL MCP:OPEN ROUTE-CLIENT !
+   ['] CANCEL-TOOLS ROUTE-CLIENT @ CANCELLED
+   ROUTE-CLIENT @ MCP:CLOSE ;
 
 TYPED-VARIABLE NEVER MCP:client
 
@@ -753,7 +804,7 @@ TYPED-VARIABLE NEVER MCP:client
    CLIENT-PAGES CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT
    CLIENT-LIST-PAGES-TIMEOUT CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
-   CLIENT-HALTED CLIENT-NEVER
+   CLIENT-HALTED CLIENT-CANCEL CLIENT-NEVER
    s" no transfer is left in flight" T-LABEL
    [: CURL:LOOP-STOP ;] catch 0 T= ;
 

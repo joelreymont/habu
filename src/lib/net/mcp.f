@@ -14,7 +14,7 @@
 \ schema describes the answer as structuredContent's "data". The client side,
 \ OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one server over
 \ CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer token
-\ a client sends.
+\ a client sends, and CANCEL ends its TOOLS or CALL from another task.
 \ STORAGE CLASS. PROCESS-WIDE: the server info, tool registry and visibility
 \ hook, written before HTTP serves; tables indexed by HTTP:WORKER-SLOT holding
 \ each request's state; and the client table, a row per open client, read and
@@ -732,7 +732,8 @@ public
 \ header block; the reply; the tool list TOOLS assembles; the response an
 \ event-stream reply carried; and the token TOKEN! set, empty for none. The
 \ handle of the exchange in flight, none between exchanges, is the table's: a
-\ record that held it could not be cast from its region.
+\ record that held it could not be cast from its region. So is the stop CANCEL
+\ sets from another task, read with the handle under LOCK.
 
 private
 
@@ -768,11 +769,22 @@ variable ROW-COUNT
 variable GENERATION                 \ the last generation OPEN gave a row
 DYNAMIC-BUFFER ROW-REGION SPAN:span<u8>
 DYNAMIC-BUFFER ROW-HANDLE option<CURL:handle>
+DYNAMIC-BUFFER ROW-STOP bool
 DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 : REGION ( n -- SPAN:span<u8> ) LOCK TASK:GET ROW-REGION @ LOCK TASK:RELEASE ;
-: HANDLE@ ( n -- option<CURL:handle> ) LOCK TASK:GET ROW-HANDLE @ LOCK TASK:RELEASE ;
 : HANDLE! ( option<CURL:handle> n -- ) LOCK TASK:GET ROW-HANDLE ! LOCK TASK:RELEASE ;
+: STOP@ ( n -- bool ) LOCK TASK:GET ROW-STOP @ LOCK TASK:RELEASE ;
+: STOP! ( bool n -- ) LOCK TASK:GET ROW-STOP ! LOCK TASK:RELEASE ;
+
+\ The row's handle, left none in the same hold, so no other task can reach a
+\ handle RETIRE is about to free.
+: HANDLE-TAKE ( n -- option<CURL:handle> )
+   {: idx:n :}
+   LOCK TASK:GET
+   idx ROW-HANDLE @
+   OPTION:NONE idx ROW-HANDLE !
+   LOCK TASK:RELEASE ;
 
 : ROW ( n -- ptr peer ) REGION SPAN:$ drop >PEER ;
 
@@ -815,6 +827,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    ROW-COUNT @ {: count:n :}
    count 1+ ROW-REGION-RESERVE
    count 1+ ROW-HANDLE-RESERVE
+   count 1+ ROW-STOP-RESERVE
    count 1+ ROW-GEN-RESERVE
    s" " SPAN:MAKE count ROW-REGION !
    0 count ROW-GEN !
@@ -837,22 +850,23 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    GENERATION @ {: gen:n :}
    region idx ROW-REGION !
    OPTION:NONE idx ROW-HANDLE !
+   false idx ROW-STOP !
    gen idx ROW-GEN !
    LOCK TASK:RELEASE
    gen >CLIENT ;
 
-\ The row holding the generation, else -1; under LOCK.
+\ The row holding the generation, else -1; a free row's 0 is no generation.
+\ Under LOCK.
 : GEN-ROW ( n -- n )
    {: gen:n :}
+   gen 1 < if -1 exit then
    ROW-COUNT @ 0 ?do
       i ROW-GEN @ gen = if i unloop exit then
    loop -1 ;
 
-\ An open client's row: E-STATE unless a row holds the client's generation. A
-\ free row's 0 is no generation.
+\ An open client's row: E-STATE unless a row holds the client's generation.
 : LIVE ( client -- n )
    CLIENT>N {: gen:n :}
-   gen 1 < if E-STATE throw then
    LOCK TASK:GET
    gen GEN-ROW {: idx:n :}
    LOCK TASK:RELEASE
@@ -920,7 +934,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ drained, then its handle cleaned up, and a reader a throw left is disposed.
 : RETIRE ( n -- )
    {: idx:n :}
-   idx HANDLE@ MATCH option
+   idx HANDLE-TAKE MATCH option
       none OF ENDOF
       some OF {: h:CURL:handle :}
          h [: dup CURL:CANCEL ;] catch {: code:n :} drop
@@ -931,7 +945,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
          h CURL:CLEANUP
       ENDOF
    ;MATCH
-   OPTION:NONE idx HANDLE!
    idx ROW PEER-CURSOR JR:DISPOSE ;
 
 
@@ -1007,10 +1020,12 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 \ A fresh handle, held by the row, posting the request buffer to the URL with
 \ the 2026-07-28 headers, the Mcp-Method line and, while the row holds a token,
-\ its Authorization line. A handle a halt left is retired first.
+\ its Authorization line. A handle a halt left is retired first. E-TRANSFER
+\ once CANCEL has stopped the row's TOOLS or CALL.
 : PREPARE ( n ptr u8 n ms -- CURL:handle )
    {: idx:n line:ptr lu:n limit:ms :}
    idx RETIRE
+   idx STOP@ if E-TRANSFER throw then
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
@@ -1072,12 +1087,15 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ which grows with it: NEXT writes each chunk into the room past the bytes
 \ received, and appending the chunk from where it lies keeps it. NEXT follows
 \ STREAM-START with no PAUSE between, so a halt is read in NEXT's wait, which
-\ gives the transfer up.
+\ gives the transfer up. A CANCEL that found no transfer to mark is read here:
+\ once STREAM-START answers, the transfer's record lives until NEXT takes its
+\ end, so CURL:CANCEL finds it.
 : TRANSFER ( n CURL:handle -- )
    {: idx:n h:CURL:handle :}
    idx REPLY-BUF {: buf:ptr :}
    buf BUF:CLEAR
    h CURL:STREAM-START CHECK
+   idx STOP@ if h CURL:CANCEL then
    begin
       buf buf BUF:LEN@ BUF:BLEN>N 1+ BUF:N>BLEN BUF:ENSURE
       buf ROOM {: room:ptr ru:n :}
@@ -1269,13 +1287,14 @@ public
 
 \ Every tool the server lists, following nextCursor to the last page, the
 \ whole call within ms (0: no limit): one JSON array of the tool objects in
-\ order. E-TRANSFER when an exchange fails or the pages run past ms, E-DENIED
-\ when the server refuses the client, E-RESPONSE for a reply that is no
-\ tools/list result.
+\ order. E-TRANSFER when an exchange fails, the pages run past ms or CANCEL
+\ ends the call, E-DENIED when the server refuses the client, E-RESPONSE for a
+\ reply that is no tools/list result.
 : TOOLS ( client ms -- ptr u8 n )
    {: who:client limit:ms :}
    TIME:MONO-NS {: start:n :}
    who LIVE {: idx:n :}
+   false idx STOP!
    idx LIST-BUF {: buf:ptr :}
    buf BUF:CLEAR
    91 buf BUF:APPEND-BYTE
@@ -1286,12 +1305,13 @@ public
 
 \ tools/call of the named tool with the arguments' JSON object, within ms for
 \ the whole transfer (0: no limit): answers the result object's JSON text and
-\ its isError. E-TRANSFER when the exchange fails or runs past ms, E-DENIED
-\ when the server refuses the client, E-RESPONSE for a JSON-RPC error, an
-\ unknown tool included, or a reply that is no result.
+\ its isError. E-TRANSFER when the exchange fails, runs past ms or CANCEL ends
+\ it, E-DENIED when the server refuses the client, E-RESPONSE for a JSON-RPC
+\ error, an unknown tool included, or a reply that is no result.
 : CALL ( client ptr u8 n ptr u8 n ms -- ptr u8 n bool )
    {: who:client name:ptr nu:n args:ptr au:n limit:ms :}
    who LIVE {: idx:n :}
+   false idx STOP!
    idx name nu args au CALL-REQUEST
    idx name nu limit [: CALL-EXCHANGE ;] catch {: code:n :} 2drop 2drop
    idx code SETTLE
@@ -1303,5 +1323,24 @@ public
    else drop 2drop false then
    {: fault:bool :}
    result ru fault ;
+
+
+\ From any task, ends the TOOLS or CALL this client has in flight, which then
+\ answers E-TRANSFER; an idle client is left as it is. E-STATE for a closed
+\ client.
+: CANCEL ( client -- )
+   CLIENT>N {: gen:n :}
+   LOCK TASK:GET
+   gen GEN-ROW {: idx:n :}
+   idx 0< if LOCK TASK:RELEASE E-STATE throw then
+   true idx ROW-STOP !
+   idx ROW-HANDLE @ MATCH option
+      none OF 0 ENDOF
+      some OF [: dup CURL:CANCEL ;] catch nip ENDOF
+   ;MATCH {: code:n :}
+   LOCK TASK:RELEASE
+   \ CURL's E-STATE: no transfer in flight, not started or its end taken.
+   code 0= code CURL:E-STATE = or if exit then
+   code throw ;
 
 ;package
