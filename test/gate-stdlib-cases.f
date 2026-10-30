@@ -1182,6 +1182,12 @@ SUITE http
    src/lib/net/http-test.f
 ;SUITE
 
+\ MCP:HANDLE on a loopback port: both eras' handshakes, tools/list and
+\ tools/call, and the protocol's refusals, answered to CURL.
+SUITE mcp
+   src/lib/net/mcp-test.f
+;SUITE
+
 \ The HTTP listener through an accept refused for want of descriptors. Its own
 \ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
 SUITE http-accept-starved
