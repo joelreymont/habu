@@ -1,6 +1,6 @@
 \ native-runtime.f - the complete source-owned native runtime: the closure of the
-\ compiler, the JIT, the REPL and the product's checked C2 storage, plus on
-\ x86-64 the Habu loop (runtime-x64.f). native-build.f evaluates it inside the one
+\ compiler, on arm64 T0, the JIT, the REPL and the product's checked C2 storage,
+\ plus on x86-64 the Habu loop (runtime-x64.f). native-build.f evaluates it inside the one
 \ AOT window; replaying the paths of the files loaded before include.f gives the target loader ownership
 \ of the whole closure. tools/manifest-lint.f refuses a row that is neither a
 \ declared entry point (reason on the row there) nor required by the closure.
@@ -117,6 +117,17 @@ s" src/core/internal-mark.f" required
 \ The checker symbols the capture keeps, decided against the sealed dictionary.
 s" src/core/checker-surface.f" required
 s" src/compiler/native/compiler.f" required
+package NATIVE-RUNTIME
+
+\ T0 has an arm64 emitter only, so the x86-64 engine bakes no T0.
+: LOAD-T0 ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   s" src/habu/t0-arm64.f" required
+   s" src/habu/t0.f" required ;
+
+' LOAD-T0
+;package
+execute
 package NATIVE-RUNTIME
 
 : LOAD-REPL-TERM ( -- )
