@@ -375,6 +375,15 @@ CAST: >BYTES ( n -- ptr u8 )
    easy state old list HEADER-STORE ;
 
 
+\ libcurl sends a header line as it is: a CR or LF inside it would end the line
+\ early and send the rest as a line of its own.
+: ONE-LINE ( ptr u8 n -- )
+   {: text u:n :}
+   u 0 ?do
+      text i + c@ dup $0D = swap $0A = or if E-OPERAND throw then
+   loop ;
+
+
 \ The two cells open_memstream publishes the finished buffer and its length in
 \ are the CALLER'S, not this word's: PERFORM passes its own task's pair, while a
 \ multiplexed transfer passes its record's, because the task that closes that
@@ -570,6 +579,7 @@ public
 
 : HEADER+ ( handle ptr u8 n -- status ) {: subject:handle text u:n :}
    u 1 AT-LEAST
+   text u ONE-LINE
    subject HANDLE-CELL text u HEADER-APPEND ;
 
 

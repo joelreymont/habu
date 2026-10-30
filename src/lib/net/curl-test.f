@@ -1649,6 +1649,13 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    0 CURL:>HANDLE CURL:CLEANUP ;
 
 
+: SPLIT-HEADER ( ptr u8 n -- )
+   {: line:ptr lu:n :}
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject line lu CURL:HEADER+ EXPECT-OK
+   subject CURL:CLEANUP ;
+
+
 : EMBEDDED-NUL ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject S\" http://127.0.0.1\x00/evil" CURL:URL! EXPECT-OK
@@ -1687,6 +1694,10 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    [: NULL-HANDLE ;] CURL:E-STATE TTHROWSQ
    s" a NUL inside a URL is refused, never silently cut" T-LABEL
    [: EMBEDDED-NUL ;] E-FFI-NUL TTHROWSQ
+   s" a CR inside a header line is refused, never sent as a line of its own" T-LABEL
+   [: S\" X-A: 1\rX-B: 2" SPLIT-HEADER ;] CURL:E-OPERAND TTHROWSQ
+   s" an LF inside a header line is refused, never sent as a line of its own" T-LABEL
+   [: S\" X-A: 1\nX-B: 2" SPLIT-HEADER ;] CURL:E-OPERAND TTHROWSQ
    s" a negative body length is refused" T-LABEL
    [: NEGATIVE-BODY ;] CURL:E-OPERAND TTHROWSQ
    s" a low-speed rate below zero is refused" T-LABEL
