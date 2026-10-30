@@ -9,6 +9,7 @@ require src/lib/codegen.f
 require src/lib/task.f
 require src/lib/queue.f
 require src/lib/test/outcome.f
+require src/lib/test/wait.f
 
 package QUEUE-TEST
 
@@ -61,9 +62,6 @@ variable Q-WAITING
 variable Q-DRAIN-GOT
 variable Q-POOL-N
 variable Q-POOL-RC
-
-: Q-WAIT-CELL ( ptr n n -- ) {: cell:ptr want:n :}
-   begin cell atomic@ want < while TASK:PAUSE repeat ;
 
 : Q-WAIT-DONE ( ptr n -- ) {: tcb:ptr :}
    begin tcb TASK:DONE? 0= while TASK:PAUSE repeat ;
@@ -201,7 +199,7 @@ variable Q-POOL-RC
    0 Q-FILL1 ! 0 Q-FILL2 !
    Q-ONE QUEUE:INIT
    ['] Q-FILL-WORK Q-FILLER TASK:ACTIVATE
-   Q-FILL1 1 Q-WAIT-CELL
+   Q-FILL1 1 Q-FILLER TEST-WAIT:FOR-CELL
    Q-FILL2 @ 0 T=
    Q-ONE QUEUE:COUNT 1 T=
    Q-ONE QUEUE:POP Q-FIRST T=
@@ -223,7 +221,7 @@ variable Q-POOL-RC
    0 Q-WAITING ! 0 Q-DRAIN-GOT !
    Q-ONE QUEUE:INIT
    ['] Q-DRAIN-WORK Q-DRAINER TASK:ACTIVATE
-   Q-WAITING 1 Q-WAIT-CELL
+   Q-WAITING 1 Q-DRAINER TEST-WAIT:FOR-CELL
    Q-DRAIN-GOT @ 0 T=
    Q-LATE Q-ONE QUEUE:PUSH
    Q-DRAINER Q-WAIT-DONE

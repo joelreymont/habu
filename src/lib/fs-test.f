@@ -9,6 +9,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/memory.f                \ MEM-MAX-N for the join overflow rows
 require src/lib/task.f                  \ two tasks through FS:READ-ALL / FS:FILE-SIZE at once
+require src/lib/adt/result.f            \ the join's answer is MATCHed here
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 require src/lib/process.f               \ the FIFO rows' reader child and its pipe
 require src/lib/process-argv.f
@@ -54,7 +55,6 @@ variable FS-TEST-BASE-U
 variable FS-TEST-PAR-A-U
 variable FS-TEST-PAR-B-U
 variable FS-TEST-PAR-BAD
-variable FS-TEST-PAR-DONE
 variable FS-TEST-PAR-READY
 variable FS-TEST-WA-U
 variable FS-TEST-WB-U
@@ -613,7 +613,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-WALK-B-TASK
 : FS-TEST-JOIN-OK ( ptr n -- )
    TASK:JOIN MATCH result
       ok OF 0 FS-TEST= ENDOF
-      err OF 0 FS-TEST= ENDOF
+      err OF dup 0 FS-TEST= . ENDOF
    ;MATCH ;
 
 : FS-TEST-WALK-PARALLEL ( -- )
@@ -753,7 +753,7 @@ TASK:MIN-STACK TASK:TASK FS-TEST-PAR-B-TASK
    1 FS-TEST-PAR-READY atomic-add drop
    begin FS-TEST-PAR-READY atomic@ 2 < while TASK:PAUSE repeat
    FS-TEST-PAR-ITERS 0 do pa pu buf want c FS-TEST-PAR-ROUND loop
-   1 FS-TEST-PAR-DONE atomic-add drop ;
+   0 TASK:RETURN ;
 
 : FS-TEST-PAR-WORK-A ( -- )
    FS-TEST-PAR-A FS-TEST-PAR-A-DATA FS-TEST-PAR-A-N FS-TEST-PAR-A-C FS-TEST-PAR-WORK ;
@@ -771,12 +771,11 @@ TASK:MIN-STACK TASK:TASK FS-TEST-PAR-B-TASK
    FS-TEST-BASE s" par-b.txt" FS-TEST-PAR-B-BUF FS-TEST-PAR-B-U FS-TEST-PATH!
    FS-TEST-PAR-A FS-TEST-PAR-A-N FS-TEST-PAR-A-C FS-TEST-PAR-WRITE
    FS-TEST-PAR-B FS-TEST-PAR-B-N FS-TEST-PAR-B-C FS-TEST-PAR-WRITE
-   0 FS-TEST-PAR-BAD !  0 FS-TEST-PAR-DONE !  0 FS-TEST-PAR-READY !
+   0 FS-TEST-PAR-BAD !  0 FS-TEST-PAR-READY !
    ['] FS-TEST-PAR-WORK-A FS-TEST-PAR-A-TASK TASK:ACTIVATE
    ['] FS-TEST-PAR-WORK-B FS-TEST-PAR-B-TASK TASK:ACTIVATE
-   begin FS-TEST-PAR-DONE atomic@ 2 < while TASK:PAUSE repeat
-   FS-TEST-PAR-A-TASK TASK:KILL
-   FS-TEST-PAR-B-TASK TASK:KILL
+   FS-TEST-PAR-A-TASK FS-TEST-JOIN-OK
+   FS-TEST-PAR-B-TASK FS-TEST-JOIN-OK
    FS-TEST-PAR-BAD @ 0= FS-TEST-TRUE ;
 
 \ Replace a symlink between the two FS:FILE? checks. A refused write that has

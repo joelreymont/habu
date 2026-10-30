@@ -9,6 +9,7 @@ require src/lib/test/outcome.f
 require src/lib/process-fork.f
 require src/lib/test/subject.f
 require src/lib/task.f
+require src/lib/test/wait.f
 require src/lib/adt/result.f                 \ a halted task's join answer is MATCHed
 
 64 constant MEMT-BUFS
@@ -477,8 +478,8 @@ private
 PTR-VARIABLE WBT-SAVED
 PTR-VARIABLE WBT-OUTER
 TASK:MIN-STACK TASK:TASK WBT-PEER
-TASK:SEMAPHORE WBT-PEER-IN
 TASK:SEMAPHORE WBT-OWN-MARKED
+variable WBT-PEER-IN
 
 : WBT-PROBE-RELEASED ( -- )
    2 close
@@ -573,15 +574,12 @@ TASK:SEMAPHORE WBT-OWN-MARKED
    outer c@ MEMT-MARK-A T=
    WBT-RESULT MEMT-MARK-A T= ;
 
-\ Scopes nest per task: a peer task leaving its own scope leaves this task's
-\ open mapping intact. Two semaphores and the join fix the order: the peer
-\ opens its scope, this task opens its own and marks it, the peer leaves and
-\ ends, and only then does this task read its mark. A process-wide scope stack
-\ would release this task's mapping when the peer left, so the read faults.
+\ Scopes nest per task: a peer leaving its own scope leaves this task's open
+\ mapping intact, where a process-wide scope stack would release it and fault.
 : WBT-PEER-BODY ( ptr u8 NUM:alloc-byte-len -- )
    drop {: buf:ptr :}
    MEMT-MARK-Z buf c!
-   WBT-PEER-IN TASK:SIGNAL
+   1 WBT-PEER-IN atomic!
    WBT-OWN-MARKED TASK:WAIT
    buf c@ TASK:RETURN ;
 
@@ -599,12 +597,11 @@ TASK:SEMAPHORE WBT-OWN-MARKED
    buf c@ MEMT-MARK-A <> if E-PRIMARY throw then ;
 
 : WBT-TWO-TASK-CHILD ( -- )
-   0 WBT-PEER-IN TASK:SEMAPHORE-INIT
+   0 WBT-PEER-IN atomic!
    0 WBT-OWN-MARKED TASK:SEMAPHORE-INIT
    ['] WBT-PEER-WORK WBT-PEER TASK:ACTIVATE
-   WBT-PEER-IN TASK:WAIT
+   WBT-PEER-IN 1 WBT-PEER TEST-WAIT:FOR-CELL
    MEM-64K BYTES-ALLOC-LEN [: WBT-OWN-BODY ;] WITH-BYTES
-   WBT-PEER-IN TASK:SEMAPHORE-DESTROY
    WBT-OWN-MARKED TASK:SEMAPHORE-DESTROY
    MEMT-EXIT0 ;
 
@@ -629,7 +626,7 @@ TASK:MIN-STACK TASK:TASK WBT-HALT-TASK
 : WBT-HALTED ( -- )
    0 WBT-HALT-READY atomic!
    ['] WBT-HALT-WORK WBT-HALT-TASK TASK:ACTIVATE
-   begin WBT-HALT-READY atomic@ 0= while TASK:PAUSE repeat
+   WBT-HALT-READY 1 WBT-HALT-TASK TEST-WAIT:FOR-CELL
    WBT-HALT-TASK TASK:HALT
    s" a task halted inside WITH-BYTES ends without a result" T-LABEL
    WBT-HALT-TASK TASK:JOIN

@@ -44,7 +44,8 @@ $7FFFFFFFFFFFFFFF constant CELL-NS-MAX \ the latest deadline a cell holds
 
 TASK-TEST-ALIGN8
 variable TASK-COUNT
-variable TASK-READY-CELL
+variable TASK-READY-A
+variable TASK-READY-B
 variable TASK-SELF-A
 variable TASK-SELF-B
 variable TASK-OK-CELL
@@ -109,7 +110,6 @@ $62 constant TASK-DIE-RC
 $30 constant TASK-CODE-CAP
 8 constant APP-CYCLES
 16 constant APP-ITERS
-4 constant APP-ACQ-WANT
 APP-ITERS 10 * 5 + constant APP-FFI-WANT
 APP-ITERS 10 * 100 + constant APP-SHARED-WANT
 64 constant SEM-ITEM-N
@@ -135,7 +135,10 @@ create APP-CSTR3 $61 c, $62 c, $63 c, 0 c,
 create APP-CSTR4 $61 c, $62 c, $63 c, $64 c, 0 c,
 create APP-CSTR5 $61 c, $62 c, $63 c, $64 c, $65 c, 0 c,
 
-variable APP-ACQ-DONE
+variable APP-ACQ0-DONE
+variable APP-ACQ1-DONE
+variable APP-ACQ2-DONE
+variable APP-ACQ3-DONE
 variable APP-DET-DONE
 variable APP-SHARED
 variable APP-FFI-TOTAL
@@ -160,12 +163,8 @@ variable MSG-REFUSE-IDLE
 variable POOL-N
 variable POOL-RC
 variable BUILD-BAD
-variable BUILD-DONE
 variable BUILD-READY
 variable BUILD-FMT-READY
-
-: TASK-WAIT-READY ( n -- ) {: want:n :}
-   begin TASK-READY-CELL atomic@ want < while TASK:PAUSE repeat ;
 
 : TASK-INC-LOCKED ( -- )
    TASK-LOCK TASK:GET
@@ -183,13 +182,13 @@ variable BUILD-FMT-READY
    11 TASK-USER-CELL !
    TASK:SELF-N TASK-SELF-A !
    TASK-INC-LOCKED
-   1 TASK-READY-CELL atomic-add drop ;
+   1 TASK-READY-A atomic! ;
 
 : TASK-WORK-B ( -- )
    22 TASK-USER-CELL !
    TASK:SELF-N TASK-SELF-B !
    TASK-INC-LOCKED
-   1 TASK-READY-CELL atomic-add drop ;
+   1 TASK-READY-B atomic! ;
 
 : TASK-PAUSER ( -- )
    begin TASK:PAUSE again ;
@@ -219,8 +218,17 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;
 
-: APP-WAIT-CELL ( ptr n n -- ) {: cell:ptr want:n :}
-   begin cell atomic@ want < while TASK:PAUSE repeat ;
+: JOIN-UNWRAP ( result<n,n> -- n n )     \ the payload, then 0 for ok and 1 for err
+   MATCH result ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
+
+: JOIN-DROP ( result<n,n> -- )
+   JOIN-UNWRAP 2drop ;
+
+: JOIN-OK= ( result<n,n> n -- ) {: want:n :}
+   JOIN-UNWRAP 0 T= want T= ;
+
+: JOIN-ERR= ( result<n,n> n -- ) {: want:n :}
+   JOIN-UNWRAP 1 T= want T= ;
 
 : APP-WAIT-DONE ( ptr n -- ) {: tcb:ptr :}
    begin tcb TASK:DONE? 0= while TASK:PAUSE repeat ;
@@ -230,7 +238,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    APP-SHARED @ v + APP-SHARED !
    APP-LOCK TASK:RELEASE ;
 
-: APP-ACQ-WORK ( n ptr u8 n -- ) {: id:n cstr:ptr want:n :}
+: APP-ACQ-WORK ( n ptr u8 n ptr n -- ) {: id:n cstr:ptr want:n done:ptr :}
    id TASK-LOCAL-ID !
    0 TASK-LOCAL-FFI !
    APP-ITERS 0 ?do
@@ -241,23 +249,29 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
       TASK-LOCAL-ID @ id <> if APP-BAD+ then
       id 1 + APP-SHARED+
    loop
-   1 APP-ACQ-DONE atomic-add drop ;
+   1 done atomic! ;
 
 : APP-ACQ0-WORK ( -- )
-   0 APP-CSTR1 1 APP-ACQ-WORK ;
+   0 APP-CSTR1 1 APP-ACQ0-DONE APP-ACQ-WORK ;
 
 : APP-ACQ1-WORK ( -- )
-   1 APP-CSTR2 2 APP-ACQ-WORK ;
+   1 APP-CSTR2 2 APP-ACQ1-DONE APP-ACQ-WORK ;
 
 : APP-ACQ2-WORK ( -- )
-   2 APP-CSTR3 3 APP-ACQ-WORK ;
+   2 APP-CSTR3 3 APP-ACQ2-DONE APP-ACQ-WORK ;
 
 : APP-ACQ3-WORK ( -- )
-   3 APP-CSTR4 4 APP-ACQ-WORK ;
+   3 APP-CSTR4 4 APP-ACQ3-DONE APP-ACQ-WORK ;
+
+: APP-ACQ-WAIT ( -- )
+   APP-ACQ0-DONE 1 APP-ACQ0 TEST-WAIT:FOR-CELL
+   APP-ACQ1-DONE 1 APP-ACQ1 TEST-WAIT:FOR-CELL
+   APP-ACQ2-DONE 1 APP-ACQ2 TEST-WAIT:FOR-CELL
+   APP-ACQ3-DONE 1 APP-ACQ3 TEST-WAIT:FOR-CELL ;
 
 : APP-DET-WORK ( -- )
    $63 TASK-LOCAL-ID !
-   APP-ACQ-DONE APP-ACQ-WANT APP-WAIT-CELL
+   APP-ACQ-WAIT
    APP-CSTR5 TASK-CSTRLEN dup TASK-LOCAL-FFI !
    dup 5 <> if APP-BAD+ then
    APP-FFI-TOTAL atomic-add drop
@@ -266,7 +280,10 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    1 APP-DET-DONE atomic-add drop ;
 
 : APP-RESET ( -- )
-   0 APP-ACQ-DONE !
+   0 APP-ACQ0-DONE !
+   0 APP-ACQ1-DONE !
+   0 APP-ACQ2-DONE !
+   0 APP-ACQ3-DONE !
    0 APP-DET-DONE !
    0 APP-SHARED !
    0 APP-FFI-TOTAL !
@@ -280,8 +297,8 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    ['] APP-DET-WORK APP-DET TASK:ACTIVATE ;
 
 : APP-WAIT ( -- )
-   APP-ACQ-DONE APP-ACQ-WANT APP-WAIT-CELL
-   APP-DET-DONE 1 APP-WAIT-CELL
+   APP-ACQ-WAIT
+   APP-DET-DONE 1 APP-DET TEST-WAIT:FOR-CELL
    APP-ACQ0 APP-WAIT-DONE
    APP-ACQ1 APP-WAIT-DONE
    APP-ACQ2 APP-WAIT-DONE
@@ -302,8 +319,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 
 : APP-CHECK ( -- )
    APP-BAD @ 0 T=
-   APP-ACQ-DONE @ APP-ACQ-WANT T=
-   APP-DET-DONE @ 1 T=
    APP-FFI-TOTAL @ APP-FFI-WANT T=
    APP-SHARED @ APP-SHARED-WANT T=
    APP-CHECK-USERS ;
@@ -594,25 +609,24 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    repeat drop
    v <> if BUILD-BAD+ then ;
 
-: BUILD-WORK ( n n -- ) {: c v :}
+: BUILD-WORK ( n n ptr n -- ) {: c v peer:ptr :}
    1 BUILD-READY atomic-add drop
    begin BUILD-READY atomic@ 2 < while TASK:PAUSE repeat
    BUILD-ITERS 0 do c BUILD-SB-ROUND loop
    1 BUILD-FMT-READY atomic-add drop
-   begin BUILD-FMT-READY atomic@ 2 < while TASK:PAUSE repeat
+   BUILD-FMT-READY 2 peer TEST-WAIT:FOR-CELL
    BUILD-FMT-ITERS 0 do v BUILD-FMT-ROUND loop
-   1 BUILD-DONE atomic-add drop ;
+   0 TASK:RETURN ;
 
-: BUILD-WORK-A ( -- ) BUILD-A-C BUILD-A-V BUILD-WORK ;
-: BUILD-WORK-B ( -- ) BUILD-B-C BUILD-B-V BUILD-WORK ;
+: BUILD-WORK-A ( -- ) BUILD-A-C BUILD-A-V BUILD-B BUILD-WORK ;
+: BUILD-WORK-B ( -- ) BUILD-B-C BUILD-B-V BUILD-A BUILD-WORK ;
 
 : TASK-TEST-BUILDERS ( -- )
-   0 BUILD-BAD !  0 BUILD-DONE !  0 BUILD-READY !  0 BUILD-FMT-READY !
+   0 BUILD-BAD !  0 BUILD-READY !  0 BUILD-FMT-READY !
    ['] BUILD-WORK-A BUILD-A TASK:ACTIVATE
    ['] BUILD-WORK-B BUILD-B TASK:ACTIVATE
-   begin BUILD-DONE atomic@ 2 < while TASK:PAUSE repeat
-   BUILD-A TASK:KILL
-   BUILD-B TASK:KILL
+   BUILD-A TASK:JOIN 0 JOIN-OK=
+   BUILD-B TASK:JOIN 0 JOIN-OK=
    BUILD-BAD @ 0 T= ;
 
 : TASK-EXPECT-SILENT-OK ( ptr u8 n -- ) {: src:ptr srcu:n :}
@@ -699,7 +713,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SEM-TICKET-N SEM-TICKETS TASK:SEMAPHORE-INIT
    0 SEM-GATE TASK:SEMAPHORE-INIT
    ['] SEM-DRAW SEM-TICKETER TASK:ACTIVATE
-   SEM-DRAWN SEM-TICKET-N APP-WAIT-CELL
+   SEM-DRAWN SEM-TICKET-N SEM-TICKETER TEST-WAIT:FOR-CELL
    SEM-TICKET-DONE @ 0 T=
    SEM-GATE TASK:SIGNAL
    SEM-TICKETER APP-WAIT-DONE
@@ -784,7 +798,7 @@ $33 constant MSG-LATE-VALUE
    MSG-DRAIN TASK:MSG? TFALSE
    ['] MSG-DRAIN-WORK MSG-DRAIN TASK:ACTIVATE
    ['] MSG-FILL-WORK MSG-FILL TASK:ACTIVATE
-   MSG-SENT1 1 APP-WAIT-CELL
+   MSG-SENT1 1 MSG-FILL TEST-WAIT:FOR-CELL
    MSG-SENT2 @ 0 T=
    MSG-DRAIN TASK:MSG? TTRUE
    MSG-GATE TASK:SIGNAL
@@ -812,7 +826,7 @@ $33 constant MSG-LATE-VALUE
 : TASK-TEST-MSG-GET-BLOCKS ( -- )
    0 MSG-WAITING ! 0 MSG-LATE-GOT !
    ['] MSG-WAITER-WORK MSG-WAITER TASK:ACTIVATE
-   MSG-WAITING 1 APP-WAIT-CELL
+   MSG-WAITING 1 MSG-WAITER TEST-WAIT:FOR-CELL
    MSG-LATE-GOT @ 0 T=
    ['] MSG-LATE-WORK MSG-LATE TASK:ACTIVATE
    MSG-WAITER APP-WAIT-DONE
@@ -997,18 +1011,6 @@ variable JOIN-TWICE-RC
 : JOIN-ORDER2 ( -- )
    TASK-EXIT-MARK @ 10 * 2 + TASK-EXIT-MARK ! ;
 
-: JOIN-UNWRAP ( result<n,n> -- n n )     \ the payload, then 0 for ok and 1 for err
-   MATCH result ok OF 0 ENDOF err OF 1 ENDOF ;MATCH ;
-
-: JOIN-DROP ( result<n,n> -- )
-   JOIN-UNWRAP 2drop ;
-
-: JOIN-OK= ( result<n,n> n -- ) {: want:n :}
-   JOIN-UNWRAP 0 T= want T= ;
-
-: JOIN-ERR= ( result<n,n> n -- ) {: want:n :}
-   JOIN-UNWRAP 1 T= want T= ;
-
 \ The worker's value comes back as the ok arm, and the join is the teardown: it
 \ leaves an EMPTY task, so the KILL after it does nothing and the next join has
 \ no task to wait for. Reactivating the same task clears both the answer and the
@@ -1123,7 +1125,7 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
    0 HALTED-PARKED !
    TASK:HALTED? TFALSE
    ['] HALTED-WORK HALTED-TASK TASK:ACTIVATE
-   HALTED-PARKED 1 APP-WAIT-CELL
+   HALTED-PARKED 1 HALTED-TASK TEST-WAIT:FOR-CELL
    HALTED-TASK TASK:HALT
    HALTED-TASK APP-WAIT-DONE
    HALTED-SEEN @ 1 T=
@@ -1236,7 +1238,7 @@ TASK:MIN-STACK TASK:TASK HALT-SWALLOW
 : HALT-IN-CLEANUP ( [ -- ] -- )
    UNWIND-RESET
    JOIN-HALT TASK:ACTIVATE
-   UNWIND-INNER 1 APP-WAIT-CELL
+   UNWIND-INNER 1 JOIN-HALT TEST-WAIT:FOR-CELL
    JOIN-HALT TASK:HALT
    JOIN-HALT APP-WAIT-DONE ;
 
@@ -1273,41 +1275,38 @@ TASK:MIN-STACK TASK:TASK HALT-SWALLOW
    HALT-SWALLOW TASK:KILL ;
 
 \ A HALT THAT MEETS A TASK'S CLEANUP RUNS IT ONCE, AND THE CLEANUP SEES IT.
-\ The cleanup pauses until the owner lets it return, which the owner does once
-\ the cleanup has turned twice after a HALT, so one of its TASK:PAUSEs has read
-\ the request. One task, its cleanup registered once, runs two rounds. In the
-\ first the body has returned and the HALT lands in its cleanup; in the second,
-\ a later activation of the same task, a HALT ends the body at TASK:PAUSE and a
-\ second HALT lands in that exit's cleanup. Either way the cleanup's PAUSE
-\ yields rather than starting a second unwind, and TASK:HALTED? answers true
-\ there.
 TASK-TEST-ALIGN8
 variable EXIT-HALT-RUNS               \ times the cleanup started
-variable EXIT-HALT-TURNS              \ the cleanup's TASK:PAUSE turns
+variable EXIT-HALT-IN                 \ the cleanup has started
+variable EXIT-HALT-SENT               \ the owner's HALT has returned
+variable EXIT-HALT-PAST               \ a cleanup PAUSE began after SENT
 variable EXIT-HALT-GO                 \ the owner lets the cleanup return
 variable EXIT-HALT-SEEN               \ TASK:HALTED? was true in the cleanup
 TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
 
 : EXIT-HALT-CLEAN ( -- )
    1 EXIT-HALT-RUNS atomic-add drop
+   1 EXIT-HALT-IN atomic!
    begin EXIT-HALT-GO atomic@ 0= while
-      1 EXIT-HALT-TURNS atomic-add drop
-      TASK:PAUSE
+      EXIT-HALT-SENT atomic@ TASK:PAUSE if 1 EXIT-HALT-PAST atomic! then
    repeat
    TASK:HALTED? if 1 EXIT-HALT-SEEN atomic! then ;
 
 : EXIT-HALT-RESET ( -- )
    0 EXIT-HALT-RUNS atomic!
-   0 EXIT-HALT-TURNS atomic!
+   0 EXIT-HALT-IN atomic!
+   0 EXIT-HALT-SENT atomic!
+   0 EXIT-HALT-PAST atomic!
    0 EXIT-HALT-GO atomic!
    0 EXIT-HALT-SEEN atomic! ;
 
 \ Halts the task in the cleanup it is running, lets the cleanup return once it
 \ has paused past the request, and reads what the cleanup saw.
 : EXIT-HALT-FINISH ( -- )
-   EXIT-HALT-RUNS 1 APP-WAIT-CELL
+   EXIT-HALT-IN 1 EXIT-HALT-TASK TEST-WAIT:FOR-CELL
    EXIT-HALT-TASK TASK:HALT
-   EXIT-HALT-TURNS EXIT-HALT-TURNS atomic@ 2 + APP-WAIT-CELL
+   1 EXIT-HALT-SENT atomic!
+   EXIT-HALT-PAST 1 EXIT-HALT-TASK TEST-WAIT:FOR-CELL
    1 EXIT-HALT-GO atomic!
    EXIT-HALT-TASK APP-WAIT-DONE
    s" a HALT landing in a running cleanup runs the cleanup once" T-LABEL
@@ -1813,7 +1812,7 @@ variable ENTRY-RACE-PENDING
    0 KILL-RACE-ENDING atomic!
    ['] KILL-RACE-WORK KILL-RACE-TASK TASK:ACTIVATE
    1 KILL-RACE-GO atomic!
-   KILL-RACE-ENDING 1 APP-WAIT-CELL
+   KILL-RACE-ENDING 1 KILL-RACE-TASK TEST-WAIT:FOR-CELL
    [: KILL-RACE-TASK TASK:KILL ;] catch 0 <> if
       1 KILL-RACE-THREW +!
       exit
@@ -2338,7 +2337,7 @@ variable BIND-RACE-ODD                \ any other answer, from either side
    r BIND-RACE-GO atomic!
    r BIND-RACE-SPREAD mod BIND-RACE-SPIN
    [: BIND-RACE-HOST TASK:UNEXPOSE ;] catch {: rc:n :}
-   begin BIND-RACE-DONE atomic@ r < while repeat
+   BIND-RACE-DONE r BIND-RACE-BINDER TEST-WAIT:FOR-CELL
    rc 0= if BIND-RACE-PROBE exit then
    rc E-TASK-STATE <> if BIND-RACE-ODD+ then
    [: BIND-RACE-HOST TASK:UNEXPOSE ;] catch 0 <> if BIND-RACE-ODD+ then ;
@@ -2420,16 +2419,15 @@ variable BIND-PAIR-Q-WON
       BIND-PAIR-Q-RC atomic!
       i 1 + BIND-PAIR-Q-DONE atomic!
    loop
-   BIND-PAIR-P-DONE BIND-PAIR-ROUNDS APP-WAIT-CELL ;
+   BIND-PAIR-P-DONE BIND-PAIR-ROUNDS BIND-PAIR-P TEST-WAIT:FOR-CELL ;
 
 \ The slot is freed before each round starts, while both binders wait, so the
 \ last round's binding is left to the binder's own end or the case's unbind.
 : BIND-PAIR-ROUND ( n -- ) {: r:n :}
    EXPOSE-SLOT TASK:CONTEXT-UNBIND
    r BIND-PAIR-GO atomic!
-   begin
-      BIND-PAIR-P-DONE atomic@ r < BIND-PAIR-Q-DONE atomic@ r < or
-   while repeat
+   BIND-PAIR-P-DONE r BIND-PAIR-P TEST-WAIT:FOR-CELL
+   BIND-PAIR-Q-DONE r BIND-PAIR-Q TEST-WAIT:FOR-CELL
    BIND-PAIR-P-RC atomic@ {: p:n :}
    BIND-PAIR-Q-RC atomic@ {: q:n :}
    p 0= q 0= and if 1 BIND-PAIR-BOTH +! then
@@ -2750,7 +2748,8 @@ variable NEW-STRAY
    TASK-TEST-MSG-TYPES
    TASK-TEST-JOIN-TYPES
    0 TASK-COUNT !
-   0 TASK-READY-CELL !
+   0 TASK-READY-A !
+   0 TASK-READY-B !
    0 TASK-SELF-A !
    0 TASK-SELF-B !
    99 TASK-USER-CELL !
@@ -2758,7 +2757,8 @@ variable NEW-STRAY
    TASK-TEST-FACILITY-SWIFT
    ['] TASK-WORK-A WORKER-A TASK:ACTIVATE
    ['] TASK-WORK-B WORKER-B TASK:ACTIVATE
-   2 TASK-WAIT-READY
+   TASK-READY-A 1 WORKER-A TEST-WAIT:FOR-CELL
+   TASK-READY-B 1 WORKER-B TEST-WAIT:FOR-CELL
    TASK-USER-CELL @ 99 T=
    WORKER-A TASK-USER-CELL TASK:HIS @ 11 T=
    WORKER-B TASK-USER-CELL TASK:HIS @ 22 T=
@@ -2767,7 +2767,6 @@ variable NEW-STRAY
    WORKER-A TASK:KILL
    WORKER-B TASK:KILL
    TASK-COUNT @ 2 T=
-   TASK-READY-CELL @ 2 T=
    ['] TASK-PAUSER WORKER-A TASK:ACTIVATE
    WORKER-A TASK:HALT
    WORKER-A TASK:KILL
