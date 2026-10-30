@@ -8983,6 +8983,49 @@ ardone LBL,
    30 SP 0 LDR,  SP SP 48 ADDI,
    LMAIN LABEL@ B, ;
 
+\ Abort only definition-owned compile state. A Habu catch that survived the
+\ native THROW still owns its handler and return/loop stacks; clearing those
+\ here would discard the handler that is about to receive the error.
+: EM-ABORT-COMPILE-STATE ( -- )
+   9 0 MOVZ,
+   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
+   9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
+   9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
+   9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
+   9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
+   9 DATA FWDTGT-CELL STR,        \ ...and so does its last forward target
+   9 DATA LIDX-CELL STR,          \ ...and its cached loop index
+   9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
+   9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
+   9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
+   9 DATA PEND-OPAQUE-CELL STR,
+   9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
+   9 0 MOVZ,
+   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+   9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
+   9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
+   9 DATA TRUSTED-CELL STR,
+   C-CLEAR-LOCALS
+   9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
+
+\ The bodies of def-abort and stack-clear (src/habu/prims.f), called by a Habu
+\ interpret loop that catches a refusal. FPRIM-WID frames x30 around each.
+package DEFWRITE
+
+public
+
+\ A caught Habu source abandons an owned definition without disturbing the
+\ catch frame that returned its code.
+: DEF-ABORT ( -- )
+   EM-ABORT-COMPILE-STATE ;
+
+: STACK-CLEAR ( -- )
+   XDS DATA S0-CELL LDR, ;
+
+;package
+
 package NCOMP-EMIT
 
 public
@@ -9214,17 +9257,33 @@ public
    done LBL, ;
 
 : EM-COMPILE ( -- )
-   LBL {: notsemi:label :}
+   LBL LBL LBL {: notsemi:label compiled:label rethrow:label :}
    LENTRY LABEL@ LBL,
    \ The native body loop, T0's and tier 1's, entered only from EM-COMMENT,
-   \ which routes by tier; the tier is not re-tested here.
+   \ which routes by tier; the tier is not re-tested here. Its `;` is
+   \ src/habu/definers.f DEF-SEMI?'s twin: it sets RECOVER-CELL around the
+   \ compile, abandons a definition refused with E-NCOMP-RECOVERY (-8576) and
+   \ reads on, and rethrows any other code.
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       C-DEF-SOURCE-CLOSE
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       LOAD
-      C-CALL-X11-SAVED
+      SP SP 16 SUBI,
+      10 DATA NCOMP-DISPATCH:RECOVER-CELL LDR,  10 SP 0 STR,
+      10 0 MOVN,  10 DATA NCOMP-DISPATCH:RECOVER-CELL STR,
+      11 G-PUSH  BCATCH  9 G-POP
+      10 SP 0 LDR,  SP SP 16 ADDI,
+      10 DATA NCOMP-DISPATCH:RECOVER-CELL STR,
+      9 compiled CBZ,
+      XDS XDS 16 SUBI,                     \ catch restored the compiler's two args
+      10 -8576 LIT64,  9 10 CMP,  C-NE rethrow BCOND,   \ E-NCOMP-RECOVERY
+      DEFWRITE:DEF-ABORT
+      LMAIN LABEL@ B,
+   rethrow LBL,
+      9 G-PUSH  BTHROW
+   compiled LBL,
       DEFWRITE:NATIVE-CLOSE
       LMAIN LABEL@ B,
    notsemi LBL,
@@ -11881,33 +11940,6 @@ public
       LVPUSHR LABEL@ BL,
       LMAIN LABEL@ B, ;
 
-\ Abort only definition-owned compile state. A Habu catch that survived the
-\ native THROW still owns its handler and return/loop stacks; clearing those
-\ here would discard the handler that is about to receive the error.
-: EM-ABORT-COMPILE-STATE ( -- )
-   9 0 MOVZ,
-   9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
-   9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
-   9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
-   9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
-   9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
-   9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
-   9 DATA FWDTGT-CELL STR,        \ ...and so does its last forward target
-   9 DATA LIDX-CELL STR,          \ ...and its cached loop index
-   9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
-   9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-   9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
-   9 DATA PEND-OPAQUE-CELL STR,
-   9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
-   9 0 MOVZ,
-   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
-   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
-   9 DATA CRSIG-A-CELL STR,  9 DATA CRSIG-U-CELL STR,
-   9 DATA DOESB-CELL STR,  9 DATA CLAUSE-CELL STR,
-   9 DATA TRUSTED-CELL STR,
-   C-CLEAR-LOCALS
-   9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
-
 : EM-RESET-COMPILE-STATE ( -- )
    EM-ABORT-COMPILE-STATE
    9 0 MOVZ,
@@ -12991,22 +13023,6 @@ public
    2 SP 8 LDR,  2 DATA TKA-CELL STR,
    2 SP 16 LDR,  2 DATA TKL-CELL STR,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
-
-;package
-
-\ The bodies of def-abort and stack-clear (src/habu/prims.f), called by a Habu
-\ interpret loop that catches a refusal. FPRIM-WID frames x30 around each.
-package DEFWRITE
-
-public
-
-\ A caught Habu source abandons an owned definition without disturbing the
-\ catch frame that returned its code.
-: DEF-ABORT ( -- )
-   EM-ABORT-COMPILE-STATE ;
-
-: STACK-CLEAR ( -- )
-   XDS DATA S0-CELL LDR, ;
 
 ;package
 

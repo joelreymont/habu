@@ -13,8 +13,9 @@ package PROGRAM-DIAGNOSTICS
    path pathu GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
 
-\ The file is read by the Habu loop, whose `;` recovers from a refused
-\ definition (src/habu/definers.f DEF-SEMI?); the engine's own loop does not.
+\ The file is read by the Habu loop (src/habu/definers.f DEF-SEMI?). On arm64
+\ the engine's own loop is the kernel's, whose `;` recovers the same way
+\ (src/habu/habu2.f EM-COMPILE); DIAGNOSTICS runs a recovery file through both.
 : RUN-LOAD-HABU ( ptr u8 n -- ) {: path:ptr pathu:n :}
    GE-HB-RESET
    s" --load" GE-ARG+
@@ -184,6 +185,8 @@ package PROGRAM-DIAGNOSTICS
    BADSIG-WIDE-ONCE
    s" test/program-diagnostic-me.f" s" habu: in mea1:" DIAGNOSTIC
    s" test/native-multi-error-recovery.f" s" habu: in bad:" HABU-DIAGNOSTIC
+   s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
+   s" test/native-multi-error-recovery.f" s" habu: in bad:" DIAGNOSTIC
    s" native-multi-error-recovery.f: at 'c@' expected: ptr u8 actual: n" s" test/native-multi-error-recovery.f" GE-EXPECT-ERR-HAS
    s" test/program-diagnostic-ctor.f" s" duplicate family" DIAGNOSTIC
    s" test/program-diagnostic-using.f" s" hb: using: unknown package:" DIAGNOSTIC
