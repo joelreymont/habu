@@ -56,8 +56,8 @@ variable PRIOR-ENGINE-ROOT-U
    data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
 
 : CHECK-HOST-LAYOUT ( -- )
-   \ Older hosts register the retired observer CODE cell even when it holds zero.
-   \ Remove its declaration before translating the remaining fixed host rows.
+   \ No NATIVE-LAYOUT row covers a host's CODE row at $2CF0, which TRANSLATE
+   \ would refuse (test/native-build-entry.f FOREIGN-WINDOW-CASE makes one).
    $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
    \ The host's rows at $3838..$3847 name cells the built engine fills itself
    \ (COMP-CELL, runtime-arm64.f INSTALL-T0) or leaves free.
@@ -281,7 +281,7 @@ variable HOST-COMPILER-KNOWN
 
 \ CHECKER-REG:SEAL installs the window's compilers in these cells and the capture
 \ records them; writers loaded after the capture compile with the host's.
-\ $3838 is literal: the capture host's baked layout may lack the COMP-CELL name.
+\ $3838 is literal for the reason NATIVE-LAYOUT's SLOTS gives.
 create HOST-DISPATCH-OFFS
    NCOMP-DISPATCH:XT-CELL ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,
@@ -303,9 +303,8 @@ create HOST-DISPATCH HOST-DISPATCH-N cells allot
       HOST-DISPATCH i cells + @ i HOST-DISPATCH-CELL xt!
    loop ;
 
-\ The host's checker and compiler roles belong to its dictionary. Save them
-\ before LOGICAL-RESET retires that dictionary, and its compiler entries before
-\ the definition cache binds its guard into XT-CELL and the window seals.
+\ Runs before LOGICAL-RESET retires the host dictionary that owns these roles,
+\ and before the definition cache binds its guard into XT-CELL.
 : RETAIN-HOST-PRODUCERS ( -- )
    SAVE-HOST-DISPATCH
    NDEF-CACHE:RETAIN-HOST-CHECKER
@@ -875,8 +874,8 @@ TYPED-VARIABLE WRITER-NAME-SPAN [ n -- n n ]
 : SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED ;
 
-\ RESTORE-HOST-DISPATCH leaves CHECKER-REG:SEAL's other installs to the window,
-\ so another machine's writer loads before it opens. NABI:BINDING is the host's.
+\ RESTORE-HOST-DISPATCH restores only HOST-DISPATCH-OFFS: a writer loaded after
+\ the capture meets CHECKER-REG:SEAL's other installs. NABI:BINDING is the host's.
 : FOREIGN? ( -- bool )
    TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ 0= ;
 

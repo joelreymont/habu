@@ -1991,10 +1991,8 @@ variable LONG-J
    s" : CKT-ZBAD ( n -- zrc ) ;" SB-APPEND
    SB$ ;
 
-\ The --all-errors pass must not check the SUMTYPE again inside the nominal
-\ pass's registrations (CHK-RUN-NOMINAL-LINTS closes its checker scope before
-\ CHK-RUN-ALL): exactly one diagnostic, the mismatch, and no E-BAD-DECLARATION
-\ duplicate family.
+\ CHK-RUN-NOMINAL-LINTS closes its checker scope before CHK-RUN-ALL, so the
+\ --all-errors pass does not meet the SUMTYPE as a duplicate family.
 : SUM-REDRIVE-TEST ( -- )
    TFAM-REDRIVE$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -2011,10 +2009,8 @@ variable LONG-J
    s" : CKT-AEOK-RT ( ckt-aeok -- ckt-aeok ) ;" SB-APPEND
    SB$ ;
 
-\ The nominal pass registers the DEFTYPE family in its own checker scope, and
-\ the --all-errors pass then records the declaration again: a registration
-\ that survived would refuse it as a duplicate family. Zero errors when the
-\ child has the declarer, baked or required.
+\ The --all-errors pass records the DEFTYPE family the nominal pass registered;
+\ a registration left open by CHK-RUN-NOMINAL-LINTS would refuse it as duplicate.
 : NOM-CLEAN-TEST ( -- )
    NOM-ALL-CLEAN$ ALL-JSON-STDIN 0 T=
    {: outu:n erru:n :}
@@ -5741,7 +5737,6 @@ variable AGREE-ERR-U
    rc E-PROC-TIMEOUT <> if rc throw then
    label labelu CASE-HUNG ;
 
-\ A case whose asserts failed prints FAIL, naming how many failed.
 : CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns START-NS !
    T-FAILURES {: fails0:n :}
@@ -6735,8 +6730,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 \ check.f's packet comes from. With no global of the tail the engine's own
 \ lookup refuses the token first (rc 94); a global defined under both usings
 \ binds, and the checker refuses the reference as ambiguous, naming both
-\ packages, and the native compiler's refusal exits 70 under the caller's name,
-\ at tier 0 and at tier 1.
+\ packages, at tier 0 and at tier 1.
 : UAMB-LOAD$ ( n -- ptr u8 n )
    {: tier:n :}
    SB-RESET

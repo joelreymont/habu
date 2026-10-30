@@ -69,7 +69,6 @@ public
    COMPILER-CONTEXT s" checker" CHECKER-DIGEST SNAPSHOT
    true CHECKER-KNOWN ! ;
 
-\ Later REPL, debugger and C2 rows cannot change the emitter used for FILEs.
 : COMPILER-DONE ( ptr u8 n ptr u8 n -- )
    SOURCE-ROOT:RELATIVE
    BUILD-TARGET:LINUX-X86-64? if s" src/compiler/native/compiler.f" else s" src/habu/t0.f" then

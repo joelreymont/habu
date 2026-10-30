@@ -21,7 +21,7 @@ create SLOTS
    NCOMP-DISPATCH:XT-CELL ,              0 ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 0 ,
-   \ Literal: the capture host's baked layout may lack the COMP-CELL name.
+   \ Literal: the capture host's baked layout may lack NCOMP-DISPATCH:COMP-CELL.
    $3838 ,                             0 ,   \ NCOMP-DISPATCH:COMP-CELL
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
@@ -33,7 +33,7 @@ create SLOTS
    NATIVE-OBS-EXT:CAPTURE-INVALIDATE , 0 ,
    NATIVE-HOST-CELLS:SELECT ,           0 ,
    NATIVE-HOST-CELLS:FACTS ,            0 ,
-   \ The origin record's three cells. Old hosts lack these names.
+   \ The origin record's three cells, which no constant names.
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + ,       0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 2 cells + ,    0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL 3 cells + ,    0 ,
