@@ -10330,6 +10330,7 @@ $200 constant PE-CAP-INIT
 4 constant PE-FIXED-ABI
 8 constant PE-C2-INIT
 16 constant PE-C2-RECORDS
+32 constant PE-TOP-ONLY           \ prim types a top-level keyword: a body token never takes the row
 
 $0 constant PE-SYM-OFF
 $8 constant PE-EFF-OFF
@@ -10366,6 +10367,9 @@ variable PE-I
 : PE-TRUSTED-ONLY? ( n -- bool )
    PE-FLAGS@ PE-TRUSTED-ONLY and 0 <> ;
 
+: PE-TOP-ONLY? ( n -- bool )
+   PE-FLAGS@ PE-TOP-ONLY and 0 <> ;
+
 : PRIM-ENSURE ( -- )
    #PE @ PE-CAP-V @ < IF EXIT THEN
    PE-CAP-V @ 2 * {: next:n :}
@@ -10383,6 +10387,9 @@ variable PE-I
 \ a TRUSTED: body (never checked) may use it.
 : PRIM-TRUSTED-ONLY! ( -- )
    #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-TRUSTED-ONLY or swap ! ;
+
+: PRIM-TOP-ONLY! ( -- )
+   #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-TOP-ONLY or swap ! ;
 
 : PRIM-FIXED-ABI! ( -- )
    #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-FIXED-ABI or swap ! ;
@@ -10445,6 +10452,20 @@ variable PRM-FIRST
             dup PE-TRUSTED-ONLY? IF drop RES-TRUE EXIT THEN
          THEN
       THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ Whether the step may take row n: a body never takes a top-only row.
+: PE-TAKES? ( n -- bool ) {: row:n :}
+   row PE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   row PE-TOP-ONLY? 0=  TOP-STEP @ 0 <>  or ;
+
+\ Whether sym has a primitive row the step may take.
+: PRIM-ROWS-SYM? ( n -- bool ) {: sym:n :}
+   sym PRIM-FIRST-IDX dup 0= IF drop RES-FALSE EXIT THEN
+   1 -
+   BEGIN dup #PE @ < WHILE
+      dup PE-SYM@ sym =  over PE-TAKES?  and IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
 
@@ -11215,7 +11236,9 @@ PRIM: .\"    PRIM;
 \ whether every escape was valid.
 PRIM: ESC-DECODE PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
 PRIM: [']    PE-N PE-OUT PRIM;
-PRIM: char   PE-N PE-OUT PRIM;
+\ The row types top-level `char`, as a storage count (`CHAR 0 TYPED-BUFFER`);
+\ a body never reaches it (TRY-PRIMS), so a body `char` is a word or undefined.
+PRIM: char   PE-N PE-OUT PRIM;  PRIM-TOP-ONLY!
 PRIM: [char] PE-N PE-OUT PRIM;
 PRIM: constant PE-N PE-IN PRIM;
 \ EXT-MARK-FREE-TAIL marks a product's free factor; the row keeps it callable
@@ -17149,7 +17172,7 @@ defer C2-STOW-BORROW-HOOK ( -- )
    sym PRIM-FIRST-IDX dup 0 = IF drop RES-FALSE EXIT THEN
    1 - PE-I !
    begin PE-I @ #PE @ <  TSOK @ 0=  and while
-      PE-I @ PE-ACTIVE? IF
+      PE-I @ PE-TAKES? IF
          PE-I @ PE-SYM@ sym = IF
             PE-I @ PE-TRUSTED-ONLY? TOP-STEP @ 0= and IF   \ reached only from a CHECKED body -> reject fail-closed
                C2-STOW-BORROW-HOOK
@@ -18270,7 +18293,7 @@ defer NAMED-OPERAND-XT ( -- )
    FEP @ RECOVERY-ROW? IF CALL-RECOVERS EXIT THEN
    CHECKER-EFFECT-AUTHORITY:ENFORCED? 0= IF CALL-APPLIES EXIT THEN
    sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN
-   sym PRIM-FIRST-IDX 0 <> IF CALL-PRIMS EXIT THEN
+   sym PRIM-ROWS-SYM? IF CALL-PRIMS EXIT THEN
    FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
    CHECKER-EFFECT-AUTHORITY:SEALED? IF CALL-REFUSED EXIT THEN
    CALL-APPLIES ;
@@ -20580,9 +20603,7 @@ CHECKER-REG:}SCRATCH
    2dup NORMAL-STRING-OPENER? IF 2drop RES-TRUE EXIT THEN
    ESCAPED-STRING-OPENER? ;
 
-: PARSE-LIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" [char]" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" char" CORE-STR= ;
+: PARSE-LIT? ( ptr u8 n -- bool ) s" [char]" CORE-STR= ;
 
 : SKIP-STRING-PAYLOAD
    TI @ SKI !  0 SKF !
@@ -22336,9 +22357,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    h E-DOUT@ E-INST {: dout:n :}
    UNJ-PD @ UNJ-PR @  din dout UNJ-PD @ SPLICE-SHAPE  dout swap  UNJ-SPLICE ;
 
-\ A body's `char x` or `[char] x` compiles the literal x, as the capture and
-\ tier 1 compile it, whatever word shares the spelling: the token takes its
-\ primitive row, never the dictionary word's, and swallows its operand.
+\ A body's `[char] x` compiles the literal x by its primitive row, never by a
+\ word of that spelling, and swallows its operand.
 : CHAR-LIT-TOK ( ptr u8 n -- )
    PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
    LITERAL-PAYLOAD-STEP ;

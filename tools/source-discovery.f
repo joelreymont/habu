@@ -1000,6 +1000,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
    again ;
 
 
+\ In a body only `[char]` and `[']` parse; at top level `char` and `'` do too.
+: SD-PARSER? ( n n -- bool ) {: off:n len:n :}
+   SD-DEF @ 0<> SD-SCOPES @ 0<> or if
+      off len SD-TOK$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? exit
+   then
+   off len SD-TOK$ PARSING-KEYWORD? ;
+
 \ A comment is skipped first, as the loader skips it, and like blanks it keeps a
 \ pending literal path: `s" x.f" ( why ) required` loads x.f. Every other token
 \ ends it. A local is looked up before the parsing keywords: in a body a local
@@ -1020,7 +1027,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    then
    off len SD-TOK$ s" ;]" STR= if SD-SCOPE-CLOSE exit then
    off len SD-LOCAL? if exit then
-   off len SD-TOK$ PARSING-KEYWORD? if SD-RAW 2drop exit then
+   off len SD-PARSER? if SD-RAW 2drop exit then
    \ PRIM: declares an effect for the named word; that name is source data.
    SD-DEF @ 0= off len SD-TOK$ s" PRIM:" STR=CI and if
       SD-RAW 2drop exit
@@ -1059,11 +1066,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
       noff nu SD-R-DECL-NAME noff nu SD-DEF-TRACK
       noff nu SD-TOK$ SD-SHADOW exit
    then
-   off len SD-TOK$ s" kernel:" STR=CI if
-      SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
-      noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
-   then
-   off len SD-TOK$ s" TRUSTED:" STR=CI if
+   off len SD-TOK$ SOURCE-SYNTAX:BODY-OPENER? if
       SD-DEF-OPEN SD-RAW {: noff:n nu:n :}
       noff nu SD-R-DECL-NAME noff nu SD-TOK$ SD-SHADOW exit
    then

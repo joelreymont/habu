@@ -6,13 +6,25 @@ require src/lib/string.f
 package SOURCE-SYNTAX
 public
 
-\ A parsing word takes the next whitespace-delimited token raw. A body checks
-\ for a live local before asking this question.
+\ A parsing word takes the next whitespace-delimited token raw.
 : PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" char" STR=CI if STR-TRUE exit then
    a u s" [char]" STR=CI if STR-TRUE exit then
    a u s" '" STR= if STR-TRUE exit then
    a u s" [']" STR= ;
+
+\ In a body only the bracketed keywords parse, once no live local claims the
+\ token; `char` and `'` there are names.
+: BODY-PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [char]" STR=CI if STR-TRUE exit then
+   a u s" [']" STR= ;
+
+\ The engine opens a definition body at these (src/habu/habu2.f
+\ EM-INTERPRET-COLON, C-TRUSTED): `:` byte for byte, the others case-folded.
+: BODY-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" :" STR= if STR-TRUE exit then
+   a u s" TRUSTED:" STR=CI if STR-TRUE exit then
+   a u s" kernel:" STR=CI ;
 
 \ Block tokens alter local lifetime only after byte-exact local lookup.
 : BLOCK-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}

@@ -200,11 +200,8 @@ create SDT-WIDE SDT-WIDE-N SDT-WIDE-LINE * allot
 
 \ --- a parsing keyword's operand is data -------------------------------------
 
-\ `'`, `[']`, `char` and `[char]` take the next token raw, as the loader does:
-\ `char s"` is 115 and opens no string, `char \` is 92 and hides nothing, `' :`
-\ starts no definition and `' require` loads nothing. In a body a local of the
-\ keyword's name is the local, so `;` after the local `char` ends the definition.
-\ Each source loads; the one event is the require the loader runs.
+\ At top level `char` and `'` take the next token raw, in a body `[char]` and
+\ `[']`, as the loader does; each source's one event is the require it runs.
 : SDT-RAW-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
    s" raw.f" a u SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] 0 TTHROWSQ

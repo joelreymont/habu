@@ -166,13 +166,8 @@ public
 : SOURCE-QPATH-BYTES ( n -- n )
    4 + ;
 
-\ A parsing keyword takes the next whitespace-delimited token raw, as data,
-\ whatever it spells: `'` and `char` at top level, `[']` and `[char]` in a body
-\ (src/habu/habu2.f EM-INTERPRET-DEFINE-KEYWORDS, EM-COMPILE-META-KEYWORDS),
-\ matched case-folded as the engine's keyword compare folds. The engine refuses
-\ each outside its own state, so a scanner that does not track the state takes
-\ all four. In a body a local of the keyword's name is that local and takes
-\ nothing, so a scanner that knows the locals asks this after its local lookup.
+\ At top level `char` and `'` parse, and `[char]` and `[']`, E-UNDEFINED there,
+\ take their token too; a body asks SOURCE-SYNTAX:BODY-PARSING-KEYWORD?.
 : PARSING-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u SOURCE-SYNTAX:PARSING-KEYWORD? ;
 

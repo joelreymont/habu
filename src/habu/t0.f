@@ -29,7 +29,7 @@ package T0
 \ THE ORDINALS. The checker files what it proved about a token under that
 \ token's ordinal (src/core/checker.f SCAN-REPORT), and the tape holds one row
 \ per ordinal: the name is 0, the signature reports nothing, a string literal
-\ with its opener is one, `[char]` or `char` with its operand is one, and a
+\ with its opener is one, `[char]` with its operand is one, and a
 \ tick's or `is`'s operand is one after its keyword. A quotation's first
 \ ordinal is recorded where it is skipped; the does> clause's follows its
 \ `does>`.
@@ -1120,9 +1120,8 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    xt r T0-EMIT:ADDR-CODE
    r PUSH-REG ;
 
-\ Character row k: its operand's first byte, the row's a0, as tier 1 compiles
-\ it (the JIT compiles `[char]` only): `[char] é` is the 195 that begins its
-\ UTF-8.
+\ Character row k: its operand's first byte, the row's a0: `[char] é` is the
+\ 195 that begins its UTF-8.
 : DO-CHAR ( n -- ) ROW-A0 @ PUSH-CONST ;
 
 \ A call spills first; the last token of a body outside every structure leaves

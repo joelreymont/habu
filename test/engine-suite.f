@@ -585,22 +585,23 @@ s\" CBAD-ESC-LETTER ( -- ptr u8 n ) s\\\" bad\\g\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX ( -- ptr u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX-SHORT ( -- ptr u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
 s\" CBAD-ESC-UNTERMINATED ( -- ptr u8 n ) s\\\" no end" T-CHECK-REJECTS
-\ A body's `char x` compiles the character literal x whatever word shares the
-\ spelling, so the checker types it as that literal, never by the word.
-package ES-CHAR-PTR
-: char ( -- ptr u8 ) s" ab" drop ;
-s" CBAD-CHAR-SHADOW-PTR ( -- ptr u8 ) char x" T-CHECK-REJECTS
-;package
+\ A body's `char` or `'` calls the word of that spelling, and the `;` after it
+\ ends the definition; ES-CHAR-CALL1 does so at tier 1, then the tier returns.
 package ES-CHAR-N
 : char ( n -- n ) 1+ ;
-\ The JIT compiles a body's `char` by dictionary lookup, so a call to the word
-\ above; tier 1 compiles the literal. The suite's tier is restored.
+: ' ( n -- n ) 1+ ;
+: ES-CHAR-CALL ( n -- n ) 2 * char ;
+: ES-TICK-CALL ( n -- n ) ' ;
 variable ES-CHAR-TIER
 tier@ ES-CHAR-TIER !  1 set-tier
-: ES-CHAR-LIT ( -- n ) char x ;
+: ES-CHAR-CALL1 ( n -- n ) 2 * char ;
 ES-CHAR-TIER @ set-tier
-s" a body char under a shadowing word compiles its literal" T-LABEL
-ES-CHAR-LIT 120 T=
+s" a body char calls the word of that spelling" T-LABEL
+5 ES-CHAR-CALL 11 T=
+s" a body tick calls the word of that spelling" T-LABEL
+5 ES-TICK-CALL 6 T=
+s" a tier-1 body char calls the word of that spelling" T-LABEL
+5 ES-CHAR-CALL1 11 T=
 ;package
 \ pointer arithmetic + byte view: pointee-polymorphic ptr+n arithmetic, ptr-ptr
 \ difference, and an explicit ( ptr a -- ptr u8 ) byte view all certify. A

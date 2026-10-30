@@ -926,21 +926,8 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
 : SKIP-STRING-REST ( ptr u8 n -- ) {: a:ptr u:n :}
    a u a u STRING-REST BODY-LIT! ;
 
-\ A parsing keyword takes the next whitespace-delimited token as its operand, by
-\ parse-name's rule, so a `:`, a definer, a digit, a `\`, a `(` or a string
-\ opener there is data and never a token of the program. At top level the
-\ keywords are the engine's interpret-state ones (src/habu/habu2.f
-\ EM-INTERPRET-DEFINE-KEYWORDS, C-TICK and C-CHAR); in a body they are the ones
-\ the checker's body reader takes (src/core/checker.f PARSE-LIT? and
-\ BTICK-CAND?). `char` is both. Each matches case-folded and ahead of any
-\ dictionary lookup, as the engine's keyword compare (LKWCMP) and the checker's
-\ TOKFOLD do, so no definition can shadow one; in a body a live local is looked
-\ up first (LOCAL? above).
-\
-\ A dictionary word that parses is not one of these. Which word `require`
-\ (src/core/include.f) or `SEE` (src/habu/xref.f) names is a scope question,
-\ and the tree defines words that take no operand under those spellings, so
-\ the token after one is read as an ordinary token.
+\ A parsing keyword's operand is its next token, data whatever it spells; a body
+\ local is looked up first (docs/forth.md "Parsing operands are data").
 : CHAR-KEYWORD? ( ptr u8 n -- bool )
    s" char" STR=CI ;
 
@@ -949,7 +936,6 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    a u s" '" STR=CI ;
 
 : BODY-PARSER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CHAR-KEYWORD? IF 0 0= EXIT THEN
    a u s" [']" STR=CI IF 0 0= EXIT THEN
    a u s" [char]" STR=CI ;
 

@@ -9065,9 +9065,8 @@ public
    LCAPBIND LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
    LCAPBIND LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
-\ A parsing word's operand is taken raw before LMAIN reads it, so `;`, a comment
-\ or a string opener stays data, as the JIT's C-BTICK and definers.f COMPILING?
-\ take it. Locals match first, in CAPTURE-IMMEDIATE.
+\ Body `[char]` and `[']` take the next token raw before LMAIN reads it, so a
+\ `;`, comment or string opener there is data; a live local never gets here.
 : CAPTURE-OPERAND-ROW ( label n bool -- ) {: kw:label kwlen:n seal:bool :}
    LBL LBL {: skip:label named:label :}
    0 kw ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
@@ -9081,9 +9080,7 @@ public
    skip LBL, ;
 
 : CAPTURE-OPERAND ( -- )
-   LKWCHAR LABEL@ KWCHAR$ nip false CAPTURE-OPERAND-ROW
    LKWBCHAR LABEL@ BCHAR-LEN false CAPTURE-OPERAND-ROW
-   LKWTICK LABEL@ TICK-LEN false CAPTURE-OPERAND-ROW
    LKWBTICK LABEL@ BTICK-LEN true CAPTURE-OPERAND-ROW ;
 
 private

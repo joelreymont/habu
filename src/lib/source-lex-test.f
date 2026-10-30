@@ -347,13 +347,8 @@ variable REG-I
    LINT-LEX:COUNT 5 ASSERT=
    4 LINT-LEX:TOKEN s" b" ASSERT$         4 LINT-LEX:OPERAND? ASSERT ;
 
-\ A local lives to the end of the control block that declared it, as the
-\ engine's control-flow stack keeps the locals count, and `else` drops the true
-\ arm's, so the `char` after `else` is the keyword again. An enclosing local is
-\ still that local inside a quotation, where the engine and the checker refuse
-\ it at that token, so the `;]` after it closes the quotation. A local matches
-\ byte for byte while a keyword folds: `CHAR` beside a local `char` is the
-\ keyword, and the `;` it takes is data that ends nothing.
+\ A local lives to its block's end, inside a quotation too, and `else` drops the
+\ true arm's. A body `char` or `CHAR` takes nothing, whichever opener began it.
 : TEST-LEXER-LOCAL-SCOPE ( -- )
    s" : G ( n -- ) {: [char] :} if {: char :} char else char A then [: [char] ;] [char] ; char B"
    LINT-LEX:SOURCE
@@ -361,7 +356,7 @@ variable REG-I
    LINT-LEX:COUNT 22 ASSERT=
    10 LINT-LEX:TOKEN s" char" ASSERT$     10 LINT-LEX:OPERAND? 0= ASSERT
    11 LINT-LEX:TOKEN s" else" ASSERT$
-   13 LINT-LEX:TOKEN s" A" ASSERT$        13 LINT-LEX:OPERAND? ASSERT
+   13 LINT-LEX:TOKEN s" A" ASSERT$        13 LINT-LEX:OPERAND? 0= ASSERT
    16 LINT-LEX:TOKEN s" [char]" ASSERT$   16 LINT-LEX:OPERAND? 0= ASSERT
    17 LINT-LEX:TOKEN s" ;]" ASSERT$       17 LINT-LEX:OPERAND? 0= ASSERT
    19 LINT-LEX:TOKEN s" ;" ASSERT$        19 LINT-LEX:OPERAND? 0= ASSERT
@@ -369,10 +364,17 @@ variable REG-I
    s" : H ( n -- n ) {: char :} CHAR ; char ; ' x" LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:COUNT 12 ASSERT=
-   7 LINT-LEX:TOKEN s" ;" ASSERT$         7 LINT-LEX:OPERAND? ASSERT
+   7 LINT-LEX:TOKEN s" ;" ASSERT$         7 LINT-LEX:OPERAND? 0= ASSERT
    8 LINT-LEX:TOKEN s" char" ASSERT$      8 LINT-LEX:OPERAND? 0= ASSERT
-   9 LINT-LEX:OPERAND? 0= ASSERT
-   11 LINT-LEX:TOKEN s" x" ASSERT$        11 LINT-LEX:OPERAND? ASSERT ;
+   9 LINT-LEX:OPERAND? ASSERT
+   11 LINT-LEX:TOKEN s" x" ASSERT$        11 LINT-LEX:OPERAND? ASSERT
+   s\" TRUSTED: .( ( -- n ) char \\ x\n; kernel: .( ( -- n ) char \\ y\n;"
+   LINT-LEX:SOURCE
+   LINT-LEX:COUNT 10 ASSERT=
+   1 LINT-LEX:TOKEN s" .(" ASSERT$        2 LINT-LEX:CONTENT s"  -- n " ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   6 LINT-LEX:TOKEN s" .(" ASSERT$        7 LINT-LEX:CONTENT s"  -- n " ASSERT$
+   9 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
 \ OPERAND scans the rest of the source again from its token with the locals that
 \ are live there: the `char` after the operand it marks is still the local. A
@@ -779,7 +781,7 @@ variable REG-I
    ROW-RESET
    s" : PRIM: dup ;" ROW+  ROW-NL
    s" : PPRIM: drop ;" ROW+  ROW-NL
-   s" : A ' PRIM: drop ;" ROW+  ROW-NL
+   s" ' PRIM: : A drop ;" ROW+  ROW-NL
    s" : C undefine PRIM: ;" ROW+  ROW-NL
    s" : D ['] PRIM: drop ;" ROW+  ROW-NL
    s" : LAST over ;" ROW+

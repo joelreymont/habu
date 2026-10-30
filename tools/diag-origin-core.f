@@ -49,6 +49,7 @@ variable DO-ORIG-LINE
 variable DO-ORIG-COL
 variable DO-ORIG-BYTE
 variable DO-ORIG-POS
+variable DO-BODY              \ between a body opener and its `;`
 variable DO-RUN-X             \ first word of the current run, -1 for none (DO-STEP)
 TYPED-VARIABLE DO-OUT-A ptr u8
 variable DO-OUT-U
@@ -259,8 +260,12 @@ variable DO-OUT-BUF?
 : DO-ORIGIN-WORD? ( -- bool )
    DO-TOK-K @ DO-WORD = ;
 
+\ In a body only `[char]` and `[']` parse; at top level `char` and `'` do too.
 : DO-PARSER? ( -- bool )
    DO-ORIGIN-WORD? 0= if DO-FALSE exit then
+   DO-BODY @ if
+      DO-TOK-A@ DO-TOK-U @ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? exit
+   then
    DO-TOK-A@ DO-TOK-U @ SOURCE:PARSING-KEYWORD? ;
 
 \ A parsing keyword's operand is the next whitespace-delimited token, read raw:
@@ -330,9 +335,10 @@ variable DO-OUT-BUF?
 : DO-STEP ( -- )
    DO-ORIGIN-WORD? 0= if DO-RUN-END exit then
    DO-PARSER? if DO-SKIP-OPERAND DO-RUN-END exit then
-   DO-SEMI? if DO-RUN-END exit then
+   DO-SEMI? if DO-FALSE DO-BODY ! DO-RUN-END exit then
    DO-STRING? if DO-RUN-END exit then
    DO-RUN+
+   DO-TOK-A@ DO-TOK-U @ SOURCE-SYNTAX:BODY-OPENER? if DO-TRUE DO-BODY ! then
    DO-COLON? if DO-MARK-COLON then ;
 
 : DO-MARK ( ptr u8 n -- ) {: src:ptr u:n :}
@@ -342,6 +348,7 @@ variable DO-OUT-BUF?
    0 DO-OUT-X !
    1 DO-LINE !
    1 DO-COL !
+   DO-FALSE DO-BODY !
    DO-RUN-END
    begin DO-NEXT-TOKEN while DO-STEP repeat
    DO-OUT-X @ DO-SRC-U @ DO-EMIT-RANGE ;

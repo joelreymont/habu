@@ -55,6 +55,7 @@ create LDEPTH-V VEC:HEADER-CELLS cells allot
 variable STEPPED
 variable DEPTH                  \ blocks open, counted while a local lives
 variable IN-GROUP               \ those tokens end inside a `{: … :}` group
+variable IN-BODY                \ those tokens end inside a definition body
 
 \ The token and locals counts drive raw cell arithmetic (COUNT 1- ...), so a
 \ vector length leaves its role here.
@@ -104,7 +105,8 @@ CAST: ITEM>N ( NUM:item-count -- n )
    LDEPTH-V CLEAR-ONE
    0 STEPPED !
    0 DEPTH !
-   false IN-GROUP ! ;
+   false IN-GROUP !
+   false IN-BODY ! ;
 
 : RESET-TABLES ( -- )
    CAP @ 0= if INIT-VECTORS else CLEAR-VECTORS then
@@ -470,11 +472,11 @@ private
    HALTED @ if exit then
    EMIT-ROW ;
 
-\ After `:` or `undefine` the engine consumes the next word as a parsed name and
-\ never executes it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in
+\ After a body opener or `undefine` the engine consumes the next word as a parsed
+\ name and never executes it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in
 \ src/core/checker.f declares the opener rather than opening a row.
 : NAMER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" :" STR= if true exit then
+   a u SOURCE-SYNTAX:BODY-OPENER? if true exit then
    a u s" undefine" STR=CI ;
 
 \ Token k is a name: the word before it is a namer. A `:` that is itself an
@@ -488,18 +490,8 @@ private
 : NAME-POS? ( -- bool )
    COUNT NAMED-AT? ;
 
-\ The engine and the checker look a body token up among the live locals before
-\ every keyword but `;` (src/habu/habu2.f EM-COMPILE-LOCAL, src/core/checker.f
-\ LOC-REF?), byte for byte, so a local named `char`, `[']` or `s"` is that local:
-\ it takes no operand and opens no string. A `{: … :}` group reads its names raw,
-\ and a name ends at its first `:`. A local lives to the end of the control
-\ block that declared it (SOURCE:BLOCK-OPENER?) and `else` drops the true arm's;
-\ `:` and `;` drop them all. An enclosing local is still that local inside a
-\ quotation, where the engine refuses it at that token. The state is read from
-\ the tokens the scan has made, never kept beside them, so a rescan (OPERAND)
-\ reads it again as it was at its token. Blocks are counted only while a local
-\ lives: one opened with none live drops none, so a body with no locals pays no
-\ block test.
+\ Before any keyword but `;`, a body token spelling a live local byte for byte
+\ is that local (habu2.f EM-COMPILE-LOCAL); a rescan reads locals from tokens.
 
 : LOCAL$ ( n -- ptr u8 n ) {: k:n :}
    k TOKEN {: a:ptr u:n :}
@@ -555,8 +547,10 @@ private
       k LOCAL-PUSH exit
    then
    k OPERAND? if exit then
-   a u s" ;" STR= if LOCALS-DROP exit then
-   a u s" :" STR= if LOCALS-DROP exit then
+   a u s" ;" STR= if LOCALS-DROP false IN-BODY ! exit then
+   a u SOURCE-SYNTAX:BODY-OPENER? if
+      LOCALS-DROP k NAMED-AT? 0= if true IN-BODY ! then exit
+   then
    a u s" {:" STR= if
       k NAMED-AT? 0= if true IN-GROUP ! then exit
    then
@@ -575,6 +569,10 @@ private
 
 : LOCALS-SYNC ( -- )
    COUNT LOCALS-TO ;
+
+\ Token k sits inside a definition, where only `[char]` and `[']` parse.
+: BODY-AT? ( n -- bool )
+   LOCALS-TO IN-BODY @ ;
 
 public
 
@@ -603,8 +601,8 @@ private
    CUR$ ROW-OPEN? 0= if false exit then
    NAME-POS? 0= ;
 
-\ The same name-position rule a row opener obeys: after `:` or `undefine` the
-\ engine parses the next word as a name and never executes it, so
+\ The same name-position rule a row opener obeys: after a body opener or
+\ `undefine` the engine parses the next word as a name and never executes it, so
 \ `: .( ( -- ) ;` DEFINES a word spelled `.(` instead of opening a printing
 \ comment.
 : PRINT-START? ( -- bool )
@@ -612,14 +610,15 @@ private
    NAME-POS? if false exit then
    LOCAL-START? 0= ;
 
-\ A parsing keyword the engine runs reads the next token raw, whatever it
-\ spells, so `char \` hides nothing after it and `['] (` opens no comment.
-\ Named after `:` or `undefine`, the keyword is a name and takes nothing, and a
-\ live local of its name is that local.
+\ A parsing keyword the engine runs reads the next token raw, so `['] (` opens no
+\ comment; a name after a body opener or `undefine`, or a live local, takes
+\ nothing.
 : PARSER-START? ( -- bool )
    CUR$ SOURCE:PARSING-KEYWORD? 0= if false exit then
    NAME-POS? if false exit then
-   LOCAL-START? 0= ;
+   LOCAL-START? if false exit then
+   COUNT BODY-AT? 0= if true exit then
+   CUR$ SOURCE-SYNTAX:BODY-PARSING-KEYWORD? ;
 
 : ADD-WORD ( -- )
    WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD ;
@@ -749,11 +748,14 @@ private
    l OPND-V VEC:LEN!
    SYNC-COUNT ;
 
-\ A token whose spelling steers how the scan reads the token after it.
-: STEERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u SOURCE:PARSING-KEYWORD? if true exit then
+\ Token k, read as a plain word, steers how the scan reads the token after it.
+: STEERS? ( n -- bool ) {: k:n :}
+   k TOKEN {: a:ptr u:n :}
    a u s" {:" STR= if true exit then
-   a u NAMER? ;
+   a u NAMER? if true exit then
+   a u SOURCE:PARSING-KEYWORD? 0= if false exit then
+   k BODY-AT? 0= if true exit then
+   a u SOURCE-SYNTAX:BODY-PARSING-KEYWORD? ;
 
 public
 
@@ -787,7 +789,7 @@ public
    a GAP-FROM a - {: u:n :}
    u 0= if exit then
    k 1+ a u PLAIN-AT? if
-      k 1+ TOKEN STEERS? 0= if k 1+ MARK-OPERAND exit then
+      k 1+ STEERS? 0= if k 1+ MARK-OPERAND exit then
    then
    k 1+ KEEP
    end POS !

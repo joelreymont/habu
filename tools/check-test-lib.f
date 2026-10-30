@@ -3090,7 +3090,6 @@ create BIG $2000 allot   variable BIG-U
    s" \ lead" s" BEGIN-STRUCTURE" NONAME-REFUSED
    s" \ lead" s" '" NONAME-REFUSED
    s" \ lead" s" char" NONAME-REFUSED
-   s" : CKC ( -- n )" s" char" NONAME-REFUSED
    s" : CKC ( -- n )" s" [char]" NONAME-REFUSED
    s" : CKC ( -- n )" s" [']" NONAME-REFUSED
    s" BEGIN-STRUCTURE CKB" s" +FIELD" NONAME-REFUSED
@@ -3233,17 +3232,26 @@ create BIG $2000 allot   variable BIG-U
    outu2 0 T=
    CAP-ERR erru2 s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE ;
 
-\ A parsing keyword outside its own state is refused by the loader and the check
-\ alike: `[char]` at top level and `'` in a body. A body's `char` is the
-\ character literal `[char]` is (checker.f CHAR-LIT-TOK), so it is in state.
-: OUT-OF-STATE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+\ A parsing keyword out of its state, `[char]` at top level or `char` or `'`
+\ in a body, is E-UNDEFINED to the loader and the check, at the keyword.
+: OUT-OF-STATE ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n kw:ptr kwu:n :}
    a u HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
    a u DIRECT-JSON-STDIN 70 T=
    {: outu2:n erru2:n :}
-   CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE ;
+   CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE
+   SB-RESET  s\" \"token\":\"" SB-APPEND  kw kwu SB-APPEND  s\" \"" SB-APPEND
+   CAP-ERR erru2 SB$ CONTAINS? TTRUE ;
+
+\ A body's `char` bound to a word defined under `0 set-check` is that unchecked
+\ word's call, refused as any is, never typed by the top-level `char` row.
+: UNCHECKED-CHAR ( -- )
+   s" check@ 0 set-check : char ( -- n ) 7 ; set-check : CKT-UC ( -- n ) char 1 + ; CKT-UC ."
+   HB-LOAD-SRC 70 T=
+   {: outu:n erru:n :}
+   CAP-ERR erru s" E-CAP-TRUSTED" CONTAINS? TTRUE ;
 
 \ A body binding a 65th local is refused by the loader at that local (rc 70),
 \ and the check refuses it the same way, with the checker's located
@@ -3280,9 +3288,12 @@ create BIG $2000 allot   variable BIG-U
    s" .(" LOCAL-KW
    TICK-NAME$ s" 7" RAW-PRINTS
    LOCAL-QUOTATION
-   s" [char] A ." OUT-OF-STATE
-   s" : CKT-OC ( -- n ) char A ; CKT-OC ." s" 65" RAW-PRINTS
-   s" : CKT-OT ( -- n ) ' dup drop 1 ;" OUT-OF-STATE
+   s" [char] A ." s" [char]" OUT-OF-STATE
+   s" : CKT-OC ( -- n ) char A ;" s" char" OUT-OF-STATE
+   s" : CKT-OT ( -- n ) ' dup drop 1 ;" s" '" OUT-OF-STATE
+   s" : CKT-OS ( -- n ) char ;" s" char" OUT-OF-STATE
+   s" : CKT-OS ( -- n ) ' ;" s" '" OUT-OF-STATE
+   UNCHECKED-CHAR
    MANY-LOCALS
    s" char" LOCAL-NOMINAL
    s" [char]" LOCAL-NOMINAL
@@ -4588,7 +4599,7 @@ variable REQ-U
    s" ckt-vo.f" s" \ lead" s" create" NONAME-SRC$ NEST-FILE
    s" ckt-vo.f" REQ$ VO-FILE-RUN
    s" E-MISSING-NAME" s" ckt-vo.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
-   s\" : CKC ( -- n )\n  char\n" s" ckt-vo-new.f" REQ$ VO-STDIN-RUN
+   s\" : CKC ( -- n )\n  [char]\n" s" ckt-vo-new.f" REQ$ VO-STDIN-RUN
    s" E-MISSING-NAME" s" ckt-vo-new.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
    s\" \\ lead\n  PRIM:\n" s" ckt-vo-new.f" REQ$ VO-STDIN-RUN
    s" E-MALFORMED-REGISTRY-ROW" s" ckt-vo-new.f" s\" \",\"line\":2,\"column\":3," VO-LOCATED
