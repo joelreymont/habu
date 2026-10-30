@@ -1,8 +1,7 @@
 \ digest.f - SHA-256 values and little-endian eight-byte slots for compiler data.
 \
-\ Not reentrant: the engine's SHA-256 state (src/core/sha256.f) is one
-\ process-wide context and this package keeps one output buffer, so digests run
-\ on one thread at a time.
+\ Not reentrant: this package keeps one digest context (SHA-CTX) and one output
+\ span (DG), so digests run on one thread at a time.
 
 require src/lib/errors.f
 require src/compiler/workspace.f
