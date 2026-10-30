@@ -31,7 +31,6 @@ package FS
 : FS-TEST:ATOMIC-BASE-OFF ( ptr u8 n -- n ) ATOMIC-BASE-OFF ;
 : FS-TEST:ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) false ATOMIC-WRITE-SEED ;
 : FS-TEST:MODE-DIR ( -- n ) MODE-DIR ;
-: FS-TEST:ENAMETOOLONG ( -- n ) ENAMETOOLONG ;
 : FS-TEST:BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) BUILD-TEMP-TRY ;
 : FS-TEST:MKTEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) MKTEMP-DIR-SEED ;
 : FS-TEST:TMP-RETRIES ( -- n ) TMP-RETRIES ;
@@ -832,7 +831,7 @@ public
 : DIRS-NAME-TOO-LONG ( -- )
    [: 300 NAMED$ FS:MAKE-DIRS ;] catch FS:ERRNO {: code:n cause:n :}
    code E-FS-IO T=
-   cause FS-TEST:ENAMETOOLONG T= ;
+   cause FS:ENAMETOOLONG T= ;
 
 \ The sibling's name never carries the destination's, so any last name the host
 \ accepts, up to NAME_MAX, is written, and no sibling stays behind.
@@ -850,7 +849,7 @@ public
    [: 300 NAMED$ s" x" FMT-ATOMIC-SEED FS-TEST:ATOMIC-WRITE-SEED ;] catch
    FS:ERRNO {: code:n cause:n :}
    code E-FS-IO T=
-   cause FS-TEST:ENAMETOOLONG T=
+   cause FS:ENAMETOOLONG T=
    300 NAMED$ FMT-ATOMIC-SEED 0 SIBLING FS:EXISTS? TFALSE ;
 
 \ Only the destination's own path meets PATH-CAP: one exactly that long,

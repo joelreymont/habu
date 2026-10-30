@@ -108,13 +108,13 @@ private
 
 public
 13 constant EACCES
+: ENAMETOOLONG ( -- n )
+   HB-TARGET-MACOS? if 63 else 36 then ;
 
 private
 20 constant ENOTDIR
 : ELOOP ( -- n )
    HB-TARGET-MACOS? if 62 else 40 then ;
-: ENAMETOOLONG ( -- n )
-   HB-TARGET-MACOS? if 63 else 36 then ;
 
 public
 \ Read immediately after the failed FS operation: another filesystem primitive

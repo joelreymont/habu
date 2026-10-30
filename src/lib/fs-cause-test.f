@@ -13,7 +13,6 @@ package FS
 : FS-CAUSE-TEST:ENOENT ( -- n ) ENOENT ;
 : FS-CAUSE-TEST:ENOTDIR ( -- n ) ENOTDIR ;
 : FS-CAUSE-TEST:ELOOP ( -- n ) ELOOP ;
-: FS-CAUSE-TEST:ENAMETOOLONG ( -- n ) ENAMETOOLONG ;
 ;package
 
 package FS-CAUSE-TEST
@@ -23,7 +22,8 @@ package FS-CAUSE-TEST
 create ROOT-BUF PATH-CAP allot
 create PATH-BUF PATH-CAP allot
 create READ-BUF 16 allot
-create LONG-NAME 256 allot
+300 constant LONG-U                 \ one name component past NAME_MAX, 255
+create LONG-NAME LONG-U allot
 variable ROOT-U
 variable BARRIER
 variable CAUSE-A
@@ -40,7 +40,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : SETUP ( -- )
    s" habu-fs-cause" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY u ROOT-U !
-   256 0 do [char] x LONG-NAME i + c! loop
+   LONG-U 0 do [char] x LONG-NAME i + c! loop
    s" file" PATH s" a" FS:WRITE-ALL
    s" dir" PATH FS:MAKE-DIR
    s" loop" s" loop" PATH FS:MAKE-SYMLINK ;
@@ -48,7 +48,8 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : MISSING ( -- ) s" missing" PATH READ-BUF 16 FS:READ-ALL drop ;
 : INTERMEDIATE ( -- ) s" file/child" PATH READ-BUF 16 FS:READ-ALL drop ;
 : LOOPED ( -- ) s" loop" PATH READ-BUF 16 FS:READ-ALL drop ;
-: TOO-LONG ( -- ) LONG-NAME 256 PATH READ-BUF 16 FS:READ-ALL drop ;
+: TOO-LONG ( -- ) LONG-NAME LONG-U PATH READ-BUF 16 FS:READ-ALL drop ;
+: TOO-LONG-WRITE ( -- ) LONG-NAME LONG-U PATH s" a" FS:WRITE-ALL ;
 : NO-ROOM ( -- ) s" file" PATH READ-BUF 0 FS:READ-ALL drop ;
 : DENIED ( -- ) s" dir/child" PATH READ-BUF 16 FS:READ-ALL drop ;
 : BAD-PATH ( -- ) LONG-NAME PATH-CAP 1 + FS:>PATHZ drop ;
@@ -111,7 +112,8 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    [: MISSING-LIST ;] E-FS-LIST-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
    [: INTERMEDIATE ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOTDIR T=
    [: LOOPED ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ELOOP T=
-   [: TOO-LONG ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENAMETOOLONG T=
+   [: TOO-LONG ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENAMETOOLONG T=
+   [: TOO-LONG-WRITE ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:ENAMETOOLONG T=
    s" dir" PATH FS:>PATHZ 0 chmod 0 T=
    [: DENIED ;] E-FS-OPEN TTHROWSQ  FS:ERRNO FS:EACCES T=
    s" dir" PATH FS:>PATHZ 448 chmod 0 T=
