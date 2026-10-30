@@ -1119,10 +1119,10 @@ variable GE-CF-BODY-U
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
    \ One recoverable compile-error misuse under the TCE-CATCH wrapper. The die
-   \ site (C-DUP-DEF-FAIL / C-PACKAGE-FAIL / C-LBRACE-DIE / C-LOCAL-REF /
-   \ C-DIE-DOES) writes its diagnostic to fd 2 and routes through LCOMPILEDIE,
-   \ so inside evaluate the aborted compile is a catchable throw of its sysexits
-   \ code. A fresh definition (GEC-RXOK -> 12321) then compiles and runs: the
+   \ site (such as C-DUP-DEF-FAIL or C-PACKAGE-FAIL, routed through
+   \ LCOMPILEDIE) or the checker's refusal writes its diagnostic to fd 2, so
+   \ inside evaluate the aborted compile is a catchable throw of its exit code.
+   \ A fresh definition (GEC-RXOK -> 12321) then compiles and runs: the
    \ eval-frame rollback (input cursor, CP/NDICT truncation, HIDX skipping the
    \ stale records) left a usable session.
    GE-HB-RESET
@@ -1161,19 +1161,22 @@ variable GE-CF-BODY-U
    s" : RXF ( -- n ) 1 ; : RXF ( -- n ) 2 ;" 78 s" duplicate definition:" GE-RXE-TOP
    s" public" s" 75" s" public" GE-RXE-CATCH-USABLE
    s" public" 75 s" public" GE-RXE-TOP
-   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" s" 75" s" local cannot be inside quotation" GE-RXE-CATCH-USABLE
-   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" 75 s" local cannot be inside quotation" GE-RXE-TOP
-   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
-   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
+   \ The checker refuses the rest before the native compiler runs, rc 70: a
+   \ local bound or referenced inside a quotation is E-BAD-LOCAL-SHAPE at its
+   \ token, and RXMK's empty does> clause does not give the n it declares.
+   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" s" 70" s" E-BAD-LOCAL-SHAPE habu: in rxqlb: at '{:'" GE-RXE-CATCH-USABLE
+   s" : RXQLB ( -- ) [: {: a :} a ;] drop ;" 70 s" E-BAD-LOCAL-SHAPE habu: in rxqlb: at '{:'" GE-RXE-TOP
+   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" s" 70" s" E-BAD-LOCAL-SHAPE habu: in rxqlr: at 'myloc'" GE-RXE-CATCH-USABLE
+   s" : RXQLR ( n -- ) {: myloc :} [: myloc drop ;] drop ;" 70 s" E-BAD-LOCAL-SHAPE habu: in rxqlr: at 'myloc'" GE-RXE-TOP
    \ An inner quotation's `;]` reopens the enclosing quotation, not the definition.
-   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" s" 75" s" myloc" GE-RXE-CATCH-USABLE
-   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" 75 s" myloc" GE-RXE-TOP
-   s" : RXMK ( -- ) create does> ( -- n ) ;" s" 70" s" does>" GE-RXE-CATCH-USABLE
-   s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" does>" GE-RXE-TOP
+   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" s" 70" s" E-BAD-LOCAL-SHAPE habu: in rxqln: at 'myloc'" GE-RXE-CATCH-USABLE
+   s" : RXQLN ( n -- ) {: myloc :} [: [: ;] drop myloc drop ;] drop ;" 70 s" E-BAD-LOCAL-SHAPE habu: in rxqln: at 'myloc'" GE-RXE-TOP
+   s" : RXMK ( -- ) create does> ( -- n ) ;" s" 70" s" habu: in rxmk;does: at '' expected: n actual: ptr a" GE-RXE-CATCH-USABLE
+   s" : RXMK ( -- ) create does> ( -- n ) ;" 70 s" habu: in rxmk;does: at '' expected: n actual: ptr a" GE-RXE-TOP
    s" PASS: recoverable compile errors catchable inside evaluate (session usable) + fail-closed at top level" type cr ;
 
 \ --- Residual compile-die sites ---
-\ J-QUOT/J-SEMIQUOT 75, C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74,
+\ J-QUOT 75, C-SIG-BAD 76, C-DEFER-DIE-TOKEN, C-QUOTE-EOF 74,
 \ counted-string 76 and export-undefined 70 route through the same LCOMPILEDIE
 \ tail: catchable inside evaluate, fail-closed at top level.
 \ C-LBRACE-STORE-ONE's 65th-local refusal is a rejected definition: a named
@@ -1317,8 +1320,9 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    GE-RXE-QNEST-BUILD
    GE-RXE-QNEST$ s" 75" s" hb: quotation nesting full at " GE-RXE-CATCH-USABLE
    GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP
-   s" : RXSQ ( -- ) 5 ;] drop ;" s" 75" s" ;]" GE-RXE-CATCH-USABLE
-   s" : RXSQ ( -- ) 5 ;] drop ;" 75 s" ;]" GE-RXE-TOP
+   \ A `;]` with no quotation open is the checker's refusal at its token, rc 70.
+   s" : RXSQ ( -- ) 5 ;] drop ;" s" 70" S\" habu: in rxsq: at ';]'\n" GE-RXE-CATCH-USABLE
+   s" : RXSQ ( -- ) 5 ;] drop ;" 70 S\" habu: in rxsq: at ';]'\n" GE-RXE-TOP
    \ The mirror: `;` with one or two quotations open. Published, the body's
    \ unpatched b-over placeholder spins when called. TRUSTED: skips the checker
    \ hook, so the engine's own refusal at `;` is the one that stops it.
@@ -1329,8 +1333,8 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    \ `;` with a control structure open. Published, the forward branch that
    \ `0 if`, `while` or `endof` left unpatched is a branch to itself, so the
    \ word spins when called; `do` leaves its loop frame behind. An `if` left
-   \ open inside a closed quotation is still on the control stack at `;`. A
-   \ checked body is refused the same way, before the checker hook.
+   \ open inside a closed quotation is still on the control stack at `;`. The
+   \ checker refuses a checked body at `;`, naming the last token it read, rc 70.
    s" TRUSTED: RXSF ( -- ) 0 if ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSF ( -- ) 0 if ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
    s" TRUSTED: RXSF ( -- ) begin 0 while ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
@@ -1338,7 +1342,7 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" TRUSTED: RXSF ( -- ) 1 0 do ;" s" 70" s" hb: ; with a control structure open: RXSF" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSF ( -- ) 1 0 do ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
    s" TRUSTED: RXSF ( -- ) [: 0 if ;] drop ;" 70 s" hb: control-flow word does not match the open structure: ;]" GE-RXE-TOP
-   s" : RXSF ( -- ) begin ;" 70 s" hb: ; with a control structure open: RXSF" GE-RXE-TOP
+   s" : RXSF ( -- ) begin ;" 70 S\" habu: in rxsf: at 'begin'\n" GE-RXE-TOP
    s" defer RXDFR badsig" s" 76" s" RXDFR" GE-RXE-CATCH-USABLE
    s" defer RXDFR badsig" 76 s" RXDFR" GE-RXE-TOP
    s" defer" s" 74" s" defer" GE-RXE-CATCH-USABLE
@@ -2196,19 +2200,35 @@ variable GE-KIND-N
    {: c:n :}
    c 2 < c 7 = or if 1 else 0 then ;
 
-\ `;` names the unfinished definition and its source location as well.
-: GE-KIND-SEMI-LINE$ ( bool -- ptr u8 n )
-   {: chk:bool :}
+\ Refusal text a, then GEKT's location in hb-end.f and the newline. GEKT is
+\ on line 1, or line 2 after the unchecked source's `0 set-check`.
+: GE-KIND-AT$ ( ptr u8 n bool -- ptr u8 n )
+   {: a:ptr u:n chk:bool :}
    SB-RESET
-   s" hb: ; with a control structure open: GEKT at " SB-APPEND
+   a u SB-APPEND
    GE-END-PATH GE-END-U @ SOURCE-ROOT:CANONICAL drop SB-APPEND
    s" :" SB-APPEND
    chk if 1 else 2 then FMT:SB-U
    GE-SB-LF
    SB$ ;
 
-\ Closer c straight in a definition at tier 0: rc 70, and the refusal naming
-\ its token is the whole of stderr.
+\ The checker's refusal of a checked GEKT names the closer, or for `;` the
+\ last token of the `if` branch left open.
+: GE-KIND-CHECK-LINE$ ( n -- ptr u8 n )
+   {: c:n :}
+   SB-RESET
+   s" habu: in gekt: at '" SB-APPEND
+   c 13 = if s" 1+" else c GE-KIND-TOK then SB-APPEND
+   s" '" SB-APPEND
+   GE-SB-LF
+   SB$ ;
+
+\ Closer c straight in a definition at tier 0: rc 70. A checked body is the
+\ checker's refusal at its token; unchecked, the refusal naming its token is
+\ the whole of stderr, and `;` names the definition and its location as well.
+\ The `does>` leg (11) has no clause signature: the engine's signature parse
+\ (C-SIG-BAD) refuses it first, rc 76, so neither the checker nor the
+\ control-flow check sees it.
 : GE-KIND-TOP ( n bool -- )
    {: c:n chk:bool :}
    GE-SRC-RESET
@@ -2218,8 +2238,16 @@ variable GE-KIND-N
    GE-END-SAVE
    GE-END-TOP
    c GE-KIND-TOK {: t:ptr tu:n :}
+   c 11 = if
+      76 t tu GE-EXPECT-RC
+      s" does> at " chk GE-KIND-AT$ t tu GE-EXPECT-ERR exit
+   then
    70 t tu GE-EXPECT-RC
-   c 13 = if chk GE-KIND-SEMI-LINE$ t tu GE-EXPECT-ERR exit then
+   chk if c GE-KIND-CHECK-LINE$ t tu GE-EXPECT-ERR-HAS exit then
+   c 13 = if
+      s" hb: ; with a control structure open: GEKT at " false GE-KIND-AT$
+      t tu GE-EXPECT-ERR exit
+   then
    t tu GE-KIND-LINE$ t tu GE-EXPECT-ERR ;
 
 : GE-CF-KIND ( -- )
