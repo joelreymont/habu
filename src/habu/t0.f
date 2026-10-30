@@ -1116,17 +1116,15 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START ;
 
-\ An operand bound to no record, or to an internal one (owned or not) outside a
-\ TRUSTED: body (the TRUSTED cell is zero), is undefined (MISSING), as tier 1's
-\ tick refuses it, even in an unchecked body whose scan reported and did not
-\ refuse it.
+\ An operand bound to no record, or one NDICT:TICK-REFUSED? refuses (an internal
+\ record outside a TRUSTED: body, or a scope entry in every body), is undefined
+\ (MISSING), as tier 1's tick refuses it, even in an unchecked body whose scan
+\ reported and did not refuse it.
 : DO-TICK ( n -- ) {: r:n :}
    NEXT$ {: a:ptr u:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
    r XREF-REC {: rec:ptr :}
-   rec XREF-FLAGS DNAME-INT and 0<> if
-      data-base TRUSTED-CELL + @ 0= if -1 MISSING !  a u UNSUPPORTED then
-   then
+   rec NDICT:TICK-REFUSED? if -1 MISSING !  a u UNSUPPORTED then
    rec REC-START {: xt:n :}
    xt 0= if a u UNSUPPORTED then
    ROOM ALLOC {: r:T0-EMIT:vreg :}

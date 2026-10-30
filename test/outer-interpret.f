@@ -703,8 +703,8 @@ variable WANT-RC
    s" tick other c2" GE-EXPECT-OK
    S\" 4\n" s" tick other c2" GE-EXPECT-OUT ;
 
-\ The complete C2 image owns this exact scope entry. Its dictionary row is
-\ internal as well, so the earlier interpret gate supplies the diagnostic.
+\ The complete C2 image owns this exact scope entry; the interpret tick's scope
+\ guard (outer.f SCOPE-ENTRY-GUARD) supplies the diagnostic.
 : TICK-C2-SCOPE ( -- )
    s" ' C2-MEM:WITH-MUT drop" s" oi-tick-c2-scope.f" LINE-CASE
    70 s" tick c2 scope" GE-EXPECT-RC

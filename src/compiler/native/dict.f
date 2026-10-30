@@ -48,6 +48,17 @@ private
 
 public
 
+\ Whether a tick refuses the found record rec as undefined: an internal record
+\ outside a TRUSTED: body, or in every body a code entry with a scope kind, as
+\ the engine's tick (outer.f SCOPE-ENTRY-GUARD) and the JIT's `[']` (habu2.f
+\ C-SCOPE-ENTRY-GUARD) refuse it. Asked by TICK-TARGET and both tiers' DO-TICK.
+: TICK-REFUSED? ( ptr n -- bool )
+   {: rec:ptr :}
+   rec XREF-FLAGS DNAME-INT and 0<>  rec VISIBLE-RECORD? 0= and if
+      true exit
+   then
+   rec XREF-START scope-kind? 0<> ;
+
 \ The bound record whatever its flags, or none. Two used publics that both
 \ export the tail, with nothing earlier binding it, are the ambiguity the engine
 \ refuses.
@@ -331,9 +342,12 @@ public
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
 \ is handed, so a tick binds only what SPELL-REC binds: an internal record,
 \ owned or not, only inside a TRUSTED: body, at both tiers. Outside one the
-\ tick is refused as undefined (elaborate.f DO-TICK).
+\ tick is refused as undefined (elaborate.f DO-TICK), and so is any other
+\ record TICK-REFUSED? refuses: a scope entry, in every body.
 : TICK-TARGET ( ptr u8 n -- n )
-   SPELL-REC false REC-CODE drop ;
+   SPELL-REC {: rec:ptr :}
+   rec XREF-FOUND? if rec TICK-REFUSED? if 0 exit then then
+   rec false REC-CODE drop ;
 
 \ A helper (src/habu/primitive-registry.f HELPER-REGISTER) sits in
 \ OWNER-API-PRI-WID, which no spelling search enters, so it is looked up there

@@ -3428,17 +3428,15 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : DO-TICK ( n -- ) {: ix:n :}
    ix 1+ QSPELL {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: entry:n :}
-   \ An operand no record answers, or an internal record while the TRUSTED cell
-   \ is zero (outside a TRUSTED: body), is refused at the operand as undefined,
-   \ as the engine's tick refuses it (E-UNDEFINED, definition.f
-   \ REPORT-UNDEFINED), even in an unchecked body whose scan reported and did
-   \ not refuse it.
+   \ An operand no record answers, or one NDICT:TICK-REFUSED? refuses (an
+   \ internal record outside a TRUSTED: body, or a scope entry in every body),
+   \ is refused at the operand as undefined, as the engine's tick refuses it
+   \ (E-UNDEFINED, definition.f REPORT-UNDEFINED), even in an unchecked body
+   \ whose scan reported and did not refuse it.
    entry 0= if
       a u NDICT:SCOPE-REC {: rec:ptr :}
       rec XREF-FOUND? 0= if ix 1+ UNDEFINED-REFUSE then
-      rec XREF-FLAGS DNAME-INT and 0<>  data-base TRUSTED-CELL + @ 0= and if
-         ix 1+ UNDEFINED-REFUSE
-      then
+      rec NDICT:TICK-REFUSED? if ix 1+ UNDEFINED-REFUSE then
       ix QUOT-REFUSE
    then
    ix entry NEMIT:ADDR-CODE EMIT-KIND-LIT
