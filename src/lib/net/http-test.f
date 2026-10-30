@@ -463,15 +463,27 @@ variable EXIT-HANDLE-CODE
    E-EXIT-HOOK throw ;
 
 
+\ Marks the worker's trace and answers how many entries came before this one.
+: ENTER-HOOK ( -- n )
+   MARK-THROWER MARK
+   1 THROWN atomic-add ;
+
+
+\ Mode 3 posts HOOK-READY whether entering threw or not, so RELEASE-HOOKS
+\ never waits forever, and holds at HOOK-GATE only once entered.
+: GATED-START ( -- )
+   [: ENTER-HOOK drop ;] [: HOOK-READY TASK:SIGNAL ;] finally
+   HOOK-GATE TASK:WAIT
+   1 HOOK-FINISHED atomic-add drop ;
+
+
 \ The active fixture changes between servers, while registration remains fixed.
 : START-THROWS ( -- )
-   MARK-THROWER MARK
-   1 THROWN atomic-add {: at:n :}
+   HOOK-MODE @ 3 = if GATED-START exit then
+   ENTER-HOOK {: at:n :}
    HOOK-MODE @ case
       1 of at 0= if E-HOOK throw then endof
       2 of at 0= if E-HOOK throw else E-HOOK-OTHER throw then endof
-      3 of HOOK-READY TASK:SIGNAL HOOK-GATE TASK:WAIT
-           1 HOOK-FINISHED atomic-add drop endof
    endcase ;
 
 

@@ -182,6 +182,7 @@ STRAYS TYPED-BUFFER STRAY-FD n    \ descriptors on one file, taking the numbers 
 create ONE-BYTE $01 c,
 CROWD 1+ TYPED-BUFFER CONNS TCP4:connection  \ the client connections a case holds open at once
 TASK:SEMAPHORE ACCEPTED           \ the route has kept its outcome
+variable ROUTE-CODE               \ what the route threw before it posted ACCEPTED
 TASK:SEMAPHORE FILLED             \ AIO is full: the held handshake goes on
 FILL-CAP TYPED-BUFFER FILL-TICKET AIO:ticket  \ polls that never fire, holding AIO at its ceiling
 FILL-CAP TYPED-BUFFER FILL-R n    \ each on its own pipe: Darwin bounds descriptors, and polls on
@@ -623,22 +624,30 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
       refused OF REFUSED-WITH ! ENDOF
    ;MATCH ;
 
-\ The route keeps what ACCEPT answered and says so.
-: OPEN ( HTTP:request HTTP:response -- )
-   [: NOTE ;] WS:ACCEPT KEEP
+\ A route posts ACCEPTED whether or not its body threw, so the case's wait
+\ ends and AWAIT-ROUTE fails with the route's own error.
+: ROUTED ( HTTP:request HTTP:response [ HTTP:request HTTP:response -- HTTP:request HTTP:response ] -- )
+   catch nip nip ROUTE-CODE !
    ACCEPTED TASK:SIGNAL ;
+
+\ The route keeps what ACCEPT answered.
+: OPEN ( HTTP:request HTTP:response -- )
+   [: 2dup [: NOTE ;] WS:ACCEPT KEEP ;] ROUTED ;
 
 : ACCEPT-AGAIN ( -- )
    0 KEPT-REQUEST @ 0 KEPT-RESPONSE @ [: NOTE ;] WS:ACCEPT KEEP ;
 
 \ One request is one socket: a second accept of it is refused, and the first
 \ socket serves on.
-: TWICE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+: ACCEPT-TWICE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
    asked 0 KEPT-REQUEST !
    answer 0 KEPT-RESPONSE !
    asked answer [: NOTE ;] WS:ACCEPT KEEP
-   [: ACCEPT-AGAIN ;] catch SECOND-ACCEPT !
-   ACCEPTED TASK:SIGNAL ;
+   [: ACCEPT-AGAIN ;] catch SECOND-ACCEPT ! ;
+
+: TWICE ( HTTP:request HTTP:response -- )
+   [: 2dup ACCEPT-TWICE ;] ROUTED ;
 
 \ The handshake stalls HOLD-MS once it holds its slot.
 : STALL ( -- )
@@ -646,8 +655,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    HOLD-MS >MS TASK:SLEEP ;
 
 : STALLED ( HTTP:request HTTP:response -- )
-   [: NOTE ;] [: STALL ;] WS-TEST:ACCEPT-STALLED KEEP
-   ACCEPTED TASK:SIGNAL ;
+   [: 2dup [: NOTE ;] [: STALL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
 
 \ The handshake waits, once it holds its slot, until AIO is full.
 : AWAIT-FILL ( -- )
@@ -655,8 +663,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    FILLED TASK:WAIT ;
 
 : FILLING ( HTTP:request HTTP:response -- )
-   [: NOTE ;] [: AWAIT-FILL ;] WS-TEST:ACCEPT-STALLED KEEP
-   ACCEPTED TASK:SIGNAL ;
+   [: 2dup [: NOTE ;] [: AWAIT-FILL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
 
 : PLAIN ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    answer 200 HTTP:STATUS!
@@ -684,9 +691,15 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    conn ENDS
    sock code ANSWER-MS CLOSES-WITHIN ;
 
+\ The route has posted ACCEPTED; what it threw fails the case.
+: AWAIT-ROUTE ( -- )
+   ACCEPTED TASK:WAIT
+   ROUTE-CODE @ {: code:n :}
+   code 0<> if code throw then ;
+
 \ The socket of the handshake the route has just accepted.
 : OPENED ( TCP4:connection -- TCP4:connection WS:socket )
-   ACCEPTED TASK:WAIT
+   AWAIT-ROUTE
    0 HELD @ ;
 
 \ A handshake on /ws that passed: the client's connection and its socket.
@@ -728,7 +741,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 REFUSED-WITH !
    S\" \r\n" REQ+
    REQ-SEND {: conn:TCP4:connection :}
-   status 0 <> if ACCEPTED TASK:WAIT then
+   status 0 <> if AWAIT-ROUTE then
    HEAD$ want wu STARTS-WITH? TTRUE
    label lu LOG s" : " LOG HEAD$ FIRST-LINE LOG-LINE
    conn TCP4:CLOSE DROP-STATUS
@@ -1321,7 +1334,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    OPEN-ALL
    s" GET" s" /ws" REQ-START GOOD-LINES S\" \r\n" REQ+
    REQ-SEND {: conn:TCP4:connection :}
-   ACCEPTED TASK:WAIT
+   AWAIT-ROUTE
    HEAD$ s" HTTP/1.1 503 " STARTS-WITH? TTRUE
    REFUSED-WITH @ 503 T=
    conn TCP4:CLOSE DROP-STATUS
@@ -1464,7 +1477,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    HOLD-SLOT {: first:TCP4:connection conn:TCP4:connection :}
    WS:STOP
    1 WS:START
-   ACCEPTED TASK:WAIT
+   AWAIT-ROUTE
    REFUSED-WITH @ 503 T=
    conn READ-HEAD
    HEAD$ s" HTTP/1.1 503 " STARTS-WITH? TTRUE
@@ -1485,7 +1498,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    [: WS:STOP 0 TASK:RETURN ;] STOP-TASK TASK:ACTIVATE
    first HEAR 1001 GOT-CLOSE
    [: WS:STOP ;] E-WS-STATE TTHROWSQ
-   ACCEPTED TASK:WAIT
+   AWAIT-ROUTE
    REFUSED-WITH @ 503 T=
    [: STOP-ENDED ;] ANSWER-MS AWAITED drop
    TASK-CODE 0 T=
@@ -1601,7 +1614,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    FILL-CODE @ CEILING T=
    FILL-CODE @ TASK-LINE
    FILLED TASK:SIGNAL
-   ACCEPTED TASK:WAIT
+   AWAIT-ROUTE
    [: ERR-WRITTEN ;] ANSWER-MS AWAITED drop
    UNFILL
    conn TCP4:CLOSE DROP-STATUS
