@@ -32,11 +32,6 @@ create ERR IO-CAP allot
    src size T-LABEL  OUT outu LEN>N OA-MARK$ T$=
    ERR erru LEN>N ;
 
-\ A call that ran with fd 2 empty: nothing was refused on the way.
-: REACHES ( ptr u8 n n -- ) {: src:ptr size:n rc:n :}
-   src size rc RAN {: ea:ptr eu:n :}
-   src size T-LABEL  ea eu s" " T$= ;
-
 \ A call that ran though fd 2 holds the verdict WANT, which the unjudged regime
 \ reports and does not enforce.
 : REACHES-REPORTED ( ptr u8 n n ptr u8 n -- )
@@ -63,13 +58,18 @@ private
 \ source-file-run SOURCE-ROOT's; int-mark has no package row. Unchecked code
 \ compiles a call to an owned primitive at both tiers: the call runs, and each
 \ writer refuses its arguments itself (record 0 is no namespace row; an empty
-\ name) with exit 83. Tier 1 reports the global trusted-only row's
-\ E-CAP-TRUSTED, as it reports every unjudged verdict, and compiles the call.
+\ name) with exit 83. Both tiers' native compilers report the global
+\ trusted-only row's E-CAP-TRUSTED, as they report every unjudged verdict, and
+\ compile the call.
 : UNCHECKED ( -- )
    s" 0 set-check : OA-SCOPE ( n n -- ) package-scope! ; 0 0 OA-AT OA-SCOPE"
-   ENGINE-ERROR:SEAL-VIOLATION REACHES
+   ENGINE-ERROR:SEAL-VIOLATION
+   s" E-CAP-TRUSTED habu: in oa-scope: 'package-scope!' is a trust-boundary primitive"
+   REACHES-REPORTED
    s" 0 set-check : OA-NS ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS"
-   ENGINE-ERROR:SEAL-VIOLATION REACHES
+   ENGINE-ERROR:SEAL-VIOLATION
+   s" E-CAP-TRUSTED habu: in oa-ns: 'namespace-record' is a trust-boundary primitive"
+   REACHES-REPORTED
    s" 1 set-tier 0 set-check : OA-NS1 ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS1"
    ENGINE-ERROR:SEAL-VIOLATION
    s" E-CAP-TRUSTED habu: in oa-ns1: 'namespace-record' is a trust-boundary primitive"
@@ -77,10 +77,13 @@ private
 
 \ OWNED comes from the rows, not a name list: source-unit-run's SOURCE-ROOT
 \ row makes it owned too, so unchecked tier-0 code compiles a call to it, and
-\ the call runs its callback, which prints the marker.
+\ the call runs its callback, which prints the marker. The native compiler
+\ reads the signature even unchecked, so it names a real type.
 : UNIT-RUN ( -- )
-   s" 0 set-check : OA-UNIT ( xt -- ) source-unit-run ; ' OA-AT OA-UNIT"
-   0 REACHES ;
+   s" 0 set-check : OA-UNIT ( [ -- ] -- ) source-unit-run ; ' OA-AT OA-UNIT"
+   0
+   s" E-CAP-TRUSTED habu: in oa-unit: 'source-unit-run' is a trust-boundary primitive"
+   REACHES-REPORTED ;
 
 \ An internal primitive no package row types keeps the compile refusal, so
 \ unchecked code still needs a TRUSTED: boundary to call it.

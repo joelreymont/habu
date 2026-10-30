@@ -275,7 +275,7 @@ variable CANDIDATE-VERDICT
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
-   70 s" does>" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
+   70 s" habu: in badarr;does: at 'drop'" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
@@ -386,7 +386,7 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET
    s" 0 set-check" GE-SRC-LINE
    s" : QLOCAL {: x:n :} [: x ;] execute ;" GE-SRC-LINE
-   75 s" x" s" hb compiler rejects local capture in quotation diagnostic" GE-EVAL-FORK-BAD ;
+   70 s" E-BAD-LOCAL-SHAPE habu: in qlocal: at 'x'" s" hb compiler rejects local capture in quotation diagnostic" GE-EVAL-FORK-BAD ;
 
 : LOCAL-FIRST ( -- )
    GE-HB-RESET
@@ -1079,7 +1079,7 @@ variable CANDIDATE-VERDICT
    s" : GD-PRIV ( -- n ) 1 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" : BAD ( -- n ) GD-PRIV ;" GE-SRC-LINE
-   $46 s" E-UNDEFINED: GD-PRIV" s" package rejects private checked call" RUN-BAD-CHILD
+   $46 s" E-UNDEFINED habu: in bad: undefined word 'GD-PRIV'" s" package rejects private checked call" RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" public" GE-SRC-LINE
