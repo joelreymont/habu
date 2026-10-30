@@ -3,8 +3,8 @@
 \ STORAGE CLASS. TASK-LOCAL for the paths one call stages: the second NUL-padded
 \ path PATHZ2-BUF (RENAME-FILE's, MAKE-SYMLINK's, MAKE-LINK's and the stream
 \ copy's destination), the unique `.tmp-*` sibling ATOMIC-WRITE-FILE,
-\ FS:RESERVE-SIBLING and REPLACE-STAGED name, ATOMIC-PATH, and
-\ FS:MKTEMP-DIR-IN's and FS:MKTEMP's TMP-PATH-BUF - the one this module
+\ ATOMIC-WRITE-PRIVATE, FS:RESERVE-SIBLING and REPLACE-STAGED name, ATOMIC-PATH,
+\ and FS:MKTEMP-DIR-IN's and FS:MKTEMP's TMP-PATH-BUF - the one this module
 \ RETURNS a span into - are the FS-MUT-ABI band of the per-task DATA region, so
 \ two tasks renaming, symlinking, writing atomically or making a temp at once
 \ share nothing and neither can replace the other's returned path. The
@@ -32,9 +32,11 @@
 \ `<dir>/.tmp-<seed>-<attempt>`, whatever the destination's name.
 \ ATOMIC-WRITE-FILE names its sibling and destination relative to the
 \ destination's directory descriptor, so only the destination's own path meets
-\ PATH-CAP and the host alone judges its last name. FS:RESERVE-SIBLING
-\ answers a path, so a directory with no room for one in PATH-CAP is
-\ E-SPAN-CAPACITY. REMOVE-TREE
+\ PATH-CAP and the host alone judges its last name. ATOMIC-WRITE-FILE gives
+\ the file an existing regular destination's mode, else 0644 under the umask;
+\ FS:ATOMIC-WRITE-PRIVATE creates its sibling 0600 and publishes 0600 whatever
+\ the destination held. FS:RESERVE-SIBLING answers a path, so a directory with
+\ no room for one in PATH-CAP is E-SPAN-CAPACITY. REMOVE-TREE
 \ unlinks a symlink to a directory and never descends into it, a root spelled
 \ with a trailing slash (`link/`, `lfile/`, `dang/`) included, and throws on
 \ any partial failure. Its root path must fit PATH-CAP; below the root each
@@ -139,14 +141,14 @@ CAST: >CELL ( n -- ptr n )
 \ THE STAGED PATHS ARE TASK-LOCAL, in the FS-MUT-ABI band of the per-task DATA
 \ region: every accessor reads `data-base`, which is the RUNNING task's region,
 \ so the path FS:MKTEMP-DIR-IN or FS:MKTEMP hands back stays this task's until
-\ it calls either again, and two tasks in RENAME-FILE, MAKE-SYMLINK, MAKE-LINK
-\ or ATOMIC-WRITE-FILE at once share nothing. The band is declared in
-\ src/habu/layout.f below FS-ABI and asserted there against every other DATA
-\ claim. It is a declared band and not TASK:+USER rows for src/lib/fs.f's
-\ reason: tools/native-build-core.f requires this file to build the engine, so
-\ a `require src/lib/task.f` here would load the task runtime into the build
-\ tool. A region is a fresh zeroed mapping, so a new task's paths start empty
-\ exactly as the old SPAN-BUFFERs did.
+\ it calls either again, and two tasks in RENAME-FILE, MAKE-SYMLINK, MAKE-LINK,
+\ ATOMIC-WRITE-FILE or ATOMIC-WRITE-PRIVATE at once share nothing. The band is
+\ declared in src/habu/layout.f below FS-ABI and asserted there against every
+\ other DATA claim. It is a declared band and not TASK:+USER rows for
+\ src/lib/fs.f's reason: tools/native-build-core.f requires this file to build
+\ the engine, so a `require src/lib/task.f` here would load the task runtime
+\ into the build tool. A region is a fresh zeroed mapping, so a new task's paths
+\ start empty exactly as the old SPAN-BUFFERs did.
 \
 \ layout.f is loaded before this file and cannot see PATHZ-CAP or
 \ PATH-CAP, so the band states those widths and this executes the agreement
@@ -745,13 +747,14 @@ FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
 
 \ The sibling and the destination are named relative to the destination's
 \ directory, so no sibling path is joined and only the destination's absolute
-\ spelling meets PATH-CAP.
-: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- )
-   {: path:ptr pathu src:ptr srcu seed :}
+\ spelling meets PATH-CAP. A private write publishes 0600; any other gives an
+\ existing regular destination's mode, else 0644 under the umask.
+: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n bool -- )
+   {: path:ptr pathu src:ptr srcu seed private?:bool :}
    srcu 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
    path pathu ATOMIC-TARGET {: dst:ptr dstu :}
    dstu PATHZ2-BUF FFI:CSTR! drop
-   dst dstu ATOMIC-OLD-MODE {: mode:n :}
+   private? if MODE-PRIVATE-FILE else dst dstu ATOMIC-OLD-MODE then {: mode:n :}
    dst dstu ATOMIC-OPEN-DIR {: dir :}
    dir dst dst dstu ATOMIC-BASE-OFF src srcu mode seed
    [: ATOMIC-IN-DIR ;] catch {: code:n :}
@@ -779,7 +782,15 @@ public
    E-FS-IO ERRNO-FAIL ;
 
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu ATOMIC-SEED ATOMIC-WRITE-SEED ;
+   path pathu src srcu ATOMIC-SEED false ATOMIC-WRITE-SEED ;
+
+
+\ ATOMIC-WRITE-FILE for a file only its owner may read: the sibling is created
+\ 0600 and the published file is 0600 whatever the destination held.
+: ATOMIC-WRITE-PRIVATE ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu src:ptr srcu :}
+   path pathu src srcu ATOMIC-SEED true ATOMIC-WRITE-SEED ;
+
 
 \ The longest base FS:MKTEMP-DIR-IN makes its temp in for a prefix of n bytes:
 \ its `<base>/<prefix>-<seed>-<attempt>` path still fits PATH-CAP with the

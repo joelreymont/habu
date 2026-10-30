@@ -18,9 +18,9 @@
 \ A semantic refusal (path capacity, a malformed path) leaves zero. The
 \ guarantee covers fs.f, fs-list.f, fs-anchored.f and fs-mutate.f's
 \ REMOVE-TREE, MKDIR-MODE, MAKE-DIR, MAKE-DIRS, ATOMIC-WRITE-FILE,
-\ FS:RESERVE-SIBLING and REPLACE-STAGED, whose cleanup after a failure keeps
-\ the first failure's cause; the identity, lock and other mutation helpers do
-\ not join it. The throws stay the primary contract.
+\ ATOMIC-WRITE-PRIVATE, FS:RESERVE-SIBLING and REPLACE-STAGED, whose cleanup
+\ after a failure keeps the first failure's cause; the identity, lock and other
+\ mutation helpers do not join it. The throws stay the primary contract.
 \
 \ THE WALK visits regular files only, depth-first, in the order the platform
 \ directory stream returns (a caller that needs lexical order sorts); it skips

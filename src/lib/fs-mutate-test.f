@@ -29,7 +29,7 @@ package FS
 : FS-TEST:MODE-PERM ( -- n ) MODE-PERM ;
 : FS-TEST:CLEANUP-COUNT ( -- n ) CLEANUP-N @ ;
 : FS-TEST:ATOMIC-BASE-OFF ( ptr u8 n -- n ) ATOMIC-BASE-OFF ;
-: FS-TEST:ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) ATOMIC-WRITE-SEED ;
+: FS-TEST:ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) false ATOMIC-WRITE-SEED ;
 : FS-TEST:MODE-DIR ( -- n ) MODE-DIR ;
 : FS-TEST:ENAMETOOLONG ( -- n ) ENAMETOOLONG ;
 : FS-TEST:BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) BUILD-TEMP-TRY ;
@@ -745,6 +745,47 @@ public
    FMT-READ-BUF 7 s" dropped" T$=
    DROP-BOX$ FS:REMOVE-FILE
    FMT-MKDIR-PATH FS:REMOVE-DIR ;
+;package
+
+package FS-TEST
+create PRIVATE-DIR-BUF PATH-CAP allot
+variable PRIVATE-DIR-U
+create PRIVATE-OUT-BUF PATH-CAP allot
+variable PRIVATE-OUT-U
+
+: PRIVATE-DIR$ ( -- ptr u8 n ) PRIVATE-DIR-BUF PRIVATE-DIR-U @ ;
+: PRIVATE-OUT$ ( -- ptr u8 n ) PRIVATE-OUT-BUF PRIVATE-OUT-U @ ;
+
+
+\ The destination holds exactly body at mode.
+: PRIVATE-IS ( ptr u8 n n -- )
+   {: body:ptr bodyu mode :}
+   PRIVATE-OUT$ FMT-READ-BUF 64 FS:READ-ALL bodyu T=
+   FMT-READ-BUF bodyu body bodyu T$=
+   PRIVATE-OUT$ FS:STAT-MODE FS-TEST:MODE-PERM and mode T= ;
+
+
+public
+\ FS:ATOMIC-WRITE-PRIVATE publishes 0600 whether the destination is new or
+\ held 0644; FS:ATOMIC-WRITE-FILE gives a new destination WRITE-ALL's mode,
+\ 0644 under the umask. The emptied directory's removal proves no sibling stayed.
+: ATOMIC-PRIVATE ( -- )
+   FMT-ROOT$ s" private" PRIVATE-DIR-BUF FS:JOIN-PATH PRIVATE-DIR-U !
+   PRIVATE-DIR$ s" out.txt" PRIVATE-OUT-BUF FS:JOIN-PATH PRIVATE-OUT-U !
+   PRIVATE-DIR$ FS:MAKE-DIR
+   PRIVATE-OUT$ s" first" FS:ATOMIC-WRITE-PRIVATE
+   s" first" FMT-MODE-0600 PRIVATE-IS
+   PRIVATE-OUT$ FS:MODE-0644 FS:CHMOD-MODE
+   PRIVATE-OUT$ s" narrowed" FS:ATOMIC-WRITE-PRIVATE
+   s" narrowed" FMT-MODE-0600 PRIVATE-IS
+   PRIVATE-OUT$ FS:REMOVE-FILE
+   FMT-REMOVE-PATH s" mode-control" FS:WRITE-ALL
+   FMT-REMOVE-PATH FS:STAT-MODE FS-TEST:MODE-PERM and {: fresh:n :}
+   FMT-REMOVE-PATH FS:REMOVE-FILE
+   PRIVATE-OUT$ s" default" FS:ATOMIC-WRITE-FILE
+   s" default" fresh PRIVATE-IS
+   PRIVATE-OUT$ FS:REMOVE-FILE
+   PRIVATE-DIR$ FS:REMOVE-DIR ;
 ;package
 
 : FMT-TEST-DIRS ( -- )
@@ -1909,6 +1950,7 @@ public
    FMT-TEST-ATOMIC-COLLISION
    FMT-TEST-ATOMIC-FAILURE
    FS-TEST:ATOMIC-SEARCH-DIR
+   FS-TEST:ATOMIC-PRIVATE
    FMT-TEST-STAGED-PRIMARY
    FMT-TEST-DIRS
    FMT-TEST-DIRS-DENIED
