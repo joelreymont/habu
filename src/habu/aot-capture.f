@@ -771,7 +771,7 @@ variable ACAP-ENTRY-N
 
 \ Name selection asks once per eligible record over unchanged declared rows.
 \ Decode their code targets once for that pass and sort a
-\ separate view: the artifact keeps its registration order and encoded values.
+\ separate view: the artifact keeps its location order and encoded values.
 \ Keep offset+1, including null zero, and exclude both DATA and named targets.
 : ACAP-ENTRY-BUILD ( -- )
    0 ACAP-ENTRY-N !
@@ -2219,7 +2219,6 @@ variable ACAP-SWORK-N
 \ the highest present cell and no further, so a window's trailing room costs
 \ nothing at all. Both buffers refuse their own overflow by name.
 variable ACAP-RQ      \ the segment cursor across the window
-DYNAMIC-BUFFER ACAP-CELL-OFF n   \ copy-owned, sorted window offsets
 variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 
 \ The bitmap is written in ascending cell order, so extending it is appending
@@ -2273,33 +2272,6 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
       v 0<> if i v ACAP-ADD-CELL then
    loop ;
 
-\ Sort a separate view of the window declarations; the artifact keeps the
-\ engine's registration order. An empty view has no element zero to fetch.
-: ACAP-ORDER-CELLS ( n -- n ) {: len:n :}
-   AOT-WINDOW:XTOFF-N @ ACAP-CELL-OFF-RESERVE
-   0
-   AOT-WINDOW:XTOFF-N @ 0 ?do
-      i ACAP-XTOFF@ {: loc:n :}
-      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
-         loc AOT-WINDOW:XTOFF-LOC-MASK and {: off:n :}
-         off len < if
-            off over ACAP-CELL-OFF ! 1+
-         then
-      then
-   loop
-   dup 1 > if 0 ACAP-CELL-OFF over [: < ;] SORT:SORT! then ;
-
-: ACAP-SCAN-CELLS ( n n -- ) {: d0:n len:n :}
-   0 ACAP-RQ !
-   len ACAP-ORDER-CELLS 0 ?do
-      i ACAP-CELL-OFF @ {: off:n :}
-      off ACAP-RQ @ >= if
-         d0 ACAP-RQ @ off ACAP-SCAN-SEG
-         off AOT-WINDOW:CELL-BYTES + ACAP-RQ !
-      then
-   loop
-   ACAP-RQ @ len < if d0 ACAP-RQ @ len ACAP-SCAN-SEG then ;
-
 \ Where the seed will find this cell: a window offset under the window tag for a
 \ cell the capture carries, and a plain DATA offset for a fixed engine cell.
 \ Readers take the low 31 bits as the offset and the top bit as the window tag,
@@ -2311,6 +2283,19 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
       s" aot-capture: fixed address cell lies past the row's 31-bit DATA offset"
       74 die then
    celloff ;
+
+
+\ THE ROWS GO OUT IN LOCATION ORDER, fixed cells first, never in registration
+\ order. A fixed cell the build host's prefix or seed declared keeps the
+\ registry slot it took there, so registration order is the host's history: a
+\ native host and a source-only recovery host built one tree into two tables.
+\ Each row's location is distinct, so the order is total.
+: ACAP-SORT-XTOFF ( -- )
+   AOT-WINDOW:XTOFF-N @ {: count:n :}
+   count 2 < if exit then
+   0 AOT-WINDOW:XTOFF-STORAGE count
+   [: $FFFFFFFF and swap $FFFFFFFF and > ;] SORT:SORT! ;
+
 
 \ WHOSE CELL IT IS, and it is not always the window's. A cell INSIDE the captured
 \ DATA span travels with the window: its row carries a window-relative location,
@@ -2374,13 +2359,26 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
          woff celloff len ACAP-XTCELL-LOC
          meta ACAP-ADD-XTOFF
       then
-   loop ;
+   loop
+   ACAP-SORT-XTOFF ;
 
 \ The window's present cells, copied once everything that may still change them
-\ before the copy has run (CAPTURE says what that is).
+\ before the copy has run (CAPTURE says what that is). ACAP-SORT-XTOFF left the
+\ window's rows as the table's tail, in ascending offset order, so the gaps
+\ between them are walked straight off the table.
 : ACAP-COPY-DATA ( n -- )
-   AOT-DATA-SIZE @ [: ACAP-SCAN-CELLS ;]
-      [: ACAP-CELL-OFF-RELEASE ;] finally ;
+   {: d0:n :}
+   AOT-DATA-SIZE @ {: len:n :}
+   0 ACAP-RQ !
+   AOT-WINDOW:XTOFF-N @ 0 ?do
+      i ACAP-XTOFF@ {: loc:n :}
+      loc AOT-WINDOW:XTOFF-WINDOW-TAG and 0<> if
+         loc AOT-WINDOW:XTOFF-LOC-MASK and {: off:n :}
+         d0 ACAP-RQ @ off ACAP-SCAN-SEG
+         off AOT-WINDOW:CELL-BYTES + ACAP-RQ !
+      then
+   loop
+   ACAP-RQ @ len < if d0 ACAP-RQ @ len ACAP-SCAN-SEG then ;
 
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the

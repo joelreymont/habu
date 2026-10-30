@@ -232,20 +232,34 @@ variable NAME-COUNT
    s" aot-chain-capture: declared address rows do not match the live window"
    REFUSE-RC die ;
 
+
+: ROW-ORDER-REFUSE ( -- )
+   RELEASE-ROW-INDEX
+   s" aot-chain-capture: declared address rows are not in ascending location order"
+   REFUSE-RC die ;
+
+
 : LIVE-ROW ( n -- n )
    ADDRESS-CELLS:ROW@ ;
 
-\ Sort a temporary copy, keeping the artifact's row order intact. Signed cell
-\ ordering is sufficient for the packed pairs: both sort and lookup use it.
+\ The capture writes the rows in ascending location order, whatever order its
+\ host registered the cells in. Sort a temporary copy for the lookups, keeping
+\ the artifact's row order intact. Signed cell ordering is sufficient for the
+\ packed pairs: both sort and lookup use it.
 : INDEX-ROWS ( -- )
    AOT-WINDOW:XTOFF-N @ {: rows:n :}
    rows 0 < rows AOT-WINDOW:XTOFF-MAX > or if ROW-REFUSE then
    rows 0= if exit then
    rows ROW-INDEX-RESERVE
+   0
    AOT-WINDOW:XTOFF-N @ 0 ?do
       AOT-WINDOW:XTOFF-BUF@ i AOT-WINDOW:XTOFF-ROW * + {: row:ptr :}
-      row ROW-U32@ 32 lshift row 4 + ROW-U32@ or i ROW-INDEX !
+      row ROW-U32@ {: loc:n :}
+      loc over < if ROW-ORDER-REFUSE then
+      drop loc
+      loc 32 lshift row 4 + ROW-U32@ or i ROW-INDEX !
    loop
+   drop
    0 ROW-INDEX AOT-WINDOW:XTOFF-N @ [: < ;] SORT:SORT!
    AOT-WINDOW:XTOFF-N @ 1 ?do
       i ROW-INDEX @ 32 rshift i 1- ROW-INDEX @ 32 rshift = if ROW-REFUSE then
