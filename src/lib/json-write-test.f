@@ -257,16 +257,17 @@ create JWT-RUN-KEY-WANT
    a u 1- + c@ JW-DQ T=
    JWT-GROW-W CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
-\ Every byte value escaped into fixed output and into a BUF it outgrows, as a
-\ string and as a key: the BUF holds the fixed output after its prefix.
-1540 constant JWT-EVERY-CAP            \ 256 bytes at most six each, quotes, colon
+\ Every ASCII byte value escaped into fixed output and into a BUF it outgrows, as
+\ a string and as a key: the BUF holds the fixed output after its prefix.
+$80 constant JWT-EVERY-N
+JWT-EVERY-N 6 * 3 + constant JWT-EVERY-CAP   \ at most six bytes each, quotes, colon
 JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 
 : JWT-EVERY-EMIT ( ptr writer bool -- ptr writer ) {: key:bool :}
-   JWT-LARGE-CHUNK 256 key if KEY else STRING then ;
+   JWT-LARGE-CHUNK JWT-EVERY-N key if KEY else STRING then ;
 
 : JWT-EVERY ( bool -- ) {: key:bool :}
-   256 0 ?do i JWT-LARGE-CHUNK i + c! loop
+   JWT-EVERY-N 0 ?do i JWT-LARGE-CHUNK i + c! loop
    JWT-A JWT-EVERY-OUT JWT-EVERY-CAP OPEN key JWT-EVERY-EMIT $ {: f:ptr fu:n :}
    JWT-GROW-OPEN s" pre" RAW key JWT-EVERY-EMIT $ {: g:ptr gu:n :}
    gu fu 3 + T=
@@ -574,6 +575,38 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    $517A32D PROP:SEED!
    2048 0 ?do JWT-RT-ONE loop ;
 
+\ STRING and KEY take UTF-8 text: a malformed sequence is E-JW-BYTE and appends
+\ nothing. Valid two-, three- and four-byte scalars read back unchanged.
+create JWT-FFFE $FF c, $FE c,
+create JWT-LONE-CONT $80 c,
+create JWT-TRUNCATED $E2 c, $82 c,
+create JWT-OVERLONG $C0 c, $AF c,
+create JWT-SURROGATE $ED c, $A0 c, $80 c,
+create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c,
+
+: JWT-OPEN-AB ( -- ptr writer )
+   JWT-OPEN-A s" ab" RAW ;
+
+: JWT-BAD-FFFE ( -- ) JWT-OPEN-AB JWT-FFFE 2 STRING drop ;
+: JWT-BAD-CONT ( -- ) JWT-OPEN-AB JWT-LONE-CONT 1 STRING drop ;
+: JWT-BAD-TRUNCATED ( -- ) JWT-OPEN-AB JWT-TRUNCATED 2 STRING drop ;
+: JWT-BAD-OVERLONG ( -- ) JWT-OPEN-AB JWT-OVERLONG 2 STRING drop ;
+: JWT-BAD-SURROGATE ( -- ) JWT-OPEN-AB JWT-SURROGATE 3 STRING drop ;
+: JWT-BAD-KEY ( -- ) JWT-OPEN-AB JWT-FFFE 1 KEY drop ;
+
+: JWT-NOT-UTF8 ( [ -- ] -- )
+   E-JW-BYTE TTHROWSQ
+   JWT-A $ s" ab" T$= ;
+
+: JWT-TEST-UTF8 ( -- )
+   [: JWT-BAD-FFFE ;] JWT-NOT-UTF8
+   [: JWT-BAD-CONT ;] JWT-NOT-UTF8
+   [: JWT-BAD-TRUNCATED ;] JWT-NOT-UTF8
+   [: JWT-BAD-OVERLONG ;] JWT-NOT-UTF8
+   [: JWT-BAD-SURROGATE ;] JWT-NOT-UTF8
+   [: JWT-BAD-KEY ;] JWT-NOT-UTF8
+   JWT-UTF8-OK 9 JWT-RT-ENCODE JWT-RT-DECODE$ JWT-UTF8-OK 9 T$= ;
+
 \ The handle is nominal: a raw cell is not a writer, and the length role is not
 \ an offset role.
 : JWT-TEST-CHECKER ( -- )
@@ -616,6 +649,7 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JWT-TEST-INT-FIT
    JWT-TEST-FIELD-INT
    JWT-TEST-ROUNDTRIP
+   JWT-TEST-UTF8
    JWT-TEST-CHECKER
    T-REPORT
    s" json-write-test: ok" type cr ;

@@ -96,7 +96,7 @@
 -3100 constant E-JW-FIRST
 -3199 constant E-JW-LAST
 -3100 constant E-JW-CAPACITY   \ the value does not fit the caller's output buffer
--3101 constant E-JW-BYTE
+-3101 constant E-JW-BYTE       \ a byte outside 0-255, a negative U, or STRING/KEY text that is not UTF-8
 -3102 constant E-JW-STATE      \ writer used before JSON-WRITE:OPEN or after CLOSE
 -3103 constant E-JW-OUTPUT     \ output buffer is null, or its capacity is negative
 -3104 constant E-JW-SOURCE     \ appended span is negative, or null with a positive length

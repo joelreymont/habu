@@ -3,11 +3,14 @@
 \ one never opened (the definer's zero image) or already closed refuses every
 \ operation with E-JW-STATE. Every emitter answers its writer and appends all of its
 \ bytes or none; a document that hit a refusal is incomplete until RESET or CLOSE.
+\ STRING and KEY take UTF-8 text, else E-JW-BYTE; RAW and FIELD-RAW copy JSON
+\ text as given.
 \ STORAGE CLASS. CALLER-OWNED: the writer record and its output; no module state.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/byte-buffer.f
+require src/lib/utf8-scalar.f
 
 package JSON-WRITE
 
@@ -280,15 +283,18 @@ private
    u JW-RADIX mod JW-ZERO + JW-C ;
 
 \ Each source byte needs at least one output byte, so refuse an overlong fixed
-\ span before reading it. Both reservations may relocate caller-owned output;
-\ rebase the source after each before scanning or emitting it. The escapes go
-\ straight into the span JW-TAKE answers over the whole quoted width.
+\ span before reading it, then text that is not UTF-8. Both reservations may
+\ relocate caller-owned output; rebase the source after each before scanning or
+\ emitting it. The escapes go straight into the span JW-TAKE answers over the
+\ whole quoted width.
 : JW-QUOTED ( ptr writer ptr u8 n n -- ptr writer )
    {: w a:ptr u:n suffix:n :}
    a u JW-SPAN
    w a u JW-ALIAS {: off:n :}
    w u JW-ROOM drop
-   w a off JW-REBASE u JW-STR-N {: width:n :}
+   w a off JW-REBASE {: src:ptr :}
+   src u UTF8:VALID? 0= if E-JW-BYTE throw then
+   src u JW-STR-N {: width:n :}
    w width suffix JW-SIZE+ JW-ROOM drop
    w width JW-TAKE {: s :}
    w a off JW-REBASE u s JW-QUOTE-INTO
