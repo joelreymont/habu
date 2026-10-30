@@ -61,8 +61,6 @@ private
    {: flags:n :}
    flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0<> and ;
 
-\ The flag cell of the dictionary record the word at tape row ix is bound to on
-\ the exact-source path, else 0.
 : DICT-FLAGS ( n -- n )
    {: ix:n :}
    EXACT-SOURCE @ 0= if 0 exit then
@@ -72,7 +70,6 @@ private
       CHECKER-OWNER-ABI:BOUND-DICT <> if 0 exit then
    bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ ;
 
-\ The word at tape row ix is bound to a representation cast's record.
 : REP-CAST? ( n -- bool )
    DICT-FLAGS REP-FLAGS? ;
 
@@ -99,8 +96,7 @@ RF-CAP CWORK-SPAN RF-BUF u8
    -1 RF-ROW !
    0 RF-MISSING ! ;
 
-\ The one place this file asks the word model what a body token means. An
-\ unmodeled immediate ran as the engine read it, so its token is refused.
+\ An unmodeled immediate is refused at its token and never runs.
 : ADMIT-AT ( IR-ARENA:arena n -- HIR:meaning )
    {: r:IR-ARENA:arena ix:n :}
    ix RF-AT !
@@ -2284,19 +2280,13 @@ MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read la
    k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
    k HIR-CTRL:EVAL HIR-CTRL:EQ or 0= ;
 
-\ The binder's row for a name, read as HIR-WORD:RESOLVE-SITE reads it: its kind
-\ and its record's flag cell.
 : BOUND-ROW ( ptr u8 n -- n n ) {: bound:ptr bytes:n :}
    bytes CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
    bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
    bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ ;
 
-\ A name compiled code cannot reach is refused at its token as undefined
-\ (SOURCE-UNDEFINED?): a call the binder bound to no record, or an internal
-\ record the call may not bind (HIR-WORD:RESOLVE-SITE answers false); a tick
-\ operand (DO-TICK) no record answers, or an internal record outside a
-\ TRUSTED: body. An unchecked body reaches this with its scan's report printed
-\ and not enforced.
+\ Refuses row n's token as undefined, even in an unchecked body whose scan
+\ printed its report and did not enforce it.
 : UNDEFINED-REFUSE ( n -- )
    -1 RF-MISSING !
    QUOT-REFUSE ;
@@ -3444,11 +3434,8 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : DO-TICK ( n -- ) {: ix:n :}
    ix 1+ QSPELL {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: entry:n :}
-   \ An operand no record answers, or one NDICT:TICK-REFUSED? refuses (an
-   \ internal record outside a TRUSTED: body, or a scope entry in every body),
-   \ is refused at the operand as undefined, as the engine's tick refuses it
-   \ (E-UNDEFINED, definition.f REPORT-UNDEFINED), even in an unchecked body
-   \ whose scan reported and did not refuse it.
+   \ Refused as the engine's tick refuses it: E-UNDEFINED, reported by
+   \ definition.f REPORT-UNDEFINED.
    entry 0= if
       a u NDICT:SCOPE-REC {: rec:ptr :}
       rec XREF-FOUND? 0= if ix 1+ UNDEFINED-REFUSE then
@@ -4526,8 +4513,6 @@ public
 : REFUSED-ROW ( -- n )
    RF-ROW @ ;
 
-\ Whether the refusal names a word compiled code cannot reach (DO-TICK,
-\ UNDEFINED-REFUSE).
 : SOURCE-UNDEFINED? ( -- bool )
    RF-MISSING @ 0<> ;
 

@@ -182,12 +182,9 @@ private
    CC BB MODEL-ROWS dup HIR-WORD:NEW-LINKED ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
-\ Parked rather than left on the stack, because this runs inside the quotation
-\ the recovery below catches. The tape's verdict is the scan's; a hook's zero
-\ verdict stands over it, so a hook that certifies through the checker and then
-\ answers 0 refuses the definition (RECORD), as T0 does (src/habu/t0.f SCAN),
-\ and the refusal retracts the rows it recorded. The JIT, when selected,
-\ drops the definition instead (habu2.f EM-COMPILE-PUBLISH-HOOKED).
+\ Parked, not left on the stack: this runs inside the quotation the recovery
+\ below catches. A hook's zero verdict stands over the scan's: the definition is
+\ refused (RECORD) and its rows retracted, as src/habu/t0.f SCAN does.
 : END-RECORDED ( -- )
    NFEED:END-UNIT {: view:IR-ARENA:view verdict:n :}
    M-VERDICT @ 0<> if verdict M-VERDICT ! then

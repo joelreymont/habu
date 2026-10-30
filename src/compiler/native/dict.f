@@ -48,10 +48,8 @@ private
 
 public
 
-\ Whether a tick refuses the found record rec as undefined: an internal record
-\ outside a TRUSTED: body, or in every body a code entry with a scope kind, as
-\ the engine's tick (outer.f SCOPE-ENTRY-GUARD) and the JIT's `[']` (habu2.f
-\ C-SCOPE-ENTRY-GUARD) refuse it. Asked by TICK-TARGET and both tiers' DO-TICK.
+\ A tick refuses an internal record outside a TRUSTED: body, and in every body a
+\ scope entry, as outer.f SCOPE-ENTRY-GUARD and habu2.f C-SCOPE-ENTRY-GUARD do.
 : TICK-REFUSED? ( ptr n -- bool )
    {: rec:ptr :}
    rec XREF-FLAGS DNAME-INT and 0<>  rec VISIBLE-RECORD? 0= and if
@@ -340,10 +338,7 @@ public
 : CALL-TARGET ( ptr u8 n -- n ) CALL-BINDING drop ;
 
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
-\ is handed, so a tick binds only what SPELL-REC binds: an internal record,
-\ owned or not, only inside a TRUSTED: body, at both tiers. Outside one the
-\ tick is refused as undefined (elaborate.f DO-TICK), and so is any other
-\ record TICK-REFUSED? refuses: a scope entry, in every body.
+\ is handed, so a tick binds no record TICK-REFUSED? refuses, owned or not.
 : TICK-TARGET ( ptr u8 n -- n )
    SPELL-REC {: rec:ptr :}
    rec XREF-FOUND? if rec TICK-REFUSED? if 0 exit then then
@@ -488,10 +483,7 @@ public
    w ;
 
 \ ---- and the literal inputs a call takes on top of its checked site inputs ---
-\ Both native tiers push them, deepest first, just before the call: a C2 init
-\ scope's site takes the init layout the checker proved there (width, bytes,
-\ align); else a field loan's site takes the loaned field's offset and extent;
-\ else a wide instantiation's site takes CON-PADS zeros.
+\ Both native tiers push them, deepest first, just before the call.
 : CALL-EXTRAS ( n -- n ) {: ix:n :}
    ix INIT-LAYOUT 2drop 0 >= if 3 exit then
    ix FIELD-SPAN drop 0 >= if 2 exit then

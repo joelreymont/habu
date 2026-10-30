@@ -245,9 +245,7 @@ public
 
 \ ---- opening and closing -----------------------------------------------------
 \ CLOSE gives everything back, and an image capture closes the shadow, so no map
-\ outlives the mappings it is stored in. ABANDON, run as every tier-1
-\ definition ends, drops a copy no publication claimed (the engine's own chain
-\ refused the definition after the shadow's sealed).
+\ outlives the mappings it is stored in.
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
    NLEASE:IDLE-CK
    OPENED @ 0<> if E-NSHADOW-STATE throw then
@@ -353,8 +351,7 @@ public
 
 \ File the taken emission under the record publication has just committed, and
 \ a definer's companion under the next. Nonthrowing: publication runs it past
-\ its code window, and TAKE made the room. With nothing taken - no shadow open,
-\ or a definition tier 1 did not compile - there is nothing to file.
+\ its code window, and TAKE made the room.
 : PUBLISH ( n -- ) {: idx:n :}
    PENDING @ 0= if exit then
    N-EMS @ {: e:n :}
@@ -391,8 +388,8 @@ public
    loop
    E-NSHADOW-ROW throw ;
 
-\ Drop a taken emission no publication claimed. Nonthrowing: the driver runs it
-\ as every definition ends, on the refusing path and the accepting one alike.
+\ Drop a taken emission no publication claimed. Nonthrowing: compiler.f
+\ RETIRE-BODY runs it as every tier-1 definition ends, refused or accepted.
 : ABANDON ( -- )
    0 PENDING ! ;
 

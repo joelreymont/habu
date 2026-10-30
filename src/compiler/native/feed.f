@@ -389,13 +389,11 @@ public
    ST-ARMED F-STATE !
    row ;
 
-\ Whether a unit is open and has read its row 0, the definition's name.
 : UNIT-NAMED? ( -- bool )
    F-STATE @ ST-IDLE <>  F-N @ 0<>  and ;
 
-\ The open unit's row 0 as the kept text spells it. A defining word's clause is
-\ checked before the unit seals, so this is the name a refused clause is
-\ reported under (compiler.f CHECK-DOES-SPLIT), and so is a refused scan's.
+\ The open unit's row 0, the definition's name, for a refusal raised before the
+\ unit seals (compiler.f CHECK-DOES-SPLIT, KEEP-UNIT-NAME).
 : UNIT-NAME$ ( -- ptr u8 n )
    UNIT-NAMED? 0= if E-NFEED-STATE throw then
    TXT@ F-NAME-OFF @ +  F-NAME-U @ ;
