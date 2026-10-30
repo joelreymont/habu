@@ -111,7 +111,6 @@ variable CUT                         \ the byte just past `does> `, or 0
    a BAD !  u BAD-LEN !
    code throw ;
 
-\ A control word that fits no structure open, named by the row just read.
 : CONTROL-FAULT ( -- ) ORD @ 1- ROW$ E-T0-CONTROL REFUSE ;
 
 : UNSUPPORTED ( ptr u8 n -- ) E-T0-UNSUPPORTED REFUSE ;
@@ -123,8 +122,8 @@ variable CUT                         \ the byte just past `does> `, or 0
 \ then` closes. A structure that does not close, or a loop word outside the
 \ loops it needs, is E-T0-CONTROL, refused before the emitter is called: the
 \ T0-EMIT structured words (src/habu/t0-emit.f CONTROL) trust this nesting.
-\ The refusal names the closer, or for a structure still open at the end of a
-\ unit the token that ended it: the stack keeps no opener's row.
+\ The refusal names the closer, or the token that ended a unit with a structure
+\ still open: the stack keeps no opener's row.
 0 constant CS-IF
 1 constant CS-ELSE
 2 constant CS-BEGIN
@@ -1108,10 +1107,8 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START ;
 
-\ An operand bound to no record, or one NDICT:TICK-REFUSED? refuses (an internal
-\ record outside a TRUSTED: body, or a scope entry in every body), is undefined
-\ (MISSING), as tier 1's tick refuses it, even in an unchecked body whose scan
-\ reported and did not refuse it.
+\ An operand bound to no record, or one NDICT:TICK-REFUSED? refuses, is undefined
+\ (MISSING), as tier 1's tick refuses it, even in an unchecked body (THE EVENTS).
 : DO-TICK ( n -- ) {: r:n :}
    NEXT$ {: a:ptr u:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
@@ -1526,32 +1523,24 @@ OPS-MAP
 \ name inlines only when its bound record is the engine's seeded primitive of
 \ the operation (THE INLINED OPERATIONS); a package's own word named like a
 \ primitive is a call. A word whose definer fixed a value pushes it
-\ (WORD-CALL). Anything else is E-T0-UNSUPPORTED, and UNSUPPORTED$ names the
-\ token until the next compile. A name bound to no record, or to an internal
-\ one the call may not bind (NDICT:INT-CALL?), is a word compiled code cannot
-\ reach (MISSING), which the run refuses as undefined, as the JIT's lookup
-\ does, even in an unchecked body whose scan reported and did not refuse it.
+\ (WORD-CALL). Anything else is E-T0-UNSUPPORTED (UNSUPPORTED$). A name compiled
+\ code cannot reach (MISSING) is refused as undefined, as the JIT's lookup
+\ refuses it, even in an unchecked body whose scan did not refuse it.
 \
 \ An immediate the capture holds. A parse-neutral one ran as the engine read it
 \ (src/habu/definers.f DEF-IMMEDIATE) and left only its own token, its operands
 \ read from the input and text it evaluated captured after it, so T0 passes
 \ over the token as tier 1 does (src/compiler/native/elaborate.f WALK-SKIP?).
-\ Any other is refused by name, as tier 1 refuses it: E-UNMODELED-IMMEDIATE.
+\ Tier 1 refuses any other the same way.
 : IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-OWNER:PARSE-IMM? if exit then
    a u E-UNMODELED-IMMEDIATE REFUSE ;
 
-\ A fixed word, one whose definer stamped what its body pushes, is that value,
-\ as tier 1 folds it (src/compiler/native/hir-word.f RESOLVE-SITE): a constant's
-\ number, or a created word's or variable's DATA address filed with r so
-\ publication relocates it. A non-empty does> clause clears the stamp, so a
-\ does> child is called. A created word whose entry lies below the open AOT
-\ window's code base stays a call, as the JIT's rule (habu2.f EM-COMPILE-CALL,
-\ AOT-ARM:OPEN): the capture refuses its address. Both are user-space code
-\ addresses or 0, below 2^63, so the signed >= agrees with the JIT's unsigned
-\ compare. A call first pushes the extra inputs the checker proved at its token
-\ (NDICT:CALL-EXTRAS), as tier 1's DO-CALL does; the row just read is ordinal
-\ ORD - 1.
+\ A fixed word is its stamped value, as tier 1's RESOLVE-SITE folds it; r files a
+\ DATA address so publication relocates it. A created word made before the AOT
+\ window opened stays a call: the capture refuses its address. User-space code
+\ addresses and 0 lie below 2^63, so the signed >= agrees with the JIT's unsigned
+\ compare (habu2.f EM-COMPILE-CALL).
 : WORD-CALL ( n n n n -- )
    {: to:n kind:n r:n loc:n :}
    kind DKIND:VAL = if to NDICT:FIXED-VAL NDICT:BOUND-VALUE PUSH-CONST exit then
@@ -1623,13 +1612,12 @@ OPS-MAP
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
    0 DEAD !  0 PENDING !  0 G-CELLS ! ;
 
-\ The token that ended a unit BODY left with no `;]`: the split's `does>`, or the
-\ `;` past the tape.
+\ The token that ended a body short of a `;]`: the split's `does>`, or `;` past
+\ the last row.
 : END$ ( -- ptr u8 n )
    ORD @ ROWS @ >= if s" ;" exit then
    ORD @ ROW$ ;
 
-\ The unit ends at the token a u: a structure still open there is refused at it.
 : FINISH ( ptr u8 n -- ) {: a:ptr u:n :}
    CS-N @ 0<> if a u E-T0-CONTROL REFUSE then
    TAILED @ 0= if SPILL-ALL T0-EMIT:RETURN then
@@ -1684,8 +1672,8 @@ OPS-MAP
 
 public
 
-\ The token the last REFUSE named: E-T0-UNSUPPORTED's, E-UNMODELED-IMMEDIATE's
-\ or E-T0-CONTROL's.
+\ The token this compile's E-T0-UNSUPPORTED, E-UNMODELED-IMMEDIATE or
+\ E-T0-CONTROL refusal named, empty until one does.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
 using NDEFINITION
@@ -1700,8 +1688,8 @@ private
 \ CALLBACK STUB); that compile ends the pending stub on every exit, as tier 1's
 \ does. T0 classifies no body for the host: each reason is UNKNOWN, and a
 \ quotation's arity is unknown (-1 -1), as tier 1 answers for one it has none
-\ for. T0 compiles no shadow routine; a colon definition at tier 0 while a
-\ shadow is open has none, as test/x86-64-link-records.f 'stray' pins.
+\ for. T0 compiles no shadow routine, even while a shadow is open
+\ (test/x86-64-link-records.f stray).
 \
 \ The scan's recording unit latches the facts the capture and the call targets
 \ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
@@ -1845,8 +1833,6 @@ variable SCAN-LO                     \ the ordinal of its first row
    E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally ;
 
-\ The token a refusal names: the one REFUSE named in this compile for its
-\ code, else none (COMPILE clears BAD-LEN).
 : REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
    rc E-T0-UNSUPPORTED =  rc E-UNMODELED-IMMEDIATE = or  rc E-T0-CONTROL = or
    if UNSUPPORTED$ exit then
@@ -1870,8 +1856,6 @@ public
    NHOST:SOURCE-ABANDON
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  rc REFUSED$ SETTLE-UNIT ;
 
-\ Store a compile entry in NCOMP-DISPATCH:COMP-CELL, the image-ABI cell the
-\ tier 0 `:` dispatches through.
 : DISPATCH! ( [ ptr u8 n -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
 

@@ -865,8 +865,7 @@ $3868 constant ARENA-CELL
 \ the x86-64 link restores it on every boot (src/habu/link-x64.f FIXED-CELLS).
 \ An ARM64 record, and an x86-64 build with no captured runtime,
 \ keep the assembly body and never read the cell. EVALUATE-CELL follows the
-\ three-cell origin record ($3820..$3837), NCOMP-DISPATCH:COMP-CELL ($3838)
-\ and the free cells $3840..$3847.
+\ NCOMP-DISPATCH cells from CALLBACK-STUB-CELL to $3847.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
@@ -913,14 +912,13 @@ $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
 \ The optional three-cell origin record follows at $3820..$3837, read through
 \ the three-cell native-origin-cell getter.
-\ Tier 0's compiler entry: T0:COMPILE on an arm64 engine, installed by
-\ CHECKER-REG:SEAL through src/habu/runtime-arm64.f. Zero on an engine with no
-\ compiler, where tier 0 is the JIT. $3840..$3847 is free.
+\ Tier 0's compiler: T0:COMPILE on arm64, installed by CHECKER-REG:SEAL through
+\ src/habu/runtime-arm64.f. $3840..$3847 is free.
 $3838 constant COMP-CELL
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
-\   0 = tier 0: the compiler in COMP-CELL, or the legacy JIT (LCOMPILE and its
+\   0 = tier 0: the compiler in COMP-CELL, or the JIT (LCOMPILE and its
 \       closure) when COMP-CELL is zero. Every `--load` and the REPL; a fresh
 \       DATA page starts at 0.
 \   1 = tier 1, the IR pipeline reached through XT-CELL (NCOMP:COMPILE).
@@ -1252,11 +1250,10 @@ $2818 constant EXIT-HOOK-CELL
 \ and its block depth CAPDEPTH-CELL, CP (as an offset
 \ from the region base, like every code position a DATA cell keeps, so no
 \ image carries a live address) and the virtual stack's VSP-CELL, VRFREE-CELL
-\ and FRFREE-CELL here (habu2.f EM-COMMENT). Two other writers: a definition's
-\ end or abort stores two of them (arm64 C-CLEAR-LOCALS zeroes the locals marks
-\ TOKLOCN-CELL and TOKDEPTH-CELL with the locals themselves), and a refused
-\ `is` target lowers TOKBODY-CELL to its opener (habu2.f EM-CAPTURE-BIND,
-\ src/habu/definers.f DEF-PREFIX-BIND). A
+\ and FRFREE-CELL here (habu2.f EM-COMMENT). Two other writers: arm64
+\ C-CLEAR-LOCALS zeroes TOKLOCN-CELL and TOKDEPTH-CELL with the locals at a
+\ definition's end or abort, and a refused `is` target lowers TOKBODY-CELL to
+\ its opener (habu2.f EM-CAPTURE-BIND, src/habu/definers.f DEF-PREFIX-BIND). A
 \ throw that unwinds an evaluate frame begun inside an open definition leaves
 \ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all seven
 \ back: the text the checker certifies holds no token whose compile the throw

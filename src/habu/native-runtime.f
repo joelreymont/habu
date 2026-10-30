@@ -1,6 +1,6 @@
 \ native-runtime.f - the complete source-owned native runtime: the closure of the
-\ compiler, on arm64 T0, the JIT, the REPL and the product's checked C2 storage,
-\ plus on x86-64 the Habu loop (runtime-x64.f). native-build.f evaluates it inside the one
+\ compiler, T0 on arm64, the JIT, the REPL and the product's checked C2 storage,
+\ plus the Habu loop on x86-64 (runtime-x64.f). native-build.f evaluates it inside the one
 \ AOT window; replaying the paths of the files loaded before include.f gives the target loader ownership
 \ of the whole closure. tools/manifest-lint.f refuses a row that is neither a
 \ declared entry point (reason on the row there) nor required by the closure.
@@ -127,7 +127,6 @@ defer SEAL-TARGET ( -- )
 
 package NATIVE-RUNTIME
 
-\ T0 is released on arm64 first, so the x86-64 engine does not bake it yet.
 : LOAD-T0 ( -- )
    HB-TARGET-LINUX-X86-64? if exit then
    s" src/habu/runtime-arm64.f" required ;
