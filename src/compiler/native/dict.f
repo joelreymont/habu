@@ -487,6 +487,30 @@ public
    w 0 < if 0 exit then
    w ;
 
+\ ---- and the literal inputs a call takes on top of its checked site inputs ---
+\ Both native tiers push them, deepest first, just before the call: a C2 init
+\ scope's site takes the init layout the checker proved there (width, bytes,
+\ align); else a field loan's site takes the loaned field's offset and extent;
+\ else a wide instantiation's site takes CON-PADS zeros.
+: CALL-EXTRAS ( n -- n ) {: ix:n :}
+   ix INIT-LAYOUT 2drop 0 >= if 3 exit then
+   ix FIELD-SPAN drop 0 >= if 2 exit then
+   ix CON-PADS ;
+
+: CALL-EXTRA ( n n -- n ) {: ix:n k:n :}
+   ix INIT-LAYOUT {: width:n bytes:n align:n :}
+   width 0 >= if
+      k 0= if width exit then
+      k 1 = if bytes exit then
+      align exit
+   then
+   ix FIELD-SPAN {: off:n extent:n :}
+   off 0 >= if
+      k 0= if off exit then
+      extent exit
+   then
+   0 ;
+
 \ ---- and how many cells one memory access moves ------------------------------
 \ Keyed by the token's OFFSET into the checked text, the same key the engine's
 \ own pass 2 reads. Absent is one cell, which is the checker's own answer.

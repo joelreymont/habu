@@ -912,10 +912,6 @@ DYNAMIC-BUFFER SPELL-BUF u8
    then
    NDICT:CALL-QUOT-OUT ;
 
-: SITE-INIT ( n -- n n n )
-   EXACT-SOURCE @ 0= if drop -1 -1 -1 exit then
-   NDICT:INIT-LAYOUT ;
-
 : SITE-FIELD ( n -- n n )
    EXACT-SOURCE @ 0= if drop -1 -1 exit then
    NDICT:FIELD-SPAN ;
@@ -952,6 +948,10 @@ DYNAMIC-BUFFER SPELL-BUF u8
 : SITE-PADS ( n -- n )
    EXACT-SOURCE @ 0= if drop 0 exit then
    NDICT:CON-PADS ;
+
+: SITE-EXTRAS ( n -- n )
+   EXACT-SOURCE @ 0= if drop 0 exit then
+   NDICT:CALL-EXTRAS ;
 
 : SITE-EXEC ( n -- n n )
    EXACT-SOURCE @ 0= if drop -1 -1 exit then
@@ -3371,8 +3371,8 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    ix EMIT-STRING ;
 
 
-: DO-WORD-CALL ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
+: DO-WORD-CALL ( IR-ARENA:arena n n -- )
+   {: r:IR-ARENA:arena ix:n extras:n :}
    ix WSYM {: sy:IR-ID:ir-symbol-id :}
    EXACT-SOURCE @ 0<> if
       ix SITE-CALL {: in:n out:n :}
@@ -3382,8 +3382,9 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
       r sy HIR-WORD:CALLEE-IN@ r sy HIR-WORD:CALLEE-OUT@
       r sy HIR-WORD:OUT-GLUE@
    then {: in:n out:n glue:n :}
-   \ Constructor pads are call operands; the output already includes them.
-   in ix SITE-PADS + {: call-in:n :}
+   \ DO-CALL pushed extras, the site's extra inputs (NDICT:CALL-EXTRAS), as
+   \ call operands; the output already includes a constructor's pads.
+   in extras + {: call-in:n :}
    r sy HIR-WORD:TERMINAL? if
       ix r sy HIR-WORD:ENTRY@ call-in STAGE-TERMINAL exit
    then
@@ -3542,50 +3543,15 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    ix entry in 3 + out 0 max glue STAGE-WCALL
    out 0 < cleanup-out 0 < or if r ix DEAD-END then ;
 
-\ ---- a call that BUILDS a value of a wide instantiation ------------------------
-: CON-PADS-PUSH ( n n -- ) {: ix:n x:n :}
-   x 0 ?do  ix 0 EMIT-LIT  loop ;
-
+\ ---- a call, after the literal inputs its site takes ---------------------------
 : DO-CALL ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix SITE-CALL drop {: in:n :}
    in 0 < if r ix WSYM HIR-WORD:CALLEE-IN@ else in then
    ix swap 0 QCALL-FILL
-   ix SITE-INIT {: width:n bytes:n align:n :}
-   width 0 >= if
-      ix width EMIT-LIT
-      ix bytes EMIT-LIT
-      ix align EMIT-LIT
-      ix WSYM {: sy:IR-ID:ir-symbol-id :}
-      ix SITE-CALL {: public-in:n out:n :}
-      public-in 0 < if E-NELAB-CTRL throw then
-      r sy HIR-WORD:TERMINAL? if
-         ix r sy HIR-WORD:ENTRY@ public-in 3 + STAGE-TERMINAL exit
-      then
-      ix SITE-GLUE nip {: glue:n :}
-      glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
-      ix r sy HIR-WORD:ENTRY@ public-in 3 + out glue STAGE-WCALL
-      ix out QRESULTS-FILL
-      exit
-   then
-   ix SITE-FIELD {: off:n bytes:n :}
-   off 0 >= if
-      ix off EMIT-LIT
-      ix bytes EMIT-LIT
-      ix WSYM {: sy:IR-ID:ir-symbol-id :}
-      ix SITE-CALL {: public-in:n out:n :}
-      public-in 0 < if E-NELAB-CTRL throw then
-      r sy HIR-WORD:TERMINAL? if
-         ix r sy HIR-WORD:ENTRY@ public-in 2 + STAGE-TERMINAL exit
-      then
-      ix SITE-GLUE nip {: glue:n :}
-      glue NDICT:GLUE-UNKNOWN = if E-NELAB-BUNDLE throw then
-      ix r sy HIR-WORD:ENTRY@ public-in 2 + out glue STAGE-WCALL
-      ix out QRESULTS-FILL
-      exit
-   then
-   ix ix SITE-PADS CON-PADS-PUSH
-   r ix DO-WORD-CALL ;
+   ix SITE-EXTRAS {: extras:n :}
+   extras 0 ?do  ix  ix i NDICT:CALL-EXTRA  EMIT-LIT  loop
+   r ix extras DO-WORD-CALL ;
 
 \ Source stores use the engine's protected-span boundary. A raw HIR store
 \ alone cannot enforce the same sealed-memory rule as interpreted ! and c!.

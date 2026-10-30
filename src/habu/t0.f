@@ -1534,12 +1534,11 @@ OPS-MAP
 \ name inlines only when its bound record is the engine's seeded primitive of
 \ the operation (THE INLINED OPERATIONS); a package's own word named like a
 \ primitive is a call. A word whose definer fixed a value pushes it
-\ (WORD-CALL); a loaned field's name is refused there. Anything else is
-\ E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until the next compile. A
-\ name bound to no record, or to an internal one the call may not bind
-\ (NDICT:INT-CALL?), is a word compiled code cannot reach (MISSING), which the
-\ run refuses as undefined, as the JIT's lookup does, even in an unchecked body
-\ whose scan reported and did not refuse it.
+\ (WORD-CALL). Anything else is E-T0-UNSUPPORTED, and UNSUPPORTED$ names the
+\ token until the next compile. A name bound to no record, or to an internal
+\ one the call may not bind (NDICT:INT-CALL?), is a word compiled code cannot
+\ reach (MISSING), which the run refuses as undefined, as the JIT's lookup
+\ does, even in an unchecked body whose scan reported and did not refuse it.
 \
 \ An immediate the capture holds. A parse-neutral one ran as the engine read it
 \ (src/habu/definers.f DEF-IMMEDIATE) and left only its own token, its operands
@@ -1550,27 +1549,25 @@ OPS-MAP
    a u CHECKER-OWNER:PARSE-IMM? if exit then
    a u E-T0-IMMEDIATE REFUSE ;
 
-\ A wide instantiation's value first pushes the pads the checker proved at the
-\ token (NDICT:CON-PADS), as tier 1's DO-CALL; the row just read is ordinal
-\ ORD - 1. A fixed word, one whose definer stamped what its body pushes, is that
-\ value, as tier 1 folds it (src/compiler/native/hir-word.f RESOLVE-SITE): a
-\ constant's number, or a created word's or variable's DATA address filed with r
-\ so publication relocates it. A non-empty does> clause clears the stamp, so a
-\ does> child is called. A field-loan site (NDICT:FIELD-SPAN) is refused: tier 1
-\ pushes the loaned field's offset and extent before the call
-\ (src/compiler/native/elaborate.f DO-CALL). A created word whose entry lies
-\ below the open AOT window's code base stays a call, as the JIT's rule
-\ (habu2.f EM-COMPILE-CALL, AOT-ARM:OPEN): the capture refuses its address.
-\ Both are user-space code addresses or 0, below 2^63, so the signed >= agrees
-\ with the JIT's unsigned compare.
-: WORD-CALL ( ptr u8 n n n n n -- )
-   {: a:ptr u:n to:n kind:n r:n loc:n :}
-   ORD @ 1- NDICT:FIELD-SPAN drop 0 >= if a u UNSUPPORTED then
-   ORD @ 1- NDICT:CON-PADS 0 ?do 0 PUSH-CONST loop
+\ A fixed word, one whose definer stamped what its body pushes, is that value,
+\ as tier 1 folds it (src/compiler/native/hir-word.f RESOLVE-SITE): a constant's
+\ number, or a created word's or variable's DATA address filed with r so
+\ publication relocates it. A non-empty does> clause clears the stamp, so a
+\ does> child is called. A created word whose entry lies below the open AOT
+\ window's code base stays a call, as the JIT's rule (habu2.f EM-COMPILE-CALL,
+\ AOT-ARM:OPEN): the capture refuses its address. Both are user-space code
+\ addresses or 0, below 2^63, so the signed >= agrees with the JIT's unsigned
+\ compare. A call first pushes the extra inputs the checker proved at its token
+\ (NDICT:CALL-EXTRAS), as tier 1's DO-CALL does; the row just read is ordinal
+\ ORD - 1.
+: WORD-CALL ( n n n n -- )
+   {: to:n kind:n r:n loc:n :}
    kind DKIND:VAL = if to NDICT:FIXED-VAL NDICT:BOUND-VALUE PUSH-CONST exit then
    kind DKIND:ADDR = to data-base AOT-CELLS:B0-CELL + @ >= and if
       to NDICT:FIXED-ADDR NDICT:BOUND-VALUE  r PUSH-ADDR exit
    then
+   ORD @ 1- {: at:n :}
+   at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
    to loc DO-CALL ;
 
 : NAME-TOKEN ( ptr u8 n n n -- )
@@ -1586,7 +1583,7 @@ OPS-MAP
       flags NDICT:INT-CALL? 0= if -1 MISSING !  a u UNSUPPORTED then
    then
    to 0= if a u UNSUPPORTED then
-   a u to flags DKIND:MASK and r loc WORD-CALL ;
+   to flags DKIND:MASK and r loc WORD-CALL ;
 
 \ The row at the cursor, which the walk then passes, by the event the checker
 \ filed for it (THE EVENTS). A string or character literal's span is its
