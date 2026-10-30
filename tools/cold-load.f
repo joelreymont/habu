@@ -14,6 +14,12 @@
 \ A build entry runs it before its first `require` (tools/hb-build.f and the
 \ support child tools/native-build-image.f PROGRAM! writes).
 \
+\ The reloaded SOURCE-PRODUCER answers no checker or compiler role until one is
+\ installed, and a native build retains the host's. tools/cold-load-sources.f
+\ keeps the bytes the reload reads and tools/cold-load-roles.f installs their
+\ tools/build-producer.f digests, the roles a native build gives an engine
+\ loaded from the same sources.
+\
 \ The text is staged in one buffer and evaluated as top-level text, because
 \ `seed-ndict!` is a top-level boundary and because the rewind removes the
 \ names of every definition above the first record, this file's own included,
@@ -22,8 +28,9 @@
 \
 \ THE BOUNDARY. This file is compiled by the running hb before the reload, out
 \ of the tree that may have renamed any internal word, so it names only the
-\ language's documented vocabulary. Four engine cells and one engine word cross
-\ that boundary; a tree that changes one needs an intermediate hb to build it:
+\ language's documented vocabulary; the staged text names the tree's words.
+\ Four engine cells and one engine word cross that boundary; a tree that
+\ changes one needs an intermediate hb to build it:
 \   - the owner reset's cells, TARGET-CELL and RESET-OFF below;
 \   - the loading file's path cells, PATH-CELL and PATHLEN-CELL below, which
 \     name this file while it loads and so give the tree's root;
@@ -44,6 +51,10 @@ $70 constant RESET-OFF        \ = src/core/checker-owner-abi.f RESET-OFF
 
 DYNAMIC-BUFFER TEXT u8
 variable USED
+DYNAMIC-BUFFER SPANS n
+variable SPANS-N
+\ The SPANS index of the first startup file loaded after the checker.
+variable CHECKER-AT
 
 \ The path of the file loading now, and a path cut to its directory.
 : LOADING$ ( -- ptr u8 n )
@@ -75,6 +86,12 @@ create ROOT KEEP align
 
 : SAY ( ptr u8 n -- ) {: a:ptr u:n :} 2 a u write drop ;
 
+: NUMBER ( n -- ) dup 10 >= if dup 10 / RECURSE then 10 mod 48 + C ;
+
+\ FILE notes four cells per startup file: its path's offset and length, its
+\ text's offset and length.
+: SPAN, ( n -- ) SPANS-N @ 1 + SPANS-RESERVE  SPANS-N @ SPANS !  1 SPANS-N +! ;
+
 \ <root>/<path> and a NUL, written past the staged text and not counted in it.
 : PATH! ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    ROOT-U 1 + u + {: len:n :}
@@ -89,8 +106,14 @@ create ROOT KEEP align
    s" cold-load: cannot read " SAY a u PATH! SAY S\" \n" SAY
    code throw ;
 
-\ Append a tree file's text and a newline.
+\ Append `\ <path>`, a tree file's text and a newline, and note where the path
+\ and the text lie for STARTUPS.
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   92 C 32 C
+   USED @ SPAN, u SPAN,
+   a u LINE
+   USED @ {: start:n :}
+   start SPAN,
    a u PATH! drop open-rd {: fd:n :}
    fd 0 < if a u E-FS-OPEN FAIL then
    begin
@@ -101,6 +124,7 @@ create ROOT KEEP align
       rd 0 >
    while repeat
    fd close
+   USED @ start - SPAN,
    10 C ;
 
 \ The host's row kind, by the test src/habu/habu2.f PFX-LOAD? makes.
@@ -122,6 +146,21 @@ create ROOT KEEP align
       b C
    loop
    34 C s"  SOURCE-ROOT:ENGINE!" LINE ;
+
+\ Hand each startup file to COLD-SOURCES as distances back from the `^` token
+\ staged first.
+: STARTUPS ( -- )
+   s" COLD-SOURCES:TEXT-AT ^" PUT
+   USED @ 1 - {: anchor:n :}
+   10 C
+   SPANS-N @ 0 ?do
+      i CHECKER-AT @ = if s" COLD-SOURCES:CHECKER-LOADED" LINE then
+      anchor i SPANS @ - NUMBER 32 C
+      i 1 + SPANS @ NUMBER 32 C
+      anchor i 2 + SPANS @ - NUMBER 32 C
+      i 3 + SPANS @ NUMBER 32 C
+      s" COLD-SOURCES:STARTUP" LINE
+   4 +loop ;
 
 \ The order of tools/native-build-core.f LOAD-CHECKED-PREFIX and LOAD-TARGET.
 : STAGE ( -- )
@@ -155,6 +194,7 @@ create ROOT KEEP align
    s" src/habu/native-body.f" FILE
    s" src/habu/engine-origin-checked.f" FILE
    s" ENGINE-ORIGIN-EARLY:INSTALL" LINE
+   SPANS-N @ CHECKER-AT !
    s" src/core/roles.f" FILE
    s" src/core/cell-effects.f" FILE
    s" src/core/declaration-transaction.f" FILE
@@ -174,8 +214,12 @@ create ROOT KEEP align
    s" src/core/include.f" FILE
    s" SOURCE-INPUT:RESET" LINE
    ENGINE-ROOT
-   S\" s\" src/habu/native-runtime.f\" included" LINE
-   s" REQUIRE-BOOT-FREEZE" LINE ;
+   S\" s\" tools/cold-load-sources.f\" included" LINE
+   STARTUPS
+   S\" s\" src/habu/native-runtime.f\" COLD-SOURCES:LOAD" LINE
+   s" REQUIRE-BOOT-FREEZE" LINE
+   S\" s\" tools/cold-load-roles.f\" required" LINE
+   s" ' COLD-SOURCES:REPLAY COLD-ROLES:INSTALL" LINE ;
 
 CAST: >CELL ( n -- ptr n )
 CAST: >RESET ( n -- [ -- ] )
@@ -189,8 +233,9 @@ CAST: >RESET ( n -- [ -- ] )
 public
 
 : RUN ( -- )
-   0 USED !
+   0 USED !  0 SPANS-N !
    STAGE
+   SPANS-RELEASE
    RESET-OWNER
    0 TEXT USED @ evaluate-closed
    TEXT-RELEASE ;

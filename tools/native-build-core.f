@@ -267,8 +267,9 @@ variable HOST-COMPILER-KNOWN
    HOST-COMPILER HOST-COMPILER-KNOWN @ if 32 else 0 then
       HOST-COMPILER-KNOWN @ 0<> ;
 
-\ Resolve before LOGICAL-RESET, while the donor dictionary still owns this
-\ name. A source-defined namesake cannot authenticate the donor's baked role.
+\ Resolve before LOGICAL-RESET, while the host dictionary still owns this
+\ name. Its definition must lie in engine text: the engine's own, or the one
+\ the cold load reloads (tools/cold-load-roles.f).
 : HOST-ACTIVE-COMPILER$ ( -- ptr u8 n bool )
    s" SOURCE-PRODUCER:ACTIVE-COMPILER$" XREF-FIND
    dup XREF-FOUND? 0= if drop NULL-PTR 0 false exit then

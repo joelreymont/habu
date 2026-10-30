@@ -39,8 +39,8 @@ CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
    xt ENGINE-TEXT? 0= if NULL$ 0 0= 0= exit then
    xt KERNEL-XT execute ;
 
-\ The target operation copies driver-observed facts before capture. This word
-\ is private: no running program can rewrite the retained role metadata.
+\ Private: a native build sets its target's roles before capture and
+\ tools/cold-load-roles.f the reloaded host's, each through the private wordlist.
 : INSTALL-ROLES ( ptr u8 ptr u8 [ ptr u8 n -- ] -- )
    {: checker:ptr compiler:ptr entry :}
    checker CHECKER-DIGEST 32 BYTE-COPY
