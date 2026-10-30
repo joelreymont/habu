@@ -17,13 +17,8 @@ package NATIVE-BUILD
 $4A constant BUILD-RC
 
 \ ---- the image class this build was asked for ---------------------------------
-\ The request is this argument: the build writes it into the target's
-\ ENGINE-UNSEAL before the seal pass (tools/native-build-core.f
-\ TARGET-ENGINE-UNSEAL), and the driver's SMOKE reads the answer from the
-\ finished image and stops a build whose class differs from its request. The
-\ wire form is the digit the image prints: the host engine that compiles this
-\ file may lack ENGINE-INTERNAL:IMAGE-SEALED and :IMAGE-WHITEBOX. CLASS-SEALED
-\ is what a caller of RUN-PATH-RC gets (tools/build-profile.f).
+\ The wire form is the digit the image prints: the host engine that compiles this
+\ file may lack ENGINE-INTERNAL:IMAGE-SEALED and :IMAGE-WHITEBOX.
 0 constant CLASS-SEALED
 1 constant CLASS-WHITEBOX
 variable CLASS-WANTED

@@ -49,7 +49,6 @@ create BUNDLE-FILE PATH-CAP allot
    SOURCE-ROOT:CWD$ s" build/layout-bundle" BUNDLE-DIR FS:JOIN-PATH BUNDLE-U !
    BUNDLE$ FS:MAKE-DIRS
    PROC-ARGV-ENV-RESET
-   s" HABU_GATE_COMPILER_BUNDLE" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" ARG
    s" test/compiler-images-build.f" ARG
@@ -74,8 +73,7 @@ public
    s" old layout donor builds compiler bundle" T-LABEL
    BUILD-BUNDLE
    s" hb-whitebox-source" BUNDLE-FILE? TTRUE
-   s" hb-root" BUNDLE-FILE? TTRUE
-   s" hb-ordinary" BUNDLE-FILE? TTRUE
+   s" hb-whitebox-source.map" BUNDLE-FILE? TTRUE
    T-REPORT
    s" native-layout-transition: ok" type cr ;
 

@@ -56,22 +56,15 @@ create NOISE 1024 allot
 
 public
 : RUN ( -- )
-   s" HABU_GATE_COMPILER_BUNDLE" GETENV s" 1" STR= 0= if
-      s" gate orchestration: compiler bundle switch missing" 72 die
-   then
    RELEASED
    s" builder saw release" type cr
    s" HABU_GATE_ORCH_FAIL" GETENV s" 1" STR= if
       FAILURE-NOISE
       s" builder failed after release" 73 die
    then
-   s" hb-root" AT s" rooted" FS:WRITE-ALL
-   s" hb-root" AT FS:CHMOD-X
-   s" hb-ordinary" AT s" ordinary" FS:WRITE-ALL
-   s" hb-root.map" AT s" names" FS:WRITE-ALL
-   s" hb-ordinary.map" AT s" names" FS:WRITE-ALL
    s" hb-whitebox-source" AT s" whitebox" FS:WRITE-ALL
    s" hb-whitebox-source" AT FS:CHMOD-X
+   s" hb-whitebox-source.map" AT s" names" FS:WRITE-ALL
    s" builder-released" EVIDENCE s" builder saw release" FS:WRITE-ALL ;
 ;package
 

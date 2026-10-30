@@ -38,21 +38,6 @@ package ENGINE-INTERNAL
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
 TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
 
-\ A suite bundle decides the seal while the freshly loaded checker's rows still
-\ exist. The driver copies this transient plan before either capture releases
-\ dynamic storage.
-DYNAMIC-BUFFER IMK-PLAN-REC n
-DYNAMIC-BUFFER IMK-PLAN-MIN n
-variable IMK-PLAN-N
-variable IMK-BUNDLE-MODE
-
-: IMK-RECORD ( n n -- ) {: i:n m:n :}
-   IMK-PLAN-N @ 1+ IMK-PLAN-REC-RESERVE
-   IMK-PLAN-N @ 1+ IMK-PLAN-MIN-RESERVE
-   i IMK-PLAN-N @ IMK-PLAN-REC !
-   m IMK-PLAN-N @ IMK-PLAN-MIN !
-   1 IMK-PLAN-N +! ;
-
 : IMK-MIN-IN ( n -- n )
    dup IMK-NAME-A swap IMK-NAME-U EFFECT-EXTERNAL-MIN-IN ;
 
@@ -65,7 +50,6 @@ variable IMK-BUNDLE-MODE
    dup IMK-NAME-A swap IMK-NAME-U EFFECT-OWNED-MIN-IN ;
 
 : IMK-MARK ( n n -- ) {: i:n m:n :}   \ unknown -> DNAME-INT; known din>0 -> DNAME-MIN-IN
-   IMK-BUNDLE-MODE @ IF i m IMK-RECORD EXIT THEN
    m 0 < IF i MARK-INTERNAL EXIT THEN
    m 0 > IF i m MARK-MIN-IN THEN ;
 
@@ -147,11 +131,8 @@ variable IMK-QI
    REG-PROT-COUNT 0 ?do i REG-PROT-RECORD -1 IMK-MARK loop ;
 
 \ ---- the whitebox image ----------------------------------------------------
-\ The one build without the seal is the gate's whitebox engine (hb-build
-\ --whitebox): its suites reopen engine packages and tick internal words, and a
-\ TRUSTED: body does not help because the seal gates INTERPRET and TICK. That
-\ build sets the target's ENGINE-UNSEAL (src/core/util.f) before this file loads;
-\ IMK-PASS reads it through ENGINE-UNSEAL?, and every other load is sealed.
+\ A whitebox build sets ENGINE-UNSEAL (src/core/util.f) before this file loads
+\ (tools/native-build-core.f TARGET-ENGINE-UNSEAL); every other load is sealed.
 
 \ The pass writes its verdict into IMK-CLASS and the capture bakes it, so later
 \ readers (the build's smoke run in tools/native-build-core.f,
@@ -174,25 +155,10 @@ variable IMK-CLASS
    IMK-SEAL-REGISTRY
    first IMK-SEAL-PRIM ;
 
-: IMK-BUNDLE? ( -- bool )
-   s" HABU_GATE_COMPILER_BUNDLE" GETENV s" 1" CORE-STR= ;
-
-: IMK-PLAN-SEAL ( -- )
-   0 IMK-PLAN-N !
-   -1 IMK-BUNDLE-MODE !
-   IMAGE-WHITEBOX IMK-CLASS !
-   CORE-PREFIX:FIRST-RECORD {: first:n :}
-   first IMK-WALK
-   first IMK-WALK-PACKAGES
-   IMK-SEAL-REGISTRY
-   first IMK-SEAL-PRIM ;
-
 \ Either class ends the registrations: the seal has read them, and a whitebox
 \ image has no seal to read them.
 : IMK-PASS ( -- )
-   IMK-BUNDLE? IF IMK-PLAN-SEAL ELSE
-      ENGINE-UNSEAL? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
-   THEN
+   ENGINE-UNSEAL? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
    REG-PROT-RETIRE ;
 
 public
@@ -228,22 +194,6 @@ EXPORT IMAGE-WHITEBOX
    loop ;
 
 private
-
-: PLAN-N ( -- n ) IMK-PLAN-N @ ;
-
-: PLAN-PAIR ( n -- n n ) {: k:n :}
-   k IMK-PLAN-REC @ k IMK-PLAN-MIN @ ;
-
-\ The retained driver alone resolves this private entry. Its plan lives
-\ outside target DATA while the first capture discards transient buffers.
-: APPLY-PLAN ( ptr n n -- ) {: plan:ptr count:n :}
-   IMK-BUNDLE-MODE @ 0= IF s" internal-mark: no suite seal plan" 76 die THEN
-   0 IMK-BUNDLE-MODE !
-   IMAGE-SEALED IMK-CLASS !
-   CHECKER-EFFECT-AUTHORITY:SEAL
-   count 0 ?do
-      plan i 2 * cells + @ plan i 2 * 1+ cells + @ IMK-MARK
-   loop ;
 
 get-current prot-wid-add
 ' IMK-PASS

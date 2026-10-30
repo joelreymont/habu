@@ -1,10 +1,9 @@
-\ Build the native suite's three compiler images from one target source load.
-\ The caller supplies an absolute private directory and the bundle switch.
+\ Build the native suite's compiler bundle, the unsealed engine the whitebox rows
+\ run on, from one target source load, into the absolute private directory the
+\ caller supplies.
 1 set-tier
 require src/os/script-argv.f
 require src/lib/executable-build.f
-require src/lib/string.f
-require src/os/env-base.f
 
 package COMPILER-IMAGES-BUILD
 private
@@ -15,9 +14,6 @@ private
 : BUILD ( -- )
    SCRIPT-ARGC 1 <> if
       s" compiler-images-build: one output directory is required" 64 die
-   then
-   s" HABU_GATE_COMPILER_BUNDLE" GETENV s" 1" STR= 0= if
-      s" compiler-images-build: compiler bundle switch missing" 72 die
    then
    ['] LOAD EXECUTABLE-BUILD:WITH
    s" 0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-BUNDLE-HOST-CHECK" evaluate-closed ;

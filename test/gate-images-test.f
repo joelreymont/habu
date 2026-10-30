@@ -92,10 +92,6 @@ variable PARENT-U
 : CHECK-SUCCESS ( -- )
    RC @ 0<> if OUT OUT-U @ type ERR ERR-U @ type then
    RC @ 0 T=
-   s" pair/hb-root" AT FS:EXECUTABLE? TTRUE
-   s" pair/hb-ordinary" AT FS:FILE? TTRUE
-   s" pair/hb-root.map" AT FS:FILE? TTRUE
-   s" pair/hb-ordinary.map" AT FS:FILE? TTRUE
    s" consumer-started" AT FS:FILE? TTRUE
    s" consumer" AT FS:FILE? TTRUE
    s" later" AT FS:FILE? TTRUE

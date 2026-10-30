@@ -1,5 +1,5 @@
 \ Run in each freshly booted compiler bundle image. The names cross retired
-\ records, a redefinition, and private bodies kept through public exports.
+\ records, a redefinition, and private bodies behind public exports.
 require src/lib/test.f
 require src/lib/errors.f
 require src/lib/string.f

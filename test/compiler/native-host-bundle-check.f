@@ -139,7 +139,7 @@ CAST: ORIGIN-AT-XT ( n -- [ ptr u8 n n -- n bool ] )
 : MAP-ORIGIN-CHECK ( ptr u8 n -- )
    {: dir:ptr diru:n :}
    T-RESET
-   dir diru s" hb-root.map" MAP-ORIGIN-PATH FS:JOIN-PATH {: pathu:n :}
+   dir diru s" hb-whitebox-source.map" MAP-ORIGIN-PATH FS:JOIN-PATH {: pathu:n :}
    MAP-ORIGIN-PATH pathu FS:FILE-SIZE {: size:n :}
    size MAP-ORIGIN-TEXT-RESERVE
    MAP-ORIGIN-PATH pathu 0 MAP-ORIGIN-TEXT BYTE-VIEW size FS:READ-ALL size T=
@@ -324,7 +324,7 @@ CAST: TARGET-N-XT ( n -- [ -- n ] )
 : GROWTH-CHILD ( ptr u8 n -- )
    {: dir:ptr diru:n :}
    dir diru s" seed-runtime.aot" SEED-ART FS:JOIN-PATH {: pathu:n :}
-   dir diru s" hb-root" SEED-IMAGE FS:JOIN-PATH {: child-u:n :}
+   dir diru s" hb-whitebox-source" SEED-IMAGE FS:JOIN-PATH {: child-u:n :}
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
@@ -364,7 +364,6 @@ public
    BUNDLE-DIR-U ! BUNDLE-DIR !
    [: SPLIT-BUILD ;] [: SPLIT-CLOSE ;] finally
    2dup s" hb-whitebox-source" MAP-SEED-CHECK
-   2dup s" hb-root" MAP-SEED-CHECK
    2dup SEED-GROWTH-CHECK
    MAP-ORIGIN-CHECK ;
 

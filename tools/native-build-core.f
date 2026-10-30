@@ -643,9 +643,6 @@ variable PRE-ROWS-N
 CAST: PREPARE-XT ( n -- [ -- ] )
 CAST: SEAL-XT ( n -- [ n -- ] )
 CAST: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
-CAST: PLAN-COUNT-XT ( n -- [ -- n ] )
-CAST: PLAN-PAIR-XT ( n -- [ n -- n n ] )
-CAST: PLAN-APPLY-XT ( n -- [ ptr n n -- ] )
 
 \ Every segment's arena is checked before the target imports any of them.
 : TRANSFER-LITERALS ( -- )
@@ -668,39 +665,14 @@ CAST: HOST-HEADER-XT ( n -- [ n [ -- ] -- ] )
 
 \ The package seal comes first: CAPTURE-PREPARE's checker sweep reads the
 \ protected bits it sets (src/core/checker-surface.f KEEP?).
-: PREPARE-WINDOW-BODY ( -- )
+: PREPARE-TARGET-BODY ( -- )
+   AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
    s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute
    AOT-ARM:HERE-N AOT-ARM:D1 ! ;
 
-: PREPARE-WINDOW ( -- )
-   ['] PREPARE-WINDOW-BODY WITH-DONOR-HEADER ;
-
-: PREPARE-TARGET-BODY ( -- )
-   AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
-   PREPARE-WINDOW-BODY ;
-
 : PREPARE-TARGET ( -- )
    ['] PREPARE-TARGET-BODY WITH-DONOR-HEADER ;
-
-\ Keep the source-time classifier's exact answers outside target DATA. The
-\ first capture releases target dynamic buffers before the sealed one runs.
-: COPY-SEAL-PLAN ( -- ptr n n )
-   s" ENGINE-INTERNAL" s" PLAN-N" TARGET-PRIVATE-XT PLAN-COUNT-XT execute
-      {: count:n :}
-   count 2 * >COUNT MEM-ALLOC-CELLS {: plan:ptr :}
-   s" ENGINE-INTERNAL" s" PLAN-PAIR" TARGET-PRIVATE-XT PLAN-PAIR-XT
-      {: pair :}
-   count 0 ?do
-      i pair execute {: rec:n min:n :}
-      rec plan i 2 * cells + !
-      min plan i 2 * 1+ cells + !
-   loop
-   plan count ;
-
-: APPLY-SEAL-PLAN ( ptr n n -- )
-   s" ENGINE-INTERNAL" s" APPLY-PLAN" TARGET-PRIVATE-XT
-      PLAN-APPLY-XT execute ;
 
 \ A retained driver cell is not a fixed engine slot. Registering a target XT
 \ into one after reset would make it look like a load-time engine hook.
@@ -758,9 +730,8 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
       i NAMES-SRC-LEN @ 0 < if 0 i NAMES-SRC-LEN ! then
    loop ;
 
-\ Capture omits retired dictionary rows. Index the accepted paths by its own
-\ dictionary-to-record map without changing the source rows: a compiler bundle
-\ captures the same dictionary twice after the private checker rows are gone.
+\ Capture omits retired dictionary rows: index the accepted paths by its own
+\ dictionary-to-record map.
 : NAMES-SOURCE-ALIGN ( -- )
    NAMES-CAP-OP @ {: to-cap :}
    AOT-CAPTURE:MAP-N NAMES-CAP-OFF-RESERVE
@@ -806,13 +777,6 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
    \ The snapshot has its armed cell. The builder still uses the old checker
    \ owner for the source writer compiled below, so stop observing in it.
    s" ENGINE-ORIGIN:DISARM" TARGET-XT PREPARE-XT execute
-   CHECK-FIXED-ROWS ;
-
-: CAPTURE-NAMED ( bool -- )
-   {: all:bool :}
-   CAPTURE-START
-   AOT-ARM:WINDOW$ all AOT-CAPTURE:CAPTURE-WITH-NAMES
-   NAMES-SOURCE-ALIGN
    CHECK-FIXED-ROWS ;
 
 PATH-CAP constant OUTPUT-CAP
@@ -1310,16 +1274,12 @@ variable NAMES-NI
    NAMES-HASH-HEX NAMES-A@ NAMES-HASH-OFF @ + 64 BYTE-COPY
    NAMES-PATH$ NAMES-A@ NAMES-U @ FS:WRITE-ALL ;
 
-\ The suite builder's private directory is absolute. Each capture retains its
-\ rows until the corresponding final image exists and can bind their hash.
+\ The suite builder's private directory is absolute. The capture retains its
+\ rows until the final image exists and can bind their hash.
 create BUNDLE-PATH OUTPUT-CAP allot
 variable BUNDLE-PATH-U
 TYPED-VARIABLE BUNDLE-DIR ptr u8
 variable BUNDLE-DIR-U
-TYPED-VARIABLE WHITE-NAMES-A ptr u8
-variable WHITE-NAMES-U
-TYPED-VARIABLE SEALED-NAMES-A ptr u8
-variable SEALED-NAMES-U
 
 : BUNDLE-OUTPUT ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n name:ptr nameu:n :}
@@ -1349,44 +1309,26 @@ variable SEALED-NAMES-U
    PREFIX-START
    OPEN-FILE-AND-COMPILE ;
 
-: BUNDLE-CAPTURE ( -- AOT-OWNED:capture AOT-OWNED:capture ptr n n )
+: BUNDLE-CAPTURE ( -- AOT-OWNED:capture )
    SOURCE-CHECK @ execute
    RESET-TARGET-SOURCE
    SOURCE-CLOSE @ execute
    TRANSFER-LITERALS
-   COPY-SEAL-PLAN {: plan:ptr count:n :}
    AOT-CAPTURE:PAYLOAD-CAPTURE
    NAMES-SOURCES
-   PREPARE-WINDOW
-   true CAPTURE-NAMED
-   BUILD-NAMES
-   NAMES-A@ WHITE-NAMES-A !  NAMES-U @ WHITE-NAMES-U !
-   OWN-CAPTURE {: white:AOT-OWNED:capture :}
-   plan count APPLY-SEAL-PLAN
    PREPARE-TARGET
-   false CAPTURE-NAMED
+   CAPTURE
    BUILD-NAMES
-   NAMES-A@ SEALED-NAMES-A !  NAMES-U @ SEALED-NAMES-U !
-   OWN-CAPTURE {: sealed:AOT-OWNED:capture :}
-   white sealed plan count ;
+   OWN-CAPTURE ;
 
-: BUNDLE-WRITE ( AOT-OWNED:capture AOT-OWNED:capture ptr n n -- AOT-OWNED:capture AOT-OWNED:capture ptr n n )
-   {: white:AOT-OWNED:capture sealed:AOT-OWNED:capture plan:ptr count:n :}
-   BUNDLE-DIR @ BUNDLE-DIR-U @ {: dir:ptr diru:n :}
+: BUNDLE-WRITE ( AOT-OWNED:capture -- AOT-OWNED:capture )
+   {: white:AOT-OWNED:capture :}
    WRITER-MACHINE-CK
    LOAD-SOURCE-WRITER
-   dir diru s" hb-whitebox-source" BUNDLE-OUTPUT
+   BUNDLE-DIR @ BUNDLE-DIR-U @ s" hb-whitebox-source" BUNDLE-OUTPUT
    white s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
-   WHITE-NAMES-A @ NAMES-A!  WHITE-NAMES-U @ NAMES-U !
    WRITE-NAMES
-   dir diru s" hb-root" BUNDLE-OUTPUT
-   sealed s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
-   SEALED-NAMES-A @ NAMES-A!  SEALED-NAMES-U @ NAMES-U !
-   WRITE-NAMES
-   dir diru s" hb-ordinary" BUNDLE-OUTPUT
-   sealed s" NATIVE-EMIT:WRITE" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
-   WRITE-NAMES
-   white sealed plan count ;
+   white ;
 
 \ The engine build owns its tier: a restored support image starts at tier 0,
 \ so the target sources start at tier 1. A source that sets its own tier keeps
@@ -1401,13 +1343,10 @@ variable SEALED-NAMES-U
 
 
 : BUNDLE-FINISH ( -- )
-   ['] BUNDLE-CAPTURE TARGET-SCOPE
-   {: white:AOT-OWNED:capture sealed:AOT-OWNED:capture plan:ptr count:n :}
-   white sealed plan count ['] BUNDLE-WRITE catch {: rc:n :}
-   2drop drop drop
+   ['] BUNDLE-CAPTURE TARGET-SCOPE {: white:AOT-OWNED:capture :}
+   white ['] BUNDLE-WRITE catch {: rc:n :}
+   drop
    white AOT-OWNED:CLOSE
-   sealed AOT-OWNED:CLOSE
-   plan count 2 * cells munmap 0<> if E-MEM-UNMAP throw then
    rc 0<> if rc throw then ;
 
 : REMOVE-STALE-TEMP ( -- )
@@ -1477,13 +1416,11 @@ variable SEALED-NAMES-U
 
 public
 
-\ Test-only entry. Its source load is selected by the caller's bundle
-\ environment; standalone RUN-PATH-RC keeps its product/whitebox path.
-\ The suite selects its source policy before the one compiler bundle load.
-\ Ordinary callers keep the default policy through RUN-BUNDLE.
+\ Test-only entry: the suite's compiler bundle, under the caller's source policy.
 : RUN-BUNDLE-READY ( ptr u8 n -- )
    {: dir:ptr diru:n :}
    BUILD-TARGET:IDLE-CK
+   CLASS-WHITEBOX CLASS-WANTED !
    dir BUNDLE-DIR !
    diru BUNDLE-DIR-U !
    s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
@@ -1492,11 +1429,6 @@ public
       ['] BUILD-CORE:WITH WITH-TARGET-ROOT {: rc:n :}
    RESTORE-HOST-UNIT
    rc 0<> if rc throw then ;
-
-: RUN-BUNDLE ( ptr u8 n -- )
-   BUILD-TARGET:IDLE-CK
-   DEFAULT-SOURCE-POLICY
-   RUN-BUNDLE-READY ;
 
 \ The build proper, to an explicit output path, returning its result code. RUN
 \ adds the argv convention and the exit; `die` is an unconditional exit_group,

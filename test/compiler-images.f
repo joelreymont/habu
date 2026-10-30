@@ -24,7 +24,6 @@ public
       s" suite compiler images: HABU_GATE_COMPILER_IMAGES is not set" 75 die
    then
    PROC-ARGV-ENV-RESET
-   s" HABU_GATE_COMPILER_BUNDLE" >LEN s" 1" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" test/compiler-images-build.f" >LEN PROC-ARGV+

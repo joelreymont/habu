@@ -1,4 +1,4 @@
-\ Real C2 XML source and cursor scopes on the rooted native image.
+\ Real C2 XML source and cursor scopes.
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/xml/c2.f
