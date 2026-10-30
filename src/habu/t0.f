@@ -1117,13 +1117,18 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    rec XREF-RETIRED? if 0 exit then
    rec XREF-START ;
 
-\ The checker refuses a tick of an internal word in a checked body
-\ (E-CAP-TRUSTED) and admits one under TRUSTED:, as tier 1 does. An operand
-\ bound to no record is undefined (MISSING).
+\ An operand bound to no record, or to an internal one (owned or not) outside a
+\ TRUSTED: body (the TRUSTED cell is zero), is undefined (MISSING), as tier 1's
+\ tick refuses it, even in an unchecked body whose scan reported and did not
+\ refuse it.
 : DO-TICK ( n -- ) {: r:n :}
    NEXT$ {: a:ptr u:n :}
    r 0< if -1 MISSING !  a u UNSUPPORTED then
-   r XREF-REC REC-START {: xt:n :}
+   r XREF-REC {: rec:ptr :}
+   rec XREF-FLAGS DNAME-INT and 0<> if
+      data-base TRUSTED-CELL + @ 0= if -1 MISSING !  a u UNSUPPORTED then
+   then
+   rec REC-START {: xt:n :}
    xt 0= if a u UNSUPPORTED then
    ROOM ALLOC {: r:T0-EMIT:vreg :}
    xt r T0-EMIT:ADDR-CODE

@@ -2284,10 +2284,11 @@ MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read la
    bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ ;
 
 \ A name compiled code cannot reach is refused at its token as undefined
-\ (SOURCE-UNDEFINED?), as DO-TICK refuses an operand no record answers: one the
-\ binder bound to no record, or an internal record the call may not bind
-\ (HIR-WORD:RESOLVE-SITE answers false). An unchecked body reaches this with
-\ its scan's report printed and not enforced.
+\ (SOURCE-UNDEFINED?): a call the binder bound to no record, or an internal
+\ record the call may not bind (HIR-WORD:RESOLVE-SITE answers false); a tick
+\ operand (DO-TICK) no record answers, or an internal record outside a
+\ TRUSTED: body. An unchecked body reaches this with its scan's report printed
+\ and not enforced.
 : UNDEFINED-REFUSE ( n -- )
    -1 RF-MISSING !
    QUOT-REFUSE ;
@@ -3427,12 +3428,16 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
 : DO-TICK ( n -- ) {: ix:n :}
    ix 1+ QSPELL {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: entry:n :}
-   \ An operand no record answers is refused at the operand, as the engine's
-   \ tick refuses it (E-UNDEFINED, definition.f REPORT-UNDEFINED).
+   \ An operand no record answers, or an internal record while the TRUSTED cell
+   \ is zero (outside a TRUSTED: body), is refused at the operand as undefined,
+   \ as the engine's tick refuses it (E-UNDEFINED, definition.f
+   \ REPORT-UNDEFINED), even in an unchecked body whose scan reported and did
+   \ not refuse it.
    entry 0= if
-      a u NDICT:SCOPE-REC XREF-FOUND? 0= if
-         -1 RF-MISSING !
-         ix 1+ QUOT-REFUSE
+      a u NDICT:SCOPE-REC {: rec:ptr :}
+      rec XREF-FOUND? 0= if ix 1+ UNDEFINED-REFUSE then
+      rec XREF-FLAGS DNAME-INT and 0<>  data-base TRUSTED-CELL + @ 0= and if
+         ix 1+ UNDEFINED-REFUSE
       then
       ix QUOT-REFUSE
    then

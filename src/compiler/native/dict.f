@@ -329,8 +329,9 @@ public
 : CALL-TARGET ( ptr u8 n -- n ) CALL-BINDING drop ;
 
 \ Where a compiled `[']` may take its xt from, or zero. An xt runs wherever it
-\ is handed, so a tick binds only what SPELL-REC binds: an owned primitive's
-\ tick is refused as every internal word's is, at both tiers.
+\ is handed, so a tick binds only what SPELL-REC binds: an internal record,
+\ owned or not, only inside a TRUSTED: body, at both tiers. Outside one the
+\ tick is refused as undefined (elaborate.f DO-TICK).
 : TICK-TARGET ( ptr u8 n -- n )
    SPELL-REC false REC-CODE drop ;
 

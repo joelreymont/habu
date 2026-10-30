@@ -92,6 +92,14 @@ private
    s" 0 set-check : OA-MARK ( n -- ) int-mark ;"
    s" E-UNDEFINED: int-mark" REJECTS ;
 
+\ Its tick is refused the same way at both tiers: the xt would run wherever the
+\ body hands it.
+: INTERNAL-TICK ( -- )
+   s" 0 set-check : OA-TICK ( -- ) ['] int-mark drop ;"
+   s" E-UNDEFINED: int-mark" REJECTS
+   s" 1 set-tier 0 set-check : OA-TICK1 ( -- ) ['] int-mark drop ;"
+   s" E-UNDEFINED: int-mark" REJECTS ;
+
 \ OWNED opens nothing that DNAME-INT closes: the prompt and `'` refuse an owned
 \ primitive as they refuse every internal engine word.
 : HIDDEN ( -- )
@@ -130,6 +138,7 @@ public
    s" unchecked code calls an owned primitive at both tiers" T-LABEL UNCHECKED T-NEXT
    s" a package row owns source-unit-run" T-LABEL UNIT-RUN T-NEXT
    s" an unowned internal primitive stays uncompilable" T-LABEL INTERNAL-ONLY T-NEXT
+   s" an unowned internal primitive's tick stays uncompilable" T-LABEL INTERNAL-TICK T-NEXT
    s" the prompt and tick refuse an owned primitive" T-LABEL HIDDEN T-NEXT
    s" a checked caller outside the owner is refused by its row" T-LABEL OUTSIDE T-NEXT
    T-REPORT ;
