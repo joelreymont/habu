@@ -743,11 +743,14 @@ variable LONG-J
 : VREC-NOEND$ ( -- ptr u8 n )
    s" VALUE-RECORD vnoend x n" ;
 
+\ A package's own word may spell a declarer the engine also holds; the body's
+\ call to it is no declaration.
 : NOM-SCAN-BODY$ ( -- ptr u8 n )
    SB-RESET
-   s" : DEFTYPE ( -- ) ;" SB-APPEND
-   $0a SB-APPEND-C
-   s" : CKT-NOM-BODY ( -- ) DEFTYPE ( -- ) ;" SB-APPEND
+   s" package CKT-NOM-SCAN" SB-APPEND $0a SB-APPEND-C
+   s" : DEFTYPE ( -- ) ;" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-NOM-BODY ( -- ) DEFTYPE ( -- ) ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
    SB$ ;
 
 \ A source that DECLARES a value nominal with DEFTYPE and USES both its type
@@ -1988,8 +1991,8 @@ variable LONG-J
    s" : CKT-ZBAD ( n -- zrc ) ;" SB-APPEND
    SB$ ;
 
-\ The all-errors redrive must not re-evaluate the SUMTYPE in the nominal pass's
-\ still-registered scope (CHK-RUN-NOMINAL-LINTS closes its checker scope before
+\ The --all-errors pass must not check the SUMTYPE again inside the nominal
+\ pass's registrations (CHK-RUN-NOMINAL-LINTS closes its checker scope before
 \ CHK-RUN-ALL): exactly one diagnostic, the mismatch, and no E-BAD-DECLARATION
 \ duplicate family.
 : SUM-REDRIVE-TEST ( -- )
@@ -2001,38 +2004,17 @@ variable LONG-J
    CAP-ERR erru s" duplicate family" CONTAINS? TFALSE
    CAP-ERR erru 10 COUNT-CHAR 1 T= ;
 
-\ CHK-RUN-PREVERIFY drives VERIFY:SOURCE-BUF-IN-SCOPE, which registers the
-\ source's family and derived casts and leaves rollback to the caller. A
-\ registration that survived into CHK-HANDLE-HB would make the JSON branch's
-\ all-errors redrive refuse a spurious E-DUPLICATE-DEFINITION. Only a DEFTYPE
-\ source reaches that redrive: its declarer needs `require deftype.f`, so a
-\ bare source is statically clean and its child load fails E-UNDEFINED.
-\ SUMTYPE, NEWTYPE and DEFLINEAR are baked into the engine, so their child
-\ loads succeed and the redrive never runs.
-: NOM-ALL-BARE$ ( -- ptr u8 n )   \ statically clean; bare child load is E-UNDEFINED
-   SB-RESET
-   s" DEFTYPE CKT-AEW" SB-APPEND $0a SB-APPEND-C
-   s" : CKT-AEW-RT ( ckt-aew -- ckt-aew ) ;" SB-APPEND
-   SB$ ;
-
-\ The JSON redrive reports the child's E-UNDEFINED (70), never a spurious
-\ E-DUPLICATE-DEFINITION from re-registering the preverified family. The
-\ engine writes that refusal as prose, which --json-errors puts on stdout.
-: NOM-REDRIVE-TEST ( -- )
-   NOM-ALL-BARE$ ALL-JSON-STDIN 70 T=
-   {: outu:n erru:n :}
-   CAP-OUT outu s" E-UNDEFINED: DEFTYPE" CONTAINS? TTRUE
-   CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TFALSE ;
-
-: NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define DEFTYPE; zero errors
+: NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ the child has DEFTYPE, baked or required; zero errors
    SB-RESET
    s" require src/lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKT-AEOK" SB-APPEND $0a SB-APPEND-C
    s" : CKT-AEOK-RT ( ckt-aeok -- ckt-aeok ) ;" SB-APPEND
    SB$ ;
 
-\ A DEFTYPE declaration through --all-errors reports zero errors when the
-\ child can load the declarer.
+\ The nominal pass registers the DEFTYPE family in its own checker scope, and
+\ the --all-errors pass then records the declaration again: a registration
+\ that survived would refuse it as a duplicate family. Zero errors when the
+\ child has the declarer, baked or required.
 : NOM-CLEAN-TEST ( -- )
    NOM-ALL-CLEAN$ ALL-JSON-STDIN 0 T=
    {: outu:n erru:n :}
@@ -2772,12 +2754,8 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CAP-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
 
-\ The fixture defines a word DEFTYPE at top level, so it checks only in an
-\ engine whose dictionary lacks the real DEFTYPE declarer. The gate runner
-\ loads src/lib/type/deftype.f, so this case keeps the child process: the
-\ standalone tools/check.f process has the smaller dictionary.
 : NOM-SCAN-TEST ( -- )
-   NOM-SCAN-BODY$ CLI-STDIN 0 T=
+   NOM-SCAN-BODY$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
@@ -7056,7 +7034,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/product-noend" [: TEST-PROD-NOEND ;] CASE-RUN
    s" check/value-record-noend" [: TEST-VREC-NOEND ;] CASE-RUN
    s" check/enum-noend-cli" [: ENUM-CLI-TEST ;] CASE-RUN
-   s" check/nominal-scan-top-level" [: NOM-SCAN-TEST ;] CASE-RUN
+   s" check/nominal-scan-body" [: NOM-SCAN-TEST ;] CASE-RUN
    s" check/nominal-preverify" [: TEST-NOMINAL-PREVERIFY ;] CASE-RUN
    s" check/nominal-shadow" [: TEST-NOMINAL-SHADOW ;] CASE-RUN
    s" check/nominal-dup" [: TEST-NOMINAL-DUP ;] CASE-RUN
@@ -7337,7 +7315,6 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/sumtype-bad" [: TEST-SUMTYPE-BAD ;] CASE-RUN
    s" check/run-refusals" [: TEST-RUN-REFUSALS ;] CASE-RUN
    s" check/sumtype-all-redrive" [: SUM-REDRIVE-TEST ;] CASE-RUN
-   s" check/nominal-all-redrive" [: NOM-REDRIVE-TEST ;] CASE-RUN
    s" check/nominal-all-clean" [: NOM-CLEAN-TEST ;] CASE-RUN
    s" check/tfam-noarity" [: TEST-TFAM-NOARITY ;] CASE-RUN
    s" check/sum-noend" [: TEST-SUM-NOEND ;] CASE-RUN
