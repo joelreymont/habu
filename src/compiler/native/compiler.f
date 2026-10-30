@@ -251,6 +251,7 @@ private
    [: SCAN ;] catch {: rc:n :}
    rc 0 <> if NFEED:ABANDON-UNIT rc throw then
    VERDICT-CK
+   CHECKER-OWNER:UNJUDGED-OPEN? if E-NELAB-CTRL throw then
    TAPE NFEED:RECORD-WINDOW
    before ;
 

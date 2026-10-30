@@ -79,7 +79,10 @@ $5B8 constant UNRECORDED-OUT-OFF
 \ ( -- bool ) the checker counted a refusal of the scanned definition's row
 \ (checker.f SIG-COUNTED).
 $5C0 constant SIG-COUNTED-OFF
-SIG-COUNTED-OFF CELL + constant OWNER-BYTES
+\ ( -- bool ) the last unjudged scan closed every construct it opened
+\ (checker.f UNJUDGED-CLOSED?).
+$5C8 constant UNJUDGED-CLOSED-OFF
+UNJUDGED-CLOSED-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

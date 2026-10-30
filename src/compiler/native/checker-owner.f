@@ -374,18 +374,31 @@ TRUSTED: DOES-COMMIT ( -- )
    dup 0= if drop CHECKER-RESOLUTION:TOP exit then
    AS-RESOLUTION-TOP execute ;
 
-\ The live checker's unit-export fact count (checker.f CHECKER-UNIT-FACTS), and
-\ whether the owner answers it. This is the one optional field reader: a
-\ retained host's owner predates the cell, so a record too short to hold it, or
-\ one whose cell is zero, answers false instead of refusing as SOURCE-FIELD does.
-\ Both regimes read the field: the checker's word is a trust-boundary primitive a
-\ checked body may not call by name (E-CAP-TRUSTED).
-: UNIT-FACTS ( -- n bool )
+private
+
+\ A field's execution token, or zero where a retained host's owner record is too
+\ short to hold it or its cell is zero (SOURCE-FIELD refuses both).
+: OPTIONAL-FIELD ( n -- n ) {: off:n :}
    RECORD 0 CHECKER-OWNER-GUARD:VALIDATE {: rec:ptr :}
-   rec 8 - CELL-VIEW @ CHECKER-OWNER-EXT:UNIT-FACTS-OFF CELL + < if 0 false exit then
-   rec CHECKER-OWNER-EXT:UNIT-FACTS-OFF + CELL-VIEW @ {: xt:n :}
+   rec 8 - CELL-VIEW @ off CELL + < if 0 exit then
+   rec off + CELL-VIEW @ ;
+
+public
+
+\ The live checker's unit-export fact count (checker.f CHECKER-UNIT-FACTS), read
+\ as a field: a checked body may not call that word by name (E-CAP-TRUSTED).
+: UNIT-FACTS ( -- n bool )
+   CHECKER-OWNER-EXT:UNIT-FACTS-OFF OPTIONAL-FIELD {: xt:n :}
    xt 0= if 0 false exit then
    xt AS-N execute true ;
+
+\ Whether this definition binds from an unjudged scan that left a construct
+\ open (checker.f UNJUDGED-CLOSED?): its window answers no binding.
+: UNJUDGED-OPEN? ( -- bool )
+   BIND-UNJUDGED @ 0= if false exit then
+   NCOMP-DISPATCH:DECL-UNJUDGED-CLOSED-OFF OPTIONAL-FIELD {: xt:n :}
+   xt 0= if false exit then
+   xt AS-BOOL execute 0= ;
 
 : RESOLUTION-NS-INSTALL ( [ ptr u8 n -- ] -- )
    CHECKER-OWNER-ABI:RESOLUTION-NS-INSTALL-OFF s" namespace observer" FIELD

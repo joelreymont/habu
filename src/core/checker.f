@@ -161,6 +161,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -177,7 +178,7 @@ OWNER-SIZE-AGREE
 \ growing it is read past the record's extent by every guard that trusts it
 \ (checker-owner-guard.f VALIDATE). This makes that a load failure.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:SIG-COUNTED-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:UNJUDGED-CLOSED-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -13724,6 +13725,10 @@ variable BWIN-EPOCH
 : REC-UNJUDGED-BINDING ( n -- ptr u8 n )
    UWIN-VALID @ 0= IF CHECKER-OWNER-ABI:BINDING-RC throw THEN
    REC-BINDING-ROW ;
+
+\ Whether REC-UNJUDGED-BINDING answers: the last unjudged scan closed every
+\ construct it opened (CHECK-UNJUDGED!).
+: UNJUDGED-CLOSED? ( -- bool ) UWIN-VALID @ 0 <> ;
 
 : REC-BINDING-WINDOW ( -- n ) BWIN-EPOCH @ ;
 
@@ -30271,6 +30276,7 @@ package CHECKER-REG
 ' CWIN-CELLS                        DECLARATIONS CALL-CELLS-OFF + xt!
 ' REC-CALL-BINDING                  DECLARATIONS CHECKER-OWNER-ABI:CALL-BINDING-OFF + xt!
 ' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
+' UNJUDGED-CLOSED?                  DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-CLOSED-OFF + xt!
 ' REC-BINDING-WINDOW                DECLARATIONS CHECKER-OWNER-ABI:BINDING-WINDOW-OFF + xt!
 ' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!

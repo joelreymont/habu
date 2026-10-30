@@ -1307,9 +1307,11 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    s" : RXSQ ( -- ) 5 ;] drop ;" s" 70" S\" habu: in rxsq: at ';]'\n" GE-RXE-CATCH-USABLE
    s" : RXSQ ( -- ) 5 ;] drop ;" 70 S\" habu: in rxsq: at ';]'\n" GE-RXE-TOP
    \ The mirror: `;` with one or two quotations open, whose placeholder spins if
-   \ published. TRUSTED: skips the hook; the native tier refuses at `;`, rc 70.
+   \ published. TRUSTED: skips the hook; both native tiers refuse it, rc 70.
    s" TRUSTED: RXSC ( -- ) [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSC ( -- ) [: 1 ;" 70 S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-TOP
+   s" 1 set-tier TRUSTED: RXSC ( -- ) [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC\n" GE-RXE-CATCH-USABLE
+   s" 1 set-tier TRUSTED: RXSC ( -- ) [: 1 ;" 70 S\" ncomp: cannot compile RXSC\n" GE-RXE-TOP
    s" TRUSTED: RXSC ( -- ) [: [: 1 ;" s" 70" S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-CATCH-USABLE
    s" TRUSTED: RXSC ( -- ) [: [: 1 ;" 70 S\" ncomp: cannot compile RXSC at ;\n" GE-RXE-TOP
    \ `;` with a structure open: its unpatched branch spins, `do` leaves a frame.
