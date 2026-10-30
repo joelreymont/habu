@@ -156,15 +156,14 @@ variable ROOT-U
 \ then the engine's word. The engine hides a definition's name until its closing
 \ token, so inside its own body the name is still the engine's word; a storage
 \ definer's name binds at once. A word defined inside a package binds until the
-\ `;package` that closes it. A local is taken for its whole definition, not
-\ only the block that declared it. LINT-DEF names the definers and their kinds.
+\ `;package` that closes it. A local binds to the end of the block that declared
+\ it (LINT-LEX:LIVE-LOCAL?). LINT-DEF names the definers and their kinds.
 variable DEF-AT       \ the token that opened the body being read, or -1
 variable DEF-KIND     \ the LINT-DEF kind of that body
 variable DEF-NAME     \ the token naming that body, or -1
 variable IN-PKG       \ a `package` is open
 variable DEFS-Z       \ how far the file's own PATHZ binds
 variable DEFS-0       \ how far the file's own PATH0 binds
-variable IN-GROUP     \ LOCAL-BINDS? is inside a `{: … :}` group
 0 constant NO-DEF     \ the file has not defined the name
 1 constant PKG-DEF    \ defined in the open package
 2 constant FILE-DEF   \ defined outside a package: binds to the end of the file
@@ -214,39 +213,13 @@ variable IN-GROUP     \ LOCAL-BINDS? is inside a `{: … :}` group
       DEF-NAME @ NAME-DEFINED  -1 DEF-AT !  -1 DEF-NAME !
    then ;
 
-\ The name group token k declares ends at its first `:`.
-: LOCAL$ ( n -- ptr u8 n )
-   {: k:n :}
-   k LINT-LEX:TOKEN {: a:ptr u:n :}
-   0 begin dup u < if a over + c@ [char] : <> else LINT-FALSE then while 1+ repeat
-   a swap ;
-
-\ A `{: … :}` group of the enclosing definition declares k: an earlier group
-\ names it, or k is itself a name in a group. The lexer marks a group's names as
-\ operands and leaves its `{:` unmarked.
-: LOCAL-BINDS? ( n -- bool )
-   {: k:n :}
-   DEF-AT @ 0 < if LINT-FALSE exit then
-   LINT-FALSE IN-GROUP !
-   k DEF-AT @ 1+ ?do
-      IN-GROUP @ if
-         i s" :}" LEX-WORD= if
-            LINT-FALSE IN-GROUP !
-         else
-            i LOCAL$ k LINT-LEX:TOKEN LINT-STR= if LINT-TRUE unloop exit then
-         then
-      else
-         i s" {:" LEX-WORD= i LINT-LEX:OPERAND? LINT-NOT and if LINT-TRUE IN-GROUP ! then
-      then
-   loop
-   IN-GROUP @ if LINT-TRUE exit then
-   LINT-FALSE ;
-
+\ Token k is a local, not the engine's word, when its name is live after k: a
+\ live local's use, or a `{: … :}` group's own name.
 : PATH-USE ( ptr u8 n n ptr n -- )
    {: pa:ptr pu:n k:n v:ptr :}
    k DEF-NAME @ = if exit then
    v @ NO-DEF <> if exit then
-   k LOCAL-BINDS? if exit then
+   k 1+ k LINT-LEX:TOKEN LINT-LEX:LIVE-LOCAL? if exit then
    pa pu k FIND-PATH ;
 
 : PATH-TOKEN ( ptr u8 n n -- )

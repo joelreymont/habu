@@ -563,11 +563,29 @@ private
    LIVE 0= if exit then
    k a u BLOCK-STEP ;
 
-: LOCALS-SYNC ( -- )
-   begin STEPPED @ COUNT < while
+\ Read the state that holds after the tokens below k, from the first token again
+\ when the state has read past k.
+: LOCALS-TO ( n -- )
+   {: k:n :}
+   k STEPPED @ < if LOCALS-RESET then
+   begin STEPPED @ k < while
       STEPPED @ STEP
       STEPPED @ 1+ STEPPED !
    repeat ;
+
+: LOCALS-SYNC ( -- )
+   COUNT LOCALS-TO ;
+
+public
+
+\ Name a u is a live local at token k: declared in the tokens before k, so a
+\ group's own name is live from the token after it.
+: LIVE-LOCAL? ( n ptr u8 n -- bool )
+   {: k:n a:ptr u:n :}
+   k LOCALS-TO
+   a u LOCAL? ;
+
+private
 
 \ The word the scan reads now names a live local, so a spelling that would
 \ steer the scan is a plain word.

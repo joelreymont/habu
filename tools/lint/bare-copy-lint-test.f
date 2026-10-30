@@ -71,11 +71,14 @@ package BARE-COPY-LINT
 
 \ ---- PATHZ and PATH0 resolve to the nearest binding ----------------------------
 \ A local binds its name byte for byte, as the engine and the checker look locals
-\ up, so `{: pathz :}` does not bind `PATHZ`. A definition's name binds below
-\ its closing token, so inside its own body the name is still the engine's word;
-\ a storage definer's name binds at once. Either is case-folded as the
-\ dictionary looks words up, and binds until the `;package` that closes its
-\ package.
+\ up, so `{: pathz :}` does not bind `PATHZ`, and only to the end of the block
+\ that declared it, so a later block's `pathz` is the engine's. A local binds
+\ from its own group on, so a use above the group is the engine's even after the
+\ scan has read past the group (`char`). A definition's
+\ name binds below its closing token, so inside its own body the name is still
+\ the engine's word; a storage definer's name binds at once. Either is
+\ case-folded as the dictionary looks words up, and binds until the `;package`
+\ that closes its package.
 : BCT-PATH-SHADOW ( -- )
    s" : F ( ptr u8 n -- ptr u8 ) PATHZ ;" BCT-CONSUMER 1 T=
    s" : F ( ptr u8 n -- ptr u8 ) PATH0 ;" BCT-CONSUMER 1 T=
@@ -83,6 +86,8 @@ package BARE-COPY-LINT
    s" : F ( ptr u8 -- ptr u8 ) {: pathz:ptr :} pathz ;" BCT-CONSUMER 0 T=
    s" : F ( n ptr u8 n -- ptr u8 ) {: pathz :} PATHZ ;" BCT-CONSUMER 1 T=
    s" : G ( ptr u8 -- ) {: pathz:ptr :} ; : F ( -- ) pathz ;" BCT-CONSUMER 1 T=
+   s" : F ( ptr u8 bool bool -- ) if {: pathz:ptr :} pathz pathz 2drop then if pathz then ;" BCT-CONSUMER 1 T=
+   s" : F ( -- ) PATHZ {: PATHZ :} char x drop ;" BCT-CONSUMER 1 T=
    s" : PATHZ ( -- ) ; : F ( -- ) pathz ;" BCT-CONSUMER 0 T=
    s" create PATH0 8 allot : F ( -- ptr u8 ) PATH0 ;" BCT-CONSUMER 0 T=
    s" : F ( -- ) PATHZ ; : PATHZ ( -- ) ;" BCT-CONSUMER 1 T=
