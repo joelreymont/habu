@@ -989,9 +989,8 @@ variable GE-CF-BODY-U
 : GE-CF-BODY$ ( -- ptr u8 n )
    GE-CF-BODY GE-CF-BODY-U @ ;
 
-\ n nested `0 0= if ... then` pairs, each fed a real bool so a checkable depth
-\ certifies. The over-cap legs select the JIT to pin its cap (LCFPUSH): T0
-\ refuses those definitions as non-certified.
+\ Each `if` takes a real bool so a checkable depth certifies. Over-cap legs
+\ select the JIT to pin its cap (LCFPUSH): T0 refuses them as uncertified.
 : GE-CF-NEST ( n bool -- ) {: n:n jit:bool :}
    GE-CF-BODY-RESET
    jit if RUNTIME-RUNNER:JIT$ GE-CF-BODY+ then
@@ -1039,10 +1038,6 @@ variable GE-CF-BODY-U
    s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
    s" PASS: control-flow depth cap fail-closed rc70 (no overflow, catchable)" type cr ;
 
-\ Build "variable HITS : DEEP ( -- ) " + n * opener + "1 HITS +! " + n * closer
-\ + "; DEEP ...": n nested counted loops of two turns each, run once, and a
-\ check that prints true when they took 2^LV-LEVELS turns. The over-cap legs
-\ select the JIT to pin its level cap (LVOPEN).
 : GE-DO-NEST ( n ptr u8 n ptr u8 n bool -- ) {: n:n op:ptr opu:n cl:ptr clu:n jit:bool :}
    GE-CF-BODY-RESET
    jit if RUNTIME-RUNNER:JIT$ GE-CF-BODY+ then
@@ -1112,11 +1107,8 @@ variable GE-CF-BODY-U
 
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
-   \ One recoverable compile-error misuse under the TCE-CATCH wrapper. The die
-   \ site (through LCOMPILEDIE) or the checker's refusal is a catchable throw of
-   \ its exit code inside evaluate. A fresh definition (GEC-RXOK -> 12321) then
-   \ compiles and runs: the eval-frame rollback (input cursor, CP/NDICT
-   \ truncation, HIDX skipping the stale records) left a usable session.
+   \ The refusal is a catchable throw inside evaluate; GEC-RXOK compiling after
+   \ it proves the eval frame rolled back the input cursor, CP, NDICT and HIDX.
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
    src srcu GE-SRC-S"
@@ -1838,9 +1830,8 @@ create GE-END-AT 16 allot
    loop
    GE-CATCH-LOCALS ;
 
-\ An immediate word's evaluate that emits code into the open definition
-\ compiles in its place at both tiers (CAPTURE-IMMEDIATE, t0.f IMM-TOKEN).
-\ The source built so far runs; out is its whole stdout.
+\ An immediate's evaluate compiles into the open definition in its place at
+\ both tiers (CAPTURE-IMMEDIATE, t0.f IMM-TOKEN); out is the whole stdout.
 : GE-EMIT-EXPECT ( ptr u8 n ptr u8 n -- )
    {: out:ptr outu:n label:ptr labelu:n :}
    GE-END-SAVE
@@ -1961,12 +1952,8 @@ create GE-END-AT 16 allot
    s" 5 GEEND . depth ." GE-SRC-LINE
    S\" 74\n12\n0\n" s" nested evaluate" GE-EMIT-EXPECT ;
 
-\ A structure that an evaluate two levels down opens before its refusal, which
-\ a catch one level up takes, and the outer source closes; aft is what GEENDIN
-\ runs after its evaluate, a throw once that evaluate has ended cleanly. The
-\ capture moves only the body text and its mark (EM-CAPTURE-BIND), so the
-\ outer pop must not roll either back past the inner buffer's completed tokens.
-\ run runs GEEND; out is the whole stdout.
+\ An evaluate two levels down opens a structure the outer source closes: the
+\ outer pop keeps the inner evaluate's captured tokens (EM-CAPTURE-BIND).
 : GE-DEEP-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
    {: ev:ptr evu:n aft:ptr aftu:n def:ptr defu:n run:ptr runu:n mode:n out:ptr outu:n :}
    GE-SRC-RESET
@@ -2136,10 +2123,8 @@ variable GE-KIND-N
 : GE-KIND-LABEL ( bool -- ptr u8 n )
    if s" closer kinds caught, checked" else s" closer kinds caught, unchecked" then ;
 
-\ Every closer against every opener it neither closes nor continues, inside a
-\ caught evaluate: each prints the catch code, 70, and its word maps 5 to 13.
-\ Then a `;` refused inside the evaluate that opened its
-\ definition drops that definition, so GEKS defines afresh.
+\ Each closer against each opener it neither closes nor continues is caught as
+\ 70; a `;` refused in the evaluate that opened GEKS drops that definition.
 : GE-KIND-EVAL ( bool -- )
    {: chk:bool :}
    chk GE-KIND-LABEL {: l:ptr lu:n :}

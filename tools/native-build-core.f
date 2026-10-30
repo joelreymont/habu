@@ -875,7 +875,7 @@ TYPED-VARIABLE WRITER-NAME-SPAN [ n -- n n ]
    s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED ;
 
 \ RESTORE-HOST-DISPATCH restores only HOST-DISPATCH-OFFS: a writer loaded after
-\ the capture meets CHECKER-REG:SEAL's other installs. NABI:BINDING is the host's.
+\ capture meets CHECKER-REG:SEAL's other installs. NABI:BINDING is the host's.
 : FOREIGN? ( -- bool )
    TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ 0= ;
 

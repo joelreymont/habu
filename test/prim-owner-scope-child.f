@@ -408,10 +408,8 @@ $0A constant LF-C
    s" TRUSTED: POS-CD1-TR ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
    RESTORE-T0 ;
 
-\ src/core/checker.f FIELD-PROJ! states its seal; the owner's call before it is
-\ in test/prim-owner-scope-prepare.f. After it both tiers refuse that call as
-\ undefined; outside the owner checked calls and ticks are trust refusals and a
-\ TRUSTED: body compiles.
+\ After the seal (checker.f FIELD-PROJ!) both tiers refuse the owner's call as
+\ undefined; elsewhere checked calls and ticks are trust refusals, TRUSTED: not.
 : TYPE-DECL-CASES ( -- )
    T0? if
    0 set-tier

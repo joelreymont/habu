@@ -949,10 +949,8 @@ EPPRIM: OUTER def-cast ECLOSE-PRIVATE
 \ code ceiling.
 EPRIM: def-defer PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ Only package CHECKER-OVERLAY's rows type these six. With no global row, a
-\ checked caller elsewhere is E-UNDEFINED, and a TRUSTED: body elsewhere binds
-\ one at tier 0 only: tier 1 has no row to build its call from. A refusal
-\ exits: 79 on a task's thread and 83 for every other.
+\ Only CHECKER-OVERLAY types these six: elsewhere a checked call is E-UNDEFINED
+\ and a TRUSTED: one binds at tier 0 only. Refusals exit 79 on a task, else 83.
 \
 \ replay-open ( -- ): save NDICT, CP, WIDN, CURRENT, the open package's cells
 \ and the using band in the engine's REPLAY-SCOPE band (src/habu/layout.f). It

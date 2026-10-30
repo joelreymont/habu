@@ -21053,9 +21053,9 @@ package CHECKER-REG
 \ binds the row and checks callers against it, a sealed one refuses it by
 \ authority (CALL-AUTHORITY), and EFFECT-QUERY and the native compiler's arity
 \ read it. A TRUSTED: declaration goes through TRUST-DECL instead. Callers: the
-\ engine's empty-hook publish arm at tier 0 (habu2.f EM-COMPILE-PUBLISH-HOOKED)
-\ and the native compiler after its unjudged scan at tier 1 (definition.f
-\ DECLARE-HOOKLESS), both through DECLARED-ROW-OFF.
+\ JIT's empty-hook publish arm (habu2.f EM-COMPILE-PUBLISH-HOOKED) and tiers 0
+\ and 1 after their unjudged scan (definition.f DECLARE-HOOKLESS), both through
+\ DECLARED-ROW-OFF.
 \ A live row wins: at tier 1 the scan's own row (certified, deferred, or a
 \ multi-error recovery fact) keeps the symbol; after `undefine` the tombstone is
 \ not live and the redefinition records. A declaration that does not parse, or
@@ -25036,9 +25036,8 @@ variable CAST-PATH-N
       NMA @ NMU @ CHECKER-RECORD-SYM CK-CLOSE!
    THEN ;
 
-\ The cells of an effect REC-SIG did not record (W-EFFECT-NOT-RECORDED), for
-\ src/compiler/native/definition.f KEEP-ARITY. CHECK clears them, not
-\ CHECK-RESET, which the does> clause's check also runs.
+\ An effect REC-SIG did not record (W-EFFECT-NOT-RECORDED), for definition.f
+\ KEEP-ARITY. CHECK clears it, not CHECK-RESET, which a does> clause also runs.
 variable UNREC-DIN   CELLS-NONE UNREC-DIN !
 variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 : CHECK-UNRECORDED! ( n n -- ) {: din:n dout:n :}

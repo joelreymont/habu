@@ -59,9 +59,8 @@ CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
-\ A head at TIER-CELL 0 refuses, as does a body token latched to the JIT, whose
-\ per-token compile this loop cannot call; one latched to T0 is captured as tier
-\ 1's. `cast:`, `linear:`, `immediate` and definers read at any tier.
+\ A head at TIER-CELL 0 or a body token latched to the JIT refuses: this loop
+\ cannot call the JIT per token. Definers, `cast:`, `linear:`, `immediate` pass.
 : DEF-TIER-0 ( -- )
    s" hb: tier 0 is not in the Habu loop: " SAY
    DEF-RC-TIER-0 PKG-FAIL ;
@@ -487,10 +486,8 @@ private
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    xt AS-PREFLIGHT execute ;
 
-\ Twin: habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE. An immediate meets an armed
-\ checker's preflight (a neutral one in DEF-RUN) unless spelled does>, the
-\ keyword (test/outer-interpret.f DOES-CALLED). The live checker answers
-\ PARSE-IMM?; the retained one lacks a build window's `parse-imm` rows.
+\ Twin: habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE. PARSE-IMM? asks the live checker:
+\ the retained one lacks a build window's `parse-imm` rows.
 : DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then

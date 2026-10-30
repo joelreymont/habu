@@ -134,19 +134,11 @@ private
 TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER:DECLARED-EFFECT ;
 
-\ Certification is the engine's hook cell; the scan is the owner's. A hook in
-\ the cell owns the verdict, and the live checker's own hook scans. Tier 0
-\ reads the cell per definition, so `0 set-check` takes certification off and
-\ installing another hook moves it. With the cell empty an ordinary definition
-\ is published uncertified; the owner's scan still fills the tape and reports
-\ its verdict. A native build requires that verdict while LOGICAL-RESET has
-\ cleared the hook and the target's check-hook.f is not loaded.
 \ The hook cell stores a raw execution token; this view states the scan's signature.
 CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 
-\ The two tiers agree on the empty cell: tier 0 also publishes the definition
-\ uncertified with its declaration as its row (habu2.f EM-COMPILE-PUBLISH-HOOKED
-\ reads HOOK-CELL).
+\ Every tier reads the hook cell per definition. With it empty a definition is
+\ published uncertified; a native build still requires the scan's verdict.
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
@@ -237,12 +229,8 @@ public
 
 private
 
-\ With the hook cell empty a definition's row is its declaration, as at tier 0
-\ (checker.f CHECKER-DECLARED-ROW!): recorded after the scan, its report and the
-\ capture, whose state the recorder would clobber, and before KEEP-ARITY, which
-\ then answers from it. The scan's own row - certified, deferred or a multi-error
-\ recovery fact - wins, since the recorder skips a symbol a live row states. A
-\ definition with no signature records nothing, as at tier 0.
+\ The empty-hook row (checker.f CHECKER-DECLARED-ROW!) is recorded after the
+\ scan, its report and capture, which it would clobber, and before KEEP-ARITY.
 : DECLARE-HOOKLESS ( -- )
    TRUST-SIG$ {: sa:ptr su:n :}
    su 0= if exit then

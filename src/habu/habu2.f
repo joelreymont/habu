@@ -8703,7 +8703,7 @@ ardone LBL,
    9 DATA SUSP-HOOK-CELL STR,  9 DATA SUSP-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA NCOMP-DISPATCH:COMP-CELL STR,
-   9 DATA NSTR-ABI:INTERN-CELL STR,      \ tier 0 keeps literals inline until string.f installs
+   9 DATA NSTR-ABI:INTERN-CELL STR,      \ the JIT keeps literals inline until string.f installs
    9 DATA NCOMP-DISPATCH:CALLBACK-STUB-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL STR,
    9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
@@ -8717,7 +8717,7 @@ ardone LBL,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:ORIGIN-TAKE cells + STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
    9 DATA NATIVE-HOST-CELLS:SELECT STR,
-   \ Tier 0 (the JIT) is the cold default.
+   \ Cold tier 0 is the JIT (COMP-CELL 0) until CHECKER-REG:SEAL installs T0.
    9 DATA NCOMP-DISPATCH:TIER-CELL STR,
    9 DATA APP-ENTRY:XT-CELL STR,
    9 DATA NCOMP-DISPATCH:DECL-CELL STR,
@@ -12980,15 +12980,8 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 package COMPILE-EMIT
 public
 
-\ Tier 0's compile loop, from the LCOMPILE head to the call dispatch. EMIT-MAIN
-\ emits it after the tier-1 loop and before the shared tails, which stay out:
-\ EM-COMPILE-UNDEF, EM-COMPILE-DIE, EM-COMPILE-EXIT and EM-EVAL-THROW-RECOVER
-\ bind labels (LUNDEF, LEX0/LEXIT, LEVALREC ...) and a second binding is
-\ `icode: label redefined`. EMIT-DEF-KW-GUARD stays out too: the dictionary
-\ sections already emit LDEFKWGUARD, and this loop needs the keyword rows with
-\ CF-DEF-GUARD clear (EM-COMPILE-KEYWORDS with the flag 0).
-\ It is entered only by a branch to LCOMPILE: NCOMP-EMIT:EM-COMPILE ends on
-\ `B LMAIN`, and EM-COMPILE-CALL ends on `found B,`.
+\ The JIT's compile loop, emitted with CF-DEF-GUARD clear. Its tails and
+\ LDEFKWGUARD bind elsewhere: a second binding is `icode: label redefined`.
 : EM-COMPILE-LEGACY ( -- )
    LBL LBL {: lnotsemi:label call:label :}
    LCOMPILE LABEL@ LBL,

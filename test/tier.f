@@ -406,12 +406,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 : REJECT-TRUST-OUT$ ( -- ptr u8 n )
    S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n5\n2\n1\n7\n7\n2\n1\n1\n2\n7\n2\n1\n" ;
 
-\ TRUSTED: bodies whose scans meet a token they cannot apply (a rowless
-\ unchecked word, `evaluate`) while a pair is live: the certificate's facts are
-\ incomplete: the JIT refuses the definition before anything runs, and
-\ tier 1 refuses to compile it. Under `0 set-check` the parked hook still scans
-\ a body and gives it a row, so IC-RAW is compiled after `discard-check` and the
-\ saved hook is re-armed. JIT only: tier 1 scans IC-RAW itself and gives it a row.
+\ IC-RAW compiles after `discard-check`: under `0 set-check` the parked hook
+\ still rows a body it scans; a rowless call leaves the pair's facts incomplete.
 : INCOMPLETE-RAW$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" check@ 0 set-check discard-check : IC-RAW swap ; set-check " LN+

@@ -6,10 +6,10 @@
 \ row that is neither a declared entry point nor required by the closure.
 
 \ Rows by choice: the debugger trio (debug-watch.f, stepper.f, debug.f over
-\ code-bytes.f), without debug.f's breakpoints on x86-64; src/lib/num-*.f, because
-\ src/lib/memory.f states the allocator's contract in NUM roles; src/lib/adt/option.f
-\ for src/lib/string.f's option<n>; src/lib/float.f and src/lib/fmt.f, because
-\ habu2.f requires fmt for number text.
+\ code-bytes.f), without debug.f's breakpoints on x86-64; src/lib/num-*.f,
+\ because src/lib/memory.f states the allocator's contract in NUM roles;
+\ src/lib/adt/option.f for src/lib/string.f's option<n>; src/lib/float.f and
+\ src/lib/fmt.f, because habu2.f requires fmt for number text.
 
 \ The manifest is the engine's boot registry: opened here, frozen by
 \ CAPTURE-PREPARE, and src/core/include.f keeps each row by its tree-relative

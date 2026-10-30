@@ -85,12 +85,8 @@ variable FILL-POOL
    {: root:ptr rootu:n :}
    S\" s\" " IN+ root rootu IN+ S\" \" SOURCE-ROOT:ENGINE!\n" IN+ ;
 
-\ FWD-CASE through CAST-PROBE stand apart from PROBE for its body text limit
-\ (BODYBUF-CAP).
-\ A forward keeps the fault its device latched: PDEV's write latches fault 5,
-\ then forwards to the terminal, whose fault is none. fwd= prints the first
-\ write's code, PDEV's fault after it, and the second write's code less
-\ E-GENIO-IO.
+\ FWD-CASE through CAST-PROBE stay out of PROBE, whose body BODYBUF-CAP limits.
+\ A forward keeps its device's latched fault: PDEV latches 5, the terminal none.
 : FWD-CASE ( -- )
    S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
 

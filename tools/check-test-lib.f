@@ -2010,7 +2010,7 @@ variable LONG-J
    SB$ ;
 
 \ The --all-errors pass records the DEFTYPE family the nominal pass registered;
-\ a registration left open by CHK-RUN-NOMINAL-LINTS would refuse it as duplicate.
+\ a registration left open by CHK-RUN-NOMINAL-LINTS refuses it as duplicate.
 : NOM-CLEAN-TEST ( -- )
    NOM-ALL-CLEAN$ ALL-JSON-STDIN 0 T=
    {: outu:n erru:n :}

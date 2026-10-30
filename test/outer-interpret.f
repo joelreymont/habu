@@ -1236,10 +1236,8 @@ variable WANT-RC
    s" s\~ TRUSTED: OI-INC ( -- ) s\~ " Q+  NESTED$ GE-SRC+
    s" \~ included ; immediate~ evaluate  s~ OI-INC~ 0 parse-imm" QLINE ;
 
-\ A body token reaches the Habu loop at tier 0 only in a file included while
-\ the engine's loop holds a head open, so the included tokens join the engine's
-\ native capture and the source ends inside the definition. An x86-64 engine
-\ has no tier 0 and reads a tier-1 head.
+\ A body token reaches the Habu loop at tier 0 only from a file included while
+\ the engine holds a head open. x86-64 has no tier 0 and reads a tier-1 head.
 : HEAD-TIER-0 ( -- )
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
@@ -1766,7 +1764,7 @@ variable WANT-RC
    76 s" hb: data space out of range: DP " S\" oi-does-data-full.f:1\n" DIED-AT ;
 
 \ LFIND runs before the keywords: a non-immediate word named `does>` is called
-\ and the body not split; a non-neutral immediate one leaves `does>` the keyword.
+\ and the body not split; a non-neutral immediate leaves `does>` the keyword.
 : CALLED ( ptr u8 n ptr u8 n -- ) {: def:ptr defu:n name:ptr nameu:n :}
    GE-SRC-RESET
    s" 1 set-tier ' OI-DOES. OI-SHOWN !" GE-SRC-LINE
