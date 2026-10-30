@@ -73,7 +73,12 @@ $5A0 constant BODY-CLOSE-OFF
 \ from a cut on (checker.f CHECKER-PREFIX:BIND?): the arm64 capture asks it
 \ inside an evaluate begun in the open definition (habu2.f EM-CAPTURE-BIND).
 $5A8 constant PREFIX-BIND-OFF
-PREFIX-BIND-OFF CELL + constant OWNER-BYTES
+\ ( -- n ) each: the cells a certified definition takes and leaves when its
+\ inferred effect was not recorded (W-EFFECT-NOT-RECORDED), else CELLS-NONE
+\ (checker.f CHECK-UNRECORDED!).
+$5B0 constant UNRECORDED-IN-OFF
+$5B8 constant UNRECORDED-OUT-OFF
+UNRECORDED-OUT-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

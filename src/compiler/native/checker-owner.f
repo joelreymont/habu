@@ -265,6 +265,19 @@ TRUSTED: DOES-COMMIT ( -- )
    dup 0= if drop CHECK-DOES-DOUT-CELLS exit then
    AS-N execute ;
 
+\ The cells the definition just certified takes and leaves when its inferred
+\ effect was not recorded (W-EFFECT-NOT-RECORDED), else CELLS-NONE: no row
+\ carries them.
+: UNRECORDED-IN ( -- n )
+   NCOMP-DISPATCH:DECL-UNRECORDED-IN-OFF s" unrecorded input cells" FIELD
+   dup 0= if drop CHECK-UNRECORDED-DIN exit then
+   AS-N execute ;
+
+: UNRECORDED-OUT ( -- n )
+   NCOMP-DISPATCH:DECL-UNRECORDED-OUT-OFF s" unrecorded output cells" FIELD
+   dup 0= if drop CHECK-UNRECORDED-DOUT exit then
+   AS-N execute ;
+
 : DOES-WIDE? ( -- bool )
    NCOMP-DISPATCH:DECL-DOES-WIDE-OFF s" does> width" FIELD
    dup 0= if drop CHECK-DOES-WIDE? exit then

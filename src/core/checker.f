@@ -159,6 +159,7 @@ create OWNER-STORAGE
    0 , 0 , 0 ,
    0 ,
    0 ,
+   0 , 0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -175,7 +176,7 @@ OWNER-SIZE-AGREE
 \ growing it is read past the record's extent by every guard that trusts it
 \ (checker-owner-guard.f VALIDATE). This makes that a load failure.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:PREFIX-BIND-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:UNRECORDED-OUT-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -10980,6 +10981,8 @@ PRIM: CHECK-DOES-DIN-N PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-DOUT-N PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-DIN-SLOT PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK-DOES-DOUT-SLOT PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: CHECK-UNRECORDED-DIN PE-N PE-OUT PRIM;
+PRIM: CHECK-UNRECORDED-DOUT PE-N PE-OUT PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
 \ The axiom keeps it checker-known so the seal-time internal-word marking pass
 \ (src/core/internal-mark.f) leaves it executable at top level; UNSAFE-TOK?
@@ -25026,8 +25029,23 @@ variable CAST-PATH-N
       NMA @ NMU @ CHECKER-RECORD-SYM CK-CLOSE!
    THEN ;
 
+\ A certified definition whose inferred effect REC-SIG (render.f) did not record,
+\ W-EFFECT-NOT-RECORDED: more than 23 type variables or an unmodeled type tag,
+\ has no row, yet the native compiler must still know the cells its body takes
+\ and leaves (src/compiler/native/definition.f KEEP-ARITY). REC-SIG
+\ keeps them here; callers still find no effect. CHECK clears them per
+\ definition, not CHECK-RESET, which the does> clause's check also runs.
+variable UNREC-DIN   CELLS-NONE UNREC-DIN !
+variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
+: CHECK-UNRECORDED! ( n n -- ) {: din:n dout:n :}
+   din ROW-CELLS UNREC-DIN !
+   dout ROW-CELLS UNREC-DOUT ! ;
+: CHECK-UNRECORDED-DIN ( -- n ) UNREC-DIN @ ;
+: CHECK-UNRECORDED-DOUT ( -- n ) UNREC-DOUT @ ;
+
 : CHECK   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable | 2=deferred )
    {: a u :}
+   CELLS-NONE UNREC-DIN !  CELLS-NONE UNREC-DOUT !
    WRITE-WINDOW-CK
    -1 PARSE-COMPLETE !
    a u CHECK-RESET
@@ -25773,6 +25791,8 @@ public
 
 package CHECKER-REG
 ' CHECKER-PREFIX:BIND? DECLARATIONS CHECKER-OWNER-ABI:PREFIX-BIND-OFF + xt!
+' CHECK-UNRECORDED-DIN DECLARATIONS CHECKER-OWNER-ABI:UNRECORDED-IN-OFF + xt!
+' CHECK-UNRECORDED-DOUT DECLARATIONS CHECKER-OWNER-ABI:UNRECORDED-OUT-OFF + xt!
 ;package
 
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic

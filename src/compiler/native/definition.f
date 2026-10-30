@@ -336,14 +336,18 @@ public
 \ empty DECLARE-HOOKLESS recorded the declaration. The scan has printed why, so
 \ the refusal takes the check hook's reject status. After a certified scan
 \ nothing reaches it either: a package opened and closed by the source is
-\ E-NCOMP-NAME and an unsigned body answers its inferred effect.
+\ E-NCOMP-NAME, an unsigned body answers its inferred effect, and a body whose
+\ inferred effect was not recorded (W-EFFECT-NOT-RECORDED) answers the cells
+\ its scan inferred (CHECKER-OWNER:UNRECORDED-IN), which no row carries, so
+\ callers still see no effect.
 : KEEP-ARITY ( -- )
    NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
-   din NDICT:ARITY-NONE = if
-      M-UNJUDGED @ -1 <> if RC-REJECT throw then
-      E-NCOMP-ARITY throw
-   then
-   din M-IN !  dout M-OUT ! ;
+   din NDICT:ARITY-NONE <> if din M-IN !  dout M-OUT !  exit then
+   M-UNJUDGED @ -1 <> if RC-REJECT throw then
+   CHECKER-OWNER:UNRECORDED-IN {: uin:n :}
+   CHECKER-OWNER:UNRECORDED-OUT {: uout:n :}
+   uin 0 < uout 0 < or if E-NCOMP-ARITY throw then
+   uin M-IN !  uout M-OUT ! ;
 
 private
 
