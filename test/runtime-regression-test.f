@@ -1729,14 +1729,18 @@ create GE-END-AT 16 allot
    S\" 5\n" s" macro evaluate" GE-EXPECT-OUT ;
 
 \ Tier 0 compiles only parse-neutral immediates, so it refuses GEENDUSE at
-\ GEENDMAC, rc 70.
+\ GEENDMAC on line 3, rc 70.
 : GE-END-MACRO-T0 ( -- )
    s" hb-end-macro-t0.f"
       S\" 0 set-check\n: GEENDMAC ( -- ) s\" 5\" evaluate ; immediate\n: GEENDUSE ( -- n ) GEENDMAC ;\nGEENDUSE .\n"
       GE-LOC-FIXTURE
    GE-LOC-LOAD
-   S\" habu: in geendmac: at 'evaluate'\nE-UNMODELED-IMMEDIATE habu: in geenduse: compile-time immediate 'GEENDMAC' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile GEENDUSE at GEENDMAC\n"
-      s" macro evaluate at tier 0" GE-EXPECT-ERR
+   SB-RESET
+   S\" habu: in geendmac: at 'evaluate'\nE-UNMODELED-IMMEDIATE habu: in geenduse: compile-time immediate 'GEENDMAC' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile GEENDUSE at GEENDMAC in "
+      SB-APPEND
+   GE-SCRIPT-PATH GE-SCRIPT-U @ SB-APPEND
+   s" :3" SB-APPEND GE-SB-LF
+   SB$ s" macro evaluate at tier 0" GE-EXPECT-ERR
    70 s" macro evaluate at tier 0" GE-EXPECT-RC ;
 
 \ The closing direction. A `;` in a buffer that an immediate word's evaluate or
@@ -2162,15 +2166,16 @@ variable GE-KIND-N
    c 2 < c 7 = or if 1 else 0 then ;
 
 \ GEKT sits on line 2 after an unchecked source's `0 set-check`, else line 1.
-: GE-KIND-AT$ ( ptr u8 n bool -- ptr u8 n )
+: GE-KIND-AT+ ( ptr u8 n bool -- )
    {: a:ptr u:n chk:bool :}
-   SB-RESET
    a u SB-APPEND
    GE-END-PATH GE-END-U @ SOURCE-ROOT:CANONICAL drop SB-APPEND
    s" :" SB-APPEND
    chk if 1 else 2 then FMT:SB-U
-   GE-SB-LF
-   SB$ ;
+   GE-SB-LF ;
+
+: GE-KIND-AT$ ( ptr u8 n bool -- ptr u8 n )
+   SB-RESET GE-KIND-AT+ SB$ ;
 
 \ The checker's refusal of GEKT names the closer, or for `;` the last token of
 \ the `if` branch left open.
@@ -2184,7 +2189,7 @@ variable GE-KIND-N
 : GE-KIND-CHECK-LINE$ ( n -- ptr u8 n )
    SB-RESET GE-KIND-CHECK+ SB$ ;
 
-\ Unchecked tier 0 refuses at the closer, but GEKT compiles before its
+\ Unchecked tier 0 refuses at the closer, located, but GEKT compiles before its
 \ quotations, so `;]` (12) fails at `then`.
 : GE-KIND-T0-ERR$ ( n -- ptr u8 n )
    {: c:n :}
@@ -2193,7 +2198,7 @@ variable GE-KIND-N
    s" ncomp: cannot compile GEKT at " SB-APPEND
    c 12 = if s" then" else c 13 = if s" ;" else c GE-KIND-TOK then then
    SB-APPEND
-   GE-SB-LF
+   s"  in " false GE-KIND-AT+
    SB$ ;
 
 \ Closer c straight in a definition at tier 0. The `does>` leg (11) has no

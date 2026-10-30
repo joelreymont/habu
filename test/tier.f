@@ -15,6 +15,7 @@ require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
+require src/habu/layout.f
 
 package TIER-TEST
 
@@ -524,9 +525,23 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" : TN-SHORT ( -- n ) 3 ; TRUSTED: " LN+ NAME+ s"  ( -- n ) LN-MISSING ;" LN+
    LN$ ;
 
-: REFUSED-LINE$ ( ptr u8 n n -- ptr u8 n ) {: tail:ptr tu:n len:n :}
-   len LN-OPEN
-   s" ncomp: cannot compile " LN+ NAME+ tail tu LN+ S\" \n" LN+ LN$ ;
+\ This file: SUBJECT:RUN evaluates a case's text while the file loads, so a
+\ refusal located on the text's first line stands on line 1.
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
+
+\ Text a, then `<this file>:1` and a newline.
+: HERE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LN+
+   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ LN+
+   S\" :1\n" LN+ ;
+
+: REFUSED-LINE$ ( n -- ptr u8 n )
+   LN-OPEN
+   s" ncomp: cannot compile " LN+ NAME+ S\" \n" LN+ LN$ ;
+
+: MISSING-LINE$ ( n -- ptr u8 n )
+   LN-OPEN
+   s" ncomp: cannot compile " LN+ NAME+ s"  at LN-MISSING in " HERE+ LN$ ;
 
 : TOKEN-MISSING$ ( n -- ptr u8 n )
    1 swap TIER-OPEN
@@ -534,11 +549,11 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 : TOKEN-LINE$ ( n -- ptr u8 n )
    LN-OPEN
-   s" ncomp: cannot compile LN-TOK at " LN+ NAME+ S\" \n" LN+ LN$ ;
+   s" ncomp: cannot compile LN-TOK at " LN+ NAME+ s"  in " HERE+ LN$ ;
 
 : TOKEN-UNDEFINED$ ( n -- ptr u8 n )
    LN-OPEN
-   s" E-UNDEFINED: " LN+ NAME+ S\" \n" LN+ LN$ ;
+   s" E-UNDEFINED: " LN+ NAME+ s"  at " HERE+ LN$ ;
 
 : TEST-LONG-NAMES ( -- )
    LEGACY? if
@@ -667,12 +682,12 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
    s" a refused 1000-byte name is reported whole" T-LABEL
    1000 UNEVEN$ RUN  REJECT-RC ASSERT-RC
-   ERR$ s" " 1000 REFUSED-LINE$ CONTAINS? TTRUE
+   ERR$ 1000 REFUSED-LINE$ CONTAINS? TTRUE
 
    s" a refused 1000-byte TRUSTED: name retracts its signature" T-LABEL
    1000 TRUSTED-MISSING$ RUN  REJECT-RC ASSERT-RC
-   ERR$ s"  at LN-MISSING" 1000 REFUSED-LINE$ CONTAINS? TTRUE
-   ERR$ S\" E-UNDEFINED: LN-MISSING\n" CONTAINS? TTRUE
+   ERR$ 1000 MISSING-LINE$ CONTAINS? TTRUE
+   ERR$ 0 LN-OPEN s" E-UNDEFINED: LN-MISSING at " HERE+ LN$ CONTAINS? TTRUE
 
    s" a refusal at a 7900-byte body token names the token whole" T-LABEL
    7900 TOKEN-MISSING$ RUN  REJECT-RC ASSERT-RC
@@ -686,8 +701,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" a refusal line carries no earlier definition's token" T-LABEL
    S\" 1 set-tier\nTRUSTED: TN-EV ( ptr u8 n -- ) evaluate ;\n: TN-TRY ( -- ) [: s\q TRUSTED: TN-ELAB ( -- n ) TN-ELAB-MISSING ;\q TN-EV ;] catch . cr ;\nTN-TRY\n: TN-UNEVEN ( -- n ) ;\n"
    RUN  REJECT-RC ASSERT-RC
-   ERR$ S\" ncomp: cannot compile TN-ELAB at TN-ELAB-MISSING\n" CONTAINS? TTRUE
-   ERR$ S\" E-UNDEFINED: TN-ELAB-MISSING\n" CONTAINS? TTRUE
+   ERR$ 0 LN-OPEN s" ncomp: cannot compile TN-ELAB at TN-ELAB-MISSING in " HERE+ LN$ CONTAINS? TTRUE
+   ERR$ 0 LN-OPEN s" E-UNDEFINED: TN-ELAB-MISSING at " HERE+ LN$ CONTAINS? TTRUE
    ERR$ S\" ncomp: cannot compile TN-UNEVEN\n" CONTAINS? TTRUE ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------

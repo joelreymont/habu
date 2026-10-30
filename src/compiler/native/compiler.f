@@ -664,8 +664,11 @@ INSTALL-FORGET
    0 M-OPEN !
    STUB-END
    M-RC @ {: rc:n :}
+   \ TXT holds SRC$ byte for byte, so a TXT offset is one into the body text.
+   NELAB:REFUSED-OFF {: off:n :}
+   off 0 < if NULL-PTR else SRC$ drop off + then {: p:ptr :}
    entry-rc rc  rc E-NELAB-QUOT = NELAB:SOURCE-UNDEFINED? and
-   NELAB:REFUSED$ SETTLE-UNIT ;
+   NELAB:REFUSED$ p SETTLE-UNIT ;
 
 : STAGE ( ptr u8 n bool -- )
    IDLE-CK

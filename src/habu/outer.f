@@ -334,21 +334,6 @@ create NL NEWLINE c,
    SAY TOKEN$ SAY NL 1 SAY
    RC-REJECT throw ;
 
-\ The engine's twin: habu2.f EM-COMPILE-DIE.
-20 constant DIGITS-CAP
-create DIGITS DIGITS-CAP allot
-variable DIGIT-AT
-
-: DIGIT+ ( n -- ) {: c:n :}
-   DIGIT-AT @ 1 - DIGIT-AT !
-   c DIGITS DIGIT-AT @ + c! ;
-
-\ A positive number's decimal digits, written from the end of DIGITS.
-: DIGITS$ ( n -- ptr u8 n )
-   DIGITS-CAP DIGIT-AT !
-   begin dup 10 mod $30 + DIGIT+ 10 / dup 0= until drop
-   DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
-
 \ The line the cursor is on.
 : LINE ( -- n )
    SRCLOC:INB-CELL ADDR@ INP-CELL ADDR@ SOURCE-TEXT:LINE ;
@@ -360,7 +345,7 @@ variable DIGIT-AT
    s"  at " SAY
    SRCLOC:PATH-CELL ADDR@ u SAY
    s" :" SAY
-   LINE DIGITS$ SAY ;
+   LINE SOURCE-TEXT:DIGITS$ SAY ;
 
 \ The engine's compile-die tail (habu2.f LCOMPILEDIE) after a site's message:
 \ the location, a newline, then the site's code, thrown as the engine throws

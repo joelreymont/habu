@@ -100,10 +100,29 @@ variable RDP
 : RD32 {: p:ptr :} ( ptr u8 -- n )
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
-\ Lines counted as the engine's refusal tail (habu2.f LCOMPILEDIE) counts them.
+\ A source line and its number as the engine's refusal tail (habu2.f
+\ LCOMPILEDIE) counts and prints them.
 package SOURCE-TEXT
+
+private
+
+20 constant DIGITS-CAP
+create DIGITS DIGITS-CAP allot
+variable DIGIT-AT
+
+: DIGIT+ ( n -- ) {: c:n :}
+   DIGIT-AT @ 1 - DIGIT-AT !
+   c DIGITS DIGIT-AT @ + c! ;
+
 public
+
 : LINE ( ptr u8 ptr u8 -- n )
    {: b:ptr p:ptr :}
    1 p b - 0 ?do b i + c@ 10 = if 1 + then loop ;
+
+\ A non-negative number's decimal digits, written from the end of DIGITS.
+: DIGITS$ ( n -- ptr u8 n )
+   DIGITS-CAP DIGIT-AT !
+   begin dup 10 mod $30 + DIGIT+ 10 / dup 0= until drop
+   DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
 ;package

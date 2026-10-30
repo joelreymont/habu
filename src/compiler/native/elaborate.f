@@ -87,6 +87,7 @@ align
 -1 CWORK-VARIABLE RF-AT n                       \ the row a refusal thrown now names, or -1
 -1 CWORK-VARIABLE RF-ROW n                      \ the row the record was taken for, or -1
 0 CWORK-VARIABLE RF-U n                        \ how many of that row's spelling bytes are held
+-1 CWORK-VARIABLE RF-OFF n                     \ that row's text offset, or -1
 0 CWORK-VARIABLE RF-MISSING n                  \ the refused token names a word compiled code cannot reach
 1 CWORK-BUFFER RF-KIND NTAPE:kind
 RF-CAP CWORK-SPAN RF-BUF u8
@@ -94,6 +95,7 @@ RF-CAP CWORK-SPAN RF-BUF u8
 : RF-RESET ( -- )
    -1 RF-AT !
    -1 RF-ROW !
+   -1 RF-OFF !
    0 RF-MISSING ! ;
 
 \ An unmodeled immediate is refused at its token and never runs.
@@ -108,10 +110,11 @@ RF-CAP CWORK-SPAN RF-BUF u8
 
 : RF-TAKE ( -- )
    VW RF-AT @ NTAPE:KIND@ 0 RF-KIND !
-   0 RF-U !
+   0 RF-U !  -1 RF-OFF !
    RF-AT @ RF-ROW !
    CTX BLD  VW MKEY RF-AT @ NTAPE:SPELL@  RF-BUF RF-CAP IR-BUILD:SYMBOL-COPY
-   RF-U ! ;
+   RF-U !
+   VW RF-AT @ TOK-OFF RF-OFF ! ;
 
 \ Taken so that it cannot BECOME the refusal: the record is written before the
 \ throw and reads nothing that can fail.
@@ -119,7 +122,7 @@ RF-CAP CWORK-SPAN RF-BUF u8
    RF-AT @ 0 < if exit then
    [: RF-TAKE ;] catch {: rc:n :}
    rc 0= if exit then
-   0 RF-U ! ;
+   0 RF-U !  -1 RF-OFF ! ;
 
 \ A refusal this file makes itself still has to name its token.
 : QUOT-REFUSE ( n -- )
@@ -4524,6 +4527,11 @@ public
 : REFUSED$ ( -- ptr u8 n )
    RF-ROW @ 0 < if RF-BUF 0 exit then
    RF-BUF RF-U @ ;
+
+\ Where REFUSED$ starts in the tape's text, -1 when no spelling is held.
+: REFUSED-OFF ( -- n )
+   RF-ROW @ 0 < if -1 exit then
+   RF-OFF @ ;
 
 : REFUSED-RESET ( -- )
    RF-RESET ;

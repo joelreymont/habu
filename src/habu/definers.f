@@ -86,11 +86,11 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ naming the ceiling, the definition and the size it needed.
 : DEF-BODY-FULL ( n -- ) {: need:n :}
    s" hb: definition body text full at " SAY
-   BODYBUF-CAP DIGITS$ SAY
+   BODYBUF-CAP SOURCE-TEXT:DIGITS$ SAY
    s"  bytes: " SAY
    DEF-CAPTURED-NAME SAY
    s"  needs " SAY
-   need DIGITS$ SAY
+   need SOURCE-TEXT:DIGITS$ SAY
    DEF-RC-BODY-FULL THROW-AT ;
 
 \ The source ended inside the pending definition: refused, named and located

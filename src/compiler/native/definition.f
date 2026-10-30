@@ -425,17 +425,83 @@ private
 : ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
    2 a u write drop ;
 
-\ The compiler's refusal names the token it stopped at.
-: REPORT-FAILURE ( ptr u8 n -- )
-   {: a:ptr u:n :}
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
+SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
+INE-CELL RESERVED-PTR-U8-CELL INPUT-END
+PENDTKA-CELL RESERVED-PTR-U8-CELL OPEN-NAME
+
+\ Cell k of layout.f BODY-SOURCE row i: 0 its text offset, 1 its source offset.
+: SOURCE-ROW@ ( n n -- n )
+   {: i:n k:n :}
+   data-base BODY-SOURCE:ROWS-OFF + i BODY-SOURCE:ROW * + k cells + @ ;
+
+\ The last row at or before text offset off, -1 when none is.
+: ROW-BEFORE ( n -- n )
+   {: off:n :}
+   data-base BODY-SOURCE:OFF + @
+   begin dup 0 > while
+      1 - dup 0 SOURCE-ROW@ off <= if exit then
+   repeat drop -1 ;
+
+\ The line of text offset off in buffer [b, e) by row i, 0 when the row has no
+\ source or the byte lies past e.
+: ROW-LINE ( ptr u8 ptr u8 n n -- n )
+   {: b:ptr e:ptr i:n off:n :}
+   i 1 SOURCE-ROW@ BODY-SOURCE:NONE = if 0 exit then
+   i 1 SOURCE-ROW@ off + i 0 SOURCE-ROW@ - {: src:n :}
+   e b - src <= if 0 exit then
+   b b src + SOURCE-TEXT:LINE ;
+
+\ 0 unless the name's buffer is current and p's run has a row. Rows at or past
+\ BODYLEN are stale; a donor engine's DATA, below BODY-SOURCE:END, has none.
+: BODY-LINE ( ptr u8 -- n )
+   {: p:ptr :}
+   data-base BOOT-LAYOUT:HEAP-START-CELL + @ BODY-SOURCE:END < if 0 exit then
+   p data-base BODYBUF-OFF + - {: off:n :}
+   off 0 <  off data-base BODYLEN-CELL + @ >= or if 0 exit then
+   INPUT-START @ OPEN-NAME @ INPUT-END @ {: b:ptr nm:ptr e:ptr :}
+   nm b - 0 <  e nm - 0 <= or if 0 exit then
+   off ROW-BEFORE {: i:n :}
+   i 0 < if 0 exit then
+   b e i off ROW-LINE ;
+
+\ The line of byte p, in the buffer being read (a refusal at the closing `;`)
+\ or in the body text, 0 when no file is open.
+: LINE-OF ( ptr u8 -- n )
+   {: p:ptr :}
+   data-base SRCLOC:PATHLEN-CELL + @ 0= if 0 exit then
+   INPUT-START @ INPUT-END @ {: b:ptr e:ptr :}
+   p b - 0 >=  e p - 0 > and if b p SOURCE-TEXT:LINE exit then
+   p BODY-LINE ;
+
+\ `<lead><path>:<line>` when byte p has a line (LINE-OF).
+: SAY-WHERE ( ptr u8 n ptr u8 -- )
+   {: a:ptr u:n p:ptr :}
+   p LINE-OF {: line:n :}
+   line 0= if exit then
+   a u ERROR-TEXT
+   FILE-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ERROR-TEXT
+   s" :" ERROR-TEXT
+   line SOURCE-TEXT:DIGITS$ ERROR-TEXT ;
+
+\ The refusal names the definition and the token it stopped at, which p places
+\ on its file line.
+: REPORT-FAILURE ( ptr u8 n ptr u8 -- )
+   {: a:ptr u:n p:ptr :}
    s" ncomp: cannot compile " ERROR-TEXT
    NAME$ ERROR-TEXT
-   u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
+   u 0 > if
+      s"  at " ERROR-TEXT a u ERROR-TEXT
+      s"  in " p SAY-WHERE
+   then
    S\" \n" ERROR-TEXT ;
 
-: REPORT-UNDEFINED ( ptr u8 n -- )
+\ The JIT's text for an undefined word, located from p as it locates it.
+: REPORT-UNDEFINED ( ptr u8 n ptr u8 -- )
+   {: a:ptr u:n p:ptr :}
    s" E-UNDEFINED: " ERROR-TEXT
-   ERROR-TEXT
+   a u ERROR-TEXT
+   s"  at " p SAY-WHERE
    S\" \n" ERROR-TEXT ;
 
 \ A refusal of a body no scan certified (TRUSTED:, or refused by its hookless
@@ -446,35 +512,27 @@ private
 
 public
 
-\ How a run ends, from the code its entry threw, the code the compilation
-\ reached, whether that refusal names a word compiled code cannot reach (a call
-\ or tick operand no record answers, a call to an internal record the call may
-\ not bind, or a tick of an internal record outside a TRUSTED: body), and the
-\ token the compiler refused at. Such a word is refused as undefined with the
-\ reject status, as the JIT's lookup refuses it, though an unchecked body's
-\ scan only reported it. The refusal names the definition as well as the
-\ token: nothing else does for a TRUSTED: body or a call the checker admitted.
-\ A malformed body (MALFORMED?) is refused at its token with the reject status
-\ too.
-: SETTLE-UNIT ( n n bool ptr u8 n -- )
-   {: entry-rc:n rc:n undefined:bool a:ptr u:n :}
+\ A word compiled code cannot reach and a MALFORMED? body take the reject
+\ status, as the JIT refuses them; p is the refused token's byte or NULL-PTR.
+: SETTLE-UNIT ( n n bool ptr u8 n ptr u8 -- )
+   {: entry-rc:n rc:n undefined:bool a:ptr u:n p:ptr :}
    entry-rc 0<> if
       M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH then
       entry-rc throw
    then
    rc E-NCOMP-RECOVERY = if rc throw then
    undefined if
-      a u REPORT-FAILURE
-      a u REPORT-UNDEFINED
+      a u p REPORT-FAILURE
+      a u p REPORT-UNDEFINED
       RETRACT RC-REJECT throw
    then
    rc MALFORMED? if
-      a u REPORT-FAILURE
+      a u p REPORT-FAILURE
       RETRACT RC-REJECT throw
    then
    rc 0 <> if
       rc RC-REJECT <> CHECKER-OWNER:JSON-REPORTED? 0= or
-      if a u REPORT-FAILURE then
+      if a u p REPORT-FAILURE then
       RETRACT rc throw
    then ;
 

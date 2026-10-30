@@ -16,6 +16,7 @@ require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
 require src/habu/verify-source.f
 require src/lib/tree-copy.f
+require src/habu/layout.f
 
 package HOOKLESS-REJECT-TEST
 private
@@ -52,6 +53,16 @@ variable RC
 
 : PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
    OUT$ a u CONTAINS? SHOW TTRUE ;
+
+\ This file: SUBJECT:RUN evaluates a session's one-line text while the file
+\ loads, so a refusal the session locates stands on its line 1.
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
+
+\ Text a, then `<this file>:1` and a newline.
+: HERE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SB-APPEND
+   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
+   S\" :1\n" SB-APPEND ;
 
 \ ---- sessions: `0 set-check` at a native tier --------------------------------
 : SUBJECT-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
@@ -98,8 +109,8 @@ variable RC
    RC @ RC-REJECT T=
    OUT-U @ 0 T=
    s" E-UNDEFINED habu: in hr-undefined: undefined word 'HR-NO-SUCH-WORD'" SAYS
-   s" ncomp: cannot compile HR-UNDEFINED at HR-NO-SUCH-WORD" SAYS
-   s" E-UNDEFINED: HR-NO-SUCH-WORD" SAYS ;
+   SB-RESET s" ncomp: cannot compile HR-UNDEFINED at HR-NO-SUCH-WORD in " HERE+ SB$ SAYS
+   SB-RESET s" E-UNDEFINED: HR-NO-SUCH-WORD at " HERE+ SB$ SAYS ;
 
 : SESSION-UNDEFINED ( -- )
    s" an undefined callee is refused naming the callee" T-LABEL
@@ -210,7 +221,10 @@ variable RC
 : SESSION-IMMEDIATE ( -- )
    s" a tier-1 unchecked body's unmodeled immediate is refused at it" T-LABEL
    s" 1 set-tier : HR-IMM ( -- ) ; immediate 0 set-check : HR-UNMOD ( -- n ) HR-IMM 73 ; HR-UNMOD . cr" SESSION
-   ERR$ S\" E-UNMODELED-IMMEDIATE habu: in hr-unmod: compile-time immediate 'HR-IMM' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile HR-UNMOD at HR-IMM\n" T$=
+   SB-RESET
+   S\" E-UNMODELED-IMMEDIATE habu: in hr-unmod: compile-time immediate 'HR-IMM' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile HR-UNMOD at HR-IMM in "
+      HERE+
+   ERR$ SB$ T$=
    RC @ RC-REJECT T= ;
 
 : STRAY-LOOP$ ( -- ptr u8 n )
@@ -219,13 +233,19 @@ variable RC
 : SESSION-STRAY-LOOP ( -- )
    s" tier-1 TRUSTED: bodies are refused at a loop word outside a loop" T-LABEL
    STRAY-LOOP$ SESSION
-   ERR$ S\" ncomp: cannot compile HR-XJ at j\nncomp: cannot compile HR-XU at unloop\nncomp: cannot compile HR-XI at i\n" T$=
+   SB-RESET
+   s" ncomp: cannot compile HR-XJ at j in " HERE+
+   s" ncomp: cannot compile HR-XU at unloop in " HERE+
+   s" ncomp: cannot compile HR-XI at i in " HERE+
+   ERR$ SB$ T$=
    OUT$ S\" 70\n70\n70\n\n" T$= ;
 
 : SESSION-ORPHAN-THEN ( -- )
    s" a tier-1 unchecked body is refused at a `then` with no `if`" T-LABEL
    s" 1 set-tier 0 set-check : HR-ORPHAN ( n -- n ) [: 7 ;] then ;" SESSION
-   ERR$ S\" habu: in hr-orphan: at 'then'\nncomp: cannot compile HR-ORPHAN at then\n" T$=
+   SB-RESET
+   S\" habu: in hr-orphan: at 'then'\nncomp: cannot compile HR-ORPHAN at then in " HERE+
+   ERR$ SB$ T$=
    RC @ RC-REJECT T= ;
 
 \ ---- a hook's zero verdict refuses the definition ----------------------------
