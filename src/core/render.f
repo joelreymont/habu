@@ -680,6 +680,9 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" E-RIGID-DOMAIN-CONFUSION" endof
       MD-EFFECT-DEPTH of s" E-UNCHECKABLE" endof
       MD-INPUT-WIDTH  of s" E-UNCHECKABLE" endof
+      MD-IS-UNKNOWN   of s" E-UNDEFINED" endof
+      MD-IS-NOT-DEFER of s" E-NOT-DEFERRED" endof
+      MD-IS-MISSING   of s" E-MISSING-NAME" endof
       s" E-REJECTED" rot
    endcase ;
 
@@ -725,6 +728,9 @@ variable MDV-I   variable MDV-F
       MD-RIGID-XDOM   of s" fix_rigid_domain" endof
       MD-EFFECT-DEPTH of s" rewrite_uncheckable" endof
       MD-INPUT-WIDTH  of s" rewrite_uncheckable" endof
+      MD-IS-UNKNOWN   of s" fix_is_target" endof
+      MD-IS-NOT-DEFER of s" fix_is_target" endof
+      MD-IS-MISSING   of s" fix_missing_name" endof
       s" fix_match_syntax" rot
    endcase ;
 
@@ -783,6 +789,9 @@ variable MDV-I   variable MDV-F
       MD-ARENA-CALL   of s" Declare the owner with ARENA NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call ARENA-NEW and ARENA-RELEASE, because only they tie the record size to the owner's type." endof
       MD-EFFECT-DEPTH of s" Leave fewer cells: keep bulk values in a buffer, not on the stack." endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
+      MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
+      MD-IS-NOT-DEFER of s" Name a word declared with defer; `is` rebinds deferred words only." endof
+      MD-IS-MISSING   of s" Write the name of a word declared with defer after is." endof
       s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
    endcase ;
 
@@ -832,6 +841,9 @@ variable MDV-I   variable MDV-F
       MD-UNDERFLOW    of s" input underflow: the call takes more cells than the definition's declared inputs leave" endof
       MD-EFFECT-DEPTH of DEPTH-REASON$ endof
       MD-INPUT-WIDTH  of WIDTH-REASON$ endof
+      MD-IS-UNKNOWN   of s" names no word" endof
+      MD-IS-NOT-DEFER of s" is not a deferred word" endof
+      MD-IS-MISSING   of s" missing target word after is" endof
       s" bad match: rejected" rot
    endcase ;
 

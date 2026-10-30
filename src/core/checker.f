@@ -4025,6 +4025,9 @@ CHECKER-REG:}SCRATCH
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
 42 constant MD-IN-PLACE      \ `@`/`!` would move a layout holding an arena head whole (IN-PLACE?)
 43 constant MD-ARENA-CALL    \ ARENA-NEW/ARENA-RELEASE named outside ARENA's generated words (ARENA-CALL-REFUSE?)
+44 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
+45 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
+46 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
 
 \ The reason a read of the stale term t raises: a cell beneath the interpret row's
 \ known cells is unknown, not left stale by a `catch`.
@@ -21901,6 +21904,24 @@ variable IS-PEND-U                   \ and its length
    0 OK !
    -1 FAILSET ! ;
 
+\ The operand IS-NEXT-TOKEN read takes the pin.
+: TARGET-PIN! ( -- )
+   IS-TA@ IS-TU @ FAIL-PIN!
+   IS-TOFF @ FAILB !
+   FAILB @ FAILTU @ + FAILE ! ;
+
+\ A refused tick or `is` names its target where it stands, as a refused call
+\ names the call; DO-TOK1 pinned the `[']` or `is` that consumed it.
+: TICK-PIN ( -- )
+   FAILSET @ 0 <> IF EXIT THEN
+   TARGET-PIN! ;
+
+\ A target that names no deferred word refuses with the reason, pinned on the
+\ target as written.
+: IS-TARGET-FAIL ( n -- ) {: sym:n :}
+   sym 0= IF MD-IS-UNKNOWN ELSE MD-IS-NOT-DEFER THEN MDIAG!
+   TICK-PIN  IS-FAIL ;
+
 : IS-QUOT-ROWS ( ptr u8 n -- n )
    PARSE-SIG-RAW
    SGHASR @ 0= IF 2drop FRESH MK-ROW dup THEN
@@ -21953,10 +21974,10 @@ variable IS-PEND-U                   \ and its length
    sym ;
 
 : IS-TOK ( -- )
-   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
+   IS-TARGET-TOK? 0= IF MD-IS-MISSING MDIAG!  IS-FAIL EXIT THEN
    IS-TARGET-SYM {: sym:n :}
    CHECKER-TAPE:K-IS  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
-   sym DFER-FIND-SYM 0= IF IS-FAIL EXIT THEN
+   sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
    CUSING @ 0= sym SYM-EFFECT-UNRESOLVED? and IF
       -1 UNSEEN !  -1 UNCK !  EXIT
    THEN
@@ -21996,17 +22017,6 @@ variable IS-PEND-U                   \ and its length
    q RES-TRUE  RES-FALSE
    ctl XFER-DMASK XMASK  ctl XFER-RMASK XMASK  QX!
    q ;
-
-: TARGET-PIN! ( -- )
-   IS-TA@ IS-TU @ FAIL-PIN!
-   IS-TOFF @ FAILB !
-   FAILB @ FAILTU @ + FAILE ! ;
-
-\ A refused tick names the ticked word where it stands, as a refused call names
-\ the call; DO-TOK1 pinned the `[']` that consumed it.
-: TICK-PIN ( -- )
-   FAILSET @ 0 <> IF EXIT THEN
-   TARGET-PIN! ;
 
 \ A CHECKED TICK USES ITS CALLEE'S CALL AUTHORITY: an ABI-only row cannot
 \ authorize the quotation any more than a direct call. The seal keeps a global

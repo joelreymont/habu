@@ -282,32 +282,26 @@ variable CANDIDATE-VERDICT
    76 s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
 
 \ Each failed `is` and `defer` names its cause; the message is asserted, as the
-\ exit codes alone were already distinct. `is` resolves its target through the
-\ engine's own lookup, which does not consult used publics.
+\ exit codes alone are not distinct. The checker refuses a bad or missing `is`
+\ target in a definition, pinned on the target or, when none follows, on `is`.
 : BAD-IS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" defer DHOOK ( -- )" GE-SRC-LINE
    s" : DMINE ( -- ) ;" GE-SRC-LINE
    s" : DARM ( -- ) [: DMINE ;] is DNOSUCH ;" GE-SRC-LINE
-   70 s" hb: is: no deferred word named DNOSUCH" s" hb is-target-not-found names the word" GE-EVAL-FORK-BAD
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" defer DHOOK2 ( -- )" GE-SRC-LINE
-   s" : DMINE2 ( -- ) ;" GE-SRC-LINE
-   s" : DARM2 ( -- ) [: DMINE2 ;] is DNOSUCH2 ;" GE-SRC-LINE
-   70 s" parsing words resolve outside using-imports" s" hb is-target-not-found explains the using rule" GE-EVAL-FORK-BAD
+   70 s" at 'DNOSUCH' names no word" s" hb is-target-not-found names the word" GE-EVAL-FORK-BAD
    GE-HB-RESET
    GE-SRC-RESET
    s" : DPLAIN ( -- ) ;" GE-SRC-LINE
    s" : DMINE3 ( -- ) ;" GE-SRC-LINE
    s" : DARM3 ( -- ) [: DMINE3 ;] is DPLAIN ;" GE-SRC-LINE
-   76 s" hb: is: not a deferred word: DPLAIN" s" hb is-target-not-a-defer names the word" GE-EVAL-FORK-BAD
+   70 s" at 'DPLAIN' is not a deferred word" s" hb is-target-not-a-defer names the word" GE-EVAL-FORK-BAD
    GE-HB-RESET
    GE-SRC-RESET
    s" : DMINE4 ( -- ) ;" GE-SRC-LINE
-   s" : DARM4 ( -- ) [: DMINE4 ;] is" GE-SRC-LINE
-   74 s" hb: is: missing target word after" s" hb is-missing-target names the cause" GE-EVAL-FORK-BAD
+   s" : DARM4 ( -- ) [: DMINE4 ;] is ;" GE-SRC-LINE
+   70 s" at 'is' missing target word after is" s" hb is-missing-target names the cause" GE-EVAL-FORK-BAD
    GE-HB-RESET
    GE-SRC-RESET
    s" defer" GE-SRC-LINE
@@ -1277,11 +1271,7 @@ variable CANDIDATE-VERDICT
    s" gd-xv-bad-a" s" check.f rejects effect-mismatched execution vector assignment" GE-EXPECT-ERR-HAS
    s" gd-xv-bad-tick-b" s" check.f rejects effect-mismatched tick execution vector assignment" GE-EXPECT-ERR-HAS
    s" gd-xv-bad-target-c" s" check.f rejects non-defer execution vector target" GE-EXPECT-ERR-HAS
-   s" gd-xv-bad-reader-d" s" check.f rejects reader-shaped effect mismatch" GE-EXPECT-ERR-HAS
-   GE-SRC-RESET
-   s" : GD-XV-NOT-DEFER ( -- ) ;" GE-SRC-LINE
-   s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
-   $4C s" GD-XV-NOT-DEFER" s" execution vector rejects non-defer target" RUN-BAD-SOURCE ;
+   s" gd-xv-bad-reader-d" s" check.f rejects reader-shaped effect mismatch" GE-EXPECT-ERR-HAS ;
 
 : CASE-BODY ( -- )
    s" : GD-CASE-PICK ( n -- n ) case 1 of 10 endof 2 of 20 endof 30 swap endcase ;" GE-SRC-LINE
