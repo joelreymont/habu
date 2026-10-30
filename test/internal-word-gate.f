@@ -177,7 +177,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" CT-LIVE?" NEG
    s" checked source cannot call internal checker bodies" T-LABEL
    s" : IWG-CHECKED ( n n -- n ) U-TYPE ;" RUN-SUBJECT
-   s" U-TYPE" ASSERT-UNDEF
+   s" 'U-TYPE' is a trust-boundary primitive" ASSERT-DIAG
    s" the prefix cursor reader has no product name" T-LABEL
    s" CHECKER-BOUND:CURSORS" NEG-ABSENT ;
 
@@ -247,7 +247,7 @@ create EMPTY 1 allot            \ zero-length stdin
    s" POINTER-STORAGE:DATA-CELL" ASSERT-UNDEF
    s" checked source cannot compile a DATA-CELL store" T-LABEL
    DATA-CELL-FIXED-MUTATE$ RUN-SUBJECT
-   s" POINTER-STORAGE:DATA-CELL" ASSERT-UNDEF
+   s" undefined word 'POINTER-STORAGE:DATA-CELL'" ASSERT-DIAG
    s" a compiled cell store respects the engine's protected span" T-LABEL
    s" TRUSTED: IWG-BAND-STORE ( -- ) 1 data-base FRIEND-ARENA + ! ; IWG-BAND-STORE" RUN-SUBJECT
    EXITED @ TTRUE
@@ -503,12 +503,10 @@ create EMPTY 1 allot            \ zero-length stdin
    s" VALUE-RECORD" NEG-OPENER
    \ `cast:` is an interpret-mode reader keyword (habu2.f
    \ EM-INTERPRET-DEFINE-KEYWORDS) and not a dictionary word, so a colon body
-   \ holding it resolves no name and the engine answers before the checker:
-   \ E-UNDEFINED naming the token. The declarer's own unsafe-token reject is
-   \ pinned by test/cast-negative-suite.f.
-   s" cast: in a checked body is an undefined word" T-LABEL
-   s" cast:" OPENER-BODY-FORGE$ RUN-SUBJECT
-   s" E-UNDEFINED: cast:" ASSERT-DIAG
+   \ holding it is refused at the token. The declarer's own unsafe-token
+   \ reject is pinned by test/cast-negative-suite.f.
+   s" cast: in a checked body is rejected" T-LABEL
+   s" cast:" NEG-OPENER
    s" DEFER-LAYOUT-BUFFER in a checked body is rejected unsafe" T-LABEL
    s" DEFER-LAYOUT-BUFFER" NEG-OPENER
    s" EXPORT of a checked word still works" T-LABEL
@@ -576,9 +574,9 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ The tick itself refuses the protected target, so it never reaches the untyped
-\ cell: habu2.f C-BTICK carries the DNAME-INT dispatch gate C-TICK applies to a
-\ bare tick. Without that gate the interpret-level `IWG-PFV @ execute` returns
-\ the protected cell's address (measured).
+\ cell: SCHEMA-REG:SCH-N has no spelling outside its package. Were the tick
+\ admitted, the interpret-level `IWG-PFV @ execute` would return the protected
+\ cell's address.
 : PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick a protected registry cell, launder its execute
    SB-RESET
    s" variable IWG-PFV" SB-APPEND LF
@@ -619,7 +617,7 @@ create EMPTY 1 allot            \ zero-length stdin
    ASSERT-OPAQUE
    s" protected registry target cannot be ticked into a variable" T-LABEL
    PF-LAUNDER-FORGE$ RUN-SUBJECT
-   s" SCHEMA-REG:SCH-N" ASSERT-UNDEF
+   s" undefined word 'SCHEMA-REG:SCH-N'" ASSERT-DIAG
    s" deflinear laundered through a variable + catch also rejects at CHECK" T-LABEL
    s" deflinear" CATCH-DEFINER$ RUN-SUBJECT
    ASSERT-OPAQUE-CATCH ;
@@ -959,7 +957,7 @@ create QNAME QNAME-CAP allot
 : TSEAL-BRIDGE-MARKED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TOKEN$ RUN-SUBJECT  a u ASSERT-INTERNAL ;
 
-: TSEAL-TICK-FORGE$ ( -- ptr u8 n )  \ the launder route, refused at the tick by the seal guard (habu2.f C-BTICK C-QUALIFY-SEAL-GUARD, before any lookup or elaboration)
+: TSEAL-TICK-FORGE$ ( -- ptr u8 n )  \ the launder route, refused at the tick by the seal guard (habu2.f CAPTURE-OPERAND-ROW, before any lookup or elaboration)
    SB-RESET
    s" variable IWG-TFV" SB-APPEND LF
    s" : IWG-TFSET ( -- ) ['] TFAM:PF-COMMIT-N IWG-TFV ! ;" SB-APPEND LF
@@ -1075,9 +1073,9 @@ create QNAME QNAME-CAP allot
    s" the prologue's store reset carries a row and discards the source effects" T-LABEL
    RRR-EMPTY$ RUN-SUBJECT
    s" undefined word 'IWGRRA'" ASSERT-DIAG
-   s" USIGS is outside the checker's universe, so checked source cannot name it" T-LABEL
+   s" checked source cannot name USIGS" T-LABEL
    RRR-USIGS$ RUN-SUBJECT
-   s" E-UNDEFINED: USIGS" ASSERT-DIAG
+   s" 'USIGS' is a trust-boundary primitive" ASSERT-DIAG
    s" the internal restore seam refuses a caller-selected offset" T-LABEL
    s" USIGS-RESTORE-END" NEG ;
 

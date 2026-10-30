@@ -9033,23 +9033,26 @@ public
 \ src/lib/source-syntax.f PARSING-KEYWORD?). Taking it before LMAIN reads it
 \ keeps an operand spelling `;`, a comment or a string opener as data. A source
 \ ending at the keyword dies as tier 0's does. A live local of the keyword's
-\ spelling never gets here: CAPTURE-IMMEDIATE matches locals first.
-: CAPTURE-OPERAND-ROW ( label n -- ) {: kw:label kwlen:n :}
+\ spelling never gets here: CAPTURE-IMMEDIATE matches locals first. A sealed
+\ row runs C-BTICK's seal guard on the operand, so `['] RESERVED:tail` exits
+\ ENGINE-ERROR:SEAL-PACKAGE before the checker reads the body.
+: CAPTURE-OPERAND-ROW ( label n bool -- ) {: kw:label kwlen:n seal:bool :}
    LBL LBL {: skip:label named:label :}
    0 kw ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
    0 skip CBZ,
    LTOK LABEL@ BL,  0 named CBNZ,
       kw kwlen C-DIE-KEYWORD-NAME
    named LBL,
+   seal if C-QUALIFY-SEAL-GUARD then
    LBCAP LABEL@ BL,
    LMAIN LABEL@ B,
    skip LBL, ;
 
 : CAPTURE-OPERAND ( -- )
-   LKWCHAR LABEL@ KWCHAR$ nip CAPTURE-OPERAND-ROW
-   LKWBCHAR LABEL@ BCHAR-LEN CAPTURE-OPERAND-ROW
-   LKWTICK LABEL@ TICK-LEN CAPTURE-OPERAND-ROW
-   LKWBTICK LABEL@ BTICK-LEN CAPTURE-OPERAND-ROW ;
+   LKWCHAR LABEL@ KWCHAR$ nip false CAPTURE-OPERAND-ROW
+   LKWBCHAR LABEL@ BCHAR-LEN false CAPTURE-OPERAND-ROW
+   LKWTICK LABEL@ TICK-LEN false CAPTURE-OPERAND-ROW
+   LKWBTICK LABEL@ BTICK-LEN true CAPTURE-OPERAND-ROW ;
 
 private
 
