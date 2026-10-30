@@ -1,5 +1,5 @@
-\ Use the engine under test, run borrowed records, capture declarations, then
-\ use their constructors from a fresh saved image in a relocated source tree.
+\ Capture borrowed record declarations in a saved image, then use their
+\ constructors from the fresh saved image in a relocated source tree.
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/process-argv.f
@@ -14,21 +14,9 @@ private
 : SETUP ( -- )
    s" c2-view-record-e2e" TREE
    s" test/c2-view-record-defs.f" COPY-TEST
-   s" test/c2-view-record-source.f" COPY-TEST
-   s" test/c2-view-record-refusals.f" COPY-TEST
    s" test/c2-view-record-use-refusals.f" COPY-TEST
    s" test/c2-retained-contract-wide.f" COPY-TEST
    s" test/c2-view-record-saved.f" COPY-TEST ;
-
-: SOURCE-CASES ( -- )
-   ENGINE-CANDIDATE:PATH$ s" test/c2-view-record-source.f" RUN-IMAGE
-   s" source.out" s" source.err" SAVE-LOG
-   s" borrowed records round trip through nested records and a sum" T-LABEL
-   s" c2-view-record-source: ok" EXPECT-OK
-   ENGINE-CANDIDATE:PATH$ s" test/c2-view-record-refusals.f" RUN-IMAGE
-   s" refusals.out" s" refusals.err" SAVE-LOG
-   s" borrowed records keep escape and pointer fences" T-LABEL
-   s" c2-view-record-refusals: ok" EXPECT-OK ;
 
 : SAVED-CASE ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -49,7 +37,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   SETUP SOURCE-CASES SAVED-CASE
+   SETUP SAVED-CASE
    s" c2-view-record-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 

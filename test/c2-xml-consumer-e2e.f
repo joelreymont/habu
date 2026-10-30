@@ -1,4 +1,4 @@
-\ Use the engine under test, save XML-C2 and compile a fresh consumer.
+\ Save XML-C2 in an image; run fresh consumers at both tiers and its refusals.
 \ The printed tree keeps the saved image and child logs for replay.
 require src/lib/test.f
 require src/lib/fs.f
@@ -16,16 +16,6 @@ private
    s" test/c2-xml-consumer-program.f" COPY-TEST
    s" test/c2-xml-consumer-refusals.f" COPY-TEST
    s" test/c2-xml-consumer-saved.f" COPY-TEST ;
-
-: SOURCE-CASES ( -- )
-   ENGINE-CANDIDATE:PATH$ s" test/c2-xml-consumer-program.f" RUN-IMAGE
-   s" source.out" s" source.err" SAVE-LOG
-   s" source-loaded XML-C2 borrows names across cursor cleanup" T-LABEL
-   s" c2-xml-consumer-program: ok" EXPECT-OK
-   ENGINE-CANDIDATE:PATH$ s" test/c2-xml-consumer-refusals.f" RUN-IMAGE
-   s" refusals.out" s" refusals.err" SAVE-LOG
-   s" checked source rejects cursor and source authority escapes" T-LABEL
-   s" c2-xml-consumer-refusals: ok" EXPECT-OK ;
 
 : SAVE-XML ( -- )
    PROC-CWD:ARGV-ENV-CWD-RESET
@@ -59,7 +49,7 @@ private
 public
 : RUN ( -- )
    T-RESET
-   SETUP SOURCE-CASES SAVE-XML RC@ 0= if SAVED-CASES then
+   SETUP SAVE-XML RC@ 0= if SAVED-CASES then
    s" c2-xml-consumer-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package

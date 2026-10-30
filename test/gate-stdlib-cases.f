@@ -1504,6 +1504,27 @@ SUITE storage-binding
    test/storage-binding-e2e.f
 ;SUITE
 
+SUITE c2-records-source
+   test/c2-records-program.f
+   test/c2-records-refusals.f
+   test/c2-records-lifecycle.f
+   test/c2-records-scopes.f
+;SUITE
+
+SUITE c2-view-record-source
+   test/c2-view-record-source.f
+   test/c2-view-record-refusals.f
+;SUITE
+
+SUITE c2-xml-source
+   test/c2-xml-consumer-program.f
+   test/c2-xml-consumer-refusals.f
+;SUITE
+
+SUITE c2-records-tier1
+   test/c2-records-tier1.f
+;SUITE
+
 SUITE c2-read-effects
    test/c2-read-effects.f
 ;SUITE
