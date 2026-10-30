@@ -740,31 +740,26 @@ public
       0 SCRIPT-ARGV$ s" primitive" STR= if
          PRIMITIVE-CASES
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" diag" STR= if
          DIAG-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" history" STR= if
          HISTORY-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" actions" STR= if
          AUTO-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" execute" STR= if
          EXECUTE-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" definition" STR= if
@@ -773,57 +768,48 @@ public
          LITERAL-LOOP-CASE
          SEGMENT-EVENT-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" literal" STR= if
          LITERAL-EVENT-CASE
          LITERAL-LOOP-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" segment" STR= if
          SEGMENT-EVENT-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" body" STR= if
          BODY-EDIT-CASE
          BODY-READER-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" body-edit" STR= if
          BODY-EDIT-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" body-reader" STR= if
          BODY-READER-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" generated" STR= if
          GENERATED-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" cut" STR= if
          CUT-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
       0 SCRIPT-ARGV$ s" hook" STR= if
          HOOK-CASE
          T-REPORT
-         s" native file auto artifacts: " type ROOT$ type cr
          exit
       then
    then
@@ -841,8 +827,7 @@ public
    HOOK-CASE
    GENERATED-CASE
    CUT-CASE
-   T-REPORT
-   s" native file auto artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

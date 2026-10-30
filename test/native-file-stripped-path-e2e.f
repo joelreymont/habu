@@ -61,8 +61,7 @@ public
    s" app.f" S\" require src/lib/fs.f\nrequire src/lib/engine-id.f\nrequire src/lib/process-env.f\n: MAIN ( -- ) PROC-ENV-RESET 42 . ;\n" PUT
    s" env-cache" BUILD SUCCESS
    s" app-hb" CHECK-RUN
-   T-REPORT
-   s" native file stripped artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

@@ -103,8 +103,7 @@ public
    OUT$ s" files reused 0" CONTAINS? TFALSE
    RUN-IMAGE 0 T=
    OUT$ S\" 5\n456\n" CONTAINS? TTRUE
-   T-REPORT
-   s" native file admission artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

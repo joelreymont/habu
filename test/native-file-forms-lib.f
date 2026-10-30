@@ -136,13 +136,10 @@ public
    T-RESET
    T-LABEL
    s" native-file-forms" FS:MKTEMP-DIR {: a:ptr u:n :}
+   a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U !
    s" cache" AT FS:MAKE-DIR
    PREFIX ;
-
-: FINISH ( -- )
-   T-REPORT
-   s" native file forms artifacts: " type ROOT$ type cr ;
 
 : ZERO ( -- )
    s" source actions retain dependency, provided, and DATA state" START
@@ -151,7 +148,7 @@ public
    s" zero-export" s" zero-import" BUILD-PAIR
    s" zero-export" s" 46" RUN-PRODUCT
    s" zero-import" s" 46" RUN-PRODUCT
-   FINISH ;
+   T-REPORT ;
 
 : NAMESPACE ( -- )
    s" namespace initialization remains visible to cached definitions" START
@@ -160,7 +157,7 @@ public
    s" namespace-export" s" namespace-import" BUILD-PAIR
    s" namespace-export" s" 17" RUN-PRODUCT
    s" namespace-import" s" 17" RUN-PRODUCT
-   FINISH ;
+   T-REPORT ;
 
 : GLOBAL ( -- )
    s" ordinary global definition and downstream checker" START
@@ -173,7 +170,7 @@ public
    s" global-bad" BUILD 70 T=
    OUT$ s" global-unit-source-ran" CONTAINS? TTRUE
    ERR$ s" expected: ptr n actual: n" CONTAINS? TTRUE
-   FINISH ;
+   T-REPORT ;
 
 : REPEATED-FILE ( -- )
    s" selected FILE repeated by a downstream include" START
@@ -182,5 +179,5 @@ public
    s" repeat-export" s" repeat-import" BUILD-PAIR
    s" repeat-export" s" 2" RUN-PRODUCT
    s" repeat-import" s" 2" RUN-PRODUCT
-   FINISH ;
+   T-REPORT ;
 ;package

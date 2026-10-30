@@ -74,8 +74,7 @@ public
    BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    OUT$ s" 45" CONTAINS? TTRUE
-   T-REPORT
-   s" native file path shadow artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

@@ -2251,8 +2251,7 @@ public
    \ would refuse.
    RC-INTERFACE
    LOADER-FIRST
-   T-REPORT
-   s" file frame artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 
 ;package
 ;using

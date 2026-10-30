@@ -532,8 +532,7 @@ public
    HOOKS-CASE
    BARE-CASE
    DOES-CASE
-   T-REPORT
-   s" native file unit artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

@@ -40,9 +40,10 @@ public
    outu OUT-U ! outu 0<> if out outu OUT-ROOM outu BYTE-COPY then
    erru ERR-U ! erru 0<> if err erru ERR-ROOM erru BYTE-COPY then ;
 
-\ The root named n under TMPDIR.
+\ The root named n under TMPDIR, removed when the process exits.
 : TREE ( ptr u8 n -- )
    FS:MKTEMP-DIR {: a:ptr u:n :}
+   a u FS:CLEANUP-TREE+
    a ROOT u BYTE-COPY u ROOT-U ! ;
 
 : AT ( ptr u8 n -- ptr u8 n )

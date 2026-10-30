@@ -54,8 +54,7 @@ public
    BUILD-APP SUCCESS
    RUN-APP SUCCESS
    OUT$ S\" 44\n44\n" CONTAINS? TTRUE
-   T-REPORT
-   s" native file alias artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

@@ -20,8 +20,7 @@ public
    ROOT$ s" app.f" s" app-hb" NATIVE-FILE-APP:BUILD-AT 74 T=
    NATIVE-FILE-APP:ERR$ s" include: cannot open " CONTAINS? TTRUE
    NATIVE-FILE-APP:ERR$ s" absent-child.f" AT CONTAINS? TTRUE
-   T-REPORT
-   s" native file missing artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

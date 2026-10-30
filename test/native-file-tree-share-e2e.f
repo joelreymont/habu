@@ -8,7 +8,6 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-list.f
 require src/lib/fs-mutate.f
@@ -84,22 +83,6 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
    s" cache" AT NATIVE-FILE-APP:OBJ-DIR$ [: NOTE-OBJ ;] FS-LIST:EACH
    OBJ-N @ ;
 
-: LINE ( ptr u8 n ptr u8 n -- ) {: tag:ptr tagu:n a:ptr u:n :}
-   tag tagu SB-APPEND s" : " SB-APPEND a u SB-APPEND ;
-
-: COUNT-LINE ( ptr u8 n n -- ) {: tag:ptr tagu:n n:n :}
-   tag tagu SB-APPEND s"  objects " SB-APPEND n FMT:SB-INT 10 SB-APPEND-C ;
-
-: ARTIFACT ( -- )
-   SB-RESET
-   s" a" OUT-A OUT-A-U @ LINE
-   s" b" OUT-B OUT-B-U @ LINE
-   s" c" OUT-C OUT-C-U @ LINE
-   s" a" OBJS-A @ COUNT-LINE
-   s" b" OBJS-B @ COUNT-LINE
-   s" c" OBJS-C @ COUNT-LINE
-   s" tree-share.txt" AT SB$ FS:WRITE-ALL ;
-
 public
 : MAIN ( -- )
    T-RESET
@@ -136,9 +119,7 @@ public
    OBJS OBJS-C !
    OBJS-C @ OBJS-A @ T=
 
-   ARTIFACT
-   T-REPORT
-   s" native file tree share artifact: " type s" tree-share.txt" AT type cr ;
+   T-REPORT ;
 ;package
 ;using
 

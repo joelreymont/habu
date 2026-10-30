@@ -43,8 +43,7 @@ public
    s" warm client comparing two calls as one region refuses" T-LABEL
    s" refused-hb" BUILD 70 T=
    NATIVE-FILE-APP:ERR$ s" region mismatch (different allocation)" CONTAINS? TTRUE
-   T-REPORT
-   s" fresh-region FILE artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 NATIVE-FILE-FRESH-REGION-TEST:MAIN

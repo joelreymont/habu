@@ -768,8 +768,7 @@ public
    CANON-CASE
    SESSION-CASES
    FFI-REUSE-CASE
-   T-REPORT
-   s" FILE replay artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 
 ;package
 ;using

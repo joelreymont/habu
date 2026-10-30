@@ -115,8 +115,7 @@ public
    CHECK-MOVED-PREFIX
    CHECK-STALE-DECL
    CHECK-TYPED-STORAGE
-   T-REPORT
-   s" CWORK FILE artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 NATIVE-FILE-CWORK-TEST:MAIN

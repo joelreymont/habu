@@ -353,8 +353,7 @@ public
    ALTERNATE-CASES
    CONCURRENT-CASE
    BYTE-CASE
-   T-REPORT
-   s" native file storage artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

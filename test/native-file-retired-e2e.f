@@ -117,8 +117,7 @@ public
    OUT$ s" failed-origin-ran" CONTAINS? TTRUE
    s" failed-origin-cold-hb" S\" 4\n5\n" RUN-PRODUCT
    s" failed-origin-warm-hb" S\" 4\n5\n" RUN-PRODUCT
-   T-REPORT
-   s" native file retired artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 

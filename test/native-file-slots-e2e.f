@@ -235,8 +235,7 @@ public
    REFUSAL-CASE
    BOUNDARY-CASE
    REBIND-CASE
-   T-REPORT
-   s" native file slots artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 NATIVE-FILE-SLOTS-TEST:MAIN

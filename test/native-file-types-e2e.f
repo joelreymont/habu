@@ -722,8 +722,7 @@ public
    LINK-CASE
    SLICE-CASE
    CTOR-PREFIX-CASE
-   T-REPORT
-   s" native file unit artifacts: " type ROOT$ type cr ;
+   T-REPORT ;
 ;package
 ;using
 
