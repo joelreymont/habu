@@ -77,6 +77,7 @@ private
 public
 1 constant O-WRONLY
 2 constant O-RDWR
+4 constant O-NONBLOCK
 $8 constant O-APPEND
 $200 constant O-CREAT
 $400 constant O-TRUNC

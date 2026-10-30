@@ -58,7 +58,7 @@ FUNCTION: READ-CALL read ( n ptr u8 n -- n )
    parent FD>N 0 >= if child >FD parent PROCESS:FD then ;
 
 : READ-END ( ptr u8 n -- fd ) {: a:ptr u:n :}
-   a u FS:>PATHZ O-NONBLOCK 0 open {: rd:n :}
+   a u FS:>PATHZ FS:O-NONBLOCK 0 open {: rd:n :}
    rd 0 < if E-FS-OPEN throw then
    rd >FD {: r:fd :}
    r FD-CLOEXEC!

@@ -114,8 +114,11 @@ $D4000001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0
    0 10 0 ADDI,  2 sigreg 0 ADDI,  NR-TGKILL SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
-   LBL LBL LBL LBL {: noappend nocreat notrunc noctty :}
+   LBL LBL LBL LBL LBL {: nononblock noappend nocreat notrunc noctty :}
    7 3 MOVZ,  6 1 7 AND,
+   7 4 MOVZ,  7 1 7 AND,  7 nononblock CBZ,
+      7 $800 MOVZ,  6 6 7 ORR,
+   nononblock LBL,
    7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
       7 $400 MOVZ,  6 6 7 ORR,
    noappend LBL,
