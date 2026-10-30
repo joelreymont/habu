@@ -3,8 +3,7 @@
 \ `0 set-check` session the quiet scan prints its reason and enforces nothing
 \ (CHECK-HOOKLESS); the declaration becomes the row without authority
 \ (DECLARE-HOOKLESS), and a body without a recordable declaration has no row:
-\ KEEP-ARITY refuses it with the reject status. A subject that needs tier 1
-\ sets it; the rest run at the default tier.
+\ KEEP-ARITY refuses it with the reject status.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -93,11 +92,8 @@ variable RC
    s" ncomp: cannot compile HR-UNEVEN" SAYS
    s" hb: uncaught throw code -8503" SAYS ;
 
-\ An undefined callee: the scan prints why and enforces nothing, and either
-\ native compiler refuses the call as undefined with the reject status, as the
-\ JIT's lookup does (src/compiler/native/definition.f SETTLE-UNIT). Nothing
-\ after the definition runs. The first session compiles at the host's default
-\ tier, the second at tier 1, which refuses at its own binding step.
+\ Either native compiler refuses an undefined callee with the reject status, as
+\ the JIT's lookup does (src/compiler/native/definition.f SETTLE-UNIT).
 : UNDEFINED-REFUSED ( -- )
    RC @ RC-REJECT T=
    OUT-U @ 0 T=
@@ -113,10 +109,8 @@ variable RC
    s" 1 set-tier 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ; 5 ." SESSION
    UNDEFINED-REFUSED ;
 
-\ A bare callee two used packages (UA, UC) export: the checker renders the
-\ ambiguity as its refusal, so either native compiler's refusal of the
-\ definition, uncaught, exits with the reject status under the definition's
-\ name, as an undefined callee does.
+\ The checker's ambiguity refusal makes either native compiler exit with the
+\ reject status under the definition's name.
 : AMBIGUOUS-REFUSED ( -- )
    RC @ RC-REJECT T=
    s" E-USING-AMBIGUOUS habu: bare 'AW' is ambiguous under using" SAYS
@@ -211,16 +205,14 @@ variable RC
    s" habu: in hr-kept: at '+'" SAYS ;
 
 \ ---- tier 1 refuses an uncertified body's own source at its token ------------
-\ An unchecked or TRUSTED: body with an unmodeled immediate or control flow that
-\ does not close ends with the reject status, naming the token
-\ (src/compiler/native/definition.f MALFORMED?).
+\ An unmodeled immediate or unclosed control flow ends with the reject status
+\ at its token (src/compiler/native/definition.f MALFORMED?).
 : SESSION-IMMEDIATE ( -- )
    s" a tier-1 unchecked body's unmodeled immediate is refused at it" T-LABEL
    s" 1 set-tier : HR-IMM ( -- ) ; immediate 0 set-check : HR-UNMOD ( -- n ) HR-IMM 73 ; HR-UNMOD . cr" SESSION
    ERR$ S\" E-UNMODELED-IMMEDIATE habu: in hr-unmod: compile-time immediate 'HR-IMM' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile HR-UNMOD at HR-IMM\n" T$=
    RC @ RC-REJECT T= ;
 
-\ Each refusal is caught, so one session covers the three loop words.
 : STRAY-LOOP$ ( -- ptr u8 n )
    S\" 1 set-tier : HR-TRY-J ( -- n ) [: s\" TRUSTED: HR-XJ ( -- ) 1 0 do j drop loop ;\" evaluate-closed ;] catch ; : HR-TRY-U ( -- n ) [: s\" TRUSTED: HR-XU ( -- ) unloop ;\" evaluate-closed ;] catch ; : HR-TRY-I ( -- n ) [: s\" TRUSTED: HR-XI ( -- ) 1 i drop ;\" evaluate-closed ;] catch ; HR-TRY-J . HR-TRY-U . HR-TRY-I . cr" ;
 
@@ -237,13 +229,8 @@ variable RC
    RC @ RC-REJECT T= ;
 
 \ ---- a hook's zero verdict refuses the definition ----------------------------
-\ A hook that certifies a definition and answers 0 refuses it: the native
-\ compiler throws E-NCOMP-VERDICT at the definition, so uncaught the load ends
-\ there, and caught the definition keeps no row and a later word is checked
-\ against the word the engine binds. LIAR-FORGET certifies through the engine's
-\ hook, then answers 0 for a name that starts with W. The texts outrun a source
-\ line, so each is assembled in TEXT; each closes this package first, so its
-\ words are globals as in a file.
+\ The native compiler throws E-NCOMP-VERDICT at the definition. The texts
+\ outrun a source line, so TEXT holds them; `;package` first makes them global.
 create TEXT CAP allot                  variable TEXT-U
 
 : TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
@@ -259,7 +246,6 @@ create TEXT CAP allot                  variable TEXT-U
    s" : LIAR-FORGET ( ptr u8 n -- n ) over c@ [char] W = >r " TEXT+
    s" LOWER-CERT-HOOK:HOOK r> if drop 0 then ; ' LIAR-FORGET set-check " TEXT+ ;
 
-\ Uncaught, the refusal ends the load at W-FORGET.
 : ZERO-UNCAUGHT ( -- )
    s" a definition its hook answers 0 for is refused" T-LABEL
    ZERO-TEXT LIAR+  s" : W-FORGET 3 ; " TEXT+
@@ -268,8 +254,7 @@ create TEXT CAP allot                  variable TEXT-U
    s" ncomp: cannot compile W-FORGET" SAYS
    s" hb: uncaught throw code -8572" SAYS ;
 
-\ The refusal caught: the load goes on, the refused W-FORGET keeps no row,
-\ and T-FORGET's ( -- n n ) is refused against P-FORGET:W-FORGET's ( -- n ).
+\ The refused W-FORGET keeps no row, so T-FORGET binds P-FORGET:W-FORGET.
 : ZERO-CAUGHT ( -- )
    s" a caught refusal leaves a call to the used package's word" T-LABEL
    ZERO-TEXT P-W+ LIAR+ Q-USING-P+

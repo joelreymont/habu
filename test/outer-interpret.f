@@ -217,8 +217,7 @@ variable WANT-RC
 \ `export`), words, `create`, `variable`, `constant`, `cast:`, `immediate`, and
 \ definitions (`:`, `kernel:`, `trusted:`) that end at `;` or refuse, at the
 \ latest where the input ends inside them; other keywords go through evaluate,
-\ which the engine's loop reads. A tier-0 head is the Habu loop's alone: the
-\ engine's loop opens its definition and the Habu loop refuses it.
+\ which the engine's loop reads.
 : NUMBERS ( -- )
    GE-SRC-RESET
    s" require src/lib/ieee754.f" GE-SRC-LINE
@@ -703,8 +702,7 @@ variable WANT-RC
    s" tick other c2" GE-EXPECT-OK
    S\" 4\n" s" tick other c2" GE-EXPECT-OUT ;
 
-\ The complete C2 image owns this exact scope entry; the interpret tick's scope
-\ guard (outer.f SCOPE-ENTRY-GUARD) supplies the diagnostic.
+\ src/habu/outer.f SCOPE-ENTRY-GUARD refuses an interpret tick of a scope entry.
 : TICK-C2-SCOPE ( -- )
    s" ' C2-MEM:WITH-MUT drop" s" oi-tick-c2-scope.f" LINE-CASE
    70 s" tick c2 scope" GE-EXPECT-RC
@@ -1238,12 +1236,10 @@ variable WANT-RC
    s" s\~ TRUSTED: OI-INC ( -- ) s\~ " Q+  NESTED$ GE-SRC+
    s" \~ included ; immediate~ evaluate  s~ OI-INC~ 0 parse-imm" QLINE ;
 
-\ At tier 0 a head refuses in the Habu loop. A body token reaches the Habu loop
-\ at tier 0 only in a file included while the engine's loop holds a head open,
-\ as an immediate word in an evaluated head does: the engine's head opened a
-\ native capture, so the included tokens join that body and the source ends
-\ inside the definition. An x86-64 engine boots at tier 1 and has no tier 0, so
-\ there the head reads as a tier-1 head.
+\ A body token reaches the Habu loop at tier 0 only in a file included while
+\ the engine's loop holds a head open, so the included tokens join the engine's
+\ native capture and the source ends inside the definition. An x86-64 engine
+\ has no tier 0 and reads a tier-1 head.
 : HEAD-TIER-0 ( -- )
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
@@ -1623,9 +1619,8 @@ variable WANT-RC
 : NEUTRAL-LINE ( -- )
    s" s~ : OI-N ( -- ) 9 . ; immediate~ evaluate  s~ OI-N~ 0 parse-imm" QLINE ;
 
-\ Every immediate the body reads meets the armed checker's preflight, OI-PT,
-\ which names it and passes it. A neutral one then runs, after its capture,
-\ and reads the input after it; any other waits in the capture for `;`.
+\ The preflight sees every immediate in a body but a non-neutral does>; a
+\ parse-imm one runs and reads the input after it, any other waits for `;`.
 : BODY-IMMEDIATES ( -- )
    GE-SRC-RESET
    s" 1 set-tier ' OI-BODY. OI-SHOWN !" GE-SRC-LINE
@@ -1702,8 +1697,8 @@ variable WANT-RC
       S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR
    then ;
 
-\ At tier 0 an immediate in a file included under the engine's head, as
-\ HEAD-TIER-0's, runs into the engine's native body like any other.
+\ At tier 0 an immediate in a file included under the engine's head runs into
+\ the engine's native body like any other token.
 : BODY-IMMEDIATE-TIER-0 ( -- )
    s" OI-N 2" s" oi-body-imm-tier-0-nested.f" PKG-NESTED
    GE-SRC-RESET
@@ -1770,9 +1765,8 @@ variable WANT-RC
    s" OI-ROOM 5 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-full.f" HEAD
    76 s" hb: data space out of range: DP " S\" oi-does-data-full.f:1\n" DIED-AT ;
 
-\ LFIND finds a word before the engine reads its keywords: a non-immediate one
-\ spelled `does>` is called and the body not split; an immediate one the checker
-\ does not call neutral leaves `does>` the keyword, unrefused by the preflight.
+\ LFIND runs before the keywords: a non-immediate word named `does>` is called
+\ and the body not split; a non-neutral immediate one leaves `does>` the keyword.
 : CALLED ( ptr u8 n ptr u8 n -- ) {: def:ptr defu:n name:ptr nameu:n :}
    GE-SRC-RESET
    s" 1 set-tier ' OI-DOES. OI-SHOWN !" GE-SRC-LINE
@@ -1830,8 +1824,7 @@ variable WANT-RC
    s" " CASE$ GE-EXPECT-OUT
    S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
 
-\ At tier 0 a `;` in a file included under the engine's head cannot close it:
-\ the engine's loop ends the body it opened.
+\ A `;` in a file included under the engine's tier-0 head cannot close it.
 : SEMI-TIER-0 ( -- )
    s" ;" s" oi-semi-tier-0-nested.f" PKG-NESTED
    GE-SRC-RESET

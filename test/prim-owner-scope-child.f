@@ -408,12 +408,10 @@ $0A constant LF-C
    s" TRUSTED: POS-CD1-TR ( ptr u8 n ptr u8 n -- n ) CHECK-DOES! ;" EVAL
    RESTORE-T0 ;
 
-\ FIELD-PROJ! is REG-PROTECT (src/core/checker.f): the owner's checked call
-\ compiles before the seal in test/prim-owner-scope-prepare.f. After the seal,
-\ both tiers refuse the reopened owner's call to the internal word as undefined
-\ (rc 70). Outside the owner, the global trusted-only row
-\ refuses checked calls and ticks, while a TRUSTED: body still compiles
-\ (src/core/checker.f FIELD-PROJ!).
+\ src/core/checker.f FIELD-PROJ! states its seal; the owner's call before it is
+\ in test/prim-owner-scope-prepare.f. After it both tiers refuse that call as
+\ undefined; outside the owner checked calls and ticks are trust refusals and a
+\ TRUSTED: body compiles.
 : TYPE-DECL-CASES ( -- )
    T0? if
    0 set-tier

@@ -1,11 +1,9 @@
 \ tier.f - the compiler tiers and the per-definition state that must not survive
-\ a definition. ARM runs tier 0 (T0, src/habu/t0.f) and tier 1 (the IR
-\ compiler) and starts at tier 0; Intel runs only tier 1 and refuses tier 0. A
-\ tier chooses a compiler, never whether the checker runs. Every case runs in a
-\ child process: `set-tier` is engine-global and the leak case damages it.
-\ The trusted tick gate and width refusals are the JIT's (src/habu/habu2.f
-\ TRUSTTICKMSG$, INCOMP-MSG$, VALIDATE): those cases select it with >JIT, which
-\ zeroes NCOMP-DISPATCH:COMP-CELL.
+\ a definition. ARM starts at tier 0 (src/habu/t0.f) and has tier 1; Intel runs
+\ only tier 1 and refuses tier 0. A tier chooses a compiler, never whether the
+\ checker runs. Each case runs in a child: `set-tier` is engine-global and the
+\ leak case damages it. The trusted tick gate and width refusals are the JIT's
+\ (src/habu/habu2.f TRUSTTICKMSG$, INCOMP-MSG$); >JIT selects the JIT.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -27,7 +25,7 @@ private
 $4000 constant CAP
 20000 constant TIMEOUT-MS
 70 constant REJECT-RC              \ checker reject / undefined word, fail-closed
-75 constant INCOMPLETE-RC          \ habu2.f VALIDATE: a certificate with incomplete width facts
+75 constant INCOMPLETE-RC          \ habu2.f INCOMP-MSG$: a certificate with incomplete width facts
 67 constant UNCAUGHT-RC            \ hb's exit status for an uncaught throw
 
 create OUT CAP allot
@@ -61,7 +59,7 @@ variable RC     variable EXITED
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u STORE! ;
 
-\ The subject compiled by the JIT at tier 0, built in SB.
+\ A zero NCOMP-DISPATCH:COMP-CELL makes tier 0 the JIT.
 : >JIT ( ptr u8 n -- ptr u8 n ) {: src:ptr u:n :}
    SB-RESET s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! " SB-APPEND
    src u SB-APPEND SB$ ;
@@ -292,9 +290,8 @@ variable RC     variable EXITED
 \ than once run at 1000 (pending) or LN-TAIL-MAX (ENUM). A long family's
 \ constructors take the family name as their package name. A refused long name
 \ is reported whole to its newline; a refused TRUSTED: one retracts its
-\ signature. A TRUSTED: body skips the checker, so a missing body token reaches
-\ the elaborator, which refuses it as undefined (rc 70) and names the
-\ definition and a 7900-byte token whole.
+\ signature. A TRUSTED: body's missing token reaches the elaborator, which
+\ refuses it as undefined, naming the definition and the whole token.
 $4000 constant LN-CAP
 create LN-BUF LN-CAP allot
 variable LN-U
@@ -411,11 +408,10 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ TRUSTED: bodies whose scans meet a token they cannot apply (a rowless
 \ unchecked word, `evaluate`) while a pair is live: the certificate's facts are
-\ incomplete, the JIT names the definition and exits before anything runs, and
+\ incomplete: the JIT refuses the definition before anything runs, and
 \ tier 1 refuses to compile it. Under `0 set-check` the parked hook still scans
 \ a body and gives it a row, so IC-RAW is compiled after `discard-check` and the
-\ saved hook is re-armed. The JIT only: tier 1 scans IC-RAW itself and gives
-\ it a row.
+\ saved hook is re-armed. JIT only: tier 1 scans IC-RAW itself and gives it a row.
 : INCOMPLETE-RAW$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" check@ 0 set-check discard-check : IC-RAW swap ; set-check " LN+
@@ -479,7 +475,6 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    S\" TRUSTED: PM-T ( -- pmpair ) s\" x\" drop 1 2 5 {: q:n p:pmpair r :} p ; " LN+
    s" : PM-SHOW ( -- ) PM-T PMPAIR:UNMAKE . . cr ; PM-SHOW" LN+ LN$ ;
 
-\ The whole of the JIT's refusal of an incomplete certificate, and no output.
 : ASSERT-INCOMPLETE ( ptr u8 n -- ) {: want:ptr want-u:n :}
    INCOMPLETE-RC ASSERT-RC
    OUT-U @ 0 T=
@@ -765,9 +760,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    SB-RESET s" 1 set-tier " SB-APPEND CDS-SHADOW$ SB-APPEND SB$ RUN  s" 8" ASSERT-OK
    OUT$ s" SHADOW" CONTAINS? TFALSE
 
-   \ Each tier compiles the whole definition and the checker refuses the
-   \ clause, which reports as a refused body does: the reason, naming the
-   \ definer, and 70.
+   \ The checker refuses a does> clause as a body named `definer;does`.
    s" tier 1 refuses a does> clause that names a head local" T-LABEL
    s" 1 set-tier : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  s" mkv;does" ASSERT-REJECTED
    ERR$ s" undefined word 'v'" CONTAINS? TTRUE

@@ -503,8 +503,8 @@ create EMPTY 1 allot            \ zero-length stdin
    s" VALUE-RECORD" NEG-OPENER
    \ `cast:` is an interpret-mode reader keyword (habu2.f
    \ EM-INTERPRET-DEFINE-KEYWORDS) and not a dictionary word, so a colon body
-   \ holding it is refused at the token. The declarer's own unsafe-token
-   \ reject is pinned by test/cast-negative-suite.f.
+   \ holding it is refused at the token. test/cast-negative-suite.f covers the
+   \ declarer's own unsafe-token refusal.
    s" cast: in a checked body is rejected" T-LABEL
    s" cast:" NEG-OPENER
    s" DEFER-LAYOUT-BUFFER in a checked body is rejected unsafe" T-LABEL
@@ -573,10 +573,8 @@ create EMPTY 1 allot            \ zero-length stdin
    s" : IWG-LBAD ( -- ) IWG-LV @ execute ;" SB-APPEND LF
    SB$ ;
 
-\ The tick itself refuses the protected target, so it never reaches the untyped
-\ cell: SCHEMA-REG:SCH-N has no spelling outside its package. Were the tick
-\ admitted, the interpret-level `IWG-PFV @ execute` would return the protected
-\ cell's address.
+\ The tick refuses SCHEMA-REG:SCH-N, which has no spelling outside its package,
+\ so its xt never reaches IWG-PFV and no `execute` yields the protected cell.
 : PF-LAUNDER-FORGE$ ( -- ptr u8 n )   \ tick a protected registry cell, launder its execute
    SB-RESET
    s" variable IWG-PFV" SB-APPEND LF

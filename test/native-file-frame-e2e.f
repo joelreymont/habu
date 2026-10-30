@@ -169,17 +169,11 @@ variable FILL-POOL
    s" mint.f" LOAD+
    s" pb.f" LOAD+ ;
 
-\ The diagnostic builder session: each file loads through NDEF-CACHE:LOAD with
-\ the cache diagnostics on, so every file frame and object prints its line on
-\ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
-\ carries to the engine checker's own kept row (src/core/checker.f
-\ TRANSFER-ROW). Then a multi-error run refuses BROKEN's body at tier 0 and
-\ keeps its declared row as a recovery fact; broken.f's NOCONTRACT-BROKEN binds
-\ that row under the same run, so the native compiler withholds it unpublished
-\ (src/compiler/native/definition.f VERDICT-CK). BROKEN is made by broken.f's
-\ child brokendef.f, since a record made between top-level loads has no key a
-\ file can name. after.f, the first file after the run ends, stores its
-\ definition: the run's last recovery binding leaves the checker idle.
+\ The checker handover carries DIAGXT's link to the engine checker's kept row
+\ (src/core/checker.f TRANSFER-ROW). A refused body's declared row is a recovery
+\ fact, so src/compiler/native/definition.f VERDICT-CK withholds the
+\ NOCONTRACT-BROKEN that binds it. brokendef.f makes BROKEN: a record made
+\ between top-level loads has no key a file can name.
 : PROBE ( -- n )
    SESSION
    \ The moved builds allot a byte before dv.f. The loader aligns HERE when a

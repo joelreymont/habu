@@ -254,9 +254,8 @@ variable EXP-U
 \ The engine owners' refusals, by name: a primitive with no global row is
 \ undefined outside its owner, to a call and a tick alike, and a global
 \ trusted-only row answers E-CAP-TRUSTED. Inside TOP-ROW a hook of the wrong
-\ shape fails on its type, not its trust. After the seal FIELD-PROJ! is
-\ undefined to its owner's call, which names the definition; outside, checked
-\ calls and ticks are trust refusals.
+\ shape fails on its type, not its trust. test/prim-owner-scope-child.f
+\ TYPE-DECL-CASES states FIELD-PROJ!'s refusals.
 : OWNER-SITE-ERRS ( ptr u8 n -- ) {: ea:ptr eu:n :}
    T0? if
    ea eu s" E-UNDEFINED habu: in pos-cp0-top: undefined word 'code-publish'" ERR-HAS

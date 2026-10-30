@@ -1,6 +1,6 @@
 \ load-reject-diag-test.f - a rejecting `bin/hb --load` must identify itself: a
 \ checked load refusal exits 70 with a named diagnostic on stderr; an
-\ unmodeled immediate in a TRUSTED body is refused by the checker's preflight
+\ unmodeled immediate in a TRUSTED: body is refused by the checker's preflight
 \ as it is read, before any compiler sees it. Covers the direct --load,
 \ require-chain and checked-body legs on generated fixtures; the child engine is
 \ HABU_UNDER_TEST when set, else the running engine.
@@ -307,9 +307,8 @@ LOWER-CERT-HOOK:INSTALL
    OUT-U @ TEST-OUT-U T=
    ERR-U @ TEST-ERR-U T= ;
 
-\ The native compiler refuses LRD-X with the checker's diagnostic, naming the
-\ code and the word. Its refusal carries no file:line, so the definition's
-\ name, in the checker's lower-case rendering, identifies where it was refused.
+\ The native compiler's refusal carries no file:line; the definition's name,
+\ lower-cased as the checker renders it, says where it was refused.
 : ASSERT-UNDEF ( -- )
    s" E-UNDEFINED" ASSERT-NAMED
    ERR$ s" undefined word 'LRD-NO-SUCH-WORD-XYZ'" CONTAINS? TTRUE

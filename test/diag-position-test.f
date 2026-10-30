@@ -125,8 +125,7 @@ variable RC
    CHECK:RUN dup 0 <> IF throw THEN drop ;
 
 \ Run the checker on the fixture with FLAG (when not empty) and JSON errors,
-\ keep its stdout, which holds the run's, and split its packets into lines; the
-\ command-line exit status is WANT.
+\ splitting its stderr packets into lines; the command-line exit status is WANT.
 : CHECK-EXIT ( ptr u8 n n -- )
    {: flag:ptr flagu:n want:n :}
    CHECK:RESET
@@ -455,8 +454,6 @@ variable RC
    s" --all-errors" THROW-RC CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
 
-\ WIN's effect is not recorded and takes inputs. Compiled at tier 1, it is
-\ called from a tier-0 RUNI that prints the 30 values WIN leaves.
 : NOT-RECORDED-TIERS-TEXT ( -- )
    SB-RESET
    s" 1 set-tier" SB-APPEND LF+
@@ -472,7 +469,6 @@ variable RC
    s"  cr ;" SB-APPEND LF+
    s" RUNI" SB-APPEND LF+ ;
 
-\ What RUNI prints: 200, 14 down to 1 twice, 100, one value a line, then cr.
 : NOT-RECORDED-TIERS-OUT ( -- )
    SB-RESET
    200 FMT:SB-INT LF+

@@ -180,10 +180,9 @@ create XE-EMPTY 1 allot
    s" ;package" XE-LINE
    SB$ ;
 
-\ The checker's ambiguity refusal, the same at either native tier.
 : XE-AMB-DIED ( -- )
    XE-EXITED @ TTRUE
-   XE-RC @ 70 T=
+   XE-RC @ XE-UNDEF-RC T=
    XE-ERR$ s" E-USING-AMBIGUOUS habu: bare 'XEU-W'" CONTAINS? TTRUE ;
 
 : XE-USING ( -- )
