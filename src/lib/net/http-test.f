@@ -124,6 +124,7 @@ TASK:MIN-STACK TASK:TASK HOOK-RELEASER
 variable PARKED                   \ set by the handler that never answers
 1 TYPED-BUFFER LARGE-SPAN SPAN:span<u8>
 1 TYPED-BUFFER OLD-REQUEST HTTP:request
+1 TYPED-BUFFER OWN-REQUEST HTTP:request
 
 
 : ROOT$ ( -- ptr u8 n )
@@ -239,6 +240,40 @@ variable ECHO-HITS
    bytes len 1- + c@ 32 <> if E-BOOM throw then
    answer bytes 1 HTTP:BODY!
    answer 200 HTTP:STATUS! ;
+
+
+: OWN-FIELD ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   s" own" 0 OWN-REQUEST @ HTTP:SERVING? JSON-WRITE:FIELD-BOOL ;
+
+
+: KEEP-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   JSON-WRITE:OBJECT-START
+   OWN-FIELD
+   JSON-WRITE:OBJECT-END ;
+
+
+: CHECK-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   JSON-WRITE:OBJECT-START
+   s" kept" 0 OLD-REQUEST @ HTTP:SERVING? JSON-WRITE:FIELD-BOOL
+   JSON-WRITE:COMMA
+   OWN-FIELD
+   JSON-WRITE:OBJECT-END ;
+
+
+\ Keeps its handle past its answer, for SERVING-CASE to ask about.
+: SERVING-KEEP ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked 0 OLD-REQUEST !
+   asked 0 OWN-REQUEST !
+   answer 200 HTTP:STATUS!
+   answer [: KEEP-BODY ;] HTTP:JSON! ;
+
+
+: SERVING-CHECK ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked 0 OWN-REQUEST !
+   answer 200 HTTP:STATUS!
+   answer [: CHECK-BODY ;] HTTP:JSON! ;
 
 
 \ A body that is not JSON throws out of src/lib/json-read.f's reader, and the
@@ -549,6 +584,8 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" POST" s" /api/tiny" 8 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/empty" 0 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/large-echo" [: LARGE-ECHO ;] HTTP:ROUTE
+   s" GET" s" /api/serving-keep" [: SERVING-KEEP ;] HTTP:ROUTE
+   s" GET" s" /api/serving-check" [: SERVING-CHECK ;] HTTP:ROUTE
    s" GET" s" /api/boom" [: BOOM ;] HTTP:ROUTE
    s" GET" s" /api/boom-json" [: BOOM-JSON ;] HTTP:ROUTE
    s" POST" s" /api/answer" [: ANSWER-TEXT ;] HTTP:ROUTE
@@ -1799,6 +1836,16 @@ $C8 constant STALL-MARGIN-MS      \ how far past IDLE-MS the stalled worker resu
    [: ADD-ERROR-HOOK ;] HTTP:E-STATE TTHROWSQ ;
 
 
+\ The one worker retires the kept request before it reads the next, so both the
+\ check route and this task find the kept handle no longer served.
+: SERVING-CASE ( -- )
+   s" GET" s" /api/serving-keep" FETCH 200 T=
+   RES$ S\" {\qown\q:true}" T$=
+   s" GET" s" /api/serving-check" FETCH 200 T=
+   RES$ S\" {\qkept\q:false,\qown\q:true}" T$=
+   0 OLD-REQUEST @ HTTP:SERVING? TFALSE ;
+
+
 \ Read after STOP, when every worker has ended: each worker ran both start hooks
 \ once in order and both exit hooks once in reverse, with nothing between them
 \ but the requests it answered, and the three traced requests are all there.
@@ -2498,6 +2545,7 @@ BIG-DIRS 2 * LONG-NAMES + 1+ constant BIG-FILES
    WRITER-RECOVERY-CASE
    SPLIT-HEAD-CASE
    HOOK-LIVE-CASES
+   SERVING-CASE
    HTTP:STOP
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=

@@ -146,11 +146,15 @@ drop
    idx BOUNDED SLOT-GEN @ GEN-SHIFT lshift idx or ;
 
 
-: RESOLVE ( n -- n ) {: h:n :}
-   h SLOT-MASK and BOUNDED {: idx:n :}
-   idx SLOT-LIVE @ 0= if E-HANDLE throw then
-   h GEN-SHIFT rshift idx SLOT-GEN @ <> if E-HANDLE throw then
-   idx ;
+\ The slot handle h names, and whether h is that slot's current request.
+: CURRENT? ( n -- n bool ) {: h:n :}
+   h SLOT-MASK and {: idx:n :}
+   idx MAX-WORKERS >= if idx false exit then
+   idx  idx SLOT-LIVE @ 0<>  h GEN-SHIFT rshift idx SLOT-GEN @ =  and ;
+
+
+: RESOLVE ( n -- n )
+   CURRENT? 0= if E-HANDLE throw then ;
 
 
 private
@@ -457,5 +461,11 @@ public
 \ storage by.
 : WORKER-SLOT ( -- n )
    SELF-SLOT ;
+
+
+\ True only on the worker answering that request: a retired handle or another
+\ worker's request answers false rather than throwing.
+: SERVING? ( request -- bool )
+   REQUEST>N CURRENT? swap MY-SLOT @ = and ;
 
 ;package
