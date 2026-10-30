@@ -6,6 +6,7 @@
 \ CTARGET-ARCH:AARCH64.
 
 require src/lib/errors.f
+require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/lib/le.f
 require src/lib/span.f
@@ -361,6 +362,16 @@ DYNAMIC-BUFFER BR-ARG n
    0 NUNIT !
    T0-LABEL:RESET
    UNIT-BEGIN ;
+
+\ The buffers are this process's mappings, which no image carries, so a capture
+\ gives them back and clears LIVE; the next OPEN maps them again.
+: CAPTURE-PREPARE ( -- )
+   LIVE @ 0= if exit then
+   RAW BUF:DISPOSE
+   OUT BUF:DISPOSE
+   EPI BUF:DISPOSE
+   0 LIVE ! ;
+' CAPTURE-PREPARE IMAGE-LIFECYCLE:REGISTER-PERSISTENT
 
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
 \ at; the first byte holds its register.
