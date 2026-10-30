@@ -281,7 +281,7 @@ variable LBL-U
    s" PRODUCT-IT" 70 S\" habu: bad product declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" FIELD-ADD-IT" 67 S\" hb: uncaught throw code 7101\n" DIES ;
 
-\ TRUST, PTX-BARRIER!, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
+\ TRUST, CHECKER-DEFCAST and CHECKER-NAMED-USE have no effect a
 \ checked body may call, so the child names them at its top level or in a
 \ TRUSTED: body, as verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a
 \ refused name publishes no use and reads none of its bytes. TRUST-DECL and
@@ -306,7 +306,6 @@ variable WANT-U
    WANT WANT-U @ ;
 
 : TEST-TOP-LEVEL ( -- )
-   s" BAD$ PTX-BARRIER!" 76 S\" PTX-BARRIER!: unknown word\n" DIES
    s" BAD$ SIG$ TRUST" 70 s" " STALE$ DIES
    s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 70 s" " STALE$ DIES
    s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 70 s" " STALE$ DIES
@@ -464,10 +463,9 @@ variable WANT-U
    T-REPORT
    s" name-length-test: ok" type cr ;
 
-\ The word named at the ceiling, and the top-level-only words taking its name.
+\ The word named at the ceiling, and the top-level-only word taking its name.
 CEIL 113 DEF-SRC evaluate
 CEIL$ SIG$ TRUST
-CEIL$ PTX-BARRIER!
 
 MAIN
 

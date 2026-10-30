@@ -10956,11 +10956,6 @@ PRIM: TRUST-DECL PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ publish site and sealed like TRUST-DECL; UNSAFE-TOK? rejects `trust-raw` in
 \ checked bodies.
 PRIM: TRUST-RAW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-\ PTX-BARRIER! ( name$ -- ) marks a word a block-uniform barrier: a call under
-\ divergent control rejects. The axiom keeps it executable at top level after
-\ the seal; UNSAFE-TOK? rejects it in checked bodies. Marking only adds
-\ rejections, so it cannot force an unsound acceptance.
-PRIM: PTX-BARRIER! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ type-family.f is `package TFAM`, so these rows are PPRIM: and the checker and
 \ the marking pass key on TFAM:TFAM-N@. TFAM-NAME$ stays PRIM: at global scope:
 \ habu2.f C-FIND-GLOBAL resolves it by bare spelling for `;match`.
@@ -16627,17 +16622,6 @@ get-current prot-wid-add
    sym flags sym CTL-MASKS-SYM NORET-ADD-SYM ;   \ masks forward: see STORE
 : PTX-BARRIER-SET-INSTALL ( -- ) [: PTX-BARRIER-SET ;] is PTX-BARRIER-SET-XT ;
 PTX-BARRIER-SET-INSTALL
-
-\ Explicit per-word barrier declaration, for a block-uniform barrier word
-\ without the tile->uniform (or committed->ready) shape the E-ADD-EFFECT
-\ detector keys on, such as one that emits bar.sync but returns a tile. The word
-\ then flags CTL-BARRIER through the same NORET path and composes at the same
-\ BARRIER-CUR?/ALL-CF-UNIFORM? choke. Unknown names fail closed, so a typo
-\ cannot leave a barrier unmarked.
-: PTX-BARRIER! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM dup 0= IF
-      drop s" PTX-BARRIER!: unknown word" 76 die
-   ELSE PTX-BARRIER-SET THEN ;
 
 \ The resolved symbol of the current body token (DO-TOK; 0 for literals,
 \ definers and memory tokens), so the throw/dead classification after the
