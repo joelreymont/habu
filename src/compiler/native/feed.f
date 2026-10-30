@@ -347,10 +347,10 @@ private
 \ instances own different cells, even when they observe the same checker.
 : SCAN-ID ( -- n )
    OBSERVER-ID BYTE-VIEW NULL-PTR BYTE-VIEW - ;
-public
 
 : OBSERVE ( -- )
    SCAN-ID [: ON-SCAN ;] [: ON-TOKEN ;] [: ON-DONE ;] CHECKER-OWNER:TAPE-INSTALL ;
+public
 
 \ Both ceilings are the caller's commitment: too many tokens is NTAPE's capacity
 \ error and text longer than the buffer is refused here; neither is truncated.
