@@ -13,8 +13,8 @@ public
 : BUFFER ( -- )
    GE-SRC-BUF GE-SRC-U @ SOURCE ;
 
-\ Source that makes the definitions after it compile with the JIT, which a
-\ case needs when it pins a JIT routine: tier 0 is T0 otherwise.
+\ Source that puts the definitions after it on the JIT, not T0: a case pins a
+\ JIT limit or EM-COMPILE-LEGACY, which compiles evaluated tokens in place.
 : JIT$ ( -- ptr u8 n )  s" 0 data-base NCOMP-DISPATCH:COMP-CELL + !" ;
 
 : LINE-RC ( ptr u8 n n ptr u8 n -- )
@@ -169,7 +169,6 @@ variable GE-SCRIPT-U
 \ A pass-2 frame past the 4096 cells the scaled ldr/str slot reaches fails
 \ closed naming the limit and the token that carved it. No one value may
 \ be wider than 255 cells, so the frame is 22 locals of a 192-cell product.
-\ The limit is the JIT's (habu2.f P2SLOT-MSG$), so the case selects the JIT.
 : GE-P2-FRAME-WIDE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -840,7 +839,6 @@ variable GE-NEST-J
    \ with the named engine diagnostic and the token, never a register dump.
    \ Every closer's compile-time patch pops the control-flow stack through
    \ LCFPOP, which guards depth 0; past it LPAT dereferences a bogus origin.
-   \ LCFPOP is the JIT's (habu2.f), so the case selects the JIT.
    GE-HB-RESET
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
@@ -867,7 +865,7 @@ variable GE-NEST-J
    s" ENDCASE" s" hb orphan endcase" GE-ORPHAN-CLOSER-1
    \ Under [: INCLUDE-EVALUATE ;] catch the closers deliver a catchable
    \ RC-REJECT (70), the eval frame rolled back, process exits 0. Each
-   \ evaluated source selects the JIT first, LCFPOP's owner.
+   \ source begins with JIT$'s text.
    s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! : XO1 ( -- ) THEN ;" s" control-flow closer without opener"
       s" hb eval orphan-then catch" GE-EVAL-DEF-REJECT-1
    s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! : XO2 ( -- ) LOOP ;" s" control-flow closer without opener"
@@ -893,7 +891,7 @@ private
    \ depth, the LVH/LVF level arrays) is the loop family's opener record, which
    \ LCFPOP's guard does not cover; LVH's cell -1 is LVD-CELL itself. LOOP/+LOOP
    \ refuse an entry that is not a DO's (habu2.f C-CF-AT); LEAVE refuses with
-   \ no open DO level (LVREQUIRE). Both are the JIT's, so the case selects it.
+   \ no open DO level (LVREQUIRE).
    GE-HB-RESET
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
@@ -912,8 +910,7 @@ private
    \ A stray LEAVE would store a code offset into LVH level -1, which aliases
    \ LVD-CELL and forges an open-level count. Guarding LEAVE at the source makes
    \ the LOOP/+LOOP guard an existence check on a sole-writer count, so the
-   \ definition is rejected at LEAVE, not at LOOP. LVREQUIRE is the JIT's, so
-   \ the case selects it.
+   \ definition is rejected at LEAVE, not at LOOP.
    GE-HB-RESET
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
@@ -993,9 +990,8 @@ variable GE-CF-BODY-U
    GE-CF-BODY GE-CF-BODY-U @ ;
 
 \ n nested `0 0= if ... then` pairs, each fed a real bool so a checkable depth
-\ certifies. With jit the source selects the JIT first: the over-cap legs pin
-\ the JIT's named cap (habu2.f LCFPUSH), where T0 refuses the definition as
-\ non-certified; the legs at or under the cap pass on T0 and stay there.
+\ certifies. The over-cap legs select the JIT to pin its cap (LCFPUSH): T0
+\ refuses those definitions as non-certified.
 : GE-CF-NEST ( n bool -- ) {: n:n jit:bool :}
    GE-CF-BODY-RESET
    jit if RUNTIME-RUNNER:JIT$ GE-CF-BODY+ then
@@ -1045,10 +1041,8 @@ variable GE-CF-BODY-U
 
 \ Build "variable HITS : DEEP ( -- ) " + n * opener + "1 HITS +! " + n * closer
 \ + "; DEEP ...": n nested counted loops of two turns each, run once, and a
-\ check that prints true when they took 2^LV-LEVELS turns. With jit the source
-\ selects the JIT first: the over-cap legs pin the JIT's level cap (habu2.f
-\ LVOPEN, layout.f LV-LEVELS), while T0 compiles and runs a level more; the
-\ legal leg passes on T0 and stays there.
+\ check that prints true when they took 2^LV-LEVELS turns. The over-cap legs
+\ select the JIT to pin its level cap (LVOPEN).
 : GE-DO-NEST ( n ptr u8 n ptr u8 n bool -- ) {: n:n op:ptr opu:n cl:ptr clu:n jit:bool :}
    GE-CF-BODY-RESET
    jit if RUNTIME-RUNNER:JIT$ GE-CF-BODY+ then
@@ -1119,12 +1113,10 @@ variable GE-CF-BODY-U
 : GE-RXE-CATCH-USABLE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n code:ptr codeu:n diag:ptr diagu:n :}
    \ One recoverable compile-error misuse under the TCE-CATCH wrapper. The die
-   \ site (such as C-DUP-DEF-FAIL or C-PACKAGE-FAIL, routed through
-   \ LCOMPILEDIE) or the checker's refusal writes its diagnostic to fd 2, so
-   \ inside evaluate the aborted compile is a catchable throw of its exit code.
-   \ A fresh definition (GEC-RXOK -> 12321) then compiles and runs: the
-   \ eval-frame rollback (input cursor, CP/NDICT truncation, HIDX skipping the
-   \ stale records) left a usable session.
+   \ site (through LCOMPILEDIE) or the checker's refusal is a catchable throw of
+   \ its exit code inside evaluate. A fresh definition (GEC-RXOK -> 12321) then
+   \ compiles and runs: the eval-frame rollback (input cursor, CP/NDICT
+   \ truncation, HIDX skipping the stale records) left a usable session.
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
    src srcu GE-SRC-S"
@@ -1194,8 +1186,7 @@ create GE-RXE-TML-BUF 512 allot   variable GE-RXE-TML-U
 
 : GE-RXE-TML$ ( -- ptr u8 n )  GE-RXE-TML-BUF GE-RXE-TML-U @ ;
 
-\ The JIT select line, then " : RXQ ( -- )", 13 bytes, and each opener " [:"
-\ three more. JIT-QUOT:LEVELS is the JIT's, so the source selects it.
+\ Bytes: JIT$, then " : RXQ ( -- )" (13) and three per " [:" opener.
 JIT-QUOT:LEVELS 1+ 3 * 13 + RUNTIME-RUNNER:JIT$ nip + constant GE-RXE-QNEST-CAP
 create GE-RXE-QNEST-BUF GE-RXE-QNEST-CAP allot   variable GE-RXE-QNEST-U
 
@@ -1362,9 +1353,8 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
 \ evaluate (the RXQ pair in GE-RAWEXIT-RESIDUAL). The line is the load path's
 \ alone: tools/check.f refuses the same source first, E-UNCHECKABLE at the
 \ checker's 33rd control frame.
-\ With jit the source selects the JIT first: the leg one level past the ceiling
-\ pins the JIT's named refusal, where T0 refuses the definition as
-\ non-certified; the ceiling leg passes on T0 and stays there.
+\ The leg one level past the ceiling selects the JIT to pin its named refusal:
+\ T0 refuses that definition as non-certified.
 : GE-QNEST-SRC ( n -- ) {: depth:n :}   \ ": GEQDEEP ( n -- n ) [: ... 1+ ;] execute ... ;" then 41 GEQDEEP
    s" : GEQDEEP ( n -- n )" GE-SRC+
    depth 0 ?do  s"  [:" GE-SRC+  loop
@@ -1732,8 +1722,6 @@ create GE-END-AT 16 allot
 
 \ A definition open as a buffer begins is an outer buffer's: an immediate
 \ word's evaluate compiles into it and returns. The control for EVAL-FRAME:PEND.
-\ The JIT compiles the evaluated tokens in place (habu2.f EM-COMPILE-LEGACY),
-\ so the fixture selects the JIT.
 : GE-END-MACRO ( -- )
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
@@ -1746,8 +1734,8 @@ create GE-END-AT 16 allot
    s" macro evaluate" GE-EXPECT-OK
    S\" 5\n" s" macro evaluate" GE-EXPECT-OUT ;
 
-\ The same source at tier 0. The engine runs GEENDMAC as it reads GEENDUSE; tier
-\ 0 compiles only parse-neutral immediates and refuses GEENDUSE at it, rc 70.
+\ Tier 0 compiles only parse-neutral immediates, so it refuses GEENDUSE at
+\ GEENDMAC, rc 70.
 : GE-END-MACRO-T0 ( -- )
    s" hb-end-macro-t0.f"
       S\" 0 set-check\n: GEENDMAC ( -- ) s\" 5\" evaluate ; immediate\n: GEENDUSE ( -- n ) GEENDMAC ;\nGEENDUSE .\n"
@@ -1837,9 +1825,8 @@ create GE-END-AT 16 allot
    S\" 70\n5\n" s" caught locals refusal" GE-EXPECT-OUT
    s" habu-crash" s" caught locals refusal" GE-EXPECT-ERR-LACKS ;
 
-\ An undefined word refuses at its token at both tiers: the capture asks
-\ whether each evaluated token binds (habu2.f EM-CAPTURE-BIND). Its row runs at
-\ tier 0. The `;` and an unterminated string refuse at both tiers.
+\ An undefined word refuses at its token at both tiers (EM-CAPTURE-BIND asks
+\ whether each evaluated token binds), as do `;` and an unterminated string.
 : GE-END-CATCH ( -- )
    S\" TRUSTED: GEENDCAT ( -- ) [: s\" nosuchword\" evaluate ;] catch . ; immediate"
       0 S\" 70\n2\n" GE-CATCH-CASE
@@ -1852,11 +1839,8 @@ create GE-END-AT 16 allot
    GE-CATCH-LOCALS ;
 
 \ An immediate word's evaluate that emits code into the open definition
-\ compiles as if written in its place, at both tiers: the engine runs the
-\ parse-neutral immediate while it captures the body and takes the evaluated
-\ text after its token (habu2.f NCOMP-EMIT:EM-COMPILE, CAPTURE-IMMEDIATE), and
-\ T0 passes over the immediate's own token (t0.f IMM-TOKEN). The source built
-\ so far runs; out is its whole stdout.
+\ compiles in its place at both tiers (CAPTURE-IMMEDIATE, t0.f IMM-TOKEN).
+\ The source built so far runs; out is its whole stdout.
 : GE-EMIT-EXPECT ( ptr u8 n ptr u8 n -- )
    {: out:ptr outu:n label:ptr labelu:n :}
    GE-END-SAVE
@@ -1888,16 +1872,15 @@ create GE-END-AT 16 allot
          s" 3 GEEND . depth ." i S\" 4\n0\n" GE-EMIT-SHAPE
    loop ;
 
-\ A refusal that fires after its token spilled or emitted code, caught under
-\ the JIT, which compiles inside the evaluate. GEENDCAT opens n `if`s,
-\ catches ref and then a `leave` (no DO level may stay open), evaluates fol and
+\ A refusal that fires after its token spilled or emitted code, caught inside
+\ the evaluate. GEENDCAT opens n `if`s, catches ref and then a `leave` (no DO
+\ level may stay open), evaluates fol and
 \ closes the `if`s, so GEEND adds 7 only if the refused token left its 7, the
 \ data stack and every compile cell as they were: a leftover pop, a lost or
 \ stale control-flow entry, DO level or BEGIN snapshot gives a wrong sum, an
 \ orphaned `then` or a bounds fault. The checker certifies a shallower nesting
 \ than the control-flow cap, so a row at the cap compiles unchecked. out is the
-\ run's whole stdout. The JIT compiles the evaluated tokens in place (habu2.f
-\ EM-COMPILE-LEGACY), so the source selects the JIT.
+\ run's whole stdout.
 : GE-FAMILY-OUT ( n ptr u8 n ptr u8 n ptr u8 n -- )
    {: n:n ref:ptr refu:n fol:ptr folu:n out:ptr outu:n :}
    GE-SRC-RESET
@@ -1946,8 +1929,6 @@ create GE-END-AT 16 allot
 
 \ A refused nested quotation must not park a frame. The outer definition
 \ survives the caught evaluate, so its real quotation must still close once.
-\ The JIT compiles the evaluated tokens in place (habu2.f EM-COMPILE-LEGACY),
-\ so the source selects the JIT.
 : GE-EMIT-QUOT-ROOM ( -- )
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
@@ -1983,10 +1964,9 @@ create GE-END-AT 16 allot
 \ A structure that an evaluate two levels down opens before its refusal, which
 \ a catch one level up takes, and the outer source closes; aft is what GEENDIN
 \ runs after its evaluate, a throw once that evaluate has ended cleanly. The
-\ capture moves only the body text and its mark (habu2.f EM-CAPTURE-BIND), so
-\ the outer pop must not roll either back past the inner buffer's completed
-\ tokens. run runs GEEND; out is the whole stdout. An undefined word refuses
-\ at its token at both tiers (EM-CAPTURE-BIND); the rows run at tier 0.
+\ capture moves only the body text and its mark (EM-CAPTURE-BIND), so the
+\ outer pop must not roll either back past the inner buffer's completed tokens.
+\ run runs GEEND; out is the whole stdout.
 : GE-DEEP-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
    {: ev:ptr evu:n aft:ptr aftu:n def:ptr defu:n run:ptr runu:n mode:n out:ptr outu:n :}
    GE-SRC-RESET
@@ -2157,11 +2137,9 @@ variable GE-KIND-N
    if s" closer kinds caught, checked" else s" closer kinds caught, unchecked" then ;
 
 \ Every closer against every opener it neither closes nor continues, inside a
-\ caught evaluate under the JIT: each prints the catch code, 70, and its word
-\ maps 5 to 13. Then a `;` refused inside the evaluate that opened its
-\ definition drops that definition, so GEKS defines afresh. The JIT compiles
-\ the evaluated tokens in place (habu2.f EM-COMPILE-LEGACY), so the source
-\ selects the JIT.
+\ caught evaluate: each prints the catch code, 70, and its word maps 5 to 13.
+\ Then a `;` refused inside the evaluate that opened its
+\ definition drops that definition, so GEKS defines afresh.
 : GE-KIND-EVAL ( bool -- )
    {: chk:bool :}
    chk GE-KIND-LABEL {: l:ptr lu:n :}
@@ -2196,8 +2174,7 @@ variable GE-KIND-N
    {: c:n :}
    c 2 < c 7 = or if 1 else 0 then ;
 
-\ Refusal text a, then GEKT's location in hb-end.f and the newline. GEKT is
-\ on line 1, or line 2 after an unchecked source's `0 set-check`.
+\ GEKT sits on line 2 after an unchecked source's `0 set-check`, else line 1.
 : GE-KIND-AT$ ( ptr u8 n bool -- ptr u8 n )
    {: a:ptr u:n chk:bool :}
    SB-RESET
@@ -2220,8 +2197,8 @@ variable GE-KIND-N
 : GE-KIND-CHECK-LINE$ ( n -- ptr u8 n )
    SB-RESET GE-KIND-CHECK+ SB$ ;
 
-\ Unchecked: the scan's refusal, then tier 0's at the closer (`;` with `if`
-\ open). GEKT compiles before its quotations, so `;]` (12) fails at `then`.
+\ Unchecked tier 0 refuses at the closer, but GEKT compiles before its
+\ quotations, so `;]` (12) fails at `then`.
 : GE-KIND-T0-ERR$ ( n -- ptr u8 n )
    {: c:n :}
    SB-RESET
@@ -2232,11 +2209,8 @@ variable GE-KIND-N
    GE-SB-LF
    SB$ ;
 
-\ Closer c straight in a definition at tier 0: rc 70 and the checker's refusal
-\ at its token, then unchecked tier 0's (GE-KIND-T0-ERR$).
-\ The `does>` leg (11) has no clause signature: the engine's signature parse
-\ (C-SIG-BAD) refuses it first, rc 76, so neither the checker nor the
-\ control-flow check sees it.
+\ Closer c straight in a definition at tier 0. The `does>` leg (11) has no
+\ clause signature: C-SIG-BAD refuses it first, rc 76, before the checker.
 : GE-KIND-TOP ( n bool -- )
    {: c:n chk:bool :}
    GE-SRC-RESET
@@ -2619,7 +2593,6 @@ variable GE-KIND-N
 \ EM-COMPILE-SEMI); each row runs a tail call where a call's frame mattered.
 \ The JIT alone also runs each recursion two million deep, past the machine
 \ stack a call per turn would need: tier 1 calls `recurse` and overflows there.
-\ Leg 0 selects the JIT; leg 1 runs at tier 1.
 : GE-VTAIL-AT ( n -- ) {: tier:n :}
    GE-HB-RESET
    GE-SRC-RESET
