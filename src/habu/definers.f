@@ -499,9 +499,10 @@ private
 \ A captured token LFIND resolves to an immediate word. One the checker calls a
 \ stack-neutral parsing immediate (parse-imm) may read the input after it or
 \ end the definition, and the compiler passes over it at `;`: it meets an armed
-\ checker's preflight in DEF-RUN (C-CALL-COMPILE-IMMEDIATE), then runs now. Any
-\ other immediate meets the preflight here, which refuses an unmodeled one as
-\ the JIT does before it would run one, and then waits in the capture for the
+\ checker's preflight in DEF-RUN (C-CALL-COMPILE-IMMEDIATE), then runs now. One
+\ spelled does> is the keyword (DEF-DOES?), as the JIT reads it. Any other
+\ immediate meets the preflight here, which refuses an unmodeled one as the JIT
+\ does before it would run one, and then waits in the capture for the
 \ compiler. The live checker owner answers (CHECKER-OWNER:PARSE-IMM?), as the
 \ compiler asks at `;` (elaborate.f): a binding fixed at this file's load would
 \ ask the retained checker, which never saw a `parse-imm` a build window's
@@ -512,7 +513,7 @@ private
    rec XREF-FLAGS DNAME-IMM and 0= if NULL-PTR false exit then
    rec POLICY-CHECK-REC
    rec TOKEN$ CHECKER-OWNER:PARSE-IMM?
-   dup 0= if DEF-PREFLIGHT then ;
+   dup 0= s" does>" TOKEN-IS? 0= and if DEF-PREFLIGHT then ;
 
 \ Keep the original occurrence across the unit hook and the preflight, then
 \ select its host body. A preflight that retires it cannot substitute a

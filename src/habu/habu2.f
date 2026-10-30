@@ -9221,8 +9221,8 @@ public
 : CAPTURE-IMMEDIATE ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: done:label execute-now:label parse-does:label probe:label gated:label unsealed:label missed:label locals:label passive:label unbound:label :}
-   LBL LBL LBL LBL
-   {: spelling:label no-does:label decided:label offered:label :}
+   LBL LBL LBL
+   {: spelling:label no-does:label decided:label :}
    LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-GE LCAPBIND LABEL@ BCOND,    \ 1: a local is already captured
    CAPTURE-BLOCK
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
@@ -9233,8 +9233,9 @@ public
    \ Decide in x16: 0 passive, 1 execute now, 2 parse does>. x13/x5/x11 are
    \ LFIND's result; x9/x10 the original spelling. A non-immediate does> stays
    \ an ordinary captured token; a neutral immediate meets an armed checker's
-   \ preflight in DEF-RUN (C-CALL-COMPILE-IMMEDIATE), then executes now. Any
-   \ other immediate meets it here (`offered`), which refuses an unmodeled one
+   \ preflight in DEF-RUN (C-CALL-COMPILE-IMMEDIATE), then executes now. An
+   \ immediate spelled does> is the keyword, as the JIT reads it. Any other
+   \ immediate meets the preflight at `no-does`, which refuses an unmodeled one
    \ as the JIT does, before it waits in the capture. The twin is
    \ src/habu/definers.f DEF-IMMEDIATE.
    SP SP 64 SUBI,
@@ -9247,10 +9248,8 @@ public
    9 SP 8 LDR,  9 G-PUSH
    9 SP 16 LDR,  9 G-PUSH
    C-CALL-X11-SAVED
-   9 G-POP  9 offered CBZ,
+   9 G-POP  9 spelling CBZ,
    16 1 MOVZ,  decided B,
-   offered LBL,
-   C-PREFLIGHT
    spelling LBL,
    16 0 MOVZ,
    10 SP 16 LDR,  10 5 CMPI,  C-NE no-does BCOND,
@@ -9260,8 +9259,10 @@ public
       14 9 i LDRB,  14 14 $20 ORRI,
       14 word i + c@ CMPI,  C-NE no-does BCOND,
    loop
-   16 2 MOVZ,
+   16 2 MOVZ,  decided B,
    no-does LBL,
+   13 SP 40 LDR,  13 decided CBZ,
+   C-PREFLIGHT  16 0 MOVZ,
    decided LBL,
    5 SP 24 LDR,  11 SP 32 LDR,  13 SP 40 LDR,
    9 SP 8 LDR,  10 SP 16 LDR,

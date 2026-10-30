@@ -1623,9 +1623,9 @@ variable WANT-RC
 : NEUTRAL-LINE ( -- )
    s" s~ : OI-N ( -- ) 9 . ; immediate~ evaluate  s~ OI-N~ 0 parse-imm" QLINE ;
 
-\ A neutral immediate runs as the body reads it, after its capture, and reads
-\ the input after it; one the checker does not call neutral waits in the
-\ capture for `;`.
+\ Every immediate the body reads meets the armed checker's preflight, OI-PT,
+\ which names it and passes it. A neutral one then runs, after its capture,
+\ and reads the input after it; any other waits in the capture for `;`.
 : BODY-IMMEDIATES ( -- )
    GE-SRC-RESET
    s" 1 set-tier ' OI-BODY. OI-SHOWN !" GE-SRC-LINE
@@ -1633,10 +1633,14 @@ variable WANT-RC
    NEUTRAL-LINE
    s" s~ : OI-SKIP ( -- ) parse-name 2drop ; immediate~ evaluate  s~ OI-SKIP~ 1 parse-imm" QLINE
    s" s~ : OI-P ( -- ) 8 . ; immediate~ evaluate" QLINE
+   s" s~ : OI-PT ( ptr u8 n ptr u8 n bool -- ) drop type cr 2drop ;~ evaluate" QLINE
+   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
+   s" 0 set-check ' OI-PT set-preflight ' OI-HK set-check" GE-SRC-LINE
    s" : OI-X ( -- ) OI-N OI-SKIP skipped OI-P OI-IMM 1 OI-SHOW" GE-SRC-LINE
    s" oi-body-immediates.f" BOTH
-   S\" 9\nOI-X ( -- ) OI-N OI-SKIP OI-P OI-IMM 1 OI-SHOW \n" CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-X at " S\" oi-body-immediates.f:6\n" DIED-AT ;
+   S\" OI-N\n9\nOI-SKIP\nOI-P\nOI-IMM\nOI-SHOW\nOI-X ( -- ) OI-N OI-SKIP OI-P OI-IMM 1 OI-SHOW \n"
+   CASE$ GE-EXPECT-OUT
+   74 s" hb: source ended inside definition: OI-X at " S\" oi-body-immediates.f:9\n" DIED-AT ;
 
 \ The immediate is looked up as the engine's LFIND looks it up: in the open
 \ package and the global wordlist, and NAME:tail, but not in a used package,
