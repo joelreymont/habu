@@ -932,7 +932,7 @@ private
    s" TRUSTED: IS-PRIM ( -- ) [: 2 ;] is dup ;" TEST-EVAL:RC T0:E-T0-DEFER T=
    s" a counted string past 255 bytes in a does> clause is refused" T-LABEL
    RBF-DEPTH @ {: depth:n :}
-   LONG-DEFINER TEST-EVAL:RC T0:E-T0-LITERAL T=
+   LONG-DEFINER TEST-EVAL:RC 76 T=
    s" the refusal rolled back the checker frame" T-LABEL
    RBF-DEPTH @ depth T=
    s" the refused definer's name defined cleanly compiles and its child runs" T-LABEL

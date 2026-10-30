@@ -30,7 +30,6 @@ public
 -9609 constant E-LAST
 -9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: UNSUPPORTED$
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one
--9602 constant E-T0-LITERAL      \ a counted string too long
 -9603 constant E-T0-IMMEDIATE    \ an immediate other than a parse-neutral one: UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
 -9605 constant E-T0-SHADOW       \ a definition while a target shadow is open: no shadow path yet
@@ -1206,7 +1205,8 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
 \ decoded for an escaped literal (src/core/checker.f CHECKER-TAPE:STRING), and
 \ the tape copies it. Bytes are interned (NSTR:INTERN-SOURCE), so equal bodies
 \ share an address, and the address row files the origin interning answers. A
-\ counted string past COUNTED-MAX bytes is E-T0-LITERAL.
+\ counted string past COUNTED-MAX bytes is refused with tier 1's message and
+\ exit code 76.
 255 constant COUNTED-MAX            \ a counted string's length is one byte
 
 DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
@@ -1215,12 +1215,18 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
    kind CHECKER-TAPE:K-STRING =  kind CHECKER-TAPE:K-COUNTED-STRING = or
    kind CHECKER-TAPE:K-PRINTED-STRING = or ;
 
+\ A counted string of u bytes refuses as tier 1's COUNTED-LENGTH-CK does.
+: TOO-LONG ( n -- )
+   COUNTED-MAX <= if exit then
+   2 S\" hb: counted string too long (max 255)\n" write drop
+   76 throw ;                       \ the exit code src/habu/outer.f RC-TOO-LONG defines
+
 \ String row k's interned address, its source origin and its length.
 : INTERN-BODY ( n bool -- n n n ) {: k:n counted:bool :}
    TXT$ k ROW-OFF @ + {: s:ptr :}
    k ROW-AT @ {: body:n :}
    k ROW-U @ {: u:n :}
-   counted u COUNTED-MAX > and if E-T0-LITERAL throw then
+   counted if u TOO-LONG then
    body 0< u 0= or counted 0= and if s u NSTR:INTERN-SOURCE u exit then
    counted if 1 else 0 then {: at:n :}
    at u + STR-BUF-RESERVE
