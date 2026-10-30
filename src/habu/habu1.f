@@ -4394,13 +4394,8 @@ public
    9 DATA NCOMP-DISPATCH:BUILD-TIER-CELL STR,
    done LBL, ;
 
-\ set-tier ( n -- ): select which compiler the `:` handlers dispatch to: 0 =
-\ tier 0, the compiler in NCOMP-DISPATCH:COMP-CELL or the JIT on an engine with
-\ none; 1 = tier 1, the IR pipeline behind NCOMP-DISPATCH:XT-CELL (the rule is
-\ at layout.f NCOMP-DISPATCH:TIER-CELL). A primitive because the cell is in
-\ the engine header band and `1 set-tier` must work on a source file's first
-\ line, before any of the driver's definitions exist. Anything but 0 or 1
-\ dies: a tier is a deliberate choice, not a truthy flag.
+\ set-tier ( n -- ): layout.f NCOMP-DISPATCH:TIER-CELL states the rule. A primitive
+\ so it works on a file's first line; a tier is not a flag, so only 0 and 1 pass.
 : BSETTIER ( -- )
    LBL LBL LBL {: bad:label done:label msg:label :}
    S\" set-tier: tier must be 0 or 1\n" {: ma:ptr mu:n :}
@@ -4439,8 +4434,7 @@ public
    noquery LBL,  11 0 MOVZ,  12 0 MOVZ,
    done LBL, ;
 
-\ Load the latch the next `:` takes into register n: 1 for tier 1, 2 for tier
-\ 0 through NCOMP-DISPATCH:COMP-CELL, 0 for the JIT. Only register n changes.
+\ Register n gets the DEF-TIER-CELL latch (layout.f) the next `:` takes.
 : TIER-LATCH ( n -- ) {: r:n :}
    LBL {: done:label :}
    r DATA NCOMP-DISPATCH:TIER-CELL LDR,  r done CBNZ,

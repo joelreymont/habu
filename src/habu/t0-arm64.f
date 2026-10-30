@@ -363,8 +363,8 @@ DYNAMIC-BUFFER BR-ARG n
    T0-LABEL:RESET
    UNIT-BEGIN ;
 
-\ The buffers are this process's mappings, which no image carries, so a capture
-\ gives them back and clears LIVE; the next OPEN maps them again.
+\ The buffers are this process's mappings, which no image carries; the next
+\ OPEN maps them again.
 : CAPTURE-PREPARE ( -- )
    LIVE @ 0= if exit then
    RAW BUF:DISPOSE

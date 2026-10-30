@@ -2866,10 +2866,7 @@ public
    0 2 MOVZ,  1 LUNSET LABEL@ ADR,  2 UNSET-MSG$ nip MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ Load the latched definition's compiler entry into x11: COMP-CELL for latch 2,
-\ else XT-CELL. A zero entry is a broken boot and dies with the seed-integrity
-\ code. It runs only for a nonzero latch, so there is no fall-through to the JIT.
-\ Only x11 and the flags change.
+\ Callers reach it only with a nonzero latch, so it has no JIT fall-through.
 : LOAD ( -- )
    LBL LBL LBL {: xt:label have:label ready:label :}
    11 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  11 2 CMPI,  C-NE xt BCOND,
@@ -2882,11 +2879,8 @@ public
       UNSET
    ready LBL, ;
 
-\ The tier fork both `:` handlers share (EM-INTERPRET-COLON and C-TRUSTED), each
-\ reaching it with every legacy cell the JIT's closure reads reset. Tier 0 emits
-\ the frame's entry half, one `str x30,[sp,#-16]!` whose slot EM-COMPILE-RET
-\ matches with a restore or rewrites to a nop; tier 1 and T0 emit nothing and
-\ load their entry.
+\ Both `:` handlers reach it with every cell the JIT's closure reads reset. The
+\ JIT's entry slot is the one EM-COMPILE-RET restores or rewrites to a nop.
 : TIER-COLON-DISPATCH ( -- )
    LBL LBL {: jit:label done:label :}
    9 TIER-LATCH
@@ -4333,9 +4327,7 @@ variable LREPLAYTRAP
 : CREATED-SIG ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
 
-\ The end of a definition a native compiler compiled, the engine's native `;`
-\ (NCOMP-EMIT:EM-COMPILE, T0 and tier 1) and the def-close row alike: the per-definition
-\ state clears, PEND-CELL last.
+\ The close NCOMP-EMIT:EM-COMPILE's `;` and def-close share; PEND-CELL clears last.
 : NATIVE-CLOSE ( -- )
    LBL {: noaccept:label :}
    11 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + LDR,
@@ -8960,9 +8952,7 @@ ardone LBL,
    30 SP 0 LDR,  SP SP 48 ADDI,
    absent LBL, ;
 
-\ An armed checker's preflight gets the body so far, the token and the trusted
-\ cell; one armed without a preflight is refused (LPREFMISS). The preflight is
-\ Habu code: a caller keeps across it only what it saved, as around any call.
+\ The preflight is Habu code: a caller keeps across it only what it saved.
 \ src/habu/definers.f DEF-PREFLIGHT is its twin.
 : C-PREFLIGHT ( -- )
    LBL {: unarmed:label :}
@@ -8991,9 +8981,8 @@ ardone LBL,
    30 SP 0 LDR,  SP SP 48 ADDI,
    LMAIN LABEL@ B, ;
 
-\ Abort only definition-owned compile state. A Habu catch that survived the
-\ native THROW still owns its handler and return/loop stacks; clearing those
-\ here would discard the handler that is about to receive the error.
+\ Definition state only: a Habu catch that survived the engine's BTHROW still owns
+\ the handler, return and loop stacks that receive the error.
 : EM-ABORT-COMPILE-STATE ( -- )
    9 0 MOVZ,
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
@@ -9017,14 +9006,12 @@ ardone LBL,
    C-CLEAR-LOCALS
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
-\ The bodies of def-abort and stack-clear (src/habu/prims.f), called by a Habu
-\ interpret loop that catches a refusal. FPRIM-WID frames x30 around each.
+\ The def-abort and stack-clear bodies (src/habu/prims.f); FPRIM-WID frames
+\ x30 around each.
 package DEFWRITE
 
 public
 
-\ A caught Habu source abandons an owned definition without disturbing the
-\ catch frame that returned its code.
 : DEF-ABORT ( -- )
    EM-ABORT-COMPILE-STATE ;
 
@@ -9078,14 +9065,9 @@ public
    LCAPBIND LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
    LCAPBIND LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
-\ A parsing word owns its next token raw, as tier 0's C-BCHAR and C-BTICK read
-\ it and the Habu loop captures it (src/habu/definers.f COMPILING?,
-\ src/lib/source-syntax.f PARSING-KEYWORD?). Taking it before LMAIN reads it
-\ keeps an operand spelling `;`, a comment or a string opener as data. A source
-\ ending at the keyword dies as tier 0's does. A live local of the keyword's
-\ spelling never gets here: CAPTURE-IMMEDIATE matches locals first. A sealed
-\ row runs C-BTICK's seal guard on the operand, so `['] RESERVED:tail` exits
-\ ENGINE-ERROR:SEAL-PACKAGE before the checker reads the body.
+\ A parsing word's operand is taken raw before LMAIN reads it, so `;`, a comment
+\ or a string opener stays data, as the JIT's C-BTICK and definers.f COMPILING?
+\ take it. Locals match first, in CAPTURE-IMMEDIATE.
 : CAPTURE-OPERAND-ROW ( label n bool -- ) {: kw:label kwlen:n seal:bool :}
    LBL LBL {: skip:label named:label :}
    0 kw ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
@@ -9164,20 +9146,10 @@ private
       6 6 1 ADDI,  walk B,
    stored LBL, ;
 
-\ src/habu/definers.f DEF-PREFIX-BIND's twin, at the same points: after a
-\ captured token, a local, a `{:` group, a string or a parsing word's operand,
-\ never after an immediate that ran or `does>`. An evaluate begun inside this
-\ open definition (EVAL-FRAME:PEND) owns only its new tokens, so the checker
-\ reads the body prefix from the token-start mark for binding (the active
-\ owner's CHECKER-PREFIX:BIND?, which leaves the effect, open scopes and
-\ publication to the eventual `;`). A token that does not bind is refused as
-\ undefined; the throw lands in that evaluate's frame, whose recovery puts the
-\ definition back to the mark (EM-EVAL-THROW-RECOVER). An operand captured in
-\ its own pass, `is`'s target, refuses with BIND?'s rollback at its opener,
-\ below the mark: the body mark is lowered to it. Only the body mark moves: a
-\ plain capture changes no local, block depth, CP or virtual stack. A rollback
-\ above the mark (a one-pass operand) never raises it. No owner (a cold load)
-\ asks nothing.
+\ src/habu/definers.f DEF-PREFIX-BIND's twin states the rule. It runs after each
+\ capture, never after an immediate that ran or `does>`. A refusal whose rollback
+\ lies below TOKBODY-CELL (`is`'s operand) lowers only that mark: a plain capture
+\ moves no local, block depth, CP or virtual stack.
 : EM-CAPTURE-BIND ( -- )
    LBL {: bound:label :}
    LCAPBIND LABEL@ LBL,
@@ -9306,11 +9278,8 @@ public
 : EM-COMPILE ( -- )
    LBL LBL LBL {: notsemi:label compiled:label rethrow:label :}
    LENTRY LABEL@ LBL,
-   \ The native body loop, T0's and tier 1's, entered only from EM-COMMENT,
-   \ which routes by tier; the tier is not re-tested here. Its `;` is
-   \ src/habu/definers.f DEF-SEMI?'s twin: it sets RECOVER-CELL around the
-   \ compile, abandons a definition refused with E-NCOMP-RECOVERY (-8576) and
-   \ reads on, and rethrows any other code.
+   \ Entered only from EM-COMMENT, which routes by tier. Its `;` is
+   \ src/habu/definers.f DEF-SEMI?'s twin (layout.f NCOMP-DISPATCH:RECOVER-CELL).
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       C-DEF-SOURCE-CLOSE
@@ -9525,9 +9494,6 @@ public
       notcom LBL,
       C-UNIT-DISPATCH
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
-      \ A body token goes to the selected compiler's loop: the JIT's LCOMPILE
-      \ head (DEF-TIER 0), or LENTRY with the latched native compiler's entry
-      \ loaded (NCOMP-EMIT:LOAD: COMP-CELL for T0, XT-CELL for tier 1).
       9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 LCOMPILE LABEL@ CBZ,
       NCOMP-EMIT:LOAD
       NCOMP-EMIT:LENTRY LABEL@ B,

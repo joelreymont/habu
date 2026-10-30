@@ -1,5 +1,5 @@
-\ runtime-arm64.f - the arm64 engine's installs. native-runtime.f loads it only
-\ for arm64 targets, after T0: CHECKER-REG:SEAL runs SEAL-TARGET, filled here by
+\ runtime-arm64.f - the arm64 engine's installs; native-runtime.f loads it for
+\ arm64 targets only. CHECKER-REG:SEAL runs SEAL-TARGET, bound here to
 \ INSTALL-T0, which makes T0 tier 0's compiler (NCOMP-DISPATCH:COMP-CELL)
 \ before the capture seals the cell.
 
