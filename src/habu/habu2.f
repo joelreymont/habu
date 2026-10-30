@@ -6240,6 +6240,7 @@ variable CFSK
    CFSK LABEL@ LBL, ;
 \ MAIN is split into emission-ordered phases sharing label variables.
 variable LMAIN  variable LEXIT  variable LCOMPILE   \ LUNDEF is declared up with the diagnostics block
+variable LCAPBIND           \ tier 1's captured token, asked whether it binds before LMAIN (EM-CAPTURE-BIND)
 variable LUNDERFLOW           \ top-level data-stack underflow diagnostic entry (guard at LMAIN boundary)
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
@@ -9063,12 +9064,12 @@ public
    11 16 0 ADDI,  12 15 1 ADDI,  LBCS LABEL@ BL, ;
 
 : CAPTURE-STRING ( -- )
-   LMAIN LABEL@ LKWSQ     2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
-   LMAIN LABEL@ LKWCQ     2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
-   LMAIN LABEL@ LKWDOTQ   2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
-   LMAIN LABEL@ LKWESQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
-   LMAIN LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
-   LMAIN LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
+   LCAPBIND LABEL@ LKWSQ     2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
+   LCAPBIND LABEL@ LKWCQ     2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
+   LCAPBIND LABEL@ LKWDOTQ   2 ['] CAPTURE-PLAIN-STRING   CFN-ENTRY
+   LCAPBIND LABEL@ LKWESQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
+   LCAPBIND LABEL@ LKWECQ    3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY
+   LCAPBIND LABEL@ LKWEDOTQ  3 ['] CAPTURE-ESCAPED-STRING CFN-ENTRY ;
 
 \ A parsing word owns its next token raw, as tier 0's C-BCHAR and C-BTICK read
 \ it and the Habu loop captures it (src/habu/definers.f COMPILING?,
@@ -9087,7 +9088,7 @@ public
    named LBL,
    seal if C-QUALIFY-SEAL-GUARD then
    LBCAP LABEL@ BL,
-   LMAIN LABEL@ B,
+   LCAPBIND LABEL@ B,
    skip LBL, ;
 
 : CAPTURE-OPERAND ( -- )
@@ -9156,6 +9157,39 @@ private
       6 6 1 ADDI,  walk B,
    stored LBL, ;
 
+\ src/habu/definers.f DEF-PREFIX-BIND's twin, at the same points: after a
+\ captured token, a local, a `{:` group, a string or a parsing word's operand,
+\ never after an immediate that ran or `does>`. An evaluate begun inside this
+\ open definition (EVAL-FRAME:PEND) owns only its new tokens, so the checker
+\ reads the body prefix from the token-start mark for binding (the active
+\ owner's CHECKER-PREFIX:BIND?, which leaves the effect, open scopes and
+\ publication to the eventual `;`). A token that does not bind is refused as
+\ undefined; the throw lands in that evaluate's frame, whose recovery puts the
+\ definition back to the mark (EM-EVAL-THROW-RECOVER). An operand captured in
+\ its own pass, `is`'s target, refuses with BIND?'s rollback at its opener,
+\ below the mark: the body mark is lowered to it. Only the body mark moves: a
+\ plain capture changes no local, block depth, CP or virtual stack. A rollback
+\ above the mark (a one-pass operand) never raises it. No owner (a cold load)
+\ asks nothing.
+: EM-CAPTURE-BIND ( -- )
+   LBL {: bound:label :}
+   LCAPBIND LABEL@ LBL,
+   10 DATA EVAL-TOP-CELL LDR,  10 bound CBZ,
+   9 DATA PEND-CELL LDR,  10 10 EVAL-FRAME:PEND LDR,
+   9 10 CMP,  C-NE bound BCOND,
+   NCOMP-DISPATCH:DECL-PREFIX-BIND-OFF DECL-OWNER:FIND  11 bound CBZ,
+   9 DATA BODYBUF-OFF ADDI,  9 G-PUSH
+   9 DATA BODYLEN-CELL LDR,  9 G-PUSH
+   9 DATA TOKBODY-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   9 G-POP  10 G-POP
+   9 bound CBNZ,
+   11 DATA TOKBODY-CELL LDR,  10 11 CMP,  C-GE LUNDEF LABEL@ BCOND,
+   10 DATA TOKBODY-CELL STR,
+   LUNDEF LABEL@ B,
+   bound LBL,
+   LMAIN LABEL@ B, ;
+
 public
 
 \ The design seal gates every body token here with tier 0's predicate, so a
@@ -9182,7 +9216,7 @@ public
    {: done:label execute-now:label parse-does:label probe:label gated:label unsealed:label missed:label locals:label passive:label unbound:label :}
    LBL LBL LBL
    {: spelling:label no-does:label decided:label :}
-   LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-GE LMAIN LABEL@ BCOND,    \ 1: a local is already captured
+   LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-GE LCAPBIND LABEL@ BCOND,    \ 1: a local is already captured
    CAPTURE-BLOCK
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 probe CBZ,
@@ -9252,7 +9286,7 @@ public
    locals LBL,                                     \ each name up to `:}` is recorded, and still captured for NCOMP
    C-LBRACE-PARSE-NAMES
    CAPTURE-LOCAL-DEPTHS
-   LMAIN LABEL@ B,
+   LCAPBIND LABEL@ B,
    done LBL, ;
 
 : EM-COMPILE ( -- )
@@ -9290,7 +9324,7 @@ public
    CAPTURE-IMMEDIATE
    CAPTURE-STRING
    CAPTURE-OPERAND
-   LMAIN LABEL@ B, ;
+   EM-CAPTURE-BIND ;
 
 ;package
 
@@ -13030,7 +13064,7 @@ public
 package ENGINE-EMIT
 
 : EMIT-MAIN ( -- )
-   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
+   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LCAPBIND !
    LBL LCODEINV !
    EM-STARTUP
    \ Boot enters the interpret loop explicitly: EM-STARTUP ends at SRC-DONE with

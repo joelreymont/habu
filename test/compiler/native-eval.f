@@ -241,6 +241,18 @@ s" TRY-BAD" 0 parse-imm
    OUTER-BASE$ evaluate-closed
    OUTER-BASE @ outer T=  INNER-BASE @ inner T= ;
 
+\ `is` and its target are captured in two passes, so a refused target takes
+\ back `is` too: a caller left holding `is` refuses at its own `;`.
+: TRY-BAD-IS ( -- ) [: s" is NATIVE-EVAL-NO-DEFER" evaluate-closed ;] catch CAUGHT ! ; immediate
+s" TRY-BAD-IS" 0 parse-imm
+
+: CALLER-OPEN-IS-REFUSED ( -- )
+   s" a refused `is` target is taken back with its `is`" T-LABEL
+   0 CAUGHT !
+   s" package NATIVE-EVAL-TEST public : HOST-IS ( -- n ) TRY-BAD-IS 5 ; ;package" evaluate-closed
+   CAUGHT @ 70 T=
+   s" NATIVE-EVAL-TEST:HOST-IS 5 T=" evaluate-closed ;
+
 : AGREEMENT ( -- )
    s" E-EVAL-RESIDUE matches the engine's own spelling" T-LABEL
    E-EVAL-RESIDUE STACK-ABI:E-EVAL-RESIDUE T= ;
@@ -399,7 +411,7 @@ variable ERR-U
    T-RESET
    DEFINES RESIDUE FLOOR REFUSED DEPTH0 NESTED FLOOR-POOL FLOOR-POOL-THROW XT-UNDER
    UNFINISHED
-   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
+   UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
    TOP-LEVEL
    UNFINISHED-LINE IN-TASK
    2 0 do i THROWN-BACK loop

@@ -69,7 +69,11 @@ $598 constant LOCAL-COUNT-OFF
 \ ( -- ) closes the created body pending at a load boundary (checker.f
 \ CHECKER-BODY-CLOSE).
 $5A0 constant BODY-CLOSE-OFF
-BODY-CLOSE-OFF CELL + constant OWNER-BYTES
+\ ( ptr u8 n n -- n bool ) whether a definition's captured body still binds
+\ from a cut on (checker.f CHECKER-PREFIX:BIND?): the arm64 capture asks it
+\ inside an evaluate begun in the open definition (habu2.f EM-CAPTURE-BIND).
+$5A8 constant PREFIX-BIND-OFF
+PREFIX-BIND-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

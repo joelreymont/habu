@@ -158,6 +158,7 @@ create OWNER-STORAGE
    0 ,
    0 , 0 , 0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -174,7 +175,7 @@ OWNER-SIZE-AGREE
 \ growing it is read past the record's extent by every guard that trusts it
 \ (checker-owner-guard.f VALIDATE). This makes that a load failure.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:BODY-CLOSE-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:PREFIX-BIND-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -25768,6 +25769,10 @@ public
    rc 0 <> IF rc throw THEN
    CHECKER-PREFIX-ROLLBACK @ ANSWER @ ;
 
+;package
+
+package CHECKER-REG
+' CHECKER-PREFIX:BIND? DECLARATIONS CHECKER-OWNER-ABI:PREFIX-BIND-OFF + xt!
 ;package
 
 \ The quiet probe: a caller that wants a verdict without a rejection diagnostic

@@ -978,6 +978,7 @@ CHECKER-OWNER-ABI:RESET-OFF constant DECL-RESET-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant DECL-CAPTURE-OFF
 CHECKER-OWNER-ABI:TRUSTED-TICK-OFF constant DECL-TRUSTED-TICK-OFF
 CHECKER-OWNER-ABI:PKG-RESYNC-OFF constant DECL-PKG-RESYNC-OFF
+CHECKER-OWNER-ABI:PREFIX-BIND-OFF constant DECL-PREFIX-BIND-OFF
 \ The rest is the optimizing front end's half of the record. That front end is
 \ the checker's scan (the source tape, the does> split, per-call-site facts, the
 \ effect store), reached through the record rather than by name so that a run
@@ -1248,9 +1249,11 @@ $2818 constant EXIT-HOOK-CELL
 \ and its block depth CAPDEPTH-CELL, CP (as an offset
 \ from the region base, like every code position a DATA cell keeps, so no
 \ image carries a live address) and the virtual stack's VSP-CELL, VRFREE-CELL
-\ and FRFREE-CELL here (habu2.f EM-COMMENT). Only a definition's end or abort
-\ also stores two of them: arm64 C-CLEAR-LOCALS zeroes the locals marks
-\ TOKLOCN-CELL and TOKDEPTH-CELL with the locals themselves. A
+\ and FRFREE-CELL here (habu2.f EM-COMMENT). Two other writers: a definition's
+\ end or abort stores two of them (arm64 C-CLEAR-LOCALS zeroes the locals marks
+\ TOKLOCN-CELL and TOKDEPTH-CELL with the locals themselves), and a refused
+\ `is` target lowers TOKBODY-CELL to its opener (habu2.f EM-CAPTURE-BIND,
+\ src/habu/definers.f DEF-PREFIX-BIND). A
 \ throw that unwinds an evaluate frame begun inside an open definition leaves
 \ that definition compiling (habu2.f EM-EVAL-THROW-RECOVER) and puts all seven
 \ back: the text the checker certifies holds no token whose compile the throw

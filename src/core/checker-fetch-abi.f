@@ -5,8 +5,8 @@ public
 $230 constant CERTIFICATE-OFF
 
 \ The record's total size: the end of the last field appended after the
-\ certificate cell (checker-owner-extension.f BODY-CLOSE-OFF). checker.f checks
+\ certificate cell (checker-owner-extension.f PREFIX-BIND-OFF). checker.f checks
 \ the two agree before it commits the storage.
-$5A8 constant BYTES
+$5B0 constant BYTES
 
 ;package
