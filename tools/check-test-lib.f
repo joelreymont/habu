@@ -3221,44 +3221,33 @@ create BIG $2000 allot   variable BIG-U
    s" CKT-TB drop 7 ." SB-APPEND
    SB$ ;
 
-\ An enclosing local is still that local inside a quotation: the loader refuses
-\ it at that token (rc 75) and the check refuses it as a local in a quotation,
-\ after the `;` that ends the definition. A pre-verifier that reads the `;` as
-\ the keyword's operand fails rc 74, unterminated definition.
+\ An enclosing local is still that local inside a quotation: the loader and the
+\ check refuse it as a local in a quotation (E-BAD-LOCAL-SHAPE, rc 70), after
+\ the `;` that ends the definition. A pre-verifier that reads the `;` as the
+\ keyword's operand fails rc 74, unterminated definition.
 : LOCAL-QUOTATION$ ( -- ptr u8 n )
    s" : CKT-LQ ( n -- n ) {: char :} [: char ;" ;
 
 : LOCAL-QUOTATION ( -- )
-   LOCAL-QUOTATION$ HB-LOAD-SRC 75 T=
+   LOCAL-QUOTATION$ HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
-   CAP-ERR erru s" char at" CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-LOCAL-SHAPE habu: in ckt-lq: at 'char'" CONTAINS? TTRUE
    LOCAL-QUOTATION$ DIRECT-JSON-STDIN 70 T=
    {: outu2:n erru2:n :}
    outu2 0 T=
    CAP-ERR erru2 s\" \"code\":\"E-BAD-LOCAL-SHAPE\"" CONTAINS? TTRUE ;
 
 \ A parsing keyword outside its own state is refused by the loader and the check
-\ alike: `[char]` at top level, and `char` and `'` in a body. The checker
-\ refuses `[char]` and `'`; `char` in a body passes it, and the run stage's
-\ engine refuses it in prose, which --json-errors puts on stdout. Each leaves
-\ the lengths of the check's capture.
-: OUT-OF-STATE-RUNS ( ptr u8 n -- n n )
+\ alike: `[char]` at top level and `'` in a body. A body's `char` is the
+\ character literal `[char]` is (checker.f CHAR-LIT-TOK), so it is in state.
+: OUT-OF-STATE ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u HB-LOAD-SRC 70 T=
    {: outu:n erru:n :}
    CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   a u DIRECT-JSON-STDIN 70 T= ;
-
-: OUT-OF-STATE ( ptr u8 n -- )
-   OUT-OF-STATE-RUNS
-   {: outu:n erru:n :}
-   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE ;
-
-: OUT-OF-STATE-RUN ( ptr u8 n -- )
-   OUT-OF-STATE-RUNS
-   {: outu:n erru:n :}
-   erru 0 T=
-   CAP-OUT outu s" E-UNDEFINED: char" CONTAINS? TTRUE ;
+   a u DIRECT-JSON-STDIN 70 T=
+   {: outu2:n erru2:n :}
+   CAP-ERR erru2 s" E-UNDEFINED" CONTAINS? TTRUE ;
 
 \ A body binding a 65th local is refused by the loader at that local (rc 70),
 \ and the check refuses it the same way, with the checker's located
@@ -3296,7 +3285,7 @@ create BIG $2000 allot   variable BIG-U
    TICK-NAME$ s" 7" RAW-PRINTS
    LOCAL-QUOTATION
    s" [char] A ." OUT-OF-STATE
-   s" : CKT-OC ( -- n ) char A ;" OUT-OF-STATE-RUN
+   s" : CKT-OC ( -- n ) char A ; CKT-OC ." s" 65" RAW-PRINTS
    s" : CKT-OT ( -- n ) ' dup drop 1 ;" OUT-OF-STATE
    MANY-LOCALS
    s" char" LOCAL-NOMINAL
@@ -5752,11 +5741,19 @@ variable AGREE-ERR-U
    rc E-PROC-TIMEOUT <> if rc throw then
    label labelu CASE-HUNG ;
 
+\ A case whose asserts failed prints FAIL, naming how many failed.
 : CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns START-NS !
+   T-FAILURES {: fails0:n :}
    q catch {: rc:n :}
    label labelu rc CASE-THREW
-   s" PASS: " type label labelu type
+   T-FAILURES fails0 - {: fails:n :}
+   fails 0= if
+      s" PASS: " type label labelu type
+   else
+      s" FAIL: " type label labelu type
+      s"  - failed asserts: " type fails FMT:.INT
+   then
    s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / FMT:.INT s"  ms)" type cr ;
 
 \ --- package-owned caller: the checker's replay scopes start neutral --------
@@ -6738,7 +6735,8 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 \ check.f's packet comes from. With no global of the tail the engine's own
 \ lookup refuses the token first (rc 94); a global defined under both usings
 \ binds, and the checker refuses the reference as ambiguous, naming both
-\ packages there too, at tier 0 and at tier 1.
+\ packages, and the native compiler's refusal exits 70 under the caller's name,
+\ at tier 0 and at tier 1.
 : UAMB-LOAD$ ( n -- ptr u8 n )
    {: tier:n :}
    SB-RESET
@@ -6759,9 +6757,11 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 : UAMB-LOAD-CASE ( n ptr u8 n -- )
    {: tier:n label:ptr labelu:n :}
    tier UAMB-LOAD$ HB-LOAD-SRC rot drop {: erru:n rc:n :}
-   label labelu T-LABEL rc 67 T=
+   label labelu T-LABEL rc 70 T=
    label labelu T-LABEL
-   CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE ;
+   CAP-ERR erru s" 'ckt-uamb-a:CKT-UAMB-W', 'ckt-uamb-b:CKT-UAMB-W'" CONTAINS? TTRUE
+   label labelu T-LABEL
+   CAP-ERR erru s" ncomp: cannot compile CKT-UAMB-USE" CONTAINS? TTRUE ;
 
 : TEST-USING-AMBIGUOUS ( -- )
    SB-RESET UAMB-LINES s" ckt-uamb.f" REQ-WRITE
