@@ -21,8 +21,7 @@ create SLOTS
    NCOMP-DISPATCH:XT-CELL ,              0 ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 0 ,
-   \ This appended coordinate must be readable by the older capture host,
-   \ whose baked layout has no name for it yet.
+   \ Literal: the capture host's baked layout may lack the COMP-CELL name.
    $3838 ,                             0 ,   \ NCOMP-DISPATCH:COMP-CELL
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,

@@ -1,8 +1,8 @@
 \ Source buffers consumed during one native build. The driver binds OBSERVE to SOURCE-INPUT's
 \ selected reader before each loader handover. No filesystem probe occurs here.
 \ The emitter role covers whole observed prefix FILEs, including the manifest,
-\ through the last compiler file: compiler.f, then T0's t0.f on arm64
-\ (src/habu/native-runtime.f); a helper edit in one of those FILEs changes the role.
+\ through the last compiler file src/habu/native-runtime.f loads (COMPILER-DONE);
+\ a helper edit in one of those FILEs changes the role.
 require src/core/sha256.f
 require src/core/include.f
 require tools/build-target.f
@@ -69,8 +69,6 @@ public
    COMPILER-CONTEXT s" checker" CHECKER-DIGEST SNAPSHOT
    true CHECKER-KNOWN ! ;
 
-\ The role covers prefix FILEs through the last compiler file: compiler.f with
-\ its nested backend sources, then T0's t0.f on arm64 (src/habu/native-runtime.f).
 \ Later REPL, debugger and C2 rows cannot change the emitter used for FILEs.
 : COMPILER-DONE ( ptr u8 n ptr u8 n -- )
    SOURCE-ROOT:RELATIVE

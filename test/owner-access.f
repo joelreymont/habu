@@ -58,9 +58,8 @@ private
 \ source-file-run SOURCE-ROOT's; int-mark has no package row. Unchecked code
 \ compiles a call to an owned primitive at both tiers: the call runs, and each
 \ writer refuses its arguments itself (record 0 is no namespace row; an empty
-\ name) with exit 83. Both tiers' native compilers report the global
-\ trusted-only row's E-CAP-TRUSTED, as they report every unjudged verdict, and
-\ compile the call.
+\ name) with exit 83. Both tiers report the global trusted-only row's
+\ E-CAP-TRUSTED, as for every unjudged verdict, and compile the call.
 : UNCHECKED ( -- )
    s" 0 set-check : OA-SCOPE ( n n -- ) package-scope! ; 0 0 OA-AT OA-SCOPE"
    ENGINE-ERROR:SEAL-VIOLATION
@@ -86,14 +85,12 @@ private
    REACHES-REPORTED ;
 
 \ An internal primitive no package row types keeps the compile refusal, so
-\ unchecked code still needs a TRUSTED: boundary to call it: the native
-\ compiler refuses the call as undefined, as the JIT's lookup does.
+\ unchecked code still needs a TRUSTED: boundary to call it.
 : INTERNAL-ONLY ( -- )
    s" 0 set-check : OA-MARK ( n -- ) int-mark ;"
    s" E-UNDEFINED: int-mark" REJECTS ;
 
-\ Its tick is refused the same way at both tiers: the xt would run wherever the
-\ body hands it.
+\ Its tick is refused too: the xt would run wherever the body hands it.
 : INTERNAL-TICK ( -- )
    s" 0 set-check : OA-TICK ( -- ) ['] int-mark drop ;"
    s" E-UNDEFINED: int-mark" REJECTS

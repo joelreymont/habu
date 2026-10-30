@@ -131,9 +131,8 @@ create XE-EMPTY 1 allot
    s" v9:<<REJ>>" XE-HAS ;
 
 \ ---- `[']` of a using-imported bare name ------------------------------------
-\ A tick resolves its token as a call does: the dictionary, then the used
-\ packages' publics, then the undefined diagnostic. Both programs run in a
-\ child, so a regression is a red row, not a crashed suite.
+\ A tick resolves its token as a call does. Each program runs in a child, so a
+\ regression is a red row, not a crashed suite.
 70 constant XE-UNDEF-RC
 
 : XE-USING-PRELUDE ( -- )
@@ -181,8 +180,7 @@ create XE-EMPTY 1 allot
    s" ;package" XE-LINE
    SB$ ;
 
-\ The ambiguity refusal: the checker refuses the body (E-USING-AMBIGUOUS) at
-\ either native tier, and --load exits 70, as a refusal.
+\ The checker's ambiguity refusal, the same at either native tier.
 : XE-AMB-DIED ( -- )
    XE-EXITED @ TTRUE
    XE-RC @ 70 T=

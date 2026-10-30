@@ -3973,9 +3973,8 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
 : VISIT-COMMON$SRC ( -- ptr u8 n )
    s\" : K ( -- n ) 1 ;\n" ;
 
-\ DEFTYPE's converters, declared outside the subject: a subject's DEFTYPE is a
-\ use of the engine's word where the engine bakes deftype.f and no use where the
-\ require loads it, so the subject's uses would depend on the engine.
+\ DEFTYPE's converters, outside the subject: a subject's DEFTYPE counts as a use
+\ only where the engine bakes deftype.f, so its uses would depend on the engine.
 : VISIT-NOMINAL$SRC ( -- ptr u8 n )
    s\" require src/lib/type/deftype.f\nDEFTYPE CVT-ID-T\n" ;
 
