@@ -3,9 +3,10 @@
 \ generic int=n, old flag=f, float=r; concrete types render by name. The "render"
 \ half of the native sigparse/checker. Needs
 \ checker.f. Standalone has no emit/+!; chars go through a 1-byte buffer + type.
-\ Also the checker's sig RECORDER: certified words render "in -- out" to a buffer
-\ and append it to USIGS (installed via RECXT), so callers of certified words
-\ certify too.
+\ Also the checker's sig RECORDER (REC-SIG, installed via RECXT): a certified
+\ sig-less word records its inferred effect under its name, so callers of
+\ certified words certify too. Rendering only decides whether that effect is
+\ declarable (RQM, NLET).
 \
 \ REPAIR CLASSES. A refused definition's JSON packet names one refusal
 \ (checker.f REFUSAL@) with its code, verdict, repair_class and suggestion.
@@ -360,9 +361,9 @@ variable HRC  variable HRI  variable HRF  variable HRS
 \ to a bounded nesting depth (QDEPTH-MAX levels) with a cycle guard, so a deeply
 \ nested quot (combinator over combinator, typed loop/tile combinators) renders
 \ in full instead of capping the 3rd level at '?'.
-\ Gap2/3: quot-bearing sigs now RECORD as scheme-strings and round-trip, so
-\ combinator call sites (dip, keep) are checked against them. Only a genuine '?'
-\ (an unmodeled tag, via RQM) still blocks recording — see REC-SIG below.
+\ Quot-bearing effects record (REC-SIG below), so combinator call sites (dip,
+\ keep) are checked against them. Only a genuine '?' (an unmodeled tag, via
+\ RQM) blocks recording.
 \ A quotation's row renders its top RBUF-CAP values, as REND-COLLECT keeps a
 \ top-level row's: the renderer recurses once per value of a row, so a
 \ quotation leaving 10000 cells faulted the data stack (exit 102) and one
@@ -381,11 +382,13 @@ create RBIND QDEPTH-MAX cells allot
       1 +
    REPEAT drop 0 ;
 
+
 \ QREND ( x d mode -- ) : one recursive renderer. mode>0 renders a row
-\ bottom-to-top (space-separated) from its mode-th value down to its RBUF-CAP-th;
-\ mode=0 renders a type. RECURSE re-enters with the mode, so nested quots reuse
-\ it at depth d+1 up to QDEPTH-MAX.
-: QREND ( n n n -- ) {: x:n d:n mode:n :}
+\ bottom-to-top, each value followed by a space, from its mode-th value down to
+\ its RBUF-CAP-th; mode=0 renders a type. RECURSE re-enters with the mode, so
+\ nested quots reuse it at depth d+1 up to QDEPTH-MAX.
+: QREND ( n n n -- )
+   {: x:n d:n mode:n :}
    mode 0 > IF
       x R-RES dup TAG S-PUSH = IF                 \ ( node )
          dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (type-family.f header)
@@ -393,22 +396,23 @@ create RBIND QDEPTH-MAX cells allot
                swap P>TYPE T-RES MK-LOGICAL        \ read HRS before a nested run resets it
                HRS @ IF MK-STALE THEN              \ ( rest logical )
                swap dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
-                  d mode 1 + RECURSE 32 EMIT1
+                  d mode 1 + RECURSE
                ELSE drop THEN
                d 0 RECURSE
             ELSE                                  \ ( node rest ) lone/malformed -> '@' cell
                drop
                dup P>REST dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
-                  d mode 1 + RECURSE 32 EMIT1
+                  d mode 1 + RECURSE
                ELSE drop THEN
                P>TYPE d 0 RECURSE
             THEN
          ELSE
             dup P>REST dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
-               d mode 1 + RECURSE 32 EMIT1
+               d mode 1 + RECURSE
             ELSE drop THEN
             P>TYPE d 0 RECURSE
          THEN
+         32 EMIT1
       ELSE drop THEN
       EXIT
    THEN
@@ -430,8 +434,8 @@ create RBIND QDEPTH-MAX cells allot
            91 EMIT1 32 EMIT1  r Q>DIN d 1+ 1 RECURSE
            45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT d 1+ 1 RECURSE
            r QRET? IF
-              32 EMIT1 124 EMIT1 32 EMIT1
-              r Q>RIN d 1+ 1 RECURSE 45 EMIT1 45 EMIT1 32 EMIT1
+              124 EMIT1 32 EMIT1
+              r Q>RIN d 1+ 1 RECURSE  45 EMIT1 45 EMIT1 32 EMIT1
               r Q>ROUT d 1+ 1 RECURSE
            THEN
            93 EMIT1
@@ -482,6 +486,7 @@ create RBIND QDEPTH-MAX cells allot
       endof
       63 EMIT1
    endcase ;
+
 
 : REND-TYPE {: t:n :}  t 0 0 QREND ;
 create RBUF RBUF-CAP cells allot   variable RBN

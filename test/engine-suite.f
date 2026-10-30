@@ -1525,7 +1525,7 @@ RSD-BUF RSD-CAP DIAG-BUFFER!
 s" SC-QUOT mismatch diagnostic rejects" T-LABEL
 s" CBAD-SCQ-REND ( -- n ) T-SCQ-MK" CHECK-CANDIDATE! 0 T=
 s" SC-QUOT diagnostic renders quot rows" T-LABEL
-DIAG-BUFFER$ s" scq-fam<[ n-- n],f32>" CONTAINS? TTRUE
+DIAG-BUFFER$ s" scq-fam<[ n -- n ],f32>" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )
