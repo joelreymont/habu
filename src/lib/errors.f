@@ -1137,7 +1137,7 @@
 \ The HTTP/1.1 server (package HTTP, src/lib/net/http.f): -9340..-9349.
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST
--9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, BEARER:ISSUER! or TEST-ISSUER:CLIENT+ while serving, or BEARER:ADMIT? before ISSUER!
+-9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, BEARER:ISSUER! or TEST-ISSUER:CLIENT+ while serving, BEARER:ADMIT? before ISSUER!, or BEARER:TOKEN before CLIENT!
 -9341 constant E-HTTP-HANDLE      \ a request or response handle past its request, or one over another worker's slot, or a slot asked by a task that is no worker
 -9342 constant E-HTTP-WORKERS     \ a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms
 -9343 constant E-HTTP-CAPACITY    \ more hooks, headers or bound segments than a table holds, or a negative body length
@@ -1221,6 +1221,8 @@
 \ package T0-EMIT.
 \ A task to each job: -9620..-9629, minted in src/lib/crew.f, which owns
 \ package CREW.
+\ OAuth bearer tokens: -9630..-9639, minted in src/lib/net/bearer.f, which owns
+\ package BEARER.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,

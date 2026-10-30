@@ -4,11 +4,14 @@
 \ and this server, and whose exp and nbf hold (RFC 7515, 7517, 7519). The host
 \ states the issuer with ISSUER! before HTTP:START, guards a route with
 \ `req res BEARER:ADMIT? if ... then` and reads the caller's string claims with
-\ CLAIM$.
+\ CLAIM$. As a client, TOKEN gets a token from the token endpoint CLIENT! names,
+\ for the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of).
 \ STORAGE CLASS. PROCESS-WIDE: the issuer, written before HTTP serves; the key
 \ set, read and replaced under KEYS-LOCK and fetched over CURL outside it by
-\ one worker at a time; and tables indexed by HTTP:WORKER-SLOT holding each
-\ request's token and scratch. TASK-LOCAL: the admitted request, TASK:+USER rows.
+\ one worker at a time; tables indexed by HTTP:WORKER-SLOT holding each
+\ request's token and scratch; the client CLIENT! states, written before any
+\ TOKEN; and the cursor that reads a token answer, under ANSWER-LOCK.
+\ TASK-LOCAL: the admitted request, TASK:+USER rows.
 
 require src/lib/string.f
 require src/lib/span.f
@@ -59,10 +62,10 @@ MODULUS-OFF CRYPTO:RS256-MAX-BYTES + constant EXPONENT-OFF
 EXPONENT-OFF EXPONENT-CAP + constant SCRATCH-BYTES
 HTTP:MAX-WORKERS SCRATCH-BYTES * SPAN-BUFFER: SCRATCH
 
-\ A row to each HTTP worker; TOKEN and SIGNED borrow the request's header.
+\ A row to each HTTP worker; PRESENTED and SIGNED borrow the request's header.
 HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER OUTER JR:cursor       \ the key set's, while READER reads a key
-HTTP:MAX-WORKERS TYPED-BUFFER TOKEN SPAN:span<u8>
+HTTP:MAX-WORKERS TYPED-BUFFER PRESENTED SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER SIGNED SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER HEADER SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER CLAIMS SPAN:span<u8>
@@ -158,7 +161,7 @@ drop
    vu 7 <= if false exit then
    v 6 s" Bearer" STR=CI 0= if false exit then
    v 6 + c@ 32 <> if false exit then
-   v 7 + vu 7 - SPAN:MAKE SLOT TOKEN ! true ;
+   v 7 + vu 7 - SPAN:MAKE SLOT PRESENTED ! true ;
 
 \ The index of the first dot at or after from, else the text's length.
 : DOT ( ptr u8 n n -- n )
@@ -181,7 +184,7 @@ drop
 \ claims that are JSON objects repeating no member name (RFC 7519 §4), the
 \ header naming a kid.
 : OPEN ( -- bool )
-   SLOT TOKEN @ SPAN:$ {: t:ptr u:n :}
+   SLOT PRESENTED @ SPAN:$ {: t:ptr u:n :}
    t u 0 DOT {: d1:n :}
    d1 u = if false exit then
    t u d1 1+ DOT {: d2:n :}
@@ -261,13 +264,20 @@ drop
    JR:TOKEN JR:T-ARR <> if JR:CLOSE false exit then
    JR:FINISH true ;
 
+\ TRANSFER's answer in place of the second cell, the handle kept for catch.
+: TRANSFERRED ( CURL:handle n -- CURL:handle n ) drop dup TRANSFER ;
+
 \ The issuer's key set into FETCHED, outside KEYS-LOCK: ACCEPTED when it was
 \ answered whole with 200 and is a key set.
 : FETCH ( -- )
    false ACCEPTED !
    CURL:INIT
    MATCH CURL:init-result
-      ready OF {: h:CURL:handle :} h TRANSFER h CURL:CLEANUP ENDOF
+      ready OF {: h:CURL:handle :}
+         h -1 [: TRANSFERRED ;] catch {: code:n :}
+         h CURL:CLEANUP
+         code 0<> if 2drop code throw then
+         nip ENDOF
       failed OF drop -1 ENDOF
    ;MATCH FETCHED-U !
    FETCHED-U @ 0< if exit then
@@ -410,5 +420,212 @@ public
    PASSED @ 0= if s" " false exit then
    FROM @ HTTP:>REQUEST HTTP:SERVING? 0= if s" " false exit then
    CLAIMS$ name nu NOTE$ ;
+
+
+\ Getting a token.
+
+10000 constant TOKEN-TIMEOUT-MS     \ protective: the bound on the token endpoint's whole answer
+$10000 constant TOKEN-CAP           \ protective: the largest token answer read
+
+TYPED-VARIABLE ENDPOINT SPAN:span<u8>
+TYPED-VARIABLE CLIENT-ID SPAN:span<u8>
+TYPED-VARIABLE SECRET SPAN:span<u8>
+
+\ One cursor for every task, held under ANSWER-LOCK only while it reads a
+\ token answer, which takes no I/O.
+TYPED-VARIABLE ANSWER-CURSOR JR:cursor
+TASK:FACILITY ANSWER-LOCK
+ANSWER-LOCK TASK:FACILITY-INIT
+
+public
+
+\ How TOKEN asks: as the client itself (client credentials), or for the person
+\ whose token is the assertion (Entra On-Behalf-Of).
+ENUM grant
+   VARIANT own ;VARIANT
+   VARIANT for-person FIELD assertion ptr u8 FIELD len n ;VARIANT
+;ENUM
+
+-9630 constant E-TRANSFER           \ no answer from the token endpoint, a 5xx, or a 2xx without an access_token string
+-9631 constant E-REFUSED            \ the issuer refused with a 4xx; the BUF holds its answer
+private
+-9630 constant E-FIRST
+-9639 constant E-LAST
+public
+
+\ The token endpoint's URL, and the client id and secret this process presents
+\ there, written before any TOKEN, not while a TOKEN runs. The texts are
+\ borrowed and outlive every TOKEN, as literals do.
+: CLIENT! ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: url:ptr uu:n id:ptr iu:n secret:ptr su:n :}
+   url uu SPAN:MAKE ENDPOINT !
+   id iu SPAN:MAKE CLIENT-ID !
+   secret su SPAN:MAKE SECRET ! ;
+
+private
+
+\ RFC 3986's unreserved bytes, which a form value carries as they are.
+: UNRESERVED? ( n -- bool )
+   {: c:n :}
+   c [char] A >= c [char] Z <= and
+   c [char] a >= c [char] z <= and or
+   c [char] 0 >= c [char] 9 <= and or
+   c [char] - = or c [char] . = or c [char] _ = or c [char] ~ = or ;
+
+: HEX-DIGIT ( n -- n ) dup 10 < if [char] 0 + else 10 - [char] A + then ;
+
+\ A byte of a form value appended to the BUF, percent-encoded unless
+\ unreserved (RFC 6749 Appendix B).
+: ENCODED+ ( n ptr n -- )
+   {: c:n buf:ptr :}
+   c UNRESERVED? if c buf BUF:APPEND-BYTE exit then
+   [char] % buf BUF:APPEND-BYTE
+   c 4 rshift HEX-DIGIT buf BUF:APPEND-BYTE
+   c 15 and HEX-DIGIT buf BUF:APPEND-BYTE ;
+
+\ name=value appended to the BUF's form, after an & unless it is the first.
+: PAIR+ ( ptr u8 n ptr u8 n ptr n -- )
+   {: k:ptr ku:n v:ptr vu:n buf:ptr :}
+   buf BUF:LEN@ BUF:BLEN>N 0 > if [char] & buf BUF:APPEND-BYTE then
+   k ku BUF:N>BLEN buf BUF:APPEND-SPAN
+   [char] = buf BUF:APPEND-BYTE
+   vu 0 ?do v i + c@ buf ENCODED+ loop ;
+
+: CREDENTIALS+ ( ptr n -- )
+   {: buf:ptr :}
+   s" client_id" CLIENT-ID @ SPAN:$ buf PAIR+
+   s" client_secret" SECRET @ SPAN:$ buf PAIR+ ;
+
+\ A text TOKEN reads must not lie in the BUF it writes.
+: OUTSIDE ( ptr u8 n ptr n -- ) BUF:BORROWED? if E-BUF-BOUNDS throw then ;
+
+\ Room for a form within TOKEN-CAP: its secret never sits in storage a grow releases.
+: EMPTIED ( ptr n -- ) {: buf:ptr :} buf BUF:CLEAR buf TOKEN-CAP BUF:N>BLEN BUF:ENSURE ;
+
+\ The form TOKEN posts, written into the BUF: client credentials (RFC 6749
+\ 4.4.2) or On-Behalf-Of (RFC 7523 2.1 with Entra's requested_token_use).
+: FORM ( ptr u8 n grant ptr n -- )
+   {: scope:ptr su:n g buf:ptr :}
+   scope su buf OUTSIDE
+   g MATCH grant
+      own OF
+         buf EMPTIED
+         s" grant_type" s" client_credentials" buf PAIR+
+         buf CREDENTIALS+
+         s" scope" scope su buf PAIR+ ENDOF
+      for-person OF {: a:ptr au:n :}
+         a au buf OUTSIDE
+         buf EMPTIED
+         s" grant_type" s" urn:ietf:params:oauth:grant-type:jwt-bearer" buf PAIR+
+         buf CREDENTIALS+
+         s" assertion" a au buf PAIR+
+         s" scope" scope su buf PAIR+
+         s" requested_token_use" s" on_behalf_of" buf PAIR+ ENDOF
+   ;MATCH ;
+
+: WIPE ( ptr n -- )
+   {: buf:ptr :}
+   0 buf BUF:SPAN SPAN:FILL
+   buf BUF:CLEAR ;
+
+\ The BUF's form set as the request's body, then wiped from the BUF since the
+\ secret is in it; whether every setting took.
+: REQUESTED? ( CURL:handle ptr n -- bool )
+   {: h:CURL:handle buf:ptr :}
+   h buf BUF:SPAN$ BUF:BLEN>N CURL:BODY! OK?
+   buf WIPE
+   h ENDPOINT @ SPAN:$ CURL:URL! OK? and
+   h s" Content-Type: application/x-www-form-urlencoded" CURL:HEADER+ OK? and
+   h s" Accept: application/json" CURL:HEADER+ OK? and
+   h TOKEN-TIMEOUT-MS >MS CURL:TIMEOUT! OK? and ;
+
+\ The answer read into the BUF, which then holds exactly its bytes: its HTTP
+\ status, -1 for a failed transfer or one past TOKEN-CAP.
+: RECEIVED ( CURL:handle ptr n -- n )
+   {: h:CURL:handle buf:ptr :}
+   buf TOKEN-CAP BUF:N>BLEN BUF:GROW {: room :}
+   h room SPAN:$ >LEN CURL:PERFORM
+   buf BUF:CLEAR
+   MATCH CURL:fetch-result
+      response OF {: status:CURL:http-status got:len :}
+         room SPAN:$ drop got LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
+         status CURL:HTTP-STATUS>N ENDOF
+      truncated OF drop drop -1 ENDOF
+      failed OF drop -1 ENDOF
+   ;MATCH ;
+
+: POST ( CURL:handle ptr n -- n )
+   {: h:CURL:handle buf:ptr :}
+   h buf REQUESTED? if h buf RECEIVED else -1 then ;
+
+\ POST's status in place of the third cell, the handle and BUF kept for catch.
+: POSTED ( CURL:handle ptr n n -- CURL:handle ptr n n )
+   drop {: h:CURL:handle buf:ptr :} h buf h buf POST ;
+
+\ The form posted and the answer read into the BUF: its HTTP status, -1 when
+\ there is none. The handle is cleaned up on every exit, and a throw wipes the
+\ BUF too.
+: EXCHANGE ( ptr n -- n )
+   {: buf:ptr :}
+   CURL:INIT
+   MATCH CURL:init-result
+      ready OF {: h:CURL:handle :}
+         h buf -1 [: POSTED ;] catch {: code:n :}
+         code 0<> if 2drop drop h CURL:CLEANUP buf WIPE code throw then
+         nip nip h CURL:CLEANUP ENDOF
+      failed OF drop buf WIPE -1 ENDOF
+   ;MATCH ;
+
+\ Under ANSWER-LOCK: the access_token string of a JSON object text decoded
+\ into room, its length; -1 when the text is no such object.
+: ACCESS-TOKEN ( SPAN:span<u8> SPAN:span<u8> -- n )
+   {: text room :}
+   ANSWER-CURSOR text SPAN:$ JR:INIT
+   JR:NEXT JR:T-OBJ <> if JR:CLOSE -1 exit then
+   s" access_token" JR:FIND-KEY 0= if JR:CLOSE -1 exit then
+   JR:TOKEN JR:T-STR <> if JR:CLOSE -1 exit then
+   room SPAN:$ JR:STR {: got:n :} JR:CLOSE got ;
+
+\ ACCESS-TOKEN's answer in place of the third cell, the texts kept for catch.
+: KEPT ( SPAN:span<u8> SPAN:span<u8> n -- SPAN:span<u8> SPAN:span<u8> n )
+   drop {: text room :} text room text room ACCESS-TOKEN ;
+
+\ Under ANSWER-LOCK: ACCESS-TOKEN, and -1 for malformed JSON too.
+: PARSED ( SPAN:span<u8> SPAN:span<u8> -- n )
+   -1 [: KEPT ;] catch {: code:n :}
+   code 0= if {: text room got:n :} got exit then
+   2drop drop
+   code MALFORMED? if -1 exit then
+   code throw ;
+
+: PARSING ( R [ R -- S ] -- S )
+   ANSWER-LOCK TASK:GET [: ANSWER-LOCK TASK:RELEASE ;] finally ;
+
+\ The 2xx answer's access_token decoded into the BUF past the answer's bytes,
+\ which a decoded string never outgrows. E-TRANSFER for an answer without one.
+: ISSUED ( ptr n -- ptr u8 n )
+   {: buf:ptr :}
+   buf BUF:LEN@ {: u:NUM:byte-len :}
+   buf u BUF:GROW {: room :}
+   buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room [: PARSED ;] PARSING {: got:n :}
+   got 0< if E-TRANSFER throw then
+   room SPAN:$ drop got ;
+
+public
+
+\ An access token for the scope (for Entra a resource's `api://.../.default`)
+\ from the endpoint CLIENT! names, borrowed from the BUF until the caller writes
+\ to it again. E-TRANSFER for no answer, a 5xx, or a 2xx without an
+\ access_token string; E-REFUSED for a 4xx, the BUF then holding the issuer's
+\ answer. A scope or assertion lying in the BUF throws E-BUF-BOUNDS.
+\ E-HTTP-STATE before CLIENT!.
+: TOKEN ( ptr u8 n grant ptr n -- ptr u8 n )
+   {: scope:ptr su:n g buf:ptr :}
+   ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then
+   scope su g buf FORM
+   buf EXCHANGE {: status:n :}
+   status 200 >= status 300 < and if buf ISSUED exit then
+   status 400 >= status 500 < and if E-REFUSED throw then
+   E-TRANSFER throw ;
 
 ;package

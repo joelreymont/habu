@@ -3,6 +3,11 @@
 \ unsupported_grant_type, invalid_request for a repeated field and a wrong
 \ media type, On-Behalf-Of with a minted assertion and its invalid_grant
 \ refusals, /mint against MINT, and tools/test-issuer.f as a child process.
+\ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
+\ ADMIT? with the caller's claims, a refusal, an assertion inside the BUF, a
+\ closed port, and on /token-fault the form's exact bytes and the answers TOKEN
+\ refuses: a 500, a 2xx that is not JSON, one whose access_token is not a
+\ string and one past TOKEN-CAP.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -22,6 +27,7 @@ require src/lib/crypto/jws-fixture.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/test-issuer.f
+require src/lib/net/bearer.f
 
 package TEST-ISSUER-TEST
 private
@@ -65,6 +71,34 @@ TYPED-VARIABLE READER JR:cursor
 create MINTED-HEAD BUF:HDR-BYTES allot
 : MINTED ( -- ptr n ) MINTED-HEAD CELL-VIEW ;
 MINTED $100 BUF:N>BLEN BUF:INIT
+
+$80 constant URL-CAP
+URL-CAP BUFFER: ISSUER-URL
+variable ISSUER-URL-U
+URL-CAP BUFFER: KEYS-URL
+variable KEYS-URL-U
+URL-CAP BUFFER: ENDPOINT
+variable ENDPOINT-U
+URL-CAP BUFFER: FAULT-URL
+variable FAULT-URL-U
+variable PORT-KEPT                  \ the server's port, across its restart and stop
+CAP BUFFER: AUTH
+variable AUTH-U
+create GOT-HEAD BUF:HDR-BYTES allot
+: GOT ( -- ptr n ) GOT-HEAD CELL-VIEW ;
+GOT $100 BUF:N>BLEN BUF:INIT
+
+\ /token-fault's answers, by FAULT-MODE.
+0 constant ECHO                     \ keeps the form in POSTED and answers a token
+1 constant FAILING
+2 constant NOT-JSON
+3 constant OVERSIZED
+4 constant NOT-STRING
+variable FAULT-MODE
+CAP BUFFER: POSTED
+variable POSTED-U
+$10001 constant PAST-CAP            \ one byte past BEARER's TOKEN-CAP
+PAST-CAP BUFFER: OVERSIZE
 
 \ The end of a wait's WAIT-MS window, an absolute mono-ns.
 : DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
@@ -332,6 +366,110 @@ MINTED $100 BUF:N>BLEN BUF:INIT
    BODY$ c cu MINTED TEST-ISSUER:MINT T$= ;
 
 
+\ BEARER's client.
+
+: ISSUER$ ( -- ptr u8 n ) ISSUER-URL ISSUER-URL-U @ ;
+: KEYS-URL$ ( -- ptr u8 n ) KEYS-URL KEYS-URL-U @ ;
+: ENDPOINT$ ( -- ptr u8 n ) ENDPOINT ENDPOINT-U @ ;
+: FAULT-URL$ ( -- ptr u8 n ) FAULT-URL FAULT-URL-U @ ;
+
+\ The running server's port and URLs, kept for its restart and stop.
+: ADDRESSES ( -- )
+   HTTP:PORT PORT-KEPT !
+   s" " URL ISSUER-URL COPY ISSUER-URL-U !
+   s" /keys" URL KEYS-URL COPY KEYS-URL-U !
+   s" /token" URL ENDPOINT COPY ENDPOINT-U !
+   s" /token-fault" URL FAULT-URL COPY FAULT-URL-U ! ;
+
+\ A JSON token answer whose access_token runs past BEARER's TOKEN-CAP.
+: OVERSIZE-FILL ( -- )
+   S\" {\"access_token\":\"" OVERSIZE COPY {: hu:n :}
+   PAST-CAP 2 - hu ?do [char] a OVERSIZE i + c! loop
+   [char] " OVERSIZE PAST-CAP 2 - + c!
+   [char] } OVERSIZE PAST-CAP 1- + c! ;
+
+OVERSIZE-FILL
+
+\ The admitted caller's claim the body names, 404 when it has none.
+: CLAIM-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked answer BEARER:ADMIT? 0= if exit then
+   asked HTTP:BODY$ BEARER:CLAIM$ 0= if 2drop answer 404 HTTP:STATUS! exit then
+   {: v:ptr vu:n :} answer v vu HTTP:BODY! ;
+
+: FAULT-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   FAULT-MODE @ {: mode:n :}
+   mode FAILING = if answer 500 HTTP:STATUS! exit then
+   mode NOT-JSON = if answer s" not json" HTTP:BODY! exit then
+   mode OVERSIZED = if answer OVERSIZE PAST-CAP HTTP:BODY! exit then
+   mode NOT-STRING = if answer S\" {\"access_token\":1}" HTTP:BODY! exit then
+   asked HTTP:BODY$ POSTED COPY POSTED-U !
+   answer S\" {\"access_token\":\"fault\\/token\"}" HTTP:BODY! ;
+
+: AUTH+ ( ptr u8 n -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
+
+\ The token presented to /claim, asking for the named claim: the status, the
+\ claim in BODY.
+: CLAIM ( ptr u8 n ptr u8 n -- n )
+   {: t:ptr tu:n name:ptr nu:n :}
+   0 AUTH-U ! s" Authorization: Bearer " AUTH+ t tu AUTH+
+   s" /claim" OPEN {: h:CURL:handle :}
+   h AUTH AUTH-U @ CURL:HEADER+ OK
+   h s" Content-Type: text/plain" CURL:HEADER+ OK
+   h name nu CURL:BODY! OK
+   h FINISH ;
+
+: UP ( -- ptr u8 n ) s" api://up/.default" ;
+: OWN-TOKEN ( -- ptr u8 n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
+: FAULT-TOKEN ( -- ptr u8 n )
+   s" api://zen/.default" s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
+: FAULT-REFUSED ( -- ) [: FAULT-TOKEN 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
+
+: BEARER-GRANTS ( -- )
+   s" TOKEN before CLIENT! is E-HTTP-STATE" T-LABEL
+   [: OWN-TOKEN 2drop ;] E-HTTP-STATE TTHROWSQ
+   ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
+   s" TOKEN's client credentials token is admitted, azp the client" T-LABEL
+   OWN-TOKEN s" azp" CLAIM 200 T=
+   BODY$ s" app" T$=
+   s" TOKEN for a person is admitted with the assertion's oid" T-LABEL
+   s" app" LATER ASSERT
+   UP ASSERTION$ BEARER-GRANT:for-person GOT BEARER:TOKEN s" oid" CLAIM 200 T=
+   BODY$ s" user-1" T$=
+   s" a wrong secret is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
+   ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
+   [: OWN-TOKEN 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_client\"}" T$=
+   s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
+   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
+
+: BEARER-FAULTS ( -- )
+   FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!
+   s" TOKEN posts the On-Behalf-Of form percent-encoded and decodes the token" T-LABEL
+   ECHO FAULT-MODE !
+   FAULT-TOKEN s" fault/token" T$=
+   FORM-RESET
+   s" grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer" FORM+
+   s" &client_id=app&client_secret=s3cr%26t%2B1&assertion=a.b-c_d~e" FORM+
+   s" &scope=api%3A%2F%2Fzen%2F.default&requested_token_use=on_behalf_of" FORM+
+   POSTED POSTED-U @ FORM$ T$=
+   s" a 500 is E-TRANSFER" T-LABEL
+   FAILING FAULT-MODE ! FAULT-REFUSED
+   s" a 200 that is not JSON is E-TRANSFER" T-LABEL
+   NOT-JSON FAULT-MODE ! FAULT-REFUSED
+   s" a 200 whose access_token is not a string is E-TRANSFER" T-LABEL
+   NOT-STRING FAULT-MODE ! FAULT-REFUSED
+   s" a 200 past TOKEN-CAP is E-TRANSFER" T-LABEL
+   OVERSIZED FAULT-MODE ! FAULT-REFUSED ;
+
+\ Run once the server has stopped: its port is closed.
+: BEARER-UNREACHED ( -- )
+   s" an endpoint on a closed loopback port is E-TRANSFER" T-LABEL
+   ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
+   [: OWN-TOKEN 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
+
+
 \ The tool's child process.
 
 \ The child's stdout read as far as it has written; true once a line ended or
@@ -381,14 +519,24 @@ MINTED $100 BUF:N>BLEN BUF:INIT
    out-r FD>N close ;
 
 
+\ BEARER:ISSUER! names this server's URL and is refused while HTTP serves, so
+\ the server starts once to take a port and serves again on it.
 : SERVE-CASES ( -- )
    AIO:START
    s" app" s" s3cr&t+1" TEST-ISSUER:CLIENT+
    HTTP:ROUTES-RESET
    TEST-ISSUER:ROUTES
+   s" POST" s" /claim" [: CLAIM-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /token-fault" [: FAULT-ROUTE ;] HTTP:ROUTE
    LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
-   DISCOVERY KEYS CLIENT-CREDENTIALS CLIENTS REQUESTS OBO MINTS
+   ADDRESSES
    HTTP:STOP
+   ISSUER$ s" api://up" KEYS-URL$ BEARER:ISSUER!
+   LOOPBACK PORT-KEPT @ TWO-WORKERS IDLE-MS HTTP:START
+   DISCOVERY KEYS CLIENT-CREDENTIALS CLIENTS REQUESTS OBO MINTS
+   BEARER-GRANTS BEARER-FAULTS
+   HTTP:STOP
+   BEARER-UNREACHED
    TOOL
    AIO:STOP ;
 
