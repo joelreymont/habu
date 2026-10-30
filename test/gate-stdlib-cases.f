@@ -1200,6 +1200,11 @@ SUITE crew
    src/lib/crew-test.f
 ;SUITE
 
+\ TEST-ISSUER's routes on a loopback port and tools/test-issuer.f as a child.
+SUITE test-issuer
+   src/lib/net/test-issuer-test.f
+;SUITE
+
 \ The HTTP listener through an accept refused for want of descriptors. Its own
 \ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
 SUITE http-accept-starved
