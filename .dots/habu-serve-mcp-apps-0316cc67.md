@@ -1,0 +1,9 @@
+---
+title: Serve MCP apps and OAuth discovery to ChatGPT
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-10-31T00:21:19.203994+02:00"
+---
+
+tim 2026-10-31 for Maki (ChatGPT as Maki's genie and UI; plan ~/Downloads/tender_zen_chatgpt_integration_plan.md, Tender first, Maki section 15); Tender's lane A needs the same pieces, so one design. Needs, checked by tim against OpenAI's and the MCP specs: (1) MCP Apps UI: resources/list and resources/read serving a ui:// HTML resource, mimeType text/html;profile=mcp-app (ext-apps spec 2026-01-26); (2) tool definition _meta: ui.resourceUri, ui.visibility ([model], [app] or both; host-enforced, the server cannot tell an app call from a model call, ext-apps issue 746), ui.csp {connectDomains, resourceDomains, frameDomains}, openai/fileParams; annotations readOnlyHint, destructiveHint, openWorldHint all required by OpenAI (Habu emits only readOnlyHint); (3) tool result _meta beside content and structuredContent (OpenAI: _meta goes only to the component; structuredContent reaches the model), bulk UI data in _meta; (4) MCP:VISIBLE! hides a tool from tools/list entirely, but an app-only tool must be listed with ui.visibility [app]; (5) RFC 9728 protected-resource metadata and a 401 WWW-Authenticate: Bearer resource_metadata=... (BEARER's challenge is bare Bearer); (6) Entra: ChatGPT refuses an authorization server whose metadata lacks S256 in code_challenge_methods_supported; Entra v2 has no RFC 8414 document, so a metadata document or a broker is needed (open gate); Entra v2 aud is the API client-ID GUID; a token-issuing broker means a second issuer beside Zen's OBO tokens while BEARER takes one. ChatGPT accepts the stateless JSON-response form and both protocol eras: H1's transport fits. Design (Fable Plan) after reading the MCP H + Zen H integration tree (carl-int); public words go to Joel.
