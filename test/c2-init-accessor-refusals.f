@@ -60,7 +60,7 @@ public
    then
    s" the private unpack helper is not callable at tier one" T-LABEL
    s" 1 set-tier package C2IA : BAD ( read-view<a,b,u8> -- n n ) SHELF-SOURCE-INIT-UNPACK ; ;package"
-      67 REFUSED? TTRUE
+      70 REFUSED? TTRUE
    tier@ 0= if
       s" the private receiver helper is not callable at tier zero" T-LABEL
       s" package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- ptr u8 n ) SHELF-INIT-VIEW-UNPACK ; ;package"
@@ -68,7 +68,7 @@ public
    then
    s" the private receiver helper is not callable at tier one" T-LABEL
    s" 1 set-tier package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- ptr u8 n ) SHELF-INIT-VIEW-UNPACK ; ;package"
-      67 REFUSED? TTRUE
+      70 REFUSED? TTRUE
    s" an internal helper cannot be exported at tier zero" T-LABEL
    s" package C2IA public EXPORT SHELF-SOURCE-INIT-UNPACK ;package"
       70 REFUSED? TTRUE

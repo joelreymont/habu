@@ -2109,13 +2109,9 @@ variable ES-CPX-ND
 TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
 TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
 TRUSTED: ES-CPX-BAD-RUN ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      ['] ES-CPX-BAD-EVAL catch E-NCOMP-VERDICT T=
-   else ES-CPX-BAD$ evaluate then ;
+   ['] ES-CPX-BAD-EVAL catch E-NCOMP-VERDICT T= ;
 TRUSTED: ES-CPX-BAD-EXT-RUN ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      ['] ES-CPX-BAD-EXT-EVAL catch E-NCOMP-VERDICT T=
-   else ES-CPX-BAD-EXT$ evaluate then ;
+   ['] ES-CPX-BAD-EXT-EVAL catch E-NCOMP-VERDICT T= ;
 1 DIAG-QUIET +!
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
 ES-CPX-BAD-RUN

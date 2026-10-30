@@ -58,13 +58,13 @@ private
 : CALLS ( -- )
    s" the bare generated pair is undefined outside OP" T-LABEL
    s" package OPQA public : FA ( -- n ) 7 BOX-MAKE BOX-UNMAKE ; ;package"
-   s" E-UNDEFINED: BOX-MAKE" REFUSED? TTRUE
+   s" E-UNDEFINED habu: in fa: undefined word 'BOX-MAKE'" REFUSED? TTRUE
    s" no constructor namespace is reserved" T-LABEL
    s" package OPQA public : FB ( -- n ) 7 OP-BOX:MAKE OP-BOX:UNMAKE ; ;package"
-   s" E-UNDEFINED: OP-BOX:MAKE" REFUSED? TTRUE
+   s" E-UNDEFINED habu: in fb: undefined word 'OP-BOX:MAKE'" REFUSED? TTRUE
    s" the generated pair is not a public word of OP" T-LABEL
    s" package OPQA public : FC ( -- n ) 7 OP:BOX-MAKE OP:BOX-UNMAKE ; ;package"
-   s" E-UNDEFINED: OP:BOX-MAKE" REFUSED? TTRUE ;
+   s" E-UNDEFINED habu: in fc: undefined word 'OP:BOX-MAKE'" REFUSED? TTRUE ;
 
 : REACH ( -- )
    s" another package cannot export the constructor" T-LABEL
