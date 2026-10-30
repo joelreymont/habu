@@ -1,6 +1,6 @@
 ---
 title: Drop the object sections only the replay read
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-30T10:48:15.315088+02:00"

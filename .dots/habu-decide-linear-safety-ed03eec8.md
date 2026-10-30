@@ -1,0 +1,9 @@
+---
+title: Decide linear safety from the body
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-10-30T16:53:48.377392+02:00"
+---
+
+Problem: tim's body-rule work decides a definition's linear safety from its body and carries the fetch R1 fix; it is not finished and not handed in. The commits stay in place in tim's workspaces: tim-body kkwqwxqr 96007795 "Decide linear safety from the body", upxyuppz f546f0cd "Grow the forall input worklist", psuuowlm ab94e3e0 "Check a DOES> body's effect as a definition's", ntswupry 874db28a "Drop the unused LAYOUT-LINEAR?"; tim-r1 lxtqyktt d5ac084c "Read undeclared storage as raw at a fetch"; tim-fetch zytsvzrw c76b30d5, tlxwxomo 1a58865f "Track the free-typed fetch through an untyped pointer"; held: tim-lintok, tim-linvar, tim-taint, tim-rung. The latest Opus re-review (12, /Users/joel/Work/maki/.jj-ws.noindex/tim/.out/chat-tools/rereview12-body-report.md; probes in .jj-ws.noindex/tim-body/.out/rereview12/) says REVISE: kkwqwxqr's class store is quadratic when members have var cores (N=4000 joins 13.5 s against 0.40 s before), an arm-order split (UC-PLACE binds z at depth 0 when its partner binds), trials read a partner var unbound (U-FORCE skips classes in a trial), refusal rows render the wrong terms; psuuowlm skips CHECK-DEPTH-FITS for a DOES> clause (256 declared cells die 'min-in exceeds record field' rc 76); upxyuppz ACCEPT. Acceptance: the re-review findings fixed, an Opus re-review ACCEPT on the whole stack, handed to carl, landed with the full suite and two-generation convergence; habu-bind-forge-quantifiers-d5b6d787 and habu-refuse-linear-duplication-a9f7e5af follow it. Files: src/core/checker.f and the commits' tests. Verify: the re-review probes; bin/hb --load test/run.f; convergence. Depends: none. Ownership: tim's workspaces named above. Claim: agent=tim (work in place, later).

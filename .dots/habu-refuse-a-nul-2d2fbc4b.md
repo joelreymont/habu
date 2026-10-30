@@ -1,9 +1,0 @@
----
-title: Refuse a NUL inside a program path or cwd
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-10-30T12:42:29.433656+02:00"
----
-
-Problem: src/lib/process.f:214-222 PROC-ZCOPY checks the span's bounds and appends a terminating NUL without checking the bytes, so a NUL inside the span cuts it at the child: CMD's program path (process-command.f:345, length checked only), the cwd (:270), PROC-PATHZ (process.f:224, PROC-ARGV-PREPARE's path) and PROC-ARGV+'s row copy (process-argv.f:94) all go through it. spawn.f's NUL check never sees the cut: REQUEST (process-command.f:392) passes PATHZ dup ZLEN. Probe: CMD:RUN-RC with path '/bin/echo\0-x' runs /bin/echo, rc 0 (.jj-ws.noindex/tim-argnul/.out/review/new/probe-path.f; found by the review of tim's argument lane). Acceptance: PROC-ZCOPY refuses a span holding a NUL with E-PROC-OUTPUT before any byte is copied, in the shape of its length refusals, which covers the program path, the cwd and PROC-ARGV+'s row at once; rows in src/lib/process-command-test.f (a NUL program path and a NUL cwd through CMD) and src/lib/process-test.f or process-argv-test.f (a NUL path through PROC-PATHZ) that fail without the change and pass with it; habu-refuse-a-nul-017181ce then keeps only CMD:ARG+ (its PROC-ARGV+ half is this check). Files: src/lib/process.f PROC-ZCOPY, src/lib/process-command-test.f, src/lib/process-test.f or process-argv-test.f. Verify: hb --load src/lib/process-command-test.f </dev/null; hb --load src/lib/process-test.f </dev/null (bin/hb in the workspace); hb --load tools/check.f src/lib/process.f </dev/null. Depends: none; same writer family as habu-refuse-a-nul-017181ce, landed in tim's order. Ownership: src/lib/process.f PROC-ZCOPY and the named tests. Claim: unassigned (tim takes it after habu-refuse-a-nul-4bfde9f3 and habu-refuse-a-nul-017181ce, hand-in through review).

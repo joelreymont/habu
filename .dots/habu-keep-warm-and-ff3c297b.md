@@ -1,9 +1,0 @@
----
-title: Keep warm and cold apps equal after a rolled-back compile
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-10-30T02:09:55.791031+02:00"
----
-
-Problem: test/native-file-types-e2e.f ROLL-HIT-CASE assert 128 (WARM-HASH 32 COLD-HASH 32 T$= at :483) fails on master whenever the rolled-back STRUCTURE fixture changes size (1, 2, 5, 20, 60 or 150 FIELDs added: tim's variants, evidence in .jj-ws.noindex/tim-stdio/.out/nft/ with roll-only.f, an 11 s repro); master passes only at the fixture's exact size. About 415935 bytes differ, all in __text; after APP-BUILD-STARTUP the cold image's cells read 0x0110eb38 where the warm image's read 0x0110ab38, so the cold build ends 0x4000 higher; a 2-bit map near 0x9e23ee is all 0xff in the cold image. Inference: on a cache hit the definition cache (tools/native-unit-object.f ~:186-198, SEGMENT-CLOSE ~:1043; tools/native-definition-cache.f) does not reproduce the storage a rolled-back compile allotted. Triggered in tim's stdio lane by genio-core.f requiring src/lib/fd.f (128 to 129 builder files). Rule: warm == cold byte for byte stands; the fixture is never resized or special-cased; the fix goes to the responsible layer, decided by observation: either the rollback must release what the abandoned compile allotted (engine) or the compile keeps it and the cache must reproduce it on a hit. Acceptance: one added ROLL-HIT case built from the fields variants fails before and passes after; the e2e test and the full suite pass; two-generation convergence if the engine changes. Files: tools/native-unit-object.f, tools/native-definition-cache.f or the engine's rollback, test/native-file-types-e2e.f. Verify: test/native-file-types-e2e.f; bin/hb --load test/run.f. Depends: none. Ownership: the cache and the rollback. Claim: agent=tim worker workspace=.jj-ws.noindex/tim-rollhit.

@@ -1,6 +1,6 @@
 ---
 title: "Compile while tasks run: per-thread W^X"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-29T14:30:00.007048+02:00"
@@ -11,3 +11,5 @@ Lift task.f 'no compilation while a task is live' ($4F refusal on TASKS-LIVE-CEL
 Spike facts (carl-wx/.out/wx-facts.md, macOS arm64): 147 region-writing call lines in 90 definitions, all running from engine __text, none from inside the region, so MAP_JIT per-thread toggle (A) is usable. A: MAP_JIT maps under hb's identity with no entitlement; two-thread proof 1000 rounds clean; a write-enabled thread SIGBUSes on region code; toggle 175-188 ns per on/off pair versus 7.4-9.8 us for today's mprotect flip of one 64K unit. B (mach_vm_remap alias): also clean; the hinted RX view keeps the BL-range assertion; 11 sites compute a store address from a code address and would need the alias delta. Design: Fable Plan running, lane list for arm64 macOS to follow.
 
 Design (Fable, carl-wx/.out/wx-design.md), adopted by carl: dual mapping on every target (B), not the macOS-only per-thread toggle: an RX view at today's DBASE/CP/xts and an RW alias, every region store goes through alias = rx + REGION-ALIAS:DELTA-CELL, no protection change after boot, the band flip machinery deleted. The main thread is the only compiler (a task, exposed region or callback thread still exits $4F); cp!/ndict!/seed-ndict! stay refused while tasks are live; a reader-side ISB before indirect calls (BCALLABLE, defer stub, callback thunk, task entry). A forked child gets private region pages (inherit-copy RX + fresh alias if the probe holds, else re-own by copy). No new public word; the refused-while-live public words become refused-from-a-task. Lanes, stacked in carl-wx, land whole after a Fable feature review: W1 two views + delta + fork + code-band stores (brief .out/brief-wx-1.md, running); W2 remaining store sites; W3 delete the flips, install --force proves completeness, boot measurements; W4 lift the refusal with task-test rows. Then Linux arm64, then x86-64.
+
+Landed for arm64 (macOS and Linux): 679c7755 and efc74616. Remaining: habu-lift-the-task-754c94f6 (x86-64) and habu-copy-main-s-aa727a97 (Linux task fork extent). Claim: unassigned.
