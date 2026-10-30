@@ -1682,8 +1682,8 @@ using NDEFINITION
 private
 
 \ ---- the runtime compiler ----------------------------------------------------
-\ T0:INSTALL stores T0:COMPILE in the cell the tier 1 `:` dispatches through
-\ (T0:DISPATCH!), with no fallback to tier 1, and stores NDEFINITION's
+\ T0:INSTALL stores T0:COMPILE in the cell the tier 0 `:` dispatches through
+\ (T0:DISPATCH!), with no fallback to the JIT, and stores NDEFINITION's
 \ CALLBACK-STUB! and CALLBACK-STUB@ in the cells CALLBACK:
 \ (src/lib/ffi-callback.f) arms and reads its C entry through. The definition
 \ after a CALLBACK-STUB! seals with NCBSTUB armed (src/habu/t0-emit.f THE
@@ -1858,10 +1858,10 @@ public
    NHOST:SOURCE-ABANDON
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  rc REFUSED$ SETTLE-UNIT ;
 
-\ Store a compile entry in NCOMP-DISPATCH:XT-CELL, the image-ABI cell the
-\ tier 1 `:` dispatches through.
+\ Store a compile entry in NCOMP-DISPATCH:COMP-CELL, the image-ABI cell the
+\ tier 0 `:` dispatches through.
 : DISPATCH! ( [ ptr u8 n -- ] -- )
-   data-base NCOMP-DISPATCH:XT-CELL + xt! ;
+   data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
 
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!

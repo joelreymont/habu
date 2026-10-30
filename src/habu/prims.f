@@ -867,7 +867,7 @@ EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR, DNAME-CELL
 \ beside DKIND:ADDR for a variable, or DKIND:CAST) in [16] and the wid in
 \ [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear;
-\ DEF-TIER-CELL takes TIER-CELL; LASTC-CELL waits for the body (def-close, def-create). It refuses another kind, wid -1
+\ DEF-TIER-CELL takes the tier latch (TIER-LATCH); LASTC-CELL waits for the body (def-close, def-create). It refuses another kind, wid -1
 \ or -2 and CP at or past the code ceiling. At tier 0 it opens the record only: the JIT's
 \ own head (its frame and resets) is not this row's.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
@@ -894,8 +894,8 @@ EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL. Before
 \ PEND-CELL clears, LASTC-CELL takes the record for a nonzero kind other than
 \ DKIND:CAST, the record `does-patch` reads. It refuses when
-\ no definition is pending and when the pending one is not the native tier's
-\ (DEF-TIER-CELL other than 1), as ndict-append does.
+\ no definition is pending and when the pending one is not a native compiler's
+\ (DEF-TIER-CELL zero), as ndict-append does.
 EPRIM: def-close EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER def-close ECLOSE-PRIVATE

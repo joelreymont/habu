@@ -1678,7 +1678,7 @@ variable LDIE
    LBL LBL LBL LBL LBL {: parent:label owner:label floor-ok:label bad:label done:label :}
    A NDICT CMP,  C-NE bad BCOND,
    14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,
-   14 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  14 1 CMPI,  C-NE bad BCOND,
+   14 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  14 bad CBZ,
    C DREC MOVZ,  B A C MUL,  B DBASE B ADD,
    14 DATA PEND-CELL LDR,  14 bad CBZ,
    14 B CMP,  C-EQ parent BCOND,
@@ -4395,8 +4395,9 @@ public
    done LBL, ;
 
 \ set-tier ( n -- ): select which compiler the `:` handlers dispatch to: 0 =
-\ tier 0, 1 = tier 1, the IR pipeline behind NCOMP-DISPATCH:XT-CELL (the rule
-\ is at layout.f NCOMP-DISPATCH:TIER-CELL). A primitive because the cell is in
+\ tier 0, the compiler in NCOMP-DISPATCH:COMP-CELL or the JIT on an engine with
+\ none; 1 = tier 1, the IR pipeline behind NCOMP-DISPATCH:XT-CELL (the rule is
+\ at layout.f NCOMP-DISPATCH:TIER-CELL). A primitive because the cell is in
 \ the engine header band and `1 set-tier` must work on a source file's first
 \ line, before any of the driver's definitions exist. Anything but 0 or 1
 \ dies: a tier is a deliberate choice, not a truthy flag.
@@ -4438,6 +4439,15 @@ public
    noquery LBL,  11 0 MOVZ,  12 0 MOVZ,
    done LBL, ;
 
+\ Load the latch the next `:` takes into register n: 1 for tier 1, 2 for tier
+\ 0 through NCOMP-DISPATCH:COMP-CELL, 0 for the JIT. Only register n changes.
+: TIER-LATCH ( n -- ) {: r:n :}
+   LBL {: done:label :}
+   r DATA NCOMP-DISPATCH:TIER-CELL LDR,  r done CBNZ,
+   r DATA NCOMP-DISPATCH:COMP-CELL LDR,  r done CBZ,
+   r 2 MOVZ,
+   done LBL, ;
+
 \ A prospective answer at this boundary: 0 means checking first, 1 means the
 \ trusted gate would run first. The verifier captures it before loading tools.
 : BTICKORDER ( -- )
@@ -4446,7 +4456,7 @@ public
       9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,
       tier B,
    next LBL,
-      9 DATA NCOMP-DISPATCH:TIER-CELL LDR,
+      9 TIER-LATCH
    tier LBL,
    9 checking CBNZ,
    C-TICK-QUERY

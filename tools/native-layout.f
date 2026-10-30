@@ -23,6 +23,7 @@ create SLOTS
    \ whose baked layout has no names for them yet.
    $3810 ,                             0 ,   \ NCOMP-DISPATCH:CALLBACK-STUB-CELL
    $3818 ,                             0 ,   \ NCOMP-DISPATCH:CALLBACK-ENTRY-CELL
+   $3838 ,                             0 ,   \ NCOMP-DISPATCH:COMP-CELL
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
    APP-ENTRY:XT-CELL ,                  0 ,

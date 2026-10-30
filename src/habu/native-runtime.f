@@ -117,13 +117,20 @@ s" src/core/internal-mark.f" required
 \ The checker symbols the capture keeps, decided against the sealed dictionary.
 s" src/core/checker-surface.f" required
 s" src/compiler/native/compiler.f" required
+
+package CHECKER-REG
+public
+\ The target's own installs, run by SEAL and filled by src/habu/runtime-x64.f
+\ on x86-64 and src/habu/runtime-arm64.f on arm64.
+defer SEAL-TARGET ( -- )
+;package
+
 package NATIVE-RUNTIME
 
 \ T0 is released on arm64 first, so the x86-64 engine does not bake it yet.
 : LOAD-T0 ( -- )
    HB-TARGET-LINUX-X86-64? if exit then
-   s" src/habu/t0-arm64.f" required
-   s" src/habu/t0.f" required ;
+   s" src/habu/runtime-arm64.f" required ;
 
 ' LOAD-T0
 ;package
@@ -169,13 +176,6 @@ s" src/core/top-row.f" required
 s" src/lib/c2-owner.f" required
 s" src/lib/executable-build.f" required
 
-package CHECKER-REG
-public
-\ The target's own installs, run by SEAL on x86-64 and filled there by
-\ src/habu/runtime-x64.f; no other target loads a filler or calls it.
-defer SEAL-TARGET ( -- )
-;package
-
 package NATIVE-RUNTIME
 
 \ The Habu loop is x86-64's evaluate, startup and command line; ARM64 keeps
@@ -220,7 +220,7 @@ TRUSTED: BIND-OWNER ( -- )
 
 : SEAL ( -- )
    NCOMP:INSTALL
-   HB-TARGET-LINUX-X86-64? if SEAL-TARGET then
+   SEAL-TARGET
    BIND-OWNER
    SEAL-CAPTURE ;
 

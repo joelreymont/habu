@@ -18,7 +18,7 @@ public
 \ On an older kernel the immediate hook-time TAKE remains authoritative.
 : NATIVE-ARM ( n n -- bool ) {: hook:n take:n :}
    data-base PEND-OFF + @ 0= if 0 0= 0= exit then
-   data-base DEF-TIER-OFF + @ 1 <> if 0 0= 0= exit then
+   data-base DEF-TIER-OFF + @ 0= if 0 0= 0= exit then
    data-base TRUSTED-OFF + @ 0 <> if 0 0= 0= exit then
    check@ hook <> if 0 0= 0= exit then
    BODY-CELLS dup NULL-PTR = if drop 0 0= 0= exit then

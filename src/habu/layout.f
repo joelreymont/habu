@@ -865,7 +865,8 @@ $3868 constant ARENA-CELL
 \ the x86-64 link restores it on every boot (src/habu/link-x64.f FIXED-CELLS).
 \ An ARM64 record, and an x86-64 build with no captured runtime,
 \ keep the assembly body and never read the cell. EVALUATE-CELL follows the
-\ three-cell origin record ($3820..$3837) and the free cells $3838..$3847.
+\ three-cell origin record ($3820..$3837), NCOMP-DISPATCH:COMP-CELL ($3838)
+\ and the free cells $3840..$3847.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL
@@ -911,29 +912,32 @@ $358 constant XT-CELL
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
 \ The optional three-cell origin record follows at $3820..$3837, read through
-\ the three-cell native-origin-cell getter; $3838..$3847 is free.
+\ the three-cell native-origin-cell getter.
+\ Tier 0's compiler entry: T0:COMPILE on an arm64 engine, installed by
+\ CHECKER-REG:SEAL through src/habu/runtime-arm64.f. Zero on an engine with no
+\ compiler, where tier 0 is the JIT. $3840..$3847 is free.
+$3838 constant COMP-CELL
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
-\   0 = tier 0, the legacy JIT `:`/`;` compiler (LCOMPILE and its closure).
-\       Every `--load` and the REPL. It is the value a fresh DATA page starts
-\       at, so an engine that selects nothing runs the JIT.
+\   0 = tier 0: the compiler in COMP-CELL, or the legacy JIT (LCOMPILE and its
+\       closure) when COMP-CELL is zero. Every `--load` and the REPL; a fresh
+\       DATA page starts at 0.
 \   1 = tier 1, the IR pipeline reached through XT-CELL (NCOMP:COMPILE).
 \       Selected deliberately with `1 set-tier`. An executable build compiles
 \       at its caller's tier; the engine build selects tier 1 for its target,
 \       whose capture requires native code.
 \
-\ Tier 1 must be selected BEFORE the first definition on a tier-1 path is
-\ evaluated: NCOMP's READ-PRIOR exits on GLUE-UNKNOWN when it meets a body the
-\ JIT compiled, so a tier-1 build has to be a fresh load and never an image laid
-\ over a tier-0-loaded prefix. Selecting it at the top of the path, ahead of any
-\ source, makes that hold by construction rather than by review.
+\ On an engine whose tier 0 is the JIT, tier 1 must be selected BEFORE the
+\ first definition on a tier-1 path: NCOMP's READ-PRIOR exits on GLUE-UNKNOWN
+\ when it meets a body the JIT compiled.
 \
 \ Read by emitted code as `DATA TIER-CELL LDR` (12-bit scaled immediate), so it
 \ stays 8-aligned and below $7FF8 -- see the measurement recorded at the AOT
 \ window cells further down this file.
 $370 constant TIER-CELL
-\ Latched at the colon; an immediate may only select the NEXT definition.
+\ Latched at the colon (0 JIT, 1 XT-CELL, 2 COMP-CELL); an immediate may only
+\ select the NEXT definition.
 $388 constant DEF-TIER-CELL
 \ The outer executable-build scope saves the caller's selection once and
 \ restores it when it closes; nested scopes only count depth.

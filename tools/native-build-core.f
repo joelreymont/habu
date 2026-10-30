@@ -59,8 +59,10 @@ variable PRIOR-ENGINE-ROOT-U
    \ Older hosts register the retired observer CODE cell even when it holds zero.
    \ Remove its declaration before translating the remaining fixed host rows.
    $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
-   \ Older hosts register the retired body-reuse reader cells after the
-   \ three-cell origin record.
+   \ After the three-cell origin record, older hosts register the retired
+   \ body-reuse reader cells and a T0 host registers NCOMP-DISPATCH:COMP-CELL.
+   \ The built engine installs COMP-CELL itself (runtime-arm64.f INSTALL-T0), so
+   \ dropping the host's rows loses nothing.
    $3838 2 cells ADDRESS-CELLS:REMOVE-XT-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
    ADDR-ROWS 0 ?do

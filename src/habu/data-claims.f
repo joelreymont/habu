@@ -105,6 +105,7 @@ create TAB
    QXH-CELL                           1 cells                 CLAIM QXH-CELL
    VVAL-OFF                           VSMAX cells             CLAIM VVAL-STACK
    NCOMP-DISPATCH:XT-CELL             1 cells                 CLAIM NCOMP-XT-CELL
+   NCOMP-DISPATCH:COMP-CELL           1 cells                 CLAIM NCOMP-COMP-CELL
    NCOMP-DISPATCH:DECL-CELL           1 cells                 CLAIM NCOMP-DECL-CELL
    NCOMP-DISPATCH:TARGET-DECL-CELL    1 cells                 CLAIM NCOMP-TARGET-DECL-CELL
    NCOMP-DISPATCH:TIER-CELL           1 cells                 CLAIM NCOMP-TIER-CELL

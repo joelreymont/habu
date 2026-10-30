@@ -170,8 +170,7 @@ variable ML-NI
    s" src/core/internal-mark.f" ML-ENTRY+                      \ the seal pass over the pre-checker definitions
    s" src/core/checker-surface.f" ML-ENTRY+                    \ the checker symbols a capture keeps
    s" src/compiler/native/compiler.f" ML-ENTRY+                \ the compiler and the JIT
-   s" src/habu/t0-arm64.f" ML-ENTRY+                           \ T0's arm64 emitter, baked on arm64
-   s" src/habu/t0.f" ML-ENTRY+                                 \ T0, the tier 0 compiler, baked on arm64
+   s" src/habu/runtime-arm64.f" ML-ENTRY+                      \ the arm64 installs: T0 as tier 0's compiler
    s" src/os/linux/repl-term.f" ML-ENTRY+                      \ the REPL terminal, linux
    s" src/os/macos/repl-term.f" ML-ENTRY+                      \ the REPL terminal, macos
    s" src/os/linux-x86-64/repl-term.f" ML-ENTRY+               \ the REPL terminal, linux-x86-64

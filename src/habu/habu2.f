@@ -2866,23 +2866,30 @@ public
    0 2 MOVZ,  1 LUNSET LABEL@ ADR,  2 UNSET-MSG$ nip MOVZ,  NR-WRITE SYS,
    0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS, ;
 
-\ Load the optimizing compiler entry the AOT seed installed; a zero cell is a
-\ broken boot and dies with the seed-integrity code. Not a tier test: it runs
-\ only after TIER-CELL selected tier 1, so there is no fall-through to the JIT.
+\ Load the latched definition's compiler entry into x11: COMP-CELL for latch 2,
+\ else XT-CELL. A zero entry is a broken boot and dies with the seed-integrity
+\ code. It runs only for a nonzero latch, so there is no fall-through to the JIT.
+\ Only x11 and the flags change.
 : LOAD ( -- )
-   LBL {: ready:label :}
-   11 DATA NCOMP-DISPATCH:XT-CELL LDR,  11 ready CBNZ,
+   LBL LBL LBL {: xt:label have:label ready:label :}
+   11 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  11 2 CMPI,  C-NE xt BCOND,
+      11 DATA NCOMP-DISPATCH:COMP-CELL LDR,
+      have B,
+   xt LBL,
+      11 DATA NCOMP-DISPATCH:XT-CELL LDR,
+   have LBL,
+   11 ready CBNZ,
       UNSET
    ready LBL, ;
 
 \ The tier fork both `:` handlers share (EM-INTERPRET-COLON and C-TRUSTED), each
 \ reaching it with every legacy cell the JIT's closure reads reset. Tier 0 emits
 \ the frame's entry half, one `str x30,[sp,#-16]!` whose slot EM-COMPILE-RET
-\ matches with a restore or rewrites to a nop; tier 1 emits nothing and loads
-\ the optimizing entry.
+\ matches with a restore or rewrites to a nop; tier 1 and T0 emit nothing and
+\ load their entry.
 : TIER-COLON-DISPATCH ( -- )
    LBL LBL {: jit:label done:label :}
-   9 DATA NCOMP-DISPATCH:TIER-CELL LDR,
+   9 TIER-LATCH
    9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    9 jit CBZ,
       LOAD
@@ -4288,7 +4295,7 @@ variable LREPLAYTRAP
    14 DATA PEND-OPAQUE-CELL STR,
    14 DATA DOESB-CELL STR,    14 DATA TRUSTED-CELL STR,
    14 DATA CLAUSE-CELL STR,
-   14 DATA NCOMP-DISPATCH:TIER-CELL LDR,  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   14 TIER-LATCH  14 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
@@ -4326,8 +4333,8 @@ variable LREPLAYTRAP
 : CREATED-SIG ( -- )
    TCSIG-A-CELL TCSIG-U-CELL PENDING-SPAN ;
 
-\ The end of a definition the native compiler compiled, the engine's tier-1 `;`
-\ (NCOMP-EMIT:EM-COMPILE) and the def-close row alike: the per-definition
+\ The end of a definition a native compiler compiled, the engine's native `;`
+\ (NCOMP-EMIT:EM-COMPILE, T0 and tier 1) and the def-close row alike: the per-definition
 \ state clears, PEND-CELL last.
 : NATIVE-CLOSE ( -- )
    LBL {: noaccept:label :}
@@ -4350,7 +4357,7 @@ variable LREPLAYTRAP
 : DEF-CLOSE ( -- )
    LBL LBL LBL {: bad done nolast :}
    9 DATA PEND-CELL LDR,  9 bad CBZ,
-   10 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  10 1 CMPI,  C-NE bad BCOND,
+   10 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  10 bad CBZ,
    10 9 16 LDR,  10 10 DKIND:MASK ANDI,  10 nolast CBZ,   \ a published body that pushes a cell is the slot `does>` patches (LDOESPATCH), set after the body as the kernel's definers set it
    11 DKIND:CAST LIT64,  10 11 CMP,  C-EQ nolast BCOND,
    9 DATA LASTC-CELL STR,
@@ -8702,6 +8709,7 @@ ardone LBL,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
    9 DATA SUSP-HOOK-CELL STR,  9 DATA SUSP-PREFLIGHT-CELL STR,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
+   9 DATA NCOMP-DISPATCH:COMP-CELL STR,
    9 DATA NSTR-ABI:INTERN-CELL STR,      \ tier 0 keeps literals inline until string.f installs
    9 DATA NCOMP-DISPATCH:CALLBACK-STUB-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL STR,
@@ -8747,6 +8755,7 @@ ardone LBL,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + RELOC-EMIT:MARK-CELL
    NATIVE-HOST-CELLS:SELECT RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:XT-CELL RELOC-EMIT:MARK-CELL
+   NCOMP-DISPATCH:COMP-CELL RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:CALLBACK-STUB-CELL RELOC-EMIT:MARK-CELL
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL RELOC-EMIT:MARK-CELL
    APP-ENTRY:XT-CELL RELOC-EMIT:MARK-CELL
@@ -9204,8 +9213,8 @@ public
 : EM-COMPILE ( -- )
    LBL {: notsemi:label :}
    LENTRY LABEL@ LBL,
-   \ Tier 1's body loop, entered only from EM-COMMENT, which routes by tier; the
-   \ tier is not re-tested here.
+   \ The native body loop, T0's and tier 1's, entered only from EM-COMMENT,
+   \ which routes by tier; the tier is not re-tested here.
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE notsemi BCOND,
       C-DEF-SOURCE-CLOSE
@@ -9407,8 +9416,9 @@ public
       notcom LBL,
       C-UNIT-DISPATCH
       9 DATA PEND-CELL LDR,  9 notcompile CBZ,
-      \ A body token goes to the selected compiler's loop: tier 0's LCOMPILE
-      \ head, or tier 1's LENTRY with the optimizing entry loaded.
+      \ A body token goes to the selected compiler's loop: the JIT's LCOMPILE
+      \ head (DEF-TIER 0), or LENTRY with the latched native compiler's entry
+      \ loaded (NCOMP-EMIT:LOAD: COMP-CELL for T0, XT-CELL for tier 1).
       9 DATA NCOMP-DISPATCH:DEF-TIER-CELL LDR,  9 LCOMPILE LABEL@ CBZ,
       NCOMP-EMIT:LOAD
       NCOMP-EMIT:LENTRY LABEL@ B,
