@@ -913,6 +913,8 @@ variable LIVE-OVERRIDE
    s" schema" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-STR T=
    s" hb-build-report" JR:STR-EQ? TTRUE
+   s" maker_hit" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-TRUE T=
    s" maker_ran" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-TRUE T=
    begin JR:NEXT dup JR:T-END <> while drop repeat drop
@@ -925,6 +927,27 @@ variable LIVE-OVERRIDE
    s" --" ARG OUTPUT$ ARG
    s" compat-timeout" BUILD-RUN 124 T=
    OUTPUT$ FS:EXISTS? TFALSE ;
+
+\ HB_BUILD_TIMEOUT_MS 1 ends the compat build at its product compile, after
+\ the support image is selected, reported and recorded.
+: SUPPORT-SELECTED ( ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n want:ptr wantu:n :}
+   s" rejected/hb" s" cache" BUILD-SETUP
+   s" HB_BUILD_TIMEOUT_MS" >LEN s" 1" >LEN PROC-ENV-SET
+   s" --load" ARG s" tools/native-build.f" ARG
+   s" --" ARG OUTPUT$ ARG
+   label labelu BUILD-RUN 124 T=
+   OUT$ want wantu CONTAINS? TTRUE
+   OUTPUT$ FS:EXISTS? TFALSE ;
+
+
+\ The support child reads the file at REL before its recorder starts, through
+\ tools/cold-load.f; an edit to it must still rebuild the support image.
+: ENGINE-COLD-EDIT ( ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n rel:ptr relu:n :}
+   rel relu AT S\" \n\\ cold load edit\n" FS:APPEND-FILE
+   label labelu s" native-build: support image built" SUPPORT-SELECTED ;
+
 
 : ENGINE-ARTIFACT ( -- )
    T-RESET
@@ -957,6 +980,13 @@ variable LIVE-OVERRIDE
       ENGINE-BUILD ENGINE-OVERLAY-REFUSED
    s" src/habu/window-rewind.f" ROOT$ TREE-COPY:FILE
    ENGINE-COMPAT-TIMEOUT
+   s" engine-support-hit" s" native-build: support image hit" SUPPORT-SELECTED
+   \ A driver the reload requires after its sources, a startup file it stages
+   \ and the boot list that picks them: separate rebuilds, as a support miss
+   \ does not name its file.
+   s" engine-producer-edit" s" tools/build-producer.f" ENGINE-COLD-EDIT
+   s" engine-startup-edit" s" src/core/util.f" ENGINE-COLD-EDIT
+   s" engine-boot-list-edit" s" src/habu/boot-files.f" ENGINE-COLD-EDIT
    FINISH ;
 
 : PREFIX-RUN ( n n -- )

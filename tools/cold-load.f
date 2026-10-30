@@ -18,7 +18,8 @@
 \ installed, and a native build retains the host's. tools/cold-load-sources.f
 \ keeps the bytes the reload reads and tools/cold-load-roles.f installs their
 \ tools/build-producer.f digests, the roles a native build gives an engine
-\ loaded from the same sources.
+\ loaded from the same sources. COLD-SOURCES:DRAIN then hands every file the
+\ cold load read, this one and its drivers included, for the support inputs.
 \
 \ The text is staged in one buffer and evaluated as top-level text, because
 \ `seed-ndict!` is a top-level boundary and because the rewind removes the
@@ -51,10 +52,15 @@ $70 constant RESET-OFF        \ = src/core/checker-owner-abi.f RESET-OFF
 
 DYNAMIC-BUFFER TEXT u8
 variable USED
+\ TEXT before START holds this file's and the boot list's bytes, recorded,
+\ not evaluated.
+variable START
 DYNAMIC-BUFFER SPANS n
 variable SPANS-N
 \ The SPANS index of the first startup file loaded after the checker.
 variable CHECKER-AT
+\ The TEXT offset of the `^` token STARTUP's distances count back from.
+variable ANCHOR-AT
 
 \ The path of the file loading now, and a path cut to its directory.
 : LOADING$ ( -- ptr u8 n )
@@ -88,7 +94,7 @@ create ROOT KEEP align
 
 : NUMBER ( n -- ) dup 10 >= if dup 10 / RECURSE then 10 mod 48 + C ;
 
-\ FILE notes four cells per startup file: its path's offset and length, its
+\ FILE notes four cells per staged file: its path's offset and length, its
 \ text's offset and length.
 : SPAN, ( n -- ) SPANS-N @ 1 + SPANS-RESERVE  SPANS-N @ SPANS !  1 SPANS-N +! ;
 
@@ -106,12 +112,13 @@ create ROOT KEEP align
    s" cold-load: cannot read " SAY a u PATH! SAY S\" \n" SAY
    code throw ;
 
-\ Append `\ <path>`, a tree file's text and a newline, and note where the path
-\ and the text lie for STARTUPS.
+\ Append `\ <root>/<path>`, a tree file's text and a newline, and note where
+\ the path and the text lie for ROWS.
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    92 C 32 C
-   USED @ SPAN, u SPAN,
-   a u LINE
+   USED @ SPAN,
+   a u PATH! nip {: len:n :}
+   len SPAN,  len USED +!  10 C
    USED @ {: start:n :}
    start SPAN,
    a u PATH! drop open-rd {: fd:n :}
@@ -147,13 +154,18 @@ create ROOT KEEP align
    loop
    34 C s"  SOURCE-ROOT:ENGINE!" LINE ;
 
-\ Hand each startup file to COLD-SOURCES as distances back from the `^` token
-\ staged first.
-: STARTUPS ( -- )
+: ANCHOR ( -- )
    s" COLD-SOURCES:TEXT-AT ^" PUT
-   USED @ 1 - {: anchor:n :}
-   10 C
-   SPANS-N @ 0 ?do
+   USED @ 1 - ANCHOR-AT !
+   10 C ;
+
+
+\ Hand the staged files from SPANS index FIRST up to END to COLD-SOURCES as
+\ distances back from the anchor.
+: ROWS ( n n -- )
+   {: first:n end:n :}
+   ANCHOR-AT @ {: anchor:n :}
+   end first ?do
       i CHECKER-AT @ = if s" COLD-SOURCES:CHECKER-LOADED" LINE then
       anchor i SPANS @ - NUMBER 32 C
       i 1 + SPANS @ NUMBER 32 C
@@ -163,7 +175,13 @@ create ROOT KEEP align
    4 +loop ;
 
 \ The order of tools/native-build-core.f LOAD-CHECKED-PREFIX and LOAD-TARGET.
+\ The startup files are SOURCE rows; this file, src/habu/boot-files.f,
+\ tools/cold-load-sources.f and what the reload requires after LOAD returns are
+\ DRIVER rows.
 : STAGE ( -- )
+   s" tools/cold-load.f" FILE
+   s" src/habu/boot-files.f" FILE
+   USED @ START !
    s" 0 set-check" LINE
    s" 0 set-top-check" LINE
    s" CORE-PREFIX:FIRST-RECORD seed-ndict!" LINE
@@ -214,9 +232,13 @@ create ROOT KEEP align
    s" src/core/include.f" FILE
    s" SOURCE-INPUT:RESET" LINE
    ENGINE-ROOT
-   S\" s\" tools/cold-load-sources.f\" included" LINE
-   STARTUPS
+   SPANS-N @ {: drivers:n :}
+   s" tools/cold-load-sources.f" FILE
+   ANCHOR
+   8 drivers ROWS
    S\" s\" src/habu/native-runtime.f\" COLD-SOURCES:LOAD" LINE
+   0 8 ROWS
+   drivers SPANS-N @ ROWS
    s" REQUIRE-BOOT-FREEZE" LINE
    S\" s\" tools/cold-load-roles.f\" required" LINE
    s" ' COLD-SOURCES:REPLAY COLD-ROLES:INSTALL" LINE ;
@@ -237,7 +259,7 @@ public
    STAGE
    SPANS-RELEASE
    RESET-OWNER
-   0 TEXT USED @ evaluate-closed
+   START @ TEXT USED @ START @ - evaluate-closed
    TEXT-RELEASE ;
 
 ;package

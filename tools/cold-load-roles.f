@@ -2,6 +2,7 @@
 \ reloads the tree: tools/build-producer.f's digests of the sources the reload
 \ read, installed as tools/native-build-core.f PREFIX-COMPILER-FINISH installs
 \ a target's. cold-load.f loads this after src/habu/native-runtime.f.
+require src/core/sha256.f
 require src/habu/xref.f
 require tools/build-producer.f
 
@@ -10,6 +11,8 @@ private
 
 CAST: ROLES-XT ( n -- [ ptr u8 ptr u8 [ ptr u8 n -- ] -- ] )
 CAST: ENTRY-XT ( n -- [ ptr u8 n -- ] )
+
+create SHA SHA256-CTX-BYTES allot
 
 : FAIL ( ptr u8 n -- ) 76 die ;
 
@@ -26,16 +29,20 @@ CAST: ENTRY-XT ( n -- [ ptr u8 n -- ] )
    known 0= size 32 <> or if s" cold-load: missing loaded producer role" FAIL then
    digest ;
 
+: DIGEST ( ptr u8 n ptr u8 -- )
+   {: a:ptr u:n out:ptr :}
+   SHA a u out SHA256-IN ;
+
 public
 
 \ REPLAY is COLD-SOURCES:REPLAY, which cold-load.f loads without registering
 \ it, so this file cannot require it.
-: INSTALL ( [ [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] [ ptr u8 n ptr u8 n -- ] -- ] -- )
+: INSTALL ( [ [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] [ ptr u8 n ptr u8 n -- ] [ ptr u8 n ptr u8 -- ] -- ] -- )
    {: replay :}
    BUILD-PRODUCER:START
    RTARGET:HOST-TARGET RTARGET:PROFILE$ BUILD-PRODUCER:OPTION
    [: BUILD-PRODUCER:OBSERVE ;] [: BUILD-PRODUCER:FREEZE-CHECKER ;]
-      [: BUILD-PRODUCER:COMPILER-DONE ;] replay execute
+      [: BUILD-PRODUCER:COMPILER-DONE ;] [: DIGEST ;] replay execute
    BUILD-PRODUCER:CHECKER$ ROLE
    BUILD-PRODUCER:COMPILER$ ROLE
    data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @ ENTRY-XT

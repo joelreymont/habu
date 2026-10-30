@@ -1,13 +1,16 @@
-\ cold-load-sources.f - a copy of every source tools/cold-load.f reloads, in
-\ load order, kept until tools/cold-load-roles.f hashes it. cold-load.f loads
-\ this file after src/core/include.f, before SHA-256 and DYNAMIC-STORAGE load,
-\ so it requires nothing and maps its own log; a load frees its bytes on return.
+\ cold-load-sources.f - every file tools/cold-load.f reads, in load order: its
+\ bytes until REPLAY hands them to tools/cold-load-roles.f, then its path, root
+\ and SHA-256 until DRAIN. cold-load.f stages this file before SHA-256 and
+\ DYNAMIC-STORAGE load, so it requires nothing and maps its own log; a load
+\ frees its bytes on return.
 package COLD-SOURCES
 private
 
-1 constant SOURCE     \ a path, its root and the bytes the load read
+1 constant SOURCE     \ a producer role's path, its root and the bytes read
 2 constant CHECKER    \ the checker has loaded
 3 constant DONE       \ the load of a path and root returned
+4 constant DRIVER     \ a cold load driver file's path, root and bytes read
+5 constant KEPT       \ a path, its root and the SHA-256 of the bytes read
 4 constant HEAD-CELLS \ kind, path, root and byte counts
 
 \ The first mapping's bytes; a full log moves to one twice its size.
@@ -17,20 +20,29 @@ PTR-VARIABLE LOG
 variable CAP
 variable USED
 PTR-VARIABLE ANCHOR
+\ The kind STARTUP and HOOK record: SOURCE until LOAD returns, then DRIVER.
+variable READ-KIND
+create DIGEST-OUT 32 allot
 TYPED-VARIABLE PRIOR [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 TYPED-VARIABLE ON-SOURCE [ ptr u8 n ptr u8 n ptr u8 n -- ]
 TYPED-VARIABLE ON-CHECKER [ -- ]
 TYPED-VARIABLE ON-DONE [ ptr u8 n ptr u8 n -- ]
+TYPED-VARIABLE DIGEST [ ptr u8 n ptr u8 -- ]
+
+SOURCE READ-KIND !
 
 : CELL-PAD ( n -- n ) CELL 1 - + CELL negate and ;
 : LOG-AT ( n -- ptr u8 ) LOG @ swap + ;
 : CELL, ( n -- ) USED @ LOG-AT CELL-VIEW !  CELL USED +! ;
 
 
-: UNMAP ( -- )
-   CAP @ 0= if exit then
-   LOG @ CAP @ munmap 0 < if s" cold-load: cannot release the source log" 76 die then
-   0 CAP !  0 USED ! ;
+: RELEASE ( ptr u8 n -- )
+   {: log:ptr cap:n :}
+   cap 0= if exit then
+   log cap munmap 0 < if s" cold-load: cannot release the source log" 76 die then ;
+
+
+: UNMAP ( -- ) LOG @ CAP @ RELEASE  0 CAP !  0 USED ! ;
 
 
 : ROOM ( n -- )
@@ -61,15 +73,17 @@ TYPED-VARIABLE ON-DONE [ ptr u8 n ptr u8 n -- ]
 
 : HOOK ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n bytes:ptr size:n q :}
-   SOURCE path pathu root rootu bytes size RECORD
+   READ-KIND @ {: kind:n :}
+   kind path pathu root rootu bytes size RECORD
    path pathu root rootu bytes size q PRIOR @ execute
-   DONE path pathu root rootu bytes 0 RECORD ;
+   kind SOURCE = if DONE path pathu root rootu bytes 0 RECORD then ;
 
 
-\ Replay the record at offset OFF; answer the next record's offset.
-: STEP ( n -- n )
-   {: off:n :}
-   off LOG-AT {: head:ptr :}
+\ The record at offset OFF of the log at BASE: its kind, path, root, bytes and
+\ the next record's offset.
+: ROW ( ptr u8 n -- n ptr u8 n ptr u8 n ptr u8 n n )
+   {: base:ptr off:n :}
+   base off + {: head:ptr :}
    head CELL-VIEW @ {: kind:n :}
    head CELL + CELL-VIEW @ {: pathu:n :}
    head 2 CELL * + CELL-VIEW @ {: rootu:n :}
@@ -77,10 +91,22 @@ TYPED-VARIABLE ON-DONE [ ptr u8 n ptr u8 n -- ]
    head HEAD-CELLS CELL * + {: path:ptr :}
    path pathu CELL-PAD + {: root:ptr :}
    root rootu CELL-PAD + {: bytes:ptr :}
+   kind path pathu root rootu bytes size
+   bytes size CELL-PAD + base - ;
+
+
+\ Replay the record at offset OFF of the log at BASE into the actions and the
+\ log of kept rows; answer the next record's offset.
+: STEP ( ptr u8 n -- n )
+   ROW {: kind:n path:ptr pathu:n root:ptr rootu:n bytes:ptr size:n next:n :}
+   kind SOURCE = kind DRIVER = or if
+      bytes size DIGEST-OUT DIGEST @ execute
+      KEPT path pathu root rootu DIGEST-OUT 32 RECORD
+   then
    kind SOURCE = if path pathu root rootu bytes size ON-SOURCE @ execute then
    kind CHECKER = if ON-CHECKER @ execute then
    kind DONE = if path pathu root rootu ON-DONE @ execute then
-   bytes size CELL-PAD + LOG @ - ;
+   next ;
 
 public
 
@@ -88,25 +114,41 @@ public
 : TEXT-AT ( -- ) parse-name drop ANCHOR ! ;
 parses: TEXT-AT 1
 
-\ A startup file cold-load.f staged as text: its path, relative to the engine
-\ root, starts PATH-BACK bytes before the anchor, and its bytes BACK bytes before.
+\ A file cold-load.f staged as text: its absolute path starts PATH-BACK bytes
+\ before the anchor, and its bytes BACK bytes before.
 : STARTUP ( n n n n -- )
    {: path-back:n pathu:n back:n size:n :}
-   SOURCE ANCHOR @ path-back - pathu SOURCE-ROOT:ENGINE$
+   READ-KIND @ ANCHOR @ path-back - pathu SOURCE-ROOT:ENGINE$
       ANCHOR @ back - size RECORD ;
 
 : CHECKER-LOADED ( -- ) CHECKER NULL$ NULL$ NULL$ RECORD ;
 
 \ Load a file, recording each source the load reads and each load's return.
+\ The hook stays installed until REPLAY, recording later reads as DRIVER.
 : LOAD ( ptr u8 n -- )
    SOURCE-UNIT:CURRENT PRIOR !
    [: HOOK ;] SOURCE-UNIT:USE
-   [: included ;] [: PRIOR @ SOURCE-UNIT:USE ;] finally ;
+   [: included ;] [: DRIVER READ-KIND ! ;] finally ;
 
-\ Hand each record to its action in the order recorded, then free the log.
-: REPLAY ( [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] [ ptr u8 n ptr u8 n -- ] -- )
-   ON-DONE !  ON-CHECKER !  ON-SOURCE !
-   0 begin dup USED @ < while STEP repeat drop
+\ Restore the loader LOAD replaced, hand each record to its action in the order
+\ recorded and keep each read's path, root and DIGEST of its bytes.
+: REPLAY ( [ ptr u8 n ptr u8 n ptr u8 n -- ] [ -- ] [ ptr u8 n ptr u8 n -- ] [ ptr u8 n ptr u8 -- ] -- )
+   DIGEST !  ON-DONE !  ON-CHECKER !  ON-SOURCE !
+   PRIOR @ SOURCE-UNIT:USE
+   LOG @ CAP @ USED @ {: old:ptr cap:n used:n :}
+   0 CAP !  0 USED !
+   0 begin dup used < while old swap STEP repeat drop
+   old cap RELEASE ;
+
+\ Hand each kept row to Q as path, root and digest, then free them. A process
+\ that never drains holds them until it exits.
+: DRAIN ( [ ptr u8 n ptr u8 n ptr u8 -- ] -- )
+   {: q :}
+   0 begin dup USED @ < while
+      LOG @ swap ROW {: kind:n path:ptr pathu:n root:ptr rootu:n digest:ptr size:n next:n :}
+      path pathu root rootu digest q execute
+      next
+   repeat drop
    UNMAP ;
 
 ;package

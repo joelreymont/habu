@@ -40,9 +40,9 @@ variable SUPPORT-ROWS-U
    u PROGRAM-U +! ;
 
 \ The child first loads this tree's startup files (tools/cold-load.f) at the
-\ default tier, as the engine compiles them; those reads are not recorded.
-\ Tier 1 applies to the helpers after it. The definitions after it run before
-\ the next require.
+\ default tier, as the engine compiles them; COLD-SOURCES:DRAIN adds those
+\ reads to the support inputs. Tier 1 applies to the helpers after it. The
+\ definitions after it run before the next require.
 \ The first imports include the ordinary input recorder itself, so its
 \ dependency reads are staged here, then drained into the same persistent row
 \ format.
@@ -56,7 +56,7 @@ variable SUPPORT-ROWS-U
    S\" : NEXT-CANON ( ptr u8 n -- ptr u8 n bool ) {: path:ptr pu:n :} path pu SOURCE-ROOT:CANON-OS {: ans:ptr au:n yes:bool :} path pu ans au yes NFILE-INPUTS:ADD-CANON ans au yes ;\n" PROGRAM+
    S\" : NEXT-READ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: path:ptr pu:n root:ptr ru:n :} path pu root ru SOURCE-ROOT:READ-OS {: src:ptr su:n :} path pu root ru src su NFILE-INPUTS:ADD-ROOT src su ;\n" PROGRAM+
    S\" public : DRAIN ( -- ) 0 CURSOR ! begin CURSOR @ USED @ < while CURSOR @ EVENTS {: row:ptr :} row 8 + LE:U64@ {: pu:n :} row 16 + LE:U64@ {: au:n :} row 64 + {: path:ptr :} path pu + {: ans:ptr :} row LE:U64@ 1 = if path pu ans au row 24 + LE:U64@ 0<> NFILE-INPUTS:ADD-CANON else path pu ans au row 32 + NFILE-INPUTS:ADD-HASH then 64 pu + au + CURSOR +! repeat EVENTS-RELEASE 0 USED ! ['] NEXT-CANON ['] NEXT-READ SOURCE-INPUT:USE ;\n" PROGRAM+
-   S\" : OFF ( -- ) SOURCE-INPUT:RESET EVENTS-RELEASE 0 USED ! ;\n;package\nNB-START:DRAIN\nrequire tools/native-build-support.f\nNATIVE-BUILD-SUPPORT:SAVE-ROOT\nrequire tools/native-build-result.f\nNATIVE-BUILD-RESULT:WRITE\nNB-START:OFF\nNFILE-INPUTS:CLOSE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" PROGRAM+ ;
+   S\" : OFF ( -- ) SOURCE-INPUT:RESET EVENTS-RELEASE 0 USED ! ;\n;package\nNB-START:DRAIN\n' NFILE-INPUTS:ADD-HASH COLD-SOURCES:DRAIN\nrequire tools/native-build-support.f\nNATIVE-BUILD-SUPPORT:SAVE-ROOT\nrequire tools/native-build-result.f\nNATIVE-BUILD-RESULT:WRITE\nNB-START:OFF\nNFILE-INPUTS:CLOSE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" PROGRAM+ ;
 
 : PROGRAM$ ( -- ptr u8 n )
    PROGRAM-U @ 0= if PROGRAM! then
