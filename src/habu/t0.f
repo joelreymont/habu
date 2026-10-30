@@ -1527,11 +1527,8 @@ OPS-MAP
 \ code cannot reach (MISSING) is refused as undefined, as the JIT's lookup
 \ refuses it, even in an unchecked body whose scan did not refuse it.
 \
-\ An immediate the capture holds. A parse-neutral one ran as the engine read it
-\ (src/habu/definers.f DEF-IMMEDIATE) and left only its own token, its operands
-\ read from the input and text it evaluated captured after it, so T0 passes
-\ over the token as tier 1 does (src/compiler/native/elaborate.f WALK-SKIP?).
-\ Tier 1 refuses any other the same way.
+\ T0 passes over a parse-neutral immediate as tier 1 does
+\ (src/compiler/native/elaborate.f WALK-SKIP?) and refuses any other.
 : IMM-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-OWNER:PARSE-IMM? if exit then
    a u E-UNMODELED-IMMEDIATE REFUSE ;

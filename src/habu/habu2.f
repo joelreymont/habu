@@ -8989,7 +8989,7 @@ ardone LBL,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL CELL + NATIVE-BODY-ABI:PENDING-TAKE cells + STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA FRAME-CELL STR,  9 DATA QFRAME-CELL STR,
-   9 DATA JIT-SNAP:SP-CELL STR,   \ tier 0's BEGIN depth dies with the definition
+   9 DATA JIT-SNAP:SP-CELL STR,   \ the JIT's BEGIN depth dies with the definition
    9 DATA FWDTGT-CELL STR,        \ ...and so does its last forward target
    9 DATA LIDX-CELL STR,          \ ...and its cached loop index
    9 DATA JIT-QUOT:SP-CELL STR,   \ ...and so do its parked quotations
@@ -9171,11 +9171,11 @@ private
 
 public
 
-\ The design seal gates every body token here with tier 0's predicate, so a
+\ The design seal gates every body token here with the JIT's predicate, so a
 \ token outside the vocabulary is refused at its own line at both tiers. Under
 \ the seal a body token is admitted when it is
 \   1. a local this body declared in a block still open, matched before any
-\      lookup: `{:` records its names as tier 0's C-LBRACE does, and
+\      lookup: `{:` records its names as the JIT's C-LBRACE does, and
 \      CAPTURE-BLOCK ends them with their block;
 \   2. a record LFIND answers and LPOLICYREC admits, the record NCOMP binds
 \      (src/compiler/native/dict.f walks the same legs in the same order);
@@ -9185,7 +9185,7 @@ public
 \   4. on a miss, a number;
 \   5. on a miss, a design-span body keyword: if, else, then, s", S\" or {:,
 \      whose names and `:}` the locals parse consumes, so a stray `:}` is refused
-\      as tier 0 refuses it. Every other keyword row, `does>` and the other
+\      as the JIT refuses it. Every other keyword row, `does>` and the other
 \      string forms among them, is refused before CAPTURE-DOES or CAPTURE-STRING.
 \ Anything else is refused at LPOLICY. Unsealed, locals are matched, scoped and
 \ recorded the same way (as src/habu/definers.f COMPILING? does for x86-64) and
@@ -9204,12 +9204,9 @@ public
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
    \ Decide in x16: 0 passive, 1 execute now, 2 parse does>. x13/x5/x11 are
    \ LFIND's result; x9/x10 the original spelling. A non-immediate does> stays
-   \ an ordinary captured token; a neutral immediate meets an armed checker's
-   \ preflight in DEF-RUN (C-CALL-COMPILE-IMMEDIATE), then executes now. An
-   \ immediate spelled does> is the keyword, as the JIT reads it. Any other
-   \ immediate meets the preflight at `no-does`, which refuses an unmodeled one
-   \ as the JIT does, before it waits in the capture. The twin is
-   \ src/habu/definers.f DEF-IMMEDIATE.
+   \ an ordinary captured token. An immediate meets an armed checker's preflight
+   \ (a neutral one in C-CALL-COMPILE-IMMEDIATE) unless spelled does>, the
+   \ keyword (test/outer-interpret.f DOES-CALLED). Twin: DEF-IMMEDIATE.
    SP SP 64 SUBI,
    30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
    5 SP 24 STR,  11 SP 32 STR,  13 SP 40 STR,

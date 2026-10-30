@@ -1,9 +1,9 @@
-\ native-runtime.f - the complete source-owned native runtime: the closure of the
-\ compiler, T0 on arm64, the JIT, the REPL and the product's checked C2 storage,
-\ plus the Habu loop on x86-64 (runtime-x64.f). native-build.f evaluates it inside the one
-\ AOT window; replaying the paths of the files loaded before include.f gives the target loader ownership
-\ of the whole closure. tools/manifest-lint.f refuses a row that is neither a
-\ declared entry point (reason on the row there) nor required by the closure.
+\ native-runtime.f - the native runtime: the closure of the compiler, T0 on
+\ arm64, the JIT, the REPL and the product's checked C2 storage, plus the Habu
+\ loop on x86-64 (runtime-x64.f). native-build.f evaluates it inside the one AOT
+\ window; replaying the paths of the files loaded before include.f gives the
+\ target loader ownership of the whole closure. tools/manifest-lint.f refuses a
+\ row that is neither a declared entry point nor required by the closure.
 
 \ Rows by choice: the debugger trio (debug-watch.f, stepper.f, debug.f over
 \ code-bytes.f), without debug.f's breakpoints on x86-64; src/lib/num-*.f, because

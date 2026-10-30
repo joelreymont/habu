@@ -872,12 +872,8 @@ public
    a u entry a u NDICT:SPELL-DEAD? RESOLVED-NORET CALLABLE-ROW
    true ;
 
-\ Every ordinary source token arrives here, including a repeated word or one
-\ already in the session vocabulary. Cache the original seeded decision before
-\ any model is read. Fixed values and calls use the recorded entry and effect.
-\ A call to an internal record binds as NDICT:CALL-BINDING binds one
-\ (NDICT:INT-CALL?): an owned primitive's checked call compiles, since the
-\ checker's binder bound the site to that record through its owner's row.
+\ SITE-PRIM! caches the seeded decision before any model is read. A call to an
+\ internal record binds as NDICT:CALL-BINDING binds one (NDICT:INT-CALL?).
 : RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id ix:n :}
    ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}

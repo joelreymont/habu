@@ -59,15 +59,9 @@ CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
-\ Tier 0 is T0, a native compiler, on an engine whose NCOMP-DISPATCH:COMP-CELL
-\ holds its entry (arm64), and the JIT when that cell is zero; the engine's
-\ head latches which in DEF-TIER-CELL, 0 for the JIT. This loop has no tier-0
-\ head, so a head at tier 0 (TIER-CELL 0) refuses. A body the engine's head
-\ latched to T0 is captured here as a tier-1 body is; one latched to the JIT
-\ refuses at its first token, since the JIT compiles each token as it reads
-\ it, which this loop cannot call. Each refusal names the token, where the
-\ engine's head makes its first refusal. `cast:`, `linear:`, `immediate` and
-\ the definers compile no body the JIT reads, so they are read at any tier.
+\ A head at TIER-CELL 0 refuses, as does a body token latched to the JIT, whose
+\ per-token compile this loop cannot call; one latched to T0 is captured as tier
+\ 1's. `cast:`, `linear:`, `immediate` and definers read at any tier.
 : DEF-TIER-0 ( -- )
    s" hb: tier 0 is not in the Habu loop: " SAY
    DEF-RC-TIER-0 PKG-FAIL ;
@@ -483,9 +477,7 @@ private
    s" {:" TOKEN-IS? if exit then
    POLICY-REFUSE ;
 
-\ An armed checker's preflight gets the body so far, the token and the trusted
-\ cell first; one armed without a preflight is refused (habu2.f C-PREFLIGHT,
-\ its twin).
+\ The engine's twin: habu2.f C-PREFLIGHT.
 : DEF-PREFLIGHT ( -- )
    HOOK-CELL CELL@ 0= if exit then
    COMPILE-PREFLIGHT-CELL CELL@ {: xt:n :}
@@ -495,18 +487,10 @@ private
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    xt AS-PREFLIGHT execute ;
 
-\ The engine's twin: habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE.
-\ A captured token LFIND resolves to an immediate word. One the checker calls a
-\ stack-neutral parsing immediate (parse-imm) may read the input after it or
-\ end the definition, and the compiler passes over it at `;`: it meets an armed
-\ checker's preflight in DEF-RUN (C-CALL-COMPILE-IMMEDIATE), then runs now. One
-\ spelled does> is the keyword (DEF-DOES?), as the JIT reads it. Any other
-\ immediate meets the preflight here, which refuses an unmodeled one as the JIT
-\ does before it would run one, and then waits in the capture for the
-\ compiler. The live checker owner answers (CHECKER-OWNER:PARSE-IMM?), as the
-\ compiler asks at `;` (elaborate.f): a binding fixed at this file's load would
-\ ask the retained checker, which never saw a `parse-imm` a build window's
-\ replacement checker recorded.
+\ Twin: habu2.f NCOMP-EMIT:CAPTURE-IMMEDIATE. An immediate meets an armed
+\ checker's preflight (a neutral one in DEF-RUN) unless spelled does>, the
+\ keyword (test/outer-interpret.f DOES-CALLED). The live checker answers
+\ PARSE-IMM?; the retained one lacks a build window's `parse-imm` rows.
 : DEF-IMMEDIATE ( -- ptr n bool )
    TOKEN$ FIND-SCOPE {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR false exit then

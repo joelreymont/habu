@@ -892,14 +892,8 @@ $250 constant VVAL-OFF
 32 constant VSMAX
 
 
-\ TIER-CELL selects tier 1. It sits at $358, so JIT-SNAP's depth cell must not:
-\ the first `BEGIN` in a tier-0 definition would write this cell and the two
-\ declaration-owner cells above it.
-\ the two declaration-owner cells above it.
-\
-\ Tier 1 still has no fallback: an unset XT-CELL dies at NCOMP-EMIT:LOAD with the
-\ seed-integrity code. TIER-CELL selects which compiler runs; it never rescues a
-\ broken one.
+\ A latch whose compiler cell (XT-CELL or COMP-CELL) is zero dies at
+\ NCOMP-EMIT:LOAD with ENGINE-ERROR:AOT-SEED.
 package NCOMP-DISPATCH
 public
 $358 constant XT-CELL

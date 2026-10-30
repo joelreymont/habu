@@ -21918,14 +21918,12 @@ variable IS-PEND-U                   \ and its length
    IS-TOFF @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 
-\ A refused tick or `is` names its target where it stands, as a refused call
-\ names the call; DO-TOK1 pinned the `[']` or `is` that consumed it.
+\ A refused tick or `is` names its target, moving the pin off the `[']` or `is`
+\ DO-TOK1 set.
 : TICK-PIN ( -- )
    FAILSET @ 0 <> IF EXIT THEN
    TARGET-PIN! ;
 
-\ A target that names no deferred word refuses with the reason, pinned on the
-\ target as written.
 : IS-TARGET-FAIL ( n -- ) {: sym:n :}
    sym 0= IF MD-IS-UNKNOWN ELSE MD-IS-NOT-DEFER THEN MDIAG!
    TICK-PIN  IS-FAIL ;
@@ -25038,12 +25036,9 @@ variable CAST-PATH-N
       NMA @ NMU @ CHECKER-RECORD-SYM CK-CLOSE!
    THEN ;
 
-\ A certified definition whose inferred effect REC-SIG (render.f) did not record,
-\ W-EFFECT-NOT-RECORDED: more than 23 type variables or an unmodeled type tag,
-\ has no row, yet the native compiler must still know the cells its body takes
-\ and leaves (src/compiler/native/definition.f KEEP-ARITY). REC-SIG
-\ keeps them here; callers still find no effect. CHECK clears them per
-\ definition, not CHECK-RESET, which the does> clause's check also runs.
+\ The cells of an effect REC-SIG did not record (W-EFFECT-NOT-RECORDED), for
+\ src/compiler/native/definition.f KEEP-ARITY. CHECK clears them, not
+\ CHECK-RESET, which the does> clause's check also runs.
 variable UNREC-DIN   CELLS-NONE UNREC-DIN !
 variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
 : CHECK-UNRECORDED! ( n n -- ) {: din:n dout:n :}

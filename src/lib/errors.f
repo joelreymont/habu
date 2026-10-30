@@ -1228,11 +1228,11 @@
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
 \ WLINK -9830..-9834.
 
-\ Tier 0 compiler (src/habu/t0.f): -9600..-9609, minted here, not in package T0:
-\ src/compiler/native/definition.f SETTLE-UNIT, shared by both tiers, settles some.
+\ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package T0, because
+\ src/compiler/native/definition.f MALFORMED? reads E-T0-CONTROL.
 -9600 constant E-T0-FIRST
 -9609 constant E-T0-LAST
--9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile yet: T0:UNSUPPORTED$
+-9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile: T0:UNSUPPORTED$
 -9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one: T0:UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH

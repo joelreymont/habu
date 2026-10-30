@@ -150,8 +150,6 @@ CAST: AS-HOOK ( n -- [ ptr u8 n -- n ] )
 : CERTIFYING? ( -- bool )
    check@ 0 <> ;
 
-\ No hook enforces the body's scan: it is TRUSTED: or compiled with the hook
-\ cell empty. Known before the scan runs.
 : UNCERTIFIED? ( -- bool )
    TRUSTED? CERTIFYING? 0= or ;
 
@@ -343,10 +341,9 @@ public
 \ empty DECLARE-HOOKLESS recorded the declaration. The scan has printed why, so
 \ the refusal takes the check hook's reject status. After a certified scan
 \ nothing reaches it either: a package opened and closed by the source is
-\ E-NCOMP-NAME, an unsigned body answers its inferred effect, and a body whose
-\ inferred effect was not recorded (W-EFFECT-NOT-RECORDED) answers the cells
-\ its scan inferred (CHECKER-OWNER:UNRECORDED-IN), which no row carries, so
-\ callers still see no effect.
+\ E-NCOMP-NAME, an unsigned body answers its inferred effect, and one whose
+\ effect is unrecorded (W-EFFECT-NOT-RECORDED) answers CHECKER-OWNER's
+\ UNRECORDED-IN and UNRECORDED-OUT cells; no row carries them for callers.
 : KEEP-ARITY ( -- )
    NAME$ NDICT:SPELL-ARITY {: din:n dout:n :}
    din NDICT:ARITY-NONE <> if din M-IN !  dout M-OUT !  exit then
@@ -425,8 +422,8 @@ public
 
 private
 
-\ A refused definition's checker rows go, from M-ROWS on, or its does> frame,
-\ so the next definition of the name is no duplicate.
+\ Drops a refused definition's rows from M-ROWS on, or its does> frame, so a
+\ redefinition is no duplicate (exact cut: checker.f CHECKER-RETRACT-ROWS).
 : RETRACT ( -- )
    M-DOES @ 0<> if
       M-DOES-FRAME @ 0<> if

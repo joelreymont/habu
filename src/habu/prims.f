@@ -867,8 +867,9 @@ EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR, DNAME-CELL
 \ beside DKIND:ADDR for a variable, or DKIND:CAST) in [16] and the wid in
 \ [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear;
-\ DEF-TIER-CELL takes the tier latch (TIER-LATCH); LASTC-CELL waits for the body (def-close, def-create). It refuses another kind, wid -1
-\ or -2 and CP at or past the code ceiling. At tier 0 it opens the record only: the JIT's
+\ DEF-TIER-CELL takes the tier latch (TIER-LATCH); LASTC-CELL waits for the body
+\ (def-close, def-create). It refuses another kind, wid -1 or -2 and CP at or
+\ past the code ceiling. Latched to the JIT it opens the record only: the JIT's
 \ own head (its frame and resets) is not this row's.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
