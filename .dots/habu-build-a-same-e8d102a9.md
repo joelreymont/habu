@@ -1,6 +1,6 @@
 ---
 title: Build a same-machine engine for another OS without refusing it
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-30T11:09:35.214688+02:00"

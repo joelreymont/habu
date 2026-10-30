@@ -1,6 +1,6 @@
 ---
 title: Read the startup cells through data-base in a cross-OS product
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-30T11:20:57.606409+02:00"
