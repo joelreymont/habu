@@ -349,10 +349,9 @@ variable DIGIT-AT
    begin dup 10 mod $30 + DIGIT+ 10 / dup 0= until drop
    DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
 
-\ 1 + the newlines in [INB, INP): the line the cursor is on.
+\ The line the cursor is on.
 : LINE ( -- n )
-   SRCLOC:INB-CELL ADDR@ INP-CELL ADDR@ {: b:ptr p:ptr :}
-   1 p b - 0 ?do b i + c@ NEWLINE = if 1 + then loop ;
+   SRCLOC:INB-CELL ADDR@ INP-CELL ADDR@ SOURCE-TEXT:LINE ;
 
 \ ` at <path>:<line>` while a source file is open.
 : AT-SOURCE ( -- )

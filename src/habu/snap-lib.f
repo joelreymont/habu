@@ -95,6 +95,10 @@ s" SDB@" s" -- ptr u8" TRUST
    cut 0 < cut bytes > or if BAD-SOURCE then
    bytes cut - ;
 
+\ The running engine's heap floor, where its loader puts the heap back: a host
+\ building a tree that moves DATA-START keeps its own.
+: HEAP-START ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
+
 \ A restored snapshot's authenticated text contains its old region, DATA and trailer: copy only
 \ the prefix before them, or each recapture nests the previous snapshot. The loader has validated
 \ this trailer; do not guess at older trailers inside the prefix.
@@ -105,7 +109,7 @@ s" SDB@" s" -- ptr u8" TRUST
    STB@ end + {: trailer:ptr :}
    trailer CELL-VIEW @ SNAP-MAGIC <> if BAD-SOURCE then
    HB-TARGET-LINUX-X86-64? if
-      trailer SNAP-TRL-DATALEN + CELL-VIEW @ DATA-START -
+      trailer SNAP-TRL-DATALEN + CELL-VIEW @ HEAP-START -
          end swap TEXT-CUT exit
    then
    end trailer SNAP-TRL-NDICT + CELL-VIEW @ DREC *
@@ -432,12 +436,8 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    SNC-COPY
    SNC-CANON ;
 
-\ The heap section is its bytes, or the cell grid when that is smaller.
-\ Heap is everything the stream restores above DATA-START. The writer measures the raw and grid
-\ (src/habu/cell-grid.f) forms on the canonical copy and stores the smaller; the trailer's heap
-\ field records the choice and habu2.f EM-SNAPSHOT-DECODE-HEAP lays the grid over zeros. No
-\ allocation is removed: the restored heap is the same extent, byte for byte. The grid needs the
-\ copy, so it runs after CANON-DATA.
+\ The heap, everything above the heap floor, is stored raw or as the smaller
+\ cell grid (src/habu/cell-grid.f) of the canonical copy, after CANON-DATA.
 variable SBL                         \ flat bitmap bytes, ending at the last present cell's byte
 variable SVL                         \ value bytes of the present cells
 PTR-VARIABLE SBM-A                   \ flat bitmap scratch
@@ -449,7 +449,7 @@ PTR-VARIABLE SGR-A                   \ grid stream scratch
 : SCRATCH ( n -- ptr u8 )
    map-anon 0 <> if drop s" snap: heap scratch mmap failed" 74 die then ;
 
-: HEAP-BYTES ( -- n ) SDL @ DATA-START - ;
+: HEAP-BYTES ( -- n ) SDL @ HEAP-START - ;
 
 : HEAP-CELLS ( -- n )
    HEAP-BYTES CELL-GRID:CELL-BYTES 1- + CELL-GRID:CELL-BYTES / ;
@@ -457,7 +457,7 @@ PTR-VARIABLE SGR-A                   \ grid stream scratch
 \ The grid rounds the heap up to whole cells; the added bytes lie above the exact extent, read as
 \ zero, and the loader refuses a cell that says otherwise.
 : HEAP-CELL@ ( n -- n ) {: c:n :}
-   DATA-START c CELL-GRID:CELL-BYTES * + {: off:n :}
+   HEAP-START c CELL-GRID:CELL-BYTES * + {: off:n :}
    SND-PTR off + CELL-VIEW @ {: v:n :}
    SDL @ off - {: room:n :}
    room CELL-GRID:CELL-BYTES >= if v exit then
@@ -572,7 +572,7 @@ variable STAGED-U
 
 : WRITE-HEAP ( -- )
    SHF @ SNAPSHOT-FORMAT:HEAP-GRID = if SFD @ SGR-PTR SHL @ FDIO:WALL exit then
-   SFD @ SND-PTR DATA-START + SHL @ FDIO:WALL ;
+   SFD @ SND-PTR HEAP-START + SHL @ FDIO:WALL ;
 
 : FILL-TRL ( -- )
    SNAP-MAGIC TRL !  SHF @ TRL SNAPSHOT-FORMAT:HEAP-FIELD + !

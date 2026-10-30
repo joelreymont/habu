@@ -667,17 +667,8 @@ $680 constant FD-PTR-CELL
 $688 constant FD-CELL
 ;package
 
-\ BOOT-LAYOUT:HEAP-START-CELL: the running engine's DP-heap floor as a DATA
-\ offset, stored by habu2.f EM-DATA-INIT from the DATA-START it hands DP.
-\ tools/native-build.f splits the host's declared address rows at the host's
-\ floor, which is not the loaded tree's: growing a reserved band (XTCELL-CAP)
-\ moves the tree's DATA-START but not the host's, and classifying by the source
-\ constant makes the capture refuse the host's own heap rows (aot-capture.f
-\ ACAP-TARGET-REFUSE, exit 74; measured: seed floor 958280, grown tree 1220424,
-\ heap row at DATA+1140613). An offset needs no relocation, so it is not a
-\ declared address cell. Zero means an engine without the cell (no heap starts
-\ at 0); tools/native-build.f names its fallback. It sits in the fixed header so
-\ no band growth moves it.
+\ The running engine's heap floor, a DATA offset in the fixed header: a build
+\ splits host address rows here (native-build-core.f CHECK-HOST-LAYOUT).
 package BOOT-LAYOUT
 public
 $47E0 constant HEAP-START-CELL
@@ -2059,4 +2050,16 @@ $4398 constant ADDR-CELL
 PD-TABLE-END constant OFF
 OFF SLOTS-REL + CAP SLOT * + constant END
 ;package
-DECLARED-LOG:END constant DATA-START
+
+\ Rows (BODYBUF offset, input-buffer offset or NONE) for the runs habu1.f
+\ EMIT-BCAP appends, ascending: a run first drops the rows at or past BODYLEN.
+package BODY-SOURCE
+public
+BODYBUF-CAP 2 / constant CAP        \ rows: a run takes 2+ bytes
+16 constant ROW                     \ bytes per row
+-1 constant NONE
+DECLARED-LOG:END constant OFF       \ the row count; rows follow
+OFF 1 cells + constant ROWS-OFF
+ROWS-OFF CAP ROW * + constant END
+;package
+BODY-SOURCE:END constant DATA-START

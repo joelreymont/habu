@@ -48,11 +48,9 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    0 begin dup u < if a over + c@ 32 > else 0 0= 0= then while 1 + repeat
    a swap ;
 
-\ The line of a byte of the buffer being read, as the tail counts it: 1 + the
-\ newlines before it.
+\ The line of a byte of the buffer being read.
 : LINE-AT ( ptr u8 -- n )
-   SRC-START @ {: p:ptr b:ptr :}
-   1 p b - 0 ?do b i + c@ 10 = if 1 + then loop ;
+   SRC-START @ swap SOURCE-TEXT:LINE ;
 
 \ The line of the definition's name, where the wall places a duplicate. At a
 \ colon definition's closing `;` the definition is pending (PEND-CELL) and its

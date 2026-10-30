@@ -99,3 +99,11 @@ variable RDP
 
 : RD32 {: p:ptr :} ( ptr u8 -- n )
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+
+\ Lines counted as the engine's refusal tail (habu2.f LCOMPILEDIE) counts them.
+package SOURCE-TEXT
+public
+: LINE ( ptr u8 ptr u8 -- n )
+   {: b:ptr p:ptr :}
+   1 p b - 0 ?do b i + c@ 10 = if 1 + then loop ;
+;package

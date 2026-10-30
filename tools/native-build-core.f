@@ -74,12 +74,7 @@ variable PRIOR-ENGINE-ROOT-U
 
 : KEEP-ROWS-BELOW ( n -- ) ADDRESS-CELLS:KEEP-BELOW ;
 
-: RESET-ADDRESS-ROWS ( -- )
-   HOST-HEAP-START {: floor:n :}
-   floor 0= floor DATA-START <> or if
-      s" native-build: host layout does not match its published heap floor" 76 die
-   then
-   floor KEEP-ROWS-BELOW ;
+: RESET-ADDRESS-ROWS ( -- ) HOST-HEAP-START KEEP-ROWS-BELOW ;
 
 \ The checker owner's record holds its reset entry as a code address integer.
 CAST: RESET-XT ( n -- [ -- ] )

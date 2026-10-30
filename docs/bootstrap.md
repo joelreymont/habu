@@ -174,8 +174,8 @@ with the host's compiler, and the unit tools call the host's producer until
 The window's captured records and cells must not retain the host's process
 addresses or record numbers: a host whose checker differs from the tree's
 numbers its records and symbols differently, so a record number left in DATA
-names a host record, not the product's. For a reserved-layout transition, use
-the cold source writer described below.
+names a host record, not the product's. A reserved-layout transition builds by
+the ordinary native build, as described below.
 
 ## Landing a Reserved-Layout Change
 
@@ -184,21 +184,22 @@ A **reserved-layout change** moves a band below `DATA-START`: raising
 Each one moves `DATA-START` itself, and the host that builds the tree does not
 move with it.
 
-Build it with the cold source writer. That writer loads the target tree's
-layout before it captures pre-trust declarations, so its compiled layout and
-the image's bands agree in the first product, while the donor's own published
-heap floor still classifies the donor's address rows
-(`tools/native-build-core.f`). The donor must publish a heap floor that matches
-its own layout. The build also runs the tree's source in the donor, so an
-engine cell that source reads by DATA offset sits at a fixed offset no band
-change moves (`src/habu/layout.f` REPLAY-SCOPE, UNIT-COMPILE-CELL,
+Build it with `tools/native-build.f`: its support child
+(`tools/native-build-image.f`) runs `tools/cold-load.f`, which loads the tree's
+layout before capture, so the first product's layout and bands agree. The build
+refuses a donor that publishes no heap floor (BOOT-LAYOUT:HEAP-START-CELL) or
+has an address row below it that names no slot (`tools/native-build-core.f`
+CHECK-HOST-LAYOUT), and `src/habu/snap-lib.f` writes the heap from that floor.
+The build also runs the tree's source in the donor, so an engine cell that
+source reads by DATA offset sits at a fixed offset no band change moves
+(`src/habu/layout.f` REPLAY-SCOPE, UNIT-COMPILE-CELL,
 BOOT-LAYOUT:HEAP-START-CELL); the moving address-cell header is read at the
-donor offset the build passes (ADDRESS-CELLS:WITH-HOST-HEADER). A direct saved writer keeps the layout of
-the builder it was saved from: rebuild that builder from matching source rather
-than use a saved writer from the previous layout. Run `test/native-layout-transition.f` with a
-saved same-machine donor whose reserved layout differs to check the first
-product, and check multi-generation convergence when codegen, self-hosting or
-capture changes require it.
+donor offset the build passes (ADDRESS-CELLS:WITH-HOST-HEADER). A direct saved
+writer keeps the layout of the builder it was saved from: rebuild that builder
+from matching source rather than use a saved writer from the previous layout.
+Run `test/native-layout-transition.f` with a saved same-machine donor whose
+reserved layout differs to check the first product, and check multi-generation
+convergence when codegen, self-hosting or capture changes require it.
 
 ## DDC Audit (Diverse Double-Compiling)
 

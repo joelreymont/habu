@@ -5250,12 +5250,10 @@ package ENGINE-EMIT
    12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
    28 28 4 ADDI,  RET, ;
 
-\ LBCAP ( -- ): append TKA/TKL + ' ' to the body capture; LBCS ( x11=a x12=u )
-\ is the general entry (defining-word kind tokens). Overflow is fatal, exit 71:
-\ truncation would let the check hook certify code it never saw. The overflow
-\ arm hands x16 (the size needed) to habu2.f LBCAPFULL, which names the
-\ ceiling, the definition and that count.
+\ LBCAP appends TKA/TKL and a space to BODYBUF, LBCS ( x11=a x12=u ) any run,
+\ each with a layout.f BODY-SOURCE row; past BODYBUF-CAP it dies rc 71.
 : EMIT-BCAP ( -- )
+   LBL LBL LBL LBL LBL LBL {: pop put seed none src rowed :}
    LBCAP LABEL@ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS LABEL@ LBL,
@@ -5266,12 +5264,34 @@ package ENGINE-EMIT
    \ pass 2 re-runs the already-captured body: never re-capture
    14 DATA P2-CELL LDR,  14 BCAP-GO LABEL@ CBZ,  RET,
    BCAP-GO LABEL@ LBL,
-   17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
+   17 12 0 ADDI,                  \ len in x17: callers keep x6-x8
    14 DATA BODYLEN-CELL LDR,
    16 14 17 ADD,  16 16 1 ADDI,
    5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE BCAP-OK LABEL@ BCOND,
       LBCAPFULL LABEL@ B,            \ x16 = the size the capture needs: habu2.f EM-BODY-CAP-DIE names buffer, ceiling, definition and count, then rc 71
    BCAP-OK LABEL@ LBL,
+   17 rowed CBZ,
+   \ x15 = the band, x16 = its rows; x5 = the last row's text offset
+   15 BODY-SOURCE:OFF LIT64,  15 DATA 15 ADD,  16 15 0 LDR,
+   pop LBL,  16 put CBZ,
+      13 16 1 SUBI,  13 13 4 LSLI,  13 15 13 ADD,  5 13 8 LDR,
+      5 14 CMP,  C-CC put BCOND,
+      16 16 1 SUBI,  pop B,
+   put LBL,
+   13 16 4 LSLI,  13 15 13 ADD,  14 13 8 STR,  \ the new row is at x13 + 8
+   16 16 1 ADDI,  16 15 0 STR,
+   15 DATA SRCLOC:INB-CELL LDR,  5 DATA INE-CELL LDR,
+   \ The name and the run lie in [INB, INE); the first run is the name, seeded
+   \ before PENDTKA-CELL is set.
+   14 seed CBZ,
+   16 DATA PENDTKA-CELL LDR,
+   16 15 CMP,  C-CC none BCOND,  16 5 CMP,  C-CS none BCOND,
+   seed LBL,
+   11 15 CMP,  C-CC none BCOND,  11 5 CMP,  C-CS none BCOND,
+   16 11 15 SUB,  src B,
+   none LBL,  16 BODY-SOURCE:NONE LIT64,
+   src LBL,  16 13 16 STR,
+   rowed LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
    BCAP-CP LABEL@ LBL,  12 BCAP-CD LABEL@ CBZ,  13 11 0 LDRB,  13 15 0 STRB,
       15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  BCAP-CP LABEL@ B,
