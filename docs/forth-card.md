@@ -2,7 +2,7 @@
 
 Read this instead of [forth.md](forth.md). Every refusal below was measured
 on `bin/hb`; every other claim condenses the forth.md
-heading named at the end of its section; section 9 says which heading to open
+heading named at the end of its section; section 10 says which heading to open
 when this runs out.
 
 ## 1 Names and packages
@@ -499,7 +499,25 @@ suite.
 
 forth.md: **Testing**, **Verification before committing**.
 
-## 9 Open forth.md at this heading when …
+## 9 Comments
+
+- A `\` comment is one or two lines and says only what the code cannot: units,
+  an ownership or ordering invariant, a hardware encoding, a checker boundary,
+  why a non-obvious choice is required. Meaning lives in names and factoring;
+  design belongs in `docs/`.
+- It states what is true now; a claim that needs proof names the test, the
+  refusal and its code, or the measured behaviour that proves it.
+- No history: no "used to", "no longer", earlier designs, what was tried,
+  dates, dot, commit or review ids, agent or person names. A failure behind a
+  rule is a present fact: "a stage without X dies `E-UNDEFINED` at Y".
+- No restating the code, no design essays, no arguments for a design. A fact
+  lives in one comment or one doc section; others point to it. Cite a word,
+  not a line number.
+- Any edit that touches a comment, a conflict merge or a moved definition
+  included, brings it to these rules; a change that makes a comment false
+  corrects it in the same change. A review reports a breach as a finding.
+
+## 10 Open forth.md at this heading when …
 
 | heading | open it when |
 |---|---|
@@ -521,6 +539,6 @@ forth.md: **Testing**, **Verification before committing**.
 | Testing | assertions, a suite example, runner and property rules |
 | Diagnosing a checker miss | find the layer that is wrong |
 | Verification before committing | where the gates are |
-| Comments & hygiene | comment style, debug prints |
+| Comments & hygiene | debug prints, a refused definition's report |
 | Habu Native Tooling Gotchas | debugger, xref, `DYNAMIC-BUFFER`, alignment, `CELL-BODY`, absent words, escapes |
 | Native Forth Gotchas … | compile-only words, `case`, `parse-name` |

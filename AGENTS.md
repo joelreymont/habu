@@ -17,9 +17,9 @@ language core; [Etch](../etch), a PCB CAD application, is a separate project.
 
 - Read [docs/forth-card.md](docs/forth-card.md) before writing Habu: naming and
   packages, typed effects and locals, what the checker refuses and admits, the
-  storage definers, errors, require order and tests, with each refusal measured
-  on the engine. Look things up in [docs/forth.md](docs/forth.md) at the
-  heading the card names.
+  storage definers, errors, require order, tests and comments, with each
+  refusal measured on the engine. Look things up in
+  [docs/forth.md](docs/forth.md) at the heading the card names.
 - Habu tools are written in Habu: tools, test harnesses and build drivers are
   checked Habu programs run by `bin/hb`. A shell or Python file may only invoke
   `bin/hb` and carries no logic, parsing or policy. Two exceptions exist:
