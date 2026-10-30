@@ -175,14 +175,14 @@ private
    HANDLE >RESPONSE ;
 
 
-\ The slot of the task that is running, which is the only slot a handler may
-\ reach without being handed a handle.
+\ The running task's slot, the only one a handler reaches without a handle.
+\ MY-SLOT holds it plus one: a task that never claimed a slot gets E-HANDLE.
 : SELF-SLOT ( -- n )
-   MY-SLOT @ BOUNDED ;
+   MY-SLOT @ 1- BOUNDED ;
 
 
 : SELF-SLOT! ( n -- )
-   BOUNDED MY-SLOT ! ;
+   BOUNDED 1+ MY-SLOT ! ;
 
 
 : CARVE ( SPAN:span<u8> n -- ) {: region idx:n :}
@@ -458,14 +458,14 @@ public
 : BODY-CAP ( -- n ) BODY-LIMIT @ ;
 
 \ Bounded by MAX-WORKERS: the index a handler package keys its own per-request
-\ storage by.
+\ storage by. A task that is no request worker gets E-HANDLE.
 : WORKER-SLOT ( -- n )
    SELF-SLOT ;
 
 
-\ True only on the worker answering that request: a retired handle or another
-\ worker's request answers false rather than throwing.
+\ True only on the worker answering that request: a retired handle, another
+\ worker's request or a task that is no worker answers false, never a throw.
 : SERVING? ( request -- bool )
-   REQUEST>N CURRENT? swap MY-SLOT @ = and ;
+   REQUEST>N CURRENT? swap MY-SLOT @ 1- = and ;
 
 ;package

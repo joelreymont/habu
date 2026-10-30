@@ -1138,7 +1138,7 @@
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST
 -9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it
--9341 constant E-HTTP-HANDLE      \ a request or response handle past its request, or one over another worker's slot
+-9341 constant E-HTTP-HANDLE      \ a request or response handle past its request, or one over another worker's slot, or a slot asked by a task that is no worker
 -9342 constant E-HTTP-WORKERS     \ a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms
 -9343 constant E-HTTP-CAPACITY    \ more hooks, headers or bound segments than a table holds, or a negative body length
 -9344 constant E-HTTP-ROUTE       \ more routes than the table holds, or an empty method or a pattern not starting with /

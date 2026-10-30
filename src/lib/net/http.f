@@ -4,6 +4,7 @@
 \ http-request.f, http-response.f, http-router.f and http-static.f.
 \ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables are written
 \ before START, and per-request state is each worker's slot row (http-arena.f).
+\ TASK-LOCAL: REPLY's connection and drain room, TASK:+USER rows.
 require src/lib/net/http-static.f
 require src/lib/task.f
 require src/lib/queue.f
@@ -24,6 +25,7 @@ $40 constant JOB-SLOTS            \ over MAX-WORKERS stop jobs and one connectio
 $8 constant MAX-HOOKS             \ packages that give a worker a resource of its own
 -1 constant STOP-JOB
 $C8 constant LINGER-MS            \ how long a refused peer may still be sending
+$100 constant LINGER-CAP          \ bytes one drain read takes from a lingering peer
 $C8 constant ACCEPT-WAIT-MS       \ how long the listener parks before reading the stop flag
 $C8 constant STOP-MARGIN-MS       \ scheduling slack over the longest park a stop waits out
 $7FFFFFFF constant MAX-BODY-TIMEOUT-MS  \ TCP4's largest READABLE-WITHIN? poll
@@ -72,6 +74,11 @@ variable KILLED-COUNT             \ tasks a stop had to kill past its bound
 variable START-ERROR              \ first failed start hook's actual throw code
 variable STARTED                  \ workers successfully activated this start
 variable ACCEPTED-COUNT           \ connections the listener has taken since START
+
+\ REPLY's drain room: its task has no worker slot, whose input buffer a worker
+\ drains into. REPLYING is the connection REPLY's close takes on every way out.
+TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER REPLYING
+LINGER-CAP TASK:+USER LINGER-SCRATCH drop
 
 
 public
@@ -251,8 +258,8 @@ MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
    TCP4:CLOSE DROP-STATUS ;
 
 
-: DISCARD ( TCP4:connection n -- bool ) {: conn:TCP4:connection idx:n :}
-   conn idx IN-BUF SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
+: DISCARD ( TCP4:connection SPAN:span<u8> -- bool ) {: conn:TCP4:connection room :}
+   conn room SPAN:$ TCP4:TRANSFER-BYTES TCP4:READ
    MATCH TCP4:read-result
       data OF drop true ENDOF
       closed OF drop false ENDOF
@@ -260,19 +267,15 @@ MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
    ;MATCH ;
 
 
-\ A peer still sending when the answer goes out would be reset by a plain close
-\ and lose the answer, which is how a refused oversize request ends. So the
-\ connection is half-closed and read until the peer stops or the linger
-\ deadline passes, then closed. The loop checks the deadline itself:
-\ WAIT-READABLE still asks once past it, and a peer that keeps sending always
-\ has bytes to read.
-: LINGER-CLOSE ( TCP4:connection n -- ) {: conn:TCP4:connection idx:n :}
+\ Half-closes, then drains until the peer stops or LINGER-MS passes, so a peer
+\ still sending reads the answer instead of a reset. The caller closes after.
+: LINGER ( TCP4:connection SPAN:span<u8> -- ) {: conn:TCP4:connection room :}
    conn TCP4:SENDING TCP4:SHUTDOWN DROP-STATUS
    LINGER-MS DEADLINE-AT {: deadline:n :}
    begin
-      mono-ns deadline > if conn CLOSE-CONNECTION exit then
-      conn deadline WAIT-READABLE 0= if conn CLOSE-CONNECTION exit then
-      conn idx DISCARD 0= if conn CLOSE-CONNECTION exit then
+      mono-ns deadline > if exit then   \ a sending peer is always readable
+      conn deadline WAIT-READABLE 0= if exit then
+      conn room DISCARD 0= if exit then
    again ;
 
 
@@ -363,7 +366,7 @@ MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
       conn idx SERVE-ONE
       MATCH served
          keep-open OF ENDOF
-         answered OF conn idx LINGER-CLOSE exit ENDOF
+         answered OF conn idx IN-BUF LINGER conn CLOSE-CONNECTION exit ENDOF
          silent OF conn CLOSE-CONNECTION exit ENDOF
          taken OF exit ENDOF
       ;MATCH
@@ -618,7 +621,7 @@ variable EXIT-HOOK-N
 \ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker inside a request
 \ parks at most until that request's own deadlines (IDLE-MS plus
 \ BODY-TIMEOUT-MS, SERVE-ONE into src/lib/net/http-request.f WAIT-READABLE)
-\ and after it for LINGER-MS in LINGER-CLOSE. Past its deadline it never parks,
+\ and after it for LINGER-MS in LINGER. Past its deadline it never parks,
 \ and its first read after the flag ends the request (src/lib/net/http-request.f
 \ FILL), so what remains is the parse of one input window, which
 \ STOP-MARGIN-MS covers (http-test.f FLOOD-CASE). A connection a handler took
@@ -734,6 +737,43 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    drop ;
 
 
+: LINGER-ROOM ( -- SPAN:span<u8> )
+   LINGER-SCRATCH BYTE-VIEW LINGER-CAP SPAN:MAKE ;
+
+
+: REPLY-HEAD ( n ptr u8 n n -- ) {: status:n type:ptr type-n:n body-n:n :}
+   SB-RESET
+   s" HTTP/1.1 " SB-APPEND
+   status FMT:SB-U
+   SP SB-APPEND-C
+   status REASON$ SB-APPEND
+   s\" \r\nContent-Type: " SB-APPEND
+   type type-n SB-APPEND
+   s\" \r\n" SB-APPEND
+   status BODYLESS? 0= if
+      s" Content-Length: " SB-APPEND
+      body-n FMT:SB-U
+      s\" \r\n" SB-APPEND
+   then
+   s\" Connection: close\r\n\r\n" SB-APPEND ;
+
+
+: CLOSE-REPLYING ( -- )
+   REPLYING @ TCP4:>CONNECTION CLOSE-CONNECTION ;
+
+
+: SEND-REPLY ( n ptr u8 n ptr u8 n -- bool )
+   {: status:n type:ptr type-n:n body:ptr body-n:n :}
+   status type type-n body-n REPLY-HEAD
+   REPLYING @ TCP4:>CONNECTION {: conn:TCP4:connection :}
+   conn SB$ WRITE-SPAN 0= if false exit then
+   status BODYLESS? 0= if
+      conn body body-n WRITE-SPAN 0= if false exit then
+   then
+   conn LINGER-ROOM LINGER
+   true ;
+
+
 public
 
 \ Configure the incoming body bound before START. Zero accepts only empty
@@ -815,8 +855,8 @@ public
 \ has already sent past that request: they are the taker's first input and stay
 \ valid until the handler ends. The connection leaves the server for good: the
 \ worker sends no answer for this request and never touches the connection
-\ again, a stop does not wait for it, and the taker closes it. Outside a running
-\ handler, and a second time inside one, it is E-STATE.
+\ again, a stop does not wait for it, and the taker closes it, or REPLY does.
+\ Outside a running handler, and a second time inside one, it is E-STATE.
 : TAKE-OVER ( request -- TCP4:connection ptr u8 n ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
@@ -825,6 +865,20 @@ public
    0 idx SERVING-LIVE !
    idx SERVING @
    idx idx IN-AT@ idx AVAIL SPAN$ ;
+
+
+\ One whole answer on a connection a handler took, from any task: the status,
+\ the content type and the body, with Connection: close; a BODYLESS? status
+\ sends no length and no body. Then the lingering close an answered worker
+\ connection gets. True when the OS took every byte, false when a write failed
+\ (the peer has reset the connection). The head is built in the calling task's
+\ string builder, so a content type past its room is E-STR-CAPACITY. REPLY
+\ closes the connection on every way out, a throw or a TASK:HALT included
+\ (http-test.f HALTED-REPLY-CASE).
+: REPLY ( TCP4:connection n ptr u8 n ptr u8 n -- bool )
+   {: conn:TCP4:connection status:n type:ptr type-n:n body:ptr body-n:n :}
+   conn TCP4:CONNECTION>N REPLYING !
+   status type type-n body body-n [: SEND-REPLY ;] [: CLOSE-REPLYING ;] finally ;
 
 
 \ The address and port to listen on, how many request workers to run, and how
