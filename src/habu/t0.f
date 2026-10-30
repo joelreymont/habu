@@ -96,7 +96,7 @@ variable SPLIT                       \ a does> definer's `does>` row, or -1
 27 constant CF-RFETCH
 PTR-VARIABLE BAD
 variable BAD-LEN
-variable MISSING                     \ nonzero: the refused token is a tick operand no record answers
+variable MISSING                     \ nonzero: the refused token names a word compiled code cannot reach
 variable ORD                         \ the ordinal of the row the walk reads next
 variable CUT                         \ the byte just past `does> `, or 0
 
@@ -1532,9 +1532,12 @@ OPS-MAP
 \ name inlines only when its bound record is the engine's seeded primitive of
 \ the operation (THE INLINED OPERATIONS); a package's own word named like a
 \ primitive is a call. A word whose definer fixed a value pushes it
-\ (WORD-CALL); a loaned field's name is refused there. Anything else, a name
-\ bound to no record among them, is E-T0-UNSUPPORTED, and UNSUPPORTED$ names
-\ the token until the next compile.
+\ (WORD-CALL); a loaned field's name is refused there. Anything else is
+\ E-T0-UNSUPPORTED, and UNSUPPORTED$ names the token until the next compile. A
+\ name bound to no record, or to an internal one the call may not bind
+\ (NDICT:INT-CALL?), is a word compiled code cannot reach (MISSING), which the
+\ run refuses as undefined, as the JIT's lookup does, even in an unchecked body
+\ whose scan reported and did not refuse it.
 \
 \ An immediate the capture holds. A parse-neutral one ran as the engine read it
 \ (src/habu/definers.f DEF-IMMEDIATE) and left only its own token, its operands
@@ -1570,14 +1573,16 @@ OPS-MAP
 
 : NAME-TOKEN ( ptr u8 n n n -- )
    {: a:ptr u:n r:n loc:n :}
-   r 0< if a u UNSUPPORTED then
+   r 0< if -1 MISSING !  a u UNSUPPORTED then
    r XREF-REC {: rec:ptr :}
    rec REC-START {: to:n :}
    r OP-CODE {: code:n :}
    code 0<> if a code to INLINE if exit then then
    rec XREF-FLAGS {: flags:n :}
    flags DNAME-IMM and 0<> if a u IMM-TOKEN exit then
-   flags DNAME-INT and 0<> if flags NDICT:INT-CALL? 0= if a u UNSUPPORTED then then
+   flags DNAME-INT and 0<> if
+      flags NDICT:INT-CALL? 0= if -1 MISSING !  a u UNSUPPORTED then
+   then
    to 0= if a u UNSUPPORTED then
    a u to flags DKIND:MASK and r loc WORD-CALL ;
 

@@ -53,7 +53,7 @@ variable RC
 : PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
    OUT$ a u CONTAINS? SHOW TTRUE ;
 
-\ ---- sessions: `0 set-check` at tier 1 ---------------------------------------
+\ ---- sessions: `0 set-check` at a native tier --------------------------------
 : SUBJECT-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH outcome
@@ -92,18 +92,25 @@ variable RC
    s" ncomp: cannot compile HR-UNEVEN" SAYS
    s" hb: uncaught throw code -8503" SAYS ;
 
-\ An undefined callee leaves the body uncheckable, a verdict whose text the scan
-\ itself never prints (src/core/check-hook.f REPORT-UNCHECKABLE does); the
-\ compiler then cannot lower the call (E-HIR-UNMODELED).
-: UNDEFINED$ ( -- ptr u8 n )
-   s" 1 set-tier 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ;" ;
+\ An undefined callee: the scan prints why and enforces nothing, and either
+\ native compiler refuses the call as undefined with the reject status, as the
+\ JIT's lookup does (src/compiler/native/definition.f SETTLE-UNIT). Nothing
+\ after the definition runs. The first session compiles at the host's default
+\ tier, the second at tier 1, which refuses at its own binding step.
+: UNDEFINED-REFUSED ( -- )
+   RC @ RC-REJECT T=
+   OUT-U @ 0 T=
+   s" E-UNDEFINED habu: in hr-undefined: undefined word 'HR-NO-SUCH-WORD'" SAYS
+   s" ncomp: cannot compile HR-UNDEFINED at HR-NO-SUCH-WORD" SAYS
+   s" E-UNDEFINED: HR-NO-SUCH-WORD" SAYS ;
 
 : SESSION-UNDEFINED ( -- )
    s" an undefined callee is refused naming the callee" T-LABEL
-   UNDEFINED$ SESSION
-   RC @ RC-THROW T=
-   s" E-UNDEFINED habu: in hr-undefined: undefined word 'HR-NO-SUCH-WORD'" SAYS
-   s" ncomp: cannot compile HR-UNDEFINED at HR-NO-SUCH-WORD" SAYS ;
+   s" 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ; 5 ." SESSION
+   UNDEFINED-REFUSED
+   s" a tier-1 undefined callee is refused naming the callee" T-LABEL
+   s" 1 set-tier 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ; 5 ." SESSION
+   UNDEFINED-REFUSED ;
 
 \ A definer's own body is scanned before its does> clause, which the checker
 \ scans next, so the reason has to be printed before that second scan.
@@ -113,9 +120,9 @@ variable RC
 : SESSION-DEFINER ( -- )
    s" a does> definer's own body is refused with its reason" T-LABEL
    DEFINER$ SESSION
-   RC @ RC-THROW T=
+   RC @ RC-REJECT T=
    s" E-UNDEFINED habu: in hr-definer: undefined word 'HR-NO-SUCH-WORD'" SAYS
-   s" ncomp: cannot compile HR-DEFINER at HR-NO-SUCH-WORD" SAYS ;
+   s" E-UNDEFINED: HR-NO-SUCH-WORD" SAYS ;
 
 \ A clause is checked in its definer's regime: a hookless definer's body may
 \ call a word defined with checking off, so its clause may too, as at tier 0.

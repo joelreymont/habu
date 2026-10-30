@@ -877,7 +877,9 @@ public
 \ any model is read. Fixed values and calls use the recorded entry and effect.
 \ A call to an internal record binds as NDICT:CALL-BINDING binds one
 \ (NDICT:INT-CALL?): an owned primitive's checked call compiles, since the
-\ checker's binder bound the site to that record through its owner's row.
+\ checker's binder bound the site to that record through its owner's row. The
+\ answer is false only for an internal record the call may not bind, which the
+\ caller refuses as undefined.
 : RESOLVE-SITE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n -- bool )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id ix:n :}
    ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
@@ -897,7 +899,7 @@ public
    r id seeded SITE-PRIM!
    r id OVERLAY-MODELS? if true exit then
    seeded if r id SESSION-MODELS? if true exit then then
-   source-kind CHECKER-OWNER-ABI:BOUND-DICT <> if false exit then
+   source-kind CHECKER-OWNER-ABI:BOUND-DICT <> if true exit then
    row CHECKER-OWNER-ABI:BOUND-SYM BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
    row CHECKER-OWNER-ABI:BOUND-ENTRY BOUND@ {: entry:n :}
    entry 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
@@ -912,7 +914,7 @@ public
       true exit
    then
    row CHECKER-OWNER-ABI:BOUND-EFFECT BOUND@ 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
-   flags DNAME-IMM and 0<> if false exit then
+   flags DNAME-IMM and 0<> if true exit then
    flags DNAME-INT and 0<> if
       flags NDICT:INT-CALL? 0= if false exit then
    then

@@ -86,7 +86,7 @@ align
 -1 CWORK-VARIABLE RF-AT n                       \ the row of the admit in flight, or -1
 -1 CWORK-VARIABLE RF-ROW n                      \ the row the record was taken for, or -1
 0 CWORK-VARIABLE RF-U n                        \ how many of that row's spelling bytes are held
-0 CWORK-VARIABLE RF-MISSING n                  \ a tick whose operand resolves to no record
+0 CWORK-VARIABLE RF-MISSING n                  \ the refused token names a word compiled code cannot reach
 1 CWORK-BUFFER RF-KIND NTAPE:kind
 RF-CAP CWORK-SPAN RF-BUF u8
 
@@ -2276,6 +2276,22 @@ MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read la
    k HIR-CTRL:C2-INVOKE HIR-CTRL:EQ or
    k HIR-CTRL:EVAL HIR-CTRL:EQ or 0= ;
 
+\ The binder's row for a name, read as HIR-WORD:RESOLVE-SITE reads it: its kind
+\ and its record's flag cell.
+: BOUND-ROW ( ptr u8 n -- n n ) {: bound:ptr bytes:n :}
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
+   bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ ;
+
+\ A name compiled code cannot reach is refused at its token as undefined
+\ (SOURCE-UNDEFINED?), as DO-TICK refuses an operand no record answers: one the
+\ binder bound to no record, or an internal record the call may not bind
+\ (HIR-WORD:RESOLVE-SITE answers false). An unchecked body reaches this with
+\ its scan's report printed and not enforced.
+: UNDEFINED-REFUSE ( n -- )
+   -1 RF-MISSING !
+   QUOT-REFUSE ;
+
 : RESOLVE-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix MOPERAND? if exit then
@@ -2295,16 +2311,14 @@ MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read la
       r sy STRUCTURAL-MODEL? if exit then
       CHECKER-OWNER-ABI:BINDING-RC throw
    then
-   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells = if
-      bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
-         CHECKER-OWNER-ABI:BOUND-DICT = if
-         bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ {: flags:n :}
-         flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0= and if
-            NHOST:CAST ix HOST-REFUSE
-         then
+   bound bytes BOUND-ROW {: kind:n flags:n :}
+   kind CHECKER-OWNER-ABI:BOUND-UNRESOLVED = if ix UNDEFINED-REFUSE then
+   kind CHECKER-OWNER-ABI:BOUND-DICT = if
+      flags DKIND:MASK and DKIND:CAST =  flags DNAME-REP and 0= and if
+         NHOST:CAST ix HOST-REFUSE
       then
    then
-   CTX BLD r sy ix HIR-WORD:RESOLVE-SITE drop ;
+   CTX BLD r sy ix HIR-WORD:RESOLVE-SITE 0= if ix UNDEFINED-REFUSE then ;
 
 : RESOLVE-SCAN ( IR-ARENA:arena n n -- )
    {: r:IR-ARENA:arena lo:n hi:n :}
@@ -3414,7 +3428,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    ix 1+ QSPELL {: a:ptr u:n :}
    a u NDICT:TICK-TARGET {: entry:n :}
    \ An operand no record answers is refused at the operand, as the engine's
-   \ tick refuses it (E-UNDEFINED, definition.f REPORT-UNDEFINED-TICK).
+   \ tick refuses it (E-UNDEFINED, definition.f REPORT-UNDEFINED).
    entry 0= if
       a u NDICT:SCOPE-REC XREF-FOUND? 0= if
          -1 RF-MISSING !
@@ -4528,7 +4542,8 @@ public
 : REFUSED-ROW ( -- n )
    RF-ROW @ ;
 
-\ Whether the refusal is a tick whose operand no record answers (DO-TICK).
+\ Whether the refusal names a word compiled code cannot reach (DO-TICK,
+\ UNDEFINED-REFUSE).
 : SOURCE-UNDEFINED? ( -- bool )
    RF-MISSING @ 0<> ;
 

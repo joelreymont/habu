@@ -19,8 +19,6 @@ require src/lib/errors.f
 package PRIM-OWNER-CHILD
 
 $0A constant LF-C
-\ src/lib/errors.f's E-HIR-UNMODELED is retired by the reset before this loads.
--8286 constant HIR-UNMODELED-RC
 
 : T0? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
 : RESTORE-T0 ( -- ) T0? if 0 set-tier then ;
@@ -34,7 +32,6 @@ $0A constant LF-C
 : OUTCOME$ ( n -- ptr u8 n ) {: rc:n :}
    rc 0 = if s" compiled" exit then
    rc 70 = if s" rejected" exit then
-   rc HIR-UNMODELED-RC = if s" unmodeled" exit then
    s" unexpected" ;
 
 \ The checker admits a tick of an owned internal word inside its owner, through
@@ -413,8 +410,8 @@ $0A constant LF-C
 
 \ FIELD-PROJ! is REG-PROTECT (src/core/checker.f): the owner's checked call
 \ compiles before the seal in test/prim-owner-scope-prepare.f. After the seal,
-\ tier 0 rejects the internal word; tier 1 cannot lower the reopened owner's
-\ call (E-HIR-UNMODELED). Outside the owner, the global trusted-only row
+\ both tiers refuse the reopened owner's call to the internal word as undefined
+\ (rc 70). Outside the owner, the global trusted-only row
 \ refuses checked calls and ticks, while a TRUSTED: body still compiles
 \ (src/core/checker.f FIELD-PROJ!).
 : TYPE-DECL-CASES ( -- )

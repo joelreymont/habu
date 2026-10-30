@@ -107,7 +107,7 @@ variable EXP-U
 \ The dual row: the owner's row admits its checked callers and ticks, the global
 \ trusted-only row refuses them elsewhere, and a TRUSTED: caller outside the
 \ owner compiles at both tiers. On a tree without addrmap-set's global row the
-\ tier-1 trusted line reads `unexpected` (E-HIR-UNMODELED, rc 67).
+\ tier-1 trusted line reads `unexpected` (E-HIR-UNMODELED).
 : DUAL-T0-LINES ( -- )
    s" ffi call inside owner"              s" compiled" CASE+
    s" ffi call top level"                 s" rejected" CASE+
@@ -208,7 +208,7 @@ variable EXP-U
    s" t0 tick field-proj! other package"            s" rejected" CASE+
    s" t0 field-proj! trusted top level"             s" compiled" CASE+
    then
-   s" t1 field-proj! reopened owner after the seal" s" unmodeled" CASE+
+   s" t1 field-proj! reopened owner after the seal" s" rejected" CASE+
    s" t1 field-proj! top level"                     s" rejected" CASE+
    s" t1 tick field-proj! other package"            s" rejected" CASE+
    s" t1 field-proj! trusted top level"             s" compiled" CASE+ ;
@@ -254,8 +254,9 @@ variable EXP-U
 \ The engine owners' refusals, by name: a primitive with no global row is
 \ undefined outside its owner, to a call and a tick alike, and a global
 \ trusted-only row answers E-CAP-TRUSTED. Inside TOP-ROW a hook of the wrong
-\ shape fails on its type, not its trust. After the seal FIELD-PROJ! cannot
-\ compile in its owner; outside, checked calls and ticks are trust refusals.
+\ shape fails on its type, not its trust. After the seal FIELD-PROJ! is
+\ undefined to its owner's call, which names the definition; outside, checked
+\ calls and ticks are trust refusals.
 : OWNER-SITE-ERRS ( ptr u8 n -- ) {: ea:ptr eu:n :}
    T0? if
    ea eu s" E-UNDEFINED habu: in pos-cp0-top: undefined word 'code-publish'" ERR-HAS
@@ -282,11 +283,11 @@ variable EXP-U
    ea eu s" E-CAP-TRUSTED habu: in pos-cd1-oth: 'CHECK-DOES!' is a trust-boundary primitive" ERR-HAS
    T0? if
    ea eu s" habu: in pos-stc0-bad: at 'set-top-check' expected:" ERR-HAS
-   ea eu s" E-UNDEFINED: FIELD-PROJ!" ERR-HAS
-   ea eu s" hb: internal engine word: FIELD-PROJ!" ERR-HAS
+   ea eu s" ncomp: cannot compile POS-FP0-RE at FIELD-PROJ!" ERR-HAS
    then
    ea eu s" habu: in pos-stc1-bad: at 'set-top-check' expected:" ERR-HAS
    ea eu s" ncomp: cannot compile POS-FP1-RE at FIELD-PROJ!" ERR-HAS
+   ea eu s" E-UNDEFINED: FIELD-PROJ!" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-fp1-top: 'FIELD-PROJ!' is a trust-boundary primitive" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-tfp1-oth: 'FIELD-PROJ!' is a trust-boundary primitive" ERR-HAS ;
 

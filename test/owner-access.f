@@ -86,7 +86,8 @@ private
    REACHES-REPORTED ;
 
 \ An internal primitive no package row types keeps the compile refusal, so
-\ unchecked code still needs a TRUSTED: boundary to call it.
+\ unchecked code still needs a TRUSTED: boundary to call it: the native
+\ compiler refuses the call as undefined, as the JIT's lookup does.
 : INTERNAL-ONLY ( -- )
    s" 0 set-check : OA-MARK ( n -- ) int-mark ;"
    s" E-UNDEFINED: int-mark" REJECTS ;

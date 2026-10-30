@@ -292,9 +292,9 @@ variable RC     variable EXITED
 \ than once run at 1000 (pending) or LN-TAIL-MAX (ENUM). A long family's
 \ constructors take the family name as their package name. A refused long name
 \ is reported whole to its newline; a refused TRUSTED: one retracts its
-\ signature, leaving the refusal's code uncaught. A TRUSTED: body skips the
-\ checker, so a missing 7900-byte body token reaches the elaborator, which names
-\ it whole.
+\ signature. A TRUSTED: body skips the checker, so a missing body token reaches
+\ the elaborator, which refuses it as undefined (rc 70) and names the
+\ definition and a 7900-byte token whole.
 $4000 constant LN-CAP
 create LN-BUF LN-CAP allot
 variable LN-U
@@ -545,6 +545,10 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    LN-OPEN
    s" ncomp: cannot compile LN-TOK at " LN+ NAME+ S\" \n" LN+ LN$ ;
 
+: TOKEN-UNDEFINED$ ( n -- ptr u8 n )
+   LN-OPEN
+   s" E-UNDEFINED: " LN+ NAME+ S\" \n" LN+ LN$ ;
+
 : TEST-LONG-NAMES ( -- )
    LEGACY? if
       s" a 65-byte name with a quotation runs on tier 0" T-LABEL
@@ -675,13 +679,14 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    ERR$ s" " 1000 REFUSED-LINE$ CONTAINS? TTRUE
 
    s" a refused 1000-byte TRUSTED: name retracts its signature" T-LABEL
-   1000 TRUSTED-MISSING$ RUN  UNCAUGHT-RC ASSERT-RC
+   1000 TRUSTED-MISSING$ RUN  REJECT-RC ASSERT-RC
    ERR$ s"  at LN-MISSING" 1000 REFUSED-LINE$ CONTAINS? TTRUE
-   ERR$ E-HIR-UNMODELED UNCAUGHT$ CONTAINS? TTRUE
+   ERR$ S\" E-UNDEFINED: LN-MISSING\n" CONTAINS? TTRUE
 
    s" a refusal at a 7900-byte body token names the token whole" T-LABEL
-   7900 TOKEN-MISSING$ RUN  UNCAUGHT-RC ASSERT-RC
-   ERR$ 7900 TOKEN-LINE$ CONTAINS? TTRUE ;
+   7900 TOKEN-MISSING$ RUN  REJECT-RC ASSERT-RC
+   ERR$ 7900 TOKEN-LINE$ CONTAINS? TTRUE
+   ERR$ 7900 TOKEN-UNDEFINED$ CONTAINS? TTRUE ;
 
 \ ---- 2d. a refusal line names only its own token ------------------------------
 \ The elaborator names the token it refused at; a later definition refused
@@ -691,6 +696,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    S\" 1 set-tier\nTRUSTED: TN-EV ( ptr u8 n -- ) evaluate ;\n: TN-TRY ( -- ) [: s\q TRUSTED: TN-ELAB ( -- n ) TN-ELAB-MISSING ;\q TN-EV ;] catch . cr ;\nTN-TRY\n: TN-UNEVEN ( -- n ) ;\n"
    RUN  REJECT-RC ASSERT-RC
    ERR$ S\" ncomp: cannot compile TN-ELAB at TN-ELAB-MISSING\n" CONTAINS? TTRUE
+   ERR$ S\" E-UNDEFINED: TN-ELAB-MISSING\n" CONTAINS? TTRUE
    ERR$ S\" ncomp: cannot compile TN-UNEVEN\n" CONTAINS? TTRUE ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------

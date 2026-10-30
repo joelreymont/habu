@@ -451,7 +451,7 @@ private
    u 0 > if s"  at " ERROR-TEXT a u ERROR-TEXT then
    S\" \n" ERROR-TEXT ;
 
-: REPORT-UNDEFINED-TICK ( ptr u8 n -- )
+: REPORT-UNDEFINED ( ptr u8 n -- )
    s" E-UNDEFINED: " ERROR-TEXT
    ERROR-TEXT
    S\" \n" ERROR-TEXT ;
@@ -459,8 +459,13 @@ private
 public
 
 \ How a run ends, from the code its entry threw, the code the compilation
-\ reached, whether that refusal is a tick whose operand no record answers, and
-\ the token the compiler refused at.
+\ reached, whether that refusal names a word compiled code cannot reach (a call
+\ or tick operand no record answers, or a call to an internal record the call
+\ may not bind), and the token the compiler refused at. Such a word is refused
+\ as undefined with the reject status, as the JIT's lookup refuses it, though
+\ an unchecked body's scan only reported it. The refusal names the definition
+\ as well as the token: nothing else does for a TRUSTED: body or a call the
+\ checker admitted.
 : SETTLE-UNIT ( n n bool ptr u8 n -- )
    {: entry-rc:n rc:n undefined:bool a:ptr u:n :}
    entry-rc 0<> if
@@ -469,7 +474,8 @@ public
    then
    rc E-NCOMP-RECOVERY = if rc throw then
    undefined if
-      a u REPORT-UNDEFINED-TICK
+      a u REPORT-FAILURE
+      a u REPORT-UNDEFINED
       RETRACT RC-REJECT throw
    then
    rc 0 <> if
