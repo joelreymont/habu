@@ -3,10 +3,13 @@
 \ 2025-11-25 initialize flow. No session ID, no event stream. The host states
 \ its name with SERVER-INFO! and its tools with ADD-TOOL before HTTP:START,
 \ authenticates each request, validates its Origin (403 when one is present and
-\ not allowed) and passes it to HANDLE.
+\ not allowed) and passes it to HANDLE. The client side, OPEN, TOOLS, CALL and
+\ CLOSE, speaks the 2026-07-28 era to one server over CURL and takes a JSON or
+\ an event-stream reply.
 \ STORAGE CLASS. PROCESS-WIDE: the server info and tool registry, written before
-\ HTTP serves, and tables indexed by HTTP:WORKER-SLOT holding each request's
-\ state.
+\ HTTP serves; tables indexed by HTTP:WORKER-SLOT holding each request's state;
+\ and the client table, a row per open client, read and written under its own
+\ lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
 
 require src/lib/string.f
@@ -15,16 +18,30 @@ require src/lib/base64.f
 require src/lib/json-read.f
 require src/lib/json-write.f
 require src/lib/json-rpc.f
+require src/lib/memory.f
+require src/lib/byte-buffer.f
+require src/lib/task.f
+require src/lib/time.f
+require src/lib/net/curl.f
+require src/lib/net/event-stream.f
 require src/lib/net/http.f
 
 package MCP
 public
 -9480 constant E-FIRST
 -9489 constant E-LAST
-\ SERVER-INFO! or ADD-TOOL while HTTP serves, HANDLE before SERVER-INFO!, or a
-\ body that does not answer exactly once.
+\ SERVER-INFO! or ADD-TOOL while HTTP serves, HANDLE before SERVER-INFO!, a
+\ body that does not answer exactly once, or a client word given a closed
+\ client.
 -9481 constant E-STATE
 -9482 constant E-DUPLICATE   \ ADD-TOOL of a registered name
+-9483 constant E-TRANSFER    \ a client's request could not be sent or its reply received
+\ A reply that is not a 2xx JSON-RPC success for the request, or whose result
+\ lacks the shape its method answers.
+-9484 constant E-RESPONSE
+
+\ A client of one server's endpoint, from OPEN until CLOSE.
+NEWTYPE client
 private
 
 -9480 constant E-INPUT       \ params or arguments that are not objects: -32602
@@ -32,7 +49,7 @@ private
 0 constant MODERN            \ 2026-07-28
 1 constant LEGACY            \ 2025-11-25
 
-0 constant OPEN
+0 constant IDLE
 1 constant CALLING           \ a tool's body runs and may answer
 2 constant SENT              \ the response began; a later fault is the host's
 
@@ -50,7 +67,7 @@ TYPED-VARIABLE SERVER-NAME SPAN:span<u8>
 TYPED-VARIABLE SERVER-VERSION SPAN:span<u8>
 
 \ The registry: a row to each tool, in ADD-TOOL order.
-variable TOOLS
+variable TOOL-COUNT
 DYNAMIC-BUFFER TOOL-NAME SPAN:span<u8>
 DYNAMIC-BUFFER TOOL-INFO SPAN:span<u8>
 DYNAMIC-BUFFER TOOL-SCHEMA SPAN:span<u8>
@@ -220,7 +237,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
       s" resultType" s" complete" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    then
    s" tools" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
-   TOOLS @ 0 ?do
+   TOOL-COUNT @ 0 ?do
       i 0<> if JSON-WRITE:COMMA then
       i TOOL-ENTRY
    loop
@@ -492,7 +509,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 \ The registered tool a JSON name text names, else -1.
 : TOOL-OF ( ptr u8 n -- n )
    {: raw:ptr ru:n :}
-   TOOLS @ 0 ?do
+   TOOL-COUNT @ 0 ?do
       raw ru i TOOL-NAME @ SPAN:$ STRING= if i unloop exit then
    loop -1 ;
 
@@ -503,7 +520,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ The body answers through ANSWER or ANSWER-ERROR before it returns.
-: CALL ( -- )
+: RUN-TOOL ( -- )
    PARAMS$ s" name" FIELD? 0= if E-INPUT throw then
    TOOL-OF {: idx:n :}
    idx 0< if UNKNOWN-TOOL SEND exit then
@@ -532,7 +549,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    s" server/discover" METHOD= if DISCOVER exit then
    s" tools/list" METHOD= if LIST-REPLY GOOD SEND exit then
    s" ping" METHOD= LEGACY? and if PING-REPLY GOOD SEND exit then
-   s" tools/call" METHOD= if CALL exit then
+   s" tools/call" METHOD= if RUN-TOOL exit then
    NO-METHOD SEND ;
 
 
@@ -547,7 +564,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 : REGISTERED? ( ptr u8 n -- bool )
    {: name:ptr nu:n :}
-   TOOLS @ 0 ?do
+   TOOL-COUNT @ 0 ?do
       name nu i TOOL-NAME @ SPAN:$ STR= if true unloop exit then
    loop false ;
 
@@ -591,14 +608,14 @@ public
    {: name:ptr nu:n info:ptr iu:n schema:ptr su:n hint:bool body :}
    HTTP:RUNNING? if E-STATE throw then
    name nu REGISTERED? if E-DUPLICATE throw then
-   TOOLS @ {: idx:n :}
+   TOOL-COUNT @ {: idx:n :}
    idx 1+ TOOLS-RESERVE
    name nu SPAN:MAKE idx TOOL-NAME !
    info iu SPAN:MAKE idx TOOL-INFO !
    schema su SPAN:MAKE idx TOOL-SCHEMA !
    hint idx TOOL-HINT !
    body idx TOOL-BODY !
-   idx 1+ TOOLS ! ;
+   idx 1+ TOOL-COUNT ! ;
 
 
 \ A body's result: one JSON value as structuredContent.data and as the text
@@ -619,11 +636,555 @@ public
    SERVER-NAME @ SPAN:LEN 0= if E-STATE throw then
    asked SLOT FROM !
    answer SLOT TO !
-   OPEN SLOT STAGE !
+   IDLE SLOT STAGE !
    s" " SPAN:MAKE SLOT ID !
    [: PROCESS ;] catch {: code:n :}
    code 0= if exit then
-   SLOT STAGE @ OPEN <> code E-INPUT <> or if code throw then
+   SLOT STAGE @ IDLE <> code E-INPUT <> or if code throw then
    BAD-INPUT SEND ;
+
+
+\ The client. A client is a row of a process-wide table that grows with the
+\ clients open; a free row is an empty region and is reused. The table is read
+\ and written only under LOCK, since growth moves it; a row's region never
+\ moves. A client's value is the generation OPEN gave its row from a
+\ process-wide count, and CLOSE clears the row's generation, so a closed
+\ client's value names no row even after another OPEN reuses it. The region
+\ holds a record, five BUFs and the SSE decoder's storage. The BUFs are the URL;
+\ the request, then, once BODY! has copied it, a header line and the reply's
+\ header block; the reply; the tool list TOOLS assembles; and the response an
+\ event-stream reply carried. The handle of the exchange in flight, none between
+\ exchanges, is the table's: a record that held it could not be cast from its
+\ region.
+
+private
+
+CAST: >CLIENT ( n -- client )
+CAST: CLIENT>N ( client -- n )
+
+\ A row's record: the cursor parses a reply and the writer builds a request;
+\ status is the HTTP status the last exchange ended with, and stream whether
+\ its reply was an event stream.
+STRUCTURE peer DERIVE addr
+   FIELD cursor JR:cursor
+   FIELD writer JSON-WRITE:writer
+   FIELD status n
+   FIELD stream bool
+;STRUCTURE
+
+CAST: >PEER ( ptr u8 -- ptr peer )
+
+$1000 constant FIRST-CAP
+PEER-BYTES constant URL-OFF
+URL-OFF BUF:HDR-BYTES + constant REQUEST-OFF
+REQUEST-OFF BUF:HDR-BYTES + constant REPLY-OFF
+REPLY-OFF BUF:HDR-BYTES + constant LIST-OFF
+LIST-OFF BUF:HDR-BYTES + constant MESSAGE-OFF
+MESSAGE-OFF BUF:HDR-BYTES + constant DECODER-OFF
+DECODER-OFF SSE:STORAGE-BYTES + constant REGION-BYTES
+
+\ No task is live while this file loads, so the lock is made ready here.
+TASK:FACILITY LOCK
+LOCK TASK:FACILITY-INIT
+variable ROW-COUNT
+variable GENERATION                 \ the last generation OPEN gave a row
+DYNAMIC-BUFFER ROW-REGION SPAN:span<u8>
+DYNAMIC-BUFFER ROW-HANDLE option<CURL:handle>
+DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
+
+: REGION ( n -- SPAN:span<u8> ) LOCK TASK:GET ROW-REGION @ LOCK TASK:RELEASE ;
+: HANDLE@ ( n -- option<CURL:handle> ) LOCK TASK:GET ROW-HANDLE @ LOCK TASK:RELEASE ;
+: HANDLE! ( option<CURL:handle> n -- ) LOCK TASK:GET ROW-HANDLE ! LOCK TASK:RELEASE ;
+
+: ROW ( n -- ptr peer ) REGION SPAN:$ drop >PEER ;
+
+: BUF-AT ( n n -- ptr n )
+   {: idx:n off:n :}
+   idx REGION off BUF:HDR-BYTES SPAN:SUB SPAN:$ drop CELL-VIEW ;
+
+: URL-BUF ( n -- ptr n ) URL-OFF BUF-AT ;
+: REQUEST-BUF ( n -- ptr n ) REQUEST-OFF BUF-AT ;
+: REPLY-BUF ( n -- ptr n ) REPLY-OFF BUF-AT ;
+: LIST-BUF ( n -- ptr n ) LIST-OFF BUF-AT ;
+: MESSAGE-BUF ( n -- ptr n ) MESSAGE-OFF BUF-AT ;
+
+\ A decoder opened on the row's storage.
+: DECODER ( n -- SSE:decoder )
+   REGION DECODER-OFF SSE:STORAGE-BYTES SPAN:SUB SPAN:$ {: a:ptr u:n :}
+   a CELL-VIEW u SSE:OPEN ;
+
+: BUF$ ( ptr n -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
+: BUF+ ( ptr u8 n ptr n -- ) {: a:ptr u:n buf:ptr :} a u BUF:N>BLEN buf BUF:APPEND-SPAN ;
+
+
+\ The first free row, else -1; under LOCK.
+: FREE-ROW ( -- n )
+   ROW-COUNT @ 0 ?do
+      i ROW-REGION @ SPAN:LEN 0= if i unloop exit then
+   loop -1 ;
+
+\ A free row at the table's end; under LOCK.
+: GROW ( -- )
+   ROW-COUNT @ {: count:n :}
+   count 1+ ROW-REGION-RESERVE
+   count 1+ ROW-HANDLE-RESERVE
+   count 1+ ROW-GEN-RESERVE
+   s" " SPAN:MAKE count ROW-REGION !
+   0 count ROW-GEN !
+   count 1+ ROW-COUNT ! ;
+
+\ Draws the next generation into GENERATION and makes sure a row is free;
+\ under LOCK.
+: READY ( -- )
+   GENERATION @ 1+ GENERATION !
+   FREE-ROW 0< if GROW then ;
+
+\ A client whose row now holds the region. When no row can be had, the region
+\ is freed and the throw passes on.
+: CLAIM ( SPAN:span<u8> -- client )
+   {: region :}
+   LOCK TASK:GET
+   ['] READY catch {: code:n :}
+   code 0<> if LOCK TASK:RELEASE region MEM:FREE-SPAN code throw then
+   FREE-ROW {: idx:n :}
+   GENERATION @ {: gen:n :}
+   region idx ROW-REGION !
+   OPTION:NONE idx ROW-HANDLE !
+   gen idx ROW-GEN !
+   LOCK TASK:RELEASE
+   gen >CLIENT ;
+
+\ The row holding the generation, else -1; under LOCK.
+: GEN-ROW ( n -- n )
+   {: gen:n :}
+   ROW-COUNT @ 0 ?do
+      i ROW-GEN @ gen = if i unloop exit then
+   loop -1 ;
+
+\ An open client's row: E-STATE unless a row holds the client's generation. A
+\ free row's 0 is no generation.
+: LIVE ( client -- n )
+   CLIENT>N {: gen:n :}
+   gen 1 < if E-STATE throw then
+   LOCK TASK:GET
+   gen GEN-ROW {: idx:n :}
+   LOCK TASK:RELEASE
+   idx 0< if E-STATE throw then
+   idx ;
+
+\ Gives the row's buffers and region back and frees the row.
+: RELEASE ( n -- )
+   {: idx:n :}
+   idx URL-BUF BUF:DISPOSE
+   idx REQUEST-BUF BUF:DISPOSE
+   idx REPLY-BUF BUF:DISPOSE
+   idx LIST-BUF BUF:DISPOSE
+   idx MESSAGE-BUF BUF:DISPOSE
+   idx REGION {: region :}
+   LOCK TASK:GET
+   s" " SPAN:MAKE idx ROW-REGION !
+   0 idx ROW-GEN !
+   LOCK TASK:RELEASE
+   region MEM:FREE-SPAN ;
+
+\ Readies a claimed row's buffers and copies the URL; answers its operands.
+: FILL-ROW ( n ptr u8 n -- n ptr u8 n )
+   {: idx:n url:ptr uu:n :}
+   idx URL-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
+   idx REQUEST-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
+   idx REPLY-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
+   idx LIST-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
+   idx MESSAGE-BUF FIRST-CAP BUF:N>BLEN BUF:INIT
+   url uu idx URL-BUF BUF+
+   idx url uu ;
+
+
+: CHECK ( CURL:status -- )
+   MATCH CURL:status
+      ok OF ENDOF
+      failed OF drop E-TRANSFER throw ENDOF
+   ;MATCH ;
+
+
+\ Room in a BUF past the bytes it holds.
+: ROOM ( ptr n -- ptr u8 n )
+   {: buf:ptr :}
+   buf BUF$ {: a:ptr u:n :}
+   a u + buf BUF:CAP@ BUF:BLEN>N u - ;
+
+
+\ Collects the end of a transfer CANCEL has stopped.
+: DRAIN ( n CURL:handle -- )
+   {: idx:n h:CURL:handle :}
+   idx REPLY-BUF {: buf:ptr :}
+   begin
+      h buf BUF:SPAN$ drop buf BUF:CAP@ BUF:BLEN>N >LEN CURL:NEXT
+      MATCH CURL:chunk-result
+         chunk OF 2drop false ENDOF
+         response OF drop true ENDOF
+         failed OF drop true ENDOF
+      ;MATCH
+   until ;
+
+
+\ Lets the row's exchange go: a transfer still in flight is cancelled and
+\ drained, then its handle cleaned up, and a reader a throw left is disposed.
+: RETIRE ( n -- )
+   {: idx:n :}
+   idx HANDLE@ MATCH option
+      none OF ENDOF
+      some OF {: h:CURL:handle :}
+         h [: dup CURL:CANCEL ;] catch {: code:n :} drop
+         \ CANCEL's only E-STATE is a handle with no transfer in flight.
+         code 0= if idx h DRAIN else
+            code CURL:E-STATE <> if code throw then
+         then
+         h CURL:CLEANUP
+      ENDOF
+   ;MATCH
+   OPTION:NONE idx HANDLE!
+   idx ROW PEER-CURSOR JR:DISPOSE ;
+
+
+: META-PARAM ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   s" _meta" JSON-WRITE:KEY JSON-WRITE:OBJECT-START
+   s" io.modelcontextprotocol/protocolVersion" s" 2026-07-28" JSON-WRITE:FIELD-S
+   JSON-WRITE:COMMA s" io.modelcontextprotocol/clientCapabilities" JSON-WRITE:KEY
+   JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END
+   JSON-WRITE:OBJECT-END ;
+
+\ The id of every request a client sends, as its JSON text.
+: REQUEST-ID$ ( -- ptr u8 n ) s" 1" ;
+
+\ A request with the request id and the method, up to the params' members.
+: REQUEST-START ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+   {: m:ptr mu:n :}
+   JSON-WRITE:OBJECT-START s" jsonrpc" s" 2.0" JSON-WRITE:FIELD-S
+   JSON-WRITE:COMMA s" id" REQUEST-ID$ JSON-WRITE:FIELD-RAW
+   JSON-WRITE:COMMA s" method" m mu JSON-WRITE:FIELD-S
+   JSON-WRITE:COMMA s" params" JSON-WRITE:KEY JSON-WRITE:OBJECT-START ;
+
+: REQUEST-END ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   META-PARAM JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
+
+: WRITER ( n -- ptr JSON-WRITE:writer )
+   {: idx:n :}
+   idx ROW PEER-WRITER idx REQUEST-BUF JSON-WRITE:OPEN-BUF ;
+
+\ tools/list from the cursor's JSON string, or from the start when it is empty.
+: LIST-REQUEST ( n ptr u8 n -- )
+   {: idx:n next:ptr nu:n :}
+   idx WRITER s" tools/list" REQUEST-START
+   nu 0<> if s" cursor" next nu JSON-WRITE:FIELD-RAW JSON-WRITE:COMMA then
+   REQUEST-END JSON-WRITE:CLOSE ;
+
+: CALL-REQUEST ( n ptr u8 n ptr u8 n -- )
+   {: idx:n name:ptr nu:n args:ptr au:n :}
+   idx WRITER s" tools/call" REQUEST-START
+   s" name" name nu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" arguments" args au JSON-WRITE:FIELD-RAW JSON-WRITE:COMMA
+   REQUEST-END JSON-WRITE:CLOSE ;
+
+
+: VISIBLE? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u 0 ?do
+      a i + c@ dup $21 < swap $7E > or if false unloop exit then
+   loop true ;
+
+\ The Mcp-Name line, built in the request buffer: the name as it is when every
+\ byte is visible ASCII, else =?base64?...?=.
+: NAME-LINE ( n ptr u8 n -- ptr u8 n )
+   {: idx:n name:ptr nu:n :}
+   idx REQUEST-BUF {: buf:ptr :}
+   buf BUF:CLEAR
+   s" Mcp-Name: " buf BUF+
+   name nu VISIBLE? if name nu buf BUF+ else
+      s" =?base64?" buf BUF+
+      name nu buf nu 2 + 3 / 4 * BUF:N>BLEN BUF:GROW BASE64:ENCODE drop
+      s" ?=" buf BUF+
+   then
+   buf BUF$ ;
+
+
+\ A fresh handle, held by the row, posting the request buffer to the URL with
+\ the 2026-07-28 headers and the Mcp-Method line. A handle a halt left is
+\ retired first.
+: PREPARE ( n ptr u8 n ms -- CURL:handle )
+   {: idx:n line:ptr lu:n limit:ms :}
+   idx RETIRE
+   CURL:INIT
+   MATCH CURL:init-result
+      ready OF ENDOF
+      failed OF drop E-TRANSFER throw ENDOF
+   ;MATCH {: h:CURL:handle :}
+   h OPTION:SOME idx HANDLE!
+   h idx URL-BUF BUF$ CURL:URL! CHECK
+   h idx REQUEST-BUF BUF$ CURL:BODY! CHECK
+   h limit CURL:TIMEOUT! CHECK
+   h s" Content-Type: application/json" CURL:HEADER+ CHECK
+   h s" Accept: application/json, text/event-stream" CURL:HEADER+ CHECK
+   h s" MCP-Protocol-Version: 2026-07-28" CURL:HEADER+ CHECK
+   h line lu CURL:HEADER+ CHECK
+   h ;
+
+
+\ The finished reply's header block, in the request buffer, which grows to it.
+: HEAD$ ( n CURL:handle -- ptr u8 n )
+   {: idx:n h:CURL:handle :}
+   idx REQUEST-BUF {: buf:ptr :}
+   buf BUF:CLEAR
+   begin
+      buf BUF:SPAN$ drop {: at:ptr :}
+      h at buf BUF:CAP@ BUF:BLEN>N >LEN CURL:HEADERS
+      MATCH CURL:header-result
+         complete OF LEN>N at swap buf BUF+ true ENDOF
+         truncated OF LEN>N BUF:N>BLEN buf swap BUF:ENSURE false ENDOF
+      ;MATCH
+   until
+   buf BUF$ ;
+
+\ Whether a header line is Content-Type naming text/event-stream.
+: EVENT-TYPE? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   a u 58 INDEX-OF MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: at:n :}
+   at 0< if false exit then
+   a at TRIM s" Content-Type" STR=CI 0= if false exit then
+   a at + 1+ u at - 1- MEDIA-ESSENCE s" text/event-stream" STR=CI ;
+
+\ Whether the finished reply is an event stream, by its header block's lines.
+: STREAM? ( n CURL:handle -- bool )
+   HEAD$ {: a:ptr u:n :}
+   0 begin dup u < while
+      {: at:n :}
+      a at + u at - 10 INDEX-OF MATCH option
+         none OF u at - ENDOF
+         some OF IDX>N ENDOF
+      ;MATCH {: len:n :}
+      a at + len EVENT-TYPE? if true exit then
+      at len + 1+
+   repeat drop false ;
+
+
+\ Starts the transfer and receives the whole reply into the reply buffer,
+\ which grows with it: NEXT writes each chunk into the room past the bytes
+\ received, and appending the chunk from where it lies keeps it. NEXT follows
+\ STREAM-START with no PAUSE between, so a halt is read in NEXT's wait, which
+\ gives the transfer up.
+: TRANSFER ( n CURL:handle -- )
+   {: idx:n h:CURL:handle :}
+   idx REPLY-BUF {: buf:ptr :}
+   buf BUF:CLEAR
+   h CURL:STREAM-START CHECK
+   begin
+      buf buf BUF:LEN@ BUF:BLEN>N 1+ BUF:N>BLEN BUF:ENSURE
+      buf ROOM {: room:ptr ru:n :}
+      h room ru >LEN CURL:NEXT
+      MATCH CURL:chunk-result
+         chunk OF nip LEN>N room swap buf BUF+ false ENDOF
+         response OF CURL:HTTP-STATUS>N idx ROW PEER-STATUS ! true ENDOF
+         failed OF drop E-TRANSFER throw ENDOF
+      ;MATCH
+   until
+   idx h STREAM? idx ROW PEER-STREAM ! ;
+
+: LIST-EXCHANGE ( n ms -- n ms )
+   {: idx:n limit:ms :}
+   idx idx s" Mcp-Method: tools/list" limit PREPARE TRANSFER
+   idx limit ;
+
+: CALL-EXCHANGE ( n ptr u8 n ms -- n ptr u8 n ms )
+   {: idx:n name:ptr nu:n limit:ms :}
+   idx s" Mcp-Method: tools/call" limit PREPARE {: h:CURL:handle :}
+   h idx name nu NAME-LINE CURL:HEADER+ CHECK
+   idx h TRANSFER
+   idx name nu limit ;
+
+\ A guarded exchange's code: the row's exchange is let go whether or not it
+\ threw, and a throw passes on, so the client serves its next call. A halt
+\ passes catch by, leaving the row for CLOSE.
+: SETTLE ( n n -- )
+   {: idx:n code:n :}
+   idx RETIRE
+   code 0<> if code throw then ;
+
+
+\ The id of a response, empty for any other message.
+: RESPONSE-ID$ ( JSON-RPC:message -- ptr u8 n )
+   MATCH JSON-RPC:message
+      success OF 2drop JSON-RPC:ID$ ENDOF
+      failure OF 2drop JSON-RPC:ID$ ENDOF
+      request OF 2drop 2drop drop s" " ENDOF
+      notification OF 2drop 2drop s" " ENDOF
+      invalid OF 2drop 2drop s" " ENDOF
+   ;MATCH ;
+
+\ An event of an event-stream reply, given the row's region: the first whose
+\ data is the response to the client's request is kept in the message buffer,
+\ and every other event is passed over.
+: EVENT ( ptr u8 ptr u8 n ptr u8 n -- )
+   {: base:ptr kind:ptr ku:n data:ptr du:n :}
+   base MESSAGE-OFF + CELL-VIEW {: buf:ptr :}
+   buf BUF:LEN@ BUF:BLEN>N 0<> if exit then
+   base >PEER PEER-CURSOR data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR=
+   if data du buf BUF+ then ;
+
+\ Feeds the whole reply to the decoder and finishes it; answers its operands.
+: DECODE ( SSE:decoder ptr u8 n ptr u8 -- SSE:decoder ptr u8 n ptr u8 )
+   {: d:SSE:decoder a:ptr u:n base:ptr :}
+   d a u base [: EVENT ;] SSE:FEED
+   d SSE:FINISH
+   d a u base ;
+
+\ The reply's JSON-RPC text: its body, or for an event stream the data of the
+\ event that answers the request, E-RESPONSE when no event does or when the
+\ stream is not UTF-8. The decoder is closed before this answers or throws.
+: MESSAGE$ ( n -- ptr u8 n )
+   {: idx:n :}
+   idx REPLY-BUF BUF$ {: a:ptr u:n :}
+   idx ROW PEER-STREAM @ 0= if a u exit then
+   idx MESSAGE-BUF {: buf:ptr :}
+   buf BUF:CLEAR
+   idx DECODER {: d:SSE:decoder :}
+   d a u idx REGION SPAN:$ drop [: DECODE ;] catch {: code:n :} 2drop 2drop
+   d SSE:CLOSE
+   code SSE:E-UTF8 = if E-RESPONSE throw then
+   code 0<> if code throw then
+   buf BUF$ dup 0= if E-RESPONSE throw then ;
+
+
+\ A member of a JSON object text: its text (a string with quotes) and token
+\ kind, and whether it is there. Text that is not an object is E-RESPONSE.
+: MEMBER ( n ptr u8 n ptr u8 n -- ptr u8 n n bool )
+   {: idx:n data:ptr len:n key:ptr ku:n :}
+   idx ROW PEER-CURSOR data len JR:INIT
+   JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
+   key ku JR:FIND-KEY if
+      JR:TOKEN {: k:n :} RAW$ {: a:ptr u:n :} JR:CLOSE a u k true
+   else JR:CLOSE s" " JR:T-END false then ;
+
+
+\ The result object's text of a 2xx reply whose message answers the request.
+: RESULT$ ( n -- ptr u8 n )
+   {: idx:n :}
+   idx ROW PEER-STATUS @ {: status:n :}
+   status 200 < status 299 > or if E-RESPONSE throw then
+   idx MESSAGE$ {: m:ptr mu:n :}
+   idx ROW PEER-CURSOR m mu JSON-RPC:>MESSAGE
+   MATCH JSON-RPC:message
+      success OF {: id value:ptr vu:n :}
+         id JSON-RPC:ID$ REQUEST-ID$ STR= 0= if E-RESPONSE throw then
+         value vu ENDOF
+      request OF 2drop 2drop drop E-RESPONSE throw ENDOF
+      notification OF 2drop 2drop E-RESPONSE throw ENDOF
+      failure OF 2drop drop E-RESPONSE throw ENDOF
+      invalid OF 2drop 2drop E-RESPONSE throw ENDOF
+   ;MATCH ;
+
+
+\ Adds a tools array's members to the list buffer's array.
+: GATHER ( n ptr u8 n -- )
+   {: idx:n raw:ptr ru:n :}
+   idx LIST-BUF {: buf:ptr :}
+   raw 1+ ru 2 - TRIM {: a:ptr u:n :}
+   u 0= if exit then
+   buf BUF:LEN@ BUF:BLEN>N 1 > if 44 buf BUF:APPEND-BYTE then
+   a u buf BUF+ ;
+
+1000000 constant NS-PER-MS
+
+\ What is left of a TOOLS limit taken at the MONO-NS reading, rounded down to
+\ whole ms; E-TRANSFER when none is. No limit (0), and a negative one that
+\ TIMEOUT! refuses, pass through.
+: LEFT ( ms n -- ms )
+   {: limit:ms start:n :}
+   limit MS>N {: total:n :}
+   total 0 <= if limit exit then
+   TIME:MONO-NS start - NS-PER-MS 1 - + NS-PER-MS / {: spent:n :}
+   total spent - dup 0 <= if E-TRANSFER throw then >MS ;
+
+\ One page of tools/list from the cursor, its transfer within ms, the time its
+\ TOOLS has left: answers the next page's cursor and true, or an empty text and
+\ false after the last.
+: PAGE ( n ptr u8 n ms -- ptr u8 n bool )
+   {: idx:n next:ptr nu:n limit:ms :}
+   idx next nu LIST-REQUEST
+   idx limit [: LIST-EXCHANGE ;] catch {: code:n :} 2drop
+   idx code SETTLE
+   idx RESULT$ {: result:ptr ru:n :}
+   idx result ru s" tools" MEMBER 0= if E-RESPONSE throw then
+   JR:T-ARR <> if E-RESPONSE throw then
+   {: tools:ptr tu:n :}
+   idx result ru s" nextCursor" MEMBER {: more:bool :} {: k:n :}
+   more if k JR:T-STR <> if E-RESPONSE throw then then
+   idx tools tu GATHER
+   more ;
+
+public
+
+\ A client of the MCP endpoint at the URL, which is copied. Each exchange, a
+\ CALL or one page of TOOLS, runs on a fresh CURL handle; connections are
+\ reused through the CURL loop, which the caller has started (CURL:LOOP-START)
+\ and keeps running while the client is used. Answers borrow the client's
+\ buffers until its next TOOLS, CALL or CLOSE. A throw leaves the client ready
+\ for the next call. OPEN that throws holds nothing.
+: OPEN ( ptr u8 n -- client )
+   {: url:ptr uu:n :}
+   REGION-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: region :}
+   0 region SPAN:FILL
+   region CLAIM {: who:client :}
+   who LIVE {: idx:n :}
+   idx url uu [: FILL-ROW ;] catch {: code:n :} 2drop drop
+   code 0<> if idx RELEASE code throw then
+   who ;
+
+
+\ Ends a client in any state a throw or a TASK:HALT left it in: a transfer
+\ still in flight is cancelled and drained, then the handle, reader and buffers
+\ go. A caller that must survive a halt keeps the client in its own task
+\ storage and closes it in its own finally. E-STATE for a closed client.
+: CLOSE ( client -- )
+   LIVE {: idx:n :}
+   idx RETIRE
+   idx RELEASE ;
+
+
+\ Every tool the server lists, following nextCursor to the last page, the
+\ whole call within ms (0: no limit): one JSON array of the tool objects in
+\ order. E-TRANSFER when an exchange fails or the pages run past ms,
+\ E-RESPONSE for a reply that is no tools/list result.
+: TOOLS ( client ms -- ptr u8 n )
+   {: who:client limit:ms :}
+   TIME:MONO-NS {: start:n :}
+   who LIVE {: idx:n :}
+   idx LIST-BUF {: buf:ptr :}
+   buf BUF:CLEAR
+   91 buf BUF:APPEND-BYTE
+   s" " begin idx -rot limit start LEFT PAGE while repeat 2drop
+   93 buf BUF:APPEND-BYTE
+   buf BUF$ ;
+
+
+\ tools/call of the named tool with the arguments' JSON object, within ms for
+\ the whole transfer (0: no limit): answers the result object's JSON text and
+\ its isError. E-TRANSFER when the exchange fails or runs past ms, E-RESPONSE
+\ for a JSON-RPC error, an unknown tool included, or a reply that is no result.
+: CALL ( client ptr u8 n ptr u8 n ms -- ptr u8 n bool )
+   {: who:client name:ptr nu:n args:ptr au:n limit:ms :}
+   who LIVE {: idx:n :}
+   idx name nu args au CALL-REQUEST
+   idx name nu limit [: CALL-EXCHANGE ;] catch {: code:n :} 2drop 2drop
+   idx code SETTLE
+   idx RESULT$ {: result:ptr ru:n :}
+   idx result ru s" isError" MEMBER if
+      {: k:n :} 2drop
+      k JR:T-TRUE <> k JR:T-FALSE <> and if E-RESPONSE throw then
+      k JR:T-TRUE =
+   else drop 2drop false then
+   {: fault:bool :}
+   result ru fault ;
 
 ;package

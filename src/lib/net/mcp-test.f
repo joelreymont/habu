@@ -3,6 +3,12 @@
 \ Mcp-Name checks, the transport check, unknown methods and tools, a body's
 \ result and tool error, bodies that answer badly or never, malformed
 \ envelopes, arguments and JSON, tools/list and ping, and ADD-TOOL's refusals.
+\ MCP's client against the same server and plain routes: TOOLS across pages,
+\ CALL's result, isError, refusals, a reply past the first buffer, timeouts of
+\ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
+\ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
+\ pages, CLOSE after a halt mid-receive, and a closed client refused once its
+\ row is reused.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
 require src/lib/test.f
@@ -10,6 +16,8 @@ require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/aio.f
+require src/lib/task.f
+require src/lib/adt/result.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/mcp.f
@@ -23,6 +31,54 @@ $7F000001 constant LOOPBACK
 $4000 constant CAP
 CAP BUFFER: BODY
 variable BODY-U
+1000000 constant NS-PER-MS
+2000 constant WAIT-MS               \ the bound on every wait in this file
+50 constant PAGE-MS                 \ /endless's delay before each page
+300 constant LIST-MS                \ the TOOLS limit /endless runs past
+1000 constant LIST-BOUND-MS         \ when that TOOLS must have thrown by
+300 constant FIRST-PAGE-MS          \ /late's delay before its first page
+1500 constant STALL-MS              \ the bound on /late's stall at its second page
+500 constant LATE-MS                \ the TOOLS limit /late runs past
+790 constant LATE-BOUND-MS          \ when that TOOLS must have thrown by
+
+\ Expected texts too long for SB.
+CAP BUFFER: WANT
+variable WANT-U
+: W-RESET ( -- ) 0 WANT-U ! ;
+: W+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   WANT-U @ u + CAP > if s" W+ past WANT" T-FAIL-AS exit then
+   a WANT WANT-U @ + u BYTE-COPY
+   WANT-U @ u + WANT-U ! ;
+: W$ ( -- ptr u8 n ) WANT WANT-U @ ;
+
+\ A route's body, built in the HTTP worker.
+$100 constant NB-CAP
+NB-CAP BUFFER: NB
+variable NB-U
+: NB+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   NB-U @ u + NB-CAP > if s" NB+ past NB" T-FAIL-AS exit then
+   a NB NB-U @ + u BYTE-COPY
+   NB-U @ u + NB-U ! ;
+
+\ A JSON string past the client's first reply buffer ($1000 bytes).
+$1400 constant BIG-U
+BIG-U BUFFER: BIG
+: BIG-FILL ( -- )
+   BIG-U 1- 1 ?do 120 BIG i + c! loop  34 BIG c!  34 BIG BIG-U + 1- c! ;
+
+TYPED-VARIABLE CLIENT MCP:client
+TYPED-VARIABLE STALL-CLIENT MCP:client
+TYPED-VARIABLE ROUTE-CLIENT MCP:client
+variable ENTERED
+variable RELEASED
+variable CLOSED
+variable PAGES-END                  \ when /endless answers its last page, a mono-ns
+TASK:MIN-STACK TASK:TASK STALLER
+
+\ The end of a wait's WAIT-MS window, an absolute mono-ns.
+: DEADLINE ( -- n ) mono-ns WAIT-MS NS-PER-MS * + ;
 
 : OK ( CURL:status -- )
    MATCH CURL:status
@@ -103,6 +159,10 @@ variable BODY-U
 : SERVER ( -- )
    S\" \"_meta\":{\"io.modelcontextprotocol/serverInfo\":" SB-APPEND
    S\" {\"name\":\"test-server\",\"version\":\"1.0\"}}" SB-APPEND ;
+
+: W-SERVER ( -- )
+   S\" \"_meta\":{\"io.modelcontextprotocol/serverInfo\":" W+
+   S\" {\"name\":\"test-server\",\"version\":\"1.0\"}}" W+ ;
 
 
 : LEGACY-INITIALIZE ( -- )
@@ -212,31 +272,37 @@ variable BODY-U
 
 
 : OUTPUT ( -- )
-   S\" \"outputSchema\":{\"type\":\"object\",\"properties\":{\"data\":{}}," SB-APPEND
-   S\" \"required\":[\"data\"]},\"annotations\":{\"readOnlyHint\":" SB-APPEND ;
+   S\" \"outputSchema\":{\"type\":\"object\",\"properties\":{\"data\":{}}," W+
+   S\" \"required\":[\"data\"]},\"annotations\":{\"readOnlyHint\":" W+ ;
 
-\ The registered tools as tools/list shows them.
-: TOOLS ( -- )
-   S\" \"tools\":[{\"name\":\"echo\"," SB-APPEND
-   S\" \"description\":\"Echo the arguments.\",\"inputSchema\":{\"type\":\"object\"}," SB-APPEND
-   OUTPUT s" true}},{" SB-APPEND
-   S\" \"name\":\"refuse\",\"description\":\"Refuse every call.\"," SB-APPEND
-   S\" \"inputSchema\":{\"type\":\"object\",\"properties\":{}}," SB-APPEND
-   OUTPUT s" false}},{" SB-APPEND
-   S\" \"name\":\"raw\",\"description\":\"Answer text that is not JSON.\"," SB-APPEND
-   S\" \"inputSchema\":{\"type\":\"object\"}," SB-APPEND
-   OUTPUT s" true}},{" SB-APPEND
-   S\" \"name\":\"silent\",\"description\":\"Never answer.\"," SB-APPEND
-   S\" \"inputSchema\":{\"type\":\"object\"}," SB-APPEND
-   OUTPUT s" true}}]" SB-APPEND ;
+\ Every registered tool, as tools/list answers them.
+: TOOL-ARRAY ( -- )
+   S\" [{\"name\":\"echo\"," W+
+   S\" \"description\":\"Echo the arguments.\",\"inputSchema\":{\"type\":\"object\"}," W+
+   OUTPUT s" true}},{" W+
+   S\" \"name\":\"refuse\",\"description\":\"Refuse every call.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\",\"properties\":{}}," W+
+   OUTPUT s" false}},{" W+
+   S\" \"name\":\"raw\",\"description\":\"Answer text that is not JSON.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+
+   OUTPUT s" true}},{" W+
+   S\" \"name\":\"silent\",\"description\":\"Never answer.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+
+   OUTPUT s" true}},{" W+
+   S\" \"name\":\"big\",\"description\":\"Answer a long string.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+
+   OUTPUT s" true}},{" W+
+   S\" \"name\":\"stall\",\"description\":\"Answer once released.\"," W+
+   S\" \"inputSchema\":{\"type\":\"object\"}," W+
+   OUTPUT s" true}}]" W+ ;
 
 
 : LIST ( -- )
    s" tools/list shows each tool's schema and read-only hint" T-LABEL
    LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/list\"}" POST
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{" SB-APPEND
-   TOOLS s" }}" SB-APPEND
-   200 SB$ ANSWERED ;
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{\"tools\":" W+
+   TOOL-ARRAY s" }}" W+
+   200 W$ ANSWERED ;
 
 
 : MODERN-LIST ( -- )
@@ -244,10 +310,10 @@ variable BODY-U
    MODERN s" Mcp-Method: tools/list" ADD
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/list\",\"params\":{" SB-APPEND
    META S\" }}" SB-APPEND SB$ POST
-   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":12,\"result\":{\"resultType\":\"complete\"," SB-APPEND
-   TOOLS S\" ,\"ttlMs\":0,\"cacheScope\":\"private\"," SB-APPEND
-   SERVER S\" }}" SB-APPEND
-   200 SB$ ANSWERED ;
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":12,\"result\":{\"resultType\":\"complete\"," W+
+   S\" \"tools\":" W+ TOOL-ARRAY S\" ,\"ttlMs\":0,\"cacheScope\":\"private\"," W+
+   W-SERVER S\" }}" W+
+   200 W$ ANSWERED ;
 
 
 \ A modern tools/call for echo with an Mcp-Method header and the given id.
@@ -364,17 +430,271 @@ variable BODY-U
    s" silent" s" Never answer." S\" {\"type\":\"object\"}" true
    [: 2drop ;] MCP:ADD-TOOL ;
 
+: ADD-BIG ( -- )
+   s" big" s" Answer a long string." S\" {\"type\":\"object\"}" true
+   [: 2drop BIG BIG-U MCP:ANSWER ;] MCP:ADD-TOOL ;
+
+\ Answers once the test sets RELEASED.
+: ADD-STALL ( -- )
+   s" stall" s" Answer once released." S\" {\"type\":\"object\"}" true
+   [: 2drop 1 ENTERED atomic!
+      [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test STALL" TEST-WAIT:POLL
+      s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
+
 : ADD-LATE ( -- )
    s" late" s" Registered while serving." S\" {\"type\":\"object\"}" true
    [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+
+
+\ The client's cases.
+
+: URL ( ptr u8 n -- ptr u8 n )
+   {: path:ptr pu:n :}
+   SB-RESET s" http://127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U path pu SB-APPEND SB$ ;
+
+: ASK ( ptr u8 n ptr u8 n -- ptr u8 n bool )
+   {: name:ptr nu:n args:ptr au:n :}
+   CLIENT @ name nu args au 0 >MS MCP:CALL ;
+
+: JSON-HEADER ( HTTP:response -- )
+   s" Content-Type" s" application/json" HTTP:HEADER! ;
+
+\ tools/list in three pages, the middle one empty.
+: PAGED-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   answer JSON-HEADER
+   asked HTTP:BODY$ S\" \"cursor\":\"p2\"" CONTAINS? if
+      answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[ ],\"nextCursor\":\"p3\"}}"
+      HTTP:BODY! exit
+   then
+   asked HTTP:BODY$ S\" \"cursor\":\"p3\"" CONTAINS? if
+      answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"b\"}]}}"
+      HTTP:BODY! exit
+   then
+   answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"a\"}],\"nextCursor\":\"p2\"}}"
+   HTTP:BODY! ;
+
+\ A result naming the Mcp-Name header as it arrived.
+: NAMES-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   asked s" Mcp-Name" HTTP:HEADER-OF$ drop {: v:ptr vu:n :}
+   0 NB-U !
+   S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"name\":\"" NB+ v vu NB+ S\" \"}}" NB+
+   answer JSON-HEADER
+   answer NB NB-U @ HTTP:BODY! ;
+
+\ Event-stream replies: a notification and, for a call, a request with the
+\ client's id before the response, except for a call of "none", whose stream
+\ ends with no response, and of "bad", whose one event is not UTF-8.
+: EVENTS-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   answer s" Content-Type" s" text/event-stream" HTTP:HEADER!
+   asked HTTP:BODY$ S\" \"name\":\"bad\"" CONTAINS? if
+      answer s\" data: \xFF\n\n" HTTP:BODY! exit
+   then
+   asked HTTP:BODY$ S\" \"name\":\"none\"" CONTAINS? if
+      answer S\" data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
+      HTTP:BODY! exit
+   then
+   asked HTTP:BODY$ s" tools/list" CONTAINS? if
+      answer S\" data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"s\"}]}}\n\n"
+      HTTP:BODY! exit
+   then
+   answer S\" data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[],\"isError\":false}}\n\n"
+   HTTP:BODY! ;
+
+\ A page with a nextCursor after PAGE-MS, or at once the last, empty page once
+\ PAGES-END has passed, so a client that held each page to its own limit ends.
+: ENDLESS-ROUTE ( HTTP:request HTTP:response -- )
+   nip {: answer:HTTP:response :}
+   answer JSON-HEADER
+   mono-ns PAGES-END @ >= if
+      answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! exit
+   then
+   mono-ns PAGE-MS NS-PER-MS * +
+   [: dup mono-ns <= ;] DEADLINE s" mcp-test PAGE" TEST-WAIT:POLL drop
+   answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"more\"}}"
+   HTTP:BODY! ;
+
+\ A first page with a nextCursor after FIRST-PAGE-MS, then a last, empty page
+\ once the test sets RELEASED or STALL-MS has passed, so a client that held its
+\ second page to the whole limit ends.
+: LATE-ROUTE ( HTTP:request HTTP:response -- )
+   {: asked:HTTP:request answer:HTTP:response :}
+   answer JSON-HEADER
+   asked HTTP:BODY$ S\" \"cursor\":\"late\"" CONTAINS? if
+      mono-ns STALL-MS NS-PER-MS * +
+      [: RELEASED atomic@ 0<> over mono-ns <= or ;] DEADLINE s" mcp-test STALL-PAGE"
+      TEST-WAIT:POLL drop
+      answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! exit
+   then
+   mono-ns FIRST-PAGE-MS NS-PER-MS * +
+   [: dup mono-ns <= ;] DEADLINE s" mcp-test FIRST-PAGE" TEST-WAIT:POLL drop
+   answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[],\"nextCursor\":\"late\"}}"
+   HTTP:BODY! ;
+
+\ An empty tools/list answered once the test sets RELEASED.
+: SLOW-ROUTE ( HTTP:request HTTP:response -- )
+   nip {: answer:HTTP:response :}
+   [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test SLOW" TEST-WAIT:POLL
+   answer JSON-HEADER
+   answer S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}" HTTP:BODY! ;
+
+
+: CLIENT-LIST ( -- )
+   s" TOOLS answers every tool object in order" T-LABEL
+   CLIENT @ 0 >MS MCP:TOOLS W-RESET TOOL-ARRAY W$ T$= ;
+
+: CLIENT-RESULT ( -- )
+   s" CALL answers the result object, isError false" T-LABEL
+   s" echo" S\" {\"a\":1}" ASK TFALSE
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":" W+
+   S\" \"{\\\"a\\\":1}\"}],\"structuredContent\":{\"data\":{\"a\":1}},\"isError\":false," W+
+   W-SERVER s" }" W+ W$ T$= ;
+
+: CLIENT-FAULT ( -- )
+   s" CALL answers a tool error's result, isError true" T-LABEL
+   s" refuse" s" {}" ASK TTRUE
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"nope\"}]," W+
+   S\" \"isError\":true," W+ W-SERVER s" }" W+ W$ T$= ;
+
+: CLIENT-UNKNOWN ( -- )
+   s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
+   [: s" nosuch" s" {}" ASK 2drop drop ;] MCP:E-RESPONSE TTHROWSQ
+   s" echo" s" {}" ASK TFALSE 2drop ;
+
+: CLIENT-BIG ( -- )
+   s" a result past the first reply buffer arrives whole" T-LABEL
+   s" big" s" {}" ASK TFALSE
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"\\\"" W+
+   BIG 1+ BIG-U 2 - W+ S\" \\\"\"}],\"structuredContent\":{\"data\":" W+
+   BIG BIG-U W+ S\" },\"isError\":false," W+ W-SERVER s" }" W+ W$ T$= ;
+
+: CLIENT-TIMEOUT ( -- )
+   s" a call past its limit is E-TRANSFER and the client serves the next call" T-LABEL
+   0 ENTERED atomic! 0 RELEASED atomic!
+   [: CLIENT @ s" stall" s" {}" 300 >MS MCP:CALL 2drop drop ;] MCP:E-TRANSFER TTHROWSQ
+   1 RELEASED atomic!
+   CLIENT @ s" echo" s" {}" 300 >MS MCP:CALL TFALSE 2drop ;
+
+: CLIENT-PAGES ( -- )
+   s" TOOLS follows nextCursor across pages" T-LABEL
+   s" /paged" URL MCP:OPEN {: paged:MCP:client :}
+   paged 0 >MS MCP:TOOLS S\" [{\"name\":\"a\"},{\"name\":\"b\"}]" T$=
+   paged MCP:CLOSE ;
+
+: CLIENT-NAMES ( -- )
+   s" Mcp-Name is plain for visible ASCII, else base64" T-LABEL
+   s" /names" URL MCP:OPEN {: named:MCP:client :}
+   named s" echo" s" {}" 0 >MS MCP:CALL TFALSE S\" {\"name\":\"echo\"}" T$=
+   named s" say hi" s" {}" 0 >MS MCP:CALL TFALSE
+   S\" {\"name\":\"=?base64?c2F5IGhp?=\"}" T$=
+   named MCP:CLOSE ;
+
+: CLIENT-EVENTS ( -- )
+   s" /events" URL MCP:OPEN ROUTE-CLIENT !
+   s" TOOLS takes the response past a notification event" T-LABEL
+   ROUTE-CLIENT @ 0 >MS MCP:TOOLS S\" [{\"name\":\"s\"}]" T$=
+   s" CALL takes the response past a notification and a request event" T-LABEL
+   ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE
+   S\" {\"content\":[],\"isError\":false}" T$=
+   s" a stream with no response is E-RESPONSE and the client serves the next call" T-LABEL
+   [: ROUTE-CLIENT @ s" none" s" {}" 0 >MS MCP:CALL 2drop drop ;] MCP:E-RESPONSE TTHROWSQ
+   ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   s" an event that is not UTF-8 is E-RESPONSE and the client serves the next call" T-LABEL
+   [: ROUTE-CLIENT @ s" bad" s" {}" 0 >MS MCP:CALL 2drop drop ;] MCP:E-RESPONSE TTHROWSQ
+   ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
+   ROUTE-CLIENT @ MCP:CLOSE ;
+
+: CLIENT-LIST-TIMEOUT ( -- )
+   s" a tools/list past its limit is E-TRANSFER and the client serves the next call" T-LABEL
+   0 RELEASED atomic!
+   s" /slow" URL MCP:OPEN ROUTE-CLIENT !
+   [: ROUTE-CLIENT @ 300 >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
+   1 RELEASED atomic!
+   ROUTE-CLIENT @ 0 >MS MCP:TOOLS s" []" T$=
+   ROUTE-CLIENT @ MCP:CLOSE ;
+
+: CLIENT-LIST-PAGES-TIMEOUT ( -- )
+   s" pages each inside its limit but past it together are E-TRANSFER" T-LABEL
+   DEADLINE PAGES-END !
+   s" /endless" URL MCP:OPEN ROUTE-CLIENT !
+   mono-ns {: start:n :}
+   [: ROUTE-CLIENT @ LIST-MS >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
+   mono-ns start - LIST-BOUND-MS NS-PER-MS * < TTRUE
+   s" the client then serves a TOOLS to the last page" T-LABEL
+   0 PAGES-END !
+   ROUTE-CLIENT @ 0 >MS MCP:TOOLS s" []" T$=
+   ROUTE-CLIENT @ MCP:CLOSE ;
+
+: CLIENT-LIST-LATE-PAGE ( -- )
+   s" a page after a slow one gets only what is left of TOOLS's limit" T-LABEL
+   0 RELEASED atomic!
+   s" /late" URL MCP:OPEN ROUTE-CLIENT !
+   mono-ns {: start:n :}
+   [: ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS 2drop ;] MCP:E-TRANSFER TTHROWSQ
+   mono-ns start - LATE-BOUND-MS NS-PER-MS * < TTRUE
+   1 RELEASED atomic!
+   s" the client then serves a TOOLS to the last page" T-LABEL
+   ROUTE-CLIENT @ LATE-MS >MS MCP:TOOLS s" []" T$=
+   ROUTE-CLIENT @ MCP:CLOSE ;
+
+
+: STALL-CALL ( -- ) STALL-CLIENT @ s" stall" s" {}" 0 >MS MCP:CALL 2drop drop ;
+: STALL-CLOSE ( -- ) STALL-CLIENT @ MCP:CLOSE 1 CLOSED atomic! ;
+: STALL-WORK ( -- ) [: STALL-CALL ;] [: STALL-CLOSE ;] finally ;
+
+\ The task halted inside CALL closes its client in its own cleanup.
+: CLIENT-HALTED ( -- )
+   s" CLOSE of a call halted mid-receive" T-LABEL
+   0 ENTERED atomic! 0 RELEASED atomic! 0 CLOSED atomic!
+   s" /mcp" URL MCP:OPEN STALL-CLIENT !
+   ['] STALL-WORK STALLER TASK:ACTIVATE
+   [: ENTERED atomic@ 0<> ;] DEADLINE s" mcp-test ENTERED" TEST-WAIT:POLL
+   STALLER TASK:HALT
+   STALLER TASK:JOIN MATCH result ok OF ENDOF err OF ENDOF ;MATCH E-TASK-NO-RESULT T=
+   1 RELEASED atomic!
+   CLOSED atomic@ 1 T=
+   s" CLOSE refuses a closed client" T-LABEL
+   [: STALL-CLIENT @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ
+   s" a closed client is refused once OPEN reuses its row" T-LABEL
+   s" /mcp" URL MCP:OPEN CLIENT !
+   [: STALL-CLIENT @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ
+   CLIENT @ MCP:CLOSE ;
+
+TYPED-VARIABLE NEVER MCP:client
+
+\ Every row is free, so a zero client must not match a free row's 0.
+: CLIENT-NEVER ( -- )
+   s" CLOSE refuses a client OPEN never gave" T-LABEL
+   [: NEVER @ MCP:CLOSE ;] MCP:E-STATE TTHROWSQ ;
+
+
+: CLIENT-CASES ( -- )
+   CURL:LOOP-START OK
+   s" /mcp" URL MCP:OPEN CLIENT !
+   CLIENT-LIST CLIENT-RESULT CLIENT-FAULT CLIENT-UNKNOWN CLIENT-BIG CLIENT-TIMEOUT
+   CLIENT-PAGES CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT
+   CLIENT-LIST-PAGES-TIMEOUT CLIENT-LIST-LATE-PAGE
+   CLIENT @ MCP:CLOSE
+   CLIENT-HALTED CLIENT-NEVER
+   s" no transfer is left in flight" T-LABEL
+   [: CURL:LOOP-STOP ;] catch 0 T= ;
 
 
 : SERVE-CASES ( -- )
    AIO:START
    HTTP:ROUTES-RESET
    s" POST" s" /mcp" [: MCP:HANDLE ;] HTTP:ROUTE
+   s" POST" s" /paged" [: PAGED-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /names" [: NAMES-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /events" [: EVENTS-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /slow" [: SLOW-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /endless" [: ENDLESS-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
    s" test-server" s" 1.0" MCP:SERVER-INFO!
-   ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT
+   BIG-FILL
+   ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL
    s" ADD-TOOL refuses a registered name" T-LABEL
    [: ADD-ECHO ;] MCP:E-DUPLICATE TTHROWSQ
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
@@ -385,6 +705,7 @@ variable BODY-U
    TOOL-RESULT BAD-ENVELOPE BAD-JSON LIST PING MODERN-LIST NAME-MISMATCH
    NAME-ABSENT META-MISMATCH NO-CAPABILITIES NO-PARAMS MODERN-NOTIFICATION
    LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-ANSWER SILENT
+   CLIENT-CASES
    HTTP:STOP
    AIO:STOP ;
 
