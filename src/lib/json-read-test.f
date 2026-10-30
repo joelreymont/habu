@@ -509,6 +509,17 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-BAD-FIND-KEY-LEN ;] E-JR-STATE TTHROWSQ
    [: JRT-BAD-FIND-KEY-PTR ;] E-JR-STATE TTHROWSQ ;
 
+: JRT-TEST-REPEATS ( -- )
+   s" {}" JR:REPEATS? TFALSE
+   s\" {\"a\":1,\"b\":2}" JR:REPEATS? TFALSE
+   s\" {\"a\":1,\"a\":2}" JR:REPEATS? TTRUE
+   s\" {\"a\":1,\"b\":2,\"\\u0061\":3}" JR:REPEATS? TTRUE
+   s\" {\"ab\":1,\"a\":2}" JR:REPEATS? TFALSE
+   s\" {\"a\":{\"b\":1,\"b\":2}}" JR:REPEATS? TFALSE
+   s\" {\"a\":{\"x\":[1,{\"a\":3}]},\"a\":2}" JR:REPEATS? TTRUE
+   [: s" [1]" JR:REPEATS? drop ;] E-JR-STATE TTHROWSQ
+   [: s\" {\"a\":1," JR:REPEATS? drop ;] E-JR-EOF TTHROWSQ ;
+
 \ Whether a one-string document decodes to the given bytes; the cursor must
 \ still be on the string, so the document ends at the next token.
 : JRT-EQ? ( ptr u8 n ptr u8 n -- bool )
@@ -617,9 +628,10 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    depth JRT-DRAIN-ARR
    JR:CLOSE ;
 
-\ The reader's first stack mapping is 4096 bytes. Freeing one and mapping the
-\ same size again lands at the same address only when nothing took the hole,
-\ so a body that leaves its mapping owned moves the second probe elsewhere.
+\ A reader's first stack mapping is 4096 bytes, and REPEATS? holds two mappings
+\ at once of at most that size here: its scratch and its record's stack. Two
+\ probes freed and mapped again land at the same addresses only when nothing
+\ took the holes, so a body that leaves a mapping owned moves a probe elsewhere.
 \ This relies on the kernel's first-fit reuse of a freed mapping, as
 \ src/lib/byte-buffer-test.f BUFT-DISPOSE-RELEASES does.
 4096 constant JRT-MORE-BYTES
@@ -628,13 +640,15 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-MORE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN ;
 
 : JRT-RELEASES ( [ -- ] -- )
-   JRT-PROBE {: hole :}
-   hole SPAN:$ drop {: at:ptr :}
-   hole MEM:FREE-SPAN
+   JRT-PROBE JRT-PROBE {: h1 h2 :}
+   h1 SPAN:$ drop {: a1:ptr :}
+   h2 SPAN:$ drop {: a2:ptr :}
+   h1 MEM:FREE-SPAN h2 MEM:FREE-SPAN
    execute
-   JRT-PROBE {: again :}
-   again SPAN:$ drop at = TTRUE
-   again MEM:FREE-SPAN ;
+   JRT-PROBE JRT-PROBE {: g1 g2 :}
+   g1 SPAN:$ drop a1 = TTRUE
+   g2 SPAN:$ drop a2 = TTRUE
+   g1 MEM:FREE-SPAN g2 MEM:FREE-SPAN ;
 
 \ Each case checks its own release, so a CLOSE that leaks fails the case that
 \ leaked rather than hiding in a mapping a later case reuses.
@@ -698,6 +712,23 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-ABANDON-THROWS
    65 JRT-DEEP-CASE ;
 
+\ {"b": depth arrays, then "a" twice: the first record grows its stack
+\ skipping b's value and the second finding the first "a" past it.
+: JRT-DEEP-REPEAT$ ( n -- ptr u8 n ) {: depth:n :}
+   SB-RESET
+   JRT-LBRACE SB-APPEND-C s" b" JRT-QKEY
+   depth 0 ?do JRT-LBRACK SB-APPEND-C loop
+   depth 0 ?do JRT-RBRACK SB-APPEND-C loop
+   JRT-COMMA SB-APPEND-C s" a" JRT-QKEY s" 1" SB-APPEND
+   JRT-COMMA SB-APPEND-C s" a" JRT-QKEY s" 2" SB-APPEND
+   JRT-RBRACE SB-APPEND-C
+   SB$ ;
+
+\ The truncated copy throws after the repeat, with the second stack held.
+: JRT-DEEP-REPEATS ( -- )
+   70 JRT-DEEP-REPEAT$ JR:REPEATS? TTRUE
+   [: 70 JRT-DEEP-REPEAT$ 1- JR:REPEATS? drop ;] E-JR-EOF TTHROWSQ ;
+
 : JRT-TEST-DEEP ( -- )
    s" nesting at and past the inline stack parses" T-LABEL
    [: JRT-DEEP-EDGES ;] JRT-RELEASES
@@ -712,7 +743,9 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    s" DISPOSE releases what a caller's throw abandoned" T-LABEL
    [: JRT-ABANDON-DISPOSE ;] JRT-RELEASES
    s" a record holding a leftover parses again and nothing stays mapped" T-LABEL
-   [: JRT-ABANDON-REINIT ;] JRT-RELEASES ;
+   [: JRT-ABANDON-REINIT ;] JRT-RELEASES
+   s" REPEATS? past 64 levels releases both stacks, a throw included" T-LABEL
+   [: JRT-DEEP-REPEATS ;] JRT-RELEASES ;
 
 : JRT-BAD-NEGATIVE-SOURCE ( -- )
    JRT-A s" 0" drop -1 JR:INIT JR:CLOSE ;
@@ -1003,6 +1036,7 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-TEST-FIND-ESCAPED
    JRT-TEST-FIND-ANCHOR
    JRT-TEST-FIND-MISUSE
+   JRT-TEST-REPEATS
    JRT-TEST-STR-EQ
    JRT-TEST-STR-EQ-KEY
    JRT-TEST-STR-EQ-MISUSE

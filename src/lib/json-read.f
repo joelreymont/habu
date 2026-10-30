@@ -242,12 +242,15 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
    state CURSOR-FAIL @ {: failed:n :}
    failed 0<> if failed throw then ;
 
+: REQUIRE-SOURCE ( ptr u8 n -- ) {: source:ptr len:n :}
+   len 0 < if E-SOURCE throw then
+   len 0 > source 0= and if E-SOURCE throw then ;
+
 public
 
 : INIT ( ptr cursor ptr u8 n -- JR:reader )
    {: state:ptr source:ptr len:n :}
-   len 0 < if E-SOURCE throw then
-   len 0 > source 0= and if E-SOURCE throw then
+   source len REQUIRE-SOURCE
    state source len INIT-STATE
    state >CELLS MINT-READER ;
 
@@ -971,6 +974,116 @@ public
    {: want:ptr len:n :}
    want len REQUIRE-KEY-SPAN
    READER>STATE want len MATCH-INNER ;
+
+private
+
+\ REPEATS? scratch, mapped per call and zero-filled, so the record owns no stack
+\ until it grows one. After the record, cell 0 counts the keys read, k, and cells
+\ 1..k+1 hold offsets into the room, the first 0: key i decodes to room bytes
+\ o(i)..o(i+1). A member takes at least 5 source bytes ("":0,), so the reader
+\ returns at most u/5 + 1 keys before it refuses, and decoded keys fit u bytes.
+: TABLE-CELLS ( n -- n )
+   5 / 3 + ;
+
+: SCRATCH-LEN ( n -- n )
+   dup TABLE-CELLS cells + CURSOR-BYTES + ;
+
+: RECORD ( ptr u8 -- ptr cursor )
+   CELL-VIEW >CURSOR ;
+
+: TABLE ( ptr u8 -- ptr n )
+   CURSOR-BYTES + CELL-VIEW ;
+
+: ROOM ( ptr u8 n -- ptr u8 )
+   TABLE-CELLS cells + CURSOR-BYTES + ;
+
+: OFFSET-AT ( ptr n n -- ptr n )
+   1+ cells + ;
+
+: OFFSET ( ptr n n -- n )
+   OFFSET-AT @ ;
+
+
+: KEY$ ( ptr n ptr u8 n -- ptr u8 n )
+   {: table:ptr room:ptr idx:n :}
+   table idx OFFSET {: from:n :}
+   room from +  table idx 1+ OFFSET from - ;
+
+
+\ Whether one of the keys before key k decodes the same as it.
+: SEEN? ( ptr n ptr u8 n -- bool )
+   {: table:ptr room:ptr k:n :}
+   table room k KEY$ {: key:ptr ku:n :}
+   k 0 ?do
+      table room i KEY$ key ku STR= if TRUE unloop exit then
+   loop
+   FALSE ;
+
+
+\ On a top-level key of the record: decodes it as key k, after the k before it,
+\ and answers whether one of them decodes the same.
+: REPEATED? ( ptr u8 n -- bool )
+   {: base:ptr u:n :}
+   base TABLE {: table:ptr :}
+   base u ROOM {: room:ptr :}
+   table @ {: k:n :}
+   table k OFFSET {: from:n :}
+   base RECORD room from + u from - STR-INNER {: ku:n :}
+   from ku + table k 1+ OFFSET-AT !
+   k 1+ table !
+   table room k SEEN? ;
+
+
+: FIRST-REPEAT? ( ptr u8 n -- bool )
+   {: base:ptr u:n :}
+   base RECORD {: a:ptr :}
+   begin a NEXT-INNER T-KEY = while
+      base u REPEATED? if TRUE exit then
+      a NEXT-INNER drop
+      a SKIP-INNER
+   repeat
+   FALSE ;
+
+
+\ The answer stands only once the whole text has read as well formed.
+: REPEATS-IN ( ptr u8 ptr u8 n -- bool )
+   {: base:ptr text:ptr u:n :}
+   base RECORD {: a:ptr :}
+   a text u INIT-STATE
+   a NEXT-INNER T-OBJ <> if E-JR-STATE throw then
+   base u FIRST-REPEAT?
+   begin a NEXT-INNER T-END = until ;
+
+
+: REPEATS-SLOT ( bool SPAN:span<u8> ptr u8 n -- bool SPAN:span<u8> ptr u8 n )
+   {: scratch text:ptr u:n :}
+   drop scratch SPAN:$ drop text u REPEATS-IN
+   scratch text u ;
+
+
+: SCRATCH-FREE ( SPAN:span<u8> -- )
+   {: scratch :}
+   scratch SPAN:$ drop RECORD MORE-RELEASE
+   scratch MEM:FREE-SPAN ;
+
+public
+
+\ Whether text, one JSON object, has two top-level keys that decode to the same
+\ bytes; nested objects' keys do not count. RFC 8259 §4: "When the names within
+\ an object are not unique, the behavior of software that receives such an
+\ object is unpredictable." FIND-KEY takes the first copy where JSON.parse
+\ keeps the last, so a caller checks this before it trusts a member FIND-KEY
+\ reads. A first value other than an object throws E-JR-STATE before the rest
+\ is read; other malformed text throws the reader's code.
+: REPEATS? ( ptr u8 n -- bool )
+   {: text:ptr u:n :}
+   text u REQUIRE-SOURCE
+   u SCRATCH-LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
+   FALSE scratch text u [: REPEATS-SLOT ;] catch
+   {: found spare at len code:n :}
+   scratch SCRATCH-FREE
+   code 0= if found exit then
+   code throw ;
 
 private
 
