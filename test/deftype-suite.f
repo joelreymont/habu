@@ -1,7 +1,9 @@
 \ deftype-suite.f - the DEFTYPE declaration surface (src/lib/type/deftype.f:
-\ package-scoped arity-0 type-family nominals and generated converters). Run by
-\ the engine over stdin, like test/type-family-suite.f:
-\     bin/hb < test/deftype-suite.f
+\ package-scoped arity-0 type-family nominals and generated converters). A
+\ WHITEBOX-SUITE row: it reopens package VNOM, which the arm64 engine bakes and
+\ seals with T0, so the gate runs it on the unsealed engine
+\ test/whitebox-engine.f builds:
+\     <unsealed engine> --load test/deftype-suite.f
 \ The converter pair (>NAME / NAME>N) is the only boundary crossing; the same
 \ name in two packages is two types. T-REPORT exits 1 on any failure.
 

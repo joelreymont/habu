@@ -722,7 +722,8 @@ SUITE genio
 \ WHITEBOX-SUITE runs the file on the unsealed engine test/whitebox-engine.f
 \ builds once per gate, never on bin/hb. Declare one when the suite reaches
 \ inside the engine (a reopened engine package, a pre-hook global, a ticked
-\ internal word) and say here which. test/internal-word-gate.f stays on the
+\ internal word) and say here which: byte-buffer and deftype reopen BUF and VNOM,
+\ which the arm64 engine ships with T0. test/internal-word-gate.f stays on the
 \ product engine: it pins refusals the unsealed engine lacks. PRIM: / PPRIM: /
 \ CLOSE-PRIVATE and the fixture's owner packages are sealed in the product
 \ image, so this suite drives its fixture through a from-source child window
@@ -1329,12 +1330,15 @@ SUITE tail-pure-fixtures
    src/lib/jsonl-test.f
    src/lib/decimal-test.f
    src/lib/vector-test.f
-   src/lib/byte-buffer-test.f
    src/lib/elf32-test.f
    src/lib/fs-test.f
    tools/bootstrap-codegen-test.f
    tools/asm-src-test.f
    tools/image-bytes-test.f
+;SUITE
+
+WHITEBOX-SUITE byte-buffer
+   src/lib/byte-buffer-test.f
 ;SUITE
 
 \ The x86_64 seam is written and exercised from this aarch64 host: the ELF64
@@ -2059,7 +2063,7 @@ SUITE linear
    test/linear-suite.f
 ;SUITE
 
-SUITE deftype
+WHITEBOX-SUITE deftype
    test/deftype-suite.f
 ;SUITE
 

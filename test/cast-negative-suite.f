@@ -1,5 +1,5 @@
 \ cast-negative-suite.f - reject contract for the CAST: checked retype declarer.
-\ Run by the engine over stdin, like test/deftype-suite.f:
+\ Run by the engine over stdin:
 \     bin/hb < test/cast-negative-suite.f
 \ The native registry runs it as a positive case: every reject is asserted
 \ in-process, so the process exits 0 with clean stderr.

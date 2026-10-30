@@ -119,7 +119,7 @@ s" src/core/checker-surface.f" required
 s" src/compiler/native/compiler.f" required
 package NATIVE-RUNTIME
 
-\ T0 has an arm64 emitter only, so the x86-64 engine bakes no T0.
+\ T0 is released on arm64 first, so the x86-64 engine does not bake it yet.
 : LOAD-T0 ( -- )
    HB-TARGET-LINUX-X86-64? if exit then
    s" src/habu/t0-arm64.f" required

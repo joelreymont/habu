@@ -1,5 +1,8 @@
 \ byte-buffer-test.f - focused tests for the owned growable byte buffer.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/byte-buffer.f src/lib/byte-buffer-test.f
+\ A WHITEBOX-SUITE row: it reopens package BUF, which the arm64 engine bakes
+\ and seals with T0, so the gate runs it on the unsealed engine
+\ test/whitebox-engine.f builds:
+\     <unsealed engine> --load src/lib/byte-buffer-test.f
 
 require src/lib/errors.f
 require src/lib/string.f

@@ -3284,15 +3284,20 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    label labelu s" effect" eff effu DEF-STR ;
 
 
-\ Its span, the U bytes the first LEAD in the checked bytes ends with, in the
-\ fixture FILE.
-: DEF-SPAN ( ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: label:ptr labelu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
-   lead leadu LEAD-END
+\ Its span, the U bytes the first LEAD in TEXT ends with, in the fixture FILE.
+: DEF-SPAN-IN ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n text:ptr textu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
+   text textu lead leadu END-IN
    {: end:n :}
    label labelu s" file" file fileu AT$ DEF-STR
    label labelu s" byte_start" end u - DEF-NUM
    label labelu s" byte_end" end DEF-NUM ;
+
+\ Its span, the U bytes the first LEAD in the checked bytes ends with, in the
+\ fixture FILE.
+: DEF-SPAN ( ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: label:ptr labelu:n lead:ptr leadu:n u:n file:ptr fileu:n :}
+   label labelu DEFS-SRC$ lead leadu u file fileu DEF-SPAN-IN ;
 
 
 \ A definer's names in packages: a private, a public, a qualified name defined
@@ -3968,6 +3973,12 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
 : VISIT-COMMON$SRC ( -- ptr u8 n )
    s\" : K ( -- n ) 1 ;\n" ;
 
+\ DEFTYPE's converters, declared outside the subject: a subject's DEFTYPE is a
+\ use of the engine's word where the engine bakes deftype.f and no use where the
+\ require loads it, so the subject's uses would depend on the engine.
+: VISIT-NOMINAL$SRC ( -- ptr u8 n )
+   s\" require src/lib/type/deftype.f\nDEFTYPE CVT-ID-T\n" ;
+
 \ Missing or nonnumeric visit is not a declaration identity.
 : DECL-VISIT ( SPAN:span<u8> -- n )
    s" decl_visit" NUMBER$ STR>NUMBER? MATCH option
@@ -3985,11 +3996,11 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
 
 : USES-VISIT ( -- )
    s" visit-common.f" VISIT-COMMON$SRC FIXTURE
+   s" visit-nominal.f" VISIT-NOMINAL$SRC FIXTURE
    0 GEN-U !
-   s\" require src/lib/type/deftype.f\n" GEN+
    s\" package P\npublic\ninclude visit-common.f\n;package\npackage Q\npublic\ninclude visit-common.f\n;package\n" GEN+
    s\" : BOTH ( -- n ) P:K Q:K + ;\nusing P\n: P-BARE ( -- n ) K ;\n;using\nusing Q\n: Q-BARE ( -- n ) K ;\n;using\n" GEN+
-   s\" DEFTYPE CVT-ID-T\n: CVT-ROUND ( -- n ) 1 >CVT-ID-T CVT-ID-T>N ;\n" GEN+
+   s\" require visit-nominal.f\n: CVT-ROUND ( -- n ) 1 >CVT-ID-T CVT-ID-T>N ;\n" GEN+
    s" uses-visit.f" 0 GEN GEN-U @ FIXTURE
    s" uses-visit.f" AT$ {: path:ptr pathu:n :}
    s" uses-visit: native loads" T-LABEL path pathu NATIVE-RC 0 T=
@@ -4026,23 +4037,23 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
    CHECK:VERIFY-DEFS$ s" word" s" >CVT-ID-T" PACKET DEF-NODE !
    s" uses-visit: converter in" s" DEFTYPE" s" " s" global" DEF-WHO
    s" uses-visit: converter in" s" decl_name" s" >cvt-id-t" DEF-STR
-   s" uses-visit: converter in" s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" DEF-SPAN
+   s" uses-visit: converter in" VISIT-NOMINAL$SRC s" DEFTYPE CVT-ID-T" 8 s" visit-nominal.f" DEF-SPAN-IN
    DEF-NODE @ DECL-VISIT {: iv:n :}
    CHECK:VERIFY-DEFS$ s" word" s" CVT-ID-T>N" PACKET DEF-NODE !
    s" uses-visit: converter out" s" DEFTYPE" s" " s" global" DEF-WHO
    s" uses-visit: converter out" s" decl_name" s" cvt-id-t>n" DEF-STR
-   s" uses-visit: converter out" s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" DEF-SPAN
+   s" uses-visit: converter out" VISIT-NOMINAL$SRC s" DEFTYPE CVT-ID-T" 8 s" visit-nominal.f" DEF-SPAN-IN
    DEF-NODE @ DECL-VISIT {: ov:n :}
    s" uses-visit: converter visit" T-LABEL iv 0 > TTRUE
    s" uses-visit: shared converter visit" T-LABEL iv ov T=
    s" uses-visit: converter in use" s" >CVT-ID-T" 9 USE
-   s" uses-visit: converter in target" DEFS-SRC$ s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" USE-TARGET
+   s" uses-visit: converter in target" VISIT-NOMINAL$SRC s" DEFTYPE CVT-ID-T" 8 s" visit-nominal.f" USE-TARGET
    s" uses-visit: converter in binding" T-LABEL USE-NODE @ DECL-VISIT iv T=
    s" uses-visit: converter in name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" >cvt-id-t" T$=
    s" uses-visit: converter in package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
    s" uses-visit: converter in visibility" T-LABEL USE-NODE @ s" visibility" STRING$ s" global" T$=
    s" uses-visit: converter out use" s" CVT-ID-T>N" 10 USE
-   s" uses-visit: converter out target" DEFS-SRC$ s" DEFTYPE CVT-ID-T" 8 s" uses-visit.f" USE-TARGET
+   s" uses-visit: converter out target" VISIT-NOMINAL$SRC s" DEFTYPE CVT-ID-T" 8 s" visit-nominal.f" USE-TARGET
    s" uses-visit: converter out binding" T-LABEL USE-NODE @ DECL-VISIT ov T=
    s" uses-visit: converter out name" T-LABEL USE-NODE @ s" decl_name" STRING$ s" cvt-id-t>n" T$=
    s" uses-visit: converter out package" T-LABEL USE-NODE @ s" package" STRING$ s" " T$=
