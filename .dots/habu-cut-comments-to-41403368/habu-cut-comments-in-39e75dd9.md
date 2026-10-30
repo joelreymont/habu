@@ -1,9 +1,11 @@
 ---
 title: Cut comments in test
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-29T21:49:33.460472+02:00"
+closed-at: "2026-10-30T15:51:07.286733+02:00"
+close-reason: "Landed as master ab9f2eff 'Cut test comments to facts' (389 files, code identical to master byte for byte by strip.py; check.f on the eight hand-merged files, the two refusals (prim-owner-scope-child rc 84, type-ctor-suite rc 70) identical on master's copies). Left: 13 master lines over 80 columns in test/compiler/x64-regalloc.f, test/x86-64-kernel-definition.f:157, five titled banners, ten ' ----' section endings in internal-word-gate.f (master's), and gate-signal-test.f's 'Failure mode 8' lines 76 and 405 that name an item the list does not have."
 ---
 
 Problem: the comments under test restate code, narrate history or name deleted words; rule and outcomes in the parent and /tmp/jerry-big/t0-comments-brief.md. Acceptance: one comment-only commit for test (code lines byte-identical), every kept comment a fact the code cannot state, headers a short map, no named word missing from the tree; reviewed by a code-reviewer against the rule and landed. Files: test. Verify: the comment-only diff filter prints nothing; the names check finds every named word; hb --load tools/check.f on each file where the engine does not provide it. Depends: none (the worker takes the directories in the parent's order). Ownership: comments under test. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-t0c-test.
