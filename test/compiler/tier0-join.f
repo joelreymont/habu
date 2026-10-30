@@ -1,14 +1,17 @@
-\ tier0-join.f - tier 0 reconciles the virtual stack at every join to the layout
-\ its opener recorded, with a parallel copy. Pinned by counting instructions on
-\ the real load path (ARM's default tier is 0); every subject's answer is also
-\ checked. Spans come from the dictionary record (src/habu/xref.f), as in
-\ test/compiler/tier0-compare-branch.f.
+\ tier0-join.f - the JIT reconciles the virtual stack at every join to the
+\ layout its opener recorded, with a parallel copy (src/habu/jit.f LVRECON).
+\ Pinned by counting instructions on the real load path; ARM's tier 0 is T0,
+\ so the file selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL. Every
+\ subject's answer is also checked. Spans come from the dictionary record
+\ (src/habu/xref.f), as in test/compiler/tier0-compare-branch.f.
 
 require src/lib/test.f
 require src/lib/errors.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 require src/lib/adt/option.f
+
+0 data-base NCOMP-DISPATCH:COMP-CELL + !
 
 package TIER0-JOIN
 private
