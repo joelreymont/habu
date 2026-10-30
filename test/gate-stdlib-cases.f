@@ -1110,6 +1110,10 @@ SUITE json-rpc
    src/lib/json-rpc-test.f
 ;SUITE
 
+SUITE diff
+   src/lib/diff-test.f
+;SUITE
+
 SUITE ffi-abi
    src/lib/ffi-abi-test.f
 ;SUITE
