@@ -80,7 +80,9 @@ $4B8 constant LIVE-FIXED-OFF
 \ hash (HASH-OPEN, HASH-CLOSE).
 272 constant F-OWN
 304 constant F-CTX
-F-CTX SHA256-CTX-BYTES + constant FRAME-BYTES
+\ The file's LOAD-ROWS row offset plus 1, or 0 while it has none.
+F-CTX SHA256-CTX-BYTES + constant F-ROW
+F-ROW CELL + constant FRAME-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
 \ file object.
@@ -132,6 +134,20 @@ variable COUNTED?
 \ (tools/hb-build-lib.f HBB-COUNTS-READ). Empty writes nothing.
 PATH-CAP BUFFER: COUNTS-PATH
 variable COUNTS-PATH-U
+\ HABU_BUILD_FILES, read beside HABU_BUILD_COUNTS: where a counted session
+\ whose body succeeded writes one line per file it entered, in load order,
+\ `<hit> <live> <path>`: hit 1 when the file ran through its object (REUSED-N)
+\ else 0, live its definitions that compiled live (COMPILED-N), path relative
+\ to the root that resolved it (FILE-NAME). Empty records and writes nothing.
+PATH-CAP BUFFER: FILES-PATH
+variable FILES-PATH-U
+\ The session's rows, appended at 8-aligned offsets and released together at
+\ CLOSE: hit, live and the path's length as cells, then the path's bytes.
+DYNAMIC-BUFFER LOAD-ROWS u8
+variable LOAD-ROWS-U
+\ HABU_BUILD_FILES's text, formatted from LOAD-ROWS when the body returns.
+DYNAMIC-BUFFER LOAD-TEXT u8
+variable LOAD-TEXT-U
 variable DISPATCH-BUSY
 variable DISPATCH-ORIGINAL
 variable BORROWED-ORIGINAL
@@ -413,6 +429,19 @@ variable STAGED-REASON-U
    DEPTH @ 0= if BAD then DEPTH @ 1- FRAME-BYTES * FRAMES ;
 : F@ ( n -- n ) FRAME + CELL-VIEW @ ;
 : F! ( n n -- ) FRAME + CELL-VIEW ! ;
+
+: FILES-ON? ( -- bool ) COUNTED? @ 0<> FILES-PATH-U @ 0<> and ;
+
+\ The offset past the row at `at` whose path is pathu bytes.
+: ROW-END ( n n -- n ) {: at:n pathu:n :} at 3 cells + pathu + 7 + -8 and ;
+
+\ Add to the innermost file's row the cell at field: 0 hit, CELL live.
+: ROW+! ( n n -- )
+   {: by:n field:n :}
+   DEPTH @ 0= if exit then
+   F-ROW F@ {: row:n :}
+   row 0= if exit then
+   by row 1- field + LOAD-ROWS CELL-VIEW +! ;
 : HASH-N ( n -- )
    HASH-CELL ! HASH-CTX HASH-CELL CELL SHA256-FEED ;
 : HASH-S ( ptr u8 n -- )
@@ -627,6 +656,7 @@ private
    {: source:ptr sourceu:n reason:ptr reasonu:n :}
    reason reasonu DIAG-FALLBACK
    1 COMPILED-N +!
+   1 CELL ROW+!
    source sourceu DISPATCH-ORIGINAL @ DISPATCH-XT execute ;
 
 : COMPILE-STAGED ( -- )
@@ -885,6 +915,21 @@ private
    rootu 0= if path pathu 1 exit then
    path pathu root rootu SOURCE-ROOT:RELATIVE
    root rootu SOURCE-ROOT:ENGINE$ STR= if 0 else 1 then ;
+
+\ Append the innermost file's row, named as FILE-NAME names it, while
+\ HABU_BUILD_FILES asks for rows.
+: ROW-OPEN ( ptr u8 n ptr u8 n -- )
+   FILES-ON? 0= if 2drop 2drop exit then
+   FILE-NAME drop {: name:ptr nameu:n :}
+   LOAD-ROWS-U @ {: at:n :}
+   at nameu ROW-END {: top:n :}
+   top LOAD-ROWS-RESERVE
+   0 at LOAD-ROWS CELL-VIEW !
+   0 at CELL + LOAD-ROWS CELL-VIEW !
+   nameu at 2 cells + LOAD-ROWS CELL-VIEW !
+   name at 3 cells + LOAD-ROWS nameu BYTE-COPY
+   top LOAD-ROWS-U !
+   at 1+ F-ROW F! ;
 
 : FRAME-REPORT ( -- )
    NUNIT-DEP:DIAG? @ 0= if exit then
@@ -1575,6 +1620,7 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
       order if s" load-order" else s" head-stale" then REFUSED-LINE exit
    then
    1 REUSED-N +!
+   1 0 ROW+!
    NUNIT-DEP:DIAG? @ 0= if exit then
    s" native-file: reused path=" NUNIT-DEP:DIAG-W2
    FRAME-PATH NUNIT-DEP:DIAG-W2 S\" \n" NUNIT-DEP:DIAG-W2 ;
@@ -1665,6 +1711,7 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
       NFILE-REF:POP-FILE open-rc throw
    then
    1 FILES-N +!
+   path pathu root rootu ROW-OPEN
    NUNIT-DEP:BEGIN-UNIT
    NUNIT-OBJECT:SCRATCH-RETIRE
    \ Both paths observe the file's source: an engine build that installs it
@@ -1781,13 +1828,14 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    s"  definitions installed " type INSTALLED-N @ .
    s"  compiled " type COMPILED-N @ . ;
 
-: COUNTS-PATH-READ ( -- )
-   s" HABU_BUILD_COUNTS" GETENV {: a:ptr u:n :}
-   0 COUNTS-PATH-U !
+: ENV-PATH-READ ( ptr u8 n ptr u8 ptr n -- )
+   {: name:ptr nameu:n dst:ptr size:ptr :}
+   name nameu GETENV {: a:ptr u:n :}
+   0 size !
    u 0= if exit then
    u PATH-CAP > if E-FS-CAPACITY throw then
-   a COUNTS-PATH u BYTE-COPY
-   u COUNTS-PATH-U ! ;
+   a dst u BYTE-COPY
+   u size ! ;
 
 : COUNTS-WRITE ( -- )
    COUNTED? @ 0= COUNTS-PATH-U @ 0= or if exit then
@@ -1795,6 +1843,32 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    REUSED-N @ FMT:SB-U STR-SPACE SB-APPEND-C
    FILES-N @ REUSED-N @ - FMT:SB-U 10 SB-APPEND-C
    COUNTS-PATH COUNTS-PATH-U @ SB$ FS:ATOMIC-WRITE-FILE ;
+
+: TEXT+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   LOAD-TEXT-U @ u + LOAD-TEXT-RESERVE
+   a LOAD-TEXT-U @ LOAD-TEXT u BYTE-COPY
+   u LOAD-TEXT-U +! ;
+
+: ROW-TEXT ( n -- n )
+   {: at:n :}
+   at 2 cells + LOAD-ROWS CELL-VIEW @ {: pathu:n :}
+   SB-RESET
+   at LOAD-ROWS CELL-VIEW @ FMT:SB-U STR-SPACE SB-APPEND-C
+   at CELL + LOAD-ROWS CELL-VIEW @ FMT:SB-U STR-SPACE SB-APPEND-C
+   SB$ TEXT+
+   at 3 cells + LOAD-ROWS pathu TEXT+
+   S\" \n" TEXT+
+   at pathu ROW-END ;
+
+: FILES-WRITE ( -- )
+   FILES-ON? 0= if exit then
+   0 LOAD-TEXT-U !
+   0 begin dup LOAD-ROWS-U @ < while ROW-TEXT repeat drop
+   LOAD-TEXT-U @ 0= if
+      FILES-PATH FILES-PATH-U @ s" " FS:ATOMIC-WRITE-FILE exit
+   then
+   FILES-PATH FILES-PATH-U @ 0 LOAD-TEXT LOAD-TEXT-U @ FS:ATOMIC-WRITE-FILE ;
 
 : CLEAR-SCRATCH ( -- )
    0 REUSED-N ! 0 FILES-N ! 0 INSTALLED-N ! 0 COMPILED-N !
@@ -1807,6 +1881,7 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    NULL-PTR DISPATCH-SOURCE ! 0 DISPATCH-SOURCE-U !
    NULL-PTR STAGED-REASON ! 0 STAGED-REASON-U !
    COUNTS-PATH PATH-CAP ZERO-SCRATCH 0 COUNTS-PATH-U !
+   FILES-PATH PATH-CAP ZERO-SCRATCH 0 FILES-PATH-U !
    FILE-KEY-HEX 64 ZERO-SCRATCH
    RESULTS-HEX 64 ZERO-SCRATCH
    HASH-CTX SHA256-CTX-BYTES ZERO-SCRATCH
@@ -1821,7 +1896,9 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    1 SESSION !
    BOOT-TAKE
    s" HABU_NATIVE_CACHE_DIAG" GETENV s" 1" STR= NUNIT-DEP:DIAG? !
-   COUNTS-PATH-READ
+   s" HABU_BUILD_COUNTS" COUNTS-PATH COUNTS-PATH-U ENV-PATH-READ
+   s" HABU_BUILD_FILES" FILES-PATH FILES-PATH-U ENV-PATH-READ
+   0 LOAD-ROWS-U ! 0 LOAD-TEXT-U !
    0 SEEDED ! 0 DEPTH !
    0 REUSED-N ! 0 FILES-N ! 0 DISPATCH-BUSY !
    0 DISPATCH-ORIGINAL ! 0 DISPATCH-ROLE-KNOWN !
@@ -1889,6 +1966,8 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    NFILE-REF:CLOSE
    FRAMES-RELEASE
    ENTRY-RELEASE STORE-IMAGE-RELEASE OBJECTS-RELEASE
+   LOAD-ROWS-RELEASE LOAD-TEXT-RELEASE
+   0 LOAD-ROWS-U ! 0 LOAD-TEXT-U !
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !
@@ -1900,9 +1979,9 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    CLEAR-SCRATCH ;
 
 \ The body returned, so every file it entered has left its frame (DEPTH 0) and
-\ FILES-N is final; a failed body writes no counts.
+\ FILES-N is final; a failed body writes no counts and no file rows.
 : OUTER-RUN ( -- )
-   OPEN OUTER-BODY @ execute COUNTS-WRITE ;
+   OPEN OUTER-BODY @ execute COUNTS-WRITE FILES-WRITE ;
 
 : APP-RUN ( -- ) APP-PATH @ APP-PATH-U @ script-required ;
 

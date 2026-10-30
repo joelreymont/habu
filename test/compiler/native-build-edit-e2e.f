@@ -1,7 +1,10 @@
 \ Real engine rebuilds through tools/native-build.f and the ordinary source
 \ loader. The default run covers a warm build and an early edited FILE. The
 \ explicit `-- qualify` run also measures middle and late edits and compares
-\ each cached product with a fresh-cache build of the same source tree.
+\ each cached product with a fresh-cache build of the same source tree. The
+\ `-- recompile` run edits src/lib/memory.f and src/habu/debug-watch.f under
+\ `hb-build --engine` and checks, from each build's HABU_BUILD_FILES rows, which
+\ files recompiled.
 \
 \ bin/hb --load test/compiler/native-build-edit-e2e.f -- warm
 \ bin/hb --load test/compiler/native-build-edit-e2e.f -- legacy
@@ -16,6 +19,7 @@
 \ bin/hb --load test/compiler/native-build-edit-e2e.f -- emitter-live
 \ bin/hb --load test/compiler/native-build-edit-e2e.f -- emitter-probe
 \ bin/hb --load test/compiler/native-build-edit-e2e.f -- source-copy
+\ bin/hb --load test/compiler/native-build-edit-e2e.f -- recompile
 \ bin/hb --load test/compiler/native-build-edit-e2e.f
 \ bin/hb --load test/compiler/native-build-edit-e2e.f -- qualify
 \ The printed private tree retains executable images, maps, logs and timings.
@@ -74,6 +78,28 @@ variable PREFIX-WANT
 variable DIV-WANT
 variable MEM-WANT
 variable LIVE-OVERRIDE
+\ One build's HABU_BUILD_FILES rows, the step's expectation and its tallies.
+DYNAMIC-BUFFER ROWS-TEXT u8
+variable ROWS-U
+DYNAMIC-BUFFER SCAN-SOURCE u8
+\ The root-relative paths an EDIT step expects to recompile, one per line.
+DYNAMIC-BUFFER WANT-TEXT u8
+variable WANT-U
+\ The root-relative path of the file the current edit changed.
+PTR-VARIABLE EDITED
+variable EDITED-U
+variable FILES-MODE
+variable ROW-N
+variable HIT-N
+variable LIVE-N
+variable BAD-N
+variable EDIT-SEEN
+\ The no-edit warm build's rows and their count, and one row BASE-AT found.
+DYNAMIC-BUFFER BASE-TEXT u8
+variable BASE-U
+variable BASE-N
+variable BASE-HIT
+variable BASE-LIVE
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : HOST$ ( -- ptr u8 n ) HOST HOST-U @ ;
@@ -343,6 +369,12 @@ variable LIVE-OVERRIDE
    label labelu SB-APPEND ext extu SB-APPEND
    SB$ AT ;
 
+\ The build labelled `label` writes its per-file rows to logs/<label>.files.txt.
+: FILES-ARM ( ptr u8 n -- )
+   s" .files.txt" LOG-PATH {: path:ptr pathu:n :}
+   path pathu FS:EXISTS? if path pathu FS:REMOVE-FILE then
+   s" HABU_BUILD_FILES" >LEN path pathu >LEN PROC-ENV-SET ;
+
 : LOGS ( ptr u8 n -- )
    {: label:ptr labelu:n :}
    label labelu s" .out" LOG-PATH OUT$ FS:WRITE-ALL
@@ -390,6 +422,7 @@ variable LIVE-OVERRIDE
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: label:ptr labelu:n output:ptr outputu:n cache:ptr cacheu:n :}
    output outputu cache cacheu BUILD-SETUP
+   label labelu FILES-ARM
    s" --load" ARG
    LIVE-OVERRIDE @ if
       s" src/live-emitter-override.f" ARG
@@ -402,6 +435,7 @@ variable LIVE-OVERRIDE
 : ENGINE-BUILD ( ptr u8 n ptr u8 n ptr u8 n bool -- n )
    {: label:ptr labelu:n output:ptr outputu:n cache:ptr cacheu:n json:bool :}
    output outputu cache cacheu BUILD-SETUP
+   label labelu FILES-ARM
    s" --load" ARG s" tools/hb-build.f" AT ARG
    s" --" ARG s" --engine" ARG
    json if s" --report-json" ARG then
@@ -431,25 +465,244 @@ variable LIVE-OVERRIDE
    rc 0 T=
    OUT$ s" absent" CONTAINS? TTRUE ;
 
-: COUNTS ( bool n -- )
-   {: hit:bool compiled:n :}
-   OUT$ s" files reused " CONTAINS? TTRUE
-   OUT$ s" files reused 0" CONTAINS?
-      hit if TFALSE else TTRUE then
-   compiled 0 > if
-      OUT$ s"  compiled 0" CONTAINS? TFALSE
+\ What a build's HABU_BUILD_FILES rows must show. BASE: the no-edit warm build,
+\ whose rows the edited steps compare against (ROW-JUDGE); each file it did not
+\ reuse or that compiled a definition live is printed. EDIT: the files
+\ WANT-BUILD collects recompile, no other. ALL: every loaded file recompiles.
+\ COLD: no file reused and some definition compiled live. SOME: a file reused
+\ and a definition compiled live.
+0 constant EXPECT-BASE
+1 constant EXPECT-EDIT
+2 constant EXPECT-COLD
+3 constant EXPECT-SOME
+4 constant EXPECT-ALL
+
+: EDITED! ( ptr u8 n -- ) EDITED-U ! EDITED ! ;
+
+: TOKEN-START ( ptr u8 n n -- n )
+   {: a:ptr u:n at:n :}
+   at begin dup u < if dup a + c@ 32 > 0= else false then while 1+ repeat ;
+
+: TOKEN-END ( ptr u8 n n -- n )
+   {: a:ptr u:n at:n :}
+   at begin dup u < if dup a + c@ 32 > else false then while 1+ repeat ;
+
+: EDITED-FILE? ( ptr u8 n -- bool ) EDITED @ EDITED-U @ STR= ;
+
+: FIELD>N ( ptr u8 n -- n )
+   STR>NUMBER? MATCH option
+      none OF s" native edit: bad files row" 76 die ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+\ One `<hit> <live> <path>` row's fields.
+: ROW-FIELDS ( ptr u8 n -- n n ptr u8 n )
+   {: line:ptr lineu:n :}
+   line lineu STR-SPACE 0 SPLIT-NEXT drop {: hp:ptr hu:n at:n :}
+   line lineu STR-SPACE at SPLIT-NEXT drop {: lp:ptr lu:n from:n :}
+   from lineu > if s" native edit: short files row" 76 die then
+   hp hu FIELD>N lp lu FIELD>N line from + lineu from - ;
+
+: WANT-APPEND ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   WANT-U @ u + 1+ WANT-TEXT-RESERVE
+   a WANT-U @ WANT-TEXT u BYTE-COPY
+   10 WANT-U @ u + WANT-TEXT c!
+   WANT-U @ u + 1+ WANT-U ! ;
+
+\ The offset past the set's line at `at`, and whether it is `path`.
+: WANT-AT ( ptr u8 n n -- n bool )
+   {: path:ptr pathu:n at:n :}
+   0 WANT-TEXT WANT-U @ 10 at SPLIT-NEXT drop {: line:ptr lineu:n next:n :}
+   next line lineu path pathu STR= ;
+
+\ Whether an EDIT step expects the file to recompile.
+: WANTED? ( ptr u8 n -- bool )
+   {: path:ptr pathu:n :}
+   false 0 begin over 0= over WANT-U @ < and while
+      nip path pathu rot WANT-AT swap
+   repeat drop ;
+
+\ The offset past the next load at or after `at`, and whether it loads a path
+\ in the set: `require P` and `include P`, or `s" P" required` and
+\ `s" P" included`.
+: REQUIRE-AT ( ptr u8 n n -- n bool )
+   {: a:ptr u:n at:n :}
+   a u at TOKEN-START {: from:n :}
+   a u from TOKEN-END {: to:n :}
+   a from + to from - {: t:ptr tu:n :}
+   a u to TOKEN-START {: pfrom:n :}
+   a u pfrom TOKEN-END {: pto:n :}
+   t tu s" require" STR=CI t tu s" include" STR=CI or if
+      pto a pfrom + pto pfrom - WANTED? exit
    then
-   compiled 0= if
-      OUT$ s"  compiled 0" CONTAINS? TTRUE
+   t tu s\" s\"" STR=CI 0= if to false exit then
+   pto pfrom - 2 < if to false exit then
+   a pto 1- + c@ [char] " <> if to false exit then
+   a u pto TOKEN-START {: wfrom:n :}
+   a u wfrom TOKEN-END {: wto:n :}
+   a wfrom + wto wfrom - {: w:ptr wu:n :}
+   w wu s" required" STR=CI w wu s" included" STR=CI or 0= if to false exit then
+   wto a pfrom + pto pfrom - 1- WANTED? ;
+
+\ Whether the private tree's copy of the file at the root-relative path
+\ requires a file in the set.
+: SOURCE-REQUIRES? ( ptr u8 n -- bool )
+   AT {: path:ptr pathu:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
+   size SCAN-SOURCE-RESERVE
+   path pathu 0 SCAN-SOURCE size FS:READ-ALL size <> if
+      s" native edit: scanned source read short" 76 die
+   then
+   false 0 begin over 0= over size < and while
+      nip 0 SCAN-SOURCE size rot REQUIRE-AT swap
+   repeat drop ;
+
+\ Add the loaded file in the row at `at` to the set when it requires a file
+\ already there; answer the offset past the row.
+: WANT-ROW ( n -- n )
+   {: at:n :}
+   0 ROWS-TEXT ROWS-U @ 10 at SPLIT-NEXT drop {: line:ptr lineu:n next:n :}
+   line lineu ROW-FIELDS {: path:ptr pathu:n :} 2drop
+   path pathu WANTED? 0= if
+      path pathu SOURCE-REQUIRES? if path pathu WANT-APPEND then
+   then
+   next ;
+
+\ The set an EDIT step expects, as make would rebuild: the edited file, then
+\ every loaded file that requires a file in the set, until a pass adds none.
+: WANT-BUILD ( -- )
+   0 WANT-U !
+   EDITED @ EDITED-U @ WANT-APPEND
+   begin
+      WANT-U @
+      0 begin dup ROWS-U @ < while WANT-ROW repeat drop
+      WANT-U @ =
+   until
+   SCAN-SOURCE-RELEASE
+   s" expected recompiles:" type cr
+   0 WANT-TEXT WANT-U @ type ;
+
+\ Keep the rows just read as the baseline.
+: BASE-KEEP ( -- )
+   ROWS-U @ BASE-TEXT-RESERVE
+   0 ROWS-TEXT 0 BASE-TEXT ROWS-U @ BYTE-COPY
+   ROWS-U @ BASE-U ! ;
+
+\ The offset past the baseline row at `at`, and whether its path is `path`,
+\ whose hit and live it then leaves in BASE-HIT and BASE-LIVE.
+: BASE-AT ( ptr u8 n n -- n bool )
+   {: path:ptr pathu:n at:n :}
+   0 BASE-TEXT BASE-U @ 10 at SPLIT-NEXT drop {: line:ptr lineu:n next:n :}
+   line lineu ROW-FIELDS {: hit:n live:n p:ptr pu:n :}
+   p pu path pathu STR= 0= if next false exit then
+   hit BASE-HIT ! live BASE-LIVE !
+   next true ;
+
+\ Whether the baseline loaded the file; its row is then in BASE-HIT and
+\ BASE-LIVE.
+: BASE-ROW? ( ptr u8 n -- bool )
+   {: path:ptr pathu:n :}
+   false 0 begin over 0= over BASE-U @ < and while
+      nip path pathu rot BASE-AT swap
+   repeat drop ;
+
+: ROW-LINE ( ptr u8 n n n ptr u8 n -- )
+   {: why:ptr whyu:n hit:n live:n path:ptr pathu:n :}
+   SB-RESET why whyu SB-APPEND s"  hit " SB-APPEND hit FMT:SB-INT
+   s"  live " SB-APPEND live FMT:SB-INT s"  " SB-APPEND path pathu SB-APPEND
+   SB$ type cr ;
+
+\ A mismatched MEMORY row, then the file's baseline row.
+: ROW-BAD ( ptr u8 n n n ptr u8 n bool -- )
+   {: why:ptr whyu:n hit:n live:n path:ptr pathu:n known:bool :}
+   1 BAD-N +!
+   why whyu hit live path pathu ROW-LINE
+   known 0= if s"   baseline: not loaded" type cr exit then
+   s"   baseline:" BASE-HIT @ BASE-LIVE @ path pathu ROW-LINE ;
+
+: ROW-JUDGE ( n n ptr u8 n -- )
+   {: hit:n live:n path:ptr pathu:n :}
+   1 ROW-N +!
+   hit 0<> if 1 HIT-N +! then
+   live LIVE-N +!
+   path pathu EDITED-FILE? if 1 EDIT-SEEN +! then
+   FILES-MODE @ EXPECT-SOME = if exit then
+   FILES-MODE @ EXPECT-ALL = if
+      hit 0<> if
+         s" reused:" hit live path pathu path pathu BASE-ROW? ROW-BAD
+      then
+      exit
+   then
+   FILES-MODE @ EXPECT-COLD = if
+      hit 0<> if 1 BAD-N +! s" reused:" hit live path pathu ROW-LINE then
+      exit
+   then
+   FILES-MODE @ EXPECT-BASE = if
+      hit 0= live 0 > or if s" warm-live:" hit live path pathu ROW-LINE then
+      exit
+   then
+   \ A file the cache cannot reuse compiles in every build, and some
+   \ definitions (a callback's C entry) compile live in every build, so an
+   \ edit recompiled exactly the files whose row differs from the no-edit warm
+   \ build's: those must be the files WANT-BUILD collected.
+   path pathu BASE-ROW? {: known:bool :}
+   known if BASE-HIT @ hit <> BASE-LIVE @ live <> or else true then
+   {: changed:bool :}
+   path pathu WANTED? {: wanted:bool :}
+   changed wanted 0= and if
+      s" unexpected:" hit live path pathu known ROW-BAD
+   then
+   wanted changed 0= and if s" missing:" hit live path pathu known ROW-BAD then ;
+
+: ROW-CHECK ( ptr u8 n -- ) ROW-FIELDS ROW-JUDGE ;
+
+: ROW-AT ( n -- n )
+   {: at:n :}
+   0 ROWS-TEXT ROWS-U @ 10 at SPLIT-NEXT drop {: line:ptr lineu:n next:n :}
+   line lineu ROW-CHECK next ;
+
+\ A successful maker always reads its counts file, so a counted session always
+\ writes rows: a missing rows file names the step and dies.
+: FILES-READ ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   label labelu s" .files.txt" LOG-PATH {: path:ptr pathu:n :}
+   path pathu FS:FILE? 0= if
+      SB-RESET s" native edit: " SB-APPEND label labelu SB-APPEND
+      s"  wrote no files rows" SB-APPEND SB$ 76 die
+   then
+   path pathu FS:FILE-SIZE {: size:n :}
+   size ROWS-TEXT-RESERVE
+   path pathu 0 ROWS-TEXT size FS:READ-ALL size <> if
+      s" native edit: files rows read short" 76 die
+   then
+   size ROWS-U ! ;
+
+\ Judge the rows the build labelled `label` wrote. Each mismatched file is
+\ printed with its hit and live values before the failing assertion.
+: FILES ( ptr u8 n n -- )
+   {: label:ptr labelu:n mode:n :}
+   mode FILES-MODE !
+   0 ROW-N ! 0 HIT-N ! 0 LIVE-N ! 0 BAD-N ! 0 EDIT-SEEN !
+   label labelu FILES-READ
+   mode EXPECT-BASE = if BASE-KEEP then
+   mode EXPECT-EDIT = if WANT-BUILD then
+   0 begin dup ROWS-U @ < while ROW-AT repeat drop
+   ROWS-TEXT-RELEASE
+   mode EXPECT-BASE = if ROW-N @ BASE-N ! then
+   label labelu T-LABEL
+   ROW-N @ 0 > TTRUE
+   label labelu T-LABEL
+   BAD-N @ 0 T=
+   mode EXPECT-EDIT = mode EXPECT-ALL = or if
+      EDIT-SEEN @ 1 T=
+      ROW-N @ BASE-N @ T=
+   then
+   mode EXPECT-COLD = if LIVE-N @ 0 > TTRUE then
+   mode EXPECT-SOME = if
+      HIT-N @ 0 > TTRUE
+      LIVE-N @ 0 > TTRUE
    then ;
-
-: FILE-REUSE ( -- )
-   OUT$ s" files reused " CONTAINS? TTRUE
-   OUT$ s" files reused 0" CONTAINS? TFALSE ;
-
-: DEFINITION-COMPILE ( -- )
-   OUT$ s" compiled " CONTAINS? TTRUE
-   OUT$ s" compiled 0" CONTAINS? TFALSE ;
 
 \ Change only the donor's abs primitive. Product source stays byte-for-byte
 \ identical when the second host reuses the first host's FILE cache.
@@ -736,7 +989,7 @@ variable LIVE-OVERRIDE
    false EARLY false MIDDLE false LATE
    s" base" s" cached/hb" s" cache" BUILD SUCCESS
    OUT$ s" native-build: support image built" CONTAINS? TTRUE
-   false 1 COUNTS
+   s" base" EXPECT-COLD FILES
    101 201 301 RUN-IMAGE
    BASE-ROLES SAVE-ROLES
    SAVE-BASE-PRODUCT ;
@@ -765,7 +1018,7 @@ variable LIVE-OVERRIDE
 : EARLY-EDIT ( -- )
    true EARLY
    s" early" s" cached/hb" s" cache" BUILD SUCCESS
-   true 1 COUNTS
+   s" early" EXPECT-SOME FILES
    111 201 301 RUN-IMAGE
    EARLY-ROLES SAVE-ROLES
    \ Kernel bytes contain resolved payload addresses, which an edit can move.
@@ -773,7 +1026,7 @@ variable LIVE-OVERRIDE
    BASE-ROLES EARLY-ROLES SAME-CHECKER? TTRUE
    BASE-ROLES EARLY-ROLES DIFFERENT-COMPILER? TTRUE
    s" early-cold" s" cold/hb" s" cold-cache-early" BUILD SUCCESS
-   false 1 COUNTS
+   s" early-cold" EXPECT-COLD FILES
    111 201 301 RUN-IMAGE
    COLD-ROLES SAVE-ROLES
    EARLY-ROLES COLD-ROLES SAME-ROLES? TTRUE
@@ -782,13 +1035,13 @@ variable LIVE-OVERRIDE
 : MIDDLE-EDIT ( -- )
    true MIDDLE
    s" middle" s" cached/hb" s" cache" BUILD SUCCESS
-   true 1 COUNTS
+   s" middle" EXPECT-SOME FILES
    111 211 301 RUN-IMAGE
    NEXT-ROLES SAVE-ROLES
    EARLY-ROLES NEXT-ROLES SAME-CHECKER? TTRUE
    EARLY-ROLES NEXT-ROLES DIFFERENT-COMPILER? TTRUE
    s" middle-cold" s" cold/hb" s" cold-cache-middle" BUILD SUCCESS
-   false 1 COUNTS
+   s" middle-cold" EXPECT-COLD FILES
    111 211 301 RUN-IMAGE
    COLD-ROLES SAVE-ROLES
    NEXT-ROLES COLD-ROLES SAME-ROLES? TTRUE
@@ -797,13 +1050,13 @@ variable LIVE-OVERRIDE
 : LATE-EDIT ( -- )
    true LATE
    s" late" s" cached/hb" s" cache" BUILD SUCCESS
-   true 1 COUNTS
+   s" late" EXPECT-SOME FILES
    111 211 311 RUN-IMAGE
    EARLY-ROLES SAVE-ROLES
    NEXT-ROLES EARLY-ROLES SAME-CHECKER? TTRUE
    NEXT-ROLES EARLY-ROLES SAME-COMPILER? TTRUE
    s" late-cold" s" cold/hb" s" cold-cache-late" BUILD SUCCESS
-   false 1 COUNTS
+   s" late-cold" EXPECT-COLD FILES
    111 211 311 RUN-IMAGE
    COLD-ROLES SAVE-ROLES
    EARLY-ROLES COLD-ROLES SAME-ROLES? TTRUE
@@ -1174,15 +1427,14 @@ variable LIVE-OVERRIDE
       FS:APPEND-FILE
    false EARLY false MIDDLE false LATE
    s" base" s" cached/hb" s" cache" BUILD SUCCESS
-   DEFINITION-COMPILE
+   s" base" EXPECT-COLD FILES
    101 201 301 RUN-IMAGE
    BASE-ROLES SAVE-ROLES
    s" repeat" s" cached/hb" s" cache" BUILD SUCCESS
    101 201 301 RUN-IMAGE
    PATCH-WRITER
    s" writer" s" cached/hb" s" cache" BUILD SUCCESS
-   FILE-REUSE
-   DEFINITION-COMPILE
+   s" writer" EXPECT-SOME FILES
    101 201 301 RUN-IMAGE
    NEXT-ROLES SAVE-ROLES
    BASE-ROLES NEXT-ROLES SAME-KERNEL? TFALSE
@@ -1197,7 +1449,7 @@ variable LIVE-OVERRIDE
    s" FILE primitive input survives checker handover" T-LABEL
    PREPARE HANDOVER-FILE
    s" handover-base" s" cached/hb" s" cache" BUILD SUCCESS
-   false 1 COUNTS
+   s" handover-base" EXPECT-COLD FILES
    OUT$ s" handover step source" CONTAINS? TTRUE
    s" handover-repeat" s" cached/hb" s" cache" BUILD SUCCESS
    HANDOVER-TRUST
@@ -1223,11 +1475,11 @@ variable LIVE-OVERRIDE
    WARM
    411 PREFIX-WANT ! 411 PREFIX-FILE
    s" prefix-edited" s" cached/hb" s" cache" BUILD SUCCESS
-   true 1 COUNTS
+   s" prefix-edited" EXPECT-SOME FILES
    101 201 301 RUN-IMAGE
    NEXT-ROLES SAVE-ROLES
    s" prefix-cold" s" cold/hb" s" cold-cache-prefix" BUILD SUCCESS
-   false 1 COUNTS
+   s" prefix-cold" EXPECT-COLD FILES
    101 201 301 RUN-IMAGE
    COLD-ROLES SAVE-ROLES
    NEXT-ROLES COLD-ROLES SAME-ROLES? TTRUE
@@ -1250,7 +1502,7 @@ variable LIVE-OVERRIDE
    ROOT$ BASE-ROOT swap BYTE-COPY ROOT-U @ BASE-ROOT-U !
    false EARLY false MIDDLE false LATE
    s" source-copy-a" s" cached/hb" s" cache" BUILD SUCCESS
-   false 1 COUNTS
+   s" source-copy-a" EXPECT-COLD FILES
    101 201 301 RUN-IMAGE
    BASE-ROLES SAVE-ROLES
    BASE-ROOT BASE-ROOT-U @ s" source-copy" DONOR-ROOT FS:JOIN-PATH DONOR-ROOT-U !
@@ -1261,7 +1513,7 @@ variable LIVE-OVERRIDE
    s" scratch" AT FS:MAKE-DIR
    false EARLY false MIDDLE false LATE
    s" source-copy-b" s" cached/hb" s" cache" BUILD SUCCESS
-   false 1 COUNTS
+   s" source-copy-b" EXPECT-COLD FILES
    101 201 301 RUN-IMAGE
    COLD-ROLES SAVE-ROLES
    BASE-ROLES COLD-ROLES SAME-ROLES? TTRUE
@@ -1274,10 +1526,108 @@ variable LIVE-OVERRIDE
    BASE-ROOT BASE-ROOT-U @ ROOT!
    FINISH ;
 
+\ The product's REPL evaluates a line, as the installed engine would.
+: PRODUCT-RUNS ( -- )
+   PROC-CWD:ARGV-ENV-CWD-RESET
+   PROC-ENV-INHERIT-MISSING
+   OUTPUT$ >LEN ROOT$ >LEN
+   S\" s\" product=\" type 40 2 + . cr\n" >LEN
+   OUT CAP >LEN ERR CAP >LEN BUILD-MS >MS
+   PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME
+      PROC-OUTCOME>DEADLINE-RC RC>N
+   {: outu:len erru:len rc:n :}
+   outu LEN>N OUT-U ! erru LEN>N ERR-U !
+   OUT$ s" product=42" CONTAINS? TTRUE
+   rc 0<> if OUT$ type ERR$ type then
+   rc 0 T= ;
+
+: KEPT-PATH ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
+   {: label:ptr labelu:n ext:ptr extu:n dst:ptr size:ptr :}
+   label labelu ext extu LOG-PATH {: a:ptr u:n :}
+   a dst u BYTE-COPY u size ! ;
+
+\ Keep the step's image and map as logs/<label>.hb and logs/<label>.hb.map.
+: KEEP ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   s" cached/hb" CMP-A CMP-A-U PATH!
+   label labelu s" .hb" CMP-B CMP-B-U KEPT-PATH
+   CMP-A CMP-A-U @ CMP-B CMP-B-U @ FS:COPY-FILE-STREAM
+   s" cached/hb.map" CMP-A CMP-A-U PATH!
+   label labelu s" .hb.map" CMP-B CMP-B-U KEPT-PATH
+   CMP-A CMP-A-U @ CMP-B CMP-B-U @ FS:COPY-FILE-STREAM ;
+
+: SAME-KEPT ( ptr u8 n ptr u8 n -- )
+   {: a:ptr au:n b:ptr bu:n :}
+   a au s" .hb" CMP-A CMP-A-U KEPT-PATH
+   b bu s" .hb" CMP-B CMP-B-U KEPT-PATH
+   CMP-A CMP-A-U @ CMP-B CMP-B-U @ CHAIN-RUN:SAME-FILES? TTRUE
+   a au s" .hb.map" CMP-A CMP-A-U KEPT-PATH
+   b bu s" .hb.map" CMP-B CMP-B-U KEPT-PATH
+   CMP-A CMP-A-U @ CMP-B CMP-B-U @ CHAIN-RUN:SAME-FILES? TTRUE ;
+
+\ One engine build into cached/hb, kept and judged by its files rows.
+: STEP ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n cache:ptr cacheu:n mode:n :}
+   label labelu s" cached/hb" cache cacheu false ENGINE-BUILD ENGINE-SUCCESS
+   label labelu KEEP
+   label labelu mode FILES ;
+
+\ An edited step's warm build, then the same tree from an empty cache labelled
+\ `fresh`, which must give the same image and map.
+: EDIT-STEP ( ptr u8 n ptr u8 n n -- )
+   {: label:ptr labelu:n fresh:ptr freshu:n mode:n :}
+   label labelu s" cache" mode STEP
+   s" cache-fresh" AT {: dir:ptr diru:n :}
+   dir diru FS:EXISTS? if dir diru FS:REMOVE-TREE then
+   fresh freshu s" cache-fresh" EXPECT-COLD STEP
+   label labelu fresh freshu SAME-KEPT ;
+
+: EDIT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n old:ptr oldu:n new:ptr newu:n :}
+   path pathu EDITED!
+   path pathu old oldu new newu PATCH-EMITTER ;
+
+: MEM-EDIT ( ptr u8 n ptr u8 n -- )
+   {: old:ptr oldu:n new:ptr newu:n :}
+   s" src/lib/memory.f" old oldu new newu EDIT ;
+
+: WATCH-EDIT ( ptr u8 n ptr u8 n -- )
+   {: old:ptr oldu:n new:ptr newu:n :}
+   s" src/habu/debug-watch.f" old oldu new newu EDIT ;
+
+\ A file recompiles when it or a file it requires changed, comments included,
+\ as make rebuilds. The compiler requires src/lib/memory.f, so a memory.f edit
+\ recompiles every loaded file; a src/habu/debug-watch.f edit recompiles it and
+\ the loaded files that require it, directly or through another (WANT-BUILD).
+\ Each edit lands on the previous one's tree and shares one cache.
+: RECOMPILE ( -- )
+   T-RESET
+   s" engine rebuilds recompile only an edited file and its consumers" T-LABEL
+   PREPARE
+   s" engine-cold" s" cache" EXPECT-COLD STEP
+   PRODUCT-RUNS
+   s" engine-warm" s" cache" EXPECT-BASE STEP
+   s" engine-cold" s" engine-warm" SAME-KEPT
+   s" \ memory.f - checked OS-backed mappings for runtime-sized"
+      s" \ memory.f - checked OS-backed regions for runtime-sized" MEM-EDIT
+   s" memory-comment" s" cache" EXPECT-ALL STEP
+   PRODUCT-RUNS
+   s" \ debug-watch.f - REPL watch cells shared"
+      s" \ debug-watch.f - REPL watch slots shared" WATCH-EDIT
+   s" watch-comment" s" watch-comment-fresh" EXPECT-EDIT EDIT-STEP
+   s" dup BPW-SLOT @ dup BPW-PRINT-ADDR @ ."
+      s" dup BPW-SLOT @ dup BPW-PRINT-ADDR @ 0 + ." WATCH-EDIT
+   s" watch-body" s" watch-body-fresh" EXPECT-EDIT EDIT-STEP
+   PRODUCT-RUNS
+   BASE-TEXT-RELEASE
+   WANT-TEXT-RELEASE
+   FINISH ;
+
 public
 : MAIN ( -- )
    SCRIPT-ARGC 0 > if
       0 SCRIPT-ARGV$ s" source-copy" STR= if SOURCE-COPY exit then
+      0 SCRIPT-ARGV$ s" recompile" STR= if RECOMPILE exit then
       0 SCRIPT-ARGV$ s" kernel" STR= if KERNEL-BOUNDARY exit then
       0 SCRIPT-ARGV$ s" division" STR= if DIVISION-BOUNDARY exit then
       0 SCRIPT-ARGV$ s" writer" STR= if WRITER-RELOCATION exit then

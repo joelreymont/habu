@@ -38,8 +38,13 @@ outside the checkout.
 bin/hb --load test/run.f </dev/null
 ```
 
-For definition-cache or persisted checker-state changes, also run the engine
-edit matrix; this longer run is outside the native registry:
+The registry's `native-build-recompile` row checks which files an engine
+rebuild recompiles, as make would: every file after an edit to
+`src/lib/memory.f`, which the compiler requires; after an edit to
+`src/habu/debug-watch.f`, that file and the loaded files that require it,
+directly or through other loaded files. Each `debug-watch.f` product equals a
+fresh-cache build. For definition-cache or persisted checker-state changes,
+also run the engine edit matrix:
 
 ```sh
 bin/hb --load test/compiler/native-build-edit-e2e.f -- qualify </dev/null

@@ -82,6 +82,12 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
+\ native-build-recompile runs seven engine builds, three from an empty cache
+\ (739 s wall, 729 s CPU as user+sys).
+SUITE native-build-recompile
+   test/compiler/native-build-edit-e2e.f -- recompile
+;SUITE
+
 SUITE prefix-provided-unfilled
    test/prefix-provided-unfilled.f
 ;SUITE
