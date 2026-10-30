@@ -79,9 +79,9 @@ variable EXITED
    s" a local reference cannot escape into a quotation" T-LABEL
    S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: BAD-QLOCAL ( n -- n ) {: review-width:n :} [: review-width ;] execute ;\n"
    tier RUN-SOURCE
-   tier 0= if 75 else 70 then EXPECT-RC
+   70 EXPECT-RC
    OUT-U @ 0 T=
-   tier 0<> if ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE then
+   ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE
 
    s" the other spelling in a quotation is the word, which a quotation may call" T-LABEL
    S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: OK-QWORD ( n -- n ) {: review-width:n :} [: REVIEW-WIDTH ;] execute ;\n17 OK-QWORD .\n"
@@ -91,13 +91,14 @@ variable EXITED
    s" a quotation cannot declare a local in either case" T-LABEL
    S\" : BAD-QDECLARE ( n -- n ) [: {: REVIEW-WIDTH:n :} REVIEW-WIDTH ;] execute ;\n"
    tier RUN-SOURCE
-   tier 0= if 75 else 70 then EXPECT-RC
+   70 EXPECT-RC
    OUT-U @ 0 T=
-   tier 0<> if ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE then ;
+   ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE ;
 
 public
 
-\ ARM runs each child at tier 0 and tier 1; x64 at tier 1 only.
+\ arm64 runs each child at tier 0 and tier 1, two native compilers; x86-64 at
+\ tier 1 only.
 : RUN ( -- )
    T-RESET
    HB-TARGET-LINUX-X86-64? 0= if

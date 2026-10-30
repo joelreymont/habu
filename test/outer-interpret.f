@@ -217,8 +217,8 @@ variable WANT-RC
 \ `export`), words, `create`, `variable`, `constant`, `cast:`, `immediate`, and
 \ definitions (`:`, `kernel:`, `trusted:`) that end at `;` or refuse, at the
 \ latest where the input ends inside them; other keywords go through evaluate,
-\ which the engine's loop reads. Tier-0 cases are the Habu loop's alone: the
-\ engine's loop compiles their definitions and the Habu loop refuses them.
+\ which the engine's loop reads. A tier-0 head is the Habu loop's alone: the
+\ engine's loop opens its definition and the Habu loop refuses it.
 : NUMBERS ( -- )
    GE-SRC-RESET
    s" require src/lib/ieee754.f" GE-SRC-LINE
@@ -1211,8 +1211,7 @@ variable WANT-RC
 \ ---- the definition heads -------------------------------------------------------
 \ A head refuses through the engine's tails, in the engine's order, or leaves
 \ its definition pending: nothing compiles until `;`. A case selects tier 1
-\ first; the Habu loop refuses tier 0, whose bodies the engine's loop compiles
-\ as it reads them.
+\ first: the Habu loop refuses a tier-0 head (src/habu/definers.f DEF-HEAD).
 : HEAD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET s" 1 set-tier " GE-SRC+
    src srcu GE-SRC-LINE
@@ -1239,10 +1238,12 @@ variable WANT-RC
    s" s\~ TRUSTED: OI-INC ( -- ) s\~ " Q+  NESTED$ GE-SRC+
    s" \~ included ; immediate~ evaluate  s~ OI-INC~ 0 parse-imm" QLINE ;
 
-\ At tier 0 a head and a body token refuse. A body token reaches the Habu loop
+\ At tier 0 a head refuses in the Habu loop. A body token reaches the Habu loop
 \ at tier 0 only in a file included while the engine's loop holds a head open,
-\ as an immediate word in an evaluated head does. An x86-64 engine boots at
-\ tier 1 and has no tier 0, so there the same sources read as tier-1 heads.
+\ as an immediate word in an evaluated head does: the engine's head opened a
+\ native capture, so the included tokens join that body and the source ends
+\ inside the definition. An x86-64 engine boots at tier 1 and has no tier 0, so
+\ there the head reads as a tier-1 head.
 : HEAD-TIER-0 ( -- )
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
@@ -1259,11 +1260,7 @@ variable WANT-RC
    INC-LINE
    s" s~ : OI-T0 ( -- ) OI-INC~ evaluate" QLINE
    s" oi-tier-0-body.f" HABU
-   HB-TARGET-LINUX-X86-64? if
-      74 s" hb: source ended inside definition: OI-T0 at " S\" oi-tier-0-body.f:1\n" DIED-AT
-   else
-      76 s" hb: tier 0 is not in the Habu loop: 1 at " S\" oi-tier-0-nested.f:1\n" DIED-AT
-   then ;
+   74 s" hb: source ended inside definition: OI-T0 at " S\" oi-tier-0-body.f:1\n" DIED-AT ;
 
 : HEAD-TASK-RUNNING ( -- )
    SPIN-PRELUDE
@@ -1415,9 +1412,9 @@ variable WANT-RC
    UNIT-START
    s" s~ : OI-HK ( -- ) 7 . ;~ evaluate ' OI-HK OI-ARM" QLINE
    s" s~ : OI-X ( -- ) 1~ evaluate" QLINE
-   s" oi-pending-hook-jit.f" BOTH
+   s" oi-pending-hook-tier-0.f" BOTH
    S\" 7\n" CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-X at " S\" oi-pending-hook-jit.f:1\n" DIED-AT ;
+   74 s" hb: source ended inside definition: OI-X at " S\" oi-pending-hook-tier-0.f:1\n" DIED-AT ;
 
 \ An evaluate in a running word that leaves a head pending is refused at its
 \ own end, at its string's line: the word runs no further.
@@ -1701,8 +1698,8 @@ variable WANT-RC
       S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR
    then ;
 
-\ At tier 0 the body refuses before an immediate in it runs, in a file included
-\ under the engine's head as HEAD-TIER-0's.
+\ At tier 0 an immediate in a file included under the engine's head, as
+\ HEAD-TIER-0's, runs into the engine's native body like any other.
 : BODY-IMMEDIATE-TIER-0 ( -- )
    s" OI-N 2" s" oi-body-imm-tier-0-nested.f" PKG-NESTED
    GE-SRC-RESET
@@ -1711,13 +1708,8 @@ variable WANT-RC
    s" 1 ." GE-SRC-LINE
    s" s~ : OI-T0 ( -- ) OI-INC~ evaluate" QLINE
    s" oi-body-immediate-tier-0.f" HABU
-   HB-TARGET-LINUX-X86-64? if
-      S\" 1\n9\n" CASE$ GE-EXPECT-OUT
-      74 s" hb: source ended inside definition: OI-T0 at " S\" oi-body-immediate-tier-0.f:1\n" DIED-AT
-   else
-      S\" 1\n" CASE$ GE-EXPECT-OUT
-      76 s" hb: tier 0 is not in the Habu loop: OI-N at " S\" oi-body-imm-tier-0-nested.f:1\n" DIED-AT
-   then ;
+   S\" 1\n9\n" CASE$ GE-EXPECT-OUT
+   74 s" hb: source ended inside definition: OI-T0 at " S\" oi-body-immediate-tier-0.f:1\n" DIED-AT ;
 
 \ ---- `does>` in a body --------------------------------------------------------------
 \ `does>` is matched with its A-Z folded and joins the capture, and DOESB takes
@@ -1835,19 +1827,15 @@ variable WANT-RC
    s" " CASE$ GE-EXPECT-OUT
    S\" hb: native compiler dispatch unset\n" CASE$ GE-EXPECT-ERR ;
 
-\ At tier 0 `;` refuses as every body token does: the engine's loop ends a
-\ tier 0 body.
+\ At tier 0 a `;` in a file included under the engine's head cannot close it:
+\ the engine's loop ends the body it opened.
 : SEMI-TIER-0 ( -- )
    s" ;" s" oi-semi-tier-0-nested.f" PKG-NESTED
    GE-SRC-RESET
    INC-LINE
    s" s~ : OI-T0 ( -- ) OI-INC~ evaluate" QLINE
    s" oi-semi-tier-0.f" HABU
-   HB-TARGET-LINUX-X86-64? if
-      74 s" hb: source closed a definition it did not open: OI-T0 at " S\" oi-semi-tier-0-nested.f:1\n" DIED-AT
-   else
-      76 s" hb: tier 0 is not in the Habu loop: ; at " S\" oi-semi-tier-0-nested.f:1\n" DIED-AT
-   then ;
+   74 s" hb: source closed a definition it did not open: OI-T0 at " S\" oi-semi-tier-0-nested.f:1\n" DIED-AT ;
 
 \ ---- `create`, `variable` and `constant` -------------------------------------------
 \ A created word pushes its cell, and a checked word reads it through the
