@@ -1,8 +1,11 @@
 \ tier.f - the compiler tiers and the per-definition state that must not survive
-\ a definition. ARM runs tier 0 (src/habu/jit.f) and tier 1 (the IR compiler)
-\ and starts at tier 0; Intel runs only tier 1 and refuses tier 0. A tier
-\ chooses a compiler, never whether the checker runs. Every case runs in a child
-\ process: `set-tier` is engine-global and the leak case damages it.
+\ a definition. ARM runs tier 0 (T0, src/habu/t0.f) and tier 1 (the IR
+\ compiler) and starts at tier 0; Intel runs only tier 1 and refuses tier 0. A
+\ tier chooses a compiler, never whether the checker runs. Every case runs in a
+\ child process: `set-tier` is engine-global and the leak case damages it.
+\ The trusted tick gate and width refusals are the JIT's (src/habu/habu2.f
+\ TRUSTTICKMSG$, INCOMP-MSG$, VALIDATE): those cases select it with >JIT, which
+\ zeroes NCOMP-DISPATCH:COMP-CELL.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -57,6 +60,11 @@ variable RC     variable EXITED
    HB$ >LEN  src u >LEN  OUT CAP >LEN
    ERR CAP >LEN  TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    src u STORE! ;
+
+\ The subject compiled by the JIT at tier 0, built in SB.
+: >JIT ( ptr u8 n -- ptr u8 n ) {: src:ptr u:n :}
+   SB-RESET s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! " SB-APPEND
+   src u SB-APPEND SB$ ;
 
 \ ---- the two shapes every case asserts ---------------------------------------
 \ OK: exit 0 and stdout holds what the definition printed. Printing proves the
@@ -134,11 +142,11 @@ variable RC     variable EXITED
 \ native compilation checks the body before it elaborates the tick.
 : TEST-TRUSTED-TICK-ORDER ( -- )
    s" the fresh tier 0 boundary has a trusted gate" T-LABEL
-   s" tick-order@ drop . cr" EXEC s" 1" ASSERT-OK
+   s" tick-order@ drop . cr" >JIT EXEC s" 1" ASSERT-OK
    s" tier 1 starts with checking order" T-LABEL
    s" 1 set-tier tick-order@ drop . cr" EXEC s" 0" ASSERT-OK
    s" tier 0 reports the selected trusted tick before a body underflow" T-LABEL
-   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
+   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" >JIT EXEC
    REJECT-RC ASSERT-RC
    ERR$ s" trusted-only tick" CONTAINS? TTRUE
    s" tier 1 keeps the first checker failure at drop" T-LABEL
@@ -146,30 +154,30 @@ variable RC     variable EXITED
    s" iwggpf" ASSERT-REJECTED
    ERR$ s" underflow" CONTAINS? TTRUE
    s" a later undefined token cannot displace the tier 0 gate" T-LABEL
-   s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" EXEC
+   s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" >JIT EXEC
    REJECT-RC ASSERT-RC
    ERR$ s" trusted-only tick" CONTAINS? TTRUE
    s" a malformed signature cannot displace the tier 0 gate" T-LABEL
-   s" : TICK-SIG ( -- zz ) ['] patch32 drop ;" EXEC
+   s" : TICK-SIG ( -- zz ) ['] patch32 drop ;" >JIT EXEC
    REJECT-RC ASSERT-RC
    ERR$ s" trusted-only tick" CONTAINS? TTRUE
    s" an earlier undefined token refuses before the tier 0 gate" T-LABEL
-   s" : TICK-EARLY ( -- ) NO-SUCH-WORD ['] patch32 drop ;" EXEC
+   s" : TICK-EARLY ( -- ) NO-SUCH-WORD ['] patch32 drop ;" >JIT EXEC
    REJECT-RC ASSERT-RC
    ERR$ s" NO-SUCH-WORD" CONTAINS? TTRUE
    s" an unsafe check before the tier 0 gate leaves the gate first" T-LABEL
-   s" : TICK-UNSAFE ( -- ) evaluate ['] patch32 drop ;" EXEC
+   s" : TICK-UNSAFE ( -- ) evaluate ['] patch32 drop ;" >JIT EXEC
    REJECT-RC ASSERT-RC
    ERR$ s" trusted-only tick" CONTAINS? TTRUE
    s" a package-local ordinary shadow has no trusted gate" T-LABEL
-   s" package TICK-SHADOW public : patch32 ( -- n ) 1 ; ;package : SHADOW-TICK ( -- ) ['] TICK-SHADOW:patch32 drop ;" EXEC
+   s" package TICK-SHADOW public : patch32 ( -- n ) 1 ; ;package : SHADOW-TICK ( -- ) ['] TICK-SHADOW:patch32 drop ;" >JIT EXEC
    0 ASSERT-RC
    s" exporting the trusted primitive is refused at its export boundary" T-LABEL
    s" package TICK-ALIAS public EXPORT patch32 ;package" EXEC
    UNCAUGHT-RC ASSERT-RC
    ERR$ s" 7120" CONTAINS? TTRUE
    s" a does clause reaches the native trusted gate before its parent check" T-LABEL
-   s" : TICK-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" EXEC
+   s" : TICK-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" >JIT EXEC
    REJECT-RC ASSERT-RC
    ERR$ s" trusted-only tick" CONTAINS? TTRUE
    s" a replacement require leaves the tick to the loaded subject" T-LABEL
@@ -250,8 +258,7 @@ variable RC     variable EXITED
    LEGACY? if
       s" int-mark is refused in a plain checked body on tier 0" T-LABEL
       s" : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
-      \ Tier 0 reports the hidden name; tier 1 reports the trust boundary below.
-      ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
+      ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
       ERR$ s" int-mark" CONTAINS? TTRUE
    then
 
@@ -404,11 +411,11 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 
 \ TRUSTED: bodies whose scans meet a token they cannot apply (a rowless
 \ unchecked word, `evaluate`) while a pair is live: the certificate's facts are
-\ incomplete, tier 0 names the definition and exits before anything runs, and
+\ incomplete, the JIT names the definition and exits before anything runs, and
 \ tier 1 refuses to compile it. Under `0 set-check` the parked hook still scans
 \ a body and gives it a row, so IC-RAW is compiled after `discard-check` and the
-\ saved hook is re-armed. Tier 0 only: tier 1 scans IC-RAW itself and gives it a
-\ row.
+\ saved hook is re-armed. The JIT only: tier 1 scans IC-RAW itself and gives
+\ it a row.
 : INCOMPLETE-RAW$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" check@ 0 set-check discard-check : IC-RAW swap ; set-check " LN+
@@ -472,7 +479,7 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    S\" TRUSTED: PM-T ( -- pmpair ) s\" x\" drop 1 2 5 {: q:n p:pmpair r :} p ; " LN+
    s" : PM-SHOW ( -- ) PM-T PMPAIR:UNMAKE . . cr ; PM-SHOW" LN+ LN$ ;
 
-\ The whole of tier 0's refusal of an incomplete certificate, and no output.
+\ The whole of the JIT's refusal of an incomplete certificate, and no output.
 : ASSERT-INCOMPLETE ( ptr u8 n -- ) {: want:ptr want-u:n :}
    INCOMPLETE-RC ASSERT-RC
    OUT-U @ 0 T=
@@ -583,15 +590,15 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
       \ One process each: the refusal ends the process it happens in.
       s" an unchecked word over a two-cell value is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-RAW$ RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
+      0 INCOMPLETE-RAW$ >JIT RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
       s" evaluate over a two-cell value is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-EVAL$ RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
+      0 INCOMPLETE-EVAL$ >JIT RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
       s" a refused bind leaving an undeclared local over half a pair is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-BIND$ RUN  S\" hb: incomplete layout facts: U1\n" ASSERT-INCOMPLETE
+      0 INCOMPLETE-BIND$ >JIT RUN  S\" hb: incomplete layout facts: U1\n" ASSERT-INCOMPLETE
       s" a refused bind past the known row with a pair-typed local is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-LOST$ RUN  S\" hb: incomplete layout facts: U2\n" ASSERT-INCOMPLETE
+      0 INCOMPLETE-LOST$ >JIT RUN  S\" hb: incomplete layout facts: U2\n" ASSERT-INCOMPLETE
       s" a hookless body with incomplete width facts is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-HOOKLESS$ RUN  S\" hb: incomplete layout facts: IC-HOOKLESS\n" ASSERT-INCOMPLETE
+      0 INCOMPLETE-HOOKLESS$ >JIT RUN  S\" hb: incomplete layout facts: IC-HOOKLESS\n" ASSERT-INCOMPLETE
       s" a `--` in a TRUSTED: bind is bound as a local on tier 0" T-LABEL
       0 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
       s" a TRUSTED: pair local after one-cell locals binds the top cells on tier 0" T-LABEL
@@ -721,8 +728,8 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
       s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) @ 1 + ; 7 MKV W : SHOW ( -- ) W . cr ; SHOW" RUN  s" 8" ASSERT-OK
 
       s" tier 0 refuses a does> clause that names a head local" T-LABEL
-      s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  REJECT-RC ASSERT-RC
-      ERR$ s" E-UNDEFINED: v" CONTAINS? TTRUE
+      s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  s" mkv;does" ASSERT-REJECTED
+      ERR$ s" undefined word 'v'" CONTAINS? TTRUE
 
       \ A head with no width facts and a clause that moves a two-cell value,
       \ on the stack and through a clause local: the clause lowers from its own
@@ -752,9 +759,9 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    SB-RESET s" 1 set-tier " SB-APPEND CDS-SHADOW$ SB-APPEND SB$ RUN  s" 8" ASSERT-OK
    OUT$ s" SHADOW" CONTAINS? TFALSE
 
-   \ Tier 0's reader refuses the token before the checker sees the clause; tier
-   \ 1 compiles the whole definition and the checker refuses the clause, which
-   \ reports as a refused body does: the reason, naming the definer, and 70.
+   \ Each tier compiles the whole definition and the checker refuses the
+   \ clause, which reports as a refused body does: the reason, naming the
+   \ definer, and 70.
    s" tier 1 refuses a does> clause that names a head local" T-LABEL
    s" 1 set-tier : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  s" mkv;does" ASSERT-REJECTED
    ERR$ s" undefined word 'v'" CONTAINS? TTRUE
