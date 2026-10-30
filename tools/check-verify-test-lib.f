@@ -2438,16 +2438,16 @@ $180000 constant LARGE-STDIN-LEN
    s" def-deferred: the deferral" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$= ;
 
-\ The fresh verifier child captures tier 0 before requiring its tooling. A
-\ top-level tier switch is executed only by check.f's existing subject run.
+\ The fresh verifier child captures tier 0's checking-first tick order before
+\ its tooling (tick-order@); only check.f's subject run executes a tier switch.
 : TRUSTED-TICK-ORDER ( -- )
    s\" : CVT-GATE ( -- ) drop ['] patch32 drop CVT-NOT-DEFINED ;\n" TOP-CHECK
    1 s" trusted-tick-order: static tier 0 refusal" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:SPAN:span<u8> :}
-   s" trusted-tick-order: gate code" T-LABEL p s" code" STRING$ s" E-CAP-TRUSTED" T$=
-   s" trusted-tick-order: target token" T-LABEL p s" token" STRING$ s" patch32" T$=
-   s" trusted-tick-order: target line" T-LABEL p s" line" NUMBER$ s" 1" T$=
-   s" trusted-tick-order: target column" T-LABEL p s" column" NUMBER$ s" 28" T$=
+   s" trusted-tick-order: checking code" T-LABEL p s" code" STRING$ s" E-UNDEFINED" T$=
+   s" trusted-tick-order: later token" T-LABEL p s" token" STRING$ s" CVT-NOT-DEFINED" T$=
+   s" trusted-tick-order: later line" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" trusted-tick-order: later column" T-LABEL p s" column" NUMBER$ s" 41" T$=
    s" trusted-tick-order: rejected verdict" T-LABEL
    p s" verdict" STRING$ s" rejected" T$=
    s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n" TOP-CHECK
