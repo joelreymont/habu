@@ -13018,14 +13018,10 @@ public
       0 OK !  -1 FAILSET !
       EXIT
    THEN
-   why E-USING-SHADOW-GLOBAL = IF
+   why E-USING-SHADOW-GLOBAL =  why E-USING-AMBIGUOUS =  or IF
       s USH-TOK-A !  su USH-TOK-U !
-      0 SHADOW-DIAG-XT
+      why E-USING-SHADOW-GLOBAL = IF 0 ELSE 2 THEN SHADOW-DIAG-XT
       why REFUSE-DEF CHECKER-REFUSE
-   THEN
-   why E-USING-AMBIGUOUS = IF
-      s USH-TOK-A !  su USH-TOK-U !
-      2 SHADOW-DIAG-XT
    THEN
    why REFUSE-DEF throw ;
 

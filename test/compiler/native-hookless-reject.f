@@ -112,6 +112,23 @@ variable RC
    s" 1 set-tier 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ; 5 ." SESSION
    UNDEFINED-REFUSED ;
 
+\ A bare callee two used packages (UA, UC) export: the checker renders the
+\ ambiguity as its refusal, so either native compiler's refusal of the
+\ definition, uncaught, exits with the reject status under the definition's
+\ name, as an undefined callee does.
+: AMBIGUOUS-REFUSED ( -- )
+   RC @ RC-REJECT T=
+   s" E-USING-AMBIGUOUS habu: bare 'AW' is ambiguous under using" SAYS
+   s" ncomp: cannot compile UT-AMB" SAYS ;
+
+: SESSION-AMBIGUOUS ( -- )
+   s" an ambiguous bare callee is refused naming the callee" T-LABEL
+   s" ;package 0 set-check package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
+   AMBIGUOUS-REFUSED
+   s" a tier-1 ambiguous bare callee is refused naming the definition" T-LABEL
+   s" ;package 1 set-tier 0 set-check package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
+   AMBIGUOUS-REFUSED ;
+
 \ A definer's own body is scanned before its does> clause, which the checker
 \ scans next, so the reason has to be printed before that second scan.
 : DEFINER$ ( -- ptr u8 n )
@@ -411,6 +428,7 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-DECLARED
    SESSION-UNEVEN
    SESSION-UNDEFINED
+   SESSION-AMBIGUOUS
    SESSION-DEFINER
    SESSION-CLAUSE
    SESSION-CHECKED-CLAUSE

@@ -198,11 +198,18 @@ private
    {: src:IR-ID:ir-source-id st:n u:n :}
    TXT st + u ;
 
+: KEEP-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   a NAME-A !  u NAME-U ! ;
+
 \ The tape's first token is the definition's name. Recover it after sealing even
 \ when a rejected second `:` left a tentative spelling in the record slot.
 : KEEP-TAPE-NAME ( -- )
-   TAPE-NAME$ {: a:ptr u:n :}
-   a NAME-A !  u NAME-U ! ;
+   TAPE-NAME$ KEEP-NAME ;
+
+\ A scan that threw never seals its unit, so a refusal it raised after reading
+\ the name is reported under the open unit's row 0.
+: KEEP-UNIT-NAME ( -- )
+   NFEED:UNIT-NAME$ KEEP-NAME ;
 
 \ CHECK-DOES-HEAD refuses a cut that is not just past a `does> ` in this
 \ source (E-NFEED-CUT) before NFEED:DOES-CLAUSE reads the tape at it. NAME$ is
@@ -219,6 +226,7 @@ private
 
 : SCAN ( -- )
    [: CHECK-RECORDED M-VERDICT ! ;] catch {: src-rc:n :}
+   src-rc 0<> NFEED:UNIT-NAMED? and if KEEP-UNIT-NAME then
    [: END-RECORDED ;] catch {: end-rc:n :}
    end-rc 0= if [: KEEP-TAPE-NAME ;] catch else 0 then {: name-rc:n :}
    src-rc 0<> if src-rc throw then

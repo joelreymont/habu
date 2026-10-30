@@ -130,11 +130,10 @@ create XE-EMPTY 1 allot
    s" ['] A + (scalar sink) rejects: the tick is a quotation, not a number" T-LABEL
    s" v9:<<REJ>>" XE-HAS ;
 
-\ ---- `[']` of a using-imported bare name (src/habu/habu2.f C-BTICK) ----------
-\ C-BTICK resolves its token as the compile path resolves a call: LFIND, the
-\ used packages' publics (LFINDUSED), then the undefined diagnostic. Both
-\ programs run in a child, so a regression is a red row, not a crashed suite.
-94 constant XE-AMB-RC       \ ENGINE-ERROR:USING-AMBIGUOUS, the compile path's own exit
+\ ---- `[']` of a using-imported bare name ------------------------------------
+\ A tick resolves its token as a call does: the dictionary, then the used
+\ packages' publics, then the undefined diagnostic. Both programs run in a
+\ child, so a regression is a red row, not a crashed suite.
 70 constant XE-UNDEF-RC
 
 : XE-USING-PRELUDE ( -- )
@@ -182,21 +181,12 @@ create XE-EMPTY 1 allot
    s" ;package" XE-LINE
    SB$ ;
 
-: XE-AMB-SAID ( -- )                     \ the compile path's ambiguity diagnostic, on stderr
-   XE-ERR$ s" hb: ambiguous bare word resolves in multiple used packages: XEU-W"
-   CONTAINS? TTRUE ;
-
-\ The ambiguity refusal: ARM64 compiles the child at tier 0, where the engine's
-\ lookup dies XE-AMB-RC; x86-64 compiles at tier 1 only, where the checker
-\ refuses the body (E-USING-AMBIGUOUS) and --load exits 67.
+\ The ambiguity refusal: the checker refuses the body (E-USING-AMBIGUOUS) at
+\ either native tier, and --load exits 70, as a refusal.
 : XE-AMB-DIED ( -- )
    XE-EXITED @ TTRUE
-   HB-TARGET-LINUX-X86-64? if
-      XE-RC @ 67 T=
-      XE-ERR$ s" E-USING-AMBIGUOUS habu: bare 'XEU-W'" CONTAINS? TTRUE
-   else
-      XE-RC @ XE-AMB-RC T=  XE-AMB-SAID
-   then ;
+   XE-RC @ 70 T=
+   XE-ERR$ s" E-USING-AMBIGUOUS habu: bare 'XEU-W'" CONTAINS? TTRUE ;
 
 : XE-USING ( -- )
    XE-USING-PROG$ XE-RUN
@@ -221,7 +211,8 @@ create XE-EMPTY 1 allot
    s" ['] of a name nothing resolves is undefined, never a silent no-op" T-LABEL
    s" : XEU-NONE ( -- n ) 7 ['] XEU-NOSUCH drop ;" XE-AMB-PROG$ XE-RUN
    XE-EXITED @ TTRUE  XE-RC @ XE-UNDEF-RC T=
-   XE-ERR$ s" E-UNDEFINED: XEU-NOSUCH" CONTAINS? TTRUE ;
+   XE-ERR$ s" E-UNDEFINED" CONTAINS? TTRUE
+   XE-ERR$ s" XEU-NOSUCH" CONTAINS? TTRUE ;
 
 : XE-PREPARE ( -- )
    FS:CLEANUP-RESET
