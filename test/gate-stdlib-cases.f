@@ -1190,6 +1190,12 @@ SUITE mcp
    src/lib/net/mcp-test.f
 ;SUITE
 
+\ BEARER:ADMIT? on a loopback port that serves its own key set: the 503, the
+\ 401 challenges, the token checks, CLAIM$ and the refetch window.
+SUITE bearer
+   src/lib/net/bearer-test.f
+;SUITE
+
 \ The HTTP listener through an accept refused for want of descriptors. Its own
 \ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
 SUITE http-accept-starved

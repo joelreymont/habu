@@ -9,6 +9,7 @@ require src/lib/test.f
 require src/lib/prelude.f
 require src/lib/memory.f
 require src/lib/crypto/evp.f
+require src/lib/crypto/jws-fixture.f
 require src/lib/fs.f
 require src/lib/adt/result.f
 require src/lib/base64.f
@@ -508,9 +509,9 @@ FUNCTION: RESOURCE-USAGE getrusage ( n ptr u8 -- i32 )
    PEAK-KB before - RSS-MARGIN < TTRUE ;
 
 
-\ The public JWK and signature are transcribed from RFC 7515 A.2. The PEM is
-\ that JWK's private components encoded as unencrypted PKCS#8. OpenSSL dgst
-\ -sha256 -sign produces the same 256 signature bytes for this input.
+\ The key is JWS-FIXTURE's; the signature is transcribed from RFC 7515 A.2.
+\ OpenSSL dgst -sha256 -sign produces the same 256 signature bytes for this
+\ input.
 
 $100 constant RSA-BYTES
 $800 constant PEM-CAP
@@ -530,17 +531,8 @@ variable JWS-N
 : PEM-LINE ( ptr u8 n -- ) ASCII, 10 BYTE, ;
 
 : RFC-RSA ( -- )
-   RSA-N RSA-BYTES INTO
-   s" a1f8160ae2e3c9b465ce8d2d656263362b927dbe29e1f02477fc1625cc90a136" HEX,
-   s" e38bd93497c5b6ea63dd7711e67c7429f956b0fb8a8f089adc4b69893cc1333f" HEX,
-   s" 53edd019b87784252fec914fe4857769594bea4280d32c0f55bf62944f130396" HEX,
-   s" bc6e9bdf6ebdd2bda3678eeca0c668f701b38dbffb38c8342ce2fe6d27fade4a" HEX,
-   s" 5a4874979dd4b9cf9adec4c75b05852c2c0f5ef8a5c1750392f944e8ed64c110" HEX,
-   s" c6b647609aa4783aeb9c6c9ad755313050638b83665c6f6f7a82a396702a1f64" HEX,
-   s" 1b82d3ebf2392219491fb686872c5716f50af8358d9a8b9d17c340728f7f87d8" HEX,
-   s" 9a18d8fcab67ad84590c2ecf759339363c07034d6f606f9e21e05456cae5e9a1" HEX,
-   FILLED RSA-BYTES T=
-   RSA-E 3 INTO s" 010001" HEX, FILLED 3 T=
+   JWS-FIXTURE:MODULUS$ RSA-N RSA-BYTES SPAN:MAKE BASE64:DECODE-URL RSA-BYTES T=
+   JWS-FIXTURE:EXPONENT$ RSA-E 3 SPAN:MAKE BASE64:DECODE-URL 3 T=
    RSA-SIG RSA-BYTES INTO
    s" 702e218943e88fd11eb5d82dbf7845f34106ae1b81fff7731116add1717d8365" HEX,
    s" 6d420afd3c96eedd73a2663e5166687b000b87226e0187ed1073f945e582adfc" HEX,
@@ -551,36 +543,7 @@ variable JWS-N
    s" 849d698429ef5a1e88798236c3d40e604522a544c8f27a7a2db80663d16cf7ca" HEX,
    s" ea56de405cb2215a45b2c25566b55ac1a748a070dfc8a32a469543d019eefb47" HEX,
    FILLED RSA-BYTES T=
-   RSA-PEM PEM-CAP INTO
-   s" -----BEGIN PRIVATE KEY-----" PEM-LINE
-   s" MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCh+BYK4uPJtGXO" PEM-LINE
-   s" jS1lYmM2K5J9vinh8CR3/BYlzJChNuOL2TSXxbbqY913EeZ8dCn5VrD7io8ImtxL" PEM-LINE
-   s" aYk8wTM/U+3QGbh3hCUv7JFP5IV3aVlL6kKA0ywPVb9ilE8TA5a8bpvfbr3SvaNn" PEM-LINE
-   s" juygxmj3AbONv/s4yDQs4v5tJ/reSlpIdJed1LnPmt7Ex1sFhSwsD174pcF1A5L5" PEM-LINE
-   s" ROjtZMEQxrZHYJqkeDrrnGya11UxMFBji4NmXG9veoKjlnAqH2QbgtPr8jkiGUkf" PEM-LINE
-   s" toaHLFcW9Qr4NY2ai50Xw0Byj3+H2JoY2PyrZ62EWQwuz3WTOTY8BwNNb2BvniHg" PEM-LINE
-   s" VFbK5emhAgMBAAECggEAEq5xpGnNCivDflJsRQBXHx1hdR1k6Ulwe2JZD50LpXyW" PEM-LINE
-   s" PEAeP88vLNO97IjlA7/GQ5sLKMgvfTeXZx9SE+7YwVol2NXOoAJe46sui395IW/G" PEM-LINE
-   s" O+pWJ1O0BkTGoVEn2bKVRUCgu+GjBVaYLU6f3l9kJfFNS3E0QbVdxzubSu3Mkqzj" PEM-LINE
-   s" kn439X0M/V51gfpRLI9JYanrC4D4qAdGcopV/0ZHHzQlBjudU2QvXt4ehNYTCBr6" PEM-LINE
-   s" XCLQUShb1juUO1ZdiYoFaFQT5Tw8bGUl/x/jTj3ccPDVZFD9pIuhLhBOneufuBiB" PEM-LINE
-   s" 4cS98l2SR/RQyGWSeWjnczT0QU91p1DhOVRuOopznQKBgQDgHMQQ60imZV1URk0K" PEM-LINE
-   s" pLttoLhyt3SmqdEf/kgHePDdtzEafpAu+cS191R2JiuoF2yzWXnwFDcqGigp5BNr" PEM-LINE
-   s" 0AHQfD8/Lk8l1Mk09jxxCfui5nYooNyac8YFjm3vItzVCVDnEd3BbVWG8qf6deqE" PEM-LINE
-   s" lMGAg+C2V0L4oNXnP7LZcPAZRwKBgQC5A8R+CZW2MvRTLLHzwZkUXV866cff7tx6" PEM-LINE
-   s" kqa0finGG0KgeqlaZPxgCZnFp7AeAcCMtiynVlJ7vMVgePsLq6XtON4tB5kP9jAP" PEM-LINE
-   s" rq3rbAOal78eUH5OcED6eNuCV8ixEu1eWcPNCS/l1OW1EnXUEoEHKl54Xrrz2uNw" PEM-LINE
-   s" kgMTP1FZ1wKBgAcCn1dwJKufzBWQxWQp1vsM5fggqPN1qGb5y0MAk3g7/Ls5bkUp" PEM-LINE
-   s" 5u9SN0Ai3Ya6hNnvWJMb7sXQX6U/zyO2M/hTip7tUeh7CXgwo59dkpN75gJLVds2" PEM-LINE
-   s" 9+DAncu3KXU4f2Fa+7bLNrur53k8KwPOq2bbuTG69QtV7Jr5MR0AHWKNAoGBAIf/" PEM-LINE
-   s" evpitUf+4JYbLpvNXWcY052Mpz22aR84mY3nh3F2LF2mjMJDpTg7FmuyPcVw6EcG" PEM-LINE
-   s" yoAe9fa65iNqCq+jdw6PVNGo2hxfjSiZ8IIzHdsPXI89//pMjZcQK9r+CCoRjaZj" PEM-LINE
-   s" OYiIDktVWZzmevJuv6WywUqd57LE3Zar3dLSIkx1AoGAIYd7DHOhrWvxkwPQsRM2" PEM-LINE
-   s" tOgrjbcrfvtQJipd+DlcxyVuuM9sQLdgjVk2oy26F0EmpScGLq2MowX7fhd/QJQ3" PEM-LINE
-   s" ydy5cY7YIBi87w93IKLEdfnbJtoOPLUW0ITrJReOgo1cq9SbsxYawBgfp/gh6A56" PEM-LINE
-   s" 03k2+ZQwVK0JKSHuLFkuQ3U=" PEM-LINE
-   s" -----END PRIVATE KEY-----" PEM-LINE
-   FILLED PEM-N !
+   RSA-PEM PEM-CAP INTO JWS-FIXTURE:PEM$ ASCII, FILLED PEM-N !
    JWS-MSG JWS-CAP INTO
    s" eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ" ASCII,
    FILLED JWS-N ! ;
