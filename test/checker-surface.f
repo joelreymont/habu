@@ -72,12 +72,6 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
    erru LEN>N ERR-U !
    outcome PROC-OUTCOME>RC RC ! ;
 
-: UNDEFINED-AT-LOAD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
-   src srcu LOAD
-   RC @ REJECT-RC T=
-   ERR$ s" E-UNDEFINED: " CONTAINS? TTRUE
-   ERR$ name nameu CONTAINS? TTRUE ;
-
 : KNOWN? ( ptr u8 n -- bool ) EFFECT-QUERY ;
 
 \ The image class is asserted first: a whitebox engine leaves these names open.
@@ -93,8 +87,11 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
    s" checked definitions cannot call either internal record" T-LABEL
    s" CS-U1 ( -- ) HIDX-BUILD" VERDICT REFUSED T=
    s" CS-U2 ( n -- n ) CORE-FOLD-C" VERDICT REFUSED T=
-   s" a compiled call is E-UNDEFINED at load" T-LABEL
-   s\" : CS-U3 ( -- ) HIDX-BUILD ;\n" s" HIDX-BUILD" UNDEFINED-AT-LOAD
+   s" a compiled call is refused at load: only a TRUSTED: body may make it" T-LABEL
+   s\" : CS-U3 ( -- ) HIDX-BUILD ;\n" LOAD
+   RC @ REJECT-RC T=
+   ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
+   ERR$ s" HIDX-BUILD" CONTAINS? TTRUE
    s" an interpreted call is refused as an internal engine word" T-LABEL
    s\" CORE-FOLD-C\n" LOAD
    RC @ REJECT-RC T=

@@ -91,17 +91,10 @@ s" using UP : UT-BADP ( -- n ) SECP ; ;using" UCE-CATCH E-REJECT T=
 s" AW drop" UCE-CATCH E-REJECT T=
 \ ambiguous: AW resolves in two used packages (interpret)
 s" using UA using UC AW drop ;using ;using" UCE-CATCH E-AMBIGUOUS T=
-\ A compiled body is refused by the engine's own used-search, which resolves the
-\ body token before the checker walks it: the same E-AMBIGUOUS the interpret leg
-\ above gets, naming the tail on fd 2. The checker keeps its own rule for the paths
-\ it resolves alone - the production source verifier is one - so the code below
-\ pins E-USING-AMBIGUOUS there (src/core/checker.f LIVE-BIND).
-\ x86-64 compiles at tier 1 only, where the checker refuses the body
-\ (E-USING-AMBIGUOUS, as UAD-R2 below pins); this tier-0 row runs elsewhere.
-: UT-AMB-TIER0 ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
-   s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-AMBIGUOUS T= ;
-UT-AMB-TIER0
+\ A compiled body is refused by the checker before the native compiler emits it,
+\ and so is the same source through the production source verifier
+\ (src/core/checker.f LIVE-BIND).
+s" using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" UCE-CATCH E-USING-AMBIGUOUS T=
 s" using UA using UC : UT-AMB2 ( -- n ) AW ; ;using ;using" VS-CATCH E-USING-AMBIGUOUS T=
 \ unknown package
 s" using NOPE-PKG" UCE-CATCH E-UNKNOWN T=

@@ -1,4 +1,7 @@
-\ match-factor-pin.f - construct/MATCH execution and diagnostic regressions.
+\ match-factor-pin.f - construct/MATCH execution and diagnostic regressions in
+\ the JIT's factored legs (src/habu/habu2.f). ARM's tier 0 is T0, so the file
+\ selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL; the forked subjects
+\ inherit it.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -9,6 +12,8 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/subject.f
+
+0 data-base NCOMP-DISPATCH:COMP-CELL + !
 
 package MATCH-FACTOR-PIN
 
