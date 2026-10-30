@@ -1553,13 +1553,19 @@ OPS-MAP
 \ so publication relocates it. A non-empty does> clause clears the stamp, so a
 \ does> child is called. A field-loan site (NDICT:FIELD-SPAN) is refused: tier 1
 \ pushes the loaned field's offset and extent before the call
-\ (src/compiler/native/elaborate.f DO-CALL).
+\ (src/compiler/native/elaborate.f DO-CALL). A created word whose entry lies
+\ below the open AOT window's code base stays a call, as the JIT's rule
+\ (habu2.f EM-COMPILE-CALL, AOT-ARM:OPEN): the capture refuses its address.
+\ Both are user-space code addresses or 0, below 2^63, so the signed >= agrees
+\ with the JIT's unsigned compare.
 : WORD-CALL ( ptr u8 n n n n n -- )
    {: a:ptr u:n to:n kind:n r:n loc:n :}
    ORD @ 1- NDICT:FIELD-SPAN drop 0 >= if a u UNSUPPORTED then
    ORD @ 1- NDICT:CON-PADS 0 ?do 0 PUSH-CONST loop
    kind DKIND:VAL = if to NDICT:FIXED-VAL NDICT:BOUND-VALUE PUSH-CONST exit then
-   kind DKIND:ADDR = if to NDICT:FIXED-ADDR NDICT:BOUND-VALUE  r PUSH-ADDR exit then
+   kind DKIND:ADDR = to data-base AOT-CELLS:B0-CELL + @ >= and if
+      to NDICT:FIXED-ADDR NDICT:BOUND-VALUE  r PUSH-ADDR exit
+   then
    to loc DO-CALL ;
 
 : NAME-TOKEN ( ptr u8 n n n -- )
