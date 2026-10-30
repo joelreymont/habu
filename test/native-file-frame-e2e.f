@@ -174,11 +174,12 @@ variable FILL-POOL
 \ stderr. diag.f binds DIAGXT, a deferred word whose link the checker handover
 \ carries to the engine checker's own kept row (src/core/checker.f
 \ TRANSFER-ROW). Then a multi-error run refuses BROKEN's body at tier 0 and
-\ keeps its declared row as a recovery fact; broken.f binds BROKEN under the
-\ same run. BROKEN is made by broken.f's child brokendef.f, since a record
-\ made between top-level loads has no key a file can name. after.f, the first
-\ file after the run ends, stores its definition: the run's last recovery
-\ binding leaves the checker idle.
+\ keeps its declared row as a recovery fact; broken.f's NOCONTRACT-BROKEN binds
+\ that row under the same run, so the native compiler withholds it unpublished
+\ (src/compiler/native/definition.f VERDICT-CK). BROKEN is made by broken.f's
+\ child brokendef.f, since a record made between top-level loads has no key a
+\ file can name. after.f, the first file after the run ends, stores its
+\ definition: the run's last recovery binding leaves the checker idle.
 : PROBE ( -- n )
    SESSION
    \ The moved builds allot a byte before dv.f. The loader aligns HERE when a
@@ -1218,11 +1219,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    ERR$ s" /td.f key=" CONTAINS? TTRUE
    s" diag.f binds DIAGXT through its handed-over contract" T-LABEL
    s" diag.f" FRAME$ s"  ordered=0 binding=1 value=0 resolution=2 executed=0 data=0" ENDS-WITH? TTRUE
-   s" broken.f binds BROKEN's recovery record and stays ordered" T-LABEL
-   \ Its require of brokendef.f is the third resolution row.
+   s" broken.f's withheld NOCONTRACT-BROKEN leaves no row of BROKEN in its frame" T-LABEL
+   \ Its one resolution row is its require of brokendef.f.
    s" broken.f" FRAME$
-      s"  ordered=1 binding=0 value=0 resolution=3 executed=0 data=0 reason=binding-contract-unknown word=BROKEN"
-      ENDS-WITH? TTRUE
+      s"  ordered=0 binding=0 value=0 resolution=1 executed=0 data=0" ENDS-WITH? TTRUE
    s" after.f, the first file after the run, stores its first definition" T-LABEL
    s" after.f" DEFS$ s" 1" T$=
    s" app.f consumes ONE, TWICE, TEN, SEVEN, HITS and MARK once each, SEVEN's value, MARK's run and HOOK's run and data" T-LABEL
