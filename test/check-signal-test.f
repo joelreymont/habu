@@ -286,7 +286,7 @@ PROC-NO-FD FEED-WR !
    CHECK-BEGIN
    PIPE-PAIR {: r:fd w:fd :}
    w FD-CLOEXEC!
-   w PROC-NOSIGPIPE!
+   w FD-NOSIGPIPE!
    w FD>N FEED-WR !
    r FD>N CHECK-SPAWN ;
 
