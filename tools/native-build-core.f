@@ -281,9 +281,36 @@ variable HOST-COMPILER-KNOWN
    then
    ACTIVE-COMPILER-XT execute ;
 
+\ The host's compiler entries: tier 1 dispatch, the two callback cells and the
+\ tier 0 entry. The window's seal installs its own compilers here and the
+\ capture records them; the writers loaded after it compile with the host's.
+\ A capture host older than COMP-CELL has no name for it.
+create HOST-DISPATCH-OFFS
+   NCOMP-DISPATCH:XT-CELL ,
+   NCOMP-DISPATCH:CALLBACK-STUB-CELL ,
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL ,
+   $3838 ,   \ NCOMP-DISPATCH:COMP-CELL
+here HOST-DISPATCH-OFFS - CELL / constant HOST-DISPATCH-N
+create HOST-DISPATCH HOST-DISPATCH-N cells allot
+
+: HOST-DISPATCH-CELL ( n -- ptr n )
+   cells HOST-DISPATCH-OFFS + @ data-base swap + CELL-VIEW ;
+
+: SAVE-HOST-DISPATCH ( -- )
+   HOST-DISPATCH-N 0 ?do
+      i HOST-DISPATCH-CELL @ HOST-DISPATCH i cells + !
+   loop ;
+
+: RESTORE-HOST-DISPATCH ( -- )
+   HOST-DISPATCH-N 0 ?do
+      HOST-DISPATCH i cells + @ i HOST-DISPATCH-CELL xt!
+   loop ;
+
 \ The host's checker and compiler roles belong to its dictionary. Save them
-\ before LOGICAL-RESET retires that dictionary.
+\ before LOGICAL-RESET retires that dictionary, and its compiler entries before
+\ the definition cache binds its guard into XT-CELL and the window seals.
 : RETAIN-HOST-PRODUCERS ( -- )
+   SAVE-HOST-DISPATCH
    NDEF-CACHE:RETAIN-HOST-CHECKER
    HOST-ACTIVE-COMPILER$
       {: compiler:ptr compileru:n compiler-known:bool :}
@@ -775,6 +802,7 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
          AOT-ARM:WINDOW$ WHITEBOX? AOT-CAPTURE:CAPTURE-WITH-NAMES
       then
    then
+   RESTORE-HOST-DISPATCH
    NSHADOW:CLOSE
    NAMES-SOURCE-ALIGN
    \ The snapshot has its armed cell. The builder still uses the old checker
@@ -850,14 +878,14 @@ TYPED-VARIABLE WRITER-NAME-SPAN [ n -- n n ]
 : SOURCE-WRITER ( -- [ AOT-OWNED:capture ptr n n ptr u8 n -- ] )
    s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED ;
 
-\ Source loaded after the capture compiles for the window's machine: the
-\ window's last act, src/habu/native-runtime.f CHECKER-REG:SEAL, runs
-\ NCOMP:INSTALL, which puts the window's compiler in the dispatch cell this
-\ process shares. A window for another machine cannot compile a writer this
-\ engine runs (a linux-x86-64 window refused src/arch/arm64/icode.f's first
-\ definition with E-X64EMIT-PLACE), so its writer must be compiled before the
-\ window opens, and WRITER-MACHINE-CK refuses one that is not. NABI:BINDING,
-\ compiled with this file, answers for the building engine.
+\ The window's last act, src/habu/native-runtime.f CHECKER-REG:SEAL, installs
+\ the window's compilers and front end in cells this process shares.
+\ RESTORE-HOST-DISPATCH gives back the four compiler entries after the capture,
+\ not the seal's other installs, so a writer this engine runs for another
+\ machine's window is compiled before the window opens (a linux-x86-64 window
+\ once refused src/arch/arm64/icode.f's first definition with
+\ E-X64EMIT-PLACE), and WRITER-MACHINE-CK refuses a build that has none.
+\ NABI:BINDING, compiled with this file, answers for the building engine.
 : FOREIGN? ( -- bool )
    TARGET-ARCH NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ 0= ;
 
@@ -927,8 +955,10 @@ TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
             [: WRITER-INPUTS-RESET ;] finally ;]
       NDEF-CACHE:WITH-QUIET ;
 
-\ The owned capture is already frozen. Only this uncaptured writer selects
-\ the host JIT; it restores the caller's tier when it returns or throws.
+\ The owned capture is already frozen and the host's compilers are back in
+\ the dispatch cells. This uncaptured writer compiles at the host's tier 0
+\ (its T0 on an arm64 host that carries one, else the JIT), or at tier 1 on
+\ an x86-64 host; it restores the caller's tier when it returns or throws.
 variable WRITER-TIER
 : LOAD-SOURCE-WRITER ( -- )
    tier@ WRITER-TIER !
@@ -1321,6 +1351,9 @@ variable BUNDLE-DIR-U
    NAMES-SOURCES
    PREPARE-TARGET
    CAPTURE
+   \ The capture records the window's compilers too, so the host's come back
+   \ only after it.
+   RESTORE-HOST-DISPATCH
    BUILD-NAMES
    OWN-CAPTURE ;
 

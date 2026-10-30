@@ -19,10 +19,10 @@ create SLOTS
    NATIVE-OBS-CELLS:PUBLISHED ,         0 ,
    NATIVE-OBS-CELLS:INVALIDATE ,        0 ,
    NCOMP-DISPATCH:XT-CELL ,              0 ,
-   \ These appended coordinates must be readable by the older capture host,
-   \ whose baked layout has no names for them yet.
-   $3810 ,                             0 ,   \ NCOMP-DISPATCH:CALLBACK-STUB-CELL
-   $3818 ,                             0 ,   \ NCOMP-DISPATCH:CALLBACK-ENTRY-CELL
+   NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  0 ,
+   NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 0 ,
+   \ This appended coordinate must be readable by the older capture host,
+   \ whose baked layout has no name for it yet.
    $3838 ,                             0 ,   \ NCOMP-DISPATCH:COMP-CELL
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
