@@ -37,3 +37,5 @@ Joel 2026-10-30 ~17:00: "there's no speed bar. we release t0 AS IS. we keep JIT 
 Trial rebase of ulzktzrp::lqwprrlr onto master@origin 75272abb: one conflict, src/core/checker.f reason numbers. Master's ARENA checks own 42 (MD-IN-PLACE) and 43 (MD-ARENA-CALL); the stack's uontvtxn gave 42-44 to MD-IS-UNKNOWN, MD-IS-NOT-DEFER, MD-IS-MISSING. Resolution: master keeps 42-43, the is reasons take 44-46; every use names the constant (checker.f, render.f). 38 retired jerry workspaces forgotten and deleted after a check for edits past their last snapshot.
 
 Release landed (2026-10-31, ttloqwsx b17a1ee3 on master b56b521f): arm64 tier 0 compiles every definition through T0 by default; full suite 510/510, two generations converge (gen 5 = gen 4), edit matrix fails F53/F105/F156 only, as master does (habu-measure-a-lib-1209a534). The JIT stays selectable for experiments. carl installs the public hb.
+
+Installed (carl, 2026-10-31): ~/.local/lib/habu holds the 55cc849f tree with the qualified b17a1ee3 binary; no public effect changed (three compiler-internal words removed, one private effect changed).

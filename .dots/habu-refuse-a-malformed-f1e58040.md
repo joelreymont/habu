@@ -13,3 +13,5 @@ Parity run /tmp/rev-feat/par/c.out (2026-10-31): tier 1 also ends rc 67 on a wel
 Censuses 2026-10-31 (/tmp/jerry-big/t0cmp-A.md, t0cmp-B.md): tier 1 also ends rc 67 with no token on unchecked depth faults at joins (-8503: if/until/loop/leave/case depth), underflow (-8304), exit arity (-8303), of-orphan (-8650), an out-of-range literal in every definer (-8405), is PLAIN/NOSUCH-D/IMM1 (-8653), MATCH without OF, unknown construct (-8650): each where T0 (after the census lanes) or the JIT prints a diagnostic.
 
 Lane t0fe (2026-10-31): tier 1 also ends rc 67 (uncaught -8651 E-NELAB-QUOT) on a quotation with dead code, `[: 1 exit 2 ;] drop 3`, where T0 refuses it rc 70.
+
+Census tc1 (2026-10-31): a TRUSTED: body doing `over` on a two-cell view passes tools/check.f, then saving the module into an image fails "ncomp: cannot compile CURSOR-BASE", throw -8304 (E-NELAB-UNDER), uncaught. See /tmp/jerry-big/trusted-census-tc1.md.
