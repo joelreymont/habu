@@ -85,7 +85,10 @@ $5C8 constant UNJUDGED-CLOSED-OFF
 \ ( -- n n bool ) the last scan's refused token as offsets in its text, equal
 \ when none was pinned, and whether it is undefined (checker.f PIN-SPAN).
 $5D0 constant PIN-SPAN-OFF
-PIN-SPAN-OFF CELL + constant OWNER-BYTES
+\ ( -- ptr u8 n ) that token's text, empty when none was pinned (checker.f
+\ PIN-TOKEN).
+$5D8 constant PIN-TOKEN-OFF
+PIN-TOKEN-OFF CELL + constant OWNER-BYTES
 
 $524543434F4E5431 constant CONTRACT-MAGIC
 5 cells constant FIXED-KIND-OFF

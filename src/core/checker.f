@@ -163,6 +163,7 @@ create OWNER-STORAGE
    0 ,
    0 ,
    0 ,
+   0 ,
 \ Measure before another definition can allocate or intern in DATA.
 here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
 public
@@ -179,7 +180,7 @@ OWNER-SIZE-AGREE
 \ growing it is read past the record's extent by every guard that trusts it
 \ (checker-owner-guard.f VALIDATE). This makes that a load failure.
 : OWNER-LAST-FIELD-AGREE ( -- )
-   CHECKER-OWNER-EXT:PIN-SPAN-OFF CELL + OWNER-BYTES <> if
+   CHECKER-OWNER-EXT:PIN-TOKEN-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
 data-base TARGET-CELL + ptr-cell-mark
@@ -5712,6 +5713,12 @@ CHECKER-REG:}SCRATCH
    FAILSET @ 0= IF 0 0 RES-FALSE EXIT THEN
    FAILB @ FAILE @ REFUSAL@ RF-UNDEF = ;
 
+\ The pinned token's text, empty when none was pinned: a clause signature token
+\ no source holds has an empty span (SGBAD-SPAN!).
+: PIN-TOKEN ( -- ptr u8 n )
+   FAILSET @ 0= IF NULL-PTR 0 EXIT THEN
+   FAILTK FAILTU @ ;
+
 \ A token refused twice keeps the first: preflight refuses an unmodeled
 \ immediate before anything resolves it, so one the checker cannot resolve
 \ either is refused as the immediate.
@@ -9502,10 +9509,11 @@ CUR-DEFAULT
 
 \ THE WIDEST INPUT ROW AN EFFECT RECORDS: 255 cells, the minimum a call must
 \ provide, which the publish tail keeps in the eight bits of DNAME-MIN-IN (RECMI
-\ below). A definition taking more is uncheckable, by name (CHECK-DEPTH-FITS),
-\ and a stored signature taking more is refused as a bad one (USIG-ADD-AS).
-\ Only a primitive-axiom row (PE-CLOSE-SYM), which the engine's maker writes,
-\ still reaches the die below.
+\ below). A definition or `does>` clause taking more is uncheckable, by name
+\ (UNFIT-UNCHECKABLE), a stored signature or a created word's effect taking
+\ more is refused, and a hookless definition's declared row taking more records
+\ nothing (SGBAD-UNFIT!). Only a primitive-axiom row (PE-CLOSE-SYM), which the
+\ engine's maker writes, still reaches the die below.
 255 constant EFFECT-MIN-IN-MAX
 
 : EFFECT-MIN-IN ( n -- n )
@@ -10070,6 +10078,16 @@ CHECKER-REG:}SCRATCH
    sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE!
    sa su na nu at atu USIG-ADD-BAD RES-FALSE ;
 
+\ An effect deeper than a record holds, or with an input row too wide for its
+\ min-in field, latches SGBAD with the bound it passes, the depth first as a
+\ definition's is.
+: SGBAD-UNFIT! ( ptr u8 n n n n n -- )
+   {: sa:ptr su:n din:n dout:n rin:n rout:n :}
+   din dout rin rout ROWS-DEPTH {: depth:n :}
+   depth EFFECT-DEPTH-MAX > IF sa su SGBAD-DEPTH-KIND depth SGBAD-SIZE! EXIT THEN
+   din ROW-CELLS {: width:n :}
+   width EFFECT-MIN-IN-MAX > IF sa su SGBAD-WIDTH-KIND width SGBAD-SIZE! THEN ;
+
 \ AT is the declaring name as read, beside the name NA stored for. The result
 \ is false after a refusal that returns (USIG-ADD-BAD), true once the effect
 \ and its text are stored.
@@ -10080,15 +10098,8 @@ CHECKER-REG:}SCRATCH
    sa su PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
    SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
    SIG-UNRES @ IF RES-FALSE EXIT THEN
-   \ An effect deeper than a record holds, or an input row too wide for its
-   \ min-in field, is a stored signature no record can hold: refused as a bad
-   \ one, by the bound it passes, the depth first as a definition's is.
-   sa su na nu at atu din dout rin rout USIG-DEPTH-FITS? 0= if RES-FALSE exit then
-   din ROW-CELLS {: width:n :}
-   width EFFECT-MIN-IN-MAX > if
-      sa su SGBAD-WIDTH-KIND width SGBAD-SIZE!
-      sa su na nu at atu USIG-ADD-BAD RES-FALSE exit
-   then
+   sa su din dout rin rout SGBAD-UNFIT!       \ no record can hold it: a bad one
+   SGBAD @ if sa su na nu at atu USIG-ADD-BAD RES-FALSE exit then
    \ This path records an asserted signature. Checked definitions publish their
    \ already verified rows through CHECKER-PUBLISH-PARSED, so no assertion may
    \ introduce a lexical callback binder.
@@ -16129,7 +16140,8 @@ variable PENDING-MARKED      0 PENDING-MARKED !
 
 \ The record a created word carries, built from the effect its definer states:
 \ a certified `does>` clause's (DOES-EFF-LATCH!) or a `generates:` row's
-\ (CHECKER-GENERATES). 0 when the effect does not parse, with SGBAD saying why.
+\ (CHECKER-GENERATES). 0 when the effect does not parse or no record can hold
+\ it (SGBAD-UNFIT!), with SGBAD saying why.
 \ It parses the signature itself: after a clause check SGIN/SGOUT have been
 \ unified with the body, so a declared variable would be latched at what the
 \ body produced; and this parse runs under the raw-definer seal `trust-raw`
@@ -16152,7 +16164,10 @@ variable PENDING-MARKED      0 PENDING-MARKED !
    SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF
       2drop 2drop  was CHECKER-REC-SYM !  0 EXIT     \ unresolvable family: no record
    THEN
-   SGHASR @ E-BUILD-EFFECT
+   {: din:n dout:n rin:n rout:n :}
+   sa su din dout rin rout SGBAD-UNFIT!
+   SGBAD @ IF was CHECKER-REC-SYM !  0 EXIT THEN
+   din dout rin rout SGHASR @ E-BUILD-EFFECT
    {: off:n :}
    was CHECKER-REC-SYM !
    off 1 + ;
@@ -20863,35 +20878,6 @@ CHECKER-REG:SCRATCH{
 variable SKI  variable SKF
 CHECKER-REG:}SCRATCH
 
-: SGBAD-IN-SOURCE? ( -- bool )
-   SGBAD-U @ 0= IF RES-FALSE EXIT THEN
-   SGBAD-A @ TBASE @ < IF RES-FALSE EXIT THEN
-   SGBAD-A @ SGBAD-U @ + TBASE @ TBLEN @ + > IF RES-FALSE EXIT THEN
-   RES-TRUE ;
-
-: SGBAD-COPY-TOKEN ( -- )
-   SGBAD-U @ TOKBUF-ENSURE
-   SGBAD-A @ FAILTK SGBAD-U @ CCOPY
-   SGBAD-U @ FAILTU ! ;
-
-: SGBAD-SPAN! ( -- )
-   SGBAD-IN-SOURCE? IF
-      SGBAD-A @ TBASE @ - FAILB !
-      FAILB @ SGBAD-U @ + FAILE !
-   ELSE
-      TSTART @ FAILB !
-      TI @ FAILE !
-   THEN ;
-
-: SGBAD-FAIL! ( -- )
-   SGBAD @ 0= IF exit THEN
-   FAILSET @ IF exit THEN
-   SGBAD-COPY-TOKEN
-   SGBAD-SPAN!
-   0 FAILIX !
-   -1 FAILSET !
-   RF-SIG REFUSAL ! ;
-
 : CHECKER-BYTE@ ( ptr u8 n -- n )
    + c@ ;
 
@@ -21314,6 +21300,46 @@ NAV-SRC-INSTALL
 DIAG-NO-FILE$ DIAG-FILE-COPY
 1 1 0 DIAG-ORIGIN!
 
+\ Whether the signature token SGBAD names lies in the text at A U.
+: SGBAD-IN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SGBAD-U @ 0= IF RES-FALSE EXIT THEN
+   SGBAD-A @ a < IF RES-FALSE EXIT THEN
+   SGBAD-A @ SGBAD-U @ + a u + > IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+\ Whether that token lies in the checked text, as tier 1's clause copy does
+\ (habu2.f C-CAPTURE-CREATED-SIG), or in a signature text SGA SGU the source
+\ map places; not J-DOES's interned copy (C-PLACE-CREATED-SIG).
+: SGBAD-IN-SOURCE? ( -- bool )
+   TBASE @ TBLEN @ SGBAD-IN? IF RES-TRUE EXIT THEN
+   SGA @ SGU @ SGBAD-IN? 0= IF RES-FALSE EXIT THEN
+   SGBAD-A @ DIAG>SRC nip 0= IF RES-FALSE EXIT THEN
+   SGBAD-A @ SGBAD-U @ + DIAG>SRC nip ;
+
+: SGBAD-COPY-TOKEN ( -- )
+   SGBAD-U @ TOKBUF-ENSURE
+   SGBAD-A @ FAILTK SGBAD-U @ CCOPY
+   SGBAD-U @ FAILTU ! ;
+
+\ The token's span from TBASE; one no source places is an empty span at the
+\ checked text's first byte, since TSTART TI hold none before a clause's walk.
+: SGBAD-SPAN! ( -- )
+   SGBAD-IN-SOURCE? IF
+      SGBAD-A @ TBASE @ - FAILB !
+      FAILB @ SGBAD-U @ + FAILE !
+   ELSE
+      0 FAILB !  0 FAILE !
+   THEN ;
+
+: SGBAD-FAIL! ( -- )
+   SGBAD @ 0= IF exit THEN
+   FAILSET @ IF exit THEN
+   SGBAD-COPY-TOKEN
+   SGBAD-SPAN!
+   0 FAILIX !
+   -1 FAILSET !
+   RF-SIG REFUSAL ! ;
+
 \ A NAME whose length no name has (CK-NAME-SPAN?) spells no word, so TRUST,
 \ TRUST-RAW and TRUST-DECL each refuse its row first as E-TRUST-UNRESOLVED with
 \ no spelling rendered: TRUST before its dictionary walk (whose colon scan never
@@ -21398,9 +21424,10 @@ package CHECKER-REG
 \ DECLARED-ROW-OFF.
 \ A live row wins: at tier 1 the scan's own row (certified, deferred, or a
 \ multi-error recovery fact) keeps the symbol; after `undefine` the tombstone is
-\ not live and the redefinition records. A declaration that does not parse, or
-\ one with a scope scheme, records nothing (an unverified declaration carries no
-\ lexical binder, USIG-ADD-AS) and its symbol stays interned without a row. No
+\ not live and the redefinition records. A declaration that does not parse, one
+\ too deep or wide for a record (SGBAD-UNFIT!), or one with a scope scheme
+\ records nothing (an unverified declaration carries no lexical binder,
+\ USIG-ADD-AS) and its symbol stays interned without a row. No
 \ DOES-EFF-STEP: no clause check ran, and STORE keeps no created-word value for
 \ a row without authority. Sealed as TRUST-DECL is.
 \ CK-DECLARED-SYM! records the row once the symbol is known and no live row
@@ -21416,6 +21443,8 @@ package CHECKER-REG
    SGBAD @ 0 <> SIG-UNRES @ 0 <> or IF EXIT THEN
    din SCHEME-TYPE? dout SCHEME-TYPE? or
    rin SCHEME-TYPE? or rout SCHEME-TYPE? or IF EXIT THEN
+   sa su din dout rin rout SGBAD-UNFIT!
+   SGBAD @ IF EXIT THEN
    din dout rin rout SGHASR @ RES-FALSE E-ADD-EFFECT
    sa su CHECKER-ASIG-CAPTURE
    \ An unchecked body may throw after replacing a scoped input, as TRUST-DECL
@@ -24884,24 +24913,27 @@ variable CUR-OPEN   variable CUR-PSIG
 \ A definition whose effect cannot be recorded is uncheckable (ROWS-FIT?): one
 \ deeper than EFFECT-DEPTH-MAX levels, with the depth of its deepest row, or
 \ one taking more than EFFECT-MIN-IN-MAX cells, with its input row's width.
-\ Every record of a checked declaration holds the declared rows, which
-\ SIG-EFF-CACHE! measured; an inferred effect is measured here. Asked before
-\ the verdict, and UNFIT keeps every record step from it. A refused or
-\ uncheckable definition keeps its own reason. A deferred one cannot be
-\ deferred, since deferring records its declaration: it is uncheckable for
+\ Asked before the verdict, and UNFIT keeps every record step from it. A
+\ refused or uncheckable definition keeps its own reason. A deferred one cannot
+\ be deferred, since deferring records its declaration: it is uncheckable for
 \ this reason instead, and the token the run would define is no undefined word.
-: CHECK-DEPTH-FITS ( -- )
-   SGBAD @ 0 <> IF EXIT THEN
-   CHECK-SIG? 0= IF
-      OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
-      BROW @ DCUR @ RBROW @ RCUR @ ROWS-FIT? IF EXIT THEN
-   THEN
+: UNFIT-UNCHECKABLE ( -- )
    UNFIT @ 0= IF EXIT THEN
    UNSEEN @ 0 <> IF
       0 UNSEEN !  0 UNDEFERR !  UNFIT-WHY MDIAG !  -1 UNCK !  EXIT
    THEN
    OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
    UNFIT-WHY MDIAG!  -1 UNCK ! ;
+
+\ Every record of a checked declaration holds the declared rows, which
+\ SIG-EFF-CACHE! measured; an inferred effect is measured here.
+: CHECK-DEPTH-FITS ( -- )
+   SGBAD @ 0 <> IF EXIT THEN
+   CHECK-SIG? 0= IF
+      OK @ 0=  UNCK @ 0 <>  or IF EXIT THEN
+      BROW @ DCUR @ RBROW @ RCUR @ ROWS-FIT? IF EXIT THEN
+   THEN
+   UNFIT-UNCHECKABLE ;
 
 \ VERDICT-DEFERRED defers the body to the run: it names a word only a rendering
 \ statement in scope can have defined (UNSEEN-COVERS?). A malformed declaration
@@ -26684,29 +26716,49 @@ package CHECKER-REG
 \ CHECK-DOES! verifies a DOES> body against a created-word runtime effect: a
 \ created word declared `( in -- out )` needs a DOES> body typing as
 \ `( in ptr a -- out )`, since the native CREATE stub pushes the data-field
-\ address before branching to the body.
+\ address before branching to the body. The body's head and end are CHECK's
+\ for a colon body declared so: a signature naming a type a rendering statement
+\ may still declare defers the clause unwalked (verdict 2), pinned at that type.
 : CHECK-DOES-RUN {: ba bu sa su :}
    ba bu CHECK-RESET
    0 TOK0 !
+   sa SGA !  su SGU !
    sa su PARSE-SIG-RAW
    SIG-INPUT-FRESH
+   SGBAD-FAIL!
+   SIG-UNRES @ SGBAD @ 0= and IF
+      2drop 2drop
+      SIG-UNRES-A @ TBASE@ - FAILB !
+      FAILB @ SIG-UNRES-U @ + FAILE !
+      CHECKER-UNSEEN-MARK
+      2 EXIT
+   THEN
    RAW-SIG!
+   SG-ROWS-COLLECT
+   NP-COLLECT
    SGIN @ DOES-DIN dup BROW !
    SGOUT @ CHECK-DOES-EFFECT!
+   SGBAD @ 0= IF BROW @ SGOUT @ SGRIN @ SGROUT @ ROWS-FIT? drop THEN   \ as SIG-EFF-CACHE! measures
    BROW @ DCUR !
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    SIG-BODY-FRESH
    CHECK-SCAN
    TORDER-SCAN-UNKNOWN @ IF WRAP-CLEAR 2 EXIT THEN
+   0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    CHECK-FOLD-EXITS
    CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
+   FIELD-LOAN-PENDING @ IF SCOPE-FIELD-REJECT THEN
    CHECKER-MATCH-MODE @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
    CHECK-NO-BORROW
-   CHECK-FRESH-OUTPUT
-   OK @ IF SGOUT @ DCUR ! THEN
+   CHECK-RETURNS? IF
+      CHECK-FRESH-OUTPUT
+      OK @ IF SGOUT @ DCUR ! THEN
+   ELSE FRESH-CLAIM THEN
    CF-OPEN? IF CF-FAIL THEN
    CHECK-RBALANCE
-   SGHASR @ IF SGROUT @ RSUNI-COERCE THEN
+   SGHASR? CHECK-RETURNS? and IF SGROUT @ RSUNI-COERCE THEN
+   OK @ IF NP-CHECK THEN
+   UNFIT-UNCHECKABLE
    CHECK-VERDICT dup DVERD !
    dup 0= IF RIGID-DIAG-CLASSIFY THEN
    dup -1 = IF CALL-FINALIZE THEN
@@ -26961,7 +27013,8 @@ variable TOP-ASK-ANSWER
 \ (verify-source.f DECLARED-RENDER?).
 0 constant GENR-UNRESOLVED                \ D names no word here
 1 constant GENR-CREATES                   \ something already states what D makes
-2 constant GENR-BADSIG                    \ the effect does not parse; SGBAD says why
+2 constant GENR-BADSIG                    \ the effect does not parse or no record
+                                          \ holds it (SGBAD-UNFIT!); SGBAD says why
 PTR-VARIABLE GENR-TOK-A   variable GENR-TOK-U   \ the row's name (raw, valid while rendering)
 defer GENERATES-DIAG-XT ( n -- )          \ render.f installs the diagnostic, selected by kind
 : GENERATES-DIAG-DEFAULT ( -- ) [: drop ;] is GENERATES-DIAG-XT ;
@@ -30762,6 +30815,7 @@ package CHECKER-REG
 ' REC-UNJUDGED-BINDING              DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-BINDING-OFF + xt!
 ' UNJUDGED-CLOSED?                  DECLARATIONS CHECKER-OWNER-ABI:UNJUDGED-CLOSED-OFF + xt!
 ' PIN-SPAN                          DECLARATIONS CHECKER-OWNER-ABI:PIN-SPAN-OFF + xt!
+' PIN-TOKEN                         DECLARATIONS CHECKER-OWNER-ABI:PIN-TOKEN-OFF + xt!
 ' REC-BINDING-WINDOW                DECLARATIONS CHECKER-OWNER-ABI:BINDING-WINDOW-OFF + xt!
 ' CWIN-GLUE                         DECLARATIONS CALL-GLUE-OFF + xt!
 ' CWIN-MATCH-PAYLOAD                DECLARATIONS CALL-MATCH-OFF + xt!

@@ -1368,8 +1368,14 @@ edge) are refused unless they are structural closers (`else`, `then`, `loop`,
 - A trusted defining word is `TRUSTED: NAME ( definer-eff ) create … does> (
   created-eff ) body ;`; the created effect must follow `does>` immediately.
   For a checked `CREATE … DOES>` with created effect `( in -- out )`, the
-  `DOES>` body is checked as `( in ptr a -- out )`; step through the data field
-  with `cell+`, not raw `+`.
+  `DOES>` body is checked as a colon body declared `( in ptr a -- out )`. The
+  body binds the data-field pointee `a` (`does> ( -- n ) @` is admitted); the
+  created effect's own quantifiers and rows stay parametric, a body that never
+  returns owes no output, and an effect too wide or deep to record is
+  uncheckable. The body's input counts the data-field pointer: a clause
+  declaring 255 input cells is uncheckable, as its colon twin `( 255 cells ptr
+  a -- … )` is at 256 cells. Step through the data field with `cell+`, not
+  raw `+`.
 - `0 set-check` disables the check hook for the rest of the load, so `:` is the
   plain native colon; `check@ 0 set-check … set-check` resumes the saved hook;
   `LOWER-CERT-HOOK:INSTALL` (`src/core/check-hook.f`) installs the checker
@@ -2396,14 +2402,14 @@ sections above.
   first. `TRUSTED:` asserts an authoritative row. Before the checker claims a
   cold prefix's source, signed definitions are logged for that claim; a
   qualified definition there terminates with `checker: qualified definition
-  before the source claim`. A signature missing, unparseable or containing a
-  scope scheme records nothing. On tier 1 a refused scan leaves ordinary
-  compilation using the declaration and reports the reason; a native build
-  requires the scan and refuses before publication. A failed native compile
-  retracts only the pending definition's rows, preserving prior rows. If no
-  row supplies arity it refuses with the hook's reject status; if another
-  owner's row supplies arity but the body underflows it, it is
-  `E-NELAB-UNDER`.
+  before the source claim`. A signature missing, unparseable, too deep or wide
+  to record, or containing a scope scheme records nothing. On tier 1 a refused
+  scan leaves ordinary compilation using the declaration and reports the
+  reason; a native build requires the scan and refuses before publication. A
+  failed native compile retracts only the pending definition's rows,
+  preserving prior rows. If no row supplies arity it refuses with the hook's
+  reject status; if another owner's row supplies arity but the body underflows
+  it, it is `E-NELAB-UNDER`.
 - **Native compile callbacks cannot change the checker store.** From scan
   completion through the last publication callback, a checker scan or a
   checker write (`generates:`, a linear, record or family declaration, a

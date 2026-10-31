@@ -5,7 +5,7 @@ public
 $230 constant CERTIFICATE-OFF
 
 \ The record's size: the end of its last field (checker-owner-extension.f
-\ PIN-SPAN-OFF); checker.f checks the two agree before it commits storage.
-$5D8 constant BYTES
+\ PIN-TOKEN-OFF); checker.f checks the two agree before it commits storage.
+$5E0 constant BYTES
 
 ;package

@@ -488,6 +488,15 @@ variable CDD-SRC-U
 \ does. The checker's own error constant, read at load time under a local name.
 E-GENERATES-ROW constant E-GEN-ROW
 
+\ Values of 2 to 128 cells, for a row of 256 input cells short enough to state.
+STRUCTURE cdd-c2 FIELD a n FIELD b n ;STRUCTURE
+STRUCTURE cdd-c4 FIELD a cdd-c2 FIELD b cdd-c2 ;STRUCTURE
+STRUCTURE cdd-c8 FIELD a cdd-c4 FIELD b cdd-c4 ;STRUCTURE
+STRUCTURE cdd-c16 FIELD a cdd-c8 FIELD b cdd-c8 ;STRUCTURE
+STRUCTURE cdd-c32 FIELD a cdd-c16 FIELD b cdd-c16 ;STRUCTURE
+STRUCTURE cdd-c64 FIELD a cdd-c32 FIELD b cdd-c32 ;STRUCTURE
+STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
+
 : CDD-SECTION-GENERATES-REFUSED ( -- )
    s" a row read before its definer is defined is refused" T-LABEL
    [: s\" generates: CDD-GL ( -- ptr n )\n: CDD-GL ( n -- ) CDD-GEN:MAKE ;\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
@@ -497,7 +506,94 @@ E-GENERATES-ROW constant E-GEN-ROW
    s" a second row on one definer is refused" T-LABEL
    [: s\" generates: CDD-G2 ( -- ptr n )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
    s" an effect the checker cannot parse is refused" T-LABEL
-   [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ ;
+   [: s\" : CDD-GI ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GI ( -- i32 )\n" evaluate-closed ;] E-GEN-ROW TTHROWSQ
+   s" an effect too wide to record is refused" T-LABEL
+   [: s\" : CDD-GW ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GW ( cdd-c128 cdd-c64 cdd-c32 cdd-c16 cdd-c8 cdd-c4 cdd-c2 n n -- )\n" evaluate-closed ;]
+      E-GEN-ROW TTHROWSQ ;
+
+\ Section 13: a clause's body ends as its colon twin's does
+\ (src/core/checker.f CHECK-DOES-RUN): its declared quantifiers and rows stay
+\ parametric, a body that never returns owes no output, an unknown signature
+\ type is reported at that type, and an effect too wide to record is
+\ uncheckable; a hookless definition's row that wide records nothing. The
+\ refused clauses' diagnostics go to CDD-DIAG instead of stderr.
+defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
+create CDD-DIAG 4096 allot
+
+: CDD-NOT-CERTIFIED ( ptr u8 n ptr u8 n -- )
+   {: sa:ptr su:n wa:ptr wu:n :}
+   CDD-DIAG 4096 DIAG-BUFFER!
+   sa su TEST-EVAL:RC  tier@ 0= if 70 else E-NCOMP-VERDICT then T=
+   DIAG-BUFFER$ wa wu CONTAINS? TTRUE
+   DIAG-BUFFER-OFF ;
+
+: CDD-NP-REFUSED ( ptr u8 n -- )
+   s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
+
+\ The text compiled with the hook cell empty; the checker goes back either way.
+: CDD-HOOKLESS-RC ( ptr u8 n -- n )
+   TEST-EVAL:RC  LOWER-CERT-HOOK:INSTALL ;
+
+\ A clause declaring 256 input cells, whose body takes 257 with the data field.
+$600 constant CDD-WIDE-CAP
+CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
+: CDD-WIDE-ROW ( -- ) 256 0 do s" n " CDD-WIDE CODEGEN:APPEND-STRING loop ;
+: CDD-WIDE$ ( -- ptr u8 n )
+   CDD-WIDE CODEGEN:RESET
+   s" : CDD-W1 ( n -- ) create , does> ( " CDD-WIDE CODEGEN:APPEND-STRING
+   CDD-WIDE-ROW  s" -- " CDD-WIDE CODEGEN:APPEND-STRING
+   CDD-WIDE-ROW  s" ) drop ;" CDD-WIDE CODEGEN:APPEND-STRING
+   CDD-WIDE CODEGEN:CONTENTS ;
+
+: CDD-SECTION-CLAUSE-TAIL ( -- )
+   s" a clause that specializes a declared quantifier is refused" T-LABEL
+   s" : CDD-NP1 ( n -- ) create , does> ( a -- n ) drop ;" CDD-NP-REFUSED
+   s" a clause that unifies two declared quantifiers is refused" T-LABEL
+   s" : CDD-NP2 ( n -- ) create , does> ( mut-view<p,q,a,u8> mut-view<p,q,c,u8> -- ) drop CDD-VSAME ;"
+      CDD-NP-REFUSED
+   s" a clause that unifies two declared rows is refused" T-LABEL
+   s" : CDD-NP3 ( n -- ) create , does> ( R -- S ) drop ;" CDD-NP-REFUSED
+   s" a clause that claims a quotation's output row without running it is refused" T-LABEL
+   s" : CDD-NP4 ( n -- ) create , does> ( R [ R -- S ] -- S ) drop drop ;" CDD-NP-REFUSED
+   s" a clause that binds its declared return row is refused" T-LABEL
+   s" : CDD-NP5 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;" CDD-NP-REFUSED
+   s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
+   CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
+   s" a hookless definition too wide to record is refused, and the load goes on" T-LABEL
+   CDD-DIAG 4096 DIAG-BUFFER!
+   s" 0 set-check : CDD-HL ( cdd-c128 cdd-c128 -- cdd-c128 cdd-c128 ) ;" CDD-HOOKLESS-RC 70 T=
+   DIAG-BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
+   DIAG-BUFFER-OFF
+   s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
+   s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
+      s" unknown type 'cdd-zz'" CDD-NOT-CERTIFIED
+   s" compiled natively, the clause's unknown type is placed at that type in its text" T-LABEL
+   s" -1 JSON-DIAGS ! : CDD-UXJ ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
+      S\" \"token\":\"cdd-zz\",\"token_index\":0,\"file\":\"<input>\",\"line\":1,\"column\":4,\"byte_start\":3,\"byte_end\":9,"
+      CDD-NOT-CERTIFIED
+   s" 0 JSON-DIAGS !" TEST-EVAL:RC 0 T=
+   s" a clause that never returns owes no output" T-LABEL
+   s" : CDD-NORET ( n -- ) create , does> ( n -- ptr u8 ) drop 5 throw ;" TEST-EVAL:RC 0 T= ;
+
+\ Section 14: a clause whose signature names a type a rendering statement may
+\ still declare is deferred unwalked and reported at that type, as its colon twin
+\ is, so the definer counts as deferred. Only a quiet composition lets a reached
+\ renderer's call stand for the types it may declare
+\ (src/habu/verify-source.f QUIET-NOMINAL).
+: CDD-QUIET$ ( -- ptr u8 n )
+   s\" package CDD-QP\n: CDD-QREG ( -- ) s\" NEWTYPE cdd-qt\" INCLUDE-EVALUATE ;\nCDD-QREG\n: CDD-QB ( n -- ) create , does> ( cdd-qt -- cdd-qt ) drop drop 5 ;\n;package\n" ;
+
+: CDD-SECTION-QUIET-CLAUSE ( -- )
+   s" a clause naming a type a renderer may declare is deferred at that type" T-LABEL
+   VERIFY:REPORT-DEFERRALS
+   CDD-DIAG 4096 DIAG-BUFFER!
+   CHECKER-SCOPE-START-NEUTRAL
+   [: CDD-QUIET$ s" cdd-quiet.f" VERIFY:SOURCE-COMPOSE-QUIET-IN-SCOPE ;] catch
+   CHECKER-SCOPE-DONE
+   0 T=
+   DIAG-BUFFER$ s\" \"verdict\":\"deferred\",\"token\":\"cdd-qt\"" CONTAINS? TTRUE
+   DIAG-BUFFER-OFF
+   VERIFY:CENSUS 1 T= drop ;
 
 \ Each scan and the probes that ask about it run in one package-neutral scope,
 \ which reopens this package because the scan texts name its private words;
@@ -524,6 +620,8 @@ CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-GENERATES ;
 CDD-SECTION-GENERATES-LIVE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-FUNCTION ;package CHECKER-SCOPE-DONE
 CDD-SECTION-GENERATES-REFUSED
+CDD-SECTION-CLAUSE-TAIL
+CDD-SECTION-QUIET-CLAUSE
 T-REPORT
 
 ;package

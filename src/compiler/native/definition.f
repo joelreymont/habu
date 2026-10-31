@@ -505,21 +505,22 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    s"  at " p SAY-WHERE
    S\" \n" ERROR-TEXT:TYPE ;
 
-\ The token the checker refused in the text it scanned last, and whether it is
-\ an undefined word; empty when no scan ran or none was pinned.
-: CHECKER-REFUSED$ ( -- ptr u8 n bool )
-   M-SCAN @ NULL-PTR = if NULL-PTR 0 false exit then
-   CHECKER-OWNER:REFUSED-SPAN {: b:n e:n undefined:bool :}
-   M-SCAN @ b +  e b -  undefined ;
+\ The token the checker refused in the text it scanned last, the byte that
+\ places it (checker.f SGBAD-SPAN!), and whether it is undefined; empty if none.
+: CHECKER-REFUSED$ ( -- ptr u8 n ptr u8 bool )
+   M-SCAN @ NULL-PTR = if NULL-PTR 0 NULL-PTR false exit then
+   CHECKER-OWNER:ERROR-TOKEN
+   CHECKER-OWNER:REFUSED-SPAN nip {: b:n undefined:bool :}
+   M-SCAN @ b +  undefined ;
 
 \ A reject with no compiler token is the checker's refusal of the body: name
 \ the token it refused instead.
 : REPORT-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n p:ptr rc:n :}
    rc RC-REJECT <>  u 0<> or if a u p REPORT-FAILURE exit then
-   CHECKER-REFUSED$ {: ca:ptr cu:n undefined:bool :}
-   ca cu ca REPORT-FAILURE
-   undefined if ca cu ca REPORT-UNDEFINED then ;
+   CHECKER-REFUSED$ {: ca:ptr cu:n cp:ptr undefined:bool :}
+   ca cu cp REPORT-FAILURE
+   undefined if ca cu cp REPORT-UNDEFINED then ;
 
 \ A refusal of a body no scan certified (TRUSTED:, or refused by its
 \ hookless scan) that names its token: the load ends as a reject.

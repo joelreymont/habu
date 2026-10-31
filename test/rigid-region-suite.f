@@ -224,6 +224,18 @@ dup set-check
 s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC
 0 set-check  RR-REFUSED T=
 s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ A clause passes a caller's quantifier to a fresh input as a colon body does
+\ (30): not a generation's, nor a region slot's without a region kind.
+RR-DIAG 16384 DIAG-BUFFER!
+dup set-check
+s" : RR-DFGEN ( n -- ) create , does> ( span<space-global,f32,a> -- ) drop RR-GFRESH ;"  TEST-EVAL:RC
+0 set-check  RR-REFUSED T=
+s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+RR-DIAG 16384 DIAG-BUFFER!
+dup set-check
+s" : RR-DFANY ( n -- ) create , does> ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) drop RR-MFRESH ;"  TEST-EVAL:RC
+0 set-check  RR-REFUSED T=
+s" rigid host: identity domain confusion" RR-DIAG? -1 T=
 \ (26) a call's fresh input is the allocation its caller passes, and so is the
 \ name on its output: the caller's own allocation, its input, its quantifier.
 s" C-CALLOWN ( -- ) RR-OWN dup RR-MFRESH RR-UONE"  RR-CHECK -1 T=

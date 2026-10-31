@@ -61,6 +61,7 @@ CAST: AS-DOES-FINISH ( n -- [ ptr u8 n bool -- ] )
 CAST: AS-N ( n -- [ -- n ] )
 CAST: AS-BOOL ( n -- [ -- bool ] )
 CAST: AS-SPAN ( n -- [ -- n n bool ] )
+CAST: AS-TEXT ( n -- [ -- ptr u8 n ] )
 CAST: AS-MARK-ACTION ( n -- [ n -- ] )
 CAST: AS-CELLS ( n -- [ n -- n n ] )
 CAST: AS-BINDING ( n -- [ n -- ptr u8 n ] )
@@ -288,6 +289,12 @@ public
 : REFUSED-SPAN ( -- n n bool )
    NCOMP-DISPATCH:DECL-PIN-SPAN-OFF s" refused token span" SOURCE-FIELD
    AS-SPAN execute ;
+
+\ The text of the token the last scan refused, empty when none was pinned
+\ (checker.f PIN-TOKEN). Read per call, as SIG-REFUSED? is.
+: ERROR-TOKEN ( -- ptr u8 n )
+   NCOMP-DISPATCH:DECL-PIN-TOKEN-OFF s" refused token text" SOURCE-FIELD
+   AS-TEXT execute ;
 
 : DOES-WIDE? ( -- bool )
    NCOMP-DISPATCH:DECL-DOES-WIDE-OFF s" does> width" FIELD

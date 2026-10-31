@@ -1790,6 +1790,7 @@ STGR-DIAG-INSTALL
       s" wrong arity for type family '" DTXT  SGBAD-A @ SGBAD-U @ DTXT  s" '" DTXT EXIT
    THEN
    SGBAD-RETURN? IF s" return-stack effect: " DTXT  RCLAUSE-FIX$ DTXT EXIT THEN
+   SGBAD-SIZE? IF BADSIG-REASON EXIT THEN
    s" its effect is not a stack-effect comment" DTXT ;
 : GENR-PROSE ( n -- )
    {: kind:n :}
