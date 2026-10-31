@@ -1250,13 +1250,9 @@ create ARG-EXT-ARG ARG-MAX cells allot
 create ARG-SBYTES ARG-MAX cells allot         \ STRUCT-ARG's record width; 0 when none
 create ARG-PAY ARG-MAX cells allot            \ planned: a large record's first copy cell
 variable ARG-N
-variable INT-N
-variable FLT-N
 variable RES-KIND
-variable CALL-KIND
 variable VAR-START
 variable STRUCT-BYTES                      \ STRUCT-RESULT's record width; 0 when none
-variable STACK-N
 variable CUR-LIB
 variable OPEN                              \ 0 closed, else 1 + the open declaration's clauses
 variable SCOPE-WID                         \ the wordlist LIBRARY/PROCESS-SYMBOLS was stated in
@@ -1269,7 +1265,7 @@ variable SCOPE-HOOK
    0 TOK-U ! 0 BASE-U ! ;
 
 \ The declaration's working state at rest: every cell from NAME-BUF through
-\ STACK-N at zero.
+\ STRUCT-BYTES at zero.
 : REST ( -- )
    TOK-CAP 0 ?do 0 NAME-BUF i + c! 0 SYM-BUF i + c! loop
    0 NAME-U ! 0 SYM-U !
@@ -1278,8 +1274,8 @@ variable SCOPE-HOOK
       0 ARG-KIND i cells + ! 0 ARG-REG i cells + ! 0 ARG-EXT i cells + !
       0 ARG-EXT-ARG i cells + ! 0 ARG-SBYTES i cells + ! 0 ARG-PAY i cells + !
    loop
-   0 ARG-N ! 0 INT-N ! 0 FLT-N ! 0 RES-KIND ! 0 CALL-KIND !
-   0 VAR-START ! 0 STRUCT-BYTES ! 0 STACK-N ! ;
+   0 ARG-N ! 0 RES-KIND !
+   0 VAR-START ! 0 STRUCT-BYTES ! ;
 
 : KEEP-REST ( R [ R -- S ] -- S )
    [: OPEN @ 0= if REST else REST-TOKENS then ;] finally ;
@@ -1346,19 +1342,13 @@ variable SCOPE-HOOK
 : TOK-KEEP ( -- )
    TOK$ EFF+ ;
 
-: REG+ ( n -- ) {: kind:n :}
+: ARG+ ( n -- )
+   {: kind:n :}
    ARG-N @ ARG-MAX >= if E-FFI-ARITY throw then
    kind ARG-KIND ARG-N @ cells + !
    NO-EXT ARG-N @ ARG-EXT!
    NO-EXT ARG-N @ ARG-EXT-ARG!
    0 ARG-N @ ARG-SBYTES!
-   kind K-FLOAT = kind K-FLOAT32 = or if
-      FLT-N @ ARG-REG ARG-N @ cells + !
-      FLT-N @ 1 + FLT-N !
-   else
-      INT-N @ ARG-REG ARG-N @ cells + !
-      INT-N @ 1 + INT-N !
-   then
    ARG-N @ 1 + ARG-N ! ;
 
 \ A pointer is `ptr u8`: a byte span with a length the declaration states. `ptr`
@@ -1369,10 +1359,10 @@ variable SCOPE-HOOK
    TOK-KEEP ;
 
 : IN-TOKEN ( -- )
-   s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL K-POINTER REG+ exit then
-   s" r" TOK-IS? if TOK-KEEP K-FLOAT REG+ exit then
-   s" f32" TOK-IS? if s" r" EFF+ K-FLOAT32 REG+ exit then
-   TOK-KEEP K-VALUE REG+ ;
+   s" ptr" TOK-IS? if TOK-KEEP PTR-TAIL K-POINTER ARG+ exit then
+   s" r" TOK-IS? if TOK-KEEP K-FLOAT ARG+ exit then
+   s" f32" TOK-IS? if s" r" EFF+ K-FLOAT32 ARG+ exit then
+   TOK-KEEP K-VALUE ARG+ ;
 
 : OUT-TOKEN ( -- )
    RES-KIND @ R-NONE <> if E-FFI-SYNTAX throw then
@@ -1408,44 +1398,53 @@ variable SCOPE-HOOK
 
 \ ---- which call the declaration rides --------------------------------------
 
-: REG-ROOM ( -- )
-   INT-N @ HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then
+: REG-ROOM ( n n -- )
+   {: int:n flt:n :}
+   int HB-TARGET-LINUX-X86-64? if X86-INT-REG-MAX else REG-MAX then
       > if E-FFI-ARITY throw then
-   FLT-N @ REG-MAX > if E-FFI-ARITY throw then ;
+   flt REG-MAX > if E-FFI-ARITY throw then ;
 
-: X86-SPILL ( n -- ) {: i:n :}
-   STACK-N @ 1+ negate ARG-REG i cells + !
-   1 STACK-N +! ;
+: FLOAT-ARG? ( n -- bool )
+   ARG-KIND@ {: kind:n :}
+   kind K-FLOAT = kind K-FLOAT32 = or ;
 
-: PLAN-X86 ( -- )
-   0 STACK-N ! 0 INT-N ! 0 FLT-N !
-   ARG-N @ 0 ?do
-      i ARG-KIND@ K-FLOAT = i ARG-KIND@ K-FLOAT32 = or if
-         FLT-N @ REG-MAX < if
-            FLT-N @ ARG-REG i cells + !
-            1 FLT-N +!
-         else
-            i ARG-KIND@ K-FLOAT32 = if E-FFI-ARITY throw then
-            i X86-SPILL
-         then
-      else
-         INT-N @ X86-INT-REG-MAX < if
-            INT-N @ ARG-REG i cells + !
-            1 INT-N +!
-         else i X86-SPILL then
-      then
-   loop ;
+: PLACE-REG ( n n n -- n n )
+   {: int:n flt:n i:n :}
+   i FLOAT-ARG? if flt ARG-REG i cells + ! int flt 1+ exit then
+   int ARG-REG i cells + ! int 1+ flt ;
 
-: PLAN-SPILLS ( -- )
-   0 STACK-N !
-   VAR-START @ 0 < HB-TARGET-MACOS? 0= or if exit then
-   ARG-N @ VAR-START @ - STACK-N !
-   0 INT-N ! 0 FLT-N !
-   VAR-START @ 0 ?do
-      i ARG-KIND@ K-FLOAT = i ARG-KIND@ K-FLOAT32 = or
-         if 1 FLT-N +! else 1 INT-N +! then
-   loop
-   REG-ROOM ;
+\ The first n arguments take registers in order, floats and integers numbered
+\ apart. Answers the integer and float registers taken.
+: PLAN-REGS ( n -- n n )
+   {: argc:n :}
+   0 0 argc 0 ?do i PLACE-REG loop ;
+
+: X86-SPILL ( n n -- n ) {: stk:n i:n :}
+   stk 1+ negate ARG-REG i cells + !
+   stk 1+ ;
+
+: X86-PLACE ( n n n n -- n n n )
+   {: int:n flt:n stk:n i:n :}
+   i FLOAT-ARG? if
+      flt REG-MAX < if flt ARG-REG i cells + ! int flt 1+ stk exit then
+      i ARG-KIND@ K-FLOAT32 = if E-FFI-ARITY throw then
+      int flt stk i X86-SPILL exit
+   then
+   int X86-INT-REG-MAX < if int ARG-REG i cells + ! int 1+ flt stk exit then
+   int flt stk i X86-SPILL ;
+
+: PLAN-X86 ( -- n n n )
+   0 0 0 ARG-N @ 0 ?do i X86-PLACE loop ;
+
+\ A macOS variadic argument takes a stack cell, so the registers taken are the
+\ fixed arguments'.
+: PLAN-SPILLS ( -- n n n )
+   ARG-N @ PLAN-REGS
+   VAR-START @ 0 < HB-TARGET-MACOS? 0= or if 0 exit then
+   2drop
+   VAR-START @ PLAN-REGS
+   2dup REG-ROOM
+   ARG-N @ VAR-START @ - ;
 
 \ A struct-bearing declaration is planned by AAPCS64 over its C arguments in
 \ order; the STRUCT-RESULT destination, the last input, is none. Floats take
@@ -1508,33 +1507,31 @@ public
 
 private
 
-: PLAN-STRUCT ( -- )
+: PLAN-STRUCT ( -- n n )
    ARG-KIND ARG-SBYTES C-ARGS ARG-REG ARG-PAY PLAN-RECORDS
    {: int:n flt:n stk:n :}
    flt stk PLAN-FITS? 0= if E-FFI-ARITY throw then
-   int INT-N ! flt FLT-N ! stk STACK-N !
-   C-STRUCT CALL-KIND ! ;
+   int stk ;
 
 : RECORDS? ( -- bool )
    false ARG-N @ 0 ?do i ARG-SBYTES@ 0 > or loop ;
 
-: PLAN-CALL ( -- )
-   STRUCT-BYTES @ 0 > RECORDS? or if PLAN-STRUCT exit then
-   HB-TARGET-LINUX-X86-64? if PLAN-X86 else
-      HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS
-      else E-FFI-LIBRARY throw then
-   then
-   STACK-N @ 0 > if
-      RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or
-         if C-ABI-R else C-ABI then CALL-KIND ! exit
-   then
-   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or
-      if REG-ROOM C-ABI-R CALL-KIND ! exit then
-   FLT-N @ 0 > if
-      REG-ROOM C-ABI CALL-KIND ! exit
-   then
-   RES-KIND @ R-POINTER = if C-POINTER CALL-KIND ! exit then
-   C-BOUNDED CALL-KIND ! ;
+: PLAN-TARGET ( -- n n n )
+   HB-TARGET-LINUX-X86-64? if PLAN-X86 exit then
+   HB-TARGET-LINUX? HB-TARGET-MACOS? or if PLAN-SPILLS exit then
+   E-FFI-LIBRARY throw ;
+
+\ Answers the integer registers and stack cells the call takes, which its row
+\ keeps, and the call it rides.
+: PLAN-CALL ( -- n n n )
+   STRUCT-BYTES @ 0 > RECORDS? or if PLAN-STRUCT C-STRUCT exit then
+   PLAN-TARGET {: int:n flt:n stk:n :}
+   RES-KIND @ R-FLOAT = RES-KIND @ R-FLOAT32 = or {: fres:bool :}
+   stk 0 > if int stk fres if C-ABI-R else C-ABI then exit then
+   fres if int flt REG-ROOM int stk C-ABI-R exit then
+   flt 0 > if int flt REG-ROOM int stk C-ABI exit then
+   RES-KIND @ R-POINTER = if int stk C-POINTER exit then
+   int stk C-BOUNDED ;
 
 \ ---- the generated definition ----------------------------------------------
 
@@ -1606,7 +1603,7 @@ private
 : STAGE-ONE ( n bool -- ) {: i:n named:bool :}
    named if i GEN-ARG GEN-SP then
    HB-TARGET-LINUX-X86-64? i ARG-REG@ 0 < and if i STAGE-SPILL exit then
-   HB-TARGET-MACOS? STACK-N @ 0 > and i VAR-START @ >= and if
+   HB-TARGET-MACOS? VAR-START @ 0 >= and i VAR-START @ >= and if
       i STAGE-SPILL exit
    then
    i STAGE-REG ;
@@ -1616,14 +1613,15 @@ private
       named if i else ARG-N @ i 1+ - then named STAGE-ONE
    loop ;
 
-: CALL-WORD ( -- )
+: CALL-WORD ( n -- )
+   {: kind:n :}
    RES-KIND @ R-FLOAT32 = if s" FFI:CALL-ABI-F32" GEN+ exit then
-   CALL-KIND @ C-ABI-R = if s" FFI:CALL-ABI-R" GEN+ exit then
-   CALL-KIND @ C-ABI = if
+   kind C-ABI-R = if s" FFI:CALL-ABI-R" GEN+ exit then
+   kind C-ABI = if
       RES-KIND @ R-POINTER = if s" FFI:CALL-ABI-PTR"
       else s" FFI:CALL-ABI" then GEN+ exit
    then
-   CALL-KIND @ C-POINTER = if s" FFI:CALL-PTR" GEN+ exit then
+   kind C-POINTER = if s" FFI:CALL-PTR" GEN+ exit then
    s" FFI:CALL" GEN+ ;
 
 \ ---- the row this declaration takes ----------------------------------------
@@ -1686,8 +1684,9 @@ private
       then
    loop ;
 
-: SLOT ( -- n )
-   SYM-BUF SYM-U @ CUR-LIB @ INT-N @ STACK-N @ RELOC-MASK DECLARE-ROW ;
+: SLOT ( n n -- n )
+   {: int:n stk:n :}
+   SYM-BUF SYM-U @ CUR-LIB @ int stk RELOC-MASK DECLARE-ROW ;
 
 : RESULT-TAIL ( -- )
    RES-KIND @ R-NONE = if s"  drop" GEN+ exit then
@@ -1710,7 +1709,7 @@ private
    i ARG-REG@ 0 < if i STAGE-SPILL exit then
    i STAGE-REG ;
 
-: STRUCT-BODY ( -- )
+: STRUCT-BODY ( n n -- )
    SLOT {: slot:n :}
    LOCALS
    slot GEN-N s"  FFI:RESOLVE-ROW FFI:RESET " GEN+
@@ -1727,19 +1726,20 @@ private
    s"  FFI:CALL-STRUCT drop" GEN+
    RESULT-TAIL ;
 
-: EMIT ( -- )
+: EMIT ( n n n -- )
+   {: int:n stk:n kind:n :}
    GEN CODEGEN:RESET
    s" : " GEN+ NAME-BUF NAME-U @ GEN+
    s"  ( " GEN+ EFF CODEGEN:CONTENTS GEN+ s" ) " GEN+
-   CALL-KIND @ C-STRUCT = if STRUCT-BODY s"  ;" GEN+ exit then
+   kind C-STRUCT = if int stk STRUCT-BODY s"  ;" GEN+ exit then
    NEEDS-LOCALS? {: named:bool :}
    named if LOCALS then
    \ The mixed ABI guard visits all nine register extents. Bounded calls guard
    \ only the row's argc live slots, whose staging also writes each extent.
-   CALL-KIND @ C-ABI = CALL-KIND @ C-ABI-R = or if s" FFI:RESET " GEN+ then
+   kind C-ABI = kind C-ABI-R = or if s" FFI:RESET " GEN+ then
    named STAGE
-   SLOT GEN-N GEN-SP
-   CALL-WORD
+   int stk SLOT GEN-N GEN-SP
+   kind CALL-WORD
    RESULT-TAIL
    s"  ;" GEN+ ;
 
@@ -1780,13 +1780,10 @@ private
    NAME-U BYTE-VIEW CELL keep execute
    SYM-U BYTE-VIEW CELL keep execute
    ARG-KIND ARG-MAX cells keep execute
-   ARG-REG ARG-MAX cells keep execute
    ARG-EXT ARG-MAX cells keep execute
    ARG-EXT-ARG ARG-MAX cells keep execute
    ARG-SBYTES ARG-MAX cells keep execute
    ARG-N BYTE-VIEW CELL keep execute
-   INT-N BYTE-VIEW CELL keep execute
-   FLT-N BYTE-VIEW CELL keep execute
    RES-KIND BYTE-VIEW CELL keep execute
    VAR-START BYTE-VIEW CELL keep execute
    STRUCT-BYTES BYTE-VIEW CELL keep execute ;
@@ -1822,7 +1819,7 @@ public
 : OPEN-FUNCTION ( -- )
    [: CHECK-SCOPE
       OPEN @ 0 <> if E-FFI-SYNTAX throw then
-      0 ARG-N ! 0 INT-N ! 0 FLT-N ! -1 VAR-START ! 0 STACK-N ! 0 STRUCT-BYTES !
+      0 ARG-N ! -1 VAR-START ! 0 STRUCT-BYTES !
       R-NONE RES-KIND !
       TOK@ NAME!
       TOK@ SYM!

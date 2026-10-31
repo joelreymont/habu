@@ -3552,7 +3552,7 @@ variable FFI-LIT-B                          \ and the newer
    FFI:K-VALUE ;
 
 
-\ An input the declarer refuses at the effect (ffi-abi.f IN-TOKEN, REG+), a
+\ An input the declarer refuses at the effect (ffi-abi.f IN-TOKEN, ARG+), a
 \ `ptr` over any pointee but `u8` or one past the input cap, leaves the group's
 \ clauses unread.
 : FFI-INPUT ( ptr u8 n -- )
