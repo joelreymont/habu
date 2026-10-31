@@ -4,17 +4,22 @@
 \ and this server, and whose exp and nbf hold (RFC 7515, 7517, 7519). The host
 \ states the issuer with ISSUER! before HTTP:START, guards a route with
 \ `req res BEARER:ADMIT? if ... then` and reads the caller's string claims with
-\ CLAIM$. As a client, TOKEN gets a token from the token endpoint CLIENT! names,
-\ for the client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of).
-\ STORAGE CLASS. PROCESS-WIDE: the issuer, written before HTTP serves; the key
-\ set, read and replaced under KEYS-LOCK and fetched over CURL outside it by
-\ one worker at a time; tables indexed by HTTP:WORKER-SLOT holding each
-\ request's token and scratch; the client CLIENT! states, written before any
-\ TOKEN; and the cursor that reads a token answer, under ANSWER-LOCK.
+\ CLAIM$. METADATA! names this server's protected-resource metadata (RFC 9728
+\ 5.1) and the scope its tokens need (RFC 6750 3) in each 401 challenge. As a
+\ client, TOKEN gets a token from the token endpoint CLIENT! names, for the
+\ client itself (RFC 6749 4.4) or for a person (Entra On-Behalf-Of).
+\ STORAGE CLASS. PROCESS-WIDE: the issuer and the challenges naming the
+\ metadata and scope, written before HTTP serves; the key set, read and
+\ replaced under KEYS-LOCK and fetched over CURL outside it by one worker at a
+\ time; tables indexed by HTTP:WORKER-SLOT holding each request's token and
+\ scratch; the client CLIENT! states, written before any TOKEN; and the cursor
+\ that reads a token answer, under ANSWER-LOCK.
 \ TASK-LOCAL: the admitted request, TASK:+USER rows.
 
 require src/lib/string.f
 require src/lib/span.f
+require src/lib/memory.f
+require src/lib/image-lifecycle.f
 require src/lib/base64.f
 require src/lib/json-read.f
 require src/lib/task.f
@@ -23,7 +28,14 @@ require src/lib/net/curl.f
 require src/lib/net/http.f
 
 package BEARER
+public
+
+-9630 constant E-TRANSFER           \ no answer from the token endpoint, a 5xx, or a 2xx without an access_token string
+-9631 constant E-REFUSED            \ the issuer refused with a 4xx; the BUF holds its answer
+-9632 constant E-OPERAND            \ a METADATA! text holding a byte its quoted challenge value cannot carry, or a scope that is not space-separated scope tokens
 private
+-9630 constant E-FIRST
+-9639 constant E-LAST
 
 60 constant LEEWAY-S                \ seconds of clock skew between issuer and server
 $10000 constant KEYS-CAP            \ the largest key set text accepted
@@ -40,6 +52,17 @@ $10000 constant KEYS-CAP            \ the largest key set text accepted
 TYPED-VARIABLE ISSUER SPAN:span<u8>
 TYPED-VARIABLE AUDIENCE SPAN:span<u8>
 TYPED-VARIABLE KEYS-URL SPAN:span<u8>
+
+\ An allocation holding the two challenges naming METADATA!'s URL and scope,
+\ the no-token one's NAMED-U bytes first; empty while neither is stated.
+\ NAMED's two cells are IMAGE-LIFECYCLE process cells, so a saved image starts
+\ with the plain challenges; a stripped build refuses texts stated at load.
+\ They are declared at the first allocation, not at load, for the reason
+\ src/lib/fs-mutate.f gives for its cleanup row; NAMED-DECLARED is no process
+\ cell, as a snapshot keeps the table holding the declarations.
+TYPED-VARIABLE NAMED SPAN:span<u8>
+variable NAMED-U
+variable NAMED-DECLARED
 
 \ The key set's text, under KEYS-LOCK with KEYS-AT and FETCHING; the lock is
 \ never held across the network. FETCHED is the flagged fetcher's alone.
@@ -375,11 +398,110 @@ drop
    answer 401 HTTP:STATUS!
    answer s" WWW-Authenticate" value vu HTTP:HEADER! ;
 
+\ The challenge for NO-TOKEN or INVALID.
+: CHALLENGE$ ( n -- ptr u8 n )
+   {: outcome:n :}
+   NAMED @ {: named :}
+   named SPAN:LEN 0= if
+      outcome NO-TOKEN = if s" Bearer" exit then
+      S\" Bearer error=\"invalid_token\"" exit
+   then
+   outcome NO-TOKEN = if named NAMED-U @ SPAN:TAKE SPAN:$ exit then
+   named NAMED-U @ SPAN:SKIP SPAN:$ ;
+
 : REFUSE ( HTTP:response n -- )
    {: answer:HTTP:response outcome:n :}
    outcome UNAVAILABLE = if answer 503 HTTP:STATUS! exit then
-   outcome NO-TOKEN = if answer s" Bearer" CHALLENGE exit then
-   answer S\" Bearer error=\"invalid_token\"" CHALLENGE ;
+   answer outcome CHALLENGE$ CHALLENGE ;
+
+: NAMED-PREFIX ( -- ptr u8 n ) s" Bearer " ;
+: INVALID-PREFIX ( -- ptr u8 n ) S\" Bearer error=\"invalid_token\", " ;
+: METADATA-NAME ( -- ptr u8 n ) s" resource_metadata" ;
+: SCOPE-NAME ( -- ptr u8 n ) s" scope" ;
+: SEPARATOR ( -- ptr u8 n ) s" , " ;
+
+\ The bytes copied into the span at off; answers the offset past them.
+: PUT ( ptr u8 n SPAN:span<u8> n -- n )
+   {: a:ptr u:n row off:n :}
+   a u row off SPAN:SKIP SPAN:COPY
+   off u + ;
+
+\ The bytes a parameter `name="value"` takes, from the name's and the value's
+\ lengths; none for an empty value, which names nothing.
+: PARAM-LEN ( n n -- n )
+   {: nu:n vu:n :}
+   vu 0= if 0 exit then
+   nu vu + 3 + ;
+
+
+\ `name="value"` written into the span at off; answers the offset past it.
+\ Writes nothing for an empty value, as PARAM-LEN measures nothing.
+: PARAM ( ptr u8 n ptr u8 n SPAN:span<u8> n -- n )
+   {: name:ptr nu:n value:ptr vu:n row off:n :}
+   vu 0= if off exit then
+   name nu row off PUT {: past-name:n :}
+   S\" =\"" row past-name PUT {: past-eq:n :}
+   value vu row past-eq PUT {: past-value:n :}
+   S\" \"" row past-value PUT ;
+
+
+\ The prefix, then resource_metadata for a nonempty URL and scope for a
+\ nonempty scope, joined by SEPARATOR when both are present, written into the
+\ span at off; answers the offset past them.
+: NAMING ( ptr u8 n ptr u8 n ptr u8 n SPAN:span<u8> n -- n )
+   {: pre:ptr pu:n url:ptr uu:n scope:ptr su:n row off:n :}
+   pre pu row off PUT {: past-pre:n :}
+   METADATA-NAME url uu row past-pre PARAM {: past-url:n :}
+   uu 0<> su 0<> and if SEPARATOR row past-url PUT else past-url then
+   {: past-sep:n :}
+   SCOPE-NAME scope su row past-sep PARAM ;
+
+\ A cell of NAMED, as the address PROCESS-CELL takes.
+CAST: >CELL ( n -- ptr n )
+: DECLARE-NAMED ( -- )
+   NAMED-DECLARED @ 0<> if exit then
+   NAMED NULL-PTR - >CELL IMAGE-LIFECYCLE:PROCESS-CELL
+   NAMED NULL-PTR - 1 cells + >CELL IMAGE-LIFECYCLE:PROCESS-CELL
+   1 NAMED-DECLARED ! ;
+
+\ The challenges naming the URL and scope, in a new allocation, and the
+\ no-token one's length; an empty span when both are empty.
+: COMPOSED ( ptr u8 n ptr u8 n -- SPAN:span<u8> n )
+   {: url:ptr uu:n scope:ptr su:n :}
+   uu 0= su 0= and if s" " SPAN:MAKE 0 exit then
+   DECLARE-NAMED
+   METADATA-NAME nip uu PARAM-LEN SCOPE-NAME nip su PARAM-LEN +
+   uu 0<> su 0<> and if SEPARATOR nip + then {: params:n :}
+   NAMED-PREFIX nip INVALID-PREFIX nip + params 2 * +
+   MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: row :}
+   NAMED-PREFIX url uu scope su row 0 NAMING {: split:n :}
+   INVALID-PREFIX url uu scope su row split NAMING drop
+   row split ;
+
+\ HTTP writes a header value as it is: a quote or backslash would end the
+\ quoted resource_metadata early, and a CR or LF would start a line of its own.
+: QUOTABLE ( ptr u8 n -- )
+   {: text u:n :}
+   u 0 ?do
+      text i + c@ {: c :}
+      c $22 = c $5C = or c $20 < or c $7F = or if E-OPERAND throw then
+   loop ;
+
+
+\ RFC 6749 3.3: tokens of NQCHAR (%x21, %x23-5B, %x5D-7E), each one space
+\ from the next. An empty scope names none.
+: SCOPE-TOKENS ( ptr u8 n -- )
+   {: text u:n :}
+   u 0= if exit then
+   text c@ $20 = text u 1- + c@ $20 = or if E-OPERAND throw then
+   u 0 ?do
+      text i + c@ {: c :}
+      c $20 = if
+         text i 1+ + c@ $20 = if E-OPERAND throw then
+      else
+         c $21 < c $7E > or c $22 = or c $5C = or if E-OPERAND throw then
+      then
+   loop ;
 
 public
 
@@ -395,11 +517,33 @@ public
    0 KEYS-U ! 0 KEYS-AT ! ;
 
 
+\ The URL of this server's protected-resource metadata and the scope of access
+\ a token needs here (RFC 6750 3), which each 401 challenge then names as
+\ resource_metadata and scope; an empty text names none. The texts are copied,
+\ so they need not outlive the call. A saved image keeps neither: its process
+\ challenges plainly until the host states METADATA! again, and a stripped
+\ build refuses texts stated at load, so a host states them at run time.
+\ E-OPERAND for a URL holding a quote, a backslash, a control byte below $20 or
+\ $7F, which the quoted challenge value cannot carry, or a scope that is not
+\ space-separated RFC 6749 3.3 scope tokens. A refused text or allocation
+\ leaves the previous challenges in force. E-HTTP-STATE while HTTP serves.
+: METADATA! ( ptr u8 n ptr u8 n -- )
+   {: url:ptr uu:n scope:ptr su:n :}
+   HTTP:RUNNING? if E-HTTP-STATE throw then
+   url uu QUOTABLE
+   scope su SCOPE-TOKENS
+   url uu scope su COMPOSED {: row split:n :}
+   NAMED @ {: was :}
+   row NAMED ! split NAMED-U !
+   was SPAN:LEN 0 > if was MEM:FREE-SPAN then ;
+
+
 \ Whether the request carries a current bearer token of the issuer's for this
 \ server. A refusal answers the response itself, with an empty body: 401
 \ challenging Bearer for no, several or a non-Bearer Authorization, or Bearer
-\ error="invalid_token" for a token that fails; 503 when there is no key set
-\ and none could be fetched. A broken key of the issuer's passes its throw.
+\ error="invalid_token" for a token that fails, either one naming METADATA!'s
+\ URL and scope once stated; 503 when there is no key set and none
+\ could be fetched. A broken key of the issuer's passes its throw.
 \ E-HTTP-STATE before ISSUER!.
 : ADMIT? ( HTTP:request HTTP:response -- bool )
    {: asked:HTTP:request answer:HTTP:response :}
@@ -445,13 +589,6 @@ ENUM grant
    VARIANT own ;VARIANT
    VARIANT for-person FIELD assertion ptr u8 FIELD len n ;VARIANT
 ;ENUM
-
--9630 constant E-TRANSFER           \ no answer from the token endpoint, a 5xx, or a 2xx without an access_token string
--9631 constant E-REFUSED            \ the issuer refused with a 4xx; the BUF holds its answer
-private
--9630 constant E-FIRST
--9639 constant E-LAST
-public
 
 \ The token endpoint's URL, and the client id and secret this process presents
 \ there, written before any TOKEN, not while a TOKEN runs. The texts are

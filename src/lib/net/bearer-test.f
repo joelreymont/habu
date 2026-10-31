@@ -1,10 +1,12 @@
 \ bearer-test.f - BEARER:ADMIT? over a real loopback port: ADMIT? before
-\ ISSUER! and ISSUER! while serving, the 503 of a key set that cannot be
-\ fetched, key selection among an EC key, an encryption key and the token's,
-\ the 401 challenges, malformed tokens, alg none, crit and HS256, repeated
-\ member names, aud, iss, exp and nbf, claim strings, CLAIM$ after the admitted
-\ request and in a task it spawns, the refetch window, and the cached and
-\ unknown kids answered while a fetch is in flight.
+\ ISSUER! and ISSUER! or METADATA! while serving, the 503 of a key set that
+\ cannot be fetched, key selection among an EC key, an encryption key and the
+\ token's, the 401 challenges, plain and naming METADATA!'s URL, its scope or
+\ both, a METADATA! URL holding a quote or CR LF and a scope holding a quote
+\ or two spaces refused, malformed tokens, alg none, crit and HS256, repeated
+\ member names, aud, iss, exp and nbf, claim strings, CLAIM$ after the
+\ admitted request and in a task it spawns, the refetch window, and the cached
+\ and unknown kids answered while a fetch is in flight.
 \ Run: bin/hb --load src/lib/net/bearer-test.f
 
 require src/lib/test.f
@@ -246,6 +248,21 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 : CHALLENGED ( n -- ) s" Bearer" REFUSED ;
 : INVALID ( n -- ) S\" Bearer error=\"invalid_token\"" REFUSED ;
+: NAMED ( n -- )
+   S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\""
+   REFUSED ;
+: NAMED-INVALID ( n -- )
+   S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\""
+   REFUSED ;
+: BOTH ( n -- )
+   S\" Bearer resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\", scope=\"tender.read tender.write\""
+   REFUSED ;
+: BOTH-INVALID ( n -- )
+   S\" Bearer error=\"invalid_token\", resource_metadata=\"https://bearer-test.example/.well-known/oauth-protected-resource\", scope=\"tender.read tender.write\""
+   REFUSED ;
+: SCOPED ( n -- ) S\" Bearer scope=\"tender.read tender.write\"" REFUSED ;
+: SCOPED-INVALID ( n -- )
+   S\" Bearer error=\"invalid_token\", scope=\"tender.read tender.write\"" REFUSED ;
 
 : ANSWERED ( n ptr u8 n -- )
    {: status:n want:ptr wu:n :}
@@ -474,6 +491,28 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    s" the stalled fetch was released, not expired" T-LABEL
    STALL-END atomic@ 1 T= ;
 
+: METADATA$ ( -- ptr u8 n ) s" https://bearer-test.example/.well-known/oauth-protected-resource" ;
+: REPLACED$ ( -- ptr u8 n ) s" https://replaced.test/.well-known/oauth-protected-resource" ;
+: SCOPE$ ( -- ptr u8 n ) s" tender.read tender.write" ;
+
+: METADATA-SCOPE ( -- )
+   s" with a URL and a scope no Authorization challenges Bearer naming both" T-LABEL
+   s" /claims" OPEN FINISH BOTH
+   s" with a URL and a scope a changed signature byte is invalid, naming both" T-LABEL
+   KID-A CURRENT MINT FLIP SEND BOTH-INVALID ;
+
+: SCOPE-ONLY ( -- )
+   s" with only a scope no Authorization challenges Bearer naming the scope" T-LABEL
+   s" /claims" OPEN FINISH SCOPED
+   s" with only a scope a changed signature byte is invalid, naming the scope" T-LABEL
+   KID-A CURRENT MINT FLIP SEND SCOPED-INVALID ;
+
+: METADATA ( -- )
+   s" with METADATA! no Authorization challenges Bearer naming the metadata" T-LABEL
+   s" /claims" OPEN FINISH NAMED
+   s" with METADATA! a changed signature byte is invalid, naming the metadata" T-LABEL
+   KID-A CURRENT MINT FLIP SEND NAMED-INVALID ;
+
 
 : ROUTES ( -- )
    HTTP:ROUTES-RESET
@@ -493,6 +532,8 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    EARLY-CODE atomic@ E-HTTP-STATE T=
    s" ISSUER! while HTTP serves throws E-HTTP-STATE" T-LABEL
    [: s" a" s" b" s" c" BEARER:ISSUER! ;] E-HTTP-STATE TTHROWSQ
+   s" METADATA! while HTTP serves throws E-HTTP-STATE" T-LABEL
+   [: METADATA$ SCOPE$ BEARER:METADATA! ;] E-HTTP-STATE TTHROWSQ
    HTTP:PORT PORT !
    s" /keys" URL {: a:ptr u:n :}
    a KEYS-URL u BYTE-COPY u KEYS-URL-U !
@@ -506,9 +547,40 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
    ROUTES
    EARLY
    s" https://issuer.test" s" api://bearer-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER!
+   \ Empty texts after a stated URL and scope restore the plain challenges,
+   \ which CHALLENGED and INVALID assert.
+   METADATA$ SCOPE$ BEARER:METADATA!
+   s" " s" " BEARER:METADATA!
    LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
    UNAVAILABLE ADMITTED UNKNOWN-KID NO-TOKEN MALFORMED SIGNATURES AUDIENCES
    TIMES STRINGS STALE-CLAIM SPAWNED-CLAIM WINDOW
+   HTTP:STOP
+   \ METADATA! is refused while serving, so its challenges are immutable
+   \ configuration for a server's run: each statement gets a start of its own.
+   METADATA$ SCOPE$ BEARER:METADATA!
+   LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
+   METADATA-SCOPE
+   HTTP:STOP
+   s" " SCOPE$ BEARER:METADATA!
+   LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
+   SCOPE-ONLY
+   HTTP:STOP
+   \ The second statement replaces the first.
+   REPLACED$ SCOPE$ BEARER:METADATA!
+   METADATA$ s" " BEARER:METADATA!
+   \ A refused call installs neither of its texts: METADATA$'s challenges stay
+   \ in force, as METADATA asserts.
+   s" METADATA! with a quote in its URL throws E-OPERAND" T-LABEL
+   [: s\" https://bearer-test.example/\"x" SCOPE$ BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   s" METADATA! with CR LF in its URL throws E-OPERAND" T-LABEL
+   [: s\" https://bearer-test.example/\r\nX-Injected: 1" SCOPE$ BEARER:METADATA! ;]
+   BEARER:E-OPERAND TTHROWSQ
+   s" METADATA! with a quote in its scope throws E-OPERAND" T-LABEL
+   [: REPLACED$ s\" tender.read \"x" BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   s" METADATA! with two spaces between scope tokens throws E-OPERAND" T-LABEL
+   [: REPLACED$ s" tender.read  tender.write" BEARER:METADATA! ;] BEARER:E-OPERAND TTHROWSQ
+   LOOPBACK PORT @ THREE-WORKERS IDLE-MS HTTP:START
+   METADATA
    HTTP:STOP
    AIO:STOP ;
 
