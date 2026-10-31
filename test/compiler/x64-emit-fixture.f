@@ -1531,7 +1531,7 @@ private
    HIR-MOD BUILD-TRAP DTRAP UNDER TRAP-SLOT PLACED ;
 
 \ Where the divide's cold side goes: `throw` in THIS engine's dictionary, which
-\ is what the selector names (select-x64.f THROW-ENTRY). It moves with every
+\ is what the selector names (select-x64.f EMIT-DIV). It moves with every
 \ engine build as `die` does, so its call's field is read back and held to it
 \ less the slot.
 : THROW-TARGET ( -- n )

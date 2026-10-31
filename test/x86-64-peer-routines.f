@@ -89,7 +89,7 @@ private
 \ computed one, publishing both where the callee reads its arguments, the shape
 \ test/compiler/x64-select.f selects. BUILD-TRAP and BUILD-DIV get no image:
 \ their `die` and `throw` are host-dictionary addresses (select-x64.f
-\ X64IR:KEY-TRAP-ENTRY, THROW-ENTRY). This fixture renders the same `x64.trap`,
+\ X64IR:KEY-TRAP-ENTRY, EMIT-DIV). This fixture renders the same `x64.trap`,
 \ and the divide routines the same `x64.idiv`, to a callee the image carries.
 : BUILD-TERMINAL ( n -- )
    {: e:n :}

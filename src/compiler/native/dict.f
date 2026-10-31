@@ -567,6 +567,11 @@ public
 : SPELL-DEFER-CELL ( ptr u8 n -- n )
    SPELL-DEFER-BINDING drop ;
 
+\ ---- and the engine word a does> body leaves through --------------------------
+\ The engine's own, whatever the compiled source's package scope. Its tick is
+\ trust-only: `['] does-patch` in a checked body is E-CAP-TRUSTED.
+TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
+
 private
 
 CAST: RECORD-FIXED-USE-XT ( n -- [ [ ptr n -- n n bool ] -- ] )

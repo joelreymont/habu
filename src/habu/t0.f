@@ -1224,9 +1224,9 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
    counted if u 0 STR-BUF c! then
    0 STR-BUF at u + NSTR:INTERN-SOURCE u ;
 
-\ `."` calls the engine's `type` whatever the source's package scope, as tier
-\ 1 does (src/compiler/native/elaborate.f TYPE-ENTRY).
-TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
+\ `."` and `is` call the engine's `type` and `xt!` whatever the source's
+\ package scope.
+CAST: XT>N ( xt -- n )
 
 \ The payload's offset is the call's for `."`, as tier 1's (src/core/checker.f
 \ SPAY-B).
@@ -1237,14 +1237,11 @@ TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
    v o PUSH-ADDR
    counted if exit then
    u PUSH-CONST
-   kind CHECKER-TAPE:K-PRINTED-STRING = if TYPE-ENTRY k ROW-OFF @ DO-CALL then ;
+   kind CHECKER-TAPE:K-PRINTED-STRING = if ['] type XT>N k ROW-OFF @ DO-CALL then ;
 
 \ ---- is ----------------------------------------------------------------------
 \ `is W` pushes W's cell (NDICT:REC-DEFER-CELL) and calls `xt!`, as tier 1's
 \ elaborate.f DO-IS; a W that is missing or no deferred word is E-T0-DEFER.
-\ `is` stores through the engine's `xt!` whatever the source's package scope, as
-\ tier 1 does (src/compiler/native/elaborate.f XT-STORE-ENTRY).
-TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
 
 : DO-IS ( n n -- ) {: r:n loc:n :}
    ORD @ ROWS @ >= if ORD @ 1- ROW$ E-T0-DEFER REFUSE then
@@ -1253,7 +1250,7 @@ TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
    r XREF-REC NDICT:REC-DEFER-CELL {: cell:n :}
    cell 0= if a u E-T0-DEFER REFUSE then
    cell r PUSH-ADDR
-   XT-STORE-ENTRY loc DO-CALL ;
+   ['] xt! XT>N loc DO-CALL ;
 
 \ ---- quotations --------------------------------------------------------------
 \ A quotation is a unit of its own in the same emission (src/habu/t0-emit.f
@@ -1305,10 +1302,6 @@ variable NESTED                     \ the `[:` rows skipped inside quotations so
 variable EMPTY-CLAUSE               \ whether no row follows the split: the clause is empty
 variable CLAUSE-ORD                 \ the checker's ordinal of the clause's first token
 
-\ The parent leaves through `does-patch` whatever the source's package scope,
-\ as tier 1 does (src/compiler/native/elaborate.f DOES-PATCH-ENTRY).
-TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
-
 : CLAUSE-EMPTY? ( -- bool ) CLAUSE-ORD @ ROWS @ >= ;
 
 \ As tier 1's STAGE-DOES-PATCH (src/compiler/native/elaborate.f).
@@ -1318,7 +1311,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    NDEFINITION:M-DOES-SIG @ NDEFINITION:M-DOES-SIG-U @ NSTR:INTERN-SOURCE PUSH-ADDR
    NDEFINITION:M-DOES-SIG-U @ PUSH-CONST
    SPILL-ALL
-   DOES-PATCH-ENTRY CUT @ NDEFINITION:DOES-SPAN - T0-EMIT:CALL ;
+   NDICT:DOES-PATCH-ENTRY CUT @ NDEFINITION:DOES-SPAN - T0-EMIT:CALL ;
 
 \ ---- MATCH and construct -----------------------------------------------------
 \ `MATCH fam` reads its value as the cells the checker proved at the family

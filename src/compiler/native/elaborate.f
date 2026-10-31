@@ -17,6 +17,7 @@ require src/compiler/native/tape.f
 require src/compiler/native/feed.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
+require src/compiler/native/dict.f
 require src/compiler/native/host.f
 require src/compiler/native/string.f
 require src/compiler/native/fetch.f
@@ -3362,14 +3363,11 @@ align
 
 \ Generated primitive calls bind their engine entries, regardless of a
 \ compiled source's package scope. Library calls still resolve by package.
-TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
-TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
-TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
-TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
+CAST: XT>N ( xt -- n )
 
 : EMIT-PRINTED-STRING ( n -- ) {: ix:n :}
    ix EMIT-STRING
-   ix TYPE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix ['] type XT>N 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 
 : DO-STRING ( n -- ) {: ix:n :}
@@ -3464,7 +3462,7 @@ TRUSTED: EXECUTE-ENTRY ( -- n ) ['] execute ;
    VN @ 1- VQ@ {: k:n :}
    k 0 >= if k din dout QFILL then
    ix cell NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED
-   ix XT-STORE-ENTRY 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   ix ['] xt! XT>N 2 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 \ ---- entering the routine a quotation names ----------------------------------
 : DO-EXEC ( IR-ARENA:arena n -- )
@@ -4319,7 +4317,7 @@ private
    DOES-AT @ address NEMIT:ADDR-DATA origin STAGE-OWNED-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT
    1 CALL-NEED !
-   DOES-AT @ DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   DOES-AT @ NDICT:DOES-PATCH-ENTRY 3 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 : STAGE-FIXED ( -- )
    0 FIXED-VAL @ FIXED-KIND @ HIR-WORD:LIT-KIND EMIT-KIND-LIT ;
@@ -4329,7 +4327,7 @@ private
    0 EMIT-MEM
    0 FIXED-VAL @ NEMIT:ADDR-DATA STAGE-LIT
    0 HIR-OPCODE:LOAD EMIT-OPCODE
-   0 EXECUTE-ENTRY 1 0 NDICT:GLUE-NONE STAGE-WCALL ;
+   0 ['] execute XT>N 1 0 NDICT:GLUE-NONE STAGE-WCALL ;
 
 : BEFORE-RETURN ( -- )
    FUN-KIND @ FUN-DOES-PARENT = if STAGE-DOES-PATCH exit then

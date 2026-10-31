@@ -34,6 +34,8 @@ DYNAMIC-BUFFER MSG u8
 : NAME-CK ( n -- )
    0 <= if E-NTRAP-NAME throw then ;
 
+CAST: XT>N ( xt -- n )
+
 public
 
 \ ---- what the chain asks ------------------------------------------------------
@@ -55,7 +57,7 @@ public
 
 \ ---- the routine every trap site branches to ----------------------------------
 \ Trap sites enter the engine primitive even if source scope shadows its name.
-TRUSTED: ROUTINE ( -- n ) ['] die ;
+: ROUTINE ( -- n ) ['] die XT>N ;
 
 private
 get-current prot-wid-add

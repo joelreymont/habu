@@ -1180,7 +1180,7 @@ variable LIVE-CHANGED                \ whether the last dataflow pass moved a se
 \ operation's attribute. emit-x64.f renders `cqo`, the zero-divisor branch and
 \ the divisor screen for `MIN-N / -1`, which raises #DE on x86-64 where Habu's
 \ `/` wraps to MIN-N (docs/xcomp.md "Numeric admission").
-TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
+CAST: XT>N ( xt -- n )
 
 \ `idiv r64` divides rdx:rax into rax and rdx (x64ir.f DEF-IDIV), so the
 \ dividend is copied into a fresh value the allocator pins to rax: the source
@@ -1195,7 +1195,7 @@ TRUSTED: THROW-ENTRY ( -- n ) ['] throw ;
    RESULT+
    RESULT+
    CTX BLD  CTX BLD X64IR:KEY-THROW-ENTRY
-   CTX BLD  THROW-ENTRY X64IR:ENTRY-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  ['] throw XT>N X64IR:ENTRY-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 

@@ -284,6 +284,11 @@ loads the backend ahead of the driver:
 bin/hb --load src/arch/x86-64/passes.f tools/native-build.f -- <out> --target linux-x86-64
 ```
 
+The building engine's own checker checks the backend, so the engine must
+know every rule the backend's source uses: an engine without the `xt` type
+refuses `select-x64.f`'s `XT>N` cast with E-CAST-FAM. Cross-build with an
+engine built from the same tree.
+
 ## Wasm
 
 Checked Habu compiles directly to a core Wasm module through
