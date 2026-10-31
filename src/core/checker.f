@@ -8098,13 +8098,15 @@ $48 constant EFF-NODE
 : EN.H ( ptr u8 -- ptr n ) EN-H-OFF + CELL-VIEW ;
 
 \ EC-TV/EC-RV/EI-TV/EI-RV are var-id maps in the growable TV arena (top).
-variable EC-TVN
-variable EC-RVN
-
 64 constant EI-AK-CAP
 create EI-AK EI-AK-CAP cells allot
 variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK wrote
 
+\ One copy's counters and rigid identities (E-COPY-MAPS-RESET) rest in the span,
+\ so neither an image nor a file object carries the last check's atom terms.
+CHECKER-REG:SCRATCH{
+variable EC-TVN
+variable EC-RVN
 \ A record's rigid identities in first-seen order. E-COPY* stores each as the
 \ slot key -(idx+1) that E-I-AK-IDX inverts, so a record says which outputs
 \ share an allocation and never holds a live counter value: counters reset per
@@ -8112,8 +8114,6 @@ variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the spa
 \ The capacity is the instantiation table's, which reads these slots back.
 create EC-AK EI-AK-CAP cells allot
 variable EC-AKN
-
-CHECKER-REG:SCRATCH{
 PTR-VARIABLE FEP
 PTR-VARIABLE TOK-EFF
 variable FEP-OFF
@@ -15259,14 +15259,17 @@ CHECKER-REG:}SCRATCH
    need NORET-CAP-U @ <= IF exit THEN
    need NORET-GROW ;
 
-\ No plane address enters the image. FV and both copy maps' written marks
-\ describe planes that outlive a file boundary, so they rest here, not in a span.
+\ No plane address and no check's ids enter the image. FV and both copy maps'
+\ written marks describe planes that outlive a file boundary; the instantiation
+\ atom map rests UNBOUND and the rigid counters at 1, so none rests in a span.
 : TV-SNAP-RESET ( -- )
    TVT-P @ TV-CAP @ TV-RELEASE
    TV-CLEAR
    0 FV !
    0 EC-TV-HW !   0 EC-TV-LW !
-   0 EC-RV-HW !   0 EC-RV-LW ! ;
+   0 EC-RV-HW !   0 EC-RV-LW !
+   E-I-AK-RESET
+   RIGID-RESET ;
 
 \ Restore a scratch arena to its boot buffer and empty that buffer in one step.
 \ Capture copies these DATA buffers into the image; the last definition's
@@ -29922,11 +29925,12 @@ CHECKER-REG:}SCRATCH
    TOP-ROW-OFF @ 0 <>  TOP-ROW-CELLS @ live =  and IF a u cls TOP-READ-LIT EXIT THEN
    live CHECKER-TOP-LOAD  a u cls TOP-LIT-STEP  CHECKER-TOP-SAVE ;
 
-: CHECKER-TOP-DROP ( -- )                 \ every segment and buffer, before a quiesce
+: CHECKER-TOP-DROP ( -- )                 \ every segment, buffer and row cell, before a quiesce
    TOP-SEG-N @ 0 ?DO i TOP-SEG-UNMAP LOOP
    TOP-SEG-P TOP-SEG-CAP TS-ROW ARENA-ROWS-RELEASE
    0 TOP-SEG-N !
    TOP-SEG-RELEASE
+   0 TOP-WRITE-END !  0 TOP-READ-END !  0 TOP-ROW-TV !  0 TOP-ROW-RV !  0 TOP-SCOPE-SEEN !
    0 TOP-LIVE !  0 TOP-BASE !  0 TOP-COPYING ! ;
 
 \ The hook's rows, owned by package TOP-ROW (src/core/top-row.f): its checked
