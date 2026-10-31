@@ -72,28 +72,49 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and CELL TASK:+USER READER-HEAD drop
 TRUSTED: HIDE ( n -- ) int-mark ;
 ndict@ 1- constant HIDE-ID
 
+\ WITH-INIT copies a record that owns nothing into the cursor storage;
+\ OPEN-READER parses it there.
+: INIT-HEADER ( mut-view<b,l,a,u8> read-view<p,q,u8> -- mut-view<b,l,a,u8> reader-state<p,q> )
+   0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+   NULL-PTR 0 NULL-PTR 0 0 NULL-PTR NULL-PTR NULL-PTR
+   0 0 0 0 0 0 0 0 NULL-PTR XML--C2-READER--STATE:MAKE ;
+ndict@ 1- constant INIT-HEADER-ID
+
 \ The parser header constructor and destructor are not caller capabilities.
 s" XML--C2-READER--STATE:MAKE" XREF-FIND-INDEX HIDE
 s" XML--C2-READER--STATE:UNMAKE" XREF-FIND-INDEX HIDE
 
-\ WITH-INIT copies a record that owns nothing into the cursor storage: the
-\ source view, then zero cells in bounded groups. OPEN-READER parses it there.
-TRUSTED: ZEROS ( -- n n n n n n n n n n n n )
-   0 0 0 0 0 0 0 0 0 0 0 0 ;
-ndict@ 1- constant ZEROS-ID
-
-TRUSTED: INIT-HEADER ( mut-view<b,l,a,u8> read-view<p,q,u8> -- mut-view<b,l,a,u8> reader-state<p,q> )
-   ZEROS ZEROS ZEROS 0 ;
-ndict@ 1- constant INIT-HEADER-ID
-ZEROS-ID HIDE
-
-\ Each unpack changes one logical initialized cursor into its two ABI cells.
-\ Its only clients below are private adapters to the established XML parser.
+\ Each unpack changes one logical view into its two ABI cells. CURSOR-BASE
+\ and DEST-SPAN below are their only callers.
 TRUSTED: CURSOR-UNPACK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- ptr u8 n ) ;
 ndict@ 1- constant CURSOR-ID
 
 TRUSTED: DEST-UNPACK ( mut-view<p,q,a,u8> -- ptr u8 n ) ;
 ndict@ 1- constant DEST-ID
+
+\ The cursor view stays live beside its record address; an unpack consumes it.
+TRUSTED: CURSOR-BASE ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> ptr u8 )
+   CURSOR-UNPACK 2dup drop ;
+ndict@ 1- constant CURSOR-BASE-ID
+
+\ The destination view stays live beside its raw cells; an unpack consumes it.
+TRUSTED: DEST-SPAN ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ptr u8 n )
+   DEST-UNPACK 2dup ;
+ndict@ 1- constant DEST-SPAN-ID
+
+\ A slice of the source keeps its lifetime: an XML:INIT reader spans only its
+\ source (XML's SPAN$), proved by "a projected name lives after each cursor".
+TRUSTED: SOURCE-SLICE ( mut-view<b,i,a,init<i,reader-state<p,q>>> ptr u8 n -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> ) ;
+ndict@ 1- constant SOURCE-SLICE-ID
+
+CAST: >HEAD-CELL ( ptr n -- ptr ptr u8 )
+ndict@ 1- constant HEAD-CELL-ID
+CAST: >ADDR-CELL ( ptr u8 -- ptr ptr u8 )
+ndict@ 1- constant ADDR-CELL-ID
+CAST: >LEN-CELL ( ptr u8 -- ptr n )
+ndict@ 1- constant LEN-CELL-ID
+CAST: >CURSOR ( ptr u8 -- ptr XML:cursor )
+ndict@ 1- constant XML-CURSOR-ID
 
 \ A live reader's token is its record's address. Each accessor re-enters the
 \ reader from the cursor storage and parks it there again; only WITH-READER's
@@ -104,21 +125,21 @@ ndict@ 1- constant REENTER-ID
 TRUSTED: PARK ( XML:reader -- ) drop ;
 ndict@ 1- constant PARK-ID
 
-TRUSTED: OPEN-READER ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
-   CURSOR-UNPACK over {: record:ptr :}
-   record record @ record cell+ @ XML:INIT PARK ;
+: OPEN-READER ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
+   CURSOR-BASE {: record:ptr :}
+   record >CURSOR record >ADDR-CELL @ record cell+ >LEN-CELL @ XML:INIT PARK ;
 ndict@ 1- constant OPEN-ID
 
-TRUSTED: LINK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
-   CURSOR-UNPACK over {: record:ptr :}
-   READER-HEAD @ record LINK-OFF + !
-   record READER-HEAD ! ;
+: LINK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
+   CURSOR-BASE {: record:ptr :}
+   READER-HEAD >HEAD-CELL @ record LINK-OFF + >ADDR-CELL !
+   record READER-HEAD >HEAD-CELL ! ;
 ndict@ 1- constant LINK-ID
 
-TRUSTED: RELEASE ( -- )
-   READER-HEAD @ {: record:ptr :}
-   record LINK-OFF + @ READER-HEAD !
-   record XML:DISPOSE ;
+: RELEASE ( -- )
+   READER-HEAD >HEAD-CELL @ {: record:ptr :}
+   record LINK-OFF + >ADDR-CELL @ READER-HEAD >HEAD-CELL !
+   record >CURSOR XML:DISPOSE ;
 ndict@ 1- constant RELEASE-ID
 
 \ GUARD links the record before the guarded body parses it, so a failed INIT,
@@ -136,223 +157,99 @@ public
 : WITH-READER ( R mut-view<b,l,a,u8> read-view<p,q,u8> forall<i inside [l,reader-state<p,q>], [ R mut-view<b,i,a,init<i,reader-state<p,q>>> -- S mut-view<b,i,a,init<i,reader-state<p,q>>> | U -- U ]> | U -- S mut-view<b,l,a,u8> | U )
    {: source cb :} cb swap source INIT-HEADER [: GUARD ;] C2-MEM:WITH-INIT ;
 
-private
 INIT-HEADER-ID HIDE
 OPEN-ID HIDE
 LINK-ID HIDE
 RELEASE-ID HIDE
 
-TRUSTED: C-NEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> XML:kind )
-   CURSOR-UNPACK 2dup drop REENTER XML:NEXT swap PARK ;
-ndict@ 1- constant NEXT-ID
-public
 : NEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> XML:kind )
-   C-NEXT ;
-private
-NEXT-ID HIDE
+   CURSOR-BASE REENTER XML:NEXT swap PARK ;
 
-TRUSTED: C-KIND ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> XML:kind )
-   CURSOR-UNPACK 2dup drop REENTER XML:KIND swap PARK ;
-ndict@ 1- constant KIND-ID
-public
 : KIND ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> XML:kind )
-   C-KIND ;
-private
-KIND-ID HIDE
+   CURSOR-BASE REENTER XML:KIND swap PARK ;
 
-TRUSTED: C-NAME$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop REENTER XML:NAME$ rot PARK ;
-ndict@ 1- constant NAME-ID
-public
 : NAME$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-NAME$ ;
-private
-NAME-ID HIDE
+   CURSOR-BASE REENTER XML:NAME$ rot PARK SOURCE-SLICE ;
 
-TRUSTED: C-LOCAL$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop REENTER XML:LOCAL$ rot PARK ;
-ndict@ 1- constant LOCAL-ID
-public
 : LOCAL$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-LOCAL$ ;
-private
-LOCAL-ID HIDE
+   CURSOR-BASE REENTER XML:LOCAL$ rot PARK SOURCE-SLICE ;
 
-TRUSTED: C-RAW$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop REENTER XML:RAW$ rot PARK ;
-ndict@ 1- constant RAW-ID
-public
 : RAW$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-RAW$ ;
-private
-RAW-ID HIDE
+   CURSOR-BASE REENTER XML:RAW$ rot PARK SOURCE-SLICE ;
 
-TRUSTED: C-RAW ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> off len )
-   CURSOR-UNPACK 2dup drop REENTER XML:RAW rot PARK ;
-ndict@ 1- constant RAW-SPAN-ID
-public
 : RAW ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> off len )
-   C-RAW ;
-private
-RAW-SPAN-ID HIDE
+   CURSOR-BASE REENTER XML:RAW rot PARK ;
 
-TRUSTED: C-CONTENT$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop {: state:ptr :}
-   state REENTER XML:CONTENT {: raw:ptr offset:n count:n :}
-   raw PARK
-   state @ offset + count ;
-ndict@ 1- constant CONTENT-ID
-public
 : CONTENT$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-CONTENT$ ;
-private
-CONTENT-ID HIDE
+   CURSOR-BASE {: state:ptr :}
+   state REENTER XML:CONTENT rot PARK {: offset:off count:len :}
+   state >ADDR-CELL @ offset OFF>N + count LEN>N SOURCE-SLICE ;
 
-TRUSTED: C-CONTENT ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> off len )
-   CURSOR-UNPACK 2dup drop REENTER XML:CONTENT rot PARK ;
-ndict@ 1- constant CONTENT-SPAN-ID
-public
 : CONTENT ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> off len )
-   C-CONTENT ;
-private
-CONTENT-SPAN-ID HIDE
+   CURSOR-BASE REENTER XML:CONTENT rot PARK ;
 
-TRUSTED: C-SOURCE$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop dup @ swap cell+ @ ;
-ndict@ 1- constant SOURCE-ID
-public
 : SOURCE$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-SOURCE$ ;
-private
-SOURCE-ID HIDE
+   CURSOR-BASE {: record:ptr :}
+   record >ADDR-CELL @ record cell+ >LEN-CELL @ SOURCE-SLICE ;
 
-TRUSTED: C-DEPTH ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> n )
-   CURSOR-UNPACK 2dup drop REENTER XML:DEPTH swap PARK ;
-ndict@ 1- constant DEPTH-ID
-public
 : DEPTH ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> n )
-   C-DEPTH ;
-private
-DEPTH-ID HIDE
+   CURSOR-BASE REENTER XML:DEPTH swap PARK ;
 
-TRUSTED: C-ATTR-RESET ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
-   CURSOR-UNPACK 2dup drop REENTER XML:ATTR-RESET PARK ;
-ndict@ 1- constant ATTR-RESET-ID
-public
 : ATTR-RESET ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
-   C-ATTR-RESET ;
-private
-ATTR-RESET-ID HIDE
+   CURSOR-BASE REENTER XML:ATTR-RESET PARK ;
 
-TRUSTED: C-ATTR-NEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> bool )
-   CURSOR-UNPACK 2dup drop REENTER XML:ATTR-NEXT swap PARK ;
-ndict@ 1- constant ATTR-NEXT-ID
-public
 : ATTR-NEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> bool )
-   C-ATTR-NEXT ;
-private
-ATTR-NEXT-ID HIDE
+   CURSOR-BASE REENTER XML:ATTR-NEXT swap PARK ;
 
-TRUSTED: C-ATTR-NAME$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop REENTER XML:ATTR-NAME$ rot PARK ;
-ndict@ 1- constant ATTR-NAME-ID
-public
 : ATTR-NAME$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-ATTR-NAME$ ;
-private
-ATTR-NAME-ID HIDE
+   CURSOR-BASE REENTER XML:ATTR-NAME$ rot PARK SOURCE-SLICE ;
 
-TRUSTED: C-ATTR-LOCAL$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop REENTER XML:ATTR-LOCAL$ rot PARK ;
-ndict@ 1- constant ATTR-LOCAL-ID
-public
 : ATTR-LOCAL$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-ATTR-LOCAL$ ;
-private
-ATTR-LOCAL-ID HIDE
+   CURSOR-BASE REENTER XML:ATTR-LOCAL$ rot PARK SOURCE-SLICE ;
 
-TRUSTED: C-ATTR-VALUE$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop REENTER XML:ATTR-VALUE$ rot PARK ;
-ndict@ 1- constant ATTR-VALUE-ID
-public
 : ATTR-VALUE$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-ATTR-VALUE$ ;
-private
-ATTR-VALUE-ID HIDE
+   CURSOR-BASE REENTER XML:ATTR-VALUE$ rot PARK SOURCE-SLICE ;
 
-TRUSTED: C-ATTR-RAW$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   CURSOR-UNPACK 2dup drop {: state:ptr :}
-   state REENTER XML:ATTR-RAW {: raw:ptr offset:n count:n :}
-   raw PARK
-   state @ offset + count ;
-ndict@ 1- constant ATTR-RAW-ID
-public
 : ATTR-RAW$ ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> read-view<p,q,u8> )
-   C-ATTR-RAW$ ;
-private
-ATTR-RAW-ID HIDE
+   CURSOR-BASE {: state:ptr :}
+   state REENTER XML:ATTR-RAW rot PARK {: offset:off count:len :}
+   state >ADDR-CELL @ offset OFF>N + count LEN>N SOURCE-SLICE ;
 
-TRUSTED: C-ATTR-RAW ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> off len )
-   CURSOR-UNPACK 2dup drop REENTER XML:ATTR-RAW rot PARK ;
-ndict@ 1- constant ATTR-RAW-SPAN-ID
-public
 : ATTR-RAW ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> off len )
-   C-ATTR-RAW ;
-private
-ATTR-RAW-SPAN-ID HIDE
+   CURSOR-BASE REENTER XML:ATTR-RAW rot PARK ;
 
-TRUSTED: C-TEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-UNPACK {: destination:ptr cap:n :}
-   CURSOR-UNPACK {: state:ptr bound:n :}
-   state REENTER destination cap XML:TEXT swap PARK {: count:n :}
-   state bound destination cap count ;
-ndict@ 1- constant TEXT-ID
-public
 : TEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   C-TEXT ;
-private
-TEXT-ID HIDE
+   DEST-SPAN {: destination:ptr cap:n :} swap
+   CURSOR-BASE REENTER destination cap XML:TEXT swap PARK {: count:n :}
+   swap count ;
 
-TRUSTED: C-URI ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-UNPACK {: destination:ptr cap:n :}
-   CURSOR-UNPACK {: state:ptr bound:n :}
-   state REENTER destination cap XML:URI swap PARK {: count:n :}
-   state bound destination cap count ;
-ndict@ 1- constant URI-ID
-public
 : URI ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   C-URI ;
-private
-URI-ID HIDE
+   DEST-SPAN {: destination:ptr cap:n :} swap
+   CURSOR-BASE REENTER destination cap XML:URI swap PARK {: count:n :}
+   swap count ;
 
-TRUSTED: C-ATTR-TEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-UNPACK {: destination:ptr cap:n :}
-   CURSOR-UNPACK {: state:ptr bound:n :}
-   state REENTER destination cap XML:ATTR-TEXT swap PARK {: count:n :}
-   state bound destination cap count ;
-ndict@ 1- constant ATTR-TEXT-ID
-public
 : ATTR-TEXT ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   C-ATTR-TEXT ;
-private
-ATTR-TEXT-ID HIDE
+   DEST-SPAN {: destination:ptr cap:n :} swap
+   CURSOR-BASE REENTER destination cap XML:ATTR-TEXT swap PARK {: count:n :}
+   swap count ;
 
-TRUSTED: C-ATTR-URI ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   DEST-UNPACK {: destination:ptr cap:n :}
-   CURSOR-UNPACK {: state:ptr bound:n :}
-   state REENTER destination cap XML:ATTR-URI swap PARK {: count:n :}
-   state bound destination cap count ;
-ndict@ 1- constant ATTR-URI-ID
-public
 : ATTR-URI ( mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> -- mut-view<b,i,a,init<i,reader-state<p,q>>> mut-view<x,y,z,u8> n )
-   C-ATTR-URI ;
-private
-ATTR-URI-ID HIDE
+   DEST-SPAN {: destination:ptr cap:n :} swap
+   CURSOR-BASE REENTER destination cap XML:ATTR-URI swap PARK {: count:n :}
+   swap count ;
 
-\ The representation leaves and reader crossings are retired only after every
-\ adapter above is compiled; past here they have no public or interpret path.
+\ The representation leaves, field casts and reader crossings are retired only
+\ after every accessor above is compiled; past here they have no public or
+\ interpret path.
 CURSOR-ID HIDE
 DEST-ID HIDE
+CURSOR-BASE-ID HIDE
+DEST-SPAN-ID HIDE
+SOURCE-SLICE-ID HIDE
+HEAD-CELL-ID HIDE
+ADDR-CELL-ID HIDE
+LEN-CELL-ID HIDE
+XML-CURSOR-ID HIDE
 REENTER-ID HIDE
 PARK-ID HIDE
 HIDE-ID HIDE

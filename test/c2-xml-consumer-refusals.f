@@ -39,8 +39,8 @@ public
    s" the private read pack cannot be called or ticked" T-LABEL
    s" : X-C2-PACK ( ptr u8 n -- read-view<p,q,u8> ) C2-MEM:READ-PACK ;" 70 SUBJECT:EXITED? TTRUE
    s" ' C2-MEM:READ-PACK drop" 70 SUBJECT:EXITED? TTRUE
-   s" private XML scalar adapters cannot be reexported" T-LABEL
-   s" package XML-C2 public EXPORT C-RAW ;package" 70 SUBJECT:EXITED? TTRUE
+   s" a reopened package cannot export the source slice" T-LABEL
+   s" package XML-C2 public EXPORT SOURCE-SLICE ;package" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-xml-consumer-refusals: ok" type cr ;
 ;package
