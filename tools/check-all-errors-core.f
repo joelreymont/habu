@@ -431,11 +431,12 @@ variable CA-COMPOSE-LABEL-U
 \ ---- a statement that throws while it is checked ----------------------------
 \ The checker reports a definition it refuses and returns, but a statement can
 \ also throw out of it with nothing reported: a `;using` with no `using` open
-\ throws E-USING-UNBALANCED. That throw is reported as E-STATEMENT-THROW at the
-\ token the checker read last, after whatever it reported before it, and fails
-\ the source like a refusal, so the run ends with the checker's status. The
-\ rest of the source is not checked. Both renderings are built in the JSON
-\ writer's buffer.
+\ throws E-USING-UNBALANCED. That throw is reported under the code
+\ VERIFY-DIAGNOSTICS:THROW-CODE$ gives it, E-STATEMENT-THROW with its throw
+\ number unless it names one, at the token the checker read last, after
+\ whatever it reported before it, and fails the source like a refusal, so the
+\ run ends with the checker's status. The rest of the source is not checked.
+\ Both renderings are built in the JSON writer's buffer.
 : CA-THROW-END ( -- n )
    CA-THROW-AT @ CA-WORD-END ;
 
@@ -448,11 +449,16 @@ variable CA-COMPOSE-LABEL-U
 : CA-PROSE-THROW ( -- )
    CA-THROW-ORIGIN {: line:n col:n :}
    CA-JSON-WRITER
-   s" E-STATEMENT-THROW " JSON-WRITE:RAW
+   CA-THROW-RC @ VERIFY-DIAGNOSTICS:THROW-CODE$ 2drop 2drop JSON-WRITE:RAW
+   s"  " JSON-WRITE:RAW
    CA-FILE-A@ CA-FILE-U @ JSON-WRITE:RAW
    s" :" JSON-WRITE:RAW line JSON-WRITE:U
    s" :" JSON-WRITE:RAW col JSON-WRITE:U
-   s" : throw " JSON-WRITE:RAW CA-THROW-RC @ JSON-WRITE:INT
+   CA-THROW-RC @ VERIFY:E-MISSING-SIGNATURE = IF
+      s" : missing signature" JSON-WRITE:RAW
+   ELSE
+      s" : throw " JSON-WRITE:RAW CA-THROW-RC @ JSON-WRITE:INT
+   THEN
    s"  at '" JSON-WRITE:RAW CA-THROW-TOKEN$ JSON-WRITE:RAW
    s" '" JSON-WRITE:RAW drop ;
 

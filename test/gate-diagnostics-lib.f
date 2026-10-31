@@ -1195,6 +1195,17 @@ TYPED-VARIABLE SPLICE-LEN len
    s" code" s" E-STATEMENT-THROW" s" default statement throw code" ERR-JSTR
    s" habu-statement-throw-default.err" s" default statement throw contract" DIAG-CONTRACT ;
 
+\ A definer missing its signature stops the check under its own code, whose
+\ record meets the contract with no throw_code.
+: MISSING-SIGNATURE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-MK ( n -- ) create , does> @ ;" GE-SRC-LINE
+   s" tools/check.f --all-errors accepted a definer missing its signature" CHECK-JSON-ALL
+   s" habu-missing-signature.err" WRITE-ERR
+   s" code" s" E-MISSING-SIGNATURE" s" missing signature code" ERR-JSTR
+   s" habu-missing-signature.err" s" missing signature contract" DIAG-CONTRACT ;
+
 : LEX-RECORDS ( -- )
    GE-HB-RESET
    GE-SRC-RESET

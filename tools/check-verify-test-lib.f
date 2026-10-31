@@ -1824,14 +1824,15 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A deferred word and a cast read their signature before the seal is asked: an
 \ unclosed one in SRC, as the fixture NAME, ends the load with exit 76, and the
-\ check stops at the definer TOK, on line 2, for the signature.
+\ check stops at the definer TOK, on line 2, with E-MISSING-SIGNATURE and no
+\ throw number.
 : SEALED-SIGNATURE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n :}
    name nameu src srcu FIXTURE
    name nameu T-LABEL name nameu AT$ NATIVE-RC 76 T=
    src srcu name nameu GUARD-MS CHECK-AS
-   name nameu tok toku s" E-STATEMENT-THROW" s" 2" s" 1" REFUSED-AT
-   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" NUMBER$ s" 7157" T$= ;
+   name nameu tok toku s" E-MISSING-SIGNATURE" s" 2" s" 1" REFUSED-AT
+   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" GJA-FIELD? nip TFALSE ;
 
 \ SRC, as the fixture NAME, loads and verifies.
 : UNSEALED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}

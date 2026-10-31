@@ -2147,7 +2147,12 @@ sections above.
   comment. The type definers refuse `(` or `\` as names (`E-BAD-NOMINAL-TYPE`
   for `DEFLINEAR` and `VALUE-RECORD`). A definer or parsing word without its
   operand is `E-MISSING-NAME` at the keyword in every `tools/check.f` mode,
-  `--verify-only` included.
+  `--verify-only` included. A definer that declares an effect (`defer`,
+  `TRUSTED:`, `FUNCTION:`, a `does>` clause, …) with no signature after its
+  name, or one never closed, is `E-MISSING-SIGNATURE` (`add_signature`) at the
+  definer, at `does>` for a clause. `--load` refuses `defer D` and a clause
+  with exit 76 and `E-MISSING-SIGNATURE: D at <file>:<line>`, `does>` in place
+  of the name for a clause.
 - **A `create … does>` clause declares its created words' effects.** The
   source pre-pass learns a scanned clause; for a resident definer, the checker
   latches the created-word effect at publication. A straight-line wrapper

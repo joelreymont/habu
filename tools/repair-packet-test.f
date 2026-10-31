@@ -332,10 +332,11 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    s" type" s" fix_type" s" : DIAG-TYPE ( i64 -- i64 ) 0= ;" PACKET-CASE
    s" rstack" s" fix_return_stack" s" : DIAG-RSTACK ( i64 -- ) >r ;" PACKET-CASE ;
 
-\ Source spans without a definition: a statement the checker throws out of
-\ and the lexer's two defects.
+\ Source spans without a definition: a statement the checker throws out of, a
+\ definer missing its signature, and the lexer's two defects.
 : TEST-SPAN-KINDS ( -- )
    s" statement" s" unknown_rejection" s" ;using" PACKET-CASE
+   s" signature" s" add_signature" s" : MK ( n -- ) create , does> @ ;" PACKET-CASE
    s" unterminated" s" close_string" s\" : DIAG-UNTERM ( -- ) s\" abc ;" PACKET-CASE
    s" row" s" close_primitive_row" s" PRIM: DIAG-ROW PE-N PE-IN" PACKET-CASE ;
 

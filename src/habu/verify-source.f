@@ -39,6 +39,10 @@ public
 \ that loads the file and FAULT-TARGET$ naming the file as it was resolved.
 7201 constant E-SOURCE-READ
 
+\ A definer with no signature after its name, or one never closed, stops the
+\ scan with this at the definer, or at `does>` for a clause's (SIGNATURE-AT).
+7157 constant E-MISSING-SIGNATURE
+
 \ Captured by the fresh child before it loads verifier tooling, and survives
 \ the saved verifier image. A direct caller that does not supply an entry
 \ observation retains checking order.
@@ -55,7 +59,6 @@ private
 \ (STATEMENT-STOP). tools/check.f reports each by the record of a statement
 \ that throws.
 7155 constant E-VS-UNTERMINATED-DEFINITION \ a definition, signature or group
-7157 constant E-VS-MISSING-SIGNATURE       \ a definer's, absent or unclosed
 7158 constant E-VS-BARE-TRUST              \ TRUST with no name and signature
 7199 constant E-VS-EFFECT-SIZE             \ a generates: effect past GENR-SIG-CAP
 
@@ -280,12 +283,16 @@ defer COMPOSE-FILE ( ptr u8 n ptr u8 n -- )
    prev TOKEN-START @ SCAN-I @ CSR-HIT
    SOURCE@ TOKEN-START @ +  SCAN-I @ TOKEN-START @ - ;
 
+\ The scan stops at the token at the address.
+: STOP-AT ( ptr u8 n -- )
+   {: at:ptr code:n :}
+   at SOURCE@ - BASE-BYTE @ + TOKEN-BYTE !
+   code throw ;
+
 \ The scan stops at the statement it is in, at its opener: the top-level token
 \ it read last.
 : STATEMENT-STOP ( n -- )
-   {: code:n :}
-   TOP-CUR-A @ SOURCE@ - BASE-BYTE @ + TOKEN-BYTE !
-   code throw ;
+   TOP-CUR-A @ swap STOP-AT ;
 
 : SC-LEAD? ( n -- bool )
    dup $73 = over $53 = or over $63 = or swap $43 = or ;
@@ -563,31 +570,37 @@ TYPE-DECL:E-TDECL-CAP constant E-VS-BODY-CAP
 
 \ The signature ahead of the scan, read as the engine reads a definition head's
 \ (checker.f CHECKER-SIG-SPAN): from its `(` through its `)`, and whether one
-\ opens there. The scan passes it. One that never closes stops the statement
-\ with the given code.
-: SCAN-SIG ( n -- ptr u8 n bool )
-   {: unclosed:n :}
+\ opens there. The scan passes it. One that never closes stops the scan at the
+\ given opener with the given code.
+: SCAN-SIG ( ptr u8 n -- ptr u8 n bool )
+   {: opener:ptr unclosed:n :}
    SOURCE@ SCAN-I @ +  SOURCE-U @ SCAN-I @ -
    {: at:ptr left:n :}
    at left CHECKER-SIG-SPAN
    {: open:n close:n :}
    open left = IF at 0 0 0= 0= EXIT THEN
-   close 0= IF unclosed STATEMENT-STOP THEN
+   close 0= IF opener unclosed STOP-AT THEN
    SCAN-I @ close + SCAN-I !
    at open +  close open -  0 0= ;
 
 \ A signature that opens here is appended to the body; what it declares,
 \ inside the parentheses, is answered, empty for none.
 : MAYBE-SIGNATURE ( -- ptr u8 n )
-   E-VS-UNTERMINATED-DEFINITION SCAN-SIG 0= IF EXIT THEN
+   TOP-CUR-A @ E-VS-UNTERMINATED-DEFINITION SCAN-SIG 0= IF EXIT THEN
    2dup BODY-APPEND
    {: sig:ptr sigu:n :}
    sig 1 +  sigu 2 - ;
 
-: REQUIRE-SIGNATURE ( -- ptr u8 n )
-   E-VS-MISSING-SIGNATURE SCAN-SIG 0= IF E-VS-MISSING-SIGNATURE STATEMENT-STOP THEN
+\ The signature the scan reads next; one missing or never closed stops the scan
+\ at the token at the address.
+: SIGNATURE-AT ( ptr u8 -- ptr u8 n )
+   {: opener:ptr :}
+   opener E-MISSING-SIGNATURE SCAN-SIG 0= IF opener E-MISSING-SIGNATURE STOP-AT THEN
    {: sig:ptr sigu:n :}
    sig 1 +  sigu 2 - ;
+
+: REQUIRE-SIGNATURE ( -- ptr u8 n )
+   TOP-CUR-A @ SIGNATURE-AT ;
 
 : STRING-REST ( ptr u8 n -- ptr u8 n ) {: opener:ptr openeru:n :}
    SCAN-I @ {: start:n :}
@@ -1709,6 +1722,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    THEN ;
 
 : VERIFY-DOES ( -- bool )
+   TOKEN-A @ {: opener:ptr :}
    false DOES-ACCEPTED !
    DEF-TICK-ORDER @ {: order:n :}
    order TICK-GATE = {: gate:bool :}
@@ -1730,7 +1744,7 @@ DYNAMIC-BUFFER TICK-QUAL u8
    ELSE
       VERIFY-NAMED-BODY dup DOES-DEF-VERDICT ! REPORT-DEFERRED
    THEN
-   REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
+   opener SIGNATURE-AT {: sig:ptr sigu:n :}
    BODY-RESET
    LOCALS-RESET
    BEGIN
@@ -2291,7 +2305,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
             TOKEN-A @ TOKEN-U @ DEFER-AT
             true TICK-REMAINDER ! EXIT
          THEN
-         REQUIRE-SIGNATURE
+         TOKEN-A @ SIGNATURE-AT
          kept IF na nu DEFINER-RECORD-AS ELSE 2drop THEN
          -1 TRUSTED-DOES !
       ELSE
@@ -3564,7 +3578,7 @@ variable FFI-LIT-B                          \ and the newer
    a u FFI-APPEND ;
 
 : FFI-SIGNATURE ( -- ptr u8 n )
-   NEXT-RAW s" (" CORE-STR= 0= IF E-VS-MISSING-SIGNATURE STATEMENT-STOP THEN
+   NEXT-RAW s" (" CORE-STR= 0= IF E-MISSING-SIGNATURE STATEMENT-STOP THEN
    1 FFI-SIG-RESERVE                          \ an empty group answers a string in the row
    0 FFI-SIG-U !
    0 FFI-OUT !
@@ -3573,7 +3587,7 @@ variable FFI-LIT-B                          \ and the newer
    0 FFI-LIT-N !
    BEGIN
       NEXT-RAW
-      dup 0= IF E-VS-MISSING-SIGNATURE STATEMENT-STOP THEN
+      dup 0= IF E-MISSING-SIGNATURE STATEMENT-STOP THEN
       2dup s" )" CORE-STR= IF 2drop 0 FFI-SIG FFI-SIG-U @ EXIT THEN
       FFI-TOKEN
    AGAIN ;
@@ -3893,7 +3907,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    DEF-NAME-BYTE @ dup DEF-NAME-U @ + DEF-WORD DEFINED ;
 
 : SKIP-DEFINITION ( -- )
-   E-VS-UNTERMINATED-DEFINITION SCAN-SIG drop 2drop
+   TOP-CUR-A @ E-VS-UNTERMINATED-DEFINITION SCAN-SIG drop 2drop
    BODY-LOAD-RESET
    LOCALS-RESET
    BEGIN

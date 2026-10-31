@@ -4618,19 +4618,20 @@ variable REQ-U
 \ stops the check at its opener: a definition or its signature never closed
 \ (7155: a FUNCTION: with no symbol among them), a locals group never closed
 \ (discovery's E-DISC-UNTERM, on standard input as in a file), a definer's
-\ signature missing or never closed (7157: FUNCTION:'s declaration group too), a
-\ TRUST with no name and signature strings before it (7158), a declaration
-\ never ended (TYPE-DECL:E-TDECL-SYNTAX, 7107), a generates: effect past the
-\ engine's bound (7199). A DEFLINEAR or VALUE-RECORD name no type may take
-\ (7200) and a VALUE-RECORD field the checker refuses (7198) stop it there;
-\ the nominal pass refuses those first in every mode but --verify-only. Each
-\ is reported where it stands, by the record of a statement that throws: first
-\ in prose, alone under --all-errors, in JSON and under --verify-only, for
-\ standard input, a file and a file standard input requires. The nominal pass,
-\ which runs before the pre-verifier, refuses an unended ENUM, STRUCTURE,
-\ PRODUCT or VALUE-RECORD in every file of the closure, and standard input
-\ walks its closure as a named file does: only --verify-only, which has no
-\ nominal pass, reaches the pre-verifier's stop at one (SS-DECL-NESTED).
+\ signature missing or never closed (7157: FUNCTION:'s declaration group too,
+\ and a clause's at its `does>`), a TRUST with no name and signature strings
+\ before it (7158), a declaration never ended (TYPE-DECL:E-TDECL-SYNTAX, 7107),
+\ a generates: effect past the engine's bound (7199). A DEFLINEAR or
+\ VALUE-RECORD name no type may take (7200) and a VALUE-RECORD field the
+\ checker refuses (7198) stop it there; the nominal pass refuses those first in
+\ every mode but --verify-only. Each is reported where it stands, by the record
+\ of a statement that throws (SS-RECORD$ names its code): first in prose, alone
+\ under --all-errors, in JSON and under --verify-only, for standard input, a
+\ file and a file standard input requires. The nominal pass, which runs before
+\ the pre-verifier, refuses an unended ENUM, STRUCTURE, PRODUCT or VALUE-RECORD
+\ in every file of the closure, and standard input walks its closure as a named
+\ file does: only --verify-only, which has no nominal pass, reaches the
+\ pre-verifier's stop at one (SS-DECL-NESTED).
 TYPED-VARIABLE SS-TXT-A ptr u8                \ the statement, a source's second line
 variable SS-TXT-U
 variable SS-CODE                              \ the code it stops with
@@ -4658,23 +4659,40 @@ variable SS-TOK-U
 : SS-AT$ ( -- ptr u8 n )
    s" /ckt-ss.f" ;
 
+\ A stop with a code of its own, E-MISSING-SIGNATURE, carries no throw number.
+: SS-NAMED? ( -- bool )
+   SS-CODE @ 7157 = ;
+
+: SS-RECORD$ ( -- ptr u8 n ptr u8 n )
+   SS-NAMED? IF s" E-MISSING-SIGNATURE" s" add_signature" EXIT THEN
+   s" E-STATEMENT-THROW" s" unknown_rejection" ;
+
 : SS-PROSE ( n ptr u8 n -- )
    {: erru:n f:ptr fu:n :}
-   CAP-ERR erru s" E-STATEMENT-THROW " STARTS-WITH? TTRUE
+   SB-RESET SS-RECORD$ 2drop SB-APPEND 32 SB-APPEND-C
+   CAP-ERR erru SB$ STARTS-WITH? TTRUE
    SB-RESET f fu SB-APPEND
    $3a SB-APPEND-C SS-LINE @ FMT:SB-U $3a SB-APPEND-C SS-COL @ FMT:SB-U
-   s" : throw " SB-APPEND SS-CODE @ FMT:SB-INT
+   SS-NAMED? IF
+      s" : missing signature" SB-APPEND
+   ELSE
+      s" : throw " SB-APPEND SS-CODE @ FMT:SB-INT
+   THEN
    s"  at '" SB-APPEND SS-TOK$ SB-APPEND 39 SB-APPEND-C
    CAP-ERR erru SB$ CONTAINS? TTRUE ;
 
 : SS-JSON ( n ptr u8 n -- )
    {: erru:n f:ptr fu:n :}
-   CAP-ERR erru s\" \"code\":\"E-STATEMENT-THROW\"" CONTAINS? TTRUE
+   SS-RECORD$ {: class:ptr classu:n :}
+   SB-RESET s\" \"code\":\"" SB-APPEND SB-APPEND
+   s\" \",\"repair_class\":\"" SB-APPEND class classu SB-APPEND $22 SB-APPEND-C
+   CAP-ERR erru SB$ CONTAINS? TTRUE
    SB-RESET s\" \"token\":\"" SB-APPEND SS-TOK$ SB-APPEND s\" \",\"file\":\"" SB-APPEND
    CAP-ERR erru SB$ CONTAINS? TTRUE
    SB-RESET f fu SB-APPEND s\" \",\"line\":" SB-APPEND SS-LINE @ FMT:SB-U
    s\" ,\"column\":" SB-APPEND SS-COL @ FMT:SB-U $2c SB-APPEND-C
    CAP-ERR erru SB$ CONTAINS? TTRUE
+   SS-NAMED? IF CAP-ERR erru s\" \"throw_code\"" CONTAINS? TFALSE EXIT THEN
    SB-RESET s\" \"throw_code\":" SB-APPEND SS-CODE @ FMT:SB-INT $2c SB-APPEND-C
    CAP-ERR erru SB$ CONTAINS? TTRUE ;
 
@@ -4849,7 +4867,9 @@ variable SS-NEST-U
    s" TRUSTED: CKT ( -- ) 1 drop" 7155 2 3 s" TRUSTED:" SS-STOP! SS-STDIN-JSON
    s" defer CKF foo" 7157 2 3 s" defer" SS-STOP! SS-STDIN-JSON
    s" defer CKF ( n -- n" 7157 2 3 s" defer" SS-STOP! SS-STDIN-JSON
-   s" : CKO ( n -- ) create , does> @ ;" 7157 2 3 s" :" SS-STOP! SS-STDIN-JSON
+   s" : CKO ( n -- ) create , does> @ ;" 7157 2 27 s" does>" SS-STOP! SS-STDIN-JSON
+   s" : CKO ( n -- ) create , does> ( -- n" 7157 2 27 s" does>" SS-STOP! SS-STDIN-JSON
+   s" TRUSTED: CKT ( n -- ) create , does> @ ;" 7157 2 34 s" does>" SS-STOP! SS-STDIN-JSON
    s\" s\" CKX\" TRUST" 7158 2 11 s" TRUST" SS-STOP! SS-STDIN-JSON
    \ The nominal pass refuses an unended declaration first, in standard
    \ input's closure as in a file's: the pre-verifier's stop at it is located

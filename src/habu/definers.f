@@ -308,6 +308,10 @@ private
    s DEF-SIG-END drop {: end:ptr :}
    s end DEF-SIG-TAKE ;
 
+\ A definer's signature missing or never closed (habu2.f C-SIG-BAD).
+: DEF-SIG-BAD ( -- )
+   s" E-MISSING-SIGNATURE: " ERROR-TEXT:TYPE DEF-RC-BAD-SIG PKG-FAIL ;
+
 \ A signature that must be there, opened and closed, or the refusal names the
 \ token: where it starts and the byte past it. A head's signature that the
 \ input ends before or inside is the source ending inside the definition
@@ -315,9 +319,9 @@ private
 : DEF-SIG-SPAN ( bool -- ptr u8 ptr u8 ) {: head:bool :}
    DEF-SIG-START {: s:ptr open:bool :}
    head s INE-CELL ADDR@ = and if DEF-ENDED then
-   open 0= if DEF-RC-BAD-SIG PKG-FAIL then
+   open 0= if DEF-SIG-BAD then
    s DEF-SIG-END {: end:ptr closed:bool :}
-   closed 0= if head if DEF-ENDED then DEF-RC-BAD-SIG PKG-FAIL then
+   closed 0= if head if DEF-ENDED then DEF-SIG-BAD then
    s end ;
 
 : DEF-REQUIRED-SIG ( -- )

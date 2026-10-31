@@ -2213,7 +2213,7 @@ variable GE-KIND-N
    GE-END-TOP
    c GE-KIND-TOK {: t:ptr tu:n :}
    c 11 = if
-      s" does> at " chk GE-KIND-AT$ t tu GE-EXPECT-ERR
+      s" E-MISSING-SIGNATURE: does> at " chk GE-KIND-AT$ t tu GE-EXPECT-ERR
       76 t tu GE-EXPECT-RC exit
    then
    chk if c GE-KIND-CHECK-LINE$ t tu GE-EXPECT-ERR-HAS

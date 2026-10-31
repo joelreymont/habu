@@ -58,6 +58,19 @@ variable READY
    s" E-LOADER-FORM" s" literal_loader_form"
    s" Load a file by a literal path that resolves within 1023 bytes, written in at most 1023 bytes after include or require and otherwise in under 2048 counting, when relative, a slash and the longest root searched for it, through a loader word no definition redefines or retires." ;
 
+public
+
+\ The code, repair class and suggestion of a statement that threw the given code.
+: THROW-CODE$ ( n -- ptr u8 n ptr u8 n ptr u8 n ) {: rc:n :}
+   rc VERIFY:E-MISSING-SIGNATURE = if
+      s" E-MISSING-SIGNATURE" s" add_signature"
+      s" Write the definer's stack effect as ( inputs -- outputs ) right after the name, or right after does> for its clause." exit
+   then
+   s" E-STATEMENT-THROW" s" unknown_rejection"
+   s" Inspect the token, signature, and raw stack evidence." ;
+
+private
+
 \ The record of the name the scan refused (VERIFY:DUPLICATE): its start and
 \ length in the stopped source, and the stopped file. A length of 0 kept no
 \ name, as for one a definer generates, and its start is stale: the record
@@ -106,9 +119,10 @@ public
    {: rc:n at:n name:ptr nameu:n src:ptr srcu:n :}
    src at ORIGIN {: line:n col:n :}
    src srcu at TOKEN-END {: last:n :}
+   rc THROW-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    START
-   s" code" s" E-STATEMENT-THROW" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" repair_class" s" unknown_rejection" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" code" code codeu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" repair_class" class classu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" token" src at + last at - JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" file" name nameu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
@@ -116,8 +130,10 @@ public
    s" column" col JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" byte_start" at JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" byte_end" last JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" throw_code" rc JSON-WRITE:FIELD-INT JSON-WRITE:COMMA
-   s" suggestion" s" Inspect the token, signature, and raw stack evidence." JSON-WRITE:FIELD-S
+   rc VERIFY:E-MISSING-SIGNATURE <> if
+      s" throw_code" rc JSON-WRITE:FIELD-INT JSON-WRITE:COMMA
+   then
+   s" suggestion" sug sugu JSON-WRITE:FIELD-S
    END$ ;
 
 : LOADER-RECORD$ ( n n n ptr u8 n ptr u8 n -- ptr u8 n )

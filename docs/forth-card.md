@@ -148,6 +148,7 @@ before any `require`.
 | any token after a call to a word whose body ends in `die` or `throw`, in the same branch: `: STOP ( -- ) 5 throw ; : AFTER ( -- n ) STOP 0 ;` | `E-DEAD-CODE` |
 | `: I ( -- ) ;` | `E-RESERVED-DEFINITION` |
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
+| `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause; `--load` exits 76, `E-MISSING-SIGNATURE: D at <file>:<line>` |
 | `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION` |
 | `HH 8 s" x" DYNAMIC-STORAGE:ARENA-NEW`, or any call or tick of `DYNAMIC-STORAGE:ARENA-NEW` or `ARENA-RELEASE`, directly or through a re-export, outside an `ARENA`'s generated NAME-NEW and NAME-RELEASE | `E-ARENA-CALL` |
 | `: field-project ( a n -- ptr n ) drop drop V ;`, by any definer, in any package or letter case | `hb: reserved word cannot be a definition name: field-project`, rc 70 |

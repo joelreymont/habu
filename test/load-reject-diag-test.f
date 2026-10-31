@@ -24,6 +24,7 @@ $1000 constant CAP
 60000 constant TIMEOUT-MS
 70 constant REJECT-RC
 67 constant UNCAUGHT-RC
+76 constant BAD-SIG-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
 
@@ -452,6 +453,22 @@ LOWER-CERT-HOOK:INSTALL
    s" DYNAMIC-BUFFER LRD-STG-DB lrd-stg-none" s" in LRD-STG-DB" STORAGE-REJECT
    s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" s" in LRD-STG-DL" STORAGE-REJECT ;
 
+\ A definer with no signature is refused by its code and the token it stops at:
+\ the word being defined, or `does>` for a clause.
+: SIG-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n line:ptr lineu:n :}
+   BODY$ src srcu FS:WRITE-ALL
+   BODY$ RUN
+   ERR$ line lineu CONTAINS? TTRUE
+   ERR$ s" body.f:1" CONTAINS? TTRUE
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ BAD-SIG-RC T= ;
+
+: TEST-MISSING-SIGNATURE ( -- )
+   s" a definer's missing signature names its code and token" T-LABEL
+   s" : LRD-MK ( n -- ) create , does> @ ;" s" E-MISSING-SIGNATURE: does> at " SIG-REJECT
+   s" defer LRD-D" s" E-MISSING-SIGNATURE: LRD-D at " SIG-REJECT ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -575,6 +592,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-BYTE-PTR-STORE
    TEST-BYTE-PTR-FETCH
    TEST-STORAGE
+   TEST-MISSING-SIGNATURE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-IMM-INCLUDE

@@ -352,6 +352,9 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 \ LCOMPILEDIE tail appends ` at <path>:<line>` and the newline.
 : BADSTR-MSG$ ( -- ptr u8 n )   s" hb: bad string literal" ;
 : BADSTR-MSG-LEN ( -- n )   BADSTR-MSG$ nip ;
+variable LSIGBAD              \ C-SIG-BAD's code; the token and the LCOMPILEDIE tail follow it
+: SIGBAD-MSG$ ( -- ptr u8 n )   s" E-MISSING-SIGNATURE: " ;
+: SIGBAD-MSG-LEN ( -- n )   SIGBAD-MSG$ nip ;
 variable LATMSG               \ " at " — the refusal-location separator the LCOMPILEDIE tail writes before <path>:<line>
 : ATMSG$ ( -- ptr u8 n )   s"  at " ;
 : ATMSG-LEN ( -- n )   ATMSG$ nip ;
@@ -682,6 +685,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LSRCFULL LABEL@ LBL, SRCFULL-MSG$ BYTES,
    LSRCREAD LABEL@ LBL, SRCREAD-MSG$ BYTES,
    LBADSTR  LABEL@ LBL, BADSTR-MSG$ BYTES,             \ no newline: the LCOMPILEDIE tail appends the location + newline
+   LSIGBAD  LABEL@ LBL, SIGBAD-MSG$ BYTES,
    LATMSG   LABEL@ LBL, ATMSG$ BYTES,
    LPROTPUB LABEL@ LBL, PROTPUB-MSG$ BYTES,            \ C-STORE-DEF-NAME appends the def name + newline
    LPROTAOT LABEL@ LBL, PROTAOT-MSG$ BYTES,            \ EM-AOTWIDGATE appends the callee name + newline
@@ -3160,7 +3164,10 @@ public
    11 DATA TSIG-A-CELL STR,  12 DATA TSIG-U-CELL STR,
    C-SIG-FULL$  LBCS LABEL@ BL, ;
 
-: C-SIG-BAD ( -- )                                   \ malformed created/required stack-sig: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level. Fires before any dict publish (does/defer/trust name not yet counted into NDICT); rollback drops only compile-state + region prot.
+\ Fires before the name is counted into NDICT, so a rollback inside evaluate
+\ drops only compile state.
+: C-SIG-BAD ( -- )
+   0 2 MOVZ,  1 LSIGBAD LABEL@ ADR,  2 SIGBAD-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
@@ -13169,7 +13176,7 @@ package LABELS
    LBL RELOC-EMIT:LCALLMSG ! LBL RELOC-EMIT:LXTMSG ! LBL RELOC-EMIT:LXTHEADERMSG !
    LBL RELOC-EMIT:LADDRMSG !
    LBL RELOC-EMIT:LXTBANDMSG !  LBL RELOC-EMIT:LXTKINDMSG !
-   LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !  LBL LATMSG !
+   LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !  LBL LSIGBAD !  LBL LATMSG !
    LBL LPROTPUB !  LBL LPROTAOT !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !  LBL LADDSUBIMM !  LBL LADDSUBBIG !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
