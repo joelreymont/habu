@@ -85,17 +85,17 @@ package HB-BUILD-CLI
 
 \ A PROGRAM THAT REGISTERS A POINTER CELL AT RUN TIME. The definer's own
 \ `ptr-cell-mark` runs at DEFINITION time, on the build host; this program calls
-\ the primitive itself inside MAIN, after storing the address of its own data in
-\ a persisted cell. The linker removes the compiler-only registration call
-\ while preserving its stack effect and the application pointer. The same image
+\ it and scratch-cell-mark inside MAIN, after storing the address of its own data
+\ in a persisted cell. The linker removes the compiler-only registration calls
+\ while preserving their stack effect and the application pointer. The same image
 \ carries test/stripped-quotation-field-subject.f's fixed quotation fields,
 \ replaced by whole-record stores as it loads, and checks them first.
 : HBT-PMK-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require test/stripped-quotation-field-subject.f\n" SB-APPEND
-   S\" create PMK-OWN 111 c, 107 c,\nPERSISTED-PTR-VARIABLE PMK-CELL\n" SB-APPEND
+   S\" create PMK-OWN 111 c, 107 c,\nPERSISTED-PTR-VARIABLE PMK-CELL\nPTR-VARIABLE PMK-SCRATCH\n" SB-APPEND
    S\" : MAIN ( -- )\n   STRIPPED-QUOT-FIELD:CHECK\n" SB-APPEND
-   S\"    PMK-OWN PMK-CELL !\n   PMK-CELL ptr-cell-mark\n" SB-APPEND
+   S\"    PMK-OWN PMK-CELL !\n   PMK-CELL ptr-cell-mark\n   PMK-SCRATCH scratch-cell-mark\n" SB-APPEND
    S\"    depth 0 <> if s\" ptrmark: stack\" 74 die then\n   PMK-CELL @ 2 type cr ;\n" SB-APPEND
    SB$ ;
 

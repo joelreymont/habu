@@ -1701,6 +1701,9 @@ variable ACAP-SWEEP-B1
 : ACAP-XTCELL-DATA? ( n -- bool )
    SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
 
+: ACAP-XTCELL-SCRATCH? ( n -- bool )
+   SNAP-RELOC:XTCELL-SCRATCH-TAG and 0 <> ;
+
 : ACAP-XTCELL-AT ( n -- ptr n )
    AOT-LIVE-DATA swap ACAP-XTCELL-OFF + ;
 
@@ -1743,6 +1746,7 @@ variable ACAP-SWEEP-B1
 \ by the code span: the kind is recorded where it is decided, not guessed.
 : ACAP-XTCELL-TARGET ( n n n n n -- n n n )
    {: row:n b0:n b1:n d0:n d1:n :}
+   row ACAP-XTCELL-SCRATCH? if 0 d0 d1 exit then
    row ACAP-XTCELL-AT AOT-CELL@
    row ACAP-XTCELL-DATA? if d0 d1 else b0 b1 then ;
 
@@ -1758,6 +1762,7 @@ variable ACAP-SWEEP-B1
 
 : ACAP-XTCELL-META ( n n n n n n -- n )
    {: k:n row:n b0:n b1:n d0:n d1:n :}
+   row ACAP-XTCELL-SCRATCH? if AOT-WINDOW:XTOFF-SCRATCH-TAG exit then
    row b0 b1 d0 d1 ACAP-XTCELL-TARGET {: v:n lo:n hi:n :}
    row ACAP-XTCELL-DATA? 0= v 0<> and if
       v lo < v hi >= or if v ACAP-CELL-NAMED exit then

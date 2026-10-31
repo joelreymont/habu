@@ -182,23 +182,12 @@ $2000000 constant SIGN
    r s" addrmap-set" REC-NAME= IF 0 0= EXIT THEN
    r s" xref-retarget" REC-NAME= IF 0 0= EXIT THEN
    0 0= 0= ;
-\ DECLARATIONS WHOSE REGISTRIES A STRIPPED IMAGE NEVER READS. (MARK) is the
-\ address-cell registrar (habu2.f EMIT-MARK): `xt!` stores the token and BLs it
-\ to DECLARE the cell as a code address. Its readers (the snapshot writer,
-\ habu2.f EMIT-XT, aot-capture.f) are absent from a stripped image, whose only
-\ restore pass is the linker-computed aot-link-arm.f EMIT-XT-CELLS, and the
-\ registrar would die on the zero address-cell header of fresh DATA (habu2.f
-\ MARK-HEADER). So link drops the declaration half of `xt!` (aot-link-arm.f
-\ RELOC-W32 writes a NOP) and keeps the store half, BSTORE's guard included. A
-\ declaration-only record is never a closure member. ptr-cell-mark's primitive
-\ first pops the address; the ARM64 linker keeps that pop when it drops the
-\ registry call (aot-common.f PTR-MARK-TARGET?). The x86-64 linker drops only
-\ xt!'s recorded registrar call: ptr-cell-mark calls the registrar at runtime
-\ there and is refused if reachable (aot-x64.f). Both rules key on the target,
-\ never on the calling member.
+\ Declarations a stripped image never reads, whose registrar dies on fresh DATA (habu2.f
+\ MARK-HEADER): link NOPs xt!'s BL and keeps each mark's pop (aot-common.f PTR-MARK-TARGET?).
 : AOT-DECLARATION? {: r:ptr :} ( ptr a -- bool )
    r s" (MARK)" REC-NAME= IF 0 0= EXIT THEN
-   r s" ptr-cell-mark" REC-NAME= ;
+   r s" ptr-cell-mark" REC-NAME= IF 0 0= EXIT THEN
+   r s" scratch-cell-mark" REC-NAME= ;
 
 \ DP-CHECK branches to a compiler diagnostic/recovery tail in the engine.
 \ A stripped image replaces that exact helper with its own bounded refusal.
@@ -561,10 +550,8 @@ variable NB-IX
 \ The span scan (aot-common.f SCAN-DATA-CELL) reads cells through this word too.
 : DATA-CELL@ ( n -- n ) DATA-PTR CELL-VIEW @ ;
 
-\ The linker writes a window cell in exactly two places: aot-common.f
-\ CARRY-CELLS copies a carried claim into the carried run, and XTD-ROW below
-\ stores a declared DATA cell's mapped value. The blob is read out of live DATA
-\ after both.
+\ The linker writes window cells only in aot-common.f CARRY-CELLS, XTD-ROW and XTC-ROW;
+\ the blob is read out of live DATA after all three.
 : DATA-CELL! ( n n -- ) {: at:n v:n :} v at DATA-PTR CELL-VIEW ! ;
 
 \ A whole cell at this address is inside mapped DATA, so reading it cannot
@@ -853,6 +840,7 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
    raw XTCELL-OFF-MASK and {: off:n :}
    DATA-VA VA>N off + {: at:n :}
    at XTC-IN-WINDOW? 0= IF exit THEN
+   raw XTCELL-SCRATCH-TAG and 0<> IF at 0 DATA-CELL! exit THEN
    raw XTCELL-DATA-TAG and 0<> IF at XTD-ROW exit THEN
    at DATA-CELL@ {: v:n :}
    v 0= IF exit THEN

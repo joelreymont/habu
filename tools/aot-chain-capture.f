@@ -280,8 +280,9 @@ variable NAME-COUNT
    at AOT-ARM:D0 @ < at CELL + AOT-ARM:D0 @ > and if ROW-REFUSE then
    at AOT-ARM:D0 @ >= at AOT-ARM:D1 @ < and {: inside:bool :}
    raw SNAP-RELOC:XTCELL-DATA-TAG and 0<> {: data?:bool :}
+   raw SNAP-RELOC:XTCELL-SCRATCH-TAG and 0<> {: scratch?:bool :}
    data? if AOT-ARM:D0 @ AOT-ARM:D1 @ else AOT-ARM:B0 @ AOT-ARM:B1 @ then {: lo:n hi:n :}
-   data-base off + @ {: target:n :}
+   scratch? if 0 else data-base off + @ then {: target:n :}
    inside target lo >= target hi < and or 0= if exit then
    inside if
       at AOT-ARM:D1 @ CELL - > if ROW-REFUSE then
@@ -294,7 +295,8 @@ variable NAME-COUNT
       target lo < target hi >= or if ROW-REFUSE then
       data? if target lo - 1+ else target AOT-CAPTURE:CODE-OFFSET 1+ then
    then
-   data? if AOT-WINDOW:XTOFF-DATA-TAG or then {: meta:n :}
+   data? if AOT-WINDOW:XTOFF-DATA-TAG or then
+   scratch? if AOT-WINDOW:XTOFF-SCRATCH-TAG or then {: meta:n :}
    loc meta ?EXACT-ROW ;
 
 \ The compiler's hook must still be a declared code cell in this window with a

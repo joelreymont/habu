@@ -322,6 +322,7 @@ Every form loaded and its accessor effect certified.
 | `TYPED-VARIABLE V ptr t` | a cell holding an address of `t` | `( -- ptr ptr t )` |
 | `n TYPED-BUFFER TB t` | a fixed array of `t` | `( n -- ptr t )` |
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
+| `n PERSISTED-PTR-U8-TABLE TT` | a `PTR-U8-TABLE` whose cells keep their addresses across a save | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `ARENA AR t` | records sharing one lifetime, never moved | family `ar`, held in place in the owner's `FIELD` or `TYPED-VARIABLE` (`@`/`!` on it is `E-IN-PLACE`, a cast reaching its head `E-CAST-OWNER`, a `DYNAMIC-BUFFER`, `ARENA`, `CWORK-VARIABLE`, `CWORK-BUFFER` or `CWORK-SPAN` of it `E-BAD-STORAGE`); `AR-NEW ( ptr ar -- ptr t )` a zeroed record, `AR-RELEASE ( ptr ar -- )` frees them all, and a pointer kept across it can alias the next NEW's record; tasks sharing one arena serialise both; capture refuses an arena still live after every hook has run (`DYNAMIC-STORAGE:E-ARENA-LIVE`), so a hook can release it |
 | `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
@@ -342,8 +343,9 @@ A definer that writes its word as text (`+USER`) states what it makes with
 word's uses before the run; what no row states is left to the run (§ 3). `FUNCTION:` needs no row.
 
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
-(`( -- ptr ptr ptr u8 )`); `PERSISTED-PTR-VARIABLE` and
-`PERSISTED-PTR-U8-TABLE-VARIABLE` are the snapshot-marked siblings. Runtime-sized buffers come
+(`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
+`PTR-U8-TABLE-VARIABLE` cells as null; their `PERSISTED-` siblings keep their
+addresses. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 

@@ -3,7 +3,9 @@
 \ engine bakes into its seed window zeroed. The warm image must read the hole
 \ and the zeroed seed cells back as zero, because the grid does not store a
 \ zero cell and the seed has put the table's digits there before the restore.
+\ A scratch pointer cell holds a mapping at the save and must read back null.
 require src/lib/string.f
+require src/lib/memory.f
 require src/habu/cell-grid.f
 
 package SNAP-WRITER-HOLE
@@ -14,6 +16,9 @@ public
 1234567 constant HI-VALUE
 
 create HOLE HOLE-BYTES 16 + allot
+PTR-VARIABLE MAPPED
+
+: MAPPED-AT ( -- ptr u8 ) MAPPED @ ;
 
 : HOLE-LO ( -- n ) HOLE @ ;
 : HOLE-HI ( -- n ) HOLE HOLE-BYTES + 8 + @ ;
@@ -36,7 +41,8 @@ create HOLE HOLE-BYTES 16 + allot
    HOLE-OR 0<> if 2 or then
    HOLE-HI HI-VALUE <> if 4 or then
    SEED-CELLS 0<> if 8 or then
-   SEED-NEXT [char] 8 <> if 16 or then ;
+   SEED-NEXT [char] 8 <> if 16 or then
+   MAPPED-AT NULL-PTR = 0= if 32 or then ;
 
 \ The grid's presence map has pad bits only when its group count is not a
 \ multiple of eight, and the parent doctors one. The heap ends at the last
@@ -53,5 +59,6 @@ SNAP-WRITER-HOLE:LO-VALUE SNAP-WRITER-HOLE:HOLE !
 SNAP-WRITER-HOLE:HI-VALUE SNAP-WRITER-HOLE:HOLE SNAP-WRITER-HOLE:HOLE-BYTES + 8 + !
 0 STR-MAX-I64$ !
 0 STR-MAX-I64$ 8 + !
+65536 MEM-ALLOC-BYTES drop SNAP-WRITER-HOLE:MAPPED !
 SNAP-WRITER-HOLE:END-IN-SPAN SNAP-WRITER-HOLE:HEAP-END -
    SNAP-WRITER-HOLE:MAP-BYTE-SPAN 1- and allot

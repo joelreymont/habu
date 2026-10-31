@@ -151,7 +151,7 @@ private
    s" NAMED-CELLS-TEST:BAD-READ" 75 text size REFUSE
    s" NAMED-CELLS-TEST:BAD-MERGE" 75 text size REFUSE ;
 : REFUSALS ( -- )
-   XTOFF-KIND-MASK 1+ s" invalid target kind" REFUSE-IO
+   XTOFF-SCRATCH-TAG 1+ s" scratch address cell has a target" REFUSE-IO
    XTOFF-NAME-TAG s" name is not a pool entry" REFUSE-IO
    XTOFF-NAME-TAG AOT-NAMES-LEN @ + 1+ s" name is not a pool entry" REFUSE-IO
    XTOFF-NAME-TAG AOT-NAMES-LEN @ + s" name is not a pool entry" REFUSE-IO

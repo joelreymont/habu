@@ -3,11 +3,27 @@ require src/lib/process-command.f
 require src/lib/signal.f
 require src/lib/test.f
 require src/lib/test/wait.f
+require src/habu/address-cells.f
 
 package PROCESS-IMAGE-SUBJECT
 private
 
 variable CAPTURE-ROWS
+
+\ A scratch pointer cell; its row and XREF-A's (baked into the engine) keep the
+\ scratch kind.
+PTR-VARIABLE MAPPED
+
+: ROWS ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
+
+\ The address-cell row declaring the cell at DATA offset off, or 0.
+: ROW-AT ( n -- n ) {: off:n :}
+   ROWS 0 ?do
+      i ADDRESS-CELLS:ROW@ {: row:n :}
+      row SNAP-RELOC:XTCELL-OFF-MASK and off = if row unloop exit then
+   loop 0 ;
+
+: SCRATCH? ( n -- bool ) ROW-AT SNAP-RELOC:XTCELL-SCRATCH-TAG and 0<> ;
 
 \ The first restored USE fixes the row count. Further captures of these same
 \ registries must reuse their DATA storage and its existing declarations.
@@ -67,6 +83,9 @@ public
    PROC-ENV-DEF-N @ COUNT>N 0 T=
    s" HABU_IMAGE_DEFAULT" >LEN PROC-ENV-DEFAULT$? TFALSE 2drop
    CHECK-ROWS
+   s" restored scratch pointer cells are declared scratch" T-LABEL
+   MAPPED data-base - SCRATCH? TTRUE
+   XREF-A data-base - SCRATCH? TTRUE
    T-REPORT ;
 
 \ No descriptor comes through an image: the image was saved with the signal

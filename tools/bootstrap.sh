@@ -351,11 +351,11 @@ bootstrap_wide_gate() {
 
 bootstrap_wide_gate
 
-# PERSISTED-PTR-VARIABLE is the boot prefix's only caller of the engine primitive
-# `ptr-cell-mark`, so a stage0 generator that never registers it takes down every
-# stage0 build at the prefix, naming only the bare token. This gate builds and runs
-# a seed that uses the definer, so the omission -- or a seed word that consumes the
-# wrong depth -- is named as itself.
+# The pointer-storage definers call the engine primitives `ptr-cell-mark` and
+# `scratch-cell-mark`, so a stage0 generator missing either takes down every stage0
+# build at the prefix, naming only the bare token. This gate builds and runs a seed
+# that uses both, so the omission -- or a seed word that consumes the wrong depth --
+# is named as itself.
 bootstrap_ptr_cell_mark_gate() {
   "$GF" test/bootstrap-ptr-cell-mark.fs
 }

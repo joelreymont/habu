@@ -5,7 +5,7 @@
 \ (habu2.f DOES-REC:ELIDE-EMPTY), so a read costs one load (`0 ptr-field` cost a
 \ call, a branch and a frame).
 : PTR-VARIABLE ( -- )
-   create 0 , does> ( -- ptr ptr a ) ;
+   create here scratch-cell-mark 0 , does> ( -- ptr ptr a ) ;
 
 \ The DATA cell at an offset the engine layout reserves, declared as a cell that
 \ holds a byte pointer. `ptr-field` (src/habu/prims.f) is the declared door
@@ -19,9 +19,8 @@ public
 : DATA-CELL ( n -- ptr ptr u8 ) data-base swap + 0 ptr-field ;
 ;package
 
-\ Persistence is explicit: scratch pointer slots use PTR-VARIABLE and never join
-\ the relocation table; only a slot whose value must survive an image/capture uses
-\ this definer.
+\ Scratch slots (PTR-VARIABLE, PTR-U8-TABLE, PTR-U8-TABLE-VARIABLE) are saved as null; a slot
+\ whose value must survive an image or capture uses this definer.
 : PERSISTED-PTR-VARIABLE ( -- )
    create here ptr-cell-mark 0 , does> ( -- ptr ptr a ) ;
 
@@ -45,7 +44,11 @@ public
 \ NAME` publishes NAME as the table's BASE, so `i cells NAME + 0 ptr-field` takes
 \ the field of a declared pointer cell rather than of raw dictionary storage.
 : PTR-U8-TABLE ( n -- )
-   create cells allot does> ( -- ptr ptr u8 ) ;
+   create dup 0 ?do here i cells + scratch-cell-mark loop cells allot does> ( -- ptr ptr u8 ) ;
+
+\ A PTR-U8-TABLE whose cells keep their addresses across a save.
+: PERSISTED-PTR-U8-TABLE ( n -- )
+   create dup 0 ?do here i cells + ptr-cell-mark loop cells allot does> ( -- ptr ptr u8 ) ;
 
 \ A persisted cell holding a PTR-U8-TABLE's base: the head of an arena that
 \ starts in a boot table and is repointed at a grown allocation.
@@ -53,7 +56,7 @@ public
    create here ptr-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
 
 : PTR-U8-TABLE-VARIABLE ( -- )
-   create 0 , does> ( -- ptr ptr ptr u8 ) ;
+   create here scratch-cell-mark 0 , does> ( -- ptr ptr ptr u8 ) ;
 
 \ `off RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell
 \ the engine layout reserves at `off`, declared `ptr ptr u8`. The offset goes

@@ -745,7 +745,7 @@ variable PADDED
    s" the sparse heap is stored as the cell grid, smaller than its bytes" T-LABEL
    HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
    STREAM-END HEAP-OFF - HEAP-BYTES < TTRUE
-   s" the warm image reads the hole and the zeroed seed cells as zero" T-LABEL
+   s" the warm image reads the hole, the zeroed seed cells and a scratch pointer cell as zero" T-LABEL
    HOLE-PROBE$ WARM-STDIN ASSERT-HOLE-RESTORED
    GRID-FRAMING-CASE
    GRID-VALUE-CASE

@@ -1221,7 +1221,9 @@ path: `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` rejects with
 t`, and the `create … does>` definers of `src/core/pointer-storage.f` that spell
 their pointee. A declared cell takes the address it was declared for and
 refuses an address of one: `PTR-VARIABLE X : F ( -- ptr u8 ) X @ ;` certifies
-while `( -- ptr ptr u8 )` does not.
+while `( -- ptr ptr u8 )` does not. An image save writes the scratch forms
+(`PTR-VARIABLE`, `PTR-U8-TABLE`, `PTR-U8-TABLE-VARIABLE`) as null; their
+`PERSISTED-` siblings keep their addresses.
 
 Records that mix a pointer field with scalars use `STRUCTURE … DERIVE addr`
 (**Structures And Enums**). Two launders remain open and certify today:

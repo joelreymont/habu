@@ -1,8 +1,9 @@
 \ hb-build-stripped-cells-test.f - checked fixture for tools/hb-build-lib.f: the
 \ DATA cells a stripped image refuses (a pointer into memory the build mapped, in
-\ an undeclared and a declared cell, and a baked table no claim names). The same
-\ allocation at run time links in tools/hb-build-stripped-cache-test.f
-\ HBT-STRIPPED-SAME-TWICE; tools/hb-build-test-lib.f lists the other hb-build rows.
+\ an undeclared and a declared cell, and a baked table no claim names), and the
+\ scratch pointer cell it saves as null. The same allocation at run time links in
+\ tools/hb-build-stripped-cache-test.f HBT-STRIPPED-SAME-TWICE;
+\ tools/hb-build-test-lib.f lists the other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cells-test.f
 
 require src/lib/string.f
@@ -21,6 +22,12 @@ package HB-BUILD-CLI
 
 : HBT-MAPD-SRC ( -- ptr u8 n )
    HBT-MAPD-SRC-BUF HBT-MAPD-SRC-U @ ;
+
+: HBT-MAPS-SRC ( -- ptr u8 n )
+   HBT-MAPS-SRC-BUF HBT-MAPS-SRC-U @ ;
+
+: HBT-MAPS-OUT ( -- ptr u8 n )
+   HBT-MAPS-OUT-BUF HBT-MAPS-OUT-U @ ;
 
 \ ... and a baked `create` TABLE that no claim names is refused. TPB is
 \ src/os/env-base.f's TMP-PATH buffer, the shape of the carried digit tables and the
@@ -51,6 +58,12 @@ package HB-BUILD-CLI
    S\" MEM-ALLOC-64K drop PBUF !\n: MAIN ( -- ) s\" declared\" type cr ;\n" SB-APPEND
    SB$ ;
 
+: HBT-MAPS-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   S\" require src/lib/memory.f\nPTR-VARIABLE SBUF\nMEM-ALLOC-64K drop SBUF !\n" SB-APPEND
+   S\" : MAIN ( -- ) SBUF @ NULL-PTR = if s\" null\" else s\" set\" then type cr ;\n" SB-APPEND
+   SB$ ;
+
 \ A long zero run ends at an unaligned mapped address. This adds the raw-byte
 \ transition to the aligned and declared-cell cases on the same keyed linker.
 : HBT-MAPB-SRC$ ( -- ptr u8 n )
@@ -79,6 +92,18 @@ package HB-BUILD-CLI
    HBB-ERR-BUF derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
    HBB-ERR-BUF derr s" word=PBUF" CONTAINS? TTRUE ;
 
+\ ... and a PTR-VARIABLE, whose declared type says it holds no address across a
+\ save, links and reads NULL-PTR in the image.
+: HBT-STRIPPED-MAPPED-SCRATCH ( -- )
+   HBT-MAPS-SRC HBT-MAPS-SRC$ FS:WRITE-ALL
+   HBT-MAPS-SRC HBT-MAPS-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-MAPS-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
+   HBT-RUN-OUT outn S\" null\n" T$=
+   errn 0 T=
+   rcn 0 T= ;
+
 : HBT-STRIPPED-MAPPED-BYTES ( -- )
    HBT-MAPC-SRC HBT-MAPB-SRC$ FS:WRITE-ALL
    HBT-MAPC-SRC HBT-RUN-MAKER {: outu:n erru:n rc:n :}
@@ -105,6 +130,7 @@ public
    HBT-PREPARE
    HBT-STRIPPED-MAPPED-CELL
    HBT-STRIPPED-MAPPED-DECLARED
+   HBT-STRIPPED-MAPPED-SCRATCH
    HBT-STRIPPED-MAPPED-BYTES
    HBT-STRIPPED-UNCARRIED-TABLE
    FS:CLEANUP-RUN

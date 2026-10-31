@@ -639,12 +639,14 @@ variable NAME-BOUNDARY-LEN
 
 : ?XTOFF-TARGET ( n n n -- )
    {: meta:n dspan:n blen:n :}
-   meta XTOFF-KIND-MASK and XTOFF-KIND-MASK = if
-      s" aot-file: an address cell has an invalid target kind" DIE then
+   meta XTOFF-KIND-MASK and {: kind:n :}
    meta XTOFF-VALUE-MASK and {: value:n :}
-   meta XTOFF-NAME-TAG and 0<> if value ?NAMED-TARGET exit then
+   kind XTOFF-SCRATCH-TAG = if
+      value 0= if exit then
+      s" aot-file: a scratch address cell has a target" DIE then
+   kind XTOFF-NAME-TAG = if value ?NAMED-TARGET exit then
    value 0= if exit then
-   meta XTOFF-DATA-TAG and 0<> if
+   kind XTOFF-DATA-TAG = if
       value dspan <= if exit then
       s" aot-file: an address cell DATA target is outside its window" DIE
    then
@@ -1482,10 +1484,11 @@ variable MERGE-XT-DST
 : MERGED-XTOFF-TARGET ( n -- n )
    {: meta:n :}
    meta XTOFF-VALUE-MASK and 0= if meta exit then
-   meta XTOFF-NAME-TAG and 0<> if
+   meta XTOFF-KIND-MASK and {: kind:n :}
+   kind XTOFF-NAME-TAG = if
       meta H-NAMES @ XTOFF-VALUE-MASK XTOFF+ exit
    then
-   meta XTOFF-DATA-TAG and 0<> if
+   kind XTOFF-DATA-TAG = if
       meta H-DATA-R @ XTOFF-VALUE-MASK XTOFF+ exit
    then
    meta H-BLOB @ XTOFF-VALUE-MASK XTOFF+ ;

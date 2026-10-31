@@ -557,8 +557,7 @@ private
       key $FF and 0 DATA-STORAGE BYTE-VIEW at SNAP-RELOC:SITE-KIND-OFF + + c!
    loop ;
 
-\ An address-cell row's target word (src/habu/aot-decl.f AOT-WINDOW): its two high
-\ bits are CODE (00), named CODE (01) or DATA (10); its low bits are 0 for null.
+\ An address-cell row's target word (src/habu/aot-decl.f AOT-WINDOW).
 : CELL-META ( n -- n ) 4 AOT-WINDOW:XTOFF@ ;
 : CODE-CELL? ( n -- bool ) CELL-META {: m:n :}
    m AOT-WINDOW:XTOFF-KIND-MASK and 0=  m AOT-WINDOW:XTOFF-VALUE-MASK and 0<> and ;
@@ -653,35 +652,47 @@ private
       then
    loop ;
 
-: CELL-DECL ( n bool -- ) {: off:n data?:bool :}
+\ A registry key is the cell's DATA offset above a two-bit kind, the address-cell
+\ row's tag bits (SNAP-RELOC:XTCELL-DATA-TAG, XTCELL-SCRATCH-TAG) shifted down.
+62 constant KIND-SHIFT
+0 constant CODE-KEY
+SNAP-RELOC:XTCELL-DATA-TAG KIND-SHIFT rshift constant DATA-KEY
+SNAP-RELOC:XTCELL-SCRATCH-TAG KIND-SHIFT rshift DATA-KEY or constant SCRATCH-KEY
+
+: CELL-KEY ( n -- n )
+   CELL-META AOT-WINDOW:XTOFF-KIND-MASK and {: kind:n :}
+   kind AOT-WINDOW:XTOFF-SCRATCH-TAG = if SCRATCH-KEY exit then
+   kind AOT-WINDOW:XTOFF-DATA-TAG = if DATA-KEY else CODE-KEY then ;
+
+: CELL-DECL ( n n -- ) {: off:n kind:n :}
    off 0 < off X64LAYOUT:DATA-SIZE CELL - > or if
       s" x64link: address cell outside DATA" REFUSE then
-   off 1 lshift  data? if 1 or then REG-ADD ;
+   off 2 lshift  kind or REG-ADD ;
 
 : CELL-ROW! ( n -- ) {: key:n :}
-   key 1 rshift  key 1 and 0<> if SNAP-RELOC:XTCELL-DATA-TAG or then
+   key 2 rshift  key 3 and KIND-SHIFT lshift or
    REG-OUT @ cells CELL-BASE + DATA-CELL!
    1 REG-OUT +! ;
 
 : FIXED-CELLS ( -- )
-   HOOK-CELL false CELL-DECL
-   COMPILE-PREFLIGHT-CELL false CELL-DECL
-   TOP-HOOK-CELL false CELL-DECL
-   EXIT-HOOK-CELL false CELL-DECL
-   NCOMP-DISPATCH:XT-CELL false CELL-DECL
-   NCOMP-DISPATCH:FIXED-SHADOW-CELL false CELL-DECL
-   NCOMP-DISPATCH:DOES-SHADOW-CELL false CELL-DECL
-   TASK-CHAIN-CELL true CELL-DECL
-   CREATEP-CELL false CELL-DECL
-   APP-ENTRY:XT-CELL false CELL-DECL
-   LASTC-CELL false CELL-DECL
-   ENGINE-MAIN:XT-CELL false CELL-DECL
-   ENGINE-MAIN:REPORT-CELL false CELL-DECL
-   UNCGH-CELL false CELL-DECL
-   PROVIDED-XT:EVALUATE-CELL false CELL-DECL
-   PROVIDED-XT:EVALUATE-RANGE-CELL false CELL-DECL
-   NCOMP-DISPATCH:DECL-CELL true CELL-DECL
-   NCOMP-DISPATCH:TARGET-DECL-CELL true CELL-DECL ;
+   HOOK-CELL CODE-KEY CELL-DECL
+   COMPILE-PREFLIGHT-CELL CODE-KEY CELL-DECL
+   TOP-HOOK-CELL CODE-KEY CELL-DECL
+   EXIT-HOOK-CELL CODE-KEY CELL-DECL
+   NCOMP-DISPATCH:XT-CELL CODE-KEY CELL-DECL
+   NCOMP-DISPATCH:FIXED-SHADOW-CELL CODE-KEY CELL-DECL
+   NCOMP-DISPATCH:DOES-SHADOW-CELL CODE-KEY CELL-DECL
+   TASK-CHAIN-CELL DATA-KEY CELL-DECL
+   CREATEP-CELL CODE-KEY CELL-DECL
+   APP-ENTRY:XT-CELL CODE-KEY CELL-DECL
+   LASTC-CELL CODE-KEY CELL-DECL
+   ENGINE-MAIN:XT-CELL CODE-KEY CELL-DECL
+   ENGINE-MAIN:REPORT-CELL CODE-KEY CELL-DECL
+   UNCGH-CELL CODE-KEY CELL-DECL
+   PROVIDED-XT:EVALUATE-CELL CODE-KEY CELL-DECL
+   PROVIDED-XT:EVALUATE-RANGE-CELL CODE-KEY CELL-DECL
+   NCOMP-DISPATCH:DECL-CELL DATA-KEY CELL-DECL
+   NCOMP-DISPATCH:TARGET-DECL-CELL DATA-KEY CELL-DECL ;
 
 \ Reserve a DATA backing for the largest possible deduplicated declaration
 \ set before relocating the captured window. The ordinary small set stays in
@@ -694,14 +705,14 @@ private
    REG-CLEAR FIXED-CELLS
    AOT-WINDOW:XTOFF-N @ 0 ?do
       i CELL-AT
-      i CELL-META AOT-WINDOW:XTOFF-DATA-TAG and 0<> CELL-DECL
+      i CELL-KEY CELL-DECL
    loop
    REG-SORT
    0 REG-OUT !
    REG-N @ 0 ?do
       i REG-KEY {: key:n :}
       i 0 > if
-         i 1- REG-KEY 1 rshift key 1 rshift = if
+         i 1- REG-KEY 2 rshift key 2 rshift = if
             i 1- REG-KEY key <> if
                s" x64link: address cell has two kinds" REFUSE then
          else key CELL-ROW! then

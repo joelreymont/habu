@@ -286,6 +286,7 @@ variable VAL-LEN
 A64ICODE:AOT-SECTION-CAP XTOFF-ROW / constant XTOFF-MAX
 $80000000 constant XTOFF-WINDOW-TAG
 $80000000 constant XTOFF-DATA-TAG
+$C0000000 constant XTOFF-SCRATCH-TAG
 $40000000 constant XTOFF-NAME-TAG
 $C0000000 constant XTOFF-KIND-MASK
 $7FFFFFFF constant XTOFF-LOC-MASK
@@ -301,7 +302,8 @@ variable XTOFF-N
    0 XTOFF-STORAGE BYTE-VIEW ;
 \ Each row is (location u32, target u32). The location's high bit selects a
 \ window-relative offset; otherwise it is a fixed DATA offset. The target's
-\ two high bits select CODE (00), named CODE (01), or DATA (10); 11 is invalid.
+\ two high bits select CODE (00), named CODE (01), DATA (10) or a scratch DATA
+\ cell (11), whose low bits are zero: it boots as null.
 \ CODE/DATA low bits are zero for null or the target-window offset plus one.
 \ Named CODE carries a nonzero name-pool entry offset plus one.
 ;package

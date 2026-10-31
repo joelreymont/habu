@@ -315,13 +315,12 @@ private
 \ ---- the opcode names --------------------------------------------------------
 \ Three exact immutable spans per stable ordinal: name, rule and renderer.
 \ The typed opcode selects its row through ORD, never through enum TAG.
-144 PTR-U8-TABLE TEXT-A
+144 PERSISTED-PTR-U8-TABLE TEXT-A
 144 TYPED-BUFFER TEXT-U n
 
 : TEXT! ( ptr u8 n n -- ) {: a:ptr u:n idx:n :}
    u idx TEXT-U !
    TEXT-A idx ptr-field {: cell:ptr :}
-   cell ptr-cell-mark
    a cell ! ;
 
 : NAMES! ( ptr u8 n ptr u8 n ptr u8 n HIR:opcode -- )

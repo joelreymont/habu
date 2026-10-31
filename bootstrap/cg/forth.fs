@@ -2414,12 +2414,8 @@ HB-TARGET-LINUX? [IF]
 \ snapshot format of its own -- it carries SNAP-FORMAT-VERSION 3 and each build
 \ path relocates its own format -- so here the word is exactly the store while
 \ the seed compiles the sources that build bin/hb.
-\ ptr-cell-mark ( ptr a -- ) is the declaration half of xt! on its own: in the
-\ native engine it registers a persisted DATA cell as holding a DATA pointer in
-\ the snapshot address table (src/habu/habu2.f RELOC-EMIT:BPTRCELLMARK, the
-\ LPTRMARK entry of EMIT-MARK). The seed has no such table -- the same reason
-\ xt! above is only its store -- so the honest seed word consumes the address
-\ and registers nothing.
+\ ptr-cell-mark and scratch-cell-mark ( ptr a -- ) are xt!'s declaration half alone; the
+\ seed has no address-cell table, so each consumes the address and registers nothing.
 \ Recovery owns no address-cell registry. The native builder's source ABI
 \ reader must select legacy/no-header behavior in this host.
 : BADDRESSCELLSVERSION ( -- ) A 0 MOVZ, A G-PUSH ;
@@ -2430,6 +2426,7 @@ HB-TARGET-LINUX? [IF]
    s" xt!"  ['] BSTORE FPRIM-L
    s" ptr-cell-mark" ['] BDROP FPRIM-L
    s" addr-cells-abi" ['] BADDRESSCELLSVERSION FPRIM-L
+   s" scratch-cell-mark" ['] BDROP FPRIM-L
    s" atomic@" ['] BATFETCH FPRIM-L
    s" atomic!" ['] BATSTORE FPRIM-L
    s" atomic-add" ['] BATADD FPRIM-L
@@ -8693,9 +8690,8 @@ variable P2SK
       12 9 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
       XDS 9 16 LDR,
       unowned LBL,
-      \ Native recovery filters address declarations before this DP rewind.
-      \ The seed owns no such rows: addr-cells-abi is zero, xt! only stores,
-      \ and ptr-cell-mark only consumes its address (EMIT-MEMORY-PRIMS).
+      \ Native recovery filters address declarations before this DP rewind; the seed owns none
+      \ (EMIT-MEMORY-PRIMS).
       12 13 56 LDR,
       10 DATA DATA-FLOOR-CELL LDR,  10 DATA 10 ADD,
       12 10 CMP,  12 12 10 C-HI CSEL,

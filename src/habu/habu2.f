@@ -276,6 +276,7 @@ variable LCALLS     \ region-to-text call relocation routine (snapshot write + r
 variable LXT        \ declared-address-cell relocation routine (snapshot restore)
 variable LMARK      \ declare one DATA cell as holding a region address
 variable LPTRMARK   \ declare one DATA cell as holding a DATA pointer
+variable LSCRATCHMARK \ declare one DATA cell as a scratch pointer, saved as null
 variable LINDEXRELEASE \ release this process's derived address index before restore
 variable LROLLBACK  \ retire address rows at or above the saved DATA cut
 variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
@@ -7103,11 +7104,11 @@ public
    gdone LBL, ;
 
 \ Heap cell locations move with the captured window; fixed engine cells remain
-\ DATA-relative. The value has a separate null/CODE/DATA/name coordinate.
+\ DATA-relative. The value has a separate null/CODE/DATA/name/scratch coordinate.
 : RESTORE-ADDRESS-CELLS ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    S\" hb: AOT named address cell unresolved\n"
-   {: xloop:label xdata:label xnull:label xstore:label xdone:label
+   {: xloop:label xdata:label xscratch:label xnull:label xstore:label xdone:label
       xcell:label xnamed:label xbad:label msg:label ma mu :}
    23 10 LNXTOFF LABEL@ TADR,  23 23 0 LDR,         \ x23 = declared-cell count
    23 xdone CBZ,
@@ -7126,7 +7127,7 @@ public
          9 25 24 ADD,                               \ cell in the rebased heap window
       xcell LBL,
       5 XTOFF-KIND-MASK LIT64,  6 15 5 AND,
-      6 5 CMP,  C-EQ xbad BCOND,
+      6 5 CMP,  C-EQ xscratch BCOND,
       5 XTOFF-NAME-TAG LIT64,  6 15 5 AND,  6 xnamed CBNZ,
       5 AOT-WINDOW:XTOFF-DATA-TAG LIT64,
       6 15 5 AND,  6 xdata CBNZ,
@@ -7139,6 +7140,8 @@ public
          5 AOT-WINDOW:XTOFF-VALUE-MASK LIT64,  15 15 5 AND,
          15 xnull CBZ,
          15 15 1 SUBI,  5 25 15 ADD,  xstore B,
+      xscratch LBL,
+         RELOC-EMIT:LSCRATCHMARK LABEL@ BL,
       xnull LBL,  5 0 MOVZ,
       xstore LBL,  5 9 0 STR,
       21 21 AOT-WINDOW:XTOFF-ROW ADDI,  22 22 1 ADDI,  xloop B,
@@ -7850,12 +7853,8 @@ ardone LBL,
    missing LBL,
    9 -8574 LIT64,  9 G-PUSH  BTHROW ;
 
-\ The address-cell registrar has a sealed (MARK) helper record for the reason
-\ (PROT-SPAN) has: `xt!` (BXTSTORE) reaches it by a direct BL, and the closure
-\ walker names a branch target only at a record's exact entry (aot-closure.f
-\ FINDADDR-PTR). The record spans [LMARK, end), covering LPTRMARK. A stripped
-\ image has no reader for the table, so aot-closure.f AOT-DECLARATION? drops
-\ the call at link.
+\ (MARK) spans [LMARK, end) as one sealed record because xt!'s direct BL must land on a record
+\ entry (aot-closure.f FINDADDR-PTR); a stripped image drops the call (AOT-DECLARATION?).
 : EMIT-MARK ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: common:label lookup:label full:label band:label kind:label
@@ -7866,6 +7865,9 @@ ardone LBL,
    s" (MARK)" start LABEL>N end LABEL>N ENGINE-PRIMS:HELPER-REGISTER
    start LBL, MARK-SAVE
    15 0 MOVZ, common B,
+   LSCRATCHMARK LABEL@ LBL, MARK-SAVE
+   15 SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or LIT64,
+   common B,
    LPTRMARK LABEL@ LBL, MARK-SAVE
    15 SNAP-RELOC:XTCELL-DATA-TAG LIT64,
    common LBL,
@@ -7990,6 +7992,10 @@ ardone LBL,
 : BPTRCELLMARK ( -- )
    A G-POP
    LPTRMARK LABEL@ BL, ;
+
+: BSCRATCHCELLMARK ( -- )
+   A G-POP
+   LSCRATCHMARK LABEL@ BL, ;
 
 \ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare
 \ the cell. `defer` and `is` declare cells known at compile time; a table of
@@ -13258,7 +13264,7 @@ package LABELS
    LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
    LBL EM-DEF-OCC:LRECLAIM !  LBL EM-DEF-OCC:LRETIRE !
-   LBL RELOC-EMIT:LCALLS !  LBL RELOC-EMIT:LXT !  LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !
+   LBL RELOC-EMIT:LCALLS !  LBL RELOC-EMIT:LXT !  LBL RELOC-EMIT:LMARK !  LBL RELOC-EMIT:LPTRMARK !  LBL RELOC-EMIT:LSCRATCHMARK !
    LBL RELOC-EMIT:LINDEXRELEASE !
    LBL RELOC-EMIT:LROLLBACK !
    LBL RELOC-EMIT:LADDRS !  LBL RELOC-EMIT:LADDRSITE !
@@ -13824,6 +13830,7 @@ variable KERNEL-CODE-END
    s" xt!" ['] RELOC-EMIT:BXTSTORE FPRIM
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
    s" addr-cells-abi" ['] RELOC-EMIT:BVERSION FPRIM
+   s" scratch-cell-mark" ['] RELOC-EMIT:BSCRATCHCELLMARK FPRIM
    s" snapshot-format" ['] RELOC-EMIT:BSNAPSHOTFORMAT FPRIM
    s" kernel-producer$" ['] BKERNELPRODUCER FPRIM
    PROF:EMIT-PROF-PRIMS

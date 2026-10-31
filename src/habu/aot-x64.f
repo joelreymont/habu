@@ -233,8 +233,8 @@ variable X64-MEMBER
 
 : X64-TEXT-REL ( ptr u8 n n -- ) {: p:ptr width:n disp:n :}
    p width + disp + {: target:ptr :}
-   \ xt! stores the token itself; only its recorded registrar call can vanish.
-   \ ptr-cell-mark calls that registrar at runtime and cannot run stripped.
+   \ Only xt!'s recorded registrar call vanishes; ptr-cell-mark and scratch-cell-mark call the
+   \ registrar at runtime and cannot run stripped.
    width 4 = if
       p 1- c@ $E8 = if
          target DECLARATION-TARGET? if

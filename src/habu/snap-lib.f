@@ -357,6 +357,8 @@ PTR-VARIABLE SND-A
 
 : SND-XT-DATA? ( n -- bool ) SNAP-RELOC:XTCELL-DATA-TAG and 0 <> ;
 
+: SND-XT-SCRATCH? ( n -- bool ) SNAP-RELOC:XTCELL-SCRATCH-TAG and 0 <> ;
+
 \ The offset indexes the scratch copy, so it must name a whole cell inside DATA, the band the
 \ declaration and the loader enforce. The bound is split in two because checked cells are signed:
 \ a negative offset fails the first test. Containment only; alignment is not required
@@ -382,12 +384,18 @@ PTR-VARIABLE SND-A
    SND-ROWS {: rows:ptr count:n :}
    count 0 ?do rows i cells + @ SND-CANON-XT-CELL loop ;
 
+\ A scratch row's cell is saved as null on every target, whatever it holds.
+: SND-ZERO-SCRATCH-CELL ( n -- ) {: row:n :}
+   row SND-XT-SCRATCH? 0= if exit then
+   row SND-XT-OFF {: cell:n :}
+   cell SND-XT-CELL-OK? 0= if SND-XT-CELL-REFUSE then
+   0 cell SND-XT-CELL! ;
+
+: SND-ZERO-SCRATCH ( -- )
+   SND-ROWS {: rows:ptr count:n :}
+   count 0 ?do rows i cells + @ SND-ZERO-SCRATCH-CELL loop ;
+
 : SND-ZERO-WRITER ( -- )
-   SNC-A SND-ZERO-OFF SND-ZERO-CELL
-   SND-A SND-ZERO-OFF SND-ZERO-CELL
-   SXT-A SND-ZERO-OFF SND-ZERO-CELL
-   MBUF-A SND-ZERO-OFF SND-ZERO-CELL
-   MP SND-ZERO-OFF SND-ZERO-CELL
    MLEN SND-ZERO-OFF SND-ZERO-CELL
    STB SND-ZERO-OFF SND-ZERO-CELL
    SDB SND-ZERO-OFF SND-ZERO-CELL
@@ -432,6 +440,7 @@ CAST: PROCESS-CELLS-XT ( n -- [ [ ptr n -- ] -- ] )
    SND-ZERO-POLICY
    SND-ZERO-WRITER
    SND-ZERO-PROCESS
+   SND-ZERO-SCRATCH
    HB-TARGET-LINUX-X86-64? 0= if SND-CANON-XT-CELLS then ;
 
 : CANON-REGION ( -- )

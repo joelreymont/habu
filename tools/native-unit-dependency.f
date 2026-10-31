@@ -804,16 +804,17 @@ private
    then
    0 H-N v H-N ;
 
-\ The cells in [start, end) the engine declared address cells
-\ (TYPED-VARIABLE, PTR-VARIABLE, a TYPED-BUFFER of code), ascending in PTRS
-\ as offsets from start; their count.
+\ The declared address cells in [start, end), ascending in PTRS as offsets from start; their
+\ count. A scratch row (PTR-VARIABLE) is hashed as raw bytes, as an undeclared cell is.
 : DECLARED ( n n -- n )
    {: start:n end:n :}
    data-base BYTE-VIEW NULL-PTR BYTE-VIEW - {: data:n :}
    ADDRESS-CELLS:LIVE-SPAN {: rows:ptr count:n :}
    0 count 0 ?do
-      rows i cells + @ SNAP-RELOC:XTCELL-OFF-MASK and data + {: site:n :}
-      site start >= site CELL + end <= and if
+      rows i cells + @ {: row:n :}
+      row SNAP-RELOC:XTCELL-OFF-MASK and data + {: site:n :}
+      row SNAP-RELOC:XTCELL-SCRATCH-TAG and 0=
+      site start >= and site CELL + end <= and if
          dup 1+ PTRS-RESERVE
          site start - over PTRS !
          1+

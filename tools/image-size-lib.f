@@ -1568,7 +1568,7 @@ $FFE0001F constant BRK-MASK
 $D4200000 constant BRK-OP
 $FC000000 constant BR-TERM-MASK                   \ keep BL's link bit: BL returns to the next instruction
 $14000000 constant BR-TERM-OP                    \ only unconditional B terminates a body
-$C0000000 constant XTOFF-KIND                     \ 00 CODE, 01 named CODE, 10 DATA
+$C0000000 constant XTOFF-KIND                     \ 00 CODE, 01 named CODE, 10 DATA, 11 scratch
 $3FFFFFFF constant XTOFF-VALUE
 
 DYNAMIC-BUFFER RSTART n

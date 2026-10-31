@@ -184,6 +184,7 @@ variable RX  variable RACC
    \ Every registrar entry saves/restores x0..x17 around its emitted helpers.
    a u s" RELOC-EMIT:Lmark" LINT-STR=CI if $3FFFF exit then
    a u s" RELOC-EMIT:Lptrmark" LINT-STR=CI if $3FFFF exit then
+   a u s" RELOC-EMIT:Lscratchmark" LINT-STR=CI if $3FFFF exit then
    a u s" RELOC-EMIT:Lindexrelease" LINT-STR=CI if $3FFFF exit then
    \ Recovery uses the same MARK-SAVE/RESTORE register frame as the registrars.
    a u s" RELOC-EMIT:Lrollback" LINT-STR=CI if $3FFFF exit then

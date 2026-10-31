@@ -1,17 +1,16 @@
 \ bootstrap-ptr-cell-mark-src.f - stage0 persisted-pointer definer execution.
 
-\ PERSISTED-PTR-VARIABLE (src/core/pointer-storage.f) is the boot prefix's only
-\ caller of `ptr-cell-mark`, so a stage0 generator without that primitive cannot
-\ load the prefix. The seed has no snapshot address table: its ptr-cell-mark
+\ The pointer-storage definers (src/core/pointer-storage.f) call `ptr-cell-mark`
+\ and `scratch-cell-mark`, so a stage0 generator without either primitive cannot
+\ load the boot prefix. The seed has no snapshot address table: each mark
 \ consumes the cell address and registers nothing (bootstrap/cg/forth.fs
-\ EMIT-MEMORY-PRIMS), which the definer's `create here ptr-cell-mark 0 ,` needs
-\ exactly. A fresh slot reads null and round-trips a pointer; two slots are two
-\ cells.
+\ EMIT-MEMORY-PRIMS), which the definers' `create here ... 0 ,` needs exactly. A
+\ fresh slot reads null and round-trips a pointer; two slots are two cells.
 
 \ The definer's body is compiled before the check hook exists, so nothing types
 \ its stack: a seed word consuming nothing leaks `here`, one consuming two
-\ underflows, and neither disturbs the round-trip. PCM-DEPTH-KEPT brackets one
-\ PERSISTED-PTR-VARIABLE at top level and requires the depth to come back.
+\ underflows, and neither disturbs the round-trip. PCM-DEPTH-KEPT brackets each
+\ definer at top level and requires the depth to come back.
 
 variable PCM-FAILS
 
@@ -60,6 +59,9 @@ variable PCM-DEPTH0
 
 PCM-DEPTH-MARK
 PERSISTED-PTR-VARIABLE PCM-SLOT3
+PCM-DEPTH-KEPT
+PCM-DEPTH-MARK
+PTR-VARIABLE PCM-SLOT4
 PCM-DEPTH-KEPT
 
 PCM-RUN

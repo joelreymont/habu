@@ -378,13 +378,13 @@ variable MREM
       10 AE1
       s" " 74 die THEN ;
 
-\ ptr-cell-mark is the same declaration for a DATA pointer cell, but its
-\ primitive pops the cell address before registering it. Keep that pop when
-\ stripping the registry call, or each such declaration leaks one stack cell.
+\ ptr-cell-mark and scratch-cell-mark pop the cell address before registering it: a
+\ stripped call keeps that pop, or each declaration leaks one stack cell.
 : PTR-MARK-TARGET? ( ptr u8 -- bool ) {: t:ptr :}
    t FINDADDR-PTR {: callee:ptr :}
    callee XREF-FOUND? 0= IF AOT-FALSE EXIT THEN
-   callee s" ptr-cell-mark" REC-NAME= ;
+   callee s" ptr-cell-mark" REC-NAME= IF 0 0= EXIT THEN
+   callee s" scratch-cell-mark" REC-NAME= ;
 : DECLARATION-TARGET? ( ptr u8 -- bool ) {: t:ptr :}
    t FINDADDR-PTR {: callee:ptr :}
    callee XREF-FOUND? 0= IF AOT-FALSE EXIT THEN

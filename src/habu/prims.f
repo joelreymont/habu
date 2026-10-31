@@ -547,6 +547,7 @@ EPRIM: !          PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory
 EPRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN EPRIM; REACH memory EFIXED-ABI!
 EPRIM: ptr-cell-mark PE-PTR-A PE-IN EPRIM; REACH dict
 EPRIM: addr-cells-abi PE-N PE-OUT EPRIM;
+EPRIM: scratch-cell-mark PE-PTR-A PE-IN EPRIM; REACH dict
 EPRIM: snapshot-format PE-N PE-OUT EPRIM;
 EPRIM: kernel-producer$ PE-PTR-U8 PE-OUT PE-N PE-OUT PE-F PE-OUT EPRIM;
 EPRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT EPRIM; REACH stack

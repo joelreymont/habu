@@ -4136,11 +4136,8 @@ private
    s" policy-seal" [: POLICY-SEAL-BODY ;] PRIM
    s" wide-mark" [: WIDE-MARK-BODY ;] PRIM ;
 
-\ The x86-64 image has fixed addresses, but capture still needs declarations
-\ for cells holding code and DATA addresses. snap-rebase, which moves a
-\ restored snapshot's cells, refuses. The twins of habu2.f
-\ RELOC-EMIT:BXTSTORE, BPTRCELLMARK, BVERSION and BSNAPSHOTFORMAT and habu1.f
-\ BBUILDENTER, BBUILDLEAVE, BSETTIER and BTIERFETCH.
+\ Capture needs address-cell declarations at fixed x86-64 addresses too; snap-rebase refuses.
+\ The ARM64 twins are habu2.f RELOC-EMIT's primitives and habu1.f's build and tier primitives.
 
 : TIER-OFF ( -- n ) NCOMP-DISPATCH:TIER-CELL ;
 : DEPTH-OFF ( -- n ) NCOMP-DISPATCH:BUILD-DEPTH-CELL ;
@@ -4250,9 +4247,7 @@ variable MARK-CELL
    found X64CODE:LBL,
       RCX R8 ASM-SINK ENC-CMP-RR  C-AE append JCC,
       RAX RDX RCX 8 0 MEM-IDX ASM-SINK ENC-MOV-RM
-      R10 RAX ASM-SINK ENC-MOV-RR
-      R10 1 >IMM8 ASM-SINK ENC-SHL-RI8
-      R10 1 >IMM8 ASM-SINK ENC-SHR-RI8
+      R10 SNAP-RELOC:XTCELL-OFF-MASK IMM64,  R10 RAX ASM-SINK ENC-AND-RR   \ the offset
       RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
       R10 RDI ASM-SINK ENC-CMP-RR  C-NE next JCC,
       RSI RSP 8 MEM-OFF ASM-SINK ENC-MOV-RM
@@ -4351,6 +4346,10 @@ variable MARK-CELL
       RSI SNAP-RELOC:XTCELL-DATA-TAG IMM64,  MARK-LBL CALL, ;] PRIM
    s" addr-cells-abi" [:
       RAX ADDRESS-CELLS:ABI-VERSION IMM32,  RAX PUSH, ;] PRIM
+   s" scratch-cell-mark" [:
+      0 CELL SIZED-GUARD,  RDI POP,
+      RSI SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or IMM64,
+      MARK-LBL CALL, ;] PRIM
    s" snapshot-format" [: RAX SNAPSHOT-FORMAT:VERSION IMM32,  RAX PUSH, ;] PRIM
    \ The x86-64 test kernel has no image writer to stamp implementation bytes.
    s" kernel-producer$" [: RAX ZERO-REG,  RAX PUSH,  RAX PUSH,  RAX PUSH, ;] PRIM

@@ -9,7 +9,7 @@ require nf.fs
 
 : PCM-STAGE0-TEST ( -- )
    s" test/bootstrap-ptr-cell-mark-src.f" slurp-file NF-RUN
-   s\" ok\n" NF= 0= abort" stage0 ptr-cell-mark missing or wrong: bootstrap/cg/forth.fs must register ptr-cell-mark for PERSISTED-PTR-VARIABLE" ;
+   s\" ok\n" NF= 0= abort" stage0 pointer marks missing or wrong: bootstrap/cg/forth.fs must register ptr-cell-mark and scratch-cell-mark for the pointer-storage definers" ;
 
 PCM-STAGE0-TEST
 bye

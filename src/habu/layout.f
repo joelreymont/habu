@@ -1825,7 +1825,7 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 2 constant SITE-ADDR
 103 constant SITE-RC
 
-\ Address-cell table: the DATA offset and kind of every persisted cell declared
+\ Address-cell table: the DATA offset and kind of every cell declared
 \ to hold an address. XT cells hold JIT-region addresses, DATA-pointer cells
 \ addresses in the DATA heap. Only XT values need snapshot canonicalisation:
 \ region code moves on restore and DATA does not. Both kinds need the
@@ -1835,15 +1835,19 @@ ADDRMAP-END SITE-ROWS-OFF - SITE-ROW-BYTES / constant SITE-CAP
 \ any value): PERSISTED-PTR-VARIABLE registers its DATA-pointer cell, the
 \ `defer`/`is` handlers register dispatch cells, and habu2.f registers the
 \ engine hook cells by name at cold boot.
+\ A scratch pointer cell (pointer-storage.f PTR-VARIABLE) is a DATA-pointer row
+\ that also carries bit 62: every save writes it as null and never reads it, so
+\ a reader that knows only bit 63 treats it as a DATA pointer, never as an xt.
 \ Legacy layout: a count, then XTCELL-CAP tagged offset cells; bit 63 is the
-\ DATA-pointer kind and the rest the DATA offset. The engine appends an
-\ identical declaration only once and refuses one cell declared with both kinds.
+\ DATA-pointer kind and the low 62 bits the DATA offset. The engine appends an
+\ identical declaration only once and refuses one cell declared with two kinds.
 \ These coordinates freeze the original band and heap floor. New engines use
 \ ADDRESS-CELLS' header and inline boot rows in this band, then grow into mmap.
 \ XTCELL-CAP bounds only legacy host rows; it is not a runtime declaration limit.
 65536 constant XTCELL-CAP
 $8000000000000000 constant XTCELL-DATA-TAG
-$7FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK
+$4000000000000000 constant XTCELL-SCRATCH-TAG
+$3FFFFFFFFFFFFFFF constant XTCELL-OFF-MASK
 ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
