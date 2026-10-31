@@ -4895,7 +4895,8 @@ public
    s" imm-mark" ENGINE-XT 0<> and s" namespace-record" ENGINE-XT 0<> and
    s" prot-wid-add" ENGINE-XT 0<> and s" def-cast" ENGINE-XT 0<> and
    s" does-patch" ENGINE-XT 0<> and s" wide-mark" ENGINE-XT 0<> and
-   s" min-in-mark" ENGINE-XT 0<> and s" def-defer" ENGINE-XT 0<> and
+   s" min-in-mark" ENGINE-XT 0<> and s" rep-mark" ENGINE-XT 0<> and
+   s" def-defer" ENGINE-XT 0<> and
    s" wordlist" ENGINE-XT 0<> and s" namespace-private" ENGINE-XT 0<> and ;
 
 ;package
