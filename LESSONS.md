@@ -136,7 +136,11 @@ entry.
   xref.f's XREF package may get a public `XREF:HEAD-ROW ( ptr u8 n -- ptr n )`,
   the row a qualifier's head names (the open package's part first, then a
   top-level package), called by the Habu loop and the compiler, Joel chose
-  "Add XREF:HEAD-ROW".
+  "Add XREF:HEAD-ROW". Shown that the lane wrote a second copy of the rule in
+  the checker under top-level CK- names, and that the checker loads before
+  the Habu loop and the compiler, Joel chose one word there,
+  `CHECKER-RESOLVE:HEAD-ROW`, for all three: XREF:HEAD-ROW and the CK- copies
+  go, and the helpers are private.
 - 2026-10-31, a public SSE word: asked whether SSE:FEED's callback context
   may change from `ptr a` to `a`, so MCP passes its client record without a
   cast, Joel chose "Context becomes `a`".
