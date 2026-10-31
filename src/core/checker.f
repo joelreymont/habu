@@ -2165,8 +2165,9 @@ CT-ARENA-BOOT
    ctu CT-STR-U ! ;
 
 \ A new type token needs a checker-only bootstrap stage: an older bin/hb rejects
-\ an unknown stack-comment token, so add the parser, renderer and CC-* support,
-\ refresh the native binary, then use the token in axioms and definitions.
+\ an unknown stack-comment token, so add its CT-INIT row or TOK-TYPE arm and any
+\ renderer and CC-* support, refresh the native binary, then use the token in
+\ axioms and definitions.
 : CT-INIT ( -- )
    s" n"       CC-N      CT-INT   64 CS-GENERIC CT-SET
    s" f"       CC-F      CT-BOOL   1 CS-NONE    CT-SET
@@ -2967,11 +2968,11 @@ variable XT-DECL
 
 \ A selected tick without a usable effect is still code. Keep that provenance
 \ through generic calls instead of treating it as a number or a caught stale cell.
-: OPAQUE-XT ( -- n ) s" opaque-xt" MK-ATOM ;
+: OPAQUE-XT ( -- n ) s" xt" MK-ATOM ;
 : OPAQUE-XT? ( n -- bool )
    T-RES {: t:n :}
    t TAG T-ATOM <> IF RES-FALSE EXIT THEN
-   t ATOM>K 0= IF t ATOM>A t ATOM>U s" opaque-xt" CORE-STR= ELSE RES-FALSE THEN ;
+   t ATOM>K 0= IF t ATOM>A t ATOM>U s" xt" CORE-STR= ELSE RES-FALSE THEN ;
 
 \ FENCE-WHY answers one question for all three fenced kinds, so neither base
 \ address drifts from TVK-RAW's admissibility. A var argument is met with
@@ -4006,7 +4007,7 @@ CHECKER-REG:}SCRATCH
 17 constant MD-CON-VAR        \ construct variant not declared by the family
 18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
 19 constant MD-DIVBAR         \ block collective/barrier reached under divergent control
-20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt: fetched from untyped memory (RSEXEC T-VAR) or the opaque-xt atom
+20 constant MD-EXEC-OPAQUE    \ execute of an opaque xt: fetched from untyped memory (RSEXEC T-VAR) or the `xt` atom
 21 constant MD-CATCH-OPAQUE   \ catch of an opaque xt (RSCATCH, as RSEXEC); same E-EXEC-OPAQUE-XT code, prose names 'catch'
 22 constant MD-RIGID-REGION   \ two host allocations differ in host region (which allocation)
 23 constant MD-RIGID-EXTENT   \ two host allocations differ in extent (bounds)
@@ -4771,12 +4772,13 @@ variable QUOT-LOSS
      THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
      \ Opaque xt: a bare type variable, an xt fetched from untyped memory (a raw
-     \ variable or create cell), or the opaque-xt atom `'` pushes for a word with
-     \ no stack effect. Its effect is not statically known, so executing it in
-     \ checked code would launder whatever it does past the checker. DO-TOK1
-     \ turns the flag into E-EXEC-OPAQUE-XT on the pinned `execute` token. The
-     \ checked routes are a quotation parameter, a `defer` bound with `is`, and a
-     \ typed `xt<effect>` storage cell (all recover a T-QUOT here).
+     \ variable or create cell), or the `xt` atom: `'` of a word with no stack
+     \ effect, or a value declared `xt`. Its effect is not statically known, so
+     \ executing it in checked code would launder whatever it does past the
+     \ checker. DO-TOK1 turns the flag into E-EXEC-OPAQUE-XT on the pinned
+     \ `execute` token. The checked routes are a quotation parameter, a `defer`
+     \ bound with `is`, and a typed `xt<effect>` storage cell (all recover a
+     \ T-QUOT here).
      0 OK !  -1 EXEC-OPAQUE !
    ELSE QTT @ XT-MISMATCH THEN THEN ;
 
@@ -5831,6 +5833,7 @@ defer TYPE-MAY-ARRIVE-XT ( ptr u8 n -- bool )
    a u s" fresh-extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" fresh-gen-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" fresh-mask-" SIG-PREFIX? ;
+: XT-TOK? ( ptr u8 n -- bool ) s" xt" CORE-STR= ;   \ a ticked engine primitive's token
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
    a 6 + u 6 - FAM-K @ MK-ATOM-K ;
@@ -5906,8 +5909,9 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
    a u CON-OF dup 0 <> IF MK-CON ELSE drop     \ i64/u8/u32/cell/char/str/addr/bool
    a u FRESH-ATOM-TOK? IF a u FRESH-ATOM>TYPE ELSE
    a u ATOM-TOK? IF a u MK-ATOM ELSE
+   a u XT-TOK? IF OPAQUE-XT ELSE
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
-   a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
+   a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ Typed local annotations (LOCAL-TYPE, below SIG-TYPE) share the signature type
 \ grammar.
@@ -6014,8 +6018,9 @@ variable PKHAVE
 \ an effect would read it as something else: stack syntax, a row variable (one
 \ upper-case letter heading a stack), a type already in the table, a family tail
 \ some scope reads (TFAM-CLAIMED?: the name is global, and a private tail or one
-\ two packages share is read by its owning package), a type variable, or a token
-\ the signature lexer splits or the closing `)` (41) cuts short.
+\ two packages share is read by its owning package), an atom, `xt`, a type
+\ variable, or a token the signature lexer splits or the closing `)` (41) cuts
+\ short.
 \ A name holding `(` (40), `"` (34) or `\` (92) is refused wherever that byte
 \ sits: where source names the type again, check.f's lexer can read such a token
 \ as a comment or string opener (after `DEFLINEAR \`, a value-record field typed
@@ -6046,6 +6051,7 @@ variable PKHAVE
    a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
    a u TFAM-CLAIMED?-XT IF RES-TRUE EXIT THEN
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u XT-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-BAD-CHAR? ;
@@ -6609,13 +6615,31 @@ variable LBI-T
 CHECKER-REG:}SCRATCH
 variable LBI-BAD
 variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
+variable LBI-XT       \ the refused stored type parsed and names `xt`
+
+\ A stored `xt` would be an engine code address, which no image relocation kind
+\ follows across a restore. A layout's schema cannot name `xt`, so a field holds
+\ one only through an argument; a quotation's rows hold no cell.
+: XT-STORED?* ( n -- bool ) {: t:n :}
+   t T-RES {: x:n :}
+   x OPAQUE-XT? IF RES-TRUE EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
+: XT-STORED? ( n -- bool ) TWALK-RESET XT-STORED?* ;
 
 \ Every storage gate below parses its stored type here, into LBI-T. A scheme is
 \ a callback input only (FORALL-PLACE?), so no storage holds one at any depth
-\ of its stored type; LBI-SCHEME names that refusal for
-\ CHECKER-STORAGE-TYPE-REFUSE.
+\ of its stored type, nor an `xt` (XT-STORED?); LBI-SCHEME and LBI-XT name
+\ those refusals for CHECKER-STORAGE-TYPE-REFUSE.
 : STORAGE-RESOLVE? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ one closed stored type, resolved into LBI-T
-   0 LBI-SCHEME !
+   0 LBI-SCHEME !  0 LBI-XT !
    NEW
    SGBAD-CLEAR SIG-UNRES-CLEAR
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
@@ -6627,6 +6651,7 @@ variable LBI-SCHEME   \ the refused stored type parsed and holds a scheme
    SGBAD @ 0 <> LBI-BAD @ 0 <> or IF RES-FALSE EXIT THEN
    LBI-T @ SCHEME-TYPE? IF -1 LBI-SCHEME ! RES-FALSE EXIT THEN
    SIG-UNRES @ IF RES-FALSE EXIT THEN
+   LBI-T @ XT-STORED? IF -1 LBI-XT ! RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? 0= ;
 
 \ The allocation-certificate gate for LAYOUT-BUFFER: only a closed, non-linear,
@@ -12453,6 +12478,7 @@ package CHECKER-REG
 9 constant STG-COUNT-WORD       \ the count token names no word that leaves the count
 10 constant STG-NO-TYPE         \ no token follows the name on its line to be its type
 11 constant STG-NO-NAME         \ no token follows the definer on its line to be its name
+12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
 PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
 PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
 variable STGR-WHY                               \ one of the STG- reasons above
@@ -13199,7 +13225,8 @@ package CHECKER-REG
    THEN
    na nu ta tu
    SGBAD @ IF STG-MALFORMED-TYPE ELSE
-      LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE STG-UNSTORABLE-TYPE THEN
+      LBI-SCHEME @ IF STG-SCHEME-TYPE ELSE
+      LBI-XT @ IF STG-XT-TYPE ELSE STG-UNSTORABLE-TYPE THEN THEN
    THEN
    CHECKER-STORAGE-REFUSE ;
 
@@ -24717,10 +24744,11 @@ variable CTOR-PEND-POS
 \ A cast may retype one machine cell: a con or type var (CAST-MAY-LINEAR?
 \ refuses the var), a width-1 family, a pointer, or a quotation. A pointer chain
 \ must end at storage: an atom is a phantom index, refused there as it is bare,
-\ on either side. The pointee carries no width rule, since a layout of any width
-\ is one pointer cell away. A W>1 layout term is refused as a width
-\ reinterpret. The destination's other introduction positions refuse an atom
-\ through CAST-INTRO? (INTRO-ATOM).
+\ on either side. CAST-CERTIFY admits one bare atom, an `xt` input: a cast may
+\ take a primitive's token, never yield one. The pointee carries no width rule,
+\ since a layout of any width is one pointer cell away. A W>1 layout term is
+\ refused as a width reinterpret. The destination's other introduction positions
+\ refuse an atom through CAST-INTRO? (INTRO-ATOM).
 : CAST-TERM? ( n -- bool ) {: t0:n :}
    t0 T-RES {: t:n :}
    t TAG T-CON = IF RES-TRUE EXIT THEN
@@ -24937,7 +24965,7 @@ variable CAST-PATH-N
 \ that mints none is a representation cast (layout.f DNAME-REP). No term here
 \ carries a scope: CHECKER-DEFCAST sends every scoped row to VIEW-CAST-CERTIFY.
 : CAST-CERTIFY ( -- bool )
-   SGIN @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
+   SGIN @ CAST-ROW-TERM dup CAST-TERM? swap OPAQUE-XT? or 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-TERM? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF E-CAST-CLASS throw THEN
    \ Linearity is checked before ownership on purpose: a linear family minted

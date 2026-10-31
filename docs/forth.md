@@ -652,7 +652,8 @@ multi-cell type rationale is `docs/design.md` "Types".
     is refused.
   - A cast term is one machine cell: a con, a width-1 family, a pointer, or a
     quotation. An atom, or a pointer to one, on either side, and an atom in an
-    introduction position of the destination, are `E-CAST-CLASS`.
+    introduction position of the destination, are `E-CAST-CLASS`, except a bare
+    `xt` input: a cast may take a primitive's token but never yields one.
   - A type variable or a linear type anywhere in either term, behind a
     pointer, in any quotation row or in a layout's members, is
     `E-CAST-LINEAR`: a `PRODUCT` field `ptr lease` or a `STRUCTURE`
@@ -1037,6 +1038,8 @@ and as `E-BAD-STORED-SIGNATURE` in a stored signature.
   not). `pkg:tail<arg,…>` is a declared family (`NEWTYPE`, `ENUM`, `STRUCTURE`,
   `SUMTYPE`, `PRODUCT`, `LAYOUT-BUFFER`, `DEFTYPE`); a `DEFLINEAR` token is a
   linear cell type.
+- `xt` is the token `'` pushes for an engine primitive or a word with no stack
+  effect: no effect rides it, and no storage holds one (`xt in a stored type`).
 
 An unknown type token is never interned: it rejects with `unknown type 'tok' in
 signature` (`E-UNKNOWN-SIGNATURE-TYPE`). The other signature codes are
@@ -2039,7 +2042,8 @@ sections above.
   `EPRIM:` row at a call; no row rides its xt, so `['] dup execute` and
   `['] NULL-PTR execute` are `E-EXEC-OPAQUE-XT`, and `['] NULL-PTR is W`
   is refused at `is`. A quotation that calls the primitive carries its row:
-  `[: NULL-PTR ;] execute`.
+  `[: NULL-PTR ;] execute`. `: E ( -- xt ) ['] type ;` declares the token, and
+  `E execute` is `E-EXEC-OPAQUE-XT` as well.
 
 - **`OPAQUE` belongs in a package's field-bearing `STRUCTURE` header.** After
   the first field, it is `header clause after the first field`; twice, `a

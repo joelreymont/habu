@@ -12,6 +12,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
+require src/lib/test/subject.f
 
 package XT-CELL-TEST
 
@@ -75,6 +76,9 @@ TYPED-VARIABLE XC-A ptr u8  variable XC-U
    HKB-STORE
    5 0 HKB-RUN 6 T=
    5 1 HKB-RUN 7 T= ;
+
+\ a family whose field holds whatever its argument names
+STRUCTURE xbox<a> FIELD item a ;STRUCTURE
 
 \ ---- tick store: `['] W HK !` retypes the tick so the store fit-checks W's -----
 \ certified effect against the cell. BTICK-TOK types every tick of a word the
@@ -152,6 +156,40 @@ defer XC-DF ( n -- n )
    s" GC3 ( n -- n n ) HK @ catch" CHECK-QUIET-CANDIDATE! -1 T=
    s" GC4 ( n -- n n ) ['] XC-DF catch" CHECK-QUIET-CANDIDATE! -1 T= ;
 
+\ ---- the `xt` type: the token `'` pushes for a word with no stack effect -------
+\ XE declares it. A cast may take it but never yields one, and no storage holds
+\ one, directly or in a field; a quotation row may name it.
+: XC-EVAL< ( ptr u8 n -- )   \ evaluate with JSON diags captured; assert reject
+   XC-DBUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   XC-EVAL CHECKER-REJECT-RC T= ;
+: XC-STORE-XT? ( -- )   \ the captured refusal is the stored-xt one
+   s\" \"code\":\"E-BAD-STORAGE\"" XC-CODE?
+   s" xt in a stored type" XC-CODE? ;
+
+: XC-SECTION-XT-TYPE ( -- )
+   s" : XE ( -- xt ) ['] type ;" XC-EVAL 0 T=
+   s" XR ( -- ) XE execute" XC-CODE<
+   s\" \"code\":\"E-EXEC-OPAQUE-XT\"" XC-CODE?
+   XC-CODE-END
+   s" XS ( -- ) XE XCRAW !" XC-CODE<
+   s\" \"code\":\"E-RAW-CELL-PTR\"" XC-CODE?
+   XC-CODE-END
+   s" CAST: >XT ( n -- xt )" XC-EVAL E-CAST-CLASS T=
+   s" public" XC-EVAL 0 T=
+   s" CAST: XT>N ( xt -- n )" XC-EVAL 0 T=
+   s" : XN ( -- n ) ['] type XT>N ;" XC-EVAL 0 T=
+   s" CAST: XT>Q ( xt -- [ n -- n ] )" XC-EVAL E-CAST-MINT T=
+   s" private" XC-EVAL 0 T=
+   s" TYPED-VARIABLE XV xt" XC-EVAL< XC-STORE-XT? XC-CODE-END
+   s" TYPED-VARIABLE XW xbox<xt>" XC-EVAL< XC-STORE-XT? XC-CODE-END
+   s" TYPED-VARIABLE XQ [ xt -- ]" XC-EVAL 0 T=
+   \ No user type takes the name: an effect would read it as this token. The
+   \ value-record refusal exits the process, so it runs as a subject, before the
+   \ family whose admission would refuse it as a duplicate.
+   s" VALUE-RECORD xt value n END-VALUE-RECORD"
+   70 s" bad or duplicate value-record type" SUBJECT:REFUSED? TTRUE
+   s" STRUCTURE xt FIELD item n ;STRUCTURE" XC-EVAL TYPE-DECL:E-TDECL-NAME T= ;
+
 : RUN ( -- )
    T-RESET
    XC-SECTION-CHECKER
@@ -162,6 +200,7 @@ defer XC-DF ( n -- n )
    XC-SECTION-ADMISSIBILITY
    XC-SECTION-STAGE3
    XC-SECTION-CATCH
+   XC-SECTION-XT-TYPE
    T-REPORT ;
 
 RUN

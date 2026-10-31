@@ -96,7 +96,7 @@ variable ERR-U
 : AT-ADD ( -- )     S\" \"token\":\"+!\"" HAS? ;
 : AT-CSTORE ( -- )  S\" \"token\":\"c!\"" HAS? ;
 : GOT-PTR ( -- )    S\" \"actual\":\"ptr " HAS? ;
-: GOT-XT ( -- )     S\" \"actual\":\"opaque-xt " HAS? ;
+: GOT-XT ( -- )     S\" \"actual\":\"xt " HAS? ;
 
 \ ---- the refused programs, each beside its colon-body twin --------------------
 

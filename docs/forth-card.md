@@ -68,6 +68,8 @@ learned by refusal**.
 Every definition carries `( before -- after )` and the checker reads it as the
 signature. Type tokens only (`n`, `u8`, `bool`, `xt`, `ptr a`, `ptr u8`, `idx`,
 `len`, `fd`, `rc`), never role prose like `( got want -- )`.
+`xt` is a ticked engine primitive's token (`['] type`), which checked code
+cannot execute: `E-EXEC-OPAQUE-XT`.
 
 - A string is `ptr u8 n`, a cell address `ptr a`, `n` only a genuine scalar.
   `ptr a` needs a body that keeps the pointee parametric — a `ptr` local admits
@@ -373,11 +375,14 @@ refused at `2r>`. Admitted at top level:
 a `require`, `' X HK !` for `TYPED-VARIABLE HK [ -- ]`, and anything inside a
 `0 set-check` window.
 
-An integer becomes an address or an xt only through a private `CAST:`
-(`CAST: >BYTES ( n -- ptr u8 )` in a package's private section, else
+An integer or an `xt` becomes an address or a quotation only through a private
+`CAST:` (`CAST: >BYTES ( n -- ptr u8 )` in a package's private section, else
 `E-CAST-MINT`); `X NULL-PTR -` is the address-to-integer distance for any
 pointer `X`, with no view: a distance against `NULL-PTR` or `data-base` binds
 neither pointee, so `: D ( ptr a -- n ) NULL-PTR - ;` keeps `a` free.
+A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
+(`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
+type`).
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
 holds a pointer or a quotation is the same mint, and one whose field holds
 another package's family is `E-CAST-OWNER` outside that package. So is a cast

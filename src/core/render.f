@@ -1729,6 +1729,7 @@ RECORD-DIAG-INSTALL
    STGR-WHY @ STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
    STGR-WHY @ STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
    STGR-WHY @ STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
+   STGR-WHY @ STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
    STGR-WHY @ STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
    STGR-WHY @ STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
    STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN

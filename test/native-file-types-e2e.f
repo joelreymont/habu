@@ -411,12 +411,12 @@ create ENUM-LINE 48 allot
    n w 0 ?do dup 26 mod 97 + ENUM-NAME w 1- i - + c! 26 / loop drop
    w ;
 
-\ decl.f's line i, a one-variant family `ENUM eN xN ;ENUM` with N spelling i
-\ in base 26; its length.
+\ decl.f's line i, `ENUM eN qN ;ENUM` with N spelling i in base 26; its length.
+\ No qN is a reserved or taken name; xN spells the type `xt` at i = 19.
 : ENUM-LINE! ( n -- n ) ENUM-NAME! {: w:n :}
    s" ENUM e" drop ENUM-LINE 6 BYTE-COPY
    ENUM-NAME ENUM-LINE 6 + w BYTE-COPY
-   s"  x" drop ENUM-LINE 6 + w + 2 BYTE-COPY
+   s"  q" drop ENUM-LINE 6 + w + 2 BYTE-COPY
    ENUM-NAME ENUM-LINE 8 + w + w BYTE-COPY
    S\"  ;ENUM\n" drop ENUM-LINE 8 + w 2 * + 7 BYTE-COPY
    15 w 2 * + ;
