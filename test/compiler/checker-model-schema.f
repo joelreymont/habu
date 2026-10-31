@@ -243,11 +243,11 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 \   - two domains at the same number: `MK-REGION` and `MK-GEN` each mint first
 \     in their own domain, so both ids are 1 and the row is still refused; a
 \     comparison of the number alone would certify it;
-\   - a template slot against an atom token: a `fresh-*` name in the
-\     candidate's own signature is where an identity would be minted, never an
-\     identity, so naming one on both sides is refused; a `mask-*` token is an
-\     atom whose identity is its spelling, so the same shape certifies and
-\     differing spellings are refused.
+\   - a declared input identity against an atom token: a `fresh-*` name the
+\     candidate's inputs declare is one identity its body holds
+\     (`SIG-INPUT-FRESH`), so naming it on both sides certifies; a `mask-*`
+\     token is an atom whose identity is its spelling, so the same shape
+\     certifies and differing spellings are refused.
 \ Measured by mutating the checker, rebuilding the fixpoint and rerunning this
 \ gate: dropping `ATOM-OK?`'s name comparison moves only the two-domain and
 \ differing-spelling rows (to certified); a per-domain counter that does not
@@ -262,9 +262,9 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    s" two_domains_at_the_same_number_still_reject"
       s" CMV31 ( -- ) CHECKER-MODEL-CASES:MK-REGION CHECKER-MODEL-CASES:MK-GEN CHECKER-MODEL-CASES:SAME-ID"
       V-REJECT VEC-ROW
-   s" a_template_slot_is_not_an_identity"
+   s" a_declared_input_identity_is_one_identity"
       s" CMV32 ( fresh-region-a -- fresh-region-a )"
-      V-REJECT VEC-ROW
+      V-CERT VEC-ROW
    s" an_atom_tokens_identity_is_its_spelling"
       s" CMV33 ( mask-a -- mask-a )"
       V-CERT VEC-ROW

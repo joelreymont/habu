@@ -1378,6 +1378,13 @@ storage. Three checker domains name these rigidly:
   outstanding indices yields a new generation, so an old index no longer
   matches.
 
+In a body, a fresh name the caller supplies (on a plain input, or on an input
+quotation's outputs) is one identity throughout. A fresh region name the body
+supplies (written only on outputs, or on an input quotation's inputs, the
+direction flipping at each nesting) must end holding a region this body
+minted, and no two such names hold one region. A body-supplied extent,
+generation or mask name must stay unbound in the body, which then mints it.
+
 Each domain has a private per-check counter that never reuses an id and throws
 `E-RIGID-EXHAUST` at its limit rather than wrapping. Ids are qualified by
 domain, so equal numbers in two domains do not unify. Mismatches
@@ -1592,9 +1599,9 @@ public
   inner owner is active, so a later allocation typed for `p` stays owned by `p`
   after the inner scope ends.
 - `C2-MEM:ALLOC-DISPOSE` ties an allocation to a foreign acquisition: its
-  checked `[ mut-view<p,p,a,u8> -- ]` disposer consumes the unique view and
-  completes the foreign release before reporting an error. The owner runs it
-  once at close; a failed allocation runs none.
+  checked `[ mut-view<p,p,fresh-region-b,u8> -- ]` disposer consumes the
+  unique view and completes the foreign release before reporting an error. The
+  owner runs it once at close; a failed allocation runs none.
 - `C2-BYTES` gives bounded copy, slice and length operations on live byte
   views. `XML-C2:WITH-READER` (`src/lib/xml/c2.f`) takes a shared source view
   and unique cursor storage of `XML:CURSOR-BYTES` plus one cell; the tables the

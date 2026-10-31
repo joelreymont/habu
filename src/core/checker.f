@@ -891,6 +891,8 @@ variable RIGID-N
 \ per check (RIGID-RESET); the bound is settable.
 7140 constant E-RIGID-EXHAUST   \ a rigid identity domain exhausted before wrap
 variable RGN-N   variable EXT-N   variable GEN-N
+variable RGN-MARK   \ the first region id a definition body mints (SIG-INPUT-FRESH)
+variable FB-N       \ fresh-name keys below FB-N may be body-supplied (SIG-BODY-FRESH)
 variable SCOPE-N   1 SCOPE-N !
 256 constant SCOPE-PARENT-INIT
 create SCOPE-PARENT-BOOT SCOPE-PARENT-INIT cells allot
@@ -927,7 +929,7 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOMA-FIELD ( n -- ptr ptr u8 )
    cells ATOMA + 0 ptr-field ;
 : RIGID-RESET ( -- )
-   1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N ! ;
+   1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N !   1 RGN-MARK !   0 FB-N ! ;
 \ Shared catch-all domain: fresh-mask-* and every non-domain fresh atom mint
 \ here.
 : RIGID-FRESH ( -- n )
@@ -2300,8 +2302,6 @@ create FO-BOOT FO-INIT-CAP cells allot
 PERSISTED-PTR-VARIABLE FO-P
 variable FO-CAP
 FO-BOOT FO-P !  FO-INIT-CAP FO-CAP !
-variable FO-ON
-defer FO-INPUT-XT ( n -- bool )
 
 : FO-ENSURE ( n -- ) {: need:n :}
    need FO-CAP @ <= IF EXIT THEN
@@ -2311,7 +2311,6 @@ defer FO-INPUT-XT ( n -- bool )
    cap FO-CAP ! ;
 
 : FO-RESET ( -- )
-   0 FO-ON !
    FO-P @ 0 FO-CAP @ ARENA-CELLS-ZERO ;
 
 : FO-MATCH? ( n n -- bool )
@@ -2325,22 +2324,6 @@ defer FO-INPUT-XT ( n -- bool )
    IF 0 0= 0= EXIT THEN
    id idx cells FO-P @ + !
    0 0= ;
-
-\ A declared fresh region can forward a region created by this body. A single
-\ template keeps one identity; two templates cannot collapse onto one region.
-: FO-PAIR? ( n n -- bool ) {: actual:n declared:n :}
-   FO-ON @ 0= IF RES-FALSE EXIT THEN
-   UNIFY-KIND @ UK-COERCE <> IF RES-FALSE EXIT THEN
-   actual T-RES {: region:n :}
-   region TAG T-ATOM <> IF RES-FALSE EXIT THEN
-   region ATOM>K 0 <= IF RES-FALSE EXIT THEN
-   region ATOM>U 7 < IF RES-FALSE EXIT THEN
-   region ATOM>A 7 s" region-" CORE-STR= 0= IF RES-FALSE EXIT THEN
-   declared FRESH-REGION-TEMPLATE? 0= IF RES-FALSE EXIT THEN
-   actual FO-INPUT-XT IF RES-FALSE EXIT THEN
-   declared ATOM>K negate 1- {: idx:n :}
-   idx 1+ FO-ENSURE
-   actual ATOM>K idx FO-MATCH? ;
 
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
@@ -3595,8 +3578,7 @@ defer U-DRAIN-XT ( n -- )
      over PTR>INNER T-RES over PTR>INNER T-RES PAIR-STRICT
      r> CUR-ROLE !  r> CUR-ARG ! 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
-     2dup FO-PAIR? IF 2drop ELSE
-        2dup ATOM-OK? IF 2drop ELSE U-FAIL THEN THEN ELSE
+     2dup ATOM-OK? IF 2drop ELSE U-FAIL THEN ELSE
    2dup LOAN-FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
@@ -6449,6 +6431,7 @@ TYPE-CERTAIN-INSTALL
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
 variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
+variable PD-ATOM0                        \ the first atom index this signature parsed
 
 \ Scope parameters occur only in declared scope slots. Checking the complete
 \ rows after parsing also catches a variable used as an element/value before a
@@ -6578,6 +6561,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 : PSIG ( -- n n n n )
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 BIND-DEPTH !  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
+   ATOMN @ PD-ATOM0 !
    dr PSIDE  PR-IN ! PD-IN !
    s" --" EXPECT-SIG                              \ require the top-level '--'
    dr PSIDE  PR-OUT ! PD-OUT !
@@ -6609,6 +6593,76 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    a u BYTE-SPAN? IF u ELSE 0 THEN SL !
    0 SI !
    PSIG ;
+
+: ATOM-REKEY ( n n n -- ) {: from:n key:n id:n :}   \ atoms from `from` on keyed `key` take `id`
+   ATOMN @ from ?do
+      i cells ATOMK + dup @ key = IF id swap ! ELSE drop THEN
+   loop ;
+create FB-VAR FAM-CAP cells allot    \ per fresh-name key: the body's variable, 0 if none
+create FB-NAME FAM-CAP cells allot   \ per fresh-name key: one atom spelling the name
+variable FB-PASS                     \ 0 mints the caller's names, else makes the body's variables
+
+: FB-SITE ( ptr n bool -- ) {: cell:ptr caller:bool :}
+   cell @ {: t:n :}
+   FB-PASS @ 0= IF
+      caller IF PD-ATOM0 @  t ATOM>K  t ATOM>A t ATOM>U RIGID-AK-MINT  ATOM-REKEY THEN
+      EXIT
+   THEN
+   t ATOM>K negate 1- {: idx:n :}
+   idx cells FB-VAR + @ 0= IF
+      FRESH {: id:n :}
+      t ATOM>A t ATOM>U FRESH-REGION-NAME? IF id TVK-REGION! THEN
+      id MK-VAR idx cells FB-VAR + !
+      t idx cells FB-NAME + !
+      idx 1+ FB-N @ max FB-N !
+   THEN
+   idx cells FB-VAR + @ cell ! ;
+
+\ Visits each fresh-name atom in a signature cell, as NP-COLLECT-TERM walks. The
+\ caller supplies it on the input side; an input quotation's input flips that.
+: FB-WALK ( ptr n bool -- ) {: cell:ptr caller:bool :}
+   cell @ {: t:n :}
+   t TAG T-ATOM = IF t ATOM>K 0 < IF cell caller FB-SITE THEN EXIT THEN
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup PAY 4 * cells SPA + caller TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t TAG T-PTR = IF t PAY cells PTRA + caller TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-FORALL = IF t PAY 32 * QEA + caller TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   t TAG T-QUOT = IF
+      t PAY 32 * QEA + {: q:ptr :}
+      q caller 0= TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      q 8 + caller TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      q 16 + caller 0= TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      q 24 + caller TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT
+   THEN
+   t TAG T-PARAM = IF
+      0 BEGIN dup t PARAM>ARGC < WHILE
+         t over PARAM-ARG-IDX caller TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+
+: FB-WALK-SIG ( -- )
+   TWALK-RESET
+   PD-IN RES-TRUE FB-WALK  PD-OUT RES-FALSE FB-WALK
+   SGHASR @ IF PR-IN RES-TRUE FB-WALK  PR-OUT RES-FALSE FB-WALK THEN ;
+
+\ A fresh name the caller supplies is one identity in the whole body. RGN-MARK
+\ follows the last input mint: parsing makes no other rigid atom (FRESH-ATOM>TYPE).
+: SIG-INPUT-FRESH ( -- )
+   0 FB-PASS !  FB-WALK-SIG
+   RGN-N @ RGN-MARK ! ;
+
+\ Each body-supplied name becomes one variable for the body to bind, which
+\ FRESH-CLAIM resolves at its end. Run after SIG-EFF-CACHE!, so a recursive
+\ call still mints the name per call.
+: SIG-BODY-FRESH ( -- )
+   FB-VAR 0 FAM-CAP ARENA-CELLS-ZERO
+   FB-NAME 0 FAM-CAP ARENA-CELLS-ZERO
+   -1 FB-PASS !  FB-WALK-SIG ;
 
 CHECKER-REG:SCRATCH{
 variable LBI-T
@@ -17782,12 +17836,6 @@ variable SCOPE-WITNESS
       SCOPE-WITNESS @ 0= IF root C2-LOGICAL SCOPE-WITNESS ! THEN
    THEN ;
 
-: FO-INPUT-REGION? ( n -- bool ) {: region:n :}
-   region SGIN @ SCOPE-OCC? IF RES-TRUE EXIT THEN
-   region SGRIN @ SCOPE-OCC? ;
-: FO-INPUT-INSTALL ( -- ) [: FO-INPUT-REGION? ;] is FO-INPUT-XT ;
-FO-INPUT-INSTALL
-
 defer SCOPE-EXTERIOR-XT ( n -- bool )
 
 : SCOPE-CHILD-VIEW ( n n -- n ) {: parent:n scope:n :}
@@ -24536,6 +24584,7 @@ variable CUR-OPEN   variable CUR-PSIG
          VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
            TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
            TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
+           SIG-INPUT-FRESH
            SGBAD-FAIL!
            SIG-UNRES @ SGBAD @ 0= and IF
               2drop 2drop
@@ -24558,6 +24607,7 @@ variable CUR-OPEN   variable CUR-PSIG
            SG-ROWS-COLLECT
            NP-COLLECT
            SIG-EFF-CACHE!
+           SIG-BODY-FRESH
            SGBAD @ UNFIT @ or SGDECL-BAD !
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
@@ -25084,11 +25134,45 @@ variable CAST-PATH-N
 : LBUF-PEND-CLEAR ( -- )
    NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
 
-: CHECK-FRESH-OUTPUT ( -- )
+\ A new identity in the domain of fresh-name atom `name`.
+: FB-MINT ( n -- n ) {: name:n :}
+   name ATOM>A name ATOM>U  name ATOM>A name ATOM>U RIGID-AK-MINT  MK-ATOM-K ;
+
+\ A body-supplied name left unbound takes a new identity. A region name must
+\ hold one this body minted that no other name claims; any other name only that.
+: FB-OWNED? ( n -- bool ) {: idx:n :}
+   idx cells FB-NAME + @ {: name:n :}
+   idx cells FB-VAR + @ T-RES {: r:n :}
+   r ISVAR IF name FB-MINT r PAY TV! THEN
+   name ATOM>A name ATOM>U FRESH-REGION-NAME? 0= IF r ISVAR EXIT THEN
+   idx cells FB-VAR + @ T-RES {: id:n :}
+   id TAG T-ATOM <> IF RES-FALSE EXIT THEN
+   id ATOM>K RGN-MARK @ < IF RES-FALSE EXIT THEN
+   id ATOM>A id ATOM>U FRESH-REGION-NAME? 0= IF RES-FALSE EXIT THEN
+   idx 1+ FO-ENSURE
+   id ATOM>K idx FO-MATCH? ;
+
+\ A refused name is captured as a one-cell mismatch: a new identity of its
+\ domain against the one it holds, which RIGID-DIAG-CLASSIFY names.
+: FB-CLAIM ( n -- ) {: idx:n :}
+   idx cells FB-NAME + @ {: name:n :}
+   name 0= IF EXIT THEN
+   idx FB-OWNED? IF EXIT THEN
+   FAILSET @ 0= IF
+      0 UF-SET !  -1 CUR-UPOS !
+      idx cells FB-VAR + @ T-RES  name FB-MINT  2dup U-FAIL
+      FRESH MK-ROW MK-PUSH  swap FRESH MK-ROW MK-PUSH  UF-CAPTURE
+   THEN
+   0 OK ! ;
+
+: FRESH-CLAIM ( -- )
+   OK @ 0= IF EXIT THEN
    FO-RESET
-   -1 FO-ON !
+   0 BEGIN dup FB-N @ < WHILE  dup FB-CLAIM  1 + REPEAT drop ;
+
+: CHECK-FRESH-OUTPUT ( -- )
    SGOUT @ SUNI-COERCE
-   0 FO-ON ! ;
+   FRESH-CLAIM ;
 
 \ The refusals a recorded name meets, a closed constructor package and a
 \ duplicate tail, are asked before the record step's first write: its control
@@ -25188,6 +25272,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
+   CHECK-SIG? CHECK-RETURNS? 0= and IF FRESH-CLAIM THEN   \ a body that never returns resolves its fresh names too
    CF-OPEN? IF CF-FAIL THEN
    CHECK-RBALANCE
    CHECK-RET-SIG? IF

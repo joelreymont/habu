@@ -73,6 +73,13 @@ defer RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-
 \ atom. Identity variables avoid n, f and r.
 : RR-U3R ( matrix<space-global,r,b,c> matrix<space-global,r,b,c> -- ) drop drop ;
 
+\ Region-generic view words, for a body whose own inputs declare a fresh region.
+\ A mut-view is exclusive, so the two-view consumer is a `defer` (a body that
+\ drops one is refused).
+: RR-VPASS ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) ;
+: RR-VTAKE ( [ mut-view<p,q,a,u8> -- ] -- ) drop ;
+defer RR-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
+
 \ The window holds the suspended hook on the stack. After the report the hook
 \ resumes and diagnostics leave RR-DIAG, so a file loaded after this one in the
 \ same process is checked and reports as usual.
@@ -147,6 +154,43 @@ s" C-MSKX ( -- ) RR-BOXM RR-BOXM RR-UBOX"  RR-CHECK 0 T=
 \ E-RIGID-EXHAUST rather than wrapping into a reused id, as case 7 does for the
 \ per-domain counters.
 RR-WRAPM  RR-EC @ E-RIGID-EXHAUST T=
+\ (16) a body holds a fresh region its inputs declare as one identity: it passes
+\ to a region-generic word, directly or as a callback's input, and one name in
+\ two inputs is one region.
+s" C-FPASS ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-b,u8> ) RR-VPASS"  RR-CHECK -1 T=
+s" C-FCB ( [ mut-view<p,q,fresh-region-b,u8> -- ] -- ) RR-VTAKE"  RR-CHECK -1 T=
+s" C-FSELF ( mut-view<p,q,fresh-region-b,u8> mut-view<p,q,fresh-region-b,u8> -- ) RR-VSAME"  RR-CHECK -1 T=
+\ (17) two declared fresh regions are two allocations.
+s" C-F2 ( mut-view<p,q,fresh-region-b,u8> mut-view<p,q,fresh-region-c,u8> -- ) RR-VSAME"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (18) an input's region is not a new one: an output-only fresh region pairs
+\ only with a region the body mints (CHECK-FRESH-OUTPUT).
+s" C-FNEW ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) RR-VPASS"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (19) an input's fresh region is not one the body mints.
+s" C-FOWN ( matrix<space-global,fresh-region-b,f32,f32> -- ) RR-OWN RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (20) a declared region quantifier cannot be specialized to a fresh region.
+s" C-FQNT ( mut-view<p,q,a,u8> mut-view<p,q,fresh-region-b,u8> -- ) RR-VSAME"  RR-CHECK 0 T=
+s" must stay parametric" RR-DIAG? -1 T=
+\ (21) declared fresh identities keep their domains.
+s" C-FDOM ( span<space-global,f32,fresh-region-b> span<space-global,f32,fresh-gen-b> -- ) RR-UBOX"  RR-CHECK 0 T=
+s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+\ (22) a fresh region the body supplies, in a callback's input, is one the body
+\ mints; handed an input's region instead, it is refused.
+s" C-FMINT ( [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN"  RR-CHECK -1 T=
+s" C-FCBIN ( matrix<space-global,fresh-region-b,f32,f32> [ matrix<space-global,fresh-region-c,f32,f32> -- ] -- ) execute"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" fresh-region-c" RR-DIAG? -1 T=
+\ (23) two fresh regions the body supplies are two allocations.
+s" C-F2MINT ( -- matrix<space-global,fresh-region-b,f32,f32> matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN dup"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" fresh-region-c" RR-DIAG? -1 T=
+\ (24) a body-supplied fresh name of another domain holds no identity a call
+\ minted, and a declared quantifier does not become a body-supplied region.
+s" C-FGCB ( [ span<space-global,f32,fresh-gen-b> -- ] -- ) RR-BOXG swap execute"  RR-CHECK 0 T=
+s" C-FQCB ( matrix<space-global,a,f32,f32> [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- ) execute"  RR-CHECK 0 T=
+s" must stay parametric" RR-DIAG? -1 T=
 
 T-REPORT
 DIAG-BUFFER-OFF set-check
