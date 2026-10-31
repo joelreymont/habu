@@ -1,9 +1,11 @@
 ---
 title: Reuse checker.f and type-family.f in warm builds
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-31T13:07:09.968025+02:00"
+closed-at: "2026-10-31T21:05:21.201190+02:00"
+close-reason: "landed on master facda3aa (Admit a file's own mapped store when reusing it): build rc 0; native-file state, dynamic-load, storage, fresh-region, admission, replay e2e rc 0; engine cold rc 0, warm rc 0, warm == cold, 164 files reused, no refusal for src/core/checker.f or type-family.f (39 refusals, all reason=tier); proof .jj-ws.noindex/carl-ckr/.out/land/"
 ---
 
 Problem: a no-change warm engine build at lane 11 (uyzslxrr) spends 31.1 of 46.0 s (67.5%) recompiling the two files refused every build: src/core/checker.f 24.6 s (native-file: refused reason=mapped-compile-time-read word=USIGS-P; frame ordered=1 reason=run-reaches-kernel-word word=data-base via RESERVED-PTR-U8-CELL) and src/core/type-family.f 6.4 s (refused mapped-compile-time-read word=TF-A-P; ordered=1 run-reaches-kernel-word ndict@ via REG-PROTECT). Evidence: dot habu-profile-a-warm-9f10659a, carl-dots/.out/carl-file/s2prof-cd.log lines 23, 3974-3975, 3999, 4783-4784. Earlier sketch: carl-dots/.out/carl-file/lanec-design.md G4 (owners digest the mapped areas they hold: TFAM TF-A-P/TF-PK-P, checker SYMS/USIGS/VREC/CT-*). Acceptance: both files reused in a no-change warm build and in a memory.f comment-edit build, warm product == fresh-cache product, warm wall measured before/after. Files: to be designed (the mapped-read refusal in tools/native-unit-dependency.f, the PERSISTED-PTR-VARIABLE owners in checker.f and type-family.f). Verify: P0 warm == cold, types/frame e2e, full suite. Depends: lane 11 landed (habu-land-lane-11-5a304603); needs a Plan design (feature: persisted object contents). Claim: unassigned.

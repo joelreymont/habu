@@ -157,6 +157,15 @@ entry.
   we are gonna check hashes of source files? one of the goals was incremental
   building of habu itself". The reload goes through the incremental cache, not
   a second mechanism.
+- 2026-10-31, what makes a file stale: offered an engine hook that hands each
+  word read, comments skipped, to the build so a comment edit in memory.f
+  would rebuild nothing, Joel answered "why are you inventing hooks instead of
+  a system that tracks file dependencies, like make does? if everything truly
+  depends on memory, which i doubt it is, then we rebuild everything, comment
+  or no comment!" A compiled file is stale when a file it depends on changed,
+  whole file, as in make; a comment edit counts. The compiler requires
+  memory.f (src/compiler/ir/context.f:9), so in an engine build a memory.f
+  edit rebuilds every file the tree's compiler compiles.
 - 2026-10-27, evidence: "so make it happen in your branch and test it out!"
   and "you should be focusing on this, prove me wrong!" When a decision lacks
   evidence because a capability does not exist yet, build it in a branch and
