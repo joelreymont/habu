@@ -116,16 +116,7 @@ public
    s" PRIM-SPEC:R-RUN" true BIND-ONE
    \ CWORK's layout mark, whose change orders a top-level run's frame.
    s" CWORK:LAYOUT-MARK" true BIND-ONE
-   s" NSTR:SOURCE-CLOSE" true BIND-ONE
-   s" FFI:NEXT-FN" true BIND-ONE
-   s" FFI:FN-ROW@" true BIND-ONE
-   s" FFI:LIB-ROW@" true BIND-ONE
-   s" FFI:MAX-ARGS" true BIND-ONE
-   s" FFI:SYMBOL-CAP" true BIND-ONE
-   s" FFI:SELECTION" true BIND-ONE
-   s" FFI:OBSERVE" true BIND-ONE
-   s" FFI:UNOBSERVE" true BIND-ONE
-   s" FFI:MAKER-BANK" true BIND-ONE ;
+   s" NSTR:SOURCE-CLOSE" true BIND-ONE ;
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;
 : OPTIONAL-PRODUCER-XT ( ptr u8 n -- n ) BOUND-XT ;

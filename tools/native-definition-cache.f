@@ -38,9 +38,6 @@ package NDEF-CACHE
 private
 
 $4B8 constant LIVE-FIXED-OFF
-\ CHECKER-OWNER-EXT:BODY-CLOSE-OFF, spelled out for a host whose baked package
-\ predates the field.
-$5A0 constant BODY-CLOSE-OFF
 0 constant F-SRC
 8 constant F-SRC-U
 16 constant F-ROOT
@@ -1522,17 +1519,6 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    then
    true ;
 
-\ The active checker owner holds the pending created body, the prefix's before
-\ CHECKER-REG:HANDOVER and the target's after it; an owner without the slot
-\ has none. src/core/include.f CALL-UNIT closes the body inside each file's
-\ unit; this close covers a loader that leaves it open.
-: BODY-CLOSE ( -- )
-   OWNER {: owner:ptr :}
-   owner NULL-PTR = if exit then
-   owner CELL - CELL-VIEW @ BODY-CLOSE-OFF CELL + < if exit then
-   owner BODY-CLOSE-OFF + CELL-VIEW @ {: close:n :}
-   close 0<> if close ACTION-XT execute then ;
-
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
    SESSION @ 0= if
@@ -1598,14 +1584,9 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    NUNIT-OBJECT:RELEASE-CHECKER
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
-   \ A file's pending created body closes at its end, so its `,` grid is among
-   \ the file's rows. This tree's include.f CALL-UNIT closes it; this close
-   \ fires for a file an older host's include.f runs (files between
-   \ CHECKER-REG:HANDOVER and the target loader's binding).
-   unit-rc 0= plan-rc 0= and if ['] BODY-CLOSE catch else 0 then {: close-rc:n :}
    \ A reuse run in which a head missed or whose installs stopped
    \ (LOAD-ORDER) closes its object again.
-   unit-rc 0= plan-rc 0= and close-rc 0= and hit 0= F-MISS F@ 0<> or and
+   unit-rc 0= plan-rc 0= and hit 0= F-MISS F@ 0<> or and
       if ['] OBJECT-CLOSE catch else 0 then
       {: object-rc:n :}
    NUNIT-OBJECT:FILE-END
@@ -1627,7 +1608,6 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
       LOAD-END
    then
    unit-rc 0<> if unit-rc throw then
-   close-rc 0<> if close-rc throw then
    finish-rc 0<> if finish-rc throw then
    plan-rc 0<> if plan-rc throw then
    report-rc 0<> if report-rc throw then
