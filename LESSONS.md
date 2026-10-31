@@ -91,6 +91,14 @@ entry.
   fixed per-connection parameter count so each connection's list grows as BIND
   needs, up to PostgreSQL's own 65535, Joel chose "Grow to PostgreSQL's limit".
   A library takes its limits from the protocol it speaks, not from a preset.
+- 2026-10-31, Maki's Habu words (design r2): offered CMD:RUN-LINES for a run
+  that hands each stdout line to a callback and ends the child after a silence
+  window, Joel asked "why are we using \"a stretch of silence\" as terminator?";
+  told the child ends by exiting and silence is only his Maki stall rule (5
+  minutes with no progress line, no total limit), he chose CMD:RUN-STREAM. For
+  holding off idle sleep he chose POWER:KEEP-AWAKE / POWER:ALLOW-SLEEP over
+  WAKE-LOCK and HOLD; for runner sizing, OS-CPU:PERFORMANCE-CORES and
+  OS-MEMORY:TOTAL.
 
 ### Compiler and builds
 
