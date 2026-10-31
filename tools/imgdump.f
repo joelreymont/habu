@@ -275,6 +275,7 @@ variable OKV
       0 DATA-START X64-DATA-SPAN>OFF 0 < if IMG-FALSE exit then
       0 0= exit
    then
+   o SNAP-TRL-DATALEN + I@ CELL SNAP-RELOC:CALLMAP-OFF + < if IMG-FALSE exit then
    o SNAP-REGION-STORED o SNAP-TRL-DATALEN + I@ + o > if IMG-FALSE exit then
    0 0= ;
 
@@ -698,6 +699,13 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
 
 ;using   \ X64LAYOUT
 
+\ The arm64 DATA stream holds the DATA extent cell, then DATA [0, CALLMAP-OFF)
+\ as is; what follows is not laid out by DATA offset (snap-lib.f WRITE-BYTES).
+: ARM-DATA-CELL ( n -- n ) {: off:n :}
+   off SNAP-RELOC:CALLMAP-OFF CELL - > if
+      s" imgdump: data cell is not stored at its offset" 74 die then
+   TOFF @ TDATA @ - CELL + off + I@ ;
+
 : DATA-IMG ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
    HAS-SNAP @ 0= if s" imgdump: no snapshot" 74 die then
@@ -705,9 +713,9 @@ using X64LAYOUT   \ the guard: a bare layout name refuses (target-layout.f)
      none OF IMG-USAGE ENDOF
      some OF ENDOF
    ;MATCH {: off:n :}
-   off 0 < off 8 + TDATA @ > or if s" imgdump: data offset out of range" 74 die then
+   off 0 < off TDATA @ CELL - > or if s" imgdump: data offset out of range" 74 die then
    X64-IMAGE @ if off X64-DATA-CELL . exit then
-   TOFF @ TDATA @ - off + I@ . ;
+   off ARM-DATA-CELL . ;
 
 : SNAP-INFO ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-SNAP
