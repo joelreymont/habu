@@ -2067,7 +2067,7 @@ private
       config config-u BUF:N>BLEN c EMBED-CONFIG-BUF BUF:REPLACE
    then
    c JOURNAL-RESPONSE
-   s" answer" c REPLAY-CONTENT-BUF c JOURNAL-STRING-BUF
+   s" content" c REPLAY-CONTENT-BUF c JOURNAL-STRING-BUF
    kind 1 = if
       c PARSE-CHAT
       c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
@@ -2116,7 +2116,7 @@ private
 : JOURNAL-RECORD ( n ptr call -- )
    {: kind:n c :}
    kind c RECORD-OPEN
-   JSON-WRITE:COMMA s" answer" kind 1 = if
+   JSON-WRITE:COMMA s" content" kind 1 = if
       c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
    else s" " then JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" response" c RESPONSE$ JSON-WRITE:FIELD-S
