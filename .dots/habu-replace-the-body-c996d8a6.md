@@ -1,6 +1,6 @@
 ---
 title: Replace the BODY-CLOSE-OFF copy with its name
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-30T02:17:43.035897+02:00"

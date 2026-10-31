@@ -1,6 +1,6 @@
 ---
 title: "Bind the public engine's map after signing"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-31T11:59:21.499895+02:00"

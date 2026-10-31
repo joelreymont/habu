@@ -1,6 +1,6 @@
 ---
 title: Drop the unread FFI producer binds
-status: open
+status: active
 priority: 3
 issue-type: task
 created-at: "2026-10-31T17:23:15.268699+02:00"
