@@ -1,12 +1,16 @@
 \ model-test.f - MODEL's HTTP transport, input bounds and journal against one
 \ in-process OpenAI- and Ollama-shaped peer on a loopback port. Its key and
 \ settings items live in a store the test binds with SECRET:STORE!, so no item
-\ reaches the desktop store; secret-test.f covers the native stores. The first
-\ failed assertion ends the run.
+\ reaches the desktop store; secret-test.f covers the native stores. The run's
+\ stderr goes to a file in a private temp directory, where cases read MODEL's
+\ log lines. The first failed assertion ends the run.
 \ Run: bin/hb --load src/lib/net/model-test.f
 require src/lib/aio.f
 require src/lib/byte-buffer.f
+require src/lib/date.f
 require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
 require src/lib/json-read.f
 require src/lib/json-write.f
 require src/lib/memory.f
@@ -16,10 +20,12 @@ require src/lib/span.f
 require src/lib/string.f
 require src/lib/task.f
 require src/lib/test.f
+require src/lib/test/stderr.f
 require src/lib/test/wait.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/model.f
+require src/lib/net/tcp4.f
 
 package MODEL-FIXTURE
 private
@@ -345,6 +351,12 @@ $300000 constant BIG-U
       response [: S\" {\qerror\q:\qmodel not found\q}" JSON-WRITE:RAW ;] HTTP:JSON!
       exit
    then
+   \ A FastAPI server's error names its reason outside an error member.
+   t t-u s" http-detail" STR= if
+      response 422 HTTP:STATUS!
+      response [: S\" {\qdetail\q:\qbad field\q}" JSON-WRITE:RAW ;] HTTP:JSON!
+      exit
+   then
    t t-u s" forbidden" STR= if response 403 HTTP:STATUS! exit then
    \ OpenAI's refusal of a chat request over the model's context.
    t t-u s" too-large" STR= if
@@ -354,10 +366,9 @@ $300000 constant BIG-U
    then
    t t-u s" oversized" STR= if response 413 HTTP:STATUS! exit then
    t t-u s" big" STR= if response [: BIG$ s" stop" CHOICE ;] HTTP:JSON! exit then
-   t t-u s" slow" STR= if 200 >MS TASK:SLEEP then
    t t-u s" hold" STR= if HELD TASK:SIGNAL RELEASED TAKE then
    \ Every other scenario, the journal's long text included, starts "valid".
-   t t-u 5 min s" valid" STR= t t-u s" slow" STR= or t t-u s" hold" STR= or if
+   t t-u 5 min s" valid" STR= t t-u s" hold" STR= or if
       response [: CHAT-RESPONSE ;] HTTP:JSON! exit
    then
    response 400 HTTP:STATUS! ;
@@ -546,6 +557,91 @@ variable JOURNAL-READY
 : XS ( ptr u8 n -- ) {: a:ptr u:n :} u 0 ?do [char] x a i + c! loop ;
 
 
+$A constant LF
+create LOG-PATH PATH-CAP allot      \ the run's stderr capture file
+variable LOG-PATH-U
+create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
+create REFUSED-BASE 64 allot        \ a base URL whose port nothing listens on
+variable REFUSED-BASE-U
+
+: LOG-PATH$ ( -- ptr u8 n ) LOG-PATH LOG-PATH-U @ ;
+: REFUSED-BASE$ ( -- ptr u8 n ) REFUSED-BASE REFUSED-BASE-U @ ;
+
+
+: LOG-INIT ( -- )
+   s" model-test" FS:MKTEMP-DIR {: dir:ptr dir-u:n :}
+   dir dir-u FS:CLEANUP-TREE+
+   dir dir-u s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
+   LOG-B 1 BUF:N>BLEN BUF:INIT ;
+
+
+\ The whole capture file, valid until the next read.
+: LOG$ ( -- ptr u8 n )
+   LOG-PATH$ FS:FILE-SIZE {: size:n :}
+   LOG-B BUF:CLEAR
+   LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size = ASSERT
+   LOG-B BUF:SPAN$ BUF:BLEN>N ;
+
+
+: LINES ( -- n )
+   LOG$ {: a:ptr u:n :}
+   0 u 0 ?do a i + c@ LF = if 1+ then loop ;
+
+
+\ Whether a captured line, after its stamp, is exactly the text.
+: LINE? ( ptr u8 n ptr u8 n -- bool )
+   {: line:ptr line-u:n want:ptr want-u:n :}
+   line-u DATE:TIME-LEN < if false exit then
+   line DATE:TIME-LEN + line-u DATE:TIME-LEN - want want-u STR= ;
+
+
+: LOGGED? ( ptr u8 n -- bool )
+   {: want:ptr want-u:n :}
+   LOG$ {: a:ptr u:n :}
+   0 u 0 ?do
+      a i + c@ LF = if
+         i over - over a swap + swap want want-u LINE? if drop true unloop exit then
+         drop i 1+
+      then
+   loop drop false ;
+
+
+\ SB holds a log line's text up to its code: ` <level> model: <kind> <model>
+\ <base><path> `.
+: SB-LINE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: level:ptr level-u:n who:ptr who-u:n base:ptr base-u:n path:ptr path-u:n :}
+   SB-RESET s"  " SB-APPEND level level-u SB-APPEND s"  model: " SB-APPEND
+   who who-u SB-APPEND s"  " SB-APPEND
+   base base-u SB-APPEND path path-u SB-APPEND s"  " SB-APPEND ;
+
+
+: CHAT-LINE ( ptr u8 n -- )
+   {: level:ptr level-u:n :}
+   level level-u s" chat test-generation" MODEL-PEER:BASE-URL$ s" /chat/completions" SB-LINE ;
+
+
+: EMBED-LINE ( ptr u8 n -- )
+   {: level:ptr level-u:n :}
+   level level-u s" embed test-embedding" MODEL-PEER:BASE-URL$ s" /embeddings" SB-LINE ;
+
+
+\ A failed check prints the capture, which the failed run's exit deletes.
+: SB-LOGGED ( -- )
+   SB$ LOGGED? dup 0= if SB$ type cr LOG$ type then ASSERT ;
+
+
+: CHAT-LOGGED ( ptr u8 n ptr u8 n -- )
+   {: level:ptr level-u:n tail:ptr tail-u:n :}
+   level level-u CHAT-LINE tail tail-u SB-APPEND SB-LOGGED ;
+
+
+\ The body logs no line.
+: QUIET ( [ -- ] -- )
+   LINES {: before:n :}
+   execute
+   LINES before = dup 0= if LOG$ type then ASSERT ;
+
+
 : FIXTURE-KEY ( -- ) KEY-SERVICE$ KEY-ACCOUNT$ M MODEL:API-KEY! ;
 
 
@@ -577,7 +673,7 @@ variable JOURNAL-READY
 \ refuses it, also E-KEY.
 : KEY-CASES ( -- )
    SERVICE$ ACCOUNT$ M MODEL:API-KEY!
-   s" valid" MODEL:E-KEY FAILS
+   [: s" valid" MODEL:E-KEY FAILS ;] QUIET
    s" local-test-key" STORE
    CHAT
    s" " STORED-FAILS
@@ -610,50 +706,102 @@ variable JOURNAL-READY
 
 : INVALID-SCHEMA ( -- )
    s" {bad" M MODEL:SCHEMA!
-   s" valid" MODEL:E-CONFIG FAILS
+   [: s" valid" MODEL:E-CONFIG FAILS ;] QUIET
    SCHEMA$ M MODEL:SCHEMA! ;
 
 
 : REPLIES ( -- )
    s" refusal" MODEL:E-REFUSED FAILS
+   s" error" CHAT-LINE s" MODEL:E-REFUSED status 200 body: " SB-APPEND
+   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:null,\qrefusal\q:\qcannot comply\q}}]}" SB-APPEND
+   SB-LOGGED
    s" length" MODEL:E-INCOMPLETE FAILS
    M MODEL:FINISH-REASON$ s" length" STR= ASSERT
+   s" warn" s" MODEL:E-INCOMPLETE finish length" CHAT-LOGGED
    s" filtered" MODEL:E-INCOMPLETE FAILS
    M MODEL:FINISH-REASON$ s" content_filter" STR= ASSERT
    s" long-finish" MODEL:E-INCOMPLETE FAILS
    M MODEL:FINISH-REASON$ MODEL-PEER:LONG-FINISH$ STR= ASSERT
    s" bad-content" MODEL:E-RESPONSE FAILS
    M MODEL:FINISH-REASON$ nip 0= ASSERT
+   s" error" CHAT-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
+   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\qnot JSON\q,\qrefusal\q:null}}]}" SB-APPEND
+   SB-LOGGED
    s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR= ASSERT
    s" http-bad" MODEL:E-HTTP FAILS
    M MODEL:HTTP-STATUS 400 = ASSERT
    M MODEL:ERROR$ s" bad request" STR= ASSERT
+   s" error" s" MODEL:E-HTTP status 400: bad request" CHAT-LOGGED
    CHAT M MODEL:ERROR$ nip 0= ASSERT
    s" http-text" MODEL:E-CONFIG FAILS
    M MODEL:HTTP-STATUS 404 = ASSERT
    M MODEL:ERROR$ s" model not found" STR= ASSERT
+   s" error" s" MODEL:E-CONFIG status 404: model not found" CHAT-LOGGED
+   s" http-detail" MODEL:E-HTTP FAILS
+   s" error" S\" MODEL:E-HTTP status 422 body: {\qdetail\q:\qbad field\q}" CHAT-LOGGED
    s" forbidden" MODEL:E-KEY FAILS
    M MODEL:HTTP-STATUS 403 = ASSERT
+   s" error" s" MODEL:E-KEY status 403" CHAT-LOGGED
    \ A fault before sending reports no earlier call's status: a builder's,
    \ and one in a chat call made again over the same parts.
    INVALID-IMAGE
    M MODEL:HTTP-STATUS 0= ASSERT
    s" forbidden" MODEL:E-KEY FAILS
    s" {bad" M MODEL:SCHEMA!
-   CHAT-CODE MODEL:E-CONFIG = ASSERT
+   [: CHAT-CODE MODEL:E-CONFIG = ASSERT ;] QUIET
    M MODEL:HTTP-STATUS 0= ASSERT
    SCHEMA$ M MODEL:SCHEMA!
    s" too-large" MODEL:E-CAPACITY FAILS
    M MODEL:HTTP-STATUS 400 = ASSERT
+   s" warn" s" MODEL:E-CAPACITY status 400: Your input exceeds the context window of this model." CHAT-LOGGED
    s" oversized" MODEL:E-CAPACITY FAILS
    M MODEL:HTTP-STATUS 413 = ASSERT
    M MODEL:ERROR$ nip 0= ASSERT ;
 
 
+\ The peer holds the reply, so the deadline, long enough to cover dispatch,
+\ expires after the request went out.
 : TIMEOUT ( -- )
-   30 M MODEL:TIMEOUT!
-   s" slow" MODEL:E-DEADLINE FAILS
-   60000 M MODEL:TIMEOUT! ;
+   200 M MODEL:TIMEOUT!
+   s" hold" MODEL:E-DEADLINE FAILS
+   MODEL-PEER:AWAIT-HOLD MODEL-PEER:RELEASE
+   60000 M MODEL:TIMEOUT!
+   s" error" CHAT-LINE s" MODEL:E-DEADLINE curl 28: " SB-APPEND
+   28 CURL:>CODE CURL:ERROR$ SB-APPEND s"  after 200 ms" SB-APPEND SB-LOGGED ;
+
+
+\ A loopback port nothing listens on: bound, then closed.
+: CLOSED-PORT ( -- n )
+   $7F000001 TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
+   MATCH TCP4:bind-result
+      bound OF TCP4:LISTENER>N ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL -1 ENDOF
+   ;MATCH {: fd:n :}
+   fd TCP4:>LISTENER TCP4:LOCAL
+   MATCH TCP4:endpoint-result
+      endpoint OF TCP4:PORT>N swap TCP4:ADDRESS>N drop ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL 0 ENDOF
+   ;MATCH {: port:n :}
+   fd TCP4:>LISTENER TCP4:CLOSE-LISTENER
+   MATCH TCP4:status
+      ok OF ENDOF
+      failed OF TCP4:ERRNO>N drop FAIL ENDOF
+   ;MATCH
+   port ;
+
+
+\ A refused connection is the transport's failure, logged with libcurl's code
+\ 7 and its text.
+: REFUSED ( -- )
+   SB-RESET s" http://127.0.0.1:" SB-APPEND CLOSED-PORT FMT:SB-INT
+   SB$ {: a:ptr u:n :}
+   u 64 <= ASSERT
+   a u REFUSED-BASE 64 SPAN:MAKE SPAN:COPY u REFUSED-BASE-U !
+   REFUSED-BASE$ M MODEL:BASE-URL!
+   s" valid" MODEL:E-TRANSPORT FAILS
+   MODEL-PEER:BASE-URL$ M MODEL:BASE-URL!
+   s" error" s" chat test-generation" REFUSED-BASE$ s" /chat/completions" SB-LINE
+   s" MODEL:E-TRANSPORT curl 7: " SB-APPEND 7 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED ;
 
 
 : CHAT-WORK ( -- )
@@ -733,6 +881,9 @@ variable JOURNAL-READY
 : BAD-VECTORS ( -- )
    s" wrong-dims" INPUTS
    EMBED-CODE MODEL:E-RESPONSE = ASSERT
+   s" error" EMBED-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
+   S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2],\qindex\q:0}]}" SB-APPEND
+   SB-LOGGED
    s" wrong-index" INPUTS
    EMBED-CODE MODEL:E-RESPONSE = ASSERT ;
 
@@ -795,21 +946,23 @@ variable JOURNAL-READY
 
 
 \ Refused bases: another scheme, no host, a blank, a trailing slash, and
-\ userinfo or a query that could carry a credential. A refusal keeps the
-\ configured base.
+\ userinfo or a query that could carry a credential, in a base or an Ollama
+\ endpoint. A refusal keeps the configured base.
 : FTP-BASE ( n -- n ) s" ftp://x" M MODEL:BASE-URL! ;
 : BARE-BASE ( n -- n ) s" http://" M MODEL:BASE-URL! ;
 : BLANK-BASE ( n -- n ) s" http://x y" M MODEL:BASE-URL! ;
 : SLASH-BASE ( n -- n ) s" http://x/" M MODEL:BASE-URL! ;
 : USER-BASE ( n -- n ) s" https://user:token@x" M MODEL:BASE-URL! ;
 : QUERY-BASE ( n -- n ) s" https://x/v1?key=k" M MODEL:BASE-URL! ;
+: USER-OLLAMA ( n -- n ) s" http://user:token@x/api/embed" s" bge-m3" s" bge-m3" 3 M MODEL:OLLAMA! ;
 : BASES ( -- )
    0 [: FTP-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: BARE-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: BLANK-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: SLASH-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    0 [: USER-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
-   0 [: QUERY-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT ;
+   0 [: QUERY-BASE ;] CODE-OF MODEL:E-CONFIG = ASSERT
+   0 [: USER-OLLAMA ;] CODE-OF MODEL:E-CONFIG = ASSERT ;
 
 
 \ A hit requires the stored journal input, so a hit is that exact request.
@@ -924,7 +1077,7 @@ create HASH 64 allot
    0 ROWS-MADE ! 0 REJECTED-ROW ! false ROW-FAIL !
    0 [: BLANK-PURPOSE ;] CODE-OF MODEL:E-CONFIG = ASSERT
    MODEL-PEER:CALLS@ {: calls:n :}
-   s" valid" MODEL:E-STATE FAILS
+   [: s" valid" MODEL:E-STATE FAILS ;] QUIET
    MODEL-PEER:CALLS@ calls = ASSERT
    ROWS-MADE @ 0= ASSERT
    SERVICE$ s" missing" M MODEL:API-KEY!
@@ -960,6 +1113,7 @@ create HASH 64 allot
    s" read-pdf" M MODEL:PURPOSE!
    s" http-error" MODEL:E-UNAVAILABLE FAILS
    M MODEL:HTTP-STATUS 429 = ASSERT
+   s" error" s" MODEL:E-UNAVAILABLE status 429: rate limit" CHAT-LOGGED
    ROWS-MADE @ 2 = ASSERT
    s" purpose" ROW s" read-pdf" STR-IS
    s" outcome" ROW s" failed" STR-IS
@@ -1188,7 +1342,13 @@ variable KEYLESS-U
    M MODEL:CALL-ID id = ASSERT
    0 REJECTED-ROW !
    M MODEL:REJECTED
-   REJECTED-ROW @ id = ASSERT ;
+   REJECTED-ROW @ id = ASSERT
+   \ A refusal its live call journaled replays with no request and no line.
+   false JOURNAL-READY !
+   PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
+   MODEL-PEER:CALLS@ {: refused:n :}
+   [: PURPOSE s" too-large" MODEL:E-CAPACITY FAILS ;] QUIET
+   MODEL-PEER:CALLS@ refused = ASSERT ;
 
 
 \ Both producer configurations name this base.
@@ -1325,7 +1485,7 @@ variable KEYLESS-U
    SETUP
    M MODEL:CANCEL 0= ASSERT
    BASES CHAT IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
-   REPLIES TIMEOUT CANCELLATION
+   REPLIES TIMEOUT REFUSED [: CANCELLATION ;] QUIET
    EMBEDDINGS BAD-VECTORS EMBED-TOO-LARGE INPUT-BOUNDS DIMS-PROPERTY
    STOP-BETWEEN
    M MODEL:CLOSE
@@ -1351,11 +1511,19 @@ variable KEYLESS-U
    ['] CASES [: MODEL-PEER:STOP ;] finally ;
 
 
+: CAPTURED ( -- )
+   LOG-PATH$ STDERR:CAPTURE
+   ['] PEERED [: STDERR:;CAPTURE ;] finally ;
+
+
 public
 : RUN ( -- )
    T-RESET
    STORE-INSTALL
-   [: PEERED ;] WITH-CURL
+   LOG-INIT
+   [: CAPTURED ;] WITH-CURL
+   LOG$ KEY$ CONTAINS? 0= ASSERT
+   LOG-B BUF:DISPOSE
    s" model-test: " type T-CASES FMT:.INT s"  checks" type cr
    T-REPORT ;
 ;using

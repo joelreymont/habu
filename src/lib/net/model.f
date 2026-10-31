@@ -1,14 +1,18 @@
 \ model.f - package MODEL, a Habu library: a client for OpenAI- and
 \ Ollama-shaped chat and embedding providers over CURL, its API key read from
 \ the native credential store through SECRET, with a caller's journal and
-\ recorder and bounded inputs. Test: src/lib/net/model-test.f.
+\ recorder and bounded inputs. Each failure the provider or the transport
+\ caused is logged through LOG (tag `model`), never the request body.
+\ Test: src/lib/net/model-test.f.
 \ STORAGE CLASS. CALLER-OWNED: each call and settings record, and the arena
 \ OPEN allocates for a call until CLOSE; the module keeps no state.
 require src/lib/base64.f
 require src/lib/byte-buffer.f
 require src/lib/f64-text.f
+require src/lib/fmt.f
 require src/lib/json-read.f
 require src/lib/json-write.f
+require src/lib/log.f
 require src/lib/memory.f
 require src/lib/net/curl.f
 require src/lib/os-memory.f
@@ -23,8 +27,8 @@ require src/lib/time.f
 \ with a call. Generation and embedding are each configured explicitly, with
 \ no implicit model or fallback. The caller starts Habu's AIO and CURL loops
 \ before HTTP calls and keeps model work outside PostgreSQL transactions. No
-\ API key reaches a request body, response, error or producer record: a key is
-\ read only into the HTTP header, which is wiped once libcurl copies it.
+\ API key reaches a request body, response, error, log line or producer record:
+\ a key is read only into the HTTP header, which is wiped once libcurl copies it.
 package MODEL
 
 private
@@ -131,7 +135,8 @@ CAST: >TOKENS ( ptr u8 -- ptr tokens )
 
 \ The installed recorder and the current call's accounting: the purpose
 \ PURPOSE! left pending, the label of the call in progress, whether its request
-\ reached the backend and when, its recorded call id and the recorder's fault.
+\ reached the backend and when, its recorded call id, the recorder's fault and
+\ the libcurl code of the call's failed step, 0 when none.
 STRUCTURE ledger DERIVE addr
    FIELD context n
    FIELD record [ n ptr u8 n -- n ]
@@ -146,6 +151,7 @@ STRUCTURE ledger DERIVE addr
    FIELD kind n
    FIELD code n
    FIELD cancelled bool
+   FIELD transport n
 ;STRUCTURE
 
 CAST: >LEDGER ( ptr u8 -- ptr ledger )
@@ -555,6 +561,12 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    {: c :}
    s" /embeddings" c URL$ ;
 
+: REQUEST-URL$ ( ptr call -- ptr u8 n )
+   {: c :}
+   c MODEL-CALL:ENDPOINT @ if c CHAT-URL$ exit then
+   c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if c ENDPOINT$ exit then
+   c EMBED-URL$ ;
+
 public
 
 : OPEN ( ptr call -- )
@@ -924,6 +936,7 @@ public
    {: endpoint:ptr endpoint-u:n model:ptr model-u:n identity:ptr identity-u:n dims:n c :}
    c REQUIRE-IDLE
    dims 0 <= if E-CONFIG throw then
+   endpoint endpoint-u BASE-URL? 0= if E-CONFIG throw then
    endpoint endpoint-u c ENDPOINT-BUF REPLACE-SOME
    model model-u c EMBED-BUF REPLACE-SOME
    identity identity-u c IDENTITY-BUF REPLACE-SOME
@@ -1262,17 +1275,24 @@ private
    JSON-WRITE:OBJECT-END drop
    c WRITER JSON-WRITE:CLOSE ;
 
-: CHECK-STATUS ( CURL:status -- )
-   MATCH CURL:status
+: TRANSPORT-FAILED ( CURL:code ptr call -- )
+   LEDGER {: code:CURL:code l :}
+   code CURL:CODE>N l LEDGER-TRANSPORT !
+   E-TRANSPORT throw ;
+
+: CHECK-STATUS ( CURL:status ptr call -- )
+   {: s:CURL:status c :}
+   s MATCH CURL:status
       ok OF ENDOF
-      failed OF drop E-TRANSPORT throw ENDOF
+      failed OF c TRANSPORT-FAILED ENDOF
    ;MATCH ;
 
-: OPEN-HANDLE ( -- CURL:handle )
+: OPEN-HANDLE ( ptr call -- CURL:handle )
+   {: c :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
-      failed OF drop E-TRANSPORT throw ENDOF
+      failed OF c TRANSPORT-FAILED ENDOF
    ;MATCH ;
 
 : HEADER-WIPE ( ptr call -- )
@@ -1346,11 +1366,11 @@ private
    c KEY-LINE-BUF HELD line-u SPAN:TAKE SPAN:$ ;
 
 : KEY-HEADER-KEEP ( CURL:handle ptr call -- CURL:handle ptr call )
-   2dup KEY-LINE CURL:HEADER+ CHECK-STATUS ;
+   2dup KEY-LINE CURL:HEADER+ over CHECK-STATUS ;
 
 : SET-HEADERS ( CURL:handle ptr call -- )
    {: h:CURL:handle c :}
-   h s" Content-Type: application/json" CURL:HEADER+ CHECK-STATUS
+   h s" Content-Type: application/json" CURL:HEADER+ c CHECK-STATUS
    c MODEL-CALL:ENDPOINT @ c MODEL-CALL:EMBEDDING-KIND @ OLLAMA <> or if
       h c [: KEY-HEADER-KEEP ;] catch {: fault:n :} 2drop
       fault c WIPE-AFTER
@@ -1380,7 +1400,7 @@ private
    c MODEL-CALL:HANDLE @ MATCH option
       none OF E-STATE throw ENDOF
       some OF {: h:CURL:handle :}
-         h CURL:STREAM-START CHECK-STATUS
+         h CURL:STREAM-START c CHECK-STATUS
          h OPTION:SOME c MODEL-CALL:TRANSPORT !
          c DISPATCHED
       ENDOF
@@ -1562,6 +1582,7 @@ private
    c END-TRANSFER {: cancelled:bool :}
    fault 0<> if fault throw then
    cancelled if E-CANCELLED throw then
+   rc c LEDGER LEDGER-TRANSPORT !
    rc CURL-TIMED-OUT = if E-DEADLINE throw then
    rc 0<> if E-TRANSPORT throw then
    status c MODEL-CALL:HTTP-STATUS !
@@ -1580,16 +1601,11 @@ private
    c MODEL-CALL:HANDLE @ MATCH option
       none OF E-STATE throw ENDOF
       some OF {: h:CURL:handle :}
-         h c MODEL-CALL:ENDPOINT @ if c CHAT-URL$ else
-            c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-               c ENDPOINT$
-            else c EMBED-URL$ then
-         then
-         CURL:URL! CHECK-STATUS
-         h s" POST" CURL:METHOD! CHECK-STATUS
-         h c BODY$ CURL:BODY! CHECK-STATUS
+         h c REQUEST-URL$ CURL:URL! c CHECK-STATUS
+         h s" POST" CURL:METHOD! c CHECK-STATUS
+         h c BODY$ CURL:BODY! c CHECK-STATUS
          h c SET-HEADERS
-         h c REMAINING-MS >MS CURL:TIMEOUT! CHECK-STATUS
+         h c REMAINING-MS >MS CURL:TIMEOUT! c CHECK-STATUS
          c START-TRANSFER
          c AWAIT-TRANSFER
       ENDOF
@@ -1600,7 +1616,7 @@ private
    {: c :}
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:HTTP-STATUS !
-   OPEN-HANDLE OPTION:SOME c MODEL-CALL:HANDLE !
+   c OPEN-HANDLE OPTION:SOME c MODEL-CALL:HANDLE !
    c [: TRANSFER ;] catch {: code:n :} drop
    c MODEL-CALL:HANDLE @ MATCH option
       none OF ENDOF
@@ -2225,6 +2241,7 @@ private
    false l LEDGER-DISPATCHED !
    0 l LEDGER-CALL-ID !
    0 l LEDGER-FAULT !
+   0 l LEDGER-TRANSPORT !
    l LEDGER-READY @ u 0= and if E-STATE throw then ;
 
 \ Records a request the backend received. The recorder's fault is kept for
@@ -2318,6 +2335,83 @@ private
 
 public
 
+: FINISH-REASON$ ( ptr call -- ptr u8 n )
+   {: c :}
+   c CONTENT-BUF HELD c MODEL-CALL:FINISH-U @ SPAN:TAKE SPAN:$ ;
+\ The last call's provider message from its refused HTTP reply; empty when none.
+: ERROR$ ( ptr call -- ptr u8 n ) ERROR-BUF BUFFER$ ;
+
+private
+
+: CODE$ ( n -- ptr u8 n )
+   {: code:n :}
+   code E-CONFIG = if s" MODEL:E-CONFIG" exit then
+   code E-KEY = if s" MODEL:E-KEY" exit then
+   code E-CAPACITY = if s" MODEL:E-CAPACITY" exit then
+   code E-TRANSPORT = if s" MODEL:E-TRANSPORT" exit then
+   code E-HTTP = if s" MODEL:E-HTTP" exit then
+   code E-RESPONSE = if s" MODEL:E-RESPONSE" exit then
+   code E-REFUSED = if s" MODEL:E-REFUSED" exit then
+   code E-INCOMPLETE = if s" MODEL:E-INCOMPLETE" exit then
+   code E-DEADLINE = if s" MODEL:E-DEADLINE" exit then
+   code E-UNAVAILABLE = if s" MODEL:E-UNAVAILABLE" exit then
+   code FMT:INT$ ;
+
+
+\ A refused reply's status and provider message, else its whole body; for an
+\ unusable reply or a model's refusal, the status and whole body.
+: REPLY+ ( n ptr call -- )
+   {: code:n c :}
+   c MODEL-CALL:HTTP-STATUS @ {: status:n :}
+   code E-RESPONSE = code E-REFUSED = or if
+      s"  status " LOG:TEXT+ status LOG:INT+
+      s"  body: " LOG:TEXT+ c RESPONSE$ LOG:TEXT+ exit
+   then
+   status 0= status 200 = or if exit then
+   s"  status " LOG:TEXT+ status LOG:INT+
+   c ERROR$ nip 0<> if s" : " LOG:TEXT+ c ERROR$ LOG:TEXT+ exit then
+   c RESPONSE$ nip 0= if exit then
+   s"  body: " LOG:TEXT+ c RESPONSE$ LOG:TEXT+ ;
+
+
+: CAUSE+ ( n ptr call -- )
+   {: code:n c :}
+   code E-INCOMPLETE = c FINISH-REASON$ nip 0<> and if
+      s"  finish " LOG:TEXT+ c FINISH-REASON$ LOG:TEXT+
+   then
+   c LEDGER LEDGER-TRANSPORT @ {: rc:n :}
+   rc 0<> if
+      s"  curl " LOG:TEXT+ rc LOG:INT+
+      s" : " LOG:TEXT+ rc CURL:>CODE CURL:ERROR$ LOG:TEXT+
+   then
+   code E-DEADLINE = if
+      s"  after " LOG:TEXT+ c MODEL-CALL:TIMEOUT-MS @ LOG:INT+ s"  ms" LOG:TEXT+
+   then ;
+
+
+\ One line for a failed call of kind 1 (chat) or 2 (embed): the model, the
+\ request URL, the code's name and what the call holds of its cause.
+: REPORT ( n n ptr call -- )
+   {: kind:n code:n c :}
+   code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
+   kind 1 = if s" chat " LOG:TEXT+ c GEN$ else s" embed " LOG:TEXT+ c EMBED-MODEL$ then
+   LOG:TEXT+
+   s"  " LOG:TEXT+ c REQUEST-URL$ LOG:TEXT+
+   s"  " LOG:TEXT+ code CODE$ LOG:TEXT+
+   code c REPLY+
+   code c CAUSE+
+   LOG:;LINE ;
+
+\ Logs a failure the provider or the transport caused: the request went out or
+\ a libcurl step failed.
+: REPORT-FAILURE ( n n ptr call -- )
+   {: kind:n code:n c :}
+   c LEDGER {: l :}
+   l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if exit then
+   kind code c REPORT ;
+
+public
+
 : CANCEL ( ptr call -- bool )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
@@ -2350,7 +2444,7 @@ public
    c END-CALL {: cancelled:bool :}
    1 code cancelled c END-LEDGER {: recorded:n :}
    cancelled if E-CANCELLED throw then
-   code 0<> if 1 code hit c JOURNAL-REFUSAL code throw then
+   code 0<> if 1 code c REPORT-FAILURE 1 code hit c JOURNAL-REFUSAL code throw then
    c MODEL-CALL:JOURNAL-READY @ hit 0= and if 1 c JOURNAL-PUT then
    recorded 0<> if recorded throw then
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
@@ -2367,7 +2461,7 @@ public
    c END-CALL {: cancelled:bool :}
    2 code cancelled c END-LEDGER {: recorded:n :}
    cancelled if E-CANCELLED throw then
-   code 0<> if 2 code hit c JOURNAL-REFUSAL code throw then
+   code 0<> if 2 code c REPORT-FAILURE 2 code hit c JOURNAL-REFUSAL code throw then
    c MODEL-CALL:JOURNAL-READY @ hit 0= and if 2 c JOURNAL-PUT then
    recorded 0<> if recorded throw then
    true c MODEL-CALL:EMBEDDED ! ;
@@ -2380,11 +2474,6 @@ public
 
 : GENERATION-MODEL$ ( ptr call -- ptr u8 n ) GEN$ ;
 : HTTP-STATUS ( ptr call -- n ) MODEL-CALL:HTTP-STATUS @ ;
-: FINISH-REASON$ ( ptr call -- ptr u8 n )
-   {: c :}
-   c CONTENT-BUF HELD c MODEL-CALL:FINISH-U @ SPAN:TAKE SPAN:$ ;
-\ The last call's provider message from its refused HTTP reply; empty when none.
-: ERROR$ ( ptr call -- ptr u8 n ) ERROR-BUF BUFFER$ ;
 : PROMPT-TOKENS ( ptr call -- n ) MODEL-CALL:PROMPT-TOKENS @ ;
 \ The last call's recorded id: its own row, or for a replayed reply the row
 \ its live call recorded; 0 when none.
