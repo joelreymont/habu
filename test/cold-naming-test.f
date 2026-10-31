@@ -93,7 +93,7 @@ create ERR IO-CAP allot
    ERR erru s" E-UNDEFINED: CON-OF" CONTAINS? TTRUE ;
 
 \ The source verifier tools/check.f loads names checker cells defined before the
-\ hook (VERIFY-DEFINER-N, MULTI-ERR), so it loads only while each has its row,
+\ hook (VERIFY-DEFINER-N, MULTI-ERR-N), so it loads only while each has its row,
 \ and its owner bridges read the owner ABI offsets, which have none, through
 \ constants it binds at top level (RECORD-SYM-OFF).
 : VERIFIER-CASE ( -- )

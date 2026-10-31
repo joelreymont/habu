@@ -15,13 +15,14 @@ PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
 PRIM: E-PATH-NUL PE-N PE-OUT PRIM;
 PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
 
-\ The control-effect flags src/habu/verify-source.f reads at top level, from
-\ src/core/checker.f, which loads before the checker starts. Without a row a
-\ from-source prefix boot refuses the step that reads one, so the verifier would
-\ not load there (test/cold-naming-test.f).
+\ The control-effect flags src/habu/verify-source.f reads at top level and the
+\ verdict word its body check calls, from src/core/checker.f. A from-source
+\ prefix boot refuses a name with no row (test/cold-naming-test.f), and a built
+\ engine admits a checked call to the verdict word only through its row.
 PRIM: CTL-RENDERS PE-N PE-OUT PRIM;
 PRIM: CTL-CREATES PE-N PE-OUT PRIM;
 PRIM: CTL-NOMINAL PE-N PE-OUT PRIM;
+PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
 
 \ src/core/checker.f's constants test/type-ctor-suite.f reads at top level;
 \ tools/bootstrap.sh runs that suite on the from-source prefix engine hb-stdin.
@@ -36,10 +37,13 @@ s" PTR-U8-TABLE-VARIABLE" s" --" TRUST
 s" RESERVED-PTR-U8-CELL" s" n --" TRUST
 s" LBUF-CAPTURE-PREPARE" s" --" TRUST
 
-\ These variable accessors are emitted before checking starts. Their concrete
-\ storage effects let the multi-error operations below check normally.
-PRIM: MULTI-ERR PE-PTR-N PE-OUT PRIM;
+\ The refusal count and the words that open and close a collection, from
+\ src/core/checker.f, which loads before the checker starts. Checked bodies
+\ count a recovered refusal (src/core/arena.f, src/habu/verify-source.f); tests
+\ open and close a collection (test/native-multi-error-recovery.f).
 PRIM: MULTI-ERR-N PE-PTR-N PE-OUT PRIM;
+PRIM: MULTI-ERR-BEGIN PRIM;
+PRIM: MULTI-ERR-END PE-N PE-OUT PRIM;
 
 \ src/habu/verify-source.f counts its learned definers and its `parses:` rows
 \ in these checker cells, which the rollback frame rewinds (src/core/checker.f),
@@ -48,16 +52,6 @@ PRIM: VERIFY-DEFINER-N PE-PTR-N PE-OUT PRIM;
 PRIM: VERIFY-PARSES-N PE-PTR-N PE-OUT PRIM;
 
 s" SIG-RAW-MODE" s" -- ptr n" TRUST
-
-\ Enter a fresh collection; END returns its reject count and clears the mode.
-\ The floor is read from this source owner's private effect arena.
-TRUSTED: MULTI-ERR-BEGIN ( -- )
-   UEND @ CHECKER-EFFECT-AUTHORITY:RECOVERY-START
-   -1 MULTI-ERR !  0 MULTI-ERR-N ! ;
-
-
-: MULTI-ERR-END ( -- n )
-   MULTI-ERR-N @  0 MULTI-ERR ! ;
 
 \ `parses: W n` and `parses-through: W n ( E1 E2 )`, at top level after W's
 \ definition, read as src/habu/verify-source.f PARSES-ROW reads them and checked

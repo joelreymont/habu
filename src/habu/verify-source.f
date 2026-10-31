@@ -1094,17 +1094,6 @@ variable GROUP-AT
    TOKEN-A @ TOKEN-U @ BLOCK-STEP
    SKIP-BODY-TOKEN ;
 
-: MULTI-ERR-MODE? ( -- bool ) MULTI-ERR @ 0<> ;
-
-\ Verifier trust rows below cover recursive checker entrypoints, checker-owned
-\ mode state, dynamic signature publication, raw-definer mode, and the scope's
-\ own name resolution.
-\ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, or
-\ in a multi-error load.
-TRUSTED: CHECK-BODY ( ptr u8 n -- n )
-   CHECK! dup 1 = JSON-DIAGS @ 0= and MULTI-ERR-MODE? 0= and DIAG-QUIET @ 0= and
-   IF DIAGXT THEN ;
-
 \ The scope's two questions about a name, asked of the checker that owns the
 \ scope: RECORD-SYM? names the symbol a definition in THIS source is recorded
 \ under (0 when it never was) and FIND-SYM resolves a USE through the open
@@ -1524,7 +1513,7 @@ CAST: DEFERRED-BODY-ACTION ( n -- [ -- ptr u8 n ] )
 \ nothing.
 : BODY-VERDICT ( n -- n ) {: v:n :}
    v -1 = v 2 = or IF v EXIT THEN
-   MULTI-ERR-MODE? IF 0 EXIT THEN
+   MULTI-ERR? IF 0 EXIT THEN
    70 throw ;
 
 \ The colon definitions this run judged, each counted once its verdict is
@@ -1546,7 +1535,7 @@ variable TICK-BODY-U
 variable TICK-BODY-VERDICT
 
 : TICK-BODY-CHECK ( -- )
-   TICK-BODY-A @ TICK-BODY-U @ CHECK-BODY TICK-BODY-VERDICT ! ;
+   TICK-BODY-A @ TICK-BODY-U @ CHECK! REPORT-UNCHECKABLE TICK-BODY-VERDICT ! ;
 
 : TICK-BODY-RUN ( -- )
    TICK-BODY-U @ ['] TICK-BODY-CHECK CSR-CHECK ;

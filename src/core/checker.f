@@ -9628,6 +9628,15 @@ BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 
+\ Enter a fresh collection; END returns its reject count and clears the mode.
+\ The recovery floor is this checker's effect arena end.
+: MULTI-ERR-BEGIN ( -- )
+   UEND @ CHECKER-EFFECT-AUTHORITY:RECOVERY-START
+   -1 MULTI-ERR !  0 MULTI-ERR-N ! ;
+
+: MULTI-ERR-END ( -- n )
+   MULTI-ERR-N @  0 MULTI-ERR ! ;
+
 \ Recovery is bound to this exact effect record, not merely its symbol or the
 \ presence of an ABI row. A new declaration writes EFF-ACTIVE; the ordinary
 \ store/index rollback restores the old record and retires any replaced tag.
@@ -25193,7 +25202,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
    \ An uncheckable verdict is rendered here as JSON and in a multi-error load,
    \ whose record step below may refuse the definition by a throw (a duplicate,
    \ a name that keys no record) that would otherwise come before it; elsewhere
-   \ CHECK's callers render it.
+   \ REPORT-UNCHECKABLE renders it.
    dup VERDICT-REFUSED =  over VERDICT-UNCHECKABLE = JSON-DIAGS @ MULTI-ERR? or and  or
    \ A pass another pass will replace has not judged anything yet, so it says
    \ nothing: the diagnostic belongs to the verdict the definition is given.
@@ -25973,6 +25982,12 @@ variable DEF-STOPPED
    THEN
    verdict -1 = recording and BWIN-UNJUDGED @ 0= and BWIN-VALID !
    verdict ;
+
+\ An uncheckable verdict is rendered here unless CHECK rendered it: as JSON, in
+\ a multi-error load, or not at all in a quiet probe.
+: REPORT-UNCHECKABLE ( n -- n )
+   dup 1 = JSON-DIAGS @ 0= and MULTI-ERR? 0= and DIAG-QUIET @ 0= and
+   if DIAGXT then ;
 
 \ ---- the scan whose verdict nobody enforces ----------------------------------
 \ A TRUSTED: definition's declared effect is the assertion: the body is scanned
