@@ -4232,11 +4232,8 @@ public
    throw LBL,  9 G-PUSH  BTHROW
    C2-INVOKE-DONE LABEL@ LBL, ;
 
-\ c2-init-stow sees (R base bound value[W] callback W bytes align frame).
-\ The checker records W/bytes/align for the authentic WITH-INIT call. OPEN has
-\ already registered PENDING and installed INIT-CLEAR as the frame disposer.
-\ Validate before mutation, arm LIVE before the first store, then consume the
-\ value bundle into consecutive cells and leave (R base bytes callback).
+\ (R base bound value[W] callback W bytes align frame) -> (R base bytes
+\ callback) on INIT-OPEN's PENDING frame: validate all, arm LIVE, then store.
 : BC2-INIT-STOW ( -- )
    LBL LBL LBL {: bad:label copy:label done:label :}
    9 G-POP   10 G-POP   11 G-POP   12 G-POP   13 G-POP

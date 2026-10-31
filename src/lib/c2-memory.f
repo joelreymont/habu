@@ -62,7 +62,7 @@ public
 \ incompatible callback, or escape of `i` refuses. Return clears the
 \ initialized extent and restores the original view and bound; throw and task
 \ halt close the scope.
-TRUSTED: WITH-INIT ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
+: WITH-INIT ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    INIT-RUN ;
 
 \ WITH-RECORDS gives a table one owning scope: a unique byte view, a
@@ -71,7 +71,7 @@ TRUSTED: WITH-INIT ( R ptr u8 n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-lay
 \ `forall<i inside [l,T],...>` its callback gets opaque linear
 \ `records<p,i,a,T>`. Closing the table clears the whole initialized extent
 \ once and restores the original bound.
-TRUSTED: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
+: WITH-RECORDS ( R ptr u8 n n n [ R ptr u8 n -- S ptr u8 n | U -- U ] stow-layout | U -- S ptr u8 n | U )
    RECORDS-RUN ;
 
 \ WITH-RECORD checks a zero-based index and lends `mut-view<p,j,a,init<i,T>>`

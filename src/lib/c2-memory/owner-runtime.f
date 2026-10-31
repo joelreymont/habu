@@ -52,7 +52,7 @@ CAST: >APPEND-LEN-CELL ( ptr u8 -- ptr n )
 CAST: >APPEND-DISPOSER-CELL ( ptr u8 -- ptr [ ptr u8 NUM:alloc-byte-len -- ] )
 
 : RESOURCE-CELL ( ptr n -- ptr ptr u8 ) 16 + >PTR-CELL ;
-TRUSTED: LENGTH-CELL ( ptr n -- ptr NUM:alloc-byte-len ) 24 + ;
+: LENGTH-CELL ( ptr n -- ptr n ) 24 + ;
 : DISPOSER-CELL ( ptr n -- ptr [ ptr u8 NUM:alloc-byte-len -- ] ) 32 + >DISPOSER-CELL ;
 : ORIGINAL-BOUND-CELL ( ptr n -- ptr n ) 40 + ;
 : KIND-CELL ( ptr n -- ptr n ) 48 + ;
@@ -77,13 +77,20 @@ TRUSTED: LENGTH-CELL ( ptr n -- ptr NUM:alloc-byte-len ) 24 + ;
 : REGISTER-CAPTURE-GUARD ( -- )
    [: CAPTURE-GUARD ;] IMAGE-LIFECYCLE:REGISTER-PERSISTENT ;
 
-\ Called only with a live head. Keeping that head in CLOSING while the adapter
-\ runs gives a halted task's exit path one authoritative cleanup record.
+\ Called only on a live BYTES head, whose length MEM:ALLOC-BYTES returned. Its
+\ CLOSING state while the adapter runs is a halted task's one cleanup record.
 : DISPOSE-HEAD ( -- )
    HEAD-FRAME {: frame:ptr :}
    frame RESOURCE-CELL @
-   frame LENGTH-CELL @
+   frame LENGTH-CELL @ MEM:BYTES-ALLOC-LEN
    frame DISPOSER-CELL @ execute ;
+
+\ c2-init-stow or c2-records-stow stores an INIT head's extent, 0 for an empty
+\ table. The enclosing BYTES frame owns the mapping and its release.
+: INIT-CLEAR ( -- )
+   HEAD-FRAME {: frame:ptr :}
+   frame RESOURCE-CELL @ {: resource:ptr :}
+   frame LENGTH-CELL @ 0 ?do 0 resource i + c! loop ;
 
 : DISPOSE-APPEND ( -- )
    HEAD-FRAME APPEND-PENDING-CELL @ {: header:ptr :}
@@ -124,7 +131,7 @@ TRUSTED: LENGTH-CELL ( ptr n -- ptr NUM:alloc-byte-len ) 24 + ;
    CLOSING frame STATE-CELL !
    state LIVE = if
       frame KIND-CELL @ BYTES-FRAME = if CLOSE-BYTES
-      else [: DISPOSE-HEAD ;] catch then
+      else INIT-CLEAR 0 then
    else 0 then {: rc:n :}
    NULL$ drop frame RESOURCE-CELL !
    CLOSED frame STATE-CELL !
@@ -176,21 +183,14 @@ TRUSTED: LENGTH-CELL ( ptr n -- ptr NUM:alloc-byte-len ) 24 + ;
    {: resource:ptr size dispose :}
    HEAD-FRAME {: frame:ptr :}
    resource frame RESOURCE-CELL !
-   size frame LENGTH-CELL !
+   size INIT-LEN>N frame LENGTH-CELL !
    dispose frame DISPOSER-CELL !
    LIVE frame STATE-CELL !
    TASK:DEFER-LEAVE ;
 
-\ This disposer clears only the initialized extent. The enclosing allocation
-\ frame still owns the mapping and its eventual release.
-: INIT-CLEAR ( ptr u8 NUM:alloc-byte-len -- )
-   {: resource:ptr extent:NUM:alloc-byte-len :}
-   extent INIT-LEN>N 0 ?do 0 resource i + c! loop ;
-
 : INIT-OPEN ( -- )
    OPEN
-   INIT-FRAME HEAD-FRAME KIND-CELL !
-   [: INIT-CLEAR ;] HEAD-FRAME DISPOSER-CELL ! ;
+   INIT-FRAME HEAD-FRAME KIND-CELL ! ;
 
 \ BIND discovers authority only in this task's live BYTES chain. The base is
 \ supplied by WITH-INIT, which already holds the unique root byte view.
