@@ -123,6 +123,11 @@ entry.
 - 2026-10-31, a public SSE word: asked whether SSE:FEED's callback context
   may change from `ptr a` to `a`, so MCP passes its client record without a
   cast, Joel chose "Context becomes `a`".
+- 2026-10-31, comparing signed builds: codesign writes the signing time into
+  every signature, even with `--timestamp=none`, so two team-signed builds of
+  the same program differ. Asked to name the one shared word that compares
+  two images, skipping only the signature block that holds the time, Joel
+  chose "CODESIGN:SAME-IMAGE?" over a global SIGNED-SAME? in sign2.f.
 - 2026-10-31, a PostgreSQL limit: asked whether PG:CONFIGURE should lose its
   fixed per-connection parameter count so each connection's list grows as BIND
   needs, up to PostgreSQL's own 65535, Joel chose "Grow to PostgreSQL's limit".
