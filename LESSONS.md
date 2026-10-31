@@ -48,7 +48,13 @@ entry.
   part of Habu's library, Joel chose "Add it to Habu": a general protocol
   client belongs in src/lib beside MCP and CURL. The same day: "make sure
   model library logs failures, errors, etc. dumping the textual reason. we
-  should have a logging library in habu regardless".
+  should have a logging library in habu regardless". Offered names for it,
+  Joel chose `LOG:LINE ( level tag -- ) … LOG:;LINE` with levels LOG:ERROR
+  and LOG:WARN, LOG:TEXT+ and LOG:INT+; FMT:INT$ ( n -- text ) for a
+  number's decimal text; CURL:ERROR$ for libcurl's message for a code; and
+  `STDERR:CAPTURE ( path -- ) … STDERR:;CAPTURE` for tests. Asked whether
+  MODEL's log line for an unusable reply carries the whole reply body, Joel
+  chose "Log the whole body".
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
