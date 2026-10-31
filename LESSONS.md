@@ -67,7 +67,13 @@ entry.
   scratch pointer forms are written as null into the image, and only the
   PERSISTED- forms carry an address across a save. Asked whether the old byte
   scan's code, public CELL-BODY:DECLARE included, goes once the save checks
-  by type, Joel chose "Remove all of it".
+  by type, Joel chose "Remove all of it". Asked whether each scratch pointer
+  cell should be marked so the save writes it as null, or scratch storage
+  should live in a separate area the save never writes, like C's .bss (a
+  second storage area across the engine, compiler and build cache), Joel
+  answered "i want you to mark each cell AND record this decision in case we
+  want to go back to option 2 where scratch storage lives apart", and named
+  the marking word `scratch-cell-mark`, beside ptr-cell-mark.
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
