@@ -1775,45 +1775,41 @@ public
 
 ;package
 
-\ FS:CLEANUP-RUN removes a deep tree while another task registers enough paths
-\ to grow the row many times over. Each growth releases the row it replaced, and
-\ FS:REMOVE-TREE reads its root's name again once the tree below is gone, so a
-\ run holding a pointer into a released row reads freed storage (measured:
-\ SIGSEGV every time). The run must finish, remove the tree and leave the
-\ worker's registrations to a later run.
+\ The worker registers once the run removes the marker, its newest slot. Without
+\ FS:CLEANUP-RUN's hold, a run over FILES entries reads freed rows: SIGSEGV.
 package FMT-RACE
 private
 
-400 constant LEVELS
+1000 constant FILES
 16384 constant REGS
 
-PATH-CAP SPAN-BUFFER: DEEP-BUF
-variable DEEP-U
-PATH-CAP SPAN-BUFFER: NONE-BUF
-variable NONE-U
+create P-MARK PATH-CAP allot  variable P-MARK-U
+create P-NONE PATH-CAP allot  variable P-NONE-U
+create P-NAME PATH-CAP allot
 $10000 TASK:TASK WORKER
 
 \ Atomic cells require native cell alignment.
 here data-base - negate 7 and allot
-variable GO
+variable DONE
 
-: DEEP$ ( -- ptr u8 n ) DEEP-BUF DEEP-U @ SPAN:TAKE SPAN:$ ;
-: NONE$ ( -- ptr u8 n ) NONE-BUF NONE-U @ SPAN:TAKE SPAN:$ ;
+: MARK$ ( -- ptr u8 n ) P-MARK P-MARK-U @ ;
+: NONE$ ( -- ptr u8 n ) P-NONE P-NONE-U @ ;
+
+\ File i's path, valid until the next call.
+: NAME$ ( n -- ptr u8 n ) {: i :}
+   SB-RESET
+   s" f-" SB-APPEND
+   i FMT:SB-U
+   FMT-ROOT$ SB$ P-NAME FS:JOIN-PATH {: u :}
+   P-NAME u ;
 
 : PATHS! ( -- )
-   SB-RESET
-   FMT-ROOT$ SB-APPEND
-   LEVELS 0 ?do s" /d" SB-APPEND loop
-   SB$ {: a:ptr u :}
-   a u DEEP-BUF SPAN:COPY  u DEEP-U !
-   SB-RESET
-   FMT-ROOT$ SB-APPEND
-   s" /none" SB-APPEND
-   SB$ {: n:ptr nu :}
-   n nu NONE-BUF SPAN:COPY  nu NONE-U ! ;
+   FMT-ROOT$ s" mark" P-MARK FS:JOIN-PATH P-MARK-U !
+   FMT-ROOT$ s" none" P-NONE FS:JOIN-PATH P-NONE-U ! ;
 
+\ DONE ends the wait when the run returns without taking the marker.
 : WORK ( -- )
-   begin GO atomic@ 0= while repeat
+   begin MARK$ FS:EXISTS? DONE atomic@ 0= and while repeat
    REGS 0 ?do NONE$ FS:CLEANUP+ loop
    0 TASK:RETURN ;
 
@@ -1827,17 +1823,22 @@ public
 
 : RUN ( -- )
    PATHS!
-   DEEP$ FS:MAKE-DIRS
+   FMT-ROOT$ FS:MAKE-DIRS
    FMT-ROOT$ FS:CLEANUP-TREE+
-   0 GO atomic!
+   FILES 0 ?do i NAME$ s" race" FS:WRITE-ALL loop
+   MARK$ s" race" FS:WRITE-ALL
+   MARK$ FS:CLEANUP+
+   0 DONE atomic!
    ['] WORK WORKER TASK:ACTIVATE
-   1 GO atomic!
    [: FS:CLEANUP-RUN ;] catch {: code :}
+   1 DONE atomic!
    JOIN-CODE {: worker :}
    s" the run removed its tree while another task grew the registry" T-LABEL
    code 0 T=
    worker 0 T=
    FMT-ROOT$ FS:EXISTS? TFALSE
+   s" the worker's registrations wait for a later run" T-LABEL
+   FS-TEST:CLEANUP-COUNT REGS T=
    FS:CLEANUP-RUN ;
 
 ;package
