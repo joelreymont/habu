@@ -47,7 +47,8 @@ entry.
 - 2026-10-29, arm64 first: "you need to finish arm64, then all the others like
   x86 and wasm. unless you can prove that editing x86 does not hurt your
   speed." 2026-10-30, on an Intel build in the arm64 release gate: "why are you
-  doing intel when the focus is arm64? is that necessary?"
+  doing intel when the focus is arm64? is that necessary?" 2026-10-31: "after
+  you are done with trusted you should start looking at x86 and wasm."
 - 2026-10-29, build cost: "i need fast incremental builds to enable you and
   other agents to quickly iterate on features. right now we are in rust cargo
   build times and it fucking sucks because we are forth!" A build whose cost
