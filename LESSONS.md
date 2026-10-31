@@ -59,6 +59,19 @@ entry.
   `VERIFY:E-MISSING-SIGNATURE`, so tools/check.f names that error with its own
   code, message and fix hint instead of a generic statement throw, Joel chose
   "Export the constant".
+- 2026-10-31, packages: offered a third package section so engine-only
+  checker words stay callable from other engine packages but hidden from
+  programs, Joel answered "private means NOT FUCKING AVAILABLE OUTSIDE THIS
+  PACKAGE" and "my point is that compiler words should live in the comp
+  package, called internally without the package prefix. why would we split
+  the compiler package into several packages?", chose "One compiler package",
+  and added "if we find that we are clashing too much then we ought to look
+  into nested packages but that's about it". A subject's files reopen one
+  package and call its shared words bare, in its private section; no third
+  section.
+- 2026-10-31, a public SSE word: asked whether SSE:FEED's callback context
+  may change from `ptr a` to `a`, so MCP passes its client record without a
+  cast, Joel chose "Context becomes `a`".
 
 ### Compiler and builds
 
