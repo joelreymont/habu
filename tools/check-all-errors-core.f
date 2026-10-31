@@ -19,10 +19,10 @@ require src/lib/json-write.f
 require src/lib/source-lex.f
 require src/lib/verify-diagnostics.f
 
-\ VERIFY opens its own package and packages cannot nest, so verify-source.f is
-\ required here at top level; every checker scope below replays source through
-\ VERIFY. It is not in the engine's baked prefix: the require registry's dedupe
-\ of co-loaded sites is the only one this line has.
+\ VERIFY opens its own package, which a file required inside a package cannot,
+\ so verify-source.f is required here at top level; every checker scope below
+\ replays source through VERIFY. It is not in the engine's baked prefix: the
+\ require registry's dedupe of co-loaded sites is the only one this line has.
 \ A replayed `constant` gets VERIFY's one-cell `-- a` effect. A wider layout
 \ value never reaches the interpret stack (DNAME-WIDE); its use is refused
 \ (tools/check-all-errors-test.f const-layout-narrow).

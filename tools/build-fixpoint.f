@@ -8,8 +8,9 @@ require tools/build-target.f              \ the target the emitted sources are f
 require tools/build-certify.f            \ the certify report and census lines
 
 \ Everything below is private to BUILD-FIXPOINT; the export block at the end names the
-\ surface other files call. COMPILER-BUILD closes and reopens BUILD-FIXPOINT, since
-\ packages do not nest, and imports what it needs with `using BUILD-FIXPOINT`.
+\ surface other files call. COMPILER-BUILD closes and reopens BUILD-FIXPOINT, since a file
+\ required inside a package cannot open one, and imports what it needs with
+\ `using BUILD-FIXPOINT`.
 package BUILD-FIXPOINT
 
 32768 constant BF-CMP-CAP
@@ -82,8 +83,8 @@ BF-REQUIRE-WATERMARK
 ;package
 
 \ The package closes for these requires, and not for the guard above: the
-\ files open packages of their own, and `package` inside an open package is
-\ rejected as nesting. They also come after the guard: process-cwd.f requires
+\ files open packages of their own, and `package` in a file required inside an
+\ open package is refused. They also come after the guard: process-cwd.f requires
 \ process-env.f, which must be loaded by the caller for the guard to pass.
 require src/lib/process-cwd.f
 require src/lib/engine-id.f                  \ PATH$: the engine a certify child runs

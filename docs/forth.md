@@ -148,11 +148,22 @@ private
 ;package
 ```
 
-- `package NAME` consumes the next token, rejects a missing name, a name
-  containing `:` and nesting, opens NAME's private wordlist and saves the
-  caller's current wordlist; definitions are private by default. `;package`,
-  valid only inside a package, restores the saved wordlist and clears runtime
-  and checker package scope.
+- `package NAME` consumes the next token, rejects a missing name and a name
+  containing `:`, opens NAME's private wordlist and saves the caller's current
+  wordlist; definitions are private by default. `;package`, valid only inside a
+  package, restores the saved wordlist and leaves no package open in the engine
+  or the checker, except after a part.
+- In package A's private section, under no `using` A opened, in the file or
+  evaluated string A is open in, `package B` opens B as a part of A, whose row
+  is named by the path `A:B`. Anywhere else inside a package `package` is
+  refused (`package at <loc>`, rc 75): in a public section, under a using the
+  package opened, inside a part, and in a file or string that began inside the
+  package, so a file required inside a package cannot open one. A package a
+  file or string leaves open is its includer's from then on. A path of 256
+  bytes or more is refused by its name (`B at <loc>`, rc 75). `;package` of a
+  part reopens A in its private section with A's using floor. Outside A no name
+  reaches the part: at top level `B:X`, `A:B:X` and `using B` find nothing, and
+  a top-level `package B` is a separate package.
 - `public` and `private`, valid only inside a package, switch new definitions to
   the export wordlist and back. Outside code calls a public word as `NAME:WORD`;
   unqualified global lookup never finds it. A private word is visible

@@ -239,7 +239,8 @@ require nf.fs
    \ at all (it calls repl.f's RD-LINE), and the watch cells belong to that same
    \ REPL. Both paths are declared provided so the requires are no-ops, which is
    \ also what keeps the module itself read exactly once. The module opens its
-   \ own package DEBUG and packages do not nest, so BES-BP opens after it.
+   \ own package DEBUG, and a `package` inside it would open a part of DEBUG, so
+   \ BES-BP opens after the module closes DEBUG.
    s" src/habu/debug.f" slurp-file {: module bytes :}
    s\" s\" src/habu/debug-watch.f\" provided s\" src/habu/stepper.f\" provided\n"
    module bytes BES-CAT {: head headsize :}

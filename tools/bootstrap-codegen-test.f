@@ -7,9 +7,10 @@ require src/lib/test.f
 
 include src/habu/hide.f
 
-\ The watermark has to be read at top level BETWEEN the two duplicate fixture
-\ records, and packages do not nest, so BCG-HIDE opens once to publish the
-\ recording word and reopens below for the checks that read it.
+\ The watermark has to be read BETWEEN the two duplicate fixture records, whose
+\ packages are top-level, and a `package` inside an open one opens a part of it,
+\ so BCG-HIDE opens once to publish the recording word and reopens below for
+\ the checks that read it.
 package BCG-HIDE
 private
 

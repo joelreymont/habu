@@ -458,8 +458,9 @@ $48 constant EVAL-PKG
 \ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
 \ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130,
 \ EVAL-FRAME:ROWS $138, EVAL-FRAME:SX-CTX..SX-SRC $140..$158 and
-\ EVAL-FRAME:ENCLOSING $158..$178; $178 pads the frame to STACK-ABI:EVAL-BYTES
-\ ($180), which keeps the native stack 16-byte aligned.
+\ EVAL-FRAME:ENCLOSING $158..$178 and EVAL-FRAME:PKG-OUTSIDE $178, which ends
+\ the frame at STACK-ABI:EVAL-BYTES ($180) and keeps the native stack 16-byte
+\ aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -502,6 +503,10 @@ $150 constant SX-SRC
 \ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
 \ which a throw puts back with the open package's.
 $158 constant ENCLOSING
+\ PKG-OUTSIDE: PKG-OUTSIDE-CELL as the buffer began, which a throw puts back.
+\ The clean exit puts it back unless the buffer left open a package it opened,
+\ which belongs to the includer from then on (habu2.f EM-EVAL-CLEAN-EXIT).
+$178 constant PKG-OUTSIDE
 ;package
 
 \ Every engine load refusal reaching the LCOMPILEDIE tail names its source as
@@ -1980,10 +1985,11 @@ $42E8 constant UNIT-COMPILE-CELL
 
 \ While a part is open, the package it is a part of: that package's public
 \ wid, private wid, parent wid and row, as PKG-PUB-CELL..PKG-REC-CELL held
-\ them before the part opened; all four are 0 when no part is open. Only
-\ package-scope! writes them (habu2.f DEFWRITE:PACKAGE-SCOPE); they are a
-\ guarded band (DATA-BANDS). It takes the cells after UNIT-COMPILE-CELL;
-\ src/core/checker.f mirrors PARENT and REC (CK-ENCLOSING-*-OFF).
+\ them before the part opened; all four are 0 when no part is open. They are
+\ a guarded band (DATA-BANDS): only the engine's own code and package-scope!
+\ write them, so the Habu loop moves them through package-scope!. It takes
+\ the cells after UNIT-COMPILE-CELL; src/core/checker.f mirrors PARENT and
+\ REC (CK-ENCLOSING-*-OFF).
 package ENCLOSING
 public
 $42F0 constant PUB
@@ -1992,6 +1998,25 @@ PRI CELL + constant PARENT
 PARENT CELL + constant REC
 REC CELL + constant END
 ;package
+
+\ The path `package B` opens inside package A: `A:B`, which the token cells
+\ name once the name guard has read the bare token (habu2.f C-PACKAGE,
+\ packages.f PKG-PATH). CAP is the checker's package-name row
+\ (src/core/checker.f CHECKER-PACKAGE-CAP): a path of CAP bytes or more is
+\ refused. It takes the run after RPKG:ENCLOSING, claimed in data-claims.f.
+package PACKAGE-PATH
+public
+$4CD0 constant OFF
+$100 constant CAP
+;package
+
+\ Nonzero while the open package was opened outside the buffer being read:
+\ `package` inside it is then refused, as a part opens only where its package
+\ is open (habu2.f C-PACKAGE-PART-GUARD, packages.f PKG-PART-GUARD). Each
+\ buffer starts it at 1 and every `package` that opens sets it to 0; a buffer
+\ keeps its includer's value in EVAL-FRAME:PKG-OUTSIDE. Outside every buffer
+\ it is 0. It takes the cell after PACKAGE-PATH, claimed in data-claims.f.
+$4DD0 constant PKG-OUTSIDE-CELL
 
 \ The protected DATA bands, as one table.
 \ Every engine's span guard walks this table: arm64 GUARD-SPAN (src/habu/habu1.f)

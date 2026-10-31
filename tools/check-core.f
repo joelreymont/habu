@@ -1267,14 +1267,17 @@ variable CHK-EXP-ROWS
 \ visibility mode (src/core/checker.f CHECKER-PACKAGE-MODE) and qualified pkg:tail uses resolve
 \ public-only. The CHECKER-SCOPE frame around the nominal pass saves and restores package
 \ state. The name is the token parse-name takes after `package`, and CHK-DEFINER? refuses a
-\ missing one; loader misuse (nesting, public outside a package, ':' in a name) stays
-\ fail-closed through preverify and the child run. A package the checker refuses to open,
-\ such as a name longer than its 255-byte row, stops the file's scan there, where the
-\ preverify stops at the same statement (E-STATEMENT-THROW).
+\ missing one; other loader misuse (a part where the engine refuses one, public outside a
+\ package) stays fail-closed through preverify and the child run. A package the checker
+\ refuses to open, such as a name with a colon, which it would read as a part's path, or
+\ one longer than its 255-byte row, stops the file's scan there, where the preverify stops
+\ at the same statement (E-STATEMENT-THROW).
 variable CHK-PKG-NAME-I
 
 : CHK-PKG-OPEN ( -- )
-   CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-PACKAGE ;
+   CHK-PKG-NAME-I @ LINT-LEX:TOKEN {: a:ptr u:n :}
+   a u $3A COUNT-CHAR 0 <> IF E-PKG-CONTEXT throw THEN
+   a u CHECKER-PACKAGE ;
 
 : CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
    k 1+ CHK-PKG-NAME-I !

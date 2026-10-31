@@ -1904,6 +1904,9 @@ variable LSOURCEEXECFINISH
    11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,
    \ and starts the buffer's using floor there: it closes only the usings it opens
    11 14 EVAL-FRAME:USE-FLOOR STR,
+   \ A package open now was opened outside the buffer (layout.f PKG-OUTSIDE-CELL)
+   11 DATA PKG-OUTSIDE-CELL LDR,  11 14 EVAL-FRAME:PKG-OUTSIDE STR,
+   11 1 MOVZ,  11 DATA PKG-OUTSIDE-CELL STR,
    12 14 EVAL-PKG ADDI,
    \ and the open package's using floor, which a throw restores with the package
    11 USE-PKG-SAVE-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP:FLOOR STR,

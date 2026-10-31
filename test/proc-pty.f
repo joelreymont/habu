@@ -655,16 +655,17 @@ variable PTY-LONG-U
 
 \ Package-scope rollback at the tty REPL: a line that opens a package and aborts
 \ mid-definition rolls the open-package scope back to the line-start scope
-\ (global here). A dangling PRP would make the next `package PRQ` nest-reject.
+\ (global here).
 : PTY-PKGSCOPE-FAIL ( -- )
    s" package PRP public : PRFOO ( -- ) NOPEWORD ;" STEP-LN
    s" E-UNDEFINED habu: in prfoo: undefined word 'NOPEWORD'" PROMPT-AFTER
    PROBE-BARRIER
    s"  ok" REJECT ;
 
-: PTY-PKGSCOPE-FRESH ( -- )                        \ a dangling PRP would make this `package` nest-reject (no " ok")
-   s" package PRQ ;package" STEP-LN
-   s"  ok" PROMPT-AFTER ;
+: PTY-PKGSCOPE-FRESH ( -- )                        \ a caught `;package` answers 75 with no package open; a dangling PRP closes, 0
+   S\" : PRSHUT ( -- n ) [: s\" ;package\" INCLUDE-EVALUATE ;] catch ;  PRSHUT ." STEP-LN
+   PROBE-BARRIER
+   s" 75" TCONTAINS ;
 
 : PTY-PKGSCOPE-GLOBAL ( -- )                       \ the next define lands global and runs; a checked reference confirms checker scope is in step
    s" : PRDONE ( -- n ) 4242 ;  : PRUSE ( -- n ) PRDONE ;  PRUSE ." STEP-LN

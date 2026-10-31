@@ -12,7 +12,7 @@ require src/compiler/native/x64ir.f
 
 \ The production image writer loads at top level, as every production path
 \ loads it: elf.f requires src/os/linux-x86-64/target-layout.f, which opens
-\ package X64LAYOUT, and packages do not nest.
+\ package X64LAYOUT, which a file required inside a package cannot.
 require src/os/linux-x86-64/target-layout.f
 require src/os/linux-x86-64/elf.f
 
@@ -50,7 +50,7 @@ variable WRONG-AT                    \ the check a negative image fails, or 0
 \ stream. They load into this package because the x86-64 sys.f spells the host
 \ seam's syscall-number words, which must not become globals here. The driver's
 \ packaged dependencies, fdio.f and sign-id.f, load at top level above, because
-\ packages do not nest.
+\ a file required inside a package cannot open one.
 s" src/os/linux-x86-64/sign.f" required
 s" src/habu/driver-io.f" required
 s" src/os/linux-x86-64/sys.f" required

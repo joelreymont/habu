@@ -4034,17 +4034,21 @@ variable LREPLAYTRAP
    msg LBL,  ma mu BYTES, ;
 
 \ namespace-record ( ptr u8 n bool -- n )
+\ A name holds at most one colon, never at an edge: a part's path `A:B`.
 : NAMESPACE-RECORD ( -- )
-   LBL LBL LBL LBL LBL {: bad scan clean nopri done :}
+   LBL LBL LBL LBL LBL LBL {: bad scan next clean nopri done :}
    B-TASK-GUARD
    13 G-POP  1 G-POP  0 G-POP                         \ x13 = the flag, x1 = the length, x0 = the name
    bad NOT-PENDING,
    bad DICT-ROOM,
    bad NAME-SIZE,
-   14 0 MOVZ,
-   scan LBL,  14 1 CMP,  C-CS clean BCOND,            \ a colon would make the name qualified
-      15 0 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ bad BCOND,
-      14 14 1 ADDI,  scan B,
+   14 0 MOVZ,  16 0 MOVZ,                             \ x16 = a colon seen
+   scan LBL,  14 1 CMP,  C-CS clean BCOND,
+      15 0 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-NE next BCOND,
+         16 bad CBNZ,  14 bad CBZ,
+         15 14 1 ADDI,  15 1 CMP,  C-CS bad BCOND,
+         16 1 MOVZ,
+   next LBL,  14 14 1 ADDI,  scan B,
    clean LBL,
    2 DICT-WL:NAMESPACE invert MOVN,
    bad FRESH,
@@ -9767,7 +9771,6 @@ public
 : C-PACKAGE-ENSURE ( -- )
    LBL LBL LBL LBL LBL
    {: loop:label miss:label hit:label make:label done:label :}
-   C-PACKAGE-NAME-GUARD
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    loop LBL,
       6 make CBZ,
@@ -9827,12 +9830,58 @@ public
    C-PACKAGE-PROT-GUARD
    ok LBL, ;
 
+\ `package` inside an open package opens a part of it: in the buffer that
+\ package is open in (layout.f PKG-OUTSIDE-CELL), in its private section, under
+\ no using it opened (USE-DEPTH = USE-PKG-SAVE), inside no part.
+: C-PACKAGE-PART-GUARD ( -- )
+   LBL LBL {: bad:label done:label :}
+   14 DATA PKG-OUTSIDE-CELL LDR,  14 bad CBNZ,
+   14 DATA ENCLOSING:PUB LDR,  14 bad CBNZ,
+   14 DATA PKG-PRI-CELL LDR,  15 DATA CUR-CELL LDR,  14 15 CMP,  C-NE bad BCOND,
+   9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  14 9 0 LDR,
+   9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  15 9 0 LDR,
+   14 15 CMP,  C-EQ done BCOND,
+   bad LBL,  $4B C-PACKAGE-FAIL
+   done LBL, ;
+
+\ Inside package A the token cells name layout.f PACKAGE-PATH holding
+\ `A:<token>`, and a path of PACKAGE-PATH:CAP bytes or more is refused.
+: C-PACKAGE-PATH ( -- )
+   LBL LBL LBL LBL LBL LBL LBL
+   {: inline:label fits:label head:label tail:label store:label copied:label done:label :}
+   9 DATA PKG-REC-CELL LDR,  9 done CBZ,
+   2 9 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,   \ x2 = A's name length
+   4 9 24 ADDI,
+   14 9 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
+      4 9 24 LDR,                                     \ x4 = A's name bytes
+   inline LBL,
+   3 DATA TKL-CELL LDR,  6 DATA TKA-CELL LDR,
+   13 2 3 ADD,  13 13 1 ADDI,                         \ x13 = the path's length
+   13 PACKAGE-PATH:CAP CMPI,  C-CC fits BCOND,
+      $4B C-PACKAGE-FAIL
+   fits LBL,
+   5 PACKAGE-PATH:OFF LIT64,  5 DATA 5 ADD,
+   7 0 MOVZ,
+   head LBL,  7 2 CMP,  C-CS tail BCOND,
+      14 4 7 ADD,  14 14 0 LDRB,  15 5 7 ADD,  14 15 0 STRB,
+      7 7 1 ADDI,  head B,
+   tail LBL,
+   14 $3A MOVZ,  15 5 2 ADD,  14 15 0 STRB,
+   16 15 1 ADDI,                                      \ x16 = where the token goes
+   7 0 MOVZ,
+   store LBL,  7 3 CMP,  C-CS copied BCOND,
+      14 6 7 ADD,  14 14 0 LDRB,  15 16 7 ADD,  14 15 0 STRB,
+      7 7 1 ADDI,  store B,
+   copied LBL,
+   5 DATA TKA-CELL STR,  13 DATA TKL-CELL STR,
+   done LBL, ;
+
 : C-PACKAGE ( -- )
    C-TASK-GUARD
-   LBL LBL LBL {: inactive:label hastok:label cold:label :}
-   14 DATA PKG-PUB-CELL LDR,  14 inactive CBZ,
-      $4B C-PACKAGE-FAIL
-   inactive LBL,
+   LBL LBL LBL LBL {: top:label hastok:label cold:label stored:label :}
+   14 DATA PKG-PUB-CELL LDR,  14 top CBZ,
+      C-PACKAGE-PART-GUARD
+   top LBL,
    LTOK LABEL@ BL,  0 hastok CBNZ,
       $4A C-PACKAGE-FAIL
    hastok LBL,
@@ -9841,19 +9890,28 @@ public
       9 DATA INE-CELL LDR,  9 DATA INP-CELL STR,
       LMAIN LABEL@ B,
    cold LBL,
+   C-PACKAGE-NAME-GUARD
+   C-PACKAGE-PATH
    C-PACKAGE-POLICY-GUARD                               \ before the checker hears of the package
    C-CALL-CHECKER-PACKAGE
    C-PACKAGE-SEAL-GUARD
    C-PACKAGE-ENSURE
    \ Remember the using depth at package open: `;package` restores it, and
-   \ `;using` refuses to pop below it (C-END-USING). x11/x12/x5 hold the
-   \ package wids/record for the stores below.
+   \ `;using` refuses to pop below it (C-END-USING); a part's is its package's.
+   \ x11/x12/x5 hold the package wids/record for the stores below.
+   9 DATA PKG-PUB-CELL LDR,  9 stored CBZ,             \ a part: the open package encloses it
+      9 DATA ENCLOSING:PUB STR,
+      9 DATA PKG-PRI-CELL LDR,  9 DATA ENCLOSING:PRI STR,
+      9 DATA PKG-PARENT-CELL LDR,  9 DATA ENCLOSING:PARENT STR,
+      9 DATA PKG-REC-CELL LDR,  9 DATA ENCLOSING:REC STR,
+   stored LBL,
    9 USE-DEPTH-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
    9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 STR,
    9 DATA CUR-CELL LDR,  9 DATA PKG-PARENT-CELL STR,
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    5 DATA PKG-REC-CELL STR,
-   12 DATA CUR-CELL STR, ;
+   12 DATA CUR-CELL STR,
+   9 0 MOVZ,  9 DATA PKG-OUTSIDE-CELL STR, ;          \ opened in this buffer
 
 : C-PUBLIC ( -- )
    C-TASK-GUARD
@@ -9875,6 +9933,8 @@ public
    9 DATA PKG-PRI-CELL LDR,
    9 DATA CUR-CELL STR, ;
 
+\ `;package` of a part puts its enclosing package back open, its private
+\ section current; of any other package, it leaves none open.
 : C-END-PACKAGE ( -- )
    C-TASK-GUARD
    LBL {: active:label :}
@@ -9883,9 +9943,13 @@ public
    active LBL,
    C-CALL-CHECKER-END-PACKAGE
    9 DATA PKG-PARENT-CELL LDR,  9 DATA CUR-CELL STR,
+   9 DATA ENCLOSING:PUB LDR,  9 DATA PKG-PUB-CELL STR,
+   9 DATA ENCLOSING:PRI LDR,  9 DATA PKG-PRI-CELL STR,
+   9 DATA ENCLOSING:PARENT LDR,  9 DATA PKG-PARENT-CELL STR,
+   9 DATA ENCLOSING:REC LDR,  9 DATA PKG-REC-CELL STR,
    9 0 MOVZ,
-   9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
-   9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+   9 DATA ENCLOSING:PUB STR,  9 DATA ENCLOSING:PRI STR,
+   9 DATA ENCLOSING:PARENT STR,  9 DATA ENCLOSING:REC STR,
    \ Restore the using depth to the package-open boundary (the checker reads
    \ the same shared USE-DEPTH).
    9 USE-PKG-SAVE-CELL LIT64,  9 DATA 9 ADD,  10 9 0 LDR,
@@ -12189,6 +12253,7 @@ public
       13 EVAL-FRAME:ENCLOSING 9 ENGINE-EMIT:ENCLOSING-RESTORE,
       9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
       9 10 PKGSNAP:FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
+      9 13 EVAL-FRAME:PKG-OUTSIDE LDR,  9 DATA PKG-OUTSIDE-CELL STR,   \ and whether the includer opened it
       13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
       9 1 MOVZ,  9 DATA PKGRESYNC-CELL STR,                  \ arm the checker resync (drained below, before delivery)
       13 9 10 ENGINE-EMIT:SX-RESTORE,                   \ an adopted observer gets the evaluating word's run back
@@ -12675,7 +12740,7 @@ public
 
 \ The buffer ran out: return to evaluate's caller.
 : EM-EVAL-CLEAN-EXIT ( -- )
-   LBL LBL {: bounds:label floor:label :}
+   LBL LBL LBL {: bounds:label floor:label owned:label :}
    13 DATA EVAL-TOP-CELL LDR,
    14 13 STACK-ABI:EVAL-BASE LDR,  10 13 STACK-ABI:EVAL-CAP LDR,
    12 XDS 0 ADDI,  0 bounds STACK-GUARD:CHECK-CURSOR
@@ -12701,6 +12766,11 @@ public
    10 9 CMP,  C-LS floor BCOND,                    \ floor <= restored depth -> keep it
    9 15 0 STR,
    floor LBL,
+   \ A package the buffer opened and left open is the includer's; otherwise the
+   \ includer's PKG-OUTSIDE-CELL comes back.
+   9 DATA PKG-OUTSIDE-CELL LDR,  9 owned CBZ,
+      9 14 EVAL-FRAME:PKG-OUTSIDE LDR,  9 DATA PKG-OUTSIDE-CELL STR,
+   owned LBL,
    14 9 10 ENGINE-EMIT:SX-RESTORE,                    \ an adopted observer gets the evaluating word's run back
    9 14 EVAL-PREV LDR,  9 DATA EVAL-TOP-CELL STR,
    9 14 24 LDR,  SP 9 0 ADDI,

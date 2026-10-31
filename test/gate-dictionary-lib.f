@@ -1054,7 +1054,8 @@ variable CANDIDATE-VERDICT
    GE-SRC-RESET  s" ;package" GE-SRC-LINE
    $4B s" ;package" s" package rejects semicolon closer outside" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE
-   $4B s" package" s" package rejects nesting" RUN-BAD-SOURCE
+   s" package C" GE-SRC-LINE
+   $4B s" package" s" package rejects a part inside a part" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package" GE-SRC-LINE
    $4A s" package" s" package rejects missing name" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package A:B" GE-SRC-LINE

@@ -277,6 +277,8 @@ create TAB
    POLICY-REQUIRE-CELL                1 cells                 CLAIM POLICY-REQUIRE-CELL
    CLAUSE-CELL                        1 cells                 CLAIM CLAUSE-CELL
    RPKG:ENCLOSING                     ENCLOSING:END ENCLOSING:PUB -  CLAIM RPKG:ENCLOSING
+   PACKAGE-PATH:OFF                   PACKAGE-PATH:CAP        CLAIM PACKAGE-PATH
+   PKG-OUTSIDE-CELL                   1 cells                 CLAIM PKG-OUTSIDE-CELL
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT  PROF-CNT-BYTES          CLAIM PROF-BAND
    0 ,  0 ,

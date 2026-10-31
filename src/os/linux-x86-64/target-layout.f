@@ -19,7 +19,8 @@
 \ tools/check.f preverifies without replaying another target's layout, so there
 \ DATA-VA is the engine's own, and an EXPORT of it is a word checked code may
 \ not call (E-CAP-TRUSTED).
-\ It opens a package, and packages do not nest, so it loads at top level.
+\ It opens the top-level package X64LAYOUT, and a `package` inside an open one
+\ opens a part of it, so this file loads at top level.
 
 package X64LAYOUT
 s" src/os/linux/layout-constants.f" included

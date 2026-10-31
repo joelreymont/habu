@@ -141,8 +141,8 @@
 \ A clause is the declarer's word only where the token resolves to it: a
 \ package's own STRUCT-ARG is an ordinary call, so the check certifies the
 \ source and the load, which calls that word, accepts it. The load runs in a
-\ child because the source opens a top-level package, which this file's
-\ package FFI-TEST cannot nest.
+\ child because inside this file's FFI-TEST the source's `package` would open
+\ a part of FFI-TEST, not a package of its own.
 : FFI-SV-ORDINARY ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    SB-RESET src srcu SB-APPEND

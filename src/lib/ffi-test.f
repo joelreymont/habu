@@ -171,8 +171,8 @@ FFI-T-DEPTH-AFTER FFI-T-DEPTH!
 \ so a file cannot inherit the library the previously loaded file selected.
 \ Both cases run in this package's PUBLIC section, a wordlist the file's own
 \ PROCESS-SYMBOLS - stated in the private section - never selected for. A
-\ package of its own would say the same thing, but `package` inside `package
-\ FFI-TEST` is nesting and rejects.
+\ package of its own would say the same thing, but inside FFI-TEST a `package`
+\ opens a part of FFI-TEST, not a package of its own.
 variable FFI-T-SCOPE-BEFORE
 variable FFI-T-SCOPE-AFTER
 

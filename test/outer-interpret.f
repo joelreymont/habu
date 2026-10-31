@@ -745,9 +745,12 @@ variable WANT-RC
    s" package wordlists" GE-EXPECT-OK
    S\" 1\n1\n0\n3\n1\n" s" package wordlists" GE-EXPECT-OUT ;
 
-\ `package` needs a name, no package open and no colon in the name; `public`,
-\ `private` and `;package` need an open package. Each refusal names the token
-\ it read: the keyword, or the name.
+\ `package` needs a name with no colon, and inside package A it needs A's
+\ private section, no using A opened and no part open: it then opens a part
+\ named by the path `A:NAME`, of at most 255 bytes. `;package` of A leaves no
+\ part open, so a later package opens parts of its own. `public`, `private`
+\ and `;package` need an open package. Each refusal names the token it read:
+\ the keyword, or the name.
 : PACKAGE-REFUSALS ( -- )
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
@@ -755,8 +758,23 @@ variable WANT-RC
    s" oi-package-no-name.f" BOTH
    S\" 1\n" CASE$ GE-EXPECT-OUT
    74 s" package at " S\" oi-package-no-name.f:2\n" DIED-AT
-   s" package OI-A package OI-B" s" oi-package-nested.f" LINE-CASE
-   75 s" package at " S\" oi-package-nested.f:1\n" DIED-AT
+   GE-SRC-RESET
+   s" package OI-A package OI-B ;package package " GE-SRC+  250 $58 GE-SRC-REPEAT-C
+   s"  ;package ;package package OI-C package OI-D ;package ;package 1 ." GE-SRC-LINE
+   s" oi-package-part.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   GE-SRC-RESET
+   s" package OI-A package " GE-SRC+  251 $58 GE-SRC-REPEAT-C  GE-SRC-LF
+   s" oi-package-long-path.f" BOTH
+   75 s" XXXXXXXX at " S\" oi-package-long-path.f:1\n" DIED-AT
+   s" OI-A:" CASE$ GE-EXPECT-ERR-LACKS
+   s" package OI-A public package OI-B" s" oi-package-public-part.f" LINE-CASE
+   75 s" package at " S\" oi-package-public-part.f:1\n" DIED-AT
+   s" package OI-A using OI-FXA package OI-B" s" oi-package-using-part.f" LINE-CASE
+   75 s" package at " S\" oi-package-using-part.f:1\n" DIED-AT
+   s" package OI-A package OI-B package OI-C" s" oi-package-part-part.f" LINE-CASE
+   75 s" package at " S\" oi-package-part-part.f:1\n" DIED-AT
    s" package OI-A:B" s" oi-package-colon.f" LINE-CASE
    75 s" OI-A:B at " S\" oi-package-colon.f:1\n" DIED-AT
    s" public" s" oi-public-outside.f" LINE-CASE
@@ -765,6 +783,65 @@ variable WANT-RC
    75 s" private at " S\" oi-private-outside.f:1\n" DIED-AT
    s" ;package" s" oi-end-package-outside.f" LINE-CASE
    75 s" ;package at " S\" oi-end-package-outside.f:1\n" DIED-AT ;
+
+\ A part's `;package` returns to its package's private section: OI-PY stays
+\ private. Outside the package no name reaches the part, and a top-level
+\ package of the part's name is another package. A part opens under a using
+\ opened before its package.
+: PACKAGE-PART-SCOPE ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier package OI-PA package OI-PB : OI-PX ( -- n ) 1 ; ;package : OI-PY ( -- n ) 2 ;" GE-SRC-LINE
+   s" public : OI-PZ ( -- n ) OI-PY ; ;package OI-PA:OI-PZ ." GE-SRC-LINE
+   s" s~ OI-PB:OI-PX~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ OI-PA:OI-PX~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ OI-PA:OI-PB:OI-PX~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ OI-PA:OI-PY~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ using OI-PB~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" package OI-PB public : OI-PW ( -- n ) 3 ; ;package OI-PB:OI-PW ." GE-SRC-LINE
+   s" using OI-FXA package OI-PU package OI-PV ;package ;package ;using 4 ." GE-SRC-LINE
+   s" oi-package-part-scope.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 2\n70\n70\n70\n70\n91\n3\n4\n" CASE$ GE-EXPECT-OUT
+   s" E-UNDEFINED: OI-PB:OI-PX at " CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-PA:OI-PX at " CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-PA:OI-PB:OI-PX at " CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-PA:OI-PY at " CASE$ GE-EXPECT-ERR-HAS
+   s" hb: using: unknown package: OI-PB at " CASE$ GE-EXPECT-ERR-HAS ;
+
+\ A part opens only in the buffer its package is open in. A file or an
+\ evaluated string read inside OI-A that opens a package is refused, and OI-A
+\ is open again after it, with a part of its own. A file that opens OI-LA and
+\ leaves it open hands it to its includer, which opens a part of it.
+: PACKAGE-PART-BUFFER ( -- )
+   GE-SRC-RESET
+   s" package OI-L" GE-SRC-LINE
+   s" oi-part-file.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" package OI-LA" GE-SRC-LINE
+   s" oi-part-open.f" NESTED-BUF GT-PATH NESTED-U !
+   NESTED$ SRC>FILE
+   GE-SRC-RESET
+   s" 1 set-tier package OI-A : OI-A1 ( -- n ) 1 ;" GE-SRC-LINE
+   s" s~ oi-part-file.f~ OI-PARK ' OI-INC-PARKED catch ." QLINE
+   s" s~ package OI-B~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ 5 .~ OI-PARK ' OI-EVAL-PARKED catch . package OI-B ;package OI-A1 . ;package" QLINE
+   s" include oi-part-open.f package OI-LB : OI-LB3 ( -- n ) 3 ; OI-LB3 . ;package ;package 4 ." GE-SRC-LINE
+   s" oi-package-part-buffer.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 75\n75\n5\n0\n1\n3\n4\n" CASE$ GE-EXPECT-OUT
+   s" package at " S\" oi-part-file.f:1\n" ERR-AT ;
+
+\ A throw out of an evaluate that closed a part and its package puts both back.
+: PACKAGE-PART-THROW ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-T42 ( -- ) 42 throw ;" GE-SRC-LINE
+   s" package OI-EA : OI-EA1 ( -- n ) 1 ; package OI-EB : OI-EB2 ( -- n ) 2 ;" GE-SRC-LINE
+   s" s~ ;package ;package OI-T42~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" OI-EB2 . ;package OI-EA1 . ;package 3 ." GE-SRC-LINE
+   s" oi-package-part-throw.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 42\n2\n1\n3\n" CASE$ GE-EXPECT-OUT ;
 
 \ The package keywords raise no top-row event: only the number, `.`, `0` and
 \ set-top-check log.
@@ -2131,6 +2208,9 @@ private
    PACKAGE-SCOPE
    PACKAGE-WORDLISTS
    PACKAGE-REFUSALS
+   PACKAGE-PART-SCOPE
+   PACKAGE-PART-THROW
+   PACKAGE-PART-BUFFER
    PACKAGE-HOOK
    USING-SCOPE
    USING-IN-PACKAGE

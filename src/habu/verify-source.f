@@ -2386,9 +2386,12 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
+\ A colon in the token is refused before the checker hears of it, as the
+\ engine's `package` refuses it: the checker reads a colon as a part's path.
 : RECORD-PACKAGE ( -- )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   name nameu $3A COUNT-CHAR 0 <> IF E-PKG-CONTEXT throw THEN
    name nameu CHECKER-PACKAGE
    name nameu at SEALED-PACKAGE ;
 

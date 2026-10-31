@@ -1387,19 +1387,18 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
 
 : GE-PKGSCOPE-EVAL-CLOSED ( -- )
    \ Package opened inside the failing evaluate: recovery restores the
-   \ evaluate-entry scope (global), so the package is closed. A dangling package
-   \ would make the following top-level `package` nest-fail (exit 75 mid-batch,
-   \ so GEC-RXOK never prints).
+   \ evaluate-entry scope (global), so the package is closed. A caught
+   \ `;package` then answers 75, no package open; a dangling PKX closes, 0.
    GE-HB-RESET
    GE-EVAL-CATCH-SRC
    s" package PKX public export PKNOPE ;package" GE-SRC-S"
    s"  GEC-CATCH . cr" GE-SRC-LINE
-   s" package PKY ;package" GE-SRC-LINE
-   s" : GEC-RXOK ( -- n ) 12321 ; GEC-RXOK . cr" GE-SRC-LINE
+   s" ;package" GE-SRC-S"
+   s"  GEC-CATCH . cr" GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    s" hb pkgscope eval-closed rc" GE-EXPECT-OK
    s" 70" s" hb pkgscope eval-closed code" GE-EXPECT-OUT-HAS
-   s" 12321" s" hb pkgscope eval-closed scope-restored-global" GE-EXPECT-OUT-HAS
+   s" 75" s" hb pkgscope eval-closed scope-restored-global" GE-EXPECT-OUT-HAS
    s" habu-crash" s" hb pkgscope eval-closed no-crash" GE-EXPECT-ERR-LACKS ;
 
 : GE-PKGSCOPE-CHECKER-RESYNC ( -- )

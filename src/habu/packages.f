@@ -2,8 +2,9 @@
 \ habu2.f C-PACKAGE to C-EXPORT; interpret.f STEP asks PACKAGE? after the
 \ literal keywords. After the seal a store into the friend arena (CUR, WIDN,
 \ DEF-WL, PKG-*) exits 83: rows, scope and aliases go through the prims.f
-\ writers and CUR through set-current; the using band, DEF-TKA and DEF-TKL are
-\ not sealed and are written here. A writer refuses silently, so each engine refusal is made here.
+\ writers and CUR through set-current; the using band, DEF-TKA, DEF-TKL,
+\ layout.f PACKAGE-PATH and PKG-OUTSIDE-CELL are not sealed and are written
+\ here. A writer refuses silently, so each engine refusal is made here.
 
 require src/lib/prelude.f
 require src/habu/layout.f
@@ -173,10 +174,9 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    row XREF-PKG-PRIVATE 0= if ix namespace-private then
    ix ;
 
-\ The index of the row `package` opens (habu2.f C-PACKAGE-ENSURE). A colon
-\ anywhere in the name is refused; a new row takes a public and a private wid.
+\ The index of the row `package` opens (habu2.f C-PACKAGE-ENSURE); a new row
+\ takes a public and a private wid.
 : PKG-ENSURE ( -- n )
-   TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? if row PKG-REOPEN exit then
    OVERLAY-GUARD
@@ -184,21 +184,50 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    TOKEN$ PKG-CODE-ROOM
    TOKEN$ true namespace-record ;
 
-\ The package opens on its private wordlist. The using depth it opens at is
-\ the one `;package` restores. The name goes to the unit hook first, whose
-\ nonzero answer skips the rest of the input instead (habu2.f C-PACKAGE).
+\ `package` inside an open package opens a part of it: in the buffer that
+\ package is open in (layout.f PKG-OUTSIDE-CELL), in its private section,
+\ under no using it opened, inside no part (habu2.f C-PACKAGE-PART-GUARD).
+: PKG-PART-GUARD ( -- )
+   PKG-OUTSIDE-CELL CELL@ 0=  ENCLOSING:PUB CELL@ 0= and
+   get-current PKG-PRI-CELL CELL@ = and
+   USE-DEPTH-CELL CELL@ USE-PKG-SAVE-CELL CELL@ = and if exit then
+   PKG-RC-CONTEXT PKG-FAIL ;
+
+\ Inside package A the token cells name layout.f PACKAGE-PATH holding
+\ `A:<token>`, and a path of PACKAGE-PATH:CAP bytes or more is refused
+\ (habu2.f C-PACKAGE-PATH).
+: PKG-PATH ( -- )
+   PKG-REC-CELL CELL@ {: rec:n :}
+   rec 0= if exit then
+   rec XREF-ADDR>REC XREF-NAME$ {: a:ptr u:n :}
+   TOKEN$ {: ta:ptr tu:n :}
+   u 1 + tu + {: pu:n :}
+   pu PACKAGE-PATH:CAP < 0= if PKG-RC-CONTEXT PKG-FAIL then
+   data-base PACKAGE-PATH:OFF + BYTE-VIEW {: buf:ptr :}
+   a buf u BYTE-COPY
+   $3A buf u + c!
+   ta buf u 1 + + tu BYTE-COPY
+   buf TKA-CELL ADDR!  pu TKL-CELL CELL! ;
+
+\ The package opens on its private wordlist, in this buffer. The using depth
+\ it opens at is the one `;package` restores, a part's its package's. The name
+\ goes to the unit hook first, whose nonzero answer skips the rest of the input
+\ instead (habu2.f C-PACKAGE).
 : PKG-PACKAGE ( -- )
    TASK-GUARD
-   PKG-PUB-CELL CELL@ 0<> if PKG-RC-CONTEXT PKG-FAIL then
+   PKG-PUB-CELL CELL@ 0<> if PKG-PART-GUARD then
    PKG-NAME
    0 UNIT-EV-PACKAGE UNIT-EVENT 0<> if INE-CELL CELL@ INP-CELL CELL! exit then
+   TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
+   PKG-PATH
    PKG-POLICY-GUARD
    NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
    PKG-SEAL-GUARD
    PKG-ENSURE {: ix:n :}
    USE-DEPTH-CELL CELL@ USE-PKG-SAVE-CELL CELL!
    ix get-current package-scope!
-   PKG-PRI-CELL CELL@ set-current ;
+   PKG-PRI-CELL CELL@ set-current
+   0 PKG-OUTSIDE-CELL CELL! ;
 
 : PKG-SECTION ( n n -- ) {: cell:n off:n :}
    TASK-GUARD
@@ -211,7 +240,9 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
    NCOMP-DISPATCH:DECL-END-PACKAGE-OFF PKG-NOTIFY
    PKG-PARENT-CELL CELL@ set-current
-   -1 0 package-scope!
+   ENCLOSING:REC CELL@ {: outer:n :}
+   outer 0= if -1 0 else outer XREF-ADDR>INDEX ENCLOSING:PARENT CELL@ then
+   package-scope!
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
 \ A throw puts the package scope back (habu1.f B-EVAL, habu2.f LEVALREC).

@@ -25,8 +25,10 @@ package FS
 ;package
 
 \ A global and a used public of one name: CHECK-CHILD-REFUSAL's source, which
-\ names it bare under `using`, is refused with E-USING-SHADOW-GLOBAL. Packages
-\ do not nest, so the pair is declared here, outside PROC-FORK-TEST.
+\ names it bare under `using`, is refused with E-USING-SHADOW-GLOBAL. The pair
+\ is a top-level package and a global, and inside PROC-FORK-TEST a `package`
+\ opens a part of it and a definition is private, so the pair is declared here,
+\ outside PROC-FORK-TEST.
 package PF-SHADOW public
    : PF-SHADOW-W ( -- n ) 1 ;
 ;package

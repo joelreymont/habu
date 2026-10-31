@@ -1167,7 +1167,7 @@ public
 0 constant CHECKER-PACKAGE-NONE
 1 constant CHECKER-PACKAGE-PRIVATE
 2 constant CHECKER-PACKAGE-PUBLIC
-$100 constant CHECKER-PACKAGE-CAP
+$100 constant CHECKER-PACKAGE-CAP              \ = layout.f PACKAGE-PATH:CAP
 \ Bytes at and past CHECKER-PACKAGE-U stay zero (CHECKER-PACKAGE-U!): a package may be open at a file capture.
 create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
 variable CHECKER-PACKAGE-U
@@ -12225,12 +12225,13 @@ variable SNAP-N
    E-OVERLAY-CAP throw ;
 
 \ The namespace row `package` opens, as the engine's PKG-ENSURE finds or makes
-\ it, and the one a replayed `using` imports (OPEN-USING): a colon anywhere in
-\ the name is refused with E-PKG-CONTEXT, the checker's code for the class the
-\ engine's `package` refuses it under (packages.f PKG-RC-CONTEXT, private to
-\ OUTER); a new row takes both wids.
+\ it, and the one a replayed `using` imports (OPEN-USING): the name is a bare
+\ name or a part's path `A:B`, and a colon at an edge or a second colon is
+\ refused with E-PKG-CONTEXT, as namespace-record refuses them; a new row
+\ takes both wids.
 : NS-ENSURE ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
-   a u CHECKER-COLON-SCAN drop 0 <> IF E-PKG-CONTEXT throw THEN
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 1 >  cn 1 =  ci 0 =  ci u 1 - = or  and  or IF E-PKG-CONTEXT throw THEN
    a u NS-ROW {: rec:ptr :}
    rec NULL-PTR <> IF rec EXIT THEN
    ROOM
@@ -12576,12 +12577,19 @@ ROW-CELLS cells constant SCOPE-BYTES
 \ `package NAME`, as the engine opens it (src/habu/packages.f PKG-PACKAGE): the
 \ row, made when new, and its private wordlist when it has none (GRANT); the
 \ using depth it opens at, which `;package` restores; the private wordlist
-\ current. A `package` replayed inside an open package
-\ replaces it and keeps its parent, as the checker's record of the scope does.
+\ current. A path `A:B` opens B as a part of the open package, whose current
+\ wordlist is its parent, and is refused with no package or a part open. Any
+\ other `package` replayed inside an open package replaces it and keeps its
+\ parent, as the checker's record of the scope does.
 : OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-COLON-SCAN drop 0 <> {: part:bool :}
+   CK-PKG-PUB-OFF DATA@ 0 <> {: open:bool :}
+   part IF
+      open 0=  CK-ENCLOSING-REC-OFF DATA@ 0 <>  or IF E-PKG-CONTEXT throw THEN
+   THEN
    a u NS-ENSURE {: rec:ptr :}
    rec CELL + @ 0= IF rec GRANT THEN
-   CK-PKG-PUB-OFF DATA@ 0 <> IF CK-PKG-PARENT-OFF DATA@ ELSE get-current THEN {: parent:n :}
+   open part 0= and IF CK-PKG-PARENT-OFF DATA@ ELSE get-current THEN {: parent:n :}
    CK-USE-DEPTH-OFF DATA@ CK-USE-FLOOR-OFF DATA!
    rec REC>IX parent package-scope!
    rec CELL + @ set-current ;
@@ -12592,23 +12600,24 @@ ROW-CELLS cells constant SCOPE-BYTES
    CK-PKG-PUB-OFF DATA@ 0= IF EXIT THEN
    off DATA@ set-current ;
 
-\ `;package` (PKG-END-PACKAGE): the parent wordlist current, no package open
-\ and the using depth the package opened at.
+\ `;package` (PKG-END-PACKAGE): the parent wordlist current, the enclosing
+\ package open again after a part and none after any other, and the using
+\ depth the package opened at.
 : CLOSE-PACKAGE ( -- )
    CK-PKG-PUB-OFF DATA@ 0= IF EXIT THEN
    CK-PKG-PARENT-OFF DATA@ set-current
-   -1 0 package-scope!
+   CK-ENCLOSING-REC-OFF SCOPE-IX {: outer:n :}
+   outer 0 < IF -1 0 ELSE outer CK-ENCLOSING-PARENT-OFF DATA@ THEN package-scope!
    CK-USE-FLOOR-OFF DATA@ CK-USE-DEPTH-OFF DATA! ;
 
 \ `using NAME` (PKG-USING): the package's public wordlist joins the used ones
 \ at the current depth. CHECKER-USING names the slot first (a name over 255
 \ bytes throws; an overflow ends the process) before any store here. A colon
-\ throws ENGINE-ERROR:USING-BAD-NAME, as the live statement does in evaluate:
-\ namespace-record refuses a colon, so no row exists for such a name. A legal
-\ name with no row is the run's to refuse (USING-UNKNOWN): the replay goes on
-\ with the empty row NS-ENSURE makes, which replay-close drops. A source below
-\ its floor lowers the floor to meet its first using, as an evaluated buffer
-\ does.
+\ throws ENGINE-ERROR:USING-BAD-NAME, as the live statement does in evaluate,
+\ though a part's row is named by a path with one. A legal name with no row is
+\ the run's to refuse (USING-UNKNOWN): the replay goes on with the empty row
+\ NS-ENSURE makes, which replay-close drops. A source below its floor lowers
+\ the floor to meet its first using, as an evaluated buffer does.
 : OPEN-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-USING
    a u CHECKER-COLON-SCAN drop 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
@@ -12678,8 +12687,14 @@ package CHECKER-REG
 ' CHECKER-PRIVATE DECLARATIONS PRIVATE-OFF + xt!
 ;package
 
+\ Closing a part `A:B` leaves A open in its private section; closing any other
+\ package leaves none open.
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF CHECKER-OVERLAY:CLOSE-PACKAGE THEN
+   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-COLON-SCAN {: ci:n :} drop
+   ci 0 >= IF
+      CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !  ci CHECKER-PACKAGE-U! EXIT
+   THEN
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U! ;
 package CHECKER-REG

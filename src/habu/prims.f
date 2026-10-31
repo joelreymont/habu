@@ -826,7 +826,8 @@ EPPRIM: DEF-OCC def-occ-resolve PE-N PE-IN PE-N PE-IN PE-PTR-N PE-OUT ECLOSE-PRI
 \
 \ namespace-record ( ptr u8 n bool -- n ): publish a namespace row at NDICT and
 \ answer its index: [0] a fresh wid, [8] a second fresh wid when the flag is
-\ set and else 0, [40] DICT-WL:NAMESPACE. It refuses a colon in the name.
+\ set and else 0, [40] DICT-WL:NAMESPACE. It refuses a colon at an edge of the
+\ name and a second colon: a name with one is a part's path, `A:B`.
 EPRIM: namespace-record PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 \ The owner-private rows of these writers: inside package CHECKER-OVERLAY or

@@ -10,8 +10,9 @@ using SCHEMA-REG
 \ A name referenced outside this package is public, everything else private;
 \ outside includes the checker's `PPRIM: TFAM` rows and the inner packages this
 \ file opens (TYPE-NAME, TYPE-FIELD, TYPE-FIELD-OWNER, CHECKER-DECL-FRAME,
-\ SCHEMA-REG). Packages do not nest (habu2.f C-PACKAGE exits $4B), so each inner
-\ block closes TFAM, reopens it after, and reads publics through `using TFAM`.
+\ SCHEMA-REG). These are top-level packages, not parts of TFAM, and a `package`
+\ inside an open one opens a part of it, so each inner block closes TFAM,
+\ reopens it after, and reads publics through `using TFAM`.
 package TFAM
 
 \ --- kind of a family (what its values are).

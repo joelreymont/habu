@@ -141,12 +141,14 @@ private
 \ include.f reads a nonzero cell after the buffer as a failed evaluation. The
 \ using depth goes back to the buffer's using floor (packages.f USE-FLOOR); a
 \ package the buffer left open keeps none of its usings: its using floor drops
-\ to the restored depth.
-: CLEAN-END ( -- )
+\ to the restored depth. A package the buffer opened and left open is the
+\ includer's; otherwise the includer's PKG-OUTSIDE-CELL, n, comes back.
+: CLEAN-END ( n -- ) {: outside:n :}
    0 EVALERR-CELL CELL!
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
    back USE-DEPTH-CELL CELL!
-   USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then ;
+   USE-PKG-SAVE-CELL CELL@ back > if back USE-PKG-SAVE-CELL CELL! then
+   PKG-OUTSIDE-CELL CELL@ 0<> if outside PKG-OUTSIDE-CELL CELL! then ;
 
 \ `evaluate` keeps the frame the engine's evaluate pushes, field for field, in a
 \ mapping of its own, linked through EVAL-TOP-CELL and counted in EVALD-CELL, so
@@ -221,6 +223,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    USE-DEPTH-CELL CELL@ snap PKGSNAP-USE FR!
    USE-PKG-SAVE-CELL CELL@ snap PKGSNAP:FLOOR FR!
    USE-DEPTH-CELL CELL@ f EVAL-FRAME:USE-FLOOR FR!
+   PKG-OUTSIDE-CELL CELL@ f EVAL-FRAME:PKG-OUTSIDE FR!
    USE-MAX 0 ?do
       i cells USE-WIDS-OFF + CELL@  f EVAL-FRAME:USE-WIDS i cells + FR!
    loop
@@ -245,9 +248,9 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    f FR-INE FR@ INE-CELL CELL!
    f EVAL-INB FR@ SRCLOC:INB-CELL CELL! ;
 
-: FRAME-LEAVE ( ptr u8 -- )
-   FRAME-UNLINK
-   CLEAN-END ;
+: FRAME-LEAVE ( ptr u8 -- ) {: f:ptr :}
+   f FRAME-UNLINK
+   f EVAL-FRAME:PKG-OUTSIDE FR@ CLEAN-END ;
 
 \ x86 THROW restores its catch stack but returns with the Habu evaluation
 \ frame still linked. ARM LEVALREC has already popped it before catch returns.
@@ -283,6 +286,7 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
 : FRAME-RESTORE-SCOPE ( ptr u8 -- ) {: f:ptr :}
    f EVAL-PKG + {: snap:ptr :}
    snap PKGSNAP-USE FR@ USE-DEPTH-CELL CELL!
+   f EVAL-FRAME:PKG-OUTSIDE FR@ PKG-OUTSIDE-CELL CELL!
    USE-MAX 0 ?do
       f EVAL-FRAME:USE-WIDS i cells + FR@
       i cells USE-WIDS-OFF + CELL!
@@ -392,6 +396,7 @@ public
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
    USE-DEPTH-CELL CELL@ USE-FLOOR !
+   1 PKG-OUTSIDE-CELL CELL!
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    f FRAME-ARG !
    f NULL-PTR - LOOP-EVAL !
@@ -449,16 +454,18 @@ private
    {: p:n e:n b:n d:n o:n :}
    PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
    USE-FLOOR @ {: outer:n :}
+   PKG-OUTSIDE-CELL CELL@ {: outside:n :}
    REC @ {: found:ptr :}
    LOOP-EVAL @ {: reading:n :}
    d USE-FLOOR !
+   1 PKG-OUTSIDE-CELL CELL!
    PEND-CELL CELL@ {: entry:n :}
    entry ENTRY-PEND !
    a first + INP-CELL ADDR!  a SRCLOC:INB-CELL ADDR!  a end + INE-CELL ADDR!
    0 LOOP-EVAL !
    d RUN-CAUGHT {: code:n :}
    reading LOOP-EVAL !
-   code 0= if CLEAN-END then
+   code 0= if outside CLEAN-END then
    outer USE-FLOOR !
    p INP-CELL CELL!  e INE-CELL CELL!  b SRCLOC:INB-CELL CELL!  found REC !
    o ENTRY-PEND !
@@ -469,7 +476,7 @@ private
          TOK-BODY-DEPTH @ BODY-DEPTH !
          TOK-BODY-RAW @ BODY-RAW-NEXT !
       then
-      entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!
+      entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!  outside PKG-OUTSIDE-CELL CELL!
       outer-rec outer-parent rec parent cur floor PKG-RECOVER  code throw
    then ;
 

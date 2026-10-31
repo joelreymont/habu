@@ -4985,7 +4985,8 @@ variable SS-NEST-U
    [: RUN-ACT ;] IN-PROC s" ckt-using-at.f" EXPECT-USING-AT ;
 
 \ A colon in a `using` or `package` name is refused by the check, at the
-\ statement the load refuses: the replay throws there as the live statement
+\ statement the load refuses, inside an open package too, where the checker
+\ would read it as a part's path: the replay throws there as the live statement
 \ does inside evaluate. `using` throws the engine's own code
 \ (ENGINE-ERROR:USING-BAD-NAME, 90); `package` throws the checker's
 \ E-PKG-CONTEXT (7136), since the engine's code for it is private to
@@ -5014,6 +5015,22 @@ variable SS-NEST-U
    s" package CKT-NC-A:B" REQ-LINE+
    s" ;package" REQ-LINE+
    s" nc-package.f" s\" nc-package.f\",\"line\":2,\"column\":9,"
+   s\" \"throw_code\":7136," COLON-REFUSED
+   SB-RESET
+   s" package CKT-NC-P" REQ-LINE+
+   s" package CKT-NC-P:Q" REQ-LINE+
+   s" deftype N" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" nc-part.f" s\" nc-part.f\",\"line\":2,\"column\":9,"
+   s\" \"throw_code\":7136," COLON-REFUSED
+   SB-RESET
+   s" package CKT-NC-P" REQ-LINE+
+   s" package CKT-NC-P:Q" REQ-LINE+
+   s" : CKT-NC-BAD ( -- n ) 1 2 ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" nc-part-bad.f" s\" nc-part-bad.f\",\"line\":2,\"column\":9,"
    s\" \"throw_code\":7136," COLON-REFUSED
    SB-RESET
    s" using CKT-NC-A:B" REQ-LINE+
