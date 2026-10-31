@@ -2,8 +2,14 @@
 \ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
 \ Mcp-Name checks, the transport check, unknown methods and tools, a body's
 \ result and tool error, an object schema's answer as structuredContent and a
-\ non-object answer under it, bodies that answer badly or never, malformed
-\ envelopes, arguments and JSON, tools/list and ping, and ADD-TOOL's refusals.
+\ non-object answer under it, a result's _meta from ANSWER-WITH in both eras and its
+\ refusals, bodies that answer badly or never, malformed envelopes, arguments and JSON,
+\ ping, tools/list showing each descriptor as registered (annotations and _meta raw) with
+\ a non-object output schema's wrapper in its place, and ADD-TOOL's refusals of a bad
+\ descriptor. ui:// resources: the resources capability, resources/list and
+\ resources/read in both eras, a read's Mcp-Name, a read without _meta, an unknown uri
+\ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
+\ refusals.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
 \ CALL's result, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
@@ -84,6 +90,7 @@ TYPED-VARIABLE ROUTE-CLIENT MCP:client
 \ it stops; a case that releases one SETTLEs, so the next case's ARM finds none.
 variable ENTERED
 variable SHAPE-CODE                 \ what shape's ANSWER threw, 0 for nothing
+variable META-CODE                  \ what framed's ANSWER-WITH threw, 0 for nothing
 variable RELEASED
 variable LEFT
 variable CLOSED
@@ -194,7 +201,8 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" legacy initialize answers the 2025-11-25 handshake with instructions" T-LABEL
    LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}" POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\"," SB-APPEND
-   S\" \"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"test-server\",\"version\":\"1.0\"}"
+   S\" \"capabilities\":{\"tools\":{},\"resources\":{}}," SB-APPEND
+   S\" \"serverInfo\":{\"name\":\"test-server\",\"version\":\"1.0\"}"
    SB-APPEND GUIDE S\" }}" SB-APPEND
    200 SB$ ANSWERED ;
 
@@ -211,7 +219,8 @@ TASK:MIN-STACK TASK:TASK STALLER
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":\"d\",\"method\":\"server/discover\",\"params\":{" SB-APPEND
    META S\" }}" SB-APPEND SB$ POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":\"d\",\"result\":{\"resultType\":\"complete\"," SB-APPEND
-   S\" \"supportedVersions\":[\"2026-07-28\",\"2025-11-25\"],\"capabilities\":{\"tools\":{}}," SB-APPEND
+   S\" \"supportedVersions\":[\"2026-07-28\",\"2025-11-25\"]," SB-APPEND
+   S\" \"capabilities\":{\"tools\":{},\"resources\":{}}," SB-APPEND
    SERVER GUIDE S\" ,\"ttlMs\":0,\"cacheScope\":\"private\"}}" SB-APPEND
    200 SB$ ANSWERED ;
 
@@ -247,7 +256,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : UNKNOWN-METHOD ( -- )
    s" an unknown method is 404 -32601" T-LABEL
-   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"resources/list\"}" POST
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"prompts/list\"}" POST
    404 S\" {\"jsonrpc\":\"2.0\",\"id\":5,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}"
    ANSWERED ;
 
@@ -310,6 +319,83 @@ TASK:MIN-STACK TASK:TASK STALLER
    SHAPE-CODE atomic@ MCP:E-SCHEMA T= ;
 
 
+\ framed's arguments, its result's _meta, with space a modern answer trims.
+: SPACED ( -- ptr u8 n ) S\" { \"a\":1, \"b\":[2] }" ;
+
+
+\ A legacy tools/call of framed with the given id and arguments.
+: LEGACY-FRAMED ( n ptr u8 n -- n )
+   {: id:n args:ptr au:n :}
+   LEGACY
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"framed\",\"arguments\":" SB-APPEND
+   args au SB-APPEND S\" }}" SB-APPEND SB$ POST ;
+
+
+\ A modern tools/call of framed, Mcp-Name included, with the given id and
+\ arguments.
+: MODERN-FRAMED ( n ptr u8 n -- n )
+   {: id:n args:ptr au:n :}
+   MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: framed" ADD
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"framed\",\"arguments\":" SB-APPEND
+   args au SB-APPEND s" ," SB-APPEND META S\" }}" SB-APPEND SB$ POST ;
+
+
+\ framed's reply to the given id through isError, in SB.
+: FRAMED-RESULT ( n bool -- )
+   {: id:n modern:bool :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"result\":{" SB-APPEND
+   modern if S\" \"resultType\":\"complete\"," SB-APPEND then
+   S\" \"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true}\"}]," SB-APPEND
+   S\" \"structuredContent\":{\"ok\":true},\"isError\":false" SB-APPEND ;
+
+
+: META-LEGACY ( -- )
+   s" a legacy result's _meta is ANSWER-WITH's meta as given" T-LABEL
+   24 SPACED LEGACY-FRAMED
+   24 false FRAMED-RESULT S\" ,\"_meta\":" SB-APPEND SPACED SB-APPEND S\" }}" SB-APPEND
+   200 SB$ ANSWERED ;
+
+
+: META-MODERN ( -- )
+   s" a modern result's _meta holds ANSWER-WITH's members, then serverInfo" T-LABEL
+   25 SPACED MODERN-FRAMED
+   25 true FRAMED-RESULT
+   S\" ,\"_meta\":{\"a\":1, \"b\":[2],\"io.modelcontextprotocol/serverInfo\":" SB-APPEND
+   S\" {\"name\":\"test-server\",\"version\":\"1.0\"}}}}" SB-APPEND
+   200 SB$ ANSWERED ;
+
+
+: META-EMPTY ( -- )
+   s" a modern result whose meta has no members holds serverInfo alone" T-LABEL
+   26 s" { }" MODERN-FRAMED
+   26 true FRAMED-RESULT s" ," SB-APPEND SERVER S\" }}" SB-APPEND
+   200 SB$ ANSWERED ;
+
+
+: META-NOT-OBJECT ( -- )
+   s" ANSWER-WITH meta that is not an object faults to the host" T-LABEL
+   0 META-CODE atomic!
+   27 S\" {\"flat\":true}" LEGACY-FRAMED FAULTED
+   META-CODE atomic@ MCP:E-SCHEMA T= ;
+
+
+: META-REPEATED ( -- )
+   s" ANSWER-WITH meta that repeats a top-level key faults to the host" T-LABEL
+   0 META-CODE atomic!
+   29 S\" {\"a\":1,\"a\":2}" LEGACY-FRAMED FAULTED
+   META-CODE atomic@ MCP:E-SCHEMA T= ;
+
+
+: META-SERVER-INFO ( -- )
+   s" ANSWER-WITH meta naming serverInfo, escaped, faults to the host" T-LABEL
+   0 META-CODE atomic!
+   28 S\" {\"io.modelcontextprotocol\\/serverInfo\":{}}" LEGACY-FRAMED FAULTED
+   META-CODE atomic@ MCP:E-SCHEMA T= ;
+
+
 : BAD-JSON ( -- )
    s" a body that is not JSON is -32700 with no id" T-LABEL
    LEGACY S\" {\"jsonrpc\":" POST
@@ -318,10 +404,12 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 \ The advertised outputSchema wrapping a declared schema that is not an object's.
-: OUTPUT ( ptr u8 n -- )
+: WRAPPER ( ptr u8 n -- )
    {: declared:ptr du:n :}
    S\" \"outputSchema\":{\"type\":\"object\",\"properties\":{\"data\":" W+ declared du W+
-   S\" },\"required\":[\"data\"]},\"annotations\":{\"readOnlyHint\":" W+ ;
+   S\" },\"required\":[\"data\"]}" W+ ;
+
+: OUTPUT ( ptr u8 n -- ) WRAPPER S\" ,\"annotations\":{\"readOnlyHint\":" W+ ;
 
 \ shape's declared output schema, advertised as declared.
 : SOURCES ( -- ptr u8 n )
@@ -330,6 +418,24 @@ TASK:MIN-STACK TASK:TASK STALLER
 \ silent's declared output schema: no string "type" "object", so it is wrapped.
 : NULLABLE ( -- ptr u8 n )
    S\" {\"type\":[\"object\",\"null\"],\"items\":{\"type\":\"object\"}}" ;
+
+\ An app's tool, listed as registered: its outputSchema is an object's.
+: WIDGET ( -- ptr u8 n )
+   S\" {\"name\":\"widget\",\"description\":\"Show the widget.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"openWorldHint\":false},\"_meta\":{\"ui\":{\"resourceUri\":\"ui://test/widget.html\",\"visibility\":[\"model\",\"app\"]},\"openai/fileParams\":[\"file\"]}}" ;
+
+\ A tool whose escaped outputSchema key and non-object schema sit between members.
+: PICKER ( -- ptr u8 n )
+   S\" {\"name\":\"pick\",\"title\": \"Pick one\",\"n\": 1.5e0,\"tags\": [ \"a\" ],\"ok\": true,\"outputSch\\u0065ma\":{\"type\":\"string\"},\"inputSchema\":{\"type\":\"object\"},\"_meta\":{\"ui\":{\"visibility\":[\"app\"]}}}" ;
+
+\ pick's entry, members as registered and the wrapper in its schema's place.
+: PICK-ITEM ( -- )
+   S\" {\"name\":\"pick\",\"title\":\"Pick one\",\"n\":1.5e0,\"tags\":[ \"a\" ],\"ok\":true," W+
+   S\" {\"type\":\"string\"}" WRAPPER
+   S\" ,\"inputSchema\":{\"type\":\"object\"},\"_meta\":{\"ui\":{\"visibility\":[\"app\"]}}}" W+ ;
+
+\ A tool whose body answers with a _meta, listed as registered.
+: FRAMED ( -- ptr u8 n )
+   S\" {\"name\":\"framed\",\"description\":\"Answer with a _meta.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true}}" ;
 
 \ echo's entry, the first tools/list answers.
 : ECHO-ITEM ( -- )
@@ -356,7 +462,8 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" {}" OUTPUT s" true}},{" W+
    S\" \"name\":\"shape\",\"description\":\"Answer sources.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"},\"outputSchema\":" W+ SOURCES W+
-   S\" ,\"annotations\":{\"readOnlyHint\":true}}" W+ ;
+   S\" ,\"annotations\":{\"readOnlyHint\":true}}," W+ WIDGET W+ s" ," W+ PICK-ITEM
+   s" ," W+ FRAMED W+ ;
 
 \ Every tool the open phase registers, as tools/list answers them, before the
 \ array's end.
@@ -366,7 +473,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : LIST ( -- )
-   s" tools/list shows each tool's schema and read-only hint" T-LABEL
+   s" tools/list shows each descriptor, a non-object outputSchema as the wrapper" T-LABEL
    LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/list\"}" POST
    W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":10,\"result\":{\"tools\":" W+
    TOOL-ARRAY s" }}" W+
@@ -482,38 +589,141 @@ TASK:MIN-STACK TASK:TASK STALLER
    200 S\" {\"jsonrpc\":\"2.0\",\"id\":11,\"result\":{}}" ANSWERED ;
 
 
+\ The widget resource's descriptor, as resources/list answers it.
+: WIDGET-RESOURCE ( -- ptr u8 n )
+   S\" {\"uri\":\"ui://test/widget.html\",\"name\":\"widget\",\"mimeType\":\"text/html;profile=mcp-app\",\"description\":\"A test widget.\",\"_meta\":{\"ui\":{\"csp\":{\"resourceDomains\":[\"https://cdn.test\"]}}}}" ;
+
+\ A resource without _meta, as resources/list answers it.
+: PLAIN ( -- ptr u8 n )
+   S\" {\"uri\":\"ui://test/plain.html\",\"name\":\"plain\",\"mimeType\":\"text/html\"}" ;
+
+\ The resources/list array's members.
+: RESOURCE-ITEMS ( -- ) WIDGET-RESOURCE W+ s" ," W+ PLAIN W+ ;
+
+\ Its page: a quote and a newline show the text's escaping.
+: PAGE ( -- ptr u8 n ) S\" <p class=\"note\">Hi</p>\n" ;
+
+\ The widget's resources/read contents, after the result's opening brace.
+: W-CONTENTS ( -- )
+   S\" \"contents\":[{\"uri\":\"ui://test/widget.html\",\"mimeType\":\"text/html;profile=mcp-app\"," W+
+   S\" \"_meta\":{\"ui\":{\"csp\":{\"resourceDomains\":[\"https://cdn.test\"]}}}," W+
+   S\" \"text\":\"<p class=\\\"note\\\">Hi</p>\\n\"}]" W+ ;
+
+
+: RESOURCES-LIST ( -- )
+   s" legacy resources/list shows each descriptor as registered" T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"resources/list\"}" POST
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":30,\"result\":{\"resources\":[" W+
+   RESOURCE-ITEMS s" ]}}" W+
+   200 W$ ANSWERED ;
+
+
+: MODERN-RESOURCES ( -- )
+   s" a modern resources/list adds resultType, cache scope and serverInfo" T-LABEL
+   MODERN s" Mcp-Method: resources/list" ADD
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":31,\"method\":\"resources/list\",\"params\":{" SB-APPEND
+   META S\" }}" SB-APPEND SB$ POST
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":31,\"result\":{\"resultType\":\"complete\"," W+
+   S\" \"resources\":[" W+ RESOURCE-ITEMS S\" ],\"ttlMs\":0,\"cacheScope\":\"private\"," W+
+   W-SERVER S\" }}" W+
+   200 W$ ANSWERED ;
+
+
+: RESOURCE-READ ( -- )
+   s" legacy resources/read answers the page with the descriptor's uri, mimeType and _meta"
+   T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":32,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/widget.html\"}}" POST
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":32,\"result\":{" W+ W-CONTENTS s" }}" W+
+   200 W$ ANSWERED ;
+
+
+: PLAIN-READ ( -- )
+   s" resources/read of a descriptor without _meta answers uri, mimeType and text" T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":38,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/plain.html\"}}" POST
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":38,\"result\":{\"contents\":[{" W+
+   S\" \"uri\":\"ui://test/plain.html\",\"mimeType\":\"text/html\",\"text\":\"<p></p>\"}]}}" W+
+   200 W$ ANSWERED ;
+
+
+\ A modern resources/read of the widget with the given id and Mcp-Name header.
+: WIDGET-READ ( n ptr u8 n -- n )
+   {: id:n name:ptr nu:n :}
+   MODERN s" Mcp-Method: resources/read" ADD name nu ADD
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/widget.html\"," SB-APPEND
+   META S\" }}" SB-APPEND SB$ POST ;
+
+
+: MODERN-READ ( -- )
+   s" a modern resources/read whose Mcp-Name names params.uri answers the page" T-LABEL
+   33 s" Mcp-Name: ui://test/widget.html" WIDGET-READ
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":33,\"result\":{\"resultType\":\"complete\"," W+
+   W-CONTENTS S\" ,\"ttlMs\":0,\"cacheScope\":\"private\"," W+ W-SERVER s" }}" W+
+   200 W$ ANSWERED ;
+
+
+: READ-MISMATCH ( -- )
+   s" a modern Mcp-Name naming another resource is -32020" T-LABEL
+   34 s" Mcp-Name: ui://test/other.html" WIDGET-READ
+   400 S\" {\"jsonrpc\":\"2.0\",\"id\":34,\"error\":{\"code\":-32020,\"message\":\"Header mismatch\"}}"
+   ANSWERED ;
+
+
+: UNKNOWN-RESOURCE ( -- )
+   s" an unregistered uri is 404 -32002 with the uri as data" T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":35,\"method\":\"resources/read\",\"params\":{\"uri\":\"ui://test/none.html\"}}" POST
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":35,\"error\":{\"code\":-32002," SB-APPEND
+   S\" \"message\":\"Resource not found\",\"data\":{\"uri\":\"ui://test/none.html\"}}}" SB-APPEND
+   404 SB$ ANSWERED ;
+
+
+: URI-NOT-STRING ( -- )
+   s" a resources/read uri that is no string is 400 -32602" T-LABEL
+   LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"resources/read\",\"params\":{\"uri\":5}}" POST
+   400 S\" {\"jsonrpc\":\"2.0\",\"id\":36,\"error\":{\"code\":-32602,\"message\":\"Invalid MCP request\"}}"
+   ANSWERED ;
+
+
+: TEMPLATES ( -- )
+   s" a modern resources/templates/list answers no templates" T-LABEL
+   MODERN s" Mcp-Method: resources/templates/list" ADD
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":37,\"method\":\"resources/templates/list\",\"params\":{" SB-APPEND
+   META S\" }}" SB-APPEND SB$ POST
+   W-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":37,\"result\":{\"resultType\":\"complete\"," W+
+   S\" \"resourceTemplates\":[],\"ttlMs\":0,\"cacheScope\":\"private\"," W+ W-SERVER s" }}" W+
+   200 W$ ANSWERED ;
+
+
 : ADD-ECHO ( -- )
-   s" echo" s" Echo the arguments." S\" {\"type\":\"object\"}" s" {}" true
+   S\" {\"name\":\"echo\",\"description\":\"Echo the arguments.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 : ADD-REFUSE ( -- )
-   s" refuse" s" Refuse every call." S\" {\"type\":\"object\",\"properties\":{}}" s" {}"
-   false
+   S\" {\"name\":\"refuse\",\"description\":\"Refuse every call.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":false}}"
    [: 2drop s" nope" MCP:ANSWER-ERROR ;] MCP:ADD-TOOL ;
 
 : ADD-RAW ( -- )
-   s" raw" s" Answer text that is not JSON." S\" {\"type\":\"object\"}" s" {}" true
+   S\" {\"name\":\"raw\",\"description\":\"Answer text that is not JSON.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop s" not json" MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 : ADD-SILENT ( -- )
-   s" silent" s" Never answer." S\" {\"type\":\"object\"}" NULLABLE true
+   S\" {\"name\":\"silent\",\"description\":\"Never answer.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":[\"object\",\"null\"],\"items\":{\"type\":\"object\"}},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop ;] MCP:ADD-TOOL ;
 
 : ADD-BIG ( -- )
-   s" big" s" Answer a long string." S\" {\"type\":\"object\"}"
-   S\" {\"type\":\"string\"}" true
+   S\" {\"name\":\"big\",\"description\":\"Answer a long string.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"string\"},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop BIG BIG-U MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 \ Answers once the test sets RELEASED.
 : ADD-STALL ( -- )
-   s" stall" s" Answer once released." S\" {\"type\":\"object\"}" s" {}" true
+   S\" {\"name\":\"stall\",\"description\":\"Answer once released.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop 1 ENTERED atomic!
       [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test STALL" TEST-WAIT:POLL
       1 LEFT atomic!
       s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 : ADD-LATE ( -- )
-   s" late" s" Registered while serving." S\" {\"type\":\"object\"}" s" {}" true
+   S\" {\"name\":\"late\",\"description\":\"Registered while serving.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 
@@ -526,15 +736,49 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 \ Answers {"sources":["a"]}, or an array for arguments naming "flat".
 : ADD-SHAPE ( -- )
-   s" shape" s" Answer sources." S\" {\"type\":\"object\"}" SOURCES true
+   S\" {\"name\":\"shape\",\"description\":\"Answer sources.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"typ\\u0065\":\"object\",\"properties\":{\"sources\":{\"type\":\"array\"}}},\"annotations\":{\"readOnlyHint\":true}}"
    [: s" flat" CONTAINS? if s" []" else S\" {\"sources\":[\"a\"]}" then SHAPE-ANSWER ;]
    MCP:ADD-TOOL ;
 
 
-: ADD-SCHEMA ( ptr u8 n -- )
-   {: output:ptr ou:n :}
-   s" listed" s" Declare a schema." S\" {\"type\":\"object\"}" output ou true
-   [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+: ADD-WIDGET ( -- ) WIDGET [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+: ADD-PICK ( -- ) PICKER [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+: ADD-DESCRIBED ( ptr u8 n -- ) [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+
+
+\ ANSWER-WITH {"ok":true} and meta, keeping in META-CODE what it threw.
+: META-ANSWER ( ptr u8 n -- )
+   [: 2dup S\" {\"ok\":true}" 2swap MCP:ANSWER-WITH ;] catch {: code:n :} 2drop
+   code META-CODE atomic!
+   code 0<> if code throw then ;
+
+
+\ Answers with the arguments as the result's _meta, or [] for arguments naming
+\ "flat".
+: ADD-FRAMED ( -- )
+   FRAMED [: 2dup s" flat" CONTAINS? if 2drop s" []" then META-ANSWER ;] MCP:ADD-TOOL ;
+
+
+\ A resource with the descriptor and a small page.
+: ADD-PAGE ( ptr u8 n -- ) s" <p></p>" MCP:ADD-RESOURCE ;
+
+: RESOURCE-REFUSALS ( -- )
+   s" ADD-RESOURCE refuses a descriptor without a uri" T-LABEL
+   [: S\" {\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-RESOURCE refuses an empty uri" T-LABEL
+   [: S\" {\"uri\":\"\",\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-RESOURCE refuses a uri that is no string" T-LABEL
+   [: S\" {\"uri\":5,\"name\":\"x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-RESOURCE refuses a descriptor without a name" T-LABEL
+   [: S\" {\"uri\":\"ui://x\",\"mimeType\":\"text/html\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-RESOURCE refuses a descriptor without a mimeType" T-LABEL
+   [: S\" {\"uri\":\"ui://x\",\"name\":\"x\"}" ADD-PAGE ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-RESOURCE refuses a text that is not UTF-8" T-LABEL
+   [: S\" {\"uri\":\"ui://x\",\"name\":\"x\",\"mimeType\":\"text/html\"}"
+      S\" <p>\xff</p>" MCP:ADD-RESOURCE ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-RESOURCE refuses a registered uri, escaped" T-LABEL
+   [: S\" {\"uri\":\"ui://test/widget\\u002ehtml\",\"name\":\"x\",\"mimeType\":\"text/html\"}"
+      ADD-PAGE ;] MCP:E-DUPLICATE TTHROWSQ ;
 
 
 \ The client's cases.
@@ -891,14 +1135,14 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" owner-app" STR= ;
 
 : ADD-SECRET ( -- )
-   s" secret" s" Answer the owner." S\" {\"type\":\"object\"}" s" {}" true
+   S\" {\"name\":\"secret\",\"description\":\"Answer the owner.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
 
 \ A claim the caller lacks shows as an empty string.
 : CLAIM+ ( ptr u8 n -- ) BEARER:CLAIM$ drop NB+ ;
 
 : ADD-WHOAMI ( -- )
-   s" whoami" s" Answer the caller's claims." S\" {\"type\":\"object\"}" s" {}" true
+   S\" {\"name\":\"whoami\",\"description\":\"Answer the caller's claims.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop 0 NB-U !
       S\" {\"azp\":\"" NB+ s" azp" CLAIM+ S\" \",\"oid\":\"" NB+ s" oid" CLAIM+ S\" \"}" NB+
       NB NB-U @ MCP:ANSWER ;] MCP:ADD-TOOL ;
@@ -1010,27 +1254,49 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" test-server" s" 1.0" MCP:SERVER-INFO!
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
-   ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE
-   s" ADD-TOOL refuses a registered name" T-LABEL
-   [: ADD-ECHO ;] MCP:E-DUPLICATE TTHROWSQ
-   s" ADD-TOOL refuses an output schema that is not an object" T-LABEL
-   [: s" []" ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
-   s" ADD-TOOL refuses an output schema that is not JSON" T-LABEL
-   [: s" not json" ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
-   s" ADD-TOOL refuses an empty output schema" T-LABEL
-   [: s" " ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
-   s" ADD-TOOL refuses an output schema repeating a top-level key, escaped" T-LABEL
-   [: S\" {\"type\":\"object\",\"typ\\u0065\":\"array\"}" ADD-SCHEMA ;] MCP:E-SCHEMA TTHROWSQ
+   ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE ADD-WIDGET ADD-PICK
+   ADD-FRAMED
+   s" ADD-TOOL refuses a descriptor without a name" T-LABEL
+   [: S\" {\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a descriptor whose name is not a string" T-LABEL
+   [: S\" {\"name\":5,\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a descriptor without an inputSchema" T-LABEL
+   [: S\" {\"name\":\"x\",\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a descriptor whose inputSchema is not an object" T-LABEL
+   [: S\" {\"name\":\"x\",\"inputSchema\":[],\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a descriptor without an outputSchema" T-LABEL
+   [: S\" {\"name\":\"x\",\"inputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a descriptor whose outputSchema is not an object" T-LABEL
+   [: S\" {\"name\":\"x\",\"inputSchema\":{},\"outputSchema\":[]}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a descriptor repeating a top-level key, escaped" T-LABEL
+   [: S\" {\"name\":\"x\",\"n\\u0061me\":\"y\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a descriptor that is not JSON" T-LABEL
+   [: s" not json" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses a registered name written with an escape" T-LABEL
+   [: S\" {\"name\":\"\\u0065cho\",\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-DUPLICATE TTHROWSQ
+   s" ADD-TOOL refuses a descriptor without a top-level name, one nested" T-LABEL
+   [: S\" {\"inputSchema\":{\"name\":\"x\"},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   s" ADD-TOOL refuses an outputSchema repeating a top-level key" T-LABEL
+   [: S\" {\"name\":\"t\",\"inputSchema\":{},\"outputSchema\":{\"type\":\"object\",\"type\":\"string\"}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
+   WIDGET-RESOURCE PAGE MCP:ADD-RESOURCE
+   PLAIN ADD-PAGE
+   RESOURCE-REFUSALS
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    s" ADD-TOOL refuses while HTTP serves" T-LABEL
    [: ADD-LATE ;] MCP:E-STATE TTHROWSQ
+   s" ADD-RESOURCE refuses while HTTP serves" T-LABEL
+   [: S\" {\"uri\":\"ui://late\",\"name\":\"late\",\"mimeType\":\"text/html\"}" ADD-PAGE ;]
+   MCP:E-STATE TTHROWSQ
    s" INSTRUCTIONS! refuses while HTTP serves" T-LABEL
    [: GUIDE$ MCP:INSTRUCTIONS! ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
    METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL TOOL-ERROR
-   TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT BAD-ENVELOPE BAD-JSON LIST PING
+   TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
+   META-NOT-OBJECT META-REPEATED META-SERVER-INFO BAD-ENVELOPE BAD-JSON LIST PING
    MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES NO-PARAMS MODERN-NOTIFICATION
    LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-ANSWER SILENT
+   RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
+   UNKNOWN-RESOURCE URI-NOT-STRING TEMPLATES
    CLIENT-CASES
    PROTECTED-CASES
    HTTP:STOP

@@ -1,25 +1,27 @@
-\ mcp.f - an MCP tool server on Habu's HTTP server: the stateless, JSON-response
-\ form of streamable HTTP for MCP 2026-07-28 with server/discover, and the
-\ 2025-11-25 initialize flow. No session ID, no event stream. The host states
-\ its name with SERVER-INFO!, any guidance for the model with INSTRUCTIONS! and
-\ its tools with ADD-TOOL before HTTP:START, authenticates each request,
-\ validates its Origin (403 when one is present and not allowed) and passes it
+\ mcp.f - an MCP server on Habu's HTTP server: the stateless, JSON-response form of
+\ streamable HTTP for MCP 2026-07-28 with server/discover, and the 2025-11-25 initialize
+\ flow. No session ID, no event stream. Before HTTP:START the host states its name with
+\ SERVER-INFO!, any guidance for the model with INSTRUCTIONS!, each tool with ADD-TOOL as
+\ the MCP Tool object tools/list shows, annotations and _meta included, and each
+\ resource, such as an app's ui:// page, with ADD-RESOURCE. It authenticates each
+\ request, validates its Origin (403 when one is present and not allowed) and passes it
 \ to HANDLE; a route guarded by bearer tokens is
-\ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. VISIBLE! hides a tool
-\ from a caller its hook refuses. A tool body gets the arguments' object,
-\ borrowed for the call, and answers once through ANSWER, or ANSWER-ERROR for a
-\ tool error, refused arguments included; bodies may run at once on several
-\ HTTP workers. An input schema's x-mcp-header is not supported: the server
-\ does not validate the headers it names. A tool's answer is its result's
-\ structuredContent when its output schema's "type" is "object"; any other
-\ schema describes the answer as structuredContent's "data". The client side,
-\ OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one server over
-\ CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer token
-\ a client sends, and CANCEL ends its TOOLS or CALL from another task.
-\ STORAGE CLASS. PROCESS-WIDE: the server info and instructions, tool registry
-\ and visibility hook, written before HTTP serves; tables indexed by HTTP:WORKER-SLOT holding
-\ each request's state; and the client table, a row per open client, read and
-\ written under its own lock.
+\ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. VISIBLE! hides a tool from a
+\ caller its hook refuses; it does not apply to resources, which every caller may list
+\ and read. A tool body gets the arguments' object, borrowed for the call, and answers
+\ once through ANSWER, ANSWER-WITH to give the result a _meta object, or ANSWER-ERROR
+\ for a tool error, refused arguments included; bodies may run at once on several HTTP
+\ workers. An input schema's x-mcp-header is not supported: the server does not
+\ validate the headers it names. A tool's answer is its result's structuredContent
+\ when its output schema's "type" is "object"; any other schema describes the answer
+\ as structuredContent's "data", and tools/list shows that wrapper in the schema's
+\ place. The client side, OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one
+\ server over CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer
+\ token a client sends, and CANCEL ends its TOOLS or CALL from another task.
+\ STORAGE CLASS. PROCESS-WIDE: the server info and instructions, tool and resource
+\ registries and visibility hook, written before HTTP serves; tables indexed by
+\ HTTP:WORKER-SLOT holding each request's state; and the client table, a row per open
+\ client, read and written under its own lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
 
 require src/lib/string.f
@@ -29,6 +31,7 @@ require src/lib/json-read.f
 require src/lib/json-write.f
 require src/lib/json-rpc.f
 require src/lib/memory.f
+require src/lib/utf8-scalar.f
 require src/lib/byte-buffer.f
 require src/lib/task.f
 require src/lib/time.f
@@ -40,17 +43,18 @@ package MCP
 public
 -9480 constant E-FIRST
 -9489 constant E-LAST
-\ SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL or VISIBLE! while HTTP serves, HANDLE
-\ before SERVER-INFO!, a body that does not answer exactly once, or a client
-\ word given a closed client.
+\ SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP
+\ serves, HANDLE before SERVER-INFO!, a body that does not answer exactly once,
+\ or a client word given a closed client.
 -9481 constant E-STATE
--9482 constant E-DUPLICATE   \ ADD-TOOL of a registered name
+\ ADD-TOOL of a registered name or ADD-RESOURCE of a registered uri, compared decoded.
+-9482 constant E-DUPLICATE
 -9483 constant E-TRANSFER    \ a client's request could not be sent or its reply received
 \ A reply that is not a 2xx JSON-RPC success for the request, or whose result
 \ lacks the shape its method answers.
 -9484 constant E-RESPONSE
-\ An ADD-TOOL output schema that is not one JSON object or repeats a top-level
-\ key, or an answer under an object schema that is not an object.
+\ A descriptor, outputSchema or meta not one JSON object or repeating a top-level key; a required
+\ member absent or mistyped; meta naming serverInfo; a non-UTF-8 page; an answer ADD-TOOL refuses.
 -9485 constant E-SCHEMA
 -9486 constant E-DENIED      \ the server refused a client's call with 401 or 403
 
@@ -73,7 +77,11 @@ private
 3 constant CALL-REPLY
 4 constant PING-REPLY
 5 constant ERROR-REPLY
+6 constant RESOURCES-REPLY
+7 constant READ-REPLY
+8 constant TEMPLATES-REPLY
 
+-32002 constant RESOURCE-MISSING
 -32020 constant HEADER-MISMATCH
 -32022 constant UNSUPPORTED-VERSION
 
@@ -83,19 +91,24 @@ TYPED-VARIABLE INSTRUCTIONS SPAN:span<u8>
 
 \ The registry: a row to each tool, in ADD-TOOL order.
 variable TOOL-COUNT
-DYNAMIC-BUFFER TOOL-NAME SPAN:span<u8>
-DYNAMIC-BUFFER TOOL-INFO SPAN:span<u8>
-DYNAMIC-BUFFER TOOL-SCHEMA SPAN:span<u8>
-DYNAMIC-BUFFER TOOL-OUTPUT SPAN:span<u8>
+DYNAMIC-BUFFER TOOL-NAME SPAN:span<u8>       \ decoded
+DYNAMIC-BUFFER TOOL-TEXT SPAN:span<u8>       \ the descriptor
+DYNAMIC-BUFFER TOOL-OUTPUT SPAN:span<u8>     \ the descriptor's outputSchema
 DYNAMIC-BUFFER TOOL-WHOLE bool              \ TOOL-OUTPUT's "type" is "object"
-DYNAMIC-BUFFER TOOL-HINT bool
 DYNAMIC-BUFFER TOOL-BODY [ ptr u8 n -- ]
+
+\ A row to each resource, in ADD-RESOURCE order.
+variable RESOURCE-COUNT
+DYNAMIC-BUFFER RESOURCE-URI SPAN:span<u8>     \ decoded
+DYNAMIC-BUFFER RESOURCE-TEXT SPAN:span<u8>    \ the descriptor
+DYNAMIC-BUFFER RESOURCE-PAGE SPAN:span<u8>
 
 : EVERY ( ptr u8 n -- bool ) 2drop true ;
 TYPED-VARIABLE VISIBILITY [ ptr u8 n -- bool ]   \ VISIBLE!'s hook
 ' EVERY VISIBILITY !
 
-TYPED-VARIABLE SCHEMA-READER JR:cursor     \ ADD-TOOL's: tools are added before HTTP serves
+\ ADD-TOOL's and ADD-RESOURCE's: both run before HTTP serves.
+TYPED-VARIABLE SCHEMA-READER JR:cursor
 
 \ A row to each HTTP worker; spans borrow the request's body and headers.
 HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
@@ -111,7 +124,9 @@ HTTP:MAX-WORKERS TYPED-BUFFER STATUS n
 HTTP:MAX-WORKERS TYPED-BUFFER CODE n
 HTTP:MAX-WORKERS TYPED-BUFFER TEXT SPAN:span<u8>      \ an error's message, or a tool's result
 HTTP:MAX-WORKERS TYPED-BUFFER FAULT bool              \ the tool result is isError
+HTTP:MAX-WORKERS TYPED-BUFFER RESULT-META SPAN:span<u8>   \ the tool result's _meta, or empty
 HTTP:MAX-WORKERS TYPED-BUFFER CALLED n                \ the tool a tools/call runs
+HTTP:MAX-WORKERS TYPED-BUFFER OPENED n                \ the resource a resources/read reads
 HTTP:MAX-WORKERS TYPED-BUFFER ASKED SPAN:span<u8>     \ an unsupported MCP-Protocol-Version
 \ A decoded Mcp-Name is no longer than the header block that carried it.
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
@@ -182,6 +197,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : BAD-INPUT ( -- ) 400 -32602 s" Invalid MCP request" BAD ;
 : BAD-ENVELOPE ( -- ) 400 -32600 s" Invalid MCP request" BAD ;
 : UNKNOWN-TOOL ( -- ) 400 -32602 s" Unknown tool" BAD ;
+: UNKNOWN-RESOURCE ( -- ) 404 RESOURCE-MISSING s" Resource not found" BAD ;
 
 : SERVER-INFO ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
@@ -195,9 +211,21 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:COMMA s" instructions" INSTRUCTIONS @ SPAN:$ JSON-WRITE:FIELD-S ;
 
 
-: MODERN-META ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+\ An object's JSON text without its braces and the space around them.
+: MEMBERS ( ptr u8 n -- ptr u8 n )
+   TRIM {: a:ptr u:n :}
+   a 1+ u 2 - TRIM ;
+
+
+\ _meta: the members of meta, empty or an object's text, then serverInfo.
+: MODERN-META ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+   {: meta:ptr mu:n :}
    JSON-WRITE:COMMA s" _meta" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START
+   mu 0<> if
+      meta mu MEMBERS {: a:ptr u:n :}
+      u 0<> if a u JSON-WRITE:RAW JSON-WRITE:COMMA then
+   then
    s" io.modelcontextprotocol/serverInfo" JSON-WRITE:KEY
    SERVER-INFO JSON-WRITE:OBJECT-END ;
 
@@ -207,13 +235,20 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:COMMA s" 2025-11-25" JSON-WRITE:STRING JSON-WRITE:ARRAY-END ;
 
 
-: TOOLS-CAPABILITY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+\ Tools always; resources once one is registered.
+: CAPABILITIES ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:COMMA s" capabilities" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START s" tools" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
+   JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END
+   RESOURCE-COUNT @ 0<> if
+      JSON-WRITE:COMMA s" resources" JSON-WRITE:KEY
+      JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END
+   then
+   JSON-WRITE:OBJECT-END ;
 
 
-\ Discovery and tool lists are private with zero cache lifetime.
+\ Discovery, tool and resource lists and resource reads are private with zero
+\ cache lifetime.
 : PRIVATE-CACHE ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:COMMA s" ttlMs" 0 JSON-WRITE:FIELD-U
    JSON-WRITE:COMMA s" cacheScope" s" private" JSON-WRITE:FIELD-S ;
@@ -224,24 +259,23 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:OBJECT-START
    s" resultType" s" complete" JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" supportedVersions" JSON-WRITE:KEY VERSIONS
-   TOOLS-CAPABILITY MODERN-META INSTRUCTIONS-FIELD PRIVATE-CACHE
+   CAPABILITIES s" " MODERN-META INSTRUCTIONS-FIELD PRIVATE-CACHE
    JSON-WRITE:OBJECT-END ;
 
 
 : INIT-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
    s" protocolVersion" s" 2025-11-25" JSON-WRITE:FIELD-S
-   TOOLS-CAPABILITY
+   CAPABILITIES
    JSON-WRITE:COMMA s" serverInfo" JSON-WRITE:KEY SERVER-INFO
    INSTRUCTIONS-FIELD
    JSON-WRITE:OBJECT-END ;
 
 
-\ The declared schema, or one whose structuredContent is {"data": the answer}.
+\ For a declared schema whose "type" is not "object", the schema whose
+\ structuredContent is {"data": the answer}.
 : OUTPUT-SCHEMA ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
-   {: idx:n :}
-   idx TOOL-OUTPUT @ SPAN:$ {: text:ptr tu:n :}
-   idx TOOL-WHOLE @ if s" outputSchema" text tu JSON-WRITE:FIELD-RAW exit then
+   TOOL-OUTPUT @ SPAN:$ {: text:ptr tu:n :}
    s" outputSchema" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START s" type" s" object" JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" properties" JSON-WRITE:KEY
@@ -251,28 +285,50 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:OBJECT-END ;
 
 
+: WRITE-MEMBER ( JR:reader ptr JSON-WRITE:writer n -- JR:reader )
+   {: w idx:n :}
+   s" outputSchema" JR:STR-EQ? {: output:bool :}
+   JR:SPAN$ {: key:ptr ku:n :}
+   JR:NEXT drop RAW$ {: value:ptr vu:n :}
+   output if w idx OUTPUT-SCHEMA drop exit then
+   w key 1- ku 2 + JSON-WRITE:RAW s" :" JSON-WRITE:RAW value vu JSON-WRITE:RAW drop ;
+
+
+\ The descriptor as registered, or each top-level member as written with the
+\ outputSchema wrapper in its schema's place.
 : TOOL-ENTRY ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
-   {: idx:n :}
-   JSON-WRITE:OBJECT-START
-   s" name" idx TOOL-NAME @ SPAN:$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" description" idx TOOL-INFO @ SPAN:$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" inputSchema" idx TOOL-SCHEMA @ SPAN:$ JSON-WRITE:FIELD-RAW
-   JSON-WRITE:COMMA idx OUTPUT-SCHEMA
-   JSON-WRITE:COMMA s" annotations" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START s" readOnlyHint" idx TOOL-HINT @ JSON-WRITE:FIELD-BOOL
-   JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
+   {: w idx:n :}
+   idx TOOL-TEXT @ SPAN:$ {: text:ptr tu:n :}
+   idx TOOL-WHOLE @ if w text tu JSON-WRITE:RAW exit then
+   w JSON-WRITE:OBJECT-START drop
+   CURSOR text tu JR:INIT JR:NEXT drop JR:NEXT drop
+   w idx WRITE-MEMBER
+   begin JR:NEXT JR:T-KEY = while
+      w JSON-WRITE:COMMA drop  w idx WRITE-MEMBER
+   repeat JR:CLOSE
+   w JSON-WRITE:OBJECT-END ;
 
 
 \ Whether the request's caller may see and call the registered tool.
 : SHOWN? ( n -- bool ) TOOL-NAME @ SPAN:$ VISIBILITY @ execute ;
 
 
-\ https://modelcontextprotocol.io/specification/2026-07-28/server/tools
-: LIST-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+\ A list or read result's start: the modern era's resultType first.
+: RESULT-START ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
    LEGACY? 0= if
       s" resultType" s" complete" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   then
+   then ;
+
+\ A list or read result's end: the modern era's cache scope and serverInfo last.
+: CACHED-END ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   LEGACY? 0= if PRIVATE-CACHE s" " MODERN-META then
+   JSON-WRITE:OBJECT-END ;
+
+
+\ https://modelcontextprotocol.io/specification/2026-07-28/server/tools
+: LIST-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   RESULT-START
    s" tools" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
    false TOOL-COUNT @ 0 ?do
       i SHOWN? if
@@ -280,13 +336,45 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
          i TOOL-ENTRY true
       then
    loop drop
-   JSON-WRITE:ARRAY-END
-   LEGACY? 0= if PRIVATE-CACHE MODERN-META then
-   JSON-WRITE:OBJECT-END ;
+   JSON-WRITE:ARRAY-END CACHED-END ;
+
+
+\ https://modelcontextprotocol.io/specification/2025-11-25/server/resources
+: RESOURCES-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   RESULT-START
+   s" resources" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
+   RESOURCE-COUNT @ 0 ?do
+      i 0<> if JSON-WRITE:COMMA then
+      i RESOURCE-TEXT @ SPAN:$ JSON-WRITE:RAW
+   loop
+   JSON-WRITE:ARRAY-END CACHED-END ;
+
+
+\ The resource's text with its descriptor's uri and mimeType, strings ADD-RESOURCE
+\ checked, and any _meta.
+: READ-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   SLOT OPENED @ {: idx:n :}
+   idx RESOURCE-TEXT @ SPAN:$ {: desc:ptr du:n :}
+   RESULT-START
+   s" contents" JSON-WRITE:KEY JSON-WRITE:ARRAY-START JSON-WRITE:OBJECT-START
+   s" uri" desc du s" uri" FIELD? drop JSON-WRITE:FIELD-RAW
+   JSON-WRITE:COMMA s" mimeType" desc du s" mimeType" FIELD? drop JSON-WRITE:FIELD-RAW
+   desc du s" _meta" FIELD? if
+      {: meta:ptr mu:n :}
+      JSON-WRITE:COMMA s" _meta" meta mu JSON-WRITE:FIELD-RAW
+   else 2drop then
+   JSON-WRITE:COMMA s" text" idx RESOURCE-PAGE @ SPAN:$ JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END JSON-WRITE:ARRAY-END CACHED-END ;
+
+
+: TEMPLATES-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   RESULT-START s" resourceTemplates" JSON-WRITE:KEY
+   JSON-WRITE:ARRAY-START JSON-WRITE:ARRAY-END CACHED-END ;
 
 
 \ A tool result: TEXT as readable text and, unless isError, TEXT's JSON as
-\ structuredContent, or as its "data" for a tool without an object schema.
+\ structuredContent, or as its "data" for a tool without an object schema;
+\ RESULT-META as _meta, beside serverInfo in the modern era.
 : CALL-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
    LEGACY? 0= if
@@ -306,7 +394,10 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
       then
    then
    JSON-WRITE:COMMA s" isError" SLOT FAULT @ JSON-WRITE:FIELD-BOOL
-   LEGACY? 0= if MODERN-META then
+   SLOT RESULT-META @ SPAN:$ {: meta:ptr mu:n :}
+   LEGACY? if
+      mu 0<> if JSON-WRITE:COMMA s" _meta" meta mu JSON-WRITE:FIELD-RAW then
+   else meta mu MODERN-META then
    JSON-WRITE:OBJECT-END ;
 
 
@@ -320,8 +411,11 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    kind DISCOVER-REPLY = if DISCOVER-BODY else
    kind INIT-REPLY = if INIT-BODY else
    kind LIST-REPLY = if LIST-BODY else
-   kind CALL-REPLY = if CALL-BODY else PING-BODY
-   then then then then
+   kind CALL-REPLY = if CALL-BODY else
+   kind RESOURCES-REPLY = if RESOURCES-BODY else
+   kind READ-REPLY = if READ-BODY else
+   kind TEMPLATES-REPLY = if TEMPLATES-BODY else PING-BODY
+   then then then then then then then
    JSON-RPC:END ;
 
 
@@ -329,6 +423,13 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : VERSION-DATA ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START s" supported" JSON-WRITE:KEY VERSIONS
    JSON-WRITE:COMMA s" requested" SLOT ASKED @ SPAN:$ JSON-WRITE:FIELD-S
+   JSON-WRITE:OBJECT-END ;
+
+
+\ -32002's data: the uri the request named, which READ-RESOURCE checked.
+: URI-DATA ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   JSON-WRITE:OBJECT-START
+   s" uri" PARAMS$ s" uri" FIELD? drop JSON-WRITE:FIELD-RAW
    JSON-WRITE:OBJECT-END ;
 
 
@@ -347,6 +448,9 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:COMMA s" message" TEXT$ JSON-WRITE:FIELD-S
    SLOT CODE @ UNSUPPORTED-VERSION = if
       JSON-WRITE:COMMA s" data" JSON-WRITE:KEY VERSION-DATA
+   then
+   SLOT CODE @ RESOURCE-MISSING = if
+      JSON-WRITE:COMMA s" data" JSON-WRITE:KEY URI-DATA
    then
    JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
 
@@ -523,14 +627,15 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    code E-INPUT = code E-BASE64-FIRST <= code E-BASE64-LAST >= and or ;
 
 
-\ A modern tools/call's Mcp-Name names params.name.
-: NAME-HEADER? ( HTTP:request -- bool )
-   {: asked:HTTP:request :}
-   PARAMS$ s" name" FIELD? 0= if
-      2drop 400 -32602 s" Tool name required" BAD false exit
+\ A modern request's Mcp-Name names the params member at key, a string: the
+\ messages are -32602's when the member is absent and when it is no string.
+: NAME-HEADER? ( HTTP:request ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: asked:HTTP:request key:ptr ku:n absent:ptr au:n invalid:ptr iu:n :}
+   PARAMS$ key ku FIELD? 0= if
+      2drop 400 -32602 absent au BAD false exit
    then
    {: name:ptr nu:n :}
-   name nu KIND JR:T-STR <> if 400 -32602 s" Invalid tool name" BAD false exit then
+   name nu KIND JR:T-STR <> if 400 -32602 invalid iu BAD false exit then
    asked s" Mcp-Name" HEADER$ 0= if 2drop MISMATCH false exit then
    [: DECODED-NAME$ ;] catch {: code:n :}
    code 0<> if
@@ -540,14 +645,20 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    name nu 2swap STRING= dup 0= if MISMATCH then ;
 
 
-\ The modern era's Mcp-Method names the body's method, -32020 otherwise.
+\ The modern era's Mcp-Method names the body's method, -32020 otherwise; a
+\ tools/call's Mcp-Name names params.name, a resources/read's params.uri.
 : HEADERS? ( HTTP:request -- bool )
    {: asked:HTTP:request :}
    LEGACY? if true exit then
    asked s" Mcp-Method" HEADER$ 0= if 2drop MISMATCH false exit then
    METHOD$ 2swap STRING= 0= if MISMATCH false exit then
-   s" tools/call" METHOD= 0= if true exit then
-   asked NAME-HEADER? ;
+   s" tools/call" METHOD= if
+      asked s" name" s" Tool name required" s" Invalid tool name" NAME-HEADER? exit
+   then
+   s" resources/read" METHOD= if
+      asked s" uri" s" Resource URI required" s" Invalid resource URI" NAME-HEADER? exit
+   then
+   true ;
 
 
 \ The registered tool a JSON name text names, else -1.
@@ -563,7 +674,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    2dup OBJECT? 0= if E-INPUT throw then ;
 
 
-\ The body answers through ANSWER or ANSWER-ERROR before it returns.
+\ The body answers once, through ANSWER, ANSWER-WITH or ANSWER-ERROR, before it returns.
 : RUN-TOOL ( -- )
    PARAMS$ s" name" FIELD? 0= if E-INPUT throw then
    TOOL-OF {: idx:n :}
@@ -574,6 +685,24 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    CALLING SLOT STAGE !
    idx TOOL-BODY @ execute
    SLOT STAGE @ SENT <> if E-STATE throw then ;
+
+
+\ The registered resource a JSON uri text names, else -1.
+: RESOURCE-OF ( ptr u8 n -- n )
+   {: raw:ptr ru:n :}
+   RESOURCE-COUNT @ 0 ?do
+      raw ru i RESOURCE-URI @ SPAN:$ STRING= if i unloop exit then
+   loop -1 ;
+
+
+\ params.uri not a string is E-INPUT, which HANDLE answers -32602.
+: READ-RESOURCE ( -- )
+   PARAMS$ s" uri" FIELD? 0= if E-INPUT throw then
+   2dup KIND JR:T-STR <> if E-INPUT throw then
+   RESOURCE-OF {: idx:n :}
+   idx 0< if UNKNOWN-RESOURCE SEND exit then
+   idx SLOT OPENED !
+   READ-REPLY GOOD SEND ;
 
 
 : INITIALIZE ( -- )
@@ -596,6 +725,9 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    s" tools/list" METHOD= if LIST-REPLY GOOD SEND exit then
    s" ping" METHOD= LEGACY? and if PING-REPLY GOOD SEND exit then
    s" tools/call" METHOD= if RUN-TOOL exit then
+   s" resources/list" METHOD= if RESOURCES-REPLY GOOD SEND exit then
+   s" resources/read" METHOD= if READ-RESOURCE exit then
+   s" resources/templates/list" METHOD= if TEMPLATES-REPLY GOOD SEND exit then
    NO-METHOD SEND ;
 
 
@@ -618,12 +750,16 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : TOOLS-RESERVE ( n -- )
    {: n:n :}
    n TOOL-NAME-RESERVE
-   n TOOL-INFO-RESERVE
-   n TOOL-SCHEMA-RESERVE
+   n TOOL-TEXT-RESERVE
    n TOOL-OUTPUT-RESERVE
    n TOOL-WHOLE-RESERVE
-   n TOOL-HINT-RESERVE
    n TOOL-BODY-RESERVE ;
+
+: RESOURCES-RESERVE ( n -- )
+   {: n:n :}
+   n RESOURCE-URI-RESERVE
+   n RESOURCE-TEXT-RESERVE
+   n RESOURCE-PAGE-RESERVE ;
 
 \ Whether a JSON text, read whole by reader, is an object; text that is not one
 \ JSON value throws the reader's E-JR-* code.
@@ -633,11 +769,12 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JR:FINISH object ;
 
 
-\ E-SCHEMA unless one JSON object with no top-level key repeated once decoded:
-\ JSON.parse keeps a repeated key's last value, so a client would read another.
-: SHAPE ( ptr u8 n -- )
-   [: 2dup SCHEMA-READER OBJECT-TEXT? 0= if E-SCHEMA throw then
-      2dup JR:REPEATS? if E-SCHEMA throw then ;] catch {: code:n :} 2drop
+\ E-SCHEMA unless one JSON object, read by reader, with no top-level key
+\ repeated once decoded: JSON.parse keeps a repeated key's last value, so a
+\ client would read another.
+: SHAPE ( ptr u8 n ptr JR:cursor -- )
+   [: dup >r >r 2dup r> OBJECT-TEXT? 0= if E-SCHEMA throw then
+      2dup JR:REPEATS? if E-SCHEMA throw then r> ;] catch {: code:n :} drop 2drop
    code E-JR-FIRST <= code E-JR-LAST >= and if E-SCHEMA throw then
    code 0<> if code throw then ;
 
@@ -652,13 +789,60 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JR:FINISH whole ;
 
 
-: RESULT! ( ptr u8 n bool -- )
-   {: text:ptr u:n fault:bool :}
+\ A top-level member of a descriptor SHAPE admitted, raw, else E-SCHEMA.
+: PART ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: text:ptr tu:n key:ptr ku:n :}
+   SCHEMA-READER text tu JR:INIT JR:NEXT drop
+   key ku JR:FIND-KEY 0= if JR:CLOSE E-SCHEMA throw then
+   RAW$ {: a:ptr u:n :} JR:CLOSE a u ;
+
+
+: OBJECT-PART ( ptr u8 n ptr u8 n -- ptr u8 n )
+   PART 2dup SCHEMA-READER OBJECT-TEXT? 0= if E-SCHEMA throw then ;
+
+
+\ Whether a descriptor member is a JSON string; the descriptor passed SHAPE.
+: STRING-MEMBER? ( ptr u8 n ptr u8 n -- bool )
+   {: text:ptr u:n key:ptr ku:n :}
+   SCHEMA-READER text u JR:INIT JR:NEXT drop
+   key ku JR:FIND-KEY if JR:TOKEN JR:T-STR = else false then {: found:bool :}
+   JR:CLOSE found ;
+
+
+: REGISTERED-URI? ( ptr u8 n -- bool )
+   {: uri:ptr uu:n :}
+   RESOURCE-COUNT @ 0 ?do
+      uri uu i RESOURCE-URI @ SPAN:$ STR= if true unloop exit then
+   loop false ;
+
+
+\ The storage is kept for the process, as the registry is; the descriptor passed SHAPE.
+: DECODED-MEMBER ( ptr u8 n ptr u8 n [ ptr u8 n -- bool ] -- SPAN:span<u8> )
+   {: text:ptr tu:n key:ptr ku:n registered? :}
+   text tu key ku PART {: raw:ptr ru:n :}
+   SCHEMA-READER raw ru JR:INIT
+   JR:NEXT JR:T-STR <> if JR:CLOSE E-SCHEMA throw then
+   JR:SPAN$ nip 0= if JR:CLOSE E-SCHEMA throw then
+   ru MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: room :}
+   room SPAN:$ JR:STR {: u:n :} JR:CLOSE
+   room u SPAN:TAKE {: decoded :}
+   decoded SPAN:$ registered? execute if room MEM:FREE-SPAN E-DUPLICATE throw then
+   decoded ;
+
+
+\ Bodies run on several workers at once, so meta is read by the worker's CURSOR.
+: RESULT! ( ptr u8 n ptr u8 n bool -- )
+   {: text:ptr u:n meta:ptr mu:n fault:bool :}
    SLOT STAGE @ CALLING <> if E-STATE throw then
    fault 0= if
       text u CURSOR OBJECT-TEXT? 0= SLOT CALLED @ TOOL-WHOLE @ and if E-SCHEMA throw then
    then
+   mu 0<> if
+      meta mu CURSOR SHAPE
+      meta mu s" io.modelcontextprotocol/serverInfo" FIELD? nip nip if E-SCHEMA throw then
+   then
    text u SPAN:MAKE SLOT TEXT !
+   meta mu SPAN:MAKE SLOT RESULT-META !
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
@@ -681,43 +865,62 @@ public
    SPAN:MAKE INSTRUCTIONS ! ;
 
 
-\ The hook answering, given a tool's name, whether the caller of the request
-\ HANDLE answers may see and call it; the default admits every tool. tools/list
-\ leaves out a tool it refuses and tools/call answers it as an unknown tool. It
-\ runs on the worker after HANDLE's header checks, Mcp-Name's included, and may
-\ ask BEARER:CLAIM$; its throw passes to the host as a body's does. E-STATE
-\ while HTTP serves.
+\ False hides the named tool from HANDLE's caller as an unknown one; the default admits every
+\ tool; it may ask BEARER:CLAIM$. _meta.ui.visibility ["app"] keeps a tool listed but widget-only.
 : VISIBLE! ( [ ptr u8 n -- bool ] -- )
    HTTP:RUNNING? if E-STATE throw then
    VISIBILITY ! ;
 
 
-\ The texts are borrowed and outlive the server, as literals do. E-SCHEMA on a
-\ repeated top-level key; "#" in a schema without "type":"object" is the wrapper.
-: ADD-TOOL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n bool [ ptr u8 n -- ] -- )
-   {: name:ptr nu:n info:ptr iu:n schema:ptr su:n output:ptr ou:n hint:bool body :}
+\ A borrowed MCP Tool descriptor, which must outlive the server, and its body. It needs a
+\ non-empty string name and object schemas; an outputSchema typed "object" needs object answers.
+: ADD-TOOL ( ptr u8 n [ ptr u8 n -- ] -- )
+   {: text:ptr tu:n body :}
    HTTP:RUNNING? if E-STATE throw then
-   name nu REGISTERED? if E-DUPLICATE throw then
-   output ou SHAPE
+   text tu SCHEMA-READER SHAPE
+   text tu s" inputSchema" OBJECT-PART 2drop
+   text tu s" outputSchema" PART {: output:ptr ou:n :}
+   output ou SCHEMA-READER SHAPE
    output ou WHOLE? {: whole:bool :}
+   text tu s" name" [: REGISTERED? ;] DECODED-MEMBER {: name :}
    TOOL-COUNT @ {: idx:n :}
    idx 1+ TOOLS-RESERVE
-   name nu SPAN:MAKE idx TOOL-NAME !
-   info iu SPAN:MAKE idx TOOL-INFO !
-   schema su SPAN:MAKE idx TOOL-SCHEMA !
+   name idx TOOL-NAME !
+   text tu SPAN:MAKE idx TOOL-TEXT !
    output ou SPAN:MAKE idx TOOL-OUTPUT !
    whole idx TOOL-WHOLE !
-   hint idx TOOL-HINT !
    body idx TOOL-BODY !
    idx 1+ TOOL-COUNT ! ;
 
 
+\ A borrowed MCP Resource descriptor, with a non-empty string uri and string name and mimeType,
+\ and the UTF-8 page resources/read answers; both must outlive the server.
+: ADD-RESOURCE ( ptr u8 n ptr u8 n -- )
+   {: text:ptr tu:n page:ptr pu:n :}
+   HTTP:RUNNING? if E-STATE throw then
+   text tu SCHEMA-READER SHAPE
+   text tu s" name" STRING-MEMBER? 0= if E-SCHEMA throw then
+   text tu s" mimeType" STRING-MEMBER? 0= if E-SCHEMA throw then
+   page pu UTF8:VALID? 0= if E-SCHEMA throw then
+   text tu s" uri" [: REGISTERED-URI? ;] DECODED-MEMBER {: uri :}
+   RESOURCE-COUNT @ {: idx:n :}
+   idx 1+ RESOURCES-RESERVE
+   uri idx RESOURCE-URI !
+   text tu SPAN:MAKE idx RESOURCE-TEXT !
+   page pu SPAN:MAKE idx RESOURCE-PAGE !
+   idx 1+ RESOURCE-COUNT ! ;
+
+
 \ A body's result: one JSON value. E-STATE outside a body or after its answer;
 \ else the reader's E-JR-* code or E-SCHEMA, which HANDLE passes to the host.
-: ANSWER ( ptr u8 n -- ) false RESULT! ;
+: ANSWER ( ptr u8 n -- ) s" " false RESULT! ;
+
+\ ANSWER, plus the result's _meta object, which reaches the host's widget and not the
+\ model (OpenAI Apps SDK); empty meta adds none, and E-SCHEMA names the meta it refuses.
+: ANSWER-WITH ( ptr u8 n ptr u8 n -- ) false RESULT! ;
 
 \ A body's tool error: the message as text content, isError true.
-: ANSWER-ERROR ( ptr u8 n -- ) true RESULT! ;
+: ANSWER-ERROR ( ptr u8 n -- ) s" " true RESULT! ;
 
 
 \ Answers one MCP request whose authentication and Origin the host has checked.
@@ -1224,7 +1427,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : GATHER ( n ptr u8 n -- )
    {: idx:n raw:ptr ru:n :}
    idx LIST-BUF {: buf:ptr :}
-   raw 1+ ru 2 - TRIM {: a:ptr u:n :}
+   raw ru MEMBERS {: a:ptr u:n :}
    u 0= if exit then
    buf BUF:LEN@ BUF:BLEN>N 1 > if 44 buf BUF:APPEND-BYTE then
    a u buf BUF+ ;
