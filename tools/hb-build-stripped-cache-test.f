@@ -1,5 +1,5 @@
 \ hb-build-stripped-cache-test.f - tools/hb-build-lib.f: a program that
-\ allocates at run time links and runs, two links of it are the same bytes, a
+\ allocates at run time links and runs, two links of it are the same image, a
 \ refused publication leaves the prior map, and a declared cell caching a baked
 \ table's address is mapped to the carried copy, or refused when no claim names
 \ the table. tools/hb-build-test-lib.f lists the other hb-build rows.
@@ -10,6 +10,7 @@ require tools/hb-build-test-lib.f
 require tools/image-size-lib.f
 require src/lib/engine-candidate.f
 require test/aot-builder-engine.f
+require tools/chain-run.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -131,15 +132,7 @@ variable HBT-DONOR-OUT-U
    errn 0 T=
    HBT-RUN-OUT outn HBT-MAPL-EXPECTED$ T$= ;
 
-: HBT-MAPL-SAME-BYTES ( -- )
-   HBT-MAPL-OUT2 FS:FILE-SIZE  HBT-MAPL-OUT FS:FILE-SIZE T=
-   HBT-MAPL-OUT FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: abuf:ptr acap:n :}
-   HBT-MAPL-OUT abuf acap FS:READ-ALL {: au:n :}
-   HBT-MAPL-OUT2 FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: bbuf:ptr bcap:n :}
-   HBT-MAPL-OUT2 bbuf bcap FS:READ-ALL {: bu:n :}
-   abuf au bbuf bu HBT-DIFF-AT -1 T= ;
-
-\ ... and two links of it are the same bytes, the equality a mapped cell breaks
+\ ... and two links of it are the same image, the equality a mapped cell breaks
 \ (unmapped, a stripped server's builds differed in eight window cells). Every
 \ build runs its maker, and that is asserted.
 : HBT-STRIPPED-SAME-TWICE ( -- )
@@ -153,7 +146,7 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-SRC HBT-MAPL-OUT2 HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
    HBB-MAKER-RUN @ 0 <> TTRUE
    HBT-MAPL-OUT2 HBT-CODE-MAPPED
-   HBT-MAPL-SAME-BYTES
+   HBT-MAPL-OUT HBT-MAPL-OUT2 CHAIN-RUN:SAME-FILES? TTRUE
    HBT-MAPL-OUT HBT-REMOVE-FILE?
    HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
 

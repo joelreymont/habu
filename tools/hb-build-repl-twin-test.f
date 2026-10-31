@@ -9,6 +9,7 @@ require tools/hb-build-test-lib.f
 require src/lib/string.f
 require src/lib/engine-candidate.f
 require test/app-builder-engine.f
+require tools/chain-run.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -142,10 +143,6 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
    rc 0 <> if HBT-OUT outn type HBT-ERR errn type then
    rc 0 T= ;
 
-: HBT-TWIN-READ ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
-   path pathu FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   buf  path pathu buf cap FS:READ-ALL ;
-
 : HBT-TWIN-RUN ( ptr u8 n ptr u8 n ptr u8 ptr u8 -- n n n )
    {: exe:ptr exeu:n in:ptr inu:n out:ptr err:ptr :}
    PROC-ARGV-RESET
@@ -159,11 +156,8 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
 \ written at all, and the signature names no file (a codesign identifier
 \ defaults to the name).
 : HBT-TWIN-SAME ( -- )
-   HBT-TWIN-OUT-A HBT-TWIN-READ {: a:ptr au:n :}
-   HBT-TWIN-OUT-B HBT-TWIN-READ {: b:ptr bu:n :}
-   HBT-TWIN-OUT-D HBT-TWIN-READ {: d:ptr du:n :}
-   a au b bu HBT-DIFF-AT -1 T=
-   a au d du HBT-DIFF-AT -1 T= ;
+   HBT-TWIN-OUT-A HBT-TWIN-OUT-B CHAIN-RUN:SAME-FILES? TTRUE
+   HBT-TWIN-OUT-A HBT-TWIN-OUT-D CHAIN-RUN:SAME-FILES? TTRUE ;
 
 : HBT-TWIN-ROUND ( bool -- )
    {: aot:bool :}
@@ -174,7 +168,8 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
    HBT-TWIN-SAME ;
 
 \ A restored FILE import keeps its retired context handle stale when restored
-\ compilation reuses the same registry slot. D's bytes equal A's, so A alone runs.
+\ compilation reuses the same registry slot. D is the same image as A, so A
+\ alone runs.
 : HBT-TWIN-GENERATIONS ( -- )
    HBT-TWIN-OUT-A
    S\" IR-CTX:EPOCH . HBT-TWIN-CTX:PROBE-CTX . HBT-TWIN-CTX:PROBE-MODULE . cr\n"

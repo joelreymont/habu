@@ -86,8 +86,8 @@ and the build from zero ([bootstrap.md](bootstrap.md)) are occasional
 integration tests.
 **Now:** the engine target loads sources into a fresh window of the running
 engine and captures its memory. `tools/build-fixpoint.f` also compiles
-glued source text to a byte fixpoint, and test files build engines of their
-own.
+glued source text until two generations build the same image, and test
+files build engines of their own.
 
 The public native engine target is:
 

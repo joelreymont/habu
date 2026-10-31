@@ -3,7 +3,7 @@
 \ body that shares the file's literal pool, and an earlier file's cell a later
 \ file overwrote, also when a file declares an earlier file's cell before its
 \ own, writes it before a child load, or points at a child's DATA. The warm
-\ product is the cold one byte for byte.
+\ product holds the cold one's image.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -12,13 +12,13 @@ require src/lib/fs-mutate.f
 require src/lib/process-env.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
+require tools/chain-run.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-SLOTS-TEST
 create APP PATH-CAP allot variable APP-U
 create CACHE PATH-CAP allot variable CACHE-U
-DYNAMIC-BUFFER BYTES u8
-DYNAMIC-BUFFER COLD u8  variable COLD-U
+create COLD PATH-CAP allot variable COLD-U
 
 : LIB$ ( -- ptr u8 n )
    S\" package SLOT-LIB\npublic\nPERSISTED-PTR-VARIABLE P\ncreate BUF 16 allot\nBUF P !\n65 BUF c!\nTYPED-VARIABLE Q [ -- n ]\n: SEVEN ( -- n ) 7 ;\n' SEVEN Q xt!\nPERSISTED-PTR-VARIABLE S\ns\" hello\" drop S !\n: GREET ( -- ) s\" world\" type ;\n: PEEK ( -- n ) P @ c@ ;\n: CALL ( -- n ) Q @ execute ;\n: SAY ( -- ) S @ 5 type ;\n;package\n" ;
@@ -83,21 +83,11 @@ DYNAMIC-BUFFER COLD u8  variable COLD-U
 \ The build's report names count files reused, as PRINT-COUNTS prints it.
 : REUSED ( ptr u8 n -- ) NATIVE-FILE-APP:OUT$ 2swap CONTAINS? TTRUE ;
 
-: LOAD ( ptr u8 n -- n )
-   AT {: path:ptr pathu:n :}
-   path pathu FS:FILE-SIZE {: size:n :}
-   size BYTES-RESERVE
-   path pathu 0 BYTES size FS:READ-ALL size T=
-   size ;
-
 : KEEP ( ptr u8 n -- )
-   LOAD {: size:n :}
-   size COLD-RESERVE
-   0 BYTES 0 COLD size BYTE-COPY size COLD-U ! ;
+   AT {: path:ptr pathu:n :}
+   path COLD pathu BYTE-COPY pathu COLD-U ! ;
 
-: SAME? ( ptr u8 n -- bool )
-   LOAD {: size:n :}
-   0 BYTES size 0 COLD COLD-U @ STR= ;
+: SAME? ( ptr u8 n -- bool ) AT COLD COLD-U @ CHAIN-RUN:SAME-FILES? ;
 
 : SLOTS-CASE ( -- )
    s" lib.f" LIB$ PUT

@@ -254,7 +254,8 @@ Cross-build first, self-host second.
 3. **A host-side Habu linker writes the image** (`src/habu/link-x64.f`). It
    resolves every record, call, literal and DATA cell at write time; no
    relocation runs at boot or snapshot restore.
-4. **The cross-built engine self-hosts** to a byte fixpoint on an x86-64 host.
+4. **The cross-built engine self-hosts** on an x86-64 host, two
+   generations building the same image.
 5. **Recovery.** The Gforth chain emits ARM64 only and refuses x86-64 by name;
    x86-64 recovery is a cross-build from a working ARM64 engine, and
    `tools/native-build.f` is its only route.
@@ -267,7 +268,7 @@ Cross-build first, self-host second.
 - The FFI suite under SysV, the task suite, the guard-page suite, and an
   AOT-stripped application running.
 - A native x86-64 build records the emission it published and reaches the same
-  byte fixpoint, engine and names sidecar, across three generations before a
+  image, engine and names sidecar, across three generations before a
   product is promoted.
 
 ### Build target

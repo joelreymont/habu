@@ -1,4 +1,4 @@
-\ chain-run-test.f - byte comparison, refusal boundary and generation lineage
+\ chain-run-test.f - image comparison, refusal boundary and generation lineage
 \ for chain-run.
 
 require src/lib/string.f
@@ -21,8 +21,6 @@ create B PATH-CAP allot
 variable B-U
 create HOST PATH-CAP allot
 variable HOST-U
-create BIG-A 32769 allot
-create BIG-B 32769 allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 : A$ ( -- ptr u8 n ) A A-U @ ;
@@ -41,9 +39,6 @@ create BIG-B 32769 allot
    ROOT$ s" host" JOIN HOST HOST-U COPY!
    A$ s" same" FS:WRITE-ALL
    B$ s" same" FS:WRITE-ALL ;
-
-: BIG-PREP ( -- )
-   32769 0 ?do i 255 and BIG-A i + c! i 255 and BIG-B i + c! loop ;
 
 \ The CLI entry on a stand-in host: the script given replaces the engine that
 \ builds the first generation, so BUILD reads its exit status with no native
@@ -106,16 +101,11 @@ create BIG-B 32769 allot
    T-RESET PREP
    s" equal files compare equal" T-LABEL
    A$ B$ CHAIN-RUN:SAME-FILES? TTRUE
+   B$ s" sane" FS:WRITE-ALL
+   s" equal-length files that differ compare unequal" T-LABEL
+   A$ B$ CHAIN-RUN:SAME-FILES? TFALSE
    B$ s" changed" FS:WRITE-ALL
    s" changed files compare unequal" T-LABEL
-   A$ B$ CHAIN-RUN:SAME-FILES? 0= TTRUE
-   BIG-PREP
-   A$ BIG-A 32769 FS:WRITE-ALL
-   B$ BIG-B 32769 FS:WRITE-ALL
-   s" exact comparison crosses a chunk boundary" T-LABEL
-   A$ B$ CHAIN-RUN:SAME-FILES? TTRUE
-   1 BIG-B 32768 + c!
-   B$ BIG-B 32769 FS:WRITE-ALL
    A$ B$ CHAIN-RUN:SAME-FILES? 0= TTRUE
    CHAIN-EXITS
    CHAIN-LINEAGE

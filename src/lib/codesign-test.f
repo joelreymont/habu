@@ -9,6 +9,8 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/le.f
+require src/lib/be.f
 require src/lib/codesign.f
 
 variable CST-ROOT-U
@@ -140,6 +142,105 @@ create CST-ENSURE-BUF PATH-CAP allot
    then
    E-BUILD-SOURCE throw ;
 
+\ Two images shaped as a 64-bit Mach-O: one load command, code bytes, and an
+\ embedded-signature superblob indexing a CodeDirectory and a CMS blob.
+$FEEDFACF constant CST-MACHO-MAGIC
+$1D constant CST-LC-SIGNATURE
+$19 constant CST-LC-SEGMENT
+124 constant CST-IMG-BYTES
+64 constant CST-SIG-OFF
+60 constant CST-SIG-BYTES
+48 constant CST-CODE-OFF
+92 constant CST-CD-OFF
+108 constant CST-CMS-OFF
+8 constant CST-BLOB-HEAD
+create CST-IMG-A 128 allot
+create CST-IMG-B 128 allot
+
+: CST-BLOB ( n n ptr u8 n -- ) {: magic:n fill:n a:ptr off:n :}
+   magic a off + BE:U32!
+   16 a off + 4 + BE:U32!
+   8 0 ?do fill i + a off CST-BLOB-HEAD + i + + c! loop ;
+
+: CST-SUPERBLOB ( ptr u8 -- ) {: a:ptr :}
+   $FADE0CC0 a CST-SIG-OFF + BE:U32!
+   CST-SIG-BYTES a CST-SIG-OFF + 4 + BE:U32!
+   2 a CST-SIG-OFF + 8 + BE:U32!
+   0 a CST-SIG-OFF + 12 + BE:U32!
+   CST-CD-OFF CST-SIG-OFF - a CST-SIG-OFF + 16 + BE:U32!
+   $10000 a CST-SIG-OFF + 20 + BE:U32!
+   CST-CMS-OFF CST-SIG-OFF - a CST-SIG-OFF + 24 + BE:U32!
+   $FADE0C02 $40 a CST-CD-OFF CST-BLOB
+   $FADE0B01 $60 a CST-CMS-OFF CST-BLOB ;
+
+\ The command is CST-LC-SIGNATURE for a signed image, another for an unsigned
+\ one; the signature offset is the command's, so it may lie past the image.
+: CST-IMAGE ( ptr u8 n n -- ) {: a:ptr cmd:n sig:n :}
+   128 0 ?do 0 a i + c! loop
+   CST-MACHO-MAGIC a LE:U32!
+   1 a 16 + LE:U32!
+   16 a 20 + LE:U32!
+   cmd a 32 + LE:U32!
+   16 a 36 + LE:U32!
+   sig a 40 + LE:U32!
+   CST-SIG-BYTES a 44 + LE:U32!
+   CST-SIG-OFF CST-CODE-OFF - 0 ?do i 1 + a CST-CODE-OFF + i + c! loop
+   a CST-SUPERBLOB ;
+
+\ A header and one 8-byte LC_CODE_SIGNATURE that ends the image; the bytes
+\ after it, where a 16-byte command's dataoff and datasize would sit, name an
+\ empty superblob inside the header.
+40 constant CST-SHORT-BYTES
+: CST-SHORT-SIG ( ptr u8 -- ) {: a:ptr :}
+   128 0 ?do 0 a i + c! loop
+   CST-MACHO-MAGIC a LE:U32!
+   1 a 16 + LE:U32!
+   8 a 20 + LE:U32!
+   CST-LC-SIGNATURE a 32 + LE:U32!
+   8 a 36 + LE:U32!
+   4 a 40 + LE:U32!
+   12 a 44 + LE:U32!
+   $FADE0CC0 a 4 + BE:U32!
+   12 a 8 + BE:U32! ;
+
+: CST-PAIR ( n n -- ) {: cmd:n sig:n :}
+   CST-IMG-A cmd sig CST-IMAGE
+   CST-IMG-B cmd sig CST-IMAGE ;
+
+: CST-FLIP ( n -- ) {: off:n :}
+   CST-IMG-B off + c@ 1 xor CST-IMG-B off + c! ;
+
+: CST-SAME-IMAGE? ( n -- bool ) {: bu:n :}
+   CST-IMG-A CST-IMG-BYTES CST-IMG-B bu CODESIGN:SAME-IMAGE? ;
+
+: CST-TEST-SAME-IMAGE ( -- )
+   s" images that differ only in the CMS blob are the same image" T-LABEL
+   CST-LC-SIGNATURE CST-SIG-OFF CST-PAIR
+   CST-IMG-BYTES CST-SAME-IMAGE? TTRUE
+   CST-CMS-OFF CST-BLOB-HEAD + 3 + CST-FLIP
+   CST-IMG-BYTES CST-SAME-IMAGE? TTRUE
+   s" a CodeDirectory byte differs" T-LABEL
+   CST-CD-OFF CST-BLOB-HEAD + 3 + CST-FLIP
+   CST-IMG-BYTES CST-SAME-IMAGE? TFALSE
+   s" a code byte differs" T-LABEL
+   CST-LC-SIGNATURE CST-SIG-OFF CST-PAIR
+   CST-CODE-OFF 2 + CST-FLIP
+   CST-IMG-BYTES CST-SAME-IMAGE? TFALSE
+   s" the lengths differ" T-LABEL
+   CST-LC-SIGNATURE CST-SIG-OFF CST-PAIR
+   CST-IMG-BYTES 1 + CST-SAME-IMAGE? TFALSE
+   s" an image without LC_CODE_SIGNATURE is compared whole" T-LABEL
+   CST-LC-SEGMENT CST-SIG-OFF CST-PAIR
+   CST-IMG-BYTES CST-SAME-IMAGE? TTRUE
+   CST-CMS-OFF CST-BLOB-HEAD + 3 + CST-FLIP
+   CST-IMG-BYTES CST-SAME-IMAGE? TFALSE
+   s" a signature past the image end is not the same image" T-LABEL
+   CST-LC-SIGNATURE 200 CST-PAIR
+   CST-IMG-BYTES CST-SAME-IMAGE? TFALSE
+   s" a short LC_CODE_SIGNATURE at the image end is not the same image" T-LABEL
+   CST-IMG-A CST-SHORT-SIG  CST-IMG-B CST-SHORT-SIG
+   CST-IMG-A CST-SHORT-BYTES CST-IMG-B CST-SHORT-BYTES CODESIGN:SAME-IMAGE? TFALSE ;
+
 : CODESIGN-TEST-MAIN ( -- )
    T-RESET
    CST-PREPARE
@@ -148,6 +249,7 @@ create CST-ENSURE-BUF PATH-CAP allot
    CST-TEST-CODESIGN
    CST-TEST-SIGNED-PROMOTE
    CST-TEST-ENSURE
+   CST-TEST-SAME-IMAGE
    [: CST-CODESIGN-MISSING ;] E-BUILD-PATH TTHROWSQ
    [: CST-PROMOTE-MISSING ;] E-BUILD-PATH TTHROWSQ
    FS:CLEANUP-RUN

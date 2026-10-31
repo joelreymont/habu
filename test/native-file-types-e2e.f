@@ -5,18 +5,15 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
-require src/core/sha256.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
 require tools/native-definition-cache.f
 require tools/native-unit-object.f
+require tools/chain-run.f
 
 using NATIVE-FILE-E2E
 package NATIVE-FILE-TYPES-TEST
 
-create HASH-CTX SHA256-FILE-CTX-BYTES allot
-create WARM-HASH 32 allot
-create COLD-HASH 32 allot
 create SOURCE-PATH PATH-CAP allot
 create PRODUCT-PATH PATH-CAP allot
 create PARTIAL-REFS 1024 allot
@@ -122,14 +119,15 @@ variable EXPECT-U
    wide if s" types.f" AT s" 2 " FS:APPEND-FILE then
    s" types.f" AT S\" FILE--SHAPE-REQUEST:MAKE ;\n;package\n" FS:APPEND-FILE ;
 
-: HASH-APP ( ptr u8 -- )
-   {: digest:ptr :}
-   HASH-CTX s" app-hb" AT digest SHA256-FILE-IN 0 T= ;
-
 : SAVE-APP ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    ROOT$ s" app-hb" SOURCE-PATH FS:JOIN-PATH SOURCE-PATH swap
    name nameu AT 0 NATIVE-FILE-APP:COPY-SKIP-LINES ;
+
+\ The product holds the image SAVE-APP saved under name.
+: SAME-APP? ( ptr u8 n -- bool )
+   AT ROOT$ s" app-hb" SOURCE-PATH FS:JOIN-PATH SOURCE-PATH swap
+   CHAIN-RUN:SAME-FILES? ;
 
 : BUILD-FRESH ( ptr u8 n -- n )
    {: cache:ptr cacheu:n :}
@@ -271,19 +269,16 @@ variable EXPECT-U
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ S\" 42\n16\n43\n" CONTAINS? TTRUE
-   COLD-HASH HASH-APP
    s" cold-app-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
    OUT$ s" files reused " CONTAINS? TTRUE
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
    RUN-APP SUCCESS OUT$ S\" 42\n16\n43\n" CONTAINS? TTRUE
-   WARM-HASH HASH-APP
-   COLD-HASH 32 WARM-HASH 32 T$=
+   s" cold-app-hb" SAME-APP? TTRUE
    s" warm-app-hb" SAVE-APP
    s" fresh-cache" BUILD-FRESH SUCCESS
    RUN-APP SUCCESS OUT$ S\" 42\n16\n43\n" CONTAINS? TTRUE
-   COLD-HASH HASH-APP
-   WARM-HASH 32 COLD-HASH 32 T$= ;
+   s" warm-app-hb" SAME-APP? TTRUE ;
 
 \ b.f declares empty ranges after a.f, whose field and schema stores take k
 \ rows: a fieldless STRUCTURE's field range (TFAM-FLD-RANGE!; it has no MAKE
@@ -294,7 +289,7 @@ variable EXPECT-U
 \ those stores under b.f's reused object, down and then up from its capture:
 \ each warm build reuses b.f without a throw (and replays app.f, which loads
 \ a.f and b.f, around them), its app prints what a
-\ fresh-cache build's app prints, and its image holds the same bytes: an
+\ fresh-cache build's app prints, and it holds the same image: an
 \ image depends only on persistent program state. An empty range stored at
 \ the store's high-water instead makes the warm build throw 76.
 : WIDTH-SOURCE ( n -- ) {: k:n :}
@@ -309,13 +304,11 @@ variable EXPECT-U
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 2\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE
-   WARM-HASH HASH-APP
    s" shift-warm-hb" SAVE-APP
    fresh freshu BUILD-FRESH SUCCESS
    RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE
-   COLD-HASH HASH-APP
    s" shift-fresh-hb" SAVE-APP
-   WARM-HASH 32 COLD-HASH 32 T$= ;
+   s" shift-warm-hb" SAME-APP? TTRUE ;
 
 : EMPTY-RANGE-CASE ( -- )
    s" a reused empty family range survives store shifts in an earlier file" T-LABEL
@@ -331,20 +324,18 @@ variable EXPECT-U
    RUN-APP SUCCESS OUT$ S\" 16\n32\n" CONTAINS? TTRUE
    \ The first build ran on an empty cache, so it is the fresh-cache build
    \ the build that reuses every file, app.f, a.f and b.f, is compared against.
-   COLD-HASH HASH-APP
    s" hit-fresh-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 3\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 16\n32\n" CONTAINS? TTRUE
-   WARM-HASH HASH-APP
    s" hit-warm-hb" SAVE-APP
-   COLD-HASH 32 WARM-HASH 32 T$=
+   s" hit-fresh-hb" SAME-APP? TTRUE
    1 S\" 8\n32\n" s" fresh-narrow" EMPTY-STEP
    3 S\" 24\n32\n" s" fresh-wide" EMPTY-STEP ;
 
 \ A reused file that declares private families in a package (an ENUM and a
-\ derived STRUCTURE) leaves the state its cold load left: the warm build's image
-\ holds the bytes of a fresh-cache build of the same tree.
+\ derived STRUCTURE) leaves the state its cold load left: the warm build holds
+\ the image of a fresh-cache build of the same tree.
 : FAMILY-HIT-CASE ( -- )
    s" a reused file of private families leaves the cold image" T-LABEL
    s" native-file-types-family" TREE
@@ -355,14 +346,12 @@ variable EXPECT-U
    s" app.f" S\" require decl.f\n: MAIN ( -- ) 41 . ;\n" PUT
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   COLD-HASH HASH-APP
    s" family-fresh-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 2\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 41\n" CONTAINS? TTRUE
-   WARM-HASH HASH-APP
    s" family-warm-hb" SAVE-APP
-   WARM-HASH 32 COLD-HASH 32 T$= ;
+   s" family-fresh-hb" SAME-APP? TTRUE ;
 
 : COUNT-N ( ptr u8 n -- n )
    TRIM STR>NUMBER? MATCH option
@@ -450,21 +439,19 @@ create DEF-LINE 48 allot
    s" app.f" S\" require decl.f\n: MAIN ( -- ) 41 . ;\n" PUT
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   COLD-HASH HASH-APP
    s" grow-fresh-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 2\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 41\n" CONTAINS? TTRUE
-   WARM-HASH HASH-APP
    s" grow-warm-hb" SAVE-APP
-   WARM-HASH 32 COLD-HASH 32 T$= ;
+   s" grow-fresh-hb" SAME-APP? TTRUE ;
 
 \ decl.f's top level spends compile history outside its recorded definitions:
 \ a STRUCTURE whose name the package SDFAIL takes, rolled back by catch after
 \ its MAKE and UNMAKE compiled, so no index row holds them. The warm build
 \ installs A and ROLLED from decl.f's object and app.f's MAIN from app.f's,
 \ compiles MAKE and UNMAKE live, which counts decl.f compiled (REUSE-HEAD's
-\ F-MISS), and its image holds the bytes of the fresh-cache build.
+\ F-MISS), and it holds the image of the fresh-cache build.
 : ROLL-HIT-CASE ( -- )
    s" a reused file of rolled-back compiles leaves the cold image" T-LABEL
    s" native-file-types-roll" TREE
@@ -476,15 +463,13 @@ create DEF-LINE 48 allot
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 1\n7\n" CONTAINS? TTRUE
-   COLD-HASH HASH-APP
    s" roll-fresh-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 1\n compiled 1\n definitions installed 3\n compiled 2\n"
       CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 1\n7\n" CONTAINS? TTRUE
-   WARM-HASH HASH-APP
    s" roll-warm-hb" SAVE-APP
-   WARM-HASH 32 COLD-HASH 32 T$= ;
+   s" roll-fresh-hb" SAME-APP? TTRUE ;
 
 create SLICE-KEY 64 allot
 DYNAMIC-BUFFER ENTRY u8
@@ -602,7 +587,7 @@ DYNAMIC-BUFFER ENTRY u8
 \ c.f's PRODUCT pair takes that earlier symbol for its constructor word. A
 \ warm load runs each file's top level again, the undefine included: with
 \ app.f edited first, the warm build reuses a.f and c.f, the app runs as the
-\ cold build's does, and its image holds the bytes of a fresh-cache build.
+\ cold build's does, and it holds the image of a fresh-cache build.
 : CTOR-PREFIX-CASE ( -- )
    s" a reused file keeps a constructor word interned before it" T-LABEL
    s" native-file-types-ctor-prefix" TREE
@@ -619,10 +604,9 @@ DYNAMIC-BUFFER ENTRY u8
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 2\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE
-   WARM-HASH HASH-APP
+   s" ctor-warm-hb" SAVE-APP
    s" fresh-cache" BUILD-FRESH SUCCESS
-   COLD-HASH HASH-APP
-   WARM-HASH 32 COLD-HASH 32 T$= ;
+   s" ctor-warm-hb" SAME-APP? TTRUE ;
 
 
 \ CTOR-CASE's warm build reused c.f's object. A link row with neither effect

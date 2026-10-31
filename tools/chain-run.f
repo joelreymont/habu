@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-command.f
+require src/lib/codesign.f
 
 package CHAIN-RUN
 
@@ -22,12 +23,7 @@ public
 
 private
 
-$8000 constant CMP-CAP
-create CMP-A CMP-CAP allot
-create CMP-B CMP-CAP allot
-variable CMP-FDA
-variable CMP-FDB
-variable CMP-LEFT
+DYNAMIC-BUFFER FILES u8
 
 : ARG ( n -- ptr u8 n ) SCRIPT-ARGV$ ;
 
@@ -64,29 +60,21 @@ variable CMP-LEFT
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- )
    [: BUILD-IN ;] CMD:WITH-COMMAND ;
 
+\ Both files, A's bytes then B's. The byte reserved past them keeps index AU
+\ inside the reserve when B is empty.
+: READ-FILES ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr au:n b:ptr bu:n :}
+   a au FS:FILE-SIZE {: as:n :}
+   b bu FS:FILE-SIZE {: bs:n :}
+   as bs + 1 + FILES-RESERVE
+   a au 0 FILES as FS:READ-ALL as <> if E-FS-IO throw then
+   b bu as FILES bs FS:READ-ALL bs <> if E-FS-IO throw then
+   0 FILES as  as FILES bs ;
+
 public
 
+\ Two files hold the same image: CODESIGN:SAME-IMAGE? of their whole bytes.
 : SAME-FILES? ( ptr u8 n ptr u8 n -- bool )
-   {: a:ptr au:n b:ptr bu:n :}
-   a au FS:FILE-SIZE b bu FS:FILE-SIZE <> if false exit then
-   a au FS:>PATHZ open-rd CMP-FDA !
-   CMP-FDA @ 0 < if E-FS-OPEN throw then
-   b bu FS:>PATHZ open-rd CMP-FDB !
-   CMP-FDB @ 0 < if CMP-FDA @ close E-FS-OPEN throw then
-   a au FS:FILE-SIZE CMP-LEFT !
-   begin CMP-LEFT @ 0 > while
-      CMP-LEFT @ CMP-CAP min {: take:n :}
-      CMP-FDA @ CMP-A take read {: got-a:n :}
-      CMP-FDB @ CMP-B take read {: got-b:n :}
-      got-a take <> got-b take <> or if
-         CMP-FDA @ close CMP-FDB @ close E-FS-IO throw
-      then
-      CMP-A take CMP-B take STR= 0= if
-         CMP-FDA @ close CMP-FDB @ close false exit
-      then
-      CMP-LEFT @ take - CMP-LEFT !
-   repeat
-   CMP-FDA @ close CMP-FDB @ close true ;
+   [: READ-FILES CODESIGN:SAME-IMAGE? ;] [: FILES-RELEASE ;] finally ;
 
 private
 
@@ -102,6 +90,6 @@ public
    1 ARG 2 ARG SAME-FILES? if 2 REPORT exit then
    2 ARG 3 ARG 4 ARG BUILD
    2 ARG 3 ARG SAME-FILES? if 3 REPORT exit then
-   s" chain-run: generation 3 is not a byte fixpoint" FAIL-RC die ;
+   s" chain-run: generation 3 is not the same image as generation 2" FAIL-RC die ;
 
 ;package

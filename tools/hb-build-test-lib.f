@@ -367,15 +367,6 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 : HBT-REMOVE-FILE? ( ptr u8 n -- )
    2dup FS:FILE? if FS:REMOVE-FILE else 2drop then ;
 
-\ The first byte two spans differ at, or -1 for identical. A pinned -1 names the
-\ offset on failure instead of printing two images into the capture.
-: HBT-DIFF-AT ( ptr u8 n ptr u8 n -- n ) {: a:ptr au:n b:ptr bu:n :}
-   au bu min 0 ?do
-      a i + c@  b i + c@ <> if i unloop exit then
-   loop
-   au bu <> if au bu min exit then
-   -1 ;
-
 : HBT-REPL-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
    s" 10" SB-APPEND

@@ -3,7 +3,8 @@
 \ each in its own empty HABU_OUT under a private temporary directory, so the
 \ installed engine is never touched. Fails when a generation does not build, when
 \ generation 3's size and shape differ from generation 2's (the chain accretes
-\ DATA), or when the last pair differs by byte. Use: docs/bootstrap.md.
+\ DATA), or when the last pair is not the same image (CODESIGN:SAME-IMAGE?).
+\ Use: docs/bootstrap.md.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -16,6 +17,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require tools/image-size-lib.f
 require src/habu/code-span.f
+require tools/chain-run.f
 
 package TWO-GEN
 
@@ -198,7 +200,7 @@ variable TG-COL-NAME
    TG-IMG @ TG-PREV-IMG @ =
    TG-SHAPE TG-SHAPE-U @ TG-PREV TG-PREV-U @ STR= and ;
 
-\ ---- the byte compare of one generation pair --------------------------------
+\ ---- the byte diff of two engines that are not the same image -------------
 \ Chunked: an image is over five megabytes and only the count is wanted.
 
 : TG-CMP-CLOSE ( -- )
@@ -335,11 +337,16 @@ variable TG-COL-NAME
    s" two-gen: gen " type gen TG-U.
    s"  owner lookup failed: throw code " type code FMT:.INT cr ;
 
-: TG-PAIR-DIFF ( n n -- n ) {: a:n b:n :}
-   a TG-GEN$ b TG-GEN-B$ TG-BYTE-DIFF {: n:n :}
-   s" two-gen: bytes gen " type a TG-U. s"  vs " type b TG-U. s"  " type
-   n TG-DIFF-REPORT
-   n ;
+\ Whether two generations are the same image (CHAIN-RUN:SAME-FILES?); a pair
+\ that is not reports its byte diff, whose first offset TG-OWNER explains.
+: TG-PAIR-SAME? ( n n -- bool ) {: a:n b:n :}
+   s" two-gen: gen " type a TG-U. s"  vs " type b TG-U. s"  " type
+   a TG-GEN$ b TG-GEN-B$ CHAIN-RUN:SAME-FILES? if
+      s" same image" type cr
+      true exit
+   then
+   a TG-GEN$ b TG-GEN-B$ TG-BYTE-DIFF TG-DIFF-REPORT
+   false ;
 
 \ The pair is (4,5), not (2,3): the capture bakes DATA as its non-zero extents,
 \ so build-time residue (cells boot re-initialises and nothing reads) shifts every
@@ -348,14 +355,13 @@ variable TG-COL-NAME
 \ byte difference in (4,5) is a real defect: a clock, a pid, an unpinned address
 \ or an unordered walk.
 : TG-FIXPOINT ( -- )
-   2 3 TG-PAIR-DIFF drop
-   3 4 TG-PAIR-DIFF drop
-   4 5 TG-PAIR-DIFF {: n:n :}
-   n 0= if
-      s" two-gen: ok gen 5 matches gen 4 byte for byte" type cr
+   2 3 TG-PAIR-SAME? drop
+   3 4 TG-PAIR-SAME? drop
+   4 5 TG-PAIR-SAME? if
+      s" two-gen: ok gen 5 is the same image as gen 4" type cr
       exit
    then
-   s" two-gen: gen 5 is not byte-identical to gen 4" type cr
+   s" two-gen: gen 5 is not the same image as gen 4" type cr
    5 TG-FAILED ;
 
 : TG-SHAPE-CHECK ( -- )
@@ -385,18 +391,22 @@ variable TG-COL-NAME
    1 TG-GEN
    0 TG-GEN$ TG-HOST!
    2 TG-GEN
-   1 2 TG-PAIR-DIFF 0 <> if
+   1 2 TG-PAIR-SAME? 0= if
       s" two-gen: same-host builds differ" type cr
       1 TG-OWNER 2 TG-OWNER
       TG-FAIL-RC throw
    then
-   s" two-gen: same-host builds match byte for byte" type cr
+   s" two-gen: same-host builds are the same image" type cr
    2 TG-CACHE-CLEANUP ;
 
 : TG-COMPARE ( -- )
-   1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ TG-BYTE-DIFF {: n:n :}
-   s" two-gen: bytes " type n TG-DIFF-REPORT
-   n 0 <> if TG-FAIL-RC throw then ;
+   1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ CHAIN-RUN:SAME-FILES? if
+      s" two-gen: same image" type cr
+      exit
+   then
+   s" two-gen: bytes " type
+   1 SCRIPT-ARGV$ 2 SCRIPT-ARGV$ TG-BYTE-DIFF TG-DIFF-REPORT
+   TG-FAIL-RC throw ;
 
 : TG-USAGE ( -- )
    s" two-gen: expected [seed], --same-host [seed], or --compare file-a file-b"

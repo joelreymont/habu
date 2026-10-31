@@ -112,7 +112,7 @@ variable TGT-CACHE-B-U
    TGT-B$ TGT-CLI-RUN {: outu:len erru:len rc:n :}
    rc want T= erru LEN>N 0 T=
    want 0= if
-      TG-OUT outu LEN>N s" 0 differing bytes" CONTAINS? TTRUE
+      TG-OUT outu LEN>N s" two-gen: same image" CONTAINS? TTRUE
    else
       TG-OUT outu LEN>N s" length mismatch; first differing offset 32768" CONTAINS? TTRUE
    then ;
@@ -122,11 +122,12 @@ variable TGT-CACHE-B-U
 : TGT-FAILED$ ( -- ptr u8 n )
    SB-RESET
    s" hb: uncaught throw code " SB-APPEND
-   E-FS-OPEN FMT:SB-INT
+   E-FS-STAT FMT:SB-INT
    SB$ ;
 
-\ A missing file is no verdict: MAIN rethrows the step's code, so the engine
-\ names it on stderr and exits with its status for an uncaught throw.
+\ A missing file is no verdict: the reader stats each file before it opens
+\ it, and MAIN rethrows the step's code, so the engine names it on stderr and
+\ exits with its status for an uncaught throw.
 : TGT-CLI-MISSING ( -- )
    s" a failed step's throw reaches the engine on stderr" T-LABEL
    TGT-M$ TGT-CLI-RUN {: outu:len erru:len rc:n :}
