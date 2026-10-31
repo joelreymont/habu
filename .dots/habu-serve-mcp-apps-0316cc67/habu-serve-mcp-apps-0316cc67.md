@@ -1,6 +1,6 @@
 ---
 title: Serve MCP apps and OAuth discovery to ChatGPT
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-10-31T00:21:19.203994+02:00"
