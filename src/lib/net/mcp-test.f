@@ -180,17 +180,22 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" \"_meta\":{\"io.modelcontextprotocol/serverInfo\":" SB-APPEND
    S\" {\"name\":\"test-server\",\"version\":\"1.0\"}}" SB-APPEND ;
 
+: GUIDE$ ( -- ptr u8 n ) S\" Echo text back.\n\"raw\" answers as given." ;
+
+: GUIDE ( -- )
+   S\" ,\"instructions\":\"Echo text back.\\n\\\"raw\\\" answers as given.\"" SB-APPEND ;
+
 : W-SERVER ( -- )
    S\" \"_meta\":{\"io.modelcontextprotocol/serverInfo\":" W+
    S\" {\"name\":\"test-server\",\"version\":\"1.0\"}}" W+ ;
 
 
 : LEGACY-INITIALIZE ( -- )
-   s" legacy initialize answers the 2025-11-25 handshake" T-LABEL
+   s" legacy initialize answers the 2025-11-25 handshake with instructions" T-LABEL
    LEGACY S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}" POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-11-25\"," SB-APPEND
-   S\" \"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"test-server\",\"version\":\"1.0\"}}}"
-   SB-APPEND
+   S\" \"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"test-server\",\"version\":\"1.0\"}"
+   SB-APPEND GUIDE S\" }}" SB-APPEND
    200 SB$ ANSWERED ;
 
 
@@ -201,13 +206,13 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : MODERN-DISCOVER ( -- )
-   s" modern server/discover answers versions, serverInfo and cache scope" T-LABEL
+   s" modern server/discover answers versions, serverInfo, instructions and cache scope" T-LABEL
    MODERN s" Mcp-Method: server/discover" ADD
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":\"d\",\"method\":\"server/discover\",\"params\":{" SB-APPEND
    META S\" }}" SB-APPEND SB$ POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":\"d\",\"result\":{\"resultType\":\"complete\"," SB-APPEND
    S\" \"supportedVersions\":[\"2026-07-28\",\"2025-11-25\"],\"capabilities\":{\"tools\":{}}," SB-APPEND
-   SERVER S\" ,\"ttlMs\":0,\"cacheScope\":\"private\"}}" SB-APPEND
+   SERVER GUIDE S\" ,\"ttlMs\":0,\"cacheScope\":\"private\"}}" SB-APPEND
    200 SB$ ANSWERED ;
 
 
@@ -1003,6 +1008,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" POST" s" /endless" [: ENDLESS-ROUTE ;] HTTP:ROUTE
    s" POST" s" /late" [: LATE-ROUTE ;] HTTP:ROUTE
    s" test-server" s" 1.0" MCP:SERVER-INFO!
+   GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
    ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE
    s" ADD-TOOL refuses a registered name" T-LABEL
@@ -1018,6 +1024,8 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    s" ADD-TOOL refuses while HTTP serves" T-LABEL
    [: ADD-LATE ;] MCP:E-STATE TTHROWSQ
+   s" INSTRUCTIONS! refuses while HTTP serves" T-LABEL
+   [: GUIDE$ MCP:INSTRUCTIONS! ;] MCP:E-STATE TTHROWSQ
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
    METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL TOOL-ERROR
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT BAD-ENVELOPE BAD-JSON LIST PING

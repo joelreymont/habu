@@ -1,9 +1,10 @@
 \ mcp.f - an MCP tool server on Habu's HTTP server: the stateless, JSON-response
 \ form of streamable HTTP for MCP 2026-07-28 with server/discover, and the
 \ 2025-11-25 initialize flow. No session ID, no event stream. The host states
-\ its name with SERVER-INFO! and its tools with ADD-TOOL before HTTP:START,
-\ authenticates each request, validates its Origin (403 when one is present and
-\ not allowed) and passes it to HANDLE; a route guarded by bearer tokens is
+\ its name with SERVER-INFO!, any guidance for the model with INSTRUCTIONS! and
+\ its tools with ADD-TOOL before HTTP:START, authenticates each request,
+\ validates its Origin (403 when one is present and not allowed) and passes it
+\ to HANDLE; a route guarded by bearer tokens is
 \ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. VISIBLE! hides a tool
 \ from a caller its hook refuses. A tool body gets the arguments' object,
 \ borrowed for the call, and answers once through ANSWER, or ANSWER-ERROR for a
@@ -15,8 +16,8 @@
 \ OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one server over
 \ CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer token
 \ a client sends, and CANCEL ends its TOOLS or CALL from another task.
-\ STORAGE CLASS. PROCESS-WIDE: the server info, tool registry and visibility
-\ hook, written before HTTP serves; tables indexed by HTTP:WORKER-SLOT holding
+\ STORAGE CLASS. PROCESS-WIDE: the server info and instructions, tool registry
+\ and visibility hook, written before HTTP serves; tables indexed by HTTP:WORKER-SLOT holding
 \ each request's state; and the client table, a row per open client, read and
 \ written under its own lock.
 \ https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
@@ -39,9 +40,9 @@ package MCP
 public
 -9480 constant E-FIRST
 -9489 constant E-LAST
-\ SERVER-INFO!, ADD-TOOL or VISIBLE! while HTTP serves, HANDLE before
-\ SERVER-INFO!, a body that does not answer exactly once, or a client word
-\ given a closed client.
+\ SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL or VISIBLE! while HTTP serves, HANDLE
+\ before SERVER-INFO!, a body that does not answer exactly once, or a client
+\ word given a closed client.
 -9481 constant E-STATE
 -9482 constant E-DUPLICATE   \ ADD-TOOL of a registered name
 -9483 constant E-TRANSFER    \ a client's request could not be sent or its reply received
@@ -78,6 +79,7 @@ private
 
 TYPED-VARIABLE SERVER-NAME SPAN:span<u8>
 TYPED-VARIABLE SERVER-VERSION SPAN:span<u8>
+TYPED-VARIABLE INSTRUCTIONS SPAN:span<u8>
 
 \ The registry: a row to each tool, in ADD-TOOL order.
 variable TOOL-COUNT
@@ -188,6 +190,11 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:OBJECT-END ;
 
 
+: INSTRUCTIONS-FIELD ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+   INSTRUCTIONS @ SPAN:LEN 0= if exit then
+   JSON-WRITE:COMMA s" instructions" INSTRUCTIONS @ SPAN:$ JSON-WRITE:FIELD-S ;
+
+
 : MODERN-META ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:COMMA s" _meta" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START
@@ -217,7 +224,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:OBJECT-START
    s" resultType" s" complete" JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" supportedVersions" JSON-WRITE:KEY VERSIONS
-   TOOLS-CAPABILITY MODERN-META PRIVATE-CACHE
+   TOOLS-CAPABILITY MODERN-META INSTRUCTIONS-FIELD PRIVATE-CACHE
    JSON-WRITE:OBJECT-END ;
 
 
@@ -226,6 +233,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    s" protocolVersion" s" 2025-11-25" JSON-WRITE:FIELD-S
    TOOLS-CAPABILITY
    JSON-WRITE:COMMA s" serverInfo" JSON-WRITE:KEY SERVER-INFO
+   INSTRUCTIONS-FIELD
    JSON-WRITE:OBJECT-END ;
 
 
@@ -663,6 +671,14 @@ public
    HTTP:RUNNING? if E-STATE throw then
    name nu SPAN:MAKE SERVER-NAME !
    version vu SPAN:MAKE SERVER-VERSION ! ;
+
+
+\ Guidance for the model on using this server: "instructions" in initialize and
+\ server/discover results, left out while the text is empty. The text is
+\ borrowed and outlives the server, as literals do. E-STATE while HTTP serves.
+: INSTRUCTIONS! ( ptr u8 n -- )
+   HTTP:RUNNING? if E-STATE throw then
+   SPAN:MAKE INSTRUCTIONS ! ;
 
 
 \ The hook answering, given a tool's name, whether the caller of the request
