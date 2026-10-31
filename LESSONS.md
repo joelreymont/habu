@@ -105,6 +105,12 @@ entry.
   THROW-CODE$'s list of codes, so each new code is written in both, Joel
   chose "THROW-CODE$ gives message": one list answers a code's name, repair
   class, suggestion and message, and THROW-CAUSE$ goes.
+- 2026-10-31, the failed token's text: lane dtail had changed public
+  CHECKER-OWNER:REFUSED-SPAN to also return the text of the token the
+  checker failed on, which an older hb building the tree would misread.
+  Offered a new word reading an appended owner field instead, Joel chose
+  "Add ERROR-TOKEN": `CHECKER-OWNER:ERROR-TOKEN ( -- ptr u8 n )`, with
+  REFUSED-SPAN keeping its shape.
 - 2026-10-31, packages: offered a third package section so engine-only
   checker words stay callable from other engine packages but hidden from
   programs, Joel answered "private means NOT FUCKING AVAILABLE OUTSIDE THIS
