@@ -74,6 +74,7 @@ STRUCTURE call DERIVE addr
    FIELD body-w JSON-WRITE:writer
    FIELD parts-w JSON-WRITE:writer
    FIELD journal-parts-w JSON-WRITE:writer
+   FIELD reader JR:cursor
    FIELD gate TASK:sem
    FIELD gate-ready bool
    FIELD handle option<CURL:handle>
@@ -148,13 +149,6 @@ STRUCTURE ledger DERIVE addr
 
 CAST: >LEDGER ( ptr u8 -- ptr ledger )
 
-\ The arena's JSON reader record, reused by every reader the call opens.
-STRUCTURE reading DERIVE addr
-   FIELD cursor JR:cursor
-;STRUCTURE
-
-CAST: >READING ( ptr u8 -- ptr reading )
-
 256 constant SCRATCH-INITIAL
 1000000 constant NS-PER-MS
 28 constant CURL-TIMED-OUT
@@ -203,8 +197,7 @@ ACCOUNTS-AT LEDGER-BYTES + constant HASH-AT
 \ The row the call in progress uses, plus one, then a row being added.
 HASH-AT SHA256-CTX-BYTES + 96 + 7 + 7 invert and constant PICK-AT
 PICK-AT 1 cells + constant ROW-NEW-AT
-ROW-NEW-AT ROW-BYTES + constant READER-AT
-READER-AT READING-BYTES + constant INPUT-OFF-AT
+ROW-NEW-AT ROW-BYTES + constant INPUT-OFF-AT
 INPUT-OFF-AT INPUT-MAX cells + constant INPUT-LEN-AT
 INPUT-LEN-AT INPUT-MAX cells + constant VECTOR-OFF-AT
 VECTOR-OFF-AT INPUT-MAX cells + constant VECTOR-LEN-AT
@@ -360,8 +353,6 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    LEDGER {: l :}
    true l LEDGER-DISPATCHED !
    TIME:MONO-NS l LEDGER-STARTED-NS ! ;
-: READER-STORE ( ptr call -- ptr JR:cursor )
-   READER-AT READING-BYTES REGION SPAN:$ drop >READING READING-CURSOR ;
 : INPUT-OFF ( ptr call n -- ptr n )
    {: c idx:n :}
    c INPUT-OFF-AT idx cells + 1 cells REGION SPAN:$ drop CELL-VIEW ;
@@ -520,7 +511,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    then
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:ptr :}
    base DISPOSE-BUFFERS
-   c READER-STORE JR:DISPOSE
+   c MODEL-CALL:READER JR:DISPOSE
    base ARENA-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    NULL-PTR c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE !
    0 c MODEL-CALL:ARENA MODEL-ALLOCATION:SIZE ! ;
@@ -1074,7 +1065,7 @@ private
 
 : JSON-OBJECT? ( ptr u8 n ptr call -- bool )
    {: a:ptr u:n c :}
-   c READER-STORE a u JR:INIT
+   c MODEL-CALL:READER a u JR:INIT
    JR:NEXT JR:T-OBJ = if
       JR:SKIP-VALUE
       JR:NEXT JR:T-END = {: valid:bool :}
@@ -1417,7 +1408,7 @@ private
 
 : WIRE-READER ( ptr call -- JR:reader )
    {: c :}
-   c READER-STORE c RESPONSE$ JR:INIT ;
+   c MODEL-CALL:READER c RESPONSE$ JR:INIT ;
 
 \ The reply's current string, decoded into the content buffer, which a failed
 \ call leaves unused.
@@ -1825,7 +1816,7 @@ private
 \ that member is an object.
 : USAGE ( ptr u8 n ptr call -- JR:reader bool )
    {: a:ptr u:n c :}
-   c READER-STORE a u JR:INIT
+   c MODEL-CALL:READER a u JR:INIT
    JR:T-OBJ EXPECT
    s" usage" JR:FIND-KEY 0= if false exit then
    JR:TOKEN JR:T-OBJ = ;
@@ -1895,7 +1886,7 @@ private
 \ null for none.
 : ACCEPT-TIER ( ptr call -- )
    {: c :}
-   c READER-STORE c RESPONSE$ JR:INIT
+   c MODEL-CALL:READER c RESPONSE$ JR:INIT
    JR:T-OBJ EXPECT
    s" service_tier" JR:FIND-KEY 0= if JR:CLOSE exit then
    JR:TOKEN dup JR:T-NULL = if drop JR:CLOSE exit then
@@ -1988,7 +1979,7 @@ private
 
 : JOURNAL-FIELD ( ptr u8 n ptr call -- ptr u8 n )
    {: key:ptr key-u:n c :}
-   c READER-STORE c JOURNAL-OUT$ JR:INIT
+   c MODEL-CALL:READER c JOURNAL-OUT$ JR:INIT
    JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
    key key-u JR:FIND-KEY 0= if JR:CLOSE E-RESPONSE throw then
    JR:TOKEN {: kind:n :}
@@ -2002,7 +1993,7 @@ private
 
 : JOURNAL-DECODE ( ptr u8 n SPAN:span<u8> ptr call -- n )
    {: raw:ptr raw-u:n target:SPAN:span<u8> c :}
-   c READER-STORE raw raw-u JR:INIT
+   c MODEL-CALL:READER raw raw-u JR:INIT
    JR:NEXT JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
    target SPAN:$ JR:STR {: got:n :}
    JR:CLOSE got ;
@@ -2025,7 +2016,7 @@ private
 : JOURNAL-ORIGIN ( ptr call -- )
    {: c :}
    s" origin" c JOURNAL-FIELD {: raw:ptr raw-u:n :}
-   c READER-STORE raw raw-u JR:INIT
+   c MODEL-CALL:READER raw raw-u JR:INIT
    JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
    s" kind" JR:FIND-KEY 0= if JR:CLOSE E-RESPONSE throw then
    JR:TOKEN JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
@@ -2035,7 +2026,7 @@ private
 \ The recorded call id a journal record carries, 0 when it has none.
 : JOURNAL-CALL-ID ( ptr call -- n )
    {: c :}
-   c READER-STORE c JOURNAL-OUT$ JR:INIT
+   c MODEL-CALL:READER c JOURNAL-OUT$ JR:INIT
    JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
    s" call_id" JR:FIND-KEY 0= if JR:CLOSE 0 exit then
    JR:TOKEN JR:T-INT <> if JR:CLOSE E-RESPONSE throw then
@@ -2044,7 +2035,7 @@ private
 \ The fault a journaled refusal records, 0 for a reply.
 : JOURNAL-REFUSAL-FAULT ( ptr call -- n )
    {: c :}
-   c READER-STORE c JOURNAL-OUT$ JR:INIT
+   c MODEL-CALL:READER c JOURNAL-OUT$ JR:INIT
    JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
    s" refusal" JR:FIND-KEY 0= if JR:CLOSE 0 exit then
    JR:TOKEN JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
