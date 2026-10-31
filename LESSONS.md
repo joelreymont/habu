@@ -32,6 +32,12 @@ entry.
   it be the same error-text as far as meaning? why have several?" Names use
   standard programming terms (error, not refusal), and helpers with one
   meaning are one word.
+- 2026-10-31, protocol terms: offered MCP:ANSWER-BLOCKS for a tool answer
+  with image and file content, Joel asked "if mcp calls them context blocks
+  then why are you calling them answer blocks?" and "what is ANSWER? again,
+  makes no sense", then chose MCP's terms over keeping the ANSWER words. A
+  library for a protocol names things in that protocol's words: a tool's
+  result and its content blocks, not answers.
 
 ### Compiler and builds
 
