@@ -151,6 +151,13 @@ entry.
 - 2026-10-30: "we decided to build everything in a single binary, why are you
   launching processes? are you trying to prove that the program you build
   runs?"
+- 2026-10-31, the real-Chrome browser display test: "this is a stupid test,
+  prove me wrong! why the fuck would you test if chrome actually works?" Its
+  other checks cover Habu's own browser code (released GPU devices and
+  listeners, revoked image URLs, collected modules, SVG isolation), so Joel
+  chose "Only when asked": Chrome runs only on an explicit `--chrome`, never
+  because Chrome is installed, and the run leaves no process, clone or
+  profile behind.
 
 ### Docs
 
