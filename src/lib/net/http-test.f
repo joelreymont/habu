@@ -51,6 +51,10 @@ package HTTP
 \ Whether the first worker's slot holds a connection: the one-worker server
 \ sets it just before READ-REQUEST starts that connection's deadline.
 : HTTP-TEST:SERVING? ( -- bool ) 0 SERVING-LIVE @ 0<> ;
+\ The first worker's late budget (FILL): untaken from the start of a request's
+\ deadline until a read finds it passed, then the bytes the request may still read.
+: HTTP-TEST:LATE-UNTAKEN? ( -- bool ) 0 LATE-LEFT@ UNTAKEN = ;
+: HTTP-TEST:READING-LATE? ( -- bool ) 0 LATE-LEFT@ 0 > ;
 ;package
 
 \ Holding the facility AIO's loop task takes to deliver a completion stalls every
@@ -2090,7 +2094,6 @@ $3E8 constant FLOOD-IDLE-MS
 \ deadline: macOS autotunes one to at most 4 MiB, and this framing parses at
 \ about 2 MB/s (measured: read by 0.1 to 0.3 s past this deadline).
 $BB8 constant FLOOD-MARGIN-MS
-$14 constant FLOOD-LATE-MS        \ how far past the second flood's deadline the stop is raised
 variable FLOOD-ENDED              \ mono-ns once the flooding peer's write has failed
 TASK:MIN-STACK TASK:TASK FLOOD-TASK
 
@@ -2102,6 +2105,16 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    FLOOD-TASK [: dup TASK:DONE? ;]
    began FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * + s" http-test FLOOD-AWAIT" TEST-WAIT:POLL
    drop ;
+
+
+\ Waits until the flooded worker reads past the deadline of the connection opened
+\ at the given time, short of its budget. The slot keeps the first flood's
+\ budget until the second's deadline starts, so that start is awaited first.
+: LATE-AWAIT ( n -- ) {: opened:n :}
+   [: HTTP-TEST:LATE-UNTAKEN? ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test DEADLINE-AWAIT" TEST-WAIT:POLL
+   [: HTTP-TEST:READING-LATE? ;]
+   opened FLOOD-IDLE-MS FLOOD-MARGIN-MS + NS-PER-MS * + s" http-test LATE-AWAIT" TEST-WAIT:POLL ;
 
 
 \ Opens a connection and floods it: a chunked head, then FLOOD-TASK writing
@@ -2134,7 +2147,7 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    began FLOOD-AWAIT
    first TCP4:CLOSE DROP-TCP-STATUS
    FLOOD {: second:TCP4:connection opened:n :}
-   opened FLOOD-IDLE-MS FLOOD-LATE-MS + NS-PER-MS * + mono-ns - NS-PER-MS / 0 max >MS TASK:SLEEP
+   opened LATE-AWAIT
    mono-ns {: raised:n :}
    HTTP:STOP
    s" a stop ends the flooded worker's late reading within the stop margin" T-LABEL
