@@ -13,3 +13,5 @@ Batch 1 landed (habu-shrink-trusted-to-f4e84345, eight commits ending "Row the c
 The xt feature landed (habu-let-signatures-name-5931014b, habu-check-the-primitive-4b61908e): a signature names a ticked primitive's type as xt, so the tick-only entry words became checked. TRUSTED: definitions in src 55 -> 47 (elaborate.f 4 -> 0, t0.f 3 -> 0, select-x64.f 1 -> 0, trap.f 1 -> 0, dict.f 0 -> 1 for the one shared DOES-PATCH-ENTRY); tools 5, test 52 unchanged.
 
 The checker verdict words landed (habu-publish-json-diags-116b6142): REPORT-UNCHECKABLE, MULTI-ERR-BEGIN and MULTI-ERR-END moved into checker.f: the TRUSTED: CHECK-BODY copy is deleted and MULTI-ERR-BEGIN is checked. TRUSTED: definitions in src 47 -> 45 (verify-source.f 7 -> 6, cell-effects.f 4 -> 3).
+
+The C2 disposer landed (habu-check-the-c2-99fd69f8, on habu-pass-a-fresh-bb992e31): ALLOC-DISPOSE is checked through a C2-MEM callback pack. TRUSTED: definitions in src 45 -> 44 (c2-owner.f 1 -> 0); tools 5, test 52 unchanged.
