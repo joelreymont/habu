@@ -76,6 +76,17 @@ entry.
   need TASK-LOCAL when you have TASK:+USER?": Maki's per-task typed pointer
   already runs on `TASK:+USER` with one private cast (maki
   src/project-ops.f:176-182), so TASK-LOCAL is dropped.
+- 2026-10-31, cast errors: asked whether lane casterr may make
+  CAST-ERROR:START, TOKEN!, FAMILY!, RAISE and SKIP and
+  LOWER-CERT-HOOK:LINE-AT public, because checker words outside those
+  packages call them, until nested packages make CAST-ERROR a part of CHECKER
+  and hide them, Joel chose "Approve, DIAG-XT private": the print hook, used
+  only inside CAST-ERROR, stays private.
+- 2026-10-31, error places: asked whether SRCLOC:FILE-BUFFER? ( -- bool ),
+  true while the text being read is the open file's own bytes, may be public
+  so the Habu loop's and the native compiler's error-place writers share one
+  rule (the file's line for the file's text, the file alone for an evaluated
+  string), Joel chose "Add SRCLOC:FILE-BUFFER?".
 - 2026-10-31, packages: offered a third package section so engine-only
   checker words stay callable from other engine packages but hidden from
   programs, Joel answered "private means NOT FUCKING AVAILABLE OUTSIDE THIS
