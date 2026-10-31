@@ -301,3 +301,7 @@ entry.
 - `jj absorb` without `--into` rewrites master: this repository's
   `immutable_heads()` is `none()`, and one bare absorb rewrote master and 4289
   descendants. Name the target commits with `--into`.
+- `jj squash --from X --into Y` opens an editor to merge the two descriptions
+  when both have one, and an agent's call then waits in vim until killed (a
+  pkg1d fold squash waited 12 minutes on 2026-10-31). Pass `-u` to keep Y's
+  description.
