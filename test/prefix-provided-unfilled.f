@@ -8,25 +8,20 @@ require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/process-argv.f
-require src/lib/process-env.f
-require src/lib/process-cwd.f
+require src/lib/process.f
+require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/lib/tree-copy.f
 
 package PREFIX-PROVIDED-UNFILLED
 private
 
-$8000 constant IO-CAP
 $4000 constant SRC-CAP
 600000 constant BUILD-TIMEOUT-MS
 
 create ROOT PATH-CAP allot variable ROOT-U
 create PATH PATH-CAP allot
 create SRC SRC-CAP allot variable SRC-U
-create OUT IO-CAP allot variable OUT-U
-create ERR IO-CAP allot variable ERR-U
-variable RC
 
 : ROOT$ ( -- ptr u8 n ) ROOT ROOT-U @ ;
 
@@ -60,47 +55,40 @@ variable RC
    ROOT$ TREE-COPY:BUILD-SOURCES
    WRITE-RUNTIME ;
 
-: CAPTURE-RESULT ( result<pcap:captured,pcap:failed> -- )
-   MATCH result
-      ok OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! 0 RC ! ENDOF
-      err OF PCAP-FAILED:UNMAKE {: outu:len erru:len code:rc :}
-         outu LEN>N OUT-U ! erru LEN>N ERR-U ! code RC>N RC ! ENDOF
-   ;MATCH ;
-
 \ The production entry, as `bin/hb --load tools/native-build.f -- <out>` runs
-\ it, in the private tree, for an x86-64 product on any host.
-: BUILD ( -- )
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --load" >LEN PROC-ARGV+
-   HB-TARGET-LINUX-X86-64? 0= if s" src/arch/x86-64/passes.f" >LEN PROC-ARGV+ then
-   s" tools/native-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" hb" AT-A >LEN PROC-ARGV+
+\ it, in the private tree, for an x86-64 product on any host. The child inherits
+\ HABU_NATIVE_CACHE_DIAG, whose stderr runs to 10 MB per build.
+: BUILD ( CMD:command -- CMD:command )
+   CMD:RESET
+   s" --load" CMD:ARG+
+   HB-TARGET-LINUX-X86-64? 0= if s" src/arch/x86-64/passes.f" CMD:ARG+ then
+   s" tools/native-build.f" CMD:ARG+
+   s" --" CMD:ARG+
+   s" hb" AT-A CMD:ARG+
    HB-TARGET-LINUX-X86-64? 0= if
-      s" --target" >LEN PROC-ARGV+  s" linux-x86-64" >LEN PROC-ARGV+
+      s" --target" CMD:ARG+  s" linux-x86-64" CMD:ARG+
    then
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN ROOT$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT
-   s" build.out" AT-A OUT OUT-U @ FS:WRITE-ALL
-   s" build.err" AT-A ERR ERR-U @ FS:WRITE-ALL ;
+   ROOT$ CMD:CWD!
+   ENGINE-CANDIDATE:PATH$ BUILD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop
+   CMD:OUT$ {: out:ptr outu:n :}
+   s" build.out" AT-A out outu FS:WRITE-ALL
+   CMD:ERR$ {: err:ptr erru:n :}
+   s" build.err" AT-A err erru FS:WRITE-ALL ;
 
 \ The last build refused at the registry gate and left no product.
-: REFUSED ( -- )
-   RC @ 76 <> if OUT OUT-U @ type ERR ERR-U @ type then
-   RC @ 76 T=
-   OUT OUT-U @ S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
-   ERR ERR-U @ s" prims: prefix-provided row not in the captured runtime" CONTAINS? TTRUE
+: REFUSED ( CMD:command -- CMD:command )
+   CMD:OUTCOME@ PROC-OUTCOME>RC RC>N {: rc:n :}
+   CMD:OUT$ {: out:ptr outu:n :}
+   CMD:ERR$ {: err:ptr erru:n :}
+   rc 76 <> if out outu type err erru type then
+   rc 76 T=
+   out outu S\" captured runtime leaves the dispatch cell empty for prefix-provided primitive evaluate-range\n" CONTAINS? TTRUE
+   err erru s" prims: prefix-provided row not in the captured runtime" CONTAINS? TTRUE
    s" the refused build promotes no product" T-LABEL
    s" hb" AT-A FS:FILE? 0= TTRUE ;
 
-public
-
-: RUN ( -- )
-   T-RESET
-   SETUP BUILD
+: CHECK-BUILDS ( CMD:command -- CMD:command )
+   BUILD
    s" a build whose runtime leaves the evaluate cell empty refuses 76" T-LABEL
    REFUSED
    \ A second build process against the same out root: the file objects the
@@ -110,7 +98,14 @@ public
    \ registry gate (tools/native-definition-cache.f OBJECT-OPEN, shadow-open).
    BUILD
    s" the same build against the same out root refuses 76" T-LABEL
-   REFUSED
+   REFUSED ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   SETUP
+   [: CHECK-BUILDS ;] CMD:WITH-COMMAND
    T-REPORT
    s" prefix-provided-unfilled tree: " type ROOT$ type cr ;
 
