@@ -32,6 +32,7 @@ package FS
 : FS-TEST:BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) BUILD-TEMP-TRY ;
 : FS-TEST:MKTEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) MKTEMP-DIR-SEED ;
 : FS-TEST:TMP-RETRIES ( -- n ) TMP-RETRIES ;
+: FS-TEST:SIBLING-LEN-MAX ( -- n ) SIBLING-LEN-MAX ;
 : FS-TEST:MKTEMP-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n n ) MKTEMP-SEED ;
 : FS-TEST:ENOTDIR ( -- n ) ENOTDIR ;
 : FS-TEST:S-IFIFO ( -- n ) S-IFIFO ;
@@ -447,10 +448,8 @@ public
    FMT-REAL-BUF u ;
 
 
-\ The root's canonical spelling, then names of `a` with a slash every 201st
-\ byte, so no name passes NAME_MAX and the last byte is never a slash. Only an
-\ existing directory has a canonical spelling. The first name is registered for
-\ cleanup, so FMT-TEST-CLEANUP leaves the root empty.
+\ A real chain whose canonical spelling is n bytes, for a test whose subject is
+\ that length. Its first name is registered for cleanup.
 : FMT-DEEP-DIR ( n -- ptr u8 n )
    {: n:n :}
    FMT-ROOT$ FMT-REAL nip {: r:n :}
@@ -837,12 +836,16 @@ public
    cause FS:ENAMETOOLONG T=
    300 NAMED$ FMT-ATOMIC-SEED 0 SIBLING FS:EXISTS? TFALSE ;
 
-\ Only the destination's own path meets PATH-CAP: one exactly that long,
-\ with a 1-byte last name, is written.
+\ FS:ATOMIC-TARGET's realpath drops the /. pad: the target is the shortest at
+\ the pad's parity whose directory leaves no room for a SIBLING-LEN-MAX name.
 : ATOMIC-PATH-CAP ( -- )
-   PATH-CAP 2 - FMT-DEEP-DIR {: dir:ptr diru:n :}
-   FS-TEST:SLASH dir diru + c!
-   [char] x dir diru 1+ + c!
+   PATH-CAP FS-TEST:SIBLING-LEN-MAX - {: least:n :}
+   least PATH-CAP least - 1 and + FMT-DEEP-DIR {: dir:ptr diru:n :}
+   PATH-CAP 2 - diru ?do
+      FS-TEST:SLASH dir i + c!  [char] . dir i 1+ + c!
+   2 +loop
+   FS-TEST:SLASH dir PATH-CAP 2 - + c!
+   [char] x dir PATH-CAP 1- + c!
    dir PATH-CAP s" capped" FS:ATOMIC-WRITE-FILE
    dir PATH-CAP FMT-READ-BUF 64 FS:READ-ALL 6 T=
    FMT-READ-BUF 6 s" capped" T$= ;

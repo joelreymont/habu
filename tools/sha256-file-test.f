@@ -43,9 +43,7 @@ create SFT-MISSING PATH-CAP allot
 create SFT-DEEP-DIR PATH-CAP allot
 create SFT-DEEP PATH-CAP allot
 create SFT-DEEP-NAME 230 allot
-create SFT-EDGE-A PATH-CAP allot
-create SFT-EDGE-B PATH-CAP allot
-create SFT-EDGE-NAME 255 allot
+create SFT-EDGE PATH-CAP allot
 
 variable SFT-ROOT-U
 variable SFT-FILE-U
@@ -338,33 +336,32 @@ TASK:MIN-STACK TASK:TASK SFT-TASK-B
    SFT-FCTX-A SFT-DEEP$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
-\ A path of exactly PATH-CAP bytes, built from the physical root: a symlink
-\ target would also count against the kernel limit. 100-byte directory
-\ components, then a final name that lands on the cap. PATH-CAP 1+ is refused
-\ by fs.f and the digest words alike.
-: SFT-EDGE-NAME! ( n -- ) {: n:n :}
-   n 0 ?do 101 SFT-EDGE-NAME i + c! loop ;
+\ A path string of exactly PATH-CAP bytes from the physical root, since a
+\ symlink's target also counts against the kernel limit.
+: SFT-EDGE$ ( -- ptr u8 n )
+   SFT-EDGE SFT-EDGE-U @ ;
 
-: SFT-EDGE-DIRS ( -- )   \ extend SFT-EDGE-A by 100-byte components while more than 201 bytes remain
-   SFT-ROOT$ SFT-EDGE-A swap BYTE-COPY SFT-ROOT-U @ SFT-EDGE-U !
-   begin PATH-CAP SFT-EDGE-U @ - 201 > while
-      100 SFT-EDGE-NAME!
-      SFT-EDGE-A SFT-EDGE-U @ SFT-EDGE-NAME 100 SFT-EDGE-B FS:JOIN-PATH {: u:n :}
-      SFT-EDGE-B SFT-EDGE-A u BYTE-COPY u SFT-EDGE-U !
-   repeat
-   SFT-EDGE-A SFT-EDGE-U @ FS:MAKE-DIRS ;
+: SFT-EDGE+ ( ptr u8 n -- ) {: a:ptr u :}
+   a SFT-EDGE SFT-EDGE-U @ + u BYTE-COPY
+   SFT-EDGE-U @ u + SFT-EDGE-U ! ;
+
+\ `/.` pairs carry the length, so the file is in the root itself; its name of
+\ `e` takes 1 or 2 bytes, so the pairs get an even number of bytes.
+: SFT-EDGE-BUILD ( -- )
+   SFT-ROOT$ SFT-EDGE swap BYTE-COPY SFT-ROOT-U @ SFT-EDGE-U !
+   PATH-CAP SFT-EDGE-U @ - 1- {: m:n :}
+   2 m 1 and - {: r:n :}
+   m r - 2 / 0 ?do s" /." SFT-EDGE+ loop
+   s" /ee" drop r 1+ SFT-EDGE+ ;
 
 : SFT-TEST-EDGE-PATH ( -- )
-   SFT-EDGE-DIRS
-   PATH-CAP SFT-EDGE-U @ - 1- {: last:n :}
-   last SFT-EDGE-NAME!
-   SFT-EDGE-A SFT-EDGE-U @ SFT-EDGE-NAME last SFT-EDGE-B FS:JOIN-PATH SFT-EDGE-U !
+   SFT-EDGE-BUILD
    SFT-EDGE-U @ PATH-CAP T=
    SFT-FILL-A100
-   SFT-EDGE-B SFT-EDGE-U @ SFT-A100 100 FS:WRITE-ALL
+   SFT-EDGE$ SFT-A100 100 FS:WRITE-ALL
    SFT-CTX-ONE SFT-A100 100 SFT-DG-A SHA256-IN
    SFT-DG-A SFT-HEX-A SHA256>HEX
-   SFT-FCTX-A SFT-EDGE-B SFT-EDGE-U @ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
+   SFT-FCTX-A SFT-EDGE$ SFT-HEX-B SHA256-FILE-HEX-IN 0 T=
    SFT-HEX-A 64 SFT-HEX-B 64 T$= ;
 
 : SFT-MAIN ( -- )

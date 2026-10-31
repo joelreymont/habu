@@ -38,7 +38,6 @@ $61 constant FS-TEST-PAR-A-C
 $62 constant FS-TEST-PAR-B-C
 16 constant FS-TEST-PAR-A-N
 32 constant FS-TEST-PAR-B-N
-255 constant FS-TEST-NAME-MAX            \ NAME_MAX, Darwin and Linux
 
 variable FS-TEST-CASE
 variable FS-TEST-FAIL
@@ -74,7 +73,6 @@ variable FS-TEST-BIG-U
 variable FS-TEST-EMPTY-U
 variable FS-TEST-CAP-U
 variable FS-TEST-CAP-ROOT-U
-variable FS-TEST-CAP-PARENT-U
 variable FS-TEST-CAP-SEEN
 
 create FS-TEST-OUT PATH-CAP allot
@@ -497,11 +495,8 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    FS-TEST-DEEP FS:REMOVE-TREE
    FS-TEST-DEEP FS:EXISTS? FS-TEST-FALSE ;
 
-\ A path of exactly PATH-CAP bytes, built under the base from names of at most
-\ NAME_MAX bytes, goes through stat, open, read, walk and remove; one byte more is
-\ the gate's E-FS-PATH with no OS cause. Darwin's PATH_MAX of 1024 counts the
-\ NUL: a cap of 1024 admits a path lstat answers with ENAMETOOLONG, which a caller
-\ that reads a failed lstat as missing takes for a vanished entry.
+\ PATH-CAP bounds the path string, not the tree; past PATH-CAP's lstat limit a
+\ failed lstat reads as a vanished entry.
 : FS-TEST-CAP ( -- ptr u8 n )
    FS-TEST-CAP-PATH FS-TEST-CAP-U @ ;
 
@@ -511,30 +506,29 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
 : FS-TEST-CAP-ROOT ( -- ptr u8 n )
    FS-TEST-CAP-PATH FS-TEST-CAP-ROOT-U @ ;
 
-: FS-TEST-CAP-PARENT ( -- ptr u8 n )
-   FS-TEST-CAP-PATH FS-TEST-CAP-PARENT-U @ ;
-
-: FS-TEST-CAP-LEFT ( -- n )
-   PATH-CAP FS-TEST-CAP-U @ - ;
-
 : FS-TEST-CAP-NAME+ ( n -- ) {: k :}
    FS-TEST-CAP-U @ {: u :}
    FS:SLASH FS-TEST-CAP-PATH u + c!
    FS-TEST-CAP-PATH u 1 + + k FS-TEST-FILL-C FS-TEST-FILL
    u 1 + k + FS-TEST-CAP-U ! ;
 
-\ A directory name of NAME_MAX bytes, shorter when that would leave no room for
-\ a `/` and a one-byte last name.
-: FS-TEST-CAP-DIR+ ( -- )
-   FS-TEST-CAP-LEFT 3 - FS-TEST-NAME-MAX min FS-TEST-CAP-NAME+ ;
+: FS-TEST-CAP-DOT+ ( -- )
+   FS-TEST-CAP-U @ {: u :}
+   FS:SLASH FS-TEST-CAP-PATH u + c!
+   [char] . FS-TEST-CAP-PATH u 1 + + c!
+   u 2 + FS-TEST-CAP-U ! ;
 
+\ `/.` pairs in the root's spelling carry the length, so the walk's joined path
+\ is the cap too and the real tree is one directory holding a 1-byte name. The
+\ root's name takes 1 or 2 bytes, so the pairs get an even number of bytes.
 : FS-TEST-CAP-BUILD ( -- )
    FS-TEST-BASE FS-TEST-CAP-PATH FS-TEST-CAP-U FS-TEST-COPY!
-   FS-TEST-CAP-DIR+
+   PATH-CAP FS-TEST-CAP-U @ - 3 - {: m :}
+   2 m 1 and - {: r :}
+   m r - 2 / 0 ?do FS-TEST-CAP-DOT+ loop
+   r FS-TEST-CAP-NAME+
    FS-TEST-CAP-U @ FS-TEST-CAP-ROOT-U !
-   begin FS-TEST-CAP-LEFT FS-TEST-NAME-MAX 1 + > while FS-TEST-CAP-DIR+ repeat
-   FS-TEST-CAP-U @ FS-TEST-CAP-PARENT-U !
-   FS-TEST-CAP-LEFT 1 - FS-TEST-CAP-NAME+
+   1 FS-TEST-CAP-NAME+
    FS-TEST-FILL-C FS-TEST-CAP-PATH FS-TEST-CAP-U @ + c! ;
 
 : FS-TEST-CAP-CB ( ptr u8 n -- )
@@ -545,7 +539,7 @@ create FS-TEST-READ-BUF FS-TEST-READ-CAP allot
    T-RESET
    FS-TEST-CAP-BUILD
    FS-TEST-CAP-U @ PATH-CAP FS-TEST=
-   FS-TEST-CAP-PARENT FS:MAKE-DIRS
+   FS-TEST-CAP-ROOT FS:MAKE-DIRS
    FS-TEST-CAP FS:TRY-LSTAT FS-TEST-FALSE  FS:ERRNO FS-TEST:ENOENT FS-TEST=
    FS-TEST-CAP s" cap" FS:WRITE-ALL
    FS-TEST-CAP FS:TRY-LSTAT FS-TEST-TRUE  FS:ERRNO 0 FS-TEST=
