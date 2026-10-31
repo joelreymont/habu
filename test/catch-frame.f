@@ -10,18 +10,15 @@ private
 
 variable ACC
 
-\ The checker models `catch` as restoring both typed stacks (src/core/checker.f
-\ RSCATCH), so a throwing quotation's >r litter or open ?do frame would clobber
-\ caller state with no type mismatch.
-\ These actions have a truthful empty normal interface. Each throws after
-\ changing the live frame; a tick gives catch a fixed callable effect.
-TRUSTED: THROW-R99-7 ( -- ) 99 >r 7 throw ;
-TRUSTED: THROW-R88-7 ( -- ) 88 >r 7 throw ;
-TRUSTED: THROW-R55-3 ( -- ) 55 >r 3 throw ;
-TRUSTED: THROW-R42-7 ( -- ) 42 >r 7 throw ;
-TRUSTED: THROW-LOOP4-9 ( -- ) 4 0 ?do 9 throw loop ;
-TRUSTED: THROW-LOOP5-9 ( -- ) 5 0 ?do 9 throw loop ;
-TRUSTED: THROW-LOOP4-8 ( -- ) 4 0 ?do 8 throw loop ;
+\ The checker models `catch` restoring both stacks (src/core/checker.f RSCATCH),
+\ so a throw's >r cell or open ?do frame would clobber the caller unrefused.
+: THROW-R99-7 ( -- ) 99 >r 7 throw ;
+: THROW-R88-7 ( -- ) 88 >r 7 throw ;
+: THROW-R55-3 ( -- ) 55 >r 3 throw ;
+: THROW-R42-7 ( -- ) 42 >r 7 throw ;
+: THROW-LOOP4-9 ( -- ) 4 0 ?do 9 throw loop ;
+: THROW-LOOP5-9 ( -- ) 5 0 ?do 9 throw loop ;
+: THROW-LOOP4-8 ( -- ) 4 0 ?do 8 throw loop ;
 
 : CALLER-RSTK-PRESERVED ( -- n )       \ r> after a throwing action yields the caller's value
    42 >r ['] THROW-R99-7 catch drop r> ;
@@ -47,7 +44,7 @@ TRUSTED: THROW-LOOP4-8 ( -- ) 4 0 ?do 8 throw loop ;
 : INNER-CATCH ( -- )                   \ a nested catch that returns normally (return-balanced)
    ['] THROW-R55-3 catch drop ;
 
-TRUSTED: THROW-INNER-R99-7 ( -- ) INNER-CATCH 99 >r 7 throw ;
+: THROW-INNER-R99-7 ( -- ) INNER-CATCH 99 >r 7 throw ;
 
 : NESTED-RSP-DRIFT ( -- n )            \ repeated throws + a nested catch: return depth does not drift
    data-base RSP-CELL + @ {: r0:n :}

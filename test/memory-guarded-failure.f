@@ -27,7 +27,7 @@ FUNCTION: PRCTL-SECCOMP prctl ( n n ptr u8 n n -- i32 ) 1 VARIADIC ;FUNCTION
 FUNCTION: PAGE-SIZE getpagesize ( -- i32 ) ;FUNCTION
 
 \ The foreign sock_fprog embeds a raw pointer at byte 8.
-TRUSTED: FILTER-IN-PROG ( -- ) FILTER PROGRAM 8 + ! ;
+: FILTER-IN-PROG ( -- ) FILTER NULL-PTR - PROGRAM 8 + ! ;
 
 : U32! ( n ptr u8 -- ) {: value:n at:ptr :}
    4 0 do

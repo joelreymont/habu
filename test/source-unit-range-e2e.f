@@ -127,7 +127,7 @@ private
       then
    then
    0 true ;
-TRUSTED: AFTER ( n n n -- ) {: unit:n ticket:n rc:n :}
+: AFTER ( n n n -- ) {: unit:n ticket:n rc:n :}
    rc 0= SEEN @ 0= and if
       SOURCE-UNIT:ACTION$ {: mode:n path:ptr pathu:n :}
       mode SOURCE-UNIT:LOAD-REQUIRE T=
@@ -140,7 +140,7 @@ TRUSTED: AFTER ( n n n -- ) {: unit:n ticket:n rc:n :}
 : EXEC-PREFIX ( -- ) 0 PREFIX-END @ RANGE-Q @ execute ;
 : EXEC-CUT ( -- ) 0 CUT-U @ RANGE-Q @ execute ;
 
-TRUSTED: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr size:n q :}
    path pathu s" /parent.f" ENDS-WITH? if
       q RANGE-Q !
@@ -357,11 +357,11 @@ TRUSTED: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
 : RESET ( -- ) SOURCE-UNIT:RESET SOURCE-INPUT:RESET ;
 
 public
-TRUSTED: CHECK-ABSENT ( -- )
+: CHECK-ABSENT ( -- )
    SOURCE-EXEC:POSITION {: off:n balanced:bool :}
    off 0 T= balanced TFALSE ;
 
-TRUSTED: RUN ( -- )
+: RUN ( -- )
    T-RESET
    s" source-unit-range" FS:MKTEMP-DIR {: dir:ptr size:n :}
    dir ROOT size BYTE-COPY size ROOT-U !

@@ -35,9 +35,9 @@ PTR-VARIABLE TS-POOL-A
 STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED constant TS-POOL-CAP  TS-POOL-A !
 : TS-POOL ( -- ptr u8 ) TS-POOL-A @ ;
 TRUSTED: TS-EVD ( -- ) s" 1 drop" evaluate ;
-TRUSTED: TS-R1 ( -- ) ['] TS-EVD TS-POOL TS-POOL-CAP run-in-stack ;
+: TS-R1 ( -- ) ['] TS-EVD TS-POOL TS-POOL-CAP run-in-stack ;
 TRUSTED: TS-EVT ( -- ) s" 5 ' TS-EVD catch drop TS-NN" evaluate ;
-TRUSTED: TS-R2 ( -- ) ['] TS-EVT TS-POOL TS-POOL-CAP run-in-stack ;
+: TS-R2 ( -- ) ['] TS-EVT TS-POOL TS-POOL-CAP run-in-stack ;
 TRUSTED: TS-Z ( -- ) s" TS-R1" evaluate TS-R2 ;
 
 package TOP-ROW-STORAGE-TEST
