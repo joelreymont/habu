@@ -180,6 +180,16 @@ entry.
   chose "Only when asked": Chrome runs only on an explicit `--chrome`, never
   because Chrome is installed, and the run leaves no process, clone or
   profile behind.
+- 2026-10-31, fixtures Finder can delete: "find and fix this degenerate
+  test", "first it was creating filenames too long for finder. now it's too
+  deep for finder. we don't need a test that breaks finder, prove me wrong!
+  same thing could be accomplished much simpler". No test creates a tree or
+  path Finder cannot delete, and each proves its behaviour with a small
+  fixture. Asked whether ATOMIC-PATH-CAP, which needs a real 1023-byte
+  canonical chain, should stay, Joel asked "does this test carry weight or is
+  it testing the obvious?"; shown it is the only test that catches an atomic
+  writer refusing a target within 27 bytes of PATH-CAP, he chose "Keep it",
+  then "fix the test, though".
 
 ### Docs
 
