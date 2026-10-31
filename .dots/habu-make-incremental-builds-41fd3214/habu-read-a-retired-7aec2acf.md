@@ -1,9 +1,11 @@
 ---
 title: "Read a retired record's data origin"
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-28T20:27:17.100557+02:00"
+closed-at: "2026-10-31T20:52:54.259619+02:00"
+close-reason: "Landed (3ea4c5dc, 2e5a9591): DATA-ORIGIN-RECORD reaches a retired record's DATA through NDICT:STAMP-ORIGIN."
 blocks:
   - habu-print-every-refusal-337830b1
 ---

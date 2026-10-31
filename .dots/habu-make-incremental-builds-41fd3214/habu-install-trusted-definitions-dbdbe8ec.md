@@ -1,9 +1,11 @@
 ---
 title: "Install TRUSTED: definitions from file objects"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-30T18:12:08.077397+02:00"
+closed-at: "2026-10-31T20:52:53.588776+02:00"
+close-reason: "Landed in lane 11 4b54ed21: objects carry TRUSTED: heads (HEAD-KIND) and install them."
 blocks:
   - habu-track-reads-past-86659cd8
 ---

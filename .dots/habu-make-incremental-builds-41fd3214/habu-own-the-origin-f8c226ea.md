@@ -1,9 +1,11 @@
 ---
 title: Own the origin journal and machine table cells
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-28T20:27:17.133692+02:00"
+closed-at: "2026-10-31T20:52:55.649920+02:00"
+close-reason: "Obsolete after lane 11: the earlier-write refusal is gone; MACH-T/MACH-N are plain variables and need no owner span for reuse."
 blocks:
   - habu-print-every-refusal-337830b1
 ---

@@ -1,9 +1,11 @@
 ---
 title: Drop the object sections only the replay read
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-30T10:48:15.315088+02:00"
+closed-at: "2026-10-31T20:52:53.296791+02:00"
+close-reason: "Landed in lane 11 4b54ed21: the replay-only object slots are empty; SEGMENT-IMAGE/IMAGE-TAKE 0 hits."
 ---
 
 Problem: after the replay path goes (see the delete-the-whole-file-replay-path dot), the file object still records sections nothing reads on load: segment images and data rows (SEGMENT-IMAGE / IMAGE-TAKE, FILE-ENCODE's cut), slot rows, LOAD event rows with absolute source offsets (LOAD-CK refuses a resume offset past the end, so an edit that shortens a file before a require is a silent miss), pins, FFI, task, user and hist rows; FILE-COUNTS and PAYLOAD-CK still frame them. Under the fasl model the top level re-runs, so these are dead weight written on every store. Acceptance (design by the lead after the replay deletion lands in the spike): each section whose last reader was deleted is no longer written, framed, counted or checked; the object format shrinks under hard cutover (no version); what the spike still needs is kept and named (the file's input rows, origin rows, index rows and payloads, the checker slices, the ambient key); warm == cold byte for byte and the P4/P8 proofs of lane 9 hold; the object's byte size per file is reported before and after. Files: tools/native-unit-object.f, tools/native-unit-file.f, tools/native-definition-cache.f, src/habu/habu2.f (LOAD rows). Verify: eng.sh cold+warm, lane 9's P4 and P8, check.f. Depends: the replay-path deletion dot. Ownership: carl-fasl.

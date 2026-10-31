@@ -1,9 +1,11 @@
 ---
 title: Make rolled-back cold builds deterministic
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-25T04:38:32.755908+01:00"
+closed-at: "2026-10-31T20:52:53.976315+02:00"
+close-reason: "Landed with lane 11 4b54ed21: two cold builds byte-equal at the lane tip; the dot closed when lane 11 landed."
 ---
 
 Workspace carl-roll (base qtstsksr). A STRUCTURE declaration rolled back inside evaluate-closed+catch gives two cold builds in different caches differing by 34 bytes (2 at ~10551379 + signature). Blocks wl GENERATED-CASE fresh-cache compare. Brief ~/.cache/tmp/carl-file/brief-roll.md.

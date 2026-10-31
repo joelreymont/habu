@@ -1,9 +1,11 @@
 ---
 title: Build the engine through whole-file reuse
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-22T17:12:02.956045+03:00"
+closed-at: "2026-10-31T20:52:53.154164+02:00"
+close-reason: "Landed in lane 11 4b54ed21: 160/164 engine files reused, warm == cold byte for byte, two-generation rc 0. The compiled-paths report is gate row 2ec826c7's acceptance."
 blocks:
   - habu-restore-owner-state-785f1c30
 ---

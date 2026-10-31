@@ -1,9 +1,11 @@
 ---
 title: "Declare the checker's restored counters as an owner span"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-28T20:27:17.117986+02:00"
+closed-at: "2026-10-31T20:52:55.429521+02:00"
+close-reason: "Obsolete after lane 11: no owner spans and no earlier-write refusal remain in the cache tools."
 blocks:
   - habu-print-every-refusal-337830b1
 ---

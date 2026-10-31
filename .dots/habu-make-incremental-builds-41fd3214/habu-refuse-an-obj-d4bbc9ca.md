@@ -1,9 +1,11 @@
 ---
 title: Refuse an object whose live rows a guard rejected
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-30T16:31:04.161458+02:00"
+closed-at: "2026-10-31T20:52:54.416220+02:00"
+close-reason: "Landed in lane 11 4b54ed21: FRAME-KEEP, the load-boundary REFUSE-KEEP and CHECK-TARGET's refusal are on master."
 blocks:
   - habu-drop-the-obj-33f85425
 ---

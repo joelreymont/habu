@@ -1,9 +1,11 @@
 ---
 title: Spike the fasl load model on the engine build
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-29T13:06:05.470397+02:00"
+closed-at: "2026-10-31T20:52:54.621257+02:00"
+close-reason: Landed as lane 11 4b54ed21, warm == cold. Its edit acceptance (memory.f edit -> 1 file) is 1209a534.
 ---
 
 Problem: Joel 2026-10-29: 'run this design by hand, drive a spike and determine if it works. then implement'. Design: an object = a file's compiled definitions + its top level as the load routine (the source re-interpreted, each definition installed from the object and its body skipped while its recorded inputs hold, else compiled from there on); no snapshots, diffs, owners, judging or refusals. By-hand trace: .jj-ws.noindex/carl-dots/.out/carl-file/fasl-by-hand.md (points 1-6). Acceptance: report with numbers: warm product image byte-equal to cold (else every differing span named by owner); memory.f comment edit compiles 1 file; interface edit compiles memory.f + exactly its consumers, image equal to a fresh build; wall/CPU for cold, warm, both edits. Files: spike in carl-fasl, not landed. Verify: the spike's own comparison commands. Depends: none. Ownership: tools/native-definition-cache.f, tools/native-unit-object.f, loader hooks. Claim: agent=carl workspace=.jj-ws.noindex/carl-l11m (lanes 11C-11F stacked as duplicates on 11B, the point-1 probe backout, then the fold-ins in carl-dots/.out/carl-file/l11-foldins.md and the fix lanes; base stack in carl-fasl)
