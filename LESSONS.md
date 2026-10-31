@@ -25,6 +25,13 @@ entry.
   (as on 2026-10-28 for T0's error constants, "dude, what's best for long
   term?!", and on 2026-10-30 for CURL:HEADER+ refusing CR/LF). The lead chose
   the checker word: one copy of the rule at its owner.
+- 2026-10-31, names: offered REFUSAL-TEXT for the package of the engine's
+  error-message words, Joel answered "what not error text? wtf is a refusal?
+  use standard programming terms! and you can have error line and column
+  words, yes". Asked why definition.f had its own ERROR-TEXT word: "wouldn't
+  it be the same error-text as far as meaning? why have several?" Names use
+  standard programming terms (error, not refusal), and helpers with one
+  meaning are one word.
 
 ### Compiler and builds
 
