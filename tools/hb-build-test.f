@@ -452,6 +452,22 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 : HBT-IMAGE-SRC$ ( -- ptr u8 n )
    s" create HBT-DATA 41 c, : MAIN ( -- ) HBT-DATA c@ . cr ;" ;
 
+\ The requirement a team-signed AOT product meets: the AOT maker's identifier
+\ (src/habu/sign-id.f SIGN-ID:PROG$) and a certificate of team 8TW82D98K7.
+: HBT-TEAM-REQ ( -- ptr u8 n )
+   s\" =anchor apple generic and identifier \"hb-prog\" and certificate leaf[subject.OU] = \"8TW82D98K7\"" ;
+
+\ codesign -v -R exits nonzero for any other signer, ad hoc included.
+: HBT-EXPECT-TEAM ( ptr u8 n -- ) {: a:ptr u:n :}
+   HB-TARGET-MACOS? 0= if exit then
+   PROC-ARGV-RESET
+   s" -v" >LEN PROC-ARGV+
+   s" -R" >LEN PROC-ARGV+
+   HBT-TEAM-REQ >LEN PROC-ARGV+
+   a u >LEN PROC-ARGV+
+   CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result ok OF ENDOF err OF ENDOF ;MATCH 0 T= ;
+
 \ One stripped image, built from a padded source, runs and is measured before
 \ its in-memory copy is damaged.
 : HBT-STRIPPED-IMAGE ( -- )
@@ -467,6 +483,7 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    rcn 0 T=
    errn 0 T=
    HBT-RUN-OUT outn S\" 41\n\n" T$=
+   HBT-AOT-OUT HBT-EXPECT-TEAM
    HBT-SIZE-AOT
    HBT-AOT-IMAGE$ {: a:ptr u:n :}
    HB-TARGET-LINUX-X86-64? if

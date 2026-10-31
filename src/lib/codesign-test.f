@@ -1,5 +1,5 @@
 \ codesign-test.f - focused tests for src/lib/codesign.f.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/codesign.f src/lib/codesign-test.f
+\ Run: bin/hb --load src/lib/codesign-test.f
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -11,7 +11,13 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/le.f
 require src/lib/be.f
+require src/lib/process-env.f
+require src/lib/engine-id.f
 require src/lib/codesign.f
+
+\ White-box test: reopen the module's package so the fixtures reach the team,
+\ the identity and the certificate pick.
+package CODESIGN
 
 variable CST-ROOT-U
 variable CST-SCRIPT-SRC-U
@@ -20,6 +26,11 @@ variable CST-SIGN-U
 variable CST-SIGNED-SRC-U
 variable CST-SIGNED-DST-U
 variable CST-ENSURE-U
+variable CST-RESIGN-U
+variable CST-KEEP-U
+variable CST-ELF-U
+variable CST-UNSIGNED-U
+variable CST-IN-U
 
 create CST-ROOT-BUF PATH-CAP allot
 create CST-SCRIPT-SRC-BUF PATH-CAP allot
@@ -28,6 +39,11 @@ create CST-SIGN-BUF PATH-CAP allot
 create CST-SIGNED-SRC-BUF PATH-CAP allot
 create CST-SIGNED-DST-BUF PATH-CAP allot
 create CST-ENSURE-BUF PATH-CAP allot
+create CST-RESIGN-BUF PATH-CAP allot
+create CST-KEEP-BUF PATH-CAP allot
+create CST-ELF-BUF PATH-CAP allot
+create CST-UNSIGNED-BUF PATH-CAP allot
+create CST-IN-BUF PATH-CAP allot
 
 : CST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u PATH-CAP > if E-FS-PATH throw then
@@ -58,6 +74,21 @@ create CST-ENSURE-BUF PATH-CAP allot
 : CST-ENSURE ( -- ptr u8 n )
    CST-ENSURE-BUF CST-ENSURE-U @ ;
 
+: CST-RESIGN ( -- ptr u8 n )
+   CST-RESIGN-BUF CST-RESIGN-U @ ;
+
+: CST-KEEP ( -- ptr u8 n )
+   CST-KEEP-BUF CST-KEEP-U @ ;
+
+: CST-ELF ( -- ptr u8 n )
+   CST-ELF-BUF CST-ELF-U @ ;
+
+: CST-UNSIGNED ( -- ptr u8 n )
+   CST-UNSIGNED-BUF CST-UNSIGNED-U @ ;
+
+: CST-IN ( -- ptr u8 n )
+   CST-IN-BUF CST-IN-U @ ;
+
 : CST-PREPARE ( -- )
    FS:CLEANUP-RESET
    s" habu-codesign" FS:MKTEMP-DIR {: a:ptr u :}
@@ -68,7 +99,11 @@ create CST-ENSURE-BUF PATH-CAP allot
    CST-ROOT s" sign-echo" CST-SIGN-BUF CST-SIGN-U CST-PATH!
    CST-ROOT s" signed-src" CST-SIGNED-SRC-BUF CST-SIGNED-SRC-U CST-PATH!
    CST-ROOT s" signed-dst" CST-SIGNED-DST-BUF CST-SIGNED-DST-U CST-PATH!
-   CST-ROOT s" ensure-script" CST-ENSURE-BUF CST-ENSURE-U CST-PATH! ;
+   CST-ROOT s" ensure-script" CST-ENSURE-BUF CST-ENSURE-U CST-PATH!
+   CST-ROOT s" ensure-resign" CST-RESIGN-BUF CST-RESIGN-U CST-PATH!
+   CST-ROOT s" ensure-keep" CST-KEEP-BUF CST-KEEP-U CST-PATH!
+   CST-ROOT s" elf" CST-ELF-BUF CST-ELF-U CST-PATH!
+   CST-ROOT s" unsigned-script" CST-UNSIGNED-BUF CST-UNSIGNED-U CST-PATH! ;
 
 73 constant CST-EXEC-BITS   \ octal 111: every execute bit
 
@@ -80,6 +115,30 @@ create CST-ENSURE-BUF PATH-CAP allot
    src srcu  >LEN PROC-ARGV+
    dst dstu  >LEN PROC-ARGV+
    s" /bin/cp" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
+
+: CST-TOOL-RC ( -- n )
+   CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;
+
+\ The requirement codesign -R checks for the team: the identifier and the team.
+: CST-TEAM-REQ ( ptr u8 n -- ptr u8 n ) {: id:ptr idu :}
+   SB-RESET
+   s\" =anchor apple generic and identifier \"" SB-APPEND
+   id idu SB-APPEND
+   s\" \" and certificate leaf[subject.OU] = \"" SB-APPEND
+   TEAM$ SB-APPEND
+   s\" \"" SB-APPEND
+   SB-BUF SB-LEN @ ;
+
+\ codesign -v exits 3 for a valid signature of another signer, ad hoc included.
+: CST-EXPECT-TEAM ( ptr u8 n ptr u8 n -- ) {: a:ptr u id:ptr idu :}
+   HB-TARGET-MACOS? 0= if exit then
+   id idu CST-TEAM-REQ CST-IN-BUF CST-IN-U CST-COPY!
+   PROC-ARGV-RESET
+   s" -v" >LEN PROC-ARGV+
+   s" -R" >LEN PROC-ARGV+
+   CST-IN >LEN PROC-ARGV+
+   a u >LEN PROC-ARGV+
+   CST-TOOL-RC 0 T= ;
 
 : CST-WRITE-SCRIPT ( -- )
    CST-SCRIPT-SRC s" #!/bin/sh\nexit 0\n" FS:WRITE-ALL ;
@@ -97,7 +156,8 @@ create CST-ENSURE-BUF PATH-CAP allot
    s" /bin/echo" CST-SIGN CST-CP
    CST-SIGN FS:CHMOD-X
    CST-SIGN CODESIGN:FORCE
-   CST-SIGN CODESIGN:VERIFY ;
+   CST-SIGN CODESIGN:VERIFY
+   CST-SIGN s" com.apple.echo" CST-EXPECT-TEAM ;
 
 : CST-TEST-SIGNED-PROMOTE ( -- )
    s" /bin/echo" CST-SIGNED-SRC CST-CP
@@ -123,7 +183,164 @@ create CST-ENSURE-BUF PATH-CAP allot
    CST-ENSURE FS:CHMOD-X
    CST-EXPECT-UNSIGNED-VERIFY-RC
    CST-ENSURE CODESIGN:ENSURE
-   CST-ENSURE CODESIGN:VERIFY ;
+   CST-ENSURE CODESIGN:VERIFY
+   CST-ENSURE s" ensure-script" CST-EXPECT-TEAM ;
+
+\ A copy of /bin/echo carries Apple's valid signature, as a written image carries
+\ its ad-hoc one: ENSURE still signs it for the team.
+: CST-TEST-ENSURE-RESIGNS ( -- )
+   s" /bin/echo" CST-RESIGN CST-CP
+   CST-RESIGN CODESIGN:VERIFY
+   CST-RESIGN CODESIGN:ENSURE
+   CST-RESIGN s" com.apple.echo" CST-EXPECT-TEAM ;
+
+\ ENSURE keeps a valid team signature: signing again would drop its runtime
+\ flag, which `codesign -dv` names on stderr.
+: CST-TEST-ENSURE-KEEPS ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   s" /bin/echo" CST-KEEP CST-CP
+   PROC-ARGV-RESET
+   s" -s" >LEN PROC-ARGV+
+   IDENTITY$ >LEN PROC-ARGV+
+   s" -o" >LEN PROC-ARGV+
+   s" runtime" >LEN PROC-ARGV+
+   s" --timestamp=none" >LEN PROC-ARGV+
+   s" --force" >LEN PROC-ARGV+
+   CST-KEEP >LEN PROC-ARGV+
+   CST-TOOL-RC 0 T=
+   CST-KEEP CODESIGN:ENSURE
+   PROC-ARGV-RESET
+   s" -dv" >LEN PROC-ARGV+
+   CST-KEEP >LEN PROC-ARGV+
+   CODESIGN:TOOL CODESIGN-CAPTURE 0 T=
+   0 CODESIGN-ERR CODESIGN-ERR-U @ s" (runtime)" CONTAINS? TTRUE
+   CODESIGN-RELEASE ;
+
+: CST-HASH ( n -- ) {: c :}
+   0 begin dup CODESIGN-ID-LEN < while
+      c SB-APPEND-C
+      1 +
+   repeat
+   drop ;
+
+\ One line of `security find-identity -v -p codesigning`.
+: CST-ID-LINE ( n -- )
+   s"   1) " SB-APPEND
+   CST-HASH
+   s\" \"Apple Development: X (M1)\"\n" SB-APPEND ;
+
+\ An escaped name; a team gives it an organizational unit: the OU mark, the
+\ string's tag and length, then the team.
+: CST-NAME ( ptr u8 n -- ) {: t:ptr tu :}
+   s\" \"" SB-APPEND
+   tu 0 > if
+      s" U\004\013\014\012" SB-APPEND
+      t tu SB-APPEND
+   then
+   s\" 1\\0140\\012CN\"\n" SB-APPEND ;
+
+\ One certificate of `security find-certificate -a -Z`.
+: CST-CERT ( n ptr u8 n ptr u8 n -- ) {: c issuer:ptr iu subject:ptr su :}
+   s" SHA-1 hash: " SB-APPEND
+   c CST-HASH
+   s\" \nkeychain: \"/k\"\nattributes:\n    \"issu\"<blob>=0x00  " SB-APPEND
+   issuer iu CST-NAME
+   s\"     \"subj\"<blob>=0x00  " SB-APPEND
+   subject su CST-NAME ;
+
+: CST-OTHER-TEAM ( -- ptr u8 n )
+   s" OTHERTEAM0" ;
+
+65 constant CST-A
+66 constant CST-B
+67 constant CST-C
+68 constant CST-D
+
+\ D names the team only in its issuer, C is another team's, A is no valid
+\ identity: none of them is the team's identity.
+: CST-CERTS-DCA ( -- )
+   SB-RESET
+   CST-D TEAM$ CST-OTHER-TEAM CST-CERT
+   CST-C s" " CST-OTHER-TEAM CST-CERT
+   CST-A s" " TEAM$ CST-CERT ;
+
+: CST-PICK ( -- )
+   0 CODESIGN-ID? !
+   SB-BUF SB-LEN @ CODESIGN-PICK ;
+
+\ Runs first: the live identity is found again after it.
+: CST-TEST-PICK ( -- )
+   SB-RESET
+   CST-B CST-ID-LINE
+   CST-C CST-ID-LINE
+   CST-D CST-ID-LINE
+   SB-BUF SB-LEN @ CODESIGN-KEEP-IDS
+   CST-CERTS-DCA
+   CST-B s" " TEAM$ CST-CERT
+   CST-PICK
+   CODESIGN-ID? @ 0<> TTRUE
+   SB-RESET
+   CST-B CST-HASH
+   CODESIGN-ID CODESIGN-ID-LEN SB-BUF SB-LEN @ STR= TTRUE
+   CST-CERTS-DCA
+   CST-PICK
+   CODESIGN-ID? @ 0= TTRUE
+   0 CODESIGN-ID? !
+   CODESIGN-IDS-RELEASE ;
+
+\ A Linux executable built on a Mac (--target) is an ELF file: ENSURE leaves it
+\ unsigned, as a Linux host does.
+: CST-TEST-ELF ( -- )
+   CST-ELF s\" \x7FELF\x02\x01\x01\z" FS:WRITE-ALL
+   CST-ELF FS:CHMOD-X
+   CST-ELF CODESIGN:ENSURE
+   HB-TARGET-MACOS? 0= if exit then
+   PROC-ARGV-RESET
+   s" -v" >LEN PROC-ARGV+
+   CST-ELF >LEN PROC-ARGV+
+   CST-TOOL-RC 0 T<> ;
+
+variable CST-ERR-U
+
+\ What a session prints is under test, so a child engine runs CST-IN from stdin;
+\ its stderr stays in CODESIGN-ERR and its exit status is returned.
+: CST-CHILD ( -- n )
+   SB-BUF SB-LEN @ CST-IN-BUF CST-IN-U CST-COPY!
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   ENGINE-ID:PATH$ >LEN CST-IN >LEN
+   [: CODESIGN-OUT-ROOM ;] [: CODESIGN-ERR-ROOM ;]
+   CODESIGN-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
+   {: o:len e:len oc :}
+   e LEN>N CST-ERR-U !
+   oc PROC-OUTCOME>RC RC>N ;
+
+: CST-ERR-HAS? ( ptr u8 n -- bool )
+   {: a:ptr u :}
+   0 CODESIGN-ERR CST-ERR-U @ a u CONTAINS? ;
+
+\ A session that runs CODESIGN:<word> on CST-UNSIGNED.
+: CST-UNSIGNED-CHILD ( ptr u8 n -- n ) {: w:ptr wu :}
+   SB-RESET
+   s\" require src/lib/codesign.f\ns\" " SB-APPEND
+   CST-UNSIGNED SB-APPEND
+   s\" \" CODESIGN:" SB-APPEND
+   w wu SB-APPEND
+   s\" \n" SB-APPEND
+   CST-CHILD ;
+
+\ codesign's own reason for a nonzero status reaches stderr when VERIFY throws;
+\ VERIFY-RC returns the status alone and prints nothing.
+: CST-TEST-STATUS-STDERR ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   CST-UNSIGNED s\" #!/bin/sh\nexit 0\n" FS:WRITE-ALL
+   CST-UNSIGNED FS:CHMOD-X
+   s" VERIFY" CST-UNSIGNED-CHILD drop
+   s" not signed at all" CST-ERR-HAS? TTRUE
+   CODESIGN-RELEASE
+   s" VERIFY-RC drop" CST-UNSIGNED-CHILD 0 T=
+   CST-ERR-U @ 0 T=
+   CODESIGN-RELEASE ;
 
 : CST-CODESIGN-MISSING ( -- )
    s" /no/such/habu-codesign-test" CODESIGN:VERIFY ;
@@ -243,6 +460,7 @@ create CST-IMG-B 128 allot
 
 : CODESIGN-TEST-MAIN ( -- )
    T-RESET
+   CST-TEST-PICK
    CST-PREPARE
    CST-TEST-TOOL
    CST-TEST-PROMOTE
@@ -250,6 +468,10 @@ create CST-IMG-B 128 allot
    CST-TEST-SIGNED-PROMOTE
    CST-TEST-ENSURE
    CST-TEST-SAME-IMAGE
+   CST-TEST-ENSURE-RESIGNS
+   CST-TEST-ENSURE-KEEPS
+   CST-TEST-ELF
+   CST-TEST-STATUS-STDERR
    [: CST-CODESIGN-MISSING ;] E-BUILD-PATH TTHROWSQ
    [: CST-PROMOTE-MISSING ;] E-BUILD-PATH TTHROWSQ
    FS:CLEANUP-RUN
@@ -258,3 +480,5 @@ create CST-IMG-B 128 allot
    s" codesign-test: ok" type cr ;
 
 CODESIGN-TEST-MAIN
+
+;package

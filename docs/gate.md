@@ -91,7 +91,10 @@ is the focused check of the naming rule itself.
 
 `test/gate-stdlib-cases.f` is the registry. Each `SUITE` row runs its listed
 files through the tree's `bin/hb`. Host requirements are in
-[bootstrap.md](bootstrap.md#requirements).
+[bootstrap.md](bootstrap.md#requirements). On macOS every test that signs
+(`src/lib/codesign-test.f`, `tools/build-fixpoint-test.f`, any build or
+snapshot write) needs team 8TW82D98K7's signing identity in the keychain, and
+without it stops with `CODESIGN:E-IDENTITY`.
 
 The registry is noninteractive. Keep stdin at EOF: its child process groups
 inherit that input, and a read from an inherited terminal stops them with

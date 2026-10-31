@@ -12,6 +12,7 @@ require src/lib/le.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
+require src/lib/codesign.f
 require src/lib/engine-id.f
 require src/os/env-base.f
 require src/lib/source.f
@@ -897,8 +898,8 @@ defer HBB-PAIR-EXE-FILL ( ptr u8 n -- )
    backup 0<> if backup throw then
    stage 0<> if stage throw then ;
 
-\ The engine the child wrote under TMPDIR may be on another filesystem; it is
-\ copied.
+\ The engine the child wrote under TMPDIR may be on another filesystem, so it is
+\ copied; the copy keeps the team signature the product already carries.
 : HBB-INSTALL-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
    HBB-GOT-NAME$ BF-A$ tmp tmpu FS:COPY-FILE-STREAM
@@ -975,8 +976,12 @@ defer HBB-REPORT-HOOK ( -- )
    HBB-RESET-TRACE
    HBB-READ-MAKER-TIMEOUT ;
 
+\ The engine and --repl children sign what they write; the AOT maker
+\ (src/habu/aot-link-arm.f) writes ad hoc, so its product is signed for the team
+\ here (src/lib/codesign.f).
 : HBB-BUILD-REST ( -- )
    HBB-RUN-MAKER
+   HBB-GOT-NAME$ BF-A$ CODESIGN:ENSURE
    HBB-INSTALL-OUT
    HBB-FINISH ;
 
@@ -1138,6 +1143,7 @@ defer HBB-REPORT-HOOK ( -- )
 
 \ The sidecar records the files and resolution queries the actual application
 \ load used. A damaged or missing sidecar is a miss; it must never skip a build.
+\ The producer rows include src/lib/codesign.f, so a change of signer misses too.
 : HBB-REPL-FRESH? ( -- bool )
    HBB-OUT$ FS:EXECUTABLE? 0= if HBB-FALSE exit then
    HBB-REPL-DEPS-PATH? 0= if HBB-FALSE exit then
@@ -1356,6 +1362,10 @@ defer HBB-REPORT-HOOK ( -- )
          s" build cleanup failed" clean HBB-OUT$ HBB-PAIR-REPORT
       then
       s" hb-build: cannot replace output" HBB-BUILD-RC die
+   then
+   rc CODESIGN:E-IDENTITY = if
+      HBB-CLEANUP
+      s" hb-build: cannot sign output" HBB-BUILD-RC die
    then
    rc throw ;
 

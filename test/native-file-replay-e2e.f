@@ -5,6 +5,7 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
+require src/lib/codesign.f
 require src/lib/engine-candidate.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
@@ -40,8 +41,8 @@ DYNAMIC-BUFFER WARM-PRODUCT u8
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    AT s" " CAPTURE ;
 
-\ root/a and root/b hold the same non-empty bytes. AT shares one path buffer,
-\ so each file is read before the other is named.
+\ root/a and root/b hold the same non-empty image (CODESIGN:SAME-IMAGE?). AT
+\ shares one path buffer, so each file is read before the other is named.
 : SAME-FILE ( ptr u8 n ptr u8 n -- )
    {: a:ptr au:n b:ptr bu:n :}
    a au AT {: apath:ptr apathu:n :}
@@ -54,7 +55,7 @@ DYNAMIC-BUFFER WARM-PRODUCT u8
    bsize asize T=
    bsize WARM-PRODUCT-RESERVE
    bpath bpathu 0 WARM-PRODUCT bsize FS:READ-ALL bsize T=
-   0 COLD-PRODUCT asize 0 WARM-PRODUCT bsize STR= TTRUE ;
+   0 COLD-PRODUCT asize 0 WARM-PRODUCT bsize CODESIGN:SAME-IMAGE? TTRUE ;
 
 : REPORT ( -- ) OUT$ s" files reused " CONTAINS? TTRUE ;
 : REUSED ( -- )

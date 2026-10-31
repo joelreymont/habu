@@ -7,6 +7,7 @@ require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
+require src/lib/codesign.f
 require test/native-file-app-lib.f
 require test/native-file-e2e.f
 
@@ -77,8 +78,8 @@ create EXPECT 512 allot  variable EXPECT-U
    OUT$ s" state-unit-source-ran" CONTAINS? TTRUE
    ERR$ s" expected: ptr a actual: ptr u8" CONTAINS? TTRUE ;
 
-\ root/a and root/b hold the same non-empty bytes. AT shares one path buffer,
-\ so each file is read before the other is named.
+\ root/a and root/b hold the same non-empty image (CODESIGN:SAME-IMAGE?). AT
+\ shares one path buffer, so each file is read before the other is named.
 : SAME-FILE ( ptr u8 n ptr u8 n -- )
    {: a:ptr au:n b:ptr bu:n :}
    a au AT {: apath:ptr apathu:n :}
@@ -91,7 +92,7 @@ create EXPECT 512 allot  variable EXPECT-U
    bsize asize T=
    bsize PRODUCT-B-RESERVE
    bpath bpathu 0 PRODUCT-B bsize FS:READ-ALL bsize T=
-   0 PRODUCT-A asize 0 PRODUCT-B bsize STR= TTRUE ;
+   0 PRODUCT-A asize 0 PRODUCT-B bsize CODESIGN:SAME-IMAGE? TTRUE ;
 
 \ root/product built from app.f with the empty out root root/cache of its own:
 \ the cold build a warm build of the same sources is compared against.

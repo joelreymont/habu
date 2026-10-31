@@ -1301,7 +1301,8 @@ variable BUNDLE-DIR-U
 : WRITE-BUNDLE-CAPTURE ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
    {: writer :}
    NATIVE-LAYOUT:CURRENT OUTPUT$ writer execute
-   OUTPUT$ FS:CHMOD-X ;
+   OUTPUT$ FS:CHMOD-X
+   OUTPUT$ CODESIGN:ENSURE ;
 
 : BUNDLE-PREPARE ( -- )
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
@@ -1422,7 +1423,11 @@ variable BUNDLE-DIR-U
    RESTORE-HOST-UNIT
    CLEANUP-SOURCE
    FS:CLEANUP-RUN
-   rc 0<> if s" native-build: uncaught throw code " type rc . cr then
+   rc CODESIGN:E-IDENTITY = if
+      s" native-build: no signing identity" type cr
+   else
+      rc 0<> if s" native-build: uncaught throw code " type rc . cr then
+   then
    rc ;
 
 public
@@ -1465,8 +1470,8 @@ public
 \ The exit status of a finished build, for every driver that ends the process
 \ with one (RUN and tools/build-profile.f): 0,
 \ PROC-TIMEOUT-RC when a deadline expired (src/lib/process.f), and BUILD-RC
-\ for any other failure. RUN-FILE-INNER has already printed the throw code
-\ itself.
+\ for any other failure. RUN-FILE-INNER has already printed the throw code,
+\ or for CODESIGN:E-IDENTITY that the host has no signing identity.
 : EXIT-RC ( n -- n )
    BUILD-RC PROC-EXIT-RC ;
 

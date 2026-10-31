@@ -4,6 +4,7 @@ require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
+require src/lib/codesign.f
 require src/lib/engine-candidate.f
 require test/native-file-e2e.f
 require test/native-file-app-lib.f
@@ -80,7 +81,7 @@ create EXPECT 512 allot  variable EXPECT-U
 
 : SAME-IMAGE? ( -- bool )
    LOAD-IMAGE {: size:n :}
-   0 BYTES size 0 IMAGE IMAGE-U @ STR= ;
+   0 BYTES size 0 IMAGE IMAGE-U @ CODESIGN:SAME-IMAGE? ;
 
 \ The diagnostic head tag followed by file name's path.
 : FILE-LINE$ ( ptr u8 n ptr u8 n -- ptr u8 n )

@@ -4,6 +4,7 @@ require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs-mutate.f
 require src/lib/process-env.f
+require src/lib/codesign.f
 require src/lib/engine-candidate.f
 require test/whitebox-child.f
 require test/native-file-e2e.f
@@ -483,7 +484,7 @@ variable HISTORY-LIB-N
    size LITERAL-IMAGE-U @ <> if false exit then
    size LITERAL-COLD-RESERVE
    s" app-hb" AT 0 LITERAL-COLD BYTE-VIEW size FS:READ-ALL size <> if E-FS-IO throw then
-   0 LITERAL-IMAGE BYTE-VIEW size 0 LITERAL-COLD BYTE-VIEW size STR= ;
+   0 LITERAL-IMAGE BYTE-VIEW size 0 LITERAL-COLD BYTE-VIEW size CODESIGN:SAME-IMAGE? ;
 
 
 \ app.f's object line on the diagnostic build's stderr, from its path on.

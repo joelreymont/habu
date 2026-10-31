@@ -114,8 +114,11 @@ variable BFT-ART-B-U
 \ The native gate supplies its freshly built whitebox compiler and the keyed
 \ cold host. The separate recovery/development refresh owns generation
 \ convergence; these private copies drive the install, rollback and CLI cases.
+\ The gate's bundle compiler is signed ad hoc: the copy takes the team signature
+\ an installed engine carries (BFT-ALL-STAMP-RESIGNED).
 : BFT-PROVIDE-ENGINES ( -- )
    BFT-HB WHITEBOX-ENGINE:PROVIDE
+   BFT-HB CODESIGN:ENSURE
    BFT-ROOT BF-TMP!
    s" hb-host" BF-A$ COLD-ENGINE:PROVIDE
    BF-TMP-RESET ;
@@ -130,6 +133,36 @@ variable BFT-ART-B-U
    BF-CHAIN-ART$ BFT-ART-B$ BF-FILE= TTRUE
    BF-TMP-RESET ;
 
+\ Runs codesign with PROC-ARGV; it must exit 0.
+: BFT-CODESIGN-OK ( -- )
+   CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
+
+\ An install signs a candidate that lacks the team signature. The scratch file
+\ NAME stands in for one, signed ad hoc under the identifier NAME.
+: BFT-SIGN-ADHOC ( ptr u8 n -- ) {: name:ptr nameu :}
+   HB-TARGET-MACOS? 0= if exit then
+   PROC-ARGV-RESET
+   s" -s" BFT-ARG+  s" -" BFT-ARG+  s" -i" BFT-ARG+  name nameu BFT-ARG+
+   s" --force" BFT-ARG+  name nameu BF-A$ BFT-ARG+
+   BFT-CODESIGN-OK ;
+
+\ The install at A was signed from the ad-hoc source SRC named ID: on macOS an
+\ Apple-issued identity signed it under ID (ad hoc exits 3); elsewhere it holds
+\ SRC's bytes.
+: BFT-EXPECT-INSTALL ( ptr u8 n ptr u8 n ptr u8 n -- ) {: a:ptr u src:ptr srcu id:ptr idu :}
+   HB-TARGET-MACOS? 0= if
+      a u src srcu BF-FILE= TTRUE
+      exit
+   then
+   SB-RESET
+   s\" =anchor apple generic and identifier \"" SB-APPEND
+   id idu SB-APPEND
+   s\" \"" SB-APPEND
+   PROC-ARGV-RESET
+   s" -v" BFT-ARG+  s" -R" BFT-ARG+  SB-BUF SB-LEN @ BFT-ARG+  a u BFT-ARG+
+   BFT-CODESIGN-OK ;
+
 \ Promote private copies of the supplied compiler and host from a copied
 \ checkout. Its bin directory belongs to the source tree, not the private
 \ install target, so cleanup must leave an unrelated file there alone.
@@ -142,8 +175,10 @@ variable BFT-ART-B-U
 : BFT-CLEAN-ARTIFACTS ( -- )
    BFT-STALE-TMP BF-TMP!
    BFT-HB s" hb-stdin" BF-A$ FS:COPY-FILE-STREAM
+   s" hb-stdin" BFT-SIGN-ADHOC
    BFT-ROOT s" hb-host" BFT-CP-BUF FS:JOIN-PATH BFT-CP-BUF swap
    s" hb-host" BF-A$ FS:COPY-FILE-STREAM
+   s" hb-host" BFT-SIGN-ADHOC
    BF-TMP-RESET ;
 
 : BFT-CLEAN-ARGV ( -- )
@@ -171,10 +206,12 @@ variable BFT-ART-B-U
    BFT-CLEAN-SPAWN {: outu:n erru:n rc:n :}
    rc 0 T=
    BFT-BIG-ERR erru BFT-EMPTY$ T$=
-   BFT-ENG-B BFT-HB BF-FILE= TTRUE
+   BFT-ENG-B CODESIGN:VERIFY
+   BFT-ENG-B BFT-HB s" hb-stdin" BFT-EXPECT-INSTALL
    BFT-ENG-B BF-ENGINE!
-   BFT-ROOT s" hb-host" BFT-CP-BUF FS:JOIN-PATH BFT-CP-BUF swap
-   BF-HOST-DST$ BF-FILE= TTRUE
+   BF-HOST-DST$ CODESIGN:VERIFY
+   BF-HOST-DST$ BFT-ROOT s" hb-host" BFT-CP-BUF FS:JOIN-PATH BFT-CP-BUF swap
+   s" hb-host" BFT-EXPECT-INSTALL
    BF-ENGINE-RESET
    BFT-CLEAN-KEEP$ FS:FILE? TTRUE ;
 
@@ -232,8 +269,10 @@ variable BFT-BIN-FILES
    s" /usr/bin/true" BFT-BOOT-REFUSED
    BFT-RENAME-REFUSED
    BFT-HB s" hb-stdin" BF-A$ FS:COPY-FILE-STREAM
+   s" hb-stdin" BFT-SIGN-ADHOC
    BF-INSTALL-HB
-   BFT-BIN-HB BFT-HB BF-FILE= TTRUE
+   BFT-BIN-HB CODESIGN:VERIFY
+   BFT-BIN-HB BFT-HB s" hb-stdin" BFT-EXPECT-INSTALL
    s" hb-stdin" BF-A$ FS:EXISTS? TFALSE
    BFT-BIN-FILES# 1 T=
    BF-BOOT-ROOT$ FS:EXISTS? TFALSE
@@ -374,6 +413,18 @@ variable BFT-BIN-FILES
    BF-STAMP-MATCH? TTRUE
    BFT-STAMP-UNSCOPE ;
 
+\ The product is signed when it is built and the engine when it was: the two
+\ team signatures differ in their signing time alone.
+: BFT-ALL-STAMP-RESIGNED ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   BFT-STAMP FS:REMOVE-FILE
+   BFT-HB BFT-ENG-B FS:COPY-FILE-STREAM
+   BFT-ENG-B CODESIGN:FORCE
+   BFT-ENG-B BFT-HB BF-FILE= TFALSE
+   BFT-ENG-B BF-ENGINE!
+   BF-ALL-STAMP
+   BFT-STAMP FS:FILE? TTRUE ;
+
 : BFT-TEST-ALL-STAMP-GUARD ( -- )
    BFT-STAMP-SCOPE
    BFT-RECORD!
@@ -385,6 +436,7 @@ variable BFT-BIN-FILES
    BFT-HB BF-ENGINE!
    BF-ALL-STAMP
    BFT-STAMP FS:FILE? TTRUE
+   BFT-ALL-STAMP-RESIGNED
    BFT-STAMP-UNSCOPE ;
 
 : BFT-TEST-STAMP-NESTED ( -- )

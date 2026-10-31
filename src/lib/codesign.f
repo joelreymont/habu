@@ -1,15 +1,19 @@
 \ codesign.f - checked executable promotion, target signing and signed-image
 \ comparison (package CODESIGN) for build drivers. On macOS the words run
-\ /usr/bin/codesign ad hoc: no tool is E-BUILD-COMMAND, a nonzero status
-\ E-BUILD-STATUS; ENSURE re-signs only when VERIFY fails. Linux has no signer:
-\ FORCE sets the executable bit. A missing artifact or empty path is
-\ E-BUILD-PATH, another target E-BUILD-SOURCE.
-\ STORAGE CLASS. PROCESS-WIDE: per-run capture buffers; one task signs at a time.
+\ /usr/bin/codesign with the identity of team TEAM$, never ad hoc: no tool is
+\ E-BUILD-COMMAND, a nonzero status E-BUILD-STATUS, a host without the
+\ identity E-IDENTITY. Linux has no signer, and an ELF file is a Linux
+\ executable on any host: FORCE sets the executable bit. A missing artifact or
+\ empty path is E-BUILD-PATH, another target E-BUILD-SOURCE.
+\ STORAGE CLASS. PROCESS-WIDE: per-run capture buffers and the identity found
+\ once per process; one task signs at a time.
 require src/lib/le.f
 require src/lib/be.f
 require src/lib/errors.f
+require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fd.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -17,11 +21,26 @@ require src/lib/process-env.f
 package CODESIGN
 
 private
+-9650 constant E-FIRST
+-9659 constant E-LAST
+public
+-9650 constant E-IDENTITY  \ a macOS host without the signing identity of team TEAM$
+
+private
 
 10000 constant CODESIGN-TIMEOUT-MS
 
 DYNAMIC-BUFFER CODESIGN-OUT u8
 DYNAMIC-BUFFER CODESIGN-ERR u8
+variable CODESIGN-OUT-U
+variable CODESIGN-ERR-U
+DYNAMIC-BUFFER CODESIGN-IDS u8
+variable CODESIGN-IDS-U
+
+\ An identity as codesign -s names it: its certificate's SHA-1 in hex.
+40 constant CODESIGN-ID-LEN
+create CODESIGN-ID CODESIGN-ID-LEN allot
+variable CODESIGN-ID?
 
 : CODESIGN-OUT-ROOM ( n -- ptr u8 )
    CODESIGN-OUT-RESERVE 0 CODESIGN-OUT ;
@@ -35,6 +54,13 @@ public
    s" /usr/bin/codesign" ;
 
 private
+
+: SECURITY ( -- ptr u8 n )
+   s" /usr/bin/security" ;
+
+\ The team ID every macOS build signs for.
+: TEAM$ ( -- ptr u8 n )
+   s" 8TW82D98K7" ;
 
 : CODESIGN-RC0 ( n -- )
    0 <> if E-BUILD-STATUS throw then ;
@@ -50,13 +76,23 @@ private
    a u CODESIGN-EXPECT-FILE
    a u FS:EXECUTABLE? 0= if E-BUILD-PATH throw then ;
 
-: CODESIGN-CAPTURE ( -- n )
+: CODESIGN-CAPTURE ( ptr u8 n -- n ) {: tool:ptr toolu:n :}
    PROC-ENV-RESET
-   TOOL >LEN s" " >LEN
+   tool toolu >LEN s" " >LEN
    [: CODESIGN-OUT-ROOM ;] [: CODESIGN-ERR-ROOM ;]
    CODESIGN-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    {: o:len e:len oc :}
+   o LEN>N CODESIGN-OUT-U !
+   e LEN>N CODESIGN-ERR-U !
    oc PROC-OUTCOME>RC RC>N ;
+
+\ A failing tool's own reason (a locked keychain, a denied dialog) goes to
+\ stderr ahead of the status code.
+: CODESIGN-ERR-SHOW ( n -- n ) {: rc:n :}
+   rc 0<> if
+      CODESIGN-ERR-U @ 0 > if 0 CODESIGN-ERR CODESIGN-ERR-U @ ERROR-TEXT:TYPE then
+   then
+   rc ;
 
 : CODESIGN-RELEASE ( -- )
    CODESIGN-OUT-RELEASE
@@ -64,37 +100,188 @@ private
 
 : CODESIGN-RUN ( -- n )
    CODESIGN-EXPECT-TOOL
-   [: CODESIGN-CAPTURE ;] [: CODESIGN-RELEASE ;] finally ;
+   [: TOOL CODESIGN-CAPTURE ;] [: CODESIGN-RELEASE ;] finally ;
+
+\ CODESIGN-RUN that throws on a nonzero status, the tool's stderr printed first.
+: CODESIGN-RUN-OK ( -- )
+   CODESIGN-EXPECT-TOOL
+   [: TOOL CODESIGN-CAPTURE CODESIGN-ERR-SHOW CODESIGN-RC0 ;] [: CODESIGN-RELEASE ;] finally ;
+
+: CODESIGN-NO-IDENTITY ( -- )
+   s" codesign: no valid code-signing identity of team " ERROR-TEXT:TYPE
+   TEAM$ ERROR-TEXT:TYPE
+   s" ; `security find-identity -v -p codesigning` lists the valid ones" ERROR-TEXT:TYPE
+   s\" \n" ERROR-TEXT:TYPE
+   E-IDENTITY throw ;
+
+\ Runs /usr/bin/security with PROC-ARGV, its stdout to xt. With no identity only
+\ find-certificate exits nonzero; find-identity -v prints "0 valid identities found".
+: CODESIGN-SECURITY ( [ ptr u8 n -- ] -- ) {: xt :}
+   SECURITY CODESIGN-CAPTURE CODESIGN-ERR-SHOW 0<>
+   CODESIGN-OUT-U @ 0= or if CODESIGN-NO-IDENTITY then
+   0 CODESIGN-OUT CODESIGN-OUT-U @ xt execute ;
+
+: CODESIGN-KEEP-IDS ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CODESIGN-IDS-RESERVE
+   a 0 CODESIGN-IDS u BYTE-COPY
+   u CODESIGN-IDS-U ! ;
+
+: CODESIGN-IDS$ ( -- ptr u8 n )
+   0 CODESIGN-IDS CODESIGN-IDS-U @ ;
+
+\ The hashes of the valid signing identities, certificate and private key both
+\ in the keychain search list.
+: CODESIGN-LIST-IDS ( -- )
+   PROC-ARGV-RESET
+   s" find-identity" >LEN PROC-ARGV+
+   s" -v" >LEN PROC-ARGV+
+   s" -p" >LEN PROC-ARGV+
+   s" codesigning" >LEN PROC-ARGV+
+   [: [: CODESIGN-KEEP-IDS ;] CODESIGN-SECURITY ;] [: CODESIGN-RELEASE ;] finally ;
+
+\ find-certificate -Z prints each certificate from its "SHA-1 hash: " line on,
+\ its subject's DER bytes escaped: printable bytes as themselves, others \ooo.
+: CODESIGN-CERT-MARK ( -- ptr u8 n )
+   s" SHA-1 hash: " ;
+
+\ The subject's line; the issuer's names its own organizational unit.
+: CODESIGN-SUBJ-MARK ( -- ptr u8 n )
+   s\" \"subj\"<blob>=" ;
+
+\ The subject's organizational unit, OID 2.5.4.11, escaped; the string's tag
+\ and its length 10 follow as two \ooo, then the team.
+: CODESIGN-OU-MARK ( -- ptr u8 n )
+   s" U\004\013" ;
+
+8 constant CODESIGN-OU-SKIP
+
+\ The offset of b in a at or after from, else u.
+: CODESIGN-FIND ( n ptr u8 n ptr u8 n -- n ) {: from:n a:ptr u:n b:ptr v:n :}
+   a u b v from FIND-SUB-FROM MATCH option
+     none OF u ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
+
+\ Whether the OU mark at offset at is followed by TEAM$.
+: CODESIGN-TEAM-AT? ( n ptr u8 n -- bool ) {: at:n a:ptr u:n :}
+   at CODESIGN-OU-MARK nip + CODESIGN-OU-SKIP + {: team:n :}
+   team TEAM$ nip + u > if false exit then
+   a team + TEAM$ nip TEAM$ STR= ;
+
+: CODESIGN-TEAM-IN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin
+      a u CODESIGN-OU-MARK CODESIGN-FIND
+      dup u <
+   while
+      dup a u CODESIGN-TEAM-AT? if drop true exit then
+      1 +
+   repeat
+   drop false ;
+
+\ Whether the certificate's subject names TEAM$.
+: CODESIGN-TEAM-CERT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 a u CODESIGN-SUBJ-MARK CODESIGN-FIND {: subj:n :}
+   subj u >= if false exit then
+   subj a u s\" \n" CODESIGN-FIND {: eol:n :}
+   a subj + eol subj - CODESIGN-TEAM-IN? ;
+
+\ Keeps the hash of the certificate from at to next when it is the team's and
+\ a valid identity.
+: CODESIGN-PICK-AT ( n n ptr u8 n -- bool ) {: at:n next:n a:ptr u:n :}
+   at CODESIGN-CERT-MARK nip + {: hash:n :}
+   hash CODESIGN-ID-LEN + next > if false exit then
+   a at + next at - CODESIGN-TEAM-CERT? 0= if false exit then
+   CODESIGN-IDS$ a hash + CODESIGN-ID-LEN CONTAINS? 0= if false exit then
+   a hash + CODESIGN-ID CODESIGN-ID-LEN BYTE-COPY
+   -1 CODESIGN-ID? !
+   true ;
+
+: CODESIGN-NEXT-CERT ( n ptr u8 n -- n ) {: at:n a:ptr u:n :}
+   at CODESIGN-CERT-MARK nip + a u CODESIGN-CERT-MARK CODESIGN-FIND ;
+
+: CODESIGN-PICK ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 a u CODESIGN-CERT-MARK CODESIGN-FIND
+   begin dup u < while
+      dup a u CODESIGN-NEXT-CERT
+      2dup a u CODESIGN-PICK-AT if 2drop exit then
+      nip
+   repeat
+   drop ;
+
+: CODESIGN-FIND-ID ( -- )
+   CODESIGN-LIST-IDS
+   PROC-ARGV-RESET
+   s" find-certificate" >LEN PROC-ARGV+
+   s" -a" >LEN PROC-ARGV+
+   s" -Z" >LEN PROC-ARGV+
+   [: [: CODESIGN-PICK ;] CODESIGN-SECURITY ;] [: CODESIGN-RELEASE ;] finally
+   CODESIGN-ID? @ 0= if CODESIGN-NO-IDENTITY then ;
+
+\ The one identity every macOS signature names, found on first use.
+: IDENTITY$ ( -- ptr u8 n )
+   CODESIGN-ID? @ 0= if
+      [: CODESIGN-FIND-ID ;] [: CODESIGN-IDS-RELEASE ;] finally
+   then
+   CODESIGN-ID CODESIGN-ID-LEN ;
 
 : CODESIGN-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;
 
-: CODESIGN-MACOS-VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u :}
+: CODESIGN-MACOS-VERIFY-ARGS ( ptr u8 n -- ) {: a:ptr u :}
    a u CODESIGN-EXPECT-EXECUTABLE
    PROC-ARGV-RESET
    s" -v"  >LEN PROC-ARGV+
-   a u  >LEN PROC-ARGV+
-   CODESIGN-RUN ;
+   a u  >LEN PROC-ARGV+ ;
 
-: CODESIGN-MACOS-FORCE ( ptr u8 n -- ) {: a:ptr u :}
-   a u CODESIGN-EXPECT-FILE
+: CODESIGN-REQ-HEAD ( -- ptr u8 n )
+   s\" =anchor apple generic and certificate leaf[subject.OU] = \"" ;
+
+create CODESIGN-REQ CODESIGN-REQ-HEAD nip TEAM$ nip + 1 + allot
+
+\ The requirement every team signature meets: an Apple-issued certificate of
+\ team TEAM$.
+: CODESIGN-TEAM-REQ ( -- ptr u8 n )
+   CODESIGN-REQ-HEAD {: h:ptr hu:n :}
+   TEAM$ {: t:ptr tu:n :}
+   h CODESIGN-REQ hu BYTE-COPY
+   t CODESIGN-REQ hu + tu BYTE-COPY
+   [char] " CODESIGN-REQ hu tu + + c!
+   CODESIGN-REQ hu tu + 1 + ;
+
+\ codesign -v -R exits nonzero for any other signer, Apple's and ad hoc
+\ included, and for a file it cannot read.
+: CODESIGN-MACOS-TEAM? ( ptr u8 n -- bool ) {: a:ptr u :}
+   PROC-ARGV-RESET
+   s" -v"  >LEN PROC-ARGV+
+   s" -R"  >LEN PROC-ARGV+
+   CODESIGN-TEAM-REQ  >LEN PROC-ARGV+
+   a u  >LEN PROC-ARGV+
+   CODESIGN-RUN 0= ;
+
+: CODESIGN-SIGN-ARGS ( -- )
+   IDENTITY$ {: id:ptr idu:n :}
    PROC-ARGV-RESET
    s" -s"  >LEN PROC-ARGV+
-   s" -"  >LEN PROC-ARGV+
-   s" --force"  >LEN PROC-ARGV+
+   id idu  >LEN PROC-ARGV+
+   s" --timestamp=none"  >LEN PROC-ARGV+
+   s" --force"  >LEN PROC-ARGV+ ;
+
+\ A written image carries its writer's identifier (src/habu/sign-id.f); the
+\ keychain's access list names it, so the team signature keeps it.
+: CODESIGN-MACOS-FORCE ( ptr u8 n -- ) {: a:ptr u :}
+   a u CODESIGN-EXPECT-FILE
+   CODESIGN-SIGN-ARGS
+   s" --preserve-metadata=identifier"  >LEN PROC-ARGV+
    a u  >LEN PROC-ARGV+
-   CODESIGN-RUN CODESIGN-RC0 ;
+   CODESIGN-RUN-OK ;
 
 : CODESIGN-MACOS-FORCE-AS ( ptr u8 n ptr u8 n -- ) {: a:ptr u id:ptr idu :}
    a u CODESIGN-EXPECT-FILE
-   PROC-ARGV-RESET
-   s" -s"  >LEN PROC-ARGV+
-   s" -"  >LEN PROC-ARGV+
+   CODESIGN-SIGN-ARGS
    s" -i"  >LEN PROC-ARGV+
    id idu  >LEN PROC-ARGV+
-   s" --force"  >LEN PROC-ARGV+
    a u  >LEN PROC-ARGV+
-   CODESIGN-RUN CODESIGN-RC0 ;
+   CODESIGN-RUN-OK ;
 
 : CODESIGN-LINUX-VERIFY-RC ( ptr u8 n -- n )
    CODESIGN-EXPECT-EXECUTABLE
@@ -104,48 +291,72 @@ private
    2dup CODESIGN-EXPECT-FILE
    FS:CHMOD-X ;
 
+4 SPAN-BUFFER: CODESIGN-MAGIC
+variable CODESIGN-MAGIC-FD
+
+: CODESIGN-ELF-MAG ( -- ptr u8 n )
+   s\" \x7FELF" ;
+
+: CODESIGN-MAGIC-READ ( -- bool )
+   CODESIGN-MAGIC-FD @ >FD CODESIGN-MAGIC FD:READ-EXACT MATCH FD:fill
+      full OF CODESIGN-MAGIC SPAN:$ CODESIGN-ELF-MAG STR= ENDOF
+      eof OF drop false ENDOF
+   ;MATCH ;
+
+: CODESIGN-MAGIC-CLOSE ( -- )
+   CODESIGN-MAGIC-FD @ close ;
+
+: CODESIGN-ELF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 <= if false exit then
+   a u FS:FILE? 0= if false exit then
+   a u FS:OPEN-SIZED {: f:fd size:n found:bool :}
+   found 0= if false exit then
+   f FD>N CODESIGN-MAGIC-FD !
+   [: CODESIGN-MAGIC-READ ;] [: CODESIGN-MAGIC-CLOSE ;] finally ;
+
+\ A Linux host, or an ELF file built for one on a Mac (--target).
+: CODESIGN-LINUX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   HB-TARGET-LINUX-KERNEL? if true exit then
+   a u CODESIGN-ELF? ;
+
 public
 
 : VERIFY-RC ( ptr u8 n -- n ) {: a:ptr u:n :}
-   HB-TARGET-LINUX-KERNEL? if a u CODESIGN-LINUX-VERIFY-RC exit then
-   HB-TARGET-MACOS? if a u CODESIGN-MACOS-VERIFY-RC exit then
+   a u CODESIGN-LINUX? if a u CODESIGN-LINUX-VERIFY-RC exit then
+   HB-TARGET-MACOS? if a u CODESIGN-MACOS-VERIFY-ARGS CODESIGN-RUN exit then
    CODESIGN-TARGET-UNKNOWN ;
 
 : VERIFY ( ptr u8 n -- ) {: a:ptr u:n :}
-   HB-TARGET-LINUX-KERNEL? if
+   a u CODESIGN-LINUX? if
       a u CODESIGN-EXPECT-EXECUTABLE
       exit
    then
    HB-TARGET-MACOS? if
-      a u VERIFY-RC CODESIGN-RC0
+      a u CODESIGN-MACOS-VERIFY-ARGS
+      CODESIGN-RUN-OK
       exit
    then
    CODESIGN-TARGET-UNKNOWN ;
 
 : FORCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   HB-TARGET-LINUX-KERNEL? if a u CODESIGN-LINUX-FORCE exit then
+   a u CODESIGN-LINUX? if a u CODESIGN-LINUX-FORCE exit then
    HB-TARGET-MACOS? if a u CODESIGN-MACOS-FORCE exit then
    CODESIGN-TARGET-UNKNOWN ;
 
+\ Signs a file for the team unless it already carries a valid team signature,
+\ so an install keeps the one its build made; a written image's own is ad hoc.
 : ENSURE ( ptr u8 n -- ) {: a:ptr u:n :}
-   HB-TARGET-LINUX-KERNEL? if
-      a u FORCE
-      a u VERIFY
-      exit
+   a u CODESIGN-LINUX? 0= HB-TARGET-MACOS? and if
+      a u CODESIGN-MACOS-TEAM? if exit then
    then
-   HB-TARGET-MACOS? if
-      a u VERIFY-RC 0= if exit then
-      a u FORCE
-      a u VERIFY
-      exit
-   then
-   CODESIGN-TARGET-UNKNOWN ;
+   a u FORCE
+   a u VERIFY ;
 
 \ Sign under a fixed identifier, whatever the file already carries. Without one
 \ codesign names the signature after the file, so the name a writer happened to
 \ use would travel inside the image.
 : SIGN-AS ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n id:ptr idu:n :}
-   HB-TARGET-LINUX-KERNEL? if
+   a u CODESIGN-LINUX? if
       a u FORCE
       a u VERIFY
       exit

@@ -1147,6 +1147,7 @@ variable BF-DRV-R
 \   hb-host    the capture host: no artifact, never installed; the capture runs in it.
 \   hb-stdin   the product, seeded from the artifact captured in hb-host; BF-INSTALL-HB
 \              checks it before promoting it.
+\ Each is signed for the team here, so an install keeps the signature (CODESIGN:ENSURE).
 : BF-EMIT-ENGINE ( ptr u8 n -- ) {: drv:ptr drvu:n :}
    s" stage2-src" drv drvu BF-EMIT-STDIN-RUN-SOURCE
    BF-CERTIFY-STDIN
@@ -1158,7 +1159,7 @@ variable BF-DRV-R
    s" hb-stdin-got" BF-EXPECT
    s" hb-stdin-got" s" hb-stdin" BF-RENAME-TMP
    s" hb-stdin" BF-CHMOD-X-TMP
-   s" hb-stdin" BF-CODESIGN-VERIFY-TMP ;
+   s" hb-stdin" BF-A$ CODESIGN:ENSURE ;
 
 : BF-KEEP-HOST ( -- )
    s" hb-stdin" s" hb-host" BF-RENAME-TMP
@@ -1273,6 +1274,7 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
    {: tmp:ptr tmpu:n :}
    s" hb-stdin" BF-A$ tmp tmpu FS:COPY-FILE-STREAM
    tmp tmpu FS:CHMOD-X
+   tmp tmpu CODESIGN:ENSURE
    tmp tmpu BF-CHECK-CANDIDATE ;
 
 : BF-INSTALL-HB ( -- )
@@ -1290,7 +1292,8 @@ create BF-BOOT-ERR BF-BOOT-ERR-CAP allot
 : BF-INSTALL-HOST-FILL ( ptr u8 n -- )
    {: tmp:ptr tmpu:n :}
    s" hb-host" BF-A$ tmp tmpu FS:COPY-FILE-STREAM
-   tmp tmpu FS:CHMOD-X ;
+   tmp tmpu FS:CHMOD-X
+   tmp tmpu CODESIGN:ENSURE ;
 
 : BF-INSTALL-HOST ( -- )
    BF-HOST-DST$ [: BF-INSTALL-HOST-FILL ;] FS:REPLACE-STAGED ;
@@ -1481,8 +1484,22 @@ variable CHAIN-I
    s" fixpoint: cached " type
    BF-STAMP-KEY BF-STAMP-PREFIX-U type cr ;
 
+DYNAMIC-BUFFER BF-IMAGES u8
+
+\ Not CHAIN-RUN:SAME-FILES?: tools/chain-run.f needs process-command.f, outside the preamble.
+: BF-READ-IMAGES ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr au:n b:ptr bu:n :}
+   a au FS:FILE-SIZE {: as:n :}
+   b bu FS:FILE-SIZE {: bs:n :}
+   as bs + 1 + BF-IMAGES-RESERVE
+   a au 0 BF-IMAGES as FS:READ-ALL as <> if E-FS-IO throw then
+   b bu as BF-IMAGES bs FS:READ-ALL bs <> if E-FS-IO throw then
+   0 BF-IMAGES as  as BF-IMAGES bs ;
+
+\ The product and the engine each carry a team signature of their own signing
+\ time, so they are compared apart from it.
 : BF-STDIN-HB= ( -- bool )
-   s" hb-stdin" BF-A$ BF-ENGINE$ BF-FILE= ;
+   s" hb-stdin" BF-A$ BF-ENGINE$
+   [: BF-READ-IMAGES CODESIGN:SAME-IMAGE? ;] [: BF-IMAGES-RELEASE ;] finally ;
 
 : BF-ALL-STAMP ( -- )
    BF-STDIN-HB= if BF-STAMP-WRITE then ;

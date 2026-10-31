@@ -9,6 +9,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
+require src/lib/codesign.f
 require src/lib/engine-candidate.f
 require test/whitebox-child.f
 require test/native-file-e2e.f
@@ -150,11 +151,11 @@ variable OBJECT-N
 
 : SAME-A? ( ptr u8 n -- bool )
    LOAD {: size:n :}
-   0 BYTES size 0 PRODUCT-A PRODUCT-A-U @ STR= ;
+   0 BYTES size 0 PRODUCT-A PRODUCT-A-U @ CODESIGN:SAME-IMAGE? ;
 
 : SAME-B? ( ptr u8 n -- bool )
    LOAD {: size:n :}
-   0 BYTES size 0 PRODUCT-B PRODUCT-B-U @ STR= ;
+   0 BYTES size 0 PRODUCT-B PRODUCT-B-U @ CODESIGN:SAME-IMAGE? ;
 
 : DIR$ ( -- ptr u8 n ) DIR-PATH DIR-U @ ;
 

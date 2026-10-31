@@ -1228,6 +1228,8 @@
 \ package BEARER.
 \ Keeping the machine awake: -9640..-9649, minted in src/lib/power.f, which
 \ owns package POWER.
+\ Code signing: -9650..-9659, minted in src/lib/codesign.f, which owns package
+\ CODESIGN.
 \ Model chat and embedding client: -9700..-9799, minted in src/lib/net/model.f,
 \ which owns package MODEL.
 

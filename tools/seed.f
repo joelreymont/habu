@@ -120,7 +120,7 @@ variable SEED-LAST
    src srcu tmp tmpu FS:COPY-FILE-STREAM
    tmp tmpu FS:CHMOD-X
    tmp tmpu dst dstu CODESIGN:PROMOTE-EXECUTABLE
-   dst dstu CODESIGN:ENSURE ;
+   dst dstu CODESIGN:VERIFY ;
 
 : SEED-SMOKE-OUT-OK? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 4 <> if SEED-FALSE exit then

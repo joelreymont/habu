@@ -309,16 +309,16 @@ Keep the installed executable, map and sources together when updating the
 installation. Running applications retain their loaded executable; restart
 long-running source-loading tools against the updated installation.
 
-On macOS, sign the installed executable with a team-issued identity before it
-replaces the old one: `codesign -f -s <identity> <copy>`, then rename the copy
-into place, never copy onto the live file. The login keychain partitions an
-item by its filer's signature; an ad-hoc signature changes with every build, so
-a rebuilt `hb` is refused the items its predecessor filed, while every build
-signed under one team ID keeps them. Renaming leaves running engines on their
-old file. An overwrite in place keeps the inode whose code signature the kernel
-cached, and the kernel kills the new executable at launch: `echo bye | hb` dies
-by SIGKILL (rc 137) within milliseconds, while the same bytes renamed in as a
-new file run.
+On macOS every build signs its product with the team identity
+(src/lib/codesign.f), and an install keeps that signature; a host without the
+identity fails the build with `CODESIGN:E-IDENTITY`. The login keychain
+partitions an item by its filer's team, so each build reads the items any other
+build filed with at most one prompt per identifier. Install by renaming a copy
+into place, never copy onto the live file. Renaming leaves running engines on
+their old file. An overwrite in place keeps the inode whose code signature the
+kernel cached, and the kernel kills the new executable at launch:
+`echo bye | hb` dies by SIGKILL (rc 137) within milliseconds, while the same
+bytes renamed in as a new file run.
 
 ## Warm Dev Snapshot
 

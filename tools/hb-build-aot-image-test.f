@@ -5,6 +5,7 @@
 require tools/hb-build-test-lib.f
 require src/lib/string.f
 require src/lib/process-cwd.f
+require tools/chain-run.f                    \ CHAIN-RUN:SAME-FILES?
 
 package HB-BUILD-CLI
 
@@ -14,14 +15,15 @@ create HBT-MAKER-SHADOW PATH-CAP allot
 create HBT-MAKER-OLD PATH-CAP allot
 create HBT-MAKER-DIRECT-OUT PATH-CAP allot
 create HBT-MAKER-OUT PATH-CAP allot
+create HBT-MAKER-FIRST PATH-CAP allot
 variable HBT-MAKER-HB-U
 variable HBT-MAKER-TOOL-U
 variable HBT-MAKER-SHADOW-U
 variable HBT-MAKER-OLD-U
 variable HBT-MAKER-DIRECT-OUT-U
 variable HBT-MAKER-OUT-U
+variable HBT-MAKER-FIRST-U
 create HBT-MAKER-FSHA-CTX SHA256-FILE-CTX-BYTES allot
-create HBT-MAKER-EXE-HEX 64 allot
 create HBT-MAKER-MAP-HEX 64 allot
 create HBT-MAKER-GOT-HEX 64 allot
 
@@ -43,6 +45,10 @@ create HBT-MAKER-GOT-HEX 64 allot
 \ Every child's out root: the saved maker it selects or builds stays private.
 : HBT-MAKER-OUT$ ( -- ptr u8 n )
    HBT-MAKER-OUT HBT-MAKER-OUT-U @ ;
+
+\ The first report build's application, kept for the second to match.
+: HBT-MAKER-FIRST$ ( -- ptr u8 n )
+   HBT-MAKER-FIRST HBT-MAKER-FIRST-U @ ;
 
 \ A child's argv and env so far: the private temp and out roots.
 : HBT-MAKER-ENV ( -- )
@@ -233,7 +239,6 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-REMOVE-AOT-OUT
    s" bin/hb" false HBT-MAKER-REPORT-BUILD
    S\" user-ok\n" HBT-MAKER-USER-RUN
-   HBT-AOT-OUT HBT-MAKER-EXE-HEX HBT-MAKER-HASH
    HBT-AOT-OUT HBB-MAP-DST!
    HBB-MAP-DST$ HBT-MAKER-MAP-HEX HBT-MAKER-HASH
    s" bin/hb" SOURCE-ROOT:CANON-OS 0= if E-BUILD-PATH throw then
@@ -243,10 +248,11 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-MAKER-HB$ HBT-MAKER-CACHE-PATH HBT-MAKER-OLD$ T$=
    \ Keep the source fixed and require maker_ran: comparing a restored
    \ artifact would not exercise the absolute spelling's linker path.
-   HBT-REMOVE-AOT-OUT
+   HBT-TMP s" hb-aot-first" HBT-MAKER-FIRST HBT-MAKER-FIRST-U HBT-PATH!
+   HBT-AOT-OUT HBT-MAKER-FIRST$ FS:RENAME-FILE
    HBT-MAKER-HB$ true HBT-MAKER-REPORT-BUILD
-   HBT-AOT-OUT HBT-MAKER-GOT-HEX HBT-MAKER-HASH
-   HBT-MAKER-GOT-HEX 64 HBT-MAKER-EXE-HEX 64 T$=
+   \ Each build signs its product at its own time (CODESIGN:SAME-IMAGE?).
+   HBT-AOT-OUT HBT-MAKER-FIRST$ CHAIN-RUN:SAME-FILES? TTRUE
    HBT-AOT-OUT HBB-MAP-DST!
    HBB-MAP-DST$ HBT-MAKER-GOT-HEX HBT-MAKER-HASH
    HBT-MAKER-GOT-HEX 64 HBT-MAKER-MAP-HEX 64 T$=
