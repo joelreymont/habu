@@ -8,6 +8,7 @@ require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/prelude.f
 require src/lib/string.f
+require src/lib/date.f
 require src/lib/fd.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
@@ -111,6 +112,12 @@ variable READ-ERRNO
    LINE-BUF LINE-U @ ;
 
 
+\ The line after its LOG stamp, or all of it when it is shorter than one.
+: UNSTAMPED$ ( -- ptr u8 n )
+   LINE-U @ DATE:TIME-LEN < if LINE$ exit then
+   LINE-BUF DATE:TIME-LEN + LINE-U @ DATE:TIME-LEN - ;
+
+
 \ What the pipe holds so far, read without waiting.
 : TAKE-LINE ( -- )
    PIPE-R @ LINE-BUF LINE-U @ + LINE-CAP LINE-U @ - read {: got:n :}
@@ -198,7 +205,7 @@ variable READ-ERRNO
    STDERR-BACK
    s" the listener outlives a starved accept" T-LABEL HTTP:ENDED-TASKS 0 T=
    s" the starved accept is one stderr line" T-LABEL
-   LINE$ s\" http: accept failed, errno 24\n" T$=
+   UNSTAMPED$ s\"  warn http: accept failed, errno 24\n" T$=
    CLOSE-FILLERS
    SAVED-SOFT @ LIMIT!
    starved STARVED-ANSWER

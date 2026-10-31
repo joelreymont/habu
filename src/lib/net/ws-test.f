@@ -20,6 +20,7 @@ require src/lib/net/tcp4.f
 require src/lib/net/http.f
 require src/lib/net/ws.f
 require src/lib/test/stderr.f
+require src/lib/date.f
 
 \ White-box: reopens WS. ACCEPT-STALLED is ACCEPT with a stall run once the
 \ handshake holds its slot, as a worker the OS keeps off the processor would;
@@ -1109,16 +1110,36 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    LF SB-APPEND-C
    SB$ ERR-W ;
 
-\ The line WS writes when this socket's handler throws E-HANDLER.
-: FAULT-LINE ( WS:socket -- ) {: sock:WS:socket :}
+\ The line WS logs after its stamp when this socket's handler throws E-HANDLER.
+: FAULT-LINE ( WS:socket -- )
+   {: sock:WS:socket :}
    SB-RESET
-   s" ws: socket " SB-APPEND
+   s"  error ws: socket " SB-APPEND
    sock SOCK>N FMT:SB-U
    s"  failed, throw " SB-APPEND
    E-HANDLER ERR-THROW ;
 
+
+: ERR-READ ( -- )
+   ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U ! ;
+
+
 : ERR-WRITTEN ( -- n )
-   ERR-PATH$ FS:FILE-SIZE ERR-WANT-U @ >= if 1 else 0 then ;
+   ERR-READ
+   ERR$ LF COUNT-CHAR ERR-WANT$ LF COUNT-CHAR >= if 1 else 0 then ;
+
+
+\ Drops each line's LOG stamp from what was read back, in place.
+: UNSTAMP ( -- )
+   0 0 ERR-U @ 0 ?do
+      dup DATE:TIME-LEN >= if
+         over ERR-BUF i SPAN:U8@ swap ERR-BUF swap SPAN:U8!
+         swap 1+ swap
+      then
+      ERR-BUF i SPAN:U8@ LF = if drop 0 else 1+ then
+   loop
+   drop ERR-U ! ;
+
 
 : THROWING ( -- )
    OPENS {: conn:TCP4:connection sock:WS:socket :}
@@ -1143,7 +1164,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    ERR-PATH$ STDERR:CAPTURE
    [: THROWING ;] [: STDERR:;CAPTURE ;] finally
    s" each fault reported" T-LABEL
-   ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U !
+   ERR-READ UNSTAMP
    ERR$ ERR-WANT$ T$=
    ERR-PATH$ FS:REMOVE-FILE ;
 
@@ -1571,10 +1592,11 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    t AIO:AWAIT OUTCOME-GONE
    false PINNED ! ;
 
-\ The line WS writes when its task ends on this code.
-: TASK-LINE ( n -- ) {: code:n :}
+\ The line WS logs after its stamp when its task ends on this code.
+: TASK-LINE ( n -- )
+   {: code:n :}
    SB-RESET
-   s" ws: task failed, throw " SB-APPEND
+   s"  error ws: task failed, throw " SB-APPEND
    code ERR-THROW ;
 
 : CEILING ( -- n )
@@ -1613,7 +1635,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    [: FAULTING ;] [: UNFILL STDERR:;CAPTURE ;] finally
    [: WS:STOP ;] catch 0 T=
    s" the task's fault reported once" T-LABEL
-   ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U !
+   ERR-READ UNSTAMP
    ERR$ ERR-WANT$ T$=
    ERR-PATH$ FS:REMOVE-FILE ;
 

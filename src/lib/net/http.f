@@ -10,10 +10,10 @@ require src/lib/task.f
 require src/lib/queue.f
 require src/lib/net/tcp4.f
 require src/lib/span.f
-require src/lib/fd.f
 require src/lib/aio.f
 require src/lib/string.f
 require src/lib/fmt.f
+require src/lib/log.f
 
 package HTTP
 
@@ -109,22 +109,13 @@ private
    ;MATCH ;
 
 
-: MAGNITUDE ( n -- n ) {: value:n :}
-   value 0 < if 0 value - exit then
-   value ;
-
-
 \ The fault reaches the operator with the same request id the client is given.
-: REPORT-FAULT ( n n -- ) {: idx:n code:n :}
-   idx OUT-BUF BUF:CLEAR
-   s" http: request " idx OUT+
-   idx SLOT-ID$ idx OUT+
-   s"  failed, throw " idx OUT+
-   code 0 < if DASH-BYTE idx OUT+C then
-   code MAGNITUDE idx NUM$ idx OUT+
-   LF idx OUT+C
-   FD:STDERR FD>N idx OUT-BUF BUF$ write drop
-   idx OUT-BUF BUF:CLEAR ;
+: REPORT-FAULT ( n n -- )
+   {: idx:n code:n :}
+   LOG:ERROR s" http" LOG:LINE
+   s" request " LOG:TEXT+  idx SLOT-ID$ LOG:TEXT+
+   s"  failed, throw " LOG:TEXT+  code LOG:INT+
+   LOG:;LINE ;
 
 
 \ Whatever had been built is dropped: the client is owed one answer and the
@@ -514,14 +505,12 @@ variable EXIT-HOOK-N
    conn TCP4:CONNECTION>N JOBS QUEUE:PUSH ;
 
 
-\ One line on stderr for a starved accept. The builder is task-local, and this
-\ is the listener's task.
-: REPORT-STARVED ( TCP4:errno -- ) {: cause:TCP4:errno :}
-   SB-RESET
-   s" http: accept failed, errno " SB-APPEND
-   cause TCP4:ERRNO>N FMT:SB-U
-   LF SB-APPEND-C
-   FD:STDERR FD>N SB$ write drop ;
+\ A warning, not an error: the listener parks and retries.
+: REPORT-STARVED ( TCP4:errno -- )
+   {: cause:TCP4:errno :}
+   LOG:WARN s" http" LOG:LINE
+   s" accept failed, errno " LOG:TEXT+  cause TCP4:ERRNO>N LOG:INT+
+   LOG:;LINE ;
 
 
 \ The record awaited and released, whatever its outcome.

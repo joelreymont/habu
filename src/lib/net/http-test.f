@@ -22,6 +22,7 @@ require src/lib/span.f
 require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
+require src/lib/test/stderr.f
 
 \ Test-image hooks: TEST-PREOPEN initializes START-READY first, so the real
 \ startup initializer refuses after the job queue has opened.
@@ -1095,15 +1096,11 @@ $32 constant SPLIT-MS             \ long enough for the worker to read the first
 
 
 \ A server reports each fault on fd 2 under the id its client is given. For one
-\ server fd 2 is a file, read back after the stop; the process's own stderr
-\ waits on a saved descriptor and comes back however that server's case ends.
-0 constant F-DUPFD
-$A constant SAVE-FD-MIN           \ the saved stderr lands clear of 0..2
+\ server fd 2 is a file, read back after the stop.
 $800 constant ERR-CAP
 
 variable ERR-PATH-U
 variable ERR-U
-variable SAVED-STDERR
 create ERR-PATH-BUF PATH-CAP allot
 ERR-CAP SPAN-BUFFER: ERR-BUF
 
@@ -1116,26 +1113,10 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    ERR-BUF ERR-U @ SPAN:TAKE SPAN:$ ;
 
 
-: SAVE-STDERR ( -- )
+: ERR-PATH-MAKE ( -- )
    s" http-stderr" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
    dir dirlen FS:CLEANUP-TREE+
-   dir dirlen s" stderr.txt" ERR-PATH-BUF FS:JOIN-PATH ERR-PATH-U !
-   FD:STDERR FD>N F-DUPFD SAVE-FD-MIN fcntl {: saved:n :}
-   saved 0 < if E-BOOM throw then
-   saved SAVED-STDERR ! ;
-
-
-: STDERR-TO-FILE ( -- )
-   ERR-PATH$ FS:OPEN-APPEND-FD {: file:n :}
-   file FD:STDERR FD>N dup2 {: moved:n :}
-   file close
-   moved 0 < if E-BOOM throw then ;
-
-
-: RESTORE-STDERR ( -- )
-   SAVED-STDERR @ FD:STDERR FD>N dup2 {: moved:n :}
-   SAVED-STDERR @ close
-   moved 0 < if E-BOOM throw then ;
+   dir dirlen s" stderr.txt" ERR-PATH-BUF FS:JOIN-PATH ERR-PATH-U ! ;
 
 
 : READ-STDERR ( -- )
@@ -2286,7 +2267,6 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
 
 
 : ERROR-HOOK-SERVER ( -- )
-   STDERR-TO-FILE
    LOOPBACK 0 ONE-WORKER IDLE-MS HTTP:START
    s\" GET\r\nHost: x\r\n\r\n"
    s" error_hook: the error hook did not finish this answer (request r0-1)" RAW-ASK TTRUE
@@ -2310,15 +2290,16 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
 : ERROR-HOOK-CASE ( -- )
    TRACE-RESET
    [: RENDER-THROWS ;] HTTP:ON-ERROR
-   SAVE-STDERR
-   [: ERROR-HOOK-SERVER ;] [: RESTORE-STDERR ;] finally
+   ERR-PATH-MAKE
+   ERR-PATH$ STDERR:CAPTURE
+   [: ERROR-HOOK-SERVER ;] [: STDERR:;CAPTURE ;] finally
    HTTP:RUNNING? TFALSE
    HTTP:ENDED-TASKS HTTP:TASK-TOTAL T=
    HTTP:KILLED-TASKS 0 T=
    READ-STDERR
-   ERR$ s" http: request r0-1 failed, throw -9992" CONTAINS? TTRUE
-   ERR$ s" http: request r0-2 failed, throw -9990" CONTAINS? TTRUE
-   ERR$ s" http: request r0-2 failed, throw -9992" CONTAINS? TTRUE ;
+   ERR$ s\"  error http: request r0-1 failed, throw -9992\n" CONTAINS? TTRUE
+   ERR$ s\"  error http: request r0-2 failed, throw -9990\n" CONTAINS? TTRUE
+   ERR$ s\"  error http: request r0-2 failed, throw -9992\n" CONTAINS? TTRUE ;
 
 
 \ Before the loop: a start whose tasks have no loop to ride their readiness

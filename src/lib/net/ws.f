@@ -6,9 +6,8 @@
 \ STORAGE CLASS. PROCESS-WIDE tables indexed by socket slot.
 
 require src/lib/errors.f
-require src/lib/fd.f
 require src/lib/string.f
-require src/lib/fmt.f
+require src/lib/log.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/task.f
@@ -31,8 +30,8 @@ NEWTYPE socket
 \ bytes BORROWED until the handler returns, and their count; or, once, that the
 \ socket has closed, with its status: the close frame's, 1005 when it carried
 \ none, 1006 when the stream ended without one (section 7.1.5). A handler must
-\ not block: every socket waits while it runs. Its throw is one stderr line,
-\ `ws: socket <handle> failed, throw <code>`, and a throw on a message also
+\ not block: every socket waits while it runs. Its throw is one LOG line, tag
+\ ws, `socket <handle> failed, throw <code>`, and a throw on a message also
 \ closes the socket under 1011. A peer that breaks the protocol fails the
 \ connection: 1002 for a frame the codec refuses or one out of order, 1007 for
 \ text that is not UTF-8, 1009 for a message past MESSAGE-MAX. A ping is
@@ -90,7 +89,6 @@ $FFFFFFFF constant SLOT-MASK
 $FFFFFFFF constant GEN-MASK
 
 1000000 constant NS-PER-MS
-10 constant LF
 $C8 constant GOODBYE-MS           \ how long a stop waits for the 1001 frames to be written
 $C8 constant STOP-MARGIN-MS       \ scheduling slack over GOODBYE-MS
 $100000 constant TASK-STACK
@@ -501,18 +499,12 @@ RUN-IDLE
    idx HANDLE >SOCKET DUE-MSG @ idx HANDLER @ execute ;
 
 
-: WRITE-THROW ( n -- )
-   FMT:SB-INT
-   LF SB-APPEND-C
-   FD:STDERR FD>N SB$ write drop ;
-
-\ The builder is task-local, and this runs on WS's task.
-: REPORT-FAULT ( n n -- ) {: idx:n code:n :}
-   SB-RESET
-   s" ws: socket " SB-APPEND
-   idx HANDLE FMT:SB-U
-   s"  failed, throw " SB-APPEND
-   code WRITE-THROW ;
+: REPORT-FAULT ( n n -- )
+   {: idx:n code:n :}
+   LOG:ERROR s" ws" LOG:LINE
+   s" socket " LOG:TEXT+  idx HANDLE LOG:INT+
+   s"  failed, throw " LOG:TEXT+  code LOG:INT+
+   LOG:;LINE ;
 
 
 \ The handler, handed the message on the task. True when it threw, its throw
@@ -970,12 +962,12 @@ ENUM course
    again ;
 
 
-\ The task's throw reaches the operator as a handler's does, as one line on
-\ stderr, built on the task.
-: REPORT-END ( n -- ) {: code:n :}
-   SB-RESET
-   s" ws: task failed, throw " SB-APPEND
-   code WRITE-THROW ;
+\ The task's throw reaches the operator as a handler's does.
+: REPORT-END ( n -- )
+   {: code:n :}
+   LOG:ERROR s" ws" LOG:LINE
+   s" task failed, throw " LOG:TEXT+  code LOG:INT+
+   LOG:;LINE ;
 
 
 \ WS's task. A throw from its loop - a poll AIO refuses at its ceiling, a
