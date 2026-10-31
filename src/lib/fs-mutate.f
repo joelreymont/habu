@@ -790,11 +790,11 @@ private
 \ with one line on fd 2 naming TMPDIR, why, and the root, then a throw: a root
 \ past PATH-CAP or with no room for the temp name (TEMP-DIR-BASE-MAX) is
 \ E-SPAN-CAPACITY, one that is not a directory E-FS-DIR, and one realpath
-\ refuses (ENAMETOOLONG on Darwin) E-FS-IO. Without the check each dies later
-\ on an error that does not name TMPDIR. The answer is the canonical spelling,
-\ borrowed from this task's PATHZ2 buffer. The line is three writes, as
-\ src/core/include.f names a refused source path, not one SB$ write: a root of
-\ PATH-CAP bytes with the reason overflows SB-CAP.
+\ refuses (a canonical spelling past PATH-CAP) E-FS-IO. Without the check each
+\ dies later on an error that does not name TMPDIR. The answer is the canonical
+\ spelling, borrowed from this task's PATHZ2 buffer. The line is three writes,
+\ as src/core/include.f names a refused source path, not one SB$ write: a root
+\ of PATH-CAP bytes with the reason overflows SB-CAP.
 : TMPDIR-REFUSE ( ptr u8 n ptr u8 n -- ) {: a:ptr u why:ptr whyu :}
    2 why whyu write drop
    2 a u write drop

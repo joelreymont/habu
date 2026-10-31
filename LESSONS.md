@@ -208,11 +208,16 @@ entry.
   deep for finder. we don't need a test that breaks finder, prove me wrong!
   same thing could be accomplished much simpler". No test creates a tree or
   path Finder cannot delete, and each proves its behaviour with a small
-  fixture. Asked whether ATOMIC-PATH-CAP, which needs a real 1023-byte
-  canonical chain, should stay, Joel asked "does this test carry weight or is
+  fixture. Asked whether ATOMIC-PATH-CAP, which needs a real canonical chain
+  near PATH-CAP, should stay, Joel asked "does this test carry weight or is
   it testing the obvious?"; shown it is the only test that catches an atomic
   writer refusing a target within 27 bytes of PATH-CAP, he chose "Keep it",
-  then "fix the test, though".
+  then "fix the test, though". Asked the same of the fs-mutate-test fixture
+  for a TMPDIR with no canonical path, whose realpath fails on a directory
+  stat accepts only past PATH_MAX (search-only modes do not do it, and a
+  chain of links long enough fails stat too), Joel asked "does this test
+  carry its weight? how can it be fixed?", then chose "Delete test, keep
+  refusal": TMPDIR-CHECK keeps the refusal, untested.
 
 ### Docs
 

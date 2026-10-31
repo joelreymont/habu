@@ -957,7 +957,6 @@ private
 $1000 constant CAP
 15000 constant TIMEOUT-MS
 10 constant NL
-200 constant LINK-NAME-U                 \ one link level's target, under NAME_MAX
 
 create OUT CAP allot
 create ERR CAP allot
@@ -965,14 +964,11 @@ create MISSING-BUF PATH-CAP allot
 create PROG-BUF PATH-CAP allot
 create FILE-PROG-BUF PATH-CAP allot
 create CANON-PROG-BUF PATH-CAP allot
-create NOCANON-BUF PATH-CAP allot
-create STEP-BUF PATH-CAP allot
 create WANT-BUF PATH-CAP 64 + allot   \ a reason, a value, the newline
 variable MISSING-U
 variable PROG-U
 variable FILE-PROG-U
 variable CANON-PROG-U
-variable NOCANON-U
 variable WANT-U
 
 : MISSING$ ( -- ptr u8 n )
@@ -986,9 +982,6 @@ variable WANT-U
 
 : CANON-PROG$ ( -- ptr u8 n )
    CANON-PROG-BUF CANON-PROG-U @ ;
-
-: NOCANON$ ( -- ptr u8 n )
-   NOCANON-BUF NOCANON-U @ ;
 
 : PATHS! ( -- )
    FMT-ROOT$ s" no-such-tmpdir" MISSING-BUF FS:JOIN-PATH MISSING-U !
@@ -1009,30 +1002,6 @@ variable WANT-U
 \ PROG-SRC$ asks for, whose prefix is tmpdir-child.
 : LONG$ ( -- ptr u8 n )
    s" tmpdir-child" nip FS:TEMP-DIR-BASE-MAX 1+ FMT-DEEP-DIR ;
-
-\ One level below NOCANON$: a directory of LINK-NAME-U bytes of `a` and a link L
-\ beside it that names it, and NOCANON$ then names L.
-: NOCANON-LEVEL ( -- )
-   NOCANON$ FMT-LONG-BUF LINK-NAME-U STEP-BUF FS:JOIN-PATH {: diru:n :}
-   STEP-BUF diru FS:MAKE-DIR
-   NOCANON$ s" L" STEP-BUF FS:JOIN-PATH {: linku:n :}
-   FMT-LONG-BUF LINK-NAME-U STEP-BUF linku FS:MAKE-SYMLINK
-   STEP-BUF NOCANON-BUF linku BYTE-COPY
-   linku NOCANON-U ! ;
-
-\ A directory spelled `<root>/nc/L/L/...` whose canonical spelling is past
-\ PATH-CAP: stat follows each L, whose expansion stays short, but every
-\ level adds LINK-NAME-U + 1 bytes to the canonical spelling, which realpath
-\ then cannot answer.
-: NOCANON! ( -- )
-   FMT-LONG!
-   FMT-ROOT$ s" nc" NOCANON-BUF FS:JOIN-PATH NOCANON-U !
-   NOCANON$ FS:MAKE-DIR
-   NOCANON$ FS:CLEANUP-TREE+
-   NOCANON$ FMT-REAL nip
-   begin dup PATH-CAP <= while
-      NOCANON-LEVEL LINK-NAME-U 1+ +
-   repeat drop ;
 
 : CHILD-ENV ( ptr u8 n -- ) {: a:ptr u :}
    PROC-ARGV-ENV-RESET
@@ -1105,9 +1074,6 @@ public
    s" a TMPDIR with no room for the temp name is refused by name" T-LABEL
    PROG$ LONG$ s" hb: TMPDIR is too long for a temp path: "
    E-SPAN-CAPACITY REFUSED
-   s" a TMPDIR with no canonical path is refused by name" T-LABEL
-   NOCANON! PROG$ NOCANON$ s" hb: TMPDIR has no canonical path: " E-FS-IO
-   REFUSED
    s" a TMPDIR through a link makes a canonical temp directory" T-LABEL
    CANONICAL ;
 
