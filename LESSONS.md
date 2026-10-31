@@ -43,6 +43,11 @@ entry.
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
   zero-fills the record, so the XML C2 reader stops casting bytes into XML's
   OPAQUE cursor from another package, Joel chose "Add EMPTY-CURSOR".
+- 2026-10-31, a public verifier code: asked whether the source verifier's
+  private missing-signature code may become public as
+  `VERIFY:E-MISSING-SIGNATURE`, so tools/check.f names that error with its own
+  code, message and fix hint instead of a generic statement throw, Joel chose
+  "Export the constant".
 
 ### Compiler and builds
 
