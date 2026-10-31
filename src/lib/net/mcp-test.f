@@ -1,9 +1,10 @@
 \ mcp-test.f - MCP:HANDLE answered over a real loopback port: both eras'
 \ handshakes and notifications, the protocol-version, _meta, Mcp-Method and
 \ Mcp-Name checks, the transport check, unknown methods and tools, a body's
-\ result and tool error, an object schema's answer as structuredContent and a
-\ non-object answer under it, a result's _meta from ANSWER-WITH in both eras and its
-\ refusals, bodies that answer badly or never, malformed envelopes, arguments and JSON,
+\ result and tool error, an object schema's result as structuredContent and a
+\ non-object result under it, a result's _meta from RESULT-META in both eras and its
+\ refusals, an image and an embedded resource after the text from RESULT-CONTENT in both
+\ eras, an empty array of them and the refusals, bodies that give a bad result or none, malformed envelopes, arguments and JSON,
 \ ping, tools/list showing each descriptor as registered (annotations and _meta raw) with
 \ a non-object output schema's wrapper in its place, and ADD-TOOL's refusals of a bad
 \ descriptor. ui:// resources: the resources capability, resources/list and
@@ -11,7 +12,7 @@
 \ and one that is no string, an empty resources/templates/list, and ADD-RESOURCE's
 \ refusals.
 \ MCP's client against the same server and plain routes: TOOLS across pages,
-\ CALL's result, isError, refusals, a reply past the first buffer, timeouts of
+\ CALL's result, one holding content blocks, isError, refusals, a reply past the first buffer, timeouts of
 \ CALL and TOOLS, TOOLS's over all its pages, the Mcp-Name encoding,
 \ event-stream replies and one that is not UTF-8, TOOLS's limit shared by its
 \ pages, CLOSE after a halt mid-receive, a closed client refused once its row
@@ -89,8 +90,9 @@ TYPED-VARIABLE ROUTE-CLIENT MCP:client
 \ A server waiter sets ENTERED as it starts waiting for RELEASED and LEFT once
 \ it stops; a case that releases one SETTLEs, so the next case's ARM finds none.
 variable ENTERED
-variable SHAPE-CODE                 \ what shape's ANSWER threw, 0 for nothing
-variable META-CODE                  \ what framed's ANSWER-WITH threw, 0 for nothing
+variable SHAPE-CODE                 \ what shape's RESULT threw, 0 for nothing
+variable META-CODE                  \ what framed's RESULT-META threw, 0 for nothing
+variable BLOCKS-CODE                \ what pictured's RESULT-CONTENT threw, 0 for nothing
 variable RELEASED
 variable LEFT
 variable CLOSED
@@ -261,18 +263,18 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
-: UNKNOWN-ANSWER ( -- ptr u8 n )
+: UNKNOWN-REPLY ( -- ptr u8 n )
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"error\":{\"code\":-32602,\"message\":\"Unknown tool\"}}" ;
 
 : UNKNOWN-TOOL ( -- )
    s" an unregistered tool is 400 -32602 Unknown tool" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"none\"}}" POST
-   400 UNKNOWN-ANSWER ANSWERED ;
+   400 UNKNOWN-REPLY ANSWERED ;
 
 
 : TOOL-ERROR ( -- )
-   s" a body's ANSWER-ERROR is an isError result" T-LABEL
+   s" a body's RESULT-ERROR is an isError result" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"refuse\"}}" POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"content\":" SB-APPEND
@@ -301,7 +303,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : SHAPE-RESULT ( -- )
-   s" an object schema's answer is the structuredContent itself" T-LABEL
+   s" an object schema's result is the structuredContent itself" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":21,\"method\":\"tools/call\",\"params\":{\"name\":\"shape\"}}" POST
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":21,\"result\":{\"content\":[{\"type\":\"text\"," SB-APPEND
@@ -311,7 +313,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : SHAPE-NOT-OBJECT ( -- )
-   s" a body under an object schema answering a non-object faults to the host" T-LABEL
+   s" a body under an object schema giving a non-object result faults to the host" T-LABEL
    LEGACY
    SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":22,\"method\":\"tools/call\"," SB-APPEND
    S\" \"params\":{\"name\":\"shape\",\"arguments\":{\"flat\":true}}}" SB-APPEND SB$ POST
@@ -319,7 +321,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    SHAPE-CODE atomic@ MCP:E-SCHEMA T= ;
 
 
-\ framed's arguments, its result's _meta, with space a modern answer trims.
+\ framed's arguments, its result's _meta, with space a modern result trims.
 : SPACED ( -- ptr u8 n ) S\" { \"a\":1, \"b\":[2] }" ;
 
 
@@ -353,14 +355,14 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : META-LEGACY ( -- )
-   s" a legacy result's _meta is ANSWER-WITH's meta as given" T-LABEL
+   s" a legacy result's _meta is RESULT-META's meta as given" T-LABEL
    24 SPACED LEGACY-FRAMED
    24 false FRAMED-RESULT S\" ,\"_meta\":" SB-APPEND SPACED SB-APPEND S\" }}" SB-APPEND
    200 SB$ ANSWERED ;
 
 
 : META-MODERN ( -- )
-   s" a modern result's _meta holds ANSWER-WITH's members, then serverInfo" T-LABEL
+   s" a modern result's _meta holds RESULT-META's members, then serverInfo" T-LABEL
    25 SPACED MODERN-FRAMED
    25 true FRAMED-RESULT
    S\" ,\"_meta\":{\"a\":1, \"b\":[2],\"io.modelcontextprotocol/serverInfo\":" SB-APPEND
@@ -376,24 +378,103 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 
 : META-NOT-OBJECT ( -- )
-   s" ANSWER-WITH meta that is not an object faults to the host" T-LABEL
+   s" RESULT-META meta that is not an object faults to the host" T-LABEL
    0 META-CODE atomic!
    27 S\" {\"flat\":true}" LEGACY-FRAMED FAULTED
    META-CODE atomic@ MCP:E-SCHEMA T= ;
 
 
 : META-REPEATED ( -- )
-   s" ANSWER-WITH meta that repeats a top-level key faults to the host" T-LABEL
+   s" RESULT-META meta that repeats a top-level key faults to the host" T-LABEL
    0 META-CODE atomic!
    29 S\" {\"a\":1,\"a\":2}" LEGACY-FRAMED FAULTED
    META-CODE atomic@ MCP:E-SCHEMA T= ;
 
 
 : META-SERVER-INFO ( -- )
-   s" ANSWER-WITH meta naming serverInfo, escaped, faults to the host" T-LABEL
+   s" RESULT-META meta naming serverInfo, escaped, faults to the host" T-LABEL
    0 META-CODE atomic!
    28 S\" {\"io.modelcontextprotocol\\/serverInfo\":{}}" LEGACY-FRAMED FAULTED
    META-CODE atomic@ MCP:E-SCHEMA T= ;
+
+
+\ pictured's blocks: an image and an embedded resource's bytes, spaced as given.
+: PAIR ( -- ptr u8 n )
+   S\" [{\"type\":\"image\",\"data\":\"iVBORw0KGgo=\",\"mimeType\":\"image/png\"}, {\"type\":\"resource\",\"resource\":{\"uri\":\"zen://versions/7/original\",\"mimeType\":\"application/pdf\",\"blob\":\"JVBERi0=\"}} ]" ;
+
+\ PAIR's objects after the text block, as content holds them.
+: PAIR-CONTENT ( -- ptr u8 n ) PAIR {: a:ptr u:n :} a 1+ u 2 - ;
+
+
+\ A tools/call of pictured with the given id and arguments; a modern one with
+\ its Mcp-Method, Mcp-Name and _meta.
+: PICTURED-CALL ( n ptr u8 n bool -- n )
+   {: id:n args:ptr au:n modern:bool :}
+   modern if MODERN s" Mcp-Method: tools/call" ADD s" Mcp-Name: pictured" ADD else LEGACY then
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"method\":\"tools/call\",\"params\":{\"name\":\"pictured\",\"arguments\":" SB-APPEND
+   args au SB-APPEND
+   modern if s" ," SB-APPEND META then
+   S\" }}" SB-APPEND SB$ POST ;
+
+
+\ pictured's reply to the given id, PAIR's objects after its text block when
+\ paired, in SB.
+: PICTURED-RESULT ( n bool bool -- )
+   {: id:n modern:bool paired:bool :}
+   SB-RESET S\" {\"jsonrpc\":\"2.0\",\"id\":" SB-APPEND id FMT:SB-U
+   S\" ,\"result\":{" SB-APPEND
+   modern if S\" \"resultType\":\"complete\"," SB-APPEND then
+   S\" \"content\":[{\"type\":\"text\",\"text\":\"{\\\"ok\\\":true}\"}" SB-APPEND
+   paired if s" ," SB-APPEND PAIR-CONTENT SB-APPEND then
+   S\" ],\"structuredContent\":{\"ok\":true},\"isError\":false" SB-APPEND
+   modern if s" ," SB-APPEND SERVER then
+   S\" }}" SB-APPEND ;
+
+
+: BLOCKS-LEGACY ( -- )
+   s" a legacy result's content is the text, then RESULT-CONTENT's content blocks as given" T-LABEL
+   41 S\" {\"pair\":1}" false PICTURED-CALL
+   41 false true PICTURED-RESULT
+   200 SB$ ANSWERED ;
+
+
+: BLOCKS-MODERN ( -- )
+   s" a modern result's content is the text, then RESULT-CONTENT's content blocks as given" T-LABEL
+   42 S\" {\"pair\":1}" true PICTURED-CALL
+   42 true true PICTURED-RESULT
+   200 SB$ ANSWERED ;
+
+
+: BLOCKS-EMPTY ( -- )
+   s" RESULT-CONTENT of an empty array gives the result RESULT gives" T-LABEL
+   43 S\" {\"none\":1}" true PICTURED-CALL
+   43 true false PICTURED-RESULT
+   200 SB$ ANSWERED ;
+
+
+\ pictured's call naming content blocks RESULT-CONTENT refuses faults to the host with E-SCHEMA.
+: BLOCKS-REFUSED ( ptr u8 n ptr u8 n -- )
+   {: label:ptr lu:n args:ptr au:n :}
+   label lu T-LABEL
+   0 BLOCKS-CODE atomic!
+   44 args au false PICTURED-CALL FAULTED
+   BLOCKS-CODE atomic@ MCP:E-SCHEMA T= ;
+
+
+: BLOCKS-REFUSALS ( -- )
+   s" RESULT-CONTENT of an object, not an array, faults to the host"
+   S\" {\"flat\":1}" BLOCKS-REFUSED
+   s" RESULT-CONTENT of an array holding a number after a block faults to the host"
+   S\" {\"scalar\":1}" BLOCKS-REFUSED
+   s" RESULT-CONTENT of an object without a type faults to the host"
+   S\" {\"untyped\":1}" BLOCKS-REFUSED
+   s" RESULT-CONTENT of an object whose type is a number faults to the host"
+   S\" {\"numbered\":1}" BLOCKS-REFUSED
+   s" RESULT-CONTENT of an object repeating its type faults to the host"
+   S\" {\"twice\":1}" BLOCKS-REFUSED
+   s" RESULT-CONTENT of a text that is not JSON faults to the host"
+   S\" {\"broken\":1}" BLOCKS-REFUSED ;
 
 
 : BAD-JSON ( -- )
@@ -433,9 +514,13 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" {\"type\":\"string\"}" WRAPPER
    S\" ,\"inputSchema\":{\"type\":\"object\"},\"_meta\":{\"ui\":{\"visibility\":[\"app\"]}}}" W+ ;
 
-\ A tool whose body answers with a _meta, listed as registered.
+\ A tool whose body gives a result with a _meta, listed as registered.
 : FRAMED ( -- ptr u8 n )
    S\" {\"name\":\"framed\",\"description\":\"Answer with a _meta.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true}}" ;
+
+\ A tool whose body gives a result with content blocks, listed as registered.
+: PICTURED ( -- ptr u8 n )
+   S\" {\"name\":\"pictured\",\"description\":\"Answer with content blocks.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"object\"},\"annotations\":{\"readOnlyHint\":true}}" ;
 
 \ echo's entry, the first tools/list answers.
 : ECHO-ITEM ( -- )
@@ -463,7 +548,7 @@ TASK:MIN-STACK TASK:TASK STALLER
    S\" \"name\":\"shape\",\"description\":\"Answer sources.\"," W+
    S\" \"inputSchema\":{\"type\":\"object\"},\"outputSchema\":" W+ SOURCES W+
    S\" ,\"annotations\":{\"readOnlyHint\":true}}," W+ WIDGET W+ s" ," W+ PICK-ITEM
-   s" ," W+ FRAMED W+ ;
+   s" ," W+ FRAMED W+ s" ," W+ PICTURED W+ ;
 
 \ Every tool the open phase registers, as tools/list answers them, before the
 \ array's end.
@@ -569,15 +654,15 @@ TASK:MIN-STACK TASK:TASK STALLER
    ANSWERED ;
 
 
-: NOT-JSON-ANSWER ( -- )
-   s" a body answering text that is not JSON faults to the host" T-LABEL
+: NOT-JSON-RESULT ( -- )
+   s" a body giving a result text that is not JSON faults to the host" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":19,\"method\":\"tools/call\",\"params\":{\"name\":\"raw\"}}" POST
    FAULTED ;
 
 
 : SILENT ( -- )
-   s" a body that never answers faults to the host" T-LABEL
+   s" a body that never gives its result faults to the host" T-LABEL
    LEGACY
    S\" {\"jsonrpc\":\"2.0\",\"id\":20,\"method\":\"tools/call\",\"params\":{\"name\":\"silent\"}}" POST
    FAULTED ;
@@ -696,15 +781,15 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : ADD-ECHO ( -- )
    S\" {\"name\":\"echo\",\"description\":\"Echo the arguments.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+   [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 : ADD-REFUSE ( -- )
    S\" {\"name\":\"refuse\",\"description\":\"Refuse every call.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":false}}"
-   [: 2drop s" nope" MCP:ANSWER-ERROR ;] MCP:ADD-TOOL ;
+   [: 2drop s" nope" MCP:RESULT-ERROR ;] MCP:ADD-TOOL ;
 
 : ADD-RAW ( -- )
    S\" {\"name\":\"raw\",\"description\":\"Answer text that is not JSON.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop s" not json" MCP:ANSWER ;] MCP:ADD-TOOL ;
+   [: 2drop s" not json" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 : ADD-SILENT ( -- )
    S\" {\"name\":\"silent\",\"description\":\"Never answer.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":[\"object\",\"null\"],\"items\":{\"type\":\"object\"}},\"annotations\":{\"readOnlyHint\":true}}"
@@ -712,7 +797,7 @@ TASK:MIN-STACK TASK:TASK STALLER
 
 : ADD-BIG ( -- )
    S\" {\"name\":\"big\",\"description\":\"Answer a long string.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"type\":\"string\"},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop BIG BIG-U MCP:ANSWER ;] MCP:ADD-TOOL ;
+   [: 2drop BIG BIG-U MCP:RESULT ;] MCP:ADD-TOOL ;
 
 \ Answers once the test sets RELEASED.
 : ADD-STALL ( -- )
@@ -720,43 +805,66 @@ TASK:MIN-STACK TASK:TASK STALLER
    [: 2drop 1 ENTERED atomic!
       [: RELEASED atomic@ 0<> ;] DEADLINE s" mcp-test STALL" TEST-WAIT:POLL
       1 LEFT atomic!
-      s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
+      s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 : ADD-LATE ( -- )
    S\" {\"name\":\"late\",\"description\":\"Registered while serving.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+   [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
-\ ANSWER, keeping in SHAPE-CODE what it threw.
-: SHAPE-ANSWER ( ptr u8 n -- )
-   [: 2dup MCP:ANSWER ;] catch {: code:n :} 2drop
+\ RESULT, keeping in SHAPE-CODE what it threw.
+: SHAPE-TRY ( ptr u8 n -- )
+   [: 2dup MCP:RESULT ;] catch {: code:n :} 2drop
    code SHAPE-CODE atomic!
    code 0<> if code throw then ;
 
 
-\ Answers {"sources":["a"]}, or an array for arguments naming "flat".
+\ Gives the result {"sources":["a"]}, or an array for arguments naming "flat".
 : ADD-SHAPE ( -- )
    S\" {\"name\":\"shape\",\"description\":\"Answer sources.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{\"typ\\u0065\":\"object\",\"properties\":{\"sources\":{\"type\":\"array\"}}},\"annotations\":{\"readOnlyHint\":true}}"
-   [: s" flat" CONTAINS? if s" []" else S\" {\"sources\":[\"a\"]}" then SHAPE-ANSWER ;]
+   [: s" flat" CONTAINS? if s" []" else S\" {\"sources\":[\"a\"]}" then SHAPE-TRY ;]
    MCP:ADD-TOOL ;
 
 
-: ADD-WIDGET ( -- ) WIDGET [: MCP:ANSWER ;] MCP:ADD-TOOL ;
-: ADD-PICK ( -- ) PICKER [: MCP:ANSWER ;] MCP:ADD-TOOL ;
-: ADD-DESCRIBED ( ptr u8 n -- ) [: MCP:ANSWER ;] MCP:ADD-TOOL ;
+: ADD-WIDGET ( -- ) WIDGET [: MCP:RESULT ;] MCP:ADD-TOOL ;
+: ADD-PICK ( -- ) PICKER [: MCP:RESULT ;] MCP:ADD-TOOL ;
+: ADD-DESCRIBED ( ptr u8 n -- ) [: MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
-\ ANSWER-WITH {"ok":true} and meta, keeping in META-CODE what it threw.
-: META-ANSWER ( ptr u8 n -- )
-   [: 2dup S\" {\"ok\":true}" 2swap MCP:ANSWER-WITH ;] catch {: code:n :} 2drop
+\ RESULT-META {"ok":true} and meta, keeping in META-CODE what it threw.
+: META-TRY ( ptr u8 n -- )
+   [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-META ;] catch {: code:n :} 2drop
    code META-CODE atomic!
    code 0<> if code throw then ;
 
 
-\ Answers with the arguments as the result's _meta, or [] for arguments naming
+\ Gives a result with the arguments as its _meta, or [] for arguments naming
 \ "flat".
 : ADD-FRAMED ( -- )
-   FRAMED [: 2dup s" flat" CONTAINS? if 2drop s" []" then META-ANSWER ;] MCP:ADD-TOOL ;
+   FRAMED [: 2dup s" flat" CONTAINS? if 2drop s" []" then META-TRY ;] MCP:ADD-TOOL ;
+
+
+\ RESULT-CONTENT {"ok":true} and blocks, keeping in BLOCKS-CODE what it threw.
+: BLOCKS-TRY ( ptr u8 n -- )
+   [: 2dup S\" {\"ok\":true}" 2swap MCP:RESULT-CONTENT ;] catch {: code:n :} 2drop
+   code BLOCKS-CODE atomic!
+   code 0<> if code throw then ;
+
+
+\ The content blocks pictured gives for the case its arguments name.
+: BLOCKS-OF ( ptr u8 n -- ptr u8 n )
+   {: args:ptr au:n :}
+   args au s" pair" CONTAINS? if PAIR exit then
+   args au s" none" CONTAINS? if s" [ ]" exit then
+   args au s" flat" CONTAINS? if S\" {\"type\":\"image\"}" exit then
+   args au s" scalar" CONTAINS? if S\" [{\"type\":\"text\",\"text\":\"a\"},1]" exit then
+   args au s" untyped" CONTAINS? if S\" [{\"data\":\"x\"}]" exit then
+   args au s" numbered" CONTAINS? if S\" [{\"type\":5}]" exit then
+   args au s" twice" CONTAINS? if S\" [{\"type\":\"text\",\"type\":5}]" exit then
+   S\" [{\"type\":" ;
+
+
+: ADD-PICTURED ( -- ) PICTURED [: BLOCKS-OF BLOCKS-TRY ;] MCP:ADD-TOOL ;
 
 
 \ A resource with the descriptor and a small page.
@@ -888,6 +996,14 @@ TASK:MIN-STACK TASK:TASK STALLER
    s" echo" S\" {\"a\":1}" ASK TFALSE
    W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":" W+
    S\" \"{\\\"a\\\":1}\"}],\"structuredContent\":{\"data\":{\"a\":1}},\"isError\":false," W+
+   W-SERVER s" }" W+ W$ T$= ;
+
+: CLIENT-BLOCKS ( -- )
+   s" CALL answers a result whose content holds RESULT-CONTENT's content blocks" T-LABEL
+   s" pictured" S\" {\"pair\":1}" ASK TFALSE
+   W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":" W+
+   S\" \"{\\\"ok\\\":true}\"}," W+ PAIR-CONTENT W+
+   S\" ],\"structuredContent\":{\"ok\":true},\"isError\":false," W+
    W-SERVER s" }" W+ W$ T$= ;
 
 : CLIENT-FAULT ( -- )
@@ -1049,7 +1165,7 @@ TYPED-VARIABLE NEVER MCP:client
 : CLIENT-CASES ( -- )
    CURL:LOOP-START OK
    s" /mcp" URL MCP:OPEN CLIENT !
-   CLIENT-LIST CLIENT-RESULT CLIENT-FAULT CLIENT-UNKNOWN CLIENT-BIG CLIENT-TIMEOUT
+   CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN CLIENT-BIG CLIENT-TIMEOUT
    CLIENT-PAGES CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT
    CLIENT-LIST-PAGES-TIMEOUT CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
@@ -1136,7 +1252,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 
 : ADD-SECRET ( -- )
    S\" {\"name\":\"secret\",\"description\":\"Answer the owner.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
-   [: 2drop s" {}" MCP:ANSWER ;] MCP:ADD-TOOL ;
+   [: 2drop s" {}" MCP:RESULT ;] MCP:ADD-TOOL ;
 
 \ A claim the caller lacks shows as an empty string.
 : CLAIM+ ( ptr u8 n -- ) BEARER:CLAIM$ drop NB+ ;
@@ -1145,7 +1261,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    S\" {\"name\":\"whoami\",\"description\":\"Answer the caller's claims.\",\"inputSchema\":{\"type\":\"object\"},\"outputSchema\":{},\"annotations\":{\"readOnlyHint\":true}}"
    [: 2drop 0 NB-U !
       S\" {\"azp\":\"" NB+ s" azp" CLAIM+ S\" \",\"oid\":\"" NB+ s" oid" CLAIM+ S\" \"}" NB+
-      NB NB-U @ MCP:ANSWER ;] MCP:ADD-TOOL ;
+      NB NB-U @ MCP:RESULT ;] MCP:ADD-TOOL ;
 
 
 : SECRET-ENTRY ( -- )
@@ -1169,7 +1285,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" tools/call of a hidden tool answers as an unknown one" T-LABEL
    ZEN LEGACY BEARING
    S\" {\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"secret\"}}" POST
-   400 UNKNOWN-ANSWER ANSWERED ;
+   400 UNKNOWN-REPLY ANSWERED ;
 
 : OWNER-LIST ( -- )
    s" tools/list shows the tool to the caller the hook admits" T-LABEL
@@ -1255,7 +1371,7 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    GUIDE$ MCP:INSTRUCTIONS!
    BIG-FILL
    ADD-ECHO ADD-REFUSE ADD-RAW ADD-SILENT ADD-BIG ADD-STALL ADD-SHAPE ADD-WIDGET ADD-PICK
-   ADD-FRAMED
+   ADD-FRAMED ADD-PICTURED
    s" ADD-TOOL refuses a descriptor without a name" T-LABEL
    [: S\" {\"inputSchema\":{},\"outputSchema\":{}}" ADD-DESCRIBED ;] MCP:E-SCHEMA TTHROWSQ
    s" ADD-TOOL refuses a descriptor whose name is not a string" T-LABEL
@@ -1292,9 +1408,10 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    LEGACY-INITIALIZE LEGACY-INITIALIZED MODERN-DISCOVER UNSUPPORTED
    METHOD-MISMATCH UNACCEPTED UNKNOWN-METHOD UNKNOWN-TOOL TOOL-ERROR
    TOOL-RESULT SHAPE-RESULT SHAPE-NOT-OBJECT META-LEGACY META-MODERN META-EMPTY
-   META-NOT-OBJECT META-REPEATED META-SERVER-INFO BAD-ENVELOPE BAD-JSON LIST PING
+   META-NOT-OBJECT META-REPEATED META-SERVER-INFO
+   BLOCKS-LEGACY BLOCKS-MODERN BLOCKS-EMPTY BLOCKS-REFUSALS BAD-ENVELOPE BAD-JSON LIST PING
    MODERN-LIST NAME-MISMATCH NAME-ABSENT META-MISMATCH NO-CAPABILITIES NO-PARAMS MODERN-NOTIFICATION
-   LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-ANSWER SILENT
+   LEGACY-NOTIFIED ARGUMENTS-NOT-OBJECT NOT-JSON-RESULT SILENT
    RESOURCES-LIST MODERN-RESOURCES RESOURCE-READ PLAIN-READ MODERN-READ READ-MISMATCH
    UNKNOWN-RESOURCE URI-NOT-STRING TEMPLATES
    CLIENT-CASES

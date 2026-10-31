@@ -8,12 +8,13 @@
 \ to HANDLE; a route guarded by bearer tokens is
 \ `req res BEARER:ADMIT? if req res MCP:HANDLE then`. VISIBLE! hides a tool from a
 \ caller its hook refuses; it does not apply to resources, which every caller may list
-\ and read. A tool body gets the arguments' object, borrowed for the call, and answers
-\ once through ANSWER, ANSWER-WITH to give the result a _meta object, or ANSWER-ERROR
-\ for a tool error, refused arguments included; bodies may run at once on several HTTP
-\ workers. An input schema's x-mcp-header is not supported: the server does not
-\ validate the headers it names. A tool's answer is its result's structuredContent
-\ when its output schema's "type" is "object"; any other schema describes the answer
+\ and read. A tool body gets the arguments' object, borrowed for the call, and gives its
+\ result once through RESULT, RESULT-META to give the result a _meta object, RESULT-CONTENT
+\ to add content blocks, such as an image or an embedded resource, after the result's
+\ text, or RESULT-ERROR for a tool error, refused arguments included; bodies may run at
+\ once on several HTTP workers. An input schema's x-mcp-header is not supported: the
+\ server does not validate the headers it names. A tool result's JSON is its structuredContent
+\ when its output schema's "type" is "object"; any other schema describes that JSON
 \ as structuredContent's "data", and tools/list shows that wrapper in the schema's
 \ place. The client side, OPEN, TOOLS, CALL and CLOSE, speaks the 2026-07-28 era to one
 \ server over CURL and takes a JSON or an event-stream reply. TOKEN! sets the bearer
@@ -44,7 +45,7 @@ public
 -9480 constant E-FIRST
 -9489 constant E-LAST
 \ SERVER-INFO!, INSTRUCTIONS!, ADD-TOOL, ADD-RESOURCE or VISIBLE! while HTTP
-\ serves, HANDLE before SERVER-INFO!, a body that does not answer exactly once,
+\ serves, HANDLE before SERVER-INFO!, a body that does not give its result exactly once,
 \ or a client word given a closed client.
 -9481 constant E-STATE
 \ ADD-TOOL of a registered name or ADD-RESOURCE of a registered uri, compared decoded.
@@ -54,7 +55,8 @@ public
 \ lacks the shape its method answers.
 -9484 constant E-RESPONSE
 \ A descriptor, outputSchema or meta not one JSON object or repeating a top-level key; a required
-\ member absent or mistyped; meta naming serverInfo; a non-UTF-8 page; an answer ADD-TOOL refuses.
+\ member absent or mistyped; meta naming serverInfo; a non-UTF-8 page; a result ADD-TOOL
+\ refuses; content blocks RESULT-CONTENT refuses.
 -9485 constant E-SCHEMA
 -9486 constant E-DENIED      \ the server refused a client's call with 401 or 403
 
@@ -68,7 +70,7 @@ private
 1 constant LEGACY            \ 2025-11-25
 
 0 constant IDLE
-1 constant CALLING           \ a tool's body runs and may answer
+1 constant CALLING           \ a tool's body runs and may give its result
 2 constant SENT              \ the response began; a later fault is the host's
 
 0 constant DISCOVER-REPLY
@@ -124,7 +126,10 @@ HTTP:MAX-WORKERS TYPED-BUFFER STATUS n
 HTTP:MAX-WORKERS TYPED-BUFFER CODE n
 HTTP:MAX-WORKERS TYPED-BUFFER TEXT SPAN:span<u8>      \ an error's message, or a tool's result
 HTTP:MAX-WORKERS TYPED-BUFFER FAULT bool              \ the tool result is isError
-HTTP:MAX-WORKERS TYPED-BUFFER RESULT-META SPAN:span<u8>   \ the tool result's _meta, or empty
+HTTP:MAX-WORKERS TYPED-BUFFER META-SPAN SPAN:span<u8>     \ the tool result's _meta, or empty
+\ The tool result's content after its text block: content blocks and the commas
+\ between them, or empty.
+HTTP:MAX-WORKERS TYPED-BUFFER CONTENT-SPAN SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER CALLED n                \ the tool a tools/call runs
 HTTP:MAX-WORKERS TYPED-BUFFER OPENED n                \ the resource a resources/read reads
 HTTP:MAX-WORKERS TYPED-BUFFER ASKED SPAN:span<u8>     \ an unsupported MCP-Protocol-Version
@@ -273,7 +278,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ For a declared schema whose "type" is not "object", the schema whose
-\ structuredContent is {"data": the answer}.
+\ structuredContent is {"data": the result's JSON}.
 : OUTPUT-SCHEMA ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
    TOOL-OUTPUT @ SPAN:$ {: text:ptr tu:n :}
    s" outputSchema" JSON-WRITE:KEY
@@ -372,9 +377,8 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JSON-WRITE:ARRAY-START JSON-WRITE:ARRAY-END CACHED-END ;
 
 
-\ A tool result: TEXT as readable text and, unless isError, TEXT's JSON as
-\ structuredContent, or as its "data" for a tool without an object schema;
-\ RESULT-META as _meta, beside serverInfo in the modern era.
+\ A tool result: TEXT as readable text, then CONTENT-SPAN's blocks; unless isError, TEXT's JSON
+\ as structuredContent, or its "data" without an object schema; META-SPAN as _meta.
 : CALL-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
    JSON-WRITE:OBJECT-START
    LEGACY? 0= if
@@ -383,6 +387,8 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    s" content" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
    JSON-WRITE:OBJECT-START s" type" s" text" JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" text" TEXT$ JSON-WRITE:FIELD-S JSON-WRITE:OBJECT-END
+   SLOT CONTENT-SPAN @ SPAN:$ {: blocks:ptr bu:n :}
+   bu 0<> if JSON-WRITE:COMMA blocks bu JSON-WRITE:RAW then
    JSON-WRITE:ARRAY-END
    SLOT FAULT @ 0= if
       JSON-WRITE:COMMA
@@ -394,7 +400,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
       then
    then
    JSON-WRITE:COMMA s" isError" SLOT FAULT @ JSON-WRITE:FIELD-BOOL
-   SLOT RESULT-META @ SPAN:$ {: meta:ptr mu:n :}
+   SLOT META-SPAN @ SPAN:$ {: meta:ptr mu:n :}
    LEGACY? if
       mu 0<> if JSON-WRITE:COMMA s" _meta" meta mu JSON-WRITE:FIELD-RAW then
    else meta mu MODERN-META then
@@ -674,7 +680,8 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    2dup OBJECT? 0= if E-INPUT throw then ;
 
 
-\ The body answers once, through ANSWER, ANSWER-WITH or ANSWER-ERROR, before it returns.
+\ The body gives its result once, through RESULT, RESULT-META, RESULT-CONTENT or
+\ RESULT-ERROR, before it returns.
 : RUN-TOOL ( -- )
    PARAMS$ s" name" FIELD? 0= if E-INPUT throw then
    TOOL-OF {: idx:n :}
@@ -769,14 +776,20 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    JR:FINISH object ;
 
 
+\ A caught code, a reader's E-JR-* code as E-SCHEMA.
+: SCHEMA-CODE ( n -- n )
+   {: code:n :}
+   code E-JR-FIRST <= code E-JR-LAST >= and if E-SCHEMA else code then ;
+
+
 \ E-SCHEMA unless one JSON object, read by reader, with no top-level key
 \ repeated once decoded: JSON.parse keeps a repeated key's last value, so a
 \ client would read another.
 : SHAPE ( ptr u8 n ptr JR:cursor -- )
    [: dup >r >r 2dup r> OBJECT-TEXT? 0= if E-SCHEMA throw then
       2dup JR:REPEATS? if E-SCHEMA throw then r> ;] catch {: code:n :} drop 2drop
-   code E-JR-FIRST <= code E-JR-LAST >= and if E-SCHEMA throw then
-   code 0<> if code throw then ;
+   code SCHEMA-CODE {: fault:n :}
+   fault 0<> if fault throw then ;
 
 
 \ Whether a schema object's "type" is the string "object".
@@ -830,9 +843,37 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    decoded ;
 
 
-\ Bodies run on several workers at once, so meta is read by the worker's CURSOR.
-: RESULT! ( ptr u8 n ptr u8 n bool -- )
-   {: text:ptr u:n meta:ptr mu:n fault:bool :}
+\ On a content block's open: E-SCHEMA unless it has a string "type" and no
+\ second one, which a client would read instead; the reader moves past its close.
+: BLOCK ( JR:reader -- JR:reader )
+   JR:TOKEN JR:T-OBJ <> if JR:CLOSE E-SCHEMA throw then
+   s" type" JR:FIND-KEY 0= if JR:CLOSE E-SCHEMA throw then
+   JR:TOKEN JR:T-STR <> if JR:CLOSE E-SCHEMA throw then
+   s" type" JR:FIND-KEY if JR:CLOSE E-SCHEMA throw then ;
+
+
+: BLOCKS-IN ( ptr u8 n -- ptr u8 n )
+   {: text:ptr u:n :}
+   CURSOR text u JR:INIT
+   JR:NEXT JR:T-ARR <> if JR:CLOSE E-SCHEMA throw then
+   JR:NEXT JR:T-ARR-END = if JR:FINISH s" " exit then
+   JR:SPAN$ drop {: first:ptr :}
+   begin BLOCK JR:NEXT JR:T-ARR-END = until
+   JR:SPAN$ drop {: close:ptr :}
+   JR:FINISH first close first - ;
+
+
+\ The objects of a JSON array of MCP content blocks, from the first's open
+\ through the space before the array's close; empty for an empty array.
+: BLOCKS ( ptr u8 n -- ptr u8 n )
+   [: BLOCKS-IN ;] catch {: code:n :}
+   code 0= if exit then
+   2drop code SCHEMA-CODE throw ;
+
+
+\ Bodies run on several workers at once, so meta and blocks are read by the worker's CURSOR.
+: RESULT! ( ptr u8 n ptr u8 n ptr u8 n bool -- )
+   {: text:ptr u:n meta:ptr mu:n extra:ptr eu:n fault:bool :}
    SLOT STAGE @ CALLING <> if E-STATE throw then
    fault 0= if
       text u CURSOR OBJECT-TEXT? 0= SLOT CALLED @ TOOL-WHOLE @ and if E-SCHEMA throw then
@@ -841,8 +882,10 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
       meta mu CURSOR SHAPE
       meta mu s" io.modelcontextprotocol/serverInfo" FIELD? nip nip if E-SCHEMA throw then
    then
+   extra eu BLOCKS {: blocks:ptr bu:n :}
    text u SPAN:MAKE SLOT TEXT !
-   meta mu SPAN:MAKE SLOT RESULT-META !
+   meta mu SPAN:MAKE SLOT META-SPAN !
+   blocks bu SPAN:MAKE SLOT CONTENT-SPAN !
    fault SLOT FAULT !
    CALL-REPLY GOOD SEND ;
 
@@ -873,7 +916,7 @@ public
 
 
 \ A borrowed MCP Tool descriptor, which must outlive the server, and its body. It needs a
-\ non-empty string name and object schemas; an outputSchema typed "object" needs object answers.
+\ non-empty string name and object schemas; an outputSchema typed "object" needs object results.
 : ADD-TOOL ( ptr u8 n [ ptr u8 n -- ] -- )
    {: text:ptr tu:n body :}
    HTTP:RUNNING? if E-STATE throw then
@@ -911,16 +954,25 @@ public
    idx 1+ RESOURCE-COUNT ! ;
 
 
-\ A body's result: one JSON value. E-STATE outside a body or after its answer;
+\ A body's result: one JSON value. E-STATE outside a body or after its result;
 \ else the reader's E-JR-* code or E-SCHEMA, which HANDLE passes to the host.
-: ANSWER ( ptr u8 n -- ) s" " false RESULT! ;
+: RESULT ( ptr u8 n -- ) s" " s" []" false RESULT! ;
 
-\ ANSWER, plus the result's _meta object, which reaches the host's widget and not the
+\ RESULT, plus the result's _meta object, which reaches the host's widget and not the
 \ model (OpenAI Apps SDK); empty meta adds none, and E-SCHEMA names the meta it refuses.
-: ANSWER-WITH ( ptr u8 n ptr u8 n -- ) false RESULT! ;
+: RESULT-META ( ptr u8 n ptr u8 n -- ) s" []" false RESULT! ;
+
+
+\ RESULT, plus a JSON array of MCP content blocks, such as an image or an embedded resource,
+\ that follow the result's text block in content as given; E-SCHEMA unless blocks is one
+\ JSON array of objects, each with one string "type".
+: RESULT-CONTENT ( ptr u8 n ptr u8 n -- )
+   {: text:ptr u:n extra:ptr eu:n :}
+   text u s" " extra eu false RESULT! ;
+
 
 \ A body's tool error: the message as text content, isError true.
-: ANSWER-ERROR ( ptr u8 n -- ) s" " true RESULT! ;
+: RESULT-ERROR ( ptr u8 n -- ) s" " s" []" true RESULT! ;
 
 
 \ Answers one MCP request whose authentication and Origin the host has checked.
