@@ -1,0 +1,19 @@
+---
+title: "Fix lane 11 F2: family shape change misses"
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-10-31T13:07:09.986745+02:00"
+---
+
+Fable review F2 (/tmp/carl-l11s-rev/review.md): a family shape change in an earlier file is caught only after publication (PREPARE-SLICE? in SPIKE-INSTALL) and kills every later warm build. Brief carl-dots/.out/carl-file/brief-f2.md: family contract as a dependency row checked in SPIKE-SEEK; BAD after publication refuses and discards the object; reproducer in test/native-file-frame-e2e.f. One commit on moxyulxx, folds into uyzslxrr. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-f2.
+
+First worker handed off before editing; its plan (new TFAM public words, a FAMILY row kind, moving the export) replaced by the lead: run PREPARE-SLICE? in SPIKE-SEEK before publication so a contract change (family or constructor) is a miss; no new public words or row kinds. Requirement 2 (discard after a post-publication BAD) dropped: with F1 and F2 fixed no ordinary edit reaches it, so no test could fail without it, and a writer bug there stays a loud fail-stop. Fresh worker on the revised brief-f2.md in carl-f2.
+
+lwosxvwl (ea27e0aa) proof on /tmp/carl-f2/eng/hb: frame auto cwork stripped-path rc 0; types rc 1 (LINK-CASE: a malformed link row now misses instead of failing -8597 rc 70, because PREPARE-SLICE? answers false for every checker and family refusal); dynamic-load rc 1 (ORDER and EVAL-ORDER third build: -8597, the seek prepares before SPIKE-HOOK's LOAD-PASSED? check, so a row past an unmade LOAD has no map row). Opus review REVISE with the same load-order finding. Lead redesign brief-f2b.md: SPIKE-SEEK back to moxyulxx, a new NUNIT-OBJECT:SPIKE-PREPARE? after the sink and load-order checks, false only for E-UNIT-FAMILY-CHANGED, other refusals BAD; fresh worker in carl-f2 (handoff /tmp/carl-f2/f2c-handoff.md).
+
+lwosxvwl (1b6c6d1c) revised per brief-f2b.md: SPIKE-SEEK equals moxyulxx; NUNIT-OBJECT:SPIKE-PREPARE? runs after SPIKE-HOOK's origin-sink and LOAD-PASSED? checks and before NUNIT-DEP:CLOSE; SEEK-RELEASE and FAMILY-CODE? removed; PREPARE-SLICE? false only for E-UNIT-FAMILY-CHANGED, other refusals BAD (LINK-CASE keeps -8597 rc 70). Six e2e rc 0 (/tmp/carl-f2/t6.txt); fmb.f/fmc.f misses throw 7209 (E-UNIT-FAMILY-CHANGED). A strict-prefix contract cannot pass: counts precede items and a trailing-bytes check follows. Opus re-review running (claim 5: absent-family keys at type-family.f ~6311, ~6687 stay E-REG-AOT-REFUSED unless a reproducer reaches them).
+
+Opus re-review of 1b6c6d1c: REVISE. Claims 1-4 and 6 confirmed. Finding (claim 5): a family removed or moved to another package (unique-public fallback or `using`) reaches type-family.f's absent-key REG-AOT-REFUSE, BAD -8597 rc 70, on every warm build; the constructor reader has the same gap. Also a false SPIKE-HOOK comment, comment length, a repeated FILE-REFS. Fold-in brief brief-f2c.md (absent and changed dependencies throw E-UNIT-FAMILY-CHANGED through one helper; family-move reproducer); worker not yet launched.
+
+f2c fold-in done: lwosxvwl now 87a9d3b2. UNIT-FAM-CHANGED (type-family.f, after REG-AOT-REFUSE) throws E-UNIT-FAMILY-CHANGED at the absent family and constructor dependencies, the changed-semantics compare and UNIT-FAM-CON-ABSENT mode 2; comments cut to two lines; SPIKE-INSTALL's repeated FILE-REFS removed. Reproducer fmv.f/fmu.f (vshape moved FAMV -> FAMW under the unique-public fallback): on the old engine the third build dies -8597 at fmu.f; after, a stale-slice miss at FMU, fmu=7, reused at the next build. Engine rc 0, six e2e rc 0 (/tmp/carl-f2/t6.txt). Lead read the type-family.f hunks; the combined fold-in re-review runs at integration.

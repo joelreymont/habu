@@ -1,0 +1,17 @@
+---
+title: "Fix lane 11 F1: own references bind by position"
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-10-31T13:07:09.977641+02:00"
+---
+
+Fable review F1 (/tmp/carl-l11s-rev/review.md): a reused file's definitions map own record, wordlist and DATA references by offset from unverified live cursors, so an earlier file's definer edit binds them to the wrong entity or fail-stops forever. Brief carl-dots/.out/carl-file/brief-f1.md: miss before publication on any premise mismatch including reorder; reproducers R1-R3 in test/native-file-frame-e2e.f; docs/architecture.md Builds corrected (F3). One commit on moxyulxx, folds into uyzslxrr. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-f1.
+
+First worker handed off before editing (reading, /tmp/carl-f1/f1-handoff.md): payload refs are already keyed by declaration; position is assumed only in the file object's slot 13 (checker-slice refs), origin rows and FILE-ADD-INSTALLED. The finding overturns lane 11's positional mapping of own records, a persisted-format choice: Fable Plan design running (brief carl-dots/.out/carl-file/brief-f1-design.md); the worker brief follows the design.
+
+unnkuqxn (c1a31582) "Recompile reused definitions whose records moved" on moxyulxx, carl-f1: SHA-256 premise per open file over its own records (name, own DATA offset, own wordlist index, package wordlists) plus own DATA and wordlist totals, full 32 bytes in the index row (SPAN-PREMISE), PREMISE-HELD? last in SPIKE-SEEK, FILE-CUT absorbs retired records. Proof on /tmp/carl-f1/eng/hb: engine build rc 0, six e2e rc 0. On moxyulxx: pm1 crashes (cut-below-segment, -8597, every later build); pm2 and pm3 reused with correct values (only NOT-REUSED fails); pm4 already misses. Per-head hash cost not measured (P0 at the squash measures warm wall). Opus review running.
+
+Opus review of c1a31582: REVISE. Claims 1, 3, 4 and 8 confirmed. Finding 1 is a real gap with a code-derived reproducer: the premise sums own totals, so a LOAD swapped with a record in one word's run keeps the totals and reuses wrong bindings. FILE-ADD-INSTALLED needs no premise; PREMISE-HELD? overwrites SEEK-HASH (F2 does not use it). Lead fold-in brief-f1c.md: the premise hashes frame event rows in order (LOAD marker; per SEGMENT its own records with record, DATA and wordlist counts; open segment counts), replacing OWN-TOTALS, computed by walking SEGMENT own ranges (O(records + rows)); new pm5 (load and record swapped in one word's run); pm2 gets a distinct value; pm3 observable or dropped (own DATA offsets stay in the premise); pm4 dropped; PREMISE-CUT marker by own position; comment and dead-code fixes. Worker f1c in carl-f1 (handoff /tmp/carl-f1/f1d-handoff.md).
+
+f1c fold-in: unnkuqxn 228d163f. The premise hashes the file's own event rows in order (LOAD tag; per SEGMENT its own records then record, DATA and wordlist counts; the open segment's counts), OWN-TOTALS and OWN-IN? gone; PREMISE-SEGS, a per-frame table of running totals, maps a record's wordlist made in an earlier segment (the reviewer confirmed a plain walk cannot). pm2 distinct value, pm3/pm4 dropped, pm5 added (fails on c1a31582: cut-below-segment, -8597). Engine rc 0, six e2e rc 0 (/tmp/carl-f1/t6.txt). Opus re-review REVISE for PREMISE-HELD? in a public section and two comment wraps; lead fixed both (a9eee891). Integrated: duplicated onto the rebased trial stack and squashed into lqwqmsnq on master b1dc6a80; P0 and six e2e running in carl-l11s.
