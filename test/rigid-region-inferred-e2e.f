@@ -42,8 +42,8 @@ public
    s" : T6 NEST USE-INF SAME-ID ;" REFUSED
    s" an inferred producer keeps two distinct identities distinct" T-LABEL
    s" : TD USE-DIFF SAME-ID ;" REFUSED
-   s" an inferred consumer of one region refuses a second region" T-LABEL
-   s" : F RG-ONE SAME-ID ; : G RG-ONE F ;" REFUSED
+   s" an inferred consumer of a region its body minted is refused" T-LABEL
+   s" : F RG-ONE SAME-ID ;" REFUSED
    s" a declared producer wrapper mints per call" T-LABEL
    s" : USE-DECL ( -- fresh-region-a ) RG-ONE ; : T7 USE-DECL USE-DECL SAME-ID ;" REFUSED
    s" one call's shared identities stay shared" T-LABEL

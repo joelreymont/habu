@@ -81,6 +81,19 @@ defer RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-
 : RR-VTAKE ( [ mut-view<p,q,a,u8> -- ] -- ) drop ;
 defer RR-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
 
+\ Words with fresh inputs: a caller hands each the allocation it holds.
+defer RR-MFRESH ( matrix<space-global,fresh-region-b,f32,f32> -- matrix<space-global,fresh-region-b,f32,f32> )
+defer RR-MF2 ( matrix<space-global,fresh-region-b,f32,f32> matrix<space-global,fresh-region-c,f32,f32> -- )
+defer RR-MMIX ( matrix<space-global,a,f32,f32> matrix<space-global,fresh-region-b,f32,f32> -- )
+defer RR-SFRESH ( span<space-global,f32,fresh-region-b> -- )
+defer RR-GFRESH ( span<space-global,f32,fresh-gen-b> -- )
+\ A mut-view's third argument is a region, so a caller's quantifier there may
+\ be passed to a fresh input; a matrix's is any type.
+defer RR-VFRESH ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-b,u8> )
+defer RR-VMF2 ( mut-view<p,q,fresh-region-b,u8> matrix<space-global,fresh-region-c,f32,f32> -- )
+\ An inferred word that forwards its two inputs to RR-MF2's fresh inputs.
+: RR-FWD2 RR-MF2 ;
+
 \ The window holds the suspended hook on the stack. After the report the hook
 \ resumes and diagnostics leave RR-DIAG, so a file loaded after this one in the
 \ same process is checked and reports as usual.
@@ -196,19 +209,53 @@ s" C-FGCB ( [ span<space-global,f32,fresh-gen-b> -- ] -- ) RR-BOXG swap execute"
 s" C-FQCB ( matrix<space-global,a,f32,f32> [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- ) execute"  RR-CHECK 0 T=
 s" must stay parametric" RR-DIAG? -1 T=
 \ (25) a does> clause holds fresh regions as a colon body does: (16)'s pass is
-\ admitted, a minted output region reaches a checked caller of the created word,
-\ and (18)'s new output region is refused.
+\ admitted and takes a checked caller's allocation, a minted output region
+\ reaches a checked caller, and (18)'s new output region is refused.
 dup set-check
 s" : RR-DFPASS ( n -- ) create , does> ( matrix<space-global,fresh-region-b,f32,f32> -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-MPASS ;"  TEST-EVAL:RC
 s" 0 RR-DFPASS RR-DFP"  TEST-EVAL:RC
+s" : RR-DFCALL ( -- matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN RR-DFP ;"  TEST-EVAL:RC
 s" : RR-DFOWN ( n -- ) create , does> ( -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN ;"  TEST-EVAL:RC
 s" 0 RR-DFOWN RR-DFO"  TEST-EVAL:RC
 s" : RR-DFUSE ( -- matrix<space-global,fresh-region-b,f32,f32> ) RR-DFO ;"  TEST-EVAL:RC
-0 set-check  0 T=  0 T=  0 T=  0 T=  0 T=
+0 set-check  0 T=  0 T=  0 T=  0 T=  0 T=  0 T=
 RR-DIAG 16384 DIAG-BUFFER!
 dup set-check
 s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC
 0 set-check  RR-REFUSED T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (26) a call's fresh input is the allocation its caller passes, and so is the
+\ name on its output: the caller's own allocation, its input, its quantifier.
+s" C-CALLOWN ( -- ) RR-OWN dup RR-MFRESH RR-UONE"  RR-CHECK -1 T=
+s" C-CALLREC ( matrix<space-global,fresh-region-b,f32,f32> -- matrix<space-global,fresh-region-b,f32,f32> ) RECURSE"  RR-CHECK -1 T=
+s" C-CALLGEN ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) RR-VFRESH"  RR-CHECK -1 T=
+\ (27) two fresh inputs take two allocations; a quantifier beside a fresh input
+\ may take its allocation, since a body admits nothing from the two differing.
+s" C-CALL2 ( -- ) RR-OWN RR-OWN RR-MF2"  RR-CHECK -1 T=
+s" C-CALLMIX ( -- ) RR-OWN dup RR-MMIX"  RR-CHECK -1 T=
+\ (28) one allocation into two fresh inputs is refused, and so is a caller's
+\ quantifier, which may be the other input's allocation.
+s" C-CALLSAME ( -- ) RR-OWN dup RR-MF2"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-CALLQ2 ( mut-view<p,q,a,u8> -- ) RR-OWN RR-VMF2"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (29) an inferred input cannot hold an allocation its body made: no caller has it.
+s" C-INFOWN RR-OWN RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (30) a fresh input takes an identity of its own domain only, as (21): not a
+\ generation, nor a caller's quantifier unless a region kind makes it a region.
+s" C-CALLXDOM ( -- ) RR-BOXG RR-SFRESH"  RR-CHECK 0 T=
+s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" C-CALLANY ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) RR-MFRESH"  RR-CHECK 0 T=
+s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" C-CALLQGEN ( span<space-global,f32,a> -- ) RR-GFRESH"  RR-CHECK 0 T=
+s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+\ (31) an argument whose type is an undeclared variable takes a new identity, so
+\ an inferred forwarder has fresh inputs: two allocations, never one.
+s" C-INFFWD ( -- ) RR-OWN RR-OWN RR-FWD2"  RR-CHECK -1 T=
+s" C-INFFWD1 ( -- ) RR-OWN dup RR-FWD2"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-INFDUP dup RR-MF2"  RR-CHECK 0 T=
 s" rigid host: region mismatch" RR-DIAG? -1 T=
 
 T-REPORT

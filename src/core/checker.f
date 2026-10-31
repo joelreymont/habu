@@ -970,12 +970,18 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : GEN-FRESH ( -- n )
    GEN-N @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN
    GEN-N @ dup 1+ GEN-N ! ;
-\ The `fresh-` prefix is already stripped, so the tail begins with the domain
-\ word; mask- and any other fresh atom keep the shared RIGID-FRESH space.
-: RIGID-AK-MINT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 7 >= IF a 7 s" region-" CORE-STR= IF RGN-FRESH EXIT THEN THEN
-   u 7 >= IF a 7 s" extent-" CORE-STR= IF EXT-FRESH EXIT THEN THEN
-   u 4 >= IF a 4 s" gen-"    CORE-STR= IF GEN-FRESH EXIT THEN THEN
+\ A fresh name's domain past its stripped `fresh-` prefix: 1 region, 2 extent,
+\ 3 generation, 0 for mask- and any other name (the RIGID-FRESH space).
+: RIGID-NAME-DOMAIN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 7 >= IF a 7 s" region-" CORE-STR= IF 1 EXIT THEN THEN
+   u 7 >= IF a 7 s" extent-" CORE-STR= IF 2 EXIT THEN THEN
+   u 4 >= IF a 4 s" gen-"    CORE-STR= IF 3 EXIT THEN THEN
+   0 ;
+: RIGID-AK-MINT ( ptr u8 n -- n )
+   RIGID-NAME-DOMAIN {: d:n :}
+   d 1 = IF RGN-FRESH EXIT THEN
+   d 2 = IF EXT-FRESH EXIT THEN
+   d 3 = IF GEN-FRESH EXIT THEN
    RIGID-FRESH ;
 : MK-ATOM-K ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    ATOMN @ 1 + ATOM-ENSURE
@@ -8103,7 +8109,11 @@ $48 constant EFF-NODE
 \ EC-TV/EC-RV/EI-TV/EI-RV are var-id maps in the growable TV arena (top).
 64 constant EI-AK-CAP
 create EI-AK EI-AK-CAP cells allot
-variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK wrote
+variable EI-AK-HW              \ E-I-AK-RESET clears only [0, EI-AK-HW), the span E-I-AK and E-AK-BIND wrote
+\ Per slot E-AK-BIND bound: the variable that takes the argument's identity and
+\ an atom spelling the name; 0 for a slot E-I-AK mints.
+create EI-AK-VAR EI-AK-CAP cells allot
+create EI-AK-NAME EI-AK-CAP cells allot
 
 \ One copy's counters and rigid identities (E-COPY-MAPS-RESET) rest in the span,
 \ so neither an image nor a file object carries the last check's atom terms.
@@ -8170,6 +8180,7 @@ NULL-PTR TOP-READ-P !  0 TOP-READ-CAP !  NULL-PTR TOP-WRITE-P !  0 TOP-WRITE-CAP
 \ EI-AK is the same shape and needs the same init: a high-water reset restores
 \ only what was written, so every cell above the mark has to be UNBOUND already.
 EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
+EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
 
 : E-COPY-MAPS-RESET ( -- )
    EC-TV EC-TV-LW @ EC-TV-HW @ ARENA-CELLS-ZERO
@@ -8181,10 +8192,12 @@ EI-AK EI-AK-CAP E-MAP-CLEAR   0 EI-AK-HW !
    0 EC-AKN ! ;
 
 \ E-INST-RESET runs per instantiated effect - once per checked call site - and
-\ this table is 64 cells against the handful of fresh atoms a signature
-\ actually mints, usually none. Clear the written span, not the capacity.
+\ these tables are 64 cells against the handful of fresh atoms a signature
+\ actually holds, usually none. Clear the written span, not the capacity.
 : E-I-AK-RESET ( -- )
    EI-AK EI-AK-HW @ E-MAP-CLEAR
+   EI-AK-VAR 0 EI-AK-HW @ ARENA-CELLS-ZERO
+   EI-AK-NAME 0 EI-AK-HW @ ARENA-CELLS-ZERO
    0 EI-AK-HW ! ;
 
 : E-TV-ID ( n -- n ) {: id:n :}
@@ -10169,6 +10182,43 @@ CHECKER-REG:}SCRATCH
 : E-I-STR ( ptr u8 ptr u8 -- ptr u8 n ) {: node:ptr pool:ptr :}
    pool node EN.A @ + node EN.B @ ;
 
+\ The variable E-AK-BIND gave the slot of record key k, else 0.
+: E-AK-BOUND ( n -- n ) {: k:n :}
+   k 0 >= IF 0 EXIT THEN
+   k E-I-AK-IDX {: idx:n :}
+   idx EI-AK-HW @ >= IF 0 EXIT THEN
+   idx cells EI-AK-VAR + @ ;
+
+\ A called word's fresh name on a plain input is a variable at every occurrence,
+\ which the input unify binds to the argument's identity; E-I-AK mints the rest.
+: E-AK-BIND-SLOT ( ptr u8 -- ) {: node:ptr :}
+   node EN.C @ {: k:n :}
+   k 0 >= IF EXIT THEN
+   k E-I-AK-IDX {: idx:n :}
+   idx EI-AK-CAP >= IF s" checker: fresh atom inst table full" 76 die THEN
+   idx cells EI-AK-VAR + @ 0 <> IF EXIT THEN
+   node USIGS E-I-STR {: a:ptr u:n :}
+   FRESH MK-VAR idx cells EI-AK-VAR + !
+   a u 0 MK-ATOM-K idx cells EI-AK-NAME + !
+   idx 1+ EI-AK-HW @ max EI-AK-HW ! ;
+
+\ Walks a record's input row as E-INST-FROM does, through pointers and family
+\ arguments but not into a quotation or a quantified type.
+: E-AK-BIND ( n -- ) {: off:n :}
+   off 0= IF EXIT THEN
+   off E-PTR {: node:ptr :}
+   node EN.TAG @ case
+      EN-PUSH of  node EN.A @ RECURSE  node EN.B @ RECURSE  endof
+      EN-PTR of  node EN.A @ RECURSE  endof
+      EN-PARAM of
+         0 BEGIN dup node EN.C @ < WHILE
+            dup cells node EN.D @ + E-PTR CELL-VIEW @ RECURSE
+            1 +
+         REPEAT drop
+      endof
+      EN-ATOM of  node E-AK-BIND-SLOT  endof
+   endcase ;
+
 \ Cross-owner instantiation resolves constructors by their declared names.
 defer E-I-FOREIGN-CON ( n -- n )
 \ A package-unit graph carries constructor names, not the exporting owner's ids.
@@ -10250,9 +10300,12 @@ defer E-I-UNIT-CON ( ptr u8 ptr u8 -- n )
       EN-ATOM of
          pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and UNIT-INST-ON @ 0= and
          if s" checker: unsupported transferred atom" 76 die then
-         r@ pool E-I-STR r@ EN.C @
-         pool USIGS = pool TOP-READ-P @ BYTE-VIEW = or IF E-I-AK THEN
-         MK-ATOM-K r> drop endof
+         pool USIGS = IF r@ EN.C @ E-AK-BOUND ELSE 0 THEN {: bound:n :}
+         bound 0 <> IF bound ELSE
+            r@ pool E-I-STR r@ EN.C @
+            pool USIGS = pool TOP-READ-P @ BYTE-VIEW = or IF E-I-AK THEN
+            MK-ATOM-K
+         THEN r> drop endof
       EN-PARAM of
          pool USIGS <> pool TOP-READ-P @ BYTE-VIEW <> and UNIT-INST-ON @ 0= and
          if s" checker: unsupported transferred family" 76 die then
@@ -10417,12 +10470,126 @@ CHECKER-GRID-CELLS-INSTALL
       1 +
    REPEAT drop ;
 
+\ A new identity in the domain of fresh-name atom `name`.
+: FB-MINT ( n -- n ) {: name:n :}
+   name ATOM>A name ATOM>U  name ATOM>A name ATOM>U RIGID-AK-MINT  MK-ATOM-K ;
+
+: RIGID-DOMAIN-REASON ( n n -- n )   \ expected and actual domains -> MD-RIGID-*
+   {: de:n da:n :}
+   de da <> IF MD-RIGID-XDOM EXIT THEN
+   de 1 = IF MD-RIGID-REGION EXIT THEN
+   de 2 = IF MD-RIGID-EXTENT EXIT THEN
+   MD-RIGID-GEN ;
+
+\ A refused identity is captured as a one-cell mismatch: a new identity of the
+\ name's domain against the one held, which RIGID-DIAG-CLASSIFY names.
+: RIGID-HELD-REFUSE ( n n -- ) {: held:n want:n :}
+   FAILSET @ 0= IF
+      0 UF-SET !  -1 CUR-UPOS !
+      held want U-FAIL
+      want FRESH MK-ROW MK-PUSH  held FRESH MK-ROW MK-PUSH  UF-CAPTURE
+   THEN
+   0 OK ! ;
+
+32 constant NP-CAP                                   \ >= 26 single-letter quantifiers
+create NP-ORIG NP-CAP cells allot   variable NP-ORIG-N   \ distinct declared quantifier ids
+
+: NP-DECLARED? ( n -- bool ) {: r:n :}   \ variable r is a declared quantifier's root
+   0 BEGIN dup NP-ORIG-N @ < WHILE
+      dup cells NP-ORIG + @ MK-VAR T-RES
+      dup ISVAR IF PAY r PAY = IF drop RES-TRUE EXIT THEN ELSE drop THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ The domain of the identity a bound name holds, -1 for none. A caller's
+\ quantifier proves one only by its kind, which only a region has; any other
+\ variable takes the name's domain de unless SCOPE-BLOCK? keeps it from a region.
+: E-AK-HELD-DOMAIN ( n n -- n ) {: held:n de:n :}
+   held ISVAR IF
+      held NP-DECLARED? IF held PAY TVK@ TVK-REGION = IF 1 ELSE -1 THEN EXIT THEN
+      de 1 <> IF de EXIT THEN
+      held PAY TVK@ dup TVK-ANY = swap TVK-REGION = or IF de ELSE -1 THEN EXIT
+   THEN
+   held TAG T-ATOM <> IF -1 EXIT THEN
+   held ATOM>K 0 <= IF -1 EXIT THEN
+   held ATOM>A held ATOM>U RIGID-NAME-DOMAIN ;
+
+: E-AK-NAME-DOMAIN ( n -- n )
+   cells EI-AK-NAME + @ dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
+
+\ Whether bound slot j, if of domain de, clashes with identity held.
+: E-AK-CLASH? ( n n n -- bool ) {: j:n held:n de:n :}
+   j cells EI-AK-VAR + @ {: v:n :}
+   v 0= IF RES-FALSE EXIT THEN
+   j E-AK-NAME-DOMAIN de <> IF RES-FALSE EXIT THEN
+   v T-RES {: other:n :}
+   held ISVAR other ISVAR or IF RES-TRUE EXIT THEN
+   held other E-AK-SAME? ;
+
+: E-AK-CLASH-BELOW? ( n n n -- bool ) {: idx:n held:n de:n :}
+   0 BEGIN dup idx < WHILE
+      dup held de E-AK-CLASH? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ The identities E-AK-HOLD-NEW gave this definition's free variables, which
+\ INFER-RIGID-TYPE admits on an inferred input.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE CALL-MINT-P   variable CALL-MINT-CAP   variable CALL-MINT-N
+CHECKER-REG:}SCRATCH
+: CALL-MINT+ ( n -- )
+   CALL-MINT-N @ 1+ CALL-MINT-CAP @ > IF
+      CALL-MINT-CAP @ 2 * 16 max {: nc:n :}
+      CALL-MINT-P @ CALL-MINT-CAP @ cells nc cells SR-GROW CALL-MINT-P !
+      nc CALL-MINT-CAP !
+   THEN
+   CALL-MINT-N @ cells CALL-MINT-P @ + !
+   CALL-MINT-N @ 1+ CALL-MINT-N ! ;
+: CALL-MINT? ( n -- bool ) {: t:n :}
+   0 BEGIN dup CALL-MINT-N @ < WHILE
+      dup cells CALL-MINT-P @ + @ t E-AK-SAME? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ A variable no declaration quantifies takes a new identity of the name's
+\ domain, as an output name's does; a caller's quantifier stays a variable.
+: E-AK-HOLD-NEW ( n n -- n ) {: held:n name:n :}
+   held ISVAR 0= IF held EXIT THEN
+   held NP-DECLARED? IF held EXIT THEN
+   name FB-MINT {: id:n :}
+   held PAY id RAW-BLOCK? IF held id RIGID-HELD-REFUSE held EXIT THEN
+   id held PAY TV!
+   id CALL-MINT+
+   id ;
+
+\ A bound name holds an identity of its own domain that no other holds (C-CALL2,
+\ C-CALLSAME, C-CALLXDOM); a quantifier outside it is a domain confusion (C-CALLANY).
+: E-AK-CLAIM-SLOT ( n -- ) {: idx:n :}
+   idx cells EI-AK-VAR + @ {: v:n :}
+   v 0= IF EXIT THEN
+   v T-RES {: r:n :}
+   idx E-AK-NAME-DOMAIN {: de:n :}
+   r de E-AK-HELD-DOMAIN {: da:n :}
+   da de = IF r idx cells EI-AK-NAME + @ E-AK-HOLD-NEW ELSE r THEN {: held:n :}
+   OK @ 0= IF EXIT THEN
+   da de = IF idx held de E-AK-CLASH-BELOW? 0= IF EXIT THEN THEN
+   de 0 <> da 0 >= and IF de da RIGID-DOMAIN-REASON MDIAG! THEN
+   held ISVAR IF held NP-DECLARED? IF MD-RIGID-XDOM MDIAG! THEN THEN
+   held  idx cells EI-AK-NAME + @ FB-MINT  RIGID-HELD-REFUSE ;
+
+: E-AK-CLAIM ( -- )
+   0 BEGIN dup EI-AK-HW @ <  OK @ 0 <>  and WHILE
+      dup E-AK-CLAIM-SLOT
+      1 +
+   REPEAT drop ;
+
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
    h TOK-EFF !
    0 CALL-HIT !
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    SCOPE-N @ {: scope-start:n :}
    h E-INST-RESET
+   h E-DIN@ E-AK-BIND
    h E-DIN@ E-INST {: din:n :}
    h E-DOUT@ E-INST {: dout:n :}
    RGN-N @ {: bind-region:n :}
@@ -10438,6 +10605,7 @@ CHECKER-GRID-CELLS-INSTALL
       rin RSUNI-IN          \ the called word's declared return inputs
       rout RCUR !
    then
+   E-AK-CLAIM
    pd pr DCUR @ RCUR @ TWO-ROW-LOSS {: od:n orow:n :}
    od DCUR !  orow RCUR !
    scope-start bind-region din dout rin rout SCOPE-INTRO-FENCE-XT
@@ -19881,12 +20049,14 @@ CHECKER-REG:}SCRATCH
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    h E-INST-RESET
    h E-HASR@ {: hasr:n :}
+   h E-DIN@ E-AK-BIND
    h E-DIN@ E-INST {: din:n :}
    h E-DOUT@ E-INST {: dout:n :}
    hasr 0 <> IF h E-RIN@ E-INST h E-ROUT@ E-INST ELSE 0 0 THEN
    {: rin:n rout:n :}
    din SUNI-IN  dout DCUR !
    hasr 0 <> IF rin RSUNI-IN  rout RCUR ! THEN
+   E-AK-CLAIM
    pd pr DCUR @ RCUR @ TWO-ROW-LOSS {: od:n orow:n :}
    od DCUR !  orow RCUR !
    h LIN-EFF-PASS ;
@@ -20406,17 +20576,7 @@ CHECKER-REG:}SCRATCH
 : RIGID-ATOM-DOMAIN ( n -- n )   \ 0 none / 1 region / 2 extent / 3 gen
    T-RES dup TAG T-ATOM <> IF drop 0 EXIT THEN
    dup ATOM>K 0 <= IF drop 0 EXIT THEN            \ only an instantiated fresh id carries a domain
-   dup ATOM>A swap ATOM>U {: a:ptr u:n :}
-   u 7 >= IF a 7 s" region-" CORE-STR= IF 1 EXIT THEN THEN
-   u 7 >= IF a 7 s" extent-" CORE-STR= IF 2 EXIT THEN THEN
-   u 4 >= IF a 4 s" gen-"    CORE-STR= IF 3 EXIT THEN THEN
-   0 ;
-: RIGID-DOMAIN-REASON ( n n -- n )   \ expected and actual domains -> MD-RIGID-*
-   {: de:n da:n :}
-   de da <> IF MD-RIGID-XDOM EXIT THEN            \ different domains -> identity confusion
-   de 1 = IF MD-RIGID-REGION EXIT THEN
-   de 2 = IF MD-RIGID-EXTENT EXIT THEN
-   MD-RIGID-GEN ;
+   dup ATOM>A swap ATOM>U RIGID-NAME-DOMAIN ;
 : RIGID-DIAG-CLASSIFY ( -- )
    REFUSAL@ RF-MISMATCH <> IF EXIT THEN
    DF-EXP @ 0= IF EXIT THEN
@@ -22623,8 +22783,6 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 \ effect than the implementation supports. This includes variables nested in
 \ pointers, quotation effects, and type-family arguments. A variable must also
 \ retain its declared kind: raw storage cannot narrow an unrestricted generic.
-32 constant NP-CAP                                   \ >= 26 single-letter quantifiers
-create NP-ORIG NP-CAP cells allot   variable NP-ORIG-N   \ distinct declared quantifier ids
 create NP-ORIG-KIND NP-CAP cells allot               \ initial kind of each declared quantifier
 create NP-ROOT NP-CAP cells allot                    \ resolved root id of each seen quantifier
 create NP-ROOT-OID NP-CAP cells allot                \ origin quantifier id that first reached a root
@@ -24262,7 +24420,7 @@ CHECKER-REG:}SCRATCH
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
    0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
-   0 NP-ORIG-N !  SG-ROWS-RESET
+   0 NP-ORIG-N !  0 CALL-MINT-N !  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
@@ -25196,10 +25354,6 @@ variable CAST-PATH-N
 : LBUF-PEND-CLEAR ( -- )
    NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO !  0 LAYOUT-RELEASE ! ;
 
-\ A new identity in the domain of fresh-name atom `name`.
-: FB-MINT ( n -- n ) {: name:n :}
-   name ATOM>A name ATOM>U  name ATOM>A name ATOM>U RIGID-AK-MINT  MK-ATOM-K ;
-
 \ A body-supplied name left unbound takes a new identity. A region name must
 \ hold one this body minted that no other name claims; any other name only that.
 : FB-OWNED? ( n -- bool ) {: idx:n :}
@@ -25214,23 +25368,40 @@ variable CAST-PATH-N
    idx 1+ FO-ENSURE
    id ATOM>K idx FO-MATCH? ;
 
-\ A refused name is captured as a one-cell mismatch: a new identity of its
-\ domain against the one it holds, which RIGID-DIAG-CLASSIFY names.
 : FB-CLAIM ( n -- ) {: idx:n :}
    idx cells FB-NAME + @ {: name:n :}
    name 0= IF EXIT THEN
    idx FB-OWNED? IF EXIT THEN
-   FAILSET @ 0= IF
-      0 UF-SET !  -1 CUR-UPOS !
-      idx cells FB-VAR + @ T-RES  name FB-MINT  2dup U-FAIL
-      FRESH MK-ROW MK-PUSH  swap FRESH MK-ROW MK-PUSH  UF-CAPTURE
-   THEN
-   0 OK ! ;
+   idx cells FB-VAR + @ T-RES  name FB-MINT  RIGID-HELD-REFUSE ;
 
 : FRESH-CLAIM ( -- )
    OK @ 0= IF EXIT THEN
    FO-RESET
    0 BEGIN dup FB-N @ < WHILE  dup FB-CLAIM  1 + REPEAT drop ;
+
+\ An inferred input holding a rigid identity no call gave it holds one its body
+\ minted, which no caller has (C-INFOWN): refused as a declared input's is (C-FOWN).
+: INFER-RIGID-TYPE ( n -- ) {: t:n :}
+   t T-RES {: r:n :}
+   r TAG T-ATOM = IF
+      r ATOM>K 0 > IF r CALL-MINT? 0= IF r  r FB-MINT  RIGID-HELD-REFUSE THEN THEN
+      EXIT
+   THEN
+   r TAG T-PTR = IF r PTR>INNER RECURSE EXIT THEN
+   r TAG T-PARAM = IF
+      0 BEGIN dup r PARAM>ARGC < WHILE
+         r over PARAM>ARG RECURSE
+         1 +
+      REPEAT drop
+   THEN ;
+
+: INFER-FRESH-CLAIM ( -- )
+   OK @ 0= IF EXIT THEN
+   BROW @ R-RES
+   BEGIN dup TAG S-PUSH = WHILE
+      dup P>TYPE INFER-RIGID-TYPE
+      P>REST R-RES
+   REPEAT drop ;
 
 : CHECK-FRESH-OUTPUT ( -- )
    SGOUT @ SUNI-COERCE
@@ -25335,6 +25506,7 @@ variable UNREC-DOUT  CELLS-NONE UNREC-DOUT !
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    CHECK-SIG? CHECK-RETURNS? 0= and IF FRESH-CLAIM THEN   \ a body that never returns resolves its fresh names too
+   CHECK-SIG? 0= IF INFER-FRESH-CLAIM THEN
    CF-OPEN? IF CF-FAIL THEN
    CHECK-RBALANCE
    CHECK-RET-SIG? IF

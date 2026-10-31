@@ -1382,7 +1382,8 @@ storage. Three checker domains name these rigidly:
 
 - **host region**, which allocation: an output spelled `fresh-region-*` mints a
   fresh region per call, shared across that call's outputs; an inferred effect
-  records its body's identities as template slots, so callers mint per call.
+  records its body's identities on outputs as template slots, so callers mint
+  per call.
 - **extent**, the bounds identity: `fresh-extent-*`.
 - **mutation generation**: `fresh-gen-*`. A mutation that invalidates
   outstanding indices yields a new generation, so an old index no longer
@@ -1394,6 +1395,24 @@ fresh region name the body supplies (written only on outputs, or on an input
 quotation's inputs, the direction flipping at each nesting) must end holding a
 region this body minted, and no two such names hold one region. A body-supplied
 extent, generation or mask name must stay unbound in the body, which then mints
+it.
+
+At a call, a fresh name on a plain input of the called word is the identity
+the argument carries, in the name's own domain, and its other occurrences are
+that identity; a name only on outputs or inside a quotation is a new identity
+per call. A caller's declared quantifier has a domain only through a region
+kind (a mut-view's region argument): one without it (a matrix's region
+argument may be any type), or passed to a fresh input of another domain, is
+`E-RIGID-DOMAIN-CONFUSION`. Two fresh input names of one domain take two
+identities: one allocation passed as both inputs of `( M_b M_c -- )`, or a
+caller's declared quantifier passed as either, is `E-RIGID-REGION-MISMATCH`.
+An argument whose type is still an undeclared variable takes a new identity
+there, so an inferred word that forwards its inputs to such a word
+(`: FWD M2 ;` with `M2 ( M_b M_c -- )`) has fresh inputs itself. A quantifier and a fresh input
+of the called word may take one allocation (`( M<a> M_b -- )`): no rule admits
+anything from the two being distinct. An inferred effect whose plain input
+holds an identity its body minted (`: UX OWN SAME ;` with `OWN ( --
+fresh-region-a )`, `SAME ( x x -- )`) is refused the same way: no caller holds
 it.
 
 Each domain has a private per-check counter that never reuses an id and throws
@@ -2115,7 +2134,9 @@ sections above.
   outer definition after a caught refusal. The open-definition diagnostic
   locates the name (or `def-open` caller), the open-comment diagnostic its `(`,
   and the foreign-close diagnostic its `;`; stdin has no line location.
-- **A fresh identity is minted per call, declared or inferred.** With
+- **An output's fresh identity is minted per call, declared or inferred.** A
+  name on a plain input is the argument's identity instead (**Rigid
+  host-allocation identity domains**). With
   `defer RG-ONE ( -- fresh-region-a )`, `: USE-INF RG-ONE ;` records its
   region as a template slot, so `: T3 USE-INF USE-INF SAME-ID ;` (where
   `SAME-ID` is `( x x -- )`) compares two allocations:

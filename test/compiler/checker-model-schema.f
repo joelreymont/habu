@@ -233,8 +233,8 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" CMV28 ( cmtwin cmwide -- cmtwin n ) MATCH cmtwin cmta OF CHECKER-MODEL-CASES:DROP-N ENDOF cmtb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"
       V-REJECT VEC-ROW ;
 
-\ Six rows about rigid host-allocation identities. An identity is minted at a
-\ call site (`E-I-AK`, src/core/checker.f), once per template slot per
+\ Six rows about rigid host-allocation identities. An output identity is minted
+\ at a call site (`E-I-AK`, src/core/checker.f), once per template slot per
 \ instantiation, from the counter its domain owns. Three pairs:
 \   - one call against two: `MK-REGION-PAIR` names one slot twice, so its two
 \     outputs carry one identity and the consumer certifies; two `MK-REGION`
