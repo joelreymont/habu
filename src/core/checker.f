@@ -27920,22 +27920,96 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
 \ host certified the prefix in source order after CHECKER-RESET-SOURCE rewound
 \ its user records, so EW.NEXT (the store offset just past each record) orders
 \ the copies the same way on every host.
-\ ORDER-P holds source order and the exact handle associations from copied
-\ rows: a private mapping TRANSFER-CHECKED releases on every way out, none of it
-\ reaching the image.
-6 cells constant ORDER-ROW
-2 constant ORDER-SOURCE-EFFECT
-3 constant ORDER-TARGET-EFFECT
-4 constant ORDER-SOURCE-CONTROL
-5 constant ORDER-TARGET-CONTROL
+\ ORDER-P: ORDER-N rows of handles, then ORDER-RUNS runs of ORDER-N pairs; a
+\ private mapping TRANSFER-CHECKED releases on every way out, never imaged.
+4 cells constant ORDER-ROW
+0 constant ORDER-SOURCE-EFFECT
+1 constant ORDER-TARGET-EFFECT
+2 constant ORDER-SOURCE-CONTROL
+3 constant ORDER-TARGET-CONTROL
+2 cells constant ORDER-PAIR
+0 constant ORDER-WALK
+1 constant ORDER-EFFECTS
+2 constant ORDER-CONTROLS
+3 constant ORDER-RUNS
 PTR-VARIABLE ORDER-P   variable ORDER-N
 NULL-PTR ORDER-P !   0 ORDER-N !
 
 : ORDER-BASE ( -- ptr n ) ORDER-P @ ;
-: ORDER-KEY ( n -- ptr n ) ORDER-ROW * ORDER-BASE + ;
-: ORDER-ID ( n -- ptr n ) ORDER-KEY CELL + ;
-: ORDER-FIELD ( n n -- ptr n ) {: i:n field:n :}
-   i ORDER-KEY field cells + ;
+: ORDER-BYTES ( n -- n ) ORDER-RUNS ORDER-PAIR * ORDER-ROW + * ;
+: ORDER-FIELD ( n n -- ptr n )
+   {: i:n field:n :}
+   i ORDER-ROW * field cells + ORDER-BASE + ;
+
+
+: ORDER-PAIRS ( n -- ptr n )
+   {: run:n :}
+   run ORDER-PAIR * ORDER-ROW + ORDER-N @ * ORDER-BASE + ;
+
+: ORDER-AT ( ptr n n -- ptr n ) ORDER-PAIR * + ;
+
+
+: ORDER-PAIR@ ( ptr n n -- n n ) ORDER-AT {: p:ptr :}
+   p @ p CELL + @ ;
+
+
+: ORDER-PAIR! ( n n ptr n n -- ) ORDER-AT {: k:n t:n p:ptr :}
+   k p !  t p CELL + ! ;
+
+
+: ORDER-BEFORE? ( ptr n n n -- bool )
+   {: a:ptr i:n j:n :}
+   a i ORDER-PAIR@ a j ORDER-PAIR@ {: ki:n ti:n kj:n tj:n :}
+   ki kj <  ki kj = ti tj < and  or ;
+
+
+: ORDER-SWAP ( ptr n n n -- )
+   {: a:ptr i:n j:n :}
+   a i ORDER-PAIR@ a j ORDER-PAIR@  a i ORDER-PAIR!  a j ORDER-PAIR! ;
+
+
+\ Whichever of pairs i and j sorts later, i when j lies past the first n.
+: ORDER-LATER ( ptr n n n n -- n )
+   {: a:ptr i:n j:n n:n :}
+   j n >= if i exit then
+   a i j ORDER-BEFORE? if j else i then ;
+
+
+\ One sift-down step in the heap of the first n pairs: the child pair at took
+\ the place of, or -1 when pair at already sorts after both its children.
+: ORDER-STEP ( ptr n n n -- n )
+   {: a:ptr at:n n:n :}
+   a at at 2 * 1 + n ORDER-LATER {: big:n :}
+   a big at 2 * 2 + n ORDER-LATER {: top:n :}
+   top at = if -1 exit then
+   a at top ORDER-SWAP  top ;
+
+
+: ORDER-SIFT ( ptr n n n -- )
+   {: a:ptr root:n n:n :}
+   root begin dup 0 >= while a swap n ORDER-STEP repeat drop ;
+
+
+\ Heapsort n pairs by ORDER-BEFORE?; every run's second cells are distinct, so
+\ the result is the one total order.
+: ORDER-SORT ( ptr n n -- )
+   {: a:ptr n:n :}
+   n 2 / 0 ?do a  n 2 / 1 - i -  n ORDER-SIFT loop
+   n 1 ?do
+      a 0 n i - ORDER-SWAP
+      a 0 n i - ORDER-SIFT
+   loop ;
+
+
+\ The first of n sorted pairs whose first cell is not below k, n when none is.
+: ORDER-FIRST ( ptr n n n -- n )
+   {: a:ptr n:n k:n :}
+   0 n begin 2dup < while
+      {: lo:n hi:n :}
+      lo hi + 2 / {: mid:n :}
+      a mid ORDER-PAIR@ drop k < if mid 1 + hi else lo mid then
+   repeat drop ;
+
 
 \ The store offset just past the source's record for a symbol, 0 for a symbol
 \ it holds none for; false past its last symbol. Only a record still being
@@ -27952,75 +28026,78 @@ NULL-PTR ORDER-P !   0 ORDER-N !
       1 +
    repeat 2drop ;
 
+
+\ The walk's pairs, in source id order. The ids' newest records are distinct
+\ (one ER.SYM each), so no two pairs share an EW.NEXT.
 : ORDER-FILL ( -- )
+   ORDER-WALK ORDER-PAIRS {: walk:ptr :}
    0 1 begin dup SOURCE-AT while
       {: id:n at:n :}
       at 0 <> if
-         at over ORDER-KEY !  id over ORDER-ID !
-         0 over ORDER-SOURCE-EFFECT ORDER-FIELD !
-         0 over ORDER-TARGET-EFFECT ORDER-FIELD !
-         0 over ORDER-SOURCE-CONTROL ORDER-FIELD !
-         0 over ORDER-TARGET-CONTROL ORDER-FIELD !
-         TRANSFER-FACTS @ IF
-            id SOURCE-HANDLES-XT {: effect:n control:n refs:bool :}
-            effect over ORDER-SOURCE-EFFECT ORDER-FIELD !
-            refs 0= IF control over ORDER-SOURCE-CONTROL ORDER-FIELD ! THEN
-         THEN
+         dup {: pos:n :}
+         at id walk pos ORDER-PAIR!
          1 +
       then
       id 1 +
    repeat 2drop drop ;
 
-: ORDER-SWAP ( n -- ) {: pos:n :}   \ exchange rows pos-1 and pos
-   6 0 ?do
-      pos 1 - i ORDER-FIELD @ {: prior:n :}
-      pos i ORDER-FIELD @ pos 1 - i ORDER-FIELD !
-      prior pos i ORDER-FIELD !
-   loop ;
 
-\ Insertion sort: the walk meets the host's primitives first and every other
-\ record nearly in order, so a row moves past little more than those.
-: ORDER-SORT ( n -- ) {: n:n :}
-   1 begin dup n < while
-      dup begin
-         dup 0 > if dup 1 - ORDER-KEY @ over ORDER-KEY @ > else RES-FALSE then
-      while dup ORDER-SWAP 1 - repeat drop
-      1 +
-   repeat drop ;
+: ORDER-SOURCE! ( n n -- )
+   {: pos:n id:n :}
+   0 pos ORDER-SOURCE-EFFECT ORDER-FIELD !
+   0 pos ORDER-SOURCE-CONTROL ORDER-FIELD !
+   TRANSFER-FACTS @ 0= IF EXIT THEN
+   id SOURCE-HANDLES-XT {: effect:n control:n refs:bool :}
+   effect pos ORDER-SOURCE-EFFECT ORDER-FIELD !
+   refs 0= IF control pos ORDER-SOURCE-CONTROL ORDER-FIELD ! THEN ;
+
+
+: ORDER-ID ( n -- n ) ORDER-WALK ORDER-PAIRS swap ORDER-PAIR@ nip ;
+
+
+: ORDER-INDEX ( n n -- )
+   {: field:n run:n :}
+   run ORDER-PAIRS {: index:ptr :}
+   ORDER-N @ 0 ?do i field ORDER-FIELD @ i index i ORDER-PAIR! loop
+   index ORDER-N @ ORDER-SORT ;
+
 
 : ORDER-RELEASE ( -- )
    ORDER-N @ 0= if exit then
-   ORDER-BASE ORDER-N @ ORDER-ROW * munmap 0 <> if
+   ORDER-BASE ORDER-N @ ORDER-BYTES munmap 0 <> if
       s" checker: transfer order munmap failed" 76 die
    then
    NULL-PTR ORDER-P !  0 ORDER-N ! ;
 
+
 : TRANSFER-ROWS ( -- )
    ORDER-COUNT {: n:n :}
    n 0= if exit then
-   n ORDER-ROW * ARENA-ALLOC ORDER-P !  n ORDER-N !
+   n ORDER-BYTES ARENA-ALLOC ORDER-P !  n ORDER-N !
    ORDER-FILL
-   n ORDER-SORT
-   0 begin dup n < while
-      dup {: pos:n :}
-      pos ORDER-ID @ SOURCE-ROW drop TRANSFER-ROW
-         {: effect:n control:n :}
-      effect pos ORDER-TARGET-EFFECT ORDER-FIELD !
-      control pos ORDER-TARGET-CONTROL ORDER-FIELD !
-      1 +
-   repeat drop ;
-
-\ The target handle for a source handle, false when no copied or kept row
-\ carries it. A kept row may hold no control row: control 0, found.
-: ORDER-MAP ( n n n -- n bool )
-   {: handle:n source:n target:n :}
-   handle 0= IF 0 RES-FALSE EXIT THEN
-   ORDER-N @ 0 ?do
-      i source ORDER-FIELD @ handle = IF
-         i target ORDER-FIELD @ RES-TRUE unloop EXIT
-      THEN
+   ORDER-WALK ORDER-PAIRS n ORDER-SORT
+   n 0 ?do i i ORDER-ID ORDER-SOURCE! loop
+   n 0 ?do
+      i ORDER-ID SOURCE-ROW drop TRANSFER-ROW {: effect:n control:n :}
+      effect i ORDER-TARGET-EFFECT ORDER-FIELD !
+      control i ORDER-TARGET-CONTROL ORDER-FIELD !
    loop
-   0 RES-FALSE ;
+   ORDER-SOURCE-EFFECT ORDER-EFFECTS ORDER-INDEX
+   ORDER-SOURCE-CONTROL ORDER-CONTROLS ORDER-INDEX ;
+
+
+\ The target handle of the first copied or kept row carrying a source handle;
+\ false when none does. A kept row may hold no control row: control 0, found.
+: ORDER-MAP ( n n n -- n bool )
+   {: handle:n run:n target:n :}
+   handle 0= IF 0 RES-FALSE EXIT THEN
+   run ORDER-PAIRS {: index:ptr :}
+   index ORDER-N @ handle ORDER-FIRST {: at:n :}
+   at ORDER-N @ = IF 0 RES-FALSE EXIT THEN
+   index at ORDER-PAIR@ {: found:n row:n :}
+   found handle <> IF 0 RES-FALSE EXIT THEN
+   row target ORDER-FIELD @ RES-TRUE ;
+
 
 \ Copy source's fixed kind into target, and its value only for a fixed
 \ value, as RECORD-LINK-FIXED! keeps it: a pre-change source can still
@@ -28032,7 +28109,8 @@ NULL-PTR ORDER-P !   0 ORDER-N !
       source RLINK.FIXED-VALUE cells + @
    ELSE 0 THEN target RLINK.FIXED-VALUE cells + ! ;
 
-: TRANSFER-LINK ( n ptr n -- ) {: ord:n source:ptr :}
+: TRANSFER-LINK ( n ptr n -- )
+   {: ord:n source:ptr :}
    source RLINK.GRID cells + @ 0 <> IF EXIT THEN
    ord RECORD-LINK-CURRENT? IF
       ord RECORD-LINK-CELL {: target:ptr :}
@@ -28043,11 +28121,11 @@ NULL-PTR ORDER-P !   0 ORDER-N !
       EXIT
    THEN
    source RLINK.EFFECT cells + @
-      ORDER-SOURCE-EFFECT ORDER-TARGET-EFFECT ORDER-MAP 0= IF drop EXIT THEN
+      ORDER-EFFECTS ORDER-TARGET-EFFECT ORDER-MAP 0= IF drop EXIT THEN
       {: effect:n :}
    source RLINK.CONTROL cells + @ {: prior-control:n :}
    prior-control 0= IF 0 ELSE
-      prior-control ORDER-SOURCE-CONTROL ORDER-TARGET-CONTROL ORDER-MAP
+      prior-control ORDER-CONTROLS ORDER-TARGET-CONTROL ORDER-MAP
       0= IF drop EXIT THEN
    THEN {: control:n :}
    ord effect control RECORD-LINK-VALID? 0= IF EXIT THEN
