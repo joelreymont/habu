@@ -62,6 +62,12 @@ entry.
   why are we not typing it? that would fix all the issues and avoid having to
   record any runs. prove me wrong!" Whether data can hold an address is
   decided by its declared type, not by how it was built or by its value.
+  Asked what a PTR-VARIABLE should hold once a saved image starts again, Joel
+  chose "Cleared to null" over merging it with PERSISTED-PTR-VARIABLE: the
+  scratch pointer forms are written as null into the image, and only the
+  PERSISTED- forms carry an address across a save. Asked whether the old byte
+  scan's code, public CELL-BODY:DECLARE included, goes once the save checks
+  by type, Joel chose "Remove all of it".
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
