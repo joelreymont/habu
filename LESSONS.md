@@ -71,7 +71,11 @@ entry.
   the global word that gives each task its own typed cell, he first objected
   that "TASK:TASK-LOCAL or even TASK:TASK-VARIABLE doesn't read well"; told it
   is a core word in no package, beside TYPED-VARIABLE, he chose TASK-LOCAL
-  over TASK-VARIABLE and USER-VARIABLE.
+  over TASK-VARIABLE and USER-VARIABLE. Asked next to approve moving the band
+  counter and slot hook into the core for it, he asked "why in the world do you
+  need TASK-LOCAL when you have TASK:+USER?": Maki's per-task typed pointer
+  already runs on `TASK:+USER` with one private cast (maki
+  src/project-ops.f:176-182), so TASK-LOCAL is dropped.
 - 2026-10-31, packages: offered a third package section so engine-only
   checker words stay callable from other engine packages but hidden from
   programs, Joel answered "private means NOT FUCKING AVAILABLE OUTSIDE THIS
