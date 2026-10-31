@@ -110,12 +110,8 @@ variable RESOLVED?
       s" cold-engine: writer produced no executable host" COLD-RC die then
    KEY-HEX FAMILY$ ENGINE-KEY TMP-BYTES KEYED-IMAGE:PUBLISH ;
 
-\ A second builder racing this one writes the same keyed bytes through
-\ KEYED-IMAGE:PUBLISH's atomic replaces, so the race costs one redundant
-\ emission and fails neither. The work directory goes whatever the emission
-\ did, and a failure keeps its own code: a throw is caught here, and a die in
-\ WRITER-RUN or PUBLISH ends the process, whose exit registry removes what
-\ KEYED-IMAGE:WORK-OPEN registered.
+\ A same-key racer keeps the host KEYED-IMAGE:PUBLISH put there first. The
+\ work directory goes on every outcome; a die leaves it to the exit registry.
 : EMIT ( -- )
    WORK-OPEN
    ['] WRITER-RUN catch EMIT-RC !

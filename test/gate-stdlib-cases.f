@@ -437,6 +437,10 @@ SUITE engine-id-replace
    test/engine-id-replace-e2e.f
 ;SUITE
 
+SUITE keyed-image-publish
+   test/keyed-image-publish.f
+;SUITE
+
 \ These manifests execute the native schema and case checks without a prover.
 SUITE compiler-checker-model-manifest
    test/compiler/checker-model-manifest.f

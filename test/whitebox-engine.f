@@ -123,12 +123,8 @@ variable READY?
    KEY-HEX FAMILY$ ENGINE-KEY TMP-BYTES KEYED-IMAGE:PUBLISH
    FAMILY$ ENGINE-KEY PATH-BUF PATH-U KEYED-IMAGE:PATH! ;
 
-\ A second builder racing this one writes the same keyed bytes through
-\ KEYED-IMAGE:PUBLISH's atomic replaces, so the race costs one redundant build
-\ and fails neither. The work directory goes whatever the build did, and a
-\ failure keeps its own code: a throw is caught here, and a die in BUILD-RUN
-\ or PUBLISH ends the process, whose exit registry removes what
-\ KEYED-IMAGE:WORK-OPEN registered.
+\ A same-key racer keeps the image KEYED-IMAGE:PUBLISH put there first. The
+\ work directory goes on every outcome; a die leaves it to the exit registry.
 : EMIT ( -- )
    ENGINE-CANDIDATE:PATH$ ENGINE-KEY BUILD-OUT:KEY-OF!
    WORK-OPEN

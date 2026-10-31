@@ -3,12 +3,19 @@
 \ with <family>.key beside it holding the KEY-HEX-LEN hex digits it was built
 \ under. The caller computes the builder engine's key once (BUILD-OUT:KEY-OF!);
 \ every word that names a slot takes it right after the family. Keys fold source
-\ closure paths, tying an image to its tree. Gate grants: test/keyed-image.f.
+\ closure paths, tying an image to its tree. One out root serves one tree's
+\ builds of a family on one builder engine under one selector key at a time: a
+\ publisher under another key replaces the image. Two keys arise when
+\ selections sharing the root vary an input a selector key folds (working
+\ directory, engine path spelling, donor map, target, selected root or source
+\ closure); sharing HABU_OUT across trees is outside the contract. Gate grants:
+\ test/keyed-image.f.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fs-lock.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -126,23 +133,33 @@ public
 : WORK-CLOSE ( ptr u8 n -- )
    2dup FS:REMOVE-TREE FS:CLEANUP-FORGET ;
 
-\ An empty key first, which FRESH? reads as a miss, then the image, then the key,
-\ each an atomic replace that unlinks nothing: a reader between them builds
-\ again and never finds a new image under an old key, and publishers of one
-\ family under one key cannot fail each other. A kill inside leaves the empty
-\ key and possibly the key write's temporary file.
-\ Image and key are two files, so publishers of one family under two keys can
-\ interleave: one out root serves one tree's builds of a family on one builder
-\ engine under one selector key at a time. Two keys remain possible when a
-\ selector key folds another input that two selections sharing the root can vary
-\ (working directory, engine path spelling, donor map, target, selected root or
-\ source closure). Sharing HABU_OUT across trees is outside the contract.
-: PUBLISH ( ptr u8 ptr u8 n ptr u8 ptr u8 n -- )
+private
+
+variable LOCK-FD
+
+: UNLOCK ( -- ) LOCK-FD @ close ;
+
+\ An image already fresh under the key stays: on macOS a process running it
+\ fails ENGINE-ID:KEY$ with E-ENGINE-KEY once its path names another file.
+: PUBLISH-HELD ( ptr u8 ptr u8 n ptr u8 ptr u8 n -- )
    {: key:ptr fam:ptr famu:n ekey:ptr tmp:ptr tmpu:n :}
-   fam famu ekey PATHS!
+   key fam famu ekey FRESH? if exit then
+   \ Empty key, image, then key, each an atomic replace: a reader in between
+   \ misses, and a kill leaves the empty key and maybe the key's temporary file.
    KEY-PATH$ key 0 FS:ATOMIC-WRITE-FILE
    tmp tmpu PATH$ FS:RENAME-FILE
    KEY-PATH$ key KEY-HEX-LEN FS:ATOMIC-WRITE-FILE ;
+
+public
+
+\ Publishers of one engine's images take turns on its img/ directory's flock: a
+\ same-key racer keeps the published image and leaves its own to WORK-CLOSE.
+: PUBLISH ( ptr u8 ptr u8 n ptr u8 ptr u8 n -- )
+   {: key:ptr fam:ptr famu:n ekey:ptr tmp:ptr tmpu:n :}
+   fam famu ekey PATHS!
+   PATH$ SOURCE-ROOT:DIRNAME FS-LOCK:OPEN-DIR FD>N LOCK-FD !
+   key fam famu ekey tmp tmpu
+   [: LOCK-FD @ >FD FS-LOCK:WAIT PUBLISH-HELD ;] ['] UNLOCK finally ;
 
 private
 
@@ -227,11 +244,8 @@ public
 : CLOSURE-IN+ ( CONTENT-KEY:fold ptr u8 n ptr u8 n -- CONTENT-KEY:fold )
    [: 2drop ;] CLOSURE-IN-EACH+ ;
 
-\ Build the family's image under the key unless it is already there: the engine
-\ runs with the program on stdin and `--` then what ARGS stages, given the save
-\ path. The engine path is copied; the key, engine key, family name and program
-\ are read until it returns. TRUE: the existing image was selected; FALSE: this
-\ call built and published it.
+\ Build the family's image under the key unless one is fresh (TRUE): the engine
+\ runs the program on stdin with `--` and what ARGS stages from the save path.
 : ENSURE-WITH ( ptr u8 ptr u8 n ptr u8 ptr u8 n ptr u8 n [ ptr u8 n -- ] n -- bool )
    {: key:ptr fam:ptr famu:n ekey:ptr eng:ptr engu:n prog:ptr progu:n args timeout:n :}
    timeout CHILD-TIMEOUT-MS !
