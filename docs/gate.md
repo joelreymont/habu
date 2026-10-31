@@ -56,16 +56,20 @@ capture changes that can alter successive engine output; see
 [bootstrap.md](bootstrap.md#generation-chain-check). The Gforth recovery checks
 below are also separate from the registry.
 
-### A rename lane rebased over new uses of the old names
+### A lane rebased over code its change reaches
 
 A rebase merges a line master added after the lane's base without a conflict
-even when that line uses a name the lane renamed, so the rebased tree fails
-with E-UNDEFINED at that line while every row the lane ran stays green. Before
-landing a lane that renames or repackages words, grep the whole tree for every
-old name it reports, and run every row that loads a file master added or
-changed since the lane's base. The FS package lane rebased over three such
-lines, in src/lib/test/fifo.f, src/lib/net/ws-test.f and src/lib/zip.f, none
-of which its own rows loaded.
+even when that line uses a name the lane renamed, or a form a new checker rule
+refuses, so the rebased tree fails at that line while every row the lane ran
+stays green. Before landing a lane that renames or repackages words, grep the
+whole tree for every old name it reports. Before landing one that renames words
+or changes what the checker admits, run every row that loads a file master
+added or changed since the lane's base. The FS package lane rebased over three
+renamed names, in src/lib/test/fifo.f, src/lib/net/ws-test.f and
+src/lib/zip.f, none of which its own rows loaded. The cast-owner lane, gated
+before src/lib/net/model.f existed, refused that file's cast of arena bytes
+into a record holding another package's OPAQUE cursor, and row model-test went
+red on master.
 
 ### A green build does not show that the prefix boots from source
 
