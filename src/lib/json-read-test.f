@@ -417,6 +417,21 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE ;
 
+: JRT-COPY$ ( -- ptr u8 n )
+   s\" {\"a\":1,\"b\":[2,3]}" ;
+
+: JRT-COPY ( n -- ptr u8 n ) {: indent:n :}
+   JRT-COPY$ JRT-OPEN-A JSON:READ-NEXT drop
+   JRT-WRITER JRT-WRITE-BUF JRT-CAP JSON:WRITE-OPEN indent JSON:WRITE-INDENT!
+   JRT-BUF JRT-CAP JSON:COPY-VALUE
+   JSON:WRITTEN$ {: a:ptr u:n :}
+   JSON:READ-CLOSE a u ;
+
+\ COPY-VALUE lays the value out through the writer's tokens, as any writing.
+: JRT-TEST-COPY-LAYOUT ( -- )
+   2 JRT-COPY s\" {\n  \"a\": 1,\n  \"b\": [\n    2,\n    3\n  ]\n}" T$=
+   0 JRT-COPY JRT-COPY$ T$= ;
+
 : JRT-TEST-FIND-HIT ( -- )
    JRT-FIND$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
@@ -1056,6 +1071,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-DEEP
    JRT-TEST-END-SPAN
    JRT-TEST-ROUNDTRIP
+   JRT-TEST-COPY-LAYOUT
    JRT-TEST-FIND-HIT
    JRT-TEST-FIND-SKIP
    JRT-TEST-FIND-MISS

@@ -11,12 +11,17 @@ package JSON
 public
 
 \ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
-\ through buf. A closed writer keeps CLOSED-CAP.
+\ through buf. A closed writer keeps CLOSED-CAP. indent is the spaces per
+\ nesting level; 0 is compact. depth counts the open containers; pending is
+\ set by a START or COMMA, when a break is due before the next token.
 STRUCTURE writer
   FIELD out ptr u8
   FIELD cap n
   FIELD len n
   FIELD buf ptr n
+  FIELD indent n
+  FIELD depth n
+  FIELD pending bool
 ;STRUCTURE
 
 private
@@ -28,6 +33,7 @@ private
 10 constant JW-LF
 12 constant JW-FF
 13 constant JW-CR
+32 constant JW-SP
 34 constant JW-DQ
 44 constant JW-COMMA-C
 48 constant JW-ZERO
@@ -42,6 +48,10 @@ private
 10 constant JW-RADIX
 1 constant JW-PLAIN-N            \ escaped width of an ordinary byte
 2 constant JW-QUOTE-N            \ the two string delimiters
+1 constant JW-COLON-N            \ a compact key's separator, `:`
+2 constant JW-COLON-SP-N         \ an indented key's separator, `: `
+
+create JW-KEY-SEP JW-COLON-C c, JW-SP c,   \ each separator is a prefix of it
 
 \ The escaped width of each byte value: 1 plain, 2 for \" \\ \b \t \n \f \r,
 \ 6 for the other control bytes (\u00XX). Scans index it inline.
@@ -64,11 +74,20 @@ create JW-ESC-W
    1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $F0
 
 : JW-BUF@ ( ptr writer -- ptr n )
-   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
+   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n pending:bool :}
    buf ;
 
+\ indent, depth, pending. Unchecked: also reads a closed writer.
+: JW-LAYOUT@ ( ptr writer -- n n bool )
+   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n pending:bool :}
+   indent depth pending ;
+
+: JW-LAYOUT! ( ptr writer n bool -- ) {: w depth:n pending:bool :}
+   w @ JSON-WRITER:UNMAKE 2drop {: vp:ptr cap:n used:n buf:ptr indent:n :}
+   vp cap used buf indent depth pending JSON-WRITER:MAKE w ! ;
+
 : JW-LIVE ( ptr writer -- ptr u8 n n )   \ output buffer, capacity, length
-   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
+   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n pending:bool :}
    cap 0 < if E-JSON-WRITE-STATE throw then
    buf 0= if
       vp 0= if E-JSON-WRITE-STATE throw then
@@ -78,27 +97,26 @@ create JW-ESC-W
    data buf BUF:CAP@ BUF:BLEN>N length ;
 
 : JW-USED! ( ptr writer ptr u8 n n -- ) {: w vp:ptr cap:n used:n :}
-   vp cap used NULL-PTR JSON-WRITER:MAKE w ! ;
+   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
+   vp cap used NULL-PTR indent depth pending JSON-WRITER:MAKE w ! ;
 
-\ A negative or null-with-bytes span is E-JSON-WRITE-SOURCE, as is a span inside a
-\ growable writer's capacity but outside its written bytes.
+\ A negative or null-with-bytes span is E-JSON-WRITE-SOURCE.
 : JW-SPAN ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-JSON-WRITE-SOURCE throw then
    u 0 > a 0= and if E-JSON-WRITE-SOURCE throw then ;
 
-: JW-ALIAS-AT ( ptr u8 n n ptr u8 n -- n )
-   {: base:ptr cap:n used:n a:ptr u:n :}
+\ A span's offset in a growable writer's output, or -1 for fixed output or
+\ outside its capacity; one inside the capacity but past the written bytes is
+\ E-JSON-WRITE-SOURCE.
+: JW-ALIAS ( ptr writer ptr u8 n -- n ) {: w a:ptr u:n :}
+   w JW-BUF@ 0= if -1 exit then
+   w JW-LIVE {: base:ptr cap:n used:n :}
    a base < if -1 exit then
    a base - {: off:n :}
    off cap >= if -1 exit then
    off used > if E-JSON-WRITE-SOURCE throw then
    u used off - > if E-JSON-WRITE-SOURCE throw then
    off ;
-
-: JW-ALIAS ( ptr writer ptr u8 n -- n ) {: w a:ptr u:n :}
-   w JW-BUF@ 0= if -1 exit then
-   w JW-LIVE {: base:ptr cap:n used:n :}
-   base cap used a u JW-ALIAS-AT ;
 
 : JW-REBASE ( ptr writer ptr u8 n -- ptr u8 ) {: w a:ptr off:n :}
    off 0 < if a exit then
@@ -143,27 +161,48 @@ create JW-ESC-W
    then
    c buf BUF:APPEND-BYTE w ;
 
-\ The source may be a span of this writer's own output. Remember its offset
-\ before reserving, then reacquire the base after a BUF relocation.
-: JW-APPEND-LEN ( ptr writer ptr u8 len -- ptr writer ) {: w a:ptr u:len :}
-   w @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr :}
-   cap 0 < if E-JSON-WRITE-STATE throw then
-   u LEN>N {: count:n :}
-   buf 0= if
-      vp 0= if E-JSON-WRITE-STATE throw then
-      count MEM-MAX-N used - > if E-JSON-WRITE-CAPACITY throw then
-      count cap used - > if E-JSON-WRITE-CAPACITY throw then
-      a vp used + u BYTE-COPY-LEN
-      w vp cap used count + JW-USED!
-      w exit
-   then
-   buf BUF:SPAN$ BUF:BLEN>N {: base:ptr length:n :}
-   buf BUF:CAP@ BUF:BLEN>N {: capacity:n :}
-   base capacity length a count JW-ALIAS-AT {: off:n :}
-   count MEM-MAX-N length - > if E-JSON-WRITE-CAPACITY throw then
-   buf length count + BUF:N>BLEN BUF:ENSURE
-   off 0 < if a else buf BUF:SPAN$ drop off + then
-   count BUF:N>BLEN buf BUF:APPEND-SPAN
+\ Bytes of a break at depth: LF, then depth times indent spaces; none when
+\ compact.
+: JW-BREAK-N ( n n -- n ) {: indent:n depth:n :}
+   indent 0= if 0 exit then
+   depth MEM-MAX-N indent / > if E-JSON-WRITE-CAPACITY throw then
+   1 depth indent * JW-SIZE+ ;
+
+\ Reserve a token of count bytes behind a break of brk bytes as one room, then
+\ write the break; the token writes into the rest.
+: JW-BREAK-AT ( ptr writer n n -- ptr writer ) {: w count:n brk:n :}
+   w count brk JW-SIZE+ JW-ROOM drop
+   brk 0= if w exit then
+   w brk JW-TAKE {: s :}
+   JW-SP s SPAN:FILL
+   JW-LF s 0 SPAN:U8!
+   w ;
+
+\ Make room for a token of count bytes and any pending break, write the break
+\ and clear pending. A refusal leaves the length, depth and pending unchanged.
+: JW-TOKEN ( ptr writer n -- ptr writer ) {: w count:n :}
+   w JW-LIVE 2drop drop
+   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
+   pending if indent depth JW-BREAK-N else 0 then {: brk:n :}
+   w count brk JW-BREAK-AT
+   depth false JW-LAYOUT!
+   w ;
+
+\ A START opens a container: its bracket, one level deeper, a break due.
+: JW-START ( ptr writer n -- ptr writer ) {: w c:n :}
+   w 1 JW-TOKEN c JW-C drop
+   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
+   w depth 1+ true JW-LAYOUT!
+   w ;
+
+\ An END closes on its own line at the outer depth, or right after its START.
+: JW-END ( ptr writer n -- ptr writer ) {: w c:n :}
+   w JW-LIVE 2drop drop
+   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
+   depth 0= if E-JSON-WRITE-STATE throw then
+   pending if 0 else indent depth 1- JW-BREAK-N then {: brk:n :}
+   w 1 brk JW-BREAK-AT c JW-C drop
+   w depth 1- false JW-LAYOUT!
    w ;
 
 public
@@ -174,7 +213,7 @@ public
 : WRITE-OPEN ( ptr writer ptr u8 n -- ptr writer ) {: w vp:ptr cap:n :}
    vp 0= if E-JSON-WRITE-OUTPUT throw then
    cap 0 < if E-JSON-WRITE-OUTPUT throw then
-   w vp cap 0 JW-USED!
+   vp cap 0 NULL-PTR 0 0 false JSON-WRITER:MAKE w !
    w ;
 
 \ Clears the BUF and grows it as needed, including when an emitter reads bytes
@@ -183,7 +222,7 @@ public
 : WRITE-OPEN-BUF ( ptr writer ptr n -- ptr writer ) {: w buf:ptr :}
    buf 0= if E-JSON-WRITE-OUTPUT throw then
    buf BUF:CLEAR
-   NULL-PTR 0 0 buf JSON-WRITER:MAKE w !
+   NULL-PTR 0 0 buf 0 0 false JSON-WRITER:MAKE w !
    w ;
 
 : WRITE-RESET ( ptr writer -- ptr writer ) {: w :}
@@ -191,9 +230,10 @@ public
    buf 0= if
       w JW-LIVE {: vp:ptr cap:n used:n :}
       w vp cap 0 JW-USED!
-      w exit
+   else
+      buf BUF:CLEAR
    then
-   buf BUF:CLEAR
+   w 0 false JW-LAYOUT!
    w ;
 
 : WRITE-CLOSE ( ptr writer -- ) {: w :}
@@ -205,22 +245,33 @@ public
    JW-LIVE {: vp:ptr cap:n used:n :}
    vp used ;
 
-: WRITE-RAW ( ptr writer ptr u8 n -- ptr writer ) {: a:ptr u:n :}
+\ The source may be this writer's own output: remember its offset, since
+\ JW-TOKEN's reservation may relocate the output at every width.
+: WRITE-RAW ( ptr writer ptr u8 n -- ptr writer ) {: w a:ptr u:n :}
    a u JW-SPAN
-   a u >LEN JW-APPEND-LEN ;
+   w a u JW-ALIAS {: off:n :}
+   w u JW-TOKEN u JW-TAKE {: s :}
+   w a off JW-REBASE u s SPAN:COPY
+   w ;
+
+: WRITE-INDENT! ( ptr writer n -- ptr writer ) {: w indent:n :}
+   indent 0 < if E-JSON-WRITE-BYTE throw then
+   w JW-LIVE 2drop drop
+   w @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr old:n depth:n pending:bool :}
+   vp cap used buf indent depth pending JSON-WRITER:MAKE w !
+   w ;
 
 private
 
 : JW-HEX ( n -- n )
    dup 10 < if JW-ZERO + else 55 + then ;
 
-\ Bytes a quoted string will take: the delimiters plus each byte's width. A
-\ width is at most six, so the sum fits a cell for any span in memory; the one
-\ checked add refuses it exactly when a running checked sum would.
-: JW-STR-N ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ Bytes the escaped text takes, the sum of each byte's width. A width is at
+\ most six, so the sum fits a cell for any span in memory; the checked adds of
+\ the delimiters and separator refuse it exactly when a running checked sum would.
+: JW-ESC-N ( ptr u8 n -- n ) {: a:ptr u:n :}
    JW-ESC-W BYTE-VIEW {: w:ptr :}
-   0 u 0 ?do a i + c@ w + c@ + loop
-   JW-QUOTE-N swap JW-SIZE+ ;
+   0 u 0 ?do a i + c@ w + c@ + loop ;
 
 \ The letter after the backslash in a two-byte escape of c, or 0 for \u00XX.
 : JW-ESC-LETTER ( n -- n ) {: c:n :}
@@ -257,16 +308,11 @@ private
    e u = if at run + e exit then
    s at run + a e + c@ JW-ESC  e 1+ ;
 
-\ Write the quoted, escaped source into s, which is exactly its width.
-: JW-QUOTE-INTO ( ptr u8 n SPAN:span<u8> -- )
+\ Write the escaped source into s, which is exactly its escaped width.
+: JW-ESC-INTO ( ptr u8 n SPAN:span<u8> -- )
    {: a:ptr u:n s :}
-   JW-DQ s 0 SPAN:U8!
-   s SPAN:LEN JW-QUOTE-N - u = if
-      a u s 1 SPAN:SKIP SPAN:COPY
-   else
-      1 0 begin dup u < while a u s JW-ESC-STEP repeat 2drop
-   then
-   JW-DQ s s SPAN:LEN 1- SPAN:U8! ;
+   s SPAN:LEN u = if a u s SPAN:COPY exit then
+   0 0 begin dup u < while a u s JW-ESC-STEP repeat 2drop ;
 
 : JW-DIGIT-COUNT ( n -- n ) {: u:n :}
    u JW-RADIX < if 1 exit then
@@ -279,44 +325,65 @@ private
 \ Each source byte needs at least one output byte, so refuse an overlong fixed
 \ span before reading it, then text that is not UTF-8. Both reservations may
 \ relocate caller-owned output; rebase the source after each before scanning or
-\ emitting it. The escapes go straight into the span JW-TAKE answers over the
-\ whole quoted width.
-: JW-QUOTED ( ptr writer ptr u8 n n -- ptr writer )
-   {: w a:ptr u:n suffix:n :}
+\ emitting it. A quoted string or key is a token, so its width reserves any
+\ pending break with it; a string part never breaks. The escapes go straight
+\ into the span JW-TAKE answers over the whole width: the delimiters when
+\ quoted, then the first sep bytes of JW-KEY-SEP.
+: JW-QUOTED ( ptr writer ptr u8 n bool n -- ptr writer )
+   {: w a:ptr u:n quoted:bool sep:n :}
    a u JW-SPAN
    w a u JW-ALIAS {: off:n :}
    w u JW-ROOM drop
    w a off JW-REBASE {: src:ptr :}
    src u UTF8:VALID? 0= if E-JSON-WRITE-BYTE throw then
-   src u JW-STR-N {: width:n :}
-   w width suffix JW-SIZE+ JW-ROOM drop
-   w width JW-TAKE {: s :}
-   w a off JW-REBASE u s JW-QUOTE-INTO
-   w
-   suffix 0 > if JW-COLON-C JW-C then ;
+   quoted if 1 JW-QUOTE-N else 0 0 then {: lead:n delims:n :}
+   src u JW-ESC-N {: body:n :}
+   body delims JW-SIZE+ {: width:n :}
+   w width sep JW-SIZE+ quoted if JW-TOKEN else JW-ROOM then drop
+   w width sep + JW-TAKE {: s :}
+   quoted if
+      JW-DQ s 0 SPAN:U8!
+      JW-DQ s width 1- SPAN:U8!
+   then
+   w a off JW-REBASE u s lead body SPAN:SUB JW-ESC-INTO
+   JW-KEY-SEP sep s width SPAN:SKIP SPAN:COPY
+   w ;
 
 public
 
 : WRITE-STRING ( ptr writer ptr u8 n -- ptr writer )
-   0 JW-QUOTED ;
+   true 0 JW-QUOTED ;
 
-: WRITE-KEY ( ptr writer ptr u8 n -- ptr writer )
-   1 JW-QUOTED ;
+: WRITE-KEY ( ptr writer ptr u8 n -- ptr writer ) {: w a:ptr u:n :}
+   w JW-LAYOUT@ 2drop 0 > if JW-COLON-SP-N else JW-COLON-N then {: sep:n :}
+   w a u true sep JW-QUOTED ;
+
+: WRITE-STRING-START ( ptr writer -- ptr writer )
+   1 JW-TOKEN JW-DQ JW-C ;
+
+: WRITE-STRING-PART ( ptr writer ptr u8 n -- ptr writer )
+   false 0 JW-QUOTED ;
+
+: WRITE-STRING-END ( ptr writer -- ptr writer )
+   JW-DQ JW-C ;
 
 : WRITE-OBJECT-START ( ptr writer -- ptr writer )
-   JW-LBRACE JW-C ;
+   JW-LBRACE JW-START ;
 
 : WRITE-OBJECT-END ( ptr writer -- ptr writer )
-   JW-RBRACE JW-C ;
+   JW-RBRACE JW-END ;
 
 : WRITE-ARRAY-START ( ptr writer -- ptr writer )
-   JW-LBRACK JW-C ;
+   JW-LBRACK JW-START ;
 
 : WRITE-ARRAY-END ( ptr writer -- ptr writer )
-   JW-RBRACK JW-C ;
+   JW-RBRACK JW-END ;
 
-: WRITE-COMMA ( ptr writer -- ptr writer )
-   JW-COMMA-C JW-C ;
+: WRITE-COMMA ( ptr writer -- ptr writer ) {: w :}
+   w JW-COMMA-C JW-C drop
+   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
+   w depth true JW-LAYOUT!
+   w ;
 
 : WRITE-NULL ( ptr writer -- ptr writer )
    s" null" WRITE-RAW ;
@@ -326,7 +393,7 @@ public
 
 : WRITE-U ( ptr writer n -- ptr writer ) {: u:n :}
    u 0 < if E-JSON-WRITE-BYTE throw then
-   u JW-DIGIT-COUNT JW-ROOM
+   u JW-DIGIT-COUNT JW-TOKEN
    u JW-DIGITS ;
 
 \ The minimum cell negates to itself. Its quotient by ten has a positive
@@ -336,13 +403,13 @@ public
    {: v:n :}
    v 0 >= if v WRITE-U exit then
    v STR-MIN-I64 = if
-      STR-I64-DIGITS 1+ JW-ROOM
+      STR-I64-DIGITS 1+ JW-TOKEN
       STR-MINUS JW-C
       v JW-RADIX / negate JW-DIGITS
       v JW-RADIX mod negate JW-ZERO + JW-C exit
    then
    v negate {: m:n :}
-   m JW-DIGIT-COUNT 1+ JW-ROOM
+   m JW-DIGIT-COUNT 1+ JW-TOKEN
    STR-MINUS JW-C
    m JW-DIGITS ;
 

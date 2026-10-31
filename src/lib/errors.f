@@ -96,10 +96,10 @@
 -3100 constant E-JSON-WRITE-FIRST
 -3199 constant E-JSON-WRITE-LAST
 -3100 constant E-JSON-WRITE-CAPACITY   \ the value does not fit the caller's output buffer
--3101 constant E-JSON-WRITE-BYTE       \ a byte outside 0-255, a negative U, or WRITE-STRING/WRITE-KEY text that is not UTF-8
--3102 constant E-JSON-WRITE-STATE      \ writer used before JSON:WRITE-OPEN or after JSON:WRITE-CLOSE
+-3101 constant E-JSON-WRITE-BYTE       \ a byte outside 0-255, a negative U or indent, or string, key or part text that is not UTF-8
+-3102 constant E-JSON-WRITE-STATE      \ writer used before JSON:WRITE-OPEN or after JSON:WRITE-CLOSE, or an END with no open container
 -3103 constant E-JSON-WRITE-OUTPUT     \ output buffer is null, or its capacity is negative
--3104 constant E-JSON-WRITE-SOURCE     \ appended span is negative, or null with a positive length
+-3104 constant E-JSON-WRITE-SOURCE     \ appended span is negative, null with a positive length, or inside a growable output past its written bytes
 
 \ OS-backed memory: -3200..-3299
 -3200 constant E-MEM-FIRST

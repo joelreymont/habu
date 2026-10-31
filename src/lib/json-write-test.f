@@ -12,11 +12,11 @@ require src/lib/memory.f
 require src/lib/test/guard-page.f
 
 \ White-box test: reopen package JSON so the fixtures reach write.f's
-\ private byte plumbing (JW-APPEND-LEN and the byte constants)
-\ and call the public emitters by their bare package-local tails.
+\ private byte plumbing (the byte constants, JW-C and JW-ESC-N) and call
+\ the public emitters by their bare package-local tails.
 package JSON
 
-64 constant JWT-CAP
+128 constant JWT-CAP   \ holds the indented nested document
 8 constant JWT-SMALL-CAP
 20 constant JWT-FILL-N
 
@@ -431,7 +431,7 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
    JWT-B WRITE-CLOSE ;
 
 : JWT-NULL-OUT ( -- ptr u8 )   \ the zero image's null output pointer
-   JWT-FRESH @ JSON-WRITER:UNMAKE drop 2drop ;
+   JWT-FRESH @ JSON-WRITER:UNMAKE 2drop 2drop 2drop ;
 
 : JWT-CLOSED-FIELD-S-NULL-KEY ( -- )
    JWT-OPEN-B WRITE-CLOSE
@@ -565,7 +565,7 @@ JWT-EVERY-CAP BUFFER: JWT-EVERY-OUT
 : JWT-RT-ONE ( -- )
    JWT-RT-CASE$ {: a:ptr u:n :}
    a u JWT-RT-ENCODE {: e:ptr eu:n :}
-   eu a u JW-STR-N T=                 \ the reserved width is the emitted width
+   eu a u JW-ESC-N JW-QUOTE-N + T=   \ the reserved width is the emitted width
    e eu JWT-RT-DECODE$ a u T$= ;
 
 \ 2048 random strings: what WRITE-STRING reserves is what it writes, the output
@@ -594,29 +594,143 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
 : JWT-BAD-SURROGATE ( -- ) JWT-OPEN-AB JWT-SURROGATE 3 WRITE-STRING drop ;
 : JWT-BAD-KEY ( -- ) JWT-OPEN-AB JWT-FFFE 1 WRITE-KEY drop ;
 
-: JWT-NOT-UTF8 ( [ -- ] -- )
+: JWT-BYTE-REFUSED ( [ -- ] -- )
    E-JSON-WRITE-BYTE TTHROWSQ
    JWT-A WRITTEN$ s" ab" T$= ;
 
 : JWT-TEST-UTF8 ( -- )
-   [: JWT-BAD-FFFE ;] JWT-NOT-UTF8
-   [: JWT-BAD-CONT ;] JWT-NOT-UTF8
-   [: JWT-BAD-TRUNCATED ;] JWT-NOT-UTF8
-   [: JWT-BAD-OVERLONG ;] JWT-NOT-UTF8
-   [: JWT-BAD-SURROGATE ;] JWT-NOT-UTF8
-   [: JWT-BAD-KEY ;] JWT-NOT-UTF8
+   [: JWT-BAD-FFFE ;] JWT-BYTE-REFUSED
+   [: JWT-BAD-CONT ;] JWT-BYTE-REFUSED
+   [: JWT-BAD-TRUNCATED ;] JWT-BYTE-REFUSED
+   [: JWT-BAD-OVERLONG ;] JWT-BYTE-REFUSED
+   [: JWT-BAD-SURROGATE ;] JWT-BYTE-REFUSED
+   [: JWT-BAD-KEY ;] JWT-BYTE-REFUSED
    JWT-UTF8-OK 9 JWT-RT-ENCODE JWT-RT-DECODE$ JWT-UTF8-OK 9 T$= ;
 
-\ The handle is nominal: a raw cell is not a writer, and the length role is not
-\ an offset role.
+\ One nested document: a sub-object, an array of two numbers, an empty object
+\ and an empty array. Width 2 breaks after each START and COMMA and closes on
+\ its own line, except the empty pair; width 0 makes the same calls compact.
+: JWT-NESTED ( ptr writer -- ptr writer )
+   WRITE-OBJECT-START
+   s" a" WRITE-KEY WRITE-OBJECT-START
+   s" x" 1 WRITE-FIELD-U WRITE-COMMA s" y" JWT-TRUE WRITE-FIELD-BOOL
+   WRITE-OBJECT-END WRITE-COMMA
+   s" b" WRITE-KEY WRITE-ARRAY-START 2 WRITE-U WRITE-COMMA 3 WRITE-U WRITE-ARRAY-END
+   WRITE-COMMA
+   s" c" WRITE-KEY WRITE-OBJECT-START WRITE-OBJECT-END WRITE-COMMA
+   s" d" WRITE-KEY WRITE-ARRAY-START WRITE-ARRAY-END
+   WRITE-OBJECT-END ;
+
+: JWT-INDENTED$ ( -- ptr u8 n )
+   s\" {\n  \"a\": {\n    \"x\": 1,\n    \"y\": true\n  },\n  \"b\": [\n    2,\n    3\n  ],\n  \"c\": {},\n  \"d\": []\n}" ;
+
+: JWT-TEST-INDENTED ( -- )
+   JWT-OPEN-A 2 WRITE-INDENT! JWT-NESTED WRITTEN$ JWT-INDENTED$ T$=
+   JWT-GROW-OPEN 2 WRITE-INDENT! JWT-NESTED WRITTEN$ JWT-INDENTED$ T$=
+   JWT-GROW-W WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+
+\ Opening a writer again makes it compact, whatever width it had.
+: JWT-COMPACT$ ( -- ptr u8 n )
+   s\" {\"a\":{\"x\":1,\"y\":true},\"b\":[2,3],\"c\":{},\"d\":[]}" ;
+
+: JWT-TEST-COMPACT ( -- )
+   JWT-OPEN-A 2 WRITE-INDENT! drop
+   JWT-OPEN-A JWT-NESTED WRITTEN$ JWT-COMPACT$ T$= ;
+
+: JWT-TEST-OPEN-BUF-COMPACT ( -- )
+   JWT-GROW-OPEN 2 WRITE-INDENT! drop
+   JWT-GROW-W JWT-GROW-BUF WRITE-OPEN-BUF JWT-NESTED WRITTEN$ JWT-COMPACT$ T$=
+   JWT-GROW-W WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
+
+\ A string in parts never breaks, even after a part ending in a comma and RAW
+\ inside it; the COMMA after it puts the number on its own line.
+: JWT-TEST-PART-LAYOUT ( -- )
+   JWT-OPEN-A 2 WRITE-INDENT! WRITE-ARRAY-START
+   WRITE-STRING-START s" a," WRITE-STRING-PART s" x" WRITE-RAW
+   s" b" WRITE-STRING-PART WRITE-STRING-END
+   WRITE-COMMA 1 WRITE-U WRITE-ARRAY-END
+   WRITTEN$ s\" [\n  \"a,xb\",\n  1\n]" T$= ;
+
+\ WRITE-RESET right after a START keeps the width and forgets the open object
+\ and its due break.
+: JWT-TEST-INDENT-RESET ( -- )
+   JWT-OPEN-A 2 WRITE-INDENT! WRITE-OBJECT-START WRITE-RESET
+   JWT-NESTED WRITTEN$ JWT-INDENTED$ T$=
+   [: JWT-A WRITE-OBJECT-END drop ;] E-JSON-WRITE-STATE TTHROWSQ
+   JWT-A WRITTEN$ JWT-INDENTED$ T$= ;
+
+\ a"b, LF, then é: the parts are its first three bytes, the next, the last two.
+create JWT-PARTS 97 c, JW-DQ c, 98 c, JW-LF c, $C3 c, $A9 c,
+create JWT-PARTS-WANT
+   JW-DQ c, 97 c, JW-BACKSLASH c, JW-DQ c, 98 c, JW-BACKSLASH c, 110 c,
+   $C3 c, $A9 c, JW-DQ c,
+
+: JWT-TEST-PARTS ( -- )
+   JWT-OPEN-A WRITE-STRING-START
+   JWT-PARTS 3 WRITE-STRING-PART
+   JWT-PARTS 3 + 1 WRITE-STRING-PART
+   JWT-PARTS 4 + 2 WRITE-STRING-PART
+   WRITE-STRING-END WRITTEN$ JWT-PARTS-WANT 10 T$=
+   JWT-OPEN-B JWT-PARTS 6 WRITE-STRING WRITTEN$ JWT-PARTS-WANT 10 T$= ;
+
+: JWT-PART-FF ( -- ) JWT-OPEN-AB JWT-FFFE 1 WRITE-STRING-PART drop ;
+: JWT-PART-HALF ( -- ) JWT-OPEN-AB JWT-PARTS 4 + 1 WRITE-STRING-PART drop ;
+: JWT-INDENT!-NEG ( -- ) JWT-OPEN-AB -1 WRITE-INDENT! drop ;
+: JWT-PART-FULL ( -- )   \ room for the two raw bytes, not their three escaped
+   JWT-OPEN-SMALL s" abcdef" WRITE-RAW JWT-RUN-IN 2 WRITE-STRING-PART drop ;
+: JWT-KEY-FULL ( -- )   \ room for the break before the key, not for the key
+   JWT-OPEN-SMALL 2 WRITE-INDENT! WRITE-OBJECT-START s" k" WRITE-KEY drop ;
+: JWT-BREAK-WRAP ( -- )   \ two levels of MEM-MAX-N spaces overflow a cell
+   JWT-OPEN-AB WRITE-ARRAY-START WRITE-ARRAY-START MEM-MAX-N WRITE-INDENT!
+   1 WRITE-U drop ;
+: JWT-OBJECT-END-TOP ( -- ) JWT-OPEN-AB WRITE-OBJECT-END drop ;
+: JWT-ARRAY-END-TOP ( -- ) JWT-OPEN-AB WRITE-ARRAY-END drop ;
+
+: JWT-STATE-REFUSED ( [ -- ] -- )
+   E-JSON-WRITE-STATE TTHROWSQ
+   JWT-A WRITTEN$ s" ab" T$= ;
+
+: JWT-FRESH-INDENT! ( -- ) JWT-FRESH 2 WRITE-INDENT! drop ;
+: JWT-FRESH-START ( -- ) JWT-FRESH WRITE-STRING-START drop ;
+: JWT-FRESH-PART ( -- ) JWT-FRESH s" x" WRITE-STRING-PART drop ;
+: JWT-FRESH-END ( -- ) JWT-FRESH WRITE-STRING-END drop ;
+
+: JWT-CLOSED ( -- ptr writer ) JWT-OPEN-B WRITE-CLOSE JWT-B ;
+: JWT-CLOSED-INDENT! ( -- ) JWT-CLOSED 2 WRITE-INDENT! drop ;
+: JWT-CLOSED-START ( -- ) JWT-CLOSED WRITE-STRING-START drop ;
+: JWT-CLOSED-PART ( -- ) JWT-CLOSED s" x" WRITE-STRING-PART drop ;
+: JWT-CLOSED-END ( -- ) JWT-CLOSED WRITE-STRING-END drop ;
+
+\ A refused key keeps its depth and pending break: the null that fits the same
+\ eight bytes writes after the break.
+: JWT-TEST-KEY-FULL ( -- )
+   [: JWT-KEY-FULL ;] s" {" JWT-REFUSED-KEEPS$
+   JWT-A WRITE-NULL WRITTEN$ s\" {\n  null" T$= ;
+
+: JWT-TEST-LAYOUT-REFUSALS ( -- )
+   [: JWT-PART-FF ;] JWT-BYTE-REFUSED
+   [: JWT-PART-HALF ;] JWT-BYTE-REFUSED
+   [: JWT-INDENT!-NEG ;] JWT-BYTE-REFUSED
+   [: JWT-PART-FULL ;] s" abcdef" JWT-REFUSED-KEEPS$
+   [: JWT-BREAK-WRAP ;] s" ab[[" JWT-REFUSED-KEEPS$
+   [: JWT-OBJECT-END-TOP ;] JWT-STATE-REFUSED
+   [: JWT-ARRAY-END-TOP ;] JWT-STATE-REFUSED
+   [: JWT-FRESH-INDENT! ;] E-JSON-WRITE-STATE TTHROWSQ
+   [: JWT-FRESH-START ;] E-JSON-WRITE-STATE TTHROWSQ
+   [: JWT-FRESH-PART ;] E-JSON-WRITE-STATE TTHROWSQ
+   [: JWT-FRESH-END ;] E-JSON-WRITE-STATE TTHROWSQ
+   [: JWT-CLOSED-INDENT! ;] E-JSON-WRITE-STATE TTHROWSQ
+   [: JWT-CLOSED-START ;] E-JSON-WRITE-STATE TTHROWSQ
+   [: JWT-CLOSED-PART ;] E-JSON-WRITE-STATE TTHROWSQ
+   [: JWT-CLOSED-END ;] E-JSON-WRITE-STATE TTHROWSQ ;
+
+\ The handle is nominal: a raw cell is not a writer.
 : JWT-TEST-CHECKER ( -- )
    s" JWT-OK ( ptr writer -- ptr writer ) WRITE-OBJECT-START WRITE-OBJECT-END" JWT-CHECK-ACCEPTS
    s" JWT-GROW-OK ( ptr writer ptr n -- ptr writer ) WRITE-OPEN-BUF" JWT-CHECK-ACCEPTS
    s" JWT-GROW-BAD ( ptr writer ptr u8 -- ptr writer ) WRITE-OPEN-BUF" JWT-CHECK-REJECTS
    s" JWT-BAD-CELL ( n ptr u8 n -- n ) WRITE-RAW" JWT-CHECK-REJECTS
-   s" JWT-BAD-BUF ( ptr u8 ptr u8 n -- ptr u8 ) WRITE-RAW" JWT-CHECK-REJECTS
-   s" JWT-BAD-LEN ( ptr writer ptr u8 off -- ptr writer ) JW-APPEND-LEN"
-      JWT-CHECK-REJECTS ;
+   s" JWT-BAD-BUF ( ptr u8 ptr u8 n -- ptr u8 ) WRITE-RAW" JWT-CHECK-REJECTS ;
 
 : JWT-MAIN ( -- )
    T-RESET
@@ -650,6 +764,14 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
    JWT-TEST-FIELD-INT
    JWT-TEST-ROUNDTRIP
    JWT-TEST-UTF8
+   JWT-TEST-INDENTED
+   JWT-TEST-COMPACT
+   JWT-TEST-OPEN-BUF-COMPACT
+   JWT-TEST-PART-LAYOUT
+   JWT-TEST-INDENT-RESET
+   JWT-TEST-PARTS
+   JWT-TEST-KEY-FULL
+   JWT-TEST-LAYOUT-REFUSALS
    JWT-TEST-CHECKER
    T-REPORT
    s" json-write-test: ok" type cr ;
