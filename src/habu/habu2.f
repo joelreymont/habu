@@ -10253,7 +10253,7 @@ public
 ;package
 
 \ LSCOPEREC: the name lookup as one leaf for every reader but the call site, in
-\ the call site's order (EM-COMPILE-CALL): LFIND (open package private, public,
+\ the call site's order (EM-COMPILE-CALL): LFIND (open package, enclosing one,
 \ global, or NAME:tail), then the used publics only when LFIND missed. In:
 \ x9/x10 = the token, preserved. Out: x14 = the bound record (0 when nothing
 \ binds), x16 = the used publics' record (0 when none, the first of two), x17 =

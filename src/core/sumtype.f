@@ -904,11 +904,10 @@ private
 \ width 1 (arity 0: no argument can be linear). Its schema is an SCH-APP holding
 \ the resolved family id, so MAKE consumes it as its family, UNMAKE reproduces
 \ it, and a swapped same-width enum field is a checker reject. Resolution is
-\ signature scope (TFAM-SIG-RESOLVE: own package first, else the unique public;
-\ qualified PKG:tail accepted; ambiguity is unresolved). Anything else falls
-\ through to the payload grammar, which admits concrete non-linear layout/cell
-\ families (self-references reject recursive) and rejects parametric, linear
-\ and unknown types (E-TDECL-PAYLOAD).
+\ signature scope (TFAM-SIG-RESOLVE, in TFAM-RESOLVE's order; an ambiguity is
+\ unresolved). Anything else falls through to the payload grammar, which admits
+\ concrete non-linear layout/cell families (self-references reject recursive)
+\ and rejects parametric, linear and unknown types (E-TDECL-PAYLOAD).
 : TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}

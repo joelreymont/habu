@@ -505,7 +505,6 @@ variable FIND-CMP
 variable FIND-MATCH
 variable FIND-INL
 variable FIND-MISS
-variable FIND-TRYG
 variable FIND-FOUND
 variable NUM-DONE
 variable NUM-NDOLL
@@ -5899,6 +5898,7 @@ variable FIND-HMATCH
 \ never a false green.
 : EMIT-FIND ( -- )
    LBL LBL LBL LBL LBL {: qlin:label qhloop:label qhnext:label qhinl:label qhcmp:label :}
+   LBL LBL LBL LBL {: open-pub:label enclosing-pri:label enclosing-pub:label global:label :}
    LFIND LABEL@ LBL,
    LBL FIND-QSCAN !
    LBL FIND-QNONE !
@@ -5920,7 +5920,6 @@ variable FIND-HMATCH
    LBL FIND-MATCH !
    LBL FIND-INL !
    LBL FIND-MISS !
-   LBL FIND-TRYG !
    LBL FIND-FOUND !
    LBL FIND-LINEAR !
    LBL FIND-HLOOP !
@@ -5935,6 +5934,7 @@ variable FIND-HMATCH
       14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ FIND-QHAS LABEL@ BCOND,
       17 17 1 ADDI,  FIND-QSCAN LABEL@ B,
    FIND-QNONE LABEL@ LBL,
+      11 0 MOVZ,                                               \ a bare name
       2 DATA PKG-PRI-CELL LDR,  FIND-START LABEL@ B,
    FIND-QHAS LABEL@ LBL,
       17 0 CMPI,  C-EQ FIND-QNONE LABEL@ BCOND,
@@ -5997,7 +5997,7 @@ variable FIND-HMATCH
          15 4 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
          7 7 1 ADDI,  FIND-NCMP LABEL@ B,
       FIND-NMATCH LABEL@ LBL,
-         2 5 0 LDR,
+         2 5 0 LDR,  11 1 MOVZ,                               \ a qualified name
          9 9 17 ADD,  9 9 1 ADDI,
          10 10 17 SUB,  10 10 1 SUBI,
          FIND-START LABEL@ B,
@@ -6088,12 +6088,23 @@ variable FIND-HMATCH
          FIND-NEXT LABEL@ B,
       FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
    FIND-DONE LABEL@ LBL,
+      \ The enclosing cells are 0 with no part open, so wordlist 0 is tested
+      \ first; a qualified name (x11 = 1) skips the enclosing package.
       13 FIND-FOUND LABEL@ CBNZ,
-      14 DATA PKG-PRI-CELL LDR,  14 FIND-MISS LABEL@ CBZ,
-      14 2 CMP,  C-NE FIND-TRYG LABEL@ BCOND,
+      2 FIND-MISS LABEL@ CBZ,
+      14 DATA PKG-PRI-CELL LDR,  14 2 CMP,  C-NE open-pub BCOND,
          2 DATA PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
-      FIND-TRYG LABEL@ LBL,
-      14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
+      open-pub LBL,
+      14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE enclosing-pri BCOND,
+         11 global CBNZ,
+         2 DATA ENCLOSING:PRI LDR,  FIND-START LABEL@ B,
+      enclosing-pri LBL,
+      11 FIND-MISS LABEL@ CBNZ,
+      14 DATA ENCLOSING:PRI LDR,  14 2 CMP,  C-NE enclosing-pub BCOND,
+         2 DATA ENCLOSING:PUB LDR,  FIND-START LABEL@ B,
+      enclosing-pub LBL,
+      14 DATA ENCLOSING:PUB LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
+      global LBL,
          2 0 MOVZ,  FIND-START LABEL@ B,
       \ Only the LINEAR scan can arrive here with x13 set - the hash probe's own
       \ match returns from FIND-HMATCH - so the parked pointer is this call's.

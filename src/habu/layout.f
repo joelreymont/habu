@@ -1988,8 +1988,8 @@ $42E8 constant UNIT-COMPILE-CELL
 \ them before the part opened; all four are 0 when no part is open. They are
 \ a guarded band (DATA-BANDS): only the engine's own code and package-scope!
 \ write them, so the Habu loop moves them through package-scope!. It takes
-\ the cells after UNIT-COMPILE-CELL; src/core/checker.f mirrors PARENT and
-\ REC (CK-ENCLOSING-*-OFF).
+\ the cells after UNIT-COMPILE-CELL; src/core/checker.f mirrors all four
+\ (CK-ENCLOSING-*-OFF).
 package ENCLOSING
 public
 $42F0 constant PUB

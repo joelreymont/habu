@@ -88,14 +88,19 @@ private
    then
    path pathu root rootu SOURCE-ROOT:READ-OS ;
 
-\ A top-level resolution row on the open package's private leg that holds a
-\ record.
+\ A top-level resolution row on SOURCE-UNIT-RANGE-PRIVATE's private leg that
+\ holds a record, whether that package or its part is open.
 : PRIVATE-LEG ( ptr u8 n -- )
    drop {: row:ptr :}
+   row CHECKER-OWNER-ABI:RES-SPELL-U cells + CELL-VIEW @ {: su:n :}
+   row CHECKER-OWNER-ABI:RES-PACKAGE-U cells + CELL-VIEW @ {: pu:n :}
+   row CHECKER-OWNER-ABI:RES-HEADER-CELLS cells + su + {: pkg:ptr :}
    row CHECKER-OWNER-ABI:RES-ROLE cells + CELL-VIEW @
       CHECKER-OWNER-ABI:RES-ROLE-OPEN-PRIVATE = if
-      row CHECKER-OWNER-ABI:RES-RECORD cells + CELL-VIEW @ 0< 0= if
-         -1 PRIVATE-HIT !
+      pkg pu s" SOURCE-UNIT-RANGE-PRIVATE" CORE-STR= if
+         row CHECKER-OWNER-ABI:RES-RECORD cells + CELL-VIEW @ 0< 0= if
+            1 PRIVATE-HIT +!
+         then
       then
    then ;
 
@@ -236,8 +241,8 @@ private
    [: 2drop ;] CHECKER-RESOLUTION:NS-INSTALL
    [: s" private-public.f" included ;]
       [: CHECKER-RESOLUTION:NS-DEFAULT ;] finally
-   PRIVATE-RUNS @ 1 T=
-   PRIVATE-HIT @ TTRUE ;
+   PRIVATE-RUNS @ 2 T=
+   PRIVATE-HIT @ 2 T= ;
 
 : CHECK-TICK ( -- )
    0 TICK-SEEN !
@@ -331,7 +336,7 @@ private
    s" child.f" S\" #! child\nSOURCE-UNIT-RANGE-TEST:CHILD-BUMP\npackage SOURCE-UNIT-RANGE-CHILD public : NUMBER ( -- n ) 317 ; ;package\n" PUT
    s" cut-child.f" S\" package SOURCE-UNIT-RANGE-INCLUDE public : NUMBER ( -- n ) 419 ; ;package\n" PUT
    s" return-cut.f" S\" SOURCE-UNIT-RANGE-TEST:PUSH-R include cut-child.f SOURCE-UNIT-RANGE-TEST:POP-R\n" PUT
-   s" private-public.f" S\" package SOURCE-UNIT-RANGE-PRIVATE private : HELPER ( -- ) SOURCE-UNIT-RANGE-TEST:PRIVATE-BUMP ; public HELPER ;package\n" PUT
+   s" private-public.f" S\" package SOURCE-UNIT-RANGE-PRIVATE private : HELPER ( -- ) SOURCE-UNIT-RANGE-TEST:PRIVATE-BUMP ; package SOURCE-UNIT-RANGE-PART HELPER ;package public HELPER ;package\n" PUT
    s" tick.f" S\" ' SOURCE-UNIT-RANGE-TEST:HELPER-BUMP drop\n" PUT
    s" parent.f"
       S\" #! parent\nrequire child.f\nSOURCE-UNIT-RANGE-TEST:PARENT-BUMP\n" PUT

@@ -779,15 +779,20 @@ private
 public
 
 \ Unqualified lexical order is the active package's exact row (private or
-\ public), the exact global row, explicit imports, then the unique public
-\ fallback. Multiple eligible families at either import/fallback step throw
-\ E-TFAM-AMBIG. At top level the first exact
-\ lookup is already global. Compaction-hidden `@name` tokens never resolve.
+\ public), inside a part `A:B` the row of its package A, the exact global
+\ row, explicit imports, then the unique public fallback. Multiple eligible
+\ families at either import/fallback step throw E-TFAM-AMBIG. At top level
+\ the first exact lookup is already global. Compaction-hidden `@name` tokens
+\ never resolve.
 : TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
    drop
+   pa pu CHECKER-COLON-SCAN drop 0 <> IF
+      pa pu CHECKER-RESOLVE:TOP$ na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
+      drop
+   THEN
    pu 0 <> IF
       s" " na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
       drop

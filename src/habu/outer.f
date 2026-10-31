@@ -218,16 +218,19 @@ private
    loop
    -1 ;
 
-\ LFIND's answer: the open package, then the global wordlist, or NAME:tail,
-\ never a used public. It is the lookup's answer unless a used public bound it,
-\ and the lookup asks the used publics only when LFIND missed: a bound record
-\ that is also theirs is LFIND's miss, except in the open package's public
-\ wordlist, where a package that uses itself met it in LFIND first.
+\ LFIND's answer: the open package, the package enclosing it, then the
+\ global wordlist, or NAME:tail, never a used public. It is the lookup's
+\ answer unless a used public bound it, and the lookup asks the used publics
+\ only when LFIND missed: a bound record that is also theirs is LFIND's miss,
+\ except in the open or the enclosing package's public wordlist, where a
+\ package that uses either met it in LFIND first.
 : FIND-SCOPE ( ptr u8 n -- ptr n )
    scope-find drop drop {: rec:ptr used:ptr :}
    rec used <> if rec exit then
    rec XREF-FOUND? 0= if rec exit then
-   rec XREF-WORDLIST NDICT:OPEN-PUB = if rec exit then
+   rec XREF-WORDLIST {: wl:n :}
+   wl NDICT:OPEN-PUB = if rec exit then
+   wl data-base ENCLOSING:PUB + @ = if rec exit then
    XREF-NULL ;
 
 public

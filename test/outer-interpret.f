@@ -843,6 +843,40 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" 42\n2\n1\n3\n" CASE$ GE-EXPECT-OUT ;
 
+\ Bare names inside part B search B, then its package A, then the globals:
+\ B's OI-NT shadows A's, A's private OI-NS shadows the global one, whose
+\ effect differs, and a global is still found; the checker binds the same
+\ words, so OI-NV's body leaves A's cell its effect does not declare. A's
+\ private type oi-nq names B's signatures and no top-level one. Under
+\ `using OI-NA`, B exports A's public OI-NP. A qualifier naming A reaches
+\ neither A's private section nor the globals, and once B closes, B's words
+\ are gone and A's stay; at top level neither is bare.
+: PACKAGE-PART-LOOKUP ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier : OI-NG ( -- n ) 5 ; : OI-NS ( -- n n ) 6 6 ;" GE-SRC-LINE
+   s" package OI-NA : OI-NY ( -- n ) 7 ; : OI-NS ( -- n ) 8 ; : OI-NT ( -- n ) 9 ;" GE-SRC-LINE
+   s" NEWTYPE oi-nq CAST: OI-N>Q ( n -- oi-nq ) CAST: OI-Q>N ( oi-nq -- n )" GE-SRC-LINE
+   s" public : OI-NP ( -- n ) 10 ; private package OI-NB : OI-NT ( -- n ) 11 ;" GE-SRC-LINE
+   s" OI-NY . OI-NP . OI-NG . OI-NS . OI-NT ." GE-SRC-LINE
+   s" : OI-NW ( -- n n n n ) OI-NY OI-NP OI-NS OI-NT ; OI-NW . . . ." GE-SRC-LINE
+   s" : OI-NU ( -- oi-nq ) 12 OI-N>Q ; OI-NU OI-Q>N ." GE-SRC-LINE
+   s" using OI-NA public export OI-NP private ;using" GE-SRC-LINE
+   s" s~ : OI-NV ( -- ) OI-NY ;~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ OI-NA:OI-NY~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ OI-NA:OI-NG~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" ;package OI-NY . OI-NT . s~ OI-NW~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" ;package s~ OI-NY~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" s~ : OI-NZ ( -- oi-nq ) 0 ;~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" oi-package-part-lookup.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 7\n10\n5\n8\n11\n11\n8\n10\n7\n12\n70\n70\n70\n7\n9\n70\n70\n70\n" CASE$ GE-EXPECT-OUT
+   s" in oi-nv: at 'OI-NY' expected:" CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-NA:OI-NY at " CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-NA:OI-NG at " CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-NW at " CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-NY at " CASE$ GE-EXPECT-ERR-HAS
+   s" in oi-nz: unknown type 'oi-nq' in signature" CASE$ GE-EXPECT-ERR-HAS ;
+
 \ The package keywords raise no top-row event: only the number, `.`, `0` and
 \ set-top-check log.
 : PACKAGE-HOOK ( -- )
@@ -2211,6 +2245,7 @@ private
    PACKAGE-PART-SCOPE
    PACKAGE-PART-THROW
    PACKAGE-PART-BUFFER
+   PACKAGE-PART-LOOKUP
    PACKAGE-HOOK
    USING-SCOPE
    USING-IN-PACKAGE

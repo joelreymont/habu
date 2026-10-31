@@ -169,7 +169,9 @@ private
   unqualified global lookup never finds it. A private word is visible
   unqualified only while its package is open; `NAME:PRIVATE-WORD` never
   resolves. While a package is open, unqualified lookup tries the private
-  wordlist, then the public wordlist, then the saved global path.
+  wordlist, then the public wordlist, inside a part `A:B` then A's private
+  and public wordlists, then the saved global path, then each used public
+  wordlist.
 - The checker mirrors package scope: certified `private` definitions are visible
   only to later checked code in the same open package, `public` ones as
   `NAME:WORD`; duplicate certified definitions in one active wordlist are
@@ -347,12 +349,12 @@ and always available, for a one-off call or to escape a collision.
 - A load file is a using scope the same way: an included file or an
   `evaluate`d buffer closes only the usings it opens. A `;using` in it that
   would close one its includer opened is refused by name the same way.
-- Lookup for a bare tail: open-package scope (private, then own public) FIRST,
-  then the global wordlist, then each used public wordlist. The open-package
-  scope silently wins over a used public. A tail in MORE THAN ONE used public
-  wordlist is `E-USING-AMBIGUOUS`; the same package named twice is not
-  ambiguous. `using` never silently changes an existing binding: it is the sole
-  resolver of an otherwise-unresolved name, or a hard error.
+- A bare tail reaches the used public wordlists last, in the lookup order
+  under "Packages": the open-package scope silently wins over a used public.
+  A tail in MORE THAN ONE used public wordlist is `E-USING-AMBIGUOUS`; the
+  same package named twice is not ambiguous. `using` never silently changes
+  an existing binding: it is the sole resolver of an otherwise-unresolved
+  name, or a hard error.
 - An ambiguous tail is refused at the reference site, naming each used package
   it resolves in; qualify the one meant or rename the collision. Under
   `tools/check.f --all-errors` or `--verify-only` the refused definition keeps
@@ -505,11 +507,12 @@ multi-cell type rationale is `docs/design.md` "Types".
 - Family identity is the exact `(package, tail)` pair: a package family may
   share a tail with a global family or another package's, even at different
   arities. A qualified token resolves only its package row; a bare token
-  resolves the open package's own row (private or public), then the global row,
-  then the sole eligible public row of another package; two eligible non-lexical
-  package-public rows are an error. So adding `MEM:span` cannot change what a
-  top-level `span` means. Same-package duplicates, reserved grammar names and
-  foreign private rows reject.
+  resolves the open package's own row (private or public), inside a part
+  `A:B` then A's row, then the global row, then the public row of a package
+  `using` opened, then the sole eligible public row of another package; two
+  eligible rows at either of the last two steps are an error. So adding
+  `MEM:span` cannot change what a top-level `span` means. Same-package
+  duplicates, reserved grammar names and foreign private rows reject.
 - `STRUCTURE name[<params>] [ header… ] FIELD f type … ;STRUCTURE` declares a
   single-shape record with named fields in declaration order, deepest field
   first on the stack. A structure with fields generates sealed `MAKE`/`UNMAKE`:

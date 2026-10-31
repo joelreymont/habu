@@ -1221,6 +1221,8 @@ $78 constant CK-PKG-PUB-OFF
 $80 constant CK-PKG-PRI-OFF
 $88 constant CK-PKG-PARENT-OFF
 $90 constant CK-PKG-REC-OFF
+$42F0 constant CK-ENCLOSING-PUB-OFF         \ = layout.f ENCLOSING:PUB
+$42F8 constant CK-ENCLOSING-PRI-OFF         \ = layout.f ENCLOSING:PRI
 $4300 constant CK-ENCLOSING-PARENT-OFF      \ = layout.f ENCLOSING:PARENT
 $4308 constant CK-ENCLOSING-REC-OFF         \ = layout.f ENCLOSING:REC
 48 constant CK-DREC                        \ = layout.f DREC (dictionary record bytes)
@@ -5927,11 +5929,10 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
    a u BYTE-SPAN? u CK-BODYBUF-CAP <= and ;
 
 \ Resolves a family token through the TFAM registry: (family-id true) or
-\ (0 false), always two items. An active package resolves its own families
-\ first, then the unique public tail; top level uses the global scope, where
-\ every built-in cell family is public. Qualified tokens, case validation,
-\ hidden `@` names and ambiguity live in type-family.f TFAM-SIG-RESOLVE. A tail
-\ whose length no name has is never read.
+\ (0 false), always two items, in the scope order of type-family.f
+\ TFAM-RESOLVE. Qualified tokens, case validation, hidden `@` names and
+\ ambiguity live in TFAM-SIG-RESOLVE. A tail whose length no name has is never
+\ read.
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= IF 0 RES-FALSE EXIT THEN
    SIG-SCOPE$ a u TFAM-RESOLVE* ;
@@ -12168,9 +12169,9 @@ variable PAIRS-N
 \ binding horizon retired for its own time (HIDE, HORIZON-FIND). They are kept
 \ apart from the undo log, so putting them back can never revive a record a
 \ replayed `undefine` retired. A lookup hides at most one record of its name in
-\ each wordlist it searches: the open package's two, the used publics and the
-\ global one.
-CK-USE-MAX 3 + constant HIDE-MAX
+\ each wordlist it searches: the open package's two, the enclosing package's
+\ two, the used publics and the global one.
+CK-USE-MAX 5 + constant HIDE-MAX
 create HIDDEN HIDE-MAX 2 * cells allot
 variable HIDDEN-N
 
@@ -13161,9 +13162,18 @@ s" CHECKER-OWNER-ABI" PE-PUBLIC-CONSTS
       THEN
    LOOP ;
 
+package CHECKER-RESOLVE
+public
+\ The package a part's path `A:B` names first: A, whose words a part binds
+\ bare where the engine finds them in the enclosing package's wordlists.
+: TOP$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a  a u CHECKER-COLON-SCAN nip ;
+;package
+
 \ The checker's symbol for the record the engine bound. A global record bound
-\ inside a package that holds an owner-private primitive row of that name
-\ (CLOSE-PRIVATE) is that row: the row is the owner's view of the same record,
+\ inside a package, or a part of one, whose private section holds an
+\ owner-private primitive row of that name (CLOSE-PRIVATE) is that row, the
+\ part's before its package's: the row is the owner's view of the same record,
 \ which the engine holds once, globally (FFI-PTR>CELL inside package FFI).
 \ The engine finds a bare name in the open package whatever current is, so the
 \ binding asks PKG-LIVE-XT for the open package; only a definition needs current
@@ -13180,11 +13190,17 @@ s" CHECKER-OWNER-ABI" PE-PUBLIC-CONSTS
       pkgu 0 <> IF
          pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? {: own:n :}
          own PRIM-FIRST-IDX 0 <> IF own EXIT THEN
+         data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+            pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? {: top:n :}
+            top PRIM-FIRST-IDX 0 <> IF top EXIT THEN
+         THEN
       THEN
       a u CHECKER-GLOBAL-SYM? EXIT
    THEN
    wid data-base CK-PKG-PRI-OFF + @ = IF pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
    wid data-base CK-PKG-PUB-OFF + @ = IF pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
+   wid data-base CK-ENCLOSING-PRI-OFF + @ = IF pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? EXIT THEN
+   wid data-base CK-ENCLOSING-PUB-OFF + @ = IF pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PUBLIC a u CHECKER-PKG-SYM? EXIT THEN
    a u wid CK-USED-INDEX CK-USED-SYM@ ;
 
 \ A keyword's axiom: the global symbol of a bare name the engine holds no record
@@ -13279,7 +13295,8 @@ variable BIND-SEEDED
 \ only under MULTI-ERR? inside a body's walk (BODY-WALK) or the compile window
 \ does a recovery row in a scope the engine searches ahead of the lookup's
 \ record bind instead. The order is the engine's: the open package's private
-\ then public wordlist, the globals, then the used publics in import order; a
+\ then public wordlist, inside a part its package's private then public one,
+\ the globals, then the used publics in import order; a
 \ qualified name asks its package's public row, and the global row when that
 \ package is open. Answers the recovery symbol, or 0 when the lookup stands.
 variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
@@ -13290,8 +13307,9 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
       sym 0 <> IF sym UNLOOP EXIT THEN
    LOOP 0 ;
 
-0 constant RB-PRIVATE   1 constant RB-PUBLIC   2 constant RB-GLOBAL
-3 constant RB-USED      4 constant RB-NONE
+0 constant RB-PRIVATE         1 constant RB-PUBLIC
+2 constant RB-ENCLOSING-PRIVATE   3 constant RB-ENCLOSING-PUBLIC
+4 constant RB-GLOBAL          5 constant RB-USED            6 constant RB-NONE
 
 \ Where the engine found the record, in the order above.
 : RECOVERY-RANK ( ptr n -- n ) {: rec:ptr :}
@@ -13300,6 +13318,8 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    wid 0= IF RB-GLOBAL EXIT THEN
    wid data-base CK-PKG-PRI-OFF + @ = IF RB-PRIVATE EXIT THEN
    wid data-base CK-PKG-PUB-OFF + @ = IF RB-PUBLIC EXIT THEN
+   wid data-base CK-ENCLOSING-PRI-OFF + @ = IF RB-ENCLOSING-PRIVATE EXIT THEN
+   wid data-base CK-ENCLOSING-PUB-OFF + @ = IF RB-ENCLOSING-PUBLIC EXIT THEN
    RB-USED ;
 
 : RECOVERY-QUALIFIED ( ptr n -- n ) {: rec:ptr :}
@@ -13323,6 +13343,16 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
       rank RB-PUBLIC > IF
          pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? RECOVERY-LIVE
          dup 0 <> IF EXIT THEN drop
+      THEN
+      data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+         rank RB-ENCLOSING-PRIVATE > IF
+            pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE a u CHECKER-PKG-SYM? RECOVERY-LIVE
+            dup 0 <> IF EXIT THEN drop
+         THEN
+         rank RB-ENCLOSING-PUBLIC > IF
+            pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PUBLIC a u CHECKER-PKG-SYM? RECOVERY-LIVE
+            dup 0 <> IF EXIT THEN drop
+         THEN
       THEN
    THEN
    rank RB-GLOBAL > IF
@@ -13558,7 +13588,8 @@ package CHECKER-REG
 
 \ Asked only after the nominal resolver found no family. A public declaration
 \ could be the unique-public fallback for any bare tail; a private declaration
-\ affects only its own package, including an own-qualified spelling.
+\ affects its own package, an own-qualified spelling included, and the bare
+\ tails of that package's parts.
 : CHECKER-TYPE-MARK-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
    a u CHECKER-QUALIFIED? IF
@@ -13572,13 +13603,15 @@ package CHECKER-REG
    pkgu 0 <> IF
       pkg pkgu SYM-PRIVATE TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
       pkg pkgu SYM-PUBLIC TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      pkg pkgu CHECKER-COLON-SCAN drop 0 <> IF
+         pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      THEN
    THEN
    TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
    ANY-PUBLIC-TYPE-MARK? ;
 
-\ The chain CHECKER-FIND-ACTIVE-SYM walks for a bare token: the open package's
-\ private and public wordlists, the global wordlist and the used publics; for a
-\ qualified one its package's public wordlist first.
+\ Every wordlist CHECKER-FIND-ACTIVE-SYM walks for a token; the bare order is
+\ docs/forth.md "Packages".
 : UNSEEN-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF
       CHECKER-QPKG$ UNSEEN-MARK$ CHECKER-PUBLIC-SYM? 0 <> IF RES-TRUE EXIT THEN
@@ -13588,6 +13621,10 @@ package CHECKER-REG
    mode CHECKER-PACKAGE-NONE <> IF
       pkg pkgu SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
       pkg pkgu SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+         pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PRIVATE UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+         pkg pkgu CHECKER-RESOLVE:TOP$ SYM-PUBLIC UNSEEN-MARK$ CHECKER-PKG-SYM? 0 <> IF RES-TRUE EXIT THEN
+      THEN
    THEN
    UNSEEN-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
    CK-USE-SCAN-N 0 ?DO
@@ -16849,8 +16886,8 @@ CHECKER-REG:}SCRATCH
 
 \ The engine's top-level find looks for the tail of PKG:TAIL in the global
 \ wordlist when PKG is the open package and its public wordlist lacks the tail
-\ (src/habu/habu1.f EMIT-FIND: from FIND-DONE, a miss in the open package's
-\ public wordlist retries wordlist 0 at FIND-TRYG); a body's walk refuses such
+\ (src/habu/habu1.f EMIT-FIND: at FIND-DONE, a qualified miss in the open
+\ package's public wordlist retries wordlist 0); a body's walk refuses such
 \ a name. True with the tail's global symbol when that retry finds it: a word
 \ the engine's global wordlist claims, a replayed one included (the overlay
 \ publishes it there), whose symbol is 0 when the store holds nothing for it.
@@ -24669,10 +24706,9 @@ RWIN-DEFAULT
    THEN {: record:n :}
    ord role record shape spell su pkg pu RWIN-ADD ;
 
-\ The engine's LFIND order is open private, open public, global for a bare
-\ name. It probes a qualifier's public leg and, when that qualifier is the
-\ open package, can fall through to global. Used publics are eligible even
-\ when an earlier leg binds: their presence can make a global shadow fail.
+\ A bare name's legs follow docs/forth.md "Packages". Used publics are
+\ eligible even when an earlier leg binds: their presence can make a global
+\ shadow fail.
 : RWIN-NAME ( ptr u8 n ptr u8 n n -- )
    {: folded:ptr fu:n spell:ptr su:n ord:n :}
    folded fu CHECKER-QUALIFIED? IF
@@ -24695,6 +24731,13 @@ RWIN-DEFAULT
          {: pub:n pri:n shape:n :}
       spell su pkg pu folded fu CHECKER-RESOLUTION:OPEN-PRIVATE pri shape ord RWIN-CAND
       spell su pkg pu folded fu CHECKER-RESOLUTION:OPEN-PUBLIC pub shape ord RWIN-CAND
+      data-base CK-ENCLOSING-PUB-OFF + @ 0 <> IF
+         pkg pu CHECKER-RESOLVE:TOP$ {: top:ptr tu:n :}
+         spell su top tu CHECKER-RESOLUTION:OPEN-NAMESPACE ord RWIN-NS
+            {: tpub:n tpri:n tshape:n :}
+         spell su top tu folded fu CHECKER-RESOLUTION:OPEN-PRIVATE tpri tshape ord RWIN-CAND
+         spell su top tu folded fu CHECKER-RESOLUTION:OPEN-PUBLIC tpub tshape ord RWIN-CAND
+      THEN
    THEN
    CK-USE-SCAN-N 0 ?DO
       i CK-USE-SLOT i CK-USE-LEN@ {: ua:ptr uu:n :}
