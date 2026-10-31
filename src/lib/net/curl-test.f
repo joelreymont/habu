@@ -1538,7 +1538,8 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    subject CURL:CLEANUP
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
    LAST-KIND @ KIND-FAILED T=
-   LAST-CODE @ 28 T= ;
+   LAST-CODE @ 28 T=
+   LAST-CODE @ CURL:>CODE CURL:ERROR$ s" Timeout was reached" T$= ;
 
 
 \ A client its ceiling ended can return while the serial server still drains
@@ -1642,6 +1643,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    FILE$ FS:FILE? TTRUE
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 1 T=
+   LAST-CODE @ CURL:>CODE CURL:ERROR$ s" Unsupported protocol" T$=
    UNTOUCHED? TTRUE ;
 
 

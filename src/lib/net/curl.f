@@ -131,6 +131,7 @@ FUNCTION: SETOPT-NUM curl_easy_setopt ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTION
 FUNCTION: SLIST-APPEND curl_slist_append ( n n -- n ) ;FUNCTION
 FUNCTION: SLIST-FREE curl_slist_free_all ( n -- ) ;FUNCTION
+FUNCTION: EASY-STRERROR curl_easy_strerror ( n -- ptr u8 ) ;FUNCTION
 
 FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- i32 )
    2 VARIADIC
@@ -632,6 +633,12 @@ public
 \ libcurl's default attempt to reuse a connection from its pool.
 : FRESH-CONNECT! ( handle bool -- status ) {: subject:handle on:bool :}
    subject OPT-FRESH-CONNECT on FLAG>N SET-NUM-RAW CODE>STATUS ;
+
+
+\ libcurl's static text for the code, never freed and valid for the process;
+\ "Unknown error" for a code libcurl does not know.
+: ERROR$ ( code -- ptr u8 n )
+   CODE>N EASY-STRERROR dup ZLEN ;
 
 
 private
