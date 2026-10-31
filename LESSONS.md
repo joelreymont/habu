@@ -37,7 +37,13 @@ entry.
   then why are you calling them answer blocks?" and "what is ANSWER? again,
   makes no sense", then chose MCP's terms over keeping the ANSWER words. A
   library for a protocol names things in that protocol's words: a tool's
-  result and its content blocks, not answers.
+  result and its content blocks, not answers. The same day, for MODEL's
+  OpenAI- and Ollama-shaped client, Joel chose MODEL:CHAT and
+  MODEL:E-RESPONSE over ASK and E-ANSWER.
+- 2026-10-31, model clients: asked whether phil's MODEL client (chat and
+  embeddings over CURL, its key from the credential store) should become
+  part of Habu's library, Joel chose "Add it to Habu": a general protocol
+  client belongs in src/lib beside MCP and CURL.
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
