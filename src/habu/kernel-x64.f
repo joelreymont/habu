@@ -2666,13 +2666,12 @@ public
 
 \ The publication rows: the twins of habu1.f BPATCH32, BCODEPUBLISH,
 \ BCALLMAPSET, BADDRMAPSET, RELOC-EMIT:BCLEAR-MAPS, BXREFRETARGET, BINTMARK
-\ and BMININMARK and of habu2.f DOES-REC:NATIVE-PRIM, over the twins of
-\ habu1.f EMIT-PROT-WINDOW's PROT-EMIT:LSPAN, LOPEN and LCLOSE. x86-64 keeps its
-\ instruction cache coherent, so nothing flushes. An x86-64 span is
-\ byte-granular: a routine may end in a one-byte ret, so no guard traps a
-\ length or an address that is not a whole four-byte word. The two rows that
-\ write at CP leave it on a CODE-SLOT: code-publish fills the gap with int3 and
-\ does-record zero-pads its name.
+\ and BMININMARK and of habu2.f DOES-REC:NATIVE-PRIM, over the write window
+\ LSPAN, LOPEN and LCLOSE below. x86-64 keeps its instruction cache coherent, so
+\ nothing flushes. An x86-64 span is byte-granular: a routine may end in a
+\ one-byte ret, so no guard traps a length or an address that is not a whole
+\ four-byte word. The two rows that write at CP leave it on a CODE-SLOT:
+\ code-publish fills the gap with int3 and does-record zero-pads its name.
 
 private
 
@@ -3391,9 +3390,9 @@ variable SITE-TRAP-CELL
 
 public
 
-\ The window's call sites, the twins of a habu1.f PROT-EMIT:LSPAN, PROT-EMIT:LOPEN and
-\ PROT-EMIT:LCLOSE call: declare the span at rdi, rsi bytes long; open the code band
-\ over [CP, rdi), or CP's byte for an end at or below CP; close every band.
+\ The window's call sites, LSPAN, LOPEN and LCLOSE: declare the span at rdi, rsi
+\ bytes long; open the code band over [CP, rdi), or CP's byte for an end at or
+\ below CP; close every band.
 \ Each keeps every VM register and clobbers rax rcx rdx rsi rdi and r8-r11. A
 \ section that calls one follows PUBLICATION, in KERNEL,.
 : WINDOW-SPAN, ( -- ) LSPAN-LBL CALL, ;
