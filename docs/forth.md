@@ -2063,6 +2063,13 @@ sections above.
   `[: NULL-PTR ;] execute`. `: E ( -- xt ) ['] type ;` declares the token, and
   `E execute` is `E-EXEC-OPAQUE-XT` as well.
 
+- **A callback's pass-through context is `a`, not `ptr a`.** `ptr a` is a
+  pointer to cells, so a structure pointer does not fit it: with
+  `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;`
+  over a `STRUCTURE box` is `E-MISMATCH` at `RUN` (`expected: ptr a [ ptr a --
+  ] actual: ptr box [ ptr box -- ]`). Declared `( a [ a -- ] -- )`, the same
+  call certifies.
+
 - **`OPAQUE` belongs in a package's field-bearing `STRUCTURE` header.** After
   the first field, it is `header clause after the first field`; twice, `a
   second OPAQUE clause in one declaration`; without fields, `opaque requires a
