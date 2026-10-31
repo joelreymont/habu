@@ -6,6 +6,8 @@ package NATIVE-BUILD-ENTRY
 \ The current script-required row is already present while this file runs.
 REQUIRE-REG:COUNT REQUIRE-BOOT-LIMIT 1+ > constant PRELOADED?
 ;package
+require tools/tool-role.f
+TOOL-ROLE:ENTRY
 \ A refused command line stops here, before BUILD below loads the whole native
 \ compiler to reach the driver's own check.
 require tools/native-build-args.f
@@ -23,12 +25,14 @@ package NATIVE-BUILD-ENTRY
 \ The entry is named in a text because it resolves only after require returns.
 : BUILD ( -- )
    [: s" tools/native-build-core.f" required ;] EXECUTABLE-BUILD:WITH
+   TOOL-ROLE:DONE
    s" true NATIVE-BUILD:RUN" evaluate-closed ;
 
 \ The public command owns the ordinary saved-support selection, source-input
 \ manifest and output installation. Keep the legacy spelling
 \ and result line here while using that build session.
 : RUN-HB-BUILD ( -- )
+   TOOL-ROLE:DONE
    s" tools/hb-build-lib.f" required
    s" 0 SCRIPT-ARGV$ NATIVE-BUILD:WHITEBOX? NATIVE-BUILD:EXPLICIT-TARGET? HB-BUILD-CLI:HBB-ENGINE-RUN-PATH" evaluate-closed
    s" " 0 die ;

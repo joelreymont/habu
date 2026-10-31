@@ -28,6 +28,7 @@ require tools/build-out.f
 require tools/build-target.f
 require tools/build-producer.f
 require tools/native-file-inputs.f
+require tools/tool-role.f
 require tools/native-file-reference.f
 require tools/native-unit-dependency.f
 require tools/native-unit-origin.f

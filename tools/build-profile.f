@@ -5,6 +5,8 @@
 \ allocations stay out of the artifact. It calls NATIVE-BUILD:RUN-PATH-RC, not
 \ native-build.f, whose RUN ends in `die`, so the report could never be written.
 1 set-tier
+require tools/tool-role.f
+TOOL-ROLE:ENTRY
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -14,6 +16,7 @@ package BUILD-PROFILE
 ' LOAD
 ;package
 EXECUTABLE-BUILD:WITH
+TOOL-ROLE:DONE
 
 package BUILD-PROFILE
 private

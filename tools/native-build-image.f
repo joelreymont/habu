@@ -40,23 +40,12 @@ variable SUPPORT-ROWS-U
    u PROGRAM-U +! ;
 
 \ The child first loads this tree's startup files (tools/cold-load.f) at the
-\ default tier, as the engine compiles them; COLD-SOURCES:DRAIN adds those
-\ reads to the support inputs. Tier 1 applies to the helpers after it. The
-\ definitions after it run before the next require.
-\ The first imports include the ordinary input recorder itself, so its
-\ dependency reads are staged here, then drained into the same persistent row
-\ format.
+\ default tier, as the engine compiles them; tier 1 applies to the files after
+\ it. TOOL-ROLE keeps the cold load's reads and records the support load's, and
+\ NATIVE-BUILD-RESULT hands both on as the support inputs.
 : PROGRAM! ( -- )
-   S\" require tools/cold-load.f\nCOLD-LOAD:RUN\n1 set-tier\npackage NB-START private\nDYNAMIC-BUFFER EVENTS u8\nvariable USED\nvariable CURSOR\ncreate SHA SHA256-CTX-BYTES allot\n" PROGRAM+
-   S\" : ROOM ( n -- n ) {: u:n :} USED @ u + 16777216 > if E-FS-CAPACITY throw then USED @ u + EVENTS-RESERVE USED @ dup u + USED ! ;\n" PROGRAM+
-   S\" : ROW ( n ptr u8 n ptr u8 n bool -- ptr u8 ) {: kind:n path:ptr pu:n answer:ptr au:n exists:bool :} 64 pu + au + ROOM EVENTS {: dst:ptr :} kind dst LE:U64! pu dst 8 + LE:U64! au dst 16 + LE:U64! exists if 1 else 0 then dst 24 + LE:U64! 32 0 ?do 0 dst 32 + i + c! loop path dst 64 + pu BYTE-COPY answer dst 64 + pu + au BYTE-COPY dst ;\n" PROGRAM+
-   S\" : CANON ( ptr u8 n -- ptr u8 n bool ) {: path:ptr pu:n :} path pu SOURCE-ROOT:CANON-OS {: ans:ptr au:n yes:bool :} 1 path pu ans au yes ROW drop ans au yes ;\n" PROGRAM+
-   S\" : READ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: path:ptr pu:n root:ptr ru:n :} path pu root ru SOURCE-ROOT:READ-OS {: src:ptr su:n :} 2 path pu root ru true ROW 32 + {: digest:ptr :} SHA src su digest SHA256-IN src su ;\n" PROGRAM+
-   S\" public : ON ( -- ) ['] CANON ['] READ SOURCE-INPUT:USE ;\n;package\nNB-START:ON\nrequire tools/native-file-inputs.f\npackage NB-START private\n" PROGRAM+
-   S\" : NEXT-CANON ( ptr u8 n -- ptr u8 n bool ) {: path:ptr pu:n :} path pu SOURCE-ROOT:CANON-OS {: ans:ptr au:n yes:bool :} path pu ans au yes NFILE-INPUTS:ADD-CANON ans au yes ;\n" PROGRAM+
-   S\" : NEXT-READ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: path:ptr pu:n root:ptr ru:n :} path pu root ru SOURCE-ROOT:READ-OS {: src:ptr su:n :} path pu root ru src su NFILE-INPUTS:ADD-ROOT src su ;\n" PROGRAM+
-   S\" public : DRAIN ( -- ) 0 CURSOR ! begin CURSOR @ USED @ < while CURSOR @ EVENTS {: row:ptr :} row 8 + LE:U64@ {: pu:n :} row 16 + LE:U64@ {: au:n :} row 64 + {: path:ptr :} path pu + {: ans:ptr :} row LE:U64@ 1 = if path pu ans au row 24 + LE:U64@ 0<> NFILE-INPUTS:ADD-CANON else path pu ans au row 32 + NFILE-INPUTS:ADD-HASH then 64 pu + au + CURSOR +! repeat EVENTS-RELEASE 0 USED ! ['] NEXT-CANON ['] NEXT-READ SOURCE-INPUT:USE ;\n" PROGRAM+
-   S\" : OFF ( -- ) SOURCE-INPUT:RESET EVENTS-RELEASE 0 USED ! ;\n;package\nNB-START:DRAIN\n' NFILE-INPUTS:ADD-HASH COLD-SOURCES:DRAIN\nrequire tools/native-build-support.f\nNATIVE-BUILD-SUPPORT:SAVE-ROOT\nrequire tools/native-build-result.f\nNATIVE-BUILD-RESULT:WRITE\nNB-START:OFF\nNFILE-INPUTS:CLOSE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" PROGRAM+ ;
+   S\" require tools/cold-load.f\nCOLD-LOAD:RUN\n1 set-tier\nrequire tools/tool-role.f\n' TOOL-ROLE:COLD-ROW COLD-SOURCES:DRAIN\n" PROGRAM+
+   S\" require tools/native-build-support.f\nNATIVE-BUILD-SUPPORT:SAVE-ROOT\nNATIVE-BUILD-RESULT:WRITE\nNFILE-INPUTS:CLOSE\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" PROGRAM+ ;
 
 : PROGRAM$ ( -- ptr u8 n )
    PROGRAM-U @ 0= if PROGRAM! then

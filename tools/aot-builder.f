@@ -1,6 +1,8 @@
 \ Fixed AOT builder support. The producer saves the checked opener image, and
 \ each invocation loads the linker after the application window.
 1 set-tier
+require tools/tool-role.f
+TOOL-ROLE:ENTRY
 require src/habu/aot-window-latch.f
 require src/lib/build-input.f
 
@@ -137,6 +139,7 @@ OPEN-BODY !
 s" AOT-BUILDER-SUPPORT" HIDE-DEFS-FROM
 CHECKER-SCOPE-DONE
 REQUIRE-REG:TRUNCATE
+TOOL-ROLE:DONE
 
 package AOT-BUILDER
 private

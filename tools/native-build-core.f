@@ -1,5 +1,7 @@
 \ Native target compilation ends before the transient source writer loads.
 
+require tools/tool-role.f
+TOOL-ROLE:ENTRY
 require tools/native-build-deps.f
 require src/lib/executable-build.f
 require src/lib/sort.f
@@ -1494,3 +1496,4 @@ public
    s" " rc EXIT-RC die ;
 
 ;package
+TOOL-ROLE:DONE

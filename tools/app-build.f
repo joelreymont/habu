@@ -1,5 +1,7 @@
 \ Build a REPL application with native compilation held through its source load.
 1 set-tier
+require tools/tool-role.f
+TOOL-ROLE:ENTRY
 require src/lib/errors.f
 require src/lib/fs.f
 require src/habu/app-image.f
@@ -94,4 +96,5 @@ public
    -1 SAVED-RUN !
    true ['] BUILD EXECUTABLE-BUILD:WITH ;
 
+TOOL-ROLE:DONE
 ;package

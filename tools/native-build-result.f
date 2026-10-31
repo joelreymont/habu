@@ -5,6 +5,7 @@ require src/lib/engine-id.f
 require src/lib/le.f
 require src/lib/memory.f
 require tools/native-file-inputs.f
+require tools/tool-role.f
 
 package NATIVE-BUILD-RESULT
 private
@@ -15,6 +16,7 @@ DYNAMIC-BUFFER RECORD u8
 public
 
 : WRITE ( -- )
+   ['] NFILE-INPUTS:ADD-CANON ['] NFILE-INPUTS:ADD-HASH TOOL-ROLE:DRAIN
    SOURCE-ROOT:ENGINE$ {: root:ptr rootu:n :}
    NFILE-INPUTS:BYTES$ {: rows:ptr rowsu:n :}
    HEADER-U rootu + rowsu + RECORD-RESERVE

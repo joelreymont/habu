@@ -2,6 +2,8 @@
 \ run on, from one target source load, into the absolute private directory the
 \ caller supplies.
 1 set-tier
+require tools/tool-role.f
+TOOL-ROLE:ENTRY
 require src/os/script-argv.f
 require src/lib/executable-build.f
 
@@ -16,6 +18,7 @@ private
       s" compiler-images-build: one output directory is required" 64 die
    then
    ['] LOAD EXECUTABLE-BUILD:WITH
+   TOOL-ROLE:DONE
    s" 0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-BUNDLE-HOST-CHECK" evaluate-closed ;
 
 ' BUILD

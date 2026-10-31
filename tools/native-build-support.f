@@ -1,6 +1,9 @@
 \ Native engine builder support saved before any target window opens.
 1 set-tier
+require tools/tool-role.f
+TOOL-ROLE:ENTRY
 require tools/native-build-support-deps.f
+require tools/native-build-result.f
 
 package NATIVE-BUILD-SUPPORT
 private
@@ -42,4 +45,5 @@ public
 
 ;package
 
+TOOL-ROLE:DONE
 ' NATIVE-BUILD-SUPPORT:RUN APP-IMAGE:START!
