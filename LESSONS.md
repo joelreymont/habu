@@ -78,6 +78,10 @@ entry.
 - 2026-10-31, a public SSE word: asked whether SSE:FEED's callback context
   may change from `ptr a` to `a`, so MCP passes its client record without a
   cast, Joel chose "Context becomes `a`".
+- 2026-10-31, a PostgreSQL limit: asked whether PG:CONFIGURE should lose its
+  fixed per-connection parameter count so each connection's list grows as BIND
+  needs, up to PostgreSQL's own 65535, Joel chose "Grow to PostgreSQL's limit".
+  A library takes its limits from the protocol it speaks, not from a preset.
 
 ### Compiler and builds
 
