@@ -14,8 +14,6 @@ using NATIVE-FILE-E2E
 package NATIVE-FILE-STATE-TEST
 
 $8000 constant CAP
-create FRESH-CACHE PATH-CAP allot
-create FRESH-SOURCE PATH-CAP allot
 DYNAMIC-BUFFER CUT u8  variable CUT-U
 DYNAMIC-BUFFER PRODUCT-A u8
 DYNAMIC-BUFFER PRODUCT-B u8
@@ -119,18 +117,17 @@ create EXPECT 512 allot  variable EXPECT-U
    0 PRODUCT-A asize 0 PRODUCT-B bsize STR= TTRUE ;
 
 \ root/product built from app.f with the empty out root root/cache of its own:
-\ it is the product a warm build of the same sources must equal.
-create COLD-CACHE PATH-CAP allot  variable COLD-CACHE-U
-create COLD-SRC PATH-CAP allot  variable COLD-SRC-U
+\ the cold build a warm build of the same sources is compared against.
+create COLD-CACHE PATH-CAP allot
+create COLD-SRC PATH-CAP allot
 : COLD-BUILD ( ptr u8 n ptr u8 n -- n )
    {: product:ptr productu:n cache:ptr cacheu:n :}
    cache cacheu AT {: c:ptr cu:n :}
    c cu FS:MAKE-DIR
-   c COLD-CACHE cu BYTE-COPY cu COLD-CACHE-U !
+   c COLD-CACHE cu BYTE-COPY
    s" app.f" AT {: a:ptr au:n :}
-   a COLD-SRC au BYTE-COPY au COLD-SRC-U !
-   COLD-SRC COLD-SRC-U @ product productu AT COLD-CACHE COLD-CACHE-U @
-      NATIVE-FILE-APP:BUILD
+   a COLD-SRC au BYTE-COPY
+   COLD-SRC au product productu AT COLD-CACHE cu NATIVE-FILE-APP:BUILD
    NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
 
 : TASK-FILES ( -- )
@@ -411,17 +408,6 @@ create COLD-SRC PATH-CAP allot  variable COLD-SRC-U
    AT s" " CAPTURE SUCCESS
    OUT$ S\" 42\n" CONTAINS? TTRUE ;
 
-\ BUILD with the empty cache directory cache of its own, the cold build to
-\ compare against.
-: FRESH-BUILD ( ptr u8 n -- n )
-   AT {: c:ptr cu:n :}
-   c FRESH-CACHE cu BYTE-COPY
-   FRESH-CACHE cu FS:MAKE-DIR
-   s" app.f" AT {: a:ptr au:n :}
-   a FRESH-SOURCE au BYTE-COPY
-   FRESH-SOURCE au s" fresh-bare-hb" AT FRESH-CACHE cu NATIVE-FILE-APP:BUILD
-   NATIVE-FILE-APP:OUT$ NATIVE-FILE-APP:ERR$ STREAMS! ;
-
 \ A consumer passing a byte pointer where the cast takes n.
 : BARE-MISUSE ( -- )
    s" app.f"
@@ -467,7 +453,7 @@ create COLD-SRC PATH-CAP allot  variable COLD-SRC-U
 \ and refuses exactly as the cold build did, beside its cache diagnostics.
 : SAME-REFUSAL ( ptr u8 n ptr u8 n -- )
    {: cache:ptr cacheu:n line:ptr lineu:n :}
-   cache cacheu FRESH-BUILD 70 T=
+   s" fresh-bare-hb" cache cacheu COLD-BUILD 70 T=
    ERR$ line lineu CONTAINS? TTRUE
    ERR$ CUT!
    1 NATIVE-FILE-APP:DIAG? !
