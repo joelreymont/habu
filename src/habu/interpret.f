@@ -418,14 +418,8 @@ public
 : EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u 0 u EVAL-FRAMED-RANGE ;
 
-\ Make EVAL-FRAMED the engine's `evaluate` and EVAL-FRAMED-RANGE its
-\ `evaluate-range`. A seeded x86-64 engine's records of both jump through
-\ PROVIDED-XT:EVALUATE-CELL and EVALUATE-RANGE-CELL (kernel-x64.f PROVIDED-ROW),
-\ so every caller keeps the record it was compiled against, src/core/include.f
-\ EVALUATE-RANGE-RAW's among them. src/habu/native-runtime.f CHECKER-REG:SEAL
-\ runs this as the build window's last act. `xt!` makes each cell an address
-\ cell, which the capture carries as a fixed row (tools/native-layout.f) and
-\ the seed restores on every boot.
+\ Make EVAL-FRAMED and EVAL-FRAMED-RANGE the seeded x86-64 engine's `evaluate`
+\ and `evaluate-range`; layout.f PROVIDED-XT says how callers reach them.
 : INSTALL-EVALUATE ( -- )
    ['] EVAL-FRAMED data-base PROVIDED-XT:EVALUATE-CELL + xt!
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt! ;

@@ -1761,7 +1761,7 @@ variable LAST-LOAD-EVAL-OK
 
 public
 
-TRUSTED: ACTION! ( n ptr u8 n -- )
+: ACTION! ( n ptr u8 n -- )
    {: mode:n path:ptr size:n :}
    INCLUDE-DEPTH @ 0= if exit then
    path size CHECK
@@ -1770,13 +1770,13 @@ TRUSTED: ACTION! ( n ptr u8 n -- )
    size frame FR-ACTLEN + CELL-VIEW !
    mode frame FR-ACTMODE + CELL-VIEW ! ;
 
-TRUSTED: ACTION$ ( -- n ptr u8 n )
+: ACTION$ ( -- n ptr u8 n )
    CHECK-ACTIVE
    TOP@ {: frame:ptr :}
    frame FR-ACTMODE + CELL-VIEW @
    frame FR-ACTPATH + frame FR-ACTLEN + CELL-VIEW @ ;
 
-TRUSTED: PARENT-ACTION$ ( -- n ptr u8 n )
+: PARENT-ACTION$ ( -- n ptr u8 n )
    CHECK-ACTIVE
    TOP@ FRAME-PREV @ {: frame:ptr :}
    frame 0= if INCLUDE-RANGE-RC throw then
@@ -1842,8 +1842,6 @@ defer INCLUDE-INTERPRET ( ptr u8 n n n -- )
 : EXEC-SOURCE ( -- ptr u8 )
    TOP@ FRAME-EXEC-SOURCE ;
 
-TRUSTED: EVALUATE-RANGE-RAW ( ptr u8 n n n -- ) evaluate-range ;
-
 \ A loaded program starts on an empty data stack. RUN-RANGE keeps the range in
 \ its source frame across catch; copied arguments beneath evaluate-range would
 \ let an underflow consume loader cells and turn it into E-EVAL-RESIDUE instead.
@@ -1854,7 +1852,7 @@ TRUSTED: EVALUATE-RANGE-RAW ( ptr u8 n n n -- ) evaluate-range ;
    frame FR-EVAL-SIZE + CELL-VIEW @
    frame FR-EVAL-FIRST + CELL-VIEW @
    frame FR-EVAL-END + CELL-VIEW @
-   POLICY-SEALED? if EVALUATE-RANGE-RAW else INCLUDE-INTERPRET then ;
+   POLICY-SEALED? if evaluate-range else INCLUDE-INTERPRET then ;
 
 : CHECK-RANGE ( n n n -- ) {: size:n first:n end:n :}
    first 0 < first end > or end size > or if INCLUDE-RANGE-RC throw then ;
@@ -1865,8 +1863,8 @@ variable EVAL-FIRST
 variable EVAL-END
 
 : EVAL-STAGED ( -- )
-   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ EVALUATE-RANGE-RAW ;
-: INTERPRET-INSTALL ( -- ) [: EVALUATE-RANGE-RAW ;] is INCLUDE-INTERPRET ;
+   EVAL-A @ EVAL-U @ EVAL-FIRST @ EVAL-END @ evaluate-range ;
+: INTERPRET-INSTALL ( -- ) [: evaluate-range ;] is INCLUDE-INTERPRET ;
 INTERPRET-INSTALL
 
 public
@@ -2196,13 +2194,13 @@ public
    entry SOURCE-ORIGINAL-REQUIRED-ENTRY @ = or if STACK-PATH exit then
    NONE ;
 
-TRUSTED: ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:ACTION$ ;
+: ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:ACTION$ ;
 
 \ A child callback runs while the child's source frame is on top. Its parent
 \ retains the original request even from inside a compiled word.
-TRUSTED: PARENT-ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:PARENT-ACTION$ ;
+: PARENT-ACTION$ ( -- n ptr u8 n ) SOURCE-ROOT:PARENT-ACTION$ ;
 
-TRUSTED: LOAD-PATH ( n ptr u8 n -- ) {: mode:n path:ptr size:n :}
+: LOAD-PATH ( n ptr u8 n -- ) {: mode:n path:ptr size:n :}
    SOURCE-ROOT:ACTIVE-SOURCE 2drop 2drop 2drop
    mode LOAD-INCLUDE = if path size included exit then
    mode LOAD-REQUIRE = if path size required exit then

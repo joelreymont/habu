@@ -191,7 +191,7 @@ variable USED
 \ cell intact: SCRIPT-ARGC uses its nonzero value to choose the app convention.
 CAST: APP-ACTION ( n -- [ -- ] )
 
-TRUSTED: APP-RUN ( -- )
+: APP-RUN ( -- )
    data-base APP-ENTRY:XT-CELL + @ APP-ACTION execute ;
 
 : APP? ( -- bool )
@@ -201,7 +201,7 @@ TRUSTED: APP-RUN ( -- )
 \ It has no machine-side exit hook; run and clear that hook before any report.
 CAST: HOOK-ACTION ( n -- [ -- ] )
 
-TRUSTED: EXIT-HOOK ( -- )
+: EXIT-HOOK ( -- )
    data-base EXIT-HOOK-CELL + {: slot:ptr :}
    slot @ {: xt:n :}
    0 slot !
@@ -222,9 +222,6 @@ TRUSTED: EXIT-HOOK ( -- )
    data-base REFUSAL-ABI:CODE-CELL + @ {: refusal:n :}
    refusal 0<> code refusal = and if NULL$ 70 die then
    NULL$ UNCAUGHT-RC die ;
-
-TRUSTED: REPORT-PTR ( -- ptr [ n -- ] )
-   data-base ENGINE-MAIN:REPORT-CELL + ;
 
 : LIST? ( route -- bool )
    MATCH route
@@ -284,7 +281,9 @@ public
 \ protected UNCGH-CELL before it publishes the image. ARM boot installs its
 \ assembly uncaught reporter separately.
 : INSTALL ( -- )
-   HB-TARGET-LINUX-X86-64? if ['] REPORT REPORT-PTR xt! then
+   HB-TARGET-LINUX-X86-64? if
+      ['] REPORT data-base ENGINE-MAIN:REPORT-CELL + xt!
+   then
    ['] MAIN data-base ENGINE-MAIN:XT-CELL + xt! ;
 
 ;package
