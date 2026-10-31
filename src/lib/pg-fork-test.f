@@ -19,7 +19,7 @@ private
 : FORK-UNDER-CONFIG ( -- )
    [: CONFIG-LOCK [: FORK-HOLD:HOLDING ;] [: CONFIG-UNLOCK ;] finally ;] FORK-HOLD:HOLD
    s" a child forked under a held configuration lock configured PG"
-   [: 1 1 1 PG:CONFIGURE ;] 1 FORK-HOLD:FORK-CHECK
+   [: 1 1 PG:CONFIGURE ;] 1 FORK-HOLD:FORK-CHECK
    FORK-HOLD:RELEASE ;
 
 FORK-UNDER-CONFIG

@@ -36,7 +36,7 @@ public
 -9254 constant E-CLEARED      \ a result used after CLEAR or its connection's close
 -9255 constant E-TRANSACTION  \ a WITH-TRANSACTION or NOTIFIED? inside a transaction on the same connection
 -9256 constant E-HANDLE       \ a handle another task owns or an image restore invalidated, a scope's token cleared or not handed back
--9257 constant E-CAPACITY     \ more live connections, results or parameters than this module stores, or a declaration out of range or changed after use
+-9257 constant E-CAPACITY     \ more live connections or results than CONFIGURE declared, a parameter past PostgreSQL's 65535, or a declaration out of range or changed after use
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement or name
 -9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
@@ -108,10 +108,10 @@ $30 constant DIGIT-ZERO
 0 constant NO-DEADLINE                    \ an operation on a connection with no bound
 1000000 constant NS-PER-MS
 $7FFFFFFF constant WAIT-MAX               \ the longest bound, in ms: the longest a readiness poll takes
+65535 constant PARAM-MAX                  \ a Bind message counts its parameters in 16 bits
 
 TYPED-VARIABLE CONN-CAPACITY n
 TYPED-VARIABLE RESULT-CAPACITY n
-TYPED-VARIABLE PARAM-CAPACITY n
 TYPED-VARIABLE CONFIGURED bool
 
 DYNAMIC-BUFFER CONN-PG ptr u8
@@ -127,7 +127,8 @@ DYNAMIC-BUFFER CONN-LAST-RESULT ptr u8
 DYNAMIC-BUFFER CONN-PENDING n
 DYNAMIC-BUFFER CONN-CONNECTING n
 DYNAMIC-BUFFER CONN-MESSAGE-U n
-DYNAMIC-BUFFER CONN-PARAM-OFF n
+DYNAMIC-BUFFER CONN-PARAM-OFFS ptr n
+DYNAMIC-BUFFER CONN-PARAM-OFFS-CAP n
 DYNAMIC-BUFFER CONN-VERB n
 DYNAMIC-BUFFER CONN-MESSAGE ptr u8
 DYNAMIC-BUFFER CONN-MESSAGE-CAP n
@@ -154,7 +155,6 @@ TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
-: PARAM-CAP ( -- n ) PARAM-CAPACITY @ ;
 
 
 \ Every pointer is `ptr u8`: a PGconn, a PGresult and a C string are all
@@ -239,6 +239,10 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot CONN-CHECK
    slot CONN-MESSAGE ;
 
+: PARAM-OFFS-CELL ( n -- ptr ptr n ) {: slot:n :}
+   slot CONN-CHECK
+   slot CONN-PARAM-OFFS ;
+
 : DRAIN-LAST-CELL ( n -- ptr ptr u8 ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-LAST-RESULT ;
@@ -259,6 +263,8 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 : ARENA-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
 : MESSAGE-BASE ( n -- ptr u8 )   MESSAGE-CELL @ ;
 : MESSAGE-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot MESSAGE-CELL ! ;
+: PARAM-OFFS ( n -- ptr n )   PARAM-OFFS-CELL @ ;
+: PARAM-OFFS! ( ptr n n -- ) {: p slot:n :}   p slot PARAM-OFFS-CELL ! ;
 
 \ The generation publishes the slot's owner: written with release after the
 \ owner and read with acquire before it, so a reader that sees a generation
@@ -282,25 +288,26 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 : MESSAGE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-U ! ;
 : MESSAGE-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-MESSAGE-CAP @ ;
 : MESSAGE-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-CAP ! ;
+: PARAM-OFFS-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-PARAM-OFFS-CAP @ ;
+: PARAM-OFFS-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-PARAM-OFFS-CAP ! ;
 : BOUND@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-BOUND @ ;
 : BOUND! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-BOUND ! ;
 
 : VERB-BUF ( n -- ptr u8 ) {: slot:n :}   slot CONN-CHECK 0 CONN-VERB BYTE-VIEW slot VERB-CAP * + ;
 
-: PARAM-CHECK ( n -- ) {: idx:n :}
-   CONFIGURED @ 0= if E-CAPACITY throw then
+: PARAM-CHECK ( n n -- ) {: slot:n idx:n :}
    idx 0 < if E-CAPACITY throw then
-   idx PARAM-CAP >= if E-CAPACITY throw then ;
+   idx slot PARAM-OFFS-CAP@ >= if E-CAPACITY throw then ;
 
 
 : PARAM-OFF@ ( n n -- n ) {: slot:n idx:n :}
-   slot CONN-CHECK idx PARAM-CHECK
-   slot PARAM-CAP * idx + CONN-PARAM-OFF @ ;
+   slot idx PARAM-CHECK
+   slot PARAM-OFFS idx cells + @ ;
 
 
 : PARAM-OFF! ( n n n -- ) {: v:n slot:n idx:n :}
-   slot CONN-CHECK idx PARAM-CHECK
-   v slot PARAM-CAP * idx + CONN-PARAM-OFF ! ;
+   slot idx PARAM-CHECK
+   v slot PARAM-OFFS idx cells + ! ;
 
 
 : RES-CHECK ( n -- ) {: slot:n :}
@@ -438,8 +445,28 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot ARENA-RELEASE ;
 
 
+\ Like the message copy, the offsets mapping outlives CLOSE and goes with the registry.
+: PARAM-OFFS-RELEASE ( n -- ) {: slot:n :}
+   slot PARAM-OFFS-CAP@ {: cap:n :}
+   cap 0<> if slot PARAM-OFFS cap MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS then
+   NULL-PTR slot PARAM-OFFS!
+   0 slot PARAM-OFFS-CAP! ;
+
+
+: PARAM-GROW ( n n -- ) {: slot:n cap:n :}
+   cap MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh :}
+   slot PARAM-N@ {: used:n :}
+   used 0 > if slot PARAM-OFFS BYTE-VIEW fresh BYTE-VIEW used cells BYTE-COPY then
+   slot PARAM-OFFS-RELEASE
+   fresh slot PARAM-OFFS!
+   cap slot PARAM-OFFS-CAP! ;
+
+
 : PARAM-ROOM ( n -- ) {: slot:n :}
-   slot PARAM-N@ PARAM-CAP >= if E-CAPACITY throw then ;
+   slot PARAM-N@ {: used:n :}
+   used PARAM-MAX >= if E-CAPACITY throw then
+   used slot PARAM-OFFS-CAP@ < if exit then
+   slot slot PARAM-OFFS-CAP@ cells used 1 + cells ARENA-FIT CELL / PARAM-GROW ;
 
 
 : PARAM-OFF+ ( n n -- ) {: off:n slot:n :}
@@ -564,16 +591,16 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    want slot MESSAGE-CAP! ;
 
 
-\ Only a registry CONFIGURE published holds copies: a partial reserve made none.
-: RELEASE-MESSAGES ( -- )
+\ Only a registry CONFIGURE published holds mappings: a partial reserve made none.
+: RELEASE-CONN-MAPPINGS ( -- )
    CONFIGURED @ 0= if exit then
-   CONN-CAP 0 ?do i MESSAGE-RELEASE loop ;
+   CONN-CAP 0 ?do i MESSAGE-RELEASE i PARAM-OFFS-RELEASE loop ;
 
 
 \ Reserve once before publishing the registry. DYNAMIC-BUFFER owns allocation,
 \ bounds and release, including cleanup after a partially completed reserve.
 : RELEASE-REGISTRY ( -- )
-   RELEASE-MESSAGES
+   RELEASE-CONN-MAPPINGS
    CONN-PG-RELEASE
    CONN-GEN-RELEASE
    CONN-LIVE-RELEASE
@@ -587,7 +614,8 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-PENDING-RELEASE
    CONN-CONNECTING-RELEASE
    CONN-MESSAGE-U-RELEASE
-   CONN-PARAM-OFF-RELEASE
+   CONN-PARAM-OFFS-RELEASE
+   CONN-PARAM-OFFS-CAP-RELEASE
    CONN-VERB-RELEASE
    CONN-MESSAGE-RELEASE
    CONN-MESSAGE-CAP-RELEASE
@@ -601,7 +629,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    RES-SCOPED-RELEASE
    0 CONN-CAPACITY !
    0 RESULT-CAPACITY !
-   0 PARAM-CAPACITY !
    false CONFIGURED ! ;
 
 
@@ -619,7 +646,8 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-CAP CONN-PENDING-RESERVE
    CONN-CAP CONN-CONNECTING-RESERVE
    CONN-CAP CONN-MESSAGE-U-RESERVE
-   CONN-CAP PARAM-CAP * CONN-PARAM-OFF-RESERVE
+   CONN-CAP CONN-PARAM-OFFS-RESERVE
+   CONN-CAP CONN-PARAM-OFFS-CAP-RESERVE
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
    CONN-CAP CONN-MESSAGE-RESERVE
    CONN-CAP CONN-MESSAGE-CAP-RESERVE
@@ -695,19 +723,16 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    then ;
 
 
-: CONFIGURE-REGISTRY ( n n n -- )
-   {: conns:n results:n params:n :}
-   conns 0 <= results 0 <= or params 0 <= or if E-CAPACITY throw then
+: CONFIGURE-REGISTRY ( n n -- )
+   {: conns:n results:n :}
+   conns 0 <= results 0 <= or if E-CAPACITY throw then
    conns HANDLE-STRIDE >= results HANDLE-STRIDE >= or if E-CAPACITY throw then
-   params MEM-MAX-CELLS conns / > if E-CAPACITY throw then
    CONFIGURED @ if
-      conns CONN-CAP = results RESULT-CAP = and
-      params PARAM-CAP = and if exit then
+      conns CONN-CAP = results RESULT-CAP = and if exit then
       E-CAPACITY throw
    then
    conns CONN-CAPACITY !
    results RESULT-CAPACITY !
-   params PARAM-CAPACITY !
    [: ALLOC-REGISTRY REGISTER-CLEANUP ;] catch {: code:n :}
    code 0<> if RELEASE-REGISTRY code throw then
    true CONFIGURED ! ;
@@ -1276,10 +1301,9 @@ REGISTER-CHILD-RESET
 
 public
 
-\ CONFIGURE is the one registry sizing decision. Applications call it before
-\ CONNECT; repeating the same declaration is harmless, from any task. A
-\ different one is E-CAPACITY until image preparation releases the registry.
-: CONFIGURE ( n n n -- )
+\ CONFIGURE sizes the registry, connections then live results, before CONNECT.
+\ Repeating it is harmless; a different one is E-CAPACITY until image preparation.
+: CONFIGURE ( n n -- )
    CONFIG-LOCK [: CONFIGURE-REGISTRY ;] [: CONFIG-UNLOCK ;] finally ;
 
 \ CONNECT-START, SEND and POLL let one task drive many connections: the caller

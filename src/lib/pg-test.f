@@ -30,7 +30,6 @@ using PG
 -77 constant BOOM                         \ the throw the rolled-back body raises
 20 constant CONNECTIONS
 64 constant RESULTS
-32 constant PARAMETERS
 
 CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 10000000000 constant PROGRESS-NS
@@ -45,7 +44,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : OPEN ( -- PG:connection )
-   CONNECTIONS RESULTS PARAMETERS CONFIGURE
+   CONNECTIONS RESULTS CONFIGURE
    CONNINFO$ CONNECT MATCH PG:connect-result
       connected OF ENDOF
       refused OF type cr E-CONNECT throw ENDOF
@@ -128,7 +127,7 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    s" application-declared connections remain usable at capacity" T-LABEL
    CONNECTIONS 0 ?do OPEN i HELD-CONNS ! loop
    [: OPEN PG:CLOSE ;] E-CAPACITY TTHROWSQ
-   [: CONNECTIONS 1+ RESULTS PARAMETERS CONFIGURE ;] E-CAPACITY TTHROWSQ
+   [: CONNECTIONS 1+ RESULTS CONFIGURE ;] E-CAPACITY TTHROWSQ
    0 HELD-CONNS @ {: stale :}
    stale PG:CLOSE
    stale PG:LIVE? TFALSE
@@ -936,18 +935,19 @@ variable CLEAR-RETURNED
    c ;
 
 
-\ The call arena is sized to the call, so a parameter far larger than any fixed
-\ buffer round-trips unchanged and a statement longer than any fixed buffer
-\ runs. Only the COUNTS are bounded.
+\ The call arena is sized to the call: a parameter or statement past any fixed
+\ buffer round-trips. Only connections, results and the parameter count are bounded.
 $32000 constant BIG-LEN                   \ 204800 bytes of parameter text
 create BIG-BUF BIG-LEN allot
 
-$4000 constant STMT-CAP
+$80000 constant STMT-CAP                  \ holds the BIND-MAX-parameter statement
 create STMT-BUF STMT-CAP allot
 variable STMT-U
 
 1500 constant BIG-ROWS
 8192 constant OLD-STATEMENT-CAP           \ a statement past 8 KiB still runs
+65535 constant BIND-MAX                   \ a Bind message counts its parameters in 16 bits
+2147385345 constant BIND-SUM              \ 0 + 1 + ... + BIND-MAX - 1
 
 
 : BIG$ ( -- ptr u8 n )
@@ -1018,15 +1018,34 @@ variable STMT-U
    c ;
 
 
-: ADD-PAST-CAP ( PG:connection -- PG:connection )
+: WIDE-STATEMENT ( -- )
+   STMT-RESET
+   s" select (select sum(v::int) from unnest(a) v) from (select array[" STMT+
+   BIND-MAX 0 ?do
+      i 0 > if s" ," STMT+ then
+      s" $" STMT+ i 1 + STMT-N+
+   loop
+   s" ] as a) w" STMT+ ;
+
+
+: BIND-WIDE ( PG:connection -- PG:connection )
    dup PARAMS
-   33 0 ?do dup 1 INT+ loop ;
+   BIND-MAX 0 ?do dup i INT+ loop ;
 
 
+: BIND-PAST-MAX ( PG:connection -- PG:connection )
+   dup 0 INT+ ;
+
+
+\ The sum reads every value back, so an offset lost as the list grows shows.
 : PARAM-COUNT-CASES ( PG:connection -- PG:connection ) {: c :}
-   c [: ADD-PAST-CAP ;] catch {: stale-param code:n :}
+   WIDE-STATEMENT
+   c BIND-WIDE drop
+   s" a 65536th parameter is refused and leaves the 65535 to run" T-LABEL
+   c [: BIND-PAST-MAX ;] catch {: stale-param code:n :}
    code E-CAPACITY T=
-   c PARAMS
+   c STMT$
+   [: 0 >ROW 0 >COL INT BIND-SUM T= ;] WITH-RESULT
    c ;
 
 
@@ -1692,7 +1711,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    SCRIPT-ARGC 1 <> if
       s" pg-test: no conninfo argument; test/db/pg-cluster.f runs this file" 2 die
    then
-   CONNECTIONS RESULTS PARAMETERS CONFIGURE
+   CONNECTIONS RESULTS CONFIGURE
    PROGRESS-CASES
    RESULT-CAPACITY-CASES
    AIO:START

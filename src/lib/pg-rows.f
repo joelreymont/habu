@@ -32,7 +32,6 @@ public
 private
 
 64 constant RESULTS               \ live results across every connection
-32 constant PARAMETERS            \ parameters one statement takes
 $4000 constant READ-CAP           \ an arena's first chunk, and the least a later one maps
 $74 constant TRUE-BYTE            \ PostgreSQL renders a boolean as 't' or 'f'
 
@@ -243,7 +242,7 @@ public
 
 \ The attempt for a caller that drives POLL itself.
 : OPEN-START ( ptr u8 n -- PG:connection )
-   CONNECTIONS RESULTS PARAMETERS CONFIGURE
+   CONNECTIONS RESULTS CONFIGURE
    1 CONNECTIONS-FROZEN !
    CONNECT-START ;
 

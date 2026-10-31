@@ -48,7 +48,7 @@ variable HOLD                       \ the FIFO's write end
 using PG
 
 : OPEN ( -- PG:connection )
-   1 1 1 CONFIGURE
+   1 1 CONFIGURE
    0 SCRIPT-ARGV$ CONNECT MATCH PG:connect-result
       connected OF ENDOF
       refused OF type cr s" pg-hold: connect refused" 1 die ENDOF
