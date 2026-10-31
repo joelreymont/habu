@@ -2,8 +2,9 @@
 \ comments, trailing commas or single quotes. Structure, escapes and Unicode
 \ scalar encoding are validated as the cursor advances; values decode on demand.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the JR:cursor record (zero-filled
-\ typed storage owns nothing) and the source span, and keeps both live and
-\ exclusive until CLOSE or FINISH: a promise the checker cannot prove.
+\ typed storage owns nothing, and DISPOSE leaves it so) and the source span, and
+\ keeps both live and exclusive until CLOSE or FINISH: a promise the checker
+\ cannot prove.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -261,8 +262,10 @@ public
 \ Release what a record owns after a caller's throw abandoned its live reader.
 \ Idempotent. A static record that is only ever re-INITed needs no DISPOSE: the
 \ next reader on the record reuses the mapping and its CLOSE releases it.
-: DISPOSE ( ptr cursor -- )
-   MORE-RELEASE ;
+: DISPOSE ( ptr cursor -- ) {: state:ptr :}
+   state MORE-RELEASE
+   state >CELLS {: raw:ptr :}
+   CURSOR-CELLS 0 ?do 0 raw i cells + ! loop ;
 
 : TOKEN ( JR:reader -- JR:reader n )
    READER>STATE CURSOR-KIND @ ;

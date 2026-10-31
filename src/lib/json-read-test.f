@@ -708,6 +708,29 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JRT-A JR:DISPOSE
    JRT-A JR:DISPOSE ;
 
+\ The caller throws after a decoded escape, so record A holds its source pointer
+\ and its destination registers.
+: JRT-ESCAPED-ABANDON ( -- )
+   JRT-ESC-SRC$ JRT-OPEN-A
+   JR:NEXT JR:T-STR T=
+   JRT-ESC-WANT$ JRT-STR=
+   JRT-CALLER-FAIL
+   JR:CLOSE ;
+
+CAST: >RAW ( ptr JR:cursor -- ptr u8 )
+
+\ JR's OPAQUE cursor keeps CURSOR-BYTES private; a one-field layout spans it.
+STRUCTURE held DERIVE addr FIELD record JR:cursor ;STRUCTURE
+
+: JRT-NONZERO-BYTES ( -- n )
+   JRT-A >RAW {: raw:ptr :}
+   0 HELD-BYTES 0 ?do raw i + c@ 0<> if 1+ then loop ;
+
+: JRT-DISPOSE-ZEROES ( -- )
+   [: JRT-ESCAPED-ABANDON ;] JRT-CALLER-CODE TTHROWSQ
+   JRT-A JR:DISPOSE
+   JRT-NONZERO-BYTES 0 T= ;
+
 : JRT-ABANDON-REINIT ( -- )
    JRT-ABANDON-THROWS
    65 JRT-DEEP-CASE ;
@@ -742,6 +765,8 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    [: JRT-DEEP-MALFORMED-THROWS ;] JRT-RELEASES
    s" DISPOSE releases what a caller's throw abandoned" T-LABEL
    [: JRT-ABANDON-DISPOSE ;] JRT-RELEASES
+   s" DISPOSE leaves the record zero-filled" T-LABEL
+   [: JRT-DISPOSE-ZEROES ;] JRT-RELEASES
    s" a record holding a leftover parses again and nothing stays mapped" T-LABEL
    [: JRT-ABANDON-REINIT ;] JRT-RELEASES
    s" REPEATS? past 64 levels releases both stacks, a throw included" T-LABEL
