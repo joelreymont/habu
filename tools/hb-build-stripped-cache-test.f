@@ -232,8 +232,8 @@ variable HBT-DONOR-OUT-U
 public
 : HBT-STRIPPED-CACHE-MAIN ( -- )
    T-RESET
-   \ Baked attribution needs the map bound to the actual donor binary. The
-   \ preloaded linker snapshot has different capture coordinates and no map.
+   \ Baked attribution needs the donor binary's own map; the preloaded linker
+   \ snapshot has different capture coordinates and no map.
    AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-SAME-TWICE

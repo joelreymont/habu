@@ -2,7 +2,6 @@
 \ disjoint members and their final offsets; this file only records that plan.
 require src/lib/fs.f
 require src/lib/string.f
-require src/core/sha256.f
 require src/os/script-argv.f
 require src/habu/code-span.f
 require tools/image-names.f
@@ -13,10 +12,6 @@ DYNAMIC-BUFFER MAP-TEXT u8
 variable MAP-U
 create MAP-PATH PATH-CAP allot
 variable MAP-PATH-U
-create MAP-IMAGE PATH-CAP allot
-variable MAP-IMAGE-U
-create MAP-HASH-CTX SHA256-FILE-CTX-BYTES allot
-create MAP-HASH-HEX 64 allot
 create MAP-ONE 1 allot
 create MAP-NUM-BUF 20 allot
 variable MAP-NUM-I
@@ -192,18 +187,11 @@ variable MAP-DONOR-USED
    MAP-NAMESPACES ;
 
 : MAP-WRITE ( -- )
-   AOT-OUT {: image:ptr imageu:n :}
-   imageu PATH-CAP > if E-FS-CAPACITY throw then
-   image MAP-IMAGE imageu BYTE-COPY
-   imageu MAP-IMAGE-U !
-   image imageu MAP-PATH!
+   AOT-OUT MAP-PATH!
    MAP-DONOR$ if IMAGE-NAMES:LOAD else 2drop then
    0 MAP-U !
    S\" habu-names 1\n" MAP+
    S\" columns rec named start len wid name kind origin source\n" MAP+
-   MAP-HASH-CTX MAP-IMAGE MAP-IMAGE-U @ MAP-HASH-HEX SHA256-FILE-HEX-IN
-      dup 0<> if throw then drop
-   s" image-sha256 " MAP+ MAP-HASH-HEX 64 MAP+ 10 MAP-CHAR+
    MAP-ROWS
    MAP-PATH MAP-PATH-U @ 0 MAP-TEXT BYTE-VIEW MAP-U @ FS:WRITE-ALL ;
 

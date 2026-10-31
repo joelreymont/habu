@@ -1,12 +1,11 @@
-\ Read native-build's optional <image>.map file. Columns are addressed by
-\ name; unknown versions or malformed rows supply no name. Matching a full
-\ span also checks its length, so a stale sidecar cannot label a resized body.
+\ Read native-build's optional <image>.map by column name; unknown versions
+\ and malformed rows supply no name. Signing rewrites the image, so rows match
+\ by span.
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fmt.f
 require src/lib/sort.f
-require src/core/sha256.f
 require src/habu/code-span.f
 
 package IMAGE-NAMES
@@ -16,13 +15,10 @@ create PATH PATH-CAP allot
 variable USED variable POS variable ROWS
 variable COL-START variable COL-LEN variable COL-WID variable COL-NAME
 variable COL-KIND variable COL-ORIGIN variable COL-SOURCE
-variable BOUND
 variable GROUP-TOTAL
 DYNAMIC-BUFFER CODE-ROWS n
 DYNAMIC-BUFFER NS-ROWS n
 variable CODE-N variable NS-N
-create HASH-CTX SHA256-FILE-CTX-BYTES allot
-create HASH-HEX 64 allot
 variable ATTR-TOTAL variable ATTR-BAKED variable ATTR-LOADED
 variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
 
@@ -44,6 +40,8 @@ variable ATTR-GENERATED variable ATTR-UNKNOWN variable ATTR-OK
       name size STR= if col 1- exit then
       col 1+
    again ;
+
+: LOADED? ( -- bool ) USED @ 0<> ;
 
 : LINE$ ( -- ptr u8 n )
    0 TEXT BYTE-VIEW USED @ 10 POS @ SPLIT-NEXT
@@ -130,10 +128,10 @@ public
 1 constant OWNER-PUBLIC
 2 constant OWNER-PRIVATE
 
-\ Read the map and verify its image binding without indexing name rows.
-: LOAD-BOUND ( ptr u8 n -- )
+\ A missing map or an unknown header leaves no rows: LOADED? is false.
+: LOAD ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   0 USED ! 0 BOUND ! 0 ATTR-OK ! 0 CODE-N ! 0 NS-N !
+   0 USED ! 0 ATTR-OK ! 0 CODE-N ! 0 NS-N !
    pathu 4 + PATH-CAP > if E-FS-CAPACITY throw then
    path PATH pathu BYTE-COPY
    s" .map" drop PATH pathu + 4 BYTE-COPY
@@ -156,28 +154,14 @@ public
    header headeru s" origin" COLUMN COL-ORIGIN !
    header headeru s" source" COLUMN COL-SOURCE !
    POS @ ROWS !
-   POS @ USED @ < if
-      LINE$ {: first:ptr firstu:n :}
-      first firstu 0 FIELD$ s" image-sha256" STR= if
-         HASH-CTX path pathu HASH-HEX SHA256-FILE-HEX-IN
-            dup 0<> if throw then drop
-         first firstu 1 FIELD$ HASH-HEX 64 STR= 0= if
-            0 USED ! exit
-         then
-         -1 BOUND ! POS @ ROWS !
-      then
-   then ;
+   INDEX-ROWS ;
 
-: LOAD ( ptr u8 n -- ) LOAD-BOUND INDEX-ROWS ;
-
-: BOUND? ( -- bool ) BOUND @ 0<> ;
-
-\ The image hash binds external labels; the ordered rows must then tile the
-\ physical app/code region without a duplicate or a gap.
+\ The ordered rows must tile the physical app/code region without a duplicate
+\ or a gap; a map from another image attributes nothing unless they do.
 : CODE-ATTR ( n -- bool ) {: size:n :}
    0 ATTR-TOTAL ! 0 ATTR-BAKED ! 0 ATTR-LOADED !
    0 ATTR-GENERATED ! 0 ATTR-UNKNOWN ! 0 ATTR-OK !
-   BOUND? 0= COL-KIND @ 0 < or COL-ORIGIN @ 0 < or if false exit then
+   LOADED? 0= COL-KIND @ 0 < or COL-ORIGIN @ 0 < or if false exit then
    ROWS @ POS !
    begin POS @ USED @ < while
       LINE$ {: row:ptr rowu:n :}
@@ -318,7 +302,7 @@ public
 \ wordlist owner. An absent source remains absent.
 : DONOR-SOURCE$ ( n n ptr u8 n ptr u8 n n -- ptr u8 n bool )
    {: off:n bytes:n name:ptr nameu:n pkg:ptr pkgu:n role:n :}
-   BOUND? 0= COL-SOURCE @ 0 < or if s" " false exit then
+   COL-SOURCE @ 0 < if s" " false exit then
    off FIRST-CODE begin dup CODE-N @ < while
       {: idx:n :}
       idx CODE-ROW$ {: row:ptr rowu:n :}
@@ -338,7 +322,6 @@ public
 
 : DONOR-RECORD? ( n n ptr u8 n ptr u8 n n -- bool )
    {: off:n bytes:n name:ptr nameu:n pkg:ptr pkgu:n role:n :}
-   BOUND? 0= if false exit then
    role OWNER-UNKNOWN = if false exit then
    off FIRST-CODE begin dup CODE-N @ < while
       {: idx:n :}
@@ -356,7 +339,7 @@ public
 \ capture stripped. Prefer that record over the extra anonymous span row; the
 \ latter proves baked bytes but has no name or source to recover.
 : DONOR-ANON-ROW ( n n -- ptr u8 n bool ) {: off:n bytes:n :}
-   BOUND? 0= COL-KIND @ 0 < or COL-ORIGIN @ 0 < or if NULL$ false exit then
+   COL-KIND @ 0 < COL-ORIGIN @ 0 < or if NULL$ false exit then
    CODE-N @ off FIRST-CODE ?do
       i CODE-ROW$ {: row:ptr rowu:n :}
       i CODE-START off <> if leave then
@@ -392,7 +375,7 @@ public
 
 : DONOR-NAMESPACES-EACH ( [ n n ptr u8 n -- ] -- )
    {: visit :}
-   BOUND? 0= COL-KIND @ 0 < or if exit then
+   COL-KIND @ 0 < if exit then
    ROWS @ POS !
    begin POS @ USED @ < while
       LINE$ {: row:ptr rowu:n :}

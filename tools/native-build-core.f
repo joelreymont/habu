@@ -1064,13 +1064,10 @@ variable WRITER-OVERRIDE?
 \    name   the definition's name, as the capture saw it
 create NAMES-PATH OUTPUT-CAP allot
 variable NAMES-PATH-U
-create NAMES-HASH-CTX SHA256-FILE-CTX-BYTES allot
-create NAMES-HASH-HEX 64 allot
 create NAMES-ONE 1 allot
 TYPED-VARIABLE NAMES-A ptr u8
 variable NAMES-CAP
 variable NAMES-U
-variable NAMES-HASH-OFF
 DYNAMIC-BUFFER NAMES-ALIAS-FLAGS u8
 DYNAMIC-BUFFER NAMES-ORDER n
 variable NAMES-ORDER-N
@@ -1277,22 +1274,14 @@ variable NAMES-NI
    NAMES-ALLOCATE
    S\" habu-names 1\n" NAMES+
    S\" columns rec named start len wid name kind origin source\n" NAMES+
-   s" image-sha256 " NAMES+
-   NAMES-U @ NAMES-HASH-OFF !
-   64 0 ?do 48 NAMES-CHAR+ loop
-   10 NAMES-CHAR+
    AOT-CAPTURE:MAP-N 0 ?do i NAMES-ROW loop
    AOT-SPAN:N @ 0 ?do i NAMES-SPAN loop ;
 
 : WRITE-NAMES ( -- )
    NAMES-PATH!
-   NAMES-HASH-CTX OUTPUT$ NAMES-HASH-HEX SHA256-FILE-HEX-IN
-      dup 0<> if throw then drop
-   NAMES-HASH-HEX NAMES-A@ NAMES-HASH-OFF @ + 64 BYTE-COPY
    NAMES-PATH$ NAMES-A@ NAMES-U @ FS:WRITE-ALL ;
 
-\ The suite builder's private directory is absolute. The capture retains its
-\ rows until the final image exists and can bind their hash.
+\ The suite builder's private directory is absolute.
 create BUNDLE-PATH OUTPUT-CAP allot
 variable BUNDLE-PATH-U
 TYPED-VARIABLE BUNDLE-DIR ptr u8
