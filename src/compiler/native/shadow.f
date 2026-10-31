@@ -18,7 +18,7 @@ require src/compiler/session/lease.f
 package NSHADOW
 private
 
-TRUSTED: ENTRY-BYTES ( n -- ptr u8 ) ;
+CAST: ENTRY-BYTES ( n -- ptr u8 )
 
 variable OPENED                      \ a shadow is open
 variable NATIVE                      \ its source already emitted for this binding

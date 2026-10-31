@@ -9,7 +9,7 @@ E-CHECKER-LAYOUT-BUFFER constant E-EXTENT
 $7FFFFFFFFFFFFFFF CELL / constant MAX-CELLS
 
 \ Only DECLARE calls this, after validating the live native CREATE stamp.
-TRUSTED: CREATED-XT ( n -- [ -- ptr a ] ) ;
+CAST: CREATED-XT ( n -- [ -- ptr u8 ] )
 
 public
 

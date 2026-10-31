@@ -715,7 +715,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    s" -- ptr a" DEF-RAW-PUBLISH ;
 
 \ The DATA address a created word's body pushes, as the number NCOMP takes.
-TRUSTED: DEF-HERE ( -- n ) here ;
+: DEF-HERE ( -- n ) here NULL-PTR - ;
 
 \ The pending DKIND:ADDR record published: def-create's tail, or on x86-64
 \ the body NCOMP compiles at a cell-aligned here and def-close.

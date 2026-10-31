@@ -15,6 +15,6 @@ public
 : LIVE? ( -- bool ) source-exec-live? ;
 : BOUNDARY? ( -- bool ) source-exec-boundary? ;
 : LOADER-CUT? ( -- bool ) source-exec-loader-cut? ;
-TRUSTED: POSITION ( -- n bool ) source-exec-position ;
+: POSITION ( -- n bool ) source-exec-position ;
 : HANDLER ( -- n ) source-exec-handler ;
 ;package

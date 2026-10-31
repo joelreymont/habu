@@ -132,7 +132,7 @@ private
 \ TRUST-DECL is deliberately unavailable to checked code. Register only after
 \ the scan has recorded the exact source spelling from the tape: the pending
 \ dictionary record holds only the bare tail of a qualified definition.
-TRUSTED: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
+: REGISTER-TRUST ( ptr u8 n ptr u8 n -- )
    CHECKER-OWNER:DECLARED-EFFECT ;
 
 \ The hook cell stores a raw execution token; this view states the scan's signature.

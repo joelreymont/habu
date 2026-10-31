@@ -14,7 +14,7 @@ private
 $3145544953343658 constant MAGIC
 variable PREV
 
-TRUSTED: RAW-PTR ( n -- ptr u8 ) ;
+CAST: RAW-PTR ( n -- ptr u8 )
 
 : BAD ( -- ) s" x64text: malformed engine text sites" SITE-RC die ;
 : BASE-N ( -- n ) data-base RBASE-CELL + @ ;
