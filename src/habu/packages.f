@@ -32,7 +32,7 @@ $4000 constant PKG-CODE-RESERVE
 
 \ The token, then the engine's compile-die tail (habu2.f C-PACKAGE-FAIL).
 : PKG-FAIL ( n -- )
-   TOKEN$ SAY THROW-AT ;
+   TOKEN$ ERROR-TEXT:TYPE THROW-AT ;
 
 \ The keyword's operand. With the input at its end the token cells still hold
 \ the keyword, which the refusal names.
@@ -44,8 +44,8 @@ $4000 constant PKG-CODE-RESERVE
 \ and DEF-TKL hold, which `package` never writes: for it, what the last
 \ definition or `export` left there.
 : PKG-DICT-FULL ( -- )
-   s" hb: dictionary full at: " SAY
-   DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ SAY
+   s" hb: dictionary full at: " ERROR-TEXT:TYPE
+   DEF-TKA-CELL ADDR@ DEF-TKL-CELL CELL@ ERROR-TEXT:TYPE
    PKG-RC-DICT-FULL THROW-AT ;
 
 : PKG-DICT-ROOM ( -- )
@@ -73,8 +73,8 @@ $4000 constant PKG-CODE-RESERVE
 
 : PKG-CODE-ROOM-AFTER ( ptr u8 n n -- ) {: a:ptr u:n used:n :}
    u used PKG-FITS-AFTER? if exit then
-   s" hb: code space full at: " SAY
-   a u SAY PKG-RC-CODE-FULL THROW-AT ;
+   s" hb: code space full at: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE PKG-RC-CODE-FULL THROW-AT ;
 
 : PKG-CODE-ROOM ( ptr u8 n -- ) 0 PKG-CODE-ROOM-AFTER ;
 
@@ -164,8 +164,8 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? 0= if exit then
    row PKG-INDEX seal >= if exit then
-   s" hb: policy: package " SAY TOKEN$ SAY
-   s"  predates the seal" SAY ENGINE-ERROR:POLICY THROW-AT ;
+   s" hb: policy: package " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
+   s"  predates the seal" ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
 
 \ An existing row keeps its wids and gains a private one only when it has none.
 : PKG-REOPEN ( ptr n -- n ) {: row:ptr :}
@@ -235,11 +235,11 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 
 \ The engine's twins: habu2.f C-USING and C-END-USING.
 : PKG-USING-FAIL ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
-   a u SAY TOKEN$ SAY rc THROW-AT ;
+   a u ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE rc THROW-AT ;
 
 : PKG-USED-WID ( -- n )
    TOKEN 0= if
-      s" hb: using: missing package name" SAY
+      s" hb: using: missing package name" ERROR-TEXT:TYPE
       ENGINE-ERROR:USING-NO-NAME THROW-AT
    then
    TOKEN$ 0 COLON-AT 0 >= if
@@ -283,15 +283,15 @@ variable USE-FLOOR
    TASK-GUARD
    USE-DEPTH-CELL CELL@ {: d:n :}
    d 0= if
-      s" hb: ;using without an open using" SAY
+      s" hb: ;using without an open using" ERROR-TEXT:TYPE
       ENGINE-ERROR:USING-UNBALANCED THROW-AT
    then
    PKG-PUB-CELL CELL@ 0<>  d USE-PKG-SAVE-CELL CELL@ <=  and if
-      s" hb: ;using would close a using opened outside the package" SAY
+      s" hb: ;using would close a using opened outside the package" ERROR-TEXT:TYPE
       ENGINE-ERROR:USING-OUTER THROW-AT
    then
    d USE-FLOOR @ <= if
-      s" hb: ;using would close a using opened outside the file" SAY
+      s" hb: ;using would close a using opened outside the file" ERROR-TEXT:TYPE
       ENGINE-ERROR:USING-OUTER THROW-AT
    then
    d 1- USE-DEPTH-CELL CELL! ;
@@ -310,7 +310,7 @@ variable USE-FLOOR
 : PKG-OPEN-WID ( n -- ) {: wid:n :}
    SEAL-NDICT@ 0= if exit then
    wid PROTECTED? 0= if exit then
-   s" hb: cannot publish into protected word: " SAY
+   s" hb: cannot publish into protected word: " ERROR-TEXT:TYPE
    TOKEN$ ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
 \ The source is the record the operand names as the engine's LFIND resolves it
@@ -352,8 +352,8 @@ variable USE-FLOOR
    ndict@ 1+ DICT-CAP < 0= if PKG-DICT-FULL then
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u get-current WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " SAY
-      a u SAY PKG-RC-DUPLICATE THROW-AT
+      s" duplicate definition: " ERROR-TEXT:TYPE
+      a u ERROR-TEXT:TYPE PKG-RC-DUPLICATE THROW-AT
    then ;
 
 \ Twin of habu2.f C-EXPORT-CLAUSE-RECORD.
@@ -375,7 +375,7 @@ variable USE-FLOOR
    PKG-DICT-ROOM
    PKG-TAIL {: ta:ptr tu:n :}
    ta tu get-current WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " SAY PKG-RC-DUPLICATE PKG-FAIL
+      s" duplicate definition: " ERROR-TEXT:TYPE PKG-RC-DUPLICATE PKG-FAIL
    then
    src PKG-CLAUSE {: clause:n :}
    clause 0 >= if clause PKG-CLAUSE-ROOM then

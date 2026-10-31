@@ -44,13 +44,9 @@ create DRV-FB 24 allot
 variable DRV-FV
 variable DRV-FN
 
-\ Diagnostic-path writes: a failed stderr write has nowhere further to report.
-: DRV-W2 ( ptr u8 n -- ) {: a:ptr u:n :}
-   2 a u write drop ;
-
 : DRV-B2 ( n -- ) {: c:n :}
    c DRV-FC c!
-   DRV-FC 1 DRV-W2 ;
+   DRV-FC 1 ERROR-TEXT:TYPE ;
 
 : DRV-FAIL-DIGITS ( -- )
    0 DRV-FN !
@@ -62,7 +58,7 @@ variable DRV-FN
    REPEAT
    BEGIN DRV-FN @ 0 > WHILE
       DRV-FN @ 1 - DRV-FN !
-      DRV-FB DRV-FN @ + 1 DRV-W2
+      DRV-FB DRV-FN @ + 1 ERROR-TEXT:TYPE
    REPEAT ;
 
 : DRV-FAIL-CODE ( n -- ) {: rc:n :}
@@ -71,7 +67,7 @@ variable DRV-FN
    DRV-FAIL-DIGITS ;
 
 : DRV-FAIL ( n -- ) {: rc:n :}
-   s" driver: uncaught throw code " DRV-W2
+   s" driver: uncaught throw code " ERROR-TEXT:TYPE
    rc DRV-FAIL-CODE
    10 DRV-B2
    s" " rc die ;

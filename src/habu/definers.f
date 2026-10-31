@@ -62,7 +62,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ A head at TIER-CELL 0 or a body token latched to the JIT refuses: this loop
 \ cannot call the JIT per token. Definers, `cast:`, `linear:`, `immediate` pass.
 : DEF-TIER-0 ( -- )
-   s" hb: tier 0 is not in the Habu loop: " SAY
+   s" hb: tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
    DEF-RC-TIER-0 PKG-FAIL ;
 
 \ The engine's twins: habu1.f EMIT-BCAP and habu2.f EM-BODY-CAP-DIE.
@@ -85,20 +85,20 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ A capture that would take the body past BODYBUF-CAP ends the definition,
 \ naming the ceiling, the definition and the size it needed.
 : DEF-BODY-FULL ( n -- ) {: need:n :}
-   s" hb: definition body text full at " SAY
-   BODYBUF-CAP SOURCE-TEXT:DIGITS$ SAY
-   s"  bytes: " SAY
-   DEF-CAPTURED-NAME SAY
-   s"  needs " SAY
-   need SOURCE-TEXT:DIGITS$ SAY
+   s" hb: definition body text full at " ERROR-TEXT:TYPE
+   BODYBUF-CAP ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
+   s"  bytes: " ERROR-TEXT:TYPE
+   DEF-CAPTURED-NAME ERROR-TEXT:TYPE
+   s"  needs " ERROR-TEXT:TYPE
+   need ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE
    DEF-RC-BODY-FULL THROW-AT ;
 
 \ The source ended inside the pending definition: refused, named and located
 \ at its name token (layout.f PENDTKA-CELL), as habu2.f LSRCEND refuses.
 : DEF-ENDED ( -- )
    PENDTKA-CELL CELL@ INP-CELL CELL!
-   s" hb: source ended inside definition: " SAY
-   DEF-CAPTURED-NAME SAY
+   s" hb: source ended inside definition: " ERROR-TEXT:TYPE
+   DEF-CAPTURED-NAME ERROR-TEXT:TYPE
    RC-UNCLOSED THROW-AT ;
 
 : DEF-CAPTURE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -111,13 +111,13 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ keyword. Both comparisons are signed, as the engine's head makes them.
 : DEF-CODE-ROOM ( -- )
    cp@ dbase@ REGION + PKG-CODE-RESERVE - >= if
-      s" hb: code space full at: " SAY PKG-RC-CODE-FULL PKG-FAIL
+      s" hb: code space full at: " ERROR-TEXT:TYPE PKG-RC-CODE-FULL PKG-FAIL
    then ;
 
 : DEF-ROOM ( -- )
    DEF-CODE-ROOM
    ndict@ DICT-CAP >= if
-      s" hb: dictionary full at: " SAY PKG-RC-DICT-FULL PKG-FAIL
+      s" hb: dictionary full at: " ERROR-TEXT:TYPE PKG-RC-DICT-FULL PKG-FAIL
    then ;
 
 \ The name. With the input at its end `:` and `kernel:` refuse with the
@@ -126,7 +126,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-NAME ( bool -- ) {: trusted:bool :}
    trusted if s" trusted:" OPERAND exit then
    TOKEN if exit then
-   s" hb: : missing definition name after " SAY RC-NO-NAME THROW-AT ;
+   s" hb: : missing definition name after " ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
 \ The engine's twin: habu2.f EMIT-QUALIFY-DEF.
 \ The wordlist NAME:tail goes into: NAME's public one, from its namespace row.
@@ -242,16 +242,16 @@ public
 private
 
 : DEF-KEYWORD-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" hb: compile keyword cannot be a definition name: " SAY
-   a u SAY RC-REJECT THROW-AT ;
+   s" hb: compile keyword cannot be a definition name: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
 
 : DEF-POLICY-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" hb: not in vocabulary: " SAY
-   a u SAY ENGINE-ERROR:POLICY THROW-AT ;
+   s" hb: not in vocabulary: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
 
 : DEF-RESERVED-REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" hb: reserved word cannot be a definition name: " SAY
-   a u SAY RC-REJECT THROW-AT ;
+   s" hb: reserved word cannot be a definition name: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
 
 \ The engine's twin: habu2.f C-RESERVED-DEF-GUARD. Generated bodies bind
 \ STRUCTURE-MAKE:PROJECT-NAME$ by name, so once sealed no definition takes it.
@@ -339,7 +339,7 @@ private
    a u DEF-WALL
    PKG-DICT-ROOM
    a u wid WL-PROBE XREF-FOUND? if
-      s" duplicate definition: " SAY PKG-RC-DUPLICATE PKG-FAIL
+      s" duplicate definition: " ERROR-TEXT:TYPE PKG-RC-DUPLICATE PKG-FAIL
    then
    wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
@@ -412,14 +412,14 @@ private
    TOKEN$ {: a:ptr u:n :}
    LOCN-CELL CELL@ {: idx:n :}
    idx LOC-RECS >= if
-      s" hb: more than 64 locals in one definition: " SAY
-      TOKEN$ SAY RC-REJECT THROW-AT
+      s" hb: more than 64 locals in one definition: " ERROR-TEXT:TYPE
+      TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT
    then
    a u 0 COLON-AT {: colon:n :}
    colon 0 < if u else colon then {: len:n :}
    len LOC-NAME-CAP > if
-      s" hb: local name over 16 bytes: " SAY
-      TOKEN$ SAY RC-REJECT THROW-AT
+      s" hb: local name over 16 bytes: " ERROR-TEXT:TYPE
+      TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT
    then
    data-base LOCNAMES + idx LOC-REC * + BYTE-VIEW {: row:ptr :}
    len row CELL-VIEW !
@@ -481,7 +481,7 @@ private
    HOOK-CELL CELL@ 0= if exit then
    COMPILE-PREFLIGHT-CELL CELL@ {: xt:n :}
    xt 0= if
-      S\" hb: compile preflight hook missing\n" SAY RC-REJECT throw
+      S\" hb: compile preflight hook missing\n" ERROR-TEXT:TYPE RC-REJECT throw
    then
    data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ TOKEN$ TRUSTED-CELL CELL@ 0<>
    xt AS-PREFLIGHT execute ;
@@ -541,8 +541,8 @@ private
          size stemu sufu + = if
             name stemu stem stemu STR=CI
             name stemu + sufu suffix sufu STR=CI and if
-               s" duplicate definition: " SAY
-               stem stemu SAY suffix sufu SAY
+               s" duplicate definition: " ERROR-TEXT:TYPE
+               stem stemu ERROR-TEXT:TYPE suffix sufu ERROR-TEXT:TYPE
                PKG-RC-DUPLICATE THROW-AT
             then
          then
@@ -550,7 +550,7 @@ private
    loop ;
 
 : DEF-DOES ( -- )
-   DOESB-CELL CELL@ 0<> if s" does>" SAY RC-REJECT THROW-AT then
+   DOESB-CELL CELL@ 0<> if s" does>" ERROR-TEXT:TYPE RC-REJECT THROW-AT then
    DEF-DOES-NAME
    DEF-CREATED
    BODYLEN-CELL CELL@ DOESB-CELL CELL!
@@ -587,8 +587,8 @@ variable ENTRY-PEND
 \ buffer opened, is refused at the `;`, naming the definition.
 : DEF-SOURCE-CLOSE ( -- )
    PEND-CELL CELL@ ENTRY-PEND @ <> if exit then
-   s" hb: source closed a definition it did not open: " SAY
-   DEF-CAPTURED-NAME SAY
+   s" hb: source closed a definition it did not open: " ERROR-TEXT:TYPE
+   DEF-CAPTURED-NAME ERROR-TEXT:TYPE
    RC-UNCLOSED THROW-AT ;
 
 : DEF-SOURCE-END ( -- )
@@ -785,8 +785,8 @@ variable DEF-VALUE
 \ end's line (habu2.f C-CAST-DIE-NO-NAME).
 : DEF-CAST-NAME ( -- )
    TOKEN if exit then
-   s" hb: cast: missing name after " SAY
-   TOKEN$ SAY RC-NO-NAME THROW-AT ;
+   s" hb: cast: missing name after " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
 \ The signature must be there, opened and closed, before the qualifier's
 \ refusals, and INP passes it first, so those name the line it ends on
@@ -858,7 +858,7 @@ variable DEF-VALUE
    s end DEF-SIG-PASS
    LINEAR-QUALIFIED? if
       s 1 + end s - 2 - NCOMP-DISPATCH:DECL-LINEAR-OFF DEF-REGISTER-IDENTITY
-      TOKEN$ SAY RC-REJECT THROW-AT
+      TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT
    then
    DEF-QUALIFY DKIND:CAST DEF-RECORD
    s end DEF-SIG-INNER
@@ -883,13 +883,13 @@ variable DEF-VALUE
 \ refusal names (DEFER-DIAG:DIE-NO-NAME, rc $4A).
 : DEFER-NAME ( -- )
    TOKEN if exit then
-   s" hb: defer: missing name after " SAY TOKEN$ SAY RC-NO-NAME THROW-AT ;
+   s" hb: defer: missing name after " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
 \ `defer-unset`'s execution token, found as LFIND finds it; with none the
 \ refusal is the bare name token (C-DEFER-FIND-UNSET, rc $46).
 : DEFER-UNSET-XT ( -- n )
    s" defer-unset" FIND-SCOPE {: rec:ptr :}
-   rec XREF-FOUND? 0= if TOKEN$ SAY RC-REJECT THROW-AT then
+   rec XREF-FOUND? 0= if TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT then
    rec XREF-START ;
 
 \ The cell holds an execution token, so xt! declares it one, as the engine's
@@ -921,7 +921,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ A full table, or a name or signature past its slot field, ends the process
 \ naming the defer.
 : PD-FULL ( -- )
-   s" hb: pre-trust defer table full: " SAY TOKEN$ SAY
+   s" hb: pre-trust defer table full: " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE
    NL 1 DEF-RC-PD-FULL FAIL-CLOSED ;
 
 \ The u bytes at a into the slot field at DATA offset off, their count into

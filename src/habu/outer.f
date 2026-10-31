@@ -279,7 +279,6 @@ $29 constant CLOSE-COMMENT       \ )
 $22 constant QUOTE               \ a double quote closes a string literal
 $20 constant CASE-BIT            \ ORed into A-Z it gives a-z
 255 constant CSTR-MAX            \ a counted string's length is one byte
-2 constant ERR-FD
 
 create NL NEWLINE c,
 
@@ -325,51 +324,46 @@ create NL NEWLINE c,
    true ;
 
 \ The engine's twins: habu2.f EM-COMPILE-UNDEF and EM-INTERPRET-UNDERFLOW.
-\ Each writes the engine's text on descriptor 2 and throws its code. Like the
-\ engine's own diagnostics, a write that fails is not reported: the throw is.
-: SAY ( ptr u8 n -- ) {: a:ptr u:n :}
-   ERR-FD a u write drop ;
-
 : REFUSE ( ptr u8 n -- )
-   SAY TOKEN$ SAY NL 1 SAY
+   ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE
    RC-REJECT throw ;
 
 \ The line the cursor is on.
 : LINE ( -- n )
-   SRCLOC:INB-CELL ADDR@ INP-CELL ADDR@ SOURCE-TEXT:LINE ;
+   SRCLOC:INB-CELL ADDR@ INP-CELL ADDR@ ERROR-TEXT:LINE ;
 
 \ ` at <path>:<line>` while a source file is open.
 : AT-SOURCE ( -- )
    SRCLOC:PATHLEN-CELL CELL@ {: u:n :}
    u 0= if exit then
-   s"  at " SAY
-   SRCLOC:PATH-CELL ADDR@ u SAY
-   s" :" SAY
-   LINE SOURCE-TEXT:DIGITS$ SAY ;
+   s"  at " ERROR-TEXT:TYPE
+   SRCLOC:PATH-CELL ADDR@ u ERROR-TEXT:TYPE
+   s" :" ERROR-TEXT:TYPE
+   LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
 \ The engine's compile-die tail (habu2.f LCOMPILEDIE) after a site's message:
 \ the location, a newline, then the site's code, thrown as the engine throws
 \ it inside evaluate.
 : THROW-AT ( n -- )
-   AT-SOURCE NL 1 SAY throw ;
+   AT-SOURCE NL 1 ERROR-TEXT:TYPE throw ;
 
 : UNDEFINED ( -- )
-   s" E-UNDEFINED: " SAY TOKEN$ SAY RC-REJECT THROW-AT ;
+   s" E-UNDEFINED: " ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
 
 : AMBIGUOUS ( -- )
-   s" hb: ambiguous bare word resolves in multiple used packages: " SAY
-   TOKEN$ SAY ENGINE-ERROR:USING-AMBIGUOUS THROW-AT ;
+   s" hb: ambiguous bare word resolves in multiple used packages: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:USING-AMBIGUOUS THROW-AT ;
 
 : SHADOWED ( -- )
-   s" hb: bare word a global and a used package both export: " SAY
-   TOKEN$ SAY ENGINE-ERROR:USING-SHADOW-GLOBAL THROW-AT ;
+   s" hb: bare word a global and a used package both export: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:USING-SHADOW-GLOBAL THROW-AT ;
 
 \ Where the engine ends the process instead of throwing (NR-EXIT-GROUP), the
 \ text and a newline go to descriptor 2 and no program code runs: the exit
 \ hook (src/habu/layout.f EXIT-HOOK-CELL) is cleared before `die`, which would
 \ otherwise call it.
 : FAIL-CLOSED ( ptr u8 n n -- ) {: a:ptr u:n rc:n :}
-   a u SAY  NL 1 SAY
+   a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    0 EXIT-HOOK-CELL CELL!
    s" " rc die ;
 
@@ -387,8 +381,8 @@ create NL NEWLINE c,
 \ XREF-UNDEFINE-GUARD).
 : OVERLAY-GUARD ( -- )
    REPLAY-SCOPE:LATCH CELL@ 0= if exit then
-   s" hb: definition while a checker replay is open: " SAY
-   TOKEN$ SAY ENGINE-ERROR:OVERLAY-OPEN THROW-AT ;
+   s" hb: definition while a checker replay is open: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:OVERLAY-OPEN THROW-AT ;
 
 \ Whether wordlist wid is protected (habu1.f EMIT-PROTWID, read as
 \ tools/prot-wid-probe.f MEMBER? reads it): the two engine-reserved wordlists
@@ -417,7 +411,7 @@ create NL NEWLINE c,
 \ The refusal's line is the `(`'s, so the cursor goes back to the token.
 : UNCLOSED ( -- )
    TKA-CELL CELL@ INP-CELL CELL!
-   s" hb: source ended inside a ( comment" SAY RC-UNCLOSED THROW-AT ;
+   s" hb: source ended inside a ( comment" ERROR-TEXT:TYPE RC-UNCLOSED THROW-AT ;
 
 : COMMENT? ( -- bool )
    TKL-CELL CELL@ 1 <> if false exit then
@@ -489,7 +483,7 @@ CAST: UNIT-GUARD ( n -- [ ptr u8 n n n -- n ] )
 \ A unit's misuse names the token, then the engine's compile-die tail
 \ (habu2.f C-DIE-TOKEN with 70).
 : UNIT-REFUSE ( -- )
-   TOKEN$ SAY RC-REJECT THROW-AT ;
+   TOKEN$ ERROR-TEXT:TYPE RC-REJECT THROW-AT ;
 
 variable VALUE
 
@@ -510,8 +504,8 @@ TYPED-VARIABLE REC ptr n
 \ A sealed source may name a record it defined after the seal or a callable
 \ public record in an admitted wordlist (habu2.f LPOLICYREC).
 : POLICY-REFUSE ( -- )
-   s" hb: not in vocabulary: " SAY
-   TOKEN$ SAY ENGINE-ERROR:POLICY THROW-AT ;
+   s" hb: not in vocabulary: " ERROR-TEXT:TYPE
+   TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:POLICY THROW-AT ;
 
 : POLICY-CHECK-REC ( ptr n -- ) {: rec:ptr :}
    POLICY-NDICT-CELL CELL@ {: seal:n :}
@@ -753,8 +747,8 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 \ end's line (habu2.f C-DIE-KEYWORD-NAME).
 : OPERAND ( ptr u8 n -- ) {: kw:ptr u:n :}
    TOKEN if exit then
-   s" hb: reader keyword needs a name: " SAY
-   kw u SAY RC-NO-NAME THROW-AT ;
+   s" hb: reader keyword needs a name: " ERROR-TEXT:TYPE
+   kw u ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
 \ The engine's twins: habu2.f C-ISDQ to C-EIDOTQ.
 \ A literal's text starts one byte past the keyword, past the blank that ended
@@ -767,10 +761,10 @@ CAST: AFTER-CALL ( n -- [ n n n -- ] )
 \ do.
 
 : BAD-LITERAL ( -- )
-   s" hb: bad string literal" SAY RC-BAD-LITERAL THROW-AT ;
+   s" hb: bad string literal" ERROR-TEXT:TYPE RC-BAD-LITERAL THROW-AT ;
 
 : TOO-LONG ( -- )
-   s" hb: counted string too long (max 255)" SAY RC-TOO-LONG THROW-AT ;
+   s" hb: counted string too long (max 255)" ERROR-TEXT:TYPE RC-TOO-LONG THROW-AT ;
 
 \ INP passes the closing quote at q.
 : PAST ( ptr u8 -- )

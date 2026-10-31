@@ -100,9 +100,9 @@ variable RDP
 : RD32 {: p:ptr :} ( ptr u8 -- n )
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
-\ A source line and its number as the engine's refusal tail (habu2.f
-\ LCOMPILEDIE) counts and prints them.
-package SOURCE-TEXT
+\ The words that build the engine's error messages: the line a position is on,
+\ a number's digits, and the write to the error output.
+package ERROR-TEXT
 
 private
 
@@ -125,4 +125,8 @@ public
    DIGITS-CAP DIGIT-AT !
    begin dup 10 mod $30 + DIGIT+ 10 / dup 0= until drop
    DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
+
+\ Descriptor 2; a failed write has nowhere further to be reported.
+: TYPE ( ptr u8 n -- ) {: a:ptr u:n :}
+   2 a u write drop ;
 ;package

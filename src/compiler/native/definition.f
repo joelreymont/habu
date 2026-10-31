@@ -425,9 +425,6 @@ private
    then
    M-ROWS @ CHECKER-OWNER:RETRACT-ROWS ;
 
-: ERROR-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   2 a u write drop ;
-
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
@@ -454,7 +451,7 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    i 1 SOURCE-ROW@ BODY-SOURCE:NONE = if 0 exit then
    i 1 SOURCE-ROW@ off + i 0 SOURCE-ROW@ - {: src:n :}
    e b - src <= if 0 exit then
-   b b src + SOURCE-TEXT:LINE ;
+   b b src + ERROR-TEXT:LINE ;
 
 \ 0 unless the name's buffer is current and p's run has a row. Rows at or past
 \ BODYLEN are stale; a donor engine's DATA, below BODY-SOURCE:END, has none.
@@ -475,7 +472,7 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    {: p:ptr :}
    data-base SRCLOC:PATHLEN-CELL + @ 0= if 0 exit then
    INPUT-START @ INPUT-END @ {: b:ptr e:ptr :}
-   p b - 0 >=  e p - 0 > and if b p SOURCE-TEXT:LINE exit then
+   p b - 0 >=  e p - 0 > and if b p ERROR-TEXT:LINE exit then
    p BODY-LINE ;
 
 \ `<lead><path>:<line>` when byte p has a line (LINE-OF).
@@ -483,30 +480,30 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    {: a:ptr u:n p:ptr :}
    p LINE-OF {: line:n :}
    line 0= if exit then
-   a u ERROR-TEXT
-   FILE-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ERROR-TEXT
-   s" :" ERROR-TEXT
-   line SOURCE-TEXT:DIGITS$ ERROR-TEXT ;
+   a u ERROR-TEXT:TYPE
+   FILE-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ERROR-TEXT:TYPE
+   s" :" ERROR-TEXT:TYPE
+   line ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
 \ The refusal names the definition and the token it stopped at, which p places
 \ on its file line.
 : REPORT-FAILURE ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
-   s" ncomp: cannot compile " ERROR-TEXT
-   NAME$ ERROR-TEXT
+   s" ncomp: cannot compile " ERROR-TEXT:TYPE
+   NAME$ ERROR-TEXT:TYPE
    u 0 > if
-      s"  at " ERROR-TEXT a u ERROR-TEXT
+      s"  at " ERROR-TEXT:TYPE a u ERROR-TEXT:TYPE
       s"  in " p SAY-WHERE
    then
-   S\" \n" ERROR-TEXT ;
+   S\" \n" ERROR-TEXT:TYPE ;
 
 \ The JIT's text for an undefined word, located from p as it locates it.
 : REPORT-UNDEFINED ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
-   s" E-UNDEFINED: " ERROR-TEXT
-   a u ERROR-TEXT
+   s" E-UNDEFINED: " ERROR-TEXT:TYPE
+   a u ERROR-TEXT:TYPE
    s"  at " p SAY-WHERE
-   S\" \n" ERROR-TEXT ;
+   S\" \n" ERROR-TEXT:TYPE ;
 
 \ The token the checker refused in the text it scanned last, and whether it is
 \ an undefined word; empty when no scan ran or none was pinned.

@@ -18,7 +18,6 @@ package ENGINE-MAIN
 
 private
 
-2 constant ERR-FD
 64 constant RC-USAGE             \ habu2.f LSRCBADFLAG
 74 constant RC-SOURCE            \ habu2.f LSRCRD, SRC-SFAIL: the source cannot be had
 $2D constant DASH
@@ -39,16 +38,13 @@ ENUM route load build plain ;ENUM
 : ARG ( ptr ptr u8 n -- ptr u8 n )
    ptr-field @ dup ZLEN ;
 
-\ Each refusal writes the engine's text on descriptor 2 and exits; like the engine's
-\ own diagnostics, a write that fails is not reported, the exit is.
-: SAY ( ptr u8 n -- ) {: a:ptr u:n :}
-   ERR-FD a u write drop ;
-
 \ habu2.f LSRCBADFLAG: the argument, then the usage line, which lists the
 \ flags the route test below knows.
 : USAGE ( ptr u8 n -- )
-   s" hb: unknown flag: " SAY  SAY  NL 1 SAY
-   s" usage: bin/hb " SAY  LOAD$ SAY  s"  " SAY  BUILD$ SAY  s"  " SAY  SEP$ SAY
+   s" hb: unknown flag: " ERROR-TEXT:TYPE  ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
+   s" usage: bin/hb " ERROR-TEXT:TYPE  LOAD$ ERROR-TEXT:TYPE
+   s"  " ERROR-TEXT:TYPE  BUILD$ ERROR-TEXT:TYPE
+   s"  " ERROR-TEXT:TYPE  SEP$ ERROR-TEXT:TYPE
    s"  [file.f]  (source on stdin)" RC-USAGE die ;
 
 \ No file to load: `--load` or `--build` with nothing before the end or a
@@ -58,7 +54,7 @@ ENUM route load build plain ;ENUM
    s" hb: no source files" RC-SOURCE die ;
 
 : CANNOT-OPEN ( ptr u8 n -- )
-   s" hb: cannot open " SAY  RC-SOURCE die ;
+   s" hb: cannot open " ERROR-TEXT:TYPE  RC-SOURCE die ;
 
 : CANNOT-READ ( -- )
    s" hb: cannot read source" RC-SOURCE die ;

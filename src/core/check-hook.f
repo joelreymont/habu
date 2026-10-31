@@ -33,9 +33,6 @@ STGT-INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 $3688 constant PEND-OFF
 $2850 RESERVED-PTR-U8-CELL SRC-NAME
 
-: SAY ( ptr u8 n -- ) {: a:ptr u:n :}
-   2 a u write drop ;
-
 \ The name as written, which is what the wall prints: the first token of the
 \ source the engine hands the hook.
 : FIRST-TOKEN ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -44,7 +41,7 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
 
 \ The line of a byte of the buffer being read.
 : LINE-AT ( ptr u8 -- n )
-   SRC-START @ swap SOURCE-TEXT:LINE ;
+   SRC-START @ swap ERROR-TEXT:LINE ;
 
 \ The line of the definition's name, where the wall places a duplicate. At a
 \ colon definition's closing `;` the definition is pending (PEND-CELL) and its
@@ -58,28 +55,21 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    data-base PEND-OFF + @ 0 <>  nm b - 0 >= and  p nm - 0 >= and
    if nm LINE-AT else p LINE-AT then ;
 
-create DIGIT 1 allot
-
-\ A non-negative number in decimal, most significant digit first.
-: SAY-DEC ( n -- )
-   dup 10 >= if dup 10 / recurse then
-   10 mod 48 + DIGIT c!  DIGIT 1 SAY ;
-
 \ ` at <path>:<line>` while a source file is open, and nothing on stdin or at
 \ the REPL, as the tail writes it.
 : AT-SOURCE ( -- )
    data-base SRC-PATHLEN-OFF + @ {: u:n :}
    u 0= if exit then
-   s"  at " SAY
-   SRC-PATH @ u SAY
-   s" :" SAY
-   NAME-LINE SAY-DEC ;
+   s"  at " ERROR-TEXT:TYPE
+   SRC-PATH @ u ERROR-TEXT:TYPE
+   s" :" ERROR-TEXT:TYPE
+   NAME-LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
 : REPORT-DUPLICATE ( ptr u8 n -- )
-   s" duplicate definition: " SAY
-   SAY
+   s" duplicate definition: " ERROR-TEXT:TYPE
+   ERROR-TEXT:TYPE
    AT-SOURCE
-   S\" \n" SAY ;
+   S\" \n" ERROR-TEXT:TYPE ;
 
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject
 \ and kept the declared signature. A non-zero hook return publishes the
@@ -96,11 +86,11 @@ public
    dup -1 <> if
       \ A muted or replaced DIAGXT can emit nothing even in JSON mode.
       CHECKER-JSON-REPORTED? 0= if
-         s" hook: non-certified definition: " SAY
-         NMB NMU @ SAY
-         s"  at '" SAY
-         FAILTK FAILTU @ SAY
-         S\" '\n" SAY
+         s" hook: non-certified definition: " ERROR-TEXT:TYPE
+         NMB NMU @ ERROR-TEXT:TYPE
+         s"  at '" ERROR-TEXT:TYPE
+         FAILTK FAILTU @ ERROR-TEXT:TYPE
+         S\" '\n" ERROR-TEXT:TYPE
       then
       CHECK-RC throw then ;
 
