@@ -4,17 +4,15 @@
 \ so STOP waits as long as a body runs without one. A task that ended is joined
 \ and given back lazily, by the next START or by STOP, so a quiet crew keeps
 \ its last ended tasks' stacks until then. A task that ends by a throw reports
-\ it as it ends, as one stderr line `crew: task <value> failed, throw <code>`
-\ built in its own string builder.
+\ it as it ends, as one LOG:ERROR line tagged crew,
+\ `task <value> failed, throw <code>`.
 \ STORAGE CLASS. PROCESS-WIDE: a row to each task START made and nobody has
 \ given back, and the STOPPING mark, read and written under one TASK:FACILITY.
 
 require src/lib/errors.f
-require src/lib/string.f
-require src/lib/fmt.f
-require src/lib/fd.f
 require src/lib/adt/result.f
 require src/lib/task.f
+require src/lib/log.f
 
 package CREW
 public
@@ -73,34 +71,34 @@ DYNAMIC-BUFFER ROW-LIVE bool        \ the row holds a task not yet given back
 
 : REPORT ( n n -- )
    {: value:n code:n :}
-   SB-RESET
-   s" crew: task " SB-APPEND
-   value FMT:SB-INT
-   s"  failed, throw " SB-APPEND
-   code FMT:SB-INT
-   STR-LF SB-APPEND-C
-   FD:STDERR FD>N SB$ write drop ;
+   LOG:ERROR s" crew" LOG:LINE
+   s" task " LOG:TEXT+ value LOG:INT+
+   s"  failed, throw " LOG:TEXT+ code LOG:INT+
+   LOG:;LINE ;
 
-\ An exit cleanup of the ending task, so the string builder is that task's.
-: REPORT-END ( -- )
-   TASK:SELF TASK:THROW@ {: code:n :}
-   code 0= if exit then
-   LOCK TASK:GET
-   TASK:SELF NULL-PTR - ROW-OF ROW-VALUE @
-   LOCK TASK:RELEASE
-   code REPORT ;
-
-\ A task's root. START fills the row and marks it live before it releases
-\ LOCK, so the row is found.
-: RUN-ROW ( -- )
-   [: REPORT-END ;] TASK:SELF TASK:AT-EXIT
+\ The value and body of this task's row, run. START fills the row and marks it
+\ live before it releases LOCK, so the row is found.
+: RUN-ONE ( -- )
    LOCK TASK:GET
    TASK:SELF NULL-PTR - ROW-OF {: idx:n :}
    idx ROW-VALUE @ idx ROW-BODY @
    LOCK TASK:RELEASE
    execute ;
 
-\ The task reported a throw that ended it (REPORT-END).
+\ A task's root. A throw is reported here, in the body: a LOG line from an
+\ exit cleanup registers LOG's row release on a chain already running, which
+\ never runs it. A halt never resumes the catch (forth.md `finally`), so a
+\ stopped task reports nothing.
+: RUN-ROW ( -- )
+   [: RUN-ONE ;] catch {: code:n :}
+   code 0= if exit then
+   LOCK TASK:GET
+   TASK:SELF NULL-PTR - ROW-OF ROW-VALUE @
+   LOCK TASK:RELEASE
+   code REPORT
+   code throw ;
+
+\ The task reported a throw that ended it (RUN-ROW).
 : GIVE-BACK ( ptr n -- )
    {: tcb:ptr :}
    tcb TASK:JOIN MATCH result

@@ -1,11 +1,21 @@
 \ crew-test.f - CREW's tasks: three that record their task by value and end, a
 \ fourth START that takes a reaped task's record, STOP ending parked tasks
 \ through their finally, START inside STOP's quotation refused while STOP still
-\ ends its tasks, and a body that throws reaped by the next START.
+\ ends its tasks, and a body that throws, whose LOG line is on fd 2 once it
+\ ends, reaped by the next START.
 \ Run: bin/hb --load src/lib/crew-test.f
 
+require src/lib/errors.f
+require src/lib/string.f
+require src/lib/fmt.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/byte-buffer.f
+require src/lib/span.f
+require src/lib/date.f
 require src/lib/test.f
 require src/lib/test/wait.f
+require src/lib/test/stderr.f
 require src/lib/task.f
 require src/lib/crew.f
 
@@ -21,6 +31,10 @@ JOBS TYPED-BUFFER SEEN n             \ the task that ran the value, 0 before
 JOBS TYPED-BUFFER PARKED n           \ 1 once the body parks
 JOBS TYPED-BUFFER ASKED n            \ 1 once STOP's quotation ran with it
 JOBS TYPED-BUFFER UNWOUND n          \ 1 once the parked body's finally ran
+
+create PATH-BUF PATH-CAP allot       \ the stderr capture file's path
+variable PATH-U
+create FILE-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
 
 CAST: N>TCB ( n -- ptr n )
 
@@ -124,16 +138,56 @@ CAST: N>TCB ( n -- ptr n )
    7 UNWOUND ONE? TTRUE ;
 
 
-\ The thrower's stderr line is not asserted.
+: PATH$ ( -- ptr u8 n )  PATH-BUF PATH-U @ ;
+
+
+: PATH-MAKE ( -- )
+   s" crew-test" FS:MKTEMP-DIR {: dir:ptr dirlen:n :}
+   dir dirlen FS:CLEANUP-TREE+
+   dir dirlen s" stderr.txt" PATH-BUF FS:JOIN-PATH PATH-U ! ;
+
+
+\ The whole file, valid until the next read.
+: FILE$ ( -- ptr u8 n )
+   PATH$ FS:FILE-SIZE {: size:n :}
+   FILE-B BUF:CLEAR
+   PATH$ FILE-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
+   FILE-B BUF:SPAN$ BUF:BLEN>N ;
+
+
+\ The thrower's line after its stamp, in the string builder.
+: FAIL-REST$ ( -- ptr u8 n )
+   SB-RESET
+   s"  error crew: task 0 failed, throw " SB-APPEND
+   E-DIV-ZERO FMT:SB-INT
+   STR-LF SB-APPEND-C
+   SB$ ;
+
+
+\ The task's root writes the line before its throw ends the task, so the line
+\ is on fd 2 once 0 ENDED? holds.
+: THROWER ( -- )
+   TASK:MIN-STACK 0 [: FAIL ;] CREW:START
+   [: 0 ENDED? ;] WAIT ;
+
+
+: LINE-CHECK ( -- )
+   s" a task that threw reports one LOG line as it ends" T-LABEL
+   FILE$ {: at:ptr u:n :}
+   FAIL-REST$ {: rest:ptr ru:n :}
+   u DATE:TIME-LEN ru + T=
+   u DATE:TIME-LEN < if exit then
+   at DATE:TIME-LEN + u DATE:TIME-LEN - rest ru T$= ;
+
+
 : THROW-CASE ( -- )
    RESET
-   TASK:MIN-STACK 0 [: FAIL ;] CREW:START
-   [: 0 ENDED? ;] WAIT
-   SB-RESET s" kept" SB-APPEND
+   PATH-MAKE
+   PATH$ STDERR:CAPTURE
+   [: THROWER ;] [: STDERR:;CAPTURE ;] finally
+   FILE-B 1 BUF:N>BLEN BUF:INIT
+   [: LINE-CHECK ;] [: FILE-B BUF:DISPOSE ;] finally
    1 START-RECORD
-   SB$ nip {: kept:n :}
-   s" START leaves the caller's string builder alone" T-LABEL
-   kept 4 T=
    [: 1 SEEN? ;] WAIT
    s" the next START reaps a task that threw" T-LABEL
    1 SEEN@ 0 SEEN@ T=
