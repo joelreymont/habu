@@ -202,6 +202,16 @@ entry.
   whole file, as in make; a comment edit counts. The compiler requires
   memory.f (src/compiler/ir/context.f:9), so in an engine build a memory.f
   edit rebuilds every file the tree's compiler compiles.
+- 2026-10-31, files built into hb: asked to let the hb build record a
+  fingerprint for each file built into it, so an app build knows which of
+  them changed, Joel asked "are you keeping dependencies BETWEEN files,
+  though? because you could do with a simple timestamp, no hashes needed".
+  Told that each stored file already lists the files it read, checked by
+  change time and size first and re-hashed only when those moved, and that
+  times recorded in hb would rebuild every app file after a same-content hb
+  rebuild and make hb's bytes vary by checkout, Joel chose "Hash, word
+  FILE-HASH": the hb build records each built-in file's path and SHA-256, and
+  `SOURCE-PRODUCER:FILE-HASH` looks one up.
 - 2026-10-27, evidence: "so make it happen in your branch and test it out!"
   and "you should be focusing on this, prove me wrong!" When a decision lacks
   evidence because a capability does not exist yet, build it in a branch and
