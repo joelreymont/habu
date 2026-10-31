@@ -434,6 +434,10 @@ holds an address**.
   says where. The engine bakes `src/lib/errors.f`, and a package the engine bakes
   has one owning file: no source a product engine loads reopens it.
 - A fallible word `throw`s a named code, never an out-of-band flag.
+- A failure caused outside the program (a provider, the network, the OS) is
+  logged once, with its text, by the library that saw it, just before it
+  throws: `LOG:ERROR s" model" LOG:LINE … LOG:TEXT+ … LOG:;LINE`
+  (`src/lib/log.f`), the tag its package name in lower case.
 - `throw` is catchable and belongs to the checker's exception edge. `die`
   (`ptr u8 n n --`, a real message and exit code) ends the process and is
   no-return, so nothing may follow a call to a word that ends in one. `throw`

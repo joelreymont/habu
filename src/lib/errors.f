@@ -1220,6 +1220,8 @@
 \ owns package CMD.
 \ Tier 0 emitter seam: -9590..-9599, minted in src/habu/t0-emit.f, which owns
 \ package T0-EMIT.
+\ Stderr capture for tests: -9610..-9619, minted in src/lib/test/stderr.f, which
+\ owns package STDERR.
 \ A task to each job: -9620..-9629, minted in src/lib/crew.f, which owns
 \ package CREW.
 \ OAuth bearer tokens: -9630..-9639, minted in src/lib/net/bearer.f, which owns

@@ -19,6 +19,7 @@ require src/lib/num-types.f
 require src/lib/net/tcp4.f
 require src/lib/net/http.f
 require src/lib/net/ws.f
+require src/lib/test/stderr.f
 
 \ White-box: reopens WS. ACCEPT-STALLED is ACCEPT with a stall run once the
 \ handshake holds its slot, as a worker the OS keeps off the processor would;
@@ -84,8 +85,6 @@ $10000 constant STREAM-CAP        \ what one read takes of the server's stream
 $3000 constant SCRIPT-CAP
 $40 constant RAW-CAP
 $100 constant ERR-CAP
-0 constant F-DUPFD
-$A constant SAVE-FD-MIN           \ the saved stderr lands clear of 0..2
 $18 constant HEX-MAX              \ the longest payload a transcript line spells out
 $37FA213D constant MASK-KEY       \ the masking key of RFC 6455 section 5.7's examples
 1006 constant LOST                \ the status of a socket that ended with no close frame
@@ -175,7 +174,6 @@ variable CLOSE-GOAL               \ the count of logged closes a case awaits
 variable HALT-ARMED               \ set while the next `closed` handler is to block
 variable HALT-FD                  \ the file that handler opened
 variable THROW-ARMED              \ set while the next `closed` handler is to throw
-variable SAVED-STDERR             \ the process's own stderr while a case's is a file
 variable ERR-U
 variable ERR-WANT-U
 STRAYS TYPED-BUFFER STRAY-FD n    \ descriptors on one file, taking the numbers a stop gave back
@@ -1119,28 +1117,10 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s"  failed, throw " SB-APPEND
    E-HANDLER ERR-THROW ;
 
-: SAVE-STDERR ( -- )
-   FD:STDERR FD>N F-DUPFD SAVE-FD-MIN fcntl {: saved:n :}
-   saved 0 < if E-SILENT throw then
-   saved SAVED-STDERR ! ;
-
-: STDERR-TO-FILE ( -- )
-   ERR-PATH$ s" " FS:WRITE-ALL
-   ERR-PATH$ FS:OPEN-APPEND-FD {: file:n :}
-   file FD:STDERR FD>N dup2 {: moved:n :}
-   file close-rc drop
-   moved 0 < if E-SILENT throw then ;
-
-: RESTORE-STDERR ( -- )
-   SAVED-STDERR @ FD:STDERR FD>N dup2 {: moved:n :}
-   SAVED-STDERR @ close-rc drop
-   moved 0 < if E-SILENT throw then ;
-
 : ERR-WRITTEN ( -- n )
    ERR-PATH$ FS:FILE-SIZE ERR-WANT-U @ >= if 1 else 0 then ;
 
 : THROWING ( -- )
-   STDERR-TO-FILE
    OPENS {: conn:TCP4:connection sock:WS:socket :}
    sock FAULT-LINE
    conn true WS-OPCODE:text s" throw" SAY
@@ -1160,8 +1140,8 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" a throwing handler" SECTION
    s" build" FS:MAKE-DIRS
    0 ERR-WANT-U !
-   SAVE-STDERR
-   [: THROWING ;] [: RESTORE-STDERR ;] finally
+   ERR-PATH$ STDERR:CAPTURE
+   [: THROWING ;] [: STDERR:;CAPTURE ;] finally
    s" each fault reported" T-LABEL
    ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U !
    ERR$ ERR-WANT$ T$=
@@ -1603,7 +1583,6 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ AIO is filled while a handshake holds its slot, so the poll WS's task makes
 \ for the new socket is refused.
 : FAULTING ( -- )
-   STDERR-TO-FILE
    0 STALLING !
    s" GET" s" /fill" REQ-START GOOD-LINES S\" \r\n" REQ+
    DIAL {: conn:TCP4:connection :}
@@ -1630,8 +1609,8 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    0 FILL-CODE !
    false PINNED !
    2 WS:START
-   SAVE-STDERR
-   [: FAULTING ;] [: UNFILL RESTORE-STDERR ;] finally
+   ERR-PATH$ STDERR:CAPTURE
+   [: FAULTING ;] [: UNFILL STDERR:;CAPTURE ;] finally
    [: WS:STOP ;] catch 0 T=
    s" the task's fault reported once" T-LABEL
    ERR-PATH$ ERR-BUF SPAN:$ FS:READ-ALL ERR-U !

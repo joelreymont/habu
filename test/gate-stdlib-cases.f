@@ -1251,6 +1251,10 @@ SUITE fmt-numbers
    src/lib/fmt-test.f
 ;SUITE
 
+SUITE log
+   src/lib/log-test.f
+;SUITE
+
 SUITE hashmap
    src/lib/hashmap-test.f
 ;SUITE
