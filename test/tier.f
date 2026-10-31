@@ -525,27 +525,25 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    s" : TN-SHORT ( -- n ) 3 ; TRUSTED: " LN+ NAME+ s"  ( -- n ) LN-MISSING ;" LN+
    LN$ ;
 
-\ This file: SUBJECT:RUN evaluates a case's text while the file loads, so a
-\ refusal located on the text's line k stands on line k.
+\ This file: SUBJECT:RUN evaluates a case's text, which is not this file's bytes,
+\ while the file loads, so a refusal in it names the file alone
+\ (SRCLOC:FILE-BUFFER?).
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
-\ Text a, then `<this file>` and the line suffix l.
-: AT-LINE+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n l:ptr lu:n :}
-   a u LN+
+\ Text a, then `<this file>` and a newline.
+: FILE+ ( ptr u8 n -- )
+   LN+
    LOADING @ data-base SRCLOC:PATHLEN-CELL + @ LN+
-   l lu LN+ ;
-
-\ Text a, then `<this file>:1` and a newline.
-: HERE+ ( ptr u8 n -- ) S\" :1\n" AT-LINE+ ;
+   S\" \n" LN+ ;
 
 \ The checker refuses an uneven body at its name.
 : REFUSED-LINE$ ( n -- ptr u8 n )
    LN-OPEN
-   s" ncomp: cannot compile " LN+ NAME+ s"  at " LN+ NAME+ s"  in " HERE+ LN$ ;
+   s" ncomp: cannot compile " LN+ NAME+ s"  at " LN+ NAME+ s"  in " FILE+ LN$ ;
 
 : MISSING-LINE$ ( n -- ptr u8 n )
    LN-OPEN
-   s" ncomp: cannot compile " LN+ NAME+ s"  at LN-MISSING in " HERE+ LN$ ;
+   s" ncomp: cannot compile " LN+ NAME+ s"  at LN-MISSING in " FILE+ LN$ ;
 
 : TOKEN-MISSING$ ( n -- ptr u8 n )
    1 swap TIER-OPEN
@@ -553,11 +551,11 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
 : TOKEN-LINE$ ( n -- ptr u8 n )
    LN-OPEN
-   s" ncomp: cannot compile LN-TOK at " LN+ NAME+ s"  in " HERE+ LN$ ;
+   s" ncomp: cannot compile LN-TOK at " LN+ NAME+ s"  in " FILE+ LN$ ;
 
 : TOKEN-UNDEFINED$ ( n -- ptr u8 n )
    LN-OPEN
-   s" E-UNDEFINED: " LN+ NAME+ s"  at " HERE+ LN$ ;
+   s" E-UNDEFINED: " LN+ NAME+ s"  at " FILE+ LN$ ;
 
 : TEST-LONG-NAMES ( -- )
    LEGACY? if
@@ -691,7 +689,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" a refused 1000-byte TRUSTED: name retracts its signature" T-LABEL
    1000 TRUSTED-MISSING$ RUN  REJECT-RC ASSERT-RC
    ERR$ 1000 MISSING-LINE$ CONTAINS? TTRUE
-   ERR$ 0 LN-OPEN s" E-UNDEFINED: LN-MISSING at " HERE+ LN$ CONTAINS? TTRUE
+   ERR$ 0 LN-OPEN s" E-UNDEFINED: LN-MISSING at " FILE+ LN$ CONTAINS? TTRUE
 
    s" a refusal at a 7900-byte body token names the token whole" T-LABEL
    7900 TOKEN-MISSING$ RUN  REJECT-RC ASSERT-RC
@@ -705,10 +703,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" a refusal line carries no earlier definition's token" T-LABEL
    S\" 1 set-tier\nTRUSTED: TN-EV ( ptr u8 n -- ) evaluate ;\n: TN-TRY ( -- ) [: s\q TRUSTED: TN-ELAB ( -- n ) TN-ELAB-MISSING ;\q TN-EV ;] catch . cr ;\nTN-TRY\n: TN-UNEVEN ( -- n ) ;\n"
    RUN  REJECT-RC ASSERT-RC
-   ERR$ 0 LN-OPEN s" ncomp: cannot compile TN-ELAB at TN-ELAB-MISSING in " HERE+ LN$ CONTAINS? TTRUE
-   ERR$ 0 LN-OPEN s" E-UNDEFINED: TN-ELAB-MISSING at " HERE+ LN$ CONTAINS? TTRUE
-   ERR$ 0 LN-OPEN s" ncomp: cannot compile TN-UNEVEN at TN-UNEVEN in " S\" :5\n" AT-LINE+
-   LN$ CONTAINS? TTRUE ;
+   ERR$ 0 LN-OPEN s" ncomp: cannot compile TN-ELAB at TN-ELAB-MISSING in " FILE+ LN$ CONTAINS? TTRUE
+   ERR$ 0 LN-OPEN s" E-UNDEFINED: TN-ELAB-MISSING at " FILE+ LN$ CONTAINS? TTRUE
+   ERR$ 0 LN-OPEN s" ncomp: cannot compile TN-UNEVEN at TN-UNEVEN in " FILE+ LN$
+   CONTAINS? TTRUE ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
 \ A definer whose clause breaks its declared effect. Each tier reports the

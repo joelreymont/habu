@@ -60,14 +60,22 @@ variable READY
 
 public
 
-\ The code, repair class and suggestion of a statement that threw the given code.
-: THROW-CODE$ ( n -- ptr u8 n ptr u8 n ptr u8 n ) {: rc:n :}
+\ The code, repair class, suggestion and short message of a statement that
+\ threw the given code. The message is empty for E-STATEMENT-THROW, which only
+\ the throw number tells apart.
+: THROW-CODE$ ( n -- ptr u8 n ptr u8 n ptr u8 n ptr u8 n ) {: rc:n :}
    rc VERIFY:E-MISSING-SIGNATURE = if
       s" E-MISSING-SIGNATURE" s" add_signature"
-      s" Write the definer's stack effect as ( inputs -- outputs ) right after the name, or right after does> for its clause." exit
+      s" Write the definer's stack effect as ( inputs -- outputs ) right after the name, or right after does> for its clause."
+      s" missing signature" exit
+   then
+   rc ENGINE-ERROR:SEAL-PACKAGE = if
+      s" E-SEALED-PACKAGE" s" use_own_package"
+      s" The package is the engine's and sealed: define the word in a package of your own."
+      s" sealed package" exit
    then
    s" E-STATEMENT-THROW" s" unknown_rejection"
-   s" Inspect the token, signature, and raw stack evidence." ;
+   s" Inspect the token, signature, and raw stack evidence." s" " ;
 
 private
 
@@ -119,7 +127,7 @@ public
    {: rc:n at:n name:ptr nameu:n src:ptr srcu:n :}
    src at ORIGIN {: line:n col:n :}
    src srcu at TOKEN-END {: last:n :}
-   rc THROW-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
+   rc THROW-CODE$ nip {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n msgu:n :}
    START
    s" code" code codeu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" repair_class" class classu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
@@ -130,7 +138,7 @@ public
    s" column" col JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" byte_start" at JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" byte_end" last JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   rc VERIFY:E-MISSING-SIGNATURE <> if
+   msgu 0= if
       s" throw_code" rc JSON-WRITE:FIELD-INT JSON-WRITE:COMMA
    then
    s" suggestion" sug sugu JSON-WRITE:FIELD-S

@@ -335,7 +335,7 @@ variable IMGU
 : ASSERT-REJECT ( -- )
    EXITED @ TTRUE
    RC @ FORGE-RC T=
-   ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
+   ERR$ s" E-SEALED-PACKAGE: FOO" CONTAINS? TTRUE ;
 
 \ Same shape and rules as the engine's read-only view (tools/prot-wid-probe.f):
 \ bit w of the band at PROT-BITS-OFF is set exactly when wordlist w is

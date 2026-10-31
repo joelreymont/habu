@@ -148,7 +148,7 @@ before any `require`.
 | a definition with no signature that reads or pops a cell it did not push: `: X r@ ;`, `: X r> ;` | `E-REJECTED` at the token, `fix_return_stack`, at both tiers |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
-| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where the engine bakes `PKG` and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-STATEMENT-THROW` at the name |
+| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where the engine bakes `PKG` and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-SEALED-PACKAGE` at the name |
 | a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
 | `( -- n ) [: 1 ;] ONCE` with `ONCE ( R [ -- S ] -- S ) execute`: a callable that names its stack, or keeps it where `[ -- S ]` is declared, passed, stored, installed with `is` or joined | `E-MISMATCH`, `callable row escape: …; held row A would escape into B`; declare `[ R -- S ]` |
 | a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-REJECTED` |

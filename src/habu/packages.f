@@ -144,8 +144,8 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    TOKEN$ XREF-NAMESPACE-WL WL-PROBE ;
 
 \ Once the engine is sealed, a sealed package's name ends the process, and so
-\ does a package whose public wordlist is protected: the token is the whole
-\ diagnostic line (habu2.f C-PACKAGE-SEAL-GUARD).
+\ does a package whose public wordlist is protected (habu2.f
+\ C-PACKAGE-SEAL-GUARD, SEALED-FAIL).
 : PKG-SEALED? ( -- bool )
    TOKEN$ CHECKER-SEALED-PKG? if true exit then
    PKG-ROW {: row:ptr :}
@@ -155,7 +155,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 : PKG-SEAL-GUARD ( -- )
    SEAL-NDICT@ 0= if exit then
    PKG-SEALED? 0= if exit then
-   TOKEN$ ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
+   TOKEN$ SEALED-FAIL ;
 
 \ Under the design seal a package whose row predates the seal is refused: the
 \ located line and ENGINE-ERROR:POLICY (habu2.f C-PACKAGE-POLICY-GUARD).
@@ -328,13 +328,13 @@ variable USE-FLOOR
    q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
-\ After the seal a protected wordlist takes no record: the engine names its
-\ guard and the definition, then exits (habu2.f LSTOREDEFNAME).
+\ After the seal a protected wordlist takes no record: it is a sealed package's,
+\ and the definition ends the process as reopening it does (habu2.f
+\ LSTOREDEFNAME, SEALED-FAIL).
 : PKG-OPEN-WID ( n -- ) {: wid:n :}
    SEAL-NDICT@ 0= if exit then
    wid PROTECTED? 0= if exit then
-   s" hb: cannot publish into protected word: " ERROR-TEXT:TYPE
-   TOKEN$ ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
+   TOKEN$ SEALED-FAIL ;
 
 \ The source is the record the operand names as the engine's LFIND resolves it
 \ (FIND-SCOPE), never a used public's. It must not be internal: an alias would

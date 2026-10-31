@@ -22,13 +22,12 @@ package LOWER-CERT-HOOK
 \ The source tools classify $4E themselves (check-all-errors-core.f DUP-RC).
 $4E constant DUP-RC
 
-\ This file loads before src/habu/layout.f, so the cells the engine's refusal
-\ tail reads (habu2.f LCOMPILEDIE) and the pending definition's two cells are
-\ spelled here as data-base offsets, as src/core/include.f spells the SRCLOC
-\ pair. layout.f reserves them as SRCLOC:INB-CELL, PEND-CELL and PENDTKA-CELL;
-\ the cursor, INP-CELL, is src/core/layout-buffer.f STGT-INP-CELL. The path
-\ pair, SRC-PATH and SRC-PATHLEN-OFF, is this package's from src/core/checker.f.
-$2810 RESERVED-PTR-U8-CELL SRC-START
+\ This file loads before src/habu/layout.f, so the pending definition's two
+\ cells are spelled here as data-base offsets, as src/core/include.f spells the
+\ SRCLOC pair. layout.f reserves them as PEND-CELL and PENDTKA-CELL; the
+\ cursor, INP-CELL, is src/core/layout-buffer.f STGT-INP-CELL. The path pair,
+\ SRC-PATH and SRC-PATHLEN-OFF, and the file's bytes, SRC-OWNED, are this
+\ package's from src/core/checker.f.
 STGT-INP-CELL RESERVED-PTR-U8-CELL SRC-CURSOR
 $3688 constant PEND-OFF
 $2850 RESERVED-PTR-U8-CELL SRC-NAME
@@ -39,29 +38,30 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    0 begin dup u < if a over + c@ 32 > else 0 0= 0= then while 1 + repeat
    a swap ;
 
-\ The line of a byte of the buffer being read.
+\ The line of a byte of the open file, counted from its first owned byte.
 : LINE-AT ( ptr u8 -- n )
-   SRC-START @ swap ERROR-TEXT:LINE ;
+   SRC-OWNED @ swap ERROR-TEXT:LINE ;
 
 \ The line of the definition's name, where the wall places a duplicate. At a
 \ colon definition's closing `;` the definition is pending (PEND-CELL) and its
 \ opener kept where its name starts (PENDTKA-CELL); create, variable and
 \ constant run the hook with nothing pending (habu2.f C-DEFHOOK), PENDTKA-CELL
 \ still at the last colon definition's name and the cursor just past their own.
-\ A name not between the buffer's start and the cursor is not counted to, since
-\ the count would read outside the buffer: it is placed at the cursor.
+\ A name not between the file's first owned byte and the cursor is not counted
+\ to, since the count would read outside the file: it is placed at the cursor.
 : NAME-LINE ( -- n )
-   SRC-START @ SRC-NAME @ SRC-CURSOR @ {: b:ptr nm:ptr p:ptr :}
-   data-base PEND-OFF + @ 0 <>  nm b - 0 >= and  p nm - 0 >= and
+   SRC-OWNED @ SRC-NAME @ SRC-CURSOR @ {: o:ptr nm:ptr p:ptr :}
+   data-base PEND-OFF + @ 0 <>  nm o - 0 >= and  p nm - 0 >= and
    if nm LINE-AT else p LINE-AT then ;
 
-\ ` at <path>:<line>` while a source file is open, and nothing on stdin or at
-\ the REPL, as the tail writes it.
+\ ` at <path>` while a source file is open, then `:<line>` under
+\ SRCLOC:FILE-BUFFER?, as the tail writes it; nothing on stdin or at the REPL.
 : AT-SOURCE ( -- )
    data-base SRC-PATHLEN-OFF + @ {: u:n :}
    u 0= if exit then
    s"  at " ERROR-TEXT:TYPE
    SRC-PATH @ u ERROR-TEXT:TYPE
+   SRCLOC:FILE-BUFFER? 0= if exit then
    s" :" ERROR-TEXT:TYPE
    NAME-LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 

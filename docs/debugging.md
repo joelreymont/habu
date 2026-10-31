@@ -14,30 +14,31 @@ hb: bad string literal at /home/j/Work/habu/test/fixtures/x.f:12
 No column. `<path>` is the resolved, canonical path of the **innermost open**
 file, so a nested `require` names the file that actually holds the offending
 token, not the entry the command line asked for. `<line>` counts newlines from
-the start of the buffer being evaluated: an include evaluates the whole file as
-one buffer, so that is the file line.
+the start of the file.
 
-Two cases print the message and a newline with **no** ` at …`, because there is
-no file to name: source on stdin or at the tty REPL, and the engine's own boot
-prefix. A string a harness `evaluate`s *inside* a file is the one case where the
-two halves come from different places: the path is the file's, the line counts
-within the evaluated string.
+A refusal with no include frame open prints the message and a newline with
+**no** ` at …`, because there is no file to name: the root source stream's own
+text (src/habu/main.f: stdin, tty or piped, or a plain `hb <file>` without
+`--load`) and the engine's own boot prefix. A string `evaluate`d *inside* a file
+keeps the file line only while it is a slice of the file's own bytes
+(`parse-name X evaluate`). Any other evaluated string names the file alone
+(` at <path>`) for a refusal in it, and so do the native compiler's `ncomp:` and
+`E-UNDEFINED:` lines that follow that refusal (src/core/checker.f
+SRCLOC:FILE-BUFFER?).
 
 An undefined word, `E-UNDEFINED: X at <path>:<line>`, is located like any
 compile refusal on both loops. A loaded file that leaves cells prints
 `E-EVAL-RESIDUE: stack depth N at <path>`, naming the whole file and so no
 line, once at the innermost file, before the throw it raises (uncaught, that
 throw ends the load). The other interpret-level diagnostics
-(`hb: interpret-mode layout value: X` and
-its siblings) and the refusals that exit without the compile tail (boot
-source, CLI, uncaught throw, snapshot and AOT families) print no location.
+(`hb: interpret-mode layout value: X` and its siblings) print no location.
 The checker's refusal in a body names the definition and the token
 (`habu: in g: at '2' expected: n actual: n n`); the native line after it
 places the token (`ncomp: cannot compile G at 2 in <path>:<line>`), and an
 undefined word adds `E-UNDEFINED: x at <path>:<line>`. A top-level refusal
 names the file and line in its own line (`habu: <path>:<line>: at '!' …`),
-the file alone for a token of a string `evaluate` runs, and no place outside a
-file; a tool's label replaces the path of the file it labels. For those that
+the file alone for a token of an evaluated string that is not the file's own
+bytes, and no place outside a file; a tool's label replaces the path of the file it labels. For those that
 print no location, search the source for the named definition, or bisect.
 
 ## Reading an exit status

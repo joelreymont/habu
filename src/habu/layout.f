@@ -510,28 +510,30 @@ $178 constant PKG-OUTSIDE
 ;package
 
 \ Every engine load refusal reaching the LCOMPILEDIE tail names its source as
-\ `hb: <message> at <path>:<line>`; emitted code reads these cells as it reads
-\ INCLUDE-EVALERR-CELL.
-\ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 when
-\ no file is open (tty REPL, `-e`, the boot prefix). src/core/include.f
-\ SOURCE-ROOT:PUSH copies the resolved path into its frame and publishes it; POP
+\ `<message> at <path>`, then `:<line>` under SRCLOC:FILE-BUFFER?; emitted code
+\ reads these cells as it reads INCLUDE-EVALERR-CELL.
+\ PATH-CELL / PATHLEN-CELL: the innermost open include frame's path, 0/0 with
+\ no include frame open: the root source stream's own text (src/habu/main.f:
+\ stdin, tty or piped, or a plain `hb <file>`) and the boot prefix.
+\ src/core/include.f SOURCE-ROOT:PUSH copies the resolved path into its frame and publishes it; POP
 \ republishes the parent's. The address is the frame's, not INCLUDE-PATH's,
 \ because a nested include overwrites that buffer.
-\ INB-CELL: the start of the buffer INP walks, so the tail counts newlines in
-\ [INB, INP). habu1.f B-EVAL sets it and saves the outer value in EVAL-INB. It
-\ is not beside INP/INE: $36B0 is regalloc.f FRFREE-CELL and $36C8 is
-\ address-cells.f INDEX-CELL.
+\ INB-CELL: the start of the buffer INP walks, which SRCLOC:FILE-BUFFER? tests
+\ against the file's owned bytes. habu1.f B-EVAL sets it and saves the outer
+\ value in EVAL-INB. It is not beside INP/INE: $36B0 is regalloc.f
+\ FRFREE-CELL and $36C8 is address-cells.f INDEX-CELL.
 \ All three sit in the $2800..$3000 free header band, below $7FF8 for a
 \ `DATA <off> LDR` and below DATA-START.
+\ src/core/checker.f opens SRCLOC first, for FILE-BUFFER?.
 package SRCLOC
 public
 $2800 constant PATH-CELL
 $2808 constant PATHLEN-CELL
-$2810 constant INB-CELL
+$2810 constant INB-CELL          \ mirrored: src/core/checker.f SRCLOC INB-OFF
 \ The loader alone publishes the execution bytes owned by the active file.
 \ An inner evaluate changes INB, but never changes this file span.
-$2D68 constant OWNED-CELL
-$2D70 constant OWNEDLEN-CELL
+$2D68 constant OWNED-CELL        \ mirrored: src/core/checker.f SRCLOC OWNED-OFF
+$2D70 constant OWNEDLEN-CELL     \ mirrored: src/core/checker.f SRCLOC OWNEDLEN-OFF
 \ CURSOR: INP-CELL as a declared cell, the byte address the scanner reads next.
 \ The native FILE cache reads it at a loader cut.
 INP-CELL RESERVED-PTR-U8-CELL CURSOR

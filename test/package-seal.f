@@ -67,8 +67,8 @@ variable OPEN
    s" package NATIVE-RUNTIME ;package" s" NATIVE-RUNTIME" SEALED
    s" a definition into a baked package's public wordlist is refused"
    s" : TOP-ROW:ZZ ( -- ) ;" s" TOP-ROW:ZZ" SEALED
-   s" by the engine's protected-wordlist guard" T-LABEL
-   ERR$ s" cannot publish into protected word" CONTAINS? TTRUE ;
+   s" with the sealed package's code and the definition" T-LABEL
+   ERR$ s" E-SEALED-PACKAGE: TOP-ROW:ZZ at " CONTAINS? TTRUE ;
 
 \ A head naming a sealed system package is refused unless the open top-level
 \ package has a part of that name (test/outer-interpret.f PACKAGE-PART-NAME).

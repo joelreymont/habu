@@ -1619,13 +1619,18 @@ create GE-END-AT 16 allot
    s" hb-end-run.f" GE-SRC-BUF GE-SRC-U @ GE-LOC-FIXTURE
    GE-END-RUN-ARG ;
 
-\ rc 74, the refusal and its line, and no crash dump.
-: GE-END-EXPECT ( ptr u8 n n ptr u8 n -- )
-   {: msg:ptr msgu:n line:n label:ptr labelu:n :}
+\ rc 74, the refusal and its place, and no crash dump.
+: GE-END-EXPECT-AT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: msg:ptr msgu:n at:ptr atu:n label:ptr labelu:n :}
    74 label labelu GE-EXPECT-RC
    msg msgu label labelu GE-EXPECT-ERR-HAS
-   line GE-END-AT$ label labelu GE-EXPECT-ERR-HAS
+   at atu label labelu GE-EXPECT-ERR-HAS
    s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+\ The place is hb-end.f and its line.
+: GE-END-EXPECT ( ptr u8 n n ptr u8 n -- )
+   {: msg:ptr msgu:n line:n label:ptr labelu:n :}
+   msg msgu line GE-END-AT$ label labelu GE-END-EXPECT-AT ;
 
 \ One ending at both tiers, on the --load line and through `included`. line is
 \ the refusal's line at tier 0: the name token for a definition, the `(` for
@@ -1745,11 +1750,11 @@ create GE-END-AT 16 allot
 \ The closing direction. A `;` in a buffer that an immediate word's evaluate or
 \ included began inside an open definition would close the outer buffer's
 \ definition while the immediate word still runs. It is refused at the `;` at
-\ both tiers, rc 74, named and located on the first line of the buffer that
-\ holds it.
+\ both tiers, rc 74, and named.
 : GE-CLOSE-DEF$ ( -- ptr u8 n )  s" hb: source closed a definition it did not open: GEEND at " ;
 
-\ hb-end.f's immediate word evaluates the `;`: the line counts in the string.
+\ hb-end.f's immediate word evaluates the `;`: the place is hb-end.f alone, no
+\ line, as for any evaluated string (SRCLOC:FILE-BUFFER?).
 \ TRUSTED: admits the evaluate, and parse-imm is what lets a checked body run
 \ the immediate: both tiers refuse any other one at its token, unrun
 \ (E-UNMODELED-IMMEDIATE, rc 70).
@@ -1763,9 +1768,10 @@ create GE-END-AT 16 allot
    s" GEEND 2 ." GE-SRC-LINE
    GE-END-SAVE
    GE-END-TOP
-   GE-CLOSE-DEF$ 1 s" evaluate closes" GE-END-EXPECT ;
+   GE-CLOSE-DEF$ S\" hb-end.f\n" s" evaluate closes" GE-END-EXPECT-AT ;
 
-\ hb-end-run.f's immediate word includes hb-end.f, which holds only the `;`.
+\ hb-end-run.f's immediate word includes hb-end.f, which holds only the `;`:
+\ the place is hb-end.f's first line.
 : GE-CLOSE-INC ( n -- )
    {: tier:n :}
    GE-SRC-RESET
@@ -2292,8 +2298,8 @@ variable GE-KIND-N
    S\" 74\n42\n" s" pass 2 immediate printing a caught refusal" GE-EXPECT-OUT
    s" hb: source closed a definition it did not open: GEP2W at "
       s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
-   \ GEP2SAY's caught refusal is located on line 1 of the string it evaluates.
-   1 GE-END-AT$ s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
+   \ GEP2SAY's caught refusal is in the string it evaluates: hb-end.f, no line.
+   S\" hb-end.f\n" s" pass 2 immediate printing a caught refusal" GE-EXPECT-ERR-HAS
    S\" variable GEP2RUNS\nPTR-VARIABLE GEP2AT\nTRUSTED: GEP2GRAB ( -- ) GEP2RUNS @ 1+ GEP2RUNS ! here GEP2AT ! 77 , ; immediate\ns\" GEP2GRAB\" 0 parse-imm"
       s" GEP2GRAB 1 +" s" create GEP2NEXT 99 , GEP2RUN GEP2RUNS @ . GEP2AT @ @ ." tier GE-P2-RUN
    S\" 42\n1\n77\n" s" " s" pass 2 immediate allotting" GE-P2-EXPECT

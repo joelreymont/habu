@@ -21587,7 +21587,8 @@ variable CPAY-ON
 \ SRCLOC:PATH-CELL, SRCLOC:PATHLEN-CELL, SRCLOC:OWNED-CELL, SRCLOC:OWNEDLEN-CELL).
 \ layout.f loads after this file, so the cells are spelled here as data-base
 \ offsets, private to the hook's package so no program writes them;
-\ src/core/check-hook.f, which reopens the package, reads the path through them.
+\ src/core/check-hook.f, which reopens the package, reads the path and the bytes
+\ through them.
 package LOWER-CERT-HOOK
 $2800 RESERVED-PTR-U8-CELL SRC-PATH
 $2808 constant SRC-PATHLEN-OFF
@@ -30451,17 +30452,42 @@ public
    FEP-HIT? IF FEP @ TICK-QUOT FEP @ USIG-SYM@ BTICK-EDGE ELSE TKF TKFU @ ASIG-MISS+ OPAQUE-XT THEN
    TOP-PUSH ;
 
+\ The file's owned bytes and the start of the buffer the scanner reads, spelled
+\ as data-base offsets: src/habu/layout.f, which loads after this file, reopens
+\ SRCLOC and names them OWNED-CELL, OWNEDLEN-CELL and INB-CELL.
+package SRCLOC
+$2D68 constant OWNED-OFF
+$2D70 constant OWNEDLEN-OFF
+$2810 constant INB-OFF
+public
+
+\ True while the buffer read, [INB, INE), lies inside the bytes the loader owns
+\ for the open file: an `evaluate` of a slice of the file reads file text, any
+\ other string does not. Only then does an error's place carry `:<line>`,
+\ counted from the first owned byte (test/load-reject-diag-test.f
+\ TEST-EVALUATED-PLACE, TEST-EVALUATED-SLICE); habu2.f LSRCAT tests the same in
+\ machine code.
+: FILE-BUFFER? ( -- bool )
+   data-base OWNED-OFF + @ {: o:n :}
+   data-base INB-OFF + @ {: b:n :}
+   data-base CK-INE-OFF + @ {: e:n :}
+   o 0 <>  b o - 0 >= and  o data-base OWNEDLEN-OFF + @ + e - 0 >= and ;
+;package
+
+\ Its row, so the checked writers (src/habu/outer.f AT-SOURCE,
+\ src/compiler/native/definition.f SAY-WHERE) may call it.
+PPRIM: SRCLOC FILE-BUFFER? PE-F PE-OUT PPRIM;
+
 package LOWER-CERT-HOOK
 public
 
 \ The line of byte t, counted as the engine's refusal tail counts it; false
-\ outside the bytes the loader owns for the active file (an evaluated string).
+\ unless SRCLOC:FILE-BUFFER? holds and t lies in the bytes the loader owns.
 : LINE-AT ( ptr u8 -- n bool ) {: t:ptr :}
+   SRCLOC:FILE-BUFFER? 0= IF 0 RES-FALSE EXIT THEN
    SRC-OWNED @ {: b:ptr :}
    t b - {: at:n :}
-   b NULL-PTR =  at 0 < or  at data-base SRC-OWNEDLEN-OFF + @ >= or IF
-      0 RES-FALSE EXIT
-   THEN
+   at 0 <  at data-base SRC-OWNEDLEN-OFF + @ >= or IF 0 RES-FALSE EXIT THEN
    b t 1 1 0 DIAG-POS drop drop RES-TRUE ;
 \ A step has a line and no column: no DIAG-ORIGIN maps a top step, and
 \ tools/check.f's run file keeps each subject line but shifts its columns.

@@ -427,6 +427,7 @@ private
 
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL FILE-PATH
 SRCLOC:INB-CELL RESERVED-PTR-U8-CELL INPUT-START
+SRCLOC:OWNED-CELL RESERVED-PTR-U8-CELL FILE-START
 INE-CELL RESERVED-PTR-U8-CELL INPUT-END
 PENDTKA-CELL RESERVED-PTR-U8-CELL OPEN-NAME
 TKA-CELL RESERVED-PTR-U8-CELL READ-AT
@@ -444,14 +445,14 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
       1 - dup 0 SOURCE-ROW@ off <= if exit then
    repeat drop -1 ;
 
-\ The line of text offset off in buffer [b, e) by row i, 0 when the row has no
-\ source or the byte lies past e.
+\ The file line of text offset off in buffer [b, e) by row i, 0 when the row
+\ has no source or the byte lies past e.
 : ROW-LINE ( ptr u8 ptr u8 n n -- n )
    {: b:ptr e:ptr i:n off:n :}
    i 1 SOURCE-ROW@ BODY-SOURCE:NONE = if 0 exit then
    i 1 SOURCE-ROW@ off + i 0 SOURCE-ROW@ - {: src:n :}
    e b - src <= if 0 exit then
-   b b src + ERROR-TEXT:LINE ;
+   FILE-START @ b src + ERROR-TEXT:LINE ;
 
 \ 0 unless the name's buffer is current and p's run has a row. Rows at or past
 \ BODYLEN are stale; a donor engine's DATA, below BODY-SOURCE:END, has none.
@@ -466,27 +467,31 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    i 0 < if 0 exit then
    b e i off ROW-LINE ;
 
-\ The line of byte p, in the buffer being read (a refusal at the closing `;`)
-\ or in the body text, 0 when no file is open.
+\ The file line of byte p, in the buffer being read (a refusal at the closing
+\ `;`) or in the body text, 0 when it has none. Lines count from the file's
+\ first owned byte, so the buffer must lie in the file (SRCLOC:FILE-BUFFER?).
 : LINE-OF ( ptr u8 -- n )
    {: p:ptr :}
-   data-base SRCLOC:PATHLEN-CELL + @ 0= if 0 exit then
    INPUT-START @ INPUT-END @ {: b:ptr e:ptr :}
-   p b - 0 >=  e p - 0 > and if b p ERROR-TEXT:LINE exit then
+   p b - 0 >=  e p - 0 > and if FILE-START @ p ERROR-TEXT:LINE exit then
    p BODY-LINE ;
 
-\ `<lead><path>:<line>` when byte p has a line (LINE-OF).
+\ `<lead><path>` while a file is open, then `:<line>` of byte p (LINE-OF) when
+\ it has one under SRCLOC:FILE-BUFFER?.
 : SAY-WHERE ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
+   data-base SRCLOC:PATHLEN-CELL + @ {: len:n :}
+   len 0= if exit then
+   a u ERROR-TEXT:TYPE
+   FILE-PATH @ len ERROR-TEXT:TYPE
+   SRCLOC:FILE-BUFFER? 0= if exit then
    p LINE-OF {: line:n :}
    line 0= if exit then
-   a u ERROR-TEXT:TYPE
-   FILE-PATH @ data-base SRCLOC:PATHLEN-CELL + @ ERROR-TEXT:TYPE
    s" :" ERROR-TEXT:TYPE
    line ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
-\ The refusal names the definition and the token it stopped at, which p places
-\ on its file line.
+\ The refusal names the definition and the token it stopped at, placed from p
+\ by SAY-WHERE.
 : REPORT-FAILURE ( ptr u8 n ptr u8 -- )
    {: a:ptr u:n p:ptr :}
    s" ncomp: cannot compile " ERROR-TEXT:TYPE

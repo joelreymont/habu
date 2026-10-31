@@ -542,8 +542,8 @@ variable DSUGE  variable DSUGA
    LOWER-CERT-HOOK:TOP-SITE-PATH$ {: pa:ptr pu:n :}
    pa pu DIAG-LABELS? IF DIAGFB DIAGFU @ EXIT THEN
    pa pu ;
-\ A token outside the file's bytes, read from a string `evaluate` runs, names the
-\ file alone; a step with no file and no label names no place.
+\ A top step names its file, then the line checker.f LOWER-CERT-HOOK:TOP-SITE
+\ gives, if any; a step with no file and no label names no place.
 : DSITE ( -- )
    TOP-STEP @ 0= IF s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : " DTXT EXIT THEN
    s" habu: " DTXT
@@ -1281,9 +1281,9 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
       44 EMIT1 s" family" JKEY  JOPEN fam FAM-QNAME-REND JCLOSE
    THEN
    DIAG-VARIANT ;
-\ A top step's place as its prose names it (DSITE): its line alone, no line for a
-\ token outside the file's bytes; else the checked token in its mapped or origin
-\ source.
+\ A top step's file as its prose names it (DSITE), its line the one checker.f
+\ LOWER-CERT-HOOK:TOP-SITE gives (DLOC-FIELDS); else the checked token in its
+\ mapped or origin source.
 : DFILE$ ( -- ptr u8 n )
    TOP-STEP @ 0= IF DIAGFB DIAGFU @ EXIT THEN
    TOP-FILE$ dup 0 > IF EXIT THEN drop drop

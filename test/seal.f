@@ -488,23 +488,23 @@ variable PWG-U
 
 \ After the seal, publishing into a protected WID (a public family's generated
 \ constructor package) via `<pkg>:WORD` fails closed: habu2.f C-STORE-DEF-NAME
-\ names itself on fd 2 (LPROTPUB) with the offending word before exit 84. The
-\ sibling AOT boot-pass gate EM-AOTWIDGATE (LPROTAOT) fires only on a crafted
-\ AOT or snapshot image and has no fixture here.
+\ writes `E-SEALED-PACKAGE: ` and the offending word before exit 84. The
+\ sibling AOT boot-pass gate EM-AOTWIDGATE writes the same line, and fires only
+\ on a crafted AOT or snapshot image, which has no fixture here.
 : SLV-PUBLISH-FORGE$ ( -- ptr u8 n )         \ define a word into a public family's protected WID
    SB-RESET
    s" SUMTYPE foo<a> VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
    s" : foo:BOGUS ( -- ) ;" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died ENGINE-ERROR:SEAL-PACKAGE naming the publish guard
+: SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: line:ptr lineu:n :}   \ child died ENGINE-ERROR:SEAL-PACKAGE with LINE
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
-   SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
+   SLV-ERR$ line lineu CONTAINS? TTRUE ;
 
 : SLV-PROT-PUBLISH ( -- )
    s" : foo:BOGUS ; into a protected WID -> labeled exit 84" T-LABEL
-   SLV-PUBLISH-FORGE$ SLV-SUBJECT SLV-ASSERT-PROT-PUBLISH ;
+   SLV-PUBLISH-FORGE$ SLV-SUBJECT s" E-SEALED-PACKAGE: foo:BOGUS at " SLV-ASSERT-PROT-PUBLISH ;
 
 \ The two engine-reserved OWNER-API wordlists are permanently protected, so a
 \ checked program cannot forge a record into them with set-current. Without this,
@@ -525,9 +525,9 @@ variable PWG-U
 
 : SLV-OWNER-FORGE ( -- )
    s" : X ; via 2 set-current into OWNER-API-PRI-WID -> labeled exit 84" T-LABEL
-   SLV-OWNER-PRI-FORGE$ SLV-SUBJECT SLV-ASSERT-PROT-PUBLISH
+   SLV-OWNER-PRI-FORGE$ SLV-SUBJECT s" E-SEALED-PACKAGE: OWNERFORGE at " SLV-ASSERT-PROT-PUBLISH
    s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 84" T-LABEL
-   SLV-OWNER-PUB-FORGE$ SLV-SUBJECT SLV-ASSERT-PROT-PUBLISH ;
+   SLV-OWNER-PUB-FORGE$ SLV-SUBJECT s" E-SEALED-PACKAGE: OWNERFORGE at " SLV-ASSERT-PROT-PUBLISH ;
 
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;

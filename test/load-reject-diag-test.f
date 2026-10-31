@@ -25,6 +25,8 @@ $1000 constant CAP
 70 constant REJECT-RC
 67 constant UNCAUGHT-RC
 76 constant BAD-SIG-RC
+84 constant SEALED-RC
+78 constant DUP-RC
 3 constant TEST-OUT-U
 5 constant TEST-ERR-U
 
@@ -453,21 +455,99 @@ LOWER-CERT-HOOK:INSTALL
    s" DYNAMIC-BUFFER LRD-STG-DB lrd-stg-none" s" in LRD-STG-DB" STORAGE-REJECT
    s" DEFER-LAYOUT-BUFFER LRD-STG-DL lrd-stg-none" s" in LRD-STG-DL" STORAGE-REJECT ;
 
-\ A definer with no signature is refused by its code and the token it stops at:
-\ the word being defined, or `does>` for a clause.
-: SIG-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n line:ptr lineu:n :}
+\ SRC as the body is refused with exit RC by its code and the token it stops
+\ at, located on the body's first line.
+: CODE-REJECT ( ptr u8 n ptr u8 n n -- ) {: src:ptr srcu:n line:ptr lineu:n rc:n :}
    BODY$ src srcu FS:WRITE-ALL
    BODY$ RUN
    ERR$ line lineu CONTAINS? TTRUE
    ERR$ s" body.f:1" CONTAINS? TTRUE
    OUT-U @ 0 T=
    EXITED @ TTRUE
-   RC @ BAD-SIG-RC T= ;
+   RC @ rc T= ;
 
+\ A definer with no signature stops at the word being defined, or at `does>`
+\ for a clause.
 : TEST-MISSING-SIGNATURE ( -- )
    s" a definer's missing signature names its code and token" T-LABEL
-   s" : LRD-MK ( n -- ) create , does> @ ;" s" E-MISSING-SIGNATURE: does> at " SIG-REJECT
-   s" defer LRD-D" s" E-MISSING-SIGNATURE: LRD-D at " SIG-REJECT ;
+   s" : LRD-MK ( n -- ) create , does> @ ;" s" E-MISSING-SIGNATURE: does> at " BAD-SIG-RC CODE-REJECT
+   s" defer LRD-D" s" E-MISSING-SIGNATURE: LRD-D at " BAD-SIG-RC CODE-REJECT ;
+
+\ Reopening a package the engine sealed stops at the package's name.
+: TEST-SEALED-PACKAGE ( -- )
+   s" a sealed package's reopening names its code and package" T-LABEL
+   S\" package NDICT\n;package" s" E-SEALED-PACKAGE: NDICT at " SEALED-RC CODE-REJECT ;
+
+\ A string `s"` copies out of the file, which its line 3 `evaluate`s, is not
+\ the file's bytes, so its refusal names the file alone, with no line.
+: TEST-EVALUATED-PLACE ( -- )
+   s" an evaluated string's refusal names its file and no line" T-LABEL
+   BODY$ S\" \n\ns\" lrd-zz-undefined\" evaluate\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  s" E-UNDEFINED: lrd-zz-undefined at " SB-APPEND  BODY$ SB-APPEND
+   10 SB-APPEND-C
+   ERR$ SB$ T$=
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ REJECT-RC T= ;
+
+\ A slice of the file's own bytes that the file `evaluate`s is file text, so a
+\ refusal in it names the file's line of the refused token, whichever writer
+\ refuses it.
+: TEST-EVALUATED-SLICE ( -- )
+   s" an evaluated slice of the file is refused at its line" T-LABEL
+   BODY$ S\" \n\nparse-name lrd-zz-undefined evaluate\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  s" E-UNDEFINED: lrd-zz-undefined at " SB-APPEND  BODY$ SB-APPEND
+   s" :3" SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ T$=
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   s" the checker places a refusal in an evaluated slice on the same line" T-LABEL
+   BODY$ S\" \n\n5 parse-name c@ evaluate drop\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  s" habu: " SB-APPEND  BODY$ SB-APPEND  s" :3: at 'c@'" SB-APPEND
+   ERR$ SB$ CONTAINS? TTRUE
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   s" the native compiler places a refusal in a slice past the evaluating line" T-LABEL
+   BODY$ S\" 1 set-tier\n\nparse-name x drop 24 + 27 evaluate\n: LRD-QQ ( -- )\n5 c@ drop ;\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  10 SB-APPEND-C  s" ncomp: cannot compile LRD-QQ at c@ in " SB-APPEND  BODY$ SB-APPEND
+   s" :5" SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ CONTAINS? TTRUE
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   s" the native compiler places a refusal at the closing ; of a slice" T-LABEL
+   BODY$ S\" \n\nparse-name x drop 24 + 29 evaluate\nTRUSTED: LRD-SF ( -- ) 0 if\n;\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  s" ncomp: cannot compile LRD-SF at ; in " SB-APPEND  BODY$ SB-APPEND
+   s" :5" SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ T$=
+   EXITED @ TTRUE
+   RC @ REJECT-RC T=
+   s" the checker hook places a checker-only duplicate in a slice at its line" T-LABEL
+   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\nparse-name x drop 24 + 30 evaluate\n: LRDREP:MAKE ( n -- n ) 1 + ;\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  s" duplicate definition: LRDREP:MAKE at " SB-APPEND  BODY$ SB-APPEND
+   s" :4" SB-APPEND  10 SB-APPEND-C
+   ERR$ SB$ CONTAINS? TTRUE
+   EXITED @ TTRUE
+   RC @ DUP-RC T= ;
+
+\ A name only the checker holds, a PRODUCT replay with no word behind it, is
+\ refused by the checker hook's writer (src/core/check-hook.f AT-SOURCE), which
+\ names an evaluated string's file alone too.
+: TEST-REPLAY-DUP-PLACE ( -- )
+   s" an evaluated checker-only duplicate names its file and no line" T-LABEL
+   BODY$ S\" : LRD-PREPLAY ( -- ) s\" lrdrep\" s\" FIELD x n\" CHECKER-DEFPRODUCT GENERATED-DECL-CTOR:REPLAY-LEGACY ;\nLRD-PREPLAY\ns\" : LRDREP:MAKE ( n -- n ) 1 + ;\" evaluate\n" FS:WRITE-ALL
+   BODY$ RUN
+   SB-RESET  s" duplicate definition: LRDREP:MAKE at " SB-APPEND  BODY$ SB-APPEND
+   10 SB-APPEND-C
+   ERR$ SB$ CONTAINS? TTRUE
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ DUP-RC T= ;
 
 \ A refused `cast:` names its code, place, word and reason, and the family a
 \ foreign output introduces with its owner.
@@ -628,6 +708,10 @@ LOWER-CERT-HOOK:INSTALL
    TEST-MISSING-SIGNATURE
    TEST-CAST
    TEST-UNSAFE
+   TEST-SEALED-PACKAGE
+   TEST-EVALUATED-PLACE
+   TEST-EVALUATED-SLICE
+   TEST-REPLAY-DUP-PLACE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-IMM-INCLUDE

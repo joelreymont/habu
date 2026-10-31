@@ -193,10 +193,10 @@ create NUM-BUF 32 allot   variable NUM-U
    PARSE-OUT ;
 
 
-: ASSERT-REJECT ( -- )               \ child exited 84 naming the protected-publish guard
+: ASSERT-REJECT ( -- )               \ child exited 84 naming the sealed package's refusal and FOO
    EXITED @ TTRUE
    RC @ FORGE-RC T=
-   ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
+   ERR$ s" E-SEALED-PACKAGE: FOO" CONTAINS? TTRUE ;
 
 : ASSERT-OK ( -- )
    EXITED @ TTRUE
@@ -248,7 +248,7 @@ create NUM-BUF 32 allot   variable NUM-U
 : ASSERT-NOT-PROTECTED ( -- )
    EXITED @ TTRUE
    RC @ CHECKER-REJECT-RC T=
-   ERR$ s" hb: cannot publish into protected word" CONTAINS? 0= TTRUE ;
+   ERR$ s" E-SEALED-PACKAGE" CONTAINS? 0= TTRUE ;
 
 \ --- forge / probe sources (interpreted by the child engine) ---
 \ Every probe prints one number for the parent. Membership is one bit per

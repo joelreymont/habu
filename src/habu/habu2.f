@@ -228,6 +228,7 @@ variable LSRCCLOSE   variable LSRCCLOSEMSG   \ a `;` closed a definition an oute
 : SRCCLOSE-MSG-LEN ( -- n )  SRCCLOSE-MSG$ nip ;
 
 variable LCOMPILEDIE   \ shared recoverable compile-error tail: a die site that already wrote its diagnostic branches here with x0 = its sysexits exit code. Inside evaluate (EVALD>0) the aborted compile unwinds as a catchable throw of that SAME code via LEVALREC (RSP/CP/NDICT/XDS/DP + compile-state rollback, HIDX tolerates the stale records); at top level (EVALD==0) it calls exit_group(x0).
+variable LSRCAT        \ the LCOMPILEDIE tail's location writer, a leaf a fail-closed die site calls before it exits
 : CONFMSG$ ( -- ptr u8 n )   s" hb: construct: unknown family: " ;   \ EM-COMPILE-ADT-MODE
 : CONFMSG-LEN ( -- n )   CONFMSG$ nip ;
 : CONVMSG$ ( -- ptr u8 n )   s" hb: construct: unknown variant: " ;   \ EM-COMPILE-ADT-MODE
@@ -355,14 +356,12 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 variable LSIGBAD              \ C-SIG-BAD's code; the token and the LCOMPILEDIE tail follow it
 : SIGBAD-MSG$ ( -- ptr u8 n )   s" E-MISSING-SIGNATURE: " ;
 : SIGBAD-MSG-LEN ( -- n )   SIGBAD-MSG$ nip ;
-variable LATMSG               \ " at " — the refusal-location separator the LCOMPILEDIE tail writes before <path>:<line>
+variable LSEALED              \ the exit-84 refusal's code (C-SEAL-PACKAGE-FAIL, EMIT-STORE-DEF-NAME, EM-AOTWIDGATE); the name and the LSRCAT location follow it
+: SEALED-MSG$ ( -- ptr u8 n )   s" E-SEALED-PACKAGE: " ;
+: SEALED-MSG-LEN ( -- n )   SEALED-MSG$ nip ;
+variable LATMSG               \ " at " — the refusal-location separator LSRCAT writes before <path>:<line>
 : ATMSG$ ( -- ptr u8 n )   s"  at " ;
 : ATMSG-LEN ( -- n )   ATMSG$ nip ;
-variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
-: PROTPUB-MSG$ ( -- ptr u8 n )   s" hb: cannot publish into protected word: " ;
-: PROTPUB-MSG-LEN ( -- n )   PROTPUB-MSG$ nip ;
-: PROTAOT-MSG$ ( -- ptr u8 n )   s" hb: AOT protected-WID gate reject: " ;
-: PROTAOT-MSG-LEN ( -- n )   PROTAOT-MSG$ nip ;
 variable LMMAPCODE   variable LMMAPDATA   \ region mmap-fail/collision labeled rc-78 exits (code region / data region); message bytes live in the loaded __text image, so the write is valid even though the region being mapped does not exist yet
 : MMAPCODE-MSG$ ( -- ptr u8 n )   S\" hb: cannot map fixed code region\n" ;
 : MMAPCODE-MSG-LEN ( -- n )   MMAPCODE-MSG$ nip ;
@@ -686,9 +685,8 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LSRCREAD LABEL@ LBL, SRCREAD-MSG$ BYTES,
    LBADSTR  LABEL@ LBL, BADSTR-MSG$ BYTES,             \ no newline: the LCOMPILEDIE tail appends the location + newline
    LSIGBAD  LABEL@ LBL, SIGBAD-MSG$ BYTES,
+   LSEALED  LABEL@ LBL, SEALED-MSG$ BYTES,
    LATMSG   LABEL@ LBL, ATMSG$ BYTES,
-   LPROTPUB LABEL@ LBL, PROTPUB-MSG$ BYTES,            \ C-STORE-DEF-NAME appends the def name + newline
-   LPROTAOT LABEL@ LBL, PROTAOT-MSG$ BYTES,            \ EM-AOTWIDGATE appends the callee name + newline
    LMMAPCODE LABEL@ LBL, MMAPCODE-MSG$ BYTES,
    LMMAPDATA LABEL@ LBL, MMAPDATA-MSG$ BYTES,
    LBLRANGE LABEL@ LBL, BLRANGE-MSG$ BYTES,
@@ -4602,13 +4600,17 @@ public
    nend LBL,
    done LBL, ;
 
-\ Sealed system-package guard: the shared fail writes the offending token (in
-\ TKA/TKL) and exits ENGINE-ERROR:SEAL-PACKAGE. Both guards read
+\ Sealed system-package guard: the shared fail writes `E-SEALED-PACKAGE: `, the
+\ offending token (in TKA/TKL) and its location, and exits
+\ ENGINE-ERROR:SEAL-PACKAGE at any evaluate depth. Both guards read
 \ FRIEND-LATCH-CELL: latch 0 (engine cold load) allows a reserved name, sealed
 \ user source is refused. RESTAB and the fold are native for the reason
 \ RESTAB-BUF states.
-: C-SEAL-PACKAGE-FAIL ( -- )   \ name the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
-   ENGINE-ERROR:SEAL-PACKAGE C-EXIT-TOKEN ;
+: C-SEAL-PACKAGE-FAIL ( -- )
+   0 2 MOVZ,  1 LSEALED LABEL@ ADR,  2 SEALED-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   LSRCAT LABEL@ BL,
+   0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-SEAL-MATCH ( -- )   \ if TKA[0,x24) folds to a reserved name (RESTAB), exit ENGINE-ERROR:SEAL-PACKAGE
    LBL LBL LBL LBL LBL {: tabloop:label cmploop:label matched:label tabnext:label done:label :}
@@ -4793,9 +4795,9 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    9 DATA DEF-WL-CELL LDR,  LPROTWIDQ LABEL@ BL,         \ x9 = target wid; x13 = protected?
    9 SP 0 LDR,  SP SP 16 ADDI,
    13 pgok CBZ,                                          \ not protected -> allow
-      1 LPROTPUB LABEL@ ADR,  0 2 MOVZ,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,       \ protected + sealed: name the guard on fd 2 before exit 84
-      0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,     \ + the offending def name
-      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+      1 LSEALED LABEL@ ADR,  0 2 MOVZ,  2 SEALED-MSG-LEN MOVZ,  NR-WRITE SYS,         \ protected + sealed: C-SEAL-PACKAGE-FAIL's line, naming the def
+      0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
+      LSRCAT LABEL@ BL,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    pgok LBL,
    C-STORE-NAME
@@ -8202,11 +8204,10 @@ ardone LBL,
    wpnext LBL,
       6 6 DREC ADDI,  14 14 1 SUBI,  wploop B,
    wrej LBL,
-      1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ private word of a sealed package: name it on fd 2 before exit 84
-      \ + the callee's own name, read off the record the lookup matched, the way
-      \ Append the def name, so the refusal names which baked name it refused.
-      \ [16] carries the length in its low bits; DNAME-EXT says the bytes live
-      \ outside the record.
+      \ A sealed package's private word: C-SEAL-PACKAGE-FAIL's line, naming the
+      \ callee off the record the lookup matched. [16] carries the length in its
+      \ low bits; DNAME-EXT says the bytes live outside the record.
+      1 LSEALED LABEL@ ADR,  0 2 MOVZ,  2 SEALED-MSG-LEN MOVZ,  NR-WRITE SYS,
       14 5 16 LDR,
       6 DNAME-EXT LIT64,  6 14 6 AND,
       2 14 0 ADDI,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,          \ x2 = name length
@@ -8214,7 +8215,7 @@ ardone LBL,
       6 winl CBZ,  1 5 24 LDR,                          \ EXT: [24] points at them
       winl LBL,
       0 2 MOVZ,  NR-WRITE SYS,
-      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 NL-LEN MOVZ,  NR-WRITE SYS,
+      LSRCAT LABEL@ BL,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    wbad LBL,
       1 wmsg ADR,  0 2 MOVZ,  2 mu MOVZ,  NR-WRITE SYS,
@@ -12451,27 +12452,43 @@ public
 \ catchable throw of that code via LEVALREC (HIDX skips any rolled-back record
 \ index); at top level it exit_group(x0). x15 carries the code (the kernel
 \ preserves x2-x15).
-\ The location is printed here and nowhere else: die sites write their message
-\ without a newline, and this tail appends ` at <path>:<line>` when a source
-\ file is open, then the newline. <path> is the innermost include frame's
-\ (src/core/include.f SRCLOC:PATH-CELL/PATHLEN-CELL; 0 at the tty REPL, under
-\ `-e` and in the boot prefix). <line> is 1 + the newlines in
-\ [SRCLOC:INB-CELL, INP-CELL): an include evaluates the file as one buffer, and
-\ a string `evaluate`d inside a file counts within that string while the path
-\ stays the file's (docs/debugging.md). x0-x2 and x9-x14 are scratch.
+\ The location is printed by LSRCAT and nowhere else: die sites write their
+\ message without a newline, and LSRCAT appends the place, then the newline.
+\ With a source file open the place is ` at <path>`, the innermost include
+\ frame's (src/core/include.f SRCLOC:PATH-CELL/PATHLEN-CELL). With no include
+\ frame open the path is 0 and no place is printed: the root source stream's own
+\ text (src/habu/main.f: stdin, tty or piped, or a plain `hb <file>`) and the
+\ boot prefix. `:<line>` follows under the rule SRCLOC:FILE-BUFFER? states,
+\ tested here in machine code: <line> is 1 + the newlines in
+\ [SRCLOC:OWNED-CELL, INP-CELL). LSRCAT is a leaf: x0-x2 and x9-x14 are
+\ scratch, and a fail-closed site
+\ (C-SEAL-PACKAGE-FAIL, EMIT-STORE-DEF-NAME, EM-AOTWIDGATE) calls it before its
+\ own exit_group.
 : EM-COMPILE-DIE ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: ldie:label rdie:label noloc:label located:label nlloop:label nldone:label digloop:label :}
    LBL S" hb: definition while a checker replay is open: " {: omsg:label oma:ptr omu:n :}
    LBL {: dpbad-end:label :}
    LCOMPILEDIE LABEL@ LBL,                                  \ entry: x0 = sysexits exit/throw code (die site just wrote its diagnostic, newline NOT written)
    15 0 0 ADDI,                                             \ x15 = code (LEVALREC delivers it as the throw code)
+   LSRCAT LABEL@ BL,
+   9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> no eval frame (top level / tty REPL); EVALD>0 -> unwind escaped eval frames
+      10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
+   ldie LBL,
+   LREPLROUTE LABEL@ BL,  9 rdie CBZ,
+      LRREC LABEL@ B,                                       \ -> EM-REPL-RECOVER: roll back to the REPL line-start snapshot (same CP/NDICT/DP/XDS/compile-state surface + HIDX stale-skip as the eval-frame recovery) and re-read
+   rdie LBL,
+   0 15 0 ADDI,                                             \ restore code after the route's ioctl
+   NR-EXIT-GROUP SYS,
+   LSRCAT LABEL@ LBL,
    9 DATA SRCLOC:PATHLEN-CELL LDR,  9 noloc CBZ,            \ no open source file -> newline only
       0 2 MOVZ,  1 LATMSG LABEL@ ADR,  2 ATMSG-LEN MOVZ,  NR-WRITE SYS,
       2 DATA SRCLOC:PATHLEN-CELL LDR,  1 DATA SRCLOC:PATH-CELL LDR,  0 2 MOVZ,  NR-WRITE SYS,
-      10 DATA SRCLOC:INB-CELL LDR,                          \ x10 = first byte of the buffer INP walks
+      10 DATA SRCLOC:OWNED-CELL LDR,  10 noloc CBZ,         \ x10 = the file's first owned byte; none -> the path alone
+      11 DATA SRCLOC:INB-CELL LDR,  11 10 CMP,  C-CC noloc BCOND,       \ the buffer starts before the file -> the path alone
+      12 DATA SRCLOC:OWNEDLEN-CELL LDR,  12 10 12 ADD,       \ x12 = the file's end
+      11 DATA INE-CELL LDR,  11 12 CMP,  C-HI noloc BCOND,  \ the buffer ends past the file -> the path alone
       11 DATA INP-CELL LDR,                                 \ x11 = the cursor at the die
       12 1 MOVZ,                                            \ x12 = line, 1-based
-      10 nldone CBZ,                                        \ no buffer start recorded -> line 1
       nlloop LBL,
          10 11 CMP,  C-CS nldone BCOND,
          13 10 0 LDRB,  10 10 1 ADDI,
@@ -12494,14 +12511,7 @@ public
    noloc LBL,
    0 2 MOVZ,  1 LOPENNL LABEL@ ADR,  2 NL-LEN MOVZ,  NR-WRITE SYS,
    located LBL,
-   9 DATA EVALD-CELL LDR,  9 ldie CBZ,                      \ EVALD==0 -> no eval frame (top level / tty REPL); EVALD>0 -> unwind escaped eval frames
-      10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (escaped-frame unwind + deliver x15)
-   ldie LBL,
-   LREPLROUTE LABEL@ BL,  9 rdie CBZ,
-      LRREC LABEL@ B,                                       \ -> EM-REPL-RECOVER: roll back to the REPL line-start snapshot (same CP/NDICT/DP/XDS/compile-state surface + HIDX stale-skip as the eval-frame recovery) and re-read
-   rdie LBL,
-   0 15 0 ADDI,                                             \ restore code after the route's ioctl
-   NR-EXIT-GROUP SYS,
+   RET,
    \ Counted-string-too-long diagnostic for the four c"/c\" cap sites
    \ (C-ICQ/C-EICQ/C-CQ/C-ECQ): a named fd-2 label, then LCOMPILEDIE with x0=76
    \ (catchable inside evaluate, exit 76 at top level).
@@ -13312,14 +13322,13 @@ package LABELS
    LBL LQNEST !  LBL LQNESTMSG !  LBL LQNESTUNIT !  LBL LSEMIQMSG !  LBL LSEMICFMSG !  LBL LINCOMPMSG !
    LBL LSRCEND !  LBL LSRCENDMSG !  LBL LCOMEND !  LBL LCOMENDMSG !
    LBL LSRCCLOSE !  LBL LSRCCLOSEMSG !
-   LBL LCOMPILEDIE !
+   LBL LCOMPILEDIE !  LBL LSRCAT !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL RELOC-EMIT:LCALLMSG ! LBL RELOC-EMIT:LXTMSG ! LBL RELOC-EMIT:LXTHEADERMSG !
    LBL RELOC-EMIT:LADDRMSG !
    LBL RELOC-EMIT:LXTBANDMSG !  LBL RELOC-EMIT:LXTKINDMSG !
-   LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !  LBL LSIGBAD !  LBL LATMSG !
-   LBL LPROTPUB !  LBL LPROTAOT !
+   LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !  LBL LSIGBAD !  LBL LSEALED !  LBL LATMSG !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !  LBL LADDSUBIMM !  LBL LADDSUBBIG !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;

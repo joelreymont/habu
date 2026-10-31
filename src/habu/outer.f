@@ -331,16 +331,18 @@ create NL NEWLINE c,
    ERROR-TEXT:TYPE TOKEN$ ERROR-TEXT:TYPE NL 1 ERROR-TEXT:TYPE
    RC-REJECT throw ;
 
-\ The line the cursor is on.
+\ The line the cursor is on, counted from the open file's first owned byte.
 : LINE ( -- n )
-   SRCLOC:INB-CELL ADDR@ INP-CELL ADDR@ ERROR-TEXT:LINE ;
+   SRCLOC:OWNED-CELL ADDR@ INP-CELL ADDR@ ERROR-TEXT:LINE ;
 
-\ ` at <path>:<line>` while a source file is open.
+\ The place, as the engine's twin habu2.f LSRCAT prints it: ` at <path>` while
+\ a source file is open, and `:<line>` after it under SRCLOC:FILE-BUFFER?.
 : AT-SOURCE ( -- )
    SRCLOC:PATHLEN-CELL CELL@ {: u:n :}
    u 0= if exit then
    s"  at " ERROR-TEXT:TYPE
    SRCLOC:PATH-CELL ADDR@ u ERROR-TEXT:TYPE
+   SRCLOC:FILE-BUFFER? 0= if exit then
    s" :" ERROR-TEXT:TYPE
    LINE ERROR-TEXT:DIGITS$ ERROR-TEXT:TYPE ;
 
@@ -369,6 +371,12 @@ create NL NEWLINE c,
    a u ERROR-TEXT:TYPE  NL 1 ERROR-TEXT:TYPE
    0 EXIT-HOOK-CELL CELL!
    s" " rc die ;
+
+\ A sealed package's refusal ends the process with its code, the token and
+\ where it stands (habu2.f C-SEAL-PACKAGE-FAIL, EMIT-STORE-DEF-NAME).
+: SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" E-SEALED-PACKAGE: " ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  AT-SOURCE
+   s" " ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
 \ A keyword that changes the dictionary or its scope, run on a task's thread
 \ (TASK-TCB-CELL nonzero), ends the process, the keyword its whole diagnostic
@@ -875,7 +883,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
    [: FIRST-BYTE TOP-EV-CHAR 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
 \ The engine's twin: habu2.f C-QUALIFY-SEAL-GUARD. A part's head answers its path
-\ `A:head`, which names no sealed package; the token is the whole diagnostic line.
+\ `A:head`, which names no sealed package; a sealed one ends in SEALED-FAIL.
 : SEAL-GUARD ( -- )
    SEAL-NDICT@ 0= if exit then
    TOKEN$ {: a:ptr u:n :}
@@ -885,7 +893,7 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
    a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? if row XREF-NAME$ else a q then
    CHECKER-SEALED-PKG? 0= if exit then
-   a u ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
+   a u SEALED-FAIL ;
 
 \ The active checker owner supplies the trusted-only query, not a source name.
 \ Mirror C-TRUSTED-TICK?'s cold-prefix and replacement-checker windows.

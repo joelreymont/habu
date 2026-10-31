@@ -266,6 +266,18 @@ variable WANT-RC
    S\" 1\n" s" undefined" GE-EXPECT-OUT
    s" E-UNDEFINED: OI-NOPE at " S\" oi-undefined.f:1\n" ERR-AT ;
 
+\ A slice of the file's own bytes that the Habu loop evaluates is file text, so
+\ its refusal names the file's line of the token. The loop's evaluate is
+\ OUTER:EVAL-FRAMED by name: `evaluate` is the engine's except on x86-64
+\ (src/habu/interpret.f INSTALL-EVALUATE).
+: UNDEFINED-SLICE ( -- )
+   GE-SRC-RESET
+   GE-SRC-LF GE-SRC-LF
+   s" parse-name OI-NOPE OUTER:EVAL-FRAMED" GE-SRC-LINE
+   s" oi-undefined-slice.f" HABU
+   70 s" undefined slice" GE-EXPECT-RC
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-undefined-slice.f:3\n" ERR-AT ;
+
 \ Out of range, a number's spelling is undefined though a word has that name.
 : OUT-OF-RANGE ( -- )
    GE-SRC-RESET
@@ -426,7 +438,7 @@ variable WANT-RC
    s" oi-evaluate-outer-catch.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 42\n70\n10\n11\n" CASE$ GE-EXPECT-OUT
-   s" E-UNDEFINED: OI-GONE at " S\" oi-evaluate-outer-catch.f:1\n" ERR-AT
+   s" E-UNDEFINED: OI-GONE at " S\" oi-evaluate-outer-catch.f\n" ERR-AT
    GE-SRC-RESET
    s" 1 set-tier : OI-T42 ( -- ) 42 throw ;" GE-SRC-LINE
    s" TRUSTED: OI-AT-THROW ( -- ) s~ OI-T42 12 .~ evaluate ;" QLINE
@@ -530,7 +542,7 @@ variable WANT-RC
    s" oi-tick-undefined-caught.f" BOTH
    s" tick undefined caught" GE-EXPECT-OK
    S\" 70\n0\n" s" tick undefined caught" GE-EXPECT-OUT
-   s" E-UNDEFINED: OI-NOPE at " S\" oi-tick-undefined-caught.f:1\n" ERR-AT
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-tick-undefined-caught.f\n" ERR-AT
    GE-SRC-RESET
    s" 1 . ' OI-NOPE 2 ." GE-SRC-LINE
    s" oi-nested-tick.f" NESTED-BUF GT-PATH NESTED-U !
@@ -583,6 +595,13 @@ variable WANT-RC
 \ A fail-closed exit that names a token: stderr is that token and a newline.
 : ERR-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    SB-RESET  a u SB-APPEND  GE-SB-LF
+   SB$ CASE$ GE-EXPECT-ERR ;
+
+\ The whole of stderr is the sealed package's refusal of token t at the case
+\ file's line 2, under the canonical path the engine prints.
+: SEALED-LINE ( ptr u8 n -- ) {: t:ptr u:n :}
+   SB-RESET  s" E-SEALED-PACKAGE: " SB-APPEND  t u SB-APPEND  s"  at " SB-APPEND
+   CASE$ SOURCE-ROOT:CANONICAL drop SB-APPEND  s" :2" SB-APPEND  GE-SB-LF
    SB$ CASE$ GE-EXPECT-ERR ;
 
 \ No closing quote: the refusal names the keyword's line, not the end's.
@@ -652,8 +671,8 @@ variable WANT-RC
    s" oi-tick-no-name.f" BOTH
    74 s" hb: reader keyword needs a name: ' at " S\" oi-tick-no-name.f:4\n" DIED-AT ;
 
-\ ' of a token qualified by a sealed package ends the process, the token its
-\ whole diagnostic line. Every package the engine seals is asked once, in
+\ ' of a token qualified by a sealed package ends the process with the sealed
+\ package's refusal of the token. Every package the engine seals is asked once, in
 \ assorted case, and a second colon does not spare the token. The exit is
 \ fail-closed: the exit hook the program armed, `cr` (in src/habu/layout.f
 \ EXIT-HOOK-CELL), does not run.
@@ -663,7 +682,7 @@ variable WANT-RC
    s" ' " GE-SRC+ t u GE-SRC-LINE
    s" oi-sealed.f" BOTH
    ENGINE-ERROR:SEAL-PACKAGE t u GE-EXPECT-RC
-   t u ERR-LINE ;
+   t u SEALED-LINE ;
 
 : SEALED-PACKAGES ( -- )
    s" tfam:x" SEALED
@@ -1137,7 +1156,7 @@ variable WANT-RC
    s" oi-pkg-evaluate.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 70\n0\n5\n" CASE$ GE-EXPECT-OUT
-   s" E-UNDEFINED: OI-NOPE at " S\" oi-pkg-evaluate.f:1\n" ERR-AT
+   s" E-UNDEFINED: OI-NOPE at " S\" oi-pkg-evaluate.f\n" ERR-AT
    GE-SRC-RESET
    PKG-VS-LINE
    s" package OI-P" GE-SRC-LINE
@@ -1282,9 +1301,9 @@ variable WANT-RC
    76 s" hb: code space full at: OI-LONG-NAMED-TWIN at " S\" oi-export-code-full.f:1\n" CODE-DIED-AT ;
 
 \ `package` of a sealed package's name, or of a package whose public wordlist
-\ is protected, ends the process, the name its whole diagnostic line; so does
-\ `export` into a protected wordlist, naming its guard and the word. The exit
-\ is fail-closed: the exit hook the program armed, `cr`, does not run.
+\ is protected, ends the process with the sealed package's refusal of the name;
+\ so does `export` into a protected wordlist, of the word. The exit is
+\ fail-closed: the exit hook the program armed, `cr`, does not run.
 : ARMED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
    s" ' OI-CR OI-ARM" GE-SRC-LINE
@@ -1294,11 +1313,11 @@ variable WANT-RC
 
 : PROTECTED-PACKAGES ( -- )
    s" package ENGINE-ERROR" s" oi-sealed-package.f" ARMED
-   s" ENGINE-ERROR" ERR-LINE
+   s" ENGINE-ERROR" SEALED-LINE
    s" package OI-EX public get-current prot-wid-add ;package package OI-EX" s" oi-protected-package.f" ARMED
-   s" OI-EX" ERR-LINE
+   s" OI-EX" SEALED-LINE
    s" package OI-EX public get-current prot-wid-add export OI-TWO" s" oi-protected-export.f" ARMED
-   S\" hb: cannot publish into protected word: OI-TWO\n" CASE$ GE-EXPECT-ERR ;
+   s" OI-TWO" SEALED-LINE ;
 
 \ ---- with a task running --------------------------------------------------------------
 \ The main thread compiles while a task runs: a literal that keeps its text in
@@ -1393,7 +1412,7 @@ variable WANT-RC
    INC-LINE
    s" s~ : OI-T0 ( -- ) OI-INC~ evaluate" QLINE
    s" oi-tier-0-body.f" HABU
-   74 s" hb: source ended inside definition: OI-T0 at " S\" oi-tier-0-body.f:1\n" DIED-AT ;
+   74 s" hb: source ended inside definition: OI-T0 at " S\" oi-tier-0-body.f\n" DIED-AT ;
 
 : HEAD-TASK-RUNNING ( -- )
    SPIN-PRELUDE
@@ -1458,11 +1477,11 @@ variable WANT-RC
 \ with no native compiler installed end the process without the exit hook.
 : HEAD-FAIL-CLOSED ( -- )
    s" 1 set-tier : tfam:x" s" oi-head-sealed.f" ARMED
-   s" tfam:x" ERR-LINE
+   s" tfam:x" SEALED-LINE
    s" 1 set-tier package OI-EX public get-current prot-wid-add ;package : OI-EX:OI-T" s" oi-head-protected.f" ARMED
-   S\" hb: cannot publish into protected word: OI-EX:OI-T\n" CASE$ GE-EXPECT-ERR
+   s" OI-EX:OI-T" SEALED-LINE
    s" 1 set-tier package OI-EX public get-current prot-wid-add : OI-T" s" oi-head-protected-current.f" ARMED
-   S\" hb: cannot publish into protected word: OI-T\n" CASE$ GE-EXPECT-ERR
+   s" OI-T" SEALED-LINE
    GE-SRC-RESET
    s" ' OI-CR OI-ARM" GE-SRC-LINE
    s" 1 set-tier 0 data-base NCOMP-DISPATCH:XT-CELL + ! : OI-T ( -- )" GE-SRC-LINE
@@ -1532,7 +1551,7 @@ variable WANT-RC
 \ An exit hook compiled in the unit a pending head holds open runs at exit,
 \ after the input ending inside the head's definition is refused. The head is
 \ each loop's own at tier 1, then the engine's at tier 0 through evaluate,
-\ whose refusal is at its string's line.
+\ whose refusal names the file alone.
 : PENDING-HOOK ( -- )
    GE-SRC-RESET
    UNIT-START
@@ -1547,10 +1566,10 @@ variable WANT-RC
    s" s~ : OI-X ( -- ) 1~ evaluate" QLINE
    s" oi-pending-hook-tier-0.f" BOTH
    S\" 7\n" CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-X at " S\" oi-pending-hook-tier-0.f:1\n" DIED-AT ;
+   74 s" hb: source ended inside definition: OI-X at " S\" oi-pending-hook-tier-0.f\n" DIED-AT ;
 
 \ An evaluate in a running word that leaves a head pending is refused at its
-\ own end, at its string's line: the word runs no further.
+\ own end, naming the file alone: the word runs no further.
 : EVALUATE-HEAD ( -- )
    GE-SRC-RESET
    UNIT-START
@@ -1558,7 +1577,7 @@ variable WANT-RC
    s" OI-SPLIT 41 OI-Y ." GE-SRC-LINE
    s" oi-evaluate-head.f" BOTH
    s" " CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-Y at " S\" oi-evaluate-head.f:1\n" DIED-AT ;
+   74 s" hb: source ended inside definition: OI-Y at " S\" oi-evaluate-head.f\n" DIED-AT ;
 
 \ A file an immediate word includes while its definition is pending ends inside
 \ that definition without having opened it, and the file that included it ends
@@ -1602,7 +1621,7 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" 74\n1\n5\n6\n" CASE$ GE-EXPECT-OUT
    s" hb: source ended inside definition: OI-HELD at " CASE$ GE-EXPECT-ERR-HAS
-   S\" oi-caught-head.f:1\n" CASE$ GE-EXPECT-ERR-HAS ;
+   S\" oi-caught-head.f\n" CASE$ GE-EXPECT-ERR-HAS ;
 
 \ The loop compiled at tier 1: in the engine's run the require is the first
 \ load of src/habu/interpret.f, whose literal and hook quotations each reach
@@ -1659,16 +1678,16 @@ variable WANT-RC
    HB-TARGET-LINUX-X86-64? 0= if
       s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
       s" oi-immediate-semi.f" IMMEDIATE-SEMI
-      74 s" hb: source closed a definition it did not open: OI-F at " S\" oi-immediate-semi.f:1\n" DIED-AT
+      74 s" hb: source closed a definition it did not open: OI-F at " S\" oi-immediate-semi.f\n" DIED-AT
    then
    s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
    s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI
    74 s" hb: source closed a definition it did not open: OI-F at "
-   S\" oi-immediate-semi-tier-1.f:1\n" DIED-AT
+   S\" oi-immediate-semi-tier-1.f\n" DIED-AT
    s" 1 set-tier" s" : OI-F ( n -- n ) OI-M 40 OI-G OI-F ."
    s" oi-immediate-semi-loop.f" IMMEDIATE-SEMI
    74 s" hb: source closed a definition it did not open: OI-F at "
-   S\" oi-immediate-semi-loop.f:1\n" DIED-AT ;
+   S\" oi-immediate-semi-loop.f\n" DIED-AT ;
 
 \ A body past BODYBUF-CAP refuses, naming the definition and the size the
 \ capture needed.
@@ -1845,7 +1864,7 @@ variable WANT-RC
    s" s~ : OI-T0 ( -- ) OI-INC~ evaluate" QLINE
    s" oi-body-immediate-tier-0.f" HABU
    S\" 1\n9\n" CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-T0 at " S\" oi-body-immediate-tier-0.f:1\n" DIED-AT ;
+   74 s" hb: source ended inside definition: OI-T0 at " S\" oi-body-immediate-tier-0.f\n" DIED-AT ;
 
 \ ---- `does>` in a body --------------------------------------------------------------
 \ `does>` is matched with its A-Z folded and joins the capture, and DOESB takes
@@ -2237,6 +2256,7 @@ private
    NOT-A-COMMENT
    BLANK-INPUT
    UNDEFINED
+   UNDEFINED-SLICE
    OUT-OF-RANGE
    UNDERFLOW
    UNDERDEPTH

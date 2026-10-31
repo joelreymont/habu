@@ -54,15 +54,16 @@ variable RC
 : PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
    OUT$ a u CONTAINS? SHOW TTRUE ;
 
-\ This file: SUBJECT:RUN evaluates a session's one-line text while the file
-\ loads, so a refusal the session locates stands on its line 1.
+\ This file: SUBJECT:RUN evaluates a session's text, which is not this file's bytes,
+\ while the file loads, so a refusal in it names the file alone
+\ (SRCLOC:FILE-BUFFER?).
 SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
-\ Text a, then `<this file>:1` and a newline.
+\ Text a, then `<this file>` and a newline.
 : HERE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SB-APPEND
    LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
-   S\" :1\n" SB-APPEND ;
+   S\" \n" SB-APPEND ;
 
 \ ---- sessions: `0 set-check` at a native tier --------------------------------
 : SUBJECT-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}

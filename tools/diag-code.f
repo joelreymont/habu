@@ -51,6 +51,8 @@ private
       construct shape source-span s" unknown_rejection" s" " EXIT THEN
    c u s" E-MISSING-SIGNATURE" STR= IF
       construct shape source-span s" add_signature" s" " EXIT THEN
+   c u s" E-SEALED-PACKAGE" STR= IF
+      construct shape source-span s" use_own_package" s" " EXIT THEN
    c u s" E-UNTERMINATED-STRING" STR= IF
       construct shape source-span s" close_string" s" " EXIT THEN
    c u s" E-MISSING-SOURCE" STR= IF

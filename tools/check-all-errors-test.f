@@ -178,6 +178,13 @@ create CAE-LF-BYTE 10 c,
    s" PRIM: CAE-ROW-BAD PE-N PE-IN" SB-APPEND CAE-LF
    SB$ ;
 
+\ The engine's own package NDICT, reopened at line 1, column 9.
+: CAE-SEALED-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package NDICT" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-DUP-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" : CAE-DUP ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
@@ -324,6 +331,14 @@ create CAE-LF-BYTE 10 c,
    s" 2" SB-APPEND
    SB$ ;
 
+: CAE-PROSE-SEALED$ ( -- ptr u8 n )
+   SB-RESET
+   s" E-SEALED-PACKAGE " SB-APPEND
+   CAE-IN SB-APPEND
+   s" :1:9: sealed package at 'NDICT'" SB-APPEND
+   CAE-LF
+   SB$ ;
+
 \ The prose names the code, the file, line and column of the opener, and the
 \ opener.
 : CAE-PROSE-BAD-ROW$ ( -- ptr u8 n )
@@ -383,6 +398,9 @@ create CAE-LF-BYTE 10 c,
 : CAE-RUN-BUF-ACT ( -- )
    CAE-RUN$ CAE-BUF-SRC$ CHECK-ALL-ERRORS:BUF ;
 
+: CAE-RUN-COMPOSE-ACT ( -- )
+   CAE-BUF-SRC$ CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS:COMPOSE-BUF ;
+
 : CAE-CORE-CAPTURE ( ptr u8 n -- n n n )
    CAE-RUN!
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
@@ -405,6 +423,16 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
    0 1 = CHECK-ALL-ERRORS:JSON!
    [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
+
+\ The source composed as the file CAE-IN, as tools/check.f checks a file, in
+\ JSON or prose.
+: CAE-COMPOSE-CAPTURE ( ptr u8 n bool -- n n n ) {: json:bool :}
+   CAE-BUF-SRC!
+   CAE-IN CAE-RUN!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   json CHECK-ALL-ERRORS:JSON!
+   [: CAE-RUN-COMPOSE-ACT ;] catch CAE-RC !
    0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
 
 : CAE-ARGV-CHECK ( ptr u8 n -- ) {: file:ptr fileu :}
@@ -588,6 +616,30 @@ create CAE-LF-BYTE 10 c,
    CAE-OUT outu CAE-EMPTY$ T$=
    s" bad-registry-row prose code" T-LABEL
    CAE-ERR erru CAE-PROSE-BAD-ROW$ T$= ;
+
+\ A sealed package's reopening is named for what it is, with no throw number.
+\ The check asks the seal only of a source it composes.
+: CAE-TEST-SEALED-JSON ( -- )
+   s" sealed-package-json" CAE-CASE!
+   CAE-SEALED-SOURCE$ true CAE-COMPOSE-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" sealed-package stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" sealed-package code" T-LABEL
+   CAE-ERR erru S\" \qcode\q:\qE-SEALED-PACKAGE\q" CONTAINS? TTRUE
+   s" sealed-package class" T-LABEL
+   CAE-ERR erru S\" \qrepair_class\q:\quse_own_package\q" CONTAINS? TTRUE
+   s" sealed-package token" T-LABEL
+   CAE-ERR erru S\" \qtoken\q:\qNDICT\q" CONTAINS? TTRUE
+   s" sealed-package has no throw number" T-LABEL
+   CAE-ERR erru S\" \qthrow_code\q" CONTAINS? TFALSE ;
+
+: CAE-TEST-SEALED-PROSE ( -- )
+   s" sealed-package-prose" CAE-CASE!
+   CAE-SEALED-SOURCE$ false CAE-COMPOSE-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" sealed-package prose stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" sealed-package prose" T-LABEL
+   CAE-ERR erru CAE-PROSE-SEALED$ T$= ;
 
 : CAE-TEST-CLI-SMOKE ( -- )
    s" cli-smoke" CAE-CASE!
@@ -1031,6 +1083,8 @@ public
    s" duplicate-shrunk" [: CAE-TEST-DUP-SHRUNK ;] CAE-CASE-RUN
    s" bad-registry-row-json" [: CAE-TEST-BAD-ROW-JSON ;] CAE-CASE-RUN
    s" bad-registry-row-prose" [: CAE-TEST-BAD-ROW-PROSE ;] CAE-CASE-RUN
+   s" sealed-package-json" [: CAE-TEST-SEALED-JSON ;] CAE-CASE-RUN
+   s" sealed-package-prose" [: CAE-TEST-SEALED-PROSE ;] CAE-CASE-RUN
    s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
    s" cli-refusals" [: CAE-TEST-CLI-REFUSALS ;] CAE-CASE-RUN
    FS:CLEANUP-RUN

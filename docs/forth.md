@@ -185,10 +185,11 @@ private
   and public words unqualified and add exports. Load order is still dependency
   order.
 - A package the engine bakes is sealed: on `bin/hb`, reopening it or defining
-  into either of its wordlists is refused naming the package or word, and
-  `tools/check.f` refuses it as `E-STATEMENT-THROW`. Use its public words
-  qualified or through `using`. An application image keeps its own packages
-  reopenable.
+  into either of its wordlists exits 84 with
+  `E-SEALED-PACKAGE: <name> at <file>:<line>`, naming the package or word, and
+  `tools/check.f` refuses it as `E-SEALED-PACKAGE` at the name. Use its public
+  words qualified or through `using`. An application image keeps its own
+  packages reopenable.
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal
@@ -1853,11 +1854,12 @@ ceiling is a named constant beside the code that enforces it.
   the interpret-mode string literals that keep their text (all but `."`)
   advance the dictionary pointer. Past the DATA reservation: `hb: data space out
   of range: DP <dp> of <cap> bytes`, catchable inside `evaluate`, both numbers
-  offsets from `data-base`, with ` at <path>:<line>` when a source file is
-  open. Hold bulk data in `MEM:ALLOC-BYTES` or a `DYNAMIC-BUFFER`, which map
-  their own pages, not in the dictionary. On a task's thread every one of
-  these sinks exits before it writes, as do `evaluate` and `evaluate-closed`;
-  the main thread uses them while tasks run (the `src/lib/task.f` header).
+  offsets from `data-base`, then the place [debugging.md](debugging.md) "Where
+  a load refusal happened" states. Hold bulk data in `MEM:ALLOC-BYTES` or a
+  `DYNAMIC-BUFFER`, which map their own pages, not in the dictionary. On a
+  task's thread every one of these sinks exits before it writes, as do
+  `evaluate` and `evaluate-closed`; the main thread uses them while tasks run
+  (the `src/lib/task.f` header).
 
 ## Constants
 

@@ -1887,14 +1887,15 @@ $180000 constant LARGE-STDIN-LEN
 \ bakes). The load refuses a definition into one at its name, before a colon
 \ definition's body, and the package's reopening at the package's name, exit
 \ 84 (ENGINE-ERROR:SEAL-PACKAGE). SRC, as the fixture NAME, loads with exit 84,
-\ and the check stops at TOK, on LINE at COLUMN, with that code.
+\ and the check stops at TOK, on LINE at COLUMN, with E-SEALED-PACKAGE and no
+\ throw number.
 : SEALED-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
    name nameu src srcu FIXTURE
    name nameu T-LABEL name nameu AT$ NATIVE-RC 84 T=
    src srcu name nameu GUARD-MS CHECK-AS
-   name nameu tok toku s" E-STATEMENT-THROW" line lineu col colu REFUSED-AT
-   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" NUMBER$ s" 84" T$= ;
+   name nameu tok toku s" E-SEALED-PACKAGE" line lineu col colu REFUSED-AT
+   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" GJA-FIELD? nip TFALSE ;
 
 \ A deferred word and a cast read their signature before the seal is asked: an
 \ unclosed one in SRC, as the fixture NAME, ends the load with exit 76, and the

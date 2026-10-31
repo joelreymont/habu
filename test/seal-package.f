@@ -16,6 +16,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test/subject.f
 require src/lib/engine-candidate.f
+require src/habu/layout.f
 require test/tail-parity.f
 
 package SEAL-TEST
@@ -38,6 +39,8 @@ create SPK-IN SPK-CAP allot          \ stdin-piped forge source
 create SPK-OUT SPK-CAP allot
 create SPK-ERR SPK-CAP allot
 create SPK-EMPTY 1 allot             \ zero-length stdin
+create SPK-WANT SPK-CAP allot        \ the stderr line a parity run must print
+variable SPK-WANT-U
 
 : SPK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
    u PATH-CAP > if E-FS-CAPACITY throw then
@@ -182,8 +185,12 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    a SPK-IN u BYTE-COPY
    u SPK-IN-U ! ;
 
-\ Each case runs in a SUBJECT fork and must match a direct --load and a stdin
-\ run, the two cold-prefix entry paths.
+\ The parity cases run each program three ways: a direct --load, piped to
+\ stdin (the two cold-prefix entry paths), and in a SUBJECT fork that
+\ evaluates it while this file loads. A refusal's stdout and rc are the same
+\ all three ways and its stderr line names each way's own place: the --load
+\ file and its line, nothing on stdin, and this file alone for the evaluated
+\ text. A program that runs leaves the same stdout, stderr and rc each way.
 : SPK-RUN-LOAD ( ptr u8 n -- ) {: src:ptr u:n :}
    SPK-CHILD src u FS:WRITE-ALL
    PROC-ARGV-RESET
@@ -219,17 +226,40 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-RESULT ( -- ptr u8 n ptr u8 n n )
    SPK-OUT SPK-OUT-U @ SPK-ERR SPK-ERR-U @ SPK-RC @ ;
 
-: NEG-LOAD ( ptr u8 n -- )
-   2dup SPK-RUN-LOAD SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-PARITY:SNAPSHOT
-   SPK-SUBJECT SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-PARITY:SAME ;
+\ This file's path as the engine prints it while the file loads.
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL SPK-LOADING
+: SPK-LOADING$ ( -- ptr u8 n )
+   SPK-LOADING @ data-base SRCLOC:PATHLEN-CELL + @ ;
 
-: NEG-STDIN ( ptr u8 n -- )
-   2dup SPK-RUN-STDIN SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-PARITY:SNAPSHOT
-   SPK-SUBJECT SPK-ASSERT-SEAL
-   SPK-RESULT TAIL-PARITY:SAME ;
+: SPK-WANT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   SPK-WANT-U @ u + SPK-CAP > if E-STR-CAPACITY throw then
+   a SPK-WANT SPK-WANT-U @ + u BYTE-COPY
+   SPK-WANT-U @ u + SPK-WANT-U ! ;
+
+\ Starts the refusal line of `package TFAM`; SPK-ASSERT-WANT ends it.
+: SPK-WANT-OPEN ( -- )
+   0 SPK-WANT-U !  s" E-SEALED-PACKAGE: TFAM" SPK-WANT+ ;
+
+: SPK-ASSERT-WANT ( -- )
+   S\" \n" SPK-WANT+
+   SPK-ERR SPK-ERR-U @ SPK-WANT SPK-WANT-U @ T$= ;
+
+\ The result with an empty stderr, for parity of stdout and rc alone.
+: SPK-OUT-RC ( -- ptr u8 n ptr u8 n n )
+   SPK-OUT SPK-OUT-U @ SPK-EMPTY 0 SPK-RC @ ;
+
+: NEG-PLACES ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u SPK-RUN-LOAD SPK-ASSERT-SEAL
+   SPK-WANT-OPEN  s"  at " SPK-WANT+  SPK-CHILD SPK-WANT+  s" :1" SPK-WANT+
+   SPK-ASSERT-WANT
+   SPK-OUT-RC TAIL-PARITY:SNAPSHOT
+   src u SPK-RUN-STDIN SPK-ASSERT-SEAL
+   SPK-WANT-OPEN SPK-ASSERT-WANT
+   SPK-OUT-RC TAIL-PARITY:SAME
+   src u SPK-SUBJECT SPK-ASSERT-SEAL
+   SPK-WANT-OPEN  s"  at " SPK-WANT+  SPK-LOADING$ SPK-WANT+
+   SPK-ASSERT-WANT
+   SPK-OUT-RC TAIL-PARITY:SAME ;
 
 : POS-LOAD ( ptr u8 n -- )
    2dup SPK-RUN-LOAD SPK-ASSERT-OK
@@ -238,10 +268,8 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-RESULT TAIL-PARITY:SAME ;
 
 : SPK-PARITY-TEST ( -- )
-   s" direct --load and subject preserve raw sealed-package results" T-LABEL
-   s" TFAM" SPK-PKG-FORGE$ NEG-LOAD
-   s" direct stdin and subject preserve raw sealed-package results" T-LABEL
-   s" TFAM" SPK-PKG-FORGE$ NEG-STDIN
+   s" --load, stdin and subject name each one's place for a sealed package" T-LABEL
+   s" TFAM" SPK-PKG-FORGE$ NEG-PLACES
    s" direct --load and subject preserve raw successful results" T-LABEL
    SPK-OK-PKG-FORGE$ POS-LOAD ;
 
