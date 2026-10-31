@@ -73,7 +73,12 @@ entry.
   second storage area across the engine, compiler and build cache), Joel
   answered "i want you to mark each cell AND record this decision in case we
   want to go back to option 2 where scratch storage lives apart", and named
-  the marking word `scratch-cell-mark`, beside ptr-cell-mark.
+  the marking word `scratch-cell-mark`, beside ptr-cell-mark. Shown that the
+  only scratch cells holding an address at the engine save are the opcode-name
+  tables of src/compiler/native/a64ir.f and hir.f, which mark their cells by
+  hand, Joel chose "Add the word": `PERSISTED-PTR-U8-TABLE ( n -- )`, the
+  persisted twin of PTR-U8-TABLE, declares a table whose cells keep their
+  addresses across a save.
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
