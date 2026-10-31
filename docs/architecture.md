@@ -102,7 +102,8 @@ at all.
 ## Interpreter
 
 **One interpreter.** The interpret loop, definers, packages and source loading
-are written once in typed Habu and run on every platform.
+are written once in typed Habu. A target that does not run them yet keeps the
+kernel's own bodies for them (`src/habu/native-runtime.f`).
 
 **The loop is Forth's.** `INTERPRET` reads a token and looks it up. Outside a
 definition the word runs; inside one, an immediate word runs and any other word
