@@ -52,6 +52,12 @@ entry.
   other agents to quickly iterate on features. right now we are in rust cargo
   build times and it fucking sucks because we are forth!" A build whose cost
   is out of proportion has a defect to root-cause first.
+- 2026-10-31, startup reuse: asked to approve a public word that compares the
+  tree's source hashes with the engine's so hb-build could skip its 3.3 s
+  startup reload, Joel answered "why are we developing incremental building if
+  we are gonna check hashes of source files? one of the goals was incremental
+  building of habu itself". The reload goes through the incremental cache, not
+  a second mechanism.
 - 2026-10-27, evidence: "so make it happen in your branch and test it out!"
   and "you should be focusing on this, prove me wrong!" When a decision lacks
   evidence because a capability does not exist yet, build it in a branch and
