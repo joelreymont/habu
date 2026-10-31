@@ -13,3 +13,5 @@ Joel 2026-10-30 (interview): DEFLINEAR names follow the same package rules in th
 Feature design started on Fable (Plan, effort high) 2026-10-30 22:07 from the worker's findings; its choices go to Joel by interview, then one worker lane for both halves.
 
 Joel 2026-10-30 (interview): a package declares its linear type bare (`DEFLINEAR tail` inside the package; `DEFLINEAR PKG:tail` refused, 22 sites migrate); compiled units and saved images gain a public/private mark per linear type and record, all rebuilt, no version mark. Lead: tails lowercase only like family tails; a packaged linear type is stored under its folded `pkg:tail` key, as records are, so graph and owner-interface formats stay. Design and cut: /tmp/jerry-big/vrec-design-cut.md. Lane after the T0 release: it rewrites checker.f regions the stack edits.
+
+2026-10-31: workspace jerry-vrec retired; it held no edits. The lane starts from master in a new workspace after the T0 release.
