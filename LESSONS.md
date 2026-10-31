@@ -74,7 +74,16 @@ entry.
   and added "if we find that we are clashing too much then we ought to look
   into nested packages but that's about it". A subject's files reopen one
   package and call its shared words bare, in its private section; no third
-  section.
+  section. The same day, shown that 35 of the 40 compiler packages share
+  names with another (336 clashes, plus 315 arm64/x86-64 twins), Joel
+  answered "add nested packages but i approve the design": a package opened
+  inside another is its part, whose name and public words exist only inside
+  the parent. On names: "COMP and XCOMP are the compiler and cross-compiler
+  packages. CHECKER is fine". Asked which files XCOMP holds: "that is for you
+  to decide. do what's best for long term". The lead chose COMP for compiling
+  (front end, IR, T0 and every architecture's back end as parts, so each
+  engine compiles itself through COMP) and XCOMP for building an image for a
+  target. Joel chose "One level" of nesting: a part holds no parts.
 - 2026-10-31, a public SSE word: asked whether SSE:FEED's callback context
   may change from `ptr a` to `a`, so MCP passes its client record without a
   cast, Joel chose "Context becomes `a`".
