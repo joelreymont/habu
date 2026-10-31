@@ -286,6 +286,108 @@ create TEXT CAP allot                  variable TEXT-U
    S\" -8572\n" PRINTS
    s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS ;
 
+\ ---- the JIT drops a zero-verdict definition ---------------------------------
+\ These rows select the JIT, whose tier 0 drops the definition without a throw.
+: JIT-TEXT ( -- )
+   ZERO-TEXT  s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! " TEXT+ ;
+
+: GLOBAL-W+ ( -- ) s" : W-FORGET ( -- n ) 1 ; " TEXT+ ;
+: R-W+ ( -- ) s" package R-FORGET public : W-FORGET ( -- n ) 5 ; ;package " TEXT+ ;
+
+: SAYS-NOT ( ptr u8 n -- ) {: a:ptr u:n :}
+   ERR$ a u CONTAINS? 0= SHOW TTRUE ;
+
+\ The global and the used P-FORGET both export W-FORGET, so T-FORGET's
+\ reference is refused (E-USING-SHADOW-GLOBAL); a row of the dropped
+\ Q-FORGET:W-FORGET would bind it.
+: SHADOWED ( -- )
+   RC @ RC-REJECT T=
+   s" E-USING-SHADOW-GLOBAL" SAYS
+   OUT-U @ 0 T= ;
+
+: ZERO-CALL ( -- )
+   s" a dropped definition leaves a call to the engine's shadowed word" T-LABEL
+   JIT-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
+   s" : W-FORGET 3 ; : T-FORGET ( -- n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
+   TEXT$ SESSION  SHADOWED ;
+
+: ZERO-TICK ( -- )
+   s" a dropped definition leaves a tick to the engine's shadowed word" T-LABEL
+   JIT-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
+   s" : W-FORGET 3 ; : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;package " TEXT+
+   s" Q-FORGET:T-FORGET . cr" TEXT+
+   TEXT$ SESSION  SHADOWED ;
+
+\ Two used packages and a global: the engine's bare W-FORGET is ambiguous.
+: AMBIGUOUS-TEXT ( -- )
+   JIT-TEXT GLOBAL-W+ P-W+ R-W+ LIAR+ Q-USING-P+
+   s" using R-FORGET : W-FORGET 3 ; " TEXT+ ;
+
+: AMBIGUOUS ( -- )
+   OUT-U @ 0 T=
+   RC @ RC-REJECT T=
+   s" E-USING-AMBIGUOUS" SAYS
+   s" hb: uncaught throw code 7144" SAYS ;
+
+: ZERO-AMBIGUOUS-CALL ( -- )
+   s" a dropped definition leaves a call to the engine's ambiguous word" T-LABEL
+   AMBIGUOUS-TEXT
+   s" : T-FORGET ( -- n ) W-FORGET ; ;using ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
+   TEXT$ SESSION  AMBIGUOUS ;
+
+: ZERO-AMBIGUOUS-TICK ( -- )
+   s" a dropped definition leaves a tick to the engine's ambiguous word" T-LABEL
+   AMBIGUOUS-TEXT
+   s" : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;using ;package " TEXT+
+   s" Q-FORGET:T-FORGET . cr" TEXT+
+   TEXT$ SESSION  AMBIGUOUS ;
+
+\ The dropped W-FORGET left two cells, the engine's one: typed against the
+\ dropped row, T-FORGET ( -- n n ) would certify and run one cell short.
+: ZERO-SHAPE ( -- )
+   s" a dropped definition's effect does not type a later caller" T-LABEL
+   JIT-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
+   s" : W-FORGET 3 4 ; : T-FORGET ( -- n n ) W-FORGET ; ;using ;package " TEXT+
+   s" Q-FORGET:T-FORGET . . cr" TEXT+
+   TEXT$ SESSION  SHADOWED
+   s" interpret stack underdepth" SAYS-NOT ;
+
+\ With no global, T-FORGET's W-FORGET is the used P-FORGET:W-FORGET ( -- n ),
+\ so T-FORGET's ( -- n n ) is refused.
+: ZERO-USED ( -- )
+   s" a dropped definition leaves a call to the used package's word" T-LABEL
+   JIT-TEXT P-W+ LIAR+ Q-USING-P+
+   s" : W-FORGET 3 4 ; : T-FORGET ( -- n n ) W-FORGET ; ;using ;package " TEXT+
+   s" Q-FORGET:T-FORGET . . cr" TEXT+
+   TEXT$ SESSION
+   RC @ RC-REJECT T=
+   s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS
+   s" interpret stack underdepth" SAYS-NOT ;
+
+\ Caught, the drop throws nothing (TRY-FORGET prints 0), the load goes on, and
+\ T-FORGET is still typed against P-FORGET:W-FORGET.
+: ZERO-USED-CAUGHT ( -- )
+   s" a caught drop leaves a call to the used package's word" T-LABEL
+   JIT-TEXT P-W+ LIAR+ Q-USING-P+
+   S\" : TRY-FORGET ( -- n ) [: s\" : W-FORGET 3 4 ;\" evaluate-closed ;] catch ; " TEXT+
+   s" TRY-FORGET . cr " TEXT+
+   s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
+   TEXT$ SESSION
+   RC @ RC-REJECT T=
+   S\" 0\n" PRINTS
+   s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS ;
+
+\ A later definition of the dropped name in the same package is no duplicate.
+: ZERO-REDEFINE ( -- )
+   s" a dropped definition's name is free for the next one" T-LABEL
+   JIT-TEXT P-W+ LIAR+
+   s" package Q-FORGET public : W-FORGET 3 ; ;package LOWER-CERT-HOOK:INSTALL " TEXT+
+   s" package Q-FORGET public : W-FORGET ( -- n ) 7 ; ;package Q-FORGET:W-FORGET . cr" TEXT+
+   TEXT$ SESSION
+   RC @ 0 T=
+   S\" 7\n" PRINTS
+   s" duplicate definition" SAYS-NOT ;
+
 \ ---- the window: a probe at the end of src/core/util.f ----------------------
 \ The engine under test builds a private copy of src/, src/lib/ and tools/; the
 \ printed directory keeps the copy and the last build's temporary directory.
@@ -369,6 +471,14 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-ORPHAN-THEN
    ZERO-UNCAUGHT
    ZERO-CAUGHT
+   ZERO-CALL
+   ZERO-TICK
+   ZERO-AMBIGUOUS-CALL
+   ZERO-AMBIGUOUS-TICK
+   ZERO-SHAPE
+   ZERO-USED
+   ZERO-USED-CAUGHT
+   ZERO-REDEFINE
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
    TREE$ TREE-COPY:BUILD-SOURCES
