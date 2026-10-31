@@ -265,14 +265,14 @@ LOWER-CERT-HOOK:INSTALL
 : OUT$ ( -- ptr u8 n )
    OUT OUT-U @ ;
 
-\ Every rejecting load: exit-kind EXIT, rc 70, EMPTY stdout, NON-EMPTY stderr
-\ that names the failing token — the silent-exit-70 red/green discriminator.
+\ Every rejecting load: NON-EMPTY stderr that names the failing token, EMPTY
+\ stdout, exit-kind EXIT, rc 70 — the silent-exit-70 red/green discriminator.
 : ASSERT-NAMED ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   EXITED @ TTRUE
-   RC @ REJECT-RC T=
-   OUT-U @ 0 T=
    ERR-U @ 0 > TTRUE
-   ERR$ name nameu CONTAINS? TTRUE ;
+   ERR$ name nameu CONTAINS? TTRUE
+   OUT-U @ 0 T=
+   EXITED @ TTRUE
+   RC @ REJECT-RC T= ;
 
 : ASSERT-OK ( -- )
    EXITED @ TTRUE
@@ -368,6 +368,60 @@ LOWER-CERT-HOOK:INSTALL
    s" family arguments keep distinct declared variables" T-LABEL
    s" NEWTYPE lrd-pair<a,b> : LRD-ID ( lrd-pair<a,a> -- lrd-pair<a,a> ) ; : LRD-ALIAS ( lrd-pair<a,b> -- lrd-pair<a,b> ) LRD-ID ;" PARAMETRIC-REJECT ;
 
+\ T0, arm64's tier 0, refuses a body no scan certified at its first token the
+\ scan could not bind or no path reaches.
+: TEST-T0-UNBOUND ( -- )
+   s" T0 refuses an integer literal the engine cannot read" T-LABEL
+   BODY$ s" TRUSTED: LRD-BIG ( -- n ) 99999999999999999999999 ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-BIG at 99999999999999999999999 in" ASSERT-NAMED
+   ERR$ s" E-UNDEFINED: 99999999999999999999999" CONTAINS? TTRUE
+   s" T0 refuses a MATCH variant with no OF" T-LABEL
+   BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOOF ( n -- n ) construct lrd-choice scalar MATCH lrd-choice scalar 10 + ENDOF ;MATCH ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-NOOF at 10 in" ASSERT-NAMED
+   s" T0 refuses a MATCH with no value proved under it" T-LABEL
+   BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-UNDER ( -- n ) MATCH lrd-choice empty OF 0 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-UNDER at lrd-choice in" ASSERT-NAMED
+   s" T0 refuses a MATCH over an unknown family" T-LABEL
+   BODY$ s" TRUSTED: LRD-NOFAM ( n -- n ) 5 swap MATCH lrd-nofam empty OF 1 ENDOF ;MATCH ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-NOFAM at lrd-nofam in" ASSERT-NAMED
+   s" T0 refuses a MATCH over an unknown variant at the variant" T-LABEL
+   BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-NOVAR ( lrd-choice -- n ) MATCH lrd-choice bogus OF 1 ENDOF scalar OF ENDOF ;MATCH ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-NOVAR at bogus in" ASSERT-NAMED
+   s" T0 refuses dead code after exit" T-LABEL
+   BODY$ s" TRUSTED: LRD-DEAD ( -- n ) 1 exit DUP ; LRD-DEAD . cr" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-DEAD at DUP in" ASSERT-NAMED
+   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   s" T0 refuses a dead string literal at its opener" T-LABEL
+   BODY$ S\" TRUSTED: LRD-DEADS ( -- n ) 1 exit s\" ab\" drop ;" FS:WRITE-ALL
+   BODY$ RUN
+   S\" ncomp: cannot compile LRD-DEADS at s\" in" ASSERT-NAMED
+   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   s" T0 refuses a dead quotation inside a quotation at its opener" T-LABEL
+   BODY$ s" TRUSTED: LRD-DEADQ ( -- [ -- n ] ) [: 1 exit [: 2 ;] ;] ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-DEADQ at [: in" ASSERT-NAMED
+   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   s" T0 refuses a dead string holding ;] inside a quotation at its opener" T-LABEL
+   BODY$ S\" TRUSTED: LRD-DEADQS ( -- [ -- n ] ) [: 1 exit s\" a ;] b\" drop ;] ;" FS:WRITE-ALL
+   BODY$ RUN
+   S\" ncomp: cannot compile LRD-DEADQS at s\" in" ASSERT-NAMED
+   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   s" T0 refuses a construct of an unknown variant" T-LABEL
+   BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-BADVAR ( -- n ) construct lrd-choice bogus 1 ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-BADVAR at bogus in" ASSERT-NAMED
+   s" T0 refuses a construct of an unknown family after the checker's reason" T-LABEL
+   BODY$ s" 0 set-check : LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED
+   ERR$ s" bad construct: family not declared" CONTAINS? TTRUE ;
+
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal, named for the declared word and the type.
 : STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
@@ -461,6 +515,32 @@ LOWER-CERT-HOOK:INSTALL
    BODY$ RUN
    s" hook: non-certified definition: lrd-muted" ASSERT-NAMED ;
 
+\ T0 refuses a body no scan certified where the checker's scan bound nothing
+\ or `is` names no deferred word.
+: TEST-UNCERTIFIED-MALFORMED ( -- )
+   s" a trusted quotation reading its definition's local is refused" T-LABEL
+   BODY$ s" TRUSTED: LRD-QLOCAL ( n -- n ) {: a:n :} [: a ;] execute ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-QLOCAL at a in" ASSERT-NAMED
+   s" a trusted quotation reading its definition's numeric local is refused" T-LABEL
+   BODY$ s" TRUSTED: LRD-QNUM ( n -- n ) {: 1:n :} [: 1 ;] execute ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-QNUM at 1 in" ASSERT-NAMED
+   s" a trusted is with no target is refused" T-LABEL
+   BODY$ s" TRUSTED: LRD-NO-TARGET ( -- ) [: ;] is ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-NO-TARGET at is in" ASSERT-NAMED
+   ERR$ s" E-UNDEFINED" CONTAINS? TFALSE
+   s" a trusted is naming no word is refused" T-LABEL
+   BODY$ s" TRUSTED: LRD-NO-DEFER ( -- ) [: ;] is LRD-NO-SUCH-DEFER ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" ncomp: cannot compile LRD-NO-DEFER at LRD-NO-SUCH-DEFER in" ASSERT-NAMED
+   s" an unchecked is naming a colon word is refused" T-LABEL
+   BODY$ s" : LRD-PLAIN ( -- ) ; 0 set-check : LRD-IS-PLAIN ( -- ) [: ;] is LRD-PLAIN ;" FS:WRITE-ALL
+   BODY$ RUN
+   s" at 'LRD-PLAIN' is not a deferred word" ASSERT-NAMED
+   ERR$ s" ncomp: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" CONTAINS? TTRUE ;
+
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
    TOP-INC$ RUN s" 74" ASSERT-OK-OUT
@@ -488,6 +568,10 @@ LOWER-CERT-HOOK:INSTALL
    TEST-IMM-SIGNATURELESS
    TEST-IMM-TRUSTED
    TEST-UNREPORTED-REJECT
+   HB-TARGET-LINUX-X86-64? 0= if
+      TEST-UNCERTIFIED-MALFORMED
+      TEST-T0-UNBOUND
+   then
    TEST-PREFLIGHT-POSITIVES
    FS:CLEANUP-RUN
    T-REPORT

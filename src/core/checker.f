@@ -14133,14 +14133,15 @@ public
 8 constant K-LOCAL-DECL         \ a0: the local's bind sequence
 9 constant K-LOCAL-REF          \ a0: the bind sequence it reads
 10 constant K-LOCAL-CLOSE       \ the `:}` that binds the group
-11 constant K-CONSTRUCT         \ a0: variant tag, a1: pads its family declares for it
-12 constant K-MATCH             \ a0: family id
-13 constant K-MATCH-ARM         \ a0: variant tag, a1: pads its family declares for it
+11 constant K-CONSTRUCT         \ a0: variant tag, -1 for none; a1: pads its family declares for it
+12 constant K-MATCH             \ a0: family id, -1 for none
+13 constant K-MATCH-ARM         \ a0: variant tag, -1 for none; a1: pads its family declares for it
 14 constant K-MATCH-OF
 15 constant K-MATCH-END         \ a0: family id
 16 constant K-TICK              \ a0: the target's record index from 0, -1 for none
 17 constant K-IS                \ a0: the target's record index from 0, -1 for none
 18 constant K-OPERAND           \ consumed by its keyword, compiling nothing itself
+19 constant K-UNREACHED         \ a token no path reaches; T0 refuses it
 
 ;package
 
@@ -17251,18 +17252,20 @@ defer C2-STOW-BORROW-HOOK ( -- )
    THEN
    RES-TRUE ;
 
+\ A literal the engine does not admit fails and files nothing: EV-UNJUDGED makes
+\ it a name with no record.
 : LITERAL-TOK? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u ALLDIG? IF
       a u INTEGER-LITERAL-ADMITTED? IF
          CHECKER-TAPE:K-INT swap 0 EVENT!  STEP-N-OUT
-      ELSE drop 0 OK ! -1 FAILSET ! THEN
+      ELSE drop  0 OK !  -1 FAILSET ! THEN
       RES-TRUE EXIT
    THEN
    a u FLODIG? IF
       a u FLOAT-LITERAL-ADMITTED? IF
          CHECKER-TAPE:K-REAL swap 0 EVENT!  STEP-R-OUT
-      ELSE drop 0 OK ! -1 FAILSET ! THEN
+      ELSE drop  0 OK !  -1 FAILSET ! THEN
       RES-TRUE EXIT
    THEN
    RES-FALSE ;
@@ -20383,7 +20386,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
 
 : MATCH-FAM-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
-   a u MATCH-FAM-XT 0= IF drop EV-OPERAND MATCH-ABANDON EXIT THEN
+   a u MATCH-FAM-XT 0= IF drop CHECKER-TAPE:K-MATCH -1 0 EVENT!  MATCH-ABANDON EXIT THEN
    {: fam:n :}
    CHECKER-TAPE:K-MATCH fam 0 EVENT!
    #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-ABANDON EXIT THEN   \ two CFS frames per match: reject, never UNCK
@@ -20459,7 +20462,7 @@ variable MTCH-W                      \ the bundle width the walk below really co
       CHECKER-TAPE:K-MATCH-END MF-CUR MF.FAM @ 0 EVENT!
       MATCH-SEMI EXIT THEN
    a u MF-CUR MF.FAM @ MATCH-VAR-XT 0= IF
-      drop EV-OPERAND MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
+      drop CHECKER-TAPE:K-MATCH-ARM -1 0 EVENT!  MD-VAR-UNKNOWN MDIAG-COMPILE! 0 OK !  -1 MREJ !  -1 MPEND !  3 CHECKER-MATCH-MODE !  EXIT THEN
    {: vid:n :}
    CHECKER-TAPE:K-MATCH-ARM  MF-CUR MF.FAM @  vid EV-VARIANT
    vid MATCH-VTAG-XT {: tag:n :}
@@ -20470,8 +20473,8 @@ variable MTCH-W                      \ the bundle width the walk below really co
 
 : MATCH-OF-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
-   CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
-   a u s" of" CORE-STR= 0= IF MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
+   a u s" of" CORE-STR= IF CHECKER-TAPE:K-MATCH-OF 0 0 EVENT!
+   ELSE MD-MISSING-OF MDIAG-COMPILE! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
    MF-CUR {: r:ptr :}
    r MF.BASE @ DCUR !
    r MF.RBASE @ RCUR !
@@ -20828,6 +20831,12 @@ variable CPAY-ON
 : LIVE-TOKEN? {: a u :}
    DEADP @ 0= IF RES-TRUE EXIT THEN
    a u DEAD-CLOSE? ;
+
+\ A token no path reaches is bound as a call, which tier 1 needs to refuse it
+\ (E-NELAB-CTRL), and files K-UNREACHED, which T0 refuses.
+: DEAD-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BIND-SOURCE-CALL
+   CHECKER-TAPE:K-UNREACHED 0 0 EVENT! ;
 
 : TOKFOLD ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u TOKBUF-ENSURE
@@ -22015,7 +22024,7 @@ variable IS-PEND-U                   \ and its length
    sym ;
 
 : IS-TOK ( -- )
-   IS-TARGET-TOK? 0= IF MD-IS-MISSING MDIAG!  IS-FAIL EXIT THEN
+   IS-TARGET-TOK? 0= IF CHECKER-TAPE:K-IS -1 0 EVENT!  MD-IS-MISSING MDIAG!  IS-FAIL EXIT THEN
    IS-TARGET-SYM {: sym:n :}
    CHECKER-TAPE:K-IS  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    sym DFER-FIND-SYM 0= IF sym IS-TARGET-FAIL EXIT THEN
@@ -22188,21 +22197,26 @@ variable IS-PEND-U                   \ and its length
    EV-OPERAND
    1 CONM ! ;   \ enter family-token mode; an unarmed registry rejects at the family resolve (CONSTRUCT-FAM-XT default)
 
+\ The token a construction fails to resolve, its family or its variant, files
+\ the construction with no tag.
+: CONSTRUCT-NONE ( -- )
+   CHECKER-TAPE:K-CONSTRUCT -1 0 EVENT! ;
+
 \ A failed family resolve still consumes the variant token (CONFAM -1): the
 \ three-token form always captures whole, so the trailing operand never falls
 \ through to locals or word lookup and blurs the reject into an
 \ uncheckable-undefined verdict.
 : CONSTRUCT-TOK ( ptr u8 n -- )
    {: a:ptr u:n :}
-   EV-OPERAND                          \ the family compiles nothing, nor does a variant that never resolves
+   EV-OPERAND                          \ the family compiles nothing, nor does a variant of no family
    CONM @ 1 = IF
-      a u CONSTRUCT-FAM-XT IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM ! THEN
+      a u CONSTRUCT-FAM-XT IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM !  CONSTRUCT-NONE THEN
       2 CONM !
       EXIT THEN
    CONFAM @ 0 < 0= IF
       a u CONFAM @ MATCH-VAR-XT IF                           \ latch variant SUMV id for the mismatch capture
          dup CVLIVE !  CHECKER-TAPE:K-CONSTRUCT CONFAM @ rot EV-VARIANT
-      ELSE drop THEN
+      ELSE drop CONSTRUCT-NONE THEN
       a u CONFAM @ CONSTRUCT-STEP-XT 0= IF 0 OK ! THEN
       -1 CVLIVE !                                                      \ variant leaves scope with the step
    THEN
@@ -22397,7 +22411,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       TKF TKFU @ TOK-CORE-OP?
    ELSE RES-FALSE THEN LAYOUT-XPORT !
    TOK0 @ IF NAME-TOK ELSE
-   TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
+   TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK !  TKF TKFU @ DEAD-TOK ELSE
    LMODE @ IF a TKF TKFU @ LOC-TOK ELSE
    FIELD-LOAN-PENDING @ IF TKF TKFU @ SCOPE-FIELD-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
@@ -24156,13 +24170,12 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    0 IS-PEND !
    IS-PEND-OFF @ TADDR  IS-PEND-U @  IS-PEND-OFF @  0  CHECKER-TAPE:TOKEN ;
 
-\ The event of a token no step latched one for: its class, as the reports below
-\ class it, and for a character literal its payload's first byte, which is what
-\ `[char]` compiles.
+\ The event of a token no step judged: a name with no record, but a character
+\ or string payload is the literal its opener compiles.
 : EV-UNJUDGED ( -- n n n )
    CPAY-ON @ IF CHECKER-TAPE:K-CHAR  CPAY-B @ TADDR c@  0 EXIT THEN
    SPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
-   TSTART @ TADDR  SCAN-U @  CHECKER-TAPE:KIND 0 0 ;
+   CHECKER-TAPE:K-NAME -1 0 ;
 
 \ This turn's events, filed under the ordinals the reports take, on every pass:
 \ the token's (what its judging step latched, else EV-UNJUDGED), and a swallowed

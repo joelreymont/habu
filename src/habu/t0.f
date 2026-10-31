@@ -1240,20 +1240,18 @@ TRUSTED: TYPE-ENTRY ( -- n ) ['] type ;
    kind CHECKER-TAPE:K-PRINTED-STRING = if TYPE-ENTRY k ROW-OFF @ DO-CALL then ;
 
 \ ---- is ----------------------------------------------------------------------
-\ `is W` pushes W's cell address (NDICT:REC-DEFER-CELL), whose row files W's
-\ record as its origin, and calls `xt!`, as tier 1's
-\ src/compiler/native/elaborate.f DO-IS. A W that is no deferred word is
-\ E-T0-DEFER. Every deferred word has an arity: `defer W` without an effect is
-\ refused where it is defined, under `0 set-check` too.
+\ `is W` pushes W's cell (NDICT:REC-DEFER-CELL) and calls `xt!`, as tier 1's
+\ elaborate.f DO-IS; a W that is missing or no deferred word is E-T0-DEFER.
 \ `is` stores through the engine's `xt!` whatever the source's package scope, as
 \ tier 1 does (src/compiler/native/elaborate.f XT-STORE-ENTRY).
 TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
 
 : DO-IS ( n n -- ) {: r:n loc:n :}
-   NEXT$ 2drop                       \ the operand
-   r 0< if E-T0-DEFER throw then
+   ORD @ ROWS @ >= if ORD @ 1- ROW$ E-T0-DEFER REFUSE then
+   NEXT$ {: a:ptr u:n :}             \ the operand
+   r 0< if a u E-T0-DEFER REFUSE then
    r XREF-REC NDICT:REC-DEFER-CELL {: cell:n :}
-   cell 0= if E-T0-DEFER throw then
+   cell 0= if a u E-T0-DEFER REFUSE then
    cell r PUSH-ADDR
    XT-STORE-ENTRY loc DO-CALL ;
 
@@ -1264,16 +1262,17 @@ TRUSTED: XT-STORE-ENTRY ( -- n ) ['] xt! ;
 \ compiled from its first row (QORD), in the order the `[:` tokens were met,
 \ nested ones after their parent. Each unit starts with an empty virtual
 \ stack, no structure, loop level or local, as the checker reads a quotation.
-\ A local group inside a quotation never reaches T0 as one: the checker
-\ refuses it in a checked body (E-BAD-LOCAL-SHAPE), and a TRUSTED:
-\ quotation's group arrives as plain names, refused E-T0-UNSUPPORTED at the
-\ first name bound to no record.
+\ A local group inside a quotation, or a read of an enclosing local, never
+\ reaches T0 as one: the checker refuses it in a checked body
+\ (E-BAD-LOCAL-SHAPE), and in a TRUSTED: body its tokens bind no record,
+\ refused E-T0-UNSUPPORTED at the first.
 variable NQ                         \ units met so far, the definition's included
 DYNAMIC-BUFFER QORD n               \ each quotation's first ordinal
 variable NESTED                     \ the `[:` rows skipped inside quotations so far
 
 : SKIP-ROW ( n -- n ) {: k:n :}
    k ROWS @ >= if NDEFINITION:CLOSE$ E-T0-CONTROL REFUSE then
+   k ROW-KIND @ CHECKER-TAPE:K-UNREACHED = if k ROW$ E-T0-CONTROL REFUSE then
    k ROW-KIND @ CHECKER-TAPE:K-CONTROL <> if 0 exit then
    k ROW-A0 @ CF-QUOT-OPEN = if 1 NESTED +! 1 exit then
    k QUOT-END? if -1 exit then
@@ -1330,10 +1329,12 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
 \ the variant's pads as zeros, then its tag. A call first pushes, as zeros, the
 \ pads the checker proved the call's instantiation adds (NDICT:CON-PADS):
 \ OPTION:NONE at option<pt>. A form whose facts are missing or disagree, as
-\ tier 1's MATCH-SCAN refuses them, is E-T0-MATCH.
+\ tier 1's MATCH-SCAN refuses them, is E-T0-MATCH: MATCH-CK names the token
+\ being compiled, a family or variant that resolves nothing or a MATCH with no
+\ cells proved under its tag; DO-ARM names the token in place of a missing `of`.
 \ The facts are the checker's, filed under the ordinal of the token that holds
 \ them, as tier 1 reads them (src/compiler/native/elaborate.f MATCH-SCAN).
-: MATCH-CK ( bool -- ) 0= if E-T0-MATCH throw then ;
+: MATCH-CK ( bool -- ) 0= if ORD @ 1- ROW$ E-T0-MATCH REFUSE then ;
 
 \ `;MATCH` closes MATCH k: a tag no arm matched runs into the trap on the last
 \ arm's mismatch edge, as tier 1's MATCH-TRAP, and every `endof` lands after
@@ -1362,6 +1363,7 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    pads 0 ?do DROP1 loop ;
 
 : DO-MATCH ( n n -- ) {: fam:n at:n :}
+   fam 0 >= MATCH-CK
    at NDICT:MATCH-CELLS {: w:n :}
    w NDICT:MATCH-NONE <> MATCH-CK
    w fam NFAM:WIDTH >= MATCH-CK
@@ -1371,8 +1373,17 @@ TRUSTED: DOES-PATCH-ENTRY ( -- n ) ['] does-patch ;
    k 1+ CS-FAM-RESERVE  k 1+ CS-WID-RESERVE
    fam k CS-FAM !  w k CS-WID ! ;
 
+\ A variant's tag; the checker files K-MATCH-OF only for an `of`, which a body
+\ ending here lacks.
+: DO-ARM ( n -- ) {: tag:n :}
+   tag 0 >= MATCH-CK
+   ORD @ ROWS @ >= if NDEFINITION:CLOSE$ E-T0-MATCH REFUSE then
+   ORD @ ROW-KIND @ CHECKER-TAPE:K-MATCH-OF <> if ORD @ ROW$ E-T0-MATCH REFUSE then
+   tag PUSH-CONST ;
+
 \ As tier 1's DO-MAKE-BUNDLE; the payload is already on the stack.
 : DO-CONSTRUCT ( n n n -- ) {: tag:n pads:n at:n :}
+   tag 0 >= MATCH-CK
    at NDICT:CALL-CELLS drop 0 >= MATCH-CK
    pads at NDICT:CON-PADS +  0 ?do 0 PUSH-CONST loop
    tag PUSH-CONST ;
@@ -1525,6 +1536,8 @@ OPS-MAP
 \ (WORD-CALL). Anything else is E-T0-UNSUPPORTED (UNSUPPORTED$). A name compiled
 \ code cannot reach (MISSING) is refused as undefined, as the JIT's lookup
 \ refuses it, even in an unchecked body whose scan did not refuse it.
+\ A token no path reaches (K-UNREACHED) is E-T0-CONTROL, as tier 1's
+\ E-NELAB-CTRL.
 \
 \ T0 passes over a parse-neutral immediate as tier 1 does
 \ (src/compiler/native/elaborate.f WALK-SKIP?) and refuses any other.
@@ -1582,10 +1595,11 @@ OPS-MAP
       CHECKER-TAPE:K-LOCAL-CLOSE of CLOSE-GROUP endof
       CHECKER-TAPE:K-LOCAL-REF of a0 DO-LOCAL endof
       CHECKER-TAPE:K-OPERAND of endof
+      CHECKER-TAPE:K-UNREACHED of a u E-T0-CONTROL REFUSE endof
       CHECKER-TAPE:K-TICK of a0 DO-TICK endof
       CHECKER-TAPE:K-IS of a0 loc DO-IS endof
       CHECKER-TAPE:K-MATCH of a0 k DO-MATCH endof
-      CHECKER-TAPE:K-MATCH-ARM of a0 PUSH-CONST endof   \ the variant's tag
+      CHECKER-TAPE:K-MATCH-ARM of a0 DO-ARM endof
       CHECKER-TAPE:K-MATCH-OF of k ARM-OF endof
       CHECKER-TAPE:K-MATCH-END of loc ARMS-AT CLOSE-MATCH endof
       CHECKER-TAPE:K-CONSTRUCT of a0 k ROW-A1 @ k DO-CONSTRUCT endof
@@ -1668,8 +1682,8 @@ OPS-MAP
 
 public
 
-\ The token this compile's E-T0-UNSUPPORTED, E-UNMODELED-IMMEDIATE or
-\ E-T0-CONTROL refusal named, empty until one does.
+\ The token this compile's refusal named, for a code REFUSED$ answers with it;
+\ empty until one does.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
 using NDEFINITION
@@ -1831,6 +1845,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 : REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
    rc E-T0-UNSUPPORTED =  rc E-UNMODELED-IMMEDIATE = or  rc E-T0-CONTROL = or
+   rc E-T0-MATCH = or  rc E-T0-DEFER = or
    if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 

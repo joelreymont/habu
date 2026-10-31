@@ -1229,12 +1229,12 @@
 \ WLINK -9830..-9834.
 
 \ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package T0, because
-\ src/compiler/native/definition.f MALFORMED? reads E-T0-CONTROL.
+\ src/compiler/native/definition.f MALFORMED? reads them.
 -9600 constant E-T0-FIRST
 -9609 constant E-T0-LAST
 -9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile: T0:UNSUPPORTED$
--9601 constant E-T0-CONTROL      \ a control word without its opener, or a body ending inside one: T0:UNSUPPORTED$
+-9601 constant E-T0-CONTROL      \ a control word without its opener, a body ending inside one, or a token no path reaches: T0:UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH
--9607 constant E-T0-DEFER        \ `is` names no deferred word
+-9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH: T0:UNSUPPORTED$
+-9607 constant E-T0-DEFER        \ `is` names no deferred word: T0:UNSUPPORTED$
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE

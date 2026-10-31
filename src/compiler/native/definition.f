@@ -524,10 +524,11 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    ca cu ca REPORT-FAILURE
    undefined if ca cu ca REPORT-UNDEFINED then ;
 
-\ A refusal of a body no scan certified (TRUSTED:, or refused by its hookless
-\ scan) for its own source: unclosed control flow or an unmodeled immediate.
+\ A refusal of a body no scan certified (TRUSTED:, or refused by its
+\ hookless scan) that names its token: the load ends as a reject.
 : MALFORMED? ( n -- bool ) {: rc:n :}
    rc E-T0-CONTROL =  rc E-NELAB-CTRL = or  rc E-UNMODELED-IMMEDIATE = or
+   rc E-T0-MATCH = or  rc E-T0-DEFER = or
    TRUSTED? M-UNJUDGED @ -1 <> or and ;
 
 public
