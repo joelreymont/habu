@@ -11,6 +11,10 @@ private
 
 CAST: OWNER-VIEW-UNPACK ( mut-view<p,i,a,init<i,owner-state>> -- ptr u8 n )
 CAST: OWNER-VIEW-PACK ( ptr u8 n -- mut-view<p,i,a,init<i,owner-state>> )
+\ APPEND stores a raw disposer and calls it with the allocation's base and
+\ length; calling the cast disposer packs those cells into the view it takes.
+CAST: >CELL-DISPOSER ( [ mut-view<p,q,a,u8> -- ] -- [ ptr u8 n -- ] )
+CAST: >ALLOC-DISPOSER ( [ ptr u8 n -- ] -- [ ptr u8 NUM:alloc-byte-len -- ] )
 
 public
 
@@ -19,13 +23,12 @@ public
 : BIND ( mut-view<p,i,a,init<i,owner-state>> -- owner<p,i,a> ) OWNER-VIEW-UNPACK BIND-STATE OWNER-VIEW-PACK OWNER-MAKE ;
 : UNBIND ( owner<p,i,a> -- mut-view<p,i,a,init<i,owner-state>> ) OWNER-UNMAKE ;
 
-\ The checked disposer consumes the unique view. Its two physical cells are
-\ the pointer and allocation length accepted by APPEND's private callback ABI.
-TRUSTED: ALLOC-DISPOSE ( owner<p,i,a> NUM:alloc-byte-len [ mut-view<p,p,fresh-region-b,u8> -- ] -- owner<p,i,a> mut-view<p,p,fresh-region-b,u8> )
-   {: size:NUM:alloc-byte-len dispose :}
+\ The disposer consumes the allocation's unique view at the owner's close.
+: ALLOC-DISPOSE ( owner<p,i,a> NUM:alloc-byte-len [ mut-view<p,p,fresh-region-b,u8> -- ] -- owner<p,i,a> mut-view<p,p,fresh-region-b,u8> )
+   >CELL-DISPOSER >ALLOC-DISPOSER {: size:NUM:alloc-byte-len dispose :}
    OWNER-UNMAKE OWNER-VIEW-UNPACK {: base:ptr bound:n :}
    base OWNER-FRAME size dispose APPEND {: resource:ptr extent:n :}
-   base bound resource extent ;
+   base bound OWNER-VIEW-PACK OWNER-MAKE resource extent MUT-PACK ;
 
 : PUBLISH ( mut-view<p,l,a,u8> -- read-view<p,l,u8> ) MUT-UNPACK READ-PACK ;
 

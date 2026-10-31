@@ -629,22 +629,29 @@ multi-cell type rationale is `docs/design.md` "Types".
     or introduce a scope dependency (`E-CAST-SCOPE`).
   - The exception is a view representation cast: it retypes one view,
     `read-view<p,q,T>` or `mut-view<p,q,a,T>`, as the two cells that represent
-    it, `ptr u8 n` (base and length), or back, over the same tail. Producing a
-    view is C2-MEM's: the pack `( ptr u8 n -- V )`, and the mut-view unpack
+    it, `ptr u8 n` (base and length), or back, over the same tail, or retypes
+    a callback on the view as one on its two cells. Producing a
+    view is C2-MEM's: the pack `( ptr u8 n -- V )`, the callback pack
+    `( [ V -- ] -- [ ptr u8 n -- ] )`, whose result packs the two cells it is
+    called with into the view its callback takes, and the mut-view unpack
     `( mut-view<p,q,a,T> -- ptr u8 n )`, which takes the raw address of an
     exclusive view, are declared only in package C2-MEM's private section.
+    Each callback takes one value over its implicit tail and leaves nothing;
+    a named tail, any other callback shape, or the reverse direction is
+    `E-CAST-SCOPE`.
     Any package may declare the read-view unpack `( read-view<p,q,T> -- ptr
     u8 n )` in its private section: the projection erases the type and can
     neither widen bounds nor forge a scope. The element T is a cast term: a
     type variable or a linear type in it is `E-CAST-LINEAR`, and one that
     reaches an arena head is `E-CAST-OWNER`. A pack's scope and region
     variables are free in its input and, like any callee's, instantiate
-    fresh at each call. The cast takes an unqualified name: a qualified name
-    selects that package's public wordlist and would publish the boundary.
+    fresh at each call; a callback pack's bind to the callback it is given.
+    The cast takes an unqualified name: a qualified name selects that
+    package's public wordlist and would publish the boundary.
     That, and every other cast with a view, public or private, is
     `E-CAST-SCOPE`, except that a view representation cast in a private
-    section meets the element rules first: a qualified unpack, or a pack or
-    mut-view unpack outside C2-MEM, whose element breaks one is
+    section meets the element rules first: a qualified unpack, or a pack,
+    callback pack or mut-view unpack outside C2-MEM, whose element breaks one is
     `E-CAST-LINEAR` or `E-CAST-OWNER`.
   - Each side is one term over the same stack tail (`E-CAST-ARITY`);
     a layout value wider than a cell is one term per cell. The emitted identity

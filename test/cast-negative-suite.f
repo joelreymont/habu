@@ -312,13 +312,9 @@ s" cast: CNM16 ( cnpbox<ptr u8> -- n )"           CN-RUN:DECL 0 T=
 s" cast: CNM24 ( pfbox -- n )"                   CN-RUN:DECL 0 T=
 
 \ scope: a cast with a scoped term on either side is E-CAST-SCOPE, asked before
-\ the arity rule, which would read a view's two cells as two terms. The legal
-\ scoped casts are the view representation casts: a read-view unpack
-\ ( read-view<p,q,T> -- ptr u8 n ) in any private section,
-\ and the pack ( ptr u8 n -- V ) and the mut-view unpack in C2-MEM's private
-\ section alone (test/c2-reopen-refusals.f). A pack's output variables are
-\ supplied by no input, which no other declaration admits. Each refusal leaves
-\ no name in the private wordlist, which sees the private probe.
+\ the arity rule, which would read a view's two cells as two terms, except the
+\ view casts VIEW-CAST-CERTIFY admits. Each refusal leaves no name in the
+\ private wordlist, which sees the private probe.
 package CN-VIEW
 variable CV-WID
 get-current CV-WID !
@@ -341,6 +337,8 @@ s" cast: CNV5 ( read-view<p,q,u8> -- n )"               CV-DECL E-CAST-SCOPE T=
 s" CNV5" CV-ABSENT? TTRUE
 s" cast: CNV6 ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL E-CAST-SCOPE T=
 s" CNV6" CV-ABSENT? TTRUE
+s" cast: CNV10 ( [ read-view<p,q,u8> -- ] -- [ ptr u8 n -- ] )" CV-DECL E-CAST-SCOPE T=
+s" CNV10" CV-ABSENT? TTRUE
 s" cast: CNV7 ( n -- init<i,n> )"                       CV-DECL E-CAST-SCOPE T=
 s" CNV7" CV-ABSENT? TTRUE
 \ A qualified name selects that package's public wordlist, so the read-view

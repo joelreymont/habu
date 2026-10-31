@@ -181,8 +181,9 @@ callback; forth.md **Owners and views** has a checked source example. `ALLOC-DIS
 the new unique view at that owner's close, including when an inner owner is
 active. `PUBLISH` consumes a mutable view to make it shared.
 A view on either side of `CAST:` is `E-CAST-SCOPE`, except a view representation
-cast: only C2-MEM's private section packs `( ptr u8 n -- V )` or unpacks a
-mut-view, and any private section may unpack `( read-view<p,q,T> -- ptr u8 n )`.
+cast: only C2-MEM's private section packs `( ptr u8 n -- V )`, retypes a view
+callback as `( [ V -- ] -- [ ptr u8 n -- ] )` or unpacks a mut-view, and any
+private section may unpack `( read-view<p,q,T> -- ptr u8 n )`.
 The cast takes an unqualified name; a qualified one is `E-CAST-SCOPE`.
 Ordinary raw pointers remain lifetime-free.
 The task-local frame capacity is fixed; one more live open throws

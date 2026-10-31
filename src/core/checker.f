@@ -14641,7 +14641,7 @@ variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
 \ Publishes the rows IDENTITY-PARSE parsed and VIEW-CAST-CERTIFY admitted. A
 \ pack's output binds variables no input supplies, which USIG-ADD-AS refuses, so
 \ the rows are published as CHECK's are, asserted (external). USIG-ADD-AS's
-\ width and scheme refusals cannot trip (two cells a side, no forall); its depth
+\ width and scheme refusals cannot trip (at most two cells a side, no forall); its depth
 \ bound applies (USIG-DEPTH-FITS?): a view argument's type nests as deep as its
 \ text, and a refused row is neither published nor captured.
 : CHECKER-USIG-CERT-ROWS ( ptr u8 n ptr u8 n -- )
@@ -25049,10 +25049,8 @@ variable CAST-PATH-N
 : CAST-SCOPED? ( -- bool )
    SGIN @ SCOPED-TYPE? SGOUT @ SCOPED-TYPE? or
    SGHASR @ IF SGRIN @ SCOPED-TYPE? or SGROUT @ SCOPED-TYPE? or THEN ;
-\ A view representation cast retypes one view, read-view<p,q,T> or
-\ mut-view<p,q,a,T>, as the two cells that represent it, `ptr u8 n` (base and
-\ length), or back, over the same tail. A view in a row is two pushes, the
-\ hidden cells of one instance (PUSH-LOGICAL): the base cell under the length.
+\ A view in a row is two pushes, the hidden cells of one instance
+\ (PUSH-LOGICAL): the base cell under the length.
 : ROW-UNDER ( n -- n ) R-RES P>REST R-RES ;
 : ROW-2? ( n -- bool )
    R-RES dup TAG S-PUSH <> IF drop RES-FALSE EXIT THEN
@@ -25069,27 +25067,40 @@ variable CAST-PATH-N
    hi TAG T-CON <> IF RES-FALSE EXIT THEN
    hi PAY CC-N <> IF RES-FALSE EXIT THEN
    row ROW-UNDER CAST-ROW-TERM BYTE-PTR? ;
-\ The gate for a cast with a scope dependency, in refusal order. Only a view
-\ representation cast in a private section is legal: an unpack
-\ ( V -- ptr u8 n ) or a pack ( ptr u8 n -- V ); every other scoped cast is
-\ E-CAST-SCOPE. The view's element is a cast term: a type variable or linear
-\ type in it is E-CAST-LINEAR (CAST-MAY-LINEAR?), and one that reaches an arena
-\ head is E-CAST-OWNER (CAST-HEAD-REFUSE). Any package may then unpack a
-\ read-view in its private section: the projection erases the type and can
-\ neither widen bounds nor forge a scope. The pack, and the unpack of a
-\ mut-view, are the owner's, E-CAST-SCOPE elsewhere: only C2-MEM's private
-\ section produces a view or takes the raw address of an exclusive one. A pack's
-\ view variables are free in its input and instantiate fresh at each call.
-: VIEW-CAST-CERTIFY ( -- )
-   SGHASR @ IF E-CAST-SCOPE throw THEN
+\ A quotation that consumes one two-cell value over its implicit tail and
+\ leaves that tail: `[ V -- ]` or `[ ptr u8 n -- ]`. A named tail could bind
+\ the callback to cells under the view that the retyped callback's own tail
+\ never supplies.
+: PAIR-CALLBACK? ( n -- bool ) {: q:n :}
+   q TAG T-QUOT <> IF RES-FALSE EXIT THEN
+   q Q>DIN ROW-2? 0= IF RES-FALSE EXIT THEN
+   q Q>DOUT R-RES  q Q>DIN ROW-UNDER ROW-UNDER <> IF RES-FALSE EXIT THEN
+   q Q>DOUT R-RES PAY RVK-QUOT? ;
+\ A callback pack retypes `[ V -- ]` as `[ ptr u8 n -- ]` over the same tail:
+\ calling the result packs the two cells into the view the callback takes.
+: CALLBACK-PACK? ( -- bool )
+   SGIN @ CAST-ROW-1? SGOUT @ CAST-ROW-1? and 0= IF RES-FALSE EXIT THEN
+   SGIN @ ROW-UNDER  SGOUT @ ROW-UNDER <> IF RES-FALSE EXIT THEN
+   SGIN @ CAST-ROW-TERM T-RES {: from:n :}
+   SGOUT @ CAST-ROW-TERM T-RES {: to:n :}
+   from PAIR-CALLBACK? to PAIR-CALLBACK? and 0= IF RES-FALSE EXIT THEN
+   from Q>DIN VIEW-PAIR? to Q>DIN VIEW-REP? and ;
+\ Answers whether the cast is an unpack, and the row whose top is the view: an
+\ unpack's input, a pack's output, or a callback pack's callback input.
+: VIEW-CAST-SIDE ( -- bool n )
+   CALLBACK-PACK? IF RES-FALSE SGIN @ CAST-ROW-TERM T-RES Q>DIN EXIT THEN
    SGIN @ ROW-2? SGOUT @ ROW-2? and 0= IF E-CAST-SCOPE throw THEN
    SGIN @ ROW-UNDER ROW-UNDER  SGOUT @ ROW-UNDER ROW-UNDER <> IF E-CAST-SCOPE throw THEN
-   SGIN @ VIEW-PAIR? SGOUT @ VIEW-REP? and {: unpack:bool :}
-   unpack 0= IF
-      SGIN @ VIEW-REP? SGOUT @ VIEW-PAIR? and 0= IF E-CAST-SCOPE throw THEN
-   THEN
+   SGIN @ VIEW-PAIR? SGOUT @ VIEW-REP? and IF RES-TRUE SGIN @ EXIT THEN
+   SGIN @ VIEW-REP? SGOUT @ VIEW-PAIR? and 0= IF E-CAST-SCOPE throw THEN
+   RES-FALSE SGOUT @ ;
+\ The gate for a cast with a scope dependency, in refusal order: the view
+\ representation casts of docs/forth.md "Structures And Enums".
+: VIEW-CAST-CERTIFY ( -- )
+   SGHASR @ IF E-CAST-SCOPE throw THEN
+   VIEW-CAST-SIDE {: unpack:bool side:n :}
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF E-CAST-SCOPE throw THEN
-   unpack IF SGIN @ ELSE SGOUT @ THEN CAST-ROW-TERM T-RES {: view:n :}
+   side CAST-ROW-TERM T-RES {: view:n :}
    CAST-WALK-RESET
    view view PARAM>ARGC 1 - PARAM>ARG CAST-MAY-LINEAR? IF E-CAST-LINEAR throw THEN
    CAST-HEAD-REFUSE
