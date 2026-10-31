@@ -776,8 +776,10 @@ private
 
 \ holder's pointer cell holds v: an address in the dictionary, code or the
 \ DATA before the limits is its record's key and the offset into it, and the
-\ walk follows that record. An address there that no record owns, or another
-\ mapped address, is state no row can name; any other value is a number.
+\ walk follows that record. An address there that no record owns, or a mapped
+\ address reached outside a walk through an own record, is state no row can
+\ name; any other value is a number. A mapping an own record holds records
+\ nothing: the top level that reads it runs again on every load.
 : H-POINTER ( n n n n -- )
    {: v:n holder:n limit:n lim-here:n :}
    v AOT-CELL:DICT-PTR? if
@@ -797,7 +799,9 @@ private
    v AOT-CELL:DATA-ADDRESS? v REGION? or if
       s" executed-closure-unknown" holder HAZARD exit
    then
-   v AOT-CELL:MAPPED? if s" mapped-compile-time-read" holder HAZARD exit then
+   v AOT-CELL:MAPPED? if
+      WTRANS @ 0= if s" mapped-compile-time-read" holder FAIL then exit
+   then
    0 H-N v H-N ;
 
 \ The cells in [start, end) the engine declared address cells

@@ -261,9 +261,10 @@ file at another point at this file's top level.
 Compile-time code reads earlier files' state through dictionary records and
 owner-exported state. A file whose compile-time code reads earlier data through
 a trusted body outside an owner interface, or an untracked foreign or system
-call is compiled on every build, and the build names the
-word. Reads made inside the kernel are the kernel's and do not make a file
-ordered.
+call is compiled on every build, and the build names the word. A mapping a
+record of the file holds is not earlier data: the top level that reads it runs
+again on every load. Reads made inside the kernel are the kernel's and do not
+make a file ordered.
 
 **An edit during a build is read in due course.** A file already compiled
 keeps the version it read for that build and is rebuilt on the next; a file not

@@ -61,6 +61,60 @@ create COLD-OUT OUT-CAP allot  variable COLD-OUT-U
    s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+
    RUN-BUILD ;
 
+DYNAMIC-BUFFER BYTES u8
+DYNAMIC-BUFFER IMAGE u8  variable IMAGE-U
+create EXPECT 512 allot  variable EXPECT-U
+
+\ The app image's bytes in BYTES; their count.
+: LOAD-IMAGE ( -- n )
+   s" app-hb" AT {: path:ptr pathu:n :}
+   path pathu FS:FILE-SIZE {: size:n :}
+   size BYTES-RESERVE
+   path pathu 0 BYTES size FS:READ-ALL size T=
+   size ;
+
+: KEEP-IMAGE ( -- )
+   LOAD-IMAGE {: size:n :}
+   size IMAGE-RESERVE
+   0 BYTES 0 IMAGE size BYTE-COPY size IMAGE-U ! ;
+
+: SAME-IMAGE? ( -- bool )
+   LOAD-IMAGE {: size:n :}
+   0 BYTES size 0 IMAGE IMAGE-U @ STR= ;
+
+\ The diagnostic head tag followed by file name's path.
+: FILE-LINE$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: tag:ptr tagu:n name:ptr nameu:n :}
+   0 EXPECT-U !
+   tag tagu EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
+   EXPECT EXPECT-U @ ;
+
+\ store.f's top level maps memory into SP, its own PERSISTED-PTR-VARIABLE,
+\ fills it through fill.f's FILL and reads it into SEVEN. The mapping is the
+\ file's own storage, so store.f stores an object; its top level runs on every
+\ load, so an edit to FILL's body reaches SEVEN through the reused object.
+: MAPPED-OWN ( -- )
+   s" a file's top level reads a mapping held by its own record and is reused" T-LABEL
+   s" native-file-mapped-own" TREE
+   s" cache" AT FS:MAKE-DIR
+   s" fill.f" S\" package FILL public : FILL ( ptr u8 -- ) 7 swap CELL-VIEW ! ; ;package\n" PUT
+   s" store.f" S\" require src/lib/memory.f\nrequire fill.f\npackage STORE\nPERSISTED-PTR-VARIABLE SP\n: BASE ( -- ptr u8 ) SP @ ;\n: SP! ( -- ) MEM-ALLOC-64K {: p:ptr bytes:n :} p SP ! bytes drop ;\nSP!\nBASE FILL:FILL\n: PEEK ( -- n ) BASE CELL-VIEW @ ;\npublic PEEK constant SEVEN\nNULL-PTR SP !\n;package\n" PUT
+   s" app.f" S\" require fill.f\nrequire store.f\n: MAIN ( -- ) STORE:SEVEN . ;\n" PUT
+   DIAG-BUILD SUCCESS
+   RUN-APP SUCCESS OUT$ s" 7" CONTAINS? TTRUE
+   KEEP-IMAGE
+   DIAG-BUILD SUCCESS
+   ERR$ s" native-file: reused path=" s" store.f" FILE-LINE$ CONTAINS? TTRUE
+   ERR$ s" native-file: refused path=" s" store.f" FILE-LINE$ CONTAINS? TFALSE
+   OUT$ S\" files reused 3\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 7" CONTAINS? TTRUE
+   SAME-IMAGE? TTRUE
+   s" fill.f" S\" package FILL public : FILL ( ptr u8 -- ) 8 swap CELL-VIEW ! ; ;package\n" PUT
+   DIAG-BUILD SUCCESS
+   ERR$ s" native-file: reused path=" s" store.f" FILE-LINE$ CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 8" CONTAINS? TTRUE ;
+
 \ mapped.f maps memory at top level after the builder's first map read, which
 \ early.f's immediate EARLY-MARK makes by reading a variable at compile time,
 \ and app.f's SPOT-USE reads SPOT, which holds that memory's address, at
@@ -283,6 +337,7 @@ public
    ORDER
    EVAL-ORDER
    UNBALANCED
+   MAPPED-OWN
    MAPPED-LATE
    ORIGIN-SINKS
    T-REPORT ;
