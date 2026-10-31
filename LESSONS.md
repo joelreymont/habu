@@ -49,6 +49,8 @@ entry.
   speed." 2026-10-30, on an Intel build in the arm64 release gate: "why are you
   doing intel when the focus is arm64? is that necessary?" 2026-10-31: "after
   you are done with trusted you should start looking at x86 and wasm."
+  2026-10-31, on how other work fits the T0 plan: "i want small tight
+  improvements on top of t0."
 - 2026-10-29, build cost: "i need fast incremental builds to enable you and
   other agents to quickly iterate on features. right now we are in rust cargo
   build times and it fucking sucks because we are forth!" A build whose cost
