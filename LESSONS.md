@@ -224,6 +224,20 @@ entry.
   evidence because a capability does not exist yet, build it in a branch and
   measure.
 
+### Processes
+
+- 2026-10-28, fork: shown that SUBJECT:RUN, the gate pool, eval and the
+  property-test shards fork the loaded process and keep running Habu, which
+  needs a registry resetting task state in the child, Joel asked "did unix
+  not solve forking ages ago? why are we trying to invent stuff here?" and
+  "why are we mixing forks with tasks?", then chose "fork to exec. also,
+  rename the subject library and package to something more appropriate!"
+  Habu forks only to exec: a child that runs Habu is a fresh hb. Tasks are
+  OS threads, and POSIX supports little in a threaded process's child before
+  exec; on macOS a fork-without-exec child crashed in curl_global_init and
+  objc once the parent had a live task or had used Security or curl (dot
+  habu-fork-only-to-59d3557e).
+
 ### Tests
 
 - 2026-10-20, other targets: "we need elf32 and the TI code. also the intel
