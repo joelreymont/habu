@@ -15,8 +15,7 @@ require src/lib/task.f
 require src/lib/aio.f
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
-require src/lib/json-write.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
 require src/lib/memory.f
@@ -148,10 +147,10 @@ variable PARKED                   \ set by the handler that never answers
    ETAG-BUF ETAG-U @ SPAN:TAKE SPAN:$ ;
 
 
-: PING-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" service" s" http-test" JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: PING-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" service" s" http-test" JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 : PING ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
@@ -177,14 +176,14 @@ PTR-VARIABLE ITEM-HOST-A
 variable ITEM-HOST-N
 
 
-: ITEM-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" id" ITEM-ID-A @ ITEM-ID-N @ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" query" ITEM-QUERY-A @ ITEM-QUERY-N @ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" host" ITEM-HOST-A @ ITEM-HOST-N @ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: ITEM-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" id" ITEM-ID-A @ ITEM-ID-N @ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" query" ITEM-QUERY-A @ ITEM-QUERY-N @ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" host" ITEM-HOST-A @ ITEM-HOST-N @ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 : ITEM ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
@@ -206,10 +205,10 @@ variable ITEM-HOST-N
 PTR-VARIABLE VERSION-A
 variable VERSION-N
 
-: VERSION-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" version" VERSION-A @ VERSION-N @ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: VERSION-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" version" VERSION-A @ VERSION-N @ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 : ASKED-VERSION ( HTTP:request HTTP:response -- )
@@ -228,10 +227,10 @@ variable ECHO-LEN
 variable ECHO-HITS
 
 
-: ECHO-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" bytes" ECHO-LEN @ JSON-WRITE:FIELD-U
-   JSON-WRITE:OBJECT-END ;
+: ECHO-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" bytes" ECHO-LEN @ JSON:WRITE-FIELD-U
+   JSON:WRITE-OBJECT-END ;
 
 
 : ECHO ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
@@ -255,22 +254,22 @@ variable ECHO-HITS
    answer 200 HTTP:STATUS! ;
 
 
-: OWN-FIELD ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   s" own" 0 OWN-REQUEST @ HTTP:SERVING? JSON-WRITE:FIELD-BOOL ;
+: OWN-FIELD ( ptr JSON:writer -- ptr JSON:writer )
+   s" own" 0 OWN-REQUEST @ HTTP:SERVING? JSON:WRITE-FIELD-BOOL ;
 
 
-: KEEP-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
+: KEEP-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
    OWN-FIELD
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
 
-: CHECK-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" kept" 0 OLD-REQUEST @ HTTP:SERVING? JSON-WRITE:FIELD-BOOL
-   JSON-WRITE:COMMA
+: CHECK-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" kept" 0 OLD-REQUEST @ HTTP:SERVING? JSON:WRITE-FIELD-BOOL
+   JSON:WRITE-COMMA
    OWN-FIELD
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
 
 \ Keeps its handle past its answer, for SERVING-CASE to ask about.
@@ -289,20 +288,20 @@ variable ECHO-HITS
    answer [: CHECK-BODY ;] HTTP:JSON! ;
 
 
-\ A body that is not JSON throws out of src/lib/json-read.f's reader, and the
+\ A body that is not JSON throws out of src/lib/json/read.f's reader, and the
 \ worker's catch boundary answers 500.
-: TEXT-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" text" TEXT-BUF TEXT-N @ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: TEXT-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" text" TEXT-BUF TEXT-N @ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 : READ-TEXT ( HTTP:request -- n ) {: asked:HTTP:request :}
    asked HTTP:BODY-READER
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE -1 exit then
-   s" text" JR:FIND-KEY 0= if JR:CLOSE -2 exit then
-   TEXT-BUF TEXT-CAP JR:STR {: len:n :}
-   JR:CLOSE
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE -1 exit then
+   s" text" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -2 exit then
+   TEXT-BUF TEXT-CAP JSON:READ-STR {: len:n :}
+   JSON:READ-CLOSE
    len ;
 
 
@@ -323,9 +322,9 @@ variable ECHO-HITS
 
 \ Throws with this worker's JSON writer open and half filled: the writer must be
 \ closed and reopened empty, or the next answer would carry this one's fragment.
-: BOOM-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" partial" s" yes" JSON-WRITE:FIELD-S
+: BOOM-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" partial" s" yes" JSON:WRITE-FIELD-S
    E-BOOM throw ;
 
 
@@ -352,10 +351,10 @@ $400 constant FILL-HEADER-BYTES   \ five of them: past 2 KiB of lines, 4 KiB of 
 FILL-BIG
 
 
-: BIG-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" big" BIG-VALUE BIG-VALUE-BYTES JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: BIG-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" big" BIG-VALUE BIG-VALUE-BYTES JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 : BIG-JSON ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
@@ -381,15 +380,15 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-A ptr u8
 HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 
-: JSON-ERROR-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: JSON-ERROR-BODY ( ptr JSON:writer -- ptr JSON:writer )
    HTTP:WORKER-SLOT {: idx:n :}
-   JSON-WRITE:OBJECT-START
-   s" code" idx ERR-CODE-A @ idx ERR-CODE-N @ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" message" idx ERR-MESSAGE-A @ idx ERR-MESSAGE-N @ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" request_id" idx ERR-ANSWER @ HTTP:REQUEST-ID$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-START
+   s" code" idx ERR-CODE-A @ idx ERR-CODE-N @ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" message" idx ERR-MESSAGE-A @ idx ERR-MESSAGE-N @ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" request_id" idx ERR-ANSWER @ HTTP:REQUEST-ID$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 : JSON-ERROR ( HTTP:response n ptr u8 n ptr u8 n -- )
@@ -554,10 +553,10 @@ $2710 constant PARK-MS            \ far past every stop bound
    ;MATCH ;
 
 
-: TRACE-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" trace" HTTP:WORKER-SLOT TRACE$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: TRACE-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" trace" HTTP:WORKER-SLOT TRACE$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 \ Answers the marks its own worker has left, this request's included.

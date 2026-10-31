@@ -8,19 +8,18 @@
 require src/lib/string.f
 require src/lib/byte-buffer.f
 require src/lib/adt/option.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require tools/check-verify-core.f
 require tools/lsp-defs.f
 require tools/lsp-line.f
 
 package LSP-COMPLETION
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 
 private
 
-TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for decoding a line
+TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for decoding a line
 DYNAMIC-BUFFER WORD-B u8                 \ the line's spelling, decoded,
 variable WORD-U
 DYNAMIC-BUFFER FILE-B u8                 \ its declaration's file, or none,
@@ -28,7 +27,7 @@ variable FILE-U
 variable TARGET-V                        \ and the bytes its declaring token
 variable TARGET-END-V                    \ starts and ends at there
 create DETAIL-B BUF:HDR-BYTES allot      \ an item's detail
-TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer,
+TYPED-VARIABLE OUT ptr JSON:writer \ the answer's writer,
 variable ASKED                           \ the slot of the document asked about,
 variable SHOWN-N                         \ and the items written so far
 
@@ -37,24 +36,24 @@ variable SHOWN-N                         \ and the items written so far
 : D+ ( ptr u8 n -- )  BUF:N>BLEN DETAIL-B BUF:APPEND-SPAN ;
 : DETAIL$ ( -- ptr u8 n )  DETAIL-B BUF:SPAN$ BUF:BLEN>N ;
 
-: STRING>WORD ( JR:reader -- JR:reader )
-   JR:SPAN$ nip {: raw:n :}
+: STRING>WORD ( JSON:reader -- JSON:reader )
+   READ-SPAN$ nip {: raw:n :}
    raw 1 max WORD-B-RESERVE
-   0 WORD-B raw JR:STR WORD-U ! ;
+   0 WORD-B raw READ-STR WORD-U ! ;
 
-: STRING>FILE ( JR:reader -- JR:reader )
-   JR:SPAN$ nip {: raw:n :}
+: STRING>FILE ( JSON:reader -- JSON:reader )
+   READ-SPAN$ nip {: raw:n :}
    raw 1 max FILE-B-RESERVE
-   0 FILE-B raw JR:STR FILE-U ! ;
+   0 FILE-B raw READ-STR FILE-U ! ;
 
 \ The member whose key the reader is at, decoded; one an item needs nothing
 \ of, passed over.
-: MEMBER ( JR:reader -- JR:reader )
-   s" word" JR:STR-EQ? if JR:NEXT drop STRING>WORD exit then
-   s" file" JR:STR-EQ? if JR:NEXT drop STRING>FILE exit then
-   s" target_start" JR:STR-EQ? if JR:NEXT drop JR:INT TARGET-V ! exit then
-   s" target_end" JR:STR-EQ? if JR:NEXT drop JR:INT TARGET-END-V ! exit then
-   JR:NEXT drop JR:SKIP-VALUE ;
+: MEMBER ( JSON:reader -- JSON:reader )
+   s" word" READ-STR-EQ? if READ-NEXT drop STRING>WORD exit then
+   s" file" READ-STR-EQ? if READ-NEXT drop STRING>FILE exit then
+   s" target_start" READ-STR-EQ? if READ-NEXT drop READ-INT TARGET-V ! exit then
+   s" target_end" READ-STR-EQ? if READ-NEXT drop READ-INT TARGET-END-V ! exit then
+   READ-NEXT drop READ-SKIP-VALUE ;
 
 \ The candidate line's members decoded, each once; a member it lacks is empty
 \ or 0.
@@ -64,10 +63,10 @@ variable SHOWN-N                         \ and the items written so far
    0 FILE-U !
    0 TARGET-V !
    0 TARGET-END-V !
-   JR-ST a u JR:INIT
-   JR:NEXT drop
-   begin JR:NEXT JR:T-KEY = while MEMBER repeat
-   JR:CLOSE ;
+   JSON-ST a u READ-INIT
+   READ-NEXT drop
+   begin READ-NEXT T-KEY = while MEMBER repeat
+   READ-CLOSE ;
 
 : TARGET-REC ( -- option<n> )
    FILE-U @ 0= if OPTION:NONE exit then
@@ -94,19 +93,19 @@ variable SHOWN-N                         \ and the items written so far
       eu 0 > if s"  " D+ then
       s" \ package " D+ p pu D+
    then
-   OUT @ COMMA s" detail" DETAIL$ FIELD-S drop ;
+   OUT @ WRITE-COMMA s" detail" DETAIL$ WRITE-FIELD-S drop ;
 
 : ITEM ( ptr u8 n -- )
    DECODE
    OUT @
-   SHOWN-N @ 0 > if COMMA then
-   OBJECT-START
-   s" label" WORD$ FIELD-S drop
+   SHOWN-N @ 0 > if WRITE-COMMA then
+   WRITE-OBJECT-START
+   s" label" WORD$ WRITE-FIELD-S drop
    TARGET-REC MATCH option
       some OF DETAIL ENDOF
       none OF ENDOF
    ;MATCH
-   OUT @ OBJECT-END drop
+   OUT @ WRITE-OBJECT-END drop
    1 SHOWN-N +! ;
 
 public
@@ -115,16 +114,16 @@ public
 : PREPARE ( -- )
    DETAIL-B 1 BUF:N>BLEN BUF:INIT ;
 
-: ANSWER ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer n -- ptr JSON:writer )
    {: w slot:n :}
    w OUT !
    slot ASKED !
    0 SHOWN-N !
-   w OBJECT-START
-   s" isIncomplete" false FIELD-BOOL COMMA
-   s" items" KEY ARRAY-START drop
+   w WRITE-OBJECT-START
+   s" isIncomplete" false WRITE-FIELD-BOOL WRITE-COMMA
+   s" items" WRITE-KEY WRITE-ARRAY-START drop
    CHECK:VERIFY-CANDIDATES$ [: ITEM ;] LSP-LINE:EACH-LINE
-   w ARRAY-END OBJECT-END ;
+   w WRITE-ARRAY-END WRITE-OBJECT-END ;
 
 ;using
 ;using

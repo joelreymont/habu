@@ -568,9 +568,8 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/uri.f
 require src/lib/content-length.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/json-rpc.f
-require src/lib/json-write.f
 require tools/check-verify-core.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
@@ -635,8 +634,8 @@ variable DEADLINE                        \ the mono-ns time its waits run out,
 variable SENT                            \ and the bytes of its input written
 
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file URI: file:// and each byte escaped
-TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for reading a packet
-TYPED-VARIABLE HL-W JSON-WRITE:writer    \ a highlight written in this process
+TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for reading a packet
+TYPED-VARIABLE HL-W JSON:writer    \ a highlight written in this process
 TYPED-VARIABLE SHARED? bool                \ a case uses the initialized session
 TYPED-VARIABLE WORKSPACE? bool             \ shared cases use one fixed root
 TYPED-VARIABLE SESSION-INIT [ -- ]
@@ -1559,10 +1558,10 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ quotes, and whether it is a string.
 : MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    {: a:ptr u:n k:ptr ku:n :}
-   JR-ST a u JR:INIT
-   JR:NEXT drop
-   k ku JR:FIND-KEY 0= if JR:CLOSE NULL$ false exit then
-   JR:TOKEN >r JR:SPAN$ rot JR:CLOSE r> JR:T-STR = ;
+   JSON-ST a u JSON:READ-INIT
+   JSON:READ-NEXT drop
+   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE NULL$ false exit then
+   JSON:READ-TOKEN >r JSON:READ-SPAN$ rot JSON:READ-CLOSE r> JSON:T-STR = ;
 
 \ The message the packet's diagnostic carries: the packet's message, or else
 \ its code, its suggestion when not empty, and its expected and actual, each on
@@ -1813,7 +1812,7 @@ variable PUB-COUNT
    URI-A s" 1.5" s\" \"\"" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
    URI-A LONG-ID s\" \"\"" OPEN-PARAMS
-   s" textDocument/didOpen" PAR$ E-JR-NUMBER UNAPPLIED
+   s" textDocument/didOpen" PAR$ E-JSON-READ-NUMBER UNAPPLIED
    URI-A s" 1" s" null" OPEN-PARAMS
    s" textDocument/didOpen" PAR$ LSP:E-LSP-PARAMS UNAPPLIED
    s\" \"file:///habu-lsp-test/a%00.f\"" s" 1" s\" \"\"" OPEN-PARAMS
@@ -2522,7 +2521,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    HEAR
    MSG$ HEARD ;
 
-\ Params nested past the 64 levels a JR:cursor keeps inline.
+\ Params nested past the 64 levels a JSON:cursor keeps inline.
 100 constant DEEP-NEST
 
 \ workspace/symbol params whose query follows a member nested DEEP-NEST deep,
@@ -4018,9 +4017,9 @@ DYNAMIC-BUFFER TREE-TEXT u8
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
    line ch LSP-TEXT:OFFSET-AT {: at:n :}
    l lu T-LABEL
-   HL-W MSG-B JSON-WRITE:OPEN-BUF slot at LSP-HIGHLIGHT:ANSWER
-   JSON-WRITE:$ s" null" T$=
-   HL-W JSON-WRITE:CLOSE ;
+   HL-W MSG-B JSON:WRITE-OPEN-BUF slot at LSP-HIGHLIGHT:ANSWER
+   JSON:WRITTEN$ s" null" T$=
+   HL-W JSON:WRITE-CLOSE ;
 
 \ The check's lines kept for hl-reread.f, open in this slot, as the server
 \ keeps a completed check's, then the highlight asked at P:K and at Q:k.

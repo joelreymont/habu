@@ -3,7 +3,7 @@
 \ answer every refusal shares, rendered by the one hook ON-ERROR installs
 \ (src/lib/net/http.f).
 require src/lib/net/http-request.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/string.f
 require src/lib/errors.f
 require src/lib/span.f
@@ -17,8 +17,8 @@ $2D constant DASH-BYTE
 10 constant DECIMAL
 $30 constant ZERO-BYTE
 
-MAX-WORKERS TYPED-BUFFER JSON-W JSON-WRITE:writer
-MAX-WORKERS TYPED-BUFFER JSON-BODY [ ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer ]
+MAX-WORKERS TYPED-BUFFER JSON-W JSON:writer
+MAX-WORKERS TYPED-BUFFER JSON-BODY [ ptr JSON:writer -- ptr JSON:writer ]
 $10000 constant FILE-CHUNK
 MAX-WORKERS TYPED-BUFFER FILE-OFFSET n
 MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
@@ -253,20 +253,20 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 
 
 \ The slot's writer over the slot's JSON buffer, empty and ready to be chained.
-\ Each worker holds its own writer and buffer (src/lib/json-write.f keeps no
+\ Each worker holds its own writer and buffer (src/lib/json/write.f keeps no
 \ state), so two workers write JSON at once without a lock between them.
 \ The writer may move the bytes a previous body borrowed, so that body goes
 \ first: a body that does not finish leaves none.
 : OPEN-JSON ( n -- ) {: idx:n :}
    idx DROP-BODY
-   idx JSON-W idx JSON-BUF JSON-WRITE:OPEN-BUF drop ;
+   idx JSON-W idx JSON-BUF JSON:WRITE-OPEN-BUF drop ;
 
 
 \ Whatever the body left behind, the writer is done with: a closed writer
 \ refuses every emitter, so a body quotation that kept its writer cannot write
 \ into the next request's answer.
 : CLOSE-JSON ( n -- ) {: idx:n :}
-   idx JSON-W JSON-WRITE:CLOSE ;
+   idx JSON-W JSON:WRITE-CLOSE ;
 
 
 \ The body's chain, from the slot's writer to the bytes it wrote, which become
@@ -275,7 +275,7 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
 : WRITE-JSON ( -- )
    SELF-SLOT {: idx:n :}
    idx JSON-W idx JSON-BODY @ execute
-   JSON-WRITE:$ idx RESPONSE-BODY! ;
+   JSON:WRITTEN$ idx RESPONSE-BODY! ;
 
 
 public
@@ -325,7 +325,7 @@ public
 \ worker's own buffer, with the Content-Type this word adds itself. Only the
 \ worker that owns the slot may build its response. The writer is closed however
 \ the body ended, and a body that did not finish is no answer at all.
-: JSON! ( response [ ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer ] -- )
+: JSON! ( response [ ptr JSON:writer -- ptr JSON:writer ] -- )
    {: subject:response body :}
    subject SLOT-OF-RESPONSE {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then

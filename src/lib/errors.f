@@ -93,13 +93,13 @@
 -3001 constant E-TBL-FIELD
 
 \ JSON writer: -3100..-3199
--3100 constant E-JW-FIRST
--3199 constant E-JW-LAST
--3100 constant E-JW-CAPACITY   \ the value does not fit the caller's output buffer
--3101 constant E-JW-BYTE       \ a byte outside 0-255, a negative U, or STRING/KEY text that is not UTF-8
--3102 constant E-JW-STATE      \ writer used before JSON-WRITE:OPEN or after CLOSE
--3103 constant E-JW-OUTPUT     \ output buffer is null, or its capacity is negative
--3104 constant E-JW-SOURCE     \ appended span is negative, or null with a positive length
+-3100 constant E-JSON-WRITE-FIRST
+-3199 constant E-JSON-WRITE-LAST
+-3100 constant E-JSON-WRITE-CAPACITY   \ the value does not fit the caller's output buffer
+-3101 constant E-JSON-WRITE-BYTE       \ a byte outside 0-255, a negative U, or WRITE-STRING/WRITE-KEY text that is not UTF-8
+-3102 constant E-JSON-WRITE-STATE      \ writer used before JSON:WRITE-OPEN or after JSON:WRITE-CLOSE
+-3103 constant E-JSON-WRITE-OUTPUT     \ output buffer is null, or its capacity is negative
+-3104 constant E-JSON-WRITE-SOURCE     \ appended span is negative, or null with a positive length
 
 \ OS-backed memory: -3200..-3299
 -3200 constant E-MEM-FIRST
@@ -194,7 +194,7 @@
 -3803 constant E-PROF-RATE       \ prof-rate was handed an interval below 0 (thrown by src/habu/prof.f BPROF-RATE and src/habu/kernel-x64.f's prof-rate row through the same (code, name) re-registered in src/habu/prof-abi.f)
 -3804 constant E-EVAL-RESIDUE    \ an evaluate-closed text left cells above its floor (thrown by src/habu/habu1.f B-EVAL-CLOSED through the same (code, name) re-registered in src/habu/stack-abi.f)
 
-\ JSON reader: -3900..-3999, minted by src/lib/json-read.f, which owns package JR.
+\ JSON reader: -3900..-3999, minted by src/lib/json/read.f, a file of package JSON (src/lib/json.f).
 
 \ Remote device harness (ssh zed): -4000..-4099
 -4000 constant E-ZED-FIRST

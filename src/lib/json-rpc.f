@@ -1,20 +1,18 @@
 \ json-rpc.f - the JSON-RPC 2.0 envelope: >MESSAGE sorts one body into a message
-\ and the writers build replies on a caller's JSON-WRITE writer. Every part of a
+\ and the writers build replies on a caller's JSON writer. Every part of a
 \ message is the body's own JSON text, borrowed: an id, a method or a string
 \ result keeps its quotes and escapes. STORAGE CLASS. CALLER-OWNED. >MESSAGE and
-\ METHOD? parse in the caller's JR:cursor record and the message borrows the
+\ METHOD? parse in the caller's JSON:cursor record and the message borrows the
 \ caller's body; the module keeps no state.
 
 \ Framing is src/lib/content-length.f's.
 
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 
 package JSON-RPC
-using JR
-using JSON-WRITE
+using JSON
 public
 
 -32700 constant PARSE-ERROR
@@ -43,12 +41,12 @@ ENUM message
 
 \ Whether a method's JSON text, as >MESSAGE gives it, names this method once
 \ decoded: `"initialize"` names initialize.
-: METHOD? ( ptr JR:cursor ptr u8 n ptr u8 n -- bool )
+: METHOD? ( ptr JSON:cursor ptr u8 n ptr u8 n -- bool )
    {: st:ptr m:ptr mu:n name:ptr nu:n :}
-   st m mu INIT
-   NEXT drop
-   name nu STR-EQ? {: same:bool :}
-   JR:CLOSE
+   st m mu READ-INIT
+   READ-NEXT drop
+   name nu READ-STR-EQ? {: same:bool :}
+   READ-CLOSE
    same ;
 
 private
@@ -90,12 +88,12 @@ STRUCTURE envelope
 : NOT-JSON ( -- message )
    PARSE-ERROR s" a body that is not JSON" NULL-ID INVALID ;
 
-\ JR's codes for text that is not JSON, E-JR-MALFORMED through E-JR-COMMA, are
-\ PARSE-ERROR; any other code, such as JR:E-SOURCE or a failed growth of the
+\ The JSON reader's codes for text that is not JSON, E-JSON-READ-MALFORMED through E-JSON-READ-COMMA, are
+\ PARSE-ERROR; any other code, such as JSON:E-READ-SOURCE or a failed growth of the
 \ reader's nesting stack, is misuse and is thrown.
 : SYNTAX? ( n -- bool )
    {: code:n :}
-   code E-JR-COMMA >= code E-JR-MALFORMED <= and ;
+   code E-JSON-READ-COMMA >= code E-JSON-READ-MALFORMED <= and ;
 
 : ID-KIND? ( n -- bool )
    {: k:n :}
@@ -106,55 +104,55 @@ STRUCTURE envelope
    k T-OBJ = k T-ARR = or ;
 
 \ The current value as a member: a container whole, a string with its quotes.
-: >MEMBER ( JR:reader -- JR:reader member )
-   TOKEN {: kind:n :}
-   kind CONTAINER? if VALUE-SPAN$ else SPAN$ then {: a:ptr u:n :}
+: >MEMBER ( JSON:reader -- JSON:reader member )
+   READ-TOKEN {: kind:n :}
+   kind CONTAINER? if READ-VALUE-SPAN$ else READ-SPAN$ then {: a:ptr u:n :}
    kind T-STR = if kind a 1- u 2 + MEMBER-MAKE exit then
    kind a u MEMBER-MAKE ;
 
-: V2? ( JR:reader -- JR:reader bool )
-   TOKEN T-STR = if s" 2.0" STR-EQ? exit then
-   SKIP-VALUE false ;
+: V2? ( JSON:reader -- JSON:reader bool )
+   READ-TOKEN T-STR = if s" 2.0" READ-STR-EQ? exit then
+   READ-SKIP-VALUE false ;
 
 \ The next member of an error object, given whether its code is an integer and
 \ its message a string so far; false after the last.
-: ERROR-MEMBER ( JR:reader bool bool -- JR:reader bool bool bool )
+: ERROR-MEMBER ( JSON:reader bool bool -- JSON:reader bool bool bool )
    {: code:bool text:bool :}
-   NEXT T-KEY <> if code text false exit then
-   s" code" STR-EQ? {: at-code:bool :}
-   s" message" STR-EQ? {: at-text:bool :}
-   NEXT {: kind:n :}
-   SKIP-VALUE
+   READ-NEXT T-KEY <> if code text false exit then
+   s" code" READ-STR-EQ? {: at-code:bool :}
+   s" message" READ-STR-EQ? {: at-text:bool :}
+   READ-NEXT {: kind:n :}
+   READ-SKIP-VALUE
    at-code if kind T-INT = else code then
    at-text if kind T-STR = else text then
    true ;
 
 \ The current value as the error member, and whether it is an error object.
-: ERROR-VALUE ( JR:reader -- JR:reader member bool )
-   TOKEN T-OBJ <> if >MEMBER false exit then
-   SPAN$ drop {: open:ptr :}
+: ERROR-VALUE ( JSON:reader -- JSON:reader member bool )
+   READ-TOKEN T-OBJ <> if >MEMBER false exit then
+   READ-SPAN$ drop {: open:ptr :}
    false false begin ERROR-MEMBER 0= until and {: ok:bool :}
-   SPAN$ drop {: close:ptr :}
+   READ-SPAN$ drop {: close:ptr :}
    T-OBJ open close 1+ open - MEMBER-MAKE ok ;
 
 \ The member at the current key: recorded when the envelope names it, over any
 \ earlier one of that name, else passed over.
-: RECORD ( JR:reader envelope -- JR:reader envelope )
+: RECORD ( JSON:reader envelope -- JSON:reader envelope )
    {: e :}
    e ENVELOPE-UNMAKE {: v:bool i m p r x ok:bool :}
-   s" jsonrpc" STR-EQ? if NEXT drop V2? i m p r x ok ENVELOPE-MAKE exit then
-   s" id" STR-EQ? if NEXT drop >MEMBER {: n :} v n m p r x ok ENVELOPE-MAKE exit then
-   s" method" STR-EQ? if NEXT drop >MEMBER {: n :} v i n p r x ok ENVELOPE-MAKE exit then
-   s" params" STR-EQ? if NEXT drop >MEMBER {: n :} v i m n r x ok ENVELOPE-MAKE exit then
-   s" result" STR-EQ? if NEXT drop >MEMBER {: n :} v i m p n x ok ENVELOPE-MAKE exit then
-   s" error" STR-EQ? if
-      NEXT drop ERROR-VALUE {: n good:bool :} v i m p r n good ENVELOPE-MAKE exit
+   s" jsonrpc" READ-STR-EQ? if READ-NEXT drop V2? i m p r x ok ENVELOPE-MAKE exit then
+   s" id" READ-STR-EQ? if READ-NEXT drop >MEMBER {: n :} v n m p r x ok ENVELOPE-MAKE exit then
+   s" method" READ-STR-EQ? if READ-NEXT drop >MEMBER {: n :} v i n p r x ok ENVELOPE-MAKE exit then
+   s" params" READ-STR-EQ? if READ-NEXT drop >MEMBER {: n :} v i m n r x ok ENVELOPE-MAKE exit then
+   s" result" READ-STR-EQ? if READ-NEXT drop >MEMBER {: n :} v i m p n x ok ENVELOPE-MAKE exit then
+   s" error" READ-STR-EQ? if
+      READ-NEXT drop ERROR-VALUE {: n good:bool :} v i m p r n good ENVELOPE-MAKE exit
    then
-   NEXT drop SKIP-VALUE e ;
+   READ-NEXT drop READ-SKIP-VALUE e ;
 
-: ROOT-MEMBER ( JR:reader envelope -- JR:reader envelope bool )
+: ROOT-MEMBER ( JSON:reader envelope -- JSON:reader envelope bool )
    {: e :}
-   NEXT T-KEY <> if e false exit then
+   READ-NEXT T-KEY <> if e false exit then
    e RECORD true ;
 
 \ A message with a method: a request with an id, else a notification.
@@ -208,25 +206,25 @@ STRUCTURE envelope
    then
    e SORT ;
 
-\ Reads the body once; NEXT answers its end or refuses it with E-JR-TRAILING.
-\ Text that is not JSON throws JR's code first.
-: READ-BODY ( message ptr JR:cursor ptr u8 n -- message ptr JR:cursor ptr u8 n )
+\ Reads the body once; READ-NEXT answers its end or refuses it with E-JSON-READ-TRAILING.
+\ Text that is not JSON throws the JSON reader's code first.
+: READ-BODY ( message ptr JSON:cursor ptr u8 n -- message ptr JSON:cursor ptr u8 n )
    {: prior st:ptr body:ptr len:n :}
-   st body len INIT
-   NEXT {: root:n :}
+   st body len READ-INIT
+   READ-NEXT {: root:n :}
    root T-OBJ = if
       NO-ENVELOPE begin ROOT-MEMBER 0= until
    else
-      SKIP-VALUE NO-ENVELOPE
+      READ-SKIP-VALUE NO-ENVELOPE
    then {: e :}
-   NEXT drop
-   JR:CLOSE
+   READ-NEXT drop
+   READ-CLOSE
    root e SORT-ROOT  st body len ;
 
 public
 
 \ Params absent or null are empty. A body that is not JSON (RFC 8259, as
-\ src/lib/json-read.f reads it) is PARSE-ERROR. INVALID-REQUEST is an array (a
+\ src/lib/json/read.f reads it) is PARSE-ERROR. INVALID-REQUEST is an array (a
 \ batch, not taken), a root that is not an object, `jsonrpc` other than "2.0", an
 \ id not a number, string or null, a method not a string, params not an object,
 \ array or null, and a message with no method unless it has an id and exactly one
@@ -234,7 +232,7 @@ public
 \ message. Member names compare decoded, the last repeat counts, other members are
 \ passed over. An invalid message carries its own id when that id is valid and it
 \ has a method, else the null id, so a reply never answers a response.
-: >MESSAGE ( ptr JR:cursor ptr u8 n -- message )
+: >MESSAGE ( ptr JSON:cursor ptr u8 n -- message )
    {: st:ptr body:ptr len:n :}
    NOT-JSON st body len [: READ-BODY ;] catch {: code:n :}
    2drop drop {: m :}
@@ -249,44 +247,43 @@ private
    u 0 <= if E-JSON-RPC-ID throw then
    a u ;
 
-: HEAD ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   OBJECT-START  s" jsonrpc" s" 2.0" FIELD-S ;
+: HEAD ( ptr JSON:writer -- ptr JSON:writer )
+   WRITE-OBJECT-START  s" jsonrpc" s" 2.0" WRITE-FIELD-S ;
 
-: ID-FIELD ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: ID-FIELD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
-   COMMA  s" id" a u FIELD-RAW ;
+   WRITE-COMMA  s" id" a u WRITE-FIELD-RAW ;
 
 public
 
 \ A reply needs an id: an empty one is E-JSON-RPC-ID before any byte is written.
 \ `{"jsonrpc":"2.0","id":ID,"result":`; the caller writes the value, then END.
-: RESULT ( ptr JSON-WRITE:writer id -- ptr JSON-WRITE:writer )
+: RESULT ( ptr JSON:writer id -- ptr JSON:writer )
    ID-TEXT$ {: a:ptr u:n :}
    HEAD a u ID-FIELD
-   COMMA  s" result" KEY ;
+   WRITE-COMMA  s" result" WRITE-KEY ;
 
 \ A whole error reply: `{"jsonrpc":"2.0","id":ID,"error":{"code":N,"message":M}}`.
-: ERROR ( ptr JSON-WRITE:writer id n ptr u8 n -- ptr JSON-WRITE:writer )
+: ERROR ( ptr JSON:writer id n ptr u8 n -- ptr JSON:writer )
    {: code:n msg:ptr mu:n :}
    ID-TEXT$ {: a:ptr u:n :}
    HEAD a u ID-FIELD
-   COMMA  s" error" KEY
-   OBJECT-START
-   s" code" code FIELD-INT
-   COMMA  s" message" msg mu FIELD-S
-   OBJECT-END
-   OBJECT-END ;
+   WRITE-COMMA  s" error" WRITE-KEY
+   WRITE-OBJECT-START
+   s" code" code WRITE-FIELD-INT
+   WRITE-COMMA  s" message" msg mu WRITE-FIELD-S
+   WRITE-OBJECT-END
+   WRITE-OBJECT-END ;
 
 \ `{"jsonrpc":"2.0","method":M,"params":`; the caller writes params, then END.
-: NOTIFY ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: NOTIFY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: m:ptr mu:n :}
    HEAD
-   COMMA  s" method" m mu FIELD-S
-   COMMA  s" params" KEY ;
+   WRITE-COMMA  s" method" m mu WRITE-FIELD-S
+   WRITE-COMMA  s" params" WRITE-KEY ;
 
-: END ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   OBJECT-END ;
+: END ( ptr JSON:writer -- ptr JSON:writer )
+   WRITE-OBJECT-END ;
 
-;using
 ;using
 ;package

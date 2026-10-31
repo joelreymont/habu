@@ -7,7 +7,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/memory.f
-require src/lib/json-write.f
+require src/lib/json.f
 
 package HB-BUILD
 
@@ -40,10 +40,10 @@ variable SIZE-OTHER
 6 constant REPORT-ESCAPE-MAX
 PATH-CAP REPORT-ESCAPE-MAX * 512 + constant REPORT-CAP
 REPORT-CAP BUFFER: REPORT-BUF
-TYPED-VARIABLE REPORT-W JSON-WRITE:writer
+TYPED-VARIABLE REPORT-W JSON:writer
 
-: REPORT-OPEN ( -- ptr JSON-WRITE:writer )
-   REPORT-W REPORT-BUF REPORT-CAP JSON-WRITE:OPEN ;
+: REPORT-OPEN ( -- ptr JSON:writer )
+   REPORT-W REPORT-BUF REPORT-CAP JSON:WRITE-OPEN ;
 
 : STATE-PTR ( -- ptr state )
    0 STATE-BUF ;
@@ -96,8 +96,8 @@ TYPED-VARIABLE REPORT-W JSON-WRITE:writer
    need TEXT-U ! ;
 
 : TEXT-QUOTED+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   REPORT-OPEN a u JSON-WRITE:STRING
-   JSON-WRITE:$ TEXT+ ;
+   REPORT-OPEN a u JSON:WRITE-STRING
+   JSON:WRITTEN$ TEXT+ ;
 
 : TEXT$ ( -- ptr u8 n )
    TEXT-A@ TEXT-U @ ;
@@ -182,50 +182,50 @@ public
 
 : REPORT$ ( -- ptr u8 n )
    REPORT-OPEN
-   JSON-WRITE:OBJECT-START
-   s" schema" s" hb-build-report" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" maker_hit" MAKER-HIT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
-   s" maker_built" MAKER-BUILT? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
-   s" maker_ran" MAKER-RAN? JSON-WRITE:FIELD-BOOL JSON-WRITE:COMMA
-   s" files_reused" FILES-REUSED JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" files_compiled" FILES-COMPILED JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" elapsed_ns" ELAPSED-NS JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" size" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
-   s" total" SIZE-TOTAL @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" code" SIZE-CODE @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" names" SIZE-NAMES @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" data_written" SIZE-DATA @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" data_zero_filled" SIZE-DATA-ZERO @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" padding" SIZE-PAD @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" other" SIZE-OTHER @ JSON-WRITE:FIELD-U
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:$ ;
+   JSON:WRITE-OBJECT-START
+   s" schema" s" hb-build-report" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" maker_hit" MAKER-HIT? JSON:WRITE-FIELD-BOOL JSON:WRITE-COMMA
+   s" maker_built" MAKER-BUILT? JSON:WRITE-FIELD-BOOL JSON:WRITE-COMMA
+   s" maker_ran" MAKER-RAN? JSON:WRITE-FIELD-BOOL JSON:WRITE-COMMA
+   s" files_reused" FILES-REUSED JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" files_compiled" FILES-COMPILED JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" elapsed_ns" ELAPSED-NS JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" size" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" total" SIZE-TOTAL @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" SIZE-CODE @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" names" SIZE-NAMES @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" data_written" SIZE-DATA @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" data_zero_filled" SIZE-DATA-ZERO @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" padding" SIZE-PAD @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" other" SIZE-OTHER @ JSON:WRITE-FIELD-U
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END
+   JSON:WRITTEN$ ;
 
 : PATH-ERROR$ ( -- ptr u8 n )
    REPORT-OPEN
-   JSON-WRITE:OBJECT-START
-   s" schema" s" hb-build-error" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" code" s" E-BUILD-PATH" JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:$ ;
+   JSON:WRITE-OBJECT-START
+   s" schema" s" hb-build-error" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" s" E-BUILD-PATH" JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITTEN$ ;
 
 : PATH-ERROR-TEXT$ ( -- ptr u8 n )
    s" hb-build: schema=hb-build-error version=1 code=E-BUILD-PATH" ;
 
 : TIMEOUT-ENV-ERROR$ ( -- ptr u8 n )
    REPORT-OPEN
-   JSON-WRITE:OBJECT-START
-   s" schema" s" hb-build-error" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" code" s" E-BUILD-COMMAND" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" env" s" HB_BUILD_TIMEOUT_MS" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" expected" s" integer from 1 to 2147483647" JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:$ ;
+   JSON:WRITE-OBJECT-START
+   s" schema" s" hb-build-error" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" s" E-BUILD-COMMAND" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" env" s" HB_BUILD_TIMEOUT_MS" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" expected" s" integer from 1 to 2147483647" JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITTEN$ ;
 
 : TIMEOUT-ENV-ERROR-TEXT$ ( -- ptr u8 n )
    s" hb-build: HB_BUILD_TIMEOUT_MS must be an integer from 1 to 2147483647" ;
@@ -234,18 +234,18 @@ public
    {: maker:ptr makeru:n source:ptr sourceu:n limit:n out:ptr outu:n err:ptr erru:n :}
    sourceu outu + erru + 6 * 512 + {: cap:n :}
    TEXT-RESET
-   REPORT-W cap TEXT-BUF cap JSON-WRITE:OPEN
-   JSON-WRITE:OBJECT-START
-   s" schema" s" hb-build-error" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" code" s" E-PROC-TIMEOUT" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" maker" maker makeru JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" source" source sourceu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" timeout_ms" limit JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" stdout" out outu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" stderr" err erru JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:$ ;
+   REPORT-W cap TEXT-BUF cap JSON:WRITE-OPEN
+   JSON:WRITE-OBJECT-START
+   s" schema" s" hb-build-error" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" s" E-PROC-TIMEOUT" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" maker" maker makeru JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" source" source sourceu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" timeout_ms" limit JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" stdout" out outu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" stderr" err erru JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITTEN$ ;
 
 : MAKER-TIMEOUT-ERROR-TEXT$ ( ptr u8 n ptr u8 n n -- ptr u8 n )
    {: maker:ptr makeru:n source:ptr sourceu:n limit:n :}
@@ -255,7 +255,7 @@ public
    s"  source=" TEXT+
    source sourceu TEXT-QUOTED+
    s"  timeout_ms=" TEXT+
-   REPORT-OPEN limit JSON-WRITE:U JSON-WRITE:$ TEXT+
+   REPORT-OPEN limit JSON:WRITE-U JSON:WRITTEN$ TEXT+
    TEXT$ ;
 
 ;package

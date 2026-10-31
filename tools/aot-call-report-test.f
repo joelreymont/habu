@@ -173,13 +173,13 @@ variable ACRT-SHORT-CAP
    ACRT-SMALL$ ACRT-JSON ACRT-JSON-CAP REPORT-JSON-BUFFER nip
    4 - ACRT-SHORT-CAP !
    ACRT-NEXT-FD {: fd:n :}
-   [: ACRT-SHORT-REPORT ;] catch E-JW-CAPACITY ACRT=
+   [: ACRT-SHORT-REPORT ;] catch E-JSON-WRITE-CAPACITY ACRT=
    REPORT-OUT$ ACRT-JSON ACRT-SHORT-CAP @ STR= ACRT-ASSERT
    ACRT-NEXT-FD fd ACRT= ;
 
 \ Misuse is refused by a named throw the caller reports, never by ending the
 \ process. E-FS-PATH: the shortest length past PATH-CAP, the largest cell (it
-\ wraps when one is added) and a negative length. E-JW-OUTPUT: a null output
+\ wraps when one is added) and a negative length. E-JSON-WRITE-OUTPUT: a null output
 \ buffer or a negative capacity. E-FMT-DOMAIN: a negative number. E-FS-OPEN: an
 \ input that does not open. E-FS-IO: one that opens but does not read, a
 \ directory, its descriptor closed after.
@@ -187,8 +187,8 @@ variable ACRT-SHORT-CAP
    [: ACRT-BUF PATH-CAP 1+ REPORT-FILE! ;] catch E-FS-PATH ACRT=
    [: ACRT-BUF -1 REPORT-FILE! ;] catch E-FS-PATH ACRT=
    [: ACRT-BUF STR-MAX-I64 REPORT-FILE! ;] catch E-FS-PATH ACRT=
-   [: NULL$ REPORT-BUFFER! ;] catch E-JW-OUTPUT ACRT=
-   [: ACRT-ERR -1 REPORT-BUFFER! ;] catch E-JW-OUTPUT ACRT=
+   [: NULL$ REPORT-BUFFER! ;] catch E-JSON-WRITE-OUTPUT ACRT=
+   [: ACRT-ERR -1 REPORT-BUFFER! ;] catch E-JSON-WRITE-OUTPUT ACRT=
    [: -1 JSON-NUM ;] catch E-FMT-DOMAIN ACRT=
    [: ACRT-MISSING$ REPORT-FILE! REPORT-COUNT ;] catch E-FS-OPEN ACRT=
    ACRT-NEXT-FD {: fd:n :}

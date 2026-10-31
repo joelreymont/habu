@@ -14,7 +14,7 @@ require src/lib/memory.f
 require src/lib/span.f
 require src/lib/type/deftype.f
 require src/lib/task.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/byte-buffer.f
 
 package HTTP
@@ -113,7 +113,7 @@ MAX-WORKERS TYPED-BUFFER LATE-LEFT n      \ bytes a request may still read past 
 \ One JSON reader record per worker, for its request body. A handler's throw
 \ past a live reader leaves a grown nesting stack there: the worker's next
 \ reader reuses it and ARENA-CLOSE releases it.
-MAX-WORKERS TYPED-BUFFER READER JR:cursor
+MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 
 MAX-WORKERS MAX-HEADERS * constant HEADER-ROWS
 HEADER-ROWS TYPED-BUFFER HEADER-NAME-AT n
@@ -240,7 +240,7 @@ private
          i HDR-BUF BUF:DISPOSE
          i JSON-BUF BUF:DISPOSE
          i OUT-BUF BUF:DISPOSE
-         i READER JR:DISPOSE
+         i READER JSON:READ-DISPOSE
          i SLOT-REGION @ MEM:FREE-SPAN
          0 i SLOT-LIVE !
       then

@@ -11,8 +11,7 @@ require src/lib/span.f
 require src/lib/uri.f
 require src/lib/byte-buffer.f
 require src/lib/adt/option.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/fs.f
 require tools/lsp-docs.f
 require tools/lsp-text.f
@@ -168,7 +167,7 @@ variable BYTES-U
 \ capacity, and a string at the end of what it names, as an empty one is,
 \ still needs the address of that index.
 
-TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for decoding a line
+TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for decoding a line
 DYNAMIC-BUFFER FILE-B u8                 \ the line's file, decoded,
 variable FILE-U
 DYNAMIC-BUFFER IN-B u8                   \ the file a use line's use is in,
@@ -213,7 +212,7 @@ variable LINE-AT                         \ and where its strings start in BYTES
 variable CUR-G                           \ the group positions count for, -1 for none
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
 create ESC-B BUF:HDR-BYTES allot         \ a URI's JSON string
-TYPED-VARIABLE ESC-W JSON-WRITE:writer
+TYPED-VARIABLE ESC-W JSON:writer
 
 : BLOCK@ ( n n -- n )  swap BLOCK-CELLS * + BLOCKS @ ;
 : BLOCK! ( n n n -- )  swap BLOCK-CELLS * + BLOCKS ! ;
@@ -245,94 +244,94 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
 
 \ The string the reader is at, decoded onto the end of BYTES, which its raw
 \ text's length bounds: its offset and length there.
-: STRING>BYTES ( JR:reader -- JR:reader n n )
-   JR:SPAN$ nip {: raw:n :}
+: STRING>BYTES ( JSON:reader -- JSON:reader n n )
+   JSON:READ-SPAN$ nip {: raw:n :}
    BYTES-U @ {: at:n :}
    at raw + 1+ BYTES-RESERVE
-   at BYTES raw JR:STR {: u:n :}
+   at BYTES raw JSON:READ-STR {: u:n :}
    u BYTES-U +!
    at u ;
 
-: STRING>FILE ( JR:reader -- JR:reader )
-   JR:SPAN$ nip {: raw:n :}
+: STRING>FILE ( JSON:reader -- JSON:reader )
+   JSON:READ-SPAN$ nip {: raw:n :}
    raw 1 max FILE-B-RESERVE
-   0 FILE-B raw JR:STR FILE-U ! ;
+   0 FILE-B raw JSON:READ-STR FILE-U ! ;
 
-: STRING>IN ( JR:reader -- JR:reader )
-   JR:SPAN$ nip {: raw:n :}
+: STRING>IN ( JSON:reader -- JSON:reader )
+   JSON:READ-SPAN$ nip {: raw:n :}
    raw 1 max IN-B-RESERVE
-   0 IN-B raw JR:STR IN-U ! ;
+   0 IN-B raw JSON:READ-STR IN-U ! ;
 
 \ The class the string the reader is at names; a word for any class the
 \ verifier names but this store does not tell apart.
-: CLASS-OF ( JR:reader -- JR:reader n )
-   s" constant" JR:STR-EQ? if CLASS-CONSTANT exit then
-   s" storage" JR:STR-EQ? if CLASS-STORAGE exit then
-   s" export" JR:STR-EQ? if CLASS-EXPORT exit then
-   s" constructor" JR:STR-EQ? if CLASS-CONSTRUCTOR exit then
+: CLASS-OF ( JSON:reader -- JSON:reader n )
+   s" constant" JSON:READ-STR-EQ? if CLASS-CONSTANT exit then
+   s" storage" JSON:READ-STR-EQ? if CLASS-STORAGE exit then
+   s" export" JSON:READ-STR-EQ? if CLASS-EXPORT exit then
+   s" constructor" JSON:READ-STR-EQ? if CLASS-CONSTRUCTOR exit then
    CLASS-WORD ;
 
 \ The visibility the string the reader is at names, -1 for any other.
-: VIS-OF ( JR:reader -- JR:reader n )
-   s" global" JR:STR-EQ? if VIS-GLOBAL exit then
-   s" private" JR:STR-EQ? if VIS-PRIVATE exit then
-   s" public" JR:STR-EQ? if VIS-PUBLIC exit then
+: VIS-OF ( JSON:reader -- JSON:reader n )
+   s" global" JSON:READ-STR-EQ? if VIS-GLOBAL exit then
+   s" private" JSON:READ-STR-EQ? if VIS-PRIVATE exit then
+   s" public" JSON:READ-STR-EQ? if VIS-PUBLIC exit then
    -1 ;
 
 \ The member whose key the reader is at, decoded into the line's cells; one
 \ the store keeps nothing of, or an identity member of another type than the
 \ one its line states, passed over.
-: MEMBER ( JR:reader -- JR:reader )
-   s" class" JR:STR-EQ? if JR:NEXT drop CLASS-OF CLASS-V ! exit then
-   s" word" JR:STR-EQ? if JR:NEXT drop STRING>BYTES WORD-U ! WORD-AT ! exit then
-   s" package" JR:STR-EQ? if
-      JR:NEXT JR:T-STR = if STRING>BYTES PKG-U ! PKG-AT ! 1 PKG-OK ! else JR:SKIP-VALUE then
+: MEMBER ( JSON:reader -- JSON:reader )
+   s" class" JSON:READ-STR-EQ? if JSON:READ-NEXT drop CLASS-OF CLASS-V ! exit then
+   s" word" JSON:READ-STR-EQ? if JSON:READ-NEXT drop STRING>BYTES WORD-U ! WORD-AT ! exit then
+   s" package" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-STR = if STRING>BYTES PKG-U ! PKG-AT ! 1 PKG-OK ! else JSON:READ-SKIP-VALUE then
       exit
    then
-   s" kind" JR:STR-EQ? if JR:NEXT drop STRING>BYTES KIND-U ! KIND-AT ! exit then
-   s" effect" JR:STR-EQ? if JR:NEXT drop STRING>BYTES EFF-U ! EFF-AT ! exit then
-   s" decl_name" JR:STR-EQ? if
-      JR:NEXT JR:T-STR = if STRING>BYTES NAME-U ! NAME-AT ! else JR:SKIP-VALUE then exit
+   s" kind" JSON:READ-STR-EQ? if JSON:READ-NEXT drop STRING>BYTES KIND-U ! KIND-AT ! exit then
+   s" effect" JSON:READ-STR-EQ? if JSON:READ-NEXT drop STRING>BYTES EFF-U ! EFF-AT ! exit then
+   s" decl_name" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-STR = if STRING>BYTES NAME-U ! NAME-AT ! else JSON:READ-SKIP-VALUE then exit
    then
-   s" source" JR:STR-EQ? if
-      JR:NEXT JR:T-STR = if
-         s" subject" JR:STR-EQ? if ST-SUBJECT else
-         s" document" JR:STR-EQ? if ST-DOCUMENT else
-         s" disk" JR:STR-EQ? if ST-DISK else ST-UNUSABLE then then then
+   s" source" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-STR = if
+         s" subject" JSON:READ-STR-EQ? if ST-SUBJECT else
+         s" document" JSON:READ-STR-EQ? if ST-DOCUMENT else
+         s" disk" JSON:READ-STR-EQ? if ST-DISK else ST-UNUSABLE then then then
          STAMP-V !
-      else JR:SKIP-VALUE then exit
+      else JSON:READ-SKIP-VALUE then exit
    then
-   s" size" JR:STR-EQ? if
-      JR:NEXT JR:T-INT = if JR:INT SIZE-V ! META-MASK @ 1 or META-MASK !
-      else JR:SKIP-VALUE then exit
+   s" size" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-INT = if JSON:READ-INT SIZE-V ! META-MASK @ 1 or META-MASK !
+      else JSON:READ-SKIP-VALUE then exit
    then
-   s" mtime_sec" JR:STR-EQ? if
-      JR:NEXT JR:T-INT = if JR:INT MSEC-V ! META-MASK @ 2 or META-MASK !
-      else JR:SKIP-VALUE then exit
+   s" mtime_sec" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-INT = if JSON:READ-INT MSEC-V ! META-MASK @ 2 or META-MASK !
+      else JSON:READ-SKIP-VALUE then exit
    then
-   s" mtime_ns" JR:STR-EQ? if
-      JR:NEXT JR:T-INT = if JR:INT MNS-V ! META-MASK @ 4 or META-MASK !
-      else JR:SKIP-VALUE then exit
+   s" mtime_ns" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-INT = if JSON:READ-INT MNS-V ! META-MASK @ 4 or META-MASK !
+      else JSON:READ-SKIP-VALUE then exit
    then
-   s" ctime_sec" JR:STR-EQ? if
-      JR:NEXT JR:T-INT = if JR:INT CSEC-V ! META-MASK @ 8 or META-MASK !
-      else JR:SKIP-VALUE then exit
+   s" ctime_sec" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-INT = if JSON:READ-INT CSEC-V ! META-MASK @ 8 or META-MASK !
+      else JSON:READ-SKIP-VALUE then exit
    then
-   s" ctime_ns" JR:STR-EQ? if
-      JR:NEXT JR:T-INT = if JR:INT CNS-V ! META-MASK @ 16 or META-MASK !
-      else JR:SKIP-VALUE then exit
+   s" ctime_ns" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-INT = if JSON:READ-INT CNS-V ! META-MASK @ 16 or META-MASK !
+      else JSON:READ-SKIP-VALUE then exit
    then
-   s" decl_visit" JR:STR-EQ? if
-      JR:NEXT JR:T-INT = if JR:INT VISIT-V ! else JR:SKIP-VALUE then exit
+   s" decl_visit" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT JSON:T-INT = if JSON:READ-INT VISIT-V ! else JSON:READ-SKIP-VALUE then exit
    then
-   s" visibility" JR:STR-EQ? if JR:NEXT drop VIS-OF VIS-V ! exit then
-   s" file" JR:STR-EQ? if JR:NEXT drop STRING>FILE exit then
-   s" in" JR:STR-EQ? if JR:NEXT drop STRING>IN exit then
-   s" byte_start" JR:STR-EQ? if JR:NEXT drop JR:INT START-V ! exit then
-   s" byte_end" JR:STR-EQ? if JR:NEXT drop JR:INT END-V ! exit then
-   s" target_start" JR:STR-EQ? if JR:NEXT drop JR:INT TARGET-V ! exit then
-   s" target_end" JR:STR-EQ? if JR:NEXT drop JR:INT TARGET-END-V ! exit then
-   JR:NEXT drop JR:SKIP-VALUE ;
+   s" visibility" JSON:READ-STR-EQ? if JSON:READ-NEXT drop VIS-OF VIS-V ! exit then
+   s" file" JSON:READ-STR-EQ? if JSON:READ-NEXT drop STRING>FILE exit then
+   s" in" JSON:READ-STR-EQ? if JSON:READ-NEXT drop STRING>IN exit then
+   s" byte_start" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT START-V ! exit then
+   s" byte_end" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT END-V ! exit then
+   s" target_start" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-V ! exit then
+   s" target_end" JSON:READ-STR-EQ? if JSON:READ-NEXT drop JSON:READ-INT TARGET-END-V ! exit then
+   JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
 \ The line's members decoded, each once; a string it lacks is empty, at the
 \ end of BYTES as the check's own strings are.
@@ -364,10 +363,10 @@ TYPED-VARIABLE ESC-W JSON-WRITE:writer
    0 END-V !
    0 TARGET-V !
    0 TARGET-END-V !
-   JR-ST a u JR:INIT
-   JR:NEXT drop
-   begin JR:NEXT JR:T-KEY = while MEMBER repeat
-   JR:CLOSE ;
+   JSON-ST a u JSON:READ-INIT
+   JSON:READ-NEXT drop
+   begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
+   JSON:READ-CLOSE ;
 
 \ The group of the file at this path among this check's, if it has one: the
 \ group positions count for first, then the others.
@@ -402,8 +401,8 @@ private
 
 : URI-JSON ( ptr u8 n -- ptr u8 n )
    {: u:ptr uu:n :}
-   ESC-W ESC-B JSON-WRITE:OPEN-BUF
-   u uu JSON-WRITE:STRING JSON-WRITE:$ ;
+   ESC-W ESC-B JSON:WRITE-OPEN-BUF
+   u uu JSON:WRITE-STRING JSON:WRITTEN$ ;
 
 \ The slot of the document whose check the store is keeping: the newest
 \ block's.

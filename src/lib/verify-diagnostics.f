@@ -2,7 +2,7 @@
 \ Returned bytes belong to this package and last until its next record.
 
 require src/lib/fs.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/source-lex.f
 require src/habu/verify-source.f
 
@@ -10,22 +10,22 @@ package VERIFY-DIAGNOSTICS
 private
 
 create OUT BUF:HDR-BYTES allot
-TYPED-VARIABLE W JSON-WRITE:writer
+TYPED-VARIABLE W JSON:writer
 variable READY
 
 66 constant MISSING-SOURCE
 74 constant UNREADABLE-SOURCE
 
-: START ( -- ptr JSON-WRITE:writer )
+: START ( -- ptr JSON:writer )
    READY @ 0= if
       OUT 256 BUF:N>BLEN BUF:INIT
       1 READY !
    then
-   W OUT JSON-WRITE:OPEN-BUF JSON-WRITE:OBJECT-START
-   s" schema_version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA ;
+   W OUT JSON:WRITE-OPEN-BUF JSON:WRITE-OBJECT-START
+   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA ;
 
-: END$ ( ptr JSON-WRITE:writer -- ptr u8 n )
-   JSON-WRITE:OBJECT-END JSON-WRITE:$ ;
+: END$ ( ptr JSON:writer -- ptr u8 n )
+   JSON:WRITE-OBJECT-END JSON:WRITTEN$ ;
 
 : ORIGIN ( ptr u8 n -- n n ) {: src:ptr at:n :}
    1 0 at 0 ?do
@@ -88,16 +88,16 @@ private
    u 0= if VERIFY:TOKEN-BYTE@ else at then {: start:n :}
    src start ORIGIN {: line:n col:n :}
    START
-   s" code" s" E-DUPLICATE-DEFINITION" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" repair_class" s" rename_duplicate" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" token" src start + u JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" file" name nameu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" line" line JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" column" col JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_start" start JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_end" start u + JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" suggestion" s" Rename the word or undefine the old definition before redefining it." JSON-WRITE:FIELD-S
+   s" code" s" E-DUPLICATE-DEFINITION" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" repair_class" s" rename_duplicate" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token" src start + u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" line JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" col JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_start" start JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_end" start u + JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" suggestion" s" Rename the word or undefine the old definition before redefining it." JSON:WRITE-FIELD-S
    END$ ;
 
 public
@@ -111,16 +111,16 @@ public
    src srcu at TOKEN-END at - {: len:n :}
    LEX-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    START
-   s" code" code codeu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" repair_class" class classu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" token" src at + len JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" file" name nameu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" line" LINT-LEX:ERROR-LINE@ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" column" LINT-LEX:ERROR-COL@ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_start" at JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_end" at len + JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" suggestion" sug sugu JSON-WRITE:FIELD-S
+   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token" src at + len JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" LINT-LEX:ERROR-LINE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" LINT-LEX:ERROR-COL@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_start" at JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_end" at len + JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
 : THROW-RECORD$ ( n n ptr u8 n ptr u8 n -- ptr u8 n )
@@ -129,19 +129,19 @@ public
    src srcu at TOKEN-END {: last:n :}
    rc THROW-CODE$ nip {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n msgu:n :}
    START
-   s" code" code codeu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" repair_class" class classu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" token" src at + last at - JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" file" name nameu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" line" line JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" column" col JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_start" at JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_end" last JSON-WRITE:FIELD-U JSON-WRITE:COMMA
+   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token" src at + last at - JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" line JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" col JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_start" at JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_end" last JSON:WRITE-FIELD-U JSON:WRITE-COMMA
    msgu 0= if
-      s" throw_code" rc JSON-WRITE:FIELD-INT JSON-WRITE:COMMA
+      s" throw_code" rc JSON:WRITE-FIELD-INT JSON:WRITE-COMMA
    then
-   s" suggestion" sug sugu JSON-WRITE:FIELD-S
+   s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
 : LOADER-RECORD$ ( n n n ptr u8 n ptr u8 n -- ptr u8 n )
@@ -149,16 +149,16 @@ public
    src at ORIGIN {: line:n col:n :}
    rc LOADER-CODE$ {: code:ptr codeu:n class:ptr classu:n sug:ptr sugu:n :}
    START
-   s" code" code codeu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" repair_class" class classu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" token" src at + len JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" file" name nameu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" line" line JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" column" col JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_start" at JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_end" at len + JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" suggestion" sug sugu JSON-WRITE:FIELD-S
+   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" repair_class" class classu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token" src at + len JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" file" name nameu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" line JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" col JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_start" at JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_end" at len + JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" suggestion" sug sugu JSON:WRITE-FIELD-S
    END$ ;
 
 \ The composition keeps the scanned source and stop location after its scope closes.

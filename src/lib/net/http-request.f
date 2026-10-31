@@ -8,7 +8,7 @@ require src/lib/net/http-arena.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require src/lib/net/tcp4.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/num-types.f
 require src/lib/span.f
 
@@ -839,9 +839,9 @@ public
 
 \ The reader lives in the slot's own reader record, so two workers reading two
 \ bodies share nothing. The caller closes it.
-: BODY-READER ( request -- JR:reader ) {: subject:request :}
+: BODY-READER ( request -- JSON:reader ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
-   idx READER idx SLOT-BODY$ JR:INIT ;
+   idx READER idx SLOT-BODY$ JSON:READ-INIT ;
 
 
 ;package

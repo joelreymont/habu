@@ -10,7 +10,7 @@ require src/lib/fd.f
 74 constant JSON-ONLY-E-IO
 
 create JSON-ONLY-LF 1 allot
-TYPED-VARIABLE JSON-ONLY-READER JR:cursor
+TYPED-VARIABLE JSON-ONLY-READER JSON:cursor
 
 variable JSON-ONLY-JSON-FD
 variable JSON-ONLY-PROSE-FD
@@ -124,20 +124,20 @@ variable JSON-ONLY-ROW-OBJECT
    JSON-ONLY-JSON-FD @ JSON-ONLY-LF$ JSON-ONLY-WRITE ;
 
 : JSON-ONLY-OBJECT ( -- )
-   JSON-ONLY-READER JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JR:INIT
-   JR:NEXT {: kind:n :}
-   begin JR:NEXT dup JR:T-END <> while drop repeat drop
-   JR:CLOSE
-   kind JR:T-OBJ = JSON-ONLY-ROW-OBJECT ! ;
+   JSON-ONLY-READER JSON-ONLY-LINE @ JSON-ONLY-LINE-U @ JSON:READ-INIT
+   JSON:READ-NEXT {: kind:n :}
+   begin JSON:READ-NEXT dup JSON:T-END <> while drop repeat drop
+   JSON:READ-CLOSE
+   kind JSON:T-OBJ = JSON-ONLY-ROW-OBJECT ! ;
 
 : JSON-ONLY-OBJECT? ( -- bool )
    [: JSON-ONLY-OBJECT ;] catch
    dup 0= if drop JSON-ONLY-ROW-OBJECT @ 0<> exit then
-   dup E-JR-MALFORMED = over E-JR-STRING = or
-   over E-JR-ESCAPE = or over E-JR-SURROGATE = or
-   over E-JR-TRAILING = or over E-JR-NUMBER = or
-   over E-JR-EOF = or over E-JR-COLON = or
-   over E-JR-COMMA = or if drop false exit then
+   dup E-JSON-READ-MALFORMED = over E-JSON-READ-STRING = or
+   over E-JSON-READ-ESCAPE = or over E-JSON-READ-SURROGATE = or
+   over E-JSON-READ-TRAILING = or over E-JSON-READ-NUMBER = or
+   over E-JSON-READ-EOF = or over E-JSON-READ-COLON = or
+   over E-JSON-READ-COMMA = or if drop false exit then
    throw ;
 
 : JSON-ONLY-NEXT? ( -- bool )

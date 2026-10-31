@@ -4,8 +4,7 @@ require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/jsonl.f
-require src/lib/json-write.f
-require src/lib/json-copy.f
+require src/lib/json.f
 require src/lib/string.f
 
 65 constant SARIF-E-DATA
@@ -34,8 +33,8 @@ create SARIF-TEXT-BUF SARIF-TEXT-CAP allot
 create SARIF-ONE 1 allot
 create SARIF-QUOTE SARIF-QUOTE-CAP allot
 create SARIF-DECODE SARIF-IN-CAP allot
-TYPED-VARIABLE SARIF-READER JR:cursor
-TYPED-VARIABLE SARIF-W JSON-WRITE:writer
+TYPED-VARIABLE SARIF-READER JSON:cursor
+TYPED-VARIABLE SARIF-W JSON:writer
 
 variable SARIF-IN-LEN
 variable SARIF-RULE-N
@@ -82,8 +81,8 @@ variable SARIF-RESULT-N
 
 : SARIF-STRING ( ptr u8 n -- )
    {: a:ptr u:n :}
-   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
-   a u JSON-WRITE:STRING JSON-WRITE:$ SARIF-OUT ;
+   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON:WRITE-OPEN
+   a u JSON:WRITE-STRING JSON:WRITTEN$ SARIF-OUT ;
 
 : SARIF-KEY ( ptr u8 n -- )
    SARIF-STRING
@@ -91,8 +90,8 @@ variable SARIF-RESULT-N
 
 : SARIF-I64 ( n -- )
    {: value:n :}
-   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
-   value JSON-WRITE:INT JSON-WRITE:$ SARIF-OUT ;
+   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON:WRITE-OPEN
+   value JSON:WRITE-INT JSON:WRITTEN$ SARIF-OUT ;
 
 : SARIF-DIGIT ( n -- n )
    dup 48 < if drop -1 exit then
@@ -123,11 +122,11 @@ variable SARIF-RESULT-N
    a SARIF-TEXT-BUF u BYTE-COPY
    SARIF-TEXT-BUF u ;
 
-: SARIF-GET ( ptr u8 n -- JR:reader bool )
+: SARIF-GET ( ptr u8 n -- JSON:reader bool )
    {: key:ptr ku:n :}
-   SARIF-READER SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
-   JR:NEXT drop
-   key ku JR:FIND-KEY ;
+   SARIF-READER SARIF-LINE-A@ SARIF-LINE-U @ JSON:READ-INIT
+   JSON:READ-NEXT drop
+   key ku JSON:READ-FIND-KEY ;
 
 : SARIF-NONZERO-NUM? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
@@ -136,33 +135,33 @@ variable SARIF-RESULT-N
       1+
    repeat drop SARIF-FALSE ;
 
-: SARIF-NODE-TEXT? ( JR:reader -- ptr u8 n bool )
-   JR:TOKEN {: kind:n :}
-   kind JR:T-STR = if
-      SARIF-DECODE SARIF-IN-CAP JR:STR {: u:n :} JR:CLOSE
+: SARIF-NODE-TEXT? ( JSON:reader -- ptr u8 n bool )
+   JSON:READ-TOKEN {: kind:n :}
+   kind JSON:T-STR = if
+      SARIF-DECODE SARIF-IN-CAP JSON:READ-STR {: u:n :} JSON:READ-CLOSE
       SARIF-DECODE u u 0 > exit
    then
-   kind JR:T-INT = kind JR:T-FLOAT = or if
-      JR:SPAN$ {: a:ptr u:n :} JR:CLOSE
+   kind JSON:T-INT = kind JSON:T-FLOAT = or if
+      JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE
       a u a u SARIF-NONZERO-NUM? exit
    then
-   kind JR:T-TRUE = if JR:CLOSE s" True" SARIF-TRUE exit then
-   kind JR:T-FALSE = if JR:CLOSE s" False" SARIF-FALSE exit then
-   kind JR:T-NULL = if JR:CLOSE s" None" SARIF-FALSE exit then
-   kind JR:T-OBJ = kind JR:T-ARR = or if
-      SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
-      SARIF-DECODE SARIF-IN-CAP JSON-COPY:VALUE
-      swap JR:CLOSE
-      JSON-WRITE:$ SARIF-COPY-TEXT {: a:ptr u:n :}
+   kind JSON:T-TRUE = if JSON:READ-CLOSE s" True" SARIF-TRUE exit then
+   kind JSON:T-FALSE = if JSON:READ-CLOSE s" False" SARIF-FALSE exit then
+   kind JSON:T-NULL = if JSON:READ-CLOSE s" None" SARIF-FALSE exit then
+   kind JSON:T-OBJ = kind JSON:T-ARR = or if
+      SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON:WRITE-OPEN
+      SARIF-DECODE SARIF-IN-CAP JSON:COPY-VALUE
+      swap JSON:READ-CLOSE
+      JSON:WRITTEN$ SARIF-COPY-TEXT {: a:ptr u:n :}
       a u u 2 > exit
    then
-   JR:CLOSE E-JR-STATE throw ;
+   JSON:READ-CLOSE E-JSON-READ-STATE throw ;
 
-: SARIF-NODE-TEXT$ ( JR:reader -- ptr u8 n )
+: SARIF-NODE-TEXT$ ( JSON:reader -- ptr u8 n )
    SARIF-NODE-TEXT? drop ;
 
 : SARIF-TRUTHY-GET ( ptr u8 n -- ptr u8 n bool )
-   SARIF-GET 0= if JR:CLOSE SARIF-DECODE 0 SARIF-FALSE exit then
+   SARIF-GET 0= if JSON:READ-CLOSE SARIF-DECODE 0 SARIF-FALSE exit then
    SARIF-NODE-TEXT? ;
 
 : SARIF-MESSAGE$ ( -- ptr u8 n )
@@ -173,29 +172,29 @@ variable SARIF-RESULT-N
    s" Habu diagnostic" ;
 
 : SARIF-CODE$ ( -- ptr u8 n )
-   s" code" SARIF-GET 0= if JR:CLOSE s" HABU-DIAGNOSTIC" exit then
+   s" code" SARIF-GET 0= if JSON:READ-CLOSE s" HABU-DIAGNOSTIC" exit then
    SARIF-NODE-TEXT$ ;
 
 : SARIF-FILE$ ( -- ptr u8 n )
-   s" file" SARIF-GET 0= if JR:CLOSE s" <input>" exit then
+   s" file" SARIF-GET 0= if JSON:READ-CLOSE s" <input>" exit then
    SARIF-NODE-TEXT$ ;
 
-: SARIF-NODE>I64 ( JR:reader -- n )
-   JR:TOKEN {: kind:n :}
-   kind JR:T-INT = kind JR:T-FLOAT = or if
-      JR:SPAN$ {: a:ptr u:n :} JR:CLOSE a u SARIF>S exit
+: SARIF-NODE>I64 ( JSON:reader -- n )
+   JSON:READ-TOKEN {: kind:n :}
+   kind JSON:T-INT = kind JSON:T-FLOAT = or if
+      JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u SARIF>S exit
    then
-   kind JR:T-STR = if
-      SARIF-DECODE SARIF-IN-CAP JR:STR {: u:n :} JR:CLOSE
+   kind JSON:T-STR = if
+      SARIF-DECODE SARIF-IN-CAP JSON:READ-STR {: u:n :} JSON:READ-CLOSE
       SARIF-DECODE u SARIF>S exit
    then
-   JR:CLOSE s" diag-to-sarif: expected integer" SARIF-E-DATA SARIF-FAIL ;
+   JSON:READ-CLOSE s" diag-to-sarif: expected integer" SARIF-E-DATA SARIF-FAIL ;
 
-: SARIF-EMIT-NODE-OR-NULL ( JR:reader bool -- )
-   0= if JR:CLOSE s" null" SARIF-OUT exit then
-   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON-WRITE:OPEN
-   SARIF-DECODE SARIF-IN-CAP JSON-COPY:VALUE
-   swap JR:CLOSE JSON-WRITE:$ SARIF-OUT ;
+: SARIF-EMIT-NODE-OR-NULL ( JSON:reader bool -- )
+   0= if JSON:READ-CLOSE s" null" SARIF-OUT exit then
+   SARIF-W SARIF-QUOTE SARIF-QUOTE-CAP JSON:WRITE-OPEN
+   SARIF-DECODE SARIF-IN-CAP JSON:COPY-VALUE
+   swap JSON:READ-CLOSE JSON:WRITTEN$ SARIF-OUT ;
 
 : SARIF-EMIT-GET ( ptr u8 n -- )
    SARIF-GET SARIF-EMIT-NODE-OR-NULL ;
@@ -209,15 +208,15 @@ variable SARIF-RESULT-N
 
 : SARIF-REGION-FIELD ( ptr u8 n ptr u8 n -- )
    {: src-a:ptr src-u:n out-a:ptr out-u:n :}
-   src-a src-u SARIF-GET 0= if JR:CLOSE exit then
+   src-a src-u SARIF-GET 0= if JSON:READ-CLOSE exit then
    SARIF-NEXT-FIELD
    out-a out-u SARIF-KEY
    SARIF-NODE>I64 SARIF-I64 ;
 
 : SARIF-REGION-LEN ( -- )
-   s" byte_start" SARIF-GET 0= if JR:CLOSE exit then
+   s" byte_start" SARIF-GET 0= if JSON:READ-CLOSE exit then
    SARIF-NODE>I64 {: start:n :}
-   s" byte_end" SARIF-GET 0= if JR:CLOSE exit then
+   s" byte_end" SARIF-GET 0= if JSON:READ-CLOSE exit then
    SARIF-NODE>I64 start -
    dup 0< if drop 0 then
    SARIF-NEXT-FIELD
@@ -441,17 +440,17 @@ variable SARIF-RESULT-N
    SARIF-TRUE ;
 
 : SARIF-PARSE-RAW ( -- )
-   SARIF-READER SARIF-LINE-A@ SARIF-LINE-U @ JR:INIT
-   JR:NEXT {: kind:n :}
-   begin JR:NEXT dup JR:T-END <> while drop repeat drop
-   JR:CLOSE
-   kind JR:T-OBJ = SARIF-ROW-OBJECT ! ;
+   SARIF-READER SARIF-LINE-A@ SARIF-LINE-U @ JSON:READ-INIT
+   JSON:READ-NEXT {: kind:n :}
+   begin JSON:READ-NEXT dup JSON:T-END <> while drop repeat drop
+   JSON:READ-CLOSE
+   kind JSON:T-OBJ = SARIF-ROW-OBJECT ! ;
 
-\ JR's codes for text that is not JSON; any other code, such as a refused
+\ The JSON reader's codes for text that is not JSON; any other code, such as a refused
 \ growth of the reader's nesting stack, is not the row's fault and is thrown.
 : SARIF-SYNTAX? ( n -- bool )
    {: code:n :}
-   code E-JR-COMMA >= code E-JR-MALFORMED <= and ;
+   code E-JSON-READ-COMMA >= code E-JSON-READ-MALFORMED <= and ;
 
 : SARIF-PARSE-LINE ( -- )
    [: SARIF-PARSE-RAW ;] catch

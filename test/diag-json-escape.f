@@ -17,7 +17,7 @@ package DIAG-JSON-ESCAPE
 variable BYTE
 variable POS
 variable COUNT
-TYPED-VARIABLE READER-STORAGE JR:cursor
+TYPED-VARIABLE READER-STORAGE JSON:cursor
 
 \ The byte sits inside the token n<c>--, so an escape that swallowed or split a
 \ neighbour would not decode back to it.
@@ -45,13 +45,13 @@ TYPED-VARIABLE READER-STORAGE JR:cursor
    GT-RC@ 0= if s" the check tool accepted the rejected fixture" FAIL then ;
 
 : TOKEN-FIELD ( ptr u8 n -- )
-   READER-STORAGE -rot JR:INIT JR:NEXT drop
-   s" token" JR:FIND-KEY 0= if JR:CLOSE s" packet has no token field" FAIL then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE s" packet token field is not a string" FAIL then
+   READER-STORAGE -rot JSON:READ-INIT JSON:READ-NEXT drop
+   s" token" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" packet has no token field" FAIL then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" packet token field is not a string" FAIL then
    SB-RESET  s" n" SB-APPEND  BYTE @ SB-APPEND-C  s" --" SB-APPEND
-   SB$ JR:STR-EQ? 0= if JR:CLOSE
+   SB$ JSON:READ-STR-EQ? 0= if JSON:READ-CLOSE
       s" packet token field does not decode to n<c>--" FAIL
-   then JR:CLOSE ;
+   then JSON:READ-CLOSE ;
 
 : BLANK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 ?do
@@ -61,11 +61,11 @@ TYPED-VARIABLE READER-STORAGE JR:cursor
 
 : ROW ( ptr u8 n bool -- )
    {: a:ptr u:n first:bool :}
-   READER-STORAGE a u JR:INIT JR:NEXT JR:T-OBJ <> if
-      JR:CLOSE s" packet stream has a non-object" FAIL
+   READER-STORAGE a u JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ <> if
+      JSON:READ-CLOSE s" packet stream has a non-object" FAIL
    then
-   JR:SKIP-VALUE JR:NEXT JR:T-END <> if JR:CLOSE E-JR-TRAILING throw then
-   JR:CLOSE
+   JSON:READ-SKIP-VALUE JSON:READ-NEXT JSON:T-END <> if JSON:READ-CLOSE E-JSON-READ-TRAILING throw then
+   JSON:READ-CLOSE
    first if a u TOKEN-FIELD then ;
 
 \ Every row of the stream parses strictly; the first object is the packet.

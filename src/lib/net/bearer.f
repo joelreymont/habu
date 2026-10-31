@@ -21,7 +21,7 @@ require src/lib/span.f
 require src/lib/memory.f
 require src/lib/image-lifecycle.f
 require src/lib/base64.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/task.f
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
@@ -86,8 +86,8 @@ EXPONENT-OFF EXPONENT-CAP + constant SCRATCH-BYTES
 HTTP:MAX-WORKERS SCRATCH-BYTES * SPAN-BUFFER: SCRATCH
 
 \ A row to each HTTP worker; PRESENTED and SIGNED borrow the request's header.
-HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
-HTTP:MAX-WORKERS TYPED-BUFFER OUTER JR:cursor       \ the key set's, while READER reads a key
+HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
+HTTP:MAX-WORKERS TYPED-BUFFER OUTER JSON:cursor       \ the key set's, while READER reads a key
 HTTP:MAX-WORKERS TYPED-BUFFER PRESENTED SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER SIGNED SPAN:span<u8>
 HTTP:MAX-WORKERS TYPED-BUFFER HEADER SPAN:span<u8>
@@ -105,8 +105,8 @@ CELL TASK:+USER FROM
 drop
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: CURSOR ( -- ptr JR:cursor ) SLOT READER ;
-: OUTER-CURSOR ( -- ptr JR:cursor ) SLOT OUTER ;
+: CURSOR ( -- ptr JSON:cursor ) SLOT READER ;
+: OUTER-CURSOR ( -- ptr JSON:cursor ) SLOT OUTER ;
 : HEADER$ ( -- ptr u8 n ) SLOT HEADER @ SPAN:$ ;
 : CLAIMS$ ( -- ptr u8 n ) SLOT CLAIMS @ SPAN:$ ;
 
@@ -121,11 +121,11 @@ drop
 
 
 \ Malformed JSON or base64url: the token's fault, or a fetched text's. No input
-\ raises E-JR-STATE or JR:E-SOURCE, so they are BEARER's own misuse and pass.
+\ raises E-JSON-READ-STATE or JSON:E-READ-SOURCE, so they are BEARER's own misuse and pass.
 : MALFORMED? ( n -- bool )
    {: code:n :}
-   code E-JR-STATE = code JR:E-SOURCE = or if false exit then
-   code E-JR-LAST >= code E-JR-FIRST <= and
+   code E-JSON-READ-STATE = code JSON:E-READ-SOURCE = or if false exit then
+   code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and or ;
 
 \ One step over untrusted text: malformed is false, any other throw passes.
@@ -138,40 +138,40 @@ drop
 
 \ The worker's reader on an object text at a member's value, and its token
 \ kind, -1 when the member is absent; the caller reads and closes it.
-: MEMBER ( ptr u8 n ptr u8 n -- JR:reader n )
+: MEMBER ( ptr u8 n ptr u8 n -- JSON:reader n )
    {: t:ptr tu:n k:ptr ku:n :}
-   CURSOR t tu JR:INIT JR:NEXT drop
-   k ku JR:FIND-KEY 0= if -1 exit then
-   JR:TOKEN ;
+   CURSOR t tu JSON:READ-INIT JSON:READ-NEXT drop
+   k ku JSON:READ-FIND-KEY 0= if -1 exit then
+   JSON:READ-TOKEN ;
 
-: KIND-OF ( ptr u8 n ptr u8 n -- n ) MEMBER {: kind:n :} JR:CLOSE kind ;
+: KIND-OF ( ptr u8 n ptr u8 n -- n ) MEMBER {: kind:n :} JSON:READ-CLOSE kind ;
 
 \ Whether an object text's member is a string decoding to the wanted bytes; an
 \ absent one answers the given flag.
 : MEMBER-IS? ( ptr u8 n ptr u8 n ptr u8 n bool -- bool )
    {: t:ptr tu:n k:ptr ku:n w:ptr wu:n absent:bool :}
    t tu k ku MEMBER {: kind:n :}
-   kind -1 = if JR:CLOSE absent exit then
-   kind JR:T-STR <> if JR:CLOSE false exit then
-   w wu JR:STR-EQ? {: same:bool :} JR:CLOSE same ;
+   kind -1 = if JSON:READ-CLOSE absent exit then
+   kind JSON:T-STR <> if JSON:READ-CLOSE false exit then
+   w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
 
 \ An object text's string member as sent, escapes encoded; empty when absent or
 \ not a string.
 : MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   MEMBER JR:T-STR <> if JR:CLOSE s" " exit then
-   JR:SPAN$ {: a:ptr u:n :} JR:CLOSE a u ;
+   MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
+   JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
 
 \ An object text's integer member; false when absent or not an integer.
 : MEMBER-INT ( ptr u8 n ptr u8 n -- n bool )
-   MEMBER JR:T-INT <> if JR:CLOSE 0 false exit then
-   JR:INT {: v:n :} JR:CLOSE v true ;
+   MEMBER JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
+   JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
 \ An object text's string member decoded into the worker's note; false when
 \ absent or not a string.
 : NOTE$ ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    NOTE-OFF HTTP:HEAD-CAP ROOM {: note :}
-   MEMBER JR:T-STR <> if JR:CLOSE s" " false exit then
-   note SPAN:$ JR:STR {: got:n :} JR:CLOSE
+   MEMBER JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
+   note SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE
    note SPAN:$ drop got true ;
 
 
@@ -199,9 +199,9 @@ drop
 \ Whether a text is one JSON object; malformed JSON throws the reader's code.
 : OBJECT? ( SPAN:span<u8> -- bool )
    {: text :}
-   CURSOR text SPAN:$ JR:INIT
-   JR:NEXT JR:T-OBJ = if JR:FINISH true exit then
-   JR:CLOSE false ;
+   CURSOR text SPAN:$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ = if JSON:READ-FINISH true exit then
+   JSON:READ-CLOSE false ;
 
 \ The token's three segments decoded into the worker's scratch: a header and
 \ claims that are JSON objects repeating no member name (RFC 7519 §4), the
@@ -221,8 +221,8 @@ drop
    body SLOT CLAIMS !
    head OBJECT? 0= if false exit then
    body OBJECT? 0= if false exit then
-   HEADER$ JR:REPEATS? if false exit then
-   CLAIMS$ JR:REPEATS? if false exit then
+   HEADER$ JSON:READ-REPEATS? if false exit then
+   CLAIMS$ JSON:READ-REPEATS? if false exit then
    HEADER$ s" kid" NOTE$ {: k:ptr ku:n named:bool :}
    k ku SPAN:MAKE SLOT KID ! named ;
 
@@ -241,20 +241,20 @@ drop
    true ;
 
 \ One element of the keys array: 1 the token's key, 0 another, -1 past the last.
-: KEY-ELEMENT ( JR:reader -- JR:reader n )
-   JR:NEXT {: kind:n :}
-   kind JR:T-ARR-END = if -1 exit then
-   kind JR:T-OBJ = if JR:VALUE-SPAN$ PICK? if 1 else 0 then exit then
-   kind JR:T-ARR = if JR:VALUE-SPAN$ 2drop then
+: KEY-ELEMENT ( JSON:reader -- JSON:reader n )
+   JSON:READ-NEXT {: kind:n :}
+   kind JSON:T-ARR-END = if -1 exit then
+   kind JSON:T-OBJ = if JSON:READ-VALUE-SPAN$ PICK? if 1 else 0 then exit then
+   kind JSON:T-ARR = if JSON:READ-VALUE-SPAN$ 2drop then
    0 ;
 
 \ The token's key from the cached set, decoded into the worker's scratch.
 : SELECT? ( -- bool )
    KEYS-U @ 0= if false exit then
-   OUTER-CURSOR KEYS KEYS-U @ JR:INIT
-   JR:NEXT drop s" keys" JR:FIND-KEY drop
+   OUTER-CURSOR KEYS KEYS-U @ JSON:READ-INIT
+   JSON:READ-NEXT drop s" keys" JSON:READ-FIND-KEY drop
    begin KEY-ELEMENT dup 0= while drop repeat
-   {: found:n :} JR:CLOSE found 0 > ;
+   {: found:n :} JSON:READ-CLOSE found 0 > ;
 
 
 : OK? ( CURL:status -- bool )
@@ -281,11 +281,11 @@ drop
 \ A fetched text whose value is an object with a keys array, well formed
 \ throughout.
 : KEY-SET? ( -- bool )
-   OUTER-CURSOR FETCHED FETCHED-U @ JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE false exit then
-   s" keys" JR:FIND-KEY 0= if JR:CLOSE false exit then
-   JR:TOKEN JR:T-ARR <> if JR:CLOSE false exit then
-   JR:FINISH true ;
+   OUTER-CURSOR FETCHED FETCHED-U @ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
+   s" keys" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE false exit then
+   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE false exit then
+   JSON:READ-FINISH true ;
 
 \ TRANSFER's answer in place of the second cell, the handle kept for catch.
 : TRANSFERRED ( CURL:handle n -- CURL:handle n ) drop dup TRANSFER ;
@@ -354,22 +354,22 @@ drop
    SLOT SIGNED @ SPAN:$ SLOT SIGNATURE @ SPAN:$ CRYPTO:RS256-VERIFY? ;
 
 \ One element of an aud array: 1 the audience, 0 another, -1 past the last.
-: AUDIENCE-ELEMENT ( JR:reader -- JR:reader n )
-   JR:NEXT {: kind:n :}
-   kind JR:T-ARR-END = if -1 exit then
-   kind JR:T-STR = if AUDIENCE @ SPAN:$ JR:STR-EQ? if 1 else 0 then exit then
-   kind JR:T-OBJ = kind JR:T-ARR = or if JR:VALUE-SPAN$ 2drop then
+: AUDIENCE-ELEMENT ( JSON:reader -- JSON:reader n )
+   JSON:READ-NEXT {: kind:n :}
+   kind JSON:T-ARR-END = if -1 exit then
+   kind JSON:T-STR = if AUDIENCE @ SPAN:$ JSON:READ-STR-EQ? if 1 else 0 then exit then
+   kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ 2drop then
    0 ;
 
 \ aud is the audience or an array holding it.
 : AUDIENCE? ( -- bool )
    CLAIMS$ s" aud" MEMBER {: kind:n :}
-   kind JR:T-STR = if
-      AUDIENCE @ SPAN:$ JR:STR-EQ? {: same:bool :} JR:CLOSE same exit
+   kind JSON:T-STR = if
+      AUDIENCE @ SPAN:$ JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same exit
    then
-   kind JR:T-ARR <> if JR:CLOSE false exit then
+   kind JSON:T-ARR <> if JSON:READ-CLOSE false exit then
    begin AUDIENCE-ELEMENT dup 0= while drop repeat
-   {: found:n :} JR:CLOSE found 0 > ;
+   {: found:n :} JSON:READ-CLOSE found 0 > ;
 
 \ The claims hold at now: iss is the issuer, aud holds the audience, exp is
 \ later and nbf, when stated, not later, each by LEEWAY-S (RFC 7519 4.1).
@@ -577,7 +577,7 @@ TYPED-VARIABLE SECRET SPAN:span<u8>
 
 \ One cursor for every task, held under ANSWER-LOCK only while it reads a
 \ token answer, which takes no I/O.
-TYPED-VARIABLE ANSWER-CURSOR JR:cursor
+TYPED-VARIABLE ANSWER-CURSOR JSON:cursor
 TASK:FACILITY ANSWER-LOCK
 ANSWER-LOCK TASK:FACILITY-INIT
 
@@ -717,11 +717,11 @@ private
 \ into room, its length; -1 when the text is no such object.
 : ACCESS-TOKEN ( SPAN:span<u8> SPAN:span<u8> -- n )
    {: text room :}
-   ANSWER-CURSOR text SPAN:$ JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE -1 exit then
-   s" access_token" JR:FIND-KEY 0= if JR:CLOSE -1 exit then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE -1 exit then
-   room SPAN:$ JR:STR {: got:n :} JR:CLOSE got ;
+   ANSWER-CURSOR text SPAN:$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE -1 exit then
+   s" access_token" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -1 exit then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE -1 exit then
+   room SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE got ;
 
 \ ACCESS-TOKEN's answer in place of the third cell, the texts kept for catch.
 : KEPT ( SPAN:span<u8> SPAN:span<u8> n -- SPAN:span<u8> SPAN:span<u8> n )

@@ -4,7 +4,7 @@ require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/span.f
-require src/lib/json-read.f
+require src/lib/json.f
 require tools/diag-code.f
 
 $8000 constant GJA-IN-CAP
@@ -13,7 +13,7 @@ $100 constant GJA-LINE-MAX
 
 create GJA-IN GJA-IN-CAP allot
 create GJA-SRC GJA-SRC-CAP allot
-TYPED-VARIABLE GJA-JR JR:cursor
+TYPED-VARIABLE GJA-CURSOR JSON:cursor
 create GJA-STR-BUF GJA-IN-CAP allot
 create GJA-CLASS-BUF GJA-IN-CAP allot
 GJA-LINE-MAX TYPED-BUFFER GJA-LINE-A ptr u8   \ one line start per captured line
@@ -152,35 +152,35 @@ variable GJA-DIRECT
    THEN
    GJA-FD @ close ;
 
-: GJA-OPEN ( SPAN:span<u8> -- JR:reader )
-   SPAN:$ GJA-JR -rot JR:INIT JR:NEXT drop ;
+: GJA-OPEN ( SPAN:span<u8> -- JSON:reader )
+   SPAN:$ GJA-CURSOR -rot JSON:READ-INIT JSON:READ-NEXT drop ;
 
 \ Turn the current token into its borrowed source value, including quotes for
 \ strings. A container is walked to its close; a scalar keeps the cursor.
-: GJA-VALUE ( JR:reader -- JR:reader SPAN:span<u8> )
-   JR:TOKEN {: kind:n :}
-   kind JR:T-OBJ = kind JR:T-ARR = or if JR:VALUE-SPAN$ SPAN:MAKE exit then
-   JR:SPAN$ {: a:ptr u:n :}
-   kind JR:T-STR = if a 1- u 2 + SPAN:MAKE exit then
+: GJA-VALUE ( JSON:reader -- JSON:reader SPAN:span<u8> )
+   JSON:READ-TOKEN {: kind:n :}
+   kind JSON:T-OBJ = kind JSON:T-ARR = or if JSON:READ-VALUE-SPAN$ SPAN:MAKE exit then
+   JSON:READ-SPAN$ {: a:ptr u:n :}
+   kind JSON:T-STR = if a 1- u 2 + SPAN:MAKE exit then
    a u SPAN:MAKE ;
 
 : GJA-PARSE ( ptr u8 n -- SPAN:span<u8> )
    {: a:ptr u:n :}
-   GJA-JR a u JR:INIT JR:NEXT drop
-   JR:SKIP-VALUE JR:NEXT JR:T-END <> if E-JR-TRAILING throw then JR:CLOSE
+   GJA-CURSOR a u JSON:READ-INIT JSON:READ-NEXT drop
+   JSON:READ-SKIP-VALUE JSON:READ-NEXT JSON:T-END <> if E-JSON-READ-TRAILING throw then JSON:READ-CLOSE
    a u SPAN:MAKE ;
 
 : GJA-PARSE-FILE ( ptr u8 n -- SPAN:span<u8> )
    GJA-READ GJA-PARSE ;
 
 : GJA-KIND ( SPAN:span<u8> -- n )
-   GJA-OPEN JR:TOKEN swap JR:CLOSE ;
+   GJA-OPEN JSON:READ-TOKEN swap JSON:READ-CLOSE ;
 
 : GJA-FIELD? ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> bool )
    {: value:SPAN:span<u8> key:ptr keyu:n :}
-   value GJA-OPEN key keyu JR:FIND-KEY
-   if GJA-VALUE swap JR:CLOSE true exit then
-   JR:CLOSE value false ;
+   value GJA-OPEN key keyu JSON:READ-FIND-KEY
+   if GJA-VALUE swap JSON:READ-CLOSE true exit then
+   JSON:READ-CLOSE value false ;
 
 : GJA-REQ ( SPAN:span<u8> ptr u8 n -- SPAN:span<u8> )
    GJA-FIELD? 0= if drop s" missing JSON field" GJA-FAIL then ;
@@ -188,47 +188,47 @@ variable GJA-DIRECT
 : GJA-ARR@ ( SPAN:span<u8> n -- SPAN:span<u8> )
    {: arr:SPAN:span<u8> idx:n :}
    idx 0 < if s" missing JSON array item" GJA-FAIL then
-   arr GJA-OPEN JR:TOKEN JR:T-ARR <> if JR:CLOSE s" expected JSON array" GJA-FAIL then
-   idx 0 ?do JR:NEXT dup JR:T-ARR-END = if drop JR:CLOSE s" missing JSON array item" GJA-FAIL then
-      drop JR:SKIP-VALUE
+   arr GJA-OPEN JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE s" expected JSON array" GJA-FAIL then
+   idx 0 ?do JSON:READ-NEXT dup JSON:T-ARR-END = if drop JSON:READ-CLOSE s" missing JSON array item" GJA-FAIL then
+      drop JSON:READ-SKIP-VALUE
    loop
-   JR:NEXT dup JR:T-ARR-END = if drop JR:CLOSE s" missing JSON array item" GJA-FAIL then
-   drop GJA-VALUE swap JR:CLOSE ;
+   JSON:READ-NEXT dup JSON:T-ARR-END = if drop JSON:READ-CLOSE s" missing JSON array item" GJA-FAIL then
+   drop GJA-VALUE swap JSON:READ-CLOSE ;
 
 : GJA-COUNT ( SPAN:span<u8> -- n )
-   GJA-OPEN JR:TOKEN JR:T-ARR <> if JR:CLOSE s" expected JSON array" GJA-FAIL then
+   GJA-OPEN JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE s" expected JSON array" GJA-FAIL then
    0 GJA-N !
-   begin JR:NEXT dup JR:T-ARR-END <> while
-      drop JR:SKIP-VALUE GJA-N @ 1+ GJA-N !
-   repeat drop JR:CLOSE GJA-N @ ;
+   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
+      drop JSON:READ-SKIP-VALUE GJA-N @ 1+ GJA-N !
+   repeat drop JSON:READ-CLOSE GJA-N @ ;
 
 : GJA-OBJ ( SPAN:span<u8> -- )
-   GJA-KIND JR:T-OBJ <> IF s" expected JSON object" GJA-FAIL THEN ;
+   GJA-KIND JSON:T-OBJ <> IF s" expected JSON object" GJA-FAIL THEN ;
 
 : GJA-ARR-KIND ( SPAN:span<u8> -- )
-   GJA-KIND JR:T-ARR <> IF s" expected JSON array" GJA-FAIL THEN ;
+   GJA-KIND JSON:T-ARR <> IF s" expected JSON array" GJA-FAIL THEN ;
 
 : GJA-INT ( SPAN:span<u8> -- n )
-   GJA-OPEN JR:TOKEN JR:T-INT <> if JR:CLOSE s" expected JSON integer" GJA-FAIL then
-   JR:INT {: value:n :} JR:CLOSE
+   GJA-OPEN JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE s" expected JSON integer" GJA-FAIL then
+   JSON:READ-INT {: value:n :} JSON:READ-CLOSE
    value 0 < if s" expected unsigned JSON integer" GJA-FAIL then value ;
 
 : GJA-SIGNED-INT ( SPAN:span<u8> -- )
-   GJA-OPEN JR:TOKEN JR:T-INT <> if JR:CLOSE s" expected JSON integer" GJA-FAIL then
-   JR:INT drop JR:CLOSE ;
+   GJA-OPEN JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE s" expected JSON integer" GJA-FAIL then
+   JSON:READ-INT drop JSON:READ-CLOSE ;
 
 : GJA-STR= ( SPAN:span<u8> ptr u8 n -- bool )
    {: value:SPAN:span<u8> want:ptr wantu:n :}
-   value GJA-OPEN JR:TOKEN JR:T-STR <> if JR:CLOSE GJA-FALSE exit then
-   want wantu JR:STR-EQ? swap JR:CLOSE ;
+   value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE GJA-FALSE exit then
+   want wantu JSON:READ-STR-EQ? swap JSON:READ-CLOSE ;
 
 : GJA-ASSERT-STR ( SPAN:span<u8> ptr u8 n -- )
    GJA-STR= 0= IF s" unexpected JSON string" GJA-FAIL THEN ;
 
 : GJA-STRING-INTO ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
    {: value:SPAN:span<u8> dst:ptr cap:n :}
-   value GJA-OPEN JR:TOKEN JR:T-STR <> if JR:CLOSE s" expected JSON string" GJA-FAIL then
-   dst cap JR:STR {: u:n :} JR:CLOSE dst u ;
+   value GJA-OPEN JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" expected JSON string" GJA-FAIL then
+   dst cap JSON:READ-STR {: u:n :} JSON:READ-CLOSE dst u ;
 
 : GJA-STRING$ ( SPAN:span<u8> -- ptr u8 n )
    GJA-STR-BUF GJA-IN-CAP GJA-STRING-INTO ;
@@ -243,8 +243,8 @@ variable GJA-DIRECT
    GJA-REQ GJA-INT drop ;
 
 : GJA-NULL-OR-STR ( SPAN:span<u8> -- )
-   dup GJA-KIND JR:T-NULL = IF drop exit THEN
-   GJA-KIND JR:T-STR <> IF s" expected JSON string or null" GJA-FAIL THEN ;
+   dup GJA-KIND JSON:T-NULL = IF drop exit THEN
+   GJA-KIND JSON:T-STR <> IF s" expected JSON string or null" GJA-FAIL THEN ;
 
 : GJA-REQ-NULL-OR-STRF ( SPAN:span<u8> ptr u8 n -- )
    GJA-REQ GJA-NULL-OR-STR ;
@@ -488,7 +488,7 @@ variable GJA-DIRECT
 : GJA-REPAIR-THROW-CODE ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}  \ null unless a statement threw
    root s" throw_code" GJA-REQ {: node:SPAN:span<u8> :}
    root GJA-THROW? IF node GJA-SIGNED-INT exit THEN
-   node GJA-KIND JR:T-NULL <> IF s" expected JSON null" GJA-FAIL THEN ;
+   node GJA-KIND JSON:T-NULL <> IF s" expected JSON null" GJA-FAIL THEN ;
 
 : GJA-REPAIR-SPAN ( SPAN:span<u8> -- ) {: root:SPAN:span<u8> :}
    root GJA-SPAN-FIELDS

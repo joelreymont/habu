@@ -13,7 +13,7 @@ require src/lib/process-cwd.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/tree-copy.f
-require src/lib/json-read.f
+require src/lib/json.f
 require tools/build-support.f
 
 package HB-BUILD-PRODUCER-TEST
@@ -209,20 +209,20 @@ variable RC
    IMAGE u no nou CONTAINS? TFALSE ;
 
 
-TYPED-VARIABLE REPORT-STATE JR:cursor
+TYPED-VARIABLE REPORT-STATE JSON:cursor
 
 \ The report-json build's files_reused and files_compiled.
 : BUILD-FILES ( -- n n )
    true BUILD-WITH
-   REPORT-STATE OUT CAP-OUT-U @ JR:INIT
-   JR:NEXT JR:T-OBJ T=
-   s" files_reused" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-INT T=
-   JR:INT {: reused:n :}
-   s" files_compiled" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-INT T=
-   JR:INT {: compiled:n :}
-   JR:CLOSE
+   REPORT-STATE OUT CAP-OUT-U @ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ T=
+   s" files_reused" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-INT T=
+   JSON:READ-INT {: reused:n :}
+   s" files_compiled" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-INT T=
+   JSON:READ-INT {: compiled:n :}
+   JSON:READ-CLOSE
    reused compiled ;
 
 

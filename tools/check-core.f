@@ -23,7 +23,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require src/lib/byte-buffer.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/source-lex.f
 require tools/json-only-core.f
 require tools/diag-origin-core.f
@@ -108,15 +108,15 @@ DYNAMIC-BUFFER CHK-RUN-MEM u8
 DYNAMIC-BUFFER CHK-EXP-MEM u8
 DYNAMIC-BUFFER CHK-SEL-SRC-MEM u8
 create CHK-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE CHK-JSON-W JSON-WRITE:writer
+TYPED-VARIABLE CHK-JSON-W JSON:writer
 variable CHK-JSON-READY
 
-: CHK-JSON-WRITER ( -- ptr JSON-WRITE:writer )
+: CHK-JSON-WRITER ( -- ptr JSON:writer )
    CHK-JSON-READY @ 0= if
       CHK-JSON-BUF 1 BUF:N>BLEN BUF:INIT
       1 CHK-JSON-READY !
    then
-   CHK-JSON-W CHK-JSON-BUF JSON-WRITE:OPEN-BUF ;
+   CHK-JSON-W CHK-JSON-BUF JSON:WRITE-OPEN-BUF ;
 
 variable CHK-ARG-I
 variable CHK-POS-N
@@ -739,16 +739,16 @@ private
    s" The engine provides this source; rebuild bin/hb to check a change to it." ;
 
 : CHK-ENGINE-JSON ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   CHK-JSON-WRITER JSON-WRITE:OBJECT-START
-   s" schema_version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" code" s" E-ENGINE-PROVIDED" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" repair_class" s" rebuild_engine" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" verdict" s" uncheckable" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" file" path pathu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" line" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" column" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" suggestion" CHK-ENGINE-SUG$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END JSON-WRITE:$ CHK-ERR-LN ;
+   CHK-JSON-WRITER JSON:WRITE-OBJECT-START
+   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" s" E-ENGINE-PROVIDED" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" repair_class" s" rebuild_engine" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" verdict" s" uncheckable" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" file" path pathu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" suggestion" CHK-ENGINE-SUG$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END JSON:WRITTEN$ CHK-ERR-LN ;
 
 : CHK-ENGINE-PROSE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    s" E-ENGINE-PROVIDED " CHK-ERR

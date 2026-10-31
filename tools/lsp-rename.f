@@ -6,7 +6,7 @@
 \ and locations LSP-REFERENCES's, the uses tools/lsp-defs.f's.
 
 require src/lib/string.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/adt/option.f
 require src/lib/source-lex.f
 require tools/lsp-docs.f
@@ -15,7 +15,7 @@ require tools/lsp-defs.f
 require tools/lsp-references.f
 
 package LSP-RENAME
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 
 private
@@ -52,7 +52,7 @@ public
 \ slot, which positions then count in: the use that holds the byte, else the
 \ declaring token LSP-REFERENCES:PLACE placed. The selecting use and the declaring
 \ token spell its tail (LSP-REFERENCES:SPELT?).
-: PREPARED ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+: PREPARED ( ptr JSON:writer n n -- ptr JSON:writer )
    {: slot:n at:n :}
    slot LSP-DOCS:DOC-TEXT$ LSP-TEXT:TEXT!
    slot at DEFS-USE-AT MATCH option
@@ -96,25 +96,25 @@ public
 \ the tail of each location, to the writer. The declaration is the first
 \ location, then the uses by file, P's first (LSP-REFERENCES:SETTLE), so
 \ each URI's locations are one run.
-: ANSWER ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: name:ptr nu:n :}
-   OBJECT-START
-   s" changes" KEY OBJECT-START
+   WRITE-OBJECT-START
+   s" changes" WRITE-KEY WRITE-OBJECT-START
    LSP-REFERENCES:LOCATIONS 0 ?do
       i NEW-URI? if
-         i 0 > if ARRAY-END COMMA then
-         i LSP-REFERENCES:LOC-URI$ KEY ARRAY-START
+         i 0 > if WRITE-ARRAY-END WRITE-COMMA then
+         i LSP-REFERENCES:LOC-URI$ WRITE-KEY WRITE-ARRAY-START
       else
-         COMMA
+         WRITE-COMMA
       then
-      OBJECT-START
-      i LSP-REFERENCES:LOC-TAIL LSP-TEXT:RANGE-AT COMMA
-      s" newText" name nu FIELD-S
-      OBJECT-END
+      WRITE-OBJECT-START
+      i LSP-REFERENCES:LOC-TAIL LSP-TEXT:RANGE-AT WRITE-COMMA
+      s" newText" name nu WRITE-FIELD-S
+      WRITE-OBJECT-END
    loop
-   ARRAY-END
-   OBJECT-END
-   OBJECT-END ;
+   WRITE-ARRAY-END
+   WRITE-OBJECT-END
+   WRITE-OBJECT-END ;
 
 ;using
 ;using

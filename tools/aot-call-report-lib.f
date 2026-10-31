@@ -102,10 +102,10 @@ variable JSON-NUM-N
    REPORT-PATH REPORT-PATH-U @ ;
 
 \ A null output buffer or a negative capacity is refused as the JSON writer
-\ refuses one, by E-JW-OUTPUT.
+\ refuses one, by E-JSON-WRITE-OUTPUT.
 : REPORT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
-   a 0= if E-JW-OUTPUT throw then
-   cap 0 < if E-JW-OUTPUT throw then
+   a 0= if E-JSON-WRITE-OUTPUT throw then
+   cap 0 < if E-JSON-WRITE-OUTPUT throw then
    a REPORT-OUT-A!
    cap REPORT-OUT-CAP !
    0 REPORT-OUT-U ! ;
@@ -123,10 +123,10 @@ variable JSON-NUM-N
 
 \ The report buffer is the caller's and cannot grow. A byte past its capacity
 \ is refused as the JSON writer refuses fixed output that cannot hold a value,
-\ by E-JW-CAPACITY, and the buffer keeps the report up to it.
+\ by E-JSON-WRITE-CAPACITY, and the buffer keeps the report up to it.
 : REPORT-BUF-C ( n -- )
    {: c:n :}
-   REPORT-OUT-U @ REPORT-OUT-CAP @ >= if E-JW-CAPACITY throw then
+   REPORT-OUT-U @ REPORT-OUT-CAP @ >= if E-JSON-WRITE-CAPACITY throw then
    c REPORT-OUT-A@ REPORT-OUT-U @ + c!
    REPORT-OUT-U @ 1+ REPORT-OUT-U ! ;
 

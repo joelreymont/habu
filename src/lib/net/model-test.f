@@ -11,8 +11,7 @@ require src/lib/date.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/memory.f
 require src/lib/property.f
 require src/lib/secret.f
@@ -145,9 +144,9 @@ TASK:SEMAPHORE HELD
 TASK:SEMAPHORE RELEASED
 \ Requests reach the peer one at a time from the test task, and a handler
 \ parses before it waits, so one parser and one reply buffer serve them all.
-TYPED-VARIABLE PARSER JR:cursor
+TYPED-VARIABLE PARSER JSON:cursor
 \ A second parser reads one content part apart from the request.
-TYPED-VARIABLE PART JR:cursor
+TYPED-VARIABLE PART JSON:cursor
 create ECHO 256 allot
 variable ECHO-U
 variable IMAGES
@@ -185,35 +184,35 @@ $300000 constant BIG-U
 
 \ A reader, on the parser record, at the value of member `key` of the JSON
 \ object a u.
-: MEMBER ( ptr JR:cursor ptr u8 n ptr u8 n -- JR:reader )
+: MEMBER ( ptr JSON:cursor ptr u8 n ptr u8 n -- JSON:reader )
    {: storage:ptr a:ptr u:n key:ptr key-u:n :}
-   storage a u JR:INIT
-   JR:NEXT JR:T-OBJ = ASSERT
-   key key-u JR:FIND-KEY ASSERT ;
+   storage a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ = ASSERT
+   key key-u JSON:READ-FIND-KEY ASSERT ;
 
 
 \ A reader at the value of the request body's member `key`.
-: BODY-MEMBER ( HTTP:request ptr u8 n -- JR:reader )
+: BODY-MEMBER ( HTTP:request ptr u8 n -- JSON:reader )
    {: r:HTTP:request key:ptr key-u:n :}
    PARSER r HTTP:BODY$ key key-u MEMBER ;
 
 
 \ A reader at the content array of a chat request's user message, which
 \ follows the system message.
-: CONTENT ( HTTP:request -- JR:reader )
+: CONTENT ( HTTP:request -- JSON:reader )
    s" messages" BODY-MEMBER
-   JR:NEXT JR:T-OBJ = ASSERT JR:SKIP-VALUE
-   JR:NEXT JR:T-OBJ = ASSERT
-   s" content" JR:FIND-KEY ASSERT ;
+   JSON:READ-NEXT JSON:T-OBJ = ASSERT JSON:READ-SKIP-VALUE
+   JSON:READ-NEXT JSON:T-OBJ = ASSERT
+   s" content" JSON:READ-FIND-KEY ASSERT ;
 
 
 \ The text of a chat request's first part.
 : FIRST-TEXT ( HTTP:request -- ptr u8 n )
    CONTENT
-   JR:NEXT JR:T-OBJ = ASSERT
-   s" text" JR:FIND-KEY ASSERT
-   JR:SPAN$ {: a:ptr u:n :}
-   JR:CLOSE a u ;
+   JSON:READ-NEXT JSON:T-OBJ = ASSERT
+   s" text" JSON:READ-FIND-KEY ASSERT
+   JSON:READ-SPAN$ {: a:ptr u:n :}
+   JSON:READ-CLOSE a u ;
 
 
 \ Decodes an embedding request's input array into RECEIVED, one input per line
@@ -221,31 +220,31 @@ $300000 constant BIG-U
 : INPUT-LINES ( HTTP:request -- )
    0 RECEIVED-U !
    s" input" BODY-MEMBER
-   JR:TOKEN JR:T-ARR = ASSERT
-   begin JR:NEXT dup JR:T-ARR-END <> while
-      JR:T-STR = ASSERT
+   JSON:READ-TOKEN JSON:T-ARR = ASSERT
+   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
+      JSON:T-STR = ASSERT
       RECEIVED-U @ 0<> if
          RECEIVED-U @ RECEIVED-CAP < ASSERT
          10 RECEIVED RECEIVED-U @ + c! 1 RECEIVED-U +!
       then
-      RECEIVED RECEIVED-U @ + RECEIVED-CAP RECEIVED-U @ - JR:STR RECEIVED-U +!
-   repeat drop JR:CLOSE ;
+      RECEIVED RECEIVED-U @ + RECEIVED-CAP RECEIVED-U @ - JSON:READ-STR RECEIVED-U +!
+   repeat drop JSON:READ-CLOSE ;
 
 
 \ Echoes the decoded url of the content part a u when its type is image_url.
 : PART+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    PART a u s" type" MEMBER
-   s" image_url" JR:STR-EQ? {: image:bool :}
-   JR:CLOSE
+   s" image_url" JSON:READ-STR-EQ? {: image:bool :}
+   JSON:READ-CLOSE
    image 0= if exit then
    PART a u s" image_url" MEMBER
-   JR:TOKEN JR:T-OBJ = ASSERT
-   s" url" JR:FIND-KEY ASSERT
+   JSON:READ-TOKEN JSON:T-OBJ = ASSERT
+   s" url" JSON:READ-FIND-KEY ASSERT
    IMAGES @ 0<> if s" ," ECHO+ then
    S\" \q" ECHO+
-   ECHO ECHO-U @ + 256 ECHO-U @ - JR:STR ECHO-U +!
-   JR:CLOSE
+   ECHO ECHO-U @ + 256 ECHO-U @ - JSON:READ-STR ECHO-U +!
+   JSON:READ-CLOSE
    S\" \q" ECHO+
    1 IMAGES +! ;
 
@@ -255,24 +254,24 @@ $300000 constant BIG-U
    0 ECHO-U ! 0 IMAGES !
    S\" {\qimages\q:[" ECHO+
    CONTENT
-   begin JR:NEXT dup JR:T-ARR-END <> while
-      JR:T-OBJ = ASSERT
-      JR:VALUE-SPAN$ PART+
-   repeat drop JR:CLOSE
+   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
+      JSON:T-OBJ = ASSERT
+      JSON:READ-VALUE-SPAN$ PART+
+   repeat drop JSON:READ-CLOSE
    s" ]}" ECHO+ ;
 
 
-: CHOICE ( ptr JSON-WRITE:writer ptr u8 n ptr u8 n -- ptr JSON-WRITE:writer )
+: CHOICE ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
    {: w content:ptr content-u:n finish:ptr finish-u:n :}
-   w JSON-WRITE:OBJECT-START s" choices" JSON-WRITE:KEY
-   JSON-WRITE:ARRAY-START JSON-WRITE:OBJECT-START
-   s" finish_reason" finish finish-u JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" message" JSON-WRITE:KEY JSON-WRITE:OBJECT-START
-   s" role" s" assistant" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" content" content content-u JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" refusal" JSON-WRITE:FIELD-NULL
-   JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END
-   JSON-WRITE:ARRAY-END JSON-WRITE:OBJECT-END ;
+   w JSON:WRITE-OBJECT-START s" choices" JSON:WRITE-KEY
+   JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
+   s" finish_reason" finish finish-u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" message" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+   s" role" s" assistant" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" content" content content-u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" refusal" JSON:WRITE-FIELD-NULL
+   JSON:WRITE-OBJECT-END JSON:WRITE-OBJECT-END
+   JSON:WRITE-ARRAY-END JSON:WRITE-OBJECT-END ;
 
 
 \ The big content, a JSON object whose one string fills it.
@@ -287,24 +286,24 @@ $300000 constant BIG-U
 : LONG-FINISH$ ( -- ptr u8 n ) s" finish-reason-forty-bytes-long-for-tests" ;
 
 
-: CHAT-RESPONSE ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: CHAT-RESPONSE ( ptr JSON:writer -- ptr JSON:writer )
    S\" {\qanswer\q:true}" s" stop" CHOICE ;
 
 
-: USAGE-RESPONSE ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\q{\\\qanswer\\\q:true}\q,\qrefusal\q:null}}],\qusage\q:{\qprompt_tokens\q:11,\qcompletion_tokens\q:6,\qtotal_tokens\q:17,\qprompt_tokens_details\q:{\qcached_tokens\q:4},\qcompletion_tokens_details\q:{\qreasoning_tokens\q:2}}}" JSON-WRITE:RAW ;
+: USAGE-RESPONSE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\q{\\\qanswer\\\q:true}\q,\qrefusal\q:null}}],\qusage\q:{\qprompt_tokens\q:11,\qcompletion_tokens\q:6,\qtotal_tokens\q:17,\qprompt_tokens_details\q:{\qcached_tokens\q:4},\qcompletion_tokens_details\q:{\qreasoning_tokens\q:2}}}" JSON:WRITE-RAW ;
 
 
 \ A response whose service_tier member is the JSON value text.
-: TIERED-RESPONSE ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: TIERED-RESPONSE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: tier:ptr tier-u:n :}
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\q{\\\qanswer\\\q:true}\q,\qrefusal\q:null}}],\qservice_tier\q:" JSON-WRITE:RAW
-   tier tier-u JSON-WRITE:RAW
-   s" }" JSON-WRITE:RAW ;
+   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\q{\\\qanswer\\\q:true}\q,\qrefusal\q:null}}],\qservice_tier\q:" JSON:WRITE-RAW
+   tier tier-u JSON:WRITE-RAW
+   s" }" JSON:WRITE-RAW ;
 
 
-: REFUSE ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:null,\qrefusal\q:\qcannot comply\q}}]}" JSON-WRITE:RAW ;
+: REFUSE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:null,\qrefusal\q:\qcannot comply\q}}]}" JSON:WRITE-RAW ;
 
 
 \ Responds by the request's first text, which names its scenario.
@@ -337,31 +336,31 @@ $300000 constant BIG-U
    then
    t t-u s" http-error" STR= if
       response 429 HTTP:STATUS!
-      response [: S\" {\qerror\q:{\qmessage\q:\qrate limit\q}}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qerror\q:{\qmessage\q:\qrate limit\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    t t-u s" http-bad" STR= if
       response 400 HTTP:STATUS!
-      response [: S\" {\qerror\q:{\qmessage\q:\qbad request\q}}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qerror\q:{\qmessage\q:\qbad request\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    \ Ollama's error member is the message itself.
    t t-u s" http-text" STR= if
       response 404 HTTP:STATUS!
-      response [: S\" {\qerror\q:\qmodel not found\q}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qerror\q:\qmodel not found\q}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    \ A FastAPI server's error names its reason outside an error member.
    t t-u s" http-detail" STR= if
       response 422 HTTP:STATUS!
-      response [: S\" {\qdetail\q:\qbad field\q}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qdetail\q:\qbad field\q}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    t t-u s" forbidden" STR= if response 403 HTTP:STATUS! exit then
    \ OpenAI's refusal of a chat request over the model's context.
    t t-u s" too-large" STR= if
       response 400 HTTP:STATUS!
-      response [: S\" {\qerror\q:{\qmessage\q:\qYour input exceeds the context window of this model.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:\qinput\q,\qcode\q:\qcontext_length_exceeded\q}}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qerror\q:{\qmessage\q:\qYour input exceeds the context window of this model.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:\qinput\q,\qcode\q:\qcontext_length_exceeded\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    t t-u s" oversized" STR= if response 413 HTTP:STATUS! exit then
@@ -389,19 +388,19 @@ $300000 constant BIG-U
 
 
 \ One vector whose first component is the input's byte length.
-: LENGTH-VECTOR ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   S\" {\qobject\q:\qlist\q,\qdata\q:[{\qindex\q:0,\qembedding\q:[" JSON-WRITE:RAW
-   RECEIVED-U @ JSON-WRITE:U
-   s" ,0,0]}]}" JSON-WRITE:RAW ;
+: LENGTH-VECTOR ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qobject\q:\qlist\q,\qdata\q:[{\qindex\q:0,\qembedding\q:[" JSON:WRITE-RAW
+   RECEIVED-U @ JSON:WRITE-U
+   s" ,0,0]}]}" JSON:WRITE-RAW ;
 
 
 \ A vector's dimension count past any one provider's; the embedding past it
 \ counts up from 0.
 4096 constant WIDE-DIMS
-: WIDE-VECTOR ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   S\" {\qobject\q:\qlist\q,\qdata\q:[{\qindex\q:0,\qembedding\q:[0" JSON-WRITE:RAW
-   WIDE-DIMS 1 ?do s" ," JSON-WRITE:RAW i JSON-WRITE:U loop
-   s" ]}]}" JSON-WRITE:RAW ;
+: WIDE-VECTOR ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qobject\q:\qlist\q,\qdata\q:[{\qindex\q:0,\qembedding\q:[0" JSON:WRITE-RAW
+   WIDE-DIMS 1 ?do s" ," JSON:WRITE-RAW i JSON:WRITE-U loop
+   s" ]}]}" JSON:WRITE-RAW ;
 
 
 \ Responds by the request's inputs: a bound input is all x.
@@ -416,24 +415,24 @@ $300000 constant BIG-U
    then
    i i-u S\" one\ntwo" STR= if
       \ The provider may list them out of order; index decides each slot.
-      response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.4,0.5,0.6],\qindex\q:1},{\qindex\q:0,\qembedding\q:[0.1,0.2,0.3]}],\qusage\q:{\qprompt_tokens\q:2,\qtotal_tokens\q:2}}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.4,0.5,0.6],\qindex\q:1},{\qindex\q:0,\qembedding\q:[0.1,0.2,0.3]}],\qusage\q:{\qprompt_tokens\q:2,\qtotal_tokens\q:2}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    i i-u s" wide" STR= if
       response [: WIDE-VECTOR ;] HTTP:JSON! exit
    then
    i i-u s" wrong-dims" STR= if
-      response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2],\qindex\q:0}]}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2],\qindex\q:0}]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    i i-u s" wrong-index" STR= if
-      response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2,0.3],\qindex\q:1}]}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2,0.3],\qindex\q:1}]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    \ OpenAI's embeddings refusal names its cause only by the message.
    i i-u s" too-large" STR= if
       response 400 HTTP:STATUS!
-      response [: S\" {\qerror\q:{\qmessage\q:\qThis model's maximum context length is 8192 tokens, however you requested 9000 tokens (9000 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:null,\qcode\q:null}}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qerror\q:{\qmessage\q:\qThis model's maximum context length is 8192 tokens, however you requested 9000 tokens (9000 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:null,\qcode\q:null}}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    response 400 HTTP:STATUS! ;
@@ -445,24 +444,24 @@ $300000 constant BIG-U
    1 CALLS atomic-add drop
    r s" Authorization" HTTP:HEADER-OF$ {: a:ptr u:n present:bool :}
    present if response 401 HTTP:STATUS! exit then
-   r s" truncate" BODY-MEMBER JR:TOKEN JR:T-FALSE = ASSERT JR:CLOSE
+   r s" truncate" BODY-MEMBER JSON:READ-TOKEN JSON:T-FALSE = ASSERT JSON:READ-CLOSE
    r INPUT-LINES RECEIVED$ {: i:ptr i-u:n :}
    i i-u S\" one\ntwo" STR= if
-      response [: S\" {\qembeddings\q:[[0.1,0.2,0.3],[0,1,2]]}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qembeddings\q:[[0.1,0.2,0.3],[0,1,2]]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    i i-u s" bad-count" STR= if
-      response [: S\" {\qembeddings\q:[]}" JSON-WRITE:RAW ;] HTTP:JSON! exit
+      response [: S\" {\qembeddings\q:[]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
    i i-u s" bad-dims" STR= if
-      response [: S\" {\qembeddings\q:[[0,1]]}" JSON-WRITE:RAW ;] HTTP:JSON! exit
+      response [: S\" {\qembeddings\q:[[0,1]]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
    i i-u s" bad-finite" STR= if
-      response [: S\" {\qembeddings\q:[[1e309,0,1]]}" JSON-WRITE:RAW ;] HTTP:JSON! exit
+      response [: S\" {\qembeddings\q:[[1e309,0,1]]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
    then
    i i-u s" too-large" STR= if
       response 400 HTTP:STATUS!
-      response [: S\" {\qerror\q:\qthe input length exceeds the context length\q}" JSON-WRITE:RAW ;] HTTP:JSON!
+      response [: S\" {\qerror\q:\qthe input length exceeds the context length\q}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
    response 400 HTTP:STATUS! ;
@@ -1005,32 +1004,32 @@ variable REFUSED-BASE-U
 : INPUT$ ( -- ptr u8 n ) JOURNAL-INPUT JOURNAL-INPUT-U @ ;
 
 
-TYPED-VARIABLE PARSER JR:cursor
+TYPED-VARIABLE PARSER JSON:cursor
 
 
 \ A reader inside a JSON object.
-: READER ( ptr u8 n -- JR:reader )
+: READER ( ptr u8 n -- JSON:reader )
    {: a:ptr u:n :}
-   PARSER a u JR:INIT
-   JR:NEXT JR:T-OBJ = ASSERT ;
+   PARSER a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ = ASSERT ;
 
 
 \ A reader at the value of a JSON object's member `key`.
-: MEMBER ( ptr u8 n ptr u8 n -- JR:reader )
+: MEMBER ( ptr u8 n ptr u8 n -- JSON:reader )
    {: a:ptr u:n key:ptr key-u:n :}
-   a u READER key key-u JR:FIND-KEY ASSERT ;
+   a u READER key key-u JSON:READ-FIND-KEY ASSERT ;
 
 
 \ A reader at the value of the journal record's usage member `key`.
-: USAGE ( ptr u8 n -- JR:reader )
+: USAGE ( ptr u8 n -- JSON:reader )
    {: key:ptr key-u:n :}
-   RECORD$ s" usage" MEMBER key key-u JR:FIND-KEY ASSERT ;
+   RECORD$ s" usage" MEMBER key key-u JSON:READ-FIND-KEY ASSERT ;
 
 
-: STR-IS ( JR:reader ptr u8 n -- ) JR:STR-EQ? ASSERT JR:CLOSE ;
-: INT-IS ( JR:reader n -- ) {: want:n :} JR:INT want = ASSERT JR:CLOSE ;
-: NULL-IS ( JR:reader -- ) JR:TOKEN JR:T-NULL = ASSERT JR:CLOSE ;
-: NO-USAGE ( -- ) RECORD$ READER s" usage" JR:FIND-KEY 0= ASSERT JR:CLOSE ;
+: STR-IS ( JSON:reader ptr u8 n -- ) JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE ;
+: INT-IS ( JSON:reader n -- ) {: want:n :} JSON:READ-INT want = ASSERT JSON:READ-CLOSE ;
+: NULL-IS ( JSON:reader -- ) JSON:READ-TOKEN JSON:T-NULL = ASSERT JSON:READ-CLOSE ;
+: NO-USAGE ( -- ) RECORD$ READER s" usage" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
 
 
 \ A recorder that numbers the rows it records from 1, keeps the last record
@@ -1056,7 +1055,7 @@ variable ROW-FAIL
 : TEST-REJECT ( n n -- ) nip REJECTED-ROW ! ;
 : ROW$ ( -- ptr u8 n ) ROW-TEXT ROW-U @ ;
 \ A reader at the value of the last recorded row's member `key`.
-: ROW ( ptr u8 n -- JR:reader ) {: key:ptr key-u:n :} ROW$ key key-u MEMBER ;
+: ROW ( ptr u8 n -- JSON:reader ) {: key:ptr key-u:n :} ROW$ key key-u MEMBER ;
 : BLANK-PURPOSE ( n -- n ) s"  " M MODEL:PURPOSE! ;
 : PURPOSE ( -- ) s" assemble" M MODEL:PURPOSE! ;
 \ The first generation row's prefix hash, 64 hex digits.
@@ -1101,7 +1100,7 @@ create HASH 64 allot
    s" cached_tokens" ROW 4 INT-IS
    s" completion_tokens" ROW 6 INT-IS
    s" reasoning_tokens" ROW 2 INT-IS
-   s" prefix_hash" ROW HASH 64 JR:STR 64 = ASSERT JR:CLOSE
+   s" prefix_hash" ROW HASH 64 JSON:READ-STR 64 = ASSERT JSON:READ-CLOSE
    RECORD$ s" call_id" MEMBER 1 INT-IS
    s" kind" USAGE s" generation" STR-IS
    s" model" USAGE s" test-generation" STR-IS
@@ -1141,7 +1140,7 @@ create HASH 64 allot
    s" reasoning_tokens" USAGE NULL-IS
    s" Read other evidence." M MODEL:SYSTEM!
    PURPOSE CHAT
-   s" prefix_hash" ROW HASH 64 JR:STR-EQ? 0= ASSERT JR:CLOSE
+   s" prefix_hash" ROW HASH 64 JSON:READ-STR-EQ? 0= ASSERT JSON:READ-CLOSE
    s" Read source evidence." M MODEL:SYSTEM!
    NO-USAGE
    M MODEL:REJECTED
@@ -1165,15 +1164,15 @@ create HASH 64 allot
 
 
 \ A reader at the value of the last request's member `key`.
-: SENT ( ptr u8 n -- JR:reader ) {: key:ptr key-u:n :} MODEL-PEER:SENT$ key key-u MEMBER ;
+: SENT ( ptr u8 n -- JSON:reader ) {: key:ptr key-u:n :} MODEL-PEER:SENT$ key key-u MEMBER ;
 \ A reader at the value of the journal input's configuration member `key`.
-: CONFIG ( ptr u8 n -- JR:reader )
+: CONFIG ( ptr u8 n -- JSON:reader )
    {: key:ptr key-u:n :}
-   INPUT$ s" configuration" MEMBER key key-u JR:FIND-KEY ASSERT ;
+   INPUT$ s" configuration" MEMBER key key-u JSON:READ-FIND-KEY ASSERT ;
 \ Neither the last chat request nor its journal input names an effort.
 : NO-EFFORT ( -- )
-   MODEL-PEER:SENT$ READER s" reasoning_effort" JR:FIND-KEY 0= ASSERT JR:CLOSE
-   INPUT$ s" configuration" MEMBER s" effort" JR:FIND-KEY 0= ASSERT JR:CLOSE ;
+   MODEL-PEER:SENT$ READER s" reasoning_effort" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
+   INPUT$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
 create ROW-NAME 1 allot
 \ A one-letter purpose row from "a"; its model and effort do not matter.
 : NTH-ROW ( n -- )
@@ -1222,7 +1221,7 @@ create ROW-NAME 1 allot
 
 \ The last request names no prompt cache key.
 : NO-CACHE-KEY ( -- )
-   MODEL-PEER:SENT$ READER s" prompt_cache_key" JR:FIND-KEY 0= ASSERT JR:CLOSE ;
+   MODEL-PEER:SENT$ READER s" prompt_cache_key" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
 32768 constant KEYLESS-CAP
 create KEYLESS KEYLESS-CAP allot
 variable KEYLESS-U
@@ -1253,7 +1252,7 @@ variable KEYLESS-U
 
 \ The last chat request names no service tier.
 : NO-TIER ( -- )
-   MODEL-PEER:SENT$ READER s" service_tier" JR:FIND-KEY 0= ASSERT JR:CLOSE ;
+   MODEL-PEER:SENT$ READER s" service_tier" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
 
 
 : NEGATIVE-TIER ( n -- n ) s" y" s" m" s" " s" " drop -1 M MODEL:PURPOSE-MODEL! ;
@@ -1361,7 +1360,7 @@ variable KEYLESS-U
 : OPENAI-GET ( n ptr u8 n ptr n -- bool )
    {: ctx:n input:ptr input-u:n out:ptr :}
    input input-u s" configuration" MEMBER
-   s" endpoint" JR:FIND-KEY ASSERT
+   s" endpoint" JSON:READ-FIND-KEY ASSERT
    s" https://api.openai.com/v1/chat/completions" STR-IS
    JOURNAL-RECORD JOURNAL-RECORD-U @ BUF:N>BLEN out BUF:REPLACE
    true ;

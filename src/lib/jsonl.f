@@ -1,12 +1,12 @@
 \ jsonl.f - JSONL framing: a caller-owned file cursor and a memory splitter.
 \ Between OPEN and the end of input or CLOSE a cursor owns its descriptor, line
-\ BUF, 8192-byte block mapping and JR:cursor record; at the end of input and
+\ BUF, 8192-byte block mapping and JSON:cursor record; at the end of input and
 \ after any throw it releases all of them and is closed. Neither form trims or
 \ parses: each caller decides whether blank or malformed rows are errors.
 \ STORAGE CLASS. CALLER-OWNED: the cursor and what it owns; SPLIT-LINE owns none.
 
 require src/lib/byte-buffer.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/string.f
@@ -31,7 +31,7 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD fd fd
    FIELD max NUM:byte-len
    FIELD live bool
-   FIELD reader JR:cursor
+   FIELD reader JSON:cursor
 ;STRUCTURE
 
 private
@@ -62,7 +62,7 @@ public
    false cur CURSOR-LIVE !
    cur CURSOR-FD @ FD>N close-rc 0<> if s" jsonl: close failed" CLOSE-EXIT die then
    cur BUF-HDR BUF:DISPOSE
-   cur CURSOR-READER JR:DISPOSE
+   cur CURSOR-READER JSON:READ-DISPOSE
    cur CURSOR-STORAGE @ 0= if exit then       \ OPEN's allocation threw first
    cur CURSOR-STORAGE @ BLOCK-BYTES SPAN:MAKE MEM:FREE-SPAN
    NULL-PTR cur CURSOR-STORAGE ! ;
@@ -130,7 +130,7 @@ public
 \ The line limit is inclusive and counts CR but not LF. NEXT skips empty lines,
 \ keeps CR, returns a final unterminated line and invents none after a final
 \ LF; at the end of input it answers false once, after which NEXT is E-STATE.
-\ READER lends the line as a fresh linear JR reader until the next NEXT or
+\ READER lends the line as a fresh linear JSON reader until the next NEXT or
 \ CLOSE, and the caller closes that reader first.
 : NEXT ( ptr cursor -- bool )
    {: cur:ptr :}
@@ -142,13 +142,13 @@ public
    cur CLOSE
    false ;
 
-: READER ( ptr cursor -- JR:reader )
+: READER ( ptr cursor -- JSON:reader )
    {: cur:ptr :}
    cur LIVE
    cur LINE-LEN 0= if E-STATE throw then
    cur CURSOR-READER
    cur BUF-HDR BUF:SPAN$ BUF:BLEN>N
-   JR:INIT ;
+   JSON:READ-INIT ;
 
 \ The physical line at pos, the position after its LF (u when unterminated)
 \ and true; at or past the end an empty span at pos, pos and false.

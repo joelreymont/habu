@@ -16,9 +16,8 @@ require src/lib/source.f
 require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/content-key.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/float.f
-require src/lib/json-read.f
 require tools/build-fixpoint.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
@@ -462,38 +461,38 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 : HBT-REMOVE-AOT-OUT ( -- )
    HBT-AOT-OUT HBT-REMOVE-FILE? ;
 
-TYPED-VARIABLE READER-STATE JR:cursor
+TYPED-VARIABLE READER-STATE JSON:cursor
 
-: REPORT-STRING= ( JR:reader ptr u8 n -- JR:reader ) {: want:ptr wantu:n :}
-   JR:TOKEN JR:T-STR T=
-   HBT-REPORT-BUF PATH-CAP JR:STR {: gotu:n :}
+: REPORT-STRING= ( JSON:reader ptr u8 n -- JSON:reader ) {: want:ptr wantu:n :}
+   JSON:READ-TOKEN JSON:T-STR T=
+   HBT-REPORT-BUF PATH-CAP JSON:READ-STR {: gotu:n :}
    HBT-REPORT-BUF gotu want wantu T$= ;
 
 : CHECK-REPORT ( ptr u8 n n n n -- )
    {: a:ptr u:n maker:n built:n ran:n :}
-   READER-STATE a u JR:INIT
-   JR:NEXT JR:T-OBJ T=
-   s" schema" JR:FIND-KEY TTRUE
+   READER-STATE a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ T=
+   s" schema" JSON:READ-FIND-KEY TTRUE
    s" hb-build-report" REPORT-STRING=
-   s" version" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-INT T=
-   JR:INT 1 T=
-   s" maker_hit" JR:FIND-KEY TTRUE
-   JR:TOKEN maker T=
-   s" maker_built" JR:FIND-KEY TTRUE
-   JR:TOKEN built T=
-   s" maker_ran" JR:FIND-KEY TTRUE
-   JR:TOKEN ran T=
+   s" version" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-INT T=
+   JSON:READ-INT 1 T=
+   s" maker_hit" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN maker T=
+   s" maker_built" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN built T=
+   s" maker_ran" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN ran T=
    \ maker_ran is the AOT maker's trace: a REPL build reports it false and still
    \ counts the files its own maker loaded.
-   s" files_reused" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-INT T=
-   s" files_compiled" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-INT T=
-   s" elapsed_ns" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-INT T=
-   JR:INT 0 >= TTRUE
-   JR:CLOSE ;
+   s" files_reused" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-INT T=
+   s" files_compiled" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-INT T=
+   s" elapsed_ns" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-INT T=
+   JSON:READ-INT 0 >= TTRUE
+   JSON:READ-CLOSE ;
 
 : HBT-RUN-AOT ( -- )
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN

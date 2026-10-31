@@ -17,7 +17,7 @@ require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/task.f
 require src/lib/base64.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/crypto/evp.f
 require src/lib/crypto/jws-fixture.f
 require src/lib/net/curl.f
@@ -119,21 +119,21 @@ TASK:MIN-STACK TASK:TASK CLAIMER    \ asks CLAIM$ for the admitted /spawn
 
 \ The routes.
 
-: CLAIM ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: CLAIM ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: name:ptr nu:n :}
    name nu BEARER:CLAIM$ {: v:ptr vu:n has:bool :}
-   has if name nu v vu JSON-WRITE:FIELD-S exit then
-   name nu JSON-WRITE:FIELD-NULL ;
+   has if name nu v vu JSON:WRITE-FIELD-S exit then
+   name nu JSON:WRITE-FIELD-NULL ;
 
-: CLAIMS-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" azp" CLAIM JSON-WRITE:COMMA
-   s" oid" CLAIM JSON-WRITE:COMMA
+: CLAIMS-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" azp" CLAIM JSON:WRITE-COMMA
+   s" oid" CLAIM JSON:WRITE-COMMA
    s" tid" CLAIM
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
-: AZP-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START s" azp" CLAIM JSON-WRITE:OBJECT-END ;
+: AZP-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START s" azp" CLAIM JSON:WRITE-OBJECT-END ;
 
 : GUARDED-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}

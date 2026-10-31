@@ -3,14 +3,14 @@
 \ check. STORAGE CLASS. CALLER-OWNED: no state; the writer is the caller's, the
 \ uses and definitions are those tools/lsp-defs.f keeps.
 
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/adt/option.f
 require tools/lsp-docs.f
 require tools/lsp-defs.f
 require tools/lsp-text.f
 
 package LSP-HIGHLIGHT
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 
 private
@@ -22,14 +22,14 @@ private
    u USE-GROUP u USE-TARGET t tu u USE-WORD$ GROUP-REC-NAMED ;
 
 \ LISTED: whether an item came before, for the comma; it holds after.
-: ITEM ( ptr JSON-WRITE:writer bool n n -- ptr JSON-WRITE:writer bool )
+: ITEM ( ptr JSON:writer bool n n -- ptr JSON:writer bool )
    {: listed:bool from:n to:n :}
-   listed if COMMA then
-   OBJECT-START
+   listed if WRITE-COMMA then
+   WRITE-OBJECT-START
    from LSP-TEXT:LINE-CHARACTER to from max LSP-TEXT:LINE-CHARACTER
-   LSP-TEXT:RANGE-AT COMMA
-   s" kind" TEXT-KIND FIELD-U
-   OBJECT-END true ;
+   LSP-TEXT:RANGE-AT WRITE-COMMA
+   s" kind" TEXT-KIND WRITE-FIELD-U
+   WRITE-OBJECT-END true ;
 
 \ A use that names no record there is of no word.
 : OF-WORD? ( ptr u8 n n n n n n -- bool )
@@ -45,15 +45,15 @@ private
 \ The declaring token when it is in the document's own file, then each use with
 \ the same declaring token naming the same record, in published order. All are
 \ Text highlights: the checker states no read or write.
-: HIGHLIGHTS ( ptr JSON-WRITE:writer n n n n n -- ptr JSON-WRITE:writer )
+: HIGHLIGHTS ( ptr JSON:writer n n n n n -- ptr JSON:writer )
    {: slot:n g:n ts:n te:n rec:n :}
    slot LSP-DOCS:DOC-TEXT$ {: t:ptr tu:n :}
-   ARRAY-START false
+   WRITE-ARRAY-START false
    g GROUP-OWN? if ts te ITEM then
    slot DEFS-USE-RANGE ?do
       t tu i g ts te rec OF-WORD? if i USE-BYTES ITEM then
    loop
-   drop ARRAY-END ;
+   drop WRITE-ARRAY-END ;
 
 \ At a use (LSP-DEFS:DEFS-USE-AT) the record is the one its spelling names
 \ (LSP-DEFS:GROUP-REC-NAMED); at a definition token in the document's own file,
@@ -62,28 +62,28 @@ private
 \ stands for several words (LSP-DEFS:REC-SEVERAL?: a file included into two
 \ packages declares two words at one token) answers null rather than join the
 \ uses of different words; so does no record.
-: SELECTED-LIST ( ptr JSON-WRITE:writer n n n n option<n> -- ptr JSON-WRITE:writer )
+: SELECTED-LIST ( ptr JSON:writer n n n n option<n> -- ptr JSON:writer )
    MATCH option
       some OF {: slot:n g:n ts:n te:n rec:n :}
-         rec REC-SEVERAL? if NULL else slot g ts te rec HIGHLIGHTS then
+         rec REC-SEVERAL? if WRITE-NULL else slot g ts te rec HIGHLIGHTS then
       ENDOF
-      none OF 2drop 2drop NULL ENDOF
+      none OF 2drop 2drop WRITE-NULL ENDOF
    ;MATCH ;
 
-: USE-LIST ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+: USE-LIST ( ptr JSON:writer n n -- ptr JSON:writer )
    {: slot:n u:n :}
    slot u USE-GROUP u USE-TARGET slot LSP-DOCS:DOC-TEXT$ u NAMED SELECTED-LIST ;
 
-: REC-LIST ( ptr JSON-WRITE:writer n n n -- ptr JSON-WRITE:writer )
+: REC-LIST ( ptr JSON:writer n n n -- ptr JSON:writer )
    {: slot:n g:n r:n :}
    r REC-BYTES {: ts:n te:n :}
    slot g ts te g ts te GROUP-REC-SOLE SELECTED-LIST ;
 
-: HELD-LIST ( ptr JSON-WRITE:writer n n n -- ptr JSON-WRITE:writer )
+: HELD-LIST ( ptr JSON:writer n n n -- ptr JSON:writer )
    {: slot:n g:n at:n :}
    g at GROUP-REC-HOLDING MATCH option
       some OF {: r:n :} slot g r REC-LIST ENDOF
-      none OF ARRAY-START ARRAY-END ENDOF
+      none OF WRITE-ARRAY-START WRITE-ARRAY-END ENDOF
    ;MATCH ;
 
 public
@@ -94,15 +94,15 @@ public
 \ may have stopped reporting at a point it does not state, and an incomplete one
 \ kept none: any other document answers null. A byte no use or definition token
 \ holds answers an empty list.
-: ANSWER ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer n n -- ptr JSON:writer )
    {: slot:n at:n :}
-   slot DEFS-VERIFIED? 0= if NULL exit then
+   slot DEFS-VERIFIED? 0= if WRITE-NULL exit then
    slot at DEFS-USE-AT MATCH option
       some OF {: u:n :} slot u USE-LIST ENDOF
       none OF
          slot DEFS-OWN-GROUP MATCH option
             some OF {: g:n :} slot g at HELD-LIST ENDOF
-            none OF ARRAY-START ARRAY-END ENDOF
+            none OF WRITE-ARRAY-START WRITE-ARRAY-END ENDOF
          ;MATCH
       ENDOF
    ;MATCH ;

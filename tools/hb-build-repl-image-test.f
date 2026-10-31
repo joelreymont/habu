@@ -88,7 +88,7 @@ variable HBT-IMAGE-RESAVED-U
    HBT-REPL-OUT FS:EXISTS? TFALSE ;
 
 : HBT-ROOTED-APP$ ( -- ptr u8 n )
-   S\" require src/lib/json-read.f\n: MAIN ( -- ) s\q from-root\q type cr ;\n" ;
+   S\" require src/lib/json.f\n: MAIN ( -- ) s\q from-root\q type cr ;\n" ;
 
 : HBT-ROOTED-BUILD ( ptr u8 n -- )
    {: root:ptr rootu:n :}

@@ -5,7 +5,7 @@
 \ STORAGE CLASS. PROCESS-GLOBAL: an answer's tokens gather in the module's
 \ buffers, for the server's one task; tools/lsp-defs.f keeps the uses.
 
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/sort.f
 require src/lib/adt/option.f
 require tools/lsp-docs.f
@@ -13,7 +13,7 @@ require tools/lsp-defs.f
 require tools/lsp-text.f
 
 package LSP-TOKENS
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 
 private
@@ -96,41 +96,41 @@ variable PREV-CHAR                       \ one written last
 \ line, else from the line's start (UTF-16 units, LSP-TEXT). A token lies on one
 \ line, since the check binds nothing in a literal its line leaves open, so its
 \ length is its end's character less its start's.
-: ENCODED ( ptr JSON-WRITE:writer n bool -- ptr JSON-WRITE:writer )
+: ENCODED ( ptr JSON:writer n bool -- ptr JSON:writer )
    {: k:n first:bool :}
-   first 0= if COMMA then
+   first 0= if WRITE-COMMA then
    k K-START TOKEN@ {: from:n :}
    from LSP-TEXT:LINE-CHARACTER {: ln:n ch:n :}
    k K-END TOKEN@ LSP-TEXT:LINE-CHARACTER nip {: end:n :}
-   ln PREV-LINE @ - U COMMA
-   ln PREV-LINE @ = if ch PREV-CHAR @ - else ch then U COMMA
-   end ch - U COMMA
+   ln PREV-LINE @ - WRITE-U WRITE-COMMA
+   ln PREV-LINE @ = if ch PREV-CHAR @ - else ch then WRITE-U WRITE-COMMA
+   end ch - WRITE-U WRITE-COMMA
    k K-CLASS TOKEN@ TYPED {: ty:n mods:n :}
-   ty U COMMA mods U
+   ty WRITE-U WRITE-COMMA mods WRITE-U
    ln PREV-LINE !
    ch PREV-CHAR ! ;
 
 public
 
-: LEGEND ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   s" semanticTokensProvider" KEY OBJECT-START
-      s" legend" KEY OBJECT-START
-         s" tokenTypes" KEY ARRAY-START
-            s" function" STRING COMMA
-            s" variable" STRING
-         ARRAY-END COMMA
-         s" tokenModifiers" KEY ARRAY-START
-            s" readonly" STRING
-         ARRAY-END
-      OBJECT-END COMMA
-      s" full" true FIELD-BOOL
-   OBJECT-END ;
+: LEGEND ( ptr JSON:writer -- ptr JSON:writer )
+   s" semanticTokensProvider" WRITE-KEY WRITE-OBJECT-START
+      s" legend" WRITE-KEY WRITE-OBJECT-START
+         s" tokenTypes" WRITE-KEY WRITE-ARRAY-START
+            s" function" WRITE-STRING WRITE-COMMA
+            s" variable" WRITE-STRING
+         WRITE-ARRAY-END WRITE-COMMA
+         s" tokenModifiers" WRITE-KEY WRITE-ARRAY-START
+            s" readonly" WRITE-STRING
+         WRITE-ARRAY-END
+      WRITE-OBJECT-END WRITE-COMMA
+      s" full" true WRITE-FIELD-BOOL
+   WRITE-OBJECT-END ;
 
 \ From the last completed check whatever its verdict, while its positions are
 \ of the text: a refused or deferred check stopped at a point, and what it
 \ reported before is still what it bound. Otherwise, as while a check of the
 \ document runs, the list is empty. Positions count in the text from now on.
-: ANSWER ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer n -- ptr JSON:writer )
    {: w slot:n :}
    slot LSP-DOCS:DOC-TEXT$ {: t:ptr tu:n :}
    t tu LSP-TEXT:TEXT!
@@ -143,11 +143,11 @@ public
    SORTED
    0 PREV-LINE !
    0 PREV-CHAR !
-   w OBJECT-START
-   s" data" KEY ARRAY-START
+   w WRITE-OBJECT-START
+   s" data" WRITE-KEY WRITE-ARRAY-START
    TOKEN-N @ 0 ?do i ORDER @ i 0= ENCODED loop
-   ARRAY-END
-   OBJECT-END ;
+   WRITE-ARRAY-END
+   WRITE-OBJECT-END ;
 
 ;using
 ;using

@@ -27,14 +27,14 @@ variable OUT-N
    c OUT OUT-N @ + c!
    OUT-N @ 1 + OUT-N ! ;
 
-\ The json-write emitter, reduced: it writes the key bytes and the colon.
+\ A JSON key emitter, reduced: it writes the key bytes and the colon.
 : KEY ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do a i + c@ PUTC loop
    58 PUTC ;
 
 public
 
-\ src/lib/json-write.f FIELD-S with its local spelled `key`:
+\ A field writer with its local spelled `key`:
 \ `key keyu KEY` is the local, the local, and then the WORD.
 : FIELD-S ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n v:ptr vu:n :}
    0 OUT-N !

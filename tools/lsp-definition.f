@@ -5,7 +5,7 @@
 \ or a source-backed engine word's current declaration, by its origin span.
 \ STORAGE CLASS. PROCESS-GLOBAL: the answer belongs to the server's one task.
 
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/adt/option.f
 require src/habu/engine-origin.f
 require tools/lsp-source-index.f
@@ -14,22 +14,22 @@ require tools/lsp-defs.f
 require tools/lsp-text.f
 
 package LSP-DEFINITION
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 using LSP-DOCS
 
 private
 
-TYPED-VARIABLE OUT ptr JSON-WRITE:writer
+TYPED-VARIABLE OUT ptr JSON:writer
 
 \ A Location at these positions in group G.
 : LOCATION-AT ( n n n n n -- )
    {: g:n line:n col:n end-line:n end-col:n :}
    OUT @
-   OBJECT-START
-   s" uri" g GROUP-URI$ FIELD-RAW COMMA
+   WRITE-OBJECT-START
+   s" uri" g GROUP-URI$ WRITE-FIELD-RAW WRITE-COMMA
    line col end-line end-col LSP-TEXT:RANGE-AT
-   OBJECT-END drop ;
+   WRITE-OBJECT-END drop ;
 
 : LOCATION ( n n -- )
    {: g:n r:n :}
@@ -85,15 +85,15 @@ public
 \ primitive whose source is missing or differs from the running table, or an
 \ engine word whose current declaration is missing or ambiguous. An engine word's
 \ declaration prefers an open document's text.
-: ANSWER ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer n n -- ptr JSON:writer )
    {: w slot:n at:n :}
    w OUT !
-   w ARRAY-START drop
+   w WRITE-ARRAY-START drop
    slot at DEFS-USE-AT MATCH option
       some OF TARGET ENDOF
       none OF ENDOF
    ;MATCH
-   w ARRAY-END ;
+   w WRITE-ARRAY-END ;
 
 ;using
 ;using

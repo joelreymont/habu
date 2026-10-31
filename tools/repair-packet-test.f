@@ -18,7 +18,7 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require src/lib/source-lex.f
 require tools/check-all-errors-core.f
-require src/lib/json-write.f
+require src/lib/json.f
 require tools/gate-json-assert-core.f
 require src/lib/argv.f
 require tools/repair-packet-core.f
@@ -46,7 +46,7 @@ create SRC-BUF PATH-CAP allot
 create DIAG-BUF PATH-CAP allot
 create PACKET-BUF PATH-CAP allot
 create J-OUT $8000 allot
-TYPED-VARIABLE J-W JSON-WRITE:writer
+TYPED-VARIABLE J-W JSON:writer
 
 : PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -268,21 +268,21 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    SB$ ;
 
 : JSTART ( -- )
-   J-W J-OUT $8000 JSON-WRITE:OPEN JSON-WRITE:OBJECT-START drop ;
+   J-W J-OUT $8000 JSON:WRITE-OPEN JSON:WRITE-OBJECT-START drop ;
 
 : JSTR ( ptr u8 n ptr u8 n -- )
    {: key:ptr keyu:n val:ptr valu:n :}
-   J-W key keyu JSON-WRITE:KEY val valu JSON-WRITE:STRING drop ;
+   J-W key keyu JSON:WRITE-KEY val valu JSON:WRITE-STRING drop ;
 
 : JNUM ( ptr u8 n n -- )
    {: key:ptr keyu:n val:n :}
-   J-W key keyu JSON-WRITE:KEY val JSON-WRITE:U drop ;
+   J-W key keyu JSON:WRITE-KEY val JSON:WRITE-U drop ;
 
 : JNEXT ( -- )
-   J-W JSON-WRITE:COMMA drop ;
+   J-W JSON:WRITE-COMMA drop ;
 
 : JDONE ( -- ptr u8 n )
-   J-W JSON-WRITE:OBJECT-END JSON-WRITE:$ ;
+   J-W JSON:WRITE-OBJECT-END JSON:WRITTEN$ ;
 
 : FAMILY-DIAG$ ( -- ptr u8 n )
    JSTART
@@ -302,10 +302,10 @@ TYPED-VARIABLE J-W JSON-WRITE:writer
    JNEXT s" declared_effect" s" n -- rptzrc " JSTR
    JNEXT s" declared_effect_source" s" n -- rptzrc" JSTR
    JNEXT s" inferred_effect" s" n -- n " JSTR
-   JNEXT J-W s" return_stack" JSON-WRITE:KEY JSON-WRITE:OBJECT-START drop
+   JNEXT J-W s" return_stack" JSON:WRITE-KEY JSON:WRITE-OBJECT-START drop
    s" expected" s" " JSTR
    JNEXT s" actual" s" " JSTR
-   J-W JSON-WRITE:OBJECT-END drop
+   J-W JSON:WRITE-OBJECT-END drop
    JNEXT s" expected" s" rptzrc " JSTR
    JNEXT s" actual" s" n " JSTR
    JNEXT s" family" s" rptzrc" JSTR

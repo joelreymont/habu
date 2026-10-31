@@ -32,7 +32,7 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/tree-copy.f
 require src/lib/time.f
-require src/lib/json-read.f
+require src/lib/json.f
 require tools/chain-run.f
 
 package NATIVE-BUILD-EDIT-TEST
@@ -59,7 +59,7 @@ create OVERLAY PATH-CAP allot    variable OVERLAY-U
 create RACE-A PATH-CAP allot     variable RACE-A-U
 create RACE-B PATH-CAP allot     variable RACE-B-U
 create RACE-CORE PATH-CAP allot  variable RACE-CORE-U
-TYPED-VARIABLE ENGINE-JSON-STATE JR:cursor
+TYPED-VARIABLE ENGINE-JSON-STATE JSON:cursor
 create BASE-ROLES 192 allot
 create WARM-ROLES 192 allot
 create EARLY-ROLES 192 allot
@@ -908,17 +908,17 @@ variable LIVE-OVERRIDE
    0 T=
    OUTPUT$ FS:EXECUTABLE? TTRUE
    ERR-U @ 0 T=
-   ENGINE-JSON-STATE OUT$ JR:INIT
-   JR:NEXT JR:T-OBJ T=
-   s" schema" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-STR T=
-   s" hb-build-report" JR:STR-EQ? TTRUE
-   s" maker_hit" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-TRUE T=
-   s" maker_ran" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-TRUE T=
-   begin JR:NEXT dup JR:T-END <> while drop repeat drop
-   JR:CLOSE ;
+   ENGINE-JSON-STATE OUT$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ T=
+   s" schema" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-STR T=
+   s" hb-build-report" JSON:READ-STR-EQ? TTRUE
+   s" maker_hit" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-TRUE T=
+   s" maker_ran" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-TRUE T=
+   begin JSON:READ-NEXT dup JSON:T-END <> while drop repeat drop
+   JSON:READ-CLOSE ;
 
 : ENGINE-COMPAT-TIMEOUT ( -- )
    s" rejected/hb" s" timeout-cache" BUILD-SETUP

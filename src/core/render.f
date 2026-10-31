@@ -52,7 +52,8 @@ variable RTAILS   0 RTAILS !
 : JHEX ( n -- ) {: d:n :}
    d 10 < IF d 48 + ELSE d 55 + THEN EMIT-RAW ;
 
-\ Escapes per RFC 8259 section 7, in the form src/lib/json-write.f writes.
+\ Escapes per RFC 8259 section 7: \n \r \t \" \\ by letter, every other control
+\ byte as \u00XX in uppercase hex.
 : JCHAR {: c :}
    c case
       10 of 92 EMIT-RAW 110 EMIT-RAW endof

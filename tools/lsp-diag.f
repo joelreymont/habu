@@ -14,15 +14,14 @@ require src/lib/fd.f
 require src/lib/fs.f
 require src/lib/uri.f
 require src/lib/content-length.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/json-rpc.f
 require tools/lsp-docs.f
 require tools/lsp-line.f
 require tools/lsp-text.f
 
 package LSP-DIAG
-using JSON-WRITE
+using JSON
 using JSON-RPC
 using LSP-DOCS
 using LSP-LINE
@@ -34,10 +33,10 @@ private
 1 constant ERROR-SEVERITY                \ LSP DiagnosticSeverity.Error
 3 constant INFORMATION-SEVERITY          \ LSP DiagnosticSeverity.Information
 
-TYPED-VARIABLE JR-ST JR:cursor           \ JR storage for screening a packet line
+TYPED-VARIABLE JSON-ST JSON:cursor       \ JSON reader storage for screening a packet line
 create PUB-B BUF:HDR-BYTES allot         \ a notification's bytes, grown as written
 create NEW-B BUF:HDR-BYTES allot         \ the files this check published lists for
-TYPED-VARIABLE W JSON-WRITE:writer
+TYPED-VARIABLE W JSON:writer
 create FILE-BUF PATH-CAP allot        \ a packet's file, decoded
 variable FILE-U
 PATH-CAP 3 * 7 + SPAN-BUFFER: URI-SPAN  \ a file's URI: file:// and each byte escaped
@@ -62,16 +61,16 @@ variable ITEMS                           \ and the diagnostics in it so far
 
 \ The line read as a packet: FILE-U the length of its file, decoded into
 \ FILE-BUF, or -1 for a line that is not an object with a string file. The
-\ rest of the line is read to its end, so JR throws for any line that is not
+\ rest of the line is read to its end, so the JSON reader throws for any line that is not
 \ one JSON value.
 : SCAN ( -- )
    -1 FILE-U !
-   JR-ST LINE-A @ LINE-U @ JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE exit then
-   s" file" JR:FIND-KEY 0= if JR:CLOSE exit then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE exit then
-   FILE-BUF PATH-CAP JR:STR >r
-   JR:FINISH
+   JSON-ST LINE-A @ LINE-U @ READ-INIT
+   READ-NEXT T-OBJ <> if READ-CLOSE exit then
+   s" file" READ-FIND-KEY 0= if READ-CLOSE exit then
+   READ-TOKEN T-STR <> if READ-CLOSE exit then
+   FILE-BUF PATH-CAP READ-STR >r
+   READ-FINISH
    r> FILE-U ! ;
 
 \ Whether the line is a diagnostic: an object whose file names an absolute
@@ -82,7 +81,7 @@ variable ITEMS                           \ and the diagnostics in it so far
    u LINE-U !
    [: SCAN ;] catch {: code:n :}
    code 0<> if
-      code E-JR-LAST >= code E-JR-FIRST <= and 0= if code throw then
+      code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and 0= if code throw then
       -1 FILE-U !
    then
    FILE-U @ 0 > if FILE-BUF c@ SLASH = exit then
@@ -97,86 +96,86 @@ variable ITEMS                           \ and the diagnostics in it so far
 \ message: the packet's, else its code, its non-empty suggestion, then
 \ `expected: ` and `actual: ` lines when present. data: the whole packet.
 
-: QUOTE ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )  s\" \"" RAW ;
+: QUOTE ( ptr JSON:writer -- ptr JSON:writer )  s\" \"" WRITE-RAW ;
 
-: QUOTED ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: QUOTED ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
-   QUOTE a u RAW QUOTE ;
+   QUOTE a u WRITE-RAW QUOTE ;
 
-: SEVERITY ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: SEVERITY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    s" verdict" STRING-MEMBER 0= if 2drop exit then
    {: v:ptr vu:n :}
    v vu s" rejected" STR=  v vu s" uncheckable" STR= or if
-      COMMA s" severity" ERROR-SEVERITY FIELD-U exit
+      WRITE-COMMA s" severity" ERROR-SEVERITY WRITE-FIELD-U exit
    then
-   v vu s" deferred" STR= if COMMA s" severity" INFORMATION-SEVERITY FIELD-U then ;
+   v vu s" deferred" STR= if WRITE-COMMA s" severity" INFORMATION-SEVERITY WRITE-FIELD-U then ;
 
-: CODE-FIELD ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: CODE-FIELD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    s" code" STRING-MEMBER 0= if 2drop exit then
    {: c:ptr cu:n :}
-   COMMA s" code" KEY c cu QUOTED ;
+   WRITE-COMMA s" code" WRITE-KEY c cu QUOTED ;
 
-: SUGGESTION ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: SUGGESTION ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    s" suggestion" STRING-MEMBER over 0 > and 0= if 2drop exit then
    {: s:ptr su:n :}
-   s" \n" RAW s su RAW ;
+   s" \n" WRITE-RAW s su WRITE-RAW ;
 
-: PIECE ( ptr JSON-WRITE:writer ptr u8 n ptr u8 n -- ptr JSON-WRITE:writer )
+: PIECE ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n k:ptr ku:n :}
    a u k ku STRING-MEMBER 0= if 2drop exit then
    {: v:ptr vu:n :}
-   s" \n" RAW k ku RAW s" : " RAW v vu RAW ;
+   s" \n" WRITE-RAW k ku WRITE-RAW s" : " WRITE-RAW v vu WRITE-RAW ;
 
-: MESSAGE ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: MESSAGE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
    a u s" message" STRING-MEMBER if QUOTED exit then
    2drop
    QUOTE
-   a u s" code" STRING-MEMBER if RAW else 2drop then
+   a u s" code" STRING-MEMBER if WRITE-RAW else 2drop then
    a u SUGGESTION
    a u s" expected" PIECE
    a u s" actual" PIECE
    QUOTE ;
 
-: DIAGNOSTIC ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: DIAGNOSTIC ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
-   OBJECT-START
+   WRITE-OBJECT-START
    a u RANGE
    a u SEVERITY
    a u CODE-FIELD
-   COMMA s" source" s" habu" FIELD-S
-   COMMA s" message" KEY a u MESSAGE
-   COMMA s" data" a u FIELD-RAW
-   OBJECT-END ;
+   WRITE-COMMA s" source" s" habu" WRITE-FIELD-S
+   WRITE-COMMA s" message" WRITE-KEY a u MESSAGE
+   WRITE-COMMA s" data" a u WRITE-FIELD-RAW
+   WRITE-OBJECT-END ;
 
 \ ---- lists ---------------------------------------------------------------------
 
 \ A publishDiagnostics notification begun for the URI, with the version when
 \ there is one, up to its diagnostics' opening bracket.
-: OPENING ( ptr u8 n option<n> -- ptr JSON-WRITE:writer )
+: OPENING ( ptr u8 n option<n> -- ptr JSON:writer )
    {: u:ptr uu:n v :}
-   W PUB-B JSON-WRITE:OPEN-BUF
+   W PUB-B WRITE-OPEN-BUF
    s" textDocument/publishDiagnostics" NOTIFY
-   OBJECT-START
-   s" uri" u uu FIELD-S COMMA
+   WRITE-OBJECT-START
+   s" uri" u uu WRITE-FIELD-S WRITE-COMMA
    v MATCH option
-      some OF >r s" version" r> FIELD-INT COMMA ENDOF
+      some OF >r s" version" r> WRITE-FIELD-INT WRITE-COMMA ENDOF
       none OF ENDOF
    ;MATCH
-   s" diagnostics" KEY ARRAY-START ;
+   s" diagnostics" WRITE-KEY WRITE-ARRAY-START ;
 
-: CLOSING ( ptr JSON-WRITE:writer -- )
-   ARRAY-END OBJECT-END END
+: CLOSING ( ptr JSON:writer -- )
+   WRITE-ARRAY-END WRITE-OBJECT-END END
    {: w :}
-   w JSON-WRITE:$ {: a:ptr u:n :}
-   w JSON-WRITE:CLOSE
+   w WRITTEN$ {: a:ptr u:n :}
+   w WRITE-CLOSE
    FD:STDOUT a u CONTENT-LENGTH:SEND ;
 
 : ITEM ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u SCREENED 0= if exit then
    FILE$ LIST-A @ LIST-U @ STR= 0= if exit then
-   ITEMS @ 0 > if W COMMA drop then
+   ITEMS @ 0 > if W WRITE-COMMA drop then
    W a u DIAGNOSTIC drop
    1 ITEMS +! ;
 

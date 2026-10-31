@@ -12,11 +12,11 @@ require src/lib/fd.f
 require src/lib/fs.f
 require src/lib/source.f
 require src/lib/utf16.f
-require src/lib/json-write.f
+require src/lib/json.f
 require tools/lsp-line.f
 
 package LSP-TEXT
-using JSON-WRITE
+using JSON
 using LSP-LINE
 
 private
@@ -155,31 +155,31 @@ public
 
 private
 
-: POSITION ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+: POSITION ( ptr JSON:writer n n -- ptr JSON:writer )
    {: ln:n ch:n :}
-   OBJECT-START
-   s" line" ln FIELD-U COMMA
-   s" character" ch FIELD-U
-   OBJECT-END ;
+   WRITE-OBJECT-START
+   s" line" ln WRITE-FIELD-U WRITE-COMMA
+   s" character" ch WRITE-FIELD-U
+   WRITE-OBJECT-END ;
 
 public
 
-: RANGE-VALUE ( ptr JSON-WRITE:writer n n n n -- ptr JSON-WRITE:writer )
+: RANGE-VALUE ( ptr JSON:writer n n n n -- ptr JSON:writer )
    {: l1:n c1:n l2:n c2:n :}
-   OBJECT-START
-   s" start" KEY l1 c1 POSITION COMMA
-   s" end" KEY l2 c2 POSITION
-   OBJECT-END ;
+   WRITE-OBJECT-START
+   s" start" WRITE-KEY l1 c1 POSITION WRITE-COMMA
+   s" end" WRITE-KEY l2 c2 POSITION
+   WRITE-OBJECT-END ;
 
-: RANGE-AT ( ptr JSON-WRITE:writer n n n n -- ptr JSON-WRITE:writer )
+: RANGE-AT ( ptr JSON:writer n n n n -- ptr JSON:writer )
    {: l1:n c1:n l2:n c2:n :}
-   s" range" KEY l1 c1 l2 c2 RANGE-VALUE ;
+   s" range" WRITE-KEY l1 c1 l2 c2 RANGE-VALUE ;
 
 \ The range member for a line that holds one JSON object with byte_start and
 \ byte_end, as the checker's packets do: a missing start is 0, a missing end
 \ the start; both are held to the text and the end to no less than the start,
 \ so the range is valid whatever the line says.
-: RANGE ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: RANGE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: a:ptr u:n :}
    a u s" byte_start" INT-MEMBER 0= if drop 0 then {: from:n :}
    a u s" byte_end" INT-MEMBER 0= if drop from then from max {: to:n :}

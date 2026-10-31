@@ -14,7 +14,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require src/lib/byte-buffer.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/source-lex.f
 
 package RESERVED-NAME-LINT
@@ -34,15 +34,15 @@ create RNL-SDQ  $73 c, $22 c,
 create RNL-CDQ  $63 c, $22 c,
 create RNL-DOTQ $2E c, $22 c,
 create RNL-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE RNL-JSON-W JSON-WRITE:writer
+TYPED-VARIABLE RNL-JSON-W JSON:writer
 variable RNL-JSON-READY
 
-: RNL-JSON-WRITER ( -- ptr JSON-WRITE:writer )
+: RNL-JSON-WRITER ( -- ptr JSON:writer )
    RNL-JSON-READY @ 0= if
       RNL-JSON-BUF 1 BUF:N>BLEN BUF:INIT
       1 RNL-JSON-READY !
    then
-   RNL-JSON-W RNL-JSON-BUF JSON-WRITE:OPEN-BUF ;
+   RNL-JSON-W RNL-JSON-BUF JSON:WRITE-OPEN-BUF ;
 
 TYPED-VARIABLE RNL-SRC-A ptr u8
 variable RNL-SRC-U
@@ -284,18 +284,18 @@ private
 
 : RNL-JSON-FINDING-AS ( n ptr u8 n ptr u8 n ptr u8 n -- )
    {: k:n code:ptr codeu:n why:ptr whyu:n fix:ptr fixu:n :}
-   RNL-JSON-WRITER JSON-WRITE:OBJECT-START
-   s" schema_version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" code" code codeu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" file" RNL-FILE-A@ RNL-FILE-U @ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" line" k LINT-LEX:LINE@ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" column" k LINT-LEX:COL@ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_start" k LINT-LEX:BYTE@ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_end" k RNL-TOK-END JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" word" k LINT-LEX:TOKEN JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" reason" why whyu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" suggestion" fix fixu JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END JSON-WRITE:$ RNL-OUT RNL-NL ;
+   RNL-JSON-WRITER JSON:WRITE-OBJECT-START
+   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" file" RNL-FILE-A@ RNL-FILE-U @ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" k LINT-LEX:LINE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" k LINT-LEX:COL@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_start" k LINT-LEX:BYTE@ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_end" k RNL-TOK-END JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" word" k LINT-LEX:TOKEN JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" reason" why whyu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" suggestion" fix fixu JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END JSON:WRITTEN$ RNL-OUT RNL-NL ;
 
 : RNL-JSON-FINDING ( n -- )
    s" E-RESERVED-DEFINITION"

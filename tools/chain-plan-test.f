@@ -39,7 +39,7 @@ package CHAIN-PLAN-TEST
    s" bootstrap/cg/forth.fs" T-ENGINE
    s" tools/native-build-core.f" T-ENGINE
    s" src/lib/string.f" T-ENGINE
-   s" src/lib/json-read.f" T-FOCUSED
+   s" src/lib/json-rpc.f" T-FOCUSED
    s" src/lib/net/curl.f" T-FOCUSED
    s" src/examples/llm/good.f" T-FOCUSED
    s" test/gate-stdlib-cases.f" T-FOCUSED

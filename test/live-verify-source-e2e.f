@@ -11,7 +11,7 @@ require src/lib/task.f
 require src/lib/ffi-abi.f
 require src/lib/process-fork.f
 require tools/check-verify-core.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/jsonl.f
 
 package LIVE-VERIFY-SOURCE-TEST
@@ -151,13 +151,13 @@ variable REGULAR-SEEN
    CHECKER-SCOPE-DONE
    0 T= ;
 
-TYPED-VARIABLE JSON-READER JR:cursor
+TYPED-VARIABLE JSON-READER JSON:cursor
 
 : JSON-LINES ( ptr u8 n -- )
    {: src:ptr u:n :}
    0 begin dup u < while
       src u rot JSONL:SPLIT-LINE drop {: a:ptr len:n next:n :}
-      JSON-READER a len JR:INIT JR:FINISH
+      JSON-READER a len JSON:READ-INIT JSON:READ-FINISH
       next
    repeat drop ;
 
@@ -179,7 +179,7 @@ TYPED-VARIABLE JSON-READER JR:cursor
    CHECK:VERIFY-FILES$ DESIGN$ CONTAINS? TTRUE
    CHECK:VERIFY-FILES$ STREAM$ CONTAINS? TFALSE
    CHECK:VERIFY-OUT$ nip 0 > TTRUE
-   JSON-READER CHECK:VERIFY-OUT$ JR:INIT JR:FINISH
+   JSON-READER CHECK:VERIFY-OUT$ JSON:READ-INIT JSON:READ-FINISH
    CHECK:VERIFY-OUT$ s\" \"code\":\"E-UNREADABLE-SOURCE\"" CONTAINS? TTRUE
    CHECK:VERIFY-OUT$ s\" \"token\":\"require\"" CONTAINS? TTRUE
    CHECK:VERIFY-OUT$ loader loaderu CONTAINS? TTRUE ;

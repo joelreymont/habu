@@ -5,25 +5,25 @@
 \ STORAGE CLASS. CALLER-OWNED: no state; the writer is the caller's, the
 \ definitions tools/lsp-defs.f's.
 
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/adt/option.f
 require tools/lsp-defs.f
 require tools/lsp-symbols.f
 
 package LSP-OUTLINE
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 
 private
 
 \ The symbol for record R of group G, a comma before it unless it is the
 \ group's first.
-: LISTED ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+: LISTED ( ptr JSON:writer n n -- ptr JSON:writer )
    {: w g:n r:n :}
-   w r g GROUP-FIRST <> if COMMA then
+   w r g GROUP-FIRST <> if WRITE-COMMA then
    g r LSP-SYMBOLS:SYMBOL ;
 
-: SYMBOLS ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+: SYMBOLS ( ptr JSON:writer n -- ptr JSON:writer )
    {: w g:n :}
    g GROUP-FIRST begin dup 0 >= while
       w over g swap LISTED drop
@@ -33,14 +33,14 @@ private
 
 public
 
-: ANSWER ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer n -- ptr JSON:writer )
    {: w slot:n :}
-   w ARRAY-START
+   w WRITE-ARRAY-START
    slot DEFS-OWN-GROUP MATCH option
       some OF SYMBOLS ENDOF
       none OF ENDOF
    ;MATCH
-   ARRAY-END ;
+   WRITE-ARRAY-END ;
 
 ;using
 ;using

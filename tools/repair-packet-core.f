@@ -3,8 +3,7 @@
 require src/lib/memory.f
 require src/lib/argv.f
 require src/lib/jsonl.f
-require src/lib/json-write.f
-require src/lib/json-copy.f
+require src/lib/json.f
 require src/lib/string.f
 require tools/diag-code.f
 require src/lib/fs.f
@@ -16,8 +15,8 @@ $8000 constant RP-OUT-CAP
 
 create RP-OUT RP-OUT-CAP allot
 create RP-TEXT RP-IN-CAP allot
-TYPED-VARIABLE RP-READER JR:cursor
-TYPED-VARIABLE RP-W JSON-WRITE:writer
+TYPED-VARIABLE RP-READER JSON:cursor
+TYPED-VARIABLE RP-W JSON:writer
 TYPED-VARIABLE RP-SOURCE ptr u8
 TYPED-VARIABLE RP-ROW ptr u8
 
@@ -83,23 +82,23 @@ variable RP-ROW-OBJECT
 : RP-ROW! ( ptr u8 n -- )
    RP-ROW-U ! RP-ROW ! ;
 
-: RP-FIND ( ptr u8 n -- JR:reader bool )
+: RP-FIND ( ptr u8 n -- JSON:reader bool )
    {: key:ptr ku:n :}
-   RP-READER RP-ROW$ JR:INIT
-   JR:NEXT drop
-   key ku JR:FIND-KEY ;
+   RP-READER RP-ROW$ JSON:READ-INIT
+   JSON:READ-NEXT drop
+   key ku JSON:READ-FIND-KEY ;
 
-: RP-REQ ( ptr u8 n -- JR:reader )
+: RP-REQ ( ptr u8 n -- JSON:reader )
    RP-FIND if exit then
-   JR:CLOSE
+   JSON:READ-CLOSE
    s" repair-packet: missing diagnostic field" RP-E-IO RP-FAIL ;
 
-: RP-STRING$ ( JR:reader -- ptr u8 n )
-   JR:TOKEN JR:T-STR <> if
-      JR:CLOSE s" repair-packet: expected string field" RP-E-IO RP-FAIL
+: RP-STRING$ ( JSON:reader -- ptr u8 n )
+   JSON:READ-TOKEN JSON:T-STR <> if
+      JSON:READ-CLOSE s" repair-packet: expected string field" RP-E-IO RP-FAIL
    then
-   RP-TEXT RP-IN-CAP JR:STR {: len:n :}
-   JR:CLOSE RP-TEXT len ;
+   RP-TEXT RP-IN-CAP JSON:READ-STR {: len:n :}
+   JSON:READ-CLOSE RP-TEXT len ;
 
 \ The record's code names its shape and the field a refused record adds
 \ (tools/diag-code.f).
@@ -112,20 +111,20 @@ variable RP-ROW-OBJECT
    RP-CODE$ DIAG-CODE:REFUSAL? ;
 
 : RP-VALIDATE ( -- )
-   RP-READER RP-ROW$ JR:INIT
-   JR:NEXT {: kind:n :}
-   begin JR:NEXT dup JR:T-END <> while drop repeat drop
-   JR:CLOSE
-   kind JR:T-OBJ = RP-ROW-OBJECT ! ;
+   RP-READER RP-ROW$ JSON:READ-INIT
+   JSON:READ-NEXT {: kind:n :}
+   begin JSON:READ-NEXT dup JSON:T-END <> while drop repeat drop
+   JSON:READ-CLOSE
+   kind JSON:T-OBJ = RP-ROW-OBJECT ! ;
 
 : RP-OBJECT? ( -- bool )
    [: RP-VALIDATE ;] catch
    dup 0= if drop RP-ROW-OBJECT @ 0<> exit then
-   dup E-JR-MALFORMED = over E-JR-STRING = or
-   over E-JR-ESCAPE = or over E-JR-SURROGATE = or
-   over E-JR-TRAILING = or over E-JR-NUMBER = or
-   over E-JR-EOF = or over E-JR-COLON = or
-   over E-JR-COMMA = or if drop false exit then
+   dup E-JSON-READ-MALFORMED = over E-JSON-READ-STRING = or
+   over E-JSON-READ-ESCAPE = or over E-JSON-READ-SURROGATE = or
+   over E-JSON-READ-TRAILING = or over E-JSON-READ-NUMBER = or
+   over E-JSON-READ-EOF = or over E-JSON-READ-COLON = or
+   over E-JSON-READ-COMMA = or if drop false exit then
    throw ;
 
 : RP-SCAN-START ( ptr u8 n -- )
@@ -158,103 +157,103 @@ variable RP-ROW-OBJECT
 
 : RP-REQ-STR ( ptr u8 n -- )
    RP-REQ RP-STRING$ {: a:ptr u:n :}
-   RP-W a u JSON-WRITE:STRING drop ;
+   RP-W a u JSON:WRITE-STRING drop ;
 
 : RP-OPT-STR ( ptr u8 n -- )
-   RP-FIND 0= if JR:CLOSE RP-W JSON-WRITE:NULL drop exit then
-   JR:TOKEN JR:T-NULL = if JR:CLOSE RP-W JSON-WRITE:NULL drop exit then
+   RP-FIND 0= if JSON:READ-CLOSE RP-W JSON:WRITE-NULL drop exit then
+   JSON:READ-TOKEN JSON:T-NULL = if JSON:READ-CLOSE RP-W JSON:WRITE-NULL drop exit then
    RP-STRING$ {: a:ptr u:n :}
-   RP-W a u JSON-WRITE:STRING drop ;
+   RP-W a u JSON:WRITE-STRING drop ;
 
-: RP-NUMBER ( JR:reader -- )
-   JR:TOKEN dup JR:T-INT <> swap JR:T-FLOAT <> and if
-      JR:CLOSE s" repair-packet: expected number field" RP-E-IO RP-FAIL
+: RP-NUMBER ( JSON:reader -- )
+   JSON:READ-TOKEN dup JSON:T-INT <> swap JSON:T-FLOAT <> and if
+      JSON:READ-CLOSE s" repair-packet: expected number field" RP-E-IO RP-FAIL
    then
-   JR:SPAN$ {: a:ptr u:n :}
-   JR:CLOSE
-   RP-W a u JSON-WRITE:RAW drop ;
+   JSON:READ-SPAN$ {: a:ptr u:n :}
+   JSON:READ-CLOSE
+   RP-W a u JSON:WRITE-RAW drop ;
 
 : RP-REQ-NUM ( ptr u8 n -- )
    RP-REQ RP-NUMBER ;
 
 : RP-OPT-NUM ( ptr u8 n -- )
-   RP-FIND 0= if JR:CLOSE RP-W JSON-WRITE:NULL drop exit then
+   RP-FIND 0= if JSON:READ-CLOSE RP-W JSON:WRITE-NULL drop exit then
    RP-NUMBER ;
 
 : RP-REQ-STR-FIELD ( ptr u8 n -- )
    {: key:ptr ku:n :}
-   RP-W key ku JSON-WRITE:KEY drop
+   RP-W key ku JSON:WRITE-KEY drop
    key ku RP-REQ-STR ;
 
 : RP-OPT-STR-FIELD ( ptr u8 n -- )
    {: key:ptr ku:n :}
-   RP-W key ku JSON-WRITE:KEY drop
+   RP-W key ku JSON:WRITE-KEY drop
    key ku RP-OPT-STR ;
 
 : RP-REQ-NUM-FIELD ( ptr u8 n -- )
    {: key:ptr ku:n :}
-   RP-W key ku JSON-WRITE:KEY drop
+   RP-W key ku JSON:WRITE-KEY drop
    key ku RP-REQ-NUM ;
 
 : RP-OPT-NUM-FIELD ( ptr u8 n -- )
    {: key:ptr ku:n :}
-   RP-W key ku JSON-WRITE:KEY drop
+   RP-W key ku JSON:WRITE-KEY drop
    key ku RP-OPT-NUM ;
 
 : RP-PACKET-START ( -- )
-   RP-W RP-OUT RP-OUT-CAP JSON-WRITE:OPEN
-   JSON-WRITE:OBJECT-START
-   s" schema_version" JSON-WRITE:KEY s" 1" JSON-WRITE:RAW
-   JSON-WRITE:COMMA s" kind" JSON-WRITE:KEY
-   s" habu_repair_packet" JSON-WRITE:STRING drop ;
+   RP-W RP-OUT RP-OUT-CAP JSON:WRITE-OPEN
+   JSON:WRITE-OBJECT-START
+   s" schema_version" JSON:WRITE-KEY s" 1" JSON:WRITE-RAW
+   JSON:WRITE-COMMA s" kind" JSON:WRITE-KEY
+   s" habu_repair_packet" JSON:WRITE-STRING drop ;
 
 : RP-PACKET-END ( n ptr u8 n -- ptr u8 n )
    {: count:n text:ptr textu:n :}
-   RP-W JSON-WRITE:COMMA s" diagnostic_count" JSON-WRITE:KEY
-   count JSON-WRITE:U
-   JSON-WRITE:COMMA s" instruction" JSON-WRITE:KEY
-   text textu JSON-WRITE:STRING JSON-WRITE:OBJECT-END
-   JSON-WRITE:$ ;
+   RP-W JSON:WRITE-COMMA s" diagnostic_count" JSON:WRITE-KEY
+   count JSON:WRITE-U
+   JSON:WRITE-COMMA s" instruction" JSON:WRITE-KEY
+   text textu JSON:WRITE-STRING JSON:WRITE-OBJECT-END
+   JSON:WRITTEN$ ;
 
 : RP-RETURN-STACK ( -- )
    RP-ROW$ {: row:ptr rowu:n :}
-   RP-W s" return_stack" JSON-WRITE:KEY drop
+   RP-W s" return_stack" JSON:WRITE-KEY drop
    s" return_stack" RP-REQ
-   JR:TOKEN JR:T-OBJ <> if
-      JR:CLOSE s" repair-packet: return_stack is not object" RP-E-IO RP-FAIL
+   JSON:READ-TOKEN JSON:T-OBJ <> if
+      JSON:READ-CLOSE s" repair-packet: return_stack is not object" RP-E-IO RP-FAIL
    then
-   JR:VALUE-SPAN$ {: nested:ptr nestedu:n :} JR:CLOSE
+   JSON:READ-VALUE-SPAN$ {: nested:ptr nestedu:n :} JSON:READ-CLOSE
    nested nestedu RP-ROW!
-   RP-W JSON-WRITE:OBJECT-START drop
+   RP-W JSON:WRITE-OBJECT-START drop
    s" expected" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop
+   RP-W JSON:WRITE-COMMA drop
    s" actual" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:OBJECT-END drop
+   RP-W JSON:WRITE-OBJECT-END drop
    row rowu RP-ROW! ;
 
 : RP-DEF-PACKET ( n -- ptr u8 n )
    {: count:n :}
    RP-PACKET-START
-   RP-W JSON-WRITE:COMMA drop s" word" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" token" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" token_index" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" file" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" line" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" column" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" byte_start" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" byte_end" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" declared_effect" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" declared_effect_source" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" inferred_effect" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" expected" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" actual" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" family" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop RP-RETURN-STACK
-   RP-W JSON-WRITE:COMMA drop s" code" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" repair_class" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" reason" RP-OPT-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" suggestion" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA s" source_excerpt" JSON-WRITE:KEY drop
+   RP-W JSON:WRITE-COMMA drop s" word" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token_index" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" line" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" column" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_start" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_end" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" declared_effect" RP-OPT-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" declared_effect_source" RP-OPT-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" inferred_effect" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" expected" RP-OPT-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" actual" RP-OPT-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" family" RP-OPT-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop RP-RETURN-STACK
+   RP-W JSON:WRITE-COMMA drop s" code" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" repair_class" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" reason" RP-OPT-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA s" source_excerpt" JSON:WRITE-KEY drop
    s" definition_source" RP-REQ-STR
    count s" Fix the definition so it certifies. Output only corrected Habu code."
    RP-PACKET-END ;
@@ -262,14 +261,14 @@ variable RP-ROW-OBJECT
 : RP-DECL-PACKET ( n -- ptr u8 n )
    {: count:n :}
    RP-PACKET-START
-   RP-W JSON-WRITE:COMMA drop s" decl" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" family" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" token" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" file" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" code" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" repair_class" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" reason" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" suggestion" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" decl" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" family" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" code" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" repair_class" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" reason" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    count s" Repair the type-family declaration. Output only corrected Habu code."
    RP-PACKET-END ;
 
@@ -277,51 +276,51 @@ variable RP-ROW-OBJECT
 : RP-SPAN-PACKET ( n -- ptr u8 n )
    {: count:n :}
    RP-PACKET-START
-   RP-W JSON-WRITE:COMMA drop s" token" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" file" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" line" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" column" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" byte_start" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" byte_end" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" code" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" throw_code" RP-OPT-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" repair_class" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" suggestion" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" line" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" column" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_start" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_end" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" code" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" throw_code" RP-OPT-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" repair_class" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    count s" Fix the source at this token so it checks. Output only corrected Habu code."
    RP-PACKET-END ;
 
 : RP-INPUT-PACKET ( n -- ptr u8 n )
    {: count:n :}
    RP-PACKET-START
-   RP-W JSON-WRITE:COMMA drop s" file" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" line" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" column" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" code" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" repair_class" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" suggestion" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" line" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" column" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" code" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" repair_class" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    count s" Rebuild bin/hb to check this source; no code change answers this diagnostic."
    RP-PACKET-END ;
 
 \ A record carries all four place fields, when its token locates in the file,
 \ or none.
 : RP-PLACE ( -- )
-   s" line" RP-FIND 0= if JR:CLOSE exit then JR:CLOSE
-   RP-W JSON-WRITE:COMMA drop s" line" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" column" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" byte_start" RP-REQ-NUM-FIELD
-   RP-W JSON-WRITE:COMMA drop s" byte_end" RP-REQ-NUM-FIELD ;
+   s" line" RP-FIND 0= if JSON:READ-CLOSE exit then JSON:READ-CLOSE
+   RP-W JSON:WRITE-COMMA drop s" line" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" column" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_start" RP-REQ-NUM-FIELD
+   RP-W JSON:WRITE-COMMA drop s" byte_end" RP-REQ-NUM-FIELD ;
 
 : RP-STORAGE-PACKET ( n -- ptr u8 n )
    {: count:n :}
    RP-PACKET-START
-   RP-W JSON-WRITE:COMMA drop s" word" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" token" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" reason" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" file" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" word" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" reason" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
    RP-PLACE
-   RP-W JSON-WRITE:COMMA drop s" code" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" repair_class" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" suggestion" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" code" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" repair_class" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    count s" Fix the storage declaration so its definer accepts it. Output only corrected Habu code."
    RP-PACKET-END ;
 
@@ -329,36 +328,36 @@ variable RP-ROW-OBJECT
 : RP-EVIDENCE ( -- )
    RP-CODE$ DIAG-CODE:EVIDENCE {: key:ptr keyu:n :}
    keyu 0= if exit then
-   RP-W JSON-WRITE:COMMA drop key keyu RP-REQ-STR-FIELD ;
+   RP-W JSON:WRITE-COMMA drop key keyu RP-REQ-STR-FIELD ;
 
 : RP-RECORD-PACKET ( n -- ptr u8 n )
    {: count:n :}
    RP-PACKET-START
-   RP-W JSON-WRITE:COMMA drop s" token" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
    RP-EVIDENCE
-   RP-W JSON-WRITE:COMMA drop s" file" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
    RP-PLACE
-   RP-W JSON-WRITE:COMMA drop s" code" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" repair_class" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" suggestion" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" code" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" repair_class" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    count s" Fix the statement that names this token so it loads. Output only corrected Habu code."
    RP-PACKET-END ;
 
 : RP-USING-PACKET ( n -- ptr u8 n )
    {: count:n :}
    RP-PACKET-START
-   RP-W JSON-WRITE:COMMA drop s" token" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" file" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" token" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" file" RP-REQ-STR-FIELD
    RP-PLACE
-   RP-W JSON-WRITE:COMMA s" used_packages" JSON-WRITE:KEY drop
+   RP-W JSON:WRITE-COMMA s" used_packages" JSON:WRITE-KEY drop
    s" used_packages" RP-REQ
-   JR:TOKEN JR:T-ARR <> if
-      JR:CLOSE s" repair-packet: used_packages is not array" RP-E-IO RP-FAIL
+   JSON:READ-TOKEN JSON:T-ARR <> if
+      JSON:READ-CLOSE s" repair-packet: used_packages is not array" RP-E-IO RP-FAIL
    then
-   RP-W RP-TEXT RP-IN-CAP JSON-COPY:VALUE drop JR:CLOSE
-   RP-W JSON-WRITE:COMMA drop s" code" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" repair_class" RP-REQ-STR-FIELD
-   RP-W JSON-WRITE:COMMA drop s" suggestion" RP-REQ-STR-FIELD
+   RP-W RP-TEXT RP-IN-CAP JSON:COPY-VALUE drop JSON:READ-CLOSE
+   RP-W JSON:WRITE-COMMA drop s" code" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" repair_class" RP-REQ-STR-FIELD
+   RP-W JSON:WRITE-COMMA drop s" suggestion" RP-REQ-STR-FIELD
    count s" Qualify this token as PKG:WORD for the package word meant, or rename the collision. Output only corrected Habu code."
    RP-PACKET-END ;
 

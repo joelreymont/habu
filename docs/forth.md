@@ -122,11 +122,14 @@ unless the domain spelling requires it. Never fake a namespace with global
 prefixes (`TASK-KILL`); prefix-style global APIs are legacy debt.
 
 **A package is named for its subject**, the format, device or domain its words
-act on (`JSON`, `ZIP`, `TASK`), never for an operation, direction or role on
-that subject: no `-READ`, `-WRITE`, `-IN`, `-OUT`, `-READER` or `-WRITER`
-package. The operation belongs in the word, verb first: `JSON:WRITE-OBJECT-START`,
-not `JSON-WRITE:OBJECT-START`. One subject's reading and writing words share its
-package; a large one spreads across files that each reopen it. A test package is
+act on (`JSON`, `ZIP`, `TASK`), by the name it is commonly called (`STR`,
+`FS`, `BUF`): never a coined abbreviation (`JR`), and never an operation,
+direction or role on that subject: no `-READ`, `-WRITE`, `-IN`, `-OUT`,
+`-READER` or `-WRITER` package. The operation belongs in the word, verb first:
+`JSON:WRITE-OBJECT-START`, not `JSON-WRITE:OBJECT-START`; `JSON:READ-NEXT`,
+not `JR:NEXT`. One subject's reading and writing words share its package; a
+large one spreads across files that each reopen it. Resolve a tail collision
+in the word name, never with a new package. A test package is
 `<SUBJECT>-TEST`.
 
 ```forth
@@ -2082,7 +2085,7 @@ documentation-only edits need no rebuild.
   `\xNN`, `\z`, …) for direct JSON/source expected strings. `S\"` needs its
   delimiter space (`s\"\n"` is one undefined token) and reads `\u` as its own
   escape, so a fixture holding JSON writes `\\uXXXX`. Generated syntax from
-  fields uses checked byte/field helpers or `src/lib/json-write.f`.
+  fields uses checked byte/field helpers or `src/lib/json/write.f`.
 - **Emitter punctuation is semantic**: an assembler word ending in `,` emits,
   and differs from the bare name; source-shape regressions assert exact tokens;
   emitter stack comments describe the host stack (`( -- )`, `( n -- )`), and

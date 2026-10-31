@@ -20,7 +20,7 @@ require src/lib/source.f
 require src/lib/build.f
 require src/lib/codesign.f
 require src/lib/content-key.f
-require src/lib/json-write.f
+require src/lib/json.f
 require tools/hb-build-report.f
 require tools/hb-build-lib.f
 

@@ -7,7 +7,7 @@ require src/lib/fs.f
 require src/lib/fd.f
 require src/lib/source.f
 require src/lib/byte-buffer.f
-require src/lib/json-write.f
+require src/lib/json.f
 require tools/hook-sites.f                     \ single registry of audited hook identities
 
 package CHECKED-BOUNDARY-LINT
@@ -29,15 +29,15 @@ private
 create UB-NUM UB-NUM-CAP allot
 create UB-LF-BUF 1 allot
 create UB-JSON-BUF BUF:HDR-BYTES allot
-TYPED-VARIABLE UB-JSON-W JSON-WRITE:writer
+TYPED-VARIABLE UB-JSON-W JSON:writer
 variable UB-JSON-READY
 
-: UB-JSON-WRITER ( -- ptr JSON-WRITE:writer )
+: UB-JSON-WRITER ( -- ptr JSON:writer )
    UB-JSON-READY @ 0= if
       UB-JSON-BUF 1 BUF:N>BLEN BUF:INIT
       1 UB-JSON-READY !
    then
-   UB-JSON-W UB-JSON-BUF JSON-WRITE:OPEN-BUF ;
+   UB-JSON-W UB-JSON-BUF JSON:WRITE-OPEN-BUF ;
 
 TYPED-VARIABLE UB-FILE-A ptr u8
 variable UB-FILE-U
@@ -325,59 +325,59 @@ private
 : UB-HOOK-NAME? ( ptr u8 n -- bool )
    s" CHECK-HOOK" LINT-ENDS-WITH? ;
 
-: UB-JSON-BASE ( ptr u8 n -- ptr JSON-WRITE:writer )
+: UB-JSON-BASE ( ptr u8 n -- ptr JSON:writer )
    {: code:ptr codeu:n :}
-   UB-JSON-WRITER JSON-WRITE:OBJECT-START
-   s" schema_version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" code" code codeu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" repair_class" s" trusted_boundary_required" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" verdict" s" rejected" JSON-WRITE:FIELD-S JSON-WRITE:COMMA ;
+   UB-JSON-WRITER JSON:WRITE-OBJECT-START
+   s" schema_version" 1 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" code" code codeu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" repair_class" s" trusted_boundary_required" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" verdict" s" rejected" JSON:WRITE-FIELD-S JSON:WRITE-COMMA ;
 
-: UB-JSON-ORIGIN ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   s" token" UB-TOK$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" token_index" 0 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" file" UB-LABEL$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" line" UB-TOK-LINE @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" column" UB-TOK-COL @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_start" UB-TOK-BYTE @ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
-   s" byte_end" UB-TOK-BYTE @ UB-TOK-U @ + JSON-WRITE:FIELD-U JSON-WRITE:COMMA ;
+: UB-JSON-ORIGIN ( ptr JSON:writer -- ptr JSON:writer )
+   s" token" UB-TOK$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token_index" 0 JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" file" UB-LABEL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" line" UB-TOK-LINE @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" column" UB-TOK-COL @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_start" UB-TOK-BYTE @ JSON:WRITE-FIELD-U JSON:WRITE-COMMA
+   s" byte_end" UB-TOK-BYTE @ UB-TOK-U @ + JSON:WRITE-FIELD-U JSON:WRITE-COMMA ;
 
-: UB-JSON-FINISH ( ptr JSON-WRITE:writer ptr u8 n ptr u8 n -- )
+: UB-JSON-FINISH ( ptr JSON:writer ptr u8 n ptr u8 n -- )
    {: expected:ptr expectedu:n actual:ptr actualu:n :}
-   s" expected" expected expectedu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" actual" actual actualu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" expected" expected expectedu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" actual" actual actualu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    s" suggestion"
    s" Keep generated/user code checked; move checker mutations behind an audited boundary."
-   JSON-WRITE:FIELD-S JSON-WRITE:OBJECT-END JSON-WRITE:$ UB-OUT UB-NL ;
+   JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END JSON:WRITTEN$ UB-OUT UB-NL ;
 
 : UB-JSON-DEFINITION ( ptr u8 n -- )
    {: name:ptr nu:n :}
    s" E-UNCHECKED-DEFINITION" UB-JSON-BASE
-   s" word" name nu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" word" name nu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    UB-JSON-ORIGIN
    s" checked definition" s" checker disabled" UB-JSON-FINISH ;
 
 : UB-JSON-MUTATION ( -- )
    s" E-CHECKER-MUTATION" UB-JSON-BASE
-   s" word" s" " JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" word" s" " JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    UB-JSON-ORIGIN
    s" checker hook remains installed" s" set-check" UB-JSON-FINISH ;
 
 : UB-JSON-PREFLIGHT ( -- )
    s" E-CHECKER-MUTATION" UB-JSON-BASE
-   s" word" s" set-check" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" word" s" set-check" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    UB-JSON-ORIGIN
    s" LOWER-CERT-HOOK:INSTALL" s" set-check" UB-JSON-FINISH ;
 
 : UB-JSON-ROGUE-HOOK ( -- )
    s" E-UNAUDITED-HOOK" UB-JSON-BASE
-   s" word" UB-PREV$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" word" UB-PREV$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    UB-JSON-ORIGIN
    s" audited checker hook" UB-PREV$ UB-JSON-FINISH ;
 
 : UB-JSON-ROGUE-TOP-HOOK ( -- )
    s" E-UNAUDITED-TOP-HOOK" UB-JSON-BASE
-   s" word" UB-PREV$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+   s" word" UB-PREV$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    UB-JSON-ORIGIN
    s" audited top-check hook" UB-PREV$ UB-JSON-FINISH ;
 

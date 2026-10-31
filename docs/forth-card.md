@@ -10,9 +10,10 @@ when this runs out.
 Our words UPPER-CASE, built-ins as-is (`dup`, `?do`). Hyphens, never
 underscores, in word *and* file names. Predicates end `?`, conversions are
 `>X`, fetch/store `X@` / `X!`, scope pairs are `FOO … ;FOO`. `$hex` for
-machine-adjacent numbers. Every module is a package, named for its subject,
-never an operation on it: `JSON:WRITE-OBJECT-START`, not
-`JSON-WRITE:OBJECT-START`; a subject's reading and writing words share it.
+machine-adjacent numbers. Every module is a package, named for its subject as
+it is commonly called, never a coined abbreviation or an operation on it:
+`JSON:READ-NEXT`, not `JR:NEXT`; `JSON:WRITE-OBJECT-START`, not
+`JSON-WRITE:OBJECT-START`. A subject's reading and writing words share it.
 
 ```forth
 package HB
@@ -440,10 +441,13 @@ holds an address**.
   `E-X-LAST` (arrays, filesystem, strings, …) and
   reserves that whole range whether or not every code is minted;
   `tools/error-code-lint.f` reports a file minting inside another's.
-- A block with codes in a package (`JR:E-SOURCE`) is minted, bounds and all,
-  in the file that owns the package (`src/lib/json-read.f`), and `src/lib/errors.f`
-  says where. The engine bakes `src/lib/errors.f`, and a package the engine bakes
-  has one owning file: no source a product engine loads reopens it.
+- A block with codes in a package (`JSON:E-READ-SOURCE`) is minted, bounds and
+  all, in the file that throws its codes and that every other file throwing
+  them requires (`src/lib/json/read.f`, which `src/lib/json/copy.f` requires;
+  both reopen package JSON, which `src/lib/json.f` loads), and
+  `src/lib/errors.f` says where.
+  The engine bakes `src/lib/errors.f`, and a package the engine bakes has one
+  owning file: no source a product engine loads reopens it.
 - A fallible word `throw`s a named code, never an out-of-band flag.
 - A failure caused outside the program (a provider, the network, the OS) is
   logged once, with its text, by the library that saw it, just before it

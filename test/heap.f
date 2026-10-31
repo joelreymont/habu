@@ -1,7 +1,7 @@
 \ HEAP records come from the real definer and runtime: each is zero-filled,
 \ typed through its STRUCTURE's accessors, distinct from the next, and keeps
 \ its contents across another record's NEW and RELEASE; a record holding a
-\ JR:cursor runs a reader with no cast; a refused declaration (a sub-cell
+\ JSON:cursor runs a reader with no cast; a refused declaration (a sub-cell
 \ element, an unknown type, an element holding an arena owner) defines
 \ nothing; checked code can neither call nor tick RECORD-NEW or
 \ RECORD-RELEASE outside HEAP's generated words; a record pointer still enters
@@ -9,7 +9,7 @@
 \ word using a HEAP's words instead of deferring the rest of the source to the
 \ run.
 require src/lib/test.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/string.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
@@ -20,7 +20,7 @@ package HEAP-TEST
 STRUCTURE note DERIVE addr FIELD id n FIELD text ptr u8 ;STRUCTURE
 HEAP NOTES note
 
-STRUCTURE part DERIVE addr FIELD reader JR:cursor FIELD total n ;STRUCTURE
+STRUCTURE part DERIVE addr FIELD reader JSON:cursor FIELD total n ;STRUCTURE
 HEAP PARTS part
 
 \ An arena owner lives in place, so no HEAP may hold one.
@@ -63,17 +63,17 @@ variable EVAL-U
 \ through its field with no cast.
 : READ-PART ( ptr part -- )
    {: p:ptr :}
-   p PART-READER s" [40,2]" JR:INIT
-   JR:NEXT JR:T-ARR T=
-   JR:NEXT JR:T-INT T=  JR:INT p PART-TOTAL !
-   JR:NEXT JR:T-INT T=  JR:INT p PART-TOTAL @ + p PART-TOTAL !
-   JR:NEXT JR:T-ARR-END T=
-   JR:NEXT JR:T-END T=
-   JR:CLOSE ;
+   p PART-READER s" [40,2]" JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-ARR T=
+   JSON:READ-NEXT JSON:T-INT T=  JSON:READ-INT p PART-TOTAL !
+   JSON:READ-NEXT JSON:T-INT T=  JSON:READ-INT p PART-TOTAL @ + p PART-TOTAL !
+   JSON:READ-NEXT JSON:T-ARR-END T=
+   JSON:READ-NEXT JSON:T-END T=
+   JSON:READ-CLOSE ;
 
 
 : READER ( -- )
-   s" a record holding a JR:cursor runs a reader" T-LABEL
+   s" a record holding a JSON:cursor runs a reader" T-LABEL
    PARTS-NEW {: p:ptr :}
    p READ-PART
    p PART-TOTAL @ 42 T=

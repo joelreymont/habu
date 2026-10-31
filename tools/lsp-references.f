@@ -12,7 +12,7 @@ require src/lib/fs.f
 require src/lib/source.f
 require src/lib/adt/option.f
 require src/lib/sort.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/json-rpc.f
 require src/habu/primitive-source.f
 require src/habu/engine-origin.f
@@ -25,7 +25,7 @@ require tools/lsp-check.f
 require tools/lsp-workspace.f
 
 package LSP-REFERENCES
-using JSON-WRITE
+using JSON
 using LSP-DOCS
 using LSP-DEFS
 
@@ -1376,13 +1376,13 @@ public
    MSG$ ;
 
 \ The window/showMessage warning naming the files, to the writer.
-: WARNING ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: WARNING ( ptr JSON:writer -- ptr JSON:writer )
    s" References may be incomplete" UNCOVERED$ {: m:ptr mu:n :}
    s" window/showMessage" JSON-RPC:NOTIFY
-   OBJECT-START
-   s" type" WARNING-TYPE FIELD-U COMMA
-   s" message" m mu FIELD-S
-   OBJECT-END ;
+   WRITE-OBJECT-START
+   s" type" WARNING-TYPE WRITE-FIELD-U WRITE-COMMA
+   s" message" m mu WRITE-FIELD-S
+   WRITE-OBJECT-END ;
 
 \ How many locations the request answers; location K's URI, the range from
 \ where its tail starts to its end, the bytes a rename edits, and whether a
@@ -1400,24 +1400,24 @@ public
 
 private
 
-: LOCATION ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+: LOCATION ( ptr JSON:writer n -- ptr JSON:writer )
    {: k:n :}
    k RANKED {: r:n :}
-   OBJECT-START
-   s" uri" k LOC-URI$ FIELD-S COMMA
+   WRITE-OBJECT-START
+   s" uri" k LOC-URI$ WRITE-FIELD-S WRITE-COMMA
    r L-LINE LOC@ r L-CHAR LOC@ r L-END-LINE LOC@ r L-END-CHAR LOC@ LSP-TEXT:RANGE-AT
-   OBJECT-END ;
+   WRITE-OBJECT-END ;
 
 public
 
 \ The result of textDocument/references, the Location list, to the writer.
-: ANSWER ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   ARRAY-START
+: ANSWER ( ptr JSON:writer -- ptr JSON:writer )
+   WRITE-ARRAY-START
    LOC-N @ 0 ?do
-      i 0 > if COMMA then
+      i 0 > if WRITE-COMMA then
       i LOCATION
    loop
-   ARRAY-END ;
+   WRITE-ARRAY-END ;
 
 ;using
 ;using

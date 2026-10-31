@@ -82,7 +82,7 @@ variable HBT-INST-FILES
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
-   HBT-OUT outu JR:T-FALSE JR:T-FALSE JR:T-FALSE CHECK-REPORT ;
+   HBT-OUT outu JSON:T-FALSE JSON:T-FALSE JSON:T-FALSE CHECK-REPORT ;
 
 : CLI-REPORT ( -- )
    HBT-REPL-OUT s" stale" FS:WRITE-ALL

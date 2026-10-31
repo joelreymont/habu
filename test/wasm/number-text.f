@@ -3,14 +3,14 @@
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/float.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/adt/option.f
 require src/lib/ieee754.f
 
 package WNUM
 private
 
-TYPED-VARIABLE READER-SPACE JR:cursor
+TYPED-VARIABLE READER-SPACE JSON:cursor
 
 : PARSED? ( ptr u8 n -- bool )
    STR>FLOAT MATCH option
@@ -35,11 +35,11 @@ TYPED-VARIABLE READER-SPACE JR:cursor
    SB-RESET $7FF0000000000000 IEEE754:BITS>F64 16 FMT:SB-SCI ;
 
 : JSON-NUMBER ( -- )
-   READER-SPACE s" -2.5e-3" JR:INIT
-   JR:NEXT drop
-   JR:FLOAT {: value:r :}
+   READER-SPACE s" -2.5e-3" JSON:READ-INIT
+   JSON:READ-NEXT drop
+   JSON:READ-FLOAT {: value:r :}
    SB-RESET value 4 FMT:SB-SCI SB$ type cr
-   JR:CLOSE ;
+   JSON:READ-CLOSE ;
 
 public
 

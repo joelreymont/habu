@@ -96,7 +96,7 @@ public
    0 PATHS-N !  0 PATHS-USED !
    s" src/lib" [: COLLECT ;] FS:WALK-FILES
    s" flat lib modules discovered" T-LABEL  PATHS-N @ MODULE-FLOOR >= TTRUE
-   s" src/lib/json-read.f discovered" T-LABEL   s" src/lib/json-read.f" COLLECTED? TTRUE
+   s" src/lib/json.f discovered" T-LABEL   s" src/lib/json.f" COLLECTED? TTRUE
    LOAD-ALL
    T-REPORT
    s" stdlib-standalone-load-test: ok" type cr ;

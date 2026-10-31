@@ -28,8 +28,7 @@
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/base64.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/json-rpc.f
 require src/lib/memory.f
 require src/lib/utf8-scalar.f
@@ -110,10 +109,10 @@ TYPED-VARIABLE VISIBILITY [ ptr u8 n -- bool ]   \ VISIBLE!'s hook
 ' EVERY VISIBILITY !
 
 \ ADD-TOOL's and ADD-RESOURCE's: both run before HTTP serves.
-TYPED-VARIABLE SCHEMA-READER JR:cursor
+TYPED-VARIABLE SCHEMA-READER JSON:cursor
 
 \ A row to each HTTP worker; spans borrow the request's body and headers.
-HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
+HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
 HTTP:MAX-WORKERS TYPED-BUFFER FROM HTTP:request
 HTTP:MAX-WORKERS TYPED-BUFFER TO HTTP:response
 HTTP:MAX-WORKERS TYPED-BUFFER ID SPAN:span<u8>        \ empty when the id is not known
@@ -137,7 +136,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER ASKED SPAN:span<u8>     \ an unsupported MCP-Proto
 HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: CURSOR ( -- ptr JR:cursor ) SLOT READER ;
+: CURSOR ( -- ptr JSON:cursor ) SLOT READER ;
 : ID$ ( -- ptr u8 n ) SLOT ID @ SPAN:$ ;
 : METHOD$ ( -- ptr u8 n ) SLOT METHOD @ SPAN:$ ;
 : PARAMS$ ( -- ptr u8 n ) SLOT PARAMS @ SPAN:$ ;
@@ -146,24 +145,24 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ A value's JSON text at the reader: a container whole, a string with quotes.
-: RAW$ ( JR:reader -- JR:reader ptr u8 n )
-   JR:TOKEN dup JR:T-OBJ = over JR:T-ARR = or if
-      drop JR:VALUE-SPAN$ exit
+: RAW$ ( JSON:reader -- JSON:reader ptr u8 n )
+   JSON:READ-TOKEN dup JSON:T-OBJ = over JSON:T-ARR = or if
+      drop JSON:READ-VALUE-SPAN$ exit
    then
-   JR:T-STR = if
-      JR:SPAN$ {: a:ptr u:n :} a 1- u 2 + exit
+   JSON:T-STR = if
+      JSON:READ-SPAN$ {: a:ptr u:n :} a 1- u 2 + exit
    then
-   JR:SPAN$ ;
+   JSON:READ-SPAN$ ;
 
 
 \ The token kind of a non-empty JSON text's first value.
 : KIND ( ptr u8 n -- n )
    {: a:ptr u:n :}
-   CURSOR a u JR:INIT
-   JR:NEXT {: k:n :}
-   JR:CLOSE k ;
+   CURSOR a u JSON:READ-INIT
+   JSON:READ-NEXT {: k:n :}
+   JSON:READ-CLOSE k ;
 
-: OBJECT? ( ptr u8 n -- bool ) KIND JR:T-OBJ = ;
+: OBJECT? ( ptr u8 n -- bool ) KIND JSON:T-OBJ = ;
 
 
 \ A member of an object's JSON text, and whether it is there; text that is not
@@ -171,20 +170,20 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : FIELD? ( ptr u8 n ptr u8 n -- ptr u8 n bool )
    {: data:ptr len:n key:ptr ku:n :}
    len 0= if E-INPUT throw then
-   CURSOR data len JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE E-INPUT throw then
-   key ku JR:FIND-KEY if
-      RAW$ {: a:ptr u:n :} JR:CLOSE a u true
-   else JR:CLOSE s" " false then ;
+   CURSOR data len JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-INPUT throw then
+   key ku JSON:READ-FIND-KEY if
+      RAW$ {: a:ptr u:n :} JSON:READ-CLOSE a u true
+   else JSON:READ-CLOSE s" " false then ;
 
 
 \ Whether a JSON text is a string that decodes to the wanted bytes.
 : STRING= ( ptr u8 n ptr u8 n -- bool )
    {: raw:ptr len:n wanted:ptr wu:n :}
-   CURSOR raw len JR:INIT
-   JR:NEXT JR:T-STR <> if JR:CLOSE false exit then
-   wanted wu JR:STR-EQ? {: same:bool :}
-   JR:CLOSE same ;
+   CURSOR raw len JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE false exit then
+   wanted wu JSON:READ-STR-EQ? {: same:bool :}
+   JSON:READ-CLOSE same ;
 
 : METHOD= ( ptr u8 n -- bool ) METHOD$ 2swap STRING= ;
 
@@ -204,16 +203,16 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : UNKNOWN-TOOL ( -- ) 400 -32602 s" Unknown tool" BAD ;
 : UNKNOWN-RESOURCE ( -- ) 404 RESOURCE-MISSING s" Resource not found" BAD ;
 
-: SERVER-INFO ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" name" SERVER-NAME @ SPAN:$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" version" SERVER-VERSION @ SPAN:$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: SERVER-INFO ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" name" SERVER-NAME @ SPAN:$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" version" SERVER-VERSION @ SPAN:$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
-: INSTRUCTIONS-FIELD ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: INSTRUCTIONS-FIELD ( ptr JSON:writer -- ptr JSON:writer )
    INSTRUCTIONS @ SPAN:LEN 0= if exit then
-   JSON-WRITE:COMMA s" instructions" INSTRUCTIONS @ SPAN:$ JSON-WRITE:FIELD-S ;
+   JSON:WRITE-COMMA s" instructions" INSTRUCTIONS @ SPAN:$ JSON:WRITE-FIELD-S ;
 
 
 \ An object's JSON text without its braces and the space around them.
@@ -223,95 +222,95 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ _meta: the members of meta, empty or an object's text, then serverInfo.
-: MODERN-META ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: MODERN-META ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: meta:ptr mu:n :}
-   JSON-WRITE:COMMA s" _meta" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
+   JSON:WRITE-COMMA s" _meta" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
    mu 0<> if
       meta mu MEMBERS {: a:ptr u:n :}
-      u 0<> if a u JSON-WRITE:RAW JSON-WRITE:COMMA then
+      u 0<> if a u JSON:WRITE-RAW JSON:WRITE-COMMA then
    then
-   s" io.modelcontextprotocol/serverInfo" JSON-WRITE:KEY
-   SERVER-INFO JSON-WRITE:OBJECT-END ;
+   s" io.modelcontextprotocol/serverInfo" JSON:WRITE-KEY
+   SERVER-INFO JSON:WRITE-OBJECT-END ;
 
 
-: VERSIONS ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:ARRAY-START s" 2026-07-28" JSON-WRITE:STRING
-   JSON-WRITE:COMMA s" 2025-11-25" JSON-WRITE:STRING JSON-WRITE:ARRAY-END ;
+: VERSIONS ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-ARRAY-START s" 2026-07-28" JSON:WRITE-STRING
+   JSON:WRITE-COMMA s" 2025-11-25" JSON:WRITE-STRING JSON:WRITE-ARRAY-END ;
 
 
 \ Tools always; resources once one is registered.
-: CAPABILITIES ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:COMMA s" capabilities" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START s" tools" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END
+: CAPABILITIES ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-COMMA s" capabilities" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START s" tools" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END
    RESOURCE-COUNT @ 0<> if
-      JSON-WRITE:COMMA s" resources" JSON-WRITE:KEY
-      JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END
+      JSON:WRITE-COMMA s" resources" JSON:WRITE-KEY
+      JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END
    then
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
 
 \ Discovery, tool and resource lists and resource reads are private with zero
 \ cache lifetime.
-: PRIVATE-CACHE ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:COMMA s" ttlMs" 0 JSON-WRITE:FIELD-U
-   JSON-WRITE:COMMA s" cacheScope" s" private" JSON-WRITE:FIELD-S ;
+: PRIVATE-CACHE ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-COMMA s" ttlMs" 0 JSON:WRITE-FIELD-U
+   JSON:WRITE-COMMA s" cacheScope" s" private" JSON:WRITE-FIELD-S ;
 
 
 \ https://modelcontextprotocol.io/specification/2026-07-28/server/discover
-: DISCOVER-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" resultType" s" complete" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" supportedVersions" JSON-WRITE:KEY VERSIONS
+: DISCOVER-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" resultType" s" complete" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" supportedVersions" JSON:WRITE-KEY VERSIONS
    CAPABILITIES s" " MODERN-META INSTRUCTIONS-FIELD PRIVATE-CACHE
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
 
-: INIT-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" protocolVersion" s" 2025-11-25" JSON-WRITE:FIELD-S
+: INIT-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" protocolVersion" s" 2025-11-25" JSON:WRITE-FIELD-S
    CAPABILITIES
-   JSON-WRITE:COMMA s" serverInfo" JSON-WRITE:KEY SERVER-INFO
+   JSON:WRITE-COMMA s" serverInfo" JSON:WRITE-KEY SERVER-INFO
    INSTRUCTIONS-FIELD
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
 
 \ For a declared schema whose "type" is not "object", the schema whose
 \ structuredContent is {"data": the result's JSON}.
-: OUTPUT-SCHEMA ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+: OUTPUT-SCHEMA ( ptr JSON:writer n -- ptr JSON:writer )
    TOOL-OUTPUT @ SPAN:$ {: text:ptr tu:n :}
-   s" outputSchema" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START s" type" s" object" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" properties" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START s" data" text tu JSON-WRITE:FIELD-RAW JSON-WRITE:OBJECT-END
-   JSON-WRITE:COMMA s" required" JSON-WRITE:KEY
-   JSON-WRITE:ARRAY-START s" data" JSON-WRITE:STRING JSON-WRITE:ARRAY-END
-   JSON-WRITE:OBJECT-END ;
+   s" outputSchema" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START s" type" s" object" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" properties" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START s" data" text tu JSON:WRITE-FIELD-RAW JSON:WRITE-OBJECT-END
+   JSON:WRITE-COMMA s" required" JSON:WRITE-KEY
+   JSON:WRITE-ARRAY-START s" data" JSON:WRITE-STRING JSON:WRITE-ARRAY-END
+   JSON:WRITE-OBJECT-END ;
 
 
-: WRITE-MEMBER ( JR:reader ptr JSON-WRITE:writer n -- JR:reader )
+: WRITE-MEMBER ( JSON:reader ptr JSON:writer n -- JSON:reader )
    {: w idx:n :}
-   s" outputSchema" JR:STR-EQ? {: output:bool :}
-   JR:SPAN$ {: key:ptr ku:n :}
-   JR:NEXT drop RAW$ {: value:ptr vu:n :}
+   s" outputSchema" JSON:READ-STR-EQ? {: output:bool :}
+   JSON:READ-SPAN$ {: key:ptr ku:n :}
+   JSON:READ-NEXT drop RAW$ {: value:ptr vu:n :}
    output if w idx OUTPUT-SCHEMA drop exit then
-   w key 1- ku 2 + JSON-WRITE:RAW s" :" JSON-WRITE:RAW value vu JSON-WRITE:RAW drop ;
+   w key 1- ku 2 + JSON:WRITE-RAW s" :" JSON:WRITE-RAW value vu JSON:WRITE-RAW drop ;
 
 
 \ The descriptor as registered, or each top-level member as written with the
 \ outputSchema wrapper in its schema's place.
-: TOOL-ENTRY ( ptr JSON-WRITE:writer n -- ptr JSON-WRITE:writer )
+: TOOL-ENTRY ( ptr JSON:writer n -- ptr JSON:writer )
    {: w idx:n :}
    idx TOOL-TEXT @ SPAN:$ {: text:ptr tu:n :}
-   idx TOOL-WHOLE @ if w text tu JSON-WRITE:RAW exit then
-   w JSON-WRITE:OBJECT-START drop
-   CURSOR text tu JR:INIT JR:NEXT drop JR:NEXT drop
+   idx TOOL-WHOLE @ if w text tu JSON:WRITE-RAW exit then
+   w JSON:WRITE-OBJECT-START drop
+   CURSOR text tu JSON:READ-INIT JSON:READ-NEXT drop JSON:READ-NEXT drop
    w idx WRITE-MEMBER
-   begin JR:NEXT JR:T-KEY = while
-      w JSON-WRITE:COMMA drop  w idx WRITE-MEMBER
-   repeat JR:CLOSE
-   w JSON-WRITE:OBJECT-END ;
+   begin JSON:READ-NEXT JSON:T-KEY = while
+      w JSON:WRITE-COMMA drop  w idx WRITE-MEMBER
+   repeat JSON:READ-CLOSE
+   w JSON:WRITE-OBJECT-END ;
 
 
 \ Whether the request's caller may see and call the registered tool.
@@ -319,99 +318,99 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ A list or read result's start: the modern era's resultType first.
-: RESULT-START ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
+: RESULT-START ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
    LEGACY? 0= if
-      s" resultType" s" complete" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+      s" resultType" s" complete" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    then ;
 
 \ A list or read result's end: the modern era's cache scope and serverInfo last.
-: CACHED-END ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: CACHED-END ( ptr JSON:writer -- ptr JSON:writer )
    LEGACY? 0= if PRIVATE-CACHE s" " MODERN-META then
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
 
 \ https://modelcontextprotocol.io/specification/2026-07-28/server/tools
-: LIST-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: LIST-BODY ( ptr JSON:writer -- ptr JSON:writer )
    RESULT-START
-   s" tools" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
+   s" tools" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
    false TOOL-COUNT @ 0 ?do
       i SHOWN? if
-         if JSON-WRITE:COMMA then
+         if JSON:WRITE-COMMA then
          i TOOL-ENTRY true
       then
    loop drop
-   JSON-WRITE:ARRAY-END CACHED-END ;
+   JSON:WRITE-ARRAY-END CACHED-END ;
 
 
 \ https://modelcontextprotocol.io/specification/2025-11-25/server/resources
-: RESOURCES-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: RESOURCES-BODY ( ptr JSON:writer -- ptr JSON:writer )
    RESULT-START
-   s" resources" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
+   s" resources" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
    RESOURCE-COUNT @ 0 ?do
-      i 0<> if JSON-WRITE:COMMA then
-      i RESOURCE-TEXT @ SPAN:$ JSON-WRITE:RAW
+      i 0<> if JSON:WRITE-COMMA then
+      i RESOURCE-TEXT @ SPAN:$ JSON:WRITE-RAW
    loop
-   JSON-WRITE:ARRAY-END CACHED-END ;
+   JSON:WRITE-ARRAY-END CACHED-END ;
 
 
 \ The resource's text with its descriptor's uri and mimeType, strings ADD-RESOURCE
 \ checked, and any _meta.
-: READ-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: READ-BODY ( ptr JSON:writer -- ptr JSON:writer )
    SLOT OPENED @ {: idx:n :}
    idx RESOURCE-TEXT @ SPAN:$ {: desc:ptr du:n :}
    RESULT-START
-   s" contents" JSON-WRITE:KEY JSON-WRITE:ARRAY-START JSON-WRITE:OBJECT-START
-   s" uri" desc du s" uri" FIELD? drop JSON-WRITE:FIELD-RAW
-   JSON-WRITE:COMMA s" mimeType" desc du s" mimeType" FIELD? drop JSON-WRITE:FIELD-RAW
+   s" contents" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
+   s" uri" desc du s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
+   JSON:WRITE-COMMA s" mimeType" desc du s" mimeType" FIELD? drop JSON:WRITE-FIELD-RAW
    desc du s" _meta" FIELD? if
       {: meta:ptr mu:n :}
-      JSON-WRITE:COMMA s" _meta" meta mu JSON-WRITE:FIELD-RAW
+      JSON:WRITE-COMMA s" _meta" meta mu JSON:WRITE-FIELD-RAW
    else 2drop then
-   JSON-WRITE:COMMA s" text" idx RESOURCE-PAGE @ SPAN:$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END JSON-WRITE:ARRAY-END CACHED-END ;
+   JSON:WRITE-COMMA s" text" idx RESOURCE-PAGE @ SPAN:$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END JSON:WRITE-ARRAY-END CACHED-END ;
 
 
-: TEMPLATES-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   RESULT-START s" resourceTemplates" JSON-WRITE:KEY
-   JSON-WRITE:ARRAY-START JSON-WRITE:ARRAY-END CACHED-END ;
+: TEMPLATES-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   RESULT-START s" resourceTemplates" JSON:WRITE-KEY
+   JSON:WRITE-ARRAY-START JSON:WRITE-ARRAY-END CACHED-END ;
 
 
 \ A tool result: TEXT as readable text, then CONTENT-SPAN's blocks; unless isError, TEXT's JSON
 \ as structuredContent, or its "data" without an object schema; META-SPAN as _meta.
-: CALL-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
+: CALL-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
    LEGACY? 0= if
-      s" resultType" s" complete" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
+      s" resultType" s" complete" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
    then
-   s" content" JSON-WRITE:KEY JSON-WRITE:ARRAY-START
-   JSON-WRITE:OBJECT-START s" type" s" text" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" text" TEXT$ JSON-WRITE:FIELD-S JSON-WRITE:OBJECT-END
+   s" content" JSON:WRITE-KEY JSON:WRITE-ARRAY-START
+   JSON:WRITE-OBJECT-START s" type" s" text" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" text" TEXT$ JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END
    SLOT CONTENT-SPAN @ SPAN:$ {: blocks:ptr bu:n :}
-   bu 0<> if JSON-WRITE:COMMA blocks bu JSON-WRITE:RAW then
-   JSON-WRITE:ARRAY-END
+   bu 0<> if JSON:WRITE-COMMA blocks bu JSON:WRITE-RAW then
+   JSON:WRITE-ARRAY-END
    SLOT FAULT @ 0= if
-      JSON-WRITE:COMMA
+      JSON:WRITE-COMMA
       SLOT CALLED @ TOOL-WHOLE @ if
-         s" structuredContent" TEXT$ JSON-WRITE:FIELD-RAW
+         s" structuredContent" TEXT$ JSON:WRITE-FIELD-RAW
       else
-         s" structuredContent" JSON-WRITE:KEY
-         JSON-WRITE:OBJECT-START s" data" TEXT$ JSON-WRITE:FIELD-RAW JSON-WRITE:OBJECT-END
+         s" structuredContent" JSON:WRITE-KEY
+         JSON:WRITE-OBJECT-START s" data" TEXT$ JSON:WRITE-FIELD-RAW JSON:WRITE-OBJECT-END
       then
    then
-   JSON-WRITE:COMMA s" isError" SLOT FAULT @ JSON-WRITE:FIELD-BOOL
+   JSON:WRITE-COMMA s" isError" SLOT FAULT @ JSON:WRITE-FIELD-BOOL
    SLOT META-SPAN @ SPAN:$ {: meta:ptr mu:n :}
    LEGACY? if
-      mu 0<> if JSON-WRITE:COMMA s" _meta" meta mu JSON-WRITE:FIELD-RAW then
+      mu 0<> if JSON:WRITE-COMMA s" _meta" meta mu JSON:WRITE-FIELD-RAW then
    else meta mu MODERN-META then
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END ;
 
 
-: PING-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END ;
+: PING-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END ;
 
 
-: RESULT-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: RESULT-BODY ( ptr JSON:writer -- ptr JSON:writer )
    ID$ JSON--RPC-ID:MAKE JSON-RPC:RESULT
    SLOT REPLY @ {: kind:n :}
    kind DISCOVER-REPLY = if DISCOVER-BODY else
@@ -426,42 +425,42 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 
 \ -32022's data: the supported versions and the one requested.
-: VERSION-DATA ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START s" supported" JSON-WRITE:KEY VERSIONS
-   JSON-WRITE:COMMA s" requested" SLOT ASKED @ SPAN:$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: VERSION-DATA ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START s" supported" JSON:WRITE-KEY VERSIONS
+   JSON:WRITE-COMMA s" requested" SLOT ASKED @ SPAN:$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
 
 \ -32002's data: the uri the request named, which READ-RESOURCE checked.
-: URI-DATA ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" uri" PARAMS$ s" uri" FIELD? drop JSON-WRITE:FIELD-RAW
-   JSON-WRITE:OBJECT-END ;
+: URI-DATA ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" uri" PARAMS$ s" uri" FIELD? drop JSON:WRITE-FIELD-RAW
+   JSON:WRITE-OBJECT-END ;
 
 
-: ID-FIELD ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: ID-FIELD ( ptr JSON:writer -- ptr JSON:writer )
    ID$ {: id:ptr iu:n :}
    iu 0= if exit then
-   JSON-WRITE:COMMA s" id" id iu JSON-WRITE:FIELD-RAW ;
+   JSON:WRITE-COMMA s" id" id iu JSON:WRITE-FIELD-RAW ;
 
 
 \ An error reply. Both eras' schemas make its id optional and never null, so
 \ an unknown id is left out; JSON-RPC:ERROR's null id is JSON-RPC's own rule.
-: ERROR-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START s" jsonrpc" s" 2.0" JSON-WRITE:FIELD-S ID-FIELD
-   JSON-WRITE:COMMA s" error" JSON-WRITE:KEY JSON-WRITE:OBJECT-START
-   s" code" SLOT CODE @ JSON-WRITE:FIELD-INT
-   JSON-WRITE:COMMA s" message" TEXT$ JSON-WRITE:FIELD-S
+: ERROR-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START s" jsonrpc" s" 2.0" JSON:WRITE-FIELD-S ID-FIELD
+   JSON:WRITE-COMMA s" error" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+   s" code" SLOT CODE @ JSON:WRITE-FIELD-INT
+   JSON:WRITE-COMMA s" message" TEXT$ JSON:WRITE-FIELD-S
    SLOT CODE @ UNSUPPORTED-VERSION = if
-      JSON-WRITE:COMMA s" data" JSON-WRITE:KEY VERSION-DATA
+      JSON:WRITE-COMMA s" data" JSON:WRITE-KEY VERSION-DATA
    then
    SLOT CODE @ RESOURCE-MISSING = if
-      JSON-WRITE:COMMA s" data" JSON-WRITE:KEY URI-DATA
+      JSON:WRITE-COMMA s" data" JSON:WRITE-KEY URI-DATA
    then
-   JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-OBJECT-END JSON:WRITE-OBJECT-END ;
 
 
-: RESPONSE-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
+: RESPONSE-BODY ( ptr JSON:writer -- ptr JSON:writer )
    SLOT REPLY @ ERROR-REPLY = if ERROR-BODY else RESULT-BODY then ;
 
 
@@ -524,7 +523,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 \ MCP ids are strings or integers, never null.
 : MCP-ID? ( ptr u8 n -- bool )
    KIND {: k:n :}
-   k JR:T-STR = k JR:T-INT = or ;
+   k JSON:T-STR = k JSON:T-INT = or ;
 
 
 \ A request, or a notification with an empty id: params, when present, are an
@@ -641,7 +640,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
       2drop 400 -32602 absent au BAD false exit
    then
    {: name:ptr nu:n :}
-   name nu KIND JR:T-STR <> if 400 -32602 invalid iu BAD false exit then
+   name nu KIND JSON:T-STR <> if 400 -32602 invalid iu BAD false exit then
    asked s" Mcp-Name" HEADER$ 0= if 2drop MISMATCH false exit then
    [: DECODED-NAME$ ;] catch {: code:n :}
    code 0<> if
@@ -705,7 +704,7 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 \ params.uri not a string is E-INPUT, which HANDLE answers -32602.
 : READ-RESOURCE ( -- )
    PARAMS$ s" uri" FIELD? 0= if E-INPUT throw then
-   2dup KIND JR:T-STR <> if E-INPUT throw then
+   2dup KIND JSON:T-STR <> if E-INPUT throw then
    RESOURCE-OF {: idx:n :}
    idx 0< if UNKNOWN-RESOURCE SEND exit then
    idx SLOT OPENED !
@@ -769,25 +768,25 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
    n RESOURCE-PAGE-RESERVE ;
 
 \ Whether a JSON text, read whole by reader, is an object; text that is not one
-\ JSON value throws the reader's E-JR-* code.
-: OBJECT-TEXT? ( ptr u8 n ptr JR:cursor -- bool )
+\ JSON value throws the reader's E-JSON-READ-* code.
+: OBJECT-TEXT? ( ptr u8 n ptr JSON:cursor -- bool )
    {: text:ptr u:n reader :}
-   reader text u JR:INIT JR:NEXT JR:T-OBJ = {: object:bool :}
-   JR:FINISH object ;
+   reader text u JSON:READ-INIT JSON:READ-NEXT JSON:T-OBJ = {: object:bool :}
+   JSON:READ-FINISH object ;
 
 
-\ A caught code, a reader's E-JR-* code as E-SCHEMA.
+\ A caught code, a reader's E-JSON-READ-* code as E-SCHEMA.
 : SCHEMA-CODE ( n -- n )
    {: code:n :}
-   code E-JR-FIRST <= code E-JR-LAST >= and if E-SCHEMA else code then ;
+   code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and if E-SCHEMA else code then ;
 
 
 \ E-SCHEMA unless one JSON object, read by reader, with no top-level key
 \ repeated once decoded: JSON.parse keeps a repeated key's last value, so a
 \ client would read another.
-: SHAPE ( ptr u8 n ptr JR:cursor -- )
+: SHAPE ( ptr u8 n ptr JSON:cursor -- )
    [: dup >r >r 2dup r> OBJECT-TEXT? 0= if E-SCHEMA throw then
-      2dup JR:REPEATS? if E-SCHEMA throw then r> ;] catch {: code:n :} drop 2drop
+      2dup JSON:READ-REPEATS? if E-SCHEMA throw then r> ;] catch {: code:n :} drop 2drop
    code SCHEMA-CODE {: fault:n :}
    fault 0<> if fault throw then ;
 
@@ -795,19 +794,19 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 \ Whether a schema object's "type" is the string "object".
 : WHOLE? ( ptr u8 n -- bool )
    {: text:ptr u:n :}
-   SCHEMA-READER text u JR:INIT JR:NEXT drop
-   s" type" JR:FIND-KEY if
-      JR:TOKEN JR:T-STR = if s" object" JR:STR-EQ? else false then
+   SCHEMA-READER text u JSON:READ-INIT JSON:READ-NEXT drop
+   s" type" JSON:READ-FIND-KEY if
+      JSON:READ-TOKEN JSON:T-STR = if s" object" JSON:READ-STR-EQ? else false then
    else false then {: whole:bool :}
-   JR:FINISH whole ;
+   JSON:READ-FINISH whole ;
 
 
 \ A top-level member of a descriptor SHAPE admitted, raw, else E-SCHEMA.
 : PART ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: text:ptr tu:n key:ptr ku:n :}
-   SCHEMA-READER text tu JR:INIT JR:NEXT drop
-   key ku JR:FIND-KEY 0= if JR:CLOSE E-SCHEMA throw then
-   RAW$ {: a:ptr u:n :} JR:CLOSE a u ;
+   SCHEMA-READER text tu JSON:READ-INIT JSON:READ-NEXT drop
+   key ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-SCHEMA throw then
+   RAW$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
 
 
 : OBJECT-PART ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -817,9 +816,9 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 \ Whether a descriptor member is a JSON string; the descriptor passed SHAPE.
 : STRING-MEMBER? ( ptr u8 n ptr u8 n -- bool )
    {: text:ptr u:n key:ptr ku:n :}
-   SCHEMA-READER text u JR:INIT JR:NEXT drop
-   key ku JR:FIND-KEY if JR:TOKEN JR:T-STR = else false then {: found:bool :}
-   JR:CLOSE found ;
+   SCHEMA-READER text u JSON:READ-INIT JSON:READ-NEXT drop
+   key ku JSON:READ-FIND-KEY if JSON:READ-TOKEN JSON:T-STR = else false then {: found:bool :}
+   JSON:READ-CLOSE found ;
 
 
 : REGISTERED-URI? ( ptr u8 n -- bool )
@@ -833,11 +832,11 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 : DECODED-MEMBER ( ptr u8 n ptr u8 n [ ptr u8 n -- bool ] -- SPAN:span<u8> )
    {: text:ptr tu:n key:ptr ku:n registered? :}
    text tu key ku PART {: raw:ptr ru:n :}
-   SCHEMA-READER raw ru JR:INIT
-   JR:NEXT JR:T-STR <> if JR:CLOSE E-SCHEMA throw then
-   JR:SPAN$ nip 0= if JR:CLOSE E-SCHEMA throw then
+   SCHEMA-READER raw ru JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE E-SCHEMA throw then
+   JSON:READ-SPAN$ nip 0= if JSON:READ-CLOSE E-SCHEMA throw then
    ru MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: room :}
-   room SPAN:$ JR:STR {: u:n :} JR:CLOSE
+   room SPAN:$ JSON:READ-STR {: u:n :} JSON:READ-CLOSE
    room u SPAN:TAKE {: decoded :}
    decoded SPAN:$ registered? execute if room MEM:FREE-SPAN E-DUPLICATE throw then
    decoded ;
@@ -845,22 +844,22 @@ HTTP:MAX-WORKERS HTTP:HEAD-CAP * SPAN-BUFFER: NAMES
 
 \ On a content block's open: E-SCHEMA unless it has a string "type" and no
 \ second one, which a client would read instead; the reader moves past its close.
-: BLOCK ( JR:reader -- JR:reader )
-   JR:TOKEN JR:T-OBJ <> if JR:CLOSE E-SCHEMA throw then
-   s" type" JR:FIND-KEY 0= if JR:CLOSE E-SCHEMA throw then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE E-SCHEMA throw then
-   s" type" JR:FIND-KEY if JR:CLOSE E-SCHEMA throw then ;
+: BLOCK ( JSON:reader -- JSON:reader )
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-SCHEMA throw then
+   s" type" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-SCHEMA throw then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-SCHEMA throw then
+   s" type" JSON:READ-FIND-KEY if JSON:READ-CLOSE E-SCHEMA throw then ;
 
 
 : BLOCKS-IN ( ptr u8 n -- ptr u8 n )
    {: text:ptr u:n :}
-   CURSOR text u JR:INIT
-   JR:NEXT JR:T-ARR <> if JR:CLOSE E-SCHEMA throw then
-   JR:NEXT JR:T-ARR-END = if JR:FINISH s" " exit then
-   JR:SPAN$ drop {: first:ptr :}
-   begin BLOCK JR:NEXT JR:T-ARR-END = until
-   JR:SPAN$ drop {: close:ptr :}
-   JR:FINISH first close first - ;
+   CURSOR text u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-ARR <> if JSON:READ-CLOSE E-SCHEMA throw then
+   JSON:READ-NEXT JSON:T-ARR-END = if JSON:READ-FINISH s" " exit then
+   JSON:READ-SPAN$ drop {: first:ptr :}
+   begin BLOCK JSON:READ-NEXT JSON:T-ARR-END = until
+   JSON:READ-SPAN$ drop {: close:ptr :}
+   JSON:READ-FINISH first close first - ;
 
 
 \ The objects of a JSON array of MCP content blocks, from the first's open
@@ -955,7 +954,7 @@ public
 
 
 \ A body's result: one JSON value. E-STATE outside a body or after its result;
-\ else the reader's E-JR-* code or E-SCHEMA, which HANDLE passes to the host.
+\ else the reader's E-JSON-READ-* code or E-SCHEMA, which HANDLE passes to the host.
 : RESULT ( ptr u8 n -- ) s" " s" []" false RESULT! ;
 
 \ RESULT, plus the result's _meta object, which reaches the host's widget and not the
@@ -1018,8 +1017,8 @@ CAST: CLIENT>N ( client -- n )
 \ exchange ended with, and stream whether its reply was an event stream; region
 \ is the client's memory, empty for a free row.
 STRUCTURE peer DERIVE addr
-   FIELD cursor JR:cursor
-   FIELD writer JSON-WRITE:writer
+   FIELD cursor JSON:cursor
+   FIELD writer JSON:writer
    FIELD status n
    FIELD stream bool
    FIELD region SPAN:span<u8>
@@ -1222,47 +1221,47 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
          h CURL:CLEANUP
       ENDOF
    ;MATCH
-   idx ROW PEER-CURSOR JR:DISPOSE ;
+   idx ROW PEER-CURSOR JSON:READ-DISPOSE ;
 
 
-: META-PARAM ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   s" _meta" JSON-WRITE:KEY JSON-WRITE:OBJECT-START
-   s" io.modelcontextprotocol/protocolVersion" s" 2026-07-28" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" io.modelcontextprotocol/clientCapabilities" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START JSON-WRITE:OBJECT-END
-   JSON-WRITE:OBJECT-END ;
+: META-PARAM ( ptr JSON:writer -- ptr JSON:writer )
+   s" _meta" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
+   s" io.modelcontextprotocol/protocolVersion" s" 2026-07-28" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" io.modelcontextprotocol/clientCapabilities" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END ;
 
 \ The id of every request a client sends, as its JSON text.
 : REQUEST-ID$ ( -- ptr u8 n ) s" 1" ;
 
 \ A request with the request id and the method, up to the params' members.
-: REQUEST-START ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: REQUEST-START ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: m:ptr mu:n :}
-   JSON-WRITE:OBJECT-START s" jsonrpc" s" 2.0" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" id" REQUEST-ID$ JSON-WRITE:FIELD-RAW
-   JSON-WRITE:COMMA s" method" m mu JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" params" JSON-WRITE:KEY JSON-WRITE:OBJECT-START ;
+   JSON:WRITE-OBJECT-START s" jsonrpc" s" 2.0" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" id" REQUEST-ID$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-COMMA s" method" m mu JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" params" JSON:WRITE-KEY JSON:WRITE-OBJECT-START ;
 
-: REQUEST-END ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   META-PARAM JSON-WRITE:OBJECT-END JSON-WRITE:OBJECT-END ;
+: REQUEST-END ( ptr JSON:writer -- ptr JSON:writer )
+   META-PARAM JSON:WRITE-OBJECT-END JSON:WRITE-OBJECT-END ;
 
-: WRITER ( n -- ptr JSON-WRITE:writer )
+: WRITER ( n -- ptr JSON:writer )
    {: idx:n :}
-   idx ROW PEER-WRITER idx REQUEST-BUF JSON-WRITE:OPEN-BUF ;
+   idx ROW PEER-WRITER idx REQUEST-BUF JSON:WRITE-OPEN-BUF ;
 
 \ tools/list from the cursor's JSON string, or from the start when it is empty.
 : LIST-REQUEST ( n ptr u8 n -- )
    {: idx:n next:ptr nu:n :}
    idx WRITER s" tools/list" REQUEST-START
-   nu 0<> if s" cursor" next nu JSON-WRITE:FIELD-RAW JSON-WRITE:COMMA then
-   REQUEST-END JSON-WRITE:CLOSE ;
+   nu 0<> if s" cursor" next nu JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA then
+   REQUEST-END JSON:WRITE-CLOSE ;
 
 : CALL-REQUEST ( n ptr u8 n ptr u8 n -- )
    {: idx:n name:ptr nu:n args:ptr au:n :}
    idx WRITER s" tools/call" REQUEST-START
-   s" name" name nu JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" arguments" args au JSON-WRITE:FIELD-RAW JSON-WRITE:COMMA
-   REQUEST-END JSON-WRITE:CLOSE ;
+   s" name" name nu JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" arguments" args au JSON:WRITE-FIELD-RAW JSON:WRITE-COMMA
+   REQUEST-END JSON:WRITE-CLOSE ;
 
 
 : PLAIN-NAME? ( ptr u8 n -- bool )
@@ -1454,11 +1453,11 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ kind, and whether it is there. Text that is not an object is E-RESPONSE.
 : MEMBER ( n ptr u8 n ptr u8 n -- ptr u8 n n bool )
    {: idx:n data:ptr len:n key:ptr ku:n :}
-   idx ROW PEER-CURSOR data len JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
-   key ku JR:FIND-KEY if
-      JR:TOKEN {: k:n :} RAW$ {: a:ptr u:n :} JR:CLOSE a u k true
-   else JR:CLOSE s" " JR:T-END false then ;
+   idx ROW PEER-CURSOR data len JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   key ku JSON:READ-FIND-KEY if
+      JSON:READ-TOKEN {: k:n :} RAW$ {: a:ptr u:n :} JSON:READ-CLOSE a u k true
+   else JSON:READ-CLOSE s" " JSON:T-END false then ;
 
 
 \ The result object's text of a 2xx reply whose message answers the request;
@@ -1512,10 +1511,10 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx code SETTLE
    idx RESULT$ {: result:ptr ru:n :}
    idx result ru s" tools" MEMBER 0= if E-RESPONSE throw then
-   JR:T-ARR <> if E-RESPONSE throw then
+   JSON:T-ARR <> if E-RESPONSE throw then
    {: tools:ptr tu:n :}
    idx result ru s" nextCursor" MEMBER {: more:bool :} {: k:n :}
-   more if k JR:T-STR <> if E-RESPONSE throw then then
+   more if k JSON:T-STR <> if E-RESPONSE throw then then
    idx tools tu GATHER
    more ;
 
@@ -1595,8 +1594,8 @@ public
    idx RESULT$ {: result:ptr ru:n :}
    idx result ru s" isError" MEMBER if
       {: k:n :} 2drop
-      k JR:T-TRUE <> k JR:T-FALSE <> and if E-RESPONSE throw then
-      k JR:T-TRUE =
+      k JSON:T-TRUE <> k JSON:T-FALSE <> and if E-RESPONSE throw then
+      k JSON:T-TRUE =
    else drop 2drop false then
    {: fault:bool :}
    result ru fault ;

@@ -1,10 +1,5 @@
-\ json-read.f - checked JSON pull/cursor parser (package JR), strict RFC 8259: no
-\ comments, trailing commas or single quotes. Structure, escapes and Unicode
-\ scalar encoding are validated as the cursor advances; values decode on demand.
-\ STORAGE CLASS. CALLER-OWNED: the caller owns the JR:cursor record (zero-filled
-\ typed storage owns nothing, and DISPOSE leaves it so) and the source span, and
-\ keeps both live and exclusive until CLOSE or FINISH: a promise the checker
-\ cannot prove.
+\ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEATS?. A file
+\ of package JSON (src/lib/json.f).
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -15,28 +10,28 @@ require src/lib/float.f
 require src/lib/adt/option.f                 \ option<NUM:index> for STR:INDEX-OF
 
 \ JSON reader: -3900..-3999, minted here beside the package its last code
-\ (JR:E-SOURCE) belongs to (docs/forth-card.md § 6). The E-JR-* codes stay
+\ (JSON:E-READ-SOURCE) belongs to (docs/forth-card.md § 6). The E-JSON-READ-* codes stay
 \ global names, as callers spell them.
--3900 constant E-JR-FIRST
--3999 constant E-JR-LAST
--3900 constant E-JR-MALFORMED   \ value expected but got a bare word / bad char / trailing comma
--3901 constant E-JR-STRING      \ unterminated string or unescaped control byte in a string
--3902 constant E-JR-ESCAPE      \ invalid backslash or \uXXXX escape sequence
--3903 constant E-JR-SURROGATE   \ lone or mismatched UTF-16 surrogate in a \u escape
--3905 constant E-JR-TRAILING    \ non-whitespace after the top-level value
--3906 constant E-JR-NUMBER      \ malformed number token or integer overflow
--3907 constant E-JR-EOF         \ input ended while a value/container/key was expected
--3908 constant E-JR-COLON       \ missing ':' after an object key
--3909 constant E-JR-COMMA       \ expected ',' or the matching container close
--3910 constant E-JR-STATE       \ accessor called on the wrong token kind or dst buffer too small
+-3900 constant E-JSON-READ-FIRST
+-3999 constant E-JSON-READ-LAST
+-3900 constant E-JSON-READ-MALFORMED   \ value expected but got a bare word / bad char / trailing comma
+-3901 constant E-JSON-READ-STRING      \ unterminated string or unescaped control byte in a string
+-3902 constant E-JSON-READ-ESCAPE      \ invalid backslash or \uXXXX escape sequence
+-3903 constant E-JSON-READ-SURROGATE   \ lone or mismatched UTF-16 surrogate in a \u escape
+-3905 constant E-JSON-READ-TRAILING    \ non-whitespace after the top-level value
+-3906 constant E-JSON-READ-NUMBER      \ malformed number token or integer overflow
+-3907 constant E-JSON-READ-EOF         \ input ended while a value/container/key was expected
+-3908 constant E-JSON-READ-COLON       \ missing ':' after an object key
+-3909 constant E-JSON-READ-COMMA       \ expected ',' or the matching container close
+-3910 constant E-JSON-READ-STATE       \ accessor called on the wrong token kind or dst buffer too small
 
-package JR
+package JSON
 
 public
 
--3914 constant E-SOURCE      \ source length is negative or a positive length has a null source
+-3914 constant E-READ-SOURCE      \ source length is negative or a positive length has a null source
 
-DEFLINEAR JR:reader
+DEFLINEAR JSON:reader
 
 \ The reader's whole state. src..fail are the cursor and decode registers;
 \ kinds is the container stack's first 64 levels, bit i set when level i is an
@@ -71,7 +66,7 @@ private
 
 9 constant TAB
 10 constant LF
-13 constant CR
+13 constant CH-CR
 32 constant SP
 34 constant DQ
 43 constant PLUS
@@ -143,8 +138,8 @@ private
 \  ST-KEY     object just opened: a key string or '}'
 \  ST-MEMBER  after ',' in an object: a key string (no '}': trailing comma)
 \  ST-SEP     value complete inside a container: ',' or the matching close
-\  ST-DONE    top-level value complete: only whitespace then JR:T-END
-\ A ',' in ST-SEP is consumed silently (STEP returns RETRY and NEXT loops);
+\  ST-DONE    top-level value complete: only whitespace then JSON:T-END
+\ A ',' in ST-SEP is consumed silently (STEP returns RETRY and READ-NEXT loops);
 \ container closes are emitted as T-OBJ-END / T-ARR-END.
 0 constant ST-VALUE
 1 constant ST-ELEM
@@ -159,17 +154,17 @@ private
 64 constant WORD-BITS        \ container levels per stack word
 512 constant FIRST-MORE      \ cells in the first mapping: 32768 more levels
 
-\ A JR:reader is the caller's record under a linear token. A linear token's
+\ A JSON:reader is the caller's record under a linear token. A linear token's
 \ payload is a scalar con, so the record crosses as raw cells only through this
 \ private cast pair, and these private rows are its only mint and erase: outside
-\ JR a reader comes only from INIT and ends only at CLOSE.
+\ JSON a reader comes only from READ-INIT and ends only at READ-CLOSE.
 CAST: >CELLS ( ptr cursor -- ptr n )
 CAST: >CURSOR ( ptr n -- ptr cursor )
-LINEAR: MINT-READER ( ptr n -- JR:reader )
-LINEAR: ERASE-READER ( JR:reader -- ptr n )
+LINEAR: MINT-READER ( ptr n -- JSON:reader )
+LINEAR: ERASE-READER ( JSON:reader -- ptr n )
 
 \ Keep the token live while exposing its record.
-: READER>STATE ( JR:reader -- JR:reader ptr cursor )
+: READER>STATE ( JSON:reader -- JSON:reader ptr cursor )
    ERASE-READER dup MINT-READER swap >CURSOR ;
 
 : INIT-STATE ( ptr cursor ptr u8 n -- ) {: state:ptr source:ptr len:n :}
@@ -184,12 +179,6 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
    UMODE-WRITE state CURSOR-MODE !
    1 state CURSOR-MATCHED !
    0 state CURSOR-FAIL ! ;
-
-: TRUE ( -- bool )
-   0 0= ;
-
-: FALSE ( -- bool )
-   TRUE 0= ;
 
 \ Reads a source byte its caller has bounds-checked.
 : AT ( ptr cursor n -- n ) {: state:ptr idx:n :}
@@ -244,34 +233,34 @@ LINEAR: ERASE-READER ( JR:reader -- ptr n )
    failed 0<> if failed throw then ;
 
 : REQUIRE-SOURCE ( ptr u8 n -- ) {: source:ptr len:n :}
-   len 0 < if E-SOURCE throw then
-   len 0 > source 0= and if E-SOURCE throw then ;
+   len 0 < if E-READ-SOURCE throw then
+   len 0 > source 0= and if E-READ-SOURCE throw then ;
 
 public
 
-: INIT ( ptr cursor ptr u8 n -- JR:reader )
+: READ-INIT ( ptr cursor ptr u8 n -- JSON:reader )
    {: state:ptr source:ptr len:n :}
    source len REQUIRE-SOURCE
    state source len INIT-STATE
    state >CELLS MINT-READER ;
 
-\ CLOSE consumes the token and releases the record's mapping.
-: CLOSE ( JR:reader -- )
+\ READ-CLOSE consumes the token and releases the record's mapping.
+: READ-CLOSE ( JSON:reader -- )
    ERASE-READER >CURSOR MORE-RELEASE ;
 
 \ Release what a record owns after a caller's throw abandoned its live reader.
-\ Idempotent. A static record that is only ever re-INITed needs no DISPOSE: the
-\ next reader on the record reuses the mapping and its CLOSE releases it.
-: DISPOSE ( ptr cursor -- ) {: state:ptr :}
+\ Idempotent. A static record that is only ever re-initialised needs no READ-DISPOSE: the
+\ next reader on the record reuses the mapping and its READ-CLOSE releases it.
+: READ-DISPOSE ( ptr cursor -- ) {: state:ptr :}
    state MORE-RELEASE
    state >CELLS {: raw:ptr :}
    CURSOR-CELLS 0 ?do 0 raw i cells + ! loop ;
 
-: TOKEN ( JR:reader -- JR:reader n )
+: READ-TOKEN ( JSON:reader -- JSON:reader n )
    READER>STATE CURSOR-KIND @ ;
 
 \ The raw lexeme, borrowed from the source, escapes still encoded.
-: SPAN$ ( JR:reader -- JR:reader ptr u8 n )
+: READ-SPAN$ ( JSON:reader -- JSON:reader ptr u8 n )
    READER>STATE {: state:ptr :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
    state CURSOR-TOK-LEN @ ;
@@ -279,14 +268,14 @@ public
 private
 
 : WS? ( n -- bool )
-   dup SP = over TAB = or over LF = or swap CR = or ;
+   dup SP = over TAB = or over LF = or swap CH-CR = or ;
 
 : SKIP-WS ( ptr cursor -- ) {: state:ptr :}
    begin
       state CURSOR-POS @ state CURSOR-SRC-LEN @ < if
          state CURSOR-SRC @ state CURSOR-POS @ + c@ WS?
       else
-         FALSE
+         false
       then
    while
       state CURSOR-POS dup @ 1+ swap !
@@ -317,11 +306,11 @@ private
 
 \ The value of this hex digit byte; any other byte is a malformed escape.
 : HEX-DIGIT ( n -- n )
-   dup STR-HEX-DIGIT? 0= if E-JR-ESCAPE throw then
+   dup STR-HEX-DIGIT? 0= if E-JSON-READ-ESCAPE throw then
    STR-HEX-DIGIT-VALUE ;
 
 : SCAN-HEX ( ptr cursor n -- n ) {: state:ptr value:n :}
-   state EOF? if E-JR-ESCAPE throw then
+   state EOF? if E-JSON-READ-ESCAPE throw then
    value HEX-BASE *
    state PEEK HEX-DIGIT
    +
@@ -357,22 +346,22 @@ create UNESC-MAP
    UNESC-MAP BYTE-VIEW + c@ 0 <> ;
 
 : SCAN-SURROGATE ( ptr cursor n -- ) {: state:ptr hi:n :}
-   hi SUR-LO >= if E-JR-SURROGATE throw then
-   state EOF? if E-JR-SURROGATE throw then
-   state PEEK BACKSLASH <> if E-JR-SURROGATE throw then
+   hi SUR-LO >= if E-JSON-READ-SURROGATE throw then
+   state EOF? if E-JSON-READ-SURROGATE throw then
+   state PEEK BACKSLASH <> if E-JSON-READ-SURROGATE throw then
    state ADVANCE
-   state EOF? if E-JR-SURROGATE throw then
-   state PEEK CH-U <> if E-JR-SURROGATE throw then
+   state EOF? if E-JSON-READ-SURROGATE throw then
+   state PEEK CH-U <> if E-JSON-READ-SURROGATE throw then
    state ADVANCE
    state SCAN-HEX4 {: lo:n :}
-   lo SUR-LO < lo SUR-END >= or if E-JR-SURROGATE throw then ;
+   lo SUR-LO < lo SUR-END >= or if E-JSON-READ-SURROGATE throw then ;
 
 \ PLAIN-END admits every one-letter escape, so the backslash here starts a
 \ \u escape or an invalid or unfinished one.
 : SCAN-ESC ( ptr cursor -- ) {: state:ptr :}
    state ADVANCE
-   state EOF? if E-JR-ESCAPE throw then
-   state PEEK CH-U <> if E-JR-ESCAPE throw then
+   state EOF? if E-JSON-READ-ESCAPE throw then
+   state PEEK CH-U <> if E-JSON-READ-ESCAPE throw then
    state ADVANCE
    state SCAN-HEX4 {: cp:n :}
    cp SUR-HI < if exit then
@@ -380,7 +369,7 @@ create UNESC-MAP
    state cp SCAN-SURROGATE ;
 
 : REQUIRE-UTF-BYTES ( ptr cursor n -- ) {: state:ptr count:n :}
-   state CURSOR-POS @ count + state CURSOR-SRC-LEN @ > if E-JR-STRING throw then ;
+   state CURSOR-POS @ count + state CURSOR-SRC-LEN @ > if E-JSON-READ-STRING throw then ;
 
 : CONT? ( n -- bool )
    $C0 and UTF-CONT = ;
@@ -393,31 +382,31 @@ create UNESC-MAP
 
 : SCAN-UTF2 ( ptr cursor -- ) {: state:ptr :}
    state 2 REQUIRE-UTF-BYTES
-   state 1 UTF-BYTE CONT? 0= if E-JR-STRING throw then
+   state 1 UTF-BYTE CONT? 0= if E-JSON-READ-STRING throw then
    state 2 ADVANCE-N ;
 
 : SCAN-UTF3 ( ptr cursor n -- ) {: state:ptr lead:n :}
    state 3 REQUIRE-UTF-BYTES
    state 1 UTF-BYTE {: second:n :}
-   second CONT? 0= state 2 UTF-BYTE CONT? 0= or if E-JR-STRING throw then
-   lead UTF2-END = second UTF-E0-MIN < and if E-JR-STRING throw then
-   lead UTF-SUR-LEAD = second UTF-SUR-MAX > and if E-JR-STRING throw then
+   second CONT? 0= state 2 UTF-BYTE CONT? 0= or if E-JSON-READ-STRING throw then
+   lead UTF2-END = second UTF-E0-MIN < and if E-JSON-READ-STRING throw then
+   lead UTF-SUR-LEAD = second UTF-SUR-MAX > and if E-JSON-READ-STRING throw then
    state 3 ADVANCE-N ;
 
 : SCAN-UTF4 ( ptr cursor n -- ) {: state:ptr lead:n :}
    state 4 REQUIRE-UTF-BYTES
    state 1 UTF-BYTE {: second:n :}
    second CONT? 0= state 2 UTF-BYTE CONT? 0= or
-   state 3 UTF-BYTE CONT? 0= or if E-JR-STRING throw then
-   lead UTF3-END = second UTF-F0-MIN < and if E-JR-STRING throw then
-   lead UTF-MAX-LEAD = second UTF-MAX-SECOND > and if E-JR-STRING throw then
+   state 3 UTF-BYTE CONT? 0= or if E-JSON-READ-STRING throw then
+   lead UTF3-END = second UTF-F0-MIN < and if E-JSON-READ-STRING throw then
+   lead UTF-MAX-LEAD = second UTF-MAX-SECOND > and if E-JSON-READ-STRING throw then
    state 4 ADVANCE-N ;
 
 : SCAN-UTF8 ( ptr cursor n -- ) {: state:ptr lead:n :}
    lead UTF2-MIN >= lead UTF2-END < and if state SCAN-UTF2 exit then
    lead UTF2-END >= lead UTF3-END < and if state lead SCAN-UTF3 exit then
    lead UTF3-END >= lead UTF4-END < and if state lead SCAN-UTF4 exit then
-   E-JR-STRING throw ;
+   E-JSON-READ-STRING throw ;
 
 \ The offset of the first byte at or after pos that the cursor words must
 \ check - a quote, a control byte, a UTF-8 lead, or the backslash of a \u,
@@ -446,7 +435,7 @@ create UNESC-MAP
    state CURSOR-POS @ {: at:n :}
    begin
       state SKIP-PLAIN
-      state EOF? if E-JR-STRING throw then
+      state EOF? if E-JSON-READ-STRING throw then
       state PEEK
       dup DQ = if
          drop
@@ -462,11 +451,11 @@ create UNESC-MAP
    again ;
 
 : NUM-CHAR? ( n -- bool )
-   dup STR-DIGIT? if drop TRUE exit then
-   dup MINUS = if drop TRUE exit then
-   dup PLUS = if drop TRUE exit then
-   dup DOT = if drop TRUE exit then
-   dup EXP-LOWER = if drop TRUE exit then
+   dup STR-DIGIT? if drop true exit then
+   dup MINUS = if drop true exit then
+   dup PLUS = if drop true exit then
+   dup DOT = if drop true exit then
+   dup EXP-LOWER = if drop true exit then
    EXP-UPPER = ;
 
 : SCAN-NUMBER ( ptr cursor -- n n ) {: state:ptr :}
@@ -475,7 +464,7 @@ create UNESC-MAP
       state CURSOR-POS @ state CURSOR-SRC-LEN @ < if
          state CURSOR-SRC @ state CURSOR-POS @ + c@ NUM-CHAR?
       else
-         FALSE
+         false
       then
    while
       state CURSOR-POS dup @ 1+ swap !
@@ -483,7 +472,7 @@ create UNESC-MAP
    at state CURSOR-POS @ at - ;
 
 : NV-DIGIT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state CURSOR-NUM-AT @ u >= if FALSE exit then
+   state CURSOR-NUM-AT @ u >= if false exit then
    a state CURSOR-NUM-AT @ + c@ STR-DIGIT? ;
 
 : NV-SKIP-DIGITS ( ptr cursor ptr u8 n -- n ) {: state:ptr a:ptr u:n :}
@@ -493,46 +482,46 @@ create UNESC-MAP
    repeat ;
 
 : NV-INT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state a u NV-DIGIT? 0= if FALSE exit then
+   state a u NV-DIGIT? 0= if false exit then
    a state CURSOR-NUM-AT @ + c@ ZERO = if
       state CURSOR-NUM-AT dup @ 1+ swap !
-      state a u NV-DIGIT? if FALSE exit then
-      TRUE exit
+      state a u NV-DIGIT? if false exit then
+      true exit
    then
-   state a u NV-SKIP-DIGITS drop TRUE ;
+   state a u NV-SKIP-DIGITS drop true ;
 
 : NV-FRAC? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state CURSOR-NUM-AT @ u >= if TRUE exit then
-   a state CURSOR-NUM-AT @ + c@ DOT <> if TRUE exit then
+   state CURSOR-NUM-AT @ u >= if true exit then
+   a state CURSOR-NUM-AT @ + c@ DOT <> if true exit then
    state CURSOR-NUM-AT dup @ 1+ swap !
-   state a u NV-SKIP-DIGITS 0= if FALSE exit then
-   TRUE ;
+   state a u NV-SKIP-DIGITS 0= if false exit then
+   true ;
 
 : NV-EXP? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state CURSOR-NUM-AT @ u >= if TRUE exit then
-   a state CURSOR-NUM-AT @ + c@ dup EXP-LOWER <> swap EXP-UPPER <> and if TRUE exit then
+   state CURSOR-NUM-AT @ u >= if true exit then
+   a state CURSOR-NUM-AT @ + c@ dup EXP-LOWER <> swap EXP-UPPER <> and if true exit then
    state CURSOR-NUM-AT dup @ 1+ swap !
    state CURSOR-NUM-AT @ u < if
       a state CURSOR-NUM-AT @ + c@ dup PLUS = swap MINUS = or if
          state CURSOR-NUM-AT dup @ 1+ swap !
       then
    then
-   state a u NV-SKIP-DIGITS 0= if FALSE exit then
-   TRUE ;
+   state a u NV-SKIP-DIGITS 0= if false exit then
+   true ;
 
 \ The kind of this number lexeme: T-INT for an integer part alone, T-FLOAT
-\ once a fraction or exponent follows it. A malformed lexeme is E-JR-NUMBER.
+\ once a fraction or exponent follows it. A malformed lexeme is E-JSON-READ-NUMBER.
 \ READ-VALUE starts a number only at a minus or a digit, so u is positive.
 : NUMBER-KIND ( ptr cursor ptr u8 n -- n ) {: state:ptr a:ptr u:n :}
    0 state CURSOR-NUM-AT !
    a state CURSOR-NUM-AT @ + c@ MINUS = if
       state CURSOR-NUM-AT dup @ 1+ swap !
    then
-   state a u NV-INT? 0= if E-JR-NUMBER throw then
+   state a u NV-INT? 0= if E-JSON-READ-NUMBER throw then
    state CURSOR-NUM-AT @ {: int-end:n :}
-   state a u NV-FRAC? 0= if E-JR-NUMBER throw then
-   state a u NV-EXP? 0= if E-JR-NUMBER throw then
-   state CURSOR-NUM-AT @ u <> if E-JR-NUMBER throw then
+   state a u NV-FRAC? 0= if E-JSON-READ-NUMBER throw then
+   state a u NV-EXP? 0= if E-JSON-READ-NUMBER throw then
+   state CURSOR-NUM-AT @ u <> if E-JSON-READ-NUMBER throw then
    state CURSOR-NUM-AT @ int-end > if T-FLOAT else T-INT then ;
 
 : RAW-SPAN$ ( ptr cursor -- ptr u8 n ) {: state:ptr :}
@@ -540,14 +529,14 @@ create UNESC-MAP
    state CURSOR-TOK-LEN @ ;
 
 : MATCH-LIT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr la:ptr lu:n :}
-   state CURSOR-POS @ lu + state CURSOR-SRC-LEN @ > if FALSE exit then
+   state CURSOR-POS @ lu + state CURSOR-SRC-LEN @ > if false exit then
    0 begin dup lu < while
       dup la + c@
       over state CURSOR-SRC @ state CURSOR-POS @ + + c@ <> if
-         drop FALSE exit
+         drop false exit
       then
       1+
-   repeat drop TRUE ;
+   repeat drop true ;
 
 \ PUBLISH sets the token. A string, key, number or opened container becomes the
 \ token only once its whole advance has passed, so a failed advance leaves the
@@ -558,7 +547,7 @@ create UNESC-MAP
    kind state CURSOR-KIND ! ;
 
 : READ-LIT ( ptr cursor ptr u8 n n -- n ) {: state:ptr la:ptr lu:n kind:n :}
-   state la lu MATCH-LIT? 0= if E-JR-MALFORMED throw then
+   state la lu MATCH-LIT? 0= if E-JSON-READ-MALFORMED throw then
    state state CURSOR-POS @ lu kind PUBLISH
    state CURSOR-POS dup @ lu + swap !
    state AFTER-VALUE
@@ -576,7 +565,7 @@ create UNESC-MAP
 : OPEN-OBJ ( ptr cursor -- n ) {: state:ptr :}
    state CURSOR-POS @ {: at:n :}
    state CURSOR-POS dup @ 1+ swap !
-   state TRUE PUSH
+   state true PUSH
    state at 1 T-OBJ PUBLISH
    ST-KEY state CURSOR-STATE !
    T-OBJ ;
@@ -584,7 +573,7 @@ create UNESC-MAP
 : OPEN-ARR ( ptr cursor -- n ) {: state:ptr :}
    state CURSOR-POS @ {: at:n :}
    state CURSOR-POS dup @ 1+ swap !
-   state FALSE PUSH
+   state false PUSH
    state at 1 T-ARR PUBLISH
    ST-ELEM state CURSOR-STATE !
    T-ARR ;
@@ -611,9 +600,9 @@ create UNESC-MAP
 : READ-KEY ( ptr cursor -- n ) {: state:ptr :}
    state SCAN-STRING {: at:n len:n :}
    state SKIP-WS
-   state CURSOR-POS @ state CURSOR-SRC-LEN @ >= if E-JR-COLON throw then
+   state CURSOR-POS @ state CURSOR-SRC-LEN @ >= if E-JSON-READ-COLON throw then
    state CURSOR-SRC @ state CURSOR-POS @ + c@ COLON <> if
-      E-JR-COLON throw
+      E-JSON-READ-COLON throw
    then
    state CURSOR-POS dup @ 1+ swap !
    state at len T-KEY PUBLISH
@@ -636,7 +625,7 @@ create UNESC-MAP
    c CH-N = if state READ-NULL exit then
    c MINUS = if state READ-NUMBER exit then
    c STR-DIGIT? if state READ-NUMBER exit then
-   E-JR-MALFORMED throw ;
+   E-JSON-READ-MALFORMED throw ;
 
 : DO-ELEM ( ptr cursor n -- n ) {: state:ptr c:n :}
    c RBRACK = if state CLOSE-ARR exit then
@@ -645,11 +634,11 @@ create UNESC-MAP
 : DO-KEY ( ptr cursor n -- n ) {: state:ptr c:n :}
    c RBRACE = if state CLOSE-OBJ exit then
    c DQ = if state READ-KEY exit then
-   E-JR-MALFORMED throw ;
+   E-JSON-READ-MALFORMED throw ;
 
 : DO-MEMBER ( ptr cursor n -- n ) {: state:ptr c:n :}
    c DQ = if state READ-KEY exit then
-   E-JR-MALFORMED throw ;
+   E-JSON-READ-MALFORMED throw ;
 
 : DO-SEP ( ptr cursor n -- n ) {: state:ptr c:n :}
    c COMMA = if
@@ -664,7 +653,7 @@ create UNESC-MAP
    c RBRACK = state IN-OBJECT? 0= and if
       state CLOSE-ARR exit
    then
-   E-JR-COMMA throw ;
+   E-JSON-READ-COMMA throw ;
 
 : PUBLISH-END ( ptr cursor -- n ) {: state:ptr :}
    state state CURSOR-POS @ 0 T-END PUBLISH
@@ -674,10 +663,10 @@ create UNESC-MAP
    state SKIP-WS
    state CURSOR-POS @ state CURSOR-SRC-LEN @ >= if
       state CURSOR-STATE @ ST-DONE = if state PUBLISH-END exit then
-     E-JR-EOF throw
+     E-JSON-READ-EOF throw
    then
    state CURSOR-SRC @ state CURSOR-POS @ + c@ {: c:n :}
-   state CURSOR-STATE @ ST-DONE = if E-JR-TRAILING throw then
+   state CURSOR-STATE @ ST-DONE = if E-JSON-READ-TRAILING throw then
    state CURSOR-STATE @ ST-VALUE = if state c READ-VALUE exit then
    state CURSOR-STATE @ ST-ELEM = if state c DO-ELEM exit then
    state CURSOR-STATE @ ST-KEY = if state c DO-KEY exit then
@@ -695,7 +684,7 @@ create UNESC-MAP
 \ is stored and every later advance throws it again: a reader never parses on
 \ from a failure as if the rejected text had been valid. The failure also
 \ releases the stack mapping, which REQUIRE-SOUND keeps anything from reading.
-\ Accessor refusals (INT, FLOAT, STR, STR-EQ?) and wrong-phase E-JR-STATE
+\ Accessor refusals (READ-INT, READ-FLOAT, READ-STR, READ-STR-EQ?) and wrong-phase E-JSON-READ-STATE
 \ refusals leave the reader usable.
 : NEXT-INNER ( ptr cursor -- n ) {: state:ptr :}
    state REQUIRE-SOUND
@@ -707,46 +696,46 @@ create UNESC-MAP
 
 public
 
-: NEXT ( JR:reader -- JR:reader n )
+: READ-NEXT ( JSON:reader -- JSON:reader n )
    READER>STATE NEXT-INNER ;
 
-\ FINISH reads to the document's end from any position (before the first NEXT,
+\ READ-FINISH reads to the document's end from any position (before the first READ-NEXT,
 \ inside containers, after the last value, or after T-END, which a done reader
 \ answers again) and consumes the reader. A malformed or truncated rest throws
-\ the reader's own E-JR-* code. A caller that took only the members it needs
+\ the reader's own E-JSON-READ-* code. A caller that took only the members it needs
 \ still learns the document is well formed.
-: FINISH ( JR:reader -- )
-   begin NEXT T-END = until
-   CLOSE ;
+: READ-FINISH ( JSON:reader -- )
+   begin READ-NEXT T-END = until
+   READ-CLOSE ;
 
 private
 
 : INT-INNER ( ptr cursor -- n ) {: state:ptr :}
-   state CURSOR-KIND @ T-INT <> if E-JR-STATE throw then
+   state CURSOR-KIND @ T-INT <> if E-JSON-READ-STATE throw then
    state RAW-SPAN$ STR>NUMBER? MATCH option
-     none OF E-JR-NUMBER throw ENDOF
+     none OF E-JSON-READ-NUMBER throw ENDOF
      some OF ENDOF
    ;MATCH ;
 
 : FLOAT-INNER ( ptr cursor -- r ) {: state:ptr :}
-   state CURSOR-KIND @ dup T-INT = swap T-FLOAT = or 0= if E-JR-STATE throw then
+   state CURSOR-KIND @ dup T-INT = swap T-FLOAT = or 0= if E-JSON-READ-STATE throw then
    state RAW-SPAN$ STR>FLOAT MATCH option
-     none OF E-JR-NUMBER throw ENDOF
+     none OF E-JSON-READ-NUMBER throw ENDOF
      some OF ENDOF
    ;MATCH ;
 
 public
 
-: INT ( JR:reader -- JR:reader n )
+: READ-INT ( JSON:reader -- JSON:reader n )
    READER>STATE INT-INNER ;
 
-: FLOAT ( JR:reader -- JR:reader r )
+: READ-FLOAT ( JSON:reader -- JSON:reader r )
    READER>STATE FLOAT-INNER ;
 
 private
 
 : WRITE-BYTE ( ptr cursor n -- ) {: state:ptr byte:n :}
-   state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if E-JR-STATE throw then
+   state CURSOR-OUT @ state CURSOR-DST-CAP @ >= if E-JSON-READ-STATE throw then
    byte state CURSOR-DST @ state CURSOR-OUT @ + c! ;
 
 : MATCH-BYTE ( ptr cursor n -- ) {: state:ptr byte:n :}
@@ -829,7 +818,7 @@ private
             d over + c@ b <> if 0 state CURSOR-MATCHED ! then
          then
       else
-         dup cap >= if E-JR-STATE throw then
+         dup cap >= if E-JSON-READ-STATE throw then
          d over + b swap c!
       then
       1+ step
@@ -859,15 +848,15 @@ private
    repeat ;
 
 : STR-INNER ( ptr cursor ptr u8 n -- n ) {: state:ptr dst:ptr cap:n :}
-   state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
-   dst 0= cap 0 < or if E-JR-STATE throw then
+   state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JSON-READ-STATE throw then
+   dst 0= cap 0 < or if E-JSON-READ-STATE throw then
    state dst cap UMODE-WRITE UNESC-RESET
    state UNESC-ALL
    state CURSOR-OUT @ ;
 
 : MATCH-INNER ( ptr cursor ptr u8 n -- bool )
    {: state:ptr key:ptr len:n :}
-   state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
+   state CURSOR-KIND @ dup T-STR = swap T-KEY = or 0= if E-JSON-READ-STATE throw then
    state key len UMODE-MATCH UNESC-RESET
    state UNESC-ALL
    state CURSOR-MATCHED @ 0= 0=
@@ -876,8 +865,8 @@ private
 public
 
 \ Decodes into non-null caller storage; a negative or short capacity is
-\ E-JR-STATE.
-: STR ( JR:reader ptr u8 n -- JR:reader n )
+\ E-JSON-READ-STATE.
+: READ-STR ( JSON:reader ptr u8 n -- JSON:reader n )
    {: dst:ptr cap:n :}
    READER>STATE dst cap STR-INNER ;
 
@@ -898,28 +887,28 @@ private
 
 : SKIP-INNER ( ptr cursor -- ) {: state:ptr :}
    state CURSOR-KIND @ SCALAR? if exit then
-   state CURSOR-KIND @ OPENER? 0= if E-JR-STATE throw then
+   state CURSOR-KIND @ OPENER? 0= if E-JSON-READ-STATE throw then
    1 begin dup 0 > while
       state NEXT-INNER
       dup OPENER? if drop 1+ else
       dup CLOSER? if drop 1- else
-      dup T-END = if E-JR-EOF throw else drop then then then
+      dup T-END = if E-JSON-READ-EOF throw else drop then then then
    repeat drop ;
 
 : FIND-PHASE? ( n -- bool )
    dup ST-KEY = swap ST-SEP = or ;
 
 : REQUIRE-KEY-SPAN ( ptr u8 n -- ) {: key:ptr len:n :}
-   len 0 < if E-JR-STATE throw then
-   len 0 > key 0= and if E-JR-STATE throw then ;
+   len 0 < if E-JSON-READ-STATE throw then
+   len 0 > key 0= and if E-JSON-READ-STATE throw then ;
 
 : FIND-ANCHOR ( ptr cursor -- n ) {: state:ptr :}
-   state CURSOR-DEPTH @ dup 0 <= if E-JR-STATE throw then
-   state IN-OBJECT? 0= if E-JR-STATE throw then
-   state CURSOR-STATE @ FIND-PHASE? 0= if E-JR-STATE throw then ;
+   state CURSOR-DEPTH @ dup 0 <= if E-JSON-READ-STATE throw then
+   state IN-OBJECT? 0= if E-JSON-READ-STATE throw then
+   state CURSOR-STATE @ FIND-PHASE? 0= if E-JSON-READ-STATE throw then ;
 
 : REQUIRE-KEY-DEPTH ( ptr cursor n -- ) {: state:ptr depth:n :}
-   state CURSOR-DEPTH @ depth <> if E-JR-STATE throw then ;
+   state CURSOR-DEPTH @ depth <> if E-JSON-READ-STATE throw then ;
 
 : FIND-INNER ( ptr cursor ptr u8 n -- bool ) {: state:ptr key:ptr len:n :}
    key len REQUIRE-KEY-SPAN
@@ -929,28 +918,28 @@ private
       state NEXT-INNER {: token:n :}
       token T-OBJ-END = if
          state depth 1- REQUIRE-KEY-DEPTH
-         FALSE exit
+         false exit
       then
-      token T-KEY <> if E-JR-STATE throw then
+      token T-KEY <> if E-JSON-READ-STATE throw then
       state depth REQUIRE-KEY-DEPTH
       state key len MATCH-INNER {: found:bool :}
       state NEXT-INNER {: value:n :}
-      value VALUE-TOKEN? 0= if E-JR-STATE throw then
-      found if TRUE exit then
+      value VALUE-TOKEN? 0= if E-JSON-READ-STATE throw then
+      found if true exit then
       state SKIP-INNER
       state depth REQUIRE-KEY-DEPTH
-      state CURSOR-STATE @ ST-SEP <> if E-JR-STATE throw then
+      state CURSOR-STATE @ ST-SEP <> if E-JSON-READ-STATE throw then
    again ;
 
 public
 
-: SKIP-VALUE ( JR:reader -- JR:reader )
+: READ-SKIP-VALUE ( JSON:reader -- JSON:reader )
    READER>STATE SKIP-INNER ;
 
 private
 
 : VALUE-SPAN-INNER ( ptr cursor -- ptr u8 n ) {: state:ptr :}
-   state CURSOR-KIND @ OPENER? 0= if E-JR-STATE throw then
+   state CURSOR-KIND @ OPENER? 0= if E-JSON-READ-STATE throw then
    state CURSOR-TOK-AT @ {: start:n :}
    state SKIP-INNER
    state CURSOR-SRC @ start +
@@ -960,27 +949,27 @@ public
 
 \ On an opener, the source bytes through the matching close; the cursor moves
 \ past the value.
-: VALUE-SPAN$ ( JR:reader -- JR:reader ptr u8 n )
+: READ-VALUE-SPAN$ ( JSON:reader -- JSON:reader ptr u8 n )
    READER>STATE VALUE-SPAN-INNER ;
 
 \ Searches only the current object, skipping each unmatched value, and stops at
-\ its close. It and STR-EQ? compare decoded bytes without a buffer, so key
+\ its close. It and READ-STR-EQ? compare decoded bytes without a buffer, so key
 \ length is not bounded by reader storage.
-: FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool )
+: READ-FIND-KEY ( JSON:reader ptr u8 n -- JSON:reader bool )
    {: key:ptr len:n :}
    READER>STATE key len FIND-INNER ;
 
 \ Whether the current string or key decodes to exactly these bytes. The bytes
-\ stream through STR's decoder, so no buffer bounds the string, and the cursor
-\ stays where it was.
-: STR-EQ? ( JR:reader ptr u8 n -- JR:reader bool )
+\ stream through READ-STR's decoder, so no buffer bounds the string, and the
+\ cursor stays where it was.
+: READ-STR-EQ? ( JSON:reader ptr u8 n -- JSON:reader bool )
    {: want:ptr len:n :}
    want len REQUIRE-KEY-SPAN
    READER>STATE want len MATCH-INNER ;
 
 private
 
-\ REPEATS? scratch, mapped per call and zero-filled, so the record owns no stack
+\ READ-REPEATS? scratch, mapped per call and zero-filled, so the record owns no stack
 \ until it grows one. After the record, cell 0 counts the keys read, k, and cells
 \ 1..k+1 hold offsets into the room, the first 0: key i decodes to room bytes
 \ o(i)..o(i+1). A member takes at least 5 source bytes ("":0,), so the reader
@@ -1018,9 +1007,9 @@ private
    {: table:ptr room:ptr k:n :}
    table room k KEY$ {: key:ptr ku:n :}
    k 0 ?do
-      table room i KEY$ key ku STR= if TRUE unloop exit then
+      table room i KEY$ key ku STR= if true unloop exit then
    loop
-   FALSE ;
+   false ;
 
 
 \ On a top-level key of the record: decodes it as key k, after the k before it,
@@ -1041,11 +1030,11 @@ private
    {: base:ptr u:n :}
    base RECORD {: a:ptr :}
    begin a NEXT-INNER T-KEY = while
-      base u REPEATED? if TRUE exit then
+      base u REPEATED? if true exit then
       a NEXT-INNER drop
       a SKIP-INNER
    repeat
-   FALSE ;
+   false ;
 
 
 \ The answer stands only once the whole text has read as well formed.
@@ -1053,7 +1042,7 @@ private
    {: base:ptr text:ptr u:n :}
    base RECORD {: a:ptr :}
    a text u INIT-STATE
-   a NEXT-INNER T-OBJ <> if E-JR-STATE throw then
+   a NEXT-INNER T-OBJ <> if E-JSON-READ-STATE throw then
    base u FIRST-REPEAT?
    begin a NEXT-INNER T-END = until ;
 
@@ -1074,26 +1063,18 @@ public
 \ Whether text, one JSON object, has two top-level keys that decode to the same
 \ bytes; nested objects' keys do not count. RFC 8259 §4: "When the names within
 \ an object are not unique, the behavior of software that receives such an
-\ object is unpredictable." FIND-KEY takes the first copy where JSON.parse
-\ keeps the last, so a caller checks this before it trusts a member FIND-KEY
-\ reads. A first value other than an object throws E-JR-STATE before the rest
+\ object is unpredictable." READ-FIND-KEY takes the first copy where JSON.parse
+\ keeps the last, so a caller checks this before it trusts a member READ-FIND-KEY
+\ reads. A first value other than an object throws E-JSON-READ-STATE before the rest
 \ is read; other malformed text throws the reader's code.
-: REPEATS? ( ptr u8 n -- bool )
+: READ-REPEATS? ( ptr u8 n -- bool )
    {: text:ptr u:n :}
    text u REQUIRE-SOURCE
    u SCRATCH-LEN MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: scratch :}
-   FALSE scratch text u [: REPEATS-SLOT ;] catch
+   false scratch text u [: REPEATS-SLOT ;] catch
    {: found spare at len code:n :}
    scratch SCRATCH-FREE
    code 0= if found exit then
    code throw ;
-
-private
-
-get-current prot-wid-add
-
-public
-
-get-current prot-wid-add
 
 ;package

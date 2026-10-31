@@ -5,12 +5,12 @@
 
 require src/lib/string.f
 require src/lib/adt/option.f
-require src/lib/json-write.f
+require src/lib/json.f
 require tools/lsp-defs.f
 require tools/lsp-text.f
 
 package LSP-SYMBOLS
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 
 private
@@ -19,7 +19,7 @@ private
 13 constant VARIABLE-KIND                \ SymbolKind.Variable
 12 constant FUNCTION-KIND                \ SymbolKind.Function
 
-TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer,
+TYPED-VARIABLE OUT ptr JSON:writer \ the answer's writer,
 TYPED-VARIABLE QUERY-A ptr u8            \ its query,
 variable QUERY-U
 variable COLON-AT                        \ where its first colon is, -1 for none,
@@ -92,23 +92,23 @@ DYNAMIC-BUFFER NAME-B u8                 \ a symbol's qualified name
 \ document's URI for its own file, else at the URI of the open document that
 \ held the file when the check completed, else at its path's file URI.
 \ containerName: the package the word was recorded under; a global has none.
-: NAMED ( ptr JSON-WRITE:writer n n ptr u8 n -- ptr JSON-WRITE:writer )
+: NAMED ( ptr JSON:writer n n ptr u8 n -- ptr JSON:writer )
    {: g:n r:n nm:ptr nu:n :}
-   OBJECT-START
-   s" name" nm nu FIELD-S COMMA
-   s" kind" r REC-CLASS KIND FIELD-U COMMA
-   s" location" KEY OBJECT-START
-      s" uri" g GROUP-URI$ FIELD-RAW COMMA
+   WRITE-OBJECT-START
+   s" name" nm nu WRITE-FIELD-S WRITE-COMMA
+   s" kind" r REC-CLASS KIND WRITE-FIELD-U WRITE-COMMA
+   s" location" WRITE-KEY WRITE-OBJECT-START
+      s" uri" g GROUP-URI$ WRITE-FIELD-RAW WRITE-COMMA
       r REC-RANGE LSP-TEXT:RANGE-AT
-   OBJECT-END
+   WRITE-OBJECT-END
    r REC-PACKAGE$ {: p:ptr pu:n :}
-   pu 0 > if COMMA s" containerName" p pu FIELD-S then
-   OBJECT-END ;
+   pu 0 > if WRITE-COMMA s" containerName" p pu WRITE-FIELD-S then
+   WRITE-OBJECT-END ;
 
 public
 
 \ Named by its word as the source wrote it, whatever its package.
-: SYMBOL ( ptr JSON-WRITE:writer n n -- ptr JSON-WRITE:writer )
+: SYMBOL ( ptr JSON:writer n n -- ptr JSON:writer )
    {: g:n r:n :}
    g r r REC-WORD$ NAMED ;
 
@@ -117,7 +117,7 @@ private
 : SHOWN ( n n -- )
    {: g:n r:n :}
    OUT @
-   SHOWN-N @ 0 > if COMMA then
+   SHOWN-N @ 0 > if WRITE-COMMA then
    g r r NAME$ NAMED drop
    1 SHOWN-N +! ;
 
@@ -134,16 +134,16 @@ public
 \ answers it from (LSP-DEFS:DEFS-EACH): the check of the document holding the
 \ file while the store keeps one, else the latest. The order follows the store:
 \ check after check, oldest first, each check's files in first-named order.
-: ANSWER ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: w q:ptr qu:n :}
    w OUT !
    q QUERY-A !
    qu QUERY-U !
    q qu COLON-IN COLON-AT !
    0 SHOWN-N !
-   w ARRAY-START drop
+   w WRITE-ARRAY-START drop
    [: GROUP-SYMBOLS ;] DEFS-EACH
-   w ARRAY-END ;
+   w WRITE-ARRAY-END ;
 
 ;using
 ;using

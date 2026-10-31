@@ -6,7 +6,7 @@
 \ document's first (tools/lsp-definition.f). Primitives come from PRIM-SOURCE.
 
 require src/lib/string.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/habu/engine-origin.f
 require src/habu/verify-source.f
 require tools/check-verify-core.f
@@ -16,7 +16,7 @@ private
 
 60000 constant INDEX-MS
 
-TYPED-VARIABLE JR-ST JR:cursor
+TYPED-VARIABLE JSON-ST JSON:cursor
 DYNAMIC-BUFFER ID-PKG u8
 DYNAMIC-BUFFER ID-TAIL u8
 variable ID-PKG-U
@@ -51,47 +51,47 @@ variable RESULT-SYM
    pkg pkgu 0 ID-PKG ID-PKG-U @ CORE-STR= and
    tail tailu 0 ID-TAIL ID-TAIL-U @ CORE-STR= and ;
 
-: STRING>PKG ( JR:reader -- JR:reader )
-   JR:SPAN$ nip {: raw:n :}
+: STRING>PKG ( JSON:reader -- JSON:reader )
+   JSON:READ-SPAN$ nip {: raw:n :}
    raw 1 max ROW-PKG-RESERVE
-   0 ROW-PKG raw JR:STR ROW-PKG-U ! ;
+   0 ROW-PKG raw JSON:READ-STR ROW-PKG-U ! ;
 
-: STRING>TAIL ( JR:reader -- JR:reader )
-   JR:SPAN$ nip {: raw:n :}
+: STRING>TAIL ( JSON:reader -- JSON:reader )
+   JSON:READ-SPAN$ nip {: raw:n :}
    raw 1 max ROW-TAIL-RESERVE
-   0 ROW-TAIL raw JR:STR ROW-TAIL-U ! ;
+   0 ROW-TAIL raw JSON:READ-STR ROW-TAIL-U ! ;
 
-: VISIBILITY ( JR:reader -- JR:reader )
-   s" global" JR:STR-EQ? if SYM-GLOBAL ROW-VIS ! exit then
-   s" private" JR:STR-EQ? if SYM-PRIVATE ROW-VIS ! exit then
-   s" public" JR:STR-EQ? if SYM-PUBLIC ROW-VIS ! then ;
+: VISIBILITY ( JSON:reader -- JSON:reader )
+   s" global" JSON:READ-STR-EQ? if SYM-GLOBAL ROW-VIS ! exit then
+   s" private" JSON:READ-STR-EQ? if SYM-PRIVATE ROW-VIS ! exit then
+   s" public" JSON:READ-STR-EQ? if SYM-PUBLIC ROW-VIS ! then ;
 
-: MEMBER ( JR:reader -- JR:reader )
-   s" package" JR:STR-EQ? if
-      JR:NEXT drop STRING>PKG 1 ROW-FIELDS +! exit
+: MEMBER ( JSON:reader -- JSON:reader )
+   s" package" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT drop STRING>PKG 1 ROW-FIELDS +! exit
    then
-   s" decl_name" JR:STR-EQ? if
-      JR:NEXT drop STRING>TAIL 2 ROW-FIELDS +! exit
+   s" decl_name" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT drop STRING>TAIL 2 ROW-FIELDS +! exit
    then
-   s" visibility" JR:STR-EQ? if
-      JR:NEXT drop VISIBILITY 4 ROW-FIELDS +! exit
+   s" visibility" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT drop VISIBILITY 4 ROW-FIELDS +! exit
    then
-   s" byte_start" JR:STR-EQ? if
-      JR:NEXT drop JR:INT ROW-START ! 8 ROW-FIELDS +! exit
+   s" byte_start" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT drop JSON:READ-INT ROW-START ! 8 ROW-FIELDS +! exit
    then
-   s" byte_end" JR:STR-EQ? if
-      JR:NEXT drop JR:INT ROW-END ! 16 ROW-FIELDS +! exit
+   s" byte_end" JSON:READ-STR-EQ? if
+      JSON:READ-NEXT drop JSON:READ-INT ROW-END ! 16 ROW-FIELDS +! exit
    then
-   JR:NEXT drop JR:SKIP-VALUE ;
+   JSON:READ-NEXT drop JSON:READ-SKIP-VALUE ;
 
 : DECODE ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    0 ROW-PKG-U !  0 ROW-TAIL-U !
    -1 ROW-VIS !  0 ROW-START !  0 ROW-END !  0 ROW-FIELDS !
-   JR-ST a u JR:INIT
-   JR:NEXT drop
-   begin JR:NEXT JR:T-KEY = while MEMBER repeat
-   JR:CLOSE
+   JSON-ST a u JSON:READ-INIT
+   JSON:READ-NEXT drop
+   begin JSON:READ-NEXT JSON:T-KEY = while MEMBER repeat
+   JSON:READ-CLOSE
    ROW-FIELDS @ 31 = ROW-VIS @ 0 >= and
    ROW-TAIL-U @ 0 > and ROW-START @ 0 >= and
    ROW-END @ ROW-START @ > and ;

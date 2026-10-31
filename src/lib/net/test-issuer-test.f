@@ -18,7 +18,7 @@ require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/base64.f
 require src/lib/byte-buffer.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/process.f
 require src/lib/spawn.f
 require src/lib/engine-candidate.f
@@ -67,7 +67,7 @@ $100 BUFFER: LINE
 variable LINE-U
 variable CHILD-OUT                  \ the read end of the child's stdout, an fd number
 
-TYPED-VARIABLE READER JR:cursor
+TYPED-VARIABLE READER JSON:cursor
 create MINTED-HEAD BUF:HDR-BYTES allot
 : MINTED ( -- ptr n ) MINTED-HEAD CELL-VIEW ;
 MINTED $100 BUF:N>BLEN BUF:INIT
@@ -119,25 +119,25 @@ PAST-CAP BUFFER: OVERSIZE
 \ A string member of an object text as sent, empty when absent.
 : MEMBER$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: t:ptr tu:n k:ptr ku:n :}
-   READER t tu JR:INIT JR:NEXT drop
-   k ku JR:FIND-KEY 0= if JR:CLOSE s" " exit then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE s" " exit then
-   JR:SPAN$ {: a:ptr u:n :} JR:CLOSE a u ;
+   READER t tu JSON:READ-INIT JSON:READ-NEXT drop
+   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE s" " exit then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " exit then
+   JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
 
 \ An integer member of an object text, -1 when absent.
 : MEMBER-INT ( ptr u8 n ptr u8 n -- n )
    {: t:ptr tu:n k:ptr ku:n :}
-   READER t tu JR:INIT JR:NEXT drop
-   k ku JR:FIND-KEY 0= if JR:CLOSE -1 exit then
-   JR:TOKEN JR:T-INT <> if JR:CLOSE -1 exit then
-   JR:INT {: v:n :} JR:CLOSE v ;
+   READER t tu JSON:READ-INIT JSON:READ-NEXT drop
+   k ku JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -1 exit then
+   JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE -1 exit then
+   JSON:READ-INT {: v:n :} JSON:READ-CLOSE v ;
 
 \ A string member of the body's first key, as sent.
 : KEY$ ( ptr u8 n -- ptr u8 n )
    {: k:ptr ku:n :}
-   READER BODY$ JR:INIT JR:NEXT drop
-   s" keys" JR:FIND-KEY drop JR:NEXT drop
-   k ku JR:FIND-KEY drop JR:SPAN$ {: a:ptr u:n :} JR:CLOSE a u ;
+   READER BODY$ JSON:READ-INIT JSON:READ-NEXT drop
+   s" keys" JSON:READ-FIND-KEY drop JSON:READ-NEXT drop
+   k ku JSON:READ-FIND-KEY drop JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u ;
 
 
 \ The client.

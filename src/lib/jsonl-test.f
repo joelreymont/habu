@@ -6,7 +6,7 @@ require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
-require src/lib/json-read.f
+require src/lib/json.f
 require src/lib/jsonl.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
@@ -119,18 +119,18 @@ variable PATH-B-U
    {: cur:ptr n:n :}
    cur JSONL:NEXT TTRUE
    cur JSONL:READER
-   JR:NEXT JR:T-STR T=
-   STR-OUT LONG-N 1+ JR:STR n 2 - T=
-   JR:CLOSE
+   JSON:READ-NEXT JSON:T-STR T=
+   STR-OUT LONG-N 1+ JSON:READ-STR n 2 - T=
+   JSON:READ-CLOSE
    STR-OUT c@ [char] a T=
    STR-OUT n 3 - + c@ [char] a T= ;
 
 : READ-INT ( ptr JSONL:cursor n -- )
    {: cur:ptr want:n :}
    cur JSONL:READER
-   JR:NEXT JR:T-INT T=
-   JR:INT want T=
-   JR:CLOSE ;
+   JSON:READ-NEXT JSON:T-INT T=
+   JSON:READ-INT want T=
+   JSON:READ-CLOSE ;
 
 : INT-LINE ( ptr JSONL:cursor n -- )
    {: cur:ptr want:n :}
@@ -139,11 +139,11 @@ variable PATH-B-U
 
 : READ-ONE ( ptr JSONL:cursor -- )
    JSONL:READER
-   JR:NEXT JR:T-OBJ T=
-   s" x" JR:FIND-KEY TTRUE
-   JR:TOKEN JR:T-INT T=
-   JR:INT 7 T=
-   JR:CLOSE ;
+   JSON:READ-NEXT JSON:T-OBJ T=
+   s" x" JSON:READ-FIND-KEY TTRUE
+   JSON:READ-TOKEN JSON:T-INT T=
+   JSON:READ-INT 7 T=
+   JSON:READ-CLOSE ;
 
 : FILE ( -- )
    LONG-FIXTURE
@@ -232,10 +232,10 @@ variable PATH-B-U
 : READER-EARLY ( -- )
    PATH$ s\" 1\n" FS:WRITE-ALL
    16 OPEN-KNOWN drop
-   [: A JSONL:READER JR:CLOSE ;] JSONL:E-STATE TTHROWSQ
+   [: A JSONL:READER JSON:READ-CLOSE ;] JSONL:E-STATE TTHROWSQ
    A 1 INT-LINE
    A JSONL:NEXT TFALSE
-   [: A JSONL:READER JR:CLOSE ;] JSONL:E-STATE TTHROWSQ ;
+   [: A JSONL:READER JSON:READ-CLOSE ;] JSONL:E-STATE TTHROWSQ ;
 
 : CLOSE-EARLY ( -- )
    PATH$ s\" 1\n2" FS:WRITE-ALL
@@ -255,8 +255,8 @@ variable PATH-B-U
    A JSONL:NEXT TTRUE
    B JSONL:NEXT TTRUE
    A JSONL:READER B JSONL:READER
-   JR:NEXT JR:T-INT T= JR:INT 3 T= JR:CLOSE
-   JR:NEXT JR:T-INT T= JR:INT 1 T= JR:CLOSE
+   JSON:READ-NEXT JSON:T-INT T= JSON:READ-INT 3 T= JSON:READ-CLOSE
+   JSON:READ-NEXT JSON:T-INT T= JSON:READ-INT 1 T= JSON:READ-CLOSE
    B JSONL:NEXT TTRUE
    A 2 INT-LINE
    B READ-ONE
@@ -273,10 +273,10 @@ variable PATH-B-U
    DEEP-N 2 * OPEN-KNOWN {: fd:n :}
    A JSONL:NEXT TTRUE
    A JSONL:READER
-   DEEP-N 0 ?do JR:NEXT JR:T-ARR T= loop
-   DEEP-N 0 ?do JR:NEXT JR:T-ARR-END T= loop
-   JR:NEXT JR:T-END T=
-   JR:CLOSE
+   DEEP-N 0 ?do JSON:READ-NEXT JSON:T-ARR T= loop
+   DEEP-N 0 ?do JSON:READ-NEXT JSON:T-ARR-END T= loop
+   JSON:READ-NEXT JSON:T-END T=
+   JSON:READ-CLOSE
    A 7 INT-LINE
    A JSONL:NEXT TFALSE
    FREE-FD fd T= ;

@@ -10,8 +10,7 @@ require src/lib/base64.f
 require src/lib/byte-buffer.f
 require src/lib/f64-text.f
 require src/lib/fmt.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/log.f
 require src/lib/memory.f
 require src/lib/net/curl.f
@@ -75,10 +74,10 @@ STRUCTURE allocation DERIVE addr
 
 STRUCTURE call DERIVE addr
    FIELD arena allocation
-   FIELD body-w JSON-WRITE:writer
-   FIELD parts-w JSON-WRITE:writer
-   FIELD journal-parts-w JSON-WRITE:writer
-   FIELD reader JR:cursor
+   FIELD body-w JSON:writer
+   FIELD parts-w JSON:writer
+   FIELD journal-parts-w JSON:writer
+   FIELD reader JSON:cursor
    FIELD gate TASK:sem
    FIELD gate-ready bool
    FIELD handle option<CURL:handle>
@@ -519,7 +518,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    then
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ {: base:ptr :}
    base DISPOSE-BUFFERS
-   c MODEL-CALL:READER JR:DISPOSE
+   c MODEL-CALL:READER JSON:READ-DISPOSE
    base ARENA-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
    NULL-PTR c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE !
    0 c MODEL-CALL:ARENA MODEL-ALLOCATION:SIZE ! ;
@@ -880,38 +879,38 @@ public
 
 private
 
-: WRITER ( ptr call -- ptr JSON-WRITE:writer ) MODEL-CALL:BODY-W ;
-: PART-WRITER ( ptr call -- ptr JSON-WRITE:writer ) MODEL-CALL:PARTS-W ;
-: JOURNAL-PART-WRITER ( ptr call -- ptr JSON-WRITE:writer ) MODEL-CALL:JOURNAL-PARTS-W ;
+: WRITER ( ptr call -- ptr JSON:writer ) MODEL-CALL:BODY-W ;
+: PART-WRITER ( ptr call -- ptr JSON:writer ) MODEL-CALL:PARTS-W ;
+: JOURNAL-PART-WRITER ( ptr call -- ptr JSON:writer ) MODEL-CALL:JOURNAL-PARTS-W ;
 
 : BUILD-GEN-CONFIG ( ptr call -- )
    {: c :}
-   c WRITER c GEN-CONFIG-BUF JSON-WRITE:OPEN-BUF drop
-   c WRITER JSON-WRITE:OBJECT-START
-   s" backend" s" openai-chat-completions" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" model" c GEN$ JSON-WRITE:FIELD-S
-   c EFFORT$ nip 0<> if JSON-WRITE:COMMA s" effort" c EFFORT$ JSON-WRITE:FIELD-S then
-   JSON-WRITE:COMMA s" base_url" c BASE$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END drop
-   c WRITER JSON-WRITE:CLOSE ;
+   c WRITER c GEN-CONFIG-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER JSON:WRITE-OBJECT-START
+   s" backend" s" openai-chat-completions" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" model" c GEN$ JSON:WRITE-FIELD-S
+   c EFFORT$ nip 0<> if JSON:WRITE-COMMA s" effort" c EFFORT$ JSON:WRITE-FIELD-S then
+   JSON:WRITE-COMMA s" base_url" c BASE$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END drop
+   c WRITER JSON:WRITE-CLOSE ;
 
 : BUILD-EMBED-CONFIG ( ptr call -- )
    {: c :}
-   c WRITER c EMBED-CONFIG-BUF JSON-WRITE:OPEN-BUF drop
-   c WRITER JSON-WRITE:OBJECT-START
+   c WRITER c EMBED-CONFIG-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER JSON:WRITE-OBJECT-START
    s" backend" c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-      s" ollama" else s" openai-embeddings" then JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" model" c EMBED-MODEL$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" dimensions" c MODEL-CALL:DIMS @ JSON-WRITE:FIELD-U
+      s" ollama" else s" openai-embeddings" then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" model" c EMBED-MODEL$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" dimensions" c MODEL-CALL:DIMS @ JSON:WRITE-FIELD-U
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-      JSON-WRITE:COMMA s" identity" c IDENTITY$ JSON-WRITE:FIELD-S
-      JSON-WRITE:COMMA s" truncate" false JSON-WRITE:FIELD-BOOL
+      JSON:WRITE-COMMA s" identity" c IDENTITY$ JSON:WRITE-FIELD-S
+      JSON:WRITE-COMMA s" truncate" false JSON:WRITE-FIELD-BOOL
    else
-      JSON-WRITE:COMMA s" base_url" c BASE$ JSON-WRITE:FIELD-S
+      JSON:WRITE-COMMA s" base_url" c BASE$ JSON:WRITE-FIELD-S
    then
-   JSON-WRITE:OBJECT-END drop
-   c WRITER JSON-WRITE:CLOSE ;
+   JSON:WRITE-OBJECT-END drop
+   c WRITER JSON:WRITE-CLOSE ;
 
 public
 
@@ -948,24 +947,24 @@ private
 
 : PART-OPEN ( ptr call -- )
    {: c :}
-   c PART-WRITER c PARTS-BUF JSON-WRITE:OPEN-BUF JSON-WRITE:ARRAY-START drop
-   c JOURNAL-PART-WRITER c JOURNAL-PARTS-BUF JSON-WRITE:OPEN-BUF
-   JSON-WRITE:ARRAY-START drop ;
+   c PART-WRITER c PARTS-BUF JSON:WRITE-OPEN-BUF JSON:WRITE-ARRAY-START drop
+   c JOURNAL-PART-WRITER c JOURNAL-PARTS-BUF JSON:WRITE-OPEN-BUF
+   JSON:WRITE-ARRAY-START drop ;
 
 : PART-FINISH ( ptr call -- )
    {: c :}
    c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
    c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
    false c MODEL-CALL:PARTS-VALID !
-   c PART-WRITER JSON-WRITE:ARRAY-END JSON-WRITE:CLOSE
-   c JOURNAL-PART-WRITER JSON-WRITE:ARRAY-END JSON-WRITE:CLOSE
+   c PART-WRITER JSON:WRITE-ARRAY-END JSON:WRITE-CLOSE
+   c JOURNAL-PART-WRITER JSON:WRITE-ARRAY-END JSON:WRITE-CLOSE
    false c MODEL-CALL:PARTS-OPEN ! ;
 
 : PART-COMMA ( ptr call -- )
    {: c :}
    c MODEL-CALL:PARTS-COUNT @ 0 > if
-      c PART-WRITER JSON-WRITE:COMMA drop
-      c JOURNAL-PART-WRITER JSON-WRITE:COMMA drop
+      c PART-WRITER JSON:WRITE-COMMA drop
+      c JOURNAL-PART-WRITER JSON:WRITE-COMMA drop
    then ;
 
 : PART-ADDED ( ptr call -- )
@@ -973,13 +972,13 @@ private
    c MODEL-CALL:PARTS-COUNT @ 1+ c MODEL-CALL:PARTS-COUNT !
    true c MODEL-CALL:PARTS-VALID ! ;
 
-: TEXT-PART ( ptr u8 n ptr JSON-WRITE:writer -- )
+: TEXT-PART ( ptr u8 n ptr JSON:writer -- )
    {: a:ptr u:n w :}
-   w JSON-WRITE:OBJECT-START
-   s" type" s" text" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" text" a u JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END drop ;
+   w JSON:WRITE-OBJECT-START
+   s" type" s" text" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" text" a u JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END drop ;
 
 public
 
@@ -1053,20 +1052,20 @@ public
    false c MODEL-CALL:PARTS-VALID !
    c PART-COMMA
    c PART-WRITER
-   JSON-WRITE:OBJECT-START
-   s" type" s" image_url" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" image_url" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
-   s" url" c URI-BUF BUFFER$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:OBJECT-END drop
+   JSON:WRITE-OBJECT-START
+   s" type" s" image_url" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" image_url" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" url" c URI-BUF BUFFER$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END drop
    c JOURNAL-PART-WRITER
-   JSON-WRITE:OBJECT-START
-   s" type" s" image" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" media_type" mime mu JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" sha256" hex hex-u JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END drop
+   JSON:WRITE-OBJECT-START
+   s" type" s" image" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" media_type" mime mu JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" sha256" hex hex-u JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END drop
    c URI-BUF BUF:CLEAR
    c URI-BUF c RESET-SCRATCH
    c PART-ADDED ;
@@ -1074,19 +1073,19 @@ public
 private
 
 \ A fault of the JSON reader: bytes that are not the JSON read expects.
-: JR-FAULT? ( n -- bool )
+: JSON-FAULT? ( n -- bool )
    {: code:n :}
-   code E-JR-FIRST <= code E-JR-LAST >= and ;
+   code E-JSON-READ-FIRST <= code E-JSON-READ-LAST >= and ;
 
 : JSON-OBJECT? ( ptr u8 n ptr call -- bool )
    {: a:ptr u:n c :}
-   c MODEL-CALL:READER a u JR:INIT
-   JR:NEXT JR:T-OBJ = if
-      JR:SKIP-VALUE
-      JR:NEXT JR:T-END = {: valid:bool :}
-      JR:CLOSE valid exit
+   c MODEL-CALL:READER a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ = if
+      JSON:READ-SKIP-VALUE
+      JSON:READ-NEXT JSON:T-END = {: valid:bool :}
+      JSON:READ-CLOSE valid exit
    then
-   JR:CLOSE false ;
+   JSON:READ-CLOSE false ;
 
 : SCHEMA-STEP ( ptr call -- ptr call )
    {: c :}
@@ -1096,7 +1095,7 @@ private
 : CHECK-SCHEMA ( ptr call -- )
    {: c :}
    c [: SCHEMA-STEP ;] catch {: code:n :} drop
-   code JR-FAULT? if E-CONFIG throw then
+   code JSON-FAULT? if E-CONFIG throw then
    code 0<> if code throw then ;
 
 : CHECK-CHAT ( ptr call -- )
@@ -1110,11 +1109,11 @@ private
 : BODY-OPEN ( ptr call -- )
    {: c :}
    c BODY-BUF c RESET-SCRATCH
-   c WRITER c BODY-BUF JSON-WRITE:OPEN-BUF drop ;
+   c WRITER c BODY-BUF JSON:WRITE-OPEN-BUF drop ;
 
 : BODY-DONE ( ptr call -- )
    {: c :}
-   c WRITER JSON-WRITE:CLOSE ;
+   c WRITER JSON:WRITE-CLOSE ;
 
 : CHAT-BODY ( ptr call -- )
    {: c :}
@@ -1124,47 +1123,47 @@ private
    then
    c BODY-OPEN
    c WRITER
-   JSON-WRITE:OBJECT-START
-   s" model" c GEN$ JSON-WRITE:FIELD-S
+   JSON:WRITE-OBJECT-START
+   s" model" c GEN$ JSON:WRITE-FIELD-S
    c EFFORT$ nip 0<> if
-      JSON-WRITE:COMMA s" reasoning_effort" c EFFORT$ JSON-WRITE:FIELD-S
+      JSON:WRITE-COMMA s" reasoning_effort" c EFFORT$ JSON:WRITE-FIELD-S
    then
    c CACHE-KEY$ nip 0<> if
-      JSON-WRITE:COMMA s" prompt_cache_key" c CACHE-KEY$ JSON-WRITE:FIELD-S
+      JSON:WRITE-COMMA s" prompt_cache_key" c CACHE-KEY$ JSON:WRITE-FIELD-S
    then
    c TIER$ nip 0<> if
-      JSON-WRITE:COMMA s" service_tier" c TIER$ JSON-WRITE:FIELD-S
+      JSON:WRITE-COMMA s" service_tier" c TIER$ JSON:WRITE-FIELD-S
    then
-   JSON-WRITE:COMMA
-   s" messages" JSON-WRITE:KEY
-   JSON-WRITE:ARRAY-START
-   JSON-WRITE:OBJECT-START
-   s" role" s" system" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" content" c SYSTEM$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:COMMA
-   JSON-WRITE:OBJECT-START
-   s" role" s" user" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" content" c PARTS$ JSON-WRITE:FIELD-RAW
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:ARRAY-END
-   JSON-WRITE:COMMA
-   s" response_format" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
-   s" type" s" json_schema" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" json_schema" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
-   s" name" s" answer" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" strict" true JSON-WRITE:FIELD-BOOL
-   JSON-WRITE:COMMA
-   s" schema" c SCHEMA$ JSON-WRITE:FIELD-RAW
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:OBJECT-END drop
+   JSON:WRITE-COMMA
+   s" messages" JSON:WRITE-KEY
+   JSON:WRITE-ARRAY-START
+   JSON:WRITE-OBJECT-START
+   s" role" s" system" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" content" c SYSTEM$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-COMMA
+   JSON:WRITE-OBJECT-START
+   s" role" s" user" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" content" c PARTS$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-ARRAY-END
+   JSON:WRITE-COMMA
+   s" response_format" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" type" s" json_schema" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" json_schema" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" name" s" answer" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" strict" true JSON:WRITE-FIELD-BOOL
+   JSON:WRITE-COMMA
+   s" schema" c SCHEMA$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END drop
    c BODY-DONE ;
 
 : INPUT$ ( n ptr call -- ptr u8 n )
@@ -1182,23 +1181,23 @@ private
    c MODEL-CALL:JOURNAL-READY @ 0= if c CHECK-EMBED then
    c BODY-OPEN
    c WRITER
-   JSON-WRITE:OBJECT-START
-   s" model" c EMBED-MODEL$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" dimensions" c MODEL-CALL:DIMS @ JSON-WRITE:FIELD-U
+   JSON:WRITE-OBJECT-START
+   s" model" c EMBED-MODEL$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" dimensions" c MODEL-CALL:DIMS @ JSON:WRITE-FIELD-U
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-      JSON-WRITE:COMMA
-      s" truncate" false JSON-WRITE:FIELD-BOOL
+      JSON:WRITE-COMMA
+      s" truncate" false JSON:WRITE-FIELD-BOOL
    then
-   JSON-WRITE:COMMA
-   s" input" JSON-WRITE:KEY
-   JSON-WRITE:ARRAY-START
+   JSON:WRITE-COMMA
+   s" input" JSON:WRITE-KEY
+   JSON:WRITE-ARRAY-START
    c MODEL-CALL:INPUT-COUNT @ 0 ?do
-      i 0 > if JSON-WRITE:COMMA then
-      i c INPUT$ JSON-WRITE:STRING
+      i 0 > if JSON:WRITE-COMMA then
+      i c INPUT$ JSON:WRITE-STRING
    loop
-   JSON-WRITE:ARRAY-END
-   JSON-WRITE:OBJECT-END drop
+   JSON:WRITE-ARRAY-END
+   JSON:WRITE-OBJECT-END drop
    c BODY-DONE ;
 
 public
@@ -1229,51 +1228,51 @@ private
 : JOURNAL-GEN-INPUT ( ptr call -- )
    {: c :}
    c JOURNAL-INPUT-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-INPUT-BUF JSON-WRITE:OPEN-BUF drop
-   c WRITER JSON-WRITE:OBJECT-START
-   s" kind" s" generation" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" configuration" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
-   s" backend" s" openai-chat-completions" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" model" c GEN$ JSON-WRITE:FIELD-S
-   c EFFORT$ nip 0<> if JSON-WRITE:COMMA s" effort" c EFFORT$ JSON-WRITE:FIELD-S then
-   JSON-WRITE:COMMA s" endpoint" c CHAT-URL$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:COMMA s" instructions" c SYSTEM$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" schema" c SCHEMA$ JSON-WRITE:FIELD-RAW
-   JSON-WRITE:COMMA s" parts" c JOURNAL-PARTS$ JSON-WRITE:FIELD-RAW
-   JSON-WRITE:OBJECT-END drop
-   c WRITER JSON-WRITE:CLOSE ;
+   c WRITER c JOURNAL-INPUT-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER JSON:WRITE-OBJECT-START
+   s" kind" s" generation" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" configuration" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" backend" s" openai-chat-completions" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" model" c GEN$ JSON:WRITE-FIELD-S
+   c EFFORT$ nip 0<> if JSON:WRITE-COMMA s" effort" c EFFORT$ JSON:WRITE-FIELD-S then
+   JSON:WRITE-COMMA s" endpoint" c CHAT-URL$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" schema" c SCHEMA$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-COMMA s" parts" c JOURNAL-PARTS$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-OBJECT-END drop
+   c WRITER JSON:WRITE-CLOSE ;
 
 : JOURNAL-EMBED-INPUT ( ptr call -- )
    {: c :}
    c JOURNAL-INPUT-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-INPUT-BUF JSON-WRITE:OPEN-BUF drop
-   c WRITER JSON-WRITE:OBJECT-START
-   s" kind" s" embedding" JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" configuration" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
+   c WRITER c JOURNAL-INPUT-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER JSON:WRITE-OBJECT-START
+   s" kind" s" embedding" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" configuration" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
    s" backend" c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-      s" ollama" else s" openai-embeddings" then JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" model" c EMBED-MODEL$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" dimensions" c MODEL-CALL:DIMS @ JSON-WRITE:FIELD-U
+      s" ollama" else s" openai-embeddings" then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" model" c EMBED-MODEL$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" dimensions" c MODEL-CALL:DIMS @ JSON:WRITE-FIELD-U
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-      JSON-WRITE:COMMA s" identity" c IDENTITY$ JSON-WRITE:FIELD-S
-      JSON-WRITE:COMMA s" truncate" false JSON-WRITE:FIELD-BOOL
-      JSON-WRITE:COMMA s" endpoint" c ENDPOINT$ JSON-WRITE:FIELD-S
+      JSON:WRITE-COMMA s" identity" c IDENTITY$ JSON:WRITE-FIELD-S
+      JSON:WRITE-COMMA s" truncate" false JSON:WRITE-FIELD-BOOL
+      JSON:WRITE-COMMA s" endpoint" c ENDPOINT$ JSON:WRITE-FIELD-S
    else
-      JSON-WRITE:COMMA s" endpoint" c EMBED-URL$ JSON-WRITE:FIELD-S
+      JSON:WRITE-COMMA s" endpoint" c EMBED-URL$ JSON:WRITE-FIELD-S
    then
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:COMMA s" input" JSON-WRITE:KEY
-   JSON-WRITE:ARRAY-START
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-COMMA s" input" JSON:WRITE-KEY
+   JSON:WRITE-ARRAY-START
    c MODEL-CALL:INPUT-COUNT @ 0 ?do
-      i 0 > if JSON-WRITE:COMMA then
-      i c INPUT$ JSON-WRITE:STRING
+      i 0 > if JSON:WRITE-COMMA then
+      i c INPUT$ JSON:WRITE-STRING
    loop
-   JSON-WRITE:ARRAY-END
-   JSON-WRITE:OBJECT-END drop
-   c WRITER JSON-WRITE:CLOSE ;
+   JSON:WRITE-ARRAY-END
+   JSON:WRITE-OBJECT-END drop
+   c WRITER JSON:WRITE-CLOSE ;
 
 : TRANSPORT-FAILED ( CURL:code ptr call -- )
    LEDGER {: code:CURL:code l :}
@@ -1428,15 +1427,15 @@ private
    {: status:n :}
    status 408 = status 429 = or status 500 >= status 600 < and or ;
 
-: WIRE-READER ( ptr call -- JR:reader )
+: WIRE-READER ( ptr call -- JSON:reader )
    {: c :}
-   c MODEL-CALL:READER c RESPONSE$ JR:INIT ;
+   c MODEL-CALL:READER c RESPONSE$ JSON:READ-INIT ;
 
 \ The reply's current string, decoded into the content buffer, which a failed
 \ call leaves unused.
-: REPLY-STR ( JR:reader ptr call -- JR:reader ptr u8 n )
+: REPLY-STR ( JSON:reader ptr call -- JSON:reader ptr u8 n )
    {: c :}
-   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JR:STR {: u:n :}
+   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR {: u:n :}
    c CONTENT-BUF HELD u SPAN:TAKE SPAN:$ ;
 
 \ Ollama's error text for an input longer than the model's context.
@@ -1448,69 +1447,69 @@ private
 \ Whether a member of OpenAI's error object, the reader at its value, names a
 \ refusal for size: by its code, or by its message where the code is null, as
 \ in an embeddings refusal.
-: SIZE-MEMBER? ( JR:reader ptr u8 n ptr call -- JR:reader bool )
+: SIZE-MEMBER? ( JSON:reader ptr u8 n ptr call -- JSON:reader bool )
    {: key:ptr key-u:n c :}
-   JR:TOKEN JR:T-STR <> if JR:SKIP-VALUE false exit then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-SKIP-VALUE false exit then
    key key-u s" code" STR= if
-      s" context_length_exceeded" JR:STR-EQ? if true exit then
-      s" string_above_max_length" JR:STR-EQ? exit
+      s" context_length_exceeded" JSON:READ-STR-EQ? if true exit then
+      s" string_above_max_length" JSON:READ-STR-EQ? exit
    then
    key key-u s" message" STR= if
       c REPLY-STR s" This model's maximum context length" STARTS-WITH? exit
    then
    false ;
 
-: OPENAI-SIZE? ( JR:reader ptr call -- JR:reader bool )
+: OPENAI-SIZE? ( JSON:reader ptr call -- JSON:reader bool )
    {: c :}
-   begin JR:NEXT dup JR:T-OBJ-END <> while
+   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
       drop
-      JR:SPAN$ {: key:ptr key-u:n :}
-      JR:NEXT drop
+      JSON:READ-SPAN$ {: key:ptr key-u:n :}
+      JSON:READ-NEXT drop
       key key-u c SIZE-MEMBER? if true exit then
    repeat
    drop false ;
 
 \ The reader at the reply's error member.
-: SIZE-ERROR? ( JR:reader ptr call -- JR:reader bool )
+: SIZE-ERROR? ( JSON:reader ptr call -- JSON:reader bool )
    {: c :}
-   JR:TOKEN JR:T-STR = if c REPLY-STR OLLAMA-SIZE? exit then
-   JR:TOKEN JR:T-OBJ = if c OPENAI-SIZE? exit then
+   JSON:READ-TOKEN JSON:T-STR = if c REPLY-STR OLLAMA-SIZE? exit then
+   JSON:READ-TOKEN JSON:T-OBJ = if c OPENAI-SIZE? exit then
    false ;
 
 \ The provider's message, kept from the reply's error member, the reader at
 \ it: the member itself when a string, as Ollama sends it, else its message,
 \ as OpenAI and Azure send it.
-: ERROR-TEXT ( JR:reader ptr call -- JR:reader )
+: ERROR-TEXT ( JSON:reader ptr call -- JSON:reader )
    {: c :}
-   JR:TOKEN JR:T-OBJ = if
-      s" message" JR:FIND-KEY 0= if exit then
+   JSON:READ-TOKEN JSON:T-OBJ = if
+      s" message" JSON:READ-FIND-KEY 0= if exit then
    then
-   JR:TOKEN JR:T-STR <> if exit then
+   JSON:READ-TOKEN JSON:T-STR <> if exit then
    c REPLY-STR BUF:N>BLEN c ERROR-BUF BUF:REPLACE ;
 
 : ERROR-BODY ( ptr call -- ptr call )
    {: c :}
    c WIRE-READER
-   JR:NEXT JR:T-OBJ = if
-      s" error" JR:FIND-KEY if c ERROR-TEXT then
+   JSON:READ-NEXT JSON:T-OBJ = if
+      s" error" JSON:READ-FIND-KEY if c ERROR-TEXT then
    then
-   JR:CLOSE c ;
+   JSON:READ-CLOSE c ;
 
 \ Keeps a failed reply's provider message. A body that is not such JSON has
 \ none.
 : KEEP-ERROR ( ptr call -- )
    {: c :}
    c [: ERROR-BODY ;] catch {: code:n :} drop
-   code JR-FAULT? if exit then
+   code JSON-FAULT? if exit then
    code 0<> if code throw then ;
 
 : SIZE-BODY? ( ptr call -- bool )
    {: c :}
    c WIRE-READER
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE false exit then
-   s" error" JR:FIND-KEY 0= if JR:CLOSE false exit then
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
+   s" error" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE false exit then
    c SIZE-ERROR? {: size:bool :}
-   JR:CLOSE size ;
+   JSON:READ-CLOSE size ;
 
 \ Whether a failed reply refuses the request for its size: HTTP 413, or a 400
 \ whose body names the refusal. A body that is not such JSON is not one.
@@ -1521,7 +1520,7 @@ private
    c false [: drop dup SIZE-BODY? ;] catch {: code:n :}
    code 0= if nip exit then
    2drop
-   code JR-FAULT? if false exit then
+   code JSON-FAULT? if false exit then
    code throw ;
 
 
@@ -1626,21 +1625,21 @@ private
    code c WIPE-AFTER
    c REMAINING-MS drop ;
 
-: EXPECT ( JR:reader n -- JR:reader )
+: EXPECT ( JSON:reader n -- JSON:reader )
    {: want:n :}
-   JR:NEXT want <> if JR:CLOSE E-RESPONSE throw then ;
+   JSON:READ-NEXT want <> if JSON:READ-CLOSE E-RESPONSE throw then ;
 
-: DESCEND ( JR:reader ptr u8 n -- JR:reader )
+: DESCEND ( JSON:reader ptr u8 n -- JSON:reader )
    {: key:ptr key-u:n :}
-   key key-u JR:FIND-KEY 0= if JR:CLOSE E-RESPONSE throw then ;
+   key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then ;
 
-: CHOICE ( ptr call -- JR:reader )
+: CHOICE ( ptr call -- JSON:reader )
    {: c :}
    c WIRE-READER
-   JR:T-OBJ EXPECT
+   JSON:T-OBJ EXPECT
    s" choices" DESCEND
-   JR:TOKEN JR:T-ARR <> if JR:CLOSE E-RESPONSE throw then
-   JR:T-OBJ EXPECT ;
+   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   JSON:T-OBJ EXPECT ;
 
 \ A reply that did not finish with stop is incomplete and keeps its reason in
 \ the content buffer: an incomplete reply has no content, and its decoded reason
@@ -1649,27 +1648,27 @@ private
    {: c :}
    c CHOICE
    s" finish_reason" DESCEND
-   JR:TOKEN JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
-   s" stop" JR:STR-EQ? if true c MODEL-CALL:FINISH-STOP ! JR:CLOSE exit then
-   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JR:STR c MODEL-CALL:FINISH-U !
-   JR:CLOSE E-INCOMPLETE throw ;
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" stop" JSON:READ-STR-EQ? if true c MODEL-CALL:FINISH-STOP ! JSON:READ-CLOSE exit then
+   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:FINISH-U !
+   JSON:READ-CLOSE E-INCOMPLETE throw ;
 
-: MESSAGE-MEMBER ( JR:reader ptr u8 n ptr call -- JR:reader )
+: MESSAGE-MEMBER ( JSON:reader ptr u8 n ptr call -- JSON:reader )
    {: key:ptr key-u:n c :}
    key key-u s" refusal" STR= if
-      JR:TOKEN JR:T-NULL <> if JR:CLOSE E-REFUSED throw then
-      JR:SKIP-VALUE exit
+      JSON:READ-TOKEN JSON:T-NULL <> if JSON:READ-CLOSE E-REFUSED throw then
+      JSON:READ-SKIP-VALUE exit
    then
    key key-u s" content" STR= if
-      c MODEL-CALL:CONTENT-SEEN @ if JR:CLOSE E-RESPONSE throw then
-      JR:TOKEN JR:T-NULL = if JR:SKIP-VALUE exit then
-      JR:TOKEN JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
-      c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JR:STR {: got:n :}
+      c MODEL-CALL:CONTENT-SEEN @ if JSON:READ-CLOSE E-RESPONSE throw then
+      JSON:READ-TOKEN JSON:T-NULL = if JSON:READ-SKIP-VALUE exit then
+      JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+      c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR {: got:n :}
       got c MODEL-CALL:CONTENT-U !
       true c MODEL-CALL:CONTENT-SEEN !
       exit
    then
-   JR:SKIP-VALUE ;
+   JSON:READ-SKIP-VALUE ;
 
 : READ-MESSAGE ( ptr call -- )
    {: c :}
@@ -1677,14 +1676,14 @@ private
    0 c MODEL-CALL:CONTENT-U !
    c CHOICE
    s" message" DESCEND
-   JR:TOKEN JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
-   begin JR:NEXT dup JR:T-OBJ-END <> while
-      JR:T-KEY <> if JR:CLOSE E-RESPONSE throw then
-      JR:SPAN$ {: key:ptr key-u:n :}
-      JR:NEXT drop
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
+      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
+      JSON:READ-SPAN$ {: key:ptr key-u:n :}
+      JSON:READ-NEXT drop
       key key-u c MESSAGE-MEMBER
    repeat
-   drop JR:CLOSE
+   drop JSON:READ-CLOSE
    c MODEL-CALL:CONTENT-SEEN @ 0= if E-RESPONSE throw then ;
 
 : ACCEPT-CHAT ( ptr call -- )
@@ -1716,22 +1715,22 @@ private
    INPUT-MAX 0 ?do 0 c i VECTOR-LEN ! loop
    c VECTORS-BUF c RESET-SCRATCH ;
 
-: READ-VECTOR ( JR:reader ptr call -- JR:reader )
+: READ-VECTOR ( JSON:reader ptr call -- JSON:reader )
    {: c :}
-   JR:TOKEN JR:T-ARR <> if JR:CLOSE E-RESPONSE throw then
+   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
    c VECTORS-U c MODEL-CALL:VECTOR-AT !
    0 c MODEL-CALL:COMPONENT-COUNT !
    91 c VECTOR-BYTE+
-   begin JR:NEXT dup JR:T-ARR-END <> while
-      dup JR:T-INT = swap JR:T-FLOAT = or 0= if
-         JR:CLOSE E-RESPONSE throw
+   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
+      dup JSON:T-INT = swap JSON:T-FLOAT = or 0= if
+         JSON:READ-CLOSE E-RESPONSE throw
       then
       c MODEL-CALL:COMPONENT-COUNT @ {: idx:n :}
-      idx c MODEL-CALL:DIMS @ >= if JR:CLOSE E-RESPONSE throw then
-      JR:SPAN$ {: a:ptr u:n :}
+      idx c MODEL-CALL:DIMS @ >= if JSON:READ-CLOSE E-RESPONSE throw then
+      JSON:READ-SPAN$ {: a:ptr u:n :}
       a u F64-TEXT:PARSE MATCH result
          ok OF drop ENDOF
-         err OF drop JR:CLOSE E-RESPONSE throw ENDOF
+         err OF drop JSON:READ-CLOSE E-RESPONSE throw ENDOF
       ;MATCH
       idx 0 > if 44 c VECTOR-BYTE+ then
       a u c VECTOR-BYTES+
@@ -1739,44 +1738,44 @@ private
    repeat
    drop
    c MODEL-CALL:COMPONENT-COUNT @ c MODEL-CALL:DIMS @ <> if
-      JR:CLOSE E-RESPONSE throw
+      JSON:READ-CLOSE E-RESPONSE throw
    then
    93 c VECTOR-BYTE+
    true c MODEL-CALL:VECTOR-SEEN ! ;
 
-: EMBED-MEMBER ( JR:reader ptr u8 n ptr call -- JR:reader )
+: EMBED-MEMBER ( JSON:reader ptr u8 n ptr call -- JSON:reader )
    {: key:ptr key-u:n c :}
    key key-u s" index" STR= if
-      c MODEL-CALL:PARSED-INDEX @ -1 <> if JR:CLOSE E-RESPONSE throw then
-      JR:TOKEN JR:T-INT <> if JR:CLOSE E-RESPONSE throw then
-      JR:INT {: idx:n :}
+      c MODEL-CALL:PARSED-INDEX @ -1 <> if JSON:READ-CLOSE E-RESPONSE throw then
+      JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
+      JSON:READ-INT {: idx:n :}
       idx 0 < idx c MODEL-CALL:INPUT-COUNT @ >= or if
-         JR:CLOSE E-RESPONSE throw
+         JSON:READ-CLOSE E-RESPONSE throw
       then
       idx c MODEL-CALL:PARSED-INDEX ! exit
    then
    key key-u s" embedding" STR= if
-      c MODEL-CALL:VECTOR-SEEN @ if JR:CLOSE E-RESPONSE throw then
+      c MODEL-CALL:VECTOR-SEEN @ if JSON:READ-CLOSE E-RESPONSE throw then
       c READ-VECTOR exit
    then
-   JR:SKIP-VALUE ;
+   JSON:READ-SKIP-VALUE ;
 
-: READ-EMBED-OBJECT ( JR:reader ptr call -- JR:reader )
+: READ-EMBED-OBJECT ( JSON:reader ptr call -- JSON:reader )
    {: c :}
    -1 c MODEL-CALL:PARSED-INDEX !
    false c MODEL-CALL:VECTOR-SEEN !
-   begin JR:NEXT dup JR:T-OBJ-END <> while
-      JR:T-KEY <> if JR:CLOSE E-RESPONSE throw then
-      JR:SPAN$ {: key:ptr key-u:n :}
-      JR:NEXT drop
+   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
+      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
+      JSON:READ-SPAN$ {: key:ptr key-u:n :}
+      JSON:READ-NEXT drop
       key key-u c EMBED-MEMBER
    repeat
    drop
    c MODEL-CALL:PARSED-INDEX @ {: idx:n :}
    idx -1 = c MODEL-CALL:VECTOR-SEEN @ 0= or if
-      JR:CLOSE E-RESPONSE throw
+      JSON:READ-CLOSE E-RESPONSE throw
    then
-   c idx VECTOR-LEN @ 0<> if JR:CLOSE E-RESPONSE throw then
+   c idx VECTOR-LEN @ 0<> if JSON:READ-CLOSE E-RESPONSE throw then
    idx c VECTOR-KEEP ;
 
 : ACCEPT-EMBED ( ptr call -- )
@@ -1785,15 +1784,15 @@ private
    0 c MODEL-CALL:DATA-COUNT !
    c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c WIRE-READER
-   JR:T-OBJ EXPECT
+   JSON:T-OBJ EXPECT
    s" data" DESCEND
-   JR:TOKEN JR:T-ARR <> if JR:CLOSE E-RESPONSE throw then
-   begin JR:NEXT dup JR:T-ARR-END <> while
-      JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
+   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
+      JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
       c READ-EMBED-OBJECT
       c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
    repeat
-   drop JR:CLOSE
+   drop JSON:READ-CLOSE
    c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
       E-RESPONSE throw
    then ;
@@ -1803,26 +1802,26 @@ private
    c VECTORS-RESET
    0 c MODEL-CALL:DATA-COUNT !
    c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
-   c WIRE-READER JR:T-OBJ EXPECT
+   c WIRE-READER JSON:T-OBJ EXPECT
    s" embeddings" DESCEND
-   JR:TOKEN JR:T-ARR <> if JR:CLOSE E-RESPONSE throw then
-   begin JR:NEXT dup JR:T-ARR-END <> while
+   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
       c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ >= if
-         drop JR:CLOSE E-RESPONSE throw
+         drop JSON:READ-CLOSE E-RESPONSE throw
       then
       drop
       c READ-VECTOR
       c MODEL-CALL:DATA-COUNT @ c VECTOR-KEEP
       c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
    repeat
-   drop JR:CLOSE
+   drop JSON:READ-CLOSE
    c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
       E-RESPONSE throw
    then ;
 
 : RESPONSE-ERROR ( n -- )
    {: code:n :}
-   code JR-FAULT? if E-RESPONSE throw then
+   code JSON-FAULT? if E-RESPONSE throw then
    code 0<> if code throw then ;
 
 : PARSE-CHAT ( ptr call -- )
@@ -1832,17 +1831,17 @@ private
 
 \ A reader at the usage member of the JSON object in the bytes, and whether
 \ that member is an object.
-: USAGE ( ptr u8 n ptr call -- JR:reader bool )
+: USAGE ( ptr u8 n ptr call -- JSON:reader bool )
    {: a:ptr u:n c :}
-   c MODEL-CALL:READER a u JR:INIT
-   JR:T-OBJ EXPECT
-   s" usage" JR:FIND-KEY 0= if false exit then
-   JR:TOKEN JR:T-OBJ = ;
+   c MODEL-CALL:READER a u JSON:READ-INIT
+   JSON:T-OBJ EXPECT
+   s" usage" JSON:READ-FIND-KEY 0= if false exit then
+   JSON:READ-TOKEN JSON:T-OBJ = ;
 
 \ The current usage count: an integer, or none for null.
-: USAGE-COUNT ( JR:reader -- JR:reader option<n> )
-   JR:TOKEN dup JR:T-INT = if drop JR:INT OPTION:SOME exit then
-   JR:T-NULL <> if JR:CLOSE E-RESPONSE throw then
+: USAGE-COUNT ( JSON:reader -- JSON:reader option<n> )
+   JSON:READ-TOKEN dup JSON:T-INT = if drop JSON:READ-INT OPTION:SOME exit then
+   JSON:T-NULL <> if JSON:READ-CLOSE E-RESPONSE throw then
    OPTION:NONE ;
 
 \ A count, 0 when absent.
@@ -1853,8 +1852,8 @@ private
    ;MATCH ;
 
 \ The usage count at the key: none when the key is absent or null.
-: COUNT-AT ( JR:reader ptr u8 n -- JR:reader option<n> )
-   JR:FIND-KEY 0= if OPTION:NONE exit then
+: COUNT-AT ( JSON:reader ptr u8 n -- JSON:reader option<n> )
+   JSON:READ-FIND-KEY 0= if OPTION:NONE exit then
    USAGE-COUNT ;
 
 \ The count at the key of the bytes' usage object, which is present. Each
@@ -1863,23 +1862,23 @@ private
    {: a:ptr u:n c key:ptr key-u:n :}
    a u c USAGE drop
    key key-u COUNT-AT {: got :}
-   JR:CLOSE got ;
+   JSON:READ-CLOSE got ;
 
 \ The count at the key of a usage member object; none when that member is
 \ absent or not an object.
 : DETAIL-AT ( ptr u8 n ptr call ptr u8 n ptr u8 n -- option<n> )
    {: a:ptr u:n c detail:ptr detail-u:n key:ptr key-u:n :}
    a u c USAGE drop
-   detail detail-u JR:FIND-KEY 0= if JR:CLOSE OPTION:NONE exit then
-   JR:TOKEN JR:T-OBJ <> if JR:CLOSE OPTION:NONE exit then
+   detail detail-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE OPTION:NONE exit then
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE OPTION:NONE exit then
    key key-u COUNT-AT {: got :}
-   JR:CLOSE got ;
+   JSON:READ-CLOSE got ;
 
 \ Whether the bytes carry a usage object; marks the call's usage seen.
 : USAGE? ( ptr u8 n ptr call -- bool )
    {: a:ptr u:n c :}
    a u c USAGE {: present:bool :}
-   JR:CLOSE
+   JSON:READ-CLOSE
    present if true c TOKENS TOKENS-SEEN ! then
    present ;
 
@@ -1904,13 +1903,13 @@ private
 \ null for none.
 : ACCEPT-TIER ( ptr call -- )
    {: c :}
-   c MODEL-CALL:READER c RESPONSE$ JR:INIT
-   JR:T-OBJ EXPECT
-   s" service_tier" JR:FIND-KEY 0= if JR:CLOSE exit then
-   JR:TOKEN dup JR:T-NULL = if drop JR:CLOSE exit then
-   JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
+   c MODEL-CALL:READER c RESPONSE$ JSON:READ-INIT
+   JSON:T-OBJ EXPECT
+   s" service_tier" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE exit then
+   JSON:READ-TOKEN dup JSON:T-NULL = if drop JSON:READ-CLOSE exit then
+   JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
    c REPLY-STR {: a:ptr u:n :}
-   JR:CLOSE
+   JSON:READ-CLOSE
    u 0= if E-RESPONSE throw then
    a u c SERVED-BUF REPLACE-SOME ;
 
@@ -1998,24 +1997,24 @@ private
 
 : JOURNAL-FIELD ( ptr u8 n ptr call -- ptr u8 n )
    {: key:ptr key-u:n c :}
-   c MODEL-CALL:READER c JOURNAL-OUT$ JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
-   key key-u JR:FIND-KEY 0= if JR:CLOSE E-RESPONSE throw then
-   JR:TOKEN {: kind:n :}
-   kind JR:T-OBJ = if
-      JR:VALUE-SPAN$ {: a:ptr u:n :} JR:CLOSE a u exit
+   c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then
+   JSON:READ-TOKEN {: kind:n :}
+   kind JSON:T-OBJ = if
+      JSON:READ-VALUE-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a u exit
    then
-   kind JR:T-STR = if
-      JR:SPAN$ {: a:ptr u:n :} JR:CLOSE a 1- u 2 + exit
+   kind JSON:T-STR = if
+      JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a 1- u 2 + exit
    then
-   JR:CLOSE E-RESPONSE throw ;
+   JSON:READ-CLOSE E-RESPONSE throw ;
 
 : JOURNAL-DECODE ( ptr u8 n SPAN:span<u8> ptr call -- n )
    {: raw:ptr raw-u:n target:SPAN:span<u8> c :}
-   c MODEL-CALL:READER raw raw-u JR:INIT
-   JR:NEXT JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
-   target SPAN:$ JR:STR {: got:n :}
-   JR:CLOSE got ;
+   c MODEL-CALL:READER raw raw-u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   target SPAN:$ JSON:READ-STR {: got:n :}
+   JSON:READ-CLOSE got ;
 
 : JOURNAL-STRING-BUF ( ptr u8 n ptr n ptr call -- )
    {: key:ptr key-u:n buf:ptr c :}
@@ -2035,32 +2034,32 @@ private
 : JOURNAL-ORIGIN ( ptr call -- )
    {: c :}
    s" origin" c JOURNAL-FIELD {: raw:ptr raw-u:n :}
-   c MODEL-CALL:READER raw raw-u JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
-   s" kind" JR:FIND-KEY 0= if JR:CLOSE E-RESPONSE throw then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
-   JR:SPAN$ nip 0= if JR:CLOSE E-RESPONSE throw then
-   JR:CLOSE ;
+   c MODEL-CALL:READER raw raw-u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" kind" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   JSON:READ-SPAN$ nip 0= if JSON:READ-CLOSE E-RESPONSE throw then
+   JSON:READ-CLOSE ;
 
 \ The recorded call id a journal record carries, 0 when it has none.
 : JOURNAL-CALL-ID ( ptr call -- n )
    {: c :}
-   c MODEL-CALL:READER c JOURNAL-OUT$ JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
-   s" call_id" JR:FIND-KEY 0= if JR:CLOSE 0 exit then
-   JR:TOKEN JR:T-INT <> if JR:CLOSE E-RESPONSE throw then
-   JR:INT {: id:n :} JR:CLOSE id ;
+   c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" call_id" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE 0 exit then
+   JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
+   JSON:READ-INT {: id:n :} JSON:READ-CLOSE id ;
 
 \ The fault a journaled refusal records, 0 for a reply.
 : JOURNAL-REFUSAL-FAULT ( ptr call -- n )
    {: c :}
-   c MODEL-CALL:READER c JOURNAL-OUT$ JR:INIT
-   JR:NEXT JR:T-OBJ <> if JR:CLOSE E-RESPONSE throw then
-   s" refusal" JR:FIND-KEY 0= if JR:CLOSE 0 exit then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
-   s" capacity" JR:STR-EQ? if JR:CLOSE E-CAPACITY exit then
-   s" incomplete" JR:STR-EQ? if JR:CLOSE E-INCOMPLETE exit then
-   JR:CLOSE E-RESPONSE throw ;
+   c MODEL-CALL:READER c JOURNAL-OUT$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" refusal" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE 0 exit then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" capacity" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-CAPACITY exit then
+   s" incomplete" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-INCOMPLETE exit then
+   JSON:READ-CLOSE E-RESPONSE throw ;
 
 : JOURNAL-RESTORE ( n ptr call -- )
    {: kind:n c :}
@@ -2091,54 +2090,54 @@ private
    kind c MODEL-CALL:REPLAY-KIND ! ;
 
 \ A usage count, null when the reply omitted it.
-: COUNT-FIELD ( ptr JSON-WRITE:writer ptr u8 n option<n> -- ptr JSON-WRITE:writer )
+: COUNT-FIELD ( ptr JSON:writer ptr u8 n option<n> -- ptr JSON:writer )
    MATCH option
-      none OF JSON-WRITE:FIELD-NULL ENDOF
-      some OF JSON-WRITE:FIELD-INT ENDOF
+      none OF JSON:WRITE-FIELD-NULL ENDOF
+      some OF JSON:WRITE-FIELD-INT ENDOF
    ;MATCH ;
 
 \ The call's kind, configured model and usage counts, when the reply carried
 \ usage.
-: USAGE-FIELD ( ptr JSON-WRITE:writer n ptr call -- ptr JSON-WRITE:writer )
+: USAGE-FIELD ( ptr JSON:writer n ptr call -- ptr JSON:writer )
    {: kind:n c :}
    c TOKENS TOKENS-SEEN @ 0= if exit then
-   JSON-WRITE:COMMA s" usage" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
-   s" kind" kind 1 = if s" generation" else s" embedding" then JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA
-   s" model" kind 1 = if c GEN$ else c EMBED-MODEL$ then JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" prompt_tokens" c TOKENS TOKENS-PROMPT @ COUNT-FIELD
-   JSON-WRITE:COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
-   JSON-WRITE:COMMA s" completion_tokens" c TOKENS TOKENS-COMPLETION @ COUNT-FIELD
-   JSON-WRITE:COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
-   JSON-WRITE:OBJECT-END ;
+   JSON:WRITE-COMMA s" usage" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" kind" kind 1 = if s" generation" else s" embedding" then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" model" kind 1 = if c GEN$ else c EMBED-MODEL$ then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" prompt_tokens" c TOKENS TOKENS-PROMPT @ COUNT-FIELD
+   JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
+   JSON:WRITE-COMMA s" completion_tokens" c TOKENS TOKENS-COMPLETION @ COUNT-FIELD
+   JSON:WRITE-COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
+   JSON:WRITE-OBJECT-END ;
 
 \ Opens the journal record with the call's configuration.
-: RECORD-OPEN ( n ptr call -- ptr JSON-WRITE:writer )
+: RECORD-OPEN ( n ptr call -- ptr JSON:writer )
    {: kind:n c :}
    kind 1 = if c BUILD-GEN-CONFIG else c BUILD-EMBED-CONFIG then
    c JOURNAL-RECORD-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-RECORD-BUF JSON-WRITE:OPEN-BUF drop
-   c WRITER JSON-WRITE:OBJECT-START
+   c WRITER c JOURNAL-RECORD-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER JSON:WRITE-OBJECT-START
    s" configuration" kind 1 = if c GEN-CONFIG$ else c EMBED-CONFIG$ then
-   JSON-WRITE:FIELD-RAW ;
+   JSON:WRITE-FIELD-RAW ;
 
 : JOURNAL-RECORD ( n ptr call -- )
    {: kind:n c :}
    kind c RECORD-OPEN
-   JSON-WRITE:COMMA s" content" kind 1 = if
+   JSON:WRITE-COMMA s" content" kind 1 = if
       c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-   else s" " then JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" response" c RESPONSE$ JSON-WRITE:FIELD-S
+   else s" " then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" response" c RESPONSE$ JSON:WRITE-FIELD-S
    kind c USAGE-FIELD
    c LEDGER LEDGER-CALL-ID @ {: id:n :}
-   id 0<> if JSON-WRITE:COMMA s" call_id" id JSON-WRITE:FIELD-INT then
-   JSON-WRITE:COMMA s" origin" JSON-WRITE:KEY
-   JSON-WRITE:OBJECT-START
-   s" kind" s" live" JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END
-   JSON-WRITE:OBJECT-END drop
-   c WRITER JSON-WRITE:CLOSE ;
+   id 0<> if JSON:WRITE-COMMA s" call_id" id JSON:WRITE-FIELD-INT then
+   JSON:WRITE-COMMA s" origin" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" kind" s" live" JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END drop
+   c WRITER JSON:WRITE-CLOSE ;
 
 \ A nonzero count, else none.
 : NONZERO ( n -- option<n> ) dup 0<> if OPTION:SOME else drop OPTION:NONE then ;
@@ -2172,45 +2171,45 @@ private
    l LEDGER-KIND @ {: kind:n :}
    l LEDGER-CANCELLED @ if E-CANCELLED else l LEDGER-CODE @ then {: fault:n :}
    c JOURNAL-RECORD-BUF c RESET-SCRATCH
-   c WRITER c JOURNAL-RECORD-BUF JSON-WRITE:OPEN-BUF drop
-   c WRITER JSON-WRITE:OBJECT-START
-   s" kind" kind 1 = if s" generation" else s" embedding" then JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" backend" kind c BACKEND$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" model" kind 1 = if c GEN$ else c EMBED-MODEL$ then
-   JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" effort" kind 1 = c EFFORT$ nip 0<> and if
-      c EFFORT$ JSON-WRITE:FIELD-S
-   else JSON-WRITE:FIELD-NULL then
-   JSON-WRITE:COMMA s" service_tier" c SERVED$ nip 0<> if
-      c SERVED$ JSON-WRITE:FIELD-S
-   else JSON-WRITE:FIELD-NULL then
-   JSON-WRITE:COMMA s" requested_tier" kind 1 = c TIER$ nip 0<> and if
-      c TIER$ JSON-WRITE:FIELD-S
-   else JSON-WRITE:FIELD-NULL then
-   JSON-WRITE:COMMA s" purpose" c LABEL$ JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" outcome" l LEDGER-CANCELLED @ if s" cancelled"
-   else fault 0<> if s" failed" else s" ok" then then JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" fault" fault NONZERO COUNT-FIELD
-   JSON-WRITE:COMMA s" http_status" c MODEL-CALL:HTTP-STATUS @ NONZERO COUNT-FIELD
-   JSON-WRITE:COMMA s" finish_reason" c MODEL-CALL:FINISH-STOP @ if
-      s" stop" JSON-WRITE:FIELD-S
+   c WRITER c JOURNAL-RECORD-BUF JSON:WRITE-OPEN-BUF drop
+   c WRITER JSON:WRITE-OBJECT-START
+   s" kind" kind 1 = if s" generation" else s" embedding" then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" backend" kind c BACKEND$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" model" kind 1 = if c GEN$ else c EMBED-MODEL$ then
+   JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" effort" kind 1 = c EFFORT$ nip 0<> and if
+      c EFFORT$ JSON:WRITE-FIELD-S
+   else JSON:WRITE-FIELD-NULL then
+   JSON:WRITE-COMMA s" service_tier" c SERVED$ nip 0<> if
+      c SERVED$ JSON:WRITE-FIELD-S
+   else JSON:WRITE-FIELD-NULL then
+   JSON:WRITE-COMMA s" requested_tier" kind 1 = c TIER$ nip 0<> and if
+      c TIER$ JSON:WRITE-FIELD-S
+   else JSON:WRITE-FIELD-NULL then
+   JSON:WRITE-COMMA s" purpose" c LABEL$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" outcome" l LEDGER-CANCELLED @ if s" cancelled"
+   else fault 0<> if s" failed" else s" ok" then then JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" fault" fault NONZERO COUNT-FIELD
+   JSON:WRITE-COMMA s" http_status" c MODEL-CALL:HTTP-STATUS @ NONZERO COUNT-FIELD
+   JSON:WRITE-COMMA s" finish_reason" c MODEL-CALL:FINISH-STOP @ if
+      s" stop" JSON:WRITE-FIELD-S
    else c MODEL-CALL:FINISH-U @ 0<> if
-      c CONTENT-BUF HELD c MODEL-CALL:FINISH-U @ SPAN:TAKE SPAN:$ JSON-WRITE:FIELD-S
-   else JSON-WRITE:FIELD-NULL then then
-   JSON-WRITE:COMMA s" request_bytes" c BODY$ nip JSON-WRITE:FIELD-INT
+      c CONTENT-BUF HELD c MODEL-CALL:FINISH-U @ SPAN:TAKE SPAN:$ JSON:WRITE-FIELD-S
+   else JSON:WRITE-FIELD-NULL then then
+   JSON:WRITE-COMMA s" request_bytes" c BODY$ nip JSON:WRITE-FIELD-INT
    kind 1 = if
-      JSON-WRITE:COMMA s" prefix_bytes" c GEN$ nip c SYSTEM$ nip + c SCHEMA$ nip +
-      JSON-WRITE:FIELD-INT
-      JSON-WRITE:COMMA s" prefix_hash" c PREFIX-HASH$ JSON-WRITE:FIELD-S
+      JSON:WRITE-COMMA s" prefix_bytes" c GEN$ nip c SYSTEM$ nip + c SCHEMA$ nip +
+      JSON:WRITE-FIELD-INT
+      JSON:WRITE-COMMA s" prefix_hash" c PREFIX-HASH$ JSON:WRITE-FIELD-S
    then
-   JSON-WRITE:COMMA s" duration_ms" TIME:MONO-NS l LEDGER-STARTED-NS @ - NS-PER-MS /
-   JSON-WRITE:FIELD-INT
-   JSON-WRITE:COMMA s" prompt_tokens" c TOKENS TOKENS-PROMPT @ COUNT-FIELD
-   JSON-WRITE:COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
-   JSON-WRITE:COMMA s" completion_tokens" c TOKENS TOKENS-COMPLETION @ COUNT-FIELD
-   JSON-WRITE:COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
-   JSON-WRITE:OBJECT-END drop
-   c WRITER JSON-WRITE:CLOSE ;
+   JSON:WRITE-COMMA s" duration_ms" TIME:MONO-NS l LEDGER-STARTED-NS @ - NS-PER-MS /
+   JSON:WRITE-FIELD-INT
+   JSON:WRITE-COMMA s" prompt_tokens" c TOKENS TOKENS-PROMPT @ COUNT-FIELD
+   JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
+   JSON:WRITE-COMMA s" completion_tokens" c TOKENS TOKENS-COMPLETION @ COUNT-FIELD
+   JSON:WRITE-COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
+   JSON:WRITE-OBJECT-END drop
+   c WRITER JSON:WRITE-CLOSE ;
 
 : REJECT-RUN ( ptr ledger -- ptr ledger )
    {: l :}
@@ -2271,10 +2270,10 @@ private
 : REFUSAL-PUT ( n n ptr call -- )
    {: kind:n code:n c :}
    kind c RECORD-OPEN
-   JSON-WRITE:COMMA s" refusal" code E-CAPACITY = if s" capacity" else
-      s" incomplete" then JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END drop
-   c WRITER JSON-WRITE:CLOSE
+   JSON:WRITE-COMMA s" refusal" code E-CAPACITY = if s" capacity" else
+      s" incomplete" then JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END drop
+   c WRITER JSON:WRITE-CLOSE
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 

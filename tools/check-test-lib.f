@@ -6161,19 +6161,19 @@ variable LC-OTHER-U
 \ empty as a source value, so the sentinel is distinct from every packet.
 : LC-STRING$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
    GJA-FIELD? 0= if drop s" " exit then
-   dup GJA-KIND JR:T-STR <> if drop s" " exit then
+   dup GJA-KIND JSON:T-STR <> if drop s" " exit then
    GJA-STRING$ ;
 
 : LC-NUMBER$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
    GJA-FIELD? 0= if drop s" " exit then
-   dup GJA-KIND dup JR:T-INT = swap JR:T-FLOAT = or 0= if drop s" " exit then
+   dup GJA-KIND dup JSON:T-INT = swap JSON:T-FLOAT = or 0= if drop s" " exit then
    SPAN:$ ;
 
 : CT-SYNTAX? ( n -- bool ) {: code:n :}
-   code E-JR-MALFORMED = code E-JR-STRING = or
-   code E-JR-ESCAPE = or code E-JR-SURROGATE = or
-   code E-JR-TRAILING = or code E-JR-NUMBER = or
-   code E-JR-EOF = or code E-JR-COLON = or code E-JR-COMMA = or ;
+   code E-JSON-READ-MALFORMED = code E-JSON-READ-STRING = or
+   code E-JSON-READ-ESCAPE = or code E-JSON-READ-SURROGATE = or
+   code E-JSON-READ-TRAILING = or code E-JSON-READ-NUMBER = or
+   code E-JSON-READ-EOF = or code E-JSON-READ-COLON = or code E-JSON-READ-COMMA = or ;
 
 variable LC-POS
 
@@ -6189,7 +6189,7 @@ variable LC-POS
       lu 0 > if
          line lu CT-TRY {: code:n :}
          code 0= if
-            CT-ROW @ dup GJA-KIND JR:T-OBJ = if
+            CT-ROW @ dup GJA-KIND JSON:T-OBJ = if
                dup key keyu LC-STRING$ val valu LINT-STR= if exit then
             then drop
          else

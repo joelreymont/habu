@@ -269,7 +269,7 @@ s\" 4\n4605754516372524270\n4603041830072026764\n-4620296710764933294\n-46176391
 \ digit table address into a Wasm capture. The row also exercises JSON fields,
 \ UTF-8 bytes and the same writer through the native load path.
 s" WJSON:STEP"
-S\" require src/lib/json-write.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON-WRITE:writer\n128 BUFFER: B\npublic\n: STEP ( -- )\n   W B 128 JSON-WRITE:OPEN JSON-WRITE:OBJECT-START\n   s\" name\" s\" é\" JSON-WRITE:FIELD-S\n   JSON-WRITE:COMMA\n   s\" min\" STR-MIN-I64 JSON-WRITE:FIELD-INT\n   JSON-WRITE:OBJECT-END JSON-WRITE:$ type cr ;\n;package\n"
+S\" require src/lib/json.f\npackage WJSON\nprivate\nTYPED-VARIABLE W JSON:writer\n128 BUFFER: B\npublic\n: STEP ( -- )\n   W B 128 JSON:WRITE-OPEN JSON:WRITE-OBJECT-START\n   s\" name\" s\" é\" JSON:WRITE-FIELD-S\n   JSON:WRITE-COMMA\n   s\" min\" STR-MIN-I64 JSON:WRITE-FIELD-INT\n   JSON:WRITE-OBJECT-END JSON:WRITTEN$ type cr ;\n;package\n"
 S\" {\"name\":\"é\",\"min\":-9223372036854775808}\n" ROW
 
 \ Core byte copying is forward, including when the destination overlaps the
@@ -279,7 +279,7 @@ S\" package WBYTES\nprivate\n16 BUFFER: B\npublic\n: STEP ( -- )\n   s\" 0123456
 S\" 0101010101\n" ROW
 
 \ Camera numeric text reaches FMT's DATA scratch, STR>FLOAT's decimal gate
-\ and JR:FLOAT through the same checked entry on native and Wasm.
+\ and JSON:READ-FLOAT through the same checked entry on native and Wasm.
 s" WNUM:STEP"
 s" require test/wasm/number-text.f"
 S\" 1.2500000000000000e0\n-0.0000000000000000e0\n1.2500e-1\n-2.5000e-3\n-1\n-1\n0\n0\n0\n0\n-1\n-1\n-1\n-1\n-1\n" ROW

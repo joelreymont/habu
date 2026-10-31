@@ -5,14 +5,14 @@
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/byte-buffer.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/adt/option.f
 require tools/lsp-docs.f
 require tools/lsp-defs.f
 require tools/lsp-text.f
 
 package LSP-HOVER
-using JSON-WRITE
+using JSON
 using LSP-DEFS
 
 private
@@ -20,7 +20,7 @@ private
 10 constant LF
 
 create VALUE-B BUF:HDR-BYTES allot       \ the contents' text, grown as it is written
-TYPED-VARIABLE OUT ptr JSON-WRITE:writer \ the answer's writer,
+TYPED-VARIABLE OUT ptr JSON:writer \ the answer's writer,
 variable TARGET-G                        \ and the group of the record it shows
 
 : V+ ( ptr u8 n -- )  BUF:N>BLEN VALUE-B BUF:APPEND-SPAN ;
@@ -52,15 +52,15 @@ variable TARGET-G                        \ and the group of the record it shows
    t tu u USE-WORD$ V+
    NL s" \ " V+ u USE-GROUP GROUP-PATH$ WHERE+ ;
 
-: CONTENTS ( bool -- ptr JSON-WRITE:writer )
+: CONTENTS ( bool -- ptr JSON:writer )
    {: md:bool :}
    md if NL s" ```" V+ then
    OUT @
-   OBJECT-START
-   s" contents" KEY OBJECT-START
-   md if s" kind" s" markdown" FIELD-S else s" kind" s" plaintext" FIELD-S then
-   COMMA s" value" VALUE$ FIELD-S
-   OBJECT-END COMMA ;
+   WRITE-OBJECT-START
+   s" contents" WRITE-KEY WRITE-OBJECT-START
+   md if s" kind" s" markdown" WRITE-FIELD-S else s" kind" s" plaintext" WRITE-FIELD-S then
+   WRITE-COMMA s" value" VALUE$ WRITE-FIELD-S
+   WRITE-OBJECT-END WRITE-COMMA ;
 
 \ Leaves the record's group in TARGET-G.
 : TARGET-REC ( ptr u8 n n -- option<n> )
@@ -78,13 +78,13 @@ variable TARGET-G                        \ and the group of the record it shows
    u USE-BYTES {: from:n to:n :}
    md CONTENTS
    from LSP-TEXT:LINE-CHARACTER to from max LSP-TEXT:LINE-CHARACTER
-   LSP-TEXT:RANGE-AT OBJECT-END drop ;
+   LSP-TEXT:RANGE-AT WRITE-OBJECT-END drop ;
 
 : RECORD-HOVER ( n bool -- )
    {: r:n md:bool :}
    md OPEN
    TARGET-G @ r RECORD-LINES
-   md CONTENTS r REC-RANGE LSP-TEXT:RANGE-AT OBJECT-END drop ;
+   md CONTENTS r REC-RANGE LSP-TEXT:RANGE-AT WRITE-OBJECT-END drop ;
 
 \ Leaves the record's group in TARGET-G.
 : HELD-REC ( n n -- option<n> )
@@ -98,7 +98,7 @@ variable TARGET-G                        \ and the group of the record it shows
    {: slot:n at:n md:bool :}
    slot at HELD-REC MATCH option
       some OF md RECORD-HOVER ENDOF
-      none OF OUT @ NULL drop ENDOF
+      none OF OUT @ WRITE-NULL drop ENDOF
    ;MATCH ;
 
 public
@@ -114,7 +114,7 @@ public
 \ document's own file while the check's positions are of this text
 \ (LSP-DEFS:DEFS-OWN-GROUP), the first such definition. The range is the use's
 \ or the token's. Any other byte, or no completed check, answers null.
-: ANSWER ( ptr JSON-WRITE:writer n n bool -- ptr JSON-WRITE:writer )
+: ANSWER ( ptr JSON:writer n n bool -- ptr JSON:writer )
    {: w slot:n at:n md:bool :}
    w OUT !
    VALUE-B BUF:CLEAR

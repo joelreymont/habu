@@ -151,7 +151,7 @@ create HBT-MAKER-GOT-HEX 64 allot
    rc 0 T= errn 0 T= ;
 
 : HBT-MAKER-ROOTED-BUILD ( -- )
-   HBT-AOT-SRC S\" require src/lib/json-read.f\nrequire src/lib/task.f\nvariable USER-CEILING\nTASK:#USER USER-CEILING !\n: MAIN ( -- ) TASK:#USER USER-CEILING @ <> if s\q maker user\q 74 die then s\q rooted\q type cr ;\n" FS:WRITE-ALL
+   HBT-AOT-SRC S\" require src/lib/json.f\nrequire src/lib/task.f\nvariable USER-CEILING\nTASK:#USER USER-CEILING !\n: MAIN ( -- ) TASK:#USER USER-CEILING @ <> if s\q maker user\q 74 die then s\q rooted\q type cr ;\n" FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    s" run" HBT-MAKER-ROOTED-ON
    HBT-TMP s" hb-aot-got" HBT-AOT-OUT-BUF FS:JOIN-PATH HBT-AOT-OUT-U !
@@ -179,9 +179,9 @@ create HBT-MAKER-GOT-HEX 64 allot
    rc 0 T= erru 0 T=
    HBB-RESET-OPTIONS
    warm if
-      HBT-OUT outu JR:T-TRUE JR:T-FALSE JR:T-TRUE CHECK-REPORT
+      HBT-OUT outu JSON:T-TRUE JSON:T-FALSE JSON:T-TRUE CHECK-REPORT
    else
-      HBT-OUT outu JR:T-FALSE JR:T-TRUE JR:T-TRUE CHECK-REPORT
+      HBT-OUT outu JSON:T-FALSE JSON:T-TRUE JSON:T-TRUE CHECK-REPORT
    then ;
 
 : HBT-MAKER-CACHE-PATH ( ptr u8 n -- ptr u8 n )

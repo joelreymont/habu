@@ -17,8 +17,7 @@ require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/byte-buffer.f
 require src/lib/base64.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/utf8-scalar.f
 require src/lib/crypto/evp.f
 require src/lib/crypto/jws-fixture.f
@@ -94,15 +93,15 @@ DYNAMIC-BUFFER SECRET-LEN n
 
 HTTP:MAX-WORKERS BUFS * BUF:HDR-BYTES * BUFFER: HEADS
 HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
-HTTP:MAX-WORKERS TYPED-BUFFER READER JR:cursor
-HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON-WRITE:writer
+HTTP:MAX-WORKERS TYPED-BUFFER READER JSON:cursor
+HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 HTTP:MAX-WORKERS TYPED-BUFFER WHY SPAN:span<u8>      \ an error answer's code
 HTTP:MAX-WORKERS TYPED-BUFFER ASSERTED SPAN:span<u8> \ the assertion's claims, in SCRATCH
 HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-AT n    \ a value's offset in FORM, -1 absent
 HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 : SLOT ( -- n ) HTTP:WORKER-SLOT ;
-: CURSOR ( -- ptr JR:cursor ) SLOT READER ;
+: CURSOR ( -- ptr JSON:cursor ) SLOT READER ;
 : BUF-OF ( n -- ptr n ) SLOT BUFS * + BUF:HDR-BYTES * HEADS + CELL-VIEW ;
 : SLOT-FIELD ( n -- n ) SLOT FIELDS * + ;
 
@@ -214,7 +213,7 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 \ Malformed JSON or base64url: the assertion's fault.
 : MALFORMED? ( n -- bool )
    {: code:n :}
-   code E-JR-LAST >= code E-JR-FIRST <= and
+   code E-JSON-READ-LAST >= code E-JSON-READ-FIRST <= and
    code E-BASE64-LAST >= code E-BASE64-FIRST <= and or ;
 
 \ One step over untrusted text: malformed is false, any other throw passes.
@@ -226,36 +225,36 @@ HTTP:MAX-WORKERS FIELDS * TYPED-BUFFER FIELD-LEN n
 
 \ The reader on an object text's member, false when the text is not an object
 \ or lacks the key; the caller closes the reader either way.
-: MEMBER ( ptr u8 n ptr u8 n -- JR:reader bool )
+: MEMBER ( ptr u8 n ptr u8 n -- JSON:reader bool )
    {: t:ptr tu:n k:ptr ku:n :}
-   CURSOR t tu JR:INIT
-   JR:NEXT JR:T-OBJ <> if false exit then
-   k ku JR:FIND-KEY ;
+   CURSOR t tu JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if false exit then
+   k ku JSON:READ-FIND-KEY ;
 
 : MEMBER-IS? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
    {: t:ptr tu:n k:ptr ku:n w:ptr wu:n :}
-   t tu k ku MEMBER 0= if JR:CLOSE false exit then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE false exit then
-   w wu JR:STR-EQ? {: same:bool :} JR:CLOSE same ;
+   t tu k ku MEMBER 0= if JSON:READ-CLOSE false exit then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE false exit then
+   w wu JSON:READ-STR-EQ? {: same:bool :} JSON:READ-CLOSE same ;
 
 
 : MEMBER-INT ( ptr u8 n ptr u8 n -- n bool )
-   MEMBER 0= if JR:CLOSE 0 false exit then
-   JR:TOKEN JR:T-INT <> if JR:CLOSE 0 false exit then
-   JR:INT {: v:n :} JR:CLOSE v true ;
+   MEMBER 0= if JSON:READ-CLOSE 0 false exit then
+   JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE 0 false exit then
+   JSON:READ-INT {: v:n :} JSON:READ-CLOSE v true ;
 
-\ A string member as sent, quotes and escapes included, for FIELD-RAW; false
-\ when absent or not a string.
+\ A string member as sent, quotes and escapes included, for
+\ JSON:WRITE-FIELD-RAW; false when absent or not a string.
 : MEMBER-RAW ( ptr u8 n ptr u8 n -- ptr u8 n bool )
-   MEMBER 0= if JR:CLOSE s" " false exit then
-   JR:TOKEN JR:T-STR <> if JR:CLOSE s" " false exit then
-   JR:SPAN$ {: a:ptr u:n :} JR:CLOSE a 1- u 2 + true ;
+   MEMBER 0= if JSON:READ-CLOSE s" " false exit then
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE s" " false exit then
+   JSON:READ-SPAN$ {: a:ptr u:n :} JSON:READ-CLOSE a 1- u 2 + true ;
 
 \ Whether a text is one JSON object; malformed JSON throws the reader's code.
 : OBJECT? ( ptr u8 n -- bool )
-   CURSOR -rot JR:INIT
-   JR:NEXT JR:T-OBJ = if JR:FINISH true exit then
-   JR:CLOSE false ;
+   CURSOR -rot JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ = if JSON:READ-FINISH true exit then
+   JSON:READ-CLOSE false ;
 
 
 \ This server's URL with the path; borrowed from the task's SB.
@@ -327,50 +326,50 @@ private
 
 
 \ The claims every issued token carries; the writer is left inside the object.
-: CLAIMS-OPEN ( -- ptr JSON-WRITE:writer )
+: CLAIMS-OPEN ( -- ptr JSON:writer )
    epoch-seconds {: now:n :}
-   SLOT WRITER CLAIMS BUF-OF JSON-WRITE:OPEN-BUF
-   JSON-WRITE:OBJECT-START
-   s" iss" s" " URL$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" aud" AUDIENCE$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" azp" CLIENT-ID FIELD$ drop JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" iat" now JSON-WRITE:FIELD-INT JSON-WRITE:COMMA
-   s" nbf" now JSON-WRITE:FIELD-INT JSON-WRITE:COMMA
-   s" exp" now LIFE-S + JSON-WRITE:FIELD-INT ;
+   SLOT WRITER CLAIMS BUF-OF JSON:WRITE-OPEN-BUF
+   JSON:WRITE-OBJECT-START
+   s" iss" s" " URL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" aud" AUDIENCE$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" azp" CLIENT-ID FIELD$ drop JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" iat" now JSON:WRITE-FIELD-INT JSON:WRITE-COMMA
+   s" nbf" now JSON:WRITE-FIELD-INT JSON:WRITE-COMMA
+   s" exp" now LIFE-S + JSON:WRITE-FIELD-INT ;
 
-: CLAIMS-CLOSE ( ptr JSON-WRITE:writer -- )
-   JSON-WRITE:OBJECT-END JSON-WRITE:CLOSE ;
+: CLAIMS-CLOSE ( ptr JSON:writer -- )
+   JSON:WRITE-OBJECT-END JSON:WRITE-CLOSE ;
 
 \ The client acts as itself.
 : CREDENTIALS ( -- )
    CLAIMS-OPEN
-   JSON-WRITE:COMMA s" oid" CLIENT-ID FIELD$ drop JSON-WRITE:FIELD-S
-   JSON-WRITE:COMMA s" tid" TENANT$ JSON-WRITE:FIELD-S
+   JSON:WRITE-COMMA s" oid" CLIENT-ID FIELD$ drop JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" tid" TENANT$ JSON:WRITE-FIELD-S
    CLAIMS-CLOSE ;
 
 \ The assertion's claim copied as sent, when it has one.
-: COPIED ( ptr JSON-WRITE:writer ptr u8 n -- ptr JSON-WRITE:writer )
+: COPIED ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: k:ptr ku:n :}
    ASSERTED$ k ku MEMBER-RAW 0= if 2drop exit then {: v:ptr vu:n :}
-   JSON-WRITE:COMMA k ku v vu JSON-WRITE:FIELD-RAW ;
+   JSON:WRITE-COMMA k ku v vu JSON:WRITE-FIELD-RAW ;
 
 \ The client acts for the assertion's user.
 : ON-BEHALF ( -- )
    CLAIMS-OPEN s" oid" COPIED s" tid" COPIED CLAIMS-CLOSE ;
 
-: ISSUED-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" access_token" TOKEN BUF-OF BUF$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" token_type" s" Bearer" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" expires_in" LIFE-S JSON-WRITE:FIELD-INT
-   JSON-WRITE:OBJECT-END ;
+: ISSUED-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" access_token" TOKEN BUF-OF BUF$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token_type" s" Bearer" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" expires_in" LIFE-S JSON:WRITE-FIELD-INT
+   JSON:WRITE-OBJECT-END ;
 
 : ISSUE ( HTTP:response -- )
    CLAIMS BUF-OF BUF$ TOKEN BUF-OF MINT 2drop
    [: ISSUED-BODY ;] HTTP:JSON! ;
 
-: ERROR-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START s" error" SLOT WHY @ SPAN:$ JSON-WRITE:FIELD-S JSON-WRITE:OBJECT-END ;
+: ERROR-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START s" error" SLOT WHY @ SPAN:$ JSON:WRITE-FIELD-S JSON:WRITE-OBJECT-END ;
 
 \ The error code is a literal.
 : REFUSE ( HTTP:response n ptr u8 n -- )
@@ -413,23 +412,23 @@ private
    answer s" Content-Type" s" text/plain" HTTP:HEADER!
    answer t u HTTP:BODY! ;
 
-: DISCOVERY-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" issuer" s" " URL$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" jwks_uri" s" /keys" URL$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" token_endpoint" s" /token" URL$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END ;
+: DISCOVERY-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" issuer" s" " URL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" jwks_uri" s" /keys" URL$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" token_endpoint" s" /token" URL$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
 
-: KEYS-BODY ( ptr JSON-WRITE:writer -- ptr JSON-WRITE:writer )
-   JSON-WRITE:OBJECT-START
-   s" keys" JSON-WRITE:KEY JSON-WRITE:ARRAY-START JSON-WRITE:OBJECT-START
-   s" kty" s" RSA" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" use" s" sig" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" alg" s" RS256" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" kid" KID$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" n" JWS-FIXTURE:MODULUS$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" e" JWS-FIXTURE:EXPONENT$ JSON-WRITE:FIELD-S
-   JSON-WRITE:OBJECT-END JSON-WRITE:ARRAY-END JSON-WRITE:OBJECT-END ;
+: KEYS-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" keys" JSON:WRITE-KEY JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
+   s" kty" s" RSA" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" use" s" sig" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" alg" s" RS256" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" kid" KID$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" n" JWS-FIXTURE:MODULUS$ JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" e" JWS-FIXTURE:EXPONENT$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END JSON:WRITE-ARRAY-END JSON:WRITE-OBJECT-END ;
 
 public
 

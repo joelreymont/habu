@@ -6,7 +6,7 @@
 \ definitions can collide with an older bare binding.
 
 require src/compiler/native/compiler.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/test.f
 require src/lib/errors.f
 require test/compiler/native-eval-fixture.f
@@ -33,8 +33,8 @@ PRODUCT nctorproduct
 \ The two writer fields each occupy four cells. The inner constructor takes
 \ 33 cells; nesting it with one more field gives the outer constructor 34.
 STRUCTURE nctorinner
-   FIELD first JSON-WRITE:writer
-   FIELD second JSON-WRITE:writer
+   FIELD first JSON:writer
+   FIELD second JSON:writer
    FIELD n01 n FIELD n02 n FIELD n03 n FIELD n04 n FIELD n05 n
    FIELD n06 n FIELD n07 n FIELD n08 n FIELD n09 n FIELD n10 n
    FIELD n11 n FIELD n12 n FIELD n13 n FIELD n14 n FIELD n15 n
@@ -156,8 +156,8 @@ variable X-LAST-TARGET
 
 : NCTOR-RECORD-ROUNDTRIP ( -- )
    T-RESET
-   NCTOR-OUT1 101 102 NCTOR-BUF1 JSON--WRITE-WRITER:MAKE
-   NCTOR-OUT2 201 202 NCTOR-BUF2 JSON--WRITE-WRITER:MAKE
+   NCTOR-OUT1 101 102 NCTOR-BUF1 JSON-WRITER:MAKE
+   NCTOR-OUT2 201 202 NCTOR-BUF2 JSON-WRITER:MAKE
    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
    NCTOR--WIDE--TEST-NCTORINNER:MAKE
    26 NCTOR--WIDE--TEST-NCTOROUTER:MAKE NCTOR-FORWARD-OUTER
@@ -166,8 +166,8 @@ variable X-LAST-TARGET
    25 T= 24 T= 23 T= 22 T= 21 T= 20 T= 19 T= 18 T= 17 T= 16 T=
    15 T= 14 T= 13 T= 12 T= 11 T= 10 T= 9 T= 8 T= 7 T= 6 T=
    5 T= 4 T= 3 T= 2 T= 1 T=
-   JSON--WRITE-WRITER:UNMAKE NCTOR-BUF2 = TTRUE 202 T= 201 T= NCTOR-OUT2 = TTRUE
-   JSON--WRITE-WRITER:UNMAKE NCTOR-BUF1 = TTRUE 102 T= 101 T= NCTOR-OUT1 = TTRUE
+   JSON-WRITER:UNMAKE NCTOR-BUF2 = TTRUE 202 T= 201 T= NCTOR-OUT2 = TTRUE
+   JSON-WRITER:UNMAKE NCTOR-BUF1 = TTRUE 102 T= 101 T= NCTOR-OUT1 = TTRUE
    tier@ 1 = if
       HB-TARGET-LINUX-X86-64? if
          s" x64 forwards a 34-cell record through a tail branch" T-LABEL

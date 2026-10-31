@@ -390,10 +390,10 @@ variable CV-ROW-U
    [: CV-PARSE ;] catch ;
 
 : CV-SYNTAX? ( n -- bool ) {: code:n :}
-   code E-JR-MALFORMED = code E-JR-STRING = or
-   code E-JR-ESCAPE = or code E-JR-SURROGATE = or
-   code E-JR-TRAILING = or code E-JR-NUMBER = or
-   code E-JR-EOF = or code E-JR-COLON = or code E-JR-COMMA = or ;
+   code E-JSON-READ-MALFORMED = code E-JSON-READ-STRING = or
+   code E-JSON-READ-ESCAPE = or code E-JSON-READ-SURROGATE = or
+   code E-JSON-READ-TRAILING = or code E-JSON-READ-NUMBER = or
+   code E-JSON-READ-EOF = or code E-JSON-READ-COLON = or code E-JSON-READ-COMMA = or ;
 
 : CV-BLANK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 ?do
@@ -411,8 +411,8 @@ variable CV-ROW-U
       line lu CV-BLANK? 0= if
          line lu CV-TRY {: code:n :}
          code 0= if
-            CV-ROW @ dup GJA-KIND JR:T-OBJ = if exit then
-            drop CV-STRICT @ if E-JR-STATE throw then
+            CV-ROW @ dup GJA-KIND JSON:T-OBJ = if exit then
+            drop CV-STRICT @ if E-JSON-READ-STATE throw then
          else
             code CV-SYNTAX? 0= CV-STRICT @ or if code throw then
          then
@@ -427,13 +427,13 @@ variable CV-ROW-U
    drop CV-NONE ;
 
 : STRING$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
-   JR:T-STR VALUE dup SPAN:LEN 0= if drop s" " exit then
+   JSON:T-STR VALUE dup SPAN:LEN 0= if drop s" " exit then
    GJA-STRING$ ;
 
 : NUMBER$ ( SPAN:span<u8> ptr u8 n -- ptr u8 n )
    {: node:SPAN:span<u8> key:ptr keyu:n :}
    node key keyu GJA-FIELD? 0= if drop s" " exit then
-   dup GJA-KIND dup JR:T-INT = swap JR:T-FLOAT = or 0= if drop s" " exit then
+   dup GJA-KIND dup JSON:T-INT = swap JSON:T-FLOAT = or 0= if drop s" " exit then
    SPAN:$ ;
 
 : PACKET ( ptr u8 n ptr u8 n ptr u8 n -- SPAN:span<u8> )
@@ -452,7 +452,7 @@ variable CV-ROW-U
    CV-START-STRICT
    [: begin CV-NEXT SPAN:LEN 0= until ;] catch {: rc:n :}
    rc 0= if true exit then
-   rc CV-SYNTAX? rc E-JR-STATE = or if false exit then
+   rc CV-SYNTAX? rc E-JSON-READ-STATE = or if false exit then
    rc throw ;
 
 
@@ -1769,7 +1769,7 @@ $180000 constant LARGE-STDIN-LEN
    label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
    label labelu T-LABEL p s" column" NUMBER$ col colu T$=
-   label labelu T-LABEL p s" word" JR:T-STR VALUE SPAN:LEN 0= TTRUE
+   label labelu T-LABEL p s" word" JSON:T-STR VALUE SPAN:LEN 0= TTRUE
    label labelu T-LABEL
    p ;
 
@@ -3356,7 +3356,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
 : DEF-EFF ( ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n eff:ptr effu:n :}
    effu 0= if
-      label labelu T-LABEL DEF-NODE @ s" effect" JR:T-STR VALUE SPAN:LEN 0= TTRUE
+      label labelu T-LABEL DEF-NODE @ s" effect" JSON:T-STR VALUE SPAN:LEN 0= TTRUE
       exit
    then
    label labelu s" effect" eff effu DEF-STR ;
@@ -4402,8 +4402,8 @@ variable SEEN-U
 : CAND-BARE ( ptr u8 n -- )
    {: label:ptr labelu:n :}
    label labelu T-LABEL CAND-NODE @ SPAN:LEN 0<> TTRUE
-   label labelu T-LABEL CAND-NODE @ s" file" JR:T-STR VALUE SPAN:LEN 0= TTRUE
-   label labelu T-LABEL CAND-NODE @ s" target_start" JR:T-INT VALUE SPAN:LEN 0= TTRUE ;
+   label labelu T-LABEL CAND-NODE @ s" file" JSON:T-STR VALUE SPAN:LEN 0= TTRUE
+   label labelu T-LABEL CAND-NODE @ s" target_start" JSON:T-INT VALUE SPAN:LEN 0= TTRUE ;
 
 
 : NO-CAND ( ptr u8 n -- )

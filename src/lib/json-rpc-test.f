@@ -5,18 +5,16 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fmt.f
-require src/lib/json-read.f
-require src/lib/json-write.f
+require src/lib/json.f
 require src/lib/json-rpc.f
 
 package JSON-RPC-TEST
 using JSON-RPC
-using JSON-WRITE
-using JR
+using JSON
 
-TYPED-VARIABLE ST JR:cursor
+TYPED-VARIABLE ST JSON:cursor
 256 BUFFER: OUT
-TYPED-VARIABLE W JSON-WRITE:writer
+TYPED-VARIABLE W JSON:writer
 
 : SORTED ( ptr u8 n -- JSON-RPC:message )
    {: a:ptr u:n :}
@@ -183,44 +181,44 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
    s\" \"initialized\"" s" initialize" NAMES? TFALSE
    s\" \"\"" s" " NAMES? TTRUE ;
 
-: WRITER ( -- ptr JSON-WRITE:writer )
-   W OUT 256 JSON-WRITE:OPEN ;
+: WRITER ( -- ptr JSON:writer )
+   W OUT 256 WRITE-OPEN ;
 
-: WRITTEN$ ( ptr JSON-WRITE:writer -- ptr u8 n )
+: CLOSED$ ( ptr JSON:writer -- ptr u8 n )
    {: w :}
-   w $ {: a:ptr u:n :}
-   w JSON-WRITE:CLOSE
+   w WRITTEN$ {: a:ptr u:n :}
+   w WRITE-CLOSE
    a u ;
 
 : ID ( ptr u8 n -- JSON-RPC:id )  JSON--RPC-ID:MAKE ;
 
 : EMPTY-RESULT ( -- )
-   WRITER s" " ID RESULT WRITTEN$ 2drop ;
+   WRITER s" " ID RESULT CLOSED$ 2drop ;
 
 : EMPTY-ERROR ( -- )
-   WRITER s" " ID INTERNAL-ERROR s" m" ERROR WRITTEN$ 2drop ;
+   WRITER s" " ID INTERNAL-ERROR s" m" ERROR CLOSED$ 2drop ;
 
 \ RESULT, ERROR and NOTIFY: exact bytes, a message escaped, each read back by
 \ >MESSAGE; an empty id is E-JSON-RPC-ID with nothing written.
 : TEST-WRITE ( -- )
-   WRITER s" 2" ID RESULT NULL END WRITTEN$
+   WRITER s" 2" ID RESULT WRITE-NULL END CLOSED$
    2dup s\" {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}" T$=
    s" success 2 null" SORTS
-   WRITER s\" \"a\\\"b\"" ID RESULT OBJECT-START OBJECT-END
-   END WRITTEN$
+   WRITER s\" \"a\\\"b\"" ID RESULT WRITE-OBJECT-START WRITE-OBJECT-END
+   END CLOSED$
    2dup s\" {\"jsonrpc\":\"2.0\",\"id\":\"a\\\"b\",\"result\":{}}" T$=
    s\" success \"a\\\"b\" {}" SORTS
-   WRITER NULL-ID METHOD-NOT-FOUND s\" no \"x\"" ERROR WRITTEN$
+   WRITER NULL-ID METHOD-NOT-FOUND s\" no \"x\"" ERROR CLOSED$
    2dup s\" {\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32601,\"message\":\"no \\\"x\\\"\"}}" T$=
    s\" failure null {\"code\":-32601,\"message\":\"no \\\"x\\\"\"}" SORTS
    WRITER s" textDocument/publishDiagnostics" NOTIFY
-   ARRAY-START ARRAY-END END WRITTEN$
+   WRITE-ARRAY-START WRITE-ARRAY-END END CLOSED$
    2dup s\" {\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":[]}" T$=
    s\" notification \"textDocument/publishDiagnostics\" []" SORTS
    [: EMPTY-RESULT ;] E-JSON-RPC-ID TTHROWSQ
-   W WRITTEN$ nip 0 T=
+   W CLOSED$ nip 0 T=
    [: EMPTY-ERROR ;] E-JSON-RPC-ID TTHROWSQ
-   W WRITTEN$ nip 0 T= ;
+   W CLOSED$ nip 0 T= ;
 
 : TEST-MAIN ( -- )
    T-RESET
@@ -239,7 +237,6 @@ create BAD-UTF8 123 c, 34 c, 109 c, 34 c, 58 c, 34 c, $FF c, 34 c, 125 c,
 
 TEST-MAIN
 
-;using
 ;using
 ;using
 ;package
