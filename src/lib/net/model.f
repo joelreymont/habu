@@ -105,6 +105,7 @@ STRUCTURE call DERIVE addr
    FIELD data-count n
    FIELD http-status n
    FIELD finish-u n
+   FIELD finish-stop bool
    FIELD embedding-kind n
    FIELD journal-context n
    FIELD journal-get [ n ptr u8 n ptr n -- bool ]
@@ -490,6 +491,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:FINISH-U !
+   false c MODEL-CALL:FINISH-STOP !
    0 c MODEL-CALL:PARTS-COUNT !
    false c MODEL-CALL:PARTS-OPEN !
    false c MODEL-CALL:PARTS-VALID !
@@ -1632,7 +1634,7 @@ private
    c CHOICE
    s" finish_reason" DESCEND
    JR:TOKEN JR:T-STR <> if JR:CLOSE E-RESPONSE throw then
-   s" stop" JR:STR-EQ? if JR:CLOSE exit then
+   s" stop" JR:STR-EQ? if true c MODEL-CALL:FINISH-STOP ! JR:CLOSE exit then
    c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JR:STR c MODEL-CALL:FINISH-U !
    JR:CLOSE E-INCOMPLETE throw ;
 
@@ -1925,6 +1927,7 @@ private
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:FINISH-U !
+   false c MODEL-CALL:FINISH-STOP !
    false c MODEL-CALL:EMBEDDED !
    0 c MODEL-CALL:REPLAY-KIND !
    c RESET-USAGE
@@ -2173,9 +2176,11 @@ private
    else fault 0<> if s" failed" else s" ok" then then JSON-WRITE:FIELD-S
    JSON-WRITE:COMMA s" fault" fault NONZERO COUNT-FIELD
    JSON-WRITE:COMMA s" http_status" c MODEL-CALL:HTTP-STATUS @ NONZERO COUNT-FIELD
-   JSON-WRITE:COMMA s" finish_reason" c MODEL-CALL:FINISH-U @ 0<> if
+   JSON-WRITE:COMMA s" finish_reason" c MODEL-CALL:FINISH-STOP @ if
+      s" stop" JSON-WRITE:FIELD-S
+   else c MODEL-CALL:FINISH-U @ 0<> if
       c CONTENT-BUF HELD c MODEL-CALL:FINISH-U @ SPAN:TAKE SPAN:$ JSON-WRITE:FIELD-S
-   else JSON-WRITE:FIELD-NULL then
+   else JSON-WRITE:FIELD-NULL then then
    JSON-WRITE:COMMA s" request_bytes" c BODY$ nip JSON-WRITE:FIELD-INT
    kind 1 = if
       JSON-WRITE:COMMA s" prefix_bytes" c GEN$ nip c SYSTEM$ nip + c SCHEMA$ nip +

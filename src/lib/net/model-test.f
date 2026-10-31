@@ -943,6 +943,7 @@ create HASH 64 allot
    s" outcome" ROW s" ok" STR-IS
    s" fault" ROW NULL-IS
    s" http_status" ROW 200 INT-IS
+   s" finish_reason" ROW s" stop" STR-IS
    s" prompt_tokens" ROW 11 INT-IS
    s" cached_tokens" ROW 4 INT-IS
    s" completion_tokens" ROW 6 INT-IS
@@ -964,6 +965,7 @@ create HASH 64 allot
    s" outcome" ROW s" failed" STR-IS
    s" fault" ROW MODEL:E-UNAVAILABLE INT-IS
    s" http_status" ROW 429 INT-IS
+   s" finish_reason" ROW NULL-IS
    s" prefix_hash" ROW HASH 64 STR-IS
    M MODEL:RECORD-FAULT 0= ASSERT
    \ A call that got no reply records no HTTP status, not zero.
@@ -976,6 +978,7 @@ create HASH 64 allot
    ROWS-MADE @ 4 = ASSERT
    s" kind" ROW s" embedding" STR-IS
    s" purpose" ROW s" embed" STR-IS
+   s" finish_reason" ROW NULL-IS
    s" kind" USAGE s" embedding" STR-IS
    s" model" USAGE s" test-embedding" STR-IS
    s" prompt_tokens" USAGE 2 INT-IS
@@ -1002,7 +1005,9 @@ create HASH 64 allot
    M MODEL:RECORD-FAULT E-RECORDER = ASSERT
    false ROW-FAIL !
    PURPOSE CHAT
-   M MODEL:RECORD-FAULT 0= ASSERT ;
+   M MODEL:RECORD-FAULT 0= ASSERT
+   PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
+   s" finish_reason" ROW s" length" STR-IS ;
 
 
 \ A reader at the value of the last request's member `key`.
