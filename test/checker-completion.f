@@ -16,6 +16,21 @@ public
 : QALDEF ( n -- ) create , does> ( -- n ) @ ;
 ;package
 
+\ CMQA's part CmqB, whose name the top-level package CMQB shares, as the engine
+\ makes them: the dictionary holds the part's row, CMQA:CmqB (cases 13 and 14).
+package CMQB
+public
+: QPT ( -- n ) 40 ;
+;package
+
+package CMQA
+package CmqB
+: QPV ( -- n ) 41 ;
+public
+: QPW ( -- n ) 42 ;
+;package
+;package
+
 package NAVL
 
 private
@@ -246,6 +261,9 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 \   public of a package not in use;
 \ - a bare prefix, a package's stem or its edge colon misses a qualified
 \   spelling a qualified prefix offers there, or one only the dictionary holds;
+\ - a part's public is missed behind its own name inside its package or the
+\   part, or offered outside them, behind the parent's path or a top-level
+\   package's name the part shadows;
 \ - a candidate's location is not its selected declaration's: a located word
 \   offered without its row's visit and bytes, a word the selection hides
 \   lending its location, a refused redeclaration moving it, or a local, an
@@ -806,6 +824,57 @@ variable REW-ROW
    KEPT-ALL
    s" qald:QALDEF;does" UNPLACED ;
 
+\ 13. A part's words.
+\ Inside CMQA a qualifier CmqB names its part, which shadows the top-level
+\ CMQB there: the part's public is offered behind the part's name, as its row
+\ spells it, and neither the part's private nor CMQB's public is.
+: PART-IN ( ptr u8 n n -- )
+   {: a:ptr u:n k:n :}
+   s" cmqb:" KEPT-RESET
+   a u  a u s" CmqB:QPW" k AT  [: KEEP ;] ARMED
+   s" the package's body's check runs through" T-LABEL 0 T=
+   KEPT-ALL
+   s" CmqB:QPW" UNPLACED
+   s" CmqB:QPV" ABSENT
+   s" CmqB:QPT" ABSENT ;
+
+: CASE-PART-IN ( -- )
+   s" package CMQA : CMQU1 ( -- n ) CmqB:QPW ; ;package" 2 PART-IN
+   s" package CMQA : CMQU2 ( -- n ) CmqB:QPW ; ;package" 5 PART-IN
+   s" package CMQA : CMQU3 ( -- n ) CmqB:QPW ; ;package" 6 PART-IN ;
+
+\ Outside CMQA, CMQB: offers CMQB's public and no spelling reaches the part.
+: PART-OUT ( -- )
+   KEPT-ALL
+   s" CMQB:QPT" UNPLACED
+   s" CMQB:QPW" ABSENT
+   s" CMQB:QPV" ABSENT ;
+
+\ The prefix K bytes into TEXT's CMQB:QPT, in a body of CMQC.
+: PART-OTHER ( ptr u8 n n -- )
+   {: a:ptr u:n k:n :}
+   s" cmqb:" KEPT-RESET
+   a u  a u s" CMQB:QPT" k AT  [: KEEP ;] ARMED
+   s" the other package's body's check runs through" T-LABEL 0 T=
+   PART-OUT ;
+
+\ Neither CMQA: nor its path to the part offers anything at top level.
+: PART-PATH ( ptr u8 n -- )
+   s" cmqa:" KEPT-RESET  TOP
+   KEPT-ALL
+   s" nothing behind CMQA" T-LABEL
+   KEPT-N @ 0 T= ;
+
+: CASE-PART-OUT ( -- )
+   s" cmqb:" KEPT-RESET  s" CM" TOP  PART-OUT
+   s" cmqb:" KEPT-RESET  s" CMQB:" TOP  PART-OUT
+   s" cmqb:" KEPT-RESET  s" CMQB:Q" TOP  PART-OUT
+   s" CMQA:" PART-PATH
+   s" CMQA:CmqB:" PART-PATH
+   s" package CMQC : CMQX1 ( -- n ) CMQB:QPT ; ;package" 2 PART-OTHER
+   s" package CMQC : CMQX2 ( -- n ) CMQB:QPT ; ;package" 5 PART-OTHER
+   s" package CMQC : CMQX3 ( -- n ) CMQB:QPT ; ;package" 6 PART-OTHER ;
+
 : CASES ( -- )
    FIXTURE
    CASE-PARTIAL
@@ -832,16 +901,54 @@ variable REW-ROW
    CASE-DEPENDENCY
    CASE-REWOUND
    CASE-QUALIFIED-ANY
-   CASE-DICTIONARY ;
+   CASE-DICTIONARY
+   CASE-PART-IN
+   CASE-PART-OUT ;
 
 \ A replay's names bind only while a scope holds the checker's overlay open, so
-\ the fixture and every case run in one neutral checker scope, as a verifier
-\ child runs its composition (tools/check-verify-child-lib.f SCOPED).
+\ the fixture and cases 1 to 13 run in one neutral checker scope, as a verifier
+\ child runs its composition (tools/check-verify-child-lib.f SCOPED). That scope
+\ starts at top level (CHECKER-SCOPE-START-NEUTRAL), so case 14 runs outside it.
 : MAIN ( -- )
    T-RESET
-   [: CASES ;] IN-NEUTRAL
-   T-REPORT ;
+   [: CASES ;] IN-NEUTRAL ;
 
 MAIN
 
+public
+
+\ 14. Inside the part, which the engine holds open where this runs, its words
+\ are the open package's: bare, and its public behind its own name, which
+\ qualifies a global too, as the engine's find binds it (habu1.f FIND-DONE).
+: CASE-PART-OPEN ( -- )
+   s" qp" KEPT-RESET
+   s" : CMQS1 ( -- n ) QPV QPW + ;" 2dup s" QPW +" 2 AT  [: KEEP ;] ARMED
+   s" the part's body's check runs through" T-LABEL 0 T=
+   KEPT-ALL
+   s" QPW" UNPLACED
+   s" QPV" UNPLACED
+   s" QPT" ABSENT
+   s" cmqb:qp" KEPT-RESET
+   s" : CMQS2 ( -- n ) QPV QPW + ;" 2dup s" QPW +" 0 AT  [: KEEP ;] ARMED
+   s" the part's gap's check runs through" T-LABEL 0 T=
+   KEPT-ALL
+   s" CmqB:QPW" UNPLACED
+   s" CmqB:QPV" ABSENT
+   s" CmqB:QPT" ABSENT
+   s" cmqb:dup" KEPT-RESET
+   s" : CMQS3 ( n -- n n ) CmqB:dup ;" 2dup s" CmqB:dup" 1 AT  [: KEEP ;] ARMED
+   s" the qualified global's check runs through" T-LABEL 0 T=
+   KEPT-ALL
+   s" CmqB:dup" UNPLACED ;
+
+: REPORT ( -- ) T-REPORT ;
+
 ;package
+
+package CMQA
+package CmqB
+NAVL:CASE-PART-OPEN
+;package
+;package
+
+NAVL:REPORT

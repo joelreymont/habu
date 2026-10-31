@@ -129,12 +129,10 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
    TOKEN if exit then
    s" hb: : missing definition name after " ERROR-TEXT:TYPE RC-NO-NAME THROW-AT ;
 
-\ The engine's twin: habu2.f EMIT-QUALIFY-DEF.
-\ The wordlist NAME:tail goes into: NAME's public one, from its namespace row.
-\ With no row a new one is made, as a qualified definition makes it: a public
-\ wid and no private one.
+\ The engine's twin: habu2.f EMIT-QUALIFY-DEF. A head with no row makes a
+\ top-level package with a public wordlist and no private one.
 : DEF-NAMESPACE ( ptr u8 n -- n ) {: a:ptr q:n :}
-   a q XREF-NAMESPACE-WL WL-PROBE {: row:ptr :}
+   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? if row XREF-PKG-PUBLIC exit then
    PKG-DICT-ROOM
    a q PKG-CODE-ROOM

@@ -359,6 +359,18 @@ USING-TEST:URS-V @ 42 T=
 s" using URN : URN-R1 ( -- n ) URNW ; ;using" UCE-CATCH E-REJECT T=
 s" using URN : URN-R2 ( -- n ) URNW ; ;using" VS-CATCH E-REJECT T=
 
+\ === a part of the open package ===
+\ Inside package UPA, `using UPB` names UPA's part UPB: its publics are bare
+\ until `;using`, on the engine and in the verifier's replay. At top level no
+\ name reaches the part.
+s" package UPA package UPB public : UPX ( -- n ) 6 ; ;package ;package" UCE-CATCH 0 T=
+package USING-TEST public variable UPT-V ;package
+s" package UPA using UPB : UPR ( -- n ) UPX ; ;using UPR USING-TEST:UPT-V ! ;package" UCE-CATCH 0 T=
+USING-TEST:UPT-V @ 6 T=
+s" package UPA using UPB ;using UPX drop ;package" UCE-CATCH E-REJECT T=
+s" package UPA using UPB : UPV ( -- n ) UPX ; ;using ;package" VS-CATCH 0 T=
+s" using UPB" UCE-CATCH E-UNKNOWN T=
+
 \ === a definition reusing an ambiguous used name ===
 \ A definition binds its own pending name first, so a global AW is admitted
 \ while UA and UC both export AW, at each available tier, and runs as itself. A

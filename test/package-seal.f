@@ -70,6 +70,14 @@ variable OPEN
    s" by the engine's protected-wordlist guard" T-LABEL
    ERR$ s" cannot publish into protected word" CONTAINS? TTRUE ;
 
+\ A head naming a sealed system package is refused unless the open top-level
+\ package has a part of that name (test/outer-interpret.f PACKAGE-PART-NAME).
+: SECTION-SYSTEM ( -- )
+   s" a definition qualified by a sealed system package is refused"
+   s" : MATCH:ZZ ( -- n ) 2 ;" s" MATCH:ZZ" SEALED
+   s" and so is one inside a package with no part of that name"
+   S\" package MINE\n: MATCH:ZZ ( -- n ) 2 ;\n;package\n" s" MATCH:ZZ" SEALED ;
+
 : SECTION-APPLICATION ( -- )
    s" a package a program makes reopens, and both blocks' words run"
    S\" package MINE\n: ONE ( -- n ) 1 ;\n;package\npackage MINE\npublic\n: TWO ( -- n ) ONE 1 + ;\n;package\nMINE:TWO . cr\n"
@@ -119,6 +127,7 @@ public
    T-RESET
    SECTION-CLASS
    SECTION-REOPEN
+   SECTION-SYSTEM
    SECTION-APPLICATION
    SECTION-PUBLIC
    SECTION-CENSUS

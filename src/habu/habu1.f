@@ -491,12 +491,7 @@ variable FIND-QHAS
 variable FIND-QBAD
 variable FIND-QTAIL
 variable FIND-QTAILOK
-variable FIND-NLOOP
-variable FIND-NNEXT
-variable FIND-NCMP
-variable FIND-NMATCH
 variable FIND-NEND
-variable FIND-NINL
 variable FIND-START
 variable FIND-LOOP
 variable FIND-DONE
@@ -4681,8 +4676,8 @@ private
    open LBL, ;
 
 \ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
-\ span names. The name resolves as `using` resolves one, to its row in
-\ DICT-WL:NAMESPACE, whose cell [0] is the package's public wid. A name no
+\ span names. The name resolves as a top-level `using` resolves one, to its
+\ row in DICT-WL:NAMESPACE, whose cell [0] is the package's public wid. A name no
 \ package owns writes `hb: policy: no package <name>`; a wid at or above
 \ PROT-WID-MAX has no bit in the band. A package with a public word spelled like
 \ a dispatch row (habu2.f LROWWALK) writes `hb: policy: package <name>
@@ -5883,6 +5878,55 @@ variable FIND-HINL
 variable FIND-HCMP
 variable FIND-HMATCH
 
+\ LHEADROW: the package row a qualifier's head names, read by LFIND, a
+\ qualified definition and `using`. Inside package A, or a part of it, the
+\ head names A's part `A:head` first, then a top-level package. In: x9 =
+\ head, x17 = its length. Out: x12 = the row or 0. It preserves x0, x1, x9,
+\ x10, x13 and x17 and clobbers x2-x8, x11, x14-x16. The path is composed on
+\ the machine stack: layout.f PACKAGE-PATH holds the token `package` is
+\ opening while a lookup runs.
+variable LHEADROW
+: EMIT-HEAD-ROW ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: top:label inline:label head:label colon:label tail:label probe:label bare:label done:label :}
+   PACKAGE-PATH:CAP 64 + {: frame:n :}
+   LHEADROW LABEL@ LBL,
+   SP SP frame SUBI,
+   30 SP 0 STR,  0 SP 8 STR,  1 SP 16 STR,  9 SP 24 STR,
+   10 SP 32 STR,  13 SP 40 STR,  17 SP 48 STR,
+   5 DATA ENCLOSING:REC LDR,  5 top CBNZ,
+   5 DATA PKG-REC-CELL LDR,  5 bare CBZ,
+   top LBL,
+   2 5 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,   \ x2 = A's name length
+   4 5 24 ADDI,
+   14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
+      4 5 24 LDR,                                     \ x4 = A's name bytes
+   inline LBL,
+   1 2 17 ADD,  1 1 1 ADDI,                           \ x1 = the path's length
+   1 PACKAGE-PATH:CAP CMPI,  C-CS bare BCOND,         \ no part has a path so long
+   0 SP 64 ADDI,
+   7 0 MOVZ,
+   head LBL,  7 2 CMP,  C-CS colon BCOND,
+      14 4 7 ADD,  14 14 0 LDRB,  15 0 7 ADD,  14 15 0 STRB,
+      7 7 1 ADDI,  head B,
+   colon LBL,
+   14 $3A MOVZ,  15 0 2 ADD,  14 15 0 STRB,
+   16 15 1 ADDI,
+   7 0 MOVZ,
+   tail LBL,  7 17 CMP,  C-CS probe BCOND,
+      14 9 7 ADD,  14 14 0 LDRB,  15 16 7 ADD,  14 15 0 STRB,
+      7 7 1 ADDI,  tail B,
+   probe LBL,
+   2 DICT-WL:NAMESPACE LIT64,  WLFIND:LENTRY LABEL@ BL,
+   12 done CBNZ,
+   bare LBL,
+   0 SP 24 LDR,  1 SP 48 LDR,
+   2 DICT-WL:NAMESPACE LIT64,  WLFIND:LENTRY LABEL@ BL,
+   done LBL,
+   30 SP 0 LDR,  0 SP 8 LDR,  1 SP 16 LDR,  9 SP 24 LDR,
+   10 SP 32 LDR,  13 SP 40 LDR,  17 SP 48 LDR,
+   SP SP frame ADDI,  RET, ;
+
 \ LFIND's register ABI. In: x9 = name address, x10 = name length. Out:
 \ x13 = 0 when the name is not in scope, else 1 | the folded record flags
 \ (bit 1 immediate, bit 3 wide-effect, bit 4 internal, bits 8-15 certified
@@ -5893,11 +5937,9 @@ variable FIND-HMATCH
 \ (the sealed-WID gate reads [40]): an xt does not name a record, because
 \ `EXPORT` publishes one body under several records and wids. The linear scan
 \ takes the LAST match, so it parks it in x17 and FIND-FOUND moves it to x5.
-\ tools/lint/clobber-lint-core.f lists Lfind's and Lfindused's returns as
-\ x11/x12/x13 and Laotwidgate's preserved set as x11, without x5: a false red,
-\ never a false green.
+\ tools/lint/clobber-lint-core.f lists Laotwidgate's preserved set as x11,
+\ without x5: a false red, never a false green.
 : EMIT-FIND ( -- )
-   LBL LBL LBL LBL LBL {: qlin:label qhloop:label qhnext:label qhinl:label qhcmp:label :}
    LBL LBL LBL LBL {: open-pub:label enclosing-pri:label enclosing-pub:label global:label :}
    LFIND LABEL@ LBL,
    LBL FIND-QSCAN !
@@ -5906,12 +5948,7 @@ variable FIND-HMATCH
    LBL FIND-QBAD !
    LBL FIND-QTAIL !
    LBL FIND-QTAILOK !
-   LBL FIND-NLOOP !
-   LBL FIND-NNEXT !
-   LBL FIND-NCMP !
-   LBL FIND-NMATCH !
    LBL FIND-NEND !
-   LBL FIND-NINL !
    LBL FIND-START !
    LBL FIND-LOOP !
    LBL FIND-DONE !
@@ -5945,63 +5982,16 @@ variable FIND-HMATCH
       15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ FIND-QBAD LABEL@ BCOND,
       14 14 1 ADDI,  FIND-QTAIL LABEL@ B,
    FIND-QTAILOK LABEL@ LBL,
-      \ NAME:tail: a wordlist is a record with the marker -1 in its wid cell,
-      \ so the same probe finds it with the head as name and -1 as wid. x17 is
-      \ the head's length; x9/x10/x13/x17 survive the probe for the linear
-      \ fallback and FIND-NMATCH. An empty slot means no wordlist by that name.
-      14 DATA HIDXP-CELL LDR,  14 qlin CBZ,                    \ no table -> linear
-      2 0 MOVN,                                                \ wordlist records carry wid -1
-      9 17 15 4 16 7 C-HIDX-HASH
-      6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
-      8 HIDX-SLOTS LIT64,
-   qhloop LBL,
-      16 6 2 LSLI,  16 14 16 ADD,  3 16 0 LDRW,                \ x3 = slot value (index+1)
-      3 FIND-NEND LABEL@ CBZ,                                  \ empty slot -> no such wordlist
-      4 3 1 SUBI,  4 NDICT CMP,  C-GE qhnext BCOND,            \ stale (truncated) index
-      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                 \ x5 = record ptr
-      16 5 40 LDR,  16 2 CMP,  C-NE qhnext BCOND,              \ not a wordlist record
-      16 5 16 LDR,  16 16 DNAME-FLAG-BITS LSLI,  16 16 DNAME-FLAG-BITS LSRI,  16 17 CMP,  C-NE qhnext BCOND,  \ name-len mismatch
-      16 5 24 ADDI,
-      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 qhinl CBZ,
-         16 5 24 LDR,
-      qhinl LBL,
-      7 0 MOVZ,
-      qhcmp LBL,
-         7 17 CMP,  C-GE FIND-NMATCH LABEL@ BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 9 7 ADD,     4 4 0 LDRB,
-         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE qhnext BCOND,
-         7 7 1 ADDI,  qhcmp B,
-      qhnext LBL,
-         8 8 1 SUBI,  8 qlin CBZ,
-         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  qhloop B,
-   qlin LBL,
-      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   FIND-NLOOP LABEL@ LBL,
-      6 FIND-NEND LABEL@ CBZ,
-      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-      16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-NINL LABEL@ CBZ,
-         16 5 24 LDR,
-      FIND-NINL LABEL@ LBL,
-      7 0 MOVZ,
-      FIND-NCMP LABEL@ LBL,
-         7 17 CMP,  C-GE FIND-NMATCH LABEL@ BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 9 7 ADD,     4 4 0 LDRB,
-         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-         7 7 1 ADDI,  FIND-NCMP LABEL@ B,
-      FIND-NMATCH LABEL@ LBL,
-         2 5 0 LDR,  11 1 MOVZ,                               \ a qualified name
-         9 9 17 ADD,  9 9 1 ADDI,
-         10 10 17 SUB,  10 10 1 SUBI,
-         FIND-START LABEL@ B,
-      FIND-NNEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-NLOOP LABEL@ B,
+      \ NAME:tail: the row the head names (LHEADROW). x9/x10/x13/x17 survive it.
+      SP SP 16 SUBI,  30 SP 0 STR,
+      LHEADROW LABEL@ BL,
+      30 SP 0 LDR,  SP SP 16 ADDI,
+      12 FIND-NEND LABEL@ CBZ,
+      5 12 0 ADDI,
+      2 5 0 LDR,  11 1 MOVZ,                                  \ a qualified name
+      9 9 17 ADD,  9 9 1 ADDI,
+      10 10 17 SUB,  10 10 1 SUBI,
+      FIND-START LABEL@ B,
    FIND-NEND LABEL@ LBL,  5 0 MOVZ,  RET,       \ no such wordlist: no record, and x5 says so
    FIND-QBAD LABEL@ LBL,  5 0 MOVZ,  RET,       \ malformed NAME:a:b - the one exit that never touched x5
    FIND-START LABEL@ LBL,

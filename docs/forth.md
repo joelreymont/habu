@@ -161,9 +161,13 @@ private
   package, so a file required inside a package cannot open one. A package a
   file or string leaves open is its includer's from then on. A path of 256
   bytes or more is refused by its name (`B at <loc>`, rc 75). `;package` of a
-  part reopens A in its private section with A's using floor. Outside A no name
-  reaches the part: at top level `B:X`, `A:B:X` and `using B` find nothing, and
-  a top-level `package B` is a separate package.
+  part reopens A in its private section with A's using floor. Inside A and its
+  parts a qualifier `B:X`, `using B` and a qualified definition `: B:Q` name
+  the part `A:B` first, then a top-level package B, which the part shadows
+  there, a sealed system package such as MATCH included; a qualified
+  definition naming neither makes a top-level package B. Outside A no name
+  reaches the part: at top level `B:X`, `A:B:X` and `using B` find nothing,
+  and a top-level `package B` is a separate package.
 - `public` and `private`, valid only inside a package, switch new definitions to
   the export wordlist and back. Outside code calls a public word as `NAME:WORD`;
   unqualified global lookup never finds it. A private word is visible

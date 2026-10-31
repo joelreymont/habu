@@ -286,7 +286,7 @@ private
 : QUALIFIED-RECORD-NAME? ( ptr n ptr u8 n n -- bool )
    {: rec:ptr a:ptr u:n split:n :}
    rec  a split 1+ ZPTR+  u split - 1-  XREF-MATCH? 0= if false exit then
-   a split XREF-NAMESPACE-WL XREF-FIND-WL
+   a split CHECKER-RESOLVE:HEAD-ROW
    dup XREF-FOUND? 0= if drop false exit then
    XREF-PKG-PUBLIC  rec XREF-WORDLIST  = ;
 

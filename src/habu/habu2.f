@@ -4632,8 +4632,10 @@ public
       tabloop B,
    done LBL, ;
 
+\ A head LHEADROW resolves to a part, whose row is named by the longer path
+\ `A:head`, names no sealed package. Clobbers x2-x9, x11-x17, x24 and x25.
 : C-QUALIFY-SEAL-GUARD ( -- )   \ reject `NAME:tail` defs into a sealed system package
-   LBL LBL LBL {: scan:label have:label ok:label :}
+   LBL LBL LBL LBL {: scan:label have:label match:label ok:label :}
    9 DATA SEAL-NDICT-CELL LDR,  9 ok CBZ,               \ namespace open -> no guard
    \ Only a NAME:tail token (first ':' not at an edge, matching CHECKER-QUALIFIED?)
    \ can name a package; a leading/trailing ':' (e.g. `PRIM:`) is an ordinary name.
@@ -4646,6 +4648,14 @@ public
    have LBL,
       24 ok CBZ,                                         \ leading ':' -> ordinary -> skip
       9 24 1 ADDI,  9 25 CMP,  C-GE ok BCOND,            \ trailing ':' -> ordinary -> skip
+      9 DATA TKA-CELL LDR,  17 24 0 ADDI,
+      SP SP 16 SUBI,  30 SP 0 STR,
+      LHEADROW LABEL@ BL,
+      30 SP 0 LDR,  SP SP 16 ADDI,
+      12 match CBZ,
+      2 12 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,
+      2 24 CMP,  C-NE ok BCOND,                          \ a part's row -> no sealed package
+   match LBL,
       C-SEAL-MATCH                                       \ prefix len = x24; fail if reserved
    ok LBL, ;
 
@@ -4678,15 +4688,15 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 \ The shared qualification/publication helper at LQUALIFYDEF (dot
 \ habu-emit-one-shared), reached by BL from every definer. Memory in and out:
 \ it reads TKA/TKL/CUR and writes the DEF-* mirror and TKA/TKL; it clobbers
-\ x3-x17, which every caller recomputes from memory, and saves x30 across its
-\ LHIDXADD call. Fail exits (seal, dup, qualified-name misuse, dict full)
+\ x0-x17, x24 and x25, which every caller recomputes from memory, and saves
+\ x30 across its calls. Fail exits (seal, dup, qualified-name misuse, dict full)
 \ exit_group or branch to LCOMPILEDIE, whose recovery restores SP, so the
 \ unbalanced frame on a die path is harmless.
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qcheck qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done qopen qwalled :}
+   SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal BLs
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan qcheck qhas qbad qtail qlookup qapply nend done qopen qwalled :}
    OVERLAY-EMIT:GUARD,
    C-QUALIFY-SEAL-GUARD
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
@@ -4724,28 +4734,9 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ qbad BCOND,
       14 14 1 ADDI,  qtail B,
    qlookup LBL,
-      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   nloop LBL,
-      6 nend CBZ,
-      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,  14 17 CMP,  C-NE nnext BCOND,
-      16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
-         16 5 24 LDR,
-      ninl LBL,
-      7 0 MOVZ,
-      ncmp LBL,
-         7 17 CMP,  C-GE nmatch BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 9 7 ADD,     4 4 0 LDRB,
-         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE nnext BCOND,
-         7 7 1 ADDI,  ncmp B,
-      nmatch LBL,
-         14 5 0 LDR,  14 DATA DEF-WL-CELL STR,
-         nend B,
-      nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
+      LHEADROW LABEL@ BL,                            \ x9 = the token, x17 = its head's length
+      12 nend CBZ,
+      14 12 0 LDR,  14 DATA DEF-WL-CELL STR,
    nend LBL,
       14 DATA DEF-WL-CELL LDR,  14 0 CMPI,  C-NE qapply BCOND,
       C-QUALIFY-CAP
@@ -8164,8 +8155,8 @@ ardone LBL,
 \ callees a boot reach this scan.
 \ The refuse leg has no producer: a call site's scope is one of four shapes
 \ (EM-AOT-PATCH-SITES; a raw pre-window wid dies `pbad`, pinned by
-\ test/aot-wid-suite.f PROBE-WID-FORGED), and LFIND's qualifier path (habu1.f
-\ FIND-NMATCH) searches a package's public slot. It guards an edit that widens
+\ test/aot-wid-suite.f PROBE-WID-FORGED), and LFIND's qualified branch (habu1.f
+\ LHEADROW) searches a package's public slot. It guards an edit that widens
 \ either accept-set.
 \ The gate asks the record LFIND matched, not the first record holding the xt:
 \ `EXPORT` gives a body several records in several wordlists, and the xt scan
@@ -9983,38 +9974,11 @@ public
    cok LBL, ;
 
 : C-USING-WID ( -- )   \ TKA/TKL name a package -> x2 = its public WID; die unknown otherwise
-   \ Namespace rows (wid DICT-WL:NAMESPACE) are ordinary records indexed by
-   \ LHIDXADD and dup-walled by C-PACKAGE-ENSURE, so `using` finds its package
-   \ by the lookup's one-wordlist hash probe, judging each probed record with
-   \ C-PACKAGE-RECORD-MATCH; an empty slot is "no such package". The scan below
-   \ stays authoritative before LHIDXBUILD and for a full-wrap chain, as in LFIND.
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: loop:label miss:label hit:label notfound:label umsg:label done:label
-      lscan:label plp:label pnx:label :}
+   LBL LBL LBL {: notfound:label umsg:label done:label :}
    s" hb: using: unknown package: " {: ua:ptr uu:n :}
-   14 DATA HIDXP-CELL LDR,  14 lscan CBZ,          \ no table -> the scan answers
-   16 DATA TKA-CELL LDR,  15 DATA TKL-CELL LDR,
-   16 15 3 4 5 7 C-HIDX-HASH                       \ x3 = folded-name hash
-   4 0 MOVN,
-   6 3 4 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND, \ x6 = slot = (hash XOR NAMESPACE) & mask
-   8 HIDX-SLOTS LIT64,                             \ x8 = step budget
-   plp LBL,
-      5 6 2 LSLI,  5 14 5 ADD,  7 5 0 LDRW,        \ x7 = slot value (index+1)
-      7 notfound CBZ,                              \ empty slot -> no such package
-      7 7 1 SUBI,  7 NDICT CMP,  C-GE pnx BCOND,   \ stale (truncated) index
-      5 DREC MOVZ,  5 7 5 MUL,  5 DBASE 5 ADD,     \ x5 = candidate record
-      hit pnx C-PACKAGE-RECORD-MATCH               \ hit iff wid==-1 && name==token
-   pnx LBL,
-      14 DATA HIDXP-CELL LDR,                      \ the match word used x14 as scratch
-      8 8 1 SUBI,  8 lscan CBZ,                    \ full wrap -> the scan answers
-      6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  plp B,
-   lscan LBL,
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   loop LBL,
-      6 notfound CBZ,
-      hit miss C-PACKAGE-RECORD-MATCH            \ x5 = candidate; hit iff wid==-1 && name==token
-      hit LBL,  2 5 0 LDR,  done B,              \ x2 = record[0] = package public WID
-      miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   9 DATA TKA-CELL LDR,  17 DATA TKL-CELL LDR,  LHEADROW LABEL@ BL,
+   12 notfound CBZ,
+   2 12 0 LDR,  done B,                           \ x2 = record[0] = package public WID
    notfound LBL,
       0 2 MOVZ,  1 umsg ADR,  2 uu MOVZ,  NR-WRITE SYS,
       91 C-DIE-TOKEN                               \ 91 = ENGINE-ERROR:USING-UNKNOWN
@@ -13279,7 +13243,7 @@ package LABELS
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !  LBL LNSTRINTERN !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL HIDX-EMIT:LREBUILD !  LBL HIDX-EMIT:LFULL !  LBL HIDX-EMIT:LREKEY !
-   LBL WLFIND:LENTRY !  LBL WLFIND:LNEWEST !
+   LBL WLFIND:LENTRY !  LBL WLFIND:LNEWEST !  LBL LHEADROW !
    LBL EM-DEF-OCC:LCOUNT !  LBL EM-DEF-OCC:LAPPEND !  LBL EM-DEF-OCC:LRESET !
    LBL EM-DEF-OCC:LROOM !  LBL EM-DEF-OCC:LISSUE !  LBL EM-DEF-OCC:LINIT !
    LBL EM-DEF-OCC:LBEFORE !  LBL EM-DEF-OCC:LAFTER !  LBL EM-DEF-OCC:LMATCH !
@@ -13867,6 +13831,7 @@ variable KERNEL-CODE-END
    EMIT-FLUSH
    EMIT-FIND
    WLFIND:EMIT
+   EMIT-HEAD-ROW
    EMIT-FIND-USED
    INTERP-EMIT:FIND-SHADOW
    EMIT-SCOPE-REC

@@ -11686,6 +11686,9 @@ PPRIM: CHECKER-EFFECT-AUTHORITY SEAL PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The scope probe a caller that only observes asks before EFFECT-QUERY (BY-EFFECT?).
 PPRIM: CHECKER-RESOLVE REFUSES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
+\ The head resolver the Habu loop and the native compiler call (HEAD-ROW); it
+\ reads the dictionary and writes only its own key buffer, HEAD-KEY.
+PPRIM: CHECKER-RESOLVE HEAD-ROW PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-N PE-OUT PPRIM;
 PRIM: E-USING-AMBIGUOUS  PE-N PE-OUT PRIM;
 PRIM: E-PKG-CONTEXT      PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
@@ -11815,6 +11818,88 @@ public
    u d cells CK-USE-LENS + ! ;
 ;package
 
+\ The wordlist a dictionary record was published into, 0 for the global one.
+: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
+
+package CHECKER-RESOLVE
+public
+\ The record a wordlist holds under a name, NULL-PTR when it holds none: the
+\ engine's one-wordlist probe, the one its used-publics search asks of each used
+\ wordlist (src/habu/habu2.f LFINDUSED-CORE). Wordlist -1, DICT-WL:NAMESPACE,
+\ holds the package rows. xref-search-wl's row is this package's own
+\ (src/habu/prims.f).
+: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
+;package
+
+\ Dictionary record slots and flags (src/habu/layout.f DREC).
+2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
+3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
+$00003FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
+
+\ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
+\ (XREF:REC). This file cannot use XREF-REC: the boot prefix loads it before
+\ xref.f (src/habu/habu2.f), and everywhere else it reaches a record only by a
+\ lookup by name (scope-find, CHECKER-RESOLVE:WL-PROBE), which cannot list a
+\ wordlist. A record spans CK-REC-WID's slot and those before it, the size the
+\ bound window divides by to name a record's index.
+package CHECKER-RESOLVE
+CAST: N>REC ( n -- ptr n )
+\ A DNAME-EXT record's name cell holds the byte address of its name.
+CAST: REC-CELLS ( ptr n -- ptr ptr u8 )
+public
+: REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
+\ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
+\ record by. Every index from 0 names a record; -1 names none.
+: REC>INDEX ( ptr n -- n )
+   {: rec:ptr :}
+   rec NULL-PTR = IF -1 EXIT THEN
+   rec NULL-PTR - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
+\ A dictionary record's name: the flags cell holds its length under
+\ DNAME-LEN-MASK, and the name sits inline from the name cell or, with
+\ DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
+\ XREF-NAME-A reads it.
+: CK-REC-NAME$ ( ptr n -- ptr u8 n )
+   {: rec:ptr :}
+   rec CK-REC-FLAGS-SLOT cells + @ {: flags:n :}
+   flags CK-REC-LEN-MASK and {: u:n :}
+   flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
+   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
+;package
+
+package CHECKER-RESOLVE
+\ The name of the package open at top level: the one enclosing the open part,
+\ else the open package; 0 bytes when none is open.
+: TOP-NAME$ ( -- ptr u8 n )
+   data-base CK-ENCLOSING-REC-OFF + @ {: outer:n :}
+   outer 0 <> IF outer ELSE data-base CK-PKG-REC-OFF + @ THEN {: top:n :}
+   top 0= IF NULL-PTR 0 EXIT THEN
+   top dbase@ - CK-DREC / REC-AT CK-REC-NAME$ ;
+
+\ The key `A:<head>`. `package` refuses a part's path of CHECKER-PACKAGE-CAP
+\ bytes or more (habu2.f C-PACKAGE-PATH), so a longer key names no part.
+CHECKER-REG:SCRATCH{
+create HEAD-KEY CHECKER-PACKAGE-CAP allot
+CHECKER-REG:}SCRATCH
+
+public
+\ The row a qualifier's head names here, NULL-PTR for none or a false length: in A
+\ or its part `A:<head>` first, then a top-level package. Twin: habu1.f LHEADROW.
+: HEAD-ROW ( ptr u8 n -- ptr n ) {: a:ptr u:n :}
+   a u CK-NAME-SPAN? 0= IF NULL-PTR EXIT THEN
+   TOP-NAME$ {: ta:ptr tu:n :}
+   tu 1 + u + {: ku:n :}
+   tu 0 <>  ku CHECKER-PACKAGE-CAP <  and IF
+      ta HEAD-KEY tu ARENA-COPY
+      $3A HEAD-KEY tu + c!
+      a HEAD-KEY tu 1 + + u ARENA-COPY
+      HEAD-KEY ku -1 WL-PROBE
+      dup NULL-PTR <> IF EXIT THEN
+      drop
+   THEN
+   a u -1 WL-PROBE ;
+;package
+
 \ The FILE observer is installed after the source reader below. These hooks
 \ are inert until that owner is loaded, and again once NS-DEFAULT or the
 \ capture seam ends observation.
@@ -11832,8 +11917,10 @@ RESOLUTION-SOURCE-DEFAULT
    a u BYTE-SPAN? 0= IF s" checker: using name length describes no memory" 76 die THEN
    CK-USE-DEPTH {: d:n :}
    d CK-USE-MAX >= IF s" checker: using stack overflow" 76 die THEN
-   a u 9 RESOLUTION-NAMESPACE-XT
-   a u d CHECKER-USE:NAME! ;
+   a u CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row NULL-PTR = IF a u ELSE row CHECKER-RESOLVE:CK-REC-NAME$ THEN {: ra:ptr ru:n :}
+   ra ru 9 RESOLUTION-NAMESPACE-XT
+   ra ru d CHECKER-USE:NAME! ;
 package CHECKER-REG
 ' CHECKER-USING DECLARATIONS USING-OFF + xt!
 ;package
@@ -12080,8 +12167,9 @@ variable CHECKER-QBAD-TOK
    ci 0= IF RES-FALSE EXIT THEN
    ci u 1 - = IF RES-FALSE EXIT THEN
    cn 1 <> IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
-   a CHECKER-QA!
-   ci CHECKER-QU !
+   a ci CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row NULL-PTR = IF a ci ELSE row CHECKER-RESOLVE:CK-REC-NAME$ THEN
+   CHECKER-QU ! CHECKER-QA!
    a ci + 1 + CHECKER-TA!
    u ci - 1 - CHECKER-TU !
    RES-TRUE ;
@@ -12101,19 +12189,6 @@ defer DOES-COMPANION?-XT ( n -- bool )
 \ which that file installs here. The engine's builder made every record below
 \ it: a primitive or a helper, never a Habu source definition.
 defer FIRST-RECORD-XT ( -- n )
-
-\ The wordlist a dictionary record was published into, 0 for the global one.
-: CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
-
-package CHECKER-RESOLVE
-public
-\ The record a wordlist holds under a name, NULL-PTR when it holds none: the
-\ engine's one-wordlist probe, the one its used-publics search asks of each used
-\ wordlist (src/habu/habu2.f LFINDUSED-CORE). Wordlist -1, DICT-WL:NAMESPACE,
-\ holds the package rows. xref-search-wl's row is this package's own
-\ (src/habu/prims.f).
-: WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
-;package
 
 \ ---- the checker overlay ------------------------------------------------------
 \ A replay binds every name through the engine's own lookup, so while it runs
@@ -12611,18 +12686,13 @@ ROW-CELLS cells constant SCOPE-BYTES
    outer 0 < IF -1 0 ELSE outer CK-ENCLOSING-PARENT-OFF DATA@ THEN package-scope!
    CK-USE-FLOOR-OFF DATA@ CK-USE-DEPTH-OFF DATA! ;
 
-\ `using NAME` (PKG-USING): the package's public wordlist joins the used ones
-\ at the current depth. CHECKER-USING names the slot first (a name over 255
-\ bytes throws; an overflow ends the process) before any store here. A colon
-\ throws ENGINE-ERROR:USING-BAD-NAME, as the live statement does in evaluate,
-\ though a part's row is named by a path with one. A legal name with no row is
-\ the run's to refuse (USING-UNKNOWN): the replay goes on with the empty row
-\ NS-ENSURE makes, which replay-close drops. A source below its floor lowers
-\ the floor to meet its first using, as an evaluated buffer does.
+\ A name with no row gets NS-ENSURE's placeholder; the run refuses USING-UNKNOWN.
+\ NAME, not the slot CHECKER-USE:NAME! folds to lower case, spells a new row.
 : OPEN-USING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-USING
    a u CHECKER-COLON-SCAN drop 0 <> IF ENGINE-ERROR:USING-BAD-NAME throw THEN
-   a u NS-ENSURE {: rec:ptr :}
+   a u CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row NULL-PTR = IF a u NS-ENSURE ELSE row THEN {: rec:ptr :}
    CK-USE-DEPTH-OFF DATA@ {: d:n :}
    d CHECKER-USE:SOURCE-FLOOR @ < IF d CHECKER-USE:SOURCE-FLOOR ! THEN
    rec @ d cells CK-USE-WIDS-OFF + DATA!
@@ -13065,42 +13135,6 @@ CHECKER-REG:}SCRATCH
    sym last = IF sym EXIT THEN
    sym CK-SCOPE-PENDING? IF sym EXIT THEN
    0 ;
-
-\ Dictionary record slots and flags (src/habu/layout.f DREC).
-2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
-3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-$00003FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
-$2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
-
-\ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
-\ (XREF:REC). This file cannot use XREF-REC: the boot prefix loads it before
-\ xref.f (src/habu/habu2.f), and everywhere else it reaches a record only by a
-\ lookup by name (scope-find, CHECKER-RESOLVE:WL-PROBE), which cannot list a
-\ wordlist. A record spans CK-REC-WID's slot and those before it, the size the
-\ bound window divides by to name a record's index.
-package CHECKER-RESOLVE
-CAST: N>REC ( n -- ptr n )
-\ A DNAME-EXT record's name cell holds the byte address of its name.
-CAST: REC-CELLS ( ptr n -- ptr ptr u8 )
-public
-: REC-AT ( n -- ptr n ) DICT-WORDLIST-SLOT 1+ cells * dbase@ + N>REC ;
-\ Its inverse, the index the bound window and the tape's K-TICK and K-IS name a
-\ record by. Every index from 0 names a record; -1 names none.
-: REC>INDEX ( ptr n -- n )
-   {: rec:ptr :}
-   rec NULL-PTR = IF -1 EXIT THEN
-   rec NULL-PTR - dbase@ - DICT-WORDLIST-SLOT 1+ cells / ;
-\ A dictionary record's name: the flags cell holds its length under
-\ DNAME-LEN-MASK, and the name sits inline from the name cell or, with
-\ DNAME-EXT set, behind the pointer that cell holds, as src/habu/xref.f
-\ XREF-NAME-A reads it.
-: CK-REC-NAME$ ( ptr n -- ptr u8 n )
-   {: rec:ptr :}
-   rec CK-REC-FLAGS-SLOT cells + @ {: flags:n :}
-   flags CK-REC-LEN-MASK and {: u:n :}
-   flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
-   rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
-;package
 
 \ ---- the owner and fetch ABIs' constants ---------------------------------------
 \ CHECKER-FETCH-ABI, CHECKER-OWNER-EXT and CHECKER-OWNER-ABI (src/core/
@@ -22094,14 +22128,15 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    0 VQ-AT len ;
 
 \ The qualifier a candidate behind PKG is spelled with: the prefix's own as
-\ typed, else the spelling of PKG's namespace record, else PKG as its source
-\ holds it.
+\ typed, else the spelling of the namespace record PKG names, a part's own
+\ name after `<top>:`, else PKG as its source holds it.
 : VIS-QUALIFIER ( ptr u8 n -- ptr u8 n )
    {: qa:ptr qu:n :}
    VIS-PU @ 0 <> IF VIS-PA @ VIS-PU @ EXIT THEN
-   qa qu -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}   \ its namespace record (DICT-WL:NAMESPACE)
-   rec NULL-PTR = IF qa qu EXIT THEN
-   rec CHECKER-RESOLVE:CK-REC-NAME$ ;
+   qa qu CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row NULL-PTR = IF qa qu EXIT THEN
+   row CHECKER-RESOLVE:CK-REC-NAME$ {: ra:ptr ru:n :}
+   ra ru qu - + qu ;
 
 \ The name a selection of SYM, REC1 and dictionary record DREC spells, from the
 \ selection alone, and where it was declared: the name and location REC1's
@@ -22156,10 +22191,21 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
       i SYM-RETIRED? 0= IF i SYM-NAME$ VIS-WORD THEN
    loop ;
 
+\ The qualifier PKG's words are spelled behind here: a top-level package's name,
+\ B for part A:B where B names that part, else 0 bytes (no qualifier names it).
+: VIS-PKG-QUAL ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   a u CHECKER-COLON-SCAN {: cn:n ci:n :}
+   cn 0= IF a u EXIT THEN
+   a ci + 1 + u ci - 1 - {: ba:ptr bu:n :}
+   a u -1 CHECKER-RESOLVE:WL-PROBE {: part:ptr :}
+   part NULL-PTR <>  ba bu CHECKER-RESOLVE:HEAD-ROW part =  and IF ba bu EXIT THEN
+   a 0 ;
+
 : VIS-PSYMS ( -- )
    SYM-N @ 1 ?do
       i SYM-RETIRED? 0= IF
-         i SYM-ROW SYM.VIS @ SYM-PUBLIC = IF i SYM-PKG$ i SYM-NAME$ VIS-QWORD THEN
+         i SYM-ROW SYM.VIS @ SYM-PUBLIC = IF i SYM-PKG$ VIS-PKG-QUAL i SYM-NAME$ VIS-QWORD THEN
       THEN
    loop ;
 
@@ -22177,7 +22223,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 : VIS-PACKAGE ( ptr n -- )
    {: rec:ptr :}
    rec @ {: wid:n :}
-   rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ VIS-PKG-QUAL {: a:ptr u:n :}
    wid 0=  u 0=  or IF EXIT THEN
    a u VIS-PKG? 0= IF EXIT THEN
    a u wid VIS-WL ;
@@ -22218,23 +22264,25 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    VIS-PACKAGES
    VIS-PSYMS ;
 
-\ The prefix's own qualifier: the PKG of PKG:tail (VIS-QUAL) or of PKG:, the
-\ edge colon the split leaves an ordinary name; 0 bytes for any other prefix.
+\ The prefix's own qualifier as typed: the PKG of PKG:tail (VIS-QUAL) or of
+\ PKG:, the edge colon the split leaves an ordinary name; 0 bytes for any other
+\ prefix.
 : VIS-SPLIT ( ptr u8 n -- )
    {: a:ptr u:n :}
    0 VIS-QUAL !  a VIS-PA !  0 VIS-PU !
-   a u CHECKER-QUALIFIED? IF -1 VIS-QUAL !  CHECKER-QPKG$ VIS-PU ! VIS-PA ! EXIT THEN
+   a u CHECKER-QUALIFIED? IF -1 VIS-QUAL !  u CHECKER-TU @ - 1 - VIS-PU ! EXIT THEN
    CHECKER-QBAD-TOK @ IF EXIT THEN
    a u CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 1 =  ci u 1 - = and  u 1 > and IF u 1 - VIS-PU ! THEN ;
 
-\ The open package's name, 0 bytes when none is open or the engine's package
-\ record names no package context.
+\ The qualifier the open package's words are spelled behind (VIS-PKG-QUAL),
+\ 0 bytes when none is open or the engine's package record names no package
+\ context.
 : VIS-OPEN-PKG ( -- )
    CHECKER-RESOLVE:AUTHORITY {: pa:ptr pu:n mode:n ok:bool :}
    pa VIS-OA !  0 VIS-OU !
    ok 0=  mode CHECKER-PACKAGE-NONE =  or IF EXIT THEN
-   pu VIS-OU ! ;
+   pa pu VIS-PKG-QUAL VIS-OU ! VIS-OA ! ;
 
 \ Enumerate for KIND under PREFIX to the visitor already set, holding VIS-OPEN
 \ for the run, whatever it throws. The prefix's own split is put back too.

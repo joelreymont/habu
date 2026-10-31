@@ -26,9 +26,9 @@ private
 \ image ships with its name (CHECKER-SWEEP:NAMED?) resolves to it as source reads
 \ it. A DNAME-INT row counts: a TRUSTED: body still calls it and the native
 \ compiler asks its arity. A sealed package's privates have no spelling: habu1.f
-\ FIND-NMATCH qualifies through the public wid, and habu2.f C-PACKAGE-PROT-GUARD
-\ refuses reopening it. The whitebox image keeps everything: its suites reopen
-\ engine packages (src/core/internal-mark.f).
+\ LFIND's qualified branch searches the public wid, and habu2.f
+\ C-PACKAGE-PROT-GUARD refuses reopening it. The whitebox image keeps
+\ everything: its suites reopen engine packages (src/core/internal-mark.f).
 : KEEP? ( ptr u8 n bool ptr u8 n -- bool ) {: pa:ptr pu:n pub:bool na:ptr nu:n :}
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX = if true exit then
    pu 0= if na nu 0 SHIPPED? exit then

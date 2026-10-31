@@ -127,6 +127,7 @@ variable RX  variable RACC
    \ LRETIRE answers in x14: nonzero when it retired instead of lowering.
    a u s" EM-DEF-OCC:LRETIRE" LINT-STR=CI if 0 14 CL-ADD exit then
    a u s" WLFIND:LENTRY" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD exit then
+   a u s" Lheadrow" LINT-STR=CI if 0 12 CL-ADD exit then
    \ The callback accessor returns its thunk address in A (x9).
    a u s" Lcallbackaddr" LINT-STR=CI if 0 9 CL-ADD exit then
    \ The source observer leaves the original or callback status in x15.
@@ -138,8 +139,8 @@ variable RX  variable RACC
    a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
    a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
    a u s" Lreplroute" LINT-STR=CI if 0 9 CL-ADD exit then
-   a u s" Lfind" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
-   a u s" Lfindused" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
+   a u s" Lfind" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
+   a u s" Lfindused" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    \ LFIND's hit shape (x5, x11-x13) plus x6 = records met; at two, x16 and
    \ x12 name the first and second record.
    a u s" Lfindused-core" LINT-STR=CI if
@@ -204,6 +205,9 @@ variable RX  variable RACC
       0 0 CL-ADD 1 CL-ADD 2 CL-ADD 8 CL-ADD 12 CL-ADD 13 CL-ADD
         16 CL-ADD 30 CL-ADD exit then
    a u s" Laotwidgate" LINT-STR=CI if 0 11 CL-ADD exit then
+   \ LHEADROW frames x0, x1, x9, x10, x13, x17 and x30 around its probes.
+   a u s" Lheadrow" LINT-STR=CI if
+      0 0 CL-ADD 1 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 17 CL-ADD 30 CL-ADD exit then
    \ INTERP-EMIT:LFINDSHADOW reloads LFIND's outputs from its frame before it returns.
    a u s" INTERP-EMIT:Lfindshadow" LINT-STR=CI if 0 5 CL-ADD 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
    a u s" Lprotwidq" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 14 CL-ADD exit then
@@ -285,6 +289,7 @@ package CLOBBER
    a u s" mark-commit-index" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-hidx-hash" LINT-STR=CI if LINT-TRUE exit then
    a u s" g-print9" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-lit" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-call" LINT-STR=CI if LINT-TRUE exit then
@@ -292,6 +297,9 @@ package CLOBBER
    a u s" c-pushcp" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-emitw" LINT-STR=CI if LINT-TRUE exit then
    a u s" c-bback" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-qualify-seal-guard" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-trusted-tick?" LINT-STR=CI if LINT-TRUE exit then
+   a u s" does-rec:clause-of" LINT-STR=CI if LINT-TRUE exit then
    a u s" cf-entry" LINT-STR=CI if LINT-TRUE exit then
    a u s" cfb-entry" LINT-STR=CI if LINT-TRUE exit then
    a u s" fold-entry" LINT-STR=CI if LINT-TRUE exit then
@@ -396,6 +404,9 @@ variable RK
    \ rather than a clobber; prof.f and crash.f hold x19 across calls, so it
    \ stays tracked everywhere else.
    a u s" g-push" LINT-STR=CI if 0 ER exit then
+   \ C-HIDX-HASH ( nr lr hr c3 c4 c7 ) reads the name and writes the hash and
+   \ its scratch (habu1.f).
+   a u s" c-hidx-hash" LINT-STR=CI if 0 ER 1 ER 2 EW 3 EW 4 EW 5 EW exit then
    a u s" g-pop" LINT-STR=CI if 0 EW exit then
    a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
    a u s" c-lit" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD CL-ROR exit then
@@ -404,6 +415,20 @@ variable RK
    a u s" c-pushcp" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
    a u s" c-emitw" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
    a u s" c-bback" LINT-STR=CI if 0 5 CL-ADD 9 CL-ADD 10 CL-ADD 30 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
+   \ habu2.f C-QUALIFY-SEAL-GUARD frames x30 across its LHEADROW call.
+   a u s" c-qualify-seal-guard" LINT-STR=CI if
+      0 2 CL-ADD 3 CL-ADD 4 CL-ADD 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD
+        11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD
+        24 CL-ADD 25 CL-ADD CL-WOR exit then
+   \ habu2.f C-TRUSTED-TICK? answers in x17; its query runs through a raw BLR
+   \ and only x5 and x11-x13 are restored.
+   a u s" c-trusted-tick?" LINT-STR=CI if
+      0 0 CL-ADD 1 CL-ADD 2 CL-ADD 3 CL-ADD 4 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD
+        9 CL-ADD 10 CL-ADD 14 CL-ADD 15 CL-ADD 16 CL-ADD 17 CL-ADD CL-WOR exit then
+   \ habu2.f DOES-REC:CLAUSE-OF reads the record in x5 and answers in x6.
+   a u s" does-rec:clause-of" LINT-STR=CI if
+      0 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 10 CL-ADD 12 CL-ADD 14 CL-ADD
+        15 CL-ADD 16 CL-ADD CL-WOR  0 5 CL-ADD CL-ROR exit then
    a u s" cf-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
    a u s" cfb-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
    a u s" fold-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then

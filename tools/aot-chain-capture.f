@@ -145,11 +145,12 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
    REFUSE-RC die ;
 
 \ Asked exactly the way the seed asks it. A qualified name resolves through the
-\ namespace record's PUBLIC slot (habu1.f FIND-NMATCH) and XREF-FIND-INDEX takes
-\ the same route, so a name that is private, misspelt, or belongs to a word the
-\ window did not compile answers here instead of dying $52 with no message in the
-\ built engine. The window test is the second half: a name that resolves to a
-\ PRE-WINDOW word would run the host's copy at boot and install nothing.
+\ namespace record's PUBLIC slot (habu1.f LFIND's qualified branch, LHEADROW)
+\ and XREF-FIND-INDEX takes the same route, so a name that is private, misspelt,
+\ or belongs to a word the window did not compile answers here instead of dying
+\ $52 with no message in the built engine. The window test is the second half:
+\ a name that resolves to a PRE-WINDOW word would run the host's copy at boot
+\ and install nothing.
 : ?RESOLVES ( ptr u8 n -- ) {: a:ptr u:n :}
    a u XREF-FIND-INDEX {: k:n :}
    k 0 < if a u s" does not resolve here, so it will not resolve there" RESOLVE-BAD then

@@ -63,12 +63,12 @@ TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
 
 \ ---- package publics, under their qualified name ---------------------------
 \ A package word carries its wordlist, not 0, so IMK-WALK never reaches one. The
-\ qualified spelling reaches publics and nothing else: habu1.f FIND-NMATCH
-\ searches the package row's [0], the public wordlist, so a private has no
-\ top-level spelling (test/internal-word-gate.f pins it E-UNDEFINED). The
-\ question is the one asked of a global, keyed as source spells it: checker.f
-\ CHECKER-FIND-ACTIVE-SYM routes PKG:TAIL to CHECKER-PUBLIC-SYM?, the key PPRIM:
-\ interns.
+\ qualified spelling reaches publics and nothing else: habu1.f LFIND's
+\ qualified branch searches the package row's [0], the public wordlist, so a
+\ private has no top-level spelling (test/internal-word-gate.f pins it
+\ E-UNDEFINED). The question is the one asked of a global, keyed as source
+\ spells it: checker.f CHECKER-FIND-ACTIVE-SYM routes PKG:TAIL to
+\ CHECKER-PUBLIC-SYM?, the key PPRIM: interns.
 \ The package rows drive the loop: a row holds its public wordlist in [0] and its
 \ name, so no wid -> package table can fall out of step. Each walk starts at its
 \ own row because habu2.f C-PACKAGE-NEW-RECORD allocates the wids as it publishes

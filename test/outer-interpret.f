@@ -877,6 +877,35 @@ variable WANT-RC
    s" E-UNDEFINED: OI-NY at " CASE$ GE-EXPECT-ERR-HAS
    s" in oi-nz: unknown type 'oi-nq' in signature" CASE$ GE-EXPECT-ERR-HAS ;
 
+\ Inside package A a qualifier names A's part before a top-level package: A's
+\ part OI-QB shadows the top-level OI-QB for lookup, the checker (OI-QW's
+\ refusal names the part's two-cell effect), `using` and a qualified
+\ definition, and inside the part its qualifier still reaches only its publics.
+\ A part named like a sealed system package (MATCH) is no sealed package. A
+\ qualified definition naming no part makes a top-level package. At top level
+\ OI-QB is the top-level package again.
+: PACKAGE-PART-NAME ( -- )
+   GE-SRC-RESET
+   s" 1 set-tier package OI-QB public : OI-QX ( -- n ) 9 ; ;package" GE-SRC-LINE
+   s" package OI-QA : OI-QY ( -- n ) 2 ; package OI-QB public : OI-QX ( -- n n ) OI-QY 1 + dup ;" GE-SRC-LINE
+   s" s~ OI-QB:OI-QY~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" ;package package MATCH public : OI-QM ( -- n ) 6 ; ;package" GE-SRC-LINE
+   s" : MATCH:OI-QN ( -- n ) 7 ; MATCH:OI-QN ." GE-SRC-LINE
+   s" public : OI-QZ ( -- n n ) OI-QB:OI-QX ; OI-QB:OI-QX . ." GE-SRC-LINE
+   s" s~ : OI-QW ( -- n ) OI-QB:OI-QX ;~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" : OI-QB:OI-QQ ( -- n ) 4 ; OI-QB:OI-QQ . : OI-QC:OI-QQ ( -- n ) 5 ;" GE-SRC-LINE
+   s" using OI-QB OI-QX . . ;using s~ OI-QX~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" ' MATCH:OI-QM execute . : OI-QK ( -- n ) ['] MATCH:OI-QM execute ; OI-QK . EXPORT MATCH:OI-QM" GE-SRC-LINE
+   s" ;package OI-QA:OI-QZ . . OI-QB:OI-QX . OI-QC:OI-QQ . OI-QA:OI-QM ." GE-SRC-LINE
+   s" s~ OI-QB:OI-QQ~ OI-PARK ' OI-EVAL-PARKED catch ." QLINE
+   s" oi-package-part-name.f" BOTH
+   CASE$ GE-EXPECT-OK
+   S\" 70\n7\n3\n3\n70\n4\n3\n3\n70\n6\n6\n3\n3\n9\n5\n6\n70\n" CASE$ GE-EXPECT-OUT
+   s" E-UNDEFINED: OI-QB:OI-QY at " CASE$ GE-EXPECT-ERR-HAS
+   s" in oi-qw: at 'OI-QB:OI-QX' expected: n actual: n n" CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-QX at " CASE$ GE-EXPECT-ERR-HAS
+   s" E-UNDEFINED: OI-QB:OI-QQ at " CASE$ GE-EXPECT-ERR-HAS ;
+
 \ The package keywords raise no top-row event: only the number, `.`, `0` and
 \ set-top-check log.
 : PACKAGE-HOOK ( -- )
@@ -2246,6 +2275,7 @@ private
    PACKAGE-PART-THROW
    PACKAGE-PART-BUFFER
    PACKAGE-PART-LOOKUP
+   PACKAGE-PART-NAME
    PACKAGE-HOOK
    USING-SCOPE
    USING-IN-PACKAGE

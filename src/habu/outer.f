@@ -874,22 +874,17 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : PUSH-CHAR ( -- )
    [: FIRST-BYTE TOP-EV-CHAR 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
-\ The engine's twin: habu2.f C-TICK.
-\ The seal guard (habu2.f C-QUALIFY-SEAL-GUARD): once the engine is sealed, a
-\ token qualified by a sealed package ends the process, the token its whole
-\ diagnostic line. The qualifier is the first colon when it is at neither
-\ edge, as DEF-QUALIFY reads it, but a second colon does not spare the token.
-\ The sealed packages are the checker's list (src/core/checker.f
-\ CHECKER-SEALED-PKG?, the declared mirror of the engine's own), which folds
-\ case as the engine does. The exit is fail-closed, as C-SEAL-PACKAGE-FAIL's
-\ is.
+\ The engine's twin: habu2.f C-QUALIFY-SEAL-GUARD. A part's head answers its path
+\ `A:head`, which names no sealed package; the token is the whole diagnostic line.
 : SEAL-GUARD ( -- )
    SEAL-NDICT@ 0= if exit then
    TOKEN$ {: a:ptr u:n :}
    a u 0 COLON-AT {: q:n :}
    q 1 < if exit then
    q 1+ u >= if exit then
-   a q CHECKER-SEALED-PKG? 0= if exit then
+   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row XREF-FOUND? if row XREF-NAME$ else a q then
+   CHECKER-SEALED-PKG? 0= if exit then
    a u ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
 
 \ The active checker owner supplies the trusted-only query, not a source name.

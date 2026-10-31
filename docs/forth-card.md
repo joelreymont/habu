@@ -38,6 +38,13 @@ public
   would close it is `ENGINE-ERROR:USING-OUTER`. A load file is a using scope
   too: a `;using` in an included file or `evaluate` buffer that would close its
   includer's using is refused the same way.
+- `package B` in package A's private section, in the file or string A is
+  open in and under no `using` A opened, opens the **part** `A:B`; a part
+  holds no parts. Inside A and its parts `B:X`, `using B` and `: B:Q` name the
+  part first, then a top-level B; outside A nothing reaches it, `A:B:X`
+  included, and a top-level `package B` is another package. `;package` of a
+  part returns to A's private section. `package` anywhere else inside a
+  package is refused: `package at <loc>`, rc 75.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
@@ -141,7 +148,7 @@ before any `require`.
 | a definition with no signature that reads or pops a cell it did not push: `: X r@ ;`, `: X r> ;` | `E-REJECTED` at the token, `fix_return_stack`, at both tiers |
 | a family, variant or field name over the name cap | `E-BAD-DECLARATION`, `name longer than <cap> bytes` |
 | `package` with a name over the name cap | `E-STATEMENT-THROW` (`E-PACKAGE-NAME-CAP`) |
-| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where the engine bakes `PKG`: a definition into, or the reopening of, a sealed package | `E-STATEMENT-THROW` at the name |
+| `: PKG:X ( -- ) ;`, `variable PKG:V` or `package PKG` where the engine bakes `PKG` and the open top-level package has no part `PKG`: a definition into, or the reopening of, a sealed package | `E-STATEMENT-THROW` at the name |
 | a non-preserving `[: G ;] catch` | `E-MISMATCH` at `catch`, with the rows |
 | `( -- n ) [: 1 ;] ONCE` with `ONCE ( R [ -- S ] -- S ) execute`: a callable that names its stack, or keeps it where `[ -- S ]` is declared, passed, stored, installed with `is` or joined | `E-MISMATCH`, `callable row escape: …; held row A would escape into B`; declare `[ R -- S ]` |
 | a read of what a throw left; `i`/`leave` outside a loop; `exit` in a loop, no `unloop` | `E-STALE-READ`; `E-REJECTED` |

@@ -283,7 +283,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
       s" hb: using: package name must not contain ':': "
       ENGINE-ERROR:USING-BAD-NAME PKG-USING-FAIL
    then
-   PKG-ROW {: row:ptr :}
+   TOKEN$ CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
    row XREF-FOUND? 0= if
       s" hb: using: unknown package: " ENGINE-ERROR:USING-UNKNOWN PKG-USING-FAIL
    then
