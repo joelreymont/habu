@@ -40,13 +40,16 @@ JWT-RT-CAP BUFFER: JWT-RT-DECODE
 TYPED-VARIABLE JWT-RT-W writer
 TYPED-VARIABLE JWT-RT-READER JSON:cursor
 
+\ Every escape kind: a quote, a backslash, a named control, and \u00XX with a
+\ digit and with a letter.
 create JWT-ESC-IN
-   65 c, JW-DQ c, JW-BACKSLASH c, JW-LF c, 1 c, 66 c,
+   65 c, JW-DQ c, JW-BACKSLASH c, JW-LF c, 1 c, $1F c, 66 c,
 
 create JWT-ESC-WANT
    JW-DQ c, 65 c, JW-BACKSLASH c, JW-DQ c, JW-BACKSLASH c, JW-BACKSLASH c,
    JW-BACKSLASH c, 110 c, JW-BACKSLASH c, 117 c, JW-ZERO c, JW-ZERO c,
-   JW-ZERO c, 49 c, 66 c, JW-DQ c,
+   JW-ZERO c, 49 c, JW-BACKSLASH c, 117 c, JW-ZERO c, JW-ZERO c, 49 c, 102 c,
+   66 c, JW-DQ c,
 
 create JWT-NAME
    65 c, JW-DQ c, 66 c,
@@ -61,10 +64,10 @@ create JWT-RUN-KEY-WANT
    JW-BACKSLASH c, JW-BACKSLASH c, 66 c, 67 c, JW-DQ c, JW-COLON-C c,
 
 : JWT-ESC-IN$ ( -- ptr u8 n )
-   JWT-ESC-IN 6 ;
+   JWT-ESC-IN 7 ;
 
 : JWT-ESC-WANT$ ( -- ptr u8 n )
-   JWT-ESC-WANT 16 ;
+   JWT-ESC-WANT 22 ;
 
 : JWT-NAME$ ( -- ptr u8 n )
    JWT-NAME 3 ;

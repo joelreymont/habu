@@ -263,8 +263,9 @@ public
 
 private
 
+\ A nibble's hex digit, lowercase as JSON.stringify and Python's json write it.
 : JW-HEX ( n -- n )
-   dup 10 < if JW-ZERO + else 55 + then ;
+   dup 10 < if JW-ZERO + else 87 + then ;
 
 \ Bytes the escaped text takes, the sum of each byte's width. A width is at
 \ most six, so the sum fits a cell for any span in memory; the checked adds of
