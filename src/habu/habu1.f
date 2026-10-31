@@ -1755,6 +1755,18 @@ public
    band USE-WIDS-OFF LIT64,  band DATA band ADD,
    USE-MAX 0 do  tmp base off i cells + LDR,  tmp band i cells STR,  loop ;
 
+\ The enclosing package's cells (layout.f ENCLOSING) and a copy at off from
+\ base, in the band's order. tmp is scratch.
+: ENCLOSING-SAVE, ( n n n -- ) {: base:n off:n tmp:n :}
+   ENCLOSING:END ENCLOSING:PUB - 0 do
+      tmp DATA ENCLOSING:PUB i + LDR,  tmp base off i + STR,
+   CELL +loop ;
+
+: ENCLOSING-RESTORE, ( n n n -- ) {: base:n off:n tmp:n :}
+   ENCLOSING:END ENCLOSING:PUB - 0 do
+      tmp base off i + LDR,  tmp DATA ENCLOSING:PUB i + STR,
+   CELL +loop ;
+
 \ Give the observer the evaluate frame in x<f> adopted (EMIT-EVAL-BODY) back
 \ its frame (the one x<f> nests in, which adoption required), the evaluating
 \ word's ticket and its source start, with that
@@ -1886,6 +1898,7 @@ variable LSOURCEEXECFINISH
    11 DATA PKG-PRI-CELL LDR,    11 12 PKGSNAP-PRI STR,
    11 DATA PKG-PARENT-CELL LDR, 11 12 PKGSNAP-PARENT STR,
    11 DATA PKG-REC-CELL LDR,    11 12 PKGSNAP-REC STR,
+   14 EVAL-FRAME:ENCLOSING 11 ENGINE-EMIT:ENCLOSING-SAVE,
    \ The `using` depth, rolled back to this boundary on clean exit
    \ (EM-EVAL-CLEAN-EXIT) and on throw (LEVALREC): usings are file-local.
    11 USE-DEPTH-CELL LIT64,  11 DATA 11 ADD,  11 11 0 LDR,  11 12 PKGSNAP-USE STR,

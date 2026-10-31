@@ -89,14 +89,8 @@ create ERR CAP allot
    s" require src/lib/task.f TASK:#USER USER-BAND:END over - 1+ TASK:+USER PST-OVER drop" UNCAUGHT-RC EXPECT
    s" require src/lib/task.f TASK:#USER -1 TASK:+USER PST-WRAP drop" UNCAUGHT-RC EXPECT ;
 
-\ The transaction band ends the protected bands. Pending pre-trust defer
-\ scratch and then the cold boot's declared-row log follow the JIT snapshot
-\ frames and remain writable through DATA-START; crossing the band's end must
-\ reject while scratch and the user heap accept. The replay scope band and the
-\ unit dispatch cell after it sit at the fixed start of the unclaimed run
-\ $4208..$4398, between writable cells: a store straddling either end of the
-\ pair rejects while the cells beside it accept, and each one's own end cell
-\ rejects.
+\ The replay scope, unit dispatch and both enclosing package bands sit back to
+\ back: a band's last cell and a straddle reject; the cells either side accept.
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
@@ -111,9 +105,14 @@ create ERR CAP allot
    s" 0 data-base REPLAY-SCOPE:LATCH 1- + !" REJECTS
    s" 0 data-base REPLAY-SCOPE:LATCH + c!" REJECTS
    s" 0 data-base REPLAY-SCOPE:END 1 cells - + !" REJECTS
+   s" 0 data-base REPLAY-SCOPE:END 1- + !" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL + !" REJECTS
    s" 0 data-base UNIT-COMPILE-CELL 1 cells + 1- + !" REJECTS
-   s" 0 data-base UNIT-COMPILE-CELL 1 cells + + !" ACCEPTS
+   s" 0 data-base ENCLOSING:END 1 cells - + !" REJECTS
+   s" 0 data-base ENCLOSING:END 1- + !" REJECTS
+   s" 0 data-base REPLAY-SCOPE:ENCLOSING ENCLOSING:END ENCLOSING:PUB - + 1 cells - + !" REJECTS
+   s" 0 data-base REPLAY-SCOPE:ENCLOSING ENCLOSING:END ENCLOSING:PUB - + 1- + !" REJECTS
+   s" 0 data-base REPLAY-SCOPE:ENCLOSING ENCLOSING:END ENCLOSING:PUB - + + !" ACCEPTS
    s" 0 data-base DATA-START 1 cells - + !" ACCEPTS
    s" 0 data-base DATA-START 1- + !" ACCEPTS
    s" 0 data-base DATA-START + c!" ACCEPTS ;

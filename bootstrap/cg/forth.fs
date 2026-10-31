@@ -207,7 +207,7 @@ $CA7CF4A3E00E constant STACK-ABI:CATCH-MAGIC
 $80 constant STACK-ABI:EVAL-BASE
 $88 constant STACK-ABI:EVAL-CAP
 $130 constant STACK-ABI:EVAL-SEG     \ after layout.f EVAL-FRAME:PEND ($120, below) and the $128 slot held for WIDN
-$160 constant STACK-ABI:EVAL-BYTES
+$180 constant STACK-ABI:EVAL-BYTES
 
 \ Mirror of src/habu/layout.f package SIGNAL-ABI: the two cells the boot
 \ publishes the baked signal stub through, and the fd word the stub itself

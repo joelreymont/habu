@@ -2846,14 +2846,19 @@ public
 ;package
 
 : C-FIND-GLOBAL? ( ptr n n -- ) {: name:ptr len:n :}
-   SP SP 16 SUBI,
+   SP SP 32 SUBI,
    14 DATA PKG-PUB-CELL LDR,  14 SP 0 STR,
    14 DATA PKG-PRI-CELL LDR,  14 SP 8 STR,
+   14 DATA ENCLOSING:PUB LDR,  14 SP 16 STR,
+   14 DATA ENCLOSING:PRI LDR,  14 SP 24 STR,
    14 0 MOVZ,  14 DATA PKG-PUB-CELL STR,  14 DATA PKG-PRI-CELL STR,
+   14 DATA ENCLOSING:PUB STR,  14 DATA ENCLOSING:PRI STR,
    9 name LABEL@ ADR,  10 len MOVZ,  LFIND LABEL@ BL,
    14 SP 0 LDR,  14 DATA PKG-PUB-CELL STR,
    14 SP 8 LDR,  14 DATA PKG-PRI-CELL STR,
-   SP SP 16 ADDI, ;
+   14 SP 16 LDR,  14 DATA ENCLOSING:PUB STR,
+   14 SP 24 LDR,  14 DATA ENCLOSING:PRI STR,
+   SP SP 32 ADDI, ;
 
 : C-FIND-GLOBAL ( ptr n n -- ) {: name:ptr len:n :}
    LBL {: ok:label :}
@@ -3986,9 +3991,10 @@ package DEFWRITE
    then ;
 
 \ The scope replay-open saves and replay-close restores, beside NDICT and CP:
-\ WIDN, CURRENT, the open package's four cells and the using band's depth, the
-\ depth `package` saved and the used wids. USE-RPKG-SAVE is the REPL line's,
-\ not the scope's. x8 = the band. Clobbers x10 and x14.
+\ WIDN, CURRENT, the open package's four cells, the enclosing package's four
+\ and the using band's depth, the depth `package` saved and the used wids.
+\ USE-RPKG-SAVE is the REPL line's, not the scope's. x8 = the band. Clobbers
+\ x10 and x14.
 : SCOPE, ( bool -- ) {: save:bool :}
    DATA WIDN-CELL REPLAY-SCOPE:WIDN save SAVED,
    DATA CUR-CELL REPLAY-SCOPE:CUR save SAVED,
@@ -3996,6 +4002,9 @@ package DEFWRITE
    DATA PKG-PRI-CELL REPLAY-SCOPE:PKG-PRI save SAVED,
    DATA PKG-PARENT-CELL REPLAY-SCOPE:PKG-PARENT save SAVED,
    DATA PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SAVED,
+   ENCLOSING:END ENCLOSING:PUB - 0 do
+      DATA ENCLOSING:PUB i +  REPLAY-SCOPE:ENCLOSING i +  save SAVED,
+   CELL +loop
    10 USE-BAND-OFF LIT64,  10 DATA 10 ADD,
    10 USE-DEPTH-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-DEPTH save SAVED,
    10 USE-PKG-SAVE-CELL USE-BAND-OFF - REPLAY-SCOPE:USE-PKG-SAVE save SAVED,
@@ -4112,24 +4121,46 @@ variable LREPLAYTRAP
    prot ENGINE-ERROR:SEAL-PACKAGE REFUSE-AT
    done LBL, ;
 
-\ package-scope! ( n n -- ) namespace index, parent wid. It has no task guard
-\ of its own: the package keywords guard (C-TASK-GUARD), and the Habu
-\ loop's recovery puts the scope back through this row as LEVALREC stores the
-\ cells (src/habu/packages.f PKG-RECOVER).
+\ package-scope! ( n n -- ): src/habu/prims.f states its contract. The package
+\ keywords hold its task guard (C-TASK-GUARD).
 : PACKAGE-SCOPE ( -- )
-   LBL LBL LBL {: bad set done :}
+   LBL LBL LBL LBL LBL LBL LBL LBL {: bad set inline scan part top store done :}
    1 G-POP  0 G-POP                                   \ x1 = the parent wid, x0 = the row
    15 0 MOVN,  0 15 CMP,  C-NE set BCOND,
       1 bad CBNZ,                                     \ only `-1 0` clears
       9 0 MOVZ,
       9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
       9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
+      9 DATA ENCLOSING:PUB STR,  9 DATA ENCLOSING:PRI STR,
+      9 DATA ENCLOSING:PARENT STR,  9 DATA ENCLOSING:REC STR,
       done B,
    set LBL,
    0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
    14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
    12 9 8 LDR,  12 bad CBZ,
+   2 9 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,   \ x2 = the name's length
+   4 9 24 ADDI,
+   14 9 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
+      4 9 24 LDR,                                     \ x4 = the name's bytes
+   inline LBL,
+   3 0 MOVZ,
+   scan LBL,  3 2 CMP,  C-CS top BCOND,
+      15 4 3 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ part BCOND,
+      3 3 1 ADDI,  scan B,
+   part LBL,
+      14 DATA PKG-PUB-CELL LDR,  14 bad CBZ,          \ no package open
+      14 DATA ENCLOSING:PUB LDR,  14 bad CBNZ,        \ a part is open
+      14 DATA PKG-PUB-CELL LDR,  14 DATA ENCLOSING:PUB STR,
+      14 DATA PKG-PRI-CELL LDR,  14 DATA ENCLOSING:PRI STR,
+      14 DATA PKG-PARENT-CELL LDR,  14 DATA ENCLOSING:PARENT STR,
+      14 DATA PKG-REC-CELL LDR,  14 DATA ENCLOSING:REC STR,
+      store B,
+   top LBL,
+      14 0 MOVZ,
+      14 DATA ENCLOSING:PUB STR,  14 DATA ENCLOSING:PRI STR,
+      14 DATA ENCLOSING:PARENT STR,  14 DATA ENCLOSING:REC STR,
+   store LBL,
    11 9 0 LDR,
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    1 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,
@@ -4261,8 +4292,9 @@ variable LREPLAYTRAP
 \ replay-close ( -- ): every check comes before the first store. It refuses
 \ NDICT below the saved count or above HW, CP below the saved CP and WIDN below
 \ the saved WIDN; then it zeroes the overlay's records, puts NDICT, CP and the
-\ scope back and zeroes the band, the latch with it. While a task is live it
-\ retires the records instead and keeps NDICT and CP (EM-DEF-OCC:LRETIRE).
+\ scope back and zeroes the band, the latch with it, and its enclosing copy.
+\ While a task is live it retires the records instead and keeps NDICT and CP
+\ (EM-DEF-OCC:LRETIRE).
 \ The WIDN refusal is defensive: every engine writer of WIDN but replay-widn!
 \ raises it, replay-widn! lowers it no further than the saved WIDN, and a raw
 \ store to WIDN-CELL or the band exits 83 after the seal. It keeps a WIDN the
@@ -4290,6 +4322,9 @@ variable LREPLAYTRAP
    8 BAND,
    0 0<> SCOPE,
    10 8 0 ADDI,  11 8 REPLAY-SCOPE:END BAND-OFF ADDI,
+   ZERO-SPAN,
+   10 8 REPLAY-SCOPE:ENCLOSING BAND-OFF ADDI,
+   11 10 ENCLOSING:END ENCLOSING:PUB - ADDI,
    ZERO-SPAN,
    done B,
    bad ENGINE-ERROR:SEAL-VIOLATION REFUSE-AT
@@ -8796,6 +8831,7 @@ ardone LBL,
    9 DATA BOOT-SRC:USER-END STR,
    9 DATA BPWN-CELL STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
+   9 DATA ENCLOSING:PUB STR,  9 DATA ENCLOSING:PRI STR,  9 DATA ENCLOSING:PARENT STR,  9 DATA ENCLOSING:REC STR,
    9 DATA PKGRESYNC-CELL STR,                            \ checker resync latch clear at boot
    9 DATA P2-CELL STR,  9 DATA P2BODY0-CELL STR,
    9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,
@@ -12150,6 +12186,7 @@ public
       9 10 PKGSNAP-PRI LDR,     9 DATA PKG-PRI-CELL STR,
       9 10 PKGSNAP-PARENT LDR,  9 DATA PKG-PARENT-CELL STR,
       9 10 PKGSNAP-REC LDR,     9 DATA PKG-REC-CELL STR,
+      13 EVAL-FRAME:ENCLOSING 9 ENGINE-EMIT:ENCLOSING-RESTORE,
       9 10 PKGSNAP-USE LDR,     12 USE-DEPTH-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ roll the using-scope depth back too (x12 reloaded below)
       9 10 PKGSNAP:FLOOR LDR,   12 USE-PKG-SAVE-CELL LIT64,  12 DATA 12 ADD,  9 12 0 STR,   \ and the open package's using floor
       13 EVAL-FRAME:USE-WIDS 12 9 ENGINE-EMIT:USE-WIDS-RESTORE,  \ and the includer's used publics, which the resync names
@@ -12278,6 +12315,7 @@ public
    9 DATA RPKG-PRI LDR,      9 DATA PKG-PRI-CELL STR,
    9 DATA RPKG-PARENT LDR,   9 DATA PKG-PARENT-CELL STR,
    9 DATA RPKG-REC LDR,      9 DATA PKG-REC-CELL STR,
+   DATA RPKG:ENCLOSING 9 ENGINE-EMIT:ENCLOSING-RESTORE,
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ roll the using-scope depth back to this REPL line's snapshot
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    9 DATA RPKG:FLOOR LDR,                                         \ and the line-start using floor
@@ -12683,6 +12721,7 @@ public
    9 DATA PKG-PRI-CELL LDR,   9 DATA RPKG-PRI STR,
    9 DATA PKG-PARENT-CELL LDR, 9 DATA RPKG-PARENT STR,
    9 DATA PKG-REC-CELL LDR,   9 DATA RPKG-REC STR,
+   DATA RPKG:ENCLOSING 9 ENGINE-EMIT:ENCLOSING-SAVE,
    10 USE-DEPTH-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,        \ snapshot the using-scope depth for this REPL line
    10 USE-RPKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 STR,
    10 USE-PKG-SAVE-CELL LIT64,  10 DATA 10 ADD,  9 10 0 LDR,     \ and the open package's using floor

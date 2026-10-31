@@ -215,19 +215,25 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
 \ A throw puts the package scope back (habu1.f B-EVAL, habu2.f LEVALREC).
-\ The open package's row, its parent wordlist, the current wordlist and the
-\ open package's using floor: what the engine's evaluate frame keeps of the
-\ package scope beside the using depth (PKGSNAP).
-: PKG-STATE ( -- n n n n )
+\ The enclosing package's row and parent wordlist, the open package's row and
+\ parent wordlist, the current wordlist and the open package's using floor:
+\ what the engine's evaluate frame keeps of the package scope beside the using
+\ depth (PKGSNAP, EVAL-FRAME:ENCLOSING).
+: PKG-STATE ( -- n n n n n n )
+   ENCLOSING:REC CELL@  ENCLOSING:PARENT CELL@
    PKG-REC-CELL CELL@  PKG-PARENT-CELL CELL@  get-current  USE-PKG-SAVE-CELL CELL@ ;
 
 \ Put back the state PKG-STATE read, as the engine's recovery does after a
 \ throw, and have the checker re-read the restored scope. The sealed writers
-\ run only when the failed input changed the scope.
-: PKG-RECOVER ( n n n n -- ) {: rec:n parent:n cur:n floor:n :}
+\ run only when the failed input changed the scope. A part opens only inside
+\ its enclosing package, so that package opens first.
+: PKG-RECOVER ( n n n n n n -- )
+   {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
    floor USE-PKG-SAVE-CELL CELL!
-   PKG-REC-CELL CELL@ rec <>  PKG-PARENT-CELL CELL@ parent <> or
+   ENCLOSING:REC CELL@ outer-rec <>  ENCLOSING:PARENT CELL@ outer-parent <> or
+   PKG-REC-CELL CELL@ rec <> or  PKG-PARENT-CELL CELL@ parent <> or
    get-current cur <> or if
+      outer-rec 0<> if outer-rec XREF-ADDR>INDEX outer-parent package-scope! then
       rec 0= if -1 0 package-scope! else rec XREF-ADDR>INDEX parent package-scope! then
       cur set-current
    then

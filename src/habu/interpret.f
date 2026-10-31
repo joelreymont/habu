@@ -215,6 +215,9 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
    PKG-PRI-CELL CELL@ snap PKGSNAP-PRI FR!
    PKG-PARENT-CELL CELL@ snap PKGSNAP-PARENT FR!
    PKG-REC-CELL CELL@ snap PKGSNAP-REC FR!
+   ENCLOSING:END ENCLOSING:PUB - 0 ?do
+      ENCLOSING:PUB i + CELL@  f EVAL-FRAME:ENCLOSING i + FR!
+   CELL +loop
    USE-DEPTH-CELL CELL@ snap PKGSNAP-USE FR!
    USE-PKG-SAVE-CELL CELL@ snap PKGSNAP:FLOOR FR!
    USE-DEPTH-CELL CELL@ f EVAL-FRAME:USE-FLOOR FR!
@@ -284,6 +287,8 @@ CAST: AS-ROWS-CUT ( n -- [ n -- ] )
       f EVAL-FRAME:USE-WIDS i cells + FR@
       i cells USE-WIDS-OFF + CELL!
    loop
+   f EVAL-FRAME:ENCLOSING ENCLOSING:REC ENCLOSING:PUB - + FR@
+   f EVAL-FRAME:ENCLOSING ENCLOSING:PARENT ENCLOSING:PUB - + FR@
    snap PKGSNAP-REC FR@ snap PKGSNAP-PARENT FR@
    snap PKGSNAP-CUR FR@ snap PKGSNAP:FLOOR FR@ PKG-RECOVER ;
 
@@ -442,7 +447,7 @@ private
    INP-CELL CELL@ INE-CELL CELL@ SRCLOC:INB-CELL CELL@ USE-DEPTH-CELL CELL@
    ENTRY-PEND @
    {: p:n e:n b:n d:n o:n :}
-   PKG-STATE {: rec:n parent:n cur:n floor:n :}
+   PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
    USE-FLOOR @ {: outer:n :}
    REC @ {: found:ptr :}
    LOOP-EVAL @ {: reading:n :}
@@ -465,7 +470,7 @@ private
          TOK-BODY-RAW @ BODY-RAW-NEXT !
       then
       entry PEND-CELL CELL!  d USE-DEPTH-CELL CELL!
-      rec parent cur floor PKG-RECOVER  code throw
+      outer-rec outer-parent rec parent cur floor PKG-RECOVER  code throw
    then ;
 
 PTR-VARIABLE RANGE-A

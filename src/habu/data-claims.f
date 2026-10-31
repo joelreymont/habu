@@ -268,12 +268,15 @@ create TAB
    UNIT-COMPILE-CELL                  1 cells                 CLAIM UNIT-COMPILE
    SOURCE-EXEC-CTX-CELL               1 cells                 CLAIM SOURCE-EXEC-CTX-CELL
    REPLAY-SCOPE:LATCH                 REPLAY-SCOPE:END REPLAY-SCOPE:LATCH -  CLAIM REPLAY-SCOPE
+   ENCLOSING:PUB                      ENCLOSING:END ENCLOSING:PUB -  CLAIM ENCLOSING
+   REPLAY-SCOPE:ENCLOSING             ENCLOSING:END ENCLOSING:PUB -  CLAIM REPLAY-SCOPE:ENCLOSING
    RPKG:FLOOR                         1 cells                 CLAIM RPKG:FLOOR
    RPKG:WIDS                          USE-MAX cells           CLAIM RPKG:WIDS
    POLICY-NDICT-CELL                  1 cells                 CLAIM POLICY-NDICT-CELL
    POLICY-BITS-OFF                    PROT-BITS-BYTES         CLAIM POLICY-BITS
    POLICY-REQUIRE-CELL                1 cells                 CLAIM POLICY-REQUIRE-CELL
    CLAUSE-CELL                        1 cells                 CLAIM CLAUSE-CELL
+   RPKG:ENCLOSING                     ENCLOSING:END ENCLOSING:PUB -  CLAIM RPKG:ENCLOSING
    \ The profiler band stays the last row, where BAND-ASSERT places it again.
    0 DATA-SIZE PROF-ABI:PROF-BAND-AT  PROF-CNT-BYTES          CLAIM PROF-BAND
    0 ,  0 ,

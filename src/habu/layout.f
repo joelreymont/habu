@@ -457,9 +457,9 @@ $48 constant EVAL-PKG
 \ and EVAL-CAP hold $80..$90, so EVAL-INB takes $90, EVAL-FRAME:USE-FLOOR $98,
 \ EVAL-FRAME:USE-WIDS $A0..$120 and EVAL-FRAME:PEND $120; $128 is held for the
 \ frame's saved next wordlist id (WIDN), STACK-ABI:EVAL-SEG takes $130,
-\ EVAL-FRAME:ROWS $138 and EVAL-FRAME:SX-CTX..SX-SRC $140..$158; $158 pads the
-\ frame to STACK-ABI:EVAL-BYTES ($160), which keeps the native stack 16-byte
-\ aligned.
+\ EVAL-FRAME:ROWS $138, EVAL-FRAME:SX-CTX..SX-SRC $140..$158 and
+\ EVAL-FRAME:ENCLOSING $158..$178; $178 pads the frame to STACK-ABI:EVAL-BYTES
+\ ($180), which keeps the native stack 16-byte aligned.
 $90 constant EVAL-INB
 package EVAL-FRAME
 public
@@ -499,6 +499,9 @@ $138 constant ROWS
 $140 constant SX-CTX
 $148 constant SX-TICKET
 $150 constant SX-SRC
+\ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its order,
+\ which a throw puts back with the open package's.
+$158 constant ENCLOSING
 ;package
 
 \ Every engine load refusal reaching the LCOMPILEDIE tail names its source as
@@ -530,7 +533,8 @@ INP-CELL RESERVED-PTR-U8-CELL CURSOR
 ;package
 
 \ RPKG-* / PKGRESYNC-CELL: the REPL line's package snapshot. EM-REPL-READ
-\ (LREAD) saves the five live package-scope cells at line start;
+\ (LREAD) saves the five live package-scope cells at line start, and the
+\ enclosing package's in RPKG:ENCLOSING;
 \ EM-REPL-RECOVER (LRREC) restores them on a compile error, beside the
 \ RSAVCP/RSAVND/RSAVDP/RSAVSP rollback. Both recovery legs arm PKGRESYNC-CELL
 \ and EM-PKG-RESYNC drains it, making the checker re-read the restored scope:
@@ -553,6 +557,10 @@ $4810 constant FLOOR
 \ and the floor; EVAL-FRAME:USE-WIDS above says why. It takes the run after
 \ FLOOR, claimed in data-claims.f.
 $4818 constant WIDS
+\ ENCLOSING: the line-start enclosing package's four cells (ENCLOSING below),
+\ in its order. It takes the run after layout.f CLAUSE-CELL, claimed in
+\ data-claims.f.
+$4CB0 constant ENCLOSING
 ;package
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
@@ -1956,6 +1964,10 @@ PKG-REC CELL + constant USE-DEPTH
 USE-DEPTH CELL + constant USE-PKG-SAVE
 USE-PKG-SAVE CELL + constant USE-WIDS               \ USE-MAX cells
 USE-WIDS USE-MAX cells + constant END
+\ ENCLOSING: the enclosing package's four cells (ENCLOSING below), in its
+\ order, saved and restored with the scope. It takes the cells after
+\ ENCLOSING, a second guarded band, which replay-close zeroes too.
+$4310 constant ENCLOSING
 ;package
 
 \ The scoped package evaluator owns one transient dispatch xt. A source load
@@ -1965,6 +1977,21 @@ USE-WIDS USE-MAX cells + constant END
 \ nonzero one as an xt, in a donor too. It takes the cell after REPLAY-SCOPE;
 \ DATA-CLAIMS refuses a replay scope that grows into it.
 $42E8 constant UNIT-COMPILE-CELL
+
+\ While a part is open, the package it is a part of: that package's public
+\ wid, private wid, parent wid and row, as PKG-PUB-CELL..PKG-REC-CELL held
+\ them before the part opened; all four are 0 when no part is open. Only
+\ package-scope! writes them (habu2.f DEFWRITE:PACKAGE-SCOPE); they are a
+\ guarded band (DATA-BANDS). It takes the cells after UNIT-COMPILE-CELL;
+\ src/core/checker.f mirrors PARENT and REC (CK-ENCLOSING-*-OFF).
+package ENCLOSING
+public
+$42F0 constant PUB
+PUB CELL + constant PRI
+PRI CELL + constant PARENT
+PARENT CELL + constant REC
+REC CELL + constant END
+;package
 
 \ The protected DATA bands, as one table.
 \ Every engine's span guard walks this table: arm64 GUARD-SPAN (src/habu/habu1.f)
@@ -1986,6 +2013,8 @@ create TAB
    UNIT-COMPILE-CELL ,            1 cells ,
    SOURCE-EXEC-CTX-CELL ,         1 cells ,
    REPLAY-SCOPE:LATCH ,           REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - ,
+   ENCLOSING:PUB ,                ENCLOSING:END ENCLOSING:PUB - ,
+   REPLAY-SCOPE:ENCLOSING ,       ENCLOSING:END ENCLOSING:PUB - ,
    BODYBUF-OFF ,                  BODYBUF-CAP 2 + ,
    TXN-STATE-OFF ,                TXN-STATE-LEN ,
    0 ,                            0 ,
@@ -2041,8 +2070,8 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ finds the log through this one fixed cell (checker.f CK-DECLARED-LOG-CELL);
 \ an engine without the log reads 0, an empty log. Below $7FF8 for
 \ `DATA <off> LDR` and below DATA-START, it is the last cell of the run
-\ $4208..$43A0 below APP-ENTRY:XT-CELL, which the seed leaves free; REPLAY-SCOPE
-\ and UNIT-COMPILE-CELL hold the start of that run.
+\ $4208..$43A0 below APP-ENTRY:XT-CELL, which the seed leaves free; REPLAY-SCOPE,
+\ UNIT-COMPILE-CELL, ENCLOSING and REPLAY-SCOPE:ENCLOSING hold the start of that run.
 package DECLARED-LOG
 public
 $4398 constant ADDR-CELL

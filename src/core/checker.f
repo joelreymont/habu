@@ -1221,6 +1221,8 @@ $78 constant CK-PKG-PUB-OFF
 $80 constant CK-PKG-PRI-OFF
 $88 constant CK-PKG-PARENT-OFF
 $90 constant CK-PKG-REC-OFF
+$4300 constant CK-ENCLOSING-PARENT-OFF      \ = layout.f ENCLOSING:PARENT
+$4308 constant CK-ENCLOSING-REC-OFF         \ = layout.f ENCLOSING:REC
 48 constant CK-DREC                        \ = layout.f DREC (dictionary record bytes)
 131072 constant CK-DICT-CAP                \ = layout.f DICT-CAP (dictionary records)
 \ The engine's live `using` depth, read raw like the package cells above.
@@ -12181,7 +12183,9 @@ variable HIDDEN-N
 4 constant S-FLOOR                         \ the open package's using floor
 5 constant S-SOURCE                        \ CHECKER-USE:SOURCE-FLOOR
 6 constant S-TAG                           \ the scope that pushed the row
-7 constant S-WIDS                          \ the used publics, CK-USE-MAX cells
+7 constant S-ENCLOSING                     \ the enclosing package's row index, -1 for none
+8 constant S-ENCLOSING-PARENT
+9 constant S-WIDS                          \ the used publics, CK-USE-MAX cells
 S-WIDS CK-USE-MAX + constant ROW-CELLS
 \ The snapshot rows, newest last (SNAP-PUSH). Scopes nest as deep as memory
 \ holds (RBF-GROW), so the rows are a growing mapping, given back by CLOSE.
@@ -12210,9 +12214,9 @@ variable SNAP-N
    nv @ 1 + nv ! ;
 
 : REC>IX ( ptr n -- n ) {: rec:ptr :} rec NULL-PTR - dbase@ - CK-DREC / ;
-\ The open package's row index, -1 when none is open.
-: OPEN-IX ( -- n )
-   CK-PKG-REC-OFF DATA@ {: r:n :}
+\ The row index of the package the cell at off names, -1 when it names none.
+: SCOPE-IX ( n -- n )
+   DATA@ {: r:n :}
    r 0= IF -1 EXIT THEN
    r dbase@ - CK-DREC / ;
 : NS-ROW ( ptr u8 n -- ptr n ) -1 CHECKER-RESOLVE:WL-PROBE ;
@@ -12234,15 +12238,20 @@ variable SNAP-N
    a u NS-ROW ;
 
 : SNAP-SAVE ( ptr u8 -- ) {: p:ptr :}
-   OPEN-IX p S-REC ROW!
+   CK-PKG-REC-OFF SCOPE-IX p S-REC ROW!
    CK-PKG-PARENT-OFF DATA@ p S-PARENT ROW!
+   CK-ENCLOSING-REC-OFF SCOPE-IX p S-ENCLOSING ROW!
+   CK-ENCLOSING-PARENT-OFF DATA@ p S-ENCLOSING-PARENT ROW!
    get-current p S-CURRENT ROW!
    CK-USE-DEPTH-OFF DATA@ p S-DEPTH ROW!
    CK-USE-FLOOR-OFF DATA@ p S-FLOOR ROW!
    CHECKER-USE:SOURCE-FLOOR @ p S-SOURCE ROW!
    CK-USE-MAX 0 ?DO i cells CK-USE-WIDS-OFF + DATA@ p S-WIDS i + ROW! LOOP ;
 
+\ A part opens only inside its enclosing package, so that package opens first.
 : SNAP-RESTORE ( ptr u8 -- ) {: p:ptr :}
+   p S-ENCLOSING ROW@ {: outer:n :}
+   outer 0 >= IF outer p S-ENCLOSING-PARENT ROW@ package-scope! THEN
    p S-REC ROW@ {: ix:n :}
    ix 0 < IF -1 0 ELSE ix p S-PARENT ROW@ THEN package-scope!
    p S-CURRENT ROW@ set-current

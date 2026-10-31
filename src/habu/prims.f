@@ -855,8 +855,11 @@ ETRUSTED-ONLY!
 EPPRIM: OUTER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
 \ from the row's [0] and [8], PKG-REC the row's address and PKG-PARENT the
-\ wid; `-1 0` clears all four. It refuses any other index at or above NDICT,
-\ unsigned, a row that is not a namespace row and one without a private wid.
+\ wid. A row whose name holds a colon is a part, which first moves the four
+\ open cells into layout.f ENCLOSING; any other row clears ENCLOSING, and
+\ `-1 0` clears all eight. It refuses any other index at or above NDICT,
+\ unsigned, a row that is not a namespace row, one without a private wid, and
+\ a part when no package or a part is open.
 \ It has no task guard of its own: the package keywords refuse one, and a throw
 \ puts the scope back through this row (src/habu/packages.f PKG-RECOVER).
 EPRIM: package-scope! PE-N PE-IN PE-N PE-IN EPRIM;
