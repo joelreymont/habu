@@ -1,7 +1,7 @@
 \ fmt.f - checked number formatting, package FMT: appenders into src/lib/string.f's
-\ SB and direct printers. Integers render through a private buffer, so FMT:.U and
-\ FMT:.INT leave SB alone; FMT:F.N has no bounded width and resets SB. Every
-\ appender is fail-closed on its domain (E-FMT-DOMAIN, E-FMT-OVERFLOW).
+\ SB and direct printers. Integers render through a private buffer, so FMT:.U,
+\ FMT:.INT and FMT:INT$ leave SB alone; FMT:F.N has no bounded width and resets
+\ SB. Every appender is fail-closed on its domain (E-FMT-DOMAIN, E-FMT-OVERFLOW).
 \ STORAGE CLASS. TASK-LOCAL: the render buffer and scratch cells live in the
 \ FMT-ABI band of the per-task DATA region; SB is task-local too.
 
@@ -310,6 +310,7 @@ public
 
 : .U ( n -- )     U>NUM   NUM$ type ;          \ unsigned, no trailing space, SB untouched
 : .INT ( n -- )   INT>NUM NUM$ type ;          \ signed, no trailing space, SB untouched
+: INT$ ( n -- ptr u8 n )   INT>NUM NUM$ ;      \ signed, SB untouched; valid until FMT's next render
 : F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;   \ unbounded width: assembled in the shared builder
 
 ;package

@@ -37,6 +37,10 @@ package FMT
 : T-PINT ( n -- )
    SB-RESET s" sb-sentinel" SB-APPEND
    .INT  SB$ s" sb-sentinel" T$= ;
+: T-INT$ ( n ptr u8 n -- )
+   {: a:ptr u:n :}
+   SB-RESET s" sb-sentinel" SB-APPEND
+   INT$ a u T$=  SB$ s" sb-sentinel" T$= ;
 \ F.N has no bounded width and does build in the shared builder, so its text is
 \ still readable through SB$ after the call.
 : T-PFN ( r n ptr u8 n -- ) {: a:ptr u:n :}      \ ( value places expect )
@@ -123,6 +127,7 @@ package FMT
    99                   T-PU
    -123                 T-PINT
    STR-MIN-I64          T-PINT             \ the table-emitted magnitude prints too
+   -7 s" -7" T-INT$
    2.5     1 s" 2.5"    T-PFN
    \ fail-closed domain guards
    [: NEG-U-CASE ;]        E-FMT-DOMAIN   TTHROWSQ
