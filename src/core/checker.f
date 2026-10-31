@@ -4460,6 +4460,7 @@ variable UNJ-TOK           \ inside an unjudged token: the splice is armed
 variable UNJ-SPLICED       \ a committed step settled this token's rows
 variable STEP-R            \ the applying effect has a return-stack part (EFF-APPLY)
 variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
+variable UNJ-WF0                    \ the width-fact count before the token
 
 : SPLICE-OPEN? ( n -- bool ) {: t:n :}   \ a cell whose physical width is not known yet
    t T-RES {: r:n :}
@@ -22463,10 +22464,8 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    FAILB @ FAILTU @ + FAILE !
    CF-FAIL ;
 
-\ A failed unjudged token no committed step settled (a refusal with no step,
-\ or a step that left the token's rows to this): splice its declared ABI effect
-\ over the pre-token rows, as UNJ-SPLICE's header says. An unsafe token's text
-\ may do anything to the rows, so it has no effect to splice.
+\ A failed unjudged token no step settled drops its steps' width facts and
+\ splices its declared ABI effect; an unsafe token has no effect to splice.
 : UNJ-SETTLE ( bool -- ) {: unsafe:bool :}
    UNJ-SPLICED @ 0 <> IF EXIT THEN
    unsafe IF UNJ-LOST EXIT THEN
@@ -22476,6 +22475,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    h E-INST-RESET
    h E-DIN@ E-INST {: din:n :}
    h E-DOUT@ E-INST {: dout:n :}
+   UNJ-WF0 @ WF-TOKEN-CUT
    UNJ-PD @ UNJ-PR @  din dout UNJ-PD @ SPLICE-SHAPE  dout swap  UNJ-SPLICE ;
 
 \ A body's `[char] x` compiles the literal x by its primitive row, never by a
@@ -22494,7 +22494,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    unj IF TKF TKFU @ UNSAFE-TOK? ELSE RES-FALSE THEN {: unsafe:bool :}
    OK @ {: ok-in:n :}  UNCK @ {: unck-in:n :}    \ an uncheckable token fails with OK still set
    unj IF
-      -1 OK !  0 UNCK !  -1 UNJ-TOK !  0 UNJ-SPLICED !  DCUR @ UNJ-PD !  RCUR @ UNJ-PR !
+      -1 OK !  0 UNCK !  -1 UNJ-TOK !  0 UNJ-SPLICED !  DCUR @ UNJ-PD !  RCUR @ UNJ-PR !  WF-N @ UNJ-WF0 !
    THEN
    a u CAP-FAIL
    0 EXEC-OPAQUE !  0 CATCH-OPAQUE !

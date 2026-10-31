@@ -422,6 +422,20 @@ LOWER-CERT-HOOK:INSTALL
    s" ncomp: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED
    ERR$ s" bad construct: family not declared" CONTAINS? TTRUE ;
 
+\ A refused step in a TRUSTED: body lowers as the raw effect the scan splices,
+\ so `2dup` over a two-cell view copies two cells.
+: TEST-T0-RAW-SPLIT ( -- )
+   s" T0 compiles a refused TRUSTED: step as its raw effect" T-LABEL
+   BODY$ s" require src/lib/c2-owner.f require src/lib/c2-bytes.f TRUSTED: LRD-SPLIT ( mut-view<x,y,z,u8> -- mut-view<x,y,z,u8> ptr u8 n ) 2dup ; variable LRD-LEN variable LRD-LEN2 : LRD-ROOT ( mut-view<p,p,a,u8> -- mut-view<p,p,a,u8> ) LRD-SPLIT LRD-LEN ! drop C2-BYTES:MUT-LENGTH swap LRD-LEN2 ! ; : LRD-RUN ( -- ) C2-MEM:OWNER-SIZE [: LRD-ROOT ;] C2-MEM:WITH-MUT ; LRD-RUN LRD-LEN @ . LRD-LEN2 @ . cr" FS:WRITE-ALL
+   BODY$ RUN S\" 8\n8\n" ASSERT-OK-OUT ;
+
+\ A refused `!` of a two-cell product in a TRUSTED: body splices its own typed
+\ rows and keeps their width fact, so it stores both cells.
+: TEST-T0-RAW-STORE ( -- )
+   s" T0 compiles a refused TRUSTED: store at its field width" T-LABEL
+   BODY$ s" PRODUCT lrd-pt FIELD x n FIELD y n ;PRODUCT TYPED-VARIABLE LRD-PV lrd-pt TRUSTED: LRD-SET ( n n ptr lrd-pt -- ) ! ; : LRD-STORE ( -- n ) 7 3 4 LRD-PV LRD-SET ; LRD-STORE . depth . cr" FS:WRITE-ALL
+   BODY$ RUN S\" 7\n0\n" ASSERT-OK-OUT ;
+
 \ A storage declaration whose definer cannot size its type is the checker's
 \ refusal, named for the declared word and the type.
 : STORAGE-REJECT ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
@@ -571,6 +585,8 @@ LOWER-CERT-HOOK:INSTALL
    HB-TARGET-LINUX-X86-64? 0= if
       TEST-UNCERTIFIED-MALFORMED
       TEST-T0-UNBOUND
+      TEST-T0-RAW-SPLIT
+      TEST-T0-RAW-STORE
    then
    TEST-PREFLIGHT-POSITIVES
    FS:CLEANUP-RUN
