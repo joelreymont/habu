@@ -30,3 +30,5 @@ Census gap, for the lane that retires the effect-store-census.f (c) shims with B
 LINEAR: batch landed (habu-mint-and-erase-72e83e7a, six commits ending "Mint the JSON reader with LINEAR:"): the (b) linear mint/erase trios in byte-edit.f, json-read.f, process-pty-handle.f, xml/source.f and xml/state.f are checked `LINEAR:` rows in their owning packages; TRUSTED: 1216 -> 1197. byte-edit.f:29 ADDRESS stays a pointer cast waiting on B10a.
 
 Batch 1 landed (habu-shrink-trusted-to-f4e84345, eight commits ending "Row the checker words the owner calls"): 75 TRUSTED: definitions became checked : or CAST: definitions; TRUSTED: definitions in src 102 -> 55, tools 16 -> 5, test 69 -> 52. The tools sites were the 11 REC-* writers in tools/native-unit-object.f.
+
+The xt feature landed (habu-let-signatures-name-5931014b, habu-check-the-primitive-4b61908e): TRUSTED: definitions in src 55 -> 47, tools 5, test 52.
