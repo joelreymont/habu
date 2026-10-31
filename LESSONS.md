@@ -39,6 +39,11 @@ entry.
   library for a protocol names things in that protocol's words: a tool's
   result and its content blocks, not answers.
 
+- 2026-10-31, a public XML word: asked whether lane cown may add
+  `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
+  zero-fills the record, so the XML C2 reader stops casting bytes into XML's
+  OPAQUE cursor from another package, Joel chose "Add EMPTY-CURSOR".
+
 ### Compiler and builds
 
 - 2026-10-22, incremental builds: "i said that a file is the unit of
