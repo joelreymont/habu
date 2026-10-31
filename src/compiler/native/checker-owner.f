@@ -180,14 +180,14 @@ public
 
 \ The source owner that counted a refusal decides whether compilation may
 \ continue to the next definition.
-TRUSTED: MULTI-ERROR? ( -- bool )
+: MULTI-ERROR? ( -- bool )
    NCOMP-DISPATCH:DECL-MULTI-ERROR-OFF s" multi-error mode" FIELD
    dup 0= if drop MULTI-ERR? exit then
    AS-BOOL execute ;
 
 \ Whether the definition just checked bound a refused declaration's recovery
 \ row (checker.f RECOVERY-BIND): it is checked for diagnostics, never published.
-TRUSTED: RECOVERY-USED? ( -- bool )
+: RECOVERY-USED? ( -- bool )
    NCOMP-DISPATCH:DECL-RECOVERY-USED-OFF s" recovery use" FIELD
    dup 0= if drop CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? exit then
    AS-BOOL execute ;
@@ -241,17 +241,17 @@ TRUSTED: RECOVERY-USED? ( -- bool )
    dup 0= if drop SOURCE-DOES-REPORT exit then
    AS-DOES-REPORT execute ;
 
-TRUSTED: DOES-FINISH ( ptr u8 n bool -- )
+: DOES-FINISH ( ptr u8 n bool -- )
    CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF s" does> publication" FIELD
    dup 0= if drop CHECKER-NATIVE-DOES-FINISH exit then
    AS-DOES-FINISH execute ;
 
-TRUSTED: DOES-BEGIN ( -- )
+: DOES-BEGIN ( -- )
    CHECKER-OWNER-ABI:NATIVE-DOES-BEGIN-OFF s" does> rollback frame" FIELD
    dup 0= if drop CHECKER-NATIVE-DOES-BEGIN exit then
    AS-ACTION execute ;
 
-TRUSTED: DOES-COMMIT ( -- )
+: DOES-COMMIT ( -- )
    CHECKER-OWNER-ABI:NATIVE-DOES-COMMIT-OFF s" does> rollback release" FIELD
    dup 0= if drop CHECKER-NATIVE-DOES-COMMIT exit then
    AS-ACTION execute ;
