@@ -319,6 +319,10 @@ Every form loaded and its accessor effect certified.
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
 
+A build tracks a compile-time read of storage as a read of the record whose
+address it derives from, within that record's extent: `L 8 +` past
+`create L 8 allot` reads the next record, whose edit a warm build misses.
+
 A word a definer's `create` makes has `-- ptr a` from the moment it is made, at
 either tier, in a package or under `evaluate`, until a `does>` the definer then
 reaches replaces it with the clause effect; a branch that `exit`s before

@@ -50,11 +50,12 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 : DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET ;
 : DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
 
-\ The compiler entry, the preflight, the def hook and the checker's
-\ declaration operations, which take a name and a signature, are raw execution
-\ tokens in the engine's cells; these views state the signatures they are
-\ called with here.
+\ The compiler entry, the preflight, the def hook, the body hook and the
+\ checker's declaration operations, which take a name and a signature, are raw
+\ execution tokens in the engine's cells; these views state the signatures
+\ they are called with here.
 CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
+CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
 CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
@@ -359,6 +360,17 @@ private
    DEF-SEED
    DEF-QUALIFY kind DEF-RECORD ;
 
+\ The body hook, run as habu2.f C-BODY-HOOK runs it: on true it has installed
+\ the definition, the source resumes past its `;` and the record closes.
+: DEF-BODY-HOOK? ( -- bool )
+   NCOMP-DISPATCH:BODY-HOOK-CELL CELL@ {: xt:n :}
+   xt 0= if false exit then
+   xt AS-BODY-HOOK execute {: resume:ptr installed:bool :}
+   installed 0= if false exit then
+   resume INP-CELL ADDR!
+   DEF-CLOSE
+   true ;
+
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
    NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
    TASK-GUARD
@@ -373,6 +385,7 @@ private
    else
       DEF-MAYBE-SIG
    then
+   DEF-BODY-HOOK? if exit then
    DEF-DISPATCH ;
 
 \ The engine's twin: habu2.f NCOMP-EMIT:CAPTURE-STRING.
@@ -520,15 +533,20 @@ private
 \ `does>` ends a defining word's own part: DOESB takes the capture's length
 \ with `does>` in it, where `;` splits the body, and the signature after it,
 \ which must be there, opened and closed, is the effect of each word the
-\ definer creates. The signature joins no capture: INP passes it and
-\ created-sig! takes a copy of its inside at here, where it outlives the input
-\ (C-PARSE-CREATED-SIG). A second `does>` refuses naming `does>` (C-DIE-DOES),
-\ and a missing or open signature names the token as spelled (C-SIG-BAD).
-
+\ definer creates. Its copy, `( `, the inside and ` )`, opens the clause in the
+\ capture, where created-sig! takes the inside and a clause's scan reads a
+\ comment (checker.f CHECK-SCAN-WALK), as habu2.f C-CAPTURE-CREATED-SIG keeps
+\ it. A second `does>` refuses naming `does>` (C-DIE-DOES), and a missing or
+\ open signature names the token as spelled (C-SIG-BAD).
 : DEF-CREATED ( -- )
    false DEF-SIG-SPAN {: s:ptr end:ptr :}
    end INP-CELL ADDR!
-   s 1 + end s - 2 - COPY-HERE created-sig! ;
+   end s - 2 - {: len:n :}
+   data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ + 2 + {: copy:ptr :}
+   s 1 DEF-CAPTURE
+   s 1 + len DEF-CAPTURE
+   end 1 - 1 DEF-CAPTURE
+   copy len created-sig! ;
 
 \ The pending parent is record NDICT. Its clause will be published under the
 \ parent's name plus ;does in the same wordlist. Check the live records before
@@ -556,8 +574,9 @@ private
 : DEF-DOES ( -- )
    DOESB-CELL CELL@ 0<> if s" does>" ERROR-TEXT:TYPE RC-REJECT THROW-AT then
    DEF-DOES-NAME
+   BODYLEN-CELL CELL@ {: at:n :}
    DEF-CREATED
-   BODYLEN-CELL CELL@ DOESB-CELL CELL!
+   at DOESB-CELL CELL!
    1 CLAUSE-CELL CELL!
    \ The head's locals end here, as habu2.f J-DOES ends them: the clause
    \ cannot name one, and a local it declares is captured from an empty scope.

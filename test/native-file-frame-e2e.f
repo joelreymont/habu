@@ -44,6 +44,8 @@ create OG-MOVED LINE-CAP allot variable OG-MOVED-U
 variable MOVED
 \ Nonzero on the second build only: pf.f loads before lp.f.
 variable FILL-POOL
+\ Nonzero once STALE-CON's wlt.f defines K in WLS's private wordlist.
+variable WLT-EDITED
 
 : IN+ ( ptr u8 n -- ) INPUT CAP INPUT-U BUF-APPEND ;
 
@@ -90,18 +92,15 @@ variable FILL-POOL
 : FWD-CASE ( -- )
    S\" package FRAME-FWD\npublic\n: P-WRITE ( ptr u8 n -- ) 5 GENIO:FAULT! GENIO:TERMINAL GENIO:FORWARD ;\n: PDEV ( -- device ) [: FRAME-DEV:NO-EMIT ;] [: FRAME-DEV:NO-KEY ;] [: FRAME-DEV:NO-READY ;] [: FRAME-DEV:NO-READ ;] [: P-WRITE ;] [: FRAME-DEV:NO-READ ;] [: FRAME-DEV:NOTHING ;] [: FRAME-DEV:NOTHING ;] 0 GENIO:DEVICE ;\n;package\nFRAME-FWD:PDEV GENIO:OUTPUT! FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:FAULT@ FRAME-DEV:WCODE GENIO:OUTPUT@ GENIO:TERMINAL GENIO:OUTPUT! GENIO:CLOSE s\" fwd=\" type rot . swap . GENIO:E-IO - . cr\n" IN+ ;
 
-\ ffo.f, ffg.f, ffe.f and ffx.f run inside an open FUNCTION: declaration.
+\ ffo.f and ffg.f run inside an open FUNCTION: declaration.
 : DECL-PROBE ( -- )
    s" ffo.f" LOAD+
-   s" ffg.f" LOAD+
-   s" ffe.f" LOAD+
-   s" ffx.f" LOAD+ ;
+   s" ffg.f" LOAD+ ;
 
 \ ffs.f's struct-by-value call prints its checksum, on macOS only, as
-\ FFS-FIXTURE writes it; ffsl.f loads first to grow the library table.
+\ FFS-FIXTURE writes it.
 : FFS-PROBE ( -- )
    HB-TARGET-MACOS? if
-      s" ffsl.f" LOAD+
       s" ffs.f" LOAD+
       S\" s\" ffs=\" type FFS-S FFS-SUM24 . cr\n" IN+
    then ;
@@ -114,6 +113,8 @@ variable FILL-POOL
    S\" s\" wlr=\" type WLQ:A WLQ:B + . cr\n" IN+
    s" wls.f" LOAD+
    S\" s\" wls=\" type WLS:A WLT-K + . cr\n" IN+
+   S\" s\" wlsb=\" type WLS:B . cr\n" IN+
+   WLT-EDITED @ if S\" package WLS\ns\" wlsk=\" type K . cr\n;package\n" IN+ then
    s" wlk.f" LOAD+
    S\" s\" wlx=\" type WLX-CUR WLK-W = bool>n . cr\n" IN+
    s" wld.f" LOAD+
@@ -140,6 +141,16 @@ variable FILL-POOL
    s" evreq.f" LOAD+
    s" nlroot.f" LOAD+ ;
 
+\ The loads of the FAMILY-FIXTURES users, each followed by the value it
+\ computed.
+: FAMILY-PROBE ( -- )
+   s" fmb.f" LOAD+
+   S\" s\" fmb=\" type FMB-K . cr\n" IN+
+   s" fmc.f" LOAD+
+   S\" s\" fmc=\" type FMC-K . cr\n" IN+
+   s" fmu.f" LOAD+
+   S\" s\" fmu=\" type FMU-K . cr\n" IN+ ;
+
 \ The loads of the INDIRECT-FIXTURES runs that store, each followed by the
 \ value it computed.
 : INDIRECT-PROBE ( -- )
@@ -154,6 +165,16 @@ variable FILL-POOL
    s" uhp.f" LOAD+
    S\" s\" uh=\" type UH-K . cr\ns\" uhi=\" type UHI-K . cr\n" IN+
    s" pnt.f" LOAD+ ;
+
+\ The loads of the PREMISE-FIXTURES b files, each followed by the value its
+\ definition reads.
+: PREMISE-PROBE ( -- )
+   s" pm1b.f" LOAD+
+   S\" 7 PM1-V !\ns\" pm1=\" type PM1-F . cr\n" IN+
+   s" pm2b.f" LOAD+
+   S\" 9 PM2X !\ns\" pm2=\" type PM2-F . cr\n" IN+
+   s" pm5b.f" LOAD+
+   S\" 9 PM5X !\ns\" pm5=\" type PM5-F . cr\n" IN+ ;
 
 \ The loads of the CAST-FIXTURES runs, each run that stores followed by the
 \ value it computed.
@@ -189,6 +210,7 @@ variable FILL-POOL
    s" sx.f" LOAD+
    S\" s\" sx=\" type SX-B . cr\n" IN+
    EDGE-PROBE
+   FAMILY-PROBE
    s" hpar.f" LOAD+
    S\" s\" hp=\" type FRAME-HP:B . HG-ONE . HG-TWO . cr\n" IN+
    s" w.f" LOAD+
@@ -219,7 +241,6 @@ variable FILL-POOL
    S\" package FRAME-OG-PROBE\nCAST: OG-SYM-XT ( n -- [ ptr u8 n n ptr u8 n -- n ] )\n: OG-ROW ( ptr u8 n n ptr u8 n -- )\n   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CHECKER-OWNER-ABI:ORIGIN-SYM-OFF + CELL-VIEW @ OG-SYM-XT execute\n   ENGINE-ORIGIN:TARGET drop {: at:n end:n name:ptr nameu:n :} 2drop\n   space name nameu type s\" :\" type nameu 0<> if 1 else 0 then . at . end . ;\ns\" origins=\" type s\" FRAME-OG\" 2 s\" OG-P\" OG-ROW s\" \" 0 s\" OG-G\" OG-ROW s\" \" 0 s\" OG-W\" OG-ROW s\" ;origins\" type cr\n;package\n" IN+
    s" watermark.f" LOAD+
    s" ret-own.f" LOAD+
-   s" ret-parent.f" LOAD+
    s" ret-late.f" LOAD+
    s" incut.f" LOAD+
    s" gp.f" LOAD+
@@ -231,7 +252,6 @@ variable FILL-POOL
    S\" s\" refused=\" type MULTI-ERR-END .\n" IN+
    s" after.f" LOAD+
    s" aftpar.f" LOAD+
-   s" retire.f" LOAD+
    s" rawp.f" LOAD+
    s" pokep.f" LOAD+
    s" slot.f" LOAD+
@@ -240,15 +260,12 @@ variable FILL-POOL
    s" list.f" LOAD+
    S\" set-check\n" IN+
    s" addrp.f" LOAD+
-   s" updp.f" LOAD+
    s" offp.f" LOAD+
    s" ownp.f" LOAD+
    s" ev.f" LOAD+
    s" evw.f" LOAD+
    s" evx.f" LOAD+
    s" evr.f" LOAD+
-   s" ev2.f" LOAD+
-   s" ev4.f" LOAD+
    s" tierpar.f" LOAD+
    S\" 1 set-tier\n" IN+
    s" tierback.f" LOAD+
@@ -285,6 +302,7 @@ variable FILL-POOL
    s" out.f" LOAD+
    s" reach.f" LOAD+
    INDIRECT-PROBE
+   PREMISE-PROBE
    s" rk-ind.f" LOAD+
    s" rk-base.f" LOAD+
    s" rk-rev.f" LOAD+
@@ -331,6 +349,7 @@ variable FILL-POOL
    \ the tee over FDEV already faulted; fy.f prints under it. fl.f flushes
    \ XDEV through the tee. cap.f's capture fails on BOOM after the tee's own
    \ cleanup, and capo.f prints through the next tee.
+   S\" require src/lib/genio-core.f\n" IN+
    S\" package FRAME-DEV\nvariable BOOMED\npublic\n: L-WRITE ( ptr u8 n -- ) {: b:ptr u:n :} s\" [W\" type u . b u type s\" ]\" type ;\n: L-EMIT ( n -- ) s\" [E\" type . s\" ]\" type ;\n: F-WRITE ( ptr u8 n -- ) nip s\" [F\" type . s\" ]\" type 5 GENIO:FAULT! ;\n: X-FLUSH ( -- ) 5 GENIO:FAULT! 123 throw ;\n: NO-EMIT ( n -- ) drop ;\n: NO-KEY ( -- n ) 0 ;\n: NO-READY ( -- bool ) false ;\n: NO-READ ( ptr u8 n -- n ) drop drop 0 ;\n: NOTHING ( -- ) ;\n: LDEV ( -- device ) [: L-EMIT ;] [: NO-KEY ;] [: NO-READY ;] [: NO-READ ;] [: L-WRITE ;] [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n: FDEV ( -- device ) [: NO-EMIT ;] [: NO-KEY ;] [: NO-READY ;] [: NO-READ ;] [: F-WRITE ;] [: NO-READ ;] [: NOTHING ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n: XDEV ( -- device ) [: L-EMIT ;] [: NO-KEY ;] [: NO-READY ;] [: NO-READ ;] [: L-WRITE ;] [: NO-READ ;] [: X-FLUSH ;] [: NOTHING ;] 0 GENIO:DEVICE ;\n: WCODE ( -- n ) [: s\" w\" GENIO:WRITE ;] catch ;\n: BOOM ( -- ) BOOMED @ 0<> if exit then 1 BOOMED ! 99 throw ;\n: ARM ( -- ) [: BOOM ;] IMAGE-LIFECYCLE:REGISTER ;\n;package\nGENIO:TERMINAL GENIO:OUTPUT! s\" <tee\" type cr\nFRAME-DEV:LDEV GENIO:OUTPUT!\n" IN+
    s" pout.f" LOAD+
    S\" GENIO:TERMINAL GENIO:OUTPUT!\nFRAME-DEV:FDEV GENIO:OUTPUT!\n" IN+
@@ -350,8 +369,7 @@ variable FILL-POOL
    \ LOWER-CERT-HOOK's; ek= counts the rows its load recorded. The hooks stay
    \ installed for scope.f. pcf.f, pcz.f, pcd.f and pce.f first load where
    \ no journal records; once MOVED, where one records outside every sink.
-   \ Both exports load with checking off, as both keys require: another hook
-   \ refuses the file by itself. pcf.f's export goes to the full journal,
+   \ pcf.f's export goes to the full journal,
    \ armed; pce.f's to the early journal, armed and installed. pcz.f's
    \ constant loads in pcf.f's state and records nothing, so only the open
    \ refuses it. pcd.f's constant loads under the early journal's hook with
@@ -377,8 +395,8 @@ variable FILL-POOL
    MOVED @ if S\" s\" LOWER-CERT-HOOK:INSTALL\" FRAME-EK-PROBE:EK-DO\n" IN+ then
    S\" true FRAME-EK-PROBE:EK-SET\n" IN+
    s" jrn.f" s" ek=" EK-LOAD+
-   \ The pool-full stage loads last but for scope.f, whose open scope refuses
-   \ every file after it: pf.f moves DATA for every later file.
+   \ The pool-full stage loads last but for scope.f, whose open scope must
+   \ stay the last load: pf.f moves DATA for every later file.
    FILL-POOL @ if s" pf.f" LOAD+ then
    s" lp.f" LOAD+
    S\" s\" lp=\" type LP-S type cr\n" IN+
@@ -422,11 +440,11 @@ variable FILL-POOL
 \ TEE$ on the cold build: each operation as its device logs it, kind and
 \ length, with each top-level load's count report between the cases.
 : TEE-COLD ( -- ptr u8 n )
-   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n2\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n]cap=99\n\ntee>\n" ;
+   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n2\n][W23\n definitions installed ][W2\n0\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n][F23\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n][F23\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W23\n definitions installed ][W2\n0\n][W10\n compiled ][W2\n2\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W23\n definitions installed ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W23\n definitions installed ][W2\n0\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
 
 \ TEE$ on the warm build: the same operations, with the warm counts.
 : TEE-WARM ( -- ptr u8 n )
-   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n2\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n1\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
+   S\" <tee\n[W1\na][W1\n\n][W4\nsaid][W1\n\n][E66\n][W1\nc][W1\n\n][W13\nfiles reused ][W2\n2\n][W10\n compiled ][W2\n0\n][W23\n definitions installed ][W2\n0\n][W10\n compiled ][W2\n0\n][F2\n][F1\n][F13\n][F2\n][F10\n][F2\n][F23\n][F2\n][F10\n][F2\n]fault=5\nwcode=0\nfpar=5\n0\n\n[F1\n][F1\n][F1\n][F13\n][F2\n][F10\n][F2\n][F23\n][F2\n][F10\n][F2\n]fq=5\n0\n\n[W13\nfiles reused ][W2\n0\n][W10\n compiled ][W2\n1\n][W23\n definitions installed ][W2\n0\n][W10\n compiled ][W2\n2\n]fl=123\n5\n0\n\n[W13\nfiles reused ][W2\n1\n][W10\n compiled ][W2\n0\n][W23\n definitions installed ][W2\n1\n][W10\n compiled ][W2\n0\n][W1\ns][W1\n\n][W1\no][W1\n\n][W13\nfiles reused ][W2\n1\n][W10\n compiled ][W2\n0\n][W23\n definitions installed ][W2\n0\n][W10\n compiled ][W2\n0\n]cap=99\n\ntee>\n" ;
 
 \ The value of field (" name=") in line, up to the next space or the end.
 : FIELD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -440,12 +458,6 @@ variable FILL-POOL
           some OF IDX>N a swap ENDOF
         ;MATCH
      ENDOF
-   ;MATCH ;
-
-: FIELD-N ( ptr u8 n -- n )
-   STR>NUMBER? MATCH option
-     none OF T-FAIL 0 ENDOF
-     some OF ENDOF
    ;MATCH ;
 
 : KEY$ ( ptr u8 n -- ptr u8 n ) OBJECT$ s"  key=" FIELD$ ;
@@ -488,50 +500,16 @@ variable FILL-POOL
    S\"  ; immediate\nvariable HITS\ncreate T 16 allot\nTYPED-VARIABLE HOOK [ n -- n ]\n: QUAD ( n -- n ) TWICE TWICE FRAME-BASE:ONE + ;\nTRUSTED: BUMP ( n -- n ) 1 + ;\n7 constant SEVEN\n' TWICE HOOK xt!\n;package\ns\" FRAME-LIB:MARK\" 0 parse-imm\n" IN+
    s" lib.f" INPUT INPUT-U @ PUT ;
 
-\ check.f, which top.f requires after app.f and tally.f, checks the first
-\ build's app.f dependency rows, kept in app-cold.obj, while the session that
-\ loaded app.f is still open: the rows' record keys exist only there. It first
-\ undoes the two writes to lib.f's DATA, tally.f's run of TALLY into HITS and
-\ app.f's store of QUAD into HOOK, so lib.f's DATA stands as app.f found it,
-\ as it does where a build checks the rows, before app.f. For each split k it
-\ prints one digit, 1 when rows [0,k) still hold plus 2 when rows [k,n) do,
-\ then for each row i a 1 when row i holds, else 0.
-\ Section 14 is the object's dependency rows (NUNIT-OBJECT's DEPS-SLOT).
-: CHECKER ( -- )
-   0 INPUT-U !
-   S\" -1 FRAME-LIB:HITS +!\n' FRAME-LIB:TWICE FRAME-LIB:HOOK xt!\n" IN+
-   S\" : SPLITS ( ptr u8 n -- ) {: deps:ptr depsu:n :}\n   deps depsu NUNIT-DEP:FORMAT {: rows:n :}\n   s\" split=\" type\n   rows 1+ 0 ?do\n      deps depsu 0 i NUNIT-DEP:CHECK-ROWS if 1 else 0 then\n      deps depsu i rows NUNIT-DEP:CHECK-ROWS if 2 else 0 then + 48 + emit\n   loop cr\n   s\" held=\" type\n   rows 0 ?do\n      deps depsu i i 1+ NUNIT-DEP:CHECK-ROWS if 49 else 48 then emit\n   loop cr ;\ns\" " IN+
-   s" app-cold.obj" AT IN+
-   S\" \" NUNIT-FILE:ARCH-AARCH64 s\" FILE\" s\" " IN+
-   APP-KEY KEY-LEN IN+
-   S\" \" NUNIT-FILE:READ\n14 NUNIT-FILE:SECTION$ SPLITS\n" IN+
-   s" check.f" INPUT INPUT-U @ PUT ;
-
 \ Keep the object stored under key, past its cache entry head, as file name.
 : KEEP-OBJ ( ptr u8 n ptr u8 n -- )
    {: key:ptr keyu:n name:ptr nameu:n :}
+   keyu 0= if T-FAIL exit then
    key keyu OBJ-PATH {: path:ptr pathu:n :}
    path pathu FS:FILE-SIZE {: size:n :}
    size OBJ-HEAD > dup TTRUE 0= if exit then
    size OBJ-RESERVE
    path pathu 0 OBJ BYTE-VIEW size FS:READ-ALL size <> if E-FS-IO throw then
    name nameu 0 OBJ BYTE-VIEW OBJ-HEAD BYTE+ size OBJ-HEAD - PUT ;
-
-: KEEP-OBJECT ( -- ) s" app.f" KEY$ s" app-cold.obj" KEEP-OBJ ;
-
-\ The digits the session printed after tag, and how many of them are c.
-: DIGITS$ ( ptr u8 n -- ptr u8 n )
-   {: tag:ptr tagu:n :}
-   OUT$ tag tagu FIELD$ {: a:ptr u:n :}
-   a u 10 INDEX-OF MATCH option
-     none OF a u ENDOF
-     some OF IDX>N a swap ENDOF
-   ;MATCH ;
-: DIGIT-COUNT ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
-   0 u 0 ?do a i + c@ c = if 1+ then loop ;
-: SPLIT$ ( -- ptr u8 n ) s" split=" DIGITS$ ;
-: SPLIT-COUNT ( n -- n ) {: c:n :} SPLIT$ c DIGIT-COUNT ;
-: HELD-COUNT ( n -- n ) {: c:n :} s" held=" DIGITS$ c DIGIT-COUNT ;
 
 \ A rebuild after an edit to lib.f: the app still runs, both files still
 \ write objects with every colon definition, under the keys of the first build.
@@ -568,8 +546,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    until drop
    DIGITS DIGITS-AT @ + DIGITS-CAP DIGITS-AT @ - IN+ ;
 
-\ The span of definition name's name token in app.f, as "at-end", appended
-\ to INPUT: what the origin journal records for it.
+\ The length of definition name's source text in app.f, from its name's
+\ start through its closing ";", appended to INPUT: what the object's index
+\ row records for it.
 : SPAN+ ( ptr u8 n -- )
    {: name:ptr nameu:n :}
    INPUT-U @ {: mark:n :}
@@ -579,9 +558,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
      some OF IDX>N 2 + ENDOF
    ;MATCH {: at:n :}
    mark INPUT-U !
-   at N+ s" -" IN+ at nameu + N+ ;
+   APP$ S\" ;\n" at FIND-SUB-FROM MATCH option
+     none OF T-FAIL 0 ENDOF
+     some OF IDX>N 1+ at - ENDOF
+   ;MATCH N+ ;
 
-\ The source spans app.f's object holds, one per definition in order.
+\ The source text lengths app.f's object holds, one per definition in order.
 : APP-SPANS ( -- )
    0 INPUT-U !
    s" PRE" SPAN+ s" ," IN+
@@ -601,19 +583,6 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
      none OF ENDOF
      some OF drop T-FAIL ENDOF
    ;MATCH ;
-
-\ name's frame ends in the run reason given, and its load wrote no object.
-: RUN-REFUSED ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n why:ptr whyu:n :}
-   name nameu FRAME$ why whyu ENDS-WITH? TTRUE
-   name nameu NO-OBJECT ;
-
-\ name refuses because a segment of it opens or closes inside an open FFI
-\ declaration, and its load wrote no object.
-: DECL-OPEN ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   name nameu s"  reason=" LINE$ s"  reason=ffi-declaration-open" ENDS-WITH? TTRUE
-   name nameu NO-OBJECT ;
 
 \ Files whose installs nest under an installing parent. NEST-FIXTURES and the
 \ other *-FIXTURES words stand apart from FIXTURES: together their body text
@@ -639,7 +608,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" dv.f" S\" variable DV-V 7 DV-V !\n: DV-S ( -- ptr u8 n ) s\" lit\" ;\ncreate DV-T 3 , 4 ,\n: DV-SUM ( -- n ) DV-V @ DV-T @ + DV-T cell+ @ + ;\n" PUT
    s" df.f" S\" defer DF-D ( -- n )\n" PUT
    \ rw.f's RY rewinds DATA into RX, so RZ stands below RY although its
-   \ DATA ends past both: a replay would fill backward to RZ.
+   \ DATA ends past both.
    s" rw.f" S\" create RX 16 allot\ncreate RY -8 allot\ncreate RZ 8 allot\n: RW-GAP ( -- n ) RZ NULL-PTR - RX NULL-PTR - - ;\n" PUT
    \ rwc.f rewinds DATA into rwp.f's RWP-A, so rwp.f's segment after it
    \ reopens inside the one before: RWP-B lies in both segments' spans.
@@ -656,15 +625,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ library, built into the tree, so its registry row carries a relocation mask
 \ that a warm install declares again. FFS-S holds the s24 record {7, 3, 0, -9}.
 \ Structs by value are AAPCS64, so it runs on macOS only, as in
-\ src/lib/ffi-test.f. Its library is the second distinct one, which grows
-\ the library table, and a file that grows a registry table refuses
-\ ffi-grown: ffsl.f states the same LIBRARY line first and takes that
-\ growth, so ffs.f reuses the row, as ffl2.f does ffl.f's.
+\ src/lib/ffi-test.f.
 : FFS-FIXTURE ( -- )
    ROOT$ STRUCT-FIXTURE:BUILD {: lib:ptr libu:n :}
-   0 INPUT-U !
-   S\" require src/lib/ffi-abi.f\nLIBRARY " IN+ lib libu IN+ S\" \n" IN+
-   s" ffsl.f" INPUT INPUT-U @ PUT
    0 INPUT-U !
    S\" require src/lib/ffi-abi.f\nLIBRARY " IN+ lib libu IN+
    S\" \nFUNCTION: FFS-SUM24 hb_sum24 ( ptr u8 -- n ) 0 24 STRUCT-ARG ;FUNCTION\ncreate FFS-S 7 , 3 , -9 ,\n" IN+
@@ -672,8 +635,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 
 \ The FFI fixtures.
 : FFI-FIXTURES ( -- )
-   \ A file that grows a registry table refuses. ffl.f, the first FFI file,
-   \ declares functions until the table grows, from any count: the rest fit.
+   \ ffl.f, the first FFI file, runs GROW, which declares functions until the
+   \ registry table grows, from any count, so the later files fit.
    \ ffl2.f reuses its library row. ffn.f runs PROCESS-SYMBOLS before its
    \ FUNCTION: appends a row.
    s" ffl.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FF-CRC crc32 ( n ptr u8 n -- n ) ;FUNCTION\n4 BUFFER: GROW-SYM\n: GROW-NAME ( n -- ) 102 GROW-SYM c! 4 1 do dup 26 mod 97 + GROW-SYM i + c! 26 / loop drop ;\n: GROW ( -- ) FFI:MARK {: room:n :} 0 begin dup GROW-NAME GROW-SYM 4 FFI:PROCESS 0 FFI:DECLARE drop 1+ FFI:MARK room <> until drop ;\nGROW\n" PUT
@@ -685,14 +648,6 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ffo.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFO-CRC crc32 ( n ptr u8 n -- n ) 1 2 WRITES-ARG\nrequire ffoc.f\n;FUNCTION\n" PUT
    s" ffoc.f" S\" 1 constant FFOC-K\n" PUT
    s" ffg.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFG-CRC crc32 ( n ptr u8 n -- n ) s\" HOME\" GETENV 2drop ;FUNCTION\n" PUT
-   \ Each child crosses one boundary only: ffec.f opens with its parent's
-   \ declaration pending and closes it, so only the entry check refuses it;
-   \ ffxc.f opens a declaration and returns it pending, so only the exit
-   \ check refuses it.
-   s" ffe.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nFUNCTION: FFE-CRC crc32 ( n ptr u8 n -- n )\nrequire ffec.f\n" PUT
-   s" ffec.f" S\" ;FUNCTION\n" PUT
-   s" ffx.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\nrequire ffxc.f\n;FUNCTION\n" PUT
-   s" ffxc.f" S\" FUNCTION: FFX-CRC crc32 ( n ptr u8 n -- n )\n" PUT
    \ sel.f declares getuid under the process selection; selc.f, which does not
    \ require sel.f, declares the same row: a reuse row and the entry selection.
    s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getuid ( -- i32 ) ;FUNCTION\n" PUT
@@ -701,7 +656,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ select.
    s" ffb.f" S\" require src/lib/ffi-abi.f\n: FFB ( -- ) s\" getppid\" FFI:PROCESS 0 FFI:DECLARE drop ;\n' FFB FFI:WITH-MAKER-DECLARATIONS\n1 constant FFB-K\n" PUT
    \ sela.f selects what was selected; selb.f selects it again and declares
-   \ nothing. Each top-level PROCESS-SYMBOLS refuses its file.
+   \ nothing.
    s" sela.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" PUT
    s" selb.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n17 constant SELB-K\n" PUT
    \ scopea.f leaves its package's wordlist selected; scopeb.f, which does
@@ -743,8 +698,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ mask.f's run of MX-RUN names data first, then runs a quotation through
 \ execute: INDIRECT is admitted, and the closure walk follows the
 \ quotation to its sibling mxone.f's MX-ONE, whose body the third build
-\ edits; MX-ONE is not a child of mask.f, since an edited child makes
-\ mask.f's replay stale and the build resumes mask.f from its source.
+\ edits.
 \ xrun.f's XGO executes the typed xt its sibling xset.f stores in XHOOK,
 \ and the third build edits XA's body under the same key. dxrun.f's DXGO
 \ executes the xt dxset.f stores in DXHOOK, a data cell with no colon
@@ -753,16 +707,13 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ build edits ixl.f's literal, and IX-TEN, which ixt.f's text calls. Each text
 \ stores into its own file's variable: a store into an earlier file's data
 \ refuses the file. The rk-*.f runs push a real literal, unclassed, before or
-\ after an indirect run, and refuse alike, trusted RK-TRUST too: a contract
-\ admits an unchecked body, not a real literal in it, and RK-IS's real literal
-\ refuses after its `is`.
+\ after an indirect run, inside trusted RK-TRUST and after RK-IS's `is`.
 \ rk-div.f's run divides and rk-mod.f's takes a remainder: scalar ops whose
 \ zero divisor traps with an outcome the operands decide, so both store.
 \ db-a.f's run writes a reserved engine header cell ($3900) through
-\ data-base, and db-b.f's run reads that cell, which a stored object would
-\ answer stale, and refuses.
-\ rebind.f's RB-B compiles `is`, which rebinds a defer still holding the
-\ unset sentinel: the rebind is a slot row and the file stores.
+\ data-base, and db-b.f's run reads that cell.
+\ rebind.f's top level runs RB-B, whose compiled `is` rebinds a defer still
+\ holding the unset sentinel: a reused rebind.f runs it again, so it stores.
 \ uhrun.f's top level runs uhd.f's checked definer UH-DEF, and uhinit.f's
 \ runs its own UH-INIT; both call the trusted, unchecked UH-ONE, whose
 \ contract admits it, so both runs store, and the third build edits UH-ONE's
@@ -797,36 +748,46 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ixt.f" S\" variable IXT-V\n: IXT-RUN ( -- ) s\" IX-TEN IXT-V !\" evaluate-closed ;\nIXT-RUN\nIXT-V @ constant IXT-K\n" PUT
    s" ixp.f" S\" require ixw.f\nrequire ixl.f\nrequire ixt.f\n" PUT ;
 
-\ A run that reaches a cast stores when the cast only renames a scalar
-\ representation, and refuses when its output mints a pointer. cid.f's
+\ Each pmNb.f's top level runs pmNa.f's word before its own definition,
+\ whose third build edit changes what the word makes there: one more record
+\ (pm1), the same records in the other order (pm2), or its record before
+\ the load it runs instead of after (pm5).
+: PREMISE-FIXTURES ( -- )
+   s" pm1a.f" S\" : PM1: ( -- ) create 0 , ;\n" PUT
+   s" pm1b.f" S\" require pm1a.f\nPM1: PM1-P\nvariable PM1-V\n: PM1-F ( -- n ) PM1-V @ ;\n" PUT
+   s" pm2a.f" S\" : PM2: ( -- ) create 7 , s\" variable PM2X\" evaluate-closed ;\n" PUT
+   s" pm2b.f" S\" require pm2a.f\nPM2: PM2-P\n: PM2-F ( -- n ) PM2X @ ;\n" PUT
+   s" pm5a.f" S\" : PM5 ( -- ) s\" pm5c.f\" required s\" variable PM5X\" evaluate-closed ;\n" PUT
+   s" pm5b.f" S\" require pm5a.f\nPM5\n: PM5-F ( -- n ) PM5X @ ;\n" PUT
+   s" pm5c.f" S\" : PM5-C ( -- n ) 3 ;\n" PUT ;
+
+\ A run that reaches a cast stores, whether the cast only renames a scalar
+\ representation or its output mints a pointer. cid.f's
 \ CID-ROUND casts through its package's NEWTYPE and back; rolecast.f runs the
 \ seed's >LEN and LEN>N at top level. The session prints CID-K and ROLE-SEEN
 \ after each load, and the warm build asserts the values its replays install.
 \ mint.f's MINT-USE casts an integer to a pointer, and pb.f's PB-USE to a
-\ layout whose field holds one: both runs refuse their files.
+\ layout whose field holds one.
 : CAST-FIXTURES ( -- )
    s" cid.f" S\" package FRAME-CID\nNEWTYPE cid\nprivate\nCAST: N>CID ( n -- cid )\nCAST: CID>N ( cid -- n )\npublic\n: CID-ROUND ( n -- n ) N>CID CID>N ;\n;package\n3 FRAME-CID:CID-ROUND constant CID-K\n" PUT
    s" rolecast.f" S\" 3 >LEN LEN>N constant ROLE-SEEN\n" PUT
    s" mint.f" S\" package FRAME-MINT\nprivate\nCAST: N>BYTES ( n -- ptr u8 )\npublic\n: MINT-USE ( n -- ptr u8 ) N>BYTES ;\n;package\n0 FRAME-MINT:MINT-USE drop\n" PUT
    s" pb.f" S\" package FRAME-PB\nprivate\nSTRUCTURE pb FIELD p ptr u8 ;STRUCTURE\nCAST: N>PB ( n -- pb )\npublic\n: PB-USE ( n -- ) N>PB drop ;\n;package\n0 FRAME-PB:PB-USE\n" PUT ;
 
-\ cid.f's and rolecast.f's runs store; mint.f's and pb.f's refuse.
+\ Every cast run stores its file.
 : CAST-CHECKS ( -- )
    s" a top-level run through a representation cast stores" T-LABEL
    s" cid.f" KEY$ STORED
    s" cid.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" a top-level run of the seed's representation casts stores" T-LABEL
    s" rolecast.f" KEY$ STORED
-   s" a run through a cast whose output mints a pointer refuses" T-LABEL
-   s" mint.f" s"  reason=" LINE$ s" mint.f reason=run-host-cast word=MINT-USE" T$=
-   s" mint.f" NO-OBJECT
-   s" a run through a cast into a layout holding a pointer refuses" T-LABEL
-   s" pb.f" s"  reason=" LINE$ s" pb.f reason=run-host-cast word=PB-USE" T$=
-   s" pb.f" NO-OBJECT ;
+   s" a run through a cast whose output mints a pointer stores" T-LABEL
+   s" mint.f" KEY$ STORED
+   s" a run through a cast into a layout holding a pointer stores" T-LABEL
+   s" pb.f" KEY$ STORED ;
 
 \ sx.f loads sxm.f, then sxc.f, then compiles against sxc.f. sxm.f's top
-\ level prints sx-mark and appends a byte to sxmark.txt, a run the capture
-\ refuses, so it runs on every build.
+\ level prints sx-mark and appends a byte to sxmark.txt on every build.
 : SX-FIXTURES ( -- )
    0 INPUT-U !
    S\" s\" sx-mark\" type cr\ns\" " IN+ s" sxmark.txt" AT IN+ S\" \" s\" x\" FS:APPEND-FILE\n" IN+
@@ -840,16 +801,17 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ `package WLQ` gives that earlier file's namespace its private wordlist,
 \ which C is then defined into. wls.f's qualified definition makes namespace
 \ WLS, it loads wlt.f, and its later segment's `package WLS` gives WLS its
-\ private wordlist with no lookup into it; STALE-CON edits wlt.f to give WLS
-\ that wordlist first. wlk.f requires wlx.f while its own bare wordlist WLK-W
+\ private wordlist, where B finds no WLV and calls wlt.f's global one;
+\ STALE-CON edits wlt.f to give WLS that wordlist first, holding a WLV of its
+\ own. wlk.f requires wlx.f while its own bare wordlist WLK-W
 \ is current, so wlx.f's scope names a wordlist no package record owns;
 \ wlx.f reads it, defines in the global context and restores it. wlk.f
-\ itself loads outside the scope it began in (scope-at-load). wlm.f makes
+\ itself loads outside the scope it began in, and stores. wlm.f makes
 \ WLM-A, loads wlc.f, which makes WLC-W, then makes WLM-B: its second
 \ wordlist is its item 1, apart from its child's. wld.f requires wlm.f,
 \ then wmb.f, wma.f and wmc.f while WLM-B, WLM-A and WLC-W are current, so
 \ each scope names a wordlist by the file that made it; like wlk.f, wld.f
-\ is scope-at-load. The wlm= line is the cold/warm equality check: each
+\ loads outside the scope it began in. The wlm= line is the cold/warm equality check: each
 \ consumer compares the wordlist it saw with its maker's, so a warm install
 \ that numbers items apart from the cold load prints a different line; this
 \ suite builds no image to compare. A file names a wordlist only within one
@@ -859,8 +821,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wlp.f" S\" : WLP:A ( -- n ) 5 ;\nwordlist constant WLP-W\npackage WLP\npublic\n: B ( -- n ) 6 ;\n;package\n" PUT
    s" wlq.f" S\" : WLQ:A ( -- n ) 5 ;\n" PUT
    s" wlr.f" S\" require wlq.f\npackage WLQ\n: C ( -- n ) 1 ;\npublic\n: B ( -- n ) C 5 + ;\n;package\n" PUT
-   s" wls.f" S\" : WLS:A ( -- n ) 5 ;\nrequire wlt.f\npackage WLS\n;package\n" PUT
-   s" wlt.f" S\" : WLT-K ( -- n ) 1 ;\n" PUT
+   s" wls.f" S\" : WLS:A ( -- n ) 5 ;\nrequire wlt.f\npackage WLS\npublic\n: B ( -- n ) WLV ;\n;package\n" PUT
+   s" wlt.f" S\" : WLT-K ( -- n ) 1 ;\n: WLV ( -- n ) 3 ;\n" PUT
    s" wlk.f" S\" wordlist constant WLK-W\nget-current constant WLK-OLD\nWLK-W set-current\nrequire wlx.f\nWLK-OLD set-current\n" PUT
    s" wlx.f" S\" get-current 0 set-current constant WLX-CUR\nWLX-CUR set-current\n" PUT
    s" wld.f" S\" require wlm.f\nget-current constant WLD-OLD\nWLM-B set-current\nrequire wmb.f\nWLM-A set-current\nrequire wma.f\nWLC-W set-current\nrequire wmc.f\nWLD-OLD set-current\n" PUT
@@ -887,26 +849,33 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" nlc.f" S\" require nlk.f\n: NLC ( -- n ) NLK 1+ ;\n" PUT
    s" nlroot.f" S\" require nlk.f\nrequire nlc.f\n" PUT ;
 
+\ FMB's and FMU's signatures name families fshape and vshape, FMC calls fbox's
+\ constructor fmp; EDGE-EDITS changes all three but no code those words call.
+: FAMILY-FIXTURES ( -- )
+   s" fms.f" S\" package FAMS\npublic\nENUM fshape VARIANT fmx ;VARIANT ;ENUM\n: S-ID ( fshape -- fshape ) ;\n: S-CODE ( fshape -- n ) MATCH fshape fmx OF 1 ENDOF ;MATCH ;\n;package\n" PUT
+   s" fmb.f" S\" require fms.f\n: FMB ( FAMS:fshape -- FAMS:fshape ) FAMS:S-ID ;\n: FMB-K ( -- n ) FAMS-FSHAPE:fmx FMB FAMS:S-CODE ;\n" PUT
+   s" fmt.f" S\" package FAMT\npublic\nENUM fbox VARIANT fmp FIELD fma n ;VARIANT ;ENUM\n: T-GET ( fbox -- n ) MATCH fbox fmp OF ENDOF ;MATCH ;\n;package\n" PUT
+   s" fmc.f" S\" require fmt.f\n: FMC ( n -- FAMT:fbox ) FAMT-FBOX:fmp ;\n: FMC-K ( -- n ) 5 FMC FAMT:T-GET ;\n" PUT
+   s" fmv.f" S\" package FAMV\npublic\nENUM vshape VARIANT fvx ;VARIANT ;ENUM\n;package\n" PUT
+   s" fmu.f" S\" require fmv.f\n: FMU ( vshape -- vshape ) ;\n: FMU-K ( -- n ) 7 ;\n" PUT ;
+
 \ The raw-address fixtures. Checked code cannot put an address in undeclared
-\ bytes, so raw.f, poke.f, addr.f, upd.f, off.f and own.f each load from a
+\ bytes, so raw.f, poke.f, addr.f, off.f and own.f each load from a
 \ parent (rawp.f ...) that requires the subject's dependencies checked, then
 \ requires the subject inside a `0 set-check` window: the subject's requires
-\ are no-op edges in its own session. Each parent itself is ordered by its
-\ check@ (run-unaccounted); a window inside the subject would order the
-\ subject the same way, and a dependency loaded at an earlier top level would
-\ order it too (resolution-key-unknown). list.f has no dependency and loads
+\ are no-op edges in its own session. Each parent's frame prints ordered=0
+\ and no reason; a dependency loaded at an earlier top level would order the
+\ subject (resolution-key-unknown). list.f has no dependency and loads
 \ inside a window the app opens.
 : PIN-FIXTURES ( -- )
    \ raw.f's top level stores RAW-TARGET's code address into RAW-CELL's
-   \ undeclared create bytes, which the object scans because the store ran
-   \ unchecked; the tick is a run of the SAFE RAW-TARGET, which rawt.f
-   \ defines checked.
+   \ undeclared create bytes, unchecked; the tick is a run of the SAFE
+   \ RAW-TARGET, which rawt.f defines checked.
    s" rawt.f" S\" : RAW-TARGET ( -- ) ;\n" PUT
    s" raw.f" S\" require rawt.f\ncreate RAW-CELL 0 ,\n' RAW-TARGET RAW-CELL !\n" PUT
    \ poke.f's top level stores BOARD-GO's code address 8 bytes into board.f's
-   \ 16-byte BOARD, an earlier cell no address row declares, which nothing
-   \ restores: the earlier-write check refuses it. board.f loads checked in
-   \ poke.f's session, before the window, above its image floor.
+   \ 16-byte BOARD, an earlier cell no address row declares. board.f loads
+   \ checked in poke.f's session, before the window, above its image floor.
    s" board.f" S\" create BOARD 16 allot\n: BOARD-GO ( -- ) ;\n" PUT
    s" poke.f" S\" require board.f\n' BOARD-GO BOARD 8 + !\n" PUT
    \ slot.f's declared xt cell holds its child sdeep.f's TEN, which nothing
@@ -920,21 +889,16 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" earlier.f" S\" package FRAME-EARLY\npublic\ncreate T 16 allot\ncreate U 8 allot\n;package\n" PUT
    s" later.f" S\" require earlier.f\nPERSISTED-PTR-VARIABLE LATE-P\n: T-MID ( -- ptr u8 ) FRAME-EARLY:T 8 + ;\nFRAME-EARLY:U 8 - LATE-P !\n" PUT
    \ list.f's DATA holds two addresses of its own DATA; addr.f's holds the
-   \ address of hits.f's HITS; upd.f's top level stores the address of
-   \ pina.f's PIN-A into PIN-A, which refuses upd.f, since a load changes only
-   \ the earlier DATA of its own session. off.f stores odeep.f's TEN with xt!,
+   \ address of hits.f's HITS. off.f stores odeep.f's TEN with xt!,
    \ which declares the cell it writes, eight bytes into hooks.f's 16-byte
    \ PIN-HOOKS. PIN-HOOKS is a create, not a TYPED-BUFFER: that definer's
    \ accessor calls the engine's DYNAMIC-STORAGE:BOUNDS, a seed code record no
-   \ REACH class covers, so a run of it is refused run-reaches-kernel-word
-   \ word=BOUNDS and would order off.f's frame before the slot check. own.f's
-   \ DATA holds pinb.f's PIN-B, the last record with DATA, and then
-   \ an address of its own DATA past PIN-B, which pins own.f's segment as well.
+   \ REACH class covers, and a run of it would order off.f's frame. own.f's
+   \ DATA holds pinb.f's PIN-B, the last record with
+   \ DATA, and then an address of its own DATA past PIN-B.
    s" list.f" S\" create PIN-LIST here , here ,\n" PUT
    s" hits.f" S\" package FRAME-HITS\npublic\nvariable HITS\n;package\n" PUT
    s" addr.f" S\" require hits.f\ncreate PIN-HITS FRAME-HITS:HITS ,\n" PUT
-   s" pina.f" S\" variable PIN-A\n" PUT
-   s" upd.f" S\" require pina.f\nPIN-A PIN-A !\n" PUT
    s" hooks.f" S\" create PIN-HOOKS 16 allot\n" PUT
    s" odeep.f" S\" package FRAME-ODEEP\npublic\n: TEN ( -- n ) 10 ;\n;package\n" PUT
    s" off.f" S\" require hooks.f\nrequire odeep.f\n' FRAME-ODEEP:TEN PIN-HOOKS 8 + xt!\n" PUT
@@ -943,7 +907,6 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rawp.f" S\" require rawt.f\ncheck@ 0 set-check\nrequire raw.f\nset-check\n" PUT
    s" pokep.f" S\" require board.f\ncheck@ 0 set-check\nrequire poke.f\nset-check\n" PUT
    s" addrp.f" S\" require hits.f\ncheck@ 0 set-check\nrequire addr.f\nset-check\n" PUT
-   s" updp.f" S\" require pina.f\ncheck@ 0 set-check\nrequire upd.f\nset-check\n" PUT
    s" offp.f" S\" require hooks.f\nrequire odeep.f\ncheck@ 0 set-check\nrequire off.f\nset-check\n" PUT
    s" ownp.f" S\" require pinb.f\ncheck@ 0 set-check\nrequire own.f\nset-check\n" PUT ;
 
@@ -960,9 +923,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" rc.f" S\" : RC-N ( -- n ) 2 ;\n" PUT
    s" rp.f" S\" : RP-A ( -- n ) 1 ;\nrequire rc.f\n: RP-B ( -- n ) RP-A RC-N + ;\n" PUT
    SX-FIXTURES
-   \ lbv.f carries a value across its load of lbvk.f; lbc.f loads lbca.f and
-   \ lbcb.f from a colon word. Neither load is a loader token's action
-   \ ending balanced at a loader cut.
+   \ lbv.f carries a value across its load of lbvk.f, so the load does not
+   \ end balanced at a loader cut. lbc.f loads lbca.f and lbcb.f from a colon
+   \ word its top level runs: each is a load action of lbc.f.
    s" lbvk.f" S\" : LBV-KID ( -- n ) 2 ;\n" PUT
    s" lbv.f" S\" 1 include lbvk.f constant LBV-K\n" PUT
    s" lbca.f" S\" : LBC-A ( -- n ) 41 ;\n" PUT
@@ -1014,7 +977,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ act-ok.f's run of AK-INIT stores with `!`, whose lowering branches to the
    \ engine helper (PROT-SPAN): the body's MEMORY reason accounts for the store,
    \ so the closure admits the helper. A run that reaches a seed word no REACH
-   \ class covers refuses its file: reach.f's TOOL-POKE reaches the compiler's
+   \ class covers stores its file: reach.f's TOOL-POKE reaches the compiler's
    \ SESSION-LIVE?, fw-def.f's FW the builder's FS:WRITE-ALL, out.f's OUT-A emit.
    s" act-ok.f" S\" variable AK\n: AK-INIT ( -- ) 7 AK ! ;\nAK-INIT\n3 constant AK-K\n" PUT
    \ exit.f's run of EX-GUARD reaches die, which ends the process: a run
@@ -1027,11 +990,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" fw-def.f" INPUT INPUT-U @ PUT
    s" out.f" S\" : OUT-A ( -- ) 65 emit ;\nOUT-A\n" PUT
    INDIRECT-FIXTURES
+   PREMISE-FIXTURES
    CAST-FIXTURES
    \ own-trust.f runs its own unchecked OT at top level, which OT's contract
    \ admits.
    s" own-trust.f" S\" TRUSTED: OT ( -- n ) 5 ;\nOT constant OT-K\n" PUT
-   \ A seed word run at top level is admitted only by the trace its run leaves.
+   \ A seed word run at top level stores its file, with or without a trace.
    \ parse-ok.f's parse-imm adds a unit fact, cells is a stack primitive and
    \ allot a data one; tier-ok.f's set-tier is a build primitive. fwrite.f's
    \ FS:WRITE-ALL, fenv.f's GETENV, dbase.f's data-base, exec-xt.f's execute and
@@ -1060,12 +1024,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" nestafter.f" S\" s\" 1 constant NA-K\" evaluate\ndata-base NA-K + drop\n" PUT
    \ nestlit.f evaluates the name the engine holds for data-base, a buffer
    \ below the file's source: the nested run's token end is read in its own
-   \ buffer, never as an offset into the file's. NL$'s own run reaches a
-   \ kernel word, so only the frame's reason tells the two apart.
+   \ buffer, never as an offset into the file's.
    s" nestlit.f" S\" : NL$ ( -- ptr u8 n ) s\" data-base\" XREF-FIND XREF-NAME$ ;\nNL$ evaluate drop\n" PUT
    \ nestthrow.f's top-level catch runs a text that allots, then evaluates a
    \ text that throws: the catch restores here, so the trace the abandoned
-   \ runs left is gone and they refuse, though here moved before the throw.
+   \ runs left is gone, though here moved before the throw; the frame names
+   \ the abandoned run and the file stores.
    \ The checker refuses a catch of the primitive evaluate's opaque xt, so
    \ ntp.f requires nestthrow.f inside a `0 set-check` window, after ntq.f
    \ defines the words its runs reach checked.
@@ -1083,14 +1047,9 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ would not count, as usings end with their file (interpret.f CLEAN-END).
    s" watermark.f" S\" : SLOT-BUMP ( ptr u8 -- ) CELL-VIEW CELL swap +! ;\n' SLOT-BUMP TASK:OWNED-USER-NEXT\n" PUT
    s" scope.f" S\" package FRAME-SCOPE\n" PUT
-   \ retire.f retires a record lib.f made.
-   s" retire.f" S\" undefine FRAME-LIB:BUMP\n" PUT
    \ ret-own.f retires its own record in the segment that made it.
-   \ ret-kid.f retires the record its parent ret-parent.f made before loading
-   \ it. ret-late.f retires its own record after a child that uses it.
+   \ ret-late.f retires its own record after a child that uses it.
    s" ret-own.f" S\" : RET-OWN ( -- n ) 1 ;\nundefine RET-OWN\n" PUT
-   s" ret-kid.f" S\" undefine RET-KID\n" PUT
-   s" ret-parent.f" S\" : RET-KID ( -- n ) 2 ;\nrequire ret-kid.f\n" PUT
    s" ret-use.f" S\" : RET-USER ( -- n ) RET-LATE ;\n" PUT
    s" ret-late.f" S\" : RET-LATE ( -- n ) 3 ;\nrequire ret-use.f\nundefine RET-LATE\n" PUT
    \ incut.f cuts back to its own second definition, within its open segment.
@@ -1107,16 +1066,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    PIN-FIXTURES
    \ ev.f's records belong to its own top-level load. evw.f's store into EV0,
    \ evx.f's code address in EV-T and evr.f's read of EV0 reach them from
-   \ later loads; ev2.f's store into its child ev3.f's EV3 refuses it, and
-   \ ev4.f's store into its own EV4, in the segment after its require, does.
+   \ later loads.
    s" ev.f" S\" variable EV0\ncreate EV-T 16 allot\n: EV-GO ( -- ) ;\n" PUT
    s" evw.f" S\" 9 EV0 !\n" PUT
    s" evx.f" S\" TRUSTED: EV-SET ( -- ) ['] EV-GO EV-T 8 + ! ;\nEV-SET\n" PUT
    s" evr.f" S\" EV0 @ constant EV-SEEN\n" PUT
-   s" ev3.f" S\" variable EV3\n" PUT
-   s" ev2.f" S\" require ev3.f\n9 EV3 !\n" PUT
-   s" ev5.f" S\" variable EV5\n" PUT
-   s" ev4.f" S\" variable EV4\nrequire ev5.f\n7 EV4 !\n" PUT
    \ tier.f leaves the compiler tier at 0; tierback.f restores it before
    \ its definition, since a definition the tier-0 compiler makes is a record
    \ of unknown kind.
@@ -1127,11 +1081,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" tierback.f" S\" 0 set-tier\n1 set-tier\n: TIER-T1 ( -- ) ;\n" PUT
    \ pkgc.f closes the package its loader opened. The builder made that
    \ package between loads, so its frame cannot name it and orders the file
-   \ first; scope-exit would refuse it too.
+   \ first.
    s" pkgc.f" S\" ;package\n" PUT
    \ pkgload.f requires pkgchild.f inside its package: the child's object
-   \ records that scope, and the replay would load the child in the scope
-   \ pkgload.f began in, so the load refuses pkgload.f.
+   \ records that scope.
    s" pkgload.f" S\" package FRAME-PKGLOAD\nrequire pkgchild.f\n: INSIDE ( -- n ) 3 ;\n;package\n" PUT
    s" pkgchild.f" S\" : PKG-CHILD ( -- n ) 4 ;\n" PUT
    \ newtype.f declares a type family beside a package record: the record
@@ -1142,22 +1095,20 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    TEE-FIXTURES
    \ IMM-USER runs lib.f's immediate MARK while it compiles. app.f loads
    \ exec.f between its own definitions, and its top level stores lib.f's QUAD
-   \ into lib.f's declared xt cell HOOK. tally.f runs app.f's TALLY, which
-   \ adds 1 to lib.f's HITS.
+   \ into lib.f's declared xt cell HOOK.
    \ og.f's constants and ogw.f's colon word install on a warm build.
    s" og.f" S\" package FRAME-OG\npublic\n3 constant OG-P\n;package\n5 constant OG-G\n" PUT
    s" ogw.f" S\" : OG-W ( -- n ) 7 ;\n" PUT
    DATA-FIXTURES
    EDGE-FIXTURES
+   FAMILY-FIXTURES
    s" jrn.f" S\" 3 constant EK-K\n" PUT
    s" pcf.f" S\" 3 constant PC-F3\npackage PCF\npublic\nexport PC-F3\n;package\n" PUT
    s" pcz.f" S\" 3 constant PC-Z3\n" PUT
    s" pcd.f" S\" 3 constant PC-D3\n" PUT
    s" pce.f" S\" 3 constant PC-K3\npackage PCE\npublic\nexport PC-K3\n;package\n" PUT
    s" app.f" APP$ PUT
-   s" tally.f" S\" TALLY\n" PUT
-   s" top.f" S\" require app.f\nrequire tally.f\nrequire check.f\n" PUT
-   s" check.f" S\" \\ the first build has no object to check\n" PUT ;
+   s" top.f" S\" require app.f\n" PUT ;
 
 : FRAME-CHECKS ( -- )
    OUT$ S\" use=67\n" CONTAINS? TTRUE
@@ -1168,16 +1119,12 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    OUT$ S\" w=1\nk=3\n" CONTAINS? TTRUE
    s" rp.f's top-level require is a clean load: its object stores the load" T-LABEL
    s" rp.f" s"  loads=" s" 1" OBJECT-HAS
-   s" a value carried across a load refuses its file, not the child" T-LABEL
+   s" a value carried across a load stores the file and the child" T-LABEL
    OUT$ S\" lbv=3\n" CONTAINS? TTRUE
-   s" lbv.f" s"  reason=" LINE$ s" lbv.f reason=load-boundary" T$=
-   s" lbv.f" NO-OBJECT
-   s" lbvk.f" KEY$ STORED
-   s" a colon word's loads refuse its file, not the children" T-LABEL
+   s" lbv.f" KEY$ STORED s" lbvk.f" KEY$ STORED
+   s" a colon word's loads are its file's load actions: all three store objects" T-LABEL
    OUT$ S\" lbc=42\n" CONTAINS? TTRUE
-   \ The run trace sees the kernel loader before the child's FILE-BEGIN.
-   s" lbc.f" s"  reason=" LINE$ s" lbc.f reason=run-reaches-kernel-word word=required" T$=
-   s" lbc.f" NO-OBJECT
+   s" lbc.f" s"  loads=" s" 2" OBJECT-HAS
    s" lbca.f" KEY$ STORED s" lbcb.f" KEY$ STORED
    s" w.f writes its object" T-LABEL
    ERR$ s" /w.f key=" CONTAINS? TTRUE
@@ -1187,20 +1134,19 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wlp.f" KEY$ STORED s" wlq.f" KEY$ STORED s" wlr.f" KEY$ STORED
    s" wls.f, which reopens its namespace after a load, writes its object" T-LABEL
    OUT$ S\" wls=6\n" CONTAINS? TTRUE
+   OUT$ S\" wlsb=3\n" CONTAINS? TTRUE
    s" wls.f" KEY$ STORED s" wlt.f" KEY$ STORED
-   s" wlx.f writes its object though it loads under wlk.f's bare wordlist" T-LABEL
+   s" wlk.f and wlx.f, which loads under wlk.f's bare wordlist, write objects" T-LABEL
    OUT$ S\" wlx=-1\n" CONTAINS? TTRUE
-   s" wlk.f" s"  reason=" LINE$ s" wlk.f reason=scope-at-load" T$=
-   s" wlx.f" KEY$ STORED
-   s" wlm.f, wlc.f and the loads under their wordlists write objects" T-LABEL
+   s" wlk.f" KEY$ STORED s" wlx.f" KEY$ STORED
+   s" wld.f, wlm.f, wlc.f and the loads under their wordlists write objects" T-LABEL
    OUT$ S\" wlm=2\n1\n-1\n-1\n-1\n" CONTAINS? TTRUE
-   s" wld.f" s"  reason=" LINE$ s" wld.f reason=scope-at-load" T$=
-   s" wlm.f" KEY$ STORED s" wlc.f" KEY$ STORED
+   s" wld.f" KEY$ STORED s" wlm.f" KEY$ STORED s" wlc.f" KEY$ STORED
    s" wma.f" KEY$ STORED s" wmb.f" KEY$ STORED s" wmc.f" KEY$ STORED
-   s" wln.f, loaded under a wordlist no file made, refuses its object" T-LABEL
+   s" wln.f, loaded under a wordlist no file made, writes its object" T-LABEL
    OUT$ S\" wln=0\n-1\n" CONTAINS? TTRUE
    s" wln.f" FRAME$ s"  reason=scope-wordlist-unknown" ENDS-WITH? TTRUE
-   s" wln.f" NO-OBJECT
+   s" wln.f" KEY$ STORED
    s" tier0.f, loaded at tier 0, writes no object" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
    s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
@@ -1276,66 +1222,19 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" app.f" s"  segments=" s" 3" OBJECT-HAS
    s" base.f" s"  loads=" s" 0" OBJECT-HAS
    s" base.f" s"  segments=" s" 1" OBJECT-HAS
-   s" each object holds one checker slice per load and one for itself" T-LABEL
+   s" each object holds one checker slice per definition" T-LABEL
    s" base.f" s"  checks=" s" 1" OBJECT-HAS
-   s" lib.f" s"  checks=" s" 3" OBJECT-HAS
-   s" app.f" s"  checks=" s" 7" OBJECT-HAS
-   s" lib.f's declared xt cell HOOK is its one slot" T-LABEL
-   s" lib.f" s"  slots=" s" 1" OBJECT-HAS
-   s" app.f's store into lib.f's HOOK is its one slot, binding HOOK and QUAD beyond its frame's rows" T-LABEL
-   s" app.f" s"  slots=" s" 1" OBJECT-HAS
-   s" app.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
-   s" app.f" FRAME$ s"  rows=" FIELD$ FIELD-N 2 + T=
-   s" tally.f's run of TALLY changes lib.f's HITS, which nothing restores, and refuses naming HITS" T-LABEL
-   s" tally.f" s"  reason=" LINE$ s" tally.f reason=earlier-write word=HITS" T$=
-   s" tally.f" NO-OBJECT
-   s" raw.f's undeclared code address refuses its object, naming the cell" T-LABEL
-   s" raw.f" s"  reason=" LINE$
-      s" raw.f reason=raw-cell owner=RAW-CELL offset=0 value=0x" STARTS-WITH? TTRUE
-   ERR$ s" raw.f key=" CONTAINS? TFALSE
-   s" poke.f's code address in earlier DATA refuses its object, naming the cell" T-LABEL
-   s" poke.f" s"  reason=" LINE$
-      s" poke.f reason=earlier-write word=BOARD" T$=
-   ERR$ s" poke.f key=" CONTAINS? TFALSE
-   s" slot.f's slot names TEN, so its object binds TEN beyond its frame's rows" T-LABEL
-   s" slot.f" s"  slots=" s" 1" OBJECT-HAS
+   s" lib.f" s"  checks=" s" 5" OBJECT-HAS
+   s" app.f" s"  checks=" s" 4" OBJECT-HAS
+   s" slot.f's xt cell holds TEN, which its frame does not bind" T-LABEL
    s" slot.f" FRAME$ s"  binding=" FIELD$ s" 0" T$=
-   s" slot.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
-   s" slot.f" FRAME$ s"  rows=" FIELD$ FIELD-N 1+ T=
-   \ The frame binds T and reads U's DATA. The slot adds T's DATA row, whose
-   \ digest covers T's extent, so an edit that moves T's end is stale; a
-   \ binding of T alone would add no row.
-   s" later.f's slot points into T, so its object reads T's DATA beyond its frame's rows" T-LABEL
-   s" later.f" s"  slots=" s" 1" OBJECT-HAS
+   s" later.f's pointer cell points into T; its frame binds T and reads U's DATA" T-LABEL
    s" later.f" FRAME$ s"  binding=" FIELD$ s" 1" T$=
    s" later.f" FRAME$ s"  data=" FIELD$ s" 1" T$=
-   s" later.f" OBJECT$ s"  rows=" FIELD$ FIELD-N
-   s" later.f" FRAME$ s"  rows=" FIELD$ FIELD-N 1+ T=
-   s" list.f's addresses of its own DATA pin its one segment, and it stores" T-LABEL
-   s" list.f" s"  pins=" s" 1" OBJECT-HAS
+   s" list.f's DATA holds addresses of its own DATA, and it stores" T-LABEL
    s" list.f" KEY$ STORED
-   s" addr.f's raw address of hits.f's HITS pins HITS" T-LABEL
-   s" addr.f" s"  pins=" s" 1" OBJECT-HAS
-   s" upd.f's store of PIN-A's address into PIN-A refuses its object, naming PIN-A" T-LABEL
-   s" upd.f" s"  reason=" LINE$ s" upd.f reason=earlier-write word=PIN-A" T$=
-   s" upd.f" NO-OBJECT
-   s" lib.f" s"  pins=" s" 0" OBJECT-HAS
-   s" own.f's own address after PIN-B's pins its segment beside PIN-B" T-LABEL
-   s" own.f" s"  pins=" s" 2" OBJECT-HAS
-   s" off.f's slot site eight bytes into PIN-HOOKS refuses its object" T-LABEL
-   s" off.f" s"  reason=" LINE$ s" off.f reason=slot-site-offset" T$=
-   s" retire.f refuses its object for retiring lib.f's BUMP" T-LABEL
-   s" retire.f" s"  reason=" LINE$ s" retire.f reason=retires-earlier word=BUMP" T$=
    s" a file that retires its own record in the segment that made it stores it" T-LABEL
    s" ret-own.f" KEY$ STORED
-   s" a child that retires its parent's record refuses both files" T-LABEL
-   s" ret-kid.f" s"  reason=" LINE$ s" ret-kid.f reason=retires-earlier word=RET-KID" T$=
-   s" ret-kid.f" NO-OBJECT
-   s" ret-parent.f" s"  reason=" LINE$ s" ret-parent.f reason=retires-earlier word=RET-KID" T$=
-   s" ret-parent.f" NO-OBJECT
-   s" a file that retires its record after a child that uses it refuses" T-LABEL
-   s" ret-late.f" s"  reason=" LINE$ s" ret-late.f reason=retires-earlier word=RET-LATE" T$=
-   s" ret-late.f" NO-OBJECT
    s" a file that cuts within its open segment stores its object" T-LABEL
    s" incut.f" KEY$ STORED
    s" a cut below the innermost file's open segment refuses it and the file that loaded the cut records" T-LABEL
@@ -1348,33 +1247,27 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" k1.f" NO-OBJECT
    s" q1.f" s"  reason=" LINE$ s" q1.f reason=cut-below-segment" T$=
    s" q1.f" NO-OBJECT
-   s" a file that ends in another scope than it began in has no object" T-LABEL
-   s" scope.f" s"  reason=" LINE$ s" scope.f reason=scope-exit" T$=
-   s" scope.f" NO-OBJECT
-   s" a file that takes a TASK user slot has no object" T-LABEL
-   s" watermark.f" FRAME$ s"  reason=run-unaccounted word=OWNED-USER-NEXT" ENDS-WITH? TTRUE
-   s" watermark.f" s"  reason=" LINE$ s" watermark.f reason=ordered-dependency" T$=
-   s" watermark.f" NO-OBJECT
-   s" app.f's object holds each definition's name span in app.f" T-LABEL
+   s" a file that ends in another scope than it began in stores" T-LABEL
+   s" scope.f" KEY$ STORED
+   s" a file that takes a TASK user slot stores" T-LABEL
+   s" watermark.f" KEY$ STORED
+   s" app.f's object holds each definition's source text length in app.f" T-LABEL
    APP-SPANS
-   s" a file closed inside a multi-error run refuses the checker export" T-LABEL
-   s" multi.f" s"  reason=" LINE$ s" multi.f reason=checker-export" T$=
+   s" a file closed inside a multi-error run refuses its definition's checker mark" T-LABEL
+   s" multi.f" s"  reason=" LINE$ s" multi.f reason=checker-mark" T$=
    s" a file loaded inside a package stores" T-LABEL
    s" pkgchild.f" DEFS$ s" 1" T$=
    s" pkgchild.f" KEY$ STORED
-   s" a file that loads a child in another scope than it began in has no object" T-LABEL
-   s" pkgload.f" s"  reason=" LINE$ s" pkgload.f reason=scope-at-load" T$=
-   s" pkgload.f" NO-OBJECT ;
+   s" a file that loads a child in another scope than it began in stores" T-LABEL
+   s" pkgload.f" KEY$ STORED ;
 
 \ Effects on state below the file's own DATA: kernel cells, an earlier
 \ top-level load's records and its DATA, and the loader's package.
 : FLOOR-CHECKS ( -- )
-   s" a file that leaves the compiler tier changed refuses, naming the cell" T-LABEL
-   s" tier.f" s"  reason=" LINE$ s" tier.f reason=kernel-cell-changed cell=tier" T$=
-   s" tier.f" NO-OBJECT
-   s" a file whose child leaves the compiler tier changed refuses" T-LABEL
-   s" tierpar.f" s"  reason=" LINE$ s" tierpar.f reason=ambient-changed" T$=
-   s" tierpar.f" NO-OBJECT
+   s" a file that leaves the compiler tier changed stores" T-LABEL
+   s" tier.f" KEY$ STORED
+   s" a file whose child leaves the compiler tier changed stores" T-LABEL
+   s" tierpar.f" KEY$ STORED
    s" a file that restores the tier it changed stores" T-LABEL
    s" tierback.f" DEFS$ s" 1" T$=
    s" tierback.f" KEY$ STORED
@@ -1382,79 +1275,54 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ev.f" KEY$ STORED
    \ Every store into an earlier load's DATA names its target, and the name
    \ resolves to a record with no key, which orders the file first.
-   s" a store into an earlier load's variable refuses" T-LABEL
+   s" a store into an earlier load's variable stores" T-LABEL
    s" evw.f" FRAME$ s"  reason=resolution-key-unknown word=EV0" ENDS-WITH? TTRUE
-   s" evw.f" s"  reason=" LINE$ s" evw.f reason=ordered-dependency" T$=
-   s" evw.f" NO-OBJECT
-   \ EV-SET's compiled address of EV-T binds a record with no key, and its
-   \ capture cannot import one.
-   s" a code address stored into an earlier load's DATA refuses" T-LABEL
+   s" evw.f" KEY$ STORED
+   \ EV-SET's compiled address of EV-T binds a record with no key.
+   s" a code address stored into an earlier load's DATA stores" T-LABEL
    s" evx.f" FRAME$ s"  reason=binding-key-unknown word=EV-T" ENDS-WITH? TTRUE
-   s" evx.f" s"  reason=" LINE$ s" evx.f reason=capture-profile-unsupported" T$=
-   s" evx.f" NO-OBJECT
-   s" a read of an earlier load's variable is an unknown dependency" T-LABEL
+   s" evx.f" KEY$ STORED
+   s" a read of an earlier load's variable is an unknown dependency, and stores" T-LABEL
    s" evr.f" FRAME$ s"  reason=resolution-key-unknown word=EV0" ENDS-WITH? TTRUE
-   s" evr.f" s"  reason=" LINE$ s" evr.f reason=ordered-dependency" T$=
-   s" evr.f" NO-OBJECT
-   s" a store into a child's variable in the same load refuses, naming it" T-LABEL
-   s" ev2.f" s"  reason=" LINE$ s" ev2.f reason=earlier-write word=EV3" T$=
-   s" ev2.f" NO-OBJECT
-   s" a later segment's store into the file's own earlier segment refuses, naming it" T-LABEL
-   s" ev4.f" s"  reason=" LINE$ s" ev4.f reason=earlier-write word=EV4" T$=
-   s" ev4.f" NO-OBJECT
-   s" a file that closes its loader's package has no object" T-LABEL
+   s" evr.f" KEY$ STORED
+   s" a file that closes its loader's package stores" T-LABEL
    s" pkgc.f" FRAME$ s"  reason=scope-key-unknown word=FRAME-P3" ENDS-WITH? TTRUE
-   s" pkgc.f" s"  reason=" LINE$ s" pkgc.f reason=ordered-dependency" T$=
-   s" pkgc.f" NO-OBJECT ;
+   s" pkgc.f" KEY$ STORED ;
 
-\ A file's writes to the seed FFI registry: carried rows store. A seed word
-\ the top level runs is judged by the trace it leaves, and a selection or
-\ scope change is no trace: PROCESS-SYMBOLS and IMAGE-LIFECYCLE:PREPARE
-\ refuse their files, and wrb.f refuses at `true`, the first seed word its
-\ SELECT line runs. A run that reaches FFI:DECLARE refuses by that reach.
+\ A file's writes to the seed FFI registry: carried rows store, and so does
+\ a file whose top level changes the selection or scope (PROCESS-SYMBOLS,
+\ IMAGE-LIFECYCLE:PREPARE, wrb.f's SELECT) or reaches FFI:DECLARE.
 : FFI-CHECKS ( -- )
-   s" a FUNCTION: file whose top level runs PROCESS-SYMBOLS refuses" T-LABEL
+   s" a FUNCTION: file whose top level runs PROCESS-SYMBOLS stores" T-LABEL
    OUT$ S\" pid=-1\n" CONTAINS? TTRUE
-   s" ffn.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   s" a file whose run reaches FFI:DECLARE refuses by that reach" T-LABEL
+   s" ffn.f" KEY$ STORED
+   s" a file whose run reaches FFI:DECLARE stores" T-LABEL
    OUT$ S\" crc=0\n" CONTAINS? TTRUE
-   s" ffl.f" s"  reason=" LINE$ s" ffl.f reason=run-reaches-kernel-word word=DECLARE" T$=
-   s" ffl.f" NO-OBJECT
+   s" ffl.f" KEY$ STORED
    s" a file reusing that library row stores its object" T-LABEL
    OUT$ S\" crc2=0\n" CONTAINS? TTRUE
    s" ffl2.f" KEY$ STORED
    HB-TARGET-MACOS? if
-      s" a LIBRARY line that grows the library table refuses ffi-grown" T-LABEL
-      s" ffsl.f" s"  reason=" LINE$ s" ffsl.f reason=ffi-grown" T$=
-      s" ffsl.f" NO-OBJECT
       s" a struct-by-value FUNCTION: file stores its object" T-LABEL
       OUT$ S\" ffs=1134932\n" CONTAINS? TTRUE
       s" ffs.f" KEY$ STORED
    then
-   s" a declaring file that runs PROCESS-SYMBOLS refuses; one reusing its row stores" T-LABEL
-   s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
+   s" a declaring file that runs PROCESS-SYMBOLS stores, and so does one reusing its row" T-LABEL
+   s" sel.f" KEY$ STORED
    s" selc.f" KEY$ STORED
-   s" a declaration into the bank not selected refuses by its run's reach" T-LABEL
-   s" ffb.f" s"  reason=" LINE$ s" ffb.f reason=run-reaches-kernel-word word=DECLARE" T$=
-   s" ffb.f" NO-OBJECT
+   s" a declaration into the bank not selected stores" T-LABEL
+   s" ffb.f" KEY$ STORED
    s" a file that touches no FFI state stores under a selection it cannot key" T-LABEL
    s" plain.f" s"  records=" s" 1" OBJECT-HAS
    s" plain.f" KEY$ STORED
-   s" a file whose top level rewrites the selection refuses" T-LABEL
+   s" a file whose top level rewrites the selection stores" T-LABEL
    OUT$ S\" wrb=-1\n0\n0\n" CONTAINS? TTRUE
-   s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
-   s" a file whose top level clears the scope refuses" T-LABEL
+   s" wrb.f" KEY$ STORED
+   s" a file whose top level clears the scope stores" T-LABEL
    OUT$ S\" wcb=0\n0\n0\n" CONTAINS? TTRUE
-   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
-   s" a FUNCTION: clause run is admitted; a load inside the declaration refuses both files" T-LABEL
-   s" ffo.f" DECL-OPEN
-   s" ffoc.f" DECL-OPEN
-   s" a child that closes its parent's declaration refuses on entry" T-LABEL
-   s" ffec.f" DECL-OPEN
-   s" a child that returns a declaration pending refuses on exit" T-LABEL
-   s" ffxc.f" DECL-OPEN
-   s" a run inside a declaration that leaves it unchanged refuses" T-LABEL
-   s" ffg.f" s"  reason=run-unaccounted word=GETENV" RUN-REFUSED ;
+   s" wcb.f" KEY$ STORED
+   s" a run inside a declaration that leaves it unchanged stores" T-LABEL
+   s" ffg.f" KEY$ STORED ;
 
 \ Neither name's frame nor a refused line of name names a run reason.
 : NO-RUN-REASON ( ptr u8 n -- )
@@ -1498,8 +1366,8 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" ixt.f" NO-RUN-REASON
    s" ffo.f" NO-RUN-REASON ;
 
-\ What a top-level run reaches: a checked definition and a classed
-\ primitive are admitted; a seed word no REACH class covers refuses.
+\ What a top-level run reaches: a checked definition, a classed primitive
+\ and a seed word no REACH class covers all store.
 : RUN-CHECKS ( -- )
    s" cread.f runs the checked CPEEK, which reads CSTORE: one run, one data read" T-LABEL
    s" cread.f" RAN
@@ -1509,27 +1377,24 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" exit.f's run reaches die, which ends the process, and it stores" T-LABEL
    s" exit.f" KEY$ STORED
    s" exit.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
-   s" a run that reaches a compiler word refuses its file" T-LABEL
+   s" a run that reaches a compiler word names it in its frame and stores" T-LABEL
    s" reach.f" FRAME$ s"  reason=run-reaches-kernel-word word=SESSION-LIVE?" ENDS-WITH? TTRUE
-   s" reach.f" NO-OBJECT
-   s" a run that reaches the builder's FS:WRITE-ALL refuses its file and still writes" T-LABEL
-   s" fw-def.f" s"  reason=" LINE$ s" fw-def.f reason=run-reaches-kernel-word word=WRITE-ALL" T$=
-   s" fw-def.f" NO-OBJECT
+   s" reach.f" KEY$ STORED
+   s" a run that reaches the builder's FS:WRITE-ALL writes and stores its file" T-LABEL
+   s" fw-def.f" KEY$ STORED
    s" fw.txt" AT FS:EXISTS? TTRUE
-   s" a run that reaches the unclassed emit refuses its file and still prints" T-LABEL
-   s" out.f" s"  reason=" LINE$ s" out.f reason=run-reaches-kernel-word word=emit" T$=
-   s" out.f" NO-OBJECT
+   s" a run that reaches the unclassed emit prints and stores its file" T-LABEL
+   s" out.f" KEY$ STORED
    OUT$ s" A" CONTAINS? TTRUE
-   s" a top level that prints through a non-terminal device stores its output" T-LABEL
+   s" a top level that prints through a non-terminal device stores" T-LABEL
    s" say.f" KEY$ STORED
-   s" say.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" pout.f" KEY$ STORED
    s" fx.f" KEY$ STORED
-   s" fpar.f" NO-OBJECT
+   s" fpar.f" KEY$ STORED
    s" a file opened over a faulted device stores its output" T-LABEL
    s" fy.f" KEY$ STORED
    s" capo.f" KEY$ STORED
-   s" cap.f" NO-OBJECT
+   s" cap.f" KEY$ STORED
    s" the device sees each operation, fault and flush error as it would without the tee" T-LABEL
    TEE$ TEE-COLD T$=
    s" a forward keeps the fault its device latched" T-LABEL
@@ -1565,24 +1430,16 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" a top-level run of the file's own trusted word stores" T-LABEL
    s" own-trust.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" own-trust.f" KEY$ STORED
-   s" a real literal refuses its file before or after an indirect run" T-LABEL
-   s" rk-ind.f" s"  reason=" LINE$ s" rk-ind.f reason=run-host-unknown word=RK-IND" T$=
-   s" rk-base.f" s"  reason=" LINE$ s" rk-base.f reason=run-host-unknown word=RK-BASE" T$=
-   s" rk-rev.f" s"  reason=" LINE$ s" rk-rev.f reason=run-host-unknown word=RK-REV" T$=
-   s" a trusted word's contract does not admit its real literal" T-LABEL
-   s" rk-trust.f" s"  reason=" LINE$ s" rk-trust.f reason=run-host-unknown word=RK-TRUST" T$=
-   s" a compiled is does not admit a later real literal" T-LABEL
-   s" rk-is.f" s"  reason=" LINE$ s" rk-is.f reason=run-host-unknown word=RK-IS" T$=
-   s" rk-ind.f" NO-OBJECT
+   s" a real literal before an indirect run stores its file" T-LABEL
+   s" rk-ind.f" KEY$ STORED
    s" a top-level run of a division stores" T-LABEL
    s" rk-div.f" KEY$ STORED
    s" rk-div.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" a top-level run of a remainder stores" T-LABEL
    s" rk-mod.f" KEY$ STORED
    s" rk-mod.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
-   s" a run reading a data-base cell an earlier file's run wrote refuses" T-LABEL
-   s" db-b.f" s"  reason=" LINE$ s" db-b.f reason=run-reaches-kernel-word word=data-base" T$=
-   s" db-b.f" NO-OBJECT
+   s" a run reading a data-base cell an earlier file's run wrote stores" T-LABEL
+   s" db-b.f" KEY$ STORED
    s" a compiled is on an unset defer stores its file" T-LABEL
    s" rebind.f" KEY$ STORED
    s" rebind.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
@@ -1591,44 +1448,34 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" parse-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
    s" tier-ok.f" KEY$ STORED
    s" tier-ok.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
-   s" a seed word run that leaves no trace refuses its file" T-LABEL
-   s" fwrite.f" FRAME$ s"  reason=run-unaccounted word=WRITE-ALL" ENDS-WITH? TTRUE
-   s" fwrite.f" NO-OBJECT
+   s" a seed word run that leaves no trace stores its file" T-LABEL
+   s" fwrite.f" KEY$ STORED
    s" fwrite.txt" AT FS:EXISTS? TTRUE
-   s" fenv.f" FRAME$ s"  reason=run-unaccounted word=GETENV" ENDS-WITH? TTRUE
-   s" fenv.f" NO-OBJECT
-   s" dbase.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
-   s" dbase.f" NO-OBJECT
-   s" a seed word run in a text the top level evaluates is judged" T-LABEL
-   s" nestev.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
-   s" nestev.f" NO-OBJECT
+   s" fenv.f" KEY$ STORED
+   s" dbase.f" KEY$ STORED
+   s" a seed word run in a text the top level evaluates stores its file" T-LABEL
+   s" nestev.f" KEY$ STORED
    s" a definer that evaluates its generated text stores its file" T-LABEL
    s" nestdef.f" KEY$ STORED
    s" nestdef.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
-   s" a seed word run two evaluates deep is judged" T-LABEL
-   s" nest2.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
-   s" nest2.f" NO-OBJECT
-   s" the top level is judged again after a nested evaluate returns" T-LABEL
-   s" nestafter.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
-   s" nestafter.f" NO-OBJECT
-   s" a seed word run in a text outside the file's source is judged" T-LABEL
-   s" nestlit.f" FRAME$ s"  reason=run-unaccounted word=data-base" ENDS-WITH? TTRUE
-   s" nestlit.f" NO-OBJECT
-   s" a nested run a throw abandons refuses" T-LABEL
+   s" a seed word run two evaluates deep stores its file" T-LABEL
+   s" nest2.f" KEY$ STORED
+   s" a seed word run after a nested evaluate returns stores its file" T-LABEL
+   s" nestafter.f" KEY$ STORED
+   s" a seed word run in a text outside the file's source stores its file" T-LABEL
+   s" nestlit.f" KEY$ STORED
+   s" a nested run a throw abandons names it in its frame and stores" T-LABEL
    s" nestthrow.f" FRAME$ s"  reason=run-abandoned" CONTAINS? TTRUE
-   s" nestthrow.f" NO-OBJECT
-   s" exec-xt.f" FRAME$ s"  reason=run-unaccounted word=execute" ENDS-WITH? TTRUE
-   s" exec-xt.f" NO-OBJECT
-   s" act2.f" FRAME$ s"  reason=run-unaccounted word=SESSION-LIVE?" ENDS-WITH? TTRUE
-   s" act2.f" NO-OBJECT
-   s" a run that opens a child is its trace; a later run in the parent is judged" T-LABEL
-   s" nest-parent.f" FRAME$ s"  reason=run-unaccounted word=SESSION-LIVE?" ENDS-WITH? TTRUE
-   s" nest-parent.f" NO-OBJECT
+   s" nestthrow.f" KEY$ STORED
+   s" a top-level execute or compiler word run stores its file" T-LABEL
+   s" exec-xt.f" KEY$ STORED
+   s" act2.f" KEY$ STORED
+   s" a parent whose run opens a child and then runs a seed word stores, as does the child" T-LABEL
+   s" nest-parent.f" KEY$ STORED
    s" nest-child.f" KEY$ STORED
    s" nest-child.f" FRAME$ s"  ordered=" FIELD$ s" 0" T$=
-   s" a run that closes the compiler session refuses its file" T-LABEL
-   s" act.f" FRAME$ s"  reason=run-unaccounted word=SESSION-CLOSE" ENDS-WITH? TTRUE
-   s" act.f" NO-OBJECT
+   s" a run that closes the compiler session stores its file" T-LABEL
+   s" act.f" KEY$ STORED
    OUT$ S\" session=0\n" CONTAINS? TTRUE
    s" no other file's run names a run reason" T-LABEL
    RUNS-ADMITTED ;
@@ -1651,37 +1498,50 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
      ENDOF
    ;MATCH ;
 
-\ A warm build installed name's object: its reused line, the only one with
-\ " records=" right after the path, and no object written for it.
+\ A warm build installed name's object: its reused line, and no object
+\ written for it.
 : REUSED ( ptr u8 n -- )
    {: name:ptr nameu:n :}
-   name nameu s"  records=" LINE$ {: line:ptr lineu:n :}
    0 INPUT-U !
-   name nameu IN+ s"  records=" IN+
-   line lineu INPUT INPUT-U @ STARTS-WITH? TTRUE
+   s" native-file: reused path=" IN+ name nameu AT IN+ S\" \n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
    name nameu NO-OBJECT ;
 
-\ name loaded where a journal records outside every sink: the open refuses
-\ it, so it installs no object and writes none, and its load records the
-\ rows (rows, OUT$'s line) a cold load records.
-: SINK-REFUSED ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n rows:ptr rowsu:n :}
-   OUT$ rows rowsu CONTAINS? TTRUE
+\ name did not install through its object.
+: NOT-REUSED ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
    0 INPUT-U !
-   s" /" IN+ name nameu IN+ s"  records=" IN+
-   ERR$ INPUT INPUT-U @ CONTAINS? TFALSE
-   \ LINE$ builds its pattern in INPUT; the line it returns lies in ERR$.
-   name nameu s"  reason=" LINE$ {: line:ptr lineu:n :}
+   s" native-file: reused path=" IN+ name nameu AT IN+ S\" \n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TFALSE ;
+
+\ The rows pcf.f, pcz.f, pcd.f and pce.f record where a journal records
+\ outside every sink, warm or cold.
+: SINK-ROWS ( -- )
+   OUT$ S\" pcf=1\n" CONTAINS? TTRUE
+   OUT$ S\" pcz=0\n" CONTAINS? TTRUE
+   OUT$ S\" pcd=1\n" CONTAINS? TTRUE
+   OUT$ S\" pce=1\n" CONTAINS? TTRUE ;
+
+\ name loaded cold where a journal records outside every sink: the open
+\ refuses it, logs reason=origin-sink, and writes no object.
+: SINK-REFUSED ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   name nameu NOT-REUSED
    0 INPUT-U !
-   name nameu IN+ s"  reason=origin-sink" IN+
-   line lineu INPUT INPUT-U @ T$=
+   s" /" IN+ name nameu IN+ S\"  reason=origin-sink unsupported\n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
    name nameu NO-OBJECT ;
 
 : SINK-CHECKS ( -- )
-   s" pcf.f" S\" pcf=1\n" SINK-REFUSED
-   s" pcz.f" S\" pcz=0\n" SINK-REFUSED
-   s" pcd.f" S\" pcd=1\n" SINK-REFUSED
-   s" pce.f" S\" pce=1\n" SINK-REFUSED ;
+   SINK-ROWS
+   s" pcf.f" SINK-REFUSED s" pcz.f" SINK-REFUSED
+   s" pcd.f" SINK-REFUSED s" pce.f" SINK-REFUSED ;
+
+\ None of these files defines a `:` word, so a warm build installs each
+\ stored object.
+: SINK-REUSED ( -- )
+   SINK-ROWS
+   s" pcf.f" REUSED s" pcz.f" REUSED s" pcd.f" REUSED s" pce.f" REUSED ;
 
 
 \ The second build over the same cache runs as the first and installs the
@@ -1733,23 +1593,22 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" wlq.f" REUSED s" wlr.f" REUSED
    s" a warm build installs wls.f, whose later segment gives its namespace its private wordlist" T-LABEL
    OUT$ S\" wls=6\n" CONTAINS? TTRUE
+   OUT$ S\" wlsb=3\n" CONTAINS? TTRUE
    s" wls.f" REUSED s" wlt.f" REUSED
-   s" a warm build installs wlx.f under wlk.f's bare wordlist" T-LABEL
+   s" a warm build installs wlk.f and wlx.f under wlk.f's bare wordlist" T-LABEL
    OUT$ S\" wlx=-1\n" CONTAINS? TTRUE
-   s" wlk.f" s"  reason=" LINE$ s" wlk.f reason=scope-at-load" T$=
-   s" wlx.f" REUSED
-   s" a warm build installs wlm.f's wordlists apart from wlc.f's, as the cold load made them" T-LABEL
+   s" wlk.f" REUSED s" wlx.f" REUSED
+   s" a warm build installs wld.f and wlm.f's wordlists apart from wlc.f's, as the cold load made them" T-LABEL
    OUT$ S\" wlm=2\n1\n-1\n-1\n-1\n" CONTAINS? TTRUE
-   s" wld.f" s"  reason=" LINE$ s" wld.f reason=scope-at-load" T$=
-   s" wlm.f" REUSED s" wlc.f" REUSED
+   s" wld.f" REUSED s" wlm.f" REUSED s" wlc.f" REUSED
    s" wma.f" REUSED s" wmb.f" REUSED s" wmc.f" REUSED
-   s" a warm build compiles wln.f again under another wordlist no file made" T-LABEL
+   s" a warm build installs wln.f under another wordlist no file made" T-LABEL
    OUT$ S\" wln=-1\n0\n" CONTAINS? TTRUE
    s" wln.f" FRAME$ s"  reason=scope-wordlist-unknown" ENDS-WITH? TTRUE
-   s" wln.f" NO-OBJECT
+   s" wln.f" REUSED
    s" a warm build compiles tier0.f at tier 0 again" T-LABEL
    OUT$ S\" tier=6\n" CONTAINS? TTRUE
-   ERR$ s" /tier0.f records=" CONTAINS? TFALSE
+   s" tier0.f" NOT-REUSED
    s" tier0.f" s"  reason=" LINE$ s" tier0.f reason=tier" T$=
    s" a warm build installs td.f" T-LABEL
    OUT$ S\" td=4\n" CONTAINS? TTRUE
@@ -1789,81 +1648,62 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
       OUT$ S\" ffs=1134932\n" CONTAINS? TTRUE
       s" ffs.f" REUSED
    then
-   s" a warm build refuses each refused FFI file again by its run reason" T-LABEL
-   s" ffn.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   s" selb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   s" scopeb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
-   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
-   s" a warm build refuses a load inside a declaration, and a run that leaves it unchanged, again" T-LABEL
-   s" ffo.f" DECL-OPEN
-   s" ffoc.f" DECL-OPEN
-   s" ffec.f" DECL-OPEN
-   s" ffxc.f" DECL-OPEN
-   s" ffg.f" s"  reason=run-unaccounted word=GETENV" RUN-REFUSED
-   s" a warm build runs act.f again, which closes the compiler session" T-LABEL
-   s" act.f" NO-OBJECT
+   s" a warm build installs the FFI files whose top level changes the selection or scope" T-LABEL
+   s" ffn.f" REUSED s" sel.f" REUSED s" selb.f" REUSED
+   s" scopeb.f" REUSED s" wrb.f" REUSED s" wcb.f" REUSED
+   s" a warm build installs a run inside a declaration that leaves it unchanged" T-LABEL
+   s" ffg.f" REUSED
+   s" a warm build installs act.f, whose run closes the compiler session again" T-LABEL
+   s" act.f" REUSED
    OUT$ S\" session=0\n" CONTAINS? TTRUE
    s" a warm build names no run reason for a file whose runs are admitted" T-LABEL
    RUNS-ADMITTED ;
 
-\ name's replay went stale at the segment row seg names, with the reason its
-\ stale line gives after the number, and the build went on in the same process
-\ from name's source where the load before that row returned: name is refused
-\ as segment-stale and writes no object.
-: RESUMED ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n seg:ptr segu:n :}
-   0 INPUT-U !
-   s" native-file: stale path=" IN+ name nameu AT IN+ s"  segment=" IN+
-   seg segu IN+ S\" \n" IN+
-   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
-   name nameu s"  reason=" LINE$ {: line:ptr lineu:n :}
-   0 INPUT-U !
-   name nameu IN+ s"  reason=segment-stale" IN+
-   line lineu INPUT INPUT-U @ T$=
-   name nameu NO-OBJECT ;
-
-\ A changed constant leaves con.f's object supported but stale: the warm build
-\ checks it, compiles con.f again and rewrites the object, kept as con-warm.obj.
-\ con-dep.f's replay, past con.f's load at row 0, then finds row 1 stale,
-\ so the build compiles the rest of con-dep.f from source and discards its
-\ object. The next build compiles con-dep.f alone and stores it. An edited
-\ wlt.f gives WLS its private wordlist, so wls.f's second segment, which
-\ would give WLS one, is stale the same way.
+\ A changed constant makes the warm build compile con.f again and rewrite its
+\ object, kept as con-warm.obj, and con-dep.f computes from the new CON-K. An
+\ edited wlt.f gives WLS its private wordlist, with a WLV, before wls.f's
+\ second segment reopens WLS. con-dep.f and wls.f miss at their stale heads
+\ (wls.f's is B), compile whole and store fresh objects, so the next build
+\ reuses them.
 : STALE-CON ( -- )
    s" con.f" S\" 4 constant CON-K\nCON-K 1+ constant CON-USE\n" PUT
-   s" wlt.f" S\" package WLS\n: K ( -- n ) 7 ;\n;package\n: WLT-K ( -- n ) 2 ;\n" PUT
-   s" a warm build compiles a stale con.f again and resumes con-dep.f" T-LABEL
+   s" wlt.f" S\" : WLT-K ( -- n ) 2 ;\n: WLV ( -- n ) 3 ;\npackage WLS\n: K ( -- n ) 7 ;\n: WLV ( -- n ) 4 ;\n;package\n" PUT
+   1 WLT-EDITED !
+   s" a warm build compiles an edited con.f again and con-dep.f over it" T-LABEL
    PROBE
    s" probe-stale-out.log" OUT$ PUT
    s" probe-stale-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" con=5\n" CONTAINS? TTRUE
    OUT$ S\" dep=6\n" CONTAINS? TTRUE
-   s" con-dep.f" s" 1" RESUMED
-   s" a warm build finds wls.f's reopen stale after the edited wlt.f gave WLS its private wordlist" T-LABEL
+   s" a warm build reopens wls.f's namespace after the edited wlt.f gave WLS its private wordlist" T-LABEL
    OUT$ S\" wls=7\n" CONTAINS? TTRUE
-   s" wls.f" s" 3 reason=wordlist-rows" RESUMED
-   ERR$ s" /con.f records=" CONTAINS? TFALSE
+   OUT$ S\" wlsk=7\n" CONTAINS? TTRUE
+   OUT$ S\" wlsb=4\n" CONTAINS? TTRUE
+   s" con.f" NOT-REUSED
+   s" con-dep.f" NOT-REUSED
+   s" wls.f" NOT-REUSED
    s" con.f" KEY$ s" con-warm.obj" KEEP-OBJ
-   s" the next build compiles only con-dep.f and wls.f and stores them" T-LABEL
+   s" the next build reuses con-dep.f and wls.f, stored by the build that missed them" T-LABEL
    PROBE
    s" probe-next-out.log" OUT$ PUT
    s" probe-next-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" dep=6\n" CONTAINS? TTRUE
    s" con.f" REUSED
-   s" con-dep.f" KEY$ STORED
+   s" con-dep.f" REUSED
    OUT$ S\" wls=7\n" CONTAINS? TTRUE
+   OUT$ S\" wlsk=7\n" CONTAINS? TTRUE
+   OUT$ S\" wlsb=4\n" CONTAINS? TTRUE
    s" wlt.f" REUSED
-   s" wls.f" KEY$ STORED ;
+   s" wls.f" REUSED ;
 
 \ The freshness check left no row: a cold build of the edited con.f writes
-\ the object the stale warm build rewrote, kept as con-cold.obj.
+\ the object the warm build rewrote, kept as con-cold.obj.
 : COLD-CON ( -- )
-   s" a cold build writes the stale build's con.f object" T-LABEL
+   s" a cold build writes the warm build's con.f object" T-LABEL
    s" con.f" KEY$ s" con-cold.obj" KEEP-OBJ
+   s" con-warm.obj" AT FS:EXISTS? 0= if T-FAIL exit then
    s" con-warm.obj" AT {: warm:ptr warmp:n :}
    warm warmp FS:FILE-SIZE {: warmu:n :}
    warmu WARM-RESERVE
@@ -1878,10 +1718,10 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ no hit: it compiles and writes a second object under its own key. So does
 \ aftone.f, whose stored declaration key names aftpar.f: a hit there could
 \ not bind it. con.f's object is fresh under con-dep.f, but k.f made CON-K
-\ live first: a named miss, and the live compile refuses the duplicate. The
-\ warm build after it still reuses all three objects.
+\ live first: the live compile refuses the duplicate. The warm build after it
+\ still reuses all three objects.
 : OTHER-LOADER ( -- )
-   s" another loader's leaves compile; a live CON-K makes con.f a named miss" T-LABEL
+   s" another loader's leaves compile; a live CON-K refuses con.f's duplicate" T-LABEL
    SESSION
    s" alt.f" LOAD+ s" k.f" LOAD+ s" con-dep.f" LOAD+
    RUN-INPUT
@@ -1891,18 +1731,34 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    0 INPUT-U !
    s" duplicate definition: CON-K at " IN+ s" con.f" AT IN+ s" :1" IN+
    ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
-   s" con.f" s"  reason=" LINE$ s" con.f reason=name-live word=CON-K" T$=
-   ERR$ s" /con.f records=" CONTAINS? TFALSE
-   ERR$ s" /ret-use.f records=" CONTAINS? TFALSE
+   s" con.f" NOT-REUSED
+   s" ret-use.f" NOT-REUSED
    s" ret-use.f" KEY$ RU-KEY KEY-LEN STR= TFALSE
    ERR$ s" /aftone.f key=" CONTAINS? TTRUE ;
 
+\ Each build is its own process: the cache across a hook edit is under test.
+: HOOK-EDIT ( -- )
+   \ JUDGE calls LOWER-CERT-HOOK:HOOK: a hook that skips it dies `lowering
+   \ certificate source hash mismatch`.
+   s" t.f" S\" package FRAME-HOOK\npublic\n: JUDGE ( ptr u8 n -- n ) LOWER-CERT-HOOK:HOOK ;\n;package\n' FRAME-HOOK:JUDGE set-check\n" PUT
+   s" f.f" S\" : HOOKED-W ( -- n ) 1 ;\n" PUT
+   s" a warm build under an edited hook refuses as an empty cache does" T-LABEL
+   SESSION s" t.f" LOAD+ s" f.f" LOAD+
+   RUN-INPUT SUCCESS
+   s" t.f" S\" package FRAME-HOOK\npublic\n70 constant E-HOOKED\n: JUDGE ( ptr u8 n -- n ) 2dup s\" HOOKED-W\" CONTAINS? if s\" hook=refused\" type cr E-HOOKED throw then LOWER-CERT-HOOK:HOOK ;\n;package\n' FRAME-HOOK:JUDGE set-check\n" PUT
+   RUN-INPUT {: warm:n :}
+   OUT$ s" hook=refused" CONTAINS? TTRUE
+   s" cache" AT FS:REMOVE-TREE s" cache" AT FS:MAKE-DIR
+   RUN-INPUT {: cold:n :}
+   OUT$ s" hook=refused" CONTAINS? TTRUE
+   warm cold T= ;
+
 \ ret-late.f defines RET-USER before it requires ret-use.f, whose fresh
-\ object would define it: a named miss, and the live compile refuses the
-\ duplicate at ret-use.f's definition.
+\ object would define it: the live compile refuses the duplicate at
+\ ret-use.f's definition.
 : LOADER-FIRST ( -- )
    s" ret-late.f" S\" : RET-LATE ( -- n ) 3 ;\n: RET-USER ( -- n ) 4 ;\nrequire ret-use.f\nundefine RET-LATE\n" PUT
-   s" a colon object whose name its loader defined first is a named miss" T-LABEL
+   s" a colon object whose name its loader defined first refuses the duplicate" T-LABEL
    SESSION
    s" ret-late.f" LOAD+
    RUN-INPUT
@@ -1912,8 +1768,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    0 INPUT-U !
    s" duplicate definition: RET-USER at " IN+ s" ret-use.f" AT IN+ s" :1" IN+
    ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
-   s" ret-use.f" s"  reason=" LINE$ s" ret-use.f reason=name-live word=RET-USER" T$=
-   ERR$ s" /ret-use.f records=" CONTAINS? TFALSE ;
+   s" ret-use.f" NOT-REUSED ;
 
 \ Each loader action is an edge in its file's object, whether the child ran
 \ or was found loaded.
@@ -1927,59 +1782,83 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" nreq.f" KEY$ STORED
    s" a load inside an evaluated text refuses its file" T-LABEL
    s" evreq.f" s"  reason=" LINE$ s" evreq.f reason=load-boundary" T$=
-   s" evreq.f" NO-OBJECT ;
+   s" evreq.f" NO-OBJECT
+   s" a cold build runs the family users" T-LABEL
+   OUT$ S\" fmb=1\n" CONTAINS? TTRUE
+   OUT$ S\" fmc=5\n" CONTAINS? TTRUE
+   OUT$ S\" fmu=7\n" CONTAINS? TTRUE ;
 
 : EDGE-WARM ( -- )
    s" a warm build installs the objects of files whose edges found their child loaded" T-LABEL
    s" npc.f" REUSED s" nreq.f" REUSED s" npk.f" REUSED
    OUT$ S\" npc=2\n" CONTAINS? TTRUE
-   OUT$ S\" nreq=3\n" CONTAINS? TTRUE ;
+   OUT$ S\" nreq=3\n" CONTAINS? TTRUE
+   s" a warm build installs the family users' objects" T-LABEL
+   s" fmb.f" REUSED s" fmc.f" REUSED s" fmu.f" REUSED ;
 
-\ The third build's edits: nproot.f no longer loads npk.f before npc.f, and
-\ nlk.f gains a comment.
+\ The third build's edits: nproot.f loads npc.f alone, nlk.f gains a comment,
+\ fshape a variant, fmp another field name and vshape another package.
 : EDGE-EDITS ( -- )
    s" nproot.f" S\" require npc.f\n" PUT
-   s" nlk.f" S\" \\ edited\n: NLK ( -- n ) 5 ;\n" PUT ;
+   s" nlk.f" S\" \\ edited\n: NLK ( -- n ) 5 ;\n" PUT
+   s" fms.f" S\" package FAMS\npublic\nENUM fshape VARIANT fmx ;VARIANT VARIANT fmy ;VARIANT ;ENUM\n: S-ID ( fshape -- fshape ) ;\n: S-CODE ( fshape -- n ) MATCH fshape fmx OF 2 ENDOF fmy OF 3 ENDOF ;MATCH ;\n;package\n" PUT
+   s" fmt.f" S\" package FAMT\npublic\nENUM fbox VARIANT fmp FIELD fmb n ;VARIANT ;ENUM\n: T-GET ( fbox -- n ) MATCH fbox fmp OF ENDOF ;MATCH ;\n;package\n" PUT
+   s" fmv.f" S\" package FAMW\npublic\nENUM vshape VARIANT fvx ;VARIANT ;ENUM\n;package\n" PUT ;
+
+\ The cache diagnostics' head line labelled label, naming definition name
+\ of file path.
+: HEAD-HAS ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n name:ptr nameu:n path:ptr pathu:n :}
+   0 INPUT-U !
+   s" native-file: " IN+ label labelu IN+ s"  name=" IN+ name nameu IN+
+   s"  path=" IN+ path pathu AT IN+ S\" \n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE ;
 
 : EDGE-REBUILT ( -- )
    s" a removed earlier provider compiles the child and its own child again" T-LABEL
    OUT$ S\" npc=2\n" CONTAINS? TTRUE
-   ERR$ s" /npc.f records=" CONTAINS? TFALSE
+   s" npc.f" NOT-REUSED
    s" npk.f" KEY$ STORED
    s" a comment in a leaf compiles only the leaf" T-LABEL
    s" nlroot.f" REUSED s" nlc.f" REUSED
-   ERR$ s" /nlk.f records=" CONTAINS? TFALSE
-   s" nlk.f" KEY$ STORED ;
+   s" nlk.f" NOT-REUSED
+   s" nlk.f" KEY$ STORED
+   s" a changed family misses at its user's slice, which compiles as a cold build does" T-LABEL
+   s" stale-slice" s" FMB" s" fmb.f" HEAD-HAS
+   s" fmb.f" NOT-REUSED
+   OUT$ S\" fmb=2\n" CONTAINS? TTRUE
+   s" a changed constructor misses at its caller's slice, which compiles as a cold build does" T-LABEL
+   s" stale-slice" s" FMC" s" fmc.f" HEAD-HAS
+   s" fmc.f" NOT-REUSED
+   OUT$ S\" fmc=5\n" CONTAINS? TTRUE
+   s" a family moved to another package misses at its user's slice" T-LABEL
+   s" stale-slice" s" FMU" s" fmu.f" HEAD-HAS
+   s" fmu.f" NOT-REUSED
+   OUT$ S\" fmu=7\n" CONTAINS? TTRUE ;
 
-\ RC-N's new effect leaves rp.f's first segment fresh and its second stale:
-\ the replay has installed RP-A and loaded rc.f, so the build names the
-\ event row it stopped at, row 3 after RP-A's segment and history rows and
-\ rc.f's load, and compiles the rest of rp.f from source. SXC-N's new effect
-\ does the same to sx.f past its loads of sxm.f and sxc.f at rows 0 and 1, so
-\ it resumes at row 2; the resume never loads sxm.f again, so its marker byte
-\ and its line come once.
-\ npc.f's load of npk.f is row 0, so an effect edit of npk.f resumes it at
-\ row 1.
+\ Effect edits of rc.f, sxc.f and npk.f, which rp.f, sx.f and npc.f load.
+\ sx.f's cold child sxm.f runs once, so its marker byte and its line come
+\ once.
 : RC-INTERFACE ( -- )
    s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n" PUT
    s" sxc.f" S\" : SXC-N ( -- u8 ) 2 ;\n" PUT
    s" npk.f" S\" : NPK ( -- u8 ) 1 ;\n" PUT
    s" nproot.f" S\" require npk.f\nrequire npc.f\n" PUT
    s" sxmark.txt" AT FS:FILE-SIZE {: marks:n :}
-   s" an effect edit of rc.f resumes rp.f at its stale second segment" T-LABEL
+   s" an effect edit of rc.f rebuilds rp.f" T-LABEL
    PROBE
    s" rc-interface-out.log" OUT$ PUT
    s" rc-interface-err.log" ERR$ PUT
    SUCCESS
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
-   s" rp.f" s" 3" RESUMED
-   s" a resumed sx.f runs its cold child sxm.f once" T-LABEL
+   s" a rebuilt sx.f runs its cold child sxm.f once" T-LABEL
    OUT$ S\" sx=3\n" CONTAINS? TTRUE
-   s" sx.f" s" 2" RESUMED
    s" sxmark.txt" AT FS:FILE-SIZE marks 1+ T=
-   s" an effect edit of npk.f resumes npc.f after its edge" T-LABEL
+   s" an effect edit of npk.f rebuilds npc.f" T-LABEL
    OUT$ S\" npc=2\n" CONTAINS? TTRUE
-   s" npc.f" s" 1" RESUMED ;
+   s" the family users' objects that the slice misses rewrote install" T-LABEL
+   s" fmb.f" REUSED s" fmc.f" REUSED s" fmu.f" REUSED
+   OUT$ S\" fmb=2\n" CONTAINS? TTRUE ;
 
 \ Keep line in a LINE-CAP buffer and its length in a cell.
 : KEEP-LINE ( ptr u8 n ptr u8 ptr n -- )
@@ -2012,25 +1891,53 @@ public
    s" uhd.f" S\" TRUSTED: UH-ONE ( -- n ) 2 ;\n: UH-DEF ( -- ) create UH-ONE , ;\n" PUT
    s" ixl.f" S\" variable IXL-V\n: IXL-RUN ( -- ) s\" 4 IXL-V !\" evaluate-closed ;\nIXL-RUN\nIXL-V @ constant IXL-K\n" PUT ;
 
-\ Each edit misses the file whose run reached it, and the rerun's values are
-\ those a cold build of the edited sources computes.
+\ A reused file's top level runs again while its heads install from their
+\ rows, so each run reaches the edited body and the values are those a cold
+\ build of the edited sources computes. ixl.f's own text changed.
 : INDIRECT-REBUILT ( -- )
-   s" an edit of the body a run executes compiles the running file again" T-LABEL
-   ERR$ s" /mask.f records=" CONTAINS? TFALSE
+   s" a file whose run executes an edited body is reused with the edited values" T-LABEL
+   s" mask.f" REUSED
    OUT$ S\" mx=2\n" CONTAINS? TTRUE
-   ERR$ s" /xrun.f records=" CONTAINS? TFALSE
+   s" xrun.f" REUSED
    OUT$ S\" xk=5\n" CONTAINS? TTRUE
-   ERR$ s" /dxrun.f records=" CONTAINS? TFALSE
+   s" dxrun.f" REUSED
    OUT$ S\" dxk=5\n" CONTAINS? TTRUE
-   ERR$ s" /uhrun.f records=" CONTAINS? TFALSE
+   s" uhrun.f" REUSED
    OUT$ S\" uh=2\n" CONTAINS? TTRUE
-   ERR$ s" /uhinit.f records=" CONTAINS? TFALSE
+   s" uhinit.f" REUSED
    OUT$ S\" uhi=2\n" CONTAINS? TTRUE
-   s" an edit of a closed literal or of a word its text runs compiles the file again" T-LABEL
-   ERR$ s" /ixl.f records=" CONTAINS? TFALSE
-   ERR$ s" /ixt.f records=" CONTAINS? TFALSE
+   s" an edited closed literal compiles its file again; an edited word its text runs does not" T-LABEL
+   s" ixl.f" NOT-REUSED
+   s" ixt.f" REUSED
    OUT$ S\" ixl=4\n" CONTAINS? TTRUE
    OUT$ S\" ixt=20\n" CONTAINS? TTRUE ;
+
+\ The values the pmNb.f definitions read, the same before and after the
+\ edits.
+: PREMISE-VALUES ( -- )
+   OUT$ S\" pm1=7\n" CONTAINS? TTRUE
+   OUT$ S\" pm2=9\n" CONTAINS? TTRUE
+   OUT$ S\" pm5=9\n" CONTAINS? TTRUE ;
+
+\ The warm build reuses the pmNb.f files, so the third build's misses are
+\ the edits'.
+: PREMISE-WARM ( -- )
+   s" a warm build installs the objects of files whose top level runs an earlier definer" T-LABEL
+   s" pm1b.f" REUSED s" pm2b.f" REUSED s" pm5b.f" REUSED
+   PREMISE-VALUES ;
+
+: PREMISE-EDITS ( -- )
+   s" pm1a.f" S\" : PM1: ( -- ) s\" variable PM1X\" evaluate-closed create 0 , ;\n" PUT
+   s" pm2a.f" S\" : PM2: ( -- ) s\" variable PM2X\" evaluate-closed create 7 , ;\n" PUT
+   s" pm5a.f" S\" : PM5 ( -- ) s\" variable PM5X\" evaluate-closed s\" pm5c.f\" required ;\n" PUT ;
+
+\ A definition installs only while its file's own records, wordlists and
+\ DATA before its head are the ones its object recorded: each pmNb.f
+\ compiles again and reads what a cold build of the edited tree reads.
+: PREMISE-REBUILT ( -- )
+   s" an edit that changes a reused file's own records, their order or their place among its loads compiles the file" T-LABEL
+   s" pm1b.f" NOT-REUSED s" pm2b.f" NOT-REUSED s" pm5b.f" NOT-REUSED
+   PREMISE-VALUES ;
 
 : MAIN ( -- )
    T-RESET
@@ -2057,17 +1964,17 @@ public
    s" dv.f" KEY$ STORED
    s" a cold build runs rw.f, whose DATA rewinds between creates, and stores no object" T-LABEL
    OUT$ S\" rw=8\n" CONTAINS? TTRUE
-   s" rw.f" s"  reason=" LINE$ s" rw.f reason=data-rewound" T$=
+   s" rw.f" s"  reason=" LINE$ s" rw.f reason=segment-unordered" T$=
    s" rw.f" NO-OBJECT
    s" a cold build runs rwp.f, whose segment after rwc.f reopens inside the one before, and stores no object" T-LABEL
    OUT$ S\" rwp=16\n" CONTAINS? TTRUE
-   s" rwp.f" s"  reason=" LINE$ s" rwp.f reason=data-rewound" T$=
+   s" rwp.f" s"  reason=" LINE$ s" rwp.f reason=segment-unordered" T$=
    s" rwp.f" NO-OBJECT
+   s" a cold build stores rwc.f, whose only change rewinds DATA" T-LABEL
+   s" rwc.f" KEY$ STORED
    s" a cold build with room in the literal pool stores lf.f's object" T-LABEL
    OUT$ S\" lf=lf-pool-probe\n" CONTAINS? TTRUE
    s" lf.f" KEY$ STORED
-   KEEP-OBJECT
-   CHECKER
    s" app.f" RESULTS$ APP-RES RES-LEN KEEP
    s" lib.f" RESULTS$ LIB-RES RES-LEN KEEP
    HITS$ {: at:ptr atu:n :}
@@ -2107,20 +2014,17 @@ public
    s" app.f" OBJECT$ APP-LINE APP-LINE-U @ T$=
    s" a warm build compiles rw.f again and installs lf.f's object" T-LABEL
    OUT$ S\" rw=8\n" CONTAINS? TTRUE
+   s" rw.f" NOT-REUSED
    s" rw.f" NO-OBJECT
    OUT$ S\" lf=lf-pool-probe\n" CONTAINS? TTRUE
    s" lf.f" REUSED
    INDIRECT-WARM
-   \ pf.f fills the literal pool's write segment, so lp.f's literal needs a
-   \ new one: lp.f's object, stored with room, misses before it installs
-   \ anything, and its compile opens that segment inside lp.f, so it stores
-   \ no object.
-   s" a warm build misses lp.f's object where the literal pool has no room for its literal" T-LABEL
-   0 INPUT-U !
-   s" native-file: miss path=" IN+ s" lp.f" AT IN+ s"  reason=literal-pool" IN+
-   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   PREMISE-WARM
+   \ pf.f fills the literal pool's write segment; lp.f's object, stored
+   \ with room, still installs.
+   s" a warm build installs lp.f's object where the literal pool has no room for its literal" T-LABEL
+   s" lp.f" REUSED
    OUT$ S\" lp=lp-pool-probe\n" CONTAINS? TTRUE
-   s" lp.f" NO-OBJECT
    \ A comment changes no definition's result, inside TWICE's body or as a
    \ line that moves every later definition. base.f's new variable moves HITS
    \ from here on.
@@ -2129,8 +2033,7 @@ public
    s" pkroot.f" S\" require pkglob.f\nrequire pkpre.f\nrequire pk.f\n" PUT
    1 MOVED !
    S\" \\ edited\n" s" ( note ) dup +" s" 3 ( note ) TWICE drop" LIB-SOURCE
-   \ sel.f now declares getgid: selc.f's stored getuid reuse row no longer
-   \ names a live row.
+   \ sel.f now declares getgid, so it compiles again and stores.
    s" sel.f" S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\nFUNCTION: SEL-UID getgid ( -- i32 ) ;FUNCTION\n" PUT
    \ sela.f now selects libz, which selb.f selects over; scopea.f's package,
    \ whose wordlist scopeb.f's object names, is now FRAME-SCB.
@@ -2144,6 +2047,7 @@ public
    s" rc.f" S\" : RC-N ( -- n ) 2 0 + ;\n" PUT
    s" hch.f" S\" \\ edited\nrequire hg1.f\nrequire hg2.f\n" PUT
    INDIRECT-EDITS
+   PREMISE-EDITS
    EDGE-EDITS
    s" comments in lib.f keep lib.f's key, and app.f's object installs" T-LABEL
    PROBE SUCCESS
@@ -2152,50 +2056,48 @@ public
    s" lib.f" KEY$ LIB-KEY KEY-LEN T$=
    s" app.f" REUSED
    INDIRECT-REBUILT
+   PREMISE-REBUILT
    EDGE-REBUILT
    s" a comment compiles hch.f between installs of hg1.f and hg2.f inside the installing hpar.f" T-LABEL
    OUT$ S\" hp=1\n1\n2\n" CONTAINS? TTRUE
-   ERR$ s" /hch.f records=" CONTAINS? TFALSE
+   s" hch.f" NOT-REUSED
    s" hpar.f" REUSED s" hg1.f" REUSED s" hg2.f" REUSED
    s" a body edit of rc.f compiles rc.f and replays rp.f around it" T-LABEL
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
-   ERR$ s" /rc.f records=" CONTAINS? TFALSE
+   s" rc.f" NOT-REUSED
    s" rp.f" REUSED
    s" a byte allotted before dv.f still installs its object" T-LABEL
    s" dv.f" REUSED
    OUT$ S\" dv=14\n" CONTAINS? TTRUE
    s" an earlier file that now makes FRAME-PK refuses pk.f's object: PK-SEVEN binds its private word" T-LABEL
    OUT$ S\" pk=70\n" CONTAINS? TTRUE
-   ERR$ s" /pk.f records=" CONTAINS? TFALSE
-   ERR$ s" dependency miss: namespace shape changed" CONTAINS? TTRUE
-   s" a changed selection resumes the file that consumed it after its require" T-LABEL
-   s" selc.f" s" 1 reason=ffi-rows" RESUMED
-   s" sel.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   s" a file that selects the selection it found refuses on every build" T-LABEL
-   s" selb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   ERR$ s" /selb.f records=" CONTAINS? TFALSE
-   s" a file opening with a removed package's selection refuses on every build" T-LABEL
-   s" scopeb.f" s"  reason=run-unaccounted word=PROCESS-SYMBOLS" RUN-REFUSED
-   ERR$ s" /scopeb.f records=" CONTAINS? TFALSE
-   s" a SELECT over a changed selection refuses and selects as a cold load" T-LABEL
-   s" wrb.f" s"  reason=run-unaccounted word=true" RUN-REFUSED
-   ERR$ s" /wrb.f records=" CONTAINS? TFALSE
+   s" pk.f" NOT-REUSED
+   \ PK-VAL's own scope row misses first.
+   0 INPUT-U !
+   S\" native-file: dependency miss: scope changed\nnative-file: stale-head name=PK-VAL path=" IN+
+   s" pk.f" AT IN+ S\" \n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   s" an edited declaring file that runs PROCESS-SYMBOLS compiles again and stores" T-LABEL
+   s" sel.f" KEY$ STORED
+   s" a file that selects the selection it found installs over a changed selection" T-LABEL
+   s" selb.f" REUSED
+   s" a file opening with a removed package's selection installs" T-LABEL
+   s" scopeb.f" REUSED
+   s" a SELECT over a changed selection installs and selects as a cold load" T-LABEL
+   s" wrb.f" REUSED
    OUT$ S\" wrb=-1\n0\n0\n" CONTAINS? TTRUE
-   s" a scope clear over a changed library refuses and keeps it as a cold load" T-LABEL
-   s" wcb.f" s"  reason=run-unaccounted word=PREPARE" RUN-REFUSED
-   ERR$ s" /wcb.f records=" CONTAINS? TFALSE
+   s" a scope clear over a changed library installs and keeps it as a cold load" T-LABEL
+   s" wcb.f" REUSED
    OUT$ S\" wcb=0\n0\n1\n" CONTAINS? TTRUE
-   s" og.f under another engine root and jrn.f under another hook compile again" T-LABEL
-   ERR$ s" /og.f records=" CONTAINS? TFALSE
-   ERR$ s" /jrn.f records=" CONTAINS? TFALSE
+   s" og.f under another engine root compiles again" T-LABEL
+   s" og.f" NOT-REUSED
+   s" jrn.f, whose object holds nothing a hook judges, installs under another hook" T-LABEL
+   s" jrn.f" REUSED
    OUT$ S\" ek=0\n" CONTAINS? TTRUE
    ORIGINS$ OG-MOVED OG-MOVED-U KEEP-LINE
-   s" a file stored where no journal records does not install where one records outside every sink" T-LABEL
-   SINK-CHECKS
+   s" a file stored where no journal records installs where one records outside every sink" T-LABEL
+   SINK-REUSED
    s" lib.f" RESULTS$ LIB-RES RES-LEN T$=
-   s" every split of the first build's app.f rows still holds" T-LABEL
-   SPLIT$ nip 1 > TTRUE
-   51 SPLIT-COUNT SPLIT$ nip T=
    STALE-CON
    \ TWICE's new code changes lib.f's results. An empty cache makes app.f
    \ compile again against lib.f's moved code and HITS's moved address, so
@@ -2205,25 +2107,15 @@ public
    s" cache" AT FS:REMOVE-TREE s" cache" AT FS:MAKE-DIR
    s" " s" 2 *" s" 3 TWICE drop" LIB-SOURCE
    s" a changed TWICE body keeps both keys and app.f's results" REBUILT
+   s" a cold build reads K from the private wordlist wlt.f gave WLS" T-LABEL
+   OUT$ S\" wlsk=7\n" CONTAINS? TTRUE
+   OUT$ S\" wlsb=4\n" CONTAINS? TTRUE
    s" a cold build holds the moved og.f's and jrn.f's origin rows" T-LABEL
    ORIGINS$ OG-MOVED OG-MOVED-U @ T$=
    OUT$ S\" ek=0\n" CONTAINS? TTRUE
    s" a cold build refuses the files loaded where a journal records outside every sink" T-LABEL
    SINK-CHECKS
    s" lib.f" RESULTS$ LIB-RES RES-LEN STR= TFALSE
-   \ app.f ran MARK, which calls TWICE, and two runs on its HOOK line reach
-   \ HOOK's DATA, which holds TWICE: those three executed rows are stale.
-   \ Splits before the first hold below and fail above (1), splits past the
-   \ last the reverse (2), splits between fail on both sides (0).
-   s" app.f's three rows that reach TWICE are stale, and only ranges holding one fail" T-LABEL
-   48 HELD-COUNT 3 T=
-   49 SPLIT-COUNT 0 > TTRUE
-   50 SPLIT-COUNT 0 > TTRUE
-   51 SPLIT-COUNT 0 T=
-   SPLIT$ s" 21" CONTAINS? TFALSE
-   SPLIT$ s" 01" CONTAINS? TFALSE
-   SPLIT$ s" 20" CONTAINS? TFALSE
-   ERR$ s" dependency miss: executed closure changed" CONTAINS? TTRUE
    s" base.f's new variable moved HITS" T-LABEL
    HITS$ HITS-AT HITS-AT-U @ STR= TFALSE
    COLD-CON
@@ -2231,6 +2123,7 @@ public
    \ would refuse.
    RC-INTERFACE
    LOADER-FIRST
+   HOOK-EDIT
    T-REPORT ;
 
 ;package

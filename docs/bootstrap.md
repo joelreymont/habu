@@ -171,6 +171,18 @@ that pre-window tools call (the unit observer's arguments, or the emission
 state at observation) may require a staged host: the checked prefix compiles
 with the host's compiler, and the unit tools call the host's producer until
 `src/habu/native-runtime.f` loads.
+The `:` and `TRUSTED:` heads run the host's machine code for the whole build,
+so a head contract the tree adds never reaches its own build. When the tree's
+tools need such a contract and the installed engine lacks it, the build
+refuses at the first definition of `src/core/util.f` (E-NUNIT-PROFILE from
+NUNIT-DEP:COMPILING!). Build a stage first, from a revision whose engine adds
+the contract but whose tools do not yet need it, with the installed engine;
+then build the tree with that stage:
+
+    jj workspace add --name stage -r <revision> "$TMP/stage"
+    (cd "$TMP/stage" && TMPDIR="$TMP" hb --load tools/hb-build.f -- --engine -o "$TMP/stage-hb")
+    TMPDIR="$TMP" "$TMP/stage-hb" --load tools/hb-build.f -- --engine -o "$OUT"
+
 The window's captured records and cells must not retain the host's process
 addresses or record numbers: a host whose checker differs from the tree's
 numbers its records and symbols differently, so a record number left in DATA

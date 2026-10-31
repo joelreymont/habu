@@ -57,13 +57,12 @@ public
    BUILD 70 T=
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
    s" undeclared code/dict pointer" SAID? TTRUE
-   \ The failed cold build still stored app.f's object, so the warm build reuses
-   \ it and refuses the raw pointer against reused code. unsafe.f stored none:
-   \ its run reached the unchecked ADMIT-RAW, so its DATA was judged cell by
-   \ cell, and a stored copy would carry the cold build's code address.
+   \ The failed cold build still stored both objects. An object holds no DATA
+   \ (NUNIT-OBJECT): the warm top level reruns the reused ADMIT-RAW, and the
+   \ build refuses the pointer it stores now.
    BUILD 70 T=
    OUT$ s" unsafe-source-ran" CONTAINS? TTRUE
-   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
    s" undeclared code/dict pointer" SAID? TTRUE
    s" unaligned pointer declines" T-LABEL
    COLD-UNALIGNED

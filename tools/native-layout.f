@@ -22,7 +22,7 @@ create SLOTS
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,  0 ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL , 0 ,
    \ Literal: the capture host's baked layout may lack NCOMP-DISPATCH:COMP-CELL.
-   $3838 ,                             0 ,   \ NCOMP-DISPATCH:COMP-CELL
+   $3840 ,                             0 ,   \ NCOMP-DISPATCH:COMP-CELL
    NCOMP-DISPATCH:DECL-CELL ,            1 ,
    NCOMP-DISPATCH:TARGET-DECL-CELL ,     1 ,
    APP-ENTRY:XT-CELL ,                  0 ,

@@ -283,7 +283,8 @@ variable REMOVED
 \ INSTALL stays private, a load in the package's public section misses and
 \ makes INSTALL public, the next public load hits that public object, and the
 \ private load after it misses back and refuses the outside reference as the
-\ hit did. A warm build reusing the package-loaded file saves the cold bytes.
+\ hit did. A warm build reusing the package-loaded file and the app that loads
+\ it saves the cold bytes.
 : DEFER-VISIBILITY-CASE ( -- )
    DEFER-MOVED-PREFIX$ s" defer.f" s" cache-defer" DEFER-OUTSIDE$
       s" " SESSION-PROBE-RC-WITH
@@ -311,7 +312,7 @@ variable REMOVED
    s" defer-app.f" s" defer-hb" s" cache-defer-app" BUILD-IN SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    s" defer-app.f" s" defer-warm-hb" s" cache-defer-app" BUILD-IN SUCCESS
-   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
    s" defer-hb" s" defer-warm-hb" SAME-FILE ;
 
 : DEFER-CASE ( -- )
@@ -534,25 +535,8 @@ variable REMOVED
    REPORT
    OUT$ s" closes=42" CONTAINS? TTRUE ;
 
-\ The diagnostic refusal line for the file name (a path's last component)
-\ names exactly reason, and no object line names the file.
-: REFUSED-ONLY ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n reason:ptr reasonu:n :}
-   0 INPUT-U !
-   s" /" INPUT CAP INPUT-U BUF-APPEND
-   name nameu INPUT CAP INPUT-U BUF-APPEND
-   s"  reason=" INPUT CAP INPUT-U BUF-APPEND
-   reason reasonu INPUT CAP INPUT-U BUF-APPEND
-   S\" \n" INPUT CAP INPUT-U BUF-APPEND
-   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
-   0 INPUT-U !
-   s" /" INPUT CAP INPUT-U BUF-APPEND
-   name nameu INPUT CAP INPUT-U BUF-APPEND
-   s"  key=" INPUT CAP INPUT-U BUF-APPEND
-   ERR$ INPUT INPUT-U @ CONTAINS? TFALSE ;
-
-\ opens-parent.f closes the package its child left open, which a hit would not
-\ replay, so it refuses scope-after-load on every build.
+\ opens-parent.f closes the package its child left open; a build after the
+\ child's edit reaches the sibling that reads it.
 : CHILD-OPENS-PACKAGE-CASE ( -- )
    s" a child opening a package leaves later sibling dependencies live" T-LABEL
    s" cache-child-opens" AT FS:MAKE-DIR
@@ -564,18 +548,14 @@ variable REMOVED
       S\" : REVIEW-INDEPENDENT ( -- n ) 5 ;\n" PUT
    s" opens-parent.f"
       S\" include opens-child.f\n;package\ninclude opens-sibling.f\ninclude opens-independent.f\n: REVIEW-OPEN-RESULT ( -- n ) REVIEW-SIBLING REVIEW-INDEPENDENT + ;\n" PUT
-   -1 DIAG !
    s" " s" opens-parent.f" s" cache-child-opens"
       S\" s\" opens=\" type REVIEW-OPEN-RESULT . cr\n" SESSION-PROBE
    REPORT
    OUT$ s" opens=47" CONTAINS? TTRUE
-   s" opens-parent.f" s" scope-after-load" REFUSED-ONLY
    s" " s" opens-parent.f" s" cache-child-opens"
       S\" s\" opens=\" type REVIEW-OPEN-RESULT . cr\n" SESSION-PROBE
    REPORT
    OUT$ s" opens=47" CONTAINS? TTRUE
-   s" opens-parent.f" s" scope-after-load" REFUSED-ONLY
-   0 DIAG !
    s" opens-child.f"
       S\" package REVIEW-OPEN public\n: VALUE ( -- n ) 41 ;\n" PUT
    s" " s" opens-parent.f" s" cache-child-opens"
@@ -603,11 +583,12 @@ variable REMOVED
 
 \ rv-base.f's definer RV-DEF reads RV, then the file retires RV and declares a
 \ live RV of the same spelling. RD-DEF calls the defer RD, bound to impl, and
-\ the file then retires RD. rv-user.f runs RV-DEF and RD-DEF at top level, so
-\ its object depends on the retired RV's DATA and the retired RD's cell by key
-\ and occurrence. An unrelated edit to rv-base.f keeps rv-user.f reused, and
-\ the warm product is the cold one; rebinding the retired RD, or a new value
-\ stored in the retired RV, misses rv-user.f, while the live RV's value stays.
+\ the file then retires RD. rv-user.f runs RV-DEF and RD-DEF at top level,
+\ which a warm load reruns. An unrelated edit to rv-base.f keeps rv-user.f
+\ reused, and the warm product is the cold one; after the retired RD is rebound,
+\ or a new value is stored in the retired RV, rv-user.f is still reused and its
+\ records hold the new results, while the live RV's value stays; that warm
+\ product is the cold one too.
 : RV-BASE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: value:ptr valueu:n impl:ptr implu:n tail:ptr tailu:n :}
    0 INPUT-U !
@@ -623,10 +604,13 @@ variable REMOVED
    tail tailu INPUT CAP INPUT-U BUF-APPEND
    s" rv-base.f" INPUT INPUT-U @ PUT ;
 
-: RV-REUSED ( -- bool )
+\ The build installed root/name through its object.
+: FILE-REUSED? ( ptr u8 n -- bool )
+   {: name:ptr nameu:n :}
    0 INPUT-U !
    s" native-file: reused path=" INPUT CAP INPUT-U BUF-APPEND
-   s" rv-user.f" AT INPUT CAP INPUT-U BUF-APPEND
+   name nameu AT INPUT CAP INPUT-U BUF-APPEND
+   S\" \n" INPUT CAP INPUT-U BUF-APPEND
    ERR$ INPUT INPUT-U @ CONTAINS? ;
 
 : RETIRED-DATA-CASE ( -- )
@@ -641,25 +625,29 @@ variable REMOVED
    s" rv-cold-hb" RUN-PRODUCT SUCCESS OUT$ S\" 7\n7\n5\n" CONTAINS? TTRUE
    s" 7" s" RD-SEVEN" S\" \\ unrelated\n" RV-BASE
    s" rv-app.f" s" rv-warm-hb" s" cache-retired-data" BUILD-IN SUCCESS
-   RV-REUSED TTRUE
+   s" rv-user.f" FILE-REUSED? TTRUE
    s" rv-cold-hb" s" rv-warm-hb" SAME-FILE
-   s" a retired defer rebound misses the file whose run called it" T-LABEL
+   s" a reused file's top level calls its rebound retired defer" T-LABEL
    s" 7" s" RD-NINE" s" " RV-BASE
    s" rv-app.f" s" rv-rebind-hb" s" cache-retired-data" BUILD-IN SUCCESS
-   RV-REUSED TFALSE
+   s" rv-user.f" FILE-REUSED? TTRUE
    s" rv-rebind-hb" RUN-PRODUCT SUCCESS OUT$ S\" 7\n9\n5\n" CONTAINS? TTRUE
-   s" a new value in a retired variable misses the file whose run read it" T-LABEL
+   s" a reused file's top level reads its retired variable's new value" T-LABEL
    s" 9" s" RD-NINE" s" " RV-BASE
    s" rv-app.f" s" rv-new-hb" s" cache-retired-data" BUILD-IN SUCCESS
-   ERR$ s" native-file: dependency miss: data changed" CONTAINS? TTRUE
+   s" rv-user.f" FILE-REUSED? TTRUE
    s" rv-new-hb" RUN-PRODUCT SUCCESS OUT$ S\" 9\n9\n5\n" CONTAINS? TTRUE
+   s" cache-retired-data-cold" AT FS:MAKE-DIR
+   s" rv-app.f" s" rv-new-cold-hb" s" cache-retired-data-cold" BUILD-IN SUCCESS
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   s" rv-new-cold-hb" s" rv-new-hb" SAME-FILE
    0 DIAG ! ;
 
-\ A reused file's FFI declarations do not run, so the declarer's working state
-\ must rest at the file boundary: a warm build that reuses a file saves the
-\ bytes a cold build saves. The window's first declaring file grows the
-\ declaration rows and is refused ffi-grown, so zl.f grows them and the file
-\ under test is reused. Each file is the last of its product, since a later
+\ A reused file runs its FFI declarations again from the declarer state the
+\ files before it left, so that working state must rest at the file boundary:
+\ a warm build that reuses a file saves the bytes a cold build saves. zl.f,
+\ loaded first, changes between the cache's two builds and compiles, and the
+\ file under test is reused. Each file is the last of its product, since a later
 \ declaration word would rest what it left. zp.f declares a long symbol and
 \ then a short one and ends with a library selection; its first build follows
 \ zl.f's selection of the same token lengths and its warm one follows none, so
@@ -702,11 +690,7 @@ variable REMOVED
    s" ffi-app.f" s" ffi-warm-hb" cache cacheu BUILD-IN SUCCESS
    0 DIAG !
    REUSED
-   0 INPUT-U !
-   s" /" INPUT CAP INPUT-U BUF-APPEND
-   file fileu INPUT CAP INPUT-U BUF-APPEND
-   s"  records=" INPUT CAP INPUT-U BUF-APPEND
-   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   file fileu FILE-REUSED? TTRUE
    s" ffi-app.f" s" ffi-cold-hb" cold coldu BUILD-IN SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    s" ffi-cold-hb" s" ffi-warm-hb" SAME-FILE ;

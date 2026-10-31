@@ -110,7 +110,6 @@ variable SPIN-U
    s" : OI-MARK ( -- ) OI-HERE OI-AT ! ;" GE-SRC-LINE
    s" : OI-CSIG$ ( -- ptr u8 n ) data-base TCSIG-A-CELL CELL / ptr-field @ TCSIG-U-CELL OI-CELL@ ;" GE-SRC-LINE
    s" : OI-DOES. ( -- ) OI-BODY. DOESB-CELL OI-CELL@ . OI-CSIG$ type cr OI-HERE OI-AT @ - . ;" GE-SRC-LINE
-   s" : OI-ROOM ( -- n ) DATA-SIZE PROF-CNT-BYTES - OI-HERE - ;" GE-SRC-LINE
    s" TRUSTED: OI-ALIAS ( ptr u8 n -- ) ndict@ 1- get-current alias-record ;" GE-SRC-LINE
    s" : OI-OR@ ( n n -- n ) OI-CELL@ or ;" GE-SRC-LINE
    s" : OI-ENDED. ( -- ) PEND-CELL OI-CELL@ TSIG-A-CELL OI-OR@ TSIG-U-CELL OI-OR@" GE-SRC-LINE
@@ -1711,15 +1710,16 @@ variable WANT-RC
 \ ---- `does>` in a body --------------------------------------------------------------
 \ `does>` is matched with its A-Z folded and joins the capture, and DOESB takes
 \ the capture's length with it. The signature after it, past blanks and a
-\ newline, joins no capture: its inside, blanks and all, is copied to here for
-\ TCSIG. A comment after the signature is a comment.
+\ newline, joins the capture as `( `, its inside, blanks and all, and ` )`;
+\ TCSIG takes that inside and here does not move. A comment after the
+\ signature is a comment.
 : DOES-SPLIT ( -- )
    GE-SRC-RESET
    s" 1 set-tier ' OI-DOES. OI-SHOWN ! OI-MARK" GE-SRC-LINE
    s" : OI-K ( n -- ) create , DOES>   " GE-SRC-LINE
    s" ( -- n ) ( a comment ) @ OI-SHOW" GE-SRC-LINE
    s" oi-does-split.f" BOTH
-   S\" OI-K ( n -- ) create , DOES> @ OI-SHOW \n29\n -- n \n6\n" CASE$ GE-EXPECT-OUT
+   S\" OI-K ( n -- ) create , DOES> (  -- n  ) @ OI-SHOW \n29\n -- n \n0\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-K at " S\" oi-does-split.f:2\n" DIED-AT ;
 
 \ A definer the loop under test reads compiles at `;`: the word it creates runs
@@ -1754,15 +1754,6 @@ variable WANT-RC
    s" oi-does-open-signature.f" BOTH
    76 s" does> at " S\" oi-does-open-signature.f:1\n" DIED-AT ;
 
-\ The signature's copy may take the data space to its ceiling; one byte more
-\ refuses as allot does.
-: DOES-DATA-FULL ( -- )
-   s" OI-ROOM 6 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-fits.f" HEAD
-   s" " CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-K at " S\" oi-does-data-fits.f:1\n" DIED-AT
-   s" OI-ROOM 5 - allot : OI-K ( n -- ) create , does> ( -- n ) @" s" oi-does-data-full.f" HEAD
-   76 s" hb: data space out of range: DP " S\" oi-does-data-full.f:1\n" DIED-AT ;
-
 \ LFIND runs before the keywords: a non-immediate word named `does>` is called
 \ and the body not split; a non-neutral immediate leaves `does>` the keyword.
 : CALLED ( ptr u8 n ptr u8 n -- ) {: def:ptr defu:n name:ptr nameu:n :}
@@ -1778,7 +1769,7 @@ variable WANT-RC
    S\" OI-X ( -- ) does> 1 OI-SHOW \n0\n\n0\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-X at " S\" oi-does-called.f:4\n" DIED-AT
    s" s~ : OI-DZ ( -- ) 7 . ; immediate~ evaluate" s" oi-does-immediate.f" CALLED
-   S\" OI-X ( -- ) does> 1 OI-SHOW \n18\n a comment \n11\n" CASE$ GE-EXPECT-OUT
+   S\" OI-X ( -- ) does> (  a comment  ) 1 OI-SHOW \n18\n a comment \n0\n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-X at " S\" oi-does-immediate.f:4\n" DIED-AT ;
 
 \ ---- `;` ---------------------------------------------------------------------------
@@ -2196,7 +2187,6 @@ private
    DOES-SPLIT
    DOES-DEFINER
    DOES-REFUSALS
-   DOES-DATA-FULL
    DOES-CALLED
    SEMI
    SEMI-REFUSALS

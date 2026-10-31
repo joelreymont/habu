@@ -843,13 +843,13 @@ EPRIM: namespace-private PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER namespace-private PE-N PE-IN ECLOSE-PRIVATE
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid: publish a record
-\ carrying the source's [0] and [8] and exactly its DNAME-IMM, DNAME-WIDE and
-\ DNAME-MIN-IN bits, as `export` does. It refuses wid -1 or -2, a source at or
-\ above NDICT, unsigned, and a namespace, retired or DNAME-INT source. An
-\ internal body has no checker-known effect, and DNAME-INT is what keeps it
-\ inside a TRUSTED: boundary; an alias without the bit would run it from the
-\ interpret loop. `export` never reaches one: its checker call refuses an
-\ unsigned or prim source.
+\ carrying the source's [0] and [8], its DNAME-IMM, DNAME-WIDE and DNAME-MIN-IN
+\ bits and, from a DKIND:VAL source, that kind, as `export` does. It refuses
+\ wid -1 or -2, a source at or above NDICT, unsigned, and a namespace, retired
+\ or DNAME-INT source. An internal body has no checker-known effect, and
+\ DNAME-INT is what keeps it inside a TRUSTED: boundary; an alias without the
+\ bit would run it from the interpret loop. `export` never reaches one: its
+\ checker call refuses an unsigned or prim source.
 EPRIM: alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER alias-record PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
@@ -884,9 +884,10 @@ EPPRIM: OUTER body-append PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ TSIG-A and TSIG-U. It refuses when no definition is pending.
 EPRIM: trust-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
-\ created-sig! ( ptr u8 n -- ): the pending definition's `does>` signature
-\ span, the effect of the words it creates, into TCSIG-A and TCSIG-U. It
-\ refuses when no definition is pending.
+\ created-sig! ( ptr u8 n -- ): the inside of the pending definition's `does>`
+\ signature, the effect of the words it creates, into TCSIG-A and TCSIG-U: its
+\ copy in BODYBUF (definers.f DEF-CREATED). It refuses when no definition is
+\ pending.
 EPRIM: created-sig! PE-PTR-U8 PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!
 EPPRIM: OUTER created-sig! PE-PTR-U8 PE-IN PE-N PE-IN ECLOSE-PRIVATE

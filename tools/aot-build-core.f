@@ -13,13 +13,17 @@ require tools/aot-code-map.f
 package AOT-LINK
 private
 
-\ Read the map after resource cleanup and before FFI forgets its addresses: on
-\ Darwin RELOAD calls Mach through the shared FFI table, which may be application
-\ data, and a lazy first query from LINK would repopulate it after PREPARE and
-\ refuse the pointer it stored. Reverse registration order runs this hook before
-\ FFI's. The hook is persistent, so a full capture's PREPARE runs it too
-\ (test/preloaded-engine.f); that capture drops the map and its image rereads it
-\ (src/habu/proc-maps.f "A capture drops the map whole").
+\ Read the map after resource cleanup and before FFI forgets its addresses.
+\ Darwin RELOAD calls Mach through the shared FFI table, which may be
+\ application data, and a kernel query calls Mach, or on Linux getpagesize,
+\ msync and errno, through it too. RELOAD's read answers every question alone
+\ until the capture, since a kernel query from LINK would repopulate that
+\ table after PREPARE and refuse the pointer it stored (src/habu/proc-maps.f
+\ RELOAD).
+\ Reverse registration order runs this hook before FFI's. The hook is
+\ persistent, so a full capture's PREPARE runs it too (test/preloaded-engine.f);
+\ that capture drops the map and its image rereads it (src/habu/proc-maps.f
+\ "A capture drops the map whole").
 ' PROC-MAPS:RELOAD IMAGE-LIFECYCLE:REGISTER-PERSISTENT
 
 

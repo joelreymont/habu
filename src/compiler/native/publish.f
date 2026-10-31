@@ -52,9 +52,6 @@ variable UNIT-ARMED
 : WIDE-REC ( -- )
    wide-mark ;
 
-: DOES-RECORD ( n n -- )
-   does-record ;
-
 : APPEND-PENDING ( n -- )
    ndict-append ;
 
@@ -281,7 +278,7 @@ public
    fn NSHADOW:SOURCE-FUNS
    idx fn size 0 COMMIT-OWNED
    idx NSHADOW:PUBLISH
-   fn off + size off - RECORDED-LEN DOES-RECORD
+   fn off + size off - RECORDED-LEN does-record
    idx APPEND-PENDING
    idx XREF-REC XREF-NAME$ true CHECKER-OWNER:DOES-FINISH
    idx PENDING-FACTS
@@ -358,7 +355,7 @@ public
    idx 1+ DICT-CAP >= if E-NPUB-PENDING throw then
    code size recorded calls calln addrs addrn idx DOES-NAME-PAD IMPORT-CODE
       {: at:n fn:n :}
-   fn off + recorded off - DOES-RECORD
+   fn off + recorded off - does-record
    at APPEND-PENDING
    at wide minin IMPORT-MARKS
    at 1+ APPEND-PENDING

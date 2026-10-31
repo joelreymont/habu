@@ -1974,6 +1974,7 @@ variable LDEFHINT
 : HINT$ ( -- ptr u8 n )   s" hb: is: parsing words resolve outside using-imports; qualify the target" ;
 ;package
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2CLAUSE
+variable LNSTRINTERN
 
 \ The native compiler seam's labels hold its qualified spelling, its
 \ boot-integrity diagnostic, and the capture-only compiler entry.
@@ -3070,8 +3071,26 @@ public
 : C-EMIT-DATA-X16! ( n -- ) {: off :}
    16 20 off W-STRX C-EMITW ;
 
+\ compile-mode PC-RELATIVE address: emit `adr x9, target`. Unlike C-LIT's
+\ absolute movz/movk, the offset survives the AOT blob copy and the ASLR slide,
+\ because the target (an embedded body) moves WITH this instruction. target in
+\ x11; CP (the emit cursor / future ADR pc) is x28.
+: C-ADR-X9 ( -- )
+   5 11 28 SUB,                                                       \ x5 = d = target - CP
+   8 $10000009 LIT64,                                                 \ ADR opcode | Rd=x9
+   6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
+   7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
+   9 8 0 ADDI,  LCEMIT LABEL@ BL, ;
+
+\ Where C-PLACE-CREATED-SIG put J-DOES's signature, emitted as a string
+\ literal's address is: DATA-relative when interned, PC-relative in the code.
 : C-EMIT-CRSIG-A! ( -- )
-   11 DATA TCSIG-A-CELL LDR,  C-DATA-ADDR-RAW
+   LBL LBL {: inline done :}
+   11 DATA TCSIG-A-CELL LDR,
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   C-DATA-ADDR-RAW  done B,
+   inline LBL,  C-ADR-X9
+   done LBL,
    9 20 CRSIG-A-CELL W-STRX C-EMITW ;
 
 : C-EMIT-CRSIG-U! ( -- )
@@ -3171,25 +3190,57 @@ public
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
-: C-PARSE-CREATED-SIG ( -- )
-   LBL LBL LBL LBL {: cpy cpd done bad :}
+\ The inside of the signature after `does>`: x11 its first byte, x10 its
+\ length, INP past its `)`. A missing or open one refuses (C-SIG-BAD).
+: C-CREATED-SIG$ ( -- )
+   LBL LBL {: done bad :}
    bad C-SIG-START
    bad C-SIG-END
    15 DATA INP-CELL STR,
    C-SIG-INNER$
    10 12 0 ADDI,
-   12 DATA 0 LDR,  15 12 0 ADDI,
-   14 12 10 ADD,  14 DP-CHECK
-   9 10 0 ADDI,
-   cpy LBL,  9 cpd CBZ,
-      13 11 0 LDRB,  13 12 0 STRB,
-      12 12 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  cpy B,
-   cpd LBL,
-   12 DATA 0 STR,
-   15 DATA TCSIG-A-CELL STR,  10 DATA TCSIG-U-CELL STR,
    done B,
    bad LBL,  C-SIG-BAD
    done LBL, ;
+
+\ The signature (x11, x10 bytes) is a string literal of the definer and goes
+\ where C-SDQ puts one: interned in the literal store, or, before string.f
+\ installs the interner, in the code behind a branch. TCSIG-A/U take its
+\ address and length.
+: C-PLACE-CREATED-SIG ( -- )
+   LBL LBL LBL LBL {: cl cd inline done :}
+   10 DATA TCSIG-U-CELL STR,
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   12 10 0 ADDI,  LNSTRINTERN LABEL@ BL,
+   done B,
+   inline LBL,
+   15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
+   12 CP 0 ADDI,
+   9 10 0 ADDI,
+   1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 CP 1 ADD,               \ x1 = CP through the alias
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 1 0 STRB,  1 1 1 ADDI,  28 28 1 ADDI,
+      11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
+   9 15 0 ADDI,  LPAT LABEL@ BL,
+   11 12 0 ADDI,
+   done LBL,
+   11 DATA TCSIG-A-CELL STR, ;
+
+\ Tier 1's clause opens with the signature C-CREATED-SIG$ read, copied into
+\ the body capture at BODYLEN as `( `, the inside and ` )`, and TCSIG-A/U
+\ take the inside of that copy. A clause's scan reads the group as a comment
+\ (checker.f CHECK-SCAN-WALK), so it is no token of the clause. x9 holds the
+\ source's `)` across the appends, which leave x9 and x10 alone.
+: C-CAPTURE-CREATED-SIG ( -- )
+   10 DATA TCSIG-U-CELL STR,
+   9 DATA BODYLEN-CELL LDR,  12 DATA BODYBUF-OFF 2 + ADDI,  12 12 9 ADD,
+   12 DATA TCSIG-A-CELL STR,
+   9 DATA INP-CELL LDR,  9 9 1 SUBI,
+   11 9 10 SUB,  11 11 1 SUBI,  12 1 MOVZ,  LBCS LABEL@ BL,
+   11 9 10 SUB,  12 10 0 ADDI,  LBCS LABEL@ BL,
+   11 9 0 ADDI,  12 1 MOVZ,  LBCS LABEL@ BL, ;
 
 \ J-DOES is emitted further down, past the capacity exits its clause record
 \ reaches for (C-DIE-DICT-FULL / C-DIE-CODE-FULL).
@@ -4431,15 +4482,18 @@ public
    LBL LBL LBL {: p1:label sigd:label marked:label :}
    DOES-REC:REJECT-DUP
    C-CF-NONE                             \ a structure open across the split would branch into the clause
-   \ Pass 2 re-reads a frozen source that holds no clause signature: TCSIG and
-   \ its DP copy stand from pass 1, as does DOESB, and the lowering
-   \ transaction moves from the head's certificate to the clause's.
+   \ Pass 2 re-reads a frozen source that holds no clause signature: it places
+   \ the copy FREEZE kept, as pass 1's may lie in the code pass 2 rewrites.
+   \ DOESB stands from pass 1, and the lowering transaction moves from the
+   \ head's certificate to the clause's.
    9 DATA P2-CELL LDR,  9 p1 CBZ,
       LP2CLAUSE LABEL@ BL,
+      11 DATA TCSIG-A-CELL LDR,  10 DATA TCSIG-U-CELL LDR,
       sigd B,
    p1 LBL,
-   C-PARSE-CREATED-SIG
+   C-CREATED-SIG$
    sigd LBL,
+   C-PLACE-CREATED-SIG
    C-EMIT-CRSIG-SET
    \ The head's locals end here. Their frame is dropped ahead of the opener, so
    \ word 4 stays one word, and the scope is emptied once nothing below can
@@ -4858,45 +4912,6 @@ package INTERP-EMIT
    scd LBL,
    C-SIG-CAPTURE-TSIG
    nsig LBL, ;
-
-: C-TRUSTED ( -- )
-   C-TASK-GUARD
-   LBL LBL LBL {: cpok ndok named :}
-   9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-      C-DIE-CODE-FULL
-   cpok LBL,
-   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
-      C-DIE-DICT-FULL
-   ndok LBL,
-   LTOK LABEL@ BL,
-   0 named CBNZ,
-      LKWTRUSTED LABEL@ KWTRUSTED$ nip C-DIE-KEYWORD-NAME
-   named LBL,
-   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
-   LBCAP LABEL@ BL,
-   C-QUALIFY-DEF
-   10 DATA TKA-CELL LDR,  10 DATA PENDTKA-CELL STR,     \ the opener's token (layout.f PENDTKA-CELL)
-   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   9 DATA PEND-CELL STR,
-   C-STORE-DEF-NAME
-   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  CP 11 0 STR,   \ through the alias
-   5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,
-   5 DATA REGION-ALIAS:DELTA-CELL LDR,  11 11 5 ADD,   \ the depth through the alias
-   12 0 MOVZ,  12 11 0 STR,
-   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,  12 DATA CAPDEPTH-CELL STR,
-   12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
-   C-CLEAR-TRUSTED-STATE
-   12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
-   C-PARSE-TRUST-SIG
-   9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
-   12 0 MOVZ,  12 DATA VSP-CELL STR,
-   12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
-   12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,  12 DATA LIDX-CELL STR,
-   12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
-   12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
-   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
-   12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
-   NCOMP-EMIT:TIER-COLON-DISPATCH ;
 
 \ The second end of every definition's publish, emitted by the `;` tail below
 \ and by the cast's empty body; it sits this early because a cast publishes
@@ -5434,7 +5449,6 @@ public
    done LBL, ;
 
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
-variable LNSTRINTERN
 variable LSNAPRBD
 variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine
 variable LAOTPROT      \ cold-start window-relative protected-WID restore
@@ -6052,17 +6066,7 @@ variable VDESC  variable DRIFT-FAIL
    C-LBRACE-PARSE-NAMES
    C-LBRACE-CARVE-FRAME ;
 
-\ compile-mode PC-RELATIVE address: emit `adr x9, target`. Unlike C-LIT's
-\ absolute movz/movk, the offset survives the AOT blob copy and the ASLR slide,
-\ because the target (an embedded body) moves WITH this instruction. target in
-\ x11; CP (the emit cursor / future ADR pc) is x28.
-: C-ADR-X9 ( -- )
-   5 11 28 SUB,                                                       \ x5 = d = target - CP
-   8 $10000009 LIT64,                                                 \ ADR opcode | Rd=x9
-   6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,                    \ | (d & 3) << 29
-   7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,  \ | ((d>>2) & 0x7FFFF) << 5
-   9 8 0 ADDI,  LCEMIT LABEL@ BL, ;
-
+\ Push the PC-relative address of the target in x11 (C-ADR-X9).
 : C-ADR ( -- )
    C-ADR-X9
    9 W-PUSH9 LIT64,  LCEMIT LABEL@ BL, ;
@@ -9044,8 +9048,9 @@ public
    \ DOESB after the signature, as J-DOES sets it: a malformed one caught inside
    \ an immediate's evaluate would leave DOESB on a definition with no clause,
    \ and its `;` died in the native compiler (rc 67).
-   C-PARSE-CREATED-SIG
+   C-CREATED-SIG$
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
+   C-CAPTURE-CREATED-SIG
    9 1 MOVZ,  9 DATA CLAUSE-CELL STR,
    \ The head's locals end here, as J-DOES ends them: the clause cannot name
    \ one, and a local it declares is captured from an empty scope.
@@ -9500,6 +9505,64 @@ public
       NCOMP-EMIT:LENTRY LABEL@ B,
       notcompile LBL, ;
 
+\ The body hook (layout.f NCOMP-DISPATCH:BODY-HOOK-CELL), when set, runs with
+\ the record pending as def-open leaves one: DEF-TIER-CELL takes the tier latch,
+\ which the publication writers (ndict-append) and def-close require to be 1.
+\ On true it has installed the definition: the source resumes at the address
+\ it answers, past the body's `;`, and the record closes as def-close closes a
+\ native one. On false the body compiles.
+: C-BODY-HOOK ( -- )
+   LBL {: none:label :}
+   11 DATA NCOMP-DISPATCH:BODY-HOOK-CELL LDR,  11 none CBZ,
+   9 TIER-LATCH  9 DATA NCOMP-DISPATCH:DEF-TIER-CELL STR,
+   C-CALL-X11-SAVED
+   9 G-POP  10 G-POP                                   \ x9 = installed, x10 = resume
+   9 none CBZ,
+      10 DATA INP-CELL STR,
+      DEFWRITE:DEF-CLOSE
+      LMAIN LABEL@ B,
+   none LBL, ;
+
+: C-TRUSTED ( -- )
+   C-TASK-GUARD
+   LBL LBL LBL {: cpok ndok named :}
+   9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
+      C-DIE-CODE-FULL
+   cpok LBL,
+   9 DICT-CAP LIT64,  NDICT 9 CMP,  C-LT ndok BCOND,
+      C-DIE-DICT-FULL
+   ndok LBL,
+   LTOK LABEL@ BL,
+   0 named CBNZ,
+      LKWTRUSTED LABEL@ KWTRUSTED$ nip C-DIE-KEYWORD-NAME
+   named LBL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+   LBCAP LABEL@ BL,
+   C-QUALIFY-DEF
+   10 DATA TKA-CELL LDR,  10 DATA PENDTKA-CELL STR,     \ the opener's token (layout.f PENDTKA-CELL)
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 DATA PEND-CELL STR,
+   C-STORE-DEF-NAME
+   11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,  CP 11 0 STR,   \ through the alias
+   5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,
+   5 DATA REGION-ALIAS:DELTA-CELL LDR,  11 11 5 ADD,   \ the depth through the alias
+   12 0 MOVZ,  12 11 0 STR,
+   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,  12 DATA CAPDEPTH-CELL STR,
+   12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
+   C-CLEAR-TRUSTED-STATE
+   12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
+   C-PARSE-TRUST-SIG
+   9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
+   12 0 MOVZ,  12 DATA VSP-CELL STR,
+   12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
+   12 DATA QPATCH-CELL STR,  12 DATA FWDTGT-CELL STR,  12 DATA LIDX-CELL STR,
+   12 DATA JIT-SNAP:SP-CELL STR,   \ a fresh definition starts at BEGIN depth 0
+   12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
+   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+   12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
+   C-BODY-HOOK
+   NCOMP-EMIT:TIER-COLON-DISPATCH ;
+
 : EM-INTERPRET-COLON ( label -- )
    {: lnotcolon:label :}
    LBL LBL LBL LBL LBL {: cpok:label ndok:label named:label kcolon:label ktry:label :}
@@ -9545,6 +9608,7 @@ public
          12 DATA JIT-QUOT:SP-CELL STR,   \ ...and with no quotation parked
          12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
          12 FRALL LIT64,  12 DATA FRFREE-CELL STR,
+         C-BODY-HOOK
          NCOMP-EMIT:TIER-COLON-DISPATCH
          LMAIN LABEL@ B,
    ktry LBL,
@@ -11204,10 +11268,11 @@ public
 
 \ Freeze the certificates of the definition just checked into one sealed blob:
 \ the captured body and `; `, the head's certificate, then the clause's when the
-\ body has a `does>` (EMIT-TO-CLAUSE steps between them). A checked head's
-\ certificate is the hook's, a TRUSTED: head's the unjudged scan's. Frame: [0]
-\ head certificate, [8] its bytes, [16] clause's, [24] its bytes, [32] the
-\ needs-p2 union, [40] the body length.
+\ body has a `does>` (EMIT-TO-CLAUSE steps between them), then the clause's
+\ created signature, which TCSIG-A points at. A checked head's certificate is
+\ the hook's, a TRUSTED: head's the unjudged scan's. Frame: [0] head
+\ certificate, [8] its bytes, [16] clause's, [24] its bytes, [32] the needs-p2
+\ union, [40] the body length.
 : FREEZE ( -- )
    LBL LBL LBL LBL LBL {: nodoes:label skip:label copy:label full:label alloc:label :}
    SP SP 48 SUBI,
@@ -11240,6 +11305,8 @@ public
    16 15 10 ADD,  16 15 CMP,  C-CC full BCOND,
    10 SP 24 LDR,
    12 16 10 ADD,  12 16 CMP,  C-CC full BCOND,
+   16 12 0 ADDI,  10 DATA TCSIG-U-CELL LDR,
+   12 16 10 ADD,  12 16 CMP,  C-CC full BCOND,
    17 PROT-PAGE-MAX 1 - LIT64,  17 12 17 ADD,
    17 12 CMP,  C-CS alloc BCOND,
    full LBL,
@@ -11259,6 +11326,9 @@ public
    12 DATA TXN-CERT-U-CELL STR,
    11 SP 0 LDR,  11 12 13 COPY-BYTES
    11 SP 16 LDR,  12 SP 24 LDR,
+   11 12 13 COPY-BYTES
+   11 DATA TCSIG-A-CELL LDR,  12 DATA TCSIG-U-CELL LDR,
+   13 DATA TCSIG-A-CELL STR,
    11 12 13 COPY-BYTES
    14 SP 40 LDR,  14 14 2 ADDI,  14 DATA TXN-SRC-U-CELL STR,
    14 0 MOVZ,

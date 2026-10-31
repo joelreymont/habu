@@ -14,11 +14,11 @@ create COMPILER-CONTEXT SHA256-CTX-BYTES allot
 create COPY SHA256-CTX-BYTES allot
 create CHECKER-DIGEST 32 allot
 create COMPILER-DIGEST 32 allot
-create CURRENT-DIGEST 32 allot
 variable LENGTH
 variable INPUTS
 variable STARTED
 variable CHECKER-KNOWN
+variable FROZEN-HOOK
 variable COMPILER-KNOWN
 
 : COMPILER-SPAN ( ptr u8 n -- )
@@ -32,6 +32,19 @@ variable COMPILER-KNOWN
    ctx COPY SHA256-CTX-BYTES BYTE-COPY
    COPY role roleu SHA256-FEED
    COPY digest SHA256-END ;
+
+: FREEZE ( -- )
+   COMPILER-CONTEXT s" checker" CHECKER-DIGEST SNAPSHOT
+   check@ FROZEN-HOOK !
+   true CHECKER-KNOWN ! ;
+
+\ After the first freeze, another installed hook freezes again before the next
+\ source is observed or the role is read. An empty hook cell freezes nothing.
+: FOLLOW-HOOK ( -- )
+   CHECKER-KNOWN @ 0= if exit then
+   check@ {: hook:n :}
+   hook 0= hook FROZEN-HOOK @ = or if exit then
+   FREEZE ;
 
 public
 
@@ -49,6 +62,7 @@ public
 : OBSERVE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n root:ptr rootu:n bytes:ptr size:n :}
    STARTED @ 0= if s" build-producer: not started" 76 die then
+   FOLLOW-HOOK
    COMPILER-CONTEXT s" source" SHA256-FEED
    path pathu root rootu SOURCE-ROOT:RELATIVE COMPILER-SPAN
    bytes size COMPILER-SPAN
@@ -59,15 +73,11 @@ public
    COMPILER-CONTEXT s" option" SHA256-FEED
    COMPILER-SPAN ;
 
-: CURRENT$ ( -- ptr u8 n bool )
-   STARTED @ 0= if NULL$ false exit then
-   COMPILER-CONTEXT s" current" CURRENT-DIGEST SNAPSHOT
-   CURRENT-DIGEST 32 true ;
-
+\ The checker role digests the sources observed when it freezes. The driver
+\ freezes at the owner handover; FOLLOW-HOOK freezes at each later hook.
 : FREEZE-CHECKER ( -- )
    INPUTS @ 0= if s" build-producer: no checker inputs observed" 76 die then
-   COMPILER-CONTEXT s" checker" CHECKER-DIGEST SNAPSHOT
-   true CHECKER-KNOWN ! ;
+   FREEZE ;
 
 : COMPILER-DONE ( ptr u8 n ptr u8 n -- )
    SOURCE-ROOT:RELATIVE
@@ -79,6 +89,7 @@ public
    true COMPILER-KNOWN ! ;
 
 : CHECKER$ ( -- ptr u8 n bool )
+   FOLLOW-HOOK
    CHECKER-KNOWN @ 0= if NULL$ false exit then
    CHECKER-DIGEST 32 true ;
 

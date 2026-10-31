@@ -299,8 +299,6 @@ variable FAMILY-FIND
    ord row WID-OWNERS !
    vis row 1+ WID-OWNERS ! ;
 
-public
-
 \ The live namespace row whose public (vis 1) or private (vis 2) wordlist wid
 \ is, and true; 0 0 false when none is: a bare `wordlist`'s, or a rolled-back
 \ declaration's whose record was cut. The live dictionary is scanned from the
@@ -317,8 +315,6 @@ public
       then
    loop
    0 0 false ;
-
-private
 
 \ True when record ord, a projected one while its projection lasts, else a
 \ live one, is a namespace row whose public (vis 1) or private (vis 2)
@@ -591,14 +587,14 @@ private
 \ file's instance, after those it made before; the caller starts the next
 \ run. The runs between PUSH-FILE and POP-FILE are NUNIT-OBJECT's segments:
 \ both close at a child load and reopen after it, and a run's count is WIDN
-\ less its first wordlist as WID-ITEM's is, so each item is the index the
-\ writer gives it and a hit's install mints the keys its cold load did.
-\ Only a checker overlay's rollback lowers WIDN (replay-widn!), to a mark
+\ less its first wordlist as its SEGMENT row's count is, so each item is the
+\ index the writer gives it and a hit's install mints the keys its cold load
+\ did. Only a checker overlay's rollback lowers WIDN (replay-widn!), to a mark
 \ taken while the overlay was open and never below the WIDN it saved when it
 \ opened; one overlay opens at a time. An overlay that opens inside a run
-\ rewinds only that run's numbers, which its count and WID-ITEM's both net
-\ out. One open at a file boundary may rewind numbers already bound, by any
-\ instance, or across the run starting there: it withdraws every file
+\ rewinds only that run's numbers, which its count and the SEGMENT row's
+\ both net out. One open at a file boundary may rewind numbers already bound,
+\ by any instance, or across the run starting there: it withdraws every file
 \ identity of the session, so no binding names a wordlist another maker now
 \ holds. A run can close below its first wordlist only after such a
 \ boundary, so a negative count with identities kept is a broken invariant.
@@ -642,28 +638,6 @@ private
    inst 0 < if NULL-PTR 0 false exit then
    0 KEY-U ! 8 K-N WID-FILE K-N inst INST-KEY$ K-S item K-N
    KEY$ true ;
-
-\ True when key has a file wordlist's form: 8, WID-FILE, the instance key
-\ and the item, as WID-FILE-KEY? builds it.
-: WID-FILE-FORM? ( ptr u8 n -- bool ) {: key:ptr keyu:n :}
-   keyu 32 < if false exit then
-   key LE:U64@ 8 <> key 8 + LE:U64@ WID-FILE <> or if false exit then
-   key 16 + LE:U64@ {: instu:n :}
-   instu 0 > instu keyu 32 - = and ;
-
-\ The instance row and item a file wordlist's key names and true; 0 0 false
-\ for a key of another form or an instance this session did not make.
-: WID-KEY-PARTS? ( ptr u8 n -- n n bool ) {: key:ptr keyu:n :}
-   key keyu WID-FILE-FORM? 0= if 0 0 false exit then
-   key 16 + LE:U64@ {: instu:n :}
-   INSTANCE-N @ 0 ?do
-      i 1 INSTANCE@ instu = if
-         i INST-KEY$ key 24 + instu STR= if
-            i key 24 + instu + LE:U64@ true unloop exit
-         then
-      then
-   loop
-   0 0 false ;
 
 public
 
@@ -1068,24 +1042,6 @@ public
 : MAYBE-INDEX-PREPARED-WIDS ( -- )
    PREP-WIDS-INDEXED @ 0= if INDEX-PREPARED-WIDS then ;
 
-private
-
-\ The live wordlist whose maker's key is key and true; 0 false when none is.
-\ A file names only a wordlist no namespace owns, as WID-KEY? does: the
-\ wordlist a file made at that item is a miss once a namespace owns it.
-: WID-BY-KEY? ( ptr u8 n -- n bool ) {: key:ptr keyu:n :}
-   key keyu WID-KEY-PARTS? 0= if 2drop 0 false exit then
-   {: inst:n item:n :}
-   AOT-ARM:WIDN 1 ?do
-      i WID-MADE item = swap inst = and if
-         MAYBE-INDEX-PREPARED-WIDS
-         i WID-OWNER nip nip if 0 false else i true then unloop exit
-      then
-   loop
-   0 false ;
-
-public
-
 \ The bytes that name wordlist wid to a later session: its owning namespace
 \ record, -1 when none owns it, then the key and true. A builtin is named by
 \ its tag, an owned wordlist by its namespace's declaration key and
@@ -1255,12 +1211,6 @@ public
 : CURRENT-RECORD? ( n -- bool ) {: ord:n :}
    DEFINITION-ORD @ 0 >= ord DEFINITION-ORD @ = and ;
 
-: REF-RECORD ( n -- n ) {: ord:n :}
-   ord 0 < ord CAP-REC @ CAP-REC-U @ + >= or if BAD then
-   ord CAP-REC @ >= if RECORD ord CAP-REC @ - 0 REF-LOCAL exit then
-   RECORD ord IMPORT-DECL {: row:n :}
-   RECORD row 0 REF-IMPORT ;
-
 \ Record ord as a FILE object reference: row, its row among the object's own
 \ records, else below zero for an earlier file's record, which it imports.
 : FILE-REF-RECORD ( n n -- n ) {: row:n ord:n :}
@@ -1325,25 +1275,6 @@ public
 : BEGIN-FILE-REFS ( -- )
    CAP-READY @ if BAD then
    0 REF-N ! 0 IMPORT-N ! 0 IMPORT-U ! 0 CAP-CODE-U ! ;
-
-\ The reference to wordlist wid made before the file: builtin, imported from
-\ the package record that owns it, or imported by the key of the file that
-\ made it. 0 when an unkeyed record owns it or nothing names it.
-: REF-WID ( n -- n ) {: wid:n :}
-   wid 0= if WID BUILTIN 0 0 REF! exit then
-   wid XREF-RETIRED-WL = if WID BUILTIN 1 0 REF! exit then
-   wid WID-OWNER 0= if 2drop
-      wid WID-FILE-KEY? 0= if 2drop 0 exit then
-      {: key:ptr keyu:n :}
-      WID key keyu 0 1 IMPORT-KEY {: row:n :}
-      WID row 0 REF-IMPORT exit
-   then
-   {: ord:n vis:n :}
-   \ A package an earlier session made has no key; its 0 refuses the record
-   \ as an unowned one does.
-   ord DECL-KEY? nip nip 0= if 0 exit then
-   WID ord IMPORT-DECL {: row:n :}
-   WID row vis 1- REF-IMPORT ;
 
 \ Declarations carry exact publication contracts beside their stable identity.
 : ENCODE ( n n -- ptr u8 n ) {: first:n last:n :}
@@ -1481,19 +1412,6 @@ public
    owner EXTERNAL = if RECORD item PREP-DECL-ORD exit then
    BAD ;
 
-\ The record a RECORD reference names and true; -1 false when no live record
-\ has an EXTERNAL reference's key: the record is gone.
-: REF>RECORD? ( n -- n bool ) {: idx:n :}
-   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
-   kind RECORD <> addend 0<> or if BAD then
-   owner EXTERNAL <> if idx REF>RECORD true exit then
-   item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
-   extent drop alignment drop
-   rowkind RECORD <> if BAD then
-   key keyu KEY-RECORD {: rec:ptr ord:n :}
-   rec XREF-NULL = if -1 false exit then
-   ord true ;
-
 : REF>CODE ( n -- n ) {: idx:n :}
    idx 0= if 0 exit then
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
@@ -1538,55 +1456,10 @@ public
    kind DATA <> owner LOCAL <> or PREP-MAPPED @ 0= or if BAD then
    DATA item addend LOCAL-AT @ execute ;
 
-\ The code address a LOCAL CODE reference of a prepared FILE object names:
-\ its record row, through LOCAL-AT, the live record, and the addend inside
-\ that record's code.
-: REF>LOCAL-CODE ( n -- n ) {: idx:n :}
-   idx 0= if BAD then
-   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
-   kind CODE <> owner LOCAL <> or PREP-MAPPED @ 0= or if BAD then
-   RECORD item 0 LOCAL-AT @ execute RECORD-AT @ execute {: rec:ptr :}
-   addend 0 < addend rec XREF-CODE-BYTES >= or if BAD then
-   rec XREF-START addend + ;
-
 : REF>LITERAL ( n -- n n ) {: idx:n :}
    idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
    kind LITERAL <> owner LOCAL <> or if BAD then
    item addend ;
-
-\ The wordlist a WID reference names and true: builtin, one the file's
-\ object made, one no namespace owns that an earlier file made (by its key,
-\ addend 0), or a public (addend 0) or private (addend 1) wordlist of an
-\ imported package. 0 false when no such wordlist or record has the import's
-\ key: the maker is gone. A malformed reference is BAD.
-: REF>WID? ( n -- n bool ) {: idx:n :}
-   idx 0= if BAD then
-   idx PREP-REF@ {: kind:n owner:n item:n addend:n :}
-   kind WID <> if BAD then
-   owner BUILTIN = if
-      addend 0<> if BAD then
-      item 0= if 0 true exit then
-      item 1 = if XREF-RETIRED-WL true exit then
-      BAD
-   then
-   owner LOCAL = if
-      addend 0<> PREP-MAPPED @ 0= or if BAD then
-      WID item 0 LOCAL-AT @ execute true exit
-   then
-   owner EXTERNAL <> addend 0 < or addend 1 > or if BAD then
-   item PREP-IMPORT-ROW$ {: rowkind:n key:ptr keyu:n extent:n alignment:n :}
-   extent drop alignment drop
-   rowkind WID <> if BAD then
-   key keyu WID-FILE-FORM? if
-      addend 0<> if BAD then
-      key keyu WID-BY-KEY? exit
-   then
-   key keyu KEY-RECORD drop {: rec:ptr :}
-   rec XREF-NULL = if 0 false exit then
-   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if BAD then
-   addend 0= if rec XREF-PKG-PUBLIC else rec XREF-PKG-PRIVATE then true ;
-
-: REF>WID ( n -- n ) REF>WID? 0= if BAD then ;
 
 private
 
@@ -1754,9 +1627,9 @@ public
 \ code cell holds, which the closure walk follows, and the runs a text it
 \ evaluates makes are observed as the file's own; and REBIND: a defer's
 \ dispatch cell is a declared address cell from its creation, so the xt an
-\ `is` stores in an earlier file's defer is a slot row the object carries and
-\ an edge the walk follows, and one stored in the file's own defer is its
-\ DATA. Every other reason, a future one included, refuses.
+\ `is` stores in a defer is an edge the walk follows, which the file's top
+\ level stores again on a warm load. Every other reason, a future one
+\ included, refuses.
 : REASON-ADMITTED? ( n -- bool )
    {: reason:n :}
    reason NHOST:SAFE = reason NHOST:MEMORY = or reason HOST-FIXED = or

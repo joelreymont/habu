@@ -98,7 +98,6 @@ public
    s" NSTR:SOURCE@" true BIND-ONE
    s" NSTR:SOURCE-SPAN" true BIND-ONE
    s" TASK:OWNED-USER-NEXT" true BIND-ONE
-   s" TASK:OWNED-USER-READERS" true BIND-ONE
    s" TASK:OBSERVE-SLOTS" true BIND-ONE
    s" TASK:UNOBSERVE-SLOTS" true BIND-ONE
    \ The storage owners a FILE object's DATA scan and updates skip.
@@ -115,26 +114,15 @@ public
    s" PRIM-SPEC:REACH@" true BIND-ONE
    s" PRIM-SPEC:FIND" true BIND-ONE
    s" PRIM-SPEC:R-RUN" true BIND-ONE
-   \ The checker's unit facts, one trace a top-level run may leave.
-   s" CHECKER-OWNER:UNIT-FACTS" true BIND-ONE
-   \ CWORK's layout mark, whose change refuses a top-level run.
+   \ CWORK's layout mark, whose change orders a top-level run's frame.
    s" CWORK:LAYOUT-MARK" true BIND-ONE
    s" NSTR:SOURCE-CLOSE" true BIND-ONE
-   \ The FFI registry's marks and rows a FILE object's segments carry.
-   s" FFI:MARK" true BIND-ONE
    s" FFI:NEXT-FN" true BIND-ONE
-   s" FFI:NEXT-LIB" true BIND-ONE
-   s" FFI:FN-INDEX" true BIND-ONE
-   s" FFI:LIB-INDEX" true BIND-ONE
    s" FFI:FN-ROW@" true BIND-ONE
    s" FFI:LIB-ROW@" true BIND-ONE
    s" FFI:MAX-ARGS" true BIND-ONE
    s" FFI:SYMBOL-CAP" true BIND-ONE
    s" FFI:SELECTION" true BIND-ONE
-   s" FFI:SELECT" true BIND-ONE
-   s" FFI:PENDING" true BIND-ONE
-   s" FFI:LIBRARY-PATH" true BIND-ONE
-   s" FFI:DECLARE-ROW" true BIND-ONE
    s" FFI:OBSERVE" true BIND-ONE
    s" FFI:UNOBSERVE" true BIND-ONE
    s" FFI:MAKER-BANK" true BIND-ONE ;

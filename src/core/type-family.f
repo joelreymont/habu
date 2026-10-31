@@ -120,7 +120,7 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
 7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
-7209 constant E-UNIT-FAMILY-CHANGED \ a FILE dependency's exact family contract differs
+7209 constant E-UNIT-FAMILY-CHANGED \ a FILE family dependency is absent or its contract differs
 
 private
 
@@ -1115,10 +1115,11 @@ variable VNX-CUR              \ private bucket-walk cursor
 
 \ Pops rows [newn, SUMV-N) before SUMV-N rewinds to newn, newest first, so each
 \ popped row is at its bucket head. It dies, as TFX-RETIRE does, on chains that
-\ do not cover exactly the live rows: SUMV-ADD and TFAM-REWIND move VNX-HI with
-\ SUMV-N, and TFAM-RESET and REG-AOT-INSTALL drop the chains, so unequal marks
-\ mean a caller moved the counter around those seams, and popping would unlink
-\ rows the chains never held or erase the signal VNX-ENSURE rebuilds on.
+\ do not cover exactly the live rows: SUMV-ADD, UNIT-FAM-TAKE and TFAM-REWIND
+\ move VNX-HI with SUMV-N, and TFAM-RESET and REG-AOT-INSTALL drop the chains, so
+\ unequal marks mean a caller moved the counter around those seams, and popping
+\ would unlink rows the chains never held or erase the signal VNX-ENSURE rebuilds
+\ on.
 : VNX-RETIRE ( n -- ) {: newn:n :}
    VNX-READY @ 0= IF EXIT THEN
    VNX-HI @ SUMV-N @ <> IF s" tfam: variant tail index retired out of step with its rows" 76 die THEN
@@ -2233,7 +2234,7 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 : PF-TX-ENSURE ( -- )
    PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
    PF-TX-CAP-V @ 2 * {: nc:n :}
-   PF-TX-P PF-TX-BOOT PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * ARENA-BOOT-GROW
+   PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * REG-GROW1
    nc PF-TX-CAP-V ! ;
 
 \ A declaration participant that finds frames opened above its own must retire
@@ -3515,8 +3516,9 @@ public
 
 \ The bucket array is grown and process-local: dropped back to the boot store
 \ and marked not-ready. TFX-BUILD rewrites every row's TF.TAILNEXT, so each is
-\ zeroed too; left in place, a row's link would depend on the lookups that ran
-\ before capture, and two loads of one program would capture different bytes.
+\ zeroed too; left in place, a row's link would depend on whether anything built
+\ the index before capture, and two loads of one program would capture different
+\ bytes.
 
 private
 
@@ -3705,6 +3707,9 @@ variable REG-AOT-ERROR-U
 
 : REG-AOT-REFUSE ( ptr u8 n -- )
    REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! E-REG-AOT-REFUSED throw ;
+
+: UNIT-FAM-CHANGED ( ptr u8 n -- )
+   REG-AOT-ERROR-U ! REG-AOT-ERROR-A ! E-UNIT-FAMILY-CHANGED throw ;
 
 : REG-AOT-BASE-BAD ( n n n -- )
    drop 2drop
@@ -6308,7 +6313,7 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       THEN
       UNIT-FAM-KEY-READ {: key:ptr len:n :}
       key len UNIT-FAM-LOOKUP-KEY 0= IF drop
-         s" tfam: FILE family dependency is absent" REG-AOT-REFUSE THEN
+         s" tfam: FILE family dependency is absent" UNIT-FAM-CHANGED THEN
       {: target:n :}
       UNIT-FAM-CELL {: bytes:n :}
       bytes 0 < IF
@@ -6330,7 +6335,7 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       UNIT-FAM-KEY-READ {: key:ptr len:n :}
       key len CON-BY-KEY-XT 0= IF drop
          key len CHECKER-REG:UNIT-CON-PROJECT-XT 0= IF drop
-            s" tfam: FILE constructor dependency is absent" REG-AOT-REFUSE
+            s" tfam: FILE constructor dependency is absent" UNIT-FAM-CHANGED
          THEN
       THEN
       {: target:n :}
@@ -6550,6 +6555,29 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
       v 0 <> IF ctx v each execute row SV.CTOR-SYM ! THEN
    loop ;
 
+\ The lookup indexes over the family, variant and field stores take the
+\ plan's rows as a declaration does: each store the plan grows gets its index
+\ built and sized for the grown capacity before its count moves, and each new
+\ row pushed in id order after every store holds its rows.
+: UNIT-FAM-INDEX-ENSURE ( ptr u8 -- ) {: plan:ptr :}
+   plan 0 UFP-COUNT@ 0 > IF TFX-ENSURE THEN
+   plan 2 UFP-COUNT@ 0 > IF VNX-ENSURE THEN
+   plan 3 UFP-COUNT@ 0 > IF FVX-ENSURE THEN ;
+
+: UNIT-FAM-INDEX-PUSH ( ptr u8 -- ) {: plan:ptr :}
+   plan 0 UFP-COUNT@ 0 > IF
+      TFAM-N @ plan 0 UFP-TBASE@ ?do i TFX-PUSH loop
+      TFAM-N @ TFX-HI !
+   THEN
+   plan 2 UFP-COUNT@ 0 > IF
+      SUMV-N @ plan 2 UFP-TBASE@ ?do i VNX-PUSH loop
+      SUMV-N @ VNX-HI !
+   THEN
+   plan 3 UFP-COUNT@ 0 > IF
+      PF-N @ plan 3 UFP-TBASE@ ?do i FVX-PUSH loop
+      PF-N @ FVX-HI !
+   THEN ;
+
 : UNIT-FAM-TAKE ( ptr u8 -- ) {: plan:ptr :}
    plan NULL-PTR = IF EXIT THEN
    REG-AOT-N 0 ?do
@@ -6557,6 +6585,7 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
          s" tfam: FILE family installation order changed" REG-AOT-REFUSE THEN
       i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-ROOM
    loop
+   plan UNIT-FAM-INDEX-ENSURE
    plan UFP.SERIAL UFP@ PF-TX-SERIAL +!
    REG-AOT-N 0 ?do
       plan i UFP-COUNT@ i REG-AOT-WIDTH * {: bytes:n :}
@@ -6570,7 +6599,7 @@ CAST: UFP-CELLS ( ptr u8 -- ptr ptr u8 )
          i plan i UFP-TBASE@ plan i UFP-COUNT@ + REG-AOT-COUNT!
       THEN
    loop
-   TFX-SNAP-RESET VNX-SNAP-RESET FVX-SNAP-RESET
+   plan UNIT-FAM-INDEX-PUSH
    TFM-EPOCH+ 0 SVX-GEN ! SVX-STAMP ;
 
 : UNIT-FAM-END ( -- )
@@ -6601,9 +6630,7 @@ create UNIT-FAM-CON-CELL 8 allot
          len UNIT-FAM-CON-LIMIT @ UNIT-FAM-CON-N @ - > IF
             s" tfam: FILE family contract is truncated" REG-AOT-REFUSE THEN
          src len UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len CORE-STR= 0= IF
-            s" tfam: FILE family dependency changed semantics"
-            REG-AOT-ERROR-U ! REG-AOT-ERROR-A !
-            E-UNIT-FAMILY-CHANGED throw
+            s" tfam: FILE family dependency changed semantics" UNIT-FAM-CHANGED
          THEN
       ELSE
          src UNIT-FAM-CON-P @ UNIT-FAM-CON-N @ + len ARENA-COPY
@@ -6657,10 +6684,9 @@ create UNIT-FAM-CON-CELL 8 allot
       UFP.NEXT UFP-PTR@
    REPEAT drop NULL-PTR 0 RES-FALSE ;
 
-\ An absent identity while sizing or writing (modes 0, 1) is the export
-\ refusing the file; while checking (mode 2) it is the import refusing.
+\ While checking (mode 2), an absent identity is a changed dependency.
 : UNIT-FAM-CON-ABSENT ( ptr u8 n -- )
-   UNIT-FAM-CON-MODE @ 2 = IF REG-AOT-REFUSE THEN
+   UNIT-FAM-CON-MODE @ 2 = IF UNIT-FAM-CHANGED THEN
    2drop CHECKER-REG:UNIT-BAD ;
 
 

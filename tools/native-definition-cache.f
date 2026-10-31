@@ -7,8 +7,6 @@ require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/genio-core.f
-require src/lib/image-lifecycle.f
 require src/lib/build-input.f
 require src/lib/engine-id.f
 require src/lib/le.f
@@ -59,9 +57,10 @@ $5A0 constant BODY-CLOSE-OFF
 80 constant F-RAW-U
 \ The file's object key, taken when it opened: 64 hex digits.
 88 constant F-KEY
-\ The origin sink the file opened under (NUNIT-OBJECT SINK-*), 1 when the
-\ builder fed its rows to the early journal, the builder's prefix row count
-\ and the early journal's serial when it opened, and its first record.
+\ The origin sink the file's harvest segment opened under (NUNIT-OBJECT
+\ SINK-*), 1 when the builder fed its rows to the early journal, the
+\ builder's prefix row count and the early journal's serial when it opened,
+\ and the file's first record.
 152 constant F-OSINK
 160 constant F-OFED
 168 constant F-OCUR
@@ -71,12 +70,16 @@ $5A0 constant BODY-CLOSE-OFF
 \ OBJECTS and their length.
 192 constant F-OBJ
 200 constant F-OBJ-U
-\ The object's dependency rows checked so far: a replay checks them segment
-\ by segment, and a child loaded between two checks its own object.
-208 constant F-DONE
-\ The source offset a stale replay's resume runs the file from.
-216 constant F-RESUME
-224 constant FRAME-BYTES
+\ Nonzero while the file's warm run installs through its object
+\ (REUSE-RUN); its successful loads so far; the install place kept across
+\ a child's unit (PLACE-SAVE), five cells.
+208 constant F-REUSE
+216 constant F-LOADS
+224 constant F-SAVE
+\ The heads of the file's run that missed (REUSE-HEAD), plus one
+\ when its installs stopped (LOAD-ORDER).
+264 constant F-MISS
+272 constant FRAME-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
 \ file object.
@@ -91,8 +94,8 @@ DYNAMIC-BUFFER FRAMES u8
 DYNAMIC-BUFFER ENTRY u8
 DYNAMIC-BUFFER STORE-IMAGE u8
 \ The open files' object bytes as a stack, each file's region above its
-\ loader's, 8-aligned: a replay loads children between its segments, and
-\ their reads must leave the loader's bytes in place. Growth moves the
+\ loader's, 8-aligned: a reuse run loads children while its own object is
+\ open, and their reads must leave the loader's bytes in place. Growth moves the
 \ buffer, so a frame keeps its region's offset; OBJECTS-U is the top.
 DYNAMIC-BUFFER OBJECTS u8
 variable OBJECTS-U
@@ -101,19 +104,23 @@ variable SESSION
 variable SEEDED
 \ The dictionary count when the process's first session opened. The records
 \ below it are the seed's; CLOSE leaves it, so a later session's files cannot
-\ name an earlier session's records as the seed's. It is a process cell, as
-\ NUNIT-OBJECT's image floor is: an image stores it as 0, so the process
-\ booted from it takes its own at its first session.
+\ name an earlier session's records as the seed's. It is a process cell: an
+\ image stores it as 0, so the process booted from it takes its own at its
+\ first session.
 variable BOOT-N
 BOOT-N NUNIT-OBJECT:PROCESS-CELL
 variable NATIVE?
 variable REPORT?
 \ Files this session entered, each once at its frame after OBJECT-OPEN,
-\ whether it then replays or runs; the files compiled are FILES-N - REUSED-N.
+\ whether it then runs through its object or compiles; the files compiled
+\ are FILES-N - REUSED-N.
 variable FILES-N
-\ Files whose replay completed, installed from their objects in place of being
-\ run. A replay that stops and resumes from source counts as compiled.
+\ Files whose reuse run found every head of their run in their
+\ objects. A run in which any head no row holds compiled counts as compiled.
 variable REUSED-N
+\ Definitions installed at their heads, and definitions compiled.
+variable INSTALLED-N
+variable COMPILED-N
 \ Whether this session's counts are the build's: the application or engine
 \ source load (WITH), never the link-support or writer session (WITH-QUIET).
 \ REPORT? only gates printing them.
@@ -141,23 +148,6 @@ variable OPAQUE-XT
 PTR-VARIABLE ORIGIN-RECORD
 variable ORIGIN-GETTER
 PTR-VARIABLE CUT-CELL
-\ Each XREF:BEFORE-RETIRE! bound to the file objects' retire hook, the running
-\ kernel's and each XREF a build loads after it, with its record ordinal and
-\ whether that record was sealed when bound. Every bound setter is sealed or
-\ has a live record, hence live code: a cut notice (RETIRE-CUT) drops each
-\ unsealed setter whose record it removes before its code goes
-\ (src/habu/xref.f TRUNCATE), and a sealed setter's code is never truncated:
-\ the one cut below the seal, seed-ndict!, removes records and keeps code
-\ (src/habu/prefix-rewind.f), SEAL-DICT-GUARD dies on a FORGET or HIDE below
-\ the seal, and every rollback returns to a mark taken after it. Without the
-\ kernel's cut cell no setter is bound. Cells past RETIRE-N hold 0: a
-\ setter is a session's address, and an image saved after the session would
-\ keep it and differ from run to run.
-4 constant RETIRE-CAP
-RETIRE-CAP TYPED-BUFFER RETIRE-XTS n
-RETIRE-CAP TYPED-BUFFER RETIRE-ORDS n
-RETIRE-CAP TYPED-BUFFER RETIRE-SEALED bool
-variable RETIRE-N
 variable UNOBSERVE-XT
 variable TARGET-UNIT-USE
 variable TARGET-INPUT-RESET
@@ -180,21 +170,16 @@ create RESULTS-HEX 64 allot
 
 CAST: DISPATCH-XT ( n -- [ ptr u8 n -- ] )
 CAST: DISPATCH>N ( [ ptr u8 n -- ] -- n )
-CAST: BORROW-ACCEPT-XT ( n -- [ ptr u8 n -- ] )
 CAST: ACTION-XT ( n -- [ -- ] )
 CAST: ORIGIN-STATE-XT ( n -- [ -- bool bool ] )
 CAST: ROLE-XT ( n -- [ -- ptr u8 n bool ] )
-CAST: ROLE-ID-XT ( n -- [ n -- ptr u8 n bool ] )
 CAST: OPAQUE-XT-TYPE ( n -- [ -- bool ] )
 CAST: ORIGIN-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-CELL-XT ( n -- [ -- ptr u8 ] )
 CAST: CUT-SLOT ( ptr u8 -- ptr [ n -- ] )
-CAST: RETIRE-SET-XT ( n -- [ n -- ] )
-CAST: RETIRE>N ( [ ptr n -- ] -- n )
 CAST: OBSERVE-XT ( n -- [ [ ptr n -- ] -- ] )
 CAST: KIND-XT ( n -- [ n n n -- n ] )
 CAST: SLOTS-OBSERVE-XT ( n -- [ [ [ -- ptr n ] n n -- ] -- ] )
-CAST: ORIGIN-TAKE-XT ( n -- [ ptr u8 n -- ] )
 CAST: COMPLETION-CELL ( ptr u8 -- ptr [ ptr u8 n -- ] )
 CAST: UNIT-CURRENT-XT
    ( n -- [ -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] ] )
@@ -235,6 +220,8 @@ variable PRE-BOUND
 \ The closing file's journal rows read so far, and 1 when its rows were fed.
 variable HARVEST-N
 variable HARVEST-FED
+\ A drained row's full path, the engine's source root joined to its own.
+PATH-CAP BUFFER: DRAINED-PATH
 CAST: MARK-XT ( n -- [ -- n n bool ] )
 CAST: HOOK-XT ( n -- [ -- bool ] )
 CAST: ROOT-XT ( n -- [ -- ptr u8 n ] )
@@ -335,9 +322,18 @@ variable STAGED-REASON-U
    DISPATCH-ROLE DISPATCH-ROLE-KNOWN @ if 32 else 0 then
       DISPATCH-ROLE-KNOWN @ 0<> ;
 
+: ORIGIN-HOOK-ALLOWED? ( -- bool )
+   check@ {: hook:n :}
+   hook 0= if true exit then
+   ORIGIN-RECORD @ dup NULL-PTR = if drop false exit then
+   dup NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW @ hook =
+   swap NATIVE-BODY-ABI:ORIGIN-TAKE cells + CELL-VIEW @ 0<> and ;
+
+\ The pinned role names the checker under no hook or the engine origin's;
+\ under any other hook the checker that judges is unknown.
 : CHECKER-ROLE$ ( -- ptr u8 n bool )
-   CHECKER-ROLE CHECKER-ROLE-KNOWN @ if 32 else 0 then
-      CHECKER-ROLE-KNOWN @ 0<> ;
+   CHECKER-ROLE-KNOWN @ 0<> ORIGIN-HOOK-ALLOWED? and {: known:bool :}
+   CHECKER-ROLE known if 32 else 0 then known ;
 
 : PIN-CHECKER ( ptr u8 n bool -- )
    {: digest:ptr size:n known:bool :}
@@ -350,15 +346,10 @@ variable STAGED-REASON-U
 : PIN-HOST-CHECKER ( -- )
    SOURCE-PRODUCER:CHECKER SOURCE-PRODUCER:ROLE$ PIN-CHECKER ;
 
-: PIN-TARGET-CHECKER ( -- )
-   s" SOURCE-PRODUCER:ROLE$" TARGET-XT?
-      dup 0= if drop exit then
-   SOURCE-PRODUCER:CHECKER swap ROLE-ID-XT execute
-      {: digest:ptr size:n known:bool :}
-   known if
-      size 32 <> if BAD then
-      digest size known PIN-CHECKER
-   then ;
+\ A target build reads the driver's latest freeze, which FOLLOW-HOOK renews
+\ at each later hook.
+: FOLLOW-BUILD-CHECKER ( -- )
+   ['] BUILD-PRODUCER:CHECKER$ NUNIT-DEP:USE-CHECKER-ROLE ;
 
 : PUB-USE ( [ n -- ] -- )
    OWNER-READY? 0= if drop exit then
@@ -426,27 +417,18 @@ variable STAGED-REASON-U
 : HASH-START ( ptr u8 n -- )
    HASH-CTX SHA256-BEGIN HASH-S ;
 
-: DIAG-W2 ( ptr u8 n -- )
-   {: bytes:ptr size:n :}
-   0 begin dup size < while
-      dup {: sent:n :}
-      2 bytes sent + size sent - write
-      dup 0 <= if drop E-FS-IO throw then
-      +
-   repeat drop ;
-
 : DIAG-N ( n -- )
    {: value:n :}
    value 10 >= if value 10 / recurse then
-   s" 0123456789" drop value 10 mod + 1 DIAG-W2 ;
+   s" 0123456789" drop value 10 mod + 1 NUNIT-DEP:DIAG-W2 ;
 
 : REFUSE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n reason:ptr reasonu:n :}
-   s" native-cache: entry refused " DIAG-W2
-   path pathu DIAG-W2
-   s" : " DIAG-W2
-   reason reasonu DIAG-W2
-   S\" \n" DIAG-W2 ;
+   s" native-cache: entry refused " NUNIT-DEP:DIAG-W2
+   path pathu NUNIT-DEP:DIAG-W2
+   s" : " NUNIT-DEP:DIAG-W2
+   reason reasonu NUNIT-DEP:DIAG-W2
+   S\" \n" NUNIT-DEP:DIAG-W2 ;
 
 public
 
@@ -505,8 +487,8 @@ private
    dup 64 <> if BAD then
    BUILD-OUT:OBJ$ ;
 
-\ Remove a stale object. Another build may already have replaced or removed
-\ it, so an absent file is not a failure; the next store writes over it.
+\ Remove the object at path; a file that has none, or whose object another
+\ build removed, is not a failure.
 : DISCARD ( ptr u8 n -- )
    [: 2dup FS:REMOVE-FILE ;] catch {: a:ptr u:n code:n :}
    code 0= if exit then
@@ -517,103 +499,9 @@ private
    {: bytes:ptr size:n :}
    size 0 ?do 0 bytes i + c! loop ;
 
-\ Room for one more frame. With TEE-OPEN, the only fallible step of an open,
-\ taken before the file is pushed so a failure leaves nothing to undo.
+\ Room for one more frame, the only fallible step of an open, taken before
+\ the file is pushed so a failure leaves nothing to undo.
 : FRAME-RESERVE ( -- ) DEPTH @ 1+ FRAME-BYTES * FRAMES-RESERVE ;
-
-\ The tee: the output device while a file is open, the DEVICE>N of its
-\ handle, 0 when none. It records each output operation the open files' top
-\ levels issue (NUNIT-OBJECT:OUTPUT+ and EMIT+), which a hit issues again,
-\ and forwards it to the device that was the output as the outermost file
-\ opened, TEE-TO's DEVICE>N. A hit issues its operations to that device
-\ directly (REPLAY-OUT), so a parent records a child's output only through
-\ the child's LOAD row.
-variable TEE
-variable TEE-TO
-\ 1 while TEE-FORGET waits on the next image capture.
-variable TEE-HOOKED
-\ The first code a recording threw, raised as the outermost file closes.
-variable TEE-ERR
-
-\ The device the tee forwards to, or the terminal once it was closed.
-: TEE-PRIOR ( -- device ) TEE-TO @ GENIO:>DEVICE GENIO:LIVE-DEVICE ;
-
-\ A recording that threw leaves every open file's output incomplete: the
-\ first code waits for TEE-CLOSE, since an output operation never throws
-\ (GENIO), and each open file refuses as it closes (OBJECT-CLOSE).
-: KEEP-ERR ( n -- ) {: code:n :}
-   code 0= if exit then
-   TEE-ERR @ 0<> if exit then
-   code TEE-ERR ! ;
-
-: RECORD-WRITE ( ptr u8 n -- ptr u8 n ) 2dup NUNIT-OBJECT:OUTPUT+ ;
-: RECORD-EMIT ( n -- n ) dup NUNIT-OBJECT:EMIT+ ;
-
-\ The prior device's operation runs as it would were that device current,
-\ and the tee latches its fault: the caller's next GENIO:WRITE, EMIT
-\ or FLUSH raises what it would raise cold.
-: TEE-WRITE ( ptr u8 n -- )
-   {: bytes:ptr len:n :}
-   bytes len [: RECORD-WRITE ;] catch {: code:n :} 2drop code KEEP-ERR
-   bytes len TEE-PRIOR GENIO:FORWARD ;
-: TEE-EMIT ( n -- ) {: c:n :}
-   c [: RECORD-EMIT ;] catch {: code:n :} drop code KEEP-ERR
-   c TEE-PRIOR GENIO:FORWARD-EMIT ;
-: TEE-KEY ( -- n ) GENIO:E-IO throw ;
-: TEE-READY? ( -- bool ) false ;
-: TEE-READ ( ptr u8 n -- n ) GENIO:E-IO throw ;
-: TEE-NOTHING ( -- ) ;
-: PRIOR-FLUSH ( -- ) GENIO:INPUT@ TEE-PRIOR [: GENIO:FLUSH ;] GENIO:WITH-IO ;
-\ GENIO:FLUSH of the prior device, which raises its fault, and that fault
-\ state carried to the tee.
-: TEE-FLUSH ( -- )
-   [: PRIOR-FLUSH ;] catch {: code:n :}
-   TEE-PRIOR GENIO:FAULT@ GENIO:FAULT!
-   code 0 <> if code throw then ;
-
-: TEE-UNROUTE ( n -- ) {: tee:n :}
-   GENIO:OUTPUT@ GENIO:DEVICE>N tee = if TEE-PRIOR GENIO:OUTPUT! then ;
-
-\ A capture's routing reset (GENIO) frees the tee's row and routes output to
-\ the terminal: no capture carries the tee, and no close follows. A cleanup
-\ hook that threw first stops the capture before that reset, so a tee still
-\ live is unrouted and closed here.
-: TEE-FORGET ( -- )
-   TEE @ {: tee:n :}
-   0 TEE ! 0 TEE-HOOKED !
-   tee 0= if exit then
-   tee GENIO:>DEVICE GENIO:LIVE-DEVICE GENIO:DEVICE>N tee <> if exit then
-   tee TEE-UNROUTE
-   tee GENIO:>DEVICE GENIO:CLOSE ;
-
-\ Make the tee the output device as the outermost file opens, in front of the
-\ current one. The tee starts with that device's fault, so the caller's next
-\ write over a faulted device raises what it raises cold.
-: TEE-OPEN ( -- )
-   GENIO:OUTPUT@ {: prior:device :}
-   TEE-HOOKED @ 0= if
-      [: TEE-FORGET ;] IMAGE-LIFECYCLE:REGISTER 1 TEE-HOOKED !
-   then
-   prior GENIO:DEVICE>N TEE-TO !
-   [: TEE-EMIT ;] [: TEE-KEY ;] [: TEE-READY? ;] [: TEE-READ ;]
-   [: TEE-WRITE ;] [: TEE-READ ;] [: TEE-FLUSH ;] [: TEE-NOTHING ;]
-   0 GENIO:DEVICE {: tee:device :}
-   prior GENIO:FAULT@ tee GENIO:LATCH
-   tee GENIO:OUTPUT! tee GENIO:DEVICE>N TEE ! ;
-
-\ Remove the tee as the outermost file closes, then raise the first code a
-\ recording threw.
-: TEE-CLOSE ( -- )
-   TEE-ERR @ {: code:n :}
-   0 TEE-ERR !
-   TEE @ {: tee:n :}
-   tee 0<> if
-      0 TEE !
-      tee TEE-UNROUTE
-      tee GENIO:>DEVICE GENIO:CLOSE
-   then
-   code 0<> if code throw then ;
-
 
 \ Open the reserved frame, zeroed as a fresh one: a file closed at this
 \ depth left its record there. Its object region starts at the top.
@@ -627,19 +515,10 @@ variable TEE-ERR
 
 : FRAME-PATH ( -- ptr u8 n ) FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ ;
 : KEPT-KEY ( -- ptr u8 n ) FRAME F-KEY + 64 ;
+: OBJECT-BYTES ( -- ptr u8 n ) F-OBJ F@ OBJECTS F-OBJ-U F@ ;
 
-: ORIGIN-HOOK-ALLOWED? ( -- bool )
-   check@ {: hook:n :}
-   hook 0= if true exit then
-   ORIGIN-RECORD @ dup NULL-PTR = if drop false exit then
-   dup NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW @ hook =
-   swap NATIVE-BODY-ABI:ORIGIN-TAKE cells + CELL-VIEW @ 0<> and ;
-
-\ The checker the compile runs under: 0 checking off, 1 the owner's hook, 2
-\ any other hook. Another hook is process code no key can name.
-: CHECK-STATE ( -- n )
-   check@ 0= if 0 exit then
-   ORIGIN-HOOK-ALLOWED? if 1 else 2 then ;
+\ Whether a check hook is installed: 1 or 0.
+: CHECK-STATE ( -- n ) check@ 0<> if 1 else 0 then ;
 
 \ The ambient compile state the file key hashes: the tier, the checker state, the
 \ open borrow and the dispatch role.
@@ -655,7 +534,6 @@ variable TEE-ERR
 
 : ADMISSION-REASON$ ( -- ptr u8 n )
    DEPTH @ 0= if s" no-source-frame" exit then
-   data-base TRUSTED-CELL + CELL-VIEW @ 0<> if s" trusted" exit then
    ORIGIN-RECORD @ NULL-PTR = if s" missing-origin-capability" exit then
    DISPATCH-ROLE-KNOWN @ 0= if s" unknown-role" exit then
    BORROW-ACTIVE @ if
@@ -676,35 +554,33 @@ variable TEE-ERR
       completion swap xt!
    true ;
 
-: ARM-WARM-ORIGIN ( -- )
-   BORROW-ACTIVE @ if exit then
-   data-base TRUSTED-CELL + CELL-VIEW @ 0<> if exit then
-   ORIGIN-RECORD @ dup NULL-PTR = if drop exit then
-   {: record:ptr :}
-   record NATIVE-BODY-ABI:ORIGIN-HOOK cells + CELL-VIEW @ {: hook:n :}
-   hook 0= check@ hook <> or if exit then
-   record NATIVE-BODY-ABI:ORIGIN-TAKE cells + CELL-VIEW @ dup 0= if
-      drop exit
-   then
-   ORIGIN-TAKE-XT ARM-NATIVE drop ;
-
-\ The span of the current definition's name token in the innermost file's
-\ source, read where the origin journal reads it (ENGINE-ORIGIN SOURCE-NAME);
-\ 0 0 when the name came from other text.
-: DEF-SPAN ( -- n n )
-   DEPTH @ 0= if 0 0 exit then
+\ The buffer the interpreter reads the current definition's name token from,
+\ size bytes up to the input's end (INE-CELL), and the token's span at to end
+\ in it, read where the origin journal reads it (ENGINE-ORIGIN SOURCE-NAME):
+\ the innermost file's source, or a text its run evaluates, from the input
+\ buffer's start (SRCLOC:INB-CELL). A token in the file's source is placed
+\ from the source's start, where the journal locates it (ENGINE-ORIGIN
+\ LOCATION). NULL-PTR 0 0 0 when the token lies outside the buffer read.
+: DEF-SPAN ( -- ptr u8 n n n )
+   DEPTH @ 0= if NULL-PTR 0 0 0 exit then
    FRAME F-SRC + 0 ptr-field @ {: src:ptr :}
-   src NULL-PTR = if 0 0 exit then
-   F-SRC-U F@ {: size:n :}
+   src NULL-PTR = if NULL-PTR 0 0 0 exit then
    data-base PEND-CELL + @ 0= if DEF-TKA-CELL else PENDTKA-CELL then
       data-base + CELL-VIEW @ {: token:n :}
-   token src NULL-PTR BYTE-VIEW - - {: at:n :}
-   at 0 < at size >= or if 0 0 exit then
+   data-base SRCLOC:INB-CELL + 0 ptr-field @ {: inb:ptr :}
+   data-base INE-CELL + CELL-VIEW @ {: last:n :}
+   token inb NULL-PTR BYTE-VIEW - < token last >= or if NULL-PTR 0 0 0 exit then
+   src NULL-PTR BYTE-VIEW - {: first:n :}
+   token first >= token first F-SRC-U F@ + < and if src else inb then
+      {: buf:ptr :}
+   buf NULL-PTR BYTE-VIEW - {: base:n :}
+   last base - {: size:n :}
+   token base - {: at:n :}
    at begin
-      dup size < if src over + c@ 32 > else false then
+      dup size < if buf over + c@ 32 > else false then
    while 1+ repeat {: end:n :}
-   end at = if 0 0 exit then
-   at end ;
+   end at = if NULL-PTR 0 0 0 exit then
+   buf size at end ;
 
 : SOURCE-AT ( -- n )
    DEPTH @ 0= if -1 exit then
@@ -715,6 +591,15 @@ variable TEE-ERR
    cursor source - {: at:n :}
    at 0 >= at F-SRC-U F@ <= and if at else -1 then ;
 
+\ The current definition's name start and its source text, from the name's
+\ start to the input cursor past its body, in the buffer DEF-SPAN reads it
+\ from; empty when the name lies outside the buffer read.
+: DEF-TEXT ( -- n ptr u8 n )
+   DEF-SPAN {: buf:ptr size:n at:n end:n :}
+   data-base INP-CELL + CELL-VIEW @ buf NULL-PTR BYTE-VIEW - - {: body:n :}
+   end 0= body end < or body size > or if 0 NULL-PTR 0 exit then
+   at buf at + body at - ;
+
 : DIAG-PATH? ( -- bool )
    DEPTH @ 0= if false exit then
    F-INPUT-U F@ 0= if false exit then
@@ -723,19 +608,20 @@ variable TEE-ERR
 : DIAG-FALLBACK ( ptr u8 n -- )
    {: reason:ptr reasonu:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
-   s" native-cache: compile-attempt reason=" DIAG-W2
-   reason reasonu DIAG-W2
+   s" native-cache: compile-attempt reason=" NUNIT-DEP:DIAG-W2
+   reason reasonu NUNIT-DEP:DIAG-W2
    ndict@ XREF-REC XREF-NAME$ {: name:ptr nameu:n :}
-   nameu 0 > if s"  name=" DIAG-W2 name nameu DIAG-W2 then
+   nameu 0 > if s"  name=" NUNIT-DEP:DIAG-W2 name nameu NUNIT-DEP:DIAG-W2 then
    DIAG-PATH? if
-      s"  path=" DIAG-W2
-      FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ DIAG-W2
+      s"  path=" NUNIT-DEP:DIAG-W2
+      FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@ NUNIT-DEP:DIAG-W2
    then
-   S\" \n" DIAG-W2 ;
+   S\" \n" NUNIT-DEP:DIAG-W2 ;
 
 : COMPILE-ORIGINAL ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n reason:ptr reasonu:n :}
    reason reasonu DIAG-FALLBACK
+   1 COMPILED-N +!
    source sourceu DISPATCH-ORIGINAL @ DISPATCH-XT execute ;
 
 : COMPILE-STAGED ( -- )
@@ -745,7 +631,7 @@ variable TEE-ERR
 \ A definition another one's dispatch interrupts compiles uncaptured, so its
 \ file has no object.
 : BUSY ( ptr u8 n -- )
-   s" busy" NUNIT-OBJECT:FILE-REFUSE
+   s" busy" s" " s" " NUNIT-OBJECT:REFUSE-KEEP
    s" busy" COMPILE-ORIGINAL ;
 
 \ Compile the staged definition under capture, for reason. With store it is
@@ -754,10 +640,12 @@ variable TEE-ERR
 : COLD-CANDIDATE ( n ptr u8 n bool -- )
    {: ord:n reason:ptr reasonu:n store:bool :}
    reason STAGED-REASON ! reasonu STAGED-REASON-U !
-   ord NUNIT-DEP:BEGIN-DEFINITION
+   ord NUNIT-DEP:COMPILING!
    NUNIT-OBJECT:DEFINITION-BEGIN
+   NUNIT-OBJECT:FILE-OPEN? if NUNIT-OBJECT:CHECK-MARK then
    ['] COMPILE-STAGED catch {: rc:n :}
    rc 0<> if
+      NUNIT-OBJECT:FILE-OPEN? if NUNIT-OBJECT:CHECK-DROP then
       NUNIT-OBJECT:DISCARD-DEFINITION
       NUNIT-DEP:CLOSE
       NFILE-REF:PENDING-RELEASE
@@ -774,7 +662,7 @@ variable TEE-ERR
       admitted if NUNIT-DEP:DEFINITION-STORABLE? else false then
          {: storable:bool :}
       storable if ord NFILE-REF:PUBLISH-DEFINITION then
-      ord DEF-SPAN NUNIT-OBJECT:FILE-ADD-DEFINITION
+      ord DEF-TEXT NUNIT-OBJECT:FILE-ADD-DEFINITION
       storable 0= if
          admitted if
             s" ordered-dependency" ord NUNIT-OBJECT:REPORT-STORE-REFUSED
@@ -782,6 +670,7 @@ variable TEE-ERR
          NFILE-REF:PENDING-RELEASE
       then
    else NFILE-REF:PENDING-RELEASE then
+   NUNIT-OBJECT:FILE-OPEN? if NUNIT-OBJECT:CHECK-DROP then
    NUNIT-OBJECT:DISCARD-DEFINITION
    NUNIT-DEP:CLOSE ;
 
@@ -837,83 +726,10 @@ variable TEE-ERR
    dup TERMINAL-CALL:IN-ENGINE-TEXT? 0= if drop exit then
    ORIGIN-GETTER ! ;
 
-: RETIRE-KEEP ( n -- )
-   {: kept:n :}
-   RETIRE-N @ kept ?do
-      0 i RETIRE-XTS !  0 i RETIRE-ORDS !  false i RETIRE-SEALED !
-   loop
-   kept RETIRE-N ! ;
-
-: RETIRE-UNSET ( -- )
-   RETIRE-N @ 0 ?do 0 i RETIRE-XTS @ RETIRE-SET-XT execute loop
-   0 RETIRE-KEEP ;
-
-\ A cut to count, noticed while the records it removes and their code stand:
-\ clear and forget each unsealed bound setter whose record it removes. A
-\ sealed setter stays bound, as its code keeps retiring through its own hook
-\ after an engine build's rewind.
-: RETIRE-CUT ( n -- )
-   {: count:n :}
-   0 RETIRE-N @ 0 ?do
-      {: kept:n :}
-      i RETIRE-XTS @ {: xt:n :}
-      i RETIRE-SEALED @ 0= i RETIRE-ORDS @ count >= and if
-         0 xt RETIRE-SET-XT execute
-         kept
-      else
-         xt kept RETIRE-XTS !
-         i RETIRE-ORDS @ kept RETIRE-ORDS !
-         i RETIRE-SEALED @ kept RETIRE-SEALED !
-         kept 1+
-      then
-   loop RETIRE-KEEP ;
-
-\ Bind setter xt with its record ordinal, sealed when that record lies below a
-\ set image seal.
-: RETIRE-ADD ( n -- )
-   {: xt:n :}
-   s" XREF:BEFORE-RETIRE!" XREF-FIND NFILE-REF:REC-ORD {: ord:n :}
-   xt RETIRE-N @ RETIRE-XTS !
-   ord RETIRE-N @ RETIRE-ORDS !
-   ord SEAL-NDICT@ < SEAL-NDICT@ 0<> and RETIRE-N @ RETIRE-SEALED !
-   1 RETIRE-N +! ;
-
-: RETIRE-BOUND? ( n -- bool )
-   {: xt:n :}
-   RETIRE-N @ 0 ?do
-      i RETIRE-XTS @ xt = if true unloop exit then
-   loop false ;
-
-\ The open file objects see every retirement through each XREF's
-\ XREF:BEFORE-RETIRE!, looked up at the session's open and at each file's open
-\ and close. An engine build's rewind cuts the running kernel's records but not
-\ its code, which keeps retiring through its own hook, and the build then loads
-\ a new XREF: a setter stays bound while it is sealed or its record lives, so
-\ a bound xt is always a live setter. Every open file refuses when no setter
-\ is bound: its retirements would pass unseen. A new setter refuses every open
-\ file too, as its hook held nothing from its definition until now
-\ (src/habu/xref.f retires words through its own before it closes), and when
-\ the list is full it stays unbound, so the next open finds it new again.
-\ Without the cut cell nothing would drop a cut setter, and every file refuses
-\ cut-notice-absent: no setter is bound.
-: BIND-RETIRE ( -- )
-   CUT-CELL @ NULL-PTR = if exit then
-   s" XREF:BEFORE-RETIRE!" TARGET-XT? {: xt:n :}
-   xt 0= if
-      RETIRE-N @ 0= if s" retire-hook-absent" NUNIT-OBJECT:REFUSE-ALL then
-      exit
-   then
-   xt RETIRE-BOUND? 0= if
-      s" retire-hook-new" NUNIT-OBJECT:REFUSE-ALL
-      RETIRE-N @ RETIRE-CAP = if exit then
-      xt RETIRE-ADD
-   then
-   ['] NUNIT-OBJECT:FILE-RETIRE RETIRE>N xt RETIRE-SET-XT execute ;
-
 : CUT-NOTICE ( n -- )
-   dup RETIRE-CUT dup NUNIT-OBJECT:FILE-CUT NFILE-REF:DICT-CUT ;
+   dup NUNIT-OBJECT:FILE-CUT NFILE-REF:DICT-CUT ;
 
-\ The open file objects and the bound setters follow every dictionary cut
+\ The open file objects follow every dictionary cut
 \ through the running kernel's one capture cut cell, held for the session. A
 \ kernel without it leaves the cell unbound, and every file object refuses
 \ (NUNIT-OBJECT FILE-BEGIN).
@@ -923,11 +739,9 @@ variable TEE-ERR
    CUT-CELL-XT execute {: cell:ptr :}
    cell CELL-VIEW @ 0<> if BAD then
    ['] CUT-NOTICE cell CUT-SLOT xt!
-   cell CUT-CELL !
-   BIND-RETIRE ;
+   cell CUT-CELL ! ;
 
 : UNBIND-CUT ( -- )
-   RETIRE-UNSET
    CUT-CELL @ {: cell:ptr :}
    cell NULL-PTR = if exit then
    0 cell CELL-VIEW !
@@ -969,7 +783,6 @@ variable TEE-ERR
    s" CHECKER-OWNER:RESOLUTION-TOP" NUNIT-CAPTURE:BOUND-PRODUCER-XT
       NUNIT-DEP:USE-TOP
    [: NUNIT-OBJECT:REFUSE-WORD ;] NUNIT-DEP:USE-REFUSE
-   [: NUNIT-OBJECT:OUTPUT-MARK ;] NUNIT-DEP:USE-OUT
    s" NHOST:UNOBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT {: undo:n :}
    ['] RUN-SEEN
       s" NHOST:OBSERVE-RUNS" NUNIT-CAPTURE:BOUND-PRODUCER-XT OBSERVE-XT execute
@@ -987,8 +800,7 @@ variable TEE-ERR
    0 UNOBSERVE-XT !
    undo ACTION-XT execute
    0 NUNIT-DEP:USE-TOP
-   NUNIT-DEP:DROP-REFUSE
-   NUNIT-DEP:DROP-OUT ;
+   NUNIT-DEP:DROP-REFUSE ;
 
 : BIND-ORIGIN-RECORD ( -- )
    ORIGIN-GETTER @ dup 0= if drop NULL-PTR ORIGIN-RECORD ! exit then
@@ -1033,85 +845,31 @@ variable TEE-ERR
 
 : FILE-INPUT ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-CTIME ;
 
-: UNIT-RUN ( [ n n -- ] -- )
-   {: q :}
-   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
-   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
-   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
-   q F-PRIOR F@ N>UNIT execute ;
+\ The innermost reuse run installs no more definitions, and the rest of the
+\ file compiles live: its loads left the order its object holds them in (a
+\ word that loads a child loads none when another file loaded it first, and
+\ a failed load has no LOAD row). OBJECT-CLOSE then stores the object again
+\ or, as a cold build does, refuses and removes it.
+: LOAD-ORDER ( -- )
+   F-MISS F@ 1+ F-MISS F!
+   0 F-REUSE F! ;
 
-\ The observer's before callback. A loader token is never a run: at a loader
-\ cut within the file's source its action starts (NUNIT-OBJECT:LOAD-ACTION),
-\ and the ticket is 1, plus 2 when the target's loader runs it; anywhere
-\ else it refuses the file, and the ticket is 0. Any other token's ticket is
-\ RUN-BEFORE's doubled.
-: LOAD-BEFORE ( n n n n ptr u8 n -- n bool )
-   {: unit:n op:n rec:n entry:n tok:ptr toku:n :}
-   op rec entry LOADER? if
-      SOURCE-EXEC:LOADER-CUT? SOURCE-AT 0 >= and if
-         SOURCE-AT NUNIT-OBJECT:LOAD-ACTION
-         op rec entry HOST-LOADER? if 1 else 3 then false exit
-      then
-      s" load-boundary" NUNIT-OBJECT:FILE-REFUSE
-      0 false exit
+\ The innermost file's pending load action of load kind kind and requested
+\ path returned, resuming at source offset off, ok or not
+\ (NUNIT-OBJECT:LOAD-FINISH); a reuse run views its object again and,
+\ when ok and its object's next LOAD row is this load, maps its next
+\ segment, else stops installing (LOAD-ORDER).
+: LOAD-END ( n ptr u8 n n bool -- )
+   {: kind:n path:ptr pathu:n off:n ok:bool :}
+   kind path pathu off ok NUNIT-OBJECT:LOAD-FINISH
+   F-REUSE F@ 0= if exit then
+   OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:VIEW-FILE
+   ok 0= if LOAD-ORDER exit then
+   F-LOADS F@ kind path pathu off NUNIT-OBJECT:LOAD-HELD? 0= if
+      LOAD-ORDER exit
    then
-   unit op rec entry tok toku NUNIT-DEP:RUN-BEFORE {: ticket:n judged:bool :}
-   ticket 2 * judged ;
-
-\ The observer's after callback: RUN-AFTER with RUN-BEFORE's ticket, or a
-\ loader action's end with the loader's request, clean when it returned
-\ with the file balanced at the position it resumes from.
-: LOAD-AFTER ( n n n -- )
-   {: unit:n ticket:n rc:n :}
-   ticket 1 and 0= if unit ticket 1 rshift rc NUNIT-DEP:RUN-AFTER exit then
-   ticket 2 and 0<> if
-      s" SOURCE-UNIT:ACTION$" TARGET-XT REQUEST-XT execute
-   else SOURCE-UNIT:ACTION$ then {: kind:n path:ptr pathu:n :}
-   SOURCE-EXEC:POSITION {: off:n balanced:bool :}
-   kind path pathu off rc 0= balanced and NUNIT-OBJECT:LOAD-FINISH ;
-
-\ Run the file's source through run under the engine's source observer,
-\ whose callbacks judge each seed word the top level runs (NUNIT-DEP
-\ RUN-BEFORE, RUN-AFTER) and each loader action it takes (LOAD-BEFORE,
-\ LOAD-AFTER). The frame arms when the loader evaluates exactly the source
-\ span; a child load pushes its own frame.
-: SOURCE-RUN ( [ -- ] -- )
-   {: run :}
-   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@ {: source:ptr sourceu:n :}
-   DEPTH @ source sourceu ['] LOAD-BEFORE ['] LOAD-AFTER run
-      SOURCE-EXEC:RUN {: rc:n :}
-   rc 0<> if rc throw then ;
-
-: OBSERVED-RUN ( -- ) [: F-Q F@ N>Q UNIT-RUN ;] SOURCE-RUN ;
-
-\ The range the prior unit hands over, the whole source, run from the
-\ resume offset instead of its start. The input base stays the source's
-\ first byte, so diagnostics keep whole-file lines.
-: RESUME-RANGE ( n n -- )
-   {: first:n end:n :}
-   first 0<> if BAD then
-   F-RESUME F@ end F-Q F@ N>Q execute ;
-
-\ Run the innermost file's source from offset off, where a clean load
-\ returned, inside the frame and lifecycle a cold load has, so a failure
-\ there is the cold failure at that point. At a clean load's return the
-\ stack is balanced at the file's floor and no definition, control-flow
-\ frame or does> is open, and the file is still in its own scope (capture
-\ refuses a load that leaves it, scope-at-load). The replayed prefix left
-\ CURRENT and the search order as a cold run would: an install opens each
-\ definition into the wordlist its row names (prims.f def-open), publishes
-\ rows and wordlists only (namespace-record), and its FFI rows and
-\ protection touch FFI selection and protection. The
-\ observer runs over the full source span, which the suffix's evaluation
-\ never matches, so nothing arms for the refused parent; children loaded
-\ in the suffix are ordinary loads, replayed or compiled, and stored.
-\ A throw in the suffix rolls the require registry back to the suffix's
-\ start, not the file's: the prefix's requires stay registered, as after a
-\ throw in a replay. A build exits on the throw; only a caller that catches
-\ it sees the difference.
-: RESUME-RUN ( n -- )
-   F-RESUME F!
-   [: ['] RESUME-RANGE UNIT-RUN ;] SOURCE-RUN ;
+   F-LOADS F@ NUNIT-OBJECT:EV-AFTER-LOAD NUNIT-OBJECT:SEGMENT-MAP
+   1 F-LOADS F@ + F-LOADS F! ;
 
 : FILE-SUCCESS ( -- )
    NATIVE? @ 0= if exit then
@@ -1172,7 +930,8 @@ variable TEE-ERR
    ORIGIN-STATE-XT execute ;
 
 \ The sink of a file loaded while a journal can record a row no sink holds:
-\ the open refuses the file and the hit check misses. It is never stored.
+\ a harvest segment opened under it refuses its file (ORIGIN-MARK), and no
+\ SEGMENT row records it, so a head seeking under it misses (HEAD-SEEK).
 -1 constant SINK-UNSUPPORTED
 
 \ Where a definition's origin row goes now (NUNIT-OBJECT SINK-*, or
@@ -1185,9 +944,9 @@ variable TEE-ERR
 \ journal too. A sink holds rows from one journal only, so a state where
 \ any other observer can record has none. The arm flags and the hooks are
 \ read; the installed CAST: observer is not. It records only for a CAST:
-\ declaration, whose file's object is never installed
-\ (NUNIT-OBJECT:UNSUPPORTED$), so admitting that kind must first make SINK
-\ read it.
+\ declaration, which a warm run never installs from an object: REUSE-HEAD
+\ installs `:` and TRUSTED: definitions only, so installing that kind must
+\ first make SINK read it.
 : SINK ( -- n bool )
    PRE-BOUND @ 0<> if
       PRE-MARK-HOOK @ execute nip if NUNIT-OBJECT:SINK-PREFIX false exit then
@@ -1229,60 +988,97 @@ variable TEE-ERR
    HASH-RAW FILE-KEY-HEX SHA256>HEX
    FILE-KEY-HEX 64 ;
 
-: ORIGIN-SINK-REFUSE ( -- ) s" origin-sink" NUNIT-OBJECT:FILE-REFUSE ;
+\ The innermost file's origin rows cannot be harvested, for cause: it
+\ refuses and compiles live.
+: ORIGIN-SINK-REFUSE ( ptr u8 n -- )
+   s" origin-sink" 2swap s" " NUNIT-OBJECT:REFUSE-KEEP ;
 
+\ Opens the innermost file's harvest segment under the live sink, which its
+\ object segment records for a warm install; an unsupported sink refuses the file.
 : ORIGIN-MARK ( -- )
-   PRE-BOUND @ 0<> if PRE-MARK-HOOK @ execute drop else 0 then F-OCUR F!
-   EARLY-MARK drop F-OSER F! ;
-
-\ The open file's sink, cursors and first record, stored as it opens. A file
-\ opened with no sink is refused.
-: ORIGIN-OPEN ( -- )
    SINK {: kind:n fed:bool :}
    kind F-OSINK F!
    fed if 1 else 0 then F-OFED F!
-   ORIGIN-MARK
-   ndict@ F-OFIRST F!
-   kind SINK-UNSUPPORTED = if ORIGIN-SINK-REFUSE exit then
+   PRE-BOUND @ 0<> if PRE-MARK-HOOK @ execute drop else 0 then F-OCUR F!
+   EARLY-MARK drop F-OSER F!
+   kind SINK-UNSUPPORTED = if s" unsupported" ORIGIN-SINK-REFUSE exit then
    kind NUNIT-OBJECT:ORIGIN-SINK! ;
 
-\ The checker symbol of the record at ord under name, derived from the
-\ record; false for a retired package or without a ready checker owner.
-: ROW-SYM ( n ptr u8 n -- n bool )
-   {: ord:n name:ptr nameu:n :}
+\ The open file's sink, cursors and first record, stored as it opens.
+: ORIGIN-OPEN ( -- )
+   ORIGIN-MARK
+   ndict@ F-OFIRST F! ;
+
+\ The checker symbol of the record at ord, derived from the package and
+\ visibility of its wordlist and its own name there: a qualified definition's
+\ row names it with the qualifier its record does not hold. False for a
+\ retired record or without a ready checker owner.
+: ROW-SYM ( n -- n bool )
+   {: ord:n :}
    OWNER-READY? 0= if 0 false exit then
-   ord XREF-REC NFILE-REF:PACKAGE-OF {: pkg:ptr pkgu:n vis:n :}
+   ord XREF-REC {: rec:ptr :}
+   rec NFILE-REF:PACKAGE-OF {: pkg:ptr pkgu:n vis:n :}
    vis PKG-RETIRED = if 0 false exit then
    vis PKG-PUBLIC = if SYM-PUBLIC else
       vis PKG-PRIVATE = if SYM-PRIVATE else 0 then
    then {: sym:n :}
-   pkg pkgu sym name nameu LIVE-ORIGIN true ;
+   pkg pkgu sym rec XREF-NAME$ LIVE-ORIGIN true ;
 
-\ The one record of the closing file whose code starts at xt.
-: FULL-ORD ( n -- n bool )
-   {: xt:n :}
+\ The records made since the closing file opened, its children's included,
+\ whose code starts at xt and which the row of symbol sym may name, and the
+\ last of them: a live record holding sym, or a retired record. An EXPORT
+\ shares its word's xt, never its symbol. A retired record's wordlist no
+\ longer gives its symbol, so its row keeps the one the journal recorded while
+\ it was live. A harvest reads only the rows its segment recorded (a child's
+\ open harvests its parent's first), so a retired record such a row names was
+\ made and retired by that segment's own top level: a warm load makes the
+\ word live from its head, installs the row, and the same `undefine` retires
+\ it again.
+: FULL-ORD ( n n -- n n )
+   {: xt:n sym:n :}
    0 0
    ndict@ F-OFIRST F@ ?do
-      i XREF-REC XREF-START xt = if drop i swap 1+ swap then
+      i XREF-REC XREF-START xt = if
+         i ROW-SYM swap sym = and i XREF-REC XREF-RETIRED? or
+            if drop i swap 1+ swap then
+      then
    loop
    {: hits:n ord:n :}
-   ord hits 1 = ;
+   ord hits ;
 
-: ORIGIN-REFUSE ( -- ) s" origin-record" NUNIT-OBJECT:FILE-REFUSE ;
+\ The innermost file's origin row of name cannot be stored, for cause: it
+\ refuses and compiles live.
+: ORIGIN-REFUSE ( ptr u8 n ptr u8 n -- )
+   {: cause:ptr causeu:n name:ptr nameu:n :}
+   s" origin-record" cause causeu name nameu NUNIT-OBJECT:REFUSE-KEEP ;
+
+\ The one record of the closing file at xt that the row of name and symbol
+\ sym names, live holding sym or retired; when there is none or more, the
+\ innermost file refuses.
+: FULL-REC? ( n n ptr u8 n -- n bool )
+   {: xt:n sym:n name:ptr nameu:n :}
+   xt sym FULL-ORD {: ord:n hits:n :}
+   hits 0= if s" symbol" name nameu ORIGIN-REFUSE ord false exit then
+   hits 1 > if s" xt" name nameu ORIGIN-REFUSE ord false exit then
+   ord true ;
 
 : PREFIX-ROW ( n n n ptr u8 n ptr u8 n -- )
    1 HARVEST-N +! NUNIT-OBJECT:ORIGIN+ ;
 
-\ An early journal row: a fed row has no symbol, any other the record's.
+\ An early journal row: a fed row has no symbol, any other the live
+\ record's, or for a retired record the one the row holds (FULL-ORD).
 : EARLY-ROW ( n n n n ptr u8 n ptr u8 n n n -- )
    {: serial:n phase:n ord:n sym:n path:ptr pathu:n name:ptr nameu:n
       at:n end:n :}
    1 HARVEST-N +!
    HARVEST-FED @ 0<> if
-      sym 0<> if ORIGIN-REFUSE exit then
+      sym 0<> if s" fed-symbol" name nameu ORIGIN-REFUSE exit then
    else
-      ord name nameu ROW-SYM {: derived:n known:bool :}
-      known 0= derived sym <> or if ORIGIN-REFUSE exit then
+      ord XREF-REC XREF-RETIRED? 0= if
+         ord ROW-SYM {: derived:n known:bool :}
+         known 0= if s" no-symbol" name nameu ORIGIN-REFUSE exit then
+         derived sym <> if s" symbol" name nameu ORIGIN-REFUSE exit then
+      then
    then
    ord at end path pathu name nameu NUNIT-OBJECT:ORIGIN+ ;
 
@@ -1291,11 +1087,32 @@ variable TEE-ERR
    {: serial:n phase:n xt:n sym:n path:ptr pathu:n name:ptr nameu:n
       at:n end:n :}
    1 HARVEST-N +!
-   xt FULL-ORD {: ord:n unique:bool :}
-   unique 0= if ORIGIN-REFUSE exit then
-   ord name nameu ROW-SYM {: derived:n known:bool :}
-   known 0= derived sym <> or if ORIGIN-REFUSE exit then
+   xt sym name nameu FULL-REC? {: ord:n found:bool :}
+   found 0= if exit then
    ord at end path pathu name nameu NUNIT-OBJECT:ORIGIN+ ;
+
+\ A full journal row the file's own top level drained from the early journal
+\ (ENGINE-ORIGIN:FILE-DRAIN): a warm load installs it as the early row it
+\ was, and the same drain makes it this row again. The drain resolved a
+\ missing symbol and made the path relative to the engine's source root: a
+\ live record must hold the row's symbol, and the row keeps the full path the
+\ early journal held.
+: DRAINED-ROW ( n n n n ptr u8 n ptr u8 n n n -- )
+   {: serial:n phase:n xt:n sym:n path:ptr pathu:n name:ptr nameu:n
+      at:n end:n :}
+   1 HARVEST-N +!
+   xt sym name nameu FULL-REC? {: ord:n found:bool :}
+   found 0= if exit then
+   pathu 0= if ord at end path pathu name nameu NUNIT-OBJECT:ORIGIN+ exit then
+   s" SOURCE-ROOT:ENGINE$" NUNIT-ORIGIN:JOURNAL-XT {: root-xt:n :}
+   root-xt 0= if s" no-root" name nameu ORIGIN-REFUSE exit then
+   root-xt ROOT-XT execute {: root:ptr rootu:n :}
+   rootu 1+ pathu + {: fullu:n :}
+   fullu PATH-CAP > if E-FS-CAPACITY throw then
+   root DRAINED-PATH rootu BYTE-COPY
+   47 DRAINED-PATH rootu + c!
+   path DRAINED-PATH rootu 1+ + pathu BYTE-COPY
+   ord at end DRAINED-PATH fullu name nameu NUNIT-OBJECT:ORIGIN+ ;
 
 \ Visit the journal rows of word name past serial mark.
 : JOURNAL-ROWS ( n [ n n n n ptr u8 n ptr u8 n n n -- ] ptr u8 n -- )
@@ -1303,30 +1120,44 @@ variable TEE-ERR
    rows 0= if exit then
    mark visit rows ROWS-XT execute ;
 
-\ Store the rows the innermost file's closing segment recorded, as a child
-\ load or the file's end closes it: those its sink recorded since the
+\ The innermost file's harvest segment recorded a row since its cursors:
+\ both journals share the early journal's serial, and the builder's prefix
+\ rows have their own count.
+: ORIGIN-ROWS? ( -- bool )
+   EARLY-MARK drop F-OSER F@ <> if true exit then
+   PRE-BOUND @ 0= if false exit then
+   PRE-MARK-HOOK @ execute drop F-OCUR F@ <> ;
+
+\ Store the rows the innermost file's closing harvest segment recorded, as a
+\ load action or the file's end closes it: those its sink recorded since the
 \ cursors, under the same sink. A child's rows lie between two segments'
-\ and are its own: the cursors move past them when it ends. The journal's
-\ serial advances once per row the segment recorded, and not at all for a
-\ file whose rows go elsewhere.
+\ and are its own: the cursors move past them when it ends, and the next
+\ segment opens under the sink live then. A segment whose sink changed
+\ while open holds rows of neither sink alone, so it refuses when it
+\ recorded any. The journal's serial advances once per row the segment
+\ recorded, and not at all for a file whose rows go elsewhere.
 : ORIGIN-HARVEST ( -- )
    SINK {: kind:n fed:bool :}
    fed if 1 else 0 then {: fedn:n :}
-   kind F-OSINK F@ <> fedn F-OFED F@ <> or if ORIGIN-SINK-REFUSE exit then
+   kind F-OSINK F@ <> fedn F-OFED F@ <> or if
+      ORIGIN-ROWS? if s" changed" ORIGIN-SINK-REFUSE then exit
+   then
    0 HARVEST-N !
    fedn HARVEST-FED !
    kind NUNIT-OBJECT:SINK-PREFIX = if
-      PRE-MARK-HOOK @ execute drop F-OCUR F@ < if ORIGIN-SINK-REFUSE exit then
+      PRE-MARK-HOOK @ execute drop F-OCUR F@ <
+         if s" prefix-rewound" ORIGIN-SINK-REFUSE exit then
       F-OCUR F@ ['] PREFIX-ROW PRE-EACH-HOOK @ execute
    then
    kind NUNIT-OBJECT:SINK-EARLY = if
+      F-OSER F@ ['] DRAINED-ROW s" ENGINE-ORIGIN:FILE-ROWS" JOURNAL-ROWS
       F-OSER F@ ['] EARLY-ROW s" ENGINE-ORIGIN-EARLY:FILE-ROWS" JOURNAL-ROWS
    then
    kind NUNIT-OBJECT:SINK-FULL = if
       F-OSER F@ ['] FULL-ROW s" ENGINE-ORIGIN:FILE-ROWS" JOURNAL-ROWS
    then
    kind NUNIT-OBJECT:SINK-EARLY >= if HARVEST-N @ else 0 then
-   EARLY-MARK drop F-OSER F@ - <> if ORIGIN-SINK-REFUSE then ;
+   EARLY-MARK drop F-OSER F@ - <> if s" count" ORIGIN-SINK-REFUSE then ;
 
 \ Open the object of the file just pushed; its first row is its own source's
 \ stat and digest. Rows join an object only at ROWS-FLUSH, so the row recorded before
@@ -1339,25 +1170,25 @@ variable TEE-ERR
    NUNIT-OBJECT:FILE-BEGIN
    ORIGIN-OPEN
    NUNIT-OBJECT:DEF-OPEN? 0= if
-      s" def-open-absent" NUNIT-OBJECT:FILE-REFUSE
+      s" def-open-absent" s" " s" " NUNIT-OBJECT:REFUSE-KEEP
    then
-   \ The install's writers are tier-1-only (prims.f def-open/def-close).
+   \ The install's writers are tier-1-only (prims.f def-open/def-close): a
+   \ file compiled at another tier holds no definition and its object would
+   \ be rewritten on every warm build, so it stores none.
    data-base NCOMP-DISPATCH:TIER-CELL + @ {: tier:n :}
    tier 1 <> if
       NUNIT-DEP:DIAG? @ if
-         s" native-cache: tier value=" DIAG-W2 tier DIAG-N
-         s"  path=" DIAG-W2 FRAME-PATH DIAG-W2 S\" \n" DIAG-W2
+         s" native-cache: tier value=" NUNIT-DEP:DIAG-W2 tier DIAG-N
+         s"  path=" NUNIT-DEP:DIAG-W2 FRAME-PATH NUNIT-DEP:DIAG-W2
+         S\" \n" NUNIT-DEP:DIAG-W2
       then
-      s" tier" NUNIT-OBJECT:FILE-REFUSE
+      s" tier" s" " s" " NUNIT-OBJECT:REFUSE-KEEP
    then
-   \ A hit would skip what another hook refuses, so the file compiles live.
-   CHECK-STATE 2 = if s" checker-hook" NUNIT-OBJECT:FILE-REFUSE then
    \ An open shadow files a second machine's routine for each definition as
    \ it compiles (src/compiler/native/shadow.f). A hit installs the records
    \ without compiling them and an object carries no shadow routine, so the
    \ link of a reused file's records would find none: the file compiles live.
-   NSHADOW:OPEN? if s" shadow-open" NUNIT-OBJECT:FILE-REFUSE then
-   BIND-RETIRE ;
+   NSHADOW:OPEN? if s" shadow-open" s" " s" " NUNIT-OBJECT:REFUSE-KEEP then ;
 
 \ The first 16 hex digits of SHA-256 over the result digests of the innermost
 \ file's defs definitions, in ordinal order.
@@ -1374,62 +1205,28 @@ variable TEE-ERR
 
 : FILE-LINE ( ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n why:ptr whyu:n :}
-   s" native-file: " DIAG-W2 label labelu DIAG-W2
-   s"  path=" DIAG-W2 FRAME-PATH DIAG-W2
-   s"  reason=" DIAG-W2 why whyu DIAG-W2
-   S\" \n" DIAG-W2 ;
+   s" native-file: " NUNIT-DEP:DIAG-W2 label labelu NUNIT-DEP:DIAG-W2
+   s"  path=" NUNIT-DEP:DIAG-W2 FRAME-PATH NUNIT-DEP:DIAG-W2
+   s"  reason=" NUNIT-DEP:DIAG-W2 why whyu NUNIT-DEP:DIAG-W2
+   S\" \n" NUNIT-DEP:DIAG-W2 ;
 
 : REFUSED-LINE ( ptr u8 n -- )
    {: why:ptr whyu:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
    s" refused" why whyu FILE-LINE ;
 
-\ Under diagnostics, the refused line naming the first of the reasons the
-\ innermost file met (NUNIT-OBJECT:REASON$, one per line), then a line for
-\ each.
-: REFUSED-LINES ( ptr u8 n -- )
-   {: why:ptr whyu:n :}
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   why whyu 10 0 SPLIT-NEXT 2drop REFUSED-LINE
-   0 begin dup whyu < while
-      {: start:n :}
-      why whyu 10 start SPLIT-NEXT drop {: line:ptr lineu:n next:n :}
-      s" reason" line lineu FILE-LINE
-      next
-   repeat drop ;
-
 \ Write the innermost file's object and read it back on every build; the
 \ cache diagnostics only print what was written or why the file has none. A
-\ file that leaves its scope changes state a replay does not restore, so it
-\ has none.
+\ refused file's earlier object is removed, so no later build reads it.
 : OBJECT-CLOSE ( -- )
    ROWS-FLUSH
-   BIND-RETIRE
-   NUNIT-DEP:DIAG? @ if
-      s" native-file: image path=" DIAG-W2 FRAME-PATH DIAG-W2
-      s"  copied=" DIAG-W2 NUNIT-OBJECT:IMAGE-BYTES DIAG-N
-      S\" \n" DIAG-W2
-   then
-   NUNIT-DEP:FILE-EXPORT nip nip 0= if
-      s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE
-   then
-   NUNIT-DEP:FILE-SCOPE-KEPT? 0= if s" scope-exit" NUNIT-OBJECT:FILE-REFUSE then
-   \ Here, where a refusal may throw, and not inside the output operation
-   \ that failed: every file open then closes before TEE-CLOSE clears it.
-   TEE-ERR @ 0<> if s" output-record" NUNIT-OBJECT:FILE-REFUSE then
    ORIGIN-HARVEST
-   \ Encoding binds the earlier records the file's slots name, so the rows
-   \ are exported again after it.
    NUNIT-OBJECT:FILE-ENCODE
-   \ A file that leaves the key's ambient state changed has an effect past
-   \ its end the install does not replay. Encoding closes the last segment
-   \ first, so a kernel cell that segment left changed is the reason named.
-   FILE-KEY KEPT-KEY STR= 0= if s" ambient-changed" NUNIT-OBJECT:FILE-REFUSE then
-   NUNIT-DEP:FILE-EXPORT {: deps:ptr depsu:n storable:bool :}
-   storable 0= if s" ordered-dependency" NUNIT-OBJECT:FILE-REFUSE then
-   NUNIT-OBJECT:FILE-REFUSED? if NUNIT-OBJECT:REASON$ REFUSED-LINES exit then
+   NUNIT-OBJECT:FILE-REFUSED? if
+      NUNIT-OBJECT:REASON$ REFUSED-LINE KEPT-KEY FILE-PATH DISCARD exit
+   then
    KEPT-KEY {: key:ptr keyu:n :}
-   key keyu deps depsu NUNIT-OBJECT:PACK-FILE {: obj:ptr obju:n :}
+   key keyu NUNIT-OBJECT:PACK-FILE {: obj:ptr obju:n :}
    s" HBFOBJ01" obj obju IMAGE {: size:n :}
    key keyu FILE-PATH size IMAGE-WRITE
    key keyu FILE-PATH s" HBFOBJ01" ENTRY-HEAD CACHE-READ
@@ -1439,33 +1236,26 @@ variable TEE-ERR
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:ORIGIN-FORMED? 0= if BAD then
    NUNIT-OBJECT:FILE-COUNTS
-      {: defs:n rows:n inputs:n recs:n data:n loads:n segs:n slots:n
-         pins:n checks:n ffi:n out:n :}
+      {: defs:n inputs:n recs:n data:n loads:n segs:n checks:n :}
    NUNIT-DEP:DIAG? @ 0= if exit then
-   s" native-file: object path=" DIAG-W2 FRAME-PATH DIAG-W2
-   s"  key=" DIAG-W2 key keyu DIAG-W2
-   s"  defs=" DIAG-W2 defs DIAG-N
-   s"  rows=" DIAG-W2 rows DIAG-N
-   s"  inputs=" DIAG-W2 inputs DIAG-N
-   s"  records=" DIAG-W2 recs DIAG-N
-   s"  data=" DIAG-W2 data DIAG-N
-   s"  loads=" DIAG-W2 loads DIAG-N
-   s"  segments=" DIAG-W2 segs DIAG-N
-   s"  slots=" DIAG-W2 slots DIAG-N
-   s"  pins=" DIAG-W2 pins DIAG-N
-   s"  ffi=" DIAG-W2 ffi DIAG-N
-   s"  out=" DIAG-W2 out DIAG-N
-   s"  checks=" DIAG-W2 checks DIAG-N
-   s"  bytes=" DIAG-W2 size DIAG-N
-   s"  results=" DIAG-W2 defs RESULTS$ DIAG-W2
-   s"  src=" DIAG-W2
+   s" native-file: object path=" NUNIT-DEP:DIAG-W2 FRAME-PATH NUNIT-DEP:DIAG-W2
+   s"  key=" NUNIT-DEP:DIAG-W2 key keyu NUNIT-DEP:DIAG-W2
+   s"  defs=" NUNIT-DEP:DIAG-W2 defs DIAG-N
+   s"  inputs=" NUNIT-DEP:DIAG-W2 inputs DIAG-N
+   s"  records=" NUNIT-DEP:DIAG-W2 recs DIAG-N
+   s"  data=" NUNIT-DEP:DIAG-W2 data DIAG-N
+   s"  loads=" NUNIT-DEP:DIAG-W2 loads DIAG-N
+   s"  segments=" NUNIT-DEP:DIAG-W2 segs DIAG-N
+   s"  checks=" NUNIT-DEP:DIAG-W2 checks DIAG-N
+   s"  bytes=" NUNIT-DEP:DIAG-W2 size DIAG-N
+   s"  results=" NUNIT-DEP:DIAG-W2 defs RESULTS$ NUNIT-DEP:DIAG-W2
+   s"  src=" NUNIT-DEP:DIAG-W2
    defs 0 ?do
-      i 0 > if s" ," DIAG-W2 then
-      i NUNIT-OBJECT:FILE-SPAN swap DIAG-N s" -" DIAG-W2 DIAG-N
+      i 0 > if s" ," NUNIT-DEP:DIAG-W2 then
+      i NUNIT-OBJECT:FILE-SPAN DIAG-N
    loop
-   S\" \n" DIAG-W2 ;
+   S\" \n" NUNIT-DEP:DIAG-W2 ;
 
-: OBJECT-BYTES ( -- ptr u8 n ) F-OBJ F@ OBJECTS F-OBJ-U F@ ;
 
 \ Check the object's framing, then view its FILE sections: OPEN-FILE ends
 \ by releasing its view.
@@ -1474,8 +1264,19 @@ variable TEE-ERR
    OBJECT-BYTES NUNIT-FILE:ARCH-AARCH64 s" FILE" KEPT-KEY
       NUNIT-FILE:READ-VIEW ;
 
+\ A miss the hit check names: the viewed object is dropped and the file
+\ loads from source.
+: OBJECT-MISS ( ptr u8 n -- )
+   {: why:ptr whyu:n :}
+   NUNIT-FILE:RESET-KEEP
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   s" native-file: miss path=" NUNIT-DEP:DIAG-W2 FRAME-PATH NUNIT-DEP:DIAG-W2
+   s"  reason=" NUNIT-DEP:DIAG-W2 why whyu NUNIT-DEP:DIAG-W2
+   S\" \n" NUNIT-DEP:DIAG-W2 ;
+
 \ Read the innermost file's object into its OBJECTS region and view it; a
-\ missing, damaged, empty or malformed one is a miss.
+\ missing, damaged, empty or malformed one is a miss, and a malformed one is
+\ named.
 : OBJECT-READ? ( -- bool )
    KEPT-KEY FILE-PATH s" HBFOBJ01" ENTRY-HEAD CACHE-READ {: size:n found:bool :}
    found 0= if false exit then
@@ -1489,122 +1290,15 @@ variable TEE-ERR
    top OBJECTS-U !
    ['] OPEN-OBJECT catch {: rc:n :}
    rc 0= if true exit then
-   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if false exit then
+   rc E-NUNIT-PROFILE = rc E-NUNIT-FILE = or if
+      s" object-format" OBJECT-MISS false exit
+   then
    rc throw ;
 
-\ The viewed object's input rows hold for this session. Its dependency rows
-\ are checked segment by segment, as SEGMENT-FRESH?.
-: OBJECT-FRESH? ( -- bool )
-   11 NUNIT-FILE:SECTION$
+\ Input rows of the viewed object hold for this session.
+: INPUTS-FRESH? ( ptr u8 n -- bool )
    FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ NFILE-INPUTS:TREE-IN
    NFILE-INPUTS:FRESH? ;
-
-\ The viewed object's dependency rows from the last one checked up to mark
-\ hold for this session; true makes mark the checked count.
-: SEGMENT-FRESH? ( n -- bool )
-   {: mark:n :}
-   14 NUNIT-FILE:SECTION$ F-DONE F@ mark NUNIT-DEP:CHECK-ROWS 0= if false exit then
-   mark F-DONE F! true ;
-
-: ALL-ROWS ( -- n ) 14 NUNIT-FILE:SECTION$ NUNIT-DEP:FORMAT ;
-
-\ The dependency rows the interval after event row k checks up to: those
-\ the file recorded before the first LOAD row after row k, or every row
-\ when no load follows, since rows bound in FILE-ENCODE come after the last
-\ load's.
-: INTERVAL-END ( n -- n )
-   {: k:n :}
-   NUNIT-OBJECT:EVENT-COUNT k 1+ ?do
-      i NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-LOAD = if
-         i NUNIT-OBJECT:LOAD-ENDS drop unloop exit
-      then
-   loop
-   ALL-ROWS ;
-
-: STALE-HEAD ( n -- )
-   {: k:n :}
-   s" native-file: stale path=" DIAG-W2 FRAME-PATH DIAG-W2
-   s"  segment=" DIAG-W2 k DIAG-N ;
-
-\ The head of segment row k's refusal line. A leading segment is checked
-\ before anything installs: its refusal is a miss and the file compiles
-\ live. A later one is checked after the replay installed what precedes it:
-\ its refusal is stale and the file resumes from its source where the load
-\ before it returned (REPLAY-RUN). Both print under diagnostics only.
-: SEGMENT-HEAD ( n -- )
-   {: k:n :}
-   k 0= if s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2 exit then
-   k STALE-HEAD ;
-
-\ Segment row k's record name is live where the install would define it:
-\ the language refuses the duplicate.
-: SEGMENT-NAME-LIVE ( ptr u8 n n -- )
-   {: name:ptr nameu:n k:n :}
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   k SEGMENT-HEAD
-   s"  reason=name-live word=" DIAG-W2 name nameu DIAG-W2
-   S\" \n" DIAG-W2 ;
-
-\ Segment row k's FFI rows expect an index or a selection the registry no
-\ longer gives.
-: SEGMENT-FFI-ROWS ( n -- )
-   {: k:n :}
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   k SEGMENT-HEAD
-   S\"  reason=ffi-rows\n" DIAG-W2 ;
-
-\ Segment row k's wordlist rows give a private wordlist to a namespace row an
-\ earlier file or an earlier segment of this file made, and that row is gone
-\ or has one.
-: SEGMENT-WID-ROWS ( n -- )
-   {: k:n :}
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   k SEGMENT-HEAD
-   S\"  reason=wordlist-rows\n" DIAG-W2 ;
-
-\ Segment row k's TASK row expects a user-slot watermark the live TASK no
-\ longer holds, which the file's baked slot offsets assume, or one of its
-\ USER rows expects slot bytes another owner has since changed.
-: SEGMENT-TASK-ROW ( n -- )
-   {: k:n :}
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   k SEGMENT-HEAD
-   S\"  reason=task-slots\n" DIAG-W2 ;
-
-\ A later segment row k's dependency rows fail: under diagnostics the
-\ dependency miss line names the row; this one names the segment it stops.
-: SEGMENT-STALE-ROWS ( n -- )
-   {: k:n :}
-   k 0= if exit then
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   k SEGMENT-HEAD
-   S\" \n" DIAG-W2 ;
-
-\ A miss the hit check names: the viewed object is dropped and the file
-\ loads from source.
-: OBJECT-MISS ( ptr u8 n -- )
-   {: why:ptr whyu:n :}
-   NUNIT-FILE:RESET-KEEP
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   s" native-file: miss path=" DIAG-W2 FRAME-PATH DIAG-W2
-   s"  reason=" DIAG-W2 why whyu DIAG-W2
-   S\" \n" DIAG-W2 ;
-
-\ Segment row k of the viewed object can install on the state its loads
-\ left: its dependency rows hold, its FFI rows hold, the namespace rows its
-\ wordlist rows give a private wordlist have none, TASK's user-slot
-\ watermark stands where its TASK row expects, each slot it declared holds
-\ the bytes its USER row found there and no record name it defines is live.
-\ A failed check prints its line.
-: SEGMENT-HOLDS? ( n -- bool )
-   {: k:n :}
-   k INTERVAL-END SEGMENT-FRESH? 0= if k SEGMENT-STALE-ROWS false exit then
-   k NUNIT-OBJECT:FFI-ROWS-HOLD? 0= if k SEGMENT-FFI-ROWS false exit then
-   k NUNIT-OBJECT:WIDS-HOLD? 0= if k SEGMENT-WID-ROWS false exit then
-   k NUNIT-OBJECT:TASK-ROW-HOLDS? 0= if k SEGMENT-TASK-ROW false exit then
-   k NUNIT-OBJECT:USER-ROWS-HOLD? 0= if k SEGMENT-TASK-ROW false exit then
-   k NUNIT-OBJECT:LIVE-NAME? if k SEGMENT-NAME-LIVE false exit then
-   2drop true ;
 
 \ The target journal word an installed row of sink kind is imported
 \ through; 0 for the other kinds or when the target lacks it.
@@ -1618,49 +1312,18 @@ variable TEE-ERR
    then
    0 ;
 
-\ The viewed object's origin rows can go to the active sink: it is the one
-\ they were stored under, and a journal sink has its import and, for rows
-\ that carry a symbol, a ready checker owner to derive it.
+\ The active sink can take installed origin rows: a journal sink has its
+\ import and, for rows that carry a symbol, a ready checker owner to derive
+\ it. A row installs only under the sink its segment recorded
+\ (NUNIT-OBJECT:HEAD-SEEK).
 : ORIGIN-SINK? ( -- bool )
    SINK {: kind:n fed:bool :}
-   NUNIT-OBJECT:ORIGIN-KIND kind <> if false exit then
    kind NUNIT-OBJECT:SINK-EARLY < if true exit then
    fed 0= OWNER-READY? 0= and if false exit then
    kind IMPORT-XT 0<> ;
 
-\ The viewed object's checker slice 0 is prepared and its plan kept for the
-\ install; false when the checker refuses the slice, which keeps no plan.
-\ Every other code is not the object's and leaves.
-: CHECKER-PREPARED? ( -- bool )
-   ['] NUNIT-OBJECT:PREPARE-CHECKER catch {: rc:n :}
-   rc 0= if true exit then
-   rc E-NUNIT-PROFILE <> if rc throw then
-   false ;
-
-\ The innermost file has a fresh object this session can install. Checker
-\ slice 0 is prepared last: everything the checker refuses about it is a
-\ miss decided before any install side effect. A later slice is prepared by
-\ the replay, on the state the loads before it left.
-: OBJECT-HIT? ( -- bool )
-   NUNIT-OBJECT:FILE-REFUSED? if false exit then
-   OBJECT-READ? 0= if false exit then
-   NUNIT-OBJECT:ORIGIN-FORMED? 0= if s" origin-format" OBJECT-MISS false exit then
-   ORIGIN-SINK? 0= if s" origin-sink" OBJECT-MISS false exit then
-   \ Freshness is checked only for an object the session can install: the
-   \ check reads files and records rows into the innermost file's object.
-   NUNIT-OBJECT:UNSUPPORTED$ dup 0<> if OBJECT-MISS false exit then 2drop
-   OBJECT-FRESH? 0= if s" input-stale" OBJECT-MISS false exit then
-   \ A leading segment installs before any load, on the state this check
-   \ sees, and a leading load's interval is the rows recorded before it; an
-   \ interval after a load is checked by the replay.
-   0 NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-SEGMENT = if 0 SEGMENT-HOLDS?
-   else -1 INTERVAL-END SEGMENT-FRESH? then
-   0= if NUNIT-FILE:RESET-KEEP false exit then
-   CHECKER-PREPARED? 0= if s" checker-prepare" OBJECT-MISS false exit then
-   true ;
-
-\ The installed object's sink kind, 1 when its rows are fed, and the
-\ journal import its rows go through.
+\ The sink kind the row being installed recorded under, the live one, 1
+\ when its rows are fed, and the journal import its rows go through.
 variable IMPORT-KIND
 variable IMPORT-FED
 variable IMPORT-AT
@@ -1674,176 +1337,195 @@ variable IMPORT-AT
    IMPORT-KIND @ NUNIT-OBJECT:SINK-PREFIX = if
       ord at end path pathu name nameu PRE-IMPORT-HOOK @ execute exit
    then
-   IMPORT-FED @ 0<> if 0 else ord name nameu ROW-SYM drop then {: sym:n :}
+   IMPORT-FED @ 0<> if 0 else ord ROW-SYM drop then {: sym:n :}
    IMPORT-KIND @ NUNIT-OBJECT:SINK-EARLY = if
       ord sym at end path pathu name nameu IMPORT-AT @ EARLY-IMPORT-XT execute
       exit
    then
    sym ord path pathu name nameu at end IMPORT-AT @ FULL-IMPORT-XT execute ;
 
-\ Append the origin rows of the segment just installed, in their stored
-\ order. A child's replay sets the import's kind for its own object, so
-\ each segment sets it again.
-: ORIGIN-INSTALL ( -- )
-   NUNIT-OBJECT:ORIGIN-KIND {: kind:n :}
+\ Set the import for the rows of the definition being installed: the live
+\ sink kind, whether the sink is fed, and the journal import.
+: ORIGIN-SETUP ( -- )
+   SINK {: kind:n fed:bool :}
    kind IMPORT-KIND !
-   SINK nip if 1 else 0 then IMPORT-FED !
-   kind IMPORT-XT IMPORT-AT !
-   ['] ORIGIN-IMPORT NUNIT-OBJECT:ORIGIN-EACH ;
+   fed if 1 else 0 then IMPORT-FED !
+   kind IMPORT-XT IMPORT-AT ! ;
 
-\ Run LOAD row k of the viewed object again, as the file ran it. The
-\ child's lookup and install take the install place and the view, so both
-\ are kept across it; the loader copies the path before the child's object
-\ read can move OBJECTS.
-: REPLAY-LOAD ( n -- )
-   NUNIT-OBJECT:LOAD-ROW drop {: kind:n path:ptr pathu:n :}
-   NUNIT-OBJECT:INSTALL-SAVE {: row:n off:n at:n segs:n slice:n :}
-   kind path pathu SOURCE-UNIT:LOAD-PATH
-   row off at segs slice NUNIT-OBJECT:INSTALL-RESTORE
-   OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:VIEW-FILE ;
+\ ---- reuse: a warm file runs its source, installing at each head ------------
+\ (NUNIT-OBJECT INSTALL-ROW). Every `:` and TRUSTED: head of a file's run
+\ calls HEAD-HOOK through NCOMP-DISPATCH:BODY-HOOK-CELL: the engine's
+\ (src/habu/habu2.f C-BODY-HOOK) and OUTER's (src/habu/definers.f DEF-HEAD).
 
-\ Event row k's interval did not prepare on the state the loads before it
-\ left, for reason why: under diagnostics its stale line names the reason.
-: PREPARE-STALE ( ptr u8 n n -- )
-   {: why:ptr whyu:n k:n :}
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   k STALE-HEAD s"  reason=" DIAG-W2 why whyu DIAG-W2 S\" \n" DIAG-W2 ;
+CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
 
-\ Segment row k, which follows a load, holds and is prepared on the state
-\ the loads left, before any of its install side effects; false when it is
-\ stale.
-: SEGMENT-READY? ( n -- bool )
-   {: k:n :}
-   k SEGMENT-HOLDS? 0= if false exit then
-   k NUNIT-OBJECT:PREPARE-SEGMENT {: why:ptr whyu:n :}
-   whyu 0= if true exit then
-   why whyu k PREPARE-STALE false ;
-
-\ Event row k is a SEGMENT row; false past the last row.
-: SEGMENT-AT? ( n -- bool )
-   {: k:n :}
-   k NUNIT-OBJECT:EVENT-COUNT < if
-      k NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-SEGMENT = exit
+\ A miss of the warm object leaves no mark and its body compiles live; it counts
+\ in F-MISS unless it is a live head (LOAD-ORDER counts its own).
+: REUSE-HEAD ( -- ptr u8 bool )
+   DEF-SPAN {: buf:ptr size:n at:n end:n :}
+   end 0= if NULL-PTR false exit then
+   buf size at SINK drop NUNIT-OBJECT:HEAD-SEEK
+      {: len:n hit:bool live:bool :}
+   live if NULL-PTR false exit then
+   hit ORIGIN-SINK? and 0= if F-MISS F@ 1+ F-MISS F! NULL-PTR false exit then
+   F-LOADS F@ NUNIT-OBJECT:LOAD-PASSED? if LOAD-ORDER NULL-PTR false exit then
+   buf at + size at - NUNIT-OBJECT:HEAD-PREPARE? 0= if
+      F-MISS F@ 1+ F-MISS F! NULL-PTR false exit
    then
-   false ;
+   NUNIT-DEP:CLOSE
+   ORIGIN-SETUP
+   NUNIT-OBJECT:INSTALL-ROW {: ord:n rel:n :}
+   rel at ['] ORIGIN-IMPORT NUNIT-OBJECT:ORIGIN-OF
+   ord at NUNIT-OBJECT:FILE-ADD-INSTALLED
+   NUNIT-OBJECT:CHECK-DROP
+   NUNIT-OBJECT:DISCARD-DEFINITION
+   1 INSTALLED-N +!
+   buf at + len + true ;
 
-\ The interval after LOAD row k holds no segment, only the checker slice
-\ numbered slice: its dependency rows hold and the slice is prepared on the
-\ state the load left; false when it is stale, named as the row after k.
-: CHECKS-READY? ( n n -- bool )
-   {: k:n slice:n :}
-   k INTERVAL-END SEGMENT-FRESH? 0= if k 1+ SEGMENT-STALE-ROWS false exit then
-   slice NUNIT-OBJECT:PREPARE-CHECKS {: why:ptr whyu:n :}
-   whyu 0= if true exit then
-   why whyu k 1+ PREPARE-STALE false ;
+\ The pending definition's `;` reaches DISPATCH-DEFINITION: only tier 1's `;`
+\ (src/habu/habu2.f EM-COMPILE) and OUTER's (src/habu/definers.f DEF-COMPILE)
+\ call the dispatch cell, at the tier the head latched in DEF-TIER-CELL; the
+\ cell holds DISPATCH-GUARDED unless SUSPEND-DISPATCH gave it back to the
+\ compiler; DISPATCH-GUARDED hands a definition made while a dispatch runs to
+\ BUSY. Inside a file's run its object is open, so WRAPPED-DISPATCH goes on to
+\ DISPATCH-DEFINITION for any admission reason.
+: DISPATCHED? ( -- bool )
+   data-base NCOMP-DISPATCH:DEF-TIER-CELL + @ 1 =
+   data-base NCOMP-DISPATCH:XT-CELL + CELL-VIEW @
+      ['] DISPATCH-GUARDED DISPATCH>N = and
+   DISPATCH-BUSY @ 0= and ;
 
-\ The viewed object's input rows from offset from to offset to go to the
-\ session manifest: those the file recorded in that interval.
-: INPUTS-APPEND ( n n -- )
-   {: from:n to:n :}
-   11 NUNIT-FILE:SECTION$ drop from + to from -
-   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ NFILE-INPUTS:TREE-IN
-   NFILE-INPUTS:APPEND ;
+\ Every `:` or TRUSTED: head while a file runs whose `;` reaches the
+\ dispatch: open the head's definition frame, so what runs while its body is
+\ read is the definition's rows, then, in a warm file, try the object
+\ (REUSE-HEAD).
+\ COLD-CANDIDATE compiles the body in the frame; one the engine abandoned on a
+\ throw closes at the next head or file boundary (NUNIT-DEP:BEGIN-DEFINITION).
+\ Any other head, such as one a definition's compile reads (DISPATCH-BUSY),
+\ compiles live, as the cold build compiles it without a row, and top-level
+\ runs after its `;` stay the file's rows.
+: HEAD-HOOK ( -- ptr u8 bool )
+   DEPTH @ 0= if NULL-PTR false exit then
+   DISPATCHED? 0= if NULL-PTR false exit then
+   ndict@ NUNIT-DEP:BEGIN-DEFINITION
+   F-REUSE F@ 0= if NULL-PTR false exit then
+   REUSE-HEAD ;
 
-\ Replay LOAD row k, the file's load loads: the checker slices before it
-\ are installed, the input rows the file recorded from offset prev to the load go
-\ to the session manifest, the child loads, and an interval after it with
-\ no segment is made ready. The input offset the load is at, and false when
-\ that interval is stale.
-: LOAD-STEP ( n n n -- n bool )
-   {: k:n loads:n prev:n :}
-   loads NUNIT-OBJECT:INSTALL-CHECKS
-   k NUNIT-OBJECT:LOAD-ENDS nip {: inputs:n :}
-   prev inputs INPUTS-APPEND
-   k REPLAY-LOAD
-   inputs
-   k 1+ SEGMENT-AT? if true exit then
-   k loads 1+ CHECKS-READY? ;
+: HOOK-CELL ( -- ptr n ) data-base NCOMP-DISPATCH:BODY-HOOK-CELL + CELL-VIEW ;
 
-\ Event row k's interval is stale: the file resumes from the source offset
-\ where the last load before row k returned, read before the install stops
-\ and releases the view, with the prefix before row k installed. No checker
-\ plan is kept at a stale interval: each preparation that refuses keeps
-\ none.
-: REPLAY-STOP ( n -- n bool )
-   {: k:n :}
-   -1 k 0 ?do
-      i NUNIT-OBJECT:EVENT-KIND NUNIT-OBJECT:EV-LOAD = if drop i then
-   loop {: load:n :}
-   load 0 < if BAD then
-   load NUNIT-OBJECT:LOAD-ROW {: off:n :} 2drop drop
-   NUNIT-OBJECT:INSTALL-STOP
-   off false ;
+: UNIT-RUN ( [ n n -- ] -- )
+   {: q :}
+   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
+   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
+   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@
+   q F-PRIOR F@ N>UNIT execute ;
 
-: REUSED-LINE ( -- )
-   NUNIT-DEP:DIAG? @ 0= if exit then
-   NUNIT-OBJECT:FILE-COUNTS
-      {: defs:n rows:n inputs:n recs:n data:n loads:n segs:n slots:n
-         pins:n checks:n ffi:n out:n :}
-   s" native-file: reused path=" DIAG-W2 FRAME-PATH DIAG-W2
-   s"  records=" DIAG-W2 recs DIAG-N
-   s"  segments=" DIAG-W2 segs DIAG-N
-   s"  loads=" DIAG-W2 loads DIAG-N
-   s"  ffi=" DIAG-W2 ffi DIAG-N
-   s"  out=" DIAG-W2 out DIAG-N
-   S\" \n" DIAG-W2 ;
+\ The observer's before callback. A loader token is never a run: at a loader
+\ cut within the file's source its action starts (NUNIT-OBJECT:LOAD-ACTION),
+\ and the ticket is 1, plus 2 when the target's loader runs it; anywhere
+\ else it refuses the file, and the ticket is 0. Any other token's ticket is
+\ RUN-BEFORE's doubled.
+: LOAD-BEFORE ( n n n n ptr u8 n -- n bool )
+   {: unit:n op:n rec:n entry:n tok:ptr toku:n :}
+   op rec entry LOADER? if
+      SOURCE-EXEC:LOADER-CUT? SOURCE-AT 0 >= and if
+         SOURCE-AT NUNIT-OBJECT:LOAD-ACTION
+         op rec entry HOST-LOADER? if 1 else 3 then false exit
+      then
+      s" load-boundary" s" " s" " NUNIT-OBJECT:REFUSE-KEEP
+      0 false exit
+   then
+   unit op rec entry tok toku NUNIT-DEP:RUN-BEFORE {: ticket:n judged:bool :}
+   ticket 2 * judged ;
 
-\ OUT row k's operations, issued again in their order: an emit to the output
-\ device's emit operation, as GENIO:EMIT reached it, and a write through the
-\ output funnel, as type, emit and GENIO:WRITE reach its write operation.
-: REPLAY-OPS ( n -- ) [: GENIO:EMIT ;] [: type ;] NUNIT-OBJECT:OUT-EACH ;
+\ The observer's after callback: RUN-AFTER with RUN-BEFORE's ticket, or a
+\ loader action's end with the loader's request, ok when it returned with
+\ the file balanced at the position it resumes from. The file's next
+\ segment opens, under the sink live then: the harvest closes at a load that
+\ brought in no child too. A child's unit has already harvested the segment
+\ before it and marked past the child's rows (FILE-UNIT-WITH), so after a
+\ child this harvest finds no row.
+: LOAD-AFTER ( n n n -- )
+   {: unit:n ticket:n rc:n :}
+   ticket 1 and 0= if unit ticket 1 rshift rc NUNIT-DEP:RUN-AFTER exit then
+   ticket 2 and 0<> if
+      s" SOURCE-UNIT:ACTION$" TARGET-XT REQUEST-XT execute
+   else SOURCE-UNIT:ACTION$ then {: kind:n path:ptr pathu:n :}
+   SOURCE-EXEC:POSITION {: off:n balanced:bool :}
+   kind path pathu off rc 0= balanced and LOAD-END
+   ORIGIN-HARVEST ORIGIN-MARK ;
 
-\ OUT row k's operations, issued as the file's top level issued them. Behind
-\ the tee they go to its prior device directly, so nothing records a hit's
-\ output, and the tee takes that device's fault as a forward gives it.
-: REPLAY-OUT ( n -- ) {: k:n :}
-   GENIO:OUTPUT@ {: out:device :}
-   TEE @ 0= out GENIO:DEVICE>N TEE @ <> or if k REPLAY-OPS exit then
-   TEE-PRIOR GENIO:OUTPUT!
-   k [: dup REPLAY-OPS ;] catch {: rc:n :} drop
-   out GENIO:OUTPUT!
-   TEE-PRIOR GENIO:FAULT@ out GENIO:LATCH
+\ Run the file's source through run under the engine's source observer,
+\ whose callbacks judge each seed word the top level runs (NUNIT-DEP
+\ RUN-BEFORE, RUN-AFTER) and each loader action it takes (LOAD-BEFORE,
+\ LOAD-AFTER). The frame arms when the loader evaluates exactly the source
+\ span; a child load pushes its own frame.
+: SOURCE-RUN ( [ -- ] -- )
+   {: run :}
+   FRAME F-SRC + 0 ptr-field @ F-SRC-U F@ {: source:ptr sourceu:n :}
+   DEPTH @ source sourceu ['] LOAD-BEFORE ['] LOAD-AFTER run
+      SOURCE-EXEC:RUN {: rc:n :}
    rc 0<> if rc throw then ;
 
-\ Install the viewed object in place of running the file: its segments and
-\ its child loads in their order, each checker slice before the load that
-\ follows it, and the output each segment's top level wrote, after the
-\ segment. Each interval after a load, a segment or checker slice, is
-\ checked and prepared on the state the loads left before it installs. True
-\ when the whole file installed; false at the first stale interval, with
-\ the source offset the file resumes from (REPLAY-STOP). Every refusal past
-\ a preparation is a malformed object. The session manifest gets the input
-\ rows the skipped load would have recorded, in the order it recorded
-\ them, between its children's.
-: REPLAY-OBJECT ( -- n bool )
+: OBSERVED-RUN ( -- ) [: F-Q F@ N>Q UNIT-RUN ;] SOURCE-RUN ;
+
+\ Run the innermost file's source with its object open for REUSE-HEAD. A run
+\ in which any head missed or whose installs stopped (LOAD-ORDER) counts the
+\ file compiled, and the driver closes its object again (OBJECT-CLOSE).
+: REUSE-RUN ( -- )
    OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:INSTALL-BEGIN
-   0 0 NUNIT-OBJECT:EVENT-COUNT 0 ?do
-      {: loads:n prev:n :}
-      i NUNIT-OBJECT:EVENT-KIND {: kind:n :}
-      kind NUNIT-OBJECT:EV-SEGMENT = if
-         loads 0 > if
-            i SEGMENT-READY? 0= if i REPLAY-STOP unloop exit then
-         then
-         i NUNIT-OBJECT:INSTALL-SEGMENT ORIGIN-INSTALL
-      then
-      kind NUNIT-OBJECT:EV-LOAD = if
-         i loads prev LOAD-STEP {: inputs:n ready:bool :}
-         ready 0= if i 1+ REPLAY-STOP unloop exit then
-         loads 1+ inputs
-      else loads prev then
-      kind NUNIT-OBJECT:EV-OUT = if i REPLAY-OUT then
-   loop {: all:n prev:n :}
-   all NUNIT-OBJECT:INSTALL-CHECKS
-   prev 11 NUNIT-FILE:SECTION$ nip INPUTS-APPEND
-   NUNIT-OBJECT:INSTALL-END
+   0 NUNIT-OBJECT:SEGMENT-MAP
+   1 F-REUSE F! 0 F-LOADS F! 0 F-MISS F!
+   NUNIT-OBJECT:ORIGIN-INDEX
+   ['] OBSERVED-RUN catch {: rc:n :}
+   F-REUSE F@ 0= {: order:bool :}
+   0 F-REUSE F!
+   NUNIT-OBJECT:INSTALL-STOP
+   rc 0<> if rc throw then
+   F-MISS F@ 0<> if
+      order if s" load-order" else s" head-stale" then REFUSED-LINE exit
+   then
    1 REUSED-N +!
-   REUSED-LINE
-   0 true ;
+   NUNIT-DEP:DIAG? @ 0= if exit then
+   s" native-file: reused path=" NUNIT-DEP:DIAG-W2
+   FRAME-PATH NUNIT-DEP:DIAG-W2 S\" \n" NUNIT-DEP:DIAG-W2 ;
+
+\ A file installing through its object keeps its install place across a
+\ child's unit, whose reuse run begins its own install over it: a loader
+\ cut and a word the file's top level runs (a `required` inside a run
+\ definition) load a child alike. The file views its object and indexes its
+\ origin rows again after the child.
+: PLACE-SAVE ( -- )
+   F-REUSE F@ 0= if exit then
+   NUNIT-OBJECT:INSTALL-SAVE
+   F-SAVE 32 + F! F-SAVE 24 + F! F-SAVE 16 + F! F-SAVE 8 + F! F-SAVE F! ;
+
+: PLACE-RESTORE ( -- )
+   F-REUSE F@ 0= if exit then
+   F-SAVE F@ F-SAVE 8 + F@ F-SAVE 16 + F@ F-SAVE 24 + F@ F-SAVE 32 + F@
+      NUNIT-OBJECT:INSTALL-RESTORE
+   OBJECT-BYTES KEPT-KEY NUNIT-OBJECT:VIEW-FILE
+   NUNIT-OBJECT:ORIGIN-INDEX ;
+
+\ The innermost file has an object whose installed rows the live origin sink
+\ is ready to take (ORIGIN-SINK?; each row's own sink is checked at its head,
+\ NUNIT-OBJECT:HEAD-SEEK), and whose input rows, the file's own source row
+\ included, all hold. A stale object never installs, since every read checks
+\ its inputs: the file compiles live, whole, and a successful run writes the
+\ object again or, refused, removes it.
+: REUSE-HIT? ( -- bool )
+   OBJECT-READ? 0= if false exit then
+   NUNIT-OBJECT:ORIGIN-FORMED? 0= if s" origin-format" OBJECT-MISS false exit then
+   ORIGIN-SINK? 0= if s" origin-sink" OBJECT-MISS false exit then
+   11 NUNIT-FILE:SECTION$ INPUTS-FRESH? 0= if
+      s" object-stale" OBJECT-MISS false exit
+   then
+   true ;
 
 \ The active checker owner holds the pending created body, the prefix's before
-\ CHECKER-REG:HANDOVER and the target's after it; an owner that predates the
-\ slot has none. src/core/include.f CALL-UNIT closes a file run from source in
-\ an engine built from this tree, so there this close covers only replayed files.
+\ CHECKER-REG:HANDOVER and the target's after it; an owner without the slot
+\ has none. src/core/include.f CALL-UNIT closes the body inside each file's
+\ unit; this close covers a loader that leaves it open.
 : BODY-CLOSE ( -- )
    OWNER {: owner:ptr :}
    owner NULL-PTR = if exit then
@@ -1851,34 +1533,27 @@ variable IMPORT-AT
    owner BODY-CLOSE-OFF + CELL-VIEW @ {: close:n :}
    close 0<> if close ACTION-XT execute then ;
 
-\ Replay the innermost file's object, or resume the file from its source
-\ where the replay went stale. A resumed file is refused capture, so its
-\ frame records nothing for the suffix, and its stale object is discarded:
-\ the next build compiles the file and stores its object again. The line
-\ names segment-stale even when the frame kept an earlier reason: a hit's
-\ capture is never stored, and the replay's child loads, made by no loader
-\ action of the file's source, already refused it (load-boundary).
-: REPLAY-RUN ( -- )
-   REPLAY-OBJECT if drop exit then {: off:n :}
-   s" segment-stale" NUNIT-OBJECT:FILE-REFUSE
-   s" segment-stale" REFUSED-LINE
-   KEPT-KEY FILE-PATH DISCARD
-   off RESUME-RUN ;
-
 : FILE-UNIT-WITH ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] bool -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q prior target:bool :}
    SESSION @ 0= if
       path pathu root rootu source sourceu q prior execute exit
    then
-   DEPTH @ 0= if 0
+   DEPTH @ 0= if 0 NULL-PTR 0
    else
       target if
          s" SOURCE-UNIT:PARENT-ACTION$" TARGET-XT
             REQUEST-XT execute
       else SOURCE-UNIT:PARENT-ACTION$ then
-         {: mode:n asked:ptr askedu:n :}
-      asked drop askedu drop mode
-   then {: kind:n :}
+   then {: kind:n asked:ptr askedu:n :}
+   \ A child the parent's top level loads from inside a word it runs, with
+   \ no definition open, starts the parent's load action at the position of
+   \ the token whose run is pending; the action ends after the child closes.
+   DEPTH @ 0 > if
+      NUNIT-OBJECT:LOAD-PENDING? 0= SOURCE-AT 0 >= and
+         data-base PEND-CELL + @ 0= and
+   else false then {: run:bool :}
+   run if SOURCE-AT else -1 then {: at:n :}
+   run if at NUNIT-OBJECT:LOAD-ACTION then
    \ The loader's frame still holds the bytes as read; `source` is the copy
    \ the interpreter runs.
    target if
@@ -1887,9 +1562,8 @@ variable IMPORT-AT
       {: raw:ptr rawu:n :} 2drop 2drop
    \ The rows the parent recorded so far join its object before the child's
    \ opens.
-   DEPTH @ 0 > if ROWS-FLUSH ORIGIN-HARVEST then
+   DEPTH @ 0 > if ROWS-FLUSH ORIGIN-HARVEST PLACE-SAVE then
    FRAME-RESERVE
-   DEPTH @ 0= if TEE-OPEN then
    path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
    FILE-OPEN
    path FRAME F-INPUT + 0 ptr-field !
@@ -1904,33 +1578,34 @@ variable IMPORT-AT
    prior UNIT>N F-PRIOR F!
    ['] OBJECT-OPEN catch {: open-rc:n :}
    open-rc 0<> if
-      FILE-CLOSE DEPTH @ 0= if TEE-CLOSE then
+      FILE-CLOSE
       NFILE-REF:POP-FILE open-rc throw
    then
    1 FILES-N +!
-   \ The before-image follows BEGIN-UNIT's observer hooks, and the parent's
-   \ reopened segment's is taken when its loader action finishes
-   \ (NUNIT-OBJECT:LOAD-FINISH), after CLOSE-UNIT, which may unhook them, so
-   \ the capture's own writes are never a file's change to earlier DATA.
    NUNIT-DEP:BEGIN-UNIT
-   NUNIT-OBJECT:SEGMENT-IMAGE
+   NUNIT-OBJECT:SCRATCH-RETIRE
    \ Both paths observe the file's source: an engine build that installs it
    \ keeps the producer digests a run would.
    NATIVE? @ if path pathu root rootu source sourceu BUILD-PRODUCER:OBSERVE then
-   OBJECT-HIT? {: hit:bool :}
-   hit if ['] REPLAY-RUN else ['] OBSERVED-RUN then catch {: unit-rc:n :}
-   \ A replay installs each checker plan it keeps; one that threw between a
-   \ preparation and its install leaves that plan for this release.
+   REUSE-HIT? {: hit:bool :}
+   \ The head hook runs for this file's heads and is restored for the loader.
+   HOOK-CELL @ {: hook:n :}
+   ['] HEAD-HOOK HOOK>N HOOK-CELL !
+   hit if ['] REUSE-RUN else ['] OBSERVED-RUN then catch {: unit-rc:n :}
+   hook HOOK-CELL !
+   \ A reuse run installs each checker plan it prepares; one that threw
+   \ between a preparation and its install leaves that plan for this release.
    NUNIT-OBJECT:RELEASE-CHECKER
    ['] NUNIT-OBJECT:DEFINITIONS-CLOSE catch {: plan-rc:n :}
    ['] FRAME-REPORT catch {: report-rc:n :}
    \ A file's pending created body closes at its end, so its `,` grid is among
-   \ the file's rows. This tree's include.f CALL-UNIT closes a file run from
-   \ source; this close fires for a replayed file and for one an older host's
-   \ include.f runs (files between CHECKER-REG:HANDOVER and the target
-   \ loader's binding).
+   \ the file's rows. This tree's include.f CALL-UNIT closes it; this close
+   \ fires for a file an older host's include.f runs (files between
+   \ CHECKER-REG:HANDOVER and the target loader's binding).
    unit-rc 0= plan-rc 0= and if ['] BODY-CLOSE catch else 0 then {: close-rc:n :}
-   unit-rc 0= plan-rc 0= and close-rc 0= and hit 0= and
+   \ A reuse run in which a head missed or whose installs stopped
+   \ (LOAD-ORDER) closes its object again.
+   unit-rc 0= plan-rc 0= and close-rc 0= and hit 0= F-MISS F@ 0<> or and
       if ['] OBJECT-CLOSE catch else 0 then
       {: object-rc:n :}
    NUNIT-OBJECT:FILE-END
@@ -1939,18 +1614,25 @@ variable IMPORT-AT
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}
    FILE-CLOSE
-   DEPTH @ 0= if ['] TEE-CLOSE catch else 0 then {: tee-rc:n :}
-   \ The rows recorded so far belong to the closed file's object.
-   DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! ORIGIN-MARK then
+   \ The rows recorded so far belong to the closed file's object. The
+   \ parent's next harvest segment opens under the sink live now, the one
+   \ the object segment its load action's end opens records.
+   DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! ORIGIN-MARK PLACE-RESTORE then
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
+   \ The parent resumes inside the word that loaded, ok when the child closed
+   \ without a throw.
+   run if
+      kind asked askedu at
+      unit-rc plan-rc or report-rc or object-rc or finish-rc or pop-rc or 0=
+      LOAD-END
+   then
    unit-rc 0<> if unit-rc throw then
    close-rc 0<> if close-rc throw then
    finish-rc 0<> if finish-rc throw then
    plan-rc 0<> if plan-rc throw then
    report-rc 0<> if report-rc throw then
    pop-rc 0<> if pop-rc throw then
-   object-rc 0<> if object-rc throw then
-   tee-rc 0<> if tee-rc throw then ;
+   object-rc 0<> if object-rc throw then ;
 
 : FILE-UNIT ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    PRIOR-UNIT @ true FILE-UNIT-WITH ;
@@ -2018,7 +1700,9 @@ variable IMPORT-AT
 
 : PRINT-COUNTS ( -- )
    s" files reused " type REUSED-N @ .
-   s"  compiled " type FILES-N @ REUSED-N @ - . ;
+   s"  compiled " type FILES-N @ REUSED-N @ - .
+   s"  definitions installed " type INSTALLED-N @ .
+   s"  compiled " type COMPILED-N @ . ;
 
 : COUNTS-PATH-READ ( -- )
    s" HABU_BUILD_COUNTS" GETENV {: a:ptr u:n :}
@@ -2036,7 +1720,7 @@ variable IMPORT-AT
    COUNTS-PATH COUNTS-PATH-U @ SB$ FS:ATOMIC-WRITE-FILE ;
 
 : CLEAR-SCRATCH ( -- )
-   0 REUSED-N ! 0 FILES-N !
+   0 REUSED-N ! 0 FILES-N ! 0 INSTALLED-N ! 0 COMPILED-N !
    0 NUNIT-DEP:DIAG? !
    0 HOST-INPUT-RESET ! 0 HOST-UNIT-USE ! 0 HOST-INPUT-USE !
    0 HOST-ENV-USE ! 0 HOST-ENV-RESET ! 0 TARGET-ENV-RESET !
@@ -2105,9 +1789,6 @@ variable IMPORT-AT
       FILE-CLOSE
       NFILE-REF:POP-FILE
    repeat
-   \ A push that threw after TEE-OPEN left no frame to close the tee.
-   ['] TEE-CLOSE catch {: tee-rc:n :}
-
    TARGET-SOURCE-BOUND @ if
       PRIOR-UNIT @ TARGET-UNIT-USE @ UNIT-USE-XT execute
       TARGET-INPUT-RESET @ ACTION-XT execute
@@ -2139,8 +1820,7 @@ variable IMPORT-AT
    0 HARVEST-N ! 0 HARVEST-FED !
    0 OPAQUE-XT ! 0 OBJECTS-U !
    REPORT? @ if PRINT-COUNTS then
-   CLEAR-SCRATCH
-   tee-rc 0<> if tee-rc throw then ;
+   CLEAR-SCRATCH ;
 
 \ The body returned, so every file it entered has left its frame (DEPTH 0) and
 \ FILES-N is final; a failed body writes no counts.
@@ -2189,7 +1869,7 @@ public
    SEED
    BIND-TARGET-SOURCE
    BIND-OWNER
-   PIN-TARGET-CHECKER
+   FOLLOW-BUILD-CHECKER
    PIN-ORIGIN-GETTER
    BIND-DISPATCH ;
 
@@ -2198,7 +1878,7 @@ public
    CLEAR-NOMINALS ;
 : HANDOVER-BIND ( -- )
    SESSION @ 0= if exit then
-   BUILD-PRODUCER:CURRENT$ PIN-CHECKER
+   FOLLOW-BUILD-CHECKER
    NFILE-REF:RESET-CONSTRUCTORS
    BIND-OWNER
    BIND-NOMINALS ;

@@ -761,7 +761,6 @@ public
 
 : DEFINITION-CACHEABLE? ( -- bool )
    M-OPEN @ 0=
-   DOES-BYTE@ 0= and
    STUB-PENDING? 0= and
    NSHADOW:OPEN? 0= and
    data-base NATIVE-OBS-CELLS:PUBLISHED + @ 0= and ;

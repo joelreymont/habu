@@ -2374,55 +2374,6 @@ sections above.
   mutation. The window closes on every exit, including throws, so a refused
   definition cannot leave an orphaned type or row. This applies to certified
   and hookless compilation.
-- **A file object refuses an effect below its file it cannot replay.** A
-  file that leaves the compiler tier, the executable-build depth or saved tier,
-  or the optimizer dispatch changed is `native-file: refused ...
-  reason=kernel-cell-changed cell=tier` (`build-depth`, `build-tier`,
-  `dispatch`); `0 set-tier` alone refuses, `0 set-tier` then `1 set-tier`
-  stores. Only records the running binary held when the process first opened
-  the definition cache are seeded. A record an earlier top-level load in the
-  same process made has no key, so a later load that reads it is ordered
-  (`resolution-key-unknown`, `binding-key-unknown`; the object refuses
-  `ordered-dependency`), and a file loaded inside such a package is
-  `scope-key-unknown word=<package>`; one loaded while a wordlist no file of
-  the load made is current (an earlier top-level load's, or the session's) is
-  `scope-wordlist-unknown`. A dependency the file's own load
-  `require`s is tracked as usual. `test/native-file-frame-e2e.f` measures each line.
-- **A file's top-level run is admitted by its closure or by its trace.** A run
-  of the file's own word or of an earlier file's walks the closure it reaches:
-  a definition whose host reason is SAFE, MEMORY, INDIRECT, FIXED or REBIND (a
-  compiled `is`, whose stored xt is a declared cell the walk follows), an
-  unchecked one with a checker contract, a representation cast (a `CAST:`
-  whose output holds no pointer or quotation), a primitive with a REACH class
-  and the unset-defer sentinel are admitted; a seed word with no class is
-  `reason=run-reaches-kernel-word word=W` (`run-reaches-kernel-data` for seed
-  data), a definition with another reason `run-host-cast`, `-unchecked` (no
-  contract), `-foreign` or `-unknown`. A run that
-  reaches an unchecked body leaves stores no checker saw, so the object judges
-  the file's undeclared DATA cells as it does for a file that ran with
-  checking off: a code or mapped address there refuses the file. `die` is classed as a
-  process exit: a run that ends the process leaves no result to store, so a
-  closure reaching it is admitted. Under the file's own word the file refuses
-  by that name; under an earlier file's word the frame is ordered and the
-  object refuses `ordered-dependency`. A seed word the top level runs itself is
-  admitted only by the trace it leaves before the next token: source read past
-  its token, a changed record count, HERE, wordlist count, kernel cell or
-  checker unit fact count, a child file it loaded, text it wrote to the
-  output device, or a change to the open FFI declaration (`FUNCTION:`, a
-  clause). That text is part of the file's result: the object carries it and
-  a hit writes it again in load order. `;FUNCTION` folds the declaration into
-  the definition and FFI-FN row the object carries; a segment that opens or
-  closes with a declaration open is `ffi-declaration-open`. Otherwise it is
-  `run-unaccounted word=W` and the object refuses `ordered-dependency`, so the
-  file compiles on every build: `s" HOME" GETENV`, `data-base`, `' W execute`,
-  a top-level `FS:WRITE-ALL` and `PROCESS-SYMBOLS` each refuse. A run that
-  declares CWORK storage or writes a CWORK default, and loaded no child file,
-  is `run-writes-cwork word=W` whatever else it left: compiler working state
-  is never carried, so the file compiles on every build
-  (`test/native-file-cwork-e2e.f`). A nested run that
-  a caught throw abandoned refuses `run-abandoned word=W`: the catch restores
-  HERE and the source position, so the run's trace cannot be judged.
-  `test/native-file-frame-e2e.f` measures each line.
 - **`catch` requires a callable with a known effect.** Literal quotations,
   callable ticks, quotation parameters already on the stack and fetched
   typed quotations are admitted. A callback whose effect does not preserve

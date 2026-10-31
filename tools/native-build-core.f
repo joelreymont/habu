@@ -59,8 +59,9 @@ variable PRIOR-ENGINE-ROOT-U
    \ No NATIVE-LAYOUT row covers a host's CODE row at $2CF0, which TRANSLATE
    \ would refuse (test/native-build-entry.f FOREIGN-WINDOW-CASE makes one).
    $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
-   \ The host's rows at $3838..$3847 name cells the built engine fills itself
-   \ (COMP-CELL, runtime-arm64.f INSTALL-T0) or leaves free.
+   \ The host's rows at $3838..$3847 name cells the built engine fills itself:
+   \ BODY-HOOK-CELL, which the build sets around each file it runs, and
+   \ COMP-CELL (runtime-arm64.f INSTALL-T0).
    $3838 2 cells ADDRESS-CELLS:REMOVE-XT-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
    ADDR-ROWS 0 ?do
@@ -276,12 +277,12 @@ variable HOST-COMPILER-KNOWN
 
 \ CHECKER-REG:SEAL installs the window's compilers in these cells and the capture
 \ records them; writers loaded after the capture compile with the host's.
-\ $3838 is literal for the reason NATIVE-LAYOUT's SLOTS gives.
+\ $3840 is literal for the reason NATIVE-LAYOUT's SLOTS gives.
 create HOST-DISPATCH-OFFS
    NCOMP-DISPATCH:XT-CELL ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL ,
-   $3838 ,   \ NCOMP-DISPATCH:COMP-CELL
+   $3840 ,   \ NCOMP-DISPATCH:COMP-CELL
 here HOST-DISPATCH-OFFS - CELL / constant HOST-DISPATCH-N
 create HOST-DISPATCH HOST-DISPATCH-N cells allot
 
@@ -577,6 +578,7 @@ variable PRE-ROWS-N
    NDEF-CACHE:HANDOVER-PREPARE
    RESTORE-PREFIX-RAW
    s" CHECKER-REG:HANDOVER" OPEN-TARGET-XT SOURCE-RESET-XT execute
+   BUILD-PRODUCER:FREEZE-CHECKER
    NDEF-CACHE:HANDOVER-BIND
    \ The handover, the same entry tools/bootstrap.sh's recovery reload calls,
    \ publishes the complete replacement owner. Earlier pre-hook code still needs
@@ -601,7 +603,6 @@ variable PRE-ROWS-N
 
 : LOAD-TARGET ( -- )
    CHECKED-PREFIX
-   BUILD-PRODUCER:FREEZE-CHECKER
    s" src/core/roles.f" included
    s" src/core/cell-effects.f" included
    s" src/core/declaration-transaction.f" included

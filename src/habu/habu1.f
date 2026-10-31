@@ -2149,10 +2149,10 @@ variable LSOURCEEXECFINISH
 \ was written: this check precedes every DP store) and exit 76 at top level.
 \ Every site hands the candidate in x15: the sinks hold it in x7
 \ (BALLOT/BALIGN/C-VARIABLE/C-DEFER-CELL), x11 (BCOMMA/BCCOMMA/LCREATE) or x14
-\ (interpret-mode string copies, C-PARSE-CREATED-SIG). x15 is free on the
-\ refusal arm: a site carrying a live x15 (the string copies' literal base)
-\ needs it only on the returning arm, and it survives the write syscalls (the
-\ kernel preserves x2-x15) and LDIAGU.
+\ (interpret-mode string copies). x15 is free on the refusal arm: a site
+\ carrying a live x15 (the string copies' literal base) needs it only on the
+\ returning arm, and it survives the write syscalls (the kernel preserves
+\ x2-x15) and LDIAGU.
 : DP-CHECK ( n -- )
    DP-REG !
    LBL DP-LOW !

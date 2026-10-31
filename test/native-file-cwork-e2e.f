@@ -1,6 +1,7 @@
 \ A file that declares CWORK storage or writes a CWORK DEFAULT at top level
-\ compiles from source on every build: compiler working state is never
-\ carried, so its layout and ordered defaults hold across a parent edit.
+\ runs its top level on every build: compiler working state is never
+\ carried, so its layout and ordered defaults hold across a parent edit. The
+\ accessors its definers evaluate install from the file's object.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -49,7 +50,12 @@ create CACHE PATH-CAP allot variable CACHE-U
    RUN-BIN-PATH
    OUT$ S\" 0\n" CONTAINS? TTRUE
    s" app.f" S\" require unit.f\n: MAIN ( -- ) CWORK-FILE:VALUE @ . 5 . ;\n" PUT
+   \ unit.f's top-level run of its own VALUE reads kernel data, which refuses
+   \ its object, so the warm build compiles it from source.
+   true NATIVE-FILE-APP:DIAG? !
    s" defaults-warm-hb" BUILD
+   false NATIVE-FILE-APP:DIAG? !
+   ERR$ S\" /unit.f reason=run-reaches-kernel-data word=MEM#base\n" CONTAINS? TTRUE
    NATIVE-FILE-APP:OUT$ s" default unit source ran" CONTAINS? TTRUE
    NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-BIN-PATH
@@ -64,16 +70,17 @@ create CACHE PATH-CAP allot variable CACHE-U
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE
+   \ unit.f's VALUE and ROWS accessors install; the changed PREFIX-ROW and MAIN compile.
    s" prefix.f" S\" package CWORK-PREFIX public\n3 constant CELL-COUNT\n3 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
    s" moved-grow-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ S\" definitions installed 2\n" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE
    s" prefix.f" S\" package CWORK-PREFIX public\n2 constant CELL-COUNT\n2 CWORK-BUFFER PREFIX-ROW n\n;package\n" PUT
    s" moved-shrink-hb" BUILD
    NATIVE-FILE-APP:OUT$ s" moved unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   NATIVE-FILE-APP:OUT$ S\" definitions installed 2\n" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" 19\n19\n31\n" CONTAINS? TTRUE ;
 
@@ -101,14 +108,14 @@ public
    RUN-BIN-PATH
    OUT$ S\" -1\n-1\n42\n" CONTAINS? TTRUE
    APP-WARM
-   s" a changed parent recompiles its CWORK child from source" T-LABEL
+   s" a changed parent reruns its CWORK child's top level" T-LABEL
    true NATIVE-FILE-APP:DIAG? !
    s" warm-hb" BUILD
    false NATIVE-FILE-APP:DIAG? !
    ERR$ S\" reason=run-writes-cwork word=CWORK-VARIABLE\n" CONTAINS? TTRUE
-   ERR$ s" /unit.f reason=ordered-dependency" CONTAINS? TTRUE
    NATIVE-FILE-APP:OUT$ s" cwork unit source ran" CONTAINS? TTRUE
-   NATIVE-FILE-APP:OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   \ The child's generated VALUE accessor installs; the changed MAIN compiles.
+   NATIVE-FILE-APP:OUT$ S\" definitions installed 1\n" CONTAINS? TTRUE
    RUN-BIN-PATH
    OUT$ S\" -1\n-1\n43\n" CONTAINS? TTRUE
    CHECK-DEFAULT-ORDER

@@ -52,6 +52,12 @@ variable DIAG-START
 : RUN-SAVED-IN ( ptr u8 n -- n )
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" RUN-SAVED-SOURCE ;
 
+\ The builder session, not app.f, sets a publication observer, so the compiler
+\ keeps every definition from the cache. An observer set at a file's top level
+\ leaves no trace its object could carry, so that file would store no object.
+: RUN-WATCHED-IN ( ptr u8 n -- n )
+   S\" 1 set-tier\n: WATCH ( n IR-CTX:ctx NCOMP:code-entry n n -- ) 2drop 2drop drop ;\n' WATCH NCOMP:PUBLISHED!\nAPP-BUILD:RUN-SAVED-REPORT\n" RUN-SAVED-SOURCE ;
+
 : RUN-DIRECT ( -- n ) s" direct-cache" AT RUN-SAVED-IN ;
 : RUN-EXECUTE ( -- n ) s" execute-cache" AT RUN-SAVED-IN ;
 : RUN-DEFINITION ( -- n ) s" definition-cache" AT RUN-SAVED-IN ;
@@ -106,6 +112,9 @@ variable DIAG-START
    s" app.f" S\" : MAIN ( -- ) 42 . ;\n" PUT
    s" hook-cache" AT RUN-SAVED-IN SUCCESS
    s" hook-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   s" an observer session installs nothing from a cache stored without one" T-LABEL
+   s" hook-cache" AT RUN-WATCHED-IN SUCCESS
+   OUT$ S\" definitions installed 0\n" CONTAINS? TTRUE
    s" a warm definition still runs the live checker" T-LABEL
    S\" 1 set-tier\nTRUSTED: REJECT-MAIN ( ptr u8 n -- n ) 2dup s\" MAIN \" STARTS-WITH? if 2drop 77 throw then CHECK! ;\n' REJECT-MAIN set-check\nAPP-BUILD:RUN-SAVED-REPORT\n"
       RUN-CUSTOM-CHECK 77 T=
@@ -120,14 +129,15 @@ variable DIAG-START
 \ The history cache holds one object per source file, keyed by the file's place
 \ in the load. Both objects name both paths, so the first build's diagnostics
 \ give lib.f's key, and each walk sorts the objects by the key in their names,
-\ counts those whose bytes differ from the previous walk's, and keeps the new
-\ bytes.
+\ counts lib.f's and those whose bytes differ from the previous walk's, and
+\ keeps the new bytes.
 create HISTORY-OBJ CAP allot
 create HISTORY-APP CAP allot  variable HISTORY-APP-U
 create HISTORY-LIB CAP allot  variable HISTORY-LIB-U
 create HISTORY-LIB-KEY 64 allot
 variable HISTORY-APP-NEW
 variable HISTORY-LIB-NEW
+variable HISTORY-LIB-N
 
 \ lib.f's key, from its object line on the diagnostic build's stderr.
 : HISTORY-LIB-KEY! ( -- )
@@ -156,6 +166,7 @@ variable HISTORY-LIB-NEW
       size CAP > if E-FS-IO throw then
       path pathu HISTORY-OBJ size FS:READ-ALL size <> if E-FS-IO throw then
       a 64 HISTORY-LIB-KEY 64 STR= if
+         1 HISTORY-LIB-N +!
          size HISTORY-LIB HISTORY-LIB-U HISTORY-LIB-NEW HISTORY-KEEP
       else
          size HISTORY-APP HISTORY-APP-U HISTORY-APP-NEW HISTORY-KEEP
@@ -164,7 +175,7 @@ variable HISTORY-LIB-NEW
 
 \ The file objects under the history out root: one <64 hex>.hfo each.
 : HISTORY-ENTRIES ( -- n )
-   0 HISTORY-N ! 0 HISTORY-APP-NEW ! 0 HISTORY-LIB-NEW !
+   0 HISTORY-N ! 0 HISTORY-APP-NEW ! 0 HISTORY-LIB-NEW ! 0 HISTORY-LIB-N !
    s" history-cache" AT ['] HISTORY-FILE FS:WALK-FILES
    HISTORY-N @ ;
 
@@ -209,7 +220,51 @@ variable HISTORY-LIB-NEW
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
    HISTORY-ENTRIES 2 T=
    HISTORY-LIB-NEW @ 0 T=
-   HISTORY-APP-NEW @ 0 T= ;
+   HISTORY-APP-NEW @ 0 T=
+   s" a refused rebuild removes the file's object" T-LABEL
+   \ Arming the origin journal moves app.f's sink, which refuses its object.
+   s" app.f" S\" require lib.f\nrequire src/habu/engine-origin.f\nENGINE-ORIGIN:ARM\n: MAIN ( -- ) HIST-KEEP 2 + . ;\n" PUT
+   1 DIAG? !
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   0 DIAG? !
+   ERR$ s" /app.f reason=origin-sink changed" CONTAINS? TTRUE
+   HISTORY-ENTRIES 1 T=
+   HISTORY-LIB-N @ 1 T=
+   HISTORY-LIB-NEW @ 0 T=
+   s" a child that moves the sink misses its parent's head stored under the old one" T-LABEL
+   2 HISTORY-SOURCE
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   HISTORY-ENTRIES 2 T=
+   \ lib.f arms the origin journal; app.f's MAIN was stored without it.
+   s" lib.f" S\" require src/habu/engine-origin.f\nENGINE-ORIGIN:ARM\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
+   1 DIAG? !
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   0 DIAG? !
+   ERR$ s" native-file: origin-sink name=MAIN path=" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
+   HISTORY-ENTRIES drop
+   HISTORY-APP-NEW @ 1 T=
+   s" a word that moves the sink after the last head keeps its file's installs" T-LABEL
+   s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
+   s" app.f" S\" require lib.f\n: MAIN ( -- ) HIST-KEEP 2 + . ;\nGO\n" PUT
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   \ GO now arms the origin journal after MAIN, which installs under the sink
+   \ its segment recorded.
+   s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ENGINE-ORIGIN:ARM ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   OUT$ S\" definitions installed 1\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
+   s" a sink moved and restored across a child load keeps its parent's installs" T-LABEL
+   s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ;\n: UNGO ( -- ) ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
+   s" two.f" S\" : HIST-TWO ( -- n ) 2 ;\n" PUT
+   s" app.f" S\" require lib.f\nGO\nrequire two.f\nUNGO\n: MAIN ( -- ) HIST-KEEP HIST-TWO + . ;\n" PUT
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   \ GO now arms the origin journal before two.f loads and UNGO disarms it
+   \ before MAIN, which installs under the sink its segment recorded.
+   s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ENGINE-ORIGIN:ARM ;\n: UNGO ( -- ) ENGINE-ORIGIN:DISARM ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
+   s" history-cache" AT RUN-SAVED-IN SUCCESS
+   OUT$ S\" definitions installed 1\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
 : TRACE$ ( -- ptr u8 n ) TRACE TRACE-U @ ;
 
@@ -413,7 +468,7 @@ variable HISTORY-LIB-NEW
    s" definition-edit.err" AT ERR$ FS:WRITE-ALL
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    \ The edit leaves app.f's stored object stale: a named miss, not a silent one.
-   ERR$ s" /app.f reason=input-stale" CONTAINS? TTRUE
+   ERR$ s" /app.f reason=object-stale" CONTAINS? TTRUE
    RUN-APP SUCCESS
    OUT$ S\" 42\n7\n0\n" CONTAINS? TTRUE ;
 
@@ -443,12 +498,6 @@ variable HISTORY-LIB-NEW
    ;MATCH ;
 
 
-\ The builder session, not app.f, sets a publication observer, so the compiler
-\ keeps every definition from the cache. An observer set at a file's top level
-\ leaves no trace its object could carry, so that file would store no object.
-: RUN-WATCHED-IN ( ptr u8 n -- n )
-   S\" 1 set-tier\n: WATCH ( n IR-CTX:ctx NCOMP:code-entry n n -- ) 2drop 2drop drop ;\n' WATCH NCOMP:PUBLISHED!\nAPP-BUILD:RUN-SAVED-REPORT\n" RUN-SAVED-SOURCE ;
-
 : DIAG-CASE ( -- )
    s" opt-in fallback diagnostics follow actual compile attempts" T-LABEL
    s" diag-cache" AT FS:MAKE-DIR
@@ -467,7 +516,7 @@ variable HISTORY-LIB-NEW
    \ app.f compiles its two definitions, one compile-attempt line each.
    DIAG-LINES 2 T=
    ERR$ s" reason=eligible-cache-miss name=HELPER path=" CONTAINS? TTRUE
-   ERR$ s" reason=trusted name=MAIN path=" CONTAINS? TTRUE
+   ERR$ s" reason=eligible-cache-miss name=MAIN path=" CONTAINS? TTRUE
    ERR$ s" cache-store-refused reason=not-cacheable name=HELPER path=" CONTAINS? TTRUE
    s" a definition the compiler keeps from the cache still joins its file's object" T-LABEL
    ERR$ s" /app.f key=" CONTAINS? TTRUE
@@ -479,73 +528,55 @@ variable HISTORY-LIB-NEW
    APP-OBJECT$ s"  inputs=1 " CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
 
-\ The origin journal names only files under the engine root (engine-origin.f
-\ ROOT-REL), and the saved builder restores that root before it loads app.f, so
-\ the app declares its own directory as the root; image save drops it (RESET).
-: BODY-EDIT-SOURCE ( n -- )
-   {: value:n :}
+\ app.f under a first comment line note, with MIDDLE answering value. Its top
+\ level only defines, so every build stores its object.
+: BODY-EDIT-SOURCE ( n ptr u8 n -- )
+   {: value:n note:ptr noteu:n :}
    0 INPUT-U !
-   S\" require src/habu/engine-origin.f\nENGINE-ORIGIN:ARM\n0 SCRIPT-ARGV$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:ENGINE!\ns\" source-action\" type cr\n: LEFT ( -- n ) 1 {: left:n :} left [: 1+ ;] execute ;\n: MIDDLE ( -- n ) "
+   S\" \\ " INPUT CAP INPUT-U BUF-APPEND
+   note noteu INPUT CAP INPUT-U BUF-APPEND
+   S\" \n: LEFT ( -- n ) 1 {: left:n :} left [: 1+ ;] execute ;\n: MIDDLE ( -- n ) "
       INPUT CAP INPUT-U BUF-APPEND
-   value 0 < if
-      S\" 40 ;\n" INPUT CAP INPUT-U BUF-APPEND
-   else
-      value 100 < if
-         S\" 41 ;\n" INPUT CAP INPUT-U BUF-APPEND
-      else S\" 101 ;\n" INPUT CAP INPUT-U BUF-APPEND then
-   then
-   S\" : RIGHT ( -- n ) true if s\" a;b\" nip [: s\" q;r\" 2drop [: 1+ ;] execute ;] execute else 0 then ; \\ ; in a comment\n: MAIN ( -- ) LEFT MIDDLE RIGHT + + . cr ;\n"
-      INPUT CAP INPUT-U BUF-APPEND
-   INPUT INPUT-U @ s" : RIGHT " FIND-SUB MATCH option
-      none OF E-FS-IO throw ENDOF
-      some OF IDX>N 2 + ENDOF
-   ;MATCH {: right:n :}
-   S\" : CHECK-RIGHT-ORIGIN ( -- )\n  0 SCRIPT-ARGV$ "
-      INPUT CAP INPUT-U BUF-APPEND
-   SB-RESET right FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
-   S\"  ENGINE-ORIGIN:SYMBOL-AT if\n    ENGINE-ORIGIN:TARGET\n      {: path:ptr pathu:n at:n end:n name:ptr nameu:n live:bool :}\n    live at "
-      INPUT CAP INPUT-U BUF-APPEND
-   SB-RESET right FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
-   S\"  = and end at 5 + = and\n    path pathu s\" app.f\" STR= and\n    name nameu s\" RIGHT\" STR= and 0= if 77 throw then\n  else drop 77 throw then\n  s\" right-origin=current\" type cr ;\nCHECK-RIGHT-ORIGIN\n"
+   SB-RESET value FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
+   S\"  ;\n: RIGHT ( -- n ) true if s\" a;b\" nip [: s\" q;r\" 2drop [: 1+ ;] execute ;] execute else 0 then ; \\ ; in a comment\n: MAIN ( -- ) LEFT MIDDLE RIGHT + + . cr ;\n"
       INPUT CAP INPUT-U BUF-APPEND
    s" app.f" INPUT INPUT-U @ PUT ;
 
-: SOURCE-ACTION-ONCE ( -- )
-   OUT$ {: out:ptr outu:n :}
-   s" source-action" {: action:ptr actionu:n :}
-   out outu action actionu FIND-SUB MATCH option
-      none OF false TTRUE ENDOF
-      some OF
-         IDX>N actionu + {: after:n :}
-         out after + outu after - action actionu CONTAINS? TFALSE
-      ENDOF
-   ;MATCH ;
+\ An edited app.f compiles whole: none of its definitions installs from its
+\ stored object, and each one's compile is attempted.
+: BODY-EDIT-LIVE ( -- )
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   OUT$ S\" definitions installed 0\n" CONTAINS? TTRUE
+   DIAG-LINES 4 T=
+   ERR$ s" reason=eligible-cache-miss name=LEFT path=" CONTAINS? TTRUE
+   ERR$ s" reason=eligible-cache-miss name=MIDDLE path=" CONTAINS? TTRUE
+   ERR$ s" reason=eligible-cache-miss name=RIGHT path=" CONTAINS? TTRUE
+   ERR$ s" reason=eligible-cache-miss name=MAIN path=" CONTAINS? TTRUE ;
 
 : BODY-EDIT-CASE ( -- )
-   s" unchanged neighbors reuse across same-file body edits" T-LABEL
+   s" a same-file body or comment edit recompiles the file" T-LABEL
    s" body-edit-cache" AT FS:MAKE-DIR
    s" body-edit-fresh-cache" AT FS:MAKE-DIR
-   -1 BODY-EDIT-SOURCE
+   1 DIAG? !
+   40 s" first" BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   SOURCE-ACTION-ONCE
-   OUT$ s" right-origin=current" CONTAINS? TTRUE
+   ERR$ s" /app.f key=" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 46" CONTAINS? TTRUE
-   41 BODY-EDIT-SOURCE
+   41 s" first" BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   SOURCE-ACTION-ONCE
-   OUT$ s" right-origin=current" CONTAINS? TTRUE
+   s" body-edit.err" AT ERR$ FS:WRITE-ALL
+   BODY-EDIT-LIVE
    RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
-   101 BODY-EDIT-SOURCE
+   41 s" edited" BODY-EDIT-SOURCE
    s" body-edit-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   SOURCE-ACTION-ONCE
-   OUT$ s" right-origin=current" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
+   s" comment-edit.err" AT ERR$ FS:WRITE-ALL
+   BODY-EDIT-LIVE
+   0 DIAG? !
+   RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
    LITERAL-IMAGE-SAVE
    s" body-edit-fresh-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 107" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 
 : BODY-READER-CASE ( -- )
@@ -571,6 +602,63 @@ variable HISTORY-LIB-NEW
    OUT$ s" mode-step" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
    OUT$ s" mode-step" CONTAINS? TFALSE ;
+
+\ a.f with R's value v (5 or 6): LV, an immediate, reads R while a body is
+\ read; L-DEF reads it as it creates.
+: BODY-RUN-A ( n -- )
+   {: v:n :}
+   s" a.f"
+      S\" package FILE-RUN-A public\ncreate L 8 allot\nvariable R " PUT
+   s" a.f" AT v 5 = if s" 5" else s" 6" then FS:APPEND-FILE
+   s" a.f" AT
+      S\"  R !\n: AL ( -- n ) L 8 + R = if 1 else 0 then ;\n: LV ( -- ) R @ 5 = if s\" drop 5\" else s\" drop 6\" then evaluate-closed ; immediate\ns\" LV\" 0 parse-imm\n: L-DEF ( -- ) create R @ , ;\n: F ( n -- n ) LV ;\n;package\n"
+      FS:APPEND-FILE ;
+
+\ LV runs while F's body (in R's file) and H's (in b.f) are read, so R is a
+\ row of each; G calls F, X and K read R at b.f's top level. After the edit
+\ a.f misses its object and compiles whole, H recompiles at its head, and the
+\ warm build prints what a fresh one does.
+: BODY-RUN-CASE ( -- )
+   s" a run while a body is read is the definition's dependency" T-LABEL
+   s" body-run-cache" AT FS:MAKE-DIR
+   s" body-run-fresh-cache" AT FS:MAKE-DIR
+   5 BODY-RUN-A
+   s" b.f"
+      S\" package FILE-RUN-B public\n: G ( -- n ) 0 FILE-RUN-A:F ;\n: H ( -- n ) 0 FILE-RUN-A:LV ;\nFILE-RUN-A:L-DEF X\nFILE-RUN-A:L 8 + @ constant K\n;package\n"
+      PUT
+   s" app.f"
+      S\" require a.f\nrequire b.f\n: MAIN ( -- ) FILE-RUN-A:AL . FILE-RUN-B:G . FILE-RUN-B:H . FILE-RUN-B:X @ . FILE-RUN-B:K . ;\n"
+      PUT
+   s" body-run-cache" AT RUN-SAVED-IN SUCCESS
+   RUN-APP SUCCESS OUT$ S\" 1\n5\n5\n5\n5\n" CONTAINS? TTRUE
+   6 BODY-RUN-A
+   1 DIAG? !
+   s" body-run-cache" AT RUN-SAVED-IN SUCCESS
+   0 DIAG? !
+   s" body-run-warm.err" AT ERR$ FS:WRITE-ALL
+   ERR$ s" /a.f reason=object-stale" CONTAINS? TTRUE
+   ERR$ s" stale-head name=H path=" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 1\n6\n6\n6\n6\n" CONTAINS? TTRUE
+   s" body-run-fresh-cache" AT RUN-SAVED-IN SUCCESS
+   RUN-APP SUCCESS OUT$ S\" 1\n6\n6\n6\n6\n" CONTAINS? TTRUE ;
+
+\ test/outer-loop-on.f hands b.f to the interpret loop written in Habu, so
+\ G's head and `;` are src/habu/definers.f's.
+: OUTER-HEAD-CASE ( -- )
+   s" a definition the Habu loop reads builds and installs warm" T-LABEL
+   s" outer-head-cache" AT FS:MAKE-DIR
+   s" b.f" S\" package FILE-OUTER-B public\n: G ( -- n ) 7 ;\n;package\n" PUT
+   s" app.f"
+      S\" require test/outer-loop-on.f\nrequire b.f\n: MAIN ( -- ) FILE-OUTER-B:G . ;\n"
+      PUT
+   s" outer-head-cache" AT RUN-SAVED-IN SUCCESS
+   RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE
+   1 DIAG? !
+   s" outer-head-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   0 DIAG? !
+   s" outer-head-warm.err" AT ERR$ FS:WRITE-ALL
+   ERR$ s" name=G path=" CONTAINS? TFALSE
+   RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE ;
 
 : LITERAL-EVENT-CASE ( -- )
    s" a reused body follows source literal calls after an edited prefix" T-LABEL
@@ -651,21 +739,27 @@ variable HISTORY-LIB-NEW
    RUN-APP SUCCESS OUT$ s" share" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 
-\ ROLLED runs at decl.f's load, so sdfail generates SDFAIL:MAKE inside the
-\ build and then fails at commit on the SDFAIL:A it would derive; the build
-\ catches the code. decl.f makes six wordlists outside any package: the
-\ constructor namespaces SHADE and PAIR, protected, and SDFAIL, which the
-\ qualified definition makes. PX:A makes namespace PX, W2 is a bare
-\ wordlist, and `package PX` then gives PX its private wordlist after W2.
+\ decl.f makes five wordlists outside any package: the constructor
+\ namespaces SHADE and PAIR, protected, PX, which PX:A makes, and the bare
+\ W2; `package PX` then gives PX its private wordlist after W2.
 : GENERATED-DECL ( -- )
    s" decl.f"
-      S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n: PX:A ( -- n ) 5 ;\nwordlist constant W2\npackage PX\npublic\n: B ( -- n ) 6 ;\n;package\n"
+      S\" ENUM shade VARIANT red ;VARIANT VARIANT blue ;VARIANT ;ENUM\nSTRUCTURE pair DERIVE addr FIELD a n FIELD b n ;STRUCTURE\n: PX:A ( -- n ) 5 ;\nwordlist constant W2\npackage PX\npublic\n: B ( -- n ) 6 ;\n;package\n"
+      PUT ;
+
+\ ROLLED runs at roll.f's load, so sdfail generates SDFAIL:MAKE inside the
+\ build and then fails at commit on the SDFAIL:A it would derive; the build
+\ catches the code. The roll back cuts roll.f, so a warm build refuses its
+\ object at the cut head and compiles it live.
+: ROLL-DECL ( -- )
+   s" roll.f"
+      S\" : SDFAIL:A ( -- n ) 7 ;\n: ROLLED ( -- n ) [: s\" STRUCTURE sdfail DERIVE addr FIELD a n ;STRUCTURE\" evaluate-closed ;] catch ;\nROLLED constant ROLL-RC\n"
       PUT ;
 
 : GENERATED-SOURCE ( n -- )
    {: last:n :}
    0 INPUT-U !
-   S\" require decl.f\n: MAIN ( -- ) 1 2 PAIR:MAKE PAIR:UNMAKE + . ROLL-RC . SDFAIL:A . "
+   S\" require decl.f\nrequire roll.f\n: MAIN ( -- ) 1 2 PAIR:MAKE PAIR:UNMAKE + . ROLL-RC . SDFAIL:A . "
       INPUT CAP INPUT-U BUF-APPEND
    SB-RESET last FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
    S\"  . PX:A PX:B + . ;\n" INPUT CAP INPUT-U BUF-APPEND
@@ -675,7 +769,7 @@ variable HISTORY-LIB-NEW
    s" words a declaration generates store and reuse like other definitions" T-LABEL
    1 DIAG? !
    s" generated-fresh-cache" AT FS:MAKE-DIR
-   GENERATED-DECL
+   GENERATED-DECL ROLL-DECL
    40 GENERATED-SOURCE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS
    s" generated-cold.err" AT ERR$ FS:WRITE-ALL
@@ -686,14 +780,18 @@ variable HISTORY-LIB-NEW
    s" generated-cache" AT RUN-SAVED-IN SUCCESS
    s" generated-warm.err" AT ERR$ FS:WRITE-ALL
    REUSED
-   \ Only app.f changed: decl.f, its generated words and the wordlists they
-   \ made, installs from its object, and app.f compiles MAIN alone.
+   \ Only app.f changed: decl.f installs its generated words and the wordlists
+   \ they made from its object, roll.f retries sdfail's MAKE and UNMAKE live,
+   \ and app.f compiles MAIN.
    OUT$ S\" files reused 1\n" CONTAINS? TTRUE
-   DIAG-LINES 1 T=
+   ERR$ s" /decl.f reason=" CONTAINS? TFALSE
+   DIAG-LINES 3 T=
+   ERR$ S\" compile-attempt reason=eligible-cache-miss name=MAKE\n" CONTAINS? TTRUE
+   ERR$ S\" compile-attempt reason=eligible-cache-miss name=UNMAKE\n" CONTAINS? TTRUE
    ERR$ s" name=MAIN path=" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 3\n7110\n7\n41\n11\n" CONTAINS? TTRUE
    s" generated-cache" AT RUN-SAVED-IN SUCCESS REUSED
-   DIAG-LINES 0 T=
+   DIAG-LINES 2 T=
    LITERAL-IMAGE-SAVE
    \ The product a hit on decl.f builds is the one a cold build of the same
    \ source builds: the installed wordlists stand where the cold ones did.
@@ -702,11 +800,55 @@ variable HISTORY-LIB-NEW
    LITERAL-IMAGE-SAME? TTRUE
    0 DIAG? ! ;
 
+\ use.f's caller sits in a different file from lib.f's export: dep skips a
+\ file's own records, so only a cross-file reference judges the export's fixed
+\ value.
+: EXPC-LIB ( n -- )
+   {: base:n :}
+   0 INPUT-U !
+   s" package EXPC private " INPUT CAP INPUT-U BUF-APPEND
+   SB-RESET base FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
+   S\"  constant BASE public EXPORT BASE ;package\n" INPUT CAP INPUT-U BUF-APPEND
+   s" lib.f" INPUT INPUT-U @ PUT ;
+
+: EXPC-APP ( n -- )
+   {: last:n :}
+   0 INPUT-U !
+   S\" require use.f\n: MAIN ( -- ) EXPC-USE . " INPUT CAP INPUT-U BUF-APPEND
+   SB-RESET last FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
+   S\"  . ;\n" INPUT CAP INPUT-U BUF-APPEND
+   s" app.f" INPUT INPUT-U @ PUT ;
+
+: EXPORT-CONSTANT-CASE ( -- )
+   s" a caller of an exported constant installs and follows the constant's value" T-LABEL
+   1 DIAG? !
+   s" expc-cache" AT FS:MAKE-DIR
+   41 EXPC-LIB
+   s" use.f" S\" require lib.f\n: EXPC-USE ( -- n ) EXPC:BASE 1+ ;\n" PUT
+   7 EXPC-APP
+   s" expc-cache" AT RUN-SAVED-IN SUCCESS
+   s" expc-cold.err" AT ERR$ FS:WRITE-ALL
+   RUN-APP SUCCESS OUT$ S\" 42\n7\n" CONTAINS? TTRUE
+   8 EXPC-APP
+   s" expc-cache" AT RUN-SAVED-IN SUCCESS
+   s" expc-warm.err" AT ERR$ FS:WRITE-ALL
+   REUSED
+   DIAG-LINES 1 T=
+   ERR$ s" name=MAIN path=" CONTAINS? TTRUE
+   ERR$ s" name=EXPC-USE" CONTAINS? TFALSE
+   RUN-APP SUCCESS OUT$ S\" 42\n8\n" CONTAINS? TTRUE
+   99 EXPC-LIB
+   s" expc-cache" AT RUN-SAVED-IN SUCCESS
+   s" expc-edit.err" AT ERR$ FS:WRITE-ALL
+   ERR$ s" compile-attempt reason=eligible-cache-miss name=EXPC-USE path=" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 100\n8\n" CONTAINS? TTRUE
+   0 DIAG? ! ;
+
 \ HIDE-DEFS-FROM lowers the dictionary count with no code reclaim, so CUT-NEW
 \ takes CUT-OLD's ordinal. The file's object drops CUT-OLD at the cut; a row
 \ left behind would repeat the ordinal and the object would not read back.
 : CUT-CASE ( -- )
-   s" a dictionary cut drops the hidden definition from the file object" T-LABEL
+   s" a dictionary cut drops the hidden definition from the file object, and a warm build compiles the file again from the cut" T-LABEL
    1 DIAG? !
    s" cut-cache" AT FS:MAKE-DIR
    s" app.f"
@@ -716,13 +858,41 @@ variable HISTORY-LIB-NEW
    ERR$ s" native-file: refused" CONTAINS? TFALSE
    ERR$ s"  defs=2 " CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 6\n" CONTAINS? TTRUE
-   s" cut-cache" AT RUN-SAVED-IN SUCCESS REUSED
+   s" cut-cache" AT RUN-SAVED-IN SUCCESS
    s" cut-warm.err" AT ERR$ FS:WRITE-ALL
-   ERR$ s" native-file: refused" CONTAINS? TFALSE
-   \ A reused app.f prints no object line; its record count proves the cut
-   \ dropped CUT-OLD (a leftover gives records=3).
-   ERR$ s"  records=2 " CONTAINS? TTRUE
+   ERR$ S\" /app.f reason=head-stale\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 6\n" CONTAINS? TTRUE
+   0 DIAG? ! ;
+
+\ lib.f's TRUSTED: TWICE installs from lib.f's object on a warm build, as the
+\ colon DOUBLE beside it does; only app.f's literal changes.
+: TRUSTED-SOURCE ( n -- )
+   {: last:n :}
+   0 INPUT-U !
+   S\" require lib.f\n: MAIN ( -- ) 3 TINS:DOUBLE . 4 TINS:TWICE . "
+      INPUT CAP INPUT-U BUF-APPEND
+   SB-RESET last FMT:SB-INT SB$ INPUT CAP INPUT-U BUF-APPEND
+   S\"  . ;\n" INPUT CAP INPUT-U BUF-APPEND
+   s" app.f" INPUT INPUT-U @ PUT ;
+
+: TRUSTED-INSTALL-CASE ( -- )
+   s" a TRUSTED: definition installs from its file object" T-LABEL
+   1 DIAG? !
+   s" trusted-cache" AT FS:MAKE-DIR
+   s" lib.f"
+      S\" package TINS\npublic\n: DOUBLE ( n -- n ) 2 * ;\nTRUSTED: TWICE ( n -- n ) 2 * ;\n;package\n"
+      PUT
+   50 TRUSTED-SOURCE
+   s" trusted-cache" AT RUN-SAVED-IN SUCCESS
+   RUN-APP SUCCESS OUT$ S\" 6\n8\n50\n" CONTAINS? TTRUE
+   51 TRUSTED-SOURCE
+   s" trusted-cache" AT RUN-SAVED-IN SUCCESS
+   s" trusted-warm.err" AT ERR$ FS:WRITE-ALL
+   \ lib.f installs DOUBLE and TWICE from its object; app.f compiles MAIN alone.
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
+   DIAG-LINES 1 T=
+   ERR$ s" name=MAIN path=" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 6\n8\n51\n" CONTAINS? TTRUE
    0 DIAG? ! ;
 
 public
@@ -782,6 +952,7 @@ public
       0 SCRIPT-ARGV$ s" body" STR= if
          BODY-EDIT-CASE
          BODY-READER-CASE
+         BODY-RUN-CASE
          T-REPORT
          exit
       then
@@ -795,8 +966,30 @@ public
          T-REPORT
          exit
       then
+      0 SCRIPT-ARGV$ s" body-run" STR= if
+         BODY-RUN-CASE
+         T-REPORT
+         s" native file auto artifacts: " type ROOT$ type cr
+         exit
+      then
+      0 SCRIPT-ARGV$ s" outer-head" STR= if
+         OUTER-HEAD-CASE
+         T-REPORT
+         s" native file auto artifacts: " type ROOT$ type cr
+         exit
+      then
       0 SCRIPT-ARGV$ s" generated" STR= if
          GENERATED-CASE
+         T-REPORT
+         exit
+      then
+      0 SCRIPT-ARGV$ s" export-constant" STR= if
+         EXPORT-CONSTANT-CASE
+         T-REPORT
+         exit
+      then
+      0 SCRIPT-ARGV$ s" trusted-install" STR= if
+         TRUSTED-INSTALL-CASE
          T-REPORT
          exit
       then
@@ -822,9 +1015,13 @@ public
    HISTORY-CASE
    BODY-EDIT-CASE
    BODY-READER-CASE
+   BODY-RUN-CASE
+   OUTER-HEAD-CASE
    HOOK-CASE
    GENERATED-CASE
+   EXPORT-CONSTANT-CASE
    CUT-CASE
+   TRUSTED-INSTALL-CASE
    T-REPORT ;
 ;package
 ;using

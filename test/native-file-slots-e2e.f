@@ -1,8 +1,9 @@
-\ A cached FILE replays its address cell rows: a pointer cell holding its own
-\ DATA, a quotation cell, a pointer cell holding a literal body that shares the
-\ file's literal pool, and an earlier file's cell a later file overwrote, also
-\ when a file declares an earlier file's cell before its own. The warm product
-\ is the cold one byte for byte.
+\ A cached FILE's top level runs again and fills its address cells: a pointer
+\ cell holding its own DATA, a quotation cell, a pointer cell holding a literal
+\ body that shares the file's literal pool, and an earlier file's cell a later
+\ file overwrote, also when a file declares an earlier file's cell before its
+\ own, writes it before a child load, or points at a child's DATA. The warm
+\ product is the cold one byte for byte.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -18,8 +19,6 @@ create APP PATH-CAP allot variable APP-U
 create CACHE PATH-CAP allot variable CACHE-U
 DYNAMIC-BUFFER BYTES u8
 DYNAMIC-BUFFER COLD u8  variable COLD-U
-$1000 constant LINE-CAP
-create LINE LINE-CAP allot  variable LINE-U
 
 : LIB$ ( -- ptr u8 n )
    S\" package SLOT-LIB\npublic\nPERSISTED-PTR-VARIABLE P\ncreate BUF 16 allot\nBUF P !\n65 BUF c!\nTYPED-VARIABLE Q [ -- n ]\n: SEVEN ( -- n ) 7 ;\n' SEVEN Q xt!\nPERSISTED-PTR-VARIABLE S\ns\" hello\" drop S !\n: GREET ( -- ) s\" world\" type ;\n: PEEK ( -- n ) P @ c@ ;\n: CALL ( -- n ) Q @ execute ;\n: SAY ( -- ) S @ 5 type ;\n;package\n" ;
@@ -110,10 +109,9 @@ create LINE LINE-CAP allot  variable LINE-U
    S\" files reused 0\n" REUSED
    s" cold-hb" S\" 66\n7\nhelloworld" RAN
    s" cold-hb" KEEP
-   s" warm build installs every file's slot rows" T-LABEL
+   s" warm build reuses every file" T-LABEL
    s" warm-hb" BUILT
    S\" files reused 3\n" REUSED
-   NATIVE-FILE-APP:ERR$ s" reason=unsupported-slots" CONTAINS? TFALSE
    s" warm-hb" S\" 66\n7\nhelloworld" RAN
    s" warm product is the cold one" T-LABEL
    s" warm-hb" SAME? TTRUE ;
@@ -136,41 +134,26 @@ create LINE LINE-CAP allot  variable LINE-U
    s" warm product with an earlier cell declared first is the cold one" T-LABEL
    s" warm4-hb" SAME? TTRUE ;
 
-\ Capture refuses a file that writes an earlier file's DATA, or stores the end
-\ of its DATA in a pointer cell, before a child load.
-: REFUSAL$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n why:ptr whyu:n :}
-   0 LINE-U !
-   s" native-file: refused path=" LINE LINE-CAP LINE-U BUF-APPEND
-   name nameu AT LINE LINE-CAP LINE-U BUF-APPEND
-   s"  reason=" LINE LINE-CAP LINE-U BUF-APPEND
-   why whyu LINE LINE-CAP LINE-U BUF-APPEND
-   s\" \n" LINE LINE-CAP LINE-U BUF-APPEND
-   LINE LINE-U @ ;
-
-: WRITE-REFUSAL$ ( -- ptr u8 n )
-   s" set2.f" s" earlier-write-before-load" REFUSAL$ ;
-
-: REFUSAL-CASE ( -- )
+\ set2.f writes lib.f's cell P before it loads more.f.
+: EARLIER-WRITE-CASE ( -- )
    s" set2.f" SET2$ PUT
    s" more.f" MORE$ PUT
    s" app2.f" APP2$ PUT
    s" app2.f" s" cache2" USE
-   s" a file that writes earlier DATA before a load is refused" T-LABEL
+   s" cold build stores a file that writes earlier DATA before a load" T-LABEL
    s" cold2-hb" BUILT
-   NATIVE-FILE-APP:ERR$ WRITE-REFUSAL$ CONTAINS? TTRUE
    s" cold2-hb" S\" 66\n3\n" RAN
-   s" the warm build reuses every other file" T-LABEL
+   s" cold2-hb" KEEP
+   s" warm build reuses the file that writes earlier DATA" T-LABEL
    s" warm2-hb" BUILT
-   S\" files reused 3\n" REUSED
-   NATIVE-FILE-APP:ERR$ WRITE-REFUSAL$ CONTAINS? TTRUE
-   s" warm2-hb" S\" 66\n3\n" RAN ;
+   S\" files reused 4\n" REUSED
+   s" warm2-hb" S\" 66\n3\n" RAN
+   s" warm product with an earlier write before a load is the cold one" T-LABEL
+   s" warm2-hb" SAME? TTRUE ;
 
-\ C, the child's first DATA, is where bnd.f's DATA before the load ends, and
-\ the end of a segment is its own: as a reference into bnd.f's DATA, C would
-\ come back as the start of bnd.f's DATA after the load. par.f stores here
-\ after a load of kid.f, which allots nothing, with no segment after it: a
-\ reference would come back as the end of BEFORE after kid.f allots DATA.
+\ bnd.f stores C, the child's first DATA, which is where bnd.f's DATA before
+\ the load ends. par.f stores here after a load of kid.f, which allots nothing
+\ until it grows, with no segment after it.
 : BOUNDARY-CASE ( -- )
    s" bnd.f" BND$ PUT
    s" child.f" CHILD$ PUT
@@ -178,25 +161,25 @@ create LINE LINE-CAP allot  variable LINE-U
    s" kid.f" KID$ PUT
    s" app5.f" APP5$ PUT
    s" app5.f" s" cache5" USE
-   s" a pointer to a child's first DATA refuses the parent" T-LABEL
+   s" cold build stores files pointing at a child's DATA" T-LABEL
    s" cold5-hb" BUILT
-   NATIVE-FILE-APP:ERR$ s" bnd.f" s" slot-boundary" REFUSAL$ CONTAINS? TTRUE
-   NATIVE-FILE-APP:ERR$ s" par.f" s" slot-boundary" REFUSAL$ CONTAINS? TTRUE
    s" cold5-hb" S\" same8\n" RAN
-   s" the warm build reuses every other file" T-LABEL
+   s" cold5-hb" KEEP
+   s" warm build reuses the files pointing at a child's DATA" T-LABEL
    s" warm5-hb" BUILT
-   S\" files reused 4\n" REUSED
-   NATIVE-FILE-APP:ERR$ s" bnd.f" s" slot-boundary" REFUSAL$ CONTAINS? TTRUE
-   NATIVE-FILE-APP:ERR$ s" par.f" s" slot-boundary" REFUSAL$ CONTAINS? TTRUE
+   S\" files reused 6\n" REUSED
    s" warm5-hb" S\" same8\n" RAN
-   s" a child that grows moves the parent's pointer past its DATA" T-LABEL
+   s" warm product pointing at a child's DATA is the cold one" T-LABEL
+   s" warm5-hb" SAME? TTRUE
+   s" a child that grows moves the reused parent's pointer past its DATA" T-LABEL
    s" kid.f" KID8$ PUT
    s" grown5-hb" BUILT
+   S\" files reused 5\n" REUSED
    s" grown5-hb" S\" same16\n" RAN ;
 
-\ inst.f's HOOK-SET compiles `is` on dfr.f's defer and runs: the defer's cell
-\ is a declared address cell, so the store is a slot row and the quotation it
-\ holds an edge.
+\ inst.f's HOOK-SET compiles `is` on dfr.f's defer and its top level runs it:
+\ a reused inst.f runs its top level again, which stores HOOK-SET's quotation
+\ in the defer's cell of the reused dfr.f.
 : REBIND-CASE ( -- )
    s" dfr.f" DFR$ PUT
    s" inst.f" INST7$ PUT
@@ -225,7 +208,7 @@ public
    s" native-file-slots" TREE
    SLOTS-CASE
    REGISTRY-CASE
-   REFUSAL-CASE
+   EARLIER-WRITE-CASE
    BOUNDARY-CASE
    REBIND-CASE
    T-REPORT ;

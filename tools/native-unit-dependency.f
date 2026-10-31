@@ -2,8 +2,11 @@
 \ one source file: slot 14 of the unit object (tools/native-unit-object.f
 \ DEPS-SLOT). Rows carry declaration identities, checked contracts, frozen
 \ primitive schemas and fixed values; anything not re-verifiable is ORDERED.
-\ A nested definition keeps a separate span. A file frame holds one row per
-\ kind and key, only about records before its first ordinal or made by a child.
+\ A nested definition keeps a separate span. A definition frame opens at the
+\ definition's `:` head, so what runs while its body is read (an immediate
+\ word, text it evaluates) is the definition's rows; no record is own to it.
+\ A file frame holds one row per kind and key, only about records before its
+\ first ordinal or made by a child.
 
 require src/lib/errors.f
 require src/lib/le.f
@@ -50,8 +53,7 @@ private
 \ children's record ranges start, where its first ORDERED reason starts, and
 \ its entry here, the pending run count (FRUN-N) when it opened, the
 \ wordlist counter where its open segment began: at its open, then after
-\ each child file it loaded, and whether a top-level action ran with checking
-\ off.
+\ each child file it loaded.
 0 constant F-OFF
 1 constant F-FIRST
 2 constant F-RBASE
@@ -59,27 +61,15 @@ private
 4 constant F-HERE
 5 constant F-RUNS
 6 constant F-WID
-7 constant F-UNCHECKED
-8 constant FRAME-CELLS
+7 constant FRAME-CELLS
 \ A pending seed word run's FRUNS cells (RUN-BEFORE, RUN-AFTER): the record
-\ run, the source position past its token in the token's buffer, then the
-\ record count, here, the wordlist count, the four kernel cells and the
-\ checker's unit facts before it, whether it opened a child file, the
-\ output bytes the open files held before it (RUN-OUT), the pending FFI
-\ declaration before it (PENDING) and CWORK's layout mark before it
-\ (CWORK-MARK).
+\ run, whether it opened a child file, CWORK's layout mark before it
+\ (CWORK-MARK) and the definition frame depth when it began.
 0 constant R-ORD
-1 constant R-END
-2 constant R-N
-3 constant R-HERE
-4 constant R-WID
-5 constant R-K0
-9 constant R-FACTS
-10 constant R-CHILD
-11 constant R-OUT
-12 constant R-PENDING
-13 constant R-CWORK
-14 constant RUN-CELLS
+1 constant R-CHILD
+2 constant R-CWORK
+3 constant R-DEPTH
+4 constant RUN-CELLS
 32 constant DIGEST-BYTES
 \ A DATA address read at compile time is an integer.
 CAST: N>U8 ( n -- ptr u8 )
@@ -100,8 +90,16 @@ DYNAMIC-BUFFER FWHY u8
 DYNAMIC-BUFFER FSLOTS n
 \ The pending seed word runs, RUN-CELLS cells each, innermost last.
 DYNAMIC-BUFFER FRUNS n
-\ Each open definition frame's ordinal and entry here, two cells per depth.
+\ Each open definition frame's ordinal, entry here and phase, DLIMIT-CELLS
+\ cells per depth. A frame is READING from its head while the body is read,
+\ and COMPILING once the body compiles (COMPILING!).
 DYNAMIC-BUFFER DLIMITS n
+0 constant D-ORD
+1 constant D-HERE
+2 constant D-PHASE
+3 constant DLIMIT-CELLS
+0 constant READING
+1 constant COMPILING
 \ A closure walk: the epoch stamp of each record it reached, its pending
 \ records and beside each whether a kernel member read it as the kernel's
 \ own (VISIT), its members, and its digest context and result.
@@ -123,14 +121,10 @@ DYNAMIC-BUFFER OIDX n
 DYNAMIC-BUFFER OPMAX n
 DYNAMIC-BUFFER OPEND n
 \ The slot words TASK:+USER made inside a file frame or an install restored,
-\ as TASK named them (TASK:OBSERVE-SLOTS): USER-N rows of four cells, each
-\ its record's ordinal, the slot's DATA offset and size, and the offset in
-\ USER-BYTES of the slot's bytes as they stood when the slot was declared
-\ (its entry bytes). USER-BYTES-N bytes of USER-BYTES are in use.
+\ as TASK named them (TASK:OBSERVE-SLOTS): USER-N rows of three cells, each
+\ its record's ordinal and the slot's DATA offset and size.
 DYNAMIC-BUFFER USER-TAB n
 variable USER-N
-DYNAMIC-BUFFER USER-BYTES u8
-variable USER-BYTES-N
 0 CWORK-VARIABLE OI-N n
 0 CWORK-VARIABLE OW n
 0 CWORK-VARIABLE OPEND-N n
@@ -142,15 +136,13 @@ variable USER-BYTES-N
 0 CWORK-VARIABLE WOK bool
 0 CWORK-VARIABLE WTRANS bool
 0 CWORK-VARIABLE WROOT n
-\ Whether a walk since CAPTURE-RUN began admitted an unchecked body by its
-\ contract (MEMBER-ADMITTED?).
-0 CWORK-VARIABLE WUNCHECKED bool
 0 CWORK-VARIABLE RMARK-N n
 0 CWORK-VARIABLE REPOCH n
 0 CWORK-VARIABLE RQ-N n
 0 CWORK-VARIABLE FAIL-P ptr u8
 0 CWORK-VARIABLE FAIL-U n
 0 CWORK-VARIABLE FAIL-ORD n
+0 CWORK-VARIABLE FAIL-KEEP bool
 0 CWORK-VARIABLE S-OWNER n
 0 CWORK-VARIABLE S-BASE n
 0 CWORK-VARIABLE S-END n
@@ -223,11 +215,16 @@ INSTALL-DEFAULT
 
 : RFIELD ( n n -- ptr n ) swap RUN-CELLS * + FRUNS ;
 
+\ Cell f of the innermost definition frame's DLIMITS entry.
+: DFIELD ( n -- ptr n )
+   DEPTH @ 0 <= if BAD then
+   DEPTH @ 1- DLIMIT-CELLS * + DLIMITS ;
+
 : OPEN? ( -- bool ) DEPTH @ 0 > FDEPTH @ 0 > or ;
 
 \ A record the innermost file made itself: at or after its first ordinal and
 \ outside every child file it loaded. Rows about it are internal to the file.
-: OWN? ( n -- bool )
+: FILE-OWN? ( n -- bool )
    {: ord:n :}
    FDEPTH @ 0= if false exit then
    ord F-FIRST FFIELD @ < if false exit then
@@ -239,14 +236,20 @@ INSTALL-DEFAULT
 \ No open frame keeps a row about this record.
 : SKIP? ( n -- bool )
    DEPTH @ 0 > if drop false exit then
-   OWN? FDEPTH @ 0= or ;
+   FILE-OWN? FDEPTH @ 0= or ;
+
+\ A record a run's walk goes through rather than captures: one the file made,
+\ while no definition frame is open. A definition frame owns no record.
+: OWN? ( n -- bool )
+   DEPTH @ 0 > if drop false exit then
+   FILE-OWN? ;
 
 \ A package record the file made and loaded no child file since: every
 \ lookup in it is decided by the file's own source. Its absence before the
 \ file is the `package` decision row's fact (OBSERVE-RESOLUTION).
 : OWN-NAMESPACE? ( n -- bool )
    {: ns:n :}
-   ns OWN? 0= if false exit then
+   ns FILE-OWN? 0= if false exit then
    FRN @ F-RBASE FFIELD @ = if true exit then
    ns FRN @ 1- FRANGES @ >= ;
 
@@ -365,7 +368,7 @@ INSTALL-DEFAULT
    {: ord:n kind:n key:ptr keyu:n data:ptr datau:n :}
    OPEN? 0= if BAD then
    DEPTH @ 0 > if kind key keyu data datau DEF-ROW then
-   FDEPTH @ 0 > ord OWN? 0= and if kind key keyu data datau FILE-ROW then ;
+   FDEPTH @ 0 > ord FILE-OWN? 0= and if kind key keyu data datau FILE-ROW then ;
 
 : BINDING-ROW ( n ptr u8 n ptr u8 n -- )
    {: ord:n key:ptr keyu:n contract:ptr contractu:n :}
@@ -408,7 +411,14 @@ INSTALL-DEFAULT
 : FAIL ( ptr u8 n n -- )
    {: why:ptr whyu:n ord:n :}
    WOK @ 0= if exit then
-   false WOK ! why FAIL-P ! whyu FAIL-U ! ord FAIL-ORD ! ;
+   false WOK ! why FAIL-P ! whyu FAIL-U ! ord FAIL-ORD ! false FAIL-KEEP ! ;
+
+\ FAIL for a reason that refuses the file whose own record's run meets it
+\ (CAPTURE-RUN).
+: HAZARD ( ptr u8 n n -- )
+   WOK @ {: open:bool :}
+   FAIL
+   open if true FAIL-KEEP ! then ;
 
 : HOOKED? ( -- bool ) data-base HOOK-CELL + CELL-VIEW @ 0<> ;
 
@@ -469,9 +479,7 @@ INSTALL-DEFAULT
    FDEPTH @ 0 > if
       ord F-FIRST FFIELD @ < if F-FIRST FFIELD @ F-HERE FFIELD @ exit then
    then
-   DEPTH @ 0 > if
-      DEPTH @ 1- 2 * DLIMITS @ DEPTH @ 1- 2 * 1+ DLIMITS @ exit
-   then
+   DEPTH @ 0 > if D-ORD DFIELD @ D-HERE DFIELD @ exit then
    ndict@ HERE-N ;
 
 \ The origin index. A record enters it once, when a query first covers its
@@ -524,28 +532,23 @@ $8000000000000000 constant ORIGIN-FLOOR
       1 OPEND-N +!
    then ;
 
-: USER-CELL ( n n -- ptr n ) swap 4 * + USER-TAB ;
+: USER-CELL ( n n -- ptr n ) swap 3 * + USER-TAB ;
 
 public
 
 \ A dictionary cut keeping kept records drops the origins and the slot rows
-\ it removed, the kept rows' entry bytes moved down with them.
+\ it removed.
 : DICT-CUT ( n -- )
    {: kept:n :}
-   0 0 USER-N @ 0 ?do
-      {: rows:n bytes:n :}
+   0 USER-N @ 0 ?do
+      {: rows:n :}
       i 0 USER-CELL @ kept < if
-         i 2 USER-CELL @ {: size:n :}
-         size 0 > if
-            i 3 USER-CELL @ USER-BYTES bytes USER-BYTES size BYTE-COPY
-         then
          i 0 USER-CELL @ rows 0 USER-CELL !
          i 1 USER-CELL @ rows 1 USER-CELL !
-         size rows 2 USER-CELL !
-         bytes rows 3 USER-CELL !
-         rows 1+ bytes size +
-      else rows bytes then
-   loop USER-BYTES-N ! USER-N !
+         i 2 USER-CELL @ rows 2 USER-CELL !
+         rows 1+
+      else rows then
+   loop USER-N !
    kept OW @ >= if exit then
    0 OI-N @ 0 ?do
       i OI-R kept < if dup i OI-O i OI-R OI! 1+ then
@@ -635,72 +638,28 @@ CAST: AS-FIND ( n -- [ ptr u8 n -- n ] )
 CAST: AS-REACH ( n -- [ n -- n ] )
 variable RUN-CLASS-XT
 CAST: AS-CLASS ( n -- [ -- n ] )
-variable FACTS-XT
-CAST: AS-FACTS ( n -- [ -- n bool ] )
-variable PENDING-XT
-CAST: AS-PENDING ( n -- [ -- n ] )
 variable CWORK-XT
 CAST: AS-MARK ( n -- [ -- n ] )
-variable READERS-XT
-CAST: AS-READERS ( n -- [ [ n -- ] -- ] )
-variable READ-AT
-variable READ-HIT
 CAST: SLOT-XT>N ( [ -- ptr n ] -- n )
 
 public
 
-\ Append slot row ord off size, its entry bytes the size bytes at entry.
-: USER+ ( ptr u8 n n n -- )
-   {: entry:ptr ord:n off:n size:n :}
+\ Append slot row ord off size.
+: USER+ ( n n n -- )
+   {: ord:n off:n size:n :}
    USER-N @ {: row:n :}
-   USER-BYTES-N @ {: at:n :}
-   row 1+ 4 * USER-TAB-RESERVE
-   size 0 > if
-      at size + USER-BYTES-RESERVE
-      entry at USER-BYTES size BYTE-COPY
-   then
-   ord row 0 USER-CELL ! off row 1 USER-CELL !
-   size row 2 USER-CELL ! at row 3 USER-CELL !
-   size USER-BYTES-N +!
+   row 1+ 3 * USER-TAB-RESERVE
+   ord row 0 USER-CELL ! off row 1 USER-CELL ! size row 2 USER-CELL !
    1 USER-N +! ;
-
-\ The slot rows, and row idx's ordinal, offset and size.
-: USERS ( -- n ) USER-N @ ;
-: USER-ROW ( n -- n n n )
-   {: idx:n :}
-   idx 0 USER-CELL @ idx 1 USER-CELL @ idx 2 USER-CELL @ ;
-
-\ Row idx's entry bytes, valid until the next USER+ or DICT-CUT.
-: USER-ENTRY$ ( n -- ptr u8 n )
-   {: idx:n :}
-   idx 2 USER-CELL @ {: size:n :}
-   size 0= if NULL-PTR 0 exit then
-   idx 3 USER-CELL @ USER-BYTES size ;
 
 : USER? ( n -- bool )
    {: ord:n :}
    USER-N @ 0 ?do i 0 USER-CELL @ ord = if true unloop exit then loop
    false ;
 
-\ The slot word whose slot holds DATA offset off, -1 when none.
-: USER-AT ( n -- n )
-   {: off:n :}
-   USER-N @ 0 ?do
-      i USER-ROW {: ord:n at:n size:n :}
-      off at >= off at size + < and if ord unloop exit then
-   loop
-   -1 ;
-
 \ TASK's slot observer: +USER made the slot word xt over off and size. Inside
 \ a file frame it is the newest record of the innermost file with that
-\ execution token; none is a broken identity. The row keeps the slot's
-\ bytes as the declaration found them: a hit installs the slot's close bytes
-\ only over these (NUNIT-OBJECT USER-ROWS-HOLD?), so a slot declared over
-\ bytes another owner wrote never restores that owner's old value. A segment
-\ that writes a slot of its own and then declares another slot over it
-\ records entry bytes no warm run holds before the segment installs: as a
-\ file's first segment that file misses on every build, and as a later one
-\ its replay goes stale and the maker reruns without its key.
+\ execution token; none is a broken identity.
 : USER-MADE ( [ -- ptr n ] n n -- )
    FDEPTH @ 0= if drop 2drop exit then
    {: q off:n size:n :}
@@ -708,25 +667,12 @@ public
    F-FIRST FFIELD @ {: first:n :}
    ndict@ 1- begin dup first >= while
       dup XREF-REC XREF-START xt = if
-         data-base BYTE-VIEW off + swap off size USER+ exit
+         off size USER+ exit
       then
       1-
    repeat drop BAD ;
 
 private
-
-\ The checker's unit-export fact count, -1 when the owner answers none.
-: FACTS ( -- n )
-   FACTS-XT @ 0= if -1 exit then
-   FACTS-XT @ AS-FACTS execute {: n:n known:bool :}
-   known 0= if -1 exit then
-   n ;
-
-\ The pending FFI declaration, FFI:PENDING; 0, which never admits a run,
-\ when the declarer is not loaded.
-: PENDING ( -- n )
-   PENDING-XT @ 0= if 0 exit then
-   PENDING-XT @ AS-PENDING execute ;
 
 \ CWORK's layout mark, CWORK:LAYOUT-MARK: its declared bytes plus its DEFAULT
 \ rows, both only increasing, so any CWORK declaration or DEFAULT changes it.
@@ -734,20 +680,6 @@ private
 : CWORK-MARK ( -- n )
    CWORK-XT @ 0= if 0 exit then
    CWORK-XT @ AS-MARK execute ;
-
-\ The DATA offset of kernel cell k, the cells NUNIT-OBJECT KCELL names: tier,
-\ build depth, build tier and the optimizing compiler's dispatch.
-: KCELL-OFF ( n -- n )
-   {: k:n :}
-   k 0 = if NCOMP-DISPATCH:TIER-CELL exit then
-   k 1 = if NCOMP-DISPATCH:BUILD-DEPTH-CELL exit then
-   k 2 = if NCOMP-DISPATCH:BUILD-TIER-CELL exit then
-   k 3 = if NCOMP-DISPATCH:XT-CELL exit then
-   BAD ;
-
-: KCELL@ ( n -- n )
-   KCELL-OFF {: off:n :}
-   data-base off + CELL-VIEW @ ;
 \ The scope-find flag "the bound record is a seeded primitive"
 \ (src/compiler/native/dict.f, NDICT-private); SCOPE-FIND-AMBIGUOUS is the
 \ global one (src/core/util.f).
@@ -822,27 +754,14 @@ private
    ord DEFER-SENTINEL? if 3 exit then
    0 ;
 
-\ Whether seed record ord is a word TASK names a reader of its user-slot
-\ watermark (TASK:OWNED-USER-READERS), matched by the execution token TASK
-\ hands out. READ-AT and READ-HIT carry the match into READER-MATCH and rest
-\ at 0 after it.
-: READER-MATCH ( n -- ) READ-AT @ = if 1 READ-HIT ! then ;
-: USER-READER? ( n -- bool )
-   {: ord:n :}
-   READERS-XT @ {: xt:n :}
-   xt 0= if false exit then
-   ord XREF-REC XREF-START READ-AT !
-   0 READ-HIT !
-   ['] READER-MATCH xt AS-READERS execute
-   READ-HIT @ 0<>  0 READ-AT !  0 READ-HIT ! ;
-
-\ The refusal a reached member's host reason names; an admitted one has none.
-: REASON-WHY$ ( n -- ptr u8 n )
-   {: reason:n :}
-   reason NHOST:CAST = if s" run-host-cast" exit then
-   reason NHOST:UNCHECKED = if s" run-host-unchecked" exit then
-   reason NHOST:FOREIGN = if s" run-host-foreign" exit then
-   s" run-host-unknown" ;
+\ Fail the walk at member ord for its unadmitted host reason: an unchecked
+\ or foreign body is a hazard.
+: MEMBER-FAIL ( n n -- )
+   {: reason:n ord:n :}
+   reason NHOST:CAST = if s" run-host-cast" ord FAIL exit then
+   reason NHOST:UNCHECKED = if s" run-host-unchecked" ord HAZARD exit then
+   reason NHOST:FOREIGN = if s" run-host-foreign" ord HAZARD exit then
+   s" run-host-unknown" ord FAIL ;
 
 : H-REF ( n n n -- )
    {: target:n addend:n holder:n :}
@@ -876,9 +795,9 @@ private
       owner 0 >= if owner v base - holder H-REF exit then
    then
    v AOT-CELL:DATA-ADDRESS? v REGION? or if
-      s" executed-closure-unknown" holder FAIL exit
+      s" executed-closure-unknown" holder HAZARD exit
    then
-   v AOT-CELL:MAPPED? if s" mapped-compile-time-read" holder FAIL exit then
+   v AOT-CELL:MAPPED? if s" mapped-compile-time-read" holder HAZARD exit then
    0 H-N v H-N ;
 
 \ The cells in [start, end) the engine declared address cells
@@ -900,10 +819,15 @@ private
 
 \ ord's DATA digest in HOUT over its extent up to the next record origin
 \ within its limits, and that extent in bytes; 0 when ord has no DATA origin
-\ or its extent is empty. A cell that may hold an address goes through
-\ H-POINTER: a variable's or defer's first cell and each declared address
-\ cell. Its raw bytes hold a process address. The declared cells' count and
-\ offsets precede the bytes, so each extent state has one stream layout.
+\ or its extent is empty. A compile-time read is tracked as a read of the
+\ record whose address it derives from, within that record's extent: a
+\ compiled data reference names a record origin (NUNIT-OBJECT DEF-ADDR-REF)
+\ and no read is guarded, so a read past the extent, as `L 8 +` into the
+\ next record, is outside what the build tracks. A cell that may hold an
+\ address goes through H-POINTER: a variable's or defer's first cell and
+\ each declared address cell. Its raw bytes hold a process address. The
+\ declared cells' count and offsets precede the bytes, so each extent state
+\ has one stream layout.
 : DATA-HASH ( n -- n )
    {: ord:n :}
    ord NFILE-REF:DATA-ORIGIN-BASE {: origin:n known:bool :}
@@ -940,7 +864,7 @@ private
    ord DATA-HASH 0= if s" executed-closure-unknown" ord FAIL exit then
    WOK @ 0= if exit then
    ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n known:bool :}
-   known 0= if s" executed-closure-unknown" ord FAIL exit then
+   known 0= if s" executed-closure-unknown" ord HAZARD exit then
    WCAPTURE @ if ord DATA key keyu HOUT DIGEST-BYTES ADD-ROW then ;
 
 : MEMBER+ ( n -- )
@@ -963,20 +887,21 @@ private
       ord i NFILE-REF:RESULT-EDGE {: kind:n target:n :}
       kind drop
       target 0 < if
-         s" executed-closure-unknown" ord FAIL
+         s" executed-closure-unknown" ord HAZARD
       else target kernel VISIT then
    loop ;
 
 \ A seed record lies below the floor: a seed value is terminal, a classed
 \ primitive, an engine helper, the unset-defer sentinel or a representation
-\ cast is admitted (SEED-KIND), and any other seed record
-\ refuses, a seed defer's cell among them: the kernel made it, so it stays
-\ kernel data.
+\ cast is admitted (SEED-KIND). Kernel data, a seed defer's cell among them
+\ (the kernel made it, so it stays kernel data), is a hazard that refuses the
+\ file; a kernel word fails the walk without refusing it.
 : SEED-REACH ( n -- )
    {: ord:n :}
    ord SEED-KIND {: k:n :}
    k 2 = k 3 = or if exit then
-   k 1 = if s" run-reaches-kernel-data" else s" run-reaches-kernel-word" then ord FAIL ;
+   k 1 = if s" run-reaches-kernel-data" ord HAZARD exit then
+   s" run-reaches-kernel-word" ord FAIL ;
 
 \ Whether the walk admits a definition ord with host reason reason, root or
 \ member alike: a reason NFILE-REF:REASON-ADMITTED? admits, or an unchecked
@@ -996,14 +921,17 @@ private
 \ walk from the file's entry does (SEED-REACH). A defer made after the seed
 \ is its cell, since an earlier file may rebind it; a definition with a
 \ result is a member when its host reason or contract admits it
-\ (MEMBER-ADMITTED?) and refuses otherwise; a constant is its VALUE row; a
-\ does> instance's clause has no result yet; anything else must be a data
-\ record. A slot word TASK:+USER made is a member without its edges: its
-\ digest pins the slot offset it bakes, and its slot's bytes are its file's
-\ (USER-ROWS+). A kernel definition with a result is a member whatever its
-\ host reason, so a kernel body edit misses its consumers; a seed record it
-\ reads is the kernel's own (own), admitted with no row (KERNEL-OWN?), and
-\ any other record it reaches is judged here as from any member.
+\ (MEMBER-ADMITTED?); otherwise the walk fails, refusing the file only for an
+\ unchecked or foreign body (MEMBER-FAIL); a constant is its VALUE row; a
+\ does> instance fails without refusing the file: its clause is its definer's
+\ code, which has no result yet and runs live on every build; anything else
+\ must be a data record. A slot word TASK:+USER made is a member without its
+\ edges: its digest pins the slot offset it bakes, and its slot's bytes are
+\ its file's, whose top level writes them. A kernel definition with a result
+\ is a member whatever its host reason, so a kernel body edit misses its
+\ consumers; a seed record it reads is the kernel's own (own), admitted with
+\ no row (KERNEL-OWN?), and any other record it reaches is judged here as from
+\ any member.
 : REACH ( n bool -- )
    {: ord:n own:bool :}
    own if exit then
@@ -1022,9 +950,8 @@ private
    known if
       ord NFILE-REF:RESULT-REASON drop {: reason:n :}
       ord KERNEL? 0= reason ord MEMBER-ADMITTED? 0= and if
-         reason REASON-WHY$ ord FAIL exit
+         reason ord MEMBER-FAIL exit
       then
-      reason NHOST:UNCHECKED = if true WUNCHECKED ! then
       ord MEMBER+
       ord USER? 0= if ord EDGES then exit
    then
@@ -1287,10 +1214,6 @@ public
 \ loaded, and the cache's own diagnostics are no input of any file.
 variable DIAG?
 
-private
-
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
-
 : DIAG-W2 ( ptr u8 n -- )
    {: bytes:ptr size:n :}
    0 begin dup size < while
@@ -1299,6 +1222,10 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
       dup 0 <= if drop E-FS-IO throw then
       +
    repeat drop ;
+
+private
+
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 
 : REPORT-MISS ( -- )
    DIAG? @ 0= if exit then
@@ -1352,22 +1279,12 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
 
 : FILE-ORDERED? ( -- bool ) WHYU @ F-WHY FFIELD @ > ;
 
-public
-
-\ Whether a top-level action of the innermost file ran with checking off, or
-\ a run it judged reached an unchecked body its contract admitted
-\ (CAPTURE-RUN), so its undeclared bytes may hold an address no checked store
-\ made.
-: FILE-UNCHECKED? ( -- bool ) F-UNCHECKED FFIELD @ 0<> ;
-
-private
-
 \ The definition frame reports its first ORDERED row now; the file frame keeps
 \ its first reason for FILE-REPORT.
 : ORDERED-AT ( ptr u8 n ptr u8 n n -- )
    {: reason:ptr reasonu:n name:ptr nameu:n ord:n :}
    DEPTH @ 0 > if reason reasonu name nameu ord DIAG-ORDERED-NAME then
-   FDEPTH @ 0 > ord OWN? 0= and if
+   FDEPTH @ 0 > ord FILE-OWN? 0= and if
       FILE-ORDERED? 0= if
          s"  reason=" WHY+ reason reasonu WHY+
          nameu 0 > if s"  word=" WHY+ name nameu WHY+ then
@@ -1464,10 +1381,7 @@ private
    ns OWN-NAMESPACE? if ns else ord then ;
 
 \ Whether the namespace a resolution row names got its private wordlist in
-\ the innermost file's open segment, from the file's own source. The file's
-\ hit checks the segment's rows before its install gives the namespace that
-\ wordlist again (NUNIT-OBJECT:WIDS-HOLD? checks it can), so its rows see
-\ the namespace without it.
+\ the innermost file's open segment, from the file's own source.
 : OWN-PRIVATE? ( ptr u8 n -- bool )
    {: namespace:ptr namespaceu:n :}
    FDEPTH @ 0= namespaceu 0= or if false exit then
@@ -1509,10 +1423,10 @@ private
       role shape spelling spellingu namespace namespaceu RES-KEY! {: u:n :}
       RESOLUTION 0 RES-KEY u key keyu DEF-ROW
    then
-   FDEPTH @ 0= owner OWN? or if exit then
+   FDEPTH @ 0= owner FILE-OWN? or if exit then
    \ A private wordlist the file's open segment made holds only the
    \ segment's records, so a lookup in it is the file's own; every other
-   \ leg sees the namespace public only, as the file's hit check does.
+   \ leg sees the namespace public only.
    namespace namespaceu OWN-PRIVATE? {: own:bool :}
    own role CHECKER-OWNER-ABI:RES-ROLE-OPEN-PRIVATE = and if exit then
    role own if 1 else shape then spelling spellingu namespace namespaceu
@@ -1530,20 +1444,13 @@ variable TOP-XT
 
 CAST: AS-TOP ( n -- [ ptr u8 n [ ptr u8 n -- ] -- ] )
 
-\ The refusal of the open file for a run of its own record whose walk reached
-\ what it cannot account for (reason, the record it failed on). NUNIT-OBJECT
-\ requires this file, so the definition cache binds it, as it binds TOP-XT.
+\ The refusal of the open file for a run of its own record whose walk met a
+\ HAZARD (reason, the record it failed on). NUNIT-OBJECT requires this file,
+\ so the definition cache binds it, as it binds TOP-XT.
 defer RUN-REFUSE ( ptr u8 n ptr n -- )
 : NO-RUN-REFUSE ( ptr u8 n ptr n -- ) drop 2drop BAD ;
 : DEFAULT-REFUSE ( -- ) ['] NO-RUN-REFUSE is RUN-REFUSE ;
 DEFAULT-REFUSE
-
-\ The output bytes the open files hold (NUNIT-OBJECT:OUTPUT-MARK), bound by
-\ the definition cache beside RUN-REFUSE; 0 while unbound.
-defer RUN-OUT ( -- n )
-: NO-RUN-OUT ( -- n ) 0 ;
-: DEFAULT-OUT ( -- ) ['] NO-RUN-OUT is RUN-OUT ;
-DEFAULT-OUT
 
 \ One leg of the run's token: the row a compiled reference to the same
 \ spelling in the same scope adds, counted when it holds the record that ran.
@@ -1593,8 +1500,7 @@ DEFAULT-OUT
    ord NFILE-REF:DECL-KEY? {: key:ptr keyu:n keyed:bool :}
    keyed 0= if s" primitive-key-unknown" ord ORDERED-BY exit then
    sym control PRIMITIVE-DATA$ {: data:ptr datau:n :}
-   ord PRIMITIVE key keyu data datau ADD-ROW
-   CAPTURE-CHECKER-ROLE ;
+   ord PRIMITIVE key keyu data datau ADD-ROW ;
 
 \ This row is the checker's exact resolution from the successful source scan.
 \ The tape's symbol interner is only a name; it is never a declaration key.
@@ -1616,10 +1522,6 @@ DEFAULT-OUT
       row CHECKER-OWNER-ABI:BOUND-FLAGS BOUND@ {: flags:n :}
       ord flags CAPTURE-READER-FLAGS
       flags DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE then
-      exit
-   then
-   kind CHECKER-OWNER-ABI:BOUND-INTRINSIC = if
-      CAPTURE-CHECKER-ROLE
    then ;
 
 \ The feed reads the source owner's candidates after each scan; `package` and
@@ -1678,7 +1580,7 @@ DEFAULT-OUT
    ord XREF-REC {: rec:ptr :}
    rec XREF-FLAGS DKIND:MASK and DKIND:VAL = if ord CAPTURE-VALUE exit then
    ord NFILE-REF:SEED-RECORD? if
-      ord SEED-KIND 1 = if s" run-reaches-kernel-data" ord FAIL then exit
+      ord SEED-KIND 1 = if s" run-reaches-kernel-data" ord HAZARD then exit
    then
    ord true WALK
    WOK @ 0= if exit then
@@ -1697,12 +1599,12 @@ DEFAULT-OUT
 
 \ The run of ord as rows keyed by records that exist at the file's entry:
 \ each record the run reaches is captured as if run directly when the file
-\ did not make it, and walked through when it did. The first walk that
-\ cannot account for a record decides: under an own root it refuses the file
-\ by the failing record's name, under an earlier file's root it orders the
-\ frame. A run that reached an unchecked body marks the file unchecked
-\ (FILE-UNCHECKED?): that body's stores are not checked, so the file's DATA
-\ is judged cell by cell.
+\ did not make it, and walked through when it did. While a definition frame
+\ is open no record is own (OWN?), so a run made while a body is read is
+\ captured whole as that definition's rows. The first walk that cannot
+\ account for a record decides: under an own root a HAZARD refuses the file
+\ by the failing record's name and any other reason leaves it, as the run
+\ executes live every build; under any other root it orders the frame.
 : CAPTURE-RUN ( n -- )
    {: ord:n :}
    KERNEL-LATCH
@@ -1711,7 +1613,7 @@ DEFAULT-OUT
    n RMARK-N @ ?do 0 i RMARK ! loop
    n RMARK-N @ max RMARK-N !
    1 REPOCH +!
-   0 RQ-N ! true WOK ! false WUNCHECKED !
+   0 RQ-N ! true WOK !
    ord QUEUE
    0 begin dup RQ-N @ < while
       dup RQUEUE @ {: r:n :}
@@ -1719,18 +1621,17 @@ DEFAULT-OUT
       WOK @ 0= if
          drop
          FAIL-P @ FAIL-U @ FAIL-ORD @ XREF-REC {: why:ptr whyu:n rec:ptr :}
-         r OWN? if why whyu rec RUN-REFUSE exit then
+         r OWN? if FAIL-KEEP @ if why whyu rec RUN-REFUSE then exit then
          why whyu FAIL-ORD @ r ord DIAG-ORDERED-RUN
          why whyu rec XREF-NAME$ r ORDERED-AT
          exit
       then
       1+
-   repeat drop
-   WUNCHECKED @ FDEPTH @ 0 > and if 1 F-UNCHECKED FFIELD ! then ;
+   repeat drop ;
 
-\ The frame's SCOPE row names what no later build can verify, so refuse: a
-\ package an earlier session made, whose declaration has no key, or a
-\ wordlist no package owns and no file of this session made.
+\ The frame's SCOPE row names what no later build can verify, so the frame
+\ is ordered: a package an earlier session made, whose declaration has no
+\ key, or a wordlist no package owns and no file of this session made.
 : SCOPE-KNOWN ( -- )
    NFILE-SCOPE:SCOPE-UNKEYED {: ord:n unkeyed:bool :}
    unkeyed 0= if exit then
@@ -1739,25 +1640,17 @@ DEFAULT-OUT
 
 public
 
-\ Whether the open segment ran a TASK watermark reader that RUN-JUDGE
-\ accounted: NUNIT-OBJECT clears it when a segment opens and, at its close,
-\ records the watermark the segment read.
-variable USER-READ
-
 \ The running checker owner's CHECKER-OWNER:RESOLUTION-TOP, bound for the
 \ session by the definition cache before it installs the run observer, and 0
 \ after. A build tool resolves names against its host engine, which may predate
 \ the word, so OBSERVE-RUN reaches it by execution token.
 : USE-TOP ( n -- ) TOP-XT ! ;
 
-\ The open file's refusal for a failed run of its own record, bound for the
-\ session by the definition cache beside USE-TOP, and the default after.
+\ The open file's refusal for a run of its own record that meets a HAZARD,
+\ bound for the session by the definition cache beside USE-TOP, and the
+\ default after.
 : USE-REFUSE ( [ ptr u8 n ptr n -- ] -- ) is RUN-REFUSE ;
 : DROP-REFUSE ( -- ) DEFAULT-REFUSE ;
-
-\ The open files' output mark, bound and dropped the same way.
-: USE-OUT ( [ -- n ] -- ) is RUN-OUT ;
-: DROP-OUT ( -- ) DEFAULT-OUT ;
 
 \ A word the source ran at top level, by an immediate or under a top-level
 \ tick: the checker's resolution rows for its token, one per leg, the legs
@@ -1783,18 +1676,21 @@ variable USER-READ
    {: ord:n :}
    ord OBSERVE-LEGS if ord CAPTURE-RUN then ;
 
+\ Whether the innermost definition frame compiles its body (COMPILING!);
+\ false while none is open or the body is still read.
+: COMPILING? ( -- bool )
+   DEPTH @ 0 > if D-PHASE DFIELD @ COMPILING = else false then ;
+
 \ The source observer's before callback (NDEF-CACHE wraps a file's run in
-\ SOURCE-EXEC:RUN): a seed code word run at this file's top level, or in a
-\ text a pending run evaluates, is judged by the trace its run leaves, read by
-\ RUN-AFTER. It pushes a pending run, whose ticket is its index plus one; 0
-\ when the run is not judged. Any action while a file is open and checking is
-\ off marks the file unchecked first (FILE-UNCHECKED?).
+\ SOURCE-EXEC:RUN): a seed code word run at this file's top level, while a
+\ body is read, or in a text a pending run evaluates, is judged when it closes
+\ (RUN-AFTER, RUN-JUDGE). It pushes a pending run, whose ticket is its index
+\ plus one; 0 when the run is not judged.
 : RUN-BEFORE ( n n n n ptr u8 n -- n bool )
    2drop {: unit:n op:n rec:n entry:n :}
    KERNEL-LATCH
    unit drop entry drop
-   FDEPTH @ 0 > if check@ 0= if 1 F-UNCHECKED FFIELD ! then then
-   op SOURCE-EXEC:WORD <> FDEPTH @ 0= or DEPTH @ 0 > or rec 0 < or if
+   op SOURCE-EXEC:WORD <> FDEPTH @ 0= or COMPILING? or rec 0 < or if
       0 false exit
    then
    rec NFILE-REF:SEED-RECORD? 0= if 0 false exit then
@@ -1804,65 +1700,48 @@ variable USER-READ
    rec SEED-KIND 0<> rec RUNS-OPERAND? 0= and if 0 false exit then
    FRUN-N @ {: run:n :}
    run 1+ RUN-CELLS * FRUNS-RESERVE
-   SOURCE-EXEC:POSITION {: end:n balanced:bool :}
-   balanced drop
    rec run R-ORD RFIELD !
-   end run R-END RFIELD !
-   ndict@ run R-N RFIELD !
-   HERE-N run R-HERE RFIELD !
-   AOT-ARM:WIDN run R-WID RFIELD !
-   4 0 ?do i KCELL@ run R-K0 i + RFIELD ! loop
-   FACTS run R-FACTS RFIELD !
    0 run R-CHILD RFIELD !
-   RUN-OUT run R-OUT RFIELD !
-   PENDING run R-PENDING RFIELD !
    CWORK-MARK run R-CWORK RFIELD !
+   DEPTH @ run R-DEPTH RFIELD !
    run 1+ FRUN-N !
    run 1+ false ;
 
-\ A closed run's judgment: a seed word's run that consumed no source past its
-\ token, changed no record count, here, wordlist count, kernel cell or unit
-\ fact count, left no pending FFI declaration it changed, wrote no output
-\ the open file records (its OUT row carries it) and opened no child file
-\ left nothing the object carries. ;FUNCTION folds the declaration its
-\ clauses changed into the definition and FFI-FN row the object carries.
-\ The rule is residual: a run admitted by its trace may also touch state the
-\ object does not carry, as `.(` reads its text. `data-base`
-\ refuses, so a file aligning with `here data-base - negate 7 and allot`
-\ refuses where `align` stores. A deliberate offset below the floor computed
-\ from `here` is outside this judgment. A run of a TASK watermark reader is
-\ accounted by the watermark its segment records (USER-READ). A run that
-\ declared CWORK storage or wrote a CWORK DEFAULT refuses whatever else it
-\ left: compiler working state is never carried, so the file compiles from
-\ source on every build. A run that loaded a child file leaves the child's
-\ CWORK writes to the child's own runs.
+\ A closed run's judgment: a run that declared CWORK storage or wrote a
+\ CWORK DEFAULT orders the frame, as compiler working state is never carried
+\ (test/native-file-cwork-e2e.f). A run that loaded a child file leaves the
+\ child's CWORK writes to the child's own runs.
 : RUN-JUDGE ( n -- )
    {: run:n :}
-   run R-CHILD RFIELD @ 0=  CWORK-MARK run R-CWORK RFIELD @ <>  and if
-      s" run-writes-cwork" run R-ORD RFIELD @ ORDERED-BY exit
-   then
-   SOURCE-EXEC:POSITION {: off:n balanced:bool :}
-   balanced drop
-   off run R-END RFIELD @ > if exit then
-   ndict@ run R-N RFIELD @ <> if exit then
-   HERE-N run R-HERE RFIELD @ <> if exit then
-   AOT-ARM:WIDN run R-WID RFIELD @ <> if exit then
-   4 0 ?do i KCELL@ run R-K0 i + RFIELD @ <> if unloop exit then loop
-   run R-FACTS RFIELD @ {: facts:n :}
-   facts 0 >= if FACTS facts <> if exit then then
    run R-CHILD RFIELD @ 0<> if exit then
-   RUN-OUT run R-OUT RFIELD @ <> if exit then
-   PENDING {: pending:n :}
-   pending 0<> pending run R-PENDING RFIELD @ <> and if exit then
-   run R-ORD RFIELD @ {: ord:n :}
-   ord USER-READER? if true USER-READ ! exit then
-   s" run-unaccounted" ord ORDERED-BY ;
+   CWORK-MARK run R-CWORK RFIELD @ = if exit then
+   s" run-writes-cwork" run R-ORD RFIELD @ ORDERED-BY ;
 
-\ The source observer's after callback. A failed run fails the file. after(t)
-\ closes every ticket opened after t: those runs threw to a catch inside t's
-\ run, and the catch restored here and the source position, so nothing they
-\ left can be read. Each refuses run-abandoned, innermost first. Then t is
-\ judged. A run in an evaluated text is judged like the file's own.
+: CLOSE ( -- )
+   FRAME {: off:n :}
+   NFILE-REF:END-DEFINITION
+   off USED !
+   -1 DEPTH +!
+   UNOBSERVE ;
+
+private
+
+\ Close every definition frame above depth n. A frame still open where no
+\ body is read belongs to one the engine abandoned on a throw, which
+\ discards the pending definition without notice.
+: CLOSE-ABOVE ( n -- )
+   {: n:n :}
+   begin DEPTH @ n > while CLOSE repeat ;
+
+public
+
+\ The source observer's after callback. A failed run fails the file and
+\ closes the definition frames opened after it began: their bodies were
+\ abandoned by its throw. after(t) closes every ticket opened after t: those
+\ runs threw to a catch inside t's run, and the catch restored here and the
+\ source position, so nothing they left can be read. Each orders the frame
+\ run-abandoned, innermost first. Then t is judged. A run in an evaluated
+\ text is judged like the file's own.
 : RUN-AFTER ( n n n -- )
    {: unit:n ticket:n rc:n :}
    unit drop
@@ -1874,19 +1753,18 @@ variable USER-READ
       dup FRUN-N ! R-ORD RFIELD @ s" run-abandoned" rot ORDERED-BY
    repeat
    FRUN-N !
-   rc 0<> if exit then
+   rc 0<> if run R-DEPTH RFIELD @ CLOSE-ABOVE exit then
    run RUN-JUDGE ;
 
 \ Open a file frame at the file's first record ordinal. Every pending run
-\ opened this one.
+\ opened this one. No body is read across a file's start, so any definition
+\ frame still open was abandoned.
 : BEGIN-UNIT ( -- )
+   0 CLOSE-ABOVE
    s" PRIM-SPEC:REACH@" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT REACH-XT !
    s" PRIM-SPEC:FIND" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FIND-XT !
    s" PRIM-SPEC:R-RUN" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT RUN-CLASS-XT !
-   s" CHECKER-OWNER:UNIT-FACTS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT FACTS-XT !
-   s" FFI:PENDING" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT PENDING-XT !
    s" CWORK:LAYOUT-MARK" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT CWORK-XT !
-   s" TASK:OWNED-USER-READERS" NUNIT-CAPTURE:OPTIONAL-PRODUCER-XT READERS-XT !
    FRUN-N @ 0 ?do 1 i R-CHILD RFIELD ! loop
    FDEPTH @ 1+ FRAME-CELLS * FFRAMES-RESERVE
    FDEPTH @ FRAME-CELLS * {: base:n :}
@@ -1897,7 +1775,6 @@ variable USER-READ
    HERE-N base F-HERE + FFRAMES !
    FRUN-N @ base F-RUNS + FFRAMES !
    AOT-ARM:WIDN base F-WID + FFRAMES !
-   0 base F-UNCHECKED + FFRAMES !
    1 FDEPTH +!
    HEADER-BYTES FROOM FBYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
@@ -1907,8 +1784,9 @@ variable USER-READ
 
 \ Close the innermost file frame. Its records become a child range of the
 \ enclosing file frame, whose rows may name them, and the enclosing file's
-\ next segment begins.
+\ next segment begins. A definition frame still open was abandoned.
 : CLOSE-UNIT ( -- )
+   0 CLOSE-ABOVE
    F-OFF FFIELD @ {: off:n :}
    F-FIRST FFIELD @ {: first:n :}
    off FBYTES 8 + LE:U64@ negate FLIVE +!
@@ -1923,7 +1801,9 @@ variable USER-READ
    FDEPTH @ 0 > if first ndict@ RANGE+ AOT-ARM:WIDN F-WID FFIELD ! then
    UNOBSERVE ;
 
-\ The innermost file frame's cache diagnostic line, on stderr.
+\ The innermost file frame's cache diagnostic line, on stderr. A file frame's
+\ rows are only reported: a warm load re-runs the file's top level, so an
+\ ordered frame still stores its object (test/native-file-frame-e2e.f).
 : FILE-REPORT ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    s" native-file: frame path=" DIAG-W2 path pathu DIAG-W2
@@ -1940,22 +1820,35 @@ variable USER-READ
    then
    S\" \n" DIAG-W2 ;
 
+\ Open ord's definition frame at its `:` head, READING its body. One
+\ definition is pending at a time, so a frame still open belongs to a body
+\ the engine abandoned and closes first.
 : BEGIN-DEFINITION ( n -- )
    {: ord:n :}
+   0 CLOSE-ABOVE
    ord NFILE-REF:BEGIN-DEFINITION
    DEPTH @ 1+ FRAMES-RESERVE
    USED @ DEPTH @ FRAMES !
-   DEPTH @ 1+ 2 * DLIMITS-RESERVE
-   ord DEPTH @ 2 * DLIMITS !
-   HERE-N DEPTH @ 2 * 1+ DLIMITS !
+   DEPTH @ 1+ DLIMIT-CELLS * DLIMITS-RESERVE
    1 DEPTH +!
+   ord D-ORD DFIELD !
+   HERE-N D-HERE DFIELD !
+   READING D-PHASE DFIELD !
    HEADER-BYTES ROOM BYTES HEADER!
    NFILE-SCOPE:SCOPE-INPUT$ {: scope:ptr scopeu:n :}
    SCOPE NULL-PTR 0 scope scopeu DEF-ROW
    SCOPE-KNOWN
    OBSERVE ;
 
-: COMPILED! ( -- ) CAPTURE-COMPILER-ROLE ;
+\ The innermost definition frame, ord's, now compiles the body it read.
+: COMPILING! ( n -- )
+   {: ord:n :}
+   D-ORD DFIELD @ ord <> if BAD then
+   COMPILING D-PHASE DFIELD ! ;
+
+\ Every compile scans the definition under the checker owner, with or without a
+\ hook (compiler.f CHECK-PARENT), so each compiled definition keys both roles.
+: COMPILED! ( -- ) CAPTURE-CHECKER-ROLE CAPTURE-COMPILER-ROLE ;
 
 \ Whether the definition may be stored: an ORDERED row names a fact no later
 \ build can re-verify.
@@ -1963,23 +1856,11 @@ variable USER-READ
    FRAME {: off:n :}
    off BYTES USED @ off - HAS-ORDERED? 0= ;
 
-\ The innermost file frame's rows, and whether its file may be stored: no
-\ ORDERED row and no ORDERED reason.
-: FILE-EXPORT ( -- ptr u8 n bool )
-   F-OFF FFIELD @ {: off:n :}
-   off FBYTES FUSED @ off - {: deps:ptr depsu:n :}
-   deps depsu
-   deps depsu HAS-ORDERED? 0= FILE-ORDERED? 0= and ;
-
-\ Whether the innermost file stands in the scope it began in: its first row
-\ is the SCOPE row BEGIN-UNIT recorded.
-: FILE-SCOPE-KEPT? ( -- bool )
-   F-OFF FFIELD @ {: off:n :}
-   off FBYTES FUSED @ off - {: deps:ptr depsu:n :}
-   deps depsu HEAD 0= if BAD then
-   deps depsu ROW-AT {: kind:n key:ptr keyu:n data:ptr datau:n :}
-   kind SCOPE <> if BAD then
-   data datau NFILE-SCOPE:SCOPE-MATCH? ;
+\ The innermost definition frame's rows, header included, as CHECK judges
+\ them.
+: DEFINITION-EXPORT ( -- ptr u8 n )
+   FRAME {: off:n :}
+   off BYTES USED @ off - ;
 
 : CHECK ( ptr u8 n -- bool )
    {: bytes:ptr size:n :}
@@ -1990,27 +1871,6 @@ variable USER-READ
    CHECK-OFF @ size <> if MALFORMED then
    CHECK-OK @ 0= if REPORT-MISS then
    CHECK-OK @ ;
-
-: FILE-ROWS ( -- n ) F-OFF FFIELD @ FBYTES 8 + LE:U64@ ;
-
-\ Whether rows [done, mark) of a file object's dependency bytes still hold;
-\ rows below done are framed, not checked. Each call restarts at HEAD and
-\ keeps nothing after it returns, so a caller may load child files, which
-\ check their own objects, between ranges.
-: CHECK-ROWS ( ptr u8 n n n -- bool )
-   {: bytes:ptr size:n done:n mark:n :}
-   bytes size HEAD {: count:n :}
-   done 0 < mark done < or mark count > or if MALFORMED then
-   NULL-PTR MISS-P ! 0 MISS-U !
-   mark 0 ?do
-      bytes size ROW-AT {: kind:n key:ptr keyu:n data:ptr datau:n :}
-      i done >= if
-         kind key keyu data datau CHECK-ROW 0= if
-            REPORT-MISS false unloop exit
-         then
-      then
-   loop
-   true ;
 
 \ The row count of well-framed dependency bytes, without checking any row
 \ against this session.
@@ -2043,17 +1903,9 @@ variable USER-READ
    RMARK-RELEASE RQUEUE-RELEASE OIDX-RELEASE OPMAX-RELEASE OPEND-RELEASE
    0 SEEN-N ! 0 RMARK-N ! 0 RQ-N ! 0 OI-N ! 0 OW ! 0 OPEND-N !
    0 KERNEL-START ! 0 KERNEL-END !
-   USER-TAB-RELEASE USER-BYTES-RELEASE 0 USER-N ! 0 USER-BYTES-N !
-   0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 FACTS-XT ! 0 PENDING-XT !
-   0 READERS-XT ! 0 CWORK-XT !
+   USER-TAB-RELEASE 0 USER-N !
+   0 REACH-XT ! 0 FIND-XT ! 0 RUN-CLASS-XT ! 0 CWORK-XT !
    8 0 ?do 0 CELL-BYTES i + c! loop ;
-
-: CLOSE ( -- )
-   FRAME {: off:n :}
-   NFILE-REF:END-DEFINITION
-   off USED !
-   -1 DEPTH +!
-   UNOBSERVE ;
 
 \ Installation is an explicit boundary: no owner field means no reusable
 \ checked binding, while an actual old object with no section is malformed.

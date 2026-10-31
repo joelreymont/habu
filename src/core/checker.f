@@ -266,45 +266,44 @@ DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
    cap 0 < 0=  base data-base < 0= and  base here <= and
    dup IF drop cap here base - <= THEN ;
 
-\ Copies OLDBYTES rounded up to cells. Callers reset their counters per
-\ definition, so no tail init is needed. An old base in image DATA is zeroed:
-\ the abandoned store is still baked, so its bytes do not depend on how writes
-\ and the grow interleave (a cold load writes rows before the move, a file hit
-\ makes room first), and a stale pointer into it reads zeros.
+\ 0 bytes is no mapping.
+: ARENA-UNMAP ( ptr a n -- )
+   {: base:ptr bytes:n :}
+   bytes 0= IF EXIT THEN
+   base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
+
+\ Retires the store a grow copied away from. A store in image DATA is zeroed:
+\ it is still baked, so its bytes do not depend on how writes and the grow
+\ interleave (a cold load writes rows before the move, a file hit makes room
+\ first), and a stale pointer into it reads zeros. Any other store is unmapped.
+: ARENA-ABANDON ( ptr a n -- ) {: base:ptr bytes:n :}
+   base BYTE-VIEW bytes REG-DATA-SPAN? IF base BYTE-VIEW bytes ARENA-ZERO EXIT THEN
+   base bytes ARENA-UNMAP ;
+
+\ Copies OLDBYTES, the old store's whole capacity, rounded up to cells, then
+\ abandons the old store. Callers reset their counters per definition, so no
+\ tail init is needed.
 : ARENA-BYTES-GROW ( ptr a n n -- ptr a ) {: base:ptr oldbytes:n newbytes:n :}
    newbytes ARENA-ALLOC {: nb:ptr :}
    base nb oldbytes CELL + 1- CELL / ARENA-CELLS-COPY
-   base BYTE-VIEW oldbytes REG-DATA-SPAN? IF base BYTE-VIEW oldbytes ARENA-ZERO THEN
+   base oldbytes ARENA-ABANDON
    nb ;
 
 : REG-GROW1 ( ptr ptr a n n -- ) {: pv:ptr ob:n nb:n :}
    pv @ ob nb ARENA-BYTES-GROW pv ! ;
-
-\ 0 bytes is no mapping.
-: ARENA-UNMAP ( ptr n n -- )
-   {: base:ptr bytes:n :}
-   bytes 0= IF EXIT THEN
-   base bytes munmap 0 <> IF s" checker: arena munmap failed" 76 die THEN ;
 
 : ARENA-BOOT-RESTORE ( ptr ptr n ptr n n -- )
    {: pv:ptr boot:ptr bytes:n :}
    pv @ boot <> IF pv @ bytes ARENA-UNMAP THEN
    boot pv ! ;
 
-: ARENA-BOOT-GROW ( ptr ptr n ptr n n n -- )
-   {: pv:ptr boot:ptr ob:n nb:n :}
-   pv @ ob nb ARENA-BYTES-GROW {: next:ptr :}
-   pv @ boot <> IF pv @ ob ARENA-UNMAP THEN
-   next pv ! ;
-
 \ A table that holds none starts at 64 rows.
 : ARENA-ROWS-ENSURE ( ptr ptr n ptr n n n -- )
    {: pv:ptr capv:ptr need:n row:n :}
    need capv @ <= IF EXIT THEN
    need capv @ 2 * max 64 max {: nc:n :}
-   pv @ capv @ row * cells nc row * cells ARENA-BYTES-GROW {: next:ptr :}
-   pv @ capv @ row * cells ARENA-UNMAP
-   next pv !  nc capv ! ;
+   pv capv @ row * cells nc row * cells REG-GROW1
+   nc capv ! ;
 
 : ARENA-ROWS-RELEASE ( ptr ptr n ptr n n -- )
    {: pv:ptr capv:ptr row:n :}
@@ -871,14 +870,18 @@ T-QUOT constant XMASK-MARK
    xr q PAY cells QXRA + ! ;
 
 512 constant MAXATOM-INIT       \ atom terms (grows on demand)
-\ The name column holds POINTERS into the token text, so it is declared storage
-\ (src/core/pointer-storage.f): a raw `create`d cell may not hold an address.
-\ Its two siblings hold a length and a kind and stay raw cells.
-MAXATOM-INIT PTR-U8-TABLE ATOMA-BOOT
+\ An atom or param term owns its name: MK-ATOM-K and MK-PARAM copy the bytes
+\ into the TERM-NAMES pool, and the name columns hold their offset there, so
+\ the store a term was named from (USIGS, TOP-READ, VREC, source text) may grow
+\ and abandon its old bytes. The pool is pointer-free, so a grow is a plain
+\ copy, and it resets in NEW alongside ATOMN and PARAMN.
+1024 constant TERM-NAME-INIT
+create ATOMA-BOOT MAXATOM-INIT cells allot
 create ATOMU-BOOT MAXATOM-INIT cells allot
 create ATOMK-BOOT MAXATOM-INIT cells allot
 CHECKER-REG:SCRATCH{
 variable ATOMN
+PTR-VARIABLE TERM-NAME-P   variable TERM-NAME-N   variable TERM-NAME-CAP
 CHECKER-REG:}SCRATCH
 variable RIGID-N
 \ Rigid host-allocation identity domains: a host allocation is stamped by fresh,
@@ -913,10 +916,10 @@ SCOPE-SECOND-BOOT SCOPE-SECOND-P !
 : SCOPE-PARENT@ ( n -- n ) PAY cells SCOPE-PARENTS + @ ;
 : SCOPE-SECOND@ ( n -- n ) PAY cells SCOPE-SECONDS + @ ;
 variable RIGID-MAX   $4000000000000000 RIGID-MAX !
-PERSISTED-PTR-U8-TABLE-VARIABLE ATOMA-P
+PERSISTED-PTR-VARIABLE ATOMA-P
 PERSISTED-PTR-VARIABLE ATOMU-P   PERSISTED-PTR-VARIABLE ATOMK-P   variable ATOM-CAP
 ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
-: ATOMA ( -- ptr ptr u8 ) ATOMA-P @ ;
+: ATOMA ( -- ptr n ) ATOMA-P @ ;
 : ATOMU ( -- ptr n ) ATOMU-P @ ;
 : ATOMK ( -- ptr n ) ATOMK-P @ ;
 : ATOM-ENSURE ( n -- ) {: need:n :}
@@ -926,8 +929,20 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
    ATOMU-P @ ATOM-CAP @ cells nc cells ARENA-BYTES-GROW ATOMU-P !
    ATOMK-P @ ATOM-CAP @ cells nc cells ARENA-BYTES-GROW ATOMK-P !
    nc ATOM-CAP ! ;
-: ATOMA-FIELD ( n -- ptr ptr u8 )
-   cells ATOMA + 0 ptr-field ;
+: ATOMA-FIELD ( n -- ptr n )
+   cells ATOMA + ;
+: TERM-NAMES ( -- ptr u8 ) TERM-NAME-P @ ;
+\ Copy a name into the pool and answer its offset. A source inside the pool
+\ stays readable across the grow: the scratch region keeps the old bytes until
+\ SR-RETIRE.
+: TERM-NAME+ ( ptr u8 n -- n ) {: a:ptr u:n :}
+   TERM-NAME-N @ u + TERM-NAME-CAP @ > IF
+      TERM-NAME-N @ u + TERM-NAME-CAP @ 2 * max TERM-NAME-INIT max {: nc:n :}
+      TERM-NAME-P @ TERM-NAME-CAP @ nc SR-GROW TERM-NAME-P !
+      nc TERM-NAME-CAP !
+   THEN
+   a TERM-NAMES TERM-NAME-N @ + u ARENA-COPY
+   TERM-NAME-N @ dup u + TERM-NAME-N ! ;
 : RIGID-RESET ( -- )
    1 RIGID-N !   1 RGN-N !   1 EXT-N !   1 GEN-N !   1 RGN-MARK !   0 FB-N ! ;
 \ Shared catch-all domain: fresh-mask-* and every non-domain fresh atom mint
@@ -964,14 +979,14 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
    RIGID-FRESH ;
 : MK-ATOM-K ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    ATOMN @ 1 + ATOM-ENSURE
-   a ATOMN @ ATOMA-FIELD !
+   a u TERM-NAME+ ATOMN @ ATOMA-FIELD !
    u ATOMN @ cells ATOMU + !
    k ATOMN @ cells ATOMK + !
    ATOMN @ TAG-SHIFT lshift T-ATOM or
    ATOMN @ 1 + ATOMN ! ;
 : MK-ATOM ( ptr u8 n -- n )
    0 MK-ATOM-K ;
-: ATOM>A ( n -- ptr u8 ) PAY ATOMA-FIELD @ ;
+: ATOM>A ( n -- ptr u8 ) TERM-NAMES swap PAY ATOMA-FIELD @ + ;
 : ATOM>U ( n -- n ) PAY cells ATOMU + @ ;
 : ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
@@ -986,7 +1001,7 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 CHECKER-REG:SCRATCH{
 variable PARAMN
 variable PARAM-SCR-N
-PTR-U8-TABLE-VARIABLE PARAMA-P   \ name pointers
+PTR-VARIABLE PARAMA-P   \ name offsets in TERM-NAMES
 PTR-VARIABLE PARAMU-P   PTR-VARIABLE PARAMC-P
 PTR-VARIABLE PARAMFAM-P   \ resolved family-id per param term (identity)
 PTR-VARIABLE PARAMOFF-P   \ arg-run start index into the flat PARGP pool
@@ -995,7 +1010,7 @@ PTR-VARIABLE PARGP-P   variable PARG-N   variable PARG-CAP-V
 PTR-VARIABLE PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
 CHECKER-REG:}SCRATCH
-: PARAMA ( -- ptr ptr u8 ) PARAMA-P @ ;
+: PARAMA ( -- ptr n ) PARAMA-P @ ;
 : PARAMU ( -- ptr n ) PARAMU-P @ ;
 : PARAMC ( -- ptr n ) PARAMC-P @ ;
 : PARAMFAM ( -- ptr n ) PARAMFAM-P @ ;
@@ -1016,9 +1031,7 @@ CHECKER-REG:}SCRATCH
 : PARAM-ENSURE ( n -- ) {: need:n :}
    need PARAM-CAP @ <= IF exit THEN
    need PARAM-CAP @ 2 * max MAXPARAM-INIT max {: nc:n :}
-   nc cells dup 2 cells + SR-CHUNK-NEW {: na:ptr :}   \ a chunk of its own keeps PARAMA's names typed
-   PARAMA-P @ na PARAM-CAP @ ARENA-CELLS-COPY
-   na PARAMA-P !
+   PARAMA-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMA-P !
    PARAMU-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMU-P !
    PARAMC-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMC-P !
    PARAMFAM-P @ PARAM-CAP @ cells nc cells SR-GROW PARAMFAM-P !
@@ -1332,7 +1345,9 @@ variable TOP-STEP
 \ definition's name token and clears it before the verdict is recorded; it is
 \ declared here so the scope exit below can clear it after a throw. The
 \ visibility words live with the record store (search HORIZON-VISIBLE?).
+CHECKER-REG:SCRATCH{
 variable BIND-HORIZON   0 BIND-HORIZON !
+CHECKER-REG:}SCRATCH
 
 \ Whether the definition being checked is a probe (CHECK-CANDIDATE!): its name
 \ is a label, so it latches no horizon even inside a verifier scope, where
@@ -1354,9 +1369,9 @@ variable VERIFY-FLOOR0
 variable UNIFY-KIND
 UK-EXACT UNIFY-KIND !
 
-: PARAMA-FIELD ( n -- ptr ptr u8 )
-   cells PARAMA + 0 ptr-field ;
-: PARAM>NAME-A ( n -- ptr u8 ) PAY PARAMA-FIELD @ ;
+: PARAMA-FIELD ( n -- ptr n )
+   cells PARAMA + ;
+: PARAM>NAME-A ( n -- ptr u8 ) TERM-NAMES swap PAY PARAMA-FIELD @ + ;
 : PARAM>NAME-U ( n -- n ) PAY cells PARAMU + @ ;
 : PARAM>ARGC ( n -- n ) PAY cells PARAMC + @ ;
 : PARAM>FAM ( n -- n ) PAY cells PARAMFAM + @ ;   \ resolved family-id (identity)
@@ -1377,7 +1392,7 @@ UK-EXACT UNIFY-KIND !
    PARAM-SCR-N @ base - {: argc:n :}
    argc PARG-ENSURE
    PARG-N @ {: start:n :}
-   a PARAMN @ PARAMA-FIELD !
+   a u TERM-NAME+ PARAMN @ PARAMA-FIELD !
    u PARAMN @ cells PARAMU + !
    fam PARAMN @ cells PARAMFAM + !
    argc PARAMN @ cells PARAMC + !
@@ -2483,7 +2498,9 @@ variable TWALK-D
    RES-FALSE ;
 : SCHEME-TYPE? ( n -- bool ) TWALK-RESET SCHEME-TYPE?* ;
 
+CHECKER-REG:SCRATCH{
 variable SCOPE-HIT       \ 1 = scoped storage, 2 = scope used as a value type
+CHECKER-REG:}SCRATCH
 
 \ Storage constrains the complete pointee, including unresolved quotation rows.
 \ The restriction survives generic helpers: each later binding must preserve it.
@@ -2921,6 +2938,7 @@ variable NMOFF                           \ its token's offset in the checked tex
 \ address is declared: PTR-VARIABLE, PERSISTED-PTR-VARIABLE, TYPED-VARIABLE NAME
 \ ptr t, or TYPED-BUFFER. `create BUF 256 allot  BUF 4 type` certifies: the
 \ pointee binds to the `u8` con.
+CHECKER-REG:SCRATCH{
 variable RAW-PTR-HIT   \ a RAW cell refused a pointer in this token's unify; UF-CAPTURE names it as the pin closes
 \ Which base address refused a nominal or a pointer in this token's unify:
 \ 0 none, TVK-NULL the null, TVK-DBASE the DATA region. UF-CAPTURE names the one
@@ -2943,6 +2961,7 @@ variable STALE-HIT
 \ token and the token's latches close it. Every other way of putting a quotation
 \ into an undeclared cell or base-derived address, `!` included, is refused.
 variable XT-DECL
+CHECKER-REG:}SCRATCH
 
 \ FENCE-WHY's answers, and the whole vocabulary of the cell disciplines.
 0 constant FENCE-OK       \ the cell may absorb the term
@@ -3752,14 +3771,17 @@ U-DRAIN-INSTALL
 \ THDMASK/THRMASK: the running AND-fold of the intact masks of every throw edge
 \ of the body being checked (THROW-EDGE). THSET says whether any edge was seen,
 \ and only then do the masks mean anything.
+CHECKER-REG:SCRATCH{
 variable THDMASK  variable THRMASK  variable THSET
 \ INHSET: the CTL-INHERITED flags of the words the body called, a word that
 \ defines words no source text spells or reads the source after it. Sticky per
 \ body like UNSAFE: a call on any path is enough for the may-claim.
 variable INHSET
-variable XROW  variable XRROW  variable XSET  variable DEADP
-variable DEADERR
+CHECKER-REG:}SCRATCH
+variable XROW  variable XRROW
 CHECKER-REG:SCRATCH{
+variable XSET  variable DEADP
+variable DEADERR
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 variable XFACT
@@ -3780,30 +3802,30 @@ CHECKER-REG:}SCRATCH
 : NEW ( -- )
    TV-RESET 0 FV ! 0 SPN ! 0 QEN ! 0 PTRN !  0 STLN !
    RIGID-RESET
-   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
+   0 ATOMN ! 0 TERM-NAME-N ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
    NEW-WALK ;
+variable VSIG
+CHECKER-REG:SCRATCH{
 variable DEXP   variable DACT   variable FAILSET
 variable DF-ACT   variable DF-EXP
 \ ADT variant capture (docs/forth.md "Structures And Enums"): CVLIVE holds the
 \ SUMV id of the variant a `construct family variant` step is applying;
 \ UF>DIAG latches it into DVAR when the first failure is captured (beside
 \ DF-ACT/DF-EXP). -1 is no variant in scope, so a scalar or non-construct
-\ mismatch renders no variant or tag.
-variable DVAR    -1 DVAR !
-variable CVLIVE  -1 CVLIVE !
+\ mismatch renders no variant or tag. CHECK-CLEAR stores -1 into DVAR, CVLIVE
+\ and DPOS at each check's start, CAPTURE-CLEAR into DVAR and DPOS.
+variable DVAR
+variable CVLIVE
 \ The construct form's token state (CONSTRUCT-TOK).
 variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant token
-CHECKER-REG:SCRATCH{
 variable CONFAM    \ resolved family id while CONM = 2
-CHECKER-REG:}SCRATCH
 \ Payload slot of the captured mismatch: UF-POSN's slot from the top of the
 \ failed expected-row element, latched beside DVAR. Render converts it to the
 \ declaration-order payload index; -1 is unknown (a row-level or post-LOGHID
 \ failure), and the packet omits payload_pos.
-variable DPOS    -1 DPOS !
-variable VSIG   variable SGSEEN   variable SGDECL-BAD   variable SGIN   variable SGOUT
+variable DPOS
+variable SGSEEN   variable SGDECL-BAD   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
-CHECKER-REG:SCRATCH{
 PTR-VARIABLE SGA  variable SGU
 CHECKER-REG:}SCRATCH
 $1000 constant TOKBUF-INIT-CAP
@@ -3866,9 +3888,10 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    TKF-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
    NMB-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO
    SDEC-BOOT 0 TOKBUF-INIT-CAP CELL / ARENA-CELLS-ZERO ;
-variable TOKIX  variable FAILIX  variable DVERD
+variable TOKIX  variable FAILIX
 variable FAILB  variable FAILE
 CHECKER-REG:SCRATCH{
+variable DVERD
 PTR-VARIABLE TBASE  variable TBLEN  variable TI  variable TSTART
 CHECKER-REG:}SCRATCH
 variable JSON-DIAGS   0 JSON-DIAGS !
@@ -3890,24 +3913,19 @@ variable JSON-DIAGS   0 JSON-DIAGS !
 : DIAG-JSON! ( bool -- )
    JSON-DIAGS ! ;
 
-variable LINBEF
-variable LINEXP
-
 : LIN-CON? ( n -- bool )
    T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
    PAY CT-LINEAR? ;
 
 \ Deferred taint scan: reject if any var tainted by a polymorphic copy or drop
 \ (LIN-TAINT) now resolves to a linear con (`[: dup FREE ;]`).
-variable LTNT-I
 : LIN-TAINT-SCAN ( -- )
    LIN-ANY? 0= IF exit THEN
    OK @ 0= IF exit THEN
-   0 LTNT-I !
-   BEGIN LTNT-I @ LTNT-N @ < WHILE
-      LTNT-I @ cells LTNT + @ MK-VAR LIN-CON? IF 0 OK ! THEN
-      LTNT-I @ 1 + LTNT-I !
-   REPEAT ;
+   0 BEGIN dup LTNT-N @ < WHILE
+      dup cells LTNT + @ MK-VAR LIN-CON? IF 0 OK ! THEN
+      1 +
+   REPEAT drop ;
 
 \ FIELD-INNER (and every PARAM>ARG accessor) requires a RESOLVED param term:
 \ it indexes the param arena by the term's payload. `t` here is a stack type
@@ -3953,14 +3971,14 @@ CHECKER-REG:}SCRATCH
 : LIN-TOTAL ( n n -- n )
    LIN-ROW-COUNT swap LIN-ROW-COUNT + ;
 
-: LIN-SNAPSHOT ( -- )
-   DCUR @ RCUR @ LIN-TOTAL LINBEF ! ;
+: LIN-SNAPSHOT ( -- n )
+   DCUR @ RCUR @ LIN-TOTAL ;
 
 : LIN-EXPLICIT? ( n n -- bool )
    LIN-TOTAL 0 <> ;
 
-: LIN-CHECK ( -- )
-   DCUR @ RCUR @ LIN-TOTAL LINBEF @ <> IF 0 OK ! THEN ;
+: LIN-CHECK ( n -- )
+   DCUR @ RCUR @ LIN-TOTAL <> IF 0 OK ! THEN ;
 
 \ --- reject reasons (docs/forth.md "Structures And Enums"). A failure site
 \ latches a reason code beside the token pin; render.f maps it to a stable
@@ -4026,6 +4044,7 @@ CHECKER-REG:}SCRATCH
    T-RES TOP-UNKNOWN @ =  TOP-STEP @ 0 <>  and IF MD-TOP-UNKNOWN EXIT THEN
    MD-STALE-READ ;
 
+CHECKER-REG:SCRATCH{
 variable MDIAG        \ latched reason code (0 = none; reset per definition)
 variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
 variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check)
@@ -4034,6 +4053,7 @@ variable MDIAG-NEED   \ underflow: cells the refused step's input row needs
 variable MDIAG-HAVE   \ underflow: cells the declared inputs left above the base
 variable MDIAG-DEPTH  \ effect depth: the levels TERM-DEPTH counted in the deepest row
 variable MDIAG-WIDTH  \ input width: the cells of the input row a record would hold
+CHECKER-REG:}SCRATCH
 
 : MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
    MDIAG @ 0 <> IF EXIT THEN
@@ -4108,7 +4128,9 @@ TAIL-CAPTURE-DEFAULT
 \ rendered from the declared and inferred return rows (`return_stack`), and
 \ claiming DEXP/DACT too would relabel every return-stack mismatch as a value
 \ mismatch.
+CHECKER-REG:SCRATCH{
 variable RSBAD   \ the first failure is the return row's: 1 a row that does not fit, 2 a frame borrowed below; 3 and 4 the same at a quotation literal's ;]
+CHECKER-REG:}SCRATCH
 \ The quotation literal's own return rows, base and current, latched with RSBAD
 \ 3 or 4: CF-SEMIQ restores the definition's before the field is rendered.
 variable QRS-EXP   variable QRS-ACT
@@ -4243,48 +4265,48 @@ CHECKER-REG:}SCRATCH
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
 \ balance check rejects net growth or borrowing; loop joins unify RCUR too.
 : RS->R                                    \ >r : data top -> return row
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !  tv RCUR @ MK-PUSH RCUR !
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF bef LIN-CHECK THEN ;
 
 : RSR>                                     \ r> : return top -> data row
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest RCUR !  tv DCUR @ MK-PUSH DCUR !
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF bef LIN-CHECK THEN ;
 
 : RSR@                                     \ r@ : peek return top
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    tv DCUR @ MK-PUSH DCUR !
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF bef LIN-CHECK THEN ;
 
 : RS2->R                                   \ 2>r : data pair -> return row
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    DCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
    t1 RCUR @ MK-PUSH  t2 swap MK-PUSH  RCUR !
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF bef LIN-CHECK THEN ;
 
 : RS2R>                                    \ 2r> : return pair -> data row
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
    rest RCUR !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF bef LIN-CHECK THEN ;
 
 : RS2R@                                    \ 2r@ : peek return pair
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
    t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF bef LIN-CHECK THEN ;
 variable QTT  variable QD2  variable QR2
 
 \ ---- what a throw path leaves of the window it was entered with ---------------
@@ -4333,11 +4355,13 @@ $7FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit, CTL-NAM
 : XFER-DMASK ( n -- n ) XFER-DMASK-SHIFT rshift XFER-MASK-ALL and ;
 : XFER-RMASK ( n -- n ) XFER-RMASK-SHIFT rshift XFER-MASK-ALL and ;
 
+CHECKER-REG:SCRATCH{
 variable XM-I   variable XM-ACC   variable XS-I
 variable XE-PD  variable XE-PR       \ the rows a token step started from
 \ QDEPTH — the quotation nesting of the walk (CF-QUOT/CF-SEMIQ) — is declared
 \ here because which row a mask's bits index depends on it: see XBASE-D.
 variable QDEPTH
+CHECKER-REG:}SCRATCH
 
 : ROW-TERMS ( n -- n )          \ fixed entries in a row (terms, not cells)
    0 swap
@@ -4458,12 +4482,12 @@ variable QDEPTH
 \ CHECK finalizes an unjudged scan's call records whatever its verdict.
 CHECKER-REG:SCRATCH{
 variable SCAN-INCOMPLETE   \ sticky per scan: a width fact may be missing
-CHECKER-REG:}SCRATCH
 variable UNJ-TOK           \ inside an unjudged token: the splice is armed
 variable UNJ-SPLICED       \ a committed step settled this token's rows
 variable STEP-R            \ the applying effect has a return-stack part (EFF-APPLY)
 variable UNJ-PD   variable UNJ-PR   \ the token's pre-token data and return rows
 variable UNJ-WF0                    \ the width-fact count before the token
+CHECKER-REG:}SCRATCH
 
 : SPLICE-OPEN? ( n -- bool ) {: t:n :}   \ a cell whose physical width is not known yet
    t T-RES {: r:n :}
@@ -4540,11 +4564,12 @@ variable UNJ-WF0                    \ the width-fact count before the token
 
 \ unj: a failure splices the pre-token rows; a caller that settles its own
 \ failure (LOC-BIND) steps unarmed.
-: CHECKER-STEP-UNJ {: din dout unj:bool :}
+: CHECKER-STEP-UNJ
+   {: din dout unj:bool :}
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}
    unj IF din dout pre SPLICE-SHAPE ELSE -1 0 THEN {: cells:n terms:n :}
-   din dout LIN-EXPLICIT? LINEXP !
-   LINEXP @ 0= IF LIN-SNAPSHOT THEN
+   din dout LIN-EXPLICIT? {: exp:bool :}
+   exp IF 0 ELSE LIN-SNAPSHOT THEN {: bef:n :}
    pre WAS !
    din STEP-BORROWS? {: borrows:bool :}   \ measured before the unify binds the tail
    DCUR @ din UNIFY-IN {: fit:bool :}
@@ -4552,7 +4577,7 @@ variable UNJ-WF0                    \ the width-fact count before the token
    fit OK @ and OK !
    OK @ borrows and IF STEP-UNDERFLOW! THEN
    WAS @ dout STEP-LINEAGE DCUR !
-   OK @ LINEXP @ 0= and IF LIN-CHECK THEN
+   OK @ exp 0= and IF bef LIN-CHECK THEN
    unj 0= IF EXIT THEN
    fit 0= IF pre rpre cells dout terms UNJ-SPLICE EXIT THEN
    STEP-R @ 0= IF -1 UNJ-SPLICED ! THEN ;
@@ -4654,8 +4679,10 @@ CHECKER-REG:}SCRATCH
    q Q>RIN q Q>ROUT LIN-TOTAL + 0 <> ;
 
 variable RSEXEC-EXP    \ quot explicitly names a linear? (captured before unify binds vars)
+CHECKER-REG:SCRATCH{
 variable EXEC-OPAQUE   \ RSEXEC rejected an execute of an opaque (untyped-memory) xt this token; DO-TOK1 latches the reason (the reject machinery lives far below RSEXEC)
 variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) xt this token; latched the same way so the prose names 'catch' not 'execute'
+CHECKER-REG:}SCRATCH
 
 \ The native compiler consumes the effect of the quotation at each call site.
 variable CWIN-HIT
@@ -4731,7 +4758,7 @@ variable QUOT-LOSS
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
-   LIN-SNAPSHOT                          \ linears on the post-pop stack (pre-apply)
+   LIN-SNAPSHOT {: bef:n :}              \ linears on the post-pop stack (pre-apply)
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
@@ -4754,7 +4781,7 @@ variable QUOT-LOSS
         QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
         DCUR @ CWIN-DOUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
         RCUR @ CWIN-ROUT-TERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
-        OK @  RSEXEC-EXP @ 0=  and IF LIN-CHECK THEN
+        OK @  RSEXEC-EXP @ 0=  and IF bef LIN-CHECK THEN
      THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
      \ Opaque xt: a bare type variable, an xt fetched from untyped memory (a raw
@@ -5463,19 +5490,21 @@ variable VRC-RVN
 \ the effect is row-polymorphic. Quantifiers keep their source letter; this is
 \ not the declaration parameter alphabet.
 create NMAP 26 cells allot
+CHECKER-REG:SCRATCH{
 variable BIND-DEPTH
 create BIND-DOMAINS 32 cells allot
+CHECKER-REG:}SCRATCH
 
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 
 64 constant FAM-CAP
-FAM-CAP PTR-U8-TABLE FAM-A       \ name pointers: declared storage, like ATOMA-BOOT
-create FAM-U FAM-CAP cells allot
 CHECKER-REG:SCRATCH{
+FAM-CAP PTR-U8-TABLE FAM-A       \ name pointers: declared storage (src/core/pointer-storage.f)
+create FAM-U FAM-CAP cells allot
 variable FAM-N
-CHECKER-REG:}SCRATCH
 variable FAM-I
 variable FAM-K
+CHECKER-REG:}SCRATCH
 
 : FAM-RESET ( -- )
    0 FAM-N ! ;
@@ -5533,6 +5562,7 @@ variable SGBAD-KIND
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 variable SGBAD-SIZE      \ depth and width kinds: the levels or cells measured
+CHECKER-REG:SCRATCH{
 variable UNSAFE
 variable RETIRED             \ a permanently retired token was named in a checked body
 variable LOCALBAD
@@ -5545,6 +5575,7 @@ variable UNFIT                \ the effect a record would hold is too deep or to
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking)
 variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
+CHECKER-REG:}SCRATCH
 0 constant TORDER-CHECKING
 1 constant TORDER-GATE
 2 constant TORDER-UNKNOWN
@@ -5596,12 +5627,14 @@ REG-PROTECT
 \ Declared-effect parametricity seal, set by NP-CHECK after the body: the body
 \ specialized a declared quantifier to a sealed nominal or layout family, or
 \ unified two declared quantifiers.
+CHECKER-REG:SCRATCH{
 variable NPBAD               \ non-parametric declared effect detected?
 variable NPBAD-KIND          \ 0 = concrete specialization; 1 = alias; 2 = phantom mint; 3 = kind refinement;
                              \ 4 = DATA base; 5 = null; 6 = row alias; 7 = row given fixed cells
 variable NPBAD-Q1            \ offending quantifier's source letter (char code)
 variable NPBAD-Q2            \ aliasing partner's letter (char code); 0 when kind 0
 variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family naming
+CHECKER-REG:}SCRATCH
 
 \ ---- the refusal a definition's diagnostic names -----------------------------
 \ One failure refuses a definition; every diagnostic field describes that one,
@@ -5631,11 +5664,13 @@ variable NPBAD-TERM          \ resolved sealed-family term (kind 0), for family 
 15 constant RF-REJECTED      \ a refusal with no finer name
 16 constant RF-USHADOW       \ a bare name a used public shadows a global for (E-USING-SHADOW-GLOBAL)
 17 constant RF-UAMBIG        \ a bare name two used publics export (E-USING-AMBIGUOUS)
+CHECKER-REG:SCRATCH{
 variable REFUSAL             \ the RF-* kind the diagnostic names; 0 = none chosen yet
 variable CREFUSE             \ the RF-* kind the load refuses this token for while compiling; 0 = none
 variable CRTGT               \ CREFUSE refuses the word this token ticks, not the token
 variable RCOMPILE            \ a compile-time refusal holds the diagnostic
 variable CUSING              \ the using refusal the walk raised at this token; 0 = none
+CHECKER-REG:}SCRATCH
 
 : USING-KIND? ( n -- bool )
    {: k:n :}
@@ -5779,9 +5814,11 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ A quiet signature can contain a nominal type whose declaration an earlier
 \ reached producer may have made. Keep that status apart from SGBAD: the parser
 \ still checks the rest of the grammar, and any real syntax error wins.
+CHECKER-REG:SCRATCH{
 variable SIG-UNRES
 PTR-VARIABLE SIG-UNRES-A
 variable SIG-UNRES-U
+CHECKER-REG:}SCRATCH
 7203 constant E-CHECKER-RECORD-UNRESOLVED
 : SIG-UNRES-CLEAR ( -- )
    0 SIG-UNRES !  NULL-PTR SIG-UNRES-A !  0 SIG-UNRES-U ! ;
@@ -6432,10 +6469,12 @@ SIG-QUOT-INSTALL
 : TYPE-CERTAIN-INSTALL ( -- ) [: TYPE-CERTAIN ;] is TYPE-MAY-ARRIVE-XT ;
 TYPE-CERTAIN-INSTALL
 
+CHECKER-REG:SCRATCH{
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
 variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 variable PD-ATOM0                        \ the first atom index this signature parsed
+CHECKER-REG:}SCRATCH
 
 \ Scope parameters occur only in declared scope slots. Checking the complete
 \ rows after parsing also catches a variable used as an element/value before a
@@ -7065,16 +7104,13 @@ CHECKER-REG:}SCRATCH
    t MK-PTR swap MK-PUSH
    t rest MK-PUSH RECORDED-STEP ;
 
-\ Certified words' effect records follow the structural primitive-effect prefix;
-\ the renderer appends user records, so later wins. The baked image stores
-\ canonical typed effect graphs, not signature strings, and the static boot
-\ arena holds that snapshot without process-local mmap state.
+\ The cap reserves no room for the engine's boot appends: a restored pool grows
+\ as a runtime one does (test/engine-suite.f "usigs restored-pool grow").
 $800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 PERSISTED-PTR-VARIABLE USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-USER-OFF
-variable USIGS-GROW-CAP   PTR-VARIABLE USIGS-GROW-NEXT
 variable CHK-CAND
 
 \ Per-symbol effect-record index state; the index lives in the symbol hash
@@ -7099,6 +7135,9 @@ PTR-VARIABLE NRX-BASE
 \ role survives the fetch, as USX-BASE does.
 PTR-VARIABLE UIX-BASE
 PTR-VARIABLE CHX-BASE
+\ The effect-cache owner (HIDX-EFF-SYNC, far below): the store its memo cells
+\ were read against. Declared here so USIGS-GROW can drop it.
+PTR-VARIABLE HIDX-EFF-BASE
 variable CHX-HI
 CHECKER-REG:}SCRATCH
 
@@ -7115,6 +7154,24 @@ CHECKER-REG:}SCRATCH
 
 : CHX-BASE@ ( -- ptr u8 ) CHX-BASE 0 ptr-field @ ;
 : CHX-BASE! ( ptr u8 -- ) CHX-BASE 0 ptr-field ! ;
+
+: USX-BASE-FIELD ( -- ptr ptr u8 )
+   USX-BASE 0 ptr-field ;
+
+: USX-BASE@ ( -- ptr u8 )
+   USX-BASE-FIELD @ ;
+
+: USX-BASE! ( ptr u8 -- )
+   USX-BASE-FIELD ! ;
+
+: HIDX-EFF-BASE-FIELD ( -- ptr ptr u8 )
+   HIDX-EFF-BASE 0 ptr-field ;
+
+: HIDX-EFF-BASE@ ( -- ptr u8 )
+   HIDX-EFF-BASE-FIELD @ ;
+
+: HIDX-EFF-BASE! ( ptr u8 -- )
+   HIDX-EFF-BASE-FIELD ! ;
 
 \ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
 \ value the checker metadata writes with `!`. USIGS-CELL-AT views a cell-aligned
@@ -7144,9 +7201,10 @@ CHECKER-REG:}SCRATCH
 \ under a grain boundary grows at once on its boot appends (measured: a gen-1
 \ engine at content 2,292,824, cap 2,293,760, doubled to 4,587,520 in its first
 \ load). A grow from a restored pool is correct: the copy is verbatim, USIGS-GROW
-\ carries a valid intern stamp, and USX-BASE, NRX-BASE and HIDX-EFF-BASE rebuild
-\ on the identity change (test/engine-suite.f "usigs restored-pool grow"). Only
-\ the engine's prefix knows the boot appends; the worst case is one extra copy.
+\ carries a valid intern stamp and nulls USX-BASE and HIDX-EFF-BASE, and
+\ NORET-GROW nulls NRX-BASE, so each index rebuilds (test/engine-suite.f "usigs
+\ restored-pool grow"). Only the engine's prefix knows the boot appends; the
+\ worst case is one extra copy.
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
@@ -7324,9 +7382,7 @@ PTR-VARIABLE PU-P   variable PU-CAP   variable PU-N      \ pending uses, in rows
    0 CHECKER-EFFECT-AUTHORITY:RECOVERY-START
    NULL-PTR CHX-BASE! 0 CHX-HI !
    0 UEND !
-   0 USIGS-HEAD !
-   0 USIGS-GROW-CAP !
-   NULL-PTR USIGS-GROW-NEXT ! ;
+   0 USIGS-HEAD ! ;
 
 : USIGS-ALLOC-INIT ( -- )
    USIGS-INIT-CAP USIGS-ALLOC USIGS-P !
@@ -7380,22 +7436,24 @@ USIGS-RUNTIME-INIT
    \ Interning and rejected definitions rewind UEND without clearing bytes.
    \ An existing DATA allocation is reused above; its unused tail is not part
    \ of the effect graph and must not preserve the last compile's scratch.
-   USIGS CELL-VIEW USIGS-SNAPSHOT-SIZE CELL / USIGS-CAP-U @ CELL / ARENA-CELLS-ZERO
-   0 USIGS-GROW-CAP !
-   NULL-PTR USIGS-GROW-NEXT ! ;
+   USIGS CELL-VIEW USIGS-SNAPSHOT-SIZE CELL / USIGS-CAP-U @ CELL / ARENA-CELLS-ZERO ;
 
-\ At least double the cap, so regrowth copies the store O(log) times.
+\ At least double the cap, so regrowth copies the store O(log) times. No address
+\ into the store survives a grow: a record being built is held as its offset
+\ (E-BUILD-EFFECT) and atom and param terms keep their names in TERM-NAMES.
 : USIGS-GROW {: need :}
-   need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
-   USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
-   USIGS USIGS-GROW-NEXT @ UEND @ CELL + ARENA-COPY
+   need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP {: cap:n :}
+   USIGS USIGS-CAP-U @ cap ARENA-BYTES-GROW {: next:ptr :}
    \ The copy is verbatim, so every offset a valid stamp covers is still its own
    \ node. Carry only a valid stamp: an invalidation (CLEAR, a retire's null)
-   \ must survive a grow.
-   USIGS CHX-BASE@ = IF USIGS-GROW-NEXT @ CHX-BASE! THEN
-   USIGS UIX-BASE@ = IF USIGS-GROW-NEXT @ UIX-BASE! THEN
-   USIGS-GROW-NEXT @ USIGS-P !
-   USIGS-GROW-CAP @ USIGS-CAP-U ! ;
+   \ must survive a grow. Any other stamp is dropped: the abandoned address may
+   \ be mapped again, and a stamp still naming it would then match a store it
+   \ never indexed.
+   USIGS CHX-BASE@ = IF next ELSE NULL-PTR THEN CHX-BASE!
+   USIGS UIX-BASE@ = IF next ELSE NULL-PTR THEN UIX-BASE!
+   NULL-PTR USX-BASE!   NULL-PTR HIDX-EFF-BASE!
+   next USIGS-P !
+   cap USIGS-CAP-U ! ;
 
 : USIGS-ENSURE {: need :}
    need USIGS-CAP-U @ <= IF exit THEN
@@ -7653,7 +7711,6 @@ CHECKER-REG:SCRATCH{
 variable HIDX-VALID
 variable HIDX-EPOCH
 variable HIDX-EFF-HI
-PTR-VARIABLE HIDX-EFF-BASE
 variable HIDX-CTL-HI
 variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollback sync)
 variable HIDX-H
@@ -7661,9 +7718,9 @@ variable HIDX-I
 variable HIDX-CUR
 CHECKER-REG:}SCRATCH
 
-\ HIDX-MEM/HIDX-EFF-BASE hold typed pointers into the mmap cache and USIGS store.
-\ A plain variable @ yields a bare cell value, so the store base is read through a
-\ cell-indexed ptr-field view (ptr ptr a) to preserve the nested pointer role.
+\ HIDX-MEM holds a typed pointer into the mmap cache. A plain variable @ yields
+\ a bare cell value, so the base is read through a cell-indexed ptr-field view
+\ (ptr ptr a) to preserve the nested pointer role.
 : HIDX-MEM-FIELD ( -- ptr ptr n )
    HIDX-MEM 0 ptr-field ;
 
@@ -7689,15 +7746,6 @@ CHECKER-REG:}SCRATCH
 
 : HIDX-MEM-READY? ( -- bool )
    HIDX-MEM@ 0= 0= ;
-
-: HIDX-EFF-BASE-FIELD ( -- ptr ptr u8 )
-   HIDX-EFF-BASE 0 ptr-field ;
-
-: HIDX-EFF-BASE@ ( -- ptr u8 )
-   HIDX-EFF-BASE-FIELD @ ;
-
-: HIDX-EFF-BASE! ( ptr u8 -- )
-   HIDX-EFF-BASE-FIELD ! ;
 
 HIDX-MEM-CLEAR
 
@@ -7908,10 +7956,7 @@ HIDX-MEM-CLEAR
 \ Growing drops the HIDX mapping, so the next lookup rehashes at the new cap.
 : SYM-GROW ( n -- ) {: need:n :}
    need SYM-CAP-NEXT {: nc:n :}
-   SYMS SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW
-   \ The copied table is retired; its old rows must not enter image DATA.
-   SYMS-P @ CELL-VIEW 0 SYM-CAP-V @ SYM-REC * CELL / ARENA-CELLS-ZERO
-   SYMS-P !
+   SYMS SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW SYMS-P !
    nc SYM-CAP-V !
    HIDX-MEM-CLEAR   0 HIDX-VALID !
    HIDX-EPOCH+ ;
@@ -8382,9 +8427,7 @@ UIX-RESET
 
 : UIX-ENT-GROW ( -- )
    UIX-ENT-CAP @ 2 * {: nc:n :}
-   nc UIX-ENT-CELLS * cells ARENA-ALLOC {: nb:ptr :}
-   UIX-ENT nb UIX-ENT-CAP @ UIX-ENT-CELLS * ARENA-CELLS-COPY
-   nb UIX-ENT-P !
+   UIX-ENT-P UIX-ENT-CAP @ UIX-ENT-CELLS * cells nc UIX-ENT-CELLS * cells REG-GROW1
    nc UIX-ENT-CAP ! ;
 
 \ Re-chains oldest first, so each bucket keeps its newest entry at the head, the
@@ -8400,11 +8443,12 @@ UIX-RESET
    REPEAT ;
 
 : UIX-BKT-GROW ( -- )
-   UIX-BKT-CAP @ 2 * {: nc:n :}
-   nc cells ARENA-ALLOC {: nb:ptr :}
-   nb 0 nc ARENA-CELLS-ZERO
-   nb UIX-BKT-P !
+   UIX-BKT {: old:ptr :}
+   UIX-BKT-CAP @ {: oc:n :}
+   oc 2 * {: nc:n :}
+   nc cells ARENA-ALLOC UIX-BKT-P !
    nc UIX-BKT-CAP !
+   old oc cells ARENA-ABANDON
    UIX-REHASH ;
 
 : UIX-ADD ( n n -- ) {: off:n b:n :}
@@ -8844,9 +8888,7 @@ CHX-RESET
 
 : CHX-ENT-GROW ( -- )
    CHX-ENT-CAP @ 2 * {: nc:n :}
-   nc CHX-ENT-CELLS * cells ARENA-ALLOC {: nb:ptr :}
-   CHX-ENT nb CHX-ENT-CAP @ CHX-ENT-CELLS * ARENA-CELLS-COPY
-   nb CHX-ENT-P !
+   CHX-ENT-P CHX-ENT-CAP @ CHX-ENT-CELLS * cells nc CHX-ENT-CELLS * cells REG-GROW1
    nc CHX-ENT-CAP ! ;
 
 : CHX-REHASH ( -- )
@@ -8860,11 +8902,12 @@ CHX-RESET
    REPEAT ;
 
 : CHX-BKT-GROW ( -- )
-   CHX-BKT-CAP @ 2 * {: nc:n :}
-   nc cells ARENA-ALLOC {: nb:ptr :}
-   nb 0 nc ARENA-CELLS-ZERO
-   nb CHX-BKT-P !
+   CHX-BKT {: old:ptr :}
+   CHX-BKT-CAP @ {: oc:n :}
+   oc 2 * {: nc:n :}
+   nc cells ARENA-ALLOC CHX-BKT-P !
    nc CHX-BKT-CAP !
+   old oc cells ARENA-ABANDON
    CHX-REHASH ;
 
 : CHX-ADD ( n n -- ) {: off:n b:n :}
@@ -8980,15 +9023,6 @@ CHX-RESET
 \               identity, dropped mapping) and the index is rebuilt.
 \ The append seam syncs before it writes, so regrowth over truncated offsets
 \ cannot mask a rewind (as HIDX-EFF-SYNC does for the memo cells).
-
-: USX-BASE-FIELD ( -- ptr ptr u8 )
-   USX-BASE 0 ptr-field ;
-
-: USX-BASE@ ( -- ptr u8 )
-   USX-BASE-FIELD @ ;
-
-: USX-BASE! ( ptr u8 -- )
-   USX-BASE-FIELD ! ;
 
 \ --- the shared cell layer for symbol-keyed store heads. One table id per store;
 \ everything else about a store — stride, fields, base, end mark — stays concrete
@@ -9552,9 +9586,11 @@ variable DOESPEND  0 DOESPEND !
 \ at a clause's end, CHECK-CANDIDATE-DONE at a candidate's). The take refuses a
 \ candidate too: its record is truncated when the scope ends, and the next real
 \ record is not its heir.
+CHECKER-REG:SCRATCH{
 variable WRAPN     0 WRAPN !
 variable WRAPC     0 WRAPC !
 variable WRAPBENT  0 WRAPBENT !
+CHECKER-REG:}SCRATCH
 
 : WRAP-CLEAR ( -- )
    0 WRAPN !  0 WRAPC !  0 WRAPBENT ! ;
@@ -9569,7 +9605,9 @@ variable WRAPBENT  0 WRAPBENT !
 \ for hook paths that certify without recording. The engine publish tails call
 \ REC-WIDE-PUBLISH after ndict++ (habu2.f EM-COMPILE-PUBLISH-TRUSTED/-HOOKED,
 \ C-DEFER), where `wide-mark`'s newest target (ndict-1) is the record just made.
+CHECKER-REG:SCRATCH{
 variable RECW   0 RECW !
+CHECKER-REG:}SCRATCH
 : REC-WIDE-PUBLISH ( -- )
    RECW @ 0 <> IF wide-mark THEN
    0 RECW !
@@ -9580,7 +9618,9 @@ variable RECW   0 RECW !
 \ on deleted or bad rows and by CHECK-RESET, read after ndict++ by habu2.f
 \ EM-REC-WIDE-PUBLISH through REC-MIN-IN@ into DNAME-MIN-IN bits 52-59, so
 \ EM-INTERPRET-FIND fails closed on an underdepth bare call before the body runs.
+CHECKER-REG:SCRATCH{
 variable RECMI   0 RECMI !
+CHECKER-REG:}SCRATCH
 : REC-MIN-IN@ ( -- n )
    RECMI @  0 RECMI ! ;
 
@@ -9842,7 +9882,6 @@ PTR-VARIABLE ASIG-LAST-P
    ASIG-STR-P @ ASIG-STR-CAP-V @ {: old:ptr oc:n :}
    oc BEGIN dup ASIG-STR-U @ need + < WHILE 2 * REPEAT {: nc:n :}
    old oc nc ARENA-BYTES-GROW ASIG-STR-P !
-   old oc ASIG-RELEASE
    nc ASIG-STR-CAP-V ! ;
 
 : ASIG-DIST-ROOM ( -- )
@@ -9969,10 +10008,11 @@ PTR-VARIABLE ASIG-LAST-P
 \ fills it drops the rest, which costs a retry pass, not an answer. Cleared at
 \ CHECK-RESET, so it describes the pass just run.
 $800 constant ASIG-MISS-CAP
+CHECKER-REG:SCRATCH{
 create ASIG-MISS ASIG-MISS-CAP allot
 variable ASIG-MISS-U
-variable ASIG-MISS-I
 variable ASIG-MISS-K
+CHECKER-REG:}SCRATCH
 
 : ASIG-MISS-CLEAR ( -- ) 0 ASIG-MISS-U ! ;
 
@@ -10296,44 +10336,40 @@ CHECKER-GRID-CELLS-INSTALL
    repeat ;
 
 \ --- linear kind: polarity-aware multiplicity of an applied effect ------------
-\ EN-MULT tallies occurrences of canonical var LMV in the stored effect subgraph
-\ at offset `off`, split by polarity into LMNEG (input side) / LMPOS (output
-\ side). A quotation ARGUMENT's rows flip polarity — the word must SUPPLY the
-\ quotation's inputs (output side) and RECEIVES its outputs (input side) — so
-\ passing a linear into a consumer quotation counts as one output-side use, and
-\ KEEP (which also returns it) exceeds one. Mirrors E-INST's node walk.
-variable LMNEG  variable LMPOS  variable LMV
-: EN-MULT ( n bool -- ) {: off:n pol:bool :}
+\ Counts: input side deeper, output side on top. A quotation's rows flip polarity:
+\ the word supplies the quotation's inputs and receives its outputs.
+: EN-MULT ( n n n n bool -- n n )
+   {: v:n off:n pol:bool :}
    off 0= IF exit THEN
    off E-PTR >r
    r@ EN.TAG @ case
       EN-VAR of
-         r@ EN.A @ LMV @ = IF
-            pol IF LMPOS @ 1 + LMPOS ! ELSE LMNEG @ 1 + LMNEG ! THEN
+         r@ EN.A @ v = IF
+            pol IF 1 + ELSE swap 1 + swap THEN
          THEN
          r> drop
       endof
       EN-PUSH of
-         r@ EN.A @ pol RECURSE
-         r@ EN.B @ pol RECURSE
+         v r@ EN.A @ pol RECURSE
+         v r@ EN.B @ pol RECURSE
          r> drop
       endof
       EN-PTR of
-         r@ EN.A @ pol RECURSE
+         v r@ EN.A @ pol RECURSE
          r> drop
       endof
       EN-QUOT of
-         r@ EN.A @ pol 0= RECURSE          \ Din: flipped polarity
-         r@ EN.B @ pol RECURSE             \ Dout: kept
-         r@ EN.C @ pol 0= RECURSE          \ Rin: flipped
-         r@ EN.D @ pol RECURSE             \ Rout: kept
+         v r@ EN.A @ pol 0= RECURSE        \ Din: flipped polarity
+         v r@ EN.B @ pol RECURSE           \ Dout: kept
+         v r@ EN.C @ pol 0= RECURSE        \ Rin: flipped
+         v r@ EN.D @ pol RECURSE           \ Rout: kept
          r> drop
       endof
-      EN-FORALL of r@ EN.A @ pol RECURSE r> drop endof
+      EN-FORALL of v r@ EN.A @ pol RECURSE r> drop endof
       EN-PARAM of
          r@ {: np:ptr :}                   \ node ptr (parked value)
-         0 BEGIN dup np EN.C @ < WHILE      \ data-stack index (RECURSE-safe)
-            dup cells np EN.D @ + E-PTR CELL-VIEW @ pol RECURSE
+         0 BEGIN dup np EN.C @ < WHILE
+            >r v r@ cells np EN.D @ + E-PTR CELL-VIEW @ pol RECURSE r>
             1 +
          REPEAT drop
          r> drop
@@ -10341,11 +10377,10 @@ variable LMNEG  variable LMPOS  variable LMV
       r> drop
    endcase ;
 
-: LIN-VAR-MULT ( ptr u8 n -- n n ) {: h:ptr v:n :}
-   v LMV !  0 LMNEG !  0 LMPOS !
-   h E-DIN@ RES-FALSE EN-MULT
-   h E-DOUT@ RES-TRUE EN-MULT
-   LMNEG @ LMPOS @ ;
+: LIN-VAR-MULT ( ptr u8 n -- n n )
+   {: h:ptr v:n :}
+   0 0 v h E-DIN@ RES-FALSE EN-MULT
+   v h E-DOUT@ RES-TRUE EN-MULT ;
 
 \ After an effect is applied and its input vars are bound, examine each canonical
 \ effect var: if it resolved to a linear con with unequal input/output
@@ -10358,26 +10393,26 @@ variable LMNEG  variable LMPOS  variable LMV
 \ lq2<a,b> )` makes no `a`), so its call takes the inline `construct` step's
 \ accounting: CHECKER-STEP conservation alone. Any other word with that effect
 \ keeps the count, because its body may have forged the `a`.
-variable LMI
-: LIN-EFF-PASS ( ptr u8 -- ) {: h:ptr :}
+: LIN-EFF-PASS ( ptr u8 -- )
+   {: h:ptr :}
    LIN-ANY? 0= IF exit THEN
    OK @ 0= IF exit THEN
    h ER.SYM @ CTOR-ROW?-XT IF exit THEN
-   0 LMI !
-   BEGIN LMI @ h E-TVN@ < WHILE
-      LMI @ cells EI-TV + @ {: r:n :}
+   0 BEGIN dup h E-TVN@ < WHILE
+      dup {: k:n :}
+      k cells EI-TV + @ {: r:n :}
       r UNBOUND <> IF
          r T-RES {: rr:n :}
          rr LIN-CON? IF
-            h LMI @ LIN-VAR-MULT <> IF 0 OK ! THEN
+            h k LIN-VAR-MULT <> IF 0 OK ! THEN
          ELSE
             rr TAG T-VAR = IF
-               h LMI @ LIN-VAR-MULT <> IF rr PAY LIN-TAINT THEN
+               h k LIN-VAR-MULT <> IF rr PAY LIN-TAINT THEN
             THEN
          THEN
       THEN
-      LMI @ 1 + LMI !
-   REPEAT ;
+      1 +
+   REPEAT drop ;
 
 : EFF-APPLY ( ptr u8 -- ) {: h:ptr :}
    h TOK-EFF !
@@ -11670,7 +11705,9 @@ variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, us
 PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
+CHECKER-REG:SCRATCH{
 variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
+CHECKER-REG:}SCRATCH
 \ ONE hook for the diagnostics located at a token, selected by its argument: 0
 \ renders the using-shadow reference site below, 1 the arity-shadow definition
 \ site (SHADOW-ARITY-CK), 2 a bare token two used publics export
@@ -13669,7 +13706,9 @@ variable EFFQ-SAVE-DOUT
 variable REC-IX                      \ the ordinal the next reported token takes
 variable FIELD-LOAN-ORD
 variable FIELD-LOAN-OFF
+CHECKER-REG:SCRATCH{
 variable FIELD-LOAN-PENDING
+CHECKER-REG:}SCRATCH
 variable TOK-SYM   variable TOK-CTL   variable TOK-DONE
 variable TOK-LIVE-REC
 variable TOK-DEAD
@@ -13745,14 +13784,9 @@ variable BWIN-EPOCH
    BWIN-N @ 1+ BWIN-INIT max
    BWIN-CAP @ BWIN-MAX 2 / <= IF BWIN-CAP @ 2 * max THEN
    {: cap:n :}
-   BWIN-P @ BWIN-N @ CHECKER-OWNER-ABI:BOUND-CELLS * cells
-   cap CHECKER-OWNER-ABI:BOUND-CELLS * cells ARENA-BYTES-GROW {: next:ptr :}
-   BWIN-CAP @ 0= 0= IF
-      BWIN-P @ BWIN-CAP @ CHECKER-OWNER-ABI:BOUND-CELLS * cells munmap 0= 0= IF
-         s" checker: call binding munmap failed" 76 die
-      THEN
-   THEN
-   next BWIN-P !  cap BWIN-CAP ! ;
+   BWIN-P BWIN-CAP @ CHECKER-OWNER-ABI:BOUND-CELLS * cells
+   cap CHECKER-OWNER-ABI:BOUND-CELLS * cells REG-GROW1
+   cap BWIN-CAP ! ;
 
 : BWIN-COMMIT ( -- )
    REC-ON @ 0= BWIN-HIT @ 0= or IF EXIT THEN
@@ -13904,10 +13938,7 @@ $7FFFFFFFFFFFFFFF 4 cells / constant CWIN-ROW-MAX
    CWIN-N @ 1 + CWIN-INIT max
    CWIN-CAP @ CWIN-ROW-MAX 2 / <= IF CWIN-CAP @ 2 * max THEN
    {: cap:n :}
-   CWIN-P @ CWIN-N @ CW-ROW * cells cap CW-ROW * cells
-   ARENA-BYTES-GROW {: next:ptr :}
-   CWIN-P @ CWIN-CAP @ CWIN-UNMAP
-   next CWIN-P !
+   CWIN-P CWIN-CAP @ CW-ROW * cells cap CW-ROW * cells REG-GROW1
    cap CWIN-CAP ! ;
 
 : CWIN-ADD ( n n n n -- ) {: ord:n in:n out:n kind:n :}
@@ -15086,7 +15117,6 @@ NULL-PTR NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !
 CHECKER-REG:SCRATCH{
 variable NORET-CTL      \ the packed control word NORET-SCAN-SYM last read
 CHECKER-REG:}SCRATCH
-variable NORET-GROW-CAP   PTR-VARIABLE NORET-GROW-NEXT
 
 \ Even an empty store has a readable zero-symbol terminator. The accessor also
 \ covers cold scans, preallocation/growth and persistence before any append.
@@ -15217,30 +15247,26 @@ CHECKER-REG:}SCRATCH
       NORETS dst n ARENA-COPY
       dst NORET-P !
       cap NORET-CAP-U !
-   THEN
-   0 NORET-GROW-CAP !
-   NULL-PTR NORET-GROW-NEXT ! ;
+   THEN ;
 
 : NORET-GROW {: need :}
-   need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP NORET-GROW-CAP !
-   NORET-GROW-CAP @ USIGS-ALLOC NORET-GROW-NEXT !
-   NORETS NORET-GROW-NEXT @ NORET-END @ CELL + ARENA-COPY
-   NORET-GROW-NEXT @ NORET-P !
-   NORET-GROW-CAP @ NORET-CAP-U ! ;
+   need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP {: cap:n :}
+   NORETS NORET-CAP-U @ cap ARENA-BYTES-GROW NORET-P !
+   NULL-PTR NRX-BASE!   \ the abandoned address may be mapped again
+   cap NORET-CAP-U ! ;
 
 : NORET-ENSURE {: need :}
    need NORET-CAP-U @ <= IF exit THEN
    need NORET-GROW ;
 
-\ Capture is quiescent. No scratch plane address enters the image; first use
-\ after capture or restore constructs every plane with its sentinel. FV and the
-\ copy maps' written marks describe these planes, which outlive a file
-\ boundary, so they rest here and not in a span.
+\ No plane address enters the image. FV and both copy maps' written marks
+\ describe planes that outlive a file boundary, so they rest here, not in a span.
 : TV-SNAP-RESET ( -- )
    TVT-P @ TV-CAP @ TV-RELEASE
    TV-CLEAR
    0 FV !
-   0 EC-TV-HW !   0 EC-RV-HW ! ;
+   0 EC-TV-HW !   0 EC-TV-LW !
+   0 EC-RV-HW !   0 EC-RV-LW ! ;
 
 \ Restore a scratch arena to its boot buffer and empty that buffer in one step.
 \ Capture copies these DATA buffers into the image; the last definition's
@@ -15253,11 +15279,6 @@ CHECKER-REG:}SCRATCH
    from to >= IF EXIT THEN
    to from ?do NULL-PTR base i cells + ! loop ;
 
-\ ARENA-SNAP-BOOT for a declared PTR-U8-TABLE boot (ATOMA-BOOT).
-: ARENA-SNAP-BOOT-PTRS ( ptr ptr ptr u8 ptr ptr u8 n -- ) {: pv:ptr boot:ptr count:n :}
-   boot 0 count REG-POINTERS-CLEAR
-   boot pv ! ;
-
 \ At capture, repoint the scope, atom and inst-key arenas at their emptied boot
 \ buffers and init caps, so no grown mmap address is persisted. The scope arena
 \ cannot rest at each file boundary: SCOPE-N never rewinds (SCOPE-FRESH).
@@ -15266,7 +15287,7 @@ CHECKER-REG:}SCRATCH
    SCOPE-PARENT-P SCOPE-PARENT-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-SECOND-P SCOPE-SECOND-BOOT SCOPE-PARENT-INIT ARENA-SNAP-BOOT
    SCOPE-PARENT-INIT SCOPE-PARENT-CAP !
-   ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT-PTRS  ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
+   ATOMA-P ATOMA-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       ATOMU-P ATOMU-BOOT MAXATOM-INIT ARENA-SNAP-BOOT
    ATOMK-P ATOMK-BOOT MAXATOM-INIT ARENA-SNAP-BOOT       MAXATOM-INIT ATOM-CAP !
    VRI-AK-P VRI-AK-BOOT VRI-AK-INIT ARENA-SNAP-BOOT      VRI-AK-INIT VRI-AK-CAP-V ! ;   \ transient inst scratch
 
@@ -15477,10 +15498,9 @@ REG-EXT-AOT-DEFAULTS
    NULL-PTR SIGSCOPE-P !  0 SIGSCOPE-U !  0 SIGSCOPE-ON !
    SGBAD-CLEAR
    PKRESET
+   NMAP-RESET ROWMAP-RESET   \ letter maps rest at UNBOUND, not 0, so no span holds them
    SYM-XFER-CLEAR
-   FIELD-PROJ-SCRATCH-RESET
-   ATOMA-BOOT 0 MAXATOM-INIT REG-POINTERS-CLEAR
-   FAM-A 0 FAM-CAP REG-POINTERS-CLEAR ;
+   FIELD-PROJ-SCRATCH-RESET ;
 
 : NORET-REC ( -- ptr n )
    NORET-END @ NORET-CELL ;
@@ -15624,17 +15644,8 @@ variable RECORD-PEND-EFF   0 RECORD-PEND-EFF !
    RECORD-LINK-CAP @ 0= IF 64 ELSE RECORD-LINK-CAP @ THEN
    BEGIN dup ord <= WHILE 2 * REPEAT
    CK-DICT-CAP min {: cap:n :}
-   cap RECORD-LINK-ROW * ARENA-ALLOC-BYTES {: dst:ptr :}
-   dst CELL-VIEW 0 cap 7 * ARENA-CELLS-ZERO
-   RECORD-LINK-CAP @ 0 <> IF
-      RECORD-LINK-P @ {: old:ptr :}
-      RECORD-LINK-CAP @ RECORD-LINK-ROW * {: bytes:n :}
-      old dst bytes ARENA-COPY
-      old BYTE-VIEW bytes REG-DATA-SPAN? 0= IF
-         old bytes ASIG-RELEASE
-      THEN
-   THEN
-   dst RECORD-LINK-P ! cap RECORD-LINK-CAP ! ;
+   RECORD-LINK-P RECORD-LINK-CAP @ RECORD-LINK-ROW * cap RECORD-LINK-ROW * REG-GROW1
+   cap RECORD-LINK-CAP ! ;
 
 : RECORD-LINK-CLEAR ( n -- ) {: ord:n :}
    ord RECORD-LINK-CAP @ >= IF EXIT THEN
@@ -15729,9 +15740,7 @@ variable PENDING-OWNER-READY 0 PENDING-OWNER-READY !
    PENDING-OWNER-P @ {: old:ptr :}
    PENDING-OWNER-CAP @ {: oldcap:n :}
    oldcap 0= IF 64 ELSE oldcap 2 * THEN {: cap:n :}
-   cap 2 cells * ARENA-ALLOC-BYTES {: dst:ptr :}
-   dst CELL-VIEW 0 cap 2 * ARENA-CELLS-ZERO
-   dst PENDING-OWNER-P ! cap PENDING-OWNER-CAP !
+   cap 2 cells * ARENA-ALLOC-BYTES PENDING-OWNER-P ! cap PENDING-OWNER-CAP !
    0 PENDING-OWNER-N !
    oldcap 0 ?do
       old i 2 cells * + CELL-VIEW @ {: key:n :}
@@ -15740,7 +15749,7 @@ variable PENDING-OWNER-READY 0 PENDING-OWNER-READY !
          PENDING-OWNER-PUT-RAW
       THEN
    loop
-   old oldcap 2 cells * ASIG-RELEASE ;
+   old oldcap 2 cells * ARENA-ABANDON ;
 : PENDING-OWNER-FIELD@ ( ptr n n -- n ) {: row:ptr field:n :}
    field PENDING-EFFECT = IF row RLINK.EFFECT cells + @ EXIT THEN
    field PENDING-CONTROL = IF row RLINK.CONTROL cells + @ EXIT THEN
@@ -16283,6 +16292,11 @@ RECORD-GRID-HOOKS
    ord RECORD-PEND-IX @ = IF
       ord RECORD-PEND-EFF@ RECORD-PEND-SYM @ NORET-NEWEST
       RECORD-PEND-SYM @ DFER-FIND-SYM RECORD-LINK-SET
+      \ An EXPORT alias copies a constant's DKIND:VAL stamp with its body
+      \ (habu2.f C-EXPORT), so the export keeps the constant's fixed value.
+      ord RECORD-LINK-CURRENT? IF
+         ord ord CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED!
+      THEN
       -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF !
       EXIT
    THEN
@@ -18943,7 +18957,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 : XPORT-APPLY ( ptr u8 n -- )
    {: a:ptr u:n :}
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
    REC-ON @ IF a u XPORT-CALL THEN
@@ -18954,7 +18968,7 @@ variable XG-N   variable XG-TN   variable XG-ROW
       a u XP-DATA-SEQ$ XG-TAINT-SEQ
    THEN
    OK @ IF
-      LIN-CHECK
+      bef LIN-CHECK
       OK @ 0= IF a u C2-XPORT-REJECT THEN
    THEN ;
 
@@ -19099,7 +19113,9 @@ defer LOCSHOWXT ( ptr u8 n n -- )
 : LOCSHOW-DEFAULT ( -- ) [: 2drop drop ;] is LOCSHOWXT ;
 LOCSHOW-DEFAULT
 variable #CFC
+CHECKER-REG:SCRATCH{
 variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
+CHECKER-REG:}SCRATCH
 
 : LCOLON ( ptr u8 n -- n ) {: a:ptr u:n :}   \ first ':' in a/u, or u
    0 BEGIN dup u < WHILE
@@ -19265,14 +19281,14 @@ variable CF-OVER   \ an opener found every frame in use and kept none (CF-PUSH)
    OK @ IF gi idx LOC-CAPTURE-GROUP THEN ;
 
 : LOC-BIND-GROUPS ( -- )
-   LIN-SNAPSHOT
+   LIN-SNAPSHOT {: bef:n :}
    DCUR @  #LOC @ LGRP @ -  XG-READ 0= IF EXIT THEN
    0 BEGIN dup #LOC @ LGRP @ - < WHILE
       dup LOC-GROUP-BIND
       1 +
    REPEAT drop
    XG-ROW @ DCUR !
-   OK @ IF LIN-CHECK THEN ;
+   OK @ IF bef LIN-CHECK THEN ;
 
 \ A rejected local bind in an unjudged scan still binds at runtime (the
 \ splice header above CHECKER-STEP): each local takes the cells the runtime
@@ -20355,10 +20371,12 @@ variable MSEEN-N   0 MSEEN-N !
       1 +
    REPEAT drop RES-TRUE ;
 
+CHECKER-REG:SCRATCH{
 variable CHECKER-MATCH-MODE      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of | 4 refused, read unmodeled
 variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
 variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
 variable MSKIP   \ matches open in a refused match the walk reads unmodeled (CHECKER-MATCH-MODE 4)
+CHECKER-REG:}SCRATCH
 
 \ Rigid host-identity mismatch naming. RIGID-ATOM-DOMAIN classifies a resolved
 \ term as a rigid-identity atom of a domain (0 = none). RIGID-DIAG-CLASSIFY runs
@@ -20643,7 +20661,9 @@ variable MTCH-W                      \ the bundle width the walk below really co
 \ firer skips the render while it is non-zero. It is created before the check
 \ hook exists, so no effect is published for it and only this file names it;
 \ callers name the probe words above.
+CHECKER-REG:SCRATCH{
 variable TOK0
+CHECKER-REG:}SCRATCH
 defer RECXT ( ptr u8 n -- )
 defer DIAGXT ( -- )
 variable DIAG-QUIET
@@ -21405,7 +21425,9 @@ variable RTL-I                        \ retired-token local scan index
 \ which DO-TOK1 types as literals first) pass; engine prims are modeled by
 \ TRY-PRIMS and carry no usig row.
 
+CHECKER-REG:SCRATCH{
 variable IMMERR
+CHECKER-REG:}SCRATCH
 
 \ --- declared parsing immediates.
 \ A parsing immediate consumes a fixed number of source tokens at compile time
@@ -23157,8 +23179,7 @@ CHECKER-REG:}SCRATCH
    oldcap $3FFFFFFFFFFFFFFF > IF ASIG-GRAPH-DIE THEN
    bytes oldcap 2 * max {: cap:n :}
    old oldcap cap ARENA-BYTES-GROW ASIG-GRAPH-MAP !
-   cap ASIG-GRAPH-MAP-CAP !
-   old oldcap ASIG-RELEASE ;
+   cap ASIG-GRAPH-MAP-CAP ! ;
 
 : ASIG-GRAPH-SLOT ( n -- ptr n )
    2 * ASIG-GRAPH-MAP @ + CELL-VIEW ;
@@ -23448,7 +23469,7 @@ CK-GRAPH-META-SPANS CK-LEX-MASK 1+ + constant CK-GRAPH-SPANS
    bytes CK-GRAPH-CAP @ > IF
       CK-GRAPH-MAP @ CK-GRAPH-CAP @ {: old:ptr oldcap:n :}
       bytes ARENA-ALLOC CK-GRAPH-MAP !
-      bytes CK-GRAPH-CAP ! old oldcap ASIG-RELEASE
+      bytes CK-GRAPH-CAP ! old oldcap ARENA-ABANDON
    THEN
    CK-GRAPH-MAP @ CK-GRAPH-MAP-U @ CK-GRAPH-META-SPANS * ARENA-ZERO
    0 CK-LEX-MEMO-U ! ;
@@ -23632,7 +23653,6 @@ create CK-LEX-DOMAINS 64 cells allot
       CK-LEX-MEMO-P @ CK-LEX-MEMO-CAP @ {: old:ptr oldcap:n :}
       old oldcap cap ARENA-BYTES-GROW CK-LEX-MEMO-P !
       cap CK-LEX-MEMO-CAP !
-      old oldcap ASIG-RELEASE
    THEN
    need CK-LEX-MEMO-U !
    at ;
@@ -24549,7 +24569,7 @@ variable CUR-OPEN   variable CUR-PSIG
    0 TKFU !  0 SCAN-U !  0 SCAN-TOK0 !  0 SCAN-TOKS !
    0 CPAY-B !  0 CPAY-U !  0 CPAY-ON !
    0 IS-TOFF !  0 IS-PEND !  0 IS-PEND-OFF !  0 IS-PEND-U !
-   0 CURSYM !  0 XE-PD !  0 XE-PR !  0 XROW !  0 XRROW ! ;
+   0 CURSYM !  0 XROW !  0 XRROW ! ;
 : CUR-PAREN-AT ( -- )
    TI @ CUR-OPEN !
    VSIG @ 0 <>  SGSEEN @ 0 = and  TOKIX @ 2 < and IF -1 ELSE 0 THEN CUR-PSIG ! ;
@@ -24754,8 +24774,8 @@ variable CTOR-PEND-POS
 : CTOR-PEND-ENSURE ( -- )
    CTOR-PEND-COUNT @ CTOR-PEND-CAP @ < IF EXIT THEN
    CTOR-PEND-NEXT-CAP {: cap:n :}
-   CTOR-PEND-P CTOR-PEND-BOOT CTOR-PEND-CAP @ CTOR-PEND-ROWS>BYTES
-      cap CTOR-PEND-ROWS>BYTES ARENA-BOOT-GROW
+   CTOR-PEND-P CTOR-PEND-CAP @ CTOR-PEND-ROWS>BYTES
+      cap CTOR-PEND-ROWS>BYTES REG-GROW1
    cap CTOR-PEND-CAP ! ;
 
 : CTOR-PEND-CLEAR ( -- )
@@ -26107,8 +26127,8 @@ variable DEF-STOPPED
 \ check into the record of whatever is defined next.
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE UNJ-A   variable UNJ-U
-CHECKER-REG:}SCRATCH
 variable UNJ-VERDICT
+CHECKER-REG:}SCRATCH
 
 : CHECK-UNJUDGED-BODY ( -- )
    UNJ-A @ UNJ-U @ CHECK! UNJ-VERDICT ! ;
@@ -26179,6 +26199,7 @@ public
 \ GLUE-MAX): a row with more cells than a mask has bits is refused by the reader
 \ that asks before any slot is read, so the cap loses no usable answer.
 64 constant CD-SLOT-CAP
+CHECKER-REG:SCRATCH{
 variable CD-DIN-CELLS
 variable CD-DOUT-CELLS
 variable CD-WIDE
@@ -26187,6 +26208,7 @@ variable CD-DOUT-N
 variable CD-I
 create CD-DIN-SLOTS CD-SLOT-CAP cells allot
 create CD-DOUT-SLOTS CD-SLOT-CAP cells allot
+CHECKER-REG:}SCRATCH
 
 \ The bundle slot+1 of one row entry's type, which is what EFF-TERM-SLOT answers
 \ for a stored row: a hidden physical field carries its position, every other
@@ -27422,12 +27444,17 @@ FILE-CON-RESET
 \ rows of its own; a rollback truncates the compiled or installed word with the
 \ rest of the declaration, and the stored entry stays valid because it is keyed
 \ by the word's inputs, which the next run of the same declaration reproduces.
-: CHECKER-PENDING-IDLE? ( -- bool )
-   UNIT-PENDING @ UNIT-MARKED @ or UNIT-PREP-PENDING @ or
-   UNIT-PLAN-OPEN @ or CHK-CAND @ or
+: CHECKER-PENDING-FILLABLE? ( -- bool )
+   UNIT-PREP-PENDING @ UNIT-PLAN-OPEN @ or CHK-CAND @ or
    CHECKER-VERIFY-PKG-DEPTH @ or 0=
    MULTI-ERR? 0= and ;
 
+: CHECKER-PENDING-IDLE? ( -- bool )
+   UNIT-PENDING @ UNIT-MARKED @ or 0= CHECKER-PENDING-FILLABLE? and ;
+
+\ A pending unit is marked, then filled by compiling one definition or by
+\ preparing and installing its slice under the mark, then exported; the
+\ prepare and install end only their own state, the export or discard the unit.
 : CHECKER-PENDING-MARK ( -- )
    CHECKER-PENDING-IDLE? 0= IF UNIT-BAD THEN
    PENDING-OWNER-SEED
@@ -27452,13 +27479,7 @@ FILE-CON-RESET
    UNIT-BUF-CAP @ <= IF EXIT THEN
    UNIT-BUF-CAP @ 0= IF UNIT-BUF-INIT ELSE UNIT-BUF-CAP @ THEN
    BEGIN dup UNIT-BUF-U @ add + < WHILE 2 * REPEAT {: cap:n :}
-   UNIT-BUF-P @ NULL-PTR = IF cap ARENA-ALLOC-BYTES
-   ELSE
-      cap ARENA-ALLOC-BYTES {: dst:ptr :}
-      UNIT-BUF-P @ dst UNIT-BUF-U @ ARENA-COPY
-      UNIT-BUF-P @ UNIT-BUF-CAP @ ASIG-RELEASE
-      dst
-   THEN UNIT-BUF-P !
+   UNIT-BUF-P UNIT-BUF-CAP @ cap REG-GROW1
    cap UNIT-BUF-CAP ! ;
 
 : UNIT-BUF+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -27517,12 +27538,8 @@ FILE-CON-RESET
 : UNIT-PREFIX-GROW ( -- )
    UNIT-PREFIX-CAP @ 0= IF 16 ELSE UNIT-PREFIX-CAP @ 2 * THEN
       {: cap:n :}
-   cap cells ARENA-ALLOC {: dst:ptr :}
-   UNIT-PREFIX-N @ 0 <> IF
-      UNIT-PREFIX-SYMS @ dst UNIT-PREFIX-N @ cells ARENA-COPY
-   THEN
-   UNIT-PREFIX-SYMS @ UNIT-PREFIX-CAP @ cells ASIG-RELEASE
-   dst UNIT-PREFIX-SYMS ! cap UNIT-PREFIX-CAP ! ;
+   UNIT-PREFIX-SYMS UNIT-PREFIX-CAP @ cells cap cells REG-GROW1
+   cap UNIT-PREFIX-CAP ! ;
 
 \ Local ordinals name the whole unit symbol table, including a marked-prefix
 \ symbol whose facts this unit changes. The wire never stores a live symbol id.
@@ -27717,12 +27734,8 @@ variable RECORD-GRAPH-CAP   0 RECORD-GRAPH-CAP !
    RECORD-BUF-U @ add + RECORD-BUF-CAP @ <= IF EXIT THEN
    RECORD-BUF-CAP @ 0= IF 256 ELSE RECORD-BUF-CAP @ THEN
    BEGIN dup RECORD-BUF-U @ add + < WHILE 2 * REPEAT {: cap:n :}
-   cap ARENA-ALLOC-BYTES {: dst:ptr :}
-   RECORD-BUF-U @ 0 <> IF
-      RECORD-BUF-P @ dst RECORD-BUF-U @ ARENA-COPY
-   THEN
-   RECORD-BUF-P @ RECORD-BUF-CAP @ ASIG-RELEASE
-   dst RECORD-BUF-P ! cap RECORD-BUF-CAP ! ;
+   RECORD-BUF-P RECORD-BUF-CAP @ cap REG-GROW1
+   cap RECORD-BUF-CAP ! ;
 
 : RECORD-BUF+ ( ptr u8 n -- ) {: src:ptr bytes:n :}
    bytes RECORD-BUF-ROOM
@@ -28077,9 +28090,11 @@ private
    UEND @ CTN @ + DFER-END @ + PIMM-N @ + UNIT-TFAM-N@ + LIN-NDECL @ +
    NORET-END @ + ;
 
+\ The definition's record is the one at the mark; a does> definer's clause
+\ record follows it. Whoever compiled or installed the definition owns how
+\ many records it made (tools/native-unit-object.f DEFINITION-END).
 : CHECKER-PENDING-EXPORT-REFS ( [ ptr u8 n -- n ] -- ptr u8 n )
    UNIT-PENDING @ 0= IF UNIT-BAD THEN
-   ndict@ UNIT-NDICT @ - 1 <> IF UNIT-BAD THEN
    UNIT-NDICT @ RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
    CHECKER-UNIT-EXPORT-REFS ;
 
@@ -28995,9 +29010,14 @@ UNIT-CON-PROJECT-INSTALL
    rc 0 <> IF rc throw THEN
    UNIT-PREP-REF-RESULT @ ;
 
+\ End the pending prepare and its plan; an open mark stays.
+: PENDING-PREPARE-END ( -- )
+   UNIT-PLAN-OPEN @ IF CHECKER-UNIT-PREPARE-END THEN
+   0 UNIT-PREP-PENDING ! 0 UNIT-PREP-PORTABLE ! ;
+
 : CHECKER-PENDING-PREPARE ( ptr u8 n [ n n -- ptr u8 ] -- n )
    {: src:ptr size:n resolve :}
-   CHECKER-PENDING-IDLE? 0= IF UNIT-BAD THEN
+   CHECKER-PENDING-FILLABLE? 0= IF UNIT-BAD THEN
    resolve is UNIT-RESOLVE-CB
    -1 UNIT-PREP-PORTABLE ! -1 UNIT-PREP-PENDING !
    src size
@@ -29007,11 +29027,7 @@ UNIT-CON-PROJECT-INSTALL
    2drop
    UNIT-RESOLVE-RESET
    0 UNIT-PREP-PORTABLE !
-   rc 0 <> IF
-      CHECKER-UNIT-PREPARE-END
-      0 UNIT-PREP-PENDING !
-      rc throw
-   THEN
+   rc 0 <> IF PENDING-PREPARE-END rc throw THEN
    UNIT-PREP-REF-RESULT @ ;
 
 : UP-PLAN ( n -- ptr u8 ) {: idx:n :}
@@ -29195,9 +29211,8 @@ UNIT-CON-PROJECT-INSTALL
 
 : CHECKER-PENDING-DISCARD ( -- )
    UNIT-PENDING @ UNIT-PREP-PENDING @ or 0= IF EXIT THEN
-   UNIT-PLAN-OPEN @ IF CHECKER-UNIT-PREPARE-END THEN
-   0 UNIT-PENDING ! 0 UNIT-PREP-PENDING !
-   0 UNIT-PORTABLE ! 0 UNIT-PREP-PORTABLE !
+   PENDING-PREPARE-END
+   0 UNIT-PENDING ! 0 UNIT-PORTABLE !
    0 UNIT-MARKED ! 0 PENDING-MARKED ! 0 PENDING-DIRTY-N !
    0 UNIT-PREFIX-N ! 0 UNIT-SYMS-FROZEN ! ;
 
@@ -29225,7 +29240,8 @@ UNIT-CON-PROJECT-INSTALL
 : PENDING-CLOSED-RESULT ( n -- )
    0 CK-CLOSED-SYM !
    UP-PLAN UP.CLOSED UP@ 0= IF EXIT THEN
-   ndict@ 1- {: ord:n :}
+   UNIT-PENDING @ 0= IF UNIT-BAD THEN
+   UNIT-NDICT @ {: ord:n :}
    ord RECORD-LINK-CURRENT? 0= IF UNIT-BAD THEN
    ord RECORD-LINK-CELL RLINK.EFFECT cells + @ {: effect:n :}
    effect 0= IF UNIT-BAD THEN
@@ -29240,7 +29256,7 @@ UNIT-CON-PROJECT-INSTALL
           dup PENDING-CLOSED-RESULT PENDING-ACCESSOR-RESULT
           PENDING-CTOR-RESULT ;] catch {: rc:n :}
    drop
-   CHECKER-PENDING-DISCARD
+   PENDING-PREPARE-END
    rc 0 <> IF rc throw THEN ;
 
 : UNIT-IMPORT-PLAN ( ptr u8 n -- ) {: src:ptr size:n :}
@@ -29678,21 +29694,23 @@ public
 \ declaration whose terms sit in the pools, on the stack and in its variables
 \ (PRIM: ... PRIM;), so the step allocates above the pools' marks, where NEW
 \ would reset them, and releases back to the marks.
+CHECKER-REG:SCRATCH{
 variable TG-FV     variable TG-SPN     variable TG-QEN     variable TG-PTRN
 variable TG-STLN   variable TG-ATOMN   variable TG-PARAMN  variable TG-PSCR
 variable TG-PARG   variable TG-RIGID   variable TG-RGN     variable TG-EXT
-variable TG-GEN
+variable TG-GEN    variable TG-TERM-NAME
+CHECKER-REG:}SCRATCH
 
 : TOP-GUEST ( -- )
    FV @ TG-FV !  SPN @ TG-SPN !  QEN @ TG-QEN !  PTRN @ TG-PTRN !  STLN @ TG-STLN !
-   ATOMN @ TG-ATOMN !  PARAMN @ TG-PARAMN !  PARAM-SCR-N @ TG-PSCR !  PARG-N @ TG-PARG !
+   ATOMN @ TG-ATOMN !  TERM-NAME-N @ TG-TERM-NAME !  PARAMN @ TG-PARAMN !  PARAM-SCR-N @ TG-PSCR !  PARG-N @ TG-PARG !
    RIGID-N @ TG-RIGID !  RGN-N @ TG-RGN !  EXT-N @ TG-EXT !  GEN-N @ TG-GEN !
    NEW-WALK ;
 
 : TOP-RELEASE ( -- )
    TG-FV @ TV-CLEAR-FROM
    TG-FV @ FV !  TG-SPN @ SPN !  TG-QEN @ QEN !  TG-PTRN @ PTRN !  TG-STLN @ STLN !
-   TG-ATOMN @ ATOMN !  TG-PARAMN @ PARAMN !  TG-PSCR @ PARAM-SCR-N !  TG-PARG @ PARG-N !
+   TG-ATOMN @ ATOMN !  TG-TERM-NAME @ TERM-NAME-N !  TG-PARAMN @ PARAMN !  TG-PSCR @ PARAM-SCR-N !  TG-PARG @ PARG-N !
    TG-RIGID @ RIGID-N !  TG-RGN @ RGN-N !  TG-EXT @ EXT-N !  TG-GEN @ GEN-N ! ;
 
 \ The flag is on while the step resolves and steps its token and its verdict is
@@ -30035,7 +30053,7 @@ variable CUR                             \ the binding walk's record cursor
 \ and nothing moves: no offset, position, USIGS-USER-OFF or UEND changes.
 \ What stays is marked from what stays: every record of a kept symbol and every
 \ record a root names (a definer's created effect in its control row, the
-\ DOESEFF and WRAPC latches, RECEFF, a primitive's effect in PES) keeps its
+\ DOESEFF latch, RECEFF, a primitive's effect in PES) keeps its
 \ header, content and every node, name string and argument run its rows reach,
 \ by the shape walk UIX-NODE-ADD makes. Every other granule of the user region
 \ is zeroed, leaving a retired binding its ER.NEXT alone: ACTIVE 0
@@ -30148,7 +30166,6 @@ variable MARK-U                          \ the map's length in bytes
       ELSE i RECORD-LINK-CLEAR THEN
    loop
    DOESEFF @ MARK-OFF1
-   WRAPC @ MARK-OFF1
    RECEFF-ON @ 0 <> IF RECEFF @ MARK-REC THEN
    #PE @ 0 ?do i PE-EFF@ MARK-REC loop ;
 
@@ -30399,9 +30416,9 @@ public
    NORET-COMPACT
    CHECKER-QUIESCE-END ;
 
-\ A file object compares DATA between its before-images and their diffs, and
-\ runs this before each (tools/native-unit-object.f IMAGE-TAKE and IMAGE-DIFF),
-\ so the scratch a check leaves rests there as it rests in an image. Index state
+\ A file object runs this as each of its segments opens, and as one closes
+\ unrefused (tools/native-unit-object.f SCRATCH-RETIRE), so the scratch a
+\ check leaves rests there as it rests in an image. Index state
 \ rests here through the spans as at every file boundary; only dropping the
 \ mappings (HIDX-MEM-CLEAR, UIX-RESET, CHX-RESET) and persistence are image-only.
 package CHECKER-REG

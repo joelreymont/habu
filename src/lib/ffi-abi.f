@@ -929,9 +929,8 @@ public
 
 : DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
 
-\ The rows every bank has room for. A file object's segment takes it when it
-\ opens and compares it when it closes: the observer journals the rows, grown
-\ room refuses `ffi-grown` (tools/native-unit-object.f SEGMENT-CLOSE).
+\ The rows every bank has room for; a declaration that grows a bank's table
+\ moves it (test/native-file-frame-e2e.f FFI-FIXTURES declares until it does).
 : MARK ( -- n )
    FN-CAP @ LIB-CAP @ + MAKER-FN-CAP @ + MAKER-LIB-CAP @ + ;
 
@@ -953,15 +952,11 @@ public
 
 \ Hand every completed declaration, reused or appended, to an xt as
 \ `( kind idx )`: 1 a library (LIBRARY-PATH), 2 a function (DECLARE), 3 a
-\ selection write, unchanged ones included, with idx 0. An install's SELECT runs
-\ with no observer. The tools' file object journals these
-\ (tools/native-unit-object.f SEGMENT-OPEN/SEGMENT-CLOSE); a captured image
-\ holds 0.
+\ selection write, unchanged ones included, with idx 0.
 : OBSERVE ( [ n n -- ] -- ) OBSERVER-N OBSERVER ! ;
 : UNOBSERVE ( -- ) 0 OBSERVER ! ;
 : NOTIFY-SCOPE ( -- ) OBS-SCOPE 0 NOTIFY ;
-\ The observer's cell. The tools declare it a process cell at their load, as
-\ they do IMAGE-FLOOR (tools/native-unit-object.f).
+\ The observer's cell.
 : OBSERVER-CELL ( -- ptr n ) OBSERVER ;
 
 \ errno is this package's own binding, written by hand because the declarer is

@@ -714,17 +714,9 @@ DIAG-BUFFER-OFF
 variable TG-UEND
 variable TG-CAP
 PTR-VARIABLE TG-USIGS-P
-variable TG-GROW-CAP
-PTR-VARIABLE TG-GROW-NEXT
 variable TG-UOFF
 variable TG-SMALL-CAP
 PTR-VARIABLE TG-RBASE
-UEND @ TG-UEND !
-USIGS-CAP-U @ TG-CAP !
-USIGS-P @ TG-USIGS-P !
-USIGS-GROW-CAP @ TG-GROW-CAP !
-USIGS-GROW-NEXT @ TG-GROW-NEXT !
-USIGS-USER-OFF @ TG-UOFF !
 \ --- a RESTORED pool grows correctly -------------------------------------------
 \ The grow asserts further down run after USIGS-RESET, over a runtime mmap
 \ arena. This block covers a pool the image carried in DATA, growing on the
@@ -769,10 +761,15 @@ s" CBAD-RESTORED-GROW ( n -- n ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ the relocation of a marked cell keeps that address true afterwards.
 s" lower-cert arenas restored on their boot buffers" T-LABEL
 ES-CERT-STALE0 @ 0 T=
+\ Saved only now: the restored-pool grow above zeroes the DATA store it leaves.
+UEND @ TG-UEND !
+USIGS-CAP-U @ TG-CAP !
+USIGS-P @ TG-USIGS-P !
+USIGS-USER-OFF @ TG-UOFF !
 : ES-USIGS-STORE ( -- )
-\ normalize first: a restored snapshot boots with a persisted (smaller)
-\ store; one reset guarantees the runtime-sized arena the asserts assume
-USIGS-RESET
+\ normalize first on a fresh runtime-sized store: USIGS-RESET would clear the
+\ live store saved above once its cap reaches USIGS-INIT-CAP
+USIGS-RUNTIME-INIT
 USIGS-P @
 USIGS-CAP-U @
 USIGS-RESET
@@ -780,8 +777,6 @@ USIGS-CAP-U @ T=
 USIGS-P @ = TTRUE
 UEND @ 0 T=
 USIGS-HEAD @ 0 T=
-USIGS-GROW-CAP @ 0 T=
-USIGS-GROW-NEXT @ NULL-PTR = TTRUE
 USIGS-INIT-CAP 2 / USIGS-CAP-U !
 USIGS-P @
 USIGS-RESET
@@ -808,8 +803,6 @@ s" usigs-grow-geometric" T-LABEL
 USIGS-CAP-U @ TG-SMALL-CAP @ 2 * >= TTRUE
 TG-USIGS-P @ USIGS-P !
 TG-CAP @ USIGS-CAP-U !
-TG-GROW-CAP @ USIGS-GROW-CAP !
-TG-GROW-NEXT @ USIGS-GROW-NEXT !
 TG-UOFF @ USIGS-USER-OFF !
 TG-UEND @ USIGS-RESTORE-END
    ;

@@ -63,16 +63,8 @@ public
 : LIVE? ( NLEASE:lease -- bool )
    SERIAL dup 0 <> swap CURRENT @ = and ;
 
-: IDLE? ( -- bool )
-   CURRENT @ 0= data-base TASK-TCB-CELL + @ 0= and ;
-
-\ A FILE range may save a retired lease in DATA. Skipping the source must not
-\ let a later compiler admission reuse that lease's serial.
+\ The last lease serial issued, which a compiler session records at its open.
 : HISTORY ( -- n ) NEXT @ ;
-: CHECK-HISTORY ( n -- )
-   dup 0 < swap $7FFFFFFFFFFFFFFF > or if E-STATE throw then ;
-: REPLAY-HISTORY ( n -- )
-   dup CHECK-HISTORY NEXT @ max NEXT ! ;
 
 \ Admission precedes all compiler mutation. A refused child never installs
 \ cleanup and cannot release the parent's lease or its active provider work.

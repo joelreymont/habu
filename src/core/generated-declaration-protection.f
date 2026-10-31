@@ -39,7 +39,7 @@ variable BASE         \ STAGE-N when the declaration took its savepoint
    STAGE-N @ STAGE-CAP @ < IF EXIT THEN
    STAGE-N @ CELL-CAP-MAX >= IF E-PROTECTION-CAP throw THEN
    STAGE-N @ 1 + STAGE-CAP @ GROW-CAP {: cap:n :}
-   STAGE-P STAGE-BOOT STAGE-CAP @ cells cap cells ARENA-BOOT-GROW
+   STAGE-P STAGE-CAP @ cells cap cells REG-GROW1
    cap STAGE-CAP ! ;
 
 : STAGE@ ( n -- n )

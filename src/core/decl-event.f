@@ -93,7 +93,7 @@ variable DEV-CUR-VAR  \ current-variant selector: open variant id, else DEV-NO-V
 
 : DEV-GROW ( n -- ) {: need:n :}
    need DEV-CAP-V @ 2 * max {: nc:n :}
-   DEV-A-P DEV-A-BOOT  DEV-CAP-V @ DEV-REC *  nc DEV-REC *  ARENA-BOOT-GROW
+   DEV-A-P DEV-CAP-V @ DEV-REC *  nc DEV-REC *  REG-GROW1
    nc DEV-CAP-V ! ;
 : DEV-ENSURE ( -- )
    DEV-N @ DEV-CAP-V @ < IF exit THEN
@@ -141,7 +141,7 @@ variable DEV-TX-SERIAL
 : DEV-TX-BASE ( -- ptr n ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
    DEV-TX-CAP-V @ 2 * {: nc:n :}
-   DEV-TX-P DEV-TX-BOOT  DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  ARENA-BOOT-GROW
+   DEV-TX-P DEV-TX-CAP-V @ DEV-TX-REC *  nc DEV-TX-REC *  REG-GROW1
    nc DEV-TX-CAP-V ! ;
 : DEV-TX-ENSURE ( -- )
    DEV-TX-DEPTH @ DEV-TX-CAP-V @ < IF exit THEN
@@ -543,7 +543,7 @@ public
 private
 
 \ Image-snapshot reset, not the declaration PART-SNAPSHOT. Both arenas grow by
-\ ARENA-BOOT-GROW into fresh pages of this process and the snapshot copies the DP
+\ REG-GROW1 into fresh pages of this process and the snapshot copies the DP
 \ heap verbatim, so a grown base would persist as a dead address: measured, a warm
 \ image stored into an unmapped page and died SIGSEGV/SIGBUS on its first ENUM.
 \ The boot stores clear whole so a reusing build and a fresh one capture the same

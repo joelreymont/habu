@@ -897,9 +897,13 @@ $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL
 \ The optional three-cell origin record follows at $3820..$3837, read through
 \ the three-cell native-origin-cell getter.
+\ BODY-HOOK-CELL, when nonzero, is an xt `( -- ptr u8 bool )` the `:` and
+\ TRUSTED: heads call with their record pending (src/habu/habu2.f
+\ C-BODY-HOOK).
+$3838 constant BODY-HOOK-CELL
 \ Tier 0's compiler: T0:COMPILE on arm64, installed by CHECKER-REG:SEAL through
-\ src/habu/runtime-arm64.f. $3840..$3847 is free.
-$3838 constant COMP-CELL
+\ src/habu/runtime-arm64.f.
+$3840 constant COMP-CELL
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \

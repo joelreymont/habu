@@ -187,30 +187,26 @@ variable EXPECT-U
    PROC-ENV-INHERIT-MISSING
    exe exeu AT PROBE-IN PROBE-IN-U @ CAPTURE SUCCESS ;
 
-\ Each boot takes its own image floor, but running a new definition that
-\ reaches an unclassified checked image seed refuses storage: the named file
-\ is refused at word, no earlier DATA copied, no object stored.
-: SEED-REFUSED ( ptr u8 n ptr u8 n -- )
-   {: name:ptr nameu:n word:ptr wordu:n :}
-   0 EXPECT-U !
-   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
-   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
-   s"  reason=run-reaches-kernel-word word=" EXPECT 512 EXPECT-U BUF-APPEND
-   word wordu EXPECT 512 EXPECT-U BUF-APPEND
-   S\" \n" EXPECT 512 EXPECT-U BUF-APPEND
-   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
-   ERR$ S\"  copied=0\n" CONTAINS? TTRUE
+\ Each boot takes its own image floor, and a new definition that reaches a
+\ checked image seed still stores: the named file has an object and is not
+\ refused.
+: SEED-STORED ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
    0 EXPECT-U !
    s" native-file: object path=" EXPECT 512 EXPECT-U BUF-APPEND
    name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
    s"  key=" EXPECT 512 EXPECT-U BUF-APPEND
+   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
+   0 EXPECT-U !
+   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
+   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
    ERR$ EXPECT EXPECT-U @ CONTAINS? TFALSE ;
 
 \ The app's session runs probe.f, then the app saves itself; the second image
 \ boots and runs probe2.f, which calls probe.f's word. Each boot takes its own
-\ image floor; both runs reach a checked seed of the booted image.
+\ image floor; both runs reach a checked seed of the booted image and store.
 : BOOTED-SESSION ( -- )
-   s" a booted app's session refuses a file that reaches an image seed" T-LABEL
+   s" a booted app's session stores a file that reaches an image seed" T-LABEL
    s" probe.f"
       S\" package FILE-PROBE\npublic\nvariable CELLV\n: VALUE ( -- n ) FILE-SHAPE:SIZE 61 + ;\n;package\nFILE-PROBE:VALUE . cr\n"
       PUT
@@ -223,18 +219,18 @@ variable EXPECT-U
    S\" s\" " IN+ s" app2" AT IN+ S\" \" APP-IMAGE:SAVE\n" IN+
    s" app-hb" PROBE-RUN
    OUT$ S\" 77\n" CONTAINS? TTRUE
-   s" probe.f" s" SIZE" SEED-REFUSED
+   s" probe.f" SEED-STORED
    0 PROBE-IN-U !
    S\" 1 set-tier\n" IN+
    s" probe2.f" LOAD-LINE
    s" app2" PROBE-RUN
    OUT$ S\" 78\n" CONTAINS? TTRUE
-   s" probe2.f" s" VALUE" SEED-REFUSED ;
+   s" probe2.f" SEED-STORED ;
 
 \ A capture whose one-shot hook throws returns to the REPL with the process's
-\ seed and image floor intact: probe3.f writes probe.f's cell, an earlier
-\ session's DATA, so it is refused and its image copies that DATA. A seed and
-\ floor lost to the failed capture would take probe.f as seed and store it.
+\ seed and image floor intact: the REPL then loads probe3.f, which writes
+\ probe.f's cell, an earlier session's DATA. A warm load runs a file's top
+\ level again, so that write refuses nothing and probe3.f stores its object.
 : FAILED-CAPTURE ( -- )
    s" a capture that throws keeps the process's seed and image floor" T-LABEL
    s" probe3.f"
@@ -250,15 +246,7 @@ variable EXPECT-U
    OUT$ S\" save-refused\n" CONTAINS? TTRUE
    s" app3" AT FS:EXISTS? TFALSE
    OUT$ S\" 99\n" CONTAINS? TTRUE
-   0 EXPECT-U !
-   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
-   s" probe3.f" AT EXPECT 512 EXPECT-U BUF-APPEND
-   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
-   0 EXPECT-U !
-   s" native-file: image path=" EXPECT 512 EXPECT-U BUF-APPEND
-   s" probe3.f" AT EXPECT 512 EXPECT-U BUF-APPEND
-   S\"  copied=0\n" EXPECT 512 EXPECT-U BUF-APPEND
-   ERR$ EXPECT EXPECT-U @ CONTAINS? TFALSE ;
+   s" probe3.f" SEED-STORED ;
 
 : REJECT-TYPED-CLIENT ( -- )
    s" app.f" S\" require prefix.f\nrequire unit.f\nrequire bad.f\n: MAIN ( -- ) ;\n" PUT
@@ -383,15 +371,24 @@ variable EXPECT-U
    ;MATCH ;
 
 
-\ The builder's family and variant row counts. The builder runs as its own
-\ process because it, not this test engine, loads decl.f: the stores its
-\ registry baked are the ones the file outgrows.
-: BUILDER-ROWS ( -- n n )
+\ The decimal count on the line of out that starts at byte start; where the
+\ next line starts.
+: COUNT-AT ( ptr u8 n n -- n n ) {: out:ptr outu:n start:n :}
+   out outu 10 start SPLIT-NEXT drop {: next:n :} COUNT-N next ;
+
+\ The room left in the builder's effect store (USIGS), the bytes two
+\ definitions of `( n -- n )` typed at the builder add to it, and the
+\ builder's family and variant row counts. The builder runs as its own
+\ process because it, not this test engine, loads decl.f: the stores it baked
+\ are the ones the file outgrows.
+: BUILDER-ROWS ( -- n n n n )
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   NATIVE-FILE-APP:BUILDER$ S\" using TFAM TFAM-N@ . SUMV-N@ .\n" CAPTURE SUCCESS
+   NATIVE-FILE-APP:BUILDER$
+   S\" USIGS-CAP-U @ UEND @ - . UEND @ : Wa ( n -- n ) 1 + ; : Wb ( n -- n ) 1 + ; UEND @ swap - .\nusing TFAM TFAM-N@ . SUMV-N@ .\n"
+   CAPTURE SUCCESS
    OUT$ {: out:ptr outu:n :}
-   out outu 10 0 SPLIT-NEXT drop {: rest:n :} COUNT-N
-   out rest + outu rest - COUNT-N ;
+   out outu 0 COUNT-AT out outu rot COUNT-AT out outu rot COUNT-AT
+   out outu rot COUNT-AT drop ;
 
 
 \ The rows that take a store holding n past twice the capacity the builder
@@ -422,22 +419,32 @@ create ENUM-LINE 48 allot
    15 w 2 * + ;
 
 
-\ A reused file whose families take the family and variant stores the builder
-\ baked past twice their capacity leaves the cold image. It covers both ways a
-\ hit could differ: a cold load writes rows into each baked DATA store before
-\ the store moves, while a hit makes room first, so the abandoned DATA must not
-\ depend on that order; and a hit needing more than twice the baked capacity
-\ must reach the capacity the cold load's doubling reaches, not its need. Each
-\ one-variant ENUM adds a row to both stores, so the file declares the rows the
-\ store farther from its doubled capacity takes.
+create DEF-LINE 48 allot
+
+\ decl.f's line i, `: WN ( n -- n ) 1 + ;` with N spelling i in base 26; its
+\ length.
+: DEF-LINE! ( n -- n ) ENUM-NAME! {: w:n :}
+   s" : W" drop DEF-LINE 3 BYTE-COPY
+   ENUM-NAME DEF-LINE 3 + w BYTE-COPY
+   S\"  ( n -- n ) 1 + ;\n" drop DEF-LINE 3 + w + 18 BYTE-COPY
+   21 w + ;
+
+\ A reused file whose families take the family and variant stores past twice
+\ the capacity the builder baked them at, and whose typed definitions take its
+\ effect store past its baked capacity, leaves the cold image.
 : GROW-HIT-CASE ( -- )
-   s" a reused file that moves a registry store leaves the cold image" T-LABEL
-   BUILDER-ROWS ROWS-PAST-DOUBLE swap ROWS-PAST-DOUBLE max {: rows:n :}
+   s" a reused file that moves the registry and effect stores leaves the cold image" T-LABEL
+   BUILDER-ROWS ROWS-PAST-DOUBLE swap ROWS-PAST-DOUBLE max {: enums:n :}
+   2 / / 1 + {: defs:n :}
    s" native-file-types-grow" TREE
    s" cache" AT FS:MAKE-DIR
    s" decl.f" S\" package PZ private\n" PUT
-   rows 0 ?do
+   enums 0 ?do
       s" decl.f" AT ENUM-LINE i ENUM-LINE! FS:APPEND-FILE
+   loop
+   s" decl.f" AT S\" public\n" FS:APPEND-FILE
+   defs 0 ?do
+      s" decl.f" AT DEF-LINE i DEF-LINE! FS:APPEND-FILE
    loop
    s" decl.f" AT S\" ;package\n" FS:APPEND-FILE
    s" app.f" S\" require decl.f\n: MAIN ( -- ) 41 . ;\n" PUT
@@ -452,11 +459,12 @@ create ENUM-LINE 48 allot
    s" grow-warm-hb" SAVE-APP
    WARM-HASH 32 COLD-HASH 32 T$= ;
 
-\ A reused file whose cold load spent compile history outside its recorded
-\ definitions (a STRUCTURE whose name the package SDFAIL takes, rolled back by
-\ catch after its MAKE and UNMAKE compiled) leaves the compiler's identity
-\ counters where that cold load left them: the warm build's image holds the
-\ bytes of the fresh-cache build.
+\ decl.f's top level spends compile history outside its recorded definitions:
+\ a STRUCTURE whose name the package SDFAIL takes, rolled back by catch after
+\ its MAKE and UNMAKE compiled, so no index row holds them. The warm build
+\ installs A and ROLLED from decl.f's object and app.f's MAIN from app.f's,
+\ compiles MAKE and UNMAKE live, which counts decl.f compiled (REUSE-HEAD's
+\ F-MISS), and its image holds the bytes of the fresh-cache build.
 : ROLL-HIT-CASE ( -- )
    s" a reused file of rolled-back compiles leaves the cold image" T-LABEL
    s" native-file-types-roll" TREE
@@ -471,7 +479,8 @@ create ENUM-LINE 48 allot
    COLD-HASH HASH-APP
    s" roll-fresh-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
-   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 1\n compiled 1\n definitions installed 3\n compiled 2\n"
+      CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 1\n7\n" CONTAINS? TTRUE
    WARM-HASH HASH-APP
    s" roll-warm-hb" SAVE-APP
@@ -538,44 +547,21 @@ DYNAMIC-BUFFER ENTRY u8
    path pathu e size FS:WRITE-ALL ;
 
 
-\ Flip the low bit of the unit magic, the unit's first cell, of c.f's checker
-\ slice 0 and reseal the entry; only the checker's unit header read refuses it.
-: CORRUPT-SLICE ( -- )
-   OPEN-UNIT drop {: magic:ptr :}
-   magic c@ 1 xor magic c!
-   RESEAL-UNIT ;
-
-
 \ Empty the last link row of c.f's checker slice 0 and reseal the entry: its
-\ effect becomes tag 0 and reference 0 beside a grid already tag 0. The link
-\ rows close the unit, ten cells each: the record reference, the tag and
-\ reference of its effect, control and grid, the deferred flag, the fixed kind
-\ and value (checker.f UNIT-EXPORT-LINK). They follow ordinal order, so the
-\ last row links a record c.f defines.
+\ effect becomes tag 0 and reference 0 beside a grid already tag 0. A slice is
+\ a pending unit: its link rows, ten cells each, precede its closing cell
+\ (checker.f UNIT-EXPORT-CLOSED). A row holds the record reference, the tag
+\ and reference of its effect, control and grid, the deferred flag, the fixed
+\ kind and value (checker.f UNIT-EXPORT-LINK).
 : EMPTY-LINK ( -- )
    OPEN-UNIT {: unit:ptr len:n :}
-   unit len + 80 - {: row:ptr :}
+   unit len + 88 - {: row:ptr :}
    row 8 + LE:U64@ 0 <> TTRUE
    row 40 + LE:U64@ 0= TTRUE
    0 row 8 + LE:U64!
    0 row 16 + LE:U64!
    RESEAL-UNIT ;
 
-
-\ The reason the diagnostics name for c.f's miss; empty when none is named.
-: MISS-REASON$ ( -- ptr u8 n )
-   0 PROBE-IN-U !
-   s" native-file: miss path=" IN+ s" c.f" AT IN+ s"  reason=" IN+
-   ERR$ PROBE-IN PROBE-IN-U @ FIND-SUB MATCH option
-     none OF s" " ENDOF
-     some OF IDX>N PROBE-IN-U @ + {: at:n :}
-        ERR$ drop at +  ERR$ nip at -  {: a:ptr u:n :}
-        a u 10 INDEX-OF MATCH option
-          none OF a u ENDOF
-          some OF IDX>N a swap ENDOF
-        ;MATCH
-     ENDOF
-   ;MATCH ;
 
 \ app.f loads c.f, so a warm build would replay its object around c.f's. A
 \ case whose app.f must compile from source against what c.f left edits a
@@ -601,7 +587,7 @@ DYNAMIC-BUFFER ENTRY u8
    s" app.f"
       S\" require c.f\npackage FCTOR\n: SOME2 ( n n -- box<pair> ) PAIR-MAKE BOX-MAKE ;\n: GET ( box<pair> -- n ) BOX-UNMAKE PAIR-UNMAKE + ;\npublic\n: RUN ( -- n ) 3 4 SOME2 GET ;\n;package\n: MAIN ( -- ) FCTOR:RUN . FCTOR:CODE . ;\n"
       PUT
-   \ The diagnostics name c.f's object key for LINK-CASE and SLICE-CASE.
+   \ The diagnostics name c.f's object key for LINK-CASE.
    s" app-hb" DIAG-BUILD SUCCESS
    KEEP-KEY
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
@@ -613,16 +599,12 @@ DYNAMIC-BUFFER ENTRY u8
 
 
 \ a.f interns FCTOR's private PAIR-MAKE and undefines it; the symbol stays, so
-\ c.f's PRODUCT pair takes that earlier symbol for its constructor word. c.f's
-\ family rows then name a constructor the file does not own, which the capture
-\ cannot carry: the checker export refuses c.f in both builds. a.f's object is
-\ stored, but its undefine leaves it unsupported for reuse, so the warm build
-\ misses it too; with app.f edited first it reuses no file, loads app.f, a.f
-\ and c.f from source, and the app
-\ runs as the cold build's does. A capture refusal that throws instead fails
-\ the cold build (rc 76).
+\ c.f's PRODUCT pair takes that earlier symbol for its constructor word. A
+\ warm load runs each file's top level again, the undefine included: with
+\ app.f edited first, the warm build reuses a.f and c.f, the app runs as the
+\ cold build's does, and its image holds the bytes of a fresh-cache build.
 : CTOR-PREFIX-CASE ( -- )
-   s" a constructor word interned before its file refuses that file's capture" T-LABEL
+   s" a reused file keeps a constructor word interned before it" T-LABEL
    s" native-file-types-ctor-prefix" TREE
    s" cache" AT FS:MAKE-DIR
    s" a.f" S\" package FCTOR\n: PAIR-MAKE ( -- ) ;\nundefine PAIR-MAKE\n;package\n" PUT
@@ -630,52 +612,31 @@ DYNAMIC-BUFFER ENTRY u8
       S\" package FCTOR\nPRODUCT pair FIELD x n FIELD y n ;PRODUCT\npublic\n: RUN ( -- n ) 3 4 PAIR-MAKE PAIR-UNMAKE + ;\n;package\n"
       PUT
    s" app.f" S\" require a.f\nrequire c.f\n: MAIN ( -- ) FCTOR:RUN . ;\n" PUT
-   true NATIVE-FILE-APP:DIAG? !
    s" app-hb" BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE
    EDIT-APP
    s" app-hb" BUILD SUCCESS
-   false NATIVE-FILE-APP:DIAG? !
-   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   0 EXPECT-U !
-   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
-   s" c.f" AT EXPECT 512 EXPECT-U BUF-APPEND
-   S\"  reason=checker-export\n" EXPECT 512 EXPECT-U BUF-APPEND
-   ERR$ EXPECT EXPECT-U @ CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE ;
-
-\ A cache hit never throws. LINK-CASE's miss rewrote c.f's object from source;
-\ with its checker slice corrupted where only the checker's unit read refuses it,
-\ the object is a miss decided before any install side effect, the miss names
-\ its reason, c.f compiles from source and the app prints what the first
-\ build's app printed. No entry refusal: the reseal holds.
-: SLICE-CASE ( -- )
-   s" a cached checker slice the engine refuses is a named miss" T-LABEL
-   CORRUPT-SLICE
-   EDIT-APP
-   s" app-hb" DIAG-BUILD SUCCESS
-   ERR$ s" native-cache: entry refused" CONTAINS? TFALSE
-   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   MISS-REASON$ nip 0 > TTRUE
-   MISS-REASON$ s" checker-prepare" T$=
-   RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE ;
+   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ S\" 7\n" CONTAINS? TTRUE
+   WARM-HASH HASH-APP
+   s" fresh-cache" BUILD-FRESH SUCCESS
+   COLD-HASH HASH-APP
+   WARM-HASH 32 COLD-HASH 32 T$= ;
 
 
-\ CTOR-CASE's warm build reused c.f's object; a link
-\ row with neither effect nor grid, which the writer never exports, would
-\ leave the installed record unlinked. Preparation refuses the row, so the
-\ object is a named miss decided before any install side effect, c.f compiles
-\ from source and the app prints what the first build's app printed.
+\ CTOR-CASE's warm build reused c.f's object. A link row with neither effect
+\ nor grid, which the writer never exports, would leave the installed record
+\ unlinked. The resealed object passes its checksum and the checker's
+\ preparation refuses the row, so the object is malformed (PREPARE-SLICE?)
+\ and the warm build fails E-NUNIT-PROFILE.
 : LINK-CASE ( -- )
-   s" a cached link with neither effect nor grid is a named miss" T-LABEL
+   s" a cached link with neither effect nor grid fails the build" T-LABEL
    EMPTY-LINK
    EDIT-APP
-   s" app-hb" DIAG-BUILD SUCCESS
-   ERR$ s" native-cache: entry refused" CONTAINS? TFALSE
-   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
-   MISS-REASON$ s" checker-prepare" T$=
-   RUN-APP SUCCESS OUT$ S\" 7\n5\n" CONTAINS? TTRUE ;
+   s" app-hb" BUILD {: rc:n :}
+   ERR$ S\" hb: uncaught throw code -8597\n" CONTAINS? TTRUE
+   rc 70 T= ;
 
 public
 : MAIN ( -- )
@@ -714,7 +675,6 @@ public
    ROLL-HIT-CASE
    CTOR-CASE
    LINK-CASE
-   SLICE-CASE
    CTOR-PREFIX-CASE
    T-REPORT ;
 ;package

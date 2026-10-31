@@ -785,6 +785,15 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" tier 1 refuses a does> clause whose body breaks its effect" T-LABEL
    SB-RESET s" 1 set-tier " SB-APPEND MKW-BAD$ SB-APPEND SB$ RUN  s" mkw;does" ASSERT-REJECTED
 
+   \ A signature whose `(` no blank follows opens the clause as `( -- n )` does:
+   \ the clause's scan reads its copy as a comment, not as a word `(--`.
+   s" tier 1 runs a does> clause whose signature is spelled (-- n)" T-LABEL
+   s" 1 set-tier : CD ( n -- ) create , does> (-- n) @ ; 41 CD X X . cr" RUN  s" 41" ASSERT-OK
+
+   s" tier 1 checks a does> clause whose signature is spelled (-- n n)" T-LABEL
+   s" 1 set-tier : CD ( n -- ) create , does> (-- n n) @ ;" RUN  s" cd;does" ASSERT-REJECTED
+   ERR$ s" expected: n n actual: n" CONTAINS? TTRUE
+
    s" tier 1 keeps loop values across a local bound in the body" T-LABEL
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
 
