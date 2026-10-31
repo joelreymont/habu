@@ -65,6 +65,13 @@ entry.
   `VERIFY:E-MISSING-SIGNATURE`, so tools/check.f names that error with its own
   code, message and fix hint instead of a generic statement throw, Joel chose
   "Export the constant".
+- 2026-10-31, typed storage with a run-time lifetime: for the global storage
+  word whose `NAME t` makes NAME-NEW ( -- ptr t ), a fresh zero-filled record,
+  and NAME-RELEASE ( ptr t -- ), Joel chose HEAP over RECORDS and MAPPED. For
+  the global word that gives each task its own typed cell, he first objected
+  that "TASK:TASK-LOCAL or even TASK:TASK-VARIABLE doesn't read well"; told it
+  is a core word in no package, beside TYPED-VARIABLE, he chose TASK-LOCAL
+  over TASK-VARIABLE and USER-VARIABLE.
 - 2026-10-31, packages: offered a third package section so engine-only
   checker words stay callable from other engine packages but hidden from
   programs, Joel answered "private means NOT FUCKING AVAILABLE OUTSIDE THIS
