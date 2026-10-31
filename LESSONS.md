@@ -94,6 +94,11 @@ entry.
   so the Habu loop's and the native compiler's error-place writers share one
   rule (the file's line for the file's text, the file alone for an evaluated
   string), Joel chose "Add SRCLOC:FILE-BUFFER?".
+- 2026-10-31, throw codes: shown that lane sealed's public
+  VERIFY-DIAGNOSTICS:THROW-CAUSE$ (a code's short message) repeats
+  THROW-CODE$'s list of codes, so each new code is written in both, Joel
+  chose "THROW-CODE$ gives message": one list answers a code's name, repair
+  class, suggestion and message, and THROW-CAUSE$ goes.
 - 2026-10-31, packages: offered a third package section so engine-only
   checker words stay callable from other engine packages but hidden from
   programs, Joel answered "private means NOT FUCKING AVAILABLE OUTSIDE THIS
