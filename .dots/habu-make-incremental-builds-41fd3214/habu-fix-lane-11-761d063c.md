@@ -1,9 +1,11 @@
 ---
 title: "Fix lane 11 F1: own references bind by position"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-31T13:07:09.977641+02:00"
+closed-at: "2026-10-31T20:23:16.690571+02:00"
+close-reason: "landed: lane 11 as 4b54ed21 Reuse compiled files in incremental builds, 9a25b36f, a8bdf2af on master; gate at the lane tip: native-build rc 0, registry rc 0 1164 s, P0 cold 164 compiled, warm 162 reused/2 compiled, warm == cold, two-generation rc 0; after rebase over ef2bf183 the overlapping rows (check, check-verify, gate-diagnostics, check-all-errors, repair-packet, load-reject-diag, runtime-regression, native-file-frame) rc 0"
 ---
 
 Fable review F1 (/tmp/carl-l11s-rev/review.md): a reused file's definitions map own record, wordlist and DATA references by offset from unverified live cursors, so an earlier file's definer edit binds them to the wrong entity or fail-stops forever. Brief carl-dots/.out/carl-file/brief-f1.md: miss before publication on any premise mismatch including reorder; reproducers R1-R3 in test/native-file-frame-e2e.f; docs/architecture.md Builds corrected (F3). One commit on moxyulxx, folds into uyzslxrr. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-f1.

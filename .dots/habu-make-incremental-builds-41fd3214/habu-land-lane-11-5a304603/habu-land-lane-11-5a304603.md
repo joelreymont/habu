@@ -1,9 +1,11 @@
 ---
 title: Land lane 11 as one commit
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-31T00:39:57.601702+02:00"
+closed-at: "2026-10-31T20:23:16.352837+02:00"
+close-reason: "landed: lane 11 as 4b54ed21 Reuse compiled files in incremental builds, 9a25b36f, a8bdf2af on master; gate at the lane tip: native-build rc 0, registry rc 0 1164 s, P0 cold 164 compiled, warm 162 reused/2 compiled, warm == cold, two-generation rc 0; after rebase over ef2bf183 the overlapping rows (check, check-verify, gate-diagnostics, check-all-errors, repair-packet, load-reject-diag, runtime-regression, native-file-frame) rc 0"
 ---
 
 Stack every accepted fix lane on zxpyvzqn (rebased onto master 1187c3c1) in carl-l11r (brief-l11-stack.md: GROW, MAP, R1, R4, SCRATCH, EXT, eval-head test, OWN, S, U1, CEN, auto and frame tests, merge-time edits), add FR1 (carl-tfr1) when accepted, then P0, the five native-file e2e tests, the full suite, the lead's docs/forth.md passage, squash into zxpyvzqn and push. Closes dot habu-reuse-a-file-706bf8ec with the cut ruling. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-l11r.

@@ -1,9 +1,11 @@
 ---
 title: "Fix lane 11 F2: family shape change misses"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-31T13:07:09.986745+02:00"
+closed-at: "2026-10-31T20:23:16.743161+02:00"
+close-reason: "landed: lane 11 as 4b54ed21 Reuse compiled files in incremental builds, 9a25b36f, a8bdf2af on master; gate at the lane tip: native-build rc 0, registry rc 0 1164 s, P0 cold 164 compiled, warm 162 reused/2 compiled, warm == cold, two-generation rc 0; after rebase over ef2bf183 the overlapping rows (check, check-verify, gate-diagnostics, check-all-errors, repair-packet, load-reject-diag, runtime-regression, native-file-frame) rc 0"
 ---
 
 Fable review F2 (/tmp/carl-l11s-rev/review.md): a family shape change in an earlier file is caught only after publication (PREPARE-SLICE? in SPIKE-INSTALL) and kills every later warm build. Brief carl-dots/.out/carl-file/brief-f2.md: family contract as a dependency row checked in SPIKE-SEEK; BAD after publication refuses and discards the object; reproducer in test/native-file-frame-e2e.f. One commit on moxyulxx, folds into uyzslxrr. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-f2.

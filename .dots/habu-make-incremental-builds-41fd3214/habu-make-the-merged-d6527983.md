@@ -1,9 +1,11 @@
 ---
 title: Make the merged warm build equal cold
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-31T12:44:35.045478+02:00"
+closed-at: "2026-10-31T20:23:16.601439+02:00"
+close-reason: "landed: lane 11 as 4b54ed21 Reuse compiled files in incremental builds, 9a25b36f, a8bdf2af on master; gate at the lane tip: native-build rc 0, registry rc 0 1164 s, P0 cold 164 compiled, warm 162 reused/2 compiled, warm == cold, two-generation rc 0; after rebase over ef2bf183 the overlapping rows (check, check-verify, gate-diagnostics, check-all-errors, repair-packet, load-reject-diag, runtime-regression, native-file-frame) rc 0"
 ---
 
 Lane 11 squashed onto master 55cc849f (T0) as uyzslxrr (carl-l11s): P0 warm != cold, while the same stack on its pre-T0 base gave warm == cold. Images same size, 2.3M bytes differ; maps differ only in image-sha256; imgdump: identical dicts. A varint-encoded image section at file offset 3,199,936 carries one extra value 5 in warm (cold ... 64 512 512 8192 8192 64 512 1 -1, warm ... 1 5 -1); everything after it moves 27-28 bytes (TEXT-SIZE-CELL 6567052 vs 6567024, SPAN-TABLE-CELL 28 lower). Live DATA after boot (ASLR-intersected) differs only in TEXT-SIZE-CELL. Evidence binaries were in /tmp/carl-wcd (retired with the workspace once the cause was found). Root-cause worker: brief carl-dots/.out/carl-file/brief-wcd.md, workspace .jj-ws.noindex/carl-wcd. Blocks lane 11 landing. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-wcd.

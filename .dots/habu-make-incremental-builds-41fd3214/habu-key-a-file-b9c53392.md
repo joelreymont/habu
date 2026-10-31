@@ -1,9 +1,11 @@
 ---
 title: Key a file by the checker hook it loads under
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-30T23:48:49.024994+02:00"
+closed-at: "2026-10-31T20:23:16.644254+02:00"
+close-reason: "landed: lane 11 as 4b54ed21 Reuse compiled files in incremental builds, 9a25b36f, a8bdf2af on master; gate at the lane tip: native-build rc 0, registry rc 0 1164 s, P0 cold 164 compiled, warm 162 reused/2 compiled, warm == cold, two-generation rc 0; after rebase over ef2bf183 the overlapping rows (check, check-verify, gate-diagnostics, check-all-errors, repair-packet, load-reject-diag, runtime-regression, native-file-frame) rc 0"
 ---
 
 Census CEN-C A (/tmp/carl-cenA/report.md): native-body.f and engine-origin-checked.f load under check-hook.f's LOWER-CERT-HOOK:HOOK (tools/native-build-core.f:572-576), so CHECK-STATE is 2 and CEN refuses them (checker-hook, dc:1237); FILE-KEY (dc:1034) hashes only the number 2. Proven needed: a HOOK edit refusing BODY-CAPABILITY -> U1 warm rc 0 reusing both, fresh cold rc 74. Fix: put the hook's identity (digest of the file defining it) into FILE-KEY or the input rows so both files reuse safely; then check CHECK-STATE 1 files' definition cache against the same hook edit. After CEN lands.

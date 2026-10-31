@@ -1,9 +1,11 @@
 ---
 title: "Drop the spike's print-only refusals"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-30T23:04:05.528321+02:00"
+closed-at: "2026-10-31T20:23:16.479404+02:00"
+close-reason: "landed: lane 11 as 4b54ed21 Reuse compiled files in incremental builds, 9a25b36f, a8bdf2af on master; gate at the lane tip: native-build rc 0, registry rc 0 1164 s, P0 cold 164 compiled, warm 162 reused/2 compiled, warm == cold, two-generation rc 0; after rebase over ef2bf183 the overlapping rows (check, check-verify, gate-diagnostics, check-all-errors, repair-packet, load-reject-diag, runtime-regression, native-file-frame) rc 0"
 ---
 
 Census A/B/C and U1 rulings: delete every print-only spike-refuse reason that guards nothing, refuse tier and the unreached executed-closure-unknown lines for real, delete print-only FILE-REFUSE when it has no callers. Lane CEN carl-fcen (brief-census-edits.md), new commit osqklkwr on U1 twuxyvkw; lands with lane 11. Workers 1 and 2 handed off before an edit; Revision 3 settles worker 2's plan (cen-handoff-2.md), worker 3 running. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-fcen.

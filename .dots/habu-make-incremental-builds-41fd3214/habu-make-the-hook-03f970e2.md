@@ -1,9 +1,11 @@
 ---
 title: "Make the hook stack's warm build equal cold"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-31T13:07:09.995783+02:00"
+closed-at: "2026-10-31T20:23:16.783348+02:00"
+close-reason: "landed: lane 11 as 4b54ed21 Reuse compiled files in incremental builds, 9a25b36f, a8bdf2af on master; gate at the lane tip: native-build rc 0, registry rc 0 1164 s, P0 cold 164 compiled, warm 162 reused/2 compiled, warm == cold, two-generation rc 0; after rebase over ef2bf183 the overlapping rows (check, check-verify, gate-diagnostics, check-all-errors, repair-packet, load-reject-diag, runtime-regression, native-file-frame) rc 0"
 ---
 
 uyzslxrr + NMAP fix gives warm == cold (160 reused); with voxvpzxp (hook key) 162 files are reused (native-body.f, engine-origin-checked.f) and warm != cold: one captured DATA cell at offset 988488 (0xf1548) holds 2^48-1 cold and 0 warm. Evidence /tmp/carl-wcd2 (cold-hb, warm-hb, lane-hb, win.py). Brief carl-dots/.out/carl-file/brief-wcd2.md; one fix commit on osrvporo (the NMAP fix duplicated onto voxvpzxp). Blocks the hook commit's landing. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-wcd2.
