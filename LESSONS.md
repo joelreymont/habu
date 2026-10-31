@@ -59,8 +59,9 @@ entry.
 
 ### Tests
 
-- 2026-10-20: "the platform tests should have platform switches around them,
-  not be trimmed!"
+- 2026-10-20, other targets: "we need elf32 and the TI code. also the intel
+  code." On their tests, the same day: "the platform tests should have
+  platform switches around them, not be trimmed!"
 - 2026-10-29, on a T0-only fixture row: "should you stop creating tests like
   install and print? do they carry their weight?" They do not: once the suite
   runs through T0, every row tests T0.
