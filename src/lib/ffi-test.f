@@ -214,10 +214,6 @@ variable FFI-T-PAIR-AFTER
 : FFI-T-REDECLARE ( -- )
    s" FUNCTION: FFI-T-X9 getpid ( -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
 
-\ A declared symbol that no library carries: the failure is named and lands at
-\ the first call, never at the declaration.
-FUNCTION: FFI-T-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION
-
 \ A child declares 270 distinct symbols, past any fixed declaration table, then
 \ calls an exact alias through the real source path; the alias takes no row.
 $400 constant FFI-T-SRC-CAP
@@ -636,6 +632,46 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    ext FFI-T-LONG-PATH PATH-CAP eu - + eu BYTE-COPY
    erru FFI-T-ERR$ FFI-T-LONG-PATH PATH-CAP CONTAINS? TTRUE ;
 
+: FFI-T-NO-LIB$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" libhabu-no-such-library.dylib" exit then
+   s" libhabu-no-such-library.so" ;
+
+: FFI-T-LIBC$ ( -- ptr u8 n )
+   HB-TARGET-MACOS? if s" /usr/lib/libSystem.B.dylib" exit then
+   s" libc.so.6" ;
+
+\ Missing symbols and a missing library fail at the first call, never at the
+\ declaration; the final uncaught error ends the load, so the case runs in a child.
+: FFI-T-NO-LIB-SRC$ ( -- ptr u8 n )
+   FFI-T-SRC CODEGEN:RESET
+   s\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n" FFI-T-SRC+
+   s\" FUNCTION: ZZ-ABSENT habu-no-such-symbol ( -- n ) ;FUNCTION\nLIBRARY " FFI-T-SRC+
+   FFI-T-NO-LIB$ FFI-T-SRC+
+   s\" \nFUNCTION: ZZ-NO-LIB getpid ( -- n ) ;FUNCTION\nLIBRARY " FFI-T-SRC+
+   FFI-T-LIBC$ FFI-T-SRC+
+   s\" \nFUNCTION: ZZ-ABSENT-IN habu-no-such-symbol ( -- n ) ;FUNCTION\n: ZZ-CALL ( -- )\n" FFI-T-SRC+
+   s\"    [: ZZ-ABSENT drop ;] catch E-FFI-DLSYM <> if s\" absent\" 1 die then\n" FFI-T-SRC+
+   s\"    [: ZZ-ABSENT-IN drop ;] catch E-FFI-DLSYM <> if s\" absent in\" 1 die then\n" FFI-T-SRC+
+   s\"    [: ZZ-NO-LIB drop ;] catch E-FFI-DLOPEN <> if s\" no lib\" 1 die then\n" FFI-T-SRC+
+   s\"    [: ZZ-NO-LIB drop ;] catch E-FFI-DLOPEN <> if s\" no lib again\" 1 die then\n" FFI-T-SRC+
+   s\"    ZZ-NO-LIB drop ;\nZZ-CALL\n" FFI-T-SRC+
+   FFI-T-SRC CODEGEN:CONTENTS ;
+
+: FFI-T-NO-LIB ( -- )
+   s" a missing library fails at the first call with its path and reason, once" T-LABEL
+   FFI-T-NO-LIB-SRC$ FFI-T-UNCAUGHT-RC FFI-T-RUN-EXITS
+   {: outu:len erru:len :}
+   outu LEN>N 0 T=
+   erru FFI-T-ERR$ E-FFI-DLOPEN FFI-T-CODE$ CONTAINS? TTRUE
+   SB-RESET s" E-FFI-DLOPEN: " SB-APPEND FFI-T-NO-LIB$ SB-APPEND s" : " SB-APPEND
+   erru FFI-T-ERR$ SB$ COUNT-SUB 1 T=
+   s" a missing process symbol fails with its name" T-LABEL
+   erru FFI-T-ERR$ S\" E-FFI-DLSYM: habu-no-such-symbol\n" CONTAINS? TTRUE
+   s" a missing library symbol fails with its name and the library's path" T-LABEL
+   SB-RESET s" E-FFI-DLSYM: habu-no-such-symbol in " SB-APPEND FFI-T-LIBC$ SB-APPEND
+   S\" \n" SB-APPEND
+   erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
+
 \ The declaration's hook stays armed: calls after a capture must have their
 \ process-owned addresses forgotten by every later capture as well.
 : FFI-T-RECAPTURE ( -- )
@@ -706,8 +742,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-HELLO 6 FFI-T-MEMCPY drop
    FFI-T-CSTR-DST SPAN:$ drop FFI-T-STRLEN$ 5 T=
-
-   [: FFI-T-ABSENT drop ;] E-FFI-DLSYM TTHROWSQ
 
    [: FFI-T-BAD-PTR ;] E-FFI-SYNTAX TTHROWSQ
    [: FFI-T-BAD-RESULTS ;] E-FFI-SYNTAX TTHROWSQ
@@ -799,6 +833,7 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-PATH-IDENTITY
    FFI-T-FOREIGN-LIBRARY
    FFI-T-LONG-FOREIGN-LIBRARY
+   FFI-T-NO-LIB
    FFI-T-GLOBAL
    s" foreign symbol cleanup remains armed across captures" T-LABEL
    FFI-T-RECAPTURE ;

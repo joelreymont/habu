@@ -158,6 +158,7 @@
 \ PROCESS-SYMBOLS beside the declarations rather than inherit another file's.
 -3503 constant E-FFI-LIBRARY
 -3504 constant E-FFI-NUL           \ a string with a 0 byte handed to C, which would end it early
+-3505 constant E-FFI-DLOPEN        \ a library a FUNCTION: names could not be opened
 -3506 constant E-FFI-CALLBACK-FULL  \ thrown by no code
 \ src/lib/ffi-callback.f: a callback frame accessor used outside a live callback,
 \ a descriptor no declaration made, or a dispatch whose body was never stored.

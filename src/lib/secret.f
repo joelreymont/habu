@@ -71,7 +71,7 @@ defer NATIVE-CLOSE ( ptr request -- )
    drop E-UNAVAILABLE throw ;
 : NO-CLOSE ( ptr request -- ) drop ;
 : NATIVE-ERROR ( n -- n )
-   dup E-FFI-DLSYM = if drop E-UNAVAILABLE then ;
+   dup E-FFI-DLSYM = over E-FFI-DLOPEN = or if drop E-UNAVAILABLE then ;
 : INSTALL-DEFAULT ( -- )
    ['] UNAVAILABLE is NATIVE-READ
    ['] UNAVAILABLE is NATIVE-WRITE

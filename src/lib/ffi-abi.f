@@ -13,6 +13,7 @@ s" src/lib/le.f" required                     \ the four-byte C int this package
 s" src/lib/float32.f" required                \ binary32 conversion at the C ABI boundary
 s" src/lib/adt/option.f" required             \ option<n> - the version token VERSIONED-LIBRARY parses
 s" src/lib/codegen.f" required                \ the rendered library name and the declarer's buffers
+s" src/lib/memory.f" required                 \ an error line's buffer, sized to the line
 
 package FFI
 
@@ -20,6 +21,7 @@ package FFI
 16 constant FFI-MAX-ARGS
 16 constant FFI-MAX-KPARAMS
 2 constant FFI-RTLD-NOW                   \ dlopen RTLD_NOW: bind every symbol at load
+$0A constant LF-C                         \ an error line's terminator
 
 $3A00 constant FFI-BUF-OFF
 $3A80 constant FFI-FBUF-OFF
@@ -211,7 +213,8 @@ $20 constant LIB-BASE-CAP                 \ the base name LIBRARY-NAME$ renders 
 FN-NAME-OFF FN-NAME-CAP + constant FN-ROW-BYTES
 0 cells constant LIB-LEN-OFF
 1 cells constant LIB-HANDLE-OFF
-2 cells constant LIB-PATH-OFF
+2 cells constant LIB-FAILED-OFF           \ 1 once the path failed to open; cleared with the handle
+3 cells constant LIB-PATH-OFF
 LIB-PATH-OFF LIB-PATH-CAP + 7 + 8 / 8 * constant LIB-ROW-BYTES
 PERSISTED-PTR-VARIABLE FN-TABLE
 PERSISTED-PTR-VARIABLE LIB-TABLE
@@ -309,7 +312,11 @@ private
       token LIB-TABLE-CELL @ {: old:ptr :}
       old rows token LIB-N-CELL @ LIB-ROW-BYTES * BYTE-COPY
       old oldcap LIB-ROW-BYTES * RETIRE
-      token LIB-N-CELL @ 0 ?do 0 old i LIB-ROW-BYTES * + LIB-HANDLE-OFF + CELL-VIEW ! loop
+      token LIB-N-CELL @ 0 ?do
+         old i LIB-ROW-BYTES * + {: row:ptr :}
+         0 row LIB-HANDLE-OFF + CELL-VIEW !
+         0 row LIB-FAILED-OFF + CELL-VIEW !
+      loop
    then
    rows token LIB-TABLE-CELL !
    next token LIB-CAP-CELL ! ;
@@ -352,6 +359,12 @@ private
    {: idx:n :}
    idx FN-CHECK
    idx FN-ROW FN-NAME-OFF + ;
+
+\ Row idx's symbol length: the bytes before its terminator.
+: NAME-LEN ( n -- n )
+   {: idx:n :}
+   idx FN-NAME {: name:ptr :}
+   0 begin dup FN-NAME-CAP < over name + c@ 0<> and while 1+ repeat ;
 
 : FN-ADDR@ ( n -- n )
    {: idx:n :}
@@ -412,6 +425,16 @@ private
    idx LIB-CHECK
    value idx LIB-HANDLE-OFF LIB-FIELD ! ;
 
+: LIB-FAILED? ( n -- bool )
+   {: idx:n :}
+   idx LIB-CHECK
+   idx LIB-FAILED-OFF LIB-FIELD @ 0 <> ;
+
+: LIB-FAILED! ( n n -- )
+   {: value:n idx:n :}
+   idx LIB-CHECK
+   value idx LIB-FAILED-OFF LIB-FIELD ! ;
+
 \ The register, spill, dlopen/dlsym and length buffers keep the last call's
 \ values, which made two --repl builds of one program differ
 \ (tools/hb-build-repl-twin-test.f). Kernel params stay until FFI-KPARAM-RESET.
@@ -423,19 +446,59 @@ private
    HB-TARGET-MACOS? if -2 exit then
    E-FFI-LIBRARY throw ;
 
-: LIB-RESOLVE ( n -- n ) {: lib:n :}
+public
+\ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
+: LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
+private
+
+: LINE-BODY ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 NUM:alloc-byte-len -- )
+   {: p:ptr pu:n a:ptr au:n s:ptr su:n b:ptr bu:n line:ptr extent:NUM:alloc-byte-len :}
+   p line pu BYTE-COPY
+   a line pu + au BYTE-COPY
+   s line pu + au + su BYTE-COPY
+   b line pu + au + su + bu BYTE-COPY
+   pu au + su + bu + {: len:n :}
+   LF-C line len + c!
+   line len 1+ ERROR-TEXT:TYPE ;
+
+\ The four parts and a line feed go out in one write, so lines from concurrent
+\ tasks never interleave.
+: REPORT-LINE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: p:ptr pu:n a:ptr au:n s:ptr su:n b:ptr bu:n :}
+   p pu a au s su b bu
+   pu au + su + bu + 1+ MEM:BYTES-ALLOC-LEN [: LINE-BODY ;] MEM:WITH-BYTES ;
+
+\ dlerror's NULL means the loader kept no reason.
+: OPEN-REPORT ( n n -- ) {: dlerr:n lib:n :}
+   FFI-BUF FFI-REG-LEN-BUF 0 dlerr ffi-call-bounded {: why:n :}
+   s" E-FFI-DLOPEN: " lib LIB-ROW@
+   why 0 <> if s" : " why CELL>PTR dup ZLEN else s" " s" " then
+   REPORT-LINE ;
+
+\ dlerr is dlerror's address, resolved before the dlopen so that no loader call
+\ runs between the failure and OPEN-REPORT's read of its reason. A failed open
+\ is reported once; the slot's mark answers later calls without the loader.
+: LIB-RESOLVE ( n n -- n ) {: dlerr:n lib:n :}
    lib 0= if PROCESS-HANDLE exit then
    lib 1 - {: slot:n :}
    slot LIB-HANDLE@ dup 0 <> if exit then
    drop
+   slot LIB-FAILED? if E-FFI-DLOPEN throw then
    slot LIB-PATH FFI-RTLD-NOW DLOPEN-RAW
-   dup 0= if E-FFI-DLSYM throw then
+   dup 0= if 1 slot LIB-FAILED! dlerr lib OPEN-REPORT E-FFI-DLOPEN throw then
    dup slot LIB-HANDLE! ;
+
+: SYMBOL-REPORT ( n n -- ) {: idx:n lib:n :}
+   s" E-FFI-DLSYM: " idx FN-NAME idx NAME-LEN
+   lib 0 <> if s"  in " lib LIB-ROW@ else s" " s" " then
+   REPORT-LINE ;
 
 variable ERRNO-FN-CELL
 variable DLCLOSE-FN-CELL
+variable DLERROR-FN-CELL
 
 : ERRNO-FN ( -- n ) ERRNO-FN-CELL @ ;
+: DLERROR-FN ( -- n ) DLERROR-FN-CELL @ ;
 
 \ Resolution is lazy: a declaration never calls the loader, and a missing symbol
 \ is E-FFI-DLSYM at the first call. The errno accessor resolves first because
@@ -445,8 +508,10 @@ variable DLCLOSE-FN-CELL
    idx FN-ADDR@ dup 0 <> if exit then
    drop
    idx ERRNO-FN <> if ERRNO-FN RECURSE drop then
-   idx FN-LIB@ LIB-RESOLVE idx FN-NAME DLSYM-RAW
-   dup 0= if E-FFI-DLSYM throw then
+   idx FN-LIB@ {: lib:n :}
+   lib 0 <> if DLERROR-FN RECURSE else 0 then lib LIB-RESOLVE
+   idx FN-NAME DLSYM-RAW
+   dup 0= if idx lib SYMBOL-REPORT E-FFI-DLSYM throw then
    dup idx FN-ADDR! ;
 
 : NAME-ROOM ( n -- )
@@ -647,6 +712,7 @@ public
    tag LIB-N-CELL @ {: row:n :}
    u row 1- tag or LIB-LEN!
    0 row 1- tag or LIB-HANDLE!
+   0 row 1- tag or LIB-FAILED!
    \ Keep the row: an observer that declares rows of its own moves the count.
    OBS-LIB row tag or NOTIFY
    row tag or ;
@@ -678,7 +744,8 @@ private
    loop ;
 
 : CLEAR-BANK ( n -- ) {: tag:n :}
-   tag FN-N-CELL @ 0 ?do 0 i tag or FN-ADDR! loop ;
+   tag FN-N-CELL @ 0 ?do 0 i tag or FN-ADDR! loop
+   tag LIB-N-CELL @ 0 ?do 0 i tag or LIB-FAILED! loop ;
 
 : ZERO-ROWS ( ptr u8 n -- ) {: rows:ptr bytes:n :}
    bytes 0 ?do 0 rows i + c! loop ;
@@ -696,7 +763,7 @@ private
 : FORGET-SYMBOLS ( -- )
    0 CLOSE-BANK MAKER-TAG CLOSE-BANK and {: closed:bool :}
    \ Closing a maker library can resolve the ordinary dlclose row again.
-   \ Clear both function banks only after all handles have been attempted.
+   \ Clear both banks only after all handles have been attempted.
    0 CLEAR-BANK MAKER-TAG CLEAR-BANK
    FFI-BUF BYTE-VIEW FFI-KPARAM-PBUF-OFF FFI-BUF-OFF - FORGET-STAGED
    FFI-DLBUF BYTE-VIEW FFI-KPARAM#-OFF FFI-DLBUF-OFF - FORGET-STAGED
@@ -855,12 +922,6 @@ public
 \ matches a row.
 private
 
-\ Row idx's symbol length: the bytes before its terminator.
-: NAME-LEN ( n -- n )
-   {: idx:n :}
-   idx FN-NAME {: name:ptr :}
-   0 begin dup FN-NAME-CAP < over name + c@ 0<> and while 1+ repeat ;
-
 : SAME-FN? ( ptr u8 n n n n n n -- bool )
    {: name:ptr u:n lib:n argc:n spills:n reloc:n idx:n :}
    idx FN-LIB@ lib <> if false exit then
@@ -943,8 +1004,6 @@ public
 : FN-ROW@ ( n -- ptr u8 n n n n n )
    {: idx:n :}
    idx FN-NAME idx NAME-LEN idx FN-LIB@ idx FN-ARGC@ idx FN-SPILL@ idx FN-RELOC@ ;
-\ Library index idx's path, as LIBRARY-PATH and LIB-INDEX number it (from 1).
-: LIB-ROW@ ( n -- ptr u8 n ) 1- {: row:n :} row LIB-PATH row LIB-LEN@ ;
 : MAX-ARGS ( -- n ) FFI-MAX-ARGS ;
 \ The bit a builder-support row's index carries.
 : MAKER-BANK ( -- n ) MAKER-TAG ;
@@ -970,6 +1029,9 @@ ERRNO-SYMBOL$ PROCESS 0 DECLARE ERRNO-FN-CELL !
 \ FORGET-SYMBOLS closes the library handles through this row.
 s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
 
+\ OPEN-REPORT reads a failed dlopen's reason through this row.
+s" dlerror" PROCESS 0 DECLARE DLERROR-FN-CELL !
+
 \ A stripped image whose host includes FFI carries the declarations made while
 \ loading the application in its DATA window, with foreign addresses unresolved
 \ for the new process; the linker gets the table's exact storage through the two
@@ -986,6 +1048,7 @@ s" dlclose" PROCESS 1 DECLARE DLCLOSE-FN-CELL !
    LIB-CAP BYTE-VIEW CELL carry execute
    ERRNO-FN-CELL BYTE-VIEW CELL carry execute
    DLCLOSE-FN-CELL BYTE-VIEW CELL carry execute
+   DLERROR-FN-CELL BYTE-VIEW CELL carry execute
    FN-TABLE BYTE-VIEW CELL fresh execute
    LIB-TABLE BYTE-VIEW CELL fresh execute
    PIN-FN BYTE-VIEW CELL fresh execute
@@ -1187,8 +1250,6 @@ $10 constant ARG-MAX
 16 constant HEX-BASE
 $20 constant SP-C
 $24 constant HEX-C                        \ '$' - the hex literal prefix
-$0A constant LF-C                         \ the diagnostic's line terminator
-2 constant DIAG-FD                        \ stderr
 
 PATH-CAP 128 + constant DIAG-CAP
 
@@ -1621,9 +1682,6 @@ private
 
 \ ---- the row this declaration takes ----------------------------------------
 
-: DIAG-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   DIAG-FD a u write drop ;
-
 : DIAG+ ( ptr u8 n -- )
    DIAG CODEGEN:APPEND-STRING ;
 
@@ -1659,7 +1717,7 @@ private
    TARGET$ DIAG+
    s" : name it with VERSIONED-LIBRARY" DIAG+
    LF-C DIAG CODEGEN:APPEND-BYTE
-   DIAG CODEGEN:CONTENTS DIAG-LINE ;
+   DIAG CODEGEN:CONTENTS ERROR-TEXT:TYPE ;
 
 : CHECK-SPELLING ( ptr u8 n -- ) {: path:ptr u:n :}
    path u FOREIGN-SPELLING? 0= if exit then

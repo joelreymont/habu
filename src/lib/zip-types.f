@@ -5,8 +5,8 @@ public
 NEWTYPE archive
 NEWTYPE entry
 NEWTYPE input
-\ $7A00 stays unused: the FUNCTION: declarer reports libzip resolution
-\ failures as E-FFI-DLSYM.
+\ $7A00 stays unused: the first call reports a libzip that does not open as
+\ E-FFI-DLOPEN and a missing symbol as E-FFI-DLSYM.
 $7A01 constant E-OPEN
 $7A02 constant E-HANDLE
 $7A03 constant E-ENTRY
