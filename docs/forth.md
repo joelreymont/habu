@@ -1388,12 +1388,13 @@ storage. Three checker domains name these rigidly:
   outstanding indices yields a new generation, so an old index no longer
   matches.
 
-In a body, a fresh name the caller supplies (on a plain input, or on an input
-quotation's outputs) is one identity throughout. A fresh region name the body
-supplies (written only on outputs, or on an input quotation's inputs, the
-direction flipping at each nesting) must end holding a region this body
-minted, and no two such names hold one region. A body-supplied extent,
-generation or mask name must stay unbound in the body, which then mints it.
+In a colon body or a `does>` clause, a fresh name the caller supplies (on a
+plain input, or on an input quotation's outputs) is one identity throughout. A
+fresh region name the body supplies (written only on outputs, or on an input
+quotation's inputs, the direction flipping at each nesting) must end holding a
+region this body minted, and no two such names hold one region. A body-supplied
+extent, generation or mask name must stay unbound in the body, which then mints
+it.
 
 Each domain has a private per-check counter that never reuses an id and throws
 `E-RIGID-EXHAUST` at its limit rather than wrapping. Ids are qualified by

@@ -73,9 +73,10 @@ defer RR-XGEN3 ( -- matrix<space-global,fresh-region-a,fresh-extent-x,fresh-gen-
 \ atom. Identity variables avoid n, f and r.
 : RR-U3R ( matrix<space-global,r,b,c> matrix<space-global,r,b,c> -- ) drop drop ;
 
-\ Region-generic view words, for a body whose own inputs declare a fresh region.
-\ A mut-view is exclusive, so the two-view consumer is a `defer` (a body that
-\ drops one is refused).
+\ Region-generic words, for a body whose own inputs declare a fresh region. A
+\ mut-view is exclusive, so the two-view consumer is a `defer` (a body that drops
+\ one is refused).
+: RR-MPASS ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) ;
 : RR-VPASS ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> ) ;
 : RR-VTAKE ( [ mut-view<p,q,a,u8> -- ] -- ) drop ;
 defer RR-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
@@ -92,6 +93,9 @@ T-RESET
 create RR-DIAG 16384 allot
 : RR-CHECK ( ptr u8 n -- n ) RR-DIAG 16384 DIAG-BUFFER! CHECK-CANDIDATE! ;
 : RR-DIAG? ( ptr u8 n -- bool ) DIAG-BUFFER$ 2swap CONTAINS? ;
+
+\ A refused does> clause's code: test/certify-does-definer.f CDD-RES-BAD.
+: RR-REFUSED ( -- n ) tier@ 0= IF 70 ELSE E-NCOMP-VERDICT THEN ;
 
 \ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of
 \ this check wraps — it must throw E-RIGID-EXHAUST (7140) instead of reusing id 1.
@@ -191,6 +195,21 @@ s" fresh-region-c" RR-DIAG? -1 T=
 s" C-FGCB ( [ span<space-global,f32,fresh-gen-b> -- ] -- ) RR-BOXG swap execute"  RR-CHECK 0 T=
 s" C-FQCB ( matrix<space-global,a,f32,f32> [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- ) execute"  RR-CHECK 0 T=
 s" must stay parametric" RR-DIAG? -1 T=
+\ (25) a does> clause holds fresh regions as a colon body does: (16)'s pass is
+\ admitted, a minted output region reaches a checked caller of the created word,
+\ and (18)'s new output region is refused.
+dup set-check
+s" : RR-DFPASS ( n -- ) create , does> ( matrix<space-global,fresh-region-b,f32,f32> -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-MPASS ;"  TEST-EVAL:RC
+s" 0 RR-DFPASS RR-DFP"  TEST-EVAL:RC
+s" : RR-DFOWN ( n -- ) create , does> ( -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN ;"  TEST-EVAL:RC
+s" 0 RR-DFOWN RR-DFO"  TEST-EVAL:RC
+s" : RR-DFUSE ( -- matrix<space-global,fresh-region-b,f32,f32> ) RR-DFO ;"  TEST-EVAL:RC
+0 set-check  0 T=  0 T=  0 T=  0 T=  0 T=
+RR-DIAG 16384 DIAG-BUFFER!
+dup set-check
+s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC
+0 set-check  RR-REFUSED T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
 
 T-REPORT
 DIAG-BUFFER-OFF set-check
