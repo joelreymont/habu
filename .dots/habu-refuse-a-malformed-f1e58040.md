@@ -15,3 +15,5 @@ Censuses 2026-10-31 (/tmp/jerry-big/t0cmp-A.md, t0cmp-B.md): tier 1 also ends rc
 Lane t0fe (2026-10-31): tier 1 also ends rc 67 (uncaught -8651 E-NELAB-QUOT) on a quotation with dead code, `[: 1 exit 2 ;] drop 3`, where T0 refuses it rc 70.
 
 Census tc1 (2026-10-31): a TRUSTED: body doing `over` on a two-cell view passes tools/check.f, then saving the module into an image fails "ncomp: cannot compile CURSOR-BASE", throw -8304 (E-NELAB-UNDER), uncaught. See /tmp/jerry-big/trusted-census-tc1.md.
+
+Lane t0tr (landed 2026-10-31): T0 now compiles a refused TRUSTED: step as the raw effect the scan splices (test/load-reject-diag-test.f TEST-T0-RAW-SPLIT, TEST-T0-RAW-STORE); tier 1 still refuses the same c.f with E-NELAB-UNDER -8304.
