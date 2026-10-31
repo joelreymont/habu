@@ -66,8 +66,8 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD sip5 n
 ;STRUCTURE
 
-\ The record's size in bytes, for a caller that allocates it as bytes
-\ (src/lib/xml/c2.f).
+\ The record's size in bytes, for a caller that allocates it as bytes and makes
+\ it a record with EMPTY-CURSOR (src/lib/xml/c2.f).
 EXPORT CURSOR-BYTES
 
 private
@@ -684,6 +684,19 @@ public
 \ A second DISPOSE, or one on a closed or zero-filled record, does nothing.
 : DISPOSE ( ptr cursor -- )
    >STATE RECORD-FREE ;
+
+private
+CAST: BYTES>CURSOR ( ptr u8 -- ptr cursor )
+
+public
+\ A record over the first CURSOR-BYTES of a caller's bytes, zero-filled so it
+\ owns nothing; a shorter span is E-CAPACITY. A live record there leaks its tables.
+: EMPTY-CURSOR ( ptr u8 n -- ptr cursor )
+   {: bytes size:n :}
+   bytes size SPAN-CHECK
+   size CURSOR-BYTES < if E-CAPACITY throw then
+   CURSOR-BYTES 0 ?do 0 bytes i + c! loop
+   bytes BYTES>CURSOR ;
 
 private
 : LIVE ( ptr n -- )

@@ -102,8 +102,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    state EVENT-BUF BUF:CLEAR
    0 state DATA! ;
 
-: DISPATCH ( ptr n ptr a [ ptr a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr ctx:ptr cb :}
+: DISPATCH ( ptr n a [ a ptr u8 n ptr u8 n -- ] -- )
+   {: state:ptr ctx:a cb :}
    state DATA? 0= if state RESET-EVENT exit then
    FAILED state ST!
    state EVENT-BUF BUF:SPAN$ BUF:BLEN>N {: kind:ptr ku:n :}
@@ -145,8 +145,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
       value vu BUF:N>BLEN state EVENT-BUF BUF:REPLACE
    then ;
 
-: END-LINE ( ptr n ptr a [ ptr a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr ctx:ptr cb :}
+: END-LINE ( ptr n a [ a ptr u8 n ptr u8 n -- ] -- )
+   {: state:ptr ctx:a cb :}
    state LINE-BUF BUF:LEN@ BUF:BLEN>N 0= if
       state ctx cb DISPATCH
    else
@@ -154,8 +154,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    then
    state LINE-BUF BUF:CLEAR ;
 
-: BYTE ( ptr n n ptr a [ ptr a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr byte:n ctx:ptr cb :}
+: BYTE ( ptr n n a [ a ptr u8 n ptr u8 n -- ] -- )
+   {: state:ptr byte:n ctx:a cb :}
    state CR@ 0<> if
       0 state CR!
       byte LF = if exit then
@@ -168,8 +168,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
    byte LF = if state ctx cb END-LINE exit then
    byte state LINE-BUF BUF:APPEND-BYTE ;
 
-: BOM-BYTE ( ptr n n ptr a [ ptr a ptr u8 n ptr u8 n -- ] -- )
-   {: state:ptr byte:n ctx:ptr cb :}
+: BOM-BYTE ( ptr n n a [ a ptr u8 n ptr u8 n -- ] -- )
+   {: state:ptr byte:n ctx:a cb :}
    state BOM@ BOM-START = if
       byte BOM-FIRST = if BOM-EF state BOM! exit then
       BOM-DONE state BOM!
@@ -202,8 +202,8 @@ CAST: DECODER>STATE ( decoder -- ptr n )
 \ does for each of them once the BOM is settled: a pending CR is answered by
 \ the first non-LF byte. Terminators and BOM bytes go through BOM-BYTE. The
 \ answer is the number of bytes consumed.
-: STEP ( ptr n ptr u8 n ptr a [ ptr a ptr u8 n ptr u8 n -- ] -- n )
-   {: state:ptr src:ptr u:n ctx:ptr cb :}
+: STEP ( ptr n ptr u8 n a [ a ptr u8 n ptr u8 n -- ] -- n )
+   {: state:ptr src:ptr u:n ctx:a cb :}
    state BOM@ BOM-DONE = if
       src u TERM-AT {: run:n :}
       run 0 > if
@@ -237,8 +237,8 @@ public
    LIVE state ST!
    state >DECODER ;
 
-: FEED ( decoder ptr u8 n ptr a [ ptr a ptr u8 n ptr u8 n -- ] -- )
-   {: d:decoder src:ptr u:n ctx:ptr cb :}
+: FEED ( decoder ptr u8 n a [ a ptr u8 n ptr u8 n -- ] -- )
+   {: d:decoder src:ptr u:n ctx:a cb :}
    d DECODER>STATE {: state:ptr :}
    state CHECK-LIVE
    u 0 < if E-SOURCE throw then

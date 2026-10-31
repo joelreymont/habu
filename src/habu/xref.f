@@ -837,6 +837,8 @@ undefine CHECKER-PKG-CONTEXT-REJECT
 undefine CHECKER-VERIFY-PKG-DEPTH
 undefine TFAM-PKG-XT
 undefine TFAM-PKG$*
+undefine TFAM-OPAQUE?-XT
+undefine TFAM-OPAQUE?*
 package PKG-AUTH
 undefine INSTALL
 undefine LIVE

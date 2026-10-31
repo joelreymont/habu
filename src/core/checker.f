@@ -1040,6 +1040,7 @@ defer TFAM-CLAIMED?-XT ( ptr u8 n -- bool )             \ some scope reads the t
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
+defer TFAM-OPAQUE?-XT ( n -- bool )                     \ family id is an OPAQUE structure
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
 defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )      \ canonical persisted family spelling
 defer PKG-LIVE-XT ( -- ptr u8 n bool )                  \ authenticated engine open package name
@@ -1584,6 +1585,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 : TFAM-ARITY* ( n -- n ) TFAM-ARITY-XT ;
 : TFAM-LAYOUT?* ( n -- bool ) TFAM-LAYOUT?-XT ;
 : TFAM-CELL?* ( n -- bool ) TFAM-CELL?-XT ;
+: TFAM-OPAQUE?* ( n -- bool ) TFAM-OPAQUE?-XT ;
 : TFAM-PKG$* ( n -- ptr u8 n ) TFAM-PKG-XT ;
 : TFAM-WIDTH@* ( n -- n ) TFAM-WIDTH-XT ;
 
@@ -1598,6 +1600,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: drop 0 ;] is TFAM-ARITY-XT
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
+   [: drop RES-FALSE ;] is TFAM-OPAQUE?-XT
    [: drop s" " ;] is TFAM-PKG-XT
    [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT
    [: drop 1 ;] is TFAM-WIDTH-XT
@@ -17073,8 +17076,8 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
-\ E-CAST-OWNER: the output introduces a foreign cell family, or either term
-\ reaches an arena head outside DYNAMIC-STORAGE (CAST-REACHES-HEAD?).
+\ E-CAST-OWNER: the output introduces a foreign cell family or OPAQUE structure
+\ (CAST-OWNER?), or a term reaches an arena head (CAST-REACHES-HEAD?).
 7135 constant E-CAST-OWNER
 7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
@@ -24820,15 +24823,13 @@ variable CTOR-PEND-POS
       TAG T-ATOM <> EXIT
    THEN
    RES-FALSE ;
-\ Projection out of a cell family is unrestricted. Introduction into one is
-\ authorized only when the family's declaring package is the engine's real open
-\ namespace record and the definition wordlist is one of that record's
-\ public/private pair. xref.f installs that read-only identity check and
-\ retires the mutable defer name; the pre-xref default admits only the real
-\ global scope. CHECKER-PACKAGE-* is a parser mirror, never authority.
-\ CAST-INTRO? asks it of every introduction position of the destination.
+: OPAQUE-PARAM? ( n -- bool ) {: t:n :}
+   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM TFAM-OPAQUE?* ;
+\ A cast introduces a cell family or OPAQUE structure only inside its declaring
+\ package, judged by the engine's open package record (CHECKER-AUTH-PACKAGE$).
 : CAST-OWNER? ( n -- bool ) {: t:n :}
-   t NP-CELLFAM? 0= IF RES-TRUE EXIT THEN
+   t NP-CELLFAM? 0=  t OPAQUE-PARAM? 0=  and IF RES-TRUE EXIT THEN
    t PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
 \ The three questions CAST-INTRO? asks of an introduction position, one per
 \ reject. An atom is a phantom index, which no cast hands out. A pointer or a

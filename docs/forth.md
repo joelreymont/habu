@@ -669,8 +669,11 @@ multi-cell type rationale is `docs/design.md` "Types".
     ptr u8 n )` is refused; a scope or region variable binds a scope or a
     region, never a value, so one inside the element, such as the `i` of
     C2-MEM's `mut-view<p,i,a,init<i,owner-state>>`, is admitted.
-  - A scalar-cell family, including a parametric `NEWTYPE` instance, in an
-    introduction position belongs to its declaring package (`E-CAST-OWNER`): `CAST: >SLOT ( n -- slot )` outside `package DOC` is refused.
+  - A scalar-cell family, including a parametric `NEWTYPE` instance, or an
+    `OPAQUE` structure in an introduction position belongs to its declaring
+    package (`E-CAST-OWNER`): `CAST: >SLOT ( n -- slot )` outside `package
+    DOC` is refused, and so are `( n -- OP:box )` and `( ptr u8 -- ptr
+    OP:box )` outside `package OP`.
     An arena head that either term reaches, through pointers, quotation rows
     or a layout's members, belongs to `DYNAMIC-STORAGE` the same way: after
     `ARENA FOOS rec`, `CAST: >U8 ( ptr foos -- ptr u8 )` would copy the head
@@ -686,12 +689,12 @@ multi-cell type rationale is `docs/design.md` "Types".
   rows (a call), recursively. A layout's fields carry its rules down: after
   `STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
   is `E-CAST-MINT` outside a private section, and a layout whose field holds
-  another package's family is `E-CAST-OWNER` outside that family's package,
-  the layout's own package included. A layout that points at its own family
-  is read once per instance. A quotation's consumed rows flip the direction,
-  so `( n -- [ extent-a -- ] )` introduces no atom and
-  `( n -- [ [ slot -- ] -- ] )` introduces a `slot`. A cell family's arguments
-  are phantom and introduce nothing. Projections out
+  another package's cell family or `OPAQUE` structure is `E-CAST-OWNER`
+  outside that family's package, the layout's own package included. A layout
+  that points at its own family is read once per instance. A quotation's
+  consumed rows flip the direction, so `( n -- [ extent-a -- ] )` introduces
+  no atom and `( n -- [ [ slot -- ] -- ] )` introduces a `slot`. A cell
+  family's arguments are phantom and introduce nothing. Projections out
   (`fam -- n`, `ptr t -- n`, `[ … ] -- n`, `box<ptr u8> -- n`, `pfbox -- n`)
   need neither the owner nor a private section: store the projected identity
   and resolve it back through the owner's public words.

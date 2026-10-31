@@ -993,38 +993,43 @@ public
 
 
 \ The client. A client is a row of a process-wide table that grows with the
-\ clients open; a free row is an empty region and is reused. The table is read
-\ and written only under LOCK, since growth moves it; a row's region never
-\ moves. A client's value is the generation OPEN gave its row from a
-\ process-wide count, and CLOSE clears the row's generation, so a closed
-\ client's value names no row even after another OPEN reuses it. The region
-\ holds a record, six BUFs and the SSE decoder's storage. The BUFs are the URL;
-\ the request, then, once BODY! has copied it, a header line and the reply's
-\ header block; the reply; the tool list TOOLS assembles; the response an
-\ event-stream reply carried; and the token TOKEN! set, empty for none. The
-\ handle of the exchange in flight, none between exchanges, is the table's: a
-\ record that held it could not be cast from its region. So is the stop CANCEL
-\ sets from another task, read with the handle under LOCK.
+\ clients open; a free row's record holds an empty region and is reused. The
+\ table is read and written only under LOCK, since growth moves it; a row's
+\ record, taken from an arena when the row is made, and its region never move.
+\ A client's value is the generation OPEN gave its row from a process-wide
+\ count, and CLOSE clears the row's generation, so a closed client's value
+\ names no row even after another OPEN reuses it. The region holds six BUFs and
+\ the SSE decoder's storage. The BUFs are the URL; the request, then, once
+\ BODY! has copied it, a header line and the reply's header block; the reply;
+\ the tool list TOOLS assembles; the response an event-stream reply carried;
+\ and the token TOKEN! set, empty for none. The handle of the exchange in
+\ flight, none between exchanges, and the stop, which CANCEL reads and sets
+\ from another task, are read and written under LOCK. So is a record's region,
+\ except that its own client reads it without LOCK: OPEN sets it only on a free
+\ row, and only that client's CLOSE empties it.
 
 private
 
 CAST: >CLIENT ( n -- client )
 CAST: CLIENT>N ( client -- n )
 
-\ A row's record: the cursor parses a reply and the writer builds a request;
-\ status is the HTTP status the last exchange ended with, and stream whether
-\ its reply was an event stream.
+\ A row's record, kept by the row for its next client: the cursor parses a
+\ reply and the writer builds a request; status is the HTTP status the last
+\ exchange ended with, and stream whether its reply was an event stream; region
+\ is the client's memory, empty for a free row.
 STRUCTURE peer DERIVE addr
    FIELD cursor JR:cursor
    FIELD writer JSON-WRITE:writer
    FIELD status n
    FIELD stream bool
+   FIELD region SPAN:span<u8>
 ;STRUCTURE
 
-CAST: >PEER ( ptr u8 -- ptr peer )
+ARENA PEERS peer
+TYPED-VARIABLE RECORDS peers
 
 $1000 constant FIRST-CAP
-PEER-BYTES constant URL-OFF
+0 constant URL-OFF
 URL-OFF BUF:HDR-BYTES + constant REQUEST-OFF
 REQUEST-OFF BUF:HDR-BYTES + constant REPLY-OFF
 REPLY-OFF BUF:HDR-BYTES + constant LIST-OFF
@@ -1038,12 +1043,13 @@ TASK:FACILITY LOCK
 LOCK TASK:FACILITY-INIT
 variable ROW-COUNT
 variable GENERATION                 \ the last generation OPEN gave a row
-DYNAMIC-BUFFER ROW-REGION SPAN:span<u8>
+DYNAMIC-BUFFER ROW-PEER ptr peer
 DYNAMIC-BUFFER ROW-HANDLE option<CURL:handle>
 DYNAMIC-BUFFER ROW-STOP bool
 DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
-: REGION ( n -- SPAN:span<u8> ) LOCK TASK:GET ROW-REGION @ LOCK TASK:RELEASE ;
+: ROW ( n -- ptr peer ) LOCK TASK:GET ROW-PEER @ LOCK TASK:RELEASE ;
+: REGION ( n -- SPAN:span<u8> ) ROW PEER-REGION @ ;
 : HANDLE! ( option<CURL:handle> n -- ) LOCK TASK:GET ROW-HANDLE ! LOCK TASK:RELEASE ;
 : STOP@ ( n -- bool ) LOCK TASK:GET ROW-STOP @ LOCK TASK:RELEASE ;
 : STOP! ( bool n -- ) LOCK TASK:GET ROW-STOP ! LOCK TASK:RELEASE ;
@@ -1056,8 +1062,6 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx ROW-HANDLE @
    OPTION:NONE idx ROW-HANDLE !
    LOCK TASK:RELEASE ;
-
-: ROW ( n -- ptr peer ) REGION SPAN:$ drop >PEER ;
 
 : BUF-AT ( n n -- ptr n )
    {: idx:n off:n :}
@@ -1090,17 +1094,19 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 \ The first free row, else -1; under LOCK.
 : FREE-ROW ( -- n )
    ROW-COUNT @ 0 ?do
-      i ROW-REGION @ SPAN:LEN 0= if i unloop exit then
+      i ROW-PEER @ PEER-REGION @ SPAN:LEN 0= if i unloop exit then
    loop -1 ;
 
 \ A free row at the table's end; under LOCK.
 : GROW ( -- )
    ROW-COUNT @ {: count:n :}
-   count 1+ ROW-REGION-RESERVE
+   count 1+ ROW-PEER-RESERVE
    count 1+ ROW-HANDLE-RESERVE
    count 1+ ROW-STOP-RESERVE
    count 1+ ROW-GEN-RESERVE
-   s" " SPAN:MAKE count ROW-REGION !
+   RECORDS PEERS-NEW {: rec:ptr :}
+   s" " SPAN:MAKE rec PEER-REGION !
+   rec count ROW-PEER !
    0 count ROW-GEN !
    count 1+ ROW-COUNT ! ;
 
@@ -1119,7 +1125,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    code 0<> if LOCK TASK:RELEASE region MEM:FREE-SPAN code throw then
    FREE-ROW {: idx:n :}
    GENERATION @ {: gen:n :}
-   region idx ROW-REGION !
+   region idx ROW-PEER @ PEER-REGION !
    OPTION:NONE idx ROW-HANDLE !
    false idx ROW-STOP !
    gen idx ROW-GEN !
@@ -1155,7 +1161,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx TOKEN-BUF BUF:DISPOSE
    idx REGION {: region :}
    LOCK TASK:GET
-   s" " SPAN:MAKE idx ROW-REGION !
+   s" " SPAN:MAKE idx ROW-PEER @ PEER-REGION !
    0 idx ROW-GEN !
    LOCK TASK:RELEASE
    region MEM:FREE-SPAN ;
@@ -1410,22 +1416,22 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       invalid OF 2drop 2drop s" " ENDOF
    ;MATCH ;
 
-\ An event of an event-stream reply, given the row's region: the first whose
+\ An event of an event-stream reply, given the row's record: the first whose
 \ data is the response to the client's request is kept in the message buffer,
 \ and every other event is passed over.
-: EVENT ( ptr u8 ptr u8 n ptr u8 n -- )
-   {: base:ptr kind:ptr ku:n data:ptr du:n :}
-   base MESSAGE-OFF + CELL-VIEW {: buf:ptr :}
+: EVENT ( ptr peer ptr u8 n ptr u8 n -- )
+   {: rec:ptr kind:ptr ku:n data:ptr du:n :}
+   rec PEER-REGION @ SPAN:$ drop MESSAGE-OFF + CELL-VIEW {: buf:ptr :}
    buf BUF:LEN@ BUF:BLEN>N 0<> if exit then
-   base >PEER PEER-CURSOR data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR=
+   rec PEER-CURSOR data du JSON-RPC:>MESSAGE RESPONSE-ID$ REQUEST-ID$ STR=
    if data du buf BUF+ then ;
 
 \ Feeds the whole reply to the decoder and finishes it; answers its operands.
-: DECODE ( SSE:decoder ptr u8 n ptr u8 -- SSE:decoder ptr u8 n ptr u8 )
-   {: d:SSE:decoder a:ptr u:n base:ptr :}
-   d a u base [: EVENT ;] SSE:FEED
+: DECODE ( SSE:decoder ptr u8 n ptr peer -- SSE:decoder ptr u8 n ptr peer )
+   {: d:SSE:decoder a:ptr u:n rec:ptr :}
+   d a u rec [: EVENT ;] SSE:FEED
    d SSE:FINISH
-   d a u base ;
+   d a u rec ;
 
 \ The reply's JSON-RPC text: its body, or for an event stream the data of the
 \ event that answers the request, E-RESPONSE when no event does or when the
@@ -1437,7 +1443,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx MESSAGE-BUF {: buf:ptr :}
    buf BUF:CLEAR
    idx DECODER {: d:SSE:decoder :}
-   d a u idx REGION SPAN:$ drop [: DECODE ;] catch {: code:n :} 2drop 2drop
+   d a u idx ROW [: DECODE ;] catch {: code:n :} 2drop 2drop
    d SSE:CLOSE
    code SSE:E-UTF8 = if E-RESPONSE throw then
    code 0<> if code throw then

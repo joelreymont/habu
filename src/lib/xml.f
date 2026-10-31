@@ -1,6 +1,7 @@
 \ xml.f - package XML: XML 1.0 pull reader, source views and escaping. A reader
 \ is a linear XML:reader over a caller-declared XML:cursor record
-\ (XML:CURSOR-BYTES bytes); a zero-filled record owns nothing. Constructors:
+\ (XML:CURSOR-BYTES bytes, typed by a storage definer or by EMPTY-CURSOR); a
+\ zero-filled record owns nothing. Constructors:
 \ INIT and INIT-INPUT (src/lib/xml/state.f), INIT-SOURCE and OWNER-READER
 \ (src/lib/xml/source.f). STORAGE CLASS. CALLER-OWNED record, source and output;
 \ the reader owns its record's tables until CLOSE or DISPOSE. No module state.

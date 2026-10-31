@@ -234,6 +234,32 @@ s" cast: CNW15 ( n -- CN-FQ:fqptr )"     CN-RUN:DECL 0 T=
 s" cast: CNW16 ( n -- ptr CN-FQ:fqsum )" CN-RUN:DECL 0 T=
 s" cast: CNW17 ( n -- ptr CN-FQ:fqlist )" CN-RUN:DECL 0 T=
 ;package
+\ An OPAQUE structure is its package's to introduce, as a cell family is: by
+\ value, as a pointee and through a field that holds one, even in the holder's
+\ package. Its own package casts into all three, and any package projects out.
+package CN-OQ
+public
+STRUCTURE oqbox OPAQUE FIELD v n ;STRUCTURE
+;package
+package CN-OH
+public
+STRUCTURE ohold FIELD b CN-OQ:oqbox ;STRUCTURE
+s" cast: CNQ1 ( n -- CN-OQ:oqbox )"              CN-RUN:DECL E-CAST-OWNER T=
+private
+s" cast: CNQ2 ( ptr u8 -- ptr CN-OQ:oqbox )"     CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNQ3 ( n -- ohold )"                    CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNQ4 ( CN-OQ:oqbox -- n )"              CN-RUN:DECL 0 T=
+s" cast: CNQ5 ( ptr CN-OQ:oqbox -- ptr u8 )"     CN-RUN:DECL 0 T=
+;package
+package CN-OQ
+private
+s" cast: CNQ6 ( n -- oqbox )"                    CN-RUN:DECL 0 T=
+s" cast: CNQ7 ( ptr u8 -- ptr oqbox )"           CN-RUN:DECL 0 T=
+s" cast: CNQ8 ( n -- CN-OH:ohold )"              CN-RUN:DECL 0 T=
+;package
+\ Nor can checked code rebind the OPAQUE question CAST-OWNER? asks to admit a
+\ forge: the name is gone, so the body is refused (verdict 0).
+s" CNQ9 ( -- ) [: drop false ;] is TFAM-OPAQUE?-XT" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ The families the engine registers (src/core/type-family.f) are declared in the
 \ global, empty package, so the global scope owns them and no package may mint

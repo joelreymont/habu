@@ -19,6 +19,7 @@ create BOM-INPUT 256 allot
 create WIRE 64 allot
 TYPED-VARIABLE ASCII-OWNER XML:source-owner
 TYPED-VARIABLE RD XML:cursor
+create SHARED-STORE XML:CURSOR-BYTES allot
 1024 constant MARKED-CAP
 create MARKED MARKED-CAP allot
 create MARKED-AT MARKED-CAP cells allot
@@ -30,7 +31,6 @@ variable WIDE-BAD
 
 CAST: KIND>N ( XML:kind -- n )
 CAST: ENCODING>N ( XML:encoding -- n )
-CAST: STORE>CURSOR ( ptr u8 -- ptr XML:cursor )
 
 : LE$ ( -- ptr u8 n )
    s\" \xFF\xFE<\za\z \zq\z=\z'\zx\z'\z>\z&\za\zm\zp\z;\z<\z/\za\z>\z" ;
@@ -468,12 +468,13 @@ CAST: STORE>CURSOR ( ptr u8 -- ptr XML:cursor )
 
 \ A record over the source's own storage is refused before the reader is
 \ built, and the refusal leaves the source with its caller to read and close.
-: STORE-READER ( XML:source -- XML:source )
-   SOURCE-STORE BYTE-VIEW STORE>CURSOR XML:INIT-SOURCE XML:CLOSE ;
+: SHARED-READER ( ptr XML:cursor XML:source -- ptr XML:cursor XML:source )
+   over XML:INIT-SOURCE XML:CLOSE ;
 
 : REFUSED-READER-KEEPS-SOURCE ( -- )
-   s" <a>x</a>" OPEN
-   ['] STORE-READER catch XML:E-ALIAS T=
+   SHARED-STORE BYTE-VIEW XML:CURSOR-BYTES XML:EMPTY-CURSOR
+   SHARED-STORE XML:CURSOR-BYTES s" <a>x</a>" XML:SOURCE-INIT
+   ['] SHARED-READER catch XML:E-ALIAS T= nip
    READER XML-KIND:START NEXT= XML-KIND:TEXT NEXT=
    XML:CLOSE XML:SOURCE-CLOSE ;
 
@@ -530,7 +531,11 @@ CAST: STORE>CURSOR ( ptr u8 -- ptr XML:cursor )
 : SMALL-SOURCE ( ptr u8 n -- )
    [: 2dup OPEN-SMALL ;] catch XML:E-CAPACITY T= 2drop ;
 
+: SHORT-CURSOR ( -- )
+   SHARED-STORE BYTE-VIEW XML:CURSOR-BYTES 1- XML:EMPTY-CURSOR drop ;
+
 : SOURCE-CAPACITY ( -- )
+   ['] SHORT-CURSOR catch XML:E-CAPACITY T=
    s\" \xFF\xFE<\za\z/\z>\z" SMALL-SOURCE
    s\" \xFF\xFE<\za\z/\z>\z" OPEN
    READER XML-KIND:START NEXT= XML-KIND:END NEXT=

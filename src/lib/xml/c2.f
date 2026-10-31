@@ -113,8 +113,6 @@ CAST: >ADDR-CELL ( ptr u8 -- ptr ptr u8 )
 ndict@ 1- constant ADDR-CELL-ID
 CAST: >LEN-CELL ( ptr u8 -- ptr n )
 ndict@ 1- constant LEN-CELL-ID
-CAST: >CURSOR ( ptr u8 -- ptr XML:cursor )
-ndict@ 1- constant XML-CURSOR-ID
 
 \ A live reader's token is its record's address. Each accessor re-enters the
 \ reader from the cursor storage and parks it there again; only WITH-READER's
@@ -127,7 +125,8 @@ ndict@ 1- constant PARK-ID
 
 : OPEN-READER ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
    CURSOR-BASE {: record:ptr :}
-   record >CURSOR record >ADDR-CELL @ record cell+ >LEN-CELL @ XML:INIT PARK ;
+   record >ADDR-CELL @ record cell+ >LEN-CELL @ {: source size:n :}
+   record XML:CURSOR-BYTES XML:EMPTY-CURSOR source size XML:INIT PARK ;
 ndict@ 1- constant OPEN-ID
 
 : LINK ( mut-view<b,i,a,init<i,reader-state<p,q>>> -- mut-view<b,i,a,init<i,reader-state<p,q>>> )
@@ -139,7 +138,7 @@ ndict@ 1- constant LINK-ID
 : RELEASE ( -- )
    READER-HEAD >HEAD-CELL @ {: record:ptr :}
    record LINK-OFF + >ADDR-CELL @ READER-HEAD >HEAD-CELL !
-   record >CURSOR XML:DISPOSE ;
+   record REENTER XML:CLOSE ;
 ndict@ 1- constant RELEASE-ID
 
 \ GUARD links the record before the guarded body parses it, so a failed INIT,
@@ -249,7 +248,6 @@ SOURCE-SLICE-ID HIDE
 HEAD-CELL-ID HIDE
 ADDR-CELL-ID HIDE
 LEN-CELL-ID HIDE
-XML-CURSOR-ID HIDE
 REENTER-ID HIDE
 PARK-ID HIDE
 HIDE-ID HIDE

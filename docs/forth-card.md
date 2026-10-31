@@ -387,10 +387,11 @@ A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 type`).
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
 holds a pointer or a quotation is the same mint, and one whose field holds
-another package's family is `E-CAST-OWNER` outside that package. So is a cast
-whose either side reaches an arena head, through pointers, quotation rows or
-fields: `CAST: >U8 ( ptr foos -- ptr u8 )` over an `ARENA FOOS` owner, or its
-reverse, outside `DYNAMIC-STORAGE`, private section included.
+another package's cell family or `OPAQUE` structure is `E-CAST-OWNER` outside
+that package, as a cast to one or to a pointer to one is. So is a cast whose
+either side reaches an arena head, through pointers, quotation rows or fields:
+`CAST: >U8 ( ptr foos -- ptr u8 )` over an `ARENA FOOS` owner, or its reverse,
+outside `DYNAMIC-STORAGE`, private section included.
 
 In checked code a `DEFLINEAR` token is minted and erased the same way, by the
 package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE
