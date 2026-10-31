@@ -55,6 +55,13 @@ entry.
   `STDERR:CAPTURE ( path -- ) … STDERR:;CAPTURE` for tests. Asked whether
   MODEL's log line for an unusable reply carries the whole reply body, Joel
   chose "Log the whole body".
+- 2026-10-31, typed data: shown that the image save check reads an untyped
+  `c,` table's bytes as possible addresses, so a build fails at random by
+  where memory was placed, and that a fix recording `c,` runs covers only
+  part of it, Joel answered "regardless of how we build this chunk of data,
+  why are we not typing it? that would fix all the issues and avoid having to
+  record any runs. prove me wrong!" Whether data can hold an address is
+  decided by its declared type, not by how it was built or by its value.
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
