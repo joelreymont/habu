@@ -3623,9 +3623,8 @@ private
    15 NUNIT-FILE:SECTION$ refs PINS-CK
    18 NUNIT-FILE:SECTION$ namesu ORIGIN-CK ;
 
-\ Install: the hit path. Every engine writer is reached by name through
-\ NEED-XT in this block, the install boundary: REC-WIDE, REC-MIN-IN and REC-REP
-\ are checked through their casts, the rest are TRUSTED: rows.
+\ Install: the hit path. Every engine writer in this block is reached by name
+\ through NEED-XT, the install boundary, and checked through its xt's cast.
 
 : NEED-XT ( ptr u8 n -- n ) ENGINE-XT dup 0= if BAD then ;
 
@@ -3640,18 +3639,18 @@ CAST: REC-WORDLIST-XT ( n -- [ -- n ] )
 CAST: REC-PRIVATE-XT ( n -- [ n -- ] )
 
 \ name, wid and kind: open the pending record at ndict@ (prims.f def-open).
-TRUSTED: REC-OPEN ( ptr u8 n n n -- )
+: REC-OPEN ( ptr u8 n n n -- )
    s" def-open" NEED-XT REC-OPEN-XT execute ;
 \ End the pending record as the engine's `constant` and `;` end one.
-TRUSTED: REC-CLOSE ( -- ) s" def-close" NEED-XT DEF-ACTION-XT execute ;
+: REC-CLOSE ( -- ) s" def-close" NEED-XT DEF-ACTION-XT execute ;
 \ End the pending DKIND:ADDR record as the engine's `create` ends one.
-TRUSTED: REC-CREATE ( -- ) s" def-create" NEED-XT DEF-ACTION-XT execute ;
-TRUSTED: REC-IMM ( -- ) s" imm-mark" NEED-XT DEF-ACTION-XT execute ;
+: REC-CREATE ( -- ) s" def-create" NEED-XT DEF-ACTION-XT execute ;
+: REC-IMM ( -- ) s" imm-mark" NEED-XT DEF-ACTION-XT execute ;
 \ End the pending DKIND:CAST record as the engine's `cast:` ends one.
-TRUSTED: REC-CAST ( -- ) s" def-cast" NEED-XT DEF-ACTION-XT execute ;
+: REC-CAST ( -- ) s" def-cast" NEED-XT DEF-ACTION-XT execute ;
 \ End the pending record as the engine's `defer` ends one: the dispatch body
 \ and trailer for cell n.
-TRUSTED: REC-DEFER ( n -- ) s" def-defer" NEED-XT REC-DEFER-XT execute ;
+: REC-DEFER ( n -- ) s" def-defer" NEED-XT REC-DEFER-XT execute ;
 \ Set DNAME-WIDE on the newest record.
 : REC-WIDE ( -- ) s" wide-mark" NEED-XT DEF-ACTION-XT execute ;
 \ Record ord and its minimum input arity: or it into DNAME-MIN-IN.
@@ -3659,13 +3658,13 @@ TRUSTED: REC-DEFER ( n -- ) s" def-defer" NEED-XT REC-DEFER-XT execute ;
 \ Record ord: set DNAME-REP, the representation cast its checker certified.
 : REC-REP ( n -- ) s" rep-mark" NEED-XT REC-REP-XT execute ;
 \ name and private?: publish a namespace row; its ordinal.
-TRUSTED: REC-NAMESPACE ( ptr u8 n bool -- n )
+: REC-NAMESPACE ( ptr u8 n bool -- n )
    s" namespace-record" NEED-XT REC-NAMESPACE-XT execute ;
-TRUSTED: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
-TRUSTED: REC-WORDLIST ( -- ) s" wordlist" NEED-XT REC-WORDLIST-XT execute drop ;
+: REC-PROTECT ( n -- ) s" prot-wid-add" NEED-XT REC-PROTECT-XT execute ;
+: REC-WORDLIST ( -- ) s" wordlist" NEED-XT REC-WORDLIST-XT execute drop ;
 \ Give namespace row ord the next wordlist as its private one, as `package`
 \ does when it reopens a namespace that has none (packages.f PKG-REOPEN).
-TRUSTED: REC-PRIVATE ( n -- ) s" namespace-private" NEED-XT REC-PRIVATE-XT execute ;
+: REC-PRIVATE ( n -- ) s" namespace-private" NEED-XT REC-PRIVATE-XT execute ;
 
 \ Make the next wordlist as wordlist row row says the load made it: a bare
 \ `wordlist`, or the private one of the namespace row its owner names, which
@@ -3693,7 +3692,7 @@ TRUSTED: REC-PRIVATE ( n -- ) s" namespace-private" NEED-XT REC-PRIVATE-XT execu
    repeat ;
 \ Patch the word `create` just ended to run the clause at entry as `does>`
 \ does, with no signature: the file's checker slice carries its contract.
-TRUSTED: REC-PATCH ( n -- )
+: REC-PATCH ( n -- )
    NULL-PTR 0 s" does-patch" NEED-XT REC-PATCH-XT execute ;
 
 \ View the object's FILE sections again; READ-VIEW keeps the caller's bytes.
