@@ -93,6 +93,26 @@ private
       construct shape using-refusal s" disambiguate_using_ambiguous" s" " EXIT THEN
    c u s" E-SHADOWED-ARITY" STR= IF
       construct shape record s" match_shadowed_private_effect" s" package" EXIT THEN
+   c u s" E-CAST-ARITY" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-CAST-CLASS" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-CAST-FAM" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-CAST-OWNER" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-CAST-LINEAR" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-CAST-MINT" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-CAST-SCOPE" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-LINEAR-PAYLOAD" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-LINEAR-OWNER" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
+   c u s" E-LINEAR-SCOPE" STR= IF
+      construct shape record s" fix_cast_declaration" s" reason" EXIT THEN
    c u s" W-EFFECT-NOT-RECORDED" STR= IF
       construct shape warning s" " s" " EXIT THEN
    construct shape definition s" " s" " ;

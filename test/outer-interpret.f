@@ -2012,17 +2012,19 @@ variable WANT-RC
    76 s" hb: code space full at: A-LONG-CAST-NAME-PAST-INLINE at " S\" oi-cast-name-full.f:1\n" CODE-DIED-AT ;
 
 \ The checker's registrar refuses a mint outside a private section and a
-\ retype that changes the arity with a catchable throw, before the record is
-\ counted. Uncaught, the load ends with the exit hook run; caught, the name is
-\ absent and nothing stays pending.
+\ retype that changes the arity, naming the cast, its line and the reason, with
+\ a catchable throw before the record is counted. Uncaught, the load exits 70
+\ with the exit hook run; caught, the name is absent and nothing stays pending.
 : CAST-REGISTRAR ( -- )
    GE-SRC-RESET
    s" ' OI-CR OI-ARM" GE-SRC-LINE
    s" 1 set-tier cast: OI-X ( n -- ptr u8 )" GE-SRC-LINE
    s" oi-cast-mint.f" BOTH
-   67 CASE$ GE-EXPECT-RC
+   70 CASE$ GE-EXPECT-RC
    S\" \n" CASE$ GE-EXPECT-OUT
-   S\" hb: uncaught throw code 7147\n" CASE$ GE-EXPECT-ERR
+   SB-RESET  s" E-CAST-MINT habu: " SB-APPEND  CASE$ SB-APPEND
+   S\" :2: cast: 'OI-X': the output mints a pointer or a quotation outside a private section\nhb: uncaught throw code 7147\n" SB-APPEND
+   SB$ CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
    s" require src/habu/interpret.f 1 set-tier : OI-INT-PARKED ( -- ) OI-PARKED @ OI-PARKED-U @ OUTER:INTERPRET ;" GE-SRC-LINE
    s" s~ cast: OI-Y ( n n -- n )~ OI-PARK ' OI-INT-PARKED catch . depth ." QLINE

@@ -717,12 +717,13 @@ variable RC
    {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n path:ptr pathu:n :}
    0 s" E-BAD-STORED-SIGNATURE" tok toku sp spu line col bs be path pathu RECORD-PLACED ;
 
-\ STORED-PLACED for each check of the fixture: plain, which gives COUNT packets,
-\ the refusal first, and --all-errors and --verify-only, which give it alone.
-: STORED-AT ( ptr u8 n ptr u8 n n n n n n -- )
-   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n count:n :}
+\ STORED-PLACED for each check of the fixture, plain, --all-errors and
+\ --verify-only: each gives the refusal alone, never followed by its statement's
+\ throw (tools/check-all-errors-core.f REPORTED-THROW?).
+: STORED-AT ( ptr u8 n ptr u8 n n n n n -- )
+   {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
    s" " CHECK
-   GJA-LINE# @ count T=
+   GJA-LINE# @ 1 T=
    tok toku sp spu line col bs be FX-PATH$ STORED-PLACED
    s" --all-errors" CHECK
    GJA-LINE# @ 1 T=
@@ -734,30 +735,29 @@ variable RC
 \ A stored signature that does not parse is refused at the name its declaration
 \ reads, though the row is stored under that name's fold: a `FUNCTION:` whose
 \ group is empty, a `TRUSTED:` definition, a `defer`, a `trust` row and a
-\ cast. The plain check follows each row the load stores with its statement's
-\ throw; a cast's refusal stands alone.
+\ cast.
 : TEST-STORED-SIGNATURE ( -- )
    s" a FUNCTION: whose group is empty" T-LABEL
    SB-RESET
    s" require src/lib/ffi-abi.f" SB-APPEND LF+
    s" FUNCTION: F getpid ( )" SB-APPEND LF+
    s" stored-ffi.f" FIXTURE!
-   s" f" s" F" 2 11 36 37 2 STORED-AT
+   s" f" s" F" 2 11 36 37 STORED-AT
    s" a TRUSTED: definition" T-LABEL
    s" TRUSTED: X ( n -- zz ) 1 ;" s" stored-trusted.f" LINE-FIXTURE
-   s" x" s" X" 1 10 9 10 2 STORED-AT
+   s" x" s" X" 1 10 9 10 STORED-AT
    s" a defer" T-LABEL
    s" defer W ( n -- zz )" s" stored-defer.f" LINE-FIXTURE
-   s" w" s" W" 1 7 6 7 2 STORED-AT
+   s" w" s" W" 1 7 6 7 STORED-AT
    s" a trust row" T-LABEL
    SB-RESET
    s" : Y ( n -- n ) ;" SB-APPEND LF+
    s\" s\" Y\" s\" n -- zz\" trust" SB-APPEND LF+
    s" stored-trust.f" FIXTURE!
-   s" y" s" Y" 2 4 20 21 2 STORED-AT
+   s" y" s" Y" 2 4 20 21 STORED-AT
    s" a cast" T-LABEL
    s" cast: >X ( ptr -- n )" s" stored-cast.f" LINE-FIXTURE
-   s" >X" s" >X" 1 7 6 8 1 STORED-AT ;
+   s" >X" s" >X" 1 7 6 8 STORED-AT ;
 
 \ The same refusal for a declaration named as the colon definition checked
 \ before it: a `TRUSTED:` definition and a `defer` after `undefine` removed that
@@ -769,14 +769,14 @@ variable RC
    s" undefine X" SB-APPEND LF+
    s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
    s" replaced-trusted.f" FIXTURE!
-   s" x" s" X" 3 10 33 34 2 STORED-AT
+   s" x" s" X" 3 10 33 34 STORED-AT
    s" a defer replacing an undefined word" T-LABEL
    SB-RESET
    s" : X ( -- ) ;" SB-APPEND LF+
    s" undefine X" SB-APPEND LF+
    s" defer X ( -- zz )" SB-APPEND LF+
    s" replaced-defer.f" FIXTURE!
-   s" x" s" X" 3 7 30 31 2 STORED-AT
+   s" x" s" X" 3 7 30 31 STORED-AT
    s" a TRUSTED: definition in a package, under a global's tail" T-LABEL
    SB-RESET
    s" : X ( -- ) ;" SB-APPEND LF+
@@ -784,7 +784,7 @@ variable RC
    s" TRUSTED: X ( -- zz ) ;" SB-APPEND LF+
    s" ;package" SB-APPEND LF+
    s" replaced-same-tail.f" FIXTURE!
-   s" x" s" X" 3 10 39 40 2 STORED-AT ;
+   s" x" s" X" 3 10 39 40 STORED-AT ;
 
 \ RECORD-PLACED for the record CODE refuses in each check of the fixture: plain,
 \ --all-errors and --verify-only each give COUNT packets, that refusal first,

@@ -487,7 +487,18 @@ public
    rc E-SHADOWED-ARITY = or
    rc E-GENERATES-ROW = or
    rc E-PARSES-ROW = or
-   rc E-NAMES-ROW = or ;
+   rc E-NAMES-ROW = or
+   rc E-BAD-STORED-SIGNATURE = or
+   rc E-CAST-ARITY = or
+   rc E-CAST-CLASS = or
+   rc E-CAST-FAM = or
+   rc E-CAST-OWNER = or
+   rc E-CAST-LINEAR = or
+   rc E-CAST-MINT = or
+   rc E-CAST-SCOPE = or
+   rc E-LINEAR-PAYLOAD = or
+   rc E-LINEAR-OWNER = or
+   rc E-LINEAR-SCOPE = or ;
 
 \ True for the status of a check that a statement threw out of without
 \ reporting its own refusal.

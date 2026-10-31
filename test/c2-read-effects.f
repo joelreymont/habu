@@ -85,11 +85,11 @@ public
    s" defer state cannot acquire a scoped quotation" T-LABEL
    s" defer C2-DEFER ( a -- a ) NEWTYPE c2-dholder<a> : C2-DEFER-STORE ( [ c2-dholder<read-view<p,q,u8>> -- c2-dholder<read-view<p,q,u8>> ] -- ) is C2-DEFER ;" 70 SUBJECT:EXITED? TTRUE
    s" a phantom wrapper cannot erase a scoped dependency" T-LABEL
-   s" NEWTYPE c2-phantom<a> CAST: C2-ERASE ( c2-phantom<read-view<p,q,u8>> -- n )" 67 SUBJECT:EXITED? TTRUE
+   s" NEWTYPE c2-phantom<a> CAST: C2-ERASE ( c2-phantom<read-view<p,q,u8>> -- n )"
+      70 s" cast: 'C2-ERASE': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" exclusive views remain inadmissible until loan accounting" T-LABEL
    s" : C2-MUT ( mut-view<p,q,u8> -- ) drop ;" 70 SUBJECT:EXITED? TTRUE
    s" direct borrowed schemas wait for scoped storage" T-LABEL
-   \ A rendered declaration refusal exits 70; the CAST: refusal above renders none.
    s" SUMTYPE c2-schema<a,b> VARIANT some read-view<a,b,u8> ;VARIANT ;SUMTYPE" 70 SUBJECT:EXITED? TTRUE
    s" legacy value records cannot declare a scoped field" T-LABEL
    s" VALUE-RECORD c2-vrec value read-view<p,q,u8> END-VALUE-RECORD" 70 SUBJECT:EXITED? TTRUE

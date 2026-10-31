@@ -72,10 +72,10 @@ s" cast: CNF2 ( n -- cnpbox )"       CN-RUN:DECL E-CAST-FAM T=
 s" cast: CNF3 ( n -- ptr cnpbox )"   CN-RUN:DECL E-CAST-FAM T=
 s" cast: CNF4 ( cnpbox<n,n> -- n )"  CN-RUN:DECL E-CAST-FAM T=
 \ Any other signature fault, here a bare `ptr`, is refused before a walk reads
-\ the row, as a definition with that signature is: CHECKER-REJECT-RC. The first
-\ fault names the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.
-s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL CHECKER-REJECT-RC T=
-s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL CHECKER-REJECT-RC T=
+\ the row, as a stored signature that does not parse is. The first fault names
+\ the class, so CNB1's wrong-arity `cnpbox` never reaches a walk.
+s" cast: CNB1 ( ptr -- cnpbox )"     CN-RUN:DECL E-BAD-STORED-SIGNATURE T=
+s" cast: CNB2 ( n -- ptr )"          CN-RUN:DECL E-BAD-STORED-SIGNATURE T=
 \ Neither direction, linear-to-linear, nor transitive containment may cross
 \ CAST:, even when both sides occupy one machine cell.
 s" cast: CNL1 ( n -- CAST-NEG:lease )" CN-RUN:DECL E-CAST-LINEAR T=

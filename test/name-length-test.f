@@ -347,11 +347,19 @@ variable WANT-U
 \ only -1 and the maximum cell describe none of them. The storage gates answer
 \ no and move no pool mark. CHECK and every entry that reaches it end with the
 \ token buffer's refusal, which the maximum cell already met. A signature is
-\ refused as one that does not parse: a does> clause is rejected, a cast throws
+\ refused as one that does not parse: a does> clause is rejected, a cast is
 \ E-CAST-ARITY. CHECK-DOES! is trusted-only and CHECKER-DEFCAST has no effect a
 \ checked body may call, so the child names them at its top level; the cast's
-\ refusal is not rendered, so its child exits 67.
+\ refusal names this file, which the child loads, and exits 70.
 : TOO-LARGE$ ( -- ptr u8 n ) S\" checker: token buffer too large\n" ;
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
+: CAST-WANT$ ( -- ptr u8 n )
+   SB-RESET
+   s" E-CAST-ARITY habu: " SB-APPEND
+   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
+   s" : cast: 'nltcast': the signature's length describes no memory" SB-APPEND
+   S\" \nhb: uncaught throw code 7129\n" SB-APPEND
+   SB$ ;
 : TEST-TEXTS ( -- )
    TEXT-CAP s" LAYOUT-TEXT" RETURNS-PAST
    TEXT-CAP s" STORAGE-TEXT" RETURNS-PAST
@@ -361,8 +369,7 @@ variable WANT-U
    s" CANDIDATE-IT" 76 TOO-LARGE$ DIES-NO-SPAN
    s" HOOK-IT" 76 TOO-LARGE$ DIES-NO-SPAN
    s" MARKS! CLAUSE$ BAD$ CHECK-DOES! 0= VERDICT" RETURNS-NO-SPAN
-   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 67 S\" hb: uncaught throw code 7129\n"
-   DIES-NO-SPAN ;
+   s" CAST-NAME$ BAD$ CHECKER-DEFCAST" 70 CAST-WANT$ DIES-NO-SPAN ;
 
 \ ---- a name of exactly the ceiling ------------------------------------------
 \ `: <u bytes of c> ;`, in a fresh mapping.

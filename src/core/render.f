@@ -1832,6 +1832,80 @@ STGR-DIAG-INSTALL
 : GENERATES-DIAG-INSTALL ( -- ) [: GENR-DIAG ;] is GENERATES-DIAG-XT ;
 GENERATES-DIAG-INSTALL
 
+\ A refused `cast:` or `linear:` declaration (checker.f CAST-ERROR:RAISE).
+package CAST-ERROR
+: CODE$ ( -- ptr u8 n )
+   CODE @ E-CAST-ARITY = IF s" E-CAST-ARITY" EXIT THEN
+   CODE @ E-CAST-CLASS = IF s" E-CAST-CLASS" EXIT THEN
+   CODE @ E-CAST-FAM = IF s" E-CAST-FAM" EXIT THEN
+   CODE @ E-CAST-OWNER = IF s" E-CAST-OWNER" EXIT THEN
+   CODE @ E-CAST-LINEAR = IF s" E-CAST-LINEAR" EXIT THEN
+   CODE @ E-CAST-MINT = IF s" E-CAST-MINT" EXIT THEN
+   CODE @ E-CAST-SCOPE = IF s" E-CAST-SCOPE" EXIT THEN
+   CODE @ E-LINEAR-PAYLOAD = IF s" E-LINEAR-PAYLOAD" EXIT THEN
+   CODE @ E-LINEAR-OWNER = IF s" E-LINEAR-OWNER" EXIT THEN
+   CODE @ E-LINEAR-SCOPE = IF s" E-LINEAR-SCOPE" EXIT THEN
+   CODE @ throw ;
+: SUGGEST$ ( -- ptr u8 n )
+   CODE @ E-CAST-ARITY = IF s" Declare one term on each side over the same stack below, with no return-stack effect." EXIT THEN
+   CODE @ E-CAST-CLASS = IF s" Retype one machine cell: a con, a width-1 family, a pointer chain ending at storage or a quotation, and hand out no atom." EXIT THEN
+   CODE @ E-CAST-FAM = IF s" Declare the type before the cast and give each family its declared number of arguments." EXIT THEN
+   CODE @ E-CAST-OWNER = IF s" Declare the cast in the package that owns the type, or call a word that package exports." EXIT THEN
+   CODE @ E-CAST-LINEAR = IF s" Remove the linear type or type variable from the cast; a linear value changes hands only through its owner's words." EXIT THEN
+   CODE @ E-CAST-MINT = IF s" Declare a cast that mints a pointer or a quotation in its package's private section." EXIT THEN
+   CODE @ E-CAST-SCOPE = IF s" Write a scoped cast only as a view pack or unpack, unqualified, in a private section." EXIT THEN
+   CODE @ E-LINEAR-PAYLOAD = IF s" Pair one linear type with one non-linear payload: a con or a pointer chain ending at one." EXIT THEN
+   CODE @ E-LINEAR-OWNER = IF s" Declare the linear: row in the package that declared the linear type." EXIT THEN
+   CODE @ E-LINEAR-SCOPE = IF s" Declare the linear: row unqualified, in its owner's private section." EXIT THEN
+   CODE @ throw ;
+: WORD$ ( -- ptr u8 n ) WORD-A @ WORD-U @ ;
+: FAMILY ( -- )
+   FAM @ 0 < IF EXIT THEN
+   FAM @ TFAM-OPAQUE?* IF s"  OPAQUE structure '" DTXT ELSE s"  family '" DTXT THEN
+   FAM @ TFAM-NAME$ DTXT  s" '" DTXT
+   FAM @ TFAM-PKG$* {: pa:ptr pu:n :}
+   pu 0= IF s" , declared at top level" DTXT EXIT THEN
+   s"  of package " DTXT  pa pu DTXT ;
+: REASON ( -- )
+   WHY-A @ WHY-U @ DTXT
+   TOK-U @ 0 > IF s"  '" DTXT  TOK-A @ TOK-U @ DTXT  s" '" DTXT THEN
+   FAMILY ;
+\ Mapped: the word lies in the text the pre-pass checks, its place in JLOC-*;
+\ else the place is the signature's line in the file the load reads, as DSITE's.
+: SITE ( -- ptr u8 n n bool bool )
+   WORD-A @  WORD-A @ WORD-U @ +  JLOCATE IF
+      DIAGFB DIAGFU @ JLOC-L @ RES-TRUE RES-TRUE EXIT
+   THEN
+   TOP-FILE$  SIG-A @ LOWER-CERT-HOOK:LINE-AT  RES-FALSE ;
+: PLACE ( -- )
+   SITE {: fa:ptr fu:n line:n known:bool mapped:bool :}
+   fu 0= IF EXIT THEN
+   fa fu DTXT
+   known IF 58 EMIT1 line JNUM THEN
+   mapped IF 58 EMIT1 JLOC-C @ JNUM THEN
+   s" : " DTXT ;
+: PROSE ( -- )
+   CODE$ DTXT  s"  habu: " DTXT  PLACE
+   KEY-A @ KEY-U @ DTXT  s"  '" DTXT  WORD$ DTXT  s" ': " DTXT  REASON ;
+: PACKET ( -- )
+   CODE$ s" fix_cast_declaration" s" rejected" JHEAD
+   s" token" JKEY WORD$ JSTR 44 EMIT1
+   s" reason" JKEY JOPEN REASON JCLOSE 44 EMIT1
+   SITE {: fa:ptr fu:n line:n known:bool mapped:bool :}
+   s" file" JKEY  fu 0= IF DIAG-NO-FILE$ ELSE fa fu THEN JSTR  44 EMIT1
+   mapped IF JLOC-FIELDS ELSE
+      known IF s" line" JKEY line JNUM 44 EMIT1 THEN
+   THEN
+   s" suggestion" JKEY SUGGEST$ JSTR  125 EMIT1 ;
+: RENDER ( -- )
+   1 RDST !  0 RSN !  0 RQM !
+   JSON-DIAGS @ IF PACKET ELSE PROSE THEN
+   10 EMIT1
+   RSBUF-FLUSH ;
+: INSTALL ( -- ) [: RENDER ;] is DIAG-XT ;
+INSTALL
+;package
+
 \ A `parses:` or `parses-through:` row the checker refused (checker.f
 \ CHECKER-PARSES-ROW), named at its target or else its keyword: a target fault
 \ takes fix_parses_row, a syntax fault fix_parses_syntax.

@@ -469,6 +469,21 @@ LOWER-CERT-HOOK:INSTALL
    s" : LRD-MK ( n -- ) create , does> @ ;" s" E-MISSING-SIGNATURE: does> at " SIG-REJECT
    s" defer LRD-D" s" E-MISSING-SIGNATURE: LRD-D at " SIG-REJECT ;
 
+\ A refused `cast:` names its code, place, word and reason, and the family a
+\ foreign output introduces with its owner.
+: TEST-CAST ( -- )
+   s" a cast into another package's OPAQUE structure names both" T-LABEL
+   BODY$ S\" package LRD-OQ public STRUCTURE lrd-box OPAQUE FIELD v n ;STRUCTURE ;package\npackage LRD-OH public cast: LRD-MAKE ( n -- LRD-OQ:lrd-box ) ;package" FS:WRITE-ALL
+   BODY$ RUN
+   s" E-CAST-OWNER habu: " ASSERT-NAMED
+   ERR$ BODY$ CONTAINS? TTRUE
+   ERR$ s" :2: cast: 'LRD-MAKE': the output introduces a type declared outside this package: OPAQUE structure 'lrd-box' of package LRD-OQ" CONTAINS? TTRUE
+   s" a cast of one cell into three names its arity" T-LABEL
+   BODY$ s" cast: LRD-WIDE ( n -- ptr u8 n )" FS:WRITE-ALL
+   BODY$ RUN
+   s" E-CAST-ARITY habu: " ASSERT-NAMED
+   ERR$ s" :1: cast: 'LRD-WIDE': the output is not one term over the stack below" CONTAINS? TTRUE ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -593,6 +608,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-BYTE-PTR-FETCH
    TEST-STORAGE
    TEST-MISSING-SIGNATURE
+   TEST-CAST
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-IMM-INCLUDE

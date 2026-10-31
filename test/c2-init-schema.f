@@ -88,7 +88,8 @@ public
    s" raw cells cannot construct initialized storage" T-LABEL
    s" : C2-INIT-FORGE ( -- init<p,C2-INIT-SCHEMA:pair> ) 1 2 ;" 70 SUBJECT:EXITED? TTRUE
    s" a cast cannot erase the initialized lifetime" T-LABEL
-   s" CAST: C2-INIT-CAST ( init<p,n> -- n )" 67 SUBJECT:EXITED? TTRUE
+   s" CAST: C2-INIT-CAST ( init<p,n> -- n )"
+      70 s" cast: 'C2-INIT-CAST': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" initialized storage cannot enter a global slot" T-LABEL
    s" TYPED-VARIABLE C2-INIT-GLOBAL init<p,n>" 70 SUBJECT:EXITED? TTRUE ;
 

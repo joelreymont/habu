@@ -2049,12 +2049,15 @@ variable LONG-J
 
 \ A cast whose signature does not parse, here a bare `ptr` that also hides a
 \ wrong-arity layout, is refused at the cast gate before any walk reads the row:
-\ the all-errors run renders the bad stored signature and exits 70.
+\ the all-errors run renders the bad stored signature, goes on to the next
+\ definition's error and exits 70.
 : CAST-BADSIG$ ( -- ptr u8 n )
    SB-RESET
    s" STRUCTURE ckt-cbox<a> FIELD value a ;STRUCTURE" SB-APPEND
    $0a SB-APPEND-C
    s" cast: CKT-CBAD ( ptr -- ckt-cbox )" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-CLATE ( -- n ) ;" SB-APPEND
    SB$ ;
 
 : CAST-BADSIG-ALL ( -- )
@@ -2062,7 +2065,29 @@ variable LONG-J
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" habu: in CKT-CBAD: bad stored signature 'ptr -- ckt-cbox'"
-   CONTAINS? TTRUE ;
+   CONTAINS? TTRUE
+   CAP-ERR erru s" habu: in ckt-clate: at 'CKT-CLATE' expected: n" CONTAINS? TTRUE ;
+
+\ The same for a `linear:` row whose output scope variable no input supplies.
+: LINEAR-BADSIG$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKT-LIN public DEFLINEAR CKT-LIN:tok private" SB-APPEND
+   $0a SB-APPEND-C
+   s" linear: CKT-LBAD ( n -- read-view<p,q,u8> )" SB-APPEND
+   $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-LLATE ( -- n ) ;" SB-APPEND
+   SB$ ;
+
+: LINEAR-BADSIG-ALL ( -- )
+   LINEAR-BADSIG$ DIRECT-ALL-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru
+   s" habu: in CKT-LBAD: bad stored signature 'n -- read-view<p,q,u8>'"
+   CONTAINS? TTRUE
+   CAP-ERR erru s" habu: in ckt-llate: at 'CKT-LLATE' expected: n" CONTAINS? TTRUE ;
 
 : OVERCAP-PATH-BODY ( n ptr u8 NUM:alloc-byte-len -- )
    {: cap:n path:ptr extent:NUM:alloc-byte-len :}
@@ -7346,6 +7371,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/sum-noend-all" [: SUM-NOEND-ALL ;] CASE-RUN
    s" check/tfam-noarity-all" [: TFAM-NOARITY-ALL ;] CASE-RUN
    s" check/cast-badsig-all-errors" [: CAST-BADSIG-ALL ;] CASE-RUN
+   s" check/linear-badsig-all-errors" [: LINEAR-BADSIG-ALL ;] CASE-RUN
    s" check/selection-capacity" [: TEST-SELECTION-CAPACITY ;] CASE-RUN
    s" check/big-source" [: TEST-BIG-SOURCE ;] CASE-RUN
    s" check/run-output-cap" [: TEST-RUN-OUTPUT-CAP ;] CASE-RUN

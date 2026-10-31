@@ -2375,8 +2375,9 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 : IDENTITY-OUTCOME ( n -- ) {: rc:n :}
    rc 0= IF EXIT THEN
    DISARM
-   rc E-CHECKER-IDENTITY-UNRESOLVED <> IF rc throw THEN
-   QUIET-TYPE-REPORT ;
+   rc E-CHECKER-IDENTITY-UNRESOLVED = IF QUIET-TYPE-REPORT EXIT THEN
+   MULTI-ERR? IF rc CAST-ERROR:SKIP EXIT THEN
+   rc throw ;
 
 : UNDEFINE-WORD ( -- )
    NAME-TOKEN {: name:ptr nameu:n :}

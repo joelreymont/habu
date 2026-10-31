@@ -4972,11 +4972,10 @@ package INTERP-EMIT
 \ The empty checked colon body keeps first-class execution and the
 \ minimum-input guard; its DKIND:CAST stamp, owned by this declarer, tells both
 \ compilers a direct mention is identity data flow (no body scan establishes it).
-\ The registrar runs before the record is counted: CHECKER-DEFCAST throws
-\ E-CAST-ARITY/CLASS/FAM/OWNER/LINEAR and CHECKER-LINEAR
-\ E-LINEAR-PAYLOAD/OWNER/SCOPE, and a refused declaration leaves no callable
-\ name (the colon tail's order: EM-COMPILE-PUBLISH-TRUSTED registers, then
-\ `publish`).
+\ The registrar runs before the record is counted: CHECKER-DEFCAST and
+\ CHECKER-LINEAR throw their refusal (checker.f package CAST-ERROR), and a
+\ refused declaration leaves no callable name (the colon tail's order:
+\ EM-COMPILE-PUBLISH-TRUSTED registers, then `publish`).
 \ EM-REC-WIDE-PUBLISH pokes the latched facts into the record, for a cast its
 \ minimum input arity: without it a bare `>ROLE` at an empty stack reads below
 \ the interpret base (test/cast-negative-suite.f pins the refusal).

@@ -28,11 +28,9 @@ package C2-REOPEN-REFUSALS
    s" the engine under test keeps engine packages open" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX T= ;
 
-\ The view casts are src/core/checker.f VIEW-CAST-CERTIFY's. The public
-\ section's refusal is uncaught (exit 67). The qualified-name refusal is caught
-\ in this engine, which the throw leaves outside C2-MEM, and QUAL-WID is shown
-\ to hold no such name.
-67 constant UNCAUGHT-RC
+\ The view casts are src/core/checker.f VIEW-CAST-CERTIFY's. The qualified-name
+\ refusal is caught in this engine, which the throw leaves outside C2-MEM, and
+\ QUAL-WID is shown to hold no such name.
 public get-current private constant QUAL-WID
 
 : SECTION-VIEWS ( -- )
@@ -44,16 +42,16 @@ public get-current private constant QUAL-WID
    s" package C2-MEM private CAST: C2RR-CB-PACK ( [ mut-view<p,q,a,u8> -- ] -- [ ptr u8 n -- ] ) : C2RR-CB-USE ( [ mut-view<p,p,fresh-region-b,u8> -- ] -- [ ptr u8 n -- ] ) C2RR-CB-PACK ; ;package" 0 SUBJECT:EXITED? TTRUE
    s" a callback on raw cells cannot become a view callback" T-LABEL
    s" package C2-MEM private CAST: C2RR-CB-UNPACK ( [ ptr u8 n -- ] -- [ mut-view<p,q,a,u8> -- ] ) ;package"
-   UNCAUGHT-RC s" uncaught throw code 7151" SUBJECT:REFUSED? TTRUE
+   70 s" cast: 'C2RR-CB-UNPACK': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" a callback pack refuses a callback over a named tail" T-LABEL
    s" package C2-MEM private CAST: C2RR-CB-NAMED ( [ R mut-view<p,q,a,u8> -- R ] -- [ S ptr u8 n -- S ] ) ;package"
-   UNCAUGHT-RC s" uncaught throw code 7151" SUBJECT:REFUSED? TTRUE
+   70 s" cast: 'C2RR-CB-NAMED': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" a callback pack refuses a callback that leaves a result" T-LABEL
    s" package C2-MEM private CAST: C2RR-CB-RESULT ( [ mut-view<p,q,a,u8> -- n ] -- [ ptr u8 n -- n ] ) ;package"
-   UNCAUGHT-RC s" uncaught throw code 7151" SUBJECT:REFUSED? TTRUE
+   70 s" cast: 'C2RR-CB-RESULT': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" C2-MEM's public section cannot pack a view" T-LABEL
    s" package C2-MEM public CAST: C2RR-PUBLIC-PACK ( ptr u8 n -- read-view<p,q,u8> ) ;package"
-   UNCAUGHT-RC s" uncaught throw code 7151" SUBJECT:REFUSED? TTRUE
+   70 s" cast: 'C2RR-PUBLIC-PACK': a view cast is declared outside a private section" SUBJECT:REFUSED? TTRUE
    s" a reopened C2-MEM definition cannot declare raw cells a view" T-LABEL
    s" package C2-MEM private : C2RR-RAW-VIEW ( ptr u8 n -- read-view<p,q,u8> ) ; ;package" 70 SUBJECT:EXITED? TTRUE
    s" C2-MEM's private section cannot pack under another package's name" T-LABEL

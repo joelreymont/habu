@@ -94,7 +94,7 @@ s" LINEAR: LA2 ( -- LIN-OWN:tok )"                 LIN-RUN:DECL E-CAST-ARITY T=
 s" LINEAR: LA3 ( n -- neverdecl )"                 LIN-RUN:DECL E-CAST-FAM T=
 \ An output scope variable no input supplies is a bad signature here: only a
 \ cast: view pack leaves that fault to its scope rule.
-s" LINEAR: LA4 ( n -- read-view<p,q,u8> )"         LIN-RUN:DECL CHECKER-REJECT-RC T=
+s" LINEAR: LA4 ( n -- read-view<p,q,u8> )"         LIN-RUN:DECL E-BAD-STORED-SIGNATURE T=
 s" cast: carries no linear type, in the owner too" T-LABEL
 s" cast: LC1 ( n -- LIN-OWN:tok )"                 LIN-RUN:DECL E-CAST-LINEAR T=
 s" cast: LC2 ( LIN-OWN:tok -- n )"                 LIN-RUN:DECL E-CAST-LINEAR T=
@@ -326,15 +326,21 @@ variable PROG-U
    s" and refuses a row in a public section by its code" T-LABEL
    BAD-FIXTURE s" lin-bad.f" CHECK
    RC @ 70 T=
-   ERR$ s" throw 7197 at 'MINT'" CONTAINS? TTRUE
+   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\",\"repair_class\":\"fix_cast_declaration\"" CONTAINS? TTRUE
+   ERR$ S\" \"token\":\"MINT\",\"reason\":\"the row is outside its owner's private section\"" CONTAINS? TTRUE
+   ERR$ S\" lin-bad.f\",\"line\":4," CONTAINS? TTRUE
    s" and refuses a qualified public destination" T-LABEL
    QUAL-FIXTURE s" lin-qual.f" CHECK
    RC @ 70 T=
-   ERR$ s" throw 7197 at 'LIN-FQ:MINT'" CONTAINS? TTRUE
+   ERR$ S\" \"code\":\"E-LINEAR-SCOPE\",\"repair_class\":\"fix_cast_declaration\"" CONTAINS? TTRUE
+   ERR$ S\" \"token\":\"LIN-FQ:MINT\",\"reason\":\"a qualified name publishes past the private section\"" CONTAINS? TTRUE
+   ERR$ S\" lin-qual.f\",\"line\":6," CONTAINS? TTRUE
    s" and refuses an identity whose stack tails differ" T-LABEL
    TAIL-FIXTURE s" lin-tail.f" CHECK
    RC @ 70 T=
-   ERR$ s" throw 7129 at 'MINT'" CONTAINS? TTRUE
+   ERR$ S\" \"code\":\"E-CAST-ARITY\",\"repair_class\":\"fix_cast_declaration\"" CONTAINS? TTRUE
+   ERR$ S\" \"token\":\"MINT\",\"reason\":\"the input and output rows end in different tails\"" CONTAINS? TTRUE
+   ERR$ S\" lin-tail.f\",\"line\":6," CONTAINS? TTRUE
    s" an application image keeps the owner of a type in its grown table" T-LABEL
    SAVE
    RC @ 0 T=
@@ -342,8 +348,8 @@ variable PROG-U
    s" so the reopened owner mints and erases, and another package may not" T-LABEL
    REOPEN
    OUT$ s\" 42\n" CONTAINS? TTRUE
-   ERR$ s" hb: uncaught throw code 7196" CONTAINS? TTRUE
-   RC @ 67 T=
+   ERR$ S\" E-LINEAR-OWNER habu: linear: 'XM': the linear type belongs to package 'LIM'\nhb: uncaught throw code 7196\n" CONTAINS? TTRUE
+   RC @ 70 T=
    FS:CLEANUP-RUN ;
 
 MAIN

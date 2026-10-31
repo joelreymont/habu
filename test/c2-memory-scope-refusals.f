@@ -158,7 +158,8 @@ public
    s" a trusted declaration cannot publish a scheme" T-LABEL
    s" TRUSTED: C2-SCOPE-FORGE ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- ) drop ;" 76 SUBJECT:EXITED? TTRUE
    s" a cast declaration cannot publish a scheme" T-LABEL
-   s" CAST: C2-SCOPE-CAST ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- n )" 67 SUBJECT:EXITED? TTRUE
+   s" CAST: C2-SCOPE-CAST ( forall<p,[ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ]> -- n )"
+      70 s" cast: 'C2-SCOPE-CAST': a scoped cast is not two cells on each side" SUBJECT:REFUSED? TTRUE
    s" an ordinary quotation may pass through a data output" T-LABEL
    s" : C2-QUOTE-OUTPUT ( [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] -- [ R read-view<p,p,u8> -- S read-view<p,p,u8> | U -- U ] ) ;" 0 SUBJECT:EXITED? TTRUE
    s" a scheme cannot be declared as an effect output" T-LABEL

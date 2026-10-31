@@ -620,10 +620,11 @@ multi-cell type rationale is `docs/design.md` "Types".
     number of arguments (`E-CAST-FAM`): `( n -- box )` for a
     one-parameter `box` is refused by name, not by a later death.
   - Any other signature fault, bad syntax or a bare `ptr`, is refused as a
-    definition with that signature is: the bad-stored-signature diagnostic. The first fault names the class, so
-    `( ptr -- box )` is this reject, not `E-CAST-FAM`. An output scope or
-    region variable no input supplies, when it is the only fault, is left to
-    the scope rule: it is the shape of a view pack.
+    `defer` with that signature is (`E-BAD-STORED-SIGNATURE`). The first
+    fault names the class, so `( ptr -- box )` is this reject, not
+    `E-CAST-FAM`. An output scope or region variable no input supplies, when
+    it is the only fault, is left to the scope rule: it is the shape of a view
+    pack.
   - A scope or region variable, a quantifier-bound variable, a scope, or a
     read view, mutable view or loan field anywhere in either row would erase
     or introduce a scope dependency (`E-CAST-SCOPE`).
@@ -702,7 +703,7 @@ multi-cell type rationale is `docs/design.md` "Types".
   `LINEAR: NAME ( PKG:tok -- payload )` erases one: the reader-keyword shape of
   `CAST:`, an identity at its call sites, and the one checked way to make a
   token from a payload or erase one back into it. It is parsed and refused as
-  a cast is first (`E-CAST-FAM`, the bad-signature reject, `E-CAST-ARITY`),
+  a cast is first (`E-CAST-FAM`, `E-BAD-STORED-SIGNATURE`, `E-CAST-ARITY`),
   then by its own rule:
   - One side is a linear type and the other its payload, a non-linear con or a
     pointer chain ending at one (`E-LINEAR-PAYLOAD`): two tokens, no

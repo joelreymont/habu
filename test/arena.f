@@ -230,8 +230,7 @@ variable OVF-U
 
 \ tools/check.f --verify-only checks a file without running it, so it gets its
 \ own child over a scratch tree's copy of the calls, the workspace variable and
-\ a head cast. A refused cast stops the verification with its throw code, so
-\ the cast is last and the forge direction is a live row only.
+\ a head cast, each refusal reported as its own record.
 : VERIFY-SRC$ ( -- ptr u8 n )
    S\" : NM ( -- ptr u8 n ) s\" x\" ;\nTYPED-VARIABLE HH DYNAMIC-STORAGE:arena-head\n: Z2 ( -- ptr u8 ) HH 8 NM DYNAMIC-STORAGE:ARENA-NEW ;\n: Z3 ( -- ) HH DYNAMIC-STORAGE:ARENA-RELEASE ;\n: Y1 ( -- ptr u8 ) NULL-PTR 8 NM DYNAMIC-STORAGE:ARENA-NEW ;\n: Y2 ( -- ) NULL-PTR DYNAMIC-STORAGE:ARENA-RELEASE ;\npackage ARENA-CAST\n0 CWORK-VARIABLE CW DYNAMIC-STORAGE:arena-head\nCAST: >HEAD-BYTES ( ptr DYNAMIC-STORAGE:arena-head -- ptr u8 )\n;package\n" ;
 
@@ -246,7 +245,7 @@ variable OVF-U
    s" test/arena-calls.f" >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:ERR$ S\" \"code\":\"E-ARENA-CALL\"" COUNT-SUB 4 T=
-   E2E-TREE:OUT$ s" verification stopped by throw 7135" CONTAINS? TTRUE
+   E2E-TREE:ERR$ S\" \"code\":\"E-CAST-OWNER\"" COUNT-SUB 1 T=
    E2E-TREE:ERR$ S\" \"code\":\"E-BAD-STORAGE\"" COUNT-SUB 1 T=
    E2E-TREE:RC@ 0 <> TTRUE ;
 

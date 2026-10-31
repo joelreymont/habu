@@ -6106,7 +6106,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\n" HV+
    17 0 ?do s\" using SOURCE-ROOT\n" HV+ loop
    TXT$ ;
-: BI-SOURCE-CAST-CRASH$ ( -- ptr u8 n )
+: BI-SOURCE-CAST-REFUSED$ ( -- ptr u8 n )
    s\" : SCRIPT-ARGC ( -- n ) 1 ;\nCAST: LV-BAD-TAIL ( R n -- S n )\n" ;
 
 : BI-SOURCE-REFUSED$ ( -- ptr u8 n )
@@ -6254,13 +6254,15 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    s" 23" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
    s" 23" NOWHERE
-   BI-SOURCE-CAST-CRASH$ SCRIPT-ARGV-PATH 2swap 10 CHANGES
+   \ A refused cast is skipped as a refused declaration is: the accepted one
+   \ before it is located.
+   BI-SOURCE-CAST-REFUSED$ SCRIPT-ARGV-PATH 2swap 10 CHANGES
    SAY
    SCRIPT-ARGV-PATH 10 EXPECT PUBLISHES
    BI-A-PATH 1 EXPECT PUBLISHES
    s" 24" BI-A-PATH 0 16 DEFINITION-ASK
    SAY
-   s" 24" NOWHERE
+   s" 24" SCRIPT-ARGV-PATH URI-OF 0 2 13 LOCATED
    BI-SOURCE-REPLACED$ SCRIPT-ARGV-PATH 2swap 11 CHANGES
    SAY
    SCRIPT-ARGV-PATH 11 EXPECT PUBLISHES
