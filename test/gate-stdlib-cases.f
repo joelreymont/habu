@@ -1192,6 +1192,11 @@ SUITE bearer
    src/lib/net/bearer-test.f
 ;SUITE
 
+\ MODEL against an in-process OpenAI- and Ollama-shaped peer on a loopback port.
+SUITE model
+   src/lib/net/model-test.f
+;SUITE
+
 SUITE crew
    src/lib/crew-test.f
 ;SUITE

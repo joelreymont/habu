@@ -1223,6 +1223,8 @@
 \ package CREW.
 \ OAuth bearer tokens: -9630..-9639, minted in src/lib/net/bearer.f, which owns
 \ package BEARER.
+\ Model chat and embedding client: -9700..-9799, minted in src/lib/net/model.f,
+\ which owns package MODEL.
 
 \ Wasm back end: -9800..-9834, minted in src/arch/wasm/: WLEB -9800..-9804, WSTRUCT
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
