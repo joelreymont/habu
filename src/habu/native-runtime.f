@@ -77,6 +77,7 @@ s" src/core/decl-event.f" provided
 s" src/core/structure-make.f" provided
 s" src/core/structure-decl.f" provided
 s" src/core/arena.f" provided
+s" src/core/heap.f" provided
 s" src/core/enum-decl.f" provided
 s" src/core/structures.f" provided
 s" src/core/bytes.f" provided

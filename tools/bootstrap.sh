@@ -200,6 +200,7 @@ SRC_CORE=(
   src/core/structure-make.f
   src/core/structure-decl.f
   src/core/arena.f
+  src/core/heap.f
   src/core/enum-decl.f
   src/core/structures.f
 )

@@ -618,6 +618,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/structure-make.f" BF-APPEND-SOURCE
    out outu s" src/core/structure-decl.f" BF-APPEND-SOURCE
    out outu s" src/core/arena.f"          BF-APPEND-SOURCE
+   out outu s" src/core/heap.f"           BF-APPEND-SOURCE
    out outu s" src/core/enum-decl.f"      BF-APPEND-SOURCE ;
 
 : BF-APPEND-CORE-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}

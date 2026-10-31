@@ -406,6 +406,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" src/core/structure-make.f" DIRECT-ARG
    s" src/core/structure-decl.f" DIRECT-ARG
    s" src/core/arena.f" DIRECT-ARG
+   s" src/core/heap.f" DIRECT-ARG
    s" src/core/enum-decl.f" DIRECT-ARG
    s" src/core/structures.f" DIRECT-ARG
    s" src/core/bytes.f" DIRECT-ARG

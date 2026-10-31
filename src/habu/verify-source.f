@@ -2770,9 +2770,9 @@ variable STG-TYPE-U
    DISARM
    name nameu s" " at DEF-STORAGE DEFINED-HERE ;
 
-\ Whether ARENA may publish NAME's derived word NAME+SFX: a name the definer
-\ admits that no record holds. NAME, read from byte AT, names no word itself,
-\ so a taken derived word is the duplicate, refused at NAME.
+\ Whether ARENA or HEAP may publish NAME's derived word NAME+SFX: a name the
+\ definer admits that no record holds. NAME, read from byte AT, names no word
+\ itself, so a taken derived word is the duplicate, refused at NAME.
 : ARENA-WORD-FREE? ( ptr u8 n ptr u8 n n -- bool )
    {: name:ptr nameu:n sfx:ptr sfxu:n at:n :}
    SB-RESET  name nameu SB-APPEND  sfx sfxu SB-APPEND
@@ -2812,6 +2812,23 @@ variable STG-TYPE-U
    MULTI-ERR-N @ refused <> IF EXIT THEN
    name nameu at nameu ARM
    type typeu tail tailu name nameu CHECKER-DEFARENA
+   DISARM ;
+
+\ HEAP's row asks src/core/heap.f RUN's questions in its order and registers both words
+\ by their effects (CHECKER-DEFHEAP); without it the rest of the source defers to the run.
+: RECORD-HEAP ( -- )
+   SCAN-LINE-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
+   nameu 0= IF TOP-CUR-A @ TOP-CUR-U @ CHECKER-STORAGE-NAME-REFUSE EXIT THEN
+   name nameu NAME-DECLARED
+   SCAN-STORAGE-TYPE {: type:ptr typeu:n :}
+   name nameu CHECKER-LBUF-NAME-OK? 0= IF EXIT THEN
+   name nameu s" -NEW" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   name nameu s" -RELEASE" at ARENA-WORD-FREE? 0= IF EXIT THEN
+   type typeu CHECKER-DYNAMIC-INFO 0= IF
+      drop name nameu type typeu CHECKER-STORAGE-TYPE-REFUSE EXIT
+   THEN drop
+   name nameu at nameu ARM
+   type typeu name nameu CHECKER-DEFHEAP
    DISARM ;
 
 \ Registrars resolve the whole type before publishing a word, so an unresolved
@@ -3730,6 +3747,7 @@ variable TYPED-BUFFER-XT s" TYPED-BUFFER" TYPED-BUFFER-XT LIBRARY-XT!
 variable TYPED-VARIABLE-XT s" TYPED-VARIABLE" TYPED-VARIABLE-XT LIBRARY-XT!
 variable DYNAMIC-BUFFER-XT s" DYNAMIC-BUFFER" DYNAMIC-BUFFER-XT LIBRARY-XT!
 variable ARENA-XT s" ARENA" ARENA-XT LIBRARY-XT!
+variable HEAP-XT s" HEAP" HEAP-XT LIBRARY-XT!
 variable CWORK-BUFFER-XT s" CWORK-BUFFER" CWORK-BUFFER-XT LIBRARY-XT!
 variable CWORK-SPAN-XT s" CWORK-SPAN" CWORK-SPAN-XT LIBRARY-XT!
 variable CWORK-VARIABLE-XT s" CWORK-VARIABLE" CWORK-VARIABLE-XT LIBRARY-XT!
@@ -3824,6 +3842,8 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       [: RECORD-DYNAMIC-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u ARENA-XT @ s" ARENA" LIBRARY-DEFINER? IF
       [: RECORD-ARENA ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
+   a u HEAP-XT @ s" HEAP" LIBRARY-DEFINER? IF
+      [: RECORD-HEAP ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-BUFFER-XT @ s" CWORK-BUFFER" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-BUFFER ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-SPAN-XT @ s" CWORK-SPAN" LIBRARY-DEFINER? IF

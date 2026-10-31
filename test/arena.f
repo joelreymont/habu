@@ -224,7 +224,7 @@ variable OVF-U
 \ type stays inert.
 : CALL-CHILD ( -- )
    s" only ARENA's generated words call the arena runtime words" T-LABEL
-   E2E-TREE:ERR$ s" arena call: only ARENA's generated NAME-NEW and NAME-RELEASE call ARENA-NEW and ARENA-RELEASE" COUNT-SUB 9 T=
+   E2E-TREE:ERR$ s" arena call: only ARENA's or HEAP's generated NAME-NEW and NAME-RELEASE call the storage runtime" COUNT-SUB 9 T=
    E2E-TREE:OUT$ S\" arena-sig: 0\narena-new: 70\narena-release: 70\narena-null-new: 70\narena-null-release: 70\narena-tick: 70\narena-quot: 70\narena-top-tick: 70\narena-top-call: 70\narena-export: 70\n" CONTAINS? TTRUE ;
 
 

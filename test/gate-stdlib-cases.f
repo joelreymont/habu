@@ -2171,6 +2171,10 @@ SUITE arena
    test/arena.f
 ;SUITE
 
+SUITE heap
+   test/heap.f
+;SUITE
+
 SUITE aot-capture-bound
    test/aot-capture-bound.f
 ;SUITE

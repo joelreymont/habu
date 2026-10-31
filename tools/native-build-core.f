@@ -611,6 +611,7 @@ variable PRE-ROWS-N
    s" src/core/structure-make.f" included
    s" src/core/structure-decl.f" included
    s" src/core/arena.f" included
+   s" src/core/heap.f" included
    s" src/core/enum-decl.f" included
    s" src/core/structures.f" included
    s" src/core/bytes.f" included

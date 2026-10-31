@@ -786,7 +786,7 @@ variable MDV-I   variable MDV-F
       MD-C2-DROP      of s" Return or consume the exclusive value instead of discarding it." endof
       MD-C2-ESCAPE    of s" Return only values independent of the owner or loan opened by this operation." endof
       MD-IN-PLACE     of s" Pass the owner's pointer instead: NAME-NEW and NAME-RELEASE take a ptr to the arena owner, and a record holding one is reached through its field accessor. A copy of an owner would share its chunks, and growing or releasing both would unmap them twice." endof
-      MD-ARENA-CALL   of s" Declare the owner with ARENA NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call ARENA-NEW and ARENA-RELEASE, because only they tie the record size to the owner's type." endof
+      MD-ARENA-CALL   of s" Declare the storage with ARENA NAME TYPE or HEAP NAME TYPE and call its generated NAME-NEW and NAME-RELEASE: only those words call ARENA-NEW, ARENA-RELEASE, RECORD-NEW and RECORD-RELEASE, because only they tie the record size to the declared type." endof
       MD-EFFECT-DEPTH of s" Leave fewer cells: keep bulk values in a buffer, not on the stack." endof
       MD-INPUT-WIDTH  of s" Take fewer cells: pass bulk values in a buffer, not on the stack." endof
       MD-IS-UNKNOWN   of s" Name a word declared with defer; qualify it as PKG:NAME or import its package with using." endof
@@ -833,7 +833,7 @@ variable MDV-I   variable MDV-F
       MD-C2-DROP      of s" exclusive value discarded" endof
       MD-C2-ESCAPE    of s" scoped value escapes its owner or loan" endof
       MD-IN-PLACE     of s" in place: an arena owner is never fetched or stored whole" endof
-      MD-ARENA-CALL   of s" arena call: only ARENA's generated NAME-NEW and NAME-RELEASE call ARENA-NEW and ARENA-RELEASE" endof
+      MD-ARENA-CALL   of s" arena call: only ARENA's or HEAP's generated NAME-NEW and NAME-RELEASE call the storage runtime" endof
       MD-RIGID-REGION of s" rigid host: region mismatch (different allocation)" endof
       MD-RIGID-EXTENT of s" rigid host: extent mismatch (different bounds identity)" endof
       MD-RIGID-GEN    of s" rigid host: stale mutation generation" endof

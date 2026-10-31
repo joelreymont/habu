@@ -150,9 +150,9 @@ before any `require`.
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause; `--load` exits 76, `E-MISSING-SIGNATURE: D at <file>:<line>` |
 | `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION` |
-| `HH 8 s" x" DYNAMIC-STORAGE:ARENA-NEW`, or any call or tick of `DYNAMIC-STORAGE:ARENA-NEW` or `ARENA-RELEASE`, directly or through a re-export, outside an `ARENA`'s generated NAME-NEW and NAME-RELEASE | `E-ARENA-CALL` |
+| `HH 8 s" x" DYNAMIC-STORAGE:ARENA-NEW`, or any call or tick of `DYNAMIC-STORAGE:ARENA-NEW`, `ARENA-RELEASE`, `RECORD-NEW` or `RECORD-RELEASE`, directly or through a re-export, outside an `ARENA`'s or `HEAP`'s generated NAME-NEW and NAME-RELEASE | `E-ARENA-CALL` |
 | `: field-project ( a n -- ptr n ) drop drop V ;`, by any definer, in any package or letter case | `hb: reserved word cannot be a definition name: field-project`, rc 70 |
-| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER` or `ARENA` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
+| `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
 | `( -- ptr a )` for a `variable` | `E-NONPARAMETRIC-EFFECT` |
 | a structure pointer passed where a callback's context is `ptr a` (a pointer to cells): `: RUN ( ptr a [ ptr a -- ] -- ) execute ;`, `: GO ( ptr box -- ) [: CB ;] RUN ;` | `E-MISMATCH` at `RUN`; declare a pass-through context `a` |
 | `( R [ R -- S ] -- S ) drop`, `( R n -- ) drop`, `( R -- S ) 1`: a body that unifies two declared rows, a row with the unnamed row, or binds a row to fixed cells | `E-NONPARAMETRIC-EFFECT`, naming the rows — run the quotation on every path, or declare the row the body leaves |
@@ -316,6 +316,7 @@ Every form loaded and its accessor effect certified.
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `ARENA AR t` | records sharing one lifetime, never moved | family `ar`, held in place in the owner's `FIELD` or `TYPED-VARIABLE` (`@`/`!` on it is `E-IN-PLACE`, a cast reaching its head `E-CAST-OWNER`, a `DYNAMIC-BUFFER`, `ARENA`, `CWORK-VARIABLE`, `CWORK-BUFFER` or `CWORK-SPAN` of it `E-BAD-STORAGE`); `AR-NEW ( ptr ar -- ptr t )` a zeroed record, `AR-RELEASE ( ptr ar -- )` frees them all, and a pointer kept across it can alias the next NEW's record; tasks sharing one arena serialise both; capture refuses an arena still live after every hook has run (`DYNAMIC-STORAGE:E-ARENA-LIVE`), so a hook can release it |
+| `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save; holds what no cast may forge, such as another package's cursor |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
 

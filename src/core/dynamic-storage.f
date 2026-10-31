@@ -1,5 +1,5 @@
-\ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER and
-\ ARENA. A buffer record is the head NAME#base (a PTR-VARIABLE holding the
+\ dynamic-storage.f - checked transient allocation behind DYNAMIC-BUFFER,
+\ ARENA and HEAP. A buffer record is the head NAME#base (a PTR-VARIABLE holding the
 \ mapping, `ptr ptr a`) and the control block NAME#ctl behind it (capacity,
 \ registry slot + 1, width tag, bound for that width; `ptr n`). No word views a
 \ pointer cell as bytes or cells. Release zeroes the record, so no process
@@ -331,6 +331,18 @@ public
       dup CH-PREV @ swap dup CH-BYTES @ munmap 0< if swap 1+ swap then
    repeat drop
    0 <> if E-UNMAP throw then ;  INTRINSIC-ARENA-RELEASE INTRINSIC
+
+
+\ A zero-filled record of `bytes` on its own mapping, its pointee free: only HEAP's
+\ generated NAME-NEW calls it, passing its type's width (checker.f ARENA-CALL-REFUSE?).
+: RECORD-NEW ( n -- ptr a )
+   map-anon 0< if drop E-MAP throw then ;  INTRINSIC-RECORD-NEW INTRINSIC
+
+
+\ Unmaps a record RECORD-NEW mapped with the same `bytes`; a refused unmap is
+\ E-UNMAP.
+: RECORD-RELEASE ( ptr a n -- )
+   munmap 0< if E-UNMAP throw then ;  INTRINSIC-RECORD-RELEASE INTRINSIC
 
 
 \ Capture refuses a live arena: its records would be lost with the mapping.

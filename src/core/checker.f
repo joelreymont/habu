@@ -2730,6 +2730,9 @@ CHECKER-REG:}SCRATCH
 CHECKER-REG:SCRATCH{
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
+\ Set only across the RECORD-RELEASE call in HEAP's generated NAME-RELEASE: the
+\ one generic-pointer call a layout pointer may enter (LAYOUT-BLOCK?).
+variable LAYOUT-RELEASE
 CHECKER-REG:}SCRATCH
 \ --- field-projection armed window: a sealed, schema-aware window that lets a
 \ generated FAMILY:FIELD accessor body mint `ptr <field-type>` from a
@@ -2907,7 +2910,7 @@ variable NMOFF                           \ its token's offset in the checked tex
       b ISVAR IF b PAY TVK@ TVK-NULL = IF RES-FALSE EXIT THEN THEN
    THEN
    a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
-   LAYOUT-INTRO @ 0 <> CUR-STRICT @ 0 <> and IF
+   LAYOUT-INTRO @ LAYOUT-RELEASE @ or 0 <> CUR-STRICT @ 0 <> and IF
       a HIDDEN-PARAM? b HIDDEN-PARAM? or 0= IF
          a LAYOUT-PARAM? b ISVAR and IF a T-RES LAYOUT-MEM-OK? 0= EXIT THEN
          b LAYOUT-PARAM? a ISVAR and IF b T-RES LAYOUT-MEM-OK? 0= EXIT THEN
@@ -3794,7 +3797,7 @@ CHECKER-REG:}SCRATCH
 : NEW-WALK ( -- )
    0 CALL-ARMED !  0 CALL-HIT !
    -1 OK ! 0 UNCK ! 0 CATCH-PF-N ! 0 CATCH-N ! 0 FACTS ! 0 XFACT ! 0 USP !
-   0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
+   0 LAYOUT-XPORT !  0 LAYOUT-INTRO !  0 LAYOUT-RELEASE !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -4033,7 +4036,7 @@ CHECKER-REG:}SCRATCH
 40 constant MD-TOP-UNKNOWN   \ a top-level token read a cell beneath the cells the interpret row knows (TOP-UNKNOWN); same E-STALE-READ code, its own prose and repair class
 41 constant MD-TAIL-ESCAPE   \ a declared callable's implicit tail escaped into a row that outlives the comparison (QUOT-PAIR TAIL-HIT); same E-MISMATCH code, its own prose and suggestion
 42 constant MD-IN-PLACE      \ `@`/`!` would move a layout holding an arena head whole (IN-PLACE?)
-43 constant MD-ARENA-CALL    \ ARENA-NEW/ARENA-RELEASE named outside ARENA's generated words (ARENA-CALL-REFUSE?)
+43 constant MD-ARENA-CALL    \ the storage runtime named outside ARENA's or HEAP's generated words (ARENA-CALL-REFUSE?)
 44 constant MD-IS-UNKNOWN    \ an `is` target names no word (IS-TOK); same E-UNDEFINED code, its own prose and suggestion
 45 constant MD-IS-NOT-DEFER  \ an `is` target names a word that is not deferred (IS-TOK)
 46 constant MD-IS-MISSING    \ `is` ends the checked text with no target (IS-TOK); same E-MISSING-NAME code as check.f's
@@ -11024,6 +11027,8 @@ PRIM: CHECKER-DEFDYNAMIC-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFARENA
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFHEAP
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFDEFER-LAYOUT-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-LBUF-NAME-OK? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -14952,6 +14957,16 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    s" ptr " LBUF-SIG-APP  fam famu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
    name nameu s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
 
+\ HEAP's two words by their effects, for verify-source RECORD-HEAP (src/core/heap.f).
+: CHECKER-DEFHEAP ( ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n name:ptr nameu:n :}
+   0 LBUF-SIG-U !
+   s" -- ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP
+   name nameu s" -NEW" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME
+   0 LBUF-SIG-U !
+   s" ptr " LBUF-SIG-APP  type typeu LBUF-SIG-APP  s"  --" LBUF-SIG-APP
+   name nameu s" -RELEASE" LBUF-SIG-BUF LBUF-SIG-U @ CHECKER-DEFSUFFIX-NAME ;
+
 \ Checker-side registration for the DEFER-LAYOUT-BUFFER gate path (verify-source
 \ RECORD-DEFER-LAYOUT-BUFFER). That definer publishes its accessor
 \ `NAME ( n -- ptr <type> )` and the binders `NAME-BIND ( n -- )` and
@@ -15043,6 +15058,8 @@ CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names: (src/c
 16 constant INTRINSIC-XT-STORE                 \ xt!
 17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
 18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
+19 constant INTRINSIC-RECORD-NEW               \ RECORD-NEW (src/core/dynamic-storage.f)
+20 constant INTRINSIC-RECORD-RELEASE           \ RECORD-RELEASE (src/core/dynamic-storage.f)
 : INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
 : CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
 
@@ -22214,19 +22231,27 @@ variable IS-PEND-U                   \ and its length
    RES-TRUE ;
 
 
-\ ARENA-NEW and ARENA-RELEASE (src/core/dynamic-storage.f) take a head whose
-\ record size only ARENA's generated NAME-NEW and NAME-RELEASE tie to its type,
-\ so a call or tick of either, through any export, is admitted only while
-\ LBUF-EVAL checks one of those words (src/core/arena.f RUN).
+\ The intrinsic id of the word SYM names, through any export.
+: SYM-INTRINSIC ( n -- n ) CHECKER-SYM-SOURCE CTL-FLAGS-SYM CTL>INTRINSIC ;
+
+\ ARENA's and HEAP's runtime words trust the head or width passed in: a call or tick
+\ of one, through any export, is admitted only while LBUF-EVAL checks a generated word.
 : ARENA-CALL-REFUSE? ( n -- bool )   \ true only when it REJECTED
    {: sym:n :}
-   sym CHECKER-SYM-SOURCE CTL-FLAGS-SYM CTL>INTRINSIC {: id:n :}
-   id INTRINSIC-ARENA-NEW <>  id INTRINSIC-ARENA-RELEASE <>  and IF RES-FALSE EXIT THEN
+   sym SYM-INTRINSIC {: id:n :}
+   id INTRINSIC-ARENA-NEW <>  id INTRINSIC-ARENA-RELEASE <>  and
+   id INTRINSIC-RECORD-NEW <>  and  id INTRINSIC-RECORD-RELEASE <>  and IF RES-FALSE EXIT THEN
    LBUF-PEND-MATCH? IF RES-FALSE EXIT THEN
    MD-ARENA-CALL MDIAG!
    0 OK !
    RES-TRUE ;
 
+\ Whether the token is HEAP's NAME-RELEASE calling RECORD-RELEASE, the call
+\ that binds the runtime's generic pointee to the record's layout
+\ (LAYOUT-RELEASE).
+: RELEASE-CALL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   LBUF-PEND-MATCH? 0= IF RES-FALSE EXIT THEN
+   a u BIND-TOK  TOK-SYM @ SYM-INTRINSIC INTRINSIC-RECORD-RELEASE = ;
 
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push a known or opaque xt
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
@@ -22558,7 +22583,9 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    TKF TKFU @ SPELLED-STEP? 0= IF
    TKF TKFU @ CHECKER-PREFLIGHT:BODY-TOK? IF REJECT-IMMEDIATE THEN   \ live immediate with a usig: wrong-certificate reject
    DCUR @ XE-PD !  RCUR @ XE-PR !          \ the pre-op rows ROW-COMMON needs below
+   TKF TKFU @ RELEASE-CALL? LAYOUT-RELEASE !
    TKF TKFU @ DO-TOK
+   0 LAYOUT-RELEASE !
    OK @ IF THROW-CUR? IF CALL-THROW-EDGE THEN THEN
    OK @ IF DEAD-CUR? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    OK @ #CFC @ 0 > and IF BARRIER-CUR? IF ALL-CF-UNIFORM? 0= IF REJECT-DIVBAR THEN THEN THEN
@@ -25167,7 +25194,7 @@ variable CAST-PATH-N
    0 LBUF-EVAL-OFF !
    a LBUF-PEND-A !  u LBUF-PEND-U ! ;
 : LBUF-PEND-CLEAR ( -- )
-   NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
+   NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO !  0 LAYOUT-RELEASE ! ;
 
 \ A new identity in the domain of fresh-name atom `name`.
 : FB-MINT ( n -- n ) {: name:n :}

@@ -1960,6 +1960,21 @@ documentation-only edits need no rebuild.
   arena still live: it prints `hb: capture: live arena PKG:NAME` (`NAME` at top
   level) and throws `DYNAMIC-STORAGE:E-ARENA-LIVE`, so a hook registered with
   `IMAGE-LIFECYCLE:REGISTER` can release its arena first.
+- **`HEAP NAME Type` for a record with its own lifetime**: `NAME-NEW ( -- ptr
+  Type )` answers a fresh zero-filled record on its own OS mapping, rounded up
+  to a page, and `NAME-RELEASE ( ptr Type -- )` unmaps it. A pointer kept
+  across NAME-RELEASE is stale, and releasing the same record twice can unmap
+  whatever was mapped there since: unlike an arena's, a release is not safe to
+  repeat. Nothing registers a record, so capture has no live-record check:
+  release it before saving an image (a stripped image refuses a typed cell
+  holding one). It serves a record holding another package's `OPAQUE` record,
+  such as a `JR:cursor`, which no cast may forge from bytes. The declaration
+  passes the storage definers' name gate and refuses a sub-cell element other
+  than `u8`, an unknown type and an element holding an arena owner, defining
+  nothing. Checked code calls or ticks `DYNAMIC-STORAGE:RECORD-NEW` and
+  `DYNAMIC-STORAGE:RECORD-RELEASE` only inside the generated words, as for
+  `ARENA` (`E-ARENA-CALL`), so a record's size always comes from the declared
+  type; a record of a STRUCTURE type enters no other generic-pointer word.
 - **Runtime-sized buffers use OS mappings.** `create … allot` consumes
   dictionary DATA; `src/lib/memory.f` allocates contiguous or separate 64K
   buffers and spans, bounded by cell-size overflow and OS allocation failure.
@@ -2275,14 +2290,14 @@ sections above.
   `S\"` does and needs its delimiter space (see **Habu Native Tooling
   Gotchas**). Native `.` prints a newline: `11 . 22 . cr` emits
   `11\n22\n\n`; use digit emitters for inline numbers.
-- **Only ARENA's generated words reach the arena runtime.** A call or tick
-  of `DYNAMIC-STORAGE:ARENA-NEW` or `DYNAMIC-STORAGE:ARENA-RELEASE`, directly
-  or through a re-export, outside an `ARENA`'s NAME-NEW and NAME-RELEASE, in
-  a body, a quotation or at top level, on a declared
-  `DYNAMIC-STORAGE:arena-head` or on `NULL-PTR`, is `E-ARENA-CALL` (`arena call: only ARENA's generated NAME-NEW and
-  NAME-RELEASE call ARENA-NEW and ARENA-RELEASE`); naming the head type is
-  admitted. Exporting the two words is admitted; only the call or tick is
-  refused.
+- **Only ARENA's and HEAP's generated words reach the storage runtime.** A
+  call or tick of `DYNAMIC-STORAGE:ARENA-NEW`, `ARENA-RELEASE`, `RECORD-NEW` or
+  `RECORD-RELEASE`, directly or through a re-export, outside an `ARENA`'s or
+  `HEAP`'s NAME-NEW and NAME-RELEASE, in a body, a quotation or at top level,
+  on a declared `DYNAMIC-STORAGE:arena-head` or on `NULL-PTR`, is
+  `E-ARENA-CALL` (`arena call: only ARENA's or HEAP's generated NAME-NEW and
+  NAME-RELEASE call the storage runtime`); naming the head type is admitted. Exporting the four words is admitted; only the call or tick
+  is refused.
 - **`field-project` is not a definition name once the engine is sealed.**
   Every `STRUCTURE` accessor and an `ARENA`'s NAME-NEW and NAME-RELEASE spell
   it unqualified, so it binds through the declaring scope's search order; a
