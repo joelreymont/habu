@@ -2302,6 +2302,81 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    ERR$ s\"  error http: request r0-2 failed, throw -9992\n" CONTAINS? TTRUE ;
 
 
+$C0000201 constant TEST-NET-1     \ 192.0.2.1, reserved for documentation: no host holds it
+
+variable HELD                    \ the listener REFUSED-LISTEN-CASE holds, as n
+variable HELD-PORT
+variable REFUSED-ADDRESS
+variable REFUSED-PORT
+variable REFUSED-CODE
+
+
+: HOLD ( -- )
+   LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
+   MATCH TCP4:bind-result
+      bound OF TCP4:LISTENER>N HELD ! ENDOF
+      failed OF drop E-BOOM throw ENDOF
+   ;MATCH
+   HELD @ TCP4:>LISTENER 1 TCP4:LISTEN DROP-TCP-STATUS
+   HELD @ TCP4:>LISTENER TCP4:LOCAL
+   MATCH TCP4:endpoint-result
+      endpoint OF TCP4:PORT>N HELD-PORT ! drop ENDOF
+      failed OF drop E-BOOM throw ENDOF
+   ;MATCH ;
+
+
+: START-REFUSED ( -- )
+   [: REFUSED-ADDRESS @ REFUSED-PORT @ ONE-WORKER IDLE-MS HTTP:START ;]
+   catch REFUSED-CODE ! ;
+
+
+\ A start at that address and port with fd 2 captured, then the want text: the
+\ line's part after the stamp, up to the errno, built in the string builder
+\ once the capture and the start no longer use it.
+: REFUSED-START ( n n ptr u8 n -- ) {: address:n port:n dotted:ptr dottedlen:n :}
+   address REFUSED-ADDRESS !
+   port REFUSED-PORT !
+   ERR-PATH-MAKE
+   ERR-PATH$ STDERR:CAPTURE
+   [: START-REFUSED ;] [: STDERR:;CAPTURE ;] finally
+   READ-STDERR
+   SB-RESET
+   s"  error http: bind to " SB-APPEND
+   dotted dottedlen SB-APPEND
+   s" :" SB-APPEND  port FMT:SB-U
+   s"  failed, errno " SB-APPEND ;
+
+
+\ Stderr is one line: a stamp, the want text, the errno's digits and LF.
+: REFUSED-LINE? ( -- bool )
+   ERR$ {: err:ptr errlen:n :}
+   SB$ {: want:ptr wantlen:n :}
+   DATE:TIME-LEN wantlen + {: head:n :}
+   errlen head 2 + < if false exit then
+   err DATE:TIME-LEN + wantlen want wantlen STR= 0= if false exit then
+   err errlen S\" \n" ENDS-WITH? 0= if false exit then
+   err head + errlen head - 1- STR-DIGITS? ;
+
+
+\ A start the OS will not let listen throws E-HTTP-SOCKET after one line on fd
+\ 2 naming the refused step, the address, the port and the errno: on a loopback
+\ port this test already listens on, and on an address no local interface has.
+\ The line is checked before the code.
+: REFUSED-LISTEN-CASE ( -- )
+   HOLD
+   LOOPBACK HELD-PORT @ s" 127.0.0.1" REFUSED-START
+   ERR$ s" error http:" COUNT-SUB 1 T=
+   REFUSED-LINE? TTRUE
+   REFUSED-CODE @ E-HTTP-SOCKET T=
+   HTTP:RUNNING? TFALSE
+   TEST-NET-1 HELD-PORT @ s" 192.0.2.1" REFUSED-START
+   ERR$ s" error http:" COUNT-SUB 1 T=
+   REFUSED-LINE? TTRUE
+   REFUSED-CODE @ E-HTTP-SOCKET T=
+   HTTP:RUNNING? TFALSE
+   HELD @ TCP4:>LISTENER TCP4:CLOSE-LISTENER DROP-TCP-STATUS ;
+
+
 \ Before the loop: a start whose tasks have no loop to ride their readiness
 \ waits on is refused by AIO's own code, with nothing of the server taken. The
 \ same code thrown inside the listener's own task would be a report nobody
@@ -2729,6 +2804,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    SENDING-PEER-CASE
    FLOOD-CASE
    ERROR-HOOK-CASE
+   REFUSED-LISTEN-CASE
    SETUP-REFUSAL-CASE
    THROWING-HOOK-CASE
    GATED-HOOK-CASE

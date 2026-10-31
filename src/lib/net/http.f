@@ -582,21 +582,42 @@ variable EXIT-HOOK-N
    [: LISTENER-BODY ;] LISTENER-TASK TASK:ACTIVATE ;
 
 
+\ The address's octet at that shift, in decimal.
+: OCTET+ ( n n -- )
+   rshift $FF and LOG:INT+ ;
+
+
+\ The step of BIND-LISTENER the OS refused, logged as
+\ `<step> <a.b.c.d>:<port> failed, errno <n>` before E-SOCKET.
+: REPORT-UNBOUND ( TCP4:errno n n ptr u8 n -- )
+   {: cause:TCP4:errno address:n port:n step:ptr stepn:n :}
+   LOG:ERROR s" http" LOG:LINE
+   step stepn LOG:TEXT+  s"  " LOG:TEXT+
+   address 24 OCTET+  s" ." LOG:TEXT+
+   address 16 OCTET+  s" ." LOG:TEXT+
+   address 8 OCTET+  s" ." LOG:TEXT+
+   address 0 OCTET+
+   s" :" LOG:TEXT+  port LOG:INT+
+   s"  failed, errno " LOG:TEXT+  cause TCP4:ERRNO>N LOG:INT+
+   LOG:;LINE
+   E-SOCKET throw ;
+
+
 : BIND-LISTENER ( n n -- ) {: address:n port:n :}
    address TCP4:ADDRESS port TCP4:PORT TCP4:BIND
    MATCH TCP4:bind-result
       bound OF TCP4:LISTENER>N LISTENER-CELL ! ENDOF
-      failed OF drop E-SOCKET throw ENDOF
+      failed OF address port s" bind to" REPORT-UNBOUND ENDOF
    ;MATCH
    LISTENER@ BACKLOG TCP4:LISTEN
    MATCH TCP4:status
       ok OF ENDOF
-      failed OF drop E-SOCKET throw ENDOF
+      failed OF address port s" listen on" REPORT-UNBOUND ENDOF
    ;MATCH
    LISTENER@ TCP4:LOCAL
    MATCH TCP4:endpoint-result
       endpoint OF TCP4:PORT>N BOUND-PORT ! TCP4:ADDRESS>N BOUND-ADDRESS ! ENDOF
-      failed OF drop E-SOCKET throw ENDOF
+      failed OF address port s" reading the bound address of" REPORT-UNBOUND ENDOF
    ;MATCH ;
 
 
