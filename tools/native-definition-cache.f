@@ -76,7 +76,11 @@ $4B8 constant LIVE-FIXED-OFF
 \ The heads of the file's run that missed (REUSE-HEAD), plus one
 \ when its installs stopped (LOAD-ORDER).
 264 constant F-MISS
-272 constant FRAME-BYTES
+\ The SHA-256 of the bytes as read, and the context of the file's recorded
+\ hash (HASH-OPEN, HASH-CLOSE).
+272 constant F-OWN
+304 constant F-CTX
+F-CTX SHA256-CTX-BYTES + constant FRAME-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
 \ file object.
@@ -160,6 +164,10 @@ variable HOST-INPUT-USE
 variable HOST-ENV-USE
 variable HOST-ENV-RESET
 create HASH-CTX SHA256-CTX-BYTES allot
+\ The engine build's files with their hashes, as SOURCE-PRODUCER:FILE-HASH
+\ reads them; CLOSE leaves them for the capture after it (FILE-HASHES).
+DYNAMIC-BUFFER FILE-ROWS u8
+variable FILE-ROWS-U
 create HASH-RAW 32 allot
 create HASH-CELL CELL allot
 create FILE-KEY-HEX 64 allot
@@ -868,18 +876,6 @@ private
    F-LOADS F@ NUNIT-OBJECT:EV-AFTER-LOAD NUNIT-OBJECT:SEGMENT-MAP
    1 F-LOADS F@ + F-LOADS F! ;
 
-: FILE-SUCCESS ( -- )
-   NATIVE? @ 0= if exit then
-   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
-   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
-      BUILD-PRODUCER:COMPILER-DONE
-   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
-   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
-      SOURCE-ROOT:RELATIVE
-      s" src/habu/native-runtime.f" STR= if
-      NUNIT-CAPTURE:BIND-PRODUCER
-   then ;
-
 \ A file's instance name: its path relative to the root that resolved it, and
 \ role 0 under the engine's source root, 1 under any other. The same sources
 \ built from another tree path name the same instances; reuse soundness rests
@@ -903,6 +899,102 @@ private
 : SOURCE-ROW ( -- )
    FRAME-PATH FRAME F-RAW + 0 ptr-field @ F-RAW-U F@
       NFILE-INPUTS:ADD-SOURCE ;
+
+\ Only the engine's counted source load records its files' hashes.
+: HASHING? ( -- bool ) NATIVE? @ 0<> COUNTED? @ 0<> and ;
+
+: ROW-SIZE ( n -- n ) CELL 1- + CELL negate and CELL + 32 + ;
+
+
+: TABLE-HASH ( ptr u8 n -- ptr u8 bool )
+   {: key:ptr keyu:n :}
+   0 begin dup FILE-ROWS-U @ < while
+      {: off:n :}
+      off FILE-ROWS {: row:ptr :}
+      row CELL-VIEW @ {: rowu:n :}
+      row CELL + 32 + rowu key keyu STR= if row CELL + true exit then
+      off rowu ROW-SIZE +
+   repeat drop NULL-PTR false ;
+
+
+: RECORD ( ptr u8 n ptr u8 -- )
+   {: key:ptr keyu:n hash:ptr :}
+   key keyu TABLE-HASH if hash swap 32 BYTE-COPY exit then drop
+   keyu ROW-SIZE {: size:n :}
+   FILE-ROWS-U @ size + FILE-ROWS-RESERVE
+   FILE-ROWS-U @ FILE-ROWS {: row:ptr :}
+   keyu row CELL-VIEW !
+   hash row CELL + 32 BYTE-COPY
+   key row CELL + 32 + keyu BYTE-COPY
+   row CELL + 32 + keyu + size CELL - 32 - keyu - ZERO-SCRATCH
+   size FILE-ROWS-U +! ;
+
+
+: FEED-HASH ( ptr u8 -- ) FRAME F-CTX + swap 32 SHA256-FEED ;
+
+
+\ The own digest of the open file at path, an ancestor still loading.
+: ANCESTOR-OWN ( ptr u8 n -- ptr u8 bool )
+   {: path:ptr pathu:n :}
+   DEPTH @ 0 ?do
+      i FRAME-BYTES * FRAMES {: f:ptr :}
+      f F-INPUT + 0 ptr-field @ f F-INPUT-U + CELL-VIEW @ path pathu STR= if
+         f F-OWN + true unloop exit
+      then
+   loop NULL-PTR false ;
+
+
+\ A required file or loader source read feeds its recorded hash or an open
+\ ancestor's own digest, else its own close does; another read feeds its digest.
+: HASH-ROW ( n ptr u8 n ptr u8 n bool ptr u8 -- )
+   {: kind:n path:ptr pathu:n answer:ptr answeru:n exists:bool digest:ptr :}
+   kind NFILE-INPUTS:CONTENT-ROW = answeru 0= and if digest FEED-HASH exit then
+   kind NFILE-INPUTS:QUERY-ROW = exists and 0= if exit then
+   answer answeru ANCESTOR-OWN if FEED-HASH exit then drop
+   answer answeru SOURCE-ROOT:ENGINE$ SOURCE-ROOT:RELATIVE TABLE-HASH
+   if FEED-HASH else drop then ;
+
+
+\ The open file's rows not yet in its object, in the order they were recorded.
+: HASH-ROWS ( -- )
+   HASHING? 0= if exit then
+   F-MARK F@ NFILE-INPUTS:MARK NFILE-INPUTS:SPAN
+      ['] HASH-ROW NFILE-INPUTS:EACH-ROW ;
+
+
+: HASH-OPEN ( -- )
+   HASHING? 0= if exit then
+   FRAME F-CTX + FRAME F-RAW + 0 ptr-field @ F-RAW-U F@ FRAME F-OWN + SHA256-IN
+   FRAME F-CTX + SHA256-BEGIN
+   FRAME F-OWN + FEED-HASH ;
+
+
+\ The file's hash is recorded under its engine-relative path and fed to its
+\ loader in load order.
+: HASH-CLOSE ( -- )
+   HASHING? 0= if exit then
+   FRAME F-CTX + HASH-RAW SHA256-END
+   FRAME-PATH FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@ FILE-NAME
+      {: key:ptr keyu:n role:n :}
+   role 0= if key keyu HASH-RAW RECORD then
+   DEPTH @ 1 > if
+      DEPTH @ 2 - FRAME-BYTES * FRAMES F-CTX + HASH-RAW 32 SHA256-FEED
+   then ;
+
+
+: FILE-SUCCESS ( -- )
+   NATIVE? @ 0= if exit then
+   HASH-CLOSE
+   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
+   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
+      BUILD-PRODUCER:COMPILER-DONE
+   FRAME F-INPUT + 0 ptr-field @ F-INPUT-U F@
+   FRAME F-ROOT + 0 ptr-field @ F-ROOT-U F@
+      SOURCE-ROOT:RELATIVE
+      s" src/habu/native-runtime.f" STR= if
+      NUNIT-CAPTURE:BIND-PRODUCER
+   then ;
+
 
 \ The early journal's serial, and whether it records rows; 0 false without
 \ the target's journal.
@@ -1487,6 +1579,10 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    s" native-file: reused path=" NUNIT-DEP:DIAG-W2
    FRAME-PATH NUNIT-DEP:DIAG-W2 S\" \n" NUNIT-DEP:DIAG-W2 ;
 
+\ A run that returned feeds the rows after its last child to the file's hash.
+: HIT-RUN ( -- ) REUSE-RUN HASH-ROWS ;
+: LIVE-RUN ( -- ) OBSERVED-RUN HASH-ROWS ;
+
 \ A file installing through its object keeps its install place across a
 \ child's unit, whose reuse run begins its own install over it: a loader
 \ cut and a word the file's top level runs (a `required` inside a run
@@ -1548,7 +1644,7 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
       {: raw:ptr rawu:n :} 2drop 2drop
    \ The rows the parent recorded so far join its object before the child's
    \ opens.
-   DEPTH @ 0 > if ROWS-FLUSH ORIGIN-HARVEST PLACE-SAVE then
+   DEPTH @ 0 > if HASH-ROWS ROWS-FLUSH ORIGIN-HARVEST PLACE-SAVE then
    FRAME-RESERVE
    path pathu root rootu FILE-NAME kind NFILE-REF:PUSH-FILE
    FILE-OPEN
@@ -1562,6 +1658,7 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    rootu F-ROOT-U F!
    q Q>N F-Q F!
    prior UNIT>N F-PRIOR F!
+   HASH-OPEN
    ['] OBJECT-OPEN catch {: open-rc:n :}
    open-rc 0<> if
       FILE-CLOSE
@@ -1577,7 +1674,7 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    \ The head hook runs for this file's heads and is restored for the loader.
    HOOK-CELL @ {: hook:n :}
    ['] HEAD-HOOK HOOK>N HOOK-CELL !
-   hit if ['] REUSE-RUN else ['] OBSERVED-RUN then catch {: unit-rc:n :}
+   hit if ['] HIT-RUN else ['] LIVE-RUN then catch {: unit-rc:n :}
    hook HOOK-CELL !
    \ A reuse run installs each checker plan it prepares; one that threw
    \ between a preparation and its install leaves that plan for this release.
@@ -1827,6 +1924,7 @@ public
 
 : WITH ( ptr u8 n [ -- ] -- )
    {: mode:ptr modeu:n body :}
+   FILE-ROWS-RELEASE 0 FILE-ROWS-U !
    mode modeu s" engine" STR= NATIVE? !
    true REPORT? !
    true COUNTED? !
@@ -1911,5 +2009,13 @@ public
    path REQUEST-PATH ! pathu REQUEST-PATH-U !
    manifest REQUEST-MANIFEST ! manifestu REQUEST-MANIFEST-U !
    mode modeu ['] REQUEST-RUN WITH ;
+
+
+\ Hand the engine build's file hashes to take, then release them.
+: FILE-HASHES ( [ ptr u8 n -- ] -- )
+   {: take :}
+   FILE-ROWS-U @ 0= if NULL-PTR 0 else 0 FILE-ROWS FILE-ROWS-U @ then
+      take execute
+   FILE-ROWS-RELEASE 0 FILE-ROWS-U ! ;
 
 ;package

@@ -15,8 +15,10 @@ package NFILE-INPUTS
 private
 
 1 constant FILE-ROW
+public
 2 constant QUERY-ROW
 3 constant CONTENT-ROW
+private
 4 constant ENV-ROW
 \ A file's own source: as the answer, the SHA-256 of the bytes that ran, and,
 \ when row+24 is 1, a stat that vouches for them (change time sec, ns and size
@@ -304,6 +306,27 @@ public
       1+
    repeat
    CHECK-OFF @ size <> if MALFORMED then ;
+
+
+\ Each row in order: its kind, path, answer, whether the answer exists, and
+\ the row's digest or stat field.
+: EACH-ROW ( ptr u8 n [ n ptr u8 n ptr u8 n bool ptr u8 -- ] -- )
+   {: bytes:ptr size:n take :}
+   0 begin dup size < while
+      {: off:n :}
+      size off - ROW-BYTES < if MALFORMED then
+      bytes off + {: row:ptr :}
+      row 8 + LE:U64@ {: pathu:n :}
+      row 16 + LE:U64@ {: answeru:n :}
+      pathu 0 < answeru 0 < or if MALFORMED then
+      pathu size off - ROW-BYTES - > if MALFORMED then
+      answeru size off - ROW-BYTES - pathu - > if MALFORMED then
+      row ROW-BYTES + {: path:ptr :}
+      row LE:U64@ path pathu path pathu + answeru
+         row 24 + LE:U64@ 1 = row 32 + take execute
+      off ROW-BYTES + pathu + answeru +
+   repeat drop ;
+
 
 : CHECK-WITH ( ptr u8 n [ ptr u8 n -- ptr u8 n ] -- ) true swap VERIFY drop ;
 : CHECK ( ptr u8 n -- ) ['] CURRENT$ CHECK-WITH ;

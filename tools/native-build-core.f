@@ -682,15 +682,18 @@ CAST: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 \ constant was bound before the target window replaced layout.f. Each cleanup
 \ scope ends before its capture reads the target layout.
 CAST: HOST-HEADER-XT ( n -- [ n [ -- ] -- ] )
+CAST: INSTALL-FILES-XT ( n -- [ ptr u8 n -- ] )
 
 : WITH-DONOR-HEADER ( [ -- ] -- )
    SNAP-RELOC:XTCELL-N-CELL swap
    s" ADDRESS-CELLS" s" WITH-HOST-HEADER" TARGET-PRIVATE-XT
    HOST-HEADER-XT execute ;
 
-\ The package seal comes first: CAPTURE-PREPARE's checker sweep reads the
+\ The package seal precedes CAPTURE-PREPARE, whose checker sweep reads the
 \ protected bits it sets (src/core/checker-surface.f KEEP?).
 : PREPARE-TARGET-BODY ( -- )
+   s" SOURCE-PRODUCER" s" INSTALL-FILES" TARGET-PRIVATE-XT INSTALL-FILES-XT
+      NDEF-CACHE:FILE-HASHES
    AOT-ARM:R0 @ s" ENGINE-INTERNAL:SEAL-PACKAGES" TARGET-XT SEAL-XT execute
    s" NATIVE-RUNTIME:CAPTURE-PREPARE" TARGET-XT PREPARE-XT execute
    s" CHECKER-STORAGE-UNBIND-ALL" TARGET-XT PREPARE-XT execute

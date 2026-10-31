@@ -19,6 +19,10 @@ create COMPILER-DIGEST 32 allot
 variable CHECKER-KNOWN
 variable COMPILER-KNOWN
 TYPED-VARIABLE DEFAULT-COMPILER [ ptr u8 n -- ]
+\ The files a native build built in, as FILE-HASH reads them: a DATA block
+\ and its byte count.
+PERSISTED-PTR-VARIABLE FILES
+variable FILES-U
 
 CAST: KERNEL-XT ( n -- [ -- ptr u8 n bool ] )
 CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
@@ -48,6 +52,23 @@ CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
    entry DEFAULT-COMPILER !
    0 0= CHECKER-KNOWN !
    0 0= COMPILER-KNOWN ! ;
+
+
+\ Private: a native build installs its file rows before capture.
+: INSTALL-FILES ( ptr u8 n -- )
+   {: rows:ptr size:n :}
+   here data-base - negate CELL 1- and allot
+   here {: block:ptr :}
+   size allot
+   rows block size BYTE-COPY
+   block FILES !
+   size FILES-U ! ;
+
+
+: BLOCK ( -- ptr u8 ) FILES @ ;
+
+\ A row: key length cell, 32-byte hash, key padded to a cell.
+: ROW-SIZE ( n -- n ) CELL 1- + CELL negate and CELL + 32 + ;
 
 : FEED-SPAN ( ptr u8 n -- )
    {: bytes:ptr size:n :}
@@ -101,6 +122,20 @@ public
       COMPILER-DIGEST 32 0 0= exit
    then
    NULL$ 0 0= 0= ;
+
+
+\ A built-in file's hash by its engine-relative path: it covers the file's bytes
+\ and the hashes of the files it required, so it changes when any of them does.
+: FILE-HASH ( ptr u8 n -- ptr u8 n bool )
+   {: path:ptr pathu:n :}
+   0 begin dup FILES-U @ < while
+      {: off:n :}
+      BLOCK off + {: row:ptr :}
+      row CELL-VIEW @ {: keyu:n :}
+      row CELL + 32 + keyu path pathu CORE-STR= if row CELL + 32 0 0= exit then
+      off keyu ROW-SIZE +
+   repeat drop NULL$ 0 0= 0= ;
+
 
 \ A prior source load may replace the tier-1 compiler dispatch. The captured
 \ digest describes the active compiler only while the default entry still owns
