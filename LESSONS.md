@@ -113,6 +113,13 @@ entry.
   (front end, IR, T0 and every architecture's back end as parts, so each
   engine compiles itself through COMP) and XCOMP for building an image for a
   target. Joel chose "One level" of nesting: a part holds no parts.
+- 2026-10-31, a part's head resolver: inside package A, `: B:Q … ;` defines
+  into part A:B, but the native compiler's name check found only top-level
+  packages and the Habu loop's resolver was private to OUTER. Asked whether
+  xref.f's XREF package may get a public `XREF:HEAD-ROW ( ptr u8 n -- ptr n )`,
+  the row a qualifier's head names (the open package's part first, then a
+  top-level package), called by the Habu loop and the compiler, Joel chose
+  "Add XREF:HEAD-ROW".
 - 2026-10-31, a public SSE word: asked whether SSE:FEED's callback context
   may change from `ptr a` to `a`, so MCP passes its client record without a
   cast, Joel chose "Context becomes `a`".
