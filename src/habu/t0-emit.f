@@ -146,7 +146,8 @@ public
    at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !  origin k ADDR-ORIGIN !
    k 1+ N-ADDRS ! ;
 
-\ File the offset of the return SLOT-CLOSE left by.
+\ File the offset of the does> patch slot SLOT-CLOSE emitted: the instruction
+\ the target's does-patch rewrites.
 : PATCH-SLOT! ( n -- ) SLOT-AT ! ;
 
 \ The rows read back, for an emitter's PATCH: unit k's start, and call row and
@@ -176,8 +177,8 @@ ARCHES TYPED-BUFFER VREGS-N n
 \
 \ THE PATCH SLOT. SLOT-CLOSE closes a unit whose return is the does> patch
 \ slot (PATCH-SLOT!, sealed as NEMIT:PATCH-SLOT!). The kernel finds the slot
-\ from the record's length, so that return is the emission's last instruction:
-\ a unit begun after it, or a callback stub with it, throws E-T0-SLOT.
+\ from the record's length, so the slot ends the emission: a unit begun after
+\ it, or a callback stub with it, throws E-T0-SLOT.
 ARCHES TYPED-BUFFER OPEN-XT [ -- ]
 ARCHES TYPED-BUFFER QUOT-OPEN-XT [ n -- ]
 ARCHES TYPED-BUFFER UNIT-OPEN-XT [ -- ]

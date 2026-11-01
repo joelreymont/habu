@@ -6,12 +6,14 @@
 \ CTARGET-ARCH:X86-64.
 
 require src/lib/errors.f
+require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/arch/x86-64/asm.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
+require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
 
@@ -92,10 +94,14 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : UNFRAME ( -- )
    RSP 0 >IMM32 SINK ENC-ADD-RI32  FRAME-SITE ;
 
+: ADDR-R ( n n r64 n -- )
+   {: v:n o:n r:r64 kind:n :}
+   HERE-OFF kind v o T0-EMIT:ADDR-ROW+
+   r v >IMM64 SINK ENC-MOV-RI64 ;
+
 : ADDR ( n n T0-EMIT:vreg n -- )
    {: v:n o:n d:T0-EMIT:vreg kind:n :}
-   HERE-OFF kind v o T0-EMIT:ADDR-ROW+
-   d REG v >IMM64 SINK ENC-MOV-RI64 ;
+   v o d REG kind ADDR-R ;
 
 \ r, holding the return stack depth, becomes the address one cell past its top.
 : RTOP ( r64 -- ) {: r:r64 :}
@@ -118,7 +124,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 
 \ ---- the body ----------------------------------------------------------------
-\ The frame: OPEN and QUOT-OPEN emit `sub rsp, imm32` and each way out emits
+\ The frame: each unit's start emits `sub rsp, imm32` and each way out emits
 \ `add rsp, imm32`, each field recorded in FRAME-AT; CLOSE writes the unit's
 \ frame size into every one. Slot k is the cell at rsp + 8k.
 \
@@ -137,10 +143,20 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    T0-LABEL:RESET
    UNIT-BEGIN ;
 
+\ The sink is this process's mapping, which no image carries; the next OPEN
+\ maps it again.
+: CAPTURE-PREPARE ( -- )
+   SINK-LIVE @ 0= if exit then
+   SINK BUF:DISPOSE
+   0 SINK-LIVE ! ;
+' CAPTURE-PREPARE IMAGE-LIFECYCLE:REGISTER-PERSISTENT
+
 : QUOT-OPEN ( n -- ) {: n:n :}
    n NUNIT @ <> if T0-EMIT:E-T0-UNIT throw then
    HERE-OFF n UNIT-REF @ 2 + 8 PUT
    UNIT-BEGIN ;
+
+: UNIT-OPEN ( -- ) UNIT-BEGIN ;
 
 : RETURN ( -- )
    UNFRAME  SINK ENC-RET ;
@@ -148,6 +164,24 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : CLOSE ( -- )
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
    NFRAME @ 0 ?do bytes i FRAME-AT @ 4 PUT loop ;
+
+\ The return is the kernel's does> patch slot (src/habu/kernel-x64.f
+\ PATCH-SLOT), filed at the jump's offset as tier 1's PUT-RET files it.
+: SLOT-CLOSE ( -- )
+   UNFRAME
+   HERE-OFF T0-EMIT:PATCH-SLOT!
+   0 >REL SINK ENC-JMP-REL32
+   SINK ENC-RET
+   CLOSE ;
+
+\ The stub after the last unit, answering its offset: r10 its slot, rax the
+\ thunk, which writes rax first (src/habu/kernel-x64.f CALLBACK-ENTRY-BODY).
+: CB-STUB ( -- n )
+   HERE-OFF {: at:n :}
+   NCBSTUB:SLOT@ R10 LIT-R
+   NCBSTUB:THUNK@ -1 RAX NEMIT:ADDR-CODE ADDR-R
+   RAX SINK ENC-JMP-REG
+   at ;
 
 : BYTES ( -- ptr u8 n ) SINK BUF:SPAN$ BUF:BLEN>N ;
 
@@ -517,8 +551,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    NVREG k T0-EMIT:VREGS-N !
    ['] OPEN k T0-EMIT:OPEN-XT !
    ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
+   ['] UNIT-OPEN k T0-EMIT:UNIT-OPEN-XT !
    ['] RETURN k T0-EMIT:RETURN-XT !
    ['] CLOSE k T0-EMIT:CLOSE-XT !
+   ['] SLOT-CLOSE k T0-EMIT:SLOT-CLOSE-XT !
+   ['] CB-STUB k T0-EMIT:CB-STUB-XT !
    ['] BYTES k T0-EMIT:BYTES-XT !
    ['] PATCH k T0-EMIT:PATCH-XT !
    ['] LIT k T0-EMIT:LIT-XT !

@@ -107,7 +107,7 @@ align
 0 CWORK-VARIABLE DEF-BUILD-DELTA n
 
 public
-3 constant FIXED-DEFER               \ a defer dispatch body, not an NDICT fixed kind
+NCOMP-DISPATCH:FIXED-DEFER-KIND constant FIXED-DEFER \ a defer dispatch body, not an NDICT fixed kind
 4 constant FIXED-CAST                \ an engine-published CAST: identity body
 private
 

@@ -7,6 +7,8 @@
 \ `is`'s operand lower from the record the checker bound, as tier 1's
 \ src/compiler/native/hir-word.f RESOLVE-SITE does; spelling is looked up only
 \ by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?) and VALIDATE (NFETCH-CHECK:TAGS).
+\ COMPILE-FIXED builds the body of a `constant`, `create` or `defer`, which has
+\ no text, through the same step.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -1836,6 +1838,40 @@ variable SCAN-LO                     \ the ordinal of its first row
    E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally ;
 
+\ ---- the fixed bodies --------------------------------------------------------
+\ The bodies tier 1's NELAB:FIXED and NELAB:DEFER build, on one unit.
+variable FIXED-KIND
+
+: FIXED-KIND? ( n -- bool ) {: kind:n :}
+   kind NCOMP-DISPATCH:FIXED-VAL-KIND =
+   kind NCOMP-DISPATCH:FIXED-ADDR-KIND = or
+   kind NCOMP-DISPATCH:FIXED-DEFER-KIND = or ;
+
+: FIXED-BODY ( -- )
+   M-FIXED-VAL @ {: val:n :}
+   FIXED-KIND @ {: kind:n :}
+   RESET
+   T0-EMIT:OPEN
+   kind NCOMP-DISPATCH:FIXED-VAL-KIND = if
+      val PUSH-CONST  SPILL-ALL  T0-EMIT:RETURN  T0-EMIT:CLOSE exit
+   then
+   val -1 PUSH-ADDR
+   kind NCOMP-DISPATCH:FIXED-ADDR-KIND = if SPILL-ALL  T0-EMIT:SLOT-CLOSE exit then
+   T0-EMIT:CELL-W FETCH
+   SPILL-ALL  ['] execute XT>N 0 T0-EMIT:CALL
+   T0-EMIT:RETURN  T0-EMIT:CLOSE ;
+
+: FIXED-LOWER ( -- )
+   FIXED-BODY
+   FIXED-KIND @ NCOMP-DISPATCH:FIXED-DEFER-KIND = if PUB-DEFER else PUB-RAW then
+   M-PUB !
+   STUB-ARM
+   NPUB:NEXT-SLOT T0-EMIT:SEAL
+   STUB-TAKE
+   PUBLISH-IT ;
+
+: FIXED-RUN ( -- ) [: FIXED-LOWER ;] [: SHUT ;] finally ;
+
 : REFUSED$ ( n -- ptr u8 n ) {: rc:n :}
    rc E-T0-UNSUPPORTED =  rc E-UNMODELED-IMMEDIATE = or  rc E-T0-CONTROL = or
    rc E-T0-MATCH = or  rc E-T0-DEFER = or
@@ -1860,6 +1896,22 @@ public
    NHOST:SOURCE-ABANDON
    rc REFUSED$ {: a:ptr u:n :}
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  a u a SETTLE-UNIT ;
+
+\ Compile the pending record's fixed body for ( val kind ), as tier 1's
+\ NCOMP:COMPILE-FIXED: no body text and no checker scan.
+: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
+   kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
+   IDLE-CK
+   NULL-PTR 0 false STAGE-UNIT
+   val M-FIXED-VAL !  kind FIXED-KIND !
+   CHECKER-OWNER:RESET-REPORT
+   1 M-OPEN !
+   [: FIXED-RUN ;] catch {: rc:n :}
+   0 M-OPEN !
+   STUB-END
+   NFETCH:RELEASE
+   NHOST:SOURCE-ABANDON
+   0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
 
 : DISPATCH! ( [ ptr u8 n -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
