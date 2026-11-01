@@ -135,8 +135,8 @@ entry.
   package rewrites a real JR:cursor or NEWTYPE cell through an admitted
   reverse cast or a raw pointer and c! (/tmp/carl-cast/p1.f, p4.f), and it
   refused only honest code (Maki, Zen). The lead chose to drop the question: a
-  private cast may name another package's type, E-CAST-MINT stays, and
-  E-CAST-OWNER names only arena heads.
+  cast may name another package's type, E-CAST-MINT stays, and E-CAST-OWNER
+  names only arena heads.
 - 2026-10-31, cast errors: asked whether lane casterr may make
   CAST-ERROR:START, TOKEN!, FAMILY!, RAISE and SKIP and
   LOWER-CERT-HOOK:LINE-AT public, because checker words outside those
