@@ -12,3 +12,5 @@ Files: src/core/checker.f, src/habu/layout.f, src/core/layout-buffer.f, src/core
 Verify: full suite on the built hb.
 Ruling (Joel, 2026-10-08): the kernel is the words compiled before the type checker runs. Constants moved ahead of the checker become kernel words; those checked code reads carry a trusted type declared at their definition.
 Depends: habu-take-a-word-01856558. Ownership: unassigned. Claim: unassigned.
+
+Lane pkg (2026-11-01) adds CK-ENCLOSING-PUB-OFF, CK-ENCLOSING-PRI-OFF, CK-ENCLOSING-PARENT-OFF, CK-ENCLOSING-REC-OFF (= layout.f ENCLOSING:PUB..REC) and CK-PKG-OUTSIDE-OFF (= layout.f PKG-OUTSIDE-CELL) beside CK-PKG-PUB-OFF; they go with this dot.
