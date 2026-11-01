@@ -5039,6 +5039,28 @@ variable SS-NEST-U
    s" nc-qualified.f" s\" nc-qualified.f\",\"line\":1,\"column\":7,"
    s\" \"throw_code\":90," COLON-REFUSED ;
 
+\ The source pre-pass (verify-source.f RECORD-PACKAGE) opens `package B` in A as
+\ the part A:B: no sealed MATCH, and no duplicate of a top-level B's public W.
+: PART-CHECKED ( ptr u8 n -- ) {: f:ptr fu:n :}
+   f fu REQ-WRITE
+   f fu ST-JSON-RUN {: outu:n erru:n rc:n :}
+   f fu T-LABEL CAP-ERR erru s" E-STATEMENT-THROW" CONTAINS? TFALSE
+   f fu T-LABEL CAP-ERR erru s" duplicate" CONTAINS? TFALSE
+   f fu T-LABEL rc 0 T= ;
+
+: TEST-PART-NAMES ( -- )
+   SB-RESET
+   s" package CKT-PS" REQ-LINE+
+   s" package MATCH public : CKT-PSX ( -- n ) 1 ; ;package" REQ-LINE+
+   s" : CKT-PSY ( -- n ) MATCH:CKT-PSX ;" REQ-LINE+
+   s" ;package" REQ-LINE+
+   s" part-sealed.f" PART-CHECKED
+   SB-RESET
+   s" package CKT-PT public : W ( -- n ) 3 ; ;package" REQ-LINE+
+   s" package CKT-PA package CKT-PT public : W ( -- n ) 4 ; ;package ;package" REQ-LINE+
+   s" : CKT-PTU ( -- n ) CKT-PT:W ;" REQ-LINE+
+   s" part-twin.f" PART-CHECKED ;
+
 \ A source whose first line starts with `#!` is a script: the engine reads that
 \ line as a comment in a file it runs or loads. check.f checks such a subject as
 \ the engine loads it - clean in prose, under --json-errors, from standard input
@@ -7422,6 +7444,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/malformed-raw" [: TEST-MALFORMED-RAW ;] CASE-RUN
    s" check/using-at-source" [: TEST-USING-AT-SOURCE ;] CASE-RUN
    s" check/name-colon" [: TEST-NAME-COLON ;] CASE-RUN
+   s" check/part-names" [: TEST-PART-NAMES ;] CASE-RUN
    s" check/using-ambiguous" [: TEST-USING-AMBIGUOUS ;] CASE-RUN
    s" check/using-shadow" [: TEST-USING-SHADOW ;] CASE-RUN
    s" check/shadowed-arity" [: TEST-SHADOWED-ARITY ;] CASE-RUN

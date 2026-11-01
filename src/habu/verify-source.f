@@ -2123,27 +2123,8 @@ DUPLICATE-INIT
    u DUPLICATE!
    true ;
 
-\ Once the engine is sealed, the load ends at a definition into a protected
-\ wordlist, at its name, and at `package` of a sealed package, at the
-\ package's name (src/habu/packages.f PKG-SEAL-GUARD): it exits
-\ ENGINE-ERROR:SEAL-PACKAGE. A definition's load asks its name for a duplicate
-\ first (src/habu/habu2.f EMIT-QUALIFY-DEF, then EMIT-STORE-DEF-NAME), so each
-\ definer here refuses a duplicate (REFUSE-DUPLICATE) before it asks the seal,
-\ which it asks where its load does: before the signature of a colon or
-\ `trusted:` definition, after the signature of a `cast:`, a deferred word or
-\ a foreign function. It asks only under composition, which models the load
-\ by this engine as it does the top-level tokens (TOP-RESOLVE): the build
-\ certifies a stage source without one (tools/build-fixpoint-certify.f), and
-\ the stage that loads it keeps its packages open until its capture seals
-\ them. It asks the wordlists of this image, where the engine has baked its
-\ packages and sealed both wordlists of each (src/core/internal-mark.f
-\ SEAL-PACKAGES). The scan runs no top-level code, so a wordlist the source
-\ protects as it loads (`get-current prot-wid-add`) is not protected here. A
-\ qualified name lands in its package's public wordlist, and only a qualified
-\ name is asked: an unqualified definition lands in the source's current
-\ wordlist, which the scan never protects, because `package` stops at a
-\ sealed one. So an export, which lands there, needs no guard, nor does a
-\ `linear:` row, whose certifier refuses a qualified name first.
+\ A definer asks the seal where its load does (check-verify-test-lib.f SEALED), after REFUSE-DUPLICATE,
+\ only of a qualified name: an unqualified one lands in the current wordlist, and `package` stops at a sealed one.
 
 \ The public wordlist of the package NAME names, -1 when it has no row.
 : PUBLIC-WID ( ptr u8 n -- n )
@@ -2151,21 +2132,23 @@ DUPLICATE-INIT
    row XREF-FOUND? 0= IF -1 EXIT THEN
    row XREF-PKG-PUBLIC ;
 
-\ Whether the scan models the load of a sealed engine: this one, composing.
+\ Whether the scan models the load of a sealed engine: this one, composing. A stage source
+\ certified without composing keeps its packages open until its capture seals them.
 : SEALED-LOAD? ( -- bool )
    COMPOSE-ON @ 0<>  SEAL-NDICT@ 0<>  and ;
 
 : SEAL-STOP ( n -- )
    TOKEN-BYTE !  ENGINE-ERROR:SEAL-PACKAGE throw ;
 
-\ Stop at the name NAME, read from byte AT, when it is qualified and its
-\ package's public wordlist is protected. A package with no row gets a
-\ wordlist of its own (habu2.f EMIT-QUALIFY-DEF), which is not.
+\ Stop at NAME, read from byte AT, when its head (HEAD-ROW) has a protected
+\ public wordlist; a head with no row qualifies into an unprotected one.
 : SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    SEALED-LOAD? 0= IF EXIT THEN
    a u XREF-QUAL-INDEX {: q:n :}
    q 0 < IF EXIT THEN
-   a q PUBLIC-WID XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
+   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row NULL-PTR = IF EXIT THEN
+   row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
 
 \ Stop at the name `package` read from byte AT when it names a sealed package
 \ (packages.f PKG-SEALED?): one the checker lists, or one whose public
@@ -2386,14 +2369,15 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
 
-\ A colon in the token is refused before the checker hears of it, as the
-\ engine's `package` refuses it: the checker reads a colon as a part's path.
+\ The engine's order (src/habu/packages.f PKG-PACKAGE): the part guard at
+\ `package`, then the name and its path, the checker, the seal on the path.
 : RECORD-PACKAGE ( -- )
+   CHECKER-RESOLVE:PART-GUARD
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
-   name nameu $3A COUNT-CHAR 0 <> IF E-PKG-CONTEXT throw THEN
-   name nameu CHECKER-PACKAGE
-   name nameu at SEALED-PACKAGE ;
+   name nameu CHECKER-RESOLVE:PART-PATH {: pa:ptr pu:n :}
+   pa pu CHECKER-PACKAGE
+   pa pu at SEALED-PACKAGE ;
 
 : RECORD-PUBLIC ( -- )
    CHECKER-PUBLIC ;
@@ -3332,14 +3316,14 @@ variable LOAD-U
    loop
    PEND-BASE @ PEND-N ! ;
 
-\ The scope the file being read opened itself: a `package`, and the `using`s it
-\ opened outside one.
+\ The scope the file being read opened itself: how many packages and parts it
+\ holds open, each counted once, and the `using`s it opened outside them.
 variable FILE-PKG
 variable FILE-USE
 
 : FILE-SCOPE-STEP ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" package" STR=CI IF 1 FILE-PKG ! EXIT THEN
-   a u s" ;package" STR=CI IF 0 FILE-PKG ! EXIT THEN
+   a u s" package" STR=CI IF FILE-PKG @ 1 + FILE-PKG ! EXIT THEN
+   a u s" ;package" STR=CI IF FILE-PKG @ 1 - 0 max FILE-PKG ! EXIT THEN
    FILE-PKG @ 0<> IF EXIT THEN
    a u s" using" STR=CI IF FILE-USE @ 1 + FILE-USE ! EXIT THEN
    a u s" ;using" STR=CI FILE-USE @ 0 > and IF FILE-USE @ 1 - FILE-USE ! THEN ;

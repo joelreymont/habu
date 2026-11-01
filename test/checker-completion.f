@@ -263,7 +263,8 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 \   spelling a qualified prefix offers there, or one only the dictionary holds;
 \ - a part's public is missed behind its own name inside its package or the
 \   part, or offered outside them, behind the parent's path or a top-level
-\   package's name the part shadows;
+\   package's name the part shadows; or a part a replay opens is a top-level
+\   package of its name;
 \ - a candidate's location is not its selected declaration's: a located word
 \   offered without its row's visit and bytes, a word the selection hides
 \   lending its location, a refused redeclaration moving it, or a local, an
@@ -875,6 +876,21 @@ variable REW-ROW
    s" package CMQC : CMQX2 ( -- n ) CMQB:QPT ; ;package" 5 PART-OTHER
    s" package CMQC : CMQX3 ( -- n ) CMQB:QPT ; ;package" 6 PART-OTHER ;
 
+\ 15. A part a replay opens.
+\ A replayed `package CmqB` in CMQA opens the part CMQA:CmqB, no top-level CMQB.
+: CASE-PART-REPLAY ( -- )
+   s" QPR" s" package CMQA package CmqB public : QPR ( -- n ) 43 ; ;package ;package"
+   [: ;] ARMED-REPLAY
+   s" cmqb:qpr" KEPT-RESET
+   s" package CMQA : CMQU4 ( -- n ) CmqB:QPR ; ;package"
+   2dup s" CmqB:QPR" 6 AT  [: KEEP ;] ARMED
+   s" the package's body's check runs through" T-LABEL 0 T=
+   KEPT-ALL
+   s" CmqB:QPR" VISIT AT-START AT-END PLACED
+   s" cmqb:qpr" KEPT-RESET  s" CMQB:Q" TOP
+   KEPT-ALL
+   s" CMQB:QPR" ABSENT ;
+
 : CASES ( -- )
    FIXTURE
    CASE-PARTIAL
@@ -903,12 +919,11 @@ variable REW-ROW
    CASE-QUALIFIED-ANY
    CASE-DICTIONARY
    CASE-PART-IN
-   CASE-PART-OUT ;
+   CASE-PART-OUT
+   CASE-PART-REPLAY ;
 
-\ A replay's names bind only while a scope holds the checker's overlay open, so
-\ the fixture and cases 1 to 13 run in one neutral checker scope, as a verifier
-\ child runs its composition (tools/check-verify-child-lib.f SCOPED). That scope
-\ starts at top level (CHECKER-SCOPE-START-NEUTRAL), so case 14 runs outside it.
+\ A replay's names bind only inside a checker scope, so every case but 14 runs in
+\ one neutral scope, which starts at top level; 14 needs the engine's open part.
 : MAIN ( -- )
    T-RESET
    [: CASES ;] IN-NEUTRAL ;

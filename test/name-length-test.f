@@ -145,6 +145,7 @@ create BEFORE MARK-N cells allot
 : PACKAGE-IT ( -- ) BAD$ CHECKER-PACKAGE ;
 : USING-IT ( -- ) BAD$ CHECKER-USING ;
 : USING-PUSH-IT ( -- ) BAD$ CHECKER-USING-PUSH ;
+: PART-PATH-IT ( -- ) BAD$ CHECKER-RESOLVE:PART-PATH 2drop ;
 : EXPORT-IT ( -- ) BAD$ CHECKER-EXPORT ;
 : FAMILY-IT ( -- ) BAD$ CHECKER-DEFFAMILY ;
 : SUM-IT ( -- ) BAD$ s" VARIANT vacant ;VARIANT" CHECKER-DEFSUM ;
@@ -259,10 +260,8 @@ variable LBL-U
    s" CON-FAM" FAM-DIES-AT-MAX
    s" VAR" FAM-DIES-AT-MAX ;
 
-\ A code above 255 that nothing catches ends the child on `hb: uncaught throw
-\ code N`. It exits 70, the refusal status, when the checker rendered that
-\ refusal - the declarations' `habu: bad ...` line, a stale trust row - and
-\ UNCAUGHT-RC (67) when it was thrown with nothing rendered.
+\ An uncaught code above 255 exits 70 when the checker rendered it, else 67.
+\ In this file's package PART-PATH refuses a long path (7136).
 : TEST-DECLARERS ( -- )
    s" DEFER-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
    s" UNDEFINE-IT" 76 S\" checker: symbol string capacity overflow\n" DIES
@@ -276,6 +275,9 @@ variable LBL-U
    s" USING-IT" 76 S\" checker: using name length describes no memory\n" DIES-NO-SPAN
    CEIL 1 + s" ceiling+1" s" USING-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
    s" USING-PUSH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES
+   -1 s" -1" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7154\n" DIES-AT
+   CEIL 1 + s" ceiling+1" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
+   MAX-CELL s" max" s" PART-PATH-IT" 67 S\" hb: uncaught throw code 7136\n" DIES-AT
    s" EXPORT-IT" 67 S\" hb: uncaught throw code 7113\n" DIES
    s" FAMILY-IT" 70 S\" habu: bad newtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES
    s" SUM-IT" 70 S\" habu: bad sumtype declaration '': missing name\nhb: uncaught throw code 7107\n" DIES

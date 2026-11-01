@@ -13,6 +13,8 @@
 \   are counted in it                                                     buffer-not-disk
 \   a dependency that requires PATH back meets the copy on disk           identity-subject
 \   a require of an absent PATH falls back to another file                absent-path
+\   a file required inside a package opens a part of it                   load-part
+\   a part's path too long for a row is refused by the name's bound       part-long
 \   an included child lowers the source using floor, then leaves an
 \   import visible after clean return                                     load-using-floor
 \   a dependency's packets are dropped, or name the subject               failing-dependency
@@ -43,7 +45,8 @@
 \   a loader call in a body, which runs only when the body does, reads its
 \   file, is refused for its path or defines its words for definitions after
 \   it; a valid dynamic form is refused before effect checking             body-uncalled
-\   an immediate loader in a body leaves its file unread                  body-immediate
+\   an immediate loader in a body leaves its file unread, or reads it
+\   while the package around a part is still open                         body-immediate
 \   a loader word's name stored, deferred, exported, defined, undefined or
 \   retired is refused at the name, or one the global wordlist holds is no
 \   duplicate                                                             reserved-names
@@ -158,8 +161,8 @@
 \   a retired engine name or compiler-only axiom verifies as a top word    top-retired, top-axiom
 \   a definition into a sealed package, or its reopening, verifies or is
 \   refused elsewhere or otherwise than the load refuses it, a duplicate
-\   there as sealed; a retirement there, or a definition into a package
-\   left open, is refused                                                 sealed
+\   there as sealed; a retirement there, a definition into a package
+\   left open, or a part named like a sealed package is refused           sealed
 \   a qualified name the load refuses verifies, or is refused otherwise
 \   than a body refuses it                                                top-qualified
 \   a parsing word's operand is resolved, or the stretch after it is
@@ -520,6 +523,15 @@ variable CV-ROW-U
    loop
    0 GEN GEN-U @ ;
 
+\ part-long.f: in package CVT-PL, a part named by a name longer than any the
+\ engine defines, whose path no package row holds.
+: PART-LONG$SRC ( -- ptr u8 n )
+   0 GEN-U !
+   s\" package CVT-PL\npackage " GEN+
+   CK-NAME-MAX 1 + 0 ?do $71 GEN-C+ loop
+   s\" \n;package\n;package\n" GEN+
+   0 GEN GEN-U @ ;
+
 \ DA defined twice, the second DA at line 2, column 3, bytes 20-22; and LATE,
 \ refused after it.
 : DUP$SRC ( -- ptr u8 n )
@@ -574,6 +586,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" ld-open.f" s\" : CVT-LDOPEN ( -- n ) 1\n" FIXTURE
    s" order-package.f" s\" package CVT-PKG public\nrequire order-package-dep.f\n;package\n: CVT-PKG-USE ( -- n ) CVT-PKG:CVT-PKG-VALUE ;\n" FIXTURE
    s" order-floor-child.f" s\" ;package\nusing CVT-FLOOR-CHILD\n" FIXTURE
+   s" order-part-dep.f" s\" package CVT-PART-B\n;package\n" FIXTURE
+   s" order-part.f" s\" package CVT-PART-A\nrequire order-part-dep.f\n;package\n" FIXTURE
+   s" part-long.f" PART-LONG$SRC FIXTURE
    s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
    s" order-floor-require.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\nrequire order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
    s" order-double.f" s\" include order-dep.f\ninclude order-dep.f\n" FIXTURE
@@ -1022,11 +1037,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 GEN GEN-U @ s" body-long.f" VERIFIED ;
 
 
-\ include and require in a body are immediate: the engine refuses the body
-\ (E-UNMODELED-IMMEDIATE) and loads nothing, but the verifier reads their file
-\ there, a superset. One that is not there is refused at the loader word; one
-\ that is defines its words for the definitions after the body, which the
-\ checker refuses for the immediate.
+\ A body's immediate loader (E-UNMODELED-IMMEDIATE) still loads its file in the
+\ verifier at the first statement outside the file's packages, parts included.
 : BODY-IMMEDIATE ( -- )
    s\" : CVT-IMM-MISSING ( -- n ) include nosuch.f 1 ;\n" s" imm-missing.f" GUARD-MS CHECK-AS
    1 s" body-immediate: a missing file" EXPECT-KIND
@@ -1036,7 +1048,16 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-IMM-LOADS ( -- n ) include imm.f 1 ;\n: CVT-IMM-USE ( -- n ) CVT-IMM ;\n"
    s" imm-loads.f" GUARD-MS CHECK-AS 1 s" body-immediate: refused for the immediate" EXPECT-KIND
    s" body-immediate: the file's word is there" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET SPAN:LEN 0= TTRUE ;
+   CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET SPAN:LEN 0= TTRUE
+   s" pf.f" s\" : CVT-PFW ( -- n ) 1 ;\n" FIXTURE
+   0 GEN-U !
+   s\" package CVT-PFA\npackage CVT-PFB ;package\n" GEN+
+   s\" : CVT-PFL ( -- ) include pf.f ;\n" GEN+
+   s\" : CVT-PFU ( -- n ) CVT-PFW ;\n;package\n" GEN+
+   0 GEN GEN-U @ s" imm-part.f" GUARD-MS CHECK-AS
+   1 s" body-immediate: past a part's end" EXPECT-KIND
+   s" body-immediate: unread while the package is open"
+   s" E-UNDEFINED" s" CVT-PFW" s" 4" s" 20" AT-TOKEN ;
 
 
 \ A loader word's name is a name like any other. A definition, storage, a
@@ -1407,6 +1428,38 @@ $180000 constant LARGE-STDIN-LEN
    s" load-package: verify-only inherits package" T-LABEL path pathu true false CHECK-RC 0 T=
    s" load-package: ordinary inherits package" T-LABEL path pathu false false CHECK-RC 0 T=
    s" load-package: all-errors inherits package" T-LABEL path pathu false true CHECK-RC 0 T= ;
+
+\ A part opens only in the buffer its package is open in (packages.f
+\ PKG-PART-GUARD), so a file required inside package A opens no part of A.
+: LOAD-PART ( -- )
+   s" order-part.f" AT$ {: path:ptr pathu:n :}
+   s" load-part: native refuses a package opened in another file" T-LABEL path pathu NATIVE-RC 75 T=
+   s" load-part: verify-only refuses it" T-LABEL path pathu true false CHECK-RC 70 T=
+   s" load-part: ordinary refuses it" T-LABEL path pathu false false CHECK-RC 70 T=
+   s" load-part: all-errors refuses it" T-LABEL path pathu false true CHECK-RC 70 T=
+   s\" package CVT-PART-A\nrequire order-part-dep.f\n;package\n" s" order-part.f" GUARD-MS CHECK-AS
+   1 s" load-part: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   s" load-part: in the required file" T-LABEL p s" file" STRING$ s" order-part-dep.f" AT$ T$=
+   s" load-part: at its package" T-LABEL p s" token" STRING$ s" package" T$=
+   s" load-part: on line 1" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" load-part: column 1" T-LABEL p s" column" NUMBER$ s" 1" T$=
+   s" load-part: E-PKG-CONTEXT" T-LABEL p s" throw_code" NUMBER$ s" 7136" T$= ;
+
+\ A part's path too long for a package row: the load exits 75, and the check
+\ stops at the name with E-PKG-CONTEXT (7136), not the name's own bound (7154).
+: PART-LONG ( -- )
+   s" part-long.f" AT$ {: path:ptr pathu:n :}
+   s" part-long: native refuses the path" T-LABEL path pathu NATIVE-RC 75 T=
+   s" part-long: verify-only refuses it" T-LABEL path pathu true false CHECK-RC 70 T=
+   s" part-long: ordinary refuses it" T-LABEL path pathu false false CHECK-RC 70 T=
+   s" part-long: all-errors refuses it" T-LABEL path pathu false true CHECK-RC 70 T=
+   PART-LONG$SRC s" part-long.f" GUARD-MS CHECK-AS
+   1 s" part-long: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   s" part-long: on line 2" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" part-long: at the name" T-LABEL p s" column" NUMBER$ s" 9" T$=
+   s" part-long: E-PKG-CONTEXT" T-LABEL p s" throw_code" NUMBER$ s" 7136" T$= ;
 
 : LOAD-USING-FLOOR ( -- )
    s" order-floor-include.f" AT$ {: path:ptr pathu:n :}
@@ -1857,12 +1910,8 @@ $180000 constant LARGE-STDIN-LEN
    name nameu T-LABEL p s" line" NUMBER$ line lineu T$=
    name nameu T-LABEL p s" column" NUMBER$ col colu T$= ;
 
-\ Each definer the scan reads, and `package` of a package the checker lists as
-\ sealed; the command line exits 70 for the refusal. A duplicate there is
-\ refused as a duplicate by each definer whose scan asks the seal after its
-\ own duplicate test. A retirement in a sealed package loads, and so does a
-\ definition into a package the source leaves open, qualified or after
-\ reopening it.
+\ Where a sealed engine's load stops (SEAL-STOP; check.f exits 70) and what loads:
+\ a retirement, an open package, a part named like a sealed one (its EXPORT publishes nothing).
 : SEALED ( -- )
    s\" require src/compiler/ir/id.f\n: IR-ID:CVT-SZ ( -- n ) 1 ;\n"
    s" sealed-colon.f" s" IR-ID:CVT-SZ" s" 2" s" 3" SEALED-AT
@@ -1918,7 +1967,11 @@ $180000 constant LARGE-STDIN-LEN
    s\" require src/compiler/ir/id.f\nundefine IR-ID:SPAN-LOCAL\n"
    s" sealed-undefine.f" UNSEALED
    s\" package CVT-SO\npublic\n: A ( -- n ) 1 ;\n;package\n: CVT-SO:B ( -- n ) 2 ;\npackage CVT-SO\n: C ( -- n ) 3 ;\n;package\n"
-   s" sealed-open.f" UNSEALED ;
+   s" sealed-open.f" UNSEALED
+   s\" package CVT-SP\npackage MATCH public : X ( -- n ) 1 ; ;package\n: MATCH:CVT-SPQ ( -- n ) 2 ;\n: CVT-SPU ( -- n ) MATCH:X MATCH:CVT-SPQ + ;\n;package\n"
+   s" sealed-part.f" UNSEALED
+   s\" package CVT-SX\npackage MATCH public : X ( -- n ) 1 ; ;package\nEXPORT MATCH:X\n;package\nCVT-SX:X drop\n" TOP-CHECK
+   s" sealed-part-export" s" CVT-SX:X" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" REFUSED-AT ;
 
 
 \ Return-stack keywords have checker axioms for compiled bodies but no
@@ -2030,15 +2083,17 @@ $180000 constant LARGE-STDIN-LEN
    s" top-keyword" s" if" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT ;
 
 
-\ Loaded: E-UNDEFINED for each, exit 70. A body refuses the malformed name, two
-\ qualifiers, as E-BAD-QUALIFIED, and the top level as E-BAD-QUALIFIED-TOP-LEVEL.
+\ The load refuses each (E-UNDEFINED, exit 70), a body a malformed name as
+\ E-BAD-QUALIFIED; a part is no top-level package once its package closes.
 : TOP-QUALIFIED ( -- )
    s\" CVT-A:B:C drop\n" TOP-CHECK
    s" top-qualified: malformed" s" CVT-A:B:C" s" E-BAD-QUALIFIED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT
    s\" CVT-NOPKG:CVT-W drop\n" TOP-CHECK
    s" top-qualified: no such package" s" CVT-NOPKG:CVT-W" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 1" REFUSED-AT
    s\" package CVT-QP public : CVT-QW ( -- n ) 1 ; ;package\nCVT-QP:CVT-NOSUCH drop\n" TOP-CHECK
-   s" top-qualified: no such public" s" CVT-QP:CVT-NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 1" REFUSED-AT ;
+   s" top-qualified: no such public" s" CVT-QP:CVT-NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 1" REFUSED-AT
+   s\" package CVT-QA package CVT-QB public : CVT-QW ( -- n ) 1 ; ;package ;package\nCVT-QB:CVT-QW drop\n" TOP-CHECK
+   s" top-qualified: a part's public after its package closes" s" CVT-QB:CVT-QW" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 1" REFUSED-AT ;
 
 
 \ The tokens a word that parses its own input reads cannot be known without
@@ -4913,6 +4968,8 @@ public
    s" load-order" [: LOAD-ORDER ;] RUN-CASE
    s" load-context" [: LOAD-CONTEXT ;] RUN-CASE
    s" load-package" [: LOAD-PACKAGE ;] RUN-CASE
+   s" load-part" [: LOAD-PART ;] RUN-CASE
+   s" part-long" [: PART-LONG ;] RUN-CASE
    s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
    s" load-parsing" [: LOAD-PARSING ;] RUN-CASE

@@ -1262,22 +1262,14 @@ variable CHK-EXP-ROWS
    CHK-DECL-FAIL
    nxt ;
 
-\ Package blocks mirror verify-source's RECORD-PACKAGE/-PUBLIC/-PRIVATE/-END-PACKAGE at the
-\ checker level, so the registrations above land in the declaring package under the live
-\ visibility mode (src/core/checker.f CHECKER-PACKAGE-MODE) and qualified pkg:tail uses resolve
-\ public-only. The CHECKER-SCOPE frame around the nominal pass saves and restores package
-\ state. The name is the token parse-name takes after `package`, and CHK-DEFINER? refuses a
-\ missing one; other loader misuse (a part where the engine refuses one, public outside a
-\ package) stays fail-closed through preverify and the child run. A package the checker
-\ refuses to open, such as a name with a colon, which it would read as a part's path, or
-\ one longer than its 255-byte row, stops the file's scan there, where the preverify stops
-\ at the same statement (E-STATEMENT-THROW).
+\ Package blocks replay verify-source RECORD-PACKAGE in the checker, which hears a part's
+\ composed path (CHECKER-RESOLVE:PART-PATH); a refusal stops the scan where the preverify does.
 variable CHK-PKG-NAME-I
 
+\ CHECKER-RESOLVE:PART-GUARD says which parts this pass refuses; the preverify refuses the rest.
 : CHK-PKG-OPEN ( -- )
-   CHK-PKG-NAME-I @ LINT-LEX:TOKEN {: a:ptr u:n :}
-   a u $3A COUNT-CHAR 0 <> IF E-PKG-CONTEXT throw THEN
-   a u CHECKER-PACKAGE ;
+   CHECKER-RESOLVE:PART-GUARD
+   CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-RESOLVE:PART-PATH CHECKER-PACKAGE ;
 
 : CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
    k 1+ CHK-PKG-NAME-I !

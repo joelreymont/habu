@@ -35,6 +35,12 @@ public
    u SRC-U !
    [: ACT ;] catch ;
 
+\ Replay in a neutral scope, which starts at top level with no imports.
+: REPLAY-NEUTRAL ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a SRC-A !
+   u SRC-U !
+   CHECKER-SCOPE-START-NEUTRAL [: ACT ;] catch CHECKER-SCOPE-DONE ;
+
 \ Diagnostics are collected, not printed, so the rejecting case reports its own
 \ text instead of leaving a rejection on the gate's stderr.
 : REPLAY-QUIET ( ptr u8 n -- n ) {: a:ptr u:n :}
@@ -102,6 +108,20 @@ s" top level: first replay certifies" T-LABEL
 s" : CVPS-T1 ( n -- n ) ;" CVPS:REPLAY 0 T=
 s" top level: second replay certifies" T-LABEL
 s" : CVPS-T2 ( n -- n ) ;" CVPS:REPLAY 0 T=
+
+\ ---- parts ------------------------------------------------------------------
+\ `package B` inside A opens the part A:B, and its `;package` returns to A's
+\ private section, so a word defined after it is A's private one.
+s" package CVPS-PA package CVPS-PB ;package : CVPS-PP ( -- n ) 1 ; ;package : CVPS-PQ ( -- n ) CVPS-PP ;"
+CVPS:REPLAY-QUIET drop
+s" a part's ;package: the package's private word is undefined after it closes" T-LABEL
+CVPS:DIAG$ s" 'CVPS-PP'" CONTAINS? TTRUE
+
+\ A replay reopening a part the engine holds binds the part's words.
+package CVPS-HOST package CVPS-PART public : CVPS-PW ( -- n ) 42 ; ;package ;package
+s" a neutral replay reopening an engine-held part binds its words" T-LABEL
+s" package CVPS-HOST package CVPS-PART : CVPS-X2 ( -- n ) CVPS-PW ; ;package ;package"
+CVPS:REPLAY-NEUTRAL 0 T=
 
 \ ---- the two scope questions a name query can ask --------------------------
 \ CHECKER-DEFINED-HERE? asks whether a name is defined in the scope a new

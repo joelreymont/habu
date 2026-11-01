@@ -11689,6 +11689,9 @@ PPRIM: CHECKER-RESOLVE REFUSES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
 \ The head resolver the Habu loop and the native compiler call (HEAD-ROW); it
 \ reads the dictionary and writes only its own key buffer, HEAD-KEY.
 PPRIM: CHECKER-RESOLVE HEAD-ROW PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-N PE-OUT PPRIM;
+\ What `package` opens; PART-PATH writes only its own key buffer, PATH-KEY.
+PPRIM: CHECKER-RESOLVE PART-GUARD PPRIM;
+PPRIM: CHECKER-RESOLVE PART-PATH PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PRIM: E-USING-AMBIGUOUS  PE-N PE-OUT PRIM;
 PRIM: E-PKG-CONTEXT      PE-N PE-OUT PRIM;
 PRIM: EFFECT-DIN-N       PE-N PE-OUT PRIM;
@@ -12217,6 +12220,9 @@ variable MARK                              \ NDICT when it opened: later records
 variable PREFIX                            \ FIRST-RECORD-XT: earlier records the builder made
 variable OPENER                            \ the tag of the scope that opened it
 variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it opened
+\ Nonzero while the open package was opened outside the source being replayed,
+\ as layout.f PKG-OUTSIDE-CELL is for the buffer being read (PART-ROOM?).
+variable OUTSIDE
 -2 constant RETIRED                        \ = layout.f DICT-WL:RETIRED
 $4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
 -1 constant NAMESPACE                      \ = layout.f DICT-WL:NAMESPACE
@@ -12261,7 +12267,8 @@ variable HIDDEN-N
 6 constant S-TAG                           \ the scope that pushed the row
 7 constant S-ENCLOSING                     \ the enclosing package's row index, -1 for none
 8 constant S-ENCLOSING-PARENT
-9 constant S-WIDS                          \ the used publics, CK-USE-MAX cells
+9 constant S-OUTSIDE
+10 constant S-WIDS                         \ the used publics, CK-USE-MAX cells
 S-WIDS CK-USE-MAX + constant ROW-CELLS
 \ The snapshot rows, newest last (SNAP-PUSH). Scopes nest as deep as memory
 \ holds (RBF-GROW), so the rows are a growing mapping, given back by CLOSE.
@@ -12323,6 +12330,7 @@ variable SNAP-N
    CK-USE-DEPTH-OFF DATA@ p S-DEPTH ROW!
    CK-USE-FLOOR-OFF DATA@ p S-FLOOR ROW!
    CHECKER-USE:SOURCE-FLOOR @ p S-SOURCE ROW!
+   OUTSIDE @ p S-OUTSIDE ROW!
    CK-USE-MAX 0 ?DO i cells CK-USE-WIDS-OFF + DATA@ p S-WIDS i + ROW! LOOP ;
 
 \ A part opens only inside its enclosing package, so that package opens first.
@@ -12335,6 +12343,7 @@ variable SNAP-N
    p S-DEPTH ROW@ CK-USE-DEPTH-OFF DATA!
    p S-FLOOR ROW@ CK-USE-FLOOR-OFF DATA!
    p S-SOURCE ROW@ CHECKER-USE:SOURCE-FLOOR !
+   p S-OUTSIDE ROW@ OUTSIDE !
    CK-USE-MAX 0 ?DO p S-WIDS i + ROW@ i cells CK-USE-WIDS-OFF + DATA! LOOP ;
 
 : SNAP-PUSH ( n -- ) {: tag:n :}
@@ -12400,7 +12409,7 @@ variable SNAP-N
    PAIRS-P PAIRS-CAP 2 ARENA-ROWS-RELEASE
    SNAPS-P SNAPS-CAP ROW-CELLS ARENA-ROWS-RELEASE
    FLOOR0 @ CHECKER-USE:SOURCE-FLOOR !
-   0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N ! ;
+   0 FLOOR0 !  0 OPENER !  0 MARK !  0 PREFIX !  0 ON !  0 SNAP-N !  0 OUTSIDE ! ;
 
 \ The wordlist a checker symbol's definition lands in, as a compile of it puts
 \ it: the global one, or its package's public or private one.
@@ -12494,10 +12503,11 @@ variable SNAP-N
 
 public
 
-\ The scope tagged TAG opens: the overlay when none is open, else a snapshot
-\ row. A neutral scope then starts at top level with no imports.
+\ A scope reads a buffer of its own, so a package open as it starts was opened
+\ OUTSIDE it.
 : OPEN-SCOPE ( bool n -- ) {: neutral:bool tag:n :}
    ON @ 0= IF tag OPEN ELSE tag SNAP-PUSH THEN
+   1 OUTSIDE !
    neutral IF CLEAR CHECKER-RESYNC:MIRROR THEN ;
 
 \ The scope tagged TAG closes: the overlay when it opened it, its snapshot row
@@ -12549,18 +12559,25 @@ public
       0 0 HIDDEN HIDDEN-N @ PAIR!
    REPEAT ;
 
-\ The scope a composed file keeps (CHECKER-VERIFY-FILE): a row of SCOPE-BYTES.
-\ A file that returns keeps no import it opened, as the engine's evaluator
-\ drops one when an included buffer ends, and its includer's source floor
-\ comes back (FILE-DONE); a file that throws puts the whole scope back.
+\ A composed file's scope (CHECKER-VERIFY-FILE) starts as an engine buffer does,
+\ and FILE-DONE ends a clean return as interpret.f CLEAN-END ends one.
 ROW-CELLS cells constant SCOPE-BYTES
-: SAVE-SCOPE ( ptr u8 -- ) SNAP-SAVE ;
+: SAVE-SCOPE ( ptr u8 -- ) SNAP-SAVE  1 OUTSIDE ! ;
 : RESTORE-SCOPE ( ptr u8 -- ) SNAP-RESTORE CHECKER-RESYNC:MIRROR ;
 : FILE-DONE ( ptr u8 -- ) {: p:ptr :}
    CK-USE-DEPTH-OFF DATA@ CHECKER-USE:SOURCE-FLOOR @ min {: d:n :}
    d CK-USE-DEPTH-OFF DATA!
    CK-USE-FLOOR-OFF DATA@ d min CK-USE-FLOOR-OFF DATA!
-   p S-SOURCE ROW@ CHECKER-USE:SOURCE-FLOOR ! ;
+   p S-SOURCE ROW@ CHECKER-USE:SOURCE-FLOOR !
+   OUTSIDE @ 0 <> IF p S-OUTSIDE ROW@ OUTSIDE ! THEN ;
+
+\ Whether `package` may open here: twin of packages.f PKG-PART-GUARD, with no
+\ package open admitted.
+: PART-ROOM? ( -- bool )
+   CK-PKG-PUB-OFF DATA@ 0= IF RES-TRUE EXIT THEN
+   OUTSIDE @ 0=  CK-ENCLOSING-PUB-OFF DATA@ 0=  and
+   get-current CK-PKG-PRI-OFF DATA@ =  and
+   CK-USE-DEPTH-OFF DATA@ CK-USE-FLOOR-OFF DATA@ =  and ;
 
 \ Publish the definition the checker just recorded as a codeless record, so the
 \ replay's later bodies bind it where the compiler would; the publication hook
@@ -12650,25 +12667,19 @@ ROW-CELLS cells constant SCOPE-BYTES
    a u get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF EXIT THEN
    ca cu get-current CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF DUPLICATE throw THEN ;
 
-\ `package NAME`, as the engine opens it (src/habu/packages.f PKG-PACKAGE): the
-\ row, made when new, and its private wordlist when it has none (GRANT); the
-\ using depth it opens at, which `;package` restores; the private wordlist
-\ current. A path `A:B` opens B as a part of the open package, whose current
-\ wordlist is its parent, and is refused with no package or a part open. Any
-\ other `package` replayed inside an open package replaces it and keeps its
-\ parent, as the checker's record of the scope does.
+\ `package NAME` as packages.f PKG-PACKAGE opens it. Inside an open package NAME
+\ is a part's path (CHECKER-RESOLVE:PART-PATH), refused elsewhere or in a part.
 : OPEN-PACKAGE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-COLON-SCAN drop 0 <> {: part:bool :}
-   CK-PKG-PUB-OFF DATA@ 0 <> {: open:bool :}
-   part IF
-      open 0=  CK-ENCLOSING-REC-OFF DATA@ 0 <>  or IF E-PKG-CONTEXT throw THEN
+   part  CK-PKG-PUB-OFF DATA@ 0 <>  xor  CK-ENCLOSING-REC-OFF DATA@ 0 <>  or IF
+      E-PKG-CONTEXT throw
    THEN
    a u NS-ENSURE {: rec:ptr :}
    rec CELL + @ 0= IF rec GRANT THEN
-   open part 0= and IF CK-PKG-PARENT-OFF DATA@ ELSE get-current THEN {: parent:n :}
    CK-USE-DEPTH-OFF DATA@ CK-USE-FLOOR-OFF DATA!
-   rec REC>IX parent package-scope!
-   rec CELL + @ set-current ;
+   rec REC>IX get-current package-scope!
+   rec CELL + @ set-current
+   0 OUTSIDE ! ;
 
 \ `public` or `private`: OFF is the open package's cell for that wordlist. With
 \ no package open it changes nothing, as the checker's record of the scope.
@@ -12715,6 +12726,41 @@ ROW-CELLS cells constant SCOPE-BYTES
    a u TARGET 0= IF 2drop drop EXIT THEN
    {: ta:ptr tu:n wid:n :}
    BEGIN ta tu wid RETIRE1 0= UNTIL ;
+;package
+
+\ What a replayed `package` opens, in packages.f PKG-PACKAGE's order: PART-GUARD
+\ at `package`, PART-PATH at the name. It holds no buffer or using state, so it
+\ refuses a part only in a public section or inside a part.
+package CHECKER-RESOLVE
+CHECKER-REG:SCRATCH{
+create PATH-KEY CHECKER-PACKAGE-CAP allot
+CHECKER-REG:}SCRATCH
+public
+: PART-GUARD ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF
+      CHECKER-OVERLAY:PART-ROOM? 0= IF E-PKG-CONTEXT throw THEN EXIT
+   THEN
+   CHECKER-PACKAGE-ACTIVE? 0= IF EXIT THEN
+   CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PUBLIC =
+   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-COLON-SCAN drop 0 <>  or IF
+      E-PKG-CONTEXT throw
+   THEN ;
+
+\ NAME, or `A:NAME` in package A (A's row in the window, else the mirror), refused
+\ as habu2.f C-PACKAGE refuses it, a path too long for a row by its length alone.
+: PART-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF TOP-NAME$ ELSE CHECKER-PKG-MIRROR drop THEN
+   {: pa:ptr pu:n :}
+   pu 0 <>  u CHECKER-PACKAGE-CAP pu 1 + - < 0=  and IF E-PKG-CONTEXT throw THEN
+   \ Past CK-NAME-MAX the length is refused; the engine names the colon first.
+   a u CK-NAME-SPAN? 0= IF E-PACKAGE-NAME-CAP throw THEN
+   a u CHECKER-COLON-SCAN drop 0 <> IF E-PKG-CONTEXT throw THEN
+   pu 0= IF a u EXIT THEN
+   pu 1 + u + {: ku:n :}
+   pa PATH-KEY pu ARENA-COPY
+   $3A PATH-KEY pu + c!
+   a PATH-KEY pu 1 + + u ARENA-COPY
+   PATH-KEY ku ;
 ;package
 
 \ --- the package and using words ---------------------------------------------

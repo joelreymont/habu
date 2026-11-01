@@ -3,7 +3,8 @@
 \ replays, the engine's dictionary carries an overlay; when it ends, clean or
 \ thrown, the dictionary count, data pointer, current wordlist, wordlist
 \ counter, open package and using depth read as before. Rows run in the
-\ candidate scope and in the package-neutral scope tools/check.f preverifies in.
+\ candidate scope, which opens where its caller stands, and in the
+\ package-neutral scope tools/check.f preverifies in.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -390,7 +391,9 @@ variable STRAYED       \ inner closes that did not come back to the top level
    s" a replay's second definition of a word the engine holds is refused" T-LABEL
    S\" : RB-WARM ( n -- n ) 1 + ;\n: RB-WARM ( n -- n ) 2 + ;\n" 78 REPLAY
    s" and its one definition of that word certifies" T-LABEL
-   S\" : RB-WARM ( n -- n ) 1 + ;\n" 0 REPLAY
+   S\" : RB-WARM ( n -- n ) 1 + ;\n" 0 REPLAY ;
+
+: WARM-DEFINER-CASE ( -- )
    s" a replayed definer the engine holds has its clause" T-LABEL
    S\" package RB-WD\npublic\n: RB-WMK ( n -- ) create , does> ( -- n ) @ ;\n: RB-WMK;does ( -- n ) 1 ;\n;package\n"
       78 REPLAY
@@ -459,6 +462,12 @@ variable STRAYED       \ inner closes that did not come back to the top level
    s" RBX1 ( n -- n ) RB-XD:RB-XI" VERIFY:CANDIDATE-IN-SCOPE -1 T=
    s" RBX2 ( -- n ) RB-XD:RB-XI" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    s" RBX3 ( n -- n ) RB-XQ:RB-XI" VERIFY:CANDIDATE-IN-SCOPE 1 T= ;
+
+\ A replay begun inside this package refuses a `package` its text opens, as the
+\ live load does (test/outer-interpret.f PACKAGE-PART-BUFFER, rc 75).
+: PKG-CONTEXT-CASE ( -- )
+   s" a replay begun inside a package refuses a package it opens" T-LABEL
+   S\" package RB-IN\npublic\n: RB-IN-W ( -- n ) 1 ;\n;package\n" E-PKG-CONTEXT REPLAY ;
 
 \ The overlay hides and changes nothing the engine held before it opened.
 : PRIOR-CASE ( -- )
@@ -608,8 +617,8 @@ variable ERR-U
 
 : RUN ( -- )
    0 NEUTRAL !
-   CASES
    WARM-CASE
+   PKG-CONTEXT-CASE
    -1 NEUTRAL !
    CASES
    PRIMITIVE-CASE
@@ -628,14 +637,20 @@ RUN
 
 public
 
-\ REPLAY in the candidate scope, which opens where its caller stands: called
-\ after `;package`, at top level in the global wordlist, where RUN's candidate
-\ rows stand in this package's private section.
+\ Candidate rows whose texts open a package, run from top level, where the
+\ candidate scope opens in the global wordlist and admits a `package`.
+: TOP-CASES ( -- )
+   0 NEUTRAL !
+   CASES
+   WARM-DEFINER-CASE ;
+
 : TOP-REPLAY ( ptr u8 n n -- )
    0 NEUTRAL !
    REPLAY ;
 
 ;package
+
+REPLAY-BINDING-TEST:TOP-CASES
 
 package RB-RAW
 

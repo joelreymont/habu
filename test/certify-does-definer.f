@@ -99,19 +99,15 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 1 constant UNRESOLVED
 2 constant DEFERRED            \ a mark leaves the name to the run
 
-\ The engine publishes a does> definer's clause row at creation
-\ (src/habu/habu2.f DOESPATCH:EMIT); the pre-verifier, which runs no definer,
-\ learns it from the text.
-\ Two authorities, asked apart. A row the scanner learned is a fact of the
-\ certify path: the scan compiles nothing, so the word it names binds through
-\ the checker overlay only while the package-neutral scope holding the scan and
-\ its probes is open (the run at the end), and the probe asks that path there
-\ (CDD-VERDICT). A word the engine
-\ created - sections 4 and 8's live rows - is asked as compiled code asks, by
-\ the engine's own lookup (CDD-LIVE-VERDICT).
+\ The engine publishes a does> definer's clause row at creation (habu2.f
+\ DOESPATCH:EMIT); the pre-verifier, which runs no definer, reads it from text.
+
+\ A scanned word binds through the checker overlay only while the neutral scope
+\ holding its scan is open, so its probes ask the certify path inside it.
 : CDD-VERDICT ( ptr u8 n -- n )
    VERIFY:CANDIDATE-IN-SCOPE ;
 
+\ A word the engine created (sections 4 and 8) is asked by the engine's lookup.
 : CDD-LIVE-VERDICT ( ptr u8 n -- n )
    CHECK-QUIET-CANDIDATE! ;
 
@@ -139,6 +135,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 \ production shape of the wrapper: a body whose tokens hold exactly one definer
 \ call and no control flow creates whatever that definer creates.
 : CDD-SECTION-WRAPPER ( -- )
+   CHECKER-SCOPE-START-NEUTRAL
    s\" package CDDP\npublic\n: CDD-PD ( n n n -- ) create , , , does> ( -- ptr n ) ;\n: CDD-PW ( n -- ) 3 4 CDD-PD ;\n;package\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s\" 8 CDDP:CDD-PD CDD-QUAL\n9 CDDP:CDD-PW CDD-WRAP\n"
@@ -152,7 +149,8 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s" a bare wrapper call under `using` records the same row" T-LABEL
    s" C8 ( -- ptr n ) CDD-BARE" CDD-VERDICT ACCEPTED T=
    s" the wrapper's created word is refused against a bare cell" T-LABEL
-   s" C9 ( -- n ) CDD-WRAP" CDD-VERDICT REFUSED T= ;
+   s" C9 ( -- n ) CDD-WRAP" CDD-VERDICT REFUSED T=
+   CHECKER-SCOPE-DONE ;
 
 \ Section 3: what a body has to be before it counts as a wrapper. A definer call
 \ reached only conditionally, twice or inside a quotation says nothing about
@@ -371,6 +369,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 \ 2's wrapper does. The row may sit before or after `public`: either way the
 \ private definer is the only CDD-GD* defined when the row is read.
 : CDD-SECTION-GENERATES ( -- )
+   CHECKER-SCOPE-START-NEUTRAL
    s\" package CDD-GQ1\n: CDD-GD1 ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GD1 ( -- ptr n )\npublic\n: CDD-GD1 ( n -- ) CDD-GD1 ;\n;package\n5 CDD-GQ1:CDD-GD1 CDD-GD1-ONE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a generated word certifies as its row's effect" T-LABEL
@@ -385,7 +384,8 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    s\" 5 CDD-GQ4:CDD-GD4 CDD-GD4-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" a resident row reaches a source that only calls its wrapper" T-LABEL
    s" C49 ( -- ptr n ) CDD-GD4-MADE" CDD-VERDICT ACCEPTED T=
-   s" C50 ( -- n ) CDD-GD4-MADE" CDD-VERDICT REFUSED T= ;
+   s" C50 ( -- n ) CDD-GD4-MADE" CDD-VERDICT REFUSED T=
+   CHECKER-SCOPE-DONE ;
 
 \ The resident definer run for real: CDD-GD4-LIVE is the word the evaluated text
 \ defines, checked against the effect that text declares, so the row is pinned
@@ -414,20 +414,8 @@ FUNCTION: CDD-FN getpid ( -- i32 ) ;FUNCTION
    s" C55 ( -- n ) CDD-FN-READ" CDD-VERDICT ACCEPTED T=
    s" C56 ( -- ptr n ) CDD-FN-READ" CDD-VERDICT REFUSED T= ;
 
-\ Section 11: a row lives as long as the scope that recorded it. A row names its
-\ definer by the checker's symbol id, and a popped scope hands its ids out
-\ again: a row that outlived its scope would make the next word given that id a
-\ definer (the stale pair), and a source read in two scopes would meet its own
-\ row in the second (the replay pair). Both pairs read in neutral scopes, as
-\ tools/check.f reads a source. A scope that finalizes keeps its ids and rows,
-\ and a sibling scope popping afterwards must not take them back; those three
-\ reads run in one neutral scope reopening this package, since a scan's names
-\ bind through the checker overlay and the kept scope's definer binds only while
-\ that scope is open. Each read answers its throw code; the stale pair's
-\ E-UNDEFINED line on stderr is the refusal being measured. The run takes this
-\ section before section 9, whose reads in this file's scope are statements
-\ whose mark on the global wordlist would leave the stale pair's unresolved name
-\ to a run instead of refusing it (src/core/checker.f UNSEEN-COVERS?).
+\ Section 11: a row lives as long as its scope. A popped scope hands its symbol
+\ ids out again, so a row outliving it would make that id's next word a definer.
 TYPED-VARIABLE CDD-SRC-A ptr u8
 variable CDD-SRC-U
 
@@ -467,6 +455,7 @@ variable CDD-SRC-U
 : CDD-REPLAY$ ( -- ptr u8 n )
    s\" : CDD-SG ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-SG ( -- ptr n )\n5 CDD-SG CDD-SGM\n: CDD-SGU ( -- ptr n ) CDD-SGM ;\n" ;
 
+\ The stale pair's E-UNDEFINED line on stderr is the refusal being measured.
 : CDD-SECTION-SCOPES ( -- )
    s" a source read in two scopes takes its row once in each" T-LABEL
    CDD-REPLAY$ CDD-SCOPED 0 T=
@@ -595,15 +584,14 @@ CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
    DIAG-BUFFER-OFF
    VERIFY:CENSUS 1 T= drop ;
 
-\ Each scan and the probes that ask about it run in one package-neutral scope,
-\ which reopens this package because the scan texts name its private words;
-\ closing the scope drops what the scan published and puts this file's own
-\ scope back. The sections that define live words run outside one: an open
-\ scope refuses a definition (ENGINE-ERROR:OVERLAY-OPEN).
+\ Each scan runs with its probes in one neutral scope; sections 2 and 9 open
+\ theirs outside this package, as a scan begun inside one refuses `package`.
 T-RESET
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-DEFINER ;package CHECKER-SCOPE-DONE
-CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-WRAPPER ;package CHECKER-SCOPE-DONE
+CDD-SECTION-WRAPPER
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-LATCH ;package CHECKER-SCOPE-DONE
+\ A section that defines live words runs outside a scope, which refuses a
+\ definition (ENGINE-ERROR:OVERLAY-OPEN).
 CDD-SECTION-LATCH-LIVE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-LATCH-AFTER ;package CHECKER-SCOPE-DONE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-WRAP-LATCH ;package CHECKER-SCOPE-DONE
@@ -614,9 +602,11 @@ CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-TRUSTED-ABO
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-NOT-A-WRAPPER ;package CHECKER-SCOPE-DONE
 CDD-SECTION-LIVE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-RESIDENT ;package CHECKER-SCOPE-DONE
+\ Section 11 runs before section 9, whose statements mark the global wordlist
+\ and would leave the stale pair's name to a run (checker.f UNSEEN-COVERS?).
 CDD-SECTION-SCOPES
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-KEPT ;package CHECKER-SCOPE-DONE
-CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-GENERATES ;package CHECKER-SCOPE-DONE
+CDD-SECTION-GENERATES
 CDD-SECTION-GENERATES-LIVE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-FUNCTION ;package CHECKER-SCOPE-DONE
 CDD-SECTION-GENERATES-REFUSED
