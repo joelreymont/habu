@@ -603,6 +603,11 @@ variable EXIT-HOOK-N
    E-SOCKET throw ;
 
 
+: DROP-LISTENER ( -- )
+   LISTENER@ TCP4:CLOSE-LISTENER DROP-STATUS
+   0 LISTENER-CELL ! ;
+
+
 : BIND-LISTENER ( n n -- ) {: address:n port:n :}
    address TCP4:ADDRESS port TCP4:PORT TCP4:BIND
    MATCH TCP4:bind-result
@@ -612,12 +617,15 @@ variable EXIT-HOOK-N
    LISTENER@ BACKLOG TCP4:LISTEN
    MATCH TCP4:status
       ok OF ENDOF
-      failed OF address port s" listen on" REPORT-UNBOUND ENDOF
+      failed OF DROP-LISTENER address port s" listen on" REPORT-UNBOUND ENDOF
    ;MATCH
    LISTENER@ TCP4:LOCAL
    MATCH TCP4:endpoint-result
       endpoint OF TCP4:PORT>N BOUND-PORT ! TCP4:ADDRESS>N BOUND-ADDRESS ! ENDOF
-      failed OF address port s" reading the bound address of" REPORT-UNBOUND ENDOF
+      failed OF
+         DROP-LISTENER
+         address port s" reading the bound address of" REPORT-UNBOUND
+      ENDOF
    ;MATCH ;
 
 
@@ -700,10 +708,6 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    WORKER-COUNT @ ARENA-OPEN
    JOBS QUEUE:INIT
    0 START-READY TASK:SEMAPHORE-INIT ;
-
-
-: DROP-LISTENER ( -- )
-   LISTENER@ TCP4:CLOSE-LISTENER DROP-STATUS ;
 
 
 : RELEASE-RESOURCES ( -- )
