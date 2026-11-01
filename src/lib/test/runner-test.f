@@ -293,6 +293,7 @@ variable GTT-OFI
    PROC-ARGV-RESET
    s" progress-ok" >LEN PROC-ARGV+
    s" /bin/echo" GTT-CMD-TIMEOUT-MS GTT-ARGV-CAPTURE-BEGIN
+   s" progress capture" GT-PROGRESS-RUN
    s" progress capture" GT-PROGRESS-CAPTURE
    PROC-CLOSE-CAPTURE-FDS ;
 
@@ -300,6 +301,7 @@ variable GTT-OFI
    PROC-ARGV-RESET
    GTT-FAIL$ >LEN PROC-ARGV+
    s" bin/hb" GTT-HB-TIMEOUT-MS GTT-ARGV-CAPTURE-BEGIN
+   s" progress capture flush" GT-PROGRESS-RUN
    s" progress capture flush" GT-PROGRESS-CAPTURE-FLUSH
    PROC-CLOSE-CAPTURE-FDS ;
 
@@ -360,6 +362,7 @@ GTT-SIGNAL-QUIET-S 1+ 1000 * constant GTT-SIGNAL-CHILD-MS
 : GTT-PROGRESS-STDIN-CAT ( -- )
    PROC-ARGV-RESET
    s" /bin/cat" GTT-CMD-TIMEOUT-MS GTT-ARGV-STDIN-CAPTURE-BEGIN
+   s" progress stdin" GT-PROGRESS-RUN
    s" stdin-ok" >LEN s" progress stdin" GT-PROGRESS-STDIN-CAPTURE
    PROC-CLOSE-STDIN-FDS
    PROC-CLOSE-CAPTURE-FDS ;
