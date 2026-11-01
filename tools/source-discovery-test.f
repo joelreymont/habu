@@ -623,7 +623,20 @@ $7F0 constant SDT-OVER
    s" row-qualified.f"
    s" package SDT-Q : W ( -- ) ; ;package package OTHER parses: SDT-Q:W 1 ;package"
    SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
-   S\" SDT-Q:W required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT ;
+   S\" SDT-Q:W required\nrequire sd-raw.f\n" s" sd-raw.f" SDT-ONE-EVENT
+   \ Inside SDT-P, `SDT-Q:W` names the W of part SDT-P:SDT-Q and runs its row.
+   DISCOVER:ROWS-RESET
+   s" row-part.f"
+   S\" package SDT-P package SDT-Q public : W ( -- ) parse-name 2drop ; parses: W 1 ;package\nSDT-Q:W required\nrequire sd-raw.f\n;package\n"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" sd-raw.f" SDT-ONE-LOAD
+   \ The part's W also counts against top-level SDT-Q's row, so the row selects
+   \ no word and the load after `SDT-Q:W` is found.
+   DISCOVER:ROWS-RESET
+   s" row-part-twin.f"
+   S\" package SDT-Q public : W ( -- ) parse-name 2drop ; parses: W 1 ;package\npackage SDT-P package SDT-Q public : W ( -- ) ; ;package\nSDT-Q:W require sd-raw.f\n;package\n"
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" sd-raw.f" SDT-ONE-LOAD ;
 
 \ A redeclaration or retirement makes a spelling insufficient to select the
 \ row's word. This holds whichever file was harvested first.

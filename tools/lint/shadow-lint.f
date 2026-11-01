@@ -88,7 +88,7 @@ variable SI
 \ it gets its own code in the same unclaimed gap.
 -4802 constant E-SHADOW-REGISTRY
 
-variable BAD  variable LI  variable IN-PACKAGE
+variable BAD  variable LI  variable PKG-DEPTH
 variable IN-DEFINITION
 
 \ Lexed token k equals word a/u, case-insensitively; comment tokens never match.
@@ -114,8 +114,8 @@ variable IN-DEFINITION
       BAD @ 1+ BAD !
    ELSE 2drop THEN ;
 
-\ package/;package toggle scope; the language rejects nesting, so one flag is
-\ enough. Only global-scope tokens reach the prim-shadow check.
+\ package/;package nest one level, a part inside its package, whose `;package`
+\ returns to the package. Only depth-0 tokens reach the prim-shadow check.
 : LINT-TOKEN ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
    IN-DEFINITION @ IF
       k s" ;" LEX-WORD= IF LINT-FALSE IN-DEFINITION ! THEN
@@ -124,9 +124,9 @@ variable IN-DEFINITION
    k s" :" LEX-WORD= k s" TRUSTED:" LEX-WORD= or IF
       LINT-TRUE IN-DEFINITION !
    THEN
-   k s" package" LEX-WORD= IF LINT-TRUE IN-PACKAGE ! exit THEN
-   k s" ;package" LEX-WORD= IF LINT-FALSE IN-PACKAGE ! exit THEN
-   IN-PACKAGE @ LINT-NOT IF pa pu k LINT-DEFINITION THEN ;
+   k s" package" LEX-WORD= IF PKG-DEPTH @ 1+ PKG-DEPTH ! exit THEN
+   k s" ;package" LEX-WORD= IF PKG-DEPTH @ 1- 0 max PKG-DEPTH ! exit THEN
+   PKG-DEPTH @ 0= IF pa pu k LINT-DEFINITION THEN ;
 
 \ Fail-closed: an unterminated string means the lexer consumed the rest of the
 \ file as string body, hiding later definitions. Name the file and throw the
@@ -155,7 +155,7 @@ variable IN-DEFINITION
 : LINT-SCAN ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    a u LINT-LEX:SOURCE
    LINT-LEX:ERROR? IF pa pu SL-LEX-FAIL THEN
-   LINT-FALSE IN-PACKAGE !  LINT-FALSE IN-DEFINITION !
+   0 PKG-DEPTH !  LINT-FALSE IN-DEFINITION !
    0 LI !
    begin LI @ LINT-LEX:COUNT < while
       pa pu LI @ LINT-TOKEN

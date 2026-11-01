@@ -29,6 +29,7 @@ $10000 constant CHUNK-BYTES
 1 constant PUBLIC-BIT
 2 constant EXPORT-BIT
 40 constant LPAREN
+58 constant COLON-BYTE
 92 constant BACKSLASH
 
 VEC:HEADER-CELLS TYPED-BUFFER RECS ptr u8     \ each record, in source order
@@ -41,6 +42,8 @@ TYPED-VARIABLE SRC ptr u8                     \ the text FILE reads
 variable SRC-U
 TYPED-VARIABLE PKG ptr u8                     \ the open package's name, in the text
 variable PKG-U                                \ 0 at top level
+TYPED-VARIABLE PART ptr u8                    \ the part open in PKG, in the text
+variable PART-U                               \ 0 outside a part
 variable PUB                                  \ the open section is public
 
 \ Record and chunk counts drive raw loops and COUNT, so a vector length or
@@ -173,6 +176,17 @@ CAST: ITEM>N ( NUM:item-count -- n )
 : FLAG? ( n n -- bool ) {: k:n bit:n :}
    k FLAGS-CELL FIELD@ bit and 0<> ;
 
+\ The open package's path, as the engine names its row: PKG, or PKG:PART.
+: PATH-U ( -- n )
+   PART-U @ 0= if PKG-U @ exit then
+   PKG-U @ 1+ PART-U @ + ;
+
+: PATH-COPY ( ptr u8 -- ) {: t:ptr :}
+   PKG @ t PKG-U @ BYTE-COPY
+   PART-U @ 0= if exit then
+   COLON-BYTE t PKG-U @ + c!
+   PART @ t PKG-U @ 1+ + PART-U @ BYTE-COPY ;
+
 : SECTION ( -- n )
    PUB @ if PUBLIC-BIT else 0 then ;
 
@@ -182,18 +196,19 @@ CAST: ITEM>N ( NUM:item-count -- n )
    k 0= if 0 else k 1- PAST then {: floor:n :}
    stop floor NOTES-START {: top:n :}
    top stop NOTES-LEN {: cu:n :}
-   PKG-U @ u + eu + cu + {: tu:n :}
+   PATH-U {: pu:n :}
+   pu u + eu + cu + {: tu:n :}
    HEAD-CELLS cells tu + TAKE {: r:ptr :}
-   PKG-U @ r CELL!
+   pu r CELL!
    u r CELL + CELL!
    eu r 2 cells + CELL!
    cu r 3 cells + CELL!
    flags r FLAGS-CELL cells + CELL!
    r HEAD-CELLS cells + {: t:ptr :}
-   PKG @ t PKG-U @ BYTE-COPY
-   a t PKG-U @ + u BYTE-COPY
-   e t PKG-U @ + u + eu BYTE-COPY
-   t PKG-U @ + u + eu + top stop NOTES-COPY
+   t PATH-COPY
+   a t pu + u BYTE-COPY
+   e t pu + u + eu BYTE-COPY
+   t pu + u + eu + top stop NOTES-COPY
    r 0 RECS VEC:PUSH drop ;
 
 : LEXED ( -- )
@@ -229,12 +244,15 @@ CAST: ITEM>N ( NUM:item-count -- n )
    k NAMED {: j:n :}
    k j LINT-LEX:TOKEN NO-TEXT SECTION EXPORT-BIT or ADD ;
 
+\ `package` inside a package opens a part of it; the part's `;package` returns
+\ to the package's private section.
 : OPEN-PKG ( n -- )
-   NAMED LINT-LEX:TOKEN PKG-U ! PKG !
+   NAMED LINT-LEX:TOKEN
+   PKG-U @ 0= if PKG-U ! PKG ! else PART-U ! PART ! then
    false PUB ! ;
 
 : CLOSE-PKG ( -- )
-   0 PKG-U !
+   PART-U @ 0= if 0 PKG-U ! else 0 PART-U ! then
    false PUB ! ;
 
 : STEP ( n -- ) {: k:n :}
@@ -254,13 +272,15 @@ public
 \ Appends one record per definition in source order: `: NAME`, and `EXPORT NAME`
 \ inside an open package (at top level EXPORT is a build directive). Other
 \ definers make no record. `package P` opens P, reopened or not, in its private
-\ section; `public` and `private` switch sections; `;package` closes it. A text
-\ the lexer refuses (LINT-LEX:ERROR?), or a `:`, `package` or EXPORT it ends
-\ before naming, throws E-SOURCE; the records read before it stay until RESET.
+\ section; `package B` inside P opens its part P:B; `public` and `private` switch
+\ sections; `;package` closes the part or P, a part's returning to P's private
+\ section. A text the lexer refuses (LINT-LEX:ERROR?), or a `:`, `package` or
+\ EXPORT it ends before naming, throws E-SOURCE; the records read before it
+\ stay until RESET.
 : FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    LIVE? 0= if INIT then
    a SRC !  u SRC-U !
-   a PKG !  CLOSE-PKG
+   a PKG !  0 PKG-U !  a PART !  0 PART-U !  false PUB !
    a u LINT-LEX:SOURCE LEXED
    0 begin dup LINT-LEX:COUNT < while dup STEP 1+ repeat drop ;
 
@@ -274,7 +294,7 @@ public
    0 ROOM !
    0 USED ! ;
 
-\ Empty at top level.
+\ Empty at top level; `A:B` inside part B of A.
 : PACKAGE$ ( n -- ptr u8 n )
    0 TEXT$ ;
 

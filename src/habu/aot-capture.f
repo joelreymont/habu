@@ -619,8 +619,9 @@ variable ACAP-PKG-MEMO-PUB
    p 0 < if s" "  0 0= 0=  0 0= 0= exit then
    p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  pub  0 0= ;
 
-\ A package's private word is unreachable by name in the image: no source can
-\ qualify into a private wordlist and call sites carry a record index (habu2.f
+\ A package's private word is unreachable by name in the image, and so is a
+\ part's public word: no source can qualify into a private wordlist, nor into a
+\ part from outside its package, and call sites carry a record index (habu2.f
 \ EMIT-AOT-SITES), so its record (20 bytes here, 48 booted, plus its name) buys
 \ nothing. Its code stays only when the reach graph finds a caller or a
 \ declared code address.
@@ -693,11 +694,13 @@ variable ACAP-ENTRY-N
    repeat
    false ;
 
+\ A private word, or a part's public word; a part's row, alone, is named by a
+\ path `A:B`.
 : ACAP-PRIVATE? ( n -- bool ) {: w:n :}
    w 0= if false exit then
    w ACAP-REC-PKG {: pa:ptr pu:n pub:bool found:bool :}
    found 0= if false exit then
-   pub 0= ;
+   pub 0= pa pu XREF-QUAL-INDEX 0 >= or ;
 
 : ACAP-REC-NAME$ ( n -- ptr u8 n ) {: k:n :}
    k ACAP-REC-DST {: v:ptr :}

@@ -451,20 +451,28 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 : ECT-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop ECT-READ-SRC $1000 FS:READ-ALL ECT-READ-SRC swap ;
 
-\ A sibling load defines the family opener before use.f reaches it. The
-\ child loads dep-c.f, despite use.f having no prior local load event.
-: ECT-TEST-FAMILY-PRIOR-SIBLING ( -- )
-   ECT-DA$ s" package DEMO : structure ( -- ) ; ;package" ECT-WRITE
-   ECT-DB$ S\" package DEMO structure require dep-c.f ;package\n" ECT-WRITE
+\ The child runs the entry and loads dep-c.f: dep-b.f's `structure` is a word
+\ the open packages reach, not the family opener. Discovery refuses the entry.
+: ECT-FAMILY-SHADOWED ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: da:ptr dau:n db:ptr dbu:n src:ptr srcu:n :}
+   ECT-DA$ da dau ECT-WRITE
+   ECT-DB$ db dbu ECT-WRITE
    ECT-DC$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
-   ECT-ENTRY$ S\" require dep-a.f require dep-b.f\n" ECT-WRITE
+   ECT-ENTRY$ src srcu ECT-WRITE
    s" ECT-ENTRY$ ;package included"
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
    ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$=
-   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ
+   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
+
+\ A sibling load defines DEMO's `structure` before dep-b.f reaches it, though
+\ dep-b.f has no prior local load event.
+: ECT-TEST-FAMILY-PRIOR-SIBLING ( -- )
+   s" package DEMO : structure ( -- ) ; ;package"
+   S\" package DEMO structure require dep-c.f ;package\n"
+   S\" require dep-a.f require dep-b.f\n" ECT-FAMILY-SHADOWED
    [: ECT-ENTRY$ EC:LOAD-ORDER ;] E-DISC-SHADOW TTHROWSQ
    [: ECT-ENTRY$ [: ECT-READ-PATH ;] EC:BUILD-WITH ;]
       E-DISC-SHADOW TTHROWSQ ;
@@ -481,17 +489,32 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 \ A loaded child inherits the caller's package. Its bare family opener can
 \ therefore resolve to a word a prior sibling defined in that package.
 : ECT-TEST-FAMILY-INHERITED-PACKAGE ( -- )
-   ECT-DA$ s" package DEMO : structure ( -- ) ; ;package" ECT-WRITE
-   ECT-DB$ s" structure require dep-c.f" ECT-WRITE
-   ECT-DC$ s" 76 emit 79 emit 65 emit 68 emit 69 emit 68 emit" ECT-WRITE
-   ECT-ENTRY$ S\" require dep-a.f package DEMO require dep-b.f ;package\n" ECT-WRITE
-   s" ECT-ENTRY$ ;package included"
-   ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
-   SUBJECT:RUN {: outu:len erru:len oc :}
-   s" ECT-ENTRY$ ;package included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
-   ECT-OUT outu LEN>N s" LOADED" T$=
-   [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
+   s" package DEMO : structure ( -- ) ; ;package" s" structure require dep-c.f"
+   S\" require dep-a.f package DEMO require dep-b.f ;package\n" ECT-FAMILY-SHADOWED ;
+
+\ A part's `;package` returns to DEMO, so the child still inherits DEMO.
+: ECT-TEST-FAMILY-PART-RETURN ( -- )
+   s" " s" structure require dep-c.f"
+   S\" package DEMO : structure ( -- ) ; package PART ;package require dep-b.f ;package\n"
+   ECT-FAMILY-SHADOWED ;
+
+\ Inside part DEMO:PART a bare `structure` reaches DEMO's word.
+: ECT-TEST-FAMILY-IN-PART ( -- )
+   s" " s" structure require dep-c.f"
+   S\" package DEMO : structure ( -- ) ; package PART require dep-b.f ;package ;package\n"
+   ECT-FAMILY-SHADOWED ;
+
+\ Inside part DEMO:PART, `PART:structure` defines the part's own word.
+: ECT-TEST-FAMILY-QUALIFIED-PART ( -- )
+   s" " s" structure require dep-c.f"
+   S\" package DEMO package PART : PART:structure ( -- ) ; require dep-b.f ;package ;package\n"
+   ECT-FAMILY-SHADOWED ;
+
+\ dep-a.f leaves DEMO open, so the entry's `package PART` opens part DEMO:PART.
+: ECT-TEST-FAMILY-LEFT-OPEN ( -- )
+   s" package DEMO : structure ( -- ) ;" s" structure require dep-c.f"
+   S\" require dep-a.f package PART require dep-b.f ;package ;package\n"
+   ECT-FAMILY-SHADOWED ;
 
 \ A prior provided path is known without being loaded. A later require of it
 \ cannot contribute that file's definitions to the family context.
@@ -650,6 +673,10 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-TEST-FAMILY-PRIOR-SIBLING
    ECT-TEST-FAMILY-FORWARDER
    ECT-TEST-FAMILY-INHERITED-PACKAGE
+   ECT-TEST-FAMILY-PART-RETURN
+   ECT-TEST-FAMILY-IN-PART
+   ECT-TEST-FAMILY-QUALIFIED-PART
+   ECT-TEST-FAMILY-LEFT-OPEN
    ECT-TEST-FAMILY-PROVIDED-SIBLING
    ECT-TEST-FAMILY-INCLUDE-REQUIRE
    ECT-TEST-FAMILY-MULTI-OWNER

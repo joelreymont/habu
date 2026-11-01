@@ -123,6 +123,23 @@ variable FIX-U
    WORD-DOCS:COUNT 0 T=
    [: 0 WORD-DOCS:NAME$ 2drop ;] E-VEC-STATE TTHROWSQ ;
 
+\ A part's records name its path; its `;package` returns to OUTER's private
+\ section, and OUTER's own closes the package.
+: PARTS ( -- )
+   s" parts" T-LABEL
+   s" package OUTER : O1 ( -- ) ; package INNER public : I1 ( -- ) ; ;package : O2 ( -- ) ; public : O3 ( -- ) ; ;package : G ( -- ) ;" DOCS
+   WORD-DOCS:COUNT 5 T=
+   0 s" O1" s" OUTER" s" --" REC=
+   0 WORD-DOCS:PUBLIC? TFALSE
+   1 s" I1" s" OUTER:INNER" s" --" REC=
+   1 WORD-DOCS:PUBLIC? TTRUE
+   2 s" O2" s" OUTER" s" --" REC=
+   2 WORD-DOCS:PUBLIC? TFALSE
+   3 s" O3" s" OUTER" s" --" REC=
+   3 WORD-DOCS:PUBLIC? TTRUE
+   4 s" G" s" " s" --" REC=
+   WORD-DOCS:RESET ;
+
 : REFUSALS ( -- )
    s" refusals" T-LABEL
    [: s" : " DOCS ;] WORD-DOCS:E-SOURCE TTHROWSQ
@@ -204,7 +221,7 @@ public
 
 : RUN ( -- )
    FIX-OPEN
-   RULES BARE-NOTES APPEND REFUSALS MANY-RECORDS REAL-FILE
+   RULES BARE-NOTES APPEND PARTS REFUSALS MANY-RECORDS REAL-FILE
    FIX-CLOSE ;
 
 ;package

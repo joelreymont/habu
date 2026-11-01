@@ -27,17 +27,21 @@ private
 \ it. A DNAME-INT row counts: a TRUSTED: body still calls it and the native
 \ compiler asks its arity. A sealed package's privates have no spelling: habu1.f
 \ LFIND's qualified branch searches the public wid, and habu2.f
-\ C-PACKAGE-PROT-GUARD refuses reopening it. The whitebox image keeps
-\ everything: its suites reopen engine packages (src/core/internal-mark.f).
+\ C-PACKAGE-PROT-GUARD refuses reopening it. A part's public words are spelled
+\ only inside its package, so they keep as that package's privates do; a part's
+\ row, alone, is named by a path `A:B`. The whitebox image keeps everything:
+\ its suites reopen engine packages (src/core/internal-mark.f).
 : KEEP? ( ptr u8 n bool ptr u8 n -- bool ) {: pa:ptr pu:n pub:bool na:ptr nu:n :}
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX = if true exit then
    pu 0= if na nu 0 SHIPPED? exit then
    pa pu XREF-NAMESPACE-WL RECORD-INDEX {: row:n :}
    row 0 < if false exit then
    row XREF-REC {: pkg:ptr :}
-   pub if na nu pkg XREF-PKG-PUBLIC SHIPPED? exit then
+   pub pa pu XREF-QUAL-INDEX 0 < and if
+      na nu pkg XREF-PKG-PUBLIC SHIPPED? exit
+   then
    pkg XREF-PKG-PUBLIC XREF-WID-PROTECTED? if false exit then
-   na nu pkg XREF-PKG-PRIVATE SHIPPED? ;
+   na nu pkg pub if XREF-PKG-PUBLIC else XREF-PKG-PRIVATE then SHIPPED? ;
 
 : INSTALL ( -- )
    [: KEEP? ;] CHECKER-SWEEP:INSTALL ;

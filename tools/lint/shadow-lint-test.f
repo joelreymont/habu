@@ -38,6 +38,17 @@ package SHADOW-LINT-TOOL
    s" [global-shadow]" s" : DUP ( n -- n n ) ;" LINT-SCAN
    BAD @ 1 T= ;
 
+\ A part's `;package` returns to its package, so a later `DUP` is still scoped;
+\ the package's own `;package` returns to global scope, where `DUP` is flagged.
+: SLT-PART ( -- )
+   0 BAD !
+   s" [part-inside]" s" package SLFA package SLFB ;package : DUP ; ;package"
+   LINT-SCAN
+   BAD @ 0 T=
+   s" [part-after]" s" package SLFA package SLFB ;package ;package : DUP ;"
+   LINT-SCAN
+   BAD @ 1 T= ;
+
 : SLT-DEFINER-BODY ( -- )
    0 BAD !
    s" [definer-body]" s" : MAKE-SLOT create here ptr-cell-mark 0 , ;" LINT-SCAN
@@ -113,6 +124,7 @@ create SLT-DIAG 256 allot
    SLT-STRING-LITERAL
    SLT-CROSS-PACKAGE
    SLT-GLOBAL-SHADOW
+   SLT-PART
    SLT-DEFINER-BODY
    SLT-UNTERM
    SLT-MALFORMED-ROW

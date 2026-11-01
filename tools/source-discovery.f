@@ -60,6 +60,8 @@ variable SD-SHADOWED                     \ loader and family words the file defi
 variable SD-RETIRED                      \ and those it retired
 variable SD-PKG-OFF                      \ the package open in this source
 variable SD-PKG-U
+variable SD-PART-OFF                     \ the part open in that package
+variable SD-PART-U
 variable SD-HARVESTING                  \ only the harvest records declarations and rows
 variable SD-FILE-ID
 DYNAMIC-BUFFER SD-E-SPEC n
@@ -108,6 +110,7 @@ variable SD-R-OLD-HEAD
 variable SD-R-START-N
 variable SD-R-START-BYTES
 variable SD-C-PKG
+variable SD-C-OUTER                      \ the package row a part returns to
 variable SD-C-N
 DYNAMIC-BUFFER SD-C-ROW n
 DYNAMIC-BUFFER SD-C-OWNER n
@@ -203,8 +206,11 @@ variable SD-SCOPES
    kind r SD-R-KIND !
    noff nu SD-TOK$ SD-R-COPY r SD-R-NAME !
    nu r SD-R-NAME-U !
-   SD-PKG-OFF @ SD-PKG-U @ SD-TOK$ SD-R-COPY r SD-R-PKG !
-   SD-PKG-U @ r SD-R-PKG-U !
+   \ Keyed by the package as this file spells it, B in part A:B, else none.
+   SD-PART-U @ 0<> if SD-PART-OFF @ SD-PART-U @ else SD-PKG-OFF @ SD-PKG-U @ then
+   {: poff:n pu:n :}
+   poff pu SD-TOK$ SD-R-COPY r SD-R-PKG !
+   pu r SD-R-PKG-U !
    0 r SD-R-COUNT !
    0 r SD-R-TERMS !
    0 r SD-R-TERMS-U !
@@ -245,8 +251,8 @@ variable SD-SCOPES
    a pkgu + c@ $3A <> if false exit then
    a pkgu 1+ + tailu tail tailu STR=CI ;
 
-\ An empty package on either side may inherit its caller's package at a load
-\ edge.
+\ No package row (-1), outside every package, spells as empty: a declaration
+\ made there is reached from every package.
 : SD-C-PKG$ ( n -- ptr u8 n ) {: row:n :}
    row 0 < if 0 SD-R-BYTES 0 exit then
    row SD-R-NAME$ ;
@@ -263,16 +269,21 @@ variable SD-SCOPES
    then
    {: pkg:ptr pkgu:n tail:ptr tailu:n :}
    family SD-R-NAME$ tail tailu STR=CI 0= if false exit then
-   SD-C-PKG @ SD-C-PKG$ {: owner:ptr owneru:n :}
    pkgu 0= if true exit then
-   owneru 0= if false exit then
-   pkg pkgu owner owneru STR=CI ;
+   pkg pkgu SD-C-PKG @ SD-C-PKG$ STR=CI if true exit then
+   \ Inside part A:B, A's words are reached too. Packages compare by spelling,
+   \ so a top-level B matches inside A:B as well: a refusal, which is safe.
+   pkg pkgu SD-C-OUTER @ SD-C-PKG$ STR=CI ;
 
+\ A package opened inside another, even one left open by a prior file, is a part
+\ (the engine refuses every other nested `package`), whose close returns to it.
 : SD-C-PACKAGE-OPEN ( n -- ) {: row:n :}
+   SD-C-PKG @ 0 >= if SD-C-PKG @ SD-C-OUTER ! then
    row SD-C-PKG ! ;
 
 : SD-C-PACKAGE-CLOSE ( -- )
-   -1 SD-C-PKG ! ;
+   SD-C-OUTER @ SD-C-PKG !
+   -1 SD-C-OUTER ! ;
 
 : SD-R-CONTEXT-FAMILY ( n -- ) {: family:n :}
    SD-C-N @ 0 ?do
@@ -325,6 +336,7 @@ variable SD-SCOPES
 
 : SD-R-CONTEXT-BEGIN ( -- )
    -1 SD-C-PKG !
+   -1 SD-C-OUTER !
    0 SD-C-N !
    SD-C-ORDER-BUILD ;
 
@@ -1040,11 +1052,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
    SD-DEF @ 0= off len SD-TOK$ s" package" STR=CI and if
       SD-RAW {: poff:n pu:n :}
       off poff pu SD-R-PACKAGE SD-R-RECORD drop
-      poff SD-PKG-OFF ! pu SD-PKG-U ! exit
+      SD-PKG-U @ 0= if poff SD-PKG-OFF ! pu SD-PKG-U ! exit then
+      poff SD-PART-OFF ! pu SD-PART-U ! exit
    then
    SD-DEF @ 0= off len SD-TOK$ s" ;package" STR=CI and if
       off off 0 SD-R-END-PACKAGE SD-R-RECORD drop
-      0 SD-PKG-U ! exit
+      SD-PART-U @ 0= if 0 SD-PKG-U ! else 0 SD-PART-U ! then
+      exit
    then
    SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if
       SD-RAW {: noff:n nu:n :}
@@ -1097,6 +1111,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    0 SD-SHADOWED !
    0 SD-RETIRED !
    0 SD-PKG-U !
+   0 SD-PART-U !
    SD-LOCALS-RESET
    begin
       SD-RAW {: off:n len:n :}
