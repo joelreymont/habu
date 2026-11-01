@@ -200,6 +200,14 @@ entry.
   word, `REPORTED-ERROR? ( n -- bool )`, lists every code the checker renders
   before it throws, for CAST-ERROR:SKIP and the check tools alike, as
   REPORT-UNCHECKABLE became one checker word on 2026-10-31.
+- 2026-11-01, a quotation's fresh region: under the same relayed word, the
+  lead chose the rule the checker implements. Quotations are xts, not
+  closures, so a fresh name a quotation's own inputs do not carry is minted by
+  each execution of the outermost quotation holding it at the top of its
+  outputs or in a callback input's rows, and shared by the quotations that
+  execution returns or hands on; a direct call, a tick and an inferred effect
+  read it alike. Its rows are test/rigid-region-suite.f section (32); no
+  checked body implements a name renewed at two levels.
 
 ### Compiler and builds
 
