@@ -101,6 +101,37 @@ variable TIER                        \ the tier the subject program compiles at
    S\" stacklocal7\n" CHECK-OUTPUT ;
 
 
+\ `[package]` compiles the open package's name, folded: in the package, in its
+\ part, in a definition published into the part (`: PART:QUALIFIED`, which names
+\ the open package's record, not the wordlist it lands in), after a reopening,
+\ and empty outside any package.
+: PACKAGE-SOURCE ( -- )
+   GE-SRC-RESET
+   TIER-LINE
+   s" package STRING-FORM-SUBJECT" GE-SRC-LINE
+   s" : OPEN-NAME ( -- ) [package] type ;" GE-SRC-LINE
+   s" package PART" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : NAME ( -- ) [package] type ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : PART:QUALIFIED ( -- ) [package] type [char] | emit ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : SHOW ( -- ) OPEN-NAME [char] | emit PART:NAME [char] | emit PART:QUALIFIED ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" package STRING-FORM-SUBJECT" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : REOPENED ( -- ) [package] type [char] | emit ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : OUTSIDE ( -- ) [package] type [char] | emit ;" GE-SRC-LINE
+   s" STRING-FORM-SUBJECT:SHOW STRING-FORM-SUBJECT:REOPENED OUTSIDE" GE-SRC-LINE ;
+
+
+: PACKAGE-CASE ( -- )
+   PACKAGE-SOURCE
+   s" string-form-subject|string-form-subject:part|string-form-subject|string-form-subject||"
+   CHECK-OUTPUT ;
+
+
 : TOO-LONG ( ptr u8 n -- )
    BOUNDARY COUNTED-MAX 1+ COUNTED-SOURCE
    76 s" counted string too long" s" native counted string bound" GE-EVAL-FORK-BAD ;
@@ -132,7 +163,7 @@ variable TIER                        \ the tier the subject program compiles at
 
 : FORM-CASES ( -- )
    PRINTED-CASES COUNTED-CASES COUNTED-BOUNDARY
-   CARRIED-CASE ;
+   CARRIED-CASE PACKAGE-CASE ;
 
 
 : BODY ( -- )

@@ -221,7 +221,7 @@ variable LKWDO variable LKWLOOP variable LKWI
 variable LKWTOR variable LKWRFROM variable LKWRFET
 variable LKWEXIT variable LKWREC
 variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUNLOOP
-variable LKWCHAR variable LKWBCHAR
+variable LKWCHAR variable LKWBCHAR variable LKWBPACKAGE
 variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
 variable LKWTRUSTED variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG

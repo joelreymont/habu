@@ -2252,8 +2252,8 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
 \ A token of the trusted body NAME before its `does>`, asked of the checker
 \ (TRUSTED-REACH) when it may call a word. A local, a group, a parsing keyword
 \ with its operand and a string call none, and SKIP-DEF-TOKEN takes them; nor
-\ do a number, a control word, a loop index, or `is` with the deferred word it
-\ sets.
+\ do a number, a control word, a loop index, `is` with the deferred word it
+\ sets, or `[package]`.
 : TRUSTED-CALL ( ptr u8 n -- ) {: na:ptr nu:n :}
    TRUSTED-DOES @ LOCAL-TOKEN? or IF EXIT THEN
    TOKEN-A @ TOKEN-U @ {: a:ptr u:n :}
@@ -2262,6 +2262,7 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    a u WRAP-CTL-TOK? IF EXIT THEN
    a u s" i" STR=CI  a u s" j" STR=CI or  a u s" unloop" STR=CI or IF EXIT THEN
    a u s" is" STR=CI IF OPERAND 2drop EXIT THEN
+   a u s" [package]" STR=CI IF EXIT THEN
    a u na nu TRUSTED-REACH ;
 
 \ A trusted body is ASSERTED, never verified, but its `does>` clause is a

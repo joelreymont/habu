@@ -168,13 +168,13 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ The keywords a body's compiler reads before it looks a word up
 \ (EM-COMPILE-KEYWORDS): a word named by one could never be called from a body.
 : DEF-KEYWORDS ( -- ptr u8 n )
-   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
+   S\" if then else begin until again while repeat case of endof endcase construct match s\q c\q .\q s\\\q c\\\q .\\\q ['] [char] [package] does> [: is ;] do loop i >r r> r@ exit recurse ?do +loop j leave unloop {:" ;
 
-\ A design may define none of the engine's dispatch-row names. The twelve
+\ A design may define none of the engine's dispatch-row names. The thirteen
 \ admitted syntax rows keep the ordinary reserved-name error; every other
 \ row is outside the vocabulary before dictionary duplicate checks run.
 : DEF-DESIGN-KEYWORDS ( -- ptr u8 n )
-   S\" if else then {: :} s\q package public private ;package using ;using" ;
+   S\" if else then {: :} s\q [package] package public private ;package using ;using" ;
 
 \ The interpret dispatch rows, plus kernel: and ;match, which the ARM row walk
 \ compares inside their constructs. Ordinary words such as require and include
@@ -471,7 +471,7 @@ private
    then ;
 
 \ The JIT's sealed row and the tier-1 capture admit the same body vocabulary.
-\ `;` is handled before the capture. A miss reaches the five design body
+\ `;` is handled before the capture. A miss reaches the six design body
 \ keywords only after local, dictionary and numeric lookup, as the native
 \ capture does.
 : BODY-POLICY ( -- )
@@ -488,6 +488,7 @@ private
    s" else" TOKEN-IS? if exit then
    s" then" TOKEN-IS? if exit then
    S\" s\q" TOKEN-IS? if exit then
+   s" [package]" TOKEN-IS? if exit then
    s" {:" TOKEN-IS? if exit then
    POLICY-REFUSE ;
 

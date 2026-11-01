@@ -167,6 +167,7 @@ private
    a u s" ;]" LINT-STR= if LINT-TRUE exit then
    a u s" char" LINT-STR=CI if LINT-TRUE exit then
    a u s" [char]" LINT-STR=CI if LINT-TRUE exit then
+   a u s" [package]" LINT-STR=CI if LINT-TRUE exit then
    a u s" immediate" LINT-STR=CI if LINT-TRUE exit then
    a u s" does>" LINT-STR=CI if LINT-TRUE exit then
    a u s" trusted:" LINT-STR=CI if LINT-TRUE exit then

@@ -121,12 +121,15 @@ DEFAULT-FILE-COMPILE
 
 \ A string row's bytes are its BODY and its span is the source the payload
 \ occupied, so only the span is checkable here; `s" "` is a real empty body.
+\ Only a `[package]` body, the open package's name, outgrows its span.
 : SPAN-CK ( n n n -- ) {: u:n off:n ru:n :}
    u 0 < if E-NFEED-SPAN throw then
    ru 0 < if E-NFEED-SPAN throw then
-   u ru > if E-NFEED-SPAN throw then
    off 0 < if E-NFEED-SPAN throw then
-   off ru + F-LEN @ > if E-NFEED-SPAN throw then ;
+   off ru + F-LEN @ > if E-NFEED-SPAN throw then
+   u ru > if
+      TXT@ off + ru s" [package]" STR=CI 0= if E-NFEED-SPAN throw then
+   then ;
 
 \ `:` parses the defined name from the outer interpreter, so the name token was
 \ read while interpreting and every later token of the definition while compiling.

@@ -11892,6 +11892,7 @@ PRIM: [']    PE-N PE-OUT PRIM;
 \ a body never reaches it (TRY-PRIMS), so a body `char` is a word or undefined.
 PRIM: char   PE-N PE-OUT PRIM;  PRIM-TOP-ONLY!
 PRIM: [char] PE-N PE-OUT PRIM;
+PRIM: [package] PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: constant PE-N PE-IN PRIM;
 \ EXT-MARK-FREE-TAIL marks a product's free factor; the row keeps it callable
 \ after the seal, like CHECKER-DEFFAMILY. Its unique name makes row order
@@ -21343,6 +21344,15 @@ CHECKER-REG:}SCRATCH
 
 : PARSE-LIT? ( ptr u8 n -- bool ) s" [char]" CORE-STR= ;
 
+: PKG-LIT? ( ptr u8 n -- bool ) s" [package]" CORE-STR= ;
+
+\ A `[package]` literal's body: the open package's record name, folded.
+CHECKER-REG:SCRATCH{
+create PKG-LIT-NAME CHECKER-PACKAGE-CAP allot
+variable PKG-LIT-U
+CHECKER-REG:}SCRATCH
+variable PPAY-ON      \ did the token just judged compile PKG-LIT-NAME?
+
 : SKIP-STRING-PAYLOAD
    TI @ SKI !  0 SKF !
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
@@ -23176,6 +23186,25 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
    LITERAL-PAYLOAD-STEP ;
 
+: PKG-LIT-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
+   a i + c@ CHECKER-FOLD-C PKG-LIT-NAME i + c! ;
+
+: PKG-LIT-NAME$ ( -- ptr u8 n )
+   PKG-LIT-NAME PKG-LIT-U @ ;
+
+\ A body's `[package]` compiles the open package's name by its primitive row:
+\ the name of the record the engine's package cell holds, which a definition
+\ published into another namespace (`: Q:Y`) does not change.
+: PKG-LIT-TOK ( ptr u8 n -- )
+   PE-SYM-OF PRIM-FIRST-SYM E-PTR EFF-APPLY
+   PKG-LIVE-XT 0= IF CHECKER-PKG-CONTEXT-REJECT THEN {: a:ptr u:n :}
+   u CHECKER-PACKAGE-CAP >= IF s" checker: package name too long" 76 die THEN
+   0 BEGIN dup u < WHILE
+      a over PKG-LIT-COPY-C
+      1 +
+   REPEAT drop
+   u PKG-LIT-U !  -1 PPAY-ON ! ;
+
 : DO-TOK1 {: a u :}
    0 CALL-HIT !  0 TOK-DONE !  0 BWIN-HIT !
    NULL-PTR TOK-EFF !  NULL-PTR TOK-ABI-EFF !  0 TOK-ABI-DONE !
@@ -23206,6 +23235,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
    ELSE
    a u LOC-REF? IF ELSE
    TKF TKFU @ PARSE-LIT? IF TKF TKFU @ CHAR-LIT-TOK ELSE
+   TKF TKFU @ PKG-LIT? IF TKF TKFU @ PKG-LIT-TOK ELSE
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
@@ -23235,7 +23265,7 @@ TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   THEN
+   THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    \ The raw-cell and base-address refusals name themselves where they are
@@ -23725,8 +23755,9 @@ public
    REC-STEP ;
 
 \ One string literal: its decoded BODY and the source span its payload
-\ occupied, which differ whenever an escape decoded. It is never a name token:
-\ the name is reported before any payload is consumed.
+\ occupied, which differ whenever an escape decoded; a `[package]` row's span
+\ is the keyword and its body the open package's name. It is never a name
+\ token: the name is reported before any payload is consumed.
 
 \ The reader already recognized the opener; preserve its behavior with its body.
 : STRING-KIND ( -- n )
@@ -24958,6 +24989,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 : EV-UNJUDGED ( -- n n n )
    CPAY-ON @ IF CHECKER-TAPE:K-CHAR  CPAY-B @ TADDR c@  0 EXIT THEN
    SPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
+   PPAY-ON @ IF CHECKER-TAPE:STRING-KIND 0 0 EXIT THEN
    CHECKER-TAPE:K-NAME -1 0 ;
 
 \ This turn's events, filed under the ordinals the reports take, on every pass:
@@ -24966,7 +24998,7 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
 \ string or character token reports its class though its opener bound a call
 \ (BIND-SOURCE-CALL): a literal's payload is what it compiles.
 : EV-COMMIT ( -- )
-   EV-HIT @  CPAY-ON @ SPAY-ON @ or 0=  and IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
+   EV-HIT @  CPAY-ON @ SPAY-ON @ or PPAY-ON @ or 0=  and IF EV-KIND @ EV-A0 @ EV-A1 @ ELSE EV-UNJUDGED THEN
    REC-IX @ EV-FILE
    IS-PEND @ IF CHECKER-TAPE:K-OPERAND 0 0 REC-IX @ 1 + EV-FILE THEN ;
 
@@ -24988,6 +25020,10 @@ variable SCAN-TOKS    \ how many tokens the pass reported, for that assertion
    THEN
    SPAY-ON @ IF
       SPAY-BYTES  SPAY-B @ SPAY-U @  CHECKER-TAPE:STRING
+      SCAN-PEND-REPORT EXIT
+   THEN
+   PPAY-ON @ IF
+      PKG-LIT-NAME$  TSTART @  TI @ TSTART @ -  CHECKER-TAPE:STRING
       SCAN-PEND-REPORT EXIT
    THEN
    TSTART @ TADDR  SCAN-U @  TSTART @  SCAN-TOK0 @  CHECKER-TAPE:TOKEN
@@ -25312,7 +25348,7 @@ variable CUR-OPEN   variable CUR-PSIG
          TI @ TSTART !
          BEGIN TI @ TBREAK? 0= WHILE TI @ 1 + TI ! REPEAT
          CHECKER-TAPE:ARMED @ IF
-            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !
+            TI @ TSTART @ - SCAN-U !  TOK0 @ SCAN-TOK0 !  0 SPAY-ON !  0 CPAY-ON !  0 PPAY-ON !
             0 IS-PEND !  0 EV-HIT !
          THEN
          CUR-TOKEN

@@ -211,8 +211,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
 \ A keyword the native compiler models itself, a character literal, a call to
 \ the definition being compiled and a `:}` outside a `{:` group are neither
 \ records nor numbers: tier 1's capture refuses each at the token, as tier 0
-\ does, before the compiler or the checker reads the body.
+\ does, before the compiler or the checker reads the body. `[package]`, in the
+\ design span, compiles at both.
 : MODELED ( -- )
+   TIER0 s" package-literal" 0 s" " s" pdesign-name" RUNS
+   TIER1 s" package-literal" 0 s" " s" pdesign-name" RUNS
    s" begin" s" hb: not in vocabulary: begin at test/policy/begin.f:2" BOTH-REFUSE
    s" recurse" s" hb: not in vocabulary: recurse at test/policy/recurse.f:2" BOTH-REFUSE
    s" quote" s" hb: not in vocabulary: [: at test/policy/quote.f:2" BOTH-REFUSE

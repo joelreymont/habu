@@ -3326,6 +3326,15 @@ create BIG $2000 allot   variable BIG-U
    s" '" LOCAL-NOMINAL
    s" .(" LOCAL-NOMINAL ;
 
+\ A body's `[package]` leaves the name's address and length, so a body declared
+\ ( -- n ) that ends in one is refused at its `;`.
+: TEST-PACKAGE-LITERAL ( -- )
+   s" package CKT-PL : CKT-PL ( -- n ) [package] ; ;package" DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"word\":\"ckt-pl\"" CONTAINS? TTRUE ;
+
 \ Value-records whose fields the registration refuses. The loader dies at the
 \ first with the registration's message and rc 70. The check names every
 \ refused field at its line and column and exits 70: a field of unknown type, a
@@ -7145,6 +7154,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/discovery-stop-located" [: TEST-DISCOVERY-LOCATED ;] CASE-RUN
    s" check/raw-operand" [: TEST-RAW-OPERAND ;] CASE-RUN
    s" check/local-operand" [: TEST-LOCAL-OPERAND ;] CASE-RUN
+   s" check/package-literal" [: TEST-PACKAGE-LITERAL ;] CASE-RUN
    s" check/value-record-field-refused" [: TEST-VREC-FIELD-REFUSED ;] CASE-RUN
    s" check/value-record-scoped-refused" [: TEST-VREC-SCOPED-REFUSED ;] CASE-RUN
    s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN

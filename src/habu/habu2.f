@@ -2059,7 +2059,7 @@ variable LKWLINEAR
 
 private
 
-\ The design span: the thirteen keyword spellings a sealed source may still use
+\ The design span: the fourteen keyword spellings a sealed source may still use
 \ (layout.f POLICY-NDICT-CELL). It is baked first and as one run, LKWIF opening
 \ it and LKWDESIGNEND closing it, because EMIT-CF-HELPERS' LKWCMP admits a
 \ matched keyword under the seal by ADDRESS: its baked spelling lies in
@@ -2075,6 +2075,7 @@ private
    LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,
+   LKWBPACKAGE LABEL@ LBL, s" [package]" BYTES,
    LKWDESIGNEND LABEL@ LBL, ;
 
 public
@@ -6133,6 +6134,53 @@ variable VDESC  variable DRIFT-FAIL
    11 10 0 ADDI,  C-LIT                                \ push len (a value, absolute is fine)
    C-QUOTE-SAVED-DROP ;
 
+\ `[package]` compiles the open package's record name, A-Z folded to a-z, as C-SDQ
+\ compiles a literal; outside a package the literal is empty. The folded copy
+\ lives in a machine-stack frame sized to the name.
+: C-BPACKAGE ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: named:label ext:label fl:label keep:label fd:label cl:label cd:label inline:label :}
+   LBL {: done:label :}
+   10 0 MOVZ,
+   9 DATA PKG-REC-CELL LDR,  9 named CBZ,
+   10 9 16 LDR,  10 10 DNAME-FLAG-BITS LSLI,  10 10 DNAME-FLAG-BITS LSRI,   \ x10 = the name's length
+   16 9 24 ADDI,
+   14 9 16 LDR,  14 14 DNAME-EXT ANDI,  14 ext CBZ,
+      16 9 24 LDR,                                    \ x16 = the name's bytes
+   ext LBL,
+   named LBL,
+   13 10 15 ADDI,  5 -16 LIT64,  13 13 5 AND,         \ x13 = the frame, 16-aligned
+   14 SP 0 ADDI,  14 14 13 SUB,  SP 14 0 ADDI,
+   15 SP 0 ADDI,  7 0 MOVZ,
+   fl LBL,  7 10 CMP,  C-CS fd BCOND,
+      14 16 7 ADD,  14 14 0 LDRB,
+      14 $41 CMPI,  C-LT keep BCOND,  14 $5A CMPI,  C-GT keep BCOND,
+         14 14 $20 ORRI,
+      keep LBL,
+      17 15 7 ADD,  14 17 0 STRB,
+      7 7 1 ADDI,  fl B,
+   fd LBL,
+   SP SP 16 SUBI,  13 SP 0 STR,  10 SP 8 STR,         \ the folded bytes at SP+16
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
+   11 SP 16 ADDI,  12 10 0 ADDI,  LNSTRINTERN LABEL@ BL,
+   C-DATA-ADDR  done B,
+   inline LBL,                                        \ no interner yet: the bytes go in the code
+   15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
+   12 CP 0 ADDI,
+   10 SP 8 LDR,  11 SP 16 ADDI,  9 10 0 ADDI,
+   1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 CP 1 ADD,               \ x1 = CP through the alias
+   cl LBL,  9 cd CBZ,
+      14 11 0 LDRB,  14 1 0 STRB,  1 1 1 ADDI,  28 28 1 ADDI,
+      11 11 1 ADDI,  9 9 1 SUBI,  cl B,
+   cd LBL,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
+   9 15 0 ADDI,  15 10 0 ADDI,  LPAT LABEL@ BL,
+   11 12 0 ADDI,  C-ADR
+   done LBL,
+   10 SP 8 LDR,  13 SP 0 LDR,  SP SP 16 ADDI,
+   14 SP 0 ADDI,  14 14 13 ADD,  SP 14 0 ADDI,
+   11 10 0 ADDI,  C-LIT ;
+
 : C-CQ ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: capok cl cd inline done il id :}
    C-QUOTE-START
@@ -9229,10 +9277,11 @@ public
 \      only gates and then takes the miss, so a used package's immediate does not
 \      run;
 \   4. on a miss, a number;
-\   5. on a miss, a design-span body keyword: if, else, then, s", S\" or {:,
-\      whose names and `:}` the locals parse consumes, so a stray `:}` is refused
-\      as the JIT refuses it. Every other keyword row, `does>` and the other
-\      string forms among them, is refused before CAPTURE-DOES or CAPTURE-STRING.
+\   5. on a miss, a design-span body keyword: if, else, then, s", S\",
+\      [package] or {:, whose names and `:}` the locals parse consumes, so a
+\      stray `:}` is refused as the JIT refuses it. Every other keyword row,
+\      `does>` and the other string forms among them, is refused before
+\      CAPTURE-DOES or CAPTURE-STRING.
 \ Anything else is refused at LPOLICY. Unsealed, locals are matched, scoped and
 \ recorded the same way (as src/habu/definers.f COMPILING? does for x86-64) and
 \ every other test falls through to the plain capture.
@@ -9305,6 +9354,7 @@ public
    0 LKWTHEN LABEL@ ADR,    1 4 MOVZ,  LKWCMP LABEL@ BL,  0 unbound CBNZ,
    0 LKWSQ LABEL@ ADR,      1 2 MOVZ,  LKWCMP LABEL@ BL,  0 unbound CBNZ,
    0 LKWESQ LABEL@ ADR,     1 3 MOVZ,  LKWCMP LABEL@ BL,  0 unbound CBNZ,
+   0 LKWBPACKAGE LABEL@ ADR, 1 9 MOVZ,  LKWCMP LABEL@ BL,  0 unbound CBNZ,
    0 LKWLBRACE LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 locals CBNZ,
    LPOLICY LABEL@ B,
    unbound LBL,
@@ -11792,6 +11842,7 @@ public
 : EM-COMPILE-META-KEYWORDS ( -- )
    LMAIN LABEL@ LKWBTICK  3 ['] C-BTICK  CF-ENTRY
    LMAIN LABEL@ LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY
+   LMAIN LABEL@ LKWBPACKAGE 9 ['] C-BPACKAGE CF-ENTRY
    LMAIN LABEL@ LKWDOES   5 ['] J-DOES     CF-ENTRY
    LMAIN LABEL@ LKWQUOT   2 ['] J-QUOT     CF-ENTRY
    LMAIN LABEL@ LKWIS 2 ['] J-IS CF-ENTRY
@@ -13285,7 +13336,7 @@ package LABELS
    LBL LKWTOR !  LBL LKWRFROM !  LBL LKWRFET !
    LBL LKWEXIT !  LBL LKWREC !
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
-   LBL LKWCHAR !  LBL LKWBCHAR !
+   LBL LKWCHAR !  LBL LKWBCHAR !  LBL LKWBPACKAGE !
    LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL KWDATA:LKWTRUSTDECL !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWKERNEL !
    LBL KWDATA:LKWCAST !  LBL KWDATA:LKWDEFCAST !  LBL KWDATA:LCASTNONAME !  LBL KWDATA:LCOLONNONAME !  LBL KWDATA:LKEYNONAME !
