@@ -73,6 +73,15 @@ entry.
   and resumes the stream after a drop, that its WebSocket mode is for agent
   loops of short turns and takes no background mode, and that webhooks need a
   public URL, Joel chose "Stream it": no polling.
+- 2026-11-01, a live check of MODEL: asked how the one live OpenAI run
+  should happen before MODEL's streamed background responses land, given this
+  session may not read the key from the keychain, Joel chose "You run it
+  (Recommended)": the lead writes a probe file and Joel runs it with
+  `! hb --load <file>`. Under Joel's relayed "use your best judgement" the
+  lead also chose, after the lane review: a call stays alive while its
+  connections carry bytes, a keepalive included, so a resume that heard only
+  keepalives resumes again; and a call that fails after its response id is
+  known cancels that response at OpenAI, logging a failed cancel.
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself
@@ -216,7 +225,9 @@ entry.
   minutes with no progress line, no total limit), he chose CMD:RUN-STREAM. For
   holding off idle sleep he chose POWER:KEEP-AWAKE / POWER:ALLOW-SLEEP over
   WAKE-LOCK and HOLD; for runner sizing, OS-CPU:PERFORMANCE-CORES and
-  OS-MEMORY:TOTAL.
+  OS-MEMORY:TOTAL. On 2026-11-01, asked to add POWER:E-PLATFORM (no
+  keep-awake support on this system) and POWER:E-ASSERTION (macOS refused to
+  hold or release it), Joel chose "Add both (Recommended)".
 - 2026-11-01, errors the checker reports itself: under Joel's word relayed by
   phil, "use your best judgement. pick what's best for the long term. tell
   everyone the same", the lead made two choices. E-UNSAFE's repair class is
