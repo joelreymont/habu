@@ -1,5 +1,6 @@
-\ model.f - package MODEL, a Habu library: a client for OpenAI- and
-\ Ollama-shaped chat and embedding providers over CURL, its API key read from
+\ model.f - package MODEL, a Habu library: a client for model providers over
+\ CURL. Chat speaks OpenAI's Responses protocol; embeddings go to an
+\ OpenAI-shaped provider or Ollama's native route. Its API key is read from
 \ the native credential store through SECRET, with a caller's journal and
 \ recorder and bounded inputs. Each failure the provider or the transport
 \ caused is logged through LOG (tag `model`), never the request body.
@@ -551,7 +552,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
 : CHAT-URL$ ( ptr call -- ptr u8 n )
    {: c :}
-   s" /chat/completions" c URL$ ;
+   s" /responses" c URL$ ;
 
 : EMBED-URL$ ( ptr call -- ptr u8 n )
    {: c :}
@@ -878,7 +879,7 @@ private
    {: c :}
    c WRITER c GEN-CONFIG-BUF JSON:WRITE-OPEN-BUF drop
    c WRITER JSON:WRITE-OBJECT-START
-   s" backend" s" openai-chat-completions" JSON:WRITE-FIELD-S
+   s" backend" s" openai-responses" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
    s" model" c GEN$ JSON:WRITE-FIELD-S
    c EFFORT$ nip 0<> if JSON:WRITE-COMMA s" effort" c EFFORT$ JSON:WRITE-FIELD-S then
@@ -966,7 +967,7 @@ private
 : TEXT-PART ( ptr u8 n ptr JSON:writer -- )
    {: a:ptr u:n w :}
    w JSON:WRITE-OBJECT-START
-   s" type" s" text" JSON:WRITE-FIELD-S
+   s" type" s" input_text" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
    s" text" a u JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END drop ;
@@ -1044,12 +1045,9 @@ public
    c PART-COMMA
    c PART-WRITER
    JSON:WRITE-OBJECT-START
-   s" type" s" image_url" JSON:WRITE-FIELD-S
+   s" type" s" input_image" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
-   s" image_url" JSON:WRITE-KEY
-   JSON:WRITE-OBJECT-START
-   s" url" c URI-BUF BUFFER$ JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END
+   s" image_url" c URI-BUF BUFFER$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END drop
    c JOURNAL-PART-WRITER
    JSON:WRITE-OBJECT-START
@@ -1116,8 +1114,12 @@ private
    c WRITER
    JSON:WRITE-OBJECT-START
    s" model" c GEN$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" store" false JSON:WRITE-FIELD-BOOL
    c EFFORT$ nip 0<> if
-      JSON:WRITE-COMMA s" reasoning_effort" c EFFORT$ JSON:WRITE-FIELD-S
+      JSON:WRITE-COMMA s" reasoning" JSON:WRITE-KEY
+      JSON:WRITE-OBJECT-START
+      s" effort" c EFFORT$ JSON:WRITE-FIELD-S
+      JSON:WRITE-OBJECT-END
    then
    c CACHE-KEY$ nip 0<> if
       JSON:WRITE-COMMA s" prompt_cache_key" c CACHE-KEY$ JSON:WRITE-FIELD-S
@@ -1125,15 +1127,10 @@ private
    c TIER$ nip 0<> if
       JSON:WRITE-COMMA s" service_tier" c TIER$ JSON:WRITE-FIELD-S
    then
+   JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
-   s" messages" JSON:WRITE-KEY
+   s" input" JSON:WRITE-KEY
    JSON:WRITE-ARRAY-START
-   JSON:WRITE-OBJECT-START
-   s" role" s" system" JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" content" c SYSTEM$ JSON:WRITE-FIELD-S
-   JSON:WRITE-OBJECT-END
-   JSON:WRITE-COMMA
    JSON:WRITE-OBJECT-START
    s" role" s" user" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
@@ -1141,12 +1138,12 @@ private
    JSON:WRITE-OBJECT-END
    JSON:WRITE-ARRAY-END
    JSON:WRITE-COMMA
-   s" response_format" JSON:WRITE-KEY
+   s" text" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" format" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START
    s" type" s" json_schema" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
-   s" json_schema" JSON:WRITE-KEY
-   JSON:WRITE-OBJECT-START
    s" name" s" answer" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
    s" strict" true JSON:WRITE-FIELD-BOOL
@@ -1224,7 +1221,7 @@ private
    s" kind" s" generation" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" configuration" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START
-   s" backend" s" openai-chat-completions" JSON:WRITE-FIELD-S
+   s" backend" s" openai-responses" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" model" c GEN$ JSON:WRITE-FIELD-S
    c EFFORT$ nip 0<> if JSON:WRITE-COMMA s" effort" c EFFORT$ JSON:WRITE-FIELD-S then
    JSON:WRITE-COMMA s" endpoint" c CHAT-URL$ JSON:WRITE-FIELD-S

@@ -197,11 +197,9 @@ $300000 constant BIG-U
    PARSER r HTTP:BODY$ key key-u MEMBER ;
 
 
-\ A reader at the content array of a chat request's user message, which
-\ follows the system message.
+\ A reader at the content array of a chat request's user input.
 : CONTENT ( HTTP:request -- JSON:reader )
-   s" messages" BODY-MEMBER
-   JSON:READ-NEXT JSON:T-OBJ = ASSERT JSON:READ-SKIP-VALUE
+   s" input" BODY-MEMBER
    JSON:READ-NEXT JSON:T-OBJ = ASSERT
    s" content" JSON:READ-FIND-KEY ASSERT ;
 
@@ -231,16 +229,14 @@ $300000 constant BIG-U
    repeat drop JSON:READ-CLOSE ;
 
 
-\ Echoes the decoded url of the content part a u when its type is image_url.
+\ Echoes the decoded url of the content part a u when its type is input_image.
 : PART+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    PART a u s" type" MEMBER
-   s" image_url" JSON:READ-STR-EQ? {: image:bool :}
+   s" input_image" JSON:READ-STR-EQ? {: image:bool :}
    JSON:READ-CLOSE
    image 0= if exit then
    PART a u s" image_url" MEMBER
-   JSON:READ-TOKEN JSON:T-OBJ = ASSERT
-   s" url" JSON:READ-FIND-KEY ASSERT
    IMAGES @ 0<> if s" ," ECHO+ then
    S\" \q" ECHO+
    ECHO ECHO-U @ + 256 ECHO-U @ - JSON:READ-STR ECHO-U +!
@@ -499,7 +495,7 @@ EXPORT WIDE-DIMS
    0 RELEASED TASK:SEMAPHORE-INIT
    0 CALLS atomic!
    HTTP:ROUTES-RESET
-   s" POST" s" /chat/completions" [: CHAT ;] HTTP:ROUTE
+   s" POST" s" /responses" [: CHAT ;] HTTP:ROUTE
    s" POST" s" /embeddings" [: EMBEDDINGS ;] HTTP:ROUTE
    s" POST" s" /api/embed" [: OLLAMA ;] HTTP:ROUTE
    $7F000001 0 2 1000 HTTP:START
@@ -616,7 +612,7 @@ variable REFUSED-BASE-U
 
 : CHAT-LINE ( ptr u8 n -- )
    {: level:ptr level-u:n :}
-   level level-u s" chat test-generation" MODEL-PEER:BASE-URL$ s" /chat/completions" SB-LINE ;
+   level level-u s" chat test-generation" MODEL-PEER:BASE-URL$ s" /responses" SB-LINE ;
 
 
 : EMBED-LINE ( ptr u8 n -- )
@@ -788,7 +784,7 @@ variable REFUSED-BASE-U
    REFUSED-BASE$ M MODEL:BASE-URL!
    s" valid" MODEL:E-TRANSPORT FAILS
    MODEL-PEER:BASE-URL$ M MODEL:BASE-URL!
-   s" error" s" chat test-generation" REFUSED-BASE$ s" /chat/completions" SB-LINE
+   s" error" s" chat test-generation" REFUSED-BASE$ s" /responses" SB-LINE
    s" MODEL:E-TRANSPORT curl 7: " SB-APPEND 7 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED ;
 
 
@@ -1158,10 +1154,20 @@ create HASH 64 allot
 : CONFIG ( ptr u8 n -- JSON:reader )
    {: key:ptr key-u:n :}
    INPUT$ s" configuration" MEMBER key key-u JSON:READ-FIND-KEY ASSERT ;
+\ A reader at the last chat request's reasoning effort.
+: SENT-EFFORT ( -- JSON:reader ) s" reasoning" SENT s" effort" JSON:READ-FIND-KEY ASSERT ;
 \ Neither the last chat request nor its journal input names an effort.
 : NO-EFFORT ( -- )
-   MODEL-PEER:SENT$ READER s" reasoning_effort" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
+   MODEL-PEER:SENT$ READER s" reasoning" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
    INPUT$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE ;
+\ A chat request is not stored, carries the system text as its instructions
+\ and asks for an answer in the configured JSON schema.
+: CHAT-REQUEST ( -- )
+   CHAT
+   s" store" SENT JSON:READ-TOKEN JSON:T-FALSE = ASSERT JSON:READ-CLOSE
+   s" instructions" SENT s" Read source evidence." STR-IS
+   s" text" SENT s" format" JSON:READ-FIND-KEY ASSERT
+   s" type" JSON:READ-FIND-KEY ASSERT s" json_schema" STR-IS ;
 create ROW-NAME 1 allot
 \ A one-letter purpose row from "a"; its model and effort do not matter.
 : NTH-ROW ( n -- )
@@ -1179,7 +1185,7 @@ create ROW-NAME 1 allot
    0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
    s" high" M MODEL:EFFORT!
    PURPOSE CHAT
-   s" reasoning_effort" SENT s" high" STR-IS
+   SENT-EFFORT s" high" STR-IS
    s" effort" CONFIG s" high" STR-IS
    s" effort" ROW s" high" STR-IS
    s" " M MODEL:EFFORT!
@@ -1189,7 +1195,7 @@ create ROW-NAME 1 allot
    s" extract" s" other-model" s" low" s" " M MODEL:PURPOSE-MODEL!
    s" extract" M MODEL:PURPOSE! CHAT
    s" model" SENT s" other-model" STR-IS
-   s" reasoning_effort" SENT s" low" STR-IS
+   SENT-EFFORT s" low" STR-IS
    s" model" CONFIG s" other-model" STR-IS
    s" effort" CONFIG s" low" STR-IS
    s" model" ROW s" other-model" STR-IS
@@ -1350,7 +1356,7 @@ variable KEYLESS-U
    {: ctx:n input:ptr input-u:n out:ptr :}
    input input-u s" configuration" MEMBER
    s" endpoint" JSON:READ-FIND-KEY ASSERT
-   s" https://api.openai.com/v1/chat/completions" STR-IS
+   s" https://api.openai.com/v1/responses" STR-IS
    JOURNAL-RECORD JOURNAL-RECORD-U @ BUF:N>BLEN out BUF:REPLACE
    true ;
 
@@ -1472,7 +1478,7 @@ variable KEYLESS-U
 : CASES ( -- )
    SETUP
    M MODEL:CANCEL 0= ASSERT
-   BASES CHAT IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
+   BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
    REPLIES REFUSED [: CANCELLATION ;] QUIET
    EMBEDDINGS BAD-VECTORS EMBED-TOO-LARGE INPUT-BOUNDS DIMS-PROPERTY
    STOP-BETWEEN
