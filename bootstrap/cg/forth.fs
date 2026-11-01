@@ -637,20 +637,7 @@ PRIM-NAME-PAD DNAME-INL erase
    #PL @ 1+ /PRIM * PRIM-ROWS-A PRIM-ROWS-CAP PRIM-FIT
    PNP @ size + PNPOOL-A PRIM-NAME-CAP PRIM-FIT ;
 
-\ Fail-closed inline-name cap: EMIT-DICT stores prim names in a fixed 16-byte
-\ (DNAME-INL) inline slot and never emits DNAME-EXT external-name records, so a
-\ longer name overflows the record, misaligns the seed dictionary, and wedges
-\ BUILD-MACHO's fixup walk in a ~40-min EXC_BAD_ACCESS loop. Reject at
-\ registration with an instant named diagnostic instead (dot
-\ habu-mirror-emit-external-73e98647).
-: PRIM-INL-CAP? ( na nu -- )
-   dup DNAME-INL > if
-      cr ." stage0: prim name exceeds inline cap: " type cr
-      1 abort" stage0: prim name exceeds inline cap"
-   else 2drop then ;
-
 : REG-PRIM ( ptr u8 n n -- ) {: na nu lbl elbl -- :}
-   na nu PRIM-INL-CAP?
    nu REG-ROOM?
    #PL @ PRIM-ROW {: row :}
    lbl row !  elbl row cell+ !  nu row 2 cells + !
@@ -3085,22 +3072,35 @@ HB-TARGET-LINUX? [IF]
    ldone LBL,  RET, ;
 
 \ ---- seed dictionary: NPRIMS 48-byte records; internal marker becomes a flag ----
+\ A name past DNAME-INL sets DNAME-EXT; [24] holds the code offset of its bytes,
+\ emitted after the records, and EMIT-SEED-DICT rebases it.
 : EMIT-DICT ( -- )
+   #PL @ cells allocate throw {: nlbl :}
    LNCOUNT @ LBL,  #PL @ DCQ,                              \ live count, read at startup
    LDICT @ LBL,
    #PL @ 0 ?do
       i PRIM-ROW {: row :}
+      row 2 cells + @ {: nu :}
       row @ DLBL,                                         \ +0  start byte-offset
       row cell+ @ DLBL,                                   \ +8  end   byte-offset
-      row 4 cells + @ case
-         PRIM-INT-WID of row 2 cells + @ DNAME-INT or DCQ, endof   \ +16 internal primitive
-         PRIM-OWNED-WID of row 2 cells + @ DNAME-INT or DNAME-OWNED or DCQ, endof
-         row 2 cells + @ DCQ,                           \ +16 name length
-      endcase
-      row PRIM-NAME$ BYTES,                               \ +24 name (padded to 4)
-      DNAME-INL row 2 cells + @ 3 + -4 and - ?dup if PRIM-NAME-PAD swap BYTES, then
+      nu nu DNAME-INL > if DNAME-EXT or then
+      row 4 cells + @ case                               \ +16 name length | flags
+         PRIM-INT-WID of DNAME-INT or endof
+         PRIM-OWNED-WID of DNAME-INT or DNAME-OWNED or endof
+      endcase DCQ,
+      nu DNAME-INL > if
+         LBL dup nlbl i cells + !  DLBL,  0 DCQ,        \ +24 out-of-line name, +32 zero
+      else
+         row PRIM-NAME$ BYTES,                            \ +24 name (padded to 4)
+         DNAME-INL nu 3 + -4 and - ?dup if PRIM-NAME-PAD swap BYTES, then
+      then
       row 4 cells + @ dup 0< if drop 0 then DCQ,         \ +40 searchable wid; dispatch checks the flags
-   loop ;
+   loop
+   #PL @ 0 ?do
+      i PRIM-ROW {: row :}
+      row 2 cells + @ DNAME-INL > if nlbl i cells + @ LBL,  row PRIM-NAME$ BYTES, then
+   loop
+   nlbl free throw ;
 
 \ ---- literal emitters: scalars vs relocatable addresses (mirrors src/habu/habu2.f) --
 \ A relocatable address must never be emitted through the scalar path. Scalars use the
@@ -6445,7 +6445,7 @@ variable CFSK2
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, ;
 
 : EMIT-SEED-DICT ( -- )
-   LBL LBL LBL LBL {: scopy scdone pkg fields :}
+   LBL LBL LBL LBL LBL {: scopy scdone pkg fields nameok :}
    11 LNCOUNT @ ADR,  11 11 0 LDR,  NDICT 11 0 ADDI,
    9 LDICT @ ADR,  10 DBASE 0 ADDI,  12 11 0 ADDI,
    scopy LBL,
@@ -6458,8 +6458,11 @@ variable CFSK2
       pkg LBL,
       5 10 0 STR,  6 10 8 STR,
       fields LBL,
-      5 9 16 LDR,  5 10 16 STR,
-      5 9 24 LDR,  5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,
+      5 9 16 LDR,  5 10 16 STR,  6 5 DNAME-EXT ANDI,
+      5 9 24 LDR,  6 nameok CBZ,
+         5 RBASE 5 ADD,                                  \ out-of-line name: rebase its code offset
+      nameok LBL,
+      5 10 24 STR,  5 9 32 LDR,  5 10 32 STR,
       5 9 40 LDR,  5 10 40 STR,
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;

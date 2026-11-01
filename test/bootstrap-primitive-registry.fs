@@ -23,12 +23,10 @@ create BPR-NAME DNAME-INL allot
 : BPR-ADD ( -- ) BPR-NAME DNAME-INL 1 2 REG-PRIM ;
 : BPR-EMPTY ( -- ) BPR-NAME 0 1 2 REG-PRIM ;
 : BPR-NEGATIVE ( -- ) BPR-NAME -1 1 2 REG-PRIM ;
-: BPR-LONG ( -- ) s" primitive-name-17" 1 2 REG-PRIM ;
 
 : BPR-REFUSALS ( -- )
    ['] BPR-EMPTY catch E-PRIM-SIZE BPR=
    ['] BPR-NEGATIVE catch E-PRIM-SIZE BPR=
-   ['] BPR-LONG catch -2 BPR=
    #PL @ {: used :} PNP @ {: names :}
    PRIM-SIZE-MAX /PRIM / #PL !
    ['] BPR-ADD catch E-PRIM-SIZE BPR=
