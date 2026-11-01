@@ -234,6 +234,20 @@ entry.
   read it alike. Its rows are test/rigid-region-suite.f section (32); no
   checked body implements a name renewed at two levels.
 
+- 2026-11-01, sealing a package: Maki needs a package closed so later
+  source cannot reopen it. Offered a new word, Joel answered "we already have
+  package sealing, prove me wrong!". Measured: `private get-current
+  prot-wid-add public get-current prot-wid-add` before `;package` makes a
+  later reopen fail with E-SEALED-PACKAGE, exit 84, at the run and under
+  tools/check.f, but check's `--verify-only` scan passes it (exit 0). Joel:
+  "the cause is the checker, no? why not fix the checker instead? what's best
+  for long term?" Shown that the checker can follow a seal written as a
+  wordlist number only by guessing which wordlist the number names, Joel chose
+  "One word, seal-package": `seal-package ( -- )`, written inside the
+  package, which the run executes and the checker's scan reads by name; it
+  replaces the idiom in the engine's files. Application images otherwise stay
+  reopenable.
+
 ### Compiler and builds
 
 - 2026-10-22, incremental builds: "i said that a file is the unit of
