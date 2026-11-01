@@ -250,7 +250,6 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
 
 : EC-HARVEST-LOOP ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n root:ptr rootu:n :}
-   DISCOVER:ROWS-RESET
    -1 EC-HARVEST-N !
    begin
       DISCOVER:ROWS-VERSION {: ver:n :}
@@ -260,18 +259,6 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
       DISCOVER:ROWS-PASS-STABLE? and
       EC-N @ EC-HARVEST-N !
    until ;
-
-: EC-HARVEST ( ptr u8 n ptr u8 n -- )
-   0 EC-WITH !
-   [: EC-HARVEST-ACT ;] EC-HARVEST-RUN !
-   EC-HARVEST-LOOP ;
-
-: EC-HARVEST-WITH ( ptr u8 n ptr u8 n [ ptr u8 n ptr u8 n -- ptr u8 n ] -- )
-   {: a:ptr u:n root:ptr rootu:n reader :}
-   1 EC-WITH !
-   reader EC-HARVEST-READER !
-   [: EC-HARVEST-WITH-ACT ;] EC-HARVEST-RUN !
-   a u root rootu EC-HARVEST-LOOP ;
 
 \ Replay harvested rows at their actual load sites. A later sibling must not
 \ shadow an earlier family, while a prior sibling can change the opener before
@@ -301,17 +288,19 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
       over cells EC-DIR-OFF + @
       id EC-PATH$ DISCOVER:CONTEXT-BETWEEN
       dup cells EC-DIR-SPEC + @ {: child-spec:bool :}
-      dup cells EC-DIR-KIND + @ EV-PROVIDED = if
-         child-spec 0= if dup cells EC-DIR + @ EC-KNOW then
+      dup cells EC-DIR + @ {: child:n :}
+      dup cells EC-DIR-KIND + @ {: kind:n :}
+      kind EV-PROVIDED = if
+         child-spec 0= if child EC-KNOW then
       else
-         dup cells EC-DIR-KIND + @ EV-INCLUDED = if
-            id over cells EC-DIR + @ EC-EDGE+
-            dup cells EC-DIR + @ child-spec false RECURSE
-         else
-            dup cells EC-DIR + @ {: child:n :}
-            child EC-PATH-KNOWN? 0= if
-               id child EC-EDGE+
-               child child-spec true RECURSE
+         kind EV-INCLUDED = child EC-PATH-KNOWN? 0= or if
+            id child EC-EDGE+
+            child-spec if
+               DISCOVER:CONTEXT-SPEC-BEGIN {: pkg:n outer:n :}
+               child true kind EV-REQUIRED = RECURSE
+               pkg outer DISCOVER:CONTEXT-SPEC-END
+            else
+               child false kind EV-REQUIRED = RECURSE
             then
          then
       then
@@ -332,6 +321,20 @@ TYPED-VARIABLE EC-BEFORE [ ptr u8 n -- ]
    DISCOVER:CONTEXT-BEGIN
    a u root rootu EC-INTERN
    false true EC-CONTEXT-EXPAND ;
+
+\ A harvest keys records by the packages the replay found open at each file's
+\ start and after each load. A replay that learned a site harvests again when
+\ the site's package or a keyed record's key differs (SD-S-LEARN and
+\ SD-R-CONTEXT-KEY).
+: EC-CLOSURE ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n root:ptr rootu:n :}
+   DISCOVER:ROWS-RESET
+   begin
+      a u root rootu EC-HARVEST-LOOP
+      DISCOVER:ROWS-VERSION {: ver:n :}
+      a u root rootu EC-CONTEXT-CHECK
+      DISCOVER:ROWS-VERSION ver =
+   until ;
 
 : EC-OUT-HAS-PATH? ( n -- bool ) {: id:n :}
    id EC-PATH$ {: a:ptr u:n :}
@@ -396,9 +399,10 @@ public
    a u root rootu EC-STABLE-IN
    {: entry:ptr entryu:n owner:ptr owneru:n :}
    before EC-BEFORE !
-   entry entryu owner owneru EC-HARVEST
+   0 EC-WITH !
+   [: EC-HARVEST-ACT ;] EC-HARVEST-RUN !
    [: EC-CONTEXT-ACT ;] EC-CONTEXT-RUN !
-   entry entryu owner owneru EC-CONTEXT-CHECK
+   entry entryu owner owneru EC-CLOSURE
    EC-PUBLISH
    DISCOVER:ROWS-RESET ;
 
@@ -418,9 +422,11 @@ public
    {: a:ptr u:n reader :}
    a u ENTRY-RESOLVE drop RESOLVED-ROOT$ EC-STABLE-IN
    {: entry:ptr entryu:n owner:ptr owneru:n :}
-   entry entryu owner owneru reader EC-HARVEST-WITH
+   1 EC-WITH !
+   reader EC-HARVEST-READER !
+   [: EC-HARVEST-WITH-ACT ;] EC-HARVEST-RUN !
    [: EC-CONTEXT-WITH-ACT ;] EC-CONTEXT-RUN !
-   entry entryu owner owneru EC-CONTEXT-CHECK
+   entry entryu owner owneru EC-CLOSURE
    EC-PUBLISH
    DISCOVER:ROWS-RESET ;
 

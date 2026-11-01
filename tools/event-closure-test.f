@@ -451,9 +451,8 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 : ECT-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
    2drop ECT-READ-SRC $1000 FS:READ-ALL ECT-READ-SRC swap ;
 
-\ The child runs the entry and loads dep-c.f: dep-b.f's `structure` is a word
-\ the open packages reach, not the family opener. Discovery refuses the entry.
-: ECT-FAMILY-SHADOWED ( ptr u8 n ptr u8 n ptr u8 n -- )
+\ The child runs the entry, which loads dep-c.f last.
+: ECT-RUNS-LATE-LOAD ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: da:ptr dau:n db:ptr dbu:n src:ptr srcu:n :}
    ECT-DA$ da dau ECT-WRITE
    ECT-DB$ db dbu ECT-WRITE
@@ -464,7 +463,12 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
    ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
-   ECT-OUT outu LEN>N s" LOADED" T$=
+   ECT-OUT outu LEN>N s" LOADED" T$= ;
+
+\ Discovery refuses the entry. In the family cases dep-b.f's `structure` is a
+\ word the open packages reach, not the family opener.
+: ECT-REFUSES-LATE-LOAD ( ptr u8 n ptr u8 n ptr u8 n -- )
+   ECT-RUNS-LATE-LOAD
    [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
 
 \ A sibling load defines DEMO's `structure` before dep-b.f reaches it, though
@@ -472,7 +476,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 : ECT-TEST-FAMILY-PRIOR-SIBLING ( -- )
    s" package DEMO : structure ( -- ) ; ;package"
    S\" package DEMO structure require dep-c.f ;package\n"
-   S\" require dep-a.f require dep-b.f\n" ECT-FAMILY-SHADOWED
+   S\" require dep-a.f require dep-b.f\n" ECT-REFUSES-LATE-LOAD
    [: ECT-ENTRY$ EC:LOAD-ORDER ;] E-DISC-SHADOW TTHROWSQ
    [: ECT-ENTRY$ [: ECT-READ-PATH ;] EC:BUILD-WITH ;]
       E-DISC-SHADOW TTHROWSQ ;
@@ -490,31 +494,221 @@ ECT-ERR-CAP BUFFER: ECT-ERR
 \ therefore resolve to a word a prior sibling defined in that package.
 : ECT-TEST-FAMILY-INHERITED-PACKAGE ( -- )
    s" package DEMO : structure ( -- ) ; ;package" s" structure require dep-c.f"
-   S\" require dep-a.f package DEMO require dep-b.f ;package\n" ECT-FAMILY-SHADOWED ;
+   S\" require dep-a.f package DEMO require dep-b.f ;package\n"
+   ECT-REFUSES-LATE-LOAD ;
 
 \ A part's `;package` returns to DEMO, so the child still inherits DEMO.
 : ECT-TEST-FAMILY-PART-RETURN ( -- )
    s" " s" structure require dep-c.f"
    S\" package DEMO : structure ( -- ) ; package PART ;package require dep-b.f ;package\n"
-   ECT-FAMILY-SHADOWED ;
+   ECT-REFUSES-LATE-LOAD ;
 
 \ Inside part DEMO:PART a bare `structure` reaches DEMO's word.
 : ECT-TEST-FAMILY-IN-PART ( -- )
    s" " s" structure require dep-c.f"
    S\" package DEMO : structure ( -- ) ; package PART require dep-b.f ;package ;package\n"
-   ECT-FAMILY-SHADOWED ;
+   ECT-REFUSES-LATE-LOAD ;
 
 \ Inside part DEMO:PART, `PART:structure` defines the part's own word.
 : ECT-TEST-FAMILY-QUALIFIED-PART ( -- )
    s" " s" structure require dep-c.f"
    S\" package DEMO package PART : PART:structure ( -- ) ; require dep-b.f ;package ;package\n"
-   ECT-FAMILY-SHADOWED ;
+   ECT-REFUSES-LATE-LOAD ;
 
 \ dep-a.f leaves DEMO open, so the entry's `package PART` opens part DEMO:PART.
 : ECT-TEST-FAMILY-LEFT-OPEN ( -- )
    s" package DEMO : structure ( -- ) ;" s" structure require dep-c.f"
    S\" require dep-a.f package PART require dep-b.f ;package ;package\n"
-   ECT-FAMILY-SHADOWED ;
+   ECT-REFUSES-LATE-LOAD ;
+
+\ The closure of count files ends with dep-c.f.
+: ECT-FINDS-LATE-LOAD ( ptr u8 n ptr u8 n ptr u8 n n -- ) {: count:n :}
+   ECT-RUNS-LATE-LOAD
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT count T=
+   count 1- EC:PATH$ ECT-DC$ T$= ;
+
+\ dep-a.f leaves DEMO open, so the entry's row W is DEMO's and `DEMO:W`
+\ parses the `\` that would hide the require.
+: ECT-TEST-ROW-LEFT-OPEN ( -- )
+   s" package DEMO" s" "
+   S\" require dep-a.f\npublic\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n;package\nDEMO:W \\ require dep-c.f\n"
+   3 ECT-FINDS-LATE-LOAD ;
+
+\ A part's `;package` returns to DEMO, which dep-a.f left open.
+: ECT-TEST-ROW-AFTER-PART ( -- )
+   s" package DEMO" s" "
+   S\" require dep-a.f\npackage PART ;package\npublic\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n;package\nDEMO:W \\ require dep-c.f\n"
+   3 ECT-FINDS-LATE-LOAD ;
+
+\ dep-b.f starts in DEMO, so its `undefine W` retires DEMO's row W.
+: ECT-TEST-RETIRE-INHERITED ( -- )
+   S\" package DEMO public\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n;package\n"
+   S\" undefine W\n: W ( -- ) ;\n"
+   S\" require dep-a.f\npackage DEMO public require dep-b.f ;package\nDEMO:W require dep-c.f\n"
+   4 ECT-FINDS-LATE-LOAD ;
+
+\ After a part closes in the DEMO dep-a.f left open, `undefine W` retires DEMO's W.
+: ECT-TEST-RETIRE-AFTER-PART ( -- )
+   S\" package DEMO public\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nprivate\n"
+   s" "
+   S\" require dep-a.f\npackage PART ;package\npublic\nundefine W\n: W ( -- ) ;\n;package\nDEMO:W require dep-c.f\n"
+   3 ECT-FINDS-LATE-LOAD ;
+
+\ dep-a.f's row W is P's on one visit and Q's on the other: discovery cannot
+\ key it by one package, so it refuses where the child loads dep-c.f.
+: ECT-TEST-ROW-TWO-PACKAGES ( -- )
+   s" public : W ( -- ) parse-name 2drop ; parses: W 1" s" "
+   S\" package P include dep-a.f ;package\npackage Q include dep-a.f ;package\nP:W \\ require dep-c.f\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ After LATER runs, the bare W is the row W of the DEMO dep-a.f leaves open.
+: ECT-TEST-SPEC-LEFT-OPEN-USE ( -- )
+   S\" package DEMO public\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n" s" "
+   S\" : LATER ( -- ) s\" dep-a.f\" included ;\nLATER\nW \\ require dep-c.f\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ After L2 runs, the bare W is the row W of the DEMO dep-b.f leaves open, though
+\ L2 is defined in dep-a.f, which a body loads.
+: ECT-TEST-SPEC-NESTED-LEFT-OPEN ( -- )
+   S\" : L2 ( -- ) s\" dep-b.f\" required ;\n"
+   S\" package DEMO public\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n"
+   S\" : LATER ( -- ) s\" dep-a.f\" required ;\nLATER L2\nW \\ require dep-c.f\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ dep-a.f, which LATER loads, closes the package it opens, so after LATER the
+\ entry's DEMO is known and its bare W parses the `\`.
+: ECT-TEST-SPEC-OWN-CLOSED ( -- )
+   s" package OWN ;package" s" "
+   S\" : LATER ( -- ) s\" dep-a.f\" required ;\nLATER\npackage DEMO\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n;package\n"
+   3 ECT-FINDS-LATE-LOAD ;
+
+\ dep-a.f, which LATER loads, closes DEMO, so the entry's W after LATER is the
+\ global one, which parses nothing.
+: ECT-TEST-SPEC-CLOSES ( -- )
+   s" ;package" s" "
+   S\" : W ( -- ) ;\n: LATER ( -- ) s\" dep-a.f\" included ;\npackage DEMO\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nLATER\nW require dep-c.f\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ dep-a.f runs in P from the entry and, from LATER, in Q, where W parses the
+\ `\`: the visit in Q cannot take the P visit's site after the require.
+: ECT-TEST-SPEC-SITE ( -- )
+   S\" require dep-b.f\nW \\ require dep-c.f\n" s" : MW ( -- ) ;"
+   S\" package P\n: W ( -- ) ;\ninclude dep-a.f\n;package\npackage Q\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n: LATER ( -- ) s\" dep-a.f\" included ;\nLATER\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ dep-a.f, loaded by DEMO's LATER, starts in whatever package LATER runs in, so
+\ its row W has no package discovery can know.
+: ECT-TEST-SPEC-START ( -- )
+   S\" : W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n" s" "
+   S\" package DEMO public\n: LATER ( -- ) s\" dep-a.f\" required ;\n;package\nDEMO:LATER\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ dep-a.f, loaded by a body, opens a package of its own, which the engine admits
+\ only where none is open: its row W after `;package` is global.
+: ECT-TEST-SPEC-OWN-PACKAGE ( -- )
+   S\" package OWN ;package\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n" s" "
+   S\" : LATER ( -- ) s\" dep-a.f\" required ;\nLATER\n"
+   3 ECT-FINDS-LATE-LOAD ;
+
+\ A bare W reaches DEMO's row W inside DEMO, opened here, by a parent or by
+\ the file itself, and inside DEMO's part.
+: ECT-TEST-BARE-INHERITED ( -- )
+   s" package DEMO public" s" "
+   S\" require dep-a.f\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n;package\n"
+   3 ECT-FINDS-LATE-LOAD ;
+
+: ECT-TEST-BARE-INHERITED-CHILD ( -- )
+   S\" : W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n" s" "
+   S\" package DEMO\nrequire dep-a.f\n;package\n"
+   3 ECT-FINDS-LATE-LOAD ;
+
+: ECT-TEST-BARE-IN-PACKAGE ( -- )
+   s" " s" "
+   S\" package DEMO\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n;package\n"
+   2 ECT-FINDS-LATE-LOAD ;
+
+: ECT-TEST-BARE-IN-PART ( -- )
+   s" " s" "
+   S\" package DEMO\npackage PART\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n;package\n;package\n"
+   2 ECT-FINDS-LATE-LOAD ;
+
+\ DEMO's row W is in dep-a.f, so the walk cannot see what the entry's bare W
+\ binds: refused.
+: ECT-TEST-BARE-DECLARED-INHERITED ( -- )
+   S\" package DEMO public\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n" s" "
+   S\" require dep-a.f\nW \\ require dep-c.f\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ Inside part A:B a bare W reaches A:B and A, never top-level B's row W.
+: ECT-TEST-BARE-PART-OUTER ( -- )
+   s" " s" "
+   S\" package B public\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n;package\npackage A\n: W ( -- ) ;\npackage B\nW require dep-c.f\n;package\n;package\n"
+   2 ECT-FINDS-LATE-LOAD ;
+
+\ The bare `align` before P's row is the engine's word, which the walk cannot see.
+: ECT-TEST-BARE-ENGINE-WORD ( -- )
+   s" " s" "
+   S\" package P\nalign require dep-c.f\n: align ( -- ) parse-name 2drop ;\nparses: align 1\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ A global W and P's both reach the bare W, so P's row is bare-off: refused
+\ though P's W, which parses the `\`, is the one bound here.
+: ECT-TEST-BARE-OFF ( -- )
+   s" " s" "
+   S\" : W ( -- ) ;\npackage P\n: W ( -- ) parse-name 2drop ;\nparses: W 1\nW \\ require dep-c.f\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ P's row names the engine's parse-name, bound where the row stands; the bare
+\ use after P's own parse-name binds that one, which parses nothing.
+: ECT-TEST-BARE-ROW-FIRST ( -- )
+   s" " s" "
+   S\" package P\nparses: parse-name 1\n: parse-name ( -- ) ;\nparse-name require dep-c.f\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ A harvest reads the V before its row as source, so `create V` declares V
+\ again and disables the row: the replay refuses that use all the same.
+: ECT-TEST-BARE-DISABLED ( -- )
+   s" " s" "
+   S\" package P\n: V ( -- ) parse-name 2drop parse-name 2drop parse-name 2drop ;\nV create V \\ require dep-c.f\nparses: V 3\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ dep-b.f, found once DEMO:W is known, leaves OTHER open after the second
+\ `require dep-a.f`, whose site an earlier replay learned outside every package.
+: ECT-TEST-SITE-CHANGED ( -- )
+   s" package DEMO public"
+   S\" package OTHER public\n: V ( -- ) parse-name 2drop ;\nparses: V 1\n"
+   S\" require dep-a.f\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n;package\nDEMO:W \\ require dep-b.f\nrequire dep-a.f\nV \\ require dep-c.f\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ dep-a.f, included in P and in Q, requires dep-c.f: the site after that load
+\ is unknown, and nothing after it is keyed.
+: ECT-TEST-SITE-TWO-PACKAGES ( -- )
+   S\" require dep-c.f\n: AW ( -- ) ;\n" s" : BW ( -- ) ;"
+   S\" package P\ninclude dep-a.f\n;package\npackage Q\ninclude dep-a.f\n;package\nrequire dep-b.f\n"
+   4 ECT-FINDS-LATE-LOAD ;
+
+\ dep-b.f closes the A dep-a.f opened only on dep-a.f's first visit, so after
+\ the require dep-a.f's `package B` may open part A:B, where W is A's.
+: ECT-TEST-SITE-PART ( -- )
+   S\" package A\nrequire dep-b.f\npackage B\nW \\ require dep-c.f\n;package\n"
+   s" ;package"
+   S\" : W ( -- ) ;\npackage A\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n;package\ninclude dep-a.f\ninclude dep-a.f\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ As above, but the `include dep-b.f` that closes part A:B runs where the
+\ package is not known, so a later part C cannot make it known again.
+: ECT-TEST-SITE-LOAD-CLOSES ( -- )
+   S\" package A\nrequire dep-b.f\npackage B\ninclude dep-b.f\npackage C\n;package\nW \\ require dep-c.f\n"
+   s" ;package"
+   S\" : W ( -- ) ;\npackage A\n: W ( -- ) parse-name 2drop ;\nparses: W 1\n;package\ninclude dep-a.f\ninclude dep-a.f\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
+
+\ LATER runs inside DEMO, where dep-b.f's `structure` is DEMO's word.
+: ECT-TEST-FAMILY-BODY-LOAD ( -- )
+   s" package DEMO : structure ( -- ) ; ;package" s" structure require dep-c.f"
+   S\" require dep-a.f\npackage DEMO\n: LATER ( -- ) s\" dep-b.f\" required ;\nLATER\n;package\n"
+   ECT-REFUSES-LATE-LOAD ;
 
 \ A prior provided path is known without being loaded. A later require of it
 \ cannot contribute that file's definitions to the family context.
@@ -677,6 +871,33 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-TEST-FAMILY-IN-PART
    ECT-TEST-FAMILY-QUALIFIED-PART
    ECT-TEST-FAMILY-LEFT-OPEN
+   ECT-TEST-ROW-LEFT-OPEN
+   ECT-TEST-ROW-AFTER-PART
+   ECT-TEST-RETIRE-INHERITED
+   ECT-TEST-RETIRE-AFTER-PART
+   ECT-TEST-ROW-TWO-PACKAGES
+   ECT-TEST-SPEC-LEFT-OPEN-USE
+   ECT-TEST-SPEC-NESTED-LEFT-OPEN
+   ECT-TEST-SPEC-OWN-CLOSED
+   ECT-TEST-SPEC-CLOSES
+   ECT-TEST-SPEC-SITE
+   ECT-TEST-SPEC-START
+   ECT-TEST-SPEC-OWN-PACKAGE
+   ECT-TEST-BARE-INHERITED
+   ECT-TEST-BARE-INHERITED-CHILD
+   ECT-TEST-BARE-IN-PACKAGE
+   ECT-TEST-BARE-IN-PART
+   ECT-TEST-BARE-DECLARED-INHERITED
+   ECT-TEST-BARE-PART-OUTER
+   ECT-TEST-BARE-ENGINE-WORD
+   ECT-TEST-BARE-OFF
+   ECT-TEST-BARE-ROW-FIRST
+   ECT-TEST-BARE-DISABLED
+   ECT-TEST-SITE-CHANGED
+   ECT-TEST-SITE-TWO-PACKAGES
+   ECT-TEST-SITE-PART
+   ECT-TEST-SITE-LOAD-CLOSES
+   ECT-TEST-FAMILY-BODY-LOAD
    ECT-TEST-FAMILY-PROVIDED-SIBLING
    ECT-TEST-FAMILY-INCLUDE-REQUIRE
    ECT-TEST-FAMILY-MULTI-OWNER

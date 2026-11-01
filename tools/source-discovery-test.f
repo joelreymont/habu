@@ -578,6 +578,10 @@ $7F0 constant SDT-OVER
 : SDT-HARVEST-ENTRY ( -- )
    [: SDT-DISCOVER ;] DISCOVER:HARVEST ;
 
+\ A pass's end decides which rows a spelling may use; a pass over files already
+\ harvested decides only that.
+: SDT-SETTLE ( -- )  DISCOVER:ROWS-PASS-BEGIN DISCOVER:ROWS-PASS-END ;
+
 : SDT-SELECT-NAMED ( ptr u8 n -- ) {: name:ptr u:n :}
    SDT-ROOT$ name u SDT-ENTRY FS:JOIN-PATH SDT-ENTRY-U ! ;
 
@@ -635,7 +639,7 @@ $7F0 constant SDT-OVER
    DISCOVER:ROWS-RESET
    s" row-part-twin.f"
    S\" package SDT-Q public : W ( -- ) parse-name 2drop ; parses: W 1 ;package\npackage SDT-P package SDT-Q public : W ( -- ) ; ;package\nSDT-Q:W require sd-raw.f\n;package\n"
-   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-SETTLE
    s" sd-raw.f" SDT-ONE-LOAD ;
 
 \ A redeclaration or retirement makes a spelling insufficient to select the
@@ -644,17 +648,18 @@ $7F0 constant SDT-OVER
    DISCOVER:ROWS-RESET
    s" row-other.f" s" package SDT-R : W ( -- ) ; ;package" SDT-WRITE-ENTRY
    SDT-HARVEST-ENTRY
-   SDT-ROW-LIB
+   SDT-ROW-LIB SDT-SETTLE
    s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
    [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
    DISCOVER:ROWS-RESET
    SDT-ROW-LIB
-   s" row-retire.f" s" undefine SDT-R:W" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   s" row-retire.f" s" undefine SDT-R:W" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-SETTLE
    s" row-use.f" s" SDT-R:W required" SDT-WRITE-ENTRY
    [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
    DISCOVER:ROWS-RESET
    s" row-bare.f" s" : PN ( -- ) ; parses: PN 1" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
    s" row-other.f" s" package OTHER : PN ( -- ) ; ;package" SDT-WRITE-ENTRY SDT-HARVEST-ENTRY
+   SDT-SETTLE
    s" row-use.f" s" PN required" SDT-WRITE-ENTRY
    [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ
    DISCOVER:ROWS-RESET ;
@@ -707,7 +712,7 @@ $7F0 constant SDT-OVER
    DISCOVER:ROWS-RESET
    SDT-ROW-LIB
    s" row-real.f" S\" require row-lib.f\nSDT-R:W required SDT-R:;W\npackage SDT-R : W ( -- ) ; ;package\n"
-   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-HARVEST-ENTRY
+   SDT-WRITE-ENTRY SDT-HARVEST-ENTRY SDT-HARVEST-ENTRY SDT-SETTLE
    [: SDT-DISCOVER ;] E-DISC-DYNAMIC TTHROWSQ ;
 
 : SDT-CROSS-PASS ( bool -- ) {: lib-first:bool :}

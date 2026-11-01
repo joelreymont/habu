@@ -46,6 +46,8 @@ PTR-VARIABLE SD-A
 variable SD-U
 variable SD-I
 variable SD-PATH-U
+variable SD-PATH-AT                     \ where the last string literal's payload starts
+variable SD-PATH-SPAN                   \ and its length in the source
 variable SD-PEND
 variable SD-EMIT-LEN
 variable SD-OPENER                       \ where the last string or group opener starts
@@ -58,10 +60,6 @@ variable SD-DEF-STAGE
 variable SD-DEF-OFF
 variable SD-SHADOWED                     \ loader and family words the file defined
 variable SD-RETIRED                      \ and those it retired
-variable SD-PKG-OFF                      \ the package open in this source
-variable SD-PKG-U
-variable SD-PART-OFF                     \ the part open in that package
-variable SD-PART-U
 variable SD-HARVESTING                  \ only the harvest records declarations and rows
 variable SD-FILE-ID
 DYNAMIC-BUFFER SD-E-SPEC n
@@ -82,8 +80,13 @@ DYNAMIC-BUFFER SD-F-AT n
 DYNAMIC-BUFFER SD-F-U n
 DYNAMIC-BUFFER SD-F-HEAD n
 DYNAMIC-BUFFER SD-F-START n
+DYNAMIC-BUFFER SD-F-SITE n               \ the file's newest site, -1 for none
 variable SD-F-N
+\ A record's offset is where its name starts, or for a nameless record where
+\ its keyword does, and its span the source it names there: a refusal at the
+\ record points at both.
 DYNAMIC-BUFFER SD-R-OFF n
+DYNAMIC-BUFFER SD-R-SPAN n
 DYNAMIC-BUFFER SD-R-FILE n
 DYNAMIC-BUFFER SD-R-NEXT n
 DYNAMIC-BUFFER SD-R-KIND n
@@ -91,11 +94,14 @@ DYNAMIC-BUFFER SD-R-NAME n
 DYNAMIC-BUFFER SD-R-NAME-U n
 DYNAMIC-BUFFER SD-R-PKG n
 DYNAMIC-BUFFER SD-R-PKG-U n
+DYNAMIC-BUFFER SD-R-OUTER n
+DYNAMIC-BUFFER SD-R-OUTER-U n
 DYNAMIC-BUFFER SD-R-COUNT n
 DYNAMIC-BUFFER SD-R-TERMS n
 DYNAMIC-BUFFER SD-R-TERMS-U n
 DYNAMIC-BUFFER SD-R-ACTIVE n
 DYNAMIC-BUFFER SD-R-DISABLED n
+DYNAMIC-BUFFER SD-R-BARE-OFF n             \ a row no bare spelling may use
 DYNAMIC-BUFFER SD-R-CANON n
 DYNAMIC-BUFFER SD-R-ROWS n
 DYNAMIC-BUFFER SD-R-FROZEN n
@@ -109,13 +115,30 @@ variable SD-R-PASS-STABLE
 variable SD-R-OLD-HEAD
 variable SD-R-START-N
 variable SD-R-START-BYTES
+\ The package row open where a walk or replay stands, -1 for none: SD-C-UNKNOWN
+\ in a body-loaded file, after an unknown site, after a load made in either, and
+\ after a body whose file may change it (CONTEXT-SPEC-END).
 variable SD-C-PKG
-variable SD-C-OUTER                      \ the package row a part returns to
+\ The package row a part returns to. Where SD-C-PKG is unknown: -1 in a file a
+\ body loads, where no package it opens can be a part; else SD-C-UNKNOWN.
+variable SD-C-OUTER
+-2 constant SD-C-UNKNOWN
+-1 SD-C-PKG !
+-1 SD-C-OUTER !
 variable SD-C-N
 DYNAMIC-BUFFER SD-C-ROW n
 DYNAMIC-BUFFER SD-C-OWNER n
 DYNAMIC-BUFFER SD-C-ORDER n
 variable SD-C-ORDER-N
+\ A site is a file's start (offset 0) or the point right after one of its loads
+\ (the loader's offset + 1), with the package the replay knew open there, or
+\ SD-C-UNKNOWN where two replays found different ones (SD-S-LEARN).
+DYNAMIC-BUFFER SD-S-OFF n
+DYNAMIC-BUFFER SD-S-PKG n
+DYNAMIC-BUFFER SD-S-OUTER n
+DYNAMIC-BUFFER SD-S-NEXT n
+variable SD-S-N
+variable SD-S-MARK                       \ sites from here on: this replay's
 
 \ Local spellings are byte-exact and become visible after their group's closer.
 \ Keep source offsets so discovery need not copy names or impose a locals cap.
@@ -165,10 +188,12 @@ variable SD-SCOPES
 : SD-FILE-OF ( -- n )
    SD-ENTRY SD-ENTRY-U @ SD-FILE-FIND dup 0 >= if exit then drop
    SD-F-N @ {: id:n :}
-   id 1+ dup SD-F-AT-RESERVE dup SD-F-U-RESERVE SD-F-HEAD-RESERVE
+   id 1+ dup SD-F-AT-RESERVE dup SD-F-U-RESERVE dup SD-F-HEAD-RESERVE
+   SD-F-SITE-RESERVE
    SD-ENTRY SD-ENTRY-U @ SD-R-COPY id SD-F-AT !
    SD-ENTRY-U @ id SD-F-U !
    -1 id SD-F-HEAD !
+   -1 id SD-F-SITE !
    id 1+ SD-F-N !
    id ;
 
@@ -178,44 +203,60 @@ variable SD-SCOPES
 : SD-R-PKG$ ( n -- ptr u8 n ) {: r:n :}
    r SD-R-PKG @ SD-R-BYTES r SD-R-PKG-U @ ;
 
-: SD-R-SEEN? ( n -- bool ) {: off:n :}
-   SD-FILE-ID @ SD-F-HEAD @
+: SD-R-OUTER$ ( n -- ptr u8 n ) {: r:n :}
+   r SD-R-OUTER @ SD-R-BYTES r SD-R-OUTER-U @ ;
+
+\ A package row's name bytes, at 0 0 for no row or an unknown one.
+: SD-C-NAME ( n -- n n ) {: row:n :}
+   row 0 < if 0 0 exit then
+   row SD-R-NAME @ row SD-R-NAME-U @ ;
+
+\ The walked file's record at OFF, -1 for none or for a file no harvest read.
+: SD-R-AT ( n -- n ) {: off:n :}
+   SD-FILE-ID @ {: file:n :}
+   file 0 < if -1 exit then
+   file SD-F-HEAD @
    begin dup 0 >= while
-      dup SD-R-OFF @ off = if drop true exit then
+      dup SD-R-OFF @ off = if exit then
       SD-R-NEXT @
-   repeat drop
-   false ;
+   repeat ;
 
 \ All declarations and retirements the walk understands are collected, even
 \ before their row is known. A row's safety is decided from the complete set.
+\ Every walk tracks the open package in SD-C-PKG, the replay's own state, from
+\ the package records and the sites the replay learned (SD-S-SEED).
 : SD-R-RECORD ( n n n n -- n ) {: off:n noff:n nu:n kind:n :}
    SD-HARVESTING @ 0= if -1 exit then
-   off SD-R-SEEN? if -1 exit then
+   off SD-R-AT 0 >= if -1 exit then
    SD-R-N @ {: r:n :}
-   r 1+ dup SD-R-OFF-RESERVE dup SD-R-FILE-RESERVE dup SD-R-NEXT-RESERVE
+   r 1+ dup SD-R-OFF-RESERVE dup SD-R-SPAN-RESERVE
+   dup SD-R-FILE-RESERVE dup SD-R-NEXT-RESERVE
    dup SD-R-KIND-RESERVE
    dup SD-R-NAME-RESERVE dup SD-R-NAME-U-RESERVE
    dup SD-R-PKG-RESERVE dup SD-R-PKG-U-RESERVE
+   dup SD-R-OUTER-RESERVE dup SD-R-OUTER-U-RESERVE
    dup SD-R-COUNT-RESERVE dup SD-R-TERMS-RESERVE
    dup SD-R-TERMS-U-RESERVE dup SD-R-ACTIVE-RESERVE
-   dup SD-R-DISABLED-RESERVE SD-R-CANON-RESERVE
+   dup SD-R-DISABLED-RESERVE dup SD-R-BARE-OFF-RESERVE
+   SD-R-CANON-RESERVE
    SD-FILE-ID @ SD-F-HEAD @ r SD-R-NEXT !
    r SD-FILE-ID @ SD-F-HEAD !
    off r SD-R-OFF !
+   nu r SD-R-SPAN !
    SD-FILE-ID @ r SD-R-FILE !
    kind r SD-R-KIND !
    noff nu SD-TOK$ SD-R-COPY r SD-R-NAME !
    nu r SD-R-NAME-U !
-   \ Keyed by the package as this file spells it, B in part A:B, else none.
-   SD-PART-U @ 0<> if SD-PART-OFF @ SD-PART-U @ else SD-PKG-OFF @ SD-PKG-U @ then
-   {: poff:n pu:n :}
-   poff pu SD-TOK$ SD-R-COPY r SD-R-PKG !
-   pu r SD-R-PKG-U !
+   \ Keyed by the package open here and its outer, as their `package` spells
+   \ them: (A, B) in part A:B, (none, B) in top-level B. Both share rows' bytes.
+   SD-C-PKG @ SD-C-NAME r SD-R-PKG-U ! r SD-R-PKG !
+   SD-C-OUTER @ SD-C-NAME r SD-R-OUTER-U ! r SD-R-OUTER !
    0 r SD-R-COUNT !
    0 r SD-R-TERMS !
    0 r SD-R-TERMS-U !
    1 r SD-R-ACTIVE !
    0 r SD-R-DISABLED !
+   0 r SD-R-BARE-OFF !
    0 r SD-R-CANON !
    r 1+ SD-R-N !
    r ;
@@ -243,19 +284,61 @@ variable SD-SCOPES
    col 0 >= if a col a col 1+ + u col 1+ - exit then
    r SD-R-PKG$ a u ;
 
+\ No package row, outside every package or where it is unknown, spells as empty:
+\ a declaration made there is reached from every package.
+: SD-C-PKG$ ( n -- ptr u8 n ) {: row:n :}
+   row 0 < if 0 SD-R-BYTES 0 exit then
+   row SD-R-NAME$ ;
+
+: SD-C-KNOWN? ( -- bool )
+   SD-C-PKG @ SD-C-UNKNOWN <> SD-C-OUTER @ SD-C-UNKNOWN <> and ;
+
+\ A bare name reaches package (outer, name) open here and, inside part A:B,
+\ (none, A) as well. Where either is unknown it may reach any package: refused.
+: SD-C-OPEN? ( ptr u8 n ptr u8 n -- bool ) {: out:ptr outu:n pkg:ptr pkgu:n :}
+   SD-C-KNOWN? 0= if E-DISC-SHADOW throw then
+   pkg pkgu SD-C-PKG @ SD-C-PKG$ STR=CI
+   out outu SD-C-OUTER @ SD-C-PKG$ STR=CI and if true exit then
+   outu 0= pkg pkgu SD-C-OUTER @ SD-C-PKG$ STR=CI and ;
+
+: SD-R-TOP$ ( n -- ptr u8 n ) {: r:n :}
+   r SD-R-OUTER-U @ 0<> if r SD-R-OUTER$ exit then
+   r SD-R-PKG$ ;
+
+\ A qualified-name record `B:Q` made inside top-level package T, or a part of T,
+\ names part T:B or top-level B (card section 1): two packages.
+: SD-R-IDS ( n -- n ) {: r:n :}
+   r SD-R-NAME$ SD-QCOLON 0 < if 1 exit then
+   r SD-R-TOP$ nip 0= if 1 exit then
+   2 ;
+
+\ The record's Kth package as its outer and name, each empty for none.
+: SD-R-ID ( n n -- ptr u8 n ptr u8 n ) {: r:n k:n :}
+   r SD-R-NAME$ {: a:ptr u:n :}
+   a u SD-QCOLON {: col:n :}
+   col 0 < if r SD-R-OUTER$ r SD-R-PKG$ exit then
+   k 0= if r SD-R-TOP$ else 0 SD-R-BYTES 0 then
+   a col ;
+
+\ A bare use reaches the record's package; where the record may name either of
+\ two packages and the use reaches one, discovery cannot know which: refused.
+: SD-R-OPEN? ( n -- bool ) {: r:n :}
+   r SD-R-IDS {: ids:n :}
+   false
+   ids 0 ?do r i SD-R-ID SD-C-OPEN? or loop
+   dup ids 1 > and if E-DISC-SHADOW throw then ;
+
 : SD-R-KEY-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n r:n :}
    r SD-R-KEY$ {: pkg:ptr pkgu:n tail:ptr tailu:n :}
    pkgu 0= if a u tail tailu STR=CI exit then
+   a u SD-QCOLON 0 < if
+      a u tail tailu STR=CI 0= if false exit then
+      r SD-R-OPEN? exit
+   then
    u pkgu tailu + 1+ <> if false exit then
    a pkgu pkg pkgu STR=CI 0= if false exit then
    a pkgu + c@ $3A <> if false exit then
    a pkgu 1+ + tailu tail tailu STR=CI ;
-
-\ No package row (-1), outside every package, spells as empty: a declaration
-\ made there is reached from every package.
-: SD-C-PKG$ ( n -- ptr u8 n ) {: row:n :}
-   row 0 < if 0 SD-R-BYTES 0 exit then
-   row SD-R-NAME$ ;
 
 : SD-R-FAMILY-MATCH? ( n n -- bool ) {: ctx:n family:n :}
    ctx SD-C-ROW @ {: row:n :}
@@ -270,6 +353,7 @@ variable SD-SCOPES
    {: pkg:ptr pkgu:n tail:ptr tailu:n :}
    family SD-R-NAME$ tail tailu STR=CI 0= if false exit then
    pkgu 0= if true exit then
+   SD-C-KNOWN? 0= if true exit then
    pkg pkgu SD-C-PKG @ SD-C-PKG$ STR=CI if true exit then
    \ Inside part A:B, A's words are reached too. Packages compare by spelling,
    \ so a top-level B matches inside A:B as well: a refusal, which is safe.
@@ -277,13 +361,68 @@ variable SD-SCOPES
 
 \ A package opened inside another, even one left open by a prior file, is a part
 \ (the engine refuses every other nested `package`), whose close returns to it.
+\ A file cannot open a package while one open when it started loading is still
+\ open (card section 1, "package at").
 : SD-C-PACKAGE-OPEN ( n -- ) {: row:n :}
-   SD-C-PKG @ 0 >= if SD-C-PKG @ SD-C-OUTER ! then
+   SD-C-PKG @ SD-C-UNKNOWN = if SD-C-OUTER @ SD-C-PKG ! then
+   SD-C-PKG @ -1 <> if SD-C-PKG @ SD-C-OUTER ! then
    row SD-C-PKG ! ;
 
+\ Where the package is unknown, `;package` closes one discovery cannot know.
 : SD-C-PACKAGE-CLOSE ( -- )
+   SD-C-PKG @ SD-C-UNKNOWN = if E-DISC-SHADOW throw then
    SD-C-OUTER @ SD-C-PKG !
-   -1 SD-C-OUTER ! ;
+   SD-C-PKG @ SD-C-UNKNOWN <> if -1 SD-C-OUTER ! then ;
+
+: SD-S-FIND ( n n -- n ) {: file:n off:n :}
+   file SD-F-SITE @
+   begin dup 0 >= while
+      dup SD-S-OFF @ off = if exit then
+      SD-S-NEXT @
+   repeat ;
+
+: SD-S-ADD ( n n -- ) {: file:n off:n :}
+   SD-C-KNOWN? 0= if exit then
+   file off SD-S-FIND 0 >= if exit then
+   SD-S-N @ {: s:n :}
+   s 1+ dup SD-S-OFF-RESERVE dup SD-S-PKG-RESERVE dup SD-S-OUTER-RESERVE
+   SD-S-NEXT-RESERVE
+   off s SD-S-OFF !
+   SD-C-PKG @ s SD-S-PKG !
+   SD-C-OUTER @ s SD-S-OUTER !
+   file SD-F-SITE @ s SD-S-NEXT !
+   s file SD-F-SITE !
+   s 1+ SD-S-N ! ;
+
+: SD-S-SEED ( n n -- ) {: file:n off:n :}
+   file off SD-S-FIND {: s:n :}
+   s 0 < if exit then
+   s SD-S-PKG @ SD-C-PKG !
+   s SD-S-OUTER @ SD-C-OUTER ! ;
+
+\ The replay corrects a site it learned; a site an earlier replay learned with
+\ another package, or one a body's file may have changed (SD-C-OUTER unknown),
+\ becomes unknown, once, so replays settle. Inside a body's file the walk reads
+\ no site. A start site is never corrected: its records' keys answer for it,
+\ its uses do not.
+: SD-S-LEARN ( n n -- ) {: file:n off:n :}
+   SD-C-PKG @ SD-C-UNKNOWN = SD-C-OUTER @ -1 = and if exit then
+   file off SD-S-FIND {: s:n :}
+   s 0 < if file off SD-S-ADD exit then
+   off 0= if exit then
+   s SD-S-PKG @ SD-C-UNKNOWN = if exit then
+   SD-C-KNOWN? if
+      s SD-S-PKG @ SD-C-PKG$ SD-C-PKG @ SD-C-PKG$ STR=CI
+      s SD-S-OUTER @ SD-C-PKG$ SD-C-OUTER @ SD-C-PKG$ STR=CI and if exit then
+   then
+   s SD-S-MARK @ < SD-C-KNOWN? 0= or if
+      SD-C-UNKNOWN s SD-S-PKG !
+      SD-C-UNKNOWN s SD-S-OUTER !
+   else
+      SD-C-PKG @ s SD-S-PKG !
+      SD-C-OUTER @ s SD-S-OUTER !
+   then
+   1 SD-R-VERSION +! ;
 
 : SD-R-CONTEXT-FAMILY ( n -- ) {: family:n :}
    SD-C-N @ 0 ?do
@@ -291,7 +430,7 @@ variable SD-SCOPES
          i SD-C-ROW @ SD-R-CANON @ 0=
          i SD-C-OWNER @ -1 <> or if
             family SD-R-OFF @ SD-TOK-OFF !
-            family SD-R-NAME-U @ SD-TOK-LEN !
+            family SD-R-SPAN @ SD-TOK-LEN !
             i SD-C-ROW @ SD-R-KIND @ SD-R-DECL = if
                E-DISC-SHADOW throw
             then
@@ -338,6 +477,7 @@ variable SD-SCOPES
    -1 SD-C-PKG !
    -1 SD-C-OUTER !
    0 SD-C-N !
+   SD-S-N @ SD-S-MARK !
    SD-C-ORDER-BUILD ;
 
 : SD-C-FAMILY-ROW? ( n -- bool ) {: row:n :}
@@ -358,12 +498,45 @@ variable SD-SCOPES
    SD-C-PKG @ SD-C-N @ SD-C-OWNER !
    SD-C-N @ 1+ SD-C-N ! ;
 
+\ A key decides a lookup only for a row's tail: a declaration or retirement of
+\ it (SD-R-USABLE?), or the row itself, qualified or not (SD-R-IDS).
+: SD-R-KEYED? ( n -- bool ) {: row:n :}
+   row SD-R-KIND @ {: kind:n :}
+   kind SD-R-PARSES = kind SD-R-THROUGH = or if true exit then
+   row SD-R-NAME-U @ 0= if false exit then
+   row SD-R-NAME$ SD-TAIL$ {: tail:ptr tailu:n :}
+   SD-R-ROWS-N @ 0 ?do
+      i SD-R-ROWS @ SD-R-NAME$ SD-TAIL$ tail tailu STR=CI if
+         true unloop exit
+      then
+   loop
+   false ;
+
+\ A record keyed by another package than the one open here is harvested again
+\ under the sites this replay learned; else its key cannot be known and it is
+\ refused: one file loaded in two packages, a file whose start a later round's
+\ loads move to another package (sites learn once), a file a body loads before
+\ its own package.
+: SD-R-CONTEXT-KEY ( n -- ) {: row:n :}
+   SD-C-PKG @ SD-C-UNKNOWN = {: unknown:bool :}
+   unknown 0= if
+      row SD-R-PKG$ SD-C-PKG @ SD-C-PKG$ STR=CI
+      row SD-R-OUTER$ SD-C-OUTER @ SD-C-PKG$ STR=CI and if exit then
+   then
+   row SD-R-KEYED? 0= if exit then
+   unknown 0= SD-S-N @ SD-S-MARK @ > and if 1 SD-R-VERSION +! exit then
+   row SD-R-OFF @ SD-TOK-OFF !
+   row SD-R-SPAN @ SD-TOK-LEN !
+   row SD-R-KIND @ SD-R-RETIRE = if E-DISC-RETIRE throw then
+   E-DISC-SHADOW throw ;
+
 \ Only rows between two successive loader sites in this file run before the
 \ next child. Replaying an include visits these same rows again in a new place.
 : SD-R-CONTEXT-BETWEEN ( n n ptr u8 n -- )
    {: start:n stop:n pa:ptr pu:n :}
    pa pu SD-FILE-FIND {: file:n :}
    file 0 < if exit then
+   file start SD-S-LEARN
    file SD-F-START @ file 1+ SD-F-START @ start SD-C-LOWER
    file 1+ SD-F-START @ swap ?do
       i SD-C-ORDER @ {: row:n :}
@@ -378,6 +551,7 @@ variable SD-SCOPES
             row SD-R-CONTEXT-FAMILY
          else
             kind SD-R-DECL = kind SD-R-RETIRE = or if row SD-C-ADD then
+            kind SD-R-FAMILY < if row SD-R-CONTEXT-KEY then
          then
       then then
    loop ;
@@ -410,6 +584,7 @@ variable SD-SCOPES
    old SD-R-COUNT @ new SD-R-COUNT @ <> if false exit then
    old SD-R-NAME$ new SD-R-NAME$ STR= 0= if false exit then
    old SD-R-PKG$ new SD-R-PKG$ STR= 0= if false exit then
+   old SD-R-OUTER$ new SD-R-OUTER$ STR= 0= if false exit then
    old SD-R-TERMS @ SD-R-BYTES old SD-R-TERMS-U @
    new SD-R-TERMS @ SD-R-BYTES new SD-R-TERMS-U @ STR= ;
 
@@ -423,8 +598,8 @@ variable SD-SCOPES
    SD-R-ROWS-N @ SD-R-FROZEN-RESERVE
    SD-R-ROWS-N @ 0 ?do i SD-R-ROWS @ i SD-R-FROZEN ! loop
    SD-R-ROWS-N @ dup SD-R-F-N ! SD-R-F-LOOKUP-N !
-   \ A vanished row remains a disabled identity. It cannot claim a lookup
-   \ slot, but a later reappearance inherits its refusal instead of cycling.
+   \ A vanished row stays frozen, without a lookup slot, once PASS-END disabled
+   \ it: a row that reappears inherits its DISABLED there instead of cycling.
    SD-R-N @ 0 ?do
       i SD-R-ACTIVE @ 0= i SD-R-DISABLED @ 0<> and if
          i SD-R-FROZEN-OF 0 < if
@@ -468,28 +643,88 @@ variable SD-SCOPES
    then
    SD-R-PASS @ 0= if SD-R-ROWS-REBUILD then ;
 
+\ R, of ROW's tail, counts for a qualified spelling under ROW's key spelled:
+\ part A:B and top-level B count under one key B.
 : SD-R-AFFECTS? ( n n -- bool ) {: row:n r:n :}
-   r SD-R-KIND @ SD-R-RETIRE = r SD-R-NAME-U @ 0= and if true exit then
    row SD-R-KEY$ {: pkg:ptr pkgu:n tail:ptr tailu:n :}
-   r SD-R-NAME$ SD-TAIL$ tail tailu STR=CI 0= if false exit then
    pkgu 0= if true exit then
    r SD-R-NAME$ {: name:ptr nameu:n :}
    name nameu SD-QCOLON {: col:n :}
    col 0 >= if name col pkg pkgu STR=CI exit then
    r SD-R-PKG$ pkg pkgu STR=CI ;
 
-: SD-R-USABLE? ( n -- bool ) {: row:n :}
+\ Two packages share a bare scope when either is global, they are one package,
+\ or one is the other's outer; two parts of one package share none.
+: SD-SHARE? ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: ao:ptr aou:n an:ptr anu:n bo:ptr bou:n bn:ptr bnu:n :}
+   anu 0= bnu 0= or if true exit then
+   an anu bn bnu STR=CI ao aou bo bou STR=CI and if true exit then
+   aou 0= bo bou an anu STR=CI and if true exit then
+   bou 0= ao aou bn bnu STR=CI and ;
+
+: SD-R-SHARES-ID? ( ptr u8 n ptr u8 n n -- bool ) {: o:ptr ou:n p:ptr pu:n r:n :}
+   r SD-R-IDS 0 ?do
+      o ou p pu r i SD-R-ID SD-SHARE? if true unloop exit then
+   loop
+   false ;
+
+\ R, of ROW's tail, counts for a bare spelling when their packages share a scope.
+: SD-R-SHARES? ( n n -- bool ) {: row:n r:n :}
+   row SD-R-IDS 0 ?do
+      row i SD-R-ID r SD-R-SHARES-ID? if true unloop exit then
+   loop
+   false ;
+
+\ Whether ROW's tail admits a qualified and a bare spelling (SD-R-USE-OK?): one
+\ declaration and no retirement of it count for each. A retirement weighs two.
+: SD-R-USABLE? ( n -- bool bool ) {: row:n :}
+   row SD-R-NAME$ SD-TAIL$ {: tail:ptr tailu:n :}
    0 0
    SD-R-N @ 0 ?do
-      i SD-R-ACTIVE @ 0<> row i SD-R-AFFECTS? and if
-         i SD-R-KIND @ SD-R-DECL = if swap 1+ swap then
-         i SD-R-KIND @ SD-R-RETIRE = if 1+ then
+      i SD-R-KIND @ {: kind:n :}
+      kind SD-R-DECL = if 1 else kind SD-R-RETIRE = if 2 else 0 then then
+      {: w:n :}
+      w 0<> i SD-R-ACTIVE @ 0<> and if
+         i SD-R-NAME-U @ 0= if
+            w + swap w + swap
+         else i SD-R-NAME$ SD-TAIL$ tail tailu STR=CI if
+            row i SD-R-AFFECTS? if swap w + swap then
+            row i SD-R-SHARES? if w + then
+         then then
       then
    loop
-   {: decls:n retires:n :}
-   decls 1 = retires 0= and ;
+   {: qual:n bare:n :}
+   qual 1 = bare 1 = ;
 
-: SD-R-FROZEN-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ ROW lies earlier in this file than OFF, after a declaration of its tail in its
+\ package: a row before that binds another word (ECT-TEST-BARE-ROW-FIRST).
+: SD-R-SEEN? ( n n -- bool ) {: row:n off:n :}
+   row SD-R-FILE @ SD-FILE-ID @ <> row SD-R-OFF @ off >= or if false exit then
+   row SD-R-NAME$ SD-TAIL$ {: tail:ptr tailu:n :}
+   row SD-R-NEXT @
+   begin dup 0 >= while
+      {: r:n :}
+      r SD-R-KIND @ SD-R-DECL = r SD-R-NAME$ SD-TAIL$ tail tailu STR=CI and
+      row r SD-R-AFFECTS? and if true exit then
+      r SD-R-NEXT @
+   repeat drop false ;
+
+\ A bare spelling uses a package's enabled, not bare-off ROW only where
+\ SD-R-SEEN?; elsewhere the replay refuses and a harvest reads on to record it.
+: SD-R-USE-OK? ( n n n -- bool ) {: off:n len:n row:n :}
+   row SD-R-DISABLED @ 0= {: on:bool :}
+   off len SD-TOK$ SD-QCOLON 0 >= if on exit then
+   row SD-R-KEY$ 2drop nip 0= if
+      on 0= if false exit then
+      row SD-R-BARE-OFF @ 0= if true exit then
+   else
+      on row SD-R-BARE-OFF @ 0= and row off SD-R-SEEN? and if true exit then
+   then
+   SD-HARVESTING @ if false exit then
+   E-DISC-SHADOW throw ;
+
+: SD-R-FROZEN-FIND ( n n -- n ) {: off:n len:n :}
+   off len SD-TOK$ {: a:ptr u:n :}
    -1
    SD-R-F-LOOKUP-N @ 0 ?do
       i SD-R-FROZEN @ {: row:n :}
@@ -500,11 +735,13 @@ variable SD-SCOPES
       then
    loop
    dup 0 < if exit then
-   dup SD-R-DISABLED @ 0= if exit then
-   drop -1 ;
+   {: found:n :}
+   off len found SD-R-USE-OK? if found exit then
+   -1 ;
 
-: SD-R-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
-   SD-HARVESTING @ SD-R-PASS @ and 0<> if a u SD-R-FROZEN-FIND exit then
+: SD-R-FIND ( n n -- n ) {: off:n len:n :}
+   SD-HARVESTING @ SD-R-PASS @ and 0<> if off len SD-R-FROZEN-FIND exit then
+   off len SD-TOK$ {: a:ptr u:n :}
    -1
    SD-R-ROWS-N @ 0 ?do
       i SD-R-ROWS @ {: row:n :}
@@ -515,8 +752,9 @@ variable SD-SCOPES
       then
    loop
    dup 0 < if exit then
-   dup SD-R-DISABLED @ 0= over SD-R-USABLE? and if exit then
-   drop -1 ;
+   {: found:n :}
+   off len found SD-R-USE-OK? if found exit then
+   -1 ;
 
 : SD-R-ACTIVE-MATCH? ( n -- bool ) {: old:n :}
    SD-R-N @ 0 ?do
@@ -535,7 +773,8 @@ variable SD-SCOPES
          i SD-R-FROZEN-OF dup 0 < if
             drop 0 SD-R-PASS-STABLE !
          else
-            SD-R-DISABLED @ i SD-R-DISABLED !
+            dup SD-R-DISABLED @ i SD-R-DISABLED !
+            SD-R-BARE-OFF @ i SD-R-BARE-OFF !
          then
       then
    loop
@@ -557,8 +796,14 @@ variable SD-SCOPES
       SD-R-N @ 0 ?do
          i SD-R-ACTIVE @ 0<> i SD-R-KIND @ SD-R-PARSES >= and
          i SD-R-KIND @ SD-R-FAMILY < and if
-            i SD-R-DISABLED @ 0= i SD-R-USABLE? 0= and if
+            i SD-R-USABLE? {: qual:bool bare:bool :}
+            i SD-R-DISABLED @ 0= qual 0= and if
                1 i SD-R-DISABLED !
+               0 SD-R-PASS-STABLE !
+               1 SD-R-VERSION +!
+            then
+            i SD-R-BARE-OFF @ 0= bare 0= and if
+               1 i SD-R-BARE-OFF !
                0 SD-R-PASS-STABLE !
                1 SD-R-VERSION +!
             then
@@ -632,7 +877,7 @@ variable SD-SCOPES
 
 : SD-R-USE? ( n n -- bool ) {: off:n len:n :}
    SD-DEF @ 0<> SD-SCOPES @ 0<> or if false exit then
-   off len SD-TOK$ SD-R-FIND {: row:n :}
+   off len SD-R-FIND {: row:n :}
    row 0 < if false exit then
    row SD-R-CONSUME
    true ;
@@ -653,14 +898,14 @@ variable SD-TERM-END
       off len + SD-TERM-END !
    again ;
 
-: SD-R-ROW ( n n -- ) {: off:n kind:n :}
+: SD-R-ROW ( n -- ) {: kind:n :}
    SD-RAW {: noff:n nu:n :}
    SD-RAW {: coff:n cu:n :}
    kind SD-R-THROUGH = if SD-R-LIST 0= if exit then then
    nu 0= cu 0= or if exit then
    coff cu SD-TOK$ num-parse {: count:n flt:bool ok:bool :}
    ok 0= flt or count 0 < or if exit then
-   off noff nu kind SD-R-RECORD {: row:n :}
+   noff noff nu kind SD-R-RECORD {: row:n :}
    row 0 < if exit then
    count row SD-R-COUNT !
    kind SD-R-THROUGH = if
@@ -679,10 +924,12 @@ variable SD-TERM-END
    off off len SD-R-RETIRE SD-R-RECORD drop ;
 
 : SD-R-RETIRE-STACK ( n n -- ) {: off:n pend:n :}
-   off off 0 SD-R-RETIRE SD-R-RECORD {: r:n :}
-   r 0 < pend SD-PEND-PATH <> or if exit then
+   pend SD-PEND-PATH <> if off off 0 SD-R-RETIRE SD-R-RECORD drop exit then
+   SD-PATH-AT @ dup 0 SD-R-RETIRE SD-R-RECORD {: r:n :}
+   r 0 < if exit then
    SD-PATH$ SD-R-COPY r SD-R-NAME !
-   SD-PATH-U @ r SD-R-NAME-U ! ;
+   SD-PATH-U @ r SD-R-NAME-U !
+   SD-PATH-SPAN @ r SD-R-SPAN ! ;
 
 : SD-SKIP-TO ( n -- ) {: stop:n :}
    begin SD-I @ SD-AT? while
@@ -745,9 +992,11 @@ DYNAMIC-BUFFER SD-DEC u8
 : SD-SCAN-STRING ( bool -- ) {: escaped:bool :}
    SD-I @ SD-AT? if SD-I @ SD-BYTE SD-SP = if SD-I @ 1+ SD-I ! then then
    SD-I @ {: start:n :}
+   start SD-PATH-AT !
    begin SD-I @ SD-AT? while
       SD-I @ SD-BYTE SD-DQUOTE = if
-         start SD-BUF +  SD-I @ start -
+         SD-I @ start - SD-PATH-SPAN !
+         start SD-BUF +  SD-PATH-SPAN @
          SD-I @ 1+ SD-I !
          escaped if SD-DECODE-PATH else SD-PATH-FILL then
          exit
@@ -817,7 +1066,13 @@ $FF constant SD-NAMES                    \ loaders and family openers
       EVENT-COUNT SD-E-SPEC-RESERVE
       SD-DEF @ before SD-E-SPEC !
    then
-   rc 0= if true exit then
+   rc 0= if
+      SD-FILE-ID @ 0 >= if
+         SD-HARVESTING @ 0= if SD-FILE-ID @ off 1+ SD-S-ADD then
+         SD-C-KNOWN? if SD-FILE-ID @ off 1+ SD-S-SEED else SD-C-UNKNOWN SD-C-PKG ! then
+      then
+      true exit
+   then
    rc E-PATH-RANGE =  rc E-PATH-NUL =  or 0= if rc throw then
    false ;
 
@@ -961,7 +1216,7 @@ $FF constant SD-NAMES                    \ loaders and family openers
    off len SD-TOK$ s" TDECL-SUMTYPE" STR=CI ;
 
 : SD-DEF-TRACK ( n n -- ) {: off:n len:n :}
-   SD-PKG-U @ 0<> if exit then
+   SD-C-PKG @ 0 >= if exit then
    off len SD-FAMILY-KIND dup 0= if drop exit then
    SD-DEF-NAME !
    1 SD-DEF-STAGE !
@@ -1051,13 +1306,14 @@ $FF constant SD-NAMES                    \ loaders and family openers
    then
    SD-DEF @ 0= off len SD-TOK$ s" package" STR=CI and if
       SD-RAW {: poff:n pu:n :}
-      off poff pu SD-R-PACKAGE SD-R-RECORD drop
-      SD-PKG-U @ 0= if poff SD-PKG-OFF ! pu SD-PKG-U ! exit then
-      poff SD-PART-OFF ! pu SD-PART-U ! exit
+      poff poff pu SD-R-PACKAGE SD-R-RECORD drop
+      poff SD-R-AT {: r:n :}
+      r 0 >= if r SD-C-PACKAGE-OPEN then
+      exit
    then
    SD-DEF @ 0= off len SD-TOK$ s" ;package" STR=CI and if
       off off 0 SD-R-END-PACKAGE SD-R-RECORD drop
-      SD-PART-U @ 0= if 0 SD-PKG-U ! else 0 SD-PART-U ! then
+      off SD-R-AT 0 >= if SD-C-PACKAGE-CLOSE then
       exit
    then
    SD-DEF @ 0= off len SD-TOK$ PACKAGE-KEYWORD? and if
@@ -1092,10 +1348,10 @@ $FF constant SD-NAMES                    \ loaders and family openers
       off pend SD-R-RETIRE-STACK pend SD-RETIRE-NAMED exit
    then
    SD-DEF @ 0= SD-SCOPES @ 0= and off len SD-TOK$ s" parses:" STR=CI and if
-      off SD-R-PARSES SD-R-ROW exit
+      SD-R-PARSES SD-R-ROW exit
    then
    SD-DEF @ 0= SD-SCOPES @ 0= and off len SD-TOK$ s" parses-through:" STR=CI and if
-      off SD-R-THROUGH SD-R-ROW exit
+      SD-R-THROUGH SD-R-ROW exit
    then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
    off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then
@@ -1110,8 +1366,6 @@ $FF constant SD-NAMES                    \ loaders and family openers
    0 SD-DEF !
    0 SD-SHADOWED !
    0 SD-RETIRED !
-   0 SD-PKG-U !
-   0 SD-PART-U !
    SD-LOCALS-RESET
    begin
       SD-RAW {: off:n len:n :}
@@ -1167,12 +1421,21 @@ private
    [: SD-ENTRY SD-ENTRY-U @ SD-READ-ENTRY ;] catch {: rc:n :}
    SD-ENTRY SD-ENTRY-U @ rc READ-THROW ;
 
+\ The replay moves the package again from the file's start, segment by segment,
+\ so a walk leaves it as it found it.
 : RUN-SELECTED ( -- )
-   SD-HARVESTING @ if SD-FILE-OF SD-FILE-ID ! SD-R-BEGIN then
+   SD-C-PKG @ SD-C-OUTER @ {: pkg:n outer:n :}
+   SD-HARVESTING @ if
+      SD-FILE-OF SD-FILE-ID ! SD-R-BEGIN
+      -1 SD-C-PKG ! -1 SD-C-OUTER ! SD-FILE-ID @ 0 SD-S-SEED
+   else
+      SD-ENTRY SD-ENTRY-U @ SD-FILE-FIND SD-FILE-ID !
+   then
    REQUIRE-SNAPSHOT
    SD-LOADING-U @ 0<> if SD-LOADING SD-LOADING-U @ REQUIRE-STORE 2drop then
    EVENTS-RESET EVENT-ON DISCOVERY-ON
    [: SD-WALK-IN ;] catch {: rc:n :}
+   pkg SD-C-PKG ! outer SD-C-OUTER !
    DISCOVERY-OFF EVENT-OFF
    SD-HARVESTING @ if SD-R-END then
    REQUIRE-RESTORE
@@ -1184,6 +1447,8 @@ private
 public
 
 : ROWS-RESET ( -- )
+   -1 SD-C-PKG !
+   -1 SD-C-OUTER !
    0 SD-R-N !
    0 SD-F-N !
    0 SD-R-ROWS-N !
@@ -1193,13 +1458,17 @@ public
    0 SD-R-PASS-STABLE !
    0 SD-R-BYTES-U !
    0 SD-R-VERSION !
+   0 SD-S-N !
    SD-R-BYTES-RELEASE
    SD-F-AT-RELEASE SD-F-U-RELEASE SD-F-HEAD-RELEASE SD-F-START-RELEASE
-   SD-R-OFF-RELEASE SD-R-FILE-RELEASE SD-R-NEXT-RELEASE SD-R-KIND-RELEASE
-   SD-R-NAME-RELEASE SD-R-NAME-U-RELEASE
-   SD-R-PKG-RELEASE SD-R-PKG-U-RELEASE
+   SD-F-SITE-RELEASE
+   SD-S-OFF-RELEASE SD-S-PKG-RELEASE SD-S-OUTER-RELEASE SD-S-NEXT-RELEASE
+   SD-R-OFF-RELEASE SD-R-SPAN-RELEASE SD-R-FILE-RELEASE SD-R-NEXT-RELEASE
+   SD-R-KIND-RELEASE SD-R-NAME-RELEASE SD-R-NAME-U-RELEASE
+   SD-R-PKG-RELEASE SD-R-PKG-U-RELEASE SD-R-OUTER-RELEASE SD-R-OUTER-U-RELEASE
    SD-R-COUNT-RELEASE SD-R-TERMS-RELEASE SD-R-TERMS-U-RELEASE
-   SD-R-ACTIVE-RELEASE SD-R-DISABLED-RELEASE SD-R-CANON-RELEASE
+   SD-R-ACTIVE-RELEASE SD-R-DISABLED-RELEASE SD-R-BARE-OFF-RELEASE
+   SD-R-CANON-RELEASE
    SD-C-ROW-RELEASE SD-C-OWNER-RELEASE SD-C-ORDER-RELEASE
    SD-E-SPEC-RELEASE
    SD-R-ROWS-RELEASE SD-R-FROZEN-RELEASE ;
@@ -1209,6 +1478,18 @@ public
 
 : CONTEXT-BEGIN ( -- ) SD-R-CONTEXT-BEGIN ;
 : CONTEXT-BETWEEN ( n n ptr u8 n -- ) SD-R-CONTEXT-BETWEEN ;
+
+\ A file a body loads starts where the body runs, in a package the replay
+\ cannot know. Unless it closes each package it opens, the body may change the
+\ package anywhere after its definition, so from there on it is unknown.
+: CONTEXT-SPEC-BEGIN ( -- n n )
+   SD-C-PKG @ SD-C-OUTER @
+   SD-C-UNKNOWN SD-C-PKG !
+   -1 SD-C-OUTER ! ;
+
+: CONTEXT-SPEC-END ( n n -- )
+   SD-C-PKG @ 0 < SD-C-OUTER @ -1 = and 0= if 2drop SD-C-UNKNOWN SD-C-UNKNOWN then
+   SD-C-OUTER ! SD-C-PKG ! ;
 
 \ A pass reads only rows frozen before any file in it was scanned. Its new
 \ evidence cannot make a row valid or invalid halfway through the pass.
