@@ -36,15 +36,15 @@ require src/lib/time.f
 \ the last event's sequence_number, and only a response created with
 \ stream=true resumes; a keepalive's number counts its connection, not a resume
 \ position. A resume of an older stream may be refused 400 ("more than 5
-\ minutes old"), which ends the call E-HTTP.
+\ minutes old"), and one of a gone response 404; either ends the call E-HTTP.
 package MODEL
 
 private
 -9700 constant E-FIRST
 -9799 constant E-LAST
 public
-\ From CHAT and EMBED, a provider's 404 (an unknown model) is also E-CONFIG and
-\ its 401 or 403 E-KEY; HTTP-STATUS keeps the status.
+\ From CHAT and EMBED, a provider's 404 to the request (an unknown model) is
+\ also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS keeps the status.
 -9700 constant E-CONFIG
 -9701 constant E-KEY
 \ From CHAT and EMBED: the provider refused the request for its size; INPUT+
@@ -1439,12 +1439,16 @@ private
    c MODEL-CALL:GATE @ TASK:SIGNAL
    code 0<> if code throw then ;
 
-\ Clears the call's transfer, answering whether the call was cancelled.
+\ Clears the call's transfer, answering whether a CANCEL cut it: CANCEL-LOCKED
+\ clears the transfer it cuts.
 : END-TRANSFER ( ptr call -- bool )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT
+   c MODEL-CALL:TRANSPORT @ MATCH option
+      none OF true ENDOF
+      some OF drop false ENDOF
+   ;MATCH
    OPTION:NONE c MODEL-CALL:TRANSPORT !
-   c MODEL-CALL:CANCELLED @
    c MODEL-CALL:GATE @ TASK:SIGNAL ;
 
 \ Statuses by which the provider reports itself temporarily unavailable:
@@ -1558,19 +1562,26 @@ private
    c ;
 
 
+\ Drains a transfer into the buffer, answering its HTTP status and libcurl
+\ code; a failed one answers status 0.
+: DISCARD-REPLY ( CURL:handle ptr n -- n n )
+   {: h:CURL:handle buf:ptr :}
+   begin
+      h buf HELD SPAN:$ >LEN CURL:NEXT
+      MATCH CURL:chunk-result
+         chunk OF 2drop ENDOF
+         response OF CURL:HTTP-STATUS>N 0 exit ENDOF
+         failed OF CURL:CODE>N 0 swap exit ENDOF
+      ;MATCH
+   again ;
+
+
 \ Gives up a transfer whose reply cannot be kept: cancels it and collects its
 \ end, so its handle has no transfer left for cleanup to refuse.
 : DROP-TRANSFER ( CURL:handle ptr n -- )
    {: h:CURL:handle buf:ptr :}
    h CURL:CANCEL
-   begin
-      h buf HELD SPAN:$ >LEN CURL:NEXT
-      MATCH CURL:chunk-result
-         chunk OF 2drop false ENDOF
-         response OF drop true ENDOF
-         failed OF drop true ENDOF
-      ;MATCH
-   until ;
+   h buf DISCARD-REPLY 2drop ;
 
 
 \ Receives the reply into the response buffer, which grows with it: NEXT
@@ -1598,24 +1609,31 @@ private
    again ;
 
 
-\ Ends the call's transfer with what its receipt answered, throwing the fault
-\ of a failed exchange or a refused reply.
+\ The fault a refused reply's status names when its body names no refusal for
+\ size.
+: STATUS-FAULT ( n -- n )
+   {: status:n :}
+   status UNAVAILABLE? if E-UNAVAILABLE exit then
+   status 401 = status 403 = or if E-KEY exit then
+   status 404 = if E-CONFIG exit then
+   E-HTTP ;
+
+
+\ Ends the call's transfer, keeping its status and reply; throws the fault of
+\ a cut or failed exchange or a refused reply.
 : SETTLE ( n n n ptr call -- )
    {: status:n rc:n fault:n c :}
-   c END-TRANSFER {: cancelled:bool :}
-   fault 0<> if fault throw then
-   cancelled if E-CANCELLED throw then
-   rc c LEDGER LEDGER-TRANSPORT !
-   rc 0<> if E-TRANSPORT throw then
+   c END-TRANSFER {: cut:bool :}
    status c MODEL-CALL:HTTP-STATUS !
    c RESPONSE-BUF BUF:LEN@ BUF:BLEN>N c MODEL-CALL:RESPONSE-U !
+   cut if E-CANCELLED throw then
+   fault 0<> if fault throw then
+   rc c LEDGER LEDGER-TRANSPORT !
+   rc 0<> if E-TRANSPORT throw then
    status 200 <> if
       c KEEP-ERROR
-      status UNAVAILABLE? if E-UNAVAILABLE throw then
       c SIZE-REFUSAL? if E-CAPACITY throw then
-      status 401 = status 403 = or if E-KEY throw then
-      status 404 = if E-CONFIG throw then
-      E-HTTP throw
+      status STATUS-FAULT throw
    then ;
 
 : CALL-HANDLE ( ptr call -- CURL:handle )
@@ -2113,18 +2131,67 @@ private
    JSON:READ-CLOSE
    queued going or ;
 
-\ Asks the provider to cancel the call's response; a second CANCEL still ends
-\ the exchange.
-: CANCEL-EXCHANGE ( ptr call -- ptr call )
+: CANCEL-START ( ptr call -- ptr call )
    {: c :}
    s" /cancel" c RESPONSE-URL$ s" {}" c AS-POST
    true c START-TRANSFER
-   c AWAIT-TRANSFER
    c ;
 
-\ The call ends cancelled whatever the provider's cancel answers, so its reply
-\ and any failure of its exchange are dropped.
-: CANCEL-RESPONSE ( ptr call -- ) [: CANCEL-EXCHANGE ;] catch 2drop ;
+
+\ Answers the provider cancel's status, libcurl code and fault; its reply goes
+\ to the chunk buffer. A CANCEL that loses the race to its end keeps its result.
+: CANCEL-EXCHANGE ( ptr call -- n n n )
+   {: c :}
+   c [: CANCEL-START ;] catch {: code:n :} drop
+   code 0<> if 0 0 code exit then
+   c CALL-HANDLE c CHUNK-BUF DISCARD-REPLY {: status:n rc:n :}
+   c END-TRANSFER {: cut:bool :}
+   status rc
+   rc 0<> if cut if E-CANCELLED else E-TRANSPORT then exit then
+   status 200 <> if status STATUS-FAULT exit then
+   0 ;
+
+
+: CODE$ ( n -- ptr u8 n )
+   {: code:n :}
+   code E-CONFIG = if s" MODEL:E-CONFIG" exit then
+   code E-KEY = if s" MODEL:E-KEY" exit then
+   code E-CAPACITY = if s" MODEL:E-CAPACITY" exit then
+   code E-TRANSPORT = if s" MODEL:E-TRANSPORT" exit then
+   code E-HTTP = if s" MODEL:E-HTTP" exit then
+   code E-RESPONSE = if s" MODEL:E-RESPONSE" exit then
+   code E-REFUSED = if s" MODEL:E-REFUSED" exit then
+   code E-INCOMPLETE = if s" MODEL:E-INCOMPLETE" exit then
+   code E-UNAVAILABLE = if s" MODEL:E-UNAVAILABLE" exit then
+   code E-CANCELLED = if s" MODEL:E-CANCELLED" exit then
+   code FMT:INT$ ;
+
+
+: CURL+ ( n -- )
+   {: rc:n :}
+   s"  curl " LOG:TEXT+ rc LOG:INT+
+   s" : " LOG:TEXT+ rc CURL:>CODE CURL:ERROR$ LOG:TEXT+ ;
+
+
+\ A failed cancel is logged with the response, its code, status and libcurl
+\ code; the call then ends with its own code.
+: CANCEL-RESPONSE ( ptr call -- )
+   {: c :}
+   c CANCEL-EXCHANGE {: status:n rc:n code:n :}
+   code 0= if exit then
+   LOG:WARN s" model" LOG:LINE
+   s" cancel " LOG:TEXT+ c RESPONSE-ID$ LOG:TEXT+
+   s"  " LOG:TEXT+ code CODE$ LOG:TEXT+
+   status 0<> if s"  status " LOG:TEXT+ status LOG:INT+ then
+   rc 0<> if rc CURL+ then
+   LOG:;LINE ;
+
+
+\ The text becomes the call's reply.
+: KEEP-REPLY ( ptr u8 n ptr call -- )
+   {: a:ptr u:n c :}
+   a u BUF:N>BLEN c RESPONSE-BUF BUF:REPLACE
+   u c MODEL-CALL:RESPONSE-U ! ;
 
 \ The reader at the event data's member under the key, and whether it is there.
 : DATA-AT ( ptr u8 n ptr u8 n ptr call -- JSON:reader bool )
@@ -2137,8 +2204,7 @@ private
 \ reply, its message the call's error text and its code the stream's fault.
 : ERROR-EVENT ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   a u BUF:N>BLEN c RESPONSE-BUF BUF:REPLACE
-   u c MODEL-CALL:RESPONSE-U !
+   a u c KEEP-REPLY
    c WIRE-READER JSON:T-OBJ EXPECT c ERROR-TEXT JSON:READ-CLOSE
    c WIRE-READER JSON:T-OBJ EXPECT CODE-FAULT {: fault:n :}
    JSON:READ-CLOSE
@@ -2155,41 +2221,37 @@ private
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-VALUE-SPAN$ {: r:ptr r-u:n :}
    JSON:READ-CLOSE
-   r r-u BUF:N>BLEN c RESPONSE-BUF BUF:REPLACE
-   r-u c MODEL-CALL:RESPONSE-U !
+   r r-u c KEEP-REPLY
    c RESPONSE-ID$ nip 0= if c KEEP-ID then
    c RUNNING? 0= if true c STREAM STREAM-DONE ! then ;
 
-\ One event of the stream, its data a JSON object with a string type. Any
-\ event but a keepalive moves the resume position; none is read once the
-\ response ended.
-: EVENT ( ptr call ptr u8 n ptr u8 n -- )
-   {: c name:ptr name-u:n a:ptr u:n :}
+\ One event of the stream, its data a JSON object with a string type. The
+\ exchange's first event starts its reply afresh. Every event, a keepalive
+\ too, shows the connection alive; any but a keepalive moves the resume
+\ position.
+: READ-EVENT ( ptr call ptr u8 n -- ptr call ptr u8 n )
+   {: c a:ptr u:n :}
    c STREAM {: s :}
-   s STREAM-DONE @ if exit then
+   s STREAM-HEARD @ 0= if
+      c RESPONSE-BUF BUF:CLEAR
+      0 c MODEL-CALL:RESPONSE-U !
+      true s STREAM-HEARD !
+   then
    a u c JSON-OBJECT? 0= if E-RESPONSE throw then
    a u s" type" c DATA-AT 0= if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
    s" keepalive" JSON:READ-STR-EQ? {: keepalive:bool :}
    s" error" JSON:READ-STR-EQ? {: failed:bool :}
    JSON:READ-CLOSE
-   keepalive if exit then
+   keepalive if c a u exit then
    a u s" sequence_number" c DATA-AT 0= if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-INT s STREAM-CURSOR !
    JSON:READ-CLOSE
-   true s STREAM-HEARD !
-   failed if a u c ERROR-EVENT exit then
-   a u c RESPONSE-EVENT ;
+   failed if a u c ERROR-EVENT c a u exit then
+   a u c RESPONSE-EVENT
+   c a u ;
 
-: FEED-CHUNK ( SSE:decoder ptr call -- )
-   {: d:SSE:decoder c :}
-   c STREAM STREAM-DONE @ if exit then
-   d c CHUNK-BUF BUFFER$ c [: EVENT ;] SSE:FEED ;
-
-: KEEP-CHUNK ( ptr call -- )
-   {: c :}
-   c CHUNK-BUF BUFFER$ BUF:N>BLEN c RESPONSE-BUF BUF:APPEND-SPAN ;
 
 \ Bytes that are not UTF-8 or JSON make an unusable reply.
 : READ-FAULT ( n -- n )
@@ -2198,10 +2260,42 @@ private
    code ;
 
 
-\ Receives an exchange as an event stream. Each read lands in the chunk
-\ buffer, so an event may replace the response buffer: a 200 read is fed to
-\ the decoder, any other kept as the reply, as RECEIVE keeps it. Answers what
-\ RECEIVE answers; once the response ended, a 200 however the connection ends.
+\ An event the call cannot read becomes the reply, as an error event does,
+\ and fails the stream E-RESPONSE; none is read once the response ended.
+: EVENT ( ptr call ptr u8 n ptr u8 n -- )
+   {: c name:ptr name-u:n a:ptr u:n :}
+   c STREAM STREAM-DONE @ if exit then
+   c a u [: READ-EVENT ;] catch {: code:n :} drop 2drop
+   code 0= if exit then
+   code READ-FAULT E-RESPONSE = if a u c KEEP-REPLY then
+   code throw ;
+
+: KEEP-CHUNK ( ptr call -- )
+   {: c :}
+   c CHUNK-BUF BUFFER$ BUF:N>BLEN c RESPONSE-BUF BUF:APPEND-SPAN ;
+
+: FEED-EVENTS ( SSE:decoder ptr call -- SSE:decoder ptr call )
+   {: d:SSE:decoder c :}
+   d c CHUNK-BUF BUFFER$ c [: EVENT ;] SSE:FEED
+   d c ;
+
+
+\ The chunk is the reply until the first event, so a 200 that is no event
+\ stream is, and so is one whose event the decoder refuses as not UTF-8.
+: FEED-CHUNK ( SSE:decoder ptr call -- )
+   {: d:SSE:decoder c :}
+   c STREAM {: s :}
+   s STREAM-DONE @ if exit then
+   s STREAM-HEARD @ 0= if c KEEP-CHUNK then
+   d c [: FEED-EVENTS ;] catch {: code:n :} 2drop
+   code 0= if exit then
+   code SSE:E-UTF8 = if c CHUNK-BUF BUFFER$ c KEEP-REPLY then
+   code throw ;
+
+
+\ Reads an event stream into the chunk buffer, feeding 200 chunks to the
+\ decoder and keeping any other as the reply; answers as RECEIVE does, 200 once
+\ the response ended however it ends.
 : STREAM-RECEIVE ( SSE:decoder CURL:handle ptr call -- n n n )
    {: d:SSE:decoder h:CURL:handle c :}
    c RESPONSE-BUF BUF:CLEAR
@@ -2218,7 +2312,7 @@ private
             else
                d c [: dup KEEP-CHUNK ;] catch
             then {: fault:n :} 2drop
-            fault 0<> if h c CHUNK-BUF DROP-TRANSFER 0 0 fault READ-FAULT exit then
+            fault 0<> if h c CHUNK-BUF DROP-TRANSFER status 0 fault READ-FAULT exit then
          ENDOF
          response OF CURL:HTTP-STATUS>N 0 0 exit ENDOF
          failed OF CURL:CODE>N {: rc:n :}
@@ -2244,18 +2338,12 @@ private
    d SSE:CLOSE
    code ;
 
-\ Whether the stream resumes after an exchange that ended with the code, 0
-\ when clean. It resumes only from a connection that ended, cleanly or by the
-\ transport, before the response ended and after an event of a known
-\ response; otherwise the call ends with the code, a clean end E-RESPONSE. A
-\ cancelled call cancels the response it started.
+\ Resumes a known response whose exchange heard an event or keepalive and
+\ ended, cleanly or by the transport, before the response ended; otherwise
+\ throws the code, a clean end E-RESPONSE.
 : RESUME? ( n ptr call -- bool )
    {: code:n c :}
    c STREAM {: s :}
-   code E-CANCELLED = if
-      c RESPONSE-ID$ nip 0<> if c CANCEL-RESPONSE then
-      E-CANCELLED throw
-   then
    code 0<> code E-TRANSPORT <> and if code throw then
    s STREAM-DONE @ if
       s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
@@ -2272,8 +2360,30 @@ private
    c STREAM STREAM-CURSOR @ FMT:INT$ BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
    c URL-BUF BUFFER$ c AS-GET ;
 
-\ Posts the chat request and reads the response's event stream until the
-\ response ends, resuming it on the same handle after each early end.
+\ Runs a resume as the stream's next exchange, answering its fault; a resume
+\ refused 404 finds the response gone, which is E-HTTP, not E-CONFIG.
+: RESUME-EXCHANGE ( ptr call -- n )
+   {: c :}
+   c AS-RESUME
+   c STREAM-EXCHANGE {: code:n :}
+   code E-CONFIG = c MODEL-CALL:HTTP-STATUS @ 404 = and if E-HTTP exit then
+   code ;
+
+\ Reads the response's event stream until the response ends, resuming it on
+\ the same handle after each early end.
+: STREAM-LOOP ( ptr call -- ptr call )
+   {: c :}
+   c STREAM-EXCHANGE
+   begin c RESUME? while c RESUME-EXCHANGE repeat
+   c ;
+
+\ Whether the stream delivered the response's terminal status.
+: ENDED? ( ptr stream -- bool )
+   {: s :}
+   s STREAM-DONE @ s STREAM-FAULT @ 0= and ;
+
+\ Posts the chat request and follows the response's stream. A call that ends
+\ before its known response delivered a terminal status cancels the response.
 : FOLLOW ( ptr call -- ptr call )
    {: c :}
    c STREAM {: s :}
@@ -2281,8 +2391,10 @@ private
    false s STREAM-DONE !
    0 s STREAM-FAULT !
    c REQUEST-URL$ c BODY$ c AS-POST
-   begin c STREAM-EXCHANGE c RESUME? while c AS-RESUME repeat
-   c ;
+   c [: STREAM-LOOP ;] catch {: code:n :} drop
+   code 0= if c exit then
+   s ENDED? 0= c RESPONSE-ID$ nip 0<> and if c CANCEL-RESPONSE then
+   code throw ;
 
 : RUN-CHAT ( ptr call -- ptr call )
    {: c :}
@@ -2637,7 +2749,7 @@ private
    true c MODEL-CALL:CANCELLED !
    c MODEL-CALL:TRANSPORT @ MATCH option
       none OF ENDOF
-      some OF CURL:CANCEL ENDOF
+      some OF OPTION:NONE c MODEL-CALL:TRANSPORT ! CURL:CANCEL ENDOF
    ;MATCH
    c ;
 
@@ -2656,21 +2768,6 @@ public
 : ERROR$ ( ptr call -- ptr u8 n ) ERROR-BUF BUFFER$ ;
 
 private
-
-: CODE$ ( n -- ptr u8 n )
-   {: code:n :}
-   code E-CONFIG = if s" MODEL:E-CONFIG" exit then
-   code E-KEY = if s" MODEL:E-KEY" exit then
-   code E-CAPACITY = if s" MODEL:E-CAPACITY" exit then
-   code E-TRANSPORT = if s" MODEL:E-TRANSPORT" exit then
-   code E-HTTP = if s" MODEL:E-HTTP" exit then
-   code E-RESPONSE = if s" MODEL:E-RESPONSE" exit then
-   code E-REFUSED = if s" MODEL:E-REFUSED" exit then
-   code E-INCOMPLETE = if s" MODEL:E-INCOMPLETE" exit then
-   code E-UNAVAILABLE = if s" MODEL:E-UNAVAILABLE" exit then
-   code E-CANCELLED = if s" MODEL:E-CANCELLED" exit then
-   code FMT:INT$ ;
-
 
 \ The status and provider message of a refused reply or a failed response, else
 \ a refused reply's whole body; for an unusable reply or a model's refusal, the
@@ -2696,10 +2793,7 @@ private
       s"  incomplete " LOG:TEXT+ c INCOMPLETE-REASON$ LOG:TEXT+
    then
    c LEDGER LEDGER-TRANSPORT @ {: rc:n :}
-   rc 0<> if
-      s"  curl " LOG:TEXT+ rc LOG:INT+
-      s" : " LOG:TEXT+ rc CURL:>CODE CURL:ERROR$ LOG:TEXT+
-   then ;
+   rc 0<> if rc CURL+ then ;
 
 
 \ One line for a failed call of kind 1 (chat) or 2 (embed): the model, the

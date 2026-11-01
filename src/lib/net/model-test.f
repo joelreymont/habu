@@ -140,9 +140,12 @@ PTR-VARIABLE BIG
 65536 constant SENT-CAP
 create SENT-BODY SENT-CAP allot
 variable SENT-U
-\ Stream resumes, and cancels of resp_hold.
+\ Stream resumes, provider cancels, resumes of resp_alive, and resumes of the
+\ last resp_dead or resp_mute stream.
 variable RESUMES
 variable CANCELS
+variable ALIVE-RESUMES
+variable DEAD-RESUMES
 TASK:SEMAPHORE HELD
 \ An event stream being written. Requests reach the peer one at a time apart
 \ from the held stream's and its cancel's, and a cancel writes no stream.
@@ -371,10 +374,9 @@ $300000 constant BIG-U
 
 \ The longest a held stream waits for its client to close it.
 10000 constant HOLD-MS
-\ resp_hold's resumed stream sends in_progress and stays open until the client
-\ closes it.
-: HOLD-STREAM ( HTTP:request -- )
-   STREAM-OPEN s" resp_hold" GOING RAW-STREAM {: conn:TCP4:connection :}
+\ Signals HELD and keeps the connection open until the client closes it.
+: HOLD-OPEN ( TCP4:connection -- )
+   {: conn:TCP4:connection :}
    HELD TASK:SIGNAL
    conn HOLD-MS >MS TCP4:READABLE-WITHIN?
    MATCH TCP4:ready-result
@@ -383,6 +385,12 @@ $300000 constant BIG-U
       failed OF TCP4:ERRNO>N drop FAIL ENDOF
    ;MATCH
    conn RAW-CLOSE ;
+
+
+\ resp_hold's resumed stream sends in_progress and stays open until the client
+\ closes it.
+: HOLD-STREAM ( HTTP:request -- )
+   STREAM-OPEN s" resp_hold" GOING RAW-STREAM HOLD-OPEN ;
 
 
 \ A reply object's members through its first output item, a reasoning item.
@@ -471,6 +479,31 @@ $300000 constant BIG-U
 : FAILED$ ( -- ptr u8 n ) s" response.failed" ;
 
 
+\ A 200 reply that is JSON, not an event stream.
+: PLAIN$ ( -- ptr u8 n )
+   S\" {\qid\q:\qresp_1\q,\qstatus\q:\qcompleted\q,\qoutput\q:[]}" ;
+\ Event data the call cannot read: a type that is not a string, no sequence
+\ number, and a response with no id.
+: BAD-TYPE$ ( -- ptr u8 n ) S\" {\qtype\q:5,\qsequence_number\q:2}" ;
+: NO-SEQUENCE$ ( -- ptr u8 n ) S\" {\qtype\q:\qresponse.output_text.delta\q,\qdelta\q:\qx\q}" ;
+: NO-ID$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qstatus\q:\qqueued\q,\qoutput\q:[]}}" ;
+\ resp_1's created event, then an event whose data is not UTF-8. MODEL-TEST
+\ writes the line logging it.
+: BAD-UTF8$ ( -- ptr u8 n )
+   S\" event: response.created\ndata: {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qid\q:\qresp_1\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}}\n\ndata: \xff\n\n" ;
+
+
+\ A stream whose last event's data is the text, after resp_1's opening events
+\ when asked.
+: BAD-STREAM ( HTTP:response ptr u8 n bool -- )
+   {: response:HTTP:response a:ptr u:n opened:bool :}
+   STREAM-OPEN
+   opened if s" resp_1" OPENING then
+   s" data: " JSON:WRITE-RAW a u JSON:WRITE-RAW S\" \n\n" JSON:WRITE-RAW
+   response swap STREAM! ;
+
+
 \ Responds by the request's first text, which names its scenario.
 : REPLY ( HTTP:request HTTP:response -- )
    {: r:HTTP:request response:HTTP:response :}
@@ -520,10 +553,42 @@ $300000 constant BIG-U
       S\" ,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null" JSON:WRITE-RAW
       EVENT-CLOSE response swap STREAM! exit
    then
+   t t-u s" plain-json" STR= if response [: PLAIN$ JSON:WRITE-RAW ;] HTTP:JSON! exit then
+   t t-u s" bad-type" STR= if response BAD-TYPE$ true BAD-STREAM exit then
+   t t-u s" no-sequence" STR= if response NO-SEQUENCE$ true BAD-STREAM exit then
+   t t-u s" no-id" STR= if response NO-ID$ false BAD-STREAM exit then
+   t t-u s" bad-utf8" STR= if STREAM-OPEN BAD-UTF8$ JSON:WRITE-RAW response swap STREAM! exit then
+   \ resp_cut's cancel is held.
+   t t-u s" cut-cancel" STR= if
+      STREAM-OPEN s" resp_cut" CREATED
+      s" data: " JSON:WRITE-RAW BAD-TYPE$ JSON:WRITE-RAW S\" \n\n" JSON:WRITE-RAW
+      response swap STREAM! exit
+   then
+   \ The terminal event arrives and then the connection drops mid-body.
+   t t-u s" done-drop" STR= if
+      r STREAM-OPEN s" resp_1" PRELUDE
+      COMPLETED$ LAST-SEQ 1+ RESPONSE-OPEN CHAT-RESPONSE EVENT-CLOSE RAW-STREAM RAW-CLOSE exit
+   then
    \ The streams that end early; their ids name them to the resume and cancel
-   \ routes. resp_resume's connection drops mid-body, resp_refused's ends.
+   \ routes. The connections of resp_resume and resp_alive drop mid-body, the
+   \ others end.
    t t-u s" resume" STR= if
       r STREAM-OPEN s" resp_resume" PRELUDE RAW-STREAM RAW-CLOSE exit
+   then
+   t t-u s" keepalive-resume" STR= if
+      r STREAM-OPEN s" resp_alive" OPENING RAW-STREAM RAW-CLOSE exit
+   then
+   t t-u s" dead-resume" STR= if
+      0 DEAD-RESUMES !
+      STREAM-OPEN s" resp_dead" CREATED response swap STREAM! exit
+   then
+   t t-u s" mute-cancel" STR= if
+      0 DEAD-RESUMES !
+      STREAM-OPEN s" resp_mute" CREATED response swap STREAM! exit
+   then
+   \ A keepalive and then a drop, before an event names the response.
+   t t-u s" early-drop" STR= if
+      r STREAM-OPEN s" keepalive" 0 EVENT-OPEN EVENT-CLOSE RAW-STREAM RAW-CLOSE exit
    then
    t t-u s" resume-refused" STR= if
       STREAM-OPEN s" resp_refused" PRELUDE response swap STREAM! exit
@@ -602,7 +667,11 @@ $300000 constant BIG-U
 
 
 \ A resumed stream: resp_resume sends the rest and completes, resp_refused is
-\ too old to stream, resp_quiet sends no event and resp_hold holds.
+\ too old to stream, resp_quiet sends no event and resp_hold holds. resp_alive's
+\ first resume sends keepalives and drops, its second completes; resp_dead's
+\ and resp_mute's resumes close before a byte, which libcurl retries once on a
+\ fresh connection; past those two they answer 404, so a call that resumes
+\ them again ends.
 : RESUME ( HTTP:request HTTP:response -- )
    {: r:HTTP:request response:HTTP:response :}
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
@@ -614,6 +683,22 @@ $300000 constant BIG-U
       STREAM-OPEN response swap STREAM! exit
    then
    id id-u s" resp_hold" STR= if r 0 AFTER-IS r HOLD-STREAM exit then
+   id id-u s" resp_dead" STR= id id-u s" resp_mute" STR= or if
+      r 0 AFTER-IS
+      1 DEAD-RESUMES +!
+      DEAD-RESUMES @ 2 > if response 404 HTTP:STATUS! exit then
+      r HTTP:TAKE-OVER 2drop RAW-CLOSE exit
+   then
+   id id-u s" resp_alive" STR= if
+      r 1 AFTER-IS
+      1 ALIVE-RESUMES +!
+      ALIVE-RESUMES @ 1 = if
+         r STREAM-OPEN s" keepalive" 7 EVENT-OPEN EVENT-CLOSE
+         s" keepalive" 8 EVENT-OPEN EVENT-CLOSE RAW-STREAM RAW-CLOSE exit
+      then
+      STREAM-OPEN s" response.completed" 2 RESPONSE-OPEN CHAT-RESPONSE EVENT-CLOSE
+      response swap STREAM! exit
+   then
    r LAST-SEQ AFTER-IS
    id id-u s" resp_resume" STR= if
       STREAM-OPEN
@@ -635,9 +720,13 @@ $300000 constant BIG-U
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
    r s" id" HTTP:SEGMENT-OF$ {: id:ptr id-u:n found:bool :}
    found ASSERT
-   id id-u s" resp_hold" STR= 0= if response 404 HTTP:STATUS! exit then
    1 CANCELS atomic-add drop
-   response [: s" resp_hold" s" cancelled" PENDING ;] HTTP:JSON! ;
+   \ resp_dead's provider fails the cancel too, resp_mute's closes it
+   \ unanswered; resp_cut's holds it.
+   id id-u s" resp_dead" STR= if response 500 HTTP:STATUS! exit then
+   id id-u s" resp_mute" STR= if r HTTP:TAKE-OVER 2drop RAW-CLOSE exit then
+   id id-u s" resp_cut" STR= if r HTTP:TAKE-OVER 2drop HOLD-OPEN exit then
+   response [: S\" {\qstatus\q:\qcancelled\q}" JSON:WRITE-RAW ;] HTTP:JSON! ;
 
 
 \ One vector whose first component is the input's byte length.
@@ -734,6 +823,10 @@ EXPORT REFUSAL$
 EXPORT BAD-CONTENT$
 EXPORT BIG$
 EXPORT OLD-STREAM$
+EXPORT PLAIN$
+EXPORT BAD-TYPE$
+EXPORT NO-SEQUENCE$
+EXPORT NO-ID$
 EXPORT WIDE-DIMS
 : BASE-URL$ ( -- ptr u8 n ) BASE-URL BASE-URL-U @ ;
 : OLLAMA-URL$ ( -- ptr u8 n ) OLLAMA-URL OLLAMA-URL-U @ ;
@@ -744,9 +837,10 @@ EXPORT WIDE-DIMS
 : SENT$ ( -- ptr u8 n ) SENT-U @ dup 0< if FAIL then SENT-BODY swap ;
 \ Resumes of the streams that end early.
 : RESUMES@ ( -- n ) RESUMES atomic@ ;
-\ Provider cancels of the hold scenario's response.
+\ Provider cancels.
 : CANCELS@ ( -- n ) CANCELS atomic@ ;
-\ Waits until the peer has sent the held response's in_progress event.
+\ Waits until the peer has sent the held response's in_progress event, or
+\ holds resp_cut's cancel.
 : AWAIT-HOLD ( -- ) HELD TAKE ;
 
 
@@ -758,6 +852,7 @@ EXPORT WIDE-DIMS
    0 RESUMES atomic!
    STREAM-B 1 BUF:N>BLEN BUF:INIT
    0 CANCELS atomic!
+   0 ALIVE-RESUMES !
    HTTP:ROUTES-RESET
    s" POST" s" /responses" [: CHAT ;] HTTP:ROUTE
    s" GET" s" /responses/{id}" [: RESUME ;] HTTP:ROUTE
@@ -983,6 +1078,20 @@ variable REFUSED-BASE-U
    SCHEMA$ M MODEL:SCHEMA! ;
 
 
+\ The resume requests the peer serves while the body runs.
+: RESUMED ( [ -- ] -- n )
+   MODEL-PEER:RESUMES@ {: before:n :}
+   execute
+   MODEL-PEER:RESUMES@ before - ;
+
+
+\ The provider cancels the peer serves while the body runs.
+: CANCEL-POSTS ( [ -- ] -- n )
+   MODEL-PEER:CANCELS@ {: before:n :}
+   execute
+   MODEL-PEER:CANCELS@ before - ;
+
+
 : REPLIES ( -- )
    s" refusal" MODEL:E-REFUSED FAILS
    s" error" CHAT-ID-LINE s" MODEL:E-REFUSED status 200 body: " SB-APPEND
@@ -1005,7 +1114,7 @@ variable REFUSED-BASE-U
    s" failed-size" MODEL:E-CAPACITY FAILS
    s" failed-other" MODEL:E-HTTP FAILS
    M MODEL:ERROR$ s" bad prompt" STR= ASSERT
-   s" error-event" MODEL:E-UNAVAILABLE FAILS
+   [: s" error-event" MODEL:E-UNAVAILABLE FAILS ;] CANCEL-POSTS 1 = ASSERT
    M MODEL:ERROR$ s" The server had an error." STR= ASSERT
    s" cancelled" MODEL:E-CANCELLED FAILS
    s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR= ASSERT
@@ -1040,23 +1149,49 @@ variable REFUSED-BASE-U
    M MODEL:ERROR$ nip 0= ASSERT ;
 
 
-\ The resume requests the peer serves while the body runs.
-: RESUMED ( [ -- ] -- n )
-   MODEL-PEER:RESUMES@ {: before:n :}
-   execute
-   MODEL-PEER:RESUMES@ before - ;
-
-
-\ Streams that end before the response: one dropped after a keepalive resumes
-\ once after the last event and completes; a resume the provider refuses
-\ fails the call; a resume that sends no event ends it.
+\ Streams that end early resume, or end the call and cancel a known response;
+\ a failed cancel logs its status, or libcurl's code when closed unanswered.
 : EARLY-ENDS ( -- )
    [: s" resume" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;] RESUMED 1 = ASSERT
-   [: s" resume-refused" MODEL:E-HTTP FAILS ;] RESUMED 1 = ASSERT
+   [: s" done-drop" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;] CANCEL-POSTS 0= ASSERT
+   M MODEL:HTTP-STATUS 200 = ASSERT
+   [: s" early-drop" MODEL:E-TRANSPORT FAILS ;] CANCEL-POSTS 0= ASSERT
+   s" error" CHAT-LINE s" MODEL:E-TRANSPORT curl 18: " SB-APPEND
+   18 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED
+   [: s" keepalive-resume" PREP CHAT-CODE 0= ASSERT ;] RESUMED 2 = ASSERT
+   [: s" resume-refused" MODEL:E-HTTP FAILS ;] CANCEL-POSTS 1 = ASSERT
    M MODEL:ERROR$ MODEL-PEER:OLD-STREAM$ STR= ASSERT
    s" error" s" chat test-generation" MODEL-PEER:BASE-URL$ s" /responses resp_refused" SB-LINE
    s" MODEL:E-HTTP status 400: " SB-APPEND MODEL-PEER:OLD-STREAM$ SB-APPEND SB-LOGGED
+   [: s" dead-resume" MODEL:E-TRANSPORT FAILS ;] CANCEL-POSTS 1 = ASSERT
+   SB-RESET s"  warn model: cancel resp_dead MODEL:E-UNAVAILABLE status 500" SB-APPEND SB-LOGGED
+   s" mute-cancel" MODEL:E-TRANSPORT FAILS
+   SB-RESET s"  warn model: cancel resp_mute MODEL:E-TRANSPORT curl 52: " SB-APPEND
+   52 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED
    [: s" no-progress" MODEL:E-RESPONSE FAILS ;] RESUMED 1 = ASSERT ;
+
+
+\ SB holds the log line's text up to its code; the line has the unusable
+\ reply's status 200 and the whole body.
+: BODY-LOGGED ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" MODEL:E-RESPONSE status 200 body: " SB-APPEND a u SB-APPEND SB-LOGGED ;
+
+
+\ A reply the call cannot read is logged whole, an event that is not UTF-8 as
+\ its chunk with line feeds escaped; one after the response id cancels it.
+: UNREADABLE ( -- )
+   s" plain-json" MODEL:E-RESPONSE FAILS
+   s" error" CHAT-LINE MODEL-PEER:PLAIN$ BODY-LOGGED
+   [: s" bad-type" MODEL:E-RESPONSE FAILS ;] CANCEL-POSTS 1 = ASSERT
+   s" error" CHAT-ID-LINE MODEL-PEER:BAD-TYPE$ BODY-LOGGED
+   s" no-sequence" MODEL:E-RESPONSE FAILS
+   s" error" CHAT-ID-LINE MODEL-PEER:NO-SEQUENCE$ BODY-LOGGED
+   s" no-id" MODEL:E-RESPONSE FAILS
+   s" error" CHAT-LINE MODEL-PEER:NO-ID$ BODY-LOGGED
+   s" bad-utf8" MODEL:E-RESPONSE FAILS
+   s" error" CHAT-ID-LINE
+   S\" event: response.created\\x0adata: {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qid\q:\qresp_1\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}}\\x0a\\x0adata: \xff\\x0a\\x0a" BODY-LOGGED ;
 
 
 \ A loopback port nothing listens on: bound, then closed.
@@ -1132,6 +1267,18 @@ variable REFUSED-BASE-U
    M MODEL:CANCEL ASSERT
    HOLD-ENDED
    M MODEL:CANCEL 0= ASSERT ;
+
+
+\ A CANCEL while the call cancels its response cuts the provider cancel, which
+\ is logged cancelled with libcurl's code 42 and its text.
+: CANCEL-CUT ( -- )
+   s" cut-cancel" PREP
+   ['] CHAT-WORK WORK-TASK TASK:ACTIVATE
+   MODEL-PEER:AWAIT-HOLD
+   M MODEL:CANCEL ASSERT
+   CANCELLED
+   SB-RESET s"  warn model: cancel resp_cut MODEL:E-CANCELLED curl 42: " SB-APPEND
+   42 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED ;
 
 
 \ The first CHAT has returned before STOP-READY is signalled. The worker
@@ -1802,7 +1949,7 @@ variable KEYLESS-U
    SETUP
    M MODEL:CANCEL 0= ASSERT
    BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
-   REPLIES EARLY-ENDS REFUSED [: CANCELLATION ;] QUIET
+   REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET CANCEL-CUT
    EMBEDDINGS BAD-VECTORS EMBED-TOO-LARGE INPUT-BOUNDS DIMS-PROPERTY
    STOP-BETWEEN
    M MODEL:CLOSE
