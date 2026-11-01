@@ -1226,6 +1226,8 @@
 \ package CREW.
 \ OAuth bearer tokens: -9630..-9639, minted in src/lib/net/bearer.f, which owns
 \ package BEARER.
+\ Keeping the machine awake: -9640..-9649, minted in src/lib/power.f, which
+\ owns package POWER.
 \ Model chat and embedding client: -9700..-9799, minted in src/lib/net/model.f,
 \ which owns package MODEL.
 

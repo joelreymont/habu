@@ -1492,6 +1492,7 @@ SUITE stdlib-process-fixtures
    test/lint-cli-standalone-load.f
    src/lib/process-test.f
    src/lib/process-command-test.f
+   src/lib/power-test.f
    src/lib/process-pty-handle-test.f
 ;SUITE
 
