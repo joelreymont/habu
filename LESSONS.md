@@ -55,6 +55,18 @@ entry.
   `STDERR:CAPTURE ( path -- ) … STDERR:;CAPTURE` for tests. Asked whether
   MODEL's log line for an unusable reply carries the whole reply body, Joel
   chose "Log the whole body".
+- 2026-11-01, long model calls: Tender lost documents when MODEL's total
+  call bound ran out at about 300 s. Offered OpenAI's background mode (start
+  the response, poll its status every 2 s, no total bound, a dead call shown
+  by a failed status or a stalled connection), at the cost that OpenAI keeps
+  the response on disk about 10 minutes even with store=false, Joel chose
+  "Allow 10-min hold" over one long held request. He then approved removing
+  MODEL:TIMEOUT!, DEFAULT-MS and E-DEADLINE, renaming FINISH-REASON$ to
+  INCOMPLETE-REASON$, and CHAT speaking only the Responses protocol (Ollama
+  stays for embeddings; its chat is built when a client needs it). Asked
+  whether usage counts take the protocol's input_tokens and output_tokens
+  names, Joel chose "Rename, one cutover": record keys, MODEL's words and
+  the Tender and Zen readers together.
 - 2026-10-31, typed data: shown that the image save check reads an untyped
   `c,` table's bytes as possible addresses, so a build fails at random by
   where memory was placed, and that a fix recording `c,` runs covers only
