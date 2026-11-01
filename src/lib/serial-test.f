@@ -101,13 +101,8 @@ TASK:MIN-STACK TASK:TASK READER
       got +
    repeat drop ;
 
-\ TASK:JOIN would park main forever on a reader that never ends, so the wait
-\ owns a deadline: the join throws E-PROC-TIMEOUT, a deadline and not an
-\ assertion result (docs/gate.md "How a suite runs, and what that demands of
-\ its files"). The window closes once less than a whole millisecond of JOIN-MS
-\ is left, the cutoff a PROC-LEFT-MS reading gives.
 : JOIN-READER ( -- )
-   [: READER TASK:DONE? ;] JOIN-MS >MS PROC-DEADLINE-AT PROC-NS-PER-MS - 1+
+   [: READER TASK:DONE? ;] JOIN-MS >MS PROC-DEADLINE-AT
    s" serial-test JOIN-READER" TEST-WAIT:POLL ;
 
 : NUL-OPEN ( -- )

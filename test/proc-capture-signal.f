@@ -53,7 +53,6 @@ create PCS-ERR PCS-ERR-CAP allot
    elapsed PCS-MIN-NS >= TTRUE ;
 
 100 constant PCS-HOLD-MS             \ the held child's window
-99000000 constant PCS-HOLD-MIN-NS    \ that window less the whole-millisecond floor
 1000000000 constant PCS-HOLD-MAX-NS  \ ten windows: a window each tick renewed would not end
 
 : PCS-HOLD-SCRIPT ( -- ptr u8 n )
@@ -87,7 +86,7 @@ create PCS-ERR PCS-ERR-CAP allot
    pid PCS-TIMEOUT-MS >MS PROC-WAIT-BOUNDED {: done :}
    prof-off
    held T-OUTCOME-TIMEOUT
-   elapsed PCS-HOLD-MIN-NS >= TTRUE
+   elapsed PCS-HOLD-MS PROC-NS-PER-MS * >= TTRUE
    elapsed PCS-HOLD-MAX-NS < TTRUE
    PCS-HOLD-SCRIPT s" " s" " done 3 T-OUTCOME-EXITED= ;
 

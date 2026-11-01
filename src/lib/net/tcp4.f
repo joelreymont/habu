@@ -537,9 +537,12 @@ FUNCTION: OPTION-GET-CALL getsockopt ( n n n ptr u8 ptr u8 -- i32 )
    MAX-TRANSFER min ;
 
 
-\ Milliseconds left before a mono-ns deadline, never below zero.
+\ Milliseconds left before a mono-ns deadline, rounded up so a poll cannot end
+\ before it; 0 once it has passed.
 : LEFT-MS ( n -- n ) {: deadline:n :}
-   deadline mono-ns - NS-PER-MS / 0 max ;
+   deadline mono-ns - {: left:n :}
+   left 0 <= if 0 exit then
+   left NS-PER-MS 1- + NS-PER-MS / ;
 
 
 \ Blocks until a send on the descriptor will not wait - there is room, or an

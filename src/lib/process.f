@@ -326,11 +326,13 @@ public
 : PROC-PFD-REVENTS ( idx -- n )
    PROC-PFD-SLOT @ 48 rshift $FFFF and ;
 
+\ Rounds up, so a wait for what is left never ends before the deadline
+\ (src/lib/process-test.f TEST-WAIT-REACHES-DEADLINE).
 : PROC-LEFT-MS ( n -- ms ) {: deadline :}
    deadline mono-ns - dup 0 <= if
       drop 0 >MS
    else
-      PROC-NS-PER-MS / >MS
+      PROC-NS-PER-MS 1- + PROC-NS-PER-MS / >MS
    then ;
 
 \ A negative ms names no window: its deadline is the reading itself, and a poll
@@ -396,13 +398,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 1 cells TASK:+USER PROC-BOUNDED-STATUS drop
    FFI:ERRNO EINTR# <> if E-PROC-WAIT throw then
    0 0= 0= ;
 
-\ A timeout collects nothing and leaves the pid the caller's to reap. The wait
-\ sends no signal, closes no descriptor and leaves the capture row and reaper
-\ alone. pid must be a pid_t above zero: waitpid's C int would narrow a wider
-\ cell to another process or a process group; both arguments are refused before
-\ any waitpid. Each turn probes before it reads the deadline, so ms 0 is one
-\ probe and a status already there wins; PROC-LEFT-MS floors, so a window can
-\ end under a millisecond early.
+\ pid must be a pid_t above zero: waitpid's C int would narrow a wider cell to
+\ another process or a process group.
 : PROC-WAIT-BOUNDED ( pid ms -- outcome )
    {: pid:pid timeout:ms :}
    pid PID>N 0 <= if E-PROC-WAIT throw then

@@ -371,24 +371,16 @@ public
    NEED-READY
    0 >MS READABLE-WITHIN? ;
 
-\ The next signal number, or `timeout` when the window closes. WAIT and PENDING?
-\ run on the AIO loop: AIO:START first, else E-AIO-STATE. Every wait runs against
-\ one deadline set from ms, so a read another task won re-polls there and a lost
-\ race never pushes WAIT past ms. Only a wait after the first re-derives what is
-\ left, because PROC-LEFT-MS floors and would shave a millisecond off a window
-\ nothing has consumed.
+\ The next signal number, or `timeout` once ms has passed; a negative ms waits
+\ unbounded. Like PENDING?, it needs AIO:START or throws E-AIO-STATE.
 : WAIT ( ms -- signal-result ) {: window:ms :}
    NEED-READY
    window PROC-DEADLINE-AT {: deadline :}
-   window                                          \ milliseconds left to wait for
    begin
-      dup READABLE-WITHIN? 0= if
-         drop SIGNAL-SIGNAL--RESULT:timeout exit
-      then
-      SIGNO@ dup SIGNO-REFUSED <> if
-         nip SIGNAL-SIGNAL--RESULT:signal exit
-      then
-      2drop deadline PROC-LEFT-MS
+      window MS>N 0 < if window else deadline PROC-LEFT-MS then
+      READABLE-WITHIN? 0= if SIGNAL-SIGNAL--RESULT:timeout exit then
+      SIGNO@ dup SIGNO-REFUSED <> if SIGNAL-SIGNAL--RESULT:signal exit then
+      drop
    again ;
 
 \ The fd word is cleared FIRST, so a signal delivered during the restore is

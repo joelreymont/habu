@@ -503,7 +503,6 @@ create PT-Z PT-Z-CAP allot
 
 5000 constant PT-WAIT-MS                 \ far above any child here that is meant to end
 100 constant PT-HOLD-MS                  \ a window the held child outlasts
-99000000 constant PT-HOLD-MIN-NS         \ that window less the whole-millisecond floor
 $100000000 constant PT-PID-WRAP          \ 2^32: what a C int pid_t drops
 1000 constant PT-LONGEST-SLACK-MS        \ room for the later mono-ns read the wait makes
 1 constant PT-NOT-A-CHILD                \ init or launchd: waitpid answers ECHILD
@@ -621,7 +620,7 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
    eof 0 T=
    probed T-OUTCOME-TIMEOUT
    held T-OUTCOME-TIMEOUT
-   waited PT-HOLD-MIN-NS >= TTRUE
+   waited PT-HOLD-MS PROC-NS-PER-MS * >= TTRUE
    done PT-HOLD-EXITED=
    eof waited done PT-HOLD-EVIDENCE ;
 
@@ -660,6 +659,17 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 \ window past the cell, rather than wrapping to a deadline already gone.
 : TEST-DEADLINE-PAST-CELL ( -- )
    [: PT-PAST-CELL-MS >MS PROC-DEADLINE-AT drop ;] E-PROC-TIMEOUT TTHROWSQ ;
+
+\ Cut down to whole milliseconds, a wait for what is left of a 3 ms window
+\ wakes before its deadline in most rounds.
+: PT-LEFT-REACHED? ( -- bool )
+   3 >MS PROC-DEADLINE-AT {: deadline:n :}
+   1 deadline PROC-LEFT-MS MS>N deadline PROC-POLL-RESTART drop
+   mono-ns deadline >= ;
+
+: TEST-WAIT-REACHES-DEADLINE ( -- )
+   PROC-NO-FD >FD 0 PROC-PFD!
+   0 10 0 ?do PT-LEFT-REACHED? 0= if 1+ then loop 0 T= ;
 
 \ A child's stdio end may be close-on-exec, and one above 2 may be unmarked: the
 \ spawn keeps each on its stdio number and closes the source in the child.
@@ -730,6 +740,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    TEST-WAIT-BOUNDED-REFUSALS
    TEST-WAIT-BOUNDED-EDGE
    TEST-DEADLINE-PAST-CELL
+   TEST-WAIT-REACHES-DEADLINE
    TEST-SPAWN-SAME-NUMBER
    TEST-SPAWN-UNMARKED-SOURCE
    TEST-PIPE
