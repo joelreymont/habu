@@ -53,8 +53,6 @@ public
 -9706 constant E-REFUSED
 \ The chat response finished for a reason other than stop: FINISH-REASON$.
 -9707 constant E-INCOMPLETE
-\ The call's timeout ran out before its response arrived.
--9708 constant E-DEADLINE
 \ CANCEL ended the call, or REQUEST-STOP came before or during it.
 -9709 constant E-CANCELLED
 \ A word out of turn: an unopened or busy call, settings closed or opened
@@ -63,7 +61,6 @@ public
 -9710 constant E-STATE
 \ The provider is temporarily unavailable: status 408, 429 or 5xx.
 -9711 constant E-UNAVAILABLE
-60000 constant DEFAULT-MS
 \ The most inputs one EMBED call takes.
 8 constant INPUT-MAX
 
@@ -87,10 +84,8 @@ STRUCTURE call DERIVE addr
    FIELD stopped bool
    FIELD key-split n
    FIELD dims n
-   FIELD timeout-ms n
    FIELD prompt-tokens n
    FIELD cached-tokens n
-   FIELD deadline-ns n
    FIELD response-u n
    FIELD content-u n
    FIELD input-count n
@@ -157,7 +152,10 @@ CAST: >LEDGER ( ptr u8 -- ptr ledger )
 
 256 constant SCRATCH-INITIAL
 1000000 constant NS-PER-MS
-28 constant CURL-TIMED-OUT
+\ An exchange that moves no byte for this long is ended (E-TRANSPORT, curl 28
+\ logged); it equals the total bound it replaced, so no call that finished
+\ under the old default fails.
+60 constant STALL-SECONDS
 1 constant OPENAI
 2 constant OLLAMA
 
@@ -504,7 +502,6 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false c MODEL-CALL:JOURNAL-READY !
    0 c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
-   DEFAULT-MS c MODEL-CALL:TIMEOUT-MS !
    0 c MODEL-CALL:PROMPT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
    c RESET-USAGE
@@ -716,12 +713,6 @@ public
    svc su c KEY-SPEC-BUF REPLACE-SOME
    acct au BUF:N>BLEN c KEY-SPEC-BUF BUF:APPEND-SPAN
    su c MODEL-CALL:KEY-SPLIT ! ;
-
-: TIMEOUT! ( n ptr call -- )
-   {: ms:n c :}
-   c REQUIRE-IDLE
-   ms 0 <= ms 2147483647 > or if E-CONFIG throw then
-   ms c MODEL-CALL:TIMEOUT-MS ! ;
 
 : SYSTEM! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
@@ -1375,17 +1366,6 @@ private
       fault c WIPE-AFTER
    then ;
 
-: DEADLINE-OPEN ( ptr call -- )
-   {: c :}
-   TIME:MONO-NS c MODEL-CALL:TIMEOUT-MS @ NS-PER-MS * +
-   c MODEL-CALL:DEADLINE-NS ! ;
-
-: REMAINING-MS ( ptr call -- n )
-   {: c :}
-   c MODEL-CALL:DEADLINE-NS @ TIME:MONO-NS - {: left:n :}
-   left 0 <= if E-DEADLINE throw then
-   left NS-PER-MS 1- + NS-PER-MS / ;
-
 : CHECK-CANCEL-LOCKED ( ptr call -- )
    MODEL-CALL:CANCELLED @ if E-CANCELLED throw then ;
 
@@ -1582,7 +1562,6 @@ private
    fault 0<> if fault throw then
    cancelled if E-CANCELLED throw then
    rc c LEDGER LEDGER-TRANSPORT !
-   rc CURL-TIMED-OUT = if E-DEADLINE throw then
    rc 0<> if E-TRANSPORT throw then
    status c MODEL-CALL:HTTP-STATUS !
    c RESPONSE-BUF BUF:LEN@ BUF:BLEN>N c MODEL-CALL:RESPONSE-U !
@@ -1604,7 +1583,7 @@ private
          h s" POST" CURL:METHOD! c CHECK-STATUS
          h c BODY$ CURL:BODY! c CHECK-STATUS
          h c SET-HEADERS
-         h c REMAINING-MS >MS CURL:TIMEOUT! c CHECK-STATUS
+         h 1 STALL-SECONDS CURL:LOW-SPEED! c CHECK-STATUS
          c START-TRANSFER
          c AWAIT-TRANSFER
       ENDOF
@@ -1622,8 +1601,7 @@ private
       some OF CURL:CLEANUP ENDOF
    ;MATCH
    OPTION:NONE c MODEL-CALL:HANDLE !
-   code c WIPE-AFTER
-   c REMAINING-MS drop ;
+   code c WIPE-AFTER ;
 
 : EXPECT ( JSON:reader n -- JSON:reader )
    {: want:n :}
@@ -1954,15 +1932,13 @@ private
    c MODEL-CALL:GATE @ TASK:WAIT
    c [: BEGIN-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:GATE @ TASK:SIGNAL
-   code 0<> if code throw then
-   c DEADLINE-OPEN ;
+   code 0<> if code throw then ;
 
 : END-CALL ( ptr call -- bool )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT
    c MODEL-CALL:CANCELLED @ {: cancelled:bool :}
    false c MODEL-CALL:BUSY !
-   0 c MODEL-CALL:DEADLINE-NS !
    c MODEL-CALL:GATE @ TASK:SIGNAL
    cancelled ;
 
@@ -1976,7 +1952,6 @@ private
    c PARSE-CHAT
    c TOKENS TOKENS-PROMPT @ OR-ZERO c MODEL-CALL:PROMPT-TOKENS !
    c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS !
-   c REMAINING-MS drop
    c ;
 
 : RUN-EMBED ( ptr call -- ptr call )
@@ -1986,7 +1961,6 @@ private
    c SEND
    c PARSE-USAGE
    c PARSE-EMBED
-   c REMAINING-MS drop
    c ;
 
 : JOURNAL-GET? ( ptr call -- bool )
@@ -2352,7 +2326,6 @@ private
    code E-RESPONSE = if s" MODEL:E-RESPONSE" exit then
    code E-REFUSED = if s" MODEL:E-REFUSED" exit then
    code E-INCOMPLETE = if s" MODEL:E-INCOMPLETE" exit then
-   code E-DEADLINE = if s" MODEL:E-DEADLINE" exit then
    code E-UNAVAILABLE = if s" MODEL:E-UNAVAILABLE" exit then
    code FMT:INT$ ;
 
@@ -2382,9 +2355,6 @@ private
    rc 0<> if
       s"  curl " LOG:TEXT+ rc LOG:INT+
       s" : " LOG:TEXT+ rc CURL:>CODE CURL:ERROR$ LOG:TEXT+
-   then
-   code E-DEADLINE = if
-      s"  after " LOG:TEXT+ c MODEL-CALL:TIMEOUT-MS @ LOG:INT+ s"  ms" LOG:TEXT+
    then ;
 
 

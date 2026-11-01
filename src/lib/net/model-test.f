@@ -758,17 +758,6 @@ variable REFUSED-BASE-U
    M MODEL:ERROR$ nip 0= ASSERT ;
 
 
-\ The peer holds the reply, so the deadline, long enough to cover dispatch,
-\ expires after the request went out.
-: TIMEOUT ( -- )
-   200 M MODEL:TIMEOUT!
-   s" hold" MODEL:E-DEADLINE FAILS
-   MODEL-PEER:AWAIT-HOLD MODEL-PEER:RELEASE
-   60000 M MODEL:TIMEOUT!
-   s" error" CHAT-LINE s" MODEL:E-DEADLINE curl 28: " SB-APPEND
-   28 CURL:>CODE CURL:ERROR$ SB-APPEND s"  after 200 ms" SB-APPEND SB-LOGGED ;
-
-
 \ A loopback port nothing listens on: bound, then closed.
 : CLOSED-PORT ( -- n )
    $7F000001 TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND
@@ -1122,9 +1111,9 @@ create HASH 64 allot
    s" prefix_hash" ROW HASH 64 STR-IS
    M MODEL:RECORD-FAULT 0= ASSERT
    \ A call that got no reply records no HTTP status, not zero.
-   PURPOSE TIMEOUT
+   PURPOSE REFUSED
    ROWS-MADE @ 3 = ASSERT
-   s" fault" ROW MODEL:E-DEADLINE INT-IS
+   s" fault" ROW MODEL:E-TRANSPORT INT-IS
    s" http_status" ROW NULL-IS
    s" embed" M MODEL:PURPOSE!
    s" one" INPUTS s" two" M MODEL:INPUT+ M MODEL:EMBED
@@ -1484,7 +1473,7 @@ variable KEYLESS-U
    SETUP
    M MODEL:CANCEL 0= ASSERT
    BASES CHAT IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
-   REPLIES TIMEOUT REFUSED [: CANCELLATION ;] QUIET
+   REPLIES REFUSED [: CANCELLATION ;] QUIET
    EMBEDDINGS BAD-VECTORS EMBED-TOO-LARGE INPUT-BOUNDS DIMS-PROPERTY
    STOP-BETWEEN
    M MODEL:CLOSE
