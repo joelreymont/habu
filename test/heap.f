@@ -59,8 +59,8 @@ variable EVAL-U
    a NOTES-RELEASE ;
 
 
-\ The case HEAP exists for: a record of its own holding another package's
-\ OPAQUE reader state, reached through its field with no cast.
+\ A record of its own holding another package's OPAQUE reader state, reached
+\ through its field with no cast.
 : READ-PART ( ptr part -- )
    {: p:ptr :}
    p PART-READER s" [40,2]" JR:INIT

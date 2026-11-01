@@ -20,8 +20,7 @@ $4000000000000000 constant T-LARGEST-POW2          \ largest positive power-of-t
 
 \ Each classifier below turns an ok result into the raw value it pins against a
 \ literal, so the extent roles are read out here rather than by reopening the
-\ package under test. Checked casts; projection out of a cell family needs no
-\ ownership (checker.f CAST-OWNER?). An index goes through the package's own
+\ package under test. An index goes through the package's own
 \ public NUM:ORDINAL, which is the only projection NUM publishes; production
 \ never gets a public role->n projection.
 CAST: T-BL>RAW ( NUM:byte-len -- n )

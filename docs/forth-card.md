@@ -324,7 +324,7 @@ Every form loaded and its accessor effect certified.
 | `n PTR-U8-TABLE TT` | a fixed table of byte pointers | `( -- ptr ptr u8 )`, indexed with `ptr-field` |
 | `DYNAMIC-BUFFER DB t` | a growable mapped array, `u8` a byte row | `( n -- ptr t )` plus `DB-RESERVE` / `DB-RELEASE`; growth moves it — keep indices, reacquire ptrs, release before an image save |
 | `ARENA AR t` | records sharing one lifetime, never moved | family `ar`, held in place in the owner's `FIELD` or `TYPED-VARIABLE` (`@`/`!` on it is `E-IN-PLACE`, a cast reaching its head `E-CAST-OWNER`, a `DYNAMIC-BUFFER`, `ARENA`, `CWORK-VARIABLE`, `CWORK-BUFFER` or `CWORK-SPAN` of it `E-BAD-STORAGE`); `AR-NEW ( ptr ar -- ptr t )` a zeroed record, `AR-RELEASE ( ptr ar -- )` frees them all, and a pointer kept across it can alias the next NEW's record; tasks sharing one arena serialise both; capture refuses an arena still live after every hook has run (`DYNAMIC-STORAGE:E-ARENA-LIVE`), so a hook can release it |
-| `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save; holds what no cast may forge, such as another package's cursor |
+| `HEAP H t` | one record with its own lifetime, never moved | `H-NEW ( -- ptr t )` a zero-filled record on its own mapping, `H-RELEASE ( ptr t -- )` unmaps it; a pointer kept across it is stale, and a second RELEASE can unmap a later mapping; nothing registers a record, so release it before an image save |
 | `n LAYOUT-BUFFER LB fam` | capacity for a declared family | `( n -- ptr fam )` |
 | `STRUCTURE p FIELD x n … ;STRUCTURE` | a by-value record | `P:MAKE` / `P:UNMAKE`; under `package PKG` the tail is `PKG-P:MAKE`, hyphens doubled in both names (`package A-B`, `STRUCTURE c-d` gives `A--B-C--D:MAKE`); `STRUCTURE p OPAQUE …` keeps `PKG:p` public and makes the pair PKG's private `P-MAKE` / `P-UNMAKE` |
 
@@ -401,12 +401,12 @@ A cast may take an `xt` (`CAST: XT>N ( xt -- n )`) but never yields one
 (`E-CAST-CLASS`), and no storage holds one (`E-BAD-STORAGE`, `xt in a stored
 type`).
 A layout's fields count as the bare type: a cast into a layout whose `FIELD`
-holds a pointer or a quotation is the same mint, and one whose field holds
-another package's cell family or `OPAQUE` structure is `E-CAST-OWNER` outside
-that package, as a cast to one or to a pointer to one is. So is a cast whose
-either side reaches an arena head, through pointers, quotation rows or fields:
-`CAST: >U8 ( ptr foos -- ptr u8 )` over an `ARENA FOOS` owner, or its reverse,
-outside `DYNAMIC-STORAGE`, private section included.
+holds a pointer or a quotation is the same mint. A cast into another package's
+cell family or `OPAQUE` structure is the writer's claim, which the checker does
+not prove. A cast whose either side reaches an arena head, through pointers,
+quotation rows or fields, is `E-CAST-OWNER`: `CAST: >U8 ( ptr foos -- ptr u8 )`
+over an `ARENA FOOS` owner, or its reverse, outside `DYNAMIC-STORAGE`, private
+section included.
 
 In checked code a `DEFLINEAR` token is minted and erased the same way, by the
 package that declared the type: `LINEAR: MINT ( ptr n -- PKG:tok )` and `LINEAR: ERASE

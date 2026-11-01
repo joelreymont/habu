@@ -152,50 +152,10 @@ s" CN-PRIVATE-PROBE" 0 search-wl 0= TTRUE
 s" CN-PRIVATE-PROBE" CN-ABSENT? TFALSE
 ;package
 
-\ owner: introducing an arity-0 or parametric cell family belongs to its
-\ declaring package; another package cannot mint either shape, while projections
-\ out are unrestricted. The destination introduces what sits in an introduction
-\ position: the term, a pointee, a layout family's arguments, fields and variant
-\ payloads, and a quotation's produced rows, recursively, with its consumed rows
-\ flipping the direction.
-package CN
-s" cast: CNO0 ( n -- CN:cnfam )"                 CN-RUN:DECL 0 T=
-s" cast: CNG0 ( n -- CN:cncell<n> )"             CN-RUN:DECL 0 T=
-s" cast: CNOP ( n -- ptr CN:cnfam )"             CN-RUN:DECL 0 T=
-s" cast: CNOQ ( n -- [ -- CN:cncell<n> ] )"      CN-RUN:DECL 0 T=
-;package
 package CN-HIR
-s" cast: CNO1 ( n -- CN:cnfam )"                 CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNG1 ( n -- CN:cncell<n> )"             CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNP1 ( CN:cnfam -- n )"                 CN-RUN:DECL 0 T=
 s" cast: CNP2 ( CN:cncell<n> -- n )"             CN-RUN:DECL 0 T=
-\ Reading through a minted pointer, or calling a minted quotation, yields what
-\ its pointee or produced rows name, so those are introduction positions too,
-\ even in this package's private section. A quotation handed in flips the
-\ direction: a consumer passed to the minted quotation is fed by it.
-s" cast: CNG2 ( n -- ptr CN:cnfam )"             CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNG3 ( n -- ptr ptr CN:cncell<n> )"     CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNG4 ( n -- [ -- CN:cnfam ] )"          CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNG6 ( n -- [ [ CN:cnfam -- ] -- ] )"   CN-RUN:DECL E-CAST-OWNER T=
-\ A layout family's arguments are introduction positions as well: projecting
-\ the field of a minted `cnpbox` yields a value of its argument family.
-s" cast: CNG10 ( n -- cnpbox<CN:cnfam> )"        CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNG11 ( n -- ptr cnpbox<CN:cncell<n>> )" CN-RUN:DECL E-CAST-OWNER T=
-\ A quotation that only consumes the family projects it, a producer handed in
-\ is its caller's own, and a source term never introduces.
-s" cast: CNG7 ( n -- [ CN:cnfam -- n ] )"        CN-RUN:DECL 0 T=
-s" cast: CNG8 ( n -- [ [ -- CN:cnfam ] -- ] )"   CN-RUN:DECL 0 T=
-s" cast: CNG9 ( ptr CN:cnfam -- n )"             CN-RUN:DECL 0 T=
-s" cast: CNG12 ( n -- [ cnpbox<CN:cnfam> -- ] )" CN-RUN:DECL 0 T=
 ;package
-\ A layout's fields and its variants' payloads are introduction positions too:
-\ projecting a field or matching a variant yields the value. A layout whose
-\ field carries another package's family hands that family out, directly,
-\ through a nested layout, a generic instance, a pointer field, a pointer to a
-\ variant of either payload form, a field quotation that produces it, or a
-\ produced quotation, even in the layout owner's own private section. A field
-\ quotation that only consumes the family hands out none. The family's owner
-\ casts into the same layouts.
 package CN-FO
 public
 NEWTYPE fofam
@@ -203,40 +163,18 @@ NEWTYPE fofam
 package CN-FQ
 public
 STRUCTURE fqbox FIELD v CN-FO:fofam ;STRUCTURE
-STRUCTURE fqnest FIELD inner fqbox ;STRUCTURE
-STRUCTURE fqapp FIELD b cnpbox<CN-FO:fofam> ;STRUCTURE
-STRUCTURE fqptr FIELD p ptr fqbox ;STRUCTURE
-ENUM fqsum VARIANT has FIELD v CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;ENUM
-SUMTYPE fqleg VARIANT has CN-FO:fofam ;VARIANT VARIANT none ;VARIANT ;SUMTYPE
 ENUM fqlist VARIANT more FIELD v CN-FO:fofam FIELD next ptr fqlist ;VARIANT VARIANT last ;VARIANT ;ENUM
-STRUCTURE fqprod FIELD q [ -- CN-FO:fofam ] ;STRUCTURE
-STRUCTURE fqcons FIELD q [ CN-FO:fofam -- ] ;STRUCTURE
-s" cast: CNW1 ( n -- fqbox )"            CN-RUN:DECL E-CAST-OWNER T=
 private
-s" cast: CNW2 ( n -- fqnest )"           CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNW3 ( n -- fqapp )"            CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNW4 ( n -- fqptr )"            CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNW5 ( n -- ptr fqsum )"        CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNW6 ( n -- ptr fqleg )"        CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNW7 ( n -- [ -- fqbox ] )"     CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNW8 ( n -- [ fqbox -- ] )"     CN-RUN:DECL 0 T=
 s" cast: CNW9 ( fqbox -- n )"            CN-RUN:DECL 0 T=
-s" cast: CNW10 ( n -- fqprod )"          CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNW11 ( n -- fqcons )"          CN-RUN:DECL 0 T=
 \ An ENUM variant may point at its own family. The walk reads each instance once
-\ per path, so a list of foreign values is refused and its projection is not.
-s" cast: CNW12 ( n -- ptr fqlist )"      CN-RUN:DECL E-CAST-OWNER T=
+\ per path, so a cast into a list or out of one terminates.
 s" cast: CNW13 ( ptr fqlist -- n )"      CN-RUN:DECL 0 T=
+s" cast: CNW17 ( n -- ptr fqlist )"      CN-RUN:DECL 0 T=
 ;package
-package CN-FO
-s" cast: CNW14 ( n -- CN-FQ:fqbox )"     CN-RUN:DECL 0 T=
-s" cast: CNW15 ( n -- CN-FQ:fqptr )"     CN-RUN:DECL 0 T=
-s" cast: CNW16 ( n -- ptr CN-FQ:fqsum )" CN-RUN:DECL 0 T=
-s" cast: CNW17 ( n -- ptr CN-FQ:fqlist )" CN-RUN:DECL 0 T=
-;package
-\ An OPAQUE structure is its package's to introduce, as a cell family is: by
-\ value, as a pointee and through a field that holds one, even in the holder's
-\ package. Its own package casts into all three, and any package projects out.
+\ CN-OH's public section casts a value into CN's `cnfam`; its private section
+\ casts bytes into a pointer to CN-OQ's `oqbox` and a value into its own `ohold`
+\ that holds one. The pointer is a class mint, refused in a public section. Any
+\ package projects out.
 package CN-OQ
 public
 STRUCTURE oqbox OPAQUE FIELD v n ;STRUCTURE
@@ -244,54 +182,21 @@ STRUCTURE oqbox OPAQUE FIELD v n ;STRUCTURE
 package CN-OH
 public
 STRUCTURE ohold FIELD b CN-OQ:oqbox ;STRUCTURE
-s" cast: CNQ1 ( n -- CN-OQ:oqbox )"              CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNQ10 ( ptr u8 -- ptr CN-OQ:oqbox )"    CN-RUN:DECL E-CAST-MINT T=
+s" cast: CNQ13 ( n -- CN:cnfam )"                CN-RUN:DECL 0 T=
 private
-s" cast: CNQ2 ( ptr u8 -- ptr CN-OQ:oqbox )"     CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNQ3 ( n -- ohold )"                    CN-RUN:DECL E-CAST-OWNER T=
+s" cast: CNQ11 ( ptr u8 -- ptr CN-OQ:oqbox )"    CN-RUN:DECL 0 T=
+s" cast: CNQ12 ( n -- ohold )"                   CN-RUN:DECL 0 T=
 s" cast: CNQ4 ( CN-OQ:oqbox -- n )"              CN-RUN:DECL 0 T=
 s" cast: CNQ5 ( ptr CN-OQ:oqbox -- ptr u8 )"     CN-RUN:DECL 0 T=
 ;package
-package CN-OQ
-private
-s" cast: CNQ6 ( n -- oqbox )"                    CN-RUN:DECL 0 T=
-s" cast: CNQ7 ( ptr u8 -- ptr oqbox )"           CN-RUN:DECL 0 T=
-s" cast: CNQ8 ( n -- CN-OH:ohold )"              CN-RUN:DECL 0 T=
-;package
-\ Nor can checked code rebind the OPAQUE question CAST-OWNER? asks to admit a
-\ forge: the name is gone, so the body is refused (verdict 0).
-s" CNQ9 ( -- ) [: drop false ;] is TFAM-OPAQUE?-XT" CHECK-QUIET-CANDIDATE! 0 T=
-
 \ The families the engine registers (src/core/type-family.f) are declared in the
-\ global, empty package, so the global scope owns them and no package may mint
-\ one: a package-scoped `CAST: >RED ( ix<e> -- redx<e> )` died with this reject,
-\ and the declaration lives at global scope (src/lib/type/extent-role.f). `redx`
-\ is a parametric engine family; `attn-stage-q` is an arity-0 one.
-s" cast: CNE0 ( n -- redx<n> )"                  CN-RUN:DECL 0 T=
-s" cast: CNE1 ( n -- attn-stage-q )"             CN-RUN:DECL 0 T=
+\ global, empty package. `redx` is a parametric engine family; `attn-stage-q`
+\ is an arity-0 one.
 package CN-ENG
-s" cast: CNE2 ( n -- redx<n> )"                  CN-RUN:DECL E-CAST-OWNER T=
-s" cast: CNE3 ( n -- attn-stage-q )"             CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNE4 ( redx<n> -- n )"                  CN-RUN:DECL 0 T=
 s" cast: CNE5 ( attn-stage-q -- n )"             CN-RUN:DECL 0 T=
-\ ...and the parser mirror cannot buy that ownership back. Ending the mirror's
-\ package makes it claim top level - the engine's own definition wordlist is
-\ still CN-ENG's, so the engine family stays out of reach.
-CHECKER-END-PACKAGE
-s" cast: CNE6 ( n -- redx<n> )"                  CN-RUN:DECL E-CAST-OWNER T=
-CHECKER-PUBLIC
 ;package
-\ CHECKER-PACKAGE is a callable parser mirror, not package authority. Spoofing
-\ its supported mutator while the engine remains in the global wordlist rejects.
-s" CN" CHECKER-PACKAGE
-s" cast: CNSP1 ( n -- CN:cnfam )"                 CN-RUN:DECL E-CAST-OWNER T=
-CHECKER-END-PACKAGE
-\ Direct mutation of every name/mode mirror cell rejects for the same reason.
-99 CHECKER-PACKAGE-NAME c!
-110 CHECKER-PACKAGE-NAME 1 + c!
-2 CHECKER-PACKAGE-U !
-CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !
-s" cast: CNSP2 ( n -- CN:cnfam )"                 CN-RUN:DECL E-CAST-OWNER T=
-CHECKER-END-PACKAGE
 
 \ mint: a pointer or quotation destination is a class mint - it asserts that an
 \ integer is an address or code, which nothing checks - so it is declared only
@@ -386,8 +291,8 @@ s" CN" CHECKER-PACKAGE
 s" cast: CNSP3 ( n -- ptr u8 )"                   CN-RUN:DECL E-CAST-MINT T=
 CHECKER-END-PACKAGE
 
-\ A forged parser package cannot own a declaration. The family, visibility,
-\ symbols, and later CAST authorization all follow the live engine namespace.
+\ A forged parser package cannot own a declaration. The family, visibility and
+\ symbols all follow the live engine namespace.
 package CN-SPOOF-A
 s" CN-SPOOF-B" CHECKER-PACKAGE
 CHECKER-PUBLIC
@@ -397,7 +302,6 @@ s" cast: CNSA0 ( n -- CN-SPOOF-A:spoof )" CN-RUN:DECL 0 T=
 CHECKER-END-PACKAGE
 ;package
 package CN-SPOOF-B
-s" cast: CNSB0 ( n -- CN-SPOOF-A:spoof )" CN-RUN:DECL E-CAST-OWNER T=
 s" cast: CNSB1 ( n -- CN-SPOOF-B:spoof )" CN-RUN:DECL E-CAST-FAM T=
 ;package
 
@@ -415,8 +319,8 @@ s" cast: CNVP1 ( n -- CN-VIS-PRI:hidden )" CN-RUN:DECL E-CAST-FAM T=
 s" cast: CNVP2 ( n -- hidden )" CN-RUN:DECL E-CAST-FAM T=
 ;package
 
-\ A mirror-private declaration in a public engine section stays public. Foreign
-\ code resolves it but still cannot introduce the owner-only cell family.
+\ A mirror-private declaration in a public engine section stays public: foreign
+\ code resolves it.
 package CN-VIS-PUB
 public
 CHECKER-PRIVATE
@@ -425,7 +329,6 @@ CHECKER-END-PACKAGE
 ;package
 package CN-VIS-FOREIGN
 s" cast: CNVU0 ( CN-VIS-PUB:shown -- n )" CN-RUN:DECL 0 T=
-s" cast: CNVU1 ( n -- CN-VIS-PUB:shown )" CN-RUN:DECL E-CAST-OWNER T=
 ;package
 
 \ EXPORT records the actual package target even when the parser mirror names a

@@ -13,8 +13,7 @@ private
 
 \ STR:BUF-LEN@ reads a fixture buffer's length as a NUM:byte-len role, and
 \ every ( -- ptr u8 n ) accessor below returns a raw span, so the length is read
-\ out here. A checked cast at this test's own scope: projection out of a cell
-\ family needs no ownership (checker.f CAST-OWNER?), so NUM is not reopened.
+\ out here.
 CAST: BL>RAW ( NUM:byte-len -- n )
 
 variable TEST-N

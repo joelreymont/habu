@@ -19,7 +19,6 @@ create VECT-REL-VEC VEC:HEADER-CELLS cells allot   \ dedicated header for releas
 : VECT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ Projection out of a cell family needs no ownership (checker.f CAST-OWNER?).
 CAST: VECT-IC>RAW ( NUM:item-count -- n )
 
 : VECT-TLEN ( ptr a -- n )  VEC:LEN@ VECT-IC>RAW ;

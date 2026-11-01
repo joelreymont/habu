@@ -549,15 +549,15 @@ LOWER-CERT-HOOK:INSTALL
    EXITED @ TTRUE
    RC @ DUP-RC T= ;
 
-\ A refused `cast:` names its code, place, word and reason, and the family a
-\ foreign output introduces with its owner.
+\ A refused `cast:` names its code, place, word and reason and, for an arena
+\ head, the head's family and owner.
 : TEST-CAST ( -- )
-   s" a cast into another package's OPAQUE structure names both" T-LABEL
-   BODY$ S\" package LRD-OQ public STRUCTURE lrd-box OPAQUE FIELD v n ;STRUCTURE ;package\npackage LRD-OH public cast: LRD-MAKE ( n -- LRD-OQ:lrd-box ) ;package" FS:WRITE-ALL
+   s" a cast reaching another package's arena head names the head" T-LABEL
+   BODY$ s" package LRD-OH public CAST: LRD-HEAD ( ptr DYNAMIC-STORAGE:arena-head -- ptr u8 ) ;package" FS:WRITE-ALL
    BODY$ RUN
    s" E-CAST-OWNER habu: " ASSERT-NAMED
    ERR$ BODY$ CONTAINS? TTRUE
-   ERR$ s" :2: cast: 'LRD-MAKE': the output introduces a type declared outside this package: OPAQUE structure 'lrd-box' of package LRD-OQ" CONTAINS? TTRUE
+   ERR$ s" :1: cast: 'LRD-HEAD': the cast reaches an arena head declared outside this package: family 'arena-head' of package DYNAMIC-STORAGE" CONTAINS? TTRUE
    s" a cast of one cell into three names its arity" T-LABEL
    BODY$ s" cast: LRD-WIDE ( n -- ptr u8 n )" FS:WRITE-ALL
    BODY$ RUN

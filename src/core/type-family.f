@@ -4693,9 +4693,7 @@ s" rowidx"     1 TFAM-REG-CELL
 \ redx<e> is an axis marked for summation; checker.f EXT-REDX-BAD-ARG? at
 \ SIG-END-PARAM rejects redx over a free factor. A value of ix<e> is one cell
 \ indexing extent e. The three register together in the core: the retype
-\ ix<e> -> redx<e> (src/lib/type/extent-role.f `>RED`) introduces redx, and
-\ checker.f CAST-OWNER? authorizes an introduction only from the destination
-\ family's declaring package.
+\ ix<e> -> redx<e> (src/lib/type/extent-role.f `>RED`) introduces redx.
 s" ix"         1 TFAM-REG-CELL
 s" extprod"    2 TFAM-REG-CELL
 s" redx"       1 TFAM-REG-CELL
@@ -6975,8 +6973,7 @@ UNIT-FAM-RESET-INSTALL
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
    [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
-   [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ nominal CAST introduction belongs to the declaring package
-   [: TFAM-OPAQUE? ;] is TFAM-OPAQUE?-XT   \ so does an OPAQUE structure's
+   [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ an arena head's owner and a signature graph's family package
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ arg-aware instantiated width for T-WIDTH and the WF fact surface
    [: INIT-RECORD? ;] is TFAM-INIT-RECORD-XT

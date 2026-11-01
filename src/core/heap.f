@@ -6,10 +6,8 @@
 \ releasing it again can unmap whatever was mapped there since. Nothing registers a
 \ record: release it before an image save (a stripped image refuses a typed cell
 \ holding one, src/habu/aot-data-cell.f REFUSE-MAPPED).
-\ It serves a record holding another package's OPAQUE record, which no cast may
-\ forge from bytes (checker.f E-CAST-OWNER). Each record is its own OS mapping,
-\ so the OS rounds it up to a page. The width is the declared type's, fixed per
-\ declaration.
+\ Each record is its own OS mapping, so the OS rounds it up to a page. The width
+\ is the declared type's, fixed per declaration.
 \ Checked code reaches DYNAMIC-STORAGE:RECORD-NEW and RECORD-RELEASE only from
 \ these generated words (checker.f ARENA-CALL-REFUSE?).
 

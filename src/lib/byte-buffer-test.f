@@ -38,8 +38,6 @@ public
 : BUFT-LEN-RAW! ( n ptr a -- ) {: len:n buf:ptr :}  len buf LEN-FIELD ! ;
 ;package
 
-\ Projection out of a cell family needs no ownership (checker.f CAST-OWNER?), so
-\ NUM is not reopened.
 CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
 : BUFT-N>BLEN ( n -- NUM:byte-len )

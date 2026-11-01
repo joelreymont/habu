@@ -216,8 +216,7 @@ T-REPORT
 
 \ MEM:64K-COUNT-FOR composes NUM:DIV-BYTES-CEIL and reads no raw cell. At MAX-N
 \ it answers the true ceil, MEM-MAX-64K-BUFFERS+1; the allocation ceiling is
-\ enforced at the alloc sink. A projection out of a cell family needs no
-\ ownership (checker.f CAST-OWNER?).
+\ enforced at the alloc sink.
 CAST: MEMT-IC>RAW ( NUM:item-count -- n )
 
 : MEMT-64K-COUNT ( n -- n ) NUM:BYTE-LEN

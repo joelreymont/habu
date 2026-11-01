@@ -165,13 +165,13 @@ create ERR IO-CAP allot
 \ cast-ok: a family the window declares resolves. cast-bad: one nothing declares
 \ does not (E-CAST-FAM 7131), the control without which cast-ok would pass
 \ against a checker that certifies nothing. cast-host-bad: one only the host
-\ that opened the window declares does not either (E-CAST-FAM, never
-\ E-CAST-OWNER 7135). declared-row: a prefix word compiled with the hook cell
-\ empty has its declaration as its row. private-axiom-catch and -prior: a
-\ hook-less tier-1 definition whose declaration records no row, named like an
-\ owner-private primitive, is refused catchably (E-NELAB-UNDER -8304); its
-\ rollback cuts only rows recorded since its definition began, keeping the row
-\ before it, a CHECK! row of its own name and the row after that.
+\ that opened the window declares does not either (E-CAST-FAM). declared-row: a
+\ prefix word compiled with the hook cell empty has its declaration as its row.
+\ private-axiom-catch and -prior: a hook-less tier-1 definition whose
+\ declaration records no row, named like an owner-private primitive, is refused
+\ catchably (E-NELAB-UNDER -8304); its rollback cuts only rows recorded since
+\ its definition began, keeping the row before it, a CHECK! row of its own name
+\ and the row after that.
 : OWNER-CASES ( -- )
    PREPARE
    s" test/native-window-cast-ok.f"       S\" window: 0\n"    WINDOW-IS

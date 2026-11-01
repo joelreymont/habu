@@ -447,8 +447,7 @@ variable STR-TEST-BUF2-LEN
    ;MATCH STR-ASSERT ;
 
 \ White-box role readers: the asserts take raw n, so extent roles are read out
-\ through checked casts (projection out of a cell family needs no ownership:
-\ checker.f CAST-OWNER?).
+\ through checked casts.
 CAST: STR-T-BL>RAW ( NUM:byte-len -- n )
 CAST: STR-T-BO>RAW ( NUM:byte-off -- n )
 CAST: STR-T-IC>RAW ( NUM:item-count -- n )

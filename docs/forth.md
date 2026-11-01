@@ -527,9 +527,10 @@ multi-cell type rationale is `docs/design.md` "Types".
   and gives its generated words — the pair and every `DERIVE` member — the
   private placement: `STRUCTURE box OPAQUE FIELD x n ;STRUCTURE` in `package
   OP` defines `BOX-MAKE` / `BOX-UNMAKE` as OP's private words, reserves no
-  `OP-BOX:` namespace, and another package constructs a `box` only through the
-  words OP defines over them. A fieldless structure is an opaque cell family
-  with no generated constructor or destructor.
+  `OP-BOX:` namespace, and another package builds a `box` through the words OP
+  defines over them; a cast that asserts one is the caster's claim. A
+  fieldless structure is an opaque cell family with no generated constructor
+  or destructor.
 - Full `ENUM name[<params>] [ header… ] VARIANT v FIELD f type … ;VARIANT … ;ENUM`
   declares named alternatives with named payload fields; a variant may have
   none. Its tag is its declaration order; generated constructors feed an
@@ -689,13 +690,12 @@ multi-cell type rationale is `docs/design.md` "Types".
     ptr u8 n )` is refused; a scope or region variable binds a scope or a
     region, never a value, so one inside the element, such as the `i` of
     C2-MEM's `mut-view<p,i,a,init<i,owner-state>>`, is admitted.
-  - A scalar-cell family, including a parametric `NEWTYPE` instance, or an
-    `OPAQUE` structure in an introduction position belongs to its declaring
-    package (`E-CAST-OWNER`): `CAST: >SLOT ( n -- slot )` outside `package
-    DOC` is refused, and so are `( n -- OP:box )` and `( ptr u8 -- ptr
-    OP:box )` outside `package OP`.
+  - A cast into another package's cell family or `OPAQUE` structure is the
+    writer's claim, which the checker does not prove: `CAST: >SLOT ( n --
+    slot )` outside `package DOC` is admitted, as is a private `( ptr u8 --
+    ptr OP:box )` outside `package OP`.
     An arena head that either term reaches, through pointers, quotation rows
-    or a layout's members, belongs to `DYNAMIC-STORAGE` the same way: after
+    or a layout's members, belongs to `DYNAMIC-STORAGE`: after
     `ARENA FOOS rec`, `CAST: >U8 ( ptr foos -- ptr u8 )` would copy the head
     and `( ptr u8 -- ptr foos )` forge one, so both are `E-CAST-OWNER`
     elsewhere, a private section included.
@@ -708,16 +708,13 @@ multi-cell type rationale is `docs/design.md` "Types".
   arguments: a field projection or a `MATCH` arm) and a quotation's produced
   rows (a call), recursively. A layout's fields carry its rules down: after
   `STRUCTURE pfbox FIELD p ptr u8 ;STRUCTURE`, `CAST: >PFBOX ( n -- pfbox )`
-  is `E-CAST-MINT` outside a private section, and a layout whose field holds
-  another package's cell family or `OPAQUE` structure is `E-CAST-OWNER`
-  outside that family's package, the layout's own package included. A layout
-  that points at its own family is read once per instance. A quotation's
-  consumed rows flip the direction, so `( n -- [ extent-a -- ] )` introduces
-  no atom and `( n -- [ [ slot -- ] -- ] )` introduces a `slot`. A cell
+  is `E-CAST-MINT` outside a private section. A layout that points at its own
+  family is read once per instance. A quotation's consumed rows flip the
+  direction, so `( n -- [ extent-a -- ] )` introduces no atom and
+  `( n -- [ [ extent-a -- ] -- ] )` introduces one (`E-CAST-CLASS`). A cell
   family's arguments are phantom and introduce nothing. Projections out
   (`fam -- n`, `ptr t -- n`, `[ … ] -- n`, `box<ptr u8> -- n`, `pfbox -- n`)
-  need neither the owner nor a private section: store the projected identity
-  and resolve it back through the owner's public words.
+  need no private section.
 - `LINEAR: NAME ( payload -- PKG:tok )` mints a `DEFLINEAR` token and
   `LINEAR: NAME ( PKG:tok -- payload )` erases one: the reader-keyword shape of
   `CAST:`, an identity at its call sites, and the one checked way to make a
@@ -2030,12 +2027,11 @@ documentation-only edits need no rebuild.
   whatever was mapped there since: unlike an arena's, a release is not safe to
   repeat. Nothing registers a record, so capture has no live-record check:
   release it before saving an image (a stripped image refuses a typed cell
-  holding one). It serves a record holding another package's `OPAQUE` record,
-  such as a `JR:cursor`, which no cast may forge from bytes. The declaration
-  passes the storage definers' name gate and refuses a sub-cell element other
-  than `u8`, an unknown type and an element holding an arena owner, defining
-  nothing. Checked code calls or ticks `DYNAMIC-STORAGE:RECORD-NEW` and
-  `DYNAMIC-STORAGE:RECORD-RELEASE` only inside the generated words, as for
+  holding one). The declaration passes the storage definers' name gate and
+  refuses a sub-cell element other than `u8`, an unknown type and an element
+  holding an arena owner, defining nothing. Checked code calls or ticks
+  `DYNAMIC-STORAGE:RECORD-NEW` and `DYNAMIC-STORAGE:RECORD-RELEASE` only
+  inside the generated words, as for
   `ARENA` (`E-ARENA-CALL`), so a record's size always comes from the declared
   type; a record of a STRUCTURE type enters no other generic-pointer word.
 - **Runtime-sized buffers use OS mappings.** `create … allot` consumes
@@ -2380,8 +2376,8 @@ sections above.
 - **A cast that introduces a pointer or xt requires a private package row.**
   `CAST: >BYTES ( n -- ptr u8 )` and `CAST: >OP ( n -- [ n -- n ] )` are
   `E-CAST-MINT` at top level or under `public`. A type-variable pointee is
-  `E-CAST-LINEAR`, and a layout's fields carry the mint and foreign-owner rules
-  recursively: a `pfbox` whose field is `ptr u8` exposes that pointer through
+  `E-CAST-LINEAR`, and a layout's fields carry the mint rule recursively: a
+  `pfbox` whose field is `ptr u8` exposes that pointer through
   `PFBOX:UNMAKE` (see **Structures And Enums**). A private row admits no cast
   that reaches an arena head on either side: `CAST: >U8 ( ptr foos -- ptr u8 )`
   copies a head and its reverse forges one, so both are `E-CAST-OWNER` outside

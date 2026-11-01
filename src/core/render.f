@@ -244,7 +244,7 @@ REG-SCRATCH-SNAP-INSTALL
 \ in-range slot renders the new occupant's name; the command path never sees it,
 \ because a mismatch diagnostic renders before any rollback.
 \ The package half folds because a package compares case-insensitively
-\ everywhere (TFAM-PKG-MATCH?, TFAM-QUAL-RESOLVE, CAST-OWNER?); raw source echoes
+\ everywhere (TFAM-PKG-MATCH?, TFAM-QUAL-RESOLVE); raw source echoes
 \ (`token`, `definition_source`, `declared_effect_source`) stay verbatim.
 \ FAM-FOREIGN? compares exactly: the engine keeps a package's first-registered
 \ spelling, and both sides read the one interned string.
@@ -1887,8 +1887,7 @@ package CAST-ERROR
 : WORD$ ( -- ptr u8 n ) WORD-A @ WORD-U @ ;
 : FAMILY ( -- )
    FAM @ 0 < IF EXIT THEN
-   FAM @ TFAM-OPAQUE?* IF s"  OPAQUE structure '" DTXT ELSE s"  family '" DTXT THEN
-   FAM @ TFAM-NAME$ DTXT  s" '" DTXT
+   s"  family '" DTXT  FAM @ TFAM-NAME$ DTXT  s" '" DTXT
    FAM @ TFAM-PKG$* {: pa:ptr pu:n :}
    pu 0= IF s" , declared at top level" DTXT EXIT THEN
    s"  of package " DTXT  pa pu DTXT ;

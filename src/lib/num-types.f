@@ -54,10 +54,8 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL-N              \ largest nonnegative machine
 MAX-CELL-N 1 cells / constant MAX-ALLOC-CELLS      \ a count above this overflows MAX-CELL-N bytes
 
 \ The checker cannot infer that a predicate-checked n has become the family, so
-\ the crossing is declared. CAST-OWNER? refuses these names outside NUM, and
-\ src/core/checker.f CAST-CERTIFY refuses a declaration that changes cell count,
-\ crosses the pointer/quotation class, widens, carries linear ownership or mints
-\ a family NUM does not declare: a mint renames a cell and cannot reshape one.
+\ the crossing is declared. CAST-CERTIFY refuses one that changes cell count,
+\ crosses the pointer/quotation class, widens or carries linear ownership.
 CAST: MINT-BYTE-LEN ( n -- byte-len )
 CAST: MINT-ITEM-COUNT ( n -- item-count )
 CAST: MINT-CELL-COUNT ( n -- cell-count )

@@ -1063,7 +1063,6 @@ defer TFAM-CLAIMED?-XT ( ptr u8 n -- bool )             \ some scope reads the t
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
-defer TFAM-OPAQUE?-XT ( n -- bool )                     \ family id is an OPAQUE structure
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
 defer REG-EXT-AOT-FAMILY-NAME-XT ( n -- ptr u8 n )      \ canonical persisted family spelling
 defer PKG-LIVE-XT ( -- ptr u8 n bool )                  \ authenticated engine open package name
@@ -1616,7 +1615,6 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 : TFAM-ARITY* ( n -- n ) TFAM-ARITY-XT ;
 : TFAM-LAYOUT?* ( n -- bool ) TFAM-LAYOUT?-XT ;
 : TFAM-CELL?* ( n -- bool ) TFAM-CELL?-XT ;
-: TFAM-OPAQUE?* ( n -- bool ) TFAM-OPAQUE?-XT ;
 : TFAM-PKG$* ( n -- ptr u8 n ) TFAM-PKG-XT ;
 : TFAM-WIDTH@* ( n -- n ) TFAM-WIDTH-XT ;
 
@@ -1631,7 +1629,6 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: drop 0 ;] is TFAM-ARITY-XT
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
-   [: drop RES-FALSE ;] is TFAM-OPAQUE?-XT
    [: drop s" " ;] is TFAM-PKG-XT
    [: drop s" " ;] is REG-EXT-AOT-FAMILY-NAME-XT
    [: drop 1 ;] is TFAM-WIDTH-XT
@@ -17731,8 +17728,8 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 7129 constant E-CAST-ARITY    \ identity sig is not one term per side over the same row
 7130 constant E-CAST-CLASS    \ in/out is not one machine cell a cast may retype
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
-\ E-CAST-OWNER: the output introduces a foreign cell family or OPAQUE structure
-\ (CAST-OWNER?), or a term reaches an arena head (CAST-REACHES-HEAD?).
+\ E-CAST-OWNER: a term reaches an arena head outside its owning package
+\ (CAST-REACHES-HEAD?).
 7135 constant E-CAST-OWNER
 7137 constant E-CAST-LINEAR   \ a linear type or type variable in in/out
 7147 constant E-CAST-MINT     \ a pointer or quotation output outside private
@@ -25522,9 +25519,6 @@ variable CTOR-PEND-POS
       TAG T-ATOM <> EXIT
    THEN
    RES-FALSE ;
-: OPAQUE-PARAM? ( n -- bool ) {: t:n :}
-   t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
-   t PARAM>FAM TFAM-OPAQUE?* ;
 \ True for an error the checker reports itself before throwing it.
 : REPORTED-ERROR? ( n -- bool ) {: rc:n :}
    rc E-USING-SHADOW-GLOBAL =
@@ -25536,7 +25530,7 @@ variable CTOR-PEND-POS
    rc E-CAST-SCOPE = or  rc E-LINEAR-PAYLOAD = or  rc E-LINEAR-OWNER = or
    rc E-LINEAR-SCOPE = or ;
 \ The `cast:` or `linear:` declaration being certified, which RAISE renders
-\ (render.f); FAM, the foreign family or arena head, is -1 while it names none.
+\ (render.f); FAM, the arena head, is -1 while it names none.
 package CAST-ERROR
 PTR-VARIABLE WORD-A   variable WORD-U
 PTR-VARIABLE KEY-A    variable KEY-U
@@ -25579,24 +25573,14 @@ private
 DIAG-DEFAULT
 ;package
 
-\ A cast introduces a cell family or OPAQUE structure only inside its declaring
-\ package, judged by the engine's open package record (CHECKER-AUTH-PACKAGE$).
-: CAST-OWNER? ( n -- bool ) {: t:n :}
-   t NP-CELLFAM? 0=  t OPAQUE-PARAM? 0=  and IF RES-TRUE EXIT THEN
-   t PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
-\ The three questions CAST-INTRO? asks of an introduction position, one per
+\ The two questions CAST-INTRO? asks of an introduction position, one per
 \ reject. An atom is a phantom index, which no cast hands out. A pointer or a
 \ quotation asserts that a cell is an address or code, which no check can see:
 \ a class mint, declared only where its package's own words are its callers.
 0 constant INTRO-ATOM      \ an atom: E-CAST-CLASS
-1 constant INTRO-FOREIGN   \ a family CAST-OWNER? refuses: E-CAST-OWNER
-2 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-MINT unless private
+1 constant INTRO-MINT      \ a pointer or a quotation: E-CAST-MINT unless private
 : CAST-INTRO-HIT? ( n n -- bool ) {: t:n q:n :}
    q INTRO-ATOM = IF t TAG T-ATOM = EXIT THEN
-   q INTRO-FOREIGN = IF
-      t CAST-OWNER? IF RES-FALSE EXIT THEN
-      t PARAM>FAM CAST-ERROR:FAMILY!  RES-TRUE EXIT
-   THEN
    t TAG T-PTR =  t TAG T-QUOT =  or ;
 \ The layouts a CAST: walk is expanding, outermost first, each with the
 \ direction it was reached in. A layout's members can name the layout again (an
@@ -25651,7 +25635,7 @@ variable CAST-PATH-N
 \ to a minted quotation is fed by it. A cell family's arguments are phantom, and
 \ each row ends in the quotation's own base: neither yields a value. A pointer
 \ or quotation found positive is a class mint whatever it points at or
-\ produces, and an atom or foreign family found there is one the cast hands out.
+\ produces, and an atom found there is one the cast hands out.
 : CAST-INTRO? ( n bool n -- bool ) {: t0:n pos:bool q:n :}
    t0 R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
@@ -25790,10 +25774,9 @@ variable CAST-PATH-N
    SGOUT @ CAST-ROW-TERM INTRO-ATOM CAST-INTRODUCES? IF
       s" the output hands out an atom, a phantom index" E-CAST-CLASS CAST-ERROR:RAISE
    THEN
-   \ Linearity is checked before ownership on purpose: a linear family minted
-   \ from a foreign package violates both rules, and the ownership reject would
-   \ otherwise mask the stronger one. Ownership is a packaging question; carrying
-   \ an owned value through a retype is an unsoundness, so it names the reject.
+   \ Linearity is checked before the arena head on purpose: a linear type that
+   \ reaches a foreign head violates both rules, and carrying an owned value
+   \ through a retype is the stronger unsoundness, so it names the reject.
    CAST-WALK-RESET
    SGIN @ CAST-ROW-TERM CAST-MAY-LINEAR? IF
       s" the input may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
@@ -25802,13 +25785,9 @@ variable CAST-PATH-N
    SGOUT @ CAST-ROW-TERM CAST-MAY-LINEAR? IF
       s" the output may hold a linear value" E-CAST-LINEAR CAST-ERROR:RAISE
    THEN
-   SGOUT @ CAST-ROW-TERM INTRO-FOREIGN CAST-INTRODUCES? IF
-      s" the output introduces a type declared outside this package:"
-      E-CAST-OWNER CAST-ERROR:RAISE
-   THEN
    CAST-HEAD-REFUSE
    \ The mint rule comes last for the same reason: a mint that also carries
-   \ ownership or forges a foreign family is named by that stronger reject.
+   \ ownership or reaches a foreign head is named by that stronger reject.
    SGOUT @ CAST-ROW-TERM INTRO-MINT CAST-INTRODUCES? {: mint:bool :}
    mint IF
       CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-PRIVATE <> IF
@@ -27056,7 +27035,7 @@ CHECKER-REG:}SCRATCH
 \ keyword (habu2.f REGISTER-IDENTITY) and verify-source's pre-pass.
 package CHECKER-IDENTITY
 \ A row that did not parse is refused before a gate walks it; family tails read
-\ the engine's open namespace (SIG-SCOPE$), the one CAST-OWNER? asks about.
+\ the engine's open namespace (SIG-SCOPE$).
 : PARSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
    sa su BYTE-SPAN? 0= IF
       s" the signature's length describes no memory" E-CAST-ARITY CAST-ERROR:RAISE
