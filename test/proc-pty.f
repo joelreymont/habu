@@ -71,6 +71,8 @@ variable PID
    91 SEND-BYTE
    SEND-BYTE ;
 
+\ A step ends at the prompt after its line's last answer: output still on its
+\ way would land after the next step's clear, inside that step's window.
 : STEP-LN ( ptr u8 n -- )
    SEND-LINE
    MFD-DRAIN ;
@@ -90,11 +92,11 @@ variable PID
 : PROMPT-AFTER ( ptr u8 n -- )
    s" habu> " WAIT-AFTER PTY-TRUE ;
 
-\ Wait for a marker and close an absence claim's window at its end. The marker
-\ must be one the child prints past the point where the rejected text could
-\ appear; a failed wait leaves no window, so the claim behind it is refused too.
-: BARRIER ( ptr u8 n -- )
-   WAIT-BARRIER PTY-TRUE ;
+\ Close an absence claim's window at a marker (src/lib/pty-harness.f
+\ WAIT-BARRIER), then wait out the marker's line to its prompt.
+: BARRIER ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u WAIT-BARRIER PTY-TRUE
+   a u PROMPT-AFTER ;
 
 \ The barrier for a claim about the line before it: the child prints the hex
 \ literal in decimal, so only the evaluation can satisfy the wait, never the
@@ -328,7 +330,7 @@ variable PTY-LONG-U
 
 : PTY-LINE-CAP-UNDEFINED ( -- )
    s" PTYLONG" STEP-LN
-   s" E-UNDEFINED: PTYLONG" EXPECT ;
+   s" E-UNDEFINED: PTYLONG" PROMPT-AFTER ;
 
 : PTY-LINE-CAP-CONTINUES ( -- )
    s" 21 3 * ." STEP-LN
@@ -365,12 +367,12 @@ variable PTY-LONG-U
 : PTY-BP-RUN-SQ ( -- )
    s" 7 SQB ." STEP-LN
    s" habu-bp:" EXPECT
-   s" 49" EXPECT ;
+   s" 49" PROMPT-AFTER ;
 
 : PTY-BP-RUN-IN1 ( -- )
    s" 9 IN1 ." STEP-LN
    s" habu-bp:" EXPECT
-   s" 10" EXPECT ;
+   s" 10" PROMPT-AFTER ;
 
 : PTY-BP-RUN-SQ-CLEARED ( -- )
    s" 6 SQB ." STEP-LN
@@ -394,12 +396,12 @@ variable PTY-LONG-U
 : PTY-PB-FIRST ( -- )
    s" 5 PB ." STEP-LN
    s" habu-bp:" EXPECT
-   s" 10" EXPECT ;
+   s" 10" PROMPT-AFTER ;
 
 : PTY-PB-SECOND ( -- )
    s" 6 PB ." STEP-LN
    s" habu-bp:" EXPECT
-   s" 12" EXPECT ;
+   s" 12" PROMPT-AFTER ;
 
 : PTY-PB-CLEAR ( -- )
    s" ' PB BP-" STEP-LN
@@ -440,7 +442,7 @@ variable PTY-LONG-U
    s" habu-bp-stack:" EXPECT
    s" habu-bp-watch:" EXPECT
    s" 0000000000000011" EXPECT
-   s" 19" EXPECT ;
+   s" 19" PROMPT-AFTER ;
 
 : PTY-WATCH-CLEAR ( -- )
    s" WV BPW-" STEP-LN
@@ -464,7 +466,7 @@ variable PTY-LONG-U
 : PTY-BPN-FIRE ( -- )
    s" 3 PB ." STEP-LN
    s" habu-bp:" EXPECT
-   s" 6" EXPECT ;
+   s" 6" PROMPT-AFTER ;
 
 : PTY-BPN-CLEAR ( -- )
    s" ' PB BP-" STEP-LN
@@ -539,7 +541,7 @@ variable PTY-LONG-U
    s" ' F7 BP+" STEP-LN
    s"  ok" PROMPT-AFTER
    s" ' F8 BP+" STEP-LN
-   s" table full" EXPECT ;
+   s" table full" PROMPT-AFTER ;
 
 : PTY-BP-F5-F8 ( -- )
    PTY-BP-F5-F6
@@ -561,7 +563,7 @@ variable PTY-LONG-U
    s" step> 2" EXPECT
    s" step> 3" EXPECT
    s" step> +" EXPECT
-   s" 5" EXPECT ;
+   s" 5" PROMPT-AFTER ;
 
 : PTY-STEP-DEFINE ( -- )
    s" step : SD dup * ;" STEP-LN
@@ -569,7 +571,7 @@ variable PTY-LONG-U
 
 : PTY-STEP-RUN ( -- )
    s" 4 SD ." STEP-LN
-   s" 16" EXPECT ;
+   s" 16" PROMPT-AFTER ;
 
 : PTY-STEP-RECOVER ( -- )
    s" 8 ." STEP-LN
@@ -777,17 +779,11 @@ variable PTY-LONG-U
    PTY-THROW-LINE
    PTY-THROW-AFTER ;
 
-\ ^D becomes EOF only while the terminal is raw, which it is only while the
-\ child sits in its line editor. A ^D that arrives while the line before it
-\ still executes is taken by the restored canonical discipline as an empty-line
-\ EOF, never becomes a key, and hangs the child and the harness reaping it.
-\ Only REDRAW prints the prompt and only after RAW-ON, so a prompt after a
-\ completed probe proves the editor holds the terminal; the probe's echoed
-\ input cannot satisfy the ordered wait.
+\ ^D is a key only while the editor holds the terminal raw; sent earlier it hangs
+\ the child. REDRAW prints the prompt BARRIER waits for only after RAW-ON.
 : PTY-EDITOR-READY ( -- )
    BUF-CLEAR
-   PROBE-BARRIER
-   s" 48879" PROMPT-AFTER ;
+   PROBE-BARRIER ;
 
 : PTY-STOP-HB ( -- )
    PTY-EDITOR-READY
