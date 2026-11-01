@@ -257,17 +257,39 @@ $300000 constant BIG-U
    s" ]}" ECHO+ ;
 
 
-: CHOICE ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
-   {: w content:ptr content-u:n finish:ptr finish-u:n :}
-   w JSON:WRITE-OBJECT-START s" choices" JSON:WRITE-KEY
-   JSON:WRITE-ARRAY-START JSON:WRITE-OBJECT-START
-   s" finish_reason" finish finish-u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" message" JSON:WRITE-KEY JSON:WRITE-OBJECT-START
-   s" role" s" assistant" JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" content" content content-u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
-   s" refusal" JSON:WRITE-FIELD-NULL
-   JSON:WRITE-OBJECT-END JSON:WRITE-OBJECT-END
-   JSON:WRITE-ARRAY-END JSON:WRITE-OBJECT-END ;
+\ A reply object's members through its first output item, a reasoning item.
+: REPLY-HEAD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: status:ptr status-u:n :}
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
+   s" status" status status-u JSON:WRITE-FIELD-S
+   S\" ,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]}" JSON:WRITE-RAW ;
+
+
+\ A completed reply whose message holds the text, the type of the message and
+\ of its part after their other members.
+: COMPLETED ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: content:ptr content-u:n :}
+   s" completed" REPLY-HEAD
+   S\" ,{\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{" JSON:WRITE-RAW
+   s" text" content content-u JSON:WRITE-FIELD-S
+   S\" ,\qtype\q:\qoutput_text\q,\qannotations\q:[]}],\qtype\q:\qmessage\q}],\qincomplete_details\q:null,\qerror\q:null}" JSON:WRITE-RAW ;
+
+
+: INCOMPLETE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: reason:ptr reason-u:n :}
+   s" incomplete" REPLY-HEAD
+   S\" ],\qincomplete_details\q:{" JSON:WRITE-RAW
+   s" reason" reason reason-u JSON:WRITE-FIELD-S
+   S\" },\qerror\q:null}" JSON:WRITE-RAW ;
+
+
+: FAILED ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
+   {: code:ptr code-u:n message:ptr message-u:n :}
+   s" failed" REPLY-HEAD
+   S\" ],\qincomplete_details\q:null,\qerror\q:{" JSON:WRITE-RAW
+   s" code" code code-u JSON:WRITE-FIELD-S JSON:WRITE-COMMA
+   s" message" message message-u JSON:WRITE-FIELD-S
+   S\" }}" JSON:WRITE-RAW ;
 
 
 \ The big content, a JSON object whose one string fills it.
@@ -283,23 +305,37 @@ $300000 constant BIG-U
 
 
 : CHAT-RESPONSE ( ptr JSON:writer -- ptr JSON:writer )
-   S\" {\qanswer\q:true}" s" stop" CHOICE ;
+   S\" {\qanswer\q:true}" COMPLETED ;
+
+
+\ A completed reply's members through its output, whose message, type first,
+\ holds {"answer":true}.
+: TRUE-HEAD ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\q{\\\qanswer\\\q:true}\q,\qannotations\q:[]}]}]" JSON:WRITE-RAW ;
 
 
 : USAGE-RESPONSE ( ptr JSON:writer -- ptr JSON:writer )
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\q{\\\qanswer\\\q:true}\q,\qrefusal\q:null}}],\qusage\q:{\qprompt_tokens\q:11,\qcompletion_tokens\q:6,\qtotal_tokens\q:17,\qprompt_tokens_details\q:{\qcached_tokens\q:4},\qcompletion_tokens_details\q:{\qreasoning_tokens\q:2}}}" JSON:WRITE-RAW ;
+   TRUE-HEAD
+   S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}}" JSON:WRITE-RAW ;
 
 
 \ A response whose service_tier member is the JSON value text.
 : TIERED-RESPONSE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
    {: tier:ptr tier-u:n :}
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\q{\\\qanswer\\\q:true}\q,\qrefusal\q:null}}],\qservice_tier\q:" JSON:WRITE-RAW
+   TRUE-HEAD
+   S\" ,\qservice_tier\q:" JSON:WRITE-RAW
    tier tier-u JSON:WRITE-RAW
    s" }" JSON:WRITE-RAW ;
 
 
-: REFUSE ( ptr JSON:writer -- ptr JSON:writer )
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:null,\qrefusal\q:\qcannot comply\q}}]}" JSON:WRITE-RAW ;
+\ A completed reply whose message part is a refusal.
+: REFUSAL$ ( -- ptr u8 n )
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qrefusal\q,\qrefusal\q:\qcannot comply\q}]}],\qincomplete_details\q:null,\qerror\q:null}" ;
+
+
+\ A completed reply whose content is not JSON.
+: BAD-CONTENT$ ( -- ptr u8 n )
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\qnot JSON\q,\qannotations\q:[]}]}],\qincomplete_details\q:null,\qerror\q:null}" ;
 
 
 \ Responds by the request's first text, which names its scenario.
@@ -308,27 +344,42 @@ $300000 constant BIG-U
    r FIRST-TEXT {: t:ptr t-u:n :}
    t t-u s" image" STR= if
       r IMAGE-ECHO
-      response [: ECHO$ s" stop" CHOICE ;] HTTP:JSON! exit
+      response [: ECHO$ COMPLETED ;] HTTP:JSON! exit
    then
-   t t-u s" refusal" STR= if response [: REFUSE ;] HTTP:JSON! exit then
+   t t-u s" refusal" STR= if response [: REFUSAL$ JSON:WRITE-RAW ;] HTTP:JSON! exit then
    t t-u s" usage" STR= if response [: USAGE-RESPONSE ;] HTTP:JSON! exit then
    t t-u s" tiered" STR= if response [: S\" \qflex\q" TIERED-RESPONSE ;] HTTP:JSON! exit then
    t t-u s" tier-null" STR= if response [: s" null" TIERED-RESPONSE ;] HTTP:JSON! exit then
    t t-u s" tier-number" STR= if response [: s" 7" TIERED-RESPONSE ;] HTTP:JSON! exit then
    t t-u s" tier-empty" STR= if response [: S\" \q\q" TIERED-RESPONSE ;] HTTP:JSON! exit then
    t t-u s" length" STR= if
-      response [: S\" {\qanswer\q:true}" s" length" CHOICE ;] HTTP:JSON! exit
+      response [: s" max_output_tokens" INCOMPLETE ;] HTTP:JSON! exit
    then
    t t-u s" filtered" STR= if
-      response [: S\" {\qanswer\q:true}" s" content_filter" CHOICE ;] HTTP:JSON!
+      response [: s" content_filter" INCOMPLETE ;] HTTP:JSON!
       exit
    then
    t t-u s" long-finish" STR= if
-      response [: S\" {\qanswer\q:true}" LONG-FINISH$ CHOICE ;] HTTP:JSON!
+      response [: LONG-FINISH$ INCOMPLETE ;] HTTP:JSON!
       exit
    then
    t t-u s" bad-content" STR= if
-      response [: s" not JSON" s" stop" CHOICE ;] HTTP:JSON! exit
+      response [: BAD-CONTENT$ JSON:WRITE-RAW ;] HTTP:JSON! exit
+   then
+   t t-u s" failed-server" STR= if
+      response [: s" server_error" s" The server had an error." FAILED ;] HTTP:JSON!
+      exit
+   then
+   t t-u s" failed-size" STR= if
+      response [: s" context_length_exceeded" s" Your input exceeds the context window of this model." FAILED ;] HTTP:JSON!
+      exit
+   then
+   t t-u s" failed-other" STR= if
+      response [: s" invalid_prompt" s" bad prompt" FAILED ;] HTTP:JSON! exit
+   then
+   t t-u s" queued" STR= if
+      response [: S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}" JSON:WRITE-RAW ;] HTTP:JSON!
+      exit
    then
    t t-u s" http-error" STR= if
       response 429 HTTP:STATUS!
@@ -360,7 +411,7 @@ $300000 constant BIG-U
       exit
    then
    t t-u s" oversized" STR= if response 413 HTTP:STATUS! exit then
-   t t-u s" big" STR= if response [: BIG$ s" stop" CHOICE ;] HTTP:JSON! exit then
+   t t-u s" big" STR= if response [: BIG$ COMPLETED ;] HTTP:JSON! exit then
    t t-u s" hold" STR= if HELD TASK:SIGNAL RELEASED TAKE then
    \ Every other scenario, the journal's long text included, starts "valid".
    t t-u 5 min s" valid" STR= t t-u s" hold" STR= or if
@@ -473,6 +524,8 @@ $300000 constant BIG-U
 
 public
 EXPORT LONG-FINISH$
+EXPORT REFUSAL$
+EXPORT BAD-CONTENT$
 EXPORT BIG$
 EXPORT WIDE-DIMS
 : BASE-URL$ ( -- ptr u8 n ) BASE-URL BASE-URL-U @ ;
@@ -708,20 +761,25 @@ variable REFUSED-BASE-U
 : REPLIES ( -- )
    s" refusal" MODEL:E-REFUSED FAILS
    s" error" CHAT-LINE s" MODEL:E-REFUSED status 200 body: " SB-APPEND
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:null,\qrefusal\q:\qcannot comply\q}}]}" SB-APPEND
+   MODEL-PEER:REFUSAL$ SB-APPEND
    SB-LOGGED
    s" length" MODEL:E-INCOMPLETE FAILS
-   M MODEL:FINISH-REASON$ s" length" STR= ASSERT
-   s" warn" s" MODEL:E-INCOMPLETE finish length" CHAT-LOGGED
+   M MODEL:INCOMPLETE-REASON$ s" max_output_tokens" STR= ASSERT
+   s" warn" s" MODEL:E-INCOMPLETE incomplete max_output_tokens" CHAT-LOGGED
    s" filtered" MODEL:E-INCOMPLETE FAILS
-   M MODEL:FINISH-REASON$ s" content_filter" STR= ASSERT
+   M MODEL:INCOMPLETE-REASON$ s" content_filter" STR= ASSERT
    s" long-finish" MODEL:E-INCOMPLETE FAILS
-   M MODEL:FINISH-REASON$ MODEL-PEER:LONG-FINISH$ STR= ASSERT
+   M MODEL:INCOMPLETE-REASON$ MODEL-PEER:LONG-FINISH$ STR= ASSERT
    s" bad-content" MODEL:E-RESPONSE FAILS
-   M MODEL:FINISH-REASON$ nip 0= ASSERT
+   M MODEL:INCOMPLETE-REASON$ nip 0= ASSERT
    s" error" CHAT-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
-   S\" {\qchoices\q:[{\qfinish_reason\q:\qstop\q,\qmessage\q:{\qrole\q:\qassistant\q,\qcontent\q:\qnot JSON\q,\qrefusal\q:null}}]}" SB-APPEND
+   MODEL-PEER:BAD-CONTENT$ SB-APPEND
    SB-LOGGED
+   s" failed-server" MODEL:E-UNAVAILABLE FAILS
+   s" failed-size" MODEL:E-CAPACITY FAILS
+   s" failed-other" MODEL:E-HTTP FAILS
+   M MODEL:ERROR$ s" bad prompt" STR= ASSERT
+   s" queued" MODEL:E-RESPONSE FAILS
    s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR= ASSERT
    s" http-bad" MODEL:E-HTTP FAILS
    M MODEL:HTTP-STATUS 400 = ASSERT
@@ -1145,7 +1203,7 @@ create HASH 64 allot
    PURPOSE CHAT
    M MODEL:RECORD-FAULT 0= ASSERT
    PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
-   s" finish_reason" ROW s" length" STR-IS ;
+   s" finish_reason" ROW s" max_output_tokens" STR-IS ;
 
 
 \ A reader at the value of the last request's member `key`.

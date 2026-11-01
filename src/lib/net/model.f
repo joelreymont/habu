@@ -45,22 +45,25 @@ public
 -9702 constant E-CAPACITY
 \ libcurl could not start or finish the transfer.
 -9703 constant E-TRANSPORT
-\ A status other than 200 that no code above or E-UNAVAILABLE names.
+\ A status other than 200, or a failed response's error code, that no code
+\ above or E-UNAVAILABLE names.
 -9704 constant E-HTTP
 \ The provider's response, or a journal record replayed for it, is malformed
 \ or inconsistent.
 -9705 constant E-RESPONSE
 \ The chat response's message carries a refusal.
 -9706 constant E-REFUSED
-\ The chat response finished for a reason other than stop: FINISH-REASON$.
+\ The response ended incomplete: INCOMPLETE-REASON$ names why.
 -9707 constant E-INCOMPLETE
-\ CANCEL ended the call, or REQUEST-STOP came before or during it.
+\ CANCEL ended the call, REQUEST-STOP came before or during it, or the
+\ provider reports the response cancelled.
 -9709 constant E-CANCELLED
 \ A word out of turn: an unopened or busy call, settings closed or opened
 \ twice, a part added before PARTS-RESET or after a failed builder, VECTOR@
 \ before EMBED, or a recorded call without a purpose.
 -9710 constant E-STATE
-\ The provider is temporarily unavailable: status 408, 429 or 5xx.
+\ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
+\ response's error code rate_limit_exceeded or server_error.
 -9711 constant E-UNAVAILABLE
 \ The most inputs one EMBED call takes.
 8 constant INPUT-MAX
@@ -103,8 +106,8 @@ STRUCTURE call DERIVE addr
    FIELD component-count n
    FIELD data-count n
    FIELD http-status n
-   FIELD finish-u n
-   FIELD finish-stop bool
+   FIELD incomplete-u n
+   FIELD completed bool
    FIELD embedding-kind n
    FIELD journal-context n
    FIELD journal-get [ n ptr u8 n ptr n -- bool ]
@@ -494,8 +497,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    0 c MODEL-CALL:INPUT-U !
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:CONTENT-U !
-   0 c MODEL-CALL:FINISH-U !
-   false c MODEL-CALL:FINISH-STOP !
+   0 c MODEL-CALL:INCOMPLETE-U !
+   false c MODEL-CALL:COMPLETED !
    0 c MODEL-CALL:PARTS-COUNT !
    false c MODEL-CALL:PARTS-OPEN !
    false c MODEL-CALL:PARTS-VALID !
@@ -1608,64 +1611,136 @@ private
    {: key:ptr key-u:n :}
    key key-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE E-RESPONSE throw then ;
 
-: CHOICE ( ptr call -- JSON:reader )
-   {: c :}
+\ The reader at the reply's member under the key.
+: REPLY-AT ( ptr u8 n ptr call -- JSON:reader )
+   {: key:ptr key-u:n c :}
    c WIRE-READER
    JSON:T-OBJ EXPECT
-   s" choices" DESCEND
+   key key-u DESCEND ;
+
+\ The reader at the string type of the object it was at.
+: TYPE-AT ( JSON:reader -- JSON:reader )
+   s" type" DESCEND
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then ;
+
+\ Moves the reader from an array's opener to its element at the index, an
+\ object; false past the array's end.
+: ELEMENT ( JSON:reader n -- JSON:reader bool )
+   0 ?do
+      JSON:READ-NEXT JSON:T-ARR-END = if false unloop exit then
+      JSON:READ-SKIP-VALUE
+   loop
+   JSON:READ-NEXT dup JSON:T-ARR-END = if drop false exit then
+   JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   true ;
+
+\ The reader at the output item at the index; false past the last item.
+: ITEM ( n ptr call -- JSON:reader bool )
+   {: idx:n c :}
+   s" output" c REPLY-AT
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:T-OBJ EXPECT ;
+   idx ELEMENT ;
 
-\ A reply that did not finish with stop is incomplete and keeps its reason in
-\ the content buffer: an incomplete reply has no content, and its decoded reason
-\ is no longer than the response that holds it.
-: READ-FINISH ( ptr call -- )
-   {: c :}
-   c CHOICE
-   s" finish_reason" DESCEND
+\ The reader at the content part at the index of the message item at the
+\ index; false past the last part.
+: PART ( n n ptr call -- JSON:reader bool )
+   {: idx:n part:n c :}
+   idx c ITEM drop
+   s" content" DESCEND
+   JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   part ELEMENT ;
+
+\ The output_text part's text is the content; a reply holds one.
+: READ-TEXT ( n n ptr call -- )
+   {: idx:n part:n c :}
+   c MODEL-CALL:CONTENT-SEEN @ if E-RESPONSE throw then
+   idx part c PART drop
+   s" text" DESCEND
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   s" stop" JSON:READ-STR-EQ? if true c MODEL-CALL:FINISH-STOP ! JSON:READ-CLOSE exit then
-   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:FINISH-U !
-   JSON:READ-CLOSE E-INCOMPLETE throw ;
+   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:CONTENT-U !
+   JSON:READ-CLOSE
+   true c MODEL-CALL:CONTENT-SEEN ! ;
 
-: MESSAGE-MEMBER ( JSON:reader ptr u8 n ptr call -- JSON:reader )
-   {: key:ptr key-u:n c :}
-   key key-u s" refusal" STR= if
-      JSON:READ-TOKEN JSON:T-NULL <> if JSON:READ-CLOSE E-REFUSED throw then
-      JSON:READ-SKIP-VALUE exit
-   then
-   key key-u s" content" STR= if
-      c MODEL-CALL:CONTENT-SEEN @ if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-TOKEN JSON:T-NULL = if JSON:READ-SKIP-VALUE exit then
-      JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
-      c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR {: got:n :}
-      got c MODEL-CALL:CONTENT-U !
-      true c MODEL-CALL:CONTENT-SEEN !
-      exit
-   then
-   JSON:READ-SKIP-VALUE ;
+\ Reads the message's content part at the index; false past the last part.
+: READ-PART ( n n ptr call -- bool )
+   {: idx:n part:n c :}
+   idx part c PART 0= if JSON:READ-CLOSE false exit then
+   TYPE-AT
+   s" refusal" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-REFUSED throw then
+   s" output_text" JSON:READ-STR-EQ? {: text:bool :}
+   JSON:READ-CLOSE
+   text if idx part c READ-TEXT then
+   true ;
 
-: READ-MESSAGE ( ptr call -- )
+\ Reads the output item at the index, skipping all but a message; false past
+\ the last item. Members come in any order, so its type takes its own pass.
+: READ-ITEM ( n ptr call -- bool )
+   {: idx:n c :}
+   idx c ITEM 0= if JSON:READ-CLOSE false exit then
+   TYPE-AT s" message" JSON:READ-STR-EQ? {: message:bool :}
+   JSON:READ-CLOSE
+   message if
+      0 begin idx over c READ-PART while 1+ repeat drop
+   then
+   true ;
+
+: READ-OUTPUT ( ptr call -- )
    {: c :}
    false c MODEL-CALL:CONTENT-SEEN !
    0 c MODEL-CALL:CONTENT-U !
-   c CHOICE
-   s" message" DESCEND
-   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
-   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
-      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-SPAN$ {: key:ptr key-u:n :}
-      JSON:READ-NEXT drop
-      key key-u c MESSAGE-MEMBER
-   repeat
-   drop JSON:READ-CLOSE
+   0 begin dup c READ-ITEM while 1+ repeat drop
    c MODEL-CALL:CONTENT-SEEN @ 0= if E-RESPONSE throw then ;
+
+\ An incomplete reply keeps its reason in the content buffer: it has no
+\ content, and its decoded reason is no longer than the response that holds it.
+: READ-INCOMPLETE ( ptr call -- )
+   {: c :}
+   s" incomplete_details" c REPLY-AT
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" reason" DESCEND
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   c MODEL-CALL:RESPONSE-U @ c CONTENT-BUF ROOM SPAN:$ JSON:READ-STR c MODEL-CALL:INCOMPLETE-U !
+   JSON:READ-CLOSE E-INCOMPLETE throw ;
+
+: ERROR-OBJECT ( ptr call -- JSON:reader )
+   {: c :}
+   s" error" c REPLY-AT
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then ;
+
+\ The fault a failed reply's error code names, the reader at its error object.
+: CODE-FAULT ( JSON:reader -- JSON:reader n )
+   s" code" JSON:READ-FIND-KEY 0= if E-HTTP exit then
+   JSON:READ-TOKEN JSON:T-STR <> if E-HTTP exit then
+   s" context_length_exceeded" JSON:READ-STR-EQ? if E-CAPACITY exit then
+   s" rate_limit_exceeded" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
+   s" server_error" JSON:READ-STR-EQ? if E-UNAVAILABLE exit then
+   E-HTTP ;
+
+\ A failed reply keeps its error message as the call's error text.
+: READ-FAILURE ( ptr call -- )
+   {: c :}
+   c ERROR-OBJECT c ERROR-TEXT JSON:READ-CLOSE
+   c ERROR-OBJECT CODE-FAULT {: fault:n :}
+   JSON:READ-CLOSE fault throw ;
+
+\ Throws the fault of a reply whose status is other than completed.
+: REPLY-STATUS ( ptr call -- )
+   {: c :}
+   s" status" c REPLY-AT
+   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" incomplete" JSON:READ-STR-EQ? if JSON:READ-CLOSE c READ-INCOMPLETE then
+   s" failed" JSON:READ-STR-EQ? if JSON:READ-CLOSE c READ-FAILURE then
+   s" cancelled" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-CANCELLED throw then
+   s" completed" JSON:READ-STR-EQ? {: done:bool :}
+   JSON:READ-CLOSE
+   done 0= if E-RESPONSE throw then ;
 
 : ACCEPT-CHAT ( ptr call -- )
    {: c :}
    c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
-   c READ-FINISH
-   c READ-MESSAGE
+   c REPLY-STATUS
+   true c MODEL-CALL:COMPLETED !
+   c READ-OUTPUT
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
    c JSON-OBJECT? 0= if E-RESPONSE throw then ;
 
@@ -1857,16 +1932,20 @@ private
    present if true c TOKENS TOKENS-SEEN ! then
    present ;
 
-\ The HTTP reply's usage counts.
+\ The HTTP reply's usage counts: a chat reply's in the Responses protocol's
+\ names, an embeddings reply's prompt_tokens alone.
 : ACCEPT-USAGE ( ptr call -- )
    {: c :}
    c RESPONSE$ {: a:ptr u:n :}
    a u c USAGE? 0= if exit then
-   a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-PROMPT !
-   a u c s" completion_tokens" USAGE-AT c TOKENS TOKENS-COMPLETION !
-   a u c s" prompt_tokens_details" s" cached_tokens" DETAIL-AT
+   c MODEL-CALL:ENDPOINT @ 0= if
+      a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-PROMPT ! exit
+   then
+   a u c s" input_tokens" USAGE-AT c TOKENS TOKENS-PROMPT !
+   a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-COMPLETION !
+   a u c s" input_tokens_details" s" cached_tokens" DETAIL-AT
    c TOKENS TOKENS-CACHED !
-   a u c s" completion_tokens_details" s" reasoning_tokens" DETAIL-AT
+   a u c s" output_tokens_details" s" reasoning_tokens" DETAIL-AT
    c TOKENS TOKENS-REASONING ! ;
 
 : PARSE-USAGE ( ptr call -- )
@@ -1908,7 +1987,7 @@ private
    c MODEL-CALL:BUSY @ if E-STATE throw then
    \ The reply buffers keep the room the last call's reply took. They are
    \ resized before the call is busy, so a failed resize leaves it idle.
-   c CONTENT-BUF c MODEL-CALL:CONTENT-U @ c MODEL-CALL:FINISH-U @ max c RESET-SIZED
+   c CONTENT-BUF c MODEL-CALL:CONTENT-U @ c MODEL-CALL:INCOMPLETE-U @ max c RESET-SIZED
    c RESPONSE-BUF c MODEL-CALL:RESPONSE-U @ c RESET-SIZED
    c ERROR-BUF c RESET-SCRATCH
    c SERVED-BUF BUF:CLEAR
@@ -1916,8 +1995,8 @@ private
    false c MODEL-CALL:CANCELLED !
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:RESPONSE-U !
-   0 c MODEL-CALL:FINISH-U !
-   false c MODEL-CALL:FINISH-STOP !
+   0 c MODEL-CALL:INCOMPLETE-U !
+   false c MODEL-CALL:COMPLETED !
    false c MODEL-CALL:EMBEDDED !
    0 c MODEL-CALL:REPLAY-KIND !
    c RESET-USAGE
@@ -2162,10 +2241,10 @@ private
    else fault 0<> if s" failed" else s" ok" then then JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" fault" fault NONZERO COUNT-FIELD
    JSON:WRITE-COMMA s" http_status" c MODEL-CALL:HTTP-STATUS @ NONZERO COUNT-FIELD
-   JSON:WRITE-COMMA s" finish_reason" c MODEL-CALL:FINISH-STOP @ if
+   JSON:WRITE-COMMA s" finish_reason" c MODEL-CALL:COMPLETED @ if
       s" stop" JSON:WRITE-FIELD-S
-   else c MODEL-CALL:FINISH-U @ 0<> if
-      c CONTENT-BUF HELD c MODEL-CALL:FINISH-U @ SPAN:TAKE SPAN:$ JSON:WRITE-FIELD-S
+   else c MODEL-CALL:INCOMPLETE-U @ 0<> if
+      c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then then
    JSON:WRITE-COMMA s" request_bytes" c BODY$ nip JSON:WRITE-FIELD-INT
    kind 1 = if
@@ -2305,10 +2384,11 @@ private
 
 public
 
-: FINISH-REASON$ ( ptr call -- ptr u8 n )
+: INCOMPLETE-REASON$ ( ptr call -- ptr u8 n )
    {: c :}
-   c CONTENT-BUF HELD c MODEL-CALL:FINISH-U @ SPAN:TAKE SPAN:$ ;
-\ The last call's provider message from its refused HTTP reply; empty when none.
+   c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ ;
+\ The last call's provider message from its refused HTTP reply or failed
+\ response; empty when none.
 : ERROR$ ( ptr call -- ptr u8 n ) ERROR-BUF BUFFER$ ;
 
 private
@@ -2345,8 +2425,8 @@ private
 
 : CAUSE+ ( n ptr call -- )
    {: code:n c :}
-   code E-INCOMPLETE = c FINISH-REASON$ nip 0<> and if
-      s"  finish " LOG:TEXT+ c FINISH-REASON$ LOG:TEXT+
+   code E-INCOMPLETE = c INCOMPLETE-REASON$ nip 0<> and if
+      s"  incomplete " LOG:TEXT+ c INCOMPLETE-REASON$ LOG:TEXT+
    then
    c LEDGER LEDGER-TRANSPORT @ {: rc:n :}
    rc 0<> if
