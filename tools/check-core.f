@@ -1678,7 +1678,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 \ the refusal's packet and nothing else.
 : CHK-PREVERIFY-STOPPED ( n -- ) {: rc:n :}
    rc CHK-STOP-RECORD
-   rc CHECK-ALL-ERRORS:THREW?  rc CHECK-ALL-ERRORS:REPORTED-THROW? or if
+   rc CHECK-ALL-ERRORS:THREW?  rc REPORTED-ERROR? or if
       CHK-E-CHECK CHK-PREVERIFY-FAIL
    then
    rc CHECK-ALL-ERRORS:DUP-RC = if CHK-PREVERIFY-DUP then

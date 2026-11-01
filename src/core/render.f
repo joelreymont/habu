@@ -1792,9 +1792,9 @@ STGR-DIAG-INSTALL
    SGBAD-RETURN? IF s" return-stack effect: " DTXT  RCLAUSE-FIX$ DTXT EXIT THEN
    SGBAD-SIZE? IF BADSIG-REASON EXIT THEN
    s" its effect is not a stack-effect comment" DTXT ;
-: GENR-PROSE ( n -- )
-   {: kind:n :}
-   s" E-GENERATES-ROW habu: generates: row for '" DTXT  GENR-TOK-A @ GENR-TOK-U @ DTXT
+: GENR-PROSE ( ptr u8 n n -- )
+   {: ta:ptr tu:n kind:n :}
+   s" E-GENERATES-ROW habu: generates: row for '" DTXT  ta tu DTXT
    kind GENR-UNRESOLVED = IF
       s" ' names no word here: the row follows its definer's definition and" DTXT
       s"  names it as the code there spells it. Define the definer first or" DTXT
@@ -1819,15 +1819,15 @@ STGR-DIAG-INSTALL
    kind GENR-UNRESOLVED = IF s" fix_generates_row" EXIT THEN
    kind GENR-CREATES = IF s" delete_generates_row" EXIT THEN
    SGBAD-CLASS$ ;
-: GENR-JSON ( n -- )
-   {: kind:n :}
+: GENR-JSON ( ptr u8 n n -- )
+   {: ta:ptr tu:n kind:n :}
    s" E-GENERATES-ROW" kind GENR-CLASS$ s" rejected" JHEAD
-   s" token" JKEY GENR-TOK-A @ GENR-TOK-U @ JSTR 44 EMIT1
-   GENR-TOK-A @ GENR-TOK-U @ kind GENR-SUGGEST$ JTAIL ;
-: GENR-DIAG ( n -- )
-   {: kind:n :}
+   s" token" JKEY ta tu JSTR 44 EMIT1
+   ta tu kind GENR-SUGGEST$ JTAIL ;
+: GENR-DIAG ( ptr u8 n n -- )
+   {: ta:ptr tu:n kind:n :}
    1 RDST !  0 RSN !  0 RQM !
-   JSON-DIAGS @ IF kind GENR-JSON ELSE kind GENR-PROSE THEN
+   JSON-DIAGS @ IF ta tu kind GENR-JSON ELSE ta tu kind GENR-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
 : GENERATES-DIAG-INSTALL ( -- ) [: GENR-DIAG ;] is GENERATES-DIAG-XT ;

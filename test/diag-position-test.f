@@ -719,7 +719,7 @@ variable RC
 
 \ STORED-PLACED for each check of the fixture, plain, --all-errors and
 \ --verify-only: each gives the refusal alone, never followed by its statement's
-\ throw (tools/check-all-errors-core.f REPORTED-THROW?).
+\ throw (checker.f REPORTED-ERROR?).
 : STORED-AT ( ptr u8 n ptr u8 n n n n n -- )
    {: tok:ptr toku:n sp:ptr spu:n line:n col:n bs:n be:n :}
    s" " CHECK

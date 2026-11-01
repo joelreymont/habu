@@ -11556,6 +11556,9 @@ PPRIM: VERIFY CHECKER-LINEAR PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-
 \ The source pre-pass counts a refused `cast:` or `linear:` declaration in a
 \ multi-error check with it (src/habu/verify-source.f IDENTITY-OUTCOME).
 PPRIM: CAST-ERROR SKIP PE-N PE-IN PPRIM;
+\ The check tools call it (check-all-errors-core.f THREW?, check-core.f
+\ CHK-PREVERIFY-STOPPED).
+PRIM: REPORTED-ERROR? PE-N PE-IN  PE-F PE-OUT PRIM;
 
 PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
@@ -25065,6 +25068,16 @@ variable CTOR-PEND-POS
 : OPAQUE-PARAM? ( n -- bool ) {: t:n :}
    t LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
    t PARAM>FAM TFAM-OPAQUE?* ;
+\ True for an error the checker reports itself before throwing it.
+: REPORTED-ERROR? ( n -- bool ) {: rc:n :}
+   rc E-USING-SHADOW-GLOBAL =
+   rc E-USING-AMBIGUOUS = or  rc E-TRUST-UNRESOLVED = or
+   rc E-SHADOWED-ARITY = or  rc E-GENERATES-ROW = or  rc E-PARSES-ROW = or
+   rc E-NAMES-ROW = or  rc E-BAD-STORED-SIGNATURE = or
+   rc E-CAST-ARITY = or  rc E-CAST-CLASS = or  rc E-CAST-FAM = or
+   rc E-CAST-OWNER = or  rc E-CAST-LINEAR = or  rc E-CAST-MINT = or
+   rc E-CAST-SCOPE = or  rc E-LINEAR-PAYLOAD = or  rc E-LINEAR-OWNER = or
+   rc E-LINEAR-SCOPE = or ;
 \ The `cast:` or `linear:` declaration being certified, which RAISE renders
 \ (render.f); FAM, the foreign family or arena head, is -1 while it names none.
 package CAST-ERROR
@@ -25081,14 +25094,6 @@ defer DIAG-XT ( -- )
 : CLEAR ( -- )
    NULL-PTR WORD-A !  0 WORD-U !  NULL-PTR KEY-A !  0 KEY-U !  NULL-PTR SIG-A !
    NULL-PTR WHY-A !  0 WHY-U !  NULL-PTR TOK-A !  0 TOK-U !  0 FAM !  0 CODE ! ;
-\ The codes RAISE and REFUSE-SIGNATURE throw, each only after rendering its
-\ refusal.
-: RAISED? ( n -- bool ) {: rc:n :}
-   rc E-BAD-STORED-SIGNATURE =
-   rc E-CAST-ARITY = or  rc E-CAST-CLASS = or  rc E-CAST-FAM = or
-   rc E-CAST-OWNER = or  rc E-CAST-LINEAR = or  rc E-CAST-MINT = or
-   rc E-CAST-SCOPE = or  rc E-LINEAR-PAYLOAD = or  rc E-LINEAR-OWNER = or
-   rc E-LINEAR-SCOPE = or ;
 public
 \ Runs xt on the declaration of name na nu with signature sa su under keyword
 \ ka ku, the record live until xt returns or throws.
@@ -25107,10 +25112,10 @@ public
 : REFUSE-SIGNATURE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu na nu BADSIG-XT
    E-BAD-STORED-SIGNATURE CHECKER-REFUSE ;
-\ A multi-error pass counts the declaration's own refusal, already rendered, and
-\ goes on, as GENERATES-REFUSE does; any other code is thrown on.
+\ A multi-error pass counts a refusal the checker already reported and goes on,
+\ as GENERATES-REFUSE does; any other code is thrown on.
 : SKIP ( n -- ) {: rc:n :}
-   rc RAISED? IF 1 MULTI-ERR-N +! EXIT THEN
+   rc REPORTED-ERROR? IF 1 MULTI-ERR-N +! EXIT THEN
    rc throw ;
 private
 : DIAG-DEFAULT ( -- ) [: ;] is DIAG-XT ;
@@ -27015,19 +27020,15 @@ variable TOP-ASK-ANSWER
 1 constant GENR-CREATES                   \ something already states what D makes
 2 constant GENR-BADSIG                    \ the effect does not parse or no record
                                           \ holds it (SGBAD-UNFIT!); SGBAD says why
-PTR-VARIABLE GENR-TOK-A   variable GENR-TOK-U   \ the row's name (raw, valid while rendering)
-defer GENERATES-DIAG-XT ( n -- )          \ render.f installs the diagnostic, selected by kind
-: GENERATES-DIAG-DEFAULT ( -- ) [: drop ;] is GENERATES-DIAG-XT ;
+defer GENERATES-DIAG-XT ( ptr u8 n n -- ) \ render.f installs the diagnostic: row name, kind
+: GENERATES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is GENERATES-DIAG-XT ;
 GENERATES-DIAG-DEFAULT
 
 \ A refused row is rendered and then behaves as a stale `trust` row does
 \ (TRUST-STALE): a hard stop on the ordinary load path, counted under a
 \ MULTI-ERROR load so the pass reaches every other error in the file.
 : GENERATES-REFUSE ( ptr u8 n n -- )
-   {: a:ptr u:n kind:n :}
-   a GENR-TOK-A !
-   u GENR-TOK-U !
-   kind GENERATES-DIAG-XT
+   GENERATES-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-GENERATES-ROW throw ;
 

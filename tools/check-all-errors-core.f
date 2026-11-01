@@ -476,35 +476,11 @@ variable CA-COMPOSE-LABEL-U
 
 public
 
-\ True for a checker refusal that renders its own diagnostic before throwing.
-\ It keeps that packet instead of acquiring a statement-throw record, and the
-\ check fails as for any refusal (check-core.f CHK-PREVERIFY-STOPPED).
-: REPORTED-THROW? ( n -- bool )
-   {: rc:n :}
-   rc E-USING-SHADOW-GLOBAL =
-   rc E-USING-AMBIGUOUS = or
-   rc E-TRUST-UNRESOLVED = or
-   rc E-SHADOWED-ARITY = or
-   rc E-GENERATES-ROW = or
-   rc E-PARSES-ROW = or
-   rc E-NAMES-ROW = or
-   rc E-BAD-STORED-SIGNATURE = or
-   rc E-CAST-ARITY = or
-   rc E-CAST-CLASS = or
-   rc E-CAST-FAM = or
-   rc E-CAST-OWNER = or
-   rc E-CAST-LINEAR = or
-   rc E-CAST-MINT = or
-   rc E-CAST-SCOPE = or
-   rc E-LINEAR-PAYLOAD = or
-   rc E-LINEAR-OWNER = or
-   rc E-LINEAR-SCOPE = or ;
-
-\ True for the status of a check that a statement threw out of without
-\ reporting its own refusal.
+\ True for the status of a check a statement threw out of unreported. A refusal
+\ the checker reported (REPORTED-ERROR?) keeps its packet and no throw record.
 : THREW? ( n -- bool ) {: rc:n :}
    rc 0 <> rc CA-REFUSED <> and rc DUP-RC <> and
-   rc REPORTED-THROW? 0= and ;
+   rc REPORTED-ERROR? 0= and ;
 
 private
 
