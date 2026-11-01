@@ -1,10 +1,11 @@
-\ build-out.f - where a build writes what it makes: <out>/<engine-key>/, the key
-\ the 64-hex SHA-256 of an engine binary (KEY-OF!). <out> is $HABU_OUT when set and
-\ non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working directory.
-\ obj/<key>.hfo holds one object per file key; img/<family> lives under the engine
-\ that builds the image (tools/keyed-image.f). Outputs a later engine must find
-\ live under <out> itself (BASE$). PROCESS-WIDE: cleared before image capture.
-
+\ build-out.f - where a build writes what it makes, under <out>: $HABU_OUT when set
+\ and non-empty (relative to SOURCE-ROOT:CWD$), else .out under the working
+\ directory. <out>/obj/<key>.hfo holds one object per file key, shared by every
+\ engine, since the key names what compiles the file. <out>/<engine-key>/, the key
+\ the 64-hex SHA-256 of an engine binary (KEY-OF!), keeps that engine's support
+\ image and its keyed images under img/<family> (tools/keyed-image.f). Outputs a
+\ later engine must find live under <out> itself (BASE$). PROCESS-WIDE: cleared
+\ before image capture.
 require src/lib/errors.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -85,7 +86,7 @@ public
    keyu 0 <= if E-FS-PATH throw then
    keyu PATH-CAP 4 - > if E-FS-CAPACITY throw then
    OBJ-U @ 0= if
-      ROOT$ s" obj" OBJ-BUF FS:JOIN-PATH {: obju:n :}
+      BASE$ s" obj" OBJ-BUF FS:JOIN-PATH {: obju:n :}
       OBJ-BUF obju FS:MAKE-DIRS
       obju OBJ-U !
    then

@@ -2,7 +2,6 @@
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/fs-list.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/subject.f
@@ -18,8 +17,6 @@ create BUILDER PATH-CAP allot variable BUILDER-U
 create SRC-PATH PATH-CAP allot
 create PROD-PATH PATH-CAP allot
 create CACHE-PATH PATH-CAP allot
-create ENGINE-NAME PATH-CAP allot  variable ENGINE-U  variable ENGINES
-create ENGINE-PATH PATH-CAP allot
 create OBJ-PATH PATH-CAP allot
 DYNAMIC-BUFFER SOURCE u8
 variable SOURCE-START
@@ -93,19 +90,7 @@ variable DIAG?
    root rootu s" cache" CACHE-PATH FS:JOIN-PATH CACHE-PATH swap
    BUILD ;
 
-private
-: NOTE-ENGINE ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a ENGINE-NAME u BYTE-COPY u ENGINE-U !
-   1 ENGINES +! ;
-public
-\ The object directory one engine made under the out root out, <out>/<key>/obj:
-\ the root holds that engine's directory alone.
+\ The object directory under the out root out.
 : OBJ-DIR$ ( ptr u8 n -- ptr u8 n )
-   {: out:ptr outu:n :}
-   0 ENGINES !
-   out outu [: NOTE-ENGINE ;] FS-LIST:EACH
-   ENGINES @ 1 <> if E-FS-IO throw then
-   out outu ENGINE-NAME ENGINE-U @ ENGINE-PATH FS:JOIN-PATH {: u:n :}
-   ENGINE-PATH u s" obj" OBJ-PATH FS:JOIN-PATH OBJ-PATH swap ;
+   s" obj" OBJ-PATH FS:JOIN-PATH OBJ-PATH swap ;
 ;package

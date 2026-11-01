@@ -221,20 +221,15 @@ visibility, `require`/`include` semantics and the order of reopenings hold as
 in a clean build. The proof is a warm build whose product equals the product
 of a build from an empty cache.
 
-**A file's key names the file, not what loaded before it.** The key is the
-engine, the target profile, the build mode, the key of the file that loaded it,
-the root's role (the engine root or another), the canonical path relative to
-that root, the load kind and the occurrence: how many earlier loads of the same
-file, with the same kind and under the same parent, the build made, which only
-`include` repeats. The file's parts are names, never content: folding the bytes
-of preceding files into the key would make an edit to the root file recompile
-every library it loads. The engine part is a hash of the executable that
-compiles, and the compiler part digests every file loaded before the compiler,
-so an edit to a file in either changes every file's key. A file under its root
-keys the same in a copy of the
-tree or in the tree reached at another path, so those builds share entries. A
-copy whose bytes differ is an edit: the file compiles whole, as an edit in
-place does.
+**A file's key names what compiles it and its place in the load, never its
+text.** What compiles it is the kernel, the compiler and the build tool, each
+named by its role, with the target, the build mode and the ambient compile
+state; its place is the file that loaded it, its root, its path under that root
+and its load kind, so a copy of the tree, or the tree at another path, shares
+the objects. A file is stale when a file it depends on changed, comments
+included, as make decides: an edit recompiles the file and its consumers, and
+an edit to a file the kernel, compiler or build tool is made from recompiles
+every file.
 
 **An entry is valid while what it consumed still holds.** In order: the file's
 size and change time match, or else its bytes hash the same; the

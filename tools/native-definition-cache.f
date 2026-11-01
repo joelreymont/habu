@@ -8,7 +8,6 @@ require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/build-input.f
-require src/lib/engine-id.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/os/env-base.f
@@ -571,6 +570,10 @@ private
    DEPTH @ 0= if s" no-source-frame" exit then
    ORIGIN-RECORD @ NULL-PTR = if s" missing-origin-capability" exit then
    DISPATCH-ROLE-KNOWN @ 0= if s" unknown-role" exit then
+   SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$ nip nip 0= if
+      s" kernel-unknown" exit
+   then
+   TOOL-ROLE:ROLE$ nip nip 0= if s" tool-unknown" exit then
    BORROW-ACTIVE @ if
       BORROW-OWNER-READY? 0= if s" unavailable-owner" exit then
    else OWNER-READY? 0= if s" unavailable-owner" exit then then
@@ -1095,20 +1098,21 @@ private
    full 0= early and early-hook and if NUNIT-OBJECT:SINK-EARLY false exit then
    SINK-UNSUPPORTED false ;
 
-\ The open file's object key names its place in the load as its records'
-\ keys name it, not its text: this engine and target, the ambient compile
-\ state, and the file's tree-relative instance key (NFILE-REF:PUSH-FILE): its
-\ parent, its role, its path relative to its root, its kind and its
-\ occurrence under that parent. The object's stored declaration and import
+\ The open file's object key names what compiles it and its place in the
+\ load, not its text: the kernel and build tool roles, the target, the
+\ ambient compile state with the compiler role, and the file's tree-relative
+\ instance key (NFILE-REF:PUSH-FILE): its parent, its role, its path relative
+\ to its root, its kind and its occurrence under that parent. The checker
+\ role is a per-definition row. The object's stored declaration and import
 \ keys start with the instance key, so a key that omitted the loader would
 \ find an object whose keys this load cannot reproduce. Its input rows are
 \ stored relative to the file's root and the engine's source root
 \ (NFILE-INPUTS:TREE-OUT), so an identical tree at another path shares the
 \ object and a differing one fails its rows.
 : FILE-KEY ( -- ptr u8 n )
-   ENGINE-ID:KEY$ {: engine:ptr engineu:n :}
    s" habu-native-file" HASH-START
-   engine engineu HASH-S
+   SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$ drop HASH-S
+   TOOL-ROLE:ROLE$ drop HASH-S
    BUILD-TARGET:CURRENT RTARGET:PROFILE$ HASH-S
    NATIVE? @ HASH-N
    AMBIENT-HASH

@@ -1,5 +1,5 @@
-\ Each engine keeps one checksummed object per loaded file under its own
-\ directory of the out root (tools/build-out.f).
+\ Every engine keeps its checksummed objects in one directory of the out root,
+\ named by what compiles each file (tools/build-out.f).
 
 require src/lib/test.f
 require src/lib/string.f
@@ -175,15 +175,9 @@ variable OBJECT-N
 : TALLY ( ptr u8 n -- )
    OBJECT? if 1 OBJECT-N +! then ;
 
-: TALLY-ENGINE ( ptr u8 n -- )
-   {: name:ptr nameu:n :}
-   OUT-ROOT$ name nameu ENTRY-PATH FS:JOIN-PATH {: u:n :}
-   ENTRY-PATH u s" obj" DIR-PATH FS:JOIN-PATH DIR-U !
-   DIR$ [: TALLY ;] FS-LIST:EACH ;
-
 : TALLY-ROOT ( -- n )
    0 OBJECT-N !
-   OUT-ROOT$ [: TALLY-ENGINE ;] FS-LIST:EACH
+   OUT-ROOT$ NATIVE-FILE-APP:OBJ-DIR$ [: TALLY ;] FS-LIST:EACH
    OBJECT-N @ ;
 
 \ The object's checksum covers its last byte.
@@ -225,10 +219,10 @@ variable OBJECT-N
    s" keep" s" app-hb" RUN-IN SUCCESS
    OUT$ s" 4" CONTAINS? TTRUE ;
 
-\ 2. Another engine (different checker and kernel identity) writes its objects
-\ in its own directory and leaves this engine's.
+\ 2. Another engine (different checker and kernel identity) adds its objects
+\ beside this engine's and leaves them.
 : ALTERNATE-CASE ( -- )
-   s" another engine's build keeps this engine's objects" T-LABEL
+   s" another engine adds its objects beside this engine's and leaves them" T-LABEL
    s" alternate" CASE-DIR
    s" alternate" s" lib.f" LIB-V1$ WRITE-IN
    s" alternate" s" app.f" APP$ WRITE-IN

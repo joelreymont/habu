@@ -695,7 +695,7 @@ variable BASE-LIVE
    label labelu T-LABEL
    BAD-N @ 0 T=
    mode EXPECT-EDIT = mode EXPECT-ALL = or if
-      EDIT-SEEN @ 1 T=
+      EDITED-U @ 0<> if EDIT-SEEN @ 1 T= then
       ROW-N @ BASE-N @ T=
    then
    mode EXPECT-COLD = if LIVE-N @ 0 > TTRUE then
@@ -1595,10 +1595,18 @@ variable BASE-LIVE
    {: old:ptr oldu:n new:ptr newu:n :}
    s" src/habu/debug-watch.f" old oldu new newu EDIT ;
 
+\ A build tool file is no loaded file, so no row names it.
+: TOOL-EDIT ( ptr u8 n ptr u8 n -- )
+   {: old:ptr oldu:n new:ptr newu:n :}
+   s" " EDITED!
+   s" tools/native-file-reference.f" old oldu new newu PATCH-EMITTER ;
+
 \ A file recompiles when it or a file it requires changed, comments included,
 \ as make rebuilds. The compiler requires src/lib/memory.f, so a memory.f edit
 \ recompiles every loaded file; a src/habu/debug-watch.f edit recompiles it and
 \ the loaded files that require it, directly or through another (WANT-BUILD).
+\ A build tool edit recompiles every file, since the tool role names every
+\ object.
 \ Each edit lands on the previous one's tree and shares one cache.
 : RECOMPILE ( -- )
    T-RESET
@@ -1619,6 +1627,9 @@ variable BASE-LIVE
       s" dup BPW-SLOT @ dup BPW-PRINT-ADDR @ 0 + ." WATCH-EDIT
    s" watch-body" s" watch-body-fresh" EXPECT-EDIT EDIT-STEP
    PRODUCT-RUNS
+   s" \ Portable identities and references for one native FILE build."
+      s" \ Stable identities and references for one native FILE build." TOOL-EDIT
+   s" tool-comment" s" cache" EXPECT-ALL STEP
    BASE-TEXT-RELEASE
    WANT-TEXT-RELEASE
    FINISH ;
