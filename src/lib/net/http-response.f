@@ -79,19 +79,72 @@ MAX-WORKERS TYPED-BUFFER FILE-TRANSFER AIO:xfer
    idx NEXT-SEQ idx NUM$ idx ID+ ;
 
 
-: REASON$ ( n -- ptr u8 n ) {: status:n :}
-   status 200 = if s" OK" exit then
-   status 204 = if s" No Content" exit then
-   status 304 = if s" Not Modified" exit then
-   status 400 = if s" Bad Request" exit then
-   status 404 = if s" Not Found" exit then
-   status 405 = if s" Method Not Allowed" exit then
-   status 413 = if s" Content Too Large" exit then
-   status 426 = if s" Upgrade Required" exit then
-   status 431 = if s" Request Header Fields Too Large" exit then
-   status 500 = if s" Internal Server Error" exit then
-   status 501 = if s" Not Implemented" exit then
-   s" Status" ;
+\ The reason phrase of each code in IANA's HTTP status code registry. An
+\ unregistered code gets an empty phrase, which RFC 9112 section 4 allows.
+: REASON$ ( n -- ptr u8 n )
+   case
+      100 of s" Continue" endof
+      101 of s" Switching Protocols" endof
+      102 of s" Processing" endof
+      103 of s" Early Hints" endof
+      200 of s" OK" endof
+      201 of s" Created" endof
+      202 of s" Accepted" endof
+      203 of s" Non-Authoritative Information" endof
+      204 of s" No Content" endof
+      205 of s" Reset Content" endof
+      206 of s" Partial Content" endof
+      207 of s" Multi-Status" endof
+      208 of s" Already Reported" endof
+      226 of s" IM Used" endof
+      300 of s" Multiple Choices" endof
+      301 of s" Moved Permanently" endof
+      302 of s" Found" endof
+      303 of s" See Other" endof
+      304 of s" Not Modified" endof
+      305 of s" Use Proxy" endof
+      307 of s" Temporary Redirect" endof
+      308 of s" Permanent Redirect" endof
+      400 of s" Bad Request" endof
+      401 of s" Unauthorized" endof
+      402 of s" Payment Required" endof
+      403 of s" Forbidden" endof
+      404 of s" Not Found" endof
+      405 of s" Method Not Allowed" endof
+      406 of s" Not Acceptable" endof
+      407 of s" Proxy Authentication Required" endof
+      408 of s" Request Timeout" endof
+      409 of s" Conflict" endof
+      410 of s" Gone" endof
+      411 of s" Length Required" endof
+      412 of s" Precondition Failed" endof
+      413 of s" Content Too Large" endof
+      414 of s" URI Too Long" endof
+      415 of s" Unsupported Media Type" endof
+      416 of s" Range Not Satisfiable" endof
+      417 of s" Expectation Failed" endof
+      421 of s" Misdirected Request" endof
+      422 of s" Unprocessable Content" endof
+      423 of s" Locked" endof
+      424 of s" Failed Dependency" endof
+      425 of s" Too Early" endof
+      426 of s" Upgrade Required" endof
+      428 of s" Precondition Required" endof
+      429 of s" Too Many Requests" endof
+      431 of s" Request Header Fields Too Large" endof
+      451 of s" Unavailable For Legal Reasons" endof
+      500 of s" Internal Server Error" endof
+      501 of s" Not Implemented" endof
+      502 of s" Bad Gateway" endof
+      503 of s" Service Unavailable" endof
+      504 of s" Gateway Timeout" endof
+      505 of s" HTTP Version Not Supported" endof
+      506 of s" Variant Also Negotiates" endof
+      507 of s" Insufficient Storage" endof
+      508 of s" Loop Detected" endof
+      511 of s" Network Authentication Required" endof
+      s" " rot
+   endcase ;
 
 
 : STATUS-LINE ( n -- ) {: idx:n :}

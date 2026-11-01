@@ -159,6 +159,14 @@ variable PARKED                   \ set by the handler that never answers
    answer [: PING-BODY ;] HTTP:JSON! ;
 
 
+: UNAUTHORIZED ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   answer 401 HTTP:STATUS! ;
+
+
+: UNREGISTERED ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   answer 299 HTTP:STATUS! ;
+
+
 \ The id the pattern bound travels to the body through these cells, which the
 \ body quotation reads back: a quotation cannot read a local.
 PTR-VARIABLE ITEM-ID-A
@@ -579,6 +587,8 @@ $2710 constant PARK-MS            \ far past every stop bound
    HTTP:ROUTES-RESET
    s" GET" s" /api/trace" [: TRACE ;] HTTP:ROUTE
    s" GET" s" /api/ping" [: PING ;] HTTP:ROUTE
+   s" GET" s" /api/unauthorized" [: UNAUTHORIZED ;] HTTP:ROUTE
+   s" GET" s" /api/unregistered" [: UNREGISTERED ;] HTTP:ROUTE
    s" GET" s" /api/items/{id}" [: ITEM ;] HTTP:ROUTE
    s" GET" s" /api/version" [: ASKED-VERSION ;] HTTP:ROUTE
    s" POST" s" /api/echo" [: ECHO ;] HTTP:ROUTE
@@ -1152,6 +1162,15 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    s\" DELETE /api/items/7 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
    s" Allow: GET" HAS? TTRUE
    s" not-allowed" TRANSCRIBE ;
+
+
+\ A registered code's status line names its reason; an unregistered code's
+\ reason is empty.
+: REASON-CASES ( -- )
+   s\" GET /api/unauthorized HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s\" HTTP/1.1 401 Unauthorized\r\n" BEGINS? TTRUE
+   s\" GET /api/unregistered HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" RAW-ONE
+   s\" HTTP/1.1 299 \r\n" BEGINS? TTRUE ;
 
 
 \ A handler that throws is answered 500 and its worker - the only one this
@@ -2760,6 +2779,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    HTTP:PORT 0 > TTRUE
    JSON-CASES
    REFUSAL-CASES
+   REASON-CASES
    FAULT-CASE
    BIG-JSON-CASE
    MANY-HEADERS-CASE
