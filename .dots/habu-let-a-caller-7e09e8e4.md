@@ -1,0 +1,9 @@
+---
+title: "Let a caller end a PG:CONNECT it is waiting on"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-01T21:14:24.190022+02:00"
+---
+
+Problem: src/lib/pg.f:1345-1355 CONNECT waits through AWAIT with NO-DEADLINE (the connection's DEADLINE! bound does not apply to it), and the AIO wait it parks in (src/lib/aio.f:1111-1119 WAIT-DONE) re-parks on every wake, so only the connect's own outcome or a TASK:HALT of the waiting task ends it. Against a server that accepts TCP but never answers, the wait has no end. Found from Maki's r2-runner lane: a job runner that lost its database reconnects in a loop with backoff; Maki's STOP must end that runner promptly, but when STOP lands while an attempt's PG:CONNECT is in flight it waits for the connect (a reviewer's probe with the postmaster SIGSTOPped held STOP 10.8 s, ~2.8 s of it inside the connect; with no answer ever it would hold STOP forever). Maki cannot bound the attempt with a fixed timeout without its owner's decision, and halting the runner task mid-connect has no stated contract for the attempt's slot and its cleanup. Acceptance: a task waiting in PG:CONNECT (or CONNECT-START with AWAIT) has a stated way to be ended by another task, promptly and without a fixed timeout, that leaves no connection slot, descriptor or libpq object behind and tells the waiter the attempt was abandoned (or, if the answer is TASK:HALT, pg.f states that halting a task mid-connect releases its attempt, and a test proves it). Regression: a pg-test case whose server never answers the startup (a listening socket that accepts and stays silent) and whose CONNECT is ended by the chosen means within a deadline, the registry then showing the slot free; it fails on master. Files: src/lib/pg.f, src/lib/pg-test.f (and aio.f only if the means needs it). Verify: check.f on pg.f; pg-test. Depends: none. Ownership: src/lib/pg.f connect waiting, its test. Claim: unassigned.
