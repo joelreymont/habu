@@ -88,7 +88,31 @@ entry.
   from one width setting, Joel chose "Writer indents itself (Recommended)",
   then wrote "also, i approve your json words": JSON:WRITE-INDENT! (spaces
   per level, 0 for compact), JSON:WRITE-STRING-START, -PART and -END, and a
-  writer holding its indent and depth.
+  writer holding its indent and depth. On the packages (relayed by stuart):
+  "the point is that the package is JSON, not JSON-WRITE. and there's no JR
+  either. it's JSON:WRITE-... and JSON:READ-.... should be explained in the
+  forth style guide", and "habu library needs to be brushed up, yes. not
+  necessarily everything right now. json would be sufficient for now". JSON
+  reading and writing are one package, JSON, and card §1 states the rule.
+- 2026-11-01, a client token's lifetime (relayed by kevin from Tender): Joel
+  chose "Token word gives lifetime (Recommended)": "BEARER:TOKEN also returns
+  expires_in; tenderd renews before expiry. One changed Habu word."
+- 2026-11-01, request bodies (relayed by phil from Zen): Joel chose "Read on
+  demand (Recommended)": "BODY$ reads on first call; an unread body closes the
+  connection." A server can refuse a request from its headers alone, and
+  E-HTTP-BODY-READ names a failed read.
+- 2026-11-01, streaming a child's output: the CMD:RUN-STREAM lane handed each
+  stdout line to a callback, and its review found that a callback starting
+  another run on the same task corrupts the outer run, and that the idle
+  window counts the callback's own time as the child's silence. Asked to
+  refuse a nested run, Joel asked "why should it pass each stdout line to a
+  callback? is this good design? best for the long term? how is this done
+  usually?" Shown that Python, Go, Rust and C hand the caller the child's
+  stdout to read (callbacks appear in event-loop runtimes such as Node), that
+  a caller reading lines keeps its own time out of the window and may run
+  other commands between reads once each run holds its own process state,
+  and that the linear CMD:command makes the checker require the run's end,
+  Joel chose "Pull: caller reads lines (Recommended)".
 - 2026-10-31, typed data: shown that the image save check reads an untyped
   `c,` table's bytes as possible addresses, so a build fails at random by
   where memory was placed, and that a fix recording `c,` runs covers only
