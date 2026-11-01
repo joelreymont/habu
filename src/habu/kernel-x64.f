@@ -5119,10 +5119,43 @@ $3A constant NAME-COLON                \ a qualified name's separator
    prot X64CODE:LBL,  ENGINE-ERROR:SEAL-PACKAGE EXIT-GROUP,
    done X64CODE:LBL, ;
 
-\ body-append ( ptr u8 n -- ): append the bytes and a space to BODYBUF, as the
-\ capture `:` appends through does. BODYLEN past BODYBUF-CAP, and u at or past
-\ the room left, both unsigned, are refused; pass 2 re-runs a captured body
-\ and stores nothing.
+\ habu1.f EMIT-BCAP's BODY-SOURCE row for the run rsi/rcx landing at BODYLEN
+\ (rax). It keeps rax, rcx and rsi, and clobbers rdi and r8-r11.
+: BODY-ROW, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: pop:label put:label seed:label none:label src:label rowed:label :}
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E rowed JCC,
+   R8 DATA-REG BODY-SOURCE:OFF MEM-OFF ASM-SINK ENC-LEA
+   R9 R8 MEM-AT ASM-SINK ENC-MOV-RM   \ r8 = the band, r9 = its rows
+   pop X64CODE:LBL,
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E put JCC,
+   R10 R9 ASM-SINK ENC-MOV-RR  R10 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   R10 R8 R10 1 CELL negate MEM-IDX ASM-SINK ENC-MOV-RM   \ the last row's text offset
+   R10 RAX ASM-SINK ENC-CMP-RR  C-B put JCC,
+   R9 ASM-SINK ENC-DEC  pop JMP,
+   put X64CODE:LBL,
+   R10 R9 ASM-SINK ENC-MOV-RR  R10 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   R10 R8 ASM-SINK ENC-ADD-RR                              \ the new row is at r10 + 8
+   RAX R10 CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   R9 ASM-SINK ENC-INC  R9 R8 MEM-AT ASM-SINK ENC-MOV-MR
+   R9 SRCLOC:INB-CELL CELL@,  R11 INE-CELL CELL@,
+   \ The first run is the name, which a head seeds.
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E seed JCC,
+   RDI PENDTKA-CELL CELL@,
+   RDI R9 ASM-SINK ENC-CMP-RR  C-B none JCC,
+   RDI R11 ASM-SINK ENC-CMP-RR  C-AE none JCC,
+   seed X64CODE:LBL,
+   RSI R9 ASM-SINK ENC-CMP-RR  C-B none JCC,
+   RSI R11 ASM-SINK ENC-CMP-RR  C-AE none JCC,
+   RDI RSI ASM-SINK ENC-MOV-RR  RDI R9 ASM-SINK ENC-SUB-RR  src JMP,
+   none X64CODE:LBL,
+   RDI BODY-SOURCE:NONE IMM64,
+   src X64CODE:LBL,
+   RDI R10 2 cells MEM-OFF ASM-SINK ENC-MOV-MR
+   rowed X64CODE:LBL, ;
+
+\ body-append ( ptr u8 n -- ): habu2.f BODY-APPEND's twin, with BODY-ROW,;
+\ pass 2 re-runs a captured body and stores nothing.
 : BODY-APPEND-BODY ( -- )
    X64CODE:LBL {: done:label :}
    RCX POP,  RSI POP,                                 \ the count, the bytes
@@ -5133,6 +5166,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX RDX ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RDX P2-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   BODY-ROW,
    RDX RAX RCX 1 1 MEM-IDX ASM-SINK ENC-LEA           \ the length past the space
    RDI DATA-REG RAX 1 BODYBUF-OFF MEM-IDX ASM-SINK ENC-LEA
    COPY-BYTES,
