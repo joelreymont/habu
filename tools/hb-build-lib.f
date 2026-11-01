@@ -646,19 +646,15 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 
 \ THE PRODUCT TIER IS THE CALLER'S. A maker child is a saved image, which starts
 \ at tier 0, so its first stdin line selects this process's tier for the
-\ application it loads; x86-64 has tier 1 only. Each maker's stdin is one of
-\ two complete literals chosen by the tier. The tier joins the REPL sidecar, so
-\ a product of one tier is never up to date for the other.
-: HBB-TIER ( -- n )
-   HB-TARGET-LINUX-X86-64? if 1 exit then
-   tier@ ;
-
+\ application it loads. Each maker's stdin is one of two complete literals
+\ chosen by the tier. The tier joins the REPL sidecar, so a product of one tier
+\ is never up to date for the other.
 : HBB-AOT-STDIN$ ( -- ptr u8 n )
-   HBB-TIER 0= if S\" 0 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" exit then
+   tier@ 0= if S\" 0 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" exit then
    S\" 1 set-tier\nAOT-BUILDER:OPEN\nAOT-BUILDER:RUN\n" ;
 
 : HBB-APP-STDIN$ ( -- ptr u8 n )
-   HBB-TIER 0= if S\" 0 set-tier\nAPP-BUILD:RUN-SAVED\n" exit then
+   tier@ 0= if S\" 0 set-tier\nAPP-BUILD:RUN-SAVED\n" exit then
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED\n" ;
 
 : HBB-RUN-MAKER-ARGS ( -- )
@@ -1129,7 +1125,7 @@ defer HBB-REPORT-HOOK ( -- )
    srcu engu + outu + rootu + size HBB-REPL-DEPS-HEADER-U - >= if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U + srcu HBB-SRC$ STR= 0= if E-NUNIT-PROFILE throw then
    bytes HBB-REPL-DEPS-HEADER-U srcu + + engu BF-ENGINE$ STR= 0= if E-NUNIT-PROFILE throw then
-   bytes 40 + LE:U64@ HBB-TIER <> if E-NUNIT-PROFILE throw then
+   bytes 40 + LE:U64@ tier@ <> if E-NUNIT-PROFILE throw then
    ['] HBB-REPL-ENGINE-DIGEST! catch 0<> if E-NUNIT-PROFILE throw then
    bytes 48 + 32 HBB-REPL-ENGINE-DIGEST 32 STR= 0=
       if E-NUNIT-PROFILE throw then
@@ -1286,7 +1282,7 @@ defer HBB-REPORT-HOOK ( -- )
    engu dst 16 + LE:U64!
    outu dst 24 + LE:U64!
    rootu dst 32 + LE:U64!
-   HBB-TIER dst 40 + LE:U64!
+   tier@ dst 40 + LE:U64!
    HBB-REPL-ENGINE-DIGEST dst 48 + 32 BYTE-COPY
    src dst HBB-REPL-DEPS-HEADER-U + srcu BYTE-COPY
    eng dst HBB-REPL-DEPS-HEADER-U srcu + + engu BYTE-COPY

@@ -109,9 +109,9 @@ uses its existing definition cache: every invocation writes the image and its
 cached native emission. The ordinary loader still executes file-level
 initialization during the build.
 Target compilation and capture run in the native build scope. Once the capture
-owns its bytes, the uncaptured source writer loads at the host's JIT tier on
-AArch64 (native tier on x86-64), then restores the previous tier. Its definitions
-use the fresh target layout and do not enter the emitted engine.
+owns its bytes, the uncaptured source writer loads, then restores the previous
+tier. Its definitions use the fresh target layout and do not enter the emitted
+engine.
 
 **Incremental-build implementation guidance.** Read files from disk and use
 files as compilation units, following the C compiler / make model. Packages

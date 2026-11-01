@@ -141,7 +141,7 @@ package HB-BUILD-CLI
 \ does> definer, a deferred word, floats and string literals - is the same at
 \ both tiers. Its literals put instruction-shaped bytes at every offset 4k+3,
 \ which the stripped link refuses when they lie in the code band; its deferred
-\ call is the tier 0 call shape the link must carry. x86-64 has tier 1 only.
+\ call is the tier 0 call shape the link must carry.
 
 \ Build HBT-AOT-SRC from a caller at TIER, then select the tier this row ran at.
 : HBT-TIER-BUILD ( n -- )
@@ -152,7 +152,6 @@ package HB-BUILD-CLI
    prior set-tier ;
 
 : BUILD-AOT-TIERS ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
    s" test/tier0-product-subject.f" SOURCE-ROOT:RESOLVE drop
    HBT-AOT-SRC FS:COPY-FILE-STREAM
    HBT-REMOVE-AOT-OUT

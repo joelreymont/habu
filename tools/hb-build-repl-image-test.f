@@ -155,10 +155,9 @@ variable HBT-IMAGE-RESAVED-U
    HBT-ROOTED-RUN ;
 
 \ The sidecar records the tier the application compiled at. The last build ran
-\ at the CLI's default tier, 0 on ARM64, so the same build from a tier 1 caller
-\ is not up to date. x86-64 has tier 1 only.
+\ at the CLI's default tier, 0, so the same build from a tier 1 caller is not
+\ up to date.
 : HBT-ROOTED-TIER ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
    HBT-ROOTED-MARK
    -1 HBT-IMAGE-TIER1 !
    HBT-TMP HBT-ROOTED-BUILD
@@ -221,7 +220,6 @@ variable HBT-IMAGE-RESAVED-U
 \ its definitions - and X's 7. The second build's tier line reads 0, so it
 \ rebuilt the tier 1 image and loaded the subject at tier 0.
 : HBT-REPL-TIER-PROGRAM ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
    HBT-ROOT s" resaved" HBT-IMAGE-RESAVED-BUF HBT-IMAGE-RESAVED-U HBT-PATH!
    s" test/tier0-product-subject.f" SOURCE-ROOT:RESOLVE drop
    HBT-REPL-SRC FS:COPY-FILE-STREAM

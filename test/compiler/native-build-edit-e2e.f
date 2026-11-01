@@ -1170,7 +1170,7 @@ variable LIVE-OVERRIDE
    \ This source is loaded only after capture. Its tier must not inherit the
    \ native-only target window's compilation scope.
    s" tools/native-emit.f" AT
-   S\" \npackage BUILD-WRITER-TIER\npublic\n: CHECK ( -- ) HB-TARGET-LINUX-X86-64? if 1 else 0 then tier@ <> if s\" native edit: transient writer tier\" 76 die then ;\n;package\nBUILD-WRITER-TIER:CHECK\n"
+   S\" \npackage BUILD-WRITER-TIER\npublic\n: CHECK ( -- ) tier@ 0<> if s\" native edit: transient writer tier\" 76 die then ;\n;package\nBUILD-WRITER-TIER:CHECK\n"
       FS:APPEND-FILE
    false EARLY false MIDDLE false LATE
    s" base" s" cached/hb" s" cache" BUILD SUCCESS

@@ -228,11 +228,11 @@ variable PROBE-SOURCE-U
    S\" : SHOW ( -- ) LOOPS TEXT 5 TRIPLE . ANSWER . ;\n;package\n" SB-APPEND
    S\" tier@ . cr\n" SB-APPEND ;
 
-\ A restored image compiles at tier 0; x86-64 has tier 1 only. The same words
-\ at tier 1 are the reference the saved image must reproduce.
+\ A restored image compiles at tier 0. The same words at tier 1 are the
+\ reference the saved image must reproduce.
 : TIER-ZERO-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SB-APPEND then
+   S\" 0 set-tier\n" SB-APPEND
    s" TIER-ZERO-IMAGE" TIER-PACKAGE+
    S\" 1 set-tier\n" SB-APPEND
    s" TIER-ONE-IMAGE" TIER-PACKAGE+
@@ -240,7 +240,7 @@ variable PROBE-SOURCE-U
    SB$ ;
 
 : TIER-ZERO-TIERS$ ( -- ptr u8 n )
-   HB-TARGET-LINUX-X86-64? if S\" 1\n\n1\n\n" else S\" 0\n\n1\n\n" then ;
+   S\" 0\n\n1\n\n" ;
 
 : CHECK-TIER-ZERO ( -- )
    s" a restored image saves words it compiled at tier 0" T-LABEL

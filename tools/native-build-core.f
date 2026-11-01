@@ -945,11 +945,11 @@ TYPED-VARIABLE HELD-WRITER [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
       NDEF-CACHE:WITH-QUIET ;
 
 \ Runs after the capture freezes and RESTORE-HOST-DISPATCH, so the writer stays
-\ out of the capture and compiles with the host's compilers.
+\ out of the capture and loads at tier 0 with the host's compilers.
 variable WRITER-TIER
 : LOAD-SOURCE-WRITER ( -- )
    tier@ WRITER-TIER !
-   [: HB-TARGET-LINUX-X86-64? if 1 else 0 then set-tier READ-WRITER ;]
+   [: 0 set-tier READ-WRITER ;]
       [: WRITER-TIER @ set-tier ;] finally ;
 
 \ A caller-supplied writer (RUN-PATH-WRITER-RC) runs after the source writer
