@@ -1262,27 +1262,42 @@ variable CHK-EXP-ROWS
    CHK-DECL-FAIL
    nxt ;
 
-\ Package blocks replay verify-source RECORD-PACKAGE in the checker, which hears a part's
-\ composed path (CHECKER-RESOLVE:PART-PATH); a refusal stops the scan where the preverify does.
+\ Package and using words replay verify-source RECORD-PACKAGE, RECORD-USING and
+\ RECORD-END-USING in the checker, which hears a part's composed path
+\ (CHECKER-RESOLVE:PART-PATH); a refusal stops the scan where the preverify does.
 variable CHK-PKG-NAME-I
 
-\ The scan runs in the verifier window, whose overlay moves the engine's package scope;
-\ it replays no `using`.
+\ The scan runs in the verifier window, whose overlay moves the engine's package
+\ scope and using depth, so PART-GUARD sees a using the package opened.
 : CHK-PKG-OPEN ( -- )
    CHECKER-RESOLVE:PART-GUARD
    CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-RESOLVE:PART-PATH CHECKER-PACKAGE ;
 
+: CHK-USING-OPEN ( -- )
+   CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-USING-PUSH ;
+
+\ The index after a package word, or past the last token when it was refused.
+: CHK-PKG-NEXT ( n n -- n ) {: rc:n next:n :}
+   rc 0 <> IF LINT-LEX:COUNT EXIT THEN
+   next ;
+
 : CHK-PKG-REGISTER ( n -- n ) {: k:n :}   \ k at 'package'; next scan index
    k 1+ CHK-PKG-NAME-I !
-   [: CHK-PKG-OPEN ;] catch {: rc:n :}
-   rc 0 <> IF LINT-LEX:COUNT EXIT THEN
-   k 2 + ;
+   [: CHK-PKG-OPEN ;] catch k 2 + CHK-PKG-NEXT ;
+
+: CHK-USING-REGISTER ( n -- n ) {: k:n :}   \ k at 'using'; next scan index
+   k 1+ CHK-PKG-NAME-I !
+   [: CHK-USING-OPEN ;] catch k 2 + CHK-PKG-NEXT ;
 
 : CHK-PKG-STEP ( n -- n bool ) {: k:n :}   \ package-word dispatch: next index, handled
    k s" package" CHK-DEFINER? if k CHK-PKG-REGISTER LINT-TRUE exit then
    k s" public" CHK-TOK=CI if CHECKER-PUBLIC k 1+ LINT-TRUE exit then
    k s" private" CHK-TOK=CI if CHECKER-PRIVATE k 1+ LINT-TRUE exit then
    k s" ;package" CHK-TOK=CI if CHECKER-END-PACKAGE k 1+ LINT-TRUE exit then
+   k s" using" CHK-DEFINER? if k CHK-USING-REGISTER LINT-TRUE exit then
+   k s" ;using" CHK-TOK=CI if
+      [: CHECKER-USING-POP ;] catch k 1+ CHK-PKG-NEXT LINT-TRUE exit
+   then
    k LINT-FALSE ;
 
 : CHK-DEF-OPENER? ( n -- bool ) {: k:n :}

@@ -15,6 +15,8 @@
 \   a require of an absent PATH falls back to another file                absent-path
 \   a file required inside a package opens a part of it                   load-part
 \   a part's path too long for a row is refused by the name's bound       part-long
+\   a part opened under a using its package opened is refused otherwise
+\   than the preverify refuses it, by check.f's scan in its default mode   part-using
 \   an included child lowers the source using floor, then leaves an
 \   import visible after clean return                                     load-using-floor
 \   a dependency's packets are dropped, or name the subject               failing-dependency
@@ -589,6 +591,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" order-part-dep.f" s\" package CVT-PART-B\n;package\n" FIXTURE
    s" order-part.f" s\" package CVT-PART-A\nrequire order-part-dep.f\n;package\n" FIXTURE
    s" part-long.f" PART-LONG$SRC FIXTURE
+   s" part-using.f" s\" package X public : XW ( -- n ) 1 ; ;package package A using X package B deftype N deftype N ;package ;using ;package\n" FIXTURE
    s" order-floor-include.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\ninclude order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
    s" order-floor-require.f" s\" package CVT-FLOOR-BASE public\n: BASE-VALUE ( -- n ) 11 ;\n;package\npackage CVT-FLOOR-CHILD public\n: CHILD-VALUE ( -- n ) 29 ;\n;package\npackage CVT-FLOOR-PARENT\nusing CVT-FLOOR-BASE\nrequire order-floor-child.f\npackage CVT-FLOOR-AFTER public\n: AFTER-VALUE ( -- n ) CHILD-VALUE ;\n;package\n" FIXTURE
    s" order-double.f" s\" include order-dep.f\ninclude order-dep.f\n" FIXTURE
@@ -1460,6 +1463,24 @@ $180000 constant LARGE-STDIN-LEN
    s" part-long: on line 2" T-LABEL p s" line" NUMBER$ s" 2" T$=
    s" part-long: at the name" T-LABEL p s" column" NUMBER$ s" 9" T$=
    s" part-long: E-PKG-CONTEXT" T-LABEL p s" throw_code" NUMBER$ s" 7136" T$= ;
+
+\ check.f's scan replays `using` as the preverify does, so both modes stop at
+\ the part's `package` with E-PKG-CONTEXT (7136), not at its second DEFTYPE.
+: PART-USING ( -- )
+   s" part-using.f" AT$ {: path:ptr pathu:n :}
+   CLI-START path pathu ARG+
+   s" " CLI {: erru:n rc:n :}
+   s" part-using: ordinary refuses it" T-LABEL rc 70 T=
+   s" part-using: ordinary stops at the part" T-LABEL
+   0 ERR erru s" :1:63: throw 7136 at 'package'" CONTAINS? TTRUE
+   s" part-using: ordinary registers no type in the part" T-LABEL
+   0 ERR erru s" bad nominal type" CONTAINS? TFALSE
+   CLI-START s" --verify-only" ARG+ path pathu ARG+
+   s" " CLI {: erru2:n rc2:n :}
+   s" part-using: verify-only refuses it" T-LABEL rc2 70 T=
+   0 ERR erru2 s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   s" part-using: verify-only at the part's package" T-LABEL p s" column" NUMBER$ s" 63" T$=
+   s" part-using: verify-only E-PKG-CONTEXT" T-LABEL p s" throw_code" NUMBER$ s" 7136" T$= ;
 
 : LOAD-USING-FLOOR ( -- )
    s" order-floor-include.f" AT$ {: path:ptr pathu:n :}
@@ -4970,6 +4991,7 @@ public
    s" load-package" [: LOAD-PACKAGE ;] RUN-CASE
    s" load-part" [: LOAD-PART ;] RUN-CASE
    s" part-long" [: PART-LONG ;] RUN-CASE
+   s" part-using" [: PART-USING ;] RUN-CASE
    s" load-using-floor" [: LOAD-USING-FLOOR ;] RUN-CASE
    s" load-repeat" [: LOAD-REPEAT ;] RUN-CASE
    s" load-parsing" [: LOAD-PARSING ;] RUN-CASE
