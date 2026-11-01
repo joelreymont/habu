@@ -66,7 +66,13 @@ entry.
   stays for embeddings; its chat is built when a client needs it). Asked
   whether usage counts take the protocol's input_tokens and output_tokens
   names, Joel chose "Rename, one cutover": record keys, MODEL's words and
-  the Tender and Zen readers together.
+  the Tender and Zen readers together. Asked how a test should see a call
+  waiting between polls, Joel answered "is polling the best way for the long
+  term? are there better alternatives, e.g. websockets?" Shown that OpenAI
+  streams a background response's events over the connection that starts it
+  and resumes the stream after a drop, that its WebSocket mode is for agent
+  loops of short turns and takes no background mode, and that webhooks need a
+  public URL, Joel chose "Stream it": no polling.
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself
