@@ -99,7 +99,19 @@ entry.
   counter and slot hook into the core for it, he asked "why in the world do you
   need TASK-LOCAL when you have TASK:+USER?": Maki's per-task typed pointer
   already runs on `TASK:+USER` with one private cast (maki
-  src/project-ops.f:176-182), so TASK-LOCAL is dropped.
+  src/project-ops.f:176-182), so TASK-LOCAL is dropped. That cast was then
+  refused (E-CAST-OWNER), which raised the next entry.
+- 2026-10-31, casts naming another package's type: asked about the cast check
+  that refused Maki's per-task pointer, Joel answered "fix the cause not the
+  symptom! what the hell is the anti-forgery check? prove that we need it! why
+  in the world can you not hold another package's cursor?" On 2026-11-01, via
+  phil: "use your best judgement. pick what's best for the long term. tell
+  everyone the same". Fable and Astra each showed the check guards nothing: a
+  package rewrites a real JR:cursor or NEWTYPE cell through an admitted
+  reverse cast or a raw pointer and c! (/tmp/carl-cast/p1.f, p4.f), and it
+  refused only honest code (Maki, Zen). The lead chose to drop the question: a
+  private cast may name another package's type, E-CAST-MINT stays, and
+  E-CAST-OWNER names only arena heads.
 - 2026-10-31, cast errors: asked whether lane casterr may make
   CAST-ERROR:START, TOKEN!, FAMILY!, RAISE and SKIP and
   LOWER-CERT-HOOK:LINE-AT public, because checker words outside those
