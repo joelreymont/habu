@@ -1005,7 +1005,7 @@ variable MDV-I   variable MDV-F
    k RF-DEAD = IF s" remove_dead_code" EXIT THEN
    k RF-NP = IF s" fix_parametric_effect" EXIT THEN
    k RF-CAP = IF s" trusted_boundary_required" EXIT THEN
-   k RF-UNSAFE = IF s" trusted_boundary_required" EXIT THEN
+   k RF-UNSAFE = IF s" remove_unsafe_word" EXIT THEN
    k RF-LINLOCAL = IF s" factor_linear_local" EXIT THEN
    k RF-REASON = IF MDIAG-CLASS$ EXIT THEN
    k RF-UNCHECKABLE = IF s" rewrite_uncheckable" EXIT THEN
@@ -1058,7 +1058,7 @@ variable MDV-I   variable MDV-F
    k RF-DEAD = IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
    k RF-NP = IF NP-SUGGEST$ EXIT THEN
    k RF-CAP = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
-   k RF-UNSAFE = IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   k RF-UNSAFE = IF s" Remove it from the checked body; to evaluate text there, use evaluate-closed." EXIT THEN
    k RF-LINLOCAL = IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
    k RF-REASON = IF MDIAG-SUGGEST$ EXIT THEN
    k RF-UNCHECKABLE = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
@@ -1194,9 +1194,16 @@ variable JLOC-L  variable JLOC-C  variable JLOC-B  variable JLOC-E
    k RF-SIG = IF SGBAD-PROSE EXIT THEN
    k RF-NP = IF NP-PROSE EXIT THEN
    k RF-CAP = IF
-     s" E-CAP-TRUSTED " DTXT  DSITE
+     DCODE DTXT  s"  " DTXT  DSITE
      s" '" DTXT  FAILTK FAILTU @ DTXT
      s" ' is a trust-boundary primitive; call it only from a TRUSTED: definition" DTXT EXIT
+   THEN
+   k RF-UNSAFE = IF
+     DCODE DTXT  s"  " DTXT  DSITE
+     s" '" DTXT  FAILTK FAILTU @ DTXT
+     s" ' reads source or changes the compiler's or checker's state, which no stack" DTXT
+     s"  effect describes, so a checked body cannot use it; to evaluate text there," DTXT
+     s"  use evaluate-closed" DTXT EXIT
    THEN
    k RF-LOCAL = IF LOCALBAD-PROSE EXIT THEN
    k RF-QUAL = IF

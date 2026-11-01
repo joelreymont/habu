@@ -17106,7 +17106,6 @@ variable CURSYM
    a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust-decl" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust-raw" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ptx-barrier!" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -21613,11 +21612,8 @@ variable RTL-I                        \ retired-token local scan index
    TOK-SYM @ dup 0= IF drop RES-TRUE EXIT THEN
    a u CHECKER-GLOBAL-SYM? = ;
 
-\ A retired token is reported as undefined, not as an unsafe boundary: UNSAFE's
-\ repair advice ("move it behind audited TRUST") is wrong for a word gone for
-\ good, whose caller must move to the owning package API. Latching UNDEFERR
-\ reuses E-UNDEFINED, so the checker and the interpreter name the same failure;
-\ RETIRED forces verdict 0 in CHECK-VERDICT.
+\ A retired token is E-UNDEFINED, as the interpreter names it, not E-UNSAFE: its
+\ caller moves to the owning package's API. CHECK-VERDICT reads RETIRED as 0.
 : REJECT-RETIRED ( -- )
    -1 RETIRED !  -1 UNDEFERR !  RF-UNDEF CREFUSE!  0 OK !  -1 FAILSET ! ;
 
@@ -22447,7 +22443,7 @@ variable IS-PEND-U                   \ and its length
 : BTICK-TOK ( -- )                       \ [ '] W : consume W, push a known or opaque xt
    IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    -1 CRTGT !                              \ the load's tick refuses its target while compiling
-   TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE EXIT THEN
+   TKF TKFU @ UNSAFE-TOK? IF TICK-PIN REJECT-UNSAFE EXIT THEN
    IS-TARGET-SYM  WALK-REC @  {: sym:n rec:n :}
    CHECKER-TAPE:K-TICK  BIND-REC @ CHECKER-RESOLVE:REC>INDEX  0 EVENT!
    sym SCOPE-AUTH-SYM? IF 0 OK ! -1 FAILSET ! EXIT THEN

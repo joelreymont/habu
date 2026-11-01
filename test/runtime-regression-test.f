@@ -1736,7 +1736,7 @@ create GE-END-AT 16 allot
       GE-LOC-FIXTURE
    GE-LOC-LOAD
    SB-RESET
-   S\" habu: in geendmac: at 'evaluate'\nE-UNMODELED-IMMEDIATE habu: in geenduse: compile-time immediate 'GEENDMAC' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile GEENDUSE at GEENDMAC in "
+   S\" E-UNSAFE habu: in geendmac: 'evaluate' reads source or changes the compiler's or checker's state, which no stack effect describes, so a checked body cannot use it; to evaluate text there, use evaluate-closed\nE-UNMODELED-IMMEDIATE habu: in geenduse: compile-time immediate 'GEENDMAC' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile GEENDUSE at GEENDMAC in "
       SB-APPEND
    GE-SCRIPT-PATH GE-SCRIPT-U @ SB-APPEND
    s" :3" SB-APPEND GE-SB-LF

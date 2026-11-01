@@ -737,7 +737,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" code" s" E-UNSAFE" s" unsafe checker E-UNSAFE" ERR-JSTR
    s" token" s" evaluate" s" unsafe checker token" ERR-JSTR
    s" habu-unsafe.err" s" unsafe diagnostic contract" DIAG-CONTRACT
-   s" diag-repair-class" s" habu-unsafe.err" s" trusted_boundary_required" s" unsafe repair class" GJA2S
+   s" diag-repair-class" s" habu-unsafe.err" s" remove_unsafe_word" s" unsafe repair class" GJA2S
    GE-HB-RESET
    GE-SRC-RESET
    s" : PF ( -- ) 0 set-preflight ;" GE-SRC-LINE

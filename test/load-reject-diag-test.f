@@ -484,6 +484,24 @@ LOWER-CERT-HOOK:INSTALL
    s" E-CAST-ARITY habu: " ASSERT-NAMED
    ERR$ s" :1: cast: 'LRD-WIDE': the output is not one term over the stack below" CONTAINS? TTRUE ;
 
+\ A checked body that calls a word acting on source or checker state is refused
+\ E-UNSAFE, naming the word and why; the compiler's line names the file and line.
+: UNSAFE-REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n head:ptr headu:n line:ptr lineu:n :}
+   BODY$ src srcu FS:WRITE-ALL
+   BODY$ RUN
+   head headu ASSERT-NAMED
+   ERR$ s" ' reads source or changes the compiler's or checker's state, which no stack effect describes, so a checked body cannot use it; to evaluate text there, use evaluate-closed" CONTAINS? TTRUE
+   ERR$ line lineu CONTAINS? TTRUE ;
+
+: TEST-UNSAFE ( -- )
+   s" a checked body calling evaluate names E-UNSAFE and why" T-LABEL
+   s" : LRD-EV ( ptr u8 n -- ) evaluate ;"
+   s" E-UNSAFE habu: in lrd-ev: 'evaluate' reads source" s" body.f:1" UNSAFE-REJECT
+   s" a checked body calling set-check names E-UNSAFE and why" T-LABEL
+   S\" \n: LRD-SC ( n -- ) set-check ;"
+   s" E-UNSAFE habu: in lrd-sc: 'set-check' reads source" s" body.f:2" UNSAFE-REJECT ;
+
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
    OUTER$ RUN
@@ -609,6 +627,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-STORAGE
    TEST-MISSING-SIGNATURE
    TEST-CAST
+   TEST-UNSAFE
    TEST-REQUIRE-CHAIN
    TEST-RESIDUE
    TEST-IMM-INCLUDE

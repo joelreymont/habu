@@ -551,9 +551,9 @@ create EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 : DEFER-CASES ( -- )
-   s" ['] <unsafe> is X rejects at the unsafe tick" T-LABEL
+   s" ['] <unsafe> is X rejects naming the ticked word" T-LABEL
    DEFER-TICK-FORGE$ RUN-SUBJECT
-   s" at '[']'" ASSERT-DIAG
+   s" E-UNSAFE habu: in iwg-dset: 'deflinear' reads source" ASSERT-DIAG
    s" [: <unsafe> ;] is X (quotation laundering) rejects at 'deflinear'" T-LABEL
    DEFER-QUOT-FORGE$ RUN-SUBJECT
    s" at 'deflinear'" ASSERT-DIAG ;
@@ -1295,12 +1295,12 @@ create QNAME QNAME-CAP allot
    ERR$ s\" \"code\":\"E-INPUT-UNDERFLOW\"" CONTAINS? TTRUE
    ERR$ s\" \"token\":\"drop\"" CONTAINS? TTRUE
    ERR$ s\" \"byte_start\":15,\"byte_end\":19" CONTAINS? TTRUE
-   s" a standalone unsafe tick keeps its own refusal and tick span" T-LABEL
+   s" a standalone unsafe tick keeps its own refusal and the ticked word's span" T-LABEL
    GATE-UNSAFE-TICK$ RUN-CHECK
    EXITED @ TTRUE  RC @ REJECT-RC T=
    ERR$ s\" \"code\":\"E-UNSAFE\"" CONTAINS? TTRUE
-   ERR$ s\" \"token\":\"[']\"" CONTAINS? TTRUE
-   ERR$ s\" \"byte_start\":15,\"byte_end\":18" CONTAINS? TTRUE
+   ERR$ s\" \"token\":\"evaluate\"" CONTAINS? TTRUE
+   ERR$ s\" \"byte_start\":19,\"byte_end\":27" CONTAINS? TTRUE
    s" a later set-check tick keeps the first underflow reason" T-LABEL
    GATE-SET-CHECK-FIRST-FAIL$ RUN-SUBJECT
    s" habu: in iwgusf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
