@@ -1,9 +1,11 @@
 ---
 title: "Read a package's parts in lints and the strip"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-01T02:50:52.161198+02:00"
+closed-at: "2026-11-01T08:06:42.038165+02:00"
+close-reason: Landed on master with lane pkg (kosozvsv..zuxxwxzu 89e23aed on c4b03f26). Candidate build rc 0; full suite on it rc 0, 514 of 514 suites, native tests PASS (/tmp/jerry-big/pkg-suite.log); generation chain rc 0, gen 5 the same image as gen 4 (/tmp/jerry-big/pkg-chain.log).
 ---
 
 Lane pkg2b (L2 of the nested-package design): shadow-lint, word docs and source discovery track a part and its parent; KEEP? and ACAP-PRIVATE? treat a part's public section as its parent's private one. Brief /tmp/jerry-big/pkg2b-brief.md. Workspace .jj-ws.noindex/jerry-pkg2b on rnqmvxss (worker). Claim: jerry.

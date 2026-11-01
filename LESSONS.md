@@ -154,7 +154,13 @@ entry.
   to decide. do what's best for long term". The lead chose COMP for compiling
   (front end, IR, T0 and every architecture's back end as parts, so each
   engine compiles itself through COMP) and XCOMP for building an image for a
-  target. Joel chose "One level" of nesting: a part holds no parts.
+  target. Joel chose "One level" of nesting: a part holds no parts. The lead
+  added a refusal the design did not list: `package` opens a part only in the
+  file or evaluated string its package is open in, and elsewhere stays
+  `package at <loc>`, rc 75, as `;using` refuses to close a using opened
+  outside its buffer. Without it a library file required inside package APP
+  that opens its own `package LIBF` became the part APP:LIBF, the require
+  registry then skipped it at top level, and `LIBF:FW` was E-UNDEFINED.
 - 2026-10-31, a part's head resolver: inside package A, `: B:Q … ;` defines
   into part A:B, but the native compiler's name check found only top-level
   packages and the Habu loop's resolver was private to OUTER. Asked whether

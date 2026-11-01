@@ -1,9 +1,11 @@
 ---
 title: "Read a package's parts in the source verifier"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-01T02:50:52.149230+02:00"
+closed-at: "2026-11-01T08:07:04.095368+02:00"
+close-reason: Landed on master with lane pkg (wxtxvowl 03f00873 in the stack kosozvsv..zuxxwxzu 89e23aed on c4b03f26). Candidate build rc 0; full suite on it rc 0, 514 of 514 suites, native tests PASS (/tmp/jerry-big/pkg-suite.log); generation chain rc 0, gen 5 the same image as gen 4 (/tmp/jerry-big/pkg-chain.log).
 ---
 
 Lane pkg2a (L2 of the nested-package design): the verifier replay, its file scan and tools/check.f open, close and resolve a part as both loops do (RECORD-PACKAGE path, FILE-SCOPE-STEP depth, seal checks through CHECKER-RESOLVE:HEAD-ROW, CHK-PKG-OPEN, --verify-only buffer rule, neutral-scope reopen of an engine-held part). Brief /tmp/jerry-big/pkg2a-brief.md. Workspace .jj-ws.noindex/jerry-pkg2a on rnqmvxss (worker). Claim: jerry.
