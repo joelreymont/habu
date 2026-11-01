@@ -1140,14 +1140,14 @@
 \ The HTTP/1.1 server (package HTTP, src/lib/net/http.f): -9340..-9349.
 -9340 constant E-HTTP-FIRST
 -9349 constant E-HTTP-LAST
--9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, BEARER:ISSUER!, BEARER:METADATA! or TEST-ISSUER:CLIENT+ while serving, BEARER:ADMIT? before ISSUER!, or BEARER:TOKEN before CLIENT!
+-9340 constant E-HTTP-STATE       \ START on a running server, STOP on a stopped one, a hook installed while one runs, a second STATIC-ROOT, a TAKE-OVER outside a running handler or a second one inside it, a BODY$ or BODY-READER outside its running handler or after its TAKE-OVER, BEARER:ISSUER!, BEARER:METADATA! or TEST-ISSUER:CLIENT+ while serving, BEARER:ADMIT? before ISSUER!, or BEARER:TOKEN before CLIENT!
 -9341 constant E-HTTP-HANDLE      \ a request or response handle past its request, or one over another worker's slot, or a slot asked by a task that is no worker
 -9342 constant E-HTTP-WORKERS     \ a worker count outside 1..MAX-WORKERS, or an idle deadline under 1 ms
 -9343 constant E-HTTP-CAPACITY    \ more hooks, headers or bound segments than a table holds, or a negative body length
 -9344 constant E-HTTP-ROUTE       \ more routes than the table holds, or an empty method or a pattern not starting with /
 -9345 constant E-HTTP-STATIC      \ a bad or non-directory static root, a URL wider than PATH-CAP, or a directory cycle
 -9346 constant E-HTTP-SOCKET      \ the listener could not be bound, put to listen or asked its own address
-\ -9347 unassigned: a response grows instead of refusing.
+-9347 constant E-HTTP-BODY-READ   \ a handler's body read that did not complete; the server answers it with the read's refusal, never as a fault
 
 \ Base64 (package BASE64): -9350..-9359.
 -9350 constant E-BASE64-FIRST

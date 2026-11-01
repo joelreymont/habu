@@ -55,6 +55,8 @@ package HTTP
 \ deadline until a read finds it passed, then the bytes the request may still read.
 : HTTP-TEST:LATE-UNTAKEN? ( -- bool ) 0 LATE-LEFT@ UNTAKEN = ;
 : HTTP-TEST:READING-LATE? ( -- bool ) 0 LATE-LEFT@ 0 > ;
+\ The body bytes the first worker has taken into its slot.
+: HTTP-TEST:BODY-TAKEN ( -- n ) 0 BODY-U@ ;
 ;package
 
 \ Holding the facility AIO's loop task takes to deliver a completion stalls every
@@ -334,6 +336,69 @@ variable ECHO-HITS
    answer [: BOOM-BODY ;] HTTP:JSON! ;
 
 
+\ Refuses from a header alone, never asking for the body: the guard
+\ BEARER:ADMIT? puts in front of a handler that reads one.
+: ADMIT ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   asked s" authorization" HTTP:HEADER-COUNT-OF 0 > if asked answer ECHO exit then
+   answer 401 HTTP:STATUS! ;
+
+
+\ The body read's throw, caught: the request travels to the quotation through
+\ SWALLOW-REQUEST because a quotation cannot read a local.
+1 TYPED-BUFFER SWALLOW-REQUEST HTTP:request
+variable SWALLOWED
+
+: SWALLOW-READ ( -- )
+   0 SWALLOW-REQUEST @ HTTP:BODY$ 2drop ;
+
+
+\ Swallows a failed body read and answers 200 anyway.
+: SWALLOW ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   asked 0 SWALLOW-REQUEST !
+   [: SWALLOW-READ ;] catch SWALLOWED !
+   answer 200 HTTP:STATUS!
+   answer [: PING-BODY ;] HTTP:JSON! ;
+
+
+\ BODY$ asked by a task the handler spawns and joins while the request is live,
+\ then by the handler after its own TAKE-OVER; the request travels to both
+\ through PROBE-REQUEST. The handler answers 204 on the connection it took.
+variable FOREIGN-CODE             \ what BODY$ threw on the spawned task
+variable TAKEN-CODE               \ what BODY$ threw after TAKE-OVER
+1 TYPED-BUFFER PROBE-REQUEST HTTP:request
+TASK:MIN-STACK TASK:TASK PROBE-TASK
+
+: PROBE-READ ( -- )
+   0 PROBE-REQUEST @ HTTP:BODY$ 2drop ;
+
+: FOREIGN-READ ( -- )
+   [: PROBE-READ ;] catch TASK:RETURN ;
+
+
+: BODY-PROBE ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   asked 0 PROBE-REQUEST !
+   [: FOREIGN-READ ;] PROBE-TASK TASK:ACTIVATE
+   PROBE-TASK TASK:JOIN
+   MATCH result
+      ok OF FOREIGN-CODE ! ENDOF
+      err OF throw ENDOF
+   ;MATCH
+   asked HTTP:TAKE-OVER 2drop {: conn:TCP4:connection :}
+   [: PROBE-READ ;] catch TAKEN-CODE !
+   conn 204 s" application/json" s" " HTTP:REPLY drop ;
+
+
+\ Waits longer than the body timeout BODY-TIMEOUT-CASES sets before asking for
+\ its body, raising LATE-ENTERED as it starts.
+$514 constant LATE-READ-MS        \ that timeout, 1000 ms, and a margin of 300
+variable LATE-ENTERED
+
+: LATE-READ ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   1 LATE-ENTERED !
+   LATE-READ-MS >MS TASK:SLEEP
+   asked answer ECHO ;
+
+
 \ Past 1 MiB: the writer's storage grows with the body.
 $101000 constant BIG-VALUE-BYTES
 create BIG-VALUE BIG-VALUE-BYTES allot
@@ -435,9 +500,13 @@ HTTP:MAX-WORKERS TYPED-BUFFER ERR-MESSAGE-N n
 
 \ An error hook that starts its answer and throws before finishing it. The
 \ worker catches the throw itself: the client is answered in plain text with
-\ the status it was owed and nothing of the header this hook added.
+\ the status it was owed and nothing of the header this hook added. RENDERS
+\ counts its runs.
+variable RENDERS
+
 : RENDER-THROWS ( HTTP:response n ptr u8 n ptr u8 n -- )
    {: answer:HTTP:response status:n code:ptr codelen:n message:ptr messagelen:n :}
+   1 RENDERS atomic-add drop
    answer s" X-Hook" s" partial" HTTP:HEADER!
    E-RENDER throw ;
 
@@ -597,6 +666,10 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" POST" s" /api/tiny" 3 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/tiny" 8 [: ECHO ;] HTTP:ROUTE-CAPPED
    s" POST" s" /api/empty" 0 [: ECHO ;] HTTP:ROUTE-CAPPED
+   s" POST" s" /api/admit" [: ADMIT ;] HTTP:ROUTE
+   s" POST" s" /api/swallow" 3 [: SWALLOW ;] HTTP:ROUTE-CAPPED
+   s" POST" s" /api/body-probe" [: BODY-PROBE ;] HTTP:ROUTE
+   s" POST" s" /api/late-read" [: LATE-READ ;] HTTP:ROUTE
    s" POST" s" /api/large-echo" [: LARGE-ECHO ;] HTTP:ROUTE
    s" GET" s" /api/serving-keep" [: SERVING-KEEP ;] HTTP:ROUTE
    s" GET" s" /api/serving-check" [: SERVING-CHECK ;] HTTP:ROUTE
@@ -1515,6 +1588,54 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    ;MATCH ;
 
 
+\ A handler that refuses from a header is answered at once, with Connection:
+\ close, however large a body the head declares: nothing waits for the bytes
+\ the peer never sends. A body its handler reads in full keeps the connection.
+: UNREAD-BODY-CASE ( -- )
+   mono-ns {: began:n :}
+   RAW-OPEN {: conn:TCP4:connection :}
+   conn s\" POST /api/admit HTTP/1.1\r\nHost: x\r\nContent-Length: 1000000\r\n\r\n" RAW-SEND
+   conn S\" \r\n\r\n" RAW-COLLECT TTRUE
+   mono-ns began - IDLE-MS NS-PER-MS * < TTRUE
+   s" HTTP/1.1 401" BEGINS? TTRUE
+   s" Connection: close" HAS? TTRUE
+   conn CLOSED-WITHIN? TTRUE
+   conn TCP4:CLOSE DROP-TCP-STATUS
+   s" GET" s" /api/ping" FETCH 200 T=
+   REQ-RESET
+   s\" POST /api/admit HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer t\r\nContent-Length: 2\r\n\r\nok" REQ+
+   s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" REQ+
+   REQ$ RAW-EXCHANGE
+   RESPONSES 2 T=
+   s" Connection: keep-alive" HAS? TTRUE ;
+
+
+\ A handler that catches its body read's throw still answers that read's
+\ refusal, not the 200 it set after the catch.
+: SWALLOW-CASE ( -- )
+   0 SWALLOWED !
+   REQ-RESET
+   s\" POST /api/swallow HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n" REQ+
+   s\" 4\r\nabcd\r\n0\r\n\r\n" REQ+
+   REQ$ RAW-EXCHANGE
+   s" HTTP/1.1 413" BEGINS? TTRUE
+   s" body_too_large: " HAS? TTRUE
+   S\" {\qservice\q" HAS? TFALSE
+   SWALLOWED @ 0 <> TTRUE ;
+
+
+\ BODY$ is the handler's own: a task it spawns gets E-HANDLE while the request
+\ is live, and the handler itself gets E-STATE once it has taken the connection.
+\ The body is sent whole, so a missing refusal would read it.
+: BODY-PROBE-CASE ( -- )
+   0 FOREIGN-CODE !
+   0 TAKEN-CODE !
+   s\" POST /api/body-probe HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\nok" RAW-ONE
+   s" HTTP/1.1 204" BEGINS? TTRUE
+   FOREIGN-CODE @ HTTP:E-HANDLE T=
+   TAKEN-CODE @ HTTP:E-STATE T= ;
+
+
 \ Waits until the worker is inside the parked handler before stopping it; past
 \ COLLECT-MS the wait names itself and throws E-PROC-TIMEOUT.
 : PARK-AWAIT ( -- )
@@ -1654,8 +1775,9 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    TRACE-RESET ;
 
 
-\ Headers and idle keep-alive use START's short deadline. Once a valid head
-\ arrives, a configured body gets one longer deadline; progress cannot renew it.
+\ Headers and idle keep-alive use START's short deadline. A configured body
+\ gets one longer deadline from its handler's first BODY$, however long the
+\ handler waited before asking; progress cannot renew it.
 : BODY-TIMEOUT-CASES ( -- )
    s" default body deadline" T-LABEL
    0 ECHO-HITS atomic!
@@ -1698,6 +1820,24 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    slow RAW-AWAIT
    slow TCP4:CLOSE DROP-TCP-STATUS
    ECHO-HITS atomic@ 1 T=
+   s" body deadline starts at BODY$" T-LABEL
+   \ The body's first byte waits in the socket until the handler asks, 1300 ms
+   \ after the head, past a deadline counted from the head; the second comes
+   \ only after the read took the first, so it is never inside a budget fixed
+   \ from the head.
+   0 LATE-ENTERED !
+   RAW-OPEN {: late:TCP4:connection :}
+   late s\" POST /api/late-read HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\nConnection: close\r\n\r\n" RAW-SEND
+   [: LATE-ENTERED @ 0<> ;]
+   mono-ns COLLECT-MS NS-PER-MS * + s" http-test LATE-ENTERED" TEST-WAIT:POLL
+   late s" o" RAW-SEND
+   [: HTTP-TEST:BODY-TAKEN 0 > ;]
+   mono-ns LATE-READ-MS COLLECT-MS + NS-PER-MS * + s" http-test BODY-TAKEN" TEST-WAIT:POLL
+   late s" k" RAW-SEND
+   late RAW-DRAIN
+   late TCP4:CLOSE DROP-TCP-STATUS
+   s" HTTP/1.1 200 OK" BEGINS? TTRUE
+   S\" {\qbytes\q:2}" HAS? TTRUE
    s" idle client releases worker" T-LABEL
    s" GET" s" /api/ping" FETCH 200 T=
    RAW-OPEN {: idle:TCP4:connection :}
@@ -2296,6 +2436,9 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    s" HTTP/1.1 500 Internal Server Error" BEGINS? TTRUE
    s\" GET /api/ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n"
    S\" {\qservice\q:\qhttp-test\q}" RAW-ASK TTRUE
+   s\" POST /api/tiny HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n4\r\nabcd\r\n0\r\n\r\n"
+   s" error_hook: the error hook did not finish this answer (request r0-4)" RAW-ASK TTRUE
+   s" HTTP/1.1 413" BEGINS? TTRUE
    HTTP:STOP ;
 
 
@@ -2303,10 +2446,12 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
 \ its client the rendered answer and nothing more: each is answered with the
 \ plain-text fallback and the status it was owed, the one worker serves the
 \ next request, every task ends itself, and stderr names each failure under the
-\ id its client was given. The trace rows the inherited hooks mark are emptied
-\ first.
+\ id its client was given. A handler that lets its failed body read's throw out
+\ is that read's refusal alone: the hook runs once for it and no fault is
+\ logged. The trace rows the inherited hooks mark are emptied first.
 : ERROR-HOOK-CASE ( -- )
    TRACE-RESET
+   0 RENDERS !
    [: RENDER-THROWS ;] HTTP:ON-ERROR
    ERR-PATH-MAKE
    ERR-PATH$ STDERR:CAPTURE
@@ -2317,7 +2462,10 @@ TASK:MIN-STACK TASK:TASK FLOOD-TASK
    READ-STDERR
    ERR$ s\"  error http: request r0-1 failed, throw -9992\n" CONTAINS? TTRUE
    ERR$ s\"  error http: request r0-2 failed, throw -9990\n" CONTAINS? TTRUE
-   ERR$ s\"  error http: request r0-2 failed, throw -9992\n" CONTAINS? TTRUE ;
+   ERR$ s\"  error http: request r0-2 failed, throw -9992\n" CONTAINS? TTRUE
+   ERR$ s\"  error http: request r0-4 failed, throw -9992\n" CONTAINS? TTRUE
+   ERR$ s" failed, throw -9347" CONTAINS? TFALSE
+   RENDERS @ 3 T= ;
 
 
 $C0000201 constant TEST-NET-1     \ 192.0.2.1, reserved for documentation: no host holds it
@@ -2792,6 +2940,9 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    LONG-SEGMENT-BODY-CASE
    CODING-CASE
    CHUNKED-CASE
+   UNREAD-BODY-CASE
+   SWALLOW-CASE
+   BODY-PROBE-CASE
    KEEP-ALIVE-CASE
    CLOSE-CASE
    HEAD-CASE

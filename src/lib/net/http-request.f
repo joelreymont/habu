@@ -1,9 +1,11 @@
 \ http-request.f - one HTTP/1.1 request read off a connection into a worker's
 \ slot. Every span the parser records addresses the slot's own input buffer and
 \ lives until the worker starts the next request.
-\ Limits are answered, not thrown: a head past HEAD-CAP is 431, a body past the
-\ route or server cap is 413, a transfer coding other than chunked is 501, and
-\ anything the grammar refuses is 400. Deadlines and the late budget: FILL.
+\ The head is read before the handler runs; the body only when the handler
+\ first asks for it (BODY$). Limits are answered, not thrown: a head past
+\ HEAD-CAP is 431, a body past the route or server cap is 413, a transfer coding
+\ other than chunked is 501, and anything the grammar refuses is 400. Deadlines
+\ and the late budget: FILL.
 require src/lib/net/http-arena.f
 require src/lib/string.f
 require src/lib/adt/option.f
@@ -194,8 +196,9 @@ private
    ;MATCH ;
 
 \ One transfer into the slot's window; the caller proves there is room for it.
-\ HTTP's START deadline bounds each head; a configured body timeout starts after
-\ a valid head, otherwise that same deadline also bounds the body.
+\ HTTP's START deadline bounds each head; a configured body timeout starts at
+\ the handler's first BODY$ or BODY-READER, otherwise that same deadline also
+\ bounds the body.
 \ Past a deadline WAIT-READABLE asks once without waiting, and the first fill to
 \ find it passed takes the bytes then queued as the late budget against that
 \ deadline: every later fill reads at most what is left of it, however late it
@@ -766,19 +769,34 @@ private
    va vu TRIM s" chunked" STR=CI ;
 
 
-: READ-BODY ( TCP4:connection n n n -- parse-result )
-   {: conn:TCP4:connection idx:n deadline:n cap:n :}
+\ The body framing the head declares, refused from the headers alone before
+\ any handler runs (RFC 9112 6.3): both framings at once or a malformed length
+\ is 400, a coding other than chunked 501, a length over the cap 413.
+: CHECK-BODY ( n n -- parse-result ) {: idx:n cap:n :}
    idx s" transfer-encoding" HEADER$ {: tea:ptr teu:n coded:bool :}
    idx CONTENT-LENGTH {: declared:n :}
    coded declared -1 <> and if BAD exit then
    coded if
       idx CHUNKED? 0= if NOT-SUPPORTED exit then
-      conn idx deadline cap READ-CHUNKED exit
+      OK exit
    then
    declared -2 = if BAD exit then
-   declared -1 = if OK exit then
    declared cap > if TOO-MUCH-BODY exit then
-   conn idx declared deadline PUMP-BODY ;
+   OK ;
+
+
+\ A head CHECK-BODY passed declares a body when it is chunked or its length is
+\ above 0.
+: BODY-DECLARED? ( n -- bool ) {: idx:n :}
+   idx CHUNKED? idx CONTENT-LENGTH 0 > or ;
+
+
+\ The body a head CHECK-BODY passed declares; the chunk sizes, known only while
+\ reading, are held to the cap here.
+: READ-BODY ( TCP4:connection n n n -- parse-result )
+   {: conn:TCP4:connection idx:n deadline:n cap:n :}
+   idx CHUNKED? if conn idx deadline cap READ-CHUNKED exit then
+   conn idx idx CONTENT-LENGTH deadline PUMP-BODY ;
 
 
 : READ-HEAD ( TCP4:connection n n -- parse-result )
@@ -805,6 +823,85 @@ private
    again ;
 
 
+\ A handler that goes on in another protocol on its request's connection - a
+\ WebSocket upgrade, src/lib/net/ws.f - takes the connection with TAKE-OVER. The
+\ connection is on offer only while that handler runs; once taken, the worker
+\ answers nothing on it and leaves it to the taker.
+0 constant KEPT                   \ the worker's own, as between handlers
+1 constant OFFERED                \ a handler is running and may take it
+2 constant TAKEN                  \ the handler took it for good
+
+MAX-WORKERS TYPED-BUFFER HOLDER n
+
+
+\ The connection each worker is serving, live from SERVE-CONNECTION's entry
+\ until its close or until a handler takes it (TAKE-OVER): what TAKE-OVER
+\ hands that handler, what a handler's body read reads from, and what the
+\ worker's exit closes when a stop killed it before that close
+\ (RUN-EXIT-HOOKS).
+MAX-WORKERS TYPED-BUFFER SERVING TCP4:connection
+MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
+
+
+\ How the request's read ended: its head's when READ-REQUEST returns, then its
+\ body's once its handler has asked for that.
+MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
+
+\ How far the request's body has been read: none of it, a read begun that did
+\ not complete, or all of it. A request that declares no body starts whole.
+0 constant UNREAD
+1 constant READING
+2 constant WHOLE
+
+MAX-WORKERS TYPED-BUFFER BODY-STATE n
+MAX-WORKERS TYPED-BUFFER BODY-BOUND n         \ the selected route's body cap
+MAX-WORKERS TYPED-BUFFER REQUEST-DEADLINE n
+
+\ The throw that ends a handler whose body read did not complete. The server
+\ answers it from READ-RESULT, never as a fault.
+E-HTTP-BODY-READ constant E-BODY-READ
+
+
+\ What the body read needs once the handler asks: the request's deadline and
+\ the selected route's cap.
+: BODY-AWAIT ( n n n -- ) {: idx:n deadline:n cap:n :}
+   deadline idx REQUEST-DEADLINE !
+   cap idx BODY-BOUND !
+   idx BODY-DECLARED? if UNREAD else WHOLE then idx BODY-STATE ! ;
+
+
+: BODY-REFUSED? ( n -- bool )
+   READ-RESULT @ COMPLETE? 0= ;
+
+
+: BODY-UNREAD? ( n -- bool )
+   BODY-STATE @ WHOLE <> ;
+
+
+\ With BODY-TIMEOUT-MS 0 the body shares the request's deadline; a positive
+\ value starts a fresh one now, as its read begins.
+: BODY-DEADLINE ( n -- n ) {: idx:n :}
+   BODY-TIMEOUT-MS @ {: ms:n :}
+   ms 0 > if idx ms READ-DEADLINE exit then
+   idx REQUEST-DEADLINE @ ;
+
+
+\ Reads the body on the first ask, from the request's own worker inside its
+\ handler; a later ask finds it whole or throws again.
+: BODY-READY ( n -- ) {: idx:n :}
+   idx SELF-SLOT <> if E-HANDLE throw then
+   idx HOLDER @ OFFERED <> if E-STATE throw then
+   idx BODY-STATE @ {: state:n :}
+   state WHOLE = if exit then
+   state READING = if E-BODY-READ throw then
+   READING idx BODY-STATE !
+   idx SERVING @ idx idx BODY-DEADLINE idx BODY-BOUND @ READ-BODY
+   {: result:parse-result :}
+   result idx READ-RESULT !
+   result COMPLETE? 0= if E-BODY-READ throw then
+   WHOLE idx BODY-STATE ! ;
+
+
 public
 
 : METHOD$ ( request -- ptr u8 n )
@@ -824,8 +921,17 @@ public
    SLOT-OF-REQUEST SLOT-VERSION$ ;
 
 
+\ The body is read off the connection the first time BODY$ or BODY-READER asks,
+\ inside the request's own handler, and every later ask returns the same bytes.
+\ A read that does not complete throws out of the handler, and the request is
+\ answered with that read's refusal (413, 400) whatever the handler set, or not
+\ at all when the peer left or the deadline passed. Asked from another task it
+\ is E-HANDLE; after the handler or its TAKE-OVER, E-STATE. A body the handler
+\ never asked for closes the connection after the answer.
 : BODY$ ( request -- ptr u8 n )
-   SLOT-OF-REQUEST SLOT-BODY$ ;
+   SLOT-OF-REQUEST {: idx:n :}
+   idx BODY-READY
+   idx SLOT-BODY$ ;
 
 
 : HEADER-OF$ ( request ptr u8 n -- ptr u8 n bool ) {: subject:request name:ptr len:n :}
@@ -837,10 +943,11 @@ public
    subject SLOT-OF-REQUEST name len COUNT-HEADER ;
 
 
-\ The reader lives in the slot's own reader record, so two workers reading two
-\ bodies share nothing. The caller closes it.
+\ The body as BODY$ reads it. The reader lives in the slot's own reader record,
+\ so two workers reading two bodies share nothing. The caller closes it.
 : BODY-READER ( request -- JSON:reader ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
+   idx BODY-READY
    idx READER idx SLOT-BODY$ JSON:READ-INIT ;
 
 

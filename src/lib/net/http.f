@@ -1,7 +1,10 @@
 \ http.f - the HTTP/1.1 server: a listener task on an IPv4 address, a fixed pool
 \ of workers taking connections from a queue, one handler per request in a catch
-\ boundary (a throw answers 500 with the request id). Requires http-arena.f,
-\ http-request.f, http-response.f, http-router.f and http-static.f.
+\ boundary (a throw answers 500 with the request id). A handler runs once the
+\ head is read; the body is read when the handler asks for it (BODY$), and one
+\ it leaves unread closes the connection after the answer. Requires
+\ http-arena.f, http-request.f, http-response.f, http-router.f and
+\ http-static.f.
 \ STORAGE CLASS. PROCESS-WIDE: one server per image; its tables are written
 \ before START, and per-request state is each worker's slot row (http-arena.f).
 \ TASK-LOCAL: REPLY's connection and drain room, TASK:+USER rows.
@@ -157,9 +160,11 @@ private
    true ;
 
 
-\ Read the validated head first, select its first route, then bound body
-\ buffering by that route's explicit cap or the final server default. A stop
-\ raised while the connection is quiet before a request's first byte closes it.
+\ Reads the validated head and selects its first route, whose explicit cap or
+\ the final server default bounds the body. A body framing the head alone
+\ refuses is answered here, before any handler runs; the body itself is read
+\ only when the handler asks (BODY$). A stop raised while the connection is
+\ quiet before a request's first byte closes it.
 : READ-REQUEST ( TCP4:connection n n -- parse-result )
    {: conn:TCP4:connection idx:n ms:n :}
    idx ms READ-DEADLINE {: deadline:n :}
@@ -177,11 +182,10 @@ private
    idx FIND-ROUTE {: route:n :}
    route idx ROUTE-AT!
    route ROUTE-BODY-CAP {: cap:n :}
-   BODY-TIMEOUT-MS @ {: body-ms:n :}
-   body-ms 0 > if
-      conn idx idx body-ms READ-DEADLINE cap READ-BODY exit
-   then
-   conn idx deadline cap READ-BODY ;
+   idx cap CHECK-BODY {: framing:parse-result :}
+   framing COMPLETE? 0= if framing exit then
+   idx deadline cap BODY-AWAIT
+   OK ;
 
 
 : DISPATCH ( n -- ) {: idx:n :}
@@ -205,21 +209,18 @@ private
    SELF-SLOT FAULT-RESPONSE ;
 
 
-\ A handler that goes on in another protocol on its request's connection - a
-\ WebSocket upgrade, src/lib/net/ws.f - takes the connection with TAKE-OVER. The
-\ connection is on offer only while that handler runs; once taken, the worker
-\ answers nothing on it and leaves it to the taker.
-0 constant KEPT                   \ the worker's own, as between handlers
-1 constant OFFERED                \ a handler is running and may take it
-2 constant TAKEN                  \ the handler took it for good
-
-MAX-WORKERS TYPED-BUFFER HOLDER n
-
-
 \ The offer ends with the handler. True when the handler took the connection.
 : WITHDRAW ( n -- bool ) {: idx:n :}
    idx HOLDER @ TAKEN =
    KEPT idx HOLDER ! ;
+
+
+\ A body read that did not complete throws E-BODY-READ out of its handler:
+\ ANSWER refuses the request, so that throw is no fault.
+: FAULT? ( n n -- bool ) {: idx:n code:n :}
+   code 0= if false exit then
+   code E-BODY-READ <> if true exit then
+   idx BODY-REFUSED? 0= ;
 
 
 \ Every fault answer is a 500, stored before the hook runs so that a hook that
@@ -228,21 +229,14 @@ MAX-WORKERS TYPED-BUFFER HOLDER n
 : HANDLE-REQUEST ( n -- bool ) {: idx:n :}
    OFFERED idx HOLDER !
    [: RUN-HANDLER ;] catch {: code:n :}
-   code 0 <> if idx code REPORT-FAULT then
+   idx code FAULT? {: fault:bool :}
+   fault if idx code REPORT-FAULT then
    idx WITHDRAW if true exit then
-   code 0= if false exit then
+   fault 0= if false exit then
    500 idx SLOT-STATUS!
    [: RENDER-FAULT ;] catch {: failed:n :}
    idx failed HOOK-FAULT
    false ;
-
-
-\ The connection each worker is serving, live from SERVE-CONNECTION's entry
-\ until its close or until a handler takes it (TAKE-OVER): what TAKE-OVER
-\ hands that handler, and what the worker's exit closes when a stop killed it
-\ before that close (RUN-EXIT-HOOKS).
-MAX-WORKERS TYPED-BUFFER SERVING TCP4:connection
-MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
 
 
 : CLOSE-CONNECTION ( TCP4:connection -- )
@@ -291,28 +285,37 @@ MAX-WORKERS TYPED-BUFFER SERVING-LIVE n
    s" this server does not implement that transfer coding" ERROR! ;
 
 
-: REFUSE ( n n -- ) {: idx:n status:n :}
-   idx MAKE-ID
+\ Answers a refused request with its status and closes after; a status of 0
+\ (the peer left, the deadline passed, the connection failed) is no answer.
+\ Whatever a handler built is dropped first.
+: REFUSE ( TCP4:connection n n -- served ) {: conn:TCP4:connection idx:n status:n :}
+   status 0= if construct served silent exit then
+   idx DROP-ANSWER
    0 idx KEEP-ALIVE!
    status idx SLOT-STATUS!
    [: RENDER-REFUSAL ;] catch {: failed:n :}
-   idx failed HOOK-FAULT ;
+   idx failed HOOK-FAULT
+   conn idx RESPONSE-OF SEND 0= if construct served silent exit then
+   construct served answered ;
 
 
-\ A connection its handler took is the taker's, which closes it.
+\ A connection its handler took is the taker's, which closes it. A body read
+\ that did not complete is answered with that read's refusal (REFUSE), whatever
+\ the handler set; a body the handler did not read in full leaves unread bytes
+\ on the connection, which is closed after the answer.
 : ANSWER ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
    idx MAKE-ID
    idx HANDLE-REQUEST if construct served taken exit then
+   idx BODY-REFUSED? if conn idx idx READ-RESULT @ REFUSAL-STATUS REFUSE exit then
+   idx BODY-UNREAD? if 0 idx KEEP-ALIVE! then
    conn idx RESPONSE-OF SEND 0= if construct served silent exit then
    idx KEEP-ALIVE@ 0 <> if construct served keep-open exit then
    construct served answered ;
 
 
-MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
-
-
-\ The parser can allocate while appending a body. Keep that failure at this
-\ request boundary so a failed mapping does not end the worker's task.
+\ Opening the slot's body buffer (SLOT-RESET) can fail to map. Keep that
+\ failure at this request boundary so a failed mapping does not end the
+\ worker's task; one while a handler reads its body is that handler's fault.
 : READ-CURRENT ( -- )
    SELF-SLOT {: idx:n :}
    idx SERVING @ idx IDLE-MS @ READ-REQUEST idx READ-RESULT ! ;
@@ -337,9 +340,8 @@ MAX-WORKERS TYPED-BUFFER READ-RESULT parse-result
    result COMPLETE? if conn idx ANSWER exit then
    result REFUSAL-STATUS {: status:n :}
    status 0= if construct served silent exit then
-   idx status REFUSE
-   conn idx RESPONSE-OF SEND 0= if construct served silent exit then
-   construct served answered ;
+   idx MAKE-ID
+   conn idx status REFUSE ;
 
 
 : SERVE-ONE ( TCP4:connection n -- served ) {: conn:TCP4:connection idx:n :}
@@ -636,14 +638,16 @@ variable EXIT-HOOK-N
 
 \ How long a stop waits for the tasks to end themselves: the longest park any
 \ of them can be in when the flag rises, plus the scheduling slack. The
-\ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker inside a request
-\ parks at most until that request's own deadlines (IDLE-MS plus
-\ BODY-TIMEOUT-MS, SERVE-ONE into src/lib/net/http-request.f WAIT-READABLE)
-\ and after it for LINGER-MS in LINGER. Past its deadline it never parks,
-\ and its first read after the flag ends the request (src/lib/net/http-request.f
-\ FILL), so what remains is the parse of one input window, which
-\ STOP-MARGIN-MS covers (http-test.f FLOOD-CASE). A connection a handler took
-\ over is no longer the server's to wait for.
+\ listener re-reads STOPPING every ACCEPT-WAIT-MS. A worker reading a request
+\ parks at most until that request's own deadlines: IDLE-MS for the head, and
+\ for a body its handler reads, that deadline or BODY-TIMEOUT-MS from the read's
+\ start (SERVE-ONE and BODY$ into src/lib/net/http-request.f WAIT-READABLE).
+\ The bound counts no other handler work. After the request it parks for
+\ LINGER-MS in LINGER. Past its deadline it never parks, and its first read
+\ after the flag ends the request (src/lib/net/http-request.f FILL), so what
+\ remains is the parse of one input window, which STOP-MARGIN-MS covers
+\ (http-test.f FLOOD-CASE). A connection a handler took over is no longer the
+\ server's to wait for.
 \ Bound sums stay representable as milliseconds in DEADLINE-AT.
 MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
 
@@ -798,12 +802,12 @@ public
    limit BODY-LIMIT ! ;
 
 \ Zero shares START's absolute deadline across head and body. A positive value
-\ grants the body a fresh absolute deadline once the head and Host are valid.
-\ Progress renews neither. Past each deadline the worker reads only the bytes
-\ the socket holds when its first read finds that deadline passed, however late
-\ that read comes, and nothing once a stop is raised. A request those bytes
-\ leave incomplete gets no answer: its connection is closed plainly, so a peer
-\ still sending reads a reset.
+\ grants the body a fresh absolute deadline when its read begins, at the
+\ handler's first BODY$ or BODY-READER. Progress renews neither. Past each
+\ deadline the worker reads only the bytes the socket holds when its first read
+\ finds that deadline passed, however late that read comes, and nothing once a
+\ stop is raised. A request those bytes leave incomplete gets no answer: its
+\ connection is closed plainly, so a peer still sending reads a reset.
 : BODY-TIMEOUT! ( n -- ) {: ms:n :}
    RUNNING @ 0 <> if E-STATE throw then
    ms 0 < ms MAX-BODY-TIMEOUT-MS > or if E-CAPACITY throw then
@@ -866,11 +870,13 @@ public
 
 
 \ The connection of the request a handler is answering, and the bytes the peer
-\ has already sent past that request: they are the taker's first input and stay
-\ valid until the handler ends. The connection leaves the server for good: the
-\ worker sends no answer for this request and never touches the connection
-\ again, a stop does not wait for it, and the taker closes it, or REPLY does.
-\ Outside a running handler, and a second time inside one, it is E-STATE.
+\ has already sent past what the worker consumed: past the body when the handler
+\ read it, else from the body's first buffered byte. They are the taker's first
+\ input and stay valid until the handler ends. The connection leaves the server
+\ for good: the worker sends no answer for this request and never touches the
+\ connection again, a stop does not wait for it, and the taker closes it, or
+\ REPLY does. Outside a running handler, and a second time inside one, it is
+\ E-STATE.
 : TAKE-OVER ( request -- TCP4:connection ptr u8 n ) {: subject:request :}
    subject SLOT-OF-REQUEST {: idx:n :}
    idx SELF-SLOT <> if E-HANDLE throw then
