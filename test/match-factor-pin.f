@@ -1,7 +1,7 @@
 \ match-factor-pin.f - construct/MATCH execution and diagnostic regressions in
-\ the JIT's factored legs (src/habu/habu2.f). arm64's tier 0 is T0, so the file
-\ selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL; the forked subjects
-\ inherit it.
+\ the JIT's factored legs (src/habu/habu2.f). Tier 0 is T0, so on arm64 the file
+\ selects the JIT by zeroing NCOMP-DISPATCH:COMP-CELL, and the forked subjects
+\ inherit it; elsewhere they run the same cases on T0.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -13,9 +13,12 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/test/subject.f
 
-0 data-base NCOMP-DISPATCH:COMP-CELL + !
-
 package MATCH-FACTOR-PIN
+
+: SELECT-JIT ( -- )
+   HB-TARGET-LINUX-X86-64? if exit then
+   0 data-base NCOMP-DISPATCH:COMP-CELL + ! ;
+SELECT-JIT
 
 $4000 constant CAP
 30000 constant TIMEOUT-MS
@@ -52,12 +55,11 @@ variable ERR-U
    label labelu T-LABEL   OUT$ out outu T$=
    label labelu T-LABEL   ERR$ diag diagu CONTAINS? TTRUE ;
 
-\ On Linux x86-64 the native checker refuses a malformed definition before the
-\ construct/MATCH diagnostic tail; both name the same bad token and reason, and
-\ the native form also locates it inside the definition.
+\ The JIT names a malformed construct/MATCH itself; on T0 the checker refuses it
+\ first, naming the same bad token and reason inside the definition.
 : DIAG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: old:ptr oldu:n native:ptr nativeu:n :}
-   HB-TARGET-LINUX-X86-64? if native nativeu else old oldu then ;
+   {: jit:ptr jitu:n t0:ptr t0u:n :}
+   HB-TARGET-LINUX-X86-64? 0= if jit jitu else t0 t0u then ;
 
 \ Construct then MATCH inside one word, scalar and wide in one fork: exit 0 with
 \ the pinned stdout proves the shared legs store code only through the region's

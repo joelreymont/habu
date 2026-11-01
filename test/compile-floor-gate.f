@@ -1,7 +1,7 @@
 \ compile-floor-gate.f - checked performance budgets for available compiler tiers.
 \ The child tools measure; this gate parses their lines and compares each number
 \ with a named budget. Speed means nothing from a wrong word, so every bench run
-\ prints its R lines and, where tier 0 exists, tier 1's R values equal tier 0's.
+\ prints its R lines, and tier 1's R values equal tier 0's.
 \ Child output prints on every run: the pool keeps it for a red suite, and a
 \ standalone run (`bin/hb --load test/compile-floor-gate.f`) shows the numbers.
 
@@ -29,13 +29,16 @@ private
 \ build at load average 143-172 (96 floor runs, 32 bench runs per tier). Every
 \ budget is about 1.5x its range's maximum and below twice its minimum, so a
 \ doubled compile or corpus cost is red (proved with scratch copies of both
-\ tools doing twice the work per window). The x86-64 budgets come from five
-\ standalone tier-1 corpus runs on that native engine; the other tier-1 budgets
-\ already cover it. Lower a budget when a floor change lands and the new maximum
-\ is known. Budgets are on the leasts in microseconds; the comment is the range.
+\ tools doing twice the work per window). The x86-64 budgets come from
+\ standalone runs on that native engine: ten tier-1 corpus runs at load average
+\ 0.0-0.2 for X64-T1-, ten whole gate runs at load average 0.1-0.6 for X64-T0-
+\ and X64-TRIVIAL-T0-. Lower a budget when a floor change lands and the new
+\ maximum is known. Budgets are on the leasts in microseconds; the comment is
+\ the range.
 710 constant TRIVIAL-T1-BUDGET      \ 460..468
 660 constant THREE-OP-T1-BUDGET     \ 429..436
 56 constant TRIVIAL-T0-BUDGET       \ 33..37
+135 constant X64-TRIVIAL-T0-BUDGET  \ x86-64 leasts: 78..90
 13200 constant T0-ARITH-BUDGET      \ 7996..8744
 21000 constant T0-BRANCH-BUDGET     \ 12113..13676
 200 constant T0-SEARCH-BUDGET       \ 126..128
@@ -44,8 +47,18 @@ private
 5400 constant T0-LINES-BUDGET       \ 3225..3596
 1300 constant T1-ARITH-BUDGET       \ 849..866
 2300 constant T1-BRANCH-BUDGET      \ 1412..1475
-3000 constant X64-T1-ARITH-BUDGET   \ x86-64 leasts: 1918..1958
-7100 constant X64-T1-BRANCH-BUDGET  \ x86-64 leasts: 4524..4682
+4000 constant X64-T1-ARITH-BUDGET   \ x86-64 leasts: 2541..2661
+5500 constant X64-T1-BRANCH-BUDGET  \ x86-64 leasts: 3519..3670
+52 constant X64-T1-SEARCH-BUDGET    \ x86-64 leasts: 33..35
+1890 constant X64-T1-FOLD-BUDGET    \ x86-64 leasts: 1215..1260
+210 constant X64-T1-MOVE-BUDGET     \ x86-64 leasts: 135..140
+1400 constant X64-T1-LINES-BUDGET   \ x86-64 leasts: 898..932
+5100 constant X64-T0-ARITH-BUDGET   \ x86-64 leasts: 3280..3423
+6900 constant X64-T0-BRANCH-BUDGET  \ x86-64 leasts: 4418..4596
+33 constant X64-T0-SEARCH-BUDGET    \ x86-64 leasts: 21..22
+1800 constant X64-T0-FOLD-BUDGET    \ x86-64 leasts: 1169..1200
+212 constant X64-T0-MOVE-BUDGET     \ x86-64 leasts: 136..141
+1170 constant X64-T0-LINES-BUDGET   \ x86-64 leasts: 735..779
 38 constant T1-SEARCH-BUDGET        \ 24..25
 1600 constant T1-FOLD-BUDGET        \ 1007..1017
 320 constant T1-MOVE-BUDGET         \ 211..211
@@ -63,6 +76,7 @@ private
 1300 constant TRIVIAL-T1-MEAN-CEILING   \ 481..661
 1250 constant THREE-OP-T1-MEAN-CEILING  \ 468..632
 100 constant TRIVIAL-T0-MEAN-CEILING    \ 35..69
+155 constant X64-TRIVIAL-T0-MEAN-CEILING  \ x86-64 means: 87..103
 
 $10000 constant OUT-CAP
 $4000 constant ERR-CAP
@@ -177,7 +191,10 @@ create T0-RESULTS BENCHES cells allot
    OUT$ s" least-three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-BUDGET CHECK-LIMIT
    OUT$ s" floor: trivial-t1 " 0 FIELD-LABEL TRIVIAL-T1-MEAN-CEILING CHECK-LIMIT
    OUT$ s"  three-op-t1 " 0 FIELD-LABEL THREE-OP-T1-MEAN-CEILING CHECK-LIMIT
-   HB-TARGET-LINUX-X86-64? 0= if
+   HB-TARGET-LINUX-X86-64? if
+      OUT$ s" least-trivial-t0 " 0 FIELD-LABEL X64-TRIVIAL-T0-BUDGET CHECK-LIMIT
+      OUT$ s"  trivial-t0 " 0 FIELD-LABEL X64-TRIVIAL-T0-MEAN-CEILING CHECK-LIMIT
+   else
       OUT$ s" least-trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-BUDGET CHECK-LIMIT
       OUT$ s"  trivial-t0 " 0 FIELD-LABEL TRIVIAL-T0-MEAN-CEILING CHECK-LIMIT
    then ;
@@ -233,24 +250,37 @@ create T0-RESULTS BENCHES cells allot
    BENCHES 0 ?do OUT$ i R-LABEL$ CONTAINS? TTRUE loop
    dup 0= if
       BENCHES 0 ?do i R-VALUE i T0-RESULT-AT ! loop
-      OUT$ s" B arith " T0-ARITH-BUDGET CHECK-BENCH
-      OUT$ s" B branch " T0-BRANCH-BUDGET CHECK-BENCH
-      OUT$ s" B search " T0-SEARCH-BUDGET CHECK-BENCH
-      OUT$ s" B fold " T0-FOLD-BUDGET CHECK-BENCH
-      OUT$ s" B move " T0-MOVE-BUDGET CHECK-BENCH
-      OUT$ s" B lines " T0-LINES-BUDGET CHECK-BENCH
+      HB-TARGET-LINUX-X86-64? if
+         OUT$ s" B arith " X64-T0-ARITH-BUDGET CHECK-BENCH
+         OUT$ s" B branch " X64-T0-BRANCH-BUDGET CHECK-BENCH
+         OUT$ s" B search " X64-T0-SEARCH-BUDGET CHECK-BENCH
+         OUT$ s" B fold " X64-T0-FOLD-BUDGET CHECK-BENCH
+         OUT$ s" B move " X64-T0-MOVE-BUDGET CHECK-BENCH
+         OUT$ s" B lines " X64-T0-LINES-BUDGET CHECK-BENCH
+      else
+         OUT$ s" B arith " T0-ARITH-BUDGET CHECK-BENCH
+         OUT$ s" B branch " T0-BRANCH-BUDGET CHECK-BENCH
+         OUT$ s" B search " T0-SEARCH-BUDGET CHECK-BENCH
+         OUT$ s" B fold " T0-FOLD-BUDGET CHECK-BENCH
+         OUT$ s" B move " T0-MOVE-BUDGET CHECK-BENCH
+         OUT$ s" B lines " T0-LINES-BUDGET CHECK-BENCH
+      then
    else
       HB-TARGET-LINUX-X86-64? if
          OUT$ s" B arith " X64-T1-ARITH-BUDGET CHECK-BENCH
          OUT$ s" B branch " X64-T1-BRANCH-BUDGET CHECK-BENCH
+         OUT$ s" B search " X64-T1-SEARCH-BUDGET CHECK-BENCH
+         OUT$ s" B fold " X64-T1-FOLD-BUDGET CHECK-BENCH
+         OUT$ s" B move " X64-T1-MOVE-BUDGET CHECK-BENCH
+         OUT$ s" B lines " X64-T1-LINES-BUDGET CHECK-BENCH
       else
          OUT$ s" B arith " T1-ARITH-BUDGET CHECK-BENCH
          OUT$ s" B branch " T1-BRANCH-BUDGET CHECK-BENCH
+         OUT$ s" B search " T1-SEARCH-BUDGET CHECK-BENCH
+         OUT$ s" B fold " T1-FOLD-BUDGET CHECK-BENCH
+         OUT$ s" B move " T1-MOVE-BUDGET CHECK-BENCH
+         OUT$ s" B lines " T1-LINES-BUDGET CHECK-BENCH
       then
-      OUT$ s" B search " T1-SEARCH-BUDGET CHECK-BENCH
-      OUT$ s" B fold " T1-FOLD-BUDGET CHECK-BENCH
-      OUT$ s" B move " T1-MOVE-BUDGET CHECK-BENCH
-      OUT$ s" B lines " T1-LINES-BUDGET CHECK-BENCH
    then drop ;
 
 public
@@ -259,13 +289,11 @@ public
    T-RESET
    s" compile floor: available tier stays within the measured budget" T-LABEL
    RUN-FLOOR-CASE
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" tier-0 corpus: every benchmark stays within its budget" T-LABEL
-      0 RUN-BENCH-CASE
-   then
+   s" tier-0 corpus: every benchmark stays within its budget" T-LABEL
+   0 RUN-BENCH-CASE
    s" tier-1 corpus: every benchmark stays within its budget" T-LABEL
    1 RUN-BENCH-CASE
-   HB-TARGET-LINUX-X86-64? 0= if SAME-RESULTS then
+   SAME-RESULTS
    T-REPORT ;
 
 ;package

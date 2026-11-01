@@ -5,9 +5,9 @@ require src/lib/string.f
 
 package STACK-LIFECYCLE-TEST
 
-\ Intel has no tier 0; these checked transfer bodies run through native HIR.
+\ These checked transfer bodies compile at tier 0 (src/habu/t0.f).
 : SOURCE-TIER ( -- )
-   HB-TARGET-LINUX-X86-64? if s" 1 set-tier " else s" 0 set-tier " then SB-APPEND ;
+   s" 0 set-tier " SB-APPEND ;
 
 : PAIR-TYPE-SOURCE ( -- )
    SB-RESET
@@ -151,18 +151,12 @@ package STACK-LIFECYCLE-TEST
 : WIDE-RETURN-GROUPS ( -- )
    HB-TARGET-LINUX-X86-64? if WIDE-RETURN-NATIVE else WIDE-RETURN-ARM then ;
 
-\ ARM's 513-cell value crosses ADD/SUB imm12's byte range. Intel's native
-\ elaborator holds at most 64 cells in its value vector, so a 33-cell value
-\ at buffer index 16 exercises a 4224-byte displacement inside that limit.
+\ The 513-cell value's byte offsets pass arm64 ADD/SUB's 12-bit immediate.
 : LARGE-TYPE-SOURCE ( -- )
    SB-RESET
    SOURCE-TIER
    s" PRODUCT sw-double<a> FIELD a a FIELD b a ;PRODUCT PRODUCT sw-plus<a> FIELD a a FIELD b n ;PRODUCT " SB-APPEND
-   HB-TARGET-LINUX-X86-64? if
-      s" 17 TYPED-BUFFER ITEM sw-plus<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>> " SB-APPEND
-   else
-      s" 1 TYPED-BUFFER ITEM sw-plus<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>>>>> " SB-APPEND
-   then ;
+   s" 1 TYPED-BUFFER ITEM sw-plus<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>>>>> " SB-APPEND ;
 
 : LARGE-SOURCE ( -- )
    LARGE-TYPE-SOURCE GUARDED-BUF ;
@@ -175,36 +169,16 @@ package STACK-LIFECYCLE-TEST
    SB$ REFUSED-DATA ;
 
 : LARGE-TRANSFERS ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" a 33-cell typed memory round trip uses a 4224-byte offset"
-   else
-      s" a 513-cell typed memory round trip uses full-width offsets"
-   then T-LABEL
-   HB-TARGET-LINUX-X86-64? if
-      s" : MOVE ( -- ) 16 ITEM {: dest :} dest @ dest ! ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
-   else
-      s" : MOVE ( -- ) 0 ITEM {: dest :} dest @ dest ! ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
-   then
+   s" a 513-cell typed memory round trip uses full-width offsets" T-LABEL
+   s" : MOVE ( -- ) 0 ITEM {: dest :} dest @ dest ! ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
    LARGE-RC 0 T=
-   HB-TARGET-LINUX-X86-64? if
-      s" a 33-cell typed fetch past capacity faults the data guard page"
-   else
-      s" a 513-cell typed fetch past the capacity faults the data guard page"
-   then T-LABEL
-   HB-TARGET-LINUX-X86-64? if
-      s" : MOVE ( -- ) 16 ITEM {: dest :} dest @ dest ! ; "
-   else
-      s" : MOVE ( -- ) 0 ITEM {: dest :} dest @ dest ! ; "
-   then
+   s" a 513-cell typed fetch past the capacity faults the data guard page" T-LABEL
+   s" : MOVE ( -- ) 0 ITEM {: dest :} dest @ dest ! ; "
    s" MOVE" LARGE-OVERFLOW ;
 
 : MEDIUM-TYPE-SOURCE ( -- )
    LARGE-TYPE-SOURCE
-   HB-TARGET-LINUX-X86-64? if
-      s" 1 TYPED-BUFFER SMALL sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>> " SB-APPEND
-   else
-      s" 1 TYPED-BUFFER SMALL sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>> " SB-APPEND
-   then ;
+   s" 1 TYPED-BUFFER SMALL sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<sw-double<n>>>>>>> " SB-APPEND ;
 
 : MEDIUM-SOURCE ( -- )
    MEDIUM-TYPE-SOURCE GUARDED-BUF ;
@@ -216,44 +190,14 @@ package STACK-LIFECYCLE-TEST
    MEDIUM-SOURCE defs defsu SB-APPEND name nameu RATCHET-TAIL
    SB$ REFUSED-DATA ;
 
-\ Seventeen 32-cell locals exceed the 4 KiB immediate offset while each
-\ individual native value stays inside the elaborator's 64-cell vector.
-\ Storing each local back makes every frame slot live until its use.
-: X64-LOCAL-RELEASE-RC ( -- n )
-   MEDIUM-SOURCE
-   s" : MOVE ( -- ) " SB-APPEND
-   17 0 do
-      s" 0 SMALL @ {: " SB-APPEND
-      s" abcdefghijklmnopq" drop i + 1 SB-APPEND
-      s"  :} " SB-APPEND
-   loop
-   17 0 do
-      s" abcdefghijklmnopq" drop i + 1 SB-APPEND
-      s"  0 SMALL ! " SB-APPEND
-   loop
-   s" ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO" SB-APPEND
-   SB$ CHILD-RC ;
-
 : MEDIUM-TRANSFERS ( -- )
    s" cumulative local frame release exceeds imm12 without truncating" T-LABEL
-   HB-TARGET-LINUX-X86-64? if
-      X64-LOCAL-RELEASE-RC 0 T=
-   else
-      s" : MOVE ( -- ) 0 SMALL @ {: a :} 0 SMALL @ {: b :} 0 SMALL @ {: c :} 0 SMALL @ {: d :} 1 {: z:n :} a drop b drop c drop d drop z drop ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
-      MEDIUM-RC 0 T=
-   then
-   HB-TARGET-LINUX-X86-64? if
-      s" a 32-cell copy runs on a guarded stack"
-   else
-      s" a 128-cell copy runs on a guarded stack"
-   then T-LABEL
+   s" : MOVE ( -- ) 0 SMALL @ {: a :} 0 SMALL @ {: b :} 0 SMALL @ {: c :} 0 SMALL @ {: d :} 1 {: z:n :} a drop b drop c drop d drop z drop ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
+   MEDIUM-RC 0 T=
+   s" a 128-cell copy runs on a guarded stack" T-LABEL
    s" : MOVE ( -- ) 0 SMALL @ dup drop drop ; : GO ( -- ) ['] MOVE BUF STACK-ABI:PAGE-BYTES run-in-stack ; GO"
    MEDIUM-RC 0 T=
-   HB-TARGET-LINUX-X86-64? if
-      s" a 32-cell copy past capacity faults the data guard page"
-   else
-      s" a 128-cell copy past the capacity faults the data guard page"
-   then T-LABEL
+   s" a 128-cell copy past the capacity faults the data guard page" T-LABEL
    s" : MOVE ( -- ) 0 SMALL @ dup drop drop ; " s" MOVE" MEDIUM-OVERFLOW ;
 
 public

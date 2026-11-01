@@ -69,11 +69,7 @@ variable RC     variable EXITED
    EXITED @ TTRUE
    OUT$ s" floor: trivial-t1 " CONTAINS? TTRUE
    OUT$ s" three-op-t1 " CONTAINS? TTRUE
-   HB-TARGET-LINUX-X86-64? if
-      OUT$ s" trivial-t0 " CONTAINS? TFALSE
-   else
-      OUT$ s" trivial-t0 " CONTAINS? TTRUE
-   then
+   OUT$ s" trivial-t0 " CONTAINS? TTRUE
    OUT$ s" compiled 1000 " CONTAINS? TTRUE ;
 
 : TEST-RATCHET-REFUSES ( -- )

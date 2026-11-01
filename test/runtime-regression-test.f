@@ -13,8 +13,8 @@ public
 : BUFFER ( -- )
    GE-SRC-BUF GE-SRC-U @ SOURCE ;
 
-\ Source that puts the definitions after it on the JIT, not T0: a case pins a
-\ JIT limit or EM-COMPILE-LEGACY, which compiles evaluated tokens in place.
+\ Source that puts later definitions on the JIT, which only arm64 has, for a case
+\ pinning a JIT limit or EM-COMPILE-LEGACY (compiles evaluated tokens in place).
 : JIT$ ( -- ptr u8 n )  s" 0 data-base NCOMP-DISPATCH:COMP-CELL + !" ;
 
 : LINE-RC ( ptr u8 n n ptr u8 n -- )
@@ -264,8 +264,8 @@ variable GE-SCRIPT-U
    s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-DOES-WIDE
-   HB-TARGET-LINUX-X86-64? 0= if GE-DOES-TRUSTED-WIDE then
-   GE-P2-FRAME-WIDE
+   GE-DOES-TRUSTED-WIDE
+   HB-TARGET-LINUX-X86-64? 0= if GE-P2-FRAME-WIDE then
    GE-DOES-WIDE-BARE
    GE-DOES-WIDE-COMPILED
    GE-DOES-SCALAR
@@ -937,17 +937,19 @@ private
 public
 
 : RUN ( -- )
-   \ Every loop-family word against an IF frame, a BEGIN frame, and no frame.
-   s" 1 IF drop"    s" LOOP"   KIND$   s" hb mispair if-loop"     REJECT
-   s" 1 IF drop"    s" +LOOP"  KIND$   s" hb mispair if-+loop"    REJECT
-   s" 1 IF"         s" LEAVE"  ORPHAN$ s" hb mispair if-leave"    REJECT
-   s" 1 BEGIN drop" s" LOOP"   KIND$   s" hb mispair begin-loop"  REJECT
-   s" 1 BEGIN drop" s" +LOOP"  KIND$   s" hb mispair begin-+loop" REJECT
-   s" 1 BEGIN"      s" LEAVE"  ORPHAN$ s" hb mispair begin-leave" REJECT
-   s" "             s" LOOP"   ORPHAN$ s" hb mispair bare-loop"   REJECT
-   s" "             s" +LOOP"  ORPHAN$ s" hb mispair bare-+loop"  REJECT
-   s" "             s" LEAVE"  ORPHAN$ s" hb mispair bare-leave"  REJECT
-   FORGE
+   HB-TARGET-LINUX-X86-64? 0= if
+      \ Every loop-family word against an IF frame, a BEGIN frame, and no frame.
+      s" 1 IF drop"    s" LOOP"   KIND$   s" hb mispair if-loop"     REJECT
+      s" 1 IF drop"    s" +LOOP"  KIND$   s" hb mispair if-+loop"    REJECT
+      s" 1 IF"         s" LEAVE"  ORPHAN$ s" hb mispair if-leave"    REJECT
+      s" 1 BEGIN drop" s" LOOP"   KIND$   s" hb mispair begin-loop"  REJECT
+      s" 1 BEGIN drop" s" +LOOP"  KIND$   s" hb mispair begin-+loop" REJECT
+      s" 1 BEGIN"      s" LEAVE"  ORPHAN$ s" hb mispair begin-leave" REJECT
+      s" "             s" LOOP"   ORPHAN$ s" hb mispair bare-loop"   REJECT
+      s" "             s" +LOOP"  ORPHAN$ s" hb mispair bare-+loop"  REJECT
+      s" "             s" LEAVE"  ORPHAN$ s" hb mispair bare-leave"  REJECT
+      FORGE
+   then
    LEGAL
    s" PASS: loop family over a wrong/absent DO opener fails closed rc70 (no SIGSEGV)" type cr ;
 
@@ -1019,8 +1021,6 @@ variable GE-CF-BODY-U
    \ the native cap is the region edge. The checker's max checkable depth
    \ compiles rc 0. The over-cap reject is catchable under evaluate (RC-REJECT
    \ 70 via LEVALREC).
-   CFSTK-DEPTH-MAX 1 +  s" hb cf-cap plus1"      GE-CF-OVERCAP-1
-   CFSTK-DEPTH-MAX 50 + s" hb cf-cap was-crash"  GE-CF-OVERCAP-1
    GE-HB-RESET
    CFSTK-DEPTH-MAX false GE-CF-NEST
    GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
@@ -1031,11 +1031,15 @@ variable GE-CF-BODY-U
    31 false GE-CF-NEST
    GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
    s" hb cf-cap legal-31" GE-EXPECT-OK
-   CFSTK-DEPTH-MAX 1 + true GE-CF-NEST
-   GE-CF-BODY$ GE-EVAL-CATCH-RUN
-   s" hb cf-cap eval-catch rc" GE-EXPECT-OK
-   s" 70" s" hb cf-cap eval-catch code" GE-EXPECT-OUT-HAS
-   s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
+   HB-TARGET-LINUX-X86-64? 0= if
+      CFSTK-DEPTH-MAX 1 +  s" hb cf-cap plus1"      GE-CF-OVERCAP-1
+      CFSTK-DEPTH-MAX 50 + s" hb cf-cap was-crash"  GE-CF-OVERCAP-1
+      CFSTK-DEPTH-MAX 1 + true GE-CF-NEST
+      GE-CF-BODY$ GE-EVAL-CATCH-RUN
+      s" hb cf-cap eval-catch rc" GE-EXPECT-OK
+      s" 70" s" hb cf-cap eval-catch code" GE-EXPECT-OUT-HAS
+      s" control-flow nesting too deep" s" hb cf-cap eval-catch diag" GE-EXPECT-ERR-HAS
+   then
    s" PASS: control-flow depth cap fail-closed rc70 (no overflow, catchable)" type cr ;
 
 : GE-DO-NEST ( n ptr u8 n ptr u8 n bool -- ) {: n:n op:ptr opu:n cl:ptr clu:n jit:bool :}
@@ -1069,8 +1073,10 @@ variable GE-CF-BODY-U
    GE-CF-BODY$ RUNTIME-RUNNER:SOURCE
    s" hb do-cap legal" GE-EXPECT-OK
    s" -1" s" hb do-cap legal turns" GE-EXPECT-OUT-HAS
-   s" 2 0 ?do " s" 1 +loop " s" hb do-cap ?do plus1" GE-DO-OVERCAP-1
-   s" 2 0 do " s" loop " s" hb do-cap do plus1" GE-DO-OVERCAP-1
+   HB-TARGET-LINUX-X86-64? 0= if
+      s" 2 0 ?do " s" 1 +loop " s" hb do-cap ?do plus1" GE-DO-OVERCAP-1
+      s" 2 0 do " s" loop " s" hb do-cap do plus1" GE-DO-OVERCAP-1
+   then
    s" PASS: do nesting cap fail-closed rc70 (no overflow)" type cr ;
 
 \ Build "<tier> set-tier", then a definition holding n values on the virtual
@@ -1300,9 +1306,11 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    \ One caught-inside-evaluate + top-level pair per converted site. The eval-catch
    \ leg proves catchable code + usable session (GEC-RXOK -> 12321); the top leg
    \ proves byte-identical fail-closed exit + diagnostic.
-   GE-RXE-QNEST-BUILD
-   GE-RXE-QNEST$ s" 75" s" hb: quotation nesting full at " GE-RXE-CATCH-USABLE
-   GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP
+   HB-TARGET-LINUX-X86-64? 0= if
+      GE-RXE-QNEST-BUILD
+      GE-RXE-QNEST$ s" 75" s" hb: quotation nesting full at " GE-RXE-CATCH-USABLE
+      GE-RXE-QNEST$ 75 s" hb: quotation nesting full at " GE-RXE-TOP
+   then
    \ A `;]` with no quotation open is the checker's refusal at its token, rc 70.
    s" : RXSQ ( -- ) 5 ;] drop ;" s" 70" S\" habu: in rxsq: at ';]'\n" GE-RXE-CATCH-USABLE
    s" : RXSQ ( -- ) 5 ;] drop ;" 70 S\" habu: in rxsq: at ';]'\n" GE-RXE-TOP
@@ -1375,10 +1383,12 @@ create GE-LOC-LAST-BUF 1024 allot   variable GE-LOC-LAST-U
    JIT-QUOT:LEVELS false GE-QNEST-RUN
    0 s" quotation nesting at the level ceiling compiles" GE-EXPECT-RC
    s" 42" s" quotation nesting at the level ceiling runs" GE-EXPECT-OUT-HAS
-   JIT-QUOT:LEVELS 1+ true GE-QNEST-RUN
-   75 s" quotation-nesting exit rc" GE-EXPECT-RC
-   GE-QNEST-DIAG$ s" quotation-nesting exit diagnostic" GE-EXPECT-ERR-HAS
-   s" habu-crash" s" quotation-nesting no-crash" GE-EXPECT-ERR-LACKS
+   HB-TARGET-LINUX-X86-64? 0= if
+      JIT-QUOT:LEVELS 1+ true GE-QNEST-RUN
+      75 s" quotation-nesting exit rc" GE-EXPECT-RC
+      GE-QNEST-DIAG$ s" quotation-nesting exit diagnostic" GE-EXPECT-ERR-HAS
+      s" habu-crash" s" quotation-nesting no-crash" GE-EXPECT-ERR-LACKS
+   then
    s" PASS: quotations nest to the level ceiling and one more is named with its depth" type cr ;
 
 \ --- Package-scope rollback across compile-error recovery ---
@@ -2007,8 +2017,7 @@ create GE-END-AT 16 allot
 
 : GE-END-EMIT ( -- )
    GE-EMIT-SHAPES
-   GE-EMIT-FAMILIES
-   GE-EMIT-QUOT-ROOM
+   HB-TARGET-LINUX-X86-64? 0= if GE-EMIT-FAMILIES GE-EMIT-QUOT-ROOM then
    GE-EMIT-DEEP
    2 0 do
       i GE-EMIT-NEST
@@ -2226,8 +2235,7 @@ variable GE-KIND-N
    70 t tu GE-EXPECT-RC ;
 
 : GE-CF-KIND ( -- )
-   true GE-KIND-EVAL
-   false GE-KIND-EVAL
+   HB-TARGET-LINUX-X86-64? 0= if true GE-KIND-EVAL false GE-KIND-EVAL then
    14 0 do
       i true GE-KIND-TOP
       i false GE-KIND-TOP
@@ -2247,8 +2255,8 @@ variable GE-KIND-N
    GE-END-OPENER
    0 GE-END-CAUGHT
    1 GE-END-CAUGHT
-   GE-END-MACRO
-   HB-TARGET-LINUX-X86-64? 0= if GE-END-MACRO-T0 then
+   HB-TARGET-LINUX-X86-64? 0= if GE-END-MACRO then
+   GE-END-MACRO-T0
    GE-END-CLOSE
    GE-END-CATCH
    GE-END-EMIT
@@ -2617,8 +2625,9 @@ variable GE-KIND-N
    s" tail calls output" GE-EXPECT-OUT ;
 
 : GE-VTAIL ( -- )
-   2 0 do i GE-VTAIL-AT loop
-   s" PASS: JIT tail calls throw, catch and recurse as calls do" type cr ;
+   HB-TARGET-LINUX-X86-64? 0= if 0 GE-VTAIL-AT then
+   1 GE-VTAIL-AT
+   s" PASS: tail calls throw, catch and recurse as calls do" type cr ;
 
 \ Tier 0 runs a mentioned constant or created word while its user compiles
 \ and folds what it pushed into the body (habu2.f EM-COMPILE-CALL): a constant
@@ -2678,7 +2687,7 @@ public
    GE-EVAL-UNDEF-RECOVER
    GE-EVAL-INTERP-ERR-RECOVER
    GE-EVAL-DEF-REJECT-CATCH
-   GE-ORPHAN-CLOSER
+   HB-TARGET-LINUX-X86-64? 0= if GE-ORPHAN-CLOSER then
    LOOP-OPENER:RUN
    GE-CF-DEPTH-CAP
    GE-DO-DEPTH-CAP

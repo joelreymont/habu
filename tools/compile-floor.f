@@ -1,9 +1,9 @@
 \ compile-floor.f - the tier-1 per-definition compile floor, as one number.
 \   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS (0.5): refuse
 \   a larger trivial-t1 mean, E-FLOOR-EXCEEDED. One line, us per definition:
-\   floor: trivial-t1 <us> three-op-t1 <us> [trivial-t0 <us>] compiled <n>
-\          least-trivial-t1 <us> least-three-op-t1 <us> [least-trivial-t0 <us>]
-\ The t0 fields are skipped on x86-64; compiled counts tier-1 definitions.
+\   floor: trivial-t1 <us> three-op-t1 <us> trivial-t0 <us> compiled <n>
+\          least-trivial-t1 <us> least-three-op-t1 <us> least-trivial-t0 <us>
+\ compiled counts tier-1 definitions.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -194,15 +194,11 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    SB-RESET
    s" floor: trivial-t1 " SB-APPEND  TRIV-T1 MEAN-US FMT:SB-U
    s"  three-op-t1 " SB-APPEND       THREE-T1 MEAN-US FMT:SB-U
-   HB-TARGET-LINUX-X86-64? 0= if
-      s"  trivial-t0 " SB-APPEND     TRIV-T0 MEAN-US FMT:SB-U
-   then
+   s"  trivial-t0 " SB-APPEND        TRIV-T0 MEAN-US FMT:SB-U
    s"  compiled " SB-APPEND          NC-COUNT @ FMT:SB-U
    s"  least-trivial-t1 " SB-APPEND  TRIV-T1 LEAST-US FMT:SB-U
    s"  least-three-op-t1 " SB-APPEND THREE-T1 LEAST-US FMT:SB-U
-   HB-TARGET-LINUX-X86-64? 0= if
-      s"  least-trivial-t0 " SB-APPEND TRIV-T0 LEAST-US FMT:SB-U
-   then
+   s"  least-trivial-t0 " SB-APPEND  TRIV-T0 LEAST-US FMT:SB-U
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
@@ -262,7 +258,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    RESET-SETS
    ROUNDS 0 ?do
       RUN-TIER1
-      HB-TARGET-LINUX-X86-64? 0= if RUN-TIER0 then
+      RUN-TIER0
    loop
    REPORT
    RATCHET ;

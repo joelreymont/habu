@@ -1,9 +1,9 @@
-\ Tier 0 (ARM's default) branches on a compare's flags when the flag is the
-\ register top at if, while or until: LVFUSE rewinds the cmp; csetm
-\ (src/habu/jit.f VCMP-ENTRY) when that csetm is last in the code and no open
-\ loop top sits at or past it. Fused subjects hold a b.cond and no csetm;
-\ refused ones (a loop top between, a flag copied, stored or returned, a float
-\ compare) keep the csetm. Every subject answers both outcomes.
+\ Tier 0 leaves a compare's flag in the condition codes only when the next token
+\ is if, while or until (src/habu/t0.f CMP-FLAG), which branch on it with a
+\ b.cond (t0-arm64.f FWD-CC); any other use pushes it with a csetm (SET-FLAG).
+\ Fused subjects hold a b.cond and no csetm; refused ones (a loop top between, a
+\ flag copied, stored or returned, a float compare) keep the csetm. Every
+\ subject answers both outcomes.
 
 require src/lib/test.f
 require src/lib/errors.f

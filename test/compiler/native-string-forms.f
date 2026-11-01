@@ -1,9 +1,8 @@
 \ Preserve string behavior through the checker reader and the native source tape.
 \ Each subject program starts with its own `set-tier` line, so the tier that
-\ compiles it is the case's, not this row's: on ARM every printed, counted and
-\ carried case runs once under the JIT (`0 set-tier`, src/habu/habu2.f C-SDQ and
-\ siblings) and once under the optimizing compiler (`1 set-tier`), with the same
-\ expected bytes; x86-64 has no tier 0 and runs them at tier 1 only.
+\ compiles it is the case's, not this row's: every printed, counted and carried
+\ case runs once at tier 0 (`0 set-tier`, src/habu/t0.f) and once at tier 1
+\ (`1 set-tier`), with the same expected bytes.
 require test/gate-common.f
 
 package NSTRING-FORMS-TEST
@@ -11,8 +10,6 @@ package NSTRING-FORMS-TEST
 255 constant COUNTED-MAX
 create BOUNDARY COUNTED-MAX 1+ allot
 variable TIER                        \ the tier the subject program compiles at
-
-: LEGACY? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
 
 : TIER-LINE ( -- )
    TIER @ 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE ;
@@ -169,7 +166,7 @@ variable TIER                        \ the tier the subject program compiles at
 : BODY ( -- )
    s" native-string-forms" GT-START
    EVAL-CALLER-CASES
-   LEGACY? if 0 TIER ! FORM-CASES then
+   0 TIER ! FORM-CASES
    1 TIER ! FORM-CASES
    S\" c\q" TOO-LONG
    S\" c\\\q" TOO-LONG

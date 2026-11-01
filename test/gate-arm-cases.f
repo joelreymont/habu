@@ -1,6 +1,4 @@
-\ These rows inspect the ARM host, source recovery, or its tier-0 JIT.
-\ The Linux x86-64 engine has only tier 1; its native compiler, image,
-\ and runtime rows stay in the main registry.
+\ These rows need the ARM host, its source recovery or the JIT.
 
 \ X64 is a second shadow target beside the ARM host. On an x64 host the same
 \ target's resident map has different records (29 instead of this fixture's 6).
@@ -62,17 +60,17 @@ SUITE build-fixpoint-sandbox
    tools/build-fixpoint-sandbox-test.f
 ;SUITE
 
-\ Tier 0, the ARM JIT, copies straight-line primitive bodies; x64 has no tier 0.
+\ The arm64 JIT copies straight-line primitive bodies.
 SUITE compiler-tier0-inline-prims
    test/compiler/tier0-inline-prims.f
 ;SUITE
 
-\ Tier 0 branches on a compare's flags; x64 has no tier 0.
+\ Tier 0 branches on a compare's flags, read as arm64 instructions.
 SUITE compiler-tier0-compare-branch
    test/compiler/tier0-compare-branch.f
 ;SUITE
 
-\ Tier 0 loops reconcile the virtual stack at the back edge; x64 has no tier 0.
+\ The arm64 JIT reconciles the virtual stack at a loop's back edge.
 SUITE compiler-tier0-join
    test/compiler/tier0-join.f
 ;SUITE

@@ -591,6 +591,8 @@ variable BAND-WID
    IMG IMGU @ munmap drop
    SNAP0$ LOAD-IMAGE ;
 
+\ A failed build leaves the previous image in SNAP0, so a caller stops on RC
+\ rather than doctor it.
 : BUILT-RUNNING ( ptr u8 n ptr u8 n -- )
    {: fixture:ptr size:n rest:ptr restu:n :}
    SNAP0$ fixture size rest restu BUILD-RUNNING-TO
@@ -734,6 +736,7 @@ variable PADDED
    PAD-REFUSED
    STREAM-END {: hole-end:n :}
    s" test/snapshot-writer-pad.f" BUILT
+   RC @ 0<> if exit then
    HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
    STREAM-END hole-end > TTRUE
    PAD-REFUSED
@@ -742,6 +745,7 @@ variable PADDED
 : HOLE-CASE ( -- )
    s" a heap with a million-byte hole builds" T-LABEL
    s" test/snapshot-writer-hole.f" BUILT
+   RC @ 0<> if exit then
    s" the sparse heap is stored as the cell grid, smaller than its bytes" T-LABEL
    HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
    STREAM-END HEAP-OFF - HEAP-BYTES < TTRUE
@@ -811,6 +815,7 @@ variable PADDED
 : TAIL-CASE ( -- )
    s" a heap that ends inside a cell builds" T-LABEL
    s" test/snapshot-writer-tail.f" TAIL-SAVE$ BUILT-RUNNING
+   RC @ 0<> if exit then
    s" the grid stores a heap that ends inside a cell" T-LABEL
    HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
    EXTENT CELL-GRID:CELL-BYTES mod TAIL-BYTES T=
@@ -829,6 +834,7 @@ variable PADDED
 : DENSE-CASE ( -- )
    s" a heap of ten-byte cells builds" T-LABEL
    s" test/snapshot-writer-dense.f" BUILT
+   RC @ 0<> if exit then
    s" a heap the grid would enlarge keeps its bytes" T-LABEL
    HEAP-FORM SNAPSHOT-FORMAT:HEAP-RAW T=
    TRAILER-OFF STREAM-END - PROT-PAGE-MAX < TTRUE
@@ -946,8 +952,8 @@ variable STRAYS
    s" snap: active compiler state at capture" ACTIVE-REFUSED-WITH ;
 
 \ Tier 1 compiles a definition as one unit, so only its pending record is live
-\ when the immediate runs. ARM tier 0 also holds the innermost open quotation
-\ and parks each enclosing one; x86-64 has only tier 1.
+\ when the immediate runs. Tier 0 also holds the innermost open quotation and
+\ parks each enclosing one.
 : ACTIVE-CASE ( -- )
    QUIESCENT-SNAP$ s\" SNAP-WRITER-ACTIVE:SAVE\n" ACTIVE-BUILD
    s" a capture from the immediate with nothing open saves" T-LABEL
@@ -962,7 +968,6 @@ variable STRAYS
    s\" : PG ( ptr u8 n n n -- n ) 2drop 2drop 0 ;\n: GO ( -- n ) [: PG ;] [: 0 SCRIPT-ARGV$ APP-IMAGE:SAVE ;] SOURCE-UNIT:GUARDED ;\nGO .\n"
    s" snap: active compiler state at capture: a source unit is armed"
    ACTIVE-REFUSED-WITH
-   HB-TARGET-LINUX-X86-64? if exit then
    s" a capture with a quotation open is refused" T-LABEL
    s\" 0 set-tier\n: ACTIVE-DEF ( -- ) [: SNAP-WRITER-ACTIVE:SAVE ;] drop ;\n"
    ACTIVE-REFUSED
@@ -992,6 +997,7 @@ variable STRAYS
 : POLICY-IMAGE-CASE ( ptr u8 n ptr u8 n -- )
    {: source:ptr sourceu:n label:ptr labelu:n :}
    s" test/policy/image-save.f" source sourceu BUILT-RUNNING
+   RC @ 0<> if exit then
    s" saved policy DATA is clear" T-LABEL
    POLICY-DATA-ZERO? TTRUE
    s" restored policy starts clear" T-LABEL

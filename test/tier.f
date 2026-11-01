@@ -1,9 +1,9 @@
 \ tier.f - the compiler tiers and the per-definition state that must not survive
-\ a definition. ARM starts at tier 0 (src/habu/t0.f) and has tier 1; Intel runs
-\ only tier 1 and refuses tier 0. A tier chooses a compiler, never whether the
-\ checker runs. Each case runs in a child: `set-tier` is engine-global and the
-\ leak case damages it. The trusted tick gate and width refusals are the JIT's
-\ (src/habu/habu2.f TRUSTTICKMSG$, INCOMP-MSG$); >JIT selects the JIT.
+\ a definition. arm64 and x86-64 start at tier 0 (src/habu/t0.f) and have tier 1.
+\ A tier chooses a compiler, never whether the checker runs. Each case runs in a
+\ child: `set-tier` is engine-global and the leak case damages it. The trusted
+\ tick gate and width refusals are the JIT's (src/habu/habu2.f TRUSTTICKMSG$,
+\ INCOMP-MSG$); >JIT selects the JIT, which is arm64's.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -33,8 +33,6 @@ create OUT CAP allot
 create ERR CAP allot
 variable OUT-U  variable ERR-U
 variable RC     variable EXITED
-
-: LEGACY? ( -- bool ) HB-TARGET-LINUX-X86-64? 0= ;
 
 : OUT$ ( -- ptr u8 n )  OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n )  ERR ERR-U @ ;
@@ -97,12 +95,10 @@ variable RC     variable EXITED
 : TEST-BOTH-TIERS ( -- )
    s" the default is an available compiler" T-LABEL
    s" tier@ . cr" RUN
-   LEGACY? if s" 0" else s" 1" then ASSERT-OK
+   s" 0" ASSERT-OK
 
-   LEGACY? if
-      s" tier 0 compiles and runs a checked definition" T-LABEL
-      s" : SQ ( n -- n ) dup * ; 7 SQ . cr" RUN  s" 49" ASSERT-OK
-   then
+   s" tier 0 compiles and runs a checked definition" T-LABEL
+   s" : SQ ( n -- n ) dup * ; 7 SQ . cr" RUN  s" 49" ASSERT-OK
 
    s" tier 1 compiles and runs a checked definition" T-LABEL
    s" 1 set-tier : SQ ( n -- n ) dup * ; 7 SQ . cr" RUN  s" 49" ASSERT-OK
@@ -110,24 +106,16 @@ variable RC     variable EXITED
    s" set-tier is read back by tier@" T-LABEL
    s" 1 set-tier tier@ . cr" RUN  s" 1" ASSERT-OK
 
-   LEGACY? if
-      s" tier 0 rejects a wrong stack effect" T-LABEL
-      s" : BAD ( n -- n n ) dup * ;" RUN  s" bad" ASSERT-REJECTED
-   then
+   s" tier 0 rejects a wrong stack effect" T-LABEL
+   s" : BAD ( n -- n n ) dup * ;" RUN  s" bad" ASSERT-REJECTED
 
    s" tier 1 rejects a wrong stack effect" T-LABEL
    s" 1 set-tier : BAD ( n -- n n ) dup * ;" RUN  s" bad" ASSERT-REJECTED ;
 
 \ ---- 2. set-tier admits 0 and 1 and nothing else -----------------------------
 : TEST-SELECTION ( -- )
-   LEGACY? if
-      s" set-tier 0 is accepted" T-LABEL
-      s" 0 set-tier tier@ . cr" RUN  s" 0" ASSERT-OK
-   else
-      s" Intel refuses its unavailable JIT tier" T-LABEL
-      s" 0 set-tier" RUN REJECT-RC ASSERT-RC
-      ERR$ s" tier 1 only" CONTAINS? TTRUE
-   then
+   s" set-tier 0 is accepted" T-LABEL
+   s" 0 set-tier tier@ . cr" RUN  s" 0" ASSERT-OK
 
    s" set-tier 2 is refused" T-LABEL
    s" 2 set-tier" RUN  REJECT-RC ASSERT-RC
@@ -140,18 +128,33 @@ variable RC     variable EXITED
 \ The JIT reaches its trusted tick gate before the closing checker scan;
 \ native compilation checks the body before it elaborates the tick.
 : TEST-TRUSTED-TICK-ORDER ( -- )
-   s" the fresh tier 0 boundary has a trusted gate" T-LABEL
-   s" tick-order@ drop . cr" >JIT EXEC s" 1" ASSERT-OK
    s" tier 1 starts with checking order" T-LABEL
    s" 1 set-tier tick-order@ drop . cr" EXEC s" 0" ASSERT-OK
-   s" tier 0 reports the selected trusted tick before a body underflow" T-LABEL
-   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" >JIT EXEC
-   REJECT-RC ASSERT-RC
-   ERR$ s" trusted-only tick" CONTAINS? TTRUE
    s" tier 1 keeps the first checker failure at drop" T-LABEL
    s" 1 set-tier : IWGGPF ( -- ) drop ['] patch32 drop ;" EXEC
    s" iwggpf" ASSERT-REJECTED
    ERR$ s" underflow" CONTAINS? TTRUE
+   s" exporting the trusted primitive is refused at its export boundary" T-LABEL
+   s" package TICK-ALIAS public EXPORT patch32 ;package" EXEC
+   UNCAUGHT-RC ASSERT-RC
+   ERR$ s" 7120" CONTAINS? TTRUE
+   s" a replacement require leaves the tick to the loaded subject" T-LABEL
+   s" include test/tick-provider-replace.f" EXEC
+   REJECT-RC ASSERT-RC
+   OUT$ s" deferred-ok" CONTAINS? TTRUE
+   ERR$ s" underflow" CONTAINS? TTRUE
+   s" the original require may call a tier-changing source unit" T-LABEL
+   s" include test/tick-provider-unit.f" EXEC
+   REJECT-RC ASSERT-RC
+   OUT$ s" deferred-ok" CONTAINS? TTRUE
+   ERR$ s" underflow" CONTAINS? TTRUE
+   HB-TARGET-LINUX-X86-64? if exit then
+   s" the fresh tier 0 boundary has a trusted gate" T-LABEL
+   s" tick-order@ drop . cr" >JIT EXEC s" 1" ASSERT-OK
+   s" tier 0 reports the selected trusted tick before a body underflow" T-LABEL
+   s" : IWGGPF ( -- ) drop ['] patch32 drop ;" >JIT EXEC
+   REJECT-RC ASSERT-RC
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE
    s" a later undefined token cannot displace the tier 0 gate" T-LABEL
    s" : TICK-LATE ( -- ) drop ['] patch32 drop NO-SUCH-WORD ;" >JIT EXEC
    REJECT-RC ASSERT-RC
@@ -171,49 +174,27 @@ variable RC     variable EXITED
    s" a package-local ordinary shadow has no trusted gate" T-LABEL
    s" package TICK-SHADOW public : patch32 ( -- n ) 1 ; ;package : SHADOW-TICK ( -- ) ['] TICK-SHADOW:patch32 drop ;" >JIT EXEC
    0 ASSERT-RC
-   s" exporting the trusted primitive is refused at its export boundary" T-LABEL
-   s" package TICK-ALIAS public EXPORT patch32 ;package" EXEC
-   UNCAUGHT-RC ASSERT-RC
-   ERR$ s" 7120" CONTAINS? TTRUE
    s" a does clause reaches the native trusted gate before its parent check" T-LABEL
    s" : TICK-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" >JIT EXEC
    REJECT-RC ASSERT-RC
-   ERR$ s" trusted-only tick" CONTAINS? TTRUE
-   s" a replacement require leaves the tick to the loaded subject" T-LABEL
-   s" include test/tick-provider-replace.f" EXEC
-   REJECT-RC ASSERT-RC
-   OUT$ s" deferred-ok" CONTAINS? TTRUE
-   ERR$ s" underflow" CONTAINS? TTRUE
-   s" the original require may call a tier-changing source unit" T-LABEL
-   s" include test/tick-provider-unit.f" EXEC
-   REJECT-RC ASSERT-RC
-   OUT$ s" deferred-ok" CONTAINS? TTRUE
-   ERR$ s" underflow" CONTAINS? TTRUE ;
+   ERR$ s" trusted-only tick" CONTAINS? TTRUE ;
 
 \ ---- 2b. checked code reads and selects the tier ------------------------------
 \ Without a checker effect row a primitive is E-UNDEFINED in every checked body.
 \ tier@ is an ordinary reader like check@, and set-tier's row is global, so a
 \ checked body anywhere selects a tier by calling it.
 : TEST-CHECKER-ROWS ( -- )
-   LEGACY? if
-      s" tier@ is callable from a checked body on tier 0" T-LABEL
-      s" : R ( -- n ) tier@ ; R . cr" RUN  s" 0" ASSERT-OK
-   then
+   s" tier@ is callable from a checked body on tier 0" T-LABEL
+   s" : R ( -- n ) tier@ ; R . cr" RUN  s" 0" ASSERT-OK
 
    s" tier@ is callable from a checked body on tier 1" T-LABEL
    s" 1 set-tier : R ( -- n ) tier@ ; R . cr" RUN  s" 1" ASSERT-OK
 
-   LEGACY? if
-      s" set-tier selects from a checked body on tier 0" T-LABEL
-      s" : ST ( n -- ) set-tier ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
-   then
+   s" set-tier selects from a checked body on tier 0" T-LABEL
+   s" : ST ( n -- ) set-tier ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
 
    s" set-tier selects from a checked body on tier 1" T-LABEL
-   LEGACY? if
-      s" 1 set-tier : ST ( n -- ) set-tier ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK
-   else
-      s" 1 set-tier : ST ( n -- ) set-tier ; 1 ST tier@ . cr" RUN  s" 1" ASSERT-OK
-   then ;
+   s" 1 set-tier : ST ( n -- ) set-tier ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK ;
 
 \ ---- 2b0. certification is the engine's hook CELL, read per definition --------
 \ Each tier reads the hook cell per definition, so `0 set-check` and installing
@@ -238,28 +219,22 @@ variable RC     variable EXITED
 \ either primitive is refused with the primitive named, and the bare name stays
 \ unreachable at top level.
 : TEST-MARK-ROWS ( -- )
-   LEGACY? if
-      s" int-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
-      s" TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
-   then
+   s" int-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
+   s" TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
 
    s" int-mark's TRUSTED: wrapper compiles on tier 1" T-LABEL
    s" 1 set-tier TRUSTED: MKI ( n -- ) int-mark ; 5 . cr" RUN  s" 5" ASSERT-OK
 
-   LEGACY? if
-      s" min-in-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
-      s" TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
-   then
+   s" min-in-mark's TRUSTED: wrapper compiles on tier 0" T-LABEL
+   s" TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
 
    s" min-in-mark's TRUSTED: wrapper compiles on tier 1" T-LABEL
    s" 1 set-tier TRUSTED: MKM ( n n -- ) min-in-mark ; 6 . cr" RUN  s" 6" ASSERT-OK
 
-   LEGACY? if
-      s" int-mark is refused in a plain checked body on tier 0" T-LABEL
-      s" : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
-      ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
-      ERR$ s" int-mark" CONTAINS? TTRUE
-   then
+   s" int-mark is refused in a plain checked body on tier 0" T-LABEL
+   s" : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
+   ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
+   ERR$ s" int-mark" CONTAINS? TTRUE
 
    s" int-mark is refused in a plain checked body on tier 1" T-LABEL
    s" 1 set-tier : BADI ( n -- ) int-mark ;" RUN  REJECT-RC ASSERT-RC
@@ -268,11 +243,7 @@ variable RC     variable EXITED
    s" min-in-mark is refused in a plain checked body" T-LABEL
    \ NPUB's owner row makes it an owned name: refused at the trust boundary.
    s" : BADM ( n n -- ) min-in-mark ;" RUN  REJECT-RC ASSERT-RC
-   LEGACY? if
-      ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
-   else
-      ERR$ s" trust-boundary primitive" CONTAINS? TTRUE
-   then
+   ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
    ERR$ s" min-in-mark" CONTAINS? TTRUE
 
    \ The row records an effect and does not open the name: both records carry
@@ -558,48 +529,38 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" E-UNDEFINED: " LN+ NAME+ s"  at " FILE+ LN$ ;
 
 : TEST-LONG-NAMES ( -- )
-   LEGACY? if
-      s" a 65-byte name with a quotation runs on tier 0" T-LABEL
-      0 65 QUOT$ RUN  s" 42" ASSERT-OK
-   then
+   s" a 65-byte name with a quotation runs on tier 0" T-LABEL
+   0 65 QUOT$ RUN  s" 42" ASSERT-OK
    s" a 65-byte name with a quotation runs on tier 1" T-LABEL
    1 65 QUOT$ RUN  s" 42" ASSERT-OK
-   LEGACY? if
-      s" a 1000-byte name with a quotation runs on tier 0" T-LABEL
-      0 1000 QUOT$ RUN  s" 42" ASSERT-OK
-   then
+   s" a 1000-byte name with a quotation runs on tier 0" T-LABEL
+   0 1000 QUOT$ RUN  s" 42" ASSERT-OK
    s" a 1000-byte name with a quotation runs on tier 1" T-LABEL
    1 1000 QUOT$ RUN  s" 42" ASSERT-OK
-   LEGACY? if
-      s" a 7900-byte name with a quotation runs on tier 0" T-LABEL
-      0 7900 QUOT$ RUN  s" 42" ASSERT-OK
-   then
+   s" a 7900-byte name with a quotation runs on tier 0" T-LABEL
+   0 7900 QUOT$ RUN  s" 42" ASSERT-OK
    s" a 7900-byte name with a quotation runs on tier 1" T-LABEL
    1 7900 QUOT$ RUN  s" 42" ASSERT-OK
 
-   LEGACY? if
-      s" a 7900-byte does> definer runs on tier 0" T-LABEL
-      0 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
-   then
+   s" a 7900-byte does> definer runs on tier 0" T-LABEL
+   0 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
    s" a 7900-byte does> definer runs on tier 1" T-LABEL
    1 7900 DOES$ RUN  S\" 6\n8\n" ASSERT-OK
 
-   LEGACY? if
-      s" a 7900-byte TRUSTED: name runs on tier 0" T-LABEL
-      0 7900 TRUST$ RUN  s" 7" ASSERT-OK
-   then
+   s" a 7900-byte TRUSTED: name runs on tier 0" T-LABEL
+   0 7900 TRUST$ RUN  s" 7" ASSERT-OK
    s" a 7900-byte TRUSTED: name runs on tier 1" T-LABEL
    1 7900 TRUST$ RUN  s" 7" ASSERT-OK
 
-   LEGACY? if
-      s" a TRUSTED: body moves a two-cell value on tier 0" T-LABEL
-      0 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
-      s" rejected TRUSTED: bodies move two-cell values on tier 0" T-LABEL
-      0 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
-      s" TRUSTED: execute and catch reaching under their inputs keep their facts on tier 0" T-LABEL
-      0 BORROW-TRUST$ RUN  S\" 5\n2\n1\n7\n9\n0\n5\n2\n1\n7\n9\n" ASSERT-OK
-      s" the checked twin is refused at its token on tier 0" T-LABEL
-      0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
+   s" a TRUSTED: body moves a two-cell value on tier 0" T-LABEL
+   0 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
+   s" rejected TRUSTED: bodies move two-cell values on tier 0" T-LABEL
+   0 REJECT-TRUST$ RUN  REJECT-TRUST-OUT$ ASSERT-OK
+   s" TRUSTED: execute and catch reaching under their inputs keep their facts on tier 0" T-LABEL
+   0 BORROW-TRUST$ RUN  S\" 5\n2\n1\n7\n9\n0\n5\n2\n1\n7\n9\n" ASSERT-OK
+   s" the checked twin is refused at its token on tier 0" T-LABEL
+   0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
+   HB-TARGET-LINUX-X86-64? 0= if
       \ One process each: the refusal ends the process it happens in.
       s" an unchecked word over a two-cell value is refused by name on tier 0" T-LABEL
       0 INCOMPLETE-RAW$ >JIT RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
@@ -611,13 +572,13 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
       0 INCOMPLETE-LOST$ >JIT RUN  S\" hb: incomplete layout facts: U2\n" ASSERT-INCOMPLETE
       s" a hookless body with incomplete width facts is refused by name on tier 0" T-LABEL
       0 INCOMPLETE-HOOKLESS$ >JIT RUN  S\" hb: incomplete layout facts: IC-HOOKLESS\n" ASSERT-INCOMPLETE
-      s" a `--` in a TRUSTED: bind is bound as a local on tier 0" T-LABEL
-      0 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
-      s" a TRUSTED: pair local after one-cell locals binds the top cells on tier 0" T-LABEL
-      0 PAIR-LAST$ RUN  S\" 4\n3\n1\n" ASSERT-OK
-      s" a TRUSTED: pair local between one-cell locals binds its cells on tier 0" T-LABEL
-      0 PAIR-MID$ RUN  S\" 2\n1\n" ASSERT-OK
    then
+   s" a `--` in a TRUSTED: bind is bound as a local on tier 0" T-LABEL
+   0 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
+   s" a TRUSTED: pair local after one-cell locals binds the top cells on tier 0" T-LABEL
+   0 PAIR-LAST$ RUN  S\" 4\n3\n1\n" ASSERT-OK
+   s" a TRUSTED: pair local between one-cell locals binds its cells on tier 0" T-LABEL
+   0 PAIR-MID$ RUN  S\" 2\n1\n" ASSERT-OK
    s" a TRUSTED: body moves a two-cell value on tier 1" T-LABEL
    1 WIDE-TRUST$ RUN  S\" 7\n2\n1\n" ASSERT-OK
    s" a `--` in a TRUSTED: bind is bound as a local on tier 1" T-LABEL
@@ -647,38 +608,28 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    ERR$ S\" ncomp: cannot compile U2\n" CONTAINS? TTRUE
    ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
 
-   LEGACY? if
-      s" a caller of a 7900-byte name runs on tier 0" T-LABEL
-      0 7900 CALL$ RUN  s" 6" ASSERT-OK
-   then
+   s" a caller of a 7900-byte name runs on tier 0" T-LABEL
+   0 7900 CALL$ RUN  s" 6" ASSERT-OK
    s" a caller of a 7900-byte name runs on tier 1" T-LABEL
    1 7900 CALL$ RUN  s" 6" ASSERT-OK
 
-   LEGACY? if
-      s" a caller of a 7900-byte word that never returns runs on tier 0" T-LABEL
-      0 7900 NORET$ RUN  s" 6" ASSERT-OK
-   then
+   s" a caller of a 7900-byte word that never returns runs on tier 0" T-LABEL
+   0 7900 NORET$ RUN  s" 6" ASSERT-OK
    s" a caller of a 7900-byte word that never returns runs on tier 1" T-LABEL
    1 7900 NORET$ RUN  s" 6" ASSERT-OK
 
-   LEGACY? if
-      s" a 1000-byte pending name calls its prior word on tier 0" T-LABEL
-      0 1000 PRIOR$ RUN  s" 50" ASSERT-OK
-   then
+   s" a 1000-byte pending name calls its prior word on tier 0" T-LABEL
+   0 1000 PRIOR$ RUN  s" 50" ASSERT-OK
    s" a 1000-byte pending name calls its prior word on tier 1" T-LABEL
    1 1000 PRIOR$ RUN  s" 50" ASSERT-OK
 
-   LEGACY? if
-      s" the longest ENUM variant constructs and matches on tier 0" T-LABEL
-      0 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
-   then
+   s" the longest ENUM variant constructs and matches on tier 0" T-LABEL
+   0 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
    s" the longest ENUM variant constructs and matches on tier 1" T-LABEL
    1 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
 
-   LEGACY? if
-      s" the longest ENUM family, its MATCH and its local compile on tier 0" T-LABEL
-      0 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
-   then
+   s" the longest ENUM family, its MATCH and its local compile on tier 0" T-LABEL
+   0 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
    s" the longest ENUM family, its MATCH and its local compile on tier 1" T-LABEL
    1 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
 
@@ -720,55 +671,53 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s\" package CDS private : check-does! ( ptr u8 n ptr u8 n -- n ) 2drop 2drop .\q SHADOW\q cr -1 ; public : MK ( n -- ) create , does> ( -- n ) @ 1 + ; ;package 7 CDS:MK W : SHOW ( -- ) W . cr ; SHOW" ;
 
 : TEST-TIER0-CONSTRUCTS ( -- )
-   LEGACY? if
-      s" tier 0 compiles a quotation" T-LABEL
-      s" : Q ( -- n ) [: 7 ;] execute ; Q . cr" RUN  s" 7" ASSERT-OK
+   s" tier 0 compiles a quotation" T-LABEL
+   s" : Q ( -- n ) [: 7 ;] execute ; Q . cr" RUN  s" 7" ASSERT-OK
 
-      s" tier 0 compiles BEGIN / UNTIL" T-LABEL
-      s" : B1 ( -- n ) 0 begin 1 + dup 5 >= until ; B1 . cr" RUN  s" 5" ASSERT-OK
+   s" tier 0 compiles BEGIN / UNTIL" T-LABEL
+   s" : B1 ( -- n ) 0 begin 1 + dup 5 >= until ; B1 . cr" RUN  s" 5" ASSERT-OK
 
-      s" tier 0 compiles BEGIN / WHILE / REPEAT" T-LABEL
-      s" : B2 ( -- n ) 0 begin dup 5 < while 1 + repeat ; B2 . cr" RUN  s" 5" ASSERT-OK
+   s" tier 0 compiles BEGIN / WHILE / REPEAT" T-LABEL
+   s" : B2 ( -- n ) 0 begin dup 5 < while 1 + repeat ; B2 . cr" RUN  s" 5" ASSERT-OK
 
-      s" tier 0 compiles DO / LOOP" T-LABEL
-      s" : B3 ( -- n ) 0 5 0 do 1 + loop ; B3 . cr" RUN  s" 5" ASSERT-OK
+   s" tier 0 compiles DO / LOOP" T-LABEL
+   s" : B3 ( -- n ) 0 5 0 do 1 + loop ; B3 . cr" RUN  s" 5" ASSERT-OK
 
-      \ The JIT's frame sequences must not touch pooled loop registers.
-      s" tier 0 keeps loop values across a local bound in the body" T-LABEL
-      s" : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK
+   \ Tier 0's frame sequences must not touch pooled loop registers.
+   s" tier 0 keeps loop values across a local bound in the body" T-LABEL
+   s" : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK
 
-      \ The head's frame is dropped once, on its own exit: the clause runs with
-      \ none, and the shared `;` drops nothing of the head's.
-      s" tier 0 runs a does> definer whose head binds a local" T-LABEL
-      s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) @ 1 + ; 7 MKV W : SHOW ( -- ) W . cr ; SHOW" RUN  s" 8" ASSERT-OK
+   \ The head's frame is dropped once, on its own exit: the clause runs with
+   \ none, and the shared `;` drops nothing of the head's.
+   s" tier 0 runs a does> definer whose head binds a local" T-LABEL
+   s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) @ 1 + ; 7 MKV W : SHOW ( -- ) W . cr ; SHOW" RUN  s" 8" ASSERT-OK
 
-      s" tier 0 refuses a does> clause that names a head local" T-LABEL
-      s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  s" mkv;does" ASSERT-REJECTED
-      ERR$ s" undefined word 'v'" CONTAINS? TTRUE
+   s" tier 0 refuses a does> clause that names a head local" T-LABEL
+   s" : MKV ( n -- ) {: v:n :} create v , does> ( -- n ) drop v ;" RUN  s" mkv;does" ASSERT-REJECTED
+   ERR$ s" undefined word 'v'" CONTAINS? TTRUE
 
-      \ A head with no width facts and a clause that moves a two-cell value,
-      \ on the stack and through a clause local: the clause lowers from its own
-      \ certificate. Lowered cell by cell, the pair came back as 1 2 7.
-      s" tier 0 lowers a does> clause's width facts" T-LABEL
-      s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE : MK ( n -- ) create , does> ( -- pr n ) @ 1 2 PR:MAKE swap ; 7 MK W : SHOW1 ( -- ) W . PR:UNMAKE . . cr ; SHOW1 : MKL ( n -- ) create , does> ( -- n pr n ) @ 1 2 PR:MAKE {: x:n p:pr :} 3 p x ; 7 MKL WL : SHOW2 ( -- ) WL . PR:UNMAKE . . . cr ; SHOW2"
-      RUN  S\" 7\n2\n1\n\n7\n2\n1\n3\n" ASSERT-OK
+   \ A head with no width facts and a clause that moves a two-cell value,
+   \ on the stack and through a clause local: the clause lowers from its own
+   \ certificate. Lowered cell by cell, the pair came back as 1 2 7.
+   s" tier 0 lowers a does> clause's width facts" T-LABEL
+   s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE : MK ( n -- ) create , does> ( -- pr n ) @ 1 2 PR:MAKE swap ; 7 MK W : SHOW1 ( -- ) W . PR:UNMAKE . . cr ; SHOW1 : MKL ( n -- ) create , does> ( -- n pr n ) @ 1 2 PR:MAKE {: x:n p:pr :} 3 p x ; 7 MKL WL : SHOW2 ( -- ) WL . PR:UNMAKE . . . cr ; SHOW2"
+   RUN  S\" 7\n2\n1\n\n7\n2\n1\n3\n" ASSERT-OK
 
-      \ A TRUSTED: head that binds a two-cell local inside an `if` closed before
-      \ does>, and a clause that moves a pair: each span lowers from its own
-      \ certificate. Lowered from the head's alone, the pair came back as 1 2 10.
-      s" tier 0 lowers a TRUSTED: definer whose head binds locals in a branch" T-LABEL
-      s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE TRUSTED: MKW ( n -- ) dup 0 > if 1 2 PR:MAKE {: p:pr :} p PR:UNMAKE + + else 1 - then create , does> ( -- pr n ) @ 1 2 PR:MAKE swap ; 7 MKW WW : SHOWW ( -- ) WW . PR:UNMAKE . . cr ; SHOWW"
-      RUN  S\" 10\n2\n1\n" ASSERT-OK
+   \ A TRUSTED: head that binds a two-cell local inside an `if` closed before
+   \ does>, and a clause that moves a pair: each span lowers from its own
+   \ certificate. Lowered from the head's alone, the pair came back as 1 2 10.
+   s" tier 0 lowers a TRUSTED: definer whose head binds locals in a branch" T-LABEL
+   s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE TRUSTED: MKW ( n -- ) dup 0 > if 1 2 PR:MAKE {: p:pr :} p PR:UNMAKE + + else 1 - then create , does> ( -- pr n ) @ 1 2 PR:MAKE swap ; 7 MKW WW : SHOWW ( -- ) WW . PR:UNMAKE . . cr ; SHOWW"
+   RUN  S\" 10\n2\n1\n" ASSERT-OK
 
-      \ The clause check is the source owner's, reached through its record: a
-      \ word of the same name in the definer's package is not called for it.
-      s" tier 0 checks a does> clause with the owner's check, not a package's" T-LABEL
-      CDS-SHADOW$ RUN  s" 8" ASSERT-OK
-      OUT$ s" SHADOW" CONTAINS? TFALSE
+   \ The clause check is the source owner's, reached through its record: a
+   \ word of the same name in the definer's package is not called for it.
+   s" tier 0 checks a does> clause with the owner's check, not a package's" T-LABEL
+   CDS-SHADOW$ RUN  s" 8" ASSERT-OK
+   OUT$ s" SHADOW" CONTAINS? TFALSE
 
-      s" tier 0 refuses a does> clause whose body breaks its effect" T-LABEL
-      MKW-BAD$ RUN  s" mkw;does" ASSERT-REJECTED
-   then
+   s" tier 0 refuses a does> clause whose body breaks its effect" T-LABEL
+   MKW-BAD$ RUN  s" mkw;does" ASSERT-REJECTED
 
    s" tier 1 checks a does> clause with the owner's check, not a package's" T-LABEL
    SB-RESET s" 1 set-tier " SB-APPEND CDS-SHADOW$ SB-APPEND SB$ RUN  s" 8" ASSERT-OK
@@ -796,41 +745,35 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" 1 set-tier : B4 ( n -- n ) {: u:n :} 0 0 begin dup u < while dup 3 + {: end:n :} drop 1+ end 1+ repeat drop ; 10 B4 . cr" RUN  s" 3" ASSERT-OK ;
 
 \ ---- 4. the snapshot depth dies with the definition --------------------------
-\ Tier 0 pushes a snapshot frame at each BEGIN and pops it at the back edge, so
-\ a definition that fails between them leaves the depth raised. The cell is
-\ cleared beside VSP-CELL, LVD-CELL and EXITH-CELL at both colon entries and in
-\ EM-ABORT-COMPILE-STATE. The frame area holds the control-flow cap's worth of
-\ frames, so a leak reaches no bound: the test reads the depth cell after three
-\ failed BEGIN definitions, wants 0, and then compiles and runs a good one.
+\ The JIT pushes a snapshot frame at each BEGIN and pops it at the back edge; a
+\ leak reaches no bound in its frame area, so the case reads JIT-SNAP:SP-CELL.
 : LEAK-SRC$ ( -- ptr u8 n )
    S\" : X3 ( -- ) 3 0 do s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC drop loop ;\nX3\ns\q depth \q type JIT-SNAP:SP-CELL data-base + @ . cr\n: GOOD ( -- n ) 0 begin 1 + dup 5 >= until ;\nGOOD . cr\n" ;
 
 : TEST-SNAPSHOT-OWNERSHIP ( -- )
    s" failed BEGIN definitions leave the depth clean" T-LABEL
-   LEAK-SRC$ RUN  s" depth 0" ASSERT-OK  s" 5" ASSERT-OK
+   LEAK-SRC$ >JIT RUN  s" depth 0" ASSERT-OK  s" 5" ASSERT-OK
 
    s" one failed BEGIN definition is caught, not fatal" T-LABEL
    S\" s\q : BAD-B ( -- ) begin MISSING ;\q TEST-EVAL:RC . cr\n"
-   RUN  s" 70" ASSERT-OK ;
+   >JIT RUN  s" 70" ASSERT-OK ;
 
 \ ---- 5. the reset stops at the definition boundary ---------------------------
 \ A quotation compiles inline, so a BEGIN in a quotation and a quotation in a
 \ BEGIN share the definition's frame stack. A reset at a quotation boundary
 \ instead of the definition boundary would pop a live frame here.
 : TEST-NESTED-QUOTATIONS ( -- )
-   LEGACY? if
-      s" a quotation inside BEGIN keeps its frames" T-LABEL
-      s" : N1 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N1 . cr"
-      RUN  s" 5" ASSERT-OK
+   s" a quotation inside BEGIN keeps its frames" T-LABEL
+   s" : N1 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N1 . cr"
+   RUN  s" 5" ASSERT-OK
 
-      s" a BEGIN inside a quotation keeps its frames" T-LABEL
-      s" : N2 ( -- n ) [: 0 begin 1 + dup 4 >= until ;] execute ; N2 . cr"
-      RUN  s" 4" ASSERT-OK
+   s" a BEGIN inside a quotation keeps its frames" T-LABEL
+   s" : N2 ( -- n ) [: 0 begin 1 + dup 4 >= until ;] execute ; N2 . cr"
+   RUN  s" 4" ASSERT-OK
 
-      s" BEGIN inside a quotation inside BEGIN keeps its frames" T-LABEL
-      s" : N3 ( -- n ) 0 begin [: 0 begin 1 + dup 2 >= until ;] execute + dup 6 >= until ; N3 . cr"
-      RUN  s" 6" ASSERT-OK
-   then
+   s" BEGIN inside a quotation inside BEGIN keeps its frames" T-LABEL
+   s" : N3 ( -- n ) 0 begin [: 0 begin 1 + dup 2 >= until ;] execute + dup 6 >= until ; N3 . cr"
+   RUN  s" 6" ASSERT-OK
 
    s" the same nesting compiles on tier 1" T-LABEL
    s" 1 set-tier : N4 ( -- n ) 0 begin [: 1 ;] execute + dup 5 >= until ; N4 . cr"
@@ -846,13 +789,11 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 \ restores it inside the evaluated text, and drops the text's two cells under
 \ `0 set-check`.
 : TEST-EVAL-RECOVERY ( -- )
-   LEGACY? if
-      s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
-      S\" check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
+   s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
+   S\" check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
 
-      s" tier 0 recovers from an undefined word under a top-level catch" T-LABEL
-      S\" check@ 0 set-check s\q dup set-check : RVU ( -- ) MISSINGW ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
-   then
+   s" tier 0 recovers from an undefined word under a top-level catch" T-LABEL
+   S\" check@ 0 set-check s\q dup set-check : RVU ( -- ) MISSINGW ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
 
    s" tier 1 recovers from the same rejection" T-LABEL
    S\" 1 set-tier check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC
@@ -918,18 +859,16 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    LN$ RUN  S\" 0\n0\n0\n0\n" ASSERT-OK ;
 
 : TEST-UNCHECKED-WIDTHS ( -- )
-   LEGACY? if
-      s" tier 0 lowers a wide value in an unchecked : body" T-LABEL
-      0 s" : TB ( n -- pr n )" UW-CASE
-      s" tier 0 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
-      0 s" TRUSTED: TB ( n -- pr n )" UW-CASE
-      s" tier 0 lowers a wide value in an unchecked signature-less body" T-LABEL
-      0 s" : TB" UW-CASE
-      s" tier 0 lowers a wide value in an unchecked does> clause" T-LABEL
-      0 UW-DOES-CASE
-      s" tier 0 leaves no unchecked does> clause latch for a later word" T-LABEL
-      0 UW-LATCH-CASE
-   then
+   s" tier 0 lowers a wide value in an unchecked : body" T-LABEL
+   0 s" : TB ( n -- pr n )" UW-CASE
+   s" tier 0 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
+   0 s" TRUSTED: TB ( n -- pr n )" UW-CASE
+   s" tier 0 lowers a wide value in an unchecked signature-less body" T-LABEL
+   0 s" : TB" UW-CASE
+   s" tier 0 lowers a wide value in an unchecked does> clause" T-LABEL
+   0 UW-DOES-CASE
+   s" tier 0 leaves no unchecked does> clause latch for a later word" T-LABEL
+   0 UW-LATCH-CASE
    s" tier 1 lowers a wide value in an unchecked : body" T-LABEL
    1 s" : TB ( n -- pr n )" UW-CASE
    s" tier 1 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
@@ -943,19 +882,19 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" build scope keeps the caller's tier through nested scopes" T-LABEL
    S\" require src/lib/executable-build.f\n: BS-IN ( -- n ) [: tier@ ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- n n ) [: tier@ BS-IN ;] EXECUTABLE-BUILD:WITH ; BS-RUN . . tier@ . \n" EXEC
    0 ASSERT-RC OUT$
-   LEGACY? if S\" 0\n0\n0\n" else S\" 1\n1\n1\n" then STR= TTRUE
+   S\" 0\n0\n0\n" STR= TTRUE
    s" build scope preserves higher-order inputs and outputs" T-LABEL
    S\" require src/lib/executable-build.f\n: BS-RUN ( n -- n n ) [: 1+ dup ;] EXECUTABLE-BUILD:WITH ; 48 BS-RUN . . tier@ . \n" EXEC
    0 ASSERT-RC OUT$
-   LEGACY? if S\" 49\n49\n0\n" else S\" 49\n49\n1\n" then STR= TTRUE
+   S\" 49\n49\n0\n" STR= TTRUE
    s" the scope restores a tier its body selected, through throws too" T-LABEL
    S\" require src/lib/executable-build.f\n: BS-SEL ( -- ) [: 1 set-tier ;] EXECUTABLE-BUILD:WITH ;\n: BS-RUN ( -- ) [: 1 set-tier 79 throw ;] EXECUTABLE-BUILD:WITH ; BS-SEL tier@ . ' BS-RUN catch . tier@ . \n" EXEC
    0 ASSERT-RC OUT$
-   LEGACY? if S\" 0\n79\n0\n" else S\" 1\n79\n1\n" then STR= TTRUE
+   S\" 0\n79\n0\n" STR= TTRUE
    s" evaluated source inside the scope compiles at the caller's tier" T-LABEL
    S\" require src/lib/executable-build.f\nTRUSTED: BS-EVAL ( ptr u8 n -- ) evaluate ;\n: BS-RUN ( -- ) [: s\q tier@ . : BS-NATIVE ( -- n ) 61 ;\q BS-EVAL ;] EXECUTABLE-BUILD:WITH ; BS-RUN BS-NATIVE . tier@ .\n" EXEC
    0 ASSERT-RC OUT$
-   LEGACY? if S\" 0\n61\n0\n" else S\" 1\n61\n1\n" then STR= TTRUE
+   S\" 0\n61\n0\n" STR= TTRUE
    s" raw stores cannot disable the executable scope" T-LABEL
    s" 0 data-base NCOMP-DISPATCH:BUILD-DEPTH-CELL + !" EXEC ENGINE-ERROR:SEAL-VIOLATION ASSERT-RC
    s" ordinary source cannot leave the executable scope" T-LABEL
@@ -975,7 +914,7 @@ public
    TEST-LONG-NAMES
    TEST-REFUSAL-TOKEN
    TEST-TIER0-CONSTRUCTS
-   LEGACY? if TEST-SNAPSHOT-OWNERSHIP then
+   HB-TARGET-LINUX-X86-64? 0= if TEST-SNAPSHOT-OWNERSHIP then
    TEST-NESTED-QUOTATIONS
    TEST-EVAL-RECOVERY
    TEST-TRUSTED-NO-ROW

@@ -113,10 +113,10 @@ the suite sets itself can end it.
 ### ARM-only rows
 
 The registry includes `test/gate-arm-cases.f` only on an ARM host; its rows
-need the ARM host, its source recovery or tier 0, and its comments state each
-row's reason. Mixed rows stay registered on x86-64, where their tier-1 cases
-must run; a fixture may guard an individual ARM-only premise after measuring
-the native refusal.
+need the ARM host, its source recovery or the JIT, and its comments state each
+row's reason. Mixed rows stay registered on x86-64, where their tier-0 and
+tier-1 cases must run; a fixture may guard an individual ARM-only premise after
+measuring the native refusal.
 
 ### Reading a red run
 

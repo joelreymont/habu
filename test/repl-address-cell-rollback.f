@@ -65,10 +65,8 @@ using PTY-HARNESS
 
 : RUN ( -- )
    T-RESET
-   \ x86-64 runs tier 1 only: REDEFINE-CASE compiles its underflowing immediate
-   \ at tier 0.
-   2 HB-TARGET-LINUX-X86-64? if 1 else 0 then ?do
-      HB-TARGET-LINUX-X86-64? 0= if i REDEFINE-CASE then
+   2 0 do
+      i REDEFINE-CASE
       s" defer FAILED ( -- n ) NOSUCH-WORD"
       s" PERSISTED-PTR-VARIABLE AFTER" i REUSE-CASE
       s" TYPED-VARIABLE FAILED [ n -- n ] NOSUCH-WORD"

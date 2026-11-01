@@ -1663,19 +1663,15 @@ variable WANT-RC
    s" " CASE$ GE-EXPECT-OUT ;
 
 : IMMEDIATES ( -- )
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M OI-G ;~ evaluate"
-      s" oi-immediate-evaluate.f" IMMEDIATE-EVALUATE
-   then
+   s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M OI-G ;~ evaluate"
+   s" oi-immediate-evaluate.f" IMMEDIATE-EVALUATE
    s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M OI-G ;~ evaluate"
    s" oi-immediate-evaluate-tier-1.f" IMMEDIATE-EVALUATE
    s" 1 set-tier" s" : OI-F ( n -- n ) OI-M OI-G ;"
    s" oi-immediate-evaluate-loop.f" IMMEDIATE-EVALUATE
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
-      s" oi-immediate-semi.f" IMMEDIATE-SEMI
-      74 s" hb: source closed a definition it did not open: OI-F at " S\" oi-immediate-semi.f\n" DIED-AT
-   then
+   s" 0 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
+   s" oi-immediate-semi.f" IMMEDIATE-SEMI
+   74 s" hb: source closed a definition it did not open: OI-F at " S\" oi-immediate-semi.f\n" DIED-AT
    s" 1 set-tier" s" s~ : OI-F ( n -- n ) OI-M 40 OI-G OI-F .~ evaluate"
    s" oi-immediate-semi-tier-1.f" IMMEDIATE-SEMI
    74 s" hb: source closed a definition it did not open: OI-F at "
@@ -1839,15 +1835,13 @@ variable WANT-RC
    70 CASE$ GE-EXPECT-RC
    S\" 1\n" CASE$ GE-EXPECT-OUT
    S\" hb: compile preflight hook missing\n" CASE$ GE-EXPECT-ERR
-   HB-TARGET-LINUX-X86-64? 0= if
-      GE-SRC-RESET
-      s" s~ TRUSTED: OI-UFI ( -- ) drop ; immediate~ evaluate  s~ OI-UFI~ 0 parse-imm" QLINE
-      s" 1 . 1 set-tier : OI-T ( -- ) OI-UFI 2 ." GE-SRC-LINE
-      s" oi-body-immediate-underflow.f" BOTH
-      70 CASE$ GE-EXPECT-RC
-      S\" 1\n" CASE$ GE-EXPECT-OUT
-      S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR
-   then ;
+   GE-SRC-RESET
+   s" s~ TRUSTED: OI-UFI ( -- ) drop ; immediate~ evaluate  s~ OI-UFI~ 0 parse-imm" QLINE
+   s" 1 . 1 set-tier : OI-T ( -- ) OI-UFI 2 ." GE-SRC-LINE
+   s" oi-body-immediate-underflow.f" BOTH
+   70 CASE$ GE-EXPECT-RC
+   S\" 1\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNDERFLOW: OI-UFI\n" CASE$ GE-EXPECT-ERR ;
 
 \ At tier 0 an immediate in a file included under the engine's head runs into
 \ the engine's native body like any other token.

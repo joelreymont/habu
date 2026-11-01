@@ -289,6 +289,8 @@ create TEXT CAP allot                  variable TEXT-U
 
 \ ---- the JIT drops a zero-verdict definition ---------------------------------
 \ These rows select the JIT, whose tier 0 drops the definition without a throw.
+\ The JIT is arm64's, so they run only there.
+
 : JIT-TEXT ( -- )
    ZERO-TEXT  s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! " TEXT+ ;
 
@@ -472,14 +474,16 @@ create TEXT CAP allot                  variable TEXT-U
    SESSION-ORPHAN-THEN
    ZERO-UNCAUGHT
    ZERO-CAUGHT
-   ZERO-CALL
-   ZERO-TICK
-   ZERO-AMBIGUOUS-CALL
-   ZERO-AMBIGUOUS-TICK
-   ZERO-SHAPE
-   ZERO-USED
-   ZERO-USED-CAUGHT
-   ZERO-REDEFINE
+   HB-TARGET-LINUX-X86-64? 0= if
+      ZERO-CALL
+      ZERO-TICK
+      ZERO-AMBIGUOUS-CALL
+      ZERO-AMBIGUOUS-TICK
+      ZERO-SHAPE
+      ZERO-USED
+      ZERO-USED-CAUGHT
+      ZERO-REDEFINE
+   then
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
    TREE$ TREE-COPY:BUILD-SOURCES

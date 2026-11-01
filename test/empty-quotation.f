@@ -59,7 +59,7 @@ variable ERR-U
 public
 : RUN ( -- )
    T-RESET
-   HB-TARGET-LINUX-X86-64? 0= if 0 TIER-CASES then
+   0 TIER-CASES
    1 TIER-CASES
    T-REPORT
    s" empty-quotation: ok" type cr ;

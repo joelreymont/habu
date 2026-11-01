@@ -1,13 +1,12 @@
 \ Loaded by a fresh saved image after its route and stored-record definitions
-\ were captured. Its first-tier checks compile at tier 0 off x86-64 Linux, so
-\ this session never saves; switching the records and saving runs separately.
+\ were captured. Its first checks compile at tier 0, so this session never
+\ saves; switching the records and saving runs separately.
 require src/compiler/native/compiler.f
 1 set-tier
 
 package QUOT-FIELD-TEST
 
-: FIRST-TIER ( -- n ) HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
-FIRST-TIER set-tier
+0 set-tier
 : CHECK-SAVED-FIRST ( -- )
    SAVED-BOX @ ROUTE-BOX-UNMAKE ROUTE-UNMAKE
    {: method:route-text pattern:route-text handler :}
@@ -41,8 +40,7 @@ RUN
 
 package QUOT-PERSIST-TEST
 
-: PERSIST-FIRST-TIER ( -- n ) HB-TARGET-LINUX-X86-64? if 1 else 0 then ;
-PERSIST-FIRST-TIER set-tier
+0 set-tier
 : SAVED-FIRST ( -- )
    35 GENERIC-ROW GENERIC-ENTRY-HANDLER @ execute 42 T=
    PRESENT-ROW @ READ-CHOICE 42 T=

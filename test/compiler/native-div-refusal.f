@@ -19,9 +19,7 @@ public
 
 1 set-tier
 : GUARDED ( n n -- n ) / ;
-: ARM-TIER-RESET ( -- )
-   HB-TARGET-LINUX-X86-64? 0= if s" 0 set-tier" evaluate-closed then ;
-ARM-TIER-RESET
+0 set-tier
 
 private
 
@@ -46,10 +44,8 @@ variable EXITED
      timeout  OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ The runtime cases run in a child: `set-tier` is engine-global state, and a
-\ child's own source names its tier. ARM returns to tier 0 for the catch
-\ wrappers; the x64 host compiles them at its only tier. GUARDED, the one word
-\ whose bytes are read, is compiled here at tier 1.
+\ Each runtime case runs in a child whose source names its tiers, since
+\ `set-tier` is engine-global.
 : RUN ( ptr u8 n -- ) {: src:ptr u:n :}
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE! ;
 
@@ -74,14 +70,10 @@ variable SRC-U
    a SRC-BUF SRC-U @ + u BYTE-COPY
    SRC-U @ u + SRC-U ! ;
 
-: RESET-TIER-SRC ( -- )
-   HB-TARGET-LINUX-X86-64? 0= if S\" 0 set-tier\n" SRC+ then ;
-
 : PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
    0 SRC-U !
    S\" : FLAG. ( bool -- ) if -1 else 0 then . ;\n1 set-tier\nvariable A\nvariable B\nvariable R\n: DZ ( n n -- n ) / ;\n: DM ( n n -- n ) mod ;\n" SRC+
-   RESET-TIER-SRC
-   S\" : TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ B @ DM R ! ;] catch ;\n" SRC+
+   S\" 0 set-tier\n: TRY ( -- n ) [: A @ B @ DZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ B @ DM R ! ;] catch ;\n" SRC+
    tail tu SRC+
    SRC$ ;
 
@@ -91,20 +83,12 @@ variable SRC-U
 : LITERAL-PROGRAM ( ptr u8 n -- ptr u8 n ) {: tail:ptr tu:n :}
    0 SRC-U !
    S\" 1 set-tier\nvariable A\nvariable R\n: LZ ( n -- n ) 0 / ;\n: LMZ ( n -- n ) 0 mod ;\n: L2 ( n -- n ) 2 / ;\n: LM2 ( n -- n ) -2 / ;\n: LR2 ( n -- n ) -2 mod ;\n: LN1 ( n -- n ) -1 / ;\n: LRN1 ( n -- n ) -1 mod ;\n: L64K ( n -- n ) 65536 / ;\n: LR64K ( n -- n ) 65536 mod ;\n" SRC+
-   RESET-TIER-SRC
-   S\" : TRY ( -- n ) [: A @ LZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ LMZ R ! ;] catch ;\n: TRY2 ( -- n ) [: A @ L2 R ! ;] catch ;\n" SRC+
+   S\" 0 set-tier\n: TRY ( -- n ) [: A @ LZ R ! ;] catch ;\n: TRYM ( -- n ) [: A @ LMZ R ! ;] catch ;\n: TRY2 ( -- n ) [: A @ L2 R ! ;] catch ;\n" SRC+
    tail tu SRC+
    SRC$ ;
 
-\ The guard is three instructions: `cbnz` of the divisor over one instruction,
-\ `bl` to the engine's sealed (DIV-ZERO) helper, the routine the engine's own
-\ `/` branches to, and the `sdiv`. That keeps src/compiler/native/emit.f
-\ INSN-PER-OP's three instructions per operation true: fourteen discarded
-\ divisions over two locals are about 22 operations, which that ceiling sizes
-\ for 3 * 22 + 9 = 75 instructions, while a five-instruction guard emits
-\ 5 * 14 + 8 = 78 and is refused with E-A64EMIT-CAP. Fourteen and not thirteen,
-\ the first count the five-instruction guard refused, keeps one division of
-\ margin.
+\ arm64's three-instruction guard (GUARD-CASES) fits fourteen divisions under
+\ emit.f INSN-PER-OP; a five-instruction guard is E-A64EMIT-CAP from thirteen.
 14 constant CAP-DIVS
 
 : CAPACITY-PROGRAM ( -- ptr u8 n )
@@ -216,11 +200,9 @@ public
    S\" 65537 L64K . 65537 LR64K . -65537 L64K . -65537 LR64K . $8000000000000000 L64K . $8000000000000000 LR64K . cr\n"
    LITERAL-PROGRAM RUN  S\" 1\n1\n-1\n-1\n-140737488355328\n0\n" ASSERT-OK
 
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" fourteen discarded divisions over two locals compile and answer" T-LABEL
-      CAPACITY-PROGRAM RUN  S\" 5\n" ASSERT-OK
-      GUARD-CASES
-   then
+   s" fourteen discarded divisions over two locals compile and answer" T-LABEL
+   CAPACITY-PROGRAM RUN  S\" 5\n" ASSERT-OK
+   HB-TARGET-LINUX-X86-64? 0= if GUARD-CASES then
 
    T-REPORT
    s" native-div-refusal: ok" type cr ;
