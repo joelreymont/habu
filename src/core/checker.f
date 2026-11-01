@@ -897,6 +897,9 @@ variable RIGID-N
 variable RGN-N   variable EXT-N   variable GEN-N
 variable RGN-MARK   \ the first region id a definition body mints (SIG-INPUT-FRESH)
 variable FB-N       \ fresh-name keys below FB-N may be body-supplied (SIG-BODY-FRESH)
+64 constant FAM-CAP
+create FB-VAR FAM-CAP cells allot    \ per fresh-name key: the body's variable, 0 if none
+create FB-NAME FAM-CAP cells allot   \ per fresh-name key: one atom spelling the name
 variable SCOPE-N   1 SCOPE-N !
 256 constant SCOPE-PARENT-INIT
 create SCOPE-PARENT-BOOT SCOPE-PARENT-INIT cells allot
@@ -1457,6 +1460,7 @@ CHECKER-REG:}SCRATCH
 : P-PROOF! PAY 4 * cells SPA + 16 + ! ;
 : P-LOST! PAY 4 * cells SPA + 24 + ! ;
 : P-REST! ( n n -- ) PAY 4 * cells SPA + 8 + ! ;   \ rest node: a fresh push built top-down
+: P-TYPE! ( n n -- ) PAY 4 * cells SPA + ! ;
 
 : P-COPY ( n n -- n ) {: source:n rest:n :}
    source P>TYPE rest MK-PUSH {: node:n :}
@@ -2556,11 +2560,318 @@ CHECKER-REG:}SCRATCH
    PTR>INNER NO-SCOPE? ;
 
 
+\ One rigid identity: the same id in the same domain name (ATOM-OK?).
+: E-AK-SAME? ( n n -- bool ) {: t1:n t2:n :}
+   t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
+   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
+\ A new identity in the domain of fresh-name atom `name`.
+: FB-MINT ( n -- n ) {: name:n :}
+   name ATOM>A name ATOM>U  name ATOM>A name ATOM>U RIGID-AK-MINT  MK-ATOM-K ;
+
+\ `;]`, `[']` (MARK) and a direct call (CALLED) list each identity a quotation mints;
+\ each execution renews those in its outputs and callbacks' rows (START).
+package CHECKER-QUOT-FRESH
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE LIST-P   variable LIST-CAP   variable LIST-N
+PTR-VARIABLE PAIR-P   variable PAIR-CAP   variable PAIR-N   \ one execution's (own, new) pairs
+CHECKER-REG:}SCRATCH
+: LIST+ ( n -- )
+   LIST-N @ 1+ LIST-CAP @ > IF
+      LIST-CAP @ 2 * 16 max {: nc:n :}
+      LIST-P @ LIST-CAP @ cells nc cells SR-GROW LIST-P !
+      nc LIST-CAP !
+   THEN
+   LIST-N @ cells LIST-P @ + !
+   LIST-N @ 1+ LIST-N ! ;
+: LISTED? ( n -- bool ) {: t:n :}
+   t ATOM>K 0 <= IF RES-FALSE EXIT THEN
+   0 BEGIN dup LIST-N @ < WHILE
+      dup cells LIST-P @ + @ t E-AK-SAME? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+
+\ Whether input type or row t carries identity a outside a nested quotation, as
+\ E-AK-BIND binds a direct call's plain inputs and never into a quotation.
+: HOLDS? ( n n -- bool ) {: a:n t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         a over P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-FALSE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-ATOM = IF x a E-AK-SAME? EXIT THEN
+   x TAG T-PTR = IF a x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF a x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG a swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
+
+
+\ List each rigid identity in type or row t, inside nested quotations too, unless
+\ quotation q's inputs carry it (HOLDS?): the caller's.
+: OUT* ( n n -- ) {: q:n t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         q over P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-ATOM = IF
+      x ATOM>K 0 <= IF EXIT THEN
+      x LISTED? IF EXIT THEN
+      x q Q>DIN HOLDS? x q Q>RIN HOLDS? or IF EXIT THEN
+      x LIST+ EXIT
+   THEN
+   x TAG T-QUOT = IF
+      q x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      q x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      q x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      q x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      EXIT
+   THEN
+   x TAG T-PTR = IF q x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF q x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG q swap TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+
+
+: HELD* ( n -- n ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         dup 0 <> IF nip EXIT THEN drop
+         P>REST R-RES
+      REPEAT drop 0 EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-ATOM = IF x LISTED? IF x EXIT THEN 0 EXIT THEN
+   x TAG T-PTR = IF x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         dup 0 <> IF nip EXIT THEN drop
+         1 +
+      REPEAT drop
+   THEN
+   0 ;
+
+
+\ The identity this execution gives own identity a, 0 when a is not one.
+: NEW ( n -- n ) {: a:n :}
+   0 BEGIN dup PAIR-N @ < WHILE
+      dup 2 * cells PAIR-P @ + @ a E-AK-SAME? IF 2 * 1+ cells PAIR-P @ + @ EXIT THEN
+      1 +
+   REPEAT drop 0 ;
+: PAIR+ ( n -- ) {: a:n :}
+   PAIR-N @ 1+ PAIR-CAP @ > IF
+      PAIR-CAP @ 2 * 8 max {: nc:n :}
+      PAIR-P @ PAIR-CAP @ 2 * cells nc 2 * cells SR-GROW PAIR-P !
+      nc PAIR-CAP !
+   THEN
+   a PAIR-N @ 2 * cells PAIR-P @ + !
+   a FB-MINT PAIR-N @ 2 * 1+ cells PAIR-P @ + !
+   PAIR-N @ 1+ PAIR-N ! ;
+
+
+\ Pair each listed identity in type or row t, and one level into a quotation's
+\ rows when deep; one renewed on an input is a new identity no value holds.
+: OWN* ( n bool -- ) {: t:n deep:bool :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE deep TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-ATOM = IF
+      x LISTED? IF x NEW 0= IF x PAIR+ THEN THEN EXIT
+   THEN
+   x TAG T-QUOT = IF
+      deep 0= IF EXIT THEN
+      x Q>DIN RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DOUT RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      EXIT
+   THEN
+   x TAG T-PTR = IF x PTR>INNER deep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF x STALE>INNER deep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM = IF
+      0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG deep TWALK-DEEPER RECURSE TWALK-SHALLOWER
+         1 +
+      REPEAT drop
+   THEN ;
+
+
+\ Where type or row t holds identity a: 1 where OWN* reaches when own, 2 inside
+\ a quotation it leaves closed, 3 at both, 0 nowhere.
+: SITES ( n n bool bool -- n ) {: a:n t:n own:bool deep:bool :}
+   t 0= IF 0 EXIT THEN
+   t R-RES dup TAG S-PUSH = IF
+      0 swap BEGIN dup TAG S-PUSH = WHILE
+         a over P>TYPE own deep TWALK-DEEPER RECURSE TWALK-SHALLOWER rot or swap
+         P>REST R-RES
+      REPEAT drop EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-ATOM = IF
+      x a E-AK-SAME? 0= IF 0 EXIT THEN
+      own IF 1 ELSE 2 THEN EXIT
+   THEN
+   x TAG T-QUOT = IF
+      own deep and {: in:bool :}
+      a x Q>DIN in RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      a x Q>DOUT in RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+      a x Q>RIN in RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+      a x Q>ROUT in RES-FALSE TWALK-DEEPER RECURSE TWALK-SHALLOWER or
+      EXIT
+   THEN
+   x TAG T-PTR = IF a x PTR>INNER own deep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-STALE = IF a x STALE>INNER own deep TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-PARAM = IF
+      0 0 BEGIN dup x PARAM>ARGC < WHILE
+         x over PARAM>ARG a swap own deep TWALK-DEEPER RECURSE TWALK-SHALLOWER rot or swap
+         1 +
+      REPEAT drop EXIT
+   THEN
+   0 ;
+\ The SITES of identity a in rows din dout rin rout, read as START reads them.
+: ROW-SITES ( n n n n n -- n ) {: a:n din:n dout:n rin:n rout:n :}
+   TWALK-RESET
+   a din RES-TRUE RES-TRUE SITES  a dout RES-TRUE RES-FALSE SITES or
+   a rin RES-TRUE RES-TRUE SITES or  a rout RES-TRUE RES-FALSE SITES or ;
+: CALLED-ATOM ( n n n n n -- ) {: a:n din:n dout:n rin:n rout:n :}
+   a LISTED? IF EXIT THEN
+   a din dout rin rout ROW-SITES 2 = IF a LIST+ THEN ;
+
+
+\ Whether the scratch run from base holds param x's args unchanged.
+: ARGS-SAME? ( n n -- bool ) {: x:n base:n :}
+   0 BEGIN dup x PARAM>ARGC < WHILE
+      dup base + cells PARAM-SCR + @  over x swap PARAM>ARG <> IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
+
+\ Row t's push r with rest and type renewed; t itself when both are r's own.
+: REPUSH ( n n n n -- n ) {: t:n r:n rest:n ty:n :}
+   rest r P>REST =  ty r P>TYPE = and IF t EXIT THEN
+   r rest P-COPY {: node:n :}
+   ty node P-TYPE!
+   node ;
+
+\ Quotation x with renewed rows; t, which resolves to x, when they are x's own.
+: REQUOT ( n n n n n n -- n ) {: t:n x:n din:n dout:n rin:n rout:n :}
+   din x Q>DIN =  dout x Q>DOUT = and  rin x Q>RIN = and  rout x Q>ROUT = and IF t EXIT THEN
+   din dout rin rout MK-QUOT {: copy:n :}
+   copy x Q>XHAS x Q>XDEAD x Q>XDFIELD x Q>XRFIELD QX!
+   copy ;
+
+
+: RENEW* ( n -- n ) {: t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      t swap  dup P>REST RECURSE  over P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      REPUSH EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-ATOM = IF x NEW dup 0= IF drop t THEN EXIT THEN
+   x TAG T-PTR = IF
+      x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER {: in:n :}
+      in x PTR>INNER = IF t EXIT THEN
+      in MK-PTR EXIT
+   THEN
+   x TAG T-STALE = IF
+      x STALE>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER {: in:n :}
+      in x STALE>INNER = IF t EXIT THEN
+      in MK-STALE EXIT
+   THEN
+   x TAG T-QUOT = IF
+      t x
+      x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      REQUOT EXIT
+   THEN
+   x TAG T-PARAM <> IF t EXIT THEN
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup x PARAM>ARGC < WHILE
+      x over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER PARAM-SCR+
+      1 +
+   REPEAT drop
+   x base ARGS-SAME? IF base PARAM-SCR-N !  t EXIT THEN
+   base x PARAM>NAME-A x PARAM>NAME-U x PARAM>FAM MK-PARAM {: copy:n :}
+   x PARAM>HID copy PAY cells PARAMHID + !
+   copy ;
+
+
+public
+: CLEAR ( -- ) 0 LIST-N ! ;
+: MARK ( n -- ) {: q:n :}
+   TWALK-RESET
+   q q Q>DIN OUT*  q q Q>DOUT OUT*  q q Q>RIN OUT*  q q Q>ROUT OUT* ;
+\ The first listed identity t holds outside a quotation, 0 for none: a binding
+\ to t would take it out of its quotation.
+: HELD ( n -- n ) {: t:n :}
+   LIST-N @ 0= IF 0 EXIT THEN
+   TWALK-RESET t HELD* ;
+\ Pair executed quotation q's own identities with this execution's.
+: START ( n -- ) {: q:n :}
+   0 PAIR-N !
+   LIST-N @ 0= IF EXIT THEN
+   TWALK-RESET
+   q Q>DIN RES-TRUE OWN*  q Q>DOUT RES-FALSE OWN*
+   q Q>RIN RES-TRUE OWN*  q Q>ROUT RES-FALSE OWN* ;
+\ Type t with the executed quotation's own identities renewed, in a nested
+\ quotation too; t itself when it holds none.
+: RENEW ( n -- n ) {: t:n :}
+   PAIR-N @ 0= IF t EXIT THEN
+   TWALK-RESET t RENEW* ;
+\ List each identity a direct call minted, an atom made from mark on, that its rows
+\ hold only in quotations its execution leaves closed, as MARK lists it for a tick.
+: CALLED ( n n n n n -- ) {: mark:n din:n dout:n rin:n rout:n :}
+   ATOMN @ mark ?do
+      i cells ATOMK + @ 0 > IF
+         i TAG-SHIFT lshift T-ATOM or din dout rin rout CALLED-ATOM
+      THEN
+   loop ;
+\ Whether identity a, bound to a declared fresh name, is listed exactly when the
+\ signature rows hold it only inside quotations, which mint it per execution.
+: FITS? ( n n n n n -- bool ) {: a:n din:n dout:n rin:n rout:n :}
+   a din dout rin rout ROW-SITES 2 = IF a LISTED? EXIT THEN
+   a LISTED? 0= ;
+;package
+
+
+\ Whether variable id is a body-supplied fresh name's (SIG-BODY-FRESH).
+: FB-VAR? ( n -- bool ) {: id:n :}
+   0 BEGIN dup FB-N @ < WHILE
+      dup cells FB-VAR + @ dup 0 <> IF PAY id = IF drop RES-TRUE EXIT THEN ELSE drop THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ A binding that takes a per-execution identity out of its quotation fails as a
+\ mismatch in that identity's domain (rigid-region-suite.f (32)); a declared fresh
+\ name may take one, which FRESH-CLAIM judges against its signature.
 : TV! ( n n -- )
    {: term:n id:n :}
    id NSCOPE@ IF term NO-SCOPE? 0= IF
       1 SCOPE-HIT ! term id MK-VAR U-FAIL EXIT
    THEN THEN
+   term CHECKER-QUOT-FRESH:HELD {: held:n :}
+   held 0 <> IF id FB-VAR? 0= IF held  held FB-MINT  U-FAIL EXIT THEN THEN
    id 0 TRAIL-PUSH term 1+ id cells TVT + !  0 id cells TVP + ! ;
 
 
@@ -2568,6 +2879,8 @@ CHECKER-REG:}SCRATCH
    id NSCOPE@ IF row NO-SCOPE? 0= IF
       1 SCOPE-HIT ! row id MK-ROW U-FAIL EXIT
    THEN THEN
+   row CHECKER-QUOT-FRESH:HELD {: held:n :}
+   held 0 <> IF held  held FB-MINT  U-FAIL EXIT THEN
    id 1 TRAIL-PUSH row 1+ id cells RVT + ! ;
 
 
@@ -3415,7 +3728,8 @@ CHECKER-REG:}SCRATCH
 \ tails on a copy for each use, keeping explicit named rows and value types
 \ shared; binding the declared tail itself would retype every term that shares
 \ it (the pointee of the cell the callable was fetched from). execute and catch
-\ instantiate every implicit tail (QUOT-APPLY-INST); a provided side of a
+\ instantiate every implicit tail and renew the per-execution identities in the
+\ value types (QUOT-APPLY-INST, CHECKER-QUOT-FRESH); a provided side of a
 \ comparison instantiates the declared tails no frame holds (QUOT-PROV-INST),
 \ the ones HOLD-TAIL would otherwise make instantiable in place. There are four
 \ rows in a quotation, hence at most four distinct terminal tails.
@@ -3451,12 +3765,15 @@ variable QAPP-N
    {: row:n pair?:bool :}
    row R-RES {: r:n :}
    r TAG S-PUSH <> IF r pair? QAPP-TAIL EXIT THEN
-   r  r P>REST pair? RECURSE  P-COPY ;
+   r  r P>REST pair? RECURSE  P-COPY {: node:n :}
+   pair? IF node EXIT THEN
+   node P>TYPE CHECKER-QUOT-FRESH:RENEW node P-TYPE!
+   node ;
 
 
 : QUOT-INST ( n bool -- n )
    {: q:n pair?:bool :}
-   0 QAPP-N !
+   0 QAPP-N !  pair? 0= IF q CHECKER-QUOT-FRESH:START THEN
    q Q>DIN pair? QAPP-ROW  q Q>DOUT pair? QAPP-ROW
    q Q>RIN pair? QAPP-ROW  q Q>ROUT pair? QAPP-ROW  MK-QUOT {: fresh:n :}
    fresh q Q>XHAS q Q>XDEAD q Q>XDFIELD q Q>XRFIELD QX!
@@ -5512,7 +5829,6 @@ CHECKER-REG:}SCRATCH
 
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 
-64 constant FAM-CAP
 CHECKER-REG:SCRATCH{
 FAM-CAP PTR-U8-TABLE FAM-A       \ name pointers: declared storage (src/core/pointer-storage.f)
 create FAM-U FAM-CAP cells allot
@@ -6661,8 +6977,6 @@ CHECKER-REG:}SCRATCH
    ATOMN @ from ?do
       i cells ATOMK + dup @ key = IF id swap ! ELSE drop THEN
    loop ;
-create FB-VAR FAM-CAP cells allot    \ per fresh-name key: the body's variable, 0 if none
-create FB-NAME FAM-CAP cells allot   \ per fresh-name key: one atom spelling the name
 variable FB-PASS                     \ 0 mints the caller's names, else makes the body's variables
 
 : FB-SITE ( ptr n bool -- ) {: cell:ptr caller:bool :}
@@ -8226,11 +8540,6 @@ EI-AK-VAR 0 EI-AK-CAP ARENA-CELLS-ZERO   EI-AK-NAME 0 EI-AK-CAP ARENA-CELLS-ZERO
       EC-RV-HW @ IF id EC-RV-LW @ min ELSE id THEN EC-RV-LW !
       id 1+ EC-RV-HW @ max EC-RV-HW !
    then @ 1- ;
-
-\ One rigid identity: the same id in the same domain name (ATOM-OK?).
-: E-AK-SAME? ( n n -- bool ) {: t1:n t2:n :}
-   t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
-   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
 \ The stored key of atom t: 0 for a nominal atom, else its record slot.
 : E-AK-SLOT ( n -- n ) {: t:n :}
@@ -10486,10 +10795,6 @@ CHECKER-GRID-CELLS-INSTALL
       1 +
    REPEAT drop ;
 
-\ A new identity in the domain of fresh-name atom `name`.
-: FB-MINT ( n -- n ) {: name:n :}
-   name ATOM>A name ATOM>U  name ATOM>A name ATOM>U RIGID-AK-MINT  MK-ATOM-K ;
-
 : RIGID-DOMAIN-REASON ( n n -- n )   \ expected and actual domains -> MD-RIGID-*
    {: de:n da:n :}
    de da <> IF MD-RIGID-XDOM EXIT THEN
@@ -10578,6 +10883,12 @@ CHECKER-REG:}SCRATCH
    id CALL-MINT+
    id ;
 
+\ Run before the callee's rows meet the caller's stack, so a binding meets a
+\ listed identity as at a tick (rigid-region-suite.f (32)).
+: E-AK-LIST ( n n n n n -- ) {: mark:n din:n dout:n rin:n rout:n :}
+   EI-AK-HW @ 0= OK @ 0= or IF EXIT THEN
+   mark din dout rin rout CHECKER-QUOT-FRESH:CALLED ;
+
 \ A bound name holds an identity of its own domain that no other holds (C-CALL2,
 \ C-CALLSAME, C-CALLXDOM); a quantifier outside it is a domain confusion (C-CALLANY).
 : E-AK-CLAIM-SLOT ( n -- ) {: idx:n :}
@@ -10605,18 +10916,20 @@ CHECKER-REG:}SCRATCH
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    SCOPE-N @ {: scope-start:n :}
    h E-INST-RESET
+   ATOMN @ {: mark:n :}
    h E-DIN@ E-AK-BIND
    h E-DIN@ E-INST {: din:n :}
    h E-DOUT@ E-INST {: dout:n :}
    RGN-N @ {: bind-region:n :}
+   h E-RIN@ E-INST {: rin:n :}
+   h E-ROUT@ E-INST {: rout:n :}
+   mark din dout rin rout E-AK-LIST
    -1 SCOPE-INTRO-ON !
    STEP-R @ {: outer-r:n :}
    h E-HASR@ STEP-R !
    din dout RECORDED-STEP
    outer-r STEP-R !
    0 SCOPE-INTRO-ON !
-   h E-RIN@ E-INST {: rin:n :}
-   h E-ROUT@ E-INST {: rout:n :}
    h E-HASR@ 0 <> if
       rin RSUNI-IN          \ the called word's declared return inputs
       rout RCUR !
@@ -10642,9 +10955,10 @@ CHECKER-REG:}SCRATCH
    MK-QUOT ;
 
 \ `['] W` types as the literal `[: W ;]`: its terminal tails generalize as a
-\ literal's do (CF-SEMIQ), so a comparison instantiates them alike. A defer's
+\ literal's do (CF-SEMIQ), so a comparison instantiates them alike, and its
+\ rigid identities are minted per execution as a literal's are. A defer's
 \ declared type (IS-TOK) is a declaration and keeps EFF-QUOT's kinds.
-: TICK-QUOT ( ptr u8 -- n ) EFF-QUOT dup QUOT-ROWS-GENERALIZE ;
+: TICK-QUOT ( ptr u8 -- n ) EFF-QUOT dup QUOT-ROWS-GENERALIZE dup CHECKER-QUOT-FRESH:MARK ;
 
 $200 constant PE-CAP-INIT
 1 constant PE-ACTIVE
@@ -20187,12 +20501,14 @@ CHECKER-REG:}SCRATCH
    {: h:ptr :}
    DCUR @ {: pd:n :}  RCUR @ {: pr:n :}
    h E-INST-RESET
+   ATOMN @ {: mark:n :}
    h E-HASR@ {: hasr:n :}
    h E-DIN@ E-AK-BIND
    h E-DIN@ E-INST {: din:n :}
    h E-DOUT@ E-INST {: dout:n :}
    hasr 0 <> IF h E-RIN@ E-INST h E-ROUT@ E-INST ELSE 0 0 THEN
    {: rin:n rout:n :}
+   mark din dout rin rout E-AK-LIST
    din SUNI-IN  dout DCUR !
    hasr 0 <> IF rin RSUNI-IN  rout RCUR ! THEN
    E-AK-CLAIM
@@ -20579,6 +20895,7 @@ CHECKER-REG:}SCRATCH
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
      \ A literal infers its fixed window before its implicit tails generalize.
      QTMP @ QUOT-ROWS-GENERALIZE
+     QTMP @ CHECKER-QUOT-FRESH:MARK
      QTMP @ THSET @ DEADP @ XSET @ 0= and THDMASK @ XMASK THRMASK @ XMASK QX!
      CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
      CF-TOP CF.XFA @ XFACT !
@@ -24584,7 +24901,7 @@ CHECKER-REG:}SCRATCH
    0 REFUSAL !  0 CREFUSE !  0 CRTGT !  0 RCOMPILE !  0 CUSING !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
    0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LOCALBAD-KIND !  0 LOCALBAD-LEN !  0 LINLOCBAD !  0 UNDEFERR !  0 UNSEEN !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
-   0 NP-ORIG-N !  0 CALL-MINT-N !  SG-ROWS-RESET
+   0 NP-ORIG-N !  0 CALL-MINT-N !  CHECKER-QUOT-FRESH:CLEAR  SG-ROWS-RESET
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !  0 SCAN-INCOMPLETE !  0 UNJ-TOK !
@@ -25622,8 +25939,8 @@ variable CAST-PATH-N
 : LBUF-PEND-CLEAR ( -- )
    NULL-PTR LBUF-PEND-A !  0 LBUF-PEND-U !  0 LAYOUT-INTRO !  0 LAYOUT-RELEASE ! ;
 
-\ A body-supplied name left unbound takes a new identity. A region name must
-\ hold one this body minted that no other name claims; any other name only that.
+\ A body-supplied name left unbound takes a new identity, and only a region name may
+\ be bound: to one this body minted that no other name claims and FITS? admits.
 : FB-OWNED? ( n -- bool ) {: idx:n :}
    idx cells FB-NAME + @ {: name:n :}
    idx cells FB-VAR + @ T-RES {: r:n :}
@@ -25633,6 +25950,9 @@ variable CAST-PATH-N
    id TAG T-ATOM <> IF RES-FALSE EXIT THEN
    id ATOM>K RGN-MARK @ < IF RES-FALSE EXIT THEN
    id ATOM>A id ATOM>U FRESH-REGION-NAME? 0= IF RES-FALSE EXIT THEN
+   r ISVAR 0= IF
+      id SGIN @ SGOUT @ SGRIN @ SGROUT @ CHECKER-QUOT-FRESH:FITS? 0= IF RES-FALSE EXIT THEN
+   THEN
    idx 1+ FO-ENSURE
    id ATOM>K idx FO-MATCH? ;
 

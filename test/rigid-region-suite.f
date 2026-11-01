@@ -94,6 +94,30 @@ defer RR-VMF2 ( mut-view<p,q,fresh-region-b,u8> matrix<space-global,fresh-region
 \ An inferred word that forwards its two inputs to RR-MF2's fresh inputs.
 : RR-FWD2 RR-MF2 ;
 
+\ Region-generic callees of a quotation, and one whose quotation's output region
+\ is its own fresh input's.
+: RR-QTW ( [ -- matrix<space-global,a,f32,f32> ] -- matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> ) dup execute swap execute ;
+: RR-QPAIR ( matrix<space-global,a,f32,f32> [ -- matrix<space-global,a,f32,f32> ] -- matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> ) execute ;
+: RR-QTWX ( [ -- x ] -- x x ) dup execute swap execute ;
+: RR-QRUN ( [ -- x ] -- x ) execute ;
+: RR-QTAKE ( [ matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ] -- ) drop ;
+defer RR-QB ( matrix<space-global,fresh-region-b,f32,f32> [ -- matrix<space-global,fresh-region-b,f32,f32> ] -- matrix<space-global,fresh-region-b,f32,f32> matrix<space-global,fresh-region-b,f32,f32> )
+\ A word that mints an allocation, hands it to a callback and returns it
+\ (ALLOC-DISPOSE's shape), and a region-generic callee that applies a callback.
+defer RR-ADISP ( [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- matrix<space-global,fresh-region-b,f32,f32> )
+: RR-QAPP ( matrix<space-global,a,f32,f32> [ matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> ] -- matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> ) execute ;
+\ A word and a region-generic callee whose region leaves only through what the
+\ callback it is handed returns.
+defer RR-GIVEX ( [ matrix<space-global,fresh-region-b,f32,f32> -- x ] -- x )
+: RR-APPX ( matrix<space-global,a,f32,f32> [ matrix<space-global,a,f32,f32> -- x ] -- x ) execute ;
+\ Words whose region sits two quotations deep: in what a callback is handed,
+\ and in what a returned quotation returns.
+defer RR-GIVE2 ( [ [ -- matrix<space-global,fresh-region-b,f32,f32> ] -- x ] -- x )
+defer RR-GIVEP ( [ [ -- matrix<space-global,fresh-region-a,f32,f32> ] -- x y ] -- x y )
+defer RR-MKQF ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] )
+\ An inferred word that returns a quotation minting a region.
+: RR-MKL [: RR-OWN ;] ;
+
 \ The window holds the suspended hook on the stack. After the report the hook
 \ resumes and diagnostics leave RR-DIAG, so a file loaded after this one in the
 \ same process is checked and reports as usual.
@@ -269,6 +293,54 @@ s" C-INFFWD1 ( -- ) RR-OWN dup RR-FWD2"  RR-CHECK 0 T=
 s" rigid host: region mismatch" RR-DIAG? -1 T=
 s" C-INFDUP dup RR-MF2"  RR-CHECK 0 T=
 s" rigid host: region mismatch" RR-DIAG? -1 T=
+\ (32) a quotation's fresh region, new at each execution, at a direct call, a tick,
+\ recursion and an inferred effect (forth.md "Rigid host-allocation identity domains").
+s" C-QONCE ( -- ) [: RR-OWN ;] execute RR-MFRESH drop"  RR-CHECK -1 T=
+s" C-QSHARE ( -- ) [: RR-OWN dup ;] execute RR-UONE"  RR-CHECK -1 T=
+s" C-QDUP2 ( -- ) [: RR-OWN ;] dup execute swap execute RR-MF2"  RR-CHECK -1 T=
+s" C-QHELP ( -- ) [: [: dup ;] RR-OWN over execute drop ;] execute swap execute 2drop"  RR-CHECK -1 T=
+s" C-QTAKE ( -- ) [: RR-MFRESH ;] RR-QTAKE"  RR-CHECK -1 T=
+s" C-QDIR ( -- ) [: RR-OWN ;] dup execute swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QTICK ( -- ) ['] RR-OWN dup execute swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QLOCAL ( -- ) [: RR-OWN ;] {: q :} q execute q execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QRS ( -- ) [: RR-OWN ;] >r r@ execute r> execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QNEST ( -- ) [: [: RR-OWN ;] ;] execute dup execute swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QPAIR ( -- ) [: RR-OWN ;] dup execute swap RR-QPAIR RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QB1 ( -- ) [: RR-OWN ;] dup execute swap RR-QB RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QTW ( -- ) [: RR-OWN ;] RR-QTW RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QTWX ( -- ) [: RR-OWN ;] RR-QTWX RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QRUN2 ( -- ) [: RR-OWN ;] dup RR-QRUN swap RR-QRUN RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QCBTICK ( -- ) ['] RR-ADISP dup [: drop ;] swap execute swap [: drop ;] swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QCBLIT ( -- ) [: RR-OWN swap RR-QAPP drop ;] dup [: dup ;] swap execute swap [: dup ;] swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QCBINTICK ( -- ) ['] RR-GIVEX dup [: ;] swap execute swap [: ;] swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QCBINLIT ( -- ) [: RR-OWN swap RR-APPX ;] dup [: ;] swap execute swap [: ;] swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QCBGEN ( -- ) ['] RR-QTWX RR-GIVEP RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QCBREC ( [ [ -- matrix<space-global,fresh-region-a,f32,f32> ] -- x y ] -- x y ) ['] RR-QTWX RECURSE RR-UONE RECURSE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QDEEPTICK ( -- ) ['] RR-GIVE2 dup ['] RR-QRUN swap execute swap ['] RR-QRUN swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QRETTICK ( -- ) ['] RR-MKQF dup execute swap execute execute swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QRETTWICE ( -- ) RR-MKQF dup execute swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QINFTWICE ( -- ) RR-MKL dup execute swap execute RR-UONE"  RR-CHECK 0 T=
+s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" C-QFRESHOUT ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] ) [: RR-OWN ;]"  RR-CHECK -1 T=
 
 T-REPORT
 DIAG-BUFFER-OFF set-check

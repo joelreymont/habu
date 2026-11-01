@@ -1440,6 +1440,23 @@ holds an identity its body minted (`: UX OWN SAME ;` with `OWN ( --
 fresh-region-a )`, `SAME ( x x -- )`) is refused the same way: no caller holds
 it.
 
+A quotation literal or a ticked word lists every rigid identity in its type, at
+any depth, unless its own inputs carry it outside a nested quotation. A fresh
+name a quotation's own inputs do not carry is minted by each `execute` or
+`catch` of the outermost quotation holding it at the top of its outputs or in a
+callback input's rows, and shared by the quotations that execution returns or
+hands on; a direct call, a tick and an inferred effect read it alike. So `[:
+OWN ;] dup execute swap execute SAME` is `E-RIGID-REGION-MISMATCH`; with `MKQ (
+-- [ -- M_b ] )`, `['] MKQ dup execute swap execute execute swap execute SAME`
+is refused, and `MKQ dup execute swap execute SAME` is refused as its tick is;
+`( -- [ -- M_b ] ) [: OWN ;]` is admitted, with `M<a>` for `M_b` refused. A
+callee generic over the whole quotation takes one (`[: OWN ;] ID
+execute` with `ID ( x -- x )`). No callee or callback whose effect types a
+listed identity takes one, even one it executes once: a quantifier there
+(`( [ -- x ] -- x )`) would hold the identity, and a fresh name (`( [ -- M_b ]
+-- M_b )`) is a new identity per call, not the literal's; both are
+`E-RIGID-REGION-MISMATCH`.
+
 Each domain has a private per-check counter that never reuses an id and throws
 `E-RIGID-EXHAUST` at its limit rather than wrapping. Ids are qualified by
 domain, so equal numbers in two domains do not unify. Mismatches
