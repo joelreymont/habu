@@ -916,15 +916,18 @@ $3818 constant CALLBACK-ENTRY-CELL
 \ TRUSTED: heads call with their record pending (src/habu/habu2.f
 \ C-BODY-HOOK).
 $3838 constant BODY-HOOK-CELL
-\ Tier 0's compiler: T0:COMPILE on arm64, installed by CHECKER-REG:SEAL through
-\ src/habu/runtime-arm64.f.
+\ Tier 0's compiler: T0:COMPILE, installed by CHECKER-REG:SEAL through
+\ src/habu/runtime-arm64.f and src/habu/runtime-x64.f.
 $3840 constant COMP-CELL
+\ Tier 0's compiler for a body with no text ( val kind ), installed with
+\ COMP-CELL; the Habu loop's `constant`, `create` and `defer` call it.
+$6C0 constant FIXED-COMP-CELL
 
 \ TIER-CELL ( 0 | 1 ) -- which compiler the `:` handlers dispatch to.
 \
-\   0 = tier 0: the compiler in COMP-CELL, or the JIT (LCOMPILE and its
-\       closure) when COMP-CELL is zero. Every `--load` and the REPL; a fresh
-\       DATA page starts at 0.
+\   0 = tier 0: the compiler in COMP-CELL; when COMP-CELL is zero, the JIT
+\       (LCOMPILE and its closure) on arm64 and no compiler on x86-64. Every
+\       `--load` and the REPL; every process starts at 0.
 \   1 = tier 1, the IR pipeline reached through XT-CELL (NCOMP:COMPILE).
 \       Selected deliberately with `1 set-tier`. An executable build compiles
 \       at its caller's tier; the engine build selects tier 1 for its target,
@@ -938,8 +941,8 @@ $3840 constant COMP-CELL
 \ stays 8-aligned and below $7FF8 -- see the measurement recorded at the AOT
 \ window cells further down this file.
 $370 constant TIER-CELL
-\ Latched at the colon (0 JIT, 1 XT-CELL, 2 COMP-CELL); an immediate may only
-\ select the NEXT definition.
+\ Latched at the colon (0 JIT or no compiler, 1 XT-CELL, 2 COMP-CELL); an
+\ immediate may only select the NEXT definition.
 $388 constant DEF-TIER-CELL
 \ The outer executable-build scope saves the caller's selection once and
 \ restores it when it closes; nested scopes only count depth.
@@ -951,7 +954,6 @@ $398 constant BUILD-TIER-CELL
 \ run the compiler then abandons a refused definition unpublished without a
 \ second report; under any other reader it refuses with E-NCOMP-VERDICT
 \ (compiler.f RECORD). Zero outside that compile, so no image carries it set.
-\ It takes the first cell of the free $690..$6D0 hole below LVF-OFF.
 $690 constant RECOVER-CELL
 \ One owner record keeps every engine declaration registrar paired with the
 \ active compiler, including while the source dictionary/checker is replaced.
@@ -1115,8 +1117,8 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 
 \ Below BODYBUF-OFF: $600..$690 is GENIO-ABI, AOT-SPAN and SIGNAL-ABI, $690
 \ NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 LVS-OFF, $6A8..$6C0 the `,` run,
-\ $6C0..$6D0 free, $6D0..$750 LVF-OFF, $750..$7D0 LVQ-OFF and $7D0..$7E0
-\ FRAME-CELL and QFRAME-CELL.
+\ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 free, $6D0..$750 LVF-OFF,
+\ $750..$7D0 LVQ-OFF and $7D0..$7E0 FRAME-CELL and QFRAME-CELL.
 $800 constant BODYBUF-OFF
 \ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
 \ which the checker reads too.

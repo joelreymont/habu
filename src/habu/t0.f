@@ -1387,16 +1387,21 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ THE INLINED OPERATIONS. Each operation T0 inlines is one of the engine's
 \ seeded primitives, a record below the source prefix's first
 \ (CORE-PREFIX:FIRST-RECORD), and OP-OF maps such a record's dictionary index to
-\ the operation's code in INLINE, 0 for none. OPS-MAP fills it once, when T0
-\ loads, by each operation's name; a record at or above the boundary is never
-\ an operation, so a package's own word of that name is a call. OP-OF is
-\ dictionary storage, so a saved image keeps it filled.
-CORE-PREFIX:FIRST-RECORD constant OP-N   \ the records OP-OF holds
-OP-N TYPED-BUFFER OP-OF n
+\ the operation's code in INLINE, 0 for none. The indices belong to the running
+\ engine: seeded records order differently on each target, and a cross-build
+\ loads T0 on its host. So OP-CODE maps the operations by name from the running
+\ dictionary at the first T0 compile in each process (OPS-MAP); a record at or
+\ above the boundary is never an operation, so a package's own word of that
+\ name is a call. OP-OF#base is a scratch pointer cell: a saved image stores it
+\ null (src/core/pointer-storage.f PTR-VARIABLE, src/habu/snap-lib.f
+\ SND-ZERO-SCRATCH) and a stripped product restarts on the engine's own DATA, so
+\ a null base says the map is missing.
+variable OP-N                        \ the records OP-OF holds, once mapped
+DYNAMIC-BUFFER OP-OF n
 variable OP-HITS                     \ the seeded records OP found by the name
 variable OP-REC                      \ the last of them
 
-\ End the load: operation a u names no single seeded record.
+\ End the process: operation a u names no single seeded record.
 : OP-DIE ( ptr u8 n -- )
    {: a:ptr u:n :}
    s" : T0: an inlined operation names no single seeded record" {: m:ptr k:n :}
@@ -1408,13 +1413,15 @@ variable OP-REC                      \ the last of them
 : OP ( ptr u8 n n -- )
    {: a:ptr u:n code:n :}
    0 OP-HITS !
-   OP-N 0 ?do
+   OP-N @ 0 ?do
       i XREF-REC a u XREF-MATCH? if 1 OP-HITS +!  i OP-REC ! then
    loop
    OP-HITS @ 1 <> if a u OP-DIE then
    code OP-REC @ OP-OF ! ;
 
 : OPS-MAP ( -- )
+   CORE-PREFIX:FIRST-RECORD {: n:n :}
+   n OP-OF-RESERVE  n OP-N !
    s" +" 1 OP  s" -" 2 OP  s" *" 3 OP  s" /" 4 OP  s" @" 5 OP
    s" !" 6 OP  s" =" 7 OP  s" <" 8 OP  s" >" 9 OP  s" or" 10 OP
    s" 1+" 11 OP  s" 1-" 12 OP  s" c@" 13 OP  s" 0=" 14 OP
@@ -1426,11 +1433,11 @@ variable OP-REC                      \ the last of them
    s" 2swap" 35 OP  s" 2over" 36 OP  s" cells" 37 OP  s" cell+" 38 OP
    s" negate" 39 OP  s" invert" 40 OP  s" lshift" 41 OP
    s" rshift" 42 OP  s" ptr-field" 43 OP ;
-OPS-MAP
 
 : OP-CODE ( n -- n )
    {: r:n :}
-   r OP-N >= if 0 exit then
+   OP-OF#base @ 0= if OPS-MAP then
+   r OP-N @ >= if 0 exit then
    r OP-OF @ ;
 
 : CELL1 ( ptr u8 -- )
@@ -1878,6 +1885,22 @@ variable FIXED-KIND
    if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 
+\ Compile the pending record's fixed body for ( val kind ), as tier 1's
+\ NCOMP:COMPILE-FIXED: no body text and no checker scan.
+: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
+   kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
+   IDLE-CK
+   NULL-PTR 0 false STAGE-UNIT
+   val M-FIXED-VAL !  kind FIXED-KIND !
+   CHECKER-OWNER:RESET-REPORT
+   1 M-OPEN !
+   [: FIXED-RUN ;] catch {: rc:n :}
+   0 M-OPEN !
+   STUB-END
+   NFETCH:RELEASE
+   NHOST:SOURCE-ABANDON
+   0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
+
 public
 
 \ Compile the pending definition whose body text the engine captured.
@@ -1897,28 +1920,13 @@ public
    rc REFUSED$ {: a:ptr u:n :}
    0 rc  rc E-T0-UNSUPPORTED = MISSING @ 0<> and  a u a SETTLE-UNIT ;
 
-\ Compile the pending record's fixed body for ( val kind ), as tier 1's
-\ NCOMP:COMPILE-FIXED: no body text and no checker scan.
-: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
-   kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
-   IDLE-CK
-   NULL-PTR 0 false STAGE-UNIT
-   val M-FIXED-VAL !  kind FIXED-KIND !
-   CHECKER-OWNER:RESET-REPORT
-   1 M-OPEN !
-   [: FIXED-RUN ;] catch {: rc:n :}
-   0 M-OPEN !
-   STUB-END
-   NFETCH:RELEASE
-   NHOST:SOURCE-ABANDON
-   0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
-
 : DISPATCH! ( [ ptr u8 n -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
 
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
    ['] CALLBACK-STUB@ data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + xt!
+   ['] COMPILE-FIXED data-base NCOMP-DISPATCH:FIXED-COMP-CELL + xt!
    ['] COMPILE DISPATCH! ;
 
 ;using

@@ -3852,7 +3852,7 @@ private
    RAX NDICT-REG ASM-SINK ENC-CMP-RR  C-NE bad JCC,
    RAX DICT-CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bad JCC,
    RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
-   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE bad JCC,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E bad JCC,
    RDX RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
    RDX DBASE-REG ASM-SINK ENC-ADD-RR                   \ rdx = record n
    RCX PEND-CELL CELL@,
@@ -4167,17 +4167,16 @@ private
    RAX SAVED-OFF CELL!,
    done X64CODE:LBL, ;
 
-\ set-tier ( n -- ): x86-64 has no tier-0 compiler, so 1 is the one tier it
-\ selects; any other writes `set-tier: x86-64 runs tier 1 only` and exits
-\ HOOK-BAD-RC, as habu1.f BSETTIER refuses a tier past 1.
+\ set-tier ( n -- ): layout.f NCOMP-DISPATCH:TIER-CELL states the rule; a tier
+\ is not a flag, so only 0 and 1 pass, as habu1.f BSETTIER admits them.
 : SET-TIER-BODY ( -- )
    X64CODE:LBL X64CODE:LBL {: bad:label done:label :}
    RAX POP,
-   RAX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE bad JCC,
+   RAX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-A bad JCC,        \ unsigned > 1: rejects 2.. and every negative
    RAX TIER-OFF CELL!,
    done JMP,
    bad X64CODE:LBL,
-   S\" set-tier: x86-64 runs tier 1 only\n" HOOK-BAD-RC STDERR-EXIT,
+   S\" set-tier: tier must be 0 or 1\n" HOOK-BAD-RC STDERR-EXIT,
    done X64CODE:LBL, ;
 
 \ (MARK) takes rdi = the cell and rsi = its kind tag. Its declaration happens
@@ -5076,10 +5075,10 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
 \ PEND-CELL the record;
 \ TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE and TRUSTED clear; DEF-TIER-CELL takes
-\ TIER-CELL. The kind may carry DNAME-CELL beside DKIND:ADDR, a variable's, as
-\ habu2.f DEFWRITE:DEF-OPEN admits it.
+\ the latch as habu1.f TIER-LATCH computes it. The kind may carry DNAME-CELL
+\ beside DKIND:ADDR, a variable's, as habu2.f DEFWRITE:DEF-OPEN admits it.
 : DEF-OPEN-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL {: prot:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: latched:label prot:label done:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
@@ -5107,7 +5106,13 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX TCSIG-A-CELL CELL!,  RAX TCSIG-U-CELL CELL!,
    RAX PEND-OPAQUE-CELL CELL!,
    RAX DOESB-CELL CELL!,  RAX TRUSTED-CELL CELL!,  RAX CLAUSE-CELL CELL!,
-   RAX NCOMP-DISPATCH:TIER-CELL CELL@,  RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
+   RAX NCOMP-DISPATCH:TIER-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE latched JCC,
+   RAX NCOMP-DISPATCH:COMP-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E latched JCC,
+   RAX 2 IMM32,
+   latched X64CODE:LBL,
+   RAX NCOMP-DISPATCH:DEF-TIER-CELL CELL!,
    WINDOW-CLOSE,
    FRAME-CLOSE,
    done JMP,
@@ -5157,8 +5162,8 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ def-close ( -- ): the pending definition of the native tier ends:
 \ DEF-TIER-CELL, TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE, TRUSTED and PEND-CELL
 \ clear; before they clear, LASTC-CELL takes the record for a nonzero kind
-\ other than DKIND:CAST. Nothing pending, and DEF-TIER-CELL other than 1, are
-\ refused. Unlike arm64's (habu2.f NATIVE-CLOSE, through C-CLEAR-LOCALS) it
+\ other than DKIND:CAST. Nothing pending, and DEF-TIER-CELL 0 (no compiler),
+\ are refused. Unlike arm64's (habu2.f NATIVE-CLOSE, through C-CLEAR-LOCALS) it
 \ clears no locals cell: the Habu loop's `;` clears LOCN-CELL after it
 \ (src/habu/definers.f DEF-CLOSE).
 : DEF-CLOSE-BODY ( -- )
@@ -5166,7 +5171,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RDX PEND-CELL CELL@,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    RCX NCOMP-DISPATCH:DEF-TIER-CELL CELL@,
-   RCX 1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    RCX RDX REC-FLAGS MOV-LOAD,                        \ a published body that pushes a cell is the slot `does>` patches, set after the body as the kernel's definers set it
    RAX DKIND:MASK IMM64,  RCX RAX ASM-SINK ENC-AND-RR
    RCX RCX ASM-SINK ENC-TEST-RR  C-E nolast JCC,

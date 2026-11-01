@@ -1366,8 +1366,7 @@ variable WANT-RC
 
 \ ---- the definition heads -------------------------------------------------------
 \ A head refuses through the engine's tails, in the engine's order, or leaves
-\ its definition pending: nothing compiles until `;`. A case selects tier 1
-\ first: the Habu loop refuses a tier-0 head (src/habu/definers.f DEF-HEAD).
+\ its definition pending: nothing compiles until `;`.
 : HEAD ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET s" 1 set-tier " GE-SRC+
    src srcu GE-SRC-LINE
@@ -1394,19 +1393,16 @@ variable WANT-RC
    s" s\~ TRUSTED: OI-INC ( -- ) s\~ " Q+  NESTED$ GE-SRC+
    s" \~ included ; immediate~ evaluate  s~ OI-INC~ 0 parse-imm" QLINE ;
 
-\ A body token reaches the Habu loop at tier 0 only from a file included while
-\ the engine holds a head open. x86-64 has no tier 0 and reads a tier-1 head.
+\ A tier-0 head compiles through T0 (COMP-CELL), so it stays pending as a
+\ tier-1 one does. A body token reaches the Habu loop at tier 0 only from a
+\ file included while the engine holds a head open.
 : HEAD-TIER-0 ( -- )
    GE-SRC-RESET
    s" 1 ." GE-SRC-LINE
    s" : OI-T0" GE-SRC-LINE
    s" oi-tier-0-head.f" HABU
    S\" 1\n" CASE$ GE-EXPECT-OUT
-   HB-TARGET-LINUX-X86-64? if
-      74 s" hb: source ended inside definition: OI-T0 at " S\" oi-tier-0-head.f:2\n" DIED-AT
-   else
-      76 s" hb: tier 0 is not in the Habu loop: : at " S\" oi-tier-0-head.f:2\n" DIED-AT
-   then
+   74 s" hb: source ended inside definition: OI-T0 at " S\" oi-tier-0-head.f:2\n" DIED-AT
    s" 1 2" s" oi-tier-0-nested.f" PKG-NESTED
    GE-SRC-RESET
    INC-LINE

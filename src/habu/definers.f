@@ -50,18 +50,18 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 : DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET ;
 : DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
 
-\ The compiler entry, the preflight, the def hook, the body hook and the
-\ checker's declaration operations, which take a name and a signature, are raw
-\ execution tokens in the engine's cells; these views state the signatures
-\ they are called with here.
+\ The engine's cells hold the compiler entries, the preflight, the def and body
+\ hooks and the checker's declaration operations as raw execution tokens.
 CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
+CAST: AS-COMPILE-FIXED ( n -- [ n n -- ] )
 CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
 CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
 CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
-\ A head at TIER-CELL 0 or a body token latched to the JIT refuses: this loop
-\ cannot call the JIT per token. Definers, `cast:`, `linear:`, `immediate` pass.
+\ A head at tier 0 with no tier-0 compiler (TIER-CELL and COMP-CELL 0), or a
+\ body token or fixed body latched to the JIT, refuses: this loop cannot call
+\ the JIT. `cast:`, `linear:`, `immediate` pass.
 : DEF-TIER-0 ( -- )
    s" hb: tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
    DEF-RC-TIER-0 PKG-FAIL ;
@@ -326,10 +326,18 @@ private
 : DEF-REQUIRED-SIG ( -- )
    true DEF-SIG-SPAN DEF-SIG-TAKE ;
 
-\ Tier 1 compiles through the entry the AOT seed installed; with none the
-\ boot is broken, and the process ends (habu2.f NCOMP-EMIT:LOAD).
+\ The compiler the latch names, as habu2.f NCOMP-EMIT:LOAD reads it: COMP-CELL
+\ at DEF-TIER-CELL 2, else XT-CELL.
+: DEF-COMPILER ( -- n )
+   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ 2 = if
+      NCOMP-DISPATCH:COMP-CELL CELL@ exit
+   then
+   NCOMP-DISPATCH:XT-CELL CELL@ ;
+
+\ With no compiler in the latched cell the boot is broken, and the process ends
+\ (habu2.f NCOMP-EMIT:LOAD).
 : DEF-DISPATCH ( -- )
-   NCOMP-DISPATCH:XT-CELL CELL@ 0<> if exit then
+   DEF-COMPILER 0<> if exit then
    s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
 \ The tail and its wordlist pass the wall, the room, the duplicate test and the
@@ -370,7 +378,9 @@ private
    true ;
 
 : DEF-HEAD ( bool -- ) {: trusted:bool :}
-   NCOMP-DISPATCH:TIER-CELL CELL@ 0= if DEF-TIER-0 then
+   NCOMP-DISPATCH:TIER-CELL CELL@ NCOMP-DISPATCH:COMP-CELL CELL@ or 0= if
+      DEF-TIER-0
+   then
    TASK-GUARD
    DEF-ROOM
    trusted DEF-NAME
@@ -635,16 +645,16 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ The engine's twin: habu2.f NCOMP-EMIT:EM-COMPILE.
 \ `;`, the one byte, ends the definition and joins no capture. The body goes
-\ to the compiler entry the AOT seed installed, as the engine's tier-1 `;`
-\ hands it (NCOMP-EMIT:LOAD), checked again here since a body immediate can
-\ have cleared it. The compiler checks, compiles and publishes the record, or
+\ to the compiler the latch names, as the engine's `;` hands it
+\ (NCOMP-EMIT:LOAD), checked again here since a body immediate can have
+\ cleared it. The compiler checks, compiles and publishes the record, or
 \ throws with the definition still pending, as the engine's does. On its
 \ return def-close clears what def-open set. This `;` recovers: it declares
 \ so in RECOVER-CELL for the compile, and abandons the definition the compiler
 \ refused with E-NCOMP-RECOVERY, which only a multi-error run throws, and
 \ reads on.
 : DEF-COMPILE ( ptr u8 n -- )
-   DEF-DISPATCH NCOMP-DISPATCH:XT-CELL CELL@ AS-COMPILE execute ;
+   DEF-DISPATCH DEF-COMPILER AS-COMPILE execute ;
 
 : DEF-SEMI? ( -- bool )
    s" ;" TOKEN-IS? 0= if false exit then
@@ -691,8 +701,8 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ checker then reads it as the engine hands it over. `variable` is `create`
 \ and one cell more, and the engine names `create` for both: in the missing
 \ name's refusal and in the def hook's text. x86-64 has no def-create body
-\ (src/habu/kernel-x64.f refuses the row): there NCOMP compiles the body that
-\ pushes the address, as it compiles every definer's, and def-close ends it.
+\ (src/habu/kernel-x64.f refuses the row): there DEF-FIXED compiles the body
+\ that pushes the address, as it compiles every definer's, and def-close ends it.
 
 \ The keyword joins the capture, and an armed check hook reads it, `NAME
 \ create` for a created word, its verdict dropped: a definer's word always
@@ -739,12 +749,21 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ The DATA address a created word's body pushes, as the number NCOMP takes.
 : DEF-HERE ( -- n ) here NULL-PTR - ;
 
+\ The pending record's fixed body ( val kind ), by the compiler the latch names.
+: DEF-FIXED ( n n -- )
+   NCOMP-DISPATCH:DEF-TIER-CELL CELL@ {: latch:n :}
+   latch 0= if DEF-TIER-0 then
+   latch 2 = if
+      NCOMP-DISPATCH:FIXED-COMP-CELL CELL@ AS-COMPILE-FIXED execute exit
+   then
+   NCOMP:COMPILE-FIXED ;
+
 \ The pending DKIND:ADDR record published: def-create's tail, or on x86-64
-\ the body NCOMP compiles at a cell-aligned here and def-close.
+\ the fixed body pushing a cell-aligned here and def-close.
 : DEF-ADDR-TAIL ( -- )
    HB-TARGET-LINUX-X86-64? if
       align
-      DEF-HERE NDICT:FIXED-ADDR NCOMP:COMPILE-FIXED
+      DEF-HERE NCOMP-DISPATCH:FIXED-ADDR-KIND DEF-FIXED
       DEF-CLOSE
       exit
    then
@@ -777,7 +796,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 
 \ The engine's twin: habu2.f C-CONSTANT.
 \ A constant's record opens as DKIND:VAL, the stamp a mention of it folds to,
-\ and NCOMP compiles the body that pushes the value, at either tier, as the
+\ and DEF-FIXED compiles the body that pushes the value, at either tier, as the
 \ engine's definers are native at both. It takes the program's top cell after
 \ its record opens, where the engine's pops it. With none the engine reads
 \ below its stack and faults (rc 102); this loop names the underflow, as
@@ -790,7 +809,7 @@ variable DEF-VALUE
    DKIND:VAL DEF-START
    depth 0= if s" E-UNDERFLOW: " REFUSE then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
-   DEF-VALUE @ NDICT:FIXED-VAL NCOMP:COMPILE-FIXED
+   DEF-VALUE @ NCOMP-DISPATCH:FIXED-VAL-KIND DEF-FIXED
    DEF-CLOSE
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW-PUBLISH ;
@@ -994,7 +1013,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    DEF-QUALIFY 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
-   cell NCOMP:FIXED-DEFER NCOMP:COMPILE-FIXED
+   cell NCOMP-DISPATCH:FIXED-DEFER-KIND DEF-FIXED
    DEF-CLOSE ;
 
 \ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`,

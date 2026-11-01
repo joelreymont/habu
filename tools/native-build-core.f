@@ -59,10 +59,11 @@ variable PRIOR-ENGINE-ROOT-U
    \ No NATIVE-LAYOUT row covers a host's CODE row at $2CF0, which TRANSLATE
    \ would refuse (test/native-build-entry.f FOREIGN-WINDOW-CASE makes one).
    $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
-   \ The host's rows at $3838..$3847 name cells the built engine fills itself:
-   \ BODY-HOOK-CELL, which the build sets around each file it runs, and
-   \ COMP-CELL (runtime-arm64.f INSTALL-T0).
+   \ The host's rows at $3838..$3847 and $6C0 name cells the built engine fills
+   \ itself: BODY-HOOK-CELL, which the build sets around each file it runs, and
+   \ COMP-CELL and FIXED-COMP-CELL (T0:INSTALL).
    $3838 2 cells ADDRESS-CELLS:REMOVE-XT-SPAN
+   $6C0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
    ADDR-ROWS 0 ?do
       i ADDR-ROW@ {: raw:n :}
@@ -277,12 +278,13 @@ variable HOST-COMPILER-KNOWN
 
 \ CHECKER-REG:SEAL installs the window's compilers in these cells and the capture
 \ records them; writers loaded after the capture compile with the host's.
-\ $3840 is literal for the reason NATIVE-LAYOUT's SLOTS gives.
+\ $3840 and $6C0 are literal for the reason NATIVE-LAYOUT's SLOTS gives.
 create HOST-DISPATCH-OFFS
    NCOMP-DISPATCH:XT-CELL ,
    NCOMP-DISPATCH:CALLBACK-STUB-CELL ,
    NCOMP-DISPATCH:CALLBACK-ENTRY-CELL ,
    $3840 ,   \ NCOMP-DISPATCH:COMP-CELL
+   $6C0 ,    \ NCOMP-DISPATCH:FIXED-COMP-CELL
 here HOST-DISPATCH-OFFS - CELL / constant HOST-DISPATCH-N
 create HOST-DISPATCH HOST-DISPATCH-N cells allot
 
