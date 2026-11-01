@@ -117,7 +117,9 @@ entry.
   LOWER-CERT-HOOK:LINE-AT public, because checker words outside those
   packages call them, until nested packages make CAST-ERROR a part of CHECKER
   and hide them, Joel chose "Approve, DIAG-XT private": the print hook, used
-  only inside CAST-ERROR, stays private.
+  only inside CAST-ERROR, stays private. START later became DECLARE, which
+  runs the declaration and clears the record when it ends, because a record
+  left holding the last declaration made cold and warm builds' images differ.
 - 2026-10-31, error places: asked whether SRCLOC:FILE-BUFFER? ( -- bool ),
   true while the text being read is the open file's own bytes, may be public
   so the Habu loop's and the native compiler's error-place writers share one
@@ -317,3 +319,9 @@ entry.
   when both have one, and an agent's call then waits in vim until killed (a
   pkg1d fold squash waited 12 minutes on 2026-10-31). Pass `-u` to keep Y's
   description.
+- A baseline engine runs the tree's source-loaded tools (tools/check.f and
+  what it loads), so swapping engines cannot show a tool change failing
+  before: casterr fold 4's worker ran diag-position on the old engine with the
+  new tools/check-all-errors-core.f, saw the same 7 failures on both, and
+  called them its own setup; they were the change. Show "fails before" by
+  reverting the tool source in a scratch copy of the tree.

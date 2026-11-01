@@ -1,0 +1,9 @@
+---
+title: Key discovery records by the package a file starts in
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-01T04:14:09.293971+02:00"
+---
+
+Problem: tools/source-discovery.f SD-R-RECORD keys each declaration and retirement from SD-PKG/SD-PART, which SD-WALK zeroes for every file, while the engine starts a file in its includer's package (one a prior file left open, or the one a required child inherits). The context replay (SD-C-PKG) carries the open package across files, but only the family match reads it. Result: missed loads, unsafe (SDT-TEST-STORAGE-DEFINER: a refusal is safe, a missed load is not). Fixtures /tmp/jerry-pkg2b-r3-tmp/probes/: 5a (a.f is 'package DEMO'; entry.f 'require a.f package PART ;package public : W ( -- ) parse-name 2drop ; parses: W 1 ;package DEMO:W \ require dep.f': engine LOADED, discovery finds entry.f and a.f only), 5a0 (same without the part), kid (a.f 'package DEMO public : W ( -- ) parse-name 2drop ; parses: W 1 ;package', b.f 'undefine W : W ( -- ) ;', entry.f 'require a.f package DEMO public require b.f ;package DEMO:W require dep.f': engine LOADED, dep.f missed because b.f's retirement is keyed with no package), kidpart; control kid-q ('undefine DEMO:W' in b.f) finds dep.f. Same on rnqmvxss and both pkg2b folds. Acceptance: a record harvested before its file opens a package is keyed by the package the load order gives at that file's start (as the consumer's replay knows it); 5a, 5a0, kid, kidpart find dep.f or are refused; a tools/event-closure-test.f case per shape failing before. Files: tools/source-discovery.f (SD-R-RECORD, SD-WALK, the consumer's replay), tools/event-closure-test.f. Verify: tools/source-discovery-test.f, tools/event-closure-test.f; the fixtures. Depends: pkg2b landed (habu-read-a-pkg-272bc1d0). Ownership: tools/source-discovery.f. Claim: unassigned.

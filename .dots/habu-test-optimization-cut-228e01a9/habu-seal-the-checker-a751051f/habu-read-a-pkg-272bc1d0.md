@@ -1,0 +1,19 @@
+---
+title: "Read a package's parts in lints and the strip"
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-01T02:50:52.161198+02:00"
+---
+
+Lane pkg2b (L2 of the nested-package design): shadow-lint, word docs and source discovery track a part and its parent; KEEP? and ACAP-PRIVATE? treat a part's public section as its parent's private one. Brief /tmp/jerry-big/pkg2b-brief.md. Workspace .jj-ws.noindex/jerry-pkg2b on rnqmvxss (worker). Claim: jerry.
+
+First worker read the code and handed off before editing; the lead settled its design (/tmp/jerry-big/pkg2b-design.md plus the brief's Design section: a part is a package row whose name XREF-QUAL-INDEX reads as qualified, no new file or word). Second worker running.
+
+Lane worker 2 (vyuwqnyt 52603967): shadow-lint counts package depth; word docs and discovery carry a part's path; KEEP? and ACAP-PRIVATE? read `pa pu XREF-QUAL-INDEX 0 >=`. Rows on its candidate: shadow-lint, source-lex, source-discovery, event-closure, checker-surface, package-seal, sealed-system-package, outer-interpret rc 0; new cases fail on the baseline readers. No row can see the strip change (stripped apps name nothing, APP-IMAGE:SAVE keeps every name, no engine package has a part yet). Opus review: REVISE. Lints, word docs and the strip hold (a part's public wordlist is protected exactly when its package's is). Discovery: (1) keying records by the path `A:B` misses a load the engine makes, since a part's word is spelled `B:W` only inside A (/tmp/jerry-pkg2b-rv-tmp/probes/c4b: engine and baseline load dep.f, lane finds entry.f alone); (2) a family word A defines is missed inside A's part (probes/fam, also on the baseline). Fold-in (/tmp/jerry-big/pkg2b-fold-brief.md, @ kouwvvqw): key records by the innermost package as spelled, keep the path only for the part's row in the context; a part's context also matches its package's family declarations.
+
+Fold-in (kouwvvqw): records keyed by the package as spelled, the path `A:B` only for the part's row in the context (SD-PART-PATH); SD-R-FAMILY-MATCH? also matches the part's package. Fixtures: c4 finds entry.f and dep.f (was refused), c4b finds dep.f (was missed), fam refused E-DISC-SHADOW (was missed). New cases fail with the lane's discovery source (F225, F226, F228; event-closure F48) and pass; source-discovery, event-closure, source-lex rc 0. Opus re-review running (/tmp/jerry-big/pkg2b-fold-review-brief.md).
+
+Fold 1 re-review: REVISE. Fixed c4, c4b, fam; still misses qual-in/qual-a (a family word defined `: PART:structure` into a part: the qualified branch compares PART with the renamed row `DEMO:PART`) and inh-in/inh-ret (a part opened in a file whose package an included file left open is walked as top-level); fold 1's two discovery programs are refused by the engine (W reads no source). Fold 2 (lead's design, /tmp/jerry-big/pkg2b-fold2-brief.md): every package by its spelling, no path rename; the context replay decides part-ness (a package opened while one is open) and saves the outer row; the family match inside a part also matches the outer package. Pre-existing, to dot: barein/barepart (bare in-package spelling of a `parses:` word: load missed) and mirror (an ambiguous row's operand read as source opens a comment hiding a load), fixtures /tmp/jerry-pkg2b-r2-tmp/probes/.
+
+Re-review of folds 1 and 2: behaviour ACCEPT (every fixture gets the engine's loads or a refusal, none loses a load fold 1 or rnqmvxss found; ECT QUALIFIED-PART and LEFT-OPEN fail on fold 1's discovery and pass; SDT-TEST-ROW-KEYS programs now load on the engine). REVISE for three comments (SD-C-PKG$, SD-C-PACKAGE-OPEN, ECT-TEST-FAMILY-PRIOR-SIBLING) and SD-R-RECORD's overclaiming key comment: lead fixed all four; source-discovery-test and event-closure-test ok; folds squashed into vyuwqnyt 7ae42723. Older misses it found are dotted: habu-key-discovery-records-b367e77e, habu-find-the-load-07addb31, habu-refuse-an-ambiguous-bc0186a0.
