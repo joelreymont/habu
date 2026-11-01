@@ -1653,8 +1653,9 @@ SHADOW-DIAG-INSTALL
 \ A `trust` row naming a word the engine resolves to nothing. It sits beside the
 \ shadow diagnostic because it stops a stale row from becoming one. Placed at the
 \ row's name (checker.f TRUST) when that lies in checked text.
-: TSTALE-PROSE ( -- )
-   s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
+: TSTALE-PROSE ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   s" E-TRUST-UNRESOLVED habu: trust row for '" DTXT  na nu DTXT
    s" ' names no word where its record lands: nothing in the open" DTXT
    s"  section's wordlist, the global wordlist outside a package, or PKG's" DTXT
    s"  public wordlist for PKG:TAIL is" DTXT
@@ -1662,123 +1663,140 @@ SHADOW-DIAG-INSTALL
    s"  the engine never defined. Delete the row, correct the name to the" DTXT
    s"  word it was meant to describe, or write it in the section that" DTXT
    s"  defines that word" DTXT ;
-: TSTALE-JSON ( -- )
+: TSTALE-JSON ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n pa:ptr pu:n :}
    s" E-TRUST-UNRESOLVED" s" fix_stale_trust_row" s" rejected" JHEAD
-   s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
-   TSR-TOK-A @ TSR-TOK-U @ s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JTAIL ;
-: TSTALE-DIAG ( -- )
+   s" token" JKEY na nu JSTR 44 EMIT1
+   pa pu s" This trust row names no word in the wordlist its record lands in: the open section's, the global wordlist outside a package, or PKG's public wordlist for PKG:TAIL. Delete the row if the word is gone, correct the spelling, or write the row in the section that defines the word." JTAIL ;
+: TSTALE-DIAG ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n pa:ptr pu:n :}
    1 RDST !  0 RSN !  0 RQM !
-   JSON-DIAGS @ IF TSTALE-JSON ELSE TSTALE-PROSE THEN
+   JSON-DIAGS @ IF na nu pa pu TSTALE-JSON ELSE na nu TSTALE-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
 
 \ A storage registrar called outside the verifier window (checker.f
 \ CHECKER-REPLAY-NAME-OK?): names the word and the definer that makes it soundly.
 \ The name is the run's, so the packet carries no place.
-: REPLAY-ONLY-PROSE ( -- )
-   s" E-PKG-CONTEXT habu: storage record for '" DTXT  RPL-TOK-A @ RPL-TOK-U @ DTXT
+: REPLAY-ONLY-PROSE ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   s" E-PKG-CONTEXT habu: storage record for '" DTXT  na nu DTXT
    s" ' refused outside the engine's verifier window: a checker storage" DTXT
    s"  registrar records a definer's accessor only while the source pre-pass" DTXT
    s"  replays the definer that defines the word, so from source the record" DTXT
    s"  would certify callers against an effect the engine never binds to that" DTXT
    s"  name. Define the storage with its definer: TYPED-VARIABLE, TYPED-BUFFER," DTXT
    s"  LAYOUT-BUFFER or DYNAMIC-BUFFER" DTXT ;
-: REPLAY-ONLY-JSON ( -- )
+: REPLAY-ONLY-JSON ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n pa:ptr pu:n :}
    s" E-PKG-CONTEXT" s" use_storage_definer" s" rejected" JHEAD
-   s" token" JKEY RPL-TOK-A @ RPL-TOK-U @ JSTR 44 EMIT1
-   NULL-PTR 0 s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar." JTAIL ;
-: REPLAY-ONLY-DIAG ( -- )
+   s" token" JKEY na nu JSTR 44 EMIT1
+   pa pu s" A checker storage registrar records a definer's accessor only inside the engine's verifier window. Define the storage with its definer (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) instead of calling the registrar." JTAIL ;
+: REPLAY-ONLY-DIAG ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n pa:ptr pu:n :}
    1 RDST !  0 RSN !  0 RQM !
-   JSON-DIAGS @ IF REPLAY-ONLY-JSON ELSE REPLAY-ONLY-PROSE THEN
+   JSON-DIAGS @ IF na nu pa pu REPLAY-ONLY-JSON ELSE na nu REPLAY-ONLY-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
 
 \ A malformed qualified name's record (checker.f CHECKER-RECORD-NAME) has the
 \ class and suggestion of E-BAD-QUALIFIED, and a code of its own in a refused
 \ record's shape (tools/diag-code.f); the refusal still throws E-BAD-QUALIFIED.
-\ Placed at TSR-AT-A (checker.f CHECKER-RECORD-NAME-AT) when in checked text.
-: BADQUAL-PROSE ( -- )
-   s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  TSR-TOK-A @ TSR-TOK-U @ DTXT
+\ Placed at the declaring name (checker.f CHECKER-RECORD-NAME-AT) when in
+\ checked text.
+: BADQUAL-PROSE ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   s" E-BAD-QUALIFIED-RECORD habu: record for '" DTXT  na nu DTXT
    s" ' refused: malformed qualified name, where one non-edge ':' selects a" DTXT
    s"  package and a second ':' names no word. Use one ':' qualifier, e.g." DTXT
    s"  PKG:WORD" DTXT ;
-: BADQUAL-JSON ( -- )
+: BADQUAL-JSON ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n pa:ptr pu:n :}
    s" E-BAD-QUALIFIED-RECORD" s" fix_qualified_name" s" rejected" JHEAD
-   s" token" JKEY TSR-TOK-A @ TSR-TOK-U @ JSTR 44 EMIT1
-   TSR-AT-A @ TSR-AT-U @ s" Use one ':' qualifier, e.g. PKG:WORD." JTAIL ;
-: BADQUAL-DIAG ( -- )
+   s" token" JKEY na nu JSTR 44 EMIT1
+   pa pu s" Use one ':' qualifier, e.g. PKG:WORD." JTAIL ;
+: BADQUAL-DIAG ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n pa:ptr pu:n :}
    1 RDST !  0 RSN !  0 RQM !
-   JSON-DIAGS @ IF BADQUAL-JSON ELSE BADQUAL-PROSE THEN
+   JSON-DIAGS @ IF na nu pa pu BADQUAL-JSON ELSE na nu BADQUAL-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
 \ checker.f RECORD-DIAG-XT selects: 0 the stale trust row, 1 the storage
 \ record, 2 the malformed name.
-: RECORD-DIAG ( n -- ) {: which:n :}
-   which 1 = IF REPLAY-ONLY-DIAG EXIT THEN
-   which 2 = IF BADQUAL-DIAG EXIT THEN
-   TSTALE-DIAG ;
+: RECORD-DIAG ( ptr u8 n ptr u8 n n -- )
+   {: na:ptr nu:n pa:ptr pu:n which:n :}
+   which 1 = IF na nu pa pu REPLAY-ONLY-DIAG EXIT THEN
+   which 2 = IF na nu pa pu BADQUAL-DIAG EXIT THEN
+   na nu pa pu TSTALE-DIAG ;
 : RECORD-DIAG-INSTALL ( -- ) [: RECORD-DIAG ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-INSTALL
 
 \ Storage declaration refusals (checker.f CHECKER-STORAGE-REFUSE): the declared
 \ word, refused token and reason, the definer standing in for both when the line
 \ has no name; no definition fields. A run-time refusal carries no place.
-: STGR-NAME$ ( -- ptr u8 n )  STGR-NAME-A @ STGR-NAME-U @ ;
-: STGR-TOK$ ( -- ptr u8 n )  STGR-TOK-A @ STGR-TOK-U @ ;
-: STGR-NAME-WHY? ( -- f )
-   STGR-WHY @ STG-MALFORMED-NAME =  STGR-WHY @ STG-SEALED-NAME = or
-   STGR-WHY @ STG-NO-NAME = or ;
-: STGR-COUNT-WHY? ( -- f )
-   STGR-WHY @ STG-BAD-COUNT =  STGR-WHY @ STG-NO-COUNT = or
-   STGR-WHY @ STG-COUNT-WORD = or ;
-: STGR-REASON$ ( -- ptr u8 n )
-   STGR-WHY @ STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
-   STGR-WHY @ STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
-   STGR-WHY @ STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
-   STGR-WHY @ STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
-   STGR-WHY @ STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
-   STGR-WHY @ STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
-   STGR-WHY @ STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
-   STGR-WHY @ STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
-   STGR-WHY @ STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
-   STGR-WHY @ STG-NO-TYPE = IF s" no type for" EXIT THEN
-   STGR-WHY @ STG-NO-NAME = IF s" no name for" EXIT THEN
+: STGR-NAME-WHY? ( n -- f ) {: why:n :}
+   why STG-MALFORMED-NAME =  why STG-SEALED-NAME = or
+   why STG-NO-NAME = or ;
+: STGR-COUNT-WHY? ( n -- f ) {: why:n :}
+   why STG-BAD-COUNT =  why STG-NO-COUNT = or
+   why STG-COUNT-WORD = or ;
+: STGR-REASON$ ( n -- ptr u8 n ) {: why:n :}
+   why STG-UNKNOWN-TYPE = IF s" unknown type" EXIT THEN
+   why STG-MALFORMED-TYPE = IF s" malformed type" EXIT THEN
+   why STG-UNSTORABLE-TYPE = IF s" type this definer cannot store" EXIT THEN
+   why STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
+   why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
+   why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
+   why STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
+   why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
+   why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
+   why STG-NO-TYPE = IF s" no type for" EXIT THEN
+   why STG-NO-NAME = IF s" no name for" EXIT THEN
    s" no count for" ;
-: STGR-CLASS$ ( -- ptr u8 n )
-   STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
-   STGR-COUNT-WHY? IF s" fix_storage_count" EXIT THEN
+: STGR-CLASS$ ( n -- ptr u8 n ) {: why:n :}
+   why STGR-NAME-WHY? IF s" fix_storage_name" EXIT THEN
+   why STGR-COUNT-WHY? IF s" fix_storage_count" EXIT THEN
    s" fix_storage_type" ;
-: STGR-SUGGEST$ ( -- ptr u8 n )
-   STGR-NAME-WHY? IF s" Name the storage with at most one inner ':', outside a sealed system package." EXIT THEN
-   STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
+: STGR-SUGGEST$ ( n -- ptr u8 n ) {: why:n :}
+   why STGR-NAME-WHY? IF s" Name the storage with at most one inner ':', outside a sealed system package." EXIT THEN
+   why STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
-: STGR-LOCATE ( -- )   \ the token's place, counted from the start of the verifier's buffer
-   STGR-SRC-A @ STGR-TOK-A @ STGR-SRC-LINE @ STGR-SRC-COL @ STGR-SRC-BYTE @
+: STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer
+   {: ta:ptr :}
+   STGR-SRC-A @ ta STGR-SRC-LINE @ STGR-SRC-COL @ STGR-SRC-BYTE @
    DIAG-ORIGIN-SPAN! ;
-: STGR-JSON ( -- )
-   s" E-BAD-STORAGE" STGR-CLASS$ s" rejected" JHEAD
-   s" word" JKEY STGR-NAME$ JSTR 44 EMIT1
-   s" token" JKEY STGR-TOK$ JSTR 44 EMIT1
-   s" reason" JKEY STGR-REASON$ JSTR 44 EMIT1
+: STGR-JSON ( ptr u8 n ptr u8 n n bool -- )
+   {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
+   s" E-BAD-STORAGE" why STGR-CLASS$ s" rejected" JHEAD
+   s" word" JKEY na nu JSTR 44 EMIT1
+   s" token" JKEY ta tu JSTR 44 EMIT1
+   s" reason" JKEY why STGR-REASON$ JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
-   STGR-AT @ IF
+   at IF
       DIAGL0 @ JLOC-L !  DIAGC0 @ JLOC-C !  DIAGB0 @ JLOC-B !
-      DIAGB0 @ STGR-TOK-U @ + JLOC-E !
+      DIAGB0 @ tu + JLOC-E !
       JLOC-FIELDS
    THEN
-   s" suggestion" JKEY STGR-SUGGEST$ JSTR
+   s" suggestion" JKEY why STGR-SUGGEST$ JSTR
    125 EMIT1 ;
-: STGR-PROSE ( -- )
-   STGR-AT @ IF
+: STGR-PROSE ( ptr u8 n ptr u8 n n bool -- )
+   {: na:ptr nu:n ta:ptr tu:n why:n at:bool :}
+   at IF
       DIAGFB DIAGFU @ DTXT  58 EMIT1  DIAGL0 @ JNUM  58 EMIT1  DIAGC0 @ JNUM
       s" : " DTXT
    THEN
-   s" habu: in " DTXT  STGR-NAME$ DTXT  s" : " DTXT  STGR-REASON$ DTXT
-   s"  '" DTXT  STGR-TOK$ DTXT  s" '" DTXT ;
-: STGR-DIAG ( -- )
-   STGR-AT @ IF STGR-LOCATE THEN
+   s" habu: in " DTXT  na nu DTXT  s" : " DTXT  why STGR-REASON$ DTXT
+   s"  '" DTXT  ta tu DTXT  s" '" DTXT ;
+: STGR-DIAG ( ptr u8 n ptr u8 n n -- )
+   {: na:ptr nu:n ta:ptr tu:n why:n :}
+   ta tu STGR-IN-SOURCE? {: at:bool :}
+   at IF ta STGR-LOCATE THEN
    1 RDST !  0 RSN !  0 RQM !
-   JSON-DIAGS @ IF STGR-JSON ELSE STGR-PROSE THEN
+   JSON-DIAGS @ IF
+      na nu ta tu why at STGR-JSON
+   ELSE
+      na nu ta tu why at STGR-PROSE
+   THEN
    10 EMIT1
    RSBUF-FLUSH ;
 : STGR-DIAG-INSTALL ( -- ) [: STGR-DIAG ;] is STORAGE-DIAG-XT ;
@@ -1946,9 +1964,9 @@ INSTALL
    THEN
    s" ': its terminators are not a standalone ( , at least one terminator and a" DTXT
    s"  standalone )" DTXT ;
-: PRS-PROSE ( n -- )
-   {: kind:n :}
-   s" E-PARSES-ROW habu: parses: row '" DTXT  PRS-TOK-A @ PRS-TOK-U @ DTXT
+: PRS-PROSE ( ptr u8 n n -- )
+   {: ta:ptr tu:n kind:n :}
+   s" E-PARSES-ROW habu: parses: row '" DTXT  ta tu DTXT
    kind PRS-REASON ;
 : PRS-SUGGEST$ ( n -- ptr u8 n )
    PRS-SYNTAX? IF
@@ -1958,18 +1976,18 @@ INSTALL
 : PRS-CLASS$ ( n -- ptr u8 n )
    PRS-SYNTAX? IF s" fix_parses_syntax" EXIT THEN
    s" fix_parses_row" ;
-: ROW-JSON ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: ca:ptr cu:n la:ptr lu:n sa:ptr su:n :}
+: ROW-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ta:ptr tu:n ca:ptr cu:n la:ptr lu:n sa:ptr su:n :}
    ca cu la lu s" rejected" JHEAD
-   s" token" JKEY PRS-TOK-A @ PRS-TOK-U @ JSTR 44 EMIT1
-   PRS-TOK-A @ PRS-TOK-U @ sa su JTAIL ;
-: PRS-DIAG ( n -- )
-   {: kind:n :}
+   s" token" JKEY ta tu JSTR 44 EMIT1
+   ta tu sa su JTAIL ;
+: PRS-DIAG ( ptr u8 n n -- )
+   {: ta:ptr tu:n kind:n :}
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF
-      s" E-PARSES-ROW" kind PRS-CLASS$ kind PRS-SUGGEST$ ROW-JSON
+      ta tu s" E-PARSES-ROW" kind PRS-CLASS$ kind PRS-SUGGEST$ ROW-JSON
    ELSE
-      kind PRS-PROSE
+      ta tu kind PRS-PROSE
    THEN
    10 EMIT1
    RSBUF-FLUSH ;
@@ -1980,9 +1998,9 @@ PARSES-DIAG-INSTALL
 \ target fix_names_syntax, else fix_names_row.
 : NMS-SYNTAX? ( n -- bool )
    PARSES-NO-TARGET = ;
-: NMS-PROSE ( n -- )
-   {: kind:n :}
-   s" E-NAMES-ROW habu: names: row '" DTXT  PRS-TOK-A @ PRS-TOK-U @ DTXT
+: NMS-PROSE ( ptr u8 n n -- )
+   {: ta:ptr tu:n kind:n :}
+   s" E-NAMES-ROW habu: names: row '" DTXT  ta tu DTXT
    kind NAMES-NO-STRING = IF
       s" ' names a word that takes no string: only a word whose input row ends in" DTXT
       s"  ptr u8 n takes a row" DTXT EXIT
@@ -1996,13 +2014,13 @@ PARSES-DIAG-INSTALL
 : NMS-CLASS$ ( n -- ptr u8 n )
    NMS-SYNTAX? IF s" fix_names_syntax" EXIT THEN
    s" fix_names_row" ;
-: NMS-DIAG ( n -- )
-   {: kind:n :}
+: NMS-DIAG ( ptr u8 n n -- )
+   {: ta:ptr tu:n kind:n :}
    1 RDST !  0 RSN !  0 RQM !
    JSON-DIAGS @ IF
-      s" E-NAMES-ROW" kind NMS-CLASS$ kind NMS-SUGGEST$ ROW-JSON
+      ta tu s" E-NAMES-ROW" kind NMS-CLASS$ kind NMS-SUGGEST$ ROW-JSON
    ELSE
-      kind NMS-PROSE
+      ta tu kind NMS-PROSE
    THEN
    10 EMIT1
    RSBUF-FLUSH ;

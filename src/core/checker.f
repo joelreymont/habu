@@ -9750,14 +9750,15 @@ BADSIG-DEFAULT
 
 : MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 
-\ Enter a fresh collection; END returns its reject count and clears the mode.
+\ Enter a fresh collection; END returns its reject count and clears the mode
+\ and the count.
 \ The recovery floor is this checker's effect arena end.
 : MULTI-ERR-BEGIN ( -- )
    UEND @ CHECKER-EFFECT-AUTHORITY:RECOVERY-START
    -1 MULTI-ERR !  0 MULTI-ERR-N ! ;
 
 : MULTI-ERR-END ( -- n )
-   MULTI-ERR-N @  0 MULTI-ERR ! ;
+   MULTI-ERR-N @  0 MULTI-ERR !  0 MULTI-ERR-N ! ;
 
 \ Recovery is bound to this exact effect record, not merely its symbol or the
 \ presence of an ABI row. A new declaration writes EFF-ACTIVE; the ordinary
@@ -11768,7 +11769,6 @@ variable DFER-END
 \ before it increments the depth, and by verify-source) records the name at the
 \ current depth; resolution reads names[0..depth).
 7144 constant E-USING-AMBIGUOUS            \ bare tail resolves in more than one used public wordlist
-variable CK-USED-MASK                      \ bit i set when used-scan slot i matched, for the using diagnostics
 
 \ The depth every read of the mirror is bounded by: the engine's live cell,
 \ which a replay moves through CHECKER-OVERLAY:OPEN-USING. A neutral replay
@@ -11862,8 +11862,6 @@ package CHECKER-REG
 7143 constant E-TRUST-UNRESOLVED
 \ A record for a malformed qualified name, which keys no word (CHECKER-RECORD-NAME).
 7152 constant E-BAD-QUALIFIED
-PTR-VARIABLE TSR-TOK-A   variable TSR-TOK-U     \ the row's name (raw, valid while rendering)
-PTR-VARIABLE TSR-AT-A    variable TSR-AT-U      \ declaring name (valid while rendering)
 \ A `generates:` row the checker cannot keep (CHECKER-GENERATES): one code for
 \ its three refusals, which the diagnostic tells apart by kind.
 7153 constant E-GENERATES-ROW
@@ -11872,13 +11870,14 @@ PTR-VARIABLE TSR-AT-A    variable TSR-AT-U      \ declaring name (valid while re
 7186 constant E-PARSES-ROW
 \ A `names:` row the checker refuses (CHECKER-NAMES-ROW), told apart likewise.
 7208 constant E-NAMES-ROW
-\ ONE hook for the three refused-record diagnostics, selected by its argument,
-\ for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders the stale
-\ `trust` row here, 1 the storage record refused outside the verifier window
-\ (CHECKER-REPLAY-NAME-OK?), 2 the record for a malformed qualified name
-\ (CHECKER-RECORD-NAME).
-defer RECORD-DIAG-XT ( n -- )               \ render.f installs the three diagnostics behind one selector
-: RECORD-DIAG-DEFAULT ( -- ) [: drop ;] is RECORD-DIAG-XT ;
+\ ONE hook for the three refused-record diagnostics, selected by its last
+\ argument, for the pre-trust slot reason SHADOW-DIAG-XT below gives: 0 renders
+\ the stale `trust` row here, 1 the storage record refused outside the verifier
+\ window (CHECKER-REPLAY-NAME-OK?), 2 the record for a malformed qualified name
+\ (CHECKER-RECORD-NAME). Each renders the record's name as written, located at
+\ the place before the selector (NULL-PTR 0 for none).
+defer RECORD-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ render.f installs the three diagnostics behind one selector
+: RECORD-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is RECORD-DIAG-XT ;
 RECORD-DIAG-DEFAULT
 
 \ A refused row behaves like the unparseable stored signature in USIG-ADD-BAD:
@@ -11886,17 +11885,17 @@ RECORD-DIAG-DEFAULT
 \ and counted, so the pass reaches every other error and the driver still exits
 \ nonzero. Neither path stores a row, so a later caller rejects as undefined.
 : TRUST-STALE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a TSR-TOK-A !  u TSR-TOK-U !
-   0 RECORD-DIAG-XT
+   a u a u 0 RECORD-DIAG-XT
    MULTI-ERR? IF SIG-COUNT EXIT THEN
    E-TRUST-UNRESOLVED CHECKER-REFUSE ;
-PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written (valid while rendering)
-variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
-PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 variable USING-UNBOUND   \ no global binds the tail the walk refused: the engine's own lookup refuses it
 variable WALK-REC        \ the walk bound the name to the record the engine's own lookup found (LIVE-BIND)
 CHECKER-REG:SCRATCH{
+PTR-VARIABLE USH-TOK-A   variable USH-TOK-U     \ the diagnostic's token as written
+variable USH-GSYM    variable USH-USYM      \ the two colliding syms: global, used public
+PTR-VARIABLE USH-PKG-A   variable USH-PKG-U     \ the used package's folded name (renders PKG:WORD)
 variable USING-HOLD      \ a body token's walk holds its using refusal for the selector (DO-TOK1)
+variable CK-USED-MASK    \ bit i set when used-scan slot i matched, for the using diagnostics
 CHECKER-REG:}SCRATCH
 \ ONE hook for the diagnostics located at a token, selected by its argument: 0
 \ renders the using-shadow reference site below, 1 the arity-shadow definition
@@ -12774,18 +12773,14 @@ package CHECKER-REG
 10 constant STG-NO-TYPE         \ no token follows the name on its line to be its type
 11 constant STG-NO-NAME         \ no token follows the definer on its line to be its name
 12 constant STG-XT-TYPE         \ the type parses and names `xt`, which no storage holds
-PTR-VARIABLE STGR-NAME-A  variable STGR-NAME-U  \ the declared name (raw, valid while rendering)
-PTR-VARIABLE STGR-TOK-A   variable STGR-TOK-U   \ the refused token (raw, valid while rendering)
-variable STGR-WHY                               \ one of the STG- reasons above
-variable STGR-AT                                \ the token lies in the verifier's source
 PTR-VARIABLE STGR-SRC-A   variable STGR-SRC-U   \ the buffer the verifier scans
 variable STGR-SRC-LINE  variable STGR-SRC-COL  variable STGR-SRC-BYTE  \ where it starts in its file
 \ The renderer is its own hook because none of the four installed before it can
 \ carry a declaration: DIAGXT renders a definition with definition fields,
 \ BADSIG-XT a stored signature row, RECORD-DIAG-XT a refused record, and
 \ SHADOW-DIAG-XT selects among the diagnostics a token locates.
-defer STORAGE-DIAG-XT ( -- )                    \ render.f installs the declaration diagnostic
-: STORAGE-DIAG-DEFAULT ( -- ) [: ;] is STORAGE-DIAG-XT ;
+defer STORAGE-DIAG-XT ( ptr u8 n ptr u8 n n -- )   \ render.f installs it: declared name, refused token, STG- reason
+: STORAGE-DIAG-DEFAULT ( -- ) [: drop 2drop 2drop ;] is STORAGE-DIAG-XT ;
 STORAGE-DIAG-DEFAULT
 
 \ src/habu/verify-source.f names each buffer it scans, and where the buffer
@@ -12801,11 +12796,6 @@ STORAGE-DIAG-DEFAULT
    off u + STGR-SRC-U @ <= ;
 
 : CHECKER-STORAGE-REFUSE ( ptr u8 n ptr u8 n n -- )
-   {: na:ptr nu:n ta:ptr tu:n why:n :}
-   na STGR-NAME-A !  nu STGR-NAME-U !
-   ta STGR-TOK-A !  tu STGR-TOK-U !
-   why STGR-WHY !
-   ta tu STGR-IN-SOURCE? STGR-AT !
    STORAGE-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    CHECKER-REJECT-RC throw ;
@@ -12848,7 +12838,6 @@ STORAGE-DIAG-DEFAULT
 \ code the window's `using` steps refuse with (CHECKER-USING-PUSH), named at the
 \ call (RECORD-DIAG-XT 1, render.f REPLAY-ONLY-DIAG): thrown bare, a reader and
 \ a --json-errors consumer would see only `hb: uncaught throw code 7136`.
-PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid while rendering)
 
 \ Inside the window the name is then held to the definer's own name rule, which
 \ answers false once it has reported a refusal. A length no name has answers
@@ -12857,8 +12846,7 @@ PTR-VARIABLE RPL-TOK-A   variable RPL-TOK-U     \ the refused name (raw, valid w
    {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
    CHECKER-VERIFY-PKG-DEPTH @ 0= IF
-      a RPL-TOK-A !  u RPL-TOK-U !
-      1 RECORD-DIAG-XT
+      a u NULL-PTR 0 1 RECORD-DIAG-XT
       E-PKG-CONTEXT CHECKER-REFUSE
    THEN
    a u CHECKER-LBUF-NAME-OK? ;
@@ -13410,10 +13398,12 @@ public
 \ The using refusal the selector took (REFUSAL-TAKE): its token and what the
 \ walk captured for it, kept from the later lookups and refusals that move
 \ them, so the scan's end raises it as the walk found it.
+CHECKER-REG:SCRATCH{
 PTR-VARIABLE UHELD-TOK-A   variable UHELD-TOK-U
 variable UHELD-GSYM   variable UHELD-USYM
 PTR-VARIABLE UHELD-PKG-A   variable UHELD-PKG-U
 variable UHELD-MASK
+CHECKER-REG:}SCRATCH
 
 : USING-SAVE ( -- )
    USH-TOK-A @ UHELD-TOK-A !  USH-TOK-U @ UHELD-TOK-U !
@@ -14683,8 +14673,7 @@ variable DFER-POS
    {: a:ptr u:n at:ptr atu:n :}
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym 0= IF
-      a TSR-TOK-A !  u TSR-TOK-U !  at TSR-AT-A !  atu TSR-AT-U !
-      2 RECORD-DIAG-XT
+      a u at atu 2 RECORD-DIAG-XT
       E-BAD-QUALIFIED CHECKER-REFUSE
    THEN
    sym CHECKER-REC-SYM !
@@ -14779,9 +14768,11 @@ package CHECKER-REG
 \ an inferred effect and a `TRUSTED:` body (whose declaration arrives through
 \ USIG-ADD as a storage definer's does) are left to ncomp's backstop too.
 7145 constant E-SHADOWED-ARITY
+CHECKER-REG:SCRATCH{
 variable SBA-TWIN                          \ the private twin's sym: the refused public's package and tail
 variable SBA-NIN   variable SBA-NOUT       \ the refused declaration's width in cells
 variable SBA-PIN   variable SBA-POUT       \ the private word's width in cells
+CHECKER-REG:}SCRATCH
 
 \ A sym's active declared width in cells. CELLS-NONE on either side means the
 \ binding cannot be judged — no record, a tombstone, or a row carrying no
@@ -27133,17 +27124,14 @@ TRUSTED: generates: ( -- )
 5 constant PARSES-NO-TARGET               \ nothing follows the declarer
 6 constant PARSES-COUNT                   \ the count is no number, or negative
 7 constant PARSES-LIST                    \ no `(`, no terminator, or no `)`
-PTR-VARIABLE PRS-TOK-A   variable PRS-TOK-U   \ the token the packet names (raw, valid while rendering)
-defer PARSES-DIAG-XT ( n -- )             \ render.f installs the diagnostic, selected by kind
-: PARSES-DIAG-DEFAULT ( -- ) [: drop ;] is PARSES-DIAG-XT ;
+defer PARSES-DIAG-XT ( ptr u8 n n -- )   \ render.f installs the diagnostic: the token it names, kind
+: PARSES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is PARSES-DIAG-XT ;
 PARSES-DIAG-DEFAULT
 
 \ A refused row is rendered and then stops the load, as a refused generates:
 \ row does (GENERATES-REFUSE): counted under a MULTI-ERROR load instead.
 : PARSES-REFUSE ( ptr u8 n n -- )
-   {: a:ptr u:n kind:n :}
-   a PRS-TOK-A !  u PRS-TOK-U !
-   kind PARSES-DIAG-XT
+   PARSES-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-PARSES-ROW throw ;
 
@@ -27238,14 +27226,12 @@ PARSES-DIAG-DEFAULT
 \ PARSES-NO-TARGET at the keyword (fix_names_syntax), ROW-UNBOUND's and
 \ NAMES-NO-STRING at the target (fix_names_row).
 8 constant NAMES-NO-STRING                \ it names a word whose input row does not end in ptr u8 n
-defer NAMES-DIAG-XT ( n -- )              \ render.f installs the diagnostic, selected by kind
-: NAMES-DIAG-DEFAULT ( -- ) [: drop ;] is NAMES-DIAG-XT ;
+defer NAMES-DIAG-XT ( ptr u8 n n -- )    \ render.f installs the diagnostic: the token it names, kind
+: NAMES-DIAG-DEFAULT ( -- ) [: drop drop drop ;] is NAMES-DIAG-XT ;
 NAMES-DIAG-DEFAULT
 
 : NAMES-REFUSE ( ptr u8 n n -- )
-   {: a:ptr u:n kind:n :}
-   a PRS-TOK-A !  u PRS-TOK-U !
-   kind NAMES-DIAG-XT
+   NAMES-DIAG-XT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    E-NAMES-ROW throw ;
 
