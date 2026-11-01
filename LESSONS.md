@@ -8,6 +8,12 @@ entry.
 
 ### Language and checker
 
+- 2026-11-01, public words: after leads asked Joel to approve guard words
+  where the fix was reading a request body on demand, he said to "ask
+  whenever they want to create new forth (habu) words" and "it should be a
+  habu rule"; on 2026-11-02 he narrowed it: "approval for internal habu words
+  not required, only public ones, which is, again, public api". A new
+  package's public words are included; the card's section 1 states it.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
