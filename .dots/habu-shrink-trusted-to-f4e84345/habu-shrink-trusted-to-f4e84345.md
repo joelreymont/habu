@@ -15,3 +15,5 @@ The xt feature landed (habu-let-signatures-name-5931014b, habu-check-the-primiti
 The checker verdict words landed (habu-publish-json-diags-116b6142): REPORT-UNCHECKABLE, MULTI-ERR-BEGIN and MULTI-ERR-END moved into checker.f: the TRUSTED: CHECK-BODY copy is deleted and MULTI-ERR-BEGIN is checked. TRUSTED: definitions in src 47 -> 45 (verify-source.f 7 -> 6, cell-effects.f 4 -> 3).
 
 The C2 disposer landed (habu-check-the-c2-99fd69f8, on habu-pass-a-fresh-bb992e31): ALLOC-DISPOSE is checked through a C2-MEM callback pack. TRUSTED: definitions in src 45 -> 44 (c2-owner.f 1 -> 0); tools 5, test 52 unchanged.
+
+Repair advice: lane unsafe makes E-UNSAFE's plain text and JSON suggestion say "call it at top level, or evaluate text with evaluate-closed" (src/core/render.f SUGGEST-TEXT, DIAG-PROSE), but its JSON repair_class stays `trusted_boundary_required`, shared with E-CAP-TRUSTED (render.f REPAIR-CLASS; asserted by test/gate-diagnostics-lib.f 'unsafe repair class', written by tools/checked-boundary-lint-core.f). Give E-UNSAFE a class that names its repair when this census settles what replaces TRUSTED:.

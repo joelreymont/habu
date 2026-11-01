@@ -186,6 +186,14 @@ entry.
   holding off idle sleep he chose POWER:KEEP-AWAKE / POWER:ALLOW-SLEEP over
   WAKE-LOCK and HOLD; for runner sizing, OS-CPU:PERFORMANCE-CORES and
   OS-MEMORY:TOTAL.
+- 2026-11-01, errors the checker reports itself: under Joel's word relayed by
+  phil, "use your best judgement. pick what's best for the long term. tell
+  everyone the same", the lead made two choices. E-UNSAFE's repair class is
+  `remove_unsafe_word`, not `trusted_boundary_required`: a checked body cannot
+  name an unsafe word at all, and TRUSTED: is being retired. One global checker
+  word, `REPORTED-ERROR? ( n -- bool )`, lists every code the checker renders
+  before it throws, for CAST-ERROR:SKIP and the check tools alike, as
+  REPORT-UNCHECKABLE became one checker word on 2026-10-31.
 
 ### Compiler and builds
 
@@ -324,4 +332,8 @@ entry.
   before: casterr fold 4's worker ran diag-position on the old engine with the
   new tools/check-all-errors-core.f, saw the same 7 failures on both, and
   called them its own setup; they were the change. Show "fails before" by
-  reverting the tool source in a scratch copy of the tree.
+  reverting the tool source in a scratch copy of the tree, run through an
+  entry file at the copy's root: `--load` of a file below the root resolves
+  `require tools/…` against the running hb's tree (card section 7): a
+  before run that loaded a scratch copy's tools/lint/clobber-lint-test.f got
+  the workspace's lint, as a word only the new lint defines showed.
