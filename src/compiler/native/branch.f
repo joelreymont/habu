@@ -109,11 +109,6 @@ $D65F03C0 constant RET-WORD
    at target REACHES? 0= if E-NBR-RANGE throw then
    target at - INSN-BYTES /  IMM26 and  B-OP or ;
 
-private
-
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

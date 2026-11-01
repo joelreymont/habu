@@ -2068,10 +2068,6 @@ public
 : ENSURE-NAMED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-ID:ir-symbol-id )
    OP-NAMED ENSURE-OP ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

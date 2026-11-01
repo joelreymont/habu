@@ -61,6 +61,11 @@ public
   `package at <loc>`, rc 75.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
+- The package keyword `seal-package` seals the open package: a later
+  `package` of it, or a definition or `EXPORT` into it, is
+  `E-SEALED-PACKAGE`, rc 84, and `tools/check.f` refuses the same. Outside a
+  package: `seal-package at <loc>`, rc 75; in a body or after `'`, as
+  `public` there, `E-UNDEFINED`. A multi-file owner seals after its last file.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
   `E-DUPLICATE-DEFINITION`; `undefine R` first to replace one. A `does>`
   definer `R` also claims `R;does` there, and so does `EXPORT R`. The new `R`

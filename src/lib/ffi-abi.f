@@ -2007,13 +2007,7 @@ public
 \ Both wordlists are protected here, after FFI's last definition: an engine
 \ that loads this file after its seal (tools/build-fixpoint.f's capture host)
 \ refuses any definition into a protected wordlist and exits 84.
-private
-
-get-current prot-wid-add
-
-public
-
-get-current prot-wid-add
+seal-package
 
 ;package
 

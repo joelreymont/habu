@@ -103,6 +103,5 @@ PTR-VARIABLE STATE  variable STATE-N  variable STATE-CAP
    [: STATE STATE-N STATE-CAP ;] is CWIN-STATE ;
 INSTALL
 
-get-current prot-wid-add
-public get-current prot-wid-add
+seal-package
 ;package

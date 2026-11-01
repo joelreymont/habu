@@ -2569,12 +2569,6 @@ TASK-MIN-STACK constant MIN-STACK
    0 TASK-EXIT-QT BYTE-VIEW idx cells +
    idx TASK-EXIT-QT @ ;
 
-private
-
-get-current prot-wid-add
-
-public
-
-get-current prot-wid-add
+seal-package
 
 ;package

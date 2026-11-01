@@ -1591,10 +1591,6 @@ public
    SESS-ON @ 0= if 0 exit then
    0 SESS-R @ CNT ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

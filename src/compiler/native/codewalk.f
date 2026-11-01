@@ -60,11 +60,6 @@ public
       i CODED? if i REC-START i REC-LEN q SPAN-EACH then
    loop ;
 
-private
-
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

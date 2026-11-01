@@ -35,8 +35,5 @@ require src/lib/json/write.f
 require src/lib/json/copy.f
 
 package JSON
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
+seal-package
 ;package

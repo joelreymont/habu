@@ -2312,11 +2312,7 @@ public
    TAILED-CK
    c b IR-BUILD:FREEZE ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;using
 ;package

@@ -71,7 +71,7 @@ public
    then
    rc ENGINE-ERROR:SEAL-PACKAGE = if
       s" E-SEALED-PACKAGE" s" use_own_package"
-      s" The package is the engine's and sealed: define the word in a package of your own."
+      s" The package is sealed: define the word in a package of your own."
       s" sealed package" exit
    then
    s" E-STATEMENT-THROW" s" unknown_rejection"

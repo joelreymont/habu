@@ -138,11 +138,6 @@ public
    spills FRAME-FOR
    dup negate X64M:MACHINE NEFF:ROUTINE ;
 
-private
-
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

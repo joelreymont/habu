@@ -1207,10 +1207,6 @@ public
 : FREAL-TYPE ( IR-BUILD:module -- IR-ID:ir-type-id )
    [: REAL? ;] FTYPE ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

@@ -535,10 +535,6 @@ public
 : CAPTURE-PREPARE ( -- )
    CHAIN-HEAD @ 0<> if E-IR-ARENA-STATE throw then ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

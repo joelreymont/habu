@@ -609,11 +609,7 @@ public
 : BYTES ( -- n )
    0  SEGMENTS 0 ?do  i SEGMENT USED-FIELD @ +  loop ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 INSTALL
 

@@ -890,10 +890,6 @@ public
    p IR-ARENA:FROZEN-READER FPHDR-CK
    p r IR-ARENA:FROZEN-READER key id i PRED-AT ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

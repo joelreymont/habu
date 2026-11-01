@@ -970,10 +970,6 @@ public
    8 0 ?do 0 i FROW-FIELDS ! loop
    0 FROW-KEY !  0 FROW-LOCAL ! ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

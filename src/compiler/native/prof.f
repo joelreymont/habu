@@ -98,10 +98,6 @@ public
    LIVE? 0= if drop 0 exit then
    SLOT {: k:n :} A-CNT k AT @ ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

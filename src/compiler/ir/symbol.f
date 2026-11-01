@@ -545,10 +545,6 @@ public
    pv rv id q u FCOPY drop
    c a r key q u INTERN ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

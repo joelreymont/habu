@@ -1294,6 +1294,7 @@ variable CHK-PKG-NAME-I
    k s" public" CHK-TOK=CI if CHECKER-PUBLIC k 1+ LINT-TRUE exit then
    k s" private" CHK-TOK=CI if CHECKER-PRIVATE k 1+ LINT-TRUE exit then
    k s" ;package" CHK-TOK=CI if CHECKER-END-PACKAGE k 1+ LINT-TRUE exit then
+   k s" seal-package" CHK-TOK=CI if k 1+ LINT-TRUE exit then
    k s" using" CHK-DEFINER? if k CHK-USING-REGISTER LINT-TRUE exit then
    k s" ;using" CHK-TOK=CI if
       [: CHECKER-USING-POP ;] catch k 1+ CHK-PKG-NEXT LINT-TRUE exit

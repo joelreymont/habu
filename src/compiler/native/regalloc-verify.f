@@ -2589,11 +2589,7 @@ public
    c DKEEP-SAME = if s" store of the value the slot already holds" exit then
    s" none" ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;using
 ;package

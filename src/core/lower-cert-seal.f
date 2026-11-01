@@ -84,10 +84,7 @@ private
 
 ' BOUNDARY B-XT xt!
 
-get-current prot-wid-add
-public
-get-current prot-wid-add
-private
+seal-package
 
 CHECKER-BOUND:MARK
 REQUIRE-REG:COUNT RQ !

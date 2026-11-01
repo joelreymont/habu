@@ -352,7 +352,7 @@ public
 \ Total: RELEASE is throw-free by contract (src/core/checker.f RELEASE).
 : PART-RELEASE ( -- ) RELEASE ;
 
-private
+seal-package
 ;package
 
 \ GENERATED-DECL-CTOR renders, evaluates, certifies and publishes one family's

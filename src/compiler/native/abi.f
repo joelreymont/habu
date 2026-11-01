@@ -131,11 +131,6 @@ public
    NEFF:TRAITS-NONE NEFF-LINK:PRESERVED spills FRAME-FOR
    dup negate A64IR:MACHINE NEFF:ROUTINE ;
 
-private
-
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

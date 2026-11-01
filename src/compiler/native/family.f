@@ -52,10 +52,6 @@ public
 : PAY-TERMS ( n -- n )
    CHECKER-OWNER:VARIANT-PAY-TERMS ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

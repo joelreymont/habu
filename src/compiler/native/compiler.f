@@ -858,12 +858,7 @@ public
    IR-BUILD:CAPTURE-PREPARE
    NPROF:CLOSE ;
 
-private
-
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;using
 ;package

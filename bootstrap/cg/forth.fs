@@ -665,7 +665,7 @@ PRIM-NAME-PAD DNAME-INL erase
 
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
-variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LPROTWIDQ  variable LFLUSH variable LNCOUNT
+variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LPROTWIDQ  variable LPROTWIDADD  variable LFLUSH variable LNCOUNT
 variable LDIVZERO                       \ the dividing bodies' refusal routine
 variable LADDSUBIMM   \ the shared add/sub-immediate emitter (EMIT-ADDSUB-IMM): every transfer offset folds through it
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
@@ -712,7 +712,7 @@ variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywords (mirrors src/habu/habu2.f)
 variable LKWTRUSTED variable LKWTRUSTDECL variable LKWTRUSTRAW variable LKWKERNEL
 variable LKWCAST variable LKWDEFCAST variable LCASTNONAME variable LCOLONNONAME variable LKEYNONAME   \ definition-name diagnostics (mirrors src/habu/habu2.f)
-variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
+variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWSEALPACKAGE
 variable LKWEXPORT
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LSCOPEREC
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
@@ -2272,20 +2272,7 @@ HB-TARGET-LINUX? [IF]
    a w a m scratch PROT-BITS-AT, ;
 
 : BPROTWIDADD ( -- )
-   LBL LBL LBL {: ok done msg :}
-   9 G-POP
-   LPROTWIDQ @ BL,
-   13 done CBNZ,
-   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 36 MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: protected-WID id above the bound" BYTES,
-   ok LBL,
-   DATA 9 15 14 16 PROT-BITS-ADDR,
-   16 15 LDAR,
-   16 16 14 ORR,
-   16 15 STLR,                                       \ release-publish the set bit
-   done LBL, ;
+   9 G-POP  LPROTWIDADD @ BL, ;
 
 : BPROTWIDROOM ( -- )
    LBL {: pos :}
@@ -2727,6 +2714,25 @@ HB-TARGET-LINUX? [IF]
    done LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
+
+\ Protect wid x9 (habu1.f EMIT-PROTWIDADD); saves x30 for the nested LPROTWIDQ.
+: EMIT-PROTWIDADD ( -- )
+   LBL LBL LBL {: ok done msg :}
+   LPROTWIDADD @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LPROTWIDQ @ BL,
+   13 done CBNZ,
+   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 36 MOVZ,  NR-WRITE SYS,
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  s" hb: protected-WID id above the bound" BYTES,
+   ok LBL,
+   DATA 9 15 14 16 PROT-BITS-ADDR,
+   16 15 LDAR,
+   16 16 14 ORR,
+   16 15 STLR,                                       \ release-publish the set bit
+   done LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ ---- FLUSH ( x9=start -- ) : DC CVAU + IC IVAU over [x9, CP) — just the words
 \ emitted since the last flush, not the whole code area (that walk made every
@@ -4284,6 +4290,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWTRUSTDECL @ LBL, s" trust-decl" BYTES,      LKWTRUSTRAW @ LBL, s" trust-raw" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
+   LKWSEALPACKAGE @ LBL, s" seal-package" BYTES,
    LKWEXPORT @ LBL, s" export" BYTES,
    LKWUSING @ LBL, s" using" BYTES,  LKWSEMIUSING @ LBL, s" ;using" BYTES,
    LCHKUSING @ LBL, s" checker-using" BYTES,
@@ -5700,6 +5707,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    active LBL,
    LCHKPRI 15 C-PACKAGE-CHECK-CALL
    9 DATA PKG-PRI-CELL LDR,  9 DATA CUR-CELL STR, ;
+
+: C-SEAL-PACKAGE ( -- )
+   LBL {: active :}
+   9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+   active LBL,
+   LPROTWIDADD @ BL,
+   9 DATA PKG-PRI-CELL LDR,  LPROTWIDADD @ BL, ;
 
 : C-END-PACKAGE ( -- )
    LBL {: active :}
@@ -7968,6 +7983,7 @@ variable P2SK
    lmain LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY
    lmain LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY
    lmain LKWSEMIPACKAGE 8 ['] C-END-PACKAGE CF-ENTRY
+   lmain LKWSEALPACKAGE 12 ['] C-SEAL-PACKAGE CF-ENTRY
    lmain LKWEXPORT 6 ['] C-EXPORT CF-ENTRY
    lmain LKWUSING 5 ['] C-USING CF-ENTRY
    lmain LKWSEMIUSING 6 ['] C-END-USING CF-ENTRY
@@ -8846,7 +8862,7 @@ variable P2SK
 
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LFINDUSED !  LBL LSCOPEREC !  LBL LNUM !  LBL LDICT !  LBL LSRC !
-   LBL LCEMIT !  LBL LADDSUBIMM !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
+   LBL LCEMIT !  LBL LADDSUBIMM !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LPROTWIDADD !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LDIVZERO !
    LBL LOCC-COUNT !  LBL LOCC-APPEND !  LBL LOCC-RESET !
    LBL LOCC-ROOM !  LBL LOCC-ISSUE !  LBL LOCC-INIT !
@@ -8883,7 +8899,7 @@ variable P2SK
    LBL LKWIMM !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUSTDECL !  LBL LKWTRUSTRAW !  LBL LKWKERNEL !
    LBL LKWCAST !  LBL LKWDEFCAST !  LBL LCASTNONAME !  LBL LCOLONNONAME !  LBL LKEYNONAME !
-   LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
+   LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !  LBL LKWSEALPACKAGE !
    LBL LKWEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !
@@ -8979,6 +8995,7 @@ variable P2SK
    EMIT-DIV-ZERO
    EMIT-PROT
    EMIT-PROTWID
+   EMIT-PROTWIDADD
    EMIT-FLUSH
    EMIT-FIND
    EMIT-FIND-USED

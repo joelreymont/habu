@@ -193,10 +193,6 @@ ADDR-CODE constant ADDR-KIND-MAX
 : SEAL ( -- )
    OPEN-CK ST-SEALED ST ! ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

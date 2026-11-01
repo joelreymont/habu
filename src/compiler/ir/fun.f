@@ -1045,10 +1045,6 @@ public
    blr l OFF-BLEN BC@ LEN-OK
    IR--SOURCE-SPAN:MAKE ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

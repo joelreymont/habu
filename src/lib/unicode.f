@@ -67,8 +67,6 @@ FUNCTION: RELEASE free ( ptr u8 -- ) ;FUNCTION
    source out size BYTE-COPY
    source size out capacity ;
 
-get-current prot-wid-add
-
 public
 
 : CASEFOLD= ( ptr u8 n ptr u8 n -- bool )
@@ -93,6 +91,6 @@ public
    error 0<> if error throw then
    size ;
 
-get-current prot-wid-add
+seal-package
 ;using
 ;package

@@ -231,6 +231,13 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    package-scope!
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
+\ The open package's wordlists protected (habu2.f C-SEAL-PACKAGE).
+: PKG-SEAL ( -- )
+   TASK-GUARD
+   PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
+   PKG-PUB-CELL CELL@ prot-wid-add
+   PKG-PRI-CELL CELL@ prot-wid-add ;
+
 \ A throw puts the package scope back (habu1.f B-EVAL, habu2.f LEVALREC).
 \ The enclosing package's row and parent wordlist, the open package's row and
 \ parent wordlist, the current wordlist and the open package's using floor:
@@ -424,6 +431,7 @@ variable USE-FLOOR
       PKG-PRI-CELL NCOMP-DISPATCH:DECL-PRIVATE-OFF PKG-SECTION true exit
    then
    s" ;package" TOKEN-IS? if PKG-END-PACKAGE true exit then
+   s" seal-package" TOKEN-IS? if PKG-SEAL true exit then
    s" using" TOKEN-IS? if PKG-USING true exit then
    s" ;using" TOKEN-IS? if PKG-END-USING true exit then
    s" export" TOKEN-IS? if PKG-EXPORT true exit then

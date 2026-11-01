@@ -1280,10 +1280,6 @@ public
    pr rr PAIR-CK
    pr rr  rr op ROW-OF  i FIX-REG FWIN@ ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

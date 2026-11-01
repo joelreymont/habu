@@ -29,8 +29,5 @@ require src/lib/xml/write.f
 \ processor); an unsupported encoding is E-ENCODING. Qualify XML:CLOSE and
 \ XML:DEPTH: those tails are also global words.
 package XML
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
+seal-package
 ;package

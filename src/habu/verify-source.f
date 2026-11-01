@@ -843,6 +843,54 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    w at PEND-WORD-AT !  wu at PEND-WORD-U !
    at 1 + PEND-N ! ;
 
+\ The packages this scan's source sealed (`seal-package`), their names end to
+\ end, cleared by RUN-IN-SCOPE. A reopening, a definition or an export into one
+\ stops, as the run's guards do in a sealed engine (packages.f PKG-SEAL-GUARD,
+\ PKG-OPEN-WID).
+DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
+DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
+DYNAMIC-BUFFER SEALS-U n                      \ and its length
+variable SEALS-N
+
+: SEAL-LISTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SEALS-N @ 0 ?do
+      i SEALS-AT @ SEALS i SEALS-U @ a u STR=CI IF 0 0= unloop EXIT THEN
+   loop
+   0 0= 0= ;
+
+: SEAL-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+   SEALS-N @ {: at:n :}
+   at 0= IF 0 ELSE at 1 - SEALS-AT @ at 1 - SEALS-U @ + THEN {: off:n :}
+   off u + 1 + SEALS-RESERVE
+   a off SEALS u BYTE-COPY
+   at 1 + SEALS-AT-RESERVE  at 1 + SEALS-U-RESERVE
+   off at SEALS-AT !  u at SEALS-U !
+   at 1 + SEALS-N ! ;
+
+\ Whether the scan models the load of a sealed engine: this one, composing. A stage source
+\ certified without composing keeps its packages open until its capture seals them.
+: SEALED-LOAD? ( -- bool )
+   COMPOSE-ON @ 0<>  SEAL-NDICT@ 0<>  and ;
+
+: SEAL-STOP ( n -- )
+   TOKEN-BYTE !  ENGINE-ERROR:SEAL-PACKAGE throw ;
+
+\ Stop at byte AT when the open package is one the source sealed.
+: SEALED-OPEN ( n -- ) {: at:n :}
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
+   CHECKER-AUTH-PACKAGE$ SEAL-LISTED? IF at SEAL-STOP THEN ;
+
+\ Stop at NAME, read from byte AT, when it lands in a sealed package. A head
+\ resolves as the definition's does (HEAD-ROW): a part is asked by its path.
+: SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+   a u XREF-QUAL-INDEX {: q:n :}
+   q 0 < IF at SEALED-OPEN EXIT THEN
+   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row NULL-PTR = IF a q ELSE row XREF-NAME$ THEN SEAL-LISTED? IF at SEAL-STOP THEN
+   SEALED-LOAD? 0= IF EXIT THEN
+   row NULL-PTR = IF EXIT THEN
+   row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
+
 \ The text of a literal from the rest STRING-REST read after its opener, a
 \ string opener: past the one delimiting space, short of the closing quote, as
 \ the engine's literal makes it, decoded when the opener is an escaped one
@@ -1192,11 +1240,18 @@ DYNAMIC-BUFFER VISIT-ROWS n             \ per visit, its path's offset and lengt
 \ spelling and location
 \ (src/core/checker.f CHECKER-DECL-AT!), until DISARM. Outside a visit there
 \ is no file to name, and the checker's armed state stays its caller's.
-: ARM ( ptr u8 n n n -- )
+: ARM-UNSEALED ( ptr u8 n n n -- )
    {: name:ptr nameu:n at:n u:n :}
    VISIT-CUR @ 0= IF EXIT THEN
    name nameu VISIT-CUR @ at at u +
    NCOMP-DISPATCH:DECL-VERIFY-DECL-ARM-OFF OWNER-XT ARM-ACTION execute ;
+
+\ ARM-UNSEALED for a name its registrar defines, which stops first when the
+\ name lands in a sealed package (SEALED-NAME).
+: ARM ( ptr u8 n n n -- )
+   {: name:ptr nameu:n at:n u:n :}
+   name nameu at SEALED-NAME
+   name nameu at u ARM-UNSEALED ;
 
 : DISARM ( -- )
    VISIT-CUR @ 0= IF EXIT THEN
@@ -1626,9 +1681,10 @@ variable WRAP-ROW                             \ the definer row the last call na
 : DEF-NAME! ( -- )
    TOKEN-U @ DEF-NAME-U !  TOKEN-A @ DEF-NAME-A !  TOKEN-BYTE @ DEF-NAME-BYTE ! ;
 
-\ The body of the definition DEF-NAME! pinned, checked with its name armed.
+\ The body of the definition DEF-NAME! pinned, checked with its name armed;
+\ VERIFY-DEFINITION asked the seal at the name.
 : VERIFY-NAMED-BODY ( -- n )
-   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ DEF-NAME-U @ ARM
+   DEF-NAME-A @ DEF-NAME-U @ DEF-NAME-BYTE @ DEF-NAME-U @ ARM-UNSEALED
    VERIFY-BODY
    DISARM ;
 
@@ -1972,7 +2028,8 @@ private
    {: a:ptr u:n :}
    a u s" package" STR=CI  a u s" ;package" STR=CI or
    a u s" public" STR=CI or  a u s" private" STR=CI or
-   a u s" using" STR=CI or  a u s" ;using" STR=CI or IF 0 0= EXIT THEN
+   a u s" using" STR=CI or  a u s" ;using" STR=CI or
+   a u s" seal-package" STR=CI or IF 0 0= EXIT THEN
    a u s" export" STR=CI  a u s" trusted:" STR=CI or
    a u s" cast:" STR=CI or  a u s" linear:" STR=CI or
    a u s" defer" STR=CI or  a u s" create" STR=CI or
@@ -2123,8 +2180,8 @@ DUPLICATE-INIT
    u DUPLICATE!
    true ;
 
-\ A definer asks the seal where its load does (check-verify-test-lib.f SEALED), after REFUSE-DUPLICATE,
-\ only of a qualified name: an unqualified one lands in the current wordlist, and `package` stops at a sealed one.
+\ A definer asks the seal after REFUSE-DUPLICATE, as its load does: through ARM,
+\ or SEALED-NAME where a refusal can come before its ARM.
 
 \ The public wordlist of the package NAME names, -1 when it has no row.
 : PUBLIC-WID ( ptr u8 n -- n )
@@ -2132,28 +2189,10 @@ DUPLICATE-INIT
    row XREF-FOUND? 0= IF -1 EXIT THEN
    row XREF-PKG-PUBLIC ;
 
-\ Whether the scan models the load of a sealed engine: this one, composing. A stage source
-\ certified without composing keeps its packages open until its capture seals them.
-: SEALED-LOAD? ( -- bool )
-   COMPOSE-ON @ 0<>  SEAL-NDICT@ 0<>  and ;
-
-: SEAL-STOP ( n -- )
-   TOKEN-BYTE !  ENGINE-ERROR:SEAL-PACKAGE throw ;
-
-\ Stop at NAME, read from byte AT, when its head (HEAD-ROW) has a protected
-\ public wordlist; a head with no row qualifies into an unprotected one.
-: SEALED-NAME ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
-   SEALED-LOAD? 0= IF EXIT THEN
-   a u XREF-QUAL-INDEX {: q:n :}
-   q 0 < IF EXIT THEN
-   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
-   row NULL-PTR = IF EXIT THEN
-   row XREF-PKG-PUBLIC XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
-
-\ Stop at the name `package` read from byte AT when it names a sealed package
-\ (packages.f PKG-SEALED?): one the checker lists, or one whose public
-\ wordlist is protected.
+\ Stop at `package`'s name, read from byte AT, when the source sealed it or, in
+\ a sealed engine's load, it was sealed there (packages.f PKG-SEALED?).
 : SEALED-PACKAGE ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
+   a u SEAL-LISTED? IF at SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
    a u CHECKER-SEALED-PKG?  a u PUBLIC-WID XREF-WID-PROTECTED?  or IF at SEAL-STOP THEN ;
 
@@ -2199,9 +2238,8 @@ DUPLICATE-INIT
    {: name:ptr nameu:n at:n :}
    name nameu NAME-DECLARED
    name nameu REFUSE-DUPLICATE IF EXIT THEN
-   name nameu at SEALED-NAME
-   -1 SIG-RAW-MODE!
    name nameu at nameu ARM
+   -1 SIG-RAW-MODE!
    name nameu sig sigu [: DECL-SIGNATURE ;] [: 0 SIG-RAW-MODE! DISARM ;] finally
    IF name nameu sig sigu at class DEFINED-HERE THEN ;
 
@@ -2220,7 +2258,6 @@ DUPLICATE-INIT
    name nameu NAME-DECLARED
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF 0 0= EXIT THEN
-   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu dsym RECORD-CREATED
    DISARM
@@ -2232,7 +2269,6 @@ DUPLICATE-INIT
    {: name:ptr nameu:n at:n :}
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
    name nameu REFUSE-DUPLICATE IF EXIT THEN
-   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    {: kept:bool :}
@@ -2336,7 +2372,6 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    TOKEN-BYTE @ {: at:n :}
    name nameu REFUSE-DUPLICATE IF REQUIRE-SIGNATURE 2drop EXIT THEN
    REQUIRE-SIGNATURE {: sig:ptr sigu:n :}
-   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu DEFCAST-SIGNATURE
    DISARM
@@ -2369,6 +2404,12 @@ variable TRUSTED-DOES                         \ the trusted body's `does>` was r
    name nameu NAME-RETIRED
    name nameu CHECKER-UNDEFINE
    name nameu RECORD-SYM? DEFINER-RETIRE ;
+
+\ `seal-package` protects the open package's wordlists (habu2.f
+\ C-SEAL-PACKAGE); outside a package it refuses.
+: SEAL-ROW ( -- )
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-AUTH-PACKAGE$ SEAL-ADD ;
 
 \ The engine's order (src/habu/packages.f PKG-PACKAGE): the part guard at
 \ `package`, then the name and its path, the checker, the seal on the path.
@@ -2562,8 +2603,9 @@ variable SUM-VAR-NEXT
 \ MAKE/UNMAKE variant rows and constructor package, so `FAMILY:MAKE` in the same
 \ source resolves; no dictionary word is defined.
 : RECORD-STRUCTURE-DECL ( -- )
-   DECL-TOKEN {: name:ptr nameu:n :}
+   DECL-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   name nameu at SEALED-NAME
    BODY-RESET
    BEGIN
       DECL-TOKEN
@@ -2586,8 +2628,9 @@ variable SUM-VAR-NEXT
 \ in this source resolve the family, and replay the MAKE/UNMAKE effects. No
 \ dictionary words are generated on this path (engine-definer-only, sum parity).
 : RECORD-PRODUCT ( -- )
-   NAME-TOKEN {: name:ptr nameu:n :}
+   NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
+   name nameu at SEALED-NAME
    BODY-RESET
    BEGIN
       NEXT-SCAN
@@ -3137,9 +3180,10 @@ CAST: TOP-ACTION ( n -- [ ptr u8 n bool -- n ] )
    NAME-TOKEN TOKEN-BYTE @ {: name:ptr nameu:n at:n :}
    nameu 0= IF E-MISSING-NAME throw THEN
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF EXIT THEN
+   at SEALED-OPEN
    name nameu TOP-BINDING drop PRS-FIND {: from:n :}
    name DEF-NAME-A !  nameu DEF-NAME-U !
-   name nameu at nameu ARM   \ the checker spells the record by the tail it keeps
+   name nameu at nameu ARM-UNSEALED   \ the checker spells the record by the tail it keeps
    [: DEF-NAME-A @ DEF-NAME-U @ CHECKER-EXPORT ;] catch
    DISARM
    {: rc:n :}
@@ -3422,7 +3466,6 @@ variable FILE-USE
    nameu 0= IF E-MISSING-NAME throw THEN
    name nameu NAME-DECLARED
    name nameu REFUSE-DUPLICATE IF EXIT THEN
-   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu TRUST-STRUCTURE-FIELD
    DISARM
@@ -3430,7 +3473,6 @@ variable FILE-USE
 
 : STRUCTURE-SIZE ( ptr u8 n n -- ) {: name:ptr nameu:n at:n :}
    name nameu REFUSE-DUPLICATE IF EXIT THEN
-   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu s" -- n" DECL-SIGNATURE
    DISARM
@@ -3607,7 +3649,6 @@ variable FFI-LIT-B                          \ and the newer
    FFI-SIGNATURE {: sig:ptr sigu:n :}
    at TOKEN-BYTE !
    name nameu REFUSE-DUPLICATE IF true FFI-GROUP ! EXIT THEN
-   name nameu at SEALED-NAME
    name nameu at nameu ARM
    name nameu sig sigu DECL-SIGNATURE
    DISARM
@@ -3806,6 +3847,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
    a u s" private" STR=CI IF RECORD-PRIVATE 0 0= EXIT THEN
    a u s" ;package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
+   a u s" seal-package" STR=CI IF SEAL-ROW 0 0= EXIT THEN
    a u s" using" STR=CI IF RECORD-USING 0 0= EXIT THEN
    a u s" ;using" STR=CI IF RECORD-END-USING 0 0= EXIT THEN
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
@@ -4196,7 +4238,7 @@ COMPOSE-INIT
 : RUN-IN-SCOPE ( [ -- ] -- )
    TICK-CONTEXT-RESET
    false TICK-REMAINDER !  false FFI-GROUP !  false FFI-CLAUSES !
-   0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !
+   0 CERTIFIED-N !  0 DEFERRED-N !  0 DEFER-SEEN !  0 SEALS-N !
    NCOMP-DISPATCH:DECL-VERIFY-START-OFF OWNER-XT VERIFIER-ACTION execute
    catch
    NCOMP-DISPATCH:DECL-VERIFY-DONE-OFF OWNER-XT VERIFIER-ACTION execute

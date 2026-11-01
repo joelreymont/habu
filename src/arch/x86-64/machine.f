@@ -47,10 +47,6 @@ public
 \ same declaration, so compiler and engine code share one stack.
 : DSTACK-GPR ( -- n )   ENGINE-GPR:X64-DSTACK ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

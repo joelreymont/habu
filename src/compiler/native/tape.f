@@ -444,10 +444,6 @@ public
    repeat
    drop ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

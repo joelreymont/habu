@@ -59,10 +59,6 @@ public
 \ Trap sites enter the engine primitive even if source scope shadows its name.
 : ROUTINE ( -- n ) ['] die XT>N ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

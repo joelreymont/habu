@@ -196,8 +196,5 @@ public
 : WRITE ( EDIT:editor ptr u8 n -- EDIT:editor n )
    WRITE-ARGS WRITE-STATE ;
 
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
+seal-package
 ;package

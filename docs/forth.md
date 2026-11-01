@@ -191,12 +191,16 @@ private
   creates no scope and loads no file. Later blocks call earlier private helpers
   and public words unqualified and add exports. Load order is still dependency
   order.
-- A package the engine bakes is sealed: on `bin/hb`, reopening it or defining
-  into either of its wordlists exits 84 with
-  `E-SEALED-PACKAGE: <name> at <file>:<line>`, naming the package or word, and
-  `tools/check.f` refuses it as `E-SEALED-PACKAGE` at the name. Use its public
-  words qualified or through `using`. An application image keeps its own
-  packages reopenable.
+- `seal-package` is a package keyword beside `public`. Inside a package it
+  seals it: reopening it, defining into either of its wordlists or `EXPORT`
+  into it then exits 84 with `E-SEALED-PACKAGE: <name> at <file>:<line>`,
+  naming the package or word, and `tools/check.f` refuses it as
+  `E-SEALED-PACKAGE` at the name. Outside a package it is refused:
+  `seal-package at <loc>`, rc 75. Like `public` it names no word: in a body
+  or after `'` it is `E-UNDEFINED`. A native capture seals every package it
+  ships, so the engine's are sealed; use their public words qualified or
+  through `using`. An application image keeps its packages reopenable unless
+  they use `seal-package`.
 - **Qualify only across package boundaries.** In `NAME`'s own files reopen the
   package and use bare names; `NAME:WORD` there is noise. A call into another
   package qualifies (`OTHER:WORD`) or reopens it. A subsystem is a few internal
@@ -2385,8 +2389,8 @@ sections above.
   accessor's store to another variable. The engine's own definition loads
   before the seal.
 - **Package `private` is visibility, not sealing.** Another file may reopen
-  the package and call its private words until `get-current prot-wid-add` or
-  the native capture seals it; a sealed reopen is refused. Multi-file owners
+  the package and call its private words until `seal-package` or the native
+  capture seals it; a sealed reopen is refused. Multi-file owners
   seal only after their last file (see **Packages**).
 - **A cast that introduces a pointer or xt requires a private package row.**
   `CAST: >BYTES ( n -- ptr u8 )` and `CAST: >OP ( n -- [ n -- n ] )` are

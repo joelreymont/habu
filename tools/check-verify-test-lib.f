@@ -1995,6 +1995,68 @@ $180000 constant LARGE-STDIN-LEN
    s\" package CVT-SX\npackage MATCH public : X ( -- n ) 1 ; ;package\nEXPORT MATCH:X\n;package\nCVT-SX:X drop\n" TOP-CHECK
    s" sealed-part-export" s" CVT-SX:X" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" REFUSED-AT ;
 
+\ SRC, as the fixture NAME, loads with exit 70, and the check stops at TOK, on
+\ LINE at COL, with CODE.
+: UNDEFINED-AT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n code:ptr codeu:n line:ptr lineu:n col:ptr colu:n :}
+   name nameu src srcu FIXTURE
+   name nameu T-LABEL name nameu AT$ NATIVE-RC 70 T=
+   src srcu name nameu GUARD-MS CHECK-AS
+   name nameu tok toku code codeu line lineu col colu REFUSED-AT ;
+
+\ A seal in a colon body is undefined there: the load exits 70 and the check
+\ refuses the definition at it.
+: SEAL-IN-BODY ( -- )
+   s\" package CVT-SL7 public\n: S ( -- ) seal-package ;\n;package\n"
+   {: src:ptr srcu:n :}
+   s" seal-body.f" src srcu FIXTURE
+   s" seal-body: load" T-LABEL s" seal-body.f" AT$ NATIVE-RC 70 T=
+   src srcu s" seal-body.f" GUARD-MS CHECK-AS
+   1 s" seal-body: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" token" s" seal-package" PACKET {: p:SPAN:span<u8> :}
+   s" seal-body: E-UNDEFINED" T-LABEL p s" code" STRING$ s" E-UNDEFINED" T$=
+   s" seal-body: in S" T-LABEL p s" word" STRING$ s" s" T$=
+   s" seal-body: on line 2" T-LABEL p s" line" NUMBER$ s" 2" T$=
+   s" seal-body: column 12" T-LABEL p s" column" NUMBER$ s" 12" T$= ;
+
+\ A package the source seals (`seal-package`) stays closed to the rest of the
+\ load, in its file or a file that requires it: a reopening, a qualified or an
+\ unqualified definition, an `EXPORT`, a STRUCTURE or a HEAP into it, and a
+\ definition its parent qualifies into a sealed part. `seal-package` is a
+\ package keyword: in a body or after `'` it is undefined, and outside a
+\ package the load exits 75 and the check stops at it with E-PKG-CONTEXT.
+: SOURCE-SEALED ( -- )
+   s\" package CVT-SL1\nseal-package\n;package\npackage CVT-SL1\n;package\n"
+   s" seal-reopen.f" s" CVT-SL1" s" 4" s" 9" SEALED-AT
+   s\" package CVT-SL2 public\nseal-package\n;package\n: CVT-SL2:B ( -- n ) 2 ;\n"
+   s" seal-qualified.f" s" CVT-SL2:B" s" 4" s" 3" SEALED-AT
+   s\" package CVT-SL3\nseal-package\n: C ( -- n ) 3 ;\n;package\n"
+   s" seal-bare.f" s" C" s" 3" s" 3" SEALED-AT
+   s" seal-dep.f" s\" package CVT-SL4\nseal-package\n;package\n" FIXTURE
+   s\" require seal-dep.f\npackage CVT-SL4\n;package\n"
+   s" seal-required.f" s" CVT-SL4" s" 2" s" 9" SEALED-AT
+   s\" package CVT-SL6 public\n: W ( -- n ) 6 ;\n;package\npackage CVT-SL5 public\nseal-package\nexport CVT-SL6:W\n;package\n"
+   s" seal-export.f" s" CVT-SL6:W" s" 6" s" 8" SEALED-AT
+   s\" package CVT-SL9\nseal-package\nSTRUCTURE pt FIELD x n ;STRUCTURE\n;package\n"
+   s" seal-structure.f" s" pt" s" 3" s" 11" SEALED-AT
+   s\" package CVT-SL10\nseal-package\nHEAP HP n\n;package\n"
+   s" seal-heap.f" s" HP" s" 3" s" 6" SEALED-AT
+   s\" package CVT-SLA\npackage CVT-SLB\nseal-package\n;package\n: CVT-SLB:Y ( -- n ) 2 ;\n;package\n"
+   s" seal-part.f" s" CVT-SLB:Y" s" 5" s" 3" SEALED-AT
+   SEAL-IN-BODY
+   s\" package CVT-SL8\n' seal-package execute\n;package\n"
+   s" seal-tick.f" s" seal-package" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 3" UNDEFINED-AT
+   s\" seal-package\n" {: top:ptr topu:n :}
+   s" seal-top.f" top topu FIXTURE
+   s" seal-top: load" T-LABEL s" seal-top.f" AT$ NATIVE-RC 75 T=
+   top topu s" seal-top.f" GUARD-MS CHECK-AS
+   1 s" seal-top: refused" EXPECT-KIND
+   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   s" seal-top: at the word" T-LABEL p s" token" STRING$ s" seal-package" T$=
+   s" seal-top: on line 1" T-LABEL p s" line" NUMBER$ s" 1" T$=
+   s" seal-top: column 1" T-LABEL p s" column" NUMBER$ s" 1" T$=
+   s" seal-top: E-PKG-CONTEXT" T-LABEL p s" throw_code" NUMBER$ s" 7136" T$= ;
+
 
 \ Return-stack keywords have checker axioms for compiled bodies but no
 \ interpret or tick binding. A declaration read from source still binds.
@@ -5012,6 +5074,7 @@ public
    s" top-retired" [: TOP-RETIRED ;] RUN-CASE
    s" top-retired-public" [: TOP-RETIRED-PUBLIC ;] RUN-CASE
    s" sealed" [: SEALED ;] RUN-CASE
+   s" source-sealed" [: SOURCE-SEALED ;] RUN-CASE
    s" top-axiom" [: TOP-AXIOM ;] RUN-CASE
    s" top-cold-prim" [: TOP-COLD-PRIM ;] RUN-CASE
    s" engine-rows" [: ENGINE-ROWS ;] RUN-CASE

@@ -224,10 +224,6 @@ public
 : SPAN-LEN ( IR-SOURCE:span -- n )
    IR--SOURCE-SPAN:UNMAKE nip nip ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

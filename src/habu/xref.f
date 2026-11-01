@@ -763,12 +763,7 @@ public
    floor cp@ over - CLEAR-MAPS
    floor cp! ;
 
-private
-
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package
 
@@ -843,10 +838,7 @@ undefine LIVE
 undefine LIVE-PKG
 undefine REC-LIVE?
 undefine NAME-OUT
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
+seal-package
 ;package
 
 \ The declaration owner holds CHECKER-RESYNC's entry by its xt, which keeps the

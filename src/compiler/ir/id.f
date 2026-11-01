@@ -224,10 +224,6 @@ public
 : SPAN-CHECK ( IR-ID:ir-module-key IR-ID:ir-count IR-ID:ir-span-id -- IR-ID:ir-span-id )
    SPAN>N CHECK-N MINT-SPAN ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

@@ -48,10 +48,6 @@ public
 : SPILL-BASE ( NEFF:traits NEFF:link -- n )
    PROLOGUE-SLOTS A64IR:SLOT-WIDTH * ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

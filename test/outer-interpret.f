@@ -801,7 +801,9 @@ variable WANT-RC
    s" private" s" oi-private-outside.f" LINE-CASE
    75 s" private at " S\" oi-private-outside.f:1\n" DIED-AT
    s" ;package" s" oi-end-package-outside.f" LINE-CASE
-   75 s" ;package at " S\" oi-end-package-outside.f:1\n" DIED-AT ;
+   75 s" ;package at " S\" oi-end-package-outside.f:1\n" DIED-AT
+   s" seal-package" s" oi-seal-outside.f" LINE-CASE
+   75 s" seal-package at " S\" oi-seal-outside.f:1\n" DIED-AT ;
 
 \ A part's `;package` returns to its package's private section: OI-PY stays
 \ private. Outside the package no name reaches the part, and a top-level
@@ -1300,9 +1302,9 @@ variable WANT-RC
    s" package OI-EX public dbase@ REGION + $4000 - 8 - cp! export OI-FXA:OI-LONG-NAMED-TWIN" s" oi-export-code-full.f" LINE-CASE
    76 s" hb: code space full at: OI-LONG-NAMED-TWIN at " S\" oi-export-code-full.f:1\n" CODE-DIED-AT ;
 
-\ `package` of a sealed package's name, or of a package whose public wordlist
-\ is protected, ends the process with the sealed package's refusal of the name;
-\ so does `export` into a protected wordlist, of the word. The exit is
+\ `package` of a sealed package's name, an engine one or one `seal-package`
+\ sealed, ends the process with the sealed package's refusal of the name; so
+\ does `export` or a definition into a sealed package, of the word. The exit is
 \ fail-closed: the exit hook the program armed, `cr`, does not run.
 : ARMED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
    GE-SRC-RESET
@@ -1314,10 +1316,17 @@ variable WANT-RC
 : PROTECTED-PACKAGES ( -- )
    s" package ENGINE-ERROR" s" oi-sealed-package.f" ARMED
    s" ENGINE-ERROR" SEALED-LINE
-   s" package OI-EX public get-current prot-wid-add ;package package OI-EX" s" oi-protected-package.f" ARMED
+   s" package OI-EX seal-package ;package package OI-EX" s" oi-protected-package.f" ARMED
    s" OI-EX" SEALED-LINE
-   s" package OI-EX public get-current prot-wid-add export OI-TWO" s" oi-protected-export.f" ARMED
-   s" OI-TWO" SEALED-LINE ;
+   s" package OI-EX public seal-package export OI-TWO" s" oi-protected-export.f" ARMED
+   s" OI-TWO" SEALED-LINE
+   s" 1 set-tier package OI-EX seal-package : OI-THREE ( -- n ) 3 ; ;package" s" oi-sealed-define.f" ARMED
+   s" OI-THREE" SEALED-LINE
+   \ A package keyword, `seal-package` names no word: a body or `'` of it is undefined.
+   s" package OI-EX : OI-S ( -- ) seal-package ;" s" oi-seal-body.f" LINE-CASE
+   70 s" E-UNDEFINED: seal-package at " S\" oi-seal-body.f:1\n" DIED-AT
+   s" package OI-EX ' seal-package execute" s" oi-seal-tick.f" LINE-CASE
+   70 s" E-UNDEFINED: seal-package at " S\" oi-seal-tick.f:1\n" DIED-AT ;
 
 \ ---- with a task running --------------------------------------------------------------
 \ The main thread compiles while a task runs: a literal that keeps its text in

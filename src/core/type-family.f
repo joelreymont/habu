@@ -2525,10 +2525,7 @@ public
    a u RESERVED? IF E-TDECL-NAME throw THEN
    a u FAMILY-TAKEN? IF E-TDECL-NAME throw THEN ;
 
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
+seal-package
 
 ;package
 
@@ -2830,11 +2827,7 @@ public
    TFM-EPOCH+
    tx ;
 
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
-private
+seal-package
 
 ;package
 
@@ -2862,10 +2855,7 @@ public
 : ALIGN@ ( n -- n ) PF-ALIGN@ ;
 : FLAGS@ ( n -- n ) PF-FLAGS@ ;
 
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
+seal-package
 ;package
 
 \ generated ADDRESS accessors (`DERIVE addr`, sumtype.f TDECL-ADDR-FIELD-WORD):
@@ -3517,11 +3507,6 @@ package CHECKER-DECL-FRAME
    [: TYPES-RESTORE ;] is TYPES-RESTORE-XT
    [: TYPES-RELEASE ;] is TYPES-RELEASE-XT ;
 INSTALL-TYPES
-
-get-current prot-wid-add
-public
-get-current prot-wid-add
-private
 
 ;package
 

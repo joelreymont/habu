@@ -319,10 +319,6 @@ public
       m i F@ xor  $1000193 *
    loop ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

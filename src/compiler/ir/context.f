@@ -534,10 +534,6 @@ public
    SESSION-INSTALL
    0 SESSION-CTX @ ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

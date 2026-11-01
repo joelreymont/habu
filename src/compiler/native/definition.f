@@ -589,10 +589,6 @@ public
    0 M-FIXED-VAL !
    0 NAME-U ! ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

@@ -125,11 +125,6 @@ STRUCTURE lowering
       linksave:NDIALECT:optsym linkload:NDIALECT:optsym :}
    gpr fpr mem ;
 
-private
-
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

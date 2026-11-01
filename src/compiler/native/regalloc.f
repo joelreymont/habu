@@ -2741,11 +2741,7 @@ public
       i cells PL-KIND + @ P-REMAT = if 1+ then
    loop ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;using
 ;package

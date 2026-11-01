@@ -197,10 +197,6 @@ public
    {: v:IR-ID:ir-value-id :}
    V-VALR VW V-OPR VW MKEY v IR-OP:FVALUE-OP@ ;
 
-private
-get-current prot-wid-add
-
-public
-get-current prot-wid-add
+seal-package
 
 ;package

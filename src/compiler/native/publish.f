@@ -362,11 +362,6 @@ public
    NHOST:PUBLISH-TAKEN
    at ;
 
-private
-get-current prot-wid-add
-
-public
-
 : IMPORT-FILE-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
    IMPORT-UNIT ;
 
@@ -380,6 +375,6 @@ public
    0 UNIT-ARMED !
    UNIT-PRIOR-OBSERVER @ UNIT-OBSERVER !
    rc 0<> if rc throw then ;
-get-current prot-wid-add
 
+seal-package
 ;package

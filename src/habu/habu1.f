@@ -163,7 +163,7 @@ package AOT-SIG
 public
 variable LLEN  variable LSPAN  variable LNAME
 ;package
-variable LPROTWIDQ
+variable LPROTWIDQ  variable LPROTWIDADD
 variable LDPBAD   \ DP-CHECK out-of-range die target (habu2.f EM-COMPILE-DIE)
 variable LBCAPFULL   \ body-capture over BODYBUF-CAP die target (habu2.f EM-BODY-CAP-DIE)
 \ Hash-index label ids, bound in EMIT-HIDX: LREBUILD for the in-place compaction
@@ -224,7 +224,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR variable LKWBPACKAGE
 variable LKWIMM
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
-variable LKWTRUSTED variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
+variable LKWTRUSTED variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWSEALPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
 variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED variable LFINDUSED-CORE variable LSCOPEREC
 \ The interpreter's shadow leaf (habu2.f INTERP-EMIT:FIND-SHADOW), which the
@@ -4631,27 +4631,9 @@ public
 
 private
 
-\ prot-wid-add ( wid -- ): mark wid protected; idempotent. A wid at or above
-\ PROT-WID-MAX has no bit, so the engine names the bound and exits rather than
-\ write outside the band: this range check is the memory-safety argument for a
-\ caller-supplied index. Acquire-load, OR, release-store of the containing
-\ word; single writer, concurrent adders unsupported.
+\ prot-wid-add ( wid -- ): mark wid protected through LPROTWIDADD.
 : BPROTWIDADD ( -- )
-   LBL LBL LBL {: ok:label done:label msg:label :}
-   S\" hb: protected-WID id above the bound\n" {: ma:ptr mu:n :}
-   9 G-POP
-   LPROTWIDQ LABEL@ BL,
-   13 done CBNZ,
-   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,    \ name the exhausted bound on fd 2 before exit 84
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  ma mu BYTES,                            \ data reached only via ADR
-   ok LBL,
-   DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
-   16 15 LDAR,
-   16 16 14 ORR,
-   16 15 STLR,                                       \ release-publish the set bit
-   done LBL, ;
+   9 G-POP  LPROTWIDADD LABEL@ BL, ;
 
 \ The design seal's two writers (src/lib/vocabulary.f). The harness
 \ admits packages and seals before it loads the design; once POLICY-NDICT-CELL
@@ -5394,6 +5376,27 @@ package ENGINE-EMIT
    qdone LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
+
+\ Protect wid x9, idempotently; one at or above PROT-WID-MAX has no bit and
+\ exits 84 naming it. Single writer. Clobbers x13-x16; saves x30 for LPROTWIDQ.
+: EMIT-PROTWIDADD ( -- )
+   LBL LBL LBL {: ok:label done:label msg:label :}
+   S\" hb: protected-WID id above the bound\n" {: ma:ptr mu:n :}
+   LPROTWIDADD LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LPROTWIDQ LABEL@ BL,
+   13 done CBNZ,
+   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 mu MOVZ,  NR-WRITE SYS,    \ name the exhausted bound on fd 2 before exit 84
+      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  ma mu BYTES,                            \ data reached only via ADR
+   ok LBL,
+   DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
+   16 15 LDAR,
+   16 16 14 ORR,
+   16 15 STLR,                                       \ release-publish the set bit
+   done LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 ;package
 
