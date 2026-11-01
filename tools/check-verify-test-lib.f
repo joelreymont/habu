@@ -1429,8 +1429,8 @@ $180000 constant LARGE-STDIN-LEN
    s" load-package: ordinary inherits package" T-LABEL path pathu false false CHECK-RC 0 T=
    s" load-package: all-errors inherits package" T-LABEL path pathu false true CHECK-RC 0 T= ;
 
-\ A part opens only in the buffer its package is open in (packages.f
-\ PKG-PART-GUARD), so a file required inside package A opens no part of A.
+\ A part opens only in the buffer its package is open in (CHECKER-RESOLVE:PART-GUARD),
+\ so a file required inside package A opens no part of A.
 : LOAD-PART ( -- )
    s" order-part.f" AT$ {: path:ptr pathu:n :}
    s" load-part: native refuses a package opened in another file" T-LABEL path pathu NATIVE-RC 75 T=

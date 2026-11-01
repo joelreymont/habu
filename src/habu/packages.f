@@ -2,9 +2,9 @@
 \ habu2.f C-PACKAGE to C-EXPORT; interpret.f STEP asks PACKAGE? after the
 \ literal keywords. After the seal a store into the friend arena (CUR, WIDN,
 \ DEF-WL, PKG-*) exits 83: rows, scope and aliases go through the prims.f
-\ writers and CUR through set-current; the using band, DEF-TKA, DEF-TKL,
-\ layout.f PACKAGE-PATH and PKG-OUTSIDE-CELL are not sealed and are written
-\ here. A writer refuses silently, so each engine refusal is made here.
+\ writers and CUR through set-current; the using band, DEF-TKA, DEF-TKL and
+\ layout.f PKG-OUTSIDE-CELL are not sealed and are written here. A writer
+\ refuses silently, so each engine refusal is made here.
 
 require src/lib/prelude.f
 require src/habu/layout.f
@@ -184,30 +184,16 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    TOKEN$ PKG-CODE-ROOM
    TOKEN$ true namespace-record ;
 
-\ `package` inside an open package opens a part of it: in the buffer that
-\ package is open in (layout.f PKG-OUTSIDE-CELL), in its private section,
-\ under no using it opened, inside no part (habu2.f C-PACKAGE-PART-GUARD).
-: PKG-PART-GUARD ( -- )
-   PKG-OUTSIDE-CELL CELL@ 0=  ENCLOSING:PUB CELL@ 0= and
-   get-current PKG-PRI-CELL CELL@ = and
-   USE-DEPTH-CELL CELL@ USE-PKG-SAVE-CELL CELL@ = and if exit then
-   PKG-RC-CONTEXT PKG-FAIL ;
+\ CHECKER-RESOLVE:PART-GUARD and PART-PATH's E-PKG-CONTEXT is the engine's
+\ `package` refusal; any other code goes on.
+: PKG-CONTEXT ( n -- ) {: rc:n :}
+   rc 0= if exit then
+   rc E-PKG-CONTEXT = if PKG-RC-CONTEXT PKG-FAIL then
+   rc throw ;
 
-\ Inside package A the token cells name layout.f PACKAGE-PATH holding
-\ `A:<token>`, and a path of PACKAGE-PATH:CAP bytes or more is refused
-\ (habu2.f C-PACKAGE-PATH).
+\ Inside package A the token cells name `A:<token>` (habu2.f C-PACKAGE-PATH).
 : PKG-PATH ( -- )
-   PKG-REC-CELL CELL@ {: rec:n :}
-   rec 0= if exit then
-   rec XREF-ADDR>REC XREF-NAME$ {: a:ptr u:n :}
-   TOKEN$ {: ta:ptr tu:n :}
-   u 1 + tu + {: pu:n :}
-   pu PACKAGE-PATH:CAP < 0= if PKG-RC-CONTEXT PKG-FAIL then
-   data-base PACKAGE-PATH:OFF + BYTE-VIEW {: buf:ptr :}
-   a buf u BYTE-COPY
-   $3A buf u + c!
-   ta buf u 1 + + tu BYTE-COPY
-   buf TKA-CELL ADDR!  pu TKL-CELL CELL! ;
+   TOKEN$ CHECKER-RESOLVE:PART-PATH TKL-CELL CELL! TKA-CELL ADDR! ;
 
 \ The package opens on its private wordlist, in this buffer. The using depth
 \ it opens at is the one `;package` restores, a part's its package's. The name
@@ -215,11 +201,11 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 \ instead (habu2.f C-PACKAGE).
 : PKG-PACKAGE ( -- )
    TASK-GUARD
-   PKG-PUB-CELL CELL@ 0<> if PKG-PART-GUARD then
+   [: CHECKER-RESOLVE:PART-GUARD ;] catch PKG-CONTEXT
    PKG-NAME
    0 UNIT-EV-PACKAGE UNIT-EVENT 0<> if INE-CELL CELL@ INP-CELL CELL! exit then
    TOKEN$ 0 COLON-AT 0 >= if PKG-RC-CONTEXT PKG-FAIL then
-   PKG-PATH
+   ['] PKG-PATH catch PKG-CONTEXT
    PKG-POLICY-GUARD
    NCOMP-DISPATCH:DECL-PACKAGE-OFF PKG-NOTIFY-NAME
    PKG-SEAL-GUARD

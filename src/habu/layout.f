@@ -1999,23 +1999,16 @@ PARENT CELL + constant REC
 REC CELL + constant END
 ;package
 
-\ The path `package B` opens inside package A: `A:B`, which the token cells
-\ name once the name guard has read the bare token (habu2.f C-PACKAGE,
-\ packages.f PKG-PATH). CAP is the checker's package-name row
-\ (src/core/checker.f CHECKER-PACKAGE-CAP): a path of CAP bytes or more is
-\ refused. It takes the run after RPKG:ENCLOSING, claimed in data-claims.f.
+\ The path `A:B` habu2.f C-PACKAGE-PATH builds for `package B` inside package A;
+\ a path of CAP bytes or more (checker.f CHECKER-PACKAGE-CAP) is refused.
 package PACKAGE-PATH
 public
 $4CD0 constant OFF
 $100 constant CAP
 ;package
 
-\ Nonzero while the open package was opened outside the buffer being read:
-\ `package` inside it is then refused, as a part opens only where its package
-\ is open (habu2.f C-PACKAGE-PART-GUARD, packages.f PKG-PART-GUARD). Each
-\ buffer starts it at 1 and every `package` that opens sets it to 0; a buffer
-\ keeps its includer's value in EVAL-FRAME:PKG-OUTSIDE. Outside every buffer
-\ it is 0. It takes the cell after PACKAGE-PATH, claimed in data-claims.f.
+\ Nonzero while the open package was opened outside the buffer being read, so no
+\ part opens; buffers, `package` and CHECKER-OVERLAY write it (PART-GUARD reads).
 $4DD0 constant PKG-OUTSIDE-CELL
 
 \ The protected DATA bands, as one table.

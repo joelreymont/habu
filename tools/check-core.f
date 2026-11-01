@@ -1266,7 +1266,8 @@ variable CHK-EXP-ROWS
 \ composed path (CHECKER-RESOLVE:PART-PATH); a refusal stops the scan where the preverify does.
 variable CHK-PKG-NAME-I
 
-\ CHECKER-RESOLVE:PART-GUARD says which parts this pass refuses; the preverify refuses the rest.
+\ The scan runs in the verifier window, whose overlay moves the engine's package scope;
+\ it replays no `using`.
 : CHK-PKG-OPEN ( -- )
    CHECKER-RESOLVE:PART-GUARD
    CHK-PKG-NAME-I @ LINT-LEX:TOKEN CHECKER-RESOLVE:PART-PATH CHECKER-PACKAGE ;
