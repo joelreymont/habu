@@ -96,7 +96,7 @@ STRUCTURE call DERIVE addr
    FIELD stopped bool
    FIELD key-split n
    FIELD dims n
-   FIELD prompt-tokens n
+   FIELD input-tokens n
    FIELD cached-tokens n
    FIELD response-u n
    FIELD content-u n
@@ -115,7 +115,6 @@ STRUCTURE call DERIVE addr
    FIELD data-count n
    FIELD http-status n
    FIELD incomplete-u n
-   FIELD completed bool
    FIELD embedding-kind n
    FIELD journal-context n
    FIELD journal-get [ n ptr u8 n ptr n -- bool ]
@@ -131,9 +130,9 @@ private
 \ keeping the by-value call record within the native width ceiling.
 STRUCTURE tokens DERIVE addr
    FIELD seen bool
-   FIELD prompt option<n>
+   FIELD input option<n>
    FIELD cached option<n>
-   FIELD completion option<n>
+   FIELD output option<n>
    FIELD reasoning option<n>
 ;STRUCTURE
 
@@ -513,9 +512,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : RESET-USAGE ( ptr call -- )
    TOKENS {: t :}
    false t TOKENS-SEEN !
-   OPTION:NONE t TOKENS-PROMPT !
+   OPTION:NONE t TOKENS-INPUT !
    OPTION:NONE t TOKENS-CACHED !
-   OPTION:NONE t TOKENS-COMPLETION !
+   OPTION:NONE t TOKENS-OUTPUT !
    OPTION:NONE t TOKENS-REASONING ! ;
 
 : OPEN-PREP ( ptr call -- ptr call )
@@ -537,7 +536,6 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:INCOMPLETE-U !
-   false c MODEL-CALL:COMPLETED !
    0 c MODEL-CALL:PARTS-COUNT !
    false c MODEL-CALL:PARTS-OPEN !
    false c MODEL-CALL:PARTS-VALID !
@@ -545,7 +543,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false c MODEL-CALL:JOURNAL-READY !
    0 c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
-   0 c MODEL-CALL:PROMPT-TOKENS !
+   0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
    c RESET-USAGE
    c ;
@@ -1818,7 +1816,6 @@ private
    {: c :}
    c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c REPLY-STATUS
-   true c MODEL-CALL:COMPLETED !
    c READ-OUTPUT
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
    c JSON-OBJECT? 0= if E-RESPONSE throw then ;
@@ -2018,10 +2015,10 @@ private
    c RESPONSE$ {: a:ptr u:n :}
    a u c USAGE? 0= if exit then
    c MODEL-CALL:ENDPOINT @ 0= if
-      a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-PROMPT ! exit
+      a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT ! exit
    then
-   a u c s" input_tokens" USAGE-AT c TOKENS TOKENS-PROMPT !
-   a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-COMPLETION !
+   a u c s" input_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
+   a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-OUTPUT !
    a u c s" input_tokens_details" s" cached_tokens" DETAIL-AT
    c TOKENS TOKENS-CACHED !
    a u c s" output_tokens_details" s" reasoning_tokens" DETAIL-AT
@@ -2076,7 +2073,6 @@ private
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:INCOMPLETE-U !
-   false c MODEL-CALL:COMPLETED !
    false c MODEL-CALL:EMBEDDED !
    0 c MODEL-CALL:REPLAY-KIND !
    c RESET-USAGE
@@ -2296,7 +2292,7 @@ private
    c PARSE-USAGE
    c PARSE-TIER
    c PARSE-CHAT
-   c TOKENS TOKENS-PROMPT @ OR-ZERO c MODEL-CALL:PROMPT-TOKENS !
+   c TOKENS TOKENS-INPUT @ OR-ZERO c MODEL-CALL:INPUT-TOKENS !
    c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS !
    c ;
 
@@ -2426,9 +2422,9 @@ private
    s" kind" kind 1 = if s" generation" else s" embedding" then JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
    s" model" kind 1 = if c GEN$ else c EMBED-MODEL$ then JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" prompt_tokens" c TOKENS TOKENS-PROMPT @ COUNT-FIELD
+   JSON:WRITE-COMMA s" input_tokens" c TOKENS TOKENS-INPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
-   JSON:WRITE-COMMA s" completion_tokens" c TOKENS TOKENS-COMPLETION @ COUNT-FIELD
+   JSON:WRITE-COMMA s" output_tokens" c TOKENS TOKENS-OUTPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
    JSON:WRITE-OBJECT-END ;
 
@@ -2511,11 +2507,9 @@ private
    else fault 0<> if s" failed" else s" ok" then then JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" fault" fault NONZERO COUNT-FIELD
    JSON:WRITE-COMMA s" http_status" c MODEL-CALL:HTTP-STATUS @ NONZERO COUNT-FIELD
-   JSON:WRITE-COMMA s" finish_reason" c MODEL-CALL:COMPLETED @ if
-      s" stop" JSON:WRITE-FIELD-S
-   else c MODEL-CALL:INCOMPLETE-U @ 0<> if
+   JSON:WRITE-COMMA s" incomplete_reason" c MODEL-CALL:INCOMPLETE-U @ 0<> if
       c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ JSON:WRITE-FIELD-S
-   else JSON:WRITE-FIELD-NULL then then
+   else JSON:WRITE-FIELD-NULL then
    JSON:WRITE-COMMA s" request_bytes" c BODY$ nip JSON:WRITE-FIELD-INT
    kind 1 = if
       JSON:WRITE-COMMA s" prefix_bytes" c GEN$ nip c SYSTEM$ nip + c SCHEMA$ nip +
@@ -2524,9 +2518,9 @@ private
    then
    JSON:WRITE-COMMA s" duration_ms" TIME:MONO-NS l LEDGER-STARTED-NS @ - NS-PER-MS /
    JSON:WRITE-FIELD-INT
-   JSON:WRITE-COMMA s" prompt_tokens" c TOKENS TOKENS-PROMPT @ COUNT-FIELD
+   JSON:WRITE-COMMA s" input_tokens" c TOKENS TOKENS-INPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
-   JSON:WRITE-COMMA s" completion_tokens" c TOKENS TOKENS-COMPLETION @ COUNT-FIELD
+   JSON:WRITE-COMMA s" output_tokens" c TOKENS TOKENS-OUTPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" reasoning_tokens" c TOKENS TOKENS-REASONING @ COUNT-FIELD
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE ;
@@ -2764,7 +2758,7 @@ public
       c PREP-JOURNAL-CHAT
       c JOURNAL-GET?
    else false then {: hit:bool :}
-   0 c MODEL-CALL:PROMPT-TOKENS !
+   0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
    c BEGIN-CALL
    c hit [: RUN-CHAT-SELECT ;] catch {: code:n :} 2drop
@@ -2801,7 +2795,7 @@ public
 
 : GENERATION-MODEL$ ( ptr call -- ptr u8 n ) GEN$ ;
 : HTTP-STATUS ( ptr call -- n ) MODEL-CALL:HTTP-STATUS @ ;
-: PROMPT-TOKENS ( ptr call -- n ) MODEL-CALL:PROMPT-TOKENS @ ;
+: INPUT-TOKENS ( ptr call -- n ) MODEL-CALL:INPUT-TOKENS @ ;
 \ The last call's recorded id: its own row, or for a replayed reply the row
 \ its live call recorded; 0 when none.
 : CALL-ID ( ptr call -- n ) LEDGER LEDGER-CALL-ID @ ;

@@ -1401,18 +1401,18 @@ create HASH 64 allot
    s" outcome" ROW s" ok" STR-IS
    s" fault" ROW NULL-IS
    s" http_status" ROW 200 INT-IS
-   s" finish_reason" ROW s" stop" STR-IS
-   s" prompt_tokens" ROW 11 INT-IS
+   s" incomplete_reason" ROW NULL-IS
+   s" input_tokens" ROW 11 INT-IS
    s" cached_tokens" ROW 4 INT-IS
-   s" completion_tokens" ROW 6 INT-IS
+   s" output_tokens" ROW 6 INT-IS
    s" reasoning_tokens" ROW 2 INT-IS
    s" prefix_hash" ROW HASH 64 JSON:READ-STR 64 = ASSERT JSON:READ-CLOSE
    RECORD$ s" call_id" MEMBER 1 INT-IS
    s" kind" USAGE s" generation" STR-IS
    s" model" USAGE s" test-generation" STR-IS
-   s" prompt_tokens" USAGE 11 INT-IS
+   s" input_tokens" USAGE 11 INT-IS
    s" cached_tokens" USAGE 4 INT-IS
-   s" completion_tokens" USAGE 6 INT-IS
+   s" output_tokens" USAGE 6 INT-IS
    s" reasoning_tokens" USAGE 2 INT-IS
    s" usage" MODEL:E-STATE FAILS
    s" read-pdf" M MODEL:PURPOSE!
@@ -1424,7 +1424,7 @@ create HASH 64 allot
    s" outcome" ROW s" failed" STR-IS
    s" fault" ROW MODEL:E-UNAVAILABLE INT-IS
    s" http_status" ROW 429 INT-IS
-   s" finish_reason" ROW NULL-IS
+   s" incomplete_reason" ROW NULL-IS
    s" prefix_hash" ROW HASH 64 STR-IS
    M MODEL:RECORD-FAULT 0= ASSERT
    \ A call that got no reply records no HTTP status, not zero.
@@ -1437,12 +1437,12 @@ create HASH 64 allot
    ROWS-MADE @ 4 = ASSERT
    s" kind" ROW s" embedding" STR-IS
    s" purpose" ROW s" embed" STR-IS
-   s" finish_reason" ROW NULL-IS
+   s" incomplete_reason" ROW NULL-IS
    s" kind" USAGE s" embedding" STR-IS
    s" model" USAGE s" test-embedding" STR-IS
-   s" prompt_tokens" USAGE 2 INT-IS
+   s" input_tokens" USAGE 2 INT-IS
    s" cached_tokens" USAGE NULL-IS
-   s" completion_tokens" USAGE NULL-IS
+   s" output_tokens" USAGE NULL-IS
    s" reasoning_tokens" USAGE NULL-IS
    s" Read other evidence." M MODEL:SYSTEM!
    PURPOSE CHAT
@@ -1466,7 +1466,7 @@ create HASH 64 allot
    PURPOSE CHAT
    M MODEL:RECORD-FAULT 0= ASSERT
    PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
-   s" finish_reason" ROW s" max_output_tokens" STR-IS ;
+   s" incomplete_reason" ROW s" max_output_tokens" STR-IS ;
 
 
 \ A reader at the value of the last request's member `key`.
