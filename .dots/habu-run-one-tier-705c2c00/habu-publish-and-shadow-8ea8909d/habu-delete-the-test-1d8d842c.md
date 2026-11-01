@@ -1,6 +1,6 @@
 ---
 title: Delete the test-only NHOST FACTS chain
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-28T22:36:19.984438+02:00"
@@ -13,3 +13,5 @@ Also (Joel 2026-10-28 ruling): shrink the file-object address row (section 3) fr
 Joel 2026-10-28 ruling: also delete NHOST IMPL-CONTRACT (write-only) and PREPARE's contract argument. Lead additions (dead once ID-OF went): IMPL-LIVE, IMPL-ENTRY, SEEDED-N, INVALIDATE's row retirement, PUBLISH-TAKEN's liveness loop. Staged host not needed: tools/native-build-core.f EMIT-TEMP drops an older host's $2D30 xt row, as for the retired $3838 cells. Work: onrqnwsp in .jj-ws.noindex/jerry-c4; gen-1 (built by C3 candidate) == gen-2 byte for byte; full suite and code review running.
 
 C4 FINAL (jerry-c4 onrqnwsp): full suite on the C4 engine 493/495; the two reds were TIMEOUT-UNDER-LOAD (lsp-boundary, prefix-provided-unfilled), and C5's suite, which contains C4, passed lsp-boundary.
+
+State 2026-11-01 (lead census): not on master, and its commits (jerry-l3 yltmqoko, jerry-c4 onrqnwsp, jerry-c5 qyrnnlqs) no longer exist; src/compiler/native/host.f still holds the code this dot deletes. Claim: unassigned. Tier-1 cleanup: it does not block installing T0 on x86-64, which publishes through the same path arm64 T0 does.

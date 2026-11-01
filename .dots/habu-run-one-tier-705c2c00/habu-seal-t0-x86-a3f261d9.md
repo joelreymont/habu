@@ -1,9 +1,11 @@
 ---
 title: Seal T0 x86-64 output into NEMIT
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-28T14:52:51.559078+02:00"
+closed-at: "2026-11-01T15:22:48.802358+02:00"
+close-reason: "landed: 1ee6c08d65 Seal T0 emissions into NEMIT (t0-emit.f SEAL, x64 BYTES/PATCH, CALL/TAIL loc); the x86 run of sealed output is habu-install-t0-as-6492133d C4's proof (census 2026-11-01)"
 blocks:
   - habu-give-t0-one-fe9f04ec
 ---
