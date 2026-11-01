@@ -1083,7 +1083,7 @@ variable RP  variable RE
       REPEAT
       WI @ 1+ WI ! REPEAT ;
 
-\ The span is already latched: tools/aot-build-open.f calls AOT-DATA-SPAN the moment
+\ The span is already latched: AOT-BUILDER:OPEN calls AOT-DATA-SPAN the moment
 \ the application has loaded, because this file - and every lib module the linker
 \ needs - is loaded AFTER that and allots above BLOB-END. LINK therefore reads the
 \ bounds it is given and never latches them itself; latching here would put the

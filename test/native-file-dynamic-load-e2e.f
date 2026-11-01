@@ -93,8 +93,7 @@ create EXPECT 512 allot  variable EXPECT-U
 
 \ store.f's top level maps memory into SP, its own PERSISTED-PTR-VARIABLE,
 \ fills it through fill.f's FILL and reads it into SEVEN. The mapping is the
-\ file's own storage, so store.f stores an object; its top level runs on every
-\ load, so an edit to FILL's body reaches SEVEN through the reused object.
+\ file's own storage, so store.f stores an object.
 : MAPPED-OWN ( -- )
    s" a file's top level reads a mapping held by its own record and is reused" T-LABEL
    s" native-file-mapped-own" TREE
@@ -110,11 +109,7 @@ create EXPECT 512 allot  variable EXPECT-U
    ERR$ s" native-file: refused path=" s" store.f" FILE-LINE$ CONTAINS? TFALSE
    OUT$ S\" files reused 3\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 7" CONTAINS? TTRUE
-   SAME-IMAGE? TTRUE
-   s" fill.f" S\" package FILL public : FILL ( ptr u8 -- ) 8 swap CELL-VIEW ! ; ;package\n" PUT
-   DIAG-BUILD SUCCESS
-   ERR$ s" native-file: reused path=" s" store.f" FILE-LINE$ CONTAINS? TTRUE
-   RUN-APP SUCCESS OUT$ s" 8" CONTAINS? TTRUE ;
+   SAME-IMAGE? TTRUE ;
 
 \ mapped.f maps memory at top level after the builder's first map read, which
 \ early.f's immediate EARLY-MARK makes by reading a variable at compile time,

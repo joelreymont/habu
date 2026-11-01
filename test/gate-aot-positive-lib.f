@@ -259,20 +259,20 @@ variable SELF-SRC-U
 : WRITE-SELF-SRC ( -- )
    SELF-SRC$ GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
 
-\ The raw compatibility maker script with one line added: the self-test is
+\ The maker script with one line added: the self-test is
 \ required after the linker and before the link. A saved maker opens the
 \ application window before the linker load, so cannot inject at this point.
 : SELF-STDIN$ ( -- ptr u8 n )
    SB-RESET
-   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\ns\" " SB-APPEND
+   S\" require tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\ns\" " SB-APPEND
    SELF-SRC$ SB-APPEND
    S\" \" required\nAOT-LINK:BUILD-NATIVE\n" SB-APPEND
    SB$ ;
 
-\ The compatibility maker runs with the application as argv[0], the JSON flag as
-\ argv[1], TMPDIR as the image's directory, and the script above on stdin. Its
-\ image lands at TMPDIR/hb-aot-got (GB-OUT$); the stale one goes first, so "an
-\ image exists" and "none was emitted" are both about this run.
+\ The maker runs with the application as argv[0], the JSON flag as argv[1],
+\ TMPDIR as the image's directory, and the script above on stdin. Its image
+\ lands at TMPDIR/hb-aot-got (GB-OUT$); the stale one goes first, so "an image
+\ exists" and "none was emitted" are both about this run.
 : MAKER-RUN ( -- )
    GB-OUT$ FS:EXISTS? if GB-OUT$ FS:REMOVE-FILE then
    GE-HB-RESET

@@ -142,9 +142,8 @@ variable WLT-EDITED
    s" nlroot.f" LOAD+ ;
 
 \ The loads of the FAMILY-FIXTURES users, each followed by the value it
-\ computed.
+\ computed; PROBE loads fmb.f through fmpar.f.
 : FAMILY-PROBE ( -- )
-   s" fmb.f" LOAD+
    S\" s\" fmb=\" type FMB-K . cr\n" IN+
    s" fmc.f" LOAD+
    S\" s\" fmc=\" type FMC-K . cr\n" IN+
@@ -205,6 +204,9 @@ variable WLT-EDITED
    s" con-dep.f" LOAD+
    S\" s\" con=\" type CON-USE . cr\n" IN+
    S\" s\" dep=\" type CON-DEP . cr\n" IN+
+   \ fmpar.f requires fms.f, fmv.f and fmb.f: fmb.f, fmu.f, rc.f and hch.f use
+   \ fms.f's or fmv.f's family without requiring it.
+   s" fmpar.f" LOAD+
    s" rp.f" LOAD+
    S\" s\" rp=\" type RP-B . cr\n" IN+
    s" sx.f" LOAD+
@@ -588,12 +590,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ other *-FIXTURES words stand apart from FIXTURES: together their body text
 \ passes the 8000 bytes one definition captures (BODYBUF-CAP).
 : NEST-FIXTURES ( -- )
-   \ hpar.f requires hch.f between its two segments, and hch.f requires hg1.f
-   \ and hg2.f: once a comment makes hch.f compile, hg1.f's and hg2.f's
-   \ installs run inside it while hpar.f's install holds its segment map.
+   \ hpar.f requires hch.f between its segments: fshape's edit compiles HCH-ID,
+   \ then hg1.f and hg2.f install inside hch.f under hpar.f's held segment map.
    s" hg1.f" S\" : HG-ONE ( -- n ) 1 ;\n" PUT
    s" hg2.f" S\" : HG-TWO ( -- n ) 2 ;\n" PUT
-   s" hch.f" S\" require hg1.f\nrequire hg2.f\n" PUT
+   s" hch.f" S\" : HCH-ID ( FAMS:fshape -- FAMS:fshape ) ;\nrequire hg1.f\nrequire hg2.f\n" PUT
    s" hpar.f" S\" package FRAME-HP public : A ( -- n ) 1 ; ;package\nrequire hch.f\npackage FRAME-HP public : B ( -- n ) A ; ;package\n" PUT
    \ hop.f loads hoc.f between its definitions under the full origin journal.
    s" hoc.f" S\" : HO-PC ( -- n ) 3 ;\n" PUT
@@ -850,14 +851,15 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" nlroot.f" S\" require nlk.f\nrequire nlc.f\n" PUT ;
 
 \ FMB's and FMU's signatures name families fshape and vshape, FMC calls fbox's
-\ constructor fmp; EDGE-EDITS changes all three but no code those words call.
+\ constructor fmp; EDGE-EDITS changes the three files that declare them.
 : FAMILY-FIXTURES ( -- )
    s" fms.f" S\" package FAMS\npublic\nENUM fshape VARIANT fmx ;VARIANT ;ENUM\n: S-ID ( fshape -- fshape ) ;\n: S-CODE ( fshape -- n ) MATCH fshape fmx OF 1 ENDOF ;MATCH ;\n;package\n" PUT
-   s" fmb.f" S\" require fms.f\n: FMB ( FAMS:fshape -- FAMS:fshape ) FAMS:S-ID ;\n: FMB-K ( -- n ) FAMS-FSHAPE:fmx FMB FAMS:S-CODE ;\n" PUT
+   s" fmb.f" S\" : FMB ( FAMS:fshape -- FAMS:fshape ) FAMS:S-ID ;\n: FMB-K ( -- n ) FAMS-FSHAPE:fmx FMB FAMS:S-CODE ;\n" PUT
+   s" fmpar.f" S\" require fms.f\nrequire fmv.f\nrequire fmb.f\n" PUT
    s" fmt.f" S\" package FAMT\npublic\nENUM fbox VARIANT fmp FIELD fma n ;VARIANT ;ENUM\n: T-GET ( fbox -- n ) MATCH fbox fmp OF ENDOF ;MATCH ;\n;package\n" PUT
    s" fmc.f" S\" require fmt.f\n: FMC ( n -- FAMT:fbox ) FAMT-FBOX:fmp ;\n: FMC-K ( -- n ) 5 FMC FAMT:T-GET ;\n" PUT
    s" fmv.f" S\" package FAMV\npublic\nENUM vshape VARIANT fvx ;VARIANT ;ENUM\n;package\n" PUT
-   s" fmu.f" S\" require fmv.f\n: FMU ( vshape -- vshape ) ;\n: FMU-K ( -- n ) 7 ;\n" PUT ;
+   s" fmu.f" S\" : FMU ( vshape -- vshape ) ;\n: FMU-K ( -- n ) 7 ;\n" PUT ;
 
 \ The raw-address fixtures. Checked code cannot put an address in undeclared
 \ bytes, so raw.f, poke.f, addr.f, off.f and own.f each load from a
@@ -920,7 +922,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" con-dep.f" S\" require con.f\n: CON-DEP ( -- n ) CON-USE 1+ ;\n" PUT
    \ rp.f requires rc.f between its two definitions: its object holds two
    \ segments and the load between them.
-   s" rc.f" S\" : RC-N ( -- n ) 2 ;\n" PUT
+   s" rc.f" S\" : RC-N ( -- n ) 2 ;\n: RC-ID ( FAMS:fshape -- FAMS:fshape ) ;\n" PUT
    s" rp.f" S\" : RP-A ( -- n ) 1 ;\nrequire rc.f\n: RP-B ( -- n ) RP-A RC-N + ;\n" PUT
    SX-FIXTURES
    \ lbv.f carries a value across its load of lbvk.f, so the load does not
@@ -1199,11 +1201,11 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s" deep.f" DEFS$ s" 1" T$=
    s" app.f" DEFS$ s" 4" T$=
    s" lib.f" DEFS$ s" 5" T$=
-   s" each file object holds exactly its own input rows" T-LABEL
+   s" each file object holds its own input rows and one per file it depends on" T-LABEL
    s" base.f" s" 1" INPUTS
    s" deep.f" s" 1" INPUTS
-   s" lib.f" s" 4" INPUTS
-   s" app.f" s" 13" INPUTS
+   s" lib.f" s" 6" INPUTS
+   s" app.f" s" 21" INPUTS
    s" each object is stored under its key" T-LABEL
    s" app.f" KEY$ APP-KEY KEY-LEN KEEP
    s" lib.f" KEY$ LIB-KEY KEY-LEN KEEP
@@ -1814,21 +1816,29 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    s"  path=" IN+ path pathu AT IN+ S\" \n" IN+
    ERR$ INPUT INPUT-U @ CONTAINS? TTRUE ;
 
+\ name's object missed because a file it depends on changed.
+: STALE ( ptr u8 n -- )
+   {: name:ptr nameu:n :}
+   0 INPUT-U !
+   s" native-file: miss path=" IN+ name nameu AT IN+
+   S\"  reason=object-stale\n" IN+
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE ;
+
 : EDGE-REBUILT ( -- )
    s" a removed earlier provider compiles the child and its own child again" T-LABEL
    OUT$ S\" npc=2\n" CONTAINS? TTRUE
    s" npc.f" NOT-REUSED
    s" npk.f" KEY$ STORED
-   s" a comment in a leaf compiles only the leaf" T-LABEL
-   s" nlroot.f" REUSED s" nlc.f" REUSED
+   s" a comment in a leaf compiles the leaf and the files that require it" T-LABEL
+   s" nlroot.f" STALE s" nlc.f" STALE
    s" nlk.f" NOT-REUSED
    s" nlk.f" KEY$ STORED
    s" a changed family misses at its user's slice, which compiles as a cold build does" T-LABEL
    s" stale-slice" s" FMB" s" fmb.f" HEAD-HAS
    s" fmb.f" NOT-REUSED
    OUT$ S\" fmb=2\n" CONTAINS? TTRUE
-   s" a changed constructor misses at its caller's slice, which compiles as a cold build does" T-LABEL
-   s" stale-slice" s" FMC" s" fmc.f" HEAD-HAS
+   s" a changed constructor compiles its caller as a cold build does" T-LABEL
+   s" fmc.f" STALE
    s" fmc.f" NOT-REUSED
    OUT$ S\" fmc=5\n" CONTAINS? TTRUE
    s" a family moved to another package misses at its user's slice" T-LABEL
@@ -1840,7 +1850,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
 \ sx.f's cold child sxm.f runs once, so its marker byte and its line come
 \ once.
 : RC-INTERFACE ( -- )
-   s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n" PUT
+   s" rc.f" S\" : RC-N ( -- u8 ) 2 ;\n: RC-ID ( FAMS:fshape -- FAMS:fshape ) ;\n" PUT
    s" sxc.f" S\" : SXC-N ( -- u8 ) 2 ;\n" PUT
    s" npk.f" S\" : NPK ( -- u8 ) 1 ;\n" PUT
    s" nproot.f" S\" require npk.f\nrequire npc.f\n" PUT
@@ -2043,27 +2053,26 @@ public
    s" wra.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
    \ wca.f now selects libz, which wcb.f's PREPARE keeps.
    s" wca.f" S\" require src/lib/ffi-abi.f\nVERSIONED-LIBRARY z 1\n" PUT
-   \ RC-N's new body keeps its effect: rp.f's rows do not read it.
-   s" rc.f" S\" : RC-N ( -- n ) 2 0 + ;\n" PUT
-   s" hch.f" S\" \\ edited\nrequire hg1.f\nrequire hg2.f\n" PUT
    INDIRECT-EDITS
    PREMISE-EDITS
    EDGE-EDITS
-   s" comments in lib.f keep lib.f's key, and app.f's object installs" T-LABEL
+   s" comments in lib.f keep lib.f's key and compile app.f, which requires it" T-LABEL
    PROBE SUCCESS
    OUT$ S\" use=67\n" CONTAINS? TTRUE
    s" lib.f" DEFS$ s" 5" T$=
    s" lib.f" KEY$ LIB-KEY KEY-LEN T$=
-   s" app.f" REUSED
+   s" app.f" STALE
    INDIRECT-REBUILT
    PREMISE-REBUILT
    EDGE-REBUILT
-   s" a comment compiles hch.f between installs of hg1.f and hg2.f inside the installing hpar.f" T-LABEL
+   s" a changed family compiles hch.f around installs of hg1.f and hg2.f inside the installing hpar.f" T-LABEL
    OUT$ S\" hp=1\n1\n2\n" CONTAINS? TTRUE
+   s" stale-slice" s" HCH-ID" s" hch.f" HEAD-HAS
    s" hch.f" NOT-REUSED
    s" hpar.f" REUSED s" hg1.f" REUSED s" hg2.f" REUSED
-   s" a body edit of rc.f compiles rc.f and replays rp.f around it" T-LABEL
+   s" a changed family compiles rc.f and replays rp.f around it" T-LABEL
    OUT$ S\" rp=3\n" CONTAINS? TTRUE
+   s" stale-slice" s" RC-ID" s" rc.f" HEAD-HAS
    s" rc.f" NOT-REUSED
    s" rp.f" REUSED
    s" a byte allotted before dv.f still installs its object" T-LABEL

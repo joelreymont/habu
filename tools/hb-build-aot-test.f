@@ -214,7 +214,7 @@ package HB-BUILD-CLI
    HBT-SPAN-OUT HBT-REMOVE-FILE? ;
 
 \ The same refusal through the CLI under --json-errors, which promises its
-\ caller JSON: the maker reads the flag from its argv (tools/aot-build-open.f)
+\ caller JSON: the maker reads the flag from its argv (AOT-BUILDER:OPEN)
 \ and the CLI keeps only the JSON lines of the maker's stderr
 \ (HBB-WERR-JSON-ONLY), so a refusal with no JSON arm reaches the caller as
 \ text.

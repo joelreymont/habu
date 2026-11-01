@@ -162,6 +162,9 @@ create CONTENT 64 allot
       CONTENT 18 + LE:U16@ $3E T=
    then ;
 
+\ The fixture loads ahead of the build tool's ENTRY, so the build first says it
+\ stores nothing (tools/tool-role.f SAY-UNKNOWN).
+create FIXTURE PATH-CAP allot
 : BAD-HOST-CASE ( -- )
    s" an unrelated fixed CODE registration remains incompatible" T-LABEL
    PROC-ARGV-ENV-RESET
@@ -172,7 +175,13 @@ create CONTENT 64 allot
    s" --" ARG
    s" /dev/null/native-build-host-row" ARG
    DRIVE
-   S\" native-build: incompatible fixed engine layout\n" REFUSED ;
+   SB-RESET
+   s" hb: " SB-APPEND
+   SOURCE-ROOT:CWD$ s" test/native-build-host-unknown-code.f" FIXTURE FS:JOIN-PATH
+      FIXTURE swap SB-APPEND
+   S\"  loads outside TOOL-ROLE:ENTRY and DONE, so this build stores nothing\n" SB-APPEND
+   S\" native-build: incompatible fixed engine layout\n" SB-APPEND
+   SB$ REFUSED ;
 
 : ACTION-CASE ( -- )
    s" nested build entries preserve an active action" T-LABEL

@@ -29,11 +29,11 @@ variable IMAGE-U
    SUBJECT$ a u FS:WRITE-ALL ;
 
 \ The production maker script (tools/hb-build-lib.f HBB-RUN-MAKER-CMD) on stdin:
-\ a definition ahead of tools/aot-build-open.f lands in pre-window DATA, and the
+\ a definition ahead of AOT-BUILDER:OPEN lands in pre-window DATA, and the
 \ subject loads inside the window. The child runs the keyed linker image
 \ (test/preloaded-engine.f), where phase two's require is a no-op.
 : LINK-ONLY$ ( -- ptr u8 n )
-   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
+   S\" require tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
 
 \ The linker's second argument is its JSON-diagnostics flag. The linker image
 \ is taken before the child's argv is staged: building it stages its own.
@@ -85,7 +85,7 @@ variable IMAGE-U
 : CASE-PRE-XT ( -- )
    S\" : MAIN ( -- ) DCR-PRE-XT @ . ;\n" WRITE-SUBJECT
    s" 1"
-   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT check@ 0 set-check ' DCR-PRE , set-check\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   S\" : DCR-PRE ( n -- n ) 1+ ;\ncreate DCR-PRE-XT check@ 0 set-check ' DCR-PRE , set-check\nrequire tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
       BUILD-DIAG
    70 s" pre-window xt cell: refusal code" GE-EXPECT-RC
    S\" \"code\":\"E-AOT-UNSUPPORTED\"" s" pre-window xt cell: schema code" GE-EXPECT-ERR-HAS
@@ -102,7 +102,7 @@ variable IMAGE-U
 
 : CASE-PRE-DATA ( -- )
    S\" : MAIN ( -- ) DCR-PRE-CELL @ . ;\n" WRITE-SUBJECT
-   S\" create DCR-PRE-CELL 41 ,\nrequire tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" BUILD
+   S\" create DCR-PRE-CELL 41 ,\nrequire tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" BUILD
    74 s" pre-window data cell: refusal code" GE-EXPECT-RC
    s" aot: address refers to data outside the restored span"
       s" pre-window data cell: refusal reason" GE-EXPECT-ERR-HAS

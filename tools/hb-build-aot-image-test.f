@@ -171,7 +171,7 @@ create HBT-MAKER-GOT-HEX 64 allot
 \ The maker producer loads process support before the application, then the
 \ linker loads its own process support after the application. Temporary support
 \ must not spend the application's task-user band. Exercise the saved maker
-\ through hb-build and the compatibility maker directly on the public engine.
+\ through hb-build and the maker script directly on the public engine.
 : HBT-MAKER-REPORT-BUILD ( ptr u8 n bool -- )
    {: engine:ptr engineu:n warm:bool :}
    HBT-TMP engine engineu HBT-ARGV-CLI
@@ -219,7 +219,7 @@ create HBT-MAKER-GOT-HEX 64 allot
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" 0" >LEN PROC-ARGV+
    s" bin/hb" >LEN
-   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" >LEN
+   S\" require tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" >LEN
    HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
       HBT-MAKER-CAPTURE>N {: outn:n errn:n rc:n :}

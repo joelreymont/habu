@@ -42,7 +42,7 @@ DYNAMIC-BUFFER MAP-TEXT u8
    s" --donor" GE-ARG+ ENGINE$ GE-ARG+
    s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
    ENGINE$
-   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
+   S\" require tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n"
    PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN
    s" native donor stripped build" GE-EXPECT-OK ;
 

@@ -43,7 +43,7 @@ CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
    xt ENGINE-TEXT? 0= if NULL$ 0 0= 0= exit then
    xt KERNEL-XT execute ;
 
-\ Private: a native build sets its target's roles before capture and
+\ A native build sets its target's roles before capture and
 \ tools/cold-load-roles.f the reloaded host's, each through the private wordlist.
 : INSTALL-ROLES ( ptr u8 ptr u8 [ ptr u8 n -- ] -- )
    {: checker:ptr compiler:ptr entry :}
@@ -54,7 +54,7 @@ CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
    0 0= COMPILER-KNOWN ! ;
 
 
-\ Private: a native build installs its file rows before capture.
+\ A native build installs its file rows before capture.
 : INSTALL-FILES ( ptr u8 n -- )
    {: rows:ptr size:n :}
    here data-base - negate CELL 1- and allot

@@ -161,10 +161,10 @@ create COLD PATH-CAP allot variable COLD-U
    s" warm5-hb" S\" same8\n" RAN
    s" warm product pointing at a child's DATA is the cold one" T-LABEL
    s" warm5-hb" SAME? TTRUE
-   s" a child that grows moves the reused parent's pointer past its DATA" T-LABEL
+   s" a child that grows recompiles its parent, whose pointer moves past its DATA" T-LABEL
    s" kid.f" KID8$ PUT
    s" grown5-hb" BUILT
-   S\" files reused 5\n" REUSED
+   S\" files reused 3\n" REUSED
    s" grown5-hb" S\" same16\n" RAN ;
 
 \ inst.f's HOOK-SET compiles `is` on dfr.f's defer and its top level runs it:
@@ -188,7 +188,7 @@ create COLD PATH-CAP allot variable COLD-U
    s" an edited rebinding file recompiles" T-LABEL
    s" inst.f" INST8$ PUT
    s" edit6-hb" BUILT
-   S\" files reused 2\n" REUSED
+   S\" files reused 1\n" REUSED
    s" edit6-hb" S\" 8\n" RAN ;
 
 public

@@ -366,7 +366,7 @@ variable CLO-PROBE  variable CLO-RI
    JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
    s" aot: closure exceeds the closure limit" 74 die ;
 \ A MEMBER LOADED AHEAD OF THE MAKER IS REFUSED, BY NAME. The engine's records
-\ end at its seal watermark, and tools/aot-build-open.f latches OPENER-NDICT
+\ end at its seal watermark, and AOT-BUILDER:OPEN latches OPENER-NDICT
 \ before it loads anything an application can name, so a record between the
 \ two was defined ahead of the maker: on the engine only the latch file's
 \ private records, on the keyed linker image (test/preloaded-engine.f rule 3)

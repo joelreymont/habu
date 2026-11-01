@@ -232,36 +232,39 @@ variable HISTORY-LIB-N
    HISTORY-ENTRIES 1 T=
    HISTORY-LIB-N @ 1 T=
    HISTORY-LIB-NEW @ 0 T=
-   s" a child that moves the sink misses its parent's head stored under the old one" T-LABEL
+   s" a child edited to move the sink recompiles its parent" T-LABEL
    2 HISTORY-SOURCE
    s" history-cache" AT RUN-SAVED-IN SUCCESS
    HISTORY-ENTRIES 2 T=
-   \ lib.f arms the origin journal; app.f's MAIN was stored without it.
+   \ lib.f now arms the origin journal; app.f requires lib.f, so it compiles.
    s" lib.f" S\" require src/habu/engine-origin.f\nENGINE-ORIGIN:ARM\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
    1 DIAG? !
    s" history-cache" AT RUN-SAVED-IN SUCCESS
    0 DIAG? !
-   ERR$ s" native-file: origin-sink name=MAIN path=" CONTAINS? TTRUE
+   ERR$ s" /app.f reason=object-stale" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
    HISTORY-ENTRIES drop
    HISTORY-APP-NEW @ 1 T=
-   s" a word that moves the sink after the last head keeps its file's installs" T-LABEL
+   s" a word edited to move the sink after the last head recompiles its caller" T-LABEL
    s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
    s" app.f" S\" require lib.f\n: MAIN ( -- ) HIST-KEEP 2 + . ;\nGO\n" PUT
    s" history-cache" AT RUN-SAVED-IN SUCCESS
-   \ GO now arms the origin journal after MAIN, which installs under the sink
-   \ its segment recorded.
+   \ GO now arms the origin journal after MAIN; app.f requires lib.f, so it
+   \ compiles.
    s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ENGINE-ORIGIN:ARM ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
+   1 DIAG? !
    s" history-cache" AT RUN-SAVED-IN SUCCESS
-   OUT$ S\" definitions installed 1\n" CONTAINS? TTRUE
+   0 DIAG? !
+   ERR$ s" /app.f reason=object-stale" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE
    s" a sink moved and restored across a child load keeps its parent's installs" T-LABEL
    s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ;\n: UNGO ( -- ) ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
    s" two.f" S\" : HIST-TWO ( -- n ) 2 ;\n" PUT
-   s" app.f" S\" require lib.f\nGO\nrequire two.f\nUNGO\n: MAIN ( -- ) HIST-KEEP HIST-TWO + . ;\n" PUT
+   s" mid.f" S\" GO\nrequire two.f\nUNGO\n: MAIN ( -- ) HIST-KEEP HIST-TWO + . ;\n" PUT
+   s" app.f" S\" require lib.f\nrequire mid.f\n" PUT
    s" history-cache" AT RUN-SAVED-IN SUCCESS
-   \ GO now arms the origin journal before two.f loads and UNGO disarms it
-   \ before MAIN, which installs under the sink its segment recorded.
+   \ GO now arms the origin journal before two.f loads and UNGO disarms it;
+   \ mid.f does not require lib.f, so MAIN installs under its segment's sink.
    s" lib.f" S\" require src/habu/engine-origin.f\n: GO ( -- ) ENGINE-ORIGIN:ARM ;\n: UNGO ( -- ) ENGINE-ORIGIN:DISARM ;\n: HIST-KEEP ( -- n ) 40 ;\n" PUT
    s" history-cache" AT RUN-SAVED-IN SUCCESS
    OUT$ S\" definitions installed 1\n" CONTAINS? TTRUE
@@ -580,6 +583,61 @@ variable HISTORY-LIB-N
    RUN-APP SUCCESS OUT$ s" 47" CONTAINS? TTRUE
    LITERAL-IMAGE-SAME? TTRUE ;
 
+\ a.f's require reads b.f, so d.f's, its only line, and app.f's find it
+\ loaded; c.f requires nothing.
+: REQUIRE-DEP-CASE ( -- )
+   s" a file depends on every file it requires" T-LABEL
+   s" require-dep-cache" AT FS:MAKE-DIR
+   s" require-dep-fresh-cache" AT FS:MAKE-DIR
+   s" b.f" S\" \\ first\npackage DEP-B public\n: B-VAL ( -- n ) 7 ;\n;package\n" PUT
+   s" a.f"
+      S\" require b.f\npackage DEP-A public\n: A-VAL ( -- n ) DEP-B:B-VAL 1+ ;\n;package\n"
+      PUT
+   s" d.f" S\" require b.f\n" PUT
+   s" c.f" S\" package DEP-C public\n: C-VAL ( -- n ) 30 ;\n;package\n" PUT
+   s" app.f"
+      S\" require a.f\nrequire d.f\nrequire b.f\nrequire c.f\n: MAIN ( -- ) DEP-A:A-VAL DEP-B:B-VAL + DEP-C:C-VAL + . cr ;\n"
+      PUT
+   s" require-dep-cache" AT RUN-SAVED-IN SUCCESS
+   RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
+   s" b.f" S\" \\ edited\npackage DEP-B public\n: B-VAL ( -- n ) 7 ;\n;package\n" PUT
+   1 DIAG? !
+   s" require-dep-cache" AT RUN-SAVED-IN SUCCESS
+   0 DIAG? !
+   s" require-dep.err" AT ERR$ FS:WRITE-ALL
+   OUT$ S\" files reused 1\n compiled 4\n" CONTAINS? TTRUE
+   0 INPUT-U !
+   s" native-file: reused path=" INPUT CAP INPUT-U BUF-APPEND
+   s" c.f" AT INPUT CAP INPUT-U BUF-APPEND
+   S\" \n" INPUT CAP INPUT-U BUF-APPEND
+   ERR$ INPUT INPUT-U @ CONTAINS? TTRUE
+   ERR$ s" /b.f reason=object-stale" CONTAINS? TTRUE
+   ERR$ s" /a.f reason=object-stale" CONTAINS? TTRUE
+   ERR$ s" /d.f reason=object-stale" CONTAINS? TTRUE
+   ERR$ s" /app.f reason=object-stale" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
+   LITERAL-IMAGE-SAVE
+   s" require-dep-fresh-cache" AT RUN-SAVED-IN SUCCESS
+   OUT$ S\" files reused 0\n compiled 5\n" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 45" CONTAINS? TTRUE
+   LITERAL-IMAGE-SAME? TTRUE ;
+
+\ Its own build, since the entry is under test: q.f loads the builder outside
+\ TOOL-ROLE:ENTRY, so the build says it stores nothing.
+: WRAPPER-CASE ( -- )
+   s" a builder loaded from a wrapper file names it and stores nothing" T-LABEL
+   s" wrapper-cache" AT FS:MAKE-DIR
+   s" app.f" S\" : MAIN ( -- ) 6 7 * . ;\n" PUT
+   s" q.f" S\" require tools/app-build.f\n" PUT
+   0 INPUT-U !
+   s" require " INPUT CAP INPUT-U BUF-APPEND
+   s" q.f" AT INPUT CAP INPUT-U BUF-APPEND
+   S\" \nAPP-BUILD:RUN\n" INPUT CAP INPUT-U BUF-APPEND
+   s" wrapper-cache" AT ENGINE-CANDIDATE:PATH$ INPUT INPUT-U @ RUN-DIRECT-SOURCE
+   SUCCESS
+   ERR$ s" /q.f loads outside TOOL-ROLE:ENTRY and DONE" CONTAINS? TTRUE
+   RUN-APP SUCCESS OUT$ s" 42" CONTAINS? TTRUE ;
+
 : BODY-READER-CASE ( -- )
    s" a newly parsing binding cannot reuse an unchanged body" T-LABEL
    s" body-reader-cache" AT FS:MAKE-DIR
@@ -665,12 +723,15 @@ variable HISTORY-LIB-N
    s" a reused body follows source literal calls after an edited prefix" T-LABEL
    s" literal-fresh-cache" AT FS:MAKE-DIR
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" oldBBBB\" ;\n;package\n" PUT
-   s" app.f" S\" require prefix.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY ( -- ptr u8 n ) s\" seven77\" 2drop s\" \" 2drop s\" twelve123456\" 2drop s\" oldBBBB\" ;\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\n: BODY-PTR ( -- n ) c\" oldBBBB\" LIT-PTR>N ;\n: MAIN ( -- ) BODY type cr 3 BODY-LOOP 3 BODY-PTR * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
+   \ body.f does not require prefix.f, so its edit leaves body.f reusable.
+   s" body.f" S\" : BODY ( -- ptr u8 n ) s\" seven77\" 2drop s\" \" 2drop s\" twelve123456\" 2drop s\" oldBBBB\" ;\n" PUT
+   s" app.f" S\" require prefix.f\nrequire body.f\nCAST: LIT-PTR>N ( ptr u8 -- n )\n: BODY-LOOP ( n -- n ) {: len:n :} 0 len 0 ?do c\" oldBBBB\" LIT-PTR>N + loop ;\n: BODY-PTR ( -- n ) c\" oldBBBB\" LIT-PTR>N ;\n: MAIN ( -- ) BODY type cr 3 BODY-LOOP 3 BODY-PTR * = if s\" loop-ok\" else s\" loop-bad\" then type cr ;\n" PUT
    RUN-DEFINITION SUCCESS
    RUN-APP SUCCESS OUT$ s" oldBBBB" CONTAINS? TTRUE
    OUT$ s" loop-ok" CONTAINS? TTRUE
    s" prefix.f" S\" package FILE-LITERAL public\n: OLD ( -- ptr u8 n ) s\" changed-prefix\" ;\n;package\n" PUT
-   RUN-DEFINITION SUCCESS REUSED
+   RUN-DEFINITION SUCCESS
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ s" oldBBBB" CONTAINS? TTRUE
    OUT$ s" loop-ok" CONTAINS? TTRUE
    LITERAL-IMAGE-SAVE
@@ -962,6 +1023,16 @@ public
          T-REPORT
          exit
       then
+      0 SCRIPT-ARGV$ s" require-dep" STR= if
+         REQUIRE-DEP-CASE
+         T-REPORT
+         exit
+      then
+      0 SCRIPT-ARGV$ s" wrapper" STR= if
+         WRAPPER-CASE
+         T-REPORT
+         exit
+      then
       0 SCRIPT-ARGV$ s" body-reader" STR= if
          BODY-READER-CASE
          T-REPORT
@@ -1015,6 +1086,8 @@ public
    SEGMENT-EVENT-CASE
    HISTORY-CASE
    BODY-EDIT-CASE
+   REQUIRE-DEP-CASE
+   WRAPPER-CASE
    BODY-READER-CASE
    BODY-RUN-CASE
    OUTER-HEAD-CASE

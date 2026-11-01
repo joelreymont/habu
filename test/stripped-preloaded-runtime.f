@@ -42,10 +42,10 @@ variable IMAGE-U
    SUBJECT$ SUBJECT-SRC CODEGEN:CONTENTS FS:WRITE-ALL ;
 
 : MAKER$ ( -- ptr u8 n )
-   S\" require tools/aot-build-open.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
+   S\" require tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
 : PREWINDOW-MAKER$ ( -- ptr u8 n )
    \ Both tables start before the window and move again after it closes.
-   S\" require test/ffi-growth-prewindow-functions.f\nrequire test/ffi-growth-prewindow-paths.f\nrequire tools/aot-build-open.f\nrequire test/ffi-growth-linker.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
+   S\" require test/ffi-growth-prewindow-functions.f\nrequire test/ffi-growth-prewindow-paths.f\nrequire tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire test/ffi-growth-linker.f\nrequire tools/aot-build.f\nAOT-LINK:BUILD-NATIVE\n" ;
 
 : BUILD-SOURCE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n maker:ptr makeru:n :}
    PRELOADED-ENGINE:LINKER$ {: linker:ptr linkeru:n :}

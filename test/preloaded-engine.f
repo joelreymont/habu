@@ -77,7 +77,7 @@ public
 \    tools/aot-build.f is then a no-op.
 \ 3. A subject reaches no word the linker's load left above the engine and no
 \    cell of it but those an AOT ownership claim names: that load ran before the
-\    capture window opened (tools/aot-build-open.f). A require of one of its
+\    capture window opened (AOT-BUILDER:OPEN). A require of one of its
 \    modules, a name it never required and a `package` line naming one of its
 \    packages all resolve to that copy, where the engine's maker compiles inside
 \    the window. The maker refuses a closure reaching such a word

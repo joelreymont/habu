@@ -465,17 +465,12 @@ variable BASE-LIVE
    rc 0 T=
    OUT$ s" absent" CONTAINS? TTRUE ;
 
-\ What a build's HABU_BUILD_FILES rows must show. BASE: the no-edit warm build,
-\ whose rows the edited steps compare against (ROW-JUDGE); each file it did not
-\ reuse or that compiled a definition live is printed. EDIT: the files
-\ WANT-BUILD collects recompile, no other. ALL: every loaded file recompiles.
-\ COLD: no file reused and some definition compiled live. SOME: a file reused
-\ and a definition compiled live.
-0 constant EXPECT-BASE
-1 constant EXPECT-EDIT
-2 constant EXPECT-COLD
-3 constant EXPECT-SOME
-4 constant EXPECT-ALL
+\ What a build's HABU_BUILD_FILES rows must show (ROW-JUDGE).
+0 constant EXPECT-BASE   \ the no-edit warm build the edited steps compare to
+1 constant EXPECT-EDIT   \ only the files WANT-BUILD collects recompile
+2 constant EXPECT-COLD   \ no file reused, some definition compiled live
+3 constant EXPECT-SOME   \ a file reused and a definition compiled live
+4 constant EXPECT-ALL    \ every loaded file recompiles
 
 : EDITED! ( ptr u8 n -- ) EDITED-U ! EDITED ! ;
 
@@ -1601,13 +1596,8 @@ variable BASE-LIVE
    s" " EDITED!
    s" tools/native-file-reference.f" old oldu new newu PATCH-EMITTER ;
 
-\ A file recompiles when it or a file it requires changed, comments included,
-\ as make rebuilds. The compiler requires src/lib/memory.f, so a memory.f edit
-\ recompiles every loaded file; a src/habu/debug-watch.f edit recompiles it and
-\ the loaded files that require it, directly or through another (WANT-BUILD).
-\ A build tool edit recompiles every file, since the tool role names every
-\ object.
-\ Each edit lands on the previous one's tree and shares one cache.
+\ An edit recompiles its file and the files requiring it (WANT-BUILD), comments
+\ included; the compiler requires memory.f and every key names the tool role.
 : RECOMPILE ( -- )
    T-RESET
    s" engine rebuilds recompile only an edited file and its consumers" T-LABEL

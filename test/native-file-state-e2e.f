@@ -29,16 +29,6 @@ create EXPECT 512 allot  variable EXPECT-U
    S\" \n" EXPECT 512 EXPECT-U BUF-APPEND
    EXPECT EXPECT-U @ ;
 
-\ The diagnostic line of file name's refusal for reason why.
-: REFUSED$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n why:ptr whyu:n :}
-   0 EXPECT-U !
-   s" native-file: refused path=" EXPECT 512 EXPECT-U BUF-APPEND
-   name nameu AT EXPECT 512 EXPECT-U BUF-APPEND
-   s"  reason=" EXPECT 512 EXPECT-U BUF-APPEND
-   why whyu EXPECT 512 EXPECT-U BUF-APPEND
-   EXPECT EXPECT-U @ ;
-
 : BUILD ( ptr u8 n -- n )
    {: product:ptr productu:n :}
    ROOT$ s" app.f" product productu NATIVE-FILE-APP:BUILD-AT
@@ -159,10 +149,11 @@ create COLD-SRC PATH-CAP allot
    false NATIVE-FILE-APP:DIAG? !
    OUT$ s" files reused " CONTAINS? TTRUE
    OUT$ S\" files reused 0\n" CONTAINS? TFALSE
-   \ downstream.f is the edit. A reused file's top level runs again
-   \ (NUNIT-OBJECT DEF-SLOTS), so poke.f's store into prefix.f's slot and
-   \ cover.f's re-cover of OWN, which keeps downstream.f's new 223, reuse too.
-   ERR$ s" app.f" REUSED$ CONTAINS? TTRUE
+   \ downstream.f is the edit, and app.f requires it. A reused file's top
+   \ level runs again (NUNIT-OBJECT DEF-SLOTS), so poke.f's store into
+   \ prefix.f's slot and cover.f's re-cover of OWN, which keeps downstream.f's
+   \ new 223, reuse too.
+   ERR$ s" /app.f reason=object-stale" CONTAINS? TTRUE
    ERR$ s" prefix.f" REUSED$ CONTAINS? TTRUE
    ERR$ s" unit.f" REUSED$ CONTAINS? TTRUE
    ERR$ s" low.f" REUSED$ CONTAINS? TTRUE
@@ -173,15 +164,15 @@ create COLD-SRC PATH-CAP allot
    s" task-fresh-hb" s" fresh-cache" COLD-BUILD SUCCESS
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    s" task-fresh-hb" s" task-warm-hb" SAME-FILE
-   \ prefix.f and app.f change, and every slot the other files declare
-   \ moves, so their heads compile live: only poke.f, with no head, reuses.
+   \ prefix.f and app.f change, so the files that require prefix.f compile,
+   \ and every slot the others declare moves, so their heads compile live.
    s" a grown prefix reservation moves the cached leaf slot" T-LABEL
    GROWN-PREFIX
    true NATIVE-FILE-APP:DIAG? !
    s" task-grown-hb" BUILD SUCCESS
    false NATIVE-FILE-APP:DIAG? !
-   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
-   ERR$ s" poke.f" REUSED$ CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
+   ERR$ s" /poke.f reason=object-stale" CONTAINS? TTRUE
    OUT$ s" task-state-unit-ran" CONTAINS? TTRUE
    s" task-grown-hb" EDIT-STATE$ RUN-TASK-STATE
    s" grown-fresh-hb" s" grown-cache" COLD-BUILD SUCCESS
@@ -344,16 +335,15 @@ create COLD-SRC PATH-CAP allot
    s" read-cold-hb" s" read-cold-cache" COLD-BUILD dup SUCCESS {: rcold:n :}
    OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    rcold reuse or 0= if s" read-cold-hb" s" read-reuse-hb" SAME-FILE then
-   \ The grown first.f moves the watermark later.f's slot head was compiled
-   \ against, so that head compiles live and its slot follows both of
-   \ first.f's. saved.f has no head: its reused top level reads the moved
-   \ watermark again.
+   \ later.f requires the grown first.f, so it compiles and its slot follows
+   \ both of first.f's. saved.f has no head: its reused top level reads the
+   \ moved watermark again.
    s" a grown earlier reservation misses the later reader" T-LABEL
    GROWN-FIRST
    true NATIVE-FILE-APP:DIAG? !
    s" warm-hb" BUILD dup SUCCESS {: warm:n :}
    false NATIVE-FILE-APP:DIAG? !
-   ERR$ s" later.f" s" head-stale" REFUSED$ CONTAINS? TTRUE
+   ERR$ s" /later.f reason=object-stale" CONTAINS? TTRUE
    ERR$ s" later.f" REUSED$ CONTAINS? TFALSE
    ERR$ s" saved.f" REUSED$ CONTAINS? TTRUE
    warm s" warm-hb" AT S\" 16\n" RUN-READ

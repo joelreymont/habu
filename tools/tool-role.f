@@ -125,7 +125,7 @@ SHA256-CTX-BYTES BUFFER: SHA
    NULL-PTR BYTE-VIEW false ;
 
 
-\ A found built-in or cold-read file; LOADS-COVERED? makes any other a read.
+\ A found built-in or cold-read file; UNCOVERED refuses any other unread file.
 : QUERY+ ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u SOURCE-ROOT:ENGINE$ SOURCE-ROOT:BELOW? if
@@ -187,20 +187,29 @@ SHA256-CTX-BYTES BUFFER: SHA
 
 
 \ Each require-registry row past the boot rows is a file loaded from source;
-\ one loaded outside ENTRY and DONE leaves the role unknown.
-: LOADS-COVERED? ( -- bool )
+\ the first one loaded outside ENTRY and DONE leaves the role unknown.
+: UNCOVERED ( -- n bool )
    REQUIRE-BOOT-LIMIT begin dup REQUIRE-REG:COUNT < while
       {: idx:n :}
-      idx REQUIRE-REG:SLOT idx REQUIRE-REG:LEN COVERED? 0= if false exit then
+      idx REQUIRE-REG:SLOT idx REQUIRE-REG:LEN COVERED? 0= if idx true exit then
       idx 1+
-   repeat drop true ;
+   repeat false ;
+
+
+\ Only built-in words write here: a file this loads would itself be uncovered.
+: SAY-UNKNOWN ( n -- )
+   {: idx:n :}
+   2 s" hb: " write drop
+   2 idx REQUIRE-REG:SLOT idx REQUIRE-REG:LEN write drop
+   2 S\"  loads outside TOOL-ROLE:ENTRY and DONE, so this build stores nothing\n"
+      write drop ;
 
 
 : FIX ( -- )
    SOURCE-PRODUCER:COMPILER SOURCE-PRODUCER:ROLE$
       {: compiler:ptr compileru:n known:bool :}
    known 0= if 0 KNOWN ! exit then
-   LOADS-COVERED? 0= if 0 KNOWN ! exit then
+   UNCOVERED if SAY-UNKNOWN 0 KNOWN ! exit then drop
    SHA SHA256-BEGIN
    s" habu-tool-role" FEED
    compiler compileru FEED

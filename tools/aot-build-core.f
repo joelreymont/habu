@@ -1,4 +1,4 @@
-\ aot-build-core.f - the linker half of the stripped build; tools/aot-build-open.f
+\ aot-build-core.f - the linker half of the stripped build; AOT-BUILDER:OPEN
 \ runs first and latches the span. Everything here lands above the span: the
 \ linker, src/habu/app-image.f and the lib modules app-image-core.f requires. A
 \ module the application already loaded is shared; the linker uses it at build
@@ -44,7 +44,7 @@ private
 public
 
 \ Invoke after this file's include has returned, with package scope closed, and
-\ after tools/aot-build-open.f has run - AOT-WINDOW-LATCHED refuses otherwise.
+\ after AOT-BUILDER:OPEN has run - AOT-WINDOW-LATCHED refuses otherwise.
 : BUILD-NATIVE ( -- )
    ['] NATIVE-BUILD EXECUTABLE-BUILD:WITH ;
 

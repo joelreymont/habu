@@ -82,7 +82,11 @@ $4B8 constant LIVE-FIXED-OFF
 304 constant F-CTX
 \ The file's LOAD-ROWS row offset plus 1, or 0 while it has none.
 F-CTX SHA256-CTX-BYTES + constant F-ROW
-F-ROW CELL + constant FRAME-BYTES
+\ The file's DEPS record plus 1, or 0 before DEP-OPEN; where its gathered
+\ files start in DEP-ACC.
+F-ROW CELL + constant F-DEP
+F-DEP CELL + constant F-ACC
+F-ACC CELL + constant FRAME-BYTES
 
 \ An object entry: magic | checksum over the bytes after it | the HBNUNIT2
 \ file object.
@@ -134,11 +138,8 @@ variable COUNTED?
 \ (tools/hb-build-lib.f HBB-COUNTS-READ). Empty writes nothing.
 PATH-CAP BUFFER: COUNTS-PATH
 variable COUNTS-PATH-U
-\ HABU_BUILD_FILES, read beside HABU_BUILD_COUNTS: where a counted session
-\ whose body succeeded writes one line per file it entered, in load order,
-\ `<hit> <live> <path>`: hit 1 when the file ran through its object (REUSED-N)
-\ else 0, live its definitions that compiled live (COMPILED-N), path relative
-\ to the root that resolved it (FILE-NAME). Empty records and writes nothing.
+\ HABU_BUILD_FILES: where a counted session writes `<hit> <live> <path>` per
+\ file it entered, in load order, path relative to the root that resolved it.
 PATH-CAP BUFFER: FILES-PATH
 variable FILES-PATH-U
 \ The session's rows, appended at 8-aligned offsets and released together at
@@ -184,6 +185,21 @@ create HASH-CTX SHA256-CTX-BYTES allot
 \ reads them; CLOSE leaves them for the capture after it (FILE-HASHES).
 DYNAMIC-BUFFER FILE-ROWS u8
 variable FILE-ROWS-U
+\ Each file this session entered, by path, for DEP-ADD; the open files gather
+\ theirs on DEP-ACC as a stack, each above its loader's. CLOSE releases them.
+STRUCTURE dep DERIVE addr
+   FIELD path n FIELD path-u n FIELD row n FIELD row-u n
+   FIELD set n FIELD set-n n FIELD stamp n
+;STRUCTURE
+DYNAMIC-BUFFER DEPS dep
+variable DEPS-N
+DYNAMIC-BUFFER DEP-TEXT u8
+variable DEP-TEXT-U
+DYNAMIC-BUFFER DEP-SETS n
+variable DEP-SETS-N
+DYNAMIC-BUFFER DEP-ACC n
+variable DEP-ACC-N
+variable STAMP
 create HASH-RAW 32 allot
 create HASH-CELL CELL allot
 create FILE-KEY-HEX 64 allot
@@ -876,10 +892,105 @@ private
    0 BORROWED-ORIGINAL !
    0 BORROW-ACTIVE ! 0 BORROW-ACCEPT ! ;
 
+\ The offset in DEP-TEXT of a copy of the bytes.
+: DEP-COPY ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   DEP-TEXT-U @ {: at:n :}
+   u 0= if at exit then
+   at u + DEP-TEXT-RESERVE
+   a at DEP-TEXT u BYTE-COPY
+   at u + DEP-TEXT-U !
+   at ;
+
+\ The record of the file at path, else -1.
+: DEP-FIND ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   DEPS-N @ 0 ?do
+      i DEPS DEP-PATH-U @ pathu = if
+         i DEPS DEP-PATH @ DEP-TEXT pathu path pathu STR= if i unloop exit then
+      then
+   loop -1 ;
+
+: DEP-NEW ( ptr u8 n -- n )
+   {: path:ptr pathu:n :}
+   DEPS-N @ {: id:n :}
+   id 1+ DEPS-RESERVE
+   path pathu DEP-COPY pathu 0 0 0 0 0 DEP-MAKE id DEPS !
+   1 DEPS-N +!
+   id ;
+
+\ Enter the innermost file, whose own source row was the last one recorded,
+\ from input offset off.
+: DEP-OPEN ( n -- )
+   {: off:n :}
+   FRAME-PATH {: path:ptr pathu:n :}
+   path pathu DEP-FIND dup 0 < if drop path pathu DEP-NEW then {: id:n :}
+   off NFILE-INPUTS:MARK NFILE-INPUTS:SPAN {: row:ptr rowu:n :}
+   row rowu DEP-COPY id DEPS DEP-ROW !
+   rowu id DEPS DEP-ROW-U !
+   id 1+ F-DEP F!
+   DEP-ACC-N @ F-ACC F! ;
+
+\ Leave the innermost file, keeping the files it gathered as its set: its
+\ record, or -1 when it never entered.
+: DEP-CLOSE ( -- n )
+   F-DEP F@ 1- {: id:n :}
+   id 0 < if -1 exit then
+   F-ACC F@ {: from:n :}
+   DEP-ACC-N @ from - {: size:n :}
+   DEP-SETS-N @ {: at:n :}
+   size 0 > if at size + DEP-SETS-RESERVE then
+   size 0 ?do from i + DEP-ACC @ at i + DEP-SETS ! loop
+   at size + DEP-SETS-N !
+   at id DEPS DEP-SET !
+   size id DEPS DEP-SET-N !
+   from DEP-ACC-N !
+   id ;
+
+\ Whether file id is still loading.
+: DEP-LOADING? ( n -- bool )
+   {: id:n :}
+   DEPTH @ 0 ?do
+      i FRAME-BYTES * FRAMES F-DEP + CELL-VIEW @ id 1+ = if true unloop exit then
+   loop false ;
+
+\ Stamp the innermost file and the files it gathered, so DEP-ONE adds a
+\ file to it once.
+: DEP-MARK ( -- )
+   1 STAMP +!
+   STAMP @ F-DEP F@ 1- DEPS DEP-STAMP !
+   DEP-ACC-N @ F-ACC F@ ?do STAMP @ i DEP-ACC @ DEPS DEP-STAMP ! loop ;
+
+: DEP-ONE ( n -- )
+   {: id:n :}
+   id DEPS DEP-STAMP @ STAMP @ = if exit then
+   STAMP @ id DEPS DEP-STAMP !
+   DEP-ACC-N @ {: at:n :}
+   at 1+ DEP-ACC-RESERVE
+   id at DEP-ACC !
+   1 DEP-ACC-N +!
+   id DEPS DEP-ROW @ DEP-TEXT id DEPS DEP-ROW-U @ NFILE-INPUTS:APPEND ;
+
+\ The innermost file depends on file id and, unless id is still loading (a
+\ cycle), on every file in id's set, each once, by its own source row.
+: DEP-ADD ( n -- )
+   {: id:n :}
+   F-DEP F@ 0= if exit then
+   DEP-MARK
+   id DEP-ONE
+   id DEP-LOADING? if exit then
+   id DEPS DEP-SET @ {: set:n :}
+   set id DEPS DEP-SET-N @ + set ?do i DEP-SETS @ DEP-ONE loop ;
+
+\ A path that resolves to a file this session entered makes the innermost
+\ file depend on it; a file the resolution then reads joins at its close.
 : CANON ( ptr u8 n -- ptr u8 n bool )
    {: path:ptr pathu:n :}
    path pathu SOURCE-ROOT:CANON-OS {: answer:ptr answeru:n found:bool :}
    path pathu answer answeru found NFILE-INPUTS:ADD-CANON
+   found DEPTH @ 0 > and if
+      answer answeru DEP-FIND dup 0 >= if DEP-ADD else drop then
+   then
    answer answeru found ;
 
 : FILE-INPUT ( ptr u8 n -- ) s" " NFILE-INPUTS:ADD-CTIME ;
@@ -1098,17 +1209,8 @@ private
    full 0= early and early-hook and if NUNIT-OBJECT:SINK-EARLY false exit then
    SINK-UNSUPPORTED false ;
 
-\ The open file's object key names what compiles it and its place in the
-\ load, not its text: the kernel and build tool roles, the target, the
-\ ambient compile state with the compiler role, and the file's tree-relative
-\ instance key (NFILE-REF:PUSH-FILE): its parent, its role, its path relative
-\ to its root, its kind and its occurrence under that parent. The checker
-\ role is a per-definition row. The object's stored declaration and import
-\ keys start with the instance key, so a key that omitted the loader would
-\ find an object whose keys this load cannot reproduce. Its input rows are
-\ stored relative to the file's root and the engine's source root
-\ (NFILE-INPUTS:TREE-OUT), so an identical tree at another path shares the
-\ object and a differing one fails its rows.
+\ What compiles the open file and where it loads, not its text: the object's
+\ stored keys start with the instance key, so this load must reproduce it.
 : FILE-KEY ( -- ptr u8 n )
    s" habu-native-file" HASH-START
    SOURCE-PRODUCER:KERNEL SOURCE-PRODUCER:ROLE$ drop HASH-S
@@ -1306,6 +1408,7 @@ private
    key FRAME F-KEY + keyu BYTE-COPY
    NFILE-INPUTS:MARK F-MARK F!
    SOURCE-ROW
+   F-MARK F@ DEP-OPEN
    NUNIT-OBJECT:FILE-BEGIN
    ORIGIN-OPEN
    NUNIT-OBJECT:DEF-OPEN? 0= if
@@ -1712,7 +1815,7 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    HASH-OPEN
    ['] OBJECT-OPEN catch {: open-rc:n :}
    open-rc 0<> if
-      FILE-CLOSE
+      DEP-CLOSE drop FILE-CLOSE
       NFILE-REF:POP-FILE open-rc throw
    then
    1 FILES-N +!
@@ -1743,11 +1846,15 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    unit-rc 0= plan-rc 0= and
       if ['] FILE-SUCCESS catch else 0 then
       {: finish-rc:n :}
+   DEP-CLOSE {: dep:n :}
    FILE-CLOSE
-   \ The rows recorded so far belong to the closed file's object. The
-   \ parent's next harvest segment opens under the sink live now, the one
-   \ the object segment its load action's end opens records.
-   DEPTH @ 0 > if NFILE-INPUTS:MARK F-MARK F! ORIGIN-MARK PLACE-RESTORE then
+   \ The rows so far are the closed file's; the loader depends on it, and its
+   \ next harvest segment opens under the sink live now, as its load end records.
+   DEPTH @ 0 > if
+      NFILE-INPUTS:MARK F-MARK F!
+      dep 0 >= if dep DEP-ADD then
+      ORIGIN-MARK PLACE-RESTORE
+   then
    ['] NFILE-REF:POP-FILE catch {: pop-rc:n :}
    \ The parent resumes inside the word that loaded, ok when the child closed
    \ without a throw.
@@ -1973,6 +2080,8 @@ CAST: HOOK>N ( [ -- ptr u8 bool ] -- n )
    ENTRY-RELEASE STORE-IMAGE-RELEASE OBJECTS-RELEASE
    LOAD-ROWS-RELEASE LOAD-TEXT-RELEASE
    0 LOAD-ROWS-U ! 0 LOAD-TEXT-U !
+   DEPS-RELEASE DEP-TEXT-RELEASE DEP-SETS-RELEASE DEP-ACC-RELEASE
+   0 DEPS-N ! 0 DEP-TEXT-U ! 0 DEP-SETS-N ! 0 DEP-ACC-N ! 0 STAMP !
    0 DEPTH ! 0 SESSION ! 0 SEEDED !
    0 DISPATCH-BUSY ! 0 DISPATCH-ROLE-KNOWN !
    0 CHECKER-ROLE-KNOWN !

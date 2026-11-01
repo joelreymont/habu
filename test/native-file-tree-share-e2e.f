@@ -1,10 +1,5 @@
 \ File objects are keyed by tree-relative file identity and check their input
-\ rows against the tree that builds them: an identical copy of an application
-\ at another path, built into the same out root, reuses every file and compiles
-\ none, and a copy whose library value changed under the same contract
-\ recompiles the library under the shared key and reuses its caller, which
-\ then calls the recompiled value. Inputs are stamped by change time, so an edit
-\ that keeps the size and restores the modification time recompiles too.
+\ rows, stamped by change time, against the tree that builds them.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -31,8 +26,10 @@ create OUT-C CAP allot  variable OUT-C-U
 variable OBJ-N
 variable OBJS-A  variable OBJS-B  variable OBJS-C
 
-: APP ( -- ptr u8 n )
-   S\" require lib.f\n: MAIN ( -- ) TREE-SHARE-LIB:VALUE . ;\n" ;
+: APP ( -- ptr u8 n ) S\" require lib.f\nrequire use.f\n" ;
+
+\ use.f calls lib.f's VALUE without requiring lib.f.
+: USE ( -- ptr u8 n ) S\" : MAIN ( -- ) TREE-SHARE-LIB:VALUE . ;\n" ;
 
 \ lib.f with BASE set to the given source text; VALUE's contract never changes.
 : LIB ( ptr u8 n -- ptr u8 n ) {: base:ptr baseu:n :}
@@ -42,13 +39,15 @@ variable OBJS-A  variable OBJS-B  variable OBJS-C
    S\"  constant BASE\npublic\n: VALUE ( -- n ) BASE 1+ ;\n;package\n" SB-APPEND
    SB$ ;
 
-\ The tree dir under the test root, holding app.f and a lib.f with BASE.
+\ The tree dir under the test root, holding app.f, use.f and a lib.f with BASE.
 : TREE-FILES ( ptr u8 n ptr u8 n -- )
    {: dir:ptr diru:n base:ptr baseu:n :}
    dir diru AT FS:MAKE-DIR
    ROOT$ dir diru DIR-PATH FS:JOIN-PATH {: u:n :}
    DIR-PATH u s" app.f" SRC-PATH FS:JOIN-PATH {: appu:n :}
    SRC-PATH appu APP FS:WRITE-ALL
+   DIR-PATH u s" use.f" SRC-PATH FS:JOIN-PATH {: useu:n :}
+   SRC-PATH useu USE FS:WRITE-ALL
    DIR-PATH u s" lib.f" SRC-PATH FS:JOIN-PATH {: libu:n :}
    base baseu LIB {: body:ptr bodyu:n :}
    SRC-PATH libu body bodyu FS:WRITE-ALL ;
@@ -114,7 +113,7 @@ public
 
    s" a cold tree builds and runs" T-LABEL
    s" a" BUILD SUCCESS
-   OUT$ S\" files reused 0\n compiled 2\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 0\n compiled 3\n" CONTAINS? TTRUE
    s" a" RUN
    OUT$ S\" 42\n" T$=
    OUT-A OUT-A-U KEEP
@@ -123,16 +122,16 @@ public
 
    s" an identical tree at another path reuses every file" T-LABEL
    s" b" BUILD SUCCESS
-   OUT$ S\" files reused 2\n compiled 0\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 3\n compiled 0\n" CONTAINS? TTRUE
    s" b" RUN
    OUT$ OUT-A OUT-A-U @ T$=
    OUT-B OUT-B-U KEEP
    OBJS OBJS-B !
    OBJS-B @ OBJS-A @ T=
 
-   s" an edited library recompiles and its caller calls the new value" T-LABEL
+   s" an edited library recompiles and its reused caller calls the new value" T-LABEL
    s" c" BUILD SUCCESS
-   OUT$ S\" files reused 1\n compiled 1\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 1\n compiled 2\n" CONTAINS? TTRUE
    s" c" RUN
    OUT$ S\" 100\n" T$=
    OUT-C OUT-C-U KEEP
@@ -142,7 +141,7 @@ public
    s" a same-size edit that keeps the modification time recompiles" T-LABEL
    SAME-STAT-EDIT
    s" c" BUILD SUCCESS
-   OUT$ S\" files reused 1\n compiled 1\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 1\n compiled 2\n" CONTAINS? TTRUE
    s" c" RUN
    OUT$ S\" 99\n" T$=
 

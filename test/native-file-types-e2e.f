@@ -267,7 +267,7 @@ variable EXPECT-U
    RUN-APP SUCCESS OUT$ S\" 42\n8\n43\n" CONTAINS? TTRUE
    true SHAPE-SOURCE
    s" app-hb" BUILD SUCCESS
-   OUT$ S\" files reused 0\n" CONTAINS? TFALSE
+   OUT$ S\" files reused 0\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ S\" 42\n16\n43\n" CONTAINS? TTRUE
    s" cold-app-hb" SAVE-APP
    s" app-hb" BUILD SUCCESS
@@ -287,8 +287,8 @@ variable EXPECT-U
 \ (SCHEMA-APP). Each is stored as start 0 count 0; the sums are private, so
 \ they publish no constructor word and b.f stays reusable. Editing a.f shifts
 \ those stores under b.f's reused object, down and then up from its capture:
-\ each warm build reuses b.f without a throw (and replays app.f, which loads
-\ a.f and b.f, around them), its app prints what a
+\ each warm build reuses b.f without a throw (and compiles app.f, which
+\ requires a.f and b.f, around them), its app prints what a
 \ fresh-cache build's app prints, and it holds the same image: an
 \ image depends only on persistent program state. An empty range stored at
 \ the store's high-water instead makes the warm build throw 76.
@@ -302,7 +302,7 @@ variable EXPECT-U
    {: k:n out:ptr outu:n fresh:ptr freshu:n :}
    k WIDTH-SOURCE
    s" app-hb" BUILD SUCCESS
-   OUT$ S\" files reused 2\n" CONTAINS? TTRUE
+   OUT$ S\" files reused 1\n" CONTAINS? TTRUE
    RUN-APP SUCCESS OUT$ out outu CONTAINS? TTRUE
    s" shift-warm-hb" SAVE-APP
    fresh freshu BUILD-FRESH SUCCESS
