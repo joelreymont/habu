@@ -5,9 +5,10 @@
 \ refusals, /mint against MINT, and tools/test-issuer.f as a child process.
 \ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
 \ ADMIT? with the caller's claims, a refusal, an assertion inside the BUF, a
-\ closed port, and on /token-fault the form's exact bytes and the answers TOKEN
-\ refuses: a 500, a 2xx that is not JSON, one whose access_token is not a
-\ string and one past TOKEN-CAP.
+\ closed port, and on /token-fault the form's exact bytes, the answer's
+\ lifetime and the answers TOKEN refuses: a 500, a 2xx that is not JSON, one
+\ whose access_token is not a string, one without expires_in, one whose
+\ expires_in is a string, one whose expires_in is 0 and one past TOKEN-CAP.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -94,6 +95,9 @@ GOT $100 BUF:N>BLEN BUF:INIT
 2 constant NOT-JSON
 3 constant OVERSIZED
 4 constant NOT-STRING
+5 constant NO-LIFETIME
+6 constant LIFETIME-STRING
+7 constant LIFETIME-ZERO
 variable FAULT-MODE
 CAP BUFFER: POSTED
 variable POSTED-U
@@ -403,9 +407,12 @@ OVERSIZE-FILL
    mode FAILING = if answer 500 HTTP:STATUS! exit then
    mode NOT-JSON = if answer s" not json" HTTP:BODY! exit then
    mode OVERSIZED = if answer OVERSIZE PAST-CAP HTTP:BODY! exit then
-   mode NOT-STRING = if answer S\" {\"access_token\":1}" HTTP:BODY! exit then
+   mode NOT-STRING = if answer S\" {\"access_token\":1,\"expires_in\":60}" HTTP:BODY! exit then
+   mode NO-LIFETIME = if answer S\" {\"access_token\":\"t\"}" HTTP:BODY! exit then
+   mode LIFETIME-STRING = if answer S\" {\"access_token\":\"t\",\"expires_in\":\"3600\"}" HTTP:BODY! exit then
+   mode LIFETIME-ZERO = if answer S\" {\"access_token\":\"t\",\"expires_in\":0}" HTTP:BODY! exit then
    asked HTTP:BODY$ POSTED COPY POSTED-U !
-   answer S\" {\"access_token\":\"fault\\/token\"}" HTTP:BODY! ;
+   answer S\" {\"expires_in\":60,\"access_token\":\"fault\\/token\"}" HTTP:BODY! ;
 
 : AUTH+ ( ptr u8 n -- ) AUTH AUTH-U @ + COPY AUTH-U +! ;
 
@@ -421,34 +428,34 @@ OVERSIZE-FILL
    h FINISH ;
 
 : UP ( -- ptr u8 n ) s" api://up/.default" ;
-: OWN-TOKEN ( -- ptr u8 n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
-: FAULT-TOKEN ( -- ptr u8 n )
+: OWN-TOKEN ( -- ptr u8 n n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
+: FAULT-TOKEN ( -- ptr u8 n n )
    s" api://zen/.default" s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
-: FAULT-REFUSED ( -- ) [: FAULT-TOKEN 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
+: FAULT-REFUSED ( -- ) [: FAULT-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
 
 : BEARER-GRANTS ( -- )
    s" TOKEN before CLIENT! is E-HTTP-STATE" T-LABEL
-   [: OWN-TOKEN 2drop ;] E-HTTP-STATE TTHROWSQ
+   [: OWN-TOKEN drop 2drop ;] E-HTTP-STATE TTHROWSQ
    ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
-   s" TOKEN's client credentials token is admitted, azp the client" T-LABEL
-   OWN-TOKEN s" azp" CLAIM 200 T=
+   s" TOKEN's client credentials token is admitted, azp the client, for expires_in" T-LABEL
+   OWN-TOKEN ISSUED-S T= s" azp" CLAIM 200 T=
    BODY$ s" app" T$=
    s" TOKEN for a person is admitted with the assertion's oid" T-LABEL
    s" app" LATER ASSERT
-   UP ASSERTION$ BEARER-GRANT:for-person GOT BEARER:TOKEN s" oid" CLAIM 200 T=
+   UP ASSERTION$ BEARER-GRANT:for-person GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
    BODY$ s" user-1" T$=
    s" a wrong secret is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
-   [: OWN-TOKEN 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: OWN-TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
    GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_client\"}" T$=
    s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
-   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
+   [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
 
 : BEARER-FAULTS ( -- )
    FAULT-URL$ s" app" s" s3cr&t+1" BEARER:CLIENT!
-   s" TOKEN posts the On-Behalf-Of form percent-encoded and decodes the token" T-LABEL
+   s" TOKEN posts the On-Behalf-Of form percent-encoded and decodes the token and an expires_in sent before it" T-LABEL
    ECHO FAULT-MODE !
-   FAULT-TOKEN s" fault/token" T$=
+   FAULT-TOKEN 60 T= s" fault/token" T$=
    FORM-RESET
    s" grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer" FORM+
    s" &client_id=app&client_secret=s3cr%26t%2B1&assertion=a.b-c_d~e" FORM+
@@ -460,6 +467,12 @@ OVERSIZE-FILL
    NOT-JSON FAULT-MODE ! FAULT-REFUSED
    s" a 200 whose access_token is not a string is E-TRANSFER" T-LABEL
    NOT-STRING FAULT-MODE ! FAULT-REFUSED
+   s" a 200 without expires_in is E-TRANSFER" T-LABEL
+   NO-LIFETIME FAULT-MODE ! FAULT-REFUSED
+   s" a 200 whose expires_in is a string is E-TRANSFER" T-LABEL
+   LIFETIME-STRING FAULT-MODE ! FAULT-REFUSED
+   s" a 200 whose expires_in is 0 is E-TRANSFER" T-LABEL
+   LIFETIME-ZERO FAULT-MODE ! FAULT-REFUSED
    s" a 200 past TOKEN-CAP is E-TRANSFER" T-LABEL
    OVERSIZED FAULT-MODE ! FAULT-REFUSED ;
 
@@ -467,7 +480,7 @@ OVERSIZE-FILL
 : BEARER-UNREACHED ( -- )
    s" an endpoint on a closed loopback port is E-TRANSFER" T-LABEL
    ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
-   [: OWN-TOKEN 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
+   [: OWN-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
 
 
 \ The tool's child process.

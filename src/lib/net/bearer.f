@@ -30,7 +30,7 @@ require src/lib/net/http.f
 package BEARER
 public
 
--9630 constant E-TRANSFER           \ no answer from the token endpoint, a 5xx, or a 2xx without an access_token string
+-9630 constant E-TRANSFER           \ no answer from the token endpoint, a 5xx, or a 2xx without an access_token string or without a positive integer expires_in
 -9631 constant E-REFUSED            \ the issuer refused with a 4xx; the BUF holds its answer
 -9632 constant E-OPERAND            \ a METADATA! text holding a byte its quoted challenge value cannot carry, or a scope that is not space-separated scope tokens
 private
@@ -713,50 +713,68 @@ private
       failed OF drop buf WIPE -1 ENDOF
    ;MATCH ;
 
+\ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's
+\ value, and its token kind, -1 when the text is no object or lacks the member;
+\ the caller reads and closes it.
+: ANSWER-MEMBER ( SPAN:span<u8> ptr u8 n -- JSON:reader n )
+   {: text k:ptr ku:n :}
+   ANSWER-CURSOR text SPAN:$ JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-OBJ <> if -1 exit then
+   k ku JSON:READ-FIND-KEY 0= if -1 exit then
+   JSON:READ-TOKEN ;
+
 \ Under ANSWER-LOCK: the access_token string of a JSON object text decoded
 \ into room, its length; -1 when the text is no such object.
 : ACCESS-TOKEN ( SPAN:span<u8> SPAN:span<u8> -- n )
    {: text room :}
-   ANSWER-CURSOR text SPAN:$ JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE -1 exit then
-   s" access_token" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE -1 exit then
-   JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE -1 exit then
+   text s" access_token" ANSWER-MEMBER JSON:T-STR <> if JSON:READ-CLOSE -1 exit then
    room SPAN:$ JSON:READ-STR {: got:n :} JSON:READ-CLOSE got ;
 
-\ ACCESS-TOKEN's answer in place of the third cell, the texts kept for catch.
-: KEPT ( SPAN:span<u8> SPAN:span<u8> n -- SPAN:span<u8> SPAN:span<u8> n )
-   drop {: text room :} text room text room ACCESS-TOKEN ;
+\ Under ANSWER-LOCK: the positive integer expires_in of a JSON object text, -1
+\ when the text is no such object.
+: LIFETIME ( SPAN:span<u8> -- n )
+   s" expires_in" ANSWER-MEMBER JSON:T-INT <> if JSON:READ-CLOSE -1 exit then
+   JSON:READ-INT {: secs:n :} JSON:READ-CLOSE
+   secs 0 > if secs else -1 then ;
 
-\ Under ANSWER-LOCK: ACCESS-TOKEN, and -1 for malformed JSON too.
-: PARSED ( SPAN:span<u8> SPAN:span<u8> -- n )
-   -1 [: KEPT ;] catch {: code:n :}
-   code 0= if {: text room got:n :} got exit then
-   2drop drop
-   code MALFORMED? if -1 exit then
+\ ACCESS-TOKEN's and LIFETIME's answers in place of the last two cells, the
+\ texts kept for catch.
+: KEPT ( SPAN:span<u8> SPAN:span<u8> n n -- SPAN:span<u8> SPAN:span<u8> n n )
+   2drop {: text room :} text room text room ACCESS-TOKEN text LIFETIME ;
+
+\ Under ANSWER-LOCK: ACCESS-TOKEN and LIFETIME, both -1 for malformed JSON.
+: PARSED ( SPAN:span<u8> SPAN:span<u8> -- n n )
+   -1 -1 [: KEPT ;] catch {: code:n :}
+   code 0= if {: text room got:n secs:n :} got secs exit then
+   2drop 2drop
+   code MALFORMED? if -1 -1 exit then
    code throw ;
 
 : PARSING ( R [ R -- S ] -- S )
    ANSWER-LOCK TASK:GET [: ANSWER-LOCK TASK:RELEASE ;] finally ;
 
 \ The 2xx answer's access_token decoded into the BUF past the answer's bytes,
-\ which a decoded string never outgrows. E-TRANSFER for an answer without one.
-: ISSUED ( ptr n -- ptr u8 n )
+\ which a decoded string never outgrows, and its expires_in. E-TRANSFER for an
+\ answer without an access_token string, or without a positive integer
+\ expires_in.
+: ISSUED ( ptr n -- ptr u8 n n )
    {: buf:ptr :}
    buf BUF:LEN@ {: u:NUM:byte-len :}
    buf u BUF:GROW {: room :}
-   buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room [: PARSED ;] PARSING {: got:n :}
-   got 0< if E-TRANSFER throw then
-   room SPAN:$ drop got ;
+   buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room [: PARSED ;] PARSING {: got:n secs:n :}
+   got 0< secs 0< or if E-TRANSFER throw then
+   room SPAN:$ drop got secs ;
 
 public
 
 \ An access token for the scope (for Entra a resource's `api://.../.default`)
 \ from the endpoint CLIENT! names, borrowed from the BUF until the caller writes
-\ to it again. E-TRANSFER for no answer, a 5xx, or a 2xx without an
-\ access_token string; E-REFUSED for a 4xx, the BUF then holding the issuer's
-\ answer. A scope or assertion lying in the BUF throws E-BUF-BOUNDS.
-\ E-HTTP-STATE before CLIENT!.
-: TOKEN ( ptr u8 n grant ptr n -- ptr u8 n )
+\ to it again, then the answer's expires_in: the token's lifetime in seconds,
+\ positive. E-TRANSFER for no answer, a 5xx, or a 2xx without an access_token
+\ string, or without a positive integer expires_in; E-REFUSED for a 4xx, the
+\ BUF then holding the issuer's answer. A scope or assertion lying in the BUF
+\ throws E-BUF-BOUNDS. E-HTTP-STATE before CLIENT!.
+: TOKEN ( ptr u8 n grant ptr n -- ptr u8 n n )
    {: scope:ptr su:n g buf:ptr :}
    ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then
    scope su g buf FORM
