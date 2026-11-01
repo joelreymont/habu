@@ -67,6 +67,13 @@ entry.
   whether usage counts take the protocol's input_tokens and output_tokens
   names, Joel chose "Rename, one cutover": record keys, MODEL's words and
   the Tender and Zen readers together.
+- 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
+  every indented report itself, about 600 line-break and indent calls each
+  passing its depth, against a writer that tracks nesting and indents itself
+  from one width setting, Joel chose "Writer indents itself (Recommended)",
+  then wrote "also, i approve your json words": JSON:WRITE-INDENT! (spaces
+  per level, 0 for compact), JSON:WRITE-STRING-START, -PART and -END, and a
+  writer holding its indent and depth.
 - 2026-10-31, typed data: shown that the image save check reads an untyped
   `c,` table's bytes as possible addresses, so a build fails at random by
   where memory was placed, and that a fix recording `c,` runs covers only
