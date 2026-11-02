@@ -43,8 +43,22 @@ entry.
   kernel loads every definition is checked and no word turns checking off; the
   typed interpret loop calls the checker as an ordinary word; only the kernel
   compiles unchecked. `set-check`, `check@`, `set-preflight` and
-  LOWER-CERT-HOOK go, and the words replacing INSTALL and HOOK get names Joel
-  chooses.
+  LOWER-CERT-HOOK go. Shown the replacement names, Joel chose
+  "CHECK:DEFINITION" for the word the compiler calls on every definition's
+  source, adding "we already have COMP and XCOMP, so CHECK fits": the
+  checker's package is CHECK. `discard-check` and `set-top-check`, a second
+  switch, go with the others. Offered a slot in the checker's owner record
+  through which the checker would tell engine-origin about each definition it
+  passed, as it already does for casts and exports, Joel answered "current
+  approach smells. why not set a flag on the definition? the approach for
+  exports and cast should be reviewed too". Asked where the error-place words
+  go, he asked "what is TOP-LINE and why do we need it? I'd think we just need
+  LINE (or LINE-AT? worse?) and COLUMN"; shown that the top-level site is only
+  a byte's line taken at the checker's token, he chose "SRCLOC:LINE, COLUMN,
+  PATH$": `SRCLOC:LINE` and `SRCLOC:COLUMN ( ptr u8 -- n bool )` place any byte
+  of the open file, `SRCLOC:PATH$ ( -- ptr u8 n )` names it, and top-level
+  errors print a column too once tools/check.f's run file stops shifting
+  columns.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
