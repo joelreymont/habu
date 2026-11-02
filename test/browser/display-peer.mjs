@@ -138,7 +138,7 @@ async function browser() {
         onInput: (enabled) => records.push(['input', enabled]) });
       window.ready = true;
     `, { headers: { "Content-Type": "text/javascript" } });
-    if (path === "/host.js" || path === "/viewport.js" || path === "/turn.js")
+    if (path === "/host.js" || path === "/viewport.js" || path === "/turn.js" || path === "/page.js")
       return new Response(Bun.file(join(root, path.slice(1))), { headers: { "Content-Type": "text/javascript" } });
     return new Response("not found", { status: 404 });
   } });
@@ -147,7 +147,7 @@ async function browser() {
     "--enable-unsafe-webgpu", "--use-angle=swiftshader", "--disable-gpu-sandbox",
     "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"],
     { detached: true, stdout: "ignore", stderr: Bun.file(join(output, "chrome.log")) });
-  let socket;
+  let socket, failure;
   try {
     const active = join(profile, "DevToolsActivePort");
     await until(() => Bun.file(active).exists());
@@ -333,10 +333,20 @@ async function browser() {
       assert.equal((await evaluate("records")).length, heard + 3, "a late reply reaches no callback");
       console.log("Headless Chrome: viewport mount, turns, load, focus, highlight, dispose, remount, refused mounts and disposed replies passed");
     }
+  } catch (error) {
+    failure = error; throw error;
   } finally {
-    releaseSlow(); socket?.close(); await stopGroup(child.pid); await child.exited; server.stop(true);
-    const cleanup = Bun.spawn(["trash", profile], { stdout: "ignore", stderr: "inherit" });
-    assert.equal(await cleanup.exited, 0, "Chrome profile cleanup");
+    try {
+      releaseSlow(); socket?.close();
+      try { await stopGroup(child.pid); await child.exited; } finally {
+        server.stop(true);
+        const cleanup = Bun.spawn(["trash", profile], { stdout: "ignore", stderr: "inherit" });
+        assert.equal(await cleanup.exited, 0, "Chrome profile cleanup");
+      }
+    } catch (error) {
+      if (!failure) throw error;
+      console.error("Chrome teardown after the failed check:", error);
+    }
   }
 }
 
@@ -354,9 +364,11 @@ async function stopGroup(group) {
   throw new Error(`Chrome process group ${group} survived SIGKILL`);
 }
 
+// Whether a member is left. Darwin answers EPERM, not ESRCH, while the group's
+// last members have exited but are not yet reaped: members remain.
 function signalGroup(group, signal) {
   try { process.kill(-group, signal); return true; }
-  catch (error) { if (error.code === "ESRCH") return false; throw error; }
+  catch (error) { if (error.code === "ESRCH") return false; if (error.code === "EPERM") return true; throw error; }
 }
 
 async function until(check) {

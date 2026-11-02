@@ -1222,6 +1222,12 @@ SUITE browser-host
    src/lib/browser/host-test.f
 ;SUITE
 
+\ MCP-APP:PAGE+ of a small module: the kept prefix, the escaped title and the
+\ base64 of each script and the module in one UTF-8 page.
+SUITE mcp-app
+   src/lib/browser/app-test.f
+;SUITE
+
 SUITE crypto-evp
    src/lib/crypto/evp-test.f
 ;SUITE

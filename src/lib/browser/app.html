@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><!--title--></title>
+<style>
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; font: 14px system-ui, sans-serif; }
+#viewport { position: relative; flex: 1 1 55%; min-height: 200px; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#viewport img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
+#scene { flex: 0 1 30%; min-height: 0; overflow: auto; border-top: 1px solid #ddd; }
+#scene h2 { margin: 8px; font-size: 14px; }
+#tree ul { list-style: none; margin: 0; padding-left: 16px; }
+#tree > ul { padding-left: 4px; }
+.tree-row { display: flex; align-items: center; min-width: max-content; }
+.tree-row button { font: inherit; border: 0; background: none; padding: 3px 5px; text-align: left; cursor: pointer; }
+.tree-row button[aria-pressed="true"] { background: #d9eaff; font-weight: 600; }
+.tree-row button:focus-visible { outline: 2px solid #1168b6; }
+.tree-spacer { width: 22px; }
+form, #file, #text { margin: 4px 8px; }
+form input { box-sizing: border-box; width: 100%; }
+#text { white-space: pre-wrap; overflow-wrap: anywhere; }
+#text.error { color: #b00020; }
+</style>
+</head>
+<body>
+<div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas></div>
+<section id="scene" aria-label="Scene tree"><h2>Scene</h2><div id="tree"></div></section>
+<form><input aria-label="text" autocomplete="off" disabled></form>
+<input id="file" type="file" multiple aria-label="file">
+<div id="text">loading</div>
+<script type="application/base64" id="turn.js"><!--turn.js--></script>
+<script type="application/base64" id="viewport.js"><!--viewport.js--></script>
+<script type="application/base64" id="page.js"><!--page.js--></script>
+<script type="application/base64" id="app.js"><!--app.js--></script>
+<script type="application/base64" id="module"><!--module--></script>
+<script type="module">
+// Each script becomes a blob: module, so none imports another by path; app.js
+// receives the others' exports and the module's bytes.
+const bytes = (id) => Uint8Array.fromBase64(document.getElementById(id).textContent);
+const load = async (id) => {
+  const url = URL.createObjectURL(new Blob([bytes(id)], { type: "text/javascript" }));
+  try { return await import(url); } finally { URL.revokeObjectURL(url); }
+};
+try {
+  const [{ Module }, { mount }, page, { start }] =
+    await Promise.all(["turn.js", "viewport.js", "page.js", "app.js"].map(load));
+  await start(Module, mount, page, bytes("module"));
+} catch (e) {
+  const shown = document.querySelector("#text");
+  shown.textContent = String(e);
+  shown.className = "error";
+  console.error(e);
+}
+</script>
+</body>
+</html>

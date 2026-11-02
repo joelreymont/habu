@@ -1,5 +1,5 @@
 \ host.f - BROWSER-HOST: the browser host's page served by Habu's HTTP server; the
-\ page-module turn protocol is the header of turn.js. The page's four files, beside
+\ page-module turn protocol is the header of turn.js. The page's five files, beside
 \ this one, are read into dictionary buffers as it loads, so an application image
 \ serves them with no Habu tree at run time. ROUTES registers their GET routes; the
 \ caller registers /module.wasm, every path its module fetches, and starts the server.
@@ -44,6 +44,10 @@ s" src/lib/browser/turn.js" PATH FS:FILE-SIZE constant TURN-U
 TURN-U BUFFER: TURN
 s" src/lib/browser/turn.js" TURN TURN-U READ
 
+s" src/lib/browser/page.js" PATH FS:FILE-SIZE constant PAGE-U
+PAGE-U BUFFER: PAGE
+s" src/lib/browser/page.js" PAGE PAGE-U READ
+
 : SEND ( HTTP:response ptr u8 n ptr u8 n -- )
    {: r:HTTP:response a:ptr u:n type:ptr tu:n :}
    r s" Content-Type" type tu HTTP:HEADER!
@@ -61,12 +65,16 @@ s" src/lib/browser/turn.js" TURN TURN-U READ
 : TURN-SCRIPT ( HTTP:request HTTP:response -- )
    nip TURN TURN-U s" text/javascript; charset=utf-8" SEND ;
 
+: PAGE-SCRIPT ( HTTP:request HTTP:response -- )
+   nip PAGE PAGE-U s" text/javascript; charset=utf-8" SEND ;
+
 public
 
 : ROUTES ( -- )
    s" GET" s" /" [: INDEX-PAGE ;] HTTP:ROUTE
    s" GET" s" /host.js" [: HOST-SCRIPT ;] HTTP:ROUTE
    s" GET" s" /viewport.js" [: VIEWPORT-SCRIPT ;] HTTP:ROUTE
-   s" GET" s" /turn.js" [: TURN-SCRIPT ;] HTTP:ROUTE ;
+   s" GET" s" /turn.js" [: TURN-SCRIPT ;] HTTP:ROUTE
+   s" GET" s" /page.js" [: PAGE-SCRIPT ;] HTTP:ROUTE ;
 
 ;package
