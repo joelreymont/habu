@@ -1,0 +1,9 @@
+---
+title: Give the callback stub one owner
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-02T19:51:52.253313+02:00"
+---
+
+Problem: one callback stub's lifecycle is held twice: NDEFINITION's M-CB-SLOT, M-CB-THUNK, M-CB-ENTRY (src/compiler/native/definition.f:74-76, CWORK, released at capture) and NCBSTUB's ARMED, SLOT, THUNK, ENTRY (src/compiler/native/callback-stub.f:9-12, DATA, carried by a capture), with copies between them at STUB-ARM (definition.f:110) and STUB-TAKE (:113). ENTRY@ answers 0 until ENTRY!, and CALLBACK-STUB@ refuses 0 later (definition.f:104-105). Found by the state-design critic (round 3, /tmp/jerry-big/t0state-design.md revision 3's S4): two state machines on one stub. Proposal to design: one owner (NCBSTUB) holding none/pending/armed/entered/taken with slot, thunk and entry as data; M-CB-* and both copies go; every NCBSTUB:ARMED? read runs inside the host emission (emit.f:105, 2033, 2146, 2156, 2163; t0-emit.f:544). Open: the state must not carry a code address across a capture (DATA vs CWORK), so taken has to end at CALLBACK-STUB@ or the cells move to CWORK; STUB-ARM and STUB-TAKE must stay no-ops when nothing is pending; x86-64 tier 1 never enters the stub (no NCBSTUB in emit-x64.f), so refusing an unentered stub moves x86 accessors' -8570 (pulsar: ffi-callback-growth) into the accessor's compile. Public words change (NDEFINITION:CALLBACK-STUB!, CALLBACK-STUB@, STUB-PENDING?, STUB-ARM, STUB-TAKE, STUB-END; NCBSTUB:ENTRY@): critic, then Joel's approval. Related: dot habu-disarm-a-cb-7870abbf (a pending stub left armed by a refused accessor). Depends: lane S2 (habu-run-t0-compiles-dd3d9b8a, edits CALLBACK-STUB!). Ownership: callback-stub.f, definition.f, ffi-callback.f's cells. Claim: unassigned.
