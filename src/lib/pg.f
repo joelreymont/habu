@@ -152,6 +152,9 @@ variable GENERATION
 variable CONFIG-MUTEX
 \ The packed handle of the running task's innermost result scope ("result scopes").
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
+\ The packed handle of the attempt CONNECT waits on, 0 when none. Its cleanup
+\ is a quotation, which cannot read CONNECT's locals.
+TASK:#USER 7 + CELL-MASK and CELL TASK:+USER CONNECT-HEAD drop
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
@@ -1313,7 +1316,8 @@ public
 \ wait through AIO:AWAIT and need AIO:START. One operation may be pending per
 \ connection; a send copies its statement and parameters. A transport failure
 \ closes the connection and throws E-EXEC; a SQL rejection is the result's
-\ `failed` outcome with SQLSTATE and message.
+\ `failed` outcome with SQLSTATE and message. A TASK:HALT ends a wait and leaves
+\ the connection to the task's own cleanup: CLOSE, or ABANDON under a halt.
 \ CONNECT-START hands back an attempt owned by the calling task. POLL advances
 \ it to connected or refused; CLOSE abandons it at any earlier point. The slot
 \ is claimed first, so the conninfo it stages and the message a refusal copies
@@ -1346,15 +1350,6 @@ public
    CONN-SLOT NO-DEADLINE WAIT-PROGRESS ;
 
 
-: CONNECT ( ptr u8 n -- connect-result )
-   CONNECT-START AWAIT MATCH progress
-      connected OF PG-CONNECT--RESULT:connected ENDOF
-      refused OF PG-CONNECT--RESULT:refused ENDOF
-      waiting OF 2drop E-CONNECT throw ENDOF
-      completed OF RESULT>N RESULT-SLOT CLEAR-SLOT E-CONNECT throw ENDOF
-   ;MATCH ;
-
-
 \ A task retaining a CONNECT-START handle may need to clean it up after AWAIT
 \ or POLL retired it internally. Check the registry before reading a slot: image
 \ preparation releases those buffers. A reused slot has a different generation.
@@ -1368,6 +1363,36 @@ public
    slot CONN-GEN@ raw HANDLE-GEN <> if false exit then
    slot CONN-OWNER@ TASK:SELF-N <> if E-HANDLE throw then
    true ;
+
+
+private
+
+: AWAIT-ATTEMPT ( connection -- progress )
+   AWAIT 0 CONNECT-HEAD ! ;
+
+
+\ CONNECT-HEAD is still set when a halt or a throw ended the wait, and no caller
+\ holds the attempt. A failed wait has already abandoned it, which LIVE? answers.
+: FINISH-ATTEMPT ( -- )
+   CONNECT-HEAD @ {: raw:n :}
+   raw 0= if exit then
+   0 CONNECT-HEAD !
+   raw >CONNECTION {: handle:connection :}
+   handle LIVE? if handle CONN-SLOT FINISH-SLOT then ;
+
+public
+
+
+\ A TASK:HALT of the waiting task ends the attempt at once, sending nothing, and
+\ frees its slot; the join answers as for any halt (pg-test HALT-CONNECT-CASES).
+: CONNECT ( ptr u8 n -- connect-result )
+   CONNECT-START dup CONNECTION>N CONNECT-HEAD !
+   [: AWAIT-ATTEMPT ;] [: FINISH-ATTEMPT ;] finally MATCH progress
+      connected OF PG-CONNECT--RESULT:connected ENDOF
+      refused OF PG-CONNECT--RESULT:refused ENDOF
+      waiting OF 2drop E-CONNECT throw ENDOF
+      completed OF RESULT>N RESULT-SLOT CLEAR-SLOT E-CONNECT throw ENDOF
+   ;MATCH ;
 
 
 \ ID answers a connection's identity as a plain cell, so a cleanup that takes no

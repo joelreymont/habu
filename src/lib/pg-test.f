@@ -11,6 +11,7 @@ require src/lib/fmt.f
 require src/lib/process.f
 require src/lib/task.f
 require src/lib/aio.f
+require src/lib/net/tcp4.f
 require src/lib/image-lifecycle.f
 require src/lib/pg.f
 
@@ -1423,6 +1424,75 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c ;
 
 
+\ A server that never answers: the kernel completes the handshake from the
+\ listen backlog, so libpq sends its first packet and waits for a reply.
+$7F000001 constant LOOPBACK
+variable SILENT-PORT
+TASK:MIN-STACK TASK:TASK SILENT-WORKER
+
+: SILENT-CONNECT ( -- )
+   SB-RESET s" hostaddr=127.0.0.1 dbname=none user=none port=" SB-APPEND
+   SILENT-PORT @ FMT:SB-U
+   SB$ CONNECT MATCH PG:connect-result
+      connected OF PG:CLOSE ENDOF
+      refused OF 2drop ENDOF
+   ;MATCH
+   0 TASK:RETURN ;
+
+: STATUS-ERRNO ( TCP4:status -- n )
+   MATCH TCP4:status
+      ok OF 0 ENDOF
+      failed OF TCP4:ERRNO>N ENDOF
+   ;MATCH ;
+
+: SILENT-LISTENER ( -- TCP4:listener )
+   LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND MATCH TCP4:bind-result
+      bound OF ENDOF
+      failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
+   ;MATCH
+   dup 1 TCP4:LISTEN STATUS-ERRNO 0 T=
+   dup TCP4:LOCAL MATCH TCP4:endpoint-result
+      endpoint OF TCP4:PORT>N SILENT-PORT ! drop ENDOF
+      failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
+   ;MATCH ;
+
+\ A queued connection is libpq's socket, so the attempt holds its slot and its
+\ next PAUSE is its AIO wait. A worker that ended first leaves its code to the join.
+: AWAIT-QUEUED ( TCP4:listener -- ) {: lis :}
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      SILENT-WORKER TASK:DONE? if exit then
+      lis TCP4:PENDING? MATCH TCP4:ready-result
+         ready OF exit ENDOF
+         idle OF ENDOF
+         failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
+      ;MATCH
+      deadline CHECK-PROGRESS
+   again ;
+
+: AWAIT-SILENT-DONE ( -- )
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin SILENT-WORKER TASK:DONE? 0= while deadline CHECK-PROGRESS repeat ;
+
+\ A halt observed at PAUSE stores no result, so the join answers
+\ E-TASK-NO-RESULT. The last OPEN needs the slot the halted attempt held.
+: HALT-CONNECT-CASES ( -- )
+   s" halt ends a connect the server never answers and frees its slot" T-LABEL
+   SILENT-LISTENER {: lis :}
+   ['] SILENT-CONNECT SILENT-WORKER TASK:ACTIVATE
+   lis AWAIT-QUEUED
+   SILENT-WORKER TASK:HALT
+   AWAIT-SILENT-DONE
+   SILENT-WORKER TASK:JOIN MATCH result
+      ok OF drop E-EXEC throw ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   CONNECTIONS 1- 0 ?do OPEN i HELD-CONNS ! loop
+   [: OPEN PG:CLOSE ;] catch 0 T=
+   CONNECTIONS 1- 0 ?do i HELD-CONNS @ PG:CLOSE loop
+   lis TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
+
+
 \ A restored image runs in another process where the libpq pointers are gone,
 \ so PREPARE closes native resources and retires every handle. A new registry
 \ cannot revive a stale handle even when it reuses the same slot number.
@@ -1701,7 +1771,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
 
 : LOOP-CASES ( -- )
    CONNECT-CASES CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
-   AIO-FAIL-CASES SERVER-CASES ;
+   HALT-CONNECT-CASES AIO-FAIL-CASES SERVER-CASES ;
 
 \ The AIO loop stops however LOOP-CASES ends. As under finally, a code from
 \ AIO:STOP replaces the cases' code, except a deadline's: with a deadline
