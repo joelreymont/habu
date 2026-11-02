@@ -1775,6 +1775,10 @@ SUITE compiler-native-create-does
    test/compiler/native-create-does.f
 ;SUITE
 
+SUITE compiler-native-export-fixed
+   test/compiler/native-export-fixed.f
+;SUITE
+
 SUITE tier
    test/tier.f
 ;SUITE

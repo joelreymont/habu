@@ -5051,7 +5051,7 @@ public
    LBL {: noshadow:label :}
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
    9 0 MOVZ,  9 G-PUSH
-   9 4 MOVZ,  9 G-PUSH                    \ NCOMP:FIXED-CAST, compiled after this builder
+   9 4 MOVZ,  9 G-PUSH                    \ COMP-BODY:cast, compiled after this builder
    9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
    noshadow LBL, ;

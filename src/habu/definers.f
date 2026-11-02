@@ -12,6 +12,7 @@ require src/core/checker.f
 require src/core/does-clause.f
 require src/habu/layout.f
 require src/habu/xref.f
+require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/compiler/native/compiler.f
 require src/habu/outer.f
@@ -53,7 +54,7 @@ TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 \ The engine's cells hold the compiler entries, the preflight, the def and body
 \ hooks and the checker's declaration operations as raw execution tokens.
 CAST: AS-COMPILE ( n -- [ ptr u8 n -- ] )
-CAST: AS-COMPILE-FIXED ( n -- [ n n -- ] )
+CAST: AS-COMPILE-FIXED ( n -- [ n COMP:body -- ] )
 CAST: AS-BODY-HOOK ( n -- [ -- ptr u8 bool ] )
 CAST: AS-PREFLIGHT ( n -- [ ptr u8 n ptr u8 n bool -- ] )
 CAST: AS-DEF-HOOK ( n -- [ ptr u8 n -- n ] )
@@ -750,7 +751,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : DEF-HERE ( -- n ) here NULL-PTR - ;
 
 \ The pending record's fixed body ( val kind ), by the compiler the latch names.
-: DEF-FIXED ( n n -- )
+: DEF-FIXED ( n COMP:body -- )
    NCOMP-DISPATCH:DEF-TIER-CELL CELL@ {: latch:n :}
    latch 0= if DEF-TIER-0 then
    latch 2 = if
@@ -763,7 +764,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 : DEF-ADDR-TAIL ( -- )
    HB-TARGET-LINUX-X86-64? if
       align
-      DEF-HERE NCOMP-DISPATCH:FIXED-ADDR-KIND DEF-FIXED
+      DEF-HERE COMP-BODY:address DEF-FIXED
       DEF-CLOSE
       exit
    then
@@ -809,7 +810,7 @@ variable DEF-VALUE
    DKIND:VAL DEF-START
    depth 0= if s" E-UNDERFLOW: " REFUSE then
    [: DEF-VALUE ! ;] CELL-TAKE RUN-LITERAL
-   DEF-VALUE @ NCOMP-DISPATCH:FIXED-VAL-KIND DEF-FIXED
+   DEF-VALUE @ COMP-BODY:value DEF-FIXED
    DEF-CLOSE
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW-PUBLISH ;
@@ -1013,7 +1014,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
    DEF-QUALIFY 0 DEF-RECORD
    s end DEF-SIG-INNER
    s 1 + end s - 2 - DEFER-REGISTER
-   cell NCOMP-DISPATCH:FIXED-DEFER-KIND DEF-FIXED
+   cell COMP-BODY:defer DEF-FIXED
    DEF-CLOSE ;
 
 \ The engine's `:` is the one byte, `kernel:` its synonym; `trusted:`,

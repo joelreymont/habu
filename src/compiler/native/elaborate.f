@@ -17,6 +17,7 @@ require src/compiler/native/tape.f
 require src/compiler/native/feed.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
+require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/compiler/native/host.f
 require src/compiler/native/string.f
@@ -4276,7 +4277,7 @@ private
 \ DOES-REC:ELIDE-EMPTY), stated on the tape because this compiler never reaches it.
 0 CWORK-VARIABLE DOES-EMPTY n
 0 CWORK-VARIABLE FIXED-VAL n                   \ a fixed body's cell, or a defer's dispatch cell
-0 CWORK-VARIABLE FIXED-KIND n                  \ and how the fixed cell is a literal (NDICT:FIXED-*)
+0 CWORK-VARIABLE FIXED-KIND COMP:body          \ and how the fixed cell is a literal
 
 private
 
@@ -4452,9 +4453,9 @@ public
 
 \ A fixed definer body pushes its stamped cell and returns. It has no source
 \ body, so no source-site fact is consulted (compiler.f FIXED-WORK).
-: FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+: FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n COMP:body -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
-      r:IR-ARENA:arena val:n kind:n :}
+      r:IR-ARENA:arena val:n kind:COMP:body :}
    0 EXACT-SOURCE !
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    RF-RESET

@@ -7,6 +7,7 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/habu/layout.f
+require src/compiler/fixed-body.f
 require src/habu/terminal-call.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
@@ -119,40 +120,38 @@ public
 
 \ ---- which definer made the record a spelling denotes -------------------------
 \ A `create`d or `variable` address moves with the DATA region on a snapshot, so
-\ it may not be compiled as an ordinary number. The stamp is the definer's own.
-0 constant FIXED-NONE                \ nothing a mention of this name folds to
-NCOMP-DISPATCH:FIXED-VAL-KIND constant FIXED-VAL \ `constant`: the body pushes a decided number
-NCOMP-DISPATCH:FIXED-ADDR-KIND constant FIXED-ADDR \ `create`/`variable`: the body pushes a DATA address
-
-\ ---- one walk answers both the record and its start --------------------------
-\ The engine returned the record and its start together. Readers retain that
-\ record only for this operation; later source may mutate its binding or slot.
+\ it may not be compiled as an ordinary number. The stamp is the definer's own:
+\ COMP-BODY:value for `constant`, COMP-BODY:address for `create`/`variable`,
+\ and COMP-BODY:compiled when a mention of the name folds to nothing.
 private
 
 \ Which definer stamped a record, retired or not: `undefine` removes a name,
 \ while the record's storage and the code compiled against it stay.
-: STAMP-FIXED ( ptr n -- n )
+: STAMP-FIXED ( ptr n -- COMP:body )
    {: rec:ptr :}
-   rec XREF-FOUND? 0= if FIXED-NONE exit then
-   rec XREF-START 0= if FIXED-NONE exit then
+   rec XREF-FOUND? 0= if COMP-BODY:compiled exit then
+   rec XREF-START 0= if COMP-BODY:compiled exit then
    rec XREF-FLAGS DKIND:MASK and {: kind:n :}
-   kind DKIND:VAL = if FIXED-VAL exit then
-   kind DKIND:ADDR = if FIXED-ADDR exit then
-   FIXED-NONE ;
+   kind DKIND:VAL = if COMP-BODY:value exit then
+   kind DKIND:ADDR = if COMP-BODY:address exit then
+   COMP-BODY:compiled ;
 
 \ A caller already holding the record asks here instead of SPELL-FIXED.
-: REC-FIXED ( ptr n -- n )
+: REC-FIXED ( ptr n -- COMP:body )
    {: rec:ptr :}
-   rec XREF-FOUND? 0= if FIXED-NONE exit then
-   rec XREF-RETIRED? if FIXED-NONE exit then
+   rec XREF-FOUND? 0= if COMP-BODY:compiled exit then
+   rec XREF-RETIRED? if COMP-BODY:compiled exit then
    rec STAMP-FIXED ;
 
 public
 
-: SPELL-FIXED ( ptr u8 n -- n )
+: SPELL-FIXED ( ptr u8 n -- COMP:body )
    {: a u:n :}
    a u SPELL-REC REC-FIXED ;
 
+\ ---- one walk answers both the record and its start --------------------------
+\ The engine returned the record and its start together. Readers retain that
+\ record only for this operation; later source may mutate its binding or slot.
 private
 
 : FIXED-ENTRY ( ptr n -- n )
@@ -160,7 +159,7 @@ private
    rec XREF-FOUND? 0= if E-NDICT-NAME throw then
    rec XREF-START {: start:n :}
    start 0= if E-NDICT-NAME throw then
-   rec REC-FIXED FIXED-NONE = if E-NDICT-KIND throw then
+   rec REC-FIXED COMP-BODY:compiled COMP-BODY:EQ if E-NDICT-KIND throw then
    start ;
 
 : READ-FIXED ( n -- n )
@@ -180,11 +179,12 @@ public
    rec XREF-START READ-FIXED ;
 
 \ Called once by the checker at generated-word publication; later dependency
-\ checks read the stored fact and never enter the word again.
+\ checks read the stored fact and never enter the word again. The checker
+\ loads before ENUM exists, so the kind crosses as its number.
 : RETAIN-FIXED ( ptr n -- n n bool ) {: rec:ptr :}
-   rec REC-FIXED {: kind:n :}
-   kind FIXED-NONE = if 0 0 true exit then
-   kind rec FIXED-ENTRY READ-FIXED true ;
+   rec REC-FIXED {: kind:COMP:body :}
+   kind COMP-BODY:compiled COMP-BODY:EQ if 0 0 true exit then
+   kind COMP:BODY>N rec FIXED-ENTRY READ-FIXED true ;
 
 : FIXED-VALUE ( ptr u8 n -- n ) SPELL-REC REC-VALUE ;
 
@@ -192,14 +192,20 @@ public
 \ -1 means the fixed value is a scalar and has no DATA owner.
 : FIXED-OWNER ( ptr u8 n -- n )
    SPELL-REC {: rec:ptr :}
-   rec REC-FIXED FIXED-ADDR <> if -1 exit then
+   rec REC-FIXED COMP-BODY:address COMP-BODY:EQ 0= if -1 exit then
    rec XREF-A>U8 NULL-PTR BYTE-VIEW - dbase@ - DREC / ;
 
 \ Enter the exact fixed implementation the scan selected. The caller checked
 \ its captured definer stamp; no spelling is resolved again here.
-: BOUND-VALUE ( n n -- n ) {: entry:n kind:n :}
+: BOUND-VALUE ( n COMP:body -- n ) {: entry:n kind:COMP:body :}
    entry 0< entry 0= or if E-NDICT-NAME throw then
-   kind FIXED-VAL <> kind FIXED-ADDR <> and if E-NDICT-KIND throw then
+   kind MATCH COMP:body
+      compiled OF E-NDICT-KIND throw ENDOF
+      value OF ENDOF
+      address OF ENDOF
+      defer OF E-NDICT-KIND throw ENDOF
+      cast OF E-NDICT-KIND throw ENDOF
+   ;MATCH
    entry READ-FIXED ;
 
 \ ---- and how many cells a call to it moves --------------------------------
@@ -554,7 +560,7 @@ public
 \ `undefine` still reaches it.
 : STAMP-ORIGIN ( ptr n -- n bool )
    {: rec:ptr :}
-   rec STAMP-FIXED FIXED-ADDR = if rec XREF-START READ-FIXED true exit then
+   rec STAMP-FIXED COMP-BODY:address COMP-BODY:EQ if rec XREF-START READ-FIXED true exit then
    rec TRAILER-CELL dup 0<> ;
 
 \ Resolve once: the address and its owner must describe the same declaration.

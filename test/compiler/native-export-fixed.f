@@ -2,6 +2,7 @@
 \ captured its prefix. Its alias must retain a constant's fixed value so a
 \ later x86 shadow caller can compile without the original body.
 require src/lib/test.f
+require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 
 1 set-tier
@@ -19,7 +20,8 @@ public
 : RUN ( -- )
    T-RESET
    s" a source-loaded export keeps its fixed value kind" T-LABEL
-   s" NATIVE-EXPORT-FIXED:HIDDEN" NDICT:SPELL-FIXED 1 T=
+   s" NATIVE-EXPORT-FIXED:HIDDEN" NDICT:SPELL-FIXED COMP:BODY>N
+      COMP-BODY:value COMP:BODY>N T=
    NATIVE-EXPORT-FIXED:HIDDEN 7 T=
    NATIVE-EXPORT-FIXED:USE 7 T=
    T-REPORT ;

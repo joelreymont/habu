@@ -14,6 +14,7 @@ require src/lib/prelude.f
 require src/lib/errors.f
 require src/core/bytes.f
 require src/compiler/native/checker-owner.f
+require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/core/prefix-boundary.f
 require src/compiler/native/family.f
@@ -1559,9 +1560,9 @@ variable OP-REC                      \ the last of them
 \ compare (habu2.f EM-COMPILE-CALL).
 : WORD-CALL ( n n n n -- )
    {: to:n kind:n r:n loc:n :}
-   kind DKIND:VAL = if to NDICT:FIXED-VAL NDICT:BOUND-VALUE PUSH-CONST exit then
+   kind DKIND:VAL = if to COMP-BODY:value NDICT:BOUND-VALUE PUSH-CONST exit then
    kind DKIND:ADDR = to data-base AOT-CELLS:B0-CELL + @ >= and if
-      to NDICT:FIXED-ADDR NDICT:BOUND-VALUE  r PUSH-ADDR exit
+      to COMP-BODY:address NDICT:BOUND-VALUE  r PUSH-ADDR exit
    then
    ORD @ 1- {: at:n :}
    at NDICT:CALL-EXTRAS 0 ?do  at i NDICT:CALL-EXTRA PUSH-CONST  loop
@@ -1894,29 +1895,38 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 \ ---- the fixed bodies --------------------------------------------------------
 \ The bodies tier 1's NELAB:FIXED and NELAB:DEFER build, on one unit.
-variable FIXED-KIND
+TYPED-VARIABLE FIXED-KIND body
 
-: FIXED-KIND? ( n -- bool ) {: kind:n :}
-   kind NCOMP-DISPATCH:FIXED-VAL-KIND =
-   kind NCOMP-DISPATCH:FIXED-ADDR-KIND = or
-   kind NCOMP-DISPATCH:FIXED-DEFER-KIND = or ;
+: FIXED-KIND? ( body -- bool )
+   {: kind:body :}
+   kind COMP-BODY:value COMP-BODY:EQ
+   kind COMP-BODY:address COMP-BODY:EQ or
+   kind COMP-BODY:defer COMP-BODY:EQ or ;
 
 : FIXED-BODY ( -- )
    M-FIXED-VAL @ {: val:n :}
-   FIXED-KIND @ {: kind:n :}
    RESET-STATE
    EMIT-OPEN
-   kind NCOMP-DISPATCH:FIXED-VAL-KIND = if
-      val PUSH-CONST  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE exit
-   then
-   val -1 PUSH-ADDR
-   kind NCOMP-DISPATCH:FIXED-ADDR-KIND = if SPILL-ALL  EMIT-SLOT-CLOSE exit then
-   CELL-W FETCH
-   SPILL-ALL  ['] execute XT>N 0 EMIT-CALL
-   EMIT-RETURN  EMIT-CLOSE ;
+   FIXED-KIND @ MATCH body
+      compiled OF E-NCOMP-STATE throw ENDOF
+      value OF val PUSH-CONST  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
+      address OF val -1 PUSH-ADDR  SPILL-ALL  EMIT-SLOT-CLOSE ENDOF
+      defer OF
+         val -1 PUSH-ADDR  CELL-W FETCH
+         SPILL-ALL  ['] execute XT>N 0 EMIT-CALL
+         EMIT-RETURN  EMIT-CLOSE
+      ENDOF
+      cast OF E-NCOMP-STATE throw ENDOF
+   ;MATCH ;
 
 : FIXED-LOWER ( -- )
-   FIXED-KIND @ NCOMP-DISPATCH:FIXED-DEFER-KIND = if PUB-DEFER else PUB-RAW then
+   FIXED-KIND @ MATCH body
+      compiled OF PUB-RAW ENDOF
+      value OF PUB-RAW ENDOF
+      address OF PUB-RAW ENDOF
+      defer OF PUB-DEFER ENDOF
+      cast OF PUB-RAW ENDOF
+   ;MATCH
    M-PUB !
    [: FIXED-BODY ;] SHADOWED
    [: FIXED-BODY ;] HOSTED ;
@@ -1931,7 +1941,8 @@ variable FIXED-KIND
 
 \ Compile the pending record's fixed body for ( val kind ), as tier 1's
 \ NCOMP:COMPILE-FIXED: no body text and no checker scan.
-: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
+: COMPILE-FIXED ( n body -- )
+   {: val:n kind:body :}
    kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
    IDLE-CK
    NULL-PTR 0 false STAGE-UNIT

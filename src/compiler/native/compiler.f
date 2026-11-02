@@ -12,6 +12,7 @@ require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f
 require src/compiler/native/host.f
 require src/compiler/native/abi.f
+require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
@@ -106,12 +107,7 @@ align
 0 CWORK-VARIABLE DEF-EPOCH-DELTA n
 0 CWORK-VARIABLE DEF-BUILD-DELTA n
 
-public
-NCOMP-DISPATCH:FIXED-DEFER-KIND constant FIXED-DEFER \ a defer dispatch body, not an NDICT fixed kind
-4 constant FIXED-CAST                \ an engine-published CAST: identity body
-private
-
-0 CWORK-VARIABLE M-FIXED n                      \ the pending definer's body kind
+0 CWORK-VARIABLE M-FIXED COMP:body              \ the pending definer's body kind
 -1 CWORK-VARIABLE M-FIXED-REC n                 \ published record for a seeded created child, or -1
 0 CWORK-VARIABLE M-SHADOW-ONLY bool             \ the engine already published its own body
 
@@ -316,11 +312,23 @@ private
    NAME$ NDICT:SPELL-DEAD? ;
 
 : LEAF? ( -- bool )
-   M-FIXED @ NDICT:FIXED-VAL =  M-FIXED @ NDICT:FIXED-ADDR =  or ;
+   M-FIXED @ MATCH COMP:body
+      compiled OF false ENDOF
+      value OF true ENDOF
+      address OF true ENDOF
+      defer OF false ENDOF
+      cast OF false ENDOF
+   ;MATCH ;
 
 : FIXED-LINKAGE ( -- NBACK:linkage )
    NBACK:L-NONE
-   M-FIXED @ NDICT:FIXED-ADDR = if NBACK:L-PATCH NBACK:WITH then ;
+   M-FIXED @ MATCH COMP:body
+      compiled OF ENDOF
+      value OF ENDOF
+      address OF NBACK:L-PATCH NBACK:WITH ENDOF
+      defer OF ENDOF
+      cast OF ENDOF
+   ;MATCH ;
 
 : LINKAGE ( -- NBACK:linkage )
    LEAF? if FIXED-LINKAGE exit then
@@ -461,7 +469,7 @@ $20 constant NAME-END
 
 : FIXED-NAME$ ( -- ptr u8 n )
    M-FIXED-REC @ 0 >= if M-FIXED-REC @ XREF-REC XREF-NAME$ exit then
-   M-FIXED @ FIXED-DEFER = if
+   M-FIXED @ COMP-BODY:defer COMP-BODY:EQ if
       data-base BODYBUF-OFF + BYTE-VIEW
       data-base BODYLEN-CELL + @ {: b:ptr len:n :}
       0 begin
@@ -500,7 +508,7 @@ $20 constant NAME-END
    CC BB TAPE p r M-FIXED-VAL @ M-FIXED @ NELAB:FIXED drop ;
 
 : FIXED-SHADOW-WORK ( -- )
-   M-FIXED @ FIXED-DEFER = if
+   M-FIXED @ COMP-BODY:defer COMP-BODY:EQ if
       CC HIR-MOD 0 M-BLD !
       FIXED-TAPE
       MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -508,7 +516,7 @@ $20 constant NAME-END
       0 M-IN ! 0 M-OUT !
       CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
    else
-      M-FIXED @ FIXED-CAST = if
+      M-FIXED @ COMP-BODY:cast COMP-BODY:EQ if
          CC HIR-MOD 0 M-BLD !
          FIXED-TAPE
          MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -526,7 +534,7 @@ $20 constant NAME-END
 
 : FIXED-WORK ( -- )
    ndict@ {: before:n :}
-   M-FIXED @ FIXED-DEFER = if
+   M-FIXED @ COMP-BODY:defer COMP-BODY:EQ if
       CC HIR-MOD 0 M-BLD !
       FIXED-TAPE
       MODEL DEFER-WORK
@@ -550,7 +558,7 @@ $20 constant NAME-END
    -1 M-PUBLISHED-START !
    c M-LEASE @ NSESSION:NEW M-SESSION !
    [: M-SHADOW-ONLY @ if FIXED-SHADOW-WORK exit then
-      M-FIXED @ NDICT:FIXED-NONE <> if FIXED-WORK exit then WORK ;] catch M-RC !
+      M-FIXED @ COMP-BODY:compiled COMP-BODY:EQ 0= if FIXED-WORK exit then WORK ;] catch M-RC !
    M-RC @ 0= M-PUBLISHED-START @ 0 >= and if
       [: M-PUBLISHED-START @ PUBLISHED-ROWS ;] catch 0<> if
          s" ncomp: publication callback threw" 76 die
@@ -682,7 +690,7 @@ INSTALL-FORGET
    STAGE-UNIT
    KEEP-PRIOR
    -1 M-DOES-ROW !
-   NDICT:FIXED-NONE M-FIXED !
+   COMP-BODY:compiled M-FIXED !
    -1 M-FIXED-REC !
    false M-SHADOW-ONLY !
    NELAB:REFUSED-RESET ;
@@ -699,22 +707,21 @@ private
 : LEASED-CHECKED ( ptr u8 n NLEASE:lease -- )
    true swap LEASED-MODE ;
 
-: FIXED-LEASED ( n n NLEASE:lease -- )
-   {: val:n kind:n lease:NLEASE:lease :}
+: FIXED-LEASED ( n COMP:body NLEASE:lease -- )
+   {: val:n kind:COMP:body lease:NLEASE:lease :}
    lease M-LEASE !
    TXT 0 false STAGE
    kind M-FIXED ! val M-FIXED-VAL !
    RUN ;
 
-: SHADOW-FIXED-LEASED ( n n n NLEASE:lease -- )
-   {: val:n kind:n idx:n lease:NLEASE:lease :}
+: SHADOW-FIXED-LEASED ( n COMP:body n NLEASE:lease -- )
+   {: val:n kind:COMP:body idx:n lease:NLEASE:lease :}
    lease M-LEASE !
    IDLE-CK
-   kind NDICT:FIXED-ADDR <> kind NDICT:FIXED-VAL <> and
-   kind FIXED-DEFER <> and kind FIXED-CAST <> and if E-NCOMP-STATE throw then
+   kind COMP-BODY:compiled COMP-BODY:EQ if E-NCOMP-STATE throw then
    idx 0 < idx ndict@ >= or if E-NCOMP-STATE throw then
    NSHADOW:NATIVE? if
-      kind FIXED-CAST <> val 0<> or if E-NCOMP-STATE throw then
+      kind COMP-BODY:cast COMP-BODY:EQ 0= val 0<> or if E-NCOMP-STATE throw then
       idx XREF-REC {: rec:ptr :}
       rec XREF-START rec XREF-CODE-BYTES NSHADOW:TAKE-CAST
       idx NSHADOW:PUBLISH
@@ -808,15 +815,15 @@ public
 : COMPILE-CHECKED ( ptr u8 n -- )
    [: LEASED-CHECKED ;] NLEASE:WITH ;
 
-: COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
-   kind NDICT:FIXED-VAL <> kind NDICT:FIXED-ADDR <> and
-   kind FIXED-DEFER <> and if E-NCOMP-STATE throw then
+: COMPILE-FIXED ( n COMP:body -- ) {: val:n kind:COMP:body :}
+   kind COMP-BODY:compiled COMP-BODY:EQ
+   kind COMP-BODY:cast COMP-BODY:EQ or if E-NCOMP-STATE throw then
    val kind [: FIXED-LEASED ;] NLEASE:WITH ;
 
 \ LCREATE has already published its ARM body.
 \ Compile the same fixed one-row HIR for the open target shadow, then attach
 \ that emission to the created record. No second ARM publication occurs.
-: SHADOW-FIXED ( n n n -- ) {: val:n kind:n idx:n :}
+: SHADOW-FIXED ( n COMP:body n -- ) {: val:n kind:COMP:body idx:n :}
    NSHADOW:OPEN? 0= if exit then
    val kind idx [: SHADOW-FIXED-LEASED ;] NLEASE:WITH ;
 

@@ -14,6 +14,7 @@ require src/compiler/ir/build.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
+require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/compiler/native/checker-owner.f
 require src/habu/layout.f
@@ -534,10 +535,14 @@ private
 \ staging's; a kind neither definer stamped never reaches it.
 public
 
-: LIT-KIND ( n -- n )
-   {: k:n :}
-   k NDICT:FIXED-ADDR = if NEMIT:ADDR-DATA exit then
-   HIR:ADDR-NONE ;
+: LIT-KIND ( COMP:body -- n )
+   MATCH COMP:body
+      compiled OF HIR:ADDR-NONE ENDOF
+      value OF HIR:ADDR-NONE ENDOF
+      address OF NEMIT:ADDR-DATA ENDOF
+      defer OF HIR:ADDR-NONE ENDOF
+      cast OF HIR:ADDR-NONE ENDOF
+   ;MATCH ;
 
 private
 
@@ -670,8 +675,8 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id :}
    c b id FIX-SPELL {: a:ptr u:n :}
-   a u NDICT:SPELL-FIXED {: k:n :}
-   k NDICT:FIXED-NONE = if false exit then
+   a u NDICT:SPELL-FIXED {: k:COMP:body :}
+   k COMP-BODY:compiled COMP-BODY:EQ if false exit then
    c r  c b id BKEY-CK
    a u NDICT:FIXED-VALUE  k LIT-KIND
       a u NDICT:FIXED-OWNER FIXED-ROW
@@ -900,7 +905,7 @@ public
    row CHECKER-OWNER-ABI:BOUND-FLAGS BOUND@ {: flags:n :}
    flags DKIND:MASK and {: kind:n :}
    kind DKIND:VAL = kind DKIND:ADDR = or if
-      kind DKIND:VAL = if NDICT:FIXED-VAL else NDICT:FIXED-ADDR then {: fixed:n :}
+      kind DKIND:VAL = if COMP-BODY:value else COMP-BODY:address then {: fixed:COMP:body :}
       c r c b id BKEY-CK entry fixed NDICT:BOUND-VALUE fixed LIT-KIND
          kind DKIND:ADDR = if
             row CHECKER-OWNER-ABI:BOUND-RECORD BOUND@
