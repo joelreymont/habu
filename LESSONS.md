@@ -113,8 +113,10 @@ entry.
 - 2026-11-01, a live check of MODEL: asked how the one live OpenAI run
   should happen before MODEL's streamed background responses land, given this
   session may not read the key from the keychain, Joel chose "You run it
-  (Recommended)": the lead writes a probe file and Joel runs it with
-  `! hb --load <file>`. Under Joel's relayed "use your best judgement" the
+  (Recommended)": the lead writes a probe file. On 2026-11-02, asked to run
+  it, Joel answered "you run it": the lead ran it, and gpt-6-luna answered a
+  streamed background CHAT and replayed a stream from `starting_after=1`
+  (events 2 to 68, status 200). Under Joel's relayed "use your best judgement" the
   lead also chose, after the lane review: a call stays alive while its
   connections carry bytes, a keepalive included, so a resume that heard only
   keepalives resumes again; and a call that fails after its response id is
