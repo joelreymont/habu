@@ -10,3 +10,5 @@ Problem: the machine-code compiler calls whatever xt sits in HOOK-CELL (src/habu
 
 
 Status 2026-11-02: engine-origin census worker running (brief .out/carl-file/brief-origin-census.md, deliverable /tmp/carl-switch/origin/census.md); the lead rewrites design step 5 from it.
+
+Status 2026-11-02 (later): census done (/tmp/carl-switch/origin/census.md): publication already implies acceptance; what engine-origin needs is each definition's source place; TRUSTED:, defer, LINEAR: and user-definer words get no row today; no free flag bit on the dictionary record. Fable feature design of origin recording running (brief .out/carl-file/brief-origin-design.md); it replaces design step 5.
