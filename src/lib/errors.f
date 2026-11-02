@@ -1218,8 +1218,8 @@
 \ which owns package WORD-DOCS.
 \ Scoped commands: -9580..-9589, minted in src/lib/process-command.f, which
 \ owns package CMD.
-\ Tier 0 emitter seam: -9590..-9599, minted in src/habu/t0-emit.f, which owns
-\ package T0-EMIT.
+\ Tier 0 emitter seam: -9590..-9599, minted in src/habu/t0-emit.f, package
+\ COMP.
 \ Stderr capture for tests: -9610..-9619, minted in src/lib/test/stderr.f, which
 \ owns package STDERR.
 \ A task to each job: -9620..-9629, minted in src/lib/crew.f, which owns
@@ -1235,13 +1235,13 @@
 \ -9805..-9809, WCTL -9815..-9819, WSEL -9820..-9824, WENC -9825..-9829,
 \ WLINK -9830..-9834.
 
-\ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package T0, because
+\ T0 (src/habu/t0.f): -9600..-9609, minted here, not in package COMP, because
 \ src/compiler/native/definition.f MALFORMED? reads them.
 -9600 constant E-T0-FIRST
 -9609 constant E-T0-LAST
--9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile: T0:UNSUPPORTED$
--9601 constant E-T0-CONTROL      \ a control word without its opener, a body ending inside one, or a token no path reaches: T0:UNSUPPORTED$
+-9600 constant E-T0-UNSUPPORTED  \ a token T0 does not compile: COMP's UNSUPPORTED$
+-9601 constant E-T0-CONTROL      \ a control word without its opener, a body ending inside one, or a token no path reaches: COMP's UNSUPPORTED$
 -9604 constant E-T0-BINDS        \ the body binds other than its scan's count of locals
--9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH: T0:UNSUPPORTED$
--9607 constant E-T0-DEFER        \ `is` names no deferred word: T0:UNSUPPORTED$
+-9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH: COMP's UNSUPPORTED$
+-9607 constant E-T0-DEFER        \ `is` names no deferred word: COMP's UNSUPPORTED$
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE

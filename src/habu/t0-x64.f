@@ -1,8 +1,9 @@
-\ t0-x64.f - the x86-64 emitter of the tier 0 compiler, package T0-X64.
+\ t0-x64.f - the x86-64 emitter of the tier 0 compiler, part X86-64 of package
+\ COMP.
 \
-\ Implements the operations src/habu/t0-emit.f (T0-EMIT) states for every
-\ target; this file holds only x86-64 encodings and register choices. INSTALL
-\ stores its words into the T0-EMIT and src/habu/t0-label.f cells for
+\ Implements the EMIT- operations src/habu/t0-emit.f states for every target;
+\ this file holds only x86-64 encodings and register choices. FILL-SLOT
+\ stores its words into the EMIT- and src/habu/t0-label.f (LABEL) cells for
 \ CTARGET-ARCH:X86-64.
 
 require src/lib/errors.f
@@ -17,7 +18,8 @@ require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
 
-package T0-X64
+package COMP
+package X86-64
 using X64ASM
 
 8 constant NVREG
@@ -26,9 +28,9 @@ using X64ASM
 : IMM? ( n -- bool ) {: v:n :}
    v -2147483648 >= v 2147483647 <= and ;
 
-: COND ( T0-EMIT:cc -- condition )
-   {: c:T0-EMIT:cc :}
-   c T0-EMIT:CC>N {: k:n :}
+: COND ( cc -- condition )
+   {: c:cc :}
+   c CC>N {: k:n :}
    k 0 = if C-E exit then
    k 1 = if C-NE exit then
    k 2 = if C-L exit then
@@ -60,9 +62,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : DSP ( -- r64 ) ENGINE-GPR:X64-DSTACK >R64 ;
 : DATA-REG ( -- r64 ) ENGINE-GPR:X64-RBASE >R64 ;
 
-: REG ( T0-EMIT:vreg -- r64 )
-   {: v:T0-EMIT:vreg :}
-   v T0-EMIT:VREG>N {: k:n :}
+: REG ( vreg -- r64 )
+   {: v:vreg :}
+   v VREG>N {: k:n :}
    k 0 < k NVREG >= or if E-OPERAND throw then
    k 0 = if RCX exit then
    k 1 = if RDX exit then
@@ -75,7 +77,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    k 0 ?do v i 8 * rshift $FF and p i + c! loop ;
 
 \ A forward rel32 at the end of what was just emitted: its field's offset.
-: FWD-SITE ( -- T0-LABEL:branch ) HERE-OFF 4 - T0-LABEL:>BRANCH ;
+: FWD-SITE ( -- LABEL:branch ) HERE-OFF 4 - LABEL:>BRANCH ;
 
 \ Load the constant n into r with the shortest form that holds it and leaves
 \ the condition codes alone: zero is a mov, not an xor.
@@ -96,11 +98,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 : ADDR-R ( n n r64 n -- )
    {: v:n o:n r:r64 kind:n :}
-   HERE-OFF kind v o T0-EMIT:ADDR-ROW+
+   HERE-OFF kind v o EMIT-ADDR-ROW+
    r v >IMM64 SINK ENC-MOV-RI64 ;
 
-: ADDR ( n n T0-EMIT:vreg n -- )
-   {: v:n o:n d:T0-EMIT:vreg kind:n :}
+: ADDR ( n n vreg n -- )
+   {: v:n o:n d:vreg kind:n :}
    v o d REG kind ADDR-R ;
 
 \ r, holding the return stack depth, becomes the address one cell past its top.
@@ -117,7 +119,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 : REL-TO ( n -- rel ) HERE-OFF - >REL ;
 
 : UNIT-BEGIN ( -- )
-   HERE-OFF T0-EMIT:UNIT+
+   HERE-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
    0 FRAME-CELLS !  0 NFRAME !
    RSP 0 >IMM32 SINK ENC-SUB-RI32  FRAME-SITE ;
@@ -140,7 +142,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    then
    SINK BUF:CLEAR
    0 NUNIT !
-   T0-LABEL:RESET
+   LABEL:RESET
    UNIT-BEGIN ;
 
 \ The sink is this process's mapping, which no image carries; the next OPEN
@@ -152,7 +154,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 ' CAPTURE-PREPARE IMAGE-LIFECYCLE:REGISTER-PERSISTENT
 
 : QUOT-OPEN ( n -- ) {: n:n :}
-   n NUNIT @ <> if T0-EMIT:E-T0-UNIT throw then
+   n NUNIT @ <> if E-T0-UNIT throw then
    HERE-OFF n UNIT-REF @ 2 + 8 PUT
    UNIT-BEGIN ;
 
@@ -169,7 +171,7 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ PATCH-SLOT), filed at the jump's offset as tier 1's PUT-RET files it.
 : SLOT-CLOSE ( -- )
    UNFRAME
-   HERE-OFF T0-EMIT:PATCH-SLOT!
+   HERE-OFF EMIT-PATCH-SLOT!
    0 >REL SINK ENC-JMP-REL32
    SINK ENC-RET
    CLOSE ;
@@ -192,43 +194,43 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    d off 1 + 4 PUT ;
 
 : PATCH ( n -- ) {: at:n :}
-   T0-EMIT:CALL-ROWS 0 ?do
-      i T0-EMIT:CALL-ROW {: off:n kind:n to:n :}
+   EMIT-CALL-ROWS 0 ?do
+      i EMIT-CALL-ROW {: off:n kind:n to:n :}
       at off to PATCH-CALL
    loop
-   T0-EMIT:ADDR-ROWS 0 ?do
-      i T0-EMIT:ADDR-ROW {: off:n kind:n to:n :}
-      kind T0-EMIT:ADDR-QUOT-KIND = if at to T0-EMIT:UNIT + off 2 + 8 PUT then
+   EMIT-ADDR-ROWS 0 ?do
+      i EMIT-ADDR-ROW {: off:n kind:n to:n :}
+      kind ADDR-QUOT-KIND = if at to EMIT-UNIT + off 2 + 8 PUT then
    loop ;
 
 \ ---- values ------------------------------------------------------------------
-: LIT ( n T0-EMIT:vreg -- )
-   {: v:n d:T0-EMIT:vreg :}
+: LIT ( n vreg -- )
+   {: v:n d:vreg :}
    v d REG LIT-R ;
 
-: ADDR-DATA ( n n T0-EMIT:vreg -- ) NEMIT:ADDR-DATA ADDR ;
+: ADDR-DATA ( n n vreg -- ) NEMIT:ADDR-DATA ADDR ;
 
-: ADDR-CODE ( n T0-EMIT:vreg -- )
-   {: v:n d:T0-EMIT:vreg :}
+: ADDR-CODE ( n vreg -- )
+   {: v:n d:vreg :}
    v -1 d NEMIT:ADDR-CODE ADDR ;
 
 \ The site's imm64 holds 0 until QUOT-OPEN writes unit n's offset.
-: ADDR-QUOT ( n T0-EMIT:vreg -- )
-   {: n:n d:T0-EMIT:vreg :}
+: ADDR-QUOT ( n vreg -- )
+   {: n:n d:vreg :}
    n 1 + UNIT-REF-RESERVE
    HERE-OFF n UNIT-REF !
-   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n -1 T0-EMIT:ADDR-ROW+
+   HERE-OFF ADDR-QUOT-KIND n -1 EMIT-ADDR-ROW+
    d REG 0 >IMM64 SINK ENC-MOV-RI64 ;
 
 \ The stack pointer moved by k cells: an lea, which leaves the condition codes
-\ alone, as T0-EMIT:CMP requires.
+\ alone, as EMIT-CMP requires.
 : DSP+ ( n -- ) {: k:n :}
    k 0 = if exit then
    DSP DSP k CELL * MEM-OFF SINK ENC-LEA ;
 
 \ x86-64 has no writeback: a push stores and then moves the pointer, and a pop
 \ moves it and then loads, as G-PUSH and G-POP do.
-: PUSH ( T0-EMIT:vreg n -- ) {: s:T0-EMIT:vreg k:n :}
+: PUSH ( vreg n -- ) {: s:vreg k:n :}
    s REG DSP MEM-AT SINK ENC-MOV-MR
    k DSP+ ;
 
@@ -237,45 +239,45 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    RAX DSP MEM-AT SINK ENC-MOV-MR
    k DSP+ ;
 
-: POP ( T0-EMIT:vreg n -- ) {: d:T0-EMIT:vreg k:n :}
+: POP ( vreg n -- ) {: d:vreg k:n :}
    k negate DSP+
    d REG DSP MEM-AT SINK ENC-MOV-RM ;
 
-: SPILL ( T0-EMIT:vreg n -- )
-   {: s:T0-EMIT:vreg k:n :}
+: SPILL ( vreg n -- )
+   {: s:vreg k:n :}
    s REG DSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
 
 : SPILL-LIT ( n n -- ) {: v:n k:n :}
    v RAX LIT-R
    RAX DSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
 
-: FILL ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg k:n :}
+: FILL ( vreg n -- )
+   {: d:vreg k:n :}
    d REG DSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
 
-: MOV ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+: MOV ( vreg vreg -- )
+   {: d:vreg s:vreg :}
    d REG s REG SINK ENC-MOV-RR ;
 
-: EXCHANGE ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+: EXCHANGE ( vreg vreg -- )
+   {: a:vreg b:vreg :}
    a REG b REG SINK ENC-XCHG-RR ;
 
 : SLOTS ( n -- ) {: k:n :}
    k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
 
-: SLOT-STORE ( T0-EMIT:vreg n -- )
-   {: s:T0-EMIT:vreg k:n :}
+: SLOT-STORE ( vreg n -- )
+   {: s:vreg k:n :}
    s REG RSP k CELL * MEM-OFF SINK ENC-MOV-MR ;
 
-: SLOT-LOAD ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg k:n :}
+: SLOT-LOAD ( vreg n -- )
+   {: d:vreg k:n :}
    d REG RSP k CELL * MEM-OFF SINK ENC-MOV-RM ;
 
 \ ---- arithmetic --------------------------------------------------------------
-: OP ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:alu -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg o:T0-EMIT:alu :}
-   d REG {: dr:r64 :}  s REG {: sr:r64 :}  o T0-EMIT:ALU>N {: k:n :}
+: OP ( vreg vreg alu -- )
+   {: d:vreg s:vreg o:alu :}
+   d REG {: dr:r64 :}  s REG {: sr:r64 :}  o ALU>N {: k:n :}
    k 0 = if dr sr SINK ENC-ADD-RR exit then
    k 1 = if dr sr SINK ENC-SUB-RR exit then
    k 2 = if dr sr SINK ENC-AND-RR exit then
@@ -283,9 +285,9 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    k 4 = if dr sr SINK ENC-XOR-RR exit then
    E-OPERAND throw ;
 
-: OP-LIT ( T0-EMIT:vreg n T0-EMIT:alu -- )
-   {: d:T0-EMIT:vreg v:n o:T0-EMIT:alu :}
-   d REG {: dr:r64 :}  v >IMM32 {: iv:imm32 :}  o T0-EMIT:ALU>N {: k:n :}
+: OP-LIT ( vreg n alu -- )
+   {: d:vreg v:n o:alu :}
+   d REG {: dr:r64 :}  v >IMM32 {: iv:imm32 :}  o ALU>N {: k:n :}
    k 0 = if dr iv SINK ENC-ADD-RI32 exit then
    k 1 = if dr iv SINK ENC-SUB-RI32 exit then
    k 2 = if dr iv SINK ENC-AND-RI32 exit then
@@ -295,35 +297,35 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 \ A shift by a register takes its count in cl, and cl is vreg 0's low byte;
 \ the hardware masks the count to six bits. SHIFT-LIT masks its count here.
-: SHIFT-CL ( r64 T0-EMIT:shifter -- )
-   {: r:r64 o:T0-EMIT:shifter :}
-   o T0-EMIT:SHIFTER>N 0 = if r SINK ENC-SHL-CL exit then
+: SHIFT-CL ( r64 shifter -- )
+   {: r:r64 o:shifter :}
+   o SHIFTER>N 0 = if r SINK ENC-SHL-CL exit then
    r SINK ENC-SHR-CL ;
 
-: SHIFT ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:shifter -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg o:T0-EMIT:shifter :}
-   s T0-EMIT:VREG>N 0 = if d REG o SHIFT-CL exit then
+: SHIFT ( vreg vreg shifter -- )
+   {: d:vreg s:vreg o:shifter :}
+   s VREG>N 0 = if d REG o SHIFT-CL exit then
    RAX RCX SINK ENC-MOV-RR
    RCX s REG SINK ENC-MOV-RR
-   d T0-EMIT:VREG>N 0 = if
+   d VREG>N 0 = if
       RAX o SHIFT-CL
       RCX RAX SINK ENC-MOV-RR exit
    then
    d REG o SHIFT-CL
    RCX RAX SINK ENC-MOV-RR ;
 
-: SHIFT-LIT ( T0-EMIT:vreg n T0-EMIT:shifter -- )
-   {: d:T0-EMIT:vreg v:n o:T0-EMIT:shifter :}
+: SHIFT-LIT ( vreg n shifter -- )
+   {: d:vreg v:n o:shifter :}
    v 63 and >IMM8 {: c:imm8 :}
-   o T0-EMIT:SHIFTER>N 0 = if d REG c SINK ENC-SHL-RI8 exit then
+   o SHIFTER>N 0 = if d REG c SINK ENC-SHL-RI8 exit then
    d REG c SINK ENC-SHR-RI8 ;
 
-: MULX ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+: MULX ( vreg vreg -- )
+   {: d:vreg s:vreg :}
    d REG s REG SINK ENC-IMUL-RR ;
 
-: MUL-LIT ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg v:n :}
+: MUL-LIT ( vreg n -- )
+   {: d:vreg v:n :}
    d REG d REG v >IMM32 SINK ENC-IMUL-RRI32 ;
 
 \ idiv divides rdx:rax and writes rax and rdx, and rdx is a vreg, so it is
@@ -331,8 +333,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 \ the dividend is in rax; when d is rdx, which cqo writes, into rcx, saved
 \ instead. The saved register is the only one restored, so every vreg but d
 \ keeps its value.
-: DIVIDE ( T0-EMIT:vreg n bool -- )
-   {: d:T0-EMIT:vreg v:n rem:bool :}
+: DIVIDE ( vreg n bool -- )
+   {: d:vreg v:n rem:bool :}
    d REG {: dr:r64 :}
    dr R64>N RDX R64>N = {: in-rdx:bool :}
    in-rdx if RCX else dr then {: sr:r64 :}
@@ -346,128 +348,128 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    res R64>N dr R64>N <> if dr res SINK ENC-MOV-RR then
    saved SINK ENC-POP ;
 
-: DIV-LIT ( T0-EMIT:vreg n -- ) false DIVIDE ;
-: MOD-LIT ( T0-EMIT:vreg n -- ) true DIVIDE ;
+: DIV-LIT ( vreg n -- ) false DIVIDE ;
+: MOD-LIT ( vreg n -- ) true DIVIDE ;
 
-: NEG ( T0-EMIT:vreg -- ) REG SINK ENC-NEG ;
-: NOT ( T0-EMIT:vreg -- ) REG SINK ENC-NOT ;
+: NEG ( vreg -- ) REG SINK ENC-NEG ;
+: NOT ( vreg -- ) REG SINK ENC-NOT ;
 
-: SET-FLAG ( T0-EMIT:vreg T0-EMIT:cc -- )
-   {: d:T0-EMIT:vreg c:T0-EMIT:cc :}
+: SET-FLAG ( vreg cc -- )
+   {: d:vreg c:cc :}
    c COND 0 >R8 SINK ENC-SETCC
    d REG 0 >R8 SINK ENC-MOVZX-8-RR
    d REG SINK ENC-NEG ;
 
-: CMP ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+: CMP ( vreg vreg -- )
+   {: a:vreg b:vreg :}
    a REG b REG SINK ENC-CMP-RR ;
 
-: CMP-LIT ( T0-EMIT:vreg n -- )
-   {: a:T0-EMIT:vreg v:n :}
+: CMP-LIT ( vreg n -- )
+   {: a:vreg v:n :}
    a REG v >IMM32 SINK ENC-CMP-RI32 ;
 
 \ ---- memory ------------------------------------------------------------------
-: LOAD ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:width -- )
-   {: d:T0-EMIT:vreg a:T0-EMIT:vreg w:T0-EMIT:width :}
-   w T0-EMIT:WIDTH>N 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
+: LOAD ( vreg vreg width -- )
+   {: d:vreg a:vreg w:width :}
+   w WIDTH>N 1 = if d REG a REG MEM-AT SINK ENC-MOVZX-8-RM exit then
    d REG a REG MEM-AT SINK ENC-MOV-RM ;
 
 \ ---- calls -------------------------------------------------------------------
 : CALL ( n n -- ) {: to:n loc:n :}
-   HERE-OFF NEMIT:CALL to loc T0-EMIT:CALL-ROW+
+   HERE-OFF NEMIT:CALL to loc EMIT-CALL-ROW+
    0 >REL SINK ENC-CALL-REL32 ;
 
 : TAIL ( n n -- ) {: to:n loc:n :}
    UNFRAME
-   HERE-OFF NEMIT:TAIL to loc T0-EMIT:CALL-ROW+
+   HERE-OFF NEMIT:TAIL to loc EMIT-CALL-ROW+
    0 >REL SINK ENC-JMP-REL32 ;
 
 : CALL-SELF ( -- )
    0 HERE-OFF 5 + - >REL SINK ENC-CALL-REL32 ;
 
 \ ---- control -----------------------------------------------------------------
-\ The branch primitives T0-LABEL emits through. A forward branch is the offset
+\ The branch primitives LABEL emits through. A forward branch is the offset
 \ of its rel32 field, waiting for its target, and a head is an offset.
 
-: RESOLVE ( T0-LABEL:branch -- ) T0-LABEL:BRANCH>N {: at:n :}
+: RESOLVE ( LABEL:branch -- ) LABEL:BRANCH>N {: at:n :}
    HERE-OFF at 4 + - at 4 PUT ;
 
-: MARK ( -- T0-LABEL:head ) HERE-OFF T0-LABEL:>HEAD ;
+: MARK ( -- LABEL:head ) HERE-OFF LABEL:>HEAD ;
 
-: FWD-JUMP ( -- T0-LABEL:branch )
+: FWD-JUMP ( -- LABEL:branch )
    0 >REL SINK ENC-JMP-REL32  FWD-SITE ;
 
-: FWD-JCC ( condition -- T0-LABEL:branch ) {: c:condition :}
+: FWD-JCC ( condition -- LABEL:branch ) {: c:condition :}
    c 0 >REL SINK ENC-JCC-REL32  FWD-SITE ;
 
-: TEST ( T0-EMIT:vreg -- )
-   {: c:T0-EMIT:vreg :}
+: TEST ( vreg -- )
+   {: c:vreg :}
    c REG c REG SINK ENC-TEST-RR ;
 
-: FWD-ZERO ( T0-EMIT:vreg -- T0-LABEL:branch ) TEST C-E FWD-JCC ;
+: FWD-ZERO ( vreg -- LABEL:branch ) TEST C-E FWD-JCC ;
 
-: FWD-NE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )
-   {: sel:T0-EMIT:vreg v:T0-EMIT:vreg :}
+: FWD-NE ( vreg vreg -- LABEL:branch )
+   {: sel:vreg v:vreg :}
    sel REG v REG SINK ENC-CMP-RR
    C-NE FWD-JCC ;
 
-: FWD-NE-LIT ( T0-EMIT:vreg n -- T0-LABEL:branch )
-   {: sel:T0-EMIT:vreg v:n :}
+: FWD-NE-LIT ( vreg n -- LABEL:branch )
+   {: sel:vreg v:n :}
    sel v CMP-LIT
    C-NE FWD-JCC ;
 
-: FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )
-   {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
+: FWD-GE ( vreg vreg -- LABEL:branch )
+   {: s:vreg l:vreg :}
    s REG l REG SINK ENC-CMP-RR
    C-GE FWD-JCC ;
 
-: FWD-CC ( T0-EMIT:cc -- T0-LABEL:branch ) COND FWD-JCC ;
+: FWD-CC ( cc -- LABEL:branch ) COND FWD-JCC ;
 
 \ The branch's jcc becomes je: its opcode byte is just before the field.
-: ENTRY-EQ ( T0-LABEL:branch -- ) T0-LABEL:BRANCH>N {: at:n :}
+: ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: at:n :}
    C-E CONDITION>N $80 +  SINK BUF:SPAN$ drop at 1 - + c! ;
 
 \ A backward rel is measured from the end of the instruction, five bytes for
 \ jmp rel32 and six for jcc rel32.
-: BACK-JUMP ( T0-LABEL:head -- ) T0-LABEL:HEAD>N {: m:n :}
+: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N {: m:n :}
    m 5 - REL-TO SINK ENC-JMP-REL32 ;
 
-: BACK-JCC ( condition T0-LABEL:head -- )
-   T0-LABEL:HEAD>N {: c:condition m:n :}
+: BACK-JCC ( condition LABEL:head -- )
+   LABEL:HEAD>N {: c:condition m:n :}
    c m 6 - REL-TO SINK ENC-JCC-REL32 ;
 
-: BACK-ZERO ( T0-EMIT:vreg T0-LABEL:head -- )
-   {: c:T0-EMIT:vreg m:T0-LABEL:head :}
+: BACK-ZERO ( vreg LABEL:head -- )
+   {: c:vreg m:LABEL:head :}
    c TEST C-E m BACK-JCC ;
 
-: BACK-CC ( T0-EMIT:cc T0-LABEL:head -- )
-   {: c:T0-EMIT:cc m:T0-LABEL:head :}
+: BACK-CC ( cc LABEL:head -- )
+   {: c:cc m:LABEL:head :}
    c COND m BACK-JCC ;
 
 \ ---- the return stack --------------------------------------------------------
 \ Each goes through rax. Vreg i of p moved to or from the slot off bytes above
 \ rax.
-: RS-XFER ( ptr T0-EMIT:vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
-   p i T0-EMIT:VREG-AT REG RAX off MEM-OFF SINK
+: RS-XFER ( ptr vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
+   p i VREG-AT REG RAX off MEM-OFF SINK
    st if ENC-MOV-MR exit then ENC-MOV-RM ;
 
 : RDEPTH+ ( n -- ) {: k:n :} RAX RAX k MEM-OFF SINK ENC-LEA ;
 
-: TOR ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
+: TOR ( ptr vreg n -- ) {: p:ptr n:n :}
    RAX RDEPTH
    n RDEPTH+
    RAX RDEPTH!
    RAX RTOP
    n 0 ?do p i i n - CELL * true RS-XFER loop ;
 
-: RFROM ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
+: RFROM ( ptr vreg n -- ) {: p:ptr n:n :}
    RAX RDEPTH
    n negate RDEPTH+
    RAX RDEPTH!
    RAX RTOP
    n 0 ?do p i i CELL * false RS-XFER loop ;
 
-: RFETCH ( ptr T0-EMIT:vreg n n -- ) {: p:ptr n:n k:n :}
+: RFETCH ( ptr vreg n n -- ) {: p:ptr n:n k:n :}
    RAX RDEPTH
    RAX RTOP
    n 0 ?do p i i n - k - CELL * false RS-XFER loop ;
@@ -490,16 +492,16 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 -8 constant LLIM-OFF
 
 \ The index of the frame k levels out of the innermost into d.
-: LINDEX ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg k:n :}
+: LINDEX ( vreg n -- )
+   {: d:vreg k:n :}
    d REG {: r:r64 :}
    r LDEPTH
    r LTOP
    r r LIDX-OFF k 16 * - MEM-OFF SINK ENC-MOV-RM ;
 
 
-: LOOP-PUSH ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
+: LOOP-PUSH ( vreg vreg -- )
+   {: s:vreg l:vreg :}
    RAX LDEPTH
    RAX SINK ENC-INC
    RAX LDEPTH!
@@ -512,11 +514,11 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    RAX SINK ENC-DEC
    RAX LDEPTH! ;
 
-: LOOP-I ( T0-EMIT:vreg -- ) 0 LINDEX ;
-: LOOP-J ( T0-EMIT:vreg -- ) 1 LINDEX ;
+: LOOP-I ( vreg -- ) 0 LINDEX ;
+: LOOP-J ( vreg -- ) 1 LINDEX ;
 
-: LOOP-NEXT ( T0-EMIT:vreg T0-LABEL:head -- )
-   {: t:T0-EMIT:vreg m:T0-LABEL:head :}
+: LOOP-NEXT ( vreg LABEL:head -- )
+   {: t:vreg m:LABEL:head :}
    t REG {: r:r64 :}
    RAX LDEPTH
    RAX LTOP
@@ -528,8 +530,8 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
 
 \ With old = index - limit before the step, the index crossed the boundary
 \ when (old xor old + s) and (old xor s) is negative.
-: LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg T0-LABEL:head -- )
-   {: s:T0-EMIT:vreg t:T0-EMIT:vreg m:T0-LABEL:head :}
+: LOOP-STEP ( vreg vreg LABEL:head -- )
+   {: s:vreg t:vreg m:LABEL:head :}
    s REG {: sr:r64 :}  t REG {: r:r64 :}
    RAX LDEPTH
    RAX LTOP
@@ -544,98 +546,99 @@ DYNAMIC-BUFFER UNIT-REF n             \ the address site that names each unit
    C-NS m BACK-JCC ;
 
 \ ---- the seam ----------------------------------------------------------------
-\ Make this file's words, and T0-LABEL's over its branch primitives, the ones
-\ T0-EMIT runs at slot k.
-: INSTALL ( n -- )
+\ Make this file's words, and LABEL's over its branch primitives, the ones the
+\ EMIT- operations run at slot k.
+: FILL-SLOT ( n -- )
    {: k:n :}
-   NVREG k T0-EMIT:VREGS-N !
-   ['] OPEN k T0-EMIT:OPEN-XT !
-   ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
-   ['] UNIT-OPEN k T0-EMIT:UNIT-OPEN-XT !
-   ['] RETURN k T0-EMIT:RETURN-XT !
-   ['] CLOSE k T0-EMIT:CLOSE-XT !
-   ['] SLOT-CLOSE k T0-EMIT:SLOT-CLOSE-XT !
-   ['] CB-STUB k T0-EMIT:CB-STUB-XT !
-   ['] BYTES k T0-EMIT:BYTES-XT !
-   ['] PATCH k T0-EMIT:PATCH-XT !
-   ['] LIT k T0-EMIT:LIT-XT !
-   ['] ADDR-DATA k T0-EMIT:ADDR-DATA-XT !
-   ['] ADDR-CODE k T0-EMIT:ADDR-CODE-XT !
-   ['] ADDR-QUOT k T0-EMIT:ADDR-QUOT-XT !
-   ['] PUSH k T0-EMIT:PUSH-XT !
-   ['] PUSH-LIT k T0-EMIT:PUSH-LIT-XT !
-   ['] POP k T0-EMIT:POP-XT !
-   ['] SPILL k T0-EMIT:SPILL-XT !
-   ['] SPILL-LIT k T0-EMIT:SPILL-LIT-XT !
-   ['] FILL k T0-EMIT:FILL-XT !
-   ['] DSP+ k T0-EMIT:DSP+-XT !
-   ['] MOV k T0-EMIT:MOV-XT !
-   ['] EXCHANGE k T0-EMIT:EXCHANGE-XT !
-   ['] SLOTS k T0-EMIT:SLOTS-XT !
-   ['] SLOT-STORE k T0-EMIT:SLOT-STORE-XT !
-   ['] SLOT-LOAD k T0-EMIT:SLOT-LOAD-XT !
-   ['] OP k T0-EMIT:OP-XT !
-   ['] OP-LIT k T0-EMIT:OP-LIT-XT !
-   ['] SHIFT k T0-EMIT:SHIFT-XT !
-   ['] SHIFT-LIT k T0-EMIT:SHIFT-LIT-XT !
-   ['] MULX k T0-EMIT:MULX-XT !
-   ['] MUL-LIT k T0-EMIT:MUL-LIT-XT !
-   ['] DIV-LIT k T0-EMIT:DIV-LIT-XT !
-   ['] MOD-LIT k T0-EMIT:MOD-LIT-XT !
-   ['] NEG k T0-EMIT:NEG-XT !
-   ['] NOT k T0-EMIT:NOT-XT !
-   ['] CMP k T0-EMIT:CMP-XT !
-   ['] CMP-LIT k T0-EMIT:CMP-LIT-XT !
-   ['] SET-FLAG k T0-EMIT:SET-FLAG-XT !
-   ['] LOAD k T0-EMIT:LOAD-XT !
-   ['] CALL k T0-EMIT:CALL-XT !
-   ['] TAIL k T0-EMIT:TAIL-XT !
-   ['] CALL-SELF k T0-EMIT:CALL-SELF-XT !
-   ['] T0-LABEL:IF, k T0-EMIT:IF,-XT !
-   ['] T0-LABEL:ELSE, k T0-EMIT:ELSE,-XT !
-   ['] T0-LABEL:THEN, k T0-EMIT:THEN,-XT !
-   ['] T0-LABEL:BEGIN, k T0-EMIT:BEGIN,-XT !
-   ['] T0-LABEL:WHILE, k T0-EMIT:WHILE,-XT !
-   ['] T0-LABEL:REPEAT, k T0-EMIT:REPEAT,-XT !
-   ['] T0-LABEL:UNTIL, k T0-EMIT:UNTIL,-XT !
-   ['] T0-LABEL:IF-CC, k T0-EMIT:IF-CC,-XT !
-   ['] T0-LABEL:WHILE-CC, k T0-EMIT:WHILE-CC,-XT !
-   ['] T0-LABEL:UNTIL-CC, k T0-EMIT:UNTIL-CC,-XT !
-   ['] T0-LABEL:AGAIN, k T0-EMIT:AGAIN,-XT !
-   ['] T0-LABEL:CASE, k T0-EMIT:CASE,-XT !
-   ['] T0-LABEL:OF, k T0-EMIT:OF,-XT !
-   ['] T0-LABEL:OF-LIT k T0-EMIT:OF-LIT-XT !
-   ['] T0-LABEL:ENDOF, k T0-EMIT:ENDOF,-XT !
-   ['] T0-LABEL:ENDCASE, k T0-EMIT:ENDCASE,-XT !
-   ['] TOR k T0-EMIT:TOR-XT !
-   ['] RFROM k T0-EMIT:RFROM-XT !
-   ['] RFETCH k T0-EMIT:RFETCH-XT !
-   ['] LOOP-PUSH k T0-EMIT:LOOP-PUSH-XT !
-   ['] LOOP-POP k T0-EMIT:LOOP-POP-XT !
-   ['] LOOP-I k T0-EMIT:LOOP-I-XT !
-   ['] LOOP-J k T0-EMIT:LOOP-J-XT !
-   ['] T0-LABEL:LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
-   ['] T0-LABEL:LEAVE, k T0-EMIT:LEAVE,-XT !
-   ['] T0-LABEL:LOOP-NEXT k T0-EMIT:LOOP-NEXT-XT !
-   ['] T0-LABEL:LOOP-STEP k T0-EMIT:LOOP-STEP-XT !
-   ['] T0-LABEL:LOOP-CLOSE k T0-EMIT:LOOP-CLOSE-XT !
-   ['] IMM? k T0-EMIT:IMM?-XT !
-   ['] MARK k T0-LABEL:MARK-XT !
-   ['] FWD-JUMP k T0-LABEL:FWD-JUMP-XT !
-   ['] FWD-ZERO k T0-LABEL:FWD-ZERO-XT !
-   ['] FWD-NE k T0-LABEL:FWD-NE-XT !
-   ['] FWD-NE-LIT k T0-LABEL:FWD-NE-LIT-XT !
-   ['] FWD-GE k T0-LABEL:FWD-GE-XT !
-   ['] FWD-CC k T0-LABEL:FWD-CC-XT !
-   ['] BACK-JUMP k T0-LABEL:BACK-JUMP-XT !
-   ['] BACK-ZERO k T0-LABEL:BACK-ZERO-XT !
-   ['] BACK-CC k T0-LABEL:BACK-CC-XT !
-   ['] RESOLVE k T0-LABEL:RESOLVE-XT !
-   ['] ENTRY-EQ k T0-LABEL:ENTRY-EQ-XT !
-   ['] LOOP-NEXT k T0-LABEL:LOOP-NEXT-XT !
-   ['] LOOP-STEP k T0-LABEL:LOOP-STEP-XT ! ;
+   NVREG k EMIT-VREGS-N !
+   ['] OPEN k EMIT-OPEN-XT !
+   ['] QUOT-OPEN k EMIT-QUOT-OPEN-XT !
+   ['] UNIT-OPEN k EMIT-UNIT-OPEN-XT !
+   ['] RETURN k EMIT-RETURN-XT !
+   ['] CLOSE k EMIT-CLOSE-XT !
+   ['] SLOT-CLOSE k EMIT-SLOT-CLOSE-XT !
+   ['] CB-STUB k EMIT-CB-STUB-XT !
+   ['] BYTES k EMIT-BYTES-XT !
+   ['] PATCH k EMIT-PATCH-XT !
+   ['] LIT k EMIT-LIT-XT !
+   ['] ADDR-DATA k EMIT-ADDR-DATA-XT !
+   ['] ADDR-CODE k EMIT-ADDR-CODE-XT !
+   ['] ADDR-QUOT k EMIT-ADDR-QUOT-XT !
+   ['] PUSH k EMIT-PUSH-XT !
+   ['] PUSH-LIT k EMIT-PUSH-LIT-XT !
+   ['] POP k EMIT-POP-XT !
+   ['] SPILL k EMIT-SPILL-XT !
+   ['] SPILL-LIT k EMIT-SPILL-LIT-XT !
+   ['] FILL k EMIT-FILL-XT !
+   ['] DSP+ k EMIT-DSP+-XT !
+   ['] MOV k EMIT-MOV-XT !
+   ['] EXCHANGE k EMIT-EXCHANGE-XT !
+   ['] SLOTS k EMIT-SLOTS-XT !
+   ['] SLOT-STORE k EMIT-SLOT-STORE-XT !
+   ['] SLOT-LOAD k EMIT-SLOT-LOAD-XT !
+   ['] OP k EMIT-OP-XT !
+   ['] OP-LIT k EMIT-OP-LIT-XT !
+   ['] SHIFT k EMIT-SHIFT-XT !
+   ['] SHIFT-LIT k EMIT-SHIFT-LIT-XT !
+   ['] MULX k EMIT-MULX-XT !
+   ['] MUL-LIT k EMIT-MUL-LIT-XT !
+   ['] DIV-LIT k EMIT-DIV-LIT-XT !
+   ['] MOD-LIT k EMIT-MOD-LIT-XT !
+   ['] NEG k EMIT-NEG-XT !
+   ['] NOT k EMIT-NOT-XT !
+   ['] CMP k EMIT-CMP-XT !
+   ['] CMP-LIT k EMIT-CMP-LIT-XT !
+   ['] SET-FLAG k EMIT-SET-FLAG-XT !
+   ['] LOAD k EMIT-LOAD-XT !
+   ['] CALL k EMIT-CALL-XT !
+   ['] TAIL k EMIT-TAIL-XT !
+   ['] CALL-SELF k EMIT-CALL-SELF-XT !
+   ['] LABEL:IF, k EMIT-IF,-XT !
+   ['] LABEL:ELSE, k EMIT-ELSE,-XT !
+   ['] LABEL:THEN, k EMIT-THEN,-XT !
+   ['] LABEL:BEGIN, k EMIT-BEGIN,-XT !
+   ['] LABEL:WHILE, k EMIT-WHILE,-XT !
+   ['] LABEL:REPEAT, k EMIT-REPEAT,-XT !
+   ['] LABEL:UNTIL, k EMIT-UNTIL,-XT !
+   ['] LABEL:IF-CC, k EMIT-IF-CC,-XT !
+   ['] LABEL:WHILE-CC, k EMIT-WHILE-CC,-XT !
+   ['] LABEL:UNTIL-CC, k EMIT-UNTIL-CC,-XT !
+   ['] LABEL:AGAIN, k EMIT-AGAIN,-XT !
+   ['] LABEL:CASE, k EMIT-CASE,-XT !
+   ['] LABEL:OF, k EMIT-OF,-XT !
+   ['] LABEL:OF-LIT k EMIT-OF-LIT-XT !
+   ['] LABEL:ENDOF, k EMIT-ENDOF,-XT !
+   ['] LABEL:ENDCASE, k EMIT-ENDCASE,-XT !
+   ['] TOR k EMIT-TOR-XT !
+   ['] RFROM k EMIT-RFROM-XT !
+   ['] RFETCH k EMIT-RFETCH-XT !
+   ['] LOOP-PUSH k EMIT-LOOP-PUSH-XT !
+   ['] LOOP-POP k EMIT-LOOP-POP-XT !
+   ['] LOOP-I k EMIT-LOOP-I-XT !
+   ['] LOOP-J k EMIT-LOOP-J-XT !
+   ['] LABEL:LOOP-OPEN k EMIT-LOOP-OPEN-XT !
+   ['] LABEL:LEAVE, k EMIT-LEAVE,-XT !
+   ['] LABEL:LOOP-NEXT k EMIT-LOOP-NEXT-XT !
+   ['] LABEL:LOOP-STEP k EMIT-LOOP-STEP-XT !
+   ['] LABEL:LOOP-CLOSE k EMIT-LOOP-CLOSE-XT !
+   ['] IMM? k EMIT-IMM?-XT !
+   ['] MARK k LABEL:MARK-XT !
+   ['] FWD-JUMP k LABEL:FWD-JUMP-XT !
+   ['] FWD-ZERO k LABEL:FWD-ZERO-XT !
+   ['] FWD-NE k LABEL:FWD-NE-XT !
+   ['] FWD-NE-LIT k LABEL:FWD-NE-LIT-XT !
+   ['] FWD-GE k LABEL:FWD-GE-XT !
+   ['] FWD-CC k LABEL:FWD-CC-XT !
+   ['] BACK-JUMP k LABEL:BACK-JUMP-XT !
+   ['] BACK-ZERO k LABEL:BACK-ZERO-XT !
+   ['] BACK-CC k LABEL:BACK-CC-XT !
+   ['] RESOLVE k LABEL:RESOLVE-XT !
+   ['] ENTRY-EQ k LABEL:ENTRY-EQ-XT !
+   ['] LOOP-NEXT k LABEL:LOOP-NEXT-XT !
+   ['] LOOP-STEP k LABEL:LOOP-STEP-XT ! ;
 
-CTARGET-ARCH:X86-64 ' INSTALL T0-EMIT:PROVIDE
+CTARGET-ARCH:X86-64 ' FILL-SLOT EMIT-PROVIDE
 
 ;using
+;package
 ;package

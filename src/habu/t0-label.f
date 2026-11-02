@@ -1,16 +1,18 @@
-\ t0-label.f - the control labels of the tier 0 compiler, package T0-LABEL.
+\ t0-label.f - the control labels of the tier 0 compiler, part LABEL of
+\ package COMP.
 \
 \ Keeps the open structures, loop levels and `leave` exits once for every
 \ target that branches by label (src/habu/t0-emit.f CONTROL). An emitter file
 \ (src/habu/t0-x64.f, src/habu/t0-arm64.f) implements the branch primitives
-\ below; its INSTALL stores them in its architecture's slot of each cell, and
+\ below; its FILL-SLOT stores them in its architecture's slot of each cell, and
 \ this file's structure words in the seam's control and loop cells.
 \ A branch is the number a forward primitive answers, read back only by RESOLVE
 \ and ENTRY-EQ; a head is an offset MARK answered. Comparisons are signed.
 
 require src/habu/t0-emit.f
 
-package T0-LABEL
+package COMP
+package LABEL
 public
 
 DEFTYPE BRANCH
@@ -19,43 +21,43 @@ DEFTYPE HEAD
 \ ---- the branch primitives ---------------------------------------------------
 \ MARK answers the head here. FWD-JUMP branches forward always, FWD-ZERO when
 \ the vreg is zero, FWD-NE when the two vregs differ, FWD-NE-LIT when the vreg
-\ differs from n (which answers T0-EMIT:IMM? true), FWD-GE when the first vreg
+\ differs from n (which answers EMIT-IMM? true), FWD-GE when the first vreg
 \ is at least the second; each answers the branch, which RESOLVE lands here.
 \ FWD-CC branches forward when condition c of the last compare holds.
 \ BACK-JUMP branches to the head always, BACK-ZERO when the vreg is zero and
 \ BACK-CC when condition c of the last compare holds.
 \ ENTRY-EQ makes a FWD-GE branch on equal operands only. LOOP-NEXT and
-\ LOOP-STEP are T0-EMIT:LOOP-NEXT and T0-EMIT:LOOP-STEP to the head, without
+\ LOOP-STEP are EMIT-LOOP-NEXT and EMIT-LOOP-STEP to the head, without
 \ the entry.
-T0-EMIT:ARCHES TYPED-BUFFER MARK-XT [ -- head ]
-T0-EMIT:ARCHES TYPED-BUFFER FWD-JUMP-XT [ -- branch ]
-T0-EMIT:ARCHES TYPED-BUFFER FWD-ZERO-XT [ T0-EMIT:vreg -- branch ]
-T0-EMIT:ARCHES TYPED-BUFFER FWD-NE-XT [ T0-EMIT:vreg T0-EMIT:vreg -- branch ]
-T0-EMIT:ARCHES TYPED-BUFFER FWD-NE-LIT-XT [ T0-EMIT:vreg n -- branch ]
-T0-EMIT:ARCHES TYPED-BUFFER FWD-GE-XT [ T0-EMIT:vreg T0-EMIT:vreg -- branch ]
-T0-EMIT:ARCHES TYPED-BUFFER FWD-CC-XT [ T0-EMIT:cc -- branch ]
-T0-EMIT:ARCHES TYPED-BUFFER BACK-JUMP-XT [ head -- ]
-T0-EMIT:ARCHES TYPED-BUFFER BACK-ZERO-XT [ T0-EMIT:vreg head -- ]
-T0-EMIT:ARCHES TYPED-BUFFER BACK-CC-XT [ T0-EMIT:cc head -- ]
-T0-EMIT:ARCHES TYPED-BUFFER RESOLVE-XT [ branch -- ]
-T0-EMIT:ARCHES TYPED-BUFFER ENTRY-EQ-XT [ branch -- ]
-T0-EMIT:ARCHES TYPED-BUFFER LOOP-NEXT-XT [ T0-EMIT:vreg head -- ]
-T0-EMIT:ARCHES TYPED-BUFFER LOOP-STEP-XT [ T0-EMIT:vreg T0-EMIT:vreg head -- ]
+ARCHES TYPED-BUFFER MARK-XT [ -- head ]
+ARCHES TYPED-BUFFER FWD-JUMP-XT [ -- branch ]
+ARCHES TYPED-BUFFER FWD-ZERO-XT [ vreg -- branch ]
+ARCHES TYPED-BUFFER FWD-NE-XT [ vreg vreg -- branch ]
+ARCHES TYPED-BUFFER FWD-NE-LIT-XT [ vreg n -- branch ]
+ARCHES TYPED-BUFFER FWD-GE-XT [ vreg vreg -- branch ]
+ARCHES TYPED-BUFFER FWD-CC-XT [ cc -- branch ]
+ARCHES TYPED-BUFFER BACK-JUMP-XT [ head -- ]
+ARCHES TYPED-BUFFER BACK-ZERO-XT [ vreg head -- ]
+ARCHES TYPED-BUFFER BACK-CC-XT [ cc head -- ]
+ARCHES TYPED-BUFFER RESOLVE-XT [ branch -- ]
+ARCHES TYPED-BUFFER ENTRY-EQ-XT [ branch -- ]
+ARCHES TYPED-BUFFER LOOP-NEXT-XT [ vreg head -- ]
+ARCHES TYPED-BUFFER LOOP-STEP-XT [ vreg vreg head -- ]
 
 private
 
-: SLOT ( -- n ) T0-EMIT:SELECTED ;
+: SLOT ( -- n ) EMIT-SELECTED ;
 
 : MARK ( -- head ) SLOT MARK-XT @ execute ;
 : FWD-JUMP ( -- branch ) SLOT FWD-JUMP-XT @ execute ;
-: FWD-ZERO ( T0-EMIT:vreg -- branch ) SLOT FWD-ZERO-XT @ execute ;
-: FWD-NE ( T0-EMIT:vreg T0-EMIT:vreg -- branch ) SLOT FWD-NE-XT @ execute ;
-: FWD-NE-LIT ( T0-EMIT:vreg n -- branch ) SLOT FWD-NE-LIT-XT @ execute ;
-: FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- branch ) SLOT FWD-GE-XT @ execute ;
-: FWD-CC ( T0-EMIT:cc -- branch ) SLOT FWD-CC-XT @ execute ;
+: FWD-ZERO ( vreg -- branch ) SLOT FWD-ZERO-XT @ execute ;
+: FWD-NE ( vreg vreg -- branch ) SLOT FWD-NE-XT @ execute ;
+: FWD-NE-LIT ( vreg n -- branch ) SLOT FWD-NE-LIT-XT @ execute ;
+: FWD-GE ( vreg vreg -- branch ) SLOT FWD-GE-XT @ execute ;
+: FWD-CC ( cc -- branch ) SLOT FWD-CC-XT @ execute ;
 : BACK-JUMP ( head -- ) SLOT BACK-JUMP-XT @ execute ;
-: BACK-ZERO ( T0-EMIT:vreg head -- ) SLOT BACK-ZERO-XT @ execute ;
-: BACK-CC ( T0-EMIT:cc head -- ) SLOT BACK-CC-XT @ execute ;
+: BACK-ZERO ( vreg head -- ) SLOT BACK-ZERO-XT @ execute ;
+: BACK-CC ( cc head -- ) SLOT BACK-CC-XT @ execute ;
 : RESOLVE ( branch -- ) SLOT RESOLVE-XT @ execute ;
 : ENTRY-EQ ( branch -- ) SLOT ENTRY-EQ-XT @ execute ;
 
@@ -101,9 +103,9 @@ public
 : RESET ( -- ) 0 CF-N !  0 LV-N !  0 LEAVE-N ! ;
 
 \ ---- control -----------------------------------------------------------------
-: IF, ( T0-EMIT:vreg -- ) FWD-ZERO BRANCH>N AT+ ;
+: IF, ( vreg -- ) FWD-ZERO BRANCH>N AT+ ;
 
-: IF-CC, ( T0-EMIT:cc -- ) T0-EMIT:CC-NOT FWD-CC BRANCH>N AT+ ;
+: IF-CC, ( cc -- ) CC-NOT FWD-CC BRANCH>N AT+ ;
 
 : ELSE, ( -- ) FWD-JUMP CF-POP >BRANCH RESOLVE BRANCH>N AT+ ;
 
@@ -111,31 +113,31 @@ public
 
 : BEGIN, ( -- ) MARK HEAD>N AT+ ;
 
-: WHILE, ( T0-EMIT:vreg -- )
+: WHILE, ( vreg -- )
    FWD-ZERO {: s:branch :}
    CF-POP {: m:n :}
    s BRANCH>N AT+
    m AT+ ;
 
-: WHILE-CC, ( T0-EMIT:cc -- )
-   T0-EMIT:CC-NOT FWD-CC {: s:branch :}
+: WHILE-CC, ( cc -- )
+   CC-NOT FWD-CC {: s:branch :}
    CF-POP {: m:n :}
    s BRANCH>N AT+
    m AT+ ;
 
 : REPEAT, ( -- ) CF-POP >HEAD BACK-JUMP CF-POP >BRANCH RESOLVE ;
 
-: UNTIL, ( T0-EMIT:vreg -- ) CF-POP >HEAD BACK-ZERO ;
+: UNTIL, ( vreg -- ) CF-POP >HEAD BACK-ZERO ;
 
-: UNTIL-CC, ( T0-EMIT:cc -- ) T0-EMIT:CC-NOT CF-POP >HEAD BACK-CC ;
+: UNTIL-CC, ( cc -- ) CC-NOT CF-POP >HEAD BACK-CC ;
 
 : AGAIN, ( -- ) CF-POP >HEAD BACK-JUMP ;
 
 : CASE, ( -- ) CASE-START 0 CF-PUSH ;
 
-: OF, ( T0-EMIT:vreg T0-EMIT:vreg -- ) FWD-NE BRANCH>N AT+ ;
+: OF, ( vreg vreg -- ) FWD-NE BRANCH>N AT+ ;
 
-: OF-LIT ( T0-EMIT:vreg n -- ) FWD-NE-LIT BRANCH>N AT+ ;
+: OF-LIT ( vreg n -- ) FWD-NE-LIT BRANCH>N AT+ ;
 
 : ENDOF, ( -- ) ELSE, ;
 
@@ -144,8 +146,8 @@ public
    CF-POP drop ;
 
 \ ---- loops -------------------------------------------------------------------
-: LOOP-OPEN ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
-   {: s:T0-EMIT:vreg l:T0-EMIT:vreg entry:bool :}
+: LOOP-OPEN ( vreg vreg bool -- )
+   {: s:vreg l:vreg entry:bool :}
    entry if s l FWD-GE BRANCH>N else -1 then {: at:n :}
    LV-N @ {: k:n :}
    k 1 + LV-HEAD-RESERVE  k 1 + LV-ENTRY-RESERVE  k 1 + LV-FIRST-RESERVE
@@ -160,10 +162,10 @@ public
    FWD-JUMP n LEAVES !
    n 1 + LEAVE-N ! ;
 
-: LOOP-NEXT ( T0-EMIT:vreg -- ) HEAD SLOT LOOP-NEXT-XT @ execute ;
+: LOOP-NEXT ( vreg -- ) HEAD SLOT LOOP-NEXT-XT @ execute ;
 
 \ Under `+loop` the `?do` entry skips equal bounds only: a step may count down.
-: LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg -- )
+: LOOP-STEP ( vreg vreg -- )
    HEAD SLOT LOOP-STEP-XT @ execute
    LV LV-ENTRY @ {: at:n :}
    at 0 >= if at >BRANCH ENTRY-EQ then ;
@@ -175,6 +177,7 @@ public
    at 0 >= if at >BRANCH RESOLVE then
    k LV-FIRST @ LEAVE-N !
    k LV-N !
-   T0-EMIT:LOOP-POP ;
+   EMIT-LOOP-POP ;
 
+;package
 ;package

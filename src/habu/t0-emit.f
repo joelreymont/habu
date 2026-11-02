@@ -1,31 +1,30 @@
-\ t0-emit.f - the emitter seam of the tier 0 compiler, package T0-EMIT.
+\ t0-emit.f - the emitter seam of the tier 0 compiler, package COMP.
 \
-\ src/habu/t0.f (T0) drives the operations below; an emitter file per target
-\ implements them (src/habu/t0-x64.f, src/habu/t0-arm64.f). The front end
-\ names values by vreg (0..VREGS-1), never by machine register, so the types,
-\ constants and rules here hold on every target.
+\ src/habu/t0.f drives the EMIT- operations below; an emitter part per target
+\ implements them (ARM64 in src/habu/t0-arm64.f, X86-64 in src/habu/t0-x64.f).
+\ The front end names values by vreg (0 .. EMIT-VREGS - 1), never by machine
+\ register, so the types, constants and rules here hold on every target.
 
 require src/lib/type/deftype.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
 require src/compiler/native/callback-stub.f
 
-package T0-EMIT
-public
+package COMP
 
 \ Tier 0 emitter seam: -9590..-9599, the block src/lib/errors.f names.
 -9590 constant E-FIRST
 -9599 constant E-LAST
--9590 constant E-T0-TARGET   \ SELECT of an architecture no emitter provided
--9591 constant E-T0-UNIT     \ QUOT-OPEN of a unit other than the next one
+-9590 constant E-T0-TARGET   \ EMIT-SELECT of an architecture with no emitter
+-9591 constant E-T0-UNIT     \ EMIT-QUOT-OPEN of a unit other than the next one
 -9592 constant E-T0-UNFILLED \ an operation the selected emitter does not provide
 -9593 constant E-T0-SLOT     \ code after the does> patch slot
 
-DEFTYPE VREG       \ a virtual register, 0 .. VREGS-1
-DEFTYPE ALU        \ a two-operand operation OP applies
-DEFTYPE SHIFTER    \ a shift SHIFT applies
-DEFTYPE CC         \ a condition SET-FLAG reads from the last compare
-DEFTYPE WIDTH      \ the width LOAD moves
+DEFTYPE VREG       \ a virtual register, 0 .. EMIT-VREGS - 1
+DEFTYPE ALU        \ a two-operand operation EMIT-OP applies
+DEFTYPE SHIFTER    \ a shift EMIT-SHIFT applies
+DEFTYPE CC         \ a condition EMIT-SET-FLAG reads from the last compare
+DEFTYPE WIDTH      \ the width EMIT-LOAD moves
 
 : OP-ADD ( -- alu ) 0 >ALU ;
 : OP-SUB ( -- alu ) 1 >ALU ;
@@ -67,11 +66,9 @@ NEMIT:ADDR-KIND-MAX 1+ constant ADDR-QUOT-KIND
 \ ---- the architectures -------------------------------------------------------
 7 constant ARCHES
 
-private
-
 ARCHES TYPED-BUFFER INSTALLED bool
 
-: SLOT ( CTARGET:arch -- n )
+: ARCH>INDEX ( CTARGET:arch -- n )
    MATCH CTARGET:arch
       aarch64 OF 0 ENDOF
       ptx     OF 1 ENDOF
@@ -82,29 +79,25 @@ ARCHES TYPED-BUFFER INSTALLED bool
       wasm    OF 6 ENDOF
    ;MATCH ;
 
-\ The selected architecture's slot; -1, no slot, until SELECT.
+\ The selected architecture's slot; -1, no slot, until EMIT-SELECT.
 variable CUR
 -1 CUR !
 TYPED-VARIABLE CUR-ARCH CTARGET:arch  \ and the architecture itself
 
-public
-
 \ The selected slot, for a layer that keeps per-architecture cells of its own
 \ (src/habu/t0-label.f).
-: SELECTED ( -- n ) CUR @ ;
-
-private
+: EMIT-SELECTED ( -- n ) CUR @ ;
 
 \ ---- the rows ----------------------------------------------------------------
-\ THE ROWS. CALL-ROW+ files a call or tail site ( at kind target loc ), kind
-\ NEMIT:CALL or NEMIT:TAIL, loc the calling token's byte offset in the body
-\ text. ADDR-ROW+ files an address site ( at kind target origin ), kind
+\ THE ROWS. EMIT-CALL-ROW+ files a call or tail site ( at kind target loc ),
+\ kind NEMIT:CALL or NEMIT:TAIL, loc the calling token's byte offset in the body
+\ text. EMIT-ADDR-ROW+ files an address site ( at kind target origin ), kind
 \ NEMIT:ADDR-DATA, NEMIT:ADDR-CODE or ADDR-QUOT-KIND; a data address's origin
-\ comes with it through ADDR-DATA (a string literal's is the one
+\ comes with it through EMIT-ADDR-DATA (a string literal's is the one
 \ NSTR:INTERN-SOURCE answers), and a code or quotation address's is -1. at is
-\ the instruction's first byte from the emission's byte 0. A quotation's
-\ target is its unit number; on x86-64 its instruction holds the unit's offset,
-\ which QUOT-OPEN writes. An emitter whose quotation address is relative to its
+\ the instruction's first byte from the emission's byte 0. A quotation's target
+\ is its unit number; on x86-64 its instruction holds the unit's offset, which
+\ EMIT-QUOT-OPEN writes. An emitter whose quotation address is relative to its
 \ own site (arm64's `adr`) files no row for it.
 variable N-UNITS
 DYNAMIC-BUFFER UNIT-AT n              \ where each unit starts
@@ -123,241 +116,239 @@ variable SLOT-AT                      \ the patch slot's offset, or -1
 : ROWS-CLEAR ( -- ) 0 N-UNITS !  0 N-CALLS !  0 N-ADDRS !  -1 SLOT-AT ! ;
 : SLOT? ( -- bool ) SLOT-AT @ 0 >= ;
 
-public
-
 \ File a unit's start, a call or tail site and an address site.
-: UNIT+ ( n -- ) {: at:n :}
+: EMIT-UNIT+ ( n -- ) {: at:n :}
    N-UNITS @ {: k:n :}
    k 1+ UNIT-AT-RESERVE
    at k UNIT-AT !
    k 1+ N-UNITS ! ;
 
-: CALL-ROW+ ( n n n n -- ) {: at:n kind:n to:n loc:n :}
+: EMIT-CALL-ROW+ ( n n n n -- ) {: at:n kind:n to:n loc:n :}
    N-CALLS @ {: k:n :}
    k 1+ CALL-AT-RESERVE  k 1+ CALL-KIND-AT-RESERVE
    k 1+ CALL-TO-RESERVE  k 1+ CALL-LOC-RESERVE
    at k CALL-AT !  kind k CALL-KIND-AT !  to k CALL-TO !  loc k CALL-LOC !
    k 1+ N-CALLS ! ;
 
-: ADDR-ROW+ ( n n n n -- ) {: at:n kind:n to:n origin:n :}
+: EMIT-ADDR-ROW+ ( n n n n -- ) {: at:n kind:n to:n origin:n :}
    N-ADDRS @ {: k:n :}
    k 1+ ADDR-AT-RESERVE  k 1+ ADDR-KIND-AT-RESERVE  k 1+ ADDR-TO-RESERVE
    k 1+ ADDR-ORIGIN-RESERVE
    at k ADDR-AT !  kind k ADDR-KIND-AT !  to k ADDR-TO !  origin k ADDR-ORIGIN !
    k 1+ N-ADDRS ! ;
 
-\ File the offset of the does> patch slot SLOT-CLOSE emitted: the instruction
-\ the target's does-patch rewrites.
-: PATCH-SLOT! ( n -- ) SLOT-AT ! ;
+\ File the offset of the does> patch slot EMIT-SLOT-CLOSE emitted: the
+\ instruction the target's does-patch rewrites.
+: EMIT-PATCH-SLOT! ( n -- ) SLOT-AT ! ;
 
 \ The rows read back, for an emitter's PATCH: unit k's start, and call row and
 \ address row k as ( at kind target ).
-: UNIT ( n -- n ) UNIT-AT @ ;
-: CALL-ROWS ( -- n ) N-CALLS @ ;
-: CALL-ROW ( n -- n n n ) {: k:n :}  k CALL-AT @  k CALL-KIND-AT @  k CALL-TO @ ;
-: ADDR-ROWS ( -- n ) N-ADDRS @ ;
-: ADDR-ROW ( n -- n n n ) {: k:n :}  k ADDR-AT @  k ADDR-KIND-AT @  k ADDR-TO @ ;
+: EMIT-UNIT ( n -- n ) UNIT-AT @ ;
+: EMIT-CALL-ROWS ( -- n ) N-CALLS @ ;
+: EMIT-CALL-ROW ( n -- n n n ) {: k:n :}
+   k CALL-AT @  k CALL-KIND-AT @  k CALL-TO @ ;
+: EMIT-ADDR-ROWS ( -- n ) N-ADDRS @ ;
+: EMIT-ADDR-ROW ( n -- n n n ) {: k:n :}
+   k ADDR-AT @  k ADDR-KIND-AT @  k ADDR-TO @ ;
 
-ARCHES TYPED-BUFFER VREGS-N n
-: VREGS ( -- n ) CUR @ VREGS-N @ ;
+ARCHES TYPED-BUFFER EMIT-VREGS-N n
+: EMIT-VREGS ( -- n ) CUR @ EMIT-VREGS-N @ ;
 
 \ ---- the body ----------------------------------------------------------------
-\ THE SINK. OPEN empties the emitter's sink and the seam's rows; CLOSE ends a
-\ unit; SEAL hands the emission to NEMIT (src/compiler/native/emission.f). The
-\ caller runs NEMIT:CLEAR before the next OPEN, on the accepting and the
-\ refusing path alike. NEMIT reads the bytes in place, so they stay the
-\ emitter's until the next OPEN.
+\ THE SINK. EMIT-OPEN empties the emitter's sink and the seam's rows; EMIT-CLOSE
+\ ends a unit; EMIT-SEAL hands the emission to NEMIT
+\ (src/compiler/native/emission.f). The caller runs NEMIT:CLEAR before the next
+\ EMIT-OPEN, on the accepting and the refusing path alike. NEMIT reads the bytes
+\ in place, so they stay the emitter's until the next EMIT-OPEN.
 \
 \ THE UNITS. A definition and its quotations are one emission: unit 0 is the
-\ definition at byte 0, and each quotation is a later unit that QUOT-OPEN
-\ begins where the previous CLOSE left off. A `does>` clause is a later unit
-\ too, begun by QUOT-OPEN when the parent pushed its address, else by
-\ UNIT-OPEN. Sealing files one NEMIT function per unit. `recurse` in any unit
-\ calls byte 0, as both tiers run it, and files no row.
+\ definition at byte 0, and each quotation is a later unit that EMIT-QUOT-OPEN
+\ begins where the previous EMIT-CLOSE left off. A `does>` clause is a later
+\ unit too, begun by EMIT-QUOT-OPEN when the parent pushed its address, else by
+\ EMIT-UNIT-OPEN. Sealing files one NEMIT function per unit. `recurse` in any
+\ unit calls byte 0, as both tiers run it, and files no row.
 \
-\ THE PATCH SLOT. SLOT-CLOSE closes a unit whose return is the does> patch
-\ slot (PATCH-SLOT!, sealed as NEMIT:PATCH-SLOT!). The kernel finds the slot
-\ from the record's length, so the slot ends the emission: a unit begun after
-\ it, or a callback stub with it, throws E-T0-SLOT.
-ARCHES TYPED-BUFFER OPEN-XT [ -- ]
-ARCHES TYPED-BUFFER QUOT-OPEN-XT [ n -- ]
-ARCHES TYPED-BUFFER UNIT-OPEN-XT [ -- ]
-ARCHES TYPED-BUFFER RETURN-XT [ -- ]
-ARCHES TYPED-BUFFER CLOSE-XT [ -- ]
-ARCHES TYPED-BUFFER BYTES-XT [ -- ptr u8 n ]
-ARCHES TYPED-BUFFER PATCH-XT [ n -- ]
-ARCHES TYPED-BUFFER SLOT-CLOSE-XT [ -- ]
-ARCHES TYPED-BUFFER CB-STUB-XT [ -- n ]
-
-private
+\ THE PATCH SLOT. EMIT-SLOT-CLOSE closes a unit whose return is the does> patch
+\ slot (EMIT-PATCH-SLOT!, sealed as NEMIT:PATCH-SLOT!). The kernel finds the
+\ slot from the record's length, so the slot ends the emission: a unit begun
+\ after it, or a callback stub with it, throws E-T0-SLOT.
+ARCHES TYPED-BUFFER EMIT-OPEN-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-QUOT-OPEN-XT [ n -- ]
+ARCHES TYPED-BUFFER EMIT-UNIT-OPEN-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-RETURN-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-CLOSE-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-BYTES-XT [ -- ptr u8 n ]
+ARCHES TYPED-BUFFER EMIT-PATCH-XT [ n -- ]
+ARCHES TYPED-BUFFER EMIT-SLOT-CLOSE-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-CB-STUB-XT [ -- n ]
 
 \ An xt as the number its cell holds: 0 while unset.
-CAST: XT>N ( [ R -- S ] -- n )
+CAST: CALLABLE>N ( [ R -- S ] -- n )
 
 \ The xt of an operation not every emitter provides; unset, E-T0-UNFILLED.
 : FILLED ( [ R -- S ] -- [ R -- S ] )
-   dup XT>N 0= if E-T0-UNFILLED throw then ;
+   dup CALLABLE>N 0= if E-T0-UNFILLED throw then ;
 
 \ The finished emission, once the last unit is closed.
-: BYTES ( -- ptr u8 n ) CUR @ BYTES-XT @ execute ;
+: EMIT-BYTES ( -- ptr u8 n ) CUR @ EMIT-BYTES-XT @ execute ;
 
 \ Write every call row's displacement and every quotation address row for the
 \ emission placed at address n.
-: PATCH ( n -- ) CUR @ PATCH-XT @ execute ;
+: EMIT-PATCH ( n -- ) CUR @ EMIT-PATCH-XT @ execute ;
 
-public
+: EMIT-OPEN ( -- ) ROWS-CLEAR  CUR @ EMIT-OPEN-XT @ execute ;
 
-: OPEN ( -- ) ROWS-CLEAR  CUR @ OPEN-XT @ execute ;
-
-\ Begin quotation unit n, which ADDR-QUOT named, and bind the address
-\ ADDR-QUOT emitted to it. Units begin in order, so n is the count begun so
+\ Begin quotation unit n, which EMIT-ADDR-QUOT named, and bind the address
+\ EMIT-ADDR-QUOT emitted to it. Units begin in order, so n is the count begun so
 \ far.
-: QUOT-OPEN ( n -- )
+: EMIT-QUOT-OPEN ( n -- )
    SLOT? if E-T0-SLOT throw then
-   CUR @ QUOT-OPEN-XT @ execute ;
+   CUR @ EMIT-QUOT-OPEN-XT @ execute ;
 
 \ Begin the next unit with no address bound to it, for a does> definer's
 \ empty clause, whose parent pushes no clause address.
-: UNIT-OPEN ( -- )
+: EMIT-UNIT-OPEN ( -- )
    SLOT? if E-T0-SLOT throw then
-   CUR @ UNIT-OPEN-XT @ FILLED execute ;
+   CUR @ EMIT-UNIT-OPEN-XT @ FILLED execute ;
 
 \ Leave the word, from the middle of its body or at its end.
-: RETURN ( -- ) CUR @ RETURN-XT @ execute ;
+: EMIT-RETURN ( -- ) CUR @ EMIT-RETURN-XT @ execute ;
 
-: CLOSE ( -- ) CUR @ CLOSE-XT @ execute ;
+: EMIT-CLOSE ( -- ) CUR @ EMIT-CLOSE-XT @ execute ;
 
 \ Leave the word by a return that is the does> patch slot, and close the unit
 \ (THE PATCH SLOT).
-: SLOT-CLOSE ( -- ) CUR @ SLOT-CLOSE-XT @ FILLED execute ;
+: EMIT-SLOT-CLOSE ( -- ) CUR @ EMIT-SLOT-CLOSE-XT @ FILLED execute ;
 
 \ ---- values ------------------------------------------------------------------
-ARCHES TYPED-BUFFER LIT-XT [ n vreg -- ]
-ARCHES TYPED-BUFFER ADDR-DATA-XT [ n n vreg -- ]
-ARCHES TYPED-BUFFER ADDR-CODE-XT [ n vreg -- ]
-ARCHES TYPED-BUFFER ADDR-QUOT-XT [ n vreg -- ]
-ARCHES TYPED-BUFFER PUSH-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER PUSH-LIT-XT [ n n -- ]
-ARCHES TYPED-BUFFER POP-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER SPILL-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER SPILL-LIT-XT [ n n -- ]
-ARCHES TYPED-BUFFER FILL-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER DSP+-XT [ n -- ]
-ARCHES TYPED-BUFFER MOV-XT [ vreg vreg -- ]
-ARCHES TYPED-BUFFER EXCHANGE-XT [ vreg vreg -- ]
-ARCHES TYPED-BUFFER SLOTS-XT [ n -- ]
-ARCHES TYPED-BUFFER SLOT-STORE-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER SLOT-LOAD-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-LIT-XT [ n vreg -- ]
+ARCHES TYPED-BUFFER EMIT-ADDR-DATA-XT [ n n vreg -- ]
+ARCHES TYPED-BUFFER EMIT-ADDR-CODE-XT [ n vreg -- ]
+ARCHES TYPED-BUFFER EMIT-ADDR-QUOT-XT [ n vreg -- ]
+ARCHES TYPED-BUFFER EMIT-PUSH-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-PUSH-LIT-XT [ n n -- ]
+ARCHES TYPED-BUFFER EMIT-POP-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-SPILL-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-SPILL-LIT-XT [ n n -- ]
+ARCHES TYPED-BUFFER EMIT-FILL-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-DSP+-XT [ n -- ]
+ARCHES TYPED-BUFFER EMIT-MOV-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EMIT-EXCHANGE-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EMIT-SLOTS-XT [ n -- ]
+ARCHES TYPED-BUFFER EMIT-SLOT-STORE-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-SLOT-LOAD-XT [ vreg n -- ]
 
-: LIT ( n vreg -- ) CUR @ LIT-XT @ execute ;
+: EMIT-LIT ( n vreg -- ) CUR @ EMIT-LIT-XT @ execute ;
 \ Data address v, whose address row files origin o (THE ROWS).
-: ADDR-DATA ( n n vreg -- ) CUR @ ADDR-DATA-XT @ execute ;
-: ADDR-CODE ( n vreg -- ) CUR @ ADDR-CODE-XT @ execute ;
+: EMIT-ADDR-DATA ( n n vreg -- ) CUR @ EMIT-ADDR-DATA-XT @ execute ;
+: EMIT-ADDR-CODE ( n vreg -- ) CUR @ EMIT-ADDR-CODE-XT @ execute ;
 
-\ The address of quotation unit n, which QUOT-OPEN begins later.
-: ADDR-QUOT ( n vreg -- ) CUR @ ADDR-QUOT-XT @ execute ;
+\ The address of quotation unit n, which EMIT-QUOT-OPEN begins later.
+: EMIT-ADDR-QUOT ( n vreg -- ) CUR @ EMIT-ADDR-QUOT-XT @ execute ;
 
-\ The data stack grows up. SPILL, SPILL-LIT and FILL address the cell k cells
-\ above the stack pointer without moving it; DSP+ moves it by k cells. PUSH and
-\ PUSH-LIT store at the pointer then move it up k cells, and POP moves it down
-\ k cells then loads: with k 1 a push and a pop, otherwise the last transfer of
-\ a k-cell spill or fill, so the move costs no instruction of its own where the
-\ target writes back.
-: PUSH ( vreg n -- ) CUR @ PUSH-XT @ execute ;
-: PUSH-LIT ( n n -- ) CUR @ PUSH-LIT-XT @ execute ;
-: POP ( vreg n -- ) CUR @ POP-XT @ execute ;
-: SPILL ( vreg n -- ) CUR @ SPILL-XT @ execute ;
-: SPILL-LIT ( n n -- ) CUR @ SPILL-LIT-XT @ execute ;
-: FILL ( vreg n -- ) CUR @ FILL-XT @ execute ;
-: DSP+ ( n -- ) CUR @ DSP+-XT @ execute ;
-: MOV ( vreg vreg -- ) CUR @ MOV-XT @ execute ;
+\ The data stack grows up. EMIT-SPILL, EMIT-SPILL-LIT and EMIT-FILL address the
+\ cell k cells above the stack pointer without moving it; EMIT-DSP+ moves it by
+\ k cells. EMIT-PUSH and EMIT-PUSH-LIT store at the pointer then move it up k
+\ cells, and EMIT-POP moves it down k cells then loads: with k 1 a push and a
+\ pop, otherwise the last transfer of a k-cell spill or fill, so the move costs
+\ no instruction of its own where the target writes back.
+: EMIT-PUSH ( vreg n -- ) CUR @ EMIT-PUSH-XT @ execute ;
+: EMIT-PUSH-LIT ( n n -- ) CUR @ EMIT-PUSH-LIT-XT @ execute ;
+: EMIT-POP ( vreg n -- ) CUR @ EMIT-POP-XT @ execute ;
+: EMIT-SPILL ( vreg n -- ) CUR @ EMIT-SPILL-XT @ execute ;
+: EMIT-SPILL-LIT ( n n -- ) CUR @ EMIT-SPILL-LIT-XT @ execute ;
+: EMIT-FILL ( vreg n -- ) CUR @ EMIT-FILL-XT @ execute ;
+: EMIT-DSP+ ( n -- ) CUR @ EMIT-DSP+-XT @ execute ;
+: EMIT-MOV ( vreg vreg -- ) CUR @ EMIT-MOV-XT @ execute ;
 \ The two vregs' values swapped, a join's register cycle.
-: EXCHANGE ( vreg vreg -- ) CUR @ EXCHANGE-XT @ execute ;
+: EMIT-EXCHANGE ( vreg vreg -- ) CUR @ EMIT-EXCHANGE-XT @ execute ;
 
-\ The frame: SLOTS makes it hold at least n cells, SLOT-STORE and SLOT-LOAD
-\ move a cell between a vreg and slot k.
-: SLOTS ( n -- ) CUR @ SLOTS-XT @ execute ;
-: SLOT-STORE ( vreg n -- ) CUR @ SLOT-STORE-XT @ execute ;
-: SLOT-LOAD ( vreg n -- ) CUR @ SLOT-LOAD-XT @ execute ;
+\ The frame: EMIT-SLOTS makes it hold at least n cells, EMIT-SLOT-STORE and
+\ EMIT-SLOT-LOAD move a cell between a vreg and slot k.
+: EMIT-SLOTS ( n -- ) CUR @ EMIT-SLOTS-XT @ execute ;
+: EMIT-SLOT-STORE ( vreg n -- ) CUR @ EMIT-SLOT-STORE-XT @ execute ;
+: EMIT-SLOT-LOAD ( vreg n -- ) CUR @ EMIT-SLOT-LOAD-XT @ execute ;
 
 \ ---- arithmetic --------------------------------------------------------------
-ARCHES TYPED-BUFFER OP-XT [ vreg vreg alu -- ]
-ARCHES TYPED-BUFFER OP-LIT-XT [ vreg n alu -- ]
-ARCHES TYPED-BUFFER SHIFT-XT [ vreg vreg shifter -- ]
-ARCHES TYPED-BUFFER SHIFT-LIT-XT [ vreg n shifter -- ]
-ARCHES TYPED-BUFFER MULX-XT [ vreg vreg -- ]
-ARCHES TYPED-BUFFER MUL-LIT-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER DIV-LIT-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER MOD-LIT-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER NEG-XT [ vreg -- ]
-ARCHES TYPED-BUFFER NOT-XT [ vreg -- ]
-ARCHES TYPED-BUFFER CMP-XT [ vreg vreg -- ]
-ARCHES TYPED-BUFFER CMP-LIT-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER SET-FLAG-XT [ vreg cc -- ]
-ARCHES TYPED-BUFFER IMM?-XT [ n -- bool ]
+ARCHES TYPED-BUFFER EMIT-OP-XT [ vreg vreg alu -- ]
+ARCHES TYPED-BUFFER EMIT-OP-LIT-XT [ vreg n alu -- ]
+ARCHES TYPED-BUFFER EMIT-SHIFT-XT [ vreg vreg shifter -- ]
+ARCHES TYPED-BUFFER EMIT-SHIFT-LIT-XT [ vreg n shifter -- ]
+ARCHES TYPED-BUFFER EMIT-MULX-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EMIT-MUL-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-DIV-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-MOD-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-NEG-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-NOT-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-CMP-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EMIT-CMP-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-SET-FLAG-XT [ vreg cc -- ]
+ARCHES TYPED-BUFFER EMIT-IMM?-XT [ n -- bool ]
 
-\ Whether OP-LIT, MUL-LIT, CMP-LIT and OF-LIT take n as their immediate;
-\ each of them requires n to answer true.
-: IMM? ( n -- bool ) CUR @ IMM?-XT @ execute ;
+\ Whether EMIT-OP-LIT, EMIT-MUL-LIT, EMIT-CMP-LIT and EMIT-OF-LIT take n as
+\ their immediate; each of them requires n to answer true.
+: EMIT-IMM? ( n -- bool ) CUR @ EMIT-IMM?-XT @ execute ;
 
-: OP ( vreg vreg alu -- ) CUR @ OP-XT @ execute ;
-: OP-LIT ( vreg n alu -- ) CUR @ OP-LIT-XT @ execute ;
+: EMIT-OP ( vreg vreg alu -- ) CUR @ EMIT-OP-XT @ execute ;
+: EMIT-OP-LIT ( vreg n alu -- ) CUR @ EMIT-OP-LIT-XT @ execute ;
 
 \ A shift count is masked to six bits, as Habu's `lshift` and `rshift` are (a
 \ count of 64 shifts by nothing); SH-RIGHT is logical.
-: SHIFT ( vreg vreg shifter -- ) CUR @ SHIFT-XT @ execute ;
-: SHIFT-LIT ( vreg n shifter -- ) CUR @ SHIFT-LIT-XT @ execute ;
+: EMIT-SHIFT ( vreg vreg shifter -- ) CUR @ EMIT-SHIFT-XT @ execute ;
+: EMIT-SHIFT-LIT ( vreg n shifter -- ) CUR @ EMIT-SHIFT-LIT-XT @ execute ;
 
-: MULX ( vreg vreg -- ) CUR @ MULX-XT @ execute ;
-: MUL-LIT ( vreg n -- ) CUR @ MUL-LIT-XT @ execute ;
+: EMIT-MULX ( vreg vreg -- ) CUR @ EMIT-MULX-XT @ execute ;
+: EMIT-MUL-LIT ( vreg n -- ) CUR @ EMIT-MUL-LIT-XT @ execute ;
 
-\ DIVISION. `/` and `mod` by a literal divisor other than 0 and -1 are DIV-LIT
-\ and MOD-LIT. A zero divisor stays a call of the kernel row, which throws
-\ E-DIV-ZERO; -1 stays a call because x86-64 idiv faults on MIN-N -1 (arm64
-\ sdiv answers MIN-N), and one rule holds for every target. A register divisor
-\ and `/mod` stay calls too.
+\ DIVISION. `/` and `mod` by a literal divisor other than 0 and -1 are
+\ EMIT-DIV-LIT and EMIT-MOD-LIT. A zero divisor stays a call of the kernel row,
+\ which throws E-DIV-ZERO; -1 stays a call because x86-64 idiv faults on
+\ MIN-N -1 (arm64 sdiv answers MIN-N), and one rule holds for every target. A
+\ register divisor and `/mod` stay calls too.
 \
-\ DIV-LIT and MOD-LIT replace the dividend in d with its quotient by n,
-\ truncated toward zero, or the remainder that carries the dividend's sign, as
-\ the kernel's `/` and `mod` rows compute them; n is neither 0 nor -1. Every
+\ EMIT-DIV-LIT and EMIT-MOD-LIT replace the dividend in d with its quotient by
+\ n, truncated toward zero, or the remainder that carries the dividend's sign,
+\ as the kernel's `/` and `mod` rows compute them; n is neither 0 nor -1. Every
 \ other vreg keeps its value.
-: DIV-LIT ( vreg n -- ) CUR @ DIV-LIT-XT @ execute ;
-: MOD-LIT ( vreg n -- ) CUR @ MOD-LIT-XT @ execute ;
-: NEG ( vreg -- ) CUR @ NEG-XT @ execute ;
-: NOT ( vreg -- ) CUR @ NOT-XT @ execute ;
+: EMIT-DIV-LIT ( vreg n -- ) CUR @ EMIT-DIV-LIT-XT @ execute ;
+: EMIT-MOD-LIT ( vreg n -- ) CUR @ EMIT-MOD-LIT-XT @ execute ;
+: EMIT-NEG ( vreg -- ) CUR @ EMIT-NEG-XT @ execute ;
+: EMIT-NOT ( vreg -- ) CUR @ EMIT-NOT-XT @ execute ;
 
-\ CMP and CMP-LIT compare a with b (or with n) and set the condition codes,
-\ writing no vreg; SET-FLAG makes d -1 when condition c of the last compare
-\ holds, else 0: a Habu flag. IF-CC,, WHILE-CC, and UNTIL-CC, branch on the
-\ codes instead. Between a compare and the word that reads its codes the
-\ front end emits only moves: PUSH, PUSH-LIT, SPILL, SPILL-LIT, FILL, POP, LIT,
-\ ADDR-DATA, ADDR-CODE, ADDR-QUOT, DSP+, MOV and EXCHANGE. Every emitter keeps
-\ those condition-preserving (x86-64's DSP+ is an lea, its zero literal a mov,
-\ its exchange an xchg, its pop an lea and a mov; arm64's exchange is three
-\ movs, its stack and address offsets add and sub without flags).
-: CMP ( vreg vreg -- ) CUR @ CMP-XT @ execute ;
-: CMP-LIT ( vreg n -- ) CUR @ CMP-LIT-XT @ execute ;
-: SET-FLAG ( vreg cc -- ) CUR @ SET-FLAG-XT @ execute ;
+\ EMIT-CMP and EMIT-CMP-LIT compare a with b (or with n) and set the condition
+\ codes, writing no vreg; EMIT-SET-FLAG makes d -1 when condition c of the last
+\ compare holds, else 0: a Habu flag. EMIT-IF-CC,, EMIT-WHILE-CC, and
+\ EMIT-UNTIL-CC, branch on the codes instead. Between a compare and the word
+\ that reads its codes the front end emits only moves: EMIT-PUSH, EMIT-PUSH-LIT,
+\ EMIT-SPILL, EMIT-SPILL-LIT, EMIT-FILL, EMIT-POP, EMIT-LIT, EMIT-ADDR-DATA,
+\ EMIT-ADDR-CODE, EMIT-ADDR-QUOT, EMIT-DSP+, EMIT-MOV and EMIT-EXCHANGE. Every
+\ emitter keeps those condition-preserving (x86-64's EMIT-DSP+ is an lea, its
+\ zero literal a mov, its exchange an xchg, its pop an lea and a mov; arm64's
+\ exchange is three movs, its stack and address offsets add and sub without
+\ flags).
+: EMIT-CMP ( vreg vreg -- ) CUR @ EMIT-CMP-XT @ execute ;
+: EMIT-CMP-LIT ( vreg n -- ) CUR @ EMIT-CMP-LIT-XT @ execute ;
+: EMIT-SET-FLAG ( vreg cc -- ) CUR @ EMIT-SET-FLAG-XT @ execute ;
 
 \ ---- memory ------------------------------------------------------------------
-ARCHES TYPED-BUFFER LOAD-XT [ vreg vreg width -- ]
+ARCHES TYPED-BUFFER EMIT-LOAD-XT [ vreg vreg width -- ]
 
-\ LOAD reads the cell or the zero-extended byte at address a into d, and does
-\ not screen the address, as the kernel's `@` and `c@` rows do not. `!` and
+\ EMIT-LOAD reads the cell or the zero-extended byte at address a into d, and
+\ does not screen the address, as the kernel's `@` and `c@` rows do not. `!` and
 \ `c!` screen a span and stay calls, so the seam has no store.
-: LOAD ( vreg vreg width -- ) CUR @ LOAD-XT @ execute ;
+: EMIT-LOAD ( vreg vreg width -- ) CUR @ EMIT-LOAD-XT @ execute ;
 
 \ ---- calls -------------------------------------------------------------------
-ARCHES TYPED-BUFFER CALL-XT [ n n -- ]
-ARCHES TYPED-BUFFER TAIL-XT [ n n -- ]
-ARCHES TYPED-BUFFER CALL-SELF-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-CALL-XT [ n n -- ]
+ARCHES TYPED-BUFFER EMIT-TAIL-XT [ n n -- ]
+ARCHES TYPED-BUFFER EMIT-CALL-SELF-XT [ -- ]
 
 \ A call or tail branch to address to, for the token at body offset loc.
-: CALL ( n n -- ) CUR @ CALL-XT @ execute ;
-: TAIL ( n n -- ) CUR @ TAIL-XT @ execute ;
+: EMIT-CALL ( n n -- ) CUR @ EMIT-CALL-XT @ execute ;
+: EMIT-TAIL ( n n -- ) CUR @ EMIT-TAIL-XT @ execute ;
 
 \ `recurse`: a call of byte 0, the definition, from any unit.
-: CALL-SELF ( -- ) CUR @ CALL-SELF-XT @ execute ;
+: EMIT-CALL-SELF ( -- ) CUR @ EMIT-CALL-SELF-XT @ execute ;
 
 \ ---- control -----------------------------------------------------------------
 \ CONTROL. The front end refuses a structure out of order before calling one,
@@ -365,169 +356,171 @@ ARCHES TYPED-BUFFER CALL-SELF-XT [ -- ]
 \ behind the seam: an emitter that branches by label installs
 \ src/habu/t0-label.f. The words a source keyword names end in a comma, since
 \ a keyword cannot be a definition name.
-ARCHES TYPED-BUFFER IF,-XT [ vreg -- ]
-ARCHES TYPED-BUFFER ELSE,-XT [ -- ]
-ARCHES TYPED-BUFFER THEN,-XT [ -- ]
-ARCHES TYPED-BUFFER BEGIN,-XT [ -- ]
-ARCHES TYPED-BUFFER WHILE,-XT [ vreg -- ]
-ARCHES TYPED-BUFFER REPEAT,-XT [ -- ]
-ARCHES TYPED-BUFFER UNTIL,-XT [ vreg -- ]
-ARCHES TYPED-BUFFER IF-CC,-XT [ cc -- ]
-ARCHES TYPED-BUFFER WHILE-CC,-XT [ cc -- ]
-ARCHES TYPED-BUFFER UNTIL-CC,-XT [ cc -- ]
-ARCHES TYPED-BUFFER AGAIN,-XT [ -- ]
-ARCHES TYPED-BUFFER CASE,-XT [ -- ]
-ARCHES TYPED-BUFFER OF,-XT [ vreg vreg -- ]
-ARCHES TYPED-BUFFER OF-LIT-XT [ vreg n -- ]
-ARCHES TYPED-BUFFER ENDOF,-XT [ -- ]
-ARCHES TYPED-BUFFER ENDCASE,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-IF,-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-ELSE,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-THEN,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-BEGIN,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-WHILE,-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-REPEAT,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-UNTIL,-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-IF-CC,-XT [ cc -- ]
+ARCHES TYPED-BUFFER EMIT-WHILE-CC,-XT [ cc -- ]
+ARCHES TYPED-BUFFER EMIT-UNTIL-CC,-XT [ cc -- ]
+ARCHES TYPED-BUFFER EMIT-AGAIN,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-CASE,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-OF,-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EMIT-OF-LIT-XT [ vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-ENDOF,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-ENDCASE,-XT [ -- ]
 
 \ `if`: past the arm when the vreg is zero.
-: IF, ( vreg -- ) CUR @ IF,-XT @ execute ;
+: EMIT-IF, ( vreg -- ) CUR @ EMIT-IF,-XT @ execute ;
 
 \ `if` on condition c of the last compare: past the arm when c fails.
-: IF-CC, ( cc -- ) CUR @ IF-CC,-XT @ execute ;
+: EMIT-IF-CC, ( cc -- ) CUR @ EMIT-IF-CC,-XT @ execute ;
 
 \ `else`: past the second arm, then the open `if` lands here.
-: ELSE, ( -- ) CUR @ ELSE,-XT @ execute ;
+: EMIT-ELSE, ( -- ) CUR @ EMIT-ELSE,-XT @ execute ;
 
 \ `then`: the innermost open forward branch lands here.
-: THEN, ( -- ) CUR @ THEN,-XT @ execute ;
+: EMIT-THEN, ( -- ) CUR @ EMIT-THEN,-XT @ execute ;
 
-: BEGIN, ( -- ) CUR @ BEGIN,-XT @ execute ;
+: EMIT-BEGIN, ( -- ) CUR @ EMIT-BEGIN,-XT @ execute ;
 
 \ `while`: out of the loop when the vreg is zero; the exit stays open beneath
 \ the head, as Forth orders orig and dest, so `begin ... while ... while ...
 \ repeat then` resolves.
-: WHILE, ( vreg -- ) CUR @ WHILE,-XT @ execute ;
+: EMIT-WHILE, ( vreg -- ) CUR @ EMIT-WHILE,-XT @ execute ;
 
 \ `while` on condition c of the last compare: out of the loop when c fails.
-: WHILE-CC, ( cc -- ) CUR @ WHILE-CC,-XT @ execute ;
+: EMIT-WHILE-CC, ( cc -- ) CUR @ EMIT-WHILE-CC,-XT @ execute ;
 
 \ `repeat`: back to the head, then the innermost `while` exit lands here.
-: REPEAT, ( -- ) CUR @ REPEAT,-XT @ execute ;
+: EMIT-REPEAT, ( -- ) CUR @ EMIT-REPEAT,-XT @ execute ;
 
 \ `until`: back to the head when the vreg is zero.
-: UNTIL, ( vreg -- ) CUR @ UNTIL,-XT @ execute ;
+: EMIT-UNTIL, ( vreg -- ) CUR @ EMIT-UNTIL,-XT @ execute ;
 
 \ `until` on condition c of the last compare: back to the head when c fails.
-: UNTIL-CC, ( cc -- ) CUR @ UNTIL-CC,-XT @ execute ;
+: EMIT-UNTIL-CC, ( cc -- ) CUR @ EMIT-UNTIL-CC,-XT @ execute ;
 
-: AGAIN, ( -- ) CUR @ AGAIN,-XT @ execute ;
+: EMIT-AGAIN, ( -- ) CUR @ EMIT-AGAIN,-XT @ execute ;
 
-\ `case` opens; OF, and OF-LIT branch past the arm when the selector differs
-\ from the vreg or from n, which must answer IMM? true; ENDOF, branches to the
-\ end and lands the open `of` here; ENDCASE, lands every `endof` exit here.
-: CASE, ( -- ) CUR @ CASE,-XT @ execute ;
-: OF, ( vreg vreg -- ) CUR @ OF,-XT @ execute ;
-: OF-LIT ( vreg n -- ) CUR @ OF-LIT-XT @ execute ;
-: ENDOF, ( -- ) CUR @ ENDOF,-XT @ execute ;
-: ENDCASE, ( -- ) CUR @ ENDCASE,-XT @ execute ;
+\ `case` opens; EMIT-OF, and EMIT-OF-LIT branch past the arm when the selector
+\ differs from the vreg or from n, which must answer EMIT-IMM? true; EMIT-ENDOF,
+\ branches to the end and lands the open `of` here; EMIT-ENDCASE, lands every
+\ `endof` exit here.
+: EMIT-CASE, ( -- ) CUR @ EMIT-CASE,-XT @ execute ;
+: EMIT-OF, ( vreg vreg -- ) CUR @ EMIT-OF,-XT @ execute ;
+: EMIT-OF-LIT ( vreg n -- ) CUR @ EMIT-OF-LIT-XT @ execute ;
+: EMIT-ENDOF, ( -- ) CUR @ EMIT-ENDOF,-XT @ execute ;
+: EMIT-ENDCASE, ( -- ) CUR @ EMIT-ENDCASE,-XT @ execute ;
 
 \ ---- the return stack --------------------------------------------------------
-ARCHES TYPED-BUFFER TOR-XT [ ptr vreg n -- ]
-ARCHES TYPED-BUFFER RFROM-XT [ ptr vreg n -- ]
-ARCHES TYPED-BUFFER RFETCH-XT [ ptr vreg n n -- ]
+ARCHES TYPED-BUFFER EMIT-TOR-XT [ ptr vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-RFROM-XT [ ptr vreg n -- ]
+ARCHES TYPED-BUFFER EMIT-RFETCH-XT [ ptr vreg n n -- ]
 
 \ The return stack grows up from STACK-ABI:RETURN-BASE-CELL and is RSP-CELL
-\ cells deep (src/habu/layout.f RSP-CELL). Each operation moves the cells of
-\ the n vregs at p, at most VREGS, the first the deepest of n adjacent slots,
-\ and reads the depth once, as the JIT's LP2RS (src/habu/habu2.f) moves a
-\ block: TOR stores them in the slots above the top and RFROM loads the top n
-\ slots, each writing the depth once; RFETCH loads the n slots whose
+\ cells deep (src/habu/layout.f RSP-CELL). Each operation moves the cells of the
+\ n vregs at p, at most EMIT-VREGS, the first the deepest of n adjacent slots,
+\ and reads the depth once, as the JIT's LP2RS (src/habu/habu2.f) moves a block:
+\ EMIT-TOR stores them in the slots above the top and EMIT-RFROM loads the top n
+\ slots, each writing the depth once; EMIT-RFETCH loads the n slots whose
 \ highest is k under the top and writes nothing.
-: TOR ( ptr vreg n -- ) CUR @ TOR-XT @ execute ;
-: RFROM ( ptr vreg n -- ) CUR @ RFROM-XT @ execute ;
-: RFETCH ( ptr vreg n n -- ) CUR @ RFETCH-XT @ execute ;
+: EMIT-TOR ( ptr vreg n -- ) CUR @ EMIT-TOR-XT @ execute ;
+: EMIT-RFROM ( ptr vreg n -- ) CUR @ EMIT-RFROM-XT @ execute ;
+: EMIT-RFETCH ( ptr vreg n n -- ) CUR @ EMIT-RFETCH-XT @ execute ;
 
 : VREG-AT ( ptr vreg n -- vreg ) cells + @ ;
 
 \ ---- loops -------------------------------------------------------------------
-ARCHES TYPED-BUFFER LOOP-PUSH-XT [ vreg vreg -- ]
-ARCHES TYPED-BUFFER LOOP-POP-XT [ -- ]
-ARCHES TYPED-BUFFER LOOP-I-XT [ vreg -- ]
-ARCHES TYPED-BUFFER LOOP-J-XT [ vreg -- ]
-ARCHES TYPED-BUFFER LOOP-OPEN-XT [ vreg vreg bool -- ]
-ARCHES TYPED-BUFFER LEAVE,-XT [ -- ]
-ARCHES TYPED-BUFFER LOOP-NEXT-XT [ vreg -- ]
-ARCHES TYPED-BUFFER LOOP-STEP-XT [ vreg vreg -- ]
-ARCHES TYPED-BUFFER LOOP-CLOSE-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-PUSH-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-POP-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-I-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-J-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-OPEN-XT [ vreg vreg bool -- ]
+ARCHES TYPED-BUFFER EMIT-LEAVE,-XT [ -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-NEXT-XT [ vreg -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-STEP-XT [ vreg vreg -- ]
+ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 
 \ The DO/LOOP frames live on the DATA loop stack, where `j`, catch
 \ (src/habu/kernel-x64.f CAUGHT,) and the arm64 tier 0 (src/habu/habu2.f
 \ J-FRAME) find them: LOOPSP-CELL counts the frames and frame k, 16 bytes at
 \ STACK-ABI:LOOP-BASE-CELL's base + 16k, holds the index, its home, then the
-\ limit. `loop` steps while index < limit, signed; `+loop` steps until the
-\ index crosses the boundary between limit - 1 and limit in the step's
-\ direction; `?do` enters while start < limit, and LOOP-STEP makes the entry
-\ of its level skip equal bounds only. LOOP-OPEN opens a level; LOOP-NEXT,
-\ LOOP-STEP and LEAVE, branch to the innermost level's head or past its end;
-\ LOOP-CLOSE lands its exits on the pop of its frame. The loop words write no
-\ vreg but those passed in, so values in the others live across every head,
-\ back edge and exit.
+\ limit. `loop` steps while index < limit, signed; `+loop` steps until the index
+\ crosses the boundary between limit - 1 and limit in the step's direction;
+\ `?do` enters while start < limit, and EMIT-LOOP-STEP makes the entry of its
+\ level skip equal bounds only. EMIT-LOOP-OPEN opens a level; EMIT-LOOP-NEXT,
+\ EMIT-LOOP-STEP and EMIT-LEAVE, branch to the innermost level's head or past
+\ its end; EMIT-LOOP-CLOSE lands its exits on the pop of its frame. The loop
+\ words write no vreg but those passed in, so values in the others live across
+\ every head, back edge and exit.
 
 \ Push a frame of index s and limit l; pop the innermost frame.
-: LOOP-PUSH ( vreg vreg -- ) CUR @ LOOP-PUSH-XT @ execute ;
-: LOOP-POP ( -- ) CUR @ LOOP-POP-XT @ execute ;
+: EMIT-LOOP-PUSH ( vreg vreg -- ) CUR @ EMIT-LOOP-PUSH-XT @ execute ;
+: EMIT-LOOP-POP ( -- ) CUR @ EMIT-LOOP-POP-XT @ execute ;
 
 \ The index of the innermost frame and of the one outside it into the vreg.
-: LOOP-I ( vreg -- ) CUR @ LOOP-I-XT @ execute ;
-: LOOP-J ( vreg -- ) CUR @ LOOP-J-XT @ execute ;
+: EMIT-LOOP-I ( vreg -- ) CUR @ EMIT-LOOP-I-XT @ execute ;
+: EMIT-LOOP-J ( vreg -- ) CUR @ EMIT-LOOP-J-XT @ execute ;
 
 \ Open a level whose head is here. With entry true it is `?do`'s: past the
 \ level unless start s < limit l.
-: LOOP-OPEN ( vreg vreg bool -- ) CUR @ LOOP-OPEN-XT @ execute ;
+: EMIT-LOOP-OPEN ( vreg vreg bool -- ) CUR @ EMIT-LOOP-OPEN-XT @ execute ;
 
 \ `leave`: past the innermost level.
-: LEAVE, ( -- ) CUR @ LEAVE,-XT @ execute ;
+: EMIT-LEAVE, ( -- ) CUR @ EMIT-LEAVE,-XT @ execute ;
 
 \ `loop`: step the index by one and branch back to the head while it is below
 \ the limit. t is a free vreg it may clobber.
-: LOOP-NEXT ( vreg -- ) CUR @ LOOP-NEXT-XT @ execute ;
+: EMIT-LOOP-NEXT ( vreg -- ) CUR @ EMIT-LOOP-NEXT-XT @ execute ;
 
 \ `+loop`: step the index by s and branch back to the head unless it crossed
 \ the boundary. s and t are clobbered; t is a free vreg.
-: LOOP-STEP ( vreg vreg -- ) CUR @ LOOP-STEP-XT @ execute ;
+: EMIT-LOOP-STEP ( vreg vreg -- ) CUR @ EMIT-LOOP-STEP-XT @ execute ;
 
 \ Land the innermost level's `leave` exits and entry here, close it and pop
 \ its frame.
-: LOOP-CLOSE ( -- ) CUR @ LOOP-CLOSE-XT @ execute ;
+: EMIT-LOOP-CLOSE ( -- ) CUR @ EMIT-LOOP-CLOSE-XT @ execute ;
 
 \ ---- the registry ------------------------------------------------------------
 \ THE SEAM. Each operation executes the xt its cell holds for the selected
-\ architecture; every cell, VREGS-N among them, has one slot per architecture.
-\ An emitter calls PROVIDE with its architecture and an installer that stores
-\ its words into that slot of every cell. SELECT picks the slot the operations
-\ run, per definition if need be, and throws E-T0-TARGET for an architecture
-\ no emitter provided. An unset cell stays unset in its slot, so an operation
-\ never runs another target's code: UNIT-OPEN, SLOT-CLOSE and the callback stub
-\ throw E-T0-UNFILLED, and any other unset cell ends the process with
-\ `hb: unset quotation` (exit 86, ENGINE-ERROR:CALLABLE-ABI). An operation
-\ before any SELECT throws E-LAYOUT-BOUNDS (7122).
-: PROVIDE ( CTARGET:arch [ n -- ] -- )
-   swap SLOT {: k:n :}
+\ architecture; every cell, EMIT-VREGS-N among them, has one slot per
+\ architecture. An emitter calls EMIT-PROVIDE with its architecture and an
+\ installer that stores its words into that slot of every cell. EMIT-SELECT
+\ picks the slot the operations run, per definition if need be, and throws
+\ E-T0-TARGET for an architecture no emitter provided. An unset cell stays unset
+\ in its slot, so an operation never runs another target's code: EMIT-UNIT-OPEN,
+\ EMIT-SLOT-CLOSE and the callback stub throw E-T0-UNFILLED, and any other unset
+\ cell ends the process with `hb: unset quotation` (exit 86,
+\ ENGINE-ERROR:CALLABLE-ABI). An operation before any EMIT-SELECT throws
+\ E-LAYOUT-BOUNDS (7122).
+: EMIT-PROVIDE ( CTARGET:arch [ n -- ] -- )
+   swap ARCH>INDEX {: k:n :}
    k swap execute
    true k INSTALLED ! ;
 
-: SELECT ( CTARGET:arch -- )
+: EMIT-SELECT ( CTARGET:arch -- )
    {: a:CTARGET:arch :}
-   a SLOT {: k:n :}
+   a ARCH>INDEX {: k:n :}
    k INSTALLED @ 0= if E-T0-TARGET throw then
    k CUR !
    a CUR-ARCH ! ;
 
 \ ---- sealing -----------------------------------------------------------------
-\ SEALING. SEAL n places the emission at address n: PATCH writes every call
-\ row's displacement and every quotation address as n plus the unit's offset,
-\ because publication (src/compiler/native/publish.f) only copies the bytes and
-\ records relocations. SEAL opens NEMIT with no trailing return, so the record
-\ is the emission's whole span, and files a quotation's row as NEMIT:ADDR-CODE.
+\ SEALING. EMIT-SEAL n places the emission at address n: EMIT-PATCH writes
+\ every call row's displacement and every quotation address as n plus the
+\ unit's offset, because publication (src/compiler/native/publish.f) only
+\ copies the bytes and records relocations. EMIT-SEAL opens NEMIT with no
+\ trailing return, so the record is the emission's whole span, and files a
+\ quotation's row as NEMIT:ADDR-CODE.
 \
 \ THE CALLBACK STUB. While NCBSTUB (src/compiler/native/callback-stub.f) is
 \ armed, sealing has the emitter append tier 1's stub after the last unit,
 \ files it as the last function and records its placed address as
 \ NCBSTUB:ENTRY!.
-private
 
 : NEMIT-KIND ( n -- n ) {: kind:n :}
    kind ADDR-QUOT-KIND = if NEMIT:ADDR-CODE exit then
@@ -535,15 +528,15 @@ private
 
 \ The callback stub's offset once the emitter appended it, or -1 while
 \ NCBSTUB is not armed (THE CALLBACK STUB).
-: CB-STUB ( -- n )
+: EMIT-CB-STUB ( -- n )
    NCBSTUB:ARMED? 0= if -1 exit then
    SLOT? if E-T0-SLOT throw then
-   CUR @ CB-STUB-XT @ FILLED execute ;
+   CUR @ EMIT-CB-STUB-XT @ FILLED execute ;
 
-\ The stub goes in before BYTES answers the emission it ends.
+\ The stub goes in before EMIT-BYTES answers the emission it ends.
 : NEMIT-OPEN ( -- n )
-   CB-STUB
-   BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
+   EMIT-CB-STUB
+   EMIT-BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
 
 : NEMIT-ROWS ( n -- ) {: stub:n :}
    N-UNITS @ 0 ?do i UNIT-AT @ NEMIT:FUNCTION+ loop
@@ -557,11 +550,9 @@ private
    loop
    NEMIT:SEAL ;
 
-public
-
-: SEAL ( n -- ) {: at:n :}
+: EMIT-SEAL ( n -- ) {: at:n :}
    NEMIT-OPEN {: stub:n :}
-   at PATCH
+   at EMIT-PATCH
    at NEMIT:PLACE
    stub 0 >= if at stub + NCBSTUB:ENTRY! then
    stub NEMIT-ROWS ;

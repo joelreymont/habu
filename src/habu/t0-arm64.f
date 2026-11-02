@@ -1,8 +1,9 @@
-\ t0-arm64.f - the arm64 emitter of the tier 0 compiler, package T0-A64.
+\ t0-arm64.f - the arm64 emitter of the tier 0 compiler, part ARM64 of package
+\ COMP.
 \
-\ Implements the operations src/habu/t0-emit.f (T0-EMIT) states for every
-\ target; this file holds only arm64 encodings and register choices. INSTALL
-\ stores its words into the T0-EMIT and src/habu/t0-label.f cells for
+\ Implements the EMIT- operations src/habu/t0-emit.f states for every target;
+\ this file holds only arm64 encodings and register choices. FILL-SLOT stores
+\ its words into the EMIT- and src/habu/t0-label.f (LABEL) cells for
 \ CTARGET-ARCH:AARCH64.
 
 require src/lib/errors.f
@@ -19,7 +20,8 @@ require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 require src/habu/t0-label.f
 
-package T0-A64
+package COMP
+package ARM64
 using A64ASM
 
 15 constant NVREG
@@ -48,24 +50,24 @@ NVREG TYPED-BUFFER REGS n
 14 5 REGS !  15 6 REGS !  25 7 REGS !  23 8 REGS !  24 9 REGS !
 21 10 REGS !  22 11 REGS !  6 12 REGS !  7 13 REGS !  8 14 REGS !
 
-: REG ( T0-EMIT:vreg -- n ) T0-EMIT:VREG>N REGS @ ;
+: REG ( vreg -- n ) VREG>N REGS @ ;
 
 6 TYPED-BUFFER CONDS n
-C-EQ T0-EMIT:CC-EQ T0-EMIT:CC>N CONDS !
-C-NE T0-EMIT:CC-NE T0-EMIT:CC>N CONDS !
-C-LT T0-EMIT:CC-LT T0-EMIT:CC>N CONDS !
-C-GE T0-EMIT:CC-GE T0-EMIT:CC>N CONDS !
-C-LE T0-EMIT:CC-LE T0-EMIT:CC>N CONDS !
-C-GT T0-EMIT:CC-GT T0-EMIT:CC>N CONDS !
+C-EQ CC-EQ CC>N CONDS !
+C-NE CC-NE CC>N CONDS !
+C-LT CC-LT CC>N CONDS !
+C-GE CC-GE CC>N CONDS !
+C-LE CC-LE CC>N CONDS !
+C-GT CC-GT CC>N CONDS !
 
 \ The register form of each ALU operation, and the bitmask-immediate form of
 \ the logical ones, OP-AND first.
 5 TYPED-BUFFER ALU-RR [ n n n -- n ]
-' ENC-ADD T0-EMIT:OP-ADD T0-EMIT:ALU>N ALU-RR !
-' ENC-SUB T0-EMIT:OP-SUB T0-EMIT:ALU>N ALU-RR !
-' ENC-AND T0-EMIT:OP-AND T0-EMIT:ALU>N ALU-RR !
-' ENC-ORR T0-EMIT:OP-OR T0-EMIT:ALU>N ALU-RR !
-' ENC-EOR T0-EMIT:OP-XOR T0-EMIT:ALU>N ALU-RR !
+' ENC-ADD OP-ADD ALU>N ALU-RR !
+' ENC-SUB OP-SUB ALU>N ALU-RR !
+' ENC-AND OP-AND ALU>N ALU-RR !
+' ENC-ORR OP-OR ALU>N ALU-RR !
+' ENC-EOR OP-XOR ALU>N ALU-RR !
 
 3 TYPED-BUFFER ALU-LOGI [ n n n -- n ]
 ' ENC-ANDI 0 ALU-LOGI !
@@ -74,12 +76,12 @@ C-GT T0-EMIT:CC-GT T0-EMIT:CC>N CONDS !
 
 \ Each shifter by a register and by a count.
 2 TYPED-BUFFER SH-RR [ n n n -- n ]
-' ENC-LSLV T0-EMIT:SH-LEFT T0-EMIT:SHIFTER>N SH-RR !
-' ENC-LSRV T0-EMIT:SH-RIGHT T0-EMIT:SHIFTER>N SH-RR !
+' ENC-LSLV SH-LEFT SHIFTER>N SH-RR !
+' ENC-LSRV SH-RIGHT SHIFTER>N SH-RR !
 
 2 TYPED-BUFFER SH-RI [ n n n -- n ]
-' ENC-LSLI T0-EMIT:SH-LEFT T0-EMIT:SHIFTER>N SH-RI !
-' ENC-LSRI T0-EMIT:SH-RIGHT T0-EMIT:SHIFTER>N SH-RI !
+' ENC-LSLI SH-LEFT SHIFTER>N SH-RI !
+' ENC-LSRI SH-RIGHT SHIFTER>N SH-RI !
 
 create RAW BUF:HDR-BYTES allot        \ the open unit's body
 create OUT BUF:HDR-BYTES allot        \ the closed units, BYTES
@@ -286,7 +288,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 : UNIT-BEGIN ( -- )
    RAW BUF:CLEAR
-   OUT-OFF T0-EMIT:UNIT+
+   OUT-OFF EMIT-UNIT+
    NUNIT @ 1 + NUNIT !
    0 FRAME-CELLS !  0 LINKED !  0 HELD !  0 NEPI !  0 NPEND !  0 NPCALL !
    0 NSELF !  0 NBR ! ;
@@ -360,7 +362,7 @@ DYNAMIC-BUFFER BR-ARG n
    then
    OUT BUF:CLEAR
    0 NUNIT !
-   T0-LABEL:RESET
+   LABEL:RESET
    UNIT-BEGIN ;
 
 \ The buffers are this process's mappings, which no image carries; the next
@@ -376,7 +378,7 @@ DYNAMIC-BUFFER BR-ARG n
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
 \ at; the first byte holds its register.
 : QUOT-OPEN ( n -- ) {: n:n :}
-   n NUNIT @ <> if T0-EMIT:E-T0-UNIT throw then
+   n NUNIT @ <> if E-T0-UNIT throw then
    n QUOT-SITE @ {: at:n :}
    OUT-OFF at - {: d:n :}
    d ADR-BITS SIGNED? 0= if E-A64EMIT-REACH throw then
@@ -389,10 +391,10 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ A quotation's site is kept for QUOT-OPEN; every other address is a row.
 : FILE-ADDR ( n n n n -- ) {: at:n kind:n to:n origin:n :}
-   kind T0-EMIT:ADDR-QUOT-KIND = if
+   kind ADDR-QUOT-KIND = if
       to 1 + QUOT-SITE-RESERVE  at to QUOT-SITE ! exit
    then
-   at kind to origin T0-EMIT:ADDR-ROW+ ;
+   at kind to origin EMIT-ADDR-ROW+ ;
 
 : CLOSE ( -- )
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
@@ -416,7 +418,7 @@ DYNAMIC-BUFFER BR-ARG n
    loop
    NPCALL @ 0 ?do
       i PCALL-AT @ base p e PLACED  i PCALL-KIND @  i PCALL-TO @  i PCALL-LOC @
-      T0-EMIT:CALL-ROW+
+      EMIT-CALL-ROW+
    loop
    NSELF @ 0 ?do
       i SELF-AT @ base p e PLACED {: at:n :}
@@ -429,7 +431,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 : SLOT-CLOSE ( -- )
    RETURN CLOSE
-   OUT-OFF INSN - T0-EMIT:PATCH-SLOT! ;
+   OUT-OFF INSN - EMIT-PATCH-SLOT! ;
 
 \ The callback stub is tier 1's (src/compiler/native/emit.f WRITE-STUB),
 \ appended after the last unit so each unit's code is the same armed or not.
@@ -438,7 +440,7 @@ DYNAMIC-BUFFER BR-ARG n
    OUT-OFF {: at:n :}
    NCBSTUB:SLOT@ CB-ID OUT CHAIN4-IN
    NCBSTUB:THUNK@ {: thunk:n :}
-   OUT-OFF NEMIT:ADDR-CODE thunk -1 T0-EMIT:ADDR-ROW+
+   OUT-OFF NEMIT:ADDR-CODE thunk -1 EMIT-ADDR-ROW+
    thunk TMP OUT CHAIN4-IN
    TMP ENC-BR OUT W32+
    at ;
@@ -447,28 +449,28 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
 : PATCH ( n -- ) {: place:n :}
-   T0-EMIT:CALL-ROWS 0 ?do
-      i T0-EMIT:CALL-ROW {: at:n kind:n to:n :}
+   EMIT-CALL-ROWS 0 ?do
+      i EMIT-CALL-ROW {: at:n kind:n to:n :}
       to place at + -  kind NEMIT:CALL =  BRANCH  at W32!
    loop ;
 
 \ ---- values ------------------------------------------------------------------
-: LIT ( n T0-EMIT:vreg -- ) REG LIT-R ;
+: LIT ( n vreg -- ) REG LIT-R ;
 
-: ADDR-DATA ( n n T0-EMIT:vreg -- )
-   {: v:n o:n d:T0-EMIT:vreg :}
+: ADDR-DATA ( n n vreg -- )
+   {: v:n o:n d:vreg :}
    HERE-OFF NEMIT:ADDR-DATA v o PEND+
    v d REG DATA-CHAIN ;
 
-: ADDR-CODE ( n T0-EMIT:vreg -- )
-   {: v:n d:T0-EMIT:vreg :}
+: ADDR-CODE ( n vreg -- )
+   {: v:n d:vreg :}
    HERE-OFF NEMIT:ADDR-CODE v -1 PEND+
    v d REG CHAIN4 ;
 
 \ `adr rd, 0` until QUOT-OPEN n writes the distance to the unit.
-: ADDR-QUOT ( n T0-EMIT:vreg -- )
-   {: n:n d:T0-EMIT:vreg :}
-   HERE-OFF T0-EMIT:ADDR-QUOT-KIND n -1 PEND+
+: ADDR-QUOT ( n vreg -- )
+   {: n:n d:vreg :}
+   HERE-OFF ADDR-QUOT-KIND n -1 PEND+
    d REG 0 ENC-ADR W ;
 
 : DSP+ ( n -- ) {: k:n :}  DSP DSP k CELL * ADD-IMM ;
@@ -478,7 +480,7 @@ DYNAMIC-BUFFER BR-ARG n
 \ the offset's reach.
 : PUSH-R ( n n -- ) {: r:n k:n :}  r DSP k CELL * ENC-STRPOST W ;
 
-: PUSH ( T0-EMIT:vreg n -- ) {: s:T0-EMIT:vreg k:n :}  s REG k PUSH-R ;
+: PUSH ( vreg n -- ) {: s:vreg k:n :}  s REG k PUSH-R ;
 
 : PUSH-LIT ( n n -- ) {: v:n k:n :}
    v TMP LIT-R
@@ -486,14 +488,14 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ The stack pointer moved down k cells, then the cell there loaded: one
 \ pre-index `ldr` while the move fits its offset.
-: POP ( T0-EMIT:vreg n -- ) {: d:T0-EMIT:vreg k:n :}
+: POP ( vreg n -- ) {: d:vreg k:n :}
    k CELL * negate {: off:n :}
    off SIMM9? if d REG DSP off ENC-LDRPRE W exit then
    k negate DSP+
    d REG DSP 0 false ACCESS ;
 
-: SPILL ( T0-EMIT:vreg n -- )
-   {: s:T0-EMIT:vreg k:n :}
+: SPILL ( vreg n -- )
+   {: s:vreg k:n :}
    s REG DSP k CELL * true XFER ;
 
 \ The address first, since its fallback uses x16 too, then the value.
@@ -502,16 +504,16 @@ DYNAMIC-BUFFER BR-ARG n
    v TMP LIT-R
    TMP b o true ACCESS ;
 
-: FILL ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg k:n :}
+: FILL ( vreg n -- )
+   {: d:vreg k:n :}
    d REG DSP k CELL * false XFER ;
 
-: MOV ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+: MOV ( vreg vreg -- )
+   {: d:vreg s:vreg :}
    d REG s REG ENC-MOV W ;
 
-: EXCHANGE ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+: EXCHANGE ( vreg vreg -- )
+   {: a:vreg b:vreg :}
    TMP a REG ENC-MOV W
    a REG b REG ENC-MOV W
    b REG TMP ENC-MOV W ;
@@ -519,83 +521,83 @@ DYNAMIC-BUFFER BR-ARG n
 : SLOTS ( n -- ) {: k:n :}
    k FRAME-CELLS @ > if k FRAME-CELLS ! then ;
 
-: SLOT-STORE ( T0-EMIT:vreg n -- )
-   {: s:T0-EMIT:vreg k:n :}
+: SLOT-STORE ( vreg n -- )
+   {: s:vreg k:n :}
    s REG SP k CELL * true XFER ;
 
-: SLOT-LOAD ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg k:n :}
+: SLOT-LOAD ( vreg n -- )
+   {: d:vreg k:n :}
    d REG SP k CELL * false XFER ;
 
 \ ---- arithmetic --------------------------------------------------------------
-: OP ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:alu -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg o:T0-EMIT:alu :}
-   d REG d REG s REG o T0-EMIT:ALU>N ALU-RR @ execute W ;
+: OP ( vreg vreg alu -- )
+   {: d:vreg s:vreg o:alu :}
+   d REG d REG s REG o ALU>N ALU-RR @ execute W ;
 
 \ ADD and SUB take any v through ADD-IMM; a logical operation takes v as a
 \ bitmask immediate when it is one, else from x16.
-: OP-LIT ( T0-EMIT:vreg n T0-EMIT:alu -- )
-   {: d:T0-EMIT:vreg v:n o:T0-EMIT:alu :}
-   d REG {: r:n :}  o T0-EMIT:ALU>N {: k:n :}
-   k T0-EMIT:OP-ADD T0-EMIT:ALU>N = if r r v ADD-IMM exit then
-   k T0-EMIT:OP-SUB T0-EMIT:ALU>N = if r r v negate ADD-IMM exit then
+: OP-LIT ( vreg n alu -- )
+   {: d:vreg v:n o:alu :}
+   d REG {: r:n :}  o ALU>N {: k:n :}
+   k OP-ADD ALU>N = if r r v ADD-IMM exit then
+   k OP-SUB ALU>N = if r r v negate ADD-IMM exit then
    v LIMM? if
-      r r v >LIMM  k T0-EMIT:OP-AND T0-EMIT:ALU>N - ALU-LOGI @ execute W exit
+      r r v >LIMM  k OP-AND ALU>N - ALU-LOGI @ execute W exit
    then
    v TMP LIT-R
    r r TMP k ALU-RR @ execute W ;
 
 \ The hardware masks a register count to six bits; SHIFT-LIT masks its own.
-: SHIFT ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:shifter -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg o:T0-EMIT:shifter :}
-   d REG d REG s REG o T0-EMIT:SHIFTER>N SH-RR @ execute W ;
+: SHIFT ( vreg vreg shifter -- )
+   {: d:vreg s:vreg o:shifter :}
+   d REG d REG s REG o SHIFTER>N SH-RR @ execute W ;
 
-: SHIFT-LIT ( T0-EMIT:vreg n T0-EMIT:shifter -- )
-   {: d:T0-EMIT:vreg v:n o:T0-EMIT:shifter :}
-   d REG d REG v 63 and o T0-EMIT:SHIFTER>N SH-RI @ execute W ;
+: SHIFT-LIT ( vreg n shifter -- )
+   {: d:vreg v:n o:shifter :}
+   d REG d REG v 63 and o SHIFTER>N SH-RI @ execute W ;
 
-: MULX ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
+: MULX ( vreg vreg -- )
+   {: d:vreg s:vreg :}
    d REG d REG s REG ENC-MUL W ;
 
 \ arm64 multiplies registers only.
-: MUL-LIT ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg v:n :}
+: MUL-LIT ( vreg n -- )
+   {: d:vreg v:n :}
    v TMP LIT-R
    d REG d REG TMP ENC-MUL W ;
 
 \ x16 = n ; sdiv xd,xd,x16 (src/habu/jit.f EI/). `sdiv` appears only here and
 \ in MOD-LIT, whose divisor is never 0 or -1 (t0-emit.f DIVISION): the hardware
 \ answers 0 for a zero divisor.
-: DIV-LIT ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg v:n :}
+: DIV-LIT ( vreg n -- )
+   {: d:vreg v:n :}
    v TMP LIT-R
    d REG d REG TMP ENC-SDIV W ;
 
 \ x16 = n ; sdiv x17,xd,x16 ; msub xd,x17,x16,xd: the dividend less the
 \ truncated quotient times n (src/habu/jit.f EIMOD).
-: MOD-LIT ( T0-EMIT:vreg n -- )
-   {: d:T0-EMIT:vreg v:n :}
+: MOD-LIT ( vreg n -- )
+   {: d:vreg v:n :}
    d REG {: r:n :}
    v TMP LIT-R
    ADR r TMP ENC-SDIV W
    r ADR TMP r ENC-MSUB W ;
 
-: NEG ( T0-EMIT:vreg -- ) REG dup ENC-NEG W ;
-: NOT ( T0-EMIT:vreg -- ) REG dup ENC-MVN W ;
+: NEG ( vreg -- ) REG dup ENC-NEG W ;
+: NOT ( vreg -- ) REG dup ENC-MVN W ;
 
 \ csetm makes the full-cell flag of the condition.
-: SET-FLAG ( T0-EMIT:vreg T0-EMIT:cc -- )
-   {: d:T0-EMIT:vreg c:T0-EMIT:cc :}
-   d REG c T0-EMIT:CC>N CONDS @ ENC-CSETM W ;
+: SET-FLAG ( vreg cc -- )
+   {: d:vreg c:cc :}
+   d REG c CC>N CONDS @ ENC-CSETM W ;
 
-: CMP ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: a:T0-EMIT:vreg b:T0-EMIT:vreg :}
+: CMP ( vreg vreg -- )
+   {: a:vreg b:vreg :}
    a REG b REG ENC-CMP W ;
 
 \ Compare a with v: cmp for an imm12, cmn for a negated one, else against x16.
-: CMP-LIT ( T0-EMIT:vreg n -- )
-   {: a:T0-EMIT:vreg v:n :}
+: CMP-LIT ( vreg n -- )
+   {: a:vreg v:n :}
    a REG v negate {: r:n nv:n :}
    v 0 >= v IMM12-LIM < and if r v ENC-CMPI W exit then
    nv 0 > nv IMM12-LIM < and if r nv ENC-CMNI W exit then
@@ -607,25 +609,25 @@ DYNAMIC-BUFFER BR-ARG n
 : IMM? ( n -- bool ) drop true ;
 
 \ ---- memory ------------------------------------------------------------------
-: LOAD ( T0-EMIT:vreg T0-EMIT:vreg T0-EMIT:width -- )
-   {: d:T0-EMIT:vreg a:T0-EMIT:vreg w:T0-EMIT:width :}
-   w T0-EMIT:WIDTH>N 1 = if d REG a REG 0 ENC-LDRB W exit then
+: LOAD ( vreg vreg width -- )
+   {: d:vreg a:vreg w:width :}
+   w WIDTH>N 1 = if d REG a REG 0 ENC-LDRB W exit then
    d REG a REG 0 ENC-LDR W ;
 
 \ ---- the return stack --------------------------------------------------------
 \ RSP-CELL cells deep from STACK-ABI:RETURN-BASE-CELL; slot d is base + 8d, as
 \ habu2.f J-TOR and J-RPOP reach it.
 \ Vreg i of p moved to or from the slot at x17 + off.
-: RS-XFER ( ptr T0-EMIT:vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
-   p i T0-EMIT:VREG-AT REG ADR off st ACCESS ;
+: RS-XFER ( ptr vreg n n bool -- ) {: p:ptr i:n off:n st:bool :}
+   p i VREG-AT REG ADR off st ACCESS ;
 
-: TOR ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
+: TOR ( ptr vreg n -- ) {: p:ptr n:n :}
    RDEPTH RSLOT
    n 0 ?do p i i CELL * true RS-XFER loop
    TMP TMP n ENC-ADDI W
    RDEPTH! ;
 
-: RFROM ( ptr T0-EMIT:vreg n -- ) {: p:ptr n:n :}
+: RFROM ( ptr vreg n -- ) {: p:ptr n:n :}
    RDEPTH
    TMP TMP n ENC-SUBI W
    RDEPTH! RSLOT
@@ -633,7 +635,7 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ Unscaled offsets under x17, the slot past the top, while the lowest fits nine
 \ bits; otherwise x17 moves down to the lowest slot first.
-: RFETCH ( ptr T0-EMIT:vreg n n -- ) {: p:ptr n:n k:n :}
+: RFETCH ( ptr vreg n n -- ) {: p:ptr n:n k:n :}
    RDEPTH RSLOT
    n k + CELL * negate {: lo:n :}
    lo SIMM9? if lo else ADR ADR lo ADD-IMM 0 then {: at:n :}
@@ -656,63 +658,63 @@ DYNAMIC-BUFFER BR-ARG n
    0 true BRANCH W ;
 
 \ ---- control -----------------------------------------------------------------
-\ The branch primitives T0-LABEL emits through. A forward branch is its number
+\ The branch primitives LABEL emits through. A forward branch is its number
 \ in the open unit's list, and a head a raw offset.
 
 \ A branch of the form, with its condition or register, to raw offset to (-1
 \ until RESOLVE): it emits a zero placeholder word and answers the branch's
 \ number.
-: BR+ ( n n n -- T0-LABEL:branch ) {: form:n arg:n to:n :}
+: BR+ ( n n n -- LABEL:branch ) {: form:n arg:n to:n :}
    NBR @ {: k:n :}
    k 1 + BR-AT-RESERVE  k 1 + BR-TO-RESERVE
    k 1 + BR-FORM-RESERVE  k 1 + BR-ARG-RESERVE
    HERE-OFF k BR-AT !  to k BR-TO !  form k BR-FORM !  arg k BR-ARG !
    k 1 + NBR !
    0 W
-   k T0-LABEL:>BRANCH ;
+   k LABEL:>BRANCH ;
 
-: RESOLVE ( T0-LABEL:branch -- )
-   HERE-OFF swap T0-LABEL:BRANCH>N BR-TO !  0 HELD ! ;
+: RESOLVE ( LABEL:branch -- )
+   HERE-OFF swap LABEL:BRANCH>N BR-TO !  0 HELD ! ;
 
-: MARK ( -- T0-LABEL:head ) 0 HELD !  HERE-OFF T0-LABEL:>HEAD ;
+: MARK ( -- LABEL:head ) 0 HELD !  HERE-OFF LABEL:>HEAD ;
 
-: FWD-JUMP ( -- T0-LABEL:branch ) FORM-B 0 -1 BR+ ;
-: FWD-BCOND ( n -- T0-LABEL:branch ) FORM-BCOND swap -1 BR+ ;
-: FWD-ZERO ( T0-EMIT:vreg -- T0-LABEL:branch ) REG FORM-CBZ swap -1 BR+ ;
+: FWD-JUMP ( -- LABEL:branch ) FORM-B 0 -1 BR+ ;
+: FWD-BCOND ( n -- LABEL:branch ) FORM-BCOND swap -1 BR+ ;
+: FWD-ZERO ( vreg -- LABEL:branch ) REG FORM-CBZ swap -1 BR+ ;
 
-: FWD-NE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )
-   {: sel:T0-EMIT:vreg v:T0-EMIT:vreg :}
+: FWD-NE ( vreg vreg -- LABEL:branch )
+   {: sel:vreg v:vreg :}
    sel REG v REG ENC-CMP W
    C-NE FWD-BCOND ;
 
-: FWD-NE-LIT ( T0-EMIT:vreg n -- T0-LABEL:branch )
-   {: sel:T0-EMIT:vreg v:n :}
+: FWD-NE-LIT ( vreg n -- LABEL:branch )
+   {: sel:vreg v:n :}
    sel v CMP-LIT
    C-NE FWD-BCOND ;
 
-: FWD-GE ( T0-EMIT:vreg T0-EMIT:vreg -- T0-LABEL:branch )
-   {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
+: FWD-GE ( vreg vreg -- LABEL:branch )
+   {: s:vreg l:vreg :}
    s REG l REG ENC-CMP W
    C-GE FWD-BCOND ;
 
-: FWD-CC ( T0-EMIT:cc -- T0-LABEL:branch ) T0-EMIT:CC>N CONDS @ FWD-BCOND ;
+: FWD-CC ( cc -- LABEL:branch ) CC>N CONDS @ FWD-BCOND ;
 
 \ The b.cond branch becomes b.eq.
-: ENTRY-EQ ( T0-LABEL:branch -- ) T0-LABEL:BRANCH>N {: k:n :}  C-EQ k BR-ARG ! ;
+: ENTRY-EQ ( LABEL:branch -- ) LABEL:BRANCH>N {: k:n :}  C-EQ k BR-ARG ! ;
 
-: BACK-JUMP ( T0-LABEL:head -- ) T0-LABEL:HEAD>N FORM-B 0 rot BR+ drop ;
+: BACK-JUMP ( LABEL:head -- ) LABEL:HEAD>N FORM-B 0 rot BR+ drop ;
 
-: BACK-BCOND ( n T0-LABEL:head -- )
-   T0-LABEL:HEAD>N {: c:n m:n :}
+: BACK-BCOND ( n LABEL:head -- )
+   LABEL:HEAD>N {: c:n m:n :}
    FORM-BCOND c m BR+ drop ;
 
-: BACK-ZERO ( T0-EMIT:vreg T0-LABEL:head -- )
-   T0-LABEL:HEAD>N {: c:T0-EMIT:vreg m:n :}
+: BACK-ZERO ( vreg LABEL:head -- )
+   LABEL:HEAD>N {: c:vreg m:n :}
    FORM-CBZ c REG m BR+ drop ;
 
-: BACK-CC ( T0-EMIT:cc T0-LABEL:head -- )
-   {: c:T0-EMIT:cc m:T0-LABEL:head :}
-   c T0-EMIT:CC>N CONDS @ m BACK-BCOND ;
+: BACK-CC ( cc LABEL:head -- )
+   {: c:cc m:LABEL:head :}
+   c CC>N CONDS @ m BACK-BCOND ;
 
 \ ---- loops -------------------------------------------------------------------
 \ The frame cell stays the index's home (`j` and the runtime read it); x29 is a
@@ -739,8 +741,8 @@ DYNAMIC-BUFFER BR-ARG n
 -8 constant LLIM-OFF
 
 \ The index of the frame outside the innermost into d, from memory.
-: LOOP-J ( T0-EMIT:vreg -- )
-   {: d:T0-EMIT:vreg :}
+: LOOP-J ( vreg -- )
+   {: d:vreg :}
    LDEPTH LTOP
    d REG ADR LIDX-OFF 16 - false XFER ;
 
@@ -752,8 +754,8 @@ DYNAMIC-BUFFER BR-ARG n
    IDX ADR LIDX-OFF false XFER
    1 HELD ! ;
 
-: LOOP-PUSH ( T0-EMIT:vreg T0-EMIT:vreg -- )
-   {: s:T0-EMIT:vreg l:T0-EMIT:vreg :}
+: LOOP-PUSH ( vreg vreg -- )
+   {: s:vreg l:vreg :}
    LDEPTH
    TMP TMP 1 ENC-ADDI W
    LDEPTH! LTOP
@@ -763,8 +765,8 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ The head binds with x29 holding the index: the entry arrives from LOOP-PUSH
 \ and every back edge from LOOP-NEXT or LOOP-STEP.
-: LOOP-OPEN ( T0-EMIT:vreg T0-EMIT:vreg bool -- )
-   T0-LABEL:LOOP-OPEN  1 HELD ! ;
+: LOOP-OPEN ( vreg vreg bool -- )
+   LABEL:LOOP-OPEN  1 HELD ! ;
 
 : LOOP-POP ( -- )
    LDEPTH
@@ -772,13 +774,13 @@ DYNAMIC-BUFFER BR-ARG n
    LDEPTH!
    0 HELD ! ;
 
-: LOOP-I ( T0-EMIT:vreg -- )
+: LOOP-I ( vreg -- )
    HELD @ 0= if FRAME-IDX then
    REG IDX ENC-MOV W ;
 
 \ The step is x29's, so this target leaves the free vreg alone.
-: LOOP-NEXT ( T0-EMIT:vreg T0-LABEL:head -- )
-   nip {: m:T0-LABEL:head :}
+: LOOP-NEXT ( vreg LABEL:head -- )
+   nip {: m:LABEL:head :}
    FRAME-IDX
    IDX IDX 1 ENC-ADDI W
    IDX ADR LIDX-OFF true XFER
@@ -788,8 +790,8 @@ DYNAMIC-BUFFER BR-ARG n
 
 \ With old = index - limit before the step, the index crossed the boundary
 \ when (old xor old + s) and (old xor s) is negative.
-: LOOP-STEP ( T0-EMIT:vreg T0-EMIT:vreg T0-LABEL:head -- )
-   {: s:T0-EMIT:vreg t:T0-EMIT:vreg m:T0-LABEL:head :}
+: LOOP-STEP ( vreg vreg LABEL:head -- )
+   {: s:vreg t:vreg m:LABEL:head :}
    s REG {: sr:n :}  t REG {: r:n :}
    FRAME-IDX
    TMP ADR LLIM-OFF false XFER
@@ -804,98 +806,99 @@ DYNAMIC-BUFFER BR-ARG n
    C-GE m BACK-BCOND ;
 
 \ ---- the seam ----------------------------------------------------------------
-\ Make this file's words, and T0-LABEL's over its branch primitives, the ones
-\ T0-EMIT runs at slot k.
-: INSTALL ( n -- )
+\ Make this file's words, and LABEL's over its branch primitives, the ones the
+\ EMIT- operations run at slot k.
+: FILL-SLOT ( n -- )
    {: k:n :}
-   NVREG k T0-EMIT:VREGS-N !
-   ['] OPEN k T0-EMIT:OPEN-XT !
-   ['] QUOT-OPEN k T0-EMIT:QUOT-OPEN-XT !
-   ['] UNIT-OPEN k T0-EMIT:UNIT-OPEN-XT !
-   ['] RETURN k T0-EMIT:RETURN-XT !
-   ['] CLOSE k T0-EMIT:CLOSE-XT !
-   ['] SLOT-CLOSE k T0-EMIT:SLOT-CLOSE-XT !
-   ['] CB-STUB k T0-EMIT:CB-STUB-XT !
-   ['] BYTES k T0-EMIT:BYTES-XT !
-   ['] PATCH k T0-EMIT:PATCH-XT !
-   ['] LIT k T0-EMIT:LIT-XT !
-   ['] ADDR-DATA k T0-EMIT:ADDR-DATA-XT !
-   ['] ADDR-CODE k T0-EMIT:ADDR-CODE-XT !
-   ['] ADDR-QUOT k T0-EMIT:ADDR-QUOT-XT !
-   ['] PUSH k T0-EMIT:PUSH-XT !
-   ['] PUSH-LIT k T0-EMIT:PUSH-LIT-XT !
-   ['] POP k T0-EMIT:POP-XT !
-   ['] SPILL k T0-EMIT:SPILL-XT !
-   ['] SPILL-LIT k T0-EMIT:SPILL-LIT-XT !
-   ['] FILL k T0-EMIT:FILL-XT !
-   ['] DSP+ k T0-EMIT:DSP+-XT !
-   ['] MOV k T0-EMIT:MOV-XT !
-   ['] EXCHANGE k T0-EMIT:EXCHANGE-XT !
-   ['] SLOTS k T0-EMIT:SLOTS-XT !
-   ['] SLOT-STORE k T0-EMIT:SLOT-STORE-XT !
-   ['] SLOT-LOAD k T0-EMIT:SLOT-LOAD-XT !
-   ['] OP k T0-EMIT:OP-XT !
-   ['] OP-LIT k T0-EMIT:OP-LIT-XT !
-   ['] SHIFT k T0-EMIT:SHIFT-XT !
-   ['] SHIFT-LIT k T0-EMIT:SHIFT-LIT-XT !
-   ['] MULX k T0-EMIT:MULX-XT !
-   ['] MUL-LIT k T0-EMIT:MUL-LIT-XT !
-   ['] DIV-LIT k T0-EMIT:DIV-LIT-XT !
-   ['] MOD-LIT k T0-EMIT:MOD-LIT-XT !
-   ['] NEG k T0-EMIT:NEG-XT !
-   ['] NOT k T0-EMIT:NOT-XT !
-   ['] CMP k T0-EMIT:CMP-XT !
-   ['] CMP-LIT k T0-EMIT:CMP-LIT-XT !
-   ['] SET-FLAG k T0-EMIT:SET-FLAG-XT !
-   ['] LOAD k T0-EMIT:LOAD-XT !
-   ['] TOR k T0-EMIT:TOR-XT !
-   ['] RFROM k T0-EMIT:RFROM-XT !
-   ['] RFETCH k T0-EMIT:RFETCH-XT !
-   ['] CALL k T0-EMIT:CALL-XT !
-   ['] TAIL k T0-EMIT:TAIL-XT !
-   ['] CALL-SELF k T0-EMIT:CALL-SELF-XT !
-   ['] T0-LABEL:IF, k T0-EMIT:IF,-XT !
-   ['] T0-LABEL:ELSE, k T0-EMIT:ELSE,-XT !
-   ['] T0-LABEL:THEN, k T0-EMIT:THEN,-XT !
-   ['] T0-LABEL:BEGIN, k T0-EMIT:BEGIN,-XT !
-   ['] T0-LABEL:WHILE, k T0-EMIT:WHILE,-XT !
-   ['] T0-LABEL:REPEAT, k T0-EMIT:REPEAT,-XT !
-   ['] T0-LABEL:UNTIL, k T0-EMIT:UNTIL,-XT !
-   ['] T0-LABEL:IF-CC, k T0-EMIT:IF-CC,-XT !
-   ['] T0-LABEL:WHILE-CC, k T0-EMIT:WHILE-CC,-XT !
-   ['] T0-LABEL:UNTIL-CC, k T0-EMIT:UNTIL-CC,-XT !
-   ['] T0-LABEL:AGAIN, k T0-EMIT:AGAIN,-XT !
-   ['] T0-LABEL:CASE, k T0-EMIT:CASE,-XT !
-   ['] T0-LABEL:OF, k T0-EMIT:OF,-XT !
-   ['] T0-LABEL:OF-LIT k T0-EMIT:OF-LIT-XT !
-   ['] T0-LABEL:ENDOF, k T0-EMIT:ENDOF,-XT !
-   ['] T0-LABEL:ENDCASE, k T0-EMIT:ENDCASE,-XT !
-   ['] LOOP-PUSH k T0-EMIT:LOOP-PUSH-XT !
-   ['] LOOP-POP k T0-EMIT:LOOP-POP-XT !
-   ['] LOOP-I k T0-EMIT:LOOP-I-XT !
-   ['] LOOP-J k T0-EMIT:LOOP-J-XT !
-   ['] LOOP-OPEN k T0-EMIT:LOOP-OPEN-XT !
-   ['] T0-LABEL:LEAVE, k T0-EMIT:LEAVE,-XT !
-   ['] T0-LABEL:LOOP-NEXT k T0-EMIT:LOOP-NEXT-XT !
-   ['] T0-LABEL:LOOP-STEP k T0-EMIT:LOOP-STEP-XT !
-   ['] T0-LABEL:LOOP-CLOSE k T0-EMIT:LOOP-CLOSE-XT !
-   ['] IMM? k T0-EMIT:IMM?-XT !
-   ['] MARK k T0-LABEL:MARK-XT !
-   ['] FWD-JUMP k T0-LABEL:FWD-JUMP-XT !
-   ['] FWD-ZERO k T0-LABEL:FWD-ZERO-XT !
-   ['] FWD-NE k T0-LABEL:FWD-NE-XT !
-   ['] FWD-NE-LIT k T0-LABEL:FWD-NE-LIT-XT !
-   ['] FWD-GE k T0-LABEL:FWD-GE-XT !
-   ['] FWD-CC k T0-LABEL:FWD-CC-XT !
-   ['] BACK-JUMP k T0-LABEL:BACK-JUMP-XT !
-   ['] BACK-ZERO k T0-LABEL:BACK-ZERO-XT !
-   ['] BACK-CC k T0-LABEL:BACK-CC-XT !
-   ['] RESOLVE k T0-LABEL:RESOLVE-XT !
-   ['] ENTRY-EQ k T0-LABEL:ENTRY-EQ-XT !
-   ['] LOOP-NEXT k T0-LABEL:LOOP-NEXT-XT !
-   ['] LOOP-STEP k T0-LABEL:LOOP-STEP-XT ! ;
+   NVREG k EMIT-VREGS-N !
+   ['] OPEN k EMIT-OPEN-XT !
+   ['] QUOT-OPEN k EMIT-QUOT-OPEN-XT !
+   ['] UNIT-OPEN k EMIT-UNIT-OPEN-XT !
+   ['] RETURN k EMIT-RETURN-XT !
+   ['] CLOSE k EMIT-CLOSE-XT !
+   ['] SLOT-CLOSE k EMIT-SLOT-CLOSE-XT !
+   ['] CB-STUB k EMIT-CB-STUB-XT !
+   ['] BYTES k EMIT-BYTES-XT !
+   ['] PATCH k EMIT-PATCH-XT !
+   ['] LIT k EMIT-LIT-XT !
+   ['] ADDR-DATA k EMIT-ADDR-DATA-XT !
+   ['] ADDR-CODE k EMIT-ADDR-CODE-XT !
+   ['] ADDR-QUOT k EMIT-ADDR-QUOT-XT !
+   ['] PUSH k EMIT-PUSH-XT !
+   ['] PUSH-LIT k EMIT-PUSH-LIT-XT !
+   ['] POP k EMIT-POP-XT !
+   ['] SPILL k EMIT-SPILL-XT !
+   ['] SPILL-LIT k EMIT-SPILL-LIT-XT !
+   ['] FILL k EMIT-FILL-XT !
+   ['] DSP+ k EMIT-DSP+-XT !
+   ['] MOV k EMIT-MOV-XT !
+   ['] EXCHANGE k EMIT-EXCHANGE-XT !
+   ['] SLOTS k EMIT-SLOTS-XT !
+   ['] SLOT-STORE k EMIT-SLOT-STORE-XT !
+   ['] SLOT-LOAD k EMIT-SLOT-LOAD-XT !
+   ['] OP k EMIT-OP-XT !
+   ['] OP-LIT k EMIT-OP-LIT-XT !
+   ['] SHIFT k EMIT-SHIFT-XT !
+   ['] SHIFT-LIT k EMIT-SHIFT-LIT-XT !
+   ['] MULX k EMIT-MULX-XT !
+   ['] MUL-LIT k EMIT-MUL-LIT-XT !
+   ['] DIV-LIT k EMIT-DIV-LIT-XT !
+   ['] MOD-LIT k EMIT-MOD-LIT-XT !
+   ['] NEG k EMIT-NEG-XT !
+   ['] NOT k EMIT-NOT-XT !
+   ['] CMP k EMIT-CMP-XT !
+   ['] CMP-LIT k EMIT-CMP-LIT-XT !
+   ['] SET-FLAG k EMIT-SET-FLAG-XT !
+   ['] LOAD k EMIT-LOAD-XT !
+   ['] TOR k EMIT-TOR-XT !
+   ['] RFROM k EMIT-RFROM-XT !
+   ['] RFETCH k EMIT-RFETCH-XT !
+   ['] CALL k EMIT-CALL-XT !
+   ['] TAIL k EMIT-TAIL-XT !
+   ['] CALL-SELF k EMIT-CALL-SELF-XT !
+   ['] LABEL:IF, k EMIT-IF,-XT !
+   ['] LABEL:ELSE, k EMIT-ELSE,-XT !
+   ['] LABEL:THEN, k EMIT-THEN,-XT !
+   ['] LABEL:BEGIN, k EMIT-BEGIN,-XT !
+   ['] LABEL:WHILE, k EMIT-WHILE,-XT !
+   ['] LABEL:REPEAT, k EMIT-REPEAT,-XT !
+   ['] LABEL:UNTIL, k EMIT-UNTIL,-XT !
+   ['] LABEL:IF-CC, k EMIT-IF-CC,-XT !
+   ['] LABEL:WHILE-CC, k EMIT-WHILE-CC,-XT !
+   ['] LABEL:UNTIL-CC, k EMIT-UNTIL-CC,-XT !
+   ['] LABEL:AGAIN, k EMIT-AGAIN,-XT !
+   ['] LABEL:CASE, k EMIT-CASE,-XT !
+   ['] LABEL:OF, k EMIT-OF,-XT !
+   ['] LABEL:OF-LIT k EMIT-OF-LIT-XT !
+   ['] LABEL:ENDOF, k EMIT-ENDOF,-XT !
+   ['] LABEL:ENDCASE, k EMIT-ENDCASE,-XT !
+   ['] LOOP-PUSH k EMIT-LOOP-PUSH-XT !
+   ['] LOOP-POP k EMIT-LOOP-POP-XT !
+   ['] LOOP-I k EMIT-LOOP-I-XT !
+   ['] LOOP-J k EMIT-LOOP-J-XT !
+   ['] LOOP-OPEN k EMIT-LOOP-OPEN-XT !
+   ['] LABEL:LEAVE, k EMIT-LEAVE,-XT !
+   ['] LABEL:LOOP-NEXT k EMIT-LOOP-NEXT-XT !
+   ['] LABEL:LOOP-STEP k EMIT-LOOP-STEP-XT !
+   ['] LABEL:LOOP-CLOSE k EMIT-LOOP-CLOSE-XT !
+   ['] IMM? k EMIT-IMM?-XT !
+   ['] MARK k LABEL:MARK-XT !
+   ['] FWD-JUMP k LABEL:FWD-JUMP-XT !
+   ['] FWD-ZERO k LABEL:FWD-ZERO-XT !
+   ['] FWD-NE k LABEL:FWD-NE-XT !
+   ['] FWD-NE-LIT k LABEL:FWD-NE-LIT-XT !
+   ['] FWD-GE k LABEL:FWD-GE-XT !
+   ['] FWD-CC k LABEL:FWD-CC-XT !
+   ['] BACK-JUMP k LABEL:BACK-JUMP-XT !
+   ['] BACK-ZERO k LABEL:BACK-ZERO-XT !
+   ['] BACK-CC k LABEL:BACK-CC-XT !
+   ['] RESOLVE k LABEL:RESOLVE-XT !
+   ['] ENTRY-EQ k LABEL:ENTRY-EQ-XT !
+   ['] LOOP-NEXT k LABEL:LOOP-NEXT-XT !
+   ['] LOOP-STEP k LABEL:LOOP-STEP-XT ! ;
 
-CTARGET-ARCH:AARCH64 ' INSTALL T0-EMIT:PROVIDE
+CTARGET-ARCH:AARCH64 ' FILL-SLOT EMIT-PROVIDE
 
 ;using
+;package
 ;package

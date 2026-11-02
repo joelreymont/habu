@@ -61,7 +61,7 @@ variable PRIOR-ENGINE-ROOT-U
    $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
    \ The host's rows at $3838..$3847 and $6C0 name cells the built engine fills
    \ itself: BODY-HOOK-CELL, which the build sets around each file it runs, and
-   \ COMP-CELL and FIXED-COMP-CELL (T0:INSTALL).
+   \ COMP-CELL and FIXED-COMP-CELL (COMP:INSTALL).
    $3838 2 cells ADDRESS-CELLS:REMOVE-XT-SPAN
    $6C0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK

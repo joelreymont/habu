@@ -2,7 +2,7 @@
 \ it only for linux-x86-64: interpret.f is the engine's `evaluate`, definers.f
 \ its `create` and definition policy, main.f its command line; ARM64 keeps the
 \ kernel's bodies. CHECKER-REG:SEAL runs SEAL-TARGET, filled here by INSTALL-LOOP;
-\ it binds the four cells and makes T0 tier 0's compiler
+\ it binds the four cells and makes COMP tier 0's compiler
 \ (NCOMP-DISPATCH:COMP-CELL) before the capture seals them.
 \ test/prefix-provided-unfilled.f drops the first install line: empty evaluate refused.
 
@@ -21,7 +21,7 @@ private
    OUTER:INSTALL-CREATE
    OUTER:INSTALL-POLICY
    ENGINE-MAIN:INSTALL
-   CTARGET-ARCH:X86-64 T0-EMIT:SELECT T0:INSTALL ;
+   COMP:INSTALL ;
 
 : BIND ( -- ) [: INSTALL-LOOP ;] is CHECKER-REG:SEAL-TARGET ;
 BIND

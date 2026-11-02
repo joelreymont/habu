@@ -1,12 +1,12 @@
-\ t0.f - the tier 0 compiler's front end, package T0.
+\ t0.f - the tier 0 compiler's front end, package COMP.
 \
 \ Compiles one definition's body text (BODYBUF at `;`, src/habu/definers.f
 \ DEF-COMPILE) from the tape the checker's scan reports, through the step every
 \ native compiler shares (src/compiler/native/definition.f), and emits through
-\ src/habu/t0-emit.f to the selected emitter. A name, a tick's operand and
-\ `is`'s operand lower from the record the checker bound, as tier 1's
-\ src/compiler/native/hir-word.f RESOLVE-SITE does; spelling is looked up only
-\ by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?) and VALIDATE (NFETCH-CHECK:TAGS).
+\ src/habu/t0-emit.f's EMIT- words to the selected emitter. A name, a tick's
+\ operand and `is`'s operand lower from the record the checker bound, as tier
+\ 1's src/compiler/native/hir-word.f RESOLVE-SITE does; spelling is looked up
+\ only by IMM-TOKEN (CHECKER-OWNER:PARSE-IMM?) and VALIDATE (NFETCH-CHECK:TAGS).
 \ COMPILE-FIXED builds the body of a `constant`, `create` or `defer`, which has
 \ no text, through the same step.
 
@@ -20,12 +20,15 @@ require src/compiler/native/family.f
 require src/compiler/native/trap.f
 require src/compiler/native/fetch.f
 require src/compiler/native/string.f
+require src/compiler/target.f
+require src/compiler/binding.f
+require src/compiler/native/abi.f
 require src/compiler/native/publish.f
 require src/compiler/native/definition.f
 require src/compiler/native/callback-stub.f
 require src/habu/t0-emit.f
 
-package T0
+package COMP
 
 \ ---- the tape ----------------------------------------------------------------
 \ THE ORDINALS. The checker files what it proved about a token under that
@@ -123,7 +126,7 @@ variable CUT                         \ the byte just past `does> `, or 0
 \ Forth's orig/dest order has it, so `begin ... while ... while ... repeat
 \ then` closes. A structure that does not close, or a loop word outside the
 \ loops it needs, is E-T0-CONTROL, refused before the emitter is called: the
-\ T0-EMIT structured words (src/habu/t0-emit.f CONTROL) trust this nesting.
+\ EMIT- structured words (src/habu/t0-emit.f CONTROL) trust this nesting.
 \ The refusal names the closer, or the token that ended a unit with a structure
 \ still open: the stack keeps no opener's row.
 0 constant CS-IF
@@ -140,23 +143,23 @@ DYNAMIC-BUFFER CS-KIND n
 DYNAMIC-BUFFER CS-LOC n              \ the locals' slots in scope where the block opened
 DYNAMIC-BUFFER CS-FAM n              \ a MATCH's family
 DYNAMIC-BUFFER CS-WID n              \ a MATCH's cells, the tag on top
-DYNAMIC-BUFFER CS-LAY n              \ layout k's vregs from k*VREGS, bottom first
+DYNAMIC-BUFFER CS-LAY n              \ layout k's vregs from k*EMIT-VREGS, bottom first
 DYNAMIC-BUFFER CS-LAY-N n            \ layout k's count, -1 unrecorded
 variable CS-N
 variable DEAD                        \ nonzero: the fallthrough is unreachable
 
 : LAY-ROOM ( n -- ) {: k:n :}
-   k 1+ T0-EMIT:VREGS * CS-LAY-RESERVE  k 1+ CS-LAY-N-RESERVE ;
+   k 1+ EMIT-VREGS * CS-LAY-RESERVE  k 1+ CS-LAY-N-RESERVE ;
 
-: LAY@ ( n n -- n ) {: k:n j:n :} k T0-EMIT:VREGS * j + CS-LAY @ ;
-: LAY! ( n n n -- ) {: v:n k:n j:n :} v k T0-EMIT:VREGS * j + CS-LAY ! ;
+: LAY@ ( n n -- n ) {: k:n j:n :} k EMIT-VREGS * j + CS-LAY @ ;
+: LAY! ( n n n -- ) {: v:n k:n j:n :} v k EMIT-VREGS * j + CS-LAY ! ;
 
 \ The innermost open structure with a recorded layout, or -1.
 : STEERING ( -- n )
    CS-N @ 1- begin dup 0 >= if dup CS-LAY-N @ 0< else false then while 1- repeat ;
 
 \ ---- the virtual stack -------------------------------------------------------
-\ THE VIRTUAL STACK. The top of the data stack lives in at most T0-EMIT:VREGS
+\ THE VIRTUAL STACK. The top of the data stack lives in at most EMIT-VREGS
 \ entries, each a vreg or a constant; below them it is in memory. Paths that
 \ meet at an `else` or `then`, a `begin` loop's head and exits and a counted
 \ loop's head and exit keep their values in registers: the opener records a
@@ -172,18 +175,18 @@ variable DEAD                        \ nonzero: the fallthrough is unreachable
 0 constant K-REG
 1 constant K-CONST
 
-DYNAMIC-BUFFER VS-KIND n            \ reserved to T0-EMIT:VREGS by RESET
+DYNAMIC-BUFFER VS-KIND n            \ reserved to EMIT-VREGS by RESET-STATE
 DYNAMIC-BUFFER VS-VAL n
 variable VS-N
 variable FREE                       \ bit k set: no entry holds vreg k
 
-: ALL-FREE ( -- n ) 1 T0-EMIT:VREGS lshift 1- ;
+: ALL-FREE ( -- n ) 1 EMIT-VREGS lshift 1- ;
 
 : TOP ( -- n ) VS-N @ 1- ;
 
 : REG? ( n -- bool ) VS-KIND @ K-REG = ;
 
-: VREG@ ( n -- T0-EMIT:vreg ) VS-VAL @ T0-EMIT:>VREG ;
+: VREG@ ( n -- vreg ) VS-VAL @ >VREG ;
 
 -1 constant NO-ENTRY                \ an entry index HOLDERS skips none for
 
@@ -192,8 +195,8 @@ variable FREE                       \ bit k set: no entry holds vreg k
    0 VS-N @ 0 ?do i x <> i REG? and i VS-VAL @ v = and if 1+ then loop ;
 
 \ Free a vreg once no entry holds it; one an entry still holds stays allocated.
-: RELEASE ( T0-EMIT:vreg -- )
-   T0-EMIT:VREG>N {: n:n :}
+: RELEASE ( vreg -- )
+   VREG>N {: n:n :}
    n NO-ENTRY HOLDERS 0<> if exit then
    1 n lshift FREE @ or FREE ! ;
 
@@ -207,40 +210,40 @@ variable FREE                       \ bit k set: no entry holds vreg k
    k REG? k VS-VAL @ {: reg:bool v:n :}
    VS-N @ k 1+ ?do i i 1- COPY-ENTRY loop
    VS-N @ 1- VS-N !
-   reg if v T0-EMIT:>VREG RELEASE then ;
+   reg if v >VREG RELEASE then ;
 
 : SPILL-ENTRY ( n -- ) {: k:n :}
-   k REG? if k VREG@ k T0-EMIT:SPILL exit then
-   k VS-VAL @ k T0-EMIT:SPILL-LIT ;
+   k REG? if k VREG@ k EMIT-SPILL exit then
+   k VS-VAL @ k EMIT-SPILL-LIT ;
 
 : PUSH-ENTRY ( n -- ) {: n:n :}
-   0 REG? if 0 VREG@ n T0-EMIT:PUSH exit then
-   0 VS-VAL @ n T0-EMIT:PUSH-LIT ;
+   0 REG? if 0 VREG@ n EMIT-PUSH exit then
+   0 VS-VAL @ n EMIT-PUSH-LIT ;
 
 : EVICT ( -- )
    1 PUSH-ENTRY
    0 REMOVE ;
 
 : ROOM ( -- )
-   VS-N @ T0-EMIT:VREGS = if EVICT then ;
+   VS-N @ EMIT-VREGS = if EVICT then ;
 
 \ Vreg n, which no entry holds, allocated.
-: CLAIM ( n -- T0-EMIT:vreg ) {: n:n :}
+: CLAIM ( n -- vreg ) {: n:n :}
    1 n lshift invert FREE @ and FREE !
-   n T0-EMIT:>VREG ;
+   n >VREG ;
 
-: LOWEST ( n -- T0-EMIT:vreg ) {: m:n :}
+: LOWEST ( n -- vreg ) {: m:n :}
    0 begin 1 over lshift m and 0= while 1+ repeat CLAIM ;
 
 \ A vreg no entry or TAKE holds. A caller holding a taken vreg ALLOCs only for
-\ an entry with none, at most VREGS-1 entries being left, so a vreg is free;
-\ with none taken, entries holding every vreg hold one each, so EVICT frees the
-\ bottom one's.
-: ALLOC ( -- T0-EMIT:vreg )
+\ an entry with none, at most EMIT-VREGS - 1 entries being left, so a vreg is
+\ free; with none taken, entries holding every vreg hold one each, so EVICT
+\ frees the bottom one's.
+: ALLOC ( -- vreg )
    FREE @ 0= if EVICT then FREE @ LOWEST ;
 
-: PUSH-REG ( T0-EMIT:vreg -- ) {: r:T0-EMIT:vreg :}
-   K-REG r T0-EMIT:VREG>N VS-N @ ENTRY!
+: PUSH-REG ( vreg -- ) {: r:vreg :}
+   K-REG r VREG>N VS-N @ ENTRY!
    VS-N @ 1+ VS-N ! ;
 
 : PUSH-CONST ( n -- ) {: v:n :}
@@ -268,17 +271,17 @@ variable FREE                       \ bit k set: no entry holds vreg k
 
 \ Steers a fill as the arm64 JIT's NEED-ALLOC, (src/habu/jit.f) steers a pull:
 \ a value filled after a call inside a loop or an `if` lands in the vreg the
-\ back edge or `then` needs. ENSURE asks for at most VREGS entries, so with the
-\ held-back vregs aside one is free for LOWEST and nothing is evicted.
-: STEER ( n n -- T0-EMIT:vreg ) {: s:n j:n :}
+\ back edge or `then` needs. ENSURE asks for at most EMIT-VREGS entries, so
+\ with the held-back vregs aside one is free for LOWEST and nothing is evicted.
+: STEER ( n n -- vreg ) {: s:n j:n :}
    s j AIM {: g:n :}
    g 0< if false else 1 g lshift FREE @ and 0<> then if g CLAIM exit then
    s j HELD-BACK invert FREE @ and LOWEST ;
 
 : FILL-ENTRY ( n n n -- ) {: s:n k:n m:n :}
-   s k STEER {: r:T0-EMIT:vreg :}
-   k 0= if r m T0-EMIT:POP else r k m - T0-EMIT:FILL then
-   K-REG r T0-EMIT:VREG>N k ENTRY! ;
+   s k STEER {: r:vreg :}
+   k 0= if r m EMIT-POP else r k m - EMIT-FILL then
+   K-REG r VREG>N k ENTRY! ;
 
 : ENSURE ( n -- ) {: k:n :}
    VS-N @ k >= if exit then
@@ -289,53 +292,53 @@ variable FREE                       \ bit k set: no entry holds vreg k
    VS-N @ m + VS-N ! ;
 
 \ A constant entry means a vreg is free, so ALLOC evicts nothing and k stays put.
-: MAT ( n -- T0-EMIT:vreg ) {: k:n :}
+: MAT ( n -- vreg ) {: k:n :}
    k REG? if k VREG@ exit then
-   ALLOC {: r:T0-EMIT:vreg :}
-   k VS-VAL @ r T0-EMIT:LIT
-   K-REG r T0-EMIT:VREG>N k ENTRY!
+   ALLOC {: r:vreg :}
+   k VS-VAL @ r EMIT-LIT
+   K-REG r VREG>N k ENTRY!
    r ;
 
 \ The top entry in a vreg, taken off the virtual stack. The vreg stays allocated
 \ until the caller's next SPILL-ALL or RELEASE, and an entry below may still
 \ hold it: the caller writes it only once no entry holds it.
-: TAKE ( -- T0-EMIT:vreg )
+: TAKE ( -- vreg )
    1 ENSURE
-   TOP MAT {: r:T0-EMIT:vreg :}
+   TOP MAT {: r:vreg :}
    VS-N @ 1- VS-N !
    r ;
 
 : SHARED? ( n n -- bool ) {: k:n x:n :} k VS-VAL @ x HOLDERS 1 > ;
 
 \ A shared entry means a vreg is free, so ALLOC evicts nothing and k stays put.
-: RELABEL ( n -- T0-EMIT:vreg ) {: k:n :}
-   ALLOC {: d:T0-EMIT:vreg :}
-   K-REG d T0-EMIT:VREG>N k ENTRY!
+: RELABEL ( n -- vreg ) {: k:n :}
+   ALLOC {: d:vreg :}
+   K-REG d VREG>N k ENTRY!
    d ;
 
 \ Entry k in a vreg no entry other than k and x holds, for an operation that
 \ writes it in place (d op= s) and consumes entry x, NO-ENTRY when it consumes
 \ none: a vreg shared with a third entry is copied into a fresh one first.
-: OWN ( n n -- T0-EMIT:vreg ) {: k:n x:n :}
-   k MAT {: r:T0-EMIT:vreg :}
+: OWN ( n n -- vreg ) {: k:n x:n :}
+   k MAT {: r:vreg :}
    k x SHARED? 0= if r exit then
-   k RELABEL {: d:T0-EMIT:vreg :}
-   d r T0-EMIT:MOV
+   k RELABEL {: d:vreg :}
+   d r EMIT-MOV
    d ;
 
 \ Entry k's vreg for an operation that overwrites it whole and reads the old
 \ value only as an input register: a shared entry gets a fresh vreg, and
 \ nothing is copied into it.
-: WRITE-TARGET ( n -- T0-EMIT:vreg ) {: k:n :}
-   k MAT {: r:T0-EMIT:vreg :}
+: WRITE-TARGET ( n -- vreg ) {: k:n :}
+   k MAT {: r:vreg :}
    k NO-ENTRY SHARED? 0= if r exit then
    k RELABEL ;
 
 \ ---- inline operations -------------------------------------------------------
 : CONST? ( n -- bool ) VS-KIND @ K-CONST = ;
 
-: IMM? ( n -- bool ) {: k:n :}
-   k CONST? if k VS-VAL @ T0-EMIT:IMM? exit then
+: ENTRY-IMM? ( n -- bool ) {: k:n :}
+   k CONST? if k VS-VAL @ EMIT-IMM? exit then
    false ;
 
 \ A local cannot hold a quotation, so the folding words take theirs on the
@@ -349,38 +352,38 @@ variable FREE                       \ bit k set: no entry holds vreg k
 
 \ The second entry, in a vreg no entry but the top one holds, holds the result;
 \ the top entry, which may share that vreg (`dup *`), goes.
-: INTO-SECOND ( -- T0-EMIT:vreg T0-EMIT:vreg )
+: INTO-SECOND ( -- vreg vreg )
    TOP 1- TOP OWN  TOP MAT ;
 
-: ALU2 ( [ n n -- n ] T0-EMIT:alu bool -- ) {: o:T0-EMIT:alu comm:bool :}
+: ALU2 ( [ n n -- n ] alu bool -- ) {: o:alu comm:bool :}
    2 ENSURE
    CONST2? if FOLD2 exit then
    drop
-   TOP IMM? if
-      TOP 1- NO-ENTRY OWN TOP VS-VAL @ o T0-EMIT:OP-LIT
+   TOP ENTRY-IMM? if
+      TOP 1- NO-ENTRY OWN TOP VS-VAL @ o EMIT-OP-LIT
       TOP REMOVE exit
    then
-   comm TOP 1- IMM? and if
-      TOP NO-ENTRY OWN TOP 1- VS-VAL @ o T0-EMIT:OP-LIT
+   comm TOP 1- ENTRY-IMM? and if
+      TOP NO-ENTRY OWN TOP 1- VS-VAL @ o EMIT-OP-LIT
       TOP 1- REMOVE exit
    then
-   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
-   d s o T0-EMIT:OP
+   INTO-SECOND {: d:vreg s:vreg :}
+   d s o EMIT-OP
    TOP REMOVE ;
 
 : MUL2 ( -- )
    2 ENSURE
    CONST2? if [: * ;] FOLD2 exit then
-   TOP IMM? if
-      TOP 1- NO-ENTRY OWN TOP VS-VAL @ T0-EMIT:MUL-LIT
+   TOP ENTRY-IMM? if
+      TOP 1- NO-ENTRY OWN TOP VS-VAL @ EMIT-MUL-LIT
       TOP REMOVE exit
    then
-   TOP 1- IMM? if
-      TOP NO-ENTRY OWN TOP 1- VS-VAL @ T0-EMIT:MUL-LIT
+   TOP 1- ENTRY-IMM? if
+      TOP NO-ENTRY OWN TOP 1- VS-VAL @ EMIT-MUL-LIT
       TOP 1- REMOVE exit
    then
-   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
-   d s T0-EMIT:MULX
+   INTO-SECOND {: d:vreg s:vreg :}
+   d s EMIT-MULX
    TOP REMOVE ;
 
 : DIVISOR? ( -- bool )
@@ -393,49 +396,49 @@ variable FREE                       \ bit k set: no entry holds vreg k
 \ (t0-emit.f DIVISION); any other divisor is left to the kernel row's call. The
 \ fold runs the engine's own `/` or `mod`, which truncates toward zero as every
 \ kernel's rows do.
-: DIV2 ( [ n n -- n ] [ T0-EMIT:vreg n -- ] -- bool )
+: DIV2 ( [ n n -- n ] [ vreg n -- ] -- bool )
    DIVISOR? 0= if 2drop false exit then
    2 ENSURE
    CONST2? if drop FOLD2 true exit then
    nip TOP 1- NO-ENTRY OWN TOP VS-VAL @ rot execute
    TOP REMOVE true ;
 
-: SHIFT2 ( [ n n -- n ] T0-EMIT:shifter -- ) {: o:T0-EMIT:shifter :}
+: SHIFT2 ( [ n n -- n ] shifter -- ) {: o:shifter :}
    2 ENSURE
    CONST2? if FOLD2 exit then
    drop
    TOP CONST? if
-      TOP 1- NO-ENTRY OWN TOP VS-VAL @ o T0-EMIT:SHIFT-LIT
+      TOP 1- NO-ENTRY OWN TOP VS-VAL @ o EMIT-SHIFT-LIT
       TOP REMOVE exit
    then
-   INTO-SECOND {: d:T0-EMIT:vreg s:T0-EMIT:vreg :}
-   d s o T0-EMIT:SHIFT
+   INTO-SECOND {: d:vreg s:vreg :}
+   d s o EMIT-SHIFT
    TOP REMOVE ;
 
 \ A cell is 8 bytes on every T0 target.
 3 constant CELL-SHIFT
 
-: CELLS-OP ( -- ) CELL-SHIFT PUSH-CONST [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 ;
+: CELLS-OP ( -- ) CELL-SHIFT PUSH-CONST [: lshift ;] SH-LEFT SHIFT2 ;
 
 : REMOVE2 ( -- ) TOP REMOVE TOP REMOVE ;
 
 : FOLD1 ( [ n -- n ] -- ) TOP VS-VAL @ swap execute TOP VS-VAL ! ;
 
-: UNARY ( [ n -- n ] [ T0-EMIT:vreg -- ] -- )
+: UNARY ( [ n -- n ] [ vreg -- ] -- )
    1 ENSURE
    TOP CONST? if drop FOLD1 exit then
    nip TOP NO-ENTRY OWN swap execute ;
 
-: FETCH ( T0-EMIT:width -- ) {: w:T0-EMIT:width :}
+: FETCH ( width -- ) {: w:width :}
    1 ENSURE
-   TOP MAT {: a:T0-EMIT:vreg :}
-   TOP WRITE-TARGET {: d:T0-EMIT:vreg :}
-   d a w T0-EMIT:LOAD ;
+   TOP MAT {: a:vreg :}
+   TOP WRITE-TARGET {: d:vreg :}
+   d a w EMIT-LOAD ;
 
 \ ---- the stack shuffles ------------------------------------------------------
-: COPY ( n -- ) {: k:n :}
+: PICK-ENTRY ( n -- ) {: k:n :}
    k CONST? if k VS-VAL @ PUSH-CONST exit then
-   VS-N @ T0-EMIT:VREGS = if EVICT k 1- else k then {: j:n :}
+   VS-N @ EMIT-VREGS = if EVICT k 1- else k then {: j:n :}
    j VREG@ PUSH-REG ;
 
 : SWAP-AT ( n n -- ) {: a:n b:n :}
@@ -443,15 +446,15 @@ variable FREE                       \ bit k set: no entry holds vreg k
    b a COPY-ENTRY
    ka va b ENTRY! ;
 
-: DUP1 ( -- ) 1 ENSURE TOP COPY ;
-: OVER1 ( -- ) 2 ENSURE TOP 1- COPY ;
+: DUP1 ( -- ) 1 ENSURE TOP PICK-ENTRY ;
+: OVER1 ( -- ) 2 ENSURE TOP 1- PICK-ENTRY ;
 : NIP1 ( -- ) 2 ENSURE TOP 1- REMOVE ;
 : SWAP1 ( -- ) 2 ENSURE TOP 1- TOP SWAP-AT ;
 : ROT1 ( -- ) 3 ENSURE TOP 2 - TOP 1- SWAP-AT TOP 1- TOP SWAP-AT ;
 : TUCK1 ( -- ) SWAP1 OVER1 ;
 
 : DROP1 ( -- )
-   VS-N @ 0= if -1 T0-EMIT:DSP+ exit then
+   VS-N @ 0= if -1 EMIT-DSP+ exit then
    TOP REMOVE ;
 
 \ ---- the scans' measures -----------------------------------------------------
@@ -508,9 +511,9 @@ variable WS-K                        \ operands the word moves
 
 : DEEP ( n -- ) {: d:n :}
    ROOM
-   d VS-N @ < if TOP d - COPY exit then
-   ALLOC {: r:T0-EMIT:vreg :}
-   r d VS-N @ - 1+ negate T0-EMIT:FILL
+   d VS-N @ < if TOP d - PICK-ENTRY exit then
+   ALLOC {: r:vreg :}
+   r d VS-N @ - 1+ negate EMIT-FILL
    r PUSH-REG ;
 
 \ Push every cell of operand k, with p cells pushed above the operands so far.
@@ -525,17 +528,17 @@ variable WS-K                        \ operands the word moves
    o VS-N @ <= if
       VS-N @ o - c min {: v:n :}
       v 0 ?do TOP o - REMOVE loop
-      c v > if v c - T0-EMIT:DSP+ then
+      c v > if v c - EMIT-DSP+ then
       exit
    then
    SPILL-ALL
    o 0 ?do
-      ALLOC {: r:T0-EMIT:vreg :}
-      r i o - T0-EMIT:FILL
-      r i o - c - T0-EMIT:SPILL
+      ALLOC {: r:vreg :}
+      r i o - EMIT-FILL
+      r i o - c - EMIT-SPILL
       r RELEASE
    loop
-   c negate T0-EMIT:DSP+ ;
+   c negate EMIT-DSP+ ;
 
 \ How many leading outputs are the bottom operands in their order.
 : KEPT ( ptr u8 n -- n ) {: outs:ptr u:n :}
@@ -591,14 +594,14 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
 : BIND-CELLS ( n n -- ) {: base:n c:n :}
    VS-N @ c min {: v:n :}
    v 0 ?do
-      TOP MAT  base c + 1- i -  T0-EMIT:SLOT-STORE
+      TOP MAT  base c + 1- i -  EMIT-SLOT-STORE
       TOP REMOVE
    loop
    c v ?do
-      ALLOC {: r:T0-EMIT:vreg :}
+      ALLOC {: r:vreg :}
       i v - 1+ {: d:n :}
-      i c 1- = if r d T0-EMIT:POP else r d negate T0-EMIT:FILL then
-      r  base c + 1- i -  T0-EMIT:SLOT-STORE
+      i c 1- = if r d EMIT-POP else r d negate EMIT-FILL then
+      r  base c + 1- i -  EMIT-SLOT-STORE
       r RELEASE
    loop ;
 
@@ -606,27 +609,27 @@ variable CLAUSE                      \ a does> definer's clause unit, else -1
 : CLOSE-GROUP ( -- )
    L-N @ {: base:n :}
    G-CELLS @ {: cells:n :}
-   base cells + T0-EMIT:SLOTS
+   base cells + EMIT-SLOTS
    base cells BIND-CELLS
    base cells + L-N !
    0 G-CELLS ! ;
 
 : DO-LOCAL ( n -- ) {: k:n :}
    k L-WIDTH @ 0 ?do
-      ROOM ALLOC {: r:T0-EMIT:vreg :}
-      r k L-SLOT @ i + T0-EMIT:SLOT-LOAD
+      ROOM ALLOC {: r:vreg :}
+      r k L-SLOT @ i + EMIT-SLOT-LOAD
       r PUSH-REG
    loop ;
 
 \ ---- comparisons -------------------------------------------------------------
 \ The compare's operands are removed, so a vreg is free and ALLOC emits nothing
-\ between the compare and SET-FLAG, as T0-EMIT:CMP requires.
-: PUSH-FLAG ( T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
-   ALLOC {: d:T0-EMIT:vreg :}
-   d c T0-EMIT:SET-FLAG
+\ between the compare and EMIT-SET-FLAG, as EMIT-CMP requires.
+: PUSH-FLAG ( cc -- ) {: c:cc :}
+   ALLOC {: d:vreg :}
+   d c EMIT-SET-FLAG
    d PUSH-REG ;
 
-\ One more than the condition (T0-EMIT:CC>N) of a compare whose flag is still
+\ One more than the condition (CC>N) of a compare whose flag is still
 \ in the condition codes, 0 none. A compare leaves it only when the next token
 \ is `if`, `while` or `until`, whose DO-IF, DO-WHILE or DO-UNTIL takes it, so
 \ no other word ever finds it set.
@@ -639,30 +642,30 @@ variable PENDING
    k ROW-A0 @ {: code:n :}
    code CF-IF =  code CF-WHILE = or  code CF-UNTIL = or ;
 
-: CMP-FLAG ( T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
-   BRANCH-NEXT? if c T0-EMIT:CC>N 1+ PENDING ! exit then
+: CMP-FLAG ( cc -- ) {: c:cc :}
+   BRANCH-NEXT? if c CC>N 1+ PENDING ! exit then
    c PUSH-FLAG ;
 
-: CMP2 ( [ n n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+: CMP2 ( [ n n -- n ] cc -- ) {: c:cc :}
    2 ENSURE
    CONST2? if FOLD2 exit then
    drop
-   TOP IMM? if
-      TOP 1- MAT TOP VS-VAL @ T0-EMIT:CMP-LIT
+   TOP ENTRY-IMM? if
+      TOP 1- MAT TOP VS-VAL @ EMIT-CMP-LIT
       REMOVE2 c CMP-FLAG exit
    then
-   TOP 1- IMM? if
-      TOP MAT TOP 1- VS-VAL @ T0-EMIT:CMP-LIT
-      REMOVE2 c T0-EMIT:CC-SWAP CMP-FLAG exit
+   TOP 1- ENTRY-IMM? if
+      TOP MAT TOP 1- VS-VAL @ EMIT-CMP-LIT
+      REMOVE2 c CC-SWAP CMP-FLAG exit
    then
-   TOP 1- MAT TOP MAT T0-EMIT:CMP
+   TOP 1- MAT TOP MAT EMIT-CMP
    REMOVE2 c CMP-FLAG ;
 
-: CMP0 ( [ n -- n ] T0-EMIT:cc -- ) {: c:T0-EMIT:cc :}
+: CMP0 ( [ n -- n ] cc -- ) {: c:cc :}
    1 ENSURE
    TOP CONST? if FOLD1 exit then
    drop
-   TOP MAT 0 T0-EMIT:CMP-LIT
+   TOP MAT 0 EMIT-CMP-LIT
    TOP REMOVE c CMP-FLAG ;
 
 \ ---- opening and closing structures ------------------------------------------
@@ -692,8 +695,8 @@ variable PENDING
 
 : CC? ( -- bool ) PENDING @ 0<> ;
 
-: CC-TAKE ( -- T0-EMIT:cc )
-   PENDING @ 1- T0-EMIT:>CC
+: CC-TAKE ( -- cc )
+   PENDING @ 1- >CC
    0 PENDING ! ;
 
 \ A spilling landing: the emptied virtual stack agrees with every arrival.
@@ -711,15 +714,15 @@ variable PENDING
    false k 0 ?do i REG? i VS-VAL @ v = and or loop ;
 
 \ FREE is exactly the vregs no entry holds (ADOPT), less the flag `if` took off
-\ the stack, so the entries and that flag, at most VREGS, leave ALLOC a free
-\ vreg each time and it evicts nothing. LIT and MOV keep the condition codes
-\ for a fused branch.
+\ the stack, so the entries and that flag, at most EMIT-VREGS, leave ALLOC a
+\ free vreg each time and it evicts nothing. EMIT-LIT and EMIT-MOV keep the
+\ condition codes for a fused branch.
 : SETTLE ( -- )
    VS-N @ 0 ?do
       i CONST? if i MAT drop else
          i HELD-BELOW? if
-            i VREG@ {: s:T0-EMIT:vreg :}
-            i RELABEL s T0-EMIT:MOV
+            i VREG@ {: s:vreg :}
+            i RELABEL s EMIT-MOV
          then
       then
    loop ;
@@ -732,7 +735,7 @@ variable PENDING
 
 : LAY-COPY ( n n -- ) {: from:n to:n :}
    from CS-LAY-N @ to CS-LAY-N !
-   T0-EMIT:VREGS 0 ?do from i LAY@ to i LAY! loop ;
+   EMIT-VREGS 0 ?do from i LAY@ to i LAY! loop ;
 
 \ FREE is rebuilt from the layout alone, so it is exactly the vregs no entry
 \ holds, whatever the entries it replaces or RECONCILE's moves left allocated.
@@ -768,8 +771,8 @@ variable PENDING
 
 : MOVE-TO ( n n -- ) {: k:n j:n :}
    k j GOAL {: t:n :}
-   j REG? if t T0-EMIT:>VREG j VREG@ T0-EMIT:MOV
-   else j VS-VAL @ t T0-EMIT:>VREG T0-EMIT:LIT then
+   j REG? if t >VREG j VREG@ EMIT-MOV
+   else j VS-VAL @ t >VREG EMIT-LIT then
    K-REG t j ENTRY! ;
 
 : RENAME ( n n -- ) {: a:n b:n :}
@@ -785,10 +788,10 @@ variable PENDING
 \ else, one vreg each, a permutation of them: an exchange then places entry j.
 : CYCLE ( n n -- ) {: k:n j:n :}
    k j GOAL  j VS-VAL @ {: t:n v:n :}
-   t T0-EMIT:>VREG v T0-EMIT:>VREG T0-EMIT:EXCHANGE
+   t >VREG v >VREG EMIT-EXCHANGE
    t v RENAME ;
 
-: SINK ( n -- ) {: d:n :}
+: SINK-ENTRIES ( n -- ) {: d:n :}
    d 1 ?do d i - SPILL-ENTRY loop
    d PUSH-ENTRY
    d 0 ?do 0 REMOVE loop ;
@@ -796,8 +799,8 @@ variable PENDING
 : RAISE ( n n -- ) {: k:n d:n :}
    d 0 ?do
       d 1- i - {: e:n :}
-      k e LAY@ T0-EMIT:>VREG {: r:T0-EMIT:vreg :}
-      e 0= if r d T0-EMIT:POP else r e d - T0-EMIT:FILL then
+      k e LAY@ >VREG {: r:vreg :}
+      e 0= if r d EMIT-POP else r e d - EMIT-FILL then
    loop ;
 
 \ An exact layout emits nothing; an unreachable fallthrough emits nothing and
@@ -806,7 +809,7 @@ variable PENDING
 : RECONCILE ( n -- ) {: k:n :}
    DEAD @ if k ADOPT exit then
    VS-N @ k CS-LAY-N @ - {: d:n :}
-   d 0 > if d SINK then
+   d 0 > if d SINK-ENTRIES then
    begin k FIRST-AWAY 0 >= while
       k READY {: j:n :}
       j 0 >= if k j MOVE-TO else k k FIRST-AWAY CYCLE then
@@ -818,13 +821,13 @@ variable PENDING
    CS-N @ {: k:n :}
    CS-IF L-N @ CS-PUSH
    CC? if
-      CC-TAKE {: c:T0-EMIT:cc :}
+      CC-TAKE {: c:cc :}
       k SNAPSHOT
-      c T0-EMIT:IF-CC, exit
+      c EMIT-IF-CC, exit
    then
-   TAKE {: f:T0-EMIT:vreg :}
+   TAKE {: f:vreg :}
    k SNAPSHOT
-   f T0-EMIT:IF,
+   f EMIT-IF,
    f RELEASE ;
 
 \ The first arm's end is the layout `then` reconciles to; the second arm
@@ -836,7 +839,7 @@ variable PENDING
    k 1+ LAY-ROOM
    DEAD @ 0= {: live:bool :}
    live if k 1+ SNAPSHOT then
-   T0-EMIT:ELSE,
+   EMIT-ELSE,
    k ADOPT
    CS-ELSE L-N @ CS-PUSH
    live if k 1+ k LAY-COPY then ;
@@ -850,12 +853,12 @@ variable PENDING
    SCOPE-END
    CS-N @ {: k:n :}
    k CS-LAY-N @ 0 >= if k RECONCILE then
-   T0-EMIT:THEN, ;
+   EMIT-THEN, ;
 
 : DO-BEGIN ( -- )
    CS-N @ {: k:n :}
    CS-BEGIN L-N @ CS-PUSH  k SNAPSHOT
-   T0-EMIT:BEGIN, ;
+   EMIT-BEGIN, ;
 
 \ The exit's layout is recorded under the head's, which moves up a slot; the
 \ body continues in the exit's.
@@ -868,13 +871,13 @@ variable PENDING
    CS-WHILE loc CS-PUSH
    CS-BEGIN loc CS-PUSH  head k 1+ CS-LAY-N !
    CC? if
-      CC-TAKE {: c:T0-EMIT:cc :}
+      CC-TAKE {: c:cc :}
       k SNAPSHOT
-      c T0-EMIT:WHILE-CC, exit
+      c EMIT-WHILE-CC, exit
    then
-   TAKE {: f:T0-EMIT:vreg :}
+   TAKE {: f:vreg :}
    k SNAPSHOT
-   f T0-EMIT:WHILE,
+   f EMIT-WHILE,
    f RELEASE ;
 
 : DO-REPEAT ( -- )
@@ -882,11 +885,11 @@ variable PENDING
    CS-N @ RECONCILE
    CS-WHILE CS-POP
    SCOPE-END
-   T0-EMIT:REPEAT,
+   EMIT-REPEAT,
    CS-N @ ADOPT ;
 
-: LAY-HOLDS? ( n T0-EMIT:vreg -- bool ) {: k:n r:T0-EMIT:vreg :}
-   r T0-EMIT:VREG>N {: v:n :}
+: LAY-HOLDS? ( n vreg -- bool ) {: k:n r:vreg :}
+   r VREG>N {: v:n :}
    false k CS-LAY-N @ 0 ?do k i LAY@ v = or loop ;
 
 \ RECONCILE keeps the condition codes, so a pending compare's branch follows it.
@@ -898,32 +901,32 @@ variable PENDING
    SCOPE-END
    CS-N @ {: k:n :}
    CC? if
-      CC-TAKE {: c:T0-EMIT:cc :}
+      CC-TAKE {: c:cc :}
       k RECONCILE
-      c T0-EMIT:UNTIL-CC, exit
+      c EMIT-UNTIL-CC, exit
    then
-   TAKE {: f:T0-EMIT:vreg :}
+   TAKE {: f:vreg :}
    k f LAY-HOLDS? if
-      f 0 T0-EMIT:CMP-LIT
+      f 0 EMIT-CMP-LIT
       k RECONCILE
-      T0-EMIT:CC-NE T0-EMIT:UNTIL-CC, exit
+      CC-NE EMIT-UNTIL-CC, exit
    then
    k RECONCILE
-   f T0-EMIT:UNTIL, ;
+   f EMIT-UNTIL, ;
 
 : DO-AGAIN ( -- )
    CS-BEGIN CS-POP
    SCOPE-END
    CS-N @ RECONCILE
-   T0-EMIT:AGAIN,
+   EMIT-AGAIN,
    1 DEAD ! ;
 
 \ ---- loops -------------------------------------------------------------------
-\ The index's home is the runtime frame LOOP-PUSH makes. LOOP-CLOSE lands the
-\ `leave` exits and the `?do` entry on the frame's pop, so every way out
-\ leaves through that pop in the level's layout.
+\ The index's home is the runtime frame EMIT-LOOP-PUSH makes. EMIT-LOOP-CLOSE
+\ lands the `leave` exits and the `?do` entry on the frame's pop, so every way
+\ out leaves through that pop in the level's layout.
 \ A `do` level's layout L is the virtual stack under the start and limit, so it
-\ holds at most VREGS - 2 entries: the closer's step and scratch vregs lie
+\ holds at most EMIT-VREGS - 2 entries: the closer's step and scratch vregs lie
 \ outside it, and the emitter's loop words touch no other vreg.
 variable DO-N                       \ the open levels
 
@@ -932,12 +935,12 @@ variable DO-N                       \ the open levels
 \ The body, the back edge, the `?do` entry's skip and every `leave` meet in the
 \ level's layout.
 : OPEN-LEVEL ( bool -- ) {: entry:bool :}
-   TAKE {: s:T0-EMIT:vreg :}
-   TAKE {: l:T0-EMIT:vreg :}
-   s l T0-EMIT:LOOP-PUSH
+   TAKE {: s:vreg :}
+   TAKE {: l:vreg :}
+   s l EMIT-LOOP-PUSH
    CS-N @ {: k:n :}
    CS-DO L-N @ CS-PUSH  k SNAPSHOT
-   s l entry T0-EMIT:LOOP-OPEN
+   s l entry EMIT-LOOP-OPEN
    s RELEASE  l RELEASE
    DO-N @ 1+ DO-N ! ;
 
@@ -949,36 +952,36 @@ variable DO-N                       \ the open levels
 
 : CLOSE-LEVEL ( -- )
    DO-N @ 1- DO-N !
-   T0-EMIT:LOOP-CLOSE ;
+   EMIT-LOOP-CLOSE ;
 
 : DO-LOOP ( -- )
    CLOSING
    CS-N @ RECONCILE
-   ALLOC {: t:T0-EMIT:vreg :}
-   t T0-EMIT:LOOP-NEXT
+   ALLOC {: t:vreg :}
+   t EMIT-LOOP-NEXT
    t RELEASE
    CLOSE-LEVEL ;
 
-: OUTSIDE ( n -- T0-EMIT:vreg ) {: k:n :}
-   0 begin k over T0-EMIT:>VREG LAY-HOLDS? while 1+ repeat
-   T0-EMIT:>VREG ;
+: OUTSIDE ( n -- vreg ) {: k:n :}
+   0 begin k over >VREG LAY-HOLDS? while 1+ repeat
+   >VREG ;
 
 : STEP-LAYOUT ( n -- ) {: k:n :}
    k 1+ LAY-ROOM  k k 1+ LAY-COPY
    k CS-LAY-N @ {: n:n :}
-   k OUTSIDE T0-EMIT:VREG>N  k 1+ n LAY!
+   k OUTSIDE VREG>N  k 1+ n LAY!
    n 1+ k 1+ CS-LAY-N ! ;
 
 \ The step reconciles with the layout as a vreg above it, so the layout's moves
-\ leave it whole and LOOP-STEP may clobber it.
+\ leave it whole and EMIT-LOOP-STEP may clobber it.
 : DO-+LOOP ( -- )
    CLOSING
    CS-N @ {: k:n :}
    k STEP-LAYOUT
    k 1+ RECONCILE
-   TAKE {: s:T0-EMIT:vreg :}
-   ALLOC {: t:T0-EMIT:vreg :}
-   s t T0-EMIT:LOOP-STEP
+   TAKE {: s:vreg :}
+   ALLOC {: t:vreg :}
+   s t EMIT-LOOP-STEP
    s RELEASE  t RELEASE
    CLOSE-LEVEL ;
 
@@ -988,35 +991,35 @@ variable DO-N                       \ the open levels
 : DO-LEAVE ( -- )
    1 LEVELS
    INNER-DO RECONCILE
-   T0-EMIT:LEAVE,
+   EMIT-LEAVE,
    1 DEAD ! ;
 
-: DO-UNLOOP ( -- ) 1 LEVELS T0-EMIT:LOOP-POP ;
+: DO-UNLOOP ( -- ) 1 LEVELS EMIT-LOOP-POP ;
 
-: DO-INDEX ( [ T0-EMIT:vreg -- ] n -- ) {: k:n :}
+: DO-INDEX ( [ vreg -- ] n -- ) {: k:n :}
    k LEVELS
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
+   ROOM ALLOC {: r:vreg :}
    r swap execute
    r PUSH-REG ;
 
 \ ---- case --------------------------------------------------------------------
 \ `of` compares the selector under the top with the top, which it drops; the
 \ match drops the selector too, the mismatch branches past `endof` keeping it.
-: OF-LIT ( -- )
+: OF-IMM ( -- )
    TOP VS-VAL @ {: v:n :}
    TOP REMOVE
-   TOP MAT {: s:T0-EMIT:vreg :}
+   TOP MAT {: s:vreg :}
    SPILL-ALL
-   s v T0-EMIT:OF-LIT ;
+   s v EMIT-OF-LIT ;
 
 : OF-REG ( -- )
-   TAKE {: v:T0-EMIT:vreg :}
-   TOP MAT {: s:T0-EMIT:vreg :}
+   TAKE {: v:vreg :}
+   TOP MAT {: s:vreg :}
    SPILL-ALL
-   s v T0-EMIT:OF, ;
+   s v EMIT-OF, ;
 
 : DO-CASE ( -- )
-   T0-EMIT:CASE,
+   EMIT-CASE,
    CS-CASE L-N @ CS-PUSH ;
 
 \ The case or MATCH whose arms the `endof`s on top close.
@@ -1026,7 +1029,7 @@ variable DO-N                       \ the open levels
 
 : OF-TEST ( -- )
    2 ENSURE
-   TOP IMM? if OF-LIT else OF-REG then
+   TOP ENTRY-IMM? if OF-IMM else OF-REG then
    DROP1
    CS-OF L-N @ CS-PUSH ;
 
@@ -1038,7 +1041,7 @@ variable DO-N                       \ the open levels
    CS-OF CS-POP
    SCOPE-END
    LAND
-   T0-EMIT:ENDOF,
+   EMIT-ENDOF,
    CS-ENDOF L-N @ CS-PUSH ;
 
 \ The default arm drops the selector, and every `endof` lands after the drop.
@@ -1047,31 +1050,31 @@ variable DO-N                       \ the open levels
    LAND
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-CASE CS-POP
-   T0-EMIT:ENDCASE,
+   EMIT-ENDCASE,
    SCOPE-END ;
 
 \ ---- the rest of the keywords ------------------------------------------------
 \ True once the body has left through a tail call: nothing follows it.
 variable TAILED
 
-: DO-EXIT ( -- ) SPILL-ALL T0-EMIT:RETURN 1 DEAD ! ;
-: DO-RECURSE ( -- ) SPILL-ALL T0-EMIT:CALL-SELF ;
+: DO-EXIT ( -- ) SPILL-ALL EMIT-RETURN 1 DEAD ! ;
+: DO-RECURSE ( -- ) SPILL-ALL EMIT-CALL-SELF ;
 
-DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
+DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
                                      \ return-stack move's vregs, the deepest
                                      \ slot first
 
-: RS-PART ( n -- n ) T0-EMIT:VREGS min ;
+: RS-PART ( n -- n ) EMIT-VREGS min ;
 
 \ The top cell goes into the deepest slot.
 : TOR-PART ( n -- ) {: c:n :}
    c 0 ?do TAKE i RS-V ! loop
-   0 RS-V c T0-EMIT:TOR
+   0 RS-V c EMIT-TOR
    c 0 ?do i RS-V @ RELEASE loop ;
 
 \ c free vregs in RS-V, with room for an entry each.
 : RS-ALLOC ( n -- ) {: c:n :}
-   begin VS-N @ c + T0-EMIT:VREGS > while EVICT repeat
+   begin VS-N @ c + EMIT-VREGS > while EVICT repeat
    c 0 ?do ALLOC i RS-V ! loop ;
 
 \ RS-V's c vregs pushed in the order `r>` leaves cells: the top slot's deepest.
@@ -1079,11 +1082,11 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    c 0 ?do c 1- i - RS-V @ PUSH-REG loop ;
 
 : RFROM-PART ( n -- ) {: c:n :}
-   c RS-ALLOC  0 RS-V c T0-EMIT:RFROM  c RS-PUSH ;
+   c RS-ALLOC  0 RS-V c EMIT-RFROM  c RS-PUSH ;
 
 \ The c cells k under the top, copied as RFROM-PART would pop them.
 : RFETCH-PART ( n n -- ) {: c:n k:n :}
-   c RS-ALLOC  0 RS-V c k T0-EMIT:RFETCH  c RS-PUSH ;
+   c RS-ALLOC  0 RS-V c k EMIT-RFETCH  c RS-PUSH ;
 
 : TOR-CELLS ( n -- )
    begin dup 0 > while dup RS-PART dup TOR-PART - repeat drop ;
@@ -1118,8 +1121,8 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    rec NDICT:TICK-REFUSED? if -1 MISSING !  a u UNSUPPORTED then
    rec REC-START {: xt:n :}
    xt 0= if a u UNSUPPORTED then
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
-   xt r T0-EMIT:ADDR-CODE
+   ROOM ALLOC {: r:vreg :}
+   xt r EMIT-ADDR-CODE
    r PUSH-REG ;
 
 \ Character row k: its operand's first byte, the row's a0: `[char] é` is the
@@ -1133,10 +1136,10 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
 : DO-CALL ( n n -- ) {: to:n loc:n :}
    SPILL-ALL
    CS-N @ 0= AT-END? and to NPUB:IN-REGION? and if
-      to loc T0-EMIT:TAIL
+      to loc EMIT-TAIL
       1 TAILED ! exit
    then
-   to loc T0-EMIT:CALL ;
+   to loc EMIT-CALL ;
 
 : MOVE-OP ( ptr u8 n ptr u8 n -- ) {: a:ptr k:n outs:ptr u:n :}
    a k WIDTHS  outs u MOVE-WIDE ;
@@ -1146,12 +1149,12 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
 
 : ADDR+ ( n -- ) {: k:n :}
    k 0= if exit then
-   k cells PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 ;
+   k cells PUSH-CONST [: + ;] OP-ADD true ALU2 ;
 
 \ Push data address v, whose row files origin o.
 : PUSH-ADDR ( n n -- ) {: v:n o:n :}
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
-   v o r T0-EMIT:ADDR-DATA
+   ROOM ALLOC {: r:vreg :}
+   v o r EMIT-ADDR-DATA
    r PUSH-REG ;
 
 \ A fetch the checker filed a layout fact for calls NFETCH-CHECK:TAGS with a
@@ -1169,14 +1172,14 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    entry 0= if E-HIR-UNMODELED throw then
    0 DEEP
    address origin PUSH-ADDR
-   SPILL-ALL  entry at T0-EMIT:CALL ;
+   SPILL-ALL  entry at EMIT-CALL ;
 
 : DO-FETCH ( ptr u8 -- ) {: a:ptr :}
    a CELLS0 {: w:n :}
    w 1 < if E-T0-BUNDLE throw then
    a w VALIDATE
-   w 1 = if T0-EMIT:CELL-W FETCH exit then
-   w 0 ?do i DEEP i ADDR+ T0-EMIT:CELL-W FETCH loop
+   w 1 = if CELL-W FETCH exit then
+   w 0 ?do i DEEP i ADDR+ CELL-W FETCH loop
    w 1 NIP-CELLS ;
 
 \ The wide store's calls never leave as a tail: each stores a copy of one cell,
@@ -1188,9 +1191,9 @@ DYNAMIC-BUFFER RS-V T0-EMIT:vreg     \ reserved to T0-EMIT:VREGS by RESET: one
    w 1 = if to loc DO-CALL exit then
    w 0 ?do
       w i - DEEP  1 DEEP  i ADDR+
-      SPILL-ALL  to loc T0-EMIT:CALL
+      SPILL-ALL  to loc EMIT-CALL
    loop
-   w 1+ negate T0-EMIT:DSP+ ;
+   w 1+ negate EMIT-DSP+ ;
 
 \ ---- strings -----------------------------------------------------------------
 \ A string is one row whose span is the payload; the checker reports its body,
@@ -1281,8 +1284,8 @@ variable NESTED                     \ the `[:` rows skipped inside quotations so
    1 begin dup 0 > while ORD @ SKIP-ROW +  1 ORD +! repeat drop ;
 
 : PUSH-UNIT ( n -- ) {: k:n :}
-   ROOM ALLOC {: r:T0-EMIT:vreg :}
-   k r T0-EMIT:ADDR-QUOT
+   ROOM ALLOC {: r:vreg :}
+   k r EMIT-ADDR-QUOT
    r PUSH-REG ;
 
 : DO-QUOT ( -- )
@@ -1313,7 +1316,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    NDEFINITION:M-DOES-SIG @ NDEFINITION:M-DOES-SIG-U @ NSTR:INTERN-SOURCE PUSH-ADDR
    NDEFINITION:M-DOES-SIG-U @ PUSH-CONST
    SPILL-ALL
-   NDICT:DOES-PATCH-ENTRY CUT @ NDEFINITION:DOES-SPAN - T0-EMIT:CALL ;
+   NDICT:DOES-PATCH-ENTRY CUT @ NDEFINITION:DOES-SPAN - EMIT-CALL ;
 
 \ ---- MATCH and construct -----------------------------------------------------
 \ `MATCH fam` reads its value as the cells the checker proved at the family
@@ -1342,7 +1345,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    NTRAP:ROUTINE loc DO-CALL
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
    CS-MATCH CS-POP
-   T0-EMIT:ENDCASE,
+   EMIT-ENDCASE,
    SCOPE-END ;
 
 \ The mismatch keeps the value for the next arm.
@@ -1362,7 +1365,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
    at NDICT:MATCH-CELLS {: w:n :}
    w NDICT:MATCH-NONE <> MATCH-CK
    w fam NFAM:WIDTH >= MATCH-CK
-   T0-EMIT:CASE,
+   EMIT-CASE,
    CS-N @ {: k:n :}
    CS-MATCH L-N @ CS-PUSH
    k 1+ CS-FAM-RESERVE  k 1+ CS-WID-RESERVE
@@ -1398,7 +1401,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 \ a null base says the map is missing.
 variable OP-N                        \ the records OP-OF holds, once mapped
 DYNAMIC-BUFFER OP-OF n
-variable OP-HITS                     \ the seeded records OP found by the name
+variable OP-HITS                     \ the seeded records OP-MAP found by the name
 variable OP-REC                      \ the last of them
 
 \ End the process: operation a u names no single seeded record.
@@ -1410,7 +1413,7 @@ variable OP-REC                      \ the last of them
    m u STR-BUF k BYTE-COPY
    0 STR-BUF u k + 76 die ;
 
-: OP ( ptr u8 n n -- )
+: OP-MAP ( ptr u8 n n -- )
    {: a:ptr u:n code:n :}
    0 OP-HITS !
    OP-N @ 0 ?do
@@ -1422,17 +1425,18 @@ variable OP-REC                      \ the last of them
 : OPS-MAP ( -- )
    CORE-PREFIX:FIRST-RECORD {: n:n :}
    n OP-OF-RESERVE  n OP-N !
-   s" +" 1 OP  s" -" 2 OP  s" *" 3 OP  s" /" 4 OP  s" @" 5 OP
-   s" !" 6 OP  s" =" 7 OP  s" <" 8 OP  s" >" 9 OP  s" or" 10 OP
-   s" 1+" 11 OP  s" 1-" 12 OP  s" c@" 13 OP  s" 0=" 14 OP
-   s" 0<" 15 OP  s" <>" 16 OP  s" <=" 17 OP  s" >=" 18 OP
-   s" dup" 19 OP  s" rot" 20 OP  s" nip" 21 OP  s" 2>r" 22 OP
-   s" 2r>" 23 OP  s" 2r@" 24 OP  s" and" 25 OP  s" mod" 26 OP
-   s" xor" 27 OP  s" drop" 28 OP  s" swap" 29 OP  s" over" 30 OP
-   s" tuck" 31 OP  s" -rot" 32 OP  s" 2dup" 33 OP  s" 2drop" 34 OP
-   s" 2swap" 35 OP  s" 2over" 36 OP  s" cells" 37 OP  s" cell+" 38 OP
-   s" negate" 39 OP  s" invert" 40 OP  s" lshift" 41 OP
-   s" rshift" 42 OP  s" ptr-field" 43 OP ;
+   s" +" 1 OP-MAP  s" -" 2 OP-MAP  s" *" 3 OP-MAP  s" /" 4 OP-MAP
+   s" @" 5 OP-MAP  s" !" 6 OP-MAP  s" =" 7 OP-MAP  s" <" 8 OP-MAP
+   s" >" 9 OP-MAP  s" or" 10 OP-MAP  s" 1+" 11 OP-MAP  s" 1-" 12 OP-MAP
+   s" c@" 13 OP-MAP  s" 0=" 14 OP-MAP  s" 0<" 15 OP-MAP  s" <>" 16 OP-MAP
+   s" <=" 17 OP-MAP  s" >=" 18 OP-MAP  s" dup" 19 OP-MAP  s" rot" 20 OP-MAP
+   s" nip" 21 OP-MAP  s" 2>r" 22 OP-MAP  s" 2r>" 23 OP-MAP  s" 2r@" 24 OP-MAP
+   s" and" 25 OP-MAP  s" mod" 26 OP-MAP  s" xor" 27 OP-MAP  s" drop" 28 OP-MAP
+   s" swap" 29 OP-MAP  s" over" 30 OP-MAP  s" tuck" 31 OP-MAP
+   s" -rot" 32 OP-MAP  s" 2dup" 33 OP-MAP  s" 2drop" 34 OP-MAP
+   s" 2swap" 35 OP-MAP  s" 2over" 36 OP-MAP  s" cells" 37 OP-MAP
+   s" cell+" 38 OP-MAP  s" negate" 39 OP-MAP  s" invert" 40 OP-MAP
+   s" lshift" 41 OP-MAP  s" rshift" 42 OP-MAP  s" ptr-field" 43 OP-MAP ;
 
 : OP-CODE ( n -- n )
    {: r:n :}
@@ -1449,33 +1453,33 @@ variable OP-REC                      \ the last of them
 : INLINE ( ptr u8 n n -- bool )
    {: a:ptr code:n to:n :}
    code case
-      1 of a CELL1 [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
-      2 of a CELL1 [: - ;] T0-EMIT:OP-SUB false ALU2 true endof
+      1 of a CELL1 [: + ;] OP-ADD true ALU2 true endof
+      2 of a CELL1 [: - ;] OP-SUB false ALU2 true endof
       3 of a CELL1 MUL2 true endof
-      4 of a CELL1 [: / ;] [: T0-EMIT:DIV-LIT ;] DIV2 endof
+      4 of a CELL1 [: / ;] [: EMIT-DIV-LIT ;] DIV2 endof
       5 of a DO-FETCH true endof
       6 of a to DO-STORE true endof
-      7 of a CELL1 [: = bool>n ;] T0-EMIT:CC-EQ CMP2 true endof
-      8 of a CELL1 [: < bool>n ;] T0-EMIT:CC-LT CMP2 true endof
-      9 of a CELL1 [: > bool>n ;] T0-EMIT:CC-GT CMP2 true endof
-      10 of a CELL1 [: or ;] T0-EMIT:OP-OR true ALU2 true endof
-      11 of a CELL1 1 PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
-      12 of a CELL1 1 PUSH-CONST [: - ;] T0-EMIT:OP-SUB false ALU2 true endof
-      13 of a CELL1 T0-EMIT:BYTE-W FETCH true endof
-      14 of a CELL1 [: 0= bool>n ;] T0-EMIT:CC-EQ CMP0 true endof
-      15 of a CELL1 [: 0< bool>n ;] T0-EMIT:CC-LT CMP0 true endof
-      16 of a CELL1 [: <> bool>n ;] T0-EMIT:CC-NE CMP2 true endof
-      17 of a CELL1 [: <= bool>n ;] T0-EMIT:CC-LE CMP2 true endof
-      18 of a CELL1 [: >= bool>n ;] T0-EMIT:CC-GE CMP2 true endof
+      7 of a CELL1 [: = bool>n ;] CC-EQ CMP2 true endof
+      8 of a CELL1 [: < bool>n ;] CC-LT CMP2 true endof
+      9 of a CELL1 [: > bool>n ;] CC-GT CMP2 true endof
+      10 of a CELL1 [: or ;] OP-OR true ALU2 true endof
+      11 of a CELL1 1 PUSH-CONST [: + ;] OP-ADD true ALU2 true endof
+      12 of a CELL1 1 PUSH-CONST [: - ;] OP-SUB false ALU2 true endof
+      13 of a CELL1 BYTE-W FETCH true endof
+      14 of a CELL1 [: 0= bool>n ;] CC-EQ CMP0 true endof
+      15 of a CELL1 [: 0< bool>n ;] CC-LT CMP0 true endof
+      16 of a CELL1 [: <> bool>n ;] CC-NE CMP2 true endof
+      17 of a CELL1 [: <= bool>n ;] CC-LE CMP2 true endof
+      18 of a CELL1 [: >= bool>n ;] CC-GE CMP2 true endof
       19 of [: DUP1 ;] a 1 s" 00" SHUFFLE true endof
       20 of [: ROT1 ;] a 3 s" 102" SHUFFLE true endof
       21 of [: NIP1 ;] a 2 s" 0" SHUFFLE true endof
       22 of a 2 WIDTHS 2TOR true endof
       23 of a 2 WIDTHS 2RFROM true endof
       24 of a 2 WIDTHS 2RFETCH true endof
-      25 of a CELL1 [: and ;] T0-EMIT:OP-AND true ALU2 true endof
-      26 of a CELL1 [: mod ;] [: T0-EMIT:MOD-LIT ;] DIV2 endof
-      27 of a CELL1 [: xor ;] T0-EMIT:OP-XOR true ALU2 true endof
+      25 of a CELL1 [: and ;] OP-AND true ALU2 true endof
+      26 of a CELL1 [: mod ;] [: EMIT-MOD-LIT ;] DIV2 endof
+      27 of a CELL1 [: xor ;] OP-XOR true ALU2 true endof
       28 of [: DROP1 ;] a 1 s" " SHUFFLE true endof
       29 of [: SWAP1 ;] a 2 s" 01" SHUFFLE true endof
       30 of [: OVER1 ;] a 2 s" 101" SHUFFLE true endof
@@ -1486,12 +1490,12 @@ variable OP-REC                      \ the last of them
       35 of a 4 s" 1032" MOVE-OP true endof
       36 of a 4 s" 321032" MOVE-OP true endof
       37 of a CELL1 CELLS-OP true endof
-      38 of a CELL1 CELL PUSH-CONST [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
-      39 of a CELL1 [: negate ;] [: T0-EMIT:NEG ;] UNARY true endof
-      40 of a CELL1 [: invert ;] [: T0-EMIT:NOT ;] UNARY true endof
-      41 of a CELL1 [: lshift ;] T0-EMIT:SH-LEFT SHIFT2 true endof
-      42 of a CELL1 [: rshift ;] T0-EMIT:SH-RIGHT SHIFT2 true endof
-      43 of a CELL1 CELLS-OP [: + ;] T0-EMIT:OP-ADD true ALU2 true endof
+      38 of a CELL1 CELL PUSH-CONST [: + ;] OP-ADD true ALU2 true endof
+      39 of a CELL1 [: negate ;] [: EMIT-NEG ;] UNARY true endof
+      40 of a CELL1 [: invert ;] [: EMIT-NOT ;] UNARY true endof
+      41 of a CELL1 [: lshift ;] SH-LEFT SHIFT2 true endof
+      42 of a CELL1 [: rshift ;] SH-RIGHT SHIFT2 true endof
+      43 of a CELL1 CELLS-OP [: + ;] OP-ADD true ALU2 true endof
       E-T0-UNSUPPORTED throw
    endcase ;
 
@@ -1518,8 +1522,8 @@ variable OP-REC                      \ the last of them
       CF-?DO of DO-?DO endof
       CF-LOOP of DO-LOOP endof
       CF-+LOOP of DO-+LOOP endof
-      CF-I of [: T0-EMIT:LOOP-I ;] 1 DO-INDEX endof
-      CF-J of [: T0-EMIT:LOOP-J ;] 2 DO-INDEX endof
+      CF-I of [: EMIT-LOOP-I ;] 1 DO-INDEX endof
+      CF-J of [: EMIT-LOOP-J ;] 2 DO-INDEX endof
       CF-EXIT of DO-EXIT endof
       CF-LEAVE of DO-LEAVE endof
       CF-UNLOOP of DO-UNLOOP endof
@@ -1619,8 +1623,8 @@ variable OP-REC                      \ the last of them
       COMPILE-TOKEN
    again ;
 
-: RESET ( -- )
-   T0-EMIT:VREGS VS-KIND-RESERVE  T0-EMIT:VREGS VS-VAL-RESERVE  T0-EMIT:VREGS RS-V-RESERVE
+: RESET-STATE ( -- )
+   EMIT-VREGS VS-KIND-RESERVE  EMIT-VREGS VS-VAL-RESERVE  EMIT-VREGS RS-V-RESERVE
    0 VS-N !  ALL-FREE FREE !  0 CS-N !  0 DO-N !  0 L-N !  0 TAILED !
    0 DEAD !  0 PENDING !  0 G-CELLS ! ;
 
@@ -1632,13 +1636,13 @@ variable OP-REC                      \ the last of them
 
 : FINISH ( ptr u8 n -- ) {: a:ptr u:n :}
    CS-N @ 0<> if a u E-T0-CONTROL REFUSE then
-   TAILED @ 0= if SPILL-ALL T0-EMIT:RETURN then
-   T0-EMIT:CLOSE ;
+   TAILED @ 0= if SPILL-ALL EMIT-RETURN then
+   EMIT-CLOSE ;
 
 : QUOT ( n -- ) {: k:n :}
    k QORD @ ORD !
-   RESET
-   k T0-EMIT:QUOT-OPEN
+   RESET-STATE
+   k EMIT-QUOT-OPEN
    BODY 0= if END$ E-T0-CONTROL REFUSE then
    ORD @ 1- ROW$ FINISH ;
 
@@ -1653,8 +1657,8 @@ variable OP-REC                      \ the last of them
 \ An empty clause's unit is still built, with no address bound to it: the
 \ parent pushed 0.
 : DO-CLAUSE ( n -- ) {: k:n :}
-   CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET  0 BINDS !
-   EMPTY-CLAUSE @ if T0-EMIT:UNIT-OPEN else k T0-EMIT:QUOT-OPEN then
+   CLAUSE-ORD @ ORD !  k 1+ NQ !  RESET-STATE  0 BINDS !
+   EMPTY-CLAUSE @ if EMIT-UNIT-OPEN else k EMIT-QUOT-OPEN then
    BODY if CONTROL-FAULT then
    END$ FINISH
    CUT @ BINDS-CK ;
@@ -1667,8 +1671,8 @@ variable OP-REC                      \ the last of them
    cut CUT !  -1 CLAUSE !  0 NESTED !
    cut 0<> if CLAUSE-EMPTY? else false then EMPTY-CLAUSE !
    1 ORD !
-   RESET
-   T0-EMIT:OPEN
+   RESET-STATE
+   EMIT-OPEN
    BODY if CONTROL-FAULT then
    cut 0<> if
       ORD @ SPLIT @ <> if SPLIT @ ROW$ E-T0-CONTROL REFUSE then
@@ -1682,26 +1686,25 @@ variable OP-REC                      \ the last of them
    CLAUSE @ DO-CLAUSE
    CLAUSE @ 1+ UNITS drop ;
 
-public
-
 \ The token this compile's refusal named, for a code REFUSED$ answers with it;
 \ empty until one does.
 : UNSUPPORTED$ ( -- ptr u8 n ) BAD @ BAD-LEN @ ;
 
 using NDEFINITION
-private
 
 \ ---- the runtime compiler ----------------------------------------------------
-\ T0:INSTALL stores T0:COMPILE in the cell the tier 0 `:` dispatches through
-\ (T0:DISPATCH!), with no fallback to the JIT, and stores NDEFINITION's
+\ INSTALL stores COMPILE in the cell the tier 0 `:` dispatches through
+\ (DISPATCH!), with no fallback to the JIT, and stores NDEFINITION's
 \ CALLBACK-STUB! and CALLBACK-STUB@ in the cells CALLBACK:
-\ (src/lib/ffi-callback.f) arms and reads its C entry through. The definition
-\ after a CALLBACK-STUB! seals with NCBSTUB armed (src/habu/t0-emit.f THE
-\ CALLBACK STUB); that compile ends the pending stub on every exit, as tier 1's
-\ does. T0 classifies no body for the host: each reason is UNKNOWN, and a
-\ quotation's arity is unknown (-1 -1), as tier 1 answers for one it has none
-\ for. T0 compiles no shadow routine, even while a shadow is open
-\ (test/x86-64-link-records.f stray).
+\ (src/lib/ffi-callback.f) arms and reads its C entry through. INSTALL runs in
+\ the building process at capture, which a cross build runs on another machine
+\ than the target's, so COMPILE and COMPILE-FIXED each select the emitter of the
+\ machine the engine runs on (HOST-ARCH). The definition after a CALLBACK-STUB!
+\ seals with NCBSTUB armed (src/habu/t0-emit.f THE CALLBACK STUB); that compile
+\ ends the pending stub on every exit, as tier 1's does. T0 classifies no body
+\ for the host: each reason is UNKNOWN, and a quotation's arity is unknown
+\ (-1 -1), as tier 1 answers for one it has none for. T0 compiles no shadow
+\ routine, even while a shadow is open (test/x86-64-link-records.f stray).
 \
 \ The scan's recording unit latches the facts the capture and the call targets
 \ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
@@ -1828,7 +1831,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    NQ @ [: drop -1 -1 ;] HOST-ARITIES
    NHOST:SOURCE-FREEZE
    STUB-ARM
-   NPUB:NEXT-SLOT T0-EMIT:SEAL
+   NPUB:NEXT-SLOT EMIT-SEAL
    STUB-TAKE
    PUBLISH-IT ;
 
@@ -1857,23 +1860,23 @@ variable FIXED-KIND
 : FIXED-BODY ( -- )
    M-FIXED-VAL @ {: val:n :}
    FIXED-KIND @ {: kind:n :}
-   RESET
-   T0-EMIT:OPEN
+   RESET-STATE
+   EMIT-OPEN
    kind NCOMP-DISPATCH:FIXED-VAL-KIND = if
-      val PUSH-CONST  SPILL-ALL  T0-EMIT:RETURN  T0-EMIT:CLOSE exit
+      val PUSH-CONST  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE exit
    then
    val -1 PUSH-ADDR
-   kind NCOMP-DISPATCH:FIXED-ADDR-KIND = if SPILL-ALL  T0-EMIT:SLOT-CLOSE exit then
-   T0-EMIT:CELL-W FETCH
-   SPILL-ALL  ['] execute XT>N 0 T0-EMIT:CALL
-   T0-EMIT:RETURN  T0-EMIT:CLOSE ;
+   kind NCOMP-DISPATCH:FIXED-ADDR-KIND = if SPILL-ALL  EMIT-SLOT-CLOSE exit then
+   CELL-W FETCH
+   SPILL-ALL  ['] execute XT>N 0 EMIT-CALL
+   EMIT-RETURN  EMIT-CLOSE ;
 
 : FIXED-LOWER ( -- )
    FIXED-BODY
    FIXED-KIND @ NCOMP-DISPATCH:FIXED-DEFER-KIND = if PUB-DEFER else PUB-RAW then
    M-PUB !
    STUB-ARM
-   NPUB:NEXT-SLOT T0-EMIT:SEAL
+   NPUB:NEXT-SLOT EMIT-SEAL
    STUB-TAKE
    PUBLISH-IT ;
 
@@ -1885,11 +1888,16 @@ variable FIXED-KIND
    if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 
+\ The machine this engine runs on, the one src/compiler/native/publish.f
+\ TARGET-CK requires of every emission.
+: HOST-ARCH ( -- CTARGET:arch ) NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
+
 \ Compile the pending record's fixed body for ( val kind ), as tier 1's
 \ NCOMP:COMPILE-FIXED: no body text and no checker scan.
 : COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
    kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
    IDLE-CK
+   HOST-ARCH EMIT-SELECT
    NULL-PTR 0 false STAGE-UNIT
    val M-FIXED-VAL !  kind FIXED-KIND !
    CHECKER-OWNER:RESET-REPORT
@@ -1901,11 +1909,10 @@ variable FIXED-KIND
    NHOST:SOURCE-ABANDON
    0 rc false NULL-PTR 0 NULL-PTR SETTLE-UNIT ;
 
-public
-
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ptr u8 n -- )
    IDLE-CK
+   HOST-ARCH EMIT-SELECT
    false STAGE-UNIT
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    CHECKER-OWNER:RESET-REPORT
@@ -1922,6 +1929,8 @@ public
 
 : DISPATCH! ( [ ptr u8 n -- ] -- )
    data-base NCOMP-DISPATCH:COMP-CELL + xt! ;
+
+public
 
 : INSTALL ( -- )
    ['] CALLBACK-STUB! data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + xt!
