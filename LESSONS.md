@@ -379,6 +379,14 @@ entry.
 
 ### Compiler and builds
 
+- 2026-11-02, compile state: Joel wrote "you would benefit from using state
+  machines, prove me wrong". The lead could not: one T0 compile's lifecycle
+  is held in flags across five owners (M-OPEN, the seam's CUR and PLACED-AT,
+  NEMIT's rows, NCBSTUB's ARMED, NSHADOW's OPENED and PENDING), its legal
+  order lives in call sequences and comments, and a review found one guard
+  unreachable while other wrong orders pass. Each owner's lifecycle becomes
+  one typed state, written only by transition words that refuse a wrong
+  state.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
