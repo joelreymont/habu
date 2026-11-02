@@ -1,9 +1,11 @@
 ---
 title: Gate the recompile count after small edits
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-10-22T12:17:10.199700+03:00"
+closed-at: "2026-11-03T10:05:00.742219+02:00"
+close-reason: "landed in master 92594f9e (stack 32e8348b..92594f9e) and installed; full suite on the stack's two-stage hb: 516 of 517 rows green, native-build-recompile PASS 1896 s, native-file-dynamic-load PASS; the one red, lsp-boundary, was tools/lsp-entry-test.f's 30 s child deadline at load 138 and passes alone (13 s on the installed and the batch-2 hb alike); two-generation check converged (gen 5 = gen 4), rc 0"
 blocks:
   - habu-build-the-engine-0f80d46e
 ---

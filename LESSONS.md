@@ -402,6 +402,17 @@ entry.
   are you modifying calls to NLEASE? why have NLEASE at all?" Its checks repeat
   exit 79, M-OPEN and NSESSION's own record of the backend work running, so
   NLEASE goes now, with every lease argument and check.
+- 2026-11-03, tier 1 bugs before Wasm moves to T0: asked to approve
+  NELAB:FIXED building a CAST: word's body, so tier 1 stops refusing a cast
+  with a quotation input (test/wasm/dynamic.f), Joel asked "what is NELAB? and
+  why do you need to cast in the compiler?", then "do we still have
+  intermediate code with t0? why bother with nelab if we do not?" Shown that
+  T0 compiles the checker's tape straight to machine code, that NELAB and the
+  IR are tier 1's, and that tier 1 still compiles every Wasm module
+  (tools/wasm-build.f), the stripped-image driver (tools/aot-build.f) and the
+  experiments kept on 2026-10-30, he chose "Fix in tier 1 now (Recommended)":
+  a tier-1 defect on a path tier 1 still owns is fixed there, not parked until
+  T0 takes the path over.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
