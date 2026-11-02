@@ -1,9 +1,11 @@
 ---
 title: Move T0 into COMP
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-02T13:47:08.633822+02:00"
+closed-at: "2026-11-02T16:13:36.727519+02:00"
+close-reason: "landed: T0 is package COMP with parts LABEL, ARM64, X86-64; COMP:INSTALL only public; full arm64 suite 514/514, chain gen 4=5; x86 rows match baseline"
 blocks:
   - habu-resolve-a-qualified-30078ff4
 ---
