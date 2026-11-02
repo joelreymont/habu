@@ -430,6 +430,47 @@ create MISCAST-BUF 8192 allot
    DIAG-BUFFER$ S\" \"token\":\"Q>N\"" CONTAINS? TTRUE
    false DIAG-JSON!  DIAG-BUFFER-OFF ;
 
+\ A cast's output has the cast's own calling convention, so a consumer that
+\ checks it, a quotation parameter, catch or is, takes the retyped quotation.
+CAST: >NONE ( [ n n n -- ] -- [ -- ] )
+: DROP3 ( n n n -- ) drop drop drop ;
+: RUNQ ( [ -- ] -- ) execute ;
+defer NQ-HOOK ( -- )
+
+: RETYPE-ARG ( -- )
+   s" package NQUOT-TEST : NQ-RETYPE-ARG ( -- ) ['] DROP3 >NONE RUNQ ; ;package"
+   evaluate-closed ;
+
+: RETYPE-CATCH ( -- )
+   s" package NQUOT-TEST : NQ-RETYPE-CATCH ( -- n ) ['] DROP3 >NONE catch ; ;package"
+   evaluate-closed ;
+
+: RETYPE-IS ( -- )
+   s" package NQUOT-TEST : NQ-RETYPE-IS ( -- ) ['] DROP3 >NONE is NQ-HOOK ; ;package"
+   evaluate-closed ;
+
+: RETYPE-CASE ( -- )
+   s" a cast's output reaches a quotation parameter under the cast's convention" T-LABEL
+   [: RETYPE-ARG ;] catch 0 T=
+   s" a cast's output reaches catch under the cast's convention" T-LABEL
+   [: RETYPE-CATCH ;] catch 0 T=
+   s" a cast's output reaches is under the cast's convention" T-LABEL
+   [: RETYPE-IS ;] catch 0 T= ;
+
+\ Both usings export UX, so its bare name is ambiguous while NQ-UC's own UX is
+\ compiled (compiler.f KEEP-PRIOR).
+: DEF-SHADOW ( -- )
+   s" package NQ-UA public : UX ( [ n n n -- ] -- [ n n n -- ] ) ; ;package" evaluate-closed
+   s" package NQ-UB public : UX ( [ n n n -- ] -- [ n n n -- ] ) ; ;package" evaluate-closed
+   s" package NQ-UC private : DROP3 ( n n n -- ) drop drop drop ; ;package" evaluate-closed
+   s" package NQ-UC using NQ-UA using NQ-UB private : UX ( [ n n n -- ] -- [ n n n -- ] ) ; public : GO ( -- n ) 1 2 3 4 ['] DROP3 UX execute ; ;using ;using ;package"
+   evaluate-closed ;
+
+: SHADOW-CASE ( -- )
+   DEF-SHADOW
+   s" a private word shadowing two used exports returns its quotation" T-LABEL
+   s" NQ-UC:GO" TEST-EVAL:N 1 T= ;
+
 public
 
 : RUN ( -- )
@@ -446,6 +487,8 @@ public
    QUOT-FRAME-CASE
    LEXICAL-CASE
    CAST-CASE
+   RETYPE-CASE
+   SHADOW-CASE
    T-REPORT ;
 
 ;package

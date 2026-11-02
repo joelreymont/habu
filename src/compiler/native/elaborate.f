@@ -1843,12 +1843,30 @@ CMAX CWORK-SPAN SS-M n         \ names in scope when each of them opened
       ix i skip QARG-FILL
    loop ;
 
-\ A cast takes its cells where they stand, so a quotation under it keeps its
-\ row, and the cast's input term names the row's calling convention. Only the
-\ top cell can hold one: the checker admits one term per side (E-CAST-ARITY),
-\ DECLARE-BOUND-CAST stores that term's cell count, and a quotation is one
-\ cell. A term that is no quotation leaves the row to a later consumer, and to
-\ QCONSUMED-CK.
+\ A quotation that a parameter, call, cast or named tick supplies has no body in
+\ this emission, only a known calling convention.
+: QKNOWN ( n n n n -- )
+   {: ix:n qi:n qo:n cellix:n :}
+   QN @ 1+ QUOT-ROOM
+   QN @ {: k:n :}
+   k k QPARENT !
+   ix k cells QAT + !
+   0 k cells QLO + !
+   0 k cells QHI + !
+   qi k cells QIN + !
+   qo k cells QOUT + !
+   QPARAM k cells QFUN + !
+   k 1+ QN !
+   k cellix VQ! ;
+
+: QRESULTS-FILL ( n n -- ) {: ix:n out:n :}
+   out 0 ?do
+      ix i SITE-QUOT-OUT {: qi:n qo:n :}
+      qi NDICT:QUOT-NONE <> if ix qi qo VN @ 1- i - QKNOWN then
+   loop ;
+
+\ The cast's input term names the calling convention of the quotation it takes.
+\ Only the top cell can hold one: a cast has one term per side (E-CAST-ARITY).
 : QCAST-FILL ( n -- ) {: ix:n :}
    VN @ 1- VQ@ {: k:n :}
    k 0 >= if
@@ -1856,15 +1874,15 @@ CMAX CWORK-SPAN SS-M n         \ names in scope when each of them opened
       qi NDICT:QUOT-NONE <> if k qi qo 0 max QFILL then
    then ;
 
-\ A rename consumes its window and pushes the values its picks name. A cast
-\ regroups its window in place, once each quotation in it has the calling
-\ convention the cast states.
+\ A cast's output quotation takes a row of its own: the input's row keeps the
+\ convention its body is compiled under.
 : RENAME ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    ix WSYM {: sym:IR-ID:ir-symbol-id :}
    r sym HIR-WORD:HOST-RENAME@ HIR-WORD:HOST-CAST = if
       ix QCAST-FILL
-      r sym HIR-WORD:CAST-CELLS@  r sym HIR-WORD:CAST-GLUE@  REGROUP exit
+      r sym HIR-WORD:CAST-CELLS@  r sym HIR-WORD:CAST-GLUE@  REGROUP
+      ix 1 QRESULTS-FILL exit
    then
    r sym HIR-WORD:INPUTS@ {: in:n :}
    r sym HIR-WORD:PICKS {: picks:n :}
@@ -1926,33 +1944,11 @@ CMAX CWORK-SPAN SS-M n         \ names in scope when each of them opened
    k QD !
    k 1+ QN ! ;
 
-\ A quotation supplied by a parameter, a called word, or a named tick has no
-\ body in this emission, but retains the same known calling convention.
-: QKNOWN ( n n n n -- )
-   {: ix:n qi:n qo:n cellix:n :}
-   QN @ 1+ QUOT-ROOM
-   QN @ {: k:n :}
-   k k QPARENT !
-   ix k cells QAT + !
-   0 k cells QLO + !
-   0 k cells QHI + !
-   qi k cells QIN + !
-   qo k cells QOUT + !
-   QPARAM k cells QFUN + !
-   k 1+ QN !
-   k cellix VQ! ;
-
 : QOPEN-PARAM ( n n -- )
    {: j:n cellix:n :}
    0 QSPELL j NDICT:SPELL-QUOT-DIN {: qi:n qo:n :}
    qi NDICT:QUOT-NONE = if exit then
    0 qi qo cellix QKNOWN ;
-
-: QRESULTS-FILL ( n n -- ) {: ix:n out:n :}
-   out 0 ?do
-      ix i SITE-QUOT-OUT {: qi:n qo:n :}
-      qi NDICT:QUOT-NONE <> if ix qi qo VN @ 1- i - QKNOWN then
-   loop ;
 
 : QPARAMS-OPEN ( n -- )
    {: in:n :}
@@ -4018,6 +4014,7 @@ DYNAMIC-BUFFER QNAME-BUF u8
 2 constant FUN-DOES-CLAUSE
 3 constant FUN-FIXED                 \ a definer's body: push its stamped cell and return
 4 constant FUN-DEFER                 \ a defer's body: execute the target its cell holds
+5 constant FUN-CAST                  \ a CAST: record's body: return its parameter
 
 : QNAME+ ( ptr u8 n -- )
    {: a u:n :}
@@ -4393,7 +4390,9 @@ private
    then
    dead  EXIT-USED @ 0=  and 0= if
       EXIT-USED @ 0= if BEFORE-RETURN then
-      out QRET-FILL
+      \ A CAST: body returns its parameter under the cast's other convention
+      \ (test/compiler/shadow.f RUN-RETYPE), so the parameter's row is not checked.
+      FUN-KIND @ FUN-CAST <> if out QRET-FILL then
       FUN-KIND @ FUN-COLON = if out TRUSTED-FRAME-RESHAPE then
       c b v key out EMIT-RETURN
       CLOSE-HELD
@@ -4451,8 +4450,8 @@ public
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    DOES-CORE ;
 
-\ A fixed definer body pushes its stamped cell and returns. It has no source
-\ body, so no source-site fact is consulted (compiler.f FIXED-WORK).
+\ A fixed definer body pushes its stamped cell, a cast's returns its parameter;
+\ neither has a source body to consult (compiler.f FIXED-WORK, FIXED-SHADOW-WORK).
 : FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n COMP:body -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena val:n kind:COMP:body :}
@@ -4462,9 +4461,13 @@ public
    c b v UNIT {: n:n :}
    n 1 <> if E-NELAB-SHAPE throw then
    val FIXED-VAL !  kind FIXED-KIND !
-   FUN-FIXED FUN-KIND !
    NDICT:GLUE-NONE FUN-GIN !  NDICT:GLUE-NONE FUN-GOUT !
    0 FR-GIN ! 0 FR-GOUT !
+   kind COMP-BODY:cast COMP-BODY:EQ if
+      FUN-CAST FUN-KIND !
+      c b v p r 1 1 1 1 BUILD-FUN exit
+   then
+   FUN-FIXED FUN-KIND !
    c b v p r 1 1 0 1 BUILD-FUN ;
 
 \ The target held by a defer's dispatch cell meets the caller's stack.

@@ -517,12 +517,7 @@ $20 constant NAME-END
       CC BB TAPE p r M-FIXED-VAL @ NELAB:DEFER drop
    else
       M-FIXED @ COMP-BODY:cast COMP-BODY:EQ if
-         CC HIR-MOD 0 M-BLD !
-         FIXED-TAPE
-         MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-         KEEP-TAPE-NAME
-         1 M-IN ! 1 M-OUT !
-         CC BB TAPE p r 1 1 NELAB:COLON drop
+         FIXED-MODULE KEEP-TAPE-NAME 1 M-IN !
       else
          FIXED-MODULE
       then

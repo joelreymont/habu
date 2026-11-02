@@ -588,6 +588,32 @@ public
 SHADOW-TEST:RUN-SLOT
 NSHADOW:CLOSE
 
+\ A cast's identity body, compiled for a shadow other than the engine's own,
+\ returns its quotation under another calling convention.
+package SHADOW-TEST
+private
+
+variable REC-RETYPE                  \ the cast's record
+
+OPEN-X64
+ndict@ REC-RETYPE !
+1 set-tier
+CAST: SH-RETYPE ( [ n n n -- ] -- [ -- ] )
+0 set-tier
+NSHADOW:RECORDS SUBJECT-RECS !
+
+public
+
+: RUN-RETYPE ( -- )
+   s" a cast that changes a quotation's calling convention files its x86-64 identity routine" T-LABEL
+   SUBJECT-RECS @ 1 T=
+   REC-RETYPE @ ROW-OF 0 T= ;
+
+;package
+
+SHADOW-TEST:RUN-RETYPE
+NSHADOW:CLOSE
+
 \ A shadow whose backend states no unplaced emission: the AArch64 row has none,
 \ so the definition is refused at that stage, after the shadow's earlier stages
 \ bound their passes in its context.
