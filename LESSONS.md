@@ -24,6 +24,19 @@ entry.
   approved all, keep going": JIT? goes for the tests' existing
   HB-TARGET-LINUX-X86-64? switch, and the fixed-body kinds become one typed
   enum in a lane of their own.
+- 2026-11-02, the checker's switch: asked about the seal lane's
+  LOWER-CERT-HOOK:AT-CURSOR, Joel wrote "lower-cert-hook is a crap name, it
+  does not explain what it does" and "why does it need to be a hook instead
+  of a function? ... is this the best for long term?" Shown that the
+  machine-code compiler calls whatever sits in one cell, that `set-check`,
+  `check@` and `set-preflight` make that cell a public switch, and that
+  `0 set-check` before `: BAD ( -- n ) dup ;` lets BAD compile and run (exit
+  70) where it is otherwise refused, Joel chose "Remove the switch": after the
+  kernel loads every definition is checked and no word turns checking off; the
+  typed interpret loop calls the checker as an ordinary word; only the kernel
+  compiles unchecked. `set-check`, `check@`, `set-preflight` and
+  LOWER-CERT-HOOK go, and the words replacing INSTALL and HOOK get names Joel
+  chooses.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
