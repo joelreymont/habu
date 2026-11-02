@@ -1,0 +1,11 @@
+---
+title: Make an app file depend on the built-in files it requires
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-02T15:30:14.137502+02:00"
+blocks:
+  - habu-name-stored-files-d3c637ba
+---
+
+Problem (Fable feature review of the B1/B1b stack, finding F1, 2026-11-02; .jj-ws.noindex/carl-dots/.out/carl-file/review-objk-fable.md): an application file's no-op `require` of a file built into hb is no dependency. Its object holds only a QUERY row: tools/native-definition-cache.f CANON (~:990) asks DEP-FIND, which finds only files this session entered (DEP-ADD ~:979), and FILE-KEY (~:1226) covers no built-in file loaded after t0.f (tools/build-producer.f:82 COMPILER-DONE). Probe (/tmp/carl-objk-fable, engine C): an app requiring src/habu/debug-watch.f, rebuilt with an engine whose debug-watch.f differs by one comment word (FILE-HASH changed, kernel and compiler roles the same), reused 1 file and compiled 0. No stale code ships today only because the kernel role (src/habu/habu2.f FILL-KERNEL-DIGEST ~:13845) digests the kernel's bytes after fixups, so any layout shift renames every app key, which also makes every hb rebuild recompile every app file. Acceptance: the kernel role is a digest of the kernel before fixups (or of its sources through FILE-HASH), so a same-source hb rebuild keeps app keys; an app file's no-op require of a built-in file records FILE-HASH's answer as a dependency row, checked at open against the running engine's SOURCE-PRODUCER:FILE-HASH, not the disk; the gate row (habu-gate-the-recompile-2ec826c7) gets its application case: an app built with engine-warm and then with the debug-watch.f-edited engine reuses every app file that does not depend on debug-watch.f and recompiles the ones that do. No public word added or changed. Files: tools/native-definition-cache.f, src/habu/habu2.f, tools/build-producer.f, test/compiler/native-build-edit-e2e.f. Verify: the gate row and the Fable probe above. Depends: habu-name-stored-files-d3c637ba (carl-objk stack landed). Ownership: carl. Claim: unassigned.
