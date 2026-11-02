@@ -499,11 +499,14 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 \ EMIT-SLOT-CLOSE and the callback stub throw E-T0-UNFILLED, and any other unset
 \ cell ends the process with `hb: unset quotation` (exit 86,
 \ ENGINE-ERROR:CALLABLE-ABI). An operation before any EMIT-SELECT throws
-\ E-LAYOUT-BOUNDS (7122).
+\ E-LAYOUT-BOUNDS (7122). EMIT-PROVIDED? answers whether EMIT-SELECT would
+\ admit an architecture, so a caller compiles for a machine only when it can.
 : EMIT-PROVIDE ( CTARGET:arch [ n -- ] -- )
    swap ARCH>INDEX {: k:n :}
    k swap execute
    true k INSTALLED ! ;
+
+: EMIT-PROVIDED? ( CTARGET:arch -- bool ) ARCH>INDEX INSTALLED @ ;
 
 : EMIT-SELECT ( CTARGET:arch -- )
    {: a:CTARGET:arch :}

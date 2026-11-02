@@ -16,8 +16,8 @@ require src/lib/string.f
 package X64LT
 public
 \ Registered as `SUITE x86-64-link-records`. A child: bin/hb --load
-\ test/x86-64-link-records.f -- MODE, MODE one of shift stray linked callee
-\ retired wid unresolved cellname pkgsite doessite xtless pkgcell
+\ test/x86-64-link-records.f -- MODE, MODE one of shift linked retired wid
+\ unresolved cellname pkgsite doessite xtless pkgcell
 : MODE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ a u STR= exit then
    false ;
@@ -47,13 +47,11 @@ variable IMAGE-PATH-U
       s" : IMAGE-ENTRY ( -- ) 42 . ; : IMAGE-ENTRY! ( -- ) ['] IMAGE-ENTRY data-base APP-ENTRY:XT-CELL + xt! ; IMAGE-ENTRY!"
       exit
    then
-   s" stray" MODE? if s" 0 set-tier : BARE ( -- n ) 7 ; 1 set-tier : WRAP ( -- n ) BARE 1+ ;" exit then
    s" linked" MODE? if
       s" private get-current X64LT:PRIVATE-WID ! : HELPER ( n -- n ) 3 * ; public : USER ( n -- n ) HELPER 1+ ; private : SHARED ( -- n ) 7 ; public EXPORT SHARED : Q ( -- [ n -- n ] ) [: 1 + ;] ;  Q align here 0 , xt!"
       exit
    then
-   s" callee" MODE? if s" private 0 set-tier : LOW ( -- n ) 7 ; public 1 set-tier : HIGH ( -- n ) LOW 1+ ;" exit then
-   s" retired" MODE? if s" 0 set-tier : GONE ( -- n ) 7 ; 1 set-tier : KEEP ( -- n ) GONE 1+ ; undefine GONE" exit then
+   s" retired" MODE? if s" : GONE ( -- n ) 7 ; : KEEP ( -- n ) GONE 1+ ; undefine GONE" exit then
    s" unresolved" MODE? if s" : SAME ( ptr u8 n ptr u8 n -- bool ) STR= ;" exit then
    s" cellname" MODE? if s" ' STR= align here 0 , xt!" exit then
    s" " ;
@@ -103,7 +101,6 @@ package X64LT-WIN
 public
 get-current X64LT:PUB-WID !
 
-1 set-tier
 : LEAF ( n n -- n ) + ;
 : CALLER ( n -- n ) dup LEAF 1 + ;
 : TAILER ( n -- n ) 2 * CALLER ;
@@ -114,7 +111,6 @@ get-current X64LT:PUB-WID !
 : QUOT ( -- [ n -- n ] ) [: 1 + ;] ;
 : GREET ( -- ptr u8 n ) s" linked" ;
 X64LT:EXTRA$ evaluate
-0 set-tier
 
 ' LEAF align here 0 , xt!
 ' negate align here 0 , xt!
@@ -574,20 +570,13 @@ variable RC
 
 \ A refusal ends the process before the layout returns, so each refusal runs in
 \ a child. The child exits 74 naming `w` on stdout, as the capture's refusals
-\ name what they refuse, and dies with `m`. The capture refuses calls to tier-0
-\ and retired words before any layout: a reached shadow target must have a
-\ native routine.
+\ name what they refuse, and dies with `m`.
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n w:ptr wu:n m:ptr mu:n :}
    mode modeu RUN-CHILD
    ERR ERR-U @ m mu CONTAINS?  OUT OUT-U @ w wu CONTAINS? and {: said:bool :}
    RC @ 74 <> said 0= or if SHOW-CHILD then
    RC @ 74 T=
    said TTRUE ;
-
-: STRAY-CASE ( -- )
-   s" a call to a tier-0 word with no x86-64 routine is refused by the callee's name" T-LABEL
-   s" stray" s" names window record BARE"
-   s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
 
 \ The linked child's window holds the strip, export and quotation subjects.
 : LINKED-CASE ( -- )
@@ -619,18 +608,32 @@ variable RC
    T-REPORT
    s" x86-64-link-records: linked private" type cr ;
 
-: CALLEE-CASE ( -- )
-   s" a shadow call without a native routine is refused by the callee's name" T-LABEL
-   s" callee" s" names window record LOW"
-   s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
+\ The retired child's GONE is undefined after KEEP calls it: its routine ships
+\ with no record, KEEP's call names its shadow row, and the laid call lands on
+\ GONE's captured bytes.
+: W-KEEP ( -- n ) s" KEEP" SHIPPED ;
+: RETIRED-CHILD ( -- )
+   T-RESET
+   s" GONE" SHIPPED -1 T=
+   W-KEEP AOT-SHADOW:CALL SITE-IN {: s:n :}
+   s 0 >= TTRUE
+   s 8 SITE@ {: t:n :}
+   t SITE-SHADOW-TAG and SITE-SHADOW-TAG T=
+   t SITE-TARGET-MASK and {: r:n :}
+   r 0 SH@ AOT-SHADOW:RETIRED-REC T=
+   s SITE-VA {: va:n :}
+   va BYTE@ $E8 T=
+   va LANDS r 12 SH@ - BAND r 8 SH@  AOT-SHADOW:CODE-BUF@ r 4 SH@ + r 8 SH@  T$=
+   T-REPORT
+   s" x86-64-link-records: retired routine linked" type cr ;
 
-\ GONE is a tier-0 word, with no routine of its own: a tier-1 GONE is live through
-\ KEEP, and the capture refuses its routine first, at its own row, as
-\ test/aot-shadow-capture.f's retired child shows.
 : RETIRED-CASE ( -- )
-   s" a shadow call to a retired window word is refused by the callee's name" T-LABEL
-   s" retired" s" names window record GONE"
-   s" aot-capture: a shadow site names a record the capture strips" REFUSED ;
+   s" retired" RUN-CHILD
+   OUT OUT-U @ s" x86-64-link-records: retired routine linked" CONTAINS? {: linked:bool :}
+   RC @ 0<> linked 0= or if SHOW-CHILD then
+   s" a shadow call to a window word retired after it links to the retired word's routine" T-LABEL
+   RC @ 0 T=
+   linked TTRUE ;
 
 : WID-FORGED-CASE ( -- )
    s" a protected-wid row outside the capture window is refused by its row" T-LABEL
@@ -704,8 +707,7 @@ variable RC
 : FORGE-WID ( -- ) AOT-WID-SPAN @ AOT-PWIN-BUF@ LE:U32! ;
 
 : REFUSAL? ( -- bool )
-   s" stray" MODE?  s" callee" MODE? or  s" retired" MODE? or
-   s" wid" MODE? or  s" unresolved" MODE? or  s" xtless" MODE? or
+   s" wid" MODE?  s" unresolved" MODE? or  s" xtless" MODE? or
    s" cellname" MODE? or  s" pkgsite" MODE? or  s" doessite" MODE? or
    s" pkgcell" MODE? or ;
 
@@ -728,6 +730,7 @@ public
    KERNEL
    X64LINK:LAYOUT
    s" linked" MODE? if QUOT-LINKED STRIP-CHILD exit then
+   s" retired" MODE? if RETIRED-CHILD exit then
    REFUSAL? if s" x86-64-link-records: laid out" type cr exit then
    s" shift" MODE? if DIGEST$ type LAYOUT-HEX type cr exit then
    T-RESET
@@ -751,9 +754,7 @@ public
    NAMES-CASE
    INDEX-IMAGE
    SHIFT-CASE
-   STRAY-CASE
    LINKED-CASE
-   CALLEE-CASE
    RETIRED-CASE
    WID-FORGED-CASE
    UNRESOLVED-CASE

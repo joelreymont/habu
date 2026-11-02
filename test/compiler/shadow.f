@@ -36,6 +36,10 @@ variable BAD-NDICT                   \ the record count before it was tried
 variable BAD-MOVED                   \ and how far trying it moved the count
 variable BAD-RECS                    \ what the refusing shadow had filed
 variable BAD-EMS
+\ The map's size where a section's subject definitions end. T0 files a record
+\ for each word compiled while the shadow is open, so later ones are the harness's.
+variable SUBJECT-RECS
+variable SUBJECT-EMS
 
 : OPEN-X64 ( -- )
    X64ABI:BINDING NSHADOW:OPEN ;
@@ -64,6 +68,7 @@ ndict@ REC-SEVEN !
 7 SH-CONST SH-SEVEN
 ndict@ REC-PX !
 SH-PB SH-PX
+NSHADOW:RECORDS SUBJECT-RECS !  NSHADOW:EMISSIONS SUBJECT-EMS !
 
 \ A leaf is one function ending in `ret` with no rows, since an x86-64 span is
 \ exact. A call is a row at the `call` naming the callee's host entry, its rel32
@@ -102,8 +107,8 @@ SH-PB SH-PX
 
 : FILED-CASE ( -- )
    s" each record publication committed is filed once, a definer's companion beside it, and nothing else was" T-LABEL
-   NSHADOW:RECORDS 7 T=
-   NSHADOW:EMISSIONS 6 T=
+   SUBJECT-RECS @ 7 T=
+   SUBJECT-EMS @ 6 T=
    REC-LEAF @ ROW-OF 0 T=
    REC-CALLER @ ROW-OF 1 T=
    REC-CONST @ ROW-OF 2 T=
@@ -278,6 +283,7 @@ ndict@ REC-PIN !
    {: a:n b:n :}
    PIN-NOP a b lshift ;
 0 set-tier
+NSHADOW:RECORDS SUBJECT-RECS !
 
 : PINNED-HOST-CASE ( -- )
    s" a word holding a value its fixed register cannot be kept for runs on the host as before" T-LABEL
@@ -291,7 +297,7 @@ ndict@ REC-PIN !
 
 : PINNED-FILED-CASE ( -- )
    s" and the shadow files an x86-64 routine for each, the first record of the section first" T-LABEL
-   NSHADOW:RECORDS 6 T=
+   SUBJECT-RECS @ 6 T=
    6 0 ?do REC-PIN @ i + ROW-OF i T= loop ;
 
 public
@@ -338,6 +344,7 @@ ndict@ REC-RUN !
    fam var slot cellsn boff bytesn FIELD-OVERLAP? drop
    tx ;
 0 set-tier
+NSHADOW:RECORDS SUBJECT-RECS !
 
 : RUN-HOST-CASE ( -- )
    s" a word reading more arguments than the x86-64 pool runs on the host as before" T-LABEL
@@ -352,7 +359,7 @@ ndict@ REC-RUN !
 
 : RUN-FILED-CASE ( -- )
    s" and the shadow files an x86-64 routine for each, the first record of the section first" T-LABEL
-   NSHADOW:RECORDS 6 T=
+   SUBJECT-RECS @ 6 T=
    6 0 ?do REC-RUN @ i + ROW-OF i T= loop ;
 
 public
@@ -389,6 +396,7 @@ ndict@ REC-DIV !
    x 5 + {: e:n :}  x 6 + {: f:n :}  x 7 + {: g:n :}
    x k / a + b + c + d + e + f + g + ;
 0 set-tier
+NSHADOW:RECORDS SUBJECT-RECS !
 
 public
 
@@ -398,7 +406,7 @@ public
    100 7 SH-DIV-RELOAD 742 T=
    DIV-CELL @ 100 T=
    s" and the shadow files its x86-64 routine" T-LABEL
-   NSHADOW:RECORDS 1 T=
+   SUBJECT-RECS @ 1 T=
    REC-DIV @ ROW-OF 0 T= ;
 
 ;package
@@ -445,6 +453,7 @@ ndict@ REC-LANE !
    loop
    -1 ;
 0 set-tier
+NSHADOW:RECORDS SUBJECT-RECS !
 
 \ Cell 1 counts the four data cells, cell 2 is their byte offset from the base.
 : LANE-FILL ( -- )
@@ -462,7 +471,7 @@ public
    0 1 1 3 40 SH-LANE-FIND 2 T=
    0 0 1 4 99 SH-LANE-FIND -1 T=
    s" and the shadow files an x86-64 routine for each" T-LABEL
-   NSHADOW:RECORDS 2 T=
+   SUBJECT-RECS @ 2 T=
    2 0 ?do REC-LANE @ i + ROW-OF i T= loop ;
 
 ;package
@@ -493,6 +502,7 @@ ndict@ REC-PICK !
 : SH-PICK ( -- n n n n n n n n n n n n n n )
    PICK-ARM @ 0<> if 1 2 3 4 SH-FOURTEEN else 5 6 7 8 SH-FOURTEEN-TOO then ;
 0 set-tier
+NSHADOW:RECORDS SUBJECT-RECS !
 
 \ The fourteen cells as the digits of one number, the deepest leading.
 : PICK-DIGITS ( n n n n n n n n n n n n n n -- n )
@@ -509,7 +519,7 @@ public
    0 PICK-ARM !
    SH-PICK PICK-DIGITS 56785678567856 T=
    s" and the shadow files an x86-64 routine for each" T-LABEL
-   NSHADOW:RECORDS 3 T=
+   SUBJECT-RECS @ 3 T=
    3 0 ?do REC-PICK @ i + ROW-OF i T= loop ;
 
 ;package
@@ -551,6 +561,7 @@ ndict@ REC-SLOT !
    id SLOT-N @ cells SLOT-KEY + !
    SLOT-N @ 65 +  SLOT-N @ 1 + SLOT-N ! ;
 0 set-tier
+NSHADOW:RECORDS SUBJECT-RECS !
 
 public
 
@@ -569,7 +580,7 @@ public
    9 SH-SLOT-LETTER 66 T=
    7 SH-SLOT-LETTER 65 T=
    s" and the shadow files an x86-64 routine for each" T-LABEL
-   NSHADOW:RECORDS 8 T=
+   SUBJECT-RECS @ 8 T=
    8 0 ?do REC-SLOT @ i + ROW-OF i T= loop ;
 
 ;package

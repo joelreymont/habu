@@ -67,7 +67,7 @@ NSTR:WINDOW-OPEN
 \ The window holds one of each thing the shadow tables carry; created words,
 \ `does>` children, casts and a defer carry routines too
 \ (src/compiler/native/compiler.f SHADOW-FIXED compiles every fixed word at any
-\ tier). A stripped private word and two retired ones sit between shadowed
+\ tier), and so does ARM-HOOK, compiled by T0 (src/habu/t0.f SHADOWED). A stripped private word and two retired ones sit between shadowed
 \ records, so past them a record's window index, capture index and shipped row
 \ all differ.
 package AOTSH-WINDOW
@@ -166,6 +166,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
 : W-CAST-OUT ( -- n ) s" CAP-IDX>N" SHIPPED ;
 : W-CAST-USER ( -- n ) s" CAST-USER" SHIPPED ;
 : W-HOOK ( -- n ) s" HOOK" SHIPPED ;
+: W-ARM-HOOK ( -- n ) s" ARM-HOOK" SHIPPED ;
 
 : REC-AT ( n n -- ptr u8 ) {: r:n f:n :}
    AOT-SHADOW:REC-BUF@ r AOT-SHADOW:REC-ROW * + f + ;
@@ -216,8 +217,8 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    AOT-ARM:WINDOW$ AOT-CAPTURE:TARGET-CAPTURE ;
 
 : RECORDS-CASE ( -- )
-   s" every shipped tier-1 definition and fixed word is one shadow record in window order, a does> companion beside its definer" T-LABEL
-   AOT-SHADOW:REC-N @ 16 T=
+   s" every shipped definition and fixed word is one shadow record in window order, a does> companion beside its definer" T-LABEL
+   AOT-SHADOW:REC-N @ 17 T=
    W-CELL ROW-OF 0 T=
    W-PEEK ROW-OF 1 T=
    W-LEAF ROW-OF 2 T=
@@ -233,7 +234,8 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    W-CAST-IN ROW-OF 12 T=
    W-CAST-OUT ROW-OF 13 T=
    W-CAST-USER ROW-OF 14 T=
-   W-HOOK ROW-OF 15 T= ;
+   W-HOOK ROW-OF 15 T=
+   W-ARM-HOOK ROW-OF 16 T= ;
 
 : CAST-CASE ( -- )
    s" checked cast declarations have recorded x86 identity routines" T-LABEL
@@ -274,7 +276,8 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    W-LEAF LEN-OF 0 > TTRUE
    W-LEAF AT-OF W-LEAF LEN-OF + 1- CODE-BYTE@ $C3 T=
    W-LEAF SITES-IN 0 T=
-   AOT-SHADOW:CODE-LEN @ W-HOOK AT-OF W-HOOK LEN-OF + 2 cells + T= ;
+   W-ARM-HOOK AT-OF W-HOOK AT-OF W-HOOK LEN-OF + 2 cells + T=
+   AOT-SHADOW:CODE-LEN @ W-ARM-HOOK AT-OF W-ARM-HOOK LEN-OF + T= ;
 
 : CALL-CASE ( -- )
    s" a call to a window word is a rel32 call row naming that word's shipped record, and its field stays zero" T-LABEL
@@ -356,7 +359,7 @@ create FIRST SHA-BYTES allot         \ the first WRITE's file digest
    AOT-FILE:SHA$ drop FIRST SHA-BYTES BYTE-COPY
    AOT-SHADOW:RESET
    AOTSH-KEY:KEY ART$ AOT-FILE:READ
-   AOT-SHADOW:REC-N @ 16 T=
+   AOT-SHADOW:REC-N @ 17 T=
    4 0 ?do
       i REREAD DIGEST
       REREAD SHA-BYTES DIGESTS i SHA-BYTES * + SHA-BYTES T$=
@@ -419,10 +422,12 @@ variable RC
    said TTRUE ;
 
 \ In the retired child KEEP, a public tier-0 word, calls GONER, which calls GONE:
-\ both retired, so the capture ships neither. KEEP has no x86 routine, so no x86
-\ edge reaches GONER or GONE.
+\ both retired, so the capture ships neither record. It captures only if
+\ GONER's and GONE's routines ship as retired shadow rows: a call naming a
+\ window record with no shipped routine refuses (src/habu/aot-shadow.f
+\ SH-UNSHIPPED).
 : LIVE-RETIRED-CASE ( -- )
-   s" a retired word reached only from tier-0 code needs no x86 routine" T-LABEL
+   s" a live word calling a retired one captures, the retired routines shipped with no record" T-LABEL
    s" retired" CAPTURED ;
 
 \ In the alias child AOTSH-ALIAS:GONE, a public name no map row files, enters

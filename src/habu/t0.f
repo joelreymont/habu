@@ -26,6 +26,7 @@ require src/compiler/native/abi.f
 require src/compiler/native/publish.f
 require src/compiler/native/definition.f
 require src/compiler/native/callback-stub.f
+require src/compiler/native/shadow.f
 require src/habu/t0-emit.f
 
 package COMP
@@ -1696,15 +1697,12 @@ using NDEFINITION
 \ INSTALL stores COMPILE in the cell the tier 0 `:` dispatches through
 \ (DISPATCH!), with no fallback to the JIT, and stores NDEFINITION's
 \ CALLBACK-STUB! and CALLBACK-STUB@ in the cells CALLBACK:
-\ (src/lib/ffi-callback.f) arms and reads its C entry through. INSTALL runs in
-\ the building process at capture, which a cross build runs on another machine
-\ than the target's, so COMPILE and COMPILE-FIXED each select the emitter of the
-\ machine the engine runs on (HOST-ARCH). The definition after a CALLBACK-STUB!
-\ seals with NCBSTUB armed (src/habu/t0-emit.f THE CALLBACK STUB); that compile
-\ ends the pending stub on every exit, as tier 1's does. T0 classifies no body
-\ for the host: each reason is UNKNOWN, and a quotation's arity is unknown
-\ (-1 -1), as tier 1 answers for one it has none for. T0 compiles no shadow
-\ routine, even while a shadow is open (test/x86-64-link-records.f stray).
+\ (src/lib/ffi-callback.f) arms and reads its C entry through. The definition
+\ after a CALLBACK-STUB! seals with NCBSTUB armed (src/habu/t0-emit.f THE
+\ CALLBACK STUB); that compile ends the pending stub on every exit, as tier 1's
+\ does. T0 classifies no body for the host: each reason is UNKNOWN, and a
+\ quotation's arity is unknown (-1 -1), as tier 1 answers for one it has none
+\ for. A shadow open while it compiles adds a walk (THE WALKS).
 \
 \ The scan's recording unit latches the facts the capture and the call targets
 \ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
@@ -1823,23 +1821,69 @@ variable SCAN-LO                     \ the ordinal of its first row
    M-VERDICT @ 0<> if SCAN-VERDICT @ M-VERDICT ! then
    DECLARE-ROW ;
 
+\ ---- the walks ---------------------------------------------------------------
+\ THE WALKS. While a shadow is open (src/compiler/native/shadow.f), SHADOWED
+\ walks a definition for the shadow's machine first and HOSTED then for the
+\ engine's, each selecting its emitter; HOSTED selects at every compile because
+\ a cross build's capture runs INSTALL on another machine than the target's.
+\ The shadow walk runs only for a machine an emitter provided (EMIT-PROVIDED?):
+\ for any other a T0 definition has no shadow routine, and the capture refuses
+\ one a shadow routine reaches. A refusal in either walk refuses the
+\ definition, as tier 1's SHADOWED. Each walk starts clean: WALK and FIXED-BODY
+\ set their own cells and RESET-STATE's, EMIT-OPEN clears the seam's rows and
+\ the selected emitter's sink and LABEL state; the tape, the measures and the
+\ NFETCH facts are only read. NSTR:INTERN finds before it adds, so a string gets
+\ one address in both routines, but each walk interns it: a source-row
+\ recording (NSTR:SOURCE-BEGIN), which only the definition cache's capture of
+\ tier 1 opens (tools/native-definition-cache.f), would list it twice.
+
+\ The machine this engine runs on, the one src/compiler/native/publish.f
+\ TARGET-CK requires of every emission.
+: HOST-ARCH ( -- CTARGET:arch ) NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
+
+: SHADOW-ARCH ( -- CTARGET:arch ) NSHADOW:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
+
+\ A `does>` definer's copy enters at its clause, as tier 1's SHADOW-TAKE.
+: SHADOW-TAKE ( -- )
+   M-DOES @ 0<> if M-DOES-FUN @ NSHADOW:TAKE-DOES exit then
+   NSHADOW:TAKE ;
+
+\ A native shadow takes the host's own placed emission instead (HOSTED).
+: SHADOWED ( [ -- ] -- )
+   NSHADOW:OPEN? 0= if drop exit then
+   NSHADOW:NATIVE? if drop exit then
+   SHADOW-ARCH EMIT-PROVIDED? 0= if drop exit then
+   SHADOW-ARCH EMIT-SELECT
+   execute
+   EMIT-SEAL
+   SHADOW-TAKE
+   NEMIT:CLEAR ;
+
+: HOSTED ( [ -- ] -- )
+   HOST-ARCH EMIT-SELECT
+   execute
+   STUB-ARM
+   NPUB:NEXT-SLOT EMIT-PLACE EMIT-SEAL
+   STUB-TAKE
+   NSHADOW:NATIVE? if SHADOW-TAKE then
+   PUBLISH-IT ;
+
 : LOWER ( n -- ) {: before:n :}
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
-   WALK  CLAUSE @ M-DOES-FUN !
-   NQ @ [: drop -1 -1 ;] HOST-ARITIES
-   NHOST:SOURCE-FREEZE
-   STUB-ARM
-   NPUB:NEXT-SLOT EMIT-PLACE EMIT-SEAL
-   STUB-TAKE
-   PUBLISH-IT ;
+   [: WALK  CLAUSE @ M-DOES-FUN ! ;] SHADOWED
+   [: WALK  CLAUSE @ M-DOES-FUN !
+      NQ @ [: drop -1 -1 ;] HOST-ARITIES
+      NHOST:SOURCE-FREEZE ;] HOSTED ;
 
-\ The compile window, the emission and the armed stub end on every exit.
+\ The compile window, the emission, the armed stub and a shadow copy no
+\ publication claimed end on every exit.
 : SHUT ( -- )
    0 CHECKER-OWNER:WRITE-WINDOW
    NEMIT:CLEAR
-   NCBSTUB:CLEAR ;
+   NCBSTUB:CLEAR
+   NSHADOW:ABANDON ;
 
 : RUN ( -- )
    ndict@ {: before:n :}
@@ -1872,13 +1916,10 @@ variable FIXED-KIND
    EMIT-RETURN  EMIT-CLOSE ;
 
 : FIXED-LOWER ( -- )
-   FIXED-BODY
    FIXED-KIND @ NCOMP-DISPATCH:FIXED-DEFER-KIND = if PUB-DEFER else PUB-RAW then
    M-PUB !
-   STUB-ARM
-   NPUB:NEXT-SLOT EMIT-PLACE EMIT-SEAL
-   STUB-TAKE
-   PUBLISH-IT ;
+   [: FIXED-BODY ;] SHADOWED
+   [: FIXED-BODY ;] HOSTED ;
 
 : FIXED-RUN ( -- ) [: FIXED-LOWER ;] [: SHUT ;] finally ;
 
@@ -1888,16 +1929,11 @@ variable FIXED-KIND
    if UNSUPPORTED$ exit then
    NULL-PTR 0 ;
 
-\ The machine this engine runs on, the one src/compiler/native/publish.f
-\ TARGET-CK requires of every emission.
-: HOST-ARCH ( -- CTARGET:arch ) NABI:BINDING CBIND:TARGET@ CTARGET:ARCH@ ;
-
 \ Compile the pending record's fixed body for ( val kind ), as tier 1's
 \ NCOMP:COMPILE-FIXED: no body text and no checker scan.
 : COMPILE-FIXED ( n n -- ) {: val:n kind:n :}
    kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
    IDLE-CK
-   HOST-ARCH EMIT-SELECT
    NULL-PTR 0 false STAGE-UNIT
    val M-FIXED-VAL !  kind FIXED-KIND !
    CHECKER-OWNER:RESET-REPORT
@@ -1912,7 +1948,6 @@ variable FIXED-KIND
 \ Compile the pending definition whose body text the engine captured.
 : COMPILE ( ptr u8 n -- )
    IDLE-CK
-   HOST-ARCH EMIT-SELECT
    false STAGE-UNIT
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    CHECKER-OWNER:RESET-REPORT

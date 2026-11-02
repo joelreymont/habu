@@ -9,6 +9,7 @@ require src/lib/fs.f
 require src/lib/le.f
 require src/habu/image-x64.f
 require src/compiler/native/shadow.f
+require src/habu/t0-x64.f              \ T0 compiles the window's x86-64 shadow through it
 require src/arch/x86-64/abi.f
 require src/arch/x86-64/passes.f
 require src/habu/primitive-registry.f
