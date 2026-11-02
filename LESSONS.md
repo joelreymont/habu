@@ -304,6 +304,15 @@ entry.
   WAKE-LOCK and HOLD. On 2026-11-01, asked to add POWER:E-PLATFORM (no
   keep-awake support on this system) and POWER:E-ASSERTION (macOS refused to
   hold or release it), Joel chose "Add both (Recommended)".
+- 2026-11-02, Maki's ChatGPT sidebar view (lane H2): shown the list for a
+  page that runs a Habu Wasm module as an MCP App, Joel chose "Approve:
+  MCP-APP, rpc (Recommended)" over BROWSER-APP and bridge: `MCP-APP:PAGE+ (
+  ptr u8 n ptr u8 n ptr a -- )` appends the page for a module and title to
+  the caller's BUF; turn records 10 `rpc` (a JSON-RPC request to the host,
+  answered by event 3), 11 `after`, 12 `read`; events 14 `notified`, 15
+  `tick`, 16 `file`, 17 `chunk`; mount options `Module` and `rpc`, viewport
+  `notify` and `file`, and host-cli's `--notify`, `--tick`, `--file`,
+  `--answer` and `--fail`.
 - 2026-11-02, sizing Maki's job runners: OS-CPU:PERFORMANCE-CORES and
   OS-MEMORY:TOTAL, approved on 2026-10-31 so Maki could compute its runner
   count from the host, needed a shared reader of Linux container (cgroup)
