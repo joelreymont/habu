@@ -1,9 +1,11 @@
 ---
 title: "Re-land zen's typed VEC CFB reader after Habu master installs"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-26T21:47:05.424507+02:00"
+closed-at: "2026-11-02T11:34:09.320314+02:00"
+close-reason: "Superseded: zen master 9ffe760a 'Load cfb.f on the installed Habu' uses VEC:HEADER-CELLS and no legacy VEC words; Tender trunk d5d87f50 src/table.f has no VEC-IDX."
 ---
 
 Re-apply zen bca6a811 + 151f4147 (reverted in db4b3d12) once the installed Habu includes master c4657b44 (VEC:N>ITEM/N>INDEX public). Blocked until after the demo. Prove with the installed hb: test/document-prepare.f, test/reader.f, tender test/c2-office-scale.f. Claim: jerry.

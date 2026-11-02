@@ -1,9 +1,11 @@
 ---
 title: "Restore Habu's clients on master"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-26T20:50:25.267318+02:00"
+closed-at: "2026-11-02T11:34:09.351877+02:00"
+close-reason: "Landed c4657b44cb 'Export VEC's count and index converters'; Etch's remaining failures came from the host's KiCad, not code."
 ---
 
 Joel 2026-10-26: tender and zen are key clients; fix zzusage and Etch too. Claim: jerry. Engine: Habu master, ~/Work/habu/.jj-ws.noindex/jerry-land/bin/hb (cwd or engine tree resolves Habu libs).

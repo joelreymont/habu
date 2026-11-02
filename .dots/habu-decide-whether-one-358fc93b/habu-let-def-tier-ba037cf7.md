@@ -1,9 +1,11 @@
 ---
 title: Let DEF-TIER-0 definers use tier 0
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-10-26T11:28:42.463086+02:00"
+closed-at: "2026-11-02T11:34:09.288893+02:00"
+close-reason: "Landed 120d2f547a 'Make T0 the x86-64 runtime compiler': src/habu/definers.f:62-67 refuses only when the Habu loop has no tier-0 compiler."
 ---
 
 Retirement prerequisite (Joel 2026-10-26): do only if the experiment ruling retires tier 1. DEF-TIER-0 refuses today (src/core/definers.f:78-84).
