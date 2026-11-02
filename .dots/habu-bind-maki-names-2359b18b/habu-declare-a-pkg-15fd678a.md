@@ -1,9 +1,11 @@
 ---
 title: Declare a package complete in source
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-01T15:36:36.175193+02:00"
+closed-at: "2026-11-02T19:02:57.549855+02:00"
+close-reason: "nuylyxrr 331dc067 seal-package; reviewed ACCEPT; seal fixtures and rows unchanged on the batch hb; no-binary check rc 0 on the lane; landed in batch 1 on master 1fc572b1: full suite 515/515 rc 0 and two-generation gen 3 = gen 2 on the batch build (/tmp/carl-land/b1)"
 ---
 
 Maki H2: a source declaration that a package is complete, honoured by the checker's scan and by the run, so after an import file closes its package a later package NAME in a design file is refused by name at check instead of merging. The import's own file reopens its package several times before it closes it. Needs a design together with H1; public names to Joel via tim. Claim: carl.

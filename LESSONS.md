@@ -314,6 +314,10 @@ entry.
   the same program differ. Asked to name the one shared word that compares
   two images, skipping only the signature block that holds the time, Joel
   chose "CODESIGN:SAME-IMAGE?" over a global SIGNED-SAME? in sign2.f.
+- 2026-11-01, a missing signing certificate: every macOS build signs with
+  the team identity; asked what a build does when that certificate is
+  missing, Joel chose "Approve (Recommended)": "Missing certificate stops the
+  build with a named error." The build stops with CODESIGN:E-IDENTITY.
 - 2026-10-31, a PostgreSQL limit: asked whether PG:CONFIGURE should lose its
   fixed per-connection parameter count so each connection's list grows as BIND
   needs, up to PostgreSQL's own 65535, Joel chose "Grow to PostgreSQL's limit".
