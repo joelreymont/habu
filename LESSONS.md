@@ -23,7 +23,15 @@ entry.
   so T0's word goes private and the Habu loop stops loading T0. Then "fine,
   approved all, keep going": JIT? goes for the tests' existing
   HB-TARGET-LINUX-X86-64? switch, and the fixed-body kinds become one typed
-  enum in a lane of their own.
+  enum in a lane of their own. Offered FIXED-KIND:VALUE for its values, Joel
+  answered that "fixed-kind as a package name violates naming conventions"
+  and asked for fixed body and fixed kind in plain English. Shown that a fixed
+  body is the machine code the compiler stamps from a pattern for a word with
+  no source text (a constant pushes its number, create and variable push
+  their data address, defer jumps through its cell, CAST: passes the value
+  through) and that the kind says which pattern, he chose "COMP:body": values
+  COMP-BODY:compiled, value, address, defer and cast, and COMP:BODY>N for the
+  number.
 - 2026-11-02, the checker's switch: asked about the seal lane's
   LOWER-CERT-HOOK:AT-CURSOR, Joel wrote "lower-cert-hook is a crap name, it
   does not explain what it does" and "why does it need to be a hook instead
