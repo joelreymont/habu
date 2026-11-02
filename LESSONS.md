@@ -60,7 +60,12 @@ entry.
   bool )` over the loader's table of the files it opened, and `XREF:SOURCE (
   ptr n -- n n )`, a record's file number and name offset, 0 0 when
   unlocated; ENGINE-ORIGIN keeps TARGET, SYMBOL-AT and EACH-IN, and its other
-  words, ENGINE-ORIGIN-EARLY, NATIVE-BODY and the export notice go. Asked
+  words, ENGINE-ORIGIN-EARLY, NATIVE-BODY and the export notice go. Told
+  that the loader's frame code (SOURCE-ROOT) and the snapshot step can reach
+  the table only through public words, Joel wrote "intern and persist
+  approved for source-file": `SOURCE-FILE:INTERN ( ptr u8 n -- n )` and
+  `SOURCE-FILE:PERSIST ( -- )`, and asked "why do we have both source-file
+  and source-root?". Asked
   where the error-place words go, he asked "what is TOP-LINE and why do we
   need it? I'd think we just need LINE (or LINE-AT? worse?) and COLUMN";
   shown that the top-level site is only a byte's line taken at the checker's
