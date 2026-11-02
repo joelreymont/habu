@@ -314,6 +314,18 @@ entry.
 
 ### Compiler and builds
 
+- 2026-11-02, T0 compiling for a second machine (dual emission): shown a
+  proposal that added an unplaced seal word beside T0's placing SEAL and made
+  tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
+  this the best for long term? review and justify." The design he then
+  approved seals unplaced on every pass and places only on the host pass,
+  before sealing; T0 keeps its own private SHADOW-TAKE. Shown it as
+  T0-EMIT:PLACE, he answered "why T0-EMIT:PLACE and not COMP:EMIT-PLACE? you
+  are violating naming rules, again. otherwise, i approve", then chose
+  "Approve the move": T0's five files become the COMP package, the emitter
+  seam's words named EMIT-*, the arm64 and x86-64 emitters and the label layer
+  its parts ARM64, X86-64 and LABEL; COMP:INSTALL replaces T0:INSTALL and every
+  other public word of those packages goes private.
 - 2026-10-22, incremental builds: "i said that a file is the unit of
   incremental building. all the defining words run when the file is
   compiled." Everything compiling a file produces, TRUSTED: bodies and does>
