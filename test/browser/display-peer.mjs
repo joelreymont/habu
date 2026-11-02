@@ -130,7 +130,7 @@ async function browser() {
         return d; };
       window.canvas = document.querySelector('canvas');
       window.mountOne = () => mountOn(canvas);
-      window.mountOn = (target) => mount(target, { module: '/module.wasm',
+      window.mountOn = (target) => mount(target, { Module, module: '/module.wasm',
         fetch: (url, init) => fetch(url, window.ignoreAbort ? { ...init, signal: undefined } : init),
         onTree: (rows, selected) => records.push(['tree', rows, selected]),
         onText: (text, error) => records.push(['text', text, error]),

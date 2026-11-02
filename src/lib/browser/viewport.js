@@ -4,11 +4,15 @@
 // to the module. The caller owns the page: nothing here looks up the DOM, and
 // every other record reaches the caller through a callback.
 //
-//   mount(canvas, { module, fetch, onTree, onText, onSvg, onInput })
+//   mount(canvas, { Module, module, fetch, rpc, onTree, onText, onSvg, onInput })
 //     -> Promise<viewport>
+//   Module                 turn.js's Module class, which the caller imports
 //   module                 the module's URL, fetched with fetch
 //   fetch(url, init)       window.fetch's contract; the module, and every
 //                          fetch, post and request record, go through it
+//   rpc(method, paramsJSON) an rpc record's method and params JSON text ->
+//                          Promise of the response's JSON text, {"result":…}
+//                          or {"error":…}; a rejection is a transport failure
 //   onTree(rows, selected) a tree record's rows and selected key (turn.js)
 //   onText(text, error)    a text record, error false; a failure after mount
 //                          resolved, error true (it is also logged)
@@ -29,14 +33,23 @@
 //                          identity's 16 bytes in order; [] clears. A
 //                          malformed id throws before any turn; settles as
 //                          post does
-//   viewport.dispose()     removes the listeners, aborts the outstanding
-//                          fetches, releases the GPU device and ends the
-//                          module; no callback runs after it, a later reply
-//                          runs no turn, and the canvas can be mounted again
+//   viewport.notify(method, paramsJSON)
+//                          a notified turn of a host notification; settles as
+//                          post does
+//   viewport.file(file)    a file turn of a File, numbered from 1 and kept for
+//                          the module's reads; settles as post does
+//   viewport.dispose()     removes the listeners, clears the after timers,
+//                          aborts the outstanding fetches, releases the GPU
+//                          device and ends the module; no callback runs after
+//                          it, a later reply runs no turn, and the canvas can
+//                          be mounted again
+//
+// An after record's tick is sent once its ms have passed while the document is
+// visible, or else at the next visibilitychange to visible. A read record reads
+// File.slice(offset, offset + length) of its numbered File.
 //
 // mount resolves once the start turn has begun; it rejects, having released
 // what it took, if WebGPU, the module's fetch or its instantiation fails.
-import { Module } from "./turn.js";
 
 // Clip space from the matrix; each fragment lit by its triangle's normal, from
 // the screen derivatives of the position, so no normals are sent.
@@ -183,6 +196,9 @@ function at(canvas, e) {
   ];
 }
 
+// setTimeout's largest delay; a longer after waits in steps of it.
+const MAX_DELAY = 2 ** 31 - 1;
+
 const ID_HEX = /^[0-9a-fA-F]{32}$/;
 
 // The identities, 32 hex digits each, as the packed 16-byte list turn.js sends.
@@ -205,7 +221,7 @@ function sceneBytes(scene) {
   throw new TypeError("a scene is an ArrayBuffer or a Uint8Array");
 }
 
-export async function mount(canvas, { module: url, fetch: load, onTree, onText, onSvg, onInput }) {
+export async function mount(canvas, { Module, module: url, fetch: load, rpc, onTree, onText, onSvg, onInput }) {
   // One signal aborts the outstanding fetches and removes every listener.
   const ending = new AbortController();
   const { signal } = ending;
@@ -213,6 +229,9 @@ export async function mount(canvas, { module: url, fetch: load, onTree, onText, 
   let renderer = null;
   let observer = null;
   let module = null;
+  const timers = new Set();
+  const due = []; // the tokens whose ms passed while the document was hidden
+  const files = new Map(); // a file number -> its File
 
   const fail = (e) => {
     if (disposed) return;
@@ -229,6 +248,8 @@ export async function mount(canvas, { module: url, fetch: load, onTree, onText, 
     if (disposed) return;
     disposed = true;
     ending.abort();
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
     observer?.disconnect();
     renderer?.release();
     module?.end();
@@ -253,6 +274,10 @@ export async function mount(canvas, { module: url, fetch: load, onTree, onText, 
       // Answers every status: the module reads it.
       post: (path, body) => answer(path, { method: "POST", body }),
       request: (method, path, body) => answer(path, body.length ? { method, body } : { method }),
+      rpc: (method, params) => rpc(method, params),
+      after: (ms, token) => wait(Number(ms), token),
+      read: async (file, offset, length) =>
+        new Uint8Array(await files.get(Number(file)).slice(Number(offset), Number(offset + length)).arrayBuffer()),
       error: fail,
       draw: live((...args) => {
         if (shown) {
@@ -287,6 +312,21 @@ export async function mount(canvas, { module: url, fetch: load, onTree, onText, 
     }
   };
   const on = (type, fn, options = {}) => canvas.addEventListener(type, fn, { ...options, signal });
+
+  const tick = (token) => send(() => module.tick(token));
+  function wait(ms, token) {
+    const step = Math.min(ms, MAX_DELAY);
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      if (ms > step) wait(ms - step, token);
+      else if (document.visibilityState === "visible") tick(token);
+      else due.push(token);
+    }, step);
+    timers.add(timer);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") for (const token of due.splice(0)) tick(token);
+  }, { signal });
 
   // A press captures its pointer, so the drag's moves and its release reach
   // the canvas even outside it. pointerup's buttons is 0, so the capture, not
@@ -367,6 +407,17 @@ export async function mount(canvas, { module: url, fetch: load, onTree, onText, 
       open();
       const bytes = packed(ids);
       return send(() => module.highlight(bytes));
+    },
+    notify(method, paramsJSON) {
+      open();
+      return send(() => module.notified(method, paramsJSON));
+    },
+    file(file) {
+      open();
+      if (!(file instanceof File)) throw new TypeError("viewport.file takes a File");
+      const number = files.size + 1;
+      files.set(number, file);
+      return send(() => module.file(file.name, file.size, number));
     },
     dispose,
   };

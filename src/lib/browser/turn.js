@@ -13,8 +13,9 @@
 // An event is 56 bytes at the address hello names: kind, a, b, c, d, buttons,
 // mods. Kinds: 0 start, 1 bytes, 2 pointer, 3 answered, 4 typed, 5 moved,
 // 6 released, 7 wheel, 8 key, 9 resize, 10 control, 11 load, 12 focus,
-// 13 highlight. c and d are the drawing buffer's width and height in device
-// pixels except for answered.
+// 13 highlight, 14 notified, 15 tick, 16 file, 17 chunk. c and d are the
+// drawing buffer's width and height in device pixels except for answered, file
+// and chunk.
 //   bytes, typed, key: a, b name the fetched bytes, the field's text or
 //     KeyboardEvent.key (sent only while the canvas has focus)
 //   pointer, moved, released: a, b are x, y from the canvas's top-left; the
@@ -22,12 +23,22 @@
 //   answered: a, b the response, c the status, d the request id, buttons and
 //     mods the buffer size when the answer arrived; a tagged request's
 //     transport failure is status 0 with String(error) as its body; a legacy
-//     post's d, buttons and mods are 0
+//     post's d, buttons and mods are 0. For an rpc, a, b are the JSON of the
+//     response's result, c 1, or of its error, c 2; a transport failure is c 0
+//     with String(error)
 //   wheel: a, b signed device-pixel deltas; resize: a, b are 0
 //   control: a is a transient tree row key, never a persistent identity
 //   load: a, b name the scene's bytes
 //   focus, highlight: a, b name packed 16-byte identities, b a multiple of 16;
 //     b 0 clears. What a scene or an identity means is the module's.
+//   notified: a, b a u64 method length, the method, then the params JSON, all
+//     UTF-8; one per host notification
+//   tick: a the token of the after record that asked for it
+//   file: a, b the file's UTF-8 name, c its size in bytes, d the host's
+//     positive file number, valid while the module lives; one per file picked
+//     or dropped
+//   chunk: a, b the bytes read, c the file number, d the offset; buttons 1, or
+//     0 when the read failed, with a, b String(error)
 // buttons is the pointer's bitset; mods are Shift 1, Control 2, Alt 4, Meta 8.
 // The host writes all 56 bytes on every event; a field that does not apply is 0.
 //
@@ -48,20 +59,26 @@
 //     UTF-8 path and the body (none for GET or HEAD); c a positive i64 id
 //   8 svg: a, b the image bytes, copied before host.svg runs
 //   9 input: a is 0 or 1, disabling or enabling the typed-text field
-// A post or request is answered for every HTTP status. A host that takes
-// request records provides error(error): the first reply failure of a turn
-// reaches it at once, each further one as an AggregateError of all of them.
+//   10 rpc: span a, b of a u64 method length, the nonempty UTF-8 method, then
+//     the params, UTF-8 JSON text of an object; c a positive i64 id
+//   11 after: a ms, at least 0, b a token; one tick after ms
+//   12 read: a a file number a file event delivered, b an offset, c a length of
+//     at least 1, with b + c at most the file's size; each gets its own chunk
+// A post or request is answered for every HTTP status. Request, rpc and read
+// records are tagged. A host that takes tagged records provides error(error):
+// the first reply failure of a turn reaches it at once, each further one as an
+// AggregateError of all of them.
 // The module maps clip space to pixels as x = (ndc.x + 1) * width / 2 and
 // y = (1 - ndc.y) * height / 2, origin top-left.
 //
 // The module imports nothing. A turn writes one event at the address the
 // module named in hello, calls run() and handles the records the run left in
 // [out-base, out-base + out-len), in order. The first run has no event: the
-// module's event block is zero, which reads as start. Fetch, post and request
-// records are requests: as the records are read, each path is decoded and each
-// body copied, since later runs rewrite the storage they name and growth detaches
-// it. Once the run's other records are handled, tagged requests from that run
-// start independently; legacy fetches and posts still wait in order, including
+// module's event block is zero, which reads as start. Fetch, post, request, rpc
+// and read records are requests: as the records are read, each is decoded and
+// each body copied, since later runs rewrite the storage they name and growth
+// detaches it. Once the run's other records are handled, tagged requests from
+// that run start independently; legacy fetches and posts still wait in order, including
 // the requests made by their replies. An answer is copied into pages reserved
 // through the module, and the module runs again with an event naming them.
 // Reserve, copy and run are one synchronous stretch: the module imports nothing,
@@ -95,6 +112,10 @@ const CONTROL = 10n;
 const LOAD = 11n;
 const FOCUS = 12n;
 const HIGHLIGHT_EVENT = 13n; // HIGHLIGHT names the record
+const NOTIFIED = 14n;
+const TICK = 15n;
+const FILE = 16n;
+const CHUNK = 17n;
 const ID_BYTES = 16;
 
 // Records.
@@ -108,18 +129,36 @@ const HIGHLIGHT = 6n;
 const REQUEST = 7n;
 const SVG = 8n;
 const INPUT = 9n;
+const RPC = 10n;
+const AFTER = 11n;
+const READ = 12n;
+const TAGGED = new Set([REQUEST, RPC, READ]);
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 // A request's leading BOM bytes are content, including at the start of a path.
 const requestUtf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const encoder = new TextEncoder();
 
+// An rpc response's JSON text as its status, 1 for a result and 2 for an
+// error, and that member's value; any other text throws.
+function outcome(text) {
+  const response = JSON.parse(text);
+  const keys = response !== null && typeof response === "object" && !Array.isArray(response) ?
+    Object.keys(response) : [];
+  if (keys.length === 1 && keys[0] === "result") return [1n, response.result];
+  if (keys.length === 1 && keys[0] === "error") return [2n, response.error];
+  throw new TypeError("an rpc response must be {\"result\":…} or {\"error\":…}");
+}
+
 export class Module {
   // host: hello(), fetch(path) -> Promise<Uint8Array>, post(path, body) ->
   // Promise<{ status, bytes }>, request(method, path, body, id) -> the same;
-  // id is an optional diagnostic argument for the CLI. A host that handles
-  // REQUEST also provides error(error) for asynchronous reply failures.
-  // Also draw(corners, count, matrix, mask), text(string), tree(rows, selected),
+  // id is an optional diagnostic argument for the CLI.
+  // rpc(method, params, id) -> Promise of the response's JSON text,
+  // {"result":…} or {"error":…}; params is the record's JSON text.
+  // after(ms, token) runs tick(token) once ms have passed. read(file, offset,
+  // length) -> Promise<Uint8Array> of the numbered file's bytes. Also
+  // draw(corners, count, matrix, mask), text(string), tree(rows, selected),
   // highlight(mask), svg(copiedBytes), input(enabled), and size() ->
   // [width, height] of the drawing buffer.
   static async load(bytes, host) {
@@ -133,6 +172,7 @@ export class Module {
     this.event = null; // the address hello named
     this.ended = null; // why the instance ended: a trap or end()
     this.mask = null; // no highlight record yet: draw with an unselected mask
+    this.files = new Map(); // a delivered file number -> its size, for reads
   }
 
   // The first turn.
@@ -199,14 +239,39 @@ export class Module {
     await this.turn([TYPED, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
   }
 
+  // A turn for a host notification: its method and its params JSON text.
+  async notified(method, params) {
+    const name = encoder.encode(method);
+    const text = encoder.encode(params);
+    const bytes = new Uint8Array(8 + name.length + text.length);
+    new DataView(bytes.buffer).setBigUint64(0, BigInt(name.length), true);
+    bytes.set(name, 8);
+    bytes.set(text, 8 + name.length);
+    await this.turn([NOTIFIED, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
+  }
+
+  // The turn an after record's ms asked for.
+  tick(token) {
+    return this.turn([TICK, token, 0, ...this.host.size(), 0, 0]);
+  }
+
+  // A turn for a file the host numbered; read records may then name it.
+  async file(name, size, number) {
+    const n = BigInt(number);
+    if (n <= 0n) throw new RangeError(`a file number must be positive, got ${n}`);
+    const bytes = encoder.encode(name);
+    this.files.set(n, BigInt(size));
+    await this.turn([FILE, this.place(bytes), bytes.length, size, n, 0, 0]);
+  }
+
   // The event's run, then its requests. All tagged requests start independently;
   // legacy requests keep their order and wait for their own recursive replies.
   async turn(event) {
     const requests = this.run(event);
-    if (requests.some((request) => request.kind === REQUEST) && typeof this.host.error !== "function")
-      throw new TypeError("host.error(error) is required for REQUEST replies");
+    if (requests.some((request) => TAGGED.has(request.kind)) && typeof this.host.error !== "function")
+      throw new TypeError("host.error(error) is required for tagged replies");
     const errors = [];
-    const tagged = requests.filter((request) => request.kind === REQUEST)
+    const tagged = requests.filter((request) => TAGGED.has(request.kind))
       .map((request) => this.answer(request).catch((error) => {
         errors.push(error);
         this.host.error(errors.length === 1 ? error :
@@ -214,12 +279,12 @@ export class Module {
       }));
     const legacy = (async () => {
       for (const request of requests)
-        if (request.kind !== REQUEST) await this.answer(request);
+        if (!TAGGED.has(request.kind)) await this.answer(request);
     })();
     await Promise.all([...tagged, legacy]);
   }
 
-  async answer({ kind, path, body, method, id }) {
+  async answer({ kind, path, body, method, params, id, file, offset, length }) {
     if (kind === FETCH) {
       const bytes = await this.host.fetch(path);
       await this.turn([BYTES, this.place(bytes), bytes.length, ...this.host.size(), 0, 0]);
@@ -232,6 +297,26 @@ export class Module {
       }
       const { status, bytes } = response;
       await this.turn([ANSWERED, this.place(bytes), bytes.length, status, id, ...this.host.size()]);
+    } else if (kind === RPC) {
+      let status, value;
+      try {
+        [status, value] = outcome(await this.host.rpc(method, params, id));
+      } catch (error) {
+        [status, value] = [0n, String(error)];
+      }
+      const bytes = encoder.encode(status === 0n ? value : JSON.stringify(value));
+      await this.turn([ANSWERED, this.place(bytes), bytes.length, status, id, ...this.host.size()]);
+    } else if (kind === READ) {
+      let read, bytes;
+      try {
+        bytes = await this.host.read(file, offset, length);
+        if (BigInt(bytes.length) !== length)
+          throw new RangeError(`file ${file} gave ${bytes.length} bytes at ${offset}, not ${length}`);
+        read = 1n;
+      } catch (error) {
+        [read, bytes] = [0n, encoder.encode(String(error))];
+      }
+      await this.turn([CHUNK, this.place(bytes), bytes.length, file, offset, read, 0]);
     } else {
       const { status, bytes } = await this.host.post(path, body);
       await this.turn([ANSWERED, this.place(bytes), bytes.length, status, 0, 0, 0]);
@@ -266,6 +351,8 @@ export class Module {
       if (kind === FETCH) requests.push({ kind, path: utf8.decode(this.span(a, b)) });
       else if (kind === POST) requests.push(this.post(a, b, c));
       else if (kind === REQUEST) requests.push(this.request(a, b, c));
+      else if (kind === RPC) requests.push(this.rpc(a, b, c));
+      else if (kind === READ) requests.push(this.read(a, b, c));
       else this.record(kind, a, b, c);
     }
     return requests;
@@ -311,6 +398,38 @@ export class Module {
     return { kind: REQUEST, method, path, body, id };
   }
 
+  // A tagged JSON-RPC request: the u64 method length, the method, then the
+  // params, whose JSON value must be an object.
+  rpc(a, b, id) {
+    if (id <= 0n) throw new RangeError(`an rpc needs a positive id, got ${id}`);
+    const s = this.span(a, b);
+    if (b < 8n) throw new RangeError(`an rpc's method length needs 8 bytes, got ${b}`);
+    const methodLen = new DataView(s.buffer, s.byteOffset, s.byteLength).getBigUint64(0, true);
+    if (methodLen === 0n || methodLen > b - 8n)
+      throw new RangeError(`an rpc's method of ${methodLen} bytes in its span of ${b}`);
+    const methodEnd = 8 + Number(methodLen);
+    const method = requestUtf8.decode(s.subarray(8, methodEnd));
+    const params = requestUtf8.decode(s.subarray(methodEnd));
+    let value;
+    try {
+      value = JSON.parse(params);
+    } catch (e) {
+      throw new Error("rpc params JSON is invalid", { cause: e });
+    }
+    if (value === null || typeof value !== "object" || Array.isArray(value))
+      throw new Error("rpc params JSON must be an object");
+    return { kind: RPC, method, params, id };
+  }
+
+  // A tagged read of a delivered file's bytes [offset, offset + length).
+  read(file, offset, length) {
+    const size = this.files.get(file);
+    if (size === undefined) throw new RangeError(`a read of file ${file}, which no file event delivered`);
+    if (length < 1n || offset < 0n || offset + length > size)
+      throw new RangeError(`a read of ${length} bytes at ${offset} outside file ${file}'s ${size}`);
+    return { kind: READ, file, offset, length };
+  }
+
   write(event) {
     if (this.event === null) throw new Error("an event before the module's hello");
     if (event.length !== 7) throw new Error(`an event has ${event.length} fields, expected 7`);
@@ -332,7 +451,7 @@ export class Module {
     return out;
   }
 
-  // Every record but a request.
+  // Every record but a request, an rpc or a read.
   record(kind, a, b, c) {
     switch (kind) {
       case HELLO:
@@ -360,6 +479,10 @@ export class Module {
         if (b !== 0n || c !== 0n) throw new Error("input b and c must be zero");
         if (a !== 0n && a !== 1n) throw new Error("input a must be 0 or 1");
         this.host.input(a === 1n);
+        return;
+      case AFTER:
+        if (a < 0n) throw new RangeError(`an after of ${a} ms`);
+        this.host.after(a, b);
         return;
       default:
         throw new Error(`a record of kind ${kind}, which names no record`);

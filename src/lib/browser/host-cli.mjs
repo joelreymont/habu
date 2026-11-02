@@ -28,14 +28,25 @@
 //                          reply that overtakes earlier ones does
 //    --fail                fails the oldest waiting request, as a lost
 //                          connection does
+//    --notify METHOD FILE  a host notification of METHOD whose params are
+//                          FILE's JSON text
+//    --tick                the tick of the oldest after no --tick has fired
+//    --file NAME PATH      a file named NAME of PATH's bytes, numbered from 1;
+//                          reads of it are answered from those bytes
+//    --answer-rpc ID FILE  answers the waiting rpc with ID with FILE's JSON
+//                          text, {"result":…} or {"error":…}
+//    --fail-rpc ID         fails the waiting rpc with ID, as a lost parent does
 //
 // The drawing buffer is 640 by 480 unless --size says otherwise. Prints one
 // line per record, a request's when the host makes it: hello, fetch <path>,
 // post <path> <length> <body in hex>, request <method> <path> <id> <length>
-// <hex>, tree <selected> <JSON>, highlight <count> <mask in hex>, draw <count>
-// <mask in hex>, svg <length> <bytes in hex>, input <0|1>, text <string>.
-// At the end, outstanding <fetch|post> <path>
-// or outstanding request <method> <path> <id>.
+// <hex>, rpc <method> <id> <params JSON>, after <ms> <token>, read <file>
+// <offset> <length>, tree <selected> <JSON>, highlight <count> <mask in hex>,
+// draw <count> <mask in hex>, svg <length> <bytes in hex>, input <0|1>, text
+// <string>. At the end, outstanding <fetch|post> <path>, outstanding request
+// <method> <path> <id> or outstanding rpc <method> <id>. A --tick with no after
+// waiting, or an --answer-rpc or --fail-rpc of an id no waiting rpc holds, is
+// a failure.
 // It
 // draws nothing. Each failure is printed on stderr as it happens, such as
 // `throw <code>` for a run that answered a nonzero status, and the steps go
@@ -49,7 +60,8 @@ const USAGE =
   "--wheel DX DY MODS | --key TEXT MODS | --resize W H | --control KEY | " +
   "--load FILE | --focus HEX | --highlight HEX | " +
   "--typed TEXT | --repeat-typed TEXT N | --memory | " +
-  "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail]...";
+  "--answer STATUS FILE | --answer-id ID STATUS FILE | --fail | " +
+  "--notify METHOD FILE | --tick | --file NAME PATH | --answer-rpc ID FILE | --fail-rpc ID]...";
 
 let failed = false;
 
@@ -74,6 +86,18 @@ function byId(flag, id) {
   const at = waiting.findIndex((r) => r.kind === "request" && r.id === id);
   if (at < 0) throw new Error(`${flag}: no request ${id} is outstanding`);
   return waiting.splice(at, 1)[0];
+}
+
+// The rpcs the host made that no step has answered and the tokens of the
+// afters no --tick has fired, each oldest first; each --file's bytes by number.
+const calls = [];
+const ticks = [];
+const files = new Map();
+
+function call(flag, id) {
+  const at = calls.findIndex((r) => r.id === id);
+  if (at < 0) throw new Error(`${flag}: no rpc ${id} is outstanding`);
+  return calls.splice(at, 1)[0];
 }
 
 // Answers only once every microtask has run, so every run a step let happen.
@@ -190,6 +214,38 @@ function parse(args) {
           r.reject(new Error(`${r.path}: failed`));
         });
         break;
+      case "--notify": {
+        const [method, file] = take(2);
+        steps.push((m) => m.notified(method, readFileSync(file, "utf8")).catch(report));
+        break;
+      }
+      case "--tick":
+        steps.push((m) => {
+          if (ticks.length === 0) throw new Error(`${flag}: no after is waiting`);
+          m.tick(ticks.shift()).catch(report);
+        });
+        break;
+      case "--file": {
+        const [name, path] = take(2);
+        steps.push((m) => {
+          const bytes = readFileSync(path);
+          const number = files.size + 1;
+          files.set(number, bytes);
+          m.file(name, bytes.length, number).catch(report);
+        });
+        break;
+      }
+      case "--answer-rpc": {
+        const [id, file] = take(2);
+        const key = BigInt(id);
+        steps.push(() => call(flag, key).resolve(readFileSync(file, "utf8")));
+        break;
+      }
+      case "--fail-rpc": {
+        const key = BigInt(take(1)[0]);
+        steps.push(() => call(flag, key).reject(new Error(`rpc ${key}: failed`)));
+        break;
+      }
       default:
         throw new Error(USAGE);
     }
@@ -216,6 +272,18 @@ try {
       console.log(`request ${method} ${path} ${id} ${body.length} ${Buffer.from(body).toString("hex")}`);
       return request("request", path, method, id);
     },
+    rpc: (method, params, id) => {
+      console.log(`rpc ${method} ${id} ${params}`);
+      return new Promise((resolve, reject) => calls.push({ id, method, resolve, reject }));
+    },
+    after: (ms, token) => {
+      console.log(`after ${ms} ${token}`);
+      ticks.push(token);
+    },
+    read: (file, offset, length) => {
+      console.log(`read ${file} ${offset} ${length}`);
+      return Promise.resolve(files.get(Number(file)).subarray(Number(offset), Number(offset + length)));
+    },
     error: report,
     draw: (corners, count, matrix, mask) =>
       console.log(`draw ${count}${count ? ` ${Buffer.from(mask).toString("hex")}` : ""}`),
@@ -239,6 +307,7 @@ try {
   }
   for (const { kind, path, method, id } of waiting)
     console.log(kind === "request" ? `outstanding request ${method} ${path} ${id}` : `outstanding ${kind} ${path}`);
+  for (const { id, method } of calls) console.log(`outstanding rpc ${method} ${id}`);
   if (state.memory) console.log(`memory ${module.x.memory.buffer.byteLength}`);
 } catch (e) {
   report(e);

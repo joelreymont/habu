@@ -20,7 +20,7 @@ canvas:focus-visible { outline: 2px solid #1168b6; outline-offset: -2px; }
 .tree-row button[aria-pressed="true"] { background: #d9eaff; font-weight: 600; }
 .tree-row button:focus-visible { outline: 2px solid #1168b6; }
 .tree-spacer { width: 22px; }
-form, #text { margin: 8px; }
+form, #file, #text { margin: 8px; }
 #text { white-space: pre-wrap; }
 #text.error { color: #b00020; }
 </style>
@@ -31,6 +31,7 @@ form, #text { margin: 8px; }
 <div id="viewport"><canvas tabindex="0" aria-label="Drawing canvas"></canvas></div>
 </main>
 <form><input aria-label="text" autocomplete="off" disabled></form>
+<input id="file" type="file" multiple aria-label="file">
 <div id="text">loading /module.wasm</div>
 <script type="module" src="host.js"></script>
 </body>
