@@ -51,14 +51,23 @@ entry.
   through which the checker would tell engine-origin about each definition it
   passed, as it already does for casts and exports, Joel answered "current
   approach smells. why not set a flag on the definition? the approach for
-  exports and cast should be reviewed too". Asked where the error-place words
-  go, he asked "what is TOP-LINE and why do we need it? I'd think we just need
-  LINE (or LINE-AT? worse?) and COLUMN"; shown that the top-level site is only
-  a byte's line taken at the checker's token, he chose "SRCLOC:LINE, COLUMN,
-  PATH$": `SRCLOC:LINE` and `SRCLOC:COLUMN ( ptr u8 -- n bool )` place any byte
-  of the open file, `SRCLOC:PATH$ ( -- ptr u8 n )` names it, and top-level
-  errors print a column too once tools/check.f's run file stops shifting
-  columns.
+  exports and cast should be reviewed too". Shown a design in which the engine
+  writes one cell on every dictionary record, the number of the file that
+  defined it and the offset of its name, replacing the origin journal, its
+  hooks, the checker's export and cast notices and the cache's origin section,
+  Joel chose "Approve SOURCE-FILE, XREF:SOURCE (Recommended)":
+  `SOURCE-FILE:PATH$ ( n -- ptr u8 n )` and `SOURCE-FILE:FIND ( ptr u8 n -- n
+  bool )` over the loader's table of the files it opened, and `XREF:SOURCE (
+  ptr n -- n n )`, a record's file number and name offset, 0 0 when
+  unlocated; ENGINE-ORIGIN keeps TARGET, SYMBOL-AT and EACH-IN, and its other
+  words, ENGINE-ORIGIN-EARLY, NATIVE-BODY and the export notice go. Asked
+  where the error-place words go, he asked "what is TOP-LINE and why do we
+  need it? I'd think we just need LINE (or LINE-AT? worse?) and COLUMN";
+  shown that the top-level site is only a byte's line taken at the checker's
+  token, he chose "SRCLOC:LINE, COLUMN, PATH$": `SRCLOC:LINE` and
+  `SRCLOC:COLUMN ( ptr u8 -- n bool )` place any byte of the open file,
+  `SRCLOC:PATH$ ( -- ptr u8 n )` names it, and top-level errors print a column
+  too once tools/check.f's run file stops shifting columns.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
@@ -311,8 +320,9 @@ entry.
   the caller's BUF; turn records 10 `rpc` (a JSON-RPC request to the host,
   answered by event 3), 11 `after`, 12 `read`; events 14 `notified`, 15
   `tick`, 16 `file`, 17 `chunk`; mount options `Module` and `rpc`, viewport
-  `notify` and `file`, and host-cli's `--notify`, `--tick`, `--file`,
-  `--answer` and `--fail`.
+  `notify` and `file`, and host-cli's `--notify`, `--tick` and `--file`.
+  host-cli's `--answer` and `--fail` already answer HTTP requests, so the
+  lead named the rpc steps `--answer-rpc ID FILE` and `--fail-rpc ID`.
 - 2026-11-02, sizing Maki's job runners: OS-CPU:PERFORMANCE-CORES and
   OS-MEMORY:TOTAL, approved on 2026-10-31 so Maki could compute its runner
   count from the host, needed a shared reader of Linux container (cgroup)
