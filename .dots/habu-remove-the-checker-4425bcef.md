@@ -12,3 +12,5 @@ Problem: the machine-code compiler calls whatever xt sits in HOOK-CELL (src/habu
 Status 2026-11-02: engine-origin census worker running (brief .out/carl-file/brief-origin-census.md, deliverable /tmp/carl-switch/origin/census.md); the lead rewrites design step 5 from it.
 
 Status 2026-11-02 (later): census done (/tmp/carl-switch/origin/census.md): publication already implies acceptance; what engine-origin needs is each definition's source place; TRUSTED:, defer, LINEAR: and user-definer words get no row today; no free flag bit on the dictionary record. Fable feature design of origin recording running (brief .out/carl-file/brief-origin-design.md); it replaces design step 5.
+
+Status 2026-11-02 (origin): design done, .out/carl-file/design-origin.md (a cell on every dictionary record: file number and name offset; replaces step 5). Joel approved SOURCE-FILE:PATH$, SOURCE-FILE:FIND and XREF:SOURCE (LESSONS). design-switch.md step 5 and its order now point to lanes O1-O5. O1 (loader table, SRCLOC:FILE-CELL) running in workspace .jj-ws.noindex/carl-origin, brief .out/carl-file/brief-origin-o1.md; O1-O5 stack in that workspace and land together.
