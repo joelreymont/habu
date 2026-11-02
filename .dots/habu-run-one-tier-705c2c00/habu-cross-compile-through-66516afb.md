@@ -4,6 +4,20 @@ status: active
 priority: 2
 issue-type: task
 created-at: "2026-10-28T14:52:51.618180+02:00"
+blocks:
+  - habu-move-t0-into-16d2feab
+  - habu-make-the-fixed-fe3899b7
+  - habu-reuse-app-files-51821a5e
 ---
 
-Problem: the shadow/capture path needs the target arch's walk from the host's T0. Acceptance: T0:COMPILE walks host + publish, then when NSHADOW:OPEN? and not NATIVE? selects the shadow arch, walks again, NSHADOW:TAKE (TAKE-DOES); native-build-core.f loads the target emitter; native-emit-x64.f requires t0-x64.f. Files: src/habu/t0.f, tools/native-build-core.f, native-emit-x64.f. Verify: x86 engine cross-built by T0 on arm64; peer test/run.f; aot-shadow-capture; x86-64-link-records. Depends: L4, L5. Ownership: those files. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-t0dual (empty change on master 430a53e317; design in progress after Joel found the two-word proposal smelled, 2026-11-02).
+Problem: the shadow/capture path needs the target machine's walk from the host's T0, and T0 compiles no shadow routine today. Joel 2026-11-02 (LESSONS.md, Compiler and builds) approved the design: every pass seals unplaced, only the host pass places, before sealing; T0 keeps its own private SHADOW-TAKE; T0's five files become package COMP, the emitter seam's words named EMIT-*. Approved public changes: COMP:INSTALL replaces T0:INSTALL and every other public word of T0, T0-EMIT, T0-LABEL, T0-A64 and T0-X64 goes private; EMIT-PLACE and EMIT-SEAL are private COMP words. Any other public word needs Joel's approval through the interview.
+
+Plan, one commit each (design at /tmp/jerry-big/t0dual-design.md):
+- C0 Move T0 into COMP: habu-move-t0-into-16d2feab.
+- C1 EMIT-PLACE before EMIT-SEAL (COMP's emitter seam and LOWER/FIXED-LOWER). Proof: candidate build; tier0-inline-prims, tier0-compare-branch, tier0-join, tier0-string-literals and the T0 callback row; no case flips.
+- C2 T0 walks once per machine, shadow first, host second (private HOST-ARCH, SHADOW-ARCH, SHADOW-TAKE, SHADOWED, HOSTED; SHUT abandons the shadow on every exit; runtime-arm64.f and runtime-x64.f drop the install-time select); test/x86-64-link-records.f runs on T0, its set-tiers and the stray and callee modes go. Fails before, passes after; test/compiler/shadow.f stays green.
+- C3 fixed, cast and does> shadows from T0, after habu-make-the-fixed-fe3899b7 (the cast kind comes from that ENUM, not a new constant); aot-shadow-capture on T0.
+- C4 the engine cross-builds through T0, after habu-reuse-app-files-51821a5e (the rule: the engine build does not move to T0 until carl's cache works at any tier). tools/native-emit-x64.f requires t0-x64.f; native-build-core.f's AT-TIER-1 and tier juggling go. Proof: x86 engine cross-built by T0 on arm64; test/run.f and tools/two-generation-build.f on joel@pulsar-ua-106; arm64 --same-host chain; the x86 native-shadow tests with the tier-1 pin dropped.
+A Fable feature review of the combined diff precedes landing C1-C4.
+
+Files: src/habu/t0*.f, runtime-arm64.f, runtime-x64.f, tools/native-build-core.f, tools/native-emit-x64.f, test/x86-64-link-records.f, test/aot-shadow-capture.f, docs/xcomp.md. Verify: per commit above. Depends: the blocks list. Ownership: those files. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-t0dual.
