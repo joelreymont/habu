@@ -11,11 +11,8 @@ require src/compiler/target.f
 package NEMIT
 private
 
-0 constant ST-EMPTY
-1 constant ST-OPEN
-2 constant ST-SEALED
-variable ST
-ST-EMPTY ST !
+ENUM state empty open sealed ;ENUM
+TYPED-VARIABLE ST state
 
 PTR-VARIABLE CODE-AT                 \ the emission's first byte
 variable CODE-N                      \ and how many bytes it is
@@ -39,10 +36,22 @@ DYNAMIC-BUFFER ADDR-KIND-BUF n       \ which kind of address it carries
 DYNAMIC-BUFFER ADDR-ORIGIN-BUF n     \ exact DATA declaration, -1 otherwise
 
 : SEAL-CK ( -- )
-   ST @ ST-SEALED <> if E-NEMIT-STATE throw then ;
+   ST @
+   MATCH state
+      empty OF E-NEMIT-STATE throw ENDOF
+      open OF E-NEMIT-STATE throw ENDOF
+      sealed OF ENDOF
+   ;MATCH ;
+
 
 : OPEN-CK ( -- )
-   ST @ ST-OPEN <> if E-NEMIT-STATE throw then ;
+   ST @
+   MATCH state
+      empty OF E-NEMIT-STATE throw ENDOF
+      open OF ENDOF
+      sealed OF E-NEMIT-STATE throw ENDOF
+   ;MATCH ;
+
 
 : ROW-CK ( n n -- n ) {: i:n count:n :}
    i 0 <  i count >= or if E-NEMIT-ROW throw then
@@ -127,7 +136,7 @@ ADDR-CODE constant ADDR-KIND-MAX
 \ Nonthrowing: the backend's RETIRE runs it on both paths, the refusing one
 \ included.
 : CLEAR ( -- )
-   ST-EMPTY ST !
+   construct state empty ST !
    NULL-PTR CODE-AT !
    0 CODE-N !  0 RET-N !
    -1 PATCH-AT !
@@ -138,13 +147,18 @@ ADDR-CODE constant ADDR-KIND-MAX
 \ uncleared rows is refused, and the architecture it names makes a reader for
 \ another machine refuse before copying a byte.
 : OPEN ( ptr u8 n n CTARGET:arch -- ) {: p:ptr size:n ret:n a:CTARGET:arch :}
-   ST @ ST-EMPTY <> if E-NEMIT-STATE throw then
+   ST @
+   MATCH state
+      empty OF ENDOF
+      open OF E-NEMIT-STATE throw ENDOF
+      sealed OF E-NEMIT-STATE throw ENDOF
+   ;MATCH
    size 1 < if E-NEMIT-ROW throw then
    ret 0 <  ret size > or if E-NEMIT-ROW throw then
    p CODE-AT !  size CODE-N !  ret RET-N !
    -1 PATCH-AT !
    a ARCH-AT !
-   ST-OPEN ST ! ;
+   construct state open ST ! ;
 
 : PLACE ( n -- ) {: at:n :}
    OPEN-CK
@@ -191,7 +205,7 @@ ADDR-CODE constant ADDR-KIND-MAX
    k 1+ N-ADDRS ! ;
 
 : SEAL ( -- )
-   OPEN-CK ST-SEALED ST ! ;
+   OPEN-CK construct state sealed ST ! ;
 
 seal-package
 

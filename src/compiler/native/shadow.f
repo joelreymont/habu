@@ -20,9 +20,11 @@ private
 
 CAST: ENTRY-BYTES ( n -- ptr u8 )
 
-variable OPENED                      \ a shadow is open
-variable NATIVE                      \ its source already emitted for this binding
-TYPED-VARIABLE SH-BIND CBIND:binding \ and the binding it compiles for
+\ The shadow is closed; open; or native, open for the engine's own binding
+\ with its source already emitted.
+ENUM state closed open native ;ENUM
+TYPED-VARIABLE SH-STATE state
+TYPED-VARIABLE SH-BIND CBIND:binding \ the binding an open shadow compiles for
 TYPED-VARIABLE NATIVE-ADDRS-XT [ ptr u8 -- ]
 variable NATIVE-ADDRS-SET            \ a backend installed NATIVE-ADDRS-XT
 
@@ -70,12 +72,54 @@ DYNAMIC-BUFFER REC-ENTRY n           \ where in that emission the record enters
 2 constant RECS-MAX
 
 \ ---- the emission taken and not yet published --------------------------------
-variable PENDING                     \ TAKE has copied one past the counts
-variable PEND-DOES                   \ it is a definer's, with a companion record
-variable PEND-ENTRY                  \ which enters at this offset in it
+\ None taken; plain, copied past the counts; or does, a definer's, whose
+\ companion record enters at PEND-ENTRY in it.
+ENUM pending none plain does ;ENUM
+TYPED-VARIABLE PENDING pending
+variable PEND-ENTRY
+
+public
+
+: OPEN? ( -- bool )
+   SH-STATE @
+   MATCH state
+      closed OF false ENDOF
+      open OF true ENDOF
+      native OF true ENDOF
+   ;MATCH ;
+
+
+: NATIVE? ( -- bool )
+   SH-STATE @
+   MATCH state
+      closed OF false ENDOF
+      open OF false ENDOF
+      native OF true ENDOF
+   ;MATCH ;
+
+
+private
+
+: PENDING? ( -- bool )
+   PENDING @
+   MATCH pending
+      none OF false ENDOF
+      plain OF true ENDOF
+      does OF true ENDOF
+   ;MATCH ;
+
+
+: DOES-PENDING? ( -- bool )
+   PENDING @
+   MATCH pending
+      none OF false ENDOF
+      plain OF false ENDOF
+      does OF true ENDOF
+   ;MATCH ;
+
 
 : OPEN-CK ( -- )
-   OPENED @ 0= if E-NSHADOW-STATE throw then ;
+   OPEN? 0= if E-NSHADOW-STATE throw then ;
 
 : ROW-CK ( n n -- n ) {: i:n count:n :}
    i 0 <  i count >= or if E-NSHADOW-ROW throw then
@@ -100,7 +144,7 @@ variable PEND-ENTRY                  \ which enters at this offset in it
 : TARGET-CK ( -- )
    NEMIT:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
    0= if E-NSHADOW-TARGET throw then
-   NATIVE @ 0= if exit then
+   NATIVE? 0= if exit then
    NEMIT:PLACED? 0= if E-NSHADOW-TARGET throw then ;
 
 : COPY-BYTES ( -- )
@@ -192,9 +236,9 @@ $E9 constant TAIL-OP
 : COPY ( -- )
    OPEN-CK
    TARGET-CK
-   0 PENDING !
+   construct pending none PENDING !
    COPY-BYTES
-   NATIVE @ 0<> if
+   NATIVE? if
       NATIVE-CALLS
       CODE-N @ CODE-BUF NATIVE-ADDRS-XT @ execute
    then
@@ -206,7 +250,7 @@ $E9 constant TAIL-OP
 
 \ ---- the counts -------------------------------------------------------------
 : CLEAR ( -- )
-   0 PENDING !  0 PEND-DOES !  0 PEND-ENTRY !
+   construct pending none PENDING !  0 PEND-ENTRY !
    0 CODE-N !  0 N-EMS !  0 N-FUNS !  0 N-CALLS !  0 N-ADDRS !  0 N-RECS ! ;
 
 : RELEASE-ROWS ( -- )
@@ -248,11 +292,10 @@ public
 \ outlives the mappings it is stored in.
 : OPEN ( CBIND:binding -- ) {: b:CBIND:binding :}
    NLEASE:IDLE-CK
-   OPENED @ 0<> if E-NSHADOW-STATE throw then
+   OPEN? if E-NSHADOW-STATE throw then
    b CBIND:VALIDATE SH-BIND !
    CLEAR
-   0 NATIVE !
-   1 OPENED ! ;
+   construct state open SH-STATE ! ;
 
 \ A native shadow keeps the placed emission's bytes, so each address site still
 \ carries the host address it was placed with. The backend whose emissions a
@@ -270,21 +313,14 @@ public
    b RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING CBIND:SAME?
    0= if E-NSHADOW-TARGET throw then
    b OPEN
-   1 NATIVE ! ;
+   construct state native SH-STATE ! ;
 
 \ An idle capture can close it whether a shadow is open or not.
 : CLOSE ( -- )
    NLEASE:IDLE-CK
-   0 OPENED !
-   0 NATIVE !
+   construct state closed SH-STATE !
    CLEAR
    RELEASE-ROWS ;
-
-: OPEN? ( -- bool )
-   OPENED @ 0<> ;
-
-: NATIVE? ( -- bool )
-   OPEN? NATIVE @ 0<> and ;
 
 : BINDING ( -- CBIND:binding )
    OPEN-CK SH-BIND @ ;
@@ -294,8 +330,7 @@ public
 \ NEMIT, before its backend's RETIRE row clears it.
 : TAKE ( -- )
    COPY
-   0 PEND-DOES !
-   1 PENDING ! ;
+   construct pending plain PENDING ! ;
 
 \ The same for a `does>` definer, whose clause is function `fun` of the
 \ emission: the companion record enters there, so it cannot be where the
@@ -307,18 +342,17 @@ public
    fun  e EM-FUN0 @  e EM-FUNS @  SUB-ROW  FUN-OFF @ {: off:n :}
    off 0 <= if E-NSHADOW-ROW throw then
    off PEND-ENTRY !
-   1 PEND-DOES !
-   1 PENDING ! ;
+   construct pending does PENDING ! ;
 
 \ The x86 def-cast writer publishes a raw one-byte RET identity body. It seals
 \ no NEMIT emission because the kernel writes it directly, so that writer
 \ reports the exact published entry and span through its fixed-shadow callback.
 : TAKE-CAST ( n n -- ) {: at:n size:n :}
    OPEN-CK
-   NATIVE @ 0= if E-NSHADOW-STATE throw then
+   NATIVE? 0= if E-NSHADOW-STATE throw then
    size 1 <> if E-NSHADOW-ROW throw then
    at ENTRY-BYTES c@ $C3 <> if E-NSHADOW-ROW throw then
-   0 PENDING !
+   construct pending none PENDING !
    N-EMS @ {: e:n :}
    e 1+ EM-RESERVE
    CODE-N @ e EM-AT !
@@ -332,8 +366,7 @@ public
    N-FUNS @ 1+ FUN-OFF-RESERVE  N-FUNS @ 1+ FUN-SOURCE-RESERVE
    0 N-FUNS @ FUN-OFF !  at N-FUNS @ FUN-SOURCE !
    REC-RESERVE
-   0 PEND-DOES !
-   1 PENDING ! ;
+   construct pending plain PENDING ! ;
 
 \ Pair the host emission's function entries with the pending shadow's entries
 \ before the host publisher commits either code or dictionary record. Both
@@ -342,7 +375,7 @@ public
 \ holds sealed, placed at `at`. TAKE reserved the rows; this grows nothing, and
 \ a failed publication discards the pending pair with ABANDON.
 : SOURCE-FUNS ( n -- ) {: at:n :}
-   PENDING @ 0= if exit then
+   PENDING? 0= if exit then
    N-EMS @ {: e:n :}
    NEMIT:FUNCTIONS e EM-FUNS @ <> if E-NSHADOW-ROW throw then
    e EM-FUNS @ 0 ?do
@@ -353,11 +386,11 @@ public
 \ a definer's companion under the next. Nonthrowing: publication runs it past
 \ its code window, and TAKE made the room.
 : PUBLISH ( n -- ) {: idx:n :}
-   PENDING @ 0= if exit then
+   PENDING? 0= if exit then
    N-EMS @ {: e:n :}
    N-RECS @ {: k:n :}
    idx k REC-IDX !  e k REC-EM !  0 k REC-ENTRY !
-   PEND-DOES @ 0<> if
+   DOES-PENDING? if
       idx 1+ k 1+ REC-IDX !  e k 1+ REC-EM !  PEND-ENTRY @ k 1+ REC-ENTRY !
       k 2 + N-RECS !
    else
@@ -368,7 +401,7 @@ public
    e EM-CALLS @ N-CALLS +!
    e EM-ADDRS @ N-ADDRS +!
    e 1+ N-EMS !
-   0 PENDING ! ;
+   construct pending none PENDING ! ;
 
 \ The host's does> primitive patches its created ARM body after CREATE has
 \ published, passing the clause's ARM entry, or zero for an empty replacement
@@ -379,7 +412,7 @@ public
 \ a later replacement can still clear the target, nothing is dropped here:
 \ ROUTINE? answers the capture when the map is read.
 : PATCH-DOES ( n n -- ) {: idx:n target:n :}
-   OPENED @ 0= if exit then
+   OPEN? 0= if exit then
    N-RECS @ 0 ?do
       i REC-IDX @ idx = if
          target i REC-EM @ EM-PATCH-TGT !
@@ -391,7 +424,7 @@ public
 \ Drop a taken emission no publication claimed. Nonthrowing: compiler.f
 \ RETIRE-BODY runs it as every tier-1 definition ends, refused or accepted.
 : ABANDON ( -- )
-   0 PENDING ! ;
+   construct pending none PENDING ! ;
 
 \ ---- the map ----------------------------------------------------------------
 \ Records in the order they were published.
