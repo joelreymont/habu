@@ -5,6 +5,7 @@
 \ The front end names values by vreg (0 .. EMIT-VREGS - 1), never by machine
 \ register, so the types, constants and rules here hold on every target.
 
+require src/lib/errors.f
 require src/lib/type/deftype.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
@@ -112,8 +113,10 @@ DYNAMIC-BUFFER ADDR-KIND-AT n         \ origin
 DYNAMIC-BUFFER ADDR-TO n
 DYNAMIC-BUFFER ADDR-ORIGIN n
 variable SLOT-AT                      \ the patch slot's offset, or -1
+variable PLACED-AT                    \ the placed address, or -1 (SEALING)
 
-: ROWS-CLEAR ( -- ) 0 N-UNITS !  0 N-CALLS !  0 N-ADDRS !  -1 SLOT-AT ! ;
+: ROWS-CLEAR ( -- )
+   0 N-UNITS !  0 N-CALLS !  0 N-ADDRS !  -1 SLOT-AT !  -1 PLACED-AT ! ;
 : SLOT? ( -- bool ) SLOT-AT @ 0 >= ;
 
 \ File a unit's start, a call or tail site and an address site.
@@ -510,31 +513,38 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    a CUR-ARCH ! ;
 
 \ ---- sealing -----------------------------------------------------------------
-\ SEALING. EMIT-SEAL n places the emission at address n: EMIT-PATCH writes
-\ every call row's displacement and every quotation address as n plus the
-\ unit's offset, because publication (src/compiler/native/publish.f) only
-\ copies the bytes and records relocations. EMIT-SEAL opens NEMIT with no
-\ trailing return, so the record is the emission's whole span, and files a
-\ quotation's row as NEMIT:ADDR-CODE.
+\ SEALING. EMIT-OPEN starts every emission unplaced; EMIT-PLACE n before
+\ EMIT-SEAL places it at address n, where EMIT-PATCH writes every call row's
+\ displacement and every quotation address as n plus the unit's offset, because
+\ publication (src/compiler/native/publish.f) only copies the bytes and records
+\ relocations. EMIT-SEAL takes the placement out of PLACED-AT before anything
+\ can throw, so no image carries the compiling process's code address
+\ (tools/hb-build-repl-twin-test.f). An unplaced seal leaves the bytes as the
+\ emitter wrote them, the form src/habu/aot-shadow.f reads. EMIT-SEAL opens
+\ NEMIT with no trailing return, so the record is the emission's whole span, and
+\ files a quotation's row as NEMIT:ADDR-CODE.
 \
 \ THE CALLBACK STUB. While NCBSTUB (src/compiler/native/callback-stub.f) is
 \ armed, sealing has the emitter append tier 1's stub after the last unit,
 \ files it as the last function and records its placed address as
-\ NCBSTUB:ENTRY!.
+\ NCBSTUB:ENTRY!; an armed stub on an unplaced emission is E-NCOMP-STATE.
+
+: EMIT-PLACE ( n -- ) PLACED-AT ! ;
 
 : NEMIT-KIND ( n -- n ) {: kind:n :}
    kind ADDR-QUOT-KIND = if NEMIT:ADDR-CODE exit then
    kind ;
 
-\ The callback stub's offset once the emitter appended it, or -1 while
-\ NCBSTUB is not armed (THE CALLBACK STUB).
-: EMIT-CB-STUB ( -- n )
+\ The callback stub's offset once the emitter appended it to the emission placed
+\ at `at`, or -1 while NCBSTUB is not armed (THE CALLBACK STUB).
+: EMIT-CB-STUB ( n -- n ) {: at:n :}
    NCBSTUB:ARMED? 0= if -1 exit then
+   at 0 < if E-NCOMP-STATE throw then
    SLOT? if E-T0-SLOT throw then
    CUR @ EMIT-CB-STUB-XT @ FILLED execute ;
 
 \ The stub goes in before EMIT-BYTES answers the emission it ends.
-: NEMIT-OPEN ( -- n )
+: NEMIT-OPEN ( n -- n )
    EMIT-CB-STUB
    EMIT-BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
 
@@ -550,11 +560,15 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    loop
    NEMIT:SEAL ;
 
-: EMIT-SEAL ( n -- ) {: at:n :}
-   NEMIT-OPEN {: stub:n :}
-   at EMIT-PATCH
-   at NEMIT:PLACE
-   stub 0 >= if at stub + NCBSTUB:ENTRY! then
+: EMIT-SEAL ( -- )
+   PLACED-AT @ {: at:n :}
+   -1 PLACED-AT !
+   at NEMIT-OPEN {: stub:n :}
+   at 0 >= if
+      at EMIT-PATCH
+      at NEMIT:PLACE
+      stub 0 >= if at stub + NCBSTUB:ENTRY! then
+   then
    stub NEMIT-ROWS ;
 
 ;package
