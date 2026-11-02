@@ -14,6 +14,16 @@ entry.
   habu rule"; on 2026-11-02 he narrowed it: "approval for internal habu words
   not required, only public ones, which is, again, public api". A new
   package's public words are included; the card's section 1 states it.
+- 2026-11-02, the T0 x86-64 stack's public words: shown that
+  T0:COMPILE-FIXED, NCOMP-DISPATCH:FIXED-DEFER-KIND and RUNTIME-RUNNER:JIT?
+  follow the older names rather than card section 1, Joel asked "what do they
+  do? why do they not match our naming convention? are they best for long
+  term?" He chose "FIXED-COMP-CELL": a cell beside COMP-CELL through which the
+  Habu loop calls tier 0's compiler for constant, variable and defer bodies,
+  so T0's word goes private and the Habu loop stops loading T0. Then "fine,
+  approved all, keep going": JIT? goes for the tests' existing
+  HB-TARGET-LINUX-X86-64? switch, and the fixed-body kinds become one typed
+  enum in a lane of their own.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
