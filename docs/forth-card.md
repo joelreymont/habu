@@ -59,6 +59,8 @@ public
   declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
   private section. `package` anywhere else inside a package is refused:
   `package at <loc>`, rc 75.
+- `[package] ( -- ptr u8 n )`: the open package's name in lower case (`hb`, a
+  part's `hb:b`), empty outside one; a literal in a body, pushed at top level.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - The package keyword `seal-package` seals the open package: a later

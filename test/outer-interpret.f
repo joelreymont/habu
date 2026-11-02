@@ -750,6 +750,20 @@ variable WANT-RC
    s" package scope" GE-EXPECT-OK
    S\" 1\n5\n7\n7\n5\n8\n" s" package scope" GE-EXPECT-OUT ;
 
+\ `[package]` pushes the folded name kept in data space: in a package, its part,
+\ after the part closes, empty outside any; the hook sees a string event.
+: PACKAGE-NAME ( -- )
+   GE-SRC-RESET
+   s" package OI-NAMED [package] type cr" GE-SRC-LINE
+   s" package Part [PACKAGE] type cr ;package" GE-SRC-LINE
+   s" here [package] 2drop here swap - . ;package" GE-SRC-LINE
+   s" here [package] nip . here swap - . depth ." GE-SRC-LINE
+   s" OI-HOOK-ON [package] 2drop 0 set-top-check" GE-SRC-LINE
+   s" oi-package-name.f" BOTH
+   s" package name" GE-EXPECT-OK
+   S\" oi-named\noi-named:part\n8\n0\n0\n0\n2\n0\n[package]\n6\n513\n2drop\n1\n0\n0\n6\n257\nset-top-check\n"
+   s" package name" GE-EXPECT-OUT ;
+
 \ A new package takes two fresh wordlists, public then private, and opens on
 \ the private one; the global wordlist, 0, is current after `;package`. A
 \ namespace a qualified definition made has no private wordlist, and opening
@@ -2288,6 +2302,7 @@ private
    TICK-C2-SCOPE
    LITERAL-HOOK
    PACKAGE-SCOPE
+   PACKAGE-NAME
    PACKAGE-WORDLISTS
    PACKAGE-REFUSALS
    PACKAGE-PART-SCOPE

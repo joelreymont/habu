@@ -175,6 +175,8 @@ private
   no part shadows. It is refused while top-level B or any part named B
   declares the family tail X, and while it exists neither may declare X
   (**Declaring your own scalar types**).
+- `[package] ( -- ptr u8 n )`: the open package's name, A-Z folded (`a:b` in a
+  part), empty outside one; a string literal in a body, kept as `s"` at top level.
 - `public` and `private`, valid only inside a package, switch new definitions to
   the export wordlist and back. Outside code calls a public word as `NAME:WORD`;
   unqualified global lookup never finds it. A private word is visible

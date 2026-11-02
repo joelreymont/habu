@@ -4085,6 +4085,7 @@ PTR-VARIABLE TOP-DEFER-A  variable TOP-DEFER-U   \ its opener while its report i
 : TOP-TOKEN ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u num-parse nip nip IF EXIT THEN
+   a u s" [package]" STR=CI IF EXIT THEN   \ pushes a name, calls nothing
    a u STRING-OPENER? 0= IF TICK-CONTEXT-UNKNOWN THEN
    a u QUIET-NOMINAL
    a u CTL-RENDERS RENDERS-MARK? {: renders:bool :}

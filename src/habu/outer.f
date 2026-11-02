@@ -871,6 +871,18 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : TYPE-ESC-STR ( -- )
    ESC-KEEP type ;
 
+\ The engine's twin: habu2.f C-IBPACKAGE.
+: OPEN-PKG-NAME ( -- ptr u8 n )
+   PKG-REC-CELL CELL@ {: rec:n :}
+   rec 0= if 0 ROOM 0 exit then
+   rec XREF-ADDR>REC XREF-NAME$ {: a:ptr u:n :}
+   u ROOM {: d:ptr :}
+   u 0 ?do a i + c@ XREF-FOLD-C d i + c! loop
+   d u ;
+
+: PUSH-PKG ( -- )
+   [: OPEN-PKG-NAME TOP-EV-STR 0 HOOK ;] STR-LITERAL RUN-LITERAL ;
+
 \ The engine's twin: habu2.f C-CHAR.
 \ The operand's first byte. No definition is open at top level, so no body
 \ text captures the operand.
@@ -945,6 +957,7 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
    S\" s\\\q" TOKEN-IS? if PUSH-ESC-STR true exit then
    S\" c\\\q" TOKEN-IS? if PUSH-ESC-CSTR true exit then
    S\" .\\\q" TOKEN-IS? if TYPE-ESC-STR true exit then
+   s" [package]" TOKEN-IS? if PUSH-PKG true exit then
    s" char" TOKEN-IS? if PUSH-CHAR true exit then
    s" '" TOKEN-IS? if PUSH-XT true exit then
    false ;

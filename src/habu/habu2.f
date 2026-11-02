@@ -6135,13 +6135,10 @@ variable VDESC  variable DRIFT-FAIL
    11 10 0 ADDI,  C-LIT                                \ push len (a value, absolute is fine)
    C-QUOTE-SAVED-DROP ;
 
-\ `[package]` compiles the open package's record name, A-Z folded to a-z, as C-SDQ
-\ compiles a literal; outside a package the literal is empty. The folded copy
-\ lives in a machine-stack frame sized to the name.
-: C-BPACKAGE ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL
-   {: named:label ext:label fl:label keep:label fd:label cl:label cd:label inline:label :}
-   LBL {: done:label :}
+\ The open package's record name: x10 its length, x16 its bytes; x10 is 0
+\ outside a package. Clobbers x9 and x14.
+: C-PKG-NAME ( -- )
+   LBL LBL {: named:label ext:label :}
    10 0 MOVZ,
    9 DATA PKG-REC-CELL LDR,  9 named CBZ,
    10 9 16 LDR,  10 10 DNAME-FLAG-BITS LSLI,  10 10 DNAME-FLAG-BITS LSRI,   \ x10 = the name's length
@@ -6149,10 +6146,13 @@ variable VDESC  variable DRIFT-FAIL
    14 9 16 LDR,  14 14 DNAME-EXT ANDI,  14 ext CBZ,
       16 9 24 LDR,                                    \ x16 = the name's bytes
    ext LBL,
-   named LBL,
-   13 10 15 ADDI,  5 -16 LIT64,  13 13 5 AND,         \ x13 = the frame, 16-aligned
-   14 SP 0 ADDI,  14 14 13 SUB,  SP 14 0 ADDI,
-   15 SP 0 ADDI,  7 0 MOVZ,
+   named LBL, ;
+
+\ Copy the x10 bytes at x16 to x15 with A-Z folded to a-z. Clobbers x7, x14 and
+\ x17.
+: C-PKG-FOLD ( -- )
+   LBL LBL LBL {: fl:label keep:label fd:label :}
+   7 0 MOVZ,
    fl LBL,  7 10 CMP,  C-CS fd BCOND,
       14 16 7 ADD,  14 14 0 LDRB,
       14 $41 CMPI,  C-LT keep BCOND,  14 $5A CMPI,  C-GT keep BCOND,
@@ -6160,7 +6160,16 @@ variable VDESC  variable DRIFT-FAIL
       keep LBL,
       17 15 7 ADD,  14 17 0 STRB,
       7 7 1 ADDI,  fl B,
-   fd LBL,
+   fd LBL, ;
+
+\ In a body `[package]` compiles the folded name as C-SDQ compiles a literal,
+\ folding it into a machine-stack frame sized to the name.
+: C-BPACKAGE ( -- )
+   LBL LBL LBL LBL {: cl:label cd:label inline:label done:label :}
+   C-PKG-NAME
+   13 10 15 ADDI,  5 -16 LIT64,  13 13 5 AND,         \ x13 = the frame, 16-aligned
+   14 SP 0 ADDI,  14 14 13 SUB,  SP 14 0 ADDI,
+   15 SP 0 ADDI,  C-PKG-FOLD
    SP SP 16 SUBI,  13 SP 0 STR,  10 SP 8 STR,         \ the folded bytes at SP+16
    9 DATA NSTR-ABI:INTERN-CELL LDR,  9 inline CBZ,
    11 SP 16 ADDI,  12 10 0 ADDI,  LNSTRINTERN LABEL@ BL,
@@ -6181,6 +6190,17 @@ variable VDESC  variable DRIFT-FAIL
    10 SP 8 LDR,  13 SP 0 LDR,  SP SP 16 ADDI,
    14 SP 0 ADDI,  14 14 13 ADD,  SP 14 0 ADDI,
    11 10 0 ADDI,  C-LIT ;
+
+\ At top level `[package]` pushes the open package's folded name (C-PKG-NAME,
+\ C-PKG-FOLD), copied into data space as C-ISDQ copies a literal.
+: C-IBPACKAGE ( -- )
+   C-PKG-NAME
+   12 DATA 0 LDR,  15 12 0 ADDI,                        \ x12 = DP, x15 = string base
+   14 12 10 ADD,  B-TASK-GUARD  14 DP-CHECK
+   C-PKG-FOLD
+   12 15 10 ADD,  12 DATA 0 STR,                        \ allot: DP advances past the copy
+   15 G-PUSH  10 G-PUSH
+   TOP-EV-STR C-TOPHOOK-LIT ;
 
 : C-CQ ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: capok cl cd inline done il id :}
@@ -10520,6 +10540,7 @@ package INTERP-EMIT
    LMAIN LABEL@ LKWCQ     2 ['] C-ICQ      CF-ENTRY
    LMAIN LABEL@ LKWDOTQ   2 ['] C-IDOTQ    CF-ENTRY
    LMAIN LABEL@ LKWESQ    3 ['] C-EISDQ    CF-ENTRY
+   LMAIN LABEL@ LKWBPACKAGE 9 ['] C-IBPACKAGE CF-ENTRY
    LMAIN LABEL@ LKWECQ    3 ['] C-EICQ     CF-ENTRY
    LMAIN LABEL@ LKWEDOTQ  3 ['] C-EIDOTQ   CF-ENTRY ;
 

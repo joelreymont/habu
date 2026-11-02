@@ -3379,14 +3379,32 @@ create BIG $2000 allot   variable BIG-U
    s" '" LOCAL-NOMINAL
    s" .(" LOCAL-NOMINAL ;
 
-\ A body's `[package]` leaves the name's address and length, so a body declared
-\ ( -- n ) that ends in one is refused at its `;`.
+\ `[package]` leaves ptr u8 n: the load refuses a body declared ( -- n ) ending in
+\ one and a top-level call taking n after one; --verify-only reads past it.
+\ In a VARIANT body, read raw, --verify-only refuses it as a payload type.
 : TEST-PACKAGE-LITERAL ( -- )
    s" package CKT-PL : CKT-PL ( -- n ) [package] ; ;package" DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-   CAP-ERR erru s\" \"word\":\"ckt-pl\"" CONTAINS? TTRUE ;
+   CAP-ERR erru s\" \"word\":\"ckt-pl\"" CONTAINS? TTRUE
+   s" package CKT-PV [package] 2drop ;package" MODE-VERIFY CAP-ERR BUF-CAP SCRATCH-MODE-RUN
+   {: vout:n verr:n vrc:n :}
+   vrc 0 T=  vout 0 T=  verr 0 T=
+   SCRATCH-EMPTY
+   s" package CKT-PS : CKT-PS ( n -- ) drop ; [package] CKT-PS CKT-PS ;package"
+   DIRECT-JSON-STDIN 70 T=
+   {: sout:n serr:n :}
+   sout 0 T=
+   CAP-ERR serr s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
+   CAP-ERR serr s\" \"expected\":\"n \",\"actual\":\"ptr u8 \"" CONTAINS? TTRUE
+   BAD$ s" package CKT-SU SUMTYPE optq VARIANT absent ;VARIANT VARIANT present [package] n ;VARIANT ;SUMTYPE ;package"
+   FS:WRITE-ALL
+   RESET s" json-errors" OPT s" verify-only" OPT
+   BAD$ FILE [: RUN-ACT ;] IN-PROC 70 T=
+   {: uout:n uerr:n :}
+   uout 0 T=
+   CAP-ERR uerr s\" \"code\":\"E-BAD-DECLARATION\"" CONTAINS? TTRUE ;
 
 \ Value-records whose fields the registration refuses. The loader dies at the
 \ first with the registration's message and rc 70. The check names every
