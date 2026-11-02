@@ -65,7 +65,13 @@ entry.
   the table only through public words, Joel wrote "intern and persist
   approved for source-file": `SOURCE-FILE:INTERN ( ptr u8 n -- n )` and
   `SOURCE-FILE:PERSIST ( -- )`, and asked "why do we have both source-file
-  and source-root?". Asked
+  and source-root?". Shown that src/core/include.f splits loading source into
+  six packages, so each seam forces public words, he asked "shouldn't all
+  these be in the SOURCE package?", then "either SOURCE or LOADER". The lead
+  chose SOURCE: the subject, not the machine, and src/lib/source.f is already
+  package SOURCE for reading source text. The loader's packages and the
+  table become one package SOURCE; words only the loader calls go private,
+  INTERN and PERSIST included. Asked
   where the error-place words go, he asked "what is TOP-LINE and why do we
   need it? I'd think we just need LINE (or LINE-AT? worse?) and COLUMN";
   shown that the top-level site is only a byte's line taken at the checker's
