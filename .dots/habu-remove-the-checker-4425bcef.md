@@ -15,3 +15,5 @@ Status 2026-11-02 (later): census done (/tmp/carl-switch/origin/census.md): publ
 
 Status 2026-11-02 (origin): design done, .out/carl-file/design-origin.md (a cell on every dictionary record: file number and name offset; replaces step 5). Joel approved SOURCE-FILE:PATH$, SOURCE-FILE:FIND and XREF:SOURCE (LESSONS). design-switch.md step 5 and its order now point to lanes O1-O5. O1 (loader table, SRCLOC:FILE-CELL) running in workspace .jj-ws.noindex/carl-origin, brief .out/carl-file/brief-origin-o1.md; O1-O5 stack in that workspace and land together.
 Status 2026-11-02 (switch): lane 1 (one-time CHECK INSTALL primitive, arm64 and seed, seed-ndict! clearing) running in workspace .jj-ws.noindex/carl-switch, brief .out/carl-file/brief-switch-1.md; lanes 1-3 stack there and land together.
+
+Note 2026-11-02 (census B, carl-source/.out/census-b/hooks.md): tools/bootstrap.sh:306 still prints `LOWER-CERT-HOOK:INSTALL`; the switch removal changes it with the seed and launcher.
