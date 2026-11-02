@@ -31,7 +31,10 @@ entry.
   their data address, defer jumps through its cell, CAST: passes the value
   through) and that the kind says which pattern, he chose "COMP:body": values
   COMP-BODY:compiled, value, address, defer and cast, and COMP:BODY>N for the
-  number.
+  number. Shown that the enum's review found "is this kind X?" helpers
+  written privately in several compiler packages, one of them word for word
+  in two, because the enum had no equality, Joel chose "Add DERIVE eq
+  (Recommended)": COMP-BODY:EQ compares two kinds and the helpers go.
 - 2026-11-02, the checker's switch: asked about the seal lane's
   LOWER-CERT-HOOK:AT-CURSOR, Joel wrote "lower-cert-hook is a crap name, it
   does not explain what it does" and "why does it need to be a hook instead
