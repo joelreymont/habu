@@ -277,10 +277,18 @@ entry.
   told the child ends by exiting and silence is only his Maki stall rule (5
   minutes with no progress line, no total limit), he chose CMD:RUN-STREAM. For
   holding off idle sleep he chose POWER:KEEP-AWAKE / POWER:ALLOW-SLEEP over
-  WAKE-LOCK and HOLD; for runner sizing, OS-CPU:PERFORMANCE-CORES and
-  OS-MEMORY:TOTAL. On 2026-11-01, asked to add POWER:E-PLATFORM (no
+  WAKE-LOCK and HOLD. On 2026-11-01, asked to add POWER:E-PLATFORM (no
   keep-awake support on this system) and POWER:E-ASSERTION (macOS refused to
   hold or release it), Joel chose "Add both (Recommended)".
+- 2026-11-02, sizing Maki's job runners: OS-CPU:PERFORMANCE-CORES and
+  OS-MEMORY:TOTAL, approved on 2026-10-31 so Maki could compute its runner
+  count from the host, needed a shared reader of Linux container (cgroup)
+  limits. Asked to approve a CGROUP package for it, Joel answered "do not
+  overcomplicate things. discard the whole thing and just make it a config
+  file setting. we do have a config file, do we?" Told that Maki reads its
+  settings from environment variables, he chose "New Maki config file": the
+  runner count is a setting in a new Maki config file that takes all of
+  Maki's settings, and Habu gets no host-size words.
 - 2026-11-01, errors the checker reports itself: under Joel's word relayed by
   phil, "use your best judgement. pick what's best for the long term. tell
   everyone the same", the lead made two choices. E-UNSAFE's repair class is
