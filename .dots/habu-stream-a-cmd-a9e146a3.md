@@ -1,6 +1,6 @@
 ---
 title: "Stream a command's stdout lines under an idle window"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-10-31T19:29:11.593651+02:00"
@@ -11,3 +11,5 @@ Maki design r2 (Joel approved 2026-10-31; /Users/joel/Work/maki/.jj-ws.noindex/t
 Claimed by carl 2026-11-01: workspace .jj-ws.noindex/carl-stream, brief .out/carl-file/brief-run-stream.md (process.f stream loop with the idle window and line delivery; RUN-STREAM shares RUN-CAPTURE; stdout not kept, OUT$ holds only an unfinished line).
 
 Redesign 2026-11-01: the callback lane (carl-stream wlymvwuu 83a00952) was rejected in review (a callback that starts another run on the same task corrupts the outer run: wrong exit status, lost lines, an unreaped child and leaked pipes; the idle window counts the callback's own time as silence; review /tmp/carl-stream-review/p). Joel chose "Pull: caller reads lines (Recommended)" (LESSONS 2026-11-01): the caller starts the run, reads the next stdout line waiting at most the idle window, and ends the run; the linear CMD:command makes the checker require the end; each run keeps its own process state instead of the task's row, so a caller may run other commands between reads. New public names go to Joel before the lane. The rejected commit stays in carl-stream for its loop and tests.
+
+Order 2026-11-02 (lead): the pull design (.jj-ws.noindex/carl-dots/.out/carl-file/stream-pull-design.md) passes the capture row to about 80 process.f words, which are public only because process.f has no package. Scoping process.f's capture words in a package first (habu-scope-process-f-bb981ba2) makes that change private, so Joel is asked once, with that package's public words and the stream words (CMD:child, CMD:read, START, READ-LINE, END) together, instead of approving 80 changed globals that the scope lane then hides. Claim: unassigned; carl-stream (rejected wlymvwuu) stays for its loop and tests until the pull lane reuses them.
