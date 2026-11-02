@@ -5,6 +5,7 @@
 \ io_uring from 5.10, the first long-term kernel with every opcode used and
 \ IORING_FEAT_NODROP; Darwin uses src/lib/aio-macos.f.
 \ STORAGE CLASS. PROCESS-WIDE: ring, records and loop, under one TASK:FACILITY.
+\ TASK-LOCAL: AIO-REGISTERED and AIO-PARKED, a submitting task's own cells.
 
 require src/lib/errors.f
 require src/lib/memory.f
@@ -294,6 +295,10 @@ defer HOST-LOOP ( -- )
 \ that never submits registers nothing; the cell keeps a submitting task from
 \ walking its TASK:AT-EXIT chain again at later submissions.
 TASK:#USER CELL TASK:+USER AIO-REGISTERED drop
+
+\ A wait's record or group, set around its PAUSE, else -1. A throw out of PAUSE
+\ alone leaves it set for the finally to cancel: a group returns with more live.
+TASK:#USER CELL TASK:+USER AIO-PARKED drop
 
 $40 constant DIAG-CAP
 DIAG-CAP CODEGEN:BUFFER DIAG
@@ -1108,15 +1113,33 @@ INSTALL-HOST
    idx IDX>HANDLE h <> if E-AIO-STATE throw then
    idx ;
 
+: GIVE-BACK ( n -- ) {: idx:n :}
+   AIO-LOCK TASK:GET
+   idx REC-STATE@ STATE-SUBMITTED = if idx TRY-CANCEL then
+   AIO-LOCK TASK:RELEASE ;
+
+: PARK ( n -- )
+   AIO-PARKED !
+   TASK:PAUSE
+   -1 AIO-PARKED ! ;
+
 \ The wait: a hint returns the task to its own state, which is the record's.
-\ The PAUSE is what lets a TASK:HALT end a task parked here, exactly as
-\ src/lib/task.f requires of a STOP loop.
-: WAIT-DONE ( n -- ) {: idx:n :}
+: WAIT-LOOP ( n -- ) {: idx:n :}
    begin
       idx REC-STATE@ STATE-DONE = if exit then
       TASK:STOP
-      TASK:PAUSE
+      idx PARK
    again ;
+
+: WAIT-GIVE-BACK ( -- )
+   AIO-PARKED @ dup 0 < if drop exit then
+   GIVE-BACK ;
+
+\ A halt that ends the task at PAUSE unwinds through this finally, which cancels
+\ the wait's records before an outer cleanup can close their descriptors.
+: WAIT-DONE ( n -- ) {: idx:n :}
+   -1 AIO-PARKED !
+   idx [: WAIT-LOOP ;] [: WAIT-GIVE-BACK ;] finally ;
 
 : AWAIT-ONE ( n -- outcome ) {: idx:n :}
    idx WAIT-DONE idx TAKE ;
@@ -1250,14 +1273,27 @@ INSTALL-HOST
    g at G-REMOVE-AT
    h >TICKET h HANDLE>IDX TAKE ;
 
-: AWAIT-GROUP ( n -- ticket outcome ) {: g:n :}
-   g G-ENTRY G-MINE? 0= if E-AIO-GROUP throw then
+: GROUP-LOOP ( n -- n ) {: g:n :}
    begin
-      g G-READY dup 0 >= if g swap G-TAKE-AT exit then
+      g G-READY dup 0 >= if exit then
       drop
       TASK:STOP
-      TASK:PAUSE
+      g PARK
    again ;
+
+: GROUP-GIVE-BACK ( -- )
+   AIO-PARKED @ {: g:n :}
+   g 0 < if exit then
+   g G-ENTRY {: e:ptr :}
+   e G.COUNT @ 0 ?do
+      e i E-SLOT @ HANDLE>IDX GIVE-BACK
+   loop ;
+
+: AWAIT-GROUP ( n -- ticket outcome ) {: g:n :}
+   g G-ENTRY G-MINE? 0= if E-AIO-GROUP throw then
+   -1 AIO-PARKED !
+   g [: GROUP-LOOP ;] [: GROUP-GIVE-BACK ;] finally {: at:n :}
+   g at G-TAKE-AT ;
 
 public
 

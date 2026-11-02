@@ -67,6 +67,7 @@ $800 constant XFER-HALF
 $7F000001 constant LOOPBACK
 $10 constant SOCKADDR-N              \ sockaddr_in, as src/lib/net/udp4.f lays it out
 4 constant STREAM-BACKLOG
+$10 constant REUSE-N                  \ the bytes the reused socket's peer sends
 
 : AIO-TEST-ALIGN8 ( -- )
    here FFI:>CELL 7 and 8 swap - 7 and allot ;
@@ -93,6 +94,9 @@ variable XFER-OWNER-RC
 variable XFER-FORGET-DONE
 variable OWN-EXIT-MARK
 variable OWN-EXIT-DONE
+variable REUSE-PARKED
+variable REUSE-CLOSED
+variable CLEAN-GOT
 
 create POKE-BYTE $41 c,
 AIO-TEST-ALIGN8
@@ -132,6 +136,7 @@ TYPED-VARIABLE XC TCP4:connection
 AIO:GROUP ANY-GROUP
 AIO:GROUP WIDE-GROUP
 AIO:GROUP OWNED-GROUP
+AIO:GROUP ACCEPT-GROUP
 
 DEFS-N TYPED-BUFFER DEF-GROUPS AIO:group
 AIO:GROUP D0  D0 0 DEF-GROUPS !
@@ -161,6 +166,9 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 TASK:MIN-STACK TASK:TASK XFER-OWNER-TASK
 TASK:MIN-STACK TASK:TASK XFER-FORGET-TASK
 TASK:MIN-STACK TASK:TASK OWN-EXIT-TASK
+TASK:MIN-STACK TASK:TASK REUSE-TASK
+TASK:MIN-STACK TASK:TASK ACCEPT-TASK
+TASK:MIN-STACK TASK:TASK CLEAN-TASK
 TASK:MIN-STACK TASK:TASK FAN0
 TASK:MIN-STACK TASK:TASK FAN1
 TASK:MIN-STACK TASK:TASK FAN2
@@ -907,9 +915,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
-\ A task halted while parked in AWAIT: its cleanup cancels and forgets the
-\ operation, so the loop never wakes a TCB the join has released and the ring
-\ goes idle without it.
+\ A task halted while parked in AWAIT: the wait's finally cancels the record and
+\ SCRUB later discards it, so the loop never wakes a TCB the join has released
+\ and the ring goes idle without it.
 : HALT-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
    1 HALT-PARKED atomic!
@@ -925,6 +933,137 @@ CAST: XFER>N ( AIO:xfer -- n )
    HALT-TASK AWAIT-END
    HALT-TASK TASK:KILL
    STOP-LOOP
+   P-R P-W PIPE-CLOSE ;
+
+\ XC connected to the listener; the accepted end comes back.
+: STREAM-PAIR ( -- n )
+   OPEN-SOCKET
+   XL @ TCP4:LISTENER-FD AIO:ACCEPT {: ax:AIO:ticket :}
+   XC @ TCP4:CONNECTION-FD XFER-SA SOCKADDR-N AIO:CONNECT AWAIT>N 0 T=
+   ax AWAIT>N ;
+
+\ The cleanup closes the socket the READ waits on, then holds the task on the
+\ gate pipe until the case has put bytes on the socket that took its number.
+: REUSE-CLOSE ( -- )
+   XC @ TCP4:CLOSE STATUS-OK
+   1 REUSE-CLOSED atomic!
+   P-R @ POKE-BYTE 1 read drop ;
+
+: REUSE-WORK ( -- )
+   [: XC @ TCP4:CONNECTION-FD XFER-ALLOC XFER-N 0 AIO:READ
+      1 REUSE-PARKED atomic!
+      AIO:AWAIT-XFER XFER-DROP ;]
+   [: REUSE-CLOSE ;] finally ;
+
+\ The POLL beside it answers only once those bytes have arrived, in the same
+\ turn the READ gets.
+: CASE-HALTED-REUSE ( -- )
+   0 REUSE-PARKED !
+   0 REUSE-CLOSED !
+   P-R P-W PIPE-OPEN
+   BIND-LISTENER
+   LOOPBACK LISTEN-PORT XFER-SA!
+   STREAM-PAIR {: old-peer:n :}
+   XC @ TCP4:CONNECTION-FD FD>N {: num:n :}
+   ['] REUSE-WORK REUSE-TASK TASK:ACTIVATE
+   REUSE-PARKED 1 REACH
+   SETTLE-MS TASK:SLEEP
+   REUSE-TASK TASK:HALT
+   REUSE-CLOSED 1 REACH
+   STREAM-PAIR {: new-peer:n :}
+   XC @ TCP4:CONNECTION-FD FD>N num T=
+   XC @ TCP4:CONNECTION-FD AIO:READABLE WAIT-MS >MS AIO:POLL {: px:AIO:ticket :}
+   XFER-ALLOC {: sbuf scap:NUM:alloc-byte-len :}
+   sbuf PAT-FILL
+   new-peer sbuf REUSE-N write REUSE-N T=
+   px AWAIT>N 0 > TTRUE
+   P-W @ POKE
+   REUSE-TASK AWAIT-END
+   REUSE-TASK TASK:KILL
+   XC @ TCP4:CONNECTION-FD AIO:READABLE SILENT-MS >MS AIO:POLL AWAIT>N {: got:n :}
+   got 0 > TTRUE
+   XFER-ALLOC {: rbuf rcap:NUM:alloc-byte-len :}
+   got 0 > if
+      num rbuf XFER-N read REUSE-N T=
+      rbuf 0 REUSE-N PAT-CHECK TTRUE
+   then
+   rbuf rcap MEM:RELEASE-BYTES
+   sbuf scap MEM:RELEASE-BYTES
+   new-peer close-rc drop
+   old-peer close-rc drop
+   XC @ TCP4:CLOSE STATUS-OK
+   XL @ TCP4:CLOSE-LISTENER STATUS-OK
+   P-R P-W PIPE-CLOSE ;
+
+\ The cleanup closes the listener the group's ACCEPT waits on, then holds the
+\ task on the gate pipe until the case has connected to the next listener there.
+: ACCEPT-CLOSE ( -- )
+   XL @ TCP4:CLOSE-LISTENER STATUS-OK
+   1 REUSE-CLOSED atomic!
+   P-R @ POKE-BYTE 1 read drop ;
+
+: ACCEPT-WORK ( -- )
+   [: XL @ TCP4:LISTENER-FD AIO:ACCEPT ACCEPT-GROUP AIO:GROUP+
+      1 REUSE-PARKED atomic!
+      ACCEPT-GROUP AIO:AWAIT-ANY OUTCOME>N drop TICKET-DROP ;]
+   [: ACCEPT-CLOSE ;] finally ;
+
+\ A READ cannot join a group, so the group holds an ACCEPT, which Darwin's poll
+\ thread also runs by number. The POLL beside it answers in the ACCEPT's turn.
+: CASE-HALTED-ANY-REUSE ( -- )
+   0 REUSE-PARKED !
+   0 REUSE-CLOSED !
+   P-R P-W PIPE-OPEN
+   BIND-LISTENER
+   XL @ TCP4:LISTENER-FD FD>N {: num:n :}
+   ['] ACCEPT-WORK ACCEPT-TASK TASK:ACTIVATE
+   REUSE-PARKED 1 REACH
+   SETTLE-MS TASK:SLEEP
+   ACCEPT-TASK TASK:HALT
+   REUSE-CLOSED 1 REACH
+   BIND-LISTENER
+   XL @ TCP4:LISTENER-FD FD>N num T=
+   LOOPBACK LISTEN-PORT XFER-SA!
+   XL @ TCP4:LISTENER-FD AIO:READABLE WAIT-MS >MS AIO:POLL {: px:AIO:ticket :}
+   OPEN-SOCKET
+   XC @ TCP4:CONNECTION-FD XFER-SA SOCKADDR-N AIO:CONNECT AWAIT>N 0 T=
+   px AWAIT>N 0 > TTRUE
+   P-W @ POKE
+   ACCEPT-TASK AWAIT-END
+   ACCEPT-TASK TASK:KILL
+   XL @ TCP4:LISTENER-FD AIO:READABLE SILENT-MS >MS AIO:POLL AWAIT>N {: got:n :}
+   got 0 > TTRUE
+   got 0 > if
+      XL @ TCP4:LISTENER-FD AIO:ACCEPT AWAIT>N close-rc drop
+   then
+   XC @ TCP4:CLOSE STATUS-OK
+   XL @ TCP4:CLOSE-LISTENER STATUS-OK
+   P-R P-W PIPE-CLOSE ;
+
+: CLEAN-WRITE ( -- )
+   XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
+   buf PAT-FILL
+   P-W @ >FD buf cap 1 0 AIO:WRITE AIO:AWAIT-XFER
+      {: wb wc:NUM:alloc-byte-len out:AIO:outcome :}
+   out OUTCOME>N CLEAN-GOT !
+   wb wc MEM:RELEASE-BYTES ;
+
+: CLEAN-WORK ( -- )
+   [: HALT-WORK ;] [: CLEAN-WRITE ;] finally ;
+
+\ A halted task's cleanup that starts its own I/O sees it to the end: inside the
+\ halt's unwind TASK:PAUSE only yields, so the WRITE's wait keeps waiting.
+: CASE-HALTED-CLEANUP-IO ( -- )
+   0 HALT-PARKED !
+   0 CLEAN-GOT !
+   P-R P-W PIPE-OPEN
+   ['] CLEAN-WORK CLEAN-TASK TASK:ACTIVATE
+   HALT-PARKED 1 REACH
+   SETTLE-MS TASK:SLEEP
+   CLEAN-TASK TASK:HALT
+   CLEAN-TASK AWAIT-END
+   CLEAN-TASK TASK:KILL
+   CLEAN-GOT @ 1 T=
    P-R P-W PIPE-CLOSE ;
 
 : CASE-RESTART ( -- )
@@ -1003,6 +1142,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-XFER-STATE
    CASE-XFER-FORGOTTEN
    CASE-OWN-EXIT
+   CASE-HALTED-REUSE
+   CASE-HALTED-ANY-REUSE
+   CASE-HALTED-CLEANUP-IO
    CASE-HALTED-AWAIT
    CASE-RESTART
    T-REPORT ;

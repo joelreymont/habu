@@ -2271,11 +2271,8 @@ TASK-MIN-STACK constant MIN-STACK
 : DEFER-LEAVE ( -- )
    TASK-DEFER-LEAVE ;
 
-\ True once a TASK:HALT has been requested of this run. A STOP loop reads it
-\ after every STOP, so a wait of its own can give its resources back before the
-\ TASK:PAUSE that ends the task. A body parked inside a callback reads it to
-\ return to C, because TASK:PAUSE there only yields. The main thread has no TCB,
-\ is never halted, and answers false.
+\ True for the whole of a halted run, cleanups included; a callback body reads
+\ it to return to C, where TASK:PAUSE only yields. False on main, with no TCB.
 : HALTED? ( -- bool )
    TASK-SELF-N dup 0= if drop false exit then
    TASK-N>PTR TASK-STATE@ TASK-HALT-REQ = ;
@@ -2300,8 +2297,9 @@ TASK-MIN-STACK constant MIN-STACK
 \
 \    begin  MY-STATE @ DONE = if exit then  TASK:STOP  again
 \
-\ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop. The
-\ hint lets one loop wake many owners by TCB with no semaphore per waiter.
+\ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop and gives
+\ its resources back in a finally around the wait. The hint lets one loop wake
+\ many owners by TCB with no semaphore per waiter.
 : STOP ( -- )
    TASK-STOP ;
 
