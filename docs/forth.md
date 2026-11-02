@@ -165,12 +165,16 @@ private
   file or string leaves open is its includer's from then on. A path of 256
   bytes or more is refused by its name (`B at <loc>`, rc 75). `;package` of a
   part reopens A in its private section with A's using floor. Inside A and its
-  parts a qualifier `B:X`, `using B` and a qualified definition `: B:Q` name
-  the part `A:B` first, then a top-level package B, which the part shadows
-  there, a sealed system package such as MATCH included; a qualified
-  definition naming neither makes a top-level package B. Outside A no name
-  reaches the part: at top level `B:X`, `A:B:X` and `using B` find nothing,
-  and a top-level `package B` is a separate package.
+  parts a qualifier `B:X` in a word or a family type, `using B` and a qualified
+  definition `: B:Q` name the part `A:B` first, then a top-level package B,
+  which the part shadows there, a sealed system package such as MATCH
+  included; a qualified definition naming neither makes a top-level package B.
+  Outside A no name reaches the part: at top level `B:X`, `A:B:X` and `using B`
+  find nothing, and a top-level `package B` is a separate package. A
+  `DEFLINEAR` or `VALUE-RECORD` name `B:X` is an exact global spelling, which
+  no part shadows. It is refused while top-level B or any part named B
+  declares the family tail X, and while it exists neither may declare X
+  (**Declaring your own scalar types**).
 - `public` and `private`, valid only inside a package, switch new definitions to
   the export wordlist and back. Outside code calls a public word as `NAME:WORD`;
   unqualified global lookup never finds it. A private word is visible
@@ -1133,6 +1137,10 @@ family, the substrate of `NEWTYPE`:
   scope already has is `duplicate family`; a package may shadow a global
   or another package's family. `tools/check.f` reports each refusal as
   `E-BAD-NOMINAL-TYPE`.
+- Inside top-level package B or a part named B, no family definer takes a tail
+  X while a `DEFLINEAR` or `VALUE-RECORD` name `B:X` exists: `NEWTYPE thing`
+  after `DEFLINEAR B:thing` is `bad newtype declaration 'thing': reserved
+  name`, rc 70, and `E-BAD-DECLARATION` from `tools/check.f`.
 
 **`DEFLINEAR name` — a global linear cell type.** It is top-level
 only and rejected inside a checked body.
@@ -1146,9 +1154,11 @@ only and rejected inside a checked body.
   `[`, `]` or `field`; a `VALUE-RECORD` name; a name with an atom prefix
   (`space-`, `extent-`, `mask-`, `block-`, `geom-`, `parity-`, `align-`,
   `fresh-region-`, `fresh-extent-`, `fresh-gen-`, `fresh-mask-`); a family tail
-  any package declares; and a token holding `<`, `>`, `,`, `)`, `(`, `"` or
-  `\` (source names the type again, where those bytes open a comment, string
-  or line comment for `tools/check.f`). `CELL` is legal beside `cell`.
+  any package declares, bare, or as `B:tail` where top-level B or any part
+  named B declares it, in every scope; and a token holding `<`, `>`, `,`, `)`,
+  `(`, `"` or `\` (source names the type again, where those bytes open a
+  comment, string or line comment for `tools/check.f`). `CELL` is legal
+  beside `cell`.
 - No converters are derived. `DEFLINEAR` records the package it runs in; only
   that package's private `LINEAR:` rows mint and erase the token
   (**Structures And Enums**). One declared at top level has no owner and no

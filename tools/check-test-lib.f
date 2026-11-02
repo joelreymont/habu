@@ -926,6 +926,53 @@ variable LONG-J
    s" ;package" SB-APPEND
    SB$ ;
 
+\ PART-HEAD opens CKPT-A and its part CKPT-B declaring a tail, and leaves CKPT-A open.
+: PART-HEAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" package CKPT-A" SB-APPEND $0a SB-APPEND-C
+   s" package CKPT-B" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" NEWTYPE " SB-APPEND a u SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C ;
+
+\ Top-level CKPT-B declares `other`; inside CKPT-A, whose part lacks it.
+: PART-OTHER$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKPT-B" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" NEWTYPE other" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" unrelated" PART-HEAD
+   s" DEFLINEAR CKPT-B:other" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
+\ The part declares `thing`; the name is declared at top level.
+: PART-TOP$ ( -- ptr u8 n )
+   SB-RESET
+   s" thing" PART-HEAD
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" DEFLINEAR CKPT-B:thing" SB-APPEND
+   SB$ ;
+
+\ The value record is declared first; then the part declares `thing`.
+: PART-AFTER$ ( -- ptr u8 n )
+   SB-RESET
+   s" CKPT-B:thing" FAM-REC
+   s" thing" PART-HEAD
+   s" ;package" SB-APPEND
+   SB$ ;
+
+\ The linear is declared first, its qualifier in another case; then top-level
+\ CKPT-B declares `thing`.
+: TOP-AFTER$ ( -- ptr u8 n )
+   SB-RESET
+   s" DEFLINEAR ckpt-b:thing" SB-APPEND $0a SB-APPEND-C
+   s" package CKPT-B" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" NEWTYPE thing" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
 \ Nominal-declarer sources for the check CLI's package-scoping contract, checked
 \ end to end through the child engine. They use DEFLINEAR, whose interpret word
 \ the engine bakes, so the child needs no require; a DEFTYPE source would need
@@ -2953,6 +3000,12 @@ create BIG $2000 allot   variable BIG-U
    [: FAM-PRIV-HEAD s" CKFP:ckf-tail" FAM-LIN s" CKFP:ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED
    [: FAM-SHARED-HEAD s" ckf-tail" FAM-LIN s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED
    [: FAM-SHARED-HEAD s" ckf-tail" FAM-REC s" ckf-tail" FAM-DROP$ ;] FAM-CLAIM-REFUSED ;
+
+: TEST-NOMINAL-PART-CLAIM ( -- )
+   [: PART-OTHER$ ;] FAM-CLAIM-REFUSED
+   [: PART-TOP$ ;] FAM-CLAIM-REFUSED
+   [: PART-AFTER$ ;] s" declaration 'thing': reserved name" RESERVED-DECL-REFUSED
+   [: TOP-AFTER$ ;] s" declaration 'thing': reserved name" RESERVED-DECL-REFUSED ;
 
 \ A definer takes its name with parse-name: the next whitespace-delimited token,
 \ whatever it spells, so `package (` names the package `(` and `: \` the word
@@ -7144,6 +7197,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" check/nominal-name-refused" [: TEST-NOMINAL-NAME-REFUSED ;] CASE-RUN
    s" check/nominal-name-admitted" [: TEST-NOMINAL-NAME-ADMITTED ;] CASE-RUN
    s" check/nominal-family-claim" [: TEST-NOMINAL-FAMILY-CLAIM ;] CASE-RUN
+   s" check/nominal-part-claim" [: TEST-NOMINAL-PART-CLAIM ;] CASE-RUN
    s" check/operand-name-admitted" [: TEST-OPERAND-NAME-ADMITTED ;] CASE-RUN
    s" check/operand-name-refused" [: TEST-OPERAND-NAME-REFUSED ;] CASE-RUN
    s" check/operand-missing" [: TEST-OPERAND-MISSING ;] CASE-RUN

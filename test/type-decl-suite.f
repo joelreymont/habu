@@ -876,6 +876,38 @@ s" TQBAD-COLONS ( tdpa:tres:x<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ hidden physical names never resolve in public signatures.
 s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ Inside tdpt and its parts a qualifier names tdpt's part before a top-level
+\ package of its name; outside tdpt it never reaches the part. The top-level
+\ tdpt-s:thing takes an argument and the part's none, so arity shows the row.
+package tdpt-s
+public
+NEWTYPE thing<a>
+;package
+package tdpt
+package tdpt-b
+public
+NEWTYPE thing
+: KEEP ( thing -- thing ) ;
+private
+NEWTYPE hid
+s" TDPT-OWN-HID ( tdpt-b:hid -- tdpt-b:hid )" CHECK-QUIET-CANDIDATE! -1 T=
+;package
+package tdpt-s
+public
+NEWTYPE thing
+;package
+s" TDPT-PARENT ( tdpt-b:thing -- tdpt-b:thing )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-HID ( tdpt-b:hid -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPT-SHADOW ( tdpt-s:thing -- tdpt-s:thing )" CHECK-QUIET-CANDIDATE! -1 T=
+package tdpt-c
+s" TDPT-SIBLING ( tdpt-b:thing -- tdpt-b:thing )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDPT-SIBLING-HID ( tdpt-b:hid -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+: TDPT-TAKE ( tdpt-b:thing -- tdpt-b:thing ) tdpt-b:KEEP ;
+;package
+;package
+s" TDPT-OUTSIDE ( tdpt-b:thing -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDPT-TOP ( tdpt-s:thing<n> -- tdpt-s:thing<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+
 \ A package-owned family may share a tail with a global family. The exact
 \ identities keep separate arities: the owner gets its own row for a bare tail,
 \ while top level and unrelated packages keep the global row for that bare tail.

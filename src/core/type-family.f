@@ -2466,6 +2466,33 @@ private
    a u CONTROL? IF RES-TRUE EXIT THEN
    a u TF-GRAMMAR-KEYWORD? ;
 
+: LAST-SEGMENT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 0 ?do
+      a u i - 1 - + c@ 58 = IF a u i - + i unloop EXIT THEN
+   loop a u ;
+
+\ Name `na nu` spells `<qa>:<ta>`, its qualifier folded as a signature folds it
+\ (TFQ-SPLIT?).
+: QUAL-NAME? ( ptr u8 n ptr u8 n ptr u8 n -- bool )
+   {: na:ptr nu:n qa:ptr qu:n ta:ptr tu:n :}
+   nu qu tu + 1 + <> IF RES-FALSE EXIT THEN
+   na qu + c@ 58 <> IF RES-FALSE EXIT THEN
+   na qu qa qu CORE-STR=CI 0= IF RES-FALSE EXIT THEN
+   na qu + 1 + tu ta tu CORE-STR= ;
+
+\ A DEFLINEAR or VALUE-RECORD name `B:tail` exists, B the open package path's
+\ last segment: the declaration TFAM-CLAIMED? refuses when the family comes first.
+: QUAL-NOMINAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE$ LAST-SEGMENT$ {: qa:ptr qu:n :}
+   qa qu TF-HIDDEN? IF RES-FALSE EXIT THEN
+   CTN @ 1 ?do
+      i CT-NAME$ qa qu a u QUAL-NAME? IF RES-TRUE unloop EXIT THEN
+   loop
+   VREC-N @ 0 ?do
+      i VREC-NAME$ qa qu a u QUAL-NAME? IF RES-TRUE unloop EXIT THEN
+   loop RES-FALSE ;
+
 public
 
 \ The variant-name collision rule, asked by VARIANT-REQUIRE and by SUMTYPE's
@@ -2489,6 +2516,7 @@ public
 \ in a package after `VALUE-RECORD vr`, one name naming two kinds.
 : FAMILY-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u SIG-PTR-TOK? IF RES-TRUE EXIT THEN
+   a u QUAL-NOMINAL? IF RES-TRUE EXIT THEN
    a u RESERVED? ;
 
 : VARIANT-REQUIRE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -4859,9 +4887,9 @@ REGISTER-ARENA-HEAD
 public
 
 \ Signature-token resolution, the checker's TFAM-RESOLVE-XT target, over
-\ TFAM-RESOLVE's package-scope rules. A qualified `PKG:tail` folds the qualifier
-\ (package names are stored case-folded), requires a lowercase tail, and
-\ resolves public rows plus the active package's own private rows. Unqualified
+\ TFAM-RESOLVE's package-scope rules. A qualified `PKG:tail` reads the package
+\ PKG names here (TFQ-HEAD$), requires a lowercase tail, and resolves public
+\ rows plus the active package's own private rows. Unqualified
 \ ambiguity (E-TFAM-AMBIG) becomes an unresolved token, so the signature is
 \ rejected with a diagnostic instead of aborting the load.
 $100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
@@ -4879,9 +4907,16 @@ variable TFQ-COLON
    REPEAT drop
    u TFQ-U ! ;
 
-\ TFQ-SPLIT? ( ptr u8 n -- bool ) : one non-edge ':' splits qualifier/tail
-\ (engine FIND parity); edge or repeated colons never split (and never resolve),
-\ and neither does a qualifier longer than TFQ-BUF, which no package name is.
+\ The package a qualifier's head names here, as a word's qualifier does
+\ (CHECKER-RESOLVE:HEAD-ROW): the open package's part first, then a top-level
+\ package; a head no record holds stays as given.
+: TFQ-HEAD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
+   row NULL-PTR = IF a u EXIT THEN
+   row CHECKER-RESOLVE:CK-REC-NAME$ ;
+
+\ One non-edge ':' splits qualifier and tail (engine FIND parity) and folds the
+\ written qualifier into TFQ-BUF.
 : TFQ-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    -1 TFQ-COLON !
    0 BEGIN dup u < WHILE
@@ -4904,10 +4939,11 @@ variable TFQ-COLON
 variable TFSR-HIDDEN
 : TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
    TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
-   TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
+   TFQ-BUF TFQ-U @ TFQ-HEAD$ {: qa:ptr qu:n :}
+   qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
-   TFQ-BUF TFQ-U @ pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
+   qa qu pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
    -1 TFSR-HIDDEN !
    0 RES-FALSE ;
 
@@ -4950,22 +4986,28 @@ TFAM-MAY-ARRIVE-INSTALL
 
 private
 
-\ TFAM-CLAIMED? ( ptr u8 n -- bool ) : some scope reads this signature token as
-\ a family (the checker's TFAM-CLAIMED?-XT target). The package that declares a
-\ tail reads its own row first, private or public; a global row is read
-\ everywhere, and another package's public row through `using` or the unique
-\ fallback. So every row of an unqualified tail claims it, ambiguous or not. A
-\ qualified `PKG:tail` claims PKG's row, which PKG reads even while private.
-\ The checker refuses a DEFLINEAR or VALUE-RECORD name that is claimed: the
-\ mirror of a family declaration refusing a declared type's name.
+\ The row's package is the qualifier, or a part `A:<qualifier>`.
+: TFAM-QUAL-PKG? ( ptr u8 n n -- bool ) {: qa:ptr qu:n id:n :}
+   id TFAM-PKG$ {: pa:ptr pu:n :}
+   pa pu qa qu CORE-STR=CI IF RES-TRUE EXIT THEN
+   pu qu 1 + < IF RES-FALSE EXIT THEN
+   pa pu qu - 1 - + c@ 58 <> IF RES-FALSE EXIT THEN
+   pa pu qu - + qu qa qu CORE-STR=CI ;
+
+\ Some scope reads this signature token as a family, which a DEFLINEAR or
+\ VALUE-RECORD name may not be (forth.md "Declaring your own scalar types").
 : TFAM-CLAIMED? ( ptr u8 n -- bool ) {: na:ptr nu:n :}
    na nu TF-HIDDEN? IF RES-FALSE EXIT THEN
-   na nu TFQ-SPLIT? IF TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN nip EXIT THEN
+   na nu TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ TFQ-BUF TFQ-U @
+   ELSE na nu NULL-PTR 0 THEN {: ta:ptr tu:n qa:ptr qu:n :}
    TFX-ENSURE
-   na nu TFX-HASH TFX-BKT @ TFX-CUR !
+   ta tu TFX-HASH TFX-BKT @ TFX-CUR !
    BEGIN TFX-CUR @ 0 <> WHILE
       TFX-CUR @ 1 - {: id:n :}
-      na nu id TFAM-NAME-MATCH? IF RES-TRUE EXIT THEN
+      ta tu id TFAM-NAME-MATCH? IF
+         qu 0= IF RES-TRUE EXIT THEN
+         qa qu id TFAM-QUAL-PKG? IF RES-TRUE EXIT THEN
+      THEN
       id TF-REC@ TF.TAILNEXT @ TFX-CUR !
    REPEAT
    RES-FALSE ;

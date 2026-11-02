@@ -48,11 +48,17 @@ public
   includer's using is refused the same way.
 - `package B` in package A's private section, in the file or string A is
   open in and under no `using` A opened, opens the **part** `A:B`; a part
-  holds no parts. Inside A and its parts `B:X`, `using B` and `: B:Q` name the
-  part first, then a top-level B; outside A nothing reaches it, `A:B:X`
-  included, and a top-level `package B` is another package. `;package` of a
-  part returns to A's private section. `package` anywhere else inside a
-  package is refused: `package at <loc>`, rc 75.
+  holds no parts. Inside A and its parts `B:X` in a word or a family type,
+  `using B` and `: B:Q` name the part first, then a top-level B; outside A
+  nothing reaches it, `A:B:X` included, and a top-level `package B` is another
+  package. A `DEFLINEAR` or `VALUE-RECORD` name `B:X` is an exact global
+  spelling no part shadows: it is refused while top-level B or a part named B
+  declares the family X (`checker: bad or duplicate signature type`, or
+  `checker: bad or duplicate value-record type` for `VALUE-RECORD`, rc 70), and
+  that family is refused while the name exists (for `NEWTYPE x`, `bad newtype
+  declaration 'x': reserved name`, rc 70). `;package` of a part returns to A's
+  private section. `package` anywhere else inside a package is refused:
+  `package at <loc>`, rc 75.
 - `EXPORT NAME` in a public section re-exports an existing word under its own
   tail: same xt, same effect, no body.
 - A wordlist is a no-duplicate set, case-insensitively: a second `: R` is
