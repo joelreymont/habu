@@ -1,9 +1,11 @@
 ---
 title: Install T0 as the x86-64 runtime compiler
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-28T14:52:51.583786+02:00"
+closed-at: "2026-11-02T11:27:57.716080+02:00"
+close-reason: "Landed mppwnlkk..nmwplslm ('Fill T0's x86 emitter, add fixed bodies', 'Make T0 the x86-64 runtime compiler', 'Run tier-0 test cases on x86', 'Build at the caller's tier on x86', 'Write body source rows in x86 body-append'), with Joel's 2026-11-02 rulings: NCOMP-DISPATCH:FIXED-COMP-CELL at $6C0 carries T0's now-private COMPILE-FIXED to definers.f, RUNTIME-RUNNER:JIT? goes for HB-TARGET-LINUX-X86-64?. arm64: full suite rc 0, 514/514 (/tmp/jerry-big/t0x86-suite.log); chain on the final tree rc 0, gens 2-5 the same image (/tmp/jerry-big/t0x86-chain2.log); cold-naming, compile-floor-gate, engine-runtime-regressions pass on the final candidate. x86 on pulsar: full suite 198 FAIL lines against master efef8267's 208; the new ones are known sub-cases (oi-package-part, process/pty), PACKAGE-CASE's part exit 83 (habu-fix-remaining-x86-5a0c47fd) and three FIFO rows that hung and were stopped; compile-floor-gate passes with x86 tier-1 budgets measured on pulsar. Opus review PASS. The fixed-body kinds' enum is habu-make-the-fixed-fe3899b7."
 ---
 
 Problem: x86 engines compile every definition with tier 1. Acceptance: T0:COMPILE ( ptr u8 n -- ) lifted from compiler.f STAGE/RUN/RECORD (check, NFETCH:CAPTURE, RETRACT/report); T0:COMPILE-FIXED ( n n -- ) for constant/create/defer incl. PATCH-SLOT and defer trailer; does> clause unit; CB-ENTRY (x86 callbacks are new kernel work, kernel-x64.f:4686-4697); T0:INSTALL; runtime-x64.f installs T0; definers.f tier rules dropped. A committed test loads T0 through the real load path. Files: src/habu/t0.f, src/habu/t0-x64.f, src/habu/runtime-x64.f, src/habu/definers.f, kernel-x64.f callback rows. Verify: x86 peer bin/hb --load test/run.f. Depends: L1, L3. Ownership: those files. Claim: unassigned.

@@ -165,7 +165,9 @@ host to check repeatability:
     TMPDIR=$TMP bin/hb --load tools/two-generation-build.f -- --same-host <seed-engine>
 
 Use an external scratch directory for `$TMP`, as described in
-[gate.md](gate.md).
+[gate.md](gate.md). Every generation compiles the checkout's source, so leave
+the tree unchanged until the tool exits: a comment edited in an engine-provided
+file while generation 5 built made it differ from generation 4 by 1677 bytes.
 
 A codegen change can first appear in generation two because generation one
 was compiled by the old host. Other source changes usually reach generation
