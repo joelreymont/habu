@@ -9,6 +9,12 @@ using TEST
 
 \ Measure with `/usr/bin/time bin/hb --load <file>`.
 
+\ native-build-recompile runs eight engine builds, three from an empty cache, and
+\ needs no image, so it starts first.
+SUITE native-build-recompile
+   test/compiler/native-build-edit-e2e.f -- recompile
+;SUITE
+
 \ These long rows lead so they keep the pool busy while the compiler bundle
 \ builds.
 SUITE check-cli-boundary
@@ -80,12 +86,6 @@ SUITE source-root-exe
 \ window's and the other OS's, and needs no image, so it leads.
 SUITE native-build-entry
    test/native-build-entry.f
-;SUITE
-
-\ native-build-recompile runs seven engine builds, three from an empty cache
-\ (739 s wall, 729 s CPU as user+sys).
-SUITE native-build-recompile
-   test/compiler/native-build-edit-e2e.f -- recompile
 ;SUITE
 
 SUITE prefix-provided-unfilled
