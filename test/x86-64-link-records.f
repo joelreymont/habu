@@ -73,7 +73,7 @@ require src/habu/aot-arm.f
 require src/habu/address-cells.f
 require src/habu/aot-capture.f
 require src/habu/aot-shadow.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/x64ir.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/abi.f
@@ -95,7 +95,7 @@ public
 X64LT:OPEN-X64
 DATA-START ADDRESS-CELLS:KEEP-BELOW
 AOT-ARM:WINDOW-OPEN
-NSTR:WINDOW-OPEN
+INTERN:WINDOW-OPEN
 
 package X64LT-WIN
 public

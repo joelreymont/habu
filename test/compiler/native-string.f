@@ -6,7 +6,7 @@ require src/lib/fmt.f
 require src/core/generated-declaration.f
 require src/compiler/native/compiler.f
 require src/compiler/native/hir.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/habu/aot-arm.f
 require test/compiler/literal-segment.f
 
@@ -102,18 +102,18 @@ private
 : INTERN-IDEMPOTENT-CASE ( -- )
    LONE
    s" a body already interned adds no row and no bytes" T-LABEL
-   NSTR:COUNT {: c0:n :}
-   NSTR:BYTES {: b0:n :}
-   s" lone-body" NSTR:INTERN {: a1:n :}
-   s" lone-body" NSTR:INTERN {: a2:n :}
+   INTERN:COUNT {: c0:n :}
+   INTERN:BYTES {: b0:n :}
+   s" lone-body" INTERN:STRING {: a1:n :}
+   s" lone-body" INTERN:STRING {: a2:n :}
    a1 a2 T=
-   NSTR:COUNT c0 T=
-   NSTR:BYTES b0 T=
+   INTERN:COUNT c0 T=
+   INTERN:BYTES b0 T=
 
    s" and a second definition writing that body adds none either" T-LABEL
    LONE-AGAIN
-   NSTR:COUNT c0 T=
-   NSTR:BYTES b0 T=
+   INTERN:COUNT c0 T=
+   INTERN:BYTES b0 T=
    S\" NST-LONE2 s\q lone-body\q STR=" TEST-EVAL:FLAG TTRUE
    s" NST-LONE drop NST-LONE2 drop =" TEST-EVAL:FLAG TTRUE ;
 
@@ -128,7 +128,7 @@ create ROLLBACK-BYTES 101 c, 112 c, 104 c, 101 c, 109 c, 101 c, 114 c, 97 c, 108
 CAST: N>BYTES ( n -- ptr u8 )
 
 : FAILED-INTERN ( -- )
-   S\" s\q ephemeral\q NSTR:INTERN NSTRING-TEST:SAVED-LITERAL ! 77 throw" evaluate-closed ;
+   S\" s\q ephemeral\q INTERN:STRING NSTRING-TEST:SAVED-LITERAL ! 77 throw" evaluate-closed ;
 
 : ROLLBACK-CASE ( -- )
    s" literals survive DATA rollback after failed evaluation" T-LABEL
@@ -143,66 +143,66 @@ CAST: N>BYTES ( n -- ptr u8 )
    s" NST-ROLLBACK drop NULL-PTR -" TEST-EVAL:N SAVED-LITERAL @ T= ;
 
 : WINDOW-CASE ( -- )
-   s" lone-body" NSTR:INTERN {: old:n :}
+   s" lone-body" INTERN:STRING {: old:n :}
    data-base AOT-CELLS:B0-CELL + @ {: b0:n :}
    AOT-ARM:WINDOW-OPEN
-   NSTR:WINDOW-OPEN
-   s" lone-body" NSTR:INTERN {: fresh:n :}
-   s" lone-body" NSTR:INTERN {: again:n :}
+   INTERN:WINDOW-OPEN
+   s" lone-body" INTERN:STRING {: fresh:n :}
+   s" lone-body" INTERN:STRING {: again:n :}
    b0 AOT-ARM:OPEN
    s" a retained compiler copies cached literals into the new AOT window" T-LABEL
    fresh AOT-ARM:D0 @ >= TTRUE
    fresh old T<>
    old N>BYTES 9 s" lone-body" STR= TTRUE
    fresh again T=
-   s" lone-body" NSTR:INTERN {: newest:n :}
+   s" lone-body" INTERN:STRING {: newest:n :}
    newest fresh T= ;
 
 variable MUTABLE-CELL
 
-: FOREIGN-POOL ( -- ) MUTABLE-CELL BYTE-VIEW NSTR:SWITCH ;
+: FOREIGN-POOL ( -- ) MUTABLE-CELL BYTE-VIEW INTERN:SWITCH ;
 
 : SWITCH-CASE ( -- )
    s" switching pools preserves addresses and rebuilds the intern index" T-LABEL
-   NSTR:WINDOW-OPEN
-   s" first-pool-body" NSTR:INTERN {: first:n :}
-   NSTR:ACTIVE {: original:ptr :}
-   NSTR:WINDOW-OPEN
-   s" second-pool-body" NSTR:INTERN {: second:n :}
-   NSTR:ACTIVE {: other:ptr :}
-   original NSTR:SWITCH
-   NSTR:COUNT 1 T=
-   s" first-pool-body" NSTR:INTERN first T=
-   NSTR:COUNT 1 T=
-   second NSTR:REINTERN-OWNED TTRUE {: imported:n :}
+   INTERN:WINDOW-OPEN
+   s" first-pool-body" INTERN:STRING {: first:n :}
+   INTERN:ACTIVE {: original:ptr :}
+   INTERN:WINDOW-OPEN
+   s" second-pool-body" INTERN:STRING {: second:n :}
+   INTERN:ACTIVE {: other:ptr :}
+   original INTERN:SWITCH
+   INTERN:COUNT 1 T=
+   s" first-pool-body" INTERN:STRING first T=
+   INTERN:COUNT 1 T=
+   second INTERN:REINTERN-OWNED TTRUE {: imported:n :}
    imported second T<>
-   s" second-pool-body" NSTR:INTERN imported T=
-   NSTR:COUNT 2 T=
-   other NSTR:SWITCH
-   s" second-pool-body" NSTR:INTERN second T=
-   NSTR:COUNT 1 T=
-   original NSTR:SWITCH
-   s" first-pool-body" NSTR:INTERN first T=
+   s" second-pool-body" INTERN:STRING imported T=
+   INTERN:COUNT 2 T=
+   other INTERN:SWITCH
+   s" second-pool-body" INTERN:STRING second T=
+   INTERN:COUNT 1 T=
+   original INTERN:SWITCH
+   s" first-pool-body" INTERN:STRING first T=
    s" a foreign owner is refused without changing the active pool" T-LABEL
    [: FOREIGN-POOL ;] E-NSTR-BODY TTHROWSQ
-   NSTR:ACTIVE original = TTRUE
-   s" second-pool-body" NSTR:INTERN imported T=
-   NSTR:COUNT 2 T= ;
+   INTERN:ACTIVE original = TTRUE
+   s" second-pool-body" INTERN:STRING imported T=
+   INTERN:COUNT 2 T= ;
 
 : OWNED-ROW ( n ptr u8 n -- ) {: address:n body:ptr size:n :}
-   address NSTR:OWNER-ROW TTRUE
+   address INTERN:OWNER-ROW TTRUE
    size T= PTR>N body PTR>N T= ;
 
 : UNOWNED-ROW ( n -- )
-   NSTR:OWNER-ROW TFALSE
+   INTERN:OWNER-ROW TFALSE
    0 T= PTR>N 0 T= ;
 
 : OWNER-CASE ( -- )
    s" row ownership survives a window opened at an odd DATA cursor" T-LABEL
    align 0 c,
-   NSTR:WINDOW-OPEN
-   NSTR:COUNT 0 T=  NSTR:BYTES 0 T=
-   s" exact-row" NSTR:INTERN {: old:n :}
+   INTERN:WINDOW-OPEN
+   INTERN:COUNT 0 T=  INTERN:BYTES 0 T=
+   s" exact-row" INTERN:STRING {: old:n :}
    old old N>BYTES 9 OWNED-ROW
    old 1+ old N>BYTES 9 OWNED-ROW
    old 8 + old N>BYTES 9 OWNED-ROW
@@ -210,30 +210,30 @@ variable MUTABLE-CELL
    old 9 + UNOWNED-ROW
 
    s" empty rows have a distinct valid address and cost zero body bytes" T-LABEL
-   s" " NSTR:INTERN {: empty:n :}
+   s" " INTERN:STRING {: empty:n :}
    empty empty N>BYTES 0 OWNED-ROW
    empty old T<>
    empty 1- UNOWNED-ROW
    empty 1+ UNOWNED-ROW
-   NSTR:COUNT 2 T=  NSTR:BYTES 9 T=
+   INTERN:COUNT 2 T=  INTERN:BYTES 9 T=
 
-   NSTR:WINDOW-OPEN
+   INTERN:WINDOW-OPEN
    old 2 + old N>BYTES 9 OWNED-ROW
    empty empty N>BYTES 0 OWNED-ROW
-   s" exact-row" NSTR:INTERN {: fresh:n :}
+   s" exact-row" INTERN:STRING {: fresh:n :}
    fresh old T<>
-   old 2 + NSTR:REINTERN-OWNED TTRUE fresh 2 + T=
-   old 8 + NSTR:REINTERN-OWNED TTRUE fresh 8 + T=
-   NSTR:COUNT 1 T=  NSTR:BYTES 9 T=
-   empty NSTR:REINTERN-OWNED TTRUE {: new-empty:n :}
+   old 2 + INTERN:REINTERN-OWNED TTRUE fresh 2 + T=
+   old 8 + INTERN:REINTERN-OWNED TTRUE fresh 8 + T=
+   INTERN:COUNT 1 T=  INTERN:BYTES 9 T=
+   empty INTERN:REINTERN-OWNED TTRUE {: new-empty:n :}
    new-empty empty T<>
    new-empty new-empty N>BYTES 0 OWNED-ROW
-   NSTR:COUNT 2 T=  NSTR:BYTES 9 T=
+   INTERN:COUNT 2 T=  INTERN:BYTES 9 T=
 
    s" ordinary DATA and arbitrary numbers never acquire literal ownership" T-LABEL
    MUTABLE-CELL PTR>N UNOWNED-ROW
    0 UNOWNED-ROW  -1 UNOWNED-ROW
-   MUTABLE-CELL PTR>N NSTR:REINTERN-OWNED TFALSE MUTABLE-CELL PTR>N T= ;
+   MUTABLE-CELL PTR>N INTERN:REINTERN-OWNED TFALSE MUTABLE-CELL PTR>N T= ;
 
 \ HIR:NAME was compiled into the engine by its retained build host. Its literal
 \ predates this load and belongs to the transferred source pool after seeding.
@@ -242,16 +242,16 @@ variable MUTABLE-CELL
    HIR:NAME {: body:ptr size:n :}
    body size s" hir" T$=
    body PTR>N body size OWNED-ROW
-   NSTR:WINDOW-OPEN
+   INTERN:WINDOW-OPEN
    body PTR>N body size OWNED-ROW
-   body PTR>N 1+ NSTR:REINTERN-OWNED TTRUE
-   s" hir" NSTR:INTERN 1+ T= ;
+   body PTR>N 1+ INTERN:REINTERN-OWNED TTRUE
+   s" hir" INTERN:STRING 1+ T= ;
 
 variable BAD-ROWS
 variable BAD-OFFSET
 variable BAD-LENGTH
 PTR-VARIABLE IMPORTED-POOL
-: SELECT-IMPORTED ( -- ) IMPORTED-POOL @ NSTR:SWITCH ;
+: SELECT-IMPORTED ( -- ) IMPORTED-POOL @ INTERN:SWITCH ;
 
 \ This negative fixture reaches the real private importer by its dictionary
 \ identity. It never grants ownership: every supplied row is malformed.
@@ -259,7 +259,7 @@ PTR-VARIABLE IMPORTED-POOL
 CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 : IMPORT-OP ( -- [ ptr u8 n ptr n ptr n -- ] )
-   s" NSTR" XREF-NAMESPACE-WL XREF-FIND-WL
+   s" INTERN" XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? TTRUE
    XREF-PKG-PRIVATE {: wid:n :}
    s" IMPORT-ROWS" wid XREF-FIND-WL
@@ -279,9 +279,9 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 : IMPORT-CASE ( -- )
    s" only the build driver can invoke literal ownership import" T-LABEL
-   s" NSTR:IMPORT-ROWS" XREF-FIND XREF-FOUND? TFALSE
+   s" INTERN:IMPORT-ROWS" XREF-FIND XREF-FOUND? TFALSE
    \ The checker reports an unknown public name (1), never a certificate (-1).
-   s" NST-PUBLIC-IMPORT ( ptr u8 n ptr n ptr n -- ) NSTR:IMPORT-ROWS"
+   s" NST-PUBLIC-IMPORT ( ptr u8 n ptr n ptr n -- ) INTERN:IMPORT-ROWS"
    CHECK-CANDIDATE! 1 T=
 
    s" malformed imports leave DATA and existing row ownership unchanged" T-LABEL
@@ -291,12 +291,12 @@ CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
    $80000 BAD-OFFSET ! 1 BAD-LENGTH ! REJECT-IMPORT
 
    s" imported compact owners cannot become writable pools" T-LABEL
-   NSTR:ACTIVE {: active:ptr :}
+   INTERN:ACTIVE {: active:ptr :}
    0 BAD-OFFSET ! 0 BAD-LENGTH !
    align here BYTE-VIEW IMPORTED-POOL !
    MUTABLE-CELL BYTE-VIEW 1 BAD-OFFSET BAD-LENGTH IMPORT-OP execute
    [: SELECT-IMPORTED ;] E-NSTR-BODY TTHROWSQ
-   NSTR:ACTIVE active = TTRUE ;
+   INTERN:ACTIVE active = TTRUE ;
 
 \ ---- what a literal costs in code bytes ---------------------------------------
 \ The payload lives in DATA space, so the two chain emissions have the same code
@@ -407,7 +407,7 @@ PTR-VARIABLE BIG-AT
    FILL-BUF 64 ;
 
 : FILL-ONE ( n -- ) {: k:n :}
-   k FILL-BODY NSTR:INTERN  k cells FILL-AT + !
+   k FILL-BODY INTERN:STRING  k cells FILL-AT + !
    1 FILL-N +! ;
 
 : FILL ( -- )
@@ -421,7 +421,7 @@ PTR-VARIABLE BIG-AT
    u 0 ?do 66 BIG-AT @ i + c! loop ;
 
 : BIG-INTERN ( -- )
-   BIG-AT @ BIG-U @ NSTR:INTERN drop ;
+   BIG-AT @ BIG-U @ INTERN:STRING drop ;
 
 : CAP-CASE ( -- )
    s" twenty thousand bodies past both of a segment's ceilings intern" T-LABEL
@@ -436,10 +436,10 @@ PTR-VARIABLE BIG-AT
    [: BIG-INTERN ;] 0 TTHROWSQ
    s" one byte larger is refused by name and leaves no trace" T-LABEL
    $80001 BIG!
-   NSTR:COUNT {: rows:n :}
+   INTERN:COUNT {: rows:n :}
    here PTR>N {: at:n :}
    [: BIG-INTERN ;] E-NSTR-CAP TTHROWSQ
-   NSTR:COUNT rows T=
+   INTERN:COUNT rows T=
    here PTR>N at T= ;
 
 \ ---- a closed window's pool ----------------------------------------------------
@@ -450,24 +450,24 @@ PTR-VARIABLE BIG-AT
 \ a segment opened past the window's end would leave its copies out of the image,
 \ so a body past the room the pool kept is refused by name.
 : OVERFLOW-INTERN ( -- )
-   FILL-BUF 1 NSTR:INTERN drop ;
+   FILL-BUF 1 INTERN:STRING drop ;
 
 : CLOSE-CASE ( -- )
    s" closing a full pool opens it one more segment" T-LABEL
-   NSTR:ACTIVE {: original:ptr :}
-   NSTR:WINDOW-OPEN
+   INTERN:ACTIVE {: original:ptr :}
+   INTERN:WINDOW-OPEN
    $80000 BIG!
    BIG-INTERN
-   NSTR:WINDOW-CLOSE
-   NSTR:SEGMENTS 2 T=
+   INTERN:WINDOW-CLOSE
+   INTERN:SEGMENTS 2 T=
    s" which takes a whole arena" T-LABEL
    [: BIG-INTERN ;] 0 TTHROWSQ
    s" and a body past it is refused by name, opening nothing" T-LABEL
    here PTR>N {: at:n :}
    [: OVERFLOW-INTERN ;] E-NSTR-CAP TTHROWSQ
-   NSTR:SEGMENTS 2 T=
+   INTERN:SEGMENTS 2 T=
    here PTR>N at T=
-   original NSTR:SWITCH ;
+   original INTERN:SWITCH ;
 
 public
 

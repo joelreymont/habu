@@ -502,7 +502,7 @@ FUNCTION: FFI-T-MPROTECT mprotect ( ptr u8 n n -- i32 ) ;FUNCTION
 4 BUFFER: FFI-T-COUNT
 
 \ macOS's printf aborts on a %n whose format lies in writable memory, and a
-\ literal's bytes live in DATA (src/compiler/native/string.f), so the %n format
+\ literal's bytes live in DATA (src/habu/intern.f), so the %n format
 \ is copied into a fresh mapping and the page holding it made read-only for
 \ the call.
 : FFI-T-PRINTF-COUNTED ( -- n )

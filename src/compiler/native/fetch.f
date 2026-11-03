@@ -4,7 +4,7 @@ require src/lib/errors.f
 require src/lib/prelude.f
 require src/compiler/digest.f
 require src/compiler/native/fetch-owner.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/fetch-check.f
 
 package NFETCH
@@ -94,7 +94,7 @@ variable SPLIT-N
    data 0 CDIGEST:SLOT@ 0= if exit then
    COUNT @ 1+ FACTS-RESERVE
    COUNT @ 1+ ORIGINS-RESERVE
-   data bytes NSTR:INTERN-SOURCE {: address:n origin:n :}
+   data bytes INTERN:INTERN-SOURCE {: address:n origin:n :}
    offset address bytes width NFETCH-FACT:MAKE COUNT @ FACTS !
    origin COUNT @ ORIGINS !
    1 COUNT +! ;
@@ -151,7 +151,7 @@ public
    CHECKER-OWNER:RELEASE-CERTIFICATE ;
 
 \ Each split body contributes its own complete snapshot under its source base.
-\ Only NSTR-owned immutable bytes survive this call; no live certificate or
+\ Only INTERN-owned immutable bytes survive this call; no live certificate or
 \ checker mapping is retained by the compiler or the emitted routine.
 \ A scan that lost a width fact past a token it could not apply while a wide
 \ value was live (checker.f SCAN-INCOMPLETE) leaves nothing to place that

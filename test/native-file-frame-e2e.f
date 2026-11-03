@@ -618,7 +618,7 @@ create DIGITS DIGITS-CAP allot variable DIGITS-AT
    \ pf.f interns one body as long as a pool segment's arena, segment 0's own
    \ bytes: it opens the pool's next segment and fills it to the edge, so
    \ lp.f's literal needs the segment after that.
-   s" pf.f" S\" : PF-FILL ( -- ) 0 NSTR:SOURCE-SPAN NSTR:INTERN drop ;\nPF-FILL\n" PUT
+   s" pf.f" S\" : PF-FILL ( -- ) 0 INTERN:SOURCE-SPAN INTERN:STRING drop ;\nPF-FILL\n" PUT
    s" lf.f" S\" : LF-S ( -- ptr u8 n ) s\" lf-pool-probe\" ;\n" PUT
    s" lp.f" S\" : LP-S ( -- ptr u8 n ) s\" lp-pool-probe\" ;\n" PUT ;
 

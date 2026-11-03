@@ -709,7 +709,7 @@ variable ACAP-ENTRY-N
 \ Dynamic name uses the derived rule cannot see: consumers resolve these names
 \ after this engine is captured. The list is explicit policy, as
 \ tools/manifest-lint.f states the engine's entry points.
-\ NSTR:IMPORT-ROWS is a private build-driver seam resolved through the shipped
+\ INTERN:IMPORT-ROWS is a private build-driver seam resolved through the shipped
 \ dictionary; the alternatives are a public wrapper, which
 \ test/compiler/native-string.f forbids, or a fixed engine cell.
 \ The drift guard is the build's refusal "native-build: literal importer
@@ -736,7 +736,7 @@ variable ACAP-ENTRY-N
    a u s" CHECKER-STORAGE-CELLS" CORE-STR=CI
    k ACAP-REC-DST 40 + ACAP-W32@ 0= and if true exit then
    a u s" IMPORT-ROWS" CORE-STR=CI
-   k s" NSTR" ACAP-KEEP-PKG? and if true exit then
+   k s" INTERN" ACAP-KEEP-PKG? and if true exit then
    a u s" FILE-REF-RESET" CORE-STR=CI
    a u s" FILE-REF-USE" CORE-STR=CI or
    a u s" FILE-IDENTITY$" CORE-STR=CI or

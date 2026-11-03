@@ -2,7 +2,7 @@
 
 require src/lib/errors.f
 require src/compiler/native/publish.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/habu/xref.f
 require src/habu/aot-arm.f
 require src/lib/string.f
@@ -87,22 +87,22 @@ public
    s" NCOMP:DEFINITION-HISTORY" true BIND-ONE
    s" NCOMP:DEFINITION-DOES-OFFSET" true BIND-ONE
    s" NCOMP:REPLAY-DEFINITION" true BIND-ONE
-   s" NSTR:PREPARE-BEGIN" true BIND-ONE
-   s" NSTR:PREPARE-INTERN" true BIND-ONE
-   s" NSTR:PREPARE-DATA-END" true BIND-ONE
-   s" NSTR:PREPARE-CLOSE" true BIND-ONE
-   s" NSTR:INTERN" true BIND-ONE
-   s" NSTR:SOURCE-BEGIN" true BIND-ONE
-   s" NSTR:SOURCE-END" true BIND-ONE
-   s" NSTR:SOURCE-COUNT" true BIND-ONE
-   s" NSTR:SOURCE@" true BIND-ONE
-   s" NSTR:SOURCE-SPAN" true BIND-ONE
+   s" INTERN:PREPARE-BEGIN" true BIND-ONE
+   s" INTERN:PREPARE-INTERN" true BIND-ONE
+   s" INTERN:PREPARE-DATA-END" true BIND-ONE
+   s" INTERN:PREPARE-CLOSE" true BIND-ONE
+   s" INTERN:STRING" true BIND-ONE
+   s" INTERN:SOURCE-BEGIN" true BIND-ONE
+   s" INTERN:SOURCE-END" true BIND-ONE
+   s" INTERN:SOURCE-COUNT" true BIND-ONE
+   s" INTERN:SOURCE@" true BIND-ONE
+   s" INTERN:SOURCE-SPAN" true BIND-ONE
    s" TASK:OWNED-USER-NEXT" true BIND-ONE
    s" TASK:OBSERVE-SLOTS" true BIND-ONE
    s" TASK:UNOBSERVE-SLOTS" true BIND-ONE
    \ The storage owners a FILE object's DATA scan and updates skip.
-   s" NSTR:CELL-SPANS" true BIND-ONE
-   s" NSTR:OWNER-ROW" true BIND-ONE
+   s" INTERN:CELL-SPANS" true BIND-ONE
+   s" INTERN:OWNER-ROW" true BIND-ONE
    s" FFI:SCAN-SPANS" true BIND-ONE
    s" TASK:OWNED-CALLBACK-ROWS" true BIND-ONE
    s" TASK:OWNED-CELLS" true BIND-ONE
@@ -116,7 +116,7 @@ public
    s" PRIM-SPEC:R-RUN" true BIND-ONE
    \ CWORK's layout mark, whose change orders a top-level run's frame.
    s" CWORK:LAYOUT-MARK" true BIND-ONE
-   s" NSTR:SOURCE-CLOSE" true BIND-ONE ;
+   s" INTERN:SOURCE-CLOSE" true BIND-ONE ;
 
 : BOUND-PRODUCER-XT ( ptr u8 n -- n ) TARGET-XT ;
 : OPTIONAL-PRODUCER-XT ( ptr u8 n -- n ) BOUND-XT ;

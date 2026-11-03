@@ -1,5 +1,5 @@
-\ tier0-string-literals.f - once src/compiler/native/string.f installs
-\ NSTR:INTERN in NSTR-ABI:INTERN-CELL, the JIT interns a string literal's body
+\ tier0-string-literals.f - once src/habu/intern.f installs
+\ INTERN:STRING in NSTR-ABI:INTERN-CELL, the JIT interns a string literal's body
 \ through it (src/habu/habu2.f C-SDQ, C-CQ, C-ESDQ, C-ECQ): the body is a DATA
 \ pool row, equal bodies share one address, and a failed definition's row stays.
 \ Spans come from the dictionary record (src/habu/xref.f). arm64's tier 0 is T0,
@@ -10,7 +10,7 @@ require src/lib/string.f
 require src/habu/xref.f
 require src/habu/code-bytes.f
 require src/habu/address-carrier.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 
 0 data-base NCOMP-DISPATCH:COMP-CELL + !
 
@@ -23,9 +23,9 @@ private
 
 public
 
-\ The address is a row of an NSTR pool. Public for TEST-FAILED-LINE's text.
+\ The address is a row of an INTERN pool. Public for TEST-FAILED-LINE's text.
 : OWNED? ( ptr u8 -- bool )
-   NULL-PTR - NSTR:OWNER-ROW >r 2drop r> ;
+   NULL-PTR - INTERN:OWNER-ROW >r 2drop r> ;
 
 : S-EMPTY ( -- ptr u8 n ) s" " ;
 : C-EMPTY ( -- ptr u8 ) c" " ;
@@ -74,7 +74,7 @@ private
    SL-F s" xyz" STR= TTRUE ;
 
 : TEST-OWNED ( -- )
-   s" every body is an NSTR row" T-LABEL
+   s" every body is an INTERN row" T-LABEL
    S-EMPTY drop OWNED? TTRUE
    C-EMPTY OWNED? TTRUE
    S-ESC drop OWNED? TTRUE
@@ -104,7 +104,7 @@ private
 
 \ Interners compiled into the code region, as tier 0 compiles every word here;
 \ the baked interner lies in the engine's text.
-: SL-WRAP ( ptr u8 n -- n ) NSTR:INTERN ;
+: SL-WRAP ( ptr u8 n -- n ) INTERN:STRING ;
 : SL-THROW ( ptr u8 n -- n ) 99 throw ;
 
 : SL-INTERNER! ( [ ptr u8 n -- n ] -- )
@@ -120,7 +120,7 @@ private
    s" SL-VIA drop TIER0-STRLIT:OWNED?" TEST-EVAL:FLAG TTRUE
    ['] SL-THROW SL-INTERNER!
    S\" : SL-THROWN ( -- ptr u8 n ) s\" thrown\" ;" TEST-EVAL:RC 99 T=
-   NSTR:INSTALL
+   INTERN:INSTALL
    S\" : SL-AFTER ( -- ptr u8 n ) s\" after\" ;" TEST-EVAL:RC 0 T=
    S\" SL-AFTER s\" after\" STR=" TEST-EVAL:FLAG TTRUE
    s" SL-AFTER drop TIER0-STRLIT:OWNED?" TEST-EVAL:FLAG TTRUE ;
@@ -128,18 +128,18 @@ private
 \ Tier 0 builds two bodies rather than parsing them, a wide fetch's tag
 \ descriptor (LP2VEMIT) and a MATCH's bad-tag message (C-DIE-BAD-TAG); their
 \ addresses reach the code as a DATA address chain (src/habu/address-carrier.f).
-\ The NSTR row a chain at p names, when p starts one and the row starts at the
+\ The INTERN row a chain at p names, when p starts one and the row starts at the
 \ chain's address.
 : CHAIN-ROW ( ptr u8 ptr u8 -- ptr u8 n bool ) {: p:ptr end:ptr :}
    p end ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    size ADDRESS-CARRIER:DATA-CHAIN-BYTES <> if NULL-PTR 0 false exit then
    p size ADDRESS-CARRIER:CHAIN-VALUE {: at:n :}
-   at NSTR:OWNER-ROW 0= if 2drop NULL-PTR 0 false exit then
+   at INTERN:OWNER-ROW 0= if 2drop NULL-PTR 0 false exit then
    {: body:ptr u:n :}
    body NULL-PTR - at <> if NULL-PTR 0 false exit then
    body u true ;
 
-\ The NSTR row the first such chain in the named word's code names.
+\ The INTERN row the first such chain in the named word's code names.
 : CODE-ROW ( ptr u8 n -- ptr u8 n bool ) {: na:ptr nu:n :}
    na nu XREF-FIND {: rec:ptr :}
    rec XREF-FOUND? 0= if NULL-PTR 0 false exit then
@@ -151,7 +151,7 @@ private
    NULL-PTR 0 false ;
 
 : TEST-DESCRIPTOR ( -- )
-   s" a wide fetch's descriptor is an NSTR row outside the word's code" T-LABEL
+   s" a wide fetch's descriptor is an INTERN row outside the word's code" T-LABEL
    SL-PUT SL-GET SL-SUM 7 T=
    s" TIER0-STRLIT:SL-GET" CODE-ROW {: d:ptr du:n found:bool :}
    found TTRUE
@@ -160,7 +160,7 @@ private
    then ;
 
 : TEST-BAD-TAG ( -- )
-   s" a MATCH's bad-tag message is an NSTR row" T-LABEL
+   s" a MATCH's bad-tag message is an INTERN row" T-LABEL
    s" TIER0-STRLIT:SL-SUM" CODE-ROW {: m:ptr mu:n found:bool :}
    found TTRUE
    found if

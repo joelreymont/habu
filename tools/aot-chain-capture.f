@@ -52,12 +52,12 @@ variable Q0  variable Q1      \ its require-registry span: the closure it loaded
 \ that engine has. aot-capture.f's closure and the chain both require
 \ src/arch/arm64/asm.f and a second `require` is a no-op, so tooling first made
 \ 98 of 18602 call sites call the tool's asm.f (first: the chain's MASK calling
-\ A64ASM's LIMM?); chain first, 0. NSTR loads inside the window: a retained
+\ A64ASM's LIMM?); chain first, 0. INTERN loads inside the window: a retained
 \ native host carries it, a source-only host needs its code captured with the
 \ compiler. Its fresh literal pool belongs to either window.
 AOT-CHAIN:OPEN
-require src/compiler/native/string.f
-NSTR:WINDOW-OPEN
+require src/habu/intern.f
+INTERN:WINDOW-OPEN
 require src/compiler/native/compiler.f
 NCOMP:CAPTURE-PREPARE
 AOT-CHAIN:CLOSE
@@ -164,7 +164,7 @@ variable CELLS-OWED           \ pre-window cells the declared installers refill
 
 : DECLARE-ALL ( -- )
    0 CELLS-OWED !
-   s" NSTR:INSTALL" 1 DECLARE
+   s" INTERN:INSTALL" 1 DECLARE
    s" NCOMP:INSTALL" 0 DECLARE
    s" NDICT:RETAIN-FIXED-INSTALL" 1 DECLARE
    \ CAPTURE-PREPARE clears NHOST's callback before this audit; boot reinstalls it.

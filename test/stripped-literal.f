@@ -36,7 +36,7 @@ variable IMAGE-U
    TIMEOUT-MS GE-RUN-STDIN ;
 
 : REFUSE-COMPILER-ROWS ( -- )
-   S\" PERSISTED-PTR-VARIABLE SLT-COMPILER-ROWS\n: MAIN ( -- ) SLT-COMPILER-ROWS @ @ . ;\n0 NSTR:SOURCE-ROWS SLT-COMPILER-ROWS ! drop 2drop\n" WRITE-SUBJECT
+   S\" PERSISTED-PTR-VARIABLE SLT-COMPILER-ROWS\n: MAIN ( -- ) SLT-COMPILER-ROWS @ @ . ;\n0 INTERN:SOURCE-ROWS SLT-COMPILER-ROWS ! drop 2drop\n" WRITE-SUBJECT
    LINK-SUBJECT
    70 s" stripped compiler literal rows refusal" GE-EXPECT-RC
    s" declared data cell holds an engine address outside the restored span"
@@ -58,7 +58,7 @@ variable IMAGE-U
    S\"    s\"  ( -- ptr u8 n ) s\" S+  34 C+  32 C+\n" SB-APPEND
    S\"    k 0 ?do 121 C+ loop  size k - 0 ?do 122 C+ loop\n" SB-APPEND
    S\"    34 C+  s\"  ;\" S+  SRC SRC-U @ EV ;\n" SB-APPEND
-   S\" : FILL ( -- ) 74 0 ?do i 7000 DEF loop  74 $80000 NSTR:BYTES - DEF ;\n" SB-APPEND
+   S\" : FILL ( -- ) 74 0 ?do i 7000 DEF loop  74 $80000 INTERN:BYTES - DEF ;\n" SB-APPEND
    S\" public\n: RUN ( -- ) BAD-SPAN MEM:UNMAP ;\nFILL\n;package\n: MAIN ( -- ) SLT-FULL:RUN ;\n" SB-APPEND
    SB$ WRITE-SUBJECT ;
 

@@ -89,7 +89,7 @@ LONG-N BUFFER: LONG-BUF
 \ Behind each call to a word that never returns, a tier-1 caller compiles a trap
 \ naming the callee whole, and each caller must answer what tier 0 answers. The
 \ messages share the literal store with source strings, which grows by segments
-\ (src/compiler/native/string.f): eighty 6995-byte names are 560,640 bytes, past
+\ (src/habu/intern.f): eighty 6995-byte names are 560,640 bytes, past
 \ one segment's 512 KB arena, and 1100 short callees pass 1024 names.
 $2000 constant SRC-CAP               \ one definition around a 6995-byte name
 SRC-CAP BUFFER: SRC

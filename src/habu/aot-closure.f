@@ -526,7 +526,7 @@ variable NB-IX
 : CELL-MAPPED? ( n -- bool ) AOT-CELL:MAPPED? ;
 
 \ The eight bytes at this address are a string literal's body, by the
-\ compiler's row table (src/compiler/native/string.f, one row per interned body),
+\ compiler's row table (src/habu/intern.f, one row per interned body),
 \ which MAPPED-DATA below also re-interns through. This is a declaration, not a
 \ reading of the value: `s"` bodies are immutable characters no form puts an
 \ address in, yet `s" {pm}"` and a 01 byte read as 0x017D6D707B and can land in
@@ -534,7 +534,7 @@ variable NB-IX
 \ cell is asked: the scan starts a cell at every byte, so a cell can begin
 \ before a body and still cover its characters.
 : LITERAL-BYTE? ( n -- bool ) {: at:n :}
-   at NSTR:OWNER-ROW {: body:ptr size:n owned:bool :}
+   at INTERN:OWNER-ROW {: body:ptr size:n owned:bool :}
    owned ;
 : CELL-LITERAL? ( n -- bool ) {: at:n :}
    at [: LITERAL-BYTE? ;] AOT-CELL:LITERAL-OVERLAP? ;
@@ -753,7 +753,7 @@ variable DN-IX  variable DN-AT
    v IN-WINDOW? if v true exit then
    v CARRIED-TARGET {: c:n :}
    c 0 >= if c true exit then
-   v NSTR:REINTERN-OWNED drop {: w:n :}
+   v INTERN:REINTERN-OWNED drop {: w:n :}
    w  w IN-WINDOW? w CLAIMED-CELL? or ;
 
 : DATA-ADDRESS! ( ptr n ptr u8 n -- ) {: owner:ptr site:ptr v:n :}

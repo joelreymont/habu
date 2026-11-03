@@ -5,14 +5,14 @@ private
 create FILE-STATE-SPILL-BEFORE 24 allot
 create FILE-STATE-SPILL-BODY 4096 allot
 : OPEN-SPILL ( -- )
-   NSTR:SEGMENTS {: before:n :}
+   INTERN:SEGMENTS {: before:n :}
    256 0 ?do
       4096 0 ?do 76 FILE-STATE-SPILL-BODY i + c! loop
       i FILE-STATE-SPILL-BODY CELL-VIEW !
-      FILE-STATE-SPILL-BODY 4096 NSTR:INTERN drop
-      NSTR:SEGMENTS before > if leave then
+      FILE-STATE-SPILL-BODY 4096 INTERN:STRING drop
+      INTERN:SEGMENTS before > if leave then
    loop
-   NSTR:SEGMENTS before <= if E-NSTR-CAP throw then ;
+   INTERN:SEGMENTS before <= if E-NSTR-CAP throw then ;
 : HIDDEN ( -- n ) 5 ;
 public
 : NINETEEN ( -- n ) 19 ;

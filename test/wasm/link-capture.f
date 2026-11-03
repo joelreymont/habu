@@ -20,7 +20,7 @@ require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/shadow.f
 require src/arch/wasm/backend.f
 require src/arch/wasm/capture.f
@@ -34,7 +34,7 @@ public
 : OPEN ( -- )
    WBACK:BINDING NSHADOW:OPEN
    AOT-ARM:WINDOW-OPEN
-   NSTR:WINDOW-OPEN ;
+   INTERN:WINDOW-OPEN ;
 
 : CAPTURE ( -- )
    AOT-ARM:WINDOW-CLOSE

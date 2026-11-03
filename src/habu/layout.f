@@ -1342,7 +1342,7 @@ $2CD0 constant FLOORREC-CELL
 $2CD8 constant CLOSED-FREE-CELL
 $2CE0 constant CODE-END-CELL       \ end of the engine's own code: see FLOORREC-CELL
 \ DATA-FLOOR-CELL: the lowest DATA offset a rewind of DATA may return DP to, 0
-\ for none. The literal store (src/compiler/native/string.f PUBLISH) opens a
+\ for none. The literal store (src/habu/intern.f PUBLISH) opens a
 \ segment at `here` inside whatever is running and raises the floor to the
 \ segment's end, so the segment and every address it answered outlive a failed
 \ evaluation and a failed REPL line (habu2.f EM-EVAL-THROW-RECOVER,
@@ -1407,8 +1407,8 @@ $2D58 constant DPHW-CELL
 \ copy DICT-HW-CELL): an image keeps only the records below NDICT.
 $2D60 constant NDICT-HW-CELL
 
-\ INTERN-CELL holds the xt of the literal interner (src/compiler/native/string.f
-\ NSTR:INTERN), 0 until that file installs it with xt!. Tier 0 reads it with
+\ INTERN-CELL holds the xt of the literal interner (src/habu/intern.f
+\ INTERN:STRING), 0 until that file installs it with xt!. Tier 0 reads it with
 \ `DATA <off> LDR` (src/habu/habu2.f C-SDQ and its siblings): a zero cell keeps
 \ the literal's bytes in the code.
 package NSTR-ABI

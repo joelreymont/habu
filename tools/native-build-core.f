@@ -85,16 +85,16 @@ CAST: RESET-XT ( n -- [ -- ] )
 
 \ The retained host's literal rows come from the package that owns them, one
 \ segment of the active pool at a time while it is open
-\ (src/compiler/native/string.f SEGMENTS, SOURCE-SPAN, SOURCE-ROWS): no private
-\ NSTR name stays alive for this caller.
+\ (src/habu/intern.f SEGMENTS, SOURCE-SPAN, SOURCE-ROWS): no private
+\ INTERN name stays alive for this caller.
 : LITERAL-SOURCE-ROWS ( n -- ptr u8 n ptr n ptr n )
-   NSTR:SOURCE-ROWS ;
+   INTERN:SOURCE-ROWS ;
 
 : LITERAL-SPAN-REFUSE ( -- )
    s" native-build: source literal arena outside capture" BUILD-RC die ;
 
 : CHECK-LITERAL-SPAN ( n -- )
-   NSTR:SOURCE-SPAN {: arena:ptr size:n :}
+   INTERN:SOURCE-SPAN {: arena:ptr size:n :}
    arena NULL-PTR BYTE-VIEW - {: start:n :}
    start AOT-ARM:D0 @ < start AOT-ARM:D1 @ > or if LITERAL-SPAN-REFUSE then
    AOT-ARM:D1 @ start - {: remaining:n :}
@@ -224,7 +224,7 @@ CAST: CELL-XT ( n -- [ -- ptr n ] )
 \ did not exist when this file was compiled: the package's namespace record,
 \ then the word in its private wordlist. The alternatives are a public wrapper
 \ or a fixed engine cell for the token. Two words are found this way.
-\ NSTR:IMPORT-ROWS, the literal row importer, after the window closes
+\ INTERN:IMPORT-ROWS, the literal row importer, after the window closes
 \ (TARGET-IMPORTER): a public wrapper would be a well-typed way for any source
 \ to invoke literal ownership import, which test/compiler/native-string.f
 \ forbids, and the capture keeps its name for this lookup
@@ -641,7 +641,7 @@ variable PRE-ROWS-N
 
 : OPEN-FILE-AND-COMPILE ( -- )
    AOT-ARM:WINDOW-OPEN-PERSISTENT
-   NSTR:WINDOW-OPEN
+   INTERN:WINDOW-OPEN
    [: ['] LOAD-TARGET NDEF-CACHE:RUN ;] SOURCE-ROOT:WITH-CWD
    AOT-ARM:WINDOW-CLOSE ;
 
@@ -661,7 +661,7 @@ variable PRE-ROWS-N
 
 \ The target's row importer, a private word (PRIVATE-TARGET-XT).
 : TARGET-IMPORTER ( -- n )
-   s" NSTR" s" IMPORT-ROWS" PRIVATE-TARGET-XT TARGET-CODE ;
+   s" INTERN" s" IMPORT-ROWS" PRIVATE-TARGET-XT TARGET-CODE ;
 
 : TARGET-PRIVATE-XT ( ptr u8 n ptr u8 n -- n )
    PRIVATE-TARGET-XT TARGET-CODE ;
@@ -673,9 +673,9 @@ CAST: LITERAL-IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 \ Every segment's arena is checked before the target imports any of them.
 : TRANSFER-LITERALS ( -- )
-   NSTR:SEGMENTS 0 ?do i CHECK-LITERAL-SPAN loop
+   INTERN:SEGMENTS 0 ?do i CHECK-LITERAL-SPAN loop
    TARGET-IMPORTER {: importer:n :}
-   NSTR:SEGMENTS 0 ?do
+   INTERN:SEGMENTS 0 ?do
       i LITERAL-SOURCE-ROWS importer LITERAL-IMPORT-XT execute
    loop ;
 

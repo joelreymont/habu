@@ -38,6 +38,6 @@ require src/habu/aot-owned.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/habu/aot-shadow.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/abi.f
 require tools/native-layout.f

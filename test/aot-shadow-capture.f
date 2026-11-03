@@ -49,7 +49,7 @@ require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
 require src/habu/aot-shadow.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/x64ir.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/abi.f
@@ -62,7 +62,7 @@ public
 ;package
 AOTSH:OPEN-X64
 AOT-ARM:WINDOW-OPEN
-NSTR:WINDOW-OPEN
+INTERN:WINDOW-OPEN
 
 \ The window holds one of each thing the shadow tables carry; created words,
 \ `does>` children, casts and a defer carry routines too

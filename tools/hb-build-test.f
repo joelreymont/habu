@@ -519,7 +519,7 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
 : HBT-LITC-SRC ( -- ptr u8 n )
    HBT-LITC-SRC-BUF HBT-LITC-SRC-U @ ;
 
-\ A string literal's body is declared text: src/compiler/native/string.f writes
+\ A string literal's body is declared text: src/habu/intern.f writes
 \ one row per interned body, and src/habu/aot-closure.f CELL-LITERAL? reads those
 \ rows, never the bytes, for every cell src/habu/aot-common.f SCAN-DATA-CELL would
 \ refuse. Tender's stripped server is the case: `s" {pm}"` and the 01 byte after

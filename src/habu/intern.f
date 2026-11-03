@@ -1,4 +1,4 @@
-\ string.f - the permanent address of a string literal's bytes; equal bodies
+\ intern.f - the permanent address of a string literal's bytes; equal bodies
 \ within a segment share one. Bodies live in DATA, since a DATA address means the
 \ same after a snapshot restore and an mmap one does not. Tier 1 interns through
 \ src/compiler/native/elaborate.f EMIT-STRING, tier 0 through
@@ -11,7 +11,7 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/habu/layout.f
 
-package NSTR
+package INTERN
 private
 
 \ ---- the store ---------------------------------------------------------------
@@ -359,7 +359,7 @@ public
    ROLE-CLOSED ACTIVE-P @ ROLE-FIELD ! ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
-: INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
+: STRING ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
    a u FIND {: k:n :}
    k 0 >= if BASE k ROW-OFF + u SOURCE-RECORD exit then
@@ -367,12 +367,12 @@ public
    BASE row ROW-OFF + u SOURCE-RECORD ;
 
 : INTERN-SOURCE ( ptr u8 n -- n n )
-   INTERN
+   STRING
    SOURCE-ON @ if SOURCE-N @ negate 1- else -1 then ;
 
 \ Tier 0 interns through this cell (src/habu/habu2.f LNSTRINTERN); xt! declares it.
 : INSTALL ( -- )
-   ['] INTERN data-base NSTR-ABI:INTERN-CELL + xt! ;
+   ['] STRING data-base NSTR-ABI:INTERN-CELL + xt! ;
 
 private
 
@@ -508,7 +508,7 @@ public
    address OWNER-ROW 0= if 2drop address false exit then
    {: body:ptr size:n :}
    address body PTR>N - {: offset:n :}
-   body size INTERN offset + true ;
+   body size STRING offset + true ;
 
 \ The active pool's rows and bytes, over all its segments.
 : COUNT ( -- n )

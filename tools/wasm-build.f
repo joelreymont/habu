@@ -12,7 +12,7 @@ ndict@ here BYTE-VIEW NULL-PTR BYTE-VIEW - variable PRE-R  variable PRE-D  PRE-D
 require src/os/script-argv.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/shadow.f
 require src/arch/wasm/backend.f
 require src/arch/wasm/capture.f
@@ -34,7 +34,7 @@ public
 : OPEN ( -- )
    WBACK:BINDING NSHADOW:OPEN
    AOT-ARM:WINDOW-OPEN
-   NSTR:WINDOW-OPEN ;
+   INTERN:WINDOW-OPEN ;
 
 \ The source, by its path on the command line; a top-level load would name no
 \ literal path for tools/check.f to follow.

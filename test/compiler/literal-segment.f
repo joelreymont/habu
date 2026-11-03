@@ -2,10 +2,10 @@
 \ the rewind of whatever opened it.
 \
 \ The store opens a segment at `here` when its last one cannot take a body
-\ (src/compiler/native/string.f).
+\ (src/habu/intern.f).
 
 require src/lib/string.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 
 package LITERAL-SEGMENT
 private
@@ -26,7 +26,7 @@ CAST: N>BYTES ( n -- ptr u8 )
 
 : OPENED? ( -- bool )
    here PTR>N {: before:n :}
-   BODY BODY-N NSTR:INTERN {: at:n :}
+   BODY BODY-N INTERN:STRING {: at:n :}
    at before < if false exit then
    at AT !
    true ;
@@ -43,7 +43,7 @@ CAST: N>BYTES ( n -- ptr u8 )
    AT @ N>BYTES BODY-N  BODY BODY-N  STR= ;
 
 : SAME? ( -- bool )
-   BODY BODY-N NSTR:INTERN  AT @ = ;
+   BODY BODY-N INTERN:STRING  AT @ = ;
 
 public
 

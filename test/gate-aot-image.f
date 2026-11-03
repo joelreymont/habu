@@ -126,7 +126,7 @@ create CODE-PATH PATH-CAP allot
 public
 
 \ EMIT-DATA-BLOB places the startup's source address immediately
-\ after all code. NSTR:WINDOW-OPEN guarantees these fixtures have a DATA copy.
+\ after all code. INTERN:WINDOW-OPEN guarantees these fixtures have a DATA copy.
 : CODE-RANGE ( ptr u8 n -- n n )
    HB-TARGET-LINUX-X86-64? if X64-CODE-RANGE exit then
    GB-EXEC-TEXT-RANGE {: off:n size:n :}

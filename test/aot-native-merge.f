@@ -19,7 +19,7 @@ require src/habu/aot-owned.f
 require src/habu/aot-ident.f
 require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/arch/x86-64/passes.f
 
 package AOT-NATIVE-MERGE
@@ -78,7 +78,7 @@ CAST: DATA-N ( ptr u8 -- n )
    loop -1 ;
 
 public
-: OPEN ( -- ) NABI:BINDING NSHADOW:OPEN-NATIVE AOT-ARM:WINDOW-OPEN NSTR:WINDOW-OPEN ;
+: OPEN ( -- ) NABI:BINDING NSHADOW:OPEN-NATIVE AOT-ARM:WINDOW-OPEN INTERN:WINDOW-OPEN ;
 private
 
 : CAPTURE ( -- )

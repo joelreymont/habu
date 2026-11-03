@@ -20,7 +20,7 @@ require src/compiler/native/hir-word.f
 require src/compiler/fixed-body.f
 require src/compiler/native/dict.f
 require src/compiler/native/host.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/fetch.f
 require src/compiler/native/frozen.f
 require src/compiler/native/trap.f
@@ -977,7 +977,7 @@ DYNAMIC-BUFFER SPELL-BUF u8
 \ ---- a string literal ----------------------------------------------------------
 : EMIT-STRING ( n -- ) {: ix:n :}
    ix QSPELL {: a u:n :}
-   a u NSTR:INTERN-SOURCE {: address:n origin:n :}
+   a u INTERN:INTERN-SOURCE {: address:n origin:n :}
    ix address NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED
    ix  u  EMIT-LIT ;
 
@@ -1005,7 +1005,7 @@ using IR-BUILD
 
 
 : EMIT-COUNTED-STRING ( n -- ) {: ix:n :}
-   ix COUNTED-BODY NSTR:INTERN-SOURCE {: address:n origin:n :}
+   ix COUNTED-BODY INTERN:INTERN-SOURCE {: address:n origin:n :}
    ix address NEMIT:ADDR-DATA origin EMIT-KIND-LIT-OWNED ;
 
 
@@ -3121,7 +3121,7 @@ align
 \ Copy the diagnostic through the same owned literal path as source strings;
 \ no emitted trap depends on the build host's helper code.
 : TRAP-ARGS ( n ptr u8 n n -- ) {: ix:n a:ptr u:n rc:n :}
-   a u NSTR:INTERN-SOURCE {: address:n origin:n :}
+   a u INTERN:INTERN-SOURCE {: address:n origin:n :}
    ix address NEMIT:ADDR-DATA origin STAGE-OWNED-LIT
    ix u HIR:ADDR-NONE STAGE-LIT
    ix rc HIR:ADDR-NONE STAGE-LIT ;
@@ -3602,7 +3602,7 @@ CAST: XT>N ( xt -- n )
 \ The original address stays on the vector while the validator consumes a
 \ duplicate and the immutable descriptor; the call precedes every value load.
 \ The staged address literal stands for NFETCH-CHECK:FREEZE's value because
-\ NFETCH:KEEP ran NFETCH-CHECK:SHAPE over exactly these immutable NSTR bytes.
+\ NFETCH:KEEP ran NFETCH-CHECK:SHAPE over exactly these immutable INTERN bytes.
 \ No checked source reaches TAGS with a raw address: the casts that mint a
 \ frozen value are private to NFETCH-CHECK.
 : VALIDATE-FETCH ( n -- ) {: ix:n :}
@@ -4310,7 +4310,7 @@ private
 
 : STAGE-DOES-PATCH ( -- )
    STAGE-DOES-ENTRY
-   DOES-SIG @ DOES-SIG-U @ NSTR:INTERN-SOURCE
+   DOES-SIG @ DOES-SIG-U @ INTERN:INTERN-SOURCE
       {: address:n origin:n :}
    DOES-AT @ address NEMIT:ADDR-DATA origin STAGE-OWNED-LIT
    DOES-AT @ DOES-SIG-U @ HIR:ADDR-NONE STAGE-LIT

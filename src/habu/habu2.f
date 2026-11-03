@@ -3213,7 +3213,7 @@ public
    done LBL, ;
 
 \ The signature (x11, x10 bytes) is a string literal of the definer and goes
-\ where C-SDQ puts one: interned in the literal store, or, before string.f
+\ where C-SDQ puts one: interned in the literal store, or, before intern.f
 \ installs the interner, in the code behind a branch. TCSIG-A/U take its
 \ address and length.
 : C-PLACE-CREATED-SIG ( -- )
@@ -5555,7 +5555,7 @@ variable LAOTPROT      \ cold-start window-relative protected-WID restore
    LNSTRINTERN LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    11 G-PUSH  12 G-PUSH
-   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 BLR,    \ NSTR:INTERN ( ptr u8 n -- n )
+   9 DATA NSTR-ABI:INTERN-CELL LDR,  9 BLR,    \ INTERN:STRING ( ptr u8 n -- n )
    11 G-POP
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -8823,7 +8823,7 @@ ardone LBL,
    9 DATA TOP-HOOK-CELL STR,  9 DATA NCOMP-DISPATCH:XT-CELL STR,
    9 DATA NCOMP-DISPATCH:COMP-CELL STR,
    9 DATA NCOMP-DISPATCH:FIXED-COMP-CELL STR,
-   9 DATA NSTR-ABI:INTERN-CELL STR,      \ the JIT keeps literals inline until string.f installs
+   9 DATA NSTR-ABI:INTERN-CELL STR,      \ the JIT keeps literals inline until intern.f installs
    9 DATA NCOMP-DISPATCH:CALLBACK-STUB-CELL STR,
    9 DATA NCOMP-DISPATCH:CALLBACK-ENTRY-CELL STR,
    9 DATA EXIT-HOOK-CELL STR,            \ no process-exit hook until something arms it
@@ -10753,8 +10753,8 @@ public
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LP2VEXEC is called by a compiled typed fetch before its address is popped,
-\ with the descriptor's address in x9 (an NSTR row, or the inline copy before a
-\ seed host has the interner). Every active CHECK validates an unsigned
+\ with the descriptor's address in x9 (an INTERN row, or the inline copy before
+\ a seed host has the interner). Every active CHECK validates an unsigned
 \ declaration-order tag domain; guard mismatches skip that nested CHECK while
 \ still consuming its rows. It has a sealed (LP2VEXEC) helper record like
 \ (PROT-SPAN), so LP2VEMIT's direct BL resolves by exact code entry in an
@@ -10809,8 +10809,8 @@ public
    end LBL, ;
 
 \ LP2VEMIT interns the current fetch descriptor's cell stream from the frozen
-\ lowering certificate as an NSTR body (LNSTRINTERN), loads its address into x9
-\ as a recorded DATA site, then calls LP2VEXEC. Before string.f installs the
+\ lowering certificate as an INTERN body (LNSTRINTERN), loads its address into
+\ x9 as a recorded DATA site, then calls LP2VEXEC. Before intern.f installs the
 \ interner (NSTR-ABI:INTERN-CELL zero, a seed host) the stream goes inline after
 \ a B over it and `adr x9` names it. No live checker state is consulted.
 : EMIT-P2-VALID-EMIT ( -- )
@@ -13053,8 +13053,8 @@ variable LADTPUSHTOK  variable LMFRTOP  variable LADTDIE
 \   "hb: bad <family> tag\n" (the name bytes travel with the word, never a
 \   pointer into the relocatable TF-STR pool), then write(2,msg,len) +
 \   exit_group(ENGINE-ERROR:BAD-TAG). The message is assembled at CP, interned as
-\   an NSTR body (LNSTRINTERN) and named by a recorded DATA site; before
-\   string.f installs the interner (NSTR-ABI:INTERN-CELL zero, a seed host) it
+\   an INTERN body (LNSTRINTERN) and named by a recorded DATA site; before
+\   intern.f installs the interner (NSTR-ABI:INTERN-CELL zero, a seed host) it
 \   stays behind a jump and an ADR names it. Every instruction is C-EMITW'd into
 \   the user region (x28=CP). Clobbers x0-x17.
 : C-DIE-BAD-TAG ( -- )

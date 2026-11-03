@@ -20,7 +20,7 @@ require src/core/prefix-boundary.f
 require src/compiler/native/family.f
 require src/compiler/native/trap.f
 require src/compiler/native/fetch.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/native/abi.f
@@ -1200,7 +1200,7 @@ DYNAMIC-BUFFER RS-V vreg     \ reserved to EMIT-VREGS by RESET-STATE: one
 \ ---- strings -----------------------------------------------------------------
 \ A string is one row whose span is the payload; the checker reports its body,
 \ decoded for an escaped literal (src/core/checker.f CHECKER-TAPE:STRING), and
-\ the tape copies it. Bytes are interned (NSTR:INTERN-SOURCE), so equal bodies
+\ the tape copies it. Bytes are interned (INTERN:INTERN-SOURCE), so equal bodies
 \ share an address, and the address row files the origin interning answers. A
 \ counted string past COUNTED-MAX bytes is refused with tier 1's message and
 \ exit code 76.
@@ -1224,12 +1224,12 @@ DYNAMIC-BUFFER STR-BUF u8           \ a decoded or counted body before interning
    k ROW-AT @ {: body:n :}
    k ROW-U @ {: u:n :}
    counted if u TOO-LONG then
-   body 0< u 0= or counted 0= and if s u NSTR:INTERN-SOURCE u exit then
+   body 0< u 0= or counted 0= and if s u INTERN:INTERN-SOURCE u exit then
    counted if 1 else 0 then {: at:n :}
    at u + STR-BUF-RESERVE
    body 0< if s at STR-BUF u BYTE-COPY else body BODIES at STR-BUF u BYTE-COPY then
    counted if u 0 STR-BUF c! then
-   0 STR-BUF at u + NSTR:INTERN-SOURCE u ;
+   0 STR-BUF at u + INTERN:INTERN-SOURCE u ;
 
 \ `."` and `is` call the engine's `type` and `xt!` whatever the source's
 \ package scope.
@@ -1315,7 +1315,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 : DOES-TAIL ( -- )
    NQ @ NESTED @ + CLAUSE !
    EMPTY-CLAUSE @ if 0 PUSH-CONST else CLAUSE @ PUSH-UNIT then
-   NDEFINITION:M-DOES-SIG @ NDEFINITION:M-DOES-SIG-U @ NSTR:INTERN-SOURCE PUSH-ADDR
+   NDEFINITION:M-DOES-SIG @ NDEFINITION:M-DOES-SIG-U @ INTERN:INTERN-SOURCE PUSH-ADDR
    NDEFINITION:M-DOES-SIG-U @ PUSH-CONST
    SPILL-ALL
    NDICT:DOES-PATCH-ENTRY CUT @ NDEFINITION:DOES-SPAN - EMIT-CALL ;
@@ -1342,7 +1342,7 @@ variable CLAUSE-ORD                 \ the checker's ordinal of the clause's firs
 : CLOSE-MATCH ( n n -- ) {: loc:n k:n :}
    CS-TOP-KIND CS-MATCH <> MATCH-CK
    k CS-FAM @ NFAM:NAME$ NTRAP:BAD-TAG {: a:ptr u:n rc:n :}
-   a u NSTR:INTERN-SOURCE PUSH-ADDR
+   a u INTERN:INTERN-SOURCE PUSH-ADDR
    u PUSH-CONST  rc PUSH-CONST
    NTRAP:ROUTINE loc DO-CALL
    begin CS-TOP-KIND CS-ENDOF = while CS-ENDOF CS-POP repeat
@@ -1842,9 +1842,9 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ definition, as tier 1's SHADOWED. Each walk starts clean: WALK and FIXED-BODY
 \ set their own cells and RESET-STATE's, EMIT-OPEN clears the seam's rows and
 \ the selected emitter's sink and LABEL state; the tape, the measures and the
-\ NFETCH facts are only read. NSTR:INTERN finds before it adds, so a string gets
-\ one address in both routines, but each walk interns it: a source-row
-\ recording (NSTR:SOURCE-BEGIN), which only the definition cache's capture of
+\ NFETCH facts are only read. INTERN:STRING finds before it adds, so a string
+\ gets one address in both routines, but each walk interns it: a source-row
+\ recording (INTERN:SOURCE-BEGIN), which only the definition cache's capture of
 \ tier 1 opens (tools/native-definition-cache.f), would list it twice.
 
 \ The machine this engine runs on, the one src/compiler/native/publish.f

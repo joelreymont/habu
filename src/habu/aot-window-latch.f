@@ -51,15 +51,15 @@ PTR-VARIABLE APP-POOL
 : AOT-DATA-START ( -- )
    cp@ WINDOW-CODE-START !
    FFI:IMAGE-UNPIN
-   NSTR:ACTIVE MAKER-POOL !
-   NSTR:WINDOW-OPEN
-   NSTR:ACTIVE APP-POOL !
+   INTERN:ACTIVE MAKER-POOL !
+   INTERN:WINDOW-OPEN
+   INTERN:ACTIVE APP-POOL !
    \ The application owns the literal bodies, not the lookup tables: a segment's
    \ owner and row tables precede its arena, so the span starts at the first
    \ segment's arena and its tables stay outside capture, as ACTIVE-P does. A
    \ saved first-segment SOURCE-ROWS pointer takes the unrestored-DATA refusal. A
    \ later segment, opened while the application loads, lies inside the span.
-   0 NSTR:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
+   0 INTERN:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
 
 \ Latch the span before loading the linker and hand the maker its pool back:
 \ with the application's pool still active, the linker carried fs-identity's
@@ -98,7 +98,7 @@ variable TASK-USER-MARK
    CARRY-BYTES @ allot ;
 
 : AOT-DATA-SPAN ( -- )
-   NSTR:WINDOW-CLOSE
+   INTERN:WINDOW-CLOSE
    TASK:#USER TASK-USER-MARK !
    FFI:IMAGE-MARK
    FFI-LIB-BASE-MARK ! FFI-FN-BASE-MARK !
@@ -112,13 +112,13 @@ variable TASK-USER-MARK
    CARRY-RESERVE
    HERE-N  BLOB-END !
    BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN !
-   MAKER-POOL @ NSTR:SWITCH ;
+   MAKER-POOL @ INTERN:SWITCH ;
 
 \ The link's only interning: aot-closure.f MAPPED-DATA copies each literal the
 \ closure reaches from another pool into the ACTIVE one, which must be the pool
 \ inside the window.
 : AOT-APP-POOL ( -- )
-   APP-POOL @ NSTR:SWITCH ;
+   APP-POOL @ INTERN:SWITCH ;
 
 \ Opening the window is separate from linking (tools/aot-builder.f OPEN and
 \ RUN), so linking without it is reachable. A real span never starts at zero:

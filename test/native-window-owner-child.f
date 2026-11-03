@@ -13,7 +13,7 @@ require src/lib/string.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/habu/address-cells.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 
 package NW-OWNER
 
@@ -193,7 +193,7 @@ variable SOURCE-READY
       i SCRIPT-ARGV$
       \ The retained compiler owns literals after its namespace is retired.
       2dup s" --literals" CORE-STR= if
-         2drop NSTR:WINDOW-OPEN
+         2drop INTERN:WINDOW-OPEN
       else 2dup RECOVERY$ CORE-STR= if 2drop else i LOAD-OPTIONAL then then
    loop
    PATH$ included

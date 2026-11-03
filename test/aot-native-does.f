@@ -18,7 +18,7 @@ require src/habu/aot-file.f
 require src/habu/aot-ident.f
 require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/arch/x86-64/passes.f
 
 package AOTN
@@ -82,7 +82,7 @@ public
 1 set-tier
 AOTN:OPEN
 AOT-ARM:WINDOW-OPEN
-NSTR:WINDOW-OPEN
+INTERN:WINDOW-OPEN
 
 package AOTN-WINDOW
 private

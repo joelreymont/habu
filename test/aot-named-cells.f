@@ -35,11 +35,11 @@ require src/habu/aot-capture.f
 require src/habu/aot-ident.f
 require src/habu/fdio.f
 require src/habu/aot-owned.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/lib/le.f
 
 AOT-ARM:WINDOW-OPEN
-NSTR:WINDOW-OPEN
+INTERN:WINDOW-OPEN
 include test/aot-named-cells-window.f
 package NAMED-CELLS-WINDOW
 public

@@ -16,7 +16,7 @@ require src/habu/fdio.f
 require src/habu/aot-file.f
 require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/arch/x86-64/passes.f
 
 package NAMED-CELLS-CAPTURE
@@ -87,17 +87,17 @@ set-tier
 package NAMED-CELLS-CAPTURE
 : OPEN ( -- )
    HB-TARGET-LINUX-X86-64? if
-      NSTR:ACTIVE OLD-POOL !
+      INTERN:ACTIVE OLD-POOL !
       NABI:BINDING NSHADOW:OPEN-NATIVE
       AOT-ARM:WINDOW-OPEN
-      NSTR:WINDOW-OPEN
+      INTERN:WINDOW-OPEN
    else AOT-ARM:WINDOW-OPEN then ;
 ' OPEN
 public
 : CLOSE ( -- )
    HB-TARGET-LINUX-X86-64? if
-      NSTR:WINDOW-CLOSE
-      OLD-POOL @ NSTR:SWITCH
+      INTERN:WINDOW-CLOSE
+      OLD-POOL @ INTERN:SWITCH
    then ;
 ;package
 execute

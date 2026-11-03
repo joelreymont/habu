@@ -1725,7 +1725,7 @@ variable FALL-N                                      \ modeled fall-through edge
    loop ;
 
 \ The capture keeps one private word by name outside the language surface:
-\ tools/native-build-core.f resolves NSTR:IMPORT-ROWS after loading the target
+\ tools/native-build-core.f resolves INTERN:IMPORT-ROWS after loading the target
 \ package. A surface-only census would call it dead, and a compactor removing
 \ its span would fail the next native build at TARGET-IMPORTER. The root is
 \ explicit and package-qualified, not a widened root set or private allowlist.
@@ -1744,7 +1744,7 @@ variable FALL-N                                      \ modeled fall-through edge
    loop ;
 
 : ROOTS-CAPTURE ( -- )
-   s" NSTR" s" IMPORT-ROWS" ROOT-PKG-WORD ;
+   s" INTERN" s" IMPORT-ROWS" ROOT-PKG-WORD ;
 
 \ Only bytes outside both the record and stripped-span indices are roots.
 \ Scanning an unreachable span here would root all of its callees by mistake.

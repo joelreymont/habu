@@ -16,10 +16,10 @@ require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 
 AOT-ARM:WINDOW-OPEN
-NSTR:WINDOW-OPEN
+INTERN:WINDOW-OPEN
 
 package AOTRT-WINDOW
 public

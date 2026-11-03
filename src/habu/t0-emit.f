@@ -95,7 +95,7 @@ TYPED-VARIABLE CUR-ARCH CTARGET:arch  \ and the architecture itself
 \ text. EMIT-ADDR-ROW+ files an address site ( at kind target origin ), kind
 \ NEMIT:ADDR-DATA, NEMIT:ADDR-CODE or ADDR-QUOT-KIND; a data address's origin
 \ comes with it through EMIT-ADDR-DATA (a string literal's is the one
-\ NSTR:INTERN-SOURCE answers), and a code or quotation address's is -1. at is
+\ INTERN:INTERN-SOURCE answers), and a code or quotation address's is -1. at is
 \ the instruction's first byte from the emission's byte 0. A quotation's target
 \ is its unit number; on x86-64 its instruction holds the unit's offset, which
 \ EMIT-QUOT-OPEN writes. An emitter whose quotation address is relative to its

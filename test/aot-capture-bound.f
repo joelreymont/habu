@@ -140,11 +140,11 @@ variable EXITED
    s" require src/habu/aot-decl.f" LINE+
    s" require src/habu/aot-arm.f" LINE+
    s" require src/habu/aot-capture.f" LINE+
-   s" require src/compiler/native/string.f" LINE+ ;
+   s" require src/habu/intern.f" LINE+ ;
 
 : ENTRY-WINDOW+ ( -- )
    s" AOT-ARM:WINDOW-OPEN" LINE+
-   s" NSTR:WINDOW-OPEN" LINE+
+   s" INTERN:WINDOW-OPEN" LINE+
    s" package RB-ALPHA" LINE+
    s" public" LINE+
    s" : RB-ONE ( -- n ) 1 ;" LINE+

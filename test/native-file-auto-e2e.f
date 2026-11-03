@@ -776,7 +776,7 @@ variable HISTORY-LIB-N
 
 : SEGMENT-APP ( -- )
    s" app.f"
-      S\" require prefix.f\ncreate BODY-FILL $80000 allot\n: BODY-FILL! ( -- ) $80000 0 ?do 71 BODY-FILL i + c! loop ;\n: BODY-USED ( -- n ) NSTR:SEGMENTS 1- NSTR:SOURCE-ROWS {: arena:ptr rows:n offsets:ptr lengths:ptr :} 0 rows 0 ?do lengths i cells + @ + loop ;\n: BODY-PACK ( -- ) $80000 BODY-USED 12 + - {: bytes:n :} bytes 0 > if BODY-FILL bytes NSTR:INTERN drop then ;\n: BODY-PACK-IF ( -- ) FILE-LITERAL:LARGE? if BODY-PACK then ;\nBODY-FILL! BODY-PACK-IF\n: BODY ( -- bool ) s\" repeatBBBB\" drop s\" FFFFFFFFFFFFFFFFFFFF\" 2drop s\" repeatBBBB\" drop = ;\n: MAIN ( -- ) BODY if s\" share\" else s\" split\" then type cr ;\n"
+      S\" require prefix.f\ncreate BODY-FILL $80000 allot\n: BODY-FILL! ( -- ) $80000 0 ?do 71 BODY-FILL i + c! loop ;\n: BODY-USED ( -- n ) INTERN:SEGMENTS 1- INTERN:SOURCE-ROWS {: arena:ptr rows:n offsets:ptr lengths:ptr :} 0 rows 0 ?do lengths i cells + @ + loop ;\n: BODY-PACK ( -- ) $80000 BODY-USED 12 + - {: bytes:n :} bytes 0 > if BODY-FILL bytes INTERN:STRING drop then ;\n: BODY-PACK-IF ( -- ) FILE-LITERAL:LARGE? if BODY-PACK then ;\nBODY-FILL! BODY-PACK-IF\n: BODY ( -- bool ) s\" repeatBBBB\" drop s\" FFFFFFFFFFFFFFFFFFFF\" 2drop s\" repeatBBBB\" drop = ;\n: MAIN ( -- ) BODY if s\" share\" else s\" split\" then type cr ;\n"
       PUT ;
 
 : SEGMENT-EVENT-CASE ( -- )

@@ -19,7 +19,7 @@ require src/habu/layout.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/aot-capture.f
-require src/compiler/native/string.f
+require src/habu/intern.f
 require src/compiler/native/shadow.f
 require src/arch/wasm/leb.f
 require src/arch/wasm/encode.f
@@ -34,7 +34,7 @@ public
 WBACK:INSTALL
 WSHCAP:OPEN-WASM
 AOT-ARM:WINDOW-OPEN
-NSTR:WINDOW-OPEN
+INTERN:WINDOW-OPEN
 
 package WSHCAP-WINDOW
 public
