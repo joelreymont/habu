@@ -469,7 +469,17 @@ learned live in the docs for their subject.
   hashtable grow?", and ruled "your hashtable cannot live in data. strings can
   but hashtable cannot. that one needs an arena of its own, or somethibng like
   that". Strings are stored in DATA among other data; the table that finds an
-  existing string lives in growable memory of its own, outside DATA.
+  existing string lives in growable memory of its own, outside DATA. He then
+  ruled "any strings stored during a failed repl line should be discarded,
+  proev me wrong!": they go with DATA's rewind and the table forgets them.
+  Asked "are you gonna search the list? why not the hash table?", "why does a
+  slot need to store the length when we store the length with the string in
+  DATA?" and "why do we not store each string Pascal-style, with length in
+  front of it? we could add a zero at the end for compatibility with C
+  strings if need be", and shown that FFI copies every string it hands to C,
+  so a trailing zero would spare no copy, Joel answered "great, keep going":
+  each string is a length cell followed by its bytes, the table's slots hold
+  only addresses, and no trailing zero is added until a caller can use one.
 - 2026-11-03, the callback package: asked what the callback library's
   package FFI-CB should become, and shown that FFI is built into hb and sealed
   there, so a library loaded later cannot add words to it, Joel first chose
