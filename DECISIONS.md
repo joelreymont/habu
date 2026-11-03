@@ -424,6 +424,13 @@ learned live in the docs for their subject.
   experiments kept on 2026-10-30, he chose "Fix in tier 1 now (Recommended)":
   a tier-1 defect on a path tier 1 still owns is fixed there, not parked until
   T0 takes the path over.
+- 2026-11-03, the string literal store: told that tier 1's NSTR
+  (src/compiler/native/string.f) is the store every compiler, the image
+  capture and the hb build use for string literals, and that STR is the string
+  library's package, Joel asked "i think interning is its purpose, correct me
+  if i'm wrong", then "call the package INTERN then?", and on the plan to move
+  it to src/habu/intern.f as package INTERN, with the old build cache's and
+  dead words out and tier 1's calls following, answered "do it".
 - 2026-11-03, the callback package: asked what the callback library's
   package FFI-CB should become, and shown that FFI is built into hb and sealed
   there, so a library loaded later cannot add words to it, Joel first chose
