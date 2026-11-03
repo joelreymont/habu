@@ -225,12 +225,6 @@ variable BF-CERT-PATH-U
    exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE
    BF-SPAWN BF-FINISH-PID ;
 
-: BF-RUN-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
-   BF-PREPARE-ENV
-   PROC-ARGV-RESET
-   exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd
-   BF-SPAWN-IN BF-FINISH-PID ;
-
 \ Spawns pathz with the staged argv and env as the capture child, its stdout on
 \ outfd and its stderr on the capture pipe, and records its pid. Stack-preserving
 \ under catch, so a refused spawn reaches PROC-THROW-CAPTURE.
@@ -277,23 +271,11 @@ variable BF-CERT-PATH-U
    BF-TMP$ >LEN PROC-ARGV+
    >LEN PROC-ARGV-PREPARE ;
 
-: BF-RUN-STAGE-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
-   BF-PREPARE-ENV
-   exe exeu BF-PREPARE-STAGE-ARGV
-   PROC-ENV-PREPARE infd
-   BF-SPAWN-IN BF-FINISH-PID ;
-
 : BF-RUN-STAGE-ENV-EXE ( ptr u8 n -- n )
    BF-PREPARE-ENV
    BF-PREPARE-STAGE-ARGV
    PROC-ENV-PREPARE
    BF-SPAWN BF-FINISH-PID ;
-
-: BF-RUN-ENV-PATH-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
-   exe exeu src srcu BF-OPEN-INPUT BF-RUN-ENV-INFD ;
-
-: BF-RUN-STAGE-PATH-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
-   exe exeu src srcu BF-OPEN-INPUT BF-RUN-STAGE-ENV-INFD ;
 
 : BF-RUN-ENV-TMP ( ptr u8 n -- n )
    BF-A$ BF-RUN-ENV-EXE ;
@@ -789,14 +771,6 @@ package BUILD-FIXPOINT
    out outu BF-APPEND-DRIVER-IO
    out outu driver driveru BF-APPEND-SOURCE ;
 
-: BF-EMIT-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu driver:ptr driveru :}
-   out outu BF-RESET-OUT
-   out outu BF-APPEND-RUN-PRELUDE
-   out outu BF-APPEND-COMMON
-   out outu COMPILER-BUILD:SEAL
-   out outu BF-APPEND-DRIVER-IO
-   out outu driver driveru BF-APPEND-SOURCE ;
-
 : BF-EMIT-STDIN-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu driver:ptr driveru :}
    out outu BF-RESET-OUT
    out outu BF-APPEND-STDIN-RUN-PRELUDE
@@ -1173,10 +1147,6 @@ variable BF-DRV-R
    BF-CHAIN-ART$ BF-CAPTURE-INTO
    BF-CHAIN-DRIVER!
    BF-CHAIN-DRIVER$ BF-EMIT-ENGINE ;
-
-: BF-BUILD-STDIN ( -- )
-   BF-PREFLIGHT
-   BF-BUILD-STDIN-FROM-STAGE ;
 
 : BF-BUILD-STDIN-FRESH ( -- )
    BF-STAGE-FIXPOINT
