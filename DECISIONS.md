@@ -571,6 +571,36 @@ learned live in the docs for their subject.
   redoing them", and asked why the request must be ended and how the FFI
   callback setup works. His approvals covered the words' names and
   contracts, not their place in NDEFINITION.
+- 2026-11-03, defining a callback (design rev 3 after critic round 3): asked
+  one item at a time, Joel chose "Engine word (Recommended)": the C entry a
+  `CALLBACK:` declaration needs is made by a new engine word beside
+  `constant`, not by a TRUSTED: word in FFI, and he named it "callback-stub
+  (Recommended)", used as `3 callback-stub CMP-ENTRY`. He asked "how is this
+  gonna work with cross-compilation, though? and how do you reuse the callback
+  frontend for x86, wasm, etc?", was shown that T0 stamps the stub for both
+  machines as it does a constant's body, then chose "Name, then word
+  (Recommended)": `CALLBACK: CMP ROW-ORDER ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK
+  ;CALLBACK`, the bridged word named in the declaration, with no later store,
+  and "callback (Recommended)": `COMP-BODY:callback`. For the word that binds
+  a callback to a context and answers its C pointer he wrote "use
+  BIND-CALLBACK if it's FFI:BIND-CALLBACK and internal. if you do no other
+  binding then just use BIND"; FFI binds nothing else, so it is `FFI:BIND`,
+  and by that rule a callback word in FFI drops the CALLBACK- prefix where FFI
+  has no other word of its kind (UNBIND, ARG@ and its typed forms, RUN,
+  DESCRIPTOR, FAULT@; SET-FALLBACK, SET-FFALLBACK, OPEN-CALLBACK,
+  CLOSE-CALLBACK and the type `callback` keep their names). He chose
+  "RESULT!" over CALLBACK-RESULT! for the word that sets C's answer (FRESULT!
+  beside it), then asked "but why would you ever set it? and when and why
+  would you check for it?" and was told only the generated dispatch calls it,
+  and he chose "CLEAR-FAULT (Recommended)" for today's CLEAR.
+- 2026-11-03, sharing strings: shown that an app image gives each string it
+  compiles its own copy instead of sharing one stored before the image's
+  window, Joel wrote "it's not a matter of enabling sharing it's that SHARING
+  IS THE FUCKING WAY TO GO!!! ... you do not copy strings when linking C
+  object files, you just use the strings, prove me wrong!" Every string is
+  stored once and shared; a link writes each string an image uses once and
+  points every use at it. Shown that a top-level `s"` lays a fresh copy at
+  `here` each time, he wrote "this is wrong, all strings should be interned!"
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
