@@ -415,9 +415,9 @@ variable WANT-RC
 \ reaches the file's catch without running either following token.
 : EVALUATE-NESTED ( -- )
    GE-SRC-RESET
-   s" 1 set-tier 0 set-check TRUSTED: OI-AT-INNER ( -- ) s~ 3 depth .~ evaluate ;" QLINE
-   s" TRUSTED: OI-AT-OUTER ( -- ) s~ 2 OI-AT-INNER 4 . . . .~ evaluate ;" QLINE
-   s" 1 OI-AT-OUTER depth . 5 ." GE-SRC-LINE
+   s" 1 set-tier TRUSTED: OI-AT-INNER ( -- n ) s~ 3 depth .~ evaluate ;" QLINE
+   s" TRUSTED: OI-AT-OUTER ( -- ) s~ 2 OI-AT-INNER 4 . . .~ evaluate ;" QLINE
+   s" 1 OI-AT-OUTER . depth . 5 ." GE-SRC-LINE
    s" oi-evaluate-nested.f" BOTH
    CASE$ GE-EXPECT-OK
    S\" 3\n4\n3\n2\n1\n0\n5\n" CASE$ GE-EXPECT-OUT
@@ -1790,23 +1790,20 @@ variable WANT-RC
 : NEUTRAL-LINE ( -- )
    s" s~ : OI-N ( -- ) 9 . ; immediate~ evaluate  s~ OI-N~ 0 parse-imm" QLINE ;
 
-\ The preflight sees every immediate in a body but a non-neutral does>; a
-\ parse-imm one runs and reads the input after it, any other waits for `;`.
+\ A stack-neutral parse-imm immediate in a body runs and reads the input after
+\ it; the checker's preflight refuses any other before it runs.
 : BODY-IMMEDIATES ( -- )
    GE-SRC-RESET
-   s" 1 set-tier ' OI-BODY. OI-SHOWN !" GE-SRC-LINE
-   UNIT-START
+   s" 1 set-tier" GE-SRC-LINE
    NEUTRAL-LINE
    s" s~ : OI-SKIP ( -- ) parse-name 2drop ; immediate~ evaluate  s~ OI-SKIP~ 1 parse-imm" QLINE
    s" s~ : OI-P ( -- ) 8 . ; immediate~ evaluate" QLINE
-   s" s~ : OI-PT ( ptr u8 n ptr u8 n bool -- ) drop type cr 2drop ;~ evaluate" QLINE
-   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
-   s" 0 set-check ' OI-PT set-preflight ' OI-HK set-check" GE-SRC-LINE
-   s" : OI-X ( -- ) OI-N OI-SKIP skipped OI-P OI-IMM 1 OI-SHOW" GE-SRC-LINE
+   s" : OI-X ( -- ) OI-N OI-SKIP skipped OI-P" GE-SRC-LINE
    s" oi-body-immediates.f" BOTH
-   S\" OI-N\n9\nOI-SKIP\nOI-P\nOI-IMM\nOI-SHOW\nOI-X ( -- ) OI-N OI-SKIP OI-P OI-IMM 1 OI-SHOW \n"
-   CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-X at " S\" oi-body-immediates.f:9\n" DIED-AT ;
+   70 CASE$ GE-EXPECT-RC
+   S\" 9\n" CASE$ GE-EXPECT-OUT
+   S\" E-UNMODELED-IMMEDIATE habu: in oi-x: compile-time immediate 'OI-P' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\n"
+   CASE$ GE-EXPECT-ERR ;
 
 \ The immediate is looked up as the engine's LFIND looks it up: in the open
 \ package and the global wordlist, and NAME:tail, but not in a used package,
@@ -1826,38 +1823,17 @@ variable WANT-RC
    S\" 3\n4\nOI-X ( -- ) OI-UN OI-UP:OI-UQ OI-PN OI-SHOW \n" CASE$ GE-EXPECT-OUT
    74 s" hb: source ended inside definition: OI-X at " S\" oi-body-immediate-scope.f:7\n" DIED-AT ;
 
-\ An armed checker's preflight gets the body so far, the immediate's token and
-\ the trusted cell before the immediate runs; this one refuses a trusted body.
-: PREFLIGHT-CASE ( ptr u8 n ptr u8 n -- ) {: head:ptr headu:n name:ptr nameu:n :}
-   GE-SRC-RESET
-   NEUTRAL-LINE
-   s" s~ : OI-PF ( ptr u8 n ptr u8 n bool -- ) {: b:ptr bu:n t:ptr tu:n f:bool :}" Q+
-   s"  b bu type cr t tu type cr f OI-B. f if 75 throw then ;~ evaluate" QLINE
-   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
-   s" 0 set-check ' OI-PF set-preflight ' OI-HK set-check" GE-SRC-LINE
-   head headu GE-SRC-LINE
-   name nameu BOTH ;
-
-: BODY-IMMEDIATE-PREFLIGHT ( -- )
-   s" 1 set-tier : OI-X ( -- ) 5 OI-N" s" oi-body-preflight.f" PREFLIGHT-CASE
-   S\" OI-X ( -- ) 5 OI-N \nOI-N\n0\n9\n" CASE$ GE-EXPECT-OUT
-   74 s" hb: source ended inside definition: OI-X at " S\" oi-body-preflight.f:5\n" DIED-AT
-   s" 1 set-tier trusted: OI-X ( -- ) 5 OI-N" s" oi-body-preflight-trusted.f" PREFLIGHT-CASE
-   75 CASE$ GE-EXPECT-RC
-   S\" OI-X ( -- ) 5 OI-N \nOI-N\n1\n" CASE$ GE-EXPECT-OUT ;
-
-\ A checker armed with no preflight refuses the immediate, and so does the
-\ floor when the immediate takes a cell it was not given.
+\ The preflight refuses an immediate it does not model in a trusted body too,
+\ and the floor refuses one that takes a cell it was not given.
 : BODY-IMMEDIATE-REFUSALS ( -- )
    GE-SRC-RESET
-   NEUTRAL-LINE
-   s" s~ : OI-HK ( ptr u8 n -- n ) 2drop -1 ;~ evaluate" QLINE
-   s" 0 set-check ' OI-HK set-check" GE-SRC-LINE
-   s" 1 . 1 set-tier : OI-T ( -- ) OI-N 2 ." GE-SRC-LINE
-   s" oi-body-preflight-missing.f" BOTH
+   s" s~ : OI-P ( -- ) 8 . ; immediate~ evaluate" QLINE
+   s" 1 set-tier trusted: OI-X ( -- ) 5 OI-P 1 . ; 3 ." GE-SRC-LINE
+   s" oi-body-preflight-trusted.f" BOTH
    70 CASE$ GE-EXPECT-RC
-   S\" 1\n" CASE$ GE-EXPECT-OUT
-   S\" hb: compile preflight hook missing\n" CASE$ GE-EXPECT-ERR
+   s" " CASE$ GE-EXPECT-OUT
+   S\" E-UNMODELED-IMMEDIATE habu: in oi-x: compile-time immediate 'OI-P' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\n"
+   CASE$ GE-EXPECT-ERR
    GE-SRC-RESET
    s" s~ TRUSTED: OI-UFI ( -- ) drop ; immediate~ evaluate  s~ OI-UFI~ 0 parse-imm" QLINE
    s" 1 . 1 set-tier : OI-T ( -- ) OI-UFI 2 ." GE-SRC-LINE
@@ -2029,17 +2005,6 @@ variable WANT-RC
    s" oi-create-dictionary-full.f" BOTH
    77 s" hb: dictionary full at: OI-T at " S\" oi-create-dictionary-full.f:1\n" DIED-AT ;
 
-\ The def hook gets the name and `create`, for `variable` too, and the word
-\ publishes whatever its verdict.
-: CREATED-HOOK ( -- )
-   GE-SRC-RESET
-   s" s~ : OI-HK ( ptr u8 n -- n ) type cr 0 ;~ evaluate" QLINE
-   s" 0 set-check ' OI-HK set-check" GE-SRC-LINE
-   s" create OI-B variable OI-V 5 OI-V ! OI-V @ ." GE-SRC-LINE
-   s" oi-create-hook.f" BOTH
-   CASE$ GE-EXPECT-OK
-   S\" OI-B create \nOI-V create \n5\n" CASE$ GE-EXPECT-OUT ;
-
 \ A constant is the record a later `does>` patches, as a variable is: the
 \ clause acts on the constant, not on the variable before it. An export of the
 \ constant made before the patch shares its body, so a tier 1 mention of the
@@ -2062,20 +2027,17 @@ variable WANT-RC
    S\" 9\n9\n9\n" CASE$ GE-EXPECT-OUT ;
 
 \ A constant refused after its record opened is no record a later `does>`
-\ patches: the clause acts on the variable before it. Each loop is held to
-\ the output alone: the engine names the refusal at the file's floor
-\ (`interpret stack underdepth`), the Habu loop's constant E-UNDERFLOW. The
-\ case runs unchecked: the typed top level refuses a caught `included` there,
-\ and the checker still types the patched variable as its cell.
+\ patches: the clause acts on the variable before it. Only the output is held:
+\ the two loops name the refusal differently.
 : CONSTANT-REFUSED-DOES ( -- )
    GE-SRC-RESET
    s" constant OI-KC" GE-SRC-LINE
    s" oi-nested-constant.f" NESTED-BUF GT-PATH NESTED-U !
    NESTED$ SRC>FILE
    GE-SRC-RESET
-   s" 1 set-tier 0 set-check variable OI-AV s~ oi-nested-constant.f~ ' included catch . 2drop" QLINE
-   s" : OI-BEHAVE ( -- ) does> ( -- n ) drop 9 ;" GE-SRC-LINE
-   s" OI-BEHAVE OI-AV ." GE-SRC-LINE
+   s" 1 set-tier variable OI-AV s~ oi-nested-constant.f~ OI-PARK ' OI-INC-PARKED catch ." QLINE
+   s" : OI-BEHAVE ( -- ) does> ( -- ptr n ) drop OI-WANT ;" GE-SRC-LINE
+   s" 9 OI-WANT ! OI-BEHAVE OI-AV @ ." GE-SRC-LINE
    s" oi-constant-refused-does.f" CASE-BUF GT-PATH CASE-U !
    CASE$ SRC>FILE
    false RUN  CASE$ GE-EXPECT-OK  S\" 70\n9\n" CASE$ GE-EXPECT-OUT
@@ -2094,20 +2056,13 @@ variable WANT-RC
    CASE$ GE-EXPECT-OK
    S\" 0\n2\n" CASE$ GE-EXPECT-OUT ;
 
-\ A cast is the identity, called or executed, at any tier, into a qualifier's
-\ public wordlist or a namespace the qualifier makes, its long name past the
-\ record. With the hook cell empty its record carries DKIND:CAST alone; with
-\ the checker's hook also the registrar's minimum input arity, so a bare call
-\ on an empty stack is refused.
+\ A cast is the identity at any tier, under a qualifier or namespace; its record
+\ carries DKIND:CAST and its minimum input arity, so a bare call is refused.
 : CAST-DECLARED ( -- )
-   s" 1 set-tier 0 set-check cast: OI-X ( n -- n ) 1 OI-X . 2 ' OI-X execute . ndict@ 1- XREF-REC XREF-FLAGS 48 rshift ."
+   s" 1 set-tier cast: OI-X ( n -- n ) 1 OI-X . 2 ' OI-X execute . ndict@ 1- XREF-REC XREF-FLAGS 48 rshift . OI-X"
    s" oi-cast.f" LINE-CASE
-   CASE$ GE-EXPECT-OK
-   S\" 1\n2\n12\n" CASE$ GE-EXPECT-OUT
-   s" 1 set-tier cast: OI-X ( n -- n ) 1 OI-X . ndict@ 1- XREF-REC XREF-FLAGS 48 rshift . OI-X"
-   s" oi-cast-hooked.f" LINE-CASE
    70 CASE$ GE-EXPECT-RC
-   S\" 1\n28\n" CASE$ GE-EXPECT-OUT
+   S\" 1\n2\n28\n" CASE$ GE-EXPECT-OUT
    S\" hb: interpret stack underdepth: OI-X\n" CASE$ GE-EXPECT-ERR
    s" 0 set-tier cast: OI-X ( n -- n ) 3 OI-X ." s" oi-cast-tier-0.f" LINE-CASE
    CASE$ GE-EXPECT-OK
@@ -2206,16 +2161,6 @@ variable WANT-RC
    70 CASE$ GE-EXPECT-RC
    S\" 7129\n0\n5\n" CASE$ GE-EXPECT-OUT
    s" E-UNDEFINED: OI-Y at " S\" oi-cast-caught.f:4\n" ERR-AT ;
-
-\ The def hook never sees a cast: it gets only the created word after it.
-: CAST-HOOK ( -- )
-   GE-SRC-RESET
-   s" s~ : OI-HK ( ptr u8 n -- n ) type cr 0 ;~ evaluate" QLINE
-   s" 0 set-check ' OI-HK set-check" GE-SRC-LINE
-   s" cast: OI-X ( n -- n ) create OI-G 5 OI-X ." GE-SRC-LINE
-   s" oi-cast-hook.f" BOTH
-   CASE$ GE-EXPECT-OK
-   S\" OI-G create \n5\n" CASE$ GE-EXPECT-OUT ;
 
 : CAST-TASK-RUNNING ( -- )
    SPIN-PRELUDE
@@ -2362,7 +2307,6 @@ private
    BODY-STRING-FULL
    BODY-IMMEDIATES
    BODY-IMMEDIATE-SCOPE
-   BODY-IMMEDIATE-PREFLIGHT
    BODY-IMMEDIATE-REFUSALS
    BODY-IMMEDIATE-TIER-0
    DOES-SPLIT
@@ -2376,7 +2320,6 @@ private
    CREATED
    CREATED-NO-NAME
    CREATED-DICT-FULL
-   CREATED-HOOK
    CONSTANT-DOES
    CONSTANT-REFUSED-DOES
    MARKED
@@ -2384,7 +2327,6 @@ private
    CAST-PRIVATE
    CAST-REFUSALS
    CAST-REGISTRAR
-   CAST-HOOK
    CAST-TASK-RUNNING
    GT-CLEANUP
    s" outer-interpret: " type CASES @ FMT:.INT
