@@ -14,6 +14,8 @@ require src/habu/xref.f
 package NFILE-INPUTS
 private
 
+\ A file vouched for by its stat alone: hashing on every check made a verifier
+\ PATH$ check 108 ms instead of 0.45 ms and a no-edit repl build 0.5 s slower.
 1 constant FILE-ROW
 public
 2 constant QUERY-ROW
