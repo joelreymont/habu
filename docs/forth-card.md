@@ -178,6 +178,7 @@ before any `require`.
 | a definer (`:`, `DEFTYPE`, `create`, `package`, …) or a parsing word (`char`, `'`, a field word) with nothing after it | `E-MISSING-NAME` from `tools/check.f` |
 | `defer D`, `: MK ( n -- ) create , does> @ ;`: a definer that declares an effect with no signature after its name, or one never closed | `E-MISSING-SIGNATURE` at the definer, at `does>` for a clause; `--load` exits 76, `E-MISSING-SIGNATURE: D at <file>:<line>` |
 | `\` comment in a `STRUCTURE`/`ENUM` body | `E-BAD-DECLARATION` |
+| `ENUM state DERIVE eq closed open ;ENUM` in a package's private section | `habu: bad enum declaration 'state': derive requires a public family at 'eq'`, rc 70; test a private family's values with an exhaustive `MATCH` |
 | `HH 8 s" x" DYNAMIC-STORAGE:ARENA-NEW`, or any call or tick of `DYNAMIC-STORAGE:ARENA-NEW`, `ARENA-RELEASE`, `RECORD-NEW` or `RECORD-RELEASE`, directly or through a re-export, outside an `ARENA`'s or `HEAP`'s generated NAME-NEW and NAME-RELEASE | `E-ARENA-CALL` |
 | `: field-project ( a n -- ptr n ) drop drop V ;`, by any definer, in any package or letter case | `hb: reserved word cannot be a definition name: field-project`, rc 70 |
 | `4 TYPED-BUFFER B no-such-type`: a type, name or literal count `TYPED-*`, `*LAYOUT-BUFFER`, `DYNAMIC-BUFFER`, `ARENA` or `HEAP` refuses, or a name or type not on the definer's line | `E-BAD-STORAGE` |
@@ -484,7 +485,7 @@ holds an address**.
   before its text is read, so a keyword in that text never runs. The main
   thread compiles while tasks run; `cp!`, `ndict!` and `seed-ndict!` exit 79 on
   it too, silently, while any task is live. `NLEASE`'s checks throw
-  `NLEASE:E-TASK` on a task's thread, and `NLEASE:IDLE?` answers false there.
+  `NLEASE:E-TASK` on a task's thread.
 - `0 throw` throws `ENGINE-ERROR:THROW-ZERO` (109), never the ANS no-op:
   `[: 0 throw ;] catch` answers 109.
 - Arithmetic is modular and never refuses, with one exception: `/`, `mod` and
