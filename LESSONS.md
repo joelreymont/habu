@@ -82,6 +82,25 @@ entry.
   `SRCLOC:COLUMN ( ptr u8 -- n bool )` place any byte of the open file,
   `SRCLOC:PATH$ ( -- ptr u8 n )` names it, and top-level errors print a column
   too once tools/check.f's run file stops shifting columns.
+- 2026-11-03, the source loader's hooks and names (design-source.md rev 6):
+  shown that the build cache fills SOURCE-INPUT to see what each load reads
+  and SOURCE-UNIT to swap a file load for its stored object, Joel chose
+  "Remove both hooks (Recommended)": the loader logs what it reads between
+  `SOURCE:RECORD-INPUTS` and `SOURCE:;RECORD-INPUTS`, the cache passes its
+  file runner to `SOURCE:LOAD-WITH` for one build, and the interpreter defer
+  stays private with `SOURCE:USE-INTERPRETER` public for the two tests that
+  run x86-64's Habu loop over file loads on arm64. He then asked "what is
+  SOURCE-UNIT and why do you need it in addition to SOURCE?"; told it is one
+  of the six loader packages and is deleted, and shown the names that clash
+  once they merge, he chose "Renames as listed (Recommended)": the registry's
+  public words carry REQUIRE-, the input log's INPUT- and discovery's events
+  EVENT- (REQUIRE-COUNT, EVENT-ROOT@; privately FRAME-SOURCE, REQUIRE-PERSIST,
+  FILES-PERSIST). He chose "Keep LOAD and kinds (Recommended)": `SOURCE:LOAD (
+  ptr u8 n SOURCE:load -- )` is the one body of the global `included`,
+  `required`, `script-required` and `provided`, with kinds SOURCE-LOAD:always,
+  once, script and provide. Shown the rest of the public list as one question,
+  he answered "don't do this, interview one by one instead?": a public list
+  goes to him one word at a time.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
