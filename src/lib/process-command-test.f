@@ -82,6 +82,16 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    CMD:OUT$ ENTRY-OUT 8 T$=
    CMD:ERR$ nip 0 T= ;
 
+\ Hermetic, so env prints only the caller's rows: one row for the name.
+: REPEATED-ENV-ROWS ( CMD:command -- CMD:command )
+   CMD:ENV-HERMETIC
+   s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
+   s" HABU_PROC_ENV_TEST=entry" CMD:ENV-ENTRY+
+   s" /usr/bin/env" CMD-TIMEOUT-MS RUN# 0 T=
+   CMD:OUT$
+   s" HABU_PROC_ENV_TEST=entry" CHECK-LINE
+   nip 0 T= ;
+
 : INHERITED-ENV ( CMD:command -- CMD:command )
    s" test/process-env-child.f" CMD:ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
@@ -127,11 +137,21 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    nip 0 T= ;
 
 
+\ A caller row hides an inherited row of its name, a default's or this process's.
+: CALLER-OVER-INHERITED ( CMD:command -- CMD:command )
+   s" HABU_PROC_ENV_TEST" s" alpha" CMD:ENV+
+   s" HOME" s" /caller" CMD:ENV+
+   s" -c" CMD:ARG+
+   s" test x$HABU_PROC_ENV_TEST:$HOME = xalpha:/caller" CMD:ARG+
+   s" /bin/sh" CMD-TIMEOUT-MS RUN# 0 T= ;
+
+
 : UNSET-ENV ( -- )
    s" HABU_PROC_ENV_TEST" >LEN s" default" >LEN PROC-ENV-DEFAULT+
    s" HABU_PROC_ENV_TEST_X" >LEN s" kept" >LEN PROC-ENV-DEFAULT+
    [: UNSET-RUN ;] CMD:WITH-COMMAND
    [: UNSET-EXPLICIT ;] CMD:WITH-COMMAND
+   [: CALLER-OVER-INHERITED ;] CMD:WITH-COMMAND
    PROC-ENV-DEFAULT-RESET ;
 
 
@@ -709,6 +729,7 @@ public
    [: STDIN ;] CMD:WITH-COMMAND
    [: HERMETIC-ENV ;] CMD:WITH-COMMAND
    [: ENTRY-ENV ;] CMD:WITH-COMMAND
+   [: REPEATED-ENV-ROWS ;] CMD:WITH-COMMAND
    [: INHERITED-ENV ;] CMD:WITH-COMMAND
    UNSET-ENV
    [: RC-ARMS ;] CMD:WITH-COMMAND

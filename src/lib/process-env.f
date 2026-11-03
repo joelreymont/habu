@@ -202,8 +202,6 @@ public
    au LEN>N bv LEN>N <> if PROC-ENV-FALSE exit then
    a au LEN>N b bv LEN>N STR= ;
 
-\ Reads any envp vector: this file's table and process-command.f's caller-owned
-\ contexts each pass their own base and count.
 : PROC-ENV-VEC-NAME? ( n ptr u8 len ptr ptr u8 -- bool ) {: i:n a:ptr u:len tab:ptr :}
    i cells tab + @ {: z:ptr :}
    a u z z ZLEN >LEN PROC-ENV-SAME-NAME? ;

@@ -11,6 +11,7 @@ require src/lib/fs.f
 require src/lib/fd.f
 require src/lib/byte-buffer.f
 require src/lib/vector.f
+require src/lib/map.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -68,7 +69,8 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 : PLACED ( ptr n -- ptr n ) 35 cells + ;       \ FD+'s child/parent pairs, back to back
 : UNSET-BUF ( ptr n -- ptr n ) 38 cells + ;    \ UNSETENV's NUL-terminated names, back to back
 : UNSET-OFF ( ptr n -- ptr n ) 41 cells + ;    \ each unset name's offset in UNSET-BUF
-44 constant HEAD-CELLS
+: ENV-NAMES ( ptr n -- ptr n ) 44 cells + ;    \ a MAP indexing envp rows by name during PREPARE
+47 constant HEAD-CELLS
 
 PROC-PATHZ-CAP constant PATHZ-CAP
 HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
@@ -130,6 +132,7 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h IN-BUF BYTES-START BUF:N>BLEN BUF:INIT
    h ARGV-VEC ITEMS-START N>ITEM VEC:INIT
    h ENVP-VEC ITEMS-START N>ITEM VEC:INIT
+   h ENV-NAMES ITEMS-START N>ITEM VEC:INIT
    h ARG-OFF ITEMS-START N>ITEM VEC:INIT
    h ENV-OFF ITEMS-START N>ITEM VEC:INIT
    h PLACED ITEMS-START N>ITEM VEC:INIT
@@ -151,6 +154,7 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h IN-BUF BUF:DISPOSE
    h ARGV-VEC VEC:DISPOSE
    h ENVP-VEC VEC:DISPOSE
+   h ENV-NAMES VEC:DISPOSE
    h ARG-OFF VEC:DISPOSE
    h ENV-OFF VEC:DISPOSE
    h PLACED VEC:DISPOSE
@@ -294,8 +298,21 @@ private
    h ARG-BUF BUF-BASE off + h ARGV-VEC VEC:PUSH drop
    h ;
 
+: NAMES ( ptr n -- ptr n count ) ENV-NAMES VEC:DATA@ dup MAP:CAP@ ;
+
+: ROW-NAME ( ptr u8 -- ptr u8 len ) {: z:ptr :}
+   z z z ZLEN >LEN PROC-ENV-NAME-LEN ;
+
+: NAMED-PUSH ( ptr n ptr u8 -- ) {: h:ptr z:ptr :}
+   h ENVP-VEC VEC:LEN@ ITEM>N h NAMES z ROW-NAME MAP:SET
+   z h ENVP-VEC VEC:PUSH drop ;
+
 : ENV-ADDR+ ( ptr n NUM:index n -- ptr n ) {: off:n :} drop {: h:ptr :}
-   h ENV-BUF BUF-BASE off + h ENVP-VEC VEC:PUSH drop
+   h ENV-BUF BUF-BASE off + {: z:ptr :}
+   h NAMES z ROW-NAME MAP:GET MATCH option
+      none OF h z NAMED-PUSH ENDOF
+      some OF z swap h ENVP-VEC swap VEC:N>INDEX VEC:! ENDOF
+   ;MATCH
    h ;
 
 
@@ -312,18 +329,13 @@ private
    repeat drop PROC-ENV-FALSE ;
 
 
-\ Inheritance appends ADDRESSES, never copies: a default row is read where
-\ PROC-ENV-DEFAULT+ wrote it, in the process-wide read-only policy table, and a
-\ parent row is read in the parent's own environment. A row whose name is already
-\ present or unset is skipped; the vector is re-read for each check because PUSH
-\ may move it. Caller rows are pushed before inheritance and never checked against
-\ the unset names, so an explicit row beats UNSETENV.
+\ Pushes the row's address, never a copy: a default is read where
+\ PROC-ENV-DEFAULT+ wrote it and a parent row in this process's environment.
 : INHERIT-Z ( ptr n ptr u8 -- )
    {: h:ptr z:ptr :}
-   z z ZLEN >LEN h ENVP-VEC VEC:DATA@ h ENVP-VEC VEC:LEN@ ITEM>N PROC-ENV-VEC-HAS-NAME?
-   if exit then
+   h NAMES z ROW-NAME MAP:HAS? if exit then
    h z UNSET? if exit then
-   z h ENVP-VEC VEC:PUSH drop ;
+   h z NAMED-PUSH ;
 
 
 : INHERIT-DEFAULTS ( ptr n -- ) {: h:ptr :}
@@ -338,8 +350,21 @@ private
       1 +
    repeat drop ;
 
-\ argv: the path, each argument, the NULL. envp: the caller's rows, then the
-\ inherited ones, the NULL. Both are rebuilt for every run.
+: ENV-ROWS ( ptr n -- n ) {: h:ptr :}
+   h ENV-OFF VEC:LEN@ ITEM>N
+   h INHERIT @ 0= if exit then
+   PROC-ENV-DEF-N @ COUNT>N +
+   0 begin dup ENVP 0= 0= while 1 + repeat + ;
+
+\ Twice the rows keeps the table at most half full. Keys point at the rows
+\ themselves; ENV-BUF does not grow in PREPARE and inherited rows never move.
+: NAMES-INIT ( ptr n -- ) {: h:ptr :}
+   h ENV-ROWS 2 * 1 max >COUNT {: cap :}
+   h ENV-NAMES cap MAP:CELL-COUNT COUNT>N N>ITEM VEC:ENSURE
+   h ENV-NAMES VEC:DATA@ cap MAP:INIT ;
+
+\ argv: the path, each argument, the NULL. envp: the caller's rows, one per name
+\ with its last value, then the inherited ones, the NULL; both rebuilt every run.
 : PREPARE ( ptr n ptr u8 n -- )
    {: h:ptr path:ptr pathu:n :}
    path pathu >LEN h PATHZ PATHZ-CAP >LEN PROC-ZCOPY {: z:ptr :}
@@ -347,6 +372,7 @@ private
    z h ARGV-VEC VEC:PUSH drop
    h h ARG-OFF [: ARG-ADDR+ ;] VEC:EACH drop
    NULL-PTR h ARGV-VEC VEC:PUSH drop
+   h NAMES-INIT
    h ENVP-VEC VEC:CLEAR
    h h ENV-OFF [: ENV-ADDR+ ;] VEC:EACH drop
    h INHERIT @ 0<> if h INHERIT-DEFAULTS h INHERIT-PARENT then
