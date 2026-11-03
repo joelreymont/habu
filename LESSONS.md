@@ -460,6 +460,27 @@ entry.
   experiments kept on 2026-10-30, he chose "Fix in tier 1 now (Recommended)":
   a tier-1 defect on a path tier 1 still owns is fixed there, not parked until
   T0 takes the path over.
+- 2026-11-03, T0's callback request and shadow cell (t0copy design rev 4):
+  asked one item at a time, Joel named the word with which T0 reads a callback
+  request's slot and thunk `NDEFINITION:CALLBACK-REQUEST@ ( -- n n )`, and
+  chose "CALLBACK-ENTRY! (Recommended)" for the word that stores the placed
+  stub's entry ( n -- ). Shown that CALLBACK-STUB@ would end the request and
+  answer 0 when no stub was placed, with FFI-CB's EMIT refusing 0 with
+  E-NCOMP-STATE, he answered "we don't have native compilation. do we? why are
+  you carrying NCOMP over? rename it to COMP or similar". Told that T0
+  compiles natively, that NCOMP is tier 1's old package name, and that
+  E-NCOMP-STATE heads 8 global E-NCOMP- codes with 78 uses in 28 files, mostly
+  front-end codes that outlive tier 1, he chose "E-NCOMP- family → E-COMP-
+  (Recommended)": the 8 codes keep their numbers and every use takes the new
+  name; NCOMP-DISPATCH and NDEFINITION keep theirs. He then chose "Approve new
+  contract (Recommended)" for CALLBACK-STUB@, refusing with E-COMP-STATE. Asked
+  to name T0's cell for recording a fixed body's target copy, he wrote "what is
+  a fixed cell? do you nave non-fixed cells? COMP-SHADOW-CELL sounds good to
+  me but i have questions about fixed"; told that fixed names the body (a
+  constant's, variable's, create's, defer's or CAST:'s, stamped from a
+  pattern) and that T0 records a colon body's copy inside its own compile, so
+  this is T0's only shadow cell, he chose "COMP-SHADOW-CELL (Recommended)":
+  `NCOMP-DISPATCH:COMP-SHADOW-CELL`.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
