@@ -119,12 +119,14 @@ create BODY 4096 allot
    SB-RESET name nameu SB-APPEND suffix suffixu SB-APPEND
    SB$ PROJECT-PATH ;
 
+\ A child has no deadline: its cold image build takes as long as the host's
+\ load makes it, and a hung row is named by its WAIT line (docs/gate.md).
 : SERVER-RUN ( ptr u8 n ptr u8 n CMD:command -- CMD:command )
    >r {: entry:ptr entryu:n name:ptr nameu:n :} r>
    entry entryu STAGE
    CONVERSATION
    WIRE WIRE-U @ CMD:IN!
-   ENGINE-CANDIDATE:PATH$ 30000 >MS CMD:RUN-RC RC>N {: rc:n :}
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-RC RC>N {: rc:n :}
    CMD:OUT$ {: out:ptr outu:n :}
    CMD:ERR$ {: err:ptr erru:n :}
    name nameu s" .in" STREAM-PATH WIRE WIRE-U @ FS:WRITE-ALL
@@ -146,7 +148,7 @@ create BODY 4096 allot
    s" --" CMD:ARG+
    SUBJECT SUBJECT-U @ CMD:ARG+
    s\" \nrequire dep.f\n: A ( -- n ) DEP ;\n" CMD:IN!
-   ENGINE-CANDIDATE:PATH$ 30000 >MS CMD:RUN-RC RC>N {: rc:n :}
+   ENGINE-CANDIDATE:PATH$ PROCESS:WAIT-FOREVER CMD:RUN-RC RC>N {: rc:n :}
    rc 0 <> if CMD:ERR$ type cr then rc 0 T=
    CMD:OUT$ s" check-verify: verified" CONTAINS? TTRUE ;
 
