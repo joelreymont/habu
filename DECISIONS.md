@@ -12,7 +12,10 @@ learned live in the docs for their subject.
   chunks each task reuses, large ones still mapped, Joel chose "Approve
   (Recommended)": "Pooled scopes; MEM:RELEASE-SCOPES frees a task's chunks at
   join or kill." `MEM:RELEASE-SCOPES ( ptr u8 -- )` takes a task's data
-  region.
+  region. Asked whether the task's scope cell MEM-ABI:HEAD-OFF may point at
+  the task's first reused chunk instead of the innermost scope, with the same
+  name and place, Joel chose "Approve (Recommended)": "Keep the name
+  HEAD-OFF; the cell now points at the first chunk."
 - 2026-11-03, TASK's waits (asked from Tender): "what do you need STOP-FOR?
   what does it do? if it stops for some milliseconds then should it not be
   WAIT-MS, for example?"; then "i think anything that takes a semaphore should
