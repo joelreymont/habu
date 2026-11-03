@@ -801,6 +801,94 @@ multi-cell type rationale is `docs/design.md` "Types".
   layout, arrays and maps for collections, `case/of/endof/endcase` for dispatch
   and checked execution vectors for late binding.
 
+#### State machines
+
+`FSM:DEFINE` (`src/lib/fsm.f`) reads a state table and writes it as checked
+words under `evaluate-closed`:
+
+```text
+DEFINE <NAME> ( <ctx> ) <states> <inputs>
+   IN <state> <SENSE>
+      <input> <ACTION> <NEXT>
+      …
+   FINAL <state> <ACTION>
+;DEFINE
+```
+
+`<ctx>` is the type of the machine's one-cell context, copied into every
+generated effect; `<states>` and `<inputs>` are compact `ENUM`s, `<states>` of
+the open package. `IN` opens a state's row: SENSE is `( <ctx> -- <inputs> )`,
+and each line names an input, an ACTION `( <ctx> -- )` or `-` for none, and a
+NEXT: `>state`, any token starting with `>`, for a fixed next state, else a
+word `( <ctx> -- <states> )` that picks one. `FINAL <state> <ACTION>` ends a
+run in that state. For each `IN` row and then the machine DEFINE writes:
+
+```forth
+: <NAME>/<state> ( <ctx> -- <states> )
+   dup <SENSE> MATCH <inputs>
+      <input> OF dup <ACTION> drop construct <states> <next> ENDOF   \ or <NEXT>
+      …
+   ;MATCH ;
+: <NAME> ( <ctx> <states> -- )
+   begin MATCH <states>
+      <state> OF dup <NAME>/<state> false ENDOF               \ an IN row
+      <final> OF dup <ACTION> construct <states> <final> true ENDOF
+   ;MATCH until 2drop ;
+```
+
+An ACTION of `-` writes no `dup <ACTION>`, and a NEXT word replaces `drop
+construct <states> <next>`. The words land in the package and section DEFINE
+is called in, so `<NAME>/<state>`
+shares `<NAME>`'s visibility. The machine keeps no state of its own; a throw
+from a SENSE, ACTION or NEXT leaves `<NAME>` as thrown. Neither `MATCH` has a
+default arm, so the checker fails the load, 70 under `evaluate-closed`, for a
+row missing an input, an unknown `>state`, a state with neither an `IN` nor a
+`FINAL` row, and a word with the wrong effect. Each row word and the run word
+is one definition, so a row's inputs and the machine's states are bounded by
+the engine's definition body-text ceiling ([Engine limits ordinary source
+reaches](#engine-limits-ordinary-source-reaches)); past it the load fails with
+`hb: definition body text full`. The table's own grammar is
+`FSM:E-SYNTAX`: the source ending before `;DEFINE`, a header not `( … )`, a
+line before the first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or
+`;DEFINE`, a token after a `FINAL` row's ACTION other than those three, and
+a `\` or `(` in a row. DEFINE reads the table with `parse-name`, so neither
+opens a comment there (a `STRUCTURE` or `ENUM` body rejects `\` too); comments
+go above the table. `tools/check.f` skips the table (`parses-through:
+FSM:DEFINE 0 ( ;DEFINE )`) and checks the code after it; the generated words
+are left to the run, so their uses are `W-CHECK-DEFERRED` under
+`--verify-only`.
+
+GETAFIX reads a fixed-point number from a key line, keeping digits, the first
+point and a leading minus (`src/lib/fsm-test.f`):
+
+```forth
+using FSM
+ENUM entry start whole fraction ended ;ENUM
+ENUM key other digit minus point enter ;ENUM
+DEFINE GETAFIX ( ptr line ) entry key
+   IN start     READ-KEY
+      other   DROP-KEY  >start
+      digit   ECHO      >whole
+      minus   ECHO      >whole
+      point   ECHO      >fraction
+      enter   -         >ended
+   IN whole     READ-KEY
+      other   DROP-KEY  >whole
+      digit   ECHO      >whole
+      minus   DROP-KEY  >whole
+      point   ECHO      >fraction
+      enter   -         >ended
+   IN fraction  READ-KEY
+      other   DROP-KEY  >fraction
+      digit   ECHO      >fraction
+      minus   DROP-KEY  >fraction
+      point   DROP-KEY  >fraction
+      enter   -         >ended
+   FINAL ended  -
+;DEFINE
+;using
+```
+
 ## Words & factoring
 
 Write checked, typed words with current `( in -- out )` effects. Keep related

@@ -1,0 +1,326 @@
+require src/lib/test.f
+require src/lib/fsm.f
+require src/lib/fmt.f
+require src/core/bytes.f
+
+package FSM-TEST
+public
+
+\ GETAFIX's context: the key text, the next byte to read in it and the output.
+STRUCTURE line DERIVE addr
+   FIELD text ptr u8
+   FIELD len n
+   FIELD pos n
+   FIELD out ptr u8
+   FIELD used n
+;STRUCTURE
+
+private
+
+TYPED-VARIABLE LINE-REC line
+16 BUFFER: OUT-BUF
+
+: TEXT@ ( ptr line -- ptr u8 ) FSM--TEST-LINE:TEXT @ ;
+: LEN@ ( ptr line -- n ) FSM--TEST-LINE:LEN @ ;
+: POS@ ( ptr line -- n ) FSM--TEST-LINE:POS @ ;
+: POS! ( n ptr line -- ) FSM--TEST-LINE:POS ! ;
+: OUT@ ( ptr line -- ptr u8 ) FSM--TEST-LINE:OUT @ ;
+: USED@ ( ptr line -- n ) FSM--TEST-LINE:USED @ ;
+: USED! ( n ptr line -- ) FSM--TEST-LINE:USED ! ;
+
+using FSM
+ENUM entry start whole fraction ended ;ENUM
+ENUM key other digit minus point enter ;ENUM
+
+: CLASS ( n -- key )
+   {: b:n :}
+   b [char] 0 >= b [char] 9 <= and if construct key digit exit then
+   b [char] - = if construct key minus exit then
+   b [char] . = if construct key point exit then
+   construct key other ;
+
+
+: READ-KEY ( ptr line -- key )
+   {: l :}
+   l POS@ l LEN@ >= if construct key enter exit then
+   l TEXT@ l POS@ + c@ CLASS ;
+
+: DROP-KEY ( ptr line -- ) dup POS@ 1+ swap POS! ;
+
+
+: ECHO ( ptr line -- )
+   {: l :}
+   l TEXT@ l POS@ + c@ l OUT@ l USED@ + c!
+   l USED@ 1+ l USED!
+   l DROP-KEY ;
+
+DEFINE GETAFIX ( ptr line ) entry key
+   IN start     READ-KEY
+      other   DROP-KEY  >start
+      digit   ECHO      >whole
+      minus   ECHO      >whole
+      point   ECHO      >fraction
+      enter   -         >ended
+   IN whole     READ-KEY
+      other   DROP-KEY  >whole
+      digit   ECHO      >whole
+      minus   DROP-KEY  >whole
+      point   ECHO      >fraction
+      enter   -         >ended
+   IN fraction  READ-KEY
+      other   DROP-KEY  >fraction
+      digit   ECHO      >fraction
+      minus   DROP-KEY  >fraction
+      point   DROP-KEY  >fraction
+      enter   -         >ended
+   FINAL ended  -
+;DEFINE
+;using
+
+
+: GETAFIX$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   LINE-REC {: l :}
+   a l FSM--TEST-LINE:TEXT !
+   u l FSM--TEST-LINE:LEN !
+   0 l POS!
+   OUT-BUF l FSM--TEST-LINE:OUT !
+   0 l USED!
+   l construct entry start GETAFIX
+   OUT-BUF l USED@ ;
+
+
+: ENTRIES ( -- )
+   s" 12.5" GETAFIX$ s" 12.5" T$=
+   s" -3.25" GETAFIX$ s" -3.25" T$=
+   s" 1-2" GETAFIX$ s" 12" T$=
+   s" a1.2.3" GETAFIX$ s" 1.23" T$=
+   s" " GETAFIX$ s" " T$=
+   s" x" GETAFIX$ s" " T$= ;
+
+\ A NEXT word: TALLY-NEXT keeps counting until the cell reaches LIMIT.
+using FSM
+ENUM tally counting counted ;ENUM
+ENUM pulse tick ;ENUM
+TYPED-VARIABLE COUNT-CELL n
+5 constant LIMIT
+
+: PULSE ( ptr n -- pulse ) drop construct pulse tick ;
+: BUMP ( ptr n -- ) 1 swap +! ;
+
+
+: TALLY-NEXT ( ptr n -- tally )
+   @ LIMIT < if construct tally counting else construct tally counted then ;
+
+DEFINE COUNT-UP ( ptr n ) tally pulse
+   IN counting  PULSE
+      tick  BUMP  TALLY-NEXT
+   FINAL counted  -
+;DEFINE
+;using
+
+: COUNTS ( -- )
+   0 COUNT-CELL !
+   COUNT-CELL construct tally counting COUNT-UP
+   COUNT-CELL @ LIMIT T= ;
+
+\ FINAL actions: each final adds its own mark to the cell, the row's action
+\ 1000; an odd cell pushes right.
+using FSM
+ENUM door opening opened shut ;ENUM
+ENUM push left right ;ENUM
+TYPED-VARIABLE DOOR-CELL n
+
+: PUSH-SIDE ( ptr n -- push )
+   @ 1 and 0= if construct push left else construct push right then ;
+
+: NOTE ( ptr n -- ) 1000 swap +! ;
+: MARK-OPENED ( ptr n -- ) 10 swap +! ;
+: MARK-SHUT ( ptr n -- ) 100 swap +! ;
+
+DEFINE SWING ( ptr n ) door push
+   IN opening  PUSH-SIDE
+      left   NOTE  >opened
+      right  NOTE  >shut
+   FINAL opened  MARK-OPENED
+   FINAL shut    MARK-SHUT
+;DEFINE
+;using
+
+: SWUNG ( n door -- n )
+   swap DOOR-CELL !
+   DOOR-CELL swap SWING
+   DOOR-CELL @ ;
+
+
+: FINALS ( -- )
+   0 construct door opening SWUNG 1010 T=
+   1 construct door opening SWUNG 1101 T=
+   0 construct door shut SWUNG 100 T=
+   0 construct door opened SWUNG 10 T= ;
+
+\ A throw: TURN-COUNT throws THIRD-CODE on its third call.
+using FSM
+ENUM spin turning stopped ;ENUM
+ENUM turn step ;ENUM
+TYPED-VARIABLE SPIN-CELL n
+42 constant THIRD-CODE
+
+: TURN ( ptr n -- turn ) drop construct turn step ;
+
+
+: TURN-COUNT ( ptr n -- )
+   {: c:ptr :}
+   1 c +!
+   c @ 3 = if THIRD-CODE throw then ;
+
+DEFINE SPIN ( ptr n ) spin turn
+   IN turning  TURN
+      step   TURN-COUNT  >turning
+   FINAL stopped  -
+;DEFINE
+;using
+
+: SPIN-RUN ( -- ) SPIN-CELL construct spin turning SPIN ;
+
+
+: THROWS ( -- )
+   0 SPIN-CELL !
+   [: SPIN-RUN ;] THIRD-CODE TTHROWSQ
+   SPIN-CELL @ 3 T= ;
+
+\ SRC builds texts for TEST-EVAL.
+DYNAMIC-BUFFER SRC u8
+variable SRC-LEN
+
+: SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= if exit then
+   SRC-LEN @ u + SRC-RESERVE
+   a SRC-LEN @ SRC u BYTE-COPY
+   SRC-LEN @ u + SRC-LEN ! ;
+
+: N+ ( n -- ) FMT:INT$ SRC+ ;
+: SRC$ ( -- ptr u8 n ) 0 SRC SRC-LEN @ ;
+
+
+\ A machine that runs after a rejected table, in package FSM-OK-<n>: the
+\ next DEFINE starts from an empty buffer, so it answers 2.
+: VALID ( n -- n )
+   {: k:n :}
+   0 SRC-LEN !
+   s" package FSM-OK-" SRC+ k N+
+   s"  TYPED-VARIABLE C n ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM" SRC+
+   s"  : S ( ptr n -- sig ) drop construct sig go ; : BUMP ( ptr n -- ) 1 swap +! ;" SRC+
+   s"  using FSM DEFINE M ( ptr n ) ph sig IN idle S go BUMP >busy halt - >idle" SRC+
+   s"  FINAL busy BUMP ;DEFINE ;using" SRC+
+   s"  public : GO ( -- n ) 0 C ! C construct ph idle M C @ ; ;package FSM-OK-" SRC+
+   k N+ s" :GO" SRC+
+   SRC$ TEST-EVAL:N ;
+
+
+\ Each text opens its own package, so a failed one leaves nothing a later one
+\ meets.
+: SYNTAX ( -- )
+   s" package FSM-SYN-END ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-CTX ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM using FSM DEFINE M ( n"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-HEAD ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M n ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-FIRST ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig go - >busy IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-IN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - IN busy S go - >idle halt - >idle ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-FINAL ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-CLOSE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-AFTER ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - go - >idle ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-SLASH ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle \ old line FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   s" package FSM-SYN-PAREN ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go ( >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC FSM:E-SYNTAX T=
+   5 VALID 2 T= ;
+
+
+\ The corrected twin loads; the checker rejects each faulty table at load, 70.
+: REJECTED ( -- )
+   s" package FSM-GOOD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC 0 T=
+   s" package FSM-BAD-INPUT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   1 VALID 2 T=
+   s" package FSM-BAD-NEXT ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >gone halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   2 VALID 2 T=
+   s" package FSM-BAD-STATE ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; using FSM DEFINE M ( n ) ph sig IN idle S go - >busy halt - >idle ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   3 VALID 2 T=
+   s" package FSM-BAD-ACTION ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : KEEP ( n -- n ) ; using FSM DEFINE M ( n ) ph sig IN idle S go KEEP >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   4 VALID 2 T= ;
+
+\ The size table: STATES states of INPUTS inputs each, every arm calling the
+\ one action, whose long name keeps a row word under the engine's body-text
+\ ceiling while the table passes 1 MiB. Each table line becomes a longer arm, so
+\ the table's length bounds the generated text from below.
+200 constant STATES
+44 constant INPUTS
+$100000 constant MIB
+
+: LONG$ ( -- ptr u8 n )
+   s" COUNT-ONE-TURN-OF-THE-LARGE-TABLE-WHOSE-ACTION-NAME-IS-LONG-SO-THAT-ITS-TEXT-PASSES-ONE-MEBIBYTE-UNDER-THE-BODY-CAP" ;
+
+
+: BIG-HEAD ( -- )
+   0 SRC-LEN !
+   s" package FSM-BIG ENUM big-state" SRC+
+   STATES 0 ?do s"  s" SRC+ i N+ loop
+   s"  ;ENUM ENUM big-input" SRC+
+   INPUTS 0 ?do s"  i" SRC+ i N+ loop
+   s"  ;ENUM TYPED-VARIABLE BIG-CELL n" SRC+
+   s"  : BIG-SENSE ( ptr n -- big-input ) drop construct big-input i0 ;" SRC+
+   s"  : " SRC+ LONG$ SRC+ s"  ( ptr n -- ) 1 swap +! ;" SRC+
+   s"  using FSM DEFINE BIG ( ptr n ) big-state big-input" SRC+ ;
+
+
+\ State k moves to state k+1 on every input; the last state is final.
+: BIG-ROW ( n -- )
+   {: k:n :}
+   s"  IN s" SRC+ k N+ s"  BIG-SENSE" SRC+
+   INPUTS 0 ?do
+      s"  i" SRC+ i N+ s"  " SRC+ LONG$ SRC+ s"  >s" SRC+ k 1+ N+
+   loop ;
+
+
+: BIG$ ( -- ptr u8 n )
+   BIG-HEAD
+   STATES 1- 0 ?do i BIG-ROW loop
+   s"  FINAL s" SRC+ STATES 1- N+ s"  -" SRC+
+   s"  ;DEFINE ;using public : GO ( -- n ) 0 BIG-CELL ! BIG-CELL construct big-state s0 BIG BIG-CELL @ ; ;package FSM-BIG:GO" SRC+
+   SRC$ ;
+
+
+: SIZE ( -- )
+   BIG$ TEST-EVAL:N STATES 1- T=
+   SRC-LEN @ MIB > TTRUE ;
+
+public
+
+\ The texts open packages of their own, so RUN runs outside FSM-TEST.
+: RUN ( -- )
+   T-RESET
+   ENTRIES
+   COUNTS
+   FINALS
+   THROWS
+   SYNTAX
+   REJECTED
+   SIZE
+   SRC-RELEASE
+   T-REPORT ;
+
+;package
+
+FSM-TEST:RUN

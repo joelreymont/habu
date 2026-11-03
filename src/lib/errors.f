@@ -1230,6 +1230,8 @@
 \ owns package POWER.
 \ Code signing: -9650..-9659, minted in src/lib/codesign.f, which owns package
 \ CODESIGN.
+\ State machines: -9660..-9669, minted in src/lib/fsm.f, which owns package
+\ FSM.
 \ Model chat and embedding client: -9700..-9799, minted in src/lib/net/model.f,
 \ which owns package MODEL.
 

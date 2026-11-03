@@ -579,7 +579,7 @@ forth.md: **Testing**, **Verification before committing**.
 | Naming | a collision, reserved names |
 | Packages | reopening, include vs require |
 | Importing … with `using` | ambiguity, scope end, the limit |
-| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:` |
+| Structures And Enums | `NEWTYPE`/`SUMTYPE`/`PRODUCT`/`ENUM`, `construct`, `MATCH`, `CAST:`, `LINEAR:`, `FSM:DEFINE` |
 | Words & factoring | word size, argument limits, splits |
 | Files | one concern per file, script argv |
 | Stack comments | the token list, real types |

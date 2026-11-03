@@ -1268,6 +1268,11 @@ SUITE fmt-numbers
    src/lib/fmt-test.f
 ;SUITE
 
+\ State machines DEFINE writes from a table, their checker rejections and size.
+SUITE fsm
+   src/lib/fsm-test.f
+;SUITE
+
 SUITE log
    src/lib/log-test.f
 ;SUITE
