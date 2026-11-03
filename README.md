@@ -91,6 +91,7 @@ documents native scoped-root loading against Habu's shared libraries.
 - [`docs/bootstrap.md`](docs/bootstrap.md) — bootstrap and self-hosting.
 - [`docs/debugging.md`](docs/debugging.md) — debugger and inspection tools.
 - [`docs/gate.md`](docs/gate.md) — the native test suite and what it demands of a test file.
+- [`docs/swiftforth.md`](docs/swiftforth.md) — SwiftForth's reference manual, restated for comparison.
 
 Each library module's header states its contract and storage class.
 
