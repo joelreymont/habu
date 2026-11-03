@@ -6,6 +6,16 @@ learned live in the docs for their subject.
 
 ## Language and checker
 
+- 2026-11-03, names that read as numbers: asked where the refusal of a
+  definition named like a number goes, Joel answered "what's the problem? use
+  human english. : 42 is invalid, why are we deliberating?": `: 42` is
+  invalid for every definer, refused where the engine already refuses `: I`.
+- 2026-11-03, the property test: asked to remove PROP-CORE:RC!, a cell that
+  carried a compile's result code out of a text that turned the checker off,
+  Joel chose "Remove it (Recommended)". He then wrote "the file should be
+  prop-test.f and there should be a single PROP-TEST package, prove me
+  wrong!" and asked "why the hell do you need hooks for prop testing?": the
+  test becomes test/prop-test.f with one package PROP-TEST and no hook.
 - 2026-11-03, generated family words: a public `STRUCTURE` declared in a
   package part failed to load, because a public family's generated words lived
   in a namespace built from the package's name (`PA:PB-ZQVW:MAKE`). Joel said
