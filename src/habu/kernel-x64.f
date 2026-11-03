@@ -4693,14 +4693,29 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    at X64CODE:LBL,
    a u ENGINE-ERROR:CALLBACK STDERR-EXIT, ;
 
+\ The twin of crash.f C-SIGNAL-STACK-ABSENT>R12: rax is nonzero when this
+\ thread has no alternate stack registered, as sigaltstack(NULL, old) answers
+\ SS_DISABLE in old's int flags. A query cannot be refused: its one error is
+\ an unwritable buffer, and the buffer is this frame. It clobbers rax rcx rdi
+\ rsi r11.
+: SIGNAL-STACK-ABSENT, ( -- )
+   RSP X64BOOT:SS-BYTES >IMM8 ASM-SINK ENC-SUB-RI8
+   RDI ZERO-REG,  RSI RSP ASM-SINK ENC-MOV-RR  NR-SIGALTSTACK SYS,
+   RAX R64>N >R32 RSP X64BOOT:SS-FLAGS MEM-OFF ASM-SINK ENC-MOV32-RM
+   RAX X64BOOT:SS-DISABLE >IMM8 ASM-SINK ENC-AND-RI8
+   RSP X64BOOT:SS-BYTES >IMM8 ASM-SINK ENC-ADD-RI8 ;
+
+\ The alternate signal stack is handled as at habu1.f BCALLBACK-THUNK: carved
+\ by X64BOOT:SIGNAL-STACK, and recorded in a 16-byte cell at the call's rsp.
 : CB-THUNK, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: row-read:label row-wait:label row-held:label owner-held:label
       owner-kept:label row-kept:label no-table:label row-busy:label
       unbound:label owner-busy:label no-frame:label no-xt:label
-      defined:label done:label row-claimed:label :}
+      defined:label done:label row-claimed:label signal-had:label
+      signal-kept:label :}
    SAVE-VM,
    RSP CBT-BYTES >IMM32 ASM-SINK ENC-SUB-RI32
    RDI RSP CBT-INTEGER MEM-OFF ASM-SINK ENC-MOV-MR
@@ -4718,7 +4733,7 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    R11 R11 CB-ROWS MEM-OFF ASM-SINK ENC-MOV-RM
    R11 R11 ASM-SINK ENC-TEST-RR  C-E no-table JCC,
    R10 RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
-   R10 4 >IMM8 ASM-SINK ENC-SHL-RI8
+   R10 R10 CB-ROW-BYTES >IMM8 ASM-SINK ENC-IMUL-RRI8
    R11 R10 ASM-SINK ENC-ADD-RR
    R11 RSP CBT-ROW MEM-OFF ASM-SINK ENC-MOV-MR
    R8 R11 CB-ROW-OWNER MEM-OFF ASM-SINK ENC-LEA
@@ -4755,7 +4770,8 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    R8 R8 CB-XTS MEM-OFF ASM-SINK ENC-MOV-RM
    R8 R8 ASM-SINK ENC-TEST-RR  C-E no-xt JCC,
    R10 RSP CBT-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
-   R8 R8 R10 CELL 0 MEM-IDX ASM-SINK ENC-MOV-RM
+   R10 R10 5 CELL * >IMM8 ASM-SINK ENC-IMUL-RRI8     \ five cells per descriptor
+   R8 R8 R10 1 0 MEM-IDX ASM-SINK ENC-MOV-RM
    R8 R8 ASM-SINK ENC-TEST-RR  C-E no-xt JCC,
    R10 R11 CB-FRAME MEM-OFF ASM-SINK ENC-MOV-RM
    R10 RSP CBT-OUTER MEM-OFF ASM-SINK ENC-MOV-MR
@@ -4766,7 +4782,21 @@ $C8 constant CBT-BYTES              \ entry rsp becomes 16-byte aligned
    NDICT-REG R11 CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
    CP-REG R11 CB-CP MEM-OFF ASM-SINK ENC-MOV-RM
    INTERP-REG ZERO-REG,
+   RAX ZERO-REG,
+   R10 RSP CBT-OWNER-CLAIM MEM-OFF ASM-SINK ENC-MOV-RM
+   R10 R10 ASM-SINK ENC-TEST-RR  C-E signal-had JCC,
+   SIGNAL-STACK-ABSENT,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E signal-had JCC,
+   X64BOOT:SIGNAL-STACK,
+   RAX 1 IMM32,
+   signal-had X64CODE:LBL,
+   RSP 16 >IMM8 ASM-SINK ENC-SUB-RI8  RAX RSP MEM-AT ASM-SINK ENC-MOV-MR
    R8 ASM-SINK ENC-CALL-REG
+   RAX RSP MEM-AT ASM-SINK ENC-MOV-RM  RSP 16 >IMM8 ASM-SINK ENC-ADD-RI8
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E signal-kept JCC,
+   X64BOOT:SIGNAL-STACK-OFF,
+   RSP STACK-ABI:SIGNAL-BYTES >IMM32 ASM-SINK ENC-ADD-RI32      \ the band back
+   signal-kept X64CODE:LBL,
    R11 RSP CBT-REGION MEM-OFF ASM-SINK ENC-MOV-RM
    R10 R11 CB-NDICT MEM-OFF ASM-SINK ENC-MOV-RM
    R10 NDICT-REG ASM-SINK ENC-CMP-RR  C-NE defined JCC,
