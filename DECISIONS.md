@@ -410,6 +410,12 @@ learned live in the docs for their subject.
   experiments kept on 2026-10-30, he chose "Fix in tier 1 now (Recommended)":
   a tier-1 defect on a path tier 1 still owns is fixed there, not parked until
   T0 takes the path over.
+- 2026-11-03, the callback package: asked what the callback library's
+  package FFI-CB should become, and shown that FFI is built into hb and sealed
+  there, so a library loaded later cannot add words to it, Joel first chose
+  "CALLBACK (Recommended)", then answered "i was wrong. callbacks should live
+  in the FFI package since they are FFI callbacks". The callback words join
+  FFI, so src/lib/ffi-callback.f is built into hb with it.
 - 2026-11-03, T0's callback request and shadow cell (t0copy design rev 4):
   asked one item at a time, Joel named the word with which T0 reads a callback
   request's slot and thunk `NDEFINITION:CALLBACK-REQUEST@ ( -- n n )`, and
