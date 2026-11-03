@@ -501,6 +501,10 @@ entry.
   everywhere if that's best for long term and keep track of habu files too,
   dependencies, etc." A built-in file's recorded hash covers the files it
   required, so a change reaches every file that depends on it, as in make.
+- 2026-11-03, where timings run: told that build timings waited for a quiet
+  machine while this Mac ran at load 26 on 12 cores, Joel wrote "spark is
+  doing nothing". A before-and-after timing runs on an idle host (spark, Linux
+  arm64), both sides on the same machine and engine, not on the shared Mac.
 - 2026-10-27, evidence: "so make it happen in your branch and test it out!"
   and "you should be focusing on this, prove me wrong!" When a decision lacks
   evidence because a capability does not exist yet, build it in a branch and
