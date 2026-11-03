@@ -4,16 +4,6 @@
 \ LINK writes the selected entry's reachable closure into a standalone image,
 \ relocates its code and emits the minimal runtime entry. tools/hb-build.f owns
 \ the output paths; the default application entry is MAIN.
-package AOT-LINK
-private
-: LOAD-X64-WRITER ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" src/habu/image-x64.f" required
-      s" src/habu/boot-x64.f" required
-   then ;
-' LOAD-X64-WRITER
-;package
-execute
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/mnem.f
@@ -28,7 +18,6 @@ private
 : LOAD-SYS ( -- )
    HB-TARGET-LINUX? if s" src/os/linux/sys.f" required exit then
    HB-TARGET-MACOS? if s" src/os/macos/sys.f" required exit then
-   HB-TARGET-LINUX-X86-64? if s" src/os/linux-x86-64/sys.f" required exit then
    s" aot: unsupported target" 76 die ;
 
 ' LOAD-SYS
@@ -63,11 +52,6 @@ private
    HB-TARGET-MACOS? if
       s" src/os/macos/macho.f" required
       s" src/os/macos/sign2.f" required
-      exit
-   then
-   HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/elf.f" required
-      s" src/os/linux-x86-64/sign.f" required
       exit
    then
    s" aot: unsupported target" 76 die ;

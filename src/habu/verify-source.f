@@ -762,18 +762,17 @@ variable RETIRED
 \ such condition: the engine answers HB-TARGET-LINUX?, HB-TARGET-MACOS? and
 \ HB-TARGET-LINUX-X86-64? one way, so the arm its answer runs stays on the
 \ straight line and the other arm never runs (ARM-TOKEN?, DEAD-TOKEN).
-\ tools/native-emit-arm.f LOAD-SYS loads its target's sys.f that way, and the three
-\ targets' files define the same words. A source cannot define a predicate's
-\ spelling (tools/reserved-name-lint-core.f reserves it), so the answer is the
-\ engine's. The path is the literal right before the loader word, the bytes the
-\ engine's literal makes of it (BODY-LIT!); discovery records a body loader
-\ after a path literal the engine's resolver takes, wherever it stands, and
-\ reads past one taking anything else. So the composition loads nothing for a
-\ path the resolver refuses (BODY-LOAD?). An entry keeps a copy of its
-\ path: a decoded one lives only until the next decode, and the release comes
-\ after later bodies, top-level statements and nested files have decoded
-\ theirs. A file's entries sit above its loader's, and their paths go with
-\ them. The entries grow with the loads waiting at once.
+\ tools/native-emit-arm.f LOAD-SYS loads its target's sys.f that way. A source
+\ cannot define a predicate's spelling (tools/reserved-name-lint-core.f reserves
+\ it), so the answer is the engine's. The path is the literal right before the
+\ loader word, the bytes the engine's literal makes of it (BODY-LIT!); discovery
+\ records a body loader after a path literal the engine's resolver takes,
+\ wherever it stands, and reads past one taking anything else. So the
+\ composition loads nothing for a path the resolver refuses (BODY-LOAD?). An
+\ entry keeps a copy of its path: a decoded one lives only until the next
+\ decode, and the release comes after later bodies, top-level statements and
+\ nested files have decoded theirs. A file's entries sit above its loader's, and
+\ their paths go with them. The entries grow with the loads waiting at once.
 \
 \ A quiet composition loads none of these: a word's run is no part of the
 \ check, so the ordinary effect checker judges its runtime loader calls.
