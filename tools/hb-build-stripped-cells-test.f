@@ -36,14 +36,12 @@ package HB-BUILD-CLI
 : HBT-TABLE-SRC$ ( -- ptr u8 n )
    S\" : MAIN ( -- ) s\" x\" TMP-PATH-COPY-SRC ;\n" ;
 
-\ A POINTER INTO MEMORY THE BUILD MAPPED: the program takes a 64 KB buffer at load
-\ time and stores its address in a persistent cell, an address nobody maps when the
-\ image runs. `variable BUF` is the undeclared cell the span scan meets
-\ (src/habu/aot-common.f AOT-DATA-TEXTPTR-CHECK); the top-level store runs with
-\ the checker disabled.
+\ AOT-DATA-TEXTPTR-CHECK refuses a mapped address in the undeclared cell BUF;
+\ ARM stores it as its NULL-PTR distance, a scalar the checker admits there.
 : HBT-MAPC-SRC$ ( -- ptr u8 n )
    SB-RESET
-   S\" require src/lib/memory.f\nvariable BUF\n0 set-check\nMEM-ALLOC-64K drop BUF !\n" SB-APPEND
+   S\" require src/lib/memory.f\nvariable BUF\n" SB-APPEND
+   S\" : ARM ( -- ) MEM-ALLOC-64K drop BYTE-VIEW NULL-PTR BYTE-VIEW - BUF ! ;\nARM\n" SB-APPEND
    S\" : MAIN ( -- ) s\" mapped\" type cr ;\n" SB-APPEND
    SB$ ;
 

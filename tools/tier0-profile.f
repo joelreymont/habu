@@ -2,8 +2,8 @@
 \ (docs/debugging.md "Sampling profiler"). Prints `P <mode> defs <n> ns <n>
 \ ns-per-def <n>`, then the profiler's own report. Measure on a quiet, pinned
 \ machine (`taskset -c 8`): this is wall clock.
-\ Run: bin/hb --load tools/tier0-profile.f -- corpus|corpus-raw <usec> <file.f>...
-\      bin/hb --load tools/tier0-profile.f -- trivial|trivial-raw <usec> <count>
+\ Run: bin/hb --load tools/tier0-profile.f -- corpus <usec> <file.f>...
+\      bin/hb --load tools/tier0-profile.f -- trivial <usec> <count>
 
 \ Nothing loads before the corpus (`set-tier` is an engine word): src/lib/fmt.f
 \ is a corpus entry, and loading it first would hide every word its compile
@@ -90,7 +90,7 @@ variable SRC-N
    0= ;
 
 : USAGE ( -- )
-   s" usage: bin/hb --load tools/tier0-profile.f -- corpus|corpus-raw|trivial|trivial-raw <usec> <arg>..."
+   s" usage: bin/hb --load tools/tier0-profile.f -- corpus|trivial <usec> <arg>..."
    USAGE-RC die ;
 
 : ARG>N ( ptr u8 n -- n ) {: a:ptr u :}
@@ -119,23 +119,7 @@ variable SRC-N
    s"  ns-per-def" EMIT$  defs 0 > if ns defs / else 0 then EMIT-FIELD
    LF EMIT-C ;
 
-\ Whether the mode argument names a `-raw` mode; MAIN refuses a short list.
-: RAW? ( -- bool )
-   script-argc 1 < if 0 0= 0= exit then
-   0 script-argv$ {: mode:ptr mu :}
-   mode mu s" corpus-raw" STR= mode mu s" trivial-raw" STR= or ;
-
 public
-
-\ A `-raw` mode is the checker ablation: `0 set-check` clears the hook, so the
-\ same source takes the same tokenize/lookup/emit/publish path unchecked, and
-\ the difference from its twin is the checker's cost (the profiler lumps the
-\ engine's unregistered text into `other`). A `-raw` mode refuses a corpus
-\ declaring a SUMTYPE, PRODUCT, STRUCTURE or ENUM: their generated constructors
-\ need the checker. `set-check` is a top-level boundary no checked body names;
-\ this is the one trusted step.
-TRUSTED: ABLATE ( -- )
-   RAW? if 0 set-check then ;
 
 : MAIN ( -- )
    script-argc 3 < if USAGE then
@@ -146,7 +130,7 @@ TRUSTED: ABLATE ( -- )
    \ so this precedes the first corpus token (as in tools/tier-census.f).
    0 set-tier
    usec prof-rate
-   mode mu s" corpus" STR= mode mu s" corpus-raw" STR= or if
+   mode mu s" corpus" STR= if
       ndict@ {: first :}
       \ prof-on indexes the dictionary as it stands: every word the workload
       \ defines, and its top-level code, lands in `new`, so the rows are the
@@ -160,7 +144,7 @@ TRUSTED: ABLATE ( -- )
       prof-report
       exit
    then
-   mode mu s" trivial" STR= mode mu s" trivial-raw" STR= or 0= if USAGE then
+   mode mu s" trivial" STR= 0= if USAGE then
    2 script-argv$ ARG>N {: n :}
    0 prof-on
    mono-ns
@@ -172,4 +156,4 @@ TRUSTED: ABLATE ( -- )
 
 ;package
 
-TIER0-PROF:ABLATE TIER0-PROF:MAIN
+TIER0-PROF:MAIN
