@@ -2,8 +2,8 @@
 \ opening, reopening or defining a qualified word into a reserved system package
 \ (TFAM TYPE MATCH LOWER-CERT ENGINE-ERROR) exits ENGINE-ERROR:SEAL-PACKAGE,
 \ case-insensitively, and so do ' and ['] on a reserved qualified name
-\ (C-QUALIFY-SEAL-GUARD). ['] is refused by the checker on its own, so its inert
-\ positive runs under `0 set-check`.
+\ (C-QUALIFY-SEAL-GUARD). The guard fires before the checker, so every case
+\ runs checked; ['] on a non-reserved name stays inert.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -102,7 +102,6 @@ variable SPK-WANT-U
    s"   VARIANT err n ;VARIANT" SPK-LINE
    s" ;SUMTYPE" SPK-LINE
    S\" s\" ctor-ready\" type cr" SPK-LINE
-   s" 0 set-check" SPK-LINE
    s" : SPKW:EVIL ( -- n ) 7 ;" SPK-LINE
    SB$ ;
 
@@ -165,9 +164,8 @@ variable SPK-WANT-U
    s" ' TFAMX:W drop" SPK-LINE
    SB$ ;
 
-: SPK-OK-BTICK-FORGE$ ( -- ptr u8 n )        \ unchecked ['] on a non-reserved name is inert
+: SPK-OK-BTICK-FORGE$ ( -- ptr u8 n )        \ ['] on a non-reserved name is inert
    SB-RESET
-   s" 0 set-check" SPK-LINE
    s" : G ( -- ) ['] dup drop ;" SPK-LINE
    s" G" SPK-LINE
    SB$ ;
@@ -400,7 +398,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL SPK-LOADING
    SPK-OK-TICK-EDGE-FORGE$ SPK-SUBJECT SPK-ASSERT-OK
    s" reserved-prefix-but-longer qualifier ticks fine" T-LABEL
    SPK-OK-TICK-PREFIX-FORGE$ SPK-SUBJECT SPK-ASSERT-OK
-   s" unchecked ['] on a non-reserved name is inert" T-LABEL
+   s" ['] on a non-reserved name is inert" T-LABEL
    SPK-OK-BTICK-FORGE$ SPK-SUBJECT SPK-ASSERT-OK ;
 
 public

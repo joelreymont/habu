@@ -170,7 +170,10 @@ variable CANDIDATE-VERDICT
    s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;" GE-SRC-LINE
    s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
-   s" check@ 0 set-check 9 LONG-DICTIONARY-TRUSTED . . set-check" GE-SRC-LINE ;
+   \ The trusted word leaves two cells under a one-cell row: a top-level second
+   \ `.` reads an unknown cell and is refused, so a TRUSTED: body prints both.
+   s" TRUSTED: LONG-DICTIONARY-SHOW ( -- ) 9 LONG-DICTIONARY-TRUSTED . . ;" GE-SRC-LINE
+   s" LONG-DICTIONARY-SHOW" GE-SRC-LINE ;
 
 : LONG-DICTIONARY ( -- )
    GE-HB-RESET
@@ -377,9 +380,8 @@ variable CANDIDATE-VERDICT
 : LOCAL-QUOT-FAIL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" 0 set-check" GE-SRC-LINE
    s" : QLOCAL {: x:n :} [: x ;] execute ;" GE-SRC-LINE
-   70 s" E-BAD-LOCAL-SHAPE habu: in qlocal: at 'x'" s" hb compiler rejects local capture in quotation diagnostic" GE-EVAL-FORK-BAD ;
+   70 s" E-BAD-LOCAL-SHAPE habu: in qlocal: at 'x'" s" hb checker rejects local capture in quotation diagnostic" GE-EVAL-FORK-BAD ;
 
 : LOCAL-FIRST ( -- )
    GE-HB-RESET

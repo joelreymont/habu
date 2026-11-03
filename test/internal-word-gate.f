@@ -258,10 +258,8 @@ create EMPTY 1 allot            \ zero-length stdin
    RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    ;
 
-\ seed-ndict! is a top-level boundary primitive: a normal-wid record whose only
-\ checker row is trusted-only, as set-check's is. Top-level text and TRUSTED:
-\ bodies call it (the build rewinds do), the engine refuses its tick, a checked
-\ body naming it is E-CAP-TRUSTED, and search-wl finds its record.
+\ seed-ndict! is a boundary primitive the build rewinds call from top-level text
+\ and TRUSTED: bodies, so its record and trusted-only row must stay usable there.
 : SEED-RESET-CASES ( -- )
    s" top-level seed-ndict! refuses an equal dictionary count" T-LABEL
    s" ndict@ seed-ndict!" TOKEN$ RUN-SUBJECT
@@ -558,18 +556,16 @@ create EMPTY 1 allot            \ zero-length stdin
    DEFER-QUOT-FORGE$ RUN-SUBJECT
    s" at 'deflinear'" ASSERT-DIAG ;
 
-\ --- laundered execute. Executing an xt fetched from an untyped variable is
-\ rejected at check time as E-EXEC-OPAQUE-XT, so a definer mint or protected-
-\ registry write laundered through `variable V  ' W V !  : F V @ execute ;`
-\ cannot certify: each child rejects rc 70 with the named diagnostic before the
-\ body runs. The top-level store runs with the checker suspended, so the refusal
-\ each child meets is the execute's. ----
+\ --- laundered execute: a checked `execute` or `catch` of an xt read from an
+\ untyped variable is E-EXEC-OPAQUE-XT. IWG-LSET is TRUSTED: as a top-level store
+\ is E-RAW-CELL-PTR and a TRUSTED: body's `[']` of a definer E-UNDEFINED. ----
 
 : LAUNDER-DEFINER$ ( ptr u8 n -- ptr u8 n )   \ tick <definer> into a var, launder its execute
    {: a:ptr u:n :}
    SB-RESET
    s" variable IWG-LV" SB-APPEND LF
-   s" check@ 0 set-check ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV ! set-check" SB-APPEND LF
+   s" TRUSTED: IWG-LSET ( [ R -- S ] -- ) IWG-LV ! ;" SB-APPEND LF
+   s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LSET" SB-APPEND LF
    s" : IWG-LBAD ( -- ) IWG-LV @ execute ;" SB-APPEND LF
    SB$ ;
 
@@ -587,7 +583,8 @@ create EMPTY 1 allot            \ zero-length stdin
    {: a:ptr u:n :}
    SB-RESET
    s" variable IWG-LV" SB-APPEND LF
-   s" check@ 0 set-check ' " SB-APPEND  a u SB-APPEND  s"  IWG-LV ! set-check" SB-APPEND LF
+   s" TRUSTED: IWG-LSET ( [ R -- S ] -- ) IWG-LV ! ;" SB-APPEND LF
+   s" ' " SB-APPEND  a u SB-APPEND  s"  IWG-LSET" SB-APPEND LF
    s" : IWG-LBAD ( -- n ) IWG-LV @ catch ;" SB-APPEND LF
    SB$ ;
 
@@ -1195,36 +1192,26 @@ create QNAME QNAME-CAP allot
    s" TDECL-RUN" TOKEN$ RUN-SUBJECT
    s" E-UNDEFINED: TDECL-RUN" ASSERT-DIAG ;
 
-\ --- the checker's authority gate. A word compiled at tier 1 with the check
-\ hook off keeps the row the native publication records for it: its ABI and no
-\ source authority (at tier 0 no row is recorded and its caller is
-\ E-UNDEFINED). An unsealed checker binds a checked call to such a row, and the
-\ seal pass closes the gate (src/core/internal-mark.f IMK-SEAL calls
-\ CHECKER-EFFECT-AUTHORITY:SEAL), so on the product the call is refused by name.
-\ An image whose seal skipped that call certifies the caller, as the whitebox
-\ engine does. ----
+\ --- the checker's authority gate. The native build gives FFI-PTR>CELL an
+\ ABI-only global row; outside FFI the sealed checker refuses its call and tick
+\ (CALL-AUTHORITY, OWNED-TICK-REFUSED?). The suite runs on the product only. ----
 
-: GATE-RAW ( -- )
+: GATE-ABI$ ( -- ptr u8 n )      \ a checked call of an ABI-only row
    SB-RESET
    s" 1 set-tier" SB-APPEND LF
-   s" check@ constant IWG-HOOK" SB-APPEND LF
-   s" 0 set-check" SB-APPEND LF
-   s" : IWGGA ( n -- n ) ;" SB-APPEND LF
-   s" IWG-HOOK set-check" SB-APPEND LF ;
-
-: GATE-ABI$ ( -- ptr u8 n )      \ a checked call of a hook-less word's ABI row
-   GATE-RAW
-   s" : IWGGB ( n -- n ) IWGGA ;" SB-APPEND LF
+   s" : IWGGB ( -- ) FFI-PTR>CELL ;" SB-APPEND LF
    SB$ ;
 
 : GATE-TICK$ ( -- ptr u8 n )
-   GATE-RAW
-   s" : IWGGT ( -- [ n -- n ] ) ['] IWGGA ;" SB-APPEND LF
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGGT ( -- ) ['] FFI-PTR>CELL drop ;" SB-APPEND LF
    SB$ ;
 
 : GATE-TICK-EXEC$ ( -- ptr u8 n )
-   GATE-RAW
-   s" : IWGGE ( n -- n ) ['] IWGGA execute ;" SB-APPEND LF
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGGE ( -- ) ['] FFI-PTR>CELL execute ;" SB-APPEND LF
    SB$ ;
 
 : GATE-TRUSTED-TICK$ ( -- ptr u8 n )
@@ -1240,8 +1227,9 @@ create QNAME QNAME-CAP allot
    SB$ ;
 
 : GATE-ABI-FIRST-FAIL$ ( -- ptr u8 n )
-   GATE-RAW
-   s" : IWGAF ( -- ) drop ['] IWGGA drop ;" SB-APPEND LF
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
+   s" : IWGAF ( -- ) drop ['] FFI-PTR>CELL drop ;" SB-APPEND LF
    SB$ ;
 
 : GATE-UNSAFE-FIRST-FAIL$ ( -- ptr u8 n )
@@ -1254,30 +1242,31 @@ create QNAME QNAME-CAP allot
    s" : IWGUT ( -- ) ['] evaluate drop ;" SB-APPEND LF
    SB$ ;
 
-: GATE-SET-CHECK-FIRST-FAIL$ ( -- ptr u8 n )
+: GATE-SEED-RESET-FIRST-FAIL$ ( -- ptr u8 n )
    SB-RESET
    s" 1 set-tier" SB-APPEND LF
-   s" : IWGUSF ( -- ) drop ['] set-check drop ;" SB-APPEND LF
+   s" : IWGUSF ( -- ) drop ['] seed-ndict! drop ;" SB-APPEND LF
    SB$ ;
 
 : GATE-VALID-TICKS$ ( -- ptr u8 n )
-   GATE-RAW
+   SB-RESET
+   s" 1 set-tier" SB-APPEND LF
    s" : IWGGC ( n -- n ) 1+ ;" SB-APPEND LF
    s" : IWGGQ ( -- [ n -- n ] ) ['] IWGGC ;" SB-APPEND LF
    s" : IWGGI ( -- ) ['] 1+ drop ;" SB-APPEND LF
-   s" ' IWGGA drop" SB-APPEND LF
+   s" ' FFI-PTR>CELL drop" SB-APPEND LF
    SB$ ;
 
 : AUTHORITY-GATE-CASES ( -- )
    s" the sealed checker refuses a checked call of an ABI-only row" T-LABEL
    GATE-ABI$ RUN-SUBJECT
-   s" E-CAP-TRUSTED habu: in iwggb: 'IWGGA'" ASSERT-DIAG
+   s" E-CAP-TRUSTED habu: in iwggb: 'FFI-PTR>CELL'" ASSERT-DIAG
    s" a checked tick of that row refuses at the quoted word" T-LABEL
    GATE-TICK$ RUN-SUBJECT
-   s" E-CAP-TRUSTED habu: in iwggt: 'IWGGA'" ASSERT-DIAG
+   s" E-CAP-TRUSTED habu: in iwggt: 'FFI-PTR>CELL'" ASSERT-DIAG
    s" execute cannot launder the same checked tick" T-LABEL
    GATE-TICK-EXEC$ RUN-SUBJECT
-   s" E-CAP-TRUSTED habu: in iwgge: 'IWGGA'" ASSERT-DIAG
+   s" E-CAP-TRUSTED habu: in iwgge: 'FFI-PTR>CELL'" ASSERT-DIAG
    s" a checked primitive tick refuses at its target without call inputs" T-LABEL
    GATE-TRUSTED-TICK$ RUN-SUBJECT
    s" E-CAP-TRUSTED habu: in iwggp: 'patch32'" ASSERT-DIAG
@@ -1301,8 +1290,8 @@ create QNAME QNAME-CAP allot
    ERR$ s\" \"code\":\"E-UNSAFE\"" CONTAINS? TTRUE
    ERR$ s\" \"token\":\"evaluate\"" CONTAINS? TTRUE
    ERR$ s\" \"byte_start\":19,\"byte_end\":27" CONTAINS? TTRUE
-   s" a later set-check tick keeps the first underflow reason" T-LABEL
-   GATE-SET-CHECK-FIRST-FAIL$ RUN-SUBJECT
+   s" a later seed-ndict! tick keeps the first underflow reason" T-LABEL
+   GATE-SEED-RESET-FIRST-FAIL$ RUN-SUBJECT
    s" habu: in iwgusf: at 'drop' input underflow: the call takes more cells than the definition's declared inputs leave (needs 1, has 0)" ASSERT-DIAG
    s" checked quotations and ordinary ticks remain available" T-LABEL
    GATE-VALID-TICKS$ RUN-SUBJECT ASSERT-OK ;
