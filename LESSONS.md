@@ -458,13 +458,7 @@ entry.
   T0 shares only front-end code with tier 1. What T0 needs from tier 1's
   packages is copied into T0's own package and owned there; tier 1 keeps its
   copy, unedited, until it is deleted. Tier 1 is edited only to fix a defect
-  on a path it still owns (the next entry). Told that T0 still calls 16 of
-  tier 1's N* packages (about 123 sites; NEMIT, NDICT, NHOST, NDEFINITION
-  most) because the copy plan treated them as shared front end, Joel wrote
-  "how are we gonna remove tier1 if we are sharing code with it? we need to
-  review each piece of code we depend on and COPY it into T0 under a proper
-  package, etc. name. not rewrite the code but copy whatever source code we
-  need and review it, adjust it, etc."
+  on a path it still owns (the next entry).
 - 2026-11-03, tier 1 bugs before Wasm moves to T0: asked to approve
   NELAB:FIXED building a CAST: word's body, so tier 1 stops refusing a cast
   with a quotation input (test/wasm/dynamic.f), Joel asked "what is NELAB? and
@@ -502,14 +496,6 @@ entry.
   redoing them", and asked why the request must be ended and how the FFI
   callback setup works. His approvals covered the words' names and
   contracts, not their place in NDEFINITION.
-- 2026-11-03, FFI callbacks: shown that CALLBACK: leaves a request (slot and
-  thunk) that the next compile fills with the callback's C entry stub, ended
-  on every exit so a refused accessor cannot hand its stub to a later word,
-  and that the engine also builds 16 ready-made stubs, Joel wrote "why
-  separate FFI-CB package? no backwards compatibility so remove the 16
-  ready-made stubs. you don't need to end stubs, prove me wrong! when you
-  define a callback you define it for life of the program, to bridge a given
-  habu word." The 16 stubs (layout.f CB-POOL) go.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
