@@ -468,6 +468,12 @@ learned live in the docs for their subject.
   implement the linker and then switch x86 (then wasm?) over to it". The
   linker comes first; x86-64 gets its file builds from it, not from the
   observer.
+- 2026-11-03, the linker's build word: shown the critic's second-round
+  rejection of the linker design and asked to approve `LINKER:WITH ( ptr u8 n
+  [ -- ] -- )`, today's NDEF-CACHE:WITH renamed, whose mode string "engine"
+  marks an engine build, Joel chose "Approve with mode (Recommended)": every
+  build caller (hb-build-core.f, aot-builder.f, native-build-core.f,
+  app-build.f) runs inside LINKER:WITH, and RUN, APP-LOAD and WITH-QUIET go.
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
