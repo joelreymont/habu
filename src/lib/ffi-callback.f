@@ -303,13 +303,6 @@ variable OPEN
 : GEN-N ( n -- ) GEN CODEGEN:APPEND-DECIMAL ;
 : GEN-RUN ( -- ) GEN CODEGEN:CONTENTS INCLUDE-EVALUATE ;
 
-\ The C entry needs a tier-1 emission even when the caller compiles at tier 0;
-\ the tier is restored on success and refusal.
-: GEN-NATIVE ( -- )
-   tier@ 1 = if GEN-RUN exit then
-   s" 1 set-tier" INCLUDE-EVALUATE
-   [: GEN-RUN ;] [: s" 0 set-tier" INCLUDE-EVALUATE ;] finally ;
-
 : STORE$ ( -- ptr u8 n )
    RES-KIND @ R-VALUE = if s" FFI-CB:RESULT! " exit then
    RES-KIND @ R-FLOAT = if s" FFI-CB:FRESULT! " exit then
@@ -345,7 +338,7 @@ variable OPEN
    GEN CODEGEN:RESET
    s" : " GEN+ NAME$ GEN+ s" -ENTRY ( -- n ) " GEN+
    k GEN-N s"  FFI-CB:ENTRY-ADDRESS ;" GEN+
-   GEN-NATIVE
+   GEN-RUN
    STUB-ENTRY k INSTALL-ENTRY
    GEN CODEGEN:RESET
    s" : " GEN+ NAME$ GEN+ s"  ( -- FFI-CB:callback ) " GEN+ k GEN-N

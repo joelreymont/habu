@@ -1,5 +1,4 @@
 \ Run after restoring the full image, so ENTRY must reuse its baked C entry.
-1 set-tier
 require src/lib/ffi-abi.f
 
 PROCESS-SYMBOLS

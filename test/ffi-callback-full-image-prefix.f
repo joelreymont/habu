@@ -1,5 +1,4 @@
 \ A declared native C entry is baked into a full saved engine image.
-1 set-tier
 require src/lib/ffi-callback.f
 
 CALLBACK: SAVED-COMPARE ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK

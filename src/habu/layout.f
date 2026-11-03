@@ -904,9 +904,10 @@ package NCOMP-DISPATCH
 public
 $358 constant XT-CELL
 
-\ The callback operations belong to the compiler selected by XT-CELL. A fresh
-\ source compiler may coexist with a retained active compiler in a build window;
-\ both operations must follow the active compiler rather than dictionary names.
+\ The callback operations are NDEFINITION's, shared by the XT-CELL and COMP-CELL
+\ compilers; TIER-CELL selects which compiles the accessor. A fresh source
+\ compiler may coexist with a retained active compiler in a build window; both
+\ operations must follow the active compiler rather than dictionary names.
 \ These two free header cells sit after ENGINE-MAIN:XT-CELL and before FFI.
 $3810 constant CALLBACK-STUB-CELL
 $3818 constant CALLBACK-ENTRY-CELL

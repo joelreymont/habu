@@ -1,5 +1,4 @@
 \ More than 129 C entry points, including an entry saved before table growth.
-1 set-tier
 require src/lib/test.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f
