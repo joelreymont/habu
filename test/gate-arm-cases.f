@@ -48,8 +48,8 @@ SUITE aot-seed-metadata
    test/aot-seed-metadata.f
 ;SUITE
 
-\ Its unchecked candidate and false-reject oracle require tier 0: the
-\ harness selects tier 0 before defining or running any generated case.
+\ The harness selects tier 0 before its first definition: tier 1 refuses
+\ CLEAR-MEAS's row drain (test/prop-test-core.f).
 WHITEBOX-SUITE prop
    test/prop-test.f
 ;SUITE

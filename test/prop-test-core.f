@@ -13,21 +13,11 @@ require src/lib/process-fork.f
 require src/lib/fmt.f                        \ FMT:.INT - one-line number text
 require src/lib/test/eval.f                  \ TEST-EVAL:N - one cell out of a closed text
 
-\ The harness's own words and every candidate compile at tier 0, whatever tier
-\ the caller selected (the libraries above compile at the caller's tier). Tier 1
-\ compiles against a static stack picture and the effect the checker recorded,
-\ and refuses what this harness compiles: CLEAR-MEAS's untyped row drain
-\ (E-NELAB-UNDER) and the rejected body CONFIRM-FR? compiles through PROP-CORE
-\ and runs, which has no recorded effect (KEEP-ARITY, rc 70).
+\ The harness and its candidates compile at tier 0 whatever the caller chose:
+\ tier 1 refuses CLEAR-MEAS's untyped row drain (E-NELAB-UNDER).
 0 set-tier
 
-variable VERD                     \ last verdict PROP-CHECK-HOOK read from CHECK!
-\ The top-level line below arms the fail-closed hook through set-check;
-\ src/lib/process-fork.f loads before it, so its definitions certify under the
-\ default checker, not the throw-on-reject hook.
-: PROP-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup VERD ! dup -1 <> if CHECKER-REJECT-RC throw then ;
-LOWER-CERT-HOOK:INSTALL ' PROP-CHECK-HOOK set-check
+variable VERD                     \ CHK's last verdict: -1 certified, 0 refused
 
 variable BASE  variable MC
 \ Drains an arbitrary residual row while preserving its measured depth.
@@ -175,11 +165,8 @@ variable STEPS  variable GI
 variable NCERT  variable PROP-NFC  variable NFR  variable RJ
 variable LAST-MEAS  variable LAST-TRAP
 variable FC-KIND  variable FC-EXP  variable FC-MEAS
-\ Complete checkpoint/rollback: a `: G ;` grows persistent code, dictionary,
-\ certified signatures, and no-return metadata. Each candidate compiles under the
-\ check hook, which certifies every definition as it compiles, and a rejected
-\ candidate is rolled back. Two levels (program + shrink variant) let shrinking
-\ roll back inside a program's own checkpoint.
+\ A `: G ;` grows code, dictionary, signatures and no-return metadata; two
+\ checkpoint levels let shrinking roll back inside a program's own checkpoint.
 \ The signature store rewinds through USIGS-RESTORE-END, the checker's own
 \ truncation seam, which pops only the index entries above the mark. A bare
 \ `UEND !` is a rewind those indexes did not see, so each re-derived itself from
@@ -192,25 +179,10 @@ variable CHKCPSV variable CHKNDSV variable CHKUESV
 : FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
 : SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
 : SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
-\ CHK compiles its caller's text with this file's check hook armed, so the bytes
-\ the checker certifies are the bytes the engine compiles. The text runs at top
-\ level, so a text that changes the hook itself (set-check) is outside CHK's
-\ contract; no candidate or primitive case does, so the armed hook is always
-\ PROP-CHECK-HOOK. RUN's fixed closed text clears the hook at its own top
-\ level, runs COMPILE under catch, stores the code while the hook is still
-\ clear (a cell the window leaves is unknown after it) and re-arms
-\ PROP-CHECK-HOOK on every path, a throw included; RUN answers the text's
-\ throw code, 0 when it compiled. The fixed text runs in the caller's
-\ scope and so reaches SRC$, COMPILE and RC! only qualified. RUN and its one
-\ caller, CONFIRM-FR?, are private: no public word compiles a text of its
-\ caller's choosing with the hook cleared.
 package PROP-CORE
 
 PTR-VARIABLE SRC-A
 variable SRC-U
-variable RC-CELL
-
-public
 
 : SRC$ ( -- ptr u8 n )
    SRC-A @ SRC-U @ ;
@@ -218,66 +190,68 @@ public
 : COMPILE ( -- )
    SRC$ evaluate-closed ;
 
-: RC! ( n -- )
-   RC-CELL ! ;
+\ RUN's `TRUSTED` before a PBUF candidate, or MEAS-PBUF's wrapper around a PBUF
+\ text, the longest at 65 bytes.
+PBUF-CAP 65 + constant TBUF-CAP
+TBUF-CAP BUFFER: TBUF
+variable TBUF-U
 
-private
+: TBUF+ ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   TBUF-U @ u + TBUF-CAP > IF  E-STR-CAPACITY throw  THEN
+   a TBUF TBUF-U @ + u BYTE-COPY
+   TBUF-U @ u + TBUF-U ! ;
 
+\ A program reaches a refused candidate's body only through TRUSTED:, so RUN
+\ compiles `TRUSTED` and the candidate's `: G ( ... ) <body> ;` unenforced.
 : RUN ( ptr u8 n -- n )
-   SRC-U !
-   SRC-A !
-   s" 0 set-check ' PROP-CORE:COMPILE catch PROP-CORE:RC! ' PROP-CHECK-HOOK set-check"
-   evaluate-closed
-   RC-CELL @ ;
+   0 TBUF-U !  s" TRUSTED" TBUF+  TBUF+
+   TBUF TBUF-U @ SRC-U !  SRC-A !
+   ['] COMPILE catch ;
 
 : CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
 : CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
-\ Shared measurement: "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS".
+\ One measurement line, checked at top level from depth 0:
+\ "<nin×7> <nch> depth CLEAR-MEAS PROP-CORE:MEAS-OUT !".
 : RUN1  ( n n -- ) {: name-ch:n in-arity:n :}
-   0 PBUF-U ! s" depth BASE ! " P+
+   0 PBUF-U !
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
-   name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
-\ PROP-CHECK-HOOK stores each definition's verdict in VERD before it throws
-\ CHECKER-REJECT-RC on a reject; VERD stays NO-VERDICT while no definition has
-\ reached the hook. VERD -1 is a certified candidate the engine compiled,
-\ measured as compiled. CHK suppresses CHECKER-REJECT-RC when the last verdict
-\ is 0 or 1, forgetting that candidate, and rethrows every other nonzero
-\ rc/verdict combination: a compile that fails after certification, before the
-\ hook ran (the engine's duplicate-definition refusal, rc 78), or with another
-\ code after a rejection the text caught. The rule reads the code and the last
-\ verdict, not the throw's origin, so a later CHECKER-REJECT-RC after a caught
-\ rejection is indistinguishable from the hook's own and is suppressed too.
-2 constant NO-VERDICT              \ outside CHECK!'s -1 / 0 / 1
+   name-ch PC  s"  depth CLEAR-MEAS PROP-CORE:MEAS-OUT !" P+ ;
+16384 constant CHK-DIAG-CAP
+CHK-DIAG-CAP BUFFER: CHK-DIAG
+\ A refusal is rc 70 with the checker's diagnostic in CHK-DIAG; any other
+\ nonzero rc, an engine refusal after certification among them, is rethrown.
 public
 : CHK  ( ptr u8 n -- )
    CHK-MARK
-   NO-VERDICT VERD !
    SRC-U !
    SRC-A !
-   ['] COMPILE catch {: rc:n :}
-   rc 0<> IF
-      rc CHECKER-REJECT-RC <>  VERD @ 0 <>  VERD @ 1 <>  and  or IF rc throw THEN
-   THEN
-   VERD @ -1 <> IF CHK-FORGET THEN ;
-\ Dynamic measurement runs PBUF's text as a closed program that stores its
-\ measured residual depth in MEAS-OUT, and records that depth or a trap: a
-\ throw out of the text, a read below its floor among them, or a negative
-\ depth.
+   CHK-DIAG CHK-DIAG-CAP DIAG-BUFFER!
+   ['] COMPILE catch  DIAG-BUFFER$ nip {: rc:n diag-u:n :}
+   DIAG-BUFFER-OFF
+   rc 0= IF  -1 VERD !  EXIT  THEN
+   rc CHECKER-REJECT-RC <>  diag-u 0=  or IF  rc throw  THEN
+   0 VERD !
+   CHK-FORGET ;
 variable MEAS-OUT
-\ The check hook, saved while the measurement text runs unchecked: it reads
-\ the guard under CLEAR-MEAS's row, which the interpret row cannot type.
-variable HOOK-SAVE
-: MEAS-PBUF ( -- )
+private
+\ A measurement text's throw code, a read below its floor among them, or a
+\ negative MEAS-OUT is a trap; else MEAS-OUT is the measured depth.
+: MEAS-RC ( n -- )
    0 LAST-TRAP !
-   s"  PROP-CORE:MEAS-OUT !" P+
-   s" check@ 0 set-check PROP-CORE:HOOK-SAVE !" evaluate-closed
-   PBUF PBUF-U @ TEST-EVAL:RC
-   s" PROP-CORE:HOOK-SAVE @ set-check" evaluate-closed
    0= 0= IF  -1 LAST-TRAP !  EXIT  THEN
    MEAS-OUT @ dup 0< IF  drop -1 LAST-TRAP !  ELSE  LAST-MEAS !  THEN ;
+public
+\ A CANARY text reads the guard under CLEAR-MEAS's row, which no checked row
+\ types, so it runs as the body of a TRUSTED: definition it defines and calls.
+: MEAS-PBUF ( -- )
+   0 TBUF-U !
+   s" TRUSTED: PROP-MEASURE ( -- ) " TBUF+  PBUF PBUF-U @ TBUF+
+   s"  PROP-CORE:MEAS-OUT ! ; PROP-MEASURE" TBUF+
+   CHK-MARK  TBUF TBUF-U @ TEST-EVAL:RC  CHK-FORGET  MEAS-RC ;
 private
 : RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
-   RUN1  MEAS-PBUF ;
+   RUN1  PBUF PBUF-U @ TEST-EVAL:RC  MEAS-RC ;
 : FC-SET-ARITY ( n n -- )
    FC-MEAS !  FC-EXP !  1 FC-KIND !  PROP-NFC @ 1+ PROP-NFC ! ;
 : FC-SET-TRAP ( n -- )
@@ -376,9 +350,9 @@ variable BSAVE
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
-\ Differential boundary: deliberately compiles a checker-rejected body to
-\ confirm a false reject, which only tier 0 does (`0 set-tier` above).
-: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
+\ Differential boundary: compiles a checker-rejected body as TRUSTED: (RUN) to
+\ confirm a false reject.
+: CONFIRM-FR? ( -- bool )
    SMARK  PBUF PBUF-U @ RUN
    0 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ IF  0 0= 0=  ELSE  LAST-MEAS @ DOUT @ =  THEN
@@ -529,10 +503,8 @@ public
       s" prop-test: self-test SHRINK BROKEN (no reduction)" 1 die THEN
    s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ type s" )" type cr ;
 
-\ No generated seed reaches the false-reject oracle (seeds 1..40 and 123, 2000
-\ programs each, yield no non-perturbed reject), so this drives it: a bool into
-\ `+` is rejected yet leaves the declared one cell. It is the run that proves
-\ CONFIRM-FR? compiles a rejected body, the tier-0 fact `0 set-tier` rests on.
+\ No generated seed (1..40 and 123, 2000 programs each) reaches CONFIRM-FR?, so
+\ this drives it: a bool into `+` is refused yet leaves the declared one cell.
 : SELFTEST-FR ( -- )
    0 BLEN !  s" 0 0= + " PROP-B+  1 NIN !  1 DOUT !  REBUILD-G
    PBUF PBUF-U @ CHK  VERD @ -1 = IF
@@ -696,7 +668,6 @@ variable DOUT
    s" : PROP-PC ( -- n ) rbase ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) cp@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) dbase@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) check@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) ndict@ ; " s" " 1 CHECK-CASE
    \ data-base's pointee is a base address, which no definition may publish
    \ under a type variable; the case is about its arity, so it names a pointee

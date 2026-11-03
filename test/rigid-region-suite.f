@@ -28,13 +28,6 @@ package RIGID-REGION
 \ word and its effect with no implementation. None is bound or run: every case
 \ certifies a candidate, and a call would die with `defer: unset execution
 \ vector` (rc 76).
-\
-\ They sit above the `0 set-check` window, and for the colon consumers that is
-\ load-bearing: a colon definition's effect is registered only while checking is
-\ on (RR-UEQ inside the window is published with no effect and seven cases
-\ fail), while a `defer` registers its declared effect either way. The harness
-\ needs the window because it reads checker-internal state with no charted
-\ effect.
 : RR-UEQ ( matrix<space-global,a,b,f32> matrix<space-global,a,b,f32> -- ) drop drop ;
 : RR-UONE ( matrix<space-global,a,f32,f32> matrix<space-global,a,f32,f32> -- ) drop drop ;
 : RR-UBOX ( span<space-global,f32,x> span<space-global,f32,x> -- ) drop drop ;
@@ -118,11 +111,6 @@ defer RR-MKQF ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] )
 \ An inferred word that returns a quotation minting a region.
 : RR-MKL [: RR-OWN ;] ;
 
-\ The window holds the suspended hook on the stack. After the report the hook
-\ resumes and diagnostics leave RR-DIAG, so a file loaded after this one in the
-\ same process is checked and reports as usual.
-check@ 0 set-check
-
 T-RESET
 
 \ Non-quiet candidate check that captures the rendered diagnostic into a buffer
@@ -153,20 +141,20 @@ variable RR-EC
 s" C-CERT ( -- ) RR-SHARE RR-UEQ"  RR-CHECK -1 T=
 \ (2) equal-sized cross-region unification rejects — named region mismatch.
 s" C-XRGN ( -- ) RR-XRGN RR-UEQ"   RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (3) extent mismatch rejects — named extent mismatch.
 s" C-XEXT ( -- ) RR-XEXT RR-UEQ"   RR-CHECK 0 T=
-s" rigid host: extent mismatch" RR-DIAG? -1 T=
+s" rigid host: extent mismatch" RR-DIAG? TTRUE
 \ (4) generation mismatch rejects — named stale generation.
 s" C-XGEN ( -- ) RR-XGEN RR-UEQ"   RR-CHECK 0 T=
-s" rigid host: stale mutation generation" RR-DIAG? -1 T=
+s" rigid host: stale mutation generation" RR-DIAG? TTRUE
 \ (5) numeric-handle authority: a region id and a generation id that are
 \ NUMERICALLY EQUAL (both the first mint of their domain) must NOT unify.
 s" C-XDOM ( -- ) RR-BOXR RR-BOXG RR-UBOX"  RR-CHECK 0 T=
-s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (6) recreated-owner reuse rejects — a fresh allocation gets a fresh region.
 s" C-REUSE ( -- ) RR-OWN RR-OWN RR-UONE"   RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (7) exhaustion-before-wrap: the domain counter throws rather than reusing an id.
 RR-WRAP  RR-EC @ E-RIGID-EXHAUST T=
 \ (8) THREE co-resident identities bind: two accesses to one owner certify — the
@@ -174,13 +162,13 @@ RR-WRAP  RR-EC @ E-RIGID-EXHAUST T=
 s" C-CERT3 ( -- ) RR-SHARE3 RR-UEQ3"  RR-CHECK -1 T=
 \ (9) region mismatch among three identities still rejects, named region.
 s" C-XRGN3 ( -- ) RR-XRGN3 RR-UEQ3"    RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (10) extent mismatch among three identities rejects, named extent.
 s" C-XEXT3 ( -- ) RR-XEXT3 RR-UEQ3"    RR-CHECK 0 T=
-s" rigid host: extent mismatch" RR-DIAG? -1 T=
+s" rigid host: extent mismatch" RR-DIAG? TTRUE
 \ (11) generation mismatch among three identities rejects, named stale generation.
 s" C-XGEN3 ( -- ) RR-XGEN3 RR-UEQ3"    RR-CHECK 0 T=
-s" rigid host: stale mutation generation" RR-DIAG? -1 T=
+s" rigid host: stale mutation generation" RR-DIAG? TTRUE
 \ (12) RR-U3R is C-CERT3's shape with the region variable spelled `r`, the float
 \ con, so the same allocation rejects: the naming trap, not a binding limit.
 s" C-RSVD3 ( -- ) RR-SHARE3 RR-U3R"    RR-CHECK 0 T=
@@ -203,63 +191,55 @@ s" C-FCB ( [ mut-view<p,q,fresh-region-b,u8> -- ] -- ) RR-VTAKE"  RR-CHECK -1 T=
 s" C-FSELF ( mut-view<p,q,fresh-region-b,u8> mut-view<p,q,fresh-region-b,u8> -- ) RR-VSAME"  RR-CHECK -1 T=
 \ (17) two declared fresh regions are two allocations.
 s" C-F2 ( mut-view<p,q,fresh-region-b,u8> mut-view<p,q,fresh-region-c,u8> -- ) RR-VSAME"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (18) an input's region is not a new one: an output-only fresh region pairs
 \ only with a region the body mints (CHECK-FRESH-OUTPUT).
 s" C-FNEW ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) RR-VPASS"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (19) an input's fresh region is not one the body mints.
 s" C-FOWN ( matrix<space-global,fresh-region-b,f32,f32> -- ) RR-OWN RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (20) a declared region quantifier cannot be specialized to a fresh region.
 s" C-FQNT ( mut-view<p,q,a,u8> mut-view<p,q,fresh-region-b,u8> -- ) RR-VSAME"  RR-CHECK 0 T=
-s" must stay parametric" RR-DIAG? -1 T=
+s" must stay parametric" RR-DIAG? TTRUE
 \ (21) declared fresh identities keep their domains.
 s" C-FDOM ( span<space-global,f32,fresh-region-b> span<space-global,f32,fresh-gen-b> -- ) RR-UBOX"  RR-CHECK 0 T=
-s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (22) a fresh region the body supplies, in a callback's input, is one the body
 \ mints; handed an input's region instead, it is refused.
 s" C-FMINT ( [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN"  RR-CHECK -1 T=
 s" C-FCBIN ( matrix<space-global,fresh-region-b,f32,f32> [ matrix<space-global,fresh-region-c,f32,f32> -- ] -- ) execute"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
-s" fresh-region-c" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
+s" fresh-region-c" RR-DIAG? TTRUE
 \ (23) two fresh regions the body supplies are two allocations.
 s" C-F2MINT ( -- matrix<space-global,fresh-region-b,f32,f32> matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN dup"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
-s" fresh-region-c" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
+s" fresh-region-c" RR-DIAG? TTRUE
 \ (24) a body-supplied fresh name of another domain holds no identity a call
 \ minted, and a declared quantifier does not become a body-supplied region.
 s" C-FGCB ( [ span<space-global,f32,fresh-gen-b> -- ] -- ) RR-BOXG swap execute"  RR-CHECK 0 T=
 s" C-FQCB ( matrix<space-global,a,f32,f32> [ matrix<space-global,fresh-region-b,f32,f32> -- ] -- ) execute"  RR-CHECK 0 T=
-s" must stay parametric" RR-DIAG? -1 T=
+s" must stay parametric" RR-DIAG? TTRUE
 \ (25) a does> clause holds fresh regions as a colon body does: (16)'s pass is
 \ admitted and takes a checked caller's allocation, a minted output region
 \ reaches a checked caller, and (18)'s new output region is refused.
-dup set-check
-s" : RR-DFPASS ( n -- ) create , does> ( matrix<space-global,fresh-region-b,f32,f32> -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-MPASS ;"  TEST-EVAL:RC
-s" 0 RR-DFPASS RR-DFP"  TEST-EVAL:RC
-s" : RR-DFCALL ( -- matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN RR-DFP ;"  TEST-EVAL:RC
-s" : RR-DFOWN ( n -- ) create , does> ( -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN ;"  TEST-EVAL:RC
-s" 0 RR-DFOWN RR-DFO"  TEST-EVAL:RC
-s" : RR-DFUSE ( -- matrix<space-global,fresh-region-b,f32,f32> ) RR-DFO ;"  TEST-EVAL:RC
-0 set-check  0 T=  0 T=  0 T=  0 T=  0 T=  0 T=
+s" : RR-DFPASS ( n -- ) create , does> ( matrix<space-global,fresh-region-b,f32,f32> -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-MPASS ;"  TEST-EVAL:RC  0 T=
+s" 0 RR-DFPASS RR-DFP"  TEST-EVAL:RC  0 T=
+s" : RR-DFCALL ( -- matrix<space-global,fresh-region-c,f32,f32> ) RR-OWN RR-DFP ;"  TEST-EVAL:RC  0 T=
+s" : RR-DFOWN ( n -- ) create , does> ( -- matrix<space-global,fresh-region-b,f32,f32> ) drop RR-OWN ;"  TEST-EVAL:RC  0 T=
+s" 0 RR-DFOWN RR-DFO"  TEST-EVAL:RC  0 T=
+s" : RR-DFUSE ( -- matrix<space-global,fresh-region-b,f32,f32> ) RR-DFO ;"  TEST-EVAL:RC  0 T=
 RR-DIAG 16384 DIAG-BUFFER!
-dup set-check
-s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC
-0 set-check  RR-REFUSED T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" : RR-DFNEW ( n -- ) create , does> ( mut-view<p,q,fresh-region-b,u8> -- mut-view<p,q,fresh-region-c,u8> ) drop RR-VPASS ;"  TEST-EVAL:RC  RR-REFUSED T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ A clause passes a caller's quantifier to a fresh input as a colon body does
 \ (30): not a generation's, nor a region slot's without a region kind.
 RR-DIAG 16384 DIAG-BUFFER!
-dup set-check
-s" : RR-DFGEN ( n -- ) create , does> ( span<space-global,f32,a> -- ) drop RR-GFRESH ;"  TEST-EVAL:RC
-0 set-check  RR-REFUSED T=
-s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" : RR-DFGEN ( n -- ) create , does> ( span<space-global,f32,a> -- ) drop RR-GFRESH ;"  TEST-EVAL:RC  RR-REFUSED T=
+s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 RR-DIAG 16384 DIAG-BUFFER!
-dup set-check
-s" : RR-DFANY ( n -- ) create , does> ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) drop RR-MFRESH ;"  TEST-EVAL:RC
-0 set-check  RR-REFUSED T=
-s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" : RR-DFANY ( n -- ) create , does> ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) drop RR-MFRESH ;"  TEST-EVAL:RC  RR-REFUSED T=
+s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (26) a call's fresh input is the allocation its caller passes, and so is the
 \ name on its output: the caller's own allocation, its input, its quantifier.
 s" C-CALLOWN ( -- ) RR-OWN dup RR-MFRESH RR-UONE"  RR-CHECK -1 T=
@@ -272,27 +252,27 @@ s" C-CALLMIX ( -- ) RR-OWN dup RR-MMIX"  RR-CHECK -1 T=
 \ (28) one allocation into two fresh inputs is refused, and so is a caller's
 \ quantifier, which may be the other input's allocation.
 s" C-CALLSAME ( -- ) RR-OWN dup RR-MF2"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-CALLQ2 ( mut-view<p,q,a,u8> -- ) RR-OWN RR-VMF2"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (29) an inferred input cannot hold an allocation its body made: no caller has it.
 s" C-INFOWN RR-OWN RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (30) a fresh input takes an identity of its own domain only, as (21): not a
 \ generation, nor a caller's quantifier unless a region kind makes it a region.
 s" C-CALLXDOM ( -- ) RR-BOXG RR-SFRESH"  RR-CHECK 0 T=
-s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 s" C-CALLANY ( matrix<space-global,a,f32,f32> -- matrix<space-global,a,f32,f32> ) RR-MFRESH"  RR-CHECK 0 T=
-s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 s" C-CALLQGEN ( span<space-global,f32,a> -- ) RR-GFRESH"  RR-CHECK 0 T=
-s" rigid host: identity domain confusion" RR-DIAG? -1 T=
+s" rigid host: identity domain confusion" RR-DIAG? TTRUE
 \ (31) an argument whose type is an undeclared variable takes a new identity, so
 \ an inferred forwarder has fresh inputs: two allocations, never one.
 s" C-INFFWD ( -- ) RR-OWN RR-OWN RR-FWD2"  RR-CHECK -1 T=
 s" C-INFFWD1 ( -- ) RR-OWN dup RR-FWD2"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-INFDUP dup RR-MF2"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 \ (32) a quotation's fresh region, new at each execution, at a direct call, a tick,
 \ recursion and an inferred effect (forth.md "Rigid host-allocation identity domains").
 s" C-QONCE ( -- ) [: RR-OWN ;] execute RR-MFRESH drop"  RR-CHECK -1 T=
@@ -301,47 +281,49 @@ s" C-QDUP2 ( -- ) [: RR-OWN ;] dup execute swap execute RR-MF2"  RR-CHECK -1 T=
 s" C-QHELP ( -- ) [: [: dup ;] RR-OWN over execute drop ;] execute swap execute 2drop"  RR-CHECK -1 T=
 s" C-QTAKE ( -- ) [: RR-MFRESH ;] RR-QTAKE"  RR-CHECK -1 T=
 s" C-QDIR ( -- ) [: RR-OWN ;] dup execute swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QTICK ( -- ) ['] RR-OWN dup execute swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QLOCAL ( -- ) [: RR-OWN ;] {: q :} q execute q execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QRS ( -- ) [: RR-OWN ;] >r r@ execute r> execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QNEST ( -- ) [: [: RR-OWN ;] ;] execute dup execute swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QPAIR ( -- ) [: RR-OWN ;] dup execute swap RR-QPAIR RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QB1 ( -- ) [: RR-OWN ;] dup execute swap RR-QB RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QTW ( -- ) [: RR-OWN ;] RR-QTW RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QTWX ( -- ) [: RR-OWN ;] RR-QTWX RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QRUN2 ( -- ) [: RR-OWN ;] dup RR-QRUN swap RR-QRUN RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QCBTICK ( -- ) ['] RR-ADISP dup [: drop ;] swap execute swap [: drop ;] swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QCBLIT ( -- ) [: RR-OWN swap RR-QAPP drop ;] dup [: dup ;] swap execute swap [: dup ;] swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QCBINTICK ( -- ) ['] RR-GIVEX dup [: ;] swap execute swap [: ;] swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QCBINLIT ( -- ) [: RR-OWN swap RR-APPX ;] dup [: ;] swap execute swap [: ;] swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QCBGEN ( -- ) ['] RR-QTWX RR-GIVEP RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QCBREC ( [ [ -- matrix<space-global,fresh-region-a,f32,f32> ] -- x y ] -- x y ) ['] RR-QTWX RECURSE RR-UONE RECURSE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QDEEPTICK ( -- ) ['] RR-GIVE2 dup ['] RR-QRUN swap execute swap ['] RR-QRUN swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QRETTICK ( -- ) ['] RR-MKQF dup execute swap execute execute swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QRETTWICE ( -- ) RR-MKQF dup execute swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QINFTWICE ( -- ) RR-MKL dup execute swap execute RR-UONE"  RR-CHECK 0 T=
-s" rigid host: region mismatch" RR-DIAG? -1 T=
+s" rigid host: region mismatch" RR-DIAG? TTRUE
 s" C-QFRESHOUT ( -- [ -- matrix<space-global,fresh-region-b,f32,f32> ] ) [: RR-OWN ;]"  RR-CHECK -1 T=
 
 T-REPORT
-DIAG-BUFFER-OFF set-check
+\ Diagnostics leave RR-DIAG, so a file loaded after this one in the same process
+\ reports as usual.
+DIAG-BUFFER-OFF
 ;package
