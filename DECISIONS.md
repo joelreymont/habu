@@ -39,12 +39,23 @@ learned live in the docs for their subject.
   (`PCB:POINT-EQ`, `PCB:POINT-X@`, `OPTION-SOME`). Offered a checked rename
   tool, he chose "Rename by hand". Asked about a public `OPAQUE` family's
   words, he said "i said no such thing! don't touch opaque": `OPAQUE` stays
-  as it is.
+  as it is. Shown that then no public `STRUCTURE` or `ENUM` gets a namespace
+  of its own (`OPTION:SOME` becomes `OPTION-SOME`), he chose "Delete them
+  all": everything that only builds or reads those namespaces goes, the
+  public error E-PROTECTION-CAP included. Package sealing's registry of
+  protected wordlists, the private path's protections and E-CTOR-PROTECTED,
+  which now guards public families too, stay.
 - 2026-11-03, how the compiler reaches the checker: shown that the compiler
   can call the word named CHECK:DEFINITION whenever the dictionary has it,
   with no hidden cell and no install step, so that only the kernel, before
   the checker loads, compiles unchecked, Joel chose "Find by name
   (Recommended)".
+- 2026-11-03, removing a word of a sealed package: asked to approve refusing
+  it once hb has started, Joel asked "why would you ever remove a word from a
+  sealed package? once a package is sealed you have no access to its
+  internals, prove me wrong". Shown that nothing after startup needs it, he
+  chose "Refuse every removal (Recommended)": after startup, removing a word
+  of a sealed package is an error on every removal path.
 - 2026-11-03, a public and a private word with one name: told that a package
   may hold both (forth.md's forwarder rule), Joel said "it makes no sense to
   have public and private words with the same name since they will clash
@@ -195,8 +206,13 @@ learned live in the docs for their subject.
   restricted by putting it in a package's private section, and the product
   build strips private names.
 - 2026-10-27, formats: "why do you need to version any schemas? we have no
-  legacy. hard cutover only!" A format change rewrites its writer and reader
-  together, with no version number.
+  legacy. hard cutover only!" On 2026-11-03, told that a cached native unit
+  file carries a format number that the family-words change alters, and that
+  the sentence once recorded here after his words ("A format change rewrites
+  its writer and reader together, with no version number.") was the
+  recorder's, not his, Joel chose "Bump 26 → 27": a cache file built before
+  the change is refused when opened and rebuilt, and nothing reads the old
+  format.
 - 2026-10-31, names: offered REFUSAL-TEXT for the package of the engine's
   error-message words, Joel answered "what not error text? wtf is a refusal?
   use standard programming terms! and you can have error line and column
