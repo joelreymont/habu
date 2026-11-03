@@ -1,0 +1,9 @@
+---
+title: "Make a file's object its load instructions"
+status: active
+priority: 1
+issue-type: task
+created-at: "2026-11-03T12:52:55.873397+02:00"
+---
+
+Joel 2026-11-03: "whatever creates the object files (is it loader? should it be linker instead if it both saves and load?) has control over what executes when those object files are linked into an executable. it sounds like the current design is bad, prove me wrong!" and "i'm saying that we are not specifying the loading instructions correctly at the moment and have to do a lot of extra work, e.g. to discriminate loads. i'm saying that you can drastically simplify the approach, prove me wrong!" Today a reused file runs its top level again from source and the object only replaces each definition's compile (docs/architecture.md Builds), so the cache watches the run: compile-cell guards, a per-head state match, loads found by token, each top-level run judged; ~9,850 lines of tools (native-definition-cache.f, native-unit-object.f, native-unit-dependency.f, native-file-*.f, native-unit-*.f) plus engine observer hooks; a no-edit warm engine build with all 169 files reused takes 16.5 s on spark against 122 s cold. Proposed: the compiling load writes the object as the file's load instructions (records, code and DATA relocated only where a declaration, claim or code row names an address, as the stripped-image linker does; the loads it performed; the facts it consumed), and a reuse links it without reading the source. Open: what file top levels run besides definitions and loads. Census: .jj-ws.noindex/carl-census (RUN-SEEN logs file and word to /tmp/carl-census/rows.tsv over a cold engine build and a --repl app build). Then design (Fable), critic, Joel. Holds the T0-objects lanes (design-t0-objects.md rev 2) and the cache-facing SOURCE words.

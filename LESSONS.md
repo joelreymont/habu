@@ -107,7 +107,17 @@ entry.
   INCLUDE-EVALUATE-RANGE and OUTER:INTERPRET-RANGE have only test callers, he
   chose "Drop it; tests use loads (Recommended)": no SOURCE:EVAL-RANGE,
   INCLUDE-EVALUATE-RANGE, OUTER:INTERPRET and INTERPRET-RANGE go, and the tests
-  run the Habu loop over file loads through SOURCE:USE-INTERPRETER.
+  run the Habu loop over file loads through SOURCE:USE-INTERPRETER. Shown
+  SOURCE:E-RANGE, the code thrown when the build cache's runner asks for a
+  byte range outside its file or after the load ended (today -2110, also
+  E-FS-TIMEOUT's number), he chose "Public, own number (Recommended)". Asked
+  "why do you need parent action?" and "why do you need to discriminate
+  instead of recording a stream of actions for the loader to perform?", and
+  shown that the cache finds each load by watching the tokens a file's top
+  level runs (LOADER-CALL?, ACTION$, PARENT-ACTION$) so it can cut the file's
+  object there, he chose "Loader records loads (Recommended)": the loader
+  writes each load it performs into its log, and the object's loads come from
+  those rows; LOADER-CALL?, ACTION$ and PARENT-ACTION$ go.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
