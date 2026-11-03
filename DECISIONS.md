@@ -30,10 +30,34 @@ learned live in the docs for their subject.
   STRUCTURE-NAME- prefixes instead?" and asked "what is best for long term?"
   Shown that SwiftForth's structure words are plain words in the current
   wordlist, he answered "do it": every word a `STRUCTURE` or `ENUM` generates
-  is defined in the declaring package, in the section where the declaration
-  sits, named `FAMILY-WORD` (`POINT-MAKE`, reached as `PKG:POINT-MAKE`), as
-  private and `OPAQUE` families already were, and no family gets a namespace
-  of its own.
+  is defined in the declaring package, and no family gets a namespace of its
+  own. Shown `PCB:POINT-MAKE`, Joel said "hang on, it's not PCB:POINT-MAKE
+  it's PCB:MAKE-POINT", then "unless is POINT is a structure then we need to
+  change the Habu convention so that the constructore is named MAKE-<STRUCT
+  NAME>", and chose "Only MAKE/UNMAKE first": `PCB:MAKE-POINT` and
+  `PCB:UNMAKE-POINT`; every other generated word keeps the family first
+  (`PCB:POINT-EQ`, `PCB:POINT-X@`, `OPTION-SOME`). Offered a checked rename
+  tool, he chose "Rename by hand". Asked about a public `OPAQUE` family's
+  words, he said "i said no such thing! don't touch opaque": `OPAQUE` stays
+  as it is.
+- 2026-11-03, how the compiler reaches the checker: shown that the compiler
+  can call the word named CHECK:DEFINITION whenever the dictionary has it,
+  with no hidden cell and no install step, so that only the kernel, before
+  the checker loads, compiles unchecked, Joel chose "Find by name
+  (Recommended)".
+- 2026-11-03, a public and a private word with one name: told that a package
+  may hold both (forth.md's forwarder rule), Joel said "it makes no sense to
+  have public and private words with the same name since they will clash
+  within the same package. how is this even possible today?!" He chose
+  "Refuse all twins", and again after forwarders were explained with
+  src/lib/task.f's HALT (private :1645, public forwarder :2329).
+- 2026-11-03, name lookup: told that the engine's dictionary index and the
+  checker's symbol table each hash a name's bytes while INTERN maps a string
+  to one address, Joel wrote "yes, the other 2 hash tables should use the
+  string address instead of hashing again". Told that both tables could then
+  become one, he answered "yes if they both point to the same type of data":
+  both key on the interned name's address, and they merge where both map a
+  name to the same kind of record.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
