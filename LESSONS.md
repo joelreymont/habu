@@ -391,6 +391,14 @@ entry.
   unreachable while other wrong orders pass. Each owner's lifecycle becomes
   one typed state, written only by transition words that refuse a wrong
   state.
+- 2026-11-03, the compiler lease: shown a design in which T0's compiles take
+  tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
+  Joel asked "why in the world do you need to take a lease? this smells! are
+  you doing multi-threaded compiles?" They are not: only the main thread
+  compiles (a task's thread exits 79 before any compiler runs), and the
+  lease's other check, a compile started inside another, is the one M-OPEN
+  already makes. T0 takes no lease and keeps M-OPEN; the lease stays tier 1's
+  and goes with it.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
