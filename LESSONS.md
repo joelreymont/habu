@@ -490,7 +490,13 @@ entry.
   constant's, variable's, create's, defer's or CAST:'s, stamped from a
   pattern) and that T0 records a colon body's copy inside its own compile, so
   this is T0's only shadow cell, he chose "COMP-SHADOW-CELL (Recommended)":
-  `NCOMP-DISPATCH:COMP-SHADOW-CELL`.
+  `NCOMP-DISPATCH:COMP-SHADOW-CELL`. Asked afterwards to rename CALLBACK-STUB@,
+  which now ends the request, he answered "i did not approve any use of
+  NDEFINITION, i object to the use of the N* packages and thought you were
+  redoing them", and asked why the request must be ended and how the FFI
+  callback setup works. His approvals cover the words' names and contracts,
+  not their place in NDEFINITION: T0 is not to use tier 1's N* packages, and
+  lane 2's NDEFINITION design is withdrawn.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
