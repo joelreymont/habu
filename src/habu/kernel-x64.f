@@ -446,12 +446,14 @@ variable BUILD-CELL
 variable ADD-CELL
 variable REBUILD-CELL
 variable FULL-CELL
+variable HEAD-ROW-CELL
 : FIND-LBL ( -- label ) FIND-CELL @ >LABEL ;
 : FIND-SCAN-LBL ( -- label ) FIND-SCAN-CELL @ >LABEL ;
 : BUILD-LBL ( -- label ) BUILD-CELL @ >LABEL ;
 : ADD-LBL ( -- label ) ADD-CELL @ >LABEL ;
 : REBUILD-LBL ( -- label ) REBUILD-CELL @ >LABEL ;
 : FULL-LBL ( -- label ) FULL-CELL @ >LABEL ;
+: HEAD-ROW-LBL ( -- label ) HEAD-ROW-CELL @ >LABEL ;
 
 : IMM64, ( r64 n -- ) >IMM64 ASM-SINK ENC-MOV-RI64 ;
 
@@ -584,6 +586,58 @@ variable FULL-CELL
    RAX R8 ASM-SINK ENC-MOV-RR
    ASM-SINK ENC-RET ;
 
+\ LHEADROW's twin ( rdi = head, rsi = its length ): rax = the namespace row the
+\ head names, or 0. It keeps rdi and rsi and clobbers rcx, rdx and r8-r11.
+: HEAD-ROW-HELPER, ( -- )
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: top:label head:label colon:label tail:label probe:label :}
+   X64CODE:LBL X64CODE:LBL {: bare:label done:label :}
+   PACKAGE-PATH:CAP 16 + {: frame:n :}                 \ rdi, rsi, then the path
+   HEAD-ROW-LBL X64CODE:LBL,
+   RAX DATA-REG ENCLOSING:REC MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE top JCC,
+   RAX DATA-REG PKG-REC-CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E bare JCC,
+   top X64CODE:LBL,
+   RAX RDX RCX NAME-LEN,                               \ rdx = A's name length
+   RAX R8 RCX NAME-AT,                                 \ r8 = A's name bytes
+   RCX RDX RSI 1 1 MEM-IDX ASM-SINK ENC-LEA            \ rcx = the path's length
+   RCX PACKAGE-PATH:CAP >IMM32 ASM-SINK ENC-CMP-RI32  C-AE bare JCC,  \ no part is so long
+   RSP frame >IMM32 ASM-SINK ENC-SUB-RI32
+   RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-MR
+   RSI RSP CELL MEM-OFF ASM-SINK ENC-MOV-MR
+   R11 RSP 16 MEM-OFF ASM-SINK ENC-LEA
+   R9 ZERO-REG,
+   head X64CODE:LBL,
+   R9 RDX ASM-SINK ENC-CMP-RR  C-AE colon JCC,
+   R10 R8 R9 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   R10 R64>N >R8 R11 R9 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
+   R9 ASM-SINK ENC-INC  head JMP,
+   colon X64CODE:LBL,
+   R10 $3A IMM32,
+   R10 R64>N >R8 R11 RDX 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
+   R11 R11 RDX 1 1 MEM-IDX ASM-SINK ENC-LEA
+   R9 ZERO-REG,
+   tail X64CODE:LBL,
+   R9 RSI ASM-SINK ENC-CMP-RR  C-AE probe JCC,
+   R10 RDI R9 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   R10 R64>N >R8 R11 R9 1 0 MEM-IDX ASM-SINK ENC-MOV8-MR
+   R9 ASM-SINK ENC-INC  tail JMP,
+   probe X64CODE:LBL,
+   RDI RSP 16 MEM-OFF ASM-SINK ENC-LEA
+   RSI RCX ASM-SINK ENC-MOV-RR
+   RDX DICT-WL:NAMESPACE IMM64,
+   FIND-LBL CALL,
+   RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
+   RSI RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
+   RSP frame >IMM32 ASM-SINK ENC-ADD-RI32
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   bare X64CODE:LBL,
+   RDX DICT-WL:NAMESPACE IMM64,
+   FIND-LBL JMP,                                       \ its ret is this one's
+   done X64CODE:LBL,
+   ASM-SINK ENC-RET ;
+
 \ The twin of C-HIDX-INS: index record rdi, which it keeps, at the first empty
 \ or stale slot of its key's chain. Claiming an empty slot counts one more
 \ HIDX:CLAIMS; a chain walked through every slot is HIDX-EMIT:LFULL's. It clobbers
@@ -682,8 +736,8 @@ variable FULL-CELL
 : INDEX-HELPERS, ( -- )
    X64CODE:LBL FIND-CELL !  X64CODE:LBL FIND-SCAN-CELL !
    X64CODE:LBL BUILD-CELL !  X64CODE:LBL ADD-CELL !  X64CODE:LBL REBUILD-CELL !
-   X64CODE:LBL FULL-CELL !
-   FIND-HELPER,  BUILD-HELPER,  ADD-HELPER,  REBUILD-HELPER,  FULL-HELPER, ;
+   X64CODE:LBL FULL-CELL !  X64CODE:LBL HEAD-ROW-CELL !
+   FIND-HELPER,  HEAD-ROW-HELPER,  BUILD-HELPER,  ADD-HELPER,  REBUILD-HELPER,  FULL-HELPER, ;
 
 public
 
@@ -2138,7 +2192,8 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 
 \ scope-find ( ptr u8 n -- bound used used2 flags ). A qualified name searches
 \ the namespace record's public wid. Bare names search the open private/public
-\ wids, then global, while the used publics are collected independently. Two
+\ wids, the enclosing package's (layout.f ENCLOSING) while a part is open,
+\ then global, while the used publics are collected independently. Two
 \ distinct used records set flag 2 and bind neither when the primary search
 \ missed; a bound seeded primitive sets flag 1.
 : SCOPE-FIND-BODY ( -- )
@@ -2146,8 +2201,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL
    {: colon-scan:label colon-hit:label bare:label qual-scan:label
-      qual-find:label primary-done:label pub:label global:label
+      qual-find:label primary-done:label pub:label enclosing-pri:label
+      enclosing-pub:label global:label
       used-loop:label used-next:label used-first:label used-done:label
       bound:label seed-done:label push-out:label qual-bad:label seed-skip:label :}
    RSI POP,  RDI POP,
@@ -2177,8 +2234,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    R8 ASM-SINK ENC-INC  qual-scan JMP,
    qual-find X64CODE:LBL,
    RSI RCX ASM-SINK ENC-MOV-RR
-   RDX DICT-WL:NAMESPACE IMM64,
-   FIND-LBL CALL,
+   HEAD-ROW-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E primary-done JCC,
    RDX RAX REC-CODE MOV-LOAD,
    RDX RSP SF-QUAL-PUB MOV-STORE,
@@ -2216,6 +2272,16 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE bound JCC,
    pub X64CODE:LBL,
    RDX DATA-REG PKG-PUB-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E enclosing-pri JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE bound JCC,
+   enclosing-pri X64CODE:LBL,
+   RDX DATA-REG ENCLOSING:PRI MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E enclosing-pub JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE bound JCC,
+   enclosing-pub X64CODE:LBL,
+   RDX DATA-REG ENCLOSING:PUB MOV-LOAD,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E global JCC,
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE bound JCC,
@@ -2310,8 +2376,10 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
 : TOK-IMM-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   X64CODE:LBL X64CODE:LBL
    {: scan:label colon:label bare:label qual-scan:label qual-find:label
-      pub:label global:label result:label miss:label done:label :}
+      pub:label enclosing-pri:label enclosing-pub:label global:label
+      result:label miss:label done:label :}
    RSI POP,  RDI POP,
    RSP 32 >IMM8 ASM-SINK ENC-SUB-RI8
    RDI RSP 0 MOV-STORE,  RSI RSP 8 MOV-STORE,
@@ -2333,8 +2401,7 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    R8 ASM-SINK ENC-INC  qual-scan JMP,
    qual-find X64CODE:LBL,
    RSI RCX ASM-SINK ENC-MOV-RR
-   RDX DICT-WL:NAMESPACE IMM64,
-   FIND-LBL CALL,
+   HEAD-ROW-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E miss JCC,
    RDX RAX REC-CODE MOV-LOAD,
    RDX RSP 24 MOV-STORE,
@@ -2365,6 +2432,16 @@ STACK-ABI:CATCH-BYTES CELL + constant CLOSED-ARM-OFF
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE result JCC,
    pub X64CODE:LBL,
    RDX DATA-REG PKG-PUB-CELL MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E enclosing-pri JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE result JCC,
+   enclosing-pri X64CODE:LBL,
+   RDX DATA-REG ENCLOSING:PRI MOV-LOAD,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-E enclosing-pub JCC,
+   FIND-LBL CALL,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE result JCC,
+   enclosing-pub X64CODE:LBL,
+   RDX DATA-REG ENCLOSING:PUB MOV-LOAD,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E global JCC,
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE result JCC,
@@ -4973,11 +5050,10 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RECORD-PUBLISHED,
    WINDOW-CLOSE, ;
 
-\ namespace-record ( ptr u8 n bool -- n ): record NDICT, [0] a fresh wid, [8]
-\ a second when the flag is set and else 0, [40] DICT-WL:NAMESPACE; a colon
-\ in the name is refused. It answers the row's index.
+\ namespace-record ( ptr u8 n bool -- n ): habu2.f DEFWRITE:NAMESPACE-RECORD's
+\ twin; src/habu/prims.f states its contract.
 : NAMESPACE-RECORD-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label clean:label one:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: scan:label next:label clean:label one:label :}
    TASK-LIVE-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
@@ -4985,10 +5061,17 @@ $3A constant NAME-COLON                \ a qualified name's separator
    DICT-ROOM,
    NAME-SIZE,
    RDI RSP DW-NAME MOV-LOAD,  RSI RSP DW-LEN MOV-LOAD,  RCX ZERO-REG,
+   RDX ZERO-REG,                                      \ rdx = a colon seen
    scan X64CODE:LBL,
    RCX RSI ASM-SINK ENC-CMP-RR  C-AE clean JCC,
    RAX RDI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
-   RAX NAME-COLON >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RAX NAME-COLON >IMM8 ASM-SINK ENC-CMP-RI8  C-NE next JCC,
+   RDX RDX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
+   RCX RCX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   RAX RCX 1 MEM-OFF ASM-SINK ENC-LEA
+   RAX RSI ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
+   RDX 1 IMM32,
+   next X64CODE:LBL,
    RCX ASM-SINK ENC-INC
    scan JMP,
    clean X64CODE:LBL,
@@ -5076,29 +5159,52 @@ $3A constant NAME-COLON                \ a qualified name's separator
    prot X64CODE:LBL,  ENGINE-ERROR:SEAL-PACKAGE EXIT-GROUP,
    done X64CODE:LBL, ;
 
-\ package-scope! ( n n -- ) namespace index, parent wid: PKG-PUB and PKG-PRI
-\ from the row's [0] and [8], PKG-PARENT the wid and PKG-REC the row; `-1 0`
-\ clears all four. It stores while a task is live, as habu2.f
-\ DEFWRITE:PACKAGE-SCOPE does: the keywords guard, and recovery restores the
-\ scope through it.
+\ package-scope! ( n n -- ): habu2.f DEFWRITE:PACKAGE-SCOPE's twin;
+\ src/habu/prims.f states its contract.
 : PACKAGE-SCOPE-BODY ( -- )
-   X64CODE:LBL X64CODE:LBL {: set:label done:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
+   {: set:label scan:label part:label top:label store:label done:label :}
    RDX POP,  RCX POP,                                 \ the parent wid, the row
    RCX -1 >IMM8 ASM-SINK ENC-CMP-RI8  C-NE set JCC,
    RDX RDX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,  \ only `-1 0` clears
    RAX ZERO-REG,
    RAX PKG-PUB-CELL CELL!,  RAX PKG-PRI-CELL CELL!,
    RAX PKG-PARENT-CELL CELL!,  RAX PKG-REC-CELL CELL!,
+   RAX ENCLOSING:PUB CELL!,  RAX ENCLOSING:PRI CELL!,
+   RAX ENCLOSING:PARENT CELL!,  RAX ENCLOSING:REC CELL!,
    done JMP,
    set X64CODE:LBL,
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
    RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
-   RCX R8 REC-CODE CELL + MOV-LOAD,
-   RCX RCX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   R9 R8 REC-CODE CELL + MOV-LOAD,                    \ r9 = the private wid
+   R9 R9 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
+   R8 RSI RAX NAME-LEN,  R8 RDI RAX NAME-AT,
+   RCX ZERO-REG,
+   scan X64CODE:LBL,
+   RCX RSI ASM-SINK ENC-CMP-RR  C-AE top JCC,
+   RAX RDI RCX 1 0 MEM-IDX ASM-SINK ENC-MOVZX-8-RM
+   RAX NAME-COLON >IMM8 ASM-SINK ENC-CMP-RI8  C-E part JCC,
+   RCX ASM-SINK ENC-INC
+   scan JMP,
+   part X64CODE:LBL,
+   RAX PKG-PUB-CELL CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,  \ no package open
+   RAX ENCLOSING:PUB CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC, \ a part is open
+   RAX PKG-PUB-CELL CELL@,  RAX ENCLOSING:PUB CELL!,
+   RAX PKG-PRI-CELL CELL@,  RAX ENCLOSING:PRI CELL!,
+   RAX PKG-PARENT-CELL CELL@,  RAX ENCLOSING:PARENT CELL!,
+   RAX PKG-REC-CELL CELL@,  RAX ENCLOSING:REC CELL!,
+   store JMP,
+   top X64CODE:LBL,
+   RAX ZERO-REG,
+   RAX ENCLOSING:PUB CELL!,  RAX ENCLOSING:PRI CELL!,
+   RAX ENCLOSING:PARENT CELL!,  RAX ENCLOSING:REC CELL!,
+   store X64CODE:LBL,
    RAX R8 REC-CODE MOV-LOAD,
-   RAX PKG-PUB-CELL CELL!,  RCX PKG-PRI-CELL CELL!,
+   RAX PKG-PUB-CELL CELL!,  R9 PKG-PRI-CELL CELL!,
    RDX PKG-PARENT-CELL CELL!,  R8 PKG-REC-CELL CELL!,
    done X64CODE:LBL, ;
 
