@@ -105,6 +105,8 @@ variable SPAN-CELL
 variable REC-CELL
 variable LIVE-CELL
 variable DPBAD-CELL
+variable OVERLAY-DIE-CELL
+variable COMPILE-DIE-CELL
 variable LCLOSE-CELL
 variable SCOPE-SEED-CELL
 variable SCOPE-SEED-END-CELL
@@ -113,6 +115,8 @@ variable SCOPE-KIND-CELL
 : REC-LBL ( -- label ) REC-CELL @ >LABEL ;
 : LIVE-LBL ( -- label ) LIVE-CELL @ >LABEL ;
 : DPBAD-LBL ( -- label ) DPBAD-CELL @ >LABEL ;
+: OVERLAY-DIE-LBL ( -- label ) OVERLAY-DIE-CELL @ >LABEL ;
+: COMPILE-DIE-LBL ( -- label ) COMPILE-DIE-CELL @ >LABEL ;
 : LCLOSE-LBL ( -- label ) LCLOSE-CELL @ >LABEL ;
 : SCOPE-SEED-LBL ( -- label ) SCOPE-SEED-CELL @ >LABEL ;
 : SCOPE-SEED-END-LBL ( -- label ) SCOPE-SEED-END-CELL @ >LABEL ;
@@ -275,6 +279,12 @@ private
    RAX BIT RCX BIT or RDX BIT or RSI BIT or RDI BIT or R11 BIT or
    and 0<> ;
 
+\ The twin of habu1.f OVERLAY-EMIT:GUARD,, which states the rule. It clobbers
+\ rax and the flags.
+: OVERLAY-GUARD, ( -- )
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE OVERLAY-DIE-LBL JCC, ;
+
 public
 
 \ The twin of a habu1.f LPROTREC call site: mprotect the two target pages at
@@ -373,6 +383,8 @@ CELL 4 * constant DIAG-BYTES
 : DPBAD-UNIT$ ( -- ptr u8 n ) s"  bytes" ;
 : DPBAD-AT$ ( -- ptr u8 n ) s"  at " ;
 : DPBAD-COLON$ ( -- ptr u8 n ) s" :" ;
+\ The line habu2.f OVERLAY-EMIT:LDIE writes before the token.
+: OVERLAY-OPEN$ ( -- ptr u8 n ) s" hb: definition while a checker replay is open: " ;
 
 \ The status a refused DP exits with: habu2.f LDPBAD's.
 76 constant DPBAD-RC
@@ -1713,15 +1725,23 @@ private
 
 : CAUGHT-HELD, ( -- )  CATCH-RUN, X64CODE:LBL, ;
 
-\ LDPBAD (rdi = refused DP) writes its numeric diagnostic, then the source
-\ location from LCOMPILEDIE and a newline. An active catch receives code 76
-\ through the kernel's normal RX-restoring unwind; at top level it exits 76.
-\ The location is emitted here so an invalid DP never calls a Habu word.
+\ COMPILE-DIE-LBL, the twin of habu2.f LCOMPILEDIE, takes the code on the
+\ machine stack (its writes clobber every scratch register) and writes the
+\ location itself, so an invalid DP never calls a Habu word. OVERLAY-DIE-LBL
+\ (the twin of OVERLAY-EMIT:LDIE) and DPBAD-LBL (rdi = refused DP) enter it with
+\ their code.
 : DPBAD-HELPER, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: head:label of:label unit:label at:label colon:label nl:label scan:label next:label line:label :}
-   X64CODE:LBL X64CODE:LBL {: no-path:label top:label :}
+   X64CODE:LBL X64CODE:LBL X64CODE:LBL {: no-path:label top:label omsg:label :}
+   OVERLAY-DIE-LBL X64CODE:LBL,
+   omsg OVERLAY-OPEN$ nip STDERR-WRITE,
+   RDI STDERR IMM32,
+   RSI DATA-REG TKA-CELL MOV-LOAD,  RDX DATA-REG TKL-CELL MOV-LOAD,
+   NR-WRITE SYS,
+   RAX ENGINE-ERROR:OVERLAY-OPEN IMM32,  RAX ASM-SINK ENC-PUSH
+   COMPILE-DIE-LBL JMP,
    DPBAD-LBL X64CODE:LBL,
    R8 RDI ASM-SINK ENC-MOV-RR  R8 DATA-REG ASM-SINK ENC-SUB-RR
    head DPBAD-HEAD$ nip STDERR-WRITE,
@@ -1729,6 +1749,8 @@ private
    of DPBAD-OF$ nip STDERR-WRITE,
    RAX DP-CEILING IMM64,  DIAG-U,
    unit DPBAD-UNIT$ nip STDERR-WRITE,
+   RAX DPBAD-RC IMM32,  RAX ASM-SINK ENC-PUSH
+   COMPILE-DIE-LBL X64CODE:LBL,
    RAX DATA-REG SRCLOC:PATHLEN-CELL MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-E no-path JCC,
    at DPBAD-AT$ nip STDERR-WRITE,
@@ -1752,8 +1774,9 @@ private
    nl 1 STDERR-WRITE,
    RDX DATA-REG HND-CELL MOV-LOAD,
    RDX RDX ASM-SINK ENC-TEST-RR  C-E top JCC,
-   RAX DPBAD-RC IMM32,  THROW,
-   top X64CODE:LBL,  DPBAD-RC EXIT-GROUP,
+   RAX ASM-SINK ENC-POP  THROW,
+   top X64CODE:LBL,  RDI ASM-SINK ENC-POP  NR-EXIT-GROUP SYS,
+   omsg X64CODE:LBL,  OVERLAY-OPEN$ TEXT,
    head X64CODE:LBL,  DPBAD-HEAD$ TEXT,
    of X64CODE:LBL,  DPBAD-OF$ TEXT,
    unit X64CODE:LBL,  DPBAD-UNIT$ TEXT,
@@ -1765,6 +1788,7 @@ private
 : HELPERS, ( -- )
    X64CODE:LBL SPAN-CELL !  X64CODE:LBL REC-CELL !  X64CODE:LBL LIVE-CELL !
    X64CODE:LBL DPBAD-CELL !  X64CODE:LBL LGENIOOUT !
+   X64CODE:LBL OVERLAY-DIE-CELL !  X64CODE:LBL COMPILE-DIE-CELL !
    SPAN-HELPER,  REC-HELPER,  LIVE-HELPER,  INDEX-HELPERS,
    DPBAD-HELPER,  GENIO-HELPER,
    X64PROF:HELPERS, ;
@@ -2608,8 +2632,7 @@ public
 \ (src/habu/interpret.f OUTER:INSTALL-EVALUATE); evaluate-closed gives the
 \ first a guarded stack. Rows still tied to ARM's interpreter refuse until
 \ supplied in Habu: the source-exec observer attaches to that interpreter's
-\ evaluator and token dispatch, and the checker overlay's six replay writers
-\ have no x86-64 body.
+\ evaluator and token dispatch.
 \ The source runs under the kernel catch frame while its guard owns the unit
 \ hook. A throw resumes here, so both return paths clear the hook before the
 \ caller sees the status. An occupied hook or a guard outside live code
@@ -2686,12 +2709,6 @@ public
    s" num-parse" [: NUM-PARSE, ;] PRIM
    s" tok-imm?" [: TOK-IMM-BODY ;] PRIM
    s" scope-find" [: SCOPE-FIND-BODY ;] PRIM
-   s" replay-open" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-close" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-widn!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-record" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" record-wid!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
-   s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" scope-kind?" [: RAX POP,  SCOPE-KIND-LBL CALL,  RAX PUSH, ;] PRIM ;
 
 private
@@ -3211,6 +3228,7 @@ variable SITE-TRAP-CELL
    {: fill:label filled:label recopy:label recopied:label :}
    X64CODE:LBL X64CODE:LBL {: index:label indexed:label :}
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    RSP UNIT-FRAME >IMM8 ASM-SINK ENC-SUB-RI8
    RAX POP,  RAX RSP UNIT-COUNT MOV-STORE,
    RAX POP,  RAX RSP UNIT-RECS MOV-STORE,
@@ -4204,6 +4222,7 @@ private
 
 : WORDLIST-ROWS, ( -- )
    s" wordlist" [:
+      OVERLAY-GUARD,
       RAX WIDN-CELL CELL@,  RAX PUSH,
       RAX ASM-SINK ENC-INC  RAX WIDN-CELL CELL!, ;] PRIM
    s" get-current" [: RAX CUR-CELL CELL@,  RAX PUSH, ;] PRIM
@@ -4937,16 +4956,19 @@ public
    s" task-entry" [: TASK-ENTRY-BODY ;] PRIM
    s" callback-entry" [: CALLBACK-ENTRY-BODY ;] PRIM ;
 
-\ The rows an interpreter written in Habu publishes definitions,
-\ namespace rows, aliases and package scope through and marks a word immediate
-\ with (src/habu/prims.f, "the definition writers"): the twins of habu2.f
-\ DEFWRITE's bodies and of its `immediate`, C-IMMEDIATE, in each twin's check
-\ order. Every refusal of a row with a body comes before the first store and
-\ writes nothing on fd 2: a live task exits TASK-LIVE-RC in the four
-\ dictionary rows, a protected wid after the seal ENGINE-ERROR:SEAL-PACKAGE,
-\ and every other refusal ENGINE-ERROR:SEAL-VIOLATION. Past the checks one
-\ helper exit can still end a row: 74 when the index cannot be kept. Each
-\ record carries ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
+\ The rows an interpreter written in Habu publishes definitions, namespace
+\ rows, aliases and package scope through and marks a word immediate with, and
+\ the checker overlay's replay rows, whose contracts src/habu/prims.f states:
+\ the twins of habu2.f DEFWRITE's bodies and of its `immediate`, C-IMMEDIATE,
+\ in each twin's check order. Every refusal of a row with a body comes before
+\ the first store and writes nothing on fd 2: a live task exits TASK-LIVE-RC in
+\ the four dictionary rows, def-cast and the replay rows, a protected wid after
+\ the seal ENGINE-ERROR:SEAL-PACKAGE, and every other refusal
+\ ENGINE-ERROR:SEAL-VIOLATION. The exception is an open overlay in def-open,
+\ namespace-private and alias-record: OVERLAY-GUARD, writes the die line and
+\ dies ENGINE-ERROR:OVERLAY-OPEN. Past the checks one helper exit can still end
+\ a row: 74 when the index cannot be kept. Each record carries
+\ ENGINE-PRIMS:GLOBAL-INT-WID, as on ARM64.
 
 private
 
@@ -5050,6 +5072,16 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RECORD-PUBLISHED,
    WINDOW-CLOSE, ;
 
+\ The twin of habu2.f DEFWRITE:HW-RAISE,. Clobbers rax.
+: HW-RAISE, ( -- )
+   X64CODE:LBL {: keep:label :}
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E keep JCC,
+   RAX REPLAY-SCOPE:HW CELL@,
+   NDICT-REG RAX ASM-SINK ENC-CMP-RR  C-BE keep JCC,
+   NDICT-REG REPLAY-SCOPE:HW CELL!,
+   keep X64CODE:LBL, ;
+
 \ namespace-record ( ptr u8 n bool -- n ): habu2.f DEFWRITE:NAMESPACE-RECORD's
 \ twin; src/habu/prims.f states its contract.
 : NAMESPACE-RECORD-BODY ( -- )
@@ -5092,6 +5124,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RAX WIDN-CELL CELL!,
    RAX RSP DW-WID MOV-LOAD,  RAX R8 REC-WID MOV-STORE,
    PUBLISH-RECORD,
+   HW-RAISE,                                          \ an overlay's row dies at replay-close
    FRAME-CLOSE,
    RAX NDICT-REG -1 MEM-OFF ASM-SINK ENC-LEA  RAX PUSH, ;
 
@@ -5099,6 +5132,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ is 0, takes a fresh private wid.
 : NAMESPACE-PRIVATE-BODY ( -- )
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    RCX POP,
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
@@ -5122,6 +5156,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : ALIAS-RECORD-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: prot:label done:label notval:label :}
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    FRAME-OPEN,
    DW-WID POP-TO,  DW-ARG POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
    RDX RSP DW-WID MOV-LOAD,
@@ -5217,6 +5252,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
 : DEF-OPEN-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: latched:label prot:label done:label :}
    TASK-LIVE-GUARD,
+   OVERLAY-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
    RAX DKIND:MASK DNAME-CELL or invert IMM64,
@@ -5255,6 +5291,100 @@ $3A constant NAME-COLON                \ a qualified name's separator
    done JMP,
    prot X64CODE:LBL,  ENGINE-ERROR:SEAL-PACKAGE EXIT-GROUP,
    done X64CODE:LBL, ;
+
+\ The twin of habu2.f DEFWRITE:SAVED,. Clobbers rax.
+: SAVED, ( n n bool -- ) {: off:n cell:n save:bool :}
+   save if
+      RAX off CELL@,  RAX cell CELL!,
+   else
+      RAX cell CELL@,  RAX off CELL!,
+   then ;
+
+\ The twin of habu2.f DEFWRITE:SCOPE,, which names the cells: the scope
+\ replay-open saves and replay-close restores beside NDICT and CP. Clobbers rax.
+: SCOPE, ( bool -- ) {: save:bool :}
+   WIDN-CELL REPLAY-SCOPE:WIDN save SAVED,
+   CUR-CELL REPLAY-SCOPE:CUR save SAVED,
+   PKG-PUB-CELL REPLAY-SCOPE:PKG-PUB save SAVED,
+   PKG-PRI-CELL REPLAY-SCOPE:PKG-PRI save SAVED,
+   PKG-PARENT-CELL REPLAY-SCOPE:PKG-PARENT save SAVED,
+   PKG-REC-CELL REPLAY-SCOPE:PKG-REC save SAVED,
+   ENCLOSING:END ENCLOSING:PUB - 0 do
+      ENCLOSING:PUB i +  REPLAY-SCOPE:ENCLOSING i +  save SAVED,
+   CELL +loop
+   USE-DEPTH-CELL REPLAY-SCOPE:USE-DEPTH save SAVED,
+   USE-PKG-SAVE-CELL REPLAY-SCOPE:USE-PKG-SAVE save SAVED,
+   USE-MAX 0 ?do
+      USE-WIDS-OFF i cells +  REPLAY-SCOPE:USE-WIDS i cells +  save SAVED,
+   loop ;
+
+\ replay-open ( -- ): habu2.f DEFWRITE:REPLAY-OPEN's twin; src/habu/prims.f
+\ states its contract.
+: REPLAY-OPEN-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,   \ an overlay is open
+   NOT-PENDING,
+   NDICT-REG REPLAY-SCOPE:NDICT CELL!,
+   CP-REG REPLAY-SCOPE:CP CELL!,
+   true SCOPE,
+   NDICT-REG REPLAY-SCOPE:HW CELL!,
+   RAX 1 IMM32,  RAX REPLAY-SCOPE:LATCH CELL!, ;
+
+\ replay-close ( -- ): habu2.f DEFWRITE:REPLAY-CLOSE's twin; TASK-LIVE-GUARD,
+\ stands for its task-live arm. NDICT goes back without ndict!'s guards and CP
+\ with no reclaim, as on ARM64; the span call clobbers rdi and rcx, so the
+\ zeroing reloads both from the band.
+: REPLAY-CLOSE-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,    \ no overlay
+   NOT-PENDING,
+   R8 REPLAY-SCOPE:NDICT CELL@,
+   NDICT-REG R8 ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   R9 REPLAY-SCOPE:HW CELL@,
+   NDICT-REG R9 ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   R10 REPLAY-SCOPE:CP CELL@,
+   CP-REG R10 ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RAX REPLAY-SCOPE:WIDN CELL@,  RDX WIDN-CELL CELL@,
+   RDX RAX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   R10 CODE-SLOT-GUARD,
+   RAX R8 ASM-SINK ENC-MOV-RR
+   OCC-COUNT,
+   LASTC-TRIM,
+   CP-REG R10 ASM-SINK ENC-MOV-RR
+   RDI R8 DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDI DBASE-REG ASM-SINK ENC-ADD-RR
+   RSI R9 ASM-SINK ENC-MOV-RR  RSI R8 ASM-SINK ENC-SUB-RR
+   RSI RSI DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   WINDOW-SPAN,                                       \ records [saved NDICT, HW)
+   RAX REPLAY-SCOPE:NDICT CELL@,
+   RDI RAX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   RDI DBASE-REG ASM-SINK ENC-ADD-RR
+   RCX REPLAY-SCOPE:HW CELL@,  RCX RAX ASM-SINK ENC-SUB-RR
+   RCX RCX DREC >IMM8 ASM-SINK ENC-IMUL-RRI8
+   ZERO-BYTES,
+   WINDOW-CLOSE,
+   false SCOPE,
+   RDI DATA-REG REPLAY-SCOPE:LATCH MEM-OFF ASM-SINK ENC-LEA
+   RCX REPLAY-SCOPE:END REPLAY-SCOPE:LATCH - IMM32,
+   ZERO-BYTES,
+   RDI DATA-REG REPLAY-SCOPE:ENCLOSING MEM-OFF ASM-SINK ENC-LEA
+   RCX ENCLOSING:END ENCLOSING:PUB - IMM32,
+   ZERO-BYTES, ;
+
+\ replay-widn! ( n -- ): habu2.f DEFWRITE:REPLAY-WIDN's twin; src/habu/prims.f
+\ states its contract. The compares are unsigned.
+: REPLAY-WIDN-BODY ( -- )
+   TASK-LIVE-GUARD,
+   RCX POP,                                           \ the mark
+   RAX REPLAY-SCOPE:LATCH CELL@,
+   RAX RAX ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,    \ no overlay
+   RAX REPLAY-SCOPE:WIDN CELL@,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-B SEAL-TRAP-LBL JCC,
+   RAX WIDN-CELL CELL@,
+   RCX RAX ASM-SINK ENC-CMP-RR  C-A SEAL-TRAP-LBL JCC,
+   RCX WIDN-CELL CELL!, ;
 
 \ habu1.f EMIT-BCAP's BODY-SOURCE row for the run rsi/rcx landing at BODYLEN
 \ (rax). It keeps rax, rcx and rsi, and clobbers rdi and r8-r11.
@@ -5688,6 +5818,13 @@ public
    s" def-create" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" def-defer" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" def-abort" [: DEF-ABORT-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-open" [: REPLAY-OPEN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-close" [: REPLAY-CLOSE-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   s" replay-widn!" [: REPLAY-WIDN-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
+   \ The overlay's three record writers have no x86-64 body.
+   s" replay-record" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" record-wid!" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
+   s" replay-private" ENGINE-PRIMS:GLOBAL-INT-WID REFUSE-WID
    s" stack-clear" [: STACK-CLEAR-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" imm-mark" [: IMM-MARK-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
    s" def-cast" [: DEF-CAST-BODY ;] ENGINE-PRIMS:GLOBAL-INT-WID PRIM-WID
