@@ -397,8 +397,11 @@ entry.
   you doing multi-threaded compiles?" They are not: only the main thread
   compiles (a task's thread exits 79 before any compiler runs), and the
   lease's other check, a compile started inside another, is the one M-OPEN
-  already makes. T0 takes no lease and keeps M-OPEN; the lease stays tier 1's
-  and goes with it.
+  already makes. T0 takes no lease and keeps M-OPEN. Told the lease would stay
+  tier 1's until tier 1 goes, Joel asked "if you are taking no lease then why
+  are you modifying calls to NLEASE? why have NLEASE at all?" Its checks repeat
+  exit 79, M-OPEN and NSESSION's own record of the backend work running, so
+  NLEASE goes now, with every lease argument and check.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
