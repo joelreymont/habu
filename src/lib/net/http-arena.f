@@ -50,8 +50,8 @@ $18 constant NUM-CAP             \ one number on its way into a buffer
 
 private
 
-\ The growing buffers' first capacities; each grows past its own as one answer
-\ needs and keeps what it grew to for the worker's next answers.
+\ The growing buffers' first capacities. Each grows past its own while one
+\ answer needs it; GIVE-BACK says when all three return to them.
 $800 constant HDR-START          \ response header lines
 $100000 constant JSON-START      \ one generated body: what JSON! writes, or the error text
 $1000 constant OUT-START         \ status line plus headers of one response, or a fault line
@@ -84,6 +84,7 @@ variable BODY-TIMEOUT-MS             \ 0 shares START's deadline with the head
 MAX-WORKERS TYPED-BUFFER IN-U n           \ bytes read into the input buffer
 MAX-WORKERS TYPED-BUFFER IN-AT n          \ bytes of it already consumed
 MAX-WORKERS TYPED-BUFFER HEAD-U n         \ bytes of the current request head
+MAX-WORKERS TYPED-BUFFER GIVEN-BACK n     \ 1: the answer buffers wait for SLOT-RESET
 
 MAX-WORKERS TYPED-BUFFER METHOD-AT n
 MAX-WORKERS TYPED-BUFFER METHOD-N n
@@ -211,6 +212,7 @@ private
    workers 0 ?do
       SPAN-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN i CARVE
       0 i SEQ !
+      0 i GIVEN-BACK !
       i HDR-BUF HDR-START BUF:N>BLEN BUF:INIT
       i JSON-BUF JSON-START BUF:N>BLEN BUF:INIT
       i OUT-BUF OUT-START BUF:N>BLEN BUF:INIT
@@ -422,6 +424,43 @@ private
    idx SEG-BUF row SEGMENT-AT @ row SEGMENT-LEN @ SPAN:SUB SPAN:$ ;
 
 
+\ True when the buffer has grown past its first capacity n.
+: GROWN? ( ptr n n -- bool ) {: buf:ptr start:n :}
+   buf BUF:CAP@ BUF:BLEN>N start > ;
+
+
+\ Disposes the buffer, live or not, and makes it again at its first capacity n.
+: REMAKE ( ptr n n -- ) {: buf:ptr start:n :}
+   buf BUF:DISPOSE
+   buf start BUF:N>BLEN BUF:INIT ;
+
+
+\ Once any answer buffer has grown, all three are given back. Until SLOT-RESET
+\ has made them again any of them may be disposed, so GROWN? does not read them.
+: GIVE-BACK ( n -- ) {: idx:n :}
+   idx GIVEN-BACK @ 0<> if exit then
+   idx HDR-BUF HDR-START GROWN?
+   idx JSON-BUF JSON-START GROWN? or
+   idx OUT-BUF OUT-START GROWN? or 0= if exit then
+   1 idx GIVEN-BACK !
+   idx HDR-BUF BUF:DISPOSE
+   idx JSON-BUF BUF:DISPOSE
+   idx OUT-BUF BUF:DISPOSE ;
+
+
+\ A failed mapping leaves GIVEN-BACK set, so the next request tries again.
+: MAKE-ANSWER ( n -- ) {: idx:n :}
+   idx GIVEN-BACK @ 0= if exit then
+   idx HDR-BUF HDR-START REMAKE
+   idx JSON-BUF JSON-START REMAKE
+   idx OUT-BUF OUT-START REMAKE
+   0 idx GIVEN-BACK ! ;
+
+
+\ True while the slot has its answer buffers to build a response in.
+: ANSWER-MADE? ( n -- bool )  GIVEN-BACK @ 0= ;
+
+
 \ Everything one request owns, cleared before it is parsed, so a request that
 \ the grammar refuses cannot read the spans of the one before it. The input
 \ buffer's own cursor survives: bytes of the next request may already be in it.
@@ -431,6 +470,7 @@ private
    0 idx PATH-AT ! 0 idx PATH-N !
    0 idx QUERY-AT ! 0 idx QUERY-N !
    0 idx VERSION-AT ! 0 idx VERSION-N !
+   idx MAKE-ANSWER
    idx HDR-BUF BUF:CLEAR
    idx OUT-BUF BUF:CLEAR
    0 idx SEG-U !
@@ -449,7 +489,8 @@ private
 \ before its body mapping goes away. Disposal also accepts a partial read.
 : SLOT-FINISH ( n -- ) {: idx:n :}
    idx BOUNDED SLOT-GEN @ 1+ idx SLOT-GEN !
-   idx BODY-CLOSE ;
+   idx BODY-CLOSE
+   idx GIVE-BACK ;
 
 
 public

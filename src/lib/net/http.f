@@ -313,19 +313,21 @@ private
    construct served answered ;
 
 
-\ Opening the slot's body buffer (SLOT-RESET) can fail to map. Keep that
-\ failure at this request boundary so a failed mapping does not end the
-\ worker's task; one while a handler reads its body is that handler's fault.
+\ SLOT-RESET's mappings can fail; the failure stays at this request, not the
+\ worker's task. One while a handler reads its body is that handler's fault.
 : READ-CURRENT ( -- )
    SELF-SLOT {: idx:n :}
    idx SERVING @ idx IDLE-MS @ READ-REQUEST idx READ-RESULT ! ;
 
 
+\ A slot whose answer buffers could not be made again has none to answer in:
+\ the fault is reported and the connection closed.
 : READ-FAULT ( TCP4:connection n n -- served )
    {: conn:TCP4:connection idx:n code:n :}
    idx MAKE-ID
    0 idx KEEP-ALIVE!
    idx code REPORT-FAULT
+   idx ANSWER-MADE? 0= if construct served silent exit then
    500 idx SLOT-STATUS!
    [: RENDER-FAULT ;] catch {: failed:n :}
    idx failed HOOK-FAULT

@@ -22,6 +22,7 @@ require src/lib/memory.f
 require src/lib/net/http.f
 require src/lib/fd.f
 require src/lib/test/stderr.f
+require src/lib/process-command.f
 
 \ Test-image hooks: TEST-PREOPEN initializes START-READY first, so the real
 \ startup initializer refuses after the job queue has opened.
@@ -427,6 +428,25 @@ FILL-BIG
    answer [: BIG-BODY ;] HTTP:JSON! ;
 
 
+\ 64 MiB, mapped and filled by HUGE-JSON-CASE for the time it runs.
+$4000000 constant HUGE-VALUE-BYTES
+HUGE-VALUE-BYTES 10 + constant HUGE-ANSWER-BYTES   \ {"big":"<value>"}
+1 TYPED-BUFFER HUGE-VALUE SPAN:span<u8>
+$2710 constant PS-MS
+$4000 constant RSS-SLACK-KIB      \ 16 MiB
+
+
+: HUGE-BODY ( ptr JSON:writer -- ptr JSON:writer )
+   JSON:WRITE-OBJECT-START
+   s" big" 0 HUGE-VALUE @ SPAN:$ JSON:WRITE-FIELD-S
+   JSON:WRITE-OBJECT-END ;
+
+
+: HUGE-JSON ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
+   answer 200 HTTP:STATUS!
+   answer [: HUGE-BODY ;] HTTP:JSON! ;
+
+
 : MANY-HEADERS ( HTTP:request HTTP:response -- ) {: asked:HTTP:request answer:HTTP:response :}
    FILL-HEADERS 0 ?do
       answer s" X-Fill" BIG-VALUE FILL-HEADER-BYTES HTTP:HEADER!
@@ -677,6 +697,7 @@ $2710 constant PARK-MS            \ far past every stop bound
    s" GET" s" /api/boom-json" [: BOOM-JSON ;] HTTP:ROUTE
    s" POST" s" /api/answer" [: ANSWER-TEXT ;] HTTP:ROUTE
    s" GET" s" /api/big-json" [: BIG-JSON ;] HTTP:ROUTE
+   s" GET" s" /api/huge-json" [: HUGE-JSON ;] HTTP:ROUTE
    s" GET" s" /api/many-headers" [: MANY-HEADERS ;] HTTP:ROUTE
    s" GET" s" /api/park" [: PARK ;] HTTP:ROUTE ;
 
@@ -1283,6 +1304,39 @@ ERR-CAP SPAN-BUFFER: ERR-BUF
    0 BIG-RES @ MEM:FREE-SPAN
    s" GET" s" /api/ping" FETCH 200 T=
    RES$ S\" {\qservice\q:\qhttp-test\q}" T$= ;
+
+
+\ This process's resident set in KiB, as ps reports it on macOS and Linux;
+\ ru_maxrss is a peak and never shows memory given back.
+: PS-RSS ( CMD:command -- n CMD:command )
+   s" -o" CMD:ARG+  s" rss=" CMD:ARG+
+   s" -p" CMD:ARG+  getpid FMT:INT$ CMD:ARG+
+   s" /bin/ps" PS-MS >MS 1 CMD:RUN
+   CMD:OUT$ TRIM STR>NUMBER? MATCH option
+      none OF E-PROC-OUTPUT throw ENDOF
+      some OF ENDOF
+   ;MATCH swap ;
+
+
+\ A 64 MiB answer leaves the resident set where it was once its request has
+\ ended (GIVE-BACK); the one worker serves the ping after that request.
+: HUGE-JSON-CASE ( -- )
+   HUGE-VALUE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 HUGE-VALUE !
+   0 HUGE-VALUE @ SPAN:$ drop {: value:ptr :}
+   HUGE-VALUE-BYTES 0 ?do FILL-BYTE value i + c! loop
+   HUGE-ANSWER-BYTES $1000 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN 0 BIG-RES !
+   [: PS-RSS ;] CMD:WITH-COMMAND {: before:n :}
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject s" /api/huge-json" URL-FOR CURL:URL! DROP-CURL-STATUS
+   subject 0 BIG-RES @ SPAN:$ TAKE-INTO {: status:n got:n :}
+   subject CURL:CLEANUP
+   0 BIG-RES @ MEM:FREE-SPAN
+   s" GET" s" /api/ping" FETCH 200 T=
+   [: PS-RSS ;] CMD:WITH-COMMAND {: after:n :}
+   0 HUGE-VALUE @ MEM:FREE-SPAN
+   status 200 T=
+   got HUGE-ANSWER-BYTES T=
+   after before - RSS-SLACK-KIB < TTRUE ;
 
 
 \ Response header lines past 2 KiB, and a head past 4 KiB, are sent whole,
@@ -2929,6 +2983,7 @@ SB-CAP SPAN-BUFFER: LONG-TYPE
    REASON-CASES
    FAULT-CASE
    BIG-JSON-CASE
+   HUGE-JSON-CASE
    MANY-HEADERS-CASE
    LONG-SEGMENT-CASE
    STATIC-CASES
