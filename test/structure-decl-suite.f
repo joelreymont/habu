@@ -725,6 +725,36 @@ s" SDAW6 ( ptr u8 n -- ptr u8 ) record-at" CHECK-QUIET-CANDIDATE! -1 T=
 \ is the address surface over it, not the pointer.
 s" SDAW7 ( ptr sdagen<sdaw2> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
 
+\ A field may hold an option of a multi-cell STRUCTURE: option's cell parameter
+\ takes the layout-kind argument, as a variant payload's does. SOME and NONE go
+\ through the generated accessor and read back by MATCH, and the fields around
+\ the wide one keep their values. The options are built by words that declare
+\ option<sdqpair>: a bare OPTION:NONE or OPTION:SOME inside a body stays the
+\ open one-cell option<a> and does not meet the wide site.
+STRUCTURE sdqpair FIELD x n FIELD y n ;STRUCTURE
+: SDQ-ABSENT ( -- option<sdqpair> ) OPTION:NONE ;
+: SDQ-PRESENT ( n n -- option<sdqpair> ) SDQPAIR:MAKE OPTION:SOME ;
+: SDQ-OPEN ( option<sdqpair> -- n )
+   MATCH option
+      none OF -1 ENDOF
+      some OF SDQPAIR:UNMAKE {: xv:n yv:n :} xv 100 * yv + ENDOF
+   ;MATCH ;
+s" STRUCTURE sdqrec DERIVE addr FIELD k n FIELD res option<sdqpair> FIELD z n ;STRUCTURE"
+TEST-EVAL:RC 0 T=
+s" 1 TYPED-BUFFER SDQ-BUF sdqrec" TEST-EVAL:RC 0 T=
+s" : SDQ-INIT ( -- ) 11 SDQ-ABSENT 22 SDQREC:MAKE 0 SDQ-BUF ! ;" TEST-EVAL:RC 0 T=
+s" : SDQ-SOME ( n n -- ) SDQ-PRESENT 0 SDQ-BUF SDQREC:RES ! ;" TEST-EVAL:RC 0 T=
+s" : SDQ-NONE ( -- ) SDQ-ABSENT 0 SDQ-BUF SDQREC:RES ! ;" TEST-EVAL:RC 0 T=
+s" : SDQ-READ ( -- n ) 0 SDQ-BUF SDQREC:RES @ SDQ-OPEN ;" TEST-EVAL:RC 0 T=
+s" : SDQ-SIDES ( -- n ) 0 SDQ-BUF SDQREC:K @ 100 * 0 SDQ-BUF SDQREC:Z @ + ;" TEST-EVAL:RC 0 T=
+s" SDQ-INIT SDQ-READ" TEST-EVAL:N -1 T=
+s" 3 4 SDQ-SOME SDQ-READ" TEST-EVAL:N 304 T=
+s" SDQ-SIDES" TEST-EVAL:N 1122 T=
+s" SDQ-NONE SDQ-READ" TEST-EVAL:N -1 T=
+s" SDQ-SIDES" TEST-EVAL:N 1122 T=
+\ the same field without the addr surface
+s" STRUCTURE sdqplain FIELD res option<sdqpair> ;STRUCTURE" TEST-EVAL:RC 0 T=
+
 \ a field named like a generated member is refused AT ITS OWN TOKEN, because the
 \ generator would otherwise render a name it had already defined.
 s" STRUCTURE sdabad DERIVE addr FIELD at n ;STRUCTURE" TEST-EVAL:RC 7110 T=

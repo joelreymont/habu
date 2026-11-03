@@ -2576,9 +2576,13 @@ private
    fam TFAM-ARITY@ 0 ?do
       fam i TFAM-PK@ PF-NONVALUE? IF UNLOOP RES-TRUE EXIT THEN
    loop RES-FALSE ;
+\ A cell parameter takes a layout-kind argument: the instantiated width is
+\ argument-aware (TFAM-INST-WIDTH@), so option<pair> is a valid field type as it
+\ is a valid variant payload or stack item.
 : PF-KIND-OK? ( n n -- bool ) {: got:n want:n :}
    want PK-TYPE = IF
       got PK-EVIDENCE <> got PF-NONVALUE? 0= and EXIT THEN
+   want PK-CELL = got PK-LAYOUT = and IF RES-TRUE EXIT THEN
    got want = ;
 
 \ Deferred so PF-NODE-KIND?'s SCH-QUOT case can reach it before its body, which
@@ -2690,12 +2694,11 @@ private
 \ bounds guard, so a payload parameter beyond arity would be a silent
 \ out-of-bounds read; this walk makes the arity invariant structural, with the
 \ per-token TDECL-LETTER gate (sumtype.f) as the front line. It is not
-\ PF-NODE-KIND?: that walk's SCH-APP branch also matches each argument's
-\ physical kind to the parameter kind (PF-KIND-OK?), which would reject a valid
-\ nested-layout payload such as option<result<n,f>> (a layout-kind argument in a
-\ cell parameter slot). This walk descends SCH-APP arguments, the SCH-PTR
-\ pointee and SCH-QUOT rows, and answers the first out-of-arity index, or -1
-\ when the subtree is in range (indices are 0..25).
+\ PF-NODE-KIND?, which answers the subtree's kind and whether it is well
+\ formed, not which parameter index is out of arity. This walk descends
+\ SCH-APP arguments, the SCH-PTR pointee and SCH-QUOT rows, and answers the
+\ first out-of-arity index, or -1 when the subtree is in range (indices are
+\ 0..25).
 defer TFAM-SCH-ROW-ARITY ( n n -- n )   \ ( owner rownode -- bad-idx ) forward ref for the SCH-QUOT recursion
 
 public
