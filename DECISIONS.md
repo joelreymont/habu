@@ -6,6 +6,18 @@ learned live in the docs for their subject.
 
 ## Language and checker
 
+- 2026-11-03, generated family words: a public `STRUCTURE` declared in a
+  package part failed to load, because a public family's generated words lived
+  in a namespace built from the package's name (`PA:PB-ZQVW:MAKE`). Joel said
+  "swiftforth handles public structures in packages just fine. perhaps, the
+  approach should be to not make packages of structures but use
+  STRUCTURE-NAME- prefixes instead?" and asked "what is best for long term?"
+  Shown that SwiftForth's structure words are plain words in the current
+  wordlist, he answered "do it": every word a `STRUCTURE` or `ENUM` generates
+  is defined in the declaring package, in the section where the declaration
+  sits, named `FAMILY-WORD` (`POINT-MAKE`, reached as `PKG:POINT-MAKE`), as
+  private and `OPAQUE` families already were, and no family gets a namespace
+  of its own.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
