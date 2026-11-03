@@ -160,18 +160,18 @@ variable ERRLEN
    UNGUARDED-REFUSED
    OUTLEN @ 0 T= ;
 
-\ Tier-0 words use the guarded VM return mapping. These source lines call the
-\ primitive from the interpreter, so the exact slot accounting is ARM-only.
+\ Top-level 2>r/2r> use the guarded VM return mapping (src/habu/stack-abi.f);
+\ the exact slot accounting is ARM-only. A raw RSP store sets each row's slots.
 : PRIMITIVE-RETURN-ARM ( -- )
    s" last two return-stack slots" T-LABEL
-   s" 0 set-check STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n ."
+   s" STACK-ABI:RETURN-CELLS 2 - data-base RSP-CELL + ! 11 22 2>r 2r> . . data-base RSP-CELL + @ STACK-ABI:RETURN-CELLS 2 - = bool>n ."
    CHILD-RC 0 T=
    OUT OUTLEN @ S\" 22\n11\n-1\n" T$=
    s" whole return transfer needs two free slots" T-LABEL
-   s" 0 set-check STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r" REFUSED-RETURN
+   s" STACK-ABI:RETURN-CELLS 1 - data-base RSP-CELL + ! 11 22 2>r" REFUSED-RETURN
    s" whole return transfer needs two live slots" T-LABEL
-   s" 0 set-check 1 data-base RSP-CELL + ! 2r>" REFUSED-RETURN
-   s" empty return-stack read" T-LABEL s" 0 set-check 2r>" REFUSED-RETURN ;
+   s" 11 22 2>r 1 data-base RSP-CELL + ! 2r> 2drop" REFUSED-RETURN
+   s" empty return-stack read" T-LABEL s" 11 22 2>r 0 data-base RSP-CELL + ! 2r> 2drop" REFUSED-RETURN ;
 
 \ Tier-1 linear return transfers live in the compiler's value vector. Even
 \ with only one VM return slot free, 2>r/2r> leave RSP unchanged; an unmatched

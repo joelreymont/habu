@@ -32,12 +32,10 @@ create ERR IO-CAP allot
    src size T-LABEL  OUT outu LEN>N OA-MARK$ T$=
    ERR erru LEN>N ;
 
-\ A call that ran though fd 2 holds the verdict WANT, which the unjudged regime
-\ reports and does not enforce.
-: REACHES-REPORTED ( ptr u8 n n ptr u8 n -- )
-   {: src:ptr size:n rc:n want:ptr wantu:n :}
+\ A call that ran from a TRUSTED: body, which reports nothing on fd 2.
+: REACHES ( ptr u8 n n -- ) {: src:ptr size:n rc:n :}
    src size rc RAN {: ea:ptr eu:n :}
-   src size T-LABEL  ea eu want wantu CONTAINS? TTRUE ;
+   src size T-LABEL  ea eu s" " T$= ;
 
 \ A source the engine refuses before anything runs: the reject status and the
 \ diagnostic naming why.
@@ -54,48 +52,15 @@ public
 
 private
 
-\ package-scope! and namespace-record are CHECKER-OVERLAY's, source-unit-run and
-\ source-file-run SOURCE-ROOT's; int-mark has no package row. Unchecked code
-\ compiles a call to an owned primitive at both tiers: the call runs, and each
-\ writer refuses its arguments itself (record 0 is no namespace row; an empty
-\ name) with exit 83. Both tiers report the global trusted-only row's
-\ E-CAP-TRUSTED, as for every unjudged verdict, and compile the call.
-: UNCHECKED ( -- )
-   s" 0 set-check : OA-SCOPE ( n n -- ) package-scope! ; 0 0 OA-AT OA-SCOPE"
-   ENGINE-ERROR:SEAL-VIOLATION
-   s" E-CAP-TRUSTED habu: in oa-scope: 'package-scope!' is a trust-boundary primitive"
-   REACHES-REPORTED
-   s" 0 set-check : OA-NS ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS"
-   ENGINE-ERROR:SEAL-VIOLATION
-   s" E-CAP-TRUSTED habu: in oa-ns: 'namespace-record' is a trust-boundary primitive"
-   REACHES-REPORTED
-   s" 1 set-tier 0 set-check : OA-NS1 ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS1"
-   ENGINE-ERROR:SEAL-VIOLATION
-   s" E-CAP-TRUSTED habu: in oa-ns1: 'namespace-record' is a trust-boundary primitive"
-   REACHES-REPORTED ;
-
-\ OWNED comes from the rows, not a name list: source-unit-run's SOURCE-ROOT
-\ row makes it owned too, so unchecked tier-0 code compiles a call to it, and
-\ the call runs its callback, which prints the marker. The native compiler
-\ reads the signature even unchecked, so it names a real type.
-: UNIT-RUN ( -- )
-   s" 0 set-check : OA-UNIT ( [ -- ] -- ) source-unit-run ; ' OA-AT OA-UNIT"
-   0
-   s" E-CAP-TRUSTED habu: in oa-unit: 'source-unit-run' is a trust-boundary primitive"
-   REACHES-REPORTED ;
-
-\ An internal primitive no package row types keeps the compile refusal, so
-\ unchecked code still needs a TRUSTED: boundary to call it.
-: INTERNAL-ONLY ( -- )
-   s" 0 set-check : OA-MARK ( n -- ) int-mark ;"
-   s" E-UNDEFINED: int-mark" REJECTS ;
-
-\ Its tick is refused too: the xt would run wherever the body hands it.
-: INTERNAL-TICK ( -- )
-   s" 0 set-check : OA-TICK ( -- ) ['] int-mark drop ;"
-   s" E-UNDEFINED: int-mark" REJECTS
-   s" 1 set-tier 0 set-check : OA-TICK1 ( -- ) ['] int-mark drop ;"
-   s" E-UNDEFINED: int-mark" REJECTS ;
+\ A TRUSTED: body calls CHECKER-OVERLAY's writers at both tiers; each refuses
+\ its arguments itself (record 0 is no namespace row; an empty name).
+: TRUSTED-CALLS ( -- )
+   s" TRUSTED: OA-SCOPE ( n n -- ) package-scope! ; 0 0 OA-AT OA-SCOPE"
+   ENGINE-ERROR:SEAL-VIOLATION REACHES
+   s" TRUSTED: OA-NS ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS"
+   ENGINE-ERROR:SEAL-VIOLATION REACHES
+   s" 1 set-tier TRUSTED: OA-NS1 ( ptr u8 n bool -- n ) namespace-record ; parse-name OAN drop 0 true OA-AT OA-NS1"
+   ENGINE-ERROR:SEAL-VIOLATION REACHES ;
 
 \ OWNED opens nothing that DNAME-INT closes: the prompt and `'` refuse an owned
 \ primitive as they refuse every internal engine word.
@@ -132,10 +97,7 @@ public
 
 : OA-RUN ( -- )
    T-RESET
-   s" unchecked code calls an owned primitive at both tiers" T-LABEL UNCHECKED T-NEXT
-   s" a package row owns source-unit-run" T-LABEL UNIT-RUN T-NEXT
-   s" an unowned internal primitive stays uncompilable" T-LABEL INTERNAL-ONLY T-NEXT
-   s" an unowned internal primitive's tick stays uncompilable" T-LABEL INTERNAL-TICK T-NEXT
+   s" a TRUSTED: body calls an owned primitive at both tiers" T-LABEL TRUSTED-CALLS T-NEXT
    s" the prompt and tick refuse an owned primitive" T-LABEL HIDDEN T-NEXT
    s" a checked caller outside the owner is refused by its row" T-LABEL OUTSIDE T-NEXT
    T-REPORT ;

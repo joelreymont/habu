@@ -97,8 +97,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ Each remaining sink hand-wires a different register into PROT-GUARD, so one
 \ forge per sink proves that sink's own wiring.
-\ A forge that passes a band address where its sink takes an n runs with the
-\ checker suspended (`check@ 0 set-check ... set-check`), so the seal refuses it.
+\ A forge that passes a band address where its sink takes an n, which the checker
+\ refuses, calls the sink from the body of a TRUSTED: word (SLF-FORGE).
 
 : SLV-ATADD-FORGE$ ( -- ptr u8 n )          \ atomic-add addr (x10=B) into the band ($28)
    SB-RESET
@@ -127,38 +127,38 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-READLINK-FORGE$ ( -- ptr u8 n )       \ readlink link buffer (x2) into the band
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
-   s" check@ 0 set-check 0 data-base SLF-CUR + $40 readlink drop set-check" SB-APPEND SLV-LF   \ NULL path: guard fires before the syscall
+   s" TRUSTED: SLF-FORGE ( -- ) 0 data-base SLF-CUR + $40 readlink drop ; SLF-FORGE" SB-APPEND SLV-LF   \ NULL path: guard fires before the syscall
    SB$ ;
 
 : SLV-STAT-FORGE$ ( -- ptr u8 n )           \ stat64 statbuf (x1) into the band
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
-   s" check@ 0 set-check 0 data-base SLF-CUR + stat64 drop set-check" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-FORGE ( -- ) 0 data-base SLF-CUR + stat64 drop ; SLF-FORGE" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-LSTAT-FORGE$ ( -- ptr u8 n )          \ lstat64 statbuf (x1) into the band
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
-   s" check@ 0 set-check 0 data-base SLF-CUR + lstat64 drop set-check" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-FORGE ( -- ) 0 data-base SLF-CUR + lstat64 drop ; SLF-FORGE" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-DENTS-BUF-FORGE$ ( -- ptr u8 n )      \ getdirentries64 dirent buffer (x1) into the band
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
-   s" check@ 0 set-check 0 data-base SLF-CUR + $40 0 getdirentries64 drop set-check" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-FORGE ( -- ) 0 data-base SLF-CUR + $40 0 getdirentries64 drop ; SLF-FORGE" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-DENTS-BASEP-FORGE$ ( -- ptr u8 n )    \ getdirentries64 basep (x3) into the band; buffer in a free hole
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
    s" $1A0 constant SLF-HOLE" SB-APPEND SLV-LF
-   s" check@ 0 set-check 0 data-base SLF-HOLE + $40 data-base SLF-CUR + getdirentries64 drop set-check" SB-APPEND SLV-LF
+   s" 0 data-base SLF-HOLE + $40 data-base SLF-CUR + getdirentries64 drop" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-MMAP-FORGE$ ( -- ptr u8 n )           \ mmap addr (x0) into the band (MAP_FIXED-class remap guard)
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
-   s" check@ 0 set-check data-base SLF-CUR + $1000 3 $1012 -1 0 mmap drop set-check" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-FORGE ( -- ) data-base SLF-CUR + $1000 3 $1012 -1 0 mmap drop ; SLF-FORGE" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-HOLE-FORGE$ ( -- ptr u8 n )           \ ! into a free hole below the band ($1A0)
@@ -220,7 +220,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-NDICT-CONTINUATION-FORGE$ ( -- ptr u8 n )
    SB-RESET
    s" TRUSTED: SLF-NDICT-ATTACK ( -- )" SB-APPEND SLV-LF
-   s"    0 set-check 0 ndict!" SB-APPEND SLV-LF
+   s"    0 ndict!" SB-APPEND SLV-LF
    S\"    s\" package TFAM public : SLF-PWN ( -- ) ; ;package\" evaluate ;" SB-APPEND SLV-LF
    s" SLF-NDICT-ATTACK" SB-APPEND SLV-LF
    SB$ ;
@@ -283,19 +283,18 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ protected band. One forge per band proves the code-region guard. ndict! writes
 \ records into the disjoint dict-record region (DBASE, not data-base), bounded
 \ by DICT-CAP through the room check, so it cannot land in a data-base band; the
-\ legit round-trip forge above proves its guard leaves FORGET intact. Each cp!
-\ forge runs with the checker suspended for the same reason.
+\ legit round-trip forge above proves its guard leaves FORGET intact.
 : SLV-CPSET-B2-FORGE$ ( -- ptr u8 n )       \ cp! CP into the registry band ($3CB8), then emit
    SB-RESET
    s" $3CB8 constant SLF-PWIDN" SB-APPEND SLV-LF
-   s" check@ 0 set-check data-base SLF-PWIDN + cp! set-check" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-FORGE ( -- ) data-base SLF-PWIDN + cp! ; SLF-FORGE" SB-APPEND SLV-LF
    s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-CPSET-B1-FORGE$ ( -- ptr u8 n )       \ cp! CP into the crown-jewel band ($20), then emit
    SB-RESET
    s" $20 constant SLF-LATCH" SB-APPEND SLV-LF
-   s" check@ 0 set-check data-base SLF-LATCH + cp! set-check" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-FORGE ( -- ) data-base SLF-LATCH + cp! ; SLF-FORGE" SB-APPEND SLV-LF
    s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
    SB$ ;
 

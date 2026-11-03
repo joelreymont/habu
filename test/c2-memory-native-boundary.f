@@ -45,12 +45,12 @@ public
    s" checked compilation cannot tick a scoped entry" T-LABEL
    s" : C2-NATIVE-TICK ( -- ) ['] C2-MEM:WITH-MUT drop ;" 70 SUBJECT:EXITED? TTRUE
    s" : C2-NATIVE-READ-TICK ( -- ) ['] C2-MEM:WITH-READ drop ;" 70 SUBJECT:EXITED? TTRUE
-   s" unchecked interpretation cannot tick a scoped entry" T-LABEL
-   s" 0 set-check ' C2-MEM:WITH-MUT drop" 70 SUBJECT:EXITED? TTRUE
-   s" 0 set-check ' C2-MEM:WITH-READ drop" 70 SUBJECT:EXITED? TTRUE
-   s" unchecked compilation cannot tick a scoped entry" T-LABEL
-   s" 0 set-check : C2-NATIVE-RAW-TICK ( -- ) ['] C2-MEM:WITH-MUT drop ;" 70 SUBJECT:EXITED? TTRUE
-   s" 0 set-check : C2-NATIVE-RAW-READ-TICK ( -- ) ['] C2-MEM:WITH-READ drop ;" 70 SUBJECT:EXITED? TTRUE
+   s" interpretation cannot tick a scoped entry" T-LABEL
+   s" ' C2-MEM:WITH-MUT drop" 70 SUBJECT:EXITED? TTRUE
+   s" ' C2-MEM:WITH-READ drop" 70 SUBJECT:EXITED? TTRUE
+   s" a TRUSTED: body cannot tick a scoped entry" T-LABEL
+   s" TRUSTED: C2-NATIVE-RAW-TICK ( -- ) ['] C2-MEM:WITH-MUT drop ;" 70 SUBJECT:EXITED? TTRUE
+   s" TRUSTED: C2-NATIVE-RAW-READ-TICK ( -- ) ['] C2-MEM:WITH-READ drop ;" 70 SUBJECT:EXITED? TTRUE
    T-REPORT
    s" c2-memory-native-boundary: ok" type cr ;
 
