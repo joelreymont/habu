@@ -14,3 +14,5 @@ Supersedes the owner-row design of habu-honour-owner-private-0a19f45d.
 Files: src/habu/prims.f, src/core/checker.f (PE-SPEC-ROW K-PKG-PRIVATE), src/habu/primitive-registry.f, the callers in src/habu/*.f and src/core/*.f, tests that name the rows (test/owner-access.f, test/prim-owner-scope.f, test/baked-owner.f).
 Verify: product probe of the refused names above; full suite on the built hb.
 Depends: none. Ownership: lead. Claim: unassigned.
+
+Still leaks on Habu 09565d43 (tim via Maki, 2026-11-03, reproduced by carl): 'package OUTER public : ZZ ( -- n ) s" ZZQ" true namespace-record ; ;package OUTER:ZZ . cr' compiles and runs through OUTER's owner row, rc 0, printing row index 21983.
