@@ -6,6 +6,16 @@ learned live in the docs for their subject.
 
 ## Language and checker
 
+- 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
+  one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
+  and one error code for a badly formed table, Joel answered "call package
+  FSM and MACHINE should be CREATE instead. then it reads like FSM:CREATE (or
+  DEFINE) instead of STATE-MACHINE:MACHINE": package FSM with `FSM:DEFINE`
+  (CREATE is Forth's word) and the code `FSM:E-SYNTAX`; the row keywords IN,
+  FINAL and `>state` stand. He added that "state machines are easy to verify
+  with formal methods, e.g. TLA+ so you need to think in state machines if at
+  all possible and appropriate", and asked to "commit state machines and move
+  it to habu master so that others can use it".
 - 2026-11-01, public words: after leads asked Joel to approve guard words
   where the fix was reading a request body on demand, he said to "ask
   whenever they want to create new forth (habu) words" and "it should be a
