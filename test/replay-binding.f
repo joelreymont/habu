@@ -158,7 +158,7 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    s" a reopened body binds the package word the checker has no record of" T-LABEL
    S\" package RB-RAW\npublic\n: RB-G ( ptr n -- n ) @ ;\n;package\n" 70 REPLAY
    DIAG$ s" rb-g" CONTAINS? TTRUE
-   DIAG$ s" '@' is a trust-boundary primitive" CONTAINS? TTRUE ;
+   DIAG$ s" undefined word '@'" CONTAINS? TTRUE ;
 
 : QUALIFIED-CASE ( -- )
    s" a qualified name binds as the engine resolves it" T-LABEL
@@ -656,8 +656,10 @@ package RB-RAW
 
 public
 
-s" live, the same body is refused" T-LABEL
-s" RB-G ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+\ 1 (uncheckable) is the checker's answer for a name whose record was deleted,
+\ not a certification.
+s" live, the same body is not certified" T-LABEL
+s" RB-G ( ptr n -- n ) @" CHECK-QUIET-CANDIDATE! 1 T=
 
 ;package
 

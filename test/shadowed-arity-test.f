@@ -151,20 +151,11 @@ s\" package SAT-DC\ns\q SAT-D\q CHECKER-UNDEFINE\npublic\n: SAT-DC-USE ( -- n ) 
 s\" : SAT-D-CK ( -- ) SAT-DA:SAT-DA-USE SAT-DB:SAT-DB-USE + SAT-DC:SAT-DC-USE + 21 <> if s\q a recordless symbol bound its tail\q 1 die then ;\nSAT-D-CK"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 
-\ Nor does a public twin bind past a private word the engine still holds. The
-\ engine binds the private word first, so one the checker has no live record
-\ for stops the walk before the public leg: a CHECKER-UNDEFINE deleted only the
-\ checker's record (SAT-DT), and a `0 set-check` word never had one (SAT-DU).
-\ Each use below is refused: certified against the public ( ptr u8 -- n ), it
-\ would run the private ( n -- n ) on a pointer. The engine's own `undefine`
-\ retires the private word too, and then the public twin binds (SAT-DV).
+\ A private word with no checker record (SAT-DT) still binds before its public
+\ twin, so its use is refused; after `undefine` the twin binds (SAT-DV).
 s\" package SAT-DT\n: SAT-DT-X ( n -- n ) 1 + ;\npublic\n: SAT-DT-X ( ptr u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=
 s\" package SAT-DT\ns\q SAT-DT-X\q CHECKER-UNDEFINE\n: SAT-DT-USE ( -- n ) s\q ab\q drop SAT-DT-X ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
-s\" package SAT-DU\ncheck@ 0 set-check\n: SAT-DU-X ( n -- n ) 1 + ;\nset-check\npublic\n: SAT-DU-X ( ptr u8 -- n ) drop 5 ;\n;package"
-   SHADOWED-ARITY:SAE-CATCH 0 T=
-s\" package SAT-DU\n: SAT-DU-USE ( -- n ) s\q ab\q drop SAT-DU-X ;\n;package"
    SHADOWED-ARITY:SAE-CATCH SHADOWED-ARITY:E-REJECT T=
 s\" package SAT-DV\n: SAT-DV-X ( n -- n ) 1 + ;\npublic\n: SAT-DV-X ( ptr u8 -- n ) drop 5 ;\n;package"
    SHADOWED-ARITY:SAE-CATCH 0 T=

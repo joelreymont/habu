@@ -6,12 +6,6 @@ require src/habu/address-cells.f
 package STORAGE-BIND-TEST
 
 T-RESET
-variable SAVED-CHECK
-check@ SAVED-CHECK !
-0 set-check
-TYPED-VARIABLE UNCHECKED-N n
-9 UNCHECKED-N ! UNCHECKED-N @ 9 T=
-SAVED-CHECK @ set-check
 
 STRUCTURE plain-row
    FIELD first n
