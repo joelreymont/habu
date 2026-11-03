@@ -706,6 +706,10 @@ SUITE compiler-native-prefix-declarations
    test/compiler/native-prefix-declarations.f
 ;SUITE
 
+SUITE compiler-native-eval-prefix
+   test/compiler/native-eval-prefix.f
+;SUITE
+
 \ Native primitive goldens live in prim-cases.f and prim-float-cases.f, owned
 \ by prim-parity.f. They pin wrap at MAX-N+1, MIN-N/-1, divisor throws,
 \ modulo-64 shifts, and canonical NaN outputs through compiled primitive calls.
@@ -846,6 +850,10 @@ SUITE compiler-native-again
 
 SUITE compiler-native-rstack
    test/compiler/native-rstack.f
+;SUITE
+
+SUITE compiler-native-return-abi
+   test/compiler/native-return-abi.f
 ;SUITE
 
 SUITE compiler-native-rstack-input
