@@ -414,11 +414,15 @@ entry.
   deleted. He added "the reason i pointed out nlease is because i saw you
   modifying nlease or using nlease in some other code".
 - 2026-11-03, editing tier 1: Joel asked "why do we not stop modifying T1 and
-  focus on T0? why do we keep modifying T1?" T0 work edits tier 1 only where
-  T0 shares a package with it (NDEFINITION, NEMIT, NPUB, NSHADOW, NDICT, the
-  callback stub) and T0's change moves tier 1's calls into that package, or
-  to fix a defect on a path tier 1 still owns (the next entry). No tier-1-only
-  cleanup, and no T0 design leans on tier 1's machinery.
+  focus on T0? why do we keep modifying T1?" Told that T0 calls tier 1's
+  packages for everything after its own compiling (NDEFINITION, NEMIT, NPUB,
+  NSHADOW, NDICT, the callback stub), so T0 changes there move tier 1's calls,
+  he asked "what about copying T1 code to T0?" and wrote "i want to share
+  frontend code, not build hooks and ties into code we are about to retire!"
+  T0 shares only front-end code with tier 1. What T0 needs from tier 1's
+  packages is copied into T0's own package and owned there; tier 1 keeps its
+  copy, unedited, until it is deleted. Tier 1 is edited only to fix a defect
+  on a path it still owns (the next entry).
 - 2026-11-03, tier 1 bugs before Wasm moves to T0: asked to approve
   NELAB:FIXED building a CAST: word's body, so tier 1 stops refusing a cast
   with a quotation input (test/wasm/dynamic.f), Joel asked "what is NELAB? and
