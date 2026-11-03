@@ -64,6 +64,17 @@ learned live in the docs for their subject.
   internals, prove me wrong". Shown that nothing after startup needs it, he
   chose "Refuse every removal (Recommended)": after startup, removing a word
   of a sealed package is an error on every removal path.
+- 2026-11-03, the checker's other words found by name: offered TOP-ROW:TOKEN
+  for the check of each word run outside a definition, Joel asked "the fuck
+  is top-row? do you not question the package naming? why do you need
+  TOP-ROW?" and "why does the engine need to find it? if you mean the
+  compiler then why does it not live in the COMP package?" Shown that the
+  caller is the top-level interpreter, built before any checker exists, and
+  that a program's top level runs and is checked in the building hb, he
+  chose "CHECK:TOP-LEVEL (Recommended)": package TOP-ROW goes and the check
+  joins CHECK beside CHECK:DEFINITION. For the check the compiler runs before
+  an immediate word the checker has no model for, he chose "CHECK:IMMEDIATE
+  (Recommended)".
 - 2026-11-03, a public and a private word with one name: told that a package
   may hold both (forth.md's forwarder rule), Joel said "it makes no sense to
   have public and private words with the same name since they will clash
