@@ -497,6 +497,19 @@ entry.
   callback setup works. His approvals cover the words' names and contracts,
   not their place in NDEFINITION: T0 is not to use tier 1's N* packages, and
   lane 2's NDEFINITION design is withdrawn.
+- 2026-11-03, FFI callbacks: shown that CALLBACK: leaves a request (slot and
+  thunk) that the next compile fills with the callback's C entry stub, ended
+  on every exit so a refused accessor cannot hand its stub to a later word,
+  and that the engine also builds 16 ready-made stubs, Joel wrote "why
+  separate FFI-CB package? no backwards compatibility so remove the 16
+  ready-made stubs. you don't need to end stubs, prove me wrong! when you
+  define a callback you define it for life of the program, to bridge a given
+  habu word." The lead could not prove him wrong: a slot is never given back
+  (src/lib/ffi-callback.f header) and nothing retires a callback, so a
+  request needs ending only because defining the callback and placing its
+  stub are two steps. A callback's C entry is made in the step that defines
+  it, with no state left between calls; the 16 stubs (layout.f CB-POOL,
+  "retained for seed compatibility") go.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
