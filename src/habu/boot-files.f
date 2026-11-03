@@ -119,7 +119,8 @@ private
    RESTLIB COMMON s" src/lib/num-arithmetic.f" ROW
    RESTLIB COMMON s" src/lib/string.f" ROW
    RESTLIB COMMON s" src/lib/memory.f" ROW
-   RESTLIB COMMON s" src/lib/image-lifecycle.f" ROW ;
+   RESTLIB COMMON s" src/lib/image-lifecycle.f" ROW
+   RESTLIB COMMON s" src/compiler/fixed-body.f" ROW ;
 
 
 create ROWS FILL

@@ -1419,10 +1419,6 @@ package NCOMP-DISPATCH
 public
 $2D98 constant FIXED-SHADOW-CELL
 $2DA0 constant DOES-SHADOW-CELL
-\ Kept for habu2.f's operands until src/compiler/fixed-body.f is installed.
-1 constant FIXED-VAL-KIND
-2 constant FIXED-ADDR-KIND
-3 constant FIXED-DEFER-KIND
 ;package
 $2DA8 constant TASK-CHAIN-CELL
 \ The design seal (src/lib/vocabulary.f) confines a sealed source to the

@@ -16,6 +16,7 @@ require src/habu/native-body-abi.f
 require src/habu/native-host-cells.f
 require src/habu/boot-files.f
 require src/core/sha256.f
+require src/compiler/fixed-body.f
 \ The ARM64 encoders are package A64ASM's public surface (src/arch/arm64/asm.f).
 require src/arch/arm64/icode.f
 using A64ASM
@@ -1080,7 +1081,9 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
 \ declares a type family: tools/build-fixpoint.f BF-APPEND-COMMON and
 \ tools/bootstrap.sh SRC_COMMON rebuild the registry in this order, and the seed
 \ refuses a registry that does not start where its capture did
-\ (src/core/type-family.f REG-AOT-BASE-BAD). The lifecycle registry sits below
+\ (src/core/type-family.f REG-AOT-BASE-BAD). fixed-body.f is a boot row because
+\ this file's builders name COMP:body; like span.f it declares a type family the
+\ recovery texts rebuild in this order. The lifecycle registry sits below
 \ the compiler capture window, so an FFI cleanup that capture tooling registers
 \ later never becomes a target of the window's declared CODE cells.
 \ These files carry require lines, so the provide rows must reach the registry
@@ -4485,7 +4488,7 @@ variable LREPLAYTRAP
    LBL {: noshadow:label :}
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
    9 DATA DP-CELL LDR,  9 G-PUSH
-   9 NCOMP-DISPATCH:FIXED-ADDR-KIND MOVZ,  9 G-PUSH
+   9 COMP-BODY:address COMP:BODY>N MOVZ,  9 G-PUSH
    9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
    noshadow LBL, ;
@@ -4904,7 +4907,7 @@ package INTERP-EMIT
    9 SP 0 LDR,  SP SP 16 ADDI,
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
    9 G-PUSH
-   9 NCOMP-DISPATCH:FIXED-VAL-KIND MOVZ,  9 G-PUSH
+   9 COMP-BODY:value COMP:BODY>N MOVZ,  9 G-PUSH
    9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
    noshadow LBL,
@@ -5051,7 +5054,7 @@ public
    LBL {: noshadow:label :}
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
    9 0 MOVZ,  9 G-PUSH
-   9 4 MOVZ,  9 G-PUSH                    \ COMP-BODY:cast, compiled after this builder
+   9 COMP-BODY:cast COMP:BODY>N MOVZ,  9 G-PUSH
    9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
    noshadow LBL, ;
@@ -5218,7 +5221,7 @@ public
    LBL {: noshadow:label :}
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  11 noshadow CBZ,
    9 DATA DEFER-XT-CELL LDR,  9 G-PUSH
-   9 NCOMP-DISPATCH:FIXED-DEFER-KIND MOVZ,  9 G-PUSH
+   9 COMP-BODY:defer COMP:BODY>N MOVZ,  9 G-PUSH
    9 NDICT 0 ADDI,  9 9 1 SUBI,  9 G-PUSH
    11 DATA NCOMP-DISPATCH:FIXED-SHADOW-CELL LDR,  C-CALL-X11-SAVED
    noshadow LBL, ;

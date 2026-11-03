@@ -36,6 +36,7 @@ require src/os/linux-x86-64/proc-watch.f
 require src/os/linux-x86-64/proc-control.f
 require src/os/linux-x86-64/target-layout.f
 require src/habu/aot-decl.f
+require src/compiler/fixed-body.f
 
 package X64KERNEL
 using X64ASM
@@ -5275,7 +5276,7 @@ INT3-CELL $FF invert and RET-OP or constant CAST-CELL
    R11 NCOMP-DISPATCH:FIXED-SHADOW-CELL CELL@,
    R11 R11 ASM-SINK ENC-TEST-RR  C-E noshadow JCC,
    RAX ZERO-REG,  RAX PUSH,
-   RAX 4 IMM32,  RAX PUSH,                 \ COMP-BODY:cast
+   RAX COMP-BODY:cast COMP:BODY>N IMM32,  RAX PUSH,
    RAX NDICT-REG ASM-SINK ENC-MOV-RR  RAX ASM-SINK ENC-DEC  RAX PUSH,
    R11 ASM-SINK ENC-CALL-REG
    noshadow X64CODE:LBL,

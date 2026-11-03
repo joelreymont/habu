@@ -16,6 +16,7 @@ require src/lib/num-types.f
 require src/lib/num-arithmetic.f
 require src/lib/string.f
 require src/lib/memory.f
+require src/compiler/fixed-body.f
 require src/lib/vector.f
 
 package PAYLOAD-NATIVE-PRODUCER
