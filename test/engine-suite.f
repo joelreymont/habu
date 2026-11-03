@@ -140,18 +140,10 @@ CAST: FLAG-CELL ( bool -- n )
 3 7 max 7 T=
 1 2 3 4 2swap 2 T= 1 T= 4 T= 3 T=
 1 2 3 4 2over 2 T= 1 T= 4 T= 3 T= 2 T= 1 T=
-\ The checker does not model ?dup's two outcomes (a body or a top-level step
-\ using it is refused E-UNDEFINED), and a cell pushed with checking off is
-\ unknown after the window, so the engine's ?dup runs unchecked and parks its
-\ results in variables.
-variable ES-QDUP-ZERO
-variable ES-QDUP-SUM
-check@ 0 set-check
-0 ?dup ES-QDUP-ZERO !
-5 ?dup + ES-QDUP-SUM !
-set-check
-ES-QDUP-ZERO @ 0 T=
-ES-QDUP-SUM @ 10 T=
+\ ?dup is refused E-UNDEFINED in checked code (src/core/checker.f QDUP-STEP),
+\ so only a TRUSTED: body reaches the engine's ?dup.
+TRUSTED: ES-QDUP ( -- n n ) 0 ?dup 5 ?dup + ;
+ES-QDUP 10 T= 0 T=
 depth 0 T=
 1 2 depth 2 T= 2 T= 1 T=
 : TDEPTH ( i64 i64 -- i64 i64 i64 ) depth ;
@@ -389,7 +381,6 @@ variable TC-SYMU
    SYM-N @ TC-SYMN @ = ;
 : TC-SYMU=? ( -- bool )
    SYM-STR-U @ TC-SYMU @ = ;
-LOWER-CERT-HOOK:INSTALL
 TC-SNAP
 s" A ( n -- n ) 1+" CHECK-CANDIDATE! -1 T=
 s" A ( n -- n ) dup drop" CHECK-CANDIDATE! -1 T=
@@ -969,7 +960,6 @@ PTR-VARIABLE TR-CT-PAP  PTR-VARIABLE TR-CT-PUP
    TR-CT-NAP @ CT-NAME-A-P !  TR-CT-NUP @ CT-NAME-U-P !  TR-CT-CLP @ CT-CLASS-P !
    TR-CT-WDP @ CT-WIDTH-P !  TR-CT-SGP @ CT-SIGN-P !  TR-CT-STP @ CT-STR-P !
    TR-CT-PAP @ CT-PKG-A-P !  TR-CT-PUP @ CT-PKG-U-P ! ;
-LOWER-CERT-HOOK:INSTALL
 TR-CT-WHITEBOX
 \ ---- VREC registry: records, nodes, fields, string pool ----
 \ Grow the record AND node arrays to mmap BEFORE the string pool, so a pool
@@ -1020,7 +1010,6 @@ variable TR-VFN variable TR-VFC variable TR-V-FIELD-LC
    TR-VN @ VREC-N !  TR-VU @ VREC-STR-U !  TR-VC @ VREC-CAP-V !  TR-VSC @ VREC-STR-CAP-V !
    TR-VNODEN @ VREC-NODE-N !  TR-VNODEC @ VREC-NODE-CAP-V !
    TR-VFN @ VREC-FIELD-N !  TR-VFC @ VREC-FIELD-CAP-V ! ;
-LOWER-CERT-HOOK:INSTALL
 TR-VREC-WHITEBOX
 \ ---- SYMS registry: record array grow rehashes HIDX; string offsets survive ----
 variable TR-SC  variable TR-SSC  variable TR-SN  variable TR-SSU
@@ -1083,7 +1072,6 @@ variable TR-S-LC variable TR-S-STRLC variable TR-S-EP
    HIDX-VALID @ 0= TTRUE
    s" checker snapshot prepare unbinds the effect owner" T-LABEL
    HIDX-EFF-BASE@ 0= TTRUE ;
-LOWER-CERT-HOOK:INSTALL
 TR-SYMS-WHITEBOX
 
 \ Registry internals predate the checker hook; a checked body binds their
@@ -1211,7 +1199,6 @@ variable TC-TRAIL
    TC-V0 @ PAY TV@ TC-V1 @ T=   \ inside a trial: still -> v1, not compressed
    0 TRIAL-DEPTH !
    TC-TRAIL @ TRAIL-UNWIND  TC-FV @ FV ! ;
-LOWER-CERT-HOOK:INSTALL
 TR-PATHCOMP-WHITEBOX
 s" COK-POSTDEC ( a -- a ) dup drop" T-CHECK-PASSES
 \ --- locals over the compiler-matched cap fail CLOSED, not silently uncheckable
@@ -1494,7 +1481,6 @@ variable TSHOW-N
 \ binds on this unsealed engine.
 : TSHOW-INSTALL ( -- ) [: TSHOW-HOOK ;] is LOCSHOWXT ;
 : TSHOW-RESTORE ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
-LOWER-CERT-HOOK:INSTALL
 TSHOW-INSTALL
 0 TSHOW-N !
 s" COK-SHOW-INFERRED ( i64 -- i64 ) {: x:? :} x" T-CHECK-PASSES
@@ -1733,12 +1719,11 @@ s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
 s" CBAD-LOCAL-SCOPE ( i64 bool -- i64 ) if {: drop:i64 :} drop else drop 0 then drop" T-CHECK-REJECTS
 s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
-\ child processes: run-rc spawns + waits (paths need a NUL)
-\ run-rc has no checker row (src/habu/prims.f UNROWED:): only unchecked source calls it.
-check@ 0 set-check
-s" /usr/bin/true" PATH0 run-rc 0 T=
-s" /usr/bin/false" PATH0 run-rc 1 T=
-set-check
+\ run-rc spawns a child and waits (paths need a NUL); it has no checker row
+\ (src/habu/prims.f UNROWED: run-rc), so only a TRUSTED: body reaches it.
+TRUSTED: ES-RUN-RC ( ptr u8 n -- n ) PATH0 run-rc ;
+s" /usr/bin/true" ES-RUN-RC 0 T=
+s" /usr/bin/false" ES-RUN-RC 1 T=
 
 \ spawn-fds: the child's descriptor table is exactly the request's map, through
 \ the primitive itself. Each child is /bin/sh -c with the script in ES-SFZ.
@@ -1897,9 +1882,12 @@ s" link" ES-TMPZ RLB 64 readlink 9 T=
 RLB c@ 65 T=
 s" link" ES-TMPZ unlink 0 T=
 ES-ROOT$ FS:>PATHZ rmdir 0 T=
-check@ 0 set-check
-0 4096 3 $1002 -1 0 mmap dup 0 < TFALSE dup 65 swap c! c@ 65 T=
-set-check
+
+\ mmap answers an address as a number; a private cast makes it a byte row.
+package ENGINE-SUITE
+CAST: MAP>BYTES ( n -- ptr u8 )
+0 4096 3 $1002 -1 0 mmap dup 0 < TFALSE MAP>BYTES dup 65 swap c! c@ 65 T=
+;package
 
 \ floats
 : TFP ( -- bool ) 1.5 2.5 f+ 4.0 f= ;
@@ -1918,9 +1906,7 @@ TFNEG TTRUE
 s" " nip 0 T=
 
 \ run-rc spawn failure -> -1 (not a hang or garbage status)
-check@ 0 set-check
-s" /nonexistent-habu-x" PATH0 run-rc -1 T=
-set-check
+s" /nonexistent-habu-x" ES-RUN-RC -1 T=
 
 \ snapshot-writer intrinsics are sane
 $340000000 constant ES-LINUX-DATA-VA
@@ -2057,55 +2043,23 @@ TFQ TTRUE
 : TFG ( -- bool ) 5.0 3.0 f> ;
 TFG TTRUE
 
-\ rejected definitions must not leak code space: the hooked publish path rolls
-\ CP back to the definition start (the pre-name CP for >16-char names) when
-\ the hook verdict is 0. ES-VERDICT-HOOK is the raw-verdict boundary: unlike
-\ HOOK it returns the checker verdict instead of throwing, so the engine's
-\ reject-continue branch runs in-process.
-: ES-VERDICT-HOOK ( ptr u8 n -- n ) CHECK! ;
-
-\ CHECK! owns certificate publication, so an alternate hook cannot leave the
-\ previous wide definition's facts live when it accepts a scalar definition.
-package CERT-ALT-TEST
-
-SUMTYPE wide
-   VARIANT value n ;VARIANT
-;SUMTYPE
-1 LAYOUT-BUFFER BUF wide
-
-: PTR ( -- ptr wide ) 0 BUF ;
-: FETCH ( -- wide ) PTR @ ;
-
-;package
-
-LOWER-CERT:NEEDS-CELL LOWER-CERT:CELL@ 1 T=
 s" CERT-BYTES-BAD ( -- ptr u8 n ) LOWER-CERT:BYTES" T-CHECK-REJECTS
-LOWER-CERT-HOOK:INSTALL
-' ES-VERDICT-HOOK set-check
 
-package CERT-ALT-TEST
-
-: SCALAR ( n -- n ) 1 + ;
-
-;package
-
-LOWER-CERT:CELL-COUNT 10 T=
-LOWER-CERT:NEEDS-CELL LOWER-CERT:CELL@ 0 T=
-LOWER-CERT:WF-COUNT-CELL LOWER-CERT:CELL@ 0 T=
-
+\ A definition the checker refuses inside evaluate throws 70 (check-hook.f
+\ CHECK-RC); the evaluate frame rolls CP and NDICT back (EM-EVAL-THROW-RECOVER).
 variable ES-CPX-CP
 variable ES-CPX-ND
-\ unsigned body with an unsafe token: checker verdict 0, engine rejects
-: ES-CPX-BAD$ ( -- ptr u8 n ) s" : ES-CPX-BAD 0 set-check ;" ;
+\ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
+: ES-CPX-BAD$ ( -- ptr u8 n ) s" : ES-CPX-BAD evaluate ;" ;
 \ >16-char name: C-STORE-NAME copies it into code space before the entry, so
 \ the reject rollback must reclaim the name bytes too (CP := pre-name CP)
-: ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME 0 set-check ;" ;
+: ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
 TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
 TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
 : ES-CPX-BAD-RUN ( -- )
-   ['] ES-CPX-BAD-EVAL catch E-COMP-VERDICT T= ;
+   ['] ES-CPX-BAD-EVAL catch 70 T= ;
 : ES-CPX-BAD-EXT-RUN ( -- )
-   ['] ES-CPX-BAD-EXT-EVAL catch E-COMP-VERDICT T= ;
+   ['] ES-CPX-BAD-EXT-EVAL catch 70 T= ;
 1 DIAG-QUIET +!
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
 ES-CPX-BAD-RUN
@@ -2121,7 +2075,6 @@ ES-CPX-BAD-EXT-RUN
 ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
-LOWER-CERT-HOOK:INSTALL
 -1 DIAG-QUIET +!
 \ retry after rejects: the accepted definition lands on the reclaimed entry
 : ES-CPX-GOOD ( n -- n ) 1 + ;
@@ -2142,17 +2095,6 @@ s" smoke-hook-installed" T-LABEL data-base HOOK-CELL + @ 0= TFALSE
 : ES-SMOKE-SQ ( i64 -- i64 ) dup * ;
 s" smoke-checked-compile-run" T-LABEL 7 ES-SMOKE-SQ 49 T=
 s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io drop true TTRUE
-
-\ check@ getter round-trip: check@ reads the live hook that set-check installed
-\ ([x20/DATA + HOOK-CELL]); reinstalling it via check@ is a no-op and the
-\ checker hook still fires afterward. `dbase@ HOOK-CELL + @` reads the CODE
-\ base, the wrong one.
-s" check@ reads live hook" T-LABEL check@ data-base HOOK-CELL + @ T=
-s" check@ nonzero after boot install" T-LABEL check@ 0 <> TTRUE
-check@ set-check
-s" check@ set-check is a no-op" T-LABEL check@ data-base HOOK-CELL + @ T=
-: ES-CHK-RT ( i64 -- i64 ) dup + ;
-s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
 
 \ --- declared-effect parametricity seal. After body checking, every declared
 \ type-variable quantifier must still resolve to a DISTINCT variable. Any
