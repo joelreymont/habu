@@ -626,17 +626,15 @@ private
    1.5 T0-DUPFADD 3.0 f= TTRUE
    3 T0-DUPLOOP 3 T= ;
 
-\ `?dup` is absent from checked bodies (docs/forth-card.md), so its subject is
-\ compiled last, with checking suspended for the rest of this file.
-0 set-check
-
+\ `?dup` leaves one cell or two, which no row states (docs/forth-card.md), so
+\ its subject and the test that counts the cells are TRUSTED:.
 public
 
-: T0-QDUP ?dup ;
+TRUSTED: T0-QDUP ( n -- n ) ?dup ;
 
 private
 
-: TEST-QDUP ( -- )
+TRUSTED: TEST-QDUP ( -- )
    s" ?dup is copied, not called, and answers both ways" T-LABEL
    s" TIER0-INLINE-PRIMS:T0-QDUP" s" ?dup" INLINED
    depth {: base :}

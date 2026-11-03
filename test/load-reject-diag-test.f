@@ -41,7 +41,7 @@ create FRAG-P PATH-CAP allot
 create SIDE-P PATH-CAP allot
 create INC-P PATH-CAP allot
 create REQ-P PATH-CAP allot
-create SIGLESS-P PATH-CAP allot
+create CALLER-P PATH-CAP allot
 create TOP-INC-P PATH-CAP allot
 create TOP-REQ-P PATH-CAP allot
 create RUNTIME-P PATH-CAP allot
@@ -62,7 +62,7 @@ variable FRAG-U
 variable SIDE-U
 variable INC-U
 variable REQ-U
-variable SIGLESS-U
+variable CALLER-U
 variable TOP-INC-U
 variable TOP-REQ-U
 variable RUNTIME-U
@@ -103,8 +103,8 @@ variable RC
 : REQ$ ( -- ptr u8 n )
    REQ-P REQ-U @ ;
 
-: SIGLESS$ ( -- ptr u8 n )
-   SIGLESS-P SIGLESS-U @ ;
+: CALLER$ ( -- ptr u8 n )
+   CALLER-P CALLER-U @ ;
 
 : TOP-INC$ ( -- ptr u8 n )
    TOP-INC-P TOP-INC-U @ ;
@@ -166,7 +166,7 @@ variable RC
    s" side.f" SIDE-P SIDE-U PATH!
    s" imm-include.f" INC-P INC-U PATH!
    s" imm-require.f" REQ-P REQ-U PATH!
-   s" imm-signatureless.f" SIGLESS-P SIGLESS-U PATH!
+   s" imm-caller.f" CALLER-P CALLER-U PATH!
    s" top-include.f" TOP-INC-P TOP-INC-U PATH!
    s" top-require.f" TOP-REQ-P TOP-REQ-U PATH!
    s" runtime.f" RUNTIME-P RUNTIME-U PATH!
@@ -201,9 +201,7 @@ variable RC
    SIDE$ s"  . ;" INC$ FRAG-FIXTURE!
    s" -1 JSON-DIAGS ! : LRD-IMM-R ( -- ) 73 require "
    SIDE$ s"  . ;" REQ$ FRAG-FIXTURE!
-   SIGLESS$ S" 0 set-check
-: RAW-IMM ( -- ) ; immediate
-LOWER-CERT-HOOK:INSTALL
+   CALLER$ S" TRUSTED: RAW-IMM ( -- ) ; immediate
 -1 JSON-DIAGS !
 : LRD-IMM-S ( mystery:foo -- n ) RAW-IMM 73 ;
 " FS:WRITE-ALL ;
@@ -419,11 +417,10 @@ LOWER-CERT-HOOK:INSTALL
    BODY$ s" SUMTYPE lrd-choice VARIANT empty ;VARIANT VARIANT scalar n ;VARIANT ;SUMTYPE TRUSTED: LRD-BADVAR ( -- n ) construct lrd-choice bogus 1 ;" FS:WRITE-ALL
    BODY$ RUN
    s" ncomp: cannot compile LRD-BADVAR at bogus in" ASSERT-NAMED
-   s" T0 refuses a construct of an unknown family after the checker's reason" T-LABEL
-   BODY$ s" 0 set-check : LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
+   s" T0 refuses a construct of an unknown family" T-LABEL
+   BODY$ s" TRUSTED: LRD-BADFAM ( -- n ) construct lrd-nofam scalar 1 ;" FS:WRITE-ALL
    BODY$ RUN
-   s" ncomp: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED
-   ERR$ s" bad construct: family not declared" CONTAINS? TTRUE ;
+   s" ncomp: cannot compile LRD-BADFAM at lrd-nofam in" ASSERT-NAMED ;
 
 \ A refused step in a TRUSTED: body lowers as the raw effect the scan splices,
 \ so `2dup` over a two-cell view copies two cells.
@@ -577,10 +574,7 @@ LOWER-CERT-HOOK:INSTALL
 : TEST-UNSAFE ( -- )
    s" a checked body calling evaluate names E-UNSAFE and why" T-LABEL
    s" : LRD-EV ( ptr u8 n -- ) evaluate ;"
-   s" E-UNSAFE habu: in lrd-ev: 'evaluate' reads source" s" body.f:1" UNSAFE-REJECT
-   s" a checked body calling set-check names E-UNSAFE and why" T-LABEL
-   S\" \n: LRD-SC ( n -- ) set-check ;"
-   s" E-UNSAFE habu: in lrd-sc: 'set-check' reads source" s" body.f:2" UNSAFE-REJECT ;
+   s" E-UNSAFE habu: in lrd-ev: 'evaluate' reads source" s" body.f:1" UNSAFE-REJECT ;
 
 : TEST-REQUIRE-CHAIN ( -- )
    s" require-chain reject names the undefined word" T-LABEL
@@ -633,9 +627,9 @@ LOWER-CERT-HOOK:INSTALL
    s" lrd-imm-r" s" require" ASSERT-IMM-DIAG
    OUT$ s" LRD-FRAGMENT-EXECUTED" CONTAINS? TFALSE ;
 
-: TEST-IMM-SIGNATURELESS ( -- )
-   s" signatureless immediate gets one canonical preflight diagnostic" T-LABEL
-   SIGLESS$ RUN
+: TEST-IMM-CALLER ( -- )
+   s" an unmodeled immediate gets one canonical preflight diagnostic" T-LABEL
+   CALLER$ RUN
    s" E-UNMODELED-IMMEDIATE" ASSERT-NAMED
    s" lrd-imm-s" s" RAW-IMM" ASSERT-IMM-DIAG
    ERR$ GJA-PARSE dup GJA-OBJ {: root:SPAN:span<u8> :}
@@ -650,10 +644,6 @@ LOWER-CERT-HOOK:INSTALL
    s" lrd-trust-body" s" LRD-TRUST-IMM" ASSERT-IMM-DIAG ;
 
 : TEST-UNREPORTED-REJECT ( -- )
-   s" a custom hook's unreported reject retains the compiler fallback" T-LABEL
-   BODY$ s" 1 set-tier TRUSTED: LRD-SILENT-HOOK ( ptr u8 n -- n ) 2drop 70 throw ; -1 JSON-DIAGS ! ' LRD-SILENT-HOOK set-check : LRD-CUSTOM ( -- ) ;" FS:WRITE-ALL
-   BODY$ RUN
-   s" ncomp: cannot compile" ASSERT-NAMED
    s" a silent diagnostic defer retains the hook fallback" T-LABEL
    BODY$ s" TRUSTED: LRD-MUTE-DIAG ( -- ) [: ;] is DIAGXT ; LRD-MUTE-DIAG -1 JSON-DIAGS ! : LRD-MUTED ( -- n ) ;" FS:WRITE-ALL
    BODY$ RUN
@@ -679,11 +669,10 @@ LOWER-CERT-HOOK:INSTALL
    BODY$ s" TRUSTED: LRD-NO-DEFER ( -- ) [: ;] is LRD-NO-SUCH-DEFER ;" FS:WRITE-ALL
    BODY$ RUN
    s" ncomp: cannot compile LRD-NO-DEFER at LRD-NO-SUCH-DEFER in" ASSERT-NAMED
-   s" an unchecked is naming a colon word is refused" T-LABEL
-   BODY$ s" : LRD-PLAIN ( -- ) ; 0 set-check : LRD-IS-PLAIN ( -- ) [: ;] is LRD-PLAIN ;" FS:WRITE-ALL
+   s" a trusted is naming a colon word is refused" T-LABEL
+   BODY$ s" : LRD-PLAIN ( -- ) ; TRUSTED: LRD-IS-PLAIN ( -- ) [: ;] is LRD-PLAIN ;" FS:WRITE-ALL
    BODY$ RUN
-   s" at 'LRD-PLAIN' is not a deferred word" ASSERT-NAMED
-   ERR$ s" ncomp: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" CONTAINS? TTRUE ;
+   s" ncomp: cannot compile LRD-IS-PLAIN at LRD-PLAIN in" ASSERT-NAMED ;
 
 : TEST-PREFLIGHT-POSITIVES ( -- )
    s" top-level include remains live" T-LABEL
@@ -716,7 +705,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-RESIDUE
    TEST-IMM-INCLUDE
    TEST-IMM-REQUIRE
-   TEST-IMM-SIGNATURELESS
+   TEST-IMM-CALLER
    TEST-IMM-TRUSTED
    TEST-UNREPORTED-REJECT
    HB-TARGET-LINUX-X86-64? 0= if

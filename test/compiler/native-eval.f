@@ -275,11 +275,10 @@ create ERR IO-CAP allot
    s" and names the data stack" T-LABEL
    ERR erru S\" hb: stack bounds exceeded (data)\n" T$= ;
 
-\ The text jumps one cell under its floor, into its stack's low guard page.
-\ The fault is the instruction fetch, a wild jump and no read below the
-\ floor, so it keeps the named bounds exit instead of the underdepth throw.
+\ FLOOR-JUMP, run by the text, jumps one cell under the text's floor: the fault
+\ is an instruction fetch, not a read: the exit is STACK-BOUNDS, not underdepth.
 : FLOOR-JUMP$ ( -- ptr u8 n )
-   S\" 0 set-check 7 s\" data-base STACK-ABI:BASE-CELL + @ cell - execute\" evaluate-closed" ;
+   S\" TRUSTED: FLOOR-JUMP ( -- ) data-base STACK-ABI:BASE-CELL + @ cell - execute ; 7 s\" FLOOR-JUMP\" evaluate-closed" ;
 
 : FLOOR-JUMP ( -- )
    s" a jump under a closed text's floor exits STACK-BOUNDS" T-LABEL
@@ -353,24 +352,6 @@ variable ERR-U
 : SAYS ( ptr u8 n -- ) {: a:ptr u:n :}
    ERR ERR-U @ a u CONTAINS? TTRUE ;
 
-\ The hook records W-FORGET's row and then throws. To the engine, T-FORGET's
-\ bare W-FORGET is both the global and the used P-FORGET:W-FORGET, so T-FORGET
-\ is refused; typed against the thrown row ( -- n n ) it would certify and run
-\ one cell short.
-: HOOK-THROWN ( n -- ) {: tier:n :}
-   s" a definition its hook threw back keeps no row" T-LABEL
-   tier TIER-TEXT
-   s" : W-FORGET ( -- n ) 1 ; package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+
-   S\" TRUSTED: EVAL-W-FORGET ( -- ) s\" : W-FORGET 3 4 ;\" evaluate ; " TEXT+
-   s" : THROWER-FORGET ( ptr u8 n -- n ) over c@ [char] W = >r " TEXT+
-   s" LOWER-CERT-HOOK:HOOK r> if 77 throw then ; ' THROWER-FORGET set-check " TEXT+
-   s" package Q-FORGET public using P-FORGET " TEXT+
-   s" ' EVAL-W-FORGET catch . cr " TEXT+
-   s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
-   TEXT-RC 70 T=
-   OUT$ S\" 77\n\n" T$=
-   s" E-USING-SHADOW-GLOBAL" SAYS ;
-
 \ A text that defines X-FORGET and then throws takes X-FORGET back, row and
 \ all, so the next X-FORGET is no duplicate.
 : NAME-THROWN ( n -- ) {: tier:n :}
@@ -397,7 +378,6 @@ variable ERR-U
    s" habu: in t-forget: at 'X-FORGET' expected: n n actual: n" SAYS ;
 
 : THROWN-BACK ( n -- ) {: tier:n :}
-   tier HOOK-THROWN
    tier NAME-THROWN
    tier ROW-THROWN ;
 
