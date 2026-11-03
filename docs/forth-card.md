@@ -18,7 +18,8 @@ Our words UPPER-CASE, built-ins as-is (`dup`, `?do`). Hyphens, never
 underscores, in word *and* file names. Predicates end `?`, conversions are
 `>X`, fetch/store `X@` / `X!`, scope pairs are `FOO … ;FOO`. `$hex` for
 machine-adjacent numbers. Every module is a package, named for its subject as
-it is commonly called, never a coined abbreviation or an operation on it:
+it is commonly called or by a short form of its words (`NUMFMT`, OOXML's
+`numFmt`), never by initials coined for the package or an operation on it:
 `JSON:READ-NEXT`, not `JR:NEXT`; `JSON:WRITE-OBJECT-START`, not
 `JSON-WRITE:OBJECT-START`. A subject's reading and writing words share it.
 

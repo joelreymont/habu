@@ -16,6 +16,10 @@ learned live in the docs for their subject.
   with formal methods, e.g. TLA+ so you need to think in state machines if at
   all possible and appropriate", and asked to "commit state machines and move
   it to habu master so that others can use it".
+- 2026-11-03, package names: asked in Zen whether its package NUMFMT (for
+  OOXML's numFmt, a number format) may keep a name the card's rule against
+  coined abbreviations forbids: "NUMFMT is perfectly fine with me. the rule
+  that forbids this should be changed!"
 - 2026-11-01, public words: after leads asked Joel to approve guard words
   where the fix was reading a request body on demand, he said to "ask
   whenever they want to create new forth (habu) words" and "it should be a

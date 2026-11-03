@@ -123,13 +123,14 @@ prefixes (`TASK-KILL`); prefix-style global APIs are legacy debt.
 
 **A package is named for its subject**, the format, device or domain its words
 act on (`JSON`, `ZIP`, `TASK`), by the name it is commonly called (`STR`,
-`FS`, `BUF`): never a coined abbreviation (`JR`), and never an operation,
-direction or role on that subject: no `-READ`, `-WRITE`, `-IN`, `-OUT`,
-`-READER` or `-WRITER` package. The operation belongs in the word, verb first:
-`JSON:WRITE-OBJECT-START`, not `JSON-WRITE:OBJECT-START`; `JSON:READ-NEXT`,
-not `JR:NEXT`. One subject's reading and writing words share its package; a
-large one spreads across files that each reopen it. Resolve a tail collision
-in the word name, never with a new package. A test package is
+`FS`, `BUF`) or a short form of its words (`NUMFMT`, OOXML's `numFmt`):
+never initials coined for the package (`JR` for the JSON reader), and never
+an operation, direction or role on that subject: no `-READ`, `-WRITE`, `-IN`,
+`-OUT`, `-READER` or `-WRITER` package. The operation belongs in the word,
+verb first: `JSON:WRITE-OBJECT-START`, not `JSON-WRITE:OBJECT-START`;
+`JSON:READ-NEXT`, not `JR:NEXT`. One subject's reading and writing words share
+its package; a large one spreads across files that each reopen it. Resolve a
+tail collision in the word name, never with a new package. A test package is
 `<SUBJECT>-TEST`.
 
 ```forth
