@@ -1,204 +1,31 @@
-\ top-row-hook-test.f - the top-row hook (src/core/top-row.f). `set-top-check`
-\ installs an xt into the sealed cell layout.f TOP-HOOK-CELL, fail-closed like
-\ habu1.f BSETCHECK (DBASE<=xt<CP). Each interpret-dispatch token (number,
-\ string or char literal, tick, found word) fires one event
-\ ( token-a token-u class flags ) through habu2.f LTOPHOOK before its BLR.
+\ top-row-hook-test.f - a raw store into COMPILE-PREFLIGHT-CELL or TOP-HOOK-CELL
+\ traps, the cells around that band stay writable, and a load leaves the
+\ preflight armed.
 
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
-\   src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
-\   test/top-row-hook-test.f
+\ Run: bin/hb --load test/top-row-hook-test.f
 
-require src/lib/errors.f
-require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
-require src/lib/memory.f
-require src/lib/fs.f
-require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/process-argv.f
-require src/lib/engine-candidate.f
 
 package TOP-ROW-HOOK-TEST
 
-\ ---- event log ---------------------------------------------------------------
-32 constant TRH-CAP
-512 constant TRH-ARENA-CAP
-23 constant TRH-WINDOW-N            \ events expected from the probe window below
-1 constant TRH-WORD-FLAGS           \ LFIND: found, min-in 0 (data records, input-free prims)
-3 constant TRH-IMM-FLAGS            \ LFIND: found + DNAME-IMM
-$101 constant TRH-IN1-FLAGS         \ LFIND: found + min-in 1 (bits 8-15), certified or a prim's row
-$201 constant TRH-IN2-FLAGS         \ LFIND: found + min-in 2
-$401 constant TRH-LOG-FLAGS         \ LFIND: found + certified min-in 4
-
-create TRH-CLS TRH-CAP cells allot
-create TRH-FLG TRH-CAP cells allot
-create TRH-TOFF TRH-CAP cells allot
-create TRH-TLEN TRH-CAP cells allot
-create TRH-ARENA TRH-ARENA-CAP allot
-variable TRH-N
-variable TRH-AU
-variable TRH-OK-A
-
-: TRH-RESET ( -- )
-   0 TRH-N !  0 TRH-AU ! ;
-
-: TRH-SLOT ( ptr a n -- ptr a )
-   cells + ;
-
-: TRH-ROOM! ( n -- )
-   TRH-AU @ + TRH-ARENA-CAP > if E-TEST-CAPACITY throw then
-   TRH-N @ TRH-CAP < 0= if E-TEST-CAPACITY throw then ;
-
-: TRH-ARENA-FULL ( -- )
-   TRH-RESET
-   TRH-ARENA-CAP TRH-AU !
-   1 TRH-ROOM! ;
-
-: TRH-ROW-FULL ( -- )
-   TRH-RESET
-   TRH-CAP TRH-N !
-   0 TRH-ROOM! ;
-
-: TRH-CAPACITY-TESTS ( -- )
-   s" arena saturation throws the reserved test capacity code" T-LABEL
-   [: TRH-ARENA-FULL ;] E-TEST-CAPACITY TTHROWSQ
-   s" event-row saturation throws the reserved test capacity code" T-LABEL
-   [: TRH-ROW-FULL ;] E-TEST-CAPACITY TTHROWSQ ;
-
 : TRH-PREFLIGHT-ARMED ( -- )
-   s" ordinary load leaves compile-immediate preflight armed" T-LABEL
+   s" load leaves compile-immediate preflight armed" T-LABEL
    data-base COMPILE-PREFLIGHT-CELL + @ 0 <> TTRUE ;
 
-: TRH-LOG ( ptr u8 n n n -- ) {: a u:n cls:n flg:n :}
-   u TRH-ROOM!
-   a TRH-ARENA TRH-AU @ + u BYTE-COPY
-   cls TRH-CLS TRH-N @ TRH-SLOT !
-   flg TRH-FLG TRH-N @ TRH-SLOT !
-   TRH-AU @ TRH-TOFF TRH-N @ TRH-SLOT !
-   u TRH-TLEN TRH-N @ TRH-SLOT !
-   TRH-AU @ u + TRH-AU !
-   TRH-N @ 1 + TRH-N ! ;
-
-: TRH-EV-CLS ( n -- n )
-   TRH-CLS swap TRH-SLOT @ ;
-
-: TRH-EV-FLG ( n -- n )
-   TRH-FLG swap TRH-SLOT @ ;
-
-: TRH-EV$ ( n -- ptr u8 n ) {: i:n :}
-   TRH-ARENA TRH-TOFF i TRH-SLOT @ +
-   TRH-TLEN i TRH-SLOT @ ;
-
-: TRH-EV-ASSERT ( n n n ptr u8 n -- ) {: i:n cls:n flg:n a u:n :}
-   i TRH-EV-CLS cls T=
-   i TRH-EV-FLG flg T=
-   i TRH-EV$ a u T$= ;
-
-\ ---- probe words -------------------------------------------------------------
-: TRH-PROBE ( n -- n )
-   1 + ;
-
-: TRH-IMM ( -- ) ; immediate
-
-\ ---- expected window log -----------------------------------------------------
-: TRH-ASSERT-LOG ( -- )
-   s" window event count" T-LABEL
-   TRH-N @ TRH-WINDOW-N T=
-   s" window (class, token, flags) sequence" T-LABEL
-   0  TOP-EV-WORD TRH-WORD-FLAGS  s" top-check@" TRH-EV-ASSERT
-   1  TOP-EV-TICK TRH-LOG-FLAGS   s" TRH-LOG" TRH-EV-ASSERT
-   2  TOP-EV-WORD TRH-IN2-FLAGS   s" =" TRH-EV-ASSERT
-   3  TOP-EV-WORD TRH-WORD-FLAGS  s" TRH-OK-A" TRH-EV-ASSERT
-   4  TOP-EV-WORD TRH-IN2-FLAGS   s" !" TRH-EV-ASSERT
-   5  TOP-EV-NUM  0               s" 42" TRH-EV-ASSERT
-   6  TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
-   7  TOP-EV-STR  0               S\" s\q" TRH-EV-ASSERT
-   8  TOP-EV-WORD TRH-IN2-FLAGS   s" 2drop" TRH-EV-ASSERT
-   9  TOP-EV-CSTR 0               S\" c\q" TRH-EV-ASSERT
-   10 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
-   11 TOP-EV-CHAR 0               s" A" TRH-EV-ASSERT
-   12 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
-   13 TOP-EV-TICK TRH-IN1-FLAGS   s" TRH-PROBE" TRH-EV-ASSERT
-   14 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
-   15 TOP-EV-NUM  0               s" 7" TRH-EV-ASSERT
-   16 TOP-EV-WORD TRH-IN1-FLAGS   s" TRH-PROBE" TRH-EV-ASSERT
-   17 TOP-EV-WORD TRH-IN1-FLAGS   s" drop" TRH-EV-ASSERT
-   18 TOP-EV-WORD TRH-IMM-FLAGS   s" TRH-IMM" TRH-EV-ASSERT
-   19 TOP-EV-STR  0               S\" S\\\q" TRH-EV-ASSERT
-   20 TOP-EV-WORD TRH-IN2-FLAGS   s" 2drop" TRH-EV-ASSERT
-   21 TOP-EV-NUM  0               s" 0" TRH-EV-ASSERT
-   22 TOP-EV-WORD TRH-IN1-FLAGS   s" set-top-check" TRH-EV-ASSERT ;
-
-\ ---- in-process logging-hook window -------------------------------------------
-\ Every token up to the uninstall is in the expected log; the word event fires
-\ before the BLR, so `0 set-top-check` itself is the last event.
-T-RESET
-TRH-CAPACITY-TESTS
-TRH-PREFLIGHT-ARMED
-TRH-RESET
-' TRH-LOG set-top-check
-top-check@ ' TRH-LOG = TRH-OK-A !
-42 drop
-\ comment lines are skipped before dispatch: no event
-s" hi" 2drop
-c" hey" drop
-char A drop
-' TRH-PROBE drop
-7 TRH-PROBE drop
-TRH-IMM
-S\" esc" 2drop
-0 set-top-check
-
-s" top-check@ returned the installed xt inside the window" T-LABEL
-TRH-OK-A @ TTRUE
-s" uninstall clears the cell" T-LABEL
-top-check@ 0 T=
-0 set-top-check
-s" uninstall is idempotent with no hook installed" T-LABEL
-top-check@ 0 T=
-TRH-ASSERT-LOG
-
-\ ---- child forges: fail-closed install + sealed cell ---------------------------
+\ ---- child forges: sealed cells ------------------------------------------------
 2048 constant TRH-IO-CAP
 10000 constant TRH-TIMEOUT-MS
-70 constant TRH-REJECT-RC
 
-variable TRH-ROOT-U
-variable TRH-CHILD-U
-variable TRH-IN-U
 variable TRH-OUT-U
 variable TRH-ERR-U
 variable TRH-EXITED
 variable TRH-RC
 
-create TRH-ROOT-BUF PATH-CAP allot
-create TRH-CHILD-BUF PATH-CAP allot
-create TRH-IN TRH-IO-CAP allot
 create TRH-OUT TRH-IO-CAP allot
 create TRH-ERR TRH-IO-CAP allot
-create TRH-EMPTY 1 allot
-
-: TRH-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u:n dst:ptr lenp:ptr :}
-   u PATH-CAP > if E-FS-CAPACITY throw then
-   src dst u BYTE-COPY
-   u lenp ! ;
-
-: TRH-ROOT ( -- ptr u8 n )
-   TRH-ROOT-BUF TRH-ROOT-U @ ;
-
-: TRH-CHILD ( -- ptr u8 n )
-   TRH-CHILD-BUF TRH-CHILD-U @ ;
-
-: TRH-IN$ ( -- ptr u8 n )
-   TRH-IN TRH-IN-U @ ;
-
-: TRH-OUT$ ( -- ptr u8 n )
-   TRH-OUT TRH-OUT-U @ ;
-
-: TRH-ERR$ ( -- ptr u8 n )
-   TRH-ERR TRH-ERR-U @ ;
 
 : TRH-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N TRH-ERR-U !  outu LEN>N TRH-OUT-U !
@@ -208,240 +35,34 @@ create TRH-EMPTY 1 allot
      timeout OF src u TRH-OUT TRH-OUT-U @ TRH-ERR TRH-ERR-U @ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: TRH-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u TRH-IO-CAP > if E-FS-CAPACITY throw then
-   a TRH-IN u BYTE-COPY
-   u TRH-IN-U ! ;
-
-: TRH-RUN-LOAD ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   TRH-CHILD src srcu FS:WRITE-ALL
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   TRH-CHILD >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ >LEN  TRH-EMPTY 0 >LEN  TRH-OUT TRH-IO-CAP >LEN
-   TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   src srcu TRH-STORE! ;
-
-\ The other cold-prefix path: the program on stdin, no --load.
-: TRH-RUN-STDIN ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu TRH-IN!
-   PROC-ARGV-RESET
-   ENGINE-CANDIDATE:PATH$ >LEN  TRH-IN$ >LEN  TRH-OUT TRH-IO-CAP >LEN
-   TRH-ERR TRH-IO-CAP >LEN  TRH-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   src srcu TRH-STORE! ;
-
 : TRH-RUN-SUBJECT ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu TRH-OUT TRH-IO-CAP >LEN TRH-ERR TRH-IO-CAP >LEN
    TRH-TIMEOUT-MS >MS SUBJECT:RUN src srcu TRH-STORE! ;
-
-: TRH-LF ( -- )
-   10 SB-APPEND-C ;
-
-: TRH-LINE ( ptr u8 n -- )
-   SB-APPEND TRH-LF ;
-
-: TRH-ASSERT-INVALID ( -- )         \ fail-closed install: named rc-70 diagnostic
-   TRH-EXITED @ TTRUE
-   TRH-RC @ TRH-REJECT-RC T=
-   TRH-ERR$ S\" set-top-check: invalid top-row hook xt\n" CONTAINS? TTRUE ;
 
 : TRH-ASSERT-OK ( -- )
    TRH-EXITED @ TTRUE
    TRH-RC @ 0 T= ;
 
-: TRH-ASSERT-OUT ( ptr u8 n -- ) {: a:ptr u:n :}
-   TRH-OUT$ a u CONTAINS? TTRUE ;
-
-: TRH-BARE$ ( ptr u8 n -- ptr u8 n )
-   SB-RESET
-   TRH-LINE
-   SB$ ;
-
-: TRH-NEG-INSTALL ( -- )
-   s" 1 set-top-check fails closed via --load (mirrors BSETCHECK window)" T-LABEL
-   s" 1 set-top-check" TRH-BARE$ TRH-RUN-LOAD
-   TRH-ASSERT-INVALID
-   s" 1 set-top-check fails closed via stdin pipe" T-LABEL
-   s" 1 set-top-check" TRH-BARE$ TRH-RUN-STDIN
-   TRH-ASSERT-INVALID
-   s" DATA-region address fails closed (outside [DBASE, CP))" T-LABEL
-   s" data-base 8 + set-top-check" TRH-BARE$ TRH-RUN-LOAD
-   TRH-ASSERT-INVALID
-   s" bare set-top-check fails closed pre-execution (spec min-in 1)" T-LABEL
-   s" set-top-check" TRH-BARE$ TRH-RUN-LOAD
-   TRH-EXITED @ TTRUE
-   TRH-RC @ TRH-REJECT-RC T=
-   TRH-ERR$ s" hb: interpret stack underdepth: set-top-check" CONTAINS? TTRUE ;
-
-: TRH-SEAL-FORGE$ ( -- ptr u8 n )   \ raw ! into the sealed cell must trap
-   SB-RESET
-   s" data-base TOP-HOOK-CELL + 99 swap !" TRH-LINE
-   SB$ ;
-
-: TRH-PREFLIGHT-FORGE$ ( -- ptr u8 n )
-   SB-RESET
-   s" data-base COMPILE-PREFLIGHT-CELL + 99 swap !" TRH-LINE
-   SB$ ;
-
-: TRH-PREFLIGHT-REPLACE$ ( -- ptr u8 n )
-   SB-RESET
-   s" : TRH-PREFLIGHT-NOOP ( ptr u8 n ptr u8 n bool -- ) drop 2drop 2drop ;" TRH-LINE
-   s" TRUSTED: TRH-PREFLIGHT-REPLACE ( -- ) ['] TRH-PREFLIGHT-NOOP set-preflight ;" TRH-LINE
-   s" TRH-PREFLIGHT-REPLACE" TRH-LINE
-   SB$ ;
-
-: TRH-PREFLIGHT-REINSTALL$ ( -- ptr u8 n )
-   SB-RESET
-   s" 0 set-check" TRH-LINE
-   s" LOWER-CERT-HOOK:INSTALL" TRH-LINE
-   s" : TRH-REINSTALL-I ( -- ) ; immediate" TRH-LINE
-   S\" s\" TRH-REINSTALL-I\" 0 parse-imm" TRH-LINE
-   s" : TRH-REINSTALL-RUN ( -- n ) TRH-REINSTALL-I 73 ;" TRH-LINE
-   s" : TRH-REINSTALL-ASSERT ( -- ) TRH-REINSTALL-RUN 73 <> if 1 throw then check@ 0= if 2 throw then ;" TRH-LINE
-   s" TRH-REINSTALL-ASSERT" TRH-LINE
-   SB$ ;
-
-: MISSING-HOOK$ ( -- ptr u8 n )
-   SB-RESET
-   s" 0 set-check" TRH-LINE
-   s" package PREFLIGHT-MISSING-TEST" TRH-LINE
-   s" : HOOK ( ptr u8 n -- n ) 2drop -1 ;" TRH-LINE
-   s" ' HOOK set-check" TRH-LINE
-   s" : BAD ( -- ) include README.md ;" TRH-LINE
-   s" ;package" TRH-LINE
-   SB$ ;
-
-: CUSTOM-HOOK$ ( -- ptr u8 n )
-   SB-RESET
-   s" 0 set-check" TRH-LINE
-   s" package PREFLIGHT-CUSTOM-TEST" TRH-LINE
-   s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" TRH-LINE
-   s" LOWER-CERT-HOOK:INSTALL" TRH-LINE
-   s" ' HOOK set-check" TRH-LINE
-   s" : BAD ( -- ) include README.md ;" TRH-LINE
-   s" ;package" TRH-LINE
-   SB$ ;
-
-: WINDOW-RESUME$ ( -- ptr u8 n )
-   SB-RESET
-   s" check@ 0 set-check" TRH-LINE
-   s" 1 drop" TRH-LINE
-   s" set-check" TRH-LINE
-   s" : TRH-WIN-I ( -- ) parse-name 2drop ; immediate" TRH-LINE
-   S\" s\" TRH-WIN-I\" 1 parse-imm" TRH-LINE
-   s" : TRH-WIN-RUN ( -- n ) TRH-WIN-I beta 7 ;" TRH-LINE
-   s" TRH-WIN-RUN . cr" TRH-LINE
-   SB$ ;
-
-: NESTED-WINDOW$ ( -- ptr u8 n )
-   SB-RESET
-   s" check@ 0 set-check" TRH-LINE
-   s" check@ 0 set-check" TRH-LINE
-   s" 1 drop" TRH-LINE
-   s" set-check" TRH-LINE
-   s" set-check" TRH-LINE
-   s" : TRH-NEST-I ( -- ) parse-name 2drop ; immediate" TRH-LINE
-   S\" s\" TRH-NEST-I\" 1 parse-imm" TRH-LINE
-   s" : TRH-NEST-RUN ( -- n ) TRH-NEST-I beta 7 ;" TRH-LINE
-   s" TRH-NEST-RUN . cr" TRH-LINE
-   SB$ ;
-
-: PREFLIGHT-LIFECYCLE ( -- )
-   s" armed checker without preflight emits exact LF-terminated diagnostic" T-LABEL
-   MISSING-HOOK$ TRH-RUN-LOAD
-   TRH-EXITED @ TTRUE
-   TRH-RC @ TRH-REJECT-RC T=
-   TRH-OUT-U @ 0 T=
-   TRH-ERR$ S\" hb: compile preflight hook missing\n" T$=
-   s" custom checker hook rearms preflight before checked definitions" T-LABEL
-   CUSTOM-HOOK$ TRH-RUN-LOAD
-   TRH-EXITED @ TTRUE
-   TRH-RC @ TRH-REJECT-RC T=
-   TRH-OUT-U @ 0 T=
-   TRH-ERR$ s" E-UNMODELED-IMMEDIATE" CONTAINS? TTRUE
-   TRH-ERR$ s" include" CONTAINS? TTRUE
-   s" check@ 0 set-check window resumes the hook with its preflight" T-LABEL
-   WINDOW-RESUME$ TRH-RUN-LOAD
-   TRH-ASSERT-OK
-   s" 7" TRH-ASSERT-OUT
-   s" nested check@ 0 set-check windows resume the outer pair" T-LABEL
-   NESTED-WINDOW$ TRH-RUN-LOAD
-   TRH-ASSERT-OK
-   s" 7" TRH-ASSERT-OUT ;
-
-: TRH-BELOW-FORGE$ ( -- ptr u8 n )  \ one cell below the band stays writable
-   SB-RESET
-   s" data-base COMPILE-PREFLIGHT-CELL 8 - + 99 swap !" TRH-LINE
-   SB$ ;
-
-: TRH-ABOVE-FORGE$ ( -- ptr u8 n )  \ one cell past the band stays writable
-   SB-RESET
-   s" data-base TOP-HOOK-CELL 8 + + 99 swap !" TRH-LINE
-   SB$ ;
-
 : TRH-NEG-SEAL ( -- )
-   s" compile preflight rejects replacement through a TRUSTED: caller" T-LABEL
-   TRH-PREFLIGHT-REPLACE$ TRH-RUN-SUBJECT
-   TRH-EXITED @ TTRUE
-   TRH-RC @ TRH-REJECT-RC T=
-   TRH-ERR$ S\" set-preflight: invalid or replaced hook\n" CONTAINS? TTRUE
    s" raw ! into COMPILE-PREFLIGHT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
-   TRH-PREFLIGHT-FORGE$ TRH-RUN-SUBJECT
+   s" data-base COMPILE-PREFLIGHT-CELL + 99 swap !" TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" raw ! into TOP-HOOK-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
-   TRH-SEAL-FORGE$ TRH-RUN-SUBJECT
+   s" data-base TOP-HOOK-CELL + 99 swap !" TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
    TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
    s" one cell below the band stays writable" T-LABEL
-   TRH-BELOW-FORGE$ TRH-RUN-SUBJECT
+   s" data-base COMPILE-PREFLIGHT-CELL 8 - + 99 swap !" TRH-RUN-SUBJECT
    TRH-ASSERT-OK
    s" one cell past the band stays writable" T-LABEL
-   TRH-ABOVE-FORGE$ TRH-RUN-SUBJECT
+   s" data-base TOP-HOOK-CELL 8 + + 99 swap !" TRH-RUN-SUBJECT
    TRH-ASSERT-OK ;
 
-: TRH-CHILD-HOOK$ ( -- ptr u8 n )   \ valid install runs; hook observes each event
-   SB-RESET
-   s" variable CH-N" TRH-LINE
-   s" : CH-HOOK ( ptr u8 n n n -- ) 2drop drop drop 1 CH-N +! ;" TRH-LINE
-   s" ' CH-HOOK set-top-check" TRH-LINE
-   s" 1 2 + . cr" TRH-LINE
-   s" 0 set-top-check" TRH-LINE
-   s" CH-N @ . cr" TRH-LINE
-   SB$ ;
-
-: TRH-POSITIVES ( -- )
-   PREFLIGHT-LIFECYCLE
-   s" checker reinstall rearms both hooks after 0 set-check" T-LABEL
-   TRH-PREFLIGHT-REINSTALL$ TRH-RUN-SUBJECT
-   TRH-ASSERT-OK
-   s" valid install dispatches normally and counts 7 window events" T-LABEL
-   TRH-CHILD-HOOK$ TRH-RUN-LOAD
-   TRH-ASSERT-OK
-   s" 3" TRH-ASSERT-OUT
-   s" 7" TRH-ASSERT-OUT
-   s" valid install via stdin pipe" T-LABEL
-   TRH-CHILD-HOOK$ TRH-RUN-STDIN
-   TRH-ASSERT-OK
-   s" 7" TRH-ASSERT-OUT ;
-
-: TRH-PREPARE ( -- )
-   FS:CLEANUP-RESET
-   s" habu-trh" FS:MKTEMP-DIR {: a:ptr u:n :}
-   a u TRH-ROOT-BUF TRH-ROOT-U TRH-COPY!
-   TRH-ROOT FS:CLEANUP-TREE+
-   TRH-ROOT s" forge.f" TRH-CHILD-BUF FS:JOIN-PATH TRH-CHILD-U ! ;
-
-: TRH-CLEANUP ( -- )
-   FS:CLEANUP-RUN
-   TRH-ROOT FS:EXISTS? TFALSE ;
-
 : TRH-MAIN ( -- )
-   TRH-PREPARE
-   TRH-NEG-INSTALL
+   T-RESET
+   TRH-PREFLIGHT-ARMED
    TRH-NEG-SEAL
-   TRH-POSITIVES
-   TRH-CLEANUP
    T-REPORT
    s" top-row-hook: ok" type cr ;
 

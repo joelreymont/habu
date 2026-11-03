@@ -726,9 +726,9 @@ variable WANT-RC
    70 s" tick c2 scope" GE-EXPECT-RC
    S\" hb: internal engine word: C2-MEM:WITH-MUT\n" s" tick c2 scope" GE-EXPECT-ERR ;
 
-\ The literal events, test/top-row-hook-test.f's window: each logs its class,
-\ flags and token. A string's token is its keyword, a char's and a tick's the
-\ operand, and a tick's flags are the word's. `."` and `.\"` log nothing.
+\ The literal events: each logs its class, flags and token. A string's token is
+\ its keyword, a char's and a tick's the operand, and a tick's flags are the
+\ word's. `."` and `.\"` log nothing.
 : LITERAL-HOOK ( -- )
    GE-SRC-RESET
    s" OI-HOOK-ON s~ hi~ 2drop c~ hey~ drop char A drop ' OI-TWO drop" QLINE

@@ -1171,9 +1171,9 @@ ELAB: 2r@ REACH stack
 \ Primitives with no checker row at all.
 \ Bodies with no declaration anywhere, so no checked program can name one: a
 \ checked caller of `run-rc` is E-UNDEFINED, measured. Only unchecked source
-\ reaches them (test/engine-suite.f spawns through `run-rc`;
-\ test/top-row-hook-test.f reads `top-check@`). They are rows so the gap is
-\ stated instead of silent.
+\ or the kernel harness reaches them (test/engine-suite.f spawns through
+\ `run-rc`; test/x86-64-kernel-engine.f calls the `top-check@` row). They are
+\ rows so the gap is stated instead of silent.
 UNROWED: run-rc
 UNROWED: top-check@
 
