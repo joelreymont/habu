@@ -548,8 +548,11 @@ entry.
   tree's source hashes with the engine's so hb-build could skip its 3.3 s
   startup reload, Joel answered "why are we developing incremental building if
   we are gonna check hashes of source files? one of the goals was incremental
-  building of habu itself". The reload goes through the incremental cache, not
-  a second mechanism.
+  building of habu itself". On 2026-11-03, shown that under the linker model
+  hb is itself the linked result of its startup files, so the same check is
+  the linker's out-of-date rule applied to hb while Habu's own build still
+  links file by file, he chose "Yes, hb is linked (Recommended)": hb-build
+  skips the reload while every startup file hashes as hb recorded.
 - 2026-10-31, what makes a file stale: offered an engine hook that hands each
   word read, comments skipped, to the build so a comment edit in memory.f
   would rebuild nothing, Joel answered "why are you inventing hooks instead of
