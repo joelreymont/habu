@@ -53,8 +53,8 @@ SUMTYPE connect-result
    VARIANT refused ptr u8 n ;VARIANT
 ;SUMTYPE
 
-\ The failure spans are the server's SQLSTATE and its primary message, read in
-\ place from the result's own bytes: they live exactly as long as TEXT$.
+\ The failure spans are the SQLSTATE and libpq's whole report, read in place
+\ from the result's own bytes: they live exactly as long as TEXT$.
 SUMTYPE outcome
    VARIANT ok ;VARIANT
    VARIANT rows ;VARIANT
@@ -91,7 +91,6 @@ LINEAR: RESULT>N ( PG:result -- n )
 1 constant PGRES-COMMAND-OK               \ ExecStatusType
 2 constant PGRES-TUPLES-OK
 $43 constant PG-DIAG-SQLSTATE             \ 'C'
-$4D constant PG-DIAG-MESSAGE-PRIMARY      \ 'M'
 0 constant TEXT-RESULT                    \ PQexecParams resultFormat
 
 \ CONFIGURE allocates exactly the registries the caller declares; a live
@@ -858,20 +857,23 @@ REGISTER-CHILD-RESET
    slot MESSAGE-BASE slot MESSAGE-U@ ;
 
 
-\ A failed result names its SQLSTATE and primary message in its own bytes. One
-\ libpq made without the server - a connection that died under the query -
-\ carries no primary message but holds the connection's message, copied in when
-\ libpq built it, so the failed arm is never silently empty.
+\ A NULL field is an empty span.
 : FIELD$ ( ptr u8 -- ptr u8 n ) {: p :}
    p NULL-ADDR? if NULL-ARG 0 exit then
    p CSTR$ ;
 
 
+\ PQresultErrorMessage ends with a newline, is empty for an empty query, and
+\ holds the connection's message for a result libpq made without the server.
+: REPORT$ ( ptr u8 -- ptr u8 n )
+   LIB-RESULT-ERROR-MESSAGE FIELD$ {: a:ptr u:n :}
+   u 0 > if a u 1- + c@ STR-LF = if a u 1- exit then then
+   a u ;
+
+
 : FAILED-SPANS ( ptr u8 -- ptr u8 n ptr u8 n ) {: res :}
    res PG-DIAG-SQLSTATE LIB-RESULT-ERROR-FIELD FIELD$
-   res PG-DIAG-MESSAGE-PRIMARY LIB-RESULT-ERROR-FIELD {: p :}
-   p NULL-ADDR? 0= if p CSTR$ exit then
-   res LIB-RESULT-ERROR-MESSAGE FIELD$ ;
+   res REPORT$ ;
 
 
 \ Only a refused CONNECT writes the connection's message copy.
