@@ -10,6 +10,12 @@ learned live in the docs for their subject.
   definition named like a number goes, Joel answered "what's the problem? use
   human english. : 42 is invalid, why are we deliberating?": `: 42` is
   invalid for every definer, refused where the engine already refuses `: I`.
+  Offered E-VS-WORD-NAME for the code the source scan stops with on such a
+  name, Joel asked "what is VS and why do you need it? why not just
+  E-BAD-NAME?": the code is E-BAD-NAME.
+- 2026-11-03, the language server's checking package: shown that
+  tools/check-verify-core.f's package shares the name CHECK with the checker's,
+  Joel chose "LSP-CHECK (Recommended)": it joins tools/lsp-check.f's package.
 - 2026-11-03, the property test: asked to remove PROP-CORE:RC!, a cell that
   carried a compile's result code out of a text that turned the checker off,
   Joel chose "Remove it (Recommended)". He then wrote "the file should be
