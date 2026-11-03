@@ -2,8 +2,10 @@
 \ each public word answers one POST /responses on Habu's HTTP server as
 \ OpenAI's Responses API streams it, an event stream of response resp_1's
 \ created and in_progress events and then the terminal event carrying the
-\ reply, which MODEL:CHAT reads. The host routes the request to its own handler
-\ and calls one of them there.
+\ reply, which MODEL:CHAT reads. Each terminal reply carries fixed usage, input
+\ 11 tokens (4 cached), output 6 (2 reasoning), total 17, so a test may assert
+\ them. The host routes the request to its own handler and calls one of them
+\ there.
 \ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a stream
 \ body and its writer, whose buffer a slot's first reply makes and the process
 \ keeps; a body stays in its row, as HTTP:BODY! borrows it, until the slot's
@@ -69,13 +71,19 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    S\" ,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]}" JSON:WRITE-RAW ;
 
 
+\ A terminal reply's usage member, its fixed counts.
+: USAGE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}" JSON:WRITE-RAW ;
+
+
 \ A reply's message item, up to its one content part.
 : MESSAGE-OPEN ( ptr JSON:writer -- ptr JSON:writer )
    S\" ,{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{" JSON:WRITE-RAW ;
 
 
 : MESSAGE-CLOSE ( ptr JSON:writer -- ptr JSON:writer )
-   S\" }]}],\qincomplete_details\q:null,\qerror\q:null}" JSON:WRITE-RAW ;
+   S\" }]}],\qincomplete_details\q:null,\qerror\q:null" JSON:WRITE-RAW USAGE
+   s" }" JSON:WRITE-RAW ;
 
 
 : COMPLETED-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
@@ -92,7 +100,8 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    s" incomplete" REPLY-HEAD
    S\" ],\qincomplete_details\q:{" JSON:WRITE-RAW
    s" reason" reason reason-u JSON:WRITE-FIELD-S
-   S\" },\qerror\q:null}" JSON:WRITE-RAW ;
+   S\" },\qerror\q:null" JSON:WRITE-RAW USAGE
+   s" }" JSON:WRITE-RAW ;
 
 
 : REFUSAL-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
@@ -118,7 +127,7 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
 
 public
 
-\ A stream ending in a completed reply whose message holds the text; no usage.
+\ A stream ending in a completed reply whose message holds the text.
 : COMPLETED! ( HTTP:response ptr u8 n -- )
    [: COMPLETED-REPLY ;] s" response.completed" STREAMED ;
 

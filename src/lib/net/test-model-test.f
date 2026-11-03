@@ -80,7 +80,10 @@ $7F000001 constant LOOPBACK
 : COMPLETED ( -- )
    s" a completed reply gives its text" T-LABEL
    s" /completed" AT
-   M MODEL:CHAT TEXT$ T$= ;
+   M MODEL:CHAT TEXT$ T$=
+   s" a completed reply's usage reaches the call" T-LABEL
+   M MODEL:INPUT-TOKENS 11 T=
+   M MODEL:CACHED-TOKENS 4 T= ;
 
 
 : INCOMPLETE ( -- )
