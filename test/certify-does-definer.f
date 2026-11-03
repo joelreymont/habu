@@ -255,7 +255,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
    \ Tier 0 refuses the clause with the checker's rc 70; the native compiler,
    \ the only one an x86-64 engine has, refuses it as an uncertified verdict.
    [: s\" : CDD-RES-BAD ( n -- ) create , does> ( -- n ) ;\n" evaluate-closed ;]
-      tier@ 0= if 70 else E-NCOMP-VERDICT then TTHROWSQ
+      tier@ 0= if 70 else E-COMP-VERDICT then TTHROWSQ
    s\" : CDD-RES-AFTER ( n -- n ) 2 * ;\n" evaluate-closed ;
 
 : CDD-SECTION-LATCH-AFTER ( -- )
@@ -512,7 +512,7 @@ create CDD-DIAG 4096 allot
 : CDD-NOT-CERTIFIED ( ptr u8 n ptr u8 n -- )
    {: sa:ptr su:n wa:ptr wu:n :}
    CDD-DIAG 4096 DIAG-BUFFER!
-   sa su TEST-EVAL:RC  tier@ 0= if 70 else E-NCOMP-VERDICT then T=
+   sa su TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
    DIAG-BUFFER$ wa wu CONTAINS? TTRUE
    DIAG-BUFFER-OFF ;
 

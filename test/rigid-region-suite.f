@@ -132,7 +132,7 @@ create RR-DIAG 16384 allot
 : RR-DIAG? ( ptr u8 n -- bool ) DIAG-BUFFER$ 2swap CONTAINS? ;
 
 \ A refused does> clause's code: test/certify-does-definer.f CDD-RES-BAD.
-: RR-REFUSED ( -- n ) tier@ 0= IF 70 ELSE E-NCOMP-VERDICT THEN ;
+: RR-REFUSED ( -- n ) tier@ 0= IF 70 ELSE E-COMP-VERDICT THEN ;
 
 \ Exhaustion probe: shrink the shared domain bound so the SECOND region mint of
 \ this check wraps — it must throw E-RIGID-EXHAUST (7140) instead of reusing id 1.

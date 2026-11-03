@@ -883,7 +883,7 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena id:IR-ID:ir-symbol-id ix:n :}
    ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
    size 0= if CHECKER-OWNER-ABI:BINDING-RC throw then
-   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-COMP-OWNER throw then
    row CHECKER-OWNER-ABI:BOUND-ORD BOUND@ ix <> if CHECKER-OWNER-ABI:BINDING-RC throw then
    row CHECKER-OWNER-ABI:BOUND-KIND BOUND@ {: source-kind:n :}
    source-kind CHECKER-OWNER-ABI:BOUND-DICT =

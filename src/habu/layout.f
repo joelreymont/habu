@@ -951,9 +951,9 @@ $390 constant BUILD-DEPTH-CELL
 $398 constant BUILD-TIER-CELL
 \ RECOVER-CELL ( 0 | -1 ) -- whether the reader whose `;` called the compiler
 \ recovers from a refused definition: src/habu/definers.f DEF-SEMI? sets it
-\ around its compile, catches E-NCOMP-RECOVERY and reads on. In a multi-error
+\ around its compile, catches E-COMP-RECOVERY and reads on. In a multi-error
 \ run the compiler then abandons a refused definition unpublished without a
-\ second report; under any other reader it refuses with E-NCOMP-VERDICT
+\ second report; under any other reader it refuses with E-COMP-VERDICT
 \ (compiler.f RECORD). Zero outside that compile, so no image carries it set.
 $690 constant RECOVER-CELL
 \ One owner record keeps every engine declaration registrar paired with the

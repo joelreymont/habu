@@ -89,7 +89,7 @@ public
 \ A compiler entry reached while a compilation runs would stage one definition
 \ over another's state.
 : IDLE-CK ( -- )
-   M-OPEN @ 0<> if E-NCOMP-STATE throw then ;
+   M-OPEN @ 0<> if E-COMP-STATE throw then ;
 
 : STUB-PENDING? ( -- bool )
    M-CB-SLOT @ 0 >= ;
@@ -98,11 +98,11 @@ public
 \ its ordinary return. The entry is published with that definition's emission.
 : CALLBACK-STUB! ( n n -- ) {: k:n thunk:n :}
    IDLE-CK
-   STUB-PENDING? if E-NCOMP-STATE throw then
+   STUB-PENDING? if E-COMP-STATE throw then
    k M-CB-SLOT !  thunk M-CB-THUNK !  0 M-CB-ENTRY ! ;
 
 : CALLBACK-STUB@ ( -- n )
-   M-CB-ENTRY @ dup 0= if E-NCOMP-STATE throw then ;
+   M-CB-ENTRY @ dup 0= if E-COMP-STATE throw then ;
 
 \ A compiler arms NCBSTUB before it seals the accessor's emission, takes the
 \ stub's placed entry after, and ends the pending stub when the compile ends.
@@ -205,7 +205,7 @@ public
    1 M-DOES-FRAME !
    M-DOES @ {: cut:n :}
    M-SRC @ cut DOES-SPAN - CHECK-PARENT
-   UNCERTIFIED? if drop else -1 <> if E-NCOMP-VERDICT throw then then
+   UNCERTIFIED? if drop else -1 <> if E-COMP-VERDICT throw then then
    CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY !   \ the clause's scan starts its own
    M-SRC @ cut DOES-SPAN - 0 NFETCH:CAPTURE ;
 
@@ -221,7 +221,7 @@ public
    M-SRC @ cut + M-SRC-U @ cut - cut NFETCH:CAPTURE
    CHECKER-OWNER:DOES-IN M-DOES-IN !
    CHECKER-OWNER:DOES-OUT M-DOES-OUT !
-   M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-NCOMP-ARITY throw then
+   M-DOES-IN @ 0 < M-DOES-OUT @ 0 < or if E-COMP-ARITY throw then
    \ Where the clause's values end, read here because the checker captured
    \ the clause's rows for this split and the next one replaces them. A row
    \ wider than a cell is placed from these boundaries as a definition's own
@@ -249,9 +249,9 @@ public
 
 private
 
-\ A multi-error run whose reader recovers from E-NCOMP-RECOVERY: that reader
+\ A multi-error run whose reader recovers from E-COMP-RECOVERY: that reader
 \ sets RECOVER-CELL around the compile it calls (layout.f). Under any other
-\ reader a refusal is E-NCOMP-VERDICT, which SETTLE-UNIT reports.
+\ reader a refusal is E-COMP-VERDICT, which SETTLE-UNIT reports.
 : RECOVERING? ( -- bool )
    CHECKER-OWNER:MULTI-ERROR?
    data-base NCOMP-DISPATCH:RECOVER-CELL + @ 0<> and ;
@@ -261,18 +261,18 @@ public
 \ Under a recovering reader a definition the checker refused, or any
 \ definition, trusted or not, whose body or does> clause bound a refused
 \ declaration's recovery row, is counted and abandoned unpublished:
-\ E-NCOMP-RECOVERY ends it without a second report. So is a TRUSTED: definition
+\ E-COMP-RECOVERY ends it without a second report. So is a TRUSTED: definition
 \ whose declared row the checker refused, reported and counted (SIG-REFUSED?).
 : VERDICT-CK ( -- )
    TRUSTED? 0= CERTIFYING? and if M-VERDICT @ -1 <> if
       M-DOES @ 0= M-VERDICT @ 0 = M-VERDICT @ 1 = or and if
-         RECOVERING? if E-NCOMP-RECOVERY throw then
+         RECOVERING? if E-COMP-RECOVERY throw then
       then
-      E-NCOMP-VERDICT throw
+      E-COMP-VERDICT throw
    then then
    RECOVERING? if
-      CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY @ or if E-NCOMP-RECOVERY throw then
-      TRUSTED? if CHECKER-OWNER:SIG-REFUSED? if E-NCOMP-RECOVERY throw then then
+      CHECKER-OWNER:RECOVERY-USED? M-HEAD-RECOVERY @ or if E-COMP-RECOVERY throw then
+      TRUSTED? if CHECKER-OWNER:SIG-REFUSED? if E-COMP-RECOVERY throw then then
    then ;
 
 private
@@ -298,7 +298,7 @@ private
 
 \ The compiler owns one pending record, so the dictionary count must not move.
 : PUBLISHED-NONE ( n -- ) {: before:n :}
-   ndict@ before <> if E-NCOMP-NAME throw then ;
+   ndict@ before <> if E-COMP-NAME throw then ;
 
 public
 
@@ -312,7 +312,7 @@ public
 \ this definition.
 : RECORD-NAME-CK ( -- )
    REC-INDEX XREF-REC  NAME$  RECORD-NAME? 0= if
-      E-NCOMP-NAME throw
+      E-COMP-NAME throw
    then ;
 
 \ ---- what the definition takes and leaves ------------------------------------
@@ -332,7 +332,7 @@ public
 \ empty DECLARE-HOOKLESS recorded the declaration. The scan has printed why, so
 \ the refusal takes the check hook's reject status. After a certified scan
 \ nothing reaches it either: a package opened and closed by the source is
-\ E-NCOMP-NAME, an unsigned body answers its inferred effect, and one whose
+\ E-COMP-NAME, an unsigned body answers its inferred effect, and one whose
 \ effect is unrecorded (W-EFFECT-NOT-RECORDED) answers CHECKER-OWNER's
 \ UNRECORDED-IN and UNRECORDED-OUT cells; no row carries them for callers.
 : KEEP-ARITY ( -- )
@@ -341,7 +341,7 @@ public
    M-UNJUDGED @ -1 <> if RC-REJECT throw then
    CHECKER-OWNER:UNRECORDED-IN {: uin:n :}
    CHECKER-OWNER:UNRECORDED-OUT {: uout:n :}
-   uin 0 < uout 0 < or if E-NCOMP-ARITY throw then
+   uin 0 < uout 0 < or if E-COMP-ARITY throw then
    uin M-IN !  uout M-OUT ! ;
 
 private
@@ -548,7 +548,7 @@ public
       M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH then
       entry-rc throw
    then
-   rc E-NCOMP-RECOVERY = if rc throw then
+   rc E-COMP-RECOVERY = if rc throw then
    undefined if
       a u p REPORT-FAILURE
       a u p REPORT-UNDEFINED

@@ -43,7 +43,7 @@ variable SRC-U
 
 : NEGATIVE ( -- )
    s" : NCOMP-NAME-A:SAME ( -- n ) NCOMP-NAME-TEST:REHOME-PENDING 1 ;"
-   SOURCE-RC E-NCOMP-NAME = if exit then
+   SOURCE-RC E-COMP-NAME = if exit then
    s" native qualified name: wrong namespace passed the name gate" 1 die ;
 
 public

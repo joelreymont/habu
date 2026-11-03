@@ -542,7 +542,7 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 : EMIT-PLACE ( n -- )
    {: at:n :}
    PHASE @ MATCH emission
-      shut OF E-NCOMP-STATE throw ENDOF
+      shut OF E-COMP-STATE throw ENDOF
       open OF ENDOF
       placed OF ENDOF
    ;MATCH
@@ -588,7 +588,7 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    PLACED-AT @ {: at:n :}
    construct emission shut PHASE !  0 PLACED-AT !
    phase MATCH emission
-      shut OF E-NCOMP-STATE throw ENDOF
+      shut OF E-COMP-STATE throw ENDOF
       open OF NEMIT-OPEN  -1 NEMIT-ROWS ENDOF
       placed OF at SEAL-PLACED ENDOF
    ;MATCH ;

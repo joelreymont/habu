@@ -5,7 +5,7 @@ require src/core/checker-owner-abi.f
 package CHECKER-OWNER-GUARD
 private
 
-\ E-NCOMP-OWNER; this small core helper does not require the library layer.
+\ E-COMP-OWNER; this small core helper does not require the library layer.
 : BAD ( -- ) -8574 throw ;
 : ADDRESS ( ptr u8 -- n ) NULL-PTR BYTE-VIEW - ;
 : DATA-SPAN ( -- n n ) data-base BYTE-VIEW ADDRESS here BYTE-VIEW ADDRESS ;

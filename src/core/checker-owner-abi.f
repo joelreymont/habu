@@ -164,7 +164,7 @@ $378 constant WITH-TICK-ORDER-OFF
 $380 constant VERIFY-DECL-OFF
 \ $388 is the borrowed C2 transfer fact.
 $388 constant C2-STOW-OFF
-\ src/lib/errors.f names this code E-NCOMP-BINDING; a retained build host loads
+\ src/lib/errors.f names this code E-COMP-BINDING; a retained build host loads
 \ this constants-only ABI before it can load the new error word.
 -8575 constant BINDING-RC
 0 constant BOUND-ORD
@@ -184,7 +184,7 @@ $388 constant C2-STOW-OFF
 \ return-stack clause") and this tree reads no cell 11, but a retained compiler
 \ built before that rule sizes these rows by BOUND-CELLS and refuses a call
 \ whose cell 11 holds 0: with the field deleted, a native build from such a
-\ host stopped at src/core/check-hook.f (E-NCOMP-OWNER). So the checker still
+\ host stopped at src/core/check-hook.f (E-COMP-OWNER). So the checker still
 \ writes 1 there for every resolved effect.
 11 constant BOUND-NEUTRAL
 12 constant BOUND-DEAD

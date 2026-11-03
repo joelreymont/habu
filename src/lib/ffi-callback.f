@@ -25,11 +25,11 @@ CAST: ENTRY-XT ( n -- [ -- n ] )
 
 : ARM-STUB ( n n -- )
    data-base NCOMP-DISPATCH:CALLBACK-STUB-CELL + @
-   dup 0= if E-NCOMP-STATE throw then STUB-XT execute ;
+   dup 0= if E-COMP-STATE throw then STUB-XT execute ;
 
 : STUB-ENTRY ( -- n )
    data-base NCOMP-DISPATCH:CALLBACK-ENTRY-CELL + @
-   dup 0= if E-NCOMP-STATE throw then ENTRY-XT execute ;
+   dup 0= if E-COMP-STATE throw then ENTRY-XT execute ;
 
 8 constant FLOAT-REGS
 $400 constant GEN-CAP

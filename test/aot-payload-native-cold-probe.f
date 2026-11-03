@@ -19,7 +19,7 @@ ENTRY-ORDER @ ENTRY-OWNER @ VERIFY:ENTRY-TICK-ORDER!
    {: off:n :}
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= if E-NCOMP-OWNER throw then ;
+   off + CELL-VIEW @ dup 0= if E-COMP-OWNER throw then ;
 
 CAST: SYM-ACTION ( n -- [ ptr u8 n -- n ] )
 

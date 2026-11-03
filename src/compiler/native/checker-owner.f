@@ -3,7 +3,7 @@
 \ Capture switches it to dispatch through the live declaration-owner record,
 \ so a baked compiler follows a replacement checker instead of its old names.
 \ The scan, call facts and effect-query readers must all reach that same owner.
-\ Missing fields refuse with E-NCOMP-OWNER; they never fall back by name.
+\ Missing fields refuse with E-COMP-OWNER; they never fall back by name.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -48,7 +48,7 @@ defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
    2 s" ncomp: the source owner carries no " write drop
    2 a u write drop
    2 S\" \n" write drop
-   E-NCOMP-OWNER throw ;
+   E-COMP-OWNER throw ;
 
 \ The owner record stores raw execution tokens; each view states a field's
 \ signature so native execute has a callable layout.

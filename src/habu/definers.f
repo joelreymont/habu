@@ -652,7 +652,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
 \ throws with the definition still pending, as the engine's does. On its
 \ return def-close clears what def-open set. This `;` recovers: it declares
 \ so in RECOVER-CELL for the compile, and abandons the definition the compiler
-\ refused with E-NCOMP-RECOVERY, which only a multi-error run throws, and
+\ refused with E-COMP-RECOVERY, which only a multi-error run throws, and
 \ reads on.
 : DEF-COMPILE ( ptr u8 n -- )
    DEF-DISPATCH DEF-COMPILER AS-COMPILE execute ;
@@ -665,7 +665,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    [: data-base BODYBUF-OFF + BYTE-VIEW BODYLEN-CELL CELL@ DEF-COMPILE ;] catch
    {: rc:n :}
    prior NCOMP-DISPATCH:RECOVER-CELL CELL!
-   rc E-NCOMP-RECOVERY = if DEF-ABORT true exit then
+   rc E-COMP-RECOVERY = if DEF-ABORT true exit then
    rc 0<> if rc throw then
    DEF-CLOSE
    true ;

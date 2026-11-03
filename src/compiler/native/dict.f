@@ -251,7 +251,7 @@ private
    src RS-DOUT = if i CHECKER-OWNER:DOUT-SLOT exit then
    src RS-DOES-IN = if i CHECKER-OWNER:DOES-IN-SLOT exit then
    src RS-DOES-OUT = if i CHECKER-OWNER:DOES-OUT-SLOT exit then
-   E-NCOMP-OWNER throw ;
+   E-COMP-OWNER throw ;
 
 \ The width of the value a term belongs to is readable from the top of each run:
 \ the cells of one value carry slots W, W-1 ... 1 downwards. A run of one is not

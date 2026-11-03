@@ -2282,7 +2282,7 @@ MSMAX CWORK-SPAN MS-OF n       \ the row of the `of` that opened the arm read la
    k HIR-CTRL:EVAL HIR-CTRL:EQ or 0= ;
 
 : BOUND-ROW ( ptr u8 n -- n n ) {: bound:ptr bytes:n :}
-   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   bytes CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-COMP-OWNER throw then
    bound CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
    bound CHECKER-OWNER-ABI:BOUND-FLAGS cells + CELL-VIEW @ ;
 

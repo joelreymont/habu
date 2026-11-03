@@ -2467,7 +2467,7 @@ sections above.
 - **Native compile callbacks cannot change the checker store.** From scan
   completion through the last publication callback, a checker scan or a
   checker write (`generates:`, a linear, record or family declaration, a
-  field owner, an extent mark) throws catchable `E-NCOMP-STATE` before
+  field owner, an extent mark) throws catchable `E-COMP-STATE` before
   mutation. The window closes on every exit, including throws, so a refused
   definition cannot leave an orphaned type or row. This applies to certified
   and hookless compilation.

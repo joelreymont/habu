@@ -12,8 +12,8 @@ DYNAMIC-BUFFER SOURCE-CERT-CELLS n
 
 : SOURCE-CERTIFICATE ( n -- ptr u8 n ) {: expected:n :}
    LOWER-CERT:CELL-COUNT {: count:n :}
-   count LOWER-CERT:HEADER-CELLS < if E-NCOMP-OWNER throw then
-   LOWER-CERT:BODY-HASH-CELL LOWER-CERT:CELL@ expected <> if E-NCOMP-OWNER throw then
+   count LOWER-CERT:HEADER-CELLS < if E-COMP-OWNER throw then
+   LOWER-CERT:BODY-HASH-CELL LOWER-CERT:CELL@ expected <> if E-COMP-OWNER throw then
    count SOURCE-CERT-CELLS-RESERVE
    count 0 ?do i LOWER-CERT:CELL@ i SOURCE-CERT-CELLS ! loop
    0 SOURCE-CERT-CELLS BYTE-VIEW count cells ;

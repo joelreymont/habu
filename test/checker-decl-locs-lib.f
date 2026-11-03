@@ -15,7 +15,7 @@ private
    {: off:n :}
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= IF E-NCOMP-OWNER throw THEN ;
+   off + CELL-VIEW @ dup 0= IF E-COMP-OWNER throw THEN ;
 
 CAST: ARM-ACTION ( n -- [ ptr u8 n n n n -- ] )
 CAST: OFF-ACTION ( n -- [ -- ] )

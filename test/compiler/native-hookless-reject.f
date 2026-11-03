@@ -250,7 +250,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    RC @ RC-REJECT T= ;
 
 \ ---- a hook's zero verdict refuses the definition ----------------------------
-\ The native compiler throws E-NCOMP-VERDICT at the definition. The texts
+\ The native compiler throws E-COMP-VERDICT at the definition. The texts
 \ outrun a source line, so TEXT holds them; `;package` first makes them global.
 create TEXT CAP allot                  variable TEXT-U
 

@@ -200,7 +200,7 @@ before any `require`.
 | a word defined before the check hook with no external row (a `PRIM:` axiom, or a `TRUSTED:` declaration after the checker) in a checked body | `E-UNDEFINED` — **on a sealed from-source prefix boot only**, never on `bin/hb`; a top-level step that reads one is refused the same way, so its row goes in `src/core/cell-effects.f` |
 | `0 set-check` then `SUMTYPE`, `PRODUCT`, `STRUCTURE` or `ENUM`, which generate constructors; `NEWTYPE` and `DEFTYPE` generate none and are admitted | `E-TDECL-UNCHECKED`, `habu: bad sumtype declaration 'name': checking is suspended; declare it where checking is on at 'name'`, nothing registered — close the window first |
 | a body the scan refuses with the hook cell empty (`0 set-check`) at tier 1 | ordinary compilation uses its declaration, with the reason on stderr and no row authority; a native build requires the prefix scan and refuses before publication (forth.md **Rules learned by refusal**) |
-| a checker scan, `generates:`, a type registration or another checker store write in a native compile callback | `E-NCOMP-STATE`, catchable, before anything changes |
+| a checker scan, `generates:`, a type registration or another checker store write in a native compile callback | `E-COMP-STATE`, catchable, before anything changes |
 
 Checked C2 views carry owner and loan lifetimes: shared `read-view<p,q,T>` and
 exclusive `mut-view<p,q,a,T>`. They occupy two cells but form one logical value.

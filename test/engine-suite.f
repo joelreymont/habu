@@ -2103,9 +2103,9 @@ variable ES-CPX-ND
 TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
 TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
 : ES-CPX-BAD-RUN ( -- )
-   ['] ES-CPX-BAD-EVAL catch E-NCOMP-VERDICT T= ;
+   ['] ES-CPX-BAD-EVAL catch E-COMP-VERDICT T= ;
 : ES-CPX-BAD-EXT-RUN ( -- )
-   ['] ES-CPX-BAD-EXT-EVAL catch E-NCOMP-VERDICT T= ;
+   ['] ES-CPX-BAD-EXT-EVAL catch E-COMP-VERDICT T= ;
 1 DIAG-QUIET +!
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
 ES-CPX-BAD-RUN

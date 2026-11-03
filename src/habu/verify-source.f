@@ -1167,7 +1167,7 @@ variable GROUP-AT
 : OWNER-XT ( n -- n ) {: off:n :}
    NCOMP-DISPATCH:DECL-A @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= IF E-NCOMP-OWNER throw THEN ;
+   off + CELL-VIEW @ dup 0= IF E-COMP-OWNER throw THEN ;
 
 \ The owner record stores raw execution tokens; each view states the signature
 \ of the field it calls.

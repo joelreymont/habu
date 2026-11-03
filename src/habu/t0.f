@@ -1956,7 +1956,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    ndict@ {: before:n :}
    SCAN
    VERDICT-CK
-   E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
+   E-COMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally ;
 
 \ ---- the fixed bodies --------------------------------------------------------
@@ -1973,7 +1973,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    RESET-STATE
    EMIT-OPEN
    BODY-KIND @ MATCH body
-      compiled OF E-NCOMP-STATE throw ENDOF
+      compiled OF E-COMP-STATE throw ENDOF
       value OF val PUSH-CONST  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
       address OF val -1 PUSH-ADDR  SPILL-ALL  EMIT-SLOT-CLOSE ENDOF
       defer OF
@@ -1981,7 +1981,7 @@ variable SCAN-LO                     \ the ordinal of its first row
          SPILL-ALL  ['] execute XT>N 0 EMIT-CALL
          EMIT-RETURN  EMIT-CLOSE
       ENDOF
-      cast OF E-NCOMP-STATE throw ENDOF
+      cast OF E-COMP-STATE throw ENDOF
    ;MATCH ;
 
 : FIXED-LOWER ( -- )
@@ -2000,7 +2000,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 \ NCOMP:COMPILE-FIXED: no body text and no checker scan.
 : COMPILE-FIXED ( n body -- )
    {: val:n kind:body :}
-   kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
+   kind FIXED-KIND? 0= if E-COMP-STATE throw then
    IDLE-CK
    NULL-PTR 0 false STAGE-UNIT
    val FIXED-VAL !  kind BODY-KIND !

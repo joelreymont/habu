@@ -2521,7 +2521,7 @@ $180000 constant LARGE-STDIN-LEN
 \ retired, a shadowed and an ambiguous name, and raises nothing. A scope's rows
 \ go with its rollback, though the next scope's PN reuses the binding's
 \ symbol and record. An owner record that ends before the query's field is
-\ refused with E-NCOMP-OWNER, with no fallback.
+\ refused with E-COMP-OWNER, with no fallback.
 \ Load the fixture NAME: it exits 0 and prints OK. Its stderr's length.
 : WB-LOAD ( ptr u8 n ptr u8 n -- n )
    {: name:ptr nameu:n ok:ptr oku:n :}
@@ -2544,7 +2544,7 @@ $180000 constant LARGE-STDIN-LEN
    0 ERR erru s\" \"token\":\"PN\",\"file\":\"b.f\",\"line\":2,\"column\":1" CONTAINS? TTRUE
    s" top-parses-whitebox: declared again, deferred" T-LABEL
    0 ERR erru s\" \"token\":\"PN\",\"file\":\"c.f\",\"line\":3,\"column\":1" CONTAINS? TTRUE
-   s" parses-field.f" s\" require src/habu/verify-source.f\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: RUN ( -- n ) [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\n\" s\" a.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch ;\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW @\nCHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\nRUN E-NCOMP-OWNER = s\" the missing field refuses\" ASSERT\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\ns\" field: ok\" type cr\n;package\n" FIXTURE
+   s" parses-field.f" s\" require src/habu/verify-source.f\npackage CVT-WB\n: ASSERT ( bool ptr u8 n -- )\n   {: ok:bool m:ptr mu:n :}\n   ok if exit then m mu 76 die ;\n: RUN ( -- n ) [: s\\\" : PN ( -- ) parse-name 2drop ;\\nparses: PN 1\\n\" s\" a.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;] catch ;\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW @\nCHECKER-OWNER-ABI:VERIFY-TOP-BINDING-OFF data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\nRUN E-COMP-OWNER = s\" the missing field refuses\" ASSERT\ndata-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @ CELL - CELL-VIEW !\ns\" field: ok\" type cr\n;package\n" FIXTURE
    s" top-parses-whitebox: field" T-LABEL s" parses-field.f" s" field: ok" WB-LOAD drop ;
 
 

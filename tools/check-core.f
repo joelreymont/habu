@@ -1384,7 +1384,7 @@ variable CHK-PKG-NAME-I
 : CHK-VERIFIER-XT ( n -- n ) {: off:n :}
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= IF E-NCOMP-OWNER throw THEN ;
+   off + CELL-VIEW @ dup 0= IF E-COMP-OWNER throw THEN ;
 
 \ The checker owner's record holds the verifier's entries as code address integers.
 CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )

@@ -267,7 +267,7 @@ align
    \ Structural operands and locals have no source call decision here.
    ix CHECKER-OWNER:SOURCE-BINDING {: row:ptr size:n :}
    size 0= if exit then
-   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-NCOMP-OWNER throw then
+   size CHECKER-OWNER-ABI:BOUND-CELLS cells <> if E-COMP-OWNER throw then
    row CHECKER-OWNER-ABI:BOUND-KIND cells + CELL-VIEW @
       CHECKER-OWNER-ABI:BOUND-DICT <> if exit then
    row CHECKER-OWNER-ABI:BOUND-ENTRY cells + CELL-VIEW @
@@ -451,14 +451,14 @@ align
 
 \ The compile window opens when RECORD returns: every row the definition records
 \ is recorded by then. Until publication's last callback (publish.f UNIT-NOTIFY)
-\ the checker refuses every scan and store write with E-NCOMP-STATE (checker.f
+\ the checker refuses every scan and store write with E-COMP-STATE (checker.f
 \ WRITE-WINDOW), so a callback cannot reset the latches publication reads or
 \ record a row the definition's refusal would cut. publish.f shuts the window
 \ before the compiler's own writes, and the finally shuts it on every exit.
 : WORK ( -- )
    CC HIR-MOD 0 M-BLD !
    RECORD {: before:n :}
-   E-NCOMP-STATE CHECKER-OWNER:WRITE-WINDOW
+   E-COMP-STATE CHECKER-OWNER:WRITE-WINDOW
    before [: LOWER ;] [: SHUT ;] finally
    before M-PUBLISHED-START ! ;
 
@@ -482,7 +482,7 @@ $20 constant NAME-END
 
 : FIXED-TAPE ( -- )
    FIXED-NAME$ {: a:ptr u:n :}
-   u TEXT-CAP > if E-NCOMP-TEXT throw then
+   u TEXT-CAP > if E-COMP-TEXT throw then
    a TXT u BYTE-COPY
    CC BB IR-BUILD:MODULE-KEY 1 NTAPE:NEW {: tp:IR-ARENA:arena :}
    CC BB TXT u IR-BUILD:ADD-SOURCE {: sid:IR-ID:ir-source-id :}
@@ -657,7 +657,7 @@ INSTALL-FORGET
    IR-BUILD:HISTORY DEF-BUILD-BEFORE @ - DEF-BUILD-DELTA ! ;
 
 : LENGTH-CK ( -- )
-   SRC$ nip TEXT-CAP > if E-NCOMP-TEXT throw then ;
+   SRC$ nip TEXT-CAP > if E-COMP-TEXT throw then ;
 
 \ The refused token and its byte: the closing `;` when the body left a construct
 \ open, else the elaborator's, at its TXT offset (TXT holds SRC$ byte for byte).
@@ -713,10 +713,10 @@ private
    {: val:n kind:COMP:body idx:n lease:NLEASE:lease :}
    lease M-LEASE !
    IDLE-CK
-   kind COMP-BODY:compiled COMP-BODY:EQ if E-NCOMP-STATE throw then
-   idx 0 < idx ndict@ >= or if E-NCOMP-STATE throw then
+   kind COMP-BODY:compiled COMP-BODY:EQ if E-COMP-STATE throw then
+   idx 0 < idx ndict@ >= or if E-COMP-STATE throw then
    NSHADOW:NATIVE? if
-      kind COMP-BODY:cast COMP-BODY:EQ 0= val 0<> or if E-NCOMP-STATE throw then
+      kind COMP-BODY:cast COMP-BODY:EQ 0= val 0<> or if E-COMP-STATE throw then
       idx XREF-REC {: rec:ptr :}
       rec XREF-START rec XREF-CODE-BYTES NSHADOW:TAKE-CAST
       idx NSHADOW:PUBLISH
@@ -758,7 +758,7 @@ public
 \ The named parent's effect does not determine the publication callback's effect.
 : PUBLISHED! ( [ n IR-CTX:ctx code-entry n n -- ] -- )
    IDLE-CK
-   data-base PEND-CELL + @ 0<> if E-NCOMP-STATE throw then
+   data-base PEND-CELL + @ 0<> if E-COMP-STATE throw then
    data-base NATIVE-OBS-CELLS:PUBLISHED + xt! ;
 
 : DEFINITION-CACHEABLE? ( -- bool )
@@ -812,7 +812,7 @@ public
 
 : COMPILE-FIXED ( n COMP:body -- ) {: val:n kind:COMP:body :}
    kind COMP-BODY:compiled COMP-BODY:EQ
-   kind COMP-BODY:cast COMP-BODY:EQ or if E-NCOMP-STATE throw then
+   kind COMP-BODY:cast COMP-BODY:EQ or if E-COMP-STATE throw then
    val kind [: FIXED-LEASED ;] NLEASE:WITH ;
 
 \ LCREATE has already published its ARM body.

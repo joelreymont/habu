@@ -9413,7 +9413,7 @@ public
       10 DATA NCOMP-DISPATCH:RECOVER-CELL STR,
       9 compiled CBZ,
       XDS XDS 16 SUBI,                     \ catch restored the compiler's two args
-      10 -8576 LIT64,  9 10 CMP,  C-NE rethrow BCOND,   \ E-NCOMP-RECOVERY
+      10 -8576 LIT64,  9 10 CMP,  C-NE rethrow BCOND,   \ E-COMP-RECOVERY
       DEFWRITE:DEF-ABORT
       LMAIN LABEL@ B,
    rethrow LBL,

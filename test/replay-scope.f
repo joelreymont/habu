@@ -16,7 +16,7 @@ package REPLAY-SCOPE
    {: off:n :}
    data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
    off CELL + CHECKER-OWNER-GUARD:VALIDATE
-   off + CELL-VIEW @ dup 0= if E-NCOMP-OWNER throw then ;
+   off + CELL-VIEW @ dup 0= if E-COMP-OWNER throw then ;
 
 \ The owner record stores raw execution tokens; the window's start and done
 \ take and leave nothing.
