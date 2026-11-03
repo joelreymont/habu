@@ -1,0 +1,9 @@
+---
+title: Refuse an enum value named like an immediate word
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-03T11:13:56.669956+02:00"
+---
+
+Problem: a MATCH arm whose name is an immediate global word runs that word. `package PX public ENUM load include ;ENUM : N ( PX:load -- n ) MATCH PX:load include OF 1 ENDOF ;MATCH ; ;package` stops with 'checker: preflight did not reject unmodeled immediate', rc 76 (installed hb at 3f03ec9e; probe /tmp/carl-src-probe/b.f; `require` the same; `always`, `once`, `script`, `provide`, `included`, `required`, `provided` work). The message is the checker's internal invariant: nothing names the arm or says why. A value no MATCH can name is a declaration fault: the declaration already refuses reserved names ('bad enum declaration 'k': reserved name', enum-decl.f:40) and variant names that collide with a type family (sumtype.f:284-287 TDECL-REQUIRE-VARIANT-NAME). Acceptance: ENUM and SUMTYPE refuse a value or variant name that resolves to an immediate word in the declaring scope, with E-NAME / E-TDECL-NAME and a message saying the name is an immediate word and cannot be a MATCH arm; a rejected-program case for ENUM and one for SUMTYPE in the declaration refusal tests; the engine's own declarations still load (engine build). Files: src/core/enum-decl.f, src/core/sumtype.f, their refusal tests. Verify: the probe is refused with the new message; the declaration tests; engine build. Depends: none. Ownership: src/core/enum-decl.f, src/core/sumtype.f. Claim: unassigned.
