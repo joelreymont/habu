@@ -455,6 +455,15 @@ learned live in the docs for their subject.
   dead words out and tier 1's calls following, answered "do it". That plan
   named the store's main word INTERN:STRING; asked why the move had become a
   redesign, he wrote "we discussed INTERN:STRING so that one is fine".
+- 2026-11-03, where strings and their lookup table live: shown that the
+  store keeps strings in 512 KB blocks chained through DATA with a per-block
+  lookup table and a 512 KB limit per string, Joel asked "why are we
+  chaining anything", then "what's wrong with mixing all kinds of data in
+  DATA, including strings? why did we bother with blocks?" and "how does your
+  hashtable grow?", and ruled "your hashtable cannot live in data. strings can
+  but hashtable cannot. that one needs an arena of its own, or somethibng like
+  that". Strings are stored in DATA among other data; the table that finds an
+  existing string lives in growable memory of its own, outside DATA.
 - 2026-11-03, the callback package: asked what the callback library's
   package FFI-CB should become, and shown that FFI is built into hb and sealed
   there, so a library loaded later cannot add words to it, Joel first chose
