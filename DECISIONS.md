@@ -6,6 +6,14 @@ learned live in the docs for their subject.
 
 ## Language and checker
 
+- 2026-11-03, TASK's waits (asked from Tender): "what do you need STOP-FOR?
+  what does it do? if it stops for some milliseconds then should it not be
+  WAIT-MS, for example?"; then "i think anything that takes a semaphore should
+  say so, e.g. TASK:WAIT-SEM-MS, etc."; then chose each "(Recommended)"
+  option: STOP-FOR becomes TASK:WAIT-MS; STOP becomes TASK:WAIT, the task's
+  own wait beside WAIT-MS and WAKE; the semaphore's WAIT, SIGNAL and TRY-WAIT
+  become WAIT-SEM, SIGNAL-SEM and TRY-WAIT-SEM, with no WAIT-SEM-MS; GET and
+  RELEASE, which take a lock, keep their names (paraphrase).
 - 2026-11-03, names that read as numbers: asked where the refusal of a
   definition named like a number goes, Joel answered "what's the problem? use
   human english. : 42 is invalid, why are we deliberating?": `: 42` is
