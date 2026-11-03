@@ -500,12 +500,8 @@ STRUCTURE cdd-c128 FIELD a cdd-c64 FIELD b cdd-c64 ;STRUCTURE
    [: s\" : CDD-GW ( n -- ) CDD-GEN:MAKE ;\ngenerates: CDD-GW ( cdd-c128 cdd-c64 cdd-c32 cdd-c16 cdd-c8 cdd-c4 cdd-c2 n n -- )\n" evaluate-closed ;]
       E-GEN-ROW TTHROWSQ ;
 
-\ Section 13: a clause's body ends as its colon twin's does
-\ (src/core/checker.f CHECK-DOES-RUN): its declared quantifiers and rows stay
-\ parametric, a body that never returns owes no output, an unknown signature
-\ type is reported at that type, and an effect too wide to record is
-\ uncheckable; a hookless definition's row that wide records nothing. The
-\ refused clauses' diagnostics go to CDD-DIAG instead of stderr.
+\ Section 13: a clause's body ends as its colon twin's does (checker.f
+\ CHECK-DOES-RUN); refused clauses' diagnostics go to CDD-DIAG, not stderr.
 defer CDD-VSAME ( mut-view<p,q,a,u8> mut-view<p,q,a,u8> -- )
 create CDD-DIAG 4096 allot
 
@@ -518,10 +514,6 @@ create CDD-DIAG 4096 allot
 
 : CDD-NP-REFUSED ( ptr u8 n -- )
    s" E-NONPARAMETRIC-EFFECT" CDD-NOT-CERTIFIED ;
-
-\ The text compiled with the hook cell empty; the checker goes back either way.
-: CDD-HOOKLESS-RC ( ptr u8 n -- n )
-   TEST-EVAL:RC  LOWER-CERT-HOOK:INSTALL ;
 
 \ A clause declaring 256 input cells, whose body takes 257 with the data field.
 $600 constant CDD-WIDE-CAP
@@ -548,11 +540,6 @@ CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
    s" : CDD-NP5 ( n -- ) create , does> ( | R -- | R ) drop r> drop 5 throw ;" CDD-NP-REFUSED
    s" a clause too wide to record is uncheckable, and the load goes on" T-LABEL
    CDD-WIDE$ s" input row too wide to record (257 cells, at most 255)" CDD-NOT-CERTIFIED
-   s" a hookless definition too wide to record is refused, and the load goes on" T-LABEL
-   CDD-DIAG 4096 DIAG-BUFFER!
-   s" 0 set-check : CDD-HL ( cdd-c128 cdd-c128 -- cdd-c128 cdd-c128 ) ;" CDD-HOOKLESS-RC 70 T=
-   DIAG-BUFFER$ s" input row too wide to record (256 cells, at most 255)" CONTAINS? TTRUE
-   DIAG-BUFFER-OFF
    s" a clause's unknown signature type is reported at that type, as its colon twin's is" T-LABEL
    s" : CDD-UX ( n -- ) create , does> ( cdd-zz -- cdd-zz ) drop drop 5 ;"
       s" unknown type 'cdd-zz'" CDD-NOT-CERTIFIED

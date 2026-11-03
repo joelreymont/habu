@@ -164,8 +164,6 @@ variable ERR-U         \ bytes the last child wrote to fd 2
 : POST-SEAL-BRIDGE ( -- )
    s" post-seal package reaches checker bridge" T-LABEL
    PACKAGE-RC 0 T=
-   s" checking-off permits a package reload with no checker scope" T-LABEL
-   HB$ s" 0 set-check package CHECK-OFF public : W ( -- n ) 1 ; ;package" RUN-SOURCE 0 T=
    s" a definition with no package authority fails closed" T-LABEL
    NO-CONTEXT-RC 70 T=
    \ 70 is also what an undefined word or a rejected body exits with, so fd 2

@@ -1,12 +1,11 @@
 \ Run in a child: the seed rewind removes the donor's package and long-name
 \ record while its code and samples survive. The target takes the same ordinal.
-0 set-check
 
 variable REWIND-AT
 variable DONOR-PC
 variable DONOR-IX
-variable DONOR-CALLER-XT
-variable RETIRED-XT
+TYPED-VARIABLE DONOR-CALLER-XT [ -- n ]
+TYPED-VARIABLE RETIRED-XT [ -- ]
 variable TRIM-IX
 variable TRIM-PC
 ndict@ REWIND-AT !
