@@ -181,7 +181,7 @@ variable RC     variable EXITED
 
 \ ---- 2b. checked code reads and selects the tier ------------------------------
 \ Without a checker effect row a primitive is E-UNDEFINED in every checked body.
-\ tier@ is an ordinary reader like check@, and set-tier's row is global, so a
+\ tier@ is an ordinary reader, and set-tier's row is global, so a
 \ checked body anywhere selects a tier by calling it.
 : TEST-CHECKER-ROWS ( -- )
    s" tier@ is callable from a checked body on tier 0" T-LABEL
@@ -195,20 +195,6 @@ variable RC     variable EXITED
 
    s" set-tier selects from a checked body on tier 1" T-LABEL
    s" 1 set-tier : ST ( n -- ) set-tier ; 0 ST tier@ . cr" RUN  s" 0" ASSERT-OK ;
-
-\ ---- 2b0. certification is the engine's hook CELL, read per definition --------
-\ Each tier reads the hook cell per definition, so `0 set-check` and installing
-\ another hook take effect. The swap is asserted from both sides: the definition
-\ before it prints 7, the one after carries the installed hook's throw code out.
-\ A compiler that bound the hook by name exits 0 and prints the same 7
-\ (measured), so the exit code is the claim.
-: TEST-HOOK-CELL ( -- )
-   s" a hook installed mid-session certifies the next definition" T-LABEL
-   S\" 1 set-tier\nTRUSTED: HK-STOP ( ptr u8 n -- n ) CHECK! drop 77 throw ;\n: HK-A ( -- n ) 7 ;\nHK-A . cr\nTRUSTED: HK-SWAP ( -- ) ['] HK-STOP set-check ;\nHK-SWAP\n: HK-B ( -- n ) 8 ;\n"
-   EXEC
-   77 ASSERT-RC
-   OUT$ s" 7" CONTAINS? TTRUE
-   ERR$ s" HK-B" CONTAINS? TTRUE ;
 
 \ ---- 2b'. a TRUSTED: body may call a trust-boundary primitive on BOTH tiers ---
 \ The optimizing compiler reads each callee's cell widths from the checker's
@@ -378,27 +364,18 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
 : REJECT-TRUST-OUT$ ( -- ptr u8 n )
    S\" 7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n7\n2\n1\n0\n2\n1\n7\n2\n1\n5\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n7\n2\n1\n2\n1\n7\n2\n1\n5\n2\n1\n7\n7\n2\n1\n1\n2\n7\n2\n1\n" ;
 
-\ IC-RAW compiles after `discard-check`: under `0 set-check` the parked hook
-\ still rows a body it scans; a rowless call leaves the pair's facts incomplete.
-: INCOMPLETE-RAW$ ( n -- ptr u8 n )
-   0 TIER-OPEN
-   s" check@ 0 set-check discard-check : IC-RAW swap ; set-check " LN+
-   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
-   s" TRUSTED: INCOMPLETE ( n -- icpair n ) 1 2 ICPAIR:MAKE IC-RAW swap ; " LN+
-   s" : IC-SHOW ( -- ) 7 INCOMPLETE . ICPAIR:UNMAKE . . cr ; IC-SHOW" LN+ LN$ ;
-
 : INCOMPLETE-EVAL$ ( n -- ptr u8 n )
    0 TIER-OPEN
    s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
    S\" TRUSTED: INCOMPLETE ( n -- icpair n ) 1 2 ICPAIR:MAKE s\" \" evaluate swap ; " LN+
    s" : IC-SHOW ( -- ) 7 INCOMPLETE . ICPAIR:UNMAKE . . cr ; IC-SHOW" LN+ LN$ ;
 
-\ A hookless body whose unjudged scan lost a width fact while a pair was live:
+\ A TRUSTED: body whose unjudged scan lost a width fact while a pair was live:
 \ the verdict is not enforced, but the lowering still needs the facts.
-: INCOMPLETE-HOOKLESS$ ( n -- ptr u8 n )
+: INCOMPLETE-UNJUDGED$ ( n -- ptr u8 n )
    0 TIER-OPEN
-   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE 0 set-check " LN+
-   s" : IC-HOOKLESS ( -- ) 1 2 ICPAIR:MAKE 5 + . . cr ; IC-HOOKLESS" LN+ LN$ ;
+   s" STRUCTURE icpair FIELD a n FIELD b n ;STRUCTURE " LN+
+   s" TRUSTED: IC-UNJUDGED ( -- ) 1 2 ICPAIR:MAKE 5 + . . cr ; IC-UNJUDGED" LN+ LN$ ;
 
 \ A refused bind that cuts a live pair: the pair-typed `q` takes the ptr and
 \ the pair's top cell, so the undeclared `p` lies over half a pair. What the
@@ -562,16 +539,14 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    0 REJECT-CHECKED$ RUN  s" rj-checked: at '*'" ASSERT-REJECTED  OUT-U @ 0 T=
    HB-TARGET-LINUX-X86-64? 0= if
       \ One process each: the refusal ends the process it happens in.
-      s" an unchecked word over a two-cell value is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-RAW$ >JIT RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
       s" evaluate over a two-cell value is refused by name on tier 0" T-LABEL
       0 INCOMPLETE-EVAL$ >JIT RUN  S\" hb: incomplete layout facts: INCOMPLETE\n" ASSERT-INCOMPLETE
       s" a refused bind leaving an undeclared local over half a pair is refused by name on tier 0" T-LABEL
       0 INCOMPLETE-BIND$ >JIT RUN  S\" hb: incomplete layout facts: U1\n" ASSERT-INCOMPLETE
       s" a refused bind past the known row with a pair-typed local is refused by name on tier 0" T-LABEL
       0 INCOMPLETE-LOST$ >JIT RUN  S\" hb: incomplete layout facts: U2\n" ASSERT-INCOMPLETE
-      s" a hookless body with incomplete width facts is refused by name on tier 0" T-LABEL
-      0 INCOMPLETE-HOOKLESS$ >JIT RUN  S\" hb: incomplete layout facts: IC-HOOKLESS\n" ASSERT-INCOMPLETE
+      s" a TRUSTED: body adding to half a pair is refused by name on tier 0" T-LABEL
+      0 INCOMPLETE-UNJUDGED$ >JIT RUN  S\" hb: incomplete layout facts: IC-UNJUDGED\n" ASSERT-INCOMPLETE
    then
    s" a `--` in a TRUSTED: bind is bound as a local on tier 0" T-LABEL
    0 DASH-BIND$ RUN  S\" 2\n1\n" ASSERT-OK
@@ -595,9 +570,9 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    1 INCOMPLETE-EVAL$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
    ERR$ S\" ncomp: cannot compile INCOMPLETE\n" CONTAINS? TTRUE
    ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
-   s" a hookless body with incomplete width facts is refused on tier 1" T-LABEL
-   1 INCOMPLETE-HOOKLESS$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
-   ERR$ S\" ncomp: cannot compile IC-HOOKLESS\n" CONTAINS? TTRUE
+   s" a TRUSTED: body adding to half a pair is refused on tier 1" T-LABEL
+   1 INCOMPLETE-UNJUDGED$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
+   ERR$ S\" ncomp: cannot compile IC-UNJUDGED\n" CONTAINS? TTRUE
    ERR$ E-NELAB-BUNDLE UNCAUGHT$ CONTAINS? TTRUE
    s" a refused bind leaving an undeclared local over half a pair is refused by name on tier 1" T-LABEL
    1 INCOMPLETE-BIND$ RUN  UNCAUGHT-RC ASSERT-RC  OUT-U @ 0 T=
@@ -780,36 +755,42 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    RUN  s" 5" ASSERT-OK ;
 
 \ ---- 7. a failed definition under a top-level catch is recoverable ----------
-\ `' evaluate catch` at top level installs its handler at the SP B-EVAL records
-\ as the eval-frame boundary. A handler at that boundary is outside the frame:
-\ recovery pops the frame and rolls CP back from the abandoned definition, so
-\ the rejection prints its code and the session keeps compiling. Real processes:
-\ the in-process fork does not reach that boundary. A top-level `catch` of
-\ `evaluate` has no row, so each text turns the checker off for the catch,
-\ restores it inside the evaluated text, and drops the text's two cells under
-\ `0 set-check`.
+\ `' EV-RUN catch` puts its handler above the eval frame, so recovery pops the
+\ frame and rolls CP back (EM-EVAL-THROW-RECOVER).
+: EV-OPEN ( n -- )
+   0 TIER-OPEN
+   S\" PTR-VARIABLE EV-A variable EV-U\nTRUSTED: EV-RUN ( -- ) EV-A @ EV-U @ evaluate ;\n: EV! ( ptr u8 n -- ) EV-U ! EV-A ! ;\n" LN+ ;
+
+\ One rejected definition, evaluated and caught at top level; `drop` or `.`
+\ follows the catch.
+: EV-REJECT+ ( ptr u8 n ptr u8 n -- ) {: body:ptr bu:n after:ptr au:n :}
+   S\" s\q " LN+  body bu LN+  S\" \q EV! ' EV-RUN catch " LN+  after au LN+ ;
+
 : TEST-EVAL-RECOVERY ( -- )
    s" tier 0 recovers from a rejected effect under a top-level catch" T-LABEL
-   S\" check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
+   0 EV-OPEN  s" : RVND ( n -- n ) dup ;" S\" . cr\n" EV-REJECT+  LN$ EXEC  s" 70" ASSERT-OK
 
    s" tier 0 recovers from an undefined word under a top-level catch" T-LABEL
-   S\" check@ 0 set-check s\q dup set-check : RVU ( -- ) MISSINGW ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC  s" 70" ASSERT-OK
+   0 EV-OPEN  s" : RVU ( -- ) MISSINGW ;" S\" . cr\n" EV-REJECT+  LN$ EXEC  s" 70" ASSERT-OK
 
    s" tier 1 recovers from the same rejection" T-LABEL
-   S\" 1 set-tier check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check . 2drop set-check cr\n" EXEC
-   s" 70" ASSERT-OK
+   1 EV-OPEN  s" : RVND ( n -- n ) dup ;" S\" . cr\n" EV-REJECT+  LN$ EXEC  s" 70" ASSERT-OK
 
    s" the session keeps compiling after the recovery" T-LABEL
-   S\" check@ 0 set-check s\q dup set-check : RVND ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\n: ZKOK ( -- n ) 9 ;\nZKOK . cr\n"
-   EXEC  s" 9" ASSERT-OK
+   0 EV-OPEN  s" : RVND ( n -- n ) dup ;" S\" drop\n" EV-REJECT+
+   S\" : ZKOK ( -- n ) 9 ;\nZKOK . cr\n" LN+  LN$ EXEC  s" 9" ASSERT-OK
 
    s" three recoveries in a row still leave a usable session" T-LABEL
-   S\" check@ 0 set-check s\q dup set-check : RA ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\ncheck@ 0 set-check s\q dup set-check : RB ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\ncheck@ 0 set-check s\q dup set-check : RC ( n -- n ) dup ;\q ' evaluate catch 0 set-check drop 2drop set-check\n: ZKOK2 ( -- n ) 7 ;\nZKOK2 . cr\n"
-   EXEC  s" 7" ASSERT-OK
+   0 EV-OPEN
+   s" : RA ( n -- n ) dup ;" S\" drop\n" EV-REJECT+
+   s" : RB ( n -- n ) dup ;" S\" drop\n" EV-REJECT+
+   s" : RC ( n -- n ) dup ;" S\" drop\n" EV-REJECT+
+   S\" : ZKOK2 ( -- n ) 7 ;\nZKOK2 . cr\n" LN+  LN$ EXEC  s" 7" ASSERT-OK
 
    s" the quotation form still recovers" T-LABEL
-   S\" PTR-VARIABLE EV-A variable EV-U\nTRUSTED: EV-RUN ( -- ) EV-A @ EV-U @ evaluate ;\n: EV ( ptr u8 n -- n ) EV-U ! EV-A ! [: EV-RUN ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n"
-   EXEC  s" 70" ASSERT-OK ;
+   0 EV-OPEN
+   S\" : EV ( ptr u8 n -- n ) EV! [: EV-RUN ;] catch ;\ns\q : RVND ( n -- n ) dup ;\q EV . cr\n" LN+
+   LN$ EXEC  s" 70" ASSERT-OK ;
 
 \ ---- 7b. a refused TRUSTED: declaration that records no row ------------------
 \ Its signature does not parse, so the definition recorded no row and its
@@ -822,60 +803,48 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    REJECT-RC ASSERT-RC
    ERR$ E-BAD-STORED-SIGNATURE UNCAUGHT$ CONTAINS? TTRUE ;
 
-\ ---- 7c. checking off still lowers wide values ------------------------------
-\ `0 set-check` empties the hook cell, but each tier still scans a body
-\ unjudged, signed or not, and a definer's signed does> clause, for its cell
+\ ---- 7c. an unjudged scan still lowers wide values ---------------------------
+\ A TRUSTED: body and a TRUSTED: definer's signed does> clause are scanned
+\ unjudged (src/compiler/native/definition.f CHECK-PARENT) for their cell
 \ widths: compiled one cell per value, the pair moved as 1 2 7. The clause scan
-\ leaves no latch: a kept one recorded later checked definitions as creating the
-\ clause's word, and FOO and W printed -1.
+\ leaves no latch: the TRUSTED: definer MKP is recorded as creating, and the
+\ checked FOO and W after it are not.
 : UW-TIER ( n -- ) {: tier:n :}
    0 LN-OPEN
    tier 1 = if s" 1 set-tier " LN+ else s" 0 set-tier " LN+ then
    s" STRUCTURE pr FIELD a n FIELD b n ;STRUCTURE " LN+ ;
 
-: UW-OPEN ( n -- ) UW-TIER s" 0 set-check " LN+ ;
-
-: UW-PROGRAM$ ( n ptr u8 n -- ptr u8 n ) {: tier:n head:ptr hu:n :}
-   tier UW-OPEN
-   head hu LN+
-   s"  1 2 PR:MAKE swap ; : SHOW ( -- ) 7 TB . PR:UNMAKE . . cr ; SHOW" LN+
-   LN$ ;
-
-: UW-CASE ( n ptr u8 n -- ) {: tier:n head:ptr hu:n :}
-   tier head hu UW-PROGRAM$ RUN  S\" 7\n2\n1\n" ASSERT-OK ;
+: UW-CASE ( n -- )
+   UW-TIER
+   s" TRUSTED: TB ( n -- pr n ) 1 2 PR:MAKE swap ; : SHOW ( -- ) 7 TB . PR:UNMAKE . . cr ; SHOW" LN+
+   LN$ RUN  S\" 7\n2\n1\n" ASSERT-OK ;
 
 : UW-DOES-CASE ( n -- )
-   UW-OPEN
-   s" : MKP ( -- ) create does> ( n -- pr n ) drop 1 2 PR:MAKE swap ; MKP TB" LN+
+   UW-TIER
+   s" TRUSTED: MKP ( -- ) create does> ( n -- pr n ) drop 1 2 PR:MAKE swap ; MKP TB" LN+
    s"  : SHOW ( -- ) 7 TB . PR:UNMAKE . . cr ; SHOW" LN+
    LN$ RUN  S\" 7\n2\n1\n" ASSERT-OK ;
 
 : UW-LATCH-CASE ( n -- )
    UW-TIER
    s" TRUSTED: CR? ( ptr u8 n -- n ) CHECKER-FIND-ACTIVE-SYM CHECKER-CREATES-SYM? 0<> ; " LN+
-   s" check@ 0 set-check : MKP ( -- ) create does> ( n -- pr n ) drop 1 2 PR:MAKE swap ; " LN+
-   s" : OTHER ( -- n ) 3 ; set-check : FOO ( -- ) ; : W ( -- ) FOO ; " LN+
+   s" TRUSTED: MKP ( -- ) create does> ( n -- pr n ) drop 1 2 PR:MAKE swap ; " LN+
+   s" TRUSTED: OTHER ( -- n ) 3 ; : FOO ( -- ) ; : W ( -- ) FOO ; " LN+
    S\" s\" FOO\" CR? . s\" W\" CR? . s\" MKP\" CR? . s\" OTHER\" CR? . cr" LN+
-   LN$ RUN  S\" 0\n0\n0\n0\n" ASSERT-OK ;
+   LN$ RUN  S\" 0\n0\n-1\n0\n" ASSERT-OK ;
 
 : TEST-UNCHECKED-WIDTHS ( -- )
-   s" tier 0 lowers a wide value in an unchecked : body" T-LABEL
-   0 s" : TB ( n -- pr n )" UW-CASE
-   s" tier 0 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
-   0 s" TRUSTED: TB ( n -- pr n )" UW-CASE
-   s" tier 0 lowers a wide value in an unchecked signature-less body" T-LABEL
-   0 s" : TB" UW-CASE
-   s" tier 0 lowers a wide value in an unchecked does> clause" T-LABEL
+   s" tier 0 lowers a wide value in a TRUSTED: body" T-LABEL
+   0 UW-CASE
+   s" tier 0 lowers a wide value in a TRUSTED: definer's does> clause" T-LABEL
    0 UW-DOES-CASE
-   s" tier 0 leaves no unchecked does> clause latch for a later word" T-LABEL
+   s" tier 0 leaves no does> clause latch for a later word" T-LABEL
    0 UW-LATCH-CASE
-   s" tier 1 lowers a wide value in an unchecked : body" T-LABEL
-   1 s" : TB ( n -- pr n )" UW-CASE
-   s" tier 1 lowers a wide value in an unchecked TRUSTED: body" T-LABEL
-   1 s" TRUSTED: TB ( n -- pr n )" UW-CASE
-   s" tier 1 lowers a wide value in an unchecked does> clause" T-LABEL
+   s" tier 1 lowers a wide value in a TRUSTED: body" T-LABEL
+   1 UW-CASE
+   s" tier 1 lowers a wide value in a TRUSTED: definer's does> clause" T-LABEL
    1 UW-DOES-CASE
-   s" tier 1 leaves no unchecked does> clause latch for a later word" T-LABEL
+   s" tier 1 leaves no does> clause latch for a later word" T-LABEL
    1 UW-LATCH-CASE ;
 
 : TEST-BUILD-SCOPE ( -- )
@@ -909,7 +878,6 @@ public
    TEST-TRUSTED-TICK-ORDER
    TEST-BUILD-SCOPE
    TEST-CHECKER-ROWS
-   TEST-HOOK-CELL
    TEST-MARK-ROWS
    TEST-LONG-NAMES
    TEST-REFUSAL-TOKEN

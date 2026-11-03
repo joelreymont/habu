@@ -354,20 +354,21 @@ package RUNTIME-REGRESSION
 \ Over DICT-CAP records, the definer capacity arms write the label
 \ `hb: dictionary full at: <token>` to fd 2 and exit 77, the deterministic
 \ contract. The fixture scales with the baked DICT-CAP (src/habu/layout.f is in
-\ the runtime prefix): DICT-CAP+1 unchecked trivial definitions always overflow.
+\ the runtime prefix): DICT-CAP+1 trivial definitions always overflow.
 variable GE-DFULL-P                 \ generated-source cursor offset
 variable GE-DFULL-DIV
 variable GE-DFULL-I
+variable GE-DFULL-K                 \ GE-DFULL-S's byte index
 
 : GE-DFULL-C ( ptr u8 n -- ) {: buf:ptr c:n :}
    c buf GE-DFULL-P @ + c!
    GE-DFULL-P @ 1+ GE-DFULL-P ! ;
 
 : GE-DFULL-S ( ptr u8 ptr u8 n -- ) {: buf:ptr a:ptr u:n :}
-   0 GE-DFULL-I !
-   begin GE-DFULL-I @ u < while
-      buf  a GE-DFULL-I @ + c@  GE-DFULL-C
-      GE-DFULL-I @ 1+ GE-DFULL-I !
+   0 GE-DFULL-K !
+   begin GE-DFULL-K @ u < while
+      buf  a GE-DFULL-K @ + c@  GE-DFULL-C
+      GE-DFULL-K @ 1+ GE-DFULL-K !
    repeat ;
 
 : GE-DFULL-DIGITS ( ptr u8 n -- ) {: buf:ptr i:n :}
@@ -377,14 +378,13 @@ variable GE-DFULL-I
       GE-DFULL-DIV @ 10 / GE-DFULL-DIV !
    repeat ;
 
-: GE-DFULL-DEF ( ptr u8 n -- ) {: buf:ptr i:n :}      \ append `: wNNNNNN ;\n`
+: GE-DFULL-DEF ( ptr u8 n -- ) {: buf:ptr i:n :}      \ append `: wNNNNNN ( -- ) ;\n`
    buf 58 GE-DFULL-C  buf 32 GE-DFULL-C  buf 119 GE-DFULL-C
    buf i GE-DFULL-DIGITS
-   buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;
+   buf s"  ( -- ) ;" GE-DFULL-S  buf 10 GE-DFULL-C ;
 
 : GE-DFULL-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}
    0 GE-DFULL-P !
-   buf s" 0 set-check" GE-DFULL-S  buf 10 GE-DFULL-C
    0 GE-DFULL-I !
    begin GE-DFULL-I @ DICT-CAP 1+ < while
       buf GE-DFULL-I @ GE-DFULL-DEF
@@ -394,7 +394,7 @@ variable GE-DFULL-I
 
 : GE-DICT-FULL ( -- )
    GT-ROOT s" hb-dict-full.f" GE-SCRIPT-PATH FS:JOIN-PATH GE-SCRIPT-U !
-   DICT-CAP 1+ 16 * 32 + MEM:BYTES-ALLOC-LEN [: GE-DFULL-WRITE ;] MEM:WITH-BYTES
+   DICT-CAP 1+ 24 * MEM:BYTES-ALLOC-LEN [: GE-DFULL-WRITE ;] MEM:WITH-BYTES
    GE-HB-RESET
    GE-SCRIPT-PATH GE-SCRIPT-U @ RUNTIME-RUNNER:FILE-LOADER
    77 s" dict-capacity exit rc" GE-EXPECT-RC
@@ -464,10 +464,10 @@ variable GE-BCAP-N          \ literal payload bytes for the fixture being writte
    BODYBUF-CAP 1+ GE-BCAP-DIAG$ s" body-capacity exit diagnostic" GE-EXPECT-ERR-HAS
    s" PASS: per-definition body-text capacity is named with its count" type cr ;
 
-\ Tier 0 pushes one JIT-SNAP frame per open `if`, `begin` or `while`; the frame
-\ area holds CFSTK-DEPTH-MAX of them, and GE-CF-DEPTH-CAP holds the over-cap
-\ refusal. The checker refuses a nest this deep, so the script runs
-\ `0 set-check`: the frames, not the certificate, are under test.
+\ Tier 0 opens one control-stack entry per `begin` (src/habu/t0.f CS-PUSH) and
+\ compiles a nest CFSTK-DEPTH-MAX deep, the engine's control-flow cap
+\ (GE-CF-DEPTH-CAP tests past it). The checker refuses a nest this deep, so
+\ GENEST is a TRUSTED: body.
 variable GE-NEST-P
 variable GE-NEST-I
 
@@ -487,8 +487,7 @@ variable GE-NEST-J
 
 : GE-NEST-WRITE ( ptr u8 NUM:alloc-byte-len -- ) {: buf:ptr len :}
    0 GE-NEST-P !
-   buf s" 0 set-check" GE-NEST-S  buf 10 GE-NEST-C
-   buf s" : GENEST ( n -- n )" GE-NEST-S  buf 10 GE-NEST-C
+   buf s" TRUSTED: GENEST ( n -- n )" GE-NEST-S  buf 10 GE-NEST-C
    0 GE-NEST-J !
    begin GE-NEST-J @ GE-NEST-N @ < while
       buf s"    begin" GE-NEST-S  buf 10 GE-NEST-C
@@ -957,24 +956,6 @@ public
 
 package RUNTIME-REGRESSION
 
-
-: GE-SET-CHECK-NEG ( -- )
-   \ set-check fails closed at install: a non-zero argument outside the live JIT
-   \ code window [DBASE, CP) dies with a named rc-70 diagnostic instead of
-   \ branching into garbage at the next publish. 1 (below DBASE) and
-   \ `dbase@ HOOK-CELL + @` (a code word read from the wrong CODE base) both
-   \ exit 70, never a signal.
-   GE-HB-RESET
-   GE-SRC-RESET s" 1 set-check" GE-SRC-LINE
-   RUNTIME-RUNNER:BUFFER
-   70 s" hb set-check tiny-xt rc" GE-EXPECT-RC
-   S\" set-check: invalid checker xt\n" s" hb set-check tiny-xt diag" GE-EXPECT-ERR-HAS
-   GE-HB-RESET
-   GE-SRC-RESET s" 0 set-check dbase@ $1B0 + @ set-check" GE-SRC-LINE
-   RUNTIME-RUNNER:BUFFER
-   70 s" hb set-check dbase-garbage rc" GE-EXPECT-RC
-   S\" set-check: invalid checker xt\n" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
-   s" PASS: set-check fail-closed on garbage xt (rc 70, named diagnostic)" type cr ;
 
 create GE-CF-BODY GE-SRC-CAP allot
 variable GE-CF-BODY-U
@@ -1730,32 +1711,18 @@ create GE-END-AT 16 allot
 
 \ A definition open as a buffer begins is an outer buffer's: an immediate
 \ word's evaluate compiles into it and returns. The control for EVAL-FRAME:PEND.
+\ `evaluate` is E-UNSAFE in a checked body, so GEENDMAC is a TRUSTED: body.
 : GE-END-MACRO ( -- )
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
-   s" 0 set-check" GE-SRC-LINE
-   S\" : GEENDMAC ( -- ) s\" 5\" evaluate ; immediate" GE-SRC-LINE
+   S\" TRUSTED: GEENDMAC ( -- ) s\" 5\" evaluate ; immediate" GE-SRC-LINE
+   S\" s\" GEENDMAC\" 0 parse-imm" GE-SRC-LINE
    s" : GEENDUSE ( -- n ) GEENDMAC ;" GE-SRC-LINE
    s" GEENDUSE ." GE-SRC-LINE
    s" hb-end-macro.f" GE-SRC-BUF GE-SRC-U @ GE-LOC-FIXTURE
    GE-LOC-LOAD
    s" macro evaluate" GE-EXPECT-OK
    S\" 5\n" s" macro evaluate" GE-EXPECT-OUT ;
-
-\ Tier 0 compiles only parse-neutral immediates, so it refuses GEENDUSE at
-\ GEENDMAC on line 3, rc 70.
-: GE-END-MACRO-T0 ( -- )
-   s" hb-end-macro-t0.f"
-      S\" 0 set-check\n: GEENDMAC ( -- ) s\" 5\" evaluate ; immediate\n: GEENDUSE ( -- n ) GEENDMAC ;\nGEENDUSE .\n"
-      GE-LOC-FIXTURE
-   GE-LOC-LOAD
-   SB-RESET
-   S\" E-UNSAFE habu: in geendmac: 'evaluate' reads source or changes the compiler's or checker's state, which no stack effect describes, so a checked body cannot use it; to evaluate text there, use evaluate-closed\nE-UNMODELED-IMMEDIATE habu: in geenduse: compile-time immediate 'GEENDMAC' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile GEENDUSE at GEENDMAC in "
-      SB-APPEND
-   GE-SCRIPT-PATH GE-SCRIPT-U @ SB-APPEND
-   s" :3" SB-APPEND GE-SB-LF
-   SB$ s" macro evaluate at tier 0" GE-EXPECT-ERR
-   70 s" macro evaluate at tier 0" GE-EXPECT-RC ;
 
 \ The closing direction. A `;` in a buffer that an immediate word's evaluate or
 \ included began inside an open definition would close the outer buffer's
@@ -1890,22 +1857,23 @@ create GE-END-AT 16 allot
 \ closes the `if`s, so GEEND adds 7 only if the refused token left its 7, the
 \ data stack and every compile cell as they were: a leftover pop, a lost or
 \ stale control-flow entry, DO level or BEGIN snapshot gives a wrong sum, an
-\ orphaned `then` or a bounds fault. The checker certifies a shallower nesting
-\ than the control-flow cap, so a row at the cap compiles unchecked. out is the
-\ run's whole stdout.
+\ orphaned `then` or a bounds fault. The checker refuses a nest at the
+\ control-flow cap, so a row at the cap defines GEEND as a TRUSTED: body, which
+\ reaches the JIT's cap check (C-CF-ROOM) unjudged. out is the run's whole
+\ stdout.
 : GE-FAMILY-OUT ( n ptr u8 n ptr u8 n ptr u8 n -- )
    {: n:n ref:ptr refu:n fol:ptr folu:n out:ptr outu:n :}
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
-   n CFSTK-DEPTH-MAX = if s" 0 set-check" GE-SRC-LINE  s" : " else s" TRUSTED: " then GE-SRC+
-   s" GEENDCAT ( -- ) " GE-SRC+  n GE-SRC-U+  s"  0 ?do " GE-SRC+
+   s" TRUSTED: GEENDCAT ( -- ) " GE-SRC+  n GE-SRC-U+  s"  0 ?do " GE-SRC+
    s" 0 0= if" GE-SRC-S"  s"  evaluate loop [: " GE-SRC+
    ref refu GE-SRC-S"  s"  evaluate ;] catch . [: " GE-SRC+
    s" leave" GE-SRC-S"  s"  evaluate ;] catch . " GE-SRC+
    fol folu GE-SRC-S"  s"  evaluate " GE-SRC+  n GE-SRC-U+  s"  0 ?do " GE-SRC+
    s" then" GE-SRC-S"  s"  evaluate loop ; immediate" GE-SRC-LINE
-   n CFSTK-DEPTH-MAX <> if S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE then
-   s" : GEEND ( n -- n ) GEENDCAT ;" GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   n CFSTK-DEPTH-MAX = if s" TRUSTED: " else s" : " then GE-SRC+
+   s" GEEND ( n -- n ) GEENDCAT ;" GE-SRC-LINE
    s" 5 GEEND . depth ." GE-SRC-LINE
    out outu ref refu GE-EMIT-EXPECT ;
 
@@ -1914,7 +1882,7 @@ create GE-END-AT 16 allot
 
 \ A refused branch on a compare's flag: the refusal comes before the branch
 \ rewinds the compare (habu2.f CFB-ENTRY), so the compare stays compiled and
-\ its flag stays on the stack. At the cap, unchecked, GEEND adds 5's flag (-1)
+\ its flag stays on the stack. At the cap, TRUSTED:, GEEND adds 5's flag (-1)
 \ where the 7 rows add 7. Checked, `+` refuses a flag, so the `until` row
 \ branches on it instead: GEEND adds 2 only if the flag reads true. Its
 \ compare is false for 5, so a lost compare, which leaves the dup'd 5 in the
@@ -1941,11 +1909,12 @@ create GE-END-AT 16 allot
 
 \ A refused nested quotation must not park a frame. The outer definition
 \ survives the caught evaluate, so its real quotation must still close once.
+\ The checker refuses a nest at the cap, so GEEND is a TRUSTED: body, which
+\ reaches J-QUOT's cap check (C-CF-ROOM) unjudged.
 : GE-EMIT-QUOT-ROOM ( -- )
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
-   s" 0 set-check" GE-SRC-LINE
-   s" : GEENDCAT ( -- ) " GE-SRC+
+   s" TRUSTED: GEENDCAT ( -- ) " GE-SRC+
    s" [:" GE-SRC-S"  s"  evaluate " GE-SRC+
    CFSTK-DEPTH-MAX 1- GE-SRC-U+  s"  0 ?do " GE-SRC+
    s" 0 0= if" GE-SRC-S"  s"  evaluate loop [: " GE-SRC+
@@ -1953,7 +1922,8 @@ create GE-END-AT 16 allot
    CFSTK-DEPTH-MAX 1- GE-SRC-U+  s"  0 ?do " GE-SRC+
    s" then" GE-SRC-S"  s"  evaluate loop " GE-SRC+
    s" 42 ;] execute" GE-SRC-S"  s"  evaluate ; immediate" GE-SRC-LINE
-   s" : GEEND ( -- n ) GEENDCAT ;" GE-SRC-LINE
+   S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
+   s" TRUSTED: GEEND ( -- n ) GEENDCAT ;" GE-SRC-LINE
    s" GEEND . depth ." GE-SRC-LINE
    S\" 70\n42\n0\n" s" caught quotation capacity refusal" GE-EMIT-EXPECT ;
 
@@ -1975,34 +1945,31 @@ create GE-END-AT 16 allot
 
 \ An evaluate two levels down opens a structure the outer source closes: the
 \ outer pop keeps the inner evaluate's captured tokens (EM-CAPTURE-BIND).
-: GE-DEEP-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
-   {: ev:ptr evu:n aft:ptr aftu:n def:ptr defu:n run:ptr runu:n mode:n out:ptr outu:n :}
+: GE-DEEP-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ev:ptr evu:n aft:ptr aftu:n def:ptr defu:n run:ptr runu:n out:ptr outu:n :}
    GE-SRC-RESET
    s" TRUSTED: GEENDIN ( -- ) " GE-SRC+  ev evu GE-SRC-S"  s"  evaluate" GE-SRC+
    aft aftu GE-SRC+  s"  ; immediate" GE-SRC-LINE
    S\" s\" GEENDIN\" 0 parse-imm" GE-SRC-LINE
    S\" TRUSTED: GEENDCAT ( -- ) [: s\" GEENDIN\" evaluate ;] catch . ; immediate" GE-SRC-LINE
    S\" s\" GEENDCAT\" 0 parse-imm" GE-SRC-LINE
-   mode 1 = if s" 0 set-check" GE-SRC-LINE then
    def defu GE-SRC-LINE
    run runu GE-SRC-LINE
    out outu ev evu GE-EMIT-EXPECT ;
 
 : GE-EMIT-DEEP ( -- )
-   2 0 do
-      s" dup 0= if 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + then ;"
-         s" 0 GEEND . 5 GEEND . depth ." i S\" 70\n1\n5\n0\n" GE-DEEP-ROW
-      s" 0 swap 0 do 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + loop ;"
-         s" 3 GEEND . depth ." i S\" 70\n3\n0\n" GE-DEEP-ROW
-      s" [: 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + ;] execute ;"
-         s" 5 GEEND . depth ." i S\" 70\n6\n0\n" GE-DEEP-ROW
-      s" begin 1- dup nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT 3 < until ;"
-         s" 9 GEEND . depth ." i S\" 70\n2\n0\n" GE-DEEP-ROW
-      s" case 1 of nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT 5 endof 9 swap endcase ;"
-         s" 1 GEEND . 2 GEEND . depth ." i S\" 70\n5\n9\n0\n" GE-DEEP-ROW
-      s" dup 0= if 1" s"  70 throw" s" : GEEND ( n -- n ) GEENDCAT + then ;"
-         s" 0 GEEND . 5 GEEND . depth ." i S\" 70\n1\n5\n0\n" GE-DEEP-ROW
-   loop ;
+   s" dup 0= if 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + then ;"
+      s" 0 GEEND . 5 GEEND . depth ." S\" 70\n1\n5\n0\n" GE-DEEP-ROW
+   s" 0 swap 0 do 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + loop ;"
+      s" 3 GEEND . depth ." S\" 70\n3\n0\n" GE-DEEP-ROW
+   s" [: 1 nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT + ;] execute ;"
+      s" 5 GEEND . depth ." S\" 70\n6\n0\n" GE-DEEP-ROW
+   s" begin 1- dup nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT 3 < until ;"
+      s" 9 GEEND . depth ." S\" 70\n2\n0\n" GE-DEEP-ROW
+   s" case 1 of nosuchword" s" " s" : GEEND ( n -- n ) GEENDCAT 5 endof 9 swap endcase ;"
+      s" 1 GEEND . 2 GEEND . depth ." S\" 70\n5\n9\n0\n" GE-DEEP-ROW
+   s" dup 0= if 1" s"  70 throw" s" : GEEND ( n -- n ) GEENDCAT + then ;"
+      s" 0 GEEND . 5 GEEND . depth ." S\" 70\n1\n5\n0\n" GE-DEEP-ROW ;
 
 \ A `does>` refused at its signature declares no clause.
 : GE-EMIT-DOES ( n -- )
@@ -2101,13 +2068,13 @@ create GE-END-AT 16 allot
 : GE-KIND-MAC+ ( n -- )  s" GEKC" GE-SRC+  GE-SRC-U+ ;
 
 \ GEKC<c> evaluates `7` and closer c's token and prints its catch code.
-: GE-KIND-MACRO ( n bool -- )
-   {: c:n chk:bool :}
-   chk if s" TRUSTED: " else s" : " then GE-SRC+
+: GE-KIND-MACRO ( n -- )
+   {: c:n :}
+   s" TRUSTED: " GE-SRC+
    c GE-KIND-MAC+
    S\"  ( -- ) [: s\" 7 " GE-SRC+  c GE-KIND-TOK GE-SRC+
    S\" \" evaluate ;] catch . ; immediate" GE-SRC-LINE
-   chk if S\" s\" " GE-SRC+  c GE-KIND-MAC+  S\" \" 0 parse-imm" GE-SRC-LINE then ;
+   S\" s\" " GE-SRC+  c GE-KIND-MAC+  S\" \" 0 parse-imm" GE-SRC-LINE ;
 
 \ GEK<row>: opener o around GEKC<c>, inside a quotation for `;]`; run on 5.
 : GE-KIND-ROW ( n n n -- )
@@ -2140,19 +2107,14 @@ variable GE-KIND-N
    a GE-KIND-WANT GE-KIND-WANT-U @ + u BYTE-COPY
    GE-KIND-WANT-U @ u + GE-KIND-WANT-U ! ;
 
-: GE-KIND-LABEL ( bool -- ptr u8 n )
-   if s" closer kinds caught, checked" else s" closer kinds caught, unchecked" then ;
-
 \ Each closer against each opener it neither closes nor continues is caught as
 \ 70; a `;` refused in the evaluate that opened GEKS drops that definition.
-: GE-KIND-EVAL ( bool -- )
-   {: chk:bool :}
-   chk GE-KIND-LABEL {: l:ptr lu:n :}
+: GE-KIND-EVAL ( -- )
+   s" closer kinds caught" {: l:ptr lu:n :}
    GE-SRC-RESET
    RUNTIME-RUNNER:JIT$ GE-SRC-LINE
    0 GE-KIND-N !  0 GE-KIND-WANT-U !
-   chk if else s" 0 set-check" GE-SRC-LINE then
-   13 0 do i chk GE-KIND-MACRO loop
+   13 0 do i GE-KIND-MACRO loop
    13 0 do
       9 0 do
          j GE-KIND-OWN 1 i lshift and 0= if
@@ -2162,8 +2124,7 @@ variable GE-KIND-N
          then
       loop
    loop
-   chk if s" TRUSTED: " else s" : " then GE-SRC+
-   S\" GEKSEMI ( -- ) [: s\" : GEKS ( n -- n ) 0 0= if 1+ ;\" evaluate ;] catch . ;" GE-SRC-LINE
+   S\" TRUSTED: GEKSEMI ( -- ) [: s\" : GEKS ( n -- n ) 0 0= if 1+ ;\" evaluate ;] catch . ;" GE-SRC-LINE
    s" GEKSEMI  : GEKS ( n -- n ) 1+ ;  5 GEKS .  depth ." GE-SRC-LINE
    S\" 70\n6\n0\n" GE-KIND-WANT+
    GE-END-SAVE
@@ -2179,17 +2140,15 @@ variable GE-KIND-N
    {: c:n :}
    c 2 < c 7 = or if 1 else 0 then ;
 
-\ GEKT sits on line 2 after an unchecked source's `0 set-check`, else line 1.
-: GE-KIND-AT+ ( ptr u8 n bool -- )
-   {: a:ptr u:n chk:bool :}
+\ `<lead><hb-end.f>:1`, the line GE-KIND-TOP's GEKT sits on.
+: GE-KIND-AT$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   SB-RESET
    a u SB-APPEND
    GE-END-PATH GE-END-U @ SOURCE-ROOT:CANONICAL drop SB-APPEND
-   s" :" SB-APPEND
-   chk if 1 else 2 then FMT:SB-U
-   GE-SB-LF ;
-
-: GE-KIND-AT$ ( ptr u8 n bool -- ptr u8 n )
-   SB-RESET GE-KIND-AT+ SB$ ;
+   s" :1" SB-APPEND
+   GE-SB-LF
+   SB$ ;
 
 \ The checker's refusal of GEKT names the closer, or for `;` the last token of
 \ the `if` branch left open.
@@ -2203,43 +2162,26 @@ variable GE-KIND-N
 : GE-KIND-CHECK-LINE$ ( n -- ptr u8 n )
    SB-RESET GE-KIND-CHECK+ SB$ ;
 
-\ Unchecked tier 0 refuses at the closer, located, but GEKT compiles before its
-\ quotations, so `;]` (12) fails at `then`.
-: GE-KIND-T0-ERR$ ( n -- ptr u8 n )
-   {: c:n :}
-   SB-RESET
-   c GE-KIND-CHECK+
-   s" ncomp: cannot compile GEKT at " SB-APPEND
-   c 12 = if s" then" else c 13 = if s" ;" else c GE-KIND-TOK then then
-   SB-APPEND
-   s"  in " false GE-KIND-AT+
-   SB$ ;
-
 \ Closer c straight in a definition at tier 0. The `does>` leg (11) has no
 \ clause signature: C-SIG-BAD refuses it first, rc 76, before the checker.
-: GE-KIND-TOP ( n bool -- )
-   {: c:n chk:bool :}
+: GE-KIND-TOP ( n -- )
+   {: c:n :}
    GE-SRC-RESET
-   chk if else s" 0 set-check" GE-SRC-LINE then
    c GE-KIND-TOP-OPENER c GE-KIND-BODY
    s" 5 GEKT ." GE-SRC-LINE
    GE-END-SAVE
    GE-END-TOP
    c GE-KIND-TOK {: t:ptr tu:n :}
    c 11 = if
-      s" E-MISSING-SIGNATURE: does> at " chk GE-KIND-AT$ t tu GE-EXPECT-ERR
+      s" E-MISSING-SIGNATURE: does> at " GE-KIND-AT$ t tu GE-EXPECT-ERR
       76 t tu GE-EXPECT-RC exit
    then
-   chk if c GE-KIND-CHECK-LINE$ t tu GE-EXPECT-ERR-HAS
-   else c GE-KIND-T0-ERR$ t tu GE-EXPECT-ERR then
+   c GE-KIND-CHECK-LINE$ t tu GE-EXPECT-ERR-HAS
    70 t tu GE-EXPECT-RC ;
 
 : GE-CF-KIND ( -- )
-   HB-TARGET-LINUX-X86-64? 0= if true GE-KIND-EVAL false GE-KIND-EVAL then
-   14 0 do
-      i true GE-KIND-TOP
-      i false GE-KIND-TOP
-   loop
+   HB-TARGET-LINUX-X86-64? 0= if GE-KIND-EVAL then
+   14 0 do i GE-KIND-TOP loop
    s" PASS: a control-flow word whose open entry is another structure's is refused at its token at tier 0" type cr ;
 
 \ Source on stdin has no file to name: the same refusals, unlocated.
@@ -2256,7 +2198,6 @@ variable GE-KIND-N
    0 GE-END-CAUGHT
    1 GE-END-CAUGHT
    HB-TARGET-LINUX-X86-64? 0= if GE-END-MACRO then
-   GE-END-MACRO-T0
    GE-END-CLOSE
    GE-END-CATCH
    GE-END-EMIT
@@ -2701,7 +2642,6 @@ public
    GE-SOURCE-END
    GE-CF-KIND
    GE-PASS2-IMMEDIATE
-   GE-SET-CHECK-NEG
    GE-VUN-FLOAT
    GE-VPULL
    GE-VFUSE
