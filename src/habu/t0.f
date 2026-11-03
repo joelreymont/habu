@@ -1694,6 +1694,11 @@ variable OP-REC                      \ the last of them
 
 using NDEFINITION
 
+\ The unit's body kind: COMP-BODY:compiled for a colon definition, else the
+\ fixed body's kind.
+TYPED-VARIABLE BODY-KIND body
+variable FIXED-VAL                   \ the fixed body's value or dispatch cell
+
 \ ---- the runtime compiler ----------------------------------------------------
 \ INSTALL stores COMPILE in the cell the tier 0 `:` dispatches through
 \ (DISPATCH!), with no fallback to the JIT, and stores NDEFINITION's
@@ -1704,6 +1709,10 @@ using NDEFINITION
 \ does. T0 classifies no body for the host: each reason is UNKNOWN, and a
 \ quotation's arity is unknown (-1 -1), as tier 1 answers for one it has none
 \ for. A shadow open while it compiles adds a walk (THE WALKS).
+\
+\ T0 owns its copies of tier 1's back-end words HOST-DECL?, HOST-ROOT-CONTRACT,
+\ HOST-ARITIES and PUBLISH-IT, with BODY-KIND and FIXED-VAL; from NDEFINITION
+\ it calls the front end and the callback group only.
 \
 \ The scan's recording unit latches the facts the capture and the call targets
 \ read. T0's observer keeps the verdict the scan reached, as tier 1's tape does
@@ -1846,7 +1855,7 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 \ A `does>` definer's copy enters at its clause, as tier 1's SHADOW-TAKE.
 : SHADOW-TAKE ( -- )
-   M-DOES @ 0<> if M-DOES-FUN @ NSHADOW:TAKE-DOES exit then
+   M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-DOES exit then
    NSHADOW:TAKE ;
 
 \ A native shadow takes the host's own placed emission instead (HOSTED).
@@ -1859,6 +1868,63 @@ variable SCAN-LO                     \ the ordinal of its first row
    EMIT-SEAL
    SHADOW-TAKE
    NEMIT:CLEAR ;
+
+: HOST-DECL? ( -- bool )
+   NAME$ CHECKER-OWNER:QUERY 0= if false exit then
+   CHECKER-OWNER:STACK-STABLE? 0= if false exit then
+   CHECKER-OWNER:DIN-N M-IN @ <>
+   CHECKER-OWNER:DOUT-N M-OUT @ <> or if false exit then
+   CHECKER-OWNER:DIN-CELLS M-IN @ <>
+   CHECKER-OWNER:DOUT-CELLS M-OUT @ <> or if false exit then
+   M-IN @ 0 ?do
+      i CHECKER-OWNER:DIN-SLOT 0<>
+      i CHECKER-OWNER:DIN-CON 0 <= or if false unloop exit then
+   loop
+   M-OUT @ 0 ?do
+      i CHECKER-OWNER:DOUT-SLOT 0<>
+      i CHECKER-OWNER:DOUT-CON 0 <= or if false unloop exit then
+   loop
+   true ;
+
+: HOST-ROOT-CONTRACT ( -- )
+   HOST-DECL? 0= if exit then
+   NHOST:SOURCE-CONTRACT-START
+   M-IN @ 0 ?do i i CHECKER-OWNER:DIN-CON NHOST:SOURCE-CONTRACT-IN loop
+   M-OUT @ 0 ?do i i CHECKER-OWNER:DOUT-CON NHOST:SOURCE-CONTRACT-OUT loop
+   NHOST:SOURCE-CONTRACT-DONE ;
+
+\ The arity of each of the definition's functions, root first. A `does>`
+\ clause's is the split's; every other function past the root is a quotation,
+\ whose arity the compiler that built it answers by function ordinal.
+: HOST-ARITIES ( n [ n -- n n ] -- )
+   {: funs:n q :}
+   M-IN @ M-OUT @ NHOST:SOURCE-ARITY+
+   HOST-ROOT-CONTRACT
+   funs 1 ?do
+      M-DOES @ 0<> i CLAUSE @ = and if
+         M-DOES-IN @ M-DOES-OUT @
+      else
+         i q execute
+      then
+      NHOST:SOURCE-ARITY+
+   loop ;
+
+\ A `does>` publication ends the split's checker frame, which RETRACT and
+\ SETTLE-UNIT read.
+: PUBLISH-IT ( -- )
+   BODY-KIND @ MATCH body
+      compiled OF
+         M-DOES @ 0<> if
+            CLAUSE @ NPUB:PUBLISH-PENDING-DOES  0 M-DOES-FRAME !
+         else
+            NPUB:PUBLISH-PENDING
+         then
+      ENDOF
+      value OF NPUB:PUBLISH-RAW ENDOF
+      address OF NPUB:PUBLISH-RAW ENDOF
+      defer OF FIXED-VAL @ NPUB:PUBLISH-PENDING-DEFER ENDOF
+      cast OF NPUB:PUBLISH-RAW ENDOF
+   ;MATCH ;
 
 : HOSTED ( [ -- ] -- )
    HOST-ARCH EMIT-SELECT
@@ -1873,8 +1939,8 @@ variable SCAN-LO                     \ the ordinal of its first row
    before SOURCE-PUBLICATION-CK
    RECORD-NAME-CK
    KEEP-ARITY
-   [: WALK  CLAUSE @ M-DOES-FUN ! ;] SHADOWED
-   [: WALK  CLAUSE @ M-DOES-FUN !
+   [: WALK ;] SHADOWED
+   [: WALK
       NQ @ [: drop -1 -1 ;] HOST-ARITIES
       NHOST:SOURCE-FREEZE ;] HOSTED ;
 
@@ -1895,7 +1961,6 @@ variable SCAN-LO                     \ the ordinal of its first row
 
 \ ---- the fixed bodies --------------------------------------------------------
 \ The bodies tier 1's NELAB:FIXED and NELAB:DEFER build, on one unit.
-TYPED-VARIABLE FIXED-KIND body
 
 : FIXED-KIND? ( body -- bool )
    {: kind:body :}
@@ -1904,10 +1969,10 @@ TYPED-VARIABLE FIXED-KIND body
    kind COMP-BODY:defer COMP-BODY:EQ or ;
 
 : FIXED-BODY ( -- )
-   M-FIXED-VAL @ {: val:n :}
+   FIXED-VAL @ {: val:n :}
    RESET-STATE
    EMIT-OPEN
-   FIXED-KIND @ MATCH body
+   BODY-KIND @ MATCH body
       compiled OF E-NCOMP-STATE throw ENDOF
       value OF val PUSH-CONST  SPILL-ALL  EMIT-RETURN  EMIT-CLOSE ENDOF
       address OF val -1 PUSH-ADDR  SPILL-ALL  EMIT-SLOT-CLOSE ENDOF
@@ -1920,14 +1985,6 @@ TYPED-VARIABLE FIXED-KIND body
    ;MATCH ;
 
 : FIXED-LOWER ( -- )
-   FIXED-KIND @ MATCH body
-      compiled OF PUB-RAW ENDOF
-      value OF PUB-RAW ENDOF
-      address OF PUB-RAW ENDOF
-      defer OF PUB-DEFER ENDOF
-      cast OF PUB-RAW ENDOF
-   ;MATCH
-   M-PUB !
    [: FIXED-BODY ;] SHADOWED
    [: FIXED-BODY ;] HOSTED ;
 
@@ -1946,7 +2003,7 @@ TYPED-VARIABLE FIXED-KIND body
    kind FIXED-KIND? 0= if E-NCOMP-STATE throw then
    IDLE-CK
    NULL-PTR 0 false STAGE-UNIT
-   val M-FIXED-VAL !  kind FIXED-KIND !
+   val FIXED-VAL !  kind BODY-KIND !
    CHECKER-OWNER:RESET-REPORT
    1 M-OPEN !
    [: FIXED-RUN ;] catch {: rc:n :}
@@ -1963,6 +2020,7 @@ TYPED-VARIABLE FIXED-KIND body
    NHOST:UNKNOWN 0 NHOST:SOURCE-REFUSE
    CHECKER-OWNER:RESET-REPORT
    0 MISSING !  0 BAD-LEN !
+   COMP-BODY:compiled BODY-KIND !
    1 M-OPEN !
    [: RUN ;] catch {: rc:n :}
    0 M-OPEN !
