@@ -667,21 +667,21 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-OK-CELL @ 2 T=
    WORKER-A TASK:KILL ;
 
-\ The consumer blocks inside TASK:WAIT - there is no PAUSE loop in this task -
+\ The consumer blocks inside TASK:WAIT-SEM - there is no PAUSE loop in this task -
 \ and the one-slot handshake makes every item it reads the one just written.
 : SEM-CONSUME ( -- )
    SEM-ITEM-N 0 ?do
-      SEM-ITEMS TASK:WAIT
+      SEM-ITEMS TASK:WAIT-SEM
       SEM-SLOT @ i 1 + <> if 1 SEM-BAD atomic-add drop then
       1 SEM-GOT atomic-add drop
-      SEM-SPACE TASK:SIGNAL
+      SEM-SPACE TASK:SIGNAL-SEM
    loop ;
 
 : SEM-PRODUCE ( -- )
    SEM-ITEM-N 0 ?do
-      SEM-SPACE TASK:WAIT
+      SEM-SPACE TASK:WAIT-SEM
       i 1 + SEM-SLOT !
-      SEM-ITEMS TASK:SIGNAL
+      SEM-ITEMS TASK:SIGNAL-SEM
    loop ;
 
 : TASK-TEST-SEM-PIPE ( -- )
@@ -702,10 +702,10 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 \ it blocks on an empty semaphore until the main task signals once.
 : SEM-DRAW ( -- )
    SEM-TICKET-N 0 ?do
-      SEM-TICKETS TASK:WAIT
+      SEM-TICKETS TASK:WAIT-SEM
       1 SEM-DRAWN atomic-add drop
    loop
-   SEM-GATE TASK:WAIT
+   SEM-GATE TASK:WAIT-SEM
    1 SEM-TICKET-DONE atomic-add drop ;
 
 : TASK-TEST-SEM-COUNT ( -- )
@@ -715,7 +715,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    ['] SEM-DRAW SEM-TICKETER TASK:ACTIVATE
    SEM-DRAWN SEM-TICKET-N SEM-TICKETER TEST-WAIT:FOR-CELL
    SEM-TICKET-DONE @ 0 T=
-   SEM-GATE TASK:SIGNAL
+   SEM-GATE TASK:SIGNAL-SEM
    SEM-TICKETER APP-WAIT-DONE
    SEM-DRAWN @ SEM-TICKET-N T=
    SEM-TICKET-DONE @ 1 T=
@@ -728,16 +728,16 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 \ 0..SEM_VALUE_MAX either way, a second init of a live semaphore, and a handle
 \ whose object has been destroyed. Destroying twice is the documented no-op.
 : TASK-TEST-SEM-NEGATIVE ( -- )
-   [: SEM-COLD TASK:WAIT ;] E-TASK-SEM-STATE TTHROWSQ
-   [: SEM-COLD TASK:SIGNAL ;] E-TASK-SEM-STATE TTHROWSQ
+   [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
+   [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ
    [: -1 SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-COUNT TTHROWSQ
    [: SEM-OVER-MAX SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-COUNT TTHROWSQ
    0 SEM-COLD TASK:SEMAPHORE-INIT
    [: 0 SEM-COLD TASK:SEMAPHORE-INIT ;] E-TASK-SEM-STATE TTHROWSQ
    SEM-COLD TASK:SEMAPHORE-DESTROY
    SEM-COLD TASK:SEMAPHORE-DESTROY
-   [: SEM-COLD TASK:WAIT ;] E-TASK-SEM-STATE TTHROWSQ
-   [: SEM-COLD TASK:SIGNAL ;] E-TASK-SEM-STATE TTHROWSQ ;
+   [: SEM-COLD TASK:WAIT-SEM ;] E-TASK-SEM-STATE TTHROWSQ
+   [: SEM-COLD TASK:SIGNAL-SEM ;] E-TASK-SEM-STATE TTHROWSQ ;
 
 $5A constant MSG-SEED
 $11 constant MSG-FIRST
@@ -786,7 +786,7 @@ $33 constant MSG-LATE-VALUE
    1 MSG-SENT2 atomic-add drop ;
 
 : MSG-DRAIN-WORK ( -- )
-   MSG-GATE TASK:WAIT
+   MSG-GATE TASK:WAIT-SEM
    MSG-TAKE MSG-SEEN1 !
    MSG-TAKE MSG-SEEN2 ! ;
 
@@ -801,7 +801,7 @@ $33 constant MSG-LATE-VALUE
    MSG-SENT1 1 MSG-FILL TEST-WAIT:FOR-CELL
    MSG-SENT2 @ 0 T=
    MSG-DRAIN TASK:MSG? TTRUE
-   MSG-GATE TASK:SIGNAL
+   MSG-GATE TASK:SIGNAL-SEM
    MSG-FILL APP-WAIT-DONE
    MSG-DRAIN APP-WAIT-DONE
    MSG-SENT2 @ 1 T=
@@ -870,9 +870,9 @@ $33 constant MSG-LATE-VALUE
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-MSG-Q-RAW ( n -- bool ) TASK:MSG?"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-TRY-WAIT-OK ( TASK:sem -- bool ) TASK:TRY-WAIT"
+   s" TASK-TRY-WAIT-OK ( TASK:sem -- bool ) TASK:TRY-WAIT-SEM"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-TRY-WAIT-PTR ( ptr n -- bool ) TASK:TRY-WAIT"
+   s" TASK-TRY-WAIT-PTR ( ptr n -- bool ) TASK:TRY-WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : POOL-TAKE ( -- )
@@ -900,14 +900,14 @@ $33 constant MSG-LATE-VALUE
 
 : POOL-DRAIN-ALL ( -- )
    POOL-N @ 0 ?do
-      i POOL-SEMS @ TASK:TRY-WAIT TTRUE
+      i POOL-SEMS @ TASK:TRY-WAIT-SEM TTRUE
    loop ;
 
 \ A stale handle names its record still, so it counts again exactly when the
 \ record went to a new owner who initialized it; otherwise it is
 \ E-TASK-SEM-STATE. The handle crosses the quotation on the stack.
 : POOL-REUSED ( TASK:sem -- )
-   [: dup TASK:TRY-WAIT TTRUE ;] catch {: rc:n :}
+   [: dup TASK:TRY-WAIT-SEM TTRUE ;] catch {: rc:n :}
    drop
    rc 0 T= ;
 
@@ -946,27 +946,27 @@ $33 constant MSG-LATE-VALUE
 : TASK-TEST-SEM-POOL-USE ( -- )
    TASK:NEW-SEMAPHORE {: s :}
    1 s TASK:SEMAPHORE-INIT
-   s TASK:TRY-WAIT TTRUE
-   s TASK:TRY-WAIT TFALSE
-   s TASK:SIGNAL
-   s TASK:WAIT
+   s TASK:TRY-WAIT-SEM TTRUE
+   s TASK:TRY-WAIT-SEM TFALSE
+   s TASK:SIGNAL-SEM
+   s TASK:WAIT-SEM
    s TASK:FREE-SEMAPHORE
-   s [: dup TASK:TRY-WAIT drop ;] catch {: rc:n :}
+   s [: dup TASK:TRY-WAIT-SEM drop ;] catch {: rc:n :}
    drop
    rc E-TASK-SEM-STATE T= ;
 
 \ The handle is nominal, so the raw record address a TASK:FACILITY also has is
 \ refused before it can reach sem_wait - the guard cell is the second line.
 : TASK-TEST-SEM-TYPES ( -- )
-   s" TASK-SEM-OK ( TASK:sem -- ) TASK:WAIT"
+   s" TASK-SEM-OK ( TASK:sem -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-SEM-PTR ( ptr n -- ) TASK:WAIT"
+   s" TASK-SEM-PTR ( ptr n -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-SEM-RAW ( n -- ) TASK:WAIT"
+   s" TASK-SEM-RAW ( n -- ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-SEM-OUT ( TASK:sem -- n ) TASK:WAIT"
+   s" TASK-SEM-OUT ( TASK:sem -- n ) TASK:WAIT-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" TASK-SIG-PTR ( ptr n -- ) TASK:SIGNAL"
+   s" TASK-SIG-PTR ( ptr n -- ) TASK:SIGNAL-SEM"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" TASK-SEM-DEF ( -- TASK:sem ) SEM-COLD"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -1112,13 +1112,13 @@ TASK:MIN-STACK TASK:TASK HALTED-TASK
 : HALTED-WORK ( -- )
    1 HALTED-PARKED atomic!
    begin
-      TASK:STOP
+      TASK:WAIT
       TASK:HALTED? if 1 HALTED-SEEN atomic! then
       TASK:PAUSE
    again ;
 
-\ TASK:HALT wakes its target out of TASK:STOP, and what the target finds there
-\ is its own halt: a STOP loop reads it to give up what it holds before the
+\ TASK:HALT wakes its target out of TASK:WAIT, and what the target finds there
+\ is its own halt: a WAIT loop reads it to give up what it holds before the
 \ TASK:PAUSE that ends the task. The main thread has no TCB and is never halted.
 : TASK-TEST-HALTED ( -- )
    0 HALTED-SEEN !
@@ -1476,11 +1476,11 @@ TASK:MIN-STACK TASK:TASK EXIT-HALT-TASK
    SLEEP-KILLED TASK:KILL
    mono-ns t0 - SLEEP-LEAST-NS >= TTRUE ;
 
-\ WAKE is a hint and STOP waits for one, so every case here re-checks its own
-\ cell after the STOP returns instead of treating the wake-up as the message.
+\ WAKE is a hint and WAIT waits for one, so every case here re-checks its own
+\ cell after the WAIT returns instead of treating the wake-up as the message.
 16 constant STOP-ITEM-N
 2000 constant STOP-HINT-MS           \ a lost hint parks forever: the bound ends STOP-REACH
-5 constant STOP-PARK-MS              \ grace for the target to reach its STOP
+5 constant STOP-PARK-MS              \ grace for the target to reach its WAIT
 
 TASK:MIN-STACK TASK:TASK STOP-PROD
 TASK:MIN-STACK TASK:TASK STOP-CONS
@@ -1505,7 +1505,7 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
 : STOP-WAIT-SLOT ( n -- ) {: want:n :}
    begin
       STOP-SLOT atomic@ want = if exit then
-      TASK:STOP
+      TASK:WAIT
    again ;
 
 \ Returns once the cell holds the value. A hint that was dropped is no false
@@ -1548,13 +1548,13 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    STOP-PROD TASK:KILL
    STOP-CONS TASK:KILL ;
 
-\ The worker is parked in a SEMAPHORE, not in its STOP, when the WAKE arrives:
-\ it cannot leave TASK:WAIT before the signal, and the signal comes after the
-\ wake. So the hint strictly precedes the STOP, and the count is what makes the
-\ STOP return without a second WAKE ever being posted.
+\ The worker is parked in a SEMAPHORE, not in its WAIT, when the WAKE arrives:
+\ it cannot leave TASK:WAIT-SEM before the signal, and the signal comes after the
+\ wake. So the hint strictly precedes the WAIT, and the count is what makes the
+\ WAIT return without a second WAKE ever being posted.
 : STOP-EARLY-WORK ( -- )
-   STOP-GATE TASK:WAIT
-   TASK:STOP
+   STOP-GATE TASK:WAIT-SEM
+   TASK:WAIT
    1 STOP-EARLY-DONE atomic! ;
 
 : TASK-TEST-STOP-EARLY ( -- )
@@ -1562,19 +1562,19 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    0 STOP-GATE TASK:SEMAPHORE-INIT
    ['] STOP-EARLY-WORK STOP-EARLY TASK:ACTIVATE
    STOP-EARLY TASK:WAKE
-   STOP-GATE TASK:SIGNAL
+   STOP-GATE TASK:SIGNAL-SEM
    STOP-EARLY-DONE 1 STOP-REACH
    STOP-EARLY APP-WAIT-DONE
    STOP-EARLY TASK:THROW@ 0 T=
    STOP-EARLY TASK:KILL
    STOP-GATE TASK:SEMAPHORE-DESTROY ;
 
-\ A STOP loop that must also answer TASK:HALT pauses in the loop: the halt wakes
-\ the task, the STOP returns, and the PAUSE after it ends the task through the
+\ A WAIT loop that must also answer TASK:HALT pauses in the loop: the halt wakes
+\ the task, the WAIT returns, and the PAUSE after it ends the task through the
 \ same TASK-END as any other ending - so the cleanup still runs.
 : STOP-HALTED-WORK ( -- )
    1 STOP-PARKED atomic!
-   begin TASK:STOP TASK:PAUSE again ;
+   begin TASK:WAIT TASK:PAUSE again ;
 
 : TASK-TEST-STOP-HALT ( -- )
    0 STOP-PARKED !
@@ -1588,7 +1588,7 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    STOP-HALTED TASK-EXIT-MARK TASK:HIS @ 1 T=
    STOP-HALTED TASK:KILL ;
 
-\ The main thread has no TCB, so its STOP parks on package TASK's one main
+\ The main thread has no TCB, so its WAIT parks on package TASK's one main
 \ record and the worker wakes it through the null TCB TASK:SELF answers there.
 : STOP-WAKER-WORK ( -- )
    1 STOP-WAKED atomic!
@@ -1599,7 +1599,7 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    TASK:SELF-N 0 T=
    TASK:SELF STOP-MAIN-TCB !
    ['] STOP-WAKER-WORK STOP-WAKER TASK:ACTIVATE
-   TASK:STOP
+   TASK:WAIT
    STOP-WAKED @ 1 T=
    STOP-WAKER APP-WAIT-DONE
    STOP-WAKER TASK:THROW@ 0 T=
@@ -1617,19 +1617,19 @@ PTR-VARIABLE STOP-MAIN-TCB           \ it holds a TCB address, so it is declared
    [: STOP-ENDED TASK:WAKE ;] E-TASK-STATE TTHROWSQ
    STOP-ENDED TASK:KILL ;
 
-\ The checked surface accepts TASK:STOP only with an empty input row and
+\ The checked surface accepts TASK:WAIT only with an empty input row and
 \ TASK:WAKE only with a task pointer.
 : TASK-TEST-STOP-TYPES ( -- )
-   s" TASK-STOP-OK ( -- ) TASK:STOP"
+   s" TASK-STOP-OK ( -- ) TASK:WAIT"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" TASK-STOP-N ( -- n ) TASK:STOP"
+   s" TASK-STOP-N ( -- n ) TASK:WAIT"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" TASK-WAKE-OK ( ptr n -- ) TASK:WAKE"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" TASK-WAKE-RAW ( n -- ) TASK:WAKE"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ STOP-FOR answers which came first, the hint or the deadline. A hint that
+\ WAIT-MS answers which came first, the hint or the deadline. A hint that
 \ arrives must cut the wait short, no hint must hold it to the deadline, and a
 \ hint that meets the deadline must be counted exactly once: by this park or by
 \ the next.
@@ -1646,7 +1646,7 @@ variable STOP-FOR-SEEN
 
 \ Empties the main park, whatever earlier cases left in it.
 : STOP-FOR-DRAIN ( -- )
-   begin 0 >MS TASK:STOP-FOR 0= until ;
+   begin 0 >MS TASK:WAIT-MS 0= until ;
 
 \ With no wake the main thread's park answers false, and never before ms; a
 \ worker's wake through the null TCB ends the next wait early with true. Zero
@@ -1656,18 +1656,18 @@ variable STOP-FOR-SEEN
 : TASK-TEST-STOP-FOR-MAIN ( -- )
    STOP-FOR-DRAIN
    mono-ns {: t0:n :}
-   SLEEP-MS >MS TASK:STOP-FOR TFALSE
+   SLEEP-MS >MS TASK:WAIT-MS TFALSE
    mono-ns t0 - SLEEP-LEAST-NS >= TTRUE
-   mono-ns 0 >MS TASK:STOP-FOR TFALSE mono-ns swap - SLEEP-ZERO-NS < TTRUE
-   [: -1 >MS TASK:STOP-FOR drop ;] E-TASK-SLEEP-MS TTHROWSQ
-   [: DEADLINE-LAST-MS 1+ >MS TASK:STOP-FOR drop ;] E-TASK-SLEEP-MS TTHROWSQ
+   mono-ns 0 >MS TASK:WAIT-MS TFALSE mono-ns swap - SLEEP-ZERO-NS < TTRUE
+   [: -1 >MS TASK:WAIT-MS drop ;] E-TASK-SLEEP-MS TTHROWSQ
+   [: DEADLINE-LAST-MS 1+ >MS TASK:WAIT-MS drop ;] E-TASK-SLEEP-MS TTHROWSQ
    TASK:SELF TASK:WAKE
-   DEADLINE-LAST-MS DEADLINE-SLACK-MS - >MS TASK:STOP-FOR TTRUE
+   DEADLINE-LAST-MS DEADLINE-SLACK-MS - >MS TASK:WAIT-MS TTRUE
    0 STOP-WAKED !
    TASK:SELF STOP-MAIN-TCB !
    mono-ns {: t1:n :}
    ['] STOP-WAKER-WORK STOP-FOR-WAKER TASK:ACTIVATE
-   STOP-FOR-LONG-MS >MS TASK:STOP-FOR TTRUE
+   STOP-FOR-LONG-MS >MS TASK:WAIT-MS TTRUE
    mono-ns t1 - STOP-FOR-LONG-MS NS-PER-MS * < TTRUE
    STOP-WAKED @ 1 T=
    STOP-FOR-WAKER APP-WAIT-DONE
@@ -1687,19 +1687,19 @@ variable STOP-FOR-SEEN
    STOP-FOR-DRAIN
    STOP-FOR-EDGE-N 0 ?do
       ['] STOP-FOR-LATE-WORK STOP-FOR-WAKER TASK:ACTIVATE
-      SLEEP-MS >MS TASK:STOP-FOR {: woke:bool :}
+      SLEEP-MS >MS TASK:WAIT-MS {: woke:bool :}
       STOP-FOR-WAKER APP-WAIT-DONE
       STOP-FOR-WAKER TASK:THROW@ 0 T=
       STOP-FOR-WAKER TASK:KILL
-      0 >MS TASK:STOP-FOR woke if TFALSE else TTRUE then
-      0 >MS TASK:STOP-FOR TFALSE
+      0 >MS TASK:WAIT-MS woke if TFALSE else TTRUE then
+      0 >MS TASK:WAIT-MS TFALSE
    loop ;
 
-\ TASK:HALT wakes STOP-FOR as it wakes STOP: the wait answers true long before
+\ TASK:HALT wakes WAIT-MS as it wakes WAIT: the wait answers true long before
 \ its deadline, the task sees its halt, and its next TASK:PAUSE ends it.
 : STOP-FOR-HALT-WORK ( -- )
    1 STOP-FOR-READY atomic!
-   STOP-FOR-LONG-MS >MS TASK:STOP-FOR if 1 STOP-FOR-WOKEN atomic! then
+   STOP-FOR-LONG-MS >MS TASK:WAIT-MS if 1 STOP-FOR-WOKEN atomic! then
    TASK:HALTED? if 1 STOP-FOR-SEEN atomic! then
    begin TASK:PAUSE again ;
 
@@ -2092,7 +2092,7 @@ CB-POOL 2 - constant EXPOSE-SLOT-B
 \ A HINT POSTED WHILE EXPOSED DIES WITH THE EXPOSURE. An exposed task is woken
 \ like a running one, and its park outlives UNEXPOSE with the rest of its
 \ memory, so the next ACTIVATE of the same TCB has to open the park at zero. A
-\ park left as it was hands the new run's first TASK:STOP the old hint, which
+\ park left as it was hands the new run's first TASK:WAIT the old hint, which
 \ returns with no WAKE of its own: EXPOSE-WOKE reads 1 after the sleep.
 TASK:MIN-STACK TASK:TASK EXPOSE-WAKE
 
@@ -2102,7 +2102,7 @@ variable EXPOSE-WOKE
 50 constant EXPOSE-WAKE-MS            \ the new run's time to take a stale hint
 
 : EXPOSE-WAKE-BODY ( -- )
-   TASK:STOP
+   TASK:WAIT
    1 EXPOSE-WOKE atomic! ;
 
 : TASK-TEST-EXPOSE-WAKE ( -- )
@@ -2115,7 +2115,7 @@ variable EXPOSE-WOKE
    EXPOSE-WAKE-MS >MS TASK:SLEEP
    s" a hint posted while exposed does not reach the next run" T-LABEL
    EXPOSE-WOKE atomic@ 0 T=
-   s" ... which still waits in its STOP, so its WAKE is admitted" T-LABEL
+   s" ... which still waits in its WAIT, so its WAKE is admitted" T-LABEL
    [: EXPOSE-WAKE TASK:WAKE ;] catch 0 T=
    EXPOSE-WOKE 1 STOP-REACH
    EXPOSE-WAKE TASK:KILL
@@ -2169,7 +2169,7 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
    again ;
 
 : WAKE-RACE-BODY ( -- )
-   begin TASK:HALTED? if exit then TASK:STOP again ;
+   begin TASK:HALTED? if exit then TASK:WAIT again ;
 
 : TASK-TEST-WAKE-RACE ( -- )
    TASK-LIVE-COUNT {: base:n :}
@@ -2527,7 +2527,7 @@ variable NEW-STRAY
 
 : NEW-UP-BODY ( -- )
    1 NEW-UP atomic-add drop
-   NEW-GATE TASK:WAIT
+   NEW-GATE TASK:WAIT-SEM
    TASK:SELF-N TASK:RETURN ;
 
 : NEW-INNER-BODY ( -- )
@@ -2557,7 +2557,7 @@ variable NEW-STRAY
    s" a task makes, joins and frees a TASK:NEW task while others run" T-LABEL
    ['] NEW-MAKER-BODY NEW-MAKER TASK:ACTIVATE
    NEW-MAKER TASK:JOIN 9 JOIN-OK=
-   NEW-N 0 ?do NEW-GATE TASK:SIGNAL loop
+   NEW-N 0 ?do NEW-GATE TASK:SIGNAL-SEM loop
    s" each TASK:NEW task answers its own TCB" T-LABEL
    NEW-N 0 ?do i NEW-TASKS @ TASK:JOIN i NEW-TASKS @ FFI:>CELL JOIN-OK= loop
    NEW-N 0 ?do i NEW-TASKS @ TASK:FREE loop
@@ -2697,7 +2697,7 @@ variable NEW-STRAY
    ['] NEW-UP-BODY NEW-HELD TASK:ACTIVATE
    s" TASK:FREE of a running task" T-LABEL
    [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ
-   NEW-GATE TASK:SIGNAL
+   NEW-GATE TASK:SIGNAL-SEM
    [: NEW-HELD TASK:DONE? ;] NEW-WAIT
    s" TASK:FREE of a task that ended and was not joined" T-LABEL
    [: NEW-FREE-HELD ;] E-TASK-STATE TTHROWSQ

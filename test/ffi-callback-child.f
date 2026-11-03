@@ -146,7 +146,7 @@ CALLBACK: CMP-PARK ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
       type cr
    then ;
 
-\ The first comparison holds in TASK:STOP until the kill's halt wakes it, so the
+\ The first comparison holds in TASK:WAIT until the kill's halt wakes it, so the
 \ next TASK:PAUSE runs inside the callback with the request set; the sort
 \ completes and the worker ends at its first TASK:PAUSE after it.
 CALLBACK: CMP-YIELD ( ptr u8 ptr u8 -- i32 ) 0 FALLBACK ;CALLBACK
@@ -155,7 +155,7 @@ variable SORTED                      \ 1 once the killed worker's sort completed
 variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
 
 : CMP-YIELD-IMPL ( ptr u8 ptr u8 -- n ) {: a b :}
-   INSIDE atomic@ 0= if 1 INSIDE atomic! TASK:STOP then
+   INSIDE atomic@ 0= if 1 INSIDE atomic! TASK:WAIT then
    TASK:PAUSE
    a b ROW-ORDER ;
 
@@ -179,16 +179,16 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
       s" killed: the worker ended at its first TASK:PAUSE after the sort" type cr
    then ;
 
-\ On an exposed context TASK:SELF is the exposed task, so TASK:STOP parks on its
+\ On an exposed context TASK:SELF is the exposed task, so TASK:WAIT parks on its
 \ record and TASK:WAKE of the exposed task releases it.
 CALLBACK: STOPS ( n -- n ) 0 FALLBACK ;CALLBACK
 
 align
-variable PAST-STOP                    \ 1 once STOPS's body has left its STOP
+variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
 
 : STOPS-IMPL ( n -- n ) {: arg:n :}
    1 INSIDE atomic!
-   TASK:STOP
+   TASK:WAIT
    1 PAST-STOP atomic!
    arg 1 + ;
 
@@ -206,7 +206,7 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its STOP
    CTX-TASK TASK:KILL ;
 
 \ An exposure opens its park at zero, whatever earlier exposures of the task
-\ posted; a stale hint would let the second exposure leave its STOP unwoken.
+\ posted; a stale hint would let the second exposure leave its WAIT unwoken.
 50 constant FRESH-MS                  \ the thread's time to take a stale hint
 
 : PAUSES ( -- )

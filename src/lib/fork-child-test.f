@@ -77,9 +77,9 @@ create FIRST-MARK 1 cells allot          \ each child's first declaration
 \ The parent makes the main thread's park and takes the wake it posted; the
 \ child then parks and wakes as the parent did.
 : FORK-AFTER-PARK ( -- )
-   TASK:SELF TASK:WAKE TASK:STOP
+   TASK:SELF TASK:WAKE TASK:WAIT
    s" a child forked after the main thread's park was made parked on its own"
-   [: TASK:SELF TASK:WAKE TASK:STOP ;] 1 FORK-HOLD:FORK-CHECK ;
+   [: TASK:SELF TASK:WAKE TASK:WAIT ;] 1 FORK-HOLD:FORK-CHECK ;
 
 : FORK-INTO-LIFECYCLE ( -- )
    [: [: IMAGE-LIFECYCLE:COUNT drop ;] FORK-HOLD:HAMMER ;] FORK-HOLD:HOLD

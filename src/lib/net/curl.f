@@ -1616,7 +1616,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 \ A halted owner gives its record up and returns only once the loop holds no
 \ part of it: the loop takes the handle out of the multi handle, cleans it up
 \ and marks it LEFT before the span is the owner's to free or reuse. The wait
-\ is a TASK:STOP loop, which parks normally once the halt's hint is taken, and
+\ is a TASK:WAIT loop, which parks normally once the halt's hint is taken, and
 \ the owner frees the record itself. A DONE record is already out of the multi
 \ handle with nothing left to write, and is freed here without the loop, which
 \ after a FAIL-ALL is no longer there to answer.
@@ -1630,7 +1630,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    STATE-LEAVING idx REC-STATE!
    CURL-LOCK TASK:RELEASE
    WAKE-POKE
-   begin idx REC-STATE@ STATE-LEFT <> while TASK:STOP repeat
+   begin idx REC-STATE@ STATE-LEFT <> while TASK:WAIT repeat
    CURL-LOCK TASK:GET
    idx REC-RELEASE
    CURL-LOCK TASK:RELEASE ;
@@ -1825,7 +1825,7 @@ public
    ready if idx STREAM-RESULT-TAKE exit then
    WAKE-POKE
    begin
-      TASK:STOP
+      TASK:WAIT
       TASK:HALTED? if
          idx ABANDON
          TASK:PAUSE
@@ -1844,19 +1844,19 @@ public
 \ awaited exactly once, cancelled ones included. A handle with no transfer in
 \ flight, and one another task started, are E-STATE.
 \
-\ The wait is a TASK:STOP loop, so it costs no CPU and the main thread may wait
+\ The wait is a TASK:WAIT loop, so it costs no CPU and the main thread may wait
 \ too. A TASK:HALT while it waits ends the calling task at the PAUSE below, and
 \ the record is abandoned first: ABANDON returns once the loop has let go of the
 \ handle and the span, and the loop wakes nobody after that, which is what keeps
 \ it from waking a TCB the join has released. The wait has no PAUSE of its own:
-\ HALT posts the park this STOP waits on, so every halt is read at HALTED? and
+\ HALT posts the park this WAIT waits on, so every halt is read at HALTED? and
 \ ends the task only at the PAUSE after ABANDON.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
    begin
       idx REC-STATE@ STATE-DONE = if idx RESULT-TAKE exit then
-      TASK:STOP
+      TASK:WAIT
       TASK:HALTED? if
          idx ABANDON
          TASK:PAUSE

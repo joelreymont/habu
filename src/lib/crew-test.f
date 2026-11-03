@@ -74,7 +74,7 @@ CAST: N>TCB ( n -- ptr n )
    {: v:n :}
    TASK:SELF-N v SEEN atomic!
    v PARKED SET
-   [: begin TASK:STOP TASK:PAUSE again ;] [: UNWIND-MINE ;] finally ;
+   [: begin TASK:WAIT TASK:PAUSE again ;] [: UNWIND-MINE ;] finally ;
 
 : START-PARK ( n -- ) TASK:MIN-STACK swap [: PARK ;] CREW:START ;
 

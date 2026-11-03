@@ -450,7 +450,7 @@ variable EXIT-HOOK-N
 : SERVE-JOBS ( -- )
    [: RUN-START-HOOKS ;] catch {: code:n :}
    code 0 <> if 0 code START-ERROR atomic-cas drop then
-   START-READY TASK:SIGNAL
+   START-READY TASK:SIGNAL-SEM
    code 0 <> if code throw then
    WORKER-LOOP
    1 ENDED-COUNT atomic-add drop ;
@@ -498,7 +498,7 @@ variable EXIT-HOOK-N
 
 
 : WAIT-START ( -- n )
-   STARTED @ 0 ?do START-READY TASK:WAIT loop
+   STARTED @ 0 ?do START-READY TASK:WAIT-SEM loop
    START-ERROR atomic@ ;
 
 
@@ -692,7 +692,7 @@ MEM-MAX-N NS-PER-MS / constant MAX-DEADLINE-MS
    STOP-BOUND-MS DEADLINE-AT {: deadline:n :}
    begin
       TASKS-LEFT? mono-ns deadline > or if timer DROP-TIMER exit then
-      TASK:STOP
+      TASK:WAIT
    again ;
 
 

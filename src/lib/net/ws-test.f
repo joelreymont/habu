@@ -627,7 +627,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ ends and AWAIT-ROUTE fails with the route's own error.
 : ROUTED ( HTTP:request HTTP:response [ HTTP:request HTTP:response -- HTTP:request HTTP:response ] -- )
    catch nip nip ROUTE-CODE !
-   ACCEPTED TASK:SIGNAL ;
+   ACCEPTED TASK:SIGNAL-SEM ;
 
 \ The route keeps what ACCEPT answered.
 : OPEN ( HTTP:request HTTP:response -- )
@@ -659,7 +659,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 \ The handshake waits, once it holds its slot, until AIO is full.
 : AWAIT-FILL ( -- )
    1 STALLING !
-   FILLED TASK:WAIT ;
+   FILLED TASK:WAIT-SEM ;
 
 : FILLING ( HTTP:request HTTP:response -- )
    [: 2dup [: NOTE ;] [: AWAIT-FILL ;] WS-TEST:ACCEPT-STALLED KEEP ;] ROUTED ;
@@ -692,7 +692,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
 
 \ The route has posted ACCEPTED; what it threw fails the case.
 : AWAIT-ROUTE ( -- )
-   ACCEPTED TASK:WAIT
+   ACCEPTED TASK:WAIT-SEM
    ROUTE-CODE @ {: code:n :}
    code 0<> if code throw then ;
 
@@ -1614,7 +1614,7 @@ TASK:MIN-STACK TASK:TASK STOP-TASK \ runs WS:STOP while this task answers a clos
    s" AIO refuses the poll past its ceiling" T-LABEL
    FILL-CODE @ CEILING T=
    FILL-CODE @ TASK-LINE
-   FILLED TASK:SIGNAL
+   FILLED TASK:SIGNAL-SEM
    AWAIT-ROUTE
    [: ERR-WRITTEN ;] ANSWER-MS AWAITED drop
    UNFILL

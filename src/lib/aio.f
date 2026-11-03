@@ -1127,7 +1127,7 @@ INSTALL-HOST
 : WAIT-LOOP ( n -- ) {: idx:n :}
    begin
       idx REC-STATE@ STATE-DONE = if exit then
-      TASK:STOP
+      TASK:WAIT
       idx PARK
    again ;
 
@@ -1277,7 +1277,7 @@ INSTALL-HOST
    begin
       g G-READY dup 0 >= if exit then
       drop
-      TASK:STOP
+      TASK:WAIT
       g PARK
    again ;
 
@@ -1371,7 +1371,7 @@ public
 \ record. Only the task that submitted the ticket may await it, and only once:
 \ a ticket whose record is free, one another task owns, and one whose record has
 \ since been reused - even by this task - are E-AIO-STATE.
-\ The wait is a TASK:STOP loop, so the main thread may await too.
+\ The wait is a TASK:WAIT loop, so the main thread may await too.
 : AWAIT ( ticket -- outcome ) {: t:ticket :}
    RUNNING-CHECK
    t TICKET>N OWNED-CHECK AWAIT-ONE ;

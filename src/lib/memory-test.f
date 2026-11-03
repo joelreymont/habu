@@ -579,7 +579,7 @@ variable WBT-PEER-IN
    drop {: buf:ptr :}
    MEMT-MARK-Z buf c!
    1 WBT-PEER-IN atomic!
-   WBT-OWN-MARKED TASK:WAIT
+   WBT-OWN-MARKED TASK:WAIT-SEM
    buf c@ TASK:RETURN ;
 
 : WBT-PEER-WORK ( -- )
@@ -588,7 +588,7 @@ variable WBT-PEER-IN
 : WBT-OWN-BODY ( ptr u8 NUM:alloc-byte-len -- )
    drop {: buf:ptr :}
    MEMT-MARK-A buf c!
-   WBT-OWN-MARKED TASK:SIGNAL
+   WBT-OWN-MARKED TASK:SIGNAL-SEM
    WBT-PEER TASK:JOIN MATCH result
       ok OF MEMT-MARK-Z <> if E-PRIMARY throw then ENDOF
       err OF drop E-PRIMARY throw ENDOF

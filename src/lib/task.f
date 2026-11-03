@@ -49,7 +49,7 @@ package TASK
 public
 
 \ A nominal cell, so a TASK:FACILITY (the same machine shape) cannot reach
-\ TASK:WAIT.
+\ TASK:WAIT-SEM.
 NEWTYPE sem
 
 : PTHREAD-ENTRY ( -- n ) task-entry ;
@@ -653,7 +653,7 @@ variable MAIN-PARK-READY
 \ A task never activated, only constructed, or ended has no run to hint at: the
 \ count would sit in a record its next activation is not entitled to, so all
 \ three are refused. An exposed task is admitted: a body inside its context that
-\ stops parks on this record. The task can end, be released and open again
+\ waits parks on this record. The task can end, be released and open again
 \ between the state read and the post; the post still meets this TCB's one live
 \ park. A hint before the next run or exposure opens is drained there; a WAKE in
 \ flight as it opens lands in it, the one stale hint its re-check absorbs.
@@ -1623,7 +1623,7 @@ variable SWEEP-ARMED
    SCHED-YIELD-CALL TASK-RC0 ;
 
 \ The request is observed at TASK:PAUSE, so HALT wakes a task parked in
-\ TASK:STOP itself: the task re-checks its state as the hint protocol requires
+\ TASK:WAIT itself: the task re-checks its state as the hint protocol requires
 \ and ends at its next PAUSE.
 \
 \ RUNNING -> HALT-REQ is one atomic-cas, as TASK-JOIN-CHECK claims the joiner,
@@ -1807,7 +1807,7 @@ variable SWEEP-ARMED
 \ has nothing to release and CONSTRUCTED has memory but no thread. Every other
 \ state was activated and is released the same way, whichever state it reaches
 \ first: HALT unless the read said DONE, then the join, which waits for the
-\ thread however it ends. A task parked in STOP, WAIT, SLEEP or a host call
+\ thread however it ends. A task parked in WAIT, WAIT-SEM, SLEEP or a host call
 \ observes the halt only when released, so KILL waits for it; an owner may KILL
 \ a body that signalled its own end and is still finishing.
 : TASK-KILL ( ptr n -- ) {: tcb:ptr :}
@@ -2170,7 +2170,7 @@ private
 \ the total and a host timer that fires early waits again for the rest: false
 \ comes only once mono-ns reaches the deadline. A hint posted as the deadline
 \ passes is either taken by the last wait or stays in the count for the next
-\ STOP or STOP-FOR, as PARK-DRAIN leaves it.
+\ WAIT or WAIT-MS, as PARK-DRAIN leaves it.
 : TASK-STOP-FOR ( ms -- bool ) {: timeout:ms :}
    timeout SLEEP-DEADLINE-AT {: deadline:n :}
    PARK-SELF {: park:sem :}
@@ -2288,41 +2288,41 @@ TASK-MIN-STACK constant MIN-STACK
 \ Parks the calling task until somebody WAKEs it, from a worker or from the main
 \ thread, which parks on the one main record instead of a TCB. It burns no CPU
 \ and observes no TASK:HALT while it is parked - TASK:HALT wakes its target, so a
-\ halted task returns from its STOP and ends at its next TASK:PAUSE.
+\ halted task returns from its WAIT and ends at its next TASK:PAUSE.
 \
 \ WAKE is a HINT, not a message: the count keeps a WAKE that arrives before the
-\ STOP, so no hint is lost, but a STOP takes one hint whoever posted it. A caller
-\ re-checks its own state after every STOP and stops again if the state it waits
+\ WAIT, so no hint is lost, but a WAIT takes one hint whoever posted it. A caller
+\ re-checks its own state after every WAIT and waits again if the state it waits
 \ for has not arrived:
 \
-\    begin  MY-STATE @ DONE = if exit then  TASK:STOP  again
+\    begin  MY-STATE @ DONE = if exit then  TASK:WAIT  again
 \
 \ A loop that must also answer TASK:HALT calls TASK:PAUSE in that loop and gives
 \ its resources back in a finally around the wait. The hint lets one loop wake
 \ many owners by TCB with no semaphore per waiter.
-: STOP ( -- )
+: WAIT ( -- )
    TASK-STOP ;
 
-\ Parks the calling task as STOP does until somebody WAKEs it or ms
+\ Parks the calling task as WAIT does until somebody WAKEs it or ms
 \ milliseconds pass, whichever comes first, and answers true when a hint woke
-\ it, false at the deadline, never before it. It takes one hint as STOP does,
+\ it, false at the deadline, never before it. It takes one hint as WAIT does,
 \ so the caller re-checks its own state either way, and a TASK:HALT wakes it
-\ as it wakes STOP: it answers true and the halt ends the task at its next
+\ as it wakes WAIT: it answers true and the halt ends the task at its next
 \ TASK:PAUSE. The main thread parks on its one record. Zero takes a pending
 \ hint without blocking; a duration below zero, or one whose nanosecond
 \ deadline past mono-ns would not fit a cell, is E-TASK-SLEEP-MS.
-: STOP-FOR ( ms -- bool )
+: WAIT-MS ( ms -- bool )
    TASK-STOP-FOR ;
 
 \ Posts the named task's park. The null TCB - what TASK:SELF answers on the main
 \ thread - posts the main thread's park. An exposed task's park is the one a
-\ thread inside its context stops on. A task that was never activated, one that
+\ thread inside its context waits on. A task that was never activated, one that
 \ is only prepared and one that has ended are E-TASK-STATE.
 : WAKE ( ptr n -- )
    TASK-WAKE ;
 
 \ Requests the stop the target observes at its next TASK:PAUSE, and wakes it so
-\ a task parked in TASK:STOP gets there. A task inside a callback observes it at
+\ a task parked in TASK:WAIT gets there. A task inside a callback observes it at
 \ its first TASK:PAUSE after C returns. A task that has ended, one that was
 \ never activated and one that is only prepared have no PAUSE to reach: halting
 \ them is a no-op that leaves their state alone.
@@ -2434,14 +2434,14 @@ TASK-MIN-STACK constant MIN-STACK
 : SEMAPHORE-DESTROY ( sem -- )
    SEM-DESTROY ;
 
-: WAIT ( sem -- )
+: WAIT-SEM ( sem -- )
    SEM-WAIT ;
 
-: SIGNAL ( sem -- )
+: SIGNAL-SEM ( sem -- )
    SEM-SIGNAL ;
 
 \ Takes a count if one is there; false means it would have blocked.
-: TRY-WAIT ( sem -- bool )
+: TRY-WAIT-SEM ( sem -- bool )
    SEM-TRY-WAIT ;
 
 \ A semaphore from this package's pool, which grows when every record is in

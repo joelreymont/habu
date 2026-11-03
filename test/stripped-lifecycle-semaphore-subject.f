@@ -32,8 +32,8 @@ ARM
 : USABLE? ( -- bool )
    0 0=
    HELD-N 0 ?do
-      i HELD @ TASK:SIGNAL
-      i HELD @ TASK:TRY-WAIT and
+      i HELD @ TASK:SIGNAL-SEM
+      i HELD @ TASK:TRY-WAIT-SEM and
    loop ;
 
 public

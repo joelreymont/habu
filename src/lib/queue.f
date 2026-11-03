@@ -143,10 +143,10 @@ variable Q-N
 \ The lock is a binary semaphore, so it is held for the index move and the one
 \ cell copy below and nothing in between can throw.
 : Q-LOCK-GET ( n -- )
-   Q-LOCK-SEM WAIT ;
+   Q-LOCK-SEM WAIT-SEM ;
 
 : Q-LOCK-RELEASE ( n -- )
-   Q-LOCK-SEM SIGNAL ;
+   Q-LOCK-SEM SIGNAL-SEM ;
 
 : Q-DATA ( ptr n n -- ptr n )
    cells Q-REC-BYTES + + ;
@@ -194,33 +194,33 @@ variable Q-N
 
 : Q-PUSH ( n n -- ) {: v:n idx:n :}
    idx Q-LIVE-CHECK
-   idx Q-FREE-SEM WAIT
+   idx Q-FREE-SEM WAIT-SEM
    v idx Q-PUT-LOCKED
-   idx Q-ITEM-SEM SIGNAL ;
+   idx Q-ITEM-SEM SIGNAL-SEM ;
 
 : Q-POP ( n -- n ) {: idx:n :}
    idx Q-LIVE-CHECK
-   idx Q-ITEM-SEM WAIT
+   idx Q-ITEM-SEM WAIT-SEM
    idx Q-TAKE-LOCKED {: v:n :}
-   idx Q-FREE-SEM SIGNAL
+   idx Q-FREE-SEM SIGNAL-SEM
    v ;
 
 \ The free-slot count is the number of free slots exactly, so taking one without
 \ blocking is the whole refusal: false means the ring was full.
 : Q-TRY-PUSH ( n n -- bool ) {: v:n idx:n :}
    idx Q-LIVE-CHECK
-   idx Q-FREE-SEM TRY-WAIT 0= if 0 0= 0= exit then
+   idx Q-FREE-SEM TRY-WAIT-SEM 0= if 0 0= 0= exit then
    v idx Q-PUT-LOCKED
-   idx Q-ITEM-SEM SIGNAL
+   idx Q-ITEM-SEM SIGNAL-SEM
    0 0= ;
 
 \ The value is zero when the flag is false: the ring was empty and nothing was
 \ taken.
 : Q-TRY-POP ( n -- n bool ) {: idx:n :}
    idx Q-LIVE-CHECK
-   idx Q-ITEM-SEM TRY-WAIT 0= if 0 0 0= 0= exit then
+   idx Q-ITEM-SEM TRY-WAIT-SEM 0= if 0 0 0= 0= exit then
    idx Q-TAKE-LOCKED {: v:n :}
-   idx Q-FREE-SEM SIGNAL
+   idx Q-FREE-SEM SIGNAL-SEM
    v 0 0= ;
 
 : Q-COUNT ( n -- n ) {: idx:n :}

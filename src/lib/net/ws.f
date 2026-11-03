@@ -1210,7 +1210,7 @@ ENUM course
    begin
       LEFT @ 0 <> if exit then
       mono-ns deadline >= if exit then
-      deadline REMAINING TASK:STOP-FOR drop
+      deadline REMAINING TASK:WAIT-MS drop
    again ;
 
 
@@ -1228,7 +1228,7 @@ ENUM course
       RESERVED?
       LOCK TASK:RELEASE
       0= if exit then
-      TASK:STOP
+      TASK:WAIT
    again ;
 
 

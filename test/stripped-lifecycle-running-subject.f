@@ -15,7 +15,7 @@ private
 TASK:MIN-STACK TASK:TASK WORKER
 
 : BODY ( -- )
-   begin TASK:STOP again ;
+   begin TASK:WAIT again ;
 
 public
 

@@ -44,7 +44,7 @@ $A0 constant MSG-SENDER-OFF
 $A8 constant MSG-PENDING-OFF
 $B0 constant MSG-FREE-OFF
 $D8 constant MSG-FULL-OFF
-\ The task's own wake-up: TASK:STOP waits on this semaphore and TASK:WAKE posts
+\ The task's own wake-up: TASK:WAIT waits on this semaphore and TASK:WAKE posts
 \ it, so a loop that completes work for many tasks needs no semaphore per waiter.
 \ Same shape as the two mailbox records above, a guard cell then one sem_t, but
 \ it lives as long as its TCB in this process and the capture sweep destroys

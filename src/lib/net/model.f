@@ -1434,22 +1434,22 @@ private
 
 : START-TRANSFER ( bool ptr call -- )
    {: force:bool c :}
-   c MODEL-CALL:GATE @ TASK:WAIT
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
    force c [: START-LOCKED ;] catch {: code:n :} 2drop
-   c MODEL-CALL:GATE @ TASK:SIGNAL
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> if code throw then ;
 
 \ Clears the call's transfer, answering whether a CANCEL cut it: CANCEL-LOCKED
 \ clears the transfer it cuts.
 : END-TRANSFER ( ptr call -- bool )
    {: c :}
-   c MODEL-CALL:GATE @ TASK:WAIT
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:TRANSPORT @ MATCH option
       none OF true ENDOF
       some OF drop false ENDOF
    ;MATCH
    OPTION:NONE c MODEL-CALL:TRANSPORT !
-   c MODEL-CALL:GATE @ TASK:SIGNAL ;
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
 \ Statuses by which the provider reports itself temporarily unavailable:
 \ request timeout, rate limit and every server error.
@@ -2099,17 +2099,17 @@ private
 : BEGIN-CALL ( ptr call -- )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
-   c MODEL-CALL:GATE @ TASK:WAIT
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: BEGIN-LOCKED ;] catch {: code:n :} drop
-   c MODEL-CALL:GATE @ TASK:SIGNAL
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> if code throw then ;
 
 : END-CALL ( ptr call -- bool )
    {: c :}
-   c MODEL-CALL:GATE @ TASK:WAIT
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:CANCELLED @ {: cancelled:bool :}
    false c MODEL-CALL:BUSY !
-   c MODEL-CALL:GATE @ TASK:SIGNAL
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    cancelled ;
 
 \ Keeps the reply's response id, which the resume requests and the provider
@@ -2827,19 +2827,19 @@ public
 : CANCEL ( ptr call -- bool )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
-   c MODEL-CALL:GATE @ TASK:WAIT
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: CANCEL-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:CANCELLED @ {: selected:bool :}
-   c MODEL-CALL:GATE @ TASK:SIGNAL
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> code CURL:E-STATE <> and if code throw then
    selected ;
 
 : REQUEST-STOP ( ptr call -- )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
-   c MODEL-CALL:GATE @ TASK:WAIT
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: STOP-LOCKED ;] catch {: code:n :} drop
-   c MODEL-CALL:GATE @ TASK:SIGNAL
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> code CURL:E-STATE <> and if code throw then ;
 
 \ Starts the response in the provider's background mode and reads its event

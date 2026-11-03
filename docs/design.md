@@ -361,9 +361,13 @@ products' word names.
 **Tasks.** The runner catches the worker xt, records an uncaught throw in the
 task control block and ends only that task, as SwiftForth's
 trampoline does; a worker throw must not end the process. Blocking waits use
-semaphores (`SEMAPHORE`, `WAIT`, `SIGNAL`) and `STOP`/`WAKE` instead of
-polling. `JOIN` returns a `result` and `AT-EXIT` registers cleanup, after VFX's
-exit code and task-exit hook. Messages are VFX's one-cell mailbox
+semaphores (`SEMAPHORE`, `WAIT-SEM`, `SIGNAL-SEM`) and the task's own `WAIT`,
+which `WAKE` ends, and `WAIT-MS`, which it ends early, instead of polling.
+These names leave the products' (SwiftForth's `STOP`, VFX's `WAIT`/`SIGNAL`)
+for the standard terms: a task's own wait is wait/wake, as Linux's futex and
+Zig's `std.Thread.Futex` name it, and a word that takes a semaphore says so.
+`JOIN` returns a `result` and `AT-EXIT` registers cleanup, after VFX's exit
+code and task-exit hook. Messages are VFX's one-cell mailbox
 (`SEND-MESSAGE`, `GET-MESSAGE`). VFX keeps its embedded task API on pthreads
 so one program text runs hosted and on a target; Habu takes the same rule. A
 target kernel is polyFORTH's round robin, where the `STATUS` cell is both

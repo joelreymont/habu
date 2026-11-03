@@ -12,7 +12,7 @@ require src/lib/process-fork.f
 package STRIPPED-FORK
 
 : PARK ( -- )
-   TASK:SELF TASK:WAKE TASK:STOP ;
+   TASK:SELF TASK:WAKE TASK:WAIT ;
 
 \ The child's whole life. A throw must not leave it: it would unwind the
 \ child's copy of the forking thread's stack, so the exit code carries it.

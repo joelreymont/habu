@@ -181,7 +181,7 @@ $300000 constant BIG-U
 \ (TEST-WAIT:POLL): a timeout, no assertion result.
 10000000000 constant TAKE-NS
 : TAKE ( TASK:sem -- )
-   [: dup TASK:TRY-WAIT ;] mono-ns TAKE-NS + s" model-test TAKE" TEST-WAIT:POLL
+   [: dup TASK:TRY-WAIT-SEM ;] mono-ns TAKE-NS + s" model-test TAKE" TEST-WAIT:POLL
    drop ;
 
 
@@ -377,7 +377,7 @@ $300000 constant BIG-U
 \ Signals HELD and keeps the connection open until the client closes it.
 : HOLD-OPEN ( TCP4:connection -- )
    {: conn:TCP4:connection :}
-   HELD TASK:SIGNAL
+   HELD TASK:SIGNAL-SEM
    conn HOLD-MS >MS TCP4:READABLE-WITHIN?
    MATCH TCP4:ready-result
       ready OF ENDOF
@@ -1285,8 +1285,8 @@ variable REFUSED-BASE-U
 \ cannot begin either following call until the main task releases STOP-GO.
 : STOP-WORK ( -- )
    CHAT-CODE {: first-code:n :}
-   STOP-READY TASK:SIGNAL
-   STOP-GO TASK:WAIT
+   STOP-READY TASK:SIGNAL-SEM
+   STOP-GO TASK:WAIT-SEM
    first-code 0<> if first-code throw then
    CHAT-CODE MODEL:E-CANCELLED = ASSERT
    EMBED-CODE MODEL:E-CANCELLED = ASSERT
@@ -1299,13 +1299,13 @@ variable REFUSED-BASE-U
    0 STOP-READY TASK:SEMAPHORE-INIT
    0 STOP-GO TASK:SEMAPHORE-INIT
    ['] STOP-WORK WORK-TASK TASK:ACTIVATE
-   STOP-READY TASK:WAIT
+   STOP-READY TASK:WAIT-SEM
    MODEL-PEER:CALLS@ {: calls:n :}
    s" stopped-chat" PREP
    s" stopped-embed" INPUTS
    M MODEL:REQUEST-STOP
    M MODEL:CANCEL 0= ASSERT
-   STOP-GO TASK:SIGNAL
+   STOP-GO TASK:SIGNAL-SEM
    WORK-TASK TASK:JOIN MATCH result
       ok OF 0= ASSERT ENDOF
       err OF drop FAIL ENDOF
