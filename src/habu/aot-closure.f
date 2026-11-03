@@ -276,10 +276,7 @@ DYNAMIC-BUFFER CLO ptr u8      \ each member's code entry
 DYNAMIC-BUFFER CLO-LEN n       \ ... its code length in bytes
 DYNAMIC-BUFFER CLO-REC ptr n   \ ... and the record that named it, or XREF-NULL
 variable NCLO
-PTR-VARIABLE ROOTREC
 variable CLO-CAP     \ rows allocated, 0 until the tables are sized
-variable CLO-REQ     \ a limit a program lowered by hand, or 0 for the capacity
-variable CLO-LIMIT   \ ... and the one ADD-CLO enforces, resolved at the sizing
 : CLO-AT ( n -- ptr u8 ) CLO @ ;
 : CLO-BYTES ( n -- n ) CLO-LEN @ ;
 : CLO-REC@ ( n -- ptr n ) CLO-REC @ ;
@@ -296,7 +293,7 @@ variable CLO-LIMIT   \ ... and the one ADD-CLO enforces, resolved at the sizing
 \ removes rows, rebuilds the set.
 \ Capacity is the power of two at or above twice the row bound (the closure
 \ capacity, ndict@), so the load stays at most a half; a wrap is a defect in
-\ this file and refuses by name, as CLO-OVERFLOW-DIE does, instead of looping.
+\ this file and refuses by name, as a full ADD-CLO does, instead of looping.
 \ The hash decides probe order, never an answer, and holds no per-run value.
 -1 constant IX-FREE                    \ a slot naming no row
 $9E3779B97F4A7C15 constant IX-MUL      \ odd: the 64-bit golden-ratio multiplier
@@ -341,30 +338,6 @@ variable CLO-PROBE  variable CLO-RI
    CLO-SET-EMPTY
    0 CLO-RI !
    BEGIN CLO-RI @ NCLO @ < WHILE  CLO-RI @ CLO-SET+  CLO-RI @ 1+ CLO-RI ! REPEAT ;
-: CLO-OVERFLOW-JSON {: r:ptr :} ( ptr a -- )
-   123 AE1
-   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
-   s" code" AEJKEY s" E-AOT-CLOSURE-LIMIT" AEJSTR 44 AE1
-   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
-   s" reachable_count" AEJKEY NCLO @ AEJNUM 44 AE1
-   s" max_closure" AEJKEY CLO-LIMIT @ AEJNUM 44 AE1
-   s" root_word" AEJKEY ROOTREC @ AEJREC 44 AE1
-   s" last_added_word" AEJKEY r AEJREC 44 AE1
-   s" suggestion" AEJKEY
-   s" split the program into smaller entry points, or run it with --repl or a snapshot image" AEJSTR
-   125 AE1 10 AE1 ;
-: CLO-OVERFLOW-PROSE {: r:ptr :} ( ptr a -- )
-   s" aot: closure exceeds the closure limit reachable_count=" AETXT NCLO @ AEJNUM
-   s"  max_closure=" AETXT CLO-LIMIT @ AEJNUM
-   s"  root_word='" AETXT ROOTREC @ AEREC-TXT
-   s" ' last_added_word='" AETXT r AEREC-TXT
-   s" ' suggestion='split the program into smaller entry points, or run it with --repl or a snapshot image'" AETXT
-   10 AE1 ;
-\ Reachable only where CLO-LIMIT! lowered the limit below the capacity; the
-\ suggestion says what a user can do about a program that is too large.
-: CLO-OVERFLOW-DIE {: r:ptr :} ( ptr a -- )
-   JSON-DIAGS @ IF r CLO-OVERFLOW-JSON ELSE r CLO-OVERFLOW-PROSE THEN
-   s" aot: closure exceeds the closure limit" 74 die ;
 \ A MEMBER LOADED AHEAD OF THE MAKER IS REFUSED, BY NAME. The engine's records
 \ end at its seal watermark, and AOT-BUILDER:OPEN latches OPENER-NDICT
 \ before it loads anything an application can name, so a record between the
@@ -400,7 +373,7 @@ variable CLO-PROBE  variable CLO-RI
 : ADD-CLO ( ptr n ptr u8 n -- ) {: r:ptr start:ptr len:n :}
    start IN-CLO? IF exit THEN
    r XREF-FOUND? IF r PRE-WINDOW? IF r PRE-WINDOW-DIE THEN THEN
-   NCLO @ CLO-LIMIT @ >= IF r CLO-OVERFLOW-DIE THEN
+   NCLO @ CLO-CAP @ >= IF s" aot: closure exceeds its capacity" 74 die THEN
    start NCLO @ CLO !
    len NCLO @ CLO-LEN !
    r NCLO @ CLO-REC !
@@ -1076,35 +1049,15 @@ variable CLO-NI  variable CLO-NJ  variable CLO-NK   \ the candidate row, the sca
 \ dictionary is closed, the span table published, and aot-common.f LINK runs
 \ COLLECT-XT-CELLS before CLOSURE.
 : CLO-CAPACITY ( -- n ) ndict@ SPAN-N + XTC-N @ + ;
-: CLO-LIMIT-ABOVE-DIE ( n n -- ) {: req:n cap:n :}
-   s" aot: CLO-LIMIT " AETXT req AEJNUM
-   s"  above the closure capacity " AETXT cap AEJNUM
-   s"  = records " AETXT ndict@ AEJNUM
-   s"  + stripped spans " AETXT SPAN-N AEJNUM
-   s"  + declared xt cells " AETXT XTC-N @ AEJNUM
-   10 AE1
-   s" aot: CLO-LIMIT above the closure capacity" 74 die ;
-\ A request above the capacity is refused where the two first meet: at the
-\ sizing for a request made before it (a fixture lowers the limit while its
-\ source loads), at the call for one made after.
-: CLO-LIMIT-RESOLVE ( -- )
-   CLO-REQ @ 0= IF CLO-CAP @ CLO-LIMIT ! exit THEN
-   CLO-REQ @ CLO-CAP @ > IF CLO-REQ @ CLO-CAP @ CLO-LIMIT-ABOVE-DIE THEN
-   CLO-REQ @ CLO-LIMIT ! ;
-: CLO-LIMIT! {: n:n :}
-   n 1 < IF s" aot: CLO-LIMIT below 1" 74 die THEN
-   n CLO-REQ !
-   CLO-CAP @ 0<> IF CLO-LIMIT-RESOLVE THEN ;
 \ A test that fills the tables by hand asks for the rows it writes.
 : CLO-TABLES ( n -- ) {: rows:n :}
    rows 1 < IF s" aot: closure capacity below 1" 74 die THEN
    rows CLO-RESERVE  rows CLO-LEN-RESERVE  rows CLO-REC-RESERVE
    rows CLO-SET-SIZE
-   rows CLO-CAP !
-   CLO-LIMIT-RESOLVE ;
+   rows CLO-CAP ! ;
 
 : CLOSURE  CLO-CAPACITY CLO-TABLES
-   0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-REC-CLO
+   0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  ADD-REC-CLO
    XT-CELL-ROOTS
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ SCAN-MEMBER  WI @ 1+ WI ! REPEAT
    DROP-NESTED-CLO ;
