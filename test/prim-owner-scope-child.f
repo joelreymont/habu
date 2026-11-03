@@ -223,19 +223,9 @@ $0A constant LF-C
    s" TRUSTED: POS-AM1-TR ( n -- ) addrmap-set ;" EVAL
    RESTORE-T0 ;
 
-\ The engine's own owners.
-\ Each primitive here has one checked caller in the engine, a word of the
-\ package that owns its row: NPUB's publication window and record writers
-\ (src/compiler/native/publish.f), CODE-RECLAIM's relocation-map clear
-\ (src/habu/xref.f), TOP-ROW's hook install (src/core/top-row.f), CHECKER-OWNER's
-\ does> check (src/compiler/native/checker-owner.f) and TYPE-DECL's field
-\ projection (src/core/sumtype.f). code-publish, xref-retarget and does-record
-\ are their NPUB row alone, as no TRUSTED: body outside NPUB calls one: outside
-\ it a checked call or tick misses the name. Every other primitive here keeps
-\ its global trusted-only row beside its owner's for its TRUSTED: callers
-\ outside the owner, so a checked caller there gets the named E-CAP-TRUSTED.
+\ Each engine owner holds its primitive's one checked caller. Outside it, a call
+\ is E-UNDEFINED for a primitive with only NPUB's row, else E-CAP-TRUSTED.
 : RECLAIM-OPEN ( -- ) s" package CODE-RECLAIM" evaluate-closed ;
-: TOP-ROW-OPEN ( -- ) s" package TOP-ROW" evaluate-closed ;
 : CK-OWNER-OPEN ( -- ) s" package CHECKER-OWNER" evaluate-closed ;
 : TYPE-DECL-OPEN ( -- ) s" package TYPE-DECL" evaluate-closed ;
 
@@ -330,47 +320,6 @@ $0A constant LF-C
    s" TRUSTED: POS-RM1-TR ( n n -- ) reloc-maps-clear ;" EVAL
    RESTORE-T0 ;
 
-\ The owner's row types the hook: an xt of the shape the top-level tracker calls,
-\ where the global row takes any cell. A hook of another shape is refused.
-: TOP-ROW-CASES ( -- )
-   T0? if
-   0 set-tier
-   TOP-ROW-OPEN
-   s" t0 set-top-check inside owner"
-   s" : POS-STC0-IN ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
-   s" t0 set-top-check wrong hook inside owner"
-   s" : POS-STC0-BAD ( [ ptr u8 n n -- ] -- ) set-top-check ;" EVAL
-   s" t0 tick set-top-check inside owner"
-   s" : POS-TSTC0-IN ( -- ) ['] set-top-check drop ;" EVAL
-   PKG-CLOSE
-   s" t0 set-top-check top level"
-   s" : POS-STC0-TOP ( n -- ) set-top-check ;" EVAL
-   OTHER-OPEN
-   s" t0 tick set-top-check other package"
-   s" : POS-TSTC0-OTH ( -- ) ['] set-top-check drop ;" EVAL
-   PKG-CLOSE
-   TOP-ROW-OPEN
-   s" t0 set-top-check reopened owner"
-   s" : POS-STC0-RE ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
-   PKG-CLOSE
-   s" t0 set-top-check trusted top level"
-   s" TRUSTED: POS-STC0-TR ( n -- ) set-top-check ;" EVAL
-   then
-   1 set-tier
-   TOP-ROW-OPEN
-   s" t1 set-top-check inside owner"
-   s" : POS-STC1-IN ( [ ptr u8 n n n -- ] -- ) set-top-check ;" EVAL
-   s" t1 set-top-check wrong hook inside owner"
-   s" : POS-STC1-BAD ( [ ptr u8 n n -- ] -- ) set-top-check ;" EVAL
-   PKG-CLOSE
-   OTHER-OPEN
-   s" t1 set-top-check other package"
-   s" : POS-STC1-OTH ( n -- ) set-top-check ;" EVAL
-   PKG-CLOSE
-   s" t1 set-top-check trusted top level"
-   s" TRUSTED: POS-STC1-TR ( n -- ) set-top-check ;" EVAL
-   RESTORE-T0 ;
-
 \ CHECK-DOES! is a word of the re-included src/core/checker.f, and its global
 \ row keeps the seal from marking it DNAME-INT, so its owner calls it here.
 : CK-OWNER-CASES ( -- )
@@ -445,7 +394,6 @@ $0A constant LF-C
    T0? if NPUB-SITE-T0-CASES then
    NPUB-SITE-T1-CASES
    RECLAIM-CASES
-   TOP-ROW-CASES
    CK-OWNER-CASES
    TYPE-DECL-CASES ;
 

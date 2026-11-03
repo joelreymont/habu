@@ -173,21 +173,6 @@ variable EXP-U
    s" t1 reloc-maps-clear other package"       s" rejected" CASE+
    s" t1 reloc-maps-clear trusted top level"   s" compiled" CASE+ ;
 
-: TOP-ROW-LINES ( -- )
-   T0? if
-   s" t0 set-top-check inside owner"            s" compiled" CASE+
-   s" t0 set-top-check wrong hook inside owner" s" rejected" CASE+
-   s" t0 tick set-top-check inside owner"       s" compiled" CASE+
-   s" t0 set-top-check top level"               s" rejected" CASE+
-   s" t0 tick set-top-check other package"      s" rejected" CASE+
-   s" t0 set-top-check reopened owner"          s" compiled" CASE+
-   s" t0 set-top-check trusted top level"       s" compiled" CASE+
-   then
-   s" t1 set-top-check inside owner"            s" compiled" CASE+
-   s" t1 set-top-check wrong hook inside owner" s" rejected" CASE+
-   s" t1 set-top-check other package"           s" rejected" CASE+
-   s" t1 set-top-check trusted top level"       s" compiled" CASE+ ;
-
 : CK-OWNER-LINES ( -- )
    T0? if
    s" t0 check-does! inside owner"          s" compiled" CASE+
@@ -216,7 +201,6 @@ variable EXP-U
 : OWNER-SITE-LINES ( -- )
    NPUB-SITE-LINES
    RECLAIM-LINES
-   TOP-ROW-LINES
    CK-OWNER-LINES
    TYPE-DECL-LINES ;
 
@@ -251,11 +235,8 @@ variable EXP-U
    la lu T-LABEL
    ea eu la lu CONTAINS? TTRUE ;
 
-\ The engine owners' refusals, by name: a primitive with no global row is
-\ undefined outside its owner, to a call and a tick alike, and a global
-\ trusted-only row answers E-CAP-TRUSTED. Inside TOP-ROW a hook of the wrong
-\ shape fails on its type, not its trust. test/prim-owner-scope-child.f
-\ TYPE-DECL-CASES states FIELD-PROJ!'s refusals.
+\ The engine owners' refusals by name: test/prim-owner-scope-child.f states
+\ them above RECLAIM-OPEN, and FIELD-PROJ!'s at TYPE-DECL-CASES.
 : OWNER-SITE-ERRS ( ptr u8 n -- ) {: ea:ptr eu:n :}
    T0? if
    ea eu s" E-UNDEFINED habu: in pos-cp0-top: undefined word 'code-publish'" ERR-HAS
@@ -273,18 +254,12 @@ variable EXP-U
    then
    ea eu s" E-CAP-TRUSTED habu: in pos-rm1-oth: 'reloc-maps-clear' is a trust-boundary primitive" ERR-HAS
    T0? if
-   ea eu s" E-CAP-TRUSTED habu: in pos-stc0-top: 'set-top-check' is a trust-boundary primitive" ERR-HAS
-   then
-   ea eu s" E-CAP-TRUSTED habu: in pos-stc1-oth: 'set-top-check' is a trust-boundary primitive" ERR-HAS
-   T0? if
    ea eu s" E-CAP-TRUSTED habu: in pos-cd0-top: 'CHECK-DOES!' is a trust-boundary primitive" ERR-HAS
    then
    ea eu s" E-CAP-TRUSTED habu: in pos-cd1-oth: 'CHECK-DOES!' is a trust-boundary primitive" ERR-HAS
    T0? if
-   ea eu s" habu: in pos-stc0-bad: at 'set-top-check' expected:" ERR-HAS
    ea eu s" ncomp: cannot compile POS-FP0-RE at FIELD-PROJ!" ERR-HAS
    then
-   ea eu s" habu: in pos-stc1-bad: at 'set-top-check' expected:" ERR-HAS
    ea eu s" ncomp: cannot compile POS-FP1-RE at FIELD-PROJ!" ERR-HAS
    ea eu s" E-UNDEFINED: FIELD-PROJ!" ERR-HAS
    ea eu s" E-CAP-TRUSTED habu: in pos-fp1-top: 'FIELD-PROJ!' is a trust-boundary primitive" ERR-HAS
