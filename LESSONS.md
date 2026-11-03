@@ -508,6 +508,20 @@ entry.
   compiled." Everything compiling a file produces, TRUSTED: bodies and does>
   definers included, is cached and replayed as one unit; no per-definition
   reuse.
+- 2026-11-03, file objects: Joel wrote "whatever creates the object files (is
+  it loader? should it be linker instead if it both saves and load?) has
+  control over what executes when those object files are linked into an
+  executable. it sounds like the current design is bad, prove me wrong!" and
+  "we are not specifying the loading instructions correctly at the moment and
+  have to do a lot of extra work, e.g. to discriminate loads". Told that a
+  file's top level also prints, writes files, reads the environment and opens
+  foreign libraries, he answered "whatever executes when linking has nothing
+  to do with the file top-level as they are instructions added by the
+  linker. prove me wrong!" The lead could not: a top level runs once, when
+  its file compiles, and every hb and stripped image already starts without
+  running one. A linker writes a file's object as the instructions that
+  remake the file's result, and a reused file is linked without reading its
+  source; the loader only chooses between linking and compiling.
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
