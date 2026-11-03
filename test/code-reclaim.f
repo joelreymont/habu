@@ -149,12 +149,16 @@ LC-CAP BUFFER: LC-ERR
    outu LEN>N 0 T=
    LC-ERR erru LEN>N s" hb: does> has no created word" CONTAINS? TTRUE ;
 
-\ A does> reached outside create's definer leaves the created word typed
-\ `-- ptr a`, so the print takes its distance from NULL-PTR: the patched clause
-\ yields the number itself.
+\ The program runs to the end and prints this; the definition it refuses reports
+\ on stderr.
+: LC-OUT-PRINTS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n :}
+   0 LC-EXITS drop {: outu:len :}
+   LC-OUT outu LEN>N want wantu T$= ;
+
+\ A does> outside create's definer: the patched word answers its clause's number.
 : LASTC-CASE ( -- )
    s" a forget that keeps the created record keeps it for does>" T-LABEL
-   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-KEEP NULL-PTR - .\n"
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-MARK ( -- ) ;\ns\" CR-LC-MARK\" FORGET-DEFS-FROM\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\nCR-LC-BEHAVE CR-LC-KEEP .\n"
    S\" 8\n" LC-PRINTS
 
    s" a forget that retires the created record leaves does> none to patch" T-LABEL
@@ -164,6 +168,10 @@ LC-CAP BUFFER: LC-ERR
    s" an evaluate that fails retires its created record the same way" T-LABEL
    S\" create CR-LC-KEEP 7 ,\n: CR-LC-TRY ( -- n ) [: s\" create CR-LC-GONE 5 , CR-LC-NO-SUCH-WORD\" evaluate-closed ;] catch ;\nCR-LC-TRY drop\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ ;\nCR-LC-BEHAVE\n"
    LC-REFUSED
+
+   s" a definition that fails leaves does> the created record" T-LABEL
+   S\" create CR-LC-KEEP 7 ,\n: CR-LC-BEHAVE ( -- ) does> ( -- n ) @ 1 + ;\n: CR-LC-TRY ( -- n ) [: s\" : CR-LC-BAD ( -- ) CR-LC-NO-SUCH-WORD ;\" evaluate-closed ;] catch ;\nCR-LC-TRY drop\nCR-LC-BEHAVE CR-LC-KEEP .\n"
+   S\" 8\n" LC-OUT-PRINTS
 
    \ undefine retires a record in place: NDICT stays, the wordlist cell says so.
    s" an undefine that retires the created record leaves does> none to patch" T-LABEL

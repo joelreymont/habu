@@ -64,6 +64,15 @@ public
 : CDD-SHX ( -- n ) 1 ;
 ;package
 
+\ Section 15's packaged word, patched at once by a global does> word defined
+\ after `;package`: the patching word's spelling resolves outside CDD-PKC.
+package CDD-PKC
+public
+variable CDD-PKV
+;package
+: CDD-PKB ( -- ) does> ( -- n ) drop 9 ;
+CDD-PKB
+
 package CERTIFY-DOES-DEFINER
 
 \ The rest of section 5's fixtures, also compiled by the engine here: this
@@ -571,6 +580,35 @@ CDD-WIDE-CAP CODEGEN:BUFFER CDD-WIDE
    DIAG-BUFFER-OFF
    VERIFY:CENSUS 1 T= drop ;
 
+\ Section 15: a does> word patches the latest created word, which takes the
+\ clause effect while the patching word keeps its own. Each text creates its
+\ own word and stores what that word gives in CDD-GOT.
+variable CDD-GOT
+
+: CDD-GOT-RC ( ptr u8 n -- n n )
+   0 CDD-GOT !  TEST-EVAL:RC  CDD-GOT @ ;
+
+: CDD-SECTION-PATCH ( -- )
+   s" a word patched by a does> word defined after it gives the clause's cell" T-LABEL
+   s" variable CDD-PV1 : CDD-PB1 ( -- ) does> ( -- n ) drop 9 ; CDD-PB1 CDD-PV1 CDD-GOT !"
+      CDD-GOT-RC 9 T= 0 T=
+   s" the patching word keeps its own effect" T-LABEL
+   s" variable CDD-PV3 : CDD-PB3 ( -- ) does> ( -- n ) drop 9 ; CDD-PB3 CDD-PV3 drop"
+      TEST-EVAL:RC 0 T=
+   s" : CDD-PT3 ( -- n ) CDD-PB3 ;" TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   s" a does> word defined before the created word patches it the same way" T-LABEL
+   s" : CDD-PB4 ( -- ) does> ( -- n ) drop 9 ; variable CDD-PV4 CDD-PB4 CDD-PV4 CDD-GOT !"
+      CDD-GOT-RC 9 T= 0 T=
+   s" a packaged word patched by a global does> word gives the clause's cell" T-LABEL
+   s" CDD-PKC:CDD-PKV CDD-GOT !" CDD-GOT-RC 9 T= 0 T=
+   s" a word created over a forgotten definition's ordinal starts unlinked" T-LABEL
+   s" : CDD-FD ( -- n ) 5 ; ndict@ 1- ndict! create CDD-FX" TEST-EVAL:RC 0 T=
+   s" : CDD-FG ( -- ) CDD-FX ;" TEST-EVAL:RC  tier@ 0= if 70 else E-COMP-VERDICT then T=
+   \ Last: a word still typed as its cell runs `@` on the clause's 9 and dies.
+   s" the patched word's cell is gone, so `@` on it is refused" T-LABEL
+   s" variable CDD-PV2 : CDD-PB2 ( -- ) does> ( -- n ) drop 9 ; CDD-PB2 CDD-PV2 @ drop"
+      TEST-EVAL:RC 70 T= ;
+
 \ Each scan runs with its probes in one neutral scope; sections 2 and 9 open
 \ theirs outside this package, as a scan begun inside one refuses `package`.
 T-RESET
@@ -599,6 +637,7 @@ CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-FUNCTION ;p
 CDD-SECTION-GENERATES-REFUSED
 CDD-SECTION-CLAUSE-TAIL
 CDD-SECTION-QUIET-CLAUSE
+CDD-SECTION-PATCH
 T-REPORT
 
 ;package

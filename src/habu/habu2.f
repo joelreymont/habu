@@ -2639,14 +2639,14 @@ package LOOP-EMIT
 
 \ C-PUSH-DREC-NAME: push the definition's original qualified spelling for the
 \ engine->checker record calls (trust/defer rows): the first token of the body
-\ buffer, which LBCAP seeds with "NAME " before C-QUALIFY-DEF rewrites it, the
-\ spelling the CHECK cert path reads as NMA. The fixed DATA buffer survives a
-\ multi-line body (DEF-TKA goes stale when the reader refills), and it is the
-\ qualified `PKG:tail`, so CHECKER-RECORD-SYM records ( pkg, tail ) PUBLIC like
-\ the certify record instead of a bare `tail` row that shadows core prims. The
-\ Gforth stage0 mirror reads the body
-\ buffer for the same reason. Scratch stays off x11: DEF-TRUST:FIND and
-\ C-FIND-GLOBAL leave the record XT there for the caller's C-CALL-X11-SAVED.
+\ buffer, which LBCAP seeds with "NAME " and C-QUALIFY-DEF leaves alone (it moves
+\ only TKA/TKL), the spelling the CHECK cert path reads as NMA. The fixed DATA
+\ buffer survives a multi-line body (DEF-TKA goes stale when the reader refills),
+\ and it is the qualified `PKG:tail`, so CHECKER-RECORD-SYM records ( pkg, tail )
+\ PUBLIC like the certify record instead of a bare `tail` row that shadows core
+\ prims. The Gforth stage0 mirror reads the body buffer for the same reason.
+\ Scratch stays off x11: DEF-TRUST:FIND and C-FIND-GLOBAL leave the record XT
+\ there for the caller's C-CALL-X11-SAVED.
 : C-PUSH-DREC-NAME ( -- )
    LBL LBL {: scan:label done:label :}
    9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)

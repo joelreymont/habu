@@ -13417,6 +13417,7 @@ CHECKER-REG:SCRATCH{
 variable CK-CLOSED-SYM     \ the symbol of the definition recorded last
 variable CK-CLOSED-IX      \ `ndict@` when it was recorded
 variable CK-CLOSED-OFF     \ its record, offset+1 (USIG-NEWEST)
+variable CK-CLOSED-OPEN    \ its record is unpublished: RECORD-PUBLISHED-LOCAL links it once
 CHECKER-REG:}SCRATCH
 : CK-CLOSED-OFF@ ( -- n ) CK-CLOSED-OFF @ ;
 
@@ -13446,7 +13447,7 @@ CHECKER-REG:}SCRATCH
    off 1 - E-PTR ER.ACTIVE @ EFF-RECOVERY = IF
       0 CK-CLOSED-SYM ! EXIT
    THEN
-   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  off CK-CLOSED-OFF ! ;
+   sym CK-CLOSED-SYM !  ndict@ CK-CLOSED-IX !  off CK-CLOSED-OFF !  -1 CK-CLOSED-OPEN ! ;
 
 \ A live check that certifies nothing ends the window: the definition recorded
 \ last is no longer the one being compiled. A replay or a candidate leaves the
@@ -13454,7 +13455,7 @@ CHECKER-REG:}SCRATCH
 : CK-CLOSE-CLEAR ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF EXIT THEN
    CHK-CAND @ 0 <> IF EXIT THEN
-   0 CK-CLOSED-SYM ! ;
+   0 CK-CLOSED-SYM !  0 CK-CLOSED-OPEN ! ;
 
 \ A pending row's symbol while the stores still state it, else 0.
 : CK-PEND-SYM ( n n n -- n ) {: sym:n ix:n off:n :}
@@ -16940,7 +16941,7 @@ RECORD-GRID-HOOKS
       -1 RECORD-PEND-IX ! 0 RECORD-PEND-SYM ! 0 RECORD-PEND-EFF !
       EXIT
    THEN
-   ord CK-CLOSED-IX @ = CK-CLOSED-SYM @ 0 <> and IF
+   ord CK-CLOSED-IX @ = CK-CLOSED-SYM @ 0 <> and CK-CLOSED-OPEN @ 0 <> and IF  0 CK-CLOSED-OPEN !
       CK-CLOSED-SYM @ USIG-NEWEST CK-CLOSED-OFF@ = IF
          ord CK-CLOSED-OFF@ CK-CLOSED-SYM @ NORET-NEWEST
          CK-CLOSED-SYM @ DFER-FIND-SYM RECORD-LINK-SET
@@ -21792,19 +21793,25 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 \ (which a caught refusal would leave on), TRUST-DECL before it steps the
 \ definer latch for a row that is never stored.
 
-\ The registration TRUST and TRUST-RAW share; only the parser's raw-definer mode
-\ differs. TRUST-RAW cannot call TRUST: `trust` is refused inside a checked body
-\ (UNSAFE-TOK?). No primitive axiom, so user code cannot resolve it.
-\ A signature whose length describes no memory is refused as one that does not
-\ parse, with no text rendered; the parser's state is cleared first, since the
-\ refusal's class is otherwise the one an earlier refused signature left.
-\ The folded key in TKF is separate from the caller's declaring name.
-\ Answers whether the row was retained, as USIG-ADD-AS does.
-: TRUST-USIG! ( ptr u8 n ptr u8 n -- bool )
-   {: na:ptr nu:n sa:ptr su:n :}
+\ The registration TRUST, TRUST-DECL and TRUST-RAW share (a checked body cannot
+\ call `trust`) and has no axiom; it answers whether USIG-ADD-AS kept the row.
+: TRUST-USIG-SYM! ( ptr u8 n ptr u8 n n -- bool )
+   {: na:ptr nu:n sa:ptr su:n sym:n :}
    na nu TOKFOLD drop
+   \ A span no memory has is refused as unparsed; SGBAD-CLEAR first drops the
+   \ class an earlier refused signature left.
    sa su BYTE-SPAN? 0= IF SGBAD-CLEAR sa 0 TKF TKFU @ na nu USIG-ADD-BAD RES-FALSE EXIT THEN
-   sa su  TKF TKFU @ na nu CHECKER-RECORD-NAME-AT na nu RES-TRUE USIG-ADD-AS ;
+   \ A nonzero SYM keys the row and the name is only refused when malformed:
+   \ a does> after a refused definition passes it empty; interning that dies 76.
+   sym 0= IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop ELSE
+      TKF TKFU @ CHECKER-QUALIFIED? drop
+      CHECKER-QBAD-TOK @ IF TKF TKFU @ na nu CHECKER-RECORD-NAME-AT 2drop THEN
+      sym CHECKER-REC-SYM !
+   THEN
+   sa su  TKF TKFU @ na nu RES-TRUE USIG-ADD-AS ;
+
+: TRUST-USIG! ( ptr u8 n ptr u8 n -- bool )
+   0 TRUST-USIG-SYM! ;
 
 \ TRUST-DECL: record the effect a DEFINER declared for the word it is
 \ publishing. The engine calls it by name from its publish tail and the
@@ -21982,36 +21989,41 @@ REG-PROTECT
    CHECKER-QBAD-TOK @ IF RES-FALSE EXIT THEN
    UNSEEN-MARK$ CHECKER-RECORD-SYM? 0 <> ;
 
-\ TRUST-RAW: TRUST with the signature parser in raw-definer mode, the single
-\ authority that seals a storage cell when its definer publishes it. Every type
-\ variable is minted TVK-RAW instead of TVK-ANY: it admits plain scalars and
-\ refuses to bind a nominal family, so reading the cell back cannot manufacture
-\ a nominal identity. Publishing a created word goes only through here, so it
-\ cannot be registered unsealed.
-\ The mode is reset to off, not to its previous value: raw registration never
-\ nests inside another signature parse, and a latched mode would seal later
-\ ordinary signatures. It ends however the registration ends, throw included.
-\ Sealed for the reason TRUST-DECL is: it asks nothing.
-\ A created word takes no CTL-INHERITED fact: when it runs it pushes its cell or
-\ runs its definer's clause. The facts come from the engine's record of an
-\ interpret-mode `create` or `variable` (habu2.f C-DEFHOOK), which the check
-\ hook walks as a definition's text where `create` is a call; that walk cannot
-\ be told apart from a `:` definition that calls `create`, so they are dropped.
+\ The symbol of the effect the last created record links, 0 when it links none.
+\ A created record starts unlinked: RECORD-PUBLISHED-LOCAL clears its ordinal.
+: LASTC-LINK-SYM ( -- n )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF 0 EXIT THEN
+   data-base CHECKER-REG:CK-LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
+   rec NULL-PTR = IF 0 EXIT THEN
+   rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
+   ord 0 < ord RECORD-LINK-CAP @ >= or IF 0 EXIT THEN
+   ord RECORD-LINK-CELL RLINK.EFFECT cells + @ {: effect:n :}
+   effect 0= IF 0 EXIT THEN
+   effect 1- E-PTR ER.SYM @ ;
+
+\ TRUST in raw-definer mode, the only path that publishes a created word: every
+\ type variable is TVK-RAW, so the cell read back cannot bind a nominal family.
 : TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
+   \ A does> patch publishes under the symbol LASTC's record links, if any.
+   LASTC-LINK-SYM {: linked:n :}
    RES-TRUE SIG-RAW-DEFINER!
    0 DL-NEW !
-   na nu sa su [: TRUST-USIG! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
+   \ Off on every exit, not restored: raw registration never nests, and a
+   \ latched mode would seal later ordinary signatures.
+   na nu sa su linked [: TRUST-USIG-SYM! drop ;] [: RES-FALSE SIG-RAW-DEFINER! ;] finally
    DL-NEW @ {: effect:n :}
    DL-TAKE
-   na nu CHECKER-RECORD-SYM? {: sym:n :}
+   linked 0= IF na nu CHECKER-RECORD-SYM? ELSE linked THEN {: sym:n :}
+   \ A created word takes no CTL-INHERITED fact: those come from the hook's walk
+   \ of an interpret-mode `create` (habu2.f C-DEFHOOK), read as a call to it.
    sym CTL-FLAGS-SYM {: flags:n :}
    flags CTL-INHERITED and 0 <> IF
       sym flags CTL-INHERITED invert and sym CTL-MASKS-SYM NORET-ADD-SYM
    THEN
    effect sym NORET-NEWEST data-base CHECKER-REG:CK-LASTC-CELL +
       0 ptr-field @ RECORD-CREATED-XT ;
-REG-PROTECT
+REG-PROTECT   \ as TRUST-DECL: a row registered here asks nothing
 package CHECKER-REG
 ' TRUST-RAW DECLARATIONS RAW-OFF + xt!
 ;package
@@ -30128,7 +30140,7 @@ UNIT-CON-PROJECT-INSTALL
    effect 1- E-PTR ER.SYM @ CTOR-PEND-TAKE? drop ;
 
 : PENDING-CLOSED-RESULT ( n -- )
-   0 CK-CLOSED-SYM !
+   0 CK-CLOSED-SYM !  0 CK-CLOSED-OPEN !
    UP-PLAN UP.CLOSED UP@ 0= IF EXIT THEN
    UNIT-PENDING @ 0= IF UNIT-BAD THEN
    UNIT-NDICT @ {: ord:n :}

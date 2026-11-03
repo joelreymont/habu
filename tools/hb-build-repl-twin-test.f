@@ -81,13 +81,10 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
 : HBT-TWIN-CHILD$ ( -- ptr u8 n )
    S\" package HBT-TWIN-CHILD\npublic\n: NUMBER ( -- n ) 5 ;\n;package\n" ;
 
-\ The session's first `does>` runs before it creates anything, so it patches the
-\ record the restored LASTC-CELL names. Naming this process's X, the clause reads
-\ the 5 the build stored; the build's address instead lands wherever that
-\ address falls in this process. X keeps the `-- ptr a` its create gave it, so
-\ the print takes its distance from NULL-PTR, which is the clause's number.
+\ The session's first `does>` patches the restored LASTC-CELL's record, so X
+\ answers the 5 the build stored there, not what the build's address reads here.
 : HBT-TWIN-INPUT$ ( -- ptr u8 n )
-   S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X NULL-PTR - . cr\n" ;
+   S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X . cr\n" ;
 
 \ A and D share TMPDIR and the run's out root; B gets its own TMPDIR and out root.
 \ B's output name is longer than A's and D's. These are the tier 1 round's names;
