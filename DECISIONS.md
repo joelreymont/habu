@@ -6,6 +6,13 @@ learned live in the docs for their subject.
 
 ## Language and checker
 
+- 2026-11-04, scope memory (relayed by stuart from Tender): shown that every
+  MEM:WITH-BYTES scope maps and unmaps its memory (1,000,000 empty scopes
+  4.69 s, 2.04 s of it in the kernel) and a design that keeps small scopes in
+  chunks each task reuses, large ones still mapped, Joel chose "Approve
+  (Recommended)": "Pooled scopes; MEM:RELEASE-SCOPES frees a task's chunks at
+  join or kill." `MEM:RELEASE-SCOPES ( ptr u8 -- )` takes a task's data
+  region.
 - 2026-11-03, TASK's waits (asked from Tender): "what do you need STOP-FOR?
   what does it do? if it stops for some milliseconds then should it not be
   WAIT-MS, for example?"; then "i think anything that takes a semaphore should
