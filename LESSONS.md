@@ -458,7 +458,15 @@ entry.
   T0 shares only front-end code with tier 1. What T0 needs from tier 1's
   packages is copied into T0's own package and owned there; tier 1 keeps its
   copy, unedited, until it is deleted. Tier 1 is edited only to fix a defect
-  on a path it still owns (the next entry).
+  on a path it still owns (the next entry). Told that T0 still calls 16 of
+  tier 1's N* packages (about 123 sites; NEMIT, NDICT, NHOST, NDEFINITION
+  most) because the copy plan treated them as shared front end, Joel wrote
+  "how are we gonna remove tier1 if we are sharing code with it? we need to
+  review each piece of code we depend on and COPY it into T0 under a proper
+  package, etc. name. not rewrite the code but copy whatever source code we
+  need and review it, adjust it, etc." Every piece of tier-1 code T0 depends
+  on is copied into a T0 package with a proper name, reviewed and adjusted,
+  not rewritten; T0 shares nothing under src/compiler/native.
 - 2026-11-03, tier 1 bugs before Wasm moves to T0: asked to approve
   NELAB:FIXED building a CAST: word's body, so tier 1 stops refusing a cast
   with a quotation input (test/wasm/dynamic.f), Joel asked "what is NELAB? and
