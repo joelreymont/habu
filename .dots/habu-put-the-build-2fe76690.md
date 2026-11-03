@@ -1,0 +1,9 @@
+---
+title: "Put the build stack's public words to Joel"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-03T10:31:25.956911+02:00"
+---
+
+Problem (Fable objk review F4, 2026-11-02; carl-dots/.out/carl-file/review-objk-fable.md): the objk stack (868d10c5..92594f9e, landed 2026-11-03) added public words beyond the approved SOURCE-PRODUCER:FILE-HASH without Joel's approval (card section 1): TOOL-ROLE:ENTRY ( -- ), DONE ( -- ), ROLE$ ( -- ptr u8 n bool ), COLD-ROW ( ptr u8 n ptr u8 n ptr u8 -- ), DRAIN ( [ ptr u8 n ptr u8 n bool -- ] [ ptr u8 n ptr u8 n ptr u8 -- ] -- ) (tools/tool-role.f:216-260; callers: ENTRY/DONE in native-build.f, native-build-core.f, aot-builder.f, app-build.f, native-build-support.f, build-profile.f, compiler-images-build.f and two tests; ROLE$ native-definition-cache.f; COLD-ROW native-build-image.f; DRAIN native-build-result.f); NFILE-INPUTS:EACH-ROW, QUERY-ROW, CONTENT-ROW (native-file-inputs.f; caller native-definition-cache.f); NDEF-CACHE:FILE-HASHES (caller native-build-core.f). The env name HABU_BUILD_FILES is dot habu-one-per-file-8a33a19f. Acceptance: one interview question listing each word, effect and caller, with the option of making it private by joining packages where the callers are one subsystem; the answer recorded in LESSONS.md; a refused word removed or renamed in its own lane. Ask together with the SOURCE design's list (dot habu-make-the-src-f0bdcbe1): its lanes 4 and 6 rework TOOL-ROLE (ENTRY and DONE open and close SOURCE's recording pair; COLD-ROW and DRAIN may go with the cold load over the input log), so the TOOL-ROLE words are asked in their final form. Files: tools/tool-role.f, tools/native-file-inputs.f, tools/native-definition-cache.f. Verify: LESSONS.md entry. Depends: none. Ownership: carl. Claim: unassigned.
