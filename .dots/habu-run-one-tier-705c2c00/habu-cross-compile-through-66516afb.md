@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-10-28T14:52:51.618180+02:00"
 blocks:
   - habu-move-t0-into-16d2feab
-  - habu-make-the-fixed-fe3899b7
   - habu-reuse-app-files-51821a5e
 ---
 
