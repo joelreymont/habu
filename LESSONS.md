@@ -158,6 +158,13 @@ entry.
   connections carry bytes, a keepalive included, so a resume that heard only
   keepalives resumes again; and a call that fails after its response id is
   known cancels that response at OpenAI, logging a failed cancel.
+- 2026-11-03, a model server's replies for tests (relayed by phil from Zen):
+  asked to approve the public changes for moving Zen's model calls onto
+  Habu's MODEL client, among them TEST-MODEL:COMPLETED!, INCOMPLETE! and
+  REFUSAL! ( HTTP:response ptr u8 n -- ), which write the event streams
+  MODEL:CHAT reads so a test drives it against a local route, Joel chose
+  "Approve all (Recommended)": "Build the switch now as listed; Tender gets
+  the change id."
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself

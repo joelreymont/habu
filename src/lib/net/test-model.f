@@ -1,0 +1,136 @@
+\ test-model.f - a model server's replies for tests, never a production one:
+\ each public word answers one POST /responses on Habu's HTTP server as
+\ OpenAI's Responses API streams it, an event stream of response resp_1's
+\ created and in_progress events and then the terminal event carrying the
+\ reply, which MODEL:CHAT reads. The host routes the request to its own handler
+\ and calls one of them there.
+\ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a stream
+\ body and its writer, whose buffer a slot's first reply makes and the process
+\ keeps; a body stays in its row, as HTTP:BODY! borrows it, until the slot's
+\ next reply.
+\ https://platform.openai.com/docs/api-reference/responses-streaming
+
+require src/lib/string.f
+require src/lib/byte-buffer.f
+require src/lib/json.f
+require src/lib/net/http.f
+
+package TEST-MODEL
+private
+
+$100 constant FIRST-CAP
+
+HTTP:MAX-WORKERS BUF:HDR-BYTES * BUFFER: HEADS
+HTTP:MAX-WORKERS TYPED-BUFFER MADE bool
+HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
+
+: SLOT ( -- n ) HTTP:WORKER-SLOT ;
+: ROW ( -- ptr n ) SLOT BUF:HDR-BYTES * HEADS + CELL-VIEW ;
+: ROW$ ( -- ptr u8 n ) ROW BUF:SPAN$ BUF:BLEN>N ;
+
+
+: READY ( -- )
+   SLOT MADE @ if exit then
+   ROW FIRST-CAP BUF:N>BLEN BUF:INIT
+   true SLOT MADE ! ;
+
+
+\ Opens the data of an event of the type numbered n, after its type and number.
+: EVENT-OPEN ( ptr JSON:writer ptr u8 n n -- ptr JSON:writer )
+   {: type:ptr type-u:n seq:n :}
+   s" event: " JSON:WRITE-RAW type type-u JSON:WRITE-RAW
+   S\" \ndata: {" JSON:WRITE-RAW
+   s" type" type type-u JSON:WRITE-FIELD-S
+   S\" ,\qsequence_number\q:" JSON:WRITE-RAW seq JSON:WRITE-U ;
+
+
+: EVENT-CLOSE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" }\n\n" JSON:WRITE-RAW ;
+
+
+\ EVENT-OPEN for an event that carries a response, which comes next.
+: RESPONSE-OPEN ( ptr JSON:writer ptr u8 n n -- ptr JSON:writer )
+   EVENT-OPEN S\" ,\qresponse\q:" JSON:WRITE-RAW ;
+
+
+\ The response with the status, no output yet.
+: PENDING ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: status:ptr status-u:n :}
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
+   s" status" status status-u JSON:WRITE-FIELD-S
+   S\" ,\qoutput\q:[]}" JSON:WRITE-RAW ;
+
+
+\ A reply object's members through its first output item, a reasoning item.
+: REPLY-HEAD ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: status:ptr status-u:n :}
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q," JSON:WRITE-RAW
+   s" status" status status-u JSON:WRITE-FIELD-S
+   S\" ,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]}" JSON:WRITE-RAW ;
+
+
+\ A reply's message item, up to its one content part.
+: MESSAGE-OPEN ( ptr JSON:writer -- ptr JSON:writer )
+   S\" ,{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{" JSON:WRITE-RAW ;
+
+
+: MESSAGE-CLOSE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" }]}],\qincomplete_details\q:null,\qerror\q:null}" JSON:WRITE-RAW ;
+
+
+: COMPLETED-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: text:ptr text-u:n :}
+   s" completed" REPLY-HEAD MESSAGE-OPEN
+   S\" \qtype\q:\qoutput_text\q," JSON:WRITE-RAW
+   s" text" text text-u JSON:WRITE-FIELD-S
+   S\" ,\qannotations\q:[]" JSON:WRITE-RAW
+   MESSAGE-CLOSE ;
+
+
+: INCOMPLETE-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: reason:ptr reason-u:n :}
+   s" incomplete" REPLY-HEAD
+   S\" ],\qincomplete_details\q:{" JSON:WRITE-RAW
+   s" reason" reason reason-u JSON:WRITE-FIELD-S
+   S\" },\qerror\q:null}" JSON:WRITE-RAW ;
+
+
+: REFUSAL-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: text:ptr text-u:n :}
+   s" completed" REPLY-HEAD MESSAGE-OPEN
+   S\" \qtype\q:\qrefusal\q," JSON:WRITE-RAW
+   s" refusal" text text-u JSON:WRITE-FIELD-S
+   MESSAGE-CLOSE ;
+
+
+\ Answers with resp_1's opening events and then the terminal event of the
+\ type, carrying the reply the body writes from the text, as the whole body.
+: STREAMED ( HTTP:response ptr u8 n [ ptr JSON:writer ptr u8 n -- ptr JSON:writer ] ptr u8 n -- )
+   {: answer:HTTP:response text:ptr text-u:n body type:ptr type-u:n :}
+   READY
+   SLOT WRITER ROW JSON:WRITE-OPEN-BUF
+   s" response.created" 0 RESPONSE-OPEN s" queued" PENDING EVENT-CLOSE
+   s" response.in_progress" 1 RESPONSE-OPEN s" in_progress" PENDING EVENT-CLOSE
+   type type-u 2 RESPONSE-OPEN text text-u body execute EVENT-CLOSE
+   JSON:WRITE-CLOSE
+   answer s" Content-Type" s" text/event-stream" HTTP:HEADER!
+   answer ROW$ HTTP:BODY! ;
+
+public
+
+\ A stream ending in a completed reply whose message holds the text; no usage.
+: COMPLETED! ( HTTP:response ptr u8 n -- )
+   [: COMPLETED-REPLY ;] s" response.completed" STREAMED ;
+
+
+\ A stream ending in an incomplete reply with the reason.
+: INCOMPLETE! ( HTTP:response ptr u8 n -- )
+   [: INCOMPLETE-REPLY ;] s" response.incomplete" STREAMED ;
+
+
+\ A stream ending in a completed reply whose message part is a refusal with
+\ the text.
+: REFUSAL! ( HTTP:response ptr u8 n -- )
+   [: REFUSAL-REPLY ;] s" response.completed" STREAMED ;
+
+;package

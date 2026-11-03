@@ -1216,6 +1216,11 @@ SUITE test-issuer
    src/lib/net/test-issuer-test.f
 ;SUITE
 
+\ MODEL:CHAT against TEST-MODEL's replies on a loopback port.
+SUITE test-model
+   src/lib/net/test-model-test.f
+;SUITE
+
 \ The HTTP listener through an accept refused for want of descriptors. Its own
 \ row: it lowers RLIMIT_NOFILE and puts a pipe in place of stderr.
 SUITE http-accept-starved
