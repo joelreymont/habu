@@ -442,7 +442,9 @@ learned live in the docs for their subject.
   library's package, Joel asked "i think interning is its purpose, correct me
   if i'm wrong", then "call the package INTERN then?", and on the plan to move
   it to src/habu/intern.f as package INTERN, with the old build cache's and
-  dead words out and tier 1's calls following, answered "do it".
+  dead words out and tier 1's calls following, answered "do it". That plan
+  named the store's main word INTERN:STRING; asked why the move had become a
+  redesign, he wrote "we discussed INTERN:STRING so that one is fine".
 - 2026-11-03, the callback package: asked what the callback library's
   package FFI-CB should become, and shown that FFI is built into hb and sealed
   there, so a library loaded later cannot add words to it, Joel first chose
