@@ -1,12 +1,10 @@
-# Lessons
+# Decisions
 
-What stands now in Habu: each decision of Joel's with its date and his words,
-and each lesson learned with its evidence. A reversal edits or removes its
-entry.
+What stands now in Habu: each of Joel's decisions with its date, in his words,
+recorded once it is settled. A reversal edits or removes its entry. Lessons
+learned live in the docs for their subject.
 
-## Decisions
-
-### Language and checker
+## Language and checker
 
 - 2026-11-01, public words: after leads asked Joel to approve guard words
   where the fix was reading a request body on demand, he said to "ask
@@ -70,10 +68,9 @@ entry.
   `SOURCE-FILE:PERSIST ( -- )`, and asked "why do we have both source-file
   and source-root?". Shown that src/core/include.f splits loading source into
   six packages, so each seam forces public words, he asked "shouldn't all
-  these be in the SOURCE package?", then "either SOURCE or LOADER". The lead
-  chose SOURCE: the subject, not the machine, and src/lib/source.f is already
-  package SOURCE for reading source text. The loader's packages and the
-  table become one package SOURCE; words only the loader calls go private,
+  these be in the SOURCE package?", then "either SOURCE or LOADER". The
+  loader's packages and the table become one package SOURCE (the names he
+  approved in the next entry); words only the loader calls go private,
   INTERN and PERSIST included. Asked
   where the error-place words go, he asked "what is TOP-LINE and why do we
   need it? I'd think we just need LINE (or LINE-AT? worse?) and COLUMN";
@@ -129,12 +126,6 @@ entry.
 - 2026-10-27, formats: "why do you need to version any schemas? we have no
   legacy. hard cutover only!" A format change rewrites its writer and reader
   together, with no version number.
-- 2026-10-31, a checker word programs can see: asked whether
-  REPORT-UNCHECKABLE should become a checker word every program sees or be
-  copied into the source verifier, Joel answered "what's best for long term?"
-  (as on 2026-10-28 for T0's error constants, "dude, what's best for long
-  term?!", and on 2026-10-30 for CURL:HEADER+ refusing CR/LF). The lead chose
-  the checker word: one copy of the rule at its owner.
 - 2026-10-31, names: offered REFUSAL-TEXT for the package of the engine's
   error-message words, Joel answered "what not error text? wtf is a refusal?
   use standard programming terms! and you can have error line and column
@@ -187,13 +178,7 @@ entry.
   should happen before MODEL's streamed background responses land, given this
   session may not read the key from the keychain, Joel chose "You run it
   (Recommended)": the lead writes a probe file. On 2026-11-02, asked to run
-  it, Joel answered "you run it": the lead ran it, and gpt-6-luna answered a
-  streamed background CHAT and replayed a stream from `starting_after=1`
-  (events 2 to 68, status 200). Under Joel's relayed "use your best judgement" the
-  lead also chose, after the lane review: a call stays alive while its
-  connections carry bytes, a keepalive included, so a resume that heard only
-  keepalives resumes again; and a call that fails after its response id is
-  known cancels that response at OpenAI, logging a failed cancel.
+  it, Joel answered "you run it".
 - 2026-11-03, a model server's replies for tests (relayed by phil from Zen):
   asked to approve the public changes for moving Zen's model calls onto
   Habu's MODEL client, among them TEST-MODEL:COMPLETED!, INCOMPLETE! and
@@ -276,27 +261,13 @@ entry.
   counter and slot hook into the core for it, he asked "why in the world do you
   need TASK-LOCAL when you have TASK:+USER?": Maki's per-task typed pointer
   already runs on `TASK:+USER` with one private cast (maki
-  src/project-ops.f:176-182), so TASK-LOCAL is dropped. That cast was then
-  refused (E-CAST-OWNER), which raised the next entry.
-- 2026-10-31, casts naming another package's type: asked about the cast check
-  that refused Maki's per-task pointer, Joel answered "fix the cause not the
-  symptom! what the hell is the anti-forgery check? prove that we need it! why
-  in the world can you not hold another package's cursor?" On 2026-11-01, via
-  phil: "use your best judgement. pick what's best for the long term. tell
-  everyone the same". Fable and Astra each showed the check guards nothing: a
-  package rewrites a real JR:cursor or NEWTYPE cell through an admitted
-  reverse cast or a raw pointer and c! (/tmp/carl-cast/p1.f, p4.f), and it
-  refused only honest code (Maki, Zen). The lead chose to drop the question: a
-  cast may name another package's type, E-CAST-MINT stays, and E-CAST-OWNER
-  names only arena heads.
+  src/project-ops.f:176-182), so TASK-LOCAL is dropped.
 - 2026-10-31, cast errors: asked whether lane casterr may make
   CAST-ERROR:START, TOKEN!, FAMILY!, RAISE and SKIP and
   LOWER-CERT-HOOK:LINE-AT public, because checker words outside those
   packages call them, until nested packages make CAST-ERROR a part of CHECKER
   and hide them, Joel chose "Approve, DIAG-XT private": the print hook, used
-  only inside CAST-ERROR, stays private. START later became DECLARE, which
-  runs the declaration and clears the record when it ends, because a record
-  left holding the last declaration made cold and warm builds' images differ.
+  only inside CAST-ERROR, stays private.
 - 2026-10-31, error places: asked whether SRCLOC:FILE-BUFFER? ( -- bool ),
   true while the text being read is the open file's own bytes, may be public
   so the Habu loop's and the native compiler's error-place writers share one
@@ -327,17 +298,8 @@ entry.
   answered "add nested packages but i approve the design": a package opened
   inside another is its part, whose name and public words exist only inside
   the parent. On names: "COMP and XCOMP are the compiler and cross-compiler
-  packages. CHECKER is fine". Asked which files XCOMP holds: "that is for you
-  to decide. do what's best for long term". The lead chose COMP for compiling
-  (front end, IR, T0 and every architecture's back end as parts, so each
-  engine compiles itself through COMP) and XCOMP for building an image for a
-  target. Joel chose "One level" of nesting: a part holds no parts. The lead
-  added a refusal the design did not list: `package` opens a part only in the
-  file or evaluated string its package is open in, and elsewhere stays
-  `package at <loc>`, rc 75, as `;using` refuses to close a using opened
-  outside its buffer. Without it a library file required inside package APP
-  that opens its own `package LIBF` became the part APP:LIBF, the require
-  registry then skipped it at top level, and `LIBF:FW` was E-UNDEFINED.
+  packages. CHECKER is fine". Joel chose "One level" of nesting: a part
+  holds no parts.
 - 2026-10-31, a part's head resolver: inside package A, `: B:Q … ;` defines
   into part A:B, but the native compiler's name check found only top-level
   packages and the Habu loop's resolver was private to OUTER. Asked whether
@@ -382,8 +344,6 @@ entry.
   answered by event 3), 11 `after`, 12 `read`; events 14 `notified`, 15
   `tick`, 16 `file`, 17 `chunk`; mount options `Module` and `rpc`, viewport
   `notify` and `file`, and host-cli's `--notify`, `--tick` and `--file`.
-  host-cli's `--answer` and `--fail` already answer HTTP requests, so the
-  lead named the rpc steps `--answer-rpc ID FILE` and `--fail-rpc ID`.
 - 2026-11-02, sizing Maki's job runners: OS-CPU:PERFORMANCE-CORES and
   OS-MEMORY:TOTAL, approved on 2026-10-31 so Maki could compute its runner
   count from the host, needed a shared reader of Linux container (cgroup)
@@ -393,23 +353,6 @@ entry.
   settings from environment variables, he chose "New Maki config file": the
   runner count is a setting in a new Maki config file that takes all of
   Maki's settings, and Habu gets no host-size words.
-- 2026-11-01, errors the checker reports itself: under Joel's word relayed by
-  phil, "use your best judgement. pick what's best for the long term. tell
-  everyone the same", the lead made two choices. E-UNSAFE's repair class is
-  `remove_unsafe_word`, not `trusted_boundary_required`: a checked body cannot
-  name an unsafe word at all, and TRUSTED: is being retired. One global checker
-  word, `REPORTED-ERROR? ( n -- bool )`, lists every code the checker renders
-  before it throws, for CAST-ERROR:SKIP and the check tools alike, as
-  REPORT-UNCHECKABLE became one checker word on 2026-10-31.
-- 2026-11-01, a quotation's fresh region: under the same relayed word, the
-  lead chose the rule the checker implements. Quotations are xts, not
-  closures, so a fresh name a quotation's own inputs do not carry is minted by
-  each execution of the outermost quotation holding it at the top of its
-  outputs or in a callback input's rows, and shared by the quotations that
-  execution returns or hands on; a direct call, a tick and an inferred effect
-  read it alike. Its rows are test/rigid-region-suite.f section (32); no
-  checked body implements a name renewed at two levels.
-
 - 2026-11-01, sealing a package: Maki needs a package closed so later
   source cannot reopen it. Offered a new word, Joel answered "we already have
   package sealing, prove me wrong!". Measured: `private get-current
@@ -424,16 +367,8 @@ entry.
   replaces the idiom in the engine's files. Application images otherwise stay
   reopenable.
 
-### Compiler and builds
+## Compiler and builds
 
-- 2026-11-02, compile state: Joel wrote "you would benefit from using state
-  machines, prove me wrong". The lead could not: one T0 compile's lifecycle
-  is held in flags across five owners (M-OPEN, the seam's CUR and PLACED-AT,
-  NEMIT's rows, NCBSTUB's ARMED, NSHADOW's OPENED and PENDING), its legal
-  order lives in call sequences and comments, and a review found one guard
-  unreachable while other wrong orders pass. Each owner's lifecycle becomes
-  one typed state, written only by transition words that refuse a wrong
-  state.
 - 2026-11-03, the compiler lease: shown a design in which T0's compiles take
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are
@@ -522,11 +457,10 @@ entry.
   file's top level also prints, writes files, reads the environment and opens
   foreign libraries, he answered "whatever executes when linking has nothing
   to do with the file top-level as they are instructions added by the
-  linker. prove me wrong!" The lead could not: a top level runs once, when
-  its file compiles, and every hb and stripped image already starts without
-  running one. A linker writes a file's object as the instructions that
-  remake the file's result, and a reused file is linked without reading its
-  source; the loader only chooses between linking and compiling.
+  linker. prove me wrong!", then "we also need to rename LOADER to LINKER,
+  right? otherwise, keep going and keep it simple!" A linker writes a file's
+  object as the instructions that remake the file's result, and a reused
+  file is linked without reading its source.
 - 2026-11-03, x86-64 builds: asked whether to remove two of SOURCE-EXEC's
   words while a lane gave the x86-64 kernel the observer the build cache
   watches a file's re-run through, Joel asked "what is source-exec and why do
@@ -596,7 +530,7 @@ entry.
   evidence because a capability does not exist yet, build it in a branch and
   measure.
 
-### Processes
+## Processes
 
 - 2026-10-28, fork: shown that SUBJECT:RUN, the gate pool, eval and the
   property-test shards fork the loaded process and keep running Habu, which
@@ -610,7 +544,7 @@ entry.
   objc once the parent had a live task or had used Security or curl (dot
   habu-fork-only-to-59d3557e).
 
-### Tests
+## Tests
 
 - 2026-10-20, other targets: "we need elf32 and the TI code. also the intel
   code." On their tests, the same day: "the platform tests should have
@@ -644,35 +578,23 @@ entry.
   carry its weight? how can it be fixed?", then chose "Delete test, keep
   refusal": TMPDIR-CHECK keeps the refusal, untested.
 
-### Docs
+## Docs
 
 - 2026-10-23: "if you are trying to sync docs with code it means you should
   drop the docs and document the code instead." A doc passage that must track
   code is deleted and the fact goes into the code's comment.
+- 2026-11-03, this file (relayed by phil): "you are not saving lessons to
+  LESSONS.md but saving decisions instead. you are also often saving
+  decisions before we discuss them. adjust your instructions to name the file
+  DECISIONS.md instead of LESSONS.md and to NOT save premature decisions
+  before we settle them". Asked where lessons learned go, he chose "Decisions
+  only (Recommended)": "Lessons move to docs by subject, or the global rules
+  for ways of working."
 
-### Installing
+## Installing
 
 - 2026-10-28: "remember that there's just 1 public hb copy now, no versions!"
   The public Habu is ~/.local/lib/habu, updated in place.
 - 2026-10-28: "nobody should ask to hold anything. they should have their own
   copy of habu to run if they need". An install never waits on a client.
 
-## Lessons
-
-- `jj absorb` without `--into` rewrites master: this repository's
-  `immutable_heads()` is `none()`, and one bare absorb rewrote master and 4289
-  descendants. Name the target commits with `--into`.
-- `jj squash --from X --into Y` opens an editor to merge the two descriptions
-  when both have one, and an agent's call then waits in vim until killed (a
-  pkg1d fold squash waited 12 minutes on 2026-10-31). Pass `-u` to keep Y's
-  description.
-- A baseline engine runs the tree's source-loaded tools (tools/check.f and
-  what it loads), so swapping engines cannot show a tool change failing
-  before: casterr fold 4's worker ran diag-position on the old engine with the
-  new tools/check-all-errors-core.f, saw the same 7 failures on both, and
-  called them its own setup; they were the change. Show "fails before" by
-  reverting the tool source in a scratch copy of the tree, run through an
-  entry file at the copy's root: `--load` of a file below the root resolves
-  `require tools/…` against the running hb's tree (card section 7): a
-  before run that loaded a scratch copy's tools/lint/clobber-lint-test.f got
-  the workspace's lint, as a word only the new lint defines showed.

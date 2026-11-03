@@ -273,3 +273,15 @@ exercised, not a formal soundness or refinement theorem.
   sessions hours apart with unchanged code, more than many single changes.
 - Tests and measurements establish different properties. Describe what was
   actually checked without mandatory mutation campaigns or extra ledgers.
+- "Fails before" a tool change needs the old tool, not an old engine: an
+  engine runs the tree's source-loaded tools (tools/check.f and what it
+  loads), so a swapped engine reruns the new tool and shows the change's own
+  failures on both sides. Revert the tool source in a scratch copy of the
+  tree and run it through an entry file at the copy's root: `--load` of a
+  file below the root resolves `require tools/…` against the running hb's
+  tree (card section 7), so loading the copy's tools/lint/clobber-lint-test.f
+  directly runs the workspace's lint.
+- Behaviour is a defect only against its module's contract: read the
+  header before reporting one. SECRET on Linux reads only, and its WRITE and
+  ERASE throw E-UNAVAILABLE unless the host binds its own store with
+  SECRET:STORE! (src/lib/secret.f); that is its contract, not a defect.
