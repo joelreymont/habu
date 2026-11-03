@@ -78,7 +78,12 @@ learned live in the docs for their subject.
   token, he chose "SRCLOC:LINE, COLUMN, PATH$": `SRCLOC:LINE` and
   `SRCLOC:COLUMN ( ptr u8 -- n bool )` place any byte of the open file,
   `SRCLOC:PATH$ ( -- ptr u8 n )` names it, and top-level errors print a column
-  too once tools/check.f's run file stops shifting columns.
+  too once tools/check.f's run file stops shifting columns. On 2026-11-03,
+  shown that tools/tier0-profile.f's `corpus-raw` and `trivial-raw` modes time
+  compiling with checking off and that the normal modes already report the
+  checker words' share, he chose "Remove both (Recommended)"; shown that
+  `top-check@`, the read of the top-level checker's cell, has no caller outside
+  the switch's own tests, he chose "Remove it (Recommended)".
 - 2026-11-03, the source loader's hooks and names (design-source.md rev 6):
   shown that the build cache fills SOURCE-INPUT to see what each load reads
   and SOURCE-UNIT to swap a file load for its stored object, Joel chose
