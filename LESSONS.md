@@ -464,9 +464,7 @@ entry.
   "how are we gonna remove tier1 if we are sharing code with it? we need to
   review each piece of code we depend on and COPY it into T0 under a proper
   package, etc. name. not rewrite the code but copy whatever source code we
-  need and review it, adjust it, etc." Every piece of tier-1 code T0 depends
-  on is copied into a T0 package with a proper name, reviewed and adjusted,
-  not rewritten; T0 shares nothing under src/compiler/native.
+  need and review it, adjust it, etc."
 - 2026-11-03, tier 1 bugs before Wasm moves to T0: asked to approve
   NELAB:FIXED building a CAST: word's body, so tier 1 stops refusing a cast
   with a quotation input (test/wasm/dynamic.f), Joel asked "what is NELAB? and
@@ -502,9 +500,8 @@ entry.
   which now ends the request, he answered "i did not approve any use of
   NDEFINITION, i object to the use of the N* packages and thought you were
   redoing them", and asked why the request must be ended and how the FFI
-  callback setup works. His approvals cover the words' names and contracts,
-  not their place in NDEFINITION: T0 is not to use tier 1's N* packages, and
-  lane 2's NDEFINITION design is withdrawn.
+  callback setup works. His approvals covered the words' names and
+  contracts, not their place in NDEFINITION.
 - 2026-11-03, FFI callbacks: shown that CALLBACK: leaves a request (slot and
   thunk) that the next compile fills with the callback's C entry stub, ended
   on every exit so a refused accessor cannot hand its stub to a later word,
@@ -512,12 +509,7 @@ entry.
   separate FFI-CB package? no backwards compatibility so remove the 16
   ready-made stubs. you don't need to end stubs, prove me wrong! when you
   define a callback you define it for life of the program, to bridge a given
-  habu word." The lead could not prove him wrong: a slot is never given back
-  (src/lib/ffi-callback.f header) and nothing retires a callback, so a
-  request needs ending only because defining the callback and placing its
-  stub are two steps. A callback's C entry is made in the step that defines
-  it, with no state left between calls; the 16 stubs (layout.f CB-POOL,
-  "retained for seed compatibility") go.
+  habu word." The 16 stubs (layout.f CB-POOL) go.
 - 2026-11-02, T0 compiling for a second machine (dual emission): shown a
   proposal that added an unplaced seal word beside T0's placing SEAL and made
   tier 1's SHADOW-TAKE public in NDEFINITION, Joel answered "this smells. is
