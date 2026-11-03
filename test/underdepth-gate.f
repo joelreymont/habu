@@ -255,8 +255,6 @@ public
    s" patch32" UDG-PRIM-ROW
    s" bare evaluate fails closed pre-execution" T-LABEL
    s" evaluate" UDG-PRIM-ROW
-   s" bare set-check fails closed pre-execution" T-LABEL
-   s" set-check" UDG-PRIM-ROW
    s" bare ?dup fails closed (was a guard-page read, rc 102)" T-LABEL
    s" ?dup" UDG-PRIM-ROW
    s" bare 2>r fails closed (was a guard-page read, rc 102)" T-LABEL

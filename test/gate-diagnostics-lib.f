@@ -718,8 +718,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" EV ( -- n ) evaluate" GE-SRC-CHECK-LINE
    s" IM ( -- ) immediate" GE-SRC-CHECK-LINE
    s" LB ( -- ) [" GE-SRC-CHECK-LINE
-   s" RB ( -- ) ]" GE-SRC-CHECK-LINE
-   s" PF ( -- ) 0 set-preflight" GE-SRC-CHECK-LINE ;
+   s" RB ( -- ) ]" GE-SRC-CHECK-LINE ;
 
 : UNSAFE-CHECKS ( -- )
    GE-HB-RESET
@@ -727,7 +726,7 @@ TYPED-VARIABLE SPLICE-LEN len
    s" unsafe compiler words verdicts" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
-   s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
    SB$ s" unsafe compiler words verdict output" GE-EXPECT-OUT
    GE-HB-RESET
    GE-SRC-RESET
@@ -738,12 +737,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" token" s" evaluate" s" unsafe checker token" ERR-JSTR
    s" habu-unsafe.err" s" unsafe diagnostic contract" DIAG-CONTRACT
    s" diag-repair-class" s" habu-unsafe.err" s" remove_unsafe_word" s" unsafe repair class" GJA2S
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : PF ( -- ) 0 set-preflight ;" GE-SRC-LINE
-   s" tools/check.f accepted unsafe set-preflight" CHECK-JSON
-   s" code" s" E-UNSAFE" s" set-preflight checker E-UNSAFE" ERR-JSTR
-   s" token" s" set-preflight" s" set-preflight checker token" ERR-JSTR
    GE-HB-RESET
    GE-SRC-RESET
    s" : EV ( -- n ) evaluate ;" GE-SRC-LINE

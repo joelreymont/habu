@@ -2465,7 +2465,6 @@ public
 \ NEWTYPE generates no word and is admitted. The replay entries (CHECKER-DEFSUM,
 \ *-REPLAY) define no word and stay open: verify-source.f runs them hookless in
 \ the fixpoint's certify child (tools/build-fixpoint-certify.f).
-\ test/sumtype-unchecked-e2e.f pins this.
 : TDECL-UNCHECKED$ ( -- ptr u8 n )
    s" checking is suspended; declare it where checking is on" ;
 

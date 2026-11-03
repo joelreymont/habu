@@ -1,9 +1,9 @@
 \ top-row-storage-test.f - the interpret row types top-level storage as a colon
-\ body does: a refused top-level store
-\ gets its colon-body twin's code, token and reason with rc 70, and the cell
-\ keeps its old contents. Programs run through `evaluate-closed`, the row --load
-\ keeps in this process; a child runs only the boundaries named at their cases
-\ (a crash, a rewired search order or check hook, the file label, the REPL).
+\ body does: a refused top-level store gets its colon-body twin's code, token
+\ and reason with rc 70, and the cell keeps its old contents. Programs run
+\ through `evaluate-closed`, the row --load keeps in this process; a child runs
+\ only the boundaries named at their cases (a crash, a rewired search order, the
+\ file label, the REPL).
 require src/lib/errors.f
 require src/lib/test.f
 require src/lib/string.f
@@ -216,12 +216,12 @@ variable ERR-U
    MISMATCH S\" \"token\":\"TS-NN\"" HAS?  S\" \"actual\":\"r " HAS?
    DISARM ;
 
-\ Nothing checked the window survivor in: the row rebuilds the window's cells as
-\ unknown, and a typed consumer refuses an unknown cell whatever it holds.
-: CASE-WINDOW-SURVIVOR ( -- )
-   s" a cell pushed inside 0 set-check is refused at its next typed consumer" T-LABEL
+\ The row knows a TRUSTED: body's declared effect, not the cells it leaves: it
+\ rebuilds them as unknown, and a typed consumer refuses an unknown cell.
+: CASE-LEFTOVER ( -- )
+   s" a cell a TRUSTED: body leaves past its effect is refused at its next typed consumer" T-LABEL
    CLEAR ARM
-   [: s" check@ 0 set-check here swap set-check TS-PV !" evaluate-closed ;] CHECK-RC TTHROWSQ
+   [: s" TRUSTED: TS-L1 ( -- ) here ;  TS-L1 TS-PV !" evaluate-closed ;] CHECK-RC TTHROWSQ
    S\" \"code\":\"E-STALE-READ\"" HAS?  AT-STORE
    S\" \"repair_class\":\"drop_unknown_cell\"" HAS?
    S\" \"reason\":\"unknown cell: this reads a cell beneath the cells the interpret row knows" HAS?
@@ -296,11 +296,11 @@ variable ERR-U
    S\" \"code\":\"E-MISMATCH\"" ERR-HAS?  S\" \"token\":\"catch\"" ERR-HAS?
    S\" \"actual\":\"n \"" ERR-HAS? ;
 
-\ A child: unchecked, this program branches to the address `here` pushed inside
-\ the window, which crashes the process.
+\ A child: unchecked, this program branches to the address `here` the TRUSTED:
+\ body left, which crashes the process.
 : CASE-EXECUTE-UNKNOWN ( -- )
-   s" execute of a cell a 0 set-check window left names the unknown cell" T-LABEL
-   s" true DIAG-JSON! check@ 0 set-check here swap set-check execute" CHECK-RC EXITS
+   s" execute of a cell a TRUSTED: body left names the unknown cell" T-LABEL
+   s" true DIAG-JSON! TRUSTED: TS-L2 ( -- ) here ;  TS-L2 execute" CHECK-RC EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"execute\"" ERR-HAS? ;
 
 \ A child: unchecked, `evaluate` would read a string from whatever the stack
@@ -328,19 +328,16 @@ variable ERR-U
 \ every later case.
 : CASE-LABEL ( -- )
    s" a tool's file label names a top-level refusal's file" T-LABEL
-   S\" check@ 0 set-check s\" /subject/label.f\" DIAG-FILE! true DIAG-JSON! set-check here TS-V !"
+   S\" s\" /subject/label.f\" DIAG-FILE! true DIAG-JSON! here TS-V !"
    CHECK-RC EXITS
    S\" \"file\":\"/subject/label.f\"" ERR-HAS?
    S\" \"code\":\"E-RAW-CELL-PTR\"" ERR-HAS? ;
 
-\ A child: unchecked, `c@` reads through the window's cell, which crashes the
-\ process. The window leaves two cells; the string literal, the first checked
-\ event after it, lands over no saved row, so the row pads them as unknown. The
-\ return's `2drop` removes the string with no event between, so the next load
-\ finds the window's cells and `c@` refuses the one it reads.
+\ A child: unchecked, `c@` reads through a cell TS-L3 left, which crashes the
+\ process. The literal pads TS-L3's cells as unknown (CHECKER-TOP-PUSH).
 : CASE-SHORT-ROW ( -- )
    s" a literal over a row shorter than the stack leaves the cells beneath unknown" T-LABEL
-   S\" true DIAG-JSON! TRUSTED: TS-EV2 ( ptr u8 n -- ) evaluate 2drop ; s\\\" check@ 0 set-check 0 0 rot set-check s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
+   S\" true DIAG-JSON! TRUSTED: TS-EV2 ( ptr u8 n -- ) evaluate 2drop ; TRUSTED: TS-L3 ( -- ) 0 0 ; s\\\" TS-L3 s\\\" abc\\\"\" TS-EV2 drop c@ . cr"
    CHECK-RC EXITS
    S\" \"code\":\"E-STALE-READ\"" ERR-HAS?  S\" \"token\":\"c@\"" ERR-HAS? ;
 
@@ -393,15 +390,6 @@ variable ERR-U
    SB-RESET AMBIG AFTER  s" ambiguous" RUNS-AFTER
    s" two used publics of one tail, one retired: p3 is refused by its own diagnostic" T-LABEL
    SB-RESET AMBIG P3  s" ambiguous" REFUSES-P3 ;
-
-\ A child: these replace the check hook and the tier for the rest of the process.
-: CASE-HOOK-ROWS ( -- )
-   s" ' H set-check, 0 set-check and 1 set-tier run at top level" T-LABEL
-   SB-RESET
-   s" : TS-H ( ptr u8 n -- n ) 2drop -1 ; " SB-APPEND
-   s" check@ 0 set-check ' TS-H set-check 0 set-check set-check 1 set-tier " SB-APPEND
-   AFTER
-   SB$ 0 EXITS  s" AFTER" OUT-HAS? ;
 
 \ ---- the admitted programs ----------------------------------------------------
 
@@ -478,14 +466,6 @@ variable ERR-U
    ['] SIBLING-LITERALS 0 TTHROWSQ
    TS-V @ 7 T= ;
 
-: CASE-WINDOW ( -- )
-   s" a 0 set-check window runs unchecked" T-LABEL
-   [: S\" check@ 0 set-check s\" abc\" + drop set-check" evaluate-closed ;] 0 TTHROWSQ
-   s" a window inside a nested evaluation leaves the outer row typed" T-LABEL
-   [: S\" s\" check@ 0 set-check set-check 5\" TEST-EVAL:N 5 T=" evaluate-closed ;] 0 TTHROWSQ
-   s" an evaluate inside a window continues the row it reads" T-LABEL
-   [: S\" check@ 0 set-check s\" set-check 5\" evaluate TS-NN" evaluate-closed ;] 0 TTHROWSQ ;
-
 : CASE-TRUSTED ( -- )
    s" a TRUSTED: word, the CHECK! probe and a TRUSTED: shim are admitted" T-LABEL
    [: s" TRUSTED: TS-PASSES? ( ptr u8 n -- bool ) 2drop 0 0= ;" evaluate-closed ;] 0 TTHROWSQ
@@ -531,7 +511,7 @@ public
    CASE-BYTE-STORE
    CASE-POINTER-SUM
    CASE-REAL-TO-N
-   CASE-WINDOW-SURVIVOR
+   CASE-LEFTOVER
    CASE-SITE
    CASE-EVAL-SITE
    CASE-LABEL
@@ -542,7 +522,6 @@ public
    CASE-RETURN-BELOW
    CASE-SHORT-ROW
    CASE-SCOPES
-   CASE-HOOK-ROWS
    CASE-NUMERIC
    CASE-REAL
    CASE-DECLARED
@@ -553,7 +532,6 @@ public
    CASE-ACROSS-REQUIRE
    CASE-SIBLINGS
    CASE-SIBLING-LITERALS
-   CASE-WINDOW
    CASE-TRUSTED
    CASE-REPL
    T-REPORT ;

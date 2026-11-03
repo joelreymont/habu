@@ -2308,10 +2308,6 @@ WHITEBOX-SUITE type-decl
    test/type-decl-suite.f
 ;SUITE
 
-SUITE sumtype-unchecked
-   test/sumtype-unchecked-e2e.f
-;SUITE
-
 WHITEBOX-SUITE type-export
    test/type-export-suite.f
 ;SUITE
