@@ -402,13 +402,23 @@ entry.
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are
   you doing multi-threaded compiles?" They are not: only the main thread
-  compiles (a task's thread exits 79 before any compiler runs), and the
-  lease's other check, a compile started inside another, is the one M-OPEN
-  already makes. T0 takes no lease and keeps M-OPEN. Told the lease would stay
-  tier 1's until tier 1 goes, Joel asked "if you are taking no lease then why
-  are you modifying calls to NLEASE? why have NLEASE at all?" Its checks repeat
-  exit 79, M-OPEN and NSESSION's own record of the backend work running, so
-  NLEASE goes now, with every lease argument and check.
+  compiles (src/lib/task.f's contract), and the lease's other check, a
+  compile started inside another, is the one M-OPEN already makes. T0 takes
+  no lease and keeps M-OPEN. Told the lease would stay tier 1's until tier 1
+  goes, Joel asked "if you are taking no lease then why are you modifying
+  calls to NLEASE? why have NLEASE at all?" The lead read that as removing
+  NLEASE from tier 1 and designed it; shown that tier 1 cannot retire yet (it
+  compiles every Wasm module, stripped images and saved app images, and is
+  kept for experiments) and that 63 of NLEASE's 65 uses sit in tier-1-only
+  files, Joel chose "With tier 1 (Recommended)": NLEASE goes when tier 1 is
+  deleted. He added "the reason i pointed out nlease is because i saw you
+  modifying nlease or using nlease in some other code".
+- 2026-11-03, editing tier 1: Joel asked "why do we not stop modifying T1 and
+  focus on T0? why do we keep modifying T1?" T0 work edits tier 1 only where
+  T0 shares a package with it (NDEFINITION, NEMIT, NPUB, NSHADOW, NDICT, the
+  callback stub) and T0's change moves tier 1's calls into that package, or
+  to fix a defect on a path tier 1 still owns (the next entry). No tier-1-only
+  cleanup, and no T0 design leans on tier 1's machinery.
 - 2026-11-03, tier 1 bugs before Wasm moves to T0: asked to approve
   NELAB:FIXED building a CAST: word's body, so tier 1 stops refusing a cast
   with a quotation input (test/wasm/dynamic.f), Joel asked "what is NELAB? and
