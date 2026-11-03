@@ -1,8 +1,5 @@
-\ OUTER:NUMBER against the engine's own reader. Every spelling must answer
-\ num-parse's value, float flag and ok. num-parse hides range refusal, so the
-\ interpreter is its oracle: with a word of the spelling's name defined,
-\ evaluating a range-refused spelling still exits 70 (undefined), and any
-\ other spelling reads as its number or runs the word.
+\ OUTER:NUMBER against num-parse's value, float flag and ok; the name wall, which
+\ refuses a name the reader reads or refuses for range, checks its range flag.
 require src/lib/test.f
 require src/lib/fmt.f
 require src/lib/f64-text.f
@@ -76,17 +73,18 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
    a u GE-RC@ ;
 
 
-: SAME-RANGE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u RANGE? {: range:bool :}
-   range if 1 REFUSALS +! 70 else 0 then {: want:n :}
+: SAME-WALL ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u num-parse nip nip  a u RANGE?  or {: number:bool :}
+   number if 1 REFUSALS +! 70 else 0 then {: want:n :}
    a u HOSTILE-EVAL {: rc:n :}
-   a u T-LABEL rc want T= ;
+   a u T-LABEL rc want T=
+   a u T-LABEL GT-ERR$ s" hb: number cannot be a definition name: " CONTAINS? number FLAG= ;
 
 
-\ A spelling that can name a word: both oracles.
+\ A spelling a definition may try to take: both oracles.
 : SPELLING ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SAME-PARSE
-   a u SAME-RANGE
+   a u SAME-WALL
    1 COMPARED +! ;
 
 
@@ -152,7 +150,7 @@ create DECIMAL-TEXT F64-TEXT:MAX-BYTES allot
 : SUMMARY ( -- )
    s" outer-number: " type COMPARED @ FMT:.INT
    s"  spellings compared with num-parse, " type REFUSALS @ FMT:.INT
-   s"  range refusals with evaluate" type cr ;
+   s"  refused as definition names" type cr ;
 
 
 T-RESET

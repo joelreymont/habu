@@ -107,10 +107,8 @@ variable NUM-U
    s" : CONSTRUCT ( -- ) ;" SB-APPEND LF
    SB$ ;
 
-\ Number-shaped names: the numeric parser wins over the dictionary
-\ (test/gate-dictionary-lib.f LITERAL-FIRST), so these definitions are
-\ unreachable or float-confusable and must be rejected (`60 .0` reads as a
-\ float).
+\ Number-shaped names, which hb refuses too, and U.0, which one inserted space
+\ makes a float literal.
 : NUM-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : .0 ( n -- ) drop ;" SB-APPEND LF

@@ -179,6 +179,9 @@ variable LDEFKWGUARD  variable LDEFKWFAIL  variable LDEFKWMSG   \ definition-nam
 variable LRESDEF  variable LRESDEFMSG   \ sealed reserved definition name (C-RESERVED-DEF-GUARD): its spelling + its message
 : RESDEFMSG$ ( -- ptr u8 n )   s" hb: reserved word cannot be a definition name: " ;
 : RESDEFMSG-LEN ( -- n )   RESDEFMSG$ nip ;
+variable LNUMDEFMSG   \ number-shaped definition name (C-NUMBER-DEF-GUARD): its message
+: NUMDEFMSG$ ( -- ptr u8 n )   s" hb: number cannot be a definition name: " ;
+: NUMDEFMSG-LEN ( -- n )   NUMDEFMSG$ nip ;
 \ Capacity refusals that state a count: one line naming what filled up, the
 \ ceiling and the count. LDIAGU writes a
 \ number on fd 2 and LDIAGDEF the definition being compiled.
@@ -654,6 +657,7 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    LDEFKWMSG LABEL@ LBL, DEFKWMSG$ BYTES,
    LRESDEFMSG LABEL@ LBL, RESDEFMSG$ BYTES,
    LRESDEF LABEL@ LBL, STRUCTURE-MAKE:PROJECT-NAME$ BYTES,
+   LNUMDEFMSG LABEL@ LBL, NUMDEFMSG$ BYTES,
    LORPHANMSG LABEL@ LBL, ORPHANMSG$ BYTES,            \ LORPHAN appends the closer token + newline
    LCFCAPMSG LABEL@ LBL, CFCAPMSG$ BYTES,              \ LCFCAP appends the opener token + newline
    LCFKINDMSG LABEL@ LBL, CFKINDMSG$ BYTES,            \ LCFKIND appends the token + newline
@@ -4690,6 +4694,17 @@ public
       0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    ok LBL, ;
 
+\ A name the number reader claims, a number refused for range included, dies 70
+\ with the token written, as definers.f DEF-WALL does. Clobbers x2-x17 and x30.
+: C-NUMBER-DEF-GUARD ( -- )
+   LBL {: ok:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM LABEL@ BL,
+   17 12 17 ORR,  17 ok CBZ,                            \ x12 read a number, x17 refused its range
+      0 2 MOVZ,  1 LNUMDEFMSG LABEL@ ADR,  2 NUMDEFMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
+   ok LBL, ;
+
 variable LQUALIFYDEF      \ shared qualification helper entry
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
@@ -4728,6 +4743,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       qopen LBL,
       LDEFKWGUARD LABEL@ BL,
       qwalled LBL,
+      C-NUMBER-DEF-GUARD
       C-RESERVED-DEF-GUARD
       C-QUALIFY-CAP
       C-REJECT-DUP-DEF
@@ -13403,7 +13419,7 @@ package LABELS
    LBL LINTERNAL !  LBL LINTMSG !  LBL LTRUSTTICK !  LBL LTRUSTTICKMSG !
    LBL LPOLICY !  LBL LPOLICYMSG !  LBL LPOLICYREC !  LBL LPOLICYTOPREC !
    LBL LMININ !  LBL LMINMSG !  LBL LFLOORREC !
-   LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !  LBL LRESDEF !  LBL LRESDEFMSG !
+   LBL LPREFMISS !  LBL LPREFMISSMSG !  LBL LDEFKWMSG !  LBL LRESDEF !  LBL LRESDEFMSG !  LBL LNUMDEFMSG !
    LBL LORPHAN !  LBL LORPHANMSG !
    LBL LCFKIND !  LBL LCFKINDMSG !
    LBL LCFCAP !  LBL LCFCAPMSG !

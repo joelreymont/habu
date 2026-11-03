@@ -3201,7 +3201,6 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s\" \"word\":\"42\"" CONTAINS? TTRUE ;
 
 : RAW-NUMERIC ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
-   a u b v OPERAND-SRC$ HB-LOAD-SRC NOM-LOAD-ADMITTED
    a u b v OPERAND-SRC$ DIRECT-JSON-STDIN NUMERIC-REFUSED ;
 
 : RAW-PRINTS ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n want:ptr wantu:n :}
@@ -3280,7 +3279,6 @@ create BIG $2000 allot   variable BIG-U
 
 : LOCAL-KW ( ptr u8 n -- ) {: kw:ptr kwu:n :}
    kw kwu s" 5 CKT-LK ." LOCAL-KW$ s" 5" RAW-PRINTS
-   kw kwu s" : 42 ( -- ) ;" LOCAL-KW$ HB-LOAD-SRC NOM-LOAD-ADMITTED
    kw kwu s" : 42 ( -- ) ;" LOCAL-KW$ DIRECT-JSON-STDIN NUMERIC-REFUSED ;
 
 \ `['] \` in a body ticks a word named `\`, as the loader reads it, and the

@@ -86,8 +86,8 @@ public
   `E-RESERVED-DEFINITION`. Nor can the target predicates `HB-TARGET-LINUX?`,
   `HB-TARGET-MACOS?` and `HB-TARGET-LINUX-X86-64?`, by any definer (`:`,
   `TRUSTED:`, `defer`, `constant`, …): `tools/check.f` refuses them, not
-  `--load`. A number-shaped name (`: 42`) is refused by
-  `tools/check.f` (`E-NUMERIC-DEFINITION`), not by `--load`.
+  `--load`. A number-shaped name (`: 42`, an overflowed `: 99999999999999999999`
+  too) is refused by `--load`, by every definer: rc 70.
 
 forth.md: **Naming**, **Packages**, **Importing … with `using`**, **Rules
 learned by refusal**.

@@ -400,17 +400,6 @@ variable CANDIDATE-VERDICT
    s" 7" GE-OUT-LINE
    SB$ s" hb local-first output" GE-EXPECT-OUT ;
 
-: LITERAL-FIRST ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : 10 ( -- ) ;" GE-SRC-LINE
-   s" : CALL10 ( -- n ) 10 ;" GE-SRC-LINE
-   s" CALL10 ." GE-SRC-LINE
-   s" hb numeric literals before dictionary lookup" GE-EVAL-RUN-STDIN
-   SB-RESET
-   s" 10" GE-OUT-LINE
-   SB$ s" hb numeric literal-first output" GE-EXPECT-OUT ;
-
 : NAMESPACE-QUALIFIED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -658,10 +647,6 @@ variable CANDIDATE-VERDICT
 
 \ One literal grammar for engine and checker: int -?d+ | -?$h+, float -?d*.d+;
 \ dot-leading spellings (.5 -.5 .0) are float literals, 5. and ..5 are words.
-\ The engine claims shaped decimals before lookup (LITERAL-FIRST), so the
-\ checker must claim the same token set or a number-shaped word certifies with
-\ an effect the runtime never executes. Number-shaped definitions appear only in
-\ child source strings here; reserved-name-lint forbids them in committed code.
 : LITERAL-FLOAT-SRC ( -- )
    GE-SRC-RESET
    s" require src/lib/ieee754.f" GE-SRC-LINE
@@ -678,11 +663,7 @@ variable CANDIDATE-VERDICT
    s" FLOK5 ( -- n ) -$FF" GE-SRC-CHECK-LINE
    s" FLBAD1 ( -- r ) 5." GE-SRC-CHECK-LINE
    s" FLBAD2 ( -- r ) ..5" GE-SRC-CHECK-LINE
-   s" FLBAD3 ( -- n ) .5" GE-SRC-CHECK-LINE
-   s" : .0 ( n -- ) drop ;" GE-SRC-LINE
-   s" 60 .0 IEEE754:F64>BITS . ." GE-SRC-LINE
-   s" SHOK ( -- r ) .0" GE-SRC-CHECK-LINE
-   s" SHBAD ( n -- ) .0" GE-SRC-CHECK-LINE ;
+   s" FLBAD3 ( -- n ) .5" GE-SRC-CHECK-LINE ;
 
 : LITERAL-FLOAT-OUT ( -- )
    SB-RESET
@@ -693,9 +674,7 @@ variable CANDIDATE-VERDICT
    s" -255" GE-OUT-LINE
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
-   s" 1" GE-OUT-LINE s" 1" GE-OUT-LINE s" 0" GE-OUT-LINE
-   s" 0" GE-OUT-LINE s" 60" GE-OUT-LINE
-   s" -1" GE-OUT-LINE s" 0" GE-OUT-LINE ;
+   s" 1" GE-OUT-LINE s" 1" GE-OUT-LINE s" 0" GE-OUT-LINE ;
 
 : LITERAL-FLOAT-FIRST ( -- )
    GE-HB-RESET
@@ -703,11 +682,6 @@ variable CANDIDATE-VERDICT
    s" hb float literal grammar engine+checker" GE-HB-RUN-STDIN
    LITERAL-FLOAT-OUT
    SB$ s" hb float literal-first output" GE-EXPECT-OUT
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : .0 ( n -- ) drop ;" GE-SRC-LINE
-   s" : SHRUN ( n -- ) .0 ;" GE-SRC-LINE
-   70 s" at '.0'" s" hb rejects call to number-shaped word" RUN-BAD-CHILD
    GE-HB-RESET
    GE-SRC-RESET
    s" 5. ." GE-SRC-LINE
@@ -1454,7 +1428,6 @@ public
    LOCAL-QUOT-CHECKS
    LOCAL-QUOT-FAIL
    LOCAL-FIRST
-   LITERAL-FIRST
    LITERAL-FLOAT-FIRST
    LITERAL-FLOAT-EVAL
    LITERAL-FLOAT-BOUNDARY

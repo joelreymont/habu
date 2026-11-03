@@ -17956,13 +17956,8 @@ defer C2-STOW-BORROW-HOOK ( -- )
       PE-I @ 1 + PE-I !
    repeat
    TSOK @ 0 <> ;
-\ float literal shape: -?d*.d+ — exactly one dot, >=1 digit after it,
-\ digits-before-dot optional. Admission is asked separately of num-parse so an
-\ overflowing decimal stays claimed here instead of falling through as a name.
-\ dot-leading spellings (.5 -.5 .0) ARE engine float literals, and the checker
-\ must claim precisely the tokens the runtime claims (test/gate-dictionary-lib.f
-\ LITERAL-FIRST) or a number-shaped word certifies as a call the runtime can
-\ never reach.
+\ Float literal shape -?d*.d+, the engine's (test/gate-dictionary-lib.f
+\ LITERAL-FLOAT-FIRST); num-parse admits, so overflowed decimals stay claimed.
 : FLODIG-CHAR ( n bool u8 -- n bool )
    {: dots:n valid:bool c:u8 :}
    c 46 = IF dots 1 + valid dots 0= and EXIT THEN

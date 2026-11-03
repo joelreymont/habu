@@ -87,17 +87,17 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
   skip the arms of an `if` the engine's target never runs. Lexical locals such
   as `{: i:n :}` stay legal. `tools/check.f` reports `E-RESERVED-DEFINITION`
   with file, line and token.
-- **Never define a number-shaped word.** Numeric parsing precedes dictionary
-  lookup: `: 42 ( -- n ) 7 ; 42 .` prints 42, not 7. `tools/check.f` refuses
-  such definitions as `E-NUMERIC-DEFINITION`, including dot-digit tails such
-  as `U.0`. Dot-letter printers (`.U`, `.INT`, `F.N`) and names such as
-  `1STNZ`, `0<>`, `2DUP` remain legal. Interpretation, compilation,
-  `evaluate` and the checker use one literal grammar: integer `-?d+ | -?$h+`;
-  float `-?d*.d+`, exactly one dot with a digit after it. Thus `.5`, `-.5`
-  and `.0` are floats; `5.` and `..5` are words. A decimal literal too large
-  for a cell is still a number and is refused before dictionary lookup:
-  `99999999999999999999` is `E-UNDEFINED-TOP-LEVEL` at top level. There is
-  no `BASE`, `HEX` or `DECIMAL`: write `$ff` for hex, and `.` prints decimal.
+- **Never define a number-shaped word.** Every definer refuses a name the
+  number reader claims, a number out of range included: `: 42` writes
+  `hb: number cannot be a definition name: 42` and exits 70. Dot-letter
+  printers (`.U`, `.INT`, `F.N`) and names such as `1STNZ`, `0<>`, `2DUP`
+  remain legal. Interpretation, compilation, `evaluate` and the checker use
+  one literal grammar: integer `-?d+ | -?$h+`; float `-?d*.d+`, exactly one
+  dot with a digit after it. Thus `.5`, `-.5` and `.0` are floats; `5.` and
+  `..5` are words. A decimal literal too large for a cell is still a number
+  and is refused before dictionary lookup: `99999999999999999999` is
+  `E-UNDEFINED-TOP-LEVEL` at top level. There is no `BASE`, `HEX` or
+  `DECIMAL`: write `$ff` for hex, and `.` prints decimal.
 - **Engine sources are exempt from the reserved-word rule**: they implement the
   language and define the reserved words themselves. `tools/check.f` does not
   check a file the engine provides (`E-ENGINE-PROVIDED`); rebuilding `bin/hb`

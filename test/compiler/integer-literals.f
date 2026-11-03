@@ -67,33 +67,10 @@ package INTEGER-LITERALS-TEST
    70 lit len s" overflowing compiled integer" GE-EVAL-FORK-BAD ;
 
 
-: HOSTILE-NAME ( ptr u8 n -- ) {: lit:ptr len:n :}
-   GE-SRC-RESET
-   s" : " GE-SRC+ lit len GE-SRC+
-   s"  ( -- n ) 42 ;" GE-SRC-LINE ;
-
-
-: BAD-NAME-INTERPRETED ( ptr u8 n -- ) {: lit:ptr len:n :}
-   lit len HOSTILE-NAME
-   lit len GE-SRC+
-   s"  drop" GE-SRC-LINE
-   70 lit len s" overflowing integer cannot call its name" GE-EVAL-FORK-BAD ;
-
-
-: BAD-NAME-COMPILED ( ptr u8 n -- ) {: lit:ptr len:n :}
-   lit len HOSTILE-NAME
-   s" : INTEGER-OVERFLOW-CALL ( -- n ) " GE-SRC+
-   lit len GE-SRC+
-   s"  ;" GE-SRC-LINE
-   70 lit len s" overflowing integer cannot compile a name call" GE-EVAL-FORK-BAD ;
-
-
 : BAD-LITERAL ( ptr u8 n -- ) {: lit:ptr len:n :}
    lit len REFUSED
    lit len BAD-INTERPRETED
-   lit len BAD-COMPILED
-   lit len BAD-NAME-INTERPRETED
-   lit len BAD-NAME-COMPILED ;
+   lit len BAD-COMPILED ;
 
 
 : REFUSALS ( -- )
@@ -111,7 +88,6 @@ package INTEGER-LITERALS-TEST
    s" -$1FFFFFFFFFFFFFFFF" BAD-LITERAL ;
 
 \ Checker-only admission must refuse the same spellings before compilation.
-\ Numeric-shaped names stay claimed by the literal grammar even on overflow.
 : CHECKER-ADMISSION ( -- )
    s" IL-MAX ( -- n ) 9223372036854775807" CHECK-QUIET-CANDIDATE! -1 T=
    s" IL-MIN ( -- n ) -9223372036854775808" CHECK-QUIET-CANDIDATE! -1 T=
@@ -134,8 +110,6 @@ $8000000000000000 MINIMUM T=
 $10000000000000000G 42 T=
 VALUES
 REFUSALS
-: 9223372036854775808 ( -- n ) 42 ;
-: $10000000000000000 ( -- n ) 42 ;
 CHECKER-ADMISSION
 T-REPORT
 

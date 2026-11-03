@@ -77,7 +77,6 @@ variable SPIN-U
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
    s" TRUSTED: OI-WIDE ( -- oiwide<n,n> ) 7 9 ;" GE-SRC-LINE
-   s" 1 constant 18446744073709551616" GE-SRC-LINE
    s" : OI-LOG ( ptr u8 n n n -- ) {: a:ptr u:n c:n f:n :} c . f . a u type cr ;" GE-SRC-LINE
    s" TRUSTED: OI-HOOK-ON ( -- ) ['] OI-LOG set-top-check ;" GE-SRC-LINE
    s" TRUSTED: OI-SINK ( n n n n n n -- ) 2drop 2drop 2drop ;" GE-SRC-LINE
@@ -278,7 +277,7 @@ variable WANT-RC
    70 s" undefined slice" GE-EXPECT-RC
    s" E-UNDEFINED: OI-NOPE at " S\" oi-undefined-slice.f:3\n" ERR-AT ;
 
-\ Out of range, a number's spelling is undefined though a word has that name.
+\ Out of range, a number's spelling is undefined.
 : OUT-OF-RANGE ( -- )
    GE-SRC-RESET
    s" 18446744073709551616" GE-SRC-LINE
@@ -1466,15 +1465,33 @@ variable WANT-RC
    s" : oi-pkg:OI-SEVEN" s" oi-head-qualified-duplicate.f" HEAD
    78 s" duplicate definition: oi-pkg:OI-SEVEN at " S\" oi-head-qualified-duplicate.f:1\n" DIED-AT ;
 
-\ A tail the compiler reads as a keyword in a body refuses, the tail named, and
-\ so does field-project, which generated bodies bind, in any letter case.
+\ A tail refuses, named, when it is a body keyword, field-project (generated
+\ bodies bind it) in any case, or a number, one refused for range included.
 : HEAD-KEYWORD-WALL ( -- )
    s" : If" s" oi-head-if.f" HEAD
    70 s" hb: compile keyword cannot be a definition name: If at " S\" oi-head-if.f:1\n" DIED-AT
    s" trusted: OI-PKG:then ( -- )" s" oi-head-qualified-then.f" HEAD
    70 s" hb: compile keyword cannot be a definition name: then at " S\" oi-head-qualified-then.f:1\n" DIED-AT
    s" : OI-PKG:Field-Project" s" oi-head-reserved.f" HEAD
-   70 s" hb: reserved word cannot be a definition name: Field-Project at " S\" oi-head-reserved.f:1\n" DIED-AT ;
+   70 s" hb: reserved word cannot be a definition name: Field-Project at " S\" oi-head-reserved.f:1\n" DIED-AT
+   s" : 42" s" oi-head-number.f" HEAD
+   70 s" hb: number cannot be a definition name: 42 at " S\" oi-head-number.f:1\n" DIED-AT
+   s" create 42" s" oi-head-create-number.f" HEAD
+   70 s" hb: number cannot be a definition name: 42 at " S\" oi-head-create-number.f:1\n" DIED-AT
+   s" 7 constant 42" s" oi-head-constant-number.f" HEAD
+   70 s" hb: number cannot be a definition name: 42 at " S\" oi-head-constant-number.f:1\n" DIED-AT
+   s" variable 42" s" oi-head-variable-number.f" HEAD
+   70 s" hb: number cannot be a definition name: 42 at " S\" oi-head-variable-number.f:1\n" DIED-AT
+   s" defer 42 ( -- )" s" oi-head-defer-number.f" HEAD
+   70 s" hb: number cannot be a definition name: 42 at " S\" oi-head-defer-number.f:1\n" DIED-AT
+   s" trusted: OI-PKG:-7 ( -- )" s" oi-head-qualified-number.f" HEAD
+   70 s" hb: number cannot be a definition name: -7 at " S\" oi-head-qualified-number.f:1\n" DIED-AT
+   s" : 1.5" s" oi-head-float.f" HEAD
+   70 s" hb: number cannot be a definition name: 1.5 at " S\" oi-head-float.f:1\n" DIED-AT
+   s" : $ff" s" oi-head-hex.f" HEAD
+   70 s" hb: number cannot be a definition name: $ff at " S\" oi-head-hex.f:1\n" DIED-AT
+   s" : 9223372036854775808" s" oi-head-overflow.f" HEAD
+   70 s" hb: number cannot be a definition name: 9223372036854775808 at " S\" oi-head-overflow.f:1\n" DIED-AT ;
 
 \ `trusted:` needs a signature, opened and closed; the refusal names the
 \ definition at the name's line. An input that ends before the signature
@@ -2128,6 +2145,8 @@ variable WANT-RC
    76 s" OI-TWO at " S\" oi-cast-bad-signature.f:1\n" DIED-AT
    s" cast: if ( n -- n )" s" oi-cast-if.f" HEAD
    70 s" hb: compile keyword cannot be a definition name: if at " S\" oi-cast-if.f:1\n" DIED-AT
+   s" cast: 42 ( n -- n )" s" oi-cast-number.f" HEAD
+   70 s" hb: number cannot be a definition name: 42 at " S\" oi-cast-number.f:1\n" DIED-AT
    s" cast: oi-two ( n -- n )" s" oi-cast-duplicate.f" HEAD
    78 s" duplicate definition: oi-two at " S\" oi-cast-duplicate.f:1\n" DIED-AT
    GE-SRC-RESET
