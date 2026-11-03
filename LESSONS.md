@@ -527,6 +527,13 @@ entry.
   running one. A linker writes a file's object as the instructions that
   remake the file's result, and a reused file is linked without reading its
   source; the loader only chooses between linking and compiling.
+- 2026-11-03, x86-64 builds: asked whether to remove two of SOURCE-EXEC's
+  words while a lane gave the x86-64 kernel the observer the build cache
+  watches a file's re-run through, Joel asked "what is source-exec and why do
+  we need it?", then wrote "we don't have the loader anymore. you need to
+  implement the linker and then switch x86 (then wasm?) over to it". The
+  linker comes first; x86-64 gets its file builds from it, not from the
+  observer.
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
