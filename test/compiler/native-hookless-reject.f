@@ -1,9 +1,7 @@
-\ native-hookless-reject.f - ordinary hookless compilation keeps the declared
-\ row; a native build requires a certified scan of its pre-hook prefix. In a
-\ `0 set-check` session the quiet scan prints its reason and enforces nothing
-\ (CHECK-HOOKLESS); the declaration becomes the row without authority
-\ (DECLARE-HOOKLESS), and a body without a recordable declaration has no row:
-\ KEEP-ARITY refuses it with the reject status.
+\ native-hookless-reject.f - the native compilers refuse an undefined or
+\ ambiguous callee and stray control flow, tier 1 unjoinable arms; a refused
+\ definition keeps no row; a native build requires a certified scan of its
+\ pre-hook prefix.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -14,7 +12,6 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require src/habu/verify-source.f
 require src/lib/tree-copy.f
 require src/habu/layout.f
 
@@ -54,18 +51,6 @@ variable RC
 : PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
    OUT$ a u CONTAINS? SHOW TTRUE ;
 
-\ This file: SUBJECT:RUN evaluates a session's text, which is not this file's bytes,
-\ while the file loads, so a refusal in it names the file alone
-\ (SRCLOC:FILE-BUFFER?).
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
-
-\ Text a, then `<this file>` and a newline.
-: HERE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SB-APPEND
-   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
-   S\" \n" SB-APPEND ;
-
-\ ---- sessions: `0 set-check` at a native tier --------------------------------
 : SUBJECT-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
    oc MATCH outcome
@@ -78,48 +63,30 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    src u OUT CAP >LEN ERR CAP >LEN SUBJECT-TIMEOUT-MS >MS SUBJECT:RUN
    src u SUBJECT-STORE! ;
 
-\ `0=` leaves a bool where the declaration says n: the scan refuses the body,
-\ and the compiled word runs as declared.
-: DECLARED$ ( -- ptr u8 n )
-   s" 1 set-tier 0 set-check : HR-DECLARED ( n -- n ) 0= ; 5 HR-DECLARED ." ;
+\ This file: SUBJECT:RUN evaluates a session's text, which is not this file's bytes,
+\ while the file loads, so a refusal in it names the file alone
+\ (SRCLOC:FILE-BUFFER?).
+SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
 
-: SESSION-DECLARED ( -- )
-   s" a refused body compiles against its declaration after its reason" T-LABEL
-   DECLARED$ SESSION
-   RC @ 0 T=
-   S\" 0\n" PRINTS
-   s" habu: in hr-declared: at '0='" SAYS ;
+\ Text a, then `<this file>` and a newline.
+: HERE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SB-APPEND
+   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ SB-APPEND
+   S\" \n" SB-APPEND ;
 
-\ Both arms of the `if` are well typed and leave different depths: the checker
-\ rejects the body at `then`, and the elaborator cannot join the arms either
-\ (E-NELAB-JOIN).
-: UNEVEN$ ( -- ptr u8 n )
-   s" 1 set-tier 0 set-check : HR-UNEVEN ( bool -- n ) if 1 2 else 3 then ;" ;
+\ ---- the native compilers refuse a body at its token -------------------------
+\ Unclosed control flow and a loop word outside a loop (src/compiler/native/elaborate.f
+\ DO-ACTIVE-NTH) end a tier-1 TRUSTED: body with the reject status (definition.f MALFORMED?).
 
-: SESSION-UNEVEN ( -- )
-   s" uneven branches are refused by the compiler after the checker's reason" T-LABEL
-   UNEVEN$ SESSION
-   RC @ RC-THROW T=
-   s" habu: in hr-uneven: at 'then'" SAYS
-   s" ncomp: cannot compile HR-UNEVEN" SAYS
-   s" hb: uncaught throw code -8503" SAYS ;
-
-\ Either native compiler refuses an undefined callee with the reject status, as
-\ the JIT's lookup does (src/compiler/native/definition.f SETTLE-UNIT).
-: UNDEFINED-REFUSED ( -- )
+\ T0 refuses a TRUSTED: body's undefined callee with the reject status and names
+\ it, as tier 1 does (test/tier.f TEST-REFUSAL-TOKEN).
+: TRUSTED-UNDEFINED ( -- )
+   s" a TRUSTED: body's undefined callee is refused naming the callee" T-LABEL
+   s" TRUSTED: HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ; 5 ." SESSION
    RC @ RC-REJECT T=
    OUT-U @ 0 T=
-   s" E-UNDEFINED habu: in hr-undefined: undefined word 'HR-NO-SUCH-WORD'" SAYS
-   SB-RESET s" ncomp: cannot compile HR-UNDEFINED at HR-NO-SUCH-WORD in " HERE+ SB$ SAYS
-   SB-RESET s" E-UNDEFINED: HR-NO-SUCH-WORD at " HERE+ SB$ SAYS ;
-
-: SESSION-UNDEFINED ( -- )
-   s" an undefined callee is refused naming the callee" T-LABEL
-   s" 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ; 5 ." SESSION
-   UNDEFINED-REFUSED
-   s" a tier-1 undefined callee is refused naming the callee" T-LABEL
-   s" 1 set-tier 0 set-check : HR-UNDEFINED ( n -- bool ) HR-NO-SUCH-WORD ; 5 ." SESSION
-   UNDEFINED-REFUSED ;
+   SB-RESET  s" ncomp: cannot compile HR-UNDEFINED at HR-NO-SUCH-WORD in " HERE+  SB$ SAYS
+   SB-RESET  s" E-UNDEFINED: HR-NO-SUCH-WORD at " HERE+  SB$ SAYS ;
 
 \ The checker's ambiguity refusal makes either native compiler exit with the
 \ reject status under the definition's name.
@@ -128,110 +95,27 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    s" E-USING-AMBIGUOUS habu: bare 'AW' is ambiguous under using" SAYS
    s" ncomp: cannot compile UT-AMB" SAYS ;
 
-: SESSION-AMBIGUOUS ( -- )
+: AMBIGUOUS-CALLEE ( -- )
    s" an ambiguous bare callee is refused naming the callee" T-LABEL
-   s" ;package 0 set-check package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
+   s" ;package package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    AMBIGUOUS-REFUSED
    s" a tier-1 ambiguous bare callee is refused naming the definition" T-LABEL
-   s" ;package 1 set-tier 0 set-check package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
+   s" ;package 1 set-tier package UA public : AW ( -- n ) 11 ; ;package package UC public : AW ( -- n ) 33 ; ;package using UA using UC : UT-AMB ( -- n ) AW ; ;using ;using" SESSION
    AMBIGUOUS-REFUSED ;
 
-\ A definer's own body is scanned before its does> clause, which the checker
-\ scans next, so the reason has to be printed before that second scan.
-: DEFINER$ ( -- ptr u8 n )
-   s" 1 set-tier 0 set-check : HR-DEFINER ( n -- ) create , HR-NO-SUCH-WORD does> ( -- n ) @ ;" ;
-
-: SESSION-DEFINER ( -- )
-   s" a does> definer's own body is refused with its reason" T-LABEL
-   DEFINER$ SESSION
-   RC @ RC-REJECT T=
-   s" E-UNDEFINED habu: in hr-definer: undefined word 'HR-NO-SUCH-WORD'" SAYS
-   s" E-UNDEFINED: HR-NO-SUCH-WORD" SAYS ;
-
-\ A clause is checked in its definer's regime: a hookless definer's body may
-\ call a word defined with checking off, so its clause may too, as at tier 0.
-: CLAUSE$ ( -- ptr u8 n )
-   s" 1 set-tier 0 set-check : HR-CELL ( -- n ) 5 ; : HR-MAKE ( -- ) create does> ( -- n ) drop HR-CELL ; HR-MAKE HR-X HR-X . cr" ;
-
-: SESSION-CLAUSE ( -- )
-   s" a hookless definer's clause calls what its body may" T-LABEL
-   CLAUSE$ SESSION
-   RC @ 0 T=
-   S\" 5\n" PRINTS ;
-
-\ The regime is the definer's own, not the last one seen: after a hookless
-\ definer's clause calling the unchecked word has compiled, a checked definer's
-\ clause calling it is still refused (E-CAP-TRUSTED) and cannot compile.
-: CHECKED-CLAUSE$ ( -- ptr u8 n )
-   s" 1 set-tier check@ 0 set-check : HR-CELL ( -- n ) 5 ; : HR-MAKE ( -- ) create does> ( -- n ) drop HR-CELL ; HR-MAKE HR-X set-check : HR-MAKE2 ( -- ) create does> ( -- n ) drop HR-CELL ; HR-MAKE2 HR-Y HR-Y . cr" ;
-
-: SESSION-CHECKED-CLAUSE ( -- )
-   s" a checked definer's clause is refused what a hookless one may call" T-LABEL
-   CHECKED-CLAUSE$ SESSION
-   RC @ RC-REJECT T=
-   s" ncomp: cannot compile HR-MAKE2" SAYS ;
-
-\ The source pre-pass marks the wordlist a rendering statement runs in, and a
-\ word it never saw defined there is left to the run (checker verdict 2) rather
-\ than refused. An unsigned body naming one has no effect, and no declaration
-\ to compile against.
-: RENDERING$ ( -- ptr u8 n )
-   S\" : HR-MAKE ( -- ) s\" : HR-SEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; HR-MAKE" ;
-
-: MARK-RENDERED ( -- )
-   RENDERING$ VERIFY:SOURCE-BUF-IN-SCOPE ;
-
-: UNSEEN$ ( -- ptr u8 n )
-   s" MARK-RENDERED 1 set-tier 0 set-check : HR-UNSEEN HR-SEVEN ;" ;
-
-: SESSION-UNSEEN ( -- )
-   s" a name left to the run is refused naming it" T-LABEL
-   UNSEEN$ SESSION
-   RC @ RC-REJECT T=
-   s" E-UNDEFINED habu: in hr-unseen: undefined word 'HR-SEVEN'" SAYS ;
-
-\ A declaration the checker cannot record leaves no row either: the refusal is
-\ the reject status, and the definition retracts nothing. The checker interns
-\ the name before it refuses the declaration, and at top level the bare name
-\ binds that rowless global, so the subject closes this package first.
-: UNRECORDED$ ( -- ptr u8 n )
-   s" ;package 1 set-tier 0 set-check : HR-UNRECORDED ( n -- no-such-type ) ;" ;
-
-: SESSION-UNRECORDED ( -- )
-   s" an unrecordable declaration is refused with the reject status" T-LABEL
-   UNRECORDED$ SESSION
-   RC @ RC-REJECT T=
-   s" habu: in hr-unrecorded: unknown type 'no-such-type' in signature" SAYS ;
-
-\ Multi-error mode records a rejected body's declaration as a recovery fact
-\ (src/core/checker.f CHECK), which the declared row leaves in place; the reject
-\ it counts is still printed.
-: RECORDED$ ( -- ptr u8 n )
-   s" 1 set-tier 0 set-check MULTI-ERR-BEGIN : HR-KEPT ( n -- bool ) 1 + ; 5 HR-KEPT . MULTI-ERR-END . cr" ;
-
-: SESSION-RECORDED ( -- )
-   s" a rejected body the checker records still compiles and runs" T-LABEL
-   RECORDED$ SESSION
-   RC @ 0 T=
-   S\" 6\n1\n" PRINTS
-   s" habu: in hr-kept: at '+'" SAYS ;
-
-\ ---- tier 1 refuses an uncertified body's own source at its token ------------
-\ An unmodeled immediate or unclosed control flow ends with the reject status
-\ at its token (src/compiler/native/definition.f MALFORMED?).
-: SESSION-IMMEDIATE ( -- )
-   s" a tier-1 unchecked body's unmodeled immediate is refused at it" T-LABEL
-   s" 1 set-tier : HR-IMM ( -- ) ; immediate 0 set-check : HR-UNMOD ( -- n ) HR-IMM 73 ; HR-UNMOD . cr" SESSION
-   SB-RESET
-   S\" E-UNMODELED-IMMEDIATE habu: in hr-unmod: compile-time immediate 'HR-IMM' is not a stack-neutral parsing immediate; declare it with parse-imm or remove it from the compiled body\nncomp: cannot compile HR-UNMOD at HR-IMM in "
-      HERE+
-   ERR$ SB$ T$=
-   RC @ RC-REJECT T= ;
+\ Arms leaving different depths: the checker refuses a checked body at
+\ `then`, and tier 1 cannot join a TRUSTED: body's arms (E-NELAB-JOIN).
+: TRUSTED-UNEVEN ( -- )
+   s" a tier-1 TRUSTED: body's uneven branches are refused by the compiler" T-LABEL
+   s" 1 set-tier TRUSTED: HR-UNEVEN ( bool -- n ) if 1 2 else 3 then ;" SESSION
+   RC @ RC-THROW T=
+   s" ncomp: cannot compile HR-UNEVEN" SAYS
+   s" hb: uncaught throw code -8503" SAYS ;
 
 : STRAY-LOOP$ ( -- ptr u8 n )
    S\" 1 set-tier : HR-TRY-J ( -- n ) [: s\" TRUSTED: HR-XJ ( -- ) 1 0 do j drop loop ;\" evaluate-closed ;] catch ; : HR-TRY-U ( -- n ) [: s\" TRUSTED: HR-XU ( -- ) unloop ;\" evaluate-closed ;] catch ; : HR-TRY-I ( -- n ) [: s\" TRUSTED: HR-XI ( -- ) 1 i drop ;\" evaluate-closed ;] catch ; HR-TRY-J . HR-TRY-U . HR-TRY-I . cr" ;
 
-: SESSION-STRAY-LOOP ( -- )
+: TRUSTED-STRAY-LOOP ( -- )
    s" tier-1 TRUSTED: bodies are refused at a loop word outside a loop" T-LABEL
    STRAY-LOOP$ SESSION
    SB-RESET
@@ -241,58 +125,49 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    ERR$ SB$ T$=
    OUT$ S\" 70\n70\n70\n\n" T$= ;
 
-: SESSION-ORPHAN-THEN ( -- )
-   s" a tier-1 unchecked body is refused at a `then` with no `if`" T-LABEL
-   s" 1 set-tier 0 set-check : HR-ORPHAN ( n -- n ) [: 7 ;] then ;" SESSION
+: TRUSTED-ORPHAN-THEN ( -- )
+   s" a tier-1 TRUSTED: body is refused at a `then` with no `if`" T-LABEL
+   s" 1 set-tier TRUSTED: HR-ORPHAN ( n -- n ) [: 7 ;] then ;" SESSION
    SB-RESET
-   S\" habu: in hr-orphan: at 'then'\nncomp: cannot compile HR-ORPHAN at then in " HERE+
+   s" ncomp: cannot compile HR-ORPHAN at then in " HERE+
    ERR$ SB$ T$=
    RC @ RC-REJECT T= ;
 
-\ ---- a hook's zero verdict refuses the definition ----------------------------
-\ The native compiler throws E-COMP-VERDICT at the definition. The texts
-\ outrun a source line, so TEXT holds them; `;package` first makes them global.
+\ ---- a refused definition keeps no row ---------------------------------------
+\ The texts outrun a source line, so TEXT holds them; `;package` first makes
+\ them global.
 create TEXT CAP allot                  variable TEXT-U
 
 : TEXT$ ( -- ptr u8 n ) TEXT TEXT-U BUF-LEN@ ;
 : TEXT+ ( ptr u8 n -- ) TEXT CAP TEXT-U BUF-APPEND ;
 
-: ZERO-TEXT ( -- )
+: REFUSED-TEXT ( -- )
    TEXT-U BUF-RESET  s" ;package " TEXT+ ;
 
 : P-W+ ( -- ) s" package P-FORGET public : W-FORGET ( -- n ) 2 ; ;package " TEXT+ ;
 : Q-USING-P+ ( -- ) s" package Q-FORGET public using P-FORGET " TEXT+ ;
 
-: LIAR+ ( -- )
-   s" : LIAR-FORGET ( ptr u8 n -- n ) over c@ [char] W = >r " TEXT+
-   s" LOWER-CERT-HOOK:HOOK r> if drop 0 then ; ' LIAR-FORGET set-check " TEXT+ ;
-
-: ZERO-UNCAUGHT ( -- )
-   s" a definition its hook answers 0 for is refused" T-LABEL
-   ZERO-TEXT LIAR+  s" : W-FORGET 3 ; " TEXT+
-   TEXT$ SESSION
-   RC @ RC-THROW T=
-   s" ncomp: cannot compile W-FORGET" SAYS
-   s" hb: uncaught throw code -8572" SAYS ;
+\ TRY-FORGET prints the refusal's code, 70 (RC-REJECT). A row kept from the
+\ refused ( -- n n ) would certify a T-FORGET ( -- n n ) over W-FORGET.
+: REFUSED+ ( -- )
+   S\" : TRY-FORGET ( -- n ) [: s\" : W-FORGET ( -- n n ) 3 ;\" evaluate-closed ;] catch ; " TEXT+
+   s" TRY-FORGET . cr " TEXT+ ;
 
 \ The refused W-FORGET keeps no row, so T-FORGET binds P-FORGET:W-FORGET.
-: ZERO-CAUGHT ( -- )
+: REFUSED-CAUGHT ( -- )
    s" a caught refusal leaves a call to the used package's word" T-LABEL
-   ZERO-TEXT P-W+ LIAR+ Q-USING-P+
-   S\" : TRY-FORGET ( -- n ) [: s\" : W-FORGET 3 4 ;\" evaluate-closed ;] catch ; " TEXT+
-   s" TRY-FORGET . cr " TEXT+
+   REFUSED-TEXT P-W+ Q-USING-P+ REFUSED+
    s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT$ SESSION
    RC @ RC-REJECT T=
-   S\" -8572\n" PRINTS
+   S\" 70\n" PRINTS
    s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS ;
 
-\ ---- the JIT drops a zero-verdict definition ---------------------------------
-\ These rows select the JIT, whose tier 0 drops the definition without a throw.
-\ The JIT is arm64's, so they run only there.
+\ ---- the JIT keeps no row of a refused definition ----------------------------
+\ These rows select the JIT. The JIT is arm64's, so they run only there.
 
 : JIT-TEXT ( -- )
-   ZERO-TEXT  s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! " TEXT+ ;
+   REFUSED-TEXT  s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! " TEXT+ ;
 
 : GLOBAL-W+ ( -- ) s" : W-FORGET ( -- n ) 1 ; " TEXT+ ;
 : R-W+ ( -- ) s" package R-FORGET public : W-FORGET ( -- n ) 5 ; ;package " TEXT+ ;
@@ -301,94 +176,71 @@ create TEXT CAP allot                  variable TEXT-U
    ERR$ a u CONTAINS? 0= SHOW TTRUE ;
 
 \ The global and the used P-FORGET both export W-FORGET, so T-FORGET's
-\ reference is refused (E-USING-SHADOW-GLOBAL); a row of the dropped
+\ reference is refused (E-USING-SHADOW-GLOBAL); a row of the refused
 \ Q-FORGET:W-FORGET would bind it.
 : SHADOWED ( -- )
    RC @ RC-REJECT T=
    s" E-USING-SHADOW-GLOBAL" SAYS
-   OUT-U @ 0 T= ;
+   OUT$ S\" 70\n\n" T$= ;
 
-: ZERO-CALL ( -- )
-   s" a dropped definition leaves a call to the engine's shadowed word" T-LABEL
-   JIT-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 ; : T-FORGET ( -- n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
+: REFUSED-CALL ( -- )
+   s" a refused definition leaves a call to the engine's shadowed word" T-LABEL
+   JIT-TEXT GLOBAL-W+ P-W+ Q-USING-P+ REFUSED+
+   s" : T-FORGET ( -- n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
    TEXT$ SESSION  SHADOWED ;
 
-: ZERO-TICK ( -- )
-   s" a dropped definition leaves a tick to the engine's shadowed word" T-LABEL
-   JIT-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 ; : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;package " TEXT+
+: REFUSED-TICK ( -- )
+   s" a refused definition leaves a tick to the engine's shadowed word" T-LABEL
+   JIT-TEXT GLOBAL-W+ P-W+ Q-USING-P+ REFUSED+
+   s" : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;package " TEXT+
    s" Q-FORGET:T-FORGET . cr" TEXT+
    TEXT$ SESSION  SHADOWED ;
 
 \ Two used packages and a global: the engine's bare W-FORGET is ambiguous.
 : AMBIGUOUS-TEXT ( -- )
-   JIT-TEXT GLOBAL-W+ P-W+ R-W+ LIAR+ Q-USING-P+
-   s" using R-FORGET : W-FORGET 3 ; " TEXT+ ;
+   JIT-TEXT GLOBAL-W+ P-W+ R-W+ Q-USING-P+
+   s" using R-FORGET " TEXT+ REFUSED+ ;
 
 : AMBIGUOUS ( -- )
-   OUT-U @ 0 T=
+   OUT$ S\" 70\n\n" T$=
    RC @ RC-REJECT T=
    s" E-USING-AMBIGUOUS" SAYS
    s" hb: uncaught throw code 7144" SAYS ;
 
-: ZERO-AMBIGUOUS-CALL ( -- )
-   s" a dropped definition leaves a call to the engine's ambiguous word" T-LABEL
+: REFUSED-AMBIGUOUS-CALL ( -- )
+   s" a refused definition leaves a call to the engine's ambiguous word" T-LABEL
    AMBIGUOUS-TEXT
    s" : T-FORGET ( -- n ) W-FORGET ; ;using ;using ;package Q-FORGET:T-FORGET . cr" TEXT+
    TEXT$ SESSION  AMBIGUOUS ;
 
-: ZERO-AMBIGUOUS-TICK ( -- )
-   s" a dropped definition leaves a tick to the engine's ambiguous word" T-LABEL
+: REFUSED-AMBIGUOUS-TICK ( -- )
+   s" a refused definition leaves a tick to the engine's ambiguous word" T-LABEL
    AMBIGUOUS-TEXT
    s" : T-FORGET ( -- n ) ['] W-FORGET drop 4 ; ;using ;using ;package " TEXT+
    s" Q-FORGET:T-FORGET . cr" TEXT+
    TEXT$ SESSION  AMBIGUOUS ;
 
-\ The dropped W-FORGET left two cells, the engine's one: typed against the
-\ dropped row, T-FORGET ( -- n n ) would certify and run one cell short.
-: ZERO-SHAPE ( -- )
-   s" a dropped definition's effect does not type a later caller" T-LABEL
-   JIT-TEXT GLOBAL-W+ P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 4 ; : T-FORGET ( -- n n ) W-FORGET ; ;using ;package " TEXT+
-   s" Q-FORGET:T-FORGET . . cr" TEXT+
-   TEXT$ SESSION  SHADOWED
-   s" interpret stack underdepth" SAYS-NOT ;
-
 \ With no global, T-FORGET's W-FORGET is the used P-FORGET:W-FORGET ( -- n ),
 \ so T-FORGET's ( -- n n ) is refused.
-: ZERO-USED ( -- )
-   s" a dropped definition leaves a call to the used package's word" T-LABEL
-   JIT-TEXT P-W+ LIAR+ Q-USING-P+
-   s" : W-FORGET 3 4 ; : T-FORGET ( -- n n ) W-FORGET ; ;using ;package " TEXT+
-   s" Q-FORGET:T-FORGET . . cr" TEXT+
-   TEXT$ SESSION
-   RC @ RC-REJECT T=
-   s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS
-   s" interpret stack underdepth" SAYS-NOT ;
-
-\ Caught, the drop throws nothing (TRY-FORGET prints 0), the load goes on, and
-\ T-FORGET is still typed against P-FORGET:W-FORGET.
-: ZERO-USED-CAUGHT ( -- )
-   s" a caught drop leaves a call to the used package's word" T-LABEL
-   JIT-TEXT P-W+ LIAR+ Q-USING-P+
-   S\" : TRY-FORGET ( -- n ) [: s\" : W-FORGET 3 4 ;\" evaluate-closed ;] catch ; " TEXT+
-   s" TRY-FORGET . cr " TEXT+
+: REFUSED-USED-CAUGHT ( -- )
+   s" a refused definition leaves a call to the used package's word" T-LABEL
+   JIT-TEXT P-W+ Q-USING-P+ REFUSED+
    s" : T-FORGET ( -- n n ) W-FORGET ; ;using ;package Q-FORGET:T-FORGET . . cr" TEXT+
    TEXT$ SESSION
    RC @ RC-REJECT T=
-   S\" 0\n" PRINTS
-   s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS ;
+   S\" 70\n" PRINTS
+   s" habu: in t-forget: at 'W-FORGET' expected: n n actual: n" SAYS
+   s" interpret stack underdepth" SAYS-NOT ;
 
-\ A later definition of the dropped name in the same package is no duplicate.
-: ZERO-REDEFINE ( -- )
-   s" a dropped definition's name is free for the next one" T-LABEL
-   JIT-TEXT P-W+ LIAR+
-   s" package Q-FORGET public : W-FORGET 3 ; ;package LOWER-CERT-HOOK:INSTALL " TEXT+
+\ A later definition of the refused name in the same package is no duplicate.
+: REFUSED-REDEFINE ( -- )
+   s" a refused definition's name is free for the next one" T-LABEL
+   JIT-TEXT P-W+
+   s" package Q-FORGET public " TEXT+ REFUSED+ s" ;package " TEXT+
    s" package Q-FORGET public : W-FORGET ( -- n ) 7 ; ;package Q-FORGET:W-FORGET . cr" TEXT+
    TEXT$ SESSION
    RC @ 0 T=
-   S\" 7\n" PRINTS
+   S\" 70\n\n7\n" PRINTS
    s" duplicate definition" SAYS-NOT ;
 
 \ ---- the window: a probe at the end of src/core/util.f ----------------------
@@ -459,30 +311,19 @@ create TEXT CAP allot                  variable TEXT-U
 
 : RUN ( -- )
    T-RESET
-   SESSION-DECLARED
-   SESSION-UNEVEN
-   SESSION-UNDEFINED
-   SESSION-AMBIGUOUS
-   SESSION-DEFINER
-   SESSION-CLAUSE
-   SESSION-CHECKED-CLAUSE
-   SESSION-UNSEEN
-   SESSION-UNRECORDED
-   SESSION-RECORDED
-   SESSION-IMMEDIATE
-   SESSION-STRAY-LOOP
-   SESSION-ORPHAN-THEN
-   ZERO-UNCAUGHT
-   ZERO-CAUGHT
+   TRUSTED-UNDEFINED
+   AMBIGUOUS-CALLEE
+   TRUSTED-UNEVEN
+   TRUSTED-STRAY-LOOP
+   TRUSTED-ORPHAN-THEN
+   REFUSED-CAUGHT
    HB-TARGET-LINUX-X86-64? 0= if
-      ZERO-CALL
-      ZERO-TICK
-      ZERO-AMBIGUOUS-CALL
-      ZERO-AMBIGUOUS-TICK
-      ZERO-SHAPE
-      ZERO-USED
-      ZERO-USED-CAUGHT
-      ZERO-REDEFINE
+      REFUSED-CALL
+      REFUSED-TICK
+      REFUSED-AMBIGUOUS-CALL
+      REFUSED-AMBIGUOUS-TICK
+      REFUSED-USED-CAUGHT
+      REFUSED-REDEFINE
    then
    SETUP
    s" native-hookless-reject artifacts: " type ROOT$ type cr
