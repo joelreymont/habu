@@ -1457,9 +1457,10 @@ private
    NUNIT-DEP:DIAG? @ 0= if exit then
    s" refused" why whyu FILE-LINE ;
 
-\ Write the innermost file's object and read it back on every build; the
-\ cache diagnostics only print what was written or why the file has none. A
-\ refused file's earlier object is removed, so no later build reads it.
+\ Write the innermost file's object and open the bytes written, not the file,
+\ which another build may already have replaced; the cache diagnostics only
+\ print what was written or why the file has none. A refused file's earlier
+\ object is removed, so no later build reads it.
 : OBJECT-CLOSE ( -- )
    ROWS-FLUSH
    ORIGIN-HARVEST
@@ -1471,10 +1472,7 @@ private
    key keyu NUNIT-OBJECT:PACK-FILE {: obj:ptr obju:n :}
    s" HBFOBJ01" obj obju IMAGE {: size:n :}
    key keyu FILE-PATH size IMAGE-WRITE
-   key keyu FILE-PATH s" HBFOBJ01" ENTRY-HEAD CACHE-READ
-      {: got:n found:bool :}
-   found 0= got size <> or if BAD then
-   0 ENTRY ENTRY-HEAD + size ENTRY-HEAD - key keyu F-SRC-U F@
+   0 STORE-IMAGE ENTRY-HEAD + size ENTRY-HEAD - key keyu F-SRC-U F@
       NUNIT-OBJECT:OPEN-FILE
    NUNIT-OBJECT:ORIGIN-FORMED? 0= if BAD then
    NUNIT-OBJECT:FILE-COUNTS
