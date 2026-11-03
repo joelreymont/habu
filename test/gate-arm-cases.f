@@ -49,7 +49,7 @@ SUITE aot-seed-metadata
 ;SUITE
 
 \ The harness selects tier 0 before its first definition: tier 1 refuses
-\ CLEAR-MEAS's row drain (test/prop-test-core.f).
+\ CLEAR-MEAS's row drain (test/prop-test.f).
 WHITEBOX-SUITE prop
    test/prop-test.f
 ;SUITE

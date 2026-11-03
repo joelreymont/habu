@@ -1338,7 +1338,7 @@ s" nominal declared effect renders bare" T-LABEL
 DIAG-BUFFER$ s\" \"declared_effect\":\"frame-idx -- n \"" CONTAINS? TTRUE
 DIAG-BUFFER-OFF  false DIAG-JSON!
 \ The inferred effect REC-SIG renders for a sig-less word is that same spelling. A
-\ render is re-read as source (test/prop-test-core.f ROUNDTRIP re-declares a body
+\ render is re-read as source (test/prop-test.f ROUNDTRIP re-declares a body
 \ with its rendered effect), and DNI-MK above shows the parser reads it; the AOT
 \ capture carries the verified graph, not this text (CHECKER-ASIG-CAPTURE).
 \ T-SIGLESS-RENDER: a sig-less nominal certifies and renders its effect bare.
