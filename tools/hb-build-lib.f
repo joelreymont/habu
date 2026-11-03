@@ -384,9 +384,9 @@ variable HBB-APP-BUILDER-U
    HBB-SRC$ HBB-PATH-HAS-DQ? if s" hb-build: source path contains a double quote" HBB-USAGE-RC die then ;
 
 \ Every build gets a private directory under the caller's TMPDIR: the engine's
-\ build mode writes fixed names there (src/habu/aot-common.f `hb-aot-got`,
-\ `hb-aot-obj`), so builds sharing one TMPDIR, as gate pool builds do, read each
-\ other's artifacts. FS:MKTEMP-DIR refuses a base that is missing or not a
+\ build mode writes a fixed name there (src/habu/aot-common.f `hb-aot-got`), so
+\ builds sharing one TMPDIR, as gate pool builds do, read each other's
+\ artifacts. FS:MKTEMP-DIR refuses a base that is missing or not a
 \ directory.
 : HBB-PREPARE-TMP ( -- )
    BF-TMP-RESET

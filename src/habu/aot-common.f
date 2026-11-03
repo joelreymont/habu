@@ -15,7 +15,6 @@ package AOT-LINK
 private
 
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
-: AOT-OBJ ( -- ptr u8 n )  s" hb-aot-obj" TMP-PATH ;
 
 : AOT-FALSE ( -- bool ) 0 0= 0= ;
 

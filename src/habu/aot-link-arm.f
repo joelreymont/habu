@@ -41,7 +41,6 @@ require src/habu/rt.f
 require src/habu/crash.f
 require src/habu/xref.f
 require src/habu/fdio.f
-require src/lib/le.f
 require src/habu/address-carrier.f
 require src/habu/aot-decl.f
 require src/habu/aot-window-latch.f
@@ -464,8 +463,8 @@ variable BLOB-CV
 \ The declared xt-cell rows follow this blob immediately (LINK emits them next),
 \ at the four-byte boundary BYTES, pads to. On macOS the label names the file's
 \ __DATA_CONST address after its two GOT cells. The assembler advances through
-\ the virtual gap for its existing label fixups; the object and image writers
-\ omit that gap from their code slice.
+\ the virtual gap for its existing label fixups; the image writer omits that gap
+\ from its code slice (AOT-FRESH-PAYLOAD!).
 : AOT-PAYLOAD-PLACE ( -- )
    ASM-LEN AOT-CODE-N !
    ASM-LEN CODELEN !
@@ -484,20 +483,6 @@ variable BLOB-CV
 
 : AOT-OBJ-PAYLOAD-N ( -- n )
    AOT-CODE-N @ 0 > if ASM-LEN AOT-PAYLOAD-OFF @ - else 0 then ;
-
-create AOT-OBJ-HDR 8 allot
-
-: AOT-WRITE-OBJ ( -- )
-   AOT-OBJ-CODE-N AOT-OBJ-HDR LE:U32!
-   AOT-OBJ-PAYLOAD-N AOT-OBJ-HDR 4 + LE:U32!
-   AOT-OBJ PATH0 1537 493 open DRV-WFD !
-   DRV-WFD @ 0 < IF s" aot: cannot open object output" 74 die THEN
-   DRV-WFD @ AOT-OBJ-HDR 8 FDIO:WALL
-   DRV-WFD @ CODE AOT-OBJ-CODE-N FDIO:WALL
-   AOT-OBJ-PAYLOAD-N 0 > if
-      DRV-WFD @ CODE AOT-PAYLOAD-OFF @ + AOT-OBJ-PAYLOAD-N FDIO:WALL
-   then
-   DRV-WFD @ close ;
 
 : AOT-FRESH-PAYLOAD! ( -- )
    AOT-OBJ-PAYLOAD-N 0 > if
@@ -1098,7 +1083,6 @@ variable RP  variable RE
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DP-REFUSAL  EMIT-UNCAUGHT  EMIT-CRASH-CODE
    ASM-LEN CODE-END !
    EMIT-DATA-BLOB  EMIT-XT-ROWS
-   AOT-WRITE-OBJ
    AOT-FRESH-PAYLOAD!
    SIGN-ID:PROG$ AOT-OUT DRV-EMIT-IMAGE ;
 

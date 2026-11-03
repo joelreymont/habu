@@ -291,20 +291,6 @@ variable X64-MEMBER
    fd X64IMAGE:WRITE-FD
    fd close-rc 0 <> if s" aot: stripped image close failed" 74 die then ;
 
-\ The object file the cache reads (tools/hb-build-lib.f HBB-READ-OBJECT): a
-\ u32 code length and a u32 payload length, then the code. The x86-64 link
-\ carries its DATA runs inside the code stream, so the payload is empty.
-create X64-OBJ-HDR 8 allot
-
-: X64-WRITE-OBJ ( -- )
-   X64CODE:ASM-LEN X64-OBJ-HDR LE:U32!
-   0 X64-OBJ-HDR 4 + LE:U32!
-   AOT-OBJ PATH0 1537 493 open {: fd:n :}
-   fd 0 < if s" aot: cannot open object output" 74 die then
-   fd X64-OBJ-HDR 8 FDIO:WALL
-   fd X64CODE:CODE X64CODE:ASM-LEN FDIO:WALL
-   fd close-rc 0 <> if s" aot: object close failed" 74 die then ;
-
 : LINK-X64 ( -- )
    X64CODE:ASM-SINK X64CODE:CODE-CAP-BYTES BUF:N>BLEN BUF:INIT
    X64CODE:ASM-RESET
@@ -318,7 +304,6 @@ create X64-OBJ-HDR 8 allot
    X64-XT-ROWS,
    table-at X64-TABLE-FOOTER,
    X64-TEXT-VA X64CODE:ASM-LINK
-   X64-WRITE-OBJ
    X64-WRITE
    X64CODE:ASM-SINK BUF:DISPOSE ;
 
