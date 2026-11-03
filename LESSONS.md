@@ -100,7 +100,14 @@ entry.
   `required`, `script-required` and `provided`, with kinds SOURCE-LOAD:always,
   once, script and provide. Shown the rest of the public list as one question,
   he answered "don't do this, interview one by one instead?": a public list
-  goes to him one word at a time.
+  goes to him one word at a time. Shown INCLUDE-EVALUATE (evaluate-closed
+  plus undoing a failed text's requires), he answered "keep it but name it
+  EVAL instead of EVALUATE": `SOURCE:EVAL ( ptr u8 n -- )`. Asked "why do you
+  need eval-range? where and how is it used? and when", and shown that
+  INCLUDE-EVALUATE-RANGE and OUTER:INTERPRET-RANGE have only test callers, he
+  chose "Drop it; tests use loads (Recommended)": no SOURCE:EVAL-RANGE,
+  INCLUDE-EVALUATE-RANGE, OUTER:INTERPRET and INTERPRET-RANGE go, and the tests
+  run the Habu loop over file loads through SOURCE:USE-INTERPRETER.
 - 2026-09-16, TRUSTED:: "TRUSTED: is to be retired entirely". 2026-10-31:
   "shrink TRUSTED: after the T0 release, not before". Each use gets its
   checked form, or the checker gets the model it lacks at its owner; only the
