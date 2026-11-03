@@ -833,12 +833,15 @@ run in that state. For each `IN` row and then the machine DEFINE writes:
 : <NAME> ( <ctx> <states> -- )
    begin MATCH <states>
       <state> OF dup <NAME>/<state> false ENDOF               \ an IN row
-      <final> OF dup <ACTION> construct <states> <final> true ENDOF
+      <final> OF construct <states> <final> over true swap <ACTION> ENDOF
    ;MATCH until 2drop ;
 ```
 
-An ACTION of `-` writes no `dup <ACTION>`, and a NEXT word replaces `drop
-construct <states> <next>`. The words land in the package and section DEFINE
+An ACTION of `-` on an `IN` line writes no `dup <ACTION>`, and a NEXT word
+replaces `drop construct <states> <next>`. A `FINAL` row writes its ACTION
+last, so an ACTION that always throws (a failure end) loads and its throw
+leaves `<NAME>` as thrown; a `FINAL` ACTION of `-` writes no `over true swap
+<ACTION>`. The words land in the package and section DEFINE
 is called in, so `<NAME>/<state>`
 shares `<NAME>`'s visibility. The machine keeps no state of its own; a throw
 from a SENSE, ACTION or NEXT leaves `<NAME>` as thrown. Neither `MATCH` has a

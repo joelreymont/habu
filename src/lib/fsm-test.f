@@ -189,6 +189,30 @@ DEFINE SPIN ( ptr n ) spin turn
    [: SPIN-RUN ;] THIRD-CODE TTHROWSQ
    SPIN-CELL @ 3 T= ;
 
+\ A failure end: the FINAL row's action always throws FAIL-CODE, and the
+\ machine still loads.
+using FSM
+ENUM job working failed ;ENUM
+ENUM work break ;ENUM
+TYPED-VARIABLE JOB-CELL n
+43 constant FAIL-CODE
+
+: BREAK ( ptr n -- work ) drop construct work break ;
+: FAIL ( ptr n -- ) drop FAIL-CODE throw ;
+
+DEFINE JOB ( ptr n ) job work
+   IN working  BREAK
+      break  -  >failed
+   FINAL failed  FAIL
+;DEFINE
+;using
+
+: JOB-RUN ( -- ) JOB-CELL construct job working JOB ;
+
+
+: FAILS ( -- )
+   [: JOB-RUN ;] FAIL-CODE TTHROWSQ ;
+
 \ SRC builds texts for TEST-EVAL.
 DYNAMIC-BUFFER SRC u8
 variable SRC-LEN
@@ -315,6 +339,7 @@ public
    COUNTS
    FINALS
    THROWS
+   FAILS
    SYNTAX
    REJECTED
    SIZE

@@ -133,13 +133,17 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    s\"  false ENDOF\n" RUN+ ;
 
 
-\ `FINAL <state> <ACTION>`: the run word's arm that ends the run.
+\ `FINAL <state> <ACTION>`: the run word's arm that ends the run. The ACTION
+\ goes last, so one that always throws leaves no dead code after it.
 : FINAL-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    OPERAND {: a:ptr au:n :}
-   s"    " RUN+ s su RUN+ s"  OF " RUN+
-   a au s" -" STR= 0= if s" dup " RUN+ a au RUN+ s"  " RUN+ then
-   s" construct " RUN+ STATES$ RUN+ s"  " RUN+ s su RUN+ s\"  true ENDOF\n" RUN+ ;
+   s"    " RUN+ s su RUN+ s"  OF construct " RUN+ STATES$ RUN+ s"  " RUN+ s su RUN+
+   a au s" -" STR= if
+      s\"  true ENDOF\n" RUN+
+   else
+      s"  over true swap " RUN+ a au RUN+ s\"  ENDOF\n" RUN+
+   then ;
 
 
 \ One token after the header, in one of two states, an IN row's word open or
