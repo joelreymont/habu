@@ -669,7 +669,13 @@ learned live in the docs for their subject.
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
-  capture path, an emitter per architecture.
+  capture path, an emitter per architecture. On 2026-11-04, shown a grant
+  row that x86-64's typed interpreter needed and arm64's machine-code
+  interpreter did not, Joel wrote "we decided to unify the frontend and just
+  have different code-generation backends. why the fuck do arm64 and x86
+  have different interpreters? why does arm64 not use the typed one if it's
+  better?": the interpreter is front end, one typed interpreter for every
+  machine.
 - 2026-10-29: "finish T0 incorporating the best of JIT into it, then retire
   JIT". 2026-10-30: "make sure you are not reinventing the wheel when things
   have been implemented in the jit and t1".
