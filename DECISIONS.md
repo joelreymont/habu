@@ -697,7 +697,11 @@ learned live in the docs for their subject.
   proven." The JIT and the Gforth chain stay untouched until then, and their
   retirement is asked before the step that needs it. Asked to name the header
   cell holding the lowest address the data pointer may take, Joel chose
-  "DP-FLOOR-CELL (Recommended)"; its partner is DP-CEILING-CELL.
+  "DP-FLOOR-CELL (Recommended)"; its partner is DP-CEILING-CELL. Asked to name
+  the header cells holding the wordlist the engine treats as global (0 today)
+  and the marker a package's row carries (-1 today), which point at fresh ones
+  while a build writes the next hb, Joel chose "GLOBAL-WL-CELL,
+  NAMESPACE-WL-CELL (Recommended)".
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
