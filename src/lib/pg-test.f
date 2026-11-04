@@ -86,15 +86,35 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 \ Port 1 is refused before any protocol runs, so the arm carries libpq's own
 \ message and no connection is left behind.
-: REFUSED-LENGTH ( -- n )
+: PORT-REFUSED$ ( -- ptr u8 n )
    s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2" CONNECT
    MATCH PG:connect-result
-      connected OF PG:CLOSE 0 ENDOF
-      refused OF nip ENDOF
+      connected OF PG:CLOSE s" " ENDOF
+      refused OF ENDOF
    ;MATCH ;
+
+
+: ENDS-LF? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   u 0= if false exit then
+   a u 1- + c@ STR-LF = ;
+
 
 : CLOSE-KEEP ( PG:connection -- PG:connection )
    dup PG:CLOSE ;
+
+
+: AWAIT-REFUSED ( ptr u8 n -- )
+   CONNECT-START {: refused :}
+   refused PG:AWAIT MATCH PG:progress
+      refused OF 2drop true ENDOF
+      connected OF PG:CLOSE false ENDOF
+      waiting OF 2drop false ENDOF
+      completed OF CLEAR false ENDOF
+   ;MATCH TTRUE
+   refused PG:LIVE? TFALSE
+   refused [: CLOSE-KEEP ;] catch {: stale code:n :}
+   code E-HANDLE T= ;
 
 
 : CONNECT-NUL ( -- )
@@ -108,18 +128,11 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
 
 
 : CONNECT-CASES ( -- )
-   REFUSED-LENGTH 0 > TTRUE
-   s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2"
-   CONNECT-START {: refused :}
-   refused PG:AWAIT MATCH PG:progress
-      refused OF 2drop ENDOF
-      connected OF PG:CLOSE E-CONNECT throw ENDOF
-      waiting OF 2drop E-CONNECT throw ENDOF
-      completed OF CLEAR E-CONNECT throw ENDOF
-   ;MATCH
-   refused PG:LIVE? TFALSE
-   refused [: CLOSE-KEEP ;] catch {: stale code:n :}
-   code E-HANDLE T= ;
+   PORT-REFUSED$ {: pa:ptr pu:n :}
+   pu 0 > TTRUE
+   pa pu ENDS-LF? TFALSE
+   s" an attempt on a closed port is refused by AWAIT" T-LABEL
+   s" host=127.0.0.1 port=1 dbname=none user=none connect_timeout=2" AWAIT-REFUSED ;
 
 
 \ The cluster refuses a missing database after the protocol starts, so the
@@ -151,6 +164,7 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
    s" a refusal's text survives a longer refusal in another task" T-LABEL
    s" pgtest_refused" MISSING-DB REFUSED$ {: a:ptr u:n :}
    u 0 > TTRUE
+   a u ENDS-LF? TFALSE
    u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:ptr cu :}
    a copy u BYTE-COPY
    0 LONG-REFUSED-U !
@@ -162,6 +176,26 @@ TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
    LONG-REFUSED-U @ u > TTRUE
    a u copy u T$=
    copy cu MEM:RELEASE-BYTES ;
+
+
+\ A socket directory that does not exist makes libpq reject the attempt inside
+\ PQconnectStart, before any POLL.
+: SOCKET-CONNINFO$ ( -- ptr u8 n )
+   s" host=/nonexistent-habu-pgtest port=5432 dbname=none user=none" ;
+
+
+: SOCKET-REFUSAL-CASES ( -- )
+   s" a connection libpq rejects at once is refused with its text" T-LABEL
+   SOCKET-CONNINFO$ CONNECT REFUSED$ nip 0 > TTRUE
+   s" an attempt libpq rejects at once is refused by AWAIT" T-LABEL
+   SOCKET-CONNINFO$ AWAIT-REFUSED ;
+
+
+\ The attempt keeps no slot, as CAPACITY-CASES then needs.
+: MALFORMED-CASES ( -- )
+   s" a conninfo libpq cannot parse throws E-CONNECT" T-LABEL
+   [: s" postgresql://u:SECRETPW%zz@127.0.0.1:1/db" CONNECT-START PG:CLOSE ;]
+   E-CONNECT TTHROWSQ ;
 
 
 \ The application can hold all twenty connections at once, and reaching its
@@ -1881,7 +1915,8 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    again ;
 
 : LOOP-CASES ( -- )
-   CONNECT-CASES REFUSAL-TEXT-CASES CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
+   CONNECT-CASES REFUSAL-TEXT-CASES SOCKET-REFUSAL-CASES MALFORMED-CASES
+   CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
    HALT-CONNECT-CASES REFUSED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
 
 \ The AIO loop stops however LOOP-CASES ends. As under finally, a code from

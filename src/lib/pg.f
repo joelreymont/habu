@@ -168,6 +168,8 @@ TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-LIVE drop
 VERSIONED-LIBRARY pq 5
 
 FUNCTION: LIB-CONNECT-START PQconnectStart ( ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-CONNINFO-PARSE PQconninfoParse ( ptr u8 ptr u8 -- ptr u8 ) ;FUNCTION
+FUNCTION: LIB-CONNINFO-FREE PQconninfoFree ( ptr u8 -- ) ;FUNCTION
 FUNCTION: LIB-CONNECT-POLL PQconnectPoll ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-STATUS PQstatus ( ptr u8 -- i32 ) ;FUNCTION
 FUNCTION: LIB-TRANSACTION-STATUS PQtransactionStatus ( ptr u8 -- i32 ) ;FUNCTION
@@ -816,12 +818,16 @@ REGISTER-CHILD-RESET
    p CSTR$ ;
 
 
+: -TRAILING-LF ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   u 0 > if a u 1- + c@ STR-LF = if a u 1- exit then then
+   a u ;
+
+
 \ PQresultErrorMessage ends with a newline, is empty for an empty query, and
 \ holds the connection's message for a result libpq made without the server.
 : REPORT$ ( ptr u8 -- ptr u8 n )
-   LIB-RESULT-ERROR-MESSAGE FIELD$ {: a:ptr u:n :}
-   u 0 > if a u 1- + c@ STR-LF = if a u 1- exit then then
-   a u ;
+   LIB-RESULT-ERROR-MESSAGE FIELD$ -TRAILING-LF ;
 
 
 : FAILED-SPANS ( ptr u8 -- ptr u8 n ptr u8 n ) {: res :}
@@ -855,11 +861,12 @@ REGISTER-CHILD-RESET
 
 \ PQerrorMessage points into the PGconn CLOSE-SLOT finishes, so the text is
 \ copied first; a copy that throws still closes the slot.
-: KEEP-REFUSAL ( n -- n ) {: slot:n :}
+: KEEP-REFUSAL ( n -- n )
+   {: slot:n :}
    REFUSED-OPEN
    REFUSED-TEXT BUF:CLEAR
    slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
-   p NULL-ADDR? 0= if p CSTR$ BUF:N>BLEN REFUSED-TEXT BUF:APPEND-SPAN then
+   p NULL-ADDR? 0= if p CSTR$ -TRAILING-LF BUF:N>BLEN REFUSED-TEXT BUF:APPEND-SPAN then
    slot ;
 
 : CONNECT-REFUSED ( n -- progress ) {: slot:n :}
@@ -1299,22 +1306,32 @@ public
 \ the connection to the task's own cleanup: CLOSE, or ABANDON under a halt.
 \ CONNECT-START hands back an attempt owned by the calling task. POLL advances
 \ it to connected or refused; CLOSE abandons it at any earlier point. The slot
-\ is claimed first, so the conninfo it stages is its own. A refusal's text stays
-\ readable until the same task's next refusal, by CONNECT, AWAIT or POLL.
-: CONNECT-START ( ptr u8 n -- connection ) {: a u:n :}
+\ is claimed first, so the conninfo it stages is its own. An attempt libpq
+\ rejects at once is refused at the first POLL or AWAIT. A refusal's text, like
+\ a result's report, has no final newline and stays readable until the same
+\ task's next refusal, by CONNECT, AWAIT or POLL. A conninfo libpq cannot parse
+\ throws E-CONNECT and keeps no text, because libpq's parse message can quote
+\ the conninfo's values, a password among them.
+: CONNECT-START ( ptr u8 n -- connection )
+   {: a u:n :}
    REGISTER-CLEANUP
    CLAIM-CONN-SLOT {: slot:n :}
    slot OPEN-CONN-SLOT
    a u slot ['] STAGE-CONNINFO catch {: code:n :}
    2drop drop
    code 0<> if slot RETIRE-CONN-SLOT code throw then
+   slot ARENA-BASE NULL-ARG LIB-CONNINFO-PARSE {: opts :}
+   opts NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
+   opts LIB-CONNINFO-FREE
    slot ARENA-BASE LIB-CONNECT-START {: pg :}
    slot ARENA-RELEASE
    pg NULL-ADDR? if slot RETIRE-CONN-SLOT E-CONNECT throw then
    pg slot CONN-PG!
-   pg 1 LIB-SET-NONBLOCKING 0<> if
-      slot ABANDON-SLOT
-      E-CONNECT throw
+   pg LIB-STATUS CONNECTION-BAD <> if
+      pg 1 LIB-SET-NONBLOCKING 0<> if
+         slot ABANDON-SLOT
+         E-CONNECT throw
+      then
    then
    CONNECT-FIRST slot CONNECTING!
    slot CONN-HANDLE ;
