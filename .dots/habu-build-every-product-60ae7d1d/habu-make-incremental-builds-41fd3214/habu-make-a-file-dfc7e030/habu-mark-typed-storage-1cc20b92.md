@@ -1,9 +1,11 @@
 ---
-title: Save typed storage pointer fields as null
-status: active
+title: Keep typed storage pointer addresses across a save
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-10-31T22:20:05.977329+02:00"
+closed-at: "2026-11-04T18:49:53.471962+02:00"
+close-reason: "Landed 1183fb56: typed storage pointer cells keep their addresses across a save (DATA address rows). Proof on eda8315c: engine build rc 0, full suite 520 of 520, two-generation convergence gen 5 = gen 4; fold 2984eb50 reviewed LAND, stripped-cells test rc 0."
 ---
 
 T1b. Typed storage (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) has no PERSISTED- form, so by DECISIONS.md "typed data" (2026-10-31: scratch pointer forms are written as null, only PERSISTED- forms carry an address across a save) its pointer cells are scratch rows: STORAGE-MARK-TERM (src/core/layout-buffer.f:185) marks a T-PTR term with scratch-cell-mark at allocation and at each capture walk, TFAM-STORAGE-HAS-QUOT? (src/core/type-family.f:5690) answers for any address cell, and ADDRESS-CELLS:REMOVE-XT-SPAN (src/habu/address-cells.f:250) drops scratch rows in the span as well as xt rows. The first brief made the cells persisted DATA rows; that contradicted the ruling.

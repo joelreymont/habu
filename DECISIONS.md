@@ -273,11 +273,14 @@ learned live in the docs for their subject.
   MODEL's log line for an unusable reply carries the whole reply body, Joel
   chose "Log the whole body".
 - 2026-11-01, long model calls: Tender lost documents when MODEL's total
-  call bound ran out at about 300 s. Offered OpenAI's background mode (start
-  the response, poll its status every 2 s, no total bound, a dead call shown
-  by a failed status or a stalled connection), at the cost that OpenAI keeps
-  the response on disk about 10 minutes even with store=false, Joel chose
-  "Allow 10-min hold" over one long held request. He then approved removing
+  call bound ran out at about 300 s. A call has no total bound; a dead call
+  shows as a failed status or a stalled connection. On 2026-11-04, shown that
+  OpenAI's background mode queued requests a median 46 s and left 2 of 7
+  unstarted after 10 minutes (Tender's hang), while held streaming requests
+  started in 0.4-1.9 s and carried an event about every 8 s while thinking,
+  Joel chose "Held stream (Recommended)" over background mode with a queue
+  limit: CHAT sends one held streaming request, and a dropped connection ends
+  the call E-TRANSPORT, which Tender retries. He then approved removing
   MODEL:TIMEOUT!, DEFAULT-MS and E-DEADLINE, renaming FINISH-REASON$ to
   INCOMPLETE-REASON$, and CHAT speaking only the Responses protocol (Ollama
   stays for embeddings; its chat is built when a client needs it). Asked
