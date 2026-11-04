@@ -31,12 +31,9 @@ require src/lib/time.f
 \ API key reaches a request body, response, error, log line or producer record:
 \ a key is read only into the HTTP header, which is wiped once libcurl copies it.
 
-\ OpenAI runs a background response on its side, holding it about 10 minutes
-\ even with store=false, and streams its events. A dropped stream resumes after
-\ the last event's sequence_number, and only a response created with
-\ stream=true resumes; a keepalive's number counts its connection, not a resume
-\ position. A resume of an older stream may be refused 400 ("more than 5
-\ minutes old"), and one of a gone response 404; either ends the call E-HTTP.
+\ CHAT holds one streaming request open until the response ends. A connection
+\ that drops, or moves no byte for STALL-SECONDS, ends the call E-TRANSPORT,
+\ and the provider may still finish and bill the response.
 package MODEL
 
 private
@@ -63,8 +60,7 @@ public
 -9706 constant E-REFUSED
 \ The response ended incomplete: INCOMPLETE-REASON$ names why.
 -9707 constant E-INCOMPLETE
-\ CANCEL ended the call, REQUEST-STOP came before or during it, or the
-\ provider reports the response cancelled.
+\ CANCEL ended the call, or REQUEST-STOP came before or during it.
 -9709 constant E-CANCELLED
 \ A word out of turn: an unopened or busy call, settings closed or opened
 \ twice, a part added before PARTS-RESET or after a failed builder, VECTOR@
@@ -167,11 +163,9 @@ STRUCTURE ledger DERIVE addr
 
 CAST: >LEDGER ( ptr u8 -- ptr ledger )
 
-\ A chat's event stream: the last event's sequence number, whether the
-\ current exchange delivered an event, whether the response ended, and the
-\ fault an error event named.
+\ A chat's event stream: whether it delivered an event, whether the response
+\ ended, and the fault an error event named.
 STRUCTURE stream DERIVE addr
-   FIELD cursor n
    FIELD heard bool
    FIELD done bool
    FIELD fault n
@@ -369,7 +363,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : ROWS-BUF ( ptr call -- ptr n ) ROWS-HDR-AT HEADER ;
 : ROW-TEXT-BUF ( ptr call -- ptr n ) ROW-TEXT-HDR-AT HEADER ;
 : CACHE-KEY-BUF ( ptr call -- ptr n ) CACHE-KEY-HDR-AT HEADER ;
-\ The id of the call's background response, empty until its reply names it.
+\ The id of the call's response, empty until its reply names it.
 : RESPONSE-ID-BUF ( ptr call -- ptr n ) RESPONSE-ID-HDR-AT HEADER ;
 \ The bytes of the event stream's last read.
 : CHUNK-BUF ( ptr call -- ptr n ) CHUNK-HDR-AT HEADER ;
@@ -599,14 +593,6 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : CHAT-URL$ ( ptr call -- ptr u8 n )
    {: c :}
    s" /responses" c URL$ ;
-
-\ The url of the call's background response, then the suffix.
-: RESPONSE-URL$ ( ptr u8 n ptr call -- ptr u8 n )
-   {: suffix:ptr suffix-u:n c :}
-   s" /responses/" c URL$ 2drop
-   c RESPONSE-ID$ BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
-   suffix suffix-u BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
-   c URL-BUF BUFFER$ ;
 
 : EMBED-URL$ ( ptr call -- ptr u8 n )
    {: c :}
@@ -1169,7 +1155,6 @@ private
    JSON:WRITE-OBJECT-START
    s" model" c GEN$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" store" false JSON:WRITE-FIELD-BOOL
-   JSON:WRITE-COMMA s" background" true JSON:WRITE-FIELD-BOOL
    JSON:WRITE-COMMA s" stream" true JSON:WRITE-FIELD-BOOL
    c EFFORT$ nip 0<> if
       JSON:WRITE-COMMA s" reasoning" JSON:WRITE-KEY
@@ -1659,13 +1644,6 @@ private
    h s" POST" CURL:METHOD! c CHECK-STATUS
    h body body-u CURL:BODY! c CHECK-STATUS ;
 
-\ Sets the next exchange: a GET of the url.
-: AS-GET ( ptr u8 n ptr call -- )
-   {: url:ptr url-u:n c :}
-   c CALL-HANDLE {: h:CURL:handle :}
-   h url url-u CURL:URL! c CHECK-STATUS
-   h CURL:GET! c CHECK-STATUS ;
-
 \ Runs the exchange set on the call's handle; the response buffer holds its
 \ reply.
 : EXCHANGE ( ptr call -- )
@@ -1830,7 +1808,6 @@ private
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
    s" incomplete" JSON:READ-STR-EQ? if JSON:READ-CLOSE c READ-INCOMPLETE then
    s" failed" JSON:READ-STR-EQ? if JSON:READ-CLOSE c READ-FAILURE then
-   s" cancelled" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-CANCELLED throw then
    s" completed" JSON:READ-STR-EQ? {: done:bool :}
    JSON:READ-CLOSE
    done 0= if E-RESPONSE throw then ;
@@ -2092,6 +2069,8 @@ private
    c SERVED-BUF BUF:CLEAR
    c RESPONSE-ID-BUF BUF:CLEAR
    0 c STREAM STREAM-FAULT !
+   false c STREAM STREAM-DONE !
+   false c STREAM STREAM-HEARD !
    true c MODEL-CALL:BUSY !
    false c MODEL-CALL:CANCELLED !
    0 c MODEL-CALL:CONTENT-U !
@@ -2118,8 +2097,7 @@ private
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    cancelled ;
 
-\ Keeps the reply's response id, which the resume requests and a failure's log
-\ line name.
+\ Keeps the reply's response id, which a failure's log line names.
 : KEEP-ID ( ptr call -- )
    {: c :}
    s" id" c REPLY-AT
@@ -2206,10 +2184,8 @@ private
    c RESPONSE-ID$ nip 0= if c KEEP-ID then
    c RUNNING? 0= if true c STREAM STREAM-DONE ! then ;
 
-\ One event of the stream, its data a JSON object with a string type. The
-\ exchange's first event starts its reply afresh. Every event, a keepalive
-\ too, shows the connection alive; any but a keepalive moves the resume
-\ position.
+\ One event of the stream, its data a JSON object with a string type; the call's
+\ first event starts its reply afresh, and a keepalive is skipped.
 : READ-EVENT ( ptr call ptr u8 n -- ptr call ptr u8 n )
    {: c a:ptr u:n :}
    c STREAM {: s :}
@@ -2225,10 +2201,6 @@ private
    s" error" JSON:READ-STR-EQ? {: failed:bool :}
    JSON:READ-CLOSE
    keepalive if c a u exit then
-   a u s" sequence_number" c DATA-AT 0= if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-TOKEN JSON:T-INT <> if JSON:READ-CLOSE E-RESPONSE throw then
-   JSON:READ-INT s STREAM-CURSOR !
-   JSON:READ-CLOSE
    failed if a u c ERROR-EVENT c a u exit then
    a u c RESPONSE-EVENT
    c a u ;
@@ -2308,64 +2280,26 @@ private
    c START-TRANSFER
    d c CALL-HANDLE c STREAM-RECEIVE c SETTLE ;
 
-\ Runs the exchange set on the call's handle as the stream's next, on a fresh
-\ decoder, answering its fault, 0 when it ended clean.
+\ Runs the exchange set on the call's handle on a fresh decoder, answering its
+\ fault, 0 when it ended clean.
 : STREAM-EXCHANGE ( ptr call -- n )
    {: c :}
-   c STREAM {: s :}
-   false s STREAM-HEARD !
    c DECODER-STORAGE SSE:OPEN {: d:SSE:decoder :}
    d c [: 2dup STREAM-TRANSFER ;] catch {: code:n :} 2drop
    d SSE:CLOSE
    code ;
 
-\ Resumes a known response whose exchange heard an event or keepalive and
-\ ended, cleanly or by the transport, before the response ended; otherwise
-\ throws the code, a clean end E-RESPONSE.
-: RESUME? ( n ptr call -- bool )
-   {: code:n c :}
-   c STREAM {: s :}
-   code 0<> code E-TRANSPORT <> and if code throw then
-   s STREAM-DONE @ if
-      s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
-      false exit
-   then
-   c RESPONSE-ID$ nip 0<> s STREAM-HEARD @ and if true exit then
-   code 0<> if code throw then
-   E-RESPONSE throw ;
-
-\ Sets the next exchange: a GET of the response's stream after its last event.
-: AS-RESUME ( ptr call -- )
-   {: c :}
-   s" ?stream=true&starting_after=" c RESPONSE-URL$ 2drop
-   c STREAM STREAM-CURSOR @ FMT:INT$ BUF:N>BLEN c URL-BUF BUF:APPEND-SPAN
-   c URL-BUF BUFFER$ c AS-GET ;
-
-\ Runs a resume as the stream's next exchange, answering its fault; a resume
-\ refused 404 finds the response gone, which is E-HTTP, not E-CONFIG.
-: RESUME-EXCHANGE ( ptr call -- n )
-   {: c :}
-   c AS-RESUME
-   c STREAM-EXCHANGE {: code:n :}
-   code E-CONFIG = c MODEL-CALL:HTTP-STATUS @ 404 = and if E-HTTP exit then
-   code ;
-
-\ Reads the response's event stream until the response ends, resuming it on
-\ the same handle after each early end.
-: STREAM-LOOP ( ptr call -- ptr call )
-   {: c :}
-   c STREAM-EXCHANGE
-   begin c RESUME? while c RESUME-EXCHANGE repeat
-   c ;
-
-\ Posts the chat request and follows the response's stream.
+\ Posts the chat request and reads its stream until the response ends; a
+\ stream that ends first ends the call E-RESPONSE.
 : FOLLOW ( ptr call -- ptr call )
    {: c :}
    c STREAM {: s :}
-   0 s STREAM-CURSOR !
-   false s STREAM-DONE !
    c REQUEST-URL$ c BODY$ c AS-POST
-   c STREAM-LOOP ;
+   c STREAM-EXCHANGE {: code:n :}
+   code 0<> if code throw then
+   s STREAM-DONE @ 0= if E-RESPONSE throw then
+   s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
+   c ;
 
 : RUN-CHAT ( ptr call -- ptr call )
    {: c :}
@@ -2815,9 +2749,8 @@ public
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> code CURL:E-STATE <> and if code throw then ;
 
-\ Starts the response in the provider's background mode and reads its event
-\ stream until it ends, resuming the stream after a dropped or stalled
-\ connection: no bound on the call or its resumes.
+\ Posts the request as one held stream and reads its events until the response
+\ ends; a dropped or stalled connection ends the call E-TRANSPORT.
 : CHAT ( ptr call -- ptr u8 n )
    {: c :}
    c START-LEDGER
