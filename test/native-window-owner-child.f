@@ -34,7 +34,7 @@ variable ADDRESS-ABI
 \ --- adapted from tools/native-build-core.f ---------------------------------
 
 \ Keep the host's engine declarations, the cells below its heap floor
-\ (BOOT-LAYOUT:HEAP-START-CELL), and discard those of the retired heap above it:
+\ (BOOT:HEAP-START-CELL), and discard those of the retired heap above it:
 \ filtered, not truncated, because the rows are not partitioned in registration
 \ order (tools/native-build-core.f states why).
 : ADDR-ROWS ( -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + @ ;
@@ -44,7 +44,7 @@ variable ADDRESS-ABI
 \ The layout name itself, not habu2.f's host-side mirror, and no source-constant
 \ fallback: this fixture runs only under the engine the tree just built. A
 \ silent zero would classify every row as heap and empty the table.
-: HOST-HEAP-START ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
+: HOST-HEAP-START ( -- n ) data-base BOOT:HEAP-START-CELL + @ ;
 
 : KEEP-ROWS-BELOW ( n -- ) ADDRESS-CELLS:KEEP-BELOW ;
 
@@ -117,6 +117,7 @@ variable SOURCE-READY
 : REGISTER-LOADED ( n -- ) {: last:n :}
    \ The early core and each optional path are already present in the target
    \ dictionary. Its new loader must record them before a later require runs.
+   s" src/habu/boot-cells.f" TARGET-PROVIDE
    s" src/core/does-clause.f" TARGET-PROVIDE
    s" src/core/layout-buffer.f" TARGET-PROVIDE
    last 1+ 1 ?do
@@ -167,6 +168,7 @@ variable SOURCE-READY
    s" src/core/checker-fetch-abi.f" included
    s" src/core/checker-owner-extension.f" included
    s" src/core/checker-owner-abi.f" included
+   s" src/habu/boot-cells.f" included
    s" src/habu/created-body-abi.f" included
    s" src/habu/prims.f" included
    s" src/core/does-clause.f" included

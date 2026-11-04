@@ -1,4 +1,5 @@
 \ Build-only DATA extent checks; runtime images need only layout.f.
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/regalloc-abi.f
 require src/habu/address-cells.f
@@ -231,7 +232,7 @@ create TAB
    HIDXP-CELL                         1 cells                 CLAIM HIDXP-CELL
    EVALREC-CELL                       1 cells                 CLAIM EVALREC-CELL
    AOT-SEED-DONE-CELL                 1 cells                 CLAIM AOT-SEED-DONE-CELL
-   BOOT-SRC:USER-END                  1 cells                 CLAIM BOOT-SRC-USER-END
+   BOOT:USER-END                      1 cells                 CLAIM BOOT-USER-END
    PROT-REG-OFF                       PROT-REG-LEN            CLAIM PROT-REG
    $40C8                              $100                    CLAIM FFI-LEN-BUFFERS
    CB-XDS                             CB-BAND-BYTES           CLAIM CALLBACK-BAND
@@ -245,11 +246,11 @@ create TAB
    PROT:CF                            1 cells                 CLAIM PROT-CF
    AOT-CELLS:SIG-POOL-CELL            1 cells                 CLAIM AOT-SIG-POOL
    AOT-CELLS:SIG-LEN-CELL             1 cells                 CLAIM AOT-SIG-LEN
-   BOOT-LAYOUT:HEAP-START-CELL        1 cells                 CLAIM BOOT-HEAP-START
-   BOOT-LAYOUT:DP-FLOOR-CELL          1 cells                 CLAIM BOOT-DP-FLOOR
-   BOOT-LAYOUT:DP-CEILING-CELL        1 cells                 CLAIM BOOT-DP-CEILING
-   BOOT-LAYOUT:GLOBAL-WL-CELL         1 cells                 CLAIM BOOT-GLOBAL-WL
-   BOOT-LAYOUT:NAMESPACE-WL-CELL      1 cells                 CLAIM BOOT-NAMESPACE-WL
+   BOOT:HEAP-START-CELL               1 cells                 CLAIM BOOT-HEAP-START
+   BOOT:DP-FLOOR-CELL                 1 cells                 CLAIM BOOT-DP-FLOOR
+   BOOT:DP-CEILING-CELL               1 cells                 CLAIM BOOT-DP-CEILING
+   BOOT:GLOBAL-WL-CELL                1 cells                 CLAIM BOOT-GLOBAL-WL
+   BOOT:NAMESPACE-WL-CELL             1 cells                 CLAIM BOOT-NAMESPACE-WL
    STACK-ABI:CAP-CELL                 1 cells                 CLAIM STACK-ABI-CAP
    STACK-ABI:REPL-BASE-CELL           1 cells                 CLAIM STACK-ABI-REPL-BASE
    STACK-ABI:REPL-CAP-CELL            1 cells                 CLAIM STACK-ABI-REPL-CAP

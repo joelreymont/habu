@@ -33,7 +33,7 @@ package ENGINE-INTERNAL
    IMK-FLAGS@ DKIND:MASK and 0 = ;
 
 : IMK-GLOBAL-EXECUTABLE? ( n -- bool )
-   dup IMK-WID data-base BOOT-LAYOUT:GLOBAL-WL-CELL + @ = IF IMK-EXECUTABLE?
+   dup IMK-WID data-base BOOT:GLOBAL-WL-CELL + @ = IF IMK-EXECUTABLE?
    ELSE drop 0 0= 0= THEN ;
 
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;

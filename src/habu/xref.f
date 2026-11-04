@@ -14,12 +14,12 @@ require src/habu/native-observer-cells.f
 3 constant XREF-NAME-SLOT
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
 \ Two of the non-wordlist values a record's wordlist cell can carry.
-\ XREF-NAMESPACE-WL is the live package marker BOOT-LAYOUT:NAMESPACE-WL-CELL
+\ XREF-NAMESPACE-WL is the live package marker BOOT:NAMESPACE-WL-CELL
 \ holds; RETIRED is src/habu/layout.f's DICT-WL:RETIRED. The engine's hash index
 \ is keyed on the same cell, and XREF:RETIRE below and the checker overlay's
 \ record-wid! are the two writers that change it after a record is already in
 \ that index - see the DICT-WL comment there for what the lookup does about it.
-: XREF-NAMESPACE-WL ( -- n ) data-base BOOT-LAYOUT:NAMESPACE-WL-CELL + @ ;
+: XREF-NAMESPACE-WL ( -- n ) data-base BOOT:NAMESPACE-WL-CELL + @ ;
 DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
@@ -361,7 +361,7 @@ variable XREF-QI
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
-   drop XREF-SN@ XREF-SU @ data-base BOOT-LAYOUT:GLOBAL-WL-CELL + @
+   drop XREF-SN@ XREF-SU @ data-base BOOT:GLOBAL-WL-CELL + @
    XREF-FIND-WL ;
 \ The operand names a word: a string literal before a call is a use of it
 \ (src/core/cell-effects.f names:), here and for XREF-FIND-INDEX below.
@@ -371,7 +371,7 @@ names: XREF-FIND
    XREF-QUAL-INDEX
    dup -2 = if drop -1 exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
-   drop XREF-SN@ XREF-SU @ data-base BOOT-LAYOUT:GLOBAL-WL-CELL + @
+   drop XREF-SN@ XREF-SU @ data-base BOOT:GLOBAL-WL-CELL + @
    XREF-FIND-WL-INDEX ;
 names: XREF-FIND-INDEX
 

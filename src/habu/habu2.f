@@ -1625,7 +1625,7 @@ public
    10 DATA APP-ENTRY:XT-CELL LDR,  10 SRC-PIPEOK LABEL@ CBNZ,
    10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-GT SRC-FILE LABEL@ BCOND,
    SRC-PIPEOK LABEL@ LBL,
-   11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,   \ INE is the prefix end (LCOLDPFX); the program is the second stream
+   11 DATA INP-CELL STR,  9 DATA BOOT:USER-END STR,   \ INE is the prefix end (LCOLDPFX); the program is the second stream
    C-SOURCE-SKIP-SHEBANG ;
 
 : C-SOURCE-FILE-INIT ( -- )
@@ -1727,7 +1727,7 @@ public
    LCOLDPFX LABEL@ BL,
    17 9 0 ADDI,
    C-SOURCE-APPEND-LSRC
-   11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,   \ INE is the prefix end; the baked source is the second stream
+   11 DATA INP-CELL STR,  9 DATA BOOT:USER-END STR,   \ INE is the prefix end; the baked source is the second stream
    SRC-DONE LABEL@ B,
    SRC-DONE LABEL@ LBL, ;
 
@@ -1779,7 +1779,7 @@ public
       SRC-BLOOP LABEL@ B,
    SRC-BDONE LABEL@ LBL,
    LSHBANG LABEL@ BL,
-   11 DATA INP-CELL STR,  9 DATA BOOT-SRC:USER-END STR,  SRC-DONE LABEL@ B,   \ baked source: the second stream
+   11 DATA INP-CELL STR,  9 DATA BOOT:USER-END STR,  SRC-DONE LABEL@ B,   \ baked source: the second stream
    SRC-BFAIL LABEL@ LBL,                                          \ prefix or baked-source overflow: label fd 2 before exit 74
    1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS,
@@ -4058,7 +4058,7 @@ variable LREPLAYTRAP
          16 1 MOVZ,
    next LBL,  14 14 1 ADDI,  scan B,
    clean LBL,
-   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,
+   2 DATA BOOT:NAMESPACE-WL-CELL LDR,
    bad FRESH,
    10 0 0 ADDI,  12 1 0 ADDI,  3 13 0 ADDI,           \ the name, the flag
    9 NDICT REC-AT,
@@ -4070,7 +4070,7 @@ variable LREPLAYTRAP
       15 14 0 ADDI,  14 14 1 ADDI,                    \ [8] = a second one
    nopri LBL,
    15 11 8 STR,  14 DATA WIDN-CELL STR,
-   15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  15 11 40 STR,
+   15 DATA BOOT:NAMESPACE-WL-CELL LDR,  15 11 40 STR,
    PUBLISH,
    HW-RAISE,                                          \ an overlay's row dies at replay-close
    9 NDICT 1 SUBI,  9 G-PUSH
@@ -4776,7 +4776,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
       14 DATA DEF-WL-CELL LDR,  14 11 0 STR,
       15 0 MOVZ,  15 11 8 STR,
-      15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  15 11 40 STR,
+      15 DATA BOOT:NAMESPACE-WL-CELL LDR,  15 11 40 STR,
       EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
@@ -7616,14 +7616,14 @@ public
    21 DATA REGION-ALIAS:DELTA-CELL STR,              \ EM-MMAP-CODE-REGION's x21
    \ Publish the heap floor from the same register as the DP it sets, so the
    \ cell matches the build's DP-CHECK floor even when the host layout differs.
-   5 DATA-START LIT64,  5 DATA BOOT-LAYOUT:HEAP-START-CELL STR,
+   5 DATA-START LIT64,  5 DATA BOOT:HEAP-START-CELL STR,
    7 DATA 5 ADD,  7 DATA DP-CELL STR,
    \ DP-CHECK's bounds hold from the first DP: EM-AOT-BOOTRUN runs captured
    \ words before EM-STARTUP-RUNTIME-STATE writes the cells again.
-   7 DATA BOOT-LAYOUT:DP-FLOOR-CELL STR,
-   5 0 MOVZ,  5 DATA BOOT-LAYOUT:GLOBAL-WL-CELL STR,
-   5 DICT-WL:NAMESPACE LIT64,  5 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL STR,
-   5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,  5 DATA BOOT-LAYOUT:DP-CEILING-CELL STR, ;
+   7 DATA BOOT:DP-FLOOR-CELL STR,
+   5 0 MOVZ,  5 DATA BOOT:GLOBAL-WL-CELL STR,
+   5 DICT-WL:NAMESPACE LIT64,  5 DATA BOOT:NAMESPACE-WL-CELL STR,
+   5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,  5 DATA BOOT:DP-CEILING-CELL STR, ;
 
 \ Inline bounded byte operations. x0 is destination, x1 source, x2 length;
 \ neither operation crosses a section boundary validated by the loader.
@@ -8908,10 +8908,10 @@ ardone LBL,
 : EM-STARTUP-RUNTIME-STATE ( -- )
    \ DP-CHECK's bounds, written after EM-SNAPSHOT-RESTORE, whose DATA copy
    \ installs the saving process's cells.
-   9 DATA-START LIT64,  9 DATA 9 ADD,  9 DATA BOOT-LAYOUT:DP-FLOOR-CELL STR,
-   9 0 MOVZ,  9 DATA BOOT-LAYOUT:GLOBAL-WL-CELL STR,
-   9 DICT-WL:NAMESPACE LIT64,  9 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL STR,
-   9 DATA-SIZE PROF-CNT-BYTES - LIT64,  9 DATA 9 ADD,  9 DATA BOOT-LAYOUT:DP-CEILING-CELL STR,
+   9 DATA-START LIT64,  9 DATA 9 ADD,  9 DATA BOOT:DP-FLOOR-CELL STR,
+   9 0 MOVZ,  9 DATA BOOT:GLOBAL-WL-CELL STR,
+   9 DICT-WL:NAMESPACE LIT64,  9 DATA BOOT:NAMESPACE-WL-CELL STR,
+   9 DATA-SIZE PROF-CNT-BYTES - LIT64,  9 DATA 9 ADD,  9 DATA BOOT:DP-CEILING-CELL STR,
    10 LSRC LABEL@ ADR,
    10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
    EM-TEXT-SIZE
@@ -8925,7 +8925,7 @@ ardone LBL,
    9 DATA HND-CELL STR,
    9 DATA INP-CELL STR,  9 DATA INE-CELL STR,
    9 DATA AOT-SEED-DONE-CELL STR,
-   9 DATA BOOT-SRC:USER-END STR,
+   9 DATA BOOT:USER-END STR,
    9 DATA BPWN-CELL STR,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA ENCLOSING:PUB STR,  9 DATA ENCLOSING:PRI STR,  9 DATA ENCLOSING:PARENT STR,  9 DATA ENCLOSING:REC STR,
@@ -9827,7 +9827,7 @@ public
    12 11 1 ADDI,
    1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 9 1 ADD,     \ x1 = record x9 through the alias
    11 1 0 STR,  12 1 8 STR,
-   15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  15 1 40 STR,
+   15 DATA BOOT:NAMESPACE-WL-CELL LDR,  15 1 40 STR,
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    5 9 0 ADDI, ;
 
@@ -9846,7 +9846,7 @@ public
 
 : C-PACKAGE-RECORD-MATCH ( label label -- ) {: hit:label miss:label :}
    LBL LBL {: cmp:label inline:label :}
-   14 5 40 LDR,  15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
+   14 5 40 LDR,  15 DATA BOOT:NAMESPACE-WL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
@@ -10315,7 +10315,7 @@ public
    LBL LBL LBL  s" hb: bare word a global and a used package both export: "
    {: ret:label shadow:label msg:label ma mu :}
    LFINDSHADOW LABEL@ LBL,
-   14 5 40 LDR,  15 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,
+   14 5 40 LDR,  15 DATA BOOT:GLOBAL-WL-CELL LDR,
    14 15 CMP,  C-NE ret BCOND,                                 \ a package's word: the inner scope won
    14 USE-DEPTH-CELL LIT64,  14 DATA 14 ADD,  14 14 0 LDR,
    14 ret CBZ,                                                 \ no using open
@@ -12646,11 +12646,11 @@ public
    \ refusing line.
    LDPBAD LABEL@ LBL,
    0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA BOOT-LAYOUT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
+   9 DATA BOOT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
    9 15 9 SUB,  LDIAGU LABEL@ BL,                           \ the refused DP
    0 2 MOVZ,  1 LDPBADOF LABEL@ ADR,  2 DPBAD-OF-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA BOOT-LAYOUT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
-   10 DATA BOOT-LAYOUT:DP-CEILING-CELL LDR,  9 10 9 SUB,
+   9 DATA BOOT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
+   10 DATA BOOT:DP-CEILING-CELL LDR,  9 10 9 SUB,
    LDIAGU LABEL@ BL,                                        \ the ceiling DP-CHECK enforces
    0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
@@ -12701,7 +12701,7 @@ public
    LPOLICYTOPREC LABEL@ LBL,
    14 DATA POLICY-REQUIRE-CELL LDR,  14 ordinary CBZ,
    16 5 0 LDR,  16 14 CMP,  C-NE ordinary BCOND,
-   14 5 40 LDR,  16 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,  14 16 CMP,  C-NE ordinary BCOND,
+   14 5 40 LDR,  16 DATA BOOT:GLOBAL-WL-CELL LDR,  14 16 CMP,  C-NE ordinary BCOND,
    14 DATA TKL-CELL LDR,  14 7 CMPI,  C-NE ordinary BCOND,
    15 DATA TKA-CELL LDR,
    s" require" {: name:ptr u:n :}
@@ -12899,7 +12899,7 @@ public
 
 \ Top-level source exhausted. A boot arrives here twice: at the end of the
 \ engine prefix stream, then at the end of the user stream (a piped program, the
-\ `required` rows `--load` wrote, or the baked LSRC); layout.f BOOT-SRC:USER-END
+\ `required` rows `--load` wrote, or the baked LSRC); boot-cells.f BOOT:USER-END
 \ says why they are separate streams in one buffer. A partial capture installs
 \ at the first arrival, after its cold-prefix dependencies and before any user
 \ token; a full runtime installs at startup. Every boot mode crosses this
@@ -12936,7 +12936,7 @@ public
       C-UNIT-SOURCE-END
       EM-EVAL-CLEAN-EXIT
    LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
-   9 DATA BOOT-SRC:USER-END LDR,  9 nousrc CBZ,                  \ no second stream -> repl or exit
+   9 DATA BOOT:USER-END LDR,  9 nousrc CBZ,                  \ no second stream -> repl or exit
       SEEDED-RUNTIME? 0= AOT-REC-N @ 0 > and if
          LBL {: warm:label :}
          10 DATA SNAP-CELL LDR,  10 warm CBNZ,
@@ -12947,9 +12947,9 @@ public
          EM-AOT-BOOTRUN
          NDICT DATA SEAL-NDICT-CELL STR,
          warm LBL,
-         9 DATA BOOT-SRC:USER-END LDR,
+         9 DATA BOOT:USER-END LDR,
       then
-      10 0 MOVZ,  10 DATA BOOT-SRC:USER-END STR,                 \ one-shot: consume it before installing
+      10 0 MOVZ,  10 DATA BOOT:USER-END STR,                 \ one-shot: consume it before installing
       10 DATA INE-CELL LDR,  10 DATA INP-CELL STR,           \ the user stream begins where the prefix ended
       9 DATA INE-CELL STR,
       LMAIN LABEL@ B,

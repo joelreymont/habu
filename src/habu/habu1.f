@@ -2151,7 +2151,7 @@ variable LSOURCEEXECFINISH
    7 DATA 0 LDR,  7 G-PUSH ;
 
 \ Bound the DP heap to [floor, ceiling], the two cells at
-\ BOOT-LAYOUT:DP-FLOOR-CELL and DP-CEILING-CELL, before any allot , c, or
+\ BOOT:DP-FLOOR-CELL and DP-CEILING-CELL, before any allot , c, or
 \ definer stores a new DP; out of range goes to habu2.f LDPBAD (EM-COMPILE-DIE).
 \ Every site hands the candidate in x15: the sinks hold it in x7
 \ (BALLOT/BALIGN/C-VARIABLE/C-DEFER-CELL), x11 (BCOMMA/BCCOMMA/LCREATE) or x14
@@ -2163,11 +2163,11 @@ variable LSOURCEEXECFINISH
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
-   5 DATA BOOT-LAYOUT:DP-FLOOR-CELL LDR,
+   5 DATA BOOT:DP-FLOOR-CELL LDR,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
-   5 DATA BOOT-LAYOUT:DP-CEILING-CELL LDR,
+   5 DATA BOOT:DP-CEILING-CELL LDR,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
@@ -4668,7 +4668,7 @@ private
    POLICY-OPEN,
    1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
    13 0 0 ADDI,                                      \ the name, for the refusals: the lookup leaves x13 and x1 alone
-   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,
+   2 DATA BOOT:NAMESPACE-WL-CELL LDR,
    WLFIND:LENTRY LABEL@ BL,                          \ x11 = public wid, x12 = the row or 0
    14 1 0 ADDI,                                      \ the walk and the kernel's writes keep x13/x14
    12 found CBNZ,
@@ -5903,11 +5903,11 @@ variable LHEADROW
       14 9 7 ADD,  14 14 0 LDRB,  15 16 7 ADD,  14 15 0 STRB,
       7 7 1 ADDI,  tail B,
    probe LBL,
-   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
+   2 DATA BOOT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
    12 done CBNZ,
    bare LBL,
    0 SP 24 LDR,  1 SP 48 LDR,
-   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
+   2 DATA BOOT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
    done LBL,
    30 SP 0 LDR,  0 SP 8 LDR,  1 SP 16 LDR,  9 SP 24 LDR,
    10 SP 32 LDR,  13 SP 40 LDR,  17 SP 48 LDR,
@@ -5983,7 +5983,7 @@ variable LHEADROW
    FIND-START LABEL@ LBL,
       \ Wid 0 becomes the global wid. The hash probe answers as WLFIND's does
       \ and keeps x2 (wid), x9/x10 (name) and x13 (result) for the linear scan.
-      14 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,  2 0 CMPI,  2 14 2 C-EQ CSEL,
+      14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 0 CMPI,  2 14 2 C-EQ CSEL,
       14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table -> linear
       9 10 15 4 16 7 C-HIDX-HASH
       6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
@@ -6059,7 +6059,7 @@ variable LHEADROW
       \ The global wordlist is searched last: a miss there ends the search; a
       \ qualified name (x11 = 1) skips the enclosing package.
       13 FIND-FOUND LABEL@ CBNZ,
-      14 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,  2 14 CMP,  C-EQ FIND-MISS LABEL@ BCOND,
+      14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 14 CMP,  C-EQ FIND-MISS LABEL@ BCOND,
       14 DATA PKG-PRI-CELL LDR,  14 2 CMP,  C-NE open-pub BCOND,
          2 DATA PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
       open-pub LBL,

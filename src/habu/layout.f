@@ -132,7 +132,7 @@ REGION DICT-SIZE - constant BYTES
 \ private wids where a word keeps its code span (xref.f XREF:PACKAGE-WL?).
 package DICT-WL
 public
-\ The marker BOOT-LAYOUT:NAMESPACE-WL-CELL holds at boot: a live package row's.
+\ The marker BOOT:NAMESPACE-WL-CELL holds at boot: a live package row's.
 -1 constant NAMESPACE
 \ A retired record's; the row stays on its old hash chain (habu1.f WLFIND).
 -2 constant RETIRED
@@ -636,7 +636,7 @@ $47D8 constant SIG-LEN-CELL
 \ address. Zero in all three means no stripped spans (nothing captured, or a
 \ whitebox image that kept every name).
 \ They sit in the $600..$800 header hole BODYBUF-OFF names free, above
-\ GENIO-ABI's band. The run above BOOT-LAYOUT:HEAP-START-CELL is not free:
+\ GENIO-ABI's band. The run above BOOT:HEAP-START-CELL is not free:
 \ stack-abi.f holds $47E8..$4810, then the transaction and USER-BAND.
 package AOT-CELLS
 public
@@ -667,21 +667,6 @@ public
 $678 constant STUB-CELL
 $680 constant FD-PTR-CELL
 $688 constant FD-CELL
-;package
-
-\ The running engine's heap floor, a DATA offset in the fixed header: a build
-\ splits host address rows here (native-build-core.f CHECK-HOST-LAYOUT).
-package BOOT-LAYOUT
-public
-$47E0 constant HEAP-START-CELL
-\ The bounds habu1.f DP-CHECK holds a new DP to, absolute: every arm64 start
-\ writes DATA + DATA-START and DATA + DATA-SIZE - PROF-CNT-BYTES (prof-abi.f).
-$7E0 constant DP-FLOOR-CELL
-$7E8 constant DP-CEILING-CELL
-\ The wid lookups treat as the global wordlist and a package row's marker
-\ (DICT-WL): every boot writes 0 and DICT-WL:NAMESPACE.
-$7F0 constant GLOBAL-WL-CELL
-$7F8 constant NAMESPACE-WL-CELL
 ;package
 
 
@@ -729,20 +714,6 @@ $3CA0 constant EVALREC-CELL
 \ the user stream's own exhaustion nor REPL re-entry can seed a second time. It
 \ is the seed's only guard; the seed runs on every boot.
 $3CA8 constant AOT-SEED-DONE-CELL
-\ BOOT-SRC:USER-END: the end of the user source stream while the engine-prefix
-\ stream runs, 0 once it is installed (one-shot). habu2.f's source setup builds
-\ the prefix and the user program (piped bytes, `s" f.f" required` rows, or the
-\ baked LSRC) into one mapping; the cold-prefix routine publishes the prefix end
-\ as INE and the mode publishes the buffer end here. "Source exhausted"
-\ (EM-COMPILE-EXIT, LEX0) thus comes at the end of the engine prefix on every
-\ boot, where the engine is complete and no user token has run: the AOT seed
-\ runs there, then LEX0 installs [INE, USER-END) and re-enters the interpreter,
-\ as EM-REPL-READ does for a typed line. Arming the seed without splitting the
-\ streams fired it after the batch program it serves. DATA-INIT zeroes it.
-package BOOT-SRC
-public
-$3CB0 constant USER-END
-;package
 \ The protected-WID registry records the WIDs of sealed system / generated
 \ constructor packages created in the friend window; habu1.f LPROTWIDQ
 \ membership (EMIT-PROTWID) gates the sealed-WID guards.
@@ -1111,8 +1082,8 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 LVS-OFF, $6A8..$6C0 the `,` run,
 \ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 free, $6D0..$750 LVF-OFF,
 \ $750..$7D0 LVQ-OFF, $7D0..$7E0 FRAME-CELL and QFRAME-CELL, $7E0..$7F0
-\ BOOT-LAYOUT:DP-FLOOR-CELL and DP-CEILING-CELL and $7F0..$800
-\ BOOT-LAYOUT:GLOBAL-WL-CELL and NAMESPACE-WL-CELL.
+\ BOOT:DP-FLOOR-CELL and DP-CEILING-CELL and $7F0..$800
+\ BOOT:GLOBAL-WL-CELL and NAMESPACE-WL-CELL.
 $800 constant BODYBUF-OFF
 \ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
 \ which the checker reads too.

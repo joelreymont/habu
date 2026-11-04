@@ -97,7 +97,7 @@ s" SDB@" s" -- ptr u8" TRUST
 
 \ The running engine's heap floor, where its loader puts the heap back: a host
 \ building a tree that moves DATA-START keeps its own.
-: HEAP-START ( -- n ) data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
+: HEAP-START ( -- n ) data-base BOOT:HEAP-START-CELL + @ ;
 
 \ A restored snapshot's authenticated text contains its old region, DATA and trailer: copy only
 \ the prefix before them, or each recapture nests the previous snapshot. The loader has validated
@@ -298,7 +298,7 @@ PTR-VARIABLE SND-A
    PEND-OPAQUE-CELL SND-ZERO-CELL
    DEF-TKA-CELL SND-ZERO-CELL
    AOT-SEED-DONE-CELL SND-ZERO-CELL
-   BOOT-SRC:USER-END SND-ZERO-CELL
+   BOOT:USER-END SND-ZERO-CELL
    \ EVALD counts the frames EVAL-TOP links; both belong to the writer's
    \ evaluate (a save from stdin runs inside one), so the image starts with none.
    EVAL-TOP-CELL SND-ZERO-CELL  EVALD-CELL SND-ZERO-CELL

@@ -8,6 +8,7 @@ require src/lib/le.f
 require src/arch/x86-64/icode.f
 require src/os/linux-x86-64/elf.f
 require src/os/linux-x86-64/target-layout.f
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/code-span.f
 require src/habu/primitive-registry.f
@@ -737,7 +738,7 @@ SNAP-RELOC:XTCELL-SCRATCH-TAG KIND-SHIFT rshift DATA-KEY or constant SCRATCH-KEY
    ncells 1 max DATA-STORAGE-RESERVE
    ncells 0 ?do 0 i DATA-STORAGE ! loop
    X64LAYOUT:DATA-VA VA>N HEAP-FLOOR + DP-CELL DATA-CELL!
-   DATA-START BOOT-LAYOUT:HEAP-START-CELL DATA-CELL!
+   DATA-START BOOT:HEAP-START-CELL DATA-CELL!
    FRIEND-ARENA-LEN FRIEND-LATCH-CELL DATA-CELL!
    \ The target window ends at SEAL-CAPTURE; link placement renumbers its
    \ records, so the seal floor is the target's complete linked count.

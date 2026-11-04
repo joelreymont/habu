@@ -119,7 +119,7 @@ named by `src/habu/aot-capture.f` stops the stage with `E-UNDEFINED`.
 An older native host cannot build a tree whose disk sources need what the host
 does not supply: a primitive such as `scratch-cell-mark`, which
 `src/core/pointer-storage.f` calls, or the package marker `src/habu/xref.f`
-reads from `BOOT-LAYOUT:NAMESPACE-WL-CELL` instead of `DICT-WL:NAMESPACE`. A
+reads from `BOOT:NAMESPACE-WL-CELL` instead of `DICT-WL:NAMESPACE`. A
 host whose boot leaves that cell 0 stops the build with rc 70, `hb: no
 authenticated package context for this definition`. Build a host from a tree
 that adds only the primitive or the cell's boot write, and build this tree on
@@ -210,13 +210,13 @@ move with it.
 Build it with `tools/native-build.f`: its support child
 (`tools/native-build-image.f`) runs `tools/cold-load.f`, which loads the tree's
 layout before capture, so the first product's layout and bands agree. The build
-refuses a donor that publishes no heap floor (BOOT-LAYOUT:HEAP-START-CELL) or
+refuses a donor that publishes no heap floor (BOOT:HEAP-START-CELL) or
 has an address row below it that names no slot (`tools/native-build-core.f`
 CHECK-HOST-LAYOUT), and `src/habu/snap-lib.f` writes the heap from that floor.
 The build also runs the tree's source in the donor, so an engine cell that
 source reads by DATA offset sits at a fixed offset no band change moves
-(`src/habu/layout.f` REPLAY-SCOPE, UNIT-COMPILE-CELL,
-BOOT-LAYOUT:HEAP-START-CELL); the moving address-cell header is read at the
+(`src/habu/layout.f` REPLAY-SCOPE and UNIT-COMPILE-CELL, `src/habu/boot-cells.f`
+BOOT:HEAP-START-CELL); the moving address-cell header is read at the
 donor offset the build passes (ADDRESS-CELLS:WITH-HOST-HEADER). A direct saved
 writer keeps the layout of the builder it was saved from: rebuild that builder
 from matching source rather than use a saved writer from the previous layout.

@@ -42,7 +42,7 @@ variable PRIOR-ENGINE-ROOT-U
 
 \ The running host may predate a new engine callback, and its reserved bands may
 \ be smaller than this tree's: keep the host's engine declarations, the cells
-\ below its own heap floor (BOOT-LAYOUT:HEAP-START-CELL), and discard those of
+\ below its own heap floor (BOOT:HEAP-START-CELL), and discard those of
 \ the retired heap above it. The tree's DATA-START would keep host heap rows,
 \ which the capture refuses by value (src/habu/aot-capture.f ACAP-TARGET-REFUSE,
 \ exit 74). Rows are filtered, not truncated: two fixed-band cells register
@@ -55,7 +55,7 @@ variable PRIOR-ENGINE-ROOT-U
 : ADDR-ROW-OFF ( n -- n ) ADDR-ROW@ SNAP-RELOC:XTCELL-OFF-MASK and ;
 
 : HOST-HEAP-START ( -- n )
-   data-base BOOT-LAYOUT:HEAP-START-CELL + @ ;
+   data-base BOOT:HEAP-START-CELL + @ ;
 
 : CHECK-HOST-LAYOUT ( -- )
    \ No NATIVE-LAYOUT row covers a host's CODE row at $2CF0, which TRANSLATE
@@ -563,6 +563,7 @@ variable PRE-ROWS-N
    s" src/core/checker-fetch-abi.f" included
    s" src/core/checker-owner-extension.f" included
    s" src/core/checker-owner-abi.f" included
+   s" src/habu/boot-cells.f" included
    s" src/habu/created-body-abi.f" included
    s" src/habu/prims.f" included
    s" src/core/does-clause.f" included

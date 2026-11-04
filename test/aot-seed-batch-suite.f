@@ -1,7 +1,7 @@
 \ aot-seed-batch-suite.f - the AOT seed serves batch boots: every boot mode has
 \ one dictionary surface. The seed runs at the end of the engine prefix stream
-\ on every boot (src/habu/habu2.f EM-COMPILE-EXIT; BOOT-SRC:USER-END in
-\ src/habu/layout.f), so the batch dictionary is the interactive one. Row:
+\ on every boot (src/habu/habu2.f EM-COMPILE-EXIT; BOOT:USER-END in
+\ src/habu/boot-cells.f), so the batch dictionary is the interactive one. Row:
 \ `SUITE aot-seed-batch` in test/gate-stdlib-cases.f.
 
 \ Standalone:

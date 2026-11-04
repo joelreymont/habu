@@ -8,6 +8,7 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/lib/string.f
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
@@ -458,7 +459,7 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
 \ BODYLEN are stale; a donor engine's DATA, below BODY-SOURCE:END, has none.
 : BODY-LINE ( ptr u8 -- n )
    {: p:ptr :}
-   data-base BOOT-LAYOUT:HEAP-START-CELL + @ BODY-SOURCE:END < if 0 exit then
+   data-base BOOT:HEAP-START-CELL + @ BODY-SOURCE:END < if 0 exit then
    p data-base BODYBUF-OFF + - {: off:n :}
    off 0 <  off data-base BODYLEN-CELL + @ >= or if 0 exit then
    INPUT-START @ OPEN-NAME @ INPUT-END @ {: b:ptr nm:ptr e:ptr :}
