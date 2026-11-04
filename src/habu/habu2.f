@@ -7613,12 +7613,12 @@ public
    21 DATA REGION-ALIAS:DELTA-CELL STR,              \ EM-MMAP-CODE-REGION's x21
    \ Publish the heap floor from the same register as the DP it sets, so the
    \ cell matches the build's DP-CHECK floor even when the host layout differs.
-   5 DATA-START LIT64,  5 DATA EM-LAYOUT:HEAP-START-OFF STR,
+   5 DATA-START LIT64,  5 DATA BOOT-LAYOUT:HEAP-START-CELL STR,
    7 DATA 5 ADD,  7 DATA DP-CELL STR,
    \ DP-CHECK's bounds hold from the first DP: EM-AOT-BOOTRUN runs captured
    \ words before EM-STARTUP-RUNTIME-STATE writes the cells again.
-   7 DATA EM-LAYOUT:DP-FLOOR-OFF STR,
-   5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,  5 DATA EM-LAYOUT:DP-CEILING-OFF STR, ;
+   7 DATA BOOT-LAYOUT:DP-FLOOR-CELL STR,
+   5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,  5 DATA BOOT-LAYOUT:DP-CEILING-CELL STR, ;
 
 \ Inline bounded byte operations. x0 is destination, x1 source, x2 length;
 \ neither operation crosses a section boundary validated by the loader.
@@ -8901,10 +8901,10 @@ ardone LBL,
    ;
 
 : EM-STARTUP-RUNTIME-STATE ( -- )
-   \ DP-CHECK's bounds (layout.f BOOT-LAYOUT), written after EM-SNAPSHOT-RESTORE,
-   \ whose DATA copy installs the saving process's cells.
-   9 DATA-START LIT64,  9 DATA 9 ADD,  9 DATA EM-LAYOUT:DP-FLOOR-OFF STR,
-   9 DATA-SIZE PROF-CNT-BYTES - LIT64,  9 DATA 9 ADD,  9 DATA EM-LAYOUT:DP-CEILING-OFF STR,
+   \ DP-CHECK's bounds, written after EM-SNAPSHOT-RESTORE, whose DATA copy
+   \ installs the saving process's cells.
+   9 DATA-START LIT64,  9 DATA 9 ADD,  9 DATA BOOT-LAYOUT:DP-FLOOR-CELL STR,
+   9 DATA-SIZE PROF-CNT-BYTES - LIT64,  9 DATA 9 ADD,  9 DATA BOOT-LAYOUT:DP-CEILING-CELL STR,
    10 LSRC LABEL@ ADR,
    10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
    EM-TEXT-SIZE
@@ -12626,25 +12626,23 @@ public
    LCSTR LABEL@ LBL,
    0 2 MOVZ,  1 LCSTRMSG LABEL@ ADR,  2 CSTRMSG-LEN MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
-   \ DP-heap out-of-range diagnostic. Every allot/,/c,/definer DP advance runs
-   \ habu1.f DP-CHECK; when the new DP leaves [floor, ceiling] this names it
-   \ and routes through LCOMPILEDIE with x0=76 (catchable inside evaluate,
-   \ with no partial write since DP-CHECK precedes the store; exit 76 at top
-   \ level). The line carries the refused DP and the ceiling, both as offsets
-   \ from the space's base, floor - DATA-START, through LDIAGU. x15 holds the
-   \ candidate DP, moved there by DP-CHECK's refusal arm because the sinks
-   \ hold it in x7, x11 or x14.
+   \ DP-heap out-of-range diagnostic for habu1.f DP-CHECK, which hands the
+   \ candidate DP in x15: "hb: data space out of range: DP <dp> of <cap> bytes"
+   \ on fd 2, both numbers offsets from the space's base, floor - DATA-START,
+   \ then LCOMPILEDIE with x0=76 (catchable inside evaluate, nothing written;
+   \ exit 76 at top level).
    \ No definition is named: no DP sink runs while a colon body compiles
    \ (compile-mode string literals go to the code region), so LDIAGDEF's buffer
    \ holds the last definer's name. LCOMPILEDIE's ` at <path>:<line>` names the
    \ refusing line.
    LDPBAD LABEL@ LBL,
    0 2 MOVZ,  1 LDPBADMSG LABEL@ ADR,  2 DPBADMSG-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA EM-LAYOUT:DP-FLOOR-OFF LDR,  10 DATA-START LIT64,  9 9 10 SUB,
+   9 DATA BOOT-LAYOUT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
    9 15 9 SUB,  LDIAGU LABEL@ BL,                           \ the refused DP
    0 2 MOVZ,  1 LDPBADOF LABEL@ ADR,  2 DPBAD-OF-LEN MOVZ,  NR-WRITE SYS,
-   9 DATA EM-LAYOUT:DP-FLOOR-OFF LDR,  10 DATA-START LIT64,  9 9 10 SUB,
-   10 DATA EM-LAYOUT:DP-CEILING-OFF LDR,  9 10 9 SUB,  LDIAGU LABEL@ BL,   \ the ceiling DP-CHECK enforces
+   9 DATA BOOT-LAYOUT:DP-FLOOR-CELL LDR,  10 DATA-START LIT64,  9 9 10 SUB,
+   10 DATA BOOT-LAYOUT:DP-CEILING-CELL LDR,  9 10 9 SUB,
+   LDIAGU LABEL@ BL,                                        \ the ceiling DP-CHECK enforces
    0 2 MOVZ,  1 LDPBADUNIT LABEL@ ADR,  2 DPBAD-UNIT-LEN MOVZ,  NR-WRITE SYS,
    0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
    dpbad-end LBL,

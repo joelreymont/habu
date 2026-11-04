@@ -2151,24 +2151,9 @@ variable LSOURCEEXECFINISH
 : BHERE ( -- )
    7 DATA 0 LDR,  7 G-PUSH ;
 
-\ EM-LAYOUT's offsets mirror src/habu/layout.f BOOT-LAYOUT's cells: this file
-\ and habu2.f compile against the host's layout names (tools/native-build.f does
-\ not load the tree's layout.f, and a booted engine's require of it is a no-op),
-\ so naming BOOT-LAYOUT fails with E-UNDEFINED on a host that lacks the cell.
-\ src/core/checker.f mirrors AOT-CELLS:SIG-POOL-CELL for the same reason.
-package EM-LAYOUT
-public
-$47E0 constant HEAP-START-OFF
-$7E0 constant DP-FLOOR-OFF
-$7E8 constant DP-CEILING-OFF
-;package
-
-\ Bound the DP heap to [floor, ceiling], the two cells at EM-LAYOUT:DP-FLOOR-OFF
-\ and DP-CEILING-OFF (layout.f BOOT-LAYOUT), before any allot , c, or definer
-\ stores a new DP. Out of range goes to LDPBAD (habu2.f
-\ EM-COMPILE-DIE): "hb: data space out of range: DP <dp> of <cap> bytes" on
-\ fd 2, then rc 76 via LCOMPILEDIE, a catchable throw inside evaluate (nothing
-\ was written: this check precedes every DP store) and exit 76 at top level.
+\ Bound the DP heap to [floor, ceiling], the two cells at
+\ BOOT-LAYOUT:DP-FLOOR-CELL and DP-CEILING-CELL, before any allot , c, or
+\ definer stores a new DP; out of range goes to habu2.f LDPBAD (EM-COMPILE-DIE).
 \ Every site hands the candidate in x15: the sinks hold it in x7
 \ (BALLOT/BALIGN/C-VARIABLE/C-DEFER-CELL), x11 (BCOMMA/BCCOMMA/LCREATE) or x14
 \ (interpret-mode string copies). x15 is free on the refusal arm: a site
@@ -2179,11 +2164,11 @@ $7E8 constant DP-CEILING-OFF
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
-   5 DATA EM-LAYOUT:DP-FLOOR-OFF LDR,
+   5 DATA BOOT-LAYOUT:DP-FLOOR-CELL LDR,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
-   5 DATA EM-LAYOUT:DP-CEILING-OFF LDR,
+   5 DATA BOOT-LAYOUT:DP-CEILING-CELL LDR,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;
