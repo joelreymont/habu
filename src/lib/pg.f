@@ -1072,8 +1072,10 @@ REGISTER-CHILD-RESET
    slot PARAM-ARRAY CLAIM-RES-SLOT ;
 
 
-: SEND-FAILED ( n -- ) {: res:n :}
+\ A send libpq refused is a transport failure: the connection goes with it.
+: SEND-FAILED ( n n -- ) {: slot:n res:n :}
    res RETIRE-RES-SLOT
+   slot ABANDON-SLOT
    E-EXEC throw ;
 
 
@@ -1085,7 +1087,7 @@ REGISTER-CHILD-RESET
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
    NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PARAMS {: sent:n :}
-   sent 0= if res SEND-FAILED then
+   sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1098,7 +1100,7 @@ REGISTER-CHILD-RESET
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
    NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PREPARED {: sent:n :}
-   sent 0= if res SEND-FAILED then
+   sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1113,7 +1115,7 @@ REGISTER-CHILD-RESET
    CLAIM-RES-SLOT {: res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + base sql-off + 0 NULL-ARG LIB-SEND-PREPARE {: sent:n :}
-   sent 0= if res SEND-FAILED then
+   sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1130,7 +1132,7 @@ REGISTER-CHILD-RESET
    s" " slot ARENA-CSTR {: name-off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ slot ARENA-BASE name-off + LIB-SEND-DESCRIBE-PREPARED {: sent:n :}
-   sent 0= if res SEND-FAILED then
+   sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1145,7 +1147,7 @@ REGISTER-CHILD-RESET
    a u slot ARENA-CSTR {: off:n :}
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ slot ARENA-BASE off + LIB-SEND-QUERY {: sent:n :}
-   sent 0= if res SEND-FAILED then
+   sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
@@ -1179,7 +1181,7 @@ REGISTER-CHILD-RESET
    CLAIM-RES-SLOT {: res:n :}
    slot CONN-PG@ sql 0 NULL-ARG NULL-ARG NULL-ARG NULL-ARG TEXT-RESULT
    LIB-SEND-QUERY-PARAMS {: sent:n :}
-   sent 0= if res SEND-FAILED then
+   sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot deadline WAIT-QUERY RESULT-SLOT ;
 
