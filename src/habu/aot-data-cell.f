@@ -1,6 +1,7 @@
 \ A stripped image cannot restore a mapping made by its builder. AOT and FILE
 \ admission classify live cells here. Automatic FILE caching declines unsafe
 \ storage; strict export and the final AOT link name the cell and refuse it.
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/address-carrier.f
@@ -135,7 +136,7 @@ names: OPTIONAL-XT
 
 : SCALAR-REC? ( ptr n -- bool ) {: rec:ptr :}
    rec XREF-RETIRED? if false exit then
-   rec XREF-WORDLIST XREF-NAMESPACE-WL = if false exit then
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL = if false exit then
    rec XREF-FLAGS {: flags:n :}
    flags DNAME-CELL and 0<>
    flags DKIND:MASK and DKIND:ADDR = and ;
@@ -176,7 +177,7 @@ variable SITE-HIT
 
 : ALLOC-REC? ( ptr n -- bool ) {: rec:ptr :}
    rec XREF-RETIRED? if false exit then
-   rec XREF-WORDLIST XREF-NAMESPACE-WL = if false exit then
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL = if false exit then
    rec XREF-FLAGS DNAME-ALLOC and 0<> ;
 
 : ALLOC-BASE ( ptr n -- n ) {: rec:ptr :}

@@ -2,6 +2,7 @@
 \ Dictionary reads use XREF; private engine boundaries apply the flags and
 \ read checker registries before the runtime is sealed.
 require src/core/prefix-boundary.f
+require src/habu/boot-cells.f
 
 package ENGINE-INTERNAL
 
@@ -33,7 +34,7 @@ package ENGINE-INTERNAL
    IMK-FLAGS@ DKIND:MASK and 0 = ;
 
 : IMK-GLOBAL-EXECUTABLE? ( n -- bool )
-   dup IMK-WID data-base BOOT:GLOBAL-WL-CELL + @ = IF IMK-EXECUTABLE?
+   dup IMK-WID BOOT:GLOBAL-WL = IF IMK-EXECUTABLE?
    ELSE drop 0 0= 0= THEN ;
 
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
@@ -101,7 +102,7 @@ variable IMK-QI
 
 : IMK-WALK-PACKAGES ( n -- ) {: first:n :}   \ classify every package's public wordlist
    ndict@ 0 ?do
-      i IMK-WID XREF-NAMESPACE-WL = IF i first IMK-PKG-PUBLICS THEN
+      i IMK-WID BOOT:NAMESPACE-WL = IF i first IMK-PKG-PUBLICS THEN
    loop ;
 
 : IMK-NAMED? ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
@@ -178,7 +179,7 @@ EXPORT IMAGE-WHITEBOX
    IMK-CLASS @ IMAGE-WHITEBOX = IF EXIT THEN
    ndict@ first ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = IF
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = IF
          rec XREF-PKG-PUBLIC prot-wid-add
          rec XREF-PKG-PRIVATE dup 0= IF drop ELSE prot-wid-add THEN
       THEN

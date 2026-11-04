@@ -3,6 +3,7 @@
 require src/lib/fs.f
 require src/lib/string.f
 require src/os/script-argv.f
+require src/habu/boot-cells.f
 require src/habu/code-span.f
 require tools/image-names.f
 
@@ -57,7 +58,7 @@ variable MAP-DONOR-USED
    wid 0 < if s" -" IMAGE-NAMES:OWNER-UNKNOWN exit then
    ndict@ 0 ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          rec XREF-PKG-PUBLIC wid = if
             rec XREF-NAME$ IMAGE-NAMES:OWNER-PUBLIC unloop exit then
          rec XREF-PKG-PRIVATE wid = if
@@ -167,7 +168,7 @@ variable MAP-DONOR-USED
 : MAP-NAMESPACES ( -- )
    ndict@ 0 ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          rec XREF-PKG-PUBLIC rec XREF-PKG-PRIVATE MAP-NS-USED? if
             rec MAP-NAMESPACE
          then

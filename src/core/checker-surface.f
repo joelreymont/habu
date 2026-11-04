@@ -3,6 +3,7 @@
 \ checker keeps its own axioms (primitive rows and the primitive control prefix)
 \ without asking. KEEP? states the rule.
 require src/lib/prelude.f
+require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/core/internal-mark.f
 
@@ -34,7 +35,7 @@ private
 : KEEP? ( ptr u8 n bool ptr u8 n -- bool ) {: pa:ptr pu:n pub:bool na:ptr nu:n :}
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-WHITEBOX = if true exit then
    pu 0= if na nu 0 SHIPPED? exit then
-   pa pu XREF-NAMESPACE-WL RECORD-INDEX {: row:n :}
+   pa pu BOOT:NAMESPACE-WL RECORD-INDEX {: row:n :}
    row 0 < if false exit then
    row XREF-REC {: pkg:ptr :}
    pub pa pu XREF-QUAL-INDEX 0 < and if

@@ -15,6 +15,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
+require src/habu/boot-cells.f
 require src/habu/verify-source.f
 require test/reopen-binding-lib.f
 require test/reopen-binding-late.f
@@ -152,7 +153,7 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    USE-DEPTH use T= ;
 
 : NAMESPACE? ( ptr u8 n -- bool )
-   XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
+   BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
 : RAW-CASE ( -- )
    s" a reopened body binds the package word the checker has no record of" T-LABEL
@@ -246,7 +247,7 @@ variable COMPOSE       \ nonzero: there, compose the text as a file the load rea
    s" a replayed package opens a namespace a qualified definition made" T-LABEL
    S\" package RB-PQ\npublic\n: RB-PY ( -- n ) X ;\n;package\n" 0 REPLAY
    s" and the namespace has no private wordlist after it" T-LABEL
-   s" RB-PQ" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE 0 T= ;
+   s" RB-PQ" BOOT:NAMESPACE-WL XREF-FIND-WL XREF-PKG-PRIVATE 0 T= ;
 
 \ A primitive precedes the source prefix's first record
 \ (src/core/prefix-boundary.f CORE-PREFIX:FIRST-RECORD), so the live load

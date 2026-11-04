@@ -6,6 +6,7 @@
 \   <engine> --load tools/code-owner-main.f -- <hex-or-decimal region offset>
 
 require src/lib/fmt.f                        \ FMT:.INT
+require src/habu/boot-cells.f
 
 package CODE-OWNER
 
@@ -14,7 +15,8 @@ private
 variable HITS
 
 : SPAN? ( n ptr n -- bool ) {: a:n r:ptr :}
-   r XREF-WORDLIST XREF-NAMESPACE-WL = if 0 0= 0= exit then   \ a package row's [0] is a wid, not code
+   \ a package row's [0] is a wid, not code
+   r XREF-WORDLIST BOOT:NAMESPACE-WL = if 0 0= 0= exit then
    r XREF-RETIRED? if 0 0= 0= exit then
    a r XREF-START >=  a r XREF-START r XREF-CODE-BYTES + <  and ;
 

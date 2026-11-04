@@ -8,6 +8,7 @@
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/codesign.f
+require src/habu/boot-cells.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/cell-grid.f

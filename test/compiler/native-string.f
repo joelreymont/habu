@@ -6,6 +6,7 @@ require src/lib/fmt.f
 require src/core/generated-declaration.f
 require src/compiler/native/compiler.f
 require src/compiler/native/hir.f
+require src/habu/boot-cells.f
 require src/habu/intern.f
 require src/habu/aot-arm.f
 require test/compiler/literal-segment.f
@@ -259,7 +260,7 @@ PTR-VARIABLE IMPORTED-POOL
 CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
 
 : IMPORT-OP ( -- [ ptr u8 n ptr n ptr n -- ] )
-   s" INTERN" XREF-NAMESPACE-WL XREF-FIND-WL
+   s" INTERN" BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? TTRUE
    XREF-PKG-PRIVATE {: wid:n :}
    s" IMPORT-ROWS" wid XREF-FIND-WL

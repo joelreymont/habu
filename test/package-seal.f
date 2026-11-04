@@ -10,6 +10,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/test/subject.f
+require src/habu/boot-cells.f
 
 package PACKAGE-SEAL
 
@@ -104,7 +105,7 @@ variable OPEN
    0 ROWS !  0 OPEN !
    SEAL-NDICT@ 0 ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          ROWS @ 1 + ROWS !
          rec ROW-SEALED? 0= if
             OPEN @ 1 + OPEN !

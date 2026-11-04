@@ -8,6 +8,7 @@ require src/lib/source-syntax.f
 require src/core/checker-owner-guard.f
 require src/lib/string.f
 require src/lib/fs.f
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/workspace.f
@@ -2184,7 +2185,7 @@ DUPLICATE-INIT
 
 \ The public wordlist of the package NAME names, -1 when it has no row.
 : PUBLIC-WID ( ptr u8 n -- n )
-   XREF-NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
+   BOOT:NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
    row XREF-FOUND? 0= IF -1 EXIT THEN
    row XREF-PKG-PUBLIC ;
 

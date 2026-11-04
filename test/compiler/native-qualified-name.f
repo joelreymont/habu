@@ -9,6 +9,8 @@
 \ tier 1's, and at the default tier the rehomed record passes it and the file
 \ dies on its own diagnostic.
 
+require src/habu/boot-cells.f
+
 package XREF
 public
 : REHOME-WID ( n ptr n -- ) patch32 ;
@@ -25,7 +27,7 @@ package NCOMP-NAME-TEST
 
 private
 
-s" NCOMP-NAME-B" XREF-NAMESPACE-WL XREF-FIND-WL XREF-PKG-PUBLIC
+s" NCOMP-NAME-B" BOOT:NAMESPACE-WL XREF-FIND-WL XREF-PKG-PUBLIC
 constant OTHER-WID
 
 PTR-VARIABLE SRC-A

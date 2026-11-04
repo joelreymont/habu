@@ -1,9 +1,11 @@
 \ xref.f - live dictionary inspection words for the REPL and debug path, read
-\ through dbase@/ndict@; load after layout.f. A cold-prefix row (boot-files.f
-\ BOOT-FILES) loaded after check-hook.f with no `0 set-check` span, so the
-\ engine build checks it. tools/check.f refuses it alone: it defines
-\ `undefine` (E-RESERVED-DEFINITION) and every engine already holds its words
-\ (E-DUPLICATE-DEFINITION).
+\ through dbase@/ndict@; load after boot-cells.f and layout.f. It requires
+\ neither: the arm64 cold prefix loads it before it records the files it loaded
+\ (habu2.f EMIT-HOST-LOAD-PREFIX), so a require would load one twice. A
+\ cold-prefix row (boot-files.f BOOT-FILES) loaded after check-hook.f with no
+\ `0 set-check` span, so the engine build checks it. tools/check.f refuses it
+\ alone: it defines `undefine` (E-RESERVED-DEFINITION) and every engine already
+\ holds its words (E-DUPLICATE-DEFINITION).
 require src/habu/native-observer-cells.f
 
 \ The cold prefix loads CODE-SPAN and DOES-CLAUSE before XREF.
@@ -13,13 +15,12 @@ require src/habu/native-observer-cells.f
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
-\ Two of the non-wordlist values a record's wordlist cell can carry.
-\ XREF-NAMESPACE-WL is the live package marker BOOT:NAMESPACE-WL-CELL
-\ holds; RETIRED is src/habu/layout.f's DICT-WL:RETIRED. The engine's hash index
-\ is keyed on the same cell, and XREF:RETIRE below and the checker overlay's
-\ record-wid! are the two writers that change it after a record is already in
-\ that index - see the DICT-WL comment there for what the lookup does about it.
-: XREF-NAMESPACE-WL ( -- n ) data-base BOOT:NAMESPACE-WL-CELL + @ ;
+\ Two of the non-wordlist values a record's wordlist cell can carry: the live
+\ package marker BOOT:NAMESPACE-WL answers and RETIRED, src/habu/layout.f's
+\ DICT-WL:RETIRED. The engine's hash index is keyed on the same cell, and
+\ XREF:RETIRE below and the checker overlay's record-wid! are the two writers
+\ that change it after a record is already in that index - see the DICT-WL
+\ comment there for what the lookup does about it.
 DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
@@ -258,7 +259,7 @@ private
       s" " XREF-FALSE exit
    then
    recn XREF-ADDR>REC
-   dup XREF-WORDLIST XREF-NAMESPACE-WL <> if
+   dup XREF-WORDLIST BOOT:NAMESPACE-WL <> if
       drop s" " XREF-FALSE exit
    then
    dup XREF-PKG-PUBLIC pub <> if
@@ -278,7 +279,7 @@ private
 \ The package whose public wordlist wid is: the live namespace row that
 \ publishes it (habu2.f C-PACKAGE-NEW-RECORD writes the wid there).
 : NS-PUB? ( ptr n n -- bool ) {: rec:ptr wid:n :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL =  rec XREF-PKG-PUBLIC wid =  and ;
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL =  rec XREF-PKG-PUBLIC wid =  and ;
 
 : WID-PKG ( n -- ptr u8 n bool ) {: wid:n :}
    ndict@ 1-
@@ -303,7 +304,7 @@ INSTALL
    \ Native unit publication may add duplicate real-WID rows, so the indexed
    \ probe must take the newest match. RETIRED rows may still be indexed under
    \ the wordlist they left; that WID retains the descending scan.
-   wid 0 >= wid XREF-NAMESPACE-WL = or if
+   wid 0 >= wid BOOT:NAMESPACE-WL = or if
       a u wid XREF:INDEXED-WL exit
    then
    u XREF-FU !  a XREF-FN!
@@ -345,14 +346,14 @@ variable XREF-QI
 
 : XREF-FIND-QUALIFIED ( ptr u8 n n -- ptr n )
    XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
+   XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop XREF-NULL exit then
    XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL ;
 
 : XREF-FIND-QUALIFIED-INDEX ( ptr u8 n n -- n )
    XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
+   XREF-SN@ XREF-IDX @ BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop -1 exit then
    XREF-PKG-PUBLIC {: qwid:n :}
    XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  qwid  XREF-FIND-WL-INDEX ;
@@ -361,7 +362,7 @@ variable XREF-QI
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
-   drop XREF-SN@ XREF-SU @ data-base BOOT:GLOBAL-WL-CELL + @
+   drop XREF-SN@ XREF-SU @ BOOT:GLOBAL-WL
    XREF-FIND-WL ;
 \ The operand names a word: a string literal before a call is a use of it
 \ (src/core/cell-effects.f names:), here and for XREF-FIND-INDEX below.
@@ -371,7 +372,7 @@ names: XREF-FIND
    XREF-QUAL-INDEX
    dup -2 = if drop -1 exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
-   drop XREF-SN@ XREF-SU @ data-base BOOT:GLOBAL-WL-CELL + @
+   drop XREF-SN@ XREF-SU @ BOOT:GLOBAL-WL
    XREF-FIND-WL-INDEX ;
 names: XREF-FIND-INDEX
 
@@ -414,7 +415,7 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
 : NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u XREF-QUAL-INDEX {: split:n :}
    split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
-   XREF-SN@ split XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
+   XREF-SN@ split BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
 
 \ One wordlist's record for a name, from the dictionary's hash index (habu1.f
 \ WLFIND), the index the definer's own duplicate wall asks. xref-search-wl's
@@ -430,7 +431,7 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = IF XREF-NULL EXIT THEN
    q 0 < IF a u get-current WL-RECORD EXIT THEN
-   a q XREF-NAMESPACE-WL WL-RECORD {: ns:ptr :}
+   a q BOOT:NAMESPACE-WL WL-RECORD {: ns:ptr :}
    ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
    a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC WL-RECORD ;
 
@@ -655,7 +656,7 @@ public
 : RESOLVE ( n n -- ptr n ) def-occ-resolve ;
 
 : CALLABLE ( n n -- n )
-   RESOLVE dup XREF-WORDLIST XREF-NAMESPACE-WL = if E-NONCALLABLE throw then
+   RESOLVE dup XREF-WORDLIST BOOT:NAMESPACE-WL = if E-NONCALLABLE throw then
    XREF-START ;
 
 ;package

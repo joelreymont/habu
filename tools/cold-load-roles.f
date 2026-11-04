@@ -3,6 +3,7 @@
 \ read, installed as tools/native-build-core.f PREFIX-COMPILER-FINISH installs
 \ a target's. cold-load.f loads this after src/habu/native-runtime.f.
 require src/core/sha256.f
+require src/habu/boot-cells.f
 require src/habu/xref.f
 require tools/build-producer.f
 
@@ -18,7 +19,7 @@ create SHA SHA256-CTX-BYTES allot
 
 \ INSTALL-ROLES is private to SOURCE-PRODUCER: no qualified name reaches it.
 : INSTALLER ( -- [ ptr u8 ptr u8 [ ptr u8 n -- ] -- ] )
-   s" SOURCE-PRODUCER" XREF-NAMESPACE-WL XREF-FIND-WL
+   s" SOURCE-PRODUCER" BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if drop s" cold-load: SOURCE-PRODUCER missing" FAIL then
    XREF-PKG-PRIVATE  s" INSTALL-ROLES" rot XREF-FIND-WL
    dup XREF-FOUND? 0= if drop s" cold-load: INSTALL-ROLES missing" FAIL then

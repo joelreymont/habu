@@ -8,6 +8,7 @@ require src/lib/memory.f
 require src/lib/string.f
 require src/core/sha256.f
 require src/core/checker-owner-abi.f
+require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/habu/layout.f
 require src/habu/aot-arm.f
@@ -309,7 +310,7 @@ variable FAMILY-FIND
    ndict@ 0 ?do
       ndict@ 1- i - {: ord:n :}
       ord XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          rec XREF-PKG-PUBLIC wid = if ord 1 true unloop exit then
          rec XREF-PKG-PRIVATE wid = if ord 2 true unloop exit then
       then
@@ -327,7 +328,7 @@ variable FAMILY-FIND
       ord ndict@ >= if false exit then
       ord XREF-REC
    then {: rec:ptr :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if false exit then
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL <> if false exit then
    vis 1 = if rec XREF-PKG-PUBLIC else rec XREF-PKG-PRIVATE then wid = ;
 
 \ The namespace row that owns wordlist wid, its visibility and true. A
@@ -354,7 +355,7 @@ variable FAMILY-FIND
 
 : WID-BIND-REC ( n -- ) {: ord:n :}
    ord XREF-REC {: rec:ptr :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if exit then
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL <> if exit then
    rec XREF-PKG-PUBLIC ord 1 WID-BIND
    rec XREF-PKG-PRIVATE ord 2 WID-BIND ;
 
@@ -643,7 +644,7 @@ public
 
 : PACKAGE-OF ( ptr n -- ptr u8 n n ) {: rec:ptr :}
    rec XREF-WORDLIST {: wid:n :}
-   wid XREF-NAMESPACE-WL = if NULL-PTR 0 0 exit then
+   wid BOOT:NAMESPACE-WL = if NULL-PTR 0 0 exit then
    rec XREF-RETIRED? if NULL-PTR 0 3 exit then
    wid OWNER-API-PUB-WID = if s" hb-engine-api" 1 exit then
    wid OWNER-API-PRI-WID = if s" hb-engine-api" 2 exit then
@@ -911,7 +912,7 @@ PENDING-CLEAR
    ord BIND-RECORD
    ord WID-BIND-REC
    ord XREF-REC {: rec:ptr :}
-   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL <> if
       rec XREF-START rec XREF-CODE-BYTES ord REGISTER-IMPL-RANGE
    then ;
 
@@ -997,7 +998,7 @@ public
          else
             i BIND-RECORD
          then
-         rec XREF-WORDLIST XREF-NAMESPACE-WL <> if
+         rec XREF-WORDLIST BOOT:NAMESPACE-WL <> if
             rec XREF-START rec XREF-CODE-BYTES i REGISTER-IMPL-RANGE
          then
       then
@@ -1032,7 +1033,7 @@ public
    PREP-REC-COUNT @ 0 ?do
       PREP-REC-BASE @ i + {: ord:n :}
       ord RECORD-AT @ execute {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          rec XREF-PKG-PUBLIC ord 1 WID-BIND
          rec XREF-PKG-PRIVATE ord 2 WID-BIND
       then
@@ -1083,7 +1084,7 @@ public
    off DREC / ;
 
 : FIND-NAMESPACE ( ptr u8 n -- n ) {: name:ptr nameu:n :}
-   name nameu XREF-NAMESPACE-WL XREF:INDEXED-WL
+   name nameu BOOT:NAMESPACE-WL XREF:INDEXED-WL
    dup XREF-FOUND? 0= if drop -1 exit then
    REC-ORD ;
 

@@ -12,6 +12,7 @@
 \ decimal writer and line buffer). Measure code-bytes.f from a tree where it is
 \ not this tool's dependency.
 require src/habu/code-bytes.f
+require src/habu/boot-cells.f
 
 package TIER-CENSUS
 private
@@ -164,7 +165,7 @@ variable WID-CACHE-IX              \ its namespace record index, -1 when none
 
 : NS-INDEX ( n -- n ) {: wid :}
    ndict@ 1 - begin dup 0 >= while
-      dup XREF-REC XREF-WORDLIST XREF-NAMESPACE-WL = if
+      dup XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = if
          dup XREF-REC XREF-PKG-PUBLIC wid = if exit then
       then
       1 -
@@ -188,7 +189,7 @@ variable WID-CACHE-IX              \ its namespace record index, -1 when none
 
 : MEASURABLE? ( ptr n -- bool ) {: rec:ptr :}
    rec XREF-RETIRED? if 0 0= 0= exit then
-   rec XREF-WORDLIST XREF-NAMESPACE-WL = if 0 0= 0= exit then
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL = if 0 0= 0= exit then
    rec XREF-CODE-BYTES 0 > ;
 
 : ONE ( n -- ) {: ix :}

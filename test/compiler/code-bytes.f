@@ -9,6 +9,7 @@
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
+require src/habu/boot-cells.f
 require src/habu/code-bytes.f
 
 package CODE-BYTES-TEST
@@ -43,7 +44,7 @@ private
 \ and it is taken from the live dictionary rather than invented.
 : NAMESPACE-START ( -- n )
    ndict@ 1 - begin dup 0 >= while
-      dup XREF-REC XREF-WORDLIST XREF-NAMESPACE-WL = if
+      dup XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = if
          XREF-REC XREF-PKG-PUBLIC exit
       then
       1-

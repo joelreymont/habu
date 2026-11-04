@@ -4,6 +4,7 @@
 \ each image and must see its status (the table above RUN). A spin waiting for a
 \ tick is bounded, so a missing tick fails its check instead of hanging. Each
 \ case's word states what it checks.
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/stack-abi.f
 require src/habu/prof-abi.f
@@ -101,7 +102,8 @@ DEFERRED S-OTHER + S-FOREIGN + S-SPILL + constant S-TOT
 s" prof-a" XREF-FIND-INDEX XREF-REQUIRE-INDEX constant A-IX
 s" prof-b" XREF-FIND-INDEX XREF-REQUIRE-INDEX constant B-IX
 s" X64K-PROF-Q:CALLER-WITH-A-LONG-NAME" XREF-FIND-INDEX XREF-REQUIRE-INDEX constant C-IX
-s" X64K-PROF-Q" XREF-NAMESPACE-WL XREF-FIND-WL-INDEX XREF-REQUIRE-INDEX constant Q-IX
+s" X64K-PROF-Q" BOOT:NAMESPACE-WL XREF-FIND-WL-INDEX
+   XREF-REQUIRE-INDEX constant Q-IX
 Q-IX XREF-REC XREF-PKG-PUBLIC constant Q-PUBLIC
 Q-IX XREF-REC XREF-PKG-PRIVATE constant Q-PRIVATE
 C-IX XREF-REC XREF-WORDLIST constant C-WID

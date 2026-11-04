@@ -9,6 +9,7 @@ require src/lib/le.f
 require src/lib/memory.f
 require src/core/sha256.f
 require src/core/type-family.f
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/code-span.f
@@ -686,7 +687,7 @@ private
       known if va k OWN-DATA else -1 then k FRAME-CTX PREMISE-N
       rec XREF-WORDLIST {: wl:n :}
       wl k OWN-WID k FRAME-CTX PREMISE-N
-      wl XREF-NAMESPACE-WL = if
+      wl BOOT:NAMESPACE-WL = if
          1 k FRAME-CTX PREMISE-N
          rec XREF-PKG-PUBLIC k OWN-WID k FRAME-CTX PREMISE-N
          rec XREF-PKG-PRIVATE k OWN-WID k FRAME-CTX PREMISE-N

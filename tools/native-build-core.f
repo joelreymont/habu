@@ -5,6 +5,7 @@ TOOL-ROLE:ENTRY
 require tools/native-build-deps.f
 require src/lib/executable-build.f
 require src/lib/sort.f
+require src/habu/boot-cells.f
 
 package NATIVE-BUILD
 
@@ -235,7 +236,7 @@ CAST: CELL-XT ( n -- [ -- ptr n ] )
 \ capture, so the capture keeps no name for it.
 : PRIVATE-TARGET-XT ( ptr u8 n ptr u8 n -- n )
    {: pkg:ptr pkgu:n name:ptr nameu:n :}
-   pkg pkgu XREF-NAMESPACE-WL XREF-FIND-WL
+   pkg pkgu BOOT:NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? 0= if
       drop s" native-build: literal owner missing" 76 die
    then

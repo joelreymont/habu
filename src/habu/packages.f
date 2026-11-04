@@ -7,6 +7,7 @@
 \ refuses silently, so each engine refusal is made here.
 
 require src/lib/prelude.f
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
@@ -141,7 +142,7 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 
 \ The engine's twins: habu2.f C-PACKAGE to C-END-PACKAGE.
 : PKG-ROW ( -- ptr n )
-   TOKEN$ XREF-NAMESPACE-WL WL-PROBE ;
+   TOKEN$ BOOT:NAMESPACE-WL WL-PROBE ;
 
 \ Once the engine is sealed, a sealed package's name ends the process, and so
 \ does a package whose public wordlist is protected (habu2.f

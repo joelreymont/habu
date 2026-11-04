@@ -6,6 +6,7 @@
 \ the SIGALRM handler runs), never a second implementation that could disagree.
 require src/lib/errors.f
 require src/lib/string.f
+require src/habu/boot-cells.f
 
 package PERF-MAP
 private
@@ -64,7 +65,7 @@ variable MAPPED    \ has this line's address column been rewritten already
    0 PKG-N !
    ndict@ 0 ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          rec XREF-PKG-PUBLIC i PKG+
          rec XREF-PKG-PRIVATE i PKG+
       then

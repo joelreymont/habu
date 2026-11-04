@@ -1,5 +1,6 @@
 \ jitdump-core.f - decode the exact live code span of a dictionary word.
 
+require src/habu/boot-cells.f
 require src/habu/code-bytes.f
 require src/lib/fmt.f
 
@@ -26,7 +27,7 @@ private
    ndict@ 0 ?do
       i XREF-REC {: rec:ptr :}
       rec XREF-RETIRED? 0=
-      rec XREF-WORDLIST XREF-NAMESPACE-WL <> and
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL <> and
       rec XREF-START xt = and if
          rec XREF-CODE-BYTES 0 > if rec unloop exit then
       then

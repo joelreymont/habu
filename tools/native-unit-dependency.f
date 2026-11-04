@@ -16,6 +16,7 @@ require src/lib/sort.f
 require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/core/checker-owner-extension.f
+require src/habu/boot-cells.f
 require src/habu/layout.f
 require src/habu/source-exec.f
 require src/habu/aot-arm.f
@@ -1249,7 +1250,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL DIAG-PATH
    wid 0= if exit then
    ndict@ 0 ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST XREF-NAMESPACE-WL = if
+      rec XREF-WORDLIST BOOT:NAMESPACE-WL = if
          rec XREF-PKG-PUBLIC wid = rec XREF-PKG-PRIVATE wid = or if
             s"  package=" DIAG-W2 rec XREF-NAME$ DIAG-W2
             unloop exit

@@ -3,6 +3,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
+require src/habu/boot-cells.f
 
 package DATA-CLAIMS-TEST
 
@@ -22,7 +23,7 @@ public
 : RUN ( -- )
    T-RESET
    s" product has no build-only DATA-CLAIMS namespace" T-LABEL
-   s" DATA-CLAIMS" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? TFALSE
+   s" DATA-CLAIMS" BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? TFALSE
 
    s" overlapping claims still refuse and name both rows" T-LABEL
    s" require src/habu/data-claims.f HND-CELL DATA-CLAIMS:TAB ! DATA-CLAIMS:CLAIMS-ASSERT"

@@ -44,6 +44,7 @@ s" src/lib/adt/result.f" required     \ TASK:JOIN answers result<n,n>
 require src/core/quotation-storage.f
 require src/habu/task-abi.f
 require src/habu/stack-abi.f
+require src/habu/boot-cells.f
 
 package TASK
 public
