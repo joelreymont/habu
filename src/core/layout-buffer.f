@@ -179,11 +179,11 @@ PTR-VARIABLE STGT-START
    here base <> if E-LAYOUT-BUFFER throw then
    LBUF-BYTES @ allot ;
 
-\ Whole-record stores move ordinary cells. The capture walk uses the active sum
-\ tag, so a shared payload slot is a code cell only while its active alternative
-\ holds a quotation.
+\ The capture walk marks by the active sum tag: a shared payload slot is a code
+\ cell while it holds a quotation and an address cell while it holds a pointer.
 : STORAGE-MARK-TERM ( ptr n n -- ) {: base:ptr term:n :}
    term TFAM:TFAM-STORAGE-QUOT? if base @ base xt! exit then
+   term T-RES TAG T-PTR = if base ptr-cell-mark exit then
    term TFAM:TFAM-STORAGE-PRODUCT? if
       {: fam:n :}
       0
@@ -215,9 +215,9 @@ PTR-VARIABLE STGT-START
       base i LBUF-W @ * cells + term STORAGE-MARK-TERM
    loop ;
 
-: STORAGE-HAS-QUOT? ( ptr u8 n -- bool )
+: STORAGE-HAS-ADDRESS? ( ptr u8 n -- bool )
    CHECKER-STORAGE-TERM 0= if drop E-LAYOUT-BUFFER throw then
-   TFAM:TFAM-STORAGE-HAS-QUOT? ;
+   TFAM:HAS-ADDRESS? ;
 
 defer STORAGE-CLEAR-XT ( n n -- )
 : STORAGE-CLEAR-MISSING ( n n -- ) 2drop E-LAYOUT-BUFFER throw ;
@@ -229,7 +229,7 @@ STORAGE-CLEAR-DEFAULT
    term T-WIDTH {: width:n :}
    count width LBUF-EXTENT?
    0= if drop E-LAYOUT-BUFFER throw then {: bytes:n :}
-   term TFAM:TFAM-STORAGE-HAS-QUOT? 0= if exit then
+   term TFAM:HAS-ADDRESS? 0= if exit then
    off bytes STORAGE-CLEAR-XT
    data-base BYTE-VIEW off + CELL-VIEW {: base:ptr :}
    count 0 ?do
@@ -240,13 +240,12 @@ STORAGE-CLEAR-DEFAULT
    [: STORAGE-CAPTURE-WALK ;] is CHECKER-STORAGE-WALK-XT ;
 STORAGE-CAPTURE-INSTALL
 
-\ Quotation cells belong to the image even while null, before either compiler
-\ stores into them. These allocations are DATA; the term walk declares each
-\ code cell for capture. Pointer-to-quotation elements stay pointer cells.
+\ Quotation cells belong to the image even while null; the term walk declares
+\ each code and address cell of these DATA allocations for capture.
 : STORAGE-ALLOT ( n ptr n n ptr u8 n bool -- )
-   {: handle:n base:ptr count:n type:ptr typeu:n hasquot:bool :}
+   {: handle:n base:ptr count:n type:ptr typeu:n hasaddr:bool :}
    base LBUF-ALLOT
-   hasquot if
+   hasaddr if
       base type typeu STORAGE-MARK-FIXED
    then
    handle base count CHECKER-STORAGE-BIND ;
@@ -296,12 +295,12 @@ $36A0 constant STGT-INP-CELL
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    count name nameu type typeu LBUF-VALIDATE 0= if exit then
-   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
+   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
-   handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
+   handle base LBUF-N @ type typeu hasaddr STORAGE-ALLOT ;
 
 \ The axiom keeps LAYOUT-BUFFER executable at top level after the internal-mark.f
 \ seal pass; UNSAFE-TOK? refuses it inside checked bodies (it evaluates generated
@@ -473,12 +472,12 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    count name nameu type typeu STORAGE-VALIDATE 0= if exit then
-   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
+   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
-   handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
+   handle base LBUF-N @ type typeu hasaddr STORAGE-ALLOT ;
 
 : TYPED-VARIABLE ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
@@ -487,12 +486,12 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    TDECL-EVAL-ARMED @ 0= if E-LAYOUT-BUFFER throw then
    name nameu LBUF-NAMES-OK? 0= if exit then
    1 name nameu type typeu STORAGE-VALIDATE 0= if exit then
-   type typeu STORAGE-HAS-QUOT? {: hasquot:bool :}
+   type typeu STORAGE-HAS-ADDRESS? {: hasaddr:bool :}
    LBUF-ALIGN
    here {: base:ptr :}
    name nameu type typeu TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
-   handle base LBUF-N @ type typeu hasquot STORAGE-ALLOT ;
+   handle base LBUF-N @ type typeu hasaddr STORAGE-ALLOT ;
 
 \ As for LAYOUT-BUFFER: top-level executable after the seal pass, refused inside
 \ checked bodies by UNSAFE-TOK?.

@@ -1334,7 +1334,8 @@ their pointee. A declared cell takes the address it was declared for and
 refuses an address of one: `PTR-VARIABLE X : F ( -- ptr u8 ) X @ ;` certifies
 while `( -- ptr ptr u8 )` does not. An image save writes the scratch forms
 (`PTR-VARIABLE`, `PTR-U8-TABLE`, `PTR-U8-TABLE-VARIABLE`) as null; their
-`PERSISTED-` siblings keep their addresses.
+`PERSISTED-` siblings keep their addresses, and so do the pointer fields of
+typed storage.
 
 Records that mix a pointer field with scalars use `STRUCTURE … DERIVE addr`
 (**Structures And Enums**). Two launders remain open and certify today:

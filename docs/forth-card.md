@@ -361,7 +361,8 @@ word's uses before the run; what no row states is left to the run (§ 3). `FUNCT
 `PTR-U8-TABLE-VARIABLE` is a cell holding a `PTR-U8-TABLE`'s base
 (`( -- ptr ptr ptr u8 )`). An image save writes `PTR-VARIABLE`, `PTR-U8-TABLE` and
 `PTR-U8-TABLE-VARIABLE` cells as null; their `PERSISTED-` siblings keep their
-addresses. Runtime-sized buffers come
+addresses, and so do the pointer fields of typed storage. A pointer into memory
+the build mapped is refused at save, naming the cell. Runtime-sized buffers come
 from `src/lib/memory.f` (`MEM:ALLOC-BYTES`). `ptr-field` takes a **cell** index, not
 a byte offset.
 

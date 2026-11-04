@@ -85,12 +85,12 @@ CAST: >ENTRY-XT ( n -- [ -- ] )
    rows ;
 
 \ Declarations precede task execution. Once the new table is published, old
-\ rows are unreachable; clear their registered code cells and stored values so
+\ rows are unreachable; clear their address rows and stored values so
 \ the image scanner does not read former numeric fallback fields bytewise.
 : RETIRE-TABLE ( ptr u8 n -- ) {: old:ptr cap:n :}
    cap 0= if exit then
    old BYTE-VIEW data-base BYTE-VIEW - cap ROW-BYTES *
-      ADDRESS-CELLS:REMOVE-XT-SPAN
+      ADDRESS-CELLS:REMOVE-SPAN
    cap ROW-BYTES * CELL / 0 ?do 0 old i cells + CELL-VIEW ! loop ;
 
 : GROW ( -- )

@@ -5683,12 +5683,11 @@ public
    vid index SUMV-PAY-ROOT SCHEMA-ROOT@ TFC-SCH-TERM
    dup T-WIDTH ;
 
-\ Inspect the instantiated value graph once at allocation. A pointer is a
-\ scalar storage cell, even when its pointee could itself hold a quotation.
-\ Every sum alternative matters because the active tag can change after this
-\ declaration; capture later walks only the alternative present in DATA.
-: TFAM-STORAGE-HAS-QUOT? ( n -- bool ) {: term:n :}
+\ Whether any cell of the type holds an address: a quotation (code) or a pointer
+\ (its pointee is not followed), in every sum alternative, since the tag can change.
+: HAS-ADDRESS? ( n -- bool ) {: term:n :}
    term TFAM-STORAGE-QUOT? IF RES-TRUE EXIT THEN
+   term T-RES TAG T-PTR = IF RES-TRUE EXIT THEN
    term TFAM-STORAGE-PRODUCT? IF
       {: fam:n :}
       fam TFAM-FLD-COUNT@ 0 ?do

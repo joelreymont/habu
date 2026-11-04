@@ -60,12 +60,12 @@ variable PRIOR-ENGINE-ROOT-U
 : CHECK-HOST-LAYOUT ( -- )
    \ No NATIVE-LAYOUT row covers a host's CODE row at $2CF0, which TRANSLATE
    \ would refuse (test/native-build-entry.f FOREIGN-WINDOW-CASE makes one).
-   $2CF0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
+   $2CF0 CELL ADDRESS-CELLS:REMOVE-SPAN
    \ The host's rows at $3838..$3847 and $6C0 name cells the built engine fills
    \ itself: BODY-HOOK-CELL, which the build sets around each file it runs, and
    \ COMP-CELL and FIXED-COMP-CELL (COMP:INSTALL).
-   $3838 2 cells ADDRESS-CELLS:REMOVE-XT-SPAN
-   $6C0 CELL ADDRESS-CELLS:REMOVE-XT-SPAN
+   $3838 2 cells ADDRESS-CELLS:REMOVE-SPAN
+   $6C0 CELL ADDRESS-CELLS:REMOVE-SPAN
    NATIVE-LAYOUT:CURRENT HOST-HEAP-START NATIVE-LAYOUT:CHECK
    ADDR-ROWS 0 ?do
       i ADDR-ROW@ {: raw:n :}
