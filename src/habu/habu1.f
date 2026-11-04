@@ -2151,9 +2151,21 @@ variable LSOURCEEXECFINISH
 : BHERE ( -- )
    7 DATA 0 LDR,  7 G-PUSH ;
 
-\ Bound the DP heap to [DATA-START, DATA-SIZE - PROF-CNT-BYTES] before any
-\ allot , c, or definer stores a new DP: the top PROF-CNT-BYTES are the
-\ profiler counter band (layout.f). Out of range goes to LDPBAD (habu2.f
+\ EM-LAYOUT's offsets mirror src/habu/layout.f BOOT-LAYOUT's cells: this file
+\ and habu2.f compile against the host's layout names (tools/native-build.f does
+\ not load the tree's layout.f, and a booted engine's require of it is a no-op),
+\ so naming BOOT-LAYOUT fails with E-UNDEFINED on a host that lacks the cell.
+\ src/core/checker.f mirrors AOT-CELLS:SIG-POOL-CELL for the same reason.
+package EM-LAYOUT
+public
+$47E0 constant HEAP-START-OFF
+$7E0 constant DP-FLOOR-OFF
+$7E8 constant DP-CEILING-OFF
+;package
+
+\ Bound the DP heap to [floor, ceiling], the two cells at EM-LAYOUT:DP-FLOOR-OFF
+\ and DP-CEILING-OFF (layout.f BOOT-LAYOUT), before any allot , c, or definer
+\ stores a new DP. Out of range goes to LDPBAD (habu2.f
 \ EM-COMPILE-DIE): "hb: data space out of range: DP <dp> of <cap> bytes" on
 \ fd 2, then rc 76 via LCOMPILEDIE, a catchable throw inside evaluate (nothing
 \ was written: this check precedes every DP store) and exit 76 at top level.
@@ -2167,11 +2179,11 @@ variable LSOURCEEXECFINISH
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
-   5 DATA-START LIT64,  5 DATA 5 ADD,
+   5 DATA EM-LAYOUT:DP-FLOOR-OFF LDR,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-LOW LABEL@ LBL,
-   5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,
+   5 DATA EM-LAYOUT:DP-CEILING-OFF LDR,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
       15 DP-REG @ 0 ADDI,  LDPBAD LABEL@ B,
    DP-HIGH LABEL@ LBL, ;

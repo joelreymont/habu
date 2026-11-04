@@ -1425,6 +1425,9 @@ variable SWEEP-ARMED
 
 : TASK-REGION-INIT ( ptr n -- ) {: tcb:ptr :}
    tcb TCB.REGION @ {: reg:ptr :}
+   \ DP-CHECK's bounds: zeroed cells would admit a task's `0 allot`.
+   data-base reg BOOT-LAYOUT:DP-FLOOR-CELL TASK-COPY-CELL
+   data-base reg BOOT-LAYOUT:DP-CEILING-CELL TASK-COPY-CELL
    data-base reg ARGC-CELL TASK-COPY-CELL
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL

@@ -687,6 +687,11 @@ $688 constant FD-CELL
 package BOOT-LAYOUT
 public
 $47E0 constant HEAP-START-CELL
+\ The bounds habu1.f DP-CHECK holds a new DP to, absolute addresses: every boot
+\ writes DATA + DATA-START and DATA + DATA-SIZE - PROF-CNT-BYTES, the ceiling
+\ below the profiler counter band (prof-abi.f).
+$7E0 constant DP-FLOOR-CELL
+$7E8 constant DP-CEILING-CELL
 ;package
 
 
@@ -1119,7 +1124,8 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ Below BODYBUF-OFF: $600..$690 is GENIO-ABI, AOT-SPAN and SIGNAL-ABI, $690
 \ NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 LVS-OFF, $6A8..$6C0 the `,` run,
 \ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 free, $6D0..$750 LVF-OFF,
-\ $750..$7D0 LVQ-OFF and $7D0..$7E0 FRAME-CELL and QFRAME-CELL.
+\ $750..$7D0 LVQ-OFF, $7D0..$7E0 FRAME-CELL and QFRAME-CELL and $7E0..$7F0
+\ BOOT-LAYOUT:DP-FLOOR-CELL and DP-CEILING-CELL.
 $800 constant BODYBUF-OFF
 \ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
 \ which the checker reads too.
