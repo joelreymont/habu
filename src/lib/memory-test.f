@@ -651,9 +651,12 @@ TASK:MIN-STACK TASK:TASK WBT-HALT-TASK
 
 TEST-WITH-BYTES
 
+\ A WBP-LEN body's slot is under POOL-MAX, so pooled; WBP-DEPTH of them nest
+\ past the first chunk, which holds 240.
 256 constant WBP-LEN
 512 constant WBP-DEPTH
 PTR-VARIABLE WBP-FIRST
+PTR-VARIABLE WBP-LAST
 variable WBP-THROW-DEEP
 TASK:MIN-STACK TASK:TASK WBP-TASK
 
@@ -728,6 +731,7 @@ defer WBP-NEST ( n -- )
 : WBP-LEVEL-BODY ( n ptr u8 NUM:alloc-byte-len -- )
    drop {: lvl buf:ptr :}
    lvl 1 = if buf WBP-FIRST ! then
+   lvl WBP-DEPTH = if buf WBP-LAST ! then
    buf lvl WBP-LEVEL-MARK WBP-FILL
    lvl WBP-DEPTH < if
       lvl 1 + WBP-NEST
@@ -760,7 +764,11 @@ defer WBP-NEST ( n -- )
    T-RESET
    1 WBP-THROW-DEEP !
    [: WBP-DEEP ;] E-PRIMARY TTHROWSQ
+   WBP-LAST @ {: deepest:ptr :}
    WBP-LEN BYTES-ALLOC-LEN [: WBP-FIRST-AGAIN ;] WITH-BYTES
+   0 WBP-THROW-DEEP ! WBP-DEEP
+   s" a re-nest reuses the chunks the unwind kept" T-LABEL
+   WBP-LAST @ deepest = TTRUE
    WBP-EXIT ;
 
 : WBP-HALT-WORK ( -- )
@@ -846,6 +854,33 @@ defer WBP-NEST ( n -- )
    WBP-REENTER
    WBP-EXIT ;
 
+\ Neither MEMT-MARK-A nor MEMT-MARK-Z, so the pooled body around the mapped one
+\ reads apart from both.
+66 constant WBP-MARK-B
+
+: WBP-MAPPED-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   buf MEMT-MARK-A WBP-FILL
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-REENTER-OUTER ;] WITH-BYTES
+   s" a mapped body keeps its marks around a pooled scope" T-LABEL
+   buf MEMT-MARK-A WBP-MISS 0 T= ;
+
+: WBP-MIXED-OUTER ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   buf WBP-MARK-B WBP-FILL
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-SAVE ;] WITH-BYTES
+   MEM-64K 16 + BYTES-ALLOC-LEN [: WBP-MAPPED-BODY ;] WITH-BYTES
+   s" a pooled scope after a mapped one takes the slot before it" T-LABEL
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-SAME ;] WITH-BYTES
+   s" a pooled body keeps its marks around a mapped scope" T-LABEL
+   buf WBP-MARK-B WBP-MISS 0 T= ;
+
+: WBP-MIXED-CHILD ( -- )
+   T-RESET
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-MIXED-OUTER ;] WITH-BYTES
+   WBP-REENTER
+   WBP-EXIT ;
+
 : TEST-POOLED-BYTES ( -- )
    T-RESET
    [: WBP-LEVEL ;] is WBP-NEST
@@ -865,6 +900,8 @@ defer WBP-NEST ( n -- )
    [: WBP-TWO-TASK-CHILD ;] MEMT-FORK-CLEAN
    s" pooled 8: a near-maximum size is refused" T-LABEL
    [: WBP-MAX-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 9: a mapped scope between pooled ones keeps both" T-LABEL
+   [: WBP-MIXED-CHILD ;] MEMT-FORK-CLEAN
    T-REPORT ;
 
 TEST-POOLED-BYTES

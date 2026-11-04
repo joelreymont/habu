@@ -210,8 +210,9 @@ PTR-VARIABLE SND-A
    STRING-ABI:START STRING-ABI:BYTES SND-ZERO-BAND
    FMT-ABI:START FMT-ABI:BYTES SND-ZERO-BAND ;
 
-\ MEM-ABI names the build process's open WITH-BYTES scope mappings, which the
-\ saved image does not own. Clear it so the image starts with no scope open.
+\ MEM-ABI names the build process's WITH-BYTES scope chunks, mapped from its
+\ first scope on, which the saved image does not own. Clear it so the image
+\ starts with no scope open.
 : SND-ZERO-MEM-SCOPE ( -- )
    MEM-ABI:START MEM-ABI:BYTES SND-ZERO-BAND ;
 

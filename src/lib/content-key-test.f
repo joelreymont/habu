@@ -6,7 +6,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/ffi-abi.f
 require src/lib/content-key.f
 
 \ White-box test: reopen the module's package so the fixtures reach the private
@@ -29,24 +28,6 @@ create CKT-SEQ-B 80 allot
 create CKT-INT-A 80 allot
 create CKT-INT-B 80 allot
 
-\ msync answers -1 for an address with no mapping and 0 for a mapped page, so
-\ it tells whether a fold's scope storage is still mapped (macOS mincore
-\ answers 0 for an unmapped page, so it cannot tell).
-1 constant CKT-MS-ASYNC                 \ the same flag on macOS and Linux
-4096 constant CKT-PAGE
-
-PROCESS-SYMBOLS
-
-FUNCTION: CKT-SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
-
-: CKT-MAPPED ( n -- n )
-   CKT-PAGE CKT-MS-ASYNC CKT-SYNC-RANGE ;
-
-\ The page a fold's scope storage starts in. WITH-BYTES hands the scope its
-\ bytes one frame header into a fresh mapping, and a mapping starts on a page
-\ of at least CKT-PAGE bytes, so rounding down to CKT-PAGE finds its base.
-: CKT-SCOPE-PAGE ( CONTENT-KEY:fold -- CONTENT-KEY:fold n )
-   STATE NULL-PTR - CKT-PAGE negate and ;
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -152,15 +133,8 @@ CKT-NEST-INSTALL
    s" 64 nested folds all succeed" T-LABEL
    CKT-NEST-DONE @ CKT-NEST-N T= ;
 
-\ FILE+ on a missing file throws out of the fold's body, and the scope unmaps
-\ its storage on the way out: the scope's page is mapped while the body runs
-\ and gone once the throw has left WITH-FOLD.
-variable CKT-PAGE-AT
-variable CKT-LIVE-RC
 
 : CKT-MISSING-BODY ( CONTENT-KEY:fold -- )
-   CKT-SCOPE-PAGE dup CKT-PAGE-AT !
-   CKT-MAPPED CKT-LIVE-RC !
    CKT-ROOT$ s" missing.f" CKT-COPY-PATH FS:JOIN-PATH {: u:n :}
    CKT-COPY-PATH u FILE+ CKT-KEY2 FINAL-HEX ;
 
@@ -168,29 +142,16 @@ variable CKT-LIVE-RC
    [: CKT-MISSING-BODY ;] WITH-FOLD ;
 
 : CKT-THROW-RELEASES ( -- )
-   [: CKT-MISSING-FOLD ;] catch
-   CKT-PAGE-AT @ CKT-MAPPED {: rc:n gone:n :}
+   [: CKT-MISSING-FOLD ;] catch {: rc:n :}
    s" FILE+ on a missing file throws the open refusal" T-LABEL
-   rc SHA-E-OPEN T=
-   s" the fold's scope is mapped while its body runs" T-LABEL
-   CKT-LIVE-RC @ 0 T=
-   s" the throw unmapped the fold's scope" T-LABEL
-   gone -1 T= ;
+   rc SHA-E-OPEN T= ;
 
-\ A nested body holds the outer fold as well as its own. One that finalizes the
-\ outer fold and hands its own out conserves both tokens, so the checker admits
-\ it; the inner scope refuses it at run time, before the outer body could fold
-\ into the storage that scope releases. Both scopes are unmapped after the
-\ refusal, and the next fold works.
-variable CKT-OUTER-AT
-variable CKT-INNER-AT
-
+\ A nested body that finalizes the outer fold and hands its own out conserves both
+\ tokens, so the checker admits it; the inner scope refuses it, as it frees that fold.
 : CKT-SWAP-INNER ( CONTENT-KEY:fold CONTENT-KEY:fold -- CONTENT-KEY:fold )
-   CKT-SCOPE-PAGE CKT-INNER-AT !
    swap CKT-KEY1 FINAL-HEX ;
 
 : CKT-SWAP-OUTER ( CONTENT-KEY:fold -- )
-   CKT-SCOPE-PAGE CKT-OUTER-AT !
    [: CKT-SWAP-INNER ;] WITH-FOLD
    CKT-KEY2 FINAL-HEX ;
 
@@ -203,10 +164,6 @@ variable CKT-INNER-AT
 : CKT-HANDLE-REFUSED ( -- )
    s" a body that finalizes the outer fold and hands its own out is refused" T-LABEL
    [: CKT-SWAP-FOLD ;] catch E-CK-HANDLE T=
-   s" the refusal unmapped the inner scope" T-LABEL
-   CKT-INNER-AT @ CKT-MAPPED -1 T=
-   s" the refusal unmapped the outer scope" T-LABEL
-   CKT-OUTER-AT @ CKT-MAPPED -1 T=
    s" a fold after the refusal folds and finishes" T-LABEL
    [: CKT-NEST-REF-BODY ;] WITH-FOLD
    [: CKT-NEST-KEY2-BODY ;] WITH-FOLD

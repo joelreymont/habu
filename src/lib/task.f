@@ -1134,6 +1134,7 @@ variable ROW-N
       0 tcb TCB.LSTACK-U !
    then
    tcb TCB.REGION-U @ 0 <> if
+      tcb TCB.REGION @ BYTE-VIEW MEM:RELEASE-SCOPES
       tcb TCB.REGION @ BYTE-VIEW tcb TCB.REGION-U @ TASK-MUNMAP-SPAN
       TASK-NULL tcb TCB.REGION !
       0 tcb TCB.REGION-U !

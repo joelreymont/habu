@@ -2,8 +2,9 @@
 \ allot` is for dictionary-sized static storage. Sizes are validated before
 \ mmap; a kernel munmap refusal writes "memory: unmap failed" and exits 71,
 \ bypassing catch. STORAGE CLASS. CALLER-OWNED: the caller releases every
-\ mapping. WITH-BYTES's scope chain is TASK-LOCAL, one head cell in the MEM-ABI
-\ band (src/habu/layout.f); a halted task unwinds it at TASK:PAUSE.
+\ mapping. WITH-BYTES's scopes are TASK-LOCAL: their chunks hang off one head
+\ cell in the MEM-ABI band (src/habu/layout.f), a halted task unwinds its scopes
+\ at TASK:PAUSE, and MEM:RELEASE-SCOPES unmaps a freed region's chunks.
 
 s" src/lib/errors.f" required
 require src/lib/num-arithmetic.f
@@ -221,27 +222,48 @@ public
 : FREE-SPAN ( SPAN:span<u8> -- )
    SPAN:$ BYTES-ALLOC-LEN RELEASE-BYTES ;
 
-\ Each WITH-BYTES mapping starts with a frame header: the enclosing scope's
-\ mapping (or null) and this mapping's whole extent. The body's bytes follow
-\ the header, so the base the body gets is FRAME-BYTES into a fresh mapping:
-\ cell-aligned, not page-aligned. The running task's MEM-ABI head cell names
-\ the innermost frame. A scope is linked only after its allocation succeeded,
-\ so a refused allocation leaves nothing to release; inner scopes unwind
-\ first, also under a throw, so the release always finds its own frame at the
-\ head. The release unlinks before it unmaps.
 private
 
+\ A scope's header; the body follows FRAME-BYTES in, 16-aligned. extent is the
+\ pooled slot (<= POOL-MAX) or the mapping, and WB-LEAVE routes on it.
 STRUCTURE frame DERIVE addr
    FIELD prev ptr u8
    FIELD extent n
 ;STRUCTURE
 
-CAST: >HEAD ( ptr n -- ptr ptr frame )
+\ Only the first chunk's inner and cur are read: the innermost frame and the chunk of the
+\ innermost pooled slot. CHUNK-BYTES is a multiple of 16, so slot bodies stay 16-aligned.
+STRUCTURE chunk DERIVE addr
+   FIELD prev ptr u8
+   FIELD next ptr u8
+   FIELD extent n
+   FIELD top n
+   FIELD inner ptr u8
+   FIELD cur ptr u8
+;STRUCTURE
+
+\ The largest pooled slot, a 1024-byte body's: SPAN:FILL zeroes a slot byte by
+\ byte, so on Linux arm64 a 2048-byte body costs as much pooled as mapped. A
+\ multiple of 16, so WB-LEAVE's test matches WB-ENTER's, and below MEM-64K + 16,
+\ the extent of a MEM-64K body memory-test.f maps.
+1040 constant POOL-MAX
+\ The first chunk's extent: the fewest whole pages holding its header and a POOL-MAX slot.
+POOL-MAX CHUNK-BYTES + STACK-ABI:PAGE-BYTES 1 - +
+   STACK-ABI:PAGE-BYTES negate and constant FIRST-EXTENT
+
+CAST: >HEAD ( ptr u8 -- ptr ptr chunk )
 CAST: FRAME>BYTES ( ptr frame -- ptr u8 )
 CAST: >FRAME ( ptr u8 -- ptr frame )
+CAST: CHUNK>BYTES ( ptr chunk -- ptr u8 )
+CAST: >CHUNK ( ptr u8 -- ptr chunk )
 
-: HEAD ( -- ptr ptr frame )
-   data-base MEM-ABI:HEAD-OFF + >HEAD ;
+\ The head cell of the DATA region at `base`: its first chunk, null until its
+\ first scope.
+: REGION-HEAD ( ptr u8 -- ptr ptr chunk )
+   MEM-ABI:HEAD-OFF + >HEAD ;
+
+: HEAD ( -- ptr ptr chunk )
+   data-base BYTE-VIEW REGION-HEAD ;
 
 : NEW-FRAME ( n -- ptr frame )
    MEM-ALLOC-PTR >FRAME ;
@@ -249,29 +271,87 @@ CAST: >FRAME ( ptr u8 -- ptr frame )
 : FRAME>BODY ( ptr frame -- ptr u8 )
    FRAME>BYTES FRAME-BYTES + ;
 
-\ The mapping extent for a body of `len` bytes; one whose header would carry
-\ it past MEM-MAX-N is refused as a size.
+\ An empty chunk of `extent` bytes after `prev`; a fresh mapping reads 0, so
+\ its next, inner and cur are null.
+: NEW-CHUNK ( n ptr u8 -- ptr chunk )
+   {: extent:n prev:ptr :}
+   extent MEM-ALLOC-PTR >CHUNK {: c :}
+   prev c CHUNK-PREV !
+   extent c CHUNK-EXTENT !
+   CHUNK-BYTES c CHUNK-TOP !
+   c ;
+
+: FIRST-CHUNK ( -- ptr chunk )
+   HEAD @ {: first :}
+   first NULL-PTR = 0= if first exit then
+   FIRST-EXTENT NULL-PTR NEW-CHUNK {: fresh :}
+   fresh CHUNK>BYTES fresh CHUNK-CUR !
+   fresh HEAD !
+   fresh ;
+
+\ The chunk after `cur`: the kept one, empty under LIFO, else a new one twice
+\ `cur`'s extent.
+: NEXT-CHUNK ( ptr chunk -- ptr chunk )
+   {: cur :}
+   cur CHUNK-NEXT @ >CHUNK {: next :}
+   next NULL-PTR = 0= if next exit then
+   cur CHUNK-EXTENT @ 2 * cur CHUNK>BYTES NEW-CHUNK {: fresh :}
+   fresh CHUNK>BYTES cur CHUNK-NEXT !
+   fresh ;
+
+\ Takes the next `slot` bytes in the chunks of the region whose first chunk is
+\ `first`.
+: SLOT ( ptr chunk n -- ptr frame )
+   {: first slot:n :}
+   first CHUNK-CUR @ >CHUNK
+   dup CHUNK-TOP @ slot + over CHUNK-EXTENT @ > if NEXT-CHUNK then {: cur :}
+   cur CHUNK>BYTES first CHUNK-CUR !
+   cur CHUNK-TOP @ {: top:n :}
+   top slot + cur CHUNK-TOP !
+   cur CHUNK>BYTES top + >FRAME ;
+
+\ The extent for a body of `len` bytes; one whose header would carry it past
+\ MEM-MAX-N is refused as a size.
 : SCOPE-EXTENT ( NUM:alloc-byte-len -- n )
    ALLOC-BYTES>N
    dup MEM-MAX-N FRAME-BYTES - > if drop E-MEM-SIZE throw then
    FRAME-BYTES + ;
 
-: PUSH-FRAME ( ptr frame n -- )
-   {: extent:n :}
-   HEAD @ FRAME>BYTES over FRAME-PREV !
+\ A scope links only once its storage is taken, so a refused mapping links
+\ nothing.
+: PUSH-FRAME ( ptr frame n ptr chunk -- )
+   {: extent:n first :}
+   first CHUNK-INNER @ over FRAME-PREV !
    extent over FRAME-EXTENT !
-   HEAD ! ;
+   FRAME>BYTES first CHUNK-INNER ! ;
 
 : WB-ENTER ( NUM:alloc-byte-len -- ptr u8 NUM:alloc-byte-len )
    dup SCOPE-EXTENT {: extent:n :}
-   extent NEW-FRAME
-   dup extent PUSH-FRAME
+   FIRST-CHUNK {: first :}
+   extent POOL-MAX > if
+      extent NEW-FRAME extent
+   else
+      extent 15 + 16 negate and {: slot:n :}
+      first slot SLOT
+      0 over FRAME>BODY slot FRAME-BYTES - SPAN:MAKE SPAN:FILL
+      slot
+   then
+   over swap first PUSH-FRAME
    FRAME>BODY swap ;
 
+\ Inner scopes leave first, also under a throw; emptying a chunk after the first
+\ steps cur back, and the release unlinks before it unmaps.
 : WB-LEAVE ( -- )
-   HEAD @
-   dup FRAME-PREV @ >FRAME HEAD !
-   dup FRAME>BYTES swap FRAME-EXTENT @ RELEASE-RANGE ;
+   HEAD @ {: first :}
+   first CHUNK-INNER @ >FRAME {: frame :}
+   frame FRAME-PREV @ first CHUNK-INNER !
+   frame FRAME-EXTENT @ {: extent:n :}
+   extent POOL-MAX > if frame FRAME>BYTES extent RELEASE-RANGE exit then
+   first CHUNK-CUR @ >CHUNK {: cur :}
+   frame FRAME>BYTES cur CHUNK>BYTES - cur CHUNK-TOP !
+   cur CHUNK-TOP @ CHUNK-BYTES = cur CHUNK-PREV @ NULL-PTR = 0= and if
+      cur CHUNK-PREV @ first CHUNK-CUR !
+   then ;
 
 : WB-BODY ( R ptr u8 NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    execute ;
@@ -281,6 +361,18 @@ public
 : WITH-BYTES ( R NUM:alloc-byte-len [ R ptr u8 NUM:alloc-byte-len -- S ] -- S )
    {: body :}
    WB-ENTER body [: WB-BODY ;] [: WB-LEAVE ;] finally ;
+
+\ Unmaps the scope chunks of the DATA region at `base`, which has no scope
+\ open, after clearing its head cell.
+: RELEASE-SCOPES ( ptr u8 -- )
+   REGION-HEAD {: head :}
+   head @ CHUNK>BYTES
+   NULL-PTR head !
+   begin dup NULL-PTR = 0= while
+      >CHUNK dup CHUNK-NEXT @ swap
+      dup CHUNK>BYTES swap CHUNK-EXTENT @ RELEASE-RANGE
+   repeat
+   drop ;
 
 private
 

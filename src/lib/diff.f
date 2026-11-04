@@ -9,8 +9,8 @@
 \ search and DIFF does not, so on text with many repeated lines DIFF's edit
 \ can be shorter than git's and its output differ.
 \ STORAGE CLASS. CALLER-OWNED: every word appends to the caller's BUF header
-\ (src/lib/byte-buffer.f). A call's scratch is one MEM:WITH-BYTES mapping,
-\ zeroed by the kernel and released whole when the call returns or throws.
+\ (src/lib/byte-buffer.f). A call's scratch is one MEM:WITH-BYTES scope,
+\ zeroed on entry and released whole when the call returns or throws.
 
 require src/lib/errors.f
 require src/lib/memory.f

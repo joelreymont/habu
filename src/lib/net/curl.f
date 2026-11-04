@@ -262,9 +262,9 @@ CAST: >BYTES ( n -- ptr u8 )
 
 
 \ libcurl reads a NUL-terminated copy and duplicates it for itself, so the copy
-\ is a MEM:WITH-BYTES mapping that lasts only for the call. FFI:CSTR refuses an
+\ is a MEM:WITH-BYTES scope that lasts only for the call. FFI:CSTR refuses an
 \ embedded NUL (E-FFI-NUL), which would silently shorten a URL or header line,
-\ before it writes a byte, so a refused mapping is unmapped still zero.
+\ before it writes a byte, so a refused copy is released still zero.
 : TEXT-ROOM ( n -- NUM:alloc-byte-len )
    {: u:n :}
    u 0 AT-LEAST

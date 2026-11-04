@@ -1634,13 +1634,13 @@ PATHZ2-OFF PATHZ2-BYTES + constant ATOMIC-OFF
 ATOMIC-OFF ATOMIC-BYTES + constant TMP-OFF
 ;package
 
-\ MEM-ABI is src/lib/memory.f's WITH-BYTES scope head: one cell holding the
-\ running task's innermost live scope mapping, 0 when none is open. Each
-\ mapping's header links the enclosing one, so nesting has no bound. memory.f is
-\ baked, so it takes a declared band, at FS-MUT-ABI's bootstrap cost: the build
-\ host compiles src/habu/snap-lib.f, which names MEM-ABI:START. A region is a
-\ fresh zeroed mapping, so every task and every stripped image starts with no
-\ scope open. Carved directly below FS-MUT-ABI, whose start is a cell boundary.
+\ MEM-ABI is src/lib/memory.f's WITH-BYTES scope head: one cell naming the
+\ running task's first scope chunk, 0 until its first scope; that chunk's header
+\ names the innermost scope. memory.f is baked, so it takes a declared band, at
+\ FS-MUT-ABI's bootstrap cost: the build host compiles src/habu/snap-lib.f,
+\ which names MEM-ABI:START. A region is a fresh zeroed mapping, so every task
+\ and every stripped image starts with no scope open. Carved directly below
+\ FS-MUT-ABI, whose start is a cell boundary.
 package MEM-ABI
 public
 1 cells constant BYTES
