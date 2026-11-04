@@ -1,6 +1,6 @@
 ---
 title: Read the package marker from its cell in habu2.f
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-04T13:51:16.751900+02:00"
