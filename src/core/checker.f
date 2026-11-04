@@ -16659,7 +16659,7 @@ variable BODY-PEND-BASE   0 BODY-PEND-BASE !
    ord data-base base + CELL-VIEW end base - CELL / CHECKER-GRID-ATTACH ;
 
 \ Each created word closes the previous pending body; a DNAME-ALLOC record
-\ then pends its own, whose start habu2.f ADDR-TAIL left in COMMA-BASE-CELL.
+\ then pends its own, from the start COMMA-BASE-CELL holds.
 : RECORD-LINK-CREATED ( n n ptr n -- )
    {: effect:n control:n rec:ptr :}
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or IF EXIT THEN

@@ -2,9 +2,10 @@
 \ loop at tier 0 while an arm64 shadow is open, each record's shadow routine
 \ read against the routine T0 placed for the host. The fixture is
 \ test/compiler/shadow-kinds-fixture.f, read one section at a time. Output: one
-\ `FAIL <section>: threw <code> ...` per section that refused, one `ok NAME` or
-\ `FAIL NAME: what` per record the fixture made, the count of shadow rows left
-\ by refused sections, and rc 1 if anything failed.
+\ `FAIL <section>: threw <code> ...` per section that refused, one `ok NAME`,
+\ `ok NAME (shares SOURCE)` for an alias or `FAIL NAME: what` per record the
+\ fixture made, the count of shadow rows left by refused sections, and rc 1 if
+\ anything failed.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -143,7 +144,8 @@ CAST: CODE>BYTES ( n -- ptr u8 )
    loop ;
 
 \ A record of the fixture made before idx whose routine starts where idx's
-\ does and has a shadow row, or -1.
+\ does and has a shadow row, or -1: idx is then an alias (EXPORT), which
+\ files no shadow row of its own.
 : SHARER ( n -- n ) {: idx:n :}
    -1
    idx ND0 @ ?do
@@ -191,9 +193,12 @@ CAST: CODE>BYTES ( n -- ptr u8 )
    rec XREF-CODE-BYTES {: hlen:n :}
    idx SHADOW-ROW {: r:n :}
    r 0< if
-      rec XREF-NAME$ FAIL-HEAD s" no shadow record; host " type hlen .N s"  bytes" type
       idx SHARER {: o:n :}
-      o 0< 0= if s" , the routine of record " type o .N s"  " type o XREF-REC XREF-NAME$ type then
+      o 0< 0= if
+         s" ok " type rec XREF-NAME$ type
+         s"  (shares " type o XREF-REC XREF-NAME$ type s" )" type cr exit
+      then
+      rec XREF-NAME$ FAIL-HEAD s" no shadow record; host " type hlen .N s"  bytes" type
       cr exit
    then
    r NSHADOW:EMISSION@ {: e:n :}

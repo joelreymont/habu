@@ -4369,7 +4369,7 @@ variable LREPLAYTRAP
    B-TASK-GUARD
    OVERLAY-EMIT:GUARD,
    4 G-POP  2 G-POP  1 G-POP  0 G-POP                 \ x4 = the kind, x2 = the wid, x1/x0 = the name
-   14 DKIND:MASK DNAME-CELL or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
+   14 DKIND:MASK DNAME-CELL or DNAME-ALLOC or invert LIT64,  14 4 14 AND,  14 bad CBNZ,
    bad REAL-WID,
    prot OPEN-WID,
    bad NOT-PENDING,

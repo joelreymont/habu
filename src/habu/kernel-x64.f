@@ -5247,15 +5247,16 @@ $3A constant NAME-COLON                \ a qualified name's separator
 \ CP past the name, [8] 0, the kind beside the length and the wid in [40];
 \ PEND-CELL the record;
 \ TSIG, TCSIG, PEND-OPAQUE, DOESB, CLAUSE and TRUSTED clear; DEF-TIER-CELL takes
-\ the latch as habu1.f TIER-LATCH computes it. The kind may carry DNAME-CELL
-\ beside DKIND:ADDR, a variable's, as habu2.f DEFWRITE:DEF-OPEN admits it.
+\ the latch as habu1.f TIER-LATCH computes it. A DKIND:ADDR kind carries
+\ DNAME-ALLOC, and DNAME-CELL as well for a variable, as habu2.f
+\ DEFWRITE:DEF-OPEN admits them.
 : DEF-OPEN-BODY ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL {: latched:label prot:label done:label :}
    TASK-LIVE-GUARD,
    OVERLAY-GUARD,
    FRAME-OPEN,
    DW-ARG POP-TO,  DW-WID POP-TO,  DW-LEN POP-TO,  DW-NAME POP-TO,
-   RAX DKIND:MASK DNAME-CELL or invert IMM64,
+   RAX DKIND:MASK DNAME-CELL or DNAME-ALLOC or invert IMM64,
    RAX RSP DW-ARG MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
    RDX RSP DW-WID MOV-LOAD,
    REAL-WID,

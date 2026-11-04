@@ -38,9 +38,9 @@ variable TOK-BODY-RAW
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
 
-\ def-open, body-append, created-sig!, def-close, def-abort, def-create,
-\ def-cast, imm-mark and min-in-mark are OUTER's own rows (src/habu/prims.f),
-\ called below by name. trust-sig! has none: it is the `trusted:`, `cast:`,
+\ def-open, body-append, created-sig!, def-close, def-abort, def-cast,
+\ imm-mark and min-in-mark are OUTER's own rows (src/habu/prims.f), called
+\ below by name. trust-sig! has none: it is the `trusted:`, `cast:`,
 \ `linear:` and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
@@ -704,13 +704,12 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    true ;
 
 \ The engine's twins: habu2.f C-CREATE, EMIT-CREATE and C-VARIABLE.
-\ A created word is published whole where its keyword is read: def-create
-\ writes the code that pushes its data address and appends the record. The
-\ checker then reads it as the engine hands it over. `variable` is `create`
-\ and one cell more, and the engine names `create` for both: in the missing
-\ name's refusal and in the def hook's text. x86-64 has no def-create body
-\ (src/habu/kernel-x64.f refuses the row): there DEF-FIXED compiles the body
-\ that pushes the address, as it compiles every definer's, and def-close ends it.
+\ A created word is published whole where its keyword is read: DEF-FIXED
+\ compiles and publishes the body that pushes its data address, as it does a
+\ constant's and a defer's, and def-close ends the definition. The checker then
+\ reads it as the engine hands it over. `variable` is `create` and one cell
+\ more, and the engine names `create` for both: in the missing name's refusal
+\ and in the def hook's text.
 
 \ The keyword joins the capture, and an armed check hook reads it, `NAME
 \ create` for a created word, its verdict dropped: a definer's word always
@@ -766,16 +765,13 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    then
    NCOMP:COMPILE-FIXED ;
 
-\ The pending DKIND:ADDR record published: def-create's tail, or on x86-64
-\ the fixed body pushing a cell-aligned here and def-close.
+\ The fixed body pushes the cell-aligned here, recorded in COMMA-BASE-CELL as
+\ habu2.f ADDR-TAIL records it, and ends in the slot a `does>` patches.
 : DEF-ADDR-TAIL ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      align
-      DEF-HERE COMP-BODY:address DEF-FIXED
-      DEF-CLOSE
-      exit
-   then
-   def-create ;
+   align
+   DEF-HERE COMMA-BASE-CELL CELL!
+   DEF-HERE COMP-BODY:address DEF-FIXED
+   DEF-CLOSE ;
 
 \ The head refuses as `:`'s does, at any tier, the tail publishes the word,
 \ DP rounded up to a cell. No record slot left is refused after the name,
@@ -787,7 +783,7 @@ TRUSTED: DEF-PREFIX-BIND ( -- )
    TASK-GUARD
    DEF-CODE-ROOM
    s" create" OPERAND
-   DKIND:ADDR cell? if DNAME-CELL or then DEF-START
+   DKIND:ADDR DNAME-ALLOC or cell? if DNAME-CELL or then DEF-START
    DEF-ADDR-TAIL ;
 
 \ A compiled defining word reaches `create` through the engine primitive,

@@ -24,7 +24,8 @@ $6A8 constant COMMA-RUN-CELL
 \ COMMA-END-CELL: written by habu1.f BCOMMA, zeroed by SND-ZERO-LIVE.
 $6B0 constant COMMA-END-CELL
 \ COMMA-BASE-CELL: the start of the latest created body, the address its word
-\ pushes, written by habu2.f ADDR-TAIL, zeroed by SND-ZERO-LIVE.
+\ pushes, written by habu2.f ADDR-TAIL and definers.f DEF-ADDR-TAIL, zeroed by
+\ SND-ZERO-LIVE.
 $6B8 constant COMMA-BASE-CELL
 
 ;package

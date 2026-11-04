@@ -869,11 +869,12 @@ ETRUSTED-ONLY!
 EPPRIM: CHECKER-OVERLAY package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ def-open ( ptr u8 n n n -- ) name, wid, kind: write record NDICT unpublished,
-\ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR, DNAME-CELL
-\ beside DKIND:ADDR for a variable, or DKIND:CAST) in [16] and the wid in
-\ [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and TRUSTED clear;
-\ DEF-TIER-CELL takes the tier latch (TIER-LATCH); LASTC-CELL waits for the body
-\ (def-close, def-create). It refuses another kind, wid -1 or -2 and CP at or
+\ [0] CP after the name, [8] 0, the kind (0, DKIND:VAL, DKIND:ADDR with
+\ DNAME-ALLOC, and DNAME-CELL as well for a variable, or DKIND:CAST) in [16] and
+\ the wid in [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and
+\ TRUSTED clear; DEF-TIER-CELL takes the tier latch (TIER-LATCH); LASTC-CELL
+\ waits for the body (def-close, def-create). It refuses a kind with a bit
+\ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, wid -1 or -2, and CP at or
 \ past the code ceiling. Latched to the JIT it opens the record only: the JIT's
 \ own head (its frame and resets) is not this row's.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;

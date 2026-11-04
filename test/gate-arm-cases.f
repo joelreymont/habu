@@ -79,3 +79,11 @@ SUITE compiler-tier0-join
 SUITE compiler-tier0-string-literals
    test/compiler/tier0-string-literals.f
 ;SUITE
+
+\ arm64 reads files through the engine's loop: outer-loop-on.f gives cell-body
+\ to the Habu loop, whose `create` (definers.f DEF-ADDR-TAIL) x86-64 runs.
+SUITE cell-body-habu-loop
+   test/outer-loop-on.f
+   ENTRIES
+   test/cell-body-e2e.f
+;SUITE
