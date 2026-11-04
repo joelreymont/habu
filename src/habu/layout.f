@@ -865,18 +865,14 @@ $3858 constant REPORT-CELL
 $3868 constant ARENA-CELL
 ;package
 
-\ PROVIDED-XT names the dispatch cell of each src/habu/prims.f row an x86-64
-\ captured runtime provides (EPREFIX-PROVIDED!). In a seeded x86-64 build the
-\ row keeps its record and name, and its body is a stub that jumps through the
-\ cell (src/habu/kernel-x64.f X64KERNEL:PROVIDED-ROW); the x86-64
-\ `evaluate-closed` jumps through EVALUATE-CELL as well. The captured runtime
-\ stores its word there with `xt!` (src/habu/interpret.f
-\ OUTER:INSTALL-EVALUATE, which native-runtime.f CHECKER-REG:SEAL runs), so the
-\ capture carries the cell as a fixed address row (tools/native-layout.f) and
-\ the x86-64 link restores it on every boot (src/habu/link-x64.f FIXED-CELLS).
-\ An ARM64 record, and an x86-64 build with no captured runtime,
-\ keep the assembly body and never read the cell. EVALUATE-CELL follows the
-\ NCOMP-DISPATCH cells from CALLBACK-STUB-CELL to $3847.
+\ PROVIDED-XT: the dispatch cell of each src/habu/prims.f row a captured
+\ runtime provides (EPREFIX-PROVIDED!), stored with `xt!` (src/habu/interpret.f
+\ OUTER:INSTALL-EVALUATE) and restored on every x86-64 boot as a fixed address
+\ row (src/habu/link-x64.f FIXED-CELLS). A seeded x86-64 row is a stub that
+\ jumps through it (src/habu/kernel-x64.f X64KERNEL:PROVIDED-ROW), and x86-64's
+\ `evaluate-closed` calls EVALUATE-CELL's word; arm64's evaluate words use the
+\ cells once set (habu1.f B-EVAL, B-EVAL-RANGE, B-EVAL-CLOSED). EVALUATE-CELL
+\ follows the NCOMP-DISPATCH cells, which end at $3847.
 package PROVIDED-XT
 public
 $3848 constant EVALUATE-CELL

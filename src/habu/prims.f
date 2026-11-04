@@ -263,7 +263,7 @@ variable CUR-REF-OFF    variable CUR-REF-LEN
 \ (src/habu/primitive-registry.f DISPATCH!), and COMPLETE-PROVIDED refuses a
 \ marked row registered without one, or a seeded build whose captured runtime
 \ leaves the cell empty. An ARM64 record is the assembly body and registers no
-\ cell.
+\ cell; the body itself jumps through a filled cell (layout.f PROVIDED-XT).
 : EPREFIX-PROVIDED! ( -- )
    ROW-N @ 0 <= IF s" prims: prefix-provided before any row" SPEC-RC die THEN
    ROW-N @ 1 - F-FLAGS ROW-FIELD dup @ FL-PREFIX-PROVIDED or swap ! ;

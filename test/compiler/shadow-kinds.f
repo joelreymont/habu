@@ -29,8 +29,11 @@ private
 
 \ A compiled definer's `create` calls through CREATEP-CELL, which on arm64 holds
 \ the kernel's `create` until the typed loop's definer is installed there, as
-\ the x86-64 product's RUNTIME-X64 INSTALL-LOOP does.
+\ the x86-64 product's RUNTIME-X64 INSTALL-LOOP does. Generated text
+\ (TYPED-VARIABLE's accessor) reaches the typed loop through the evaluate
+\ cells, which INSTALL-LOOP installs as well.
 OUTER:INSTALL-CREATE
+OUTER:INSTALL-EVALUATE
 
 variable ND0                         \ the first record the fixture can make
 variable ND1                         \ and one past its last

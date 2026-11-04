@@ -2,8 +2,8 @@
 \ buffer token by token with the readers src/habu/outer.f defines, the
 \ package keywords src/habu/packages.f defines and the definition heads and
 \ body capture src/habu/definers.f defines. OUTER:EVAL-FRAMED runs the loop
-\ under the engine's evaluate frame, and OUTER:INSTALL-EVALUATE makes it a
-\ seeded engine's `evaluate` (src/habu/prims.f EPREFIX-PROVIDED!).
+\ under the engine's evaluate frame, and OUTER:INSTALL-EVALUATE stores it in
+\ the engine's evaluate cells (src/habu/layout.f PROVIDED-XT).
 
 require src/lib/memory.f
 require src/habu/layout.f
@@ -429,8 +429,9 @@ public
 : EVAL-FRAMED ( ptr u8 n -- ) {: a:ptr u:n :}
    a u 0 u EVAL-FRAMED-RANGE ;
 
-\ Make EVAL-FRAMED and EVAL-FRAMED-RANGE the seeded x86-64 engine's `evaluate`
-\ and `evaluate-range`; layout.f PROVIDED-XT says how callers reach them.
+\ Make EVAL-FRAMED and EVAL-FRAMED-RANGE the engine's `evaluate` and
+\ `evaluate-range` where its prims read the cells; layout.f PROVIDED-XT says
+\ which do.
 : INSTALL-EVALUATE ( -- )
    ['] EVAL-FRAMED data-base PROVIDED-XT:EVALUATE-CELL + xt!
    ['] EVAL-FRAMED-RANGE data-base PROVIDED-XT:EVALUATE-RANGE-CELL + xt! ;

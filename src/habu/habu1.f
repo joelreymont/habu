@@ -1806,33 +1806,32 @@ public
       9 9 1 SUBI,  9 G-PUSH  11 BLR, ;
 ;package
 
-\ ( a u -- ) re-entrant interpret of a/u: save the outer input cursor and
-\ compile state, point INP/INE at a/u, bump EVALD and jump to the interpret
-\ loop top through LMAINP-CELL (prims cannot name labels). End of buffer
-\ (LEXIT) with EVALD>0 restores the linked native-stack frame and returns here
-\ with EVALERR-CELL 0. Interpret failures (LUNDEF, LUNDERFLOW, every throw)
-\ unwind through LEVALREC instead, which rolls each escaped frame back, records
-\ the code in EVALERR-CELL and delivers to the nearest handler, REPL or exit.
+\ B-EVAL and B-EVAL-RANGE jump through a set PROVIDED-XT cell with their
+\ arguments on the data stack; else the interpret loop is entered through
+\ LMAINP-CELL (a prim names no label) and LEXIT returns with EVALERR-CELL 0.
 \
-\ EMIT-EVAL-BODY takes a and u in x9/x10 and in x13 the data stack the frame
-\ owns (0 for evaluate). The frame records the data-stack extent, that stack and
-\ the definition open at entry (EVAL-FRAME:PEND); the clean exit returns to x30
-\ (B-EVAL's caller, or the continuation of B-EVAL-CLOSED, which inlines it on a
-\ stack of its own). The checker's record end (EVAL-FRAME:ROWS) is read last,
-\ when x9, x10, x13, x14 and x30 are spent: the owner's ROWS-END field is
-\ checked code.
+\ EMIT-EVAL-BODY: a u in x9 x10, in x13 the data stack the frame owns (0 for
+\ evaluate); the clean exit returns to x30. The checker's record end
+\ (EVAL-FRAME:ROWS) is read last, once x9, x10, x13, x14 and x30 are spent: the
+\ owner's ROWS-END field is checked code.
 variable LEVALBODY
 variable LSOURCEEXECFINISH
 
 : B-EVAL ( -- )
+   LBL {: own:label :}
    B-TASK-GUARD
+   9 DATA PROVIDED-XT:EVALUATE-CELL LDR,  9 own CBZ,  9 BR,
+   own LBL,
    B G-POP  A G-POP
    13 0 MOVZ,
    6 0 MOVZ,  7 10 0 ADDI,
    LEVALBODY LABEL@ B, ;
 
 : B-EVAL-RANGE ( -- )
+   LBL {: own:label :}
    B-TASK-GUARD
+   9 DATA PROVIDED-XT:EVALUATE-RANGE-CELL LDR,  9 own CBZ,  9 BR,
+   own LBL,
    7 G-POP  6 G-POP  B G-POP  A G-POP
    13 0 MOVZ,
    LEVALBODY LABEL@ B, ;
@@ -3912,22 +3911,24 @@ public
    bad LBL,  STACK-GUARD:EXIT-BOUNDS
    done LBL, ;
 
-\ evaluate-closed ( ptr u8 n -- ): evaluate the text as a closed program on a
-\ data stack of its own: the caller's extent and cursor wait in this frame and
-\ the text takes a PAGE-BYTES guarded stack from the CLOSED-FREE-CELL pool (an
-\ empty pool maps one with STACK-GUARD:EMIT-MAP, inline: a primitive names no
-\ label). `depth` starts at 0 and the cell under the floor is the stack's low
-\ guard page; a token reaching under it is refused, rc 70, through LEVALREC.
-\ The evaluate frame EMIT-EVAL-BODY pushes records the stack (EVAL-SEG) and
-\ returns to `back`. A throw out of the text unwinds to the caller's handler;
-\ LEVALREC gives the stack back and restores the caller's extent from this
-\ frame: base, capacity, cursor at [0], [8], [16], the text's stack at [24]
-\ (habu2.f EM-EVAL-THROW-RECOVER). A text ending inside a definition it opened
-\ is refused, rc 74 (habu2.f C-DEF-SOURCE-END). A clean return gives the stack
-\ back here and refuses residue with STACK-ABI:E-EVAL-RESIDUE, BTHROW inlined
-\ as in BRUNSTACK.
+\ Pop B-EVAL-CLOSED's frame: the text's stack (x11) back to the pool, the
+\ caller's extent and cursor back in force, the text's cursor in x13.
+: CLOSED-LEAVE ( -- )
+   11 SP 24 LDR,
+   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
+   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
+   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
+   13 XDS 0 ADDI,  XDS SP 16 LDR,
+   SP SP 32 ADDI, ;
+
+\ evaluate-closed ( ptr u8 n -- ): the text runs on a guarded stack of its own
+\ from the CLOSED-FREE-CELL pool; this frame holds the caller's base, capacity
+\ and cursor at [0] [8] [16] and the text's stack at [24], which habu2.f
+\ EM-EVAL-THROW-RECOVER reads. A set PROVIDED-XT:EVALUATE-CELL runs the text
+\ under this frame's catch, which gives the stack back before throwing on.
 : B-EVAL-CLOSED ( -- )
    LBL LBL LBL LBL {: have:label take:label back:label done:label :}
+   LBL LBL {: cell:label thrown:label :}
    B-TASK-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    SP SP 32 SUBI,
@@ -3946,18 +3947,20 @@ public
    13 DATA STACK-ABI:BASE-CELL STR,
    12 STACK-ABI:PAGE-BYTES LIT64,  12 DATA STACK-ABI:CAP-CELL STR,
    XDS 13 0 ADDI,
+   12 DATA PROVIDED-XT:EVALUATE-CELL LDR,  12 cell CBNZ,
    6 0 MOVZ,  7 10 0 ADDI,
    30 back ADR,
    LEVALBODY LABEL@ B,
+   cell LBL,
+   9 G-PUSH  10 G-PUSH  12 G-PUSH                    \ a u for the cell's word, under its xt
+   BCATCH-RUN
+   CLOSED-LEAVE  thrown B,                           \ x9 = the code
+   CATCH-PUSH LABEL@ LBL,
    back LBL,
-   11 SP 24 LDR,                                     \ the text's stack, back to the pool
-   12 DATA CLOSED-FREE-CELL LDR,  12 11 0 STR,  11 DATA CLOSED-FREE-CELL STR,
-   12 SP 0 LDR,  12 DATA STACK-ABI:BASE-CELL STR,
-   12 SP 8 LDR,  12 DATA STACK-ABI:CAP-CELL STR,
-   13 XDS 0 ADDI,  XDS SP 16 LDR,                    \ x13 = the text's cursor
-   SP SP 32 ADDI,
+   CLOSED-LEAVE
    13 11 CMP,  C-EQ done BCOND,
-   9 STACK-ABI:E-EVAL-RESIDUE LIT64,  9 G-PUSH  BTHROW
+   9 STACK-ABI:E-EVAL-RESIDUE LIT64,
+   thrown LBL,  9 G-PUSH  BTHROW
    done LBL, ;
 
 \ source-unit-run ( xt -- ): close one whole callback at the caller's cursor.
