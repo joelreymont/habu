@@ -230,8 +230,9 @@ variable SNAP-END
    R9 RAX SNAP-CELL MEM-OFF ASM-SINK ENC-MOV-MR ;
 
 \ The twin of EM-DATA-INIT: publish the text base, then rbp becomes DATA; then
-\ the data stack's extent, the argument vector ([rsp] = argc, argv at rsp + 8,
-\ envp past argv's null) and the heap floor with the DP that starts at it.
+\ the global and package wid cells, the data stack's extent, the argument
+\ vector ([rsp] = argc, argv at rsp + 8, envp past argv's null) and the heap
+\ floor with the DP that starts at it.
 : DATA-INIT, ( bool -- ) {: heap:bool :}
    RBASE-REG RAX RBASE-CELL MEM-OFF ASM-SINK ENC-MOV-MR
    RBASE-REG RAX ASM-SINK ENC-MOV-RR
@@ -247,6 +248,9 @@ variable SNAP-END
    RAX ZERO-REG,
    RAX ADDRESS-CELLS:LOCK-CELL CELL!
    RAX ADDRESS-CELLS:INDEX-CELL CELL!
+   \ The lookups' wids, 0 and DICT-WL:NAMESPACE at every boot.
+   RAX BOOT-LAYOUT:GLOBAL-WL-CELL CELL!
+   RAX DICT-WL:NAMESPACE IMM,  RAX BOOT-LAYOUT:NAMESPACE-WL-CELL CELL!
    DSTACK-REG STACK-ABI:BASE-CELL CELL!
    RAX STACK-ABI:BOOT-BYTES IMM,  RAX STACK-ABI:CAP-CELL CELL!
    RAX RSP MEM-AT ASM-SINK ENC-MOV-RM  RAX ARGC-CELL CELL!
