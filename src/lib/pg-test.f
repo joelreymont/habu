@@ -122,6 +122,48 @@ CONNECTIONS TYPED-BUFFER HELD-CONNS PG:connection
    code E-HANDLE T= ;
 
 
+\ The cluster refuses a missing database after the protocol starts, so the
+\ text is the server's and grows with the name.
+: MISSING-DB ( ptr u8 n -- PG:connect-result )
+   {: name:ptr nu:n :}
+   SB-RESET CONNINFO$ SB-APPEND s"  dbname=" SB-APPEND name nu SB-APPEND
+   SB$ CONNECT ;
+
+: REFUSED$ ( PG:connect-result -- ptr u8 n )
+   MATCH PG:connect-result
+      connected OF PG:CLOSE E-CONNECT throw ENDOF
+      refused OF ENDOF
+   ;MATCH ;
+
+
+variable LONG-REFUSED-U
+TASK:MIN-STACK TASK:TASK LONG-REFUSED-WORKER
+
+: LONG-REFUSED ( -- )
+   s" pgtest_refused_with_a_much_longer_missing_database_name_xyz" MISSING-DB
+   REFUSED$ nip LONG-REFUSED-U !
+   0 TASK:RETURN ;
+
+
+\ The second refusal claims the slot the first freed, the lowest free one, as no
+\ other slot frees between them.
+: REFUSAL-TEXT-CASES ( -- )
+   s" a refusal's text survives a longer refusal in another task" T-LABEL
+   s" pgtest_refused" MISSING-DB REFUSED$ {: a:ptr u:n :}
+   u 0 > TTRUE
+   u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES {: copy:ptr cu :}
+   a copy u BYTE-COPY
+   0 LONG-REFUSED-U !
+   ['] LONG-REFUSED LONG-REFUSED-WORKER TASK:ACTIVATE
+   LONG-REFUSED-WORKER TASK:JOIN MATCH result
+      ok OF 0 T= ENDOF
+      err OF throw ENDOF
+   ;MATCH
+   LONG-REFUSED-U @ u > TTRUE
+   a u copy u T$=
+   copy cu MEM:RELEASE-BYTES ;
+
+
 \ The application can hold all twenty connections at once, and reaching its
 \ declared limit leaves the existing connections usable and a closed slot reusable.
 : CAPACITY-CASES ( -- )
@@ -1343,9 +1385,8 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    EXIT-LIVE @ TFALSE
    0 EXIT-CONN @ PG:LIVE? TFALSE ;
 
-\ The server-side boundary: closing a pending connection must cancel its
-\ blocked write, not merely discard its client handle. A second connection
-\ stays blocked on a different row until the holder releases both locks.
+\ The count a pg_stat_activity query answers for one server backend, whose pid
+\ binds $1.
 : BACKEND-COUNT ( PG:connection n ptr u8 n -- n )
    {: c pid:n sql:ptr size:n :}
    c PARAMS c pid INT+
@@ -1786,7 +1827,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    again ;
 
 : LOOP-CASES ( -- )
-   CONNECT-CASES CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
+   CONNECT-CASES REFUSAL-TEXT-CASES CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
    HALT-CONNECT-CASES AIO-FAIL-CASES SERVER-CASES ;
 
 \ The AIO loop stops however LOOP-CASES ends. As under finally, a code from

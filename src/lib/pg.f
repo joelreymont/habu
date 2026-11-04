@@ -14,6 +14,7 @@ require src/lib/type/deftype.f
 require src/lib/task.f
 require src/lib/aio.f
 require src/lib/image-lifecycle.f
+require src/lib/byte-buffer.f
 require src/lib/fork-child.f
 
 \ PostgreSQL over libpq: -9250..-9259, the decade after libcurl. Minted here,
@@ -125,12 +126,9 @@ DYNAMIC-BUFFER CONN-ARENA-U n
 DYNAMIC-BUFFER CONN-LAST-RESULT ptr u8
 DYNAMIC-BUFFER CONN-PENDING n
 DYNAMIC-BUFFER CONN-CONNECTING n
-DYNAMIC-BUFFER CONN-MESSAGE-U n
 DYNAMIC-BUFFER CONN-PARAM-OFFS ptr n
 DYNAMIC-BUFFER CONN-PARAM-OFFS-CAP n
 DYNAMIC-BUFFER CONN-VERB n
-DYNAMIC-BUFFER CONN-MESSAGE ptr u8
-DYNAMIC-BUFFER CONN-MESSAGE-CAP n
 DYNAMIC-BUFFER CONN-BOUND n
 
 DYNAMIC-BUFFER RES-PG ptr u8
@@ -154,6 +152,11 @@ TASK:#USER 7 + CELL-MASK and CELL TASK:+USER SCOPE-HEAD drop
 \ The packed handle of the attempt CONNECT waits on, 0 when none. Its cleanup
 \ is a quotation, which cannot read CONNECT's locals.
 TASK:#USER 7 + CELL-MASK and CELL TASK:+USER CONNECT-HEAD drop
+\ The task's last refusal text, a BUF that grows from REFUSED-CAP. The main task
+\ has no exit chain, so image preparation releases its buffer.
+$1000 constant REFUSED-CAP
+TASK:#USER 7 + CELL-MASK and BUF:HDR-BYTES TASK:+USER REFUSED-TEXT drop
+TASK:#USER 7 + CELL-MASK and CELL TASK:+USER REFUSED-LIVE drop
 
 : CONN-CAP ( -- n ) CONN-CAPACITY @ ;
 : RESULT-CAP ( -- n ) RESULT-CAPACITY @ ;
@@ -237,10 +240,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot CONN-CHECK
    slot CONN-ARENA ;
 
-: MESSAGE-CELL ( n -- ptr ptr u8 ) {: slot:n :}
-   slot CONN-CHECK
-   slot CONN-MESSAGE ;
-
 : PARAM-OFFS-CELL ( n -- ptr ptr n ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-PARAM-OFFS ;
@@ -263,8 +262,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 
 : ARENA-BASE ( n -- ptr u8 )   ARENA-CELL @ ;
 : ARENA-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
-: MESSAGE-BASE ( n -- ptr u8 )   MESSAGE-CELL @ ;
-: MESSAGE-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot MESSAGE-CELL ! ;
 : PARAM-OFFS ( n -- ptr n )   PARAM-OFFS-CELL @ ;
 : PARAM-OFFS! ( ptr n n -- ) {: p slot:n :}   p slot PARAM-OFFS-CELL ! ;
 
@@ -286,10 +283,6 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 : ARENA-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-ARENA-CAP ! ;
 : ARENA-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-ARENA-U @ ;
 : ARENA-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-ARENA-U ! ;
-: MESSAGE-U@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-MESSAGE-U @ ;
-: MESSAGE-U! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-U ! ;
-: MESSAGE-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-MESSAGE-CAP @ ;
-: MESSAGE-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-MESSAGE-CAP ! ;
 : PARAM-OFFS-CAP@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-PARAM-OFFS-CAP @ ;
 : PARAM-OFFS-CAP! ( n n -- ) {: v:n slot:n :}   slot CONN-CHECK v slot CONN-PARAM-OFFS-CAP ! ;
 : BOUND@ ( n -- n ) {: slot:n :}   slot CONN-CHECK slot CONN-BOUND @ ;
@@ -447,7 +440,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot ARENA-RELEASE ;
 
 
-\ Like the message copy, the offsets mapping outlives CLOSE and goes with the registry.
+\ The offsets mapping outlives CLOSE and goes with the registry.
 : PARAM-OFFS-RELEASE ( n -- ) {: slot:n :}
    slot PARAM-OFFS-CAP@ {: cap:n :}
    cap 0<> if slot PARAM-OFFS cap MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS then
@@ -571,32 +564,10 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    E-CAPACITY throw ;
 
 
-\ Each connection keeps its own copy of the last server message, as long as the
-\ server sent it, in one OS mapping that grows to the longest message so far. It
-\ outlives CLOSE, since CONNECT's `refused` text is read after the close, and
-\ goes with the registry, image preparation included.
-: MESSAGE-RELEASE ( n -- ) {: slot:n :}
-   slot MESSAGE-BASE {: base :}
-   base NULL-ADDR? 0= if base slot MESSAGE-CAP@ RELEASE-ARENA then
-   NULL-ARG slot MESSAGE-BASE!
-   0 slot MESSAGE-CAP!
-   0 slot MESSAGE-U! ;
-
-
-\ The old copy is never read again, so growth maps the new size and drops the
-\ old mapping without moving its bytes.
-: MESSAGE-ROOM ( n n -- ) {: slot:n want:n :}
-   want slot MESSAGE-CAP@ <= if exit then
-   want ALLOC-ARENA {: fresh :}
-   slot MESSAGE-RELEASE
-   fresh slot MESSAGE-BASE!
-   want slot MESSAGE-CAP! ;
-
-
 \ Only a registry CONFIGURE published holds mappings: a partial reserve made none.
 : RELEASE-CONN-MAPPINGS ( -- )
    CONFIGURED @ 0= if exit then
-   CONN-CAP 0 ?do i MESSAGE-RELEASE i PARAM-OFFS-RELEASE loop ;
+   CONN-CAP 0 ?do i PARAM-OFFS-RELEASE loop ;
 
 
 \ Reserve once before publishing the registry. DYNAMIC-BUFFER owns allocation,
@@ -615,12 +586,9 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-LAST-RESULT-RELEASE
    CONN-PENDING-RELEASE
    CONN-CONNECTING-RELEASE
-   CONN-MESSAGE-U-RELEASE
    CONN-PARAM-OFFS-RELEASE
    CONN-PARAM-OFFS-CAP-RELEASE
    CONN-VERB-RELEASE
-   CONN-MESSAGE-RELEASE
-   CONN-MESSAGE-CAP-RELEASE
    CONN-BOUND-RELEASE
    RES-PG-RELEASE
    RES-GEN-RELEASE
@@ -647,12 +615,9 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-CAP CONN-LAST-RESULT-RESERVE
    CONN-CAP CONN-PENDING-RESERVE
    CONN-CAP CONN-CONNECTING-RESERVE
-   CONN-CAP CONN-MESSAGE-U-RESERVE
    CONN-CAP CONN-PARAM-OFFS-RESERVE
    CONN-CAP CONN-PARAM-OFFS-CAP-RESERVE
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
-   CONN-CAP CONN-MESSAGE-RESERVE
-   CONN-CAP CONN-MESSAGE-CAP-RESERVE
    CONN-CAP CONN-BOUND-RESERVE
    RESULT-CAP RES-PG-RESERVE
    RESULT-CAP RES-GEN-RESERVE
@@ -760,7 +725,6 @@ REGISTER-CHILD-RESET
    0 slot PENDING!
    0 slot CONNECTING!
    0 slot CONN-TX!
-   0 slot MESSAGE-U!
    0 slot BOUND!
    slot RESET-PARAMS ;
 
@@ -846,17 +810,6 @@ REGISTER-CHILD-RESET
    slot CLOSE-SLOT drop ;
 
 
-: MESSAGE! ( n ptr u8 n -- ) {: slot:n a u:n :}
-   0 slot MESSAGE-U!
-   slot u MESSAGE-ROOM
-   a slot MESSAGE-BASE u BYTE-COPY
-   u slot MESSAGE-U! ;
-
-
-: MESSAGE$ ( n -- ptr u8 n ) {: slot:n :}
-   slot MESSAGE-BASE slot MESSAGE-U@ ;
-
-
 \ A NULL field is an empty span.
 : FIELD$ ( ptr u8 -- ptr u8 n ) {: p :}
    p NULL-ADDR? if NULL-ARG 0 exit then
@@ -876,23 +829,44 @@ REGISTER-CHILD-RESET
    res REPORT$ ;
 
 
-\ Only a refused CONNECT writes the connection's message copy.
-: COPY-CONN-MESSAGE ( n -- ) {: slot:n :}
-   slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
-   p NULL-ADDR? 0= if slot p CSTR$ MESSAGE! then ;
-
-
 : WAITING ( n n -- progress ) {: slot:n events:n :}
    slot CONN-PG@ LIB-SOCKET {: socket:n :}
    socket 0 < if slot ABANDON-SLOT E-EXEC throw then
    socket >FD events PG-PROGRESS:waiting ;
 
 
+: REFUSED-DISPOSE ( -- )
+   0 REFUSED-LIVE !
+   REFUSED-TEXT BUF:DISPOSE ;
+
+: REFUSED-REGISTER ( -- )
+   TASK:SELF-N 0= if [: REFUSED-DISPOSE ;] IMAGE-LIFECYCLE:REGISTER exit then
+   [: REFUSED-DISPOSE ;] TASK:SELF TASK:AT-EXIT ;
+
+\ A refused registration releases the buffer it would have released, so a live
+\ buffer always has its release armed.
+: REFUSED-OPEN ( -- )
+   REFUSED-LIVE @ 0<> if exit then
+   REFUSED-TEXT REFUSED-CAP BUF:N>BLEN BUF:INIT
+   [: REFUSED-REGISTER ;] catch {: code:n :}
+   code 0<> if REFUSED-TEXT BUF:DISPOSE code throw then
+   1 REFUSED-LIVE ! ;
+
+
+\ PQerrorMessage points into the PGconn CLOSE-SLOT finishes, so the text is
+\ copied first; a copy that throws still closes the slot.
+: KEEP-REFUSAL ( n -- n ) {: slot:n :}
+   REFUSED-OPEN
+   REFUSED-TEXT BUF:CLEAR
+   slot CONN-PG@ LIB-ERROR-MESSAGE {: p :}
+   p NULL-ADDR? 0= if p CSTR$ BUF:N>BLEN REFUSED-TEXT BUF:APPEND-SPAN then
+   slot ;
+
 : CONNECT-REFUSED ( n -- progress ) {: slot:n :}
-   slot COPY-CONN-MESSAGE
-   slot MESSAGE$ {: ma:ptr mu:n :}
+   slot ['] KEEP-REFUSAL catch nip {: code:n :}
    slot CLOSE-SLOT drop
-   ma mu PG-PROGRESS:refused ;
+   code 0<> if code throw then
+   REFUSED-TEXT BUF:SPAN$ BUF:BLEN>N PG-PROGRESS:refused ;
 
 
 : POLL-CONNECT ( n -- progress ) {: slot:n :}
@@ -1324,9 +1298,8 @@ public
 \ the connection to the task's own cleanup: CLOSE, or ABANDON under a halt.
 \ CONNECT-START hands back an attempt owned by the calling task. POLL advances
 \ it to connected or refused; CLOSE abandons it at any earlier point. The slot
-\ is claimed first, so the conninfo it stages and the message a refusal copies
-\ back are its own. A refusal releases the slot, and those message bytes stay
-\ readable until the next CONNECT takes it.
+\ is claimed first, so the conninfo it stages is its own. A refusal's text stays
+\ readable until the same task's next refusal, by CONNECT, AWAIT or POLL.
 : CONNECT-START ( ptr u8 n -- connection ) {: a u:n :}
    REGISTER-CLEANUP
    CLAIM-CONN-SLOT {: slot:n :}
