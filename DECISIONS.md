@@ -272,6 +272,10 @@ learned live in the docs for their subject.
   `STDERR:CAPTURE ( path -- ) … STDERR:;CAPTURE` for tests. Asked whether
   MODEL's log line for an unusable reply carries the whole reply body, Joel
   chose "Log the whole body".
+- 2026-11-05, the OS's text for an errno (relayed by phil from Zen): offered
+  FS:ERRNO-TEXT ( errno buf size -- text ) writing into the caller's buffer,
+  Joel chose "FS:ERRNO$ ( errno -- text )": "Like FMT:INT$: text in a
+  per-task buffer of fixed size."
 - 2026-11-01, long model calls: Tender lost documents when MODEL's total
   call bound ran out at about 300 s. A call has no total bound; a dead call
   shows as a failed status or a stalled connection. On 2026-11-04, shown that
@@ -464,6 +468,13 @@ learned live in the docs for their subject.
   fixed per-connection parameter count so each connection's list grows as BIND
   needs, up to PostgreSQL's own 65535, Joel chose "Grow to PostgreSQL's limit".
   A library takes its limits from the protocol it speaks, not from a preset.
+- 2026-11-05, a pooled connection the server ended (relayed by phil from
+  Zen): offered PG:ENDED? ( connection -- bool ), Joel asked "why do you need
+  to poll? aren't you using epoll, kqueue, etc. to get notified?". Shown that
+  an idle pooled connection has no task waiting on its socket, so no
+  notification reaches anyone, and that pools check a connection as they hand
+  it out, he chose "Approve, check on reuse (Recommended)": one zero-wait
+  readiness query when Zen's pool takes a connection out.
 - 2026-10-31, Maki's Habu words (design r2): offered CMD:RUN-LINES for a run
   that hands each stdout line to a callback and ends the child after a silence
   window, Joel asked "why are we using \"a stretch of silence\" as terminator?";
@@ -817,6 +828,12 @@ learned live in the docs for their subject.
   exec; on macOS a fork-without-exec child crashed in curl_global_init and
   objc once the parent had a live task or had used Security or curl (dot
   habu-fork-only-to-59d3557e).
+- 2026-11-05, pipes: shown that the HTTP and WebSocket servers' wake pipes
+  reach every program a handler starts, while process.f and the macOS AIO
+  loop each mark theirs close-on-exec under the descriptor lock in their own
+  copy, Joel chose "Approve FD:PIPE (Recommended)": "One pipe word in FD;
+  HTTP, WebSocket, AIO and process code use it." FD:PIPE ( -- read-fd
+  write-fd ) makes a pipe whose ends close on exec.
 
 ## Tests
 
