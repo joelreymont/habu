@@ -1,4 +1,5 @@
-\ fd-test.f - exact reads and full writes over real pipes.
+\ fd-test.f - exact reads and full writes over real pipes; a temp file cut back
+\ and appended to, and a directory synced.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
 \ loops; a blocking write answers short only when a caught signal lands after
@@ -14,6 +15,7 @@ require src/lib/process-fork.f
 require src/lib/test/outcome.f
 require src/lib/test/wait.f
 require src/lib/fd.f
+require src/lib/fs-mutate.f
 
 package FD-TEST
 using FD
@@ -277,8 +279,34 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    code 0<> if code throw then
    s" forked reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
 
+\ An append descriptor writes the next part at the end RESIZE leaves, once the
+\ part written after the kept one is cut away.
+: CUT-THEN-APPEND ( -- )
+   s" fd-test" FS:MKTEMP {: pa:ptr pu:n made:fd :}
+   made FD>N close
+   pa pu FS:OPEN-APPEND-FD >FD {: f:fd :}
+   f s" part-one" WRITE-FULL
+   f s" partial" WRITE-FULL
+   f 8 RESIZE
+   f s" part-two" WRITE-FULL
+   f SYNC
+   f FD>N close
+   pa pu SMALL $ FS:READ-ALL 16 T=
+   SMALL $ s" part-onepart-two" T$=
+   pa pu FS:REMOVE-FILE ;
+
+: DIR-SYNC ( -- )
+   s" fd-test" FS:MKTEMP-DIR {: pa:ptr pu:n :}
+   pa pu FS:OPEN-DIR-READ {: d:n :}
+   d >FD SYNC
+   d FS:CLOSE-FD 0 T=
+   pa pu FS:REMOVE-DIR ;
+
 : READ-CLOSED ( -- )
    ERR-FD @ >FD SMALL READ-EXACT OUTCOME drop ;
+
+: SYNC-CLOSED ( -- )
+   ERR-FD @ >FD SYNC ;
 
 : WRITE-NO-READER ( -- )
    ERR-FD @ >FD s" data" WRITE-FULL ;
@@ -286,18 +314,26 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 : WRITE-NEGATIVE ( -- )
    ERR-FD @ >FD s" x" drop -1 WRITE-FULL ;
 
-\ A read of a descriptor that is not open, and a write to a pipe whose reader is
-\ gone (SIGPIPE held off, as a server whose client left must), are refusals by
-\ name; so is a source with a negative length.
+: RESIZE-PIPE ( -- )
+   ERR-FD @ >FD 0 RESIZE ;
+
+: RESIZE-NEGATIVE ( -- )
+   ERR-FD @ >FD -1 RESIZE ;
+
+\ A closed descriptor, a pipe with no reader (SIGPIPE held off, as a server's
+\ must be), a resized pipe and a negative length are each refused by name.
 : ERRORS ( -- )
    PIPE-PAIR {: r:fd w:fd :}
    r FD>N close
    r FD>N ERR-FD !
    [: READ-CLOSED ;] E-FS-IO TTHROWSQ
+   [: SYNC-CLOSED ;] E-FS-IO TTHROWSQ
    w FD-NOSIGPIPE!
    w FD>N ERR-FD !
    [: WRITE-NO-READER ;] E-FS-IO TTHROWSQ
    [: WRITE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
+   [: RESIZE-PIPE ;] E-FS-IO TTHROWSQ
+   [: RESIZE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    w FD>N close ;
 
 : MAIN ( -- )
@@ -314,6 +350,8 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    BOUNDED-SUCCESS
    BOUNDED-TIMEOUT
    BOUNDED-BROKEN
+   CUT-THEN-APPEND
+   DIR-SYNC
    ERRORS
    SRC @ FREE-SPAN
    DST @ FREE-SPAN

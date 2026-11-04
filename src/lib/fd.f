@@ -1,7 +1,8 @@
 \ fd.f - the standard descriptors, exact reads and full writes on blocking
-\ descriptors (the engine reports EAGAIN as a failed call). A refused read or
-\ write, a write that takes no byte and a count past the asked one are E-FS-IO;
-\ a negative length is E-SPAN-LENGTH. Signals and descriptors stay the caller's.
+\ descriptors (the engine reports EAGAIN as a failed call), and syncing and
+\ resizing a file. A refused read, write, sync or resize, a write that takes no
+\ byte and a count past the asked one are E-FS-IO; a negative length is
+\ E-SPAN-LENGTH. Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
 
@@ -43,6 +44,8 @@ $7FFFFFFF constant MAX-POLL-MS
 PROCESS-SYMBOLS
 FUNCTION: WRITE-CALL write ( n ptr u8 n -- n ) ;FUNCTION
 FUNCTION: OPEN-CALL open ( ptr u8 n -- i32 ) ;FUNCTION
+FUNCTION: SYNC-CALL fsync ( n -- i32 ) ;FUNCTION
+FUNCTION: RESIZE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 
 TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
 : POLL-FD ( -- ptr u8 ) POLL-STORAGE BYTE-VIEW ;
@@ -172,6 +175,18 @@ public
    >r 2drop 2drop r> {: code:n :}
    changed if f flags RESTORE then
    code 0<> if code throw then ;
+
+\ Returns once the file's bytes and length, or a directory's entries, are on the
+\ device; on macOS that is the drive's cache, as PostgreSQL's default is.
+: SYNC ( fd -- )
+   FD>N SYNC-CALL 0<> if E-FS-IO throw then ;
+
+\ Sets the file's length: bytes past it go and a shorter file grows with zero
+\ bytes. A descriptor opened for append writes next at the new end.
+: RESIZE ( fd n -- )
+   {: f:fd len:n :}
+   len 0 < if E-SPAN-LENGTH throw then
+   f FD>N len RESIZE-CALL 0<> if E-FS-IO throw then ;
 
 \ One attempt to open the write end of the existing FIFO at the path, followed
 \ through symlinks; O_NONBLOCK answers ENXIO at once while no reader has it

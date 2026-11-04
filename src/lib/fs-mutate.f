@@ -9,6 +9,7 @@ require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
+require src/lib/fd.f
 require src/lib/fs-identity.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
@@ -351,11 +352,9 @@ private
    src srcu COPY-BUF cap SPAN:TAKE SPAN:$ READ-ALL {: n :}
    dst dstu COPY-BUF n SPAN:TAKE SPAN:$ WRITE-ALL ;
 
-PROCESS-SYMBOLS
-FUNCTION: TRUNCATE-CALL ftruncate ( n n -- i32 ) ;FUNCTION
 : PREPARE-DST ( fd fd -- ) {: source dest :}
    source dest SAME-OPEN-FILE? if E-FS-OPEN throw then
-   dest FD>N 0 TRUNCATE-CALL 0<> if E-FS-IO throw then ;
+   dest 0 FD:RESIZE ;
 
 \ The stream copy's descriptors, counts and write cursor are locals and stack
 \ values of the call. A descriptor a helper must close on its error path is a

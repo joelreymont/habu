@@ -1615,10 +1615,9 @@ PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
 \ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch: the second
 \ NUL-padded path every two-path syscall stages (rename, symlink, the stream
 \ copy's destination), the temporary name FS:MKTEMP-DIR-IN builds and returns a
-\ span into, and FS:ATOMIC-WRITE-FILE's `.tmp` sibling. Declared here for
-\ FS-ABI's reason (tools/native-build-core.f requires fs-mutate.f), at the same
-\ bootstrap cost: an engine that predates it dies `E-UNDEFINED:
-\ FS-MUT-ABI:PATHZ2-BYTES`, rc 70.
+\ span into, and FS:ATOMIC-WRITE-FILE's `.tmp` sibling. The build tool loads
+\ fs-mutate.f from source, so an engine that predates this band dies
+\ `E-UNDEFINED: FS-MUT-ABI:PATHZ2-BYTES`, rc 70, as FS-ABI's does.
 \
 \ Two things stay process-wide on purpose: the 8 KiB copy buffer (3072 + 8192
 \ does not fit the 7408 bytes USER-BAND had free; COPY-FILE and
