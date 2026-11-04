@@ -7,13 +7,6 @@ when this runs out.
 
 ## 1 Names and packages
 
-A public word is public API: ask the user before adding, removing or changing
-one, in any package or repository, a new package's included. Ask once per
-change with the list: each word's name, stack effect and caller and, where it
-works around existing code, changing that code instead as an option. A lane
-brief lists the approved words; a worker that needs another stops and reports
-it. Private words need no approval.
-
 Our words UPPER-CASE, built-ins as-is (`dup`, `?do`). Hyphens, never
 underscores, in word *and* file names. Predicates end `?`, conversions are
 `>X`, fetch/store `X@` / `X!`, scope pairs are `FOO … ;FOO`. `$hex` for
