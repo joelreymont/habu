@@ -4058,7 +4058,7 @@ variable LREPLAYTRAP
          16 1 MOVZ,
    next LBL,  14 14 1 ADDI,  scan B,
    clean LBL,
-   2 DICT-WL:NAMESPACE invert MOVN,
+   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,
    bad FRESH,
    10 0 0 ADDI,  12 1 0 ADDI,  3 13 0 ADDI,           \ the name, the flag
    9 NDICT REC-AT,
@@ -4070,7 +4070,7 @@ variable LREPLAYTRAP
       15 14 0 ADDI,  14 14 1 ADDI,                    \ [8] = a second one
    nopri LBL,
    15 11 8 STR,  14 DATA WIDN-CELL STR,
-   15 DICT-WL:NAMESPACE invert MOVN,  15 11 40 STR,
+   15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  15 11 40 STR,
    PUBLISH,
    HW-RAISE,                                          \ an overlay's row dies at replay-close
    9 NDICT 1 SUBI,  9 G-PUSH
@@ -4086,7 +4086,9 @@ variable LREPLAYTRAP
    0 G-POP
    0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
-   14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
+   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
    14 9 8 LDR,  14 bad CBNZ,
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
    14 DATA WIDN-CELL LDR,  14 11 8 STR,
@@ -4149,7 +4151,9 @@ variable LREPLAYTRAP
    set LBL,
    0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
-   14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
+   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
    12 9 8 LDR,  12 bad CBZ,
    2 9 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,   \ x2 = the name's length
    4 9 24 ADDI,
@@ -4241,10 +4245,6 @@ variable LREPLAYTRAP
 \ half the record's hash key, and a compaction between the two re-keys the
 \ retired record on RETIRED's chain, so after each store the record is indexed
 \ under the wid it now holds (HIDX-EMIT:LREKEY, src/habu/layout.f DICT-WL).
-\ It refuses an index at or above NDICT, unsigned, a namespace row and the
-\ namespace wid. A seeded primitive's record is retired like any other: the
-\ live `undefine` retires it in place (src/habu/xref.f XREF-RETIRE-WL scans
-\ down to record 0), and a replay of that `undefine` has to as well.
 \ Between a restore and replay-close one wordlist can hold two live records of
 \ one name, the restored record and a replay record, and the hash probe and
 \ the wordlist scan may answer with different ones. The owner ends every such
@@ -4252,16 +4252,21 @@ variable LREPLAYTRAP
 \ restore with replay-close, a frame ROLLBACK's with the ndict! that drops
 \ the replay record.
 : RECORD-WID ( -- )
-   LBL LBL {: bad done :}
+   LBL LBL LBL LBL {: bad wid store done :}
    B-TASK-GUARD
    3 G-POP  13 G-POP                                  \ x3 = the index, x13 = the wid
    8 BAND,
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
    3 NDICT CMP,  C-CS bad BCOND,
    9 3 REC-AT,
-   15 DICT-WL:NAMESPACE invert MOVN,
-   14 9 40 LDR,  14 15 CMP,  C-EQ bad BCOND,
-   13 15 CMP,  C-EQ bad BCOND,
+   14 9 40 LDR,  14 0 CMPI,  C-GE wid BCOND,             \ a live package row
+   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ wid BCOND,
+   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   wid LBL,
+   13 0 CMPI,  C-GE store BCOND,                         \ a live package row's marker
+   15 DICT-WL:RETIRED invert MOVN,  13 15 CMP,  C-EQ store BCOND,
+   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 15 CMP,  C-NE bad BCOND,
+   store LBL,
    14 DATA REGION-ALIAS:DELTA-CELL LDR,  14 9 14 ADD,  13 14 40 STR,   \ through the alias
    HIDX-EMIT:LREKEY LABEL@ BL,
    done B,
@@ -4272,11 +4277,7 @@ variable LREPLAYTRAP
 \ fresh private wid, as `package` gives one to a row a qualified definition
 \ made (src/habu/packages.f PKG-REOPEN); false takes back the one it gave.
 \ replay-close puts WIDN back but nothing of a row below the saved NDICT, so
-\ the owner logs each grant and takes it back before the close. It refuses no
-\ overlay, an index at or above NDICT, unsigned, and a row that is not a
-\ namespace row; true refuses a row with a private wid, and false one whose
-\ private wid is below the saved WIDN, 0 included: a wid from before the
-\ overlay.
+\ the owner logs each grant and takes it back before the close.
 : REPLAY-PRIVATE ( -- )
    LBL LBL LBL {: bad give done :}
    B-TASK-GUARD
@@ -4285,7 +4286,9 @@ variable LREPLAYTRAP
    14 8 REPLAY-SCOPE:LATCH BAND-OFF LDR,  14 bad CBZ,   \ no overlay
    3 NDICT CMP,  C-CS bad BCOND,
    9 3 REC-AT,
-   14 9 40 LDR,  15 DICT-WL:NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
+   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
    14 9 8 LDR,
    13 give CBNZ,
       15 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  14 15 CMP,  C-CC bad BCOND,
@@ -4773,7 +4776,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
       11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
       14 DATA DEF-WL-CELL LDR,  14 11 0 STR,
       15 0 MOVZ,  15 11 8 STR,
-      15 0 MOVN,  15 11 40 STR,
+      15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  15 11 40 STR,
       EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
@@ -9824,7 +9827,7 @@ public
    12 11 1 ADDI,
    1 DATA REGION-ALIAS:DELTA-CELL LDR,  1 9 1 ADD,     \ x1 = record x9 through the alias
    11 1 0 STR,  12 1 8 STR,
-   15 0 MOVN,  15 1 40 STR,
+   15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  15 1 40 STR,
    EM-DEF-OCC:LAPPEND LABEL@ BL,  LHIDXADD LABEL@ BL,
    5 9 0 ADDI, ;
 
@@ -9843,7 +9846,7 @@ public
 
 : C-PACKAGE-RECORD-MATCH ( label label -- ) {: hit:label miss:label :}
    LBL LBL {: cmp:label inline:label :}
-   14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
+   14 5 40 LDR,  15 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    14 5 16 LDR,  14 14 DNAME-FLAG-BITS LSLI,  14 14 DNAME-FLAG-BITS LSRI,
    15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
    16 5 24 ADDI,
@@ -10303,15 +10306,17 @@ public
 \ FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of E-USING-SHADOW-GLOBAL
 \ (docs/forth.md "Importing a package's public words with `using`"); the checker
 \ enforces it in checked bodies. Called on LFIND's hit path with its outputs
-\ live, for the token in TKA/TKL. A global hit (record wid 0) that a used public
-\ also exports is refused by name with 105 through the compile-die tail (a
-\ throw inside evaluate, an exit at top level). Otherwise x5 and x11-x13 are as
-\ LFIND left them; it clobbers what LFINDUSED does.
+\ live, for the token in TKA/TKL. A global hit (a record in the global
+\ wordlist) that a used public also exports is refused by name with 105 through
+\ the compile-die tail (a throw inside evaluate, an exit at top level).
+\ Otherwise x5 and x11-x13 are as LFIND left them; it clobbers what LFINDUSED
+\ does.
 : FIND-SHADOW ( -- )
    LBL LBL LBL  s" hb: bare word a global and a used package both export: "
    {: ret:label shadow:label msg:label ma mu :}
    LFINDSHADOW LABEL@ LBL,
-   14 5 40 LDR,  14 ret CBNZ,                                  \ a package's word: the inner scope won
+   14 5 40 LDR,  15 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,
+   14 15 CMP,  C-NE ret BCOND,                                 \ a package's word: the inner scope won
    14 USE-DEPTH-CELL LIT64,  14 DATA 14 ADD,  14 14 0 LDR,
    14 ret CBZ,                                                 \ no using open
    SP SP 48 SUBI,  30 SP 0 STR,  5 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,  13 SP 32 STR,
@@ -12696,7 +12701,7 @@ public
    LPOLICYTOPREC LABEL@ LBL,
    14 DATA POLICY-REQUIRE-CELL LDR,  14 ordinary CBZ,
    16 5 0 LDR,  16 14 CMP,  C-NE ordinary BCOND,
-   14 5 40 LDR,  14 ordinary CBNZ,
+   14 5 40 LDR,  16 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,  14 16 CMP,  C-NE ordinary BCOND,
    14 DATA TKL-CELL LDR,  14 7 CMPI,  C-NE ordinary BCOND,
    15 DATA TKA-CELL LDR,
    s" require" {: name:ptr u:n :}

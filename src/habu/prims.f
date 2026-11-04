@@ -963,17 +963,17 @@ ETRUSTED-ONLY!
 \ and the using band in the engine's REPLAY-SCOPE band (src/habu/layout.f). It
 \ refuses an open overlay and a pending definition.
 \ replay-record ( ptr u8 n n -- ) name, wid: publish a codeless record whose
-\ entry traps, exit 76. It refuses no overlay, wid -1 or -2 and what the
+\ entry traps, exit 76. It refuses no overlay, a negative wid and what the
 \ three record writers above refuse.
 \ record-wid! ( n n -- ) wid, index: retire a record (-2) or give it back its
-\ wid. It refuses no overlay, an index at or above NDICT, unsigned, a
-\ namespace row and wid -1. A seeded primitive's record retires as the live
-\ `undefine` retires it.
+\ wid. It refuses no overlay, an index at or above NDICT, unsigned, a live
+\ package row and any negative wid but -2 and -3. A seeded primitive's record
+\ retires as the live `undefine` retires it.
 \ replay-private ( n bool -- ) namespace index, flag: give a row with no
 \ private wid a fresh one (true), as `package` does for a row a qualified
 \ definition made, or take back the one given (false). It refuses no overlay,
-\ an index at or above NDICT, unsigned, and a row that is not a namespace row;
-\ true a row with a private wid, false one whose private wid is older than the
+\ an index at or above NDICT, unsigned, and a row not a live package row; true
+\ a row with a private wid, false one whose private wid is 0 or older than the
 \ overlay.
 \ replay-close ( -- ): zero the records published since replay-open, put the
 \ saved state back and zero the band. It refuses no overlay, a pending
