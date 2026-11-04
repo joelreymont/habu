@@ -713,7 +713,14 @@ learned live in the docs for their subject.
   the header cells holding the wordlist the engine treats as global (0 today)
   and the marker a package's row carries (-1 today), which point at fresh ones
   while a build writes the next hb, Joel chose "GLOBAL-WL-CELL,
-  NAMESPACE-WL-CELL (Recommended)".
+  NAMESPACE-WL-CELL (Recommended)". Asked which public word reads the marker
+  for the checker, which loads before layout.f, he asked "why do you need a
+  boot-layout package? do you have a boot-<something else>? why not just
+  BOOT?", then chose "BOOT, fold BOOT-SRC (Recommended)": the header cells the
+  boot writes (the heap start, the DP bounds, the wid cells and BOOT-SRC's
+  USER-END) are package BOOT. He chose "BOOT:NAMESPACE-WL (Recommended)", the
+  owner's reader in a file loaded before the checker, which every file calls in
+  place of its own read; BOOT:GLOBAL-WL reads the global wid beside it.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
