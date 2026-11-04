@@ -654,6 +654,18 @@ learned live in the docs for their subject.
   marks an engine build, Joel chose "Approve with mode (Recommended)": every
   build caller (hb-build-core.f, aot-builder.f, native-build-core.f,
   app-build.f) runs inside LINKER:WITH, and RUN, APP-LOAD and WITH-QUIET go.
+- 2026-11-04, how Habu builds Habu: shown that five linker designs kept the
+  build that loads the product into the running hb's memory and cuts it out,
+  Joel wrote "the reason you cannot compile hb inside a running hb that also
+  holds the compiler, build tools and state is because your design is crap.
+  and you keep piling more rules on top instead of re-evaluating the design,
+  prove me wrong! you have cross-compilation it does a similar thing,
+  compiling a habu from a habu". Shown that the docs describe every build as
+  a cross-build and that the x86-64 build writes its product as data, he
+  ruled "building habu from habu is like cross-compiling from arm64 to arm64
+  indeed. make it happen". An arm64 build is a cross-build whose target is
+  arm64: the product is data the build writes, never a slice of the running
+  hb's memory.
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
