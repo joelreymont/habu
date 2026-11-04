@@ -695,7 +695,9 @@ learned live in the docs for their subject.
   are reused whole), Joel chose "Approve, start building (Recommended)":
   "Small green commits; the old build path stays until the new one is
   proven." The JIT and the Gforth chain stay untouched until then, and their
-  retirement is asked before the step that needs it.
+  retirement is asked before the step that needs it. Asked to name the header
+  cell holding the lowest address the data pointer may take, Joel chose
+  "DP-FLOOR-CELL (Recommended)"; its partner is DP-CEILING-CELL.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
