@@ -13,12 +13,13 @@ require src/habu/native-observer-cells.f
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
-\ Two of the non-wordlist values a record's wordlist cell can carry. They are
-\ src/habu/layout.f's, not this file's: the engine's hash index is keyed on the
-\ same cell, and XREF:RETIRE below and the checker overlay's record-wid! are
-\ the two writers that change it after a record is already in that index - see
-\ the DICT-WL comment there for what the lookup does about it.
-DICT-WL:NAMESPACE constant XREF-NAMESPACE-WL
+\ Two of the non-wordlist values a record's wordlist cell can carry.
+\ XREF-NAMESPACE-WL is the live package marker BOOT-LAYOUT:NAMESPACE-WL-CELL
+\ holds; RETIRED is src/habu/layout.f's DICT-WL:RETIRED. The engine's hash index
+\ is keyed on the same cell, and XREF:RETIRE below and the checker overlay's
+\ record-wid! are the two writers that change it after a record is already in
+\ that index - see the DICT-WL comment there for what the lookup does about it.
+: XREF-NAMESPACE-WL ( -- n ) data-base BOOT-LAYOUT:NAMESPACE-WL-CELL + @ ;
 DICT-WL:RETIRED constant XREF-RETIRED-WL
 
 32 constant XREF-SP
@@ -97,9 +98,10 @@ public
 
 package XREF
 public
-\ Every marker is negative; NAMESPACE is the only live one and RETIRED the only
-\ one whose row keeps code, so each predicate excludes one marker. Capture
-\ (src/habu/aot-capture.f AOT-RPKG?) states the same rule.
+\ Every marker is negative. RETIRED marks a retired word, whose row keeps code;
+\ RETIRED-NAMESPACE a retired package row; any other negative value is a live
+\ package row's marker. Capture (src/habu/aot-capture.f AOT-RPKG?) states
+\ PACKAGE-WL?'s rule.
 \ Whether a wordlist cell marks a package row, live or retired: its start and
 \ length cells hold wids, which no code span reader may take for a span.
 : PACKAGE-WL? ( n -- bool ) {: wid:n :}
@@ -107,7 +109,7 @@ public
 
 \ Whether a wordlist cell marks a retired row, a word's or a package's.
 : RETIRED-WL? ( n -- bool ) {: wid:n :}
-   wid 0 <  wid XREF-NAMESPACE-WL <>  and ;
+   wid XREF-RETIRED-WL =  wid DICT-WL:RETIRED-NAMESPACE =  or ;
 ;package
 
 \ Whether wordlist `wid` is protected: the answer the engine's own guards read
@@ -359,7 +361,8 @@ variable XREF-QI
    XREF-QUAL-INDEX
    dup -2 = if drop XREF-NULL exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
-   drop XREF-SN@ XREF-SU @ 0 XREF-FIND-WL ;
+   drop XREF-SN@ XREF-SU @ data-base BOOT-LAYOUT:GLOBAL-WL-CELL + @
+   XREF-FIND-WL ;
 \ The operand names a word: a string literal before a call is a use of it
 \ (src/core/cell-effects.f names:), here and for XREF-FIND-INDEX below.
 names: XREF-FIND
@@ -368,7 +371,8 @@ names: XREF-FIND
    XREF-QUAL-INDEX
    dup -2 = if drop -1 exit then
    dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
-   drop XREF-SN@ XREF-SU @ 0 XREF-FIND-WL-INDEX ;
+   drop XREF-SN@ XREF-SU @ data-base BOOT-LAYOUT:GLOBAL-WL-CELL + @
+   XREF-FIND-WL-INDEX ;
 names: XREF-FIND-INDEX
 
 : XREF-FIND-CURRENT-INDEX ( ptr u8 n -- n )
@@ -442,8 +446,8 @@ public
 
 \ The duplicate test is asked in the scope the definition will LAND in: qualified
 \ names resolve through their namespace, a bare one through the current wordlist.
-\ XREF-FIND would answer a bare name from wid 0 instead, and a global word of the
-\ same spelling is not this package's private word.
+\ XREF-FIND would answer a bare name from the global wordlist instead, and a
+\ global word of the same spelling is not this package's private word.
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TFAM-CTOR-WORD? 0= IF
       s" xref: generated declaration visibility mismatch" 76 die
@@ -651,7 +655,7 @@ public
 : RESOLVE ( n n -- ptr n ) def-occ-resolve ;
 
 : CALLABLE ( n n -- n )
-   RESOLVE dup XREF-WORDLIST DICT-WL:NAMESPACE = if E-NONCALLABLE throw then
+   RESOLVE dup XREF-WORDLIST XREF-NAMESPACE-WL = if E-NONCALLABLE throw then
    XREF-START ;
 
 ;package

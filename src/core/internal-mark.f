@@ -33,7 +33,8 @@ package ENGINE-INTERNAL
    IMK-FLAGS@ DKIND:MASK and 0 = ;
 
 : IMK-GLOBAL-EXECUTABLE? ( n -- bool )
-   dup IMK-WID 0 = IF IMK-EXECUTABLE? ELSE drop 0 0= 0= THEN ;
+   dup IMK-WID data-base BOOT-LAYOUT:GLOBAL-WL-CELL + @ = IF IMK-EXECUTABLE?
+   ELSE drop 0 0= 0= THEN ;
 
 TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
 TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
@@ -62,19 +63,8 @@ TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
    ndict@ swap ?do i IMK-CLASSIFY loop ;
 
 \ ---- package publics, under their qualified name ---------------------------
-\ A package word carries its wordlist, not 0, so IMK-WALK never reaches one. The
-\ qualified spelling reaches publics and nothing else: habu1.f LFIND's
-\ qualified branch searches the package row's [0], the public wordlist, so a
-\ private has no top-level spelling (test/internal-word-gate.f pins it
-\ E-UNDEFINED). The question is the one asked of a global, keyed as source
-\ spells it: checker.f CHECKER-FIND-ACTIVE-SYM routes PKG:TAIL to
-\ CHECKER-PUBLIC-SYM?, the key PPRIM: interns.
-\ The package rows drive the loop: a row holds its public wordlist in [0] and its
-\ name, so no wid -> package table can fall out of step. Each walk starts at its
-\ own row because habu2.f C-PACKAGE-NEW-RECORD allocates the wids as it publishes
-\ the row (112k record tests instead of 345k on the boot prefix). A namespace row
-\ carries DICT-WL:NAMESPACE, distinct from every wordlist id, so the inner walk
-\ cannot classify the namespace itself.
+\ IMK-WALK misses package words, which sit in their package's wordlist; only
+\ publics have a qualified spelling (habu1.f LFIND, test/internal-word-gate.f).
 1024 constant IMK-QCAP        \ qualified-name scratch: package + ':' + tail
 create IMK-QBUF IMK-QCAP allot
 variable IMK-QU
@@ -101,7 +91,8 @@ variable IMK-QI
    i IMK-EXECUTABLE? 0= IF EXIT THEN
    i p i IMK-QUAL EFFECT-EXTERNAL-MIN-IN IMK-MARK ;
 
-\ Package row p's public colon records, from p or the prefix's first record.
+\ Package row p's public colon records, from p or the prefix's first record:
+\ habu2.f C-PACKAGE-NEW-RECORD makes a row's wids as it publishes the row.
 : IMK-PKG-PUBLICS ( n n -- ) {: p:n first:n :}
    p IMK-REC XREF-PKG-PUBLIC {: pub:n :}
    ndict@ p 1 + first max ?do
@@ -110,7 +101,7 @@ variable IMK-QI
 
 : IMK-WALK-PACKAGES ( n -- ) {: first:n :}   \ classify every package's public wordlist
    ndict@ 0 ?do
-      i IMK-WID DICT-WL:NAMESPACE = IF i first IMK-PKG-PUBLICS THEN
+      i IMK-WID XREF-NAMESPACE-WL = IF i first IMK-PKG-PUBLICS THEN
    loop ;
 
 : IMK-NAMED? ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
@@ -180,14 +171,14 @@ EXPORT IMAGE-WHITEBOX
 \ capture (tools/native-build-core.f PREPARE-TARGET), before
 \ NATIVE-RUNTIME:CAPTURE-PREPARE sweeps; an application image (APP-IMAGE:SAVE)
 \ keeps its packages reopenable. The whitebox image stands down here too. A
-\ package with no private wordlist holds 0 there, the global wordlist: the
-\ capture refuses an image that protects it.
+\ package with no private wordlist holds 0 there, and the capture refuses an
+\ image that protects WID 0 (src/habu/aot-capture.f ACAP-PWIN-CAPTURE).
 : SEAL-PACKAGES ( n -- )
    {: first:n :}
    IMK-CLASS @ IMAGE-WHITEBOX = IF EXIT THEN
    ndict@ first ?do
       i XREF-REC {: rec:ptr :}
-      rec XREF-WORDLIST DICT-WL:NAMESPACE = IF
+      rec XREF-WORDLIST XREF-NAMESPACE-WL = IF
          rec XREF-PKG-PUBLIC prot-wid-add
          rec XREF-PKG-PRIVATE dup 0= IF drop ELSE prot-wid-add THEN
       THEN

@@ -116,10 +116,14 @@ build driver loads from disk may name only words those baked files define: a
 new public word in `src/habu/xref.f` or a new `src/habu/layout.f` constant
 named by `src/habu/aot-capture.f` stops the stage with `E-UNDEFINED`.
 
-An older native host cannot build a tree whose disk `src/core/pointer-storage.f`
-calls a primitive the host lacks, such as `scratch-cell-mark`. Build a host
-from a tree that adds only the primitive and build this tree on it, or recover
-through Gforth as above.
+An older native host cannot build a tree whose disk sources need what the host
+does not supply: a primitive such as `scratch-cell-mark`, which
+`src/core/pointer-storage.f` calls, or the package marker `src/habu/xref.f`
+reads from `BOOT-LAYOUT:NAMESPACE-WL-CELL` instead of `DICT-WL:NAMESPACE`. A
+host whose boot leaves that cell 0 stops the build with rc 70, `hb: no
+authenticated package context for this definition`. Build a host from a tree
+that adds only the primitive or the cell's boot write, and build this tree on
+it; a missing primitive can also be recovered through Gforth as above.
 
 These builds, like every build and gate run from the checkout, write their
 objects under its out root ([gate.md](gate.md#scratch-and-cache)).

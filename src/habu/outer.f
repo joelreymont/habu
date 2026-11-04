@@ -540,7 +540,7 @@ TYPED-VARIABLE REC ptr n
    TOKEN$ FIND REC !
    REC @ POLICY-CHECK-REC
    REC @ XREF-FOUND? 0= if exit then
-   REC @ XREF-WORDLIST 0<> if exit then
+   REC @ XREF-WORDLIST data-base BOOT-LAYOUT:GLOBAL-WL-CELL + @ <> if exit then
    TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> if E-USING-AMBIGUOUS throw then
    used XREF-FOUND? if SHADOWED then ;
