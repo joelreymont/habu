@@ -175,8 +175,8 @@ CAST: >STREAM ( ptr u8 -- ptr stream )
 
 256 constant SCRATCH-INITIAL
 1000000 constant NS-PER-MS
-\ An exchange that moves no byte for this long is ended: E-TRANSPORT, curl 28
-\ logged.
+\ No byte for this long ends an exchange, curl 28 logged. A thinking model's
+\ reasoning items arrive at most 9 s apart (OpenAI, measured to 2 minutes).
 60 constant STALL-SECONDS
 \ The room each read of an event stream lands in; an event may span reads.
 16384 constant CHUNK-BYTES
