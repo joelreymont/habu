@@ -1,16 +1,16 @@
 ---
 title: Finish the Linux x86-64 backend
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-09-29T12:51:36.343961+03:00"
+closed-at: "2026-11-04T11:48:50.188121+02:00"
+close-reason: "Census 2026-11-04: goes with habu-delete-tier-1-f5c44fb4, T0 compiling every target, tier 1 and the JIT kept only for experiments (DECISIONS \"editing tier 1\", \"the T0 release\"). Mission is a tier-1-only x86 engine via dual emission into a capture shadow and link-x64 at write time; \"one compiler\"/\"the T0 release\" replace it."
 blocks:
   - habu-complete-x86-64-0def994c
   - habu-build-the-x86-15b47b0b
   - habu-move-the-interpreter-d35780fa
-  - habu-cross-build-the-d25a959d
   - habu-port-the-ffi-676f745d
-  - habu-gate-and-self-7afc5ff3
   - habu-make-cross-target-934166cc
 ---
 

@@ -1,0 +1,13 @@
+---
+title: Fix Intel formatting package rows
+status: closed
+priority: 2
+issue-type: task
+created-at: "2026-10-23T11:37:54.221597+00:00"
+closed-at: "2026-11-04T11:48:48.034170+02:00"
+close-reason: "Census 2026-11-04: goes with habu-make-a-file-dfc7e030, the cross-build whose product is data (DECISIONS \"how Habu builds Habu\"). Exit 84 from x86 capture closures differing from arm64 (whitebox rows); workspace pulsar-intel-numbers not listed, idle since 2026-10-23."
+---
+
+Pulsar owner: number_rows worker in .jj-ws.noindex/pulsar-intel-numbers at intel 184663fe. fmt-numbers exits 84 after FMT, tail-pure-fixtures after BUF; establish whether same x86 root. Fix source, preserve master tests, run affected existing E2E. Shared-code ARM check remains open for Mac; independent review before intel landing.
+
+Investigation complete, no code changed: both exit 84 at intentional package seals. x86 captures FMT through runtime-x64/main/fmt and BUF through x86 compiler/assembler dependencies; ARM captures different closures. Existing WHITEBOX-SUITE is the supported boundary. Proposed focused registry correction: whitebox fmt-numbers and move only byte-buffer-test.f out of tail-pure-fixtures into its own whitebox row. Joel decision pending because master-test changes are forbidden by the current task. Keep open. Reproduction logs: ~/.cache/tmp/pulsar-intel-numbers/{fmt,buf}-before.log.

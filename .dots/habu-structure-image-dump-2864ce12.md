@@ -3,8 +3,6 @@ title: Structure image dump dictionary rows
 status: open
 priority: 2
 issue-type: task
-blocks:
-  - habu-lowering-hash-unified-586f7881
 created-at: "2026-07-19T21:39:39.924253+02:00"
 ---
 

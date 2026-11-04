@@ -1,6 +1,6 @@
 ---
 title: Give the x86-64 kernel the replay primitives
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-01T19:07:10.605130+02:00"
@@ -13,3 +13,5 @@ rpB held 2026-11-03: Joel's order puts the linker on arm64 before new x86-64 lan
 rpA landed 2026-11-03 ("Give x86-64 replay-open, -close and -widn!"): the three rows have x86-64 bodies, the twins of habu2.f DEFWRITE's, and OVERLAY-GUARD, guards def-open, namespace-private, alias-record and the `wordlist` row. replay-record, record-wid! and replay-private still refuse, and they are rpB's. The code review accepted the bodies, the registers across WINDOW-SPAN,, the DPBAD split, the guard placement and the row move, and found no ordinal dependency. Its five comment findings are folded in, and the x86-64 cross-build after the fold is byte-identical to the reviewed one. Proofs ran on pulsar. Never exercised by a proof: replay-widn!, the guard in def-open, namespace-private, alias-record and native-unit-publish, and the zeroed record bytes themselves (only the counts were checked).
 
 Also ends test/certify-does-definer.f on x86 (rc 76, `hb: replay-record is not in the x86-64 kernel`): master 04a4dffa cross-built, joel@pulsar-ua-106, 2026-11-03 (carl).
+
+Census 2026-11-04: the claim named a workspace or agent whose work is gone or landed; reset to open, Claim: unassigned.

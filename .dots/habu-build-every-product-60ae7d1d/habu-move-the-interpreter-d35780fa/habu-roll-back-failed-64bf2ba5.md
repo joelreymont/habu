@@ -1,0 +1,25 @@
+---
+title: Roll back failed definitions in Habu
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-09-29T13:12:28.948447+03:00"
+blocks:
+  - habu-move-evaluate-and-9119f746
+  - habu-compile-definer-bodies-1292d049
+---
+
+Problem: failed-definition rollback is the assembly `LEVALREC`.
+Acceptance: a failed definition rolls back dictionary, DP, code cursor, address rows and package scope (`EM-PKG-RESYNC`) exactly as `LEVALREC` does; the `repl-address-cell-rollback` and `load-reject-diag` suites green through the Habu loop under the feature cell.
+Files: `src/habu/outer.f`.
+Verify: spark: the `repl-address-cell-rollback` and `load-reject-diag` suites; gate.
+Depends: habu-move-evaluate-and-9119f746 (I9a), habu-compile-definer-bodies-1292d049 (I7).
+Route: Alder (shared: src/habu/outer.f).
+Ownership: krait (Intel lane).
+Claim: unassigned.
+
+Lead note (2026-10-01, I5e habu-close-definitions-with-8ace78d8 landed): a failed `;` in the Habu loop keeps PEND and the open provenance window, as the engine's `;` does, and the engine's LEVALREC rolls both back today; this leaf's rollback clears them. Visible only through a catch around an included file or an exit hook; untested.
+
+Measured (2026-10-01, CD review, product d6649e79): a caught failed definition leaves the Habu loop compiling, does> refusal or not. A nested file through `TRUSTED: OI-INC ( ptr u8 n -- ) ['] included catch . 2drop OI-ST. ;`, where `OI-ST.` prints PEND<>0, DOESB and BODYLEN, then `1 set-tier : OI-Y ( -- n ) 5 ; OI-Y . 7 .` in the includer. File `1 set-tier : OI-K ( n -- ) create , does> ( -- n ) @` / `DOES> ( -- )` (C-DIE-DOES): the engine prints 70 0 0 0 5 7, rc 0; the Habu loop prints 70 1 29 37, captures the next line into OI-K and ends `ncomp: cannot compile OI-K`, uncaught -8572, rc 67. File `1 set-tier : OI-G ( -- ) OI-NOPE ;` (the compiler refuses at `;`): the engine prints 70 0 0 0 5 7, rc 0; the Habu loop prints 70 1 0 20, captures the next line into OI-G and its second `;` ends rc 70. The engine clears this state in LEVALREC's EM-RESET-COMPILE-STATE; OUTER:INTERPRET's recovery (src/habu/interpret.f) puts back the input, usings and package scope only.
+
+Census 2026-11-04: an acceptance case of its parent; fix it in the code that stays (named above), never in the machinery the parent replaces.
