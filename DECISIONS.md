@@ -485,6 +485,15 @@ learned live in the docs for their subject.
 
 ## Compiler and builds
 
+- 2026-11-04, the check tool before incremental builds: asked to approve
+  SOURCE-SYNTAX:COMPILE-KEYWORD?, a new public word so that checking a file
+  before running it (the language server, tools/check.f) refuses `: 42` and
+  `: if` as loading does, Joel answered "the fuck do you need this for? why is
+  the package named source-syntax? is this part of the LSP? drop the LSP work
+  and move forward with incremental builds, we'll fix the LSP when we are
+  done". The check tool's work, the number-name refusal's second half
+  included, waits until incremental builds are done; loading's refusal of
+  `: 42` stands.
 - 2026-11-03, the compiler lease: shown a design in which T0's compiles take
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are
