@@ -49,6 +49,31 @@ language core; [Etch](../etch), a PCB CAD application, is a separate project.
   compact table encoding are not compression.
 - A significant feature gets an independent adversarial review before it lands.
 
+## Machinery being replaced
+
+Decisions in DECISIONS.md replace the machinery below. Never extend or patch
+it: a defect it shows becomes an acceptance case of the replacing dot, and a
+change that needs it joins the replacing design. Something one machine, tier
+or build path needs and another does not is a split to remove, not a row to
+add.
+
+- arm64's machine-code interpreter, definers and startup in `habu1.f` and
+  `habu2.f`: one typed interpreter on every machine ("one compiler").
+- Building a product by loading it into the running hb and capturing, cutting
+  or rewinding its memory: a cross-build that writes the product as data ("how
+  Habu builds Habu").
+- The per-definition build cache and its source observers: the file linker
+  ("incremental builds", "file objects").
+- A linker per target: one linker for every target ("one compiler").
+- Tier 1 and the JIT as compilers: T0 on every target; tier 1 changes only to
+  fix a defect on a path it still owns ("editing tier 1", "the T0 release").
+- `TRUSTED:`, engine-only marks and owner rows: checked forms and private
+  sections ("TRUSTED:", "privacy").
+- Compatibility with older hosts, formats or schemas: hard cutover ("formats").
+- A hook where the owner could record data or make a plain call ("the
+  checker's switch", "the source loader's hooks").
+- fork without exec: fork only to exec ("fork").
+
 ## Testing
 
 - Prefer end-to-end tests as the only mechanism; each ends with a verifiable,
