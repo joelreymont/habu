@@ -1419,11 +1419,10 @@ private
       fault c WIPE-AFTER
    then ;
 
-\ Starts an exchange as the call's transport, which CANCEL ends. A cancelled
-\ call starts only the provider cancel, given force.
-: START-LOCKED ( bool ptr call -- bool ptr call )
-   {: force:bool c :}
-   c MODEL-CALL:CANCELLED @ force 0= and if E-CANCELLED throw then
+\ Starts an exchange as the call's transport, which CANCEL ends.
+: START-LOCKED ( ptr call -- ptr call )
+   {: c :}
+   c MODEL-CALL:CANCELLED @ if E-CANCELLED throw then
    c MODEL-CALL:TRANSPORT @ MATCH option
       none OF ENDOF
       some OF drop E-STATE throw ENDOF
@@ -1436,12 +1435,12 @@ private
          c LEDGER LEDGER-DISPATCHED @ 0= if c DISPATCHED then
       ENDOF
    ;MATCH
-   force c ;
+   c ;
 
-: START-TRANSFER ( bool ptr call -- )
-   {: force:bool c :}
+: START-TRANSFER ( ptr call -- )
+   {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
-   force c [: START-LOCKED ;] catch {: code:n :} 2drop
+   c [: START-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> if code throw then ;
 
@@ -1671,7 +1670,7 @@ private
 \ reply.
 : EXCHANGE ( ptr call -- )
    {: c :}
-   false c START-TRANSFER
+   c START-TRANSFER
    c AWAIT-TRANSFER ;
 
 : POST-REQUEST ( ptr call -- ptr call )
@@ -2118,8 +2117,8 @@ private
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    cancelled ;
 
-\ Keeps the reply's response id, which the resume requests and the provider
-\ cancel name.
+\ Keeps the reply's response id, which the resume requests and a failure's log
+\ line name.
 : KEEP-ID ( ptr call -- )
    {: c :}
    s" id" c REPLY-AT
@@ -2136,27 +2135,6 @@ private
    s" in_progress" JSON:READ-STR-EQ? {: going:bool :}
    JSON:READ-CLOSE
    queued going or ;
-
-: CANCEL-START ( ptr call -- ptr call )
-   {: c :}
-   s" /cancel" c RESPONSE-URL$ s" {}" c AS-POST
-   true c START-TRANSFER
-   c ;
-
-
-\ Answers the provider cancel's status, libcurl code and fault; its reply goes
-\ to the chunk buffer. A CANCEL that loses the race to its end keeps its result.
-: CANCEL-EXCHANGE ( ptr call -- n n n )
-   {: c :}
-   c [: CANCEL-START ;] catch {: code:n :} drop
-   code 0<> if 0 0 code exit then
-   c CALL-HANDLE c CHUNK-BUF DISCARD-REPLY {: status:n rc:n :}
-   c END-TRANSFER {: cut:bool :}
-   status rc
-   rc 0<> if cut if E-CANCELLED else E-TRANSPORT then exit then
-   status 200 <> if status STATUS-FAULT exit then
-   0 ;
-
 
 : CODE$ ( n -- ptr u8 n )
    {: code:n :}
@@ -2177,20 +2155,6 @@ private
    {: rc:n :}
    s"  curl " LOG:TEXT+ rc LOG:INT+
    s" : " LOG:TEXT+ rc CURL:>CODE CURL:ERROR$ LOG:TEXT+ ;
-
-
-\ A failed cancel is logged with the response, its code, status and libcurl
-\ code; the call then ends with its own code.
-: CANCEL-RESPONSE ( ptr call -- )
-   {: c :}
-   c CANCEL-EXCHANGE {: status:n rc:n code:n :}
-   code 0= if exit then
-   LOG:WARN s" model" LOG:LINE
-   s" cancel " LOG:TEXT+ c RESPONSE-ID$ LOG:TEXT+
-   s"  " LOG:TEXT+ code CODE$ LOG:TEXT+
-   status 0<> if s"  status " LOG:TEXT+ status LOG:INT+ then
-   rc 0<> if rc CURL+ then
-   LOG:;LINE ;
 
 
 \ The text becomes the call's reply.
@@ -2330,7 +2294,7 @@ private
 
 : STREAM-TRANSFER ( SSE:decoder ptr call -- )
    {: d:SSE:decoder c :}
-   false c START-TRANSFER
+   c START-TRANSFER
    d c CALL-HANDLE c STREAM-RECEIVE c SETTLE ;
 
 \ Runs the exchange set on the call's handle as the stream's next, on a fresh
@@ -2383,13 +2347,7 @@ private
    begin c RESUME? while c RESUME-EXCHANGE repeat
    c ;
 
-\ Whether the stream delivered the response's terminal status.
-: ENDED? ( ptr stream -- bool )
-   {: s :}
-   s STREAM-DONE @ s STREAM-FAULT @ 0= and ;
-
-\ Posts the chat request and follows the response's stream. A call that ends
-\ before its known response delivered a terminal status cancels the response.
+\ Posts the chat request and follows the response's stream.
 : FOLLOW ( ptr call -- ptr call )
    {: c :}
    c STREAM {: s :}
@@ -2397,10 +2355,7 @@ private
    false s STREAM-DONE !
    0 s STREAM-FAULT !
    c REQUEST-URL$ c BODY$ c AS-POST
-   c [: STREAM-LOOP ;] catch {: code:n :} drop
-   code 0= if c exit then
-   s ENDED? 0= c RESPONSE-ID$ nip 0<> and if c CANCEL-RESPONSE then
-   code throw ;
+   c STREAM-LOOP ;
 
 : RUN-CHAT ( ptr call -- ptr call )
    {: c :}
@@ -2827,9 +2782,8 @@ private
 
 public
 
-\ Ends a busy call with E-CANCELLED and answers whether one was busy: its
-\ exchange ends at once, and a response the provider started is cancelled
-\ there too.
+\ Ends a busy call with E-CANCELLED at once and answers whether one was busy;
+\ the provider is not told, so a response it started may still finish and bill.
 : CANCEL ( ptr call -- bool )
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
