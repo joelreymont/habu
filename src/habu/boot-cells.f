@@ -15,15 +15,7 @@ $7F0 constant GLOBAL-WL-CELL
 $7F8 constant NAMESPACE-WL-CELL
 : GLOBAL-WL ( -- n ) data-base GLOBAL-WL-CELL + @ ;
 : NAMESPACE-WL ( -- n ) data-base NAMESPACE-WL-CELL + @ ;
-\ BOOT:USER-END: the end of the user source stream while the engine-prefix
-\ stream runs, 0 once it is installed (one-shot). habu2.f's source setup builds
-\ the prefix and the user program (piped bytes, `s" f.f" required` rows, or the
-\ baked LSRC) into one mapping; the cold-prefix routine publishes the prefix end
-\ as INE and the mode publishes the buffer end here. "Source exhausted"
-\ (EM-COMPILE-EXIT, LEX0) thus comes at the end of the engine prefix on every
-\ boot, where the engine is complete and no user token has run: the AOT seed
-\ runs there, then LEX0 installs [INE, USER-END) and re-enters the interpreter,
-\ as EM-REPL-READ does for a typed line. Arming the seed without splitting the
-\ streams fired it after the batch program it serves. DATA-INIT zeroes it.
+\ The user program's end while the engine prefix runs, 0 once EM-COMPILE-EXIT
+\ installs it: two streams give the AOT seed a point before any user token.
 $3CB0 constant USER-END
 ;package
