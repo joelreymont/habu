@@ -365,7 +365,10 @@ learned live in the docs for their subject.
   (Recommended)": typed storage's pointers are saved and moved with the image
   as PERSISTED-PTR-VARIABLE's are, a pointer into memory the build mapped for
   itself is refused at save naming the cell, and PTR-VARIABLE and the other
-  scratch pointer words stay null.
+  scratch pointer words stay null. Asked to name TFAM-STORAGE-HAS-QUOT? once
+  it answers for pointers too, Joel asked "why the TFAM prefix? do you have
+  any other storage?"; told that the prefix only repeats the package and that
+  only typed storage asks, he chose "TFAM:HAS-ADDRESS? (Recommended)".
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
