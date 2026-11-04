@@ -356,7 +356,16 @@ learned live in the docs for their subject.
   tables of src/compiler/native/a64ir.f and hir.f, which mark their cells by
   hand, Joel chose "Add the word": `PERSISTED-PTR-U8-TABLE ( n -- )`, the
   persisted twin of PTR-U8-TABLE, declares a table whose cells keep their
-  addresses across a save.
+  addresses across a save. On 2026-11-04, asked what a pointer field in typed
+  storage (TYPED-VARIABLE, TYPED-BUFFER, LAYOUT-BUFFER, DYNAMIC-BUFFER) holds
+  when a saved image starts again, and shown that saving them as null fails 18
+  of 520 suite rows (the save refuses image-lifecycle's PROCESS buffer; a
+  route record declared at load time reads null text after restart and
+  crashes) while keeping them passes all 520, Joel chose "Keep the address
+  (Recommended)": typed storage's pointers are saved and moved with the image
+  as PERSISTED-PTR-VARIABLE's are, a pointer into memory the build mapped for
+  itself is refused at save naming the cell, and PTR-VARIABLE and the other
+  scratch pointer words stay null.
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and
@@ -674,7 +683,19 @@ learned live in the docs for their subject.
   ruled "building habu from habu is like cross-compiling from arm64 to arm64
   indeed. make it happen". An arm64 build is a cross-build whose target is
   arm64: the product is data the build writes, never a slice of the running
-  hb's memory.
+  hb's memory. Shown the design (hb writes the next hb as a file; while it
+  builds, the product's data, names and strings live in a space of their own,
+  so nothing is rewound and the tree's checker never takes over mid-build; the
+  arm64 hb takes x86-64's shape, a primitive kernel plus the typed
+  interpreter, written by one linker with a code patcher per machine and a
+  file writer per OS; then x86-64 and Wasm move onto that linker, then files
+  are reused whole), Joel chose "Approve, start building (Recommended)":
+  "Small green commits; the old build path stays until the new one is
+  proven." The JIT and the Gforth chain stay untouched until then, and their
+  retirement is asked before the step that needs it.
+- 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
+  "Cross-build from a running hb (Recommended)": "Recovery starts from a
+  released hb, as Intel does today; the Gforth seed retires with the JIT."
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
