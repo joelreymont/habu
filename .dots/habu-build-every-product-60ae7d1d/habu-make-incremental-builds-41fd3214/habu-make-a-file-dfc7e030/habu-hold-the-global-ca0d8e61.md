@@ -1,6 +1,6 @@
 ---
 title: Hold the global and package wids in cells
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-04T13:51:16.732492+02:00"
