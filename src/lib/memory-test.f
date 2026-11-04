@@ -651,6 +651,224 @@ TASK:MIN-STACK TASK:TASK WBT-HALT-TASK
 
 TEST-WITH-BYTES
 
+256 constant WBP-LEN
+512 constant WBP-DEPTH
+PTR-VARIABLE WBP-FIRST
+variable WBP-THROW-DEEP
+TASK:MIN-STACK TASK:TASK WBP-TASK
+
+: WBP-FILL ( ptr u8 n -- )
+   {: a:ptr c :}
+   WBP-LEN 0 ?do c a i + c! loop ;
+
+\ The count of body bytes that do not hold `c`.
+: WBP-MISS ( ptr u8 n -- n )
+   {: a:ptr c :}
+   0 WBP-LEN 0 ?do a i + c@ c <> if 1 + then loop ;
+
+\ A forked case exits nonzero when one of its assertions failed.
+: WBP-EXIT ( -- )
+   T-FAILURES 0 <> if s" pooled case failed" 1 die then
+   MEMT-EXIT0 ;
+
+: WBP-DIRTY ( ptr u8 NUM:alloc-byte-len -- )
+   drop MEMT-MARK-A WBP-FILL ;
+
+: WBP-CLEAN ( ptr u8 NUM:alloc-byte-len -- )
+   drop
+   s" a reentered pooled scope reads 0" T-LABEL
+   0 WBP-MISS 0 T= ;
+
+: WBP-REENTER ( -- )
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-DIRTY ;] WITH-BYTES
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-CLEAN ;] WITH-BYTES ;
+
+: WBP-REENTER-OUTER ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: outer:ptr :}
+   outer MEMT-MARK-Z WBP-FILL
+   WBP-REENTER
+   s" an outer pooled scope keeps its marks" T-LABEL
+   outer MEMT-MARK-Z WBP-MISS 0 T= ;
+
+: WBP-ZERO-CHILD ( -- )
+   T-RESET
+   WBP-REENTER
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-REENTER-OUTER ;] WITH-BYTES
+   WBP-EXIT ;
+
+: WBP-SAVE ( ptr u8 NUM:alloc-byte-len -- )
+   drop WBT-SAVED ! ;
+
+: WBP-SAME ( ptr u8 NUM:alloc-byte-len -- )
+   drop WBT-SAVED @ = TTRUE ;
+
+: WBP-THROW ( -- )
+   WBP-LEN BYTES-ALLOC-LEN [: WBT-THROW-BODY ;] WITH-BYTES ;
+
+: WBP-REUSE ( -- )
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-SAVE ;] WITH-BYTES
+   s" a pooled scope reuses the body a returned one left" T-LABEL
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-SAME ;] WITH-BYTES
+   [: WBP-THROW ;] E-PRIMARY TTHROWSQ
+   s" a pooled scope reuses the body a thrown one left" T-LABEL
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-SAME ;] WITH-BYTES ;
+
+: WBP-REUSE-CHILD ( -- )
+   T-RESET
+   WBP-REUSE
+   WBP-LEN BYTES-ALLOC-LEN [: 2drop WBP-REUSE ;] WITH-BYTES
+   WBP-EXIT ;
+
+defer WBP-NEST ( n -- )
+
+\ Never 0, so a level's bytes differ from a fresh body's and its neighbours'.
+: WBP-LEVEL-MARK ( n -- n )
+   251 mod 1 + ;
+
+: WBP-LEVEL-BODY ( n ptr u8 NUM:alloc-byte-len -- )
+   drop {: lvl buf:ptr :}
+   lvl 1 = if buf WBP-FIRST ! then
+   buf lvl WBP-LEVEL-MARK WBP-FILL
+   lvl WBP-DEPTH < if
+      lvl 1 + WBP-NEST
+   else
+      WBP-THROW-DEEP @ 0 <> if E-PRIMARY throw then
+   then
+   s" a nested pooled body keeps its bytes" T-LABEL
+   buf lvl WBP-LEVEL-MARK WBP-MISS 0 T= ;
+
+: WBP-LEVEL ( n -- )
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-LEVEL-BODY ;] WITH-BYTES ;
+
+: WBP-DEEP ( -- )
+   1 WBP-NEST ;
+
+: WBP-DEEP-CHILD ( -- )
+   T-RESET
+   0 WBP-THROW-DEEP !
+   WBP-DEEP
+   WBP-EXIT ;
+
+: WBP-FIRST-AGAIN ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   s" a pooled scope after an unwind reuses the first body" T-LABEL
+   buf WBP-FIRST @ = TTRUE
+   s" a pooled scope after an unwind reads 0" T-LABEL
+   buf 0 WBP-MISS 0 T= ;
+
+: WBP-UNWIND-CHILD ( -- )
+   T-RESET
+   1 WBP-THROW-DEEP !
+   [: WBP-DEEP ;] E-PRIMARY TTHROWSQ
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-FIRST-AGAIN ;] WITH-BYTES
+   WBP-EXIT ;
+
+: WBP-HALT-WORK ( -- )
+   WBP-LEN BYTES-ALLOC-LEN [: WBT-HALT-BODY ;] WITH-BYTES ;
+
+: WBP-HALT-CHILD ( -- )
+   T-RESET
+   0 WBT-HALT-READY atomic!
+   ['] WBP-HALT-WORK WBP-TASK TASK:ACTIVATE
+   WBT-HALT-READY 1 WBP-TASK TEST-WAIT:FOR-CELL
+   WBP-TASK TASK:HALT
+   s" a task halted inside a pooled scope ends without a result" T-LABEL
+   WBP-TASK TASK:JOIN
+   MATCH result
+      ok OF drop E-PRIMARY throw ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   WBT-RELEASED
+   WBP-EXIT ;
+
+: WBP-JOIN-WORK ( -- )
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-SAVE ;] WITH-BYTES
+   0 TASK:RETURN ;
+
+: WBP-JOIN-CHILD ( -- )
+   T-RESET
+   ['] WBP-JOIN-WORK WBP-TASK TASK:ACTIVATE
+   s" a task that ran a pooled scope joins with its answer" T-LABEL
+   WBP-TASK TASK:JOIN
+   MATCH result
+      ok OF 0 T= ENDOF
+      err OF drop E-PRIMARY throw ENDOF
+   ;MATCH
+   WBT-RELEASED
+   WBP-EXIT ;
+
+: WBP-PEER-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   buf MEMT-MARK-Z WBP-FILL
+   1 WBT-PEER-IN atomic!
+   WBT-OWN-MARKED TASK:WAIT-SEM
+   buf MEMT-MARK-Z WBP-MISS TASK:RETURN ;
+
+: WBP-PEER-WORK ( -- )
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-PEER-BODY ;] WITH-BYTES ;
+
+: WBP-OWN-BODY ( ptr u8 NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   buf MEMT-MARK-A WBP-FILL
+   WBT-OWN-MARKED TASK:SIGNAL-SEM
+   s" a peer's pooled body keeps its marks" T-LABEL
+   WBP-TASK TASK:JOIN
+   MATCH result
+      ok OF 0 T= ENDOF
+      err OF drop E-PRIMARY throw ENDOF
+   ;MATCH
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-REENTER-OUTER ;] WITH-BYTES
+   s" a task's pooled body keeps its marks beside a peer" T-LABEL
+   buf MEMT-MARK-A WBP-MISS 0 T= ;
+
+: WBP-TWO-TASK-CHILD ( -- )
+   T-RESET
+   0 WBT-PEER-IN atomic!
+   0 WBT-OWN-MARKED TASK:SEMAPHORE-INIT
+   ['] WBP-PEER-WORK WBP-TASK TASK:ACTIVATE
+   WBT-PEER-IN 1 WBP-TASK TEST-WAIT:FOR-CELL
+   WBP-LEN BYTES-ALLOC-LEN [: WBP-OWN-BODY ;] WITH-BYTES
+   WBT-OWN-MARKED TASK:SEMAPHORE-DESTROY
+   WBP-EXIT ;
+
+: WBP-MAX-16 ( -- )
+   MEM-MAX-N 16 - BYTES-ALLOC-LEN [: 2drop ;] WITH-BYTES ;
+
+: WBP-MAX-30 ( -- )
+   MEM-MAX-N 30 - BYTES-ALLOC-LEN [: 2drop ;] WITH-BYTES ;
+
+: WBP-MAX-CHILD ( -- )
+   T-RESET
+   s" a near-maximum scope is refused as a mapping" T-LABEL
+   [: WBP-MAX-16 ;] E-MEM-MAP TTHROWSQ
+   s" a near-maximum scope is refused as a mapping" T-LABEL
+   [: WBP-MAX-30 ;] E-MEM-MAP TTHROWSQ
+   WBP-REENTER
+   WBP-EXIT ;
+
+: TEST-POOLED-BYTES ( -- )
+   T-RESET
+   [: WBP-LEVEL ;] is WBP-NEST
+   s" pooled 1: a body reads 0 on re-entry" T-LABEL
+   [: WBP-ZERO-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 2: a scope reuses the body before it" T-LABEL
+   [: WBP-REUSE-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 3: deep nesting keeps each body" T-LABEL
+   [: WBP-DEEP-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 4: an unwind through chunks reuses the first body" T-LABEL
+   [: WBP-UNWIND-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 5: a halt releases the body" T-LABEL
+   [: WBP-HALT-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 6: a joined task releases the body" T-LABEL
+   [: WBP-JOIN-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 7: two tasks keep separate bodies" T-LABEL
+   [: WBP-TWO-TASK-CHILD ;] MEMT-FORK-CLEAN
+   s" pooled 8: a near-maximum size is refused" T-LABEL
+   [: WBP-MAX-CHILD ;] MEMT-FORK-CLEAN
+   T-REPORT ;
+
+TEST-POOLED-BYTES
+
 ;package
 ;using
 
