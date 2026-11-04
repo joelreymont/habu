@@ -73,8 +73,14 @@ public
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
 \ response's error code rate_limit_exceeded or server_error.
 -9711 constant E-UNAVAILABLE
+\ OpenAI's limits: https://platform.openai.com/docs/api-reference/embeddings
+\ MODEL counts no tokens; INPUT-MAX bounds an Ollama call too.
 \ The most inputs one EMBED call takes.
-8 constant INPUT-MAX
+2048 constant INPUT-MAX
+\ The most tokens one EMBED call's inputs may sum to.
+300000 constant TOKENS-PER-EMBED-MAX
+\ The most tokens one input may hold.
+8192 constant TOKENS-PER-INPUT-MAX
 
 STRUCTURE allocation DERIVE addr
    FIELD base ptr u8

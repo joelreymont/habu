@@ -163,6 +163,8 @@ variable IMAGES
 16384 constant RECEIVED-CAP
 create RECEIVED RECEIVED-CAP allot
 variable RECEIVED-U
+\ How many inputs that request held.
+variable RECEIVED-N
 \ Three mebibytes of content: a reply grows with its data, whatever its size.
 $300000 constant BIG-U
 : BIG$ ( -- ptr u8 n ) BIG @ BIG-U ;
@@ -226,10 +228,12 @@ $300000 constant BIG-U
 \ in request order.
 : INPUT-LINES ( HTTP:request -- )
    0 RECEIVED-U !
+   0 RECEIVED-N !
    s" input" BODY-MEMBER
    JSON:READ-TOKEN JSON:T-ARR = ASSERT
    begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
       JSON:T-STR = ASSERT
+      1 RECEIVED-N +!
       RECEIVED-U @ 0<> if
          RECEIVED-U @ RECEIVED-CAP < ASSERT
          10 RECEIVED RECEIVED-U @ + c! 1 RECEIVED-U +!
@@ -736,6 +740,18 @@ $300000 constant BIG-U
    s" ,0,0]}]}" JSON:WRITE-RAW ;
 
 
+\ One vector per input, input k's first component k.
+: INDEX-VECTORS ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qobject\q:\qlist\q,\qdata\q:[" JSON:WRITE-RAW
+   RECEIVED-N @ 0 ?do
+      i 0<> if s" ," JSON:WRITE-RAW then
+      S\" {\qindex\q:" JSON:WRITE-RAW i JSON:WRITE-U
+      S\" ,\qembedding\q:[" JSON:WRITE-RAW i JSON:WRITE-U
+      s" ,0,0]}" JSON:WRITE-RAW
+   loop
+   s" ]}" JSON:WRITE-RAW ;
+
+
 \ A vector's dimension count past any one provider's; the embedding past it
 \ counts up from 0.
 4096 constant WIDE-DIMS
@@ -754,6 +770,9 @@ $300000 constant BIG-U
    r INPUT-LINES RECEIVED$ {: i:ptr i-u:n :}
    i i-u 1 min s" x" STR= if
       response [: LENGTH-VECTOR ;] HTTP:JSON! exit
+   then
+   i i-u 1 min s" y" STR= if
+      response [: INDEX-VECTORS ;] HTTP:JSON! exit
    then
    i i-u S\" one\ntwo" STR= if
       \ The provider may list them out of order; index decides each slot.
@@ -1349,8 +1368,8 @@ variable REFUSED-BASE-U
    M MODEL:HTTP-STATUS 0= ASSERT ;
 
 
-\ A 16 KiB input reaches the provider whole; a call
-\ holds eight inputs, none empty, and returns vectors only for its inputs.
+\ A 16 KiB input reaches the provider whole; a call holds MODEL:INPUT-MAX
+\ inputs, none empty, and returns vectors only for its inputs.
 : INPUT-BOUNDS ( -- )
    PAD PAD-U XS
    M MODEL:INPUT-RESET
@@ -1361,8 +1380,22 @@ variable REFUSED-BASE-U
    0 [: drop 1 M MODEL:VECTOR@ 2drop 0 ;] CODE-OF MODEL:E-CONFIG = ASSERT
    M MODEL:INPUT-RESET
    0 [: INPUT-LEN ;] CODE-OF MODEL:E-CONFIG = ASSERT
-   8 0 ?do 1 INPUT-LEN drop loop
+   MODEL:INPUT-MAX 0 ?do 1 INPUT-LEN drop loop
    1 [: INPUT-LEN ;] CODE-OF MODEL:E-CAPACITY = ASSERT ;
+
+
+\ A call of MODEL:INPUT-MAX inputs reaches the provider in one request, and
+\ each input's vector is read by its index.
+: INPUT-MAX-EMBED ( -- )
+   M MODEL:INPUT-RESET
+   MODEL:INPUT-MAX 0 ?do s" y" M MODEL:INPUT+ loop
+   MODEL-PEER:CALLS@ {: calls:n :}
+   M MODEL:EMBED
+   MODEL-PEER:CALLS@ calls 1+ = ASSERT
+   MODEL:INPUT-MAX 0 ?do
+      SB-RESET s" [" SB-APPEND i FMT:SB-INT s" ,0,0]" SB-APPEND
+      i M MODEL:VECTOR@ SB$ STR= ASSERT
+   loop ;
 
 
 \ The vector text is the WIDE-VECTOR components, 0 up.
@@ -1950,7 +1983,8 @@ variable KEYLESS-U
    M MODEL:CANCEL 0= ASSERT
    BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
    REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET CANCEL-CUT
-   EMBEDDINGS BAD-VECTORS EMBED-TOO-LARGE INPUT-BOUNDS DIMS-PROPERTY
+   EMBEDDINGS BAD-VECTORS EMBED-TOO-LARGE INPUT-BOUNDS INPUT-MAX-EMBED
+   DIMS-PROPERTY
    STOP-BETWEEN
    M MODEL:CLOSE
    SETUP

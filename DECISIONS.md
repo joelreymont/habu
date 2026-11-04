@@ -305,6 +305,12 @@ learned live in the docs for their subject.
   MODEL:CHAT reads so a test drives it against a local route, Joel chose
   "Approve all (Recommended)": "Build the switch now as listed; Tender gets
   the change id."
+- 2026-11-04, embedding limits (relayed by phil): for MODEL:INPUT-MAX, Joel
+  chose "2,048, OpenAI's (Recommended)": "One request carries up to 2,048
+  texts; applies to Ollama too." For MODEL:TOKENS-PER-EMBED-MAX 300000 and
+  MODEL:TOKENS-PER-INPUT-MAX 8192, OpenAI's documented limits, which MODEL
+  does not check, he chose "Approve both (Recommended)": "Names and values as
+  listed; Zen groups texts into requests by them."
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself
