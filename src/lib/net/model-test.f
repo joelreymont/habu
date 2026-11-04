@@ -491,6 +491,11 @@ $300000 constant BIG-U
 : NO-SEQUENCE$ ( -- ptr u8 n ) S\" {\qtype\q:\qresponse.output_text.delta\q,\qdelta\q:\qx\q}" ;
 : NO-ID$ ( -- ptr u8 n )
    S\" {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qstatus\q:\qqueued\q,\qoutput\q:[]}}" ;
+\ An error event's data with its code and message at its top, and under error.
+: FLAT-ERROR$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}" ;
+: NESTED-ERROR$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qerror\q,\qsequence_number\q:2,\qerror\q:{\qtype\q:\qserver_error\q,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null}}" ;
 \ resp_1's created event, then an event whose data is not UTF-8. MODEL-TEST
 \ writes the line logging it.
 : BAD-UTF8$ ( -- ptr u8 n )
@@ -550,12 +555,8 @@ $300000 constant BIG-U
    t t-u s" cancelled" STR= if
       response [: s" resp_1" s" cancelled" PENDING ;] s" response.cancelled" STREAMED exit
    then
-   t t-u s" error-event" STR= if
-      STREAM-OPEN s" resp_1" PRELUDE
-      s" error" LAST-SEQ 1+ EVENT-OPEN
-      S\" ,\qcode\q:\qserver_error\q,\qmessage\q:\qThe server had an error.\q,\qparam\q:null" JSON:WRITE-RAW
-      EVENT-CLOSE response swap STREAM! exit
-   then
+   t t-u s" error-event" STR= if response FLAT-ERROR$ true BAD-STREAM exit then
+   t t-u s" error-nested" STR= if response NESTED-ERROR$ true BAD-STREAM exit then
    t t-u s" plain-json" STR= if response [: PLAIN$ JSON:WRITE-RAW ;] HTTP:JSON! exit then
    t t-u s" bad-type" STR= if response BAD-TYPE$ true BAD-STREAM exit then
    t t-u s" no-sequence" STR= if response NO-SEQUENCE$ true BAD-STREAM exit then
@@ -819,6 +820,8 @@ EXPORT BIG$
 EXPORT OLD-STREAM$
 EXPORT PLAIN$
 EXPORT BAD-TYPE$
+EXPORT FLAT-ERROR$
+EXPORT NESTED-ERROR$
 EXPORT NO-SEQUENCE$
 EXPORT NO-ID$
 EXPORT WIDE-DIMS
@@ -1097,6 +1100,11 @@ variable REFUSED-BASE-U
    s" failed-other" MODEL:E-HTTP FAILS
    M MODEL:ERROR$ s" bad prompt" STR= ASSERT
    s" error-event" MODEL:E-UNAVAILABLE FAILS
+   M MODEL:ERROR$ s" The server had an error." STR= ASSERT
+   s" error" CHAT-ID-LINE
+   s" MODEL:E-UNAVAILABLE status 200: The server had an error. body: " SB-APPEND
+   MODEL-PEER:FLAT-ERROR$ SB-APPEND SB-LOGGED
+   s" error-nested" MODEL:E-UNAVAILABLE FAILS
    M MODEL:ERROR$ s" The server had an error." STR= ASSERT
    s" cancelled" MODEL:E-CANCELLED FAILS
    s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR= ASSERT

@@ -2091,6 +2091,7 @@ private
    c ERROR-BUF c RESET-SCRATCH
    c SERVED-BUF BUF:CLEAR
    c RESPONSE-ID-BUF BUF:CLEAR
+   0 c STREAM STREAM-FAULT !
    true c MODEL-CALL:BUSY !
    false c MODEL-CALL:CANCELLED !
    0 c MODEL-CALL:CONTENT-U !
@@ -2170,13 +2171,23 @@ private
    JSON:T-OBJ EXPECT
    key key-u JSON:READ-FIND-KEY ;
 
+\ The reader at the error event's error object: its error member when an
+\ object, else the event.
+: ERROR-AT ( ptr call -- JSON:reader )
+   {: c :}
+   c WIRE-READER JSON:T-OBJ EXPECT
+   s" error" JSON:READ-FIND-KEY if
+      JSON:READ-TOKEN JSON:T-OBJ = if exit then
+   then
+   JSON:READ-CLOSE c WIRE-READER JSON:T-OBJ EXPECT ;
+
 \ An error event fails the response as a failed status does: the event is the
-\ reply, its message the call's error text and its code the stream's fault.
+\ reply.
 : ERROR-EVENT ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    a u c KEEP-REPLY
-   c WIRE-READER JSON:T-OBJ EXPECT c ERROR-TEXT JSON:READ-CLOSE
-   c WIRE-READER JSON:T-OBJ EXPECT CODE-FAULT {: fault:n :}
+   c ERROR-AT c ERROR-TEXT JSON:READ-CLOSE
+   c ERROR-AT CODE-FAULT {: fault:n :}
    JSON:READ-CLOSE
    c STREAM {: s :}
    fault s STREAM-FAULT !
@@ -2353,7 +2364,6 @@ private
    c STREAM {: s :}
    0 s STREAM-CURSOR !
    false s STREAM-DONE !
-   0 s STREAM-FAULT !
    c REQUEST-URL$ c BODY$ c AS-POST
    c STREAM-LOOP ;
 
@@ -2730,9 +2740,8 @@ public
 
 private
 
-\ The status and provider message of a refused reply or a failed response, else
-\ a refused reply's whole body; for an unusable reply or a model's refusal, the
-\ status and whole body.
+\ Status and message of a refused reply or failed response, else a refused
+\ reply's body; an unusable reply or refusal: status, body; an error event: all.
 : REPLY+ ( n ptr call -- )
    {: code:n c :}
    c MODEL-CALL:HTTP-STATUS @ {: status:n :}
@@ -2741,9 +2750,13 @@ private
       s"  body: " LOG:TEXT+ c RESPONSE$ LOG:TEXT+ exit
    then
    status 0= if exit then
-   status 200 = c ERROR$ nip 0= and if exit then
+   c STREAM STREAM-FAULT @ 0<> {: event:bool :}
+   status 200 = c ERROR$ nip 0= and event 0= and if exit then
    s"  status " LOG:TEXT+ status LOG:INT+
-   c ERROR$ nip 0<> if s" : " LOG:TEXT+ c ERROR$ LOG:TEXT+ exit then
+   c ERROR$ nip 0<> if
+      s" : " LOG:TEXT+ c ERROR$ LOG:TEXT+
+      event 0= if exit then
+   then
    c RESPONSE$ nip 0= if exit then
    s"  body: " LOG:TEXT+ c RESPONSE$ LOG:TEXT+ ;
 
