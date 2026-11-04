@@ -41,7 +41,7 @@ public
 -9258 constant E-PLATFORM     \ this module is qualified on Linux only, and refuses a foreign target before it binds
 -9259 constant E-STATEMENT    \ an empty statement or name
 -9560 constant E-DEADLINE     \ a wait past the connection's DEADLINE! bound, which closed it
--9561 constant E-BOUND        \ a DEADLINE! bound or NOTIFIED? wait outside 0..WAIT-MAX ms
+-9561 constant E-BOUND        \ a DEADLINE! bound outside 0..WAIT-MAX ms, or a negative NOTIFIED? wait
 
 NEWTYPE connection
 DEFLINEAR PG:result
@@ -107,7 +107,7 @@ $FFFFFFFFFFFFFFF8 constant CELL-MASK      \ round an arena offset up to a cell
 $30 constant DIGIT-ZERO
 0 constant NO-DEADLINE                    \ an operation on a connection with no bound
 1000000 constant NS-PER-MS
-$7FFFFFFF constant WAIT-MAX               \ the longest bound, in ms: the longest a readiness poll takes
+$7FFFFFFF constant WAIT-MAX               \ the longest one NOTIFIED? poll waits, in ms; DEADLINE!'s largest bound
 65535 constant PARAM-MAX                  \ a Bind message counts its parameters in 16 bits
 
 TYPED-VARIABLE CONN-CAPACITY n
@@ -1028,9 +1028,10 @@ REGISTER-CHILD-RESET
 
 \ Readable bytes need not hold a notification (a notice, a parameter status, a
 \ partial message), so the wait goes on until one arrives or the deadline. The
-\ monotonic clock, not the poll's timeout, decides that the deadline passed.
+\ monotonic clock, not the poll's timeout, decides that the deadline passed. A
+\ wait longer than one poll takes several.
 : NOTIFY-WAIT ( n n -- bool ) {: slot:n deadline:n :}
-   begin deadline LEFT-MS dup 0 > while
+   begin deadline LEFT-MS WAIT-MAX min dup 0 > while
       slot swap READABLE-WITHIN if
          slot TAKE-NOTIFIES if true exit then
       then
@@ -1548,19 +1549,23 @@ public
 \ NOTIFYs, and keeps neither channel nor payload. It waits through AIO:AWAIT,
 \ so it needs AIO:START and ends at a TASK:HALT. A connecting or pending
 \ connection is E-STATEMENT; one inside a transaction, which holds
-\ notifications back until it ends, is E-TRANSACTION; ms outside 0..WAIT-MAX
-\ is E-BOUND. A failed read closes the connection and throws E-EXEC; a
-\ readiness wait the AIO loop refuses throws E-EXEC, or the loop's own code,
+\ notifications back until it ends, is E-TRANSACTION; a negative ms is
+\ E-BOUND, and a bound longer than one poll's WAIT-MAX waits in successive
+\ polls until it passes. A failed read closes the connection and throws E-EXEC;
+\ a readiness wait the AIO loop refuses throws E-EXEC, or the loop's own code,
 \ and leaves it open.
 : NOTIFIED? ( connection ms -- bool )
    {: handle:connection timeout:ms :}
    handle CONN-SLOT {: slot:n :}
    timeout MS>N {: limit:n :}
-   limit 0 < limit WAIT-MAX > or if E-BOUND throw then
+   limit 0 < if E-BOUND throw then
    slot IDLE-CHECK
    slot CONN-PG@ LIB-TRANSACTION-STATUS {: status:n :}
    status TRANS-INTRANS = status TRANS-INERROR = or if E-TRANSACTION throw then
-   mono-ns limit NS-PER-MS * + {: deadline:n :}
+   mono-ns {: now:n :}
+   MEM-MAX-N {: latest:n :}
+   limit latest now - NS-PER-MS / > if latest else now limit NS-PER-MS * + then
+   {: deadline:n :}
    slot TAKE-NOTIFIES if true exit then
    slot deadline NOTIFY-WAIT ;
 

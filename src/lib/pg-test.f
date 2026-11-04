@@ -1674,9 +1674,10 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    fresh PG:CLOSE ;
 
 
-\ One connection LISTENs, another NOTIFYs. NOTIFY-MS is the wait a notification
-\ must cut short; PROMPT-MS bounds how long that takes.
+\ A lost connection or a halt cuts a NOTIFY-MS wait short, a notification a
+\ FOREVER-MS one past WAIT-MAX; PROMPT-MS bounds how long each takes.
 10000 constant NOTIFY-MS
+MEM-MAX-N constant FOREVER-MS
 
 : NOTIFY-NOW ( PG:connection -- PG:connection )
    dup 0 >MS NOTIFIED? drop ;
@@ -1751,11 +1752,11 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    a 0 >MS NOTIFIED? TTRUE
    s" a wait of 0 ms with nothing sent answers false" T-LABEL
    a 0 >MS NOTIFIED? TFALSE
-   s" a notification ends the wait, which takes every one queued" T-LABEL
+   s" a notification ends a wait bound past one poll's, which takes every one queued" T-LABEL
    b s" notify pqtnote, 'one'; notify pqtnote, 'two'"
    [: OUTCOME-TAG TAG-OK T= ;] WITH-SCRIPT
    mono-ns {: sent:n :}
-   a NOTIFY-MS >MS NOTIFIED? TTRUE
+   a FOREVER-MS >MS NOTIFIED? TTRUE
    sent ELAPSED-MS PROMPT-MS < TTRUE
    a 0 >MS NOTIFIED? TFALSE
    s" a wait with nothing sent answers false once its time is up" T-LABEL
