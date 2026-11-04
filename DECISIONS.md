@@ -730,6 +730,10 @@ learned live in the docs for their subject.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
+  On 2026-11-04, shown the Gforth chain red on master and a seed mirror
+  planned for the cross-build's wid cells, Joel wrote "why do you need gforth
+  to build habu from habu? your priority is arm64-to-arm64 cross-build": the
+  cross-build's steps carry no Gforth seed mirror.
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
