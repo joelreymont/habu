@@ -94,7 +94,7 @@ create ERR CAP allot
 : TEST-BOUNDARY ( -- )
    s" 0 data-base $800 + c!" REJECTS
    s" 0 data-base $7FF + !" REJECTS
-   s" 0 data-base $7F8 + !" ACCEPTS
+   s" data-base $7F8 + dup @ swap !" ACCEPTS
    s" 0 data-base $2742 + c!" ACCEPTS
    s" 0 data-base TXN-STATE-OFF 1 cells - + !" ACCEPTS
    s" 0 data-base TXN-STATE-OFF TXN-STATE-LEN + 1- + !" REJECTS

@@ -248,6 +248,8 @@ create TAB
    BOOT-LAYOUT:HEAP-START-CELL        1 cells                 CLAIM BOOT-HEAP-START
    BOOT-LAYOUT:DP-FLOOR-CELL          1 cells                 CLAIM BOOT-DP-FLOOR
    BOOT-LAYOUT:DP-CEILING-CELL        1 cells                 CLAIM BOOT-DP-CEILING
+   BOOT-LAYOUT:GLOBAL-WL-CELL         1 cells                 CLAIM BOOT-GLOBAL-WL
+   BOOT-LAYOUT:NAMESPACE-WL-CELL      1 cells                 CLAIM BOOT-NAMESPACE-WL
    STACK-ABI:CAP-CELL                 1 cells                 CLAIM STACK-ABI-CAP
    STACK-ABI:REPL-BASE-CELL           1 cells                 CLAIM STACK-ABI-REPL-BASE
    STACK-ABI:REPL-CAP-CELL            1 cells                 CLAIM STACK-ABI-REPL-CAP

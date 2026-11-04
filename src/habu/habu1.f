@@ -3087,6 +3087,7 @@ public
    HB-TARGET-LINUX? IF
       LBL LBL LBL LBL LBL {: unfd:label failed:label parent:label done:label dead:label :}
       LBL LBL LBL LBL LBL {: scan:label next:label full:label scanned:label plain:label :}
+      LBL {: span:label :}
       SP SP 32 SUBI,                    \ [0] the child's memfd, [8] its filling view, [16] code end
       \ Delta 0 = no alias (a stripped image): the startup maps one anywhere but DBASE.
       9 DATA REGION-ALIAS:DELTA-CELL LDR,  9 plain CBZ,
@@ -3114,8 +3115,9 @@ public
       scan LBL,
          10 2 CMP,  C-CS scanned BCOND,
          11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
-         13 11 40 LDR,  14 DICT-WL:NAMESPACE invert MOVN,  13 14 CMP,  C-EQ next BCOND,
-         14 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 14 CMP,  C-EQ next BCOND,
+         13 11 40 LDR,  14 DICT-WL:RETIRED invert MOVN,  13 14 CMP,  C-EQ span BCOND,
+         13 0 CMPI,  C-LT next BCOND,                      \ a package row, live or retired
+      span LBL,
          13 11 0 LDR,  14 11 8 LDR,
          15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
          3 CODE-SPAN:FULL LIT64,  3 14 3 AND,  3 full CBNZ,  15 15 CODE-SPAN:INSN-BYTES ADDI,
@@ -3832,7 +3834,7 @@ public
 \ Retire each affected slot before those bytes are reusable. Namespace rows
 \ contain WIDs in their first two cells and have no code span.
 : EMIT-DEF-OCC-RECLAIM ( -- )
-   LBL LBL LBL LBL {: loop:label next:label full:label done:label :}
+   LBL LBL LBL LBL LBL {: loop:label next:label full:label span:label done:label :}
    EM-DEF-OCC:LRECLAIM LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    PROF-ABI:LPROFRECLAIM LABEL@ BL,
@@ -3842,9 +3844,10 @@ public
    loop LBL,
       10 NDICT CMP,  C-CS done BCOND,
       11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
-      12 11 40 LDR,  13 DICT-WL:NAMESPACE invert MOVN,
-      12 13 CMP,  C-EQ next BCOND,
-      13 DICT-WL:RETIRED-NAMESPACE invert MOVN,  12 13 CMP,  C-EQ next BCOND,
+      12 11 40 LDR,  13 DICT-WL:RETIRED invert MOVN,
+      12 13 CMP,  C-EQ span BCOND,
+      12 0 CMPI,  C-LT next BCOND,                          \ a package row, live or retired
+   span LBL,
       13 11 0 LDR,  13 CP CMP,  C-CS next BCOND,
       14 11 8 LDR,
       15 CODE-SPAN:MASK LIT64,  15 14 15 AND,
@@ -4658,22 +4661,14 @@ private
    open LBL, ;
 
 \ policy-admit ( ptr u8 n -- ): admit the public wordlist of the package the
-\ span names. The name resolves as a top-level `using` resolves one, to its
-\ row in DICT-WL:NAMESPACE, whose cell [0] is the package's public wid. A name no
-\ package owns writes `hb: policy: no package <name>`; a wid at or above
-\ PROT-WID-MAX has no bit in the band. A package with a public word spelled like
-\ a dispatch row (habu2.f LROWWALK) writes `hb: policy: package <name>
-\ publishes keyword <word>`: under the seal tier 0 reads that name as the row,
-\ which refuses it, and tier 1 as the admitted word, so admitting the package
-\ would split the tiers. The bit is published as BPROTWIDADD publishes its own:
-\ acquire-load, OR, release-store of the containing word.
+\ span names, found as a top-level `using` finds it.
 : BPOLICYADMIT ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: found:label bounded:label nopkg:label nl:label bound:label walk:label inline:label next:label spelled:label pkgmsg:label kwmsg:label walked:label :}
    POLICY-OPEN,
    1 G-POP  0 G-POP                                  \ x1 = name length, x0 = name
    13 0 0 ADDI,                                      \ the name, for the refusals: the lookup leaves x13 and x1 alone
-   2 DICT-WL:NAMESPACE LIT64,
+   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,
    WLFIND:LENTRY LABEL@ BL,                          \ x11 = public wid, x12 = the row or 0
    14 1 0 ADDI,                                      \ the walk and the kernel's writes keep x13/x14
    12 found CBNZ,
@@ -4689,6 +4684,8 @@ private
    nl LBL,  POLICY-NL$ BYTES,
    bound LBL,  POLICY-BOUND$ BYTES,
    bounded LBL,
+   \ A public word spelled like a dispatch row (habu2.f LROWWALK) is refused:
+   \ under the seal tier 0 would read the row and tier 1 the admitted word.
    \ Every record of the wordlist: [40] its wid, [16] its name length (below the
    \ DNAME-FLAG-BITS) and DNAME-EXT, [24] the name inline or, with DNAME-EXT, its
    \ address.
@@ -4770,9 +4767,10 @@ private
 \ The scan answers the last matching row; the hash probe, insert-once with one
 \ slot per (name, wid), answers the first validated row. They agree only where
 \ a wid holds one live row per folded name:
-\   - a real wordlist (0, a package's private or public wid, DICT-WL:NAMESPACE)
-\     is guarded by duplicate walls at its definers (habu2.f C-REJECT-DUP-DEF,
-\     DOES-REC:REJECT-DUP). native-unit-publish can still append duplicates;
+\   - a real wordlist (the global wid, a package's private or public wid, a
+\     package-row marker) is guarded by duplicate walls at its definers
+\     (habu2.f C-REJECT-DUP-DEF, DOES-REC:REJECT-DUP). native-unit-publish can
+\     still append duplicates;
 \     XREF's indexed probe below scans the whole chain for its newest-record
 \     rule;
 \   - DICT-WL:RETIRED is not a wordlist: xref.f XREF:RETIRE stamps it onto rows
@@ -5745,31 +5743,14 @@ variable LHIDXBUILD
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    init-msg LBL,  ma mu BYTES, ;
 
-\ The one lower-or-retire decision of a rollback: evaluate's and the REPL's
-\ recovery and replay-close (habu2.f) call it with x9 = the NDICT they lower to.
-\ With no task live it returns x14 = 0 and the caller lowers as before; a zero
-\ count cannot rise under it, since only main or a live task activates one.
-\ While TASKS-LIVE-CELL is nonzero the engine lowers nothing: a task may run the
-\ code above the caller's CP target and read the records above x9, and lowering
-\ hands both out again. So it retires each record in [x9, NDICT) as `undefine`
-\ does (xref.f XREF:RETIRE): DICT-WL:RETIRED over the wordlist cell, one aligned
-\ store through the alias, the row left on its old hash chain, where a lookup's
-\ wid compare passes it. It needs none of the rest of `undefine`: GRID-RETIRE's
-\ work is done by RETRACT-TO's effect rewind, which clears the grids above the
-\ mark (src/core/checker.f RECORD-LINK-REWIND-EFFECT); LCOUNT's CAPTURE-CUT
-\ cuts NDICT, which stays; and the BEFORE-RETIRE hook
-\ (NUNIT-OBJECT:FILE-RETIRE) refuses a chosen `undefine` of another file's
-\ record, and a rollback that lowered those records never asked it either. It
-\ clears a LASTC at or above x9 and returns x14 nonzero, and the caller keeps
-\ CP, NDICT, DP and the relocation rows: the code stays in the region,
-\ unreachable by name. LCODEINV and LRECLAIM do not run: both hand back code at
-\ or above a floor, and none is handed back. Preserves every register but x14.
-\ A package row gets DICT-WL:RETIRED-NAMESPACE by the same one store and keeps
-\ its wids in [0] and [8]: a task's qualified lookup that read the row before
-\ the store finds only the package's words, which are retiring too and whose
-\ code is kept. Skipping the row would not do: REPLAY-CLOSE's SCOPE restore
-\ puts WIDN back, and a live row would share its wid with the next package. A
-\ row already retired, by an inner rollback or `undefine`, keeps its marker.
+\ A rollback's lower-or-retire step (habu2.f: evaluate's and the REPL's
+\ recovery, replay-close), x9 = the NDICT to lower to. With no task live it
+\ answers x14 = 0 and the caller lowers; the count cannot rise from 0 under it,
+\ since only main or a live task activates one. Else a task may still use the
+\ code and records above, so it stamps each record in [x9, NDICT) with
+\ DICT-WL:RETIRED, a live package row with RETIRED-NAMESPACE, clears a LASTC at
+\ or above x9 and answers x14 nonzero: the caller keeps CP, NDICT, DP and the
+\ relocation rows. Preserves every register but x14.
 : EMIT-DEF-OCC-RETIRE ( -- )
    LBL LBL LBL LBL LBL {: loop:label pkg:label next:label cut:label done:label :}
    EM-DEF-OCC:LRETIRE LABEL@ LBL,
@@ -5778,16 +5759,17 @@ variable LHIDXBUILD
       13 SP 32 STR,  15 SP 40 STR,
       11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 DBASE 11 ADD,   \ the records through the alias
       12 DICT-WL:RETIRED invert MOVN,
-      15 DICT-WL:NAMESPACE invert MOVN,
+      15 DICT-WL:RETIRED-NAMESPACE invert MOVN,
    loop LBL,
       9 NDICT CMP,  C-CS cut BCOND,
       10 DREC MOVZ,  10 9 10 MUL,  10 11 10 ADD,
       13 10 40 LDR,
-      13 15 CMP,  C-EQ pkg BCOND,
-      13 0 CMPI,  C-LT next BCOND,                          \ retired already
+      13 0 CMPI,  C-LT pkg BCOND,
       12 10 40 STR,  next B,                                \ the wordlist cell
    pkg LBL,
-      13 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 10 40 STR,
+      13 12 CMP,  C-EQ next BCOND,                          \ retired already
+      13 15 CMP,  C-EQ next BCOND,
+      15 10 40 STR,                                         \ a live package row
    next LBL,
       9 9 1 ADDI,  loop B,
    cut LBL,
@@ -5800,7 +5782,7 @@ variable LHIDXBUILD
 \ x9 names the four-byte patch (zero for an effect-only change); x10 names the
 \ created record. Every record covering changed bytes is replaced separately.
 : EMIT-DEF-OCC-OVERLAP ( -- )
-   LBL LBL LBL LBL LBL LBL {: hit:label miss:label raw:label
+   LBL LBL LBL LBL LBL LBL LBL {: hit:label miss:label raw:label span:label
       count-loop:label count-next:label counted:label :}
    LBL LBL LBL LBL LBL LBL {: clear-loop:label clear-next:label cleared:label
       issue-loop:label issue-next:label issued:label :}
@@ -5808,9 +5790,10 @@ variable LHIDXBUILD
       12 0 MOVZ,
       11 10 CMP,  C-EQ hit BCOND,
       9 miss CBZ,
-      15 11 40 LDR,  16 DICT-WL:NAMESPACE invert MOVN,
-      15 16 CMP,  C-EQ miss BCOND,
-      16 DICT-WL:RETIRED-NAMESPACE invert MOVN,  15 16 CMP,  C-EQ miss BCOND,
+      15 11 40 LDR,  16 DICT-WL:RETIRED invert MOVN,
+      15 16 CMP,  C-EQ span BCOND,
+      15 0 CMPI,  C-LT miss BCOND,                          \ a package row, live or retired
+   span LBL,
       15 11 0 LDR,  15 9 CMP,  C-HI miss BCOND,
       16 11 8 LDR,  17 CODE-SPAN:MASK LIT64,  17 16 17 AND,
       12 CODE-SPAN:FULL LIT64,  16 16 12 AND,
@@ -5920,11 +5903,11 @@ variable LHEADROW
       14 9 7 ADD,  14 14 0 LDRB,  15 16 7 ADD,  14 15 0 STRB,
       7 7 1 ADDI,  tail B,
    probe LBL,
-   2 DICT-WL:NAMESPACE LIT64,  WLFIND:LENTRY LABEL@ BL,
+   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
    12 done CBNZ,
    bare LBL,
    0 SP 24 LDR,  1 SP 48 LDR,
-   2 DICT-WL:NAMESPACE LIT64,  WLFIND:LENTRY LABEL@ BL,
+   2 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL LDR,  WLFIND:LENTRY LABEL@ BL,
    done LBL,
    30 SP 0 LDR,  0 SP 8 LDR,  1 SP 16 LDR,  9 SP 24 LDR,
    10 SP 32 LDR,  13 SP 40 LDR,  17 SP 48 LDR,
@@ -5998,17 +5981,9 @@ variable LHEADROW
    FIND-NEND LABEL@ LBL,  5 0 MOVZ,  RET,       \ no such wordlist: no record, and x5 says so
    FIND-QBAD LABEL@ LBL,  5 0 MOVZ,  RET,       \ malformed NAME:a:b - the one exit that never touched x5
    FIND-START LABEL@ LBL,
-      \ Hash probe for (name XOR wid); a validated slot (index<NDICT, wid==x2,
-      \ name equal) returns at once. An empty slot ends the search at FIND-DONE,
-      \ where the linear scan's miss goes. That rests on every record in
-      \ [0,NDICT) being in the table: LHIDXBUILD indexes the dictionary at
-      \ startup, every publisher calls LHIDXADD as it raises NDICT, record-wid!
-      \ re-indexes (HIDX-EMIT:LREKEY), and no slot is removed (a truncated
-      \ record's stale index is skipped), so slots only go empty -> occupied and
-      \ an insert takes the first empty or stale slot of its own chain.
-      \ The linear scan serves a missing table and a chain walked in full
-      \ without an empty slot; x2 (wid), x9/x10 (name), x13 (result) are
-      \ preserved for it.
+      \ Wid 0 becomes the global wid. The hash probe answers as WLFIND's does
+      \ and keeps x2 (wid), x9/x10 (name) and x13 (result) for the linear scan.
+      14 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,  2 0 CMPI,  2 14 2 C-EQ CSEL,
       14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table -> linear
       9 10 15 4 16 7 C-HIDX-HASH
       6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
@@ -6081,10 +6056,10 @@ variable LHEADROW
          FIND-NEXT LABEL@ B,
       FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
    FIND-DONE LABEL@ LBL,
-      \ The enclosing cells are 0 with no part open, so wordlist 0 is tested
-      \ first; a qualified name (x11 = 1) skips the enclosing package.
+      \ The global wordlist is searched last: a miss there ends the search; a
+      \ qualified name (x11 = 1) skips the enclosing package.
       13 FIND-FOUND LABEL@ CBNZ,
-      2 FIND-MISS LABEL@ CBZ,
+      14 DATA BOOT-LAYOUT:GLOBAL-WL-CELL LDR,  2 14 CMP,  C-EQ FIND-MISS LABEL@ BCOND,
       14 DATA PKG-PRI-CELL LDR,  14 2 CMP,  C-NE open-pub BCOND,
          2 DATA PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
       open-pub LBL,

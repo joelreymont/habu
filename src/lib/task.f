@@ -1428,6 +1428,9 @@ variable SWEEP-ARMED
    \ DP-CHECK's bounds: zeroed cells would admit a task's `0 allot`.
    data-base reg BOOT-LAYOUT:DP-FLOOR-CELL TASK-COPY-CELL
    data-base reg BOOT-LAYOUT:DP-CEILING-CELL TASK-COPY-CELL
+   \ The lookups' wids: a zero marker would key package lookups on wid 0.
+   data-base reg BOOT-LAYOUT:GLOBAL-WL-CELL TASK-COPY-CELL
+   data-base reg BOOT-LAYOUT:NAMESPACE-WL-CELL TASK-COPY-CELL
    data-base reg ARGC-CELL TASK-COPY-CELL
    data-base reg ARGV-CELL TASK-COPY-CELL
    data-base reg ENVP-CELL TASK-COPY-CELL

@@ -530,6 +530,8 @@ variable BLOB-CV
    EMIT-XT-CELLS                                 \ ... and the tokens its declared cells hold
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
    11 DATA-START LIT64,  11 DATA 11 ADD,  11 DATA BOOT-LAYOUT:DP-FLOOR-CELL STR,   \ DP-CHECK's bounds
+   11 0 MOVZ,  11 DATA BOOT-LAYOUT:GLOBAL-WL-CELL STR,                \ the lookups' wids
+   11 DICT-WL:NAMESPACE LIT64,  11 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL STR,
    11 DATA-SIZE PROF-CNT-BYTES - LIT64,  11 DATA 11 ADD,  11 DATA BOOT-LAYOUT:DP-CEILING-CELL STR,
    11 12 LUNCREP LABEL@ TEXT-ADR,  11 DATA UNCGH-CELL STR,   \ the uncaught-throw reporter (EMIT-UNCAUGHT)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)

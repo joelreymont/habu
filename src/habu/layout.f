@@ -128,29 +128,16 @@ REGION DICT-SIZE - constant BYTES
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
-\ The wordlist cell's three non-wordlist values. A package row keeps its public
-\ and private wids in the cells where a word keeps its code span; it is
-\ NAMESPACE while live and RETIRED-NAMESPACE once a rollback retires it
-\ (habu1.f EM-DEF-OCC:LRETIRE), so one aligned store retires it and every code
-\ span reader skips it by either value (xref.f XREF:PACKAGE-WL?).
-\ A record's wordlist cell is half the hash index's key (habu1.f C-HIDX-INS keys
-\ on the folded name XOR this cell). Publication writes the cell before the
-\ insert, and HIDX-EMIT:LREBUILD keys every record on its cell as it stands.
-\ NAMESPACE keeps that rule: a package row carries it from birth, so LFIND's
-\ qualifier probe finds it. RETIRED breaks it: src/habu/xref.f XREF:RETIRE
-\ stamps a record already in the table, which stays on its old wid's chain until
-\ a rebuild. A lookup on a real wid still agrees with a scan, but one keyed on
-\ RETIRED cannot be answered by the table (retiring one name twice puts two rows
-\ under one key), so habu1.f BSWL keeps its linear scan for this wid.
-\ RETIRED-NAMESPACE leaves a row on NAMESPACE's chain the same way, and no
-\ lookup is keyed on it.
-\ habu2.f DEFWRITE:RECORD-WID writes a logged wid back after a retirement; a
-\ rebuild between them re-keys the row on RETIRED's chain, so record-wid!
-\ indexes the record under each wid it writes (HIDX-EMIT:LREKEY).
+\ The wordlist cell's non-wordlist values. A package row keeps its public and
+\ private wids where a word keeps its code span (xref.f XREF:PACKAGE-WL?).
 package DICT-WL
 public
+\ The marker BOOT-LAYOUT:NAMESPACE-WL-CELL holds at boot: a live package row's.
 -1 constant NAMESPACE
+\ A retired record's; the row stays on its old hash chain (habu1.f WLFIND).
 -2 constant RETIRED
+\ A package row a rollback retired (habu1.f EM-DEF-OCC:LRETIRE); no lookup is
+\ keyed on it.
 -3 constant RETIRED-NAMESPACE
 ;package
 
@@ -687,11 +674,14 @@ $688 constant FD-CELL
 package BOOT-LAYOUT
 public
 $47E0 constant HEAP-START-CELL
-\ The bounds habu1.f DP-CHECK holds a new DP to, absolute addresses: every boot
-\ writes DATA + DATA-START and DATA + DATA-SIZE - PROF-CNT-BYTES, the ceiling
-\ below the profiler counter band (prof-abi.f).
+\ The bounds habu1.f DP-CHECK holds a new DP to, absolute: every arm64 start
+\ writes DATA + DATA-START and DATA + DATA-SIZE - PROF-CNT-BYTES (prof-abi.f).
 $7E0 constant DP-FLOOR-CELL
 $7E8 constant DP-CEILING-CELL
+\ The wid lookups treat as the global wordlist and a package row's marker
+\ (DICT-WL): every boot writes 0 and DICT-WL:NAMESPACE.
+$7F0 constant GLOBAL-WL-CELL
+$7F8 constant NAMESPACE-WL-CELL
 ;package
 
 
@@ -1120,8 +1110,9 @@ CHECKER-OWNER-ABI:VERIFY-SOURCE-CLAUSE-OFF constant DECL-VERIFY-SOURCE-CLAUSE-OF
 \ Below BODYBUF-OFF: $600..$690 is GENIO-ABI, AOT-SPAN and SIGNAL-ABI, $690
 \ NCOMP-DISPATCH:RECOVER-CELL, $698..$6A8 LVS-OFF, $6A8..$6C0 the `,` run,
 \ $6C0 NCOMP-DISPATCH:FIXED-COMP-CELL, $6C8 free, $6D0..$750 LVF-OFF,
-\ $750..$7D0 LVQ-OFF, $7D0..$7E0 FRAME-CELL and QFRAME-CELL and $7E0..$7F0
-\ BOOT-LAYOUT:DP-FLOOR-CELL and DP-CEILING-CELL.
+\ $750..$7D0 LVQ-OFF, $7D0..$7E0 FRAME-CELL and QFRAME-CELL, $7E0..$7F0
+\ BOOT-LAYOUT:DP-FLOOR-CELL and DP-CEILING-CELL and $7F0..$800
+\ BOOT-LAYOUT:GLOBAL-WL-CELL and NAMESPACE-WL-CELL.
 $800 constant BODYBUF-OFF
 \ The latest `,` run of a created body, defined in src/habu/created-body-abi.f,
 \ which the checker reads too.

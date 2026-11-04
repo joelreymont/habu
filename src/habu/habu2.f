@@ -7618,6 +7618,8 @@ public
    \ DP-CHECK's bounds hold from the first DP: EM-AOT-BOOTRUN runs captured
    \ words before EM-STARTUP-RUNTIME-STATE writes the cells again.
    7 DATA BOOT-LAYOUT:DP-FLOOR-CELL STR,
+   5 0 MOVZ,  5 DATA BOOT-LAYOUT:GLOBAL-WL-CELL STR,
+   5 DICT-WL:NAMESPACE LIT64,  5 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL STR,
    5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,  5 DATA BOOT-LAYOUT:DP-CEILING-CELL STR, ;
 
 \ Inline bounded byte operations. x0 is destination, x1 source, x2 length;
@@ -8904,6 +8906,8 @@ ardone LBL,
    \ DP-CHECK's bounds, written after EM-SNAPSHOT-RESTORE, whose DATA copy
    \ installs the saving process's cells.
    9 DATA-START LIT64,  9 DATA 9 ADD,  9 DATA BOOT-LAYOUT:DP-FLOOR-CELL STR,
+   9 0 MOVZ,  9 DATA BOOT-LAYOUT:GLOBAL-WL-CELL STR,
+   9 DICT-WL:NAMESPACE LIT64,  9 DATA BOOT-LAYOUT:NAMESPACE-WL-CELL STR,
    9 DATA-SIZE PROF-CNT-BYTES - LIT64,  9 DATA 9 ADD,  9 DATA BOOT-LAYOUT:DP-CEILING-CELL STR,
    10 LSRC LABEL@ ADR,
    10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
