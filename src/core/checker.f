@@ -1326,7 +1326,7 @@ public
    PKG-LIVE-XT {: a:ptr u:n ok:bool :}
    ok 0= IF s" " CHECKER-PACKAGE-NONE 0 0= 0= EXIT THEN
    get-current {: cur:n :}
-   u 0= IF s" " CHECKER-PACKAGE-NONE cur 0= EXIT THEN
+   u 0= IF s" " CHECKER-PACKAGE-NONE cur BOOT:GLOBAL-WL = EXIT THEN
    cur data-base CK-PKG-PUB-OFF + @ = IF a u CHECKER-PACKAGE-PUBLIC 0 0= EXIT THEN
    cur data-base CK-PKG-PRI-OFF + @ = IF a u CHECKER-PACKAGE-PRIVATE 0 0= EXIT THEN
    s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
@@ -12143,16 +12143,13 @@ public
    u d cells CK-USE-LENS + ! ;
 ;package
 
-\ The wordlist a dictionary record was published into, 0 for the global one.
+\ The wordlist a dictionary record was published into.
 : CK-REC-WID ( ptr n -- n ) DICT-WORDLIST-SLOT cells + @ ;
 
 package CHECKER-RESOLVE
 public
-\ The record a wordlist holds under a name, NULL-PTR when it holds none: the
-\ engine's one-wordlist probe, the one its used-publics search asks of each used
-\ wordlist (src/habu/habu2.f LFINDUSED-CORE). Wordlist -1, DICT-WL:NAMESPACE,
-\ holds the package rows. xref-search-wl's row is this package's own
-\ (src/habu/prims.f).
+\ The record a wordlist holds under a name, NULL-PTR for none: the engine's
+\ one-wordlist probe, whose primitive row this package owns (prims.f).
 : WL-PROBE ( ptr u8 n n -- ptr n ) xref-search-wl ;
 ;package
 
@@ -12218,11 +12215,11 @@ public
       ta HEAD-KEY tu ARENA-COPY
       $3A HEAD-KEY tu + c!
       a HEAD-KEY tu 1 + + u ARENA-COPY
-      HEAD-KEY ku -1 WL-PROBE
+      HEAD-KEY ku BOOT:NAMESPACE-WL WL-PROBE
       dup NULL-PTR <> IF EXIT THEN
       drop
    THEN
-   a u -1 WL-PROBE ;
+   a u BOOT:NAMESPACE-WL WL-PROBE ;
 ;package
 
 \ The FILE observer is installed after the source reader below. These hooks
@@ -12348,8 +12345,8 @@ variable DEF-REFUSAL
    THEN
    E-USING-SHADOW-GLOBAL ;
 
-\ Whether wordlist wid holds a live record of the name: the engine's own probe,
-\ the same linear scan and case fold as its LFIND.
+\ Whether wordlist wid holds a live record of the name: the engine's search-wl,
+\ LFIND's probe minus DNAME-INT and engine-helper records (habu1.f BSWL).
 : CK-WL-CLAIMS? ( ptr u8 n n -- bool ) {: a:ptr u:n wid:n :}
    a u wid search-wl 0 <> ;
 
@@ -12547,13 +12544,9 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 variable OUTSIDE0
 -2 constant RETIRED                        \ = layout.f DICT-WL:RETIRED
 $4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
--1 constant NAMESPACE                      \ = layout.f DICT-WL:NAMESPACE
 
-\ The undo log: index and wid of each record a replayed `undefine` retired, and
-\ of each namespace row the replay granted a private wordlist (GRANT), logged
-\ with wid NAMESPACE, which record-wid! refuses, so no retirement shares it. A
-\ record appears at most once, so only the dictionary bounds the log. Grown by
-\ PAIR+, given back by CLOSE.
+\ The undo log, at most one pair per record: a replayed `undefine`'s index and
+\ wid, or a GRANT row's with BOOT:NAMESPACE-WL, a wid record-wid! refuses.
 PTR-VARIABLE LOG-P
 variable LOG-CAP
 variable LOG-N
@@ -12624,7 +12617,7 @@ variable SNAP-N
    DATA@ {: r:n :}
    r 0= IF -1 EXIT THEN
    r dbase@ - CK-DREC / ;
-: NS-ROW ( ptr u8 n -- ptr n ) -1 CHECKER-RESOLVE:WL-PROBE ;
+: NS-ROW ( ptr u8 n -- ptr n ) BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE ;
 : ROOM ( -- )
    ndict@ CK-DICT-CAP < IF EXIT THEN
    E-OVERLAY-CAP throw ;
@@ -12682,14 +12675,14 @@ variable SNAP-N
 \ The scope a package-neutral replay starts in: top level, no imports.
 : CLEAR ( -- )
    -1 0 package-scope!
-   0 set-current
+   BOOT:GLOBAL-WL set-current
    0 CK-USE-DEPTH-OFF DATA!
    0 CK-USE-FLOOR-OFF DATA! ;
 
 : LOG! ( n n -- ) LOG-P LOG-CAP LOG-N PAIR+ ;
 
 : UNDO1 ( n n -- ) {: ix:n wid:n :}
-   wid NAMESPACE = IF ix RES-FALSE replay-private EXIT THEN
+   wid BOOT:NAMESPACE-WL = IF ix RES-FALSE replay-private EXIT THEN
    wid ix record-wid! ;
 
 \ Undo each log entry above LOW, newest first.
@@ -12738,9 +12731,9 @@ variable SNAP-N
 \ The wordlist a checker symbol's definition lands in, as a compile of it puts
 \ it: the global one, or its package's public or private one.
 : SYM-WID ( n -- n ) {: sym:n :}
-   sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF 0 EXIT THEN
+   sym SYM-ROW SYM.VIS @ SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
    sym SYM-PKG$ {: pa:ptr pu:n :}
-   pu 0= IF 0 EXIT THEN
+   pu 0= IF BOOT:GLOBAL-WL EXIT THEN
    pa pu NS-ENSURE {: rec:ptr :}
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
    rec CELL + @ {: pri:n :}
@@ -12781,7 +12774,7 @@ variable SNAP-N
 \ (src/habu/packages.f PKG-REOPEN).
 : GRANT ( ptr n -- ) {: rec:ptr :}
    rec REC>IX {: ix:n :}
-   ix NAMESPACE LOG!
+   ix BOOT:NAMESPACE-WL LOG!
    ix RES-TRUE replay-private ;
 
 \ Whether record IX is on the undo log. A replay record leaves its wordlist
@@ -13517,7 +13510,7 @@ CHECKER-REG:}SCRATCH
    PE-N PE-OUT PPRIM; ;
 
 : PE-PUBLIC-CONSTS ( ptr u8 n -- ) {: pa:ptr pu:n :}
-   pa pu -1 CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
+   pa pu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
    ns NULL-PTR = IF s" checker: ABI constants package missing" 76 die THEN
    ns @ {: wid:n :}
    pa PE-PKG-A !  pu PE-PKG-U !
@@ -13575,11 +13568,12 @@ public
 : CK-REC-BIND ( ptr u8 n ptr n -- n ) {: a:ptr u:n rec:ptr :}
    rec CK-REC-WID {: wid:n :}
    a u CHECKER-QUALIFIED? IF
-      wid 0= IF CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? EXIT THEN   \ NAME:tail with NAME open reaches the global tail
+      \ NAME:tail with NAME open reaches the global tail
+      wid BOOT:GLOBAL-WL = IF CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? EXIT THEN
       CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT
    THEN
    PKG-LIVE-XT drop {: pkg:ptr pkgu:n :}
-   wid 0= IF
+   wid BOOT:GLOBAL-WL = IF
       pkgu 0 <> IF
          pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? {: own:n :}
          own PRIM-FIRST-IDX 0 <> IF own EXIT THEN
@@ -13708,7 +13702,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
 : RECOVERY-RANK ( ptr n -- n ) {: rec:ptr :}
    rec 0= IF RB-NONE EXIT THEN
    rec CK-REC-WID {: wid:n :}
-   wid 0= IF RB-GLOBAL EXIT THEN
+   wid BOOT:GLOBAL-WL = IF RB-GLOBAL EXIT THEN
    wid data-base CK-PKG-PRI-OFF + @ = IF RB-PRIVATE EXIT THEN
    wid data-base CK-PKG-PUB-OFF + @ = IF RB-PUBLIC EXIT THEN
    wid data-base CK-ENCLOSING-PRI-OFF + @ = IF RB-ENCLOSING-PRIVATE EXIT THEN
@@ -13770,7 +13764,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
       \ beside the pending checker view; a later name query could bind another.
       a u HORIZON-FIND {: held:ptr used:ptr used2:ptr flags:n :}
       held 0= 0= flags SCOPE-FIND-AMBIGUOUS and 0= and IF
-         held CK-REC-WID 0= 0= used 0= or IF held BIND-REC ! THEN
+         held CK-REC-WID BOOT:GLOBAL-WL <> used 0= or IF held BIND-REC ! THEN
       THEN
       pending 0 EXIT
    THEN
@@ -13788,7 +13782,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    THEN
    a u rec CK-REC-BIND {: sym:n :}
    rec BIND-REC !
-   rec CK-REC-WID 0= IF                               \ a used public exporting the bound global's tail
+   rec CK-REC-WID BOOT:GLOBAL-WL = IF                 \ a used public exporting the bound global's tail
       two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
       used 0= 0= IF
          a u CK-USED-MARK
@@ -17262,7 +17256,7 @@ CHECKER-REG:}SCRATCH
 : ENGINE-WORD-SYM ( ptr u8 n -- n bool )
    {: a:ptr u:n :}
    a u CHECKER-GLOBAL-SYM? SYM-DELETED? IF 0 RES-FALSE EXIT THEN
-   a u 0 CK-WL-CLAIMS? 0= IF 0 RES-FALSE EXIT THEN
+   a u BOOT:GLOBAL-WL CK-WL-CLAIMS? 0= IF 0 RES-FALSE EXIT THEN
    a u CHECKER-GLOBAL-SYM? RES-TRUE ;
 
 \ The word the load runs for a token the source pre-pass asks about: the symbol
@@ -17303,7 +17297,7 @@ CHECKER-REG:}SCRATCH
       pub SYM-VISIBLE 0= IF NULL-PTR EXIT THEN
       pub SYM-DELETED? IF NULL-PTR EXIT THEN
    THEN
-   CHECKER-QPKG$ -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   CHECKER-QPKG$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF NULL-PTR EXIT THEN
    rec @ {: wid:n :}
    wid 0= IF NULL-PTR EXIT THEN
@@ -17321,7 +17315,7 @@ CHECKER-REG:}SCRATCH
    sym 0 <> IF
       sym USIG-NEWEST-VISIBLE 0 <> IF sym RES-TRUE EXIT THEN
       a u CHECKER-QUALIFIED? 0= IF
-         a u 0 CK-WL-CLAIMS? IF sym RES-TRUE EXIT THEN
+         a u BOOT:GLOBAL-WL CK-WL-CLAIMS? IF sym RES-TRUE EXIT THEN
       THEN
    THEN
    WALK-REC @ IF sym RES-TRUE EXIT THEN
@@ -18287,8 +18281,8 @@ CHECKER-REG:}SCRATCH
 : SCOPE-CODE-KIND ( n -- n ) scope-kind? ;
 : SCOPE-SYM-WID ( n -- n ) {: sym:n :}
    sym SYM-PKG$ {: pkg:ptr pkgu:n :}
-   pkgu 0= IF 0 EXIT THEN
-   pkg pkgu -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, loaded after checker.f
+   pkgu 0= IF BOOT:GLOBAL-WL EXIT THEN
+   pkg pkgu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF -1 EXIT THEN
    sym SYM-ROW SYM.VIS @ SYM-PUBLIC = IF rec @ EXIT THEN
    sym SYM-ROW SYM.VIS @ SYM-PRIVATE = IF rec CELL + @ EXIT THEN
@@ -18311,7 +18305,7 @@ CHECKER-REG:}SCRATCH
 \ holds the tail - always, while the owner is not a package yet. An owner that
 \ defines the tail itself is typing its own word, not a global one.
 : PE-GLOBAL-REACH? ( n -- bool ) {: sym:n :}
-   sym SYM-PKG$ -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}  \ DICT-WL:NAMESPACE, as SCOPE-SYM-WID
+   sym SYM-PKG$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF RES-TRUE EXIT THEN
    sym SYM-NAME$ rec @ CHECKER-RESOLVE:WL-PROBE NULL-PTR <> IF RES-FALSE EXIT THEN
    rec CELL + @ {: pri:n :}
@@ -21925,44 +21919,32 @@ REG-PROTECT
 REG-PROTECT
 
 
-\ TRUST: declare a word's effect without checking its body (TRUSTED:). Callers
-\ are checked against the declared sig.  Usage:  s" myword" s" n n -- n" trust
-\ A row CLAIMS that a word exists, so the engine's dictionary answers it, not
-\ the checker's tables: asked through `search-wl` (which hides internal rows,
-\ src/habu/habu1.f BSWL) in the wordlist the row's record lands in, for a bare
-\ name the open section's or the global one outside a package
-\ (TRUST-RECORD-WL), for PKG:TAIL the package's public one. Not the whole scope
-\ chain: a global claimed from inside a package would record on a package
-\ symbol the engine never defined. The checker's tables answer what a word's
-\ effect is, and a row naming a word with no effect yet is the ordinary case.
-\ A replay is asked the same way: inside the verifier window the overlay points
-\ the engine's package record at the replayed package and publishes each
-\ certified definition into its wordlist (CHECKER-OVERLAY).
-\ A qualified spelling lands on PKG's public symbol (CHECKER-RECORD-NAME), found
-\ as the engine's FIND finds it (habu1.f EMIT-FIND, FIND-QTAILOK): a package's
-\ namespace row sits in DICT-WL:NAMESPACE, -1 (src/habu/layout.f, loaded after
-\ this file), and its code cell is the package's public wid. No package answers
-\ 0, which must not reach CK-WL-CLAIMS? as the global wordlist. A private tail
-\ is in no public wordlist and is refused as a missing one is. A malformed token
-\ is asked as a bare one, which no wordlist claims; where nothing is asked,
-\ CHECKER-RECORD-NAME refuses it as malformed.
+\ The wordlist a bare row's record lands in: the open section's, or the global
+\ one outside a package.
 : TRUST-RECORD-WL ( -- n )
    CHECKER-AUTH-PACKAGE-MODE@ {: mode:n :}
    mode CHECKER-PACKAGE-PRIVATE = IF data-base CK-PKG-PRI-OFF + @ EXIT THEN
    mode CHECKER-PACKAGE-PUBLIC = IF data-base CK-PKG-PUB-OFF + @ EXIT THEN
-   0 ;
+   BOOT:GLOBAL-WL ;
 
+\ PKG:TAIL is asked in PKG's public wordlist, as the engine's FIND asks it
+\ (habu1.f FIND-QTAILOK); a missing package's 0 must not be asked as a wordlist.
 : TRUST-PUBLIC-CLAIMS? ( ptr u8 n ptr u8 n -- bool )
    {: pa:ptr pu:n ta:ptr tu:n :}
-   pa pu -1 search-wl {: wid:n :}
+   pa pu BOOT:NAMESPACE-WL search-wl {: wid:n :}
    wid 0= IF RES-FALSE EXIT THEN
    ta tu wid CK-WL-CLAIMS? ;
 
+\ The engine answers, as a row's word ordinarily has no effect yet, in the one
+\ wordlist the record lands in: a scope-chain hit could name a package symbol
+\ never defined. A malformed token is asked bare and no wordlist claims it.
 : TRUST-RESOLVES? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ TRUST-PUBLIC-CLAIMS? EXIT THEN
    a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
 
+\ Declare a word's effect without checking its body (TRUSTED:); callers are
+\ checked against it. Usage: s" myword" s" n n -- n" trust
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
@@ -22133,10 +22115,10 @@ variable PIMM-N
    {: ord:n sym:n :}
    sym 0= ord 0 < or ord ndict@ >= or IF 0 RES-FALSE EXIT THEN
    ord CHECKER-RESOLVE:REC-AT {: rec:ptr :}
-   rec CK-REC-WID 0= 0= IF 0 RES-FALSE EXIT THEN
+   rec CK-REC-WID BOOT:GLOBAL-WL <> IF 0 RES-FALSE EXIT THEN
    sym SYM-NAME$ {: tail:ptr tailu:n :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ tail tailu SYM-STR=CI 0= IF 0 RES-FALSE EXIT THEN
-   tail tailu 0 CHECKER-RESOLVE:WL-PROBE rec <> IF 0 RES-FALSE EXIT THEN
+   tail tailu BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE rec <> IF 0 RES-FALSE EXIT THEN
    \ An ELAB primitive has a specification row but no PE effect row. Its
    \ actual seeded binding must still be the one this source scope selects.
    sym PRIM-FIRST-IDX dup 0= IF
@@ -22395,10 +22377,10 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ PKG's public record of PKG:TAIL, else the global record of the tail or bare name.
 : VIS-ENGINE-REC ( ptr u8 n -- ptr n )
    {: a:ptr u:n :}
-   a u CHECKER-QUALIFIED? 0= IF a u 0 CHECKER-RESOLVE:WL-PROBE EXIT THEN
+   a u CHECKER-QUALIFIED? 0= IF a u BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE EXIT THEN
    TOP-PUBLIC-REC {: rec:ptr :}
    rec NULL-PTR <> IF rec EXIT THEN
-   CHECKER-QTAIL$ 0 CHECKER-RESOLVE:WL-PROBE ;
+   CHECKER-QTAIL$ BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE ;
 
 \ The selections, each with the symbol, its newest visible record+1 and the
 \ dictionary record it binds. A top-level token binds as CHECKER-TOP-SYM
@@ -22576,7 +22558,7 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    a u CHECKER-COLON-SCAN {: cn:n ci:n :}
    cn 0= IF a u EXIT THEN
    a ci + 1 + u ci - 1 - {: ba:ptr bu:n :}
-   a u -1 CHECKER-RESOLVE:WL-PROBE {: part:ptr :}
+   a u BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: part:ptr :}
    part NULL-PTR <>  ba bu CHECKER-RESOLVE:HEAD-ROW part =  and IF ba bu EXIT THEN
    a 0 ;
 
@@ -22606,11 +22588,11 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    a u VIS-PKG? 0= IF EXIT THEN
    a u wid VIS-WL ;
 
-\ Every package's public records, from the namespace wordlist's (-1) records.
+\ Every package's public records, from the namespace wordlist's records.
 : VIS-PACKAGES ( -- )
    ndict@ 0 ?do
       i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
-      rec CK-REC-WID -1 = IF rec VIS-PACKAGE THEN
+      rec CK-REC-WID BOOT:NAMESPACE-WL = IF rec VIS-PACKAGE THEN
    loop ;
 
 \ Local IX as itself, unlocated, unless an earlier local gave its spelling.
@@ -24615,13 +24597,12 @@ ASIG-GRAPH-CHECK-INSTALL
    CK-GRAPH-THROW
    1 CK-AOT-STATE ! RES-TRUE ;
 
-\ Resolve a validated row's complete capture key in the live dictionary. The
-\ namespace supplies its explicit public or private wordlist; a global row
-\ uses wordlist zero. This probe publishes no checker symbol or effect.
+\ A validated capture row's wordlist in the live dictionary: its namespace's
+\ public or private one, or the global one. Publishes no symbol or effect.
 : CK-AOT-ROW-WID ( n -- n ) {: r:n :}
    r 12 CK-AOT-FIELD {: vis:n :}
-   vis SYM-GLOBAL = IF 0 EXIT THEN
-   r 8 CK-AOT-FIELD CK-AOT-STR$ -1 CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
+   vis SYM-GLOBAL = IF BOOT:GLOBAL-WL EXIT THEN
+   r 8 CK-AOT-FIELD CK-AOT-STR$ BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
    ns NULL-PTR = IF -1 EXIT THEN
    vis SYM-PUBLIC = IF ns @ ELSE ns CELL + @ THEN
    dup 0= IF drop -1 THEN ;
@@ -25141,7 +25122,7 @@ RWIN-DEFAULT
 
 : RWIN-NS ( ptr u8 n ptr u8 n n n -- n n n )
    {: spell:ptr su:n pkg:ptr pu:n role:n ord:n :}
-   pkg pu -1 CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   pkg pu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec RWIN-NS-SHAPE {: shape:n :}
    ord role rec CHECKER-RESOLVE:REC>INDEX shape spell su pkg pu RWIN-ADD
    rec NULL-PTR = IF -1 -1 shape EXIT THEN
@@ -25172,7 +25153,7 @@ RWIN-DEFAULT
       CHECKER-RESOLVE:AUTHORITY {: open:ptr ou:n mode:n ok:bool :}
       ok mode CHECKER-PACKAGE-NONE <> and
       open ou pkg pu CORE-STR=CI and IF
-         spell su s" " name nu CHECKER-RESOLUTION:GLOBAL 0 0 ord RWIN-CAND
+         spell su s" " name nu CHECKER-RESOLUTION:GLOBAL BOOT:GLOBAL-WL 0 ord RWIN-CAND
       THEN
       EXIT
    THEN
@@ -25197,7 +25178,7 @@ RWIN-DEFAULT
          {: pub:n pri:n shape:n :}
       spell su ua uu folded fu CHECKER-RESOLUTION:USING-PUBLIC pub shape ord RWIN-CAND
    LOOP
-   spell su s" " folded fu CHECKER-RESOLUTION:GLOBAL 0 0 ord RWIN-CAND ;
+   spell su s" " folded fu CHECKER-RESOLUTION:GLOBAL BOOT:GLOBAL-WL 0 ord RWIN-CAND ;
 
 : RWIN-SOURCE ( ptr u8 n ptr u8 n -- )
    {: folded:ptr fu:n spell:ptr su:n :}
@@ -31538,7 +31519,7 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
    {: rec:ptr ns:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
    rec CK-REC-WID {: wid:n :}
-   wid 0= IF a u CHECKER-GLOBAL-SYM EXIT THEN
+   wid BOOT:GLOBAL-WL = IF a u CHECKER-GLOBAL-SYM EXIT THEN
    ns NULL-PTR <> IF
       wid ns CK-NS-PUBLIC-SLOT cells + @ = IF
          ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC a u CHECKER-PKG-SYM EXIT
@@ -31591,10 +31572,10 @@ CLAIM-COLD-SOURCE
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF s" checker: nominal provider has no live record" 76 die THEN
-   wid 0= IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
+   wid BOOT:GLOBAL-WL = IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    ndict@ 0 ?DO
       i CHECKER-RESOLVE:REC-AT {: ns:ptr :}
-      ns CK-REC-WID -1 = IF
+      ns CK-REC-WID BOOT:NAMESPACE-WL = IF
          wid ns @ = IF
             ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC name nameu CHECKER-PKG-SYM
             UNLOOP EXIT
