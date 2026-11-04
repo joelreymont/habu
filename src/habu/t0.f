@@ -1966,7 +1966,8 @@ variable SCAN-LO                     \ the ordinal of its first row
    {: kind:body :}
    kind COMP-BODY:value COMP-BODY:EQ
    kind COMP-BODY:address COMP-BODY:EQ or
-   kind COMP-BODY:defer COMP-BODY:EQ or ;
+   kind COMP-BODY:defer COMP-BODY:EQ or
+   kind COMP-BODY:cast COMP-BODY:EQ or ;
 
 : FIXED-BODY ( -- )
    FIXED-VAL @ {: val:n :}
@@ -1981,7 +1982,7 @@ variable SCAN-LO                     \ the ordinal of its first row
          SPILL-ALL  ['] execute XT>N 0 EMIT-CALL
          EMIT-RETURN  EMIT-CLOSE
       ENDOF
-      cast OF E-COMP-STATE throw ENDOF
+      cast OF EMIT-RETURN  EMIT-CLOSE ENDOF
    ;MATCH ;
 
 : FIXED-LOWER ( -- )

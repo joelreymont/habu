@@ -38,8 +38,8 @@ variable TOK-BODY-RAW
 71 constant DEF-RC-BODY-FULL     \ habu2.f EM-BODY-CAP-DIE: the body capture is full
 72 constant DEF-RC-PD-FULL       \ habu2.f C-PD-DIE-FULL: no pending slot holds the defer
 
-\ def-open, body-append, created-sig!, def-close, def-abort, def-cast,
-\ imm-mark and min-in-mark are OUTER's own rows (src/habu/prims.f), called
+\ def-open, body-append, created-sig!, def-close, def-abort, imm-mark and
+\ min-in-mark are OUTER's own rows (src/habu/prims.f), called
 \ below by name. trust-sig! has none: it is the `trusted:`, `cast:`,
 \ `linear:` and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
@@ -62,7 +62,7 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 \ A head at tier 0 with no tier-0 compiler (TIER-CELL and COMP-CELL 0), or a
 \ body token or fixed body latched to the JIT, refuses: this loop cannot call
-\ the JIT. `cast:`, `linear:`, `immediate` pass.
+\ the JIT. `immediate` passes.
 : DEF-TIER-0 ( -- )
    s" hb: tier 0 is not in the Habu loop: " ERROR-TEXT:TYPE
    DEF-RC-TIER-0 PKG-FAIL ;
@@ -818,13 +818,9 @@ variable DEF-VALUE
    s" constant" DEF-HOOK
    s" -- a" DEF-RAW-PUBLISH ;
 
-\ The engine's twins: habu2.f C-CAST and C-IDENTITY.
-\ `cast: NAME ( in -- out )` declares a retype, and `linear: NAME ( in -- out )`
-\ a linear one. Neither has a body or a `;`, so each completes where its
-\ keyword is read, at any tier: the checker's registrar proves the row legal
-\ and records it, def-cast publishes the empty checked body as the identity,
-\ and the record facts the registrar latched go into the record. Nothing calls
-\ the def hook.
+\ The engine's twins: habu2.f C-CAST and C-IDENTITY. `cast:` and `linear:` have
+\ no body or `;`: each completes where its keyword is read, at either tier with
+\ a compiler latched (DEF-FIXED refuses latch 0), and calls no def hook.
 
 \ With the input at its end the refusal names the keyword as spelled, at the
 \ end's line (habu2.f C-CAST-DIE-NO-NAME).
@@ -848,7 +844,7 @@ variable DEF-VALUE
 \ the target owner's unless the active owner holds the same one; a missing
 \ owner or registrar is skipped
 \ (habu2.f DEF-TRUST:REGISTER-IDENTITY). A row the checker refuses throws
-\ before def-cast counts the record, so no callable name is left.
+\ before DEF-FIXED counts the record, so no callable name is left.
 : DEF-REGISTER-IDENTITY ( ptr u8 n n -- ) {: sig:ptr su:n off:n :}
    NCOMP-DISPATCH:DECL-A off PKG-OPERATION {: own:n :}
    own 0<> if sig su own DEF-DECLARE then
@@ -876,14 +872,14 @@ variable DEF-VALUE
 \ The keyword refuses a task's thread, then a full code space or dictionary,
 \ naming itself, then a missing name, as the engine's does. Its name folds
 \ apart from the def-cast row: a word spelled DEF-CAST here would shadow the
-\ row for every later body, and DEF-LINEAR's def-cast would read a cast head.
+\ row for every later body.
 : DEF-CAST-ROW ( -- )
    TASK-GUARD
    DEF-ROOM
    DEF-CAST-NAME
    DEF-CAST-HEAD
    DEF-REGISTER-CAST
-   def-cast
+   0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
 \ A qualified linear name is refused by the certifier before DEF-QUALIFY can
@@ -909,7 +905,7 @@ variable DEF-VALUE
    s end DEF-SIG-INNER
    TSIG-A-CELL ADDR@ TSIG-U-CELL CELL@ NCOMP-DISPATCH:DECL-LINEAR-OFF
    DEF-REGISTER-IDENTITY
-   def-cast
+   0 COMP-BODY:cast DEF-FIXED  DEF-CLOSE
    DEF-CAST-FACTS ;
 
 \ The engine's twin: habu2.f C-DEFER.

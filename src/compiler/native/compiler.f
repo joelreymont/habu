@@ -535,6 +535,7 @@ $20 constant NAME-END
       MODEL DEFER-WORK
    else
       FIXED-MODULE
+      M-FIXED @ COMP-BODY:cast COMP-BODY:EQ if 1 M-IN ! then
       PUB-RAW M-PUB !
       EMITTED
    then
@@ -811,8 +812,7 @@ public
    [: LEASED-CHECKED ;] NLEASE:WITH ;
 
 : COMPILE-FIXED ( n COMP:body -- ) {: val:n kind:COMP:body :}
-   kind COMP-BODY:compiled COMP-BODY:EQ
-   kind COMP-BODY:cast COMP-BODY:EQ or if E-COMP-STATE throw then
+   kind COMP-BODY:compiled COMP-BODY:EQ if E-COMP-STATE throw then
    val kind [: FIXED-LEASED ;] NLEASE:WITH ;
 
 \ LCREATE has already published its ARM body.
