@@ -14,3 +14,5 @@ Lane K result 2026-11-04 (probes /tmp/carl-chat, GET only):
 - A queued response's stream carries only keepalives, about one every 33 s.
 - Responsible layer: MODEL has no bound on a whole call or on time in the queue (:180, :1683, :2352), so it never ends.
 - Lane K2 running (brief .out/carl-file/brief-chat-queue.md, scratch /tmp/carl-chat2): 16 tiny requests timing how long the provider holds each before starting, background vs held. It decides the fix, which goes to Joel because it touches his 2026-11-01 "background mode" choice.
+
+Fact for the fix (kevin, 2026-11-04 13:40): kevin cancelled resp_0eb6… and resp_009d… (now `cancelled`). Six calls killed by a signal (five score processes and pid 30572, killed at carl's word) each held a queued response whose id was never logged, because MODEL logs the id only on a fault (model.f:2808). The provider cannot list responses, so those six cannot be cancelled and may still run and bill. A call killed by a signal leaves its response unreachable unless the id is logged when the response is created.
