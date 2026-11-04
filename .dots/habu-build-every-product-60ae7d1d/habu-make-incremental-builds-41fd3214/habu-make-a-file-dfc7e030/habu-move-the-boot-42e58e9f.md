@@ -1,0 +1,9 @@
+---
+title: Move the boot cells into package BOOT
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-04T19:49:50.983185+02:00"
+---
+
+Problem: Joel 2026-11-04 (DECISIONS "how Habu builds Habu") chose "BOOT, fold BOOT-SRC (Recommended)": the header cells the boot writes (the heap start, the DP bounds, the wid cells and BOOT-SRC's USER-END) are package BOOT, in a file loaded before the checker so its readers (next dot) can serve checker.f. Today they are package BOOT-LAYOUT in src/habu/layout.f (:672-685) and package BOOT-SRC (:732-741), which loads after checker.f. Acceptance: a move, code carried as is; new file src/habu/boot-cells.f holds one package BOOT with HEAP-START-CELL, DP-FLOOR-CELL, DP-CEILING-CELL, GLOBAL-WL-CELL, NAMESPACE-WL-CELL and USER-END; it loads just before created-body-abi.f in every core list; every BOOT-LAYOUT:/BOOT-SRC: use becomes BOOT:; the data-claims label BOOT-SRC-USER-END becomes BOOT-USER-END; no other names, cleanups or behaviour change. The file name boot-cells.f is the lead's pick (Joel away 2026-11-04, Phil relayed "answer questions yourself"): it names what the file holds, beside created-body-abi.f, and the package name is Joel's. Not in this move: bootstrap/cg and tools/bootstrap.sh keep the old names; they are the Gforth chain, red on master, and become an acceptance case of habu-load-the-checker-c6592d11. Files: src/habu/boot-cells.f, src/habu/layout.f, the seven load lists and the rename sites in /tmp/jerry-big/bootmove-brief.md. Verify: that brief's proof (native build with a 3c host, seven focused tests, the wid probe, the x86-64 cross-build). Depends: habu-read-the-wid-47578423 (the lane's base). Ownership: the named files' BOOT-LAYOUT/BOOT-SRC sites. Claim: agent=worker workspace=.jj-ws.noindex/jerry-boot; brief /tmp/jerry-big/bootmove-brief.md.
