@@ -210,26 +210,22 @@ TYPED-VARIABLE HELD-ID n
    fresh PG:CLOSE ;
 
 
-\ AWAIT-READY, OPEN-POLL and RESULT-POLL run before the AIO loop starts: a single
-\ task advances both connections, and a progress call that waits cannot let that
-\ task release the lock. CHECK-PROGRESS also ends each turn of EXIT-CASES's wait,
-\ while the loop and the exit worker are active. A wait that passes its
-\ PROGRESS-NS deadline is no assertion result (docs/gate.md "How a suite runs,
-\ and what that demands of its files"): CHECK-PROGRESS names it and throws
-\ E-PROC-TIMEOUT, which the case engine exits with as PROC-TIMEOUT-RC (RUN).
+\ A wait past its PROGRESS-NS deadline is no assertion result (docs/gate.md "How
+\ a suite runs, and what that demands of its files").
 : CHECK-PROGRESS ( n -- )
    {: deadline:n :}
    mono-ns deadline > if s" pg-test CHECK-PROGRESS" TEST-WAIT:EXPIRED then
    TASK:PAUSE ;
 
+\ PROGRESS-CASES's one task advances both connections, so no progress call
+\ there may wait: a waiting call would keep that task from releasing the lock.
 : AWAIT-READY ( fd n n -- ) {: socket:fd events:n deadline:n :}
    begin
       socket events READY? if exit then
       deadline CHECK-PROGRESS
    again ;
 
-: OPEN-POLL ( -- PG:connection )
-   CONNINFO$ CONNECT-START {: c :}
+: POLL-CONNECTED ( PG:connection -- PG:connection ) {: c :}
    mono-ns PROGRESS-NS + {: deadline:n :}
    begin
       c PG:POLL MATCH PG:progress
@@ -240,6 +236,9 @@ TYPED-VARIABLE HELD-ID n
       ;MATCH
       deadline CHECK-PROGRESS
    again ;
+
+: OPEN-POLL ( -- PG:connection )
+   CONNINFO$ CONNECT-START POLL-CONNECTED ;
 
 : RESULT-POLL ( PG:connection -- PG:result ) {: c :}
    mono-ns PROGRESS-NS + {: deadline:n :}
@@ -256,8 +255,8 @@ TYPED-VARIABLE HELD-ID n
 : POLL-EXEC ( PG:connection ptr u8 n -- PG:result ) {: c a:ptr u:n :}
    c a u SEND c RESULT-POLL ;
 
-: BUSY-SEND ( PG:connection -- PG:connection )
-   dup s" select 2" SEND ;
+: SEND-SELECT ( PG:connection -- PG:connection )
+   dup s" select 1" SEND ;
 
 : PROGRESS-CASES ( -- )
    s" one task releases a lock another query is waiting for" T-LABEL
@@ -272,7 +271,7 @@ TYPED-VARIABLE HELD-ID n
       connected OF drop false ENDOF
       refused OF 2drop false ENDOF
    ;MATCH TTRUE
-   waiter [: BUSY-SEND ;] catch {: held code:n :}
+   waiter [: SEND-SELECT ;] catch {: held code:n :}
    code E-STATEMENT T=
    holder s" select pg_advisory_unlock(987654)::int" POLL-EXEC
    0 >ROW 0 >COL INT 1 T= CLEAR
@@ -284,7 +283,7 @@ TYPED-VARIABLE HELD-ID n
    waiter PG:CLOSE ;
 
 : SEND-REFUSED ( PG:connection -- PG:connection ) {: c :}
-   c [: BUSY-SEND ;] catch {: held code:n :}
+   c [: SEND-SELECT ;] catch {: held code:n :}
    code E-CAPACITY T=
    c ;
 
@@ -1480,16 +1479,21 @@ TASK:MIN-STACK TASK:TASK EXIT-WORKER
    c ;
 
 
-\ A server that never answers: the kernel completes the handshake from the
-\ listen backlog, so libpq sends its first packet and waits for a reply.
 $7F000001 constant LOOPBACK
-variable SILENT-PORT
+variable LISTENER-PORT
 TASK:MIN-STACK TASK:TASK SILENT-WORKER
 
+\ The server at LISTENER-PORT is the test itself, which answers no SSL or GSS
+\ request, so libpq sends neither.
+: LISTENER-CONNINFO$ ( -- ptr u8 n )
+   SB-RESET s" hostaddr=127.0.0.1 dbname=none user=none sslmode=disable gssencmode=disable port=" SB-APPEND
+   LISTENER-PORT @ FMT:SB-U
+   SB$ ;
+
+\ A server that never answers: the kernel completes the handshake from the
+\ listen backlog, so libpq sends its first packet and waits for a reply.
 : SILENT-CONNECT ( -- )
-   SB-RESET s" hostaddr=127.0.0.1 dbname=none user=none port=" SB-APPEND
-   SILENT-PORT @ FMT:SB-U
-   SB$ CONNECT MATCH PG:connect-result
+   LISTENER-CONNINFO$ CONNECT MATCH PG:connect-result
       connected OF PG:CLOSE ENDOF
       refused OF 2drop ENDOF
    ;MATCH
@@ -1501,14 +1505,14 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
       failed OF TCP4:ERRNO>N ENDOF
    ;MATCH ;
 
-: SILENT-LISTENER ( -- TCP4:listener )
+: LISTENER ( -- TCP4:listener )
    LOOPBACK TCP4:ADDRESS 0 TCP4:PORT TCP4:BIND MATCH TCP4:bind-result
       bound OF ENDOF
       failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
    ;MATCH
    dup 1 TCP4:LISTEN STATUS-ERRNO 0 T=
    dup TCP4:LOCAL MATCH TCP4:endpoint-result
-      endpoint OF TCP4:PORT>N SILENT-PORT ! drop ENDOF
+      endpoint OF TCP4:PORT>N LISTENER-PORT ! drop ENDOF
       failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
    ;MATCH ;
 
@@ -1534,7 +1538,7 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
 \ E-TASK-NO-RESULT. The last OPEN needs the slot the halted attempt held.
 : HALT-CONNECT-CASES ( -- )
    s" halt ends a connect the server never answers and frees its slot" T-LABEL
-   SILENT-LISTENER {: lis :}
+   LISTENER {: lis :}
    ['] SILENT-CONNECT SILENT-WORKER TASK:ACTIVATE
    lis AWAIT-QUEUED
    SILENT-WORKER TASK:HALT
@@ -1546,6 +1550,55 @@ TASK:MIN-STACK TASK:TASK SILENT-WORKER
    CONNECTIONS 1- 0 ?do OPEN i HELD-CONNS ! loop
    [: OPEN PG:CLOSE ;] catch 0 T=
    CONNECTIONS 1- 0 ?do i HELD-CONNS @ PG:CLOSE loop
+   lis TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
+
+
+\ A peer's replies: AuthenticationOk and ReadyForQuery, then a message whose
+\ length is under the four bytes of the length itself.
+20 BUFFER: PEER-BYTES
+15 constant STARTUP-LEN
+
+: FILL-PEER ( -- )
+   $52 PEER-BYTES c!  8 PEER-BYTES 4 + c!
+   $5A PEER-BYTES 9 + c!  5 PEER-BYTES 13 + c!  $49 PEER-BYTES 14 + c!
+   $43 PEER-BYTES STARTUP-LEN + c! ;
+
+: ACCEPT-PEER ( TCP4:listener -- TCP4:connection ) {: lis :}
+   mono-ns PROGRESS-NS + {: deadline:n :}
+   begin
+      lis TCP4:PENDING? MATCH TCP4:ready-result
+         ready OF true ENDOF
+         idle OF false ENDOF
+         failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
+      ;MATCH
+   0= while
+      deadline CHECK-PROGRESS
+   repeat
+   lis TCP4:ACCEPT MATCH TCP4:accept-result
+      accepted OF TCP4:PORT>N drop TCP4:ADDRESS>N drop ENDOF
+      failed OF TCP4:ERRNO>N drop E-EXEC throw ENDOF
+   ;MATCH ;
+
+: PEER-WRITE ( TCP4:connection ptr u8 n -- ) {: peer a u:n :}
+   peer a u TCP4:TRANSFER-BYTES TCP4:WRITE STATUS-ERRNO 0 T= ;
+
+\ libpq drops a connection whose reply breaks the protocol, so pg.f's next send
+\ on it is refused: E-EXEC, and the connection is closed with it.
+: REFUSED-SEND-CASES ( -- )
+   s" a send libpq refuses throws E-EXEC and closes the connection" T-LABEL
+   FILL-PEER
+   LISTENER {: lis :}
+   LISTENER-CONNINFO$ CONNECT-START {: c :}
+   lis ACCEPT-PEER {: peer :}
+   peer PEER-BYTES STARTUP-LEN PEER-WRITE
+   c POLL-CONNECTED drop
+   c s" select 1" SEND
+   peer PEER-BYTES STARTUP-LEN + 5 PEER-WRITE
+   c RESULT-POLL CLEAR
+   c [: SEND-SELECT ;] catch {: held code:n :}
+   code E-EXEC T=
+   c PG:LIVE? TFALSE
+   peer TCP4:CLOSE STATUS-ERRNO 0 T=
    lis TCP4:CLOSE-LISTENER STATUS-ERRNO 0 T= ;
 
 
@@ -1828,7 +1881,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
 
 : LOOP-CASES ( -- )
    CONNECT-CASES REFUSAL-TEXT-CASES CONNECT-TEXT-CASES CAPACITY-CASES IDENTITY-CASES
-   HALT-CONNECT-CASES AIO-FAIL-CASES SERVER-CASES ;
+   HALT-CONNECT-CASES REFUSED-SEND-CASES AIO-FAIL-CASES SERVER-CASES ;
 
 \ The AIO loop stops however LOOP-CASES ends. As under finally, a code from
 \ AIO:STOP replaces the cases' code, except a deadline's: with a deadline
