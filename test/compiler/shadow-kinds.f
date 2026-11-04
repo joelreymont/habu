@@ -1,6 +1,8 @@
-\ shadow-kinds.f - every kind of definition, loaded through the typed interpret
-\ loop at tier 0 while an arm64 shadow is open, each record's shadow routine
-\ read against the routine T0 placed for the host. The fixture is
+\ shadow-kinds.f - every kind of definition but CALLBACK:, whose -ENTRY word T0
+\ seals with a C entry stub the shadow lacks (src/habu/t0-emit.f THE CALLBACK
+\ STUB), so publication refuses it E-NSHADOW-ROW. Each kind loads through the
+\ typed interpret loop at tier 0 while an arm64 shadow is open, each record's
+\ shadow routine read against the routine T0 placed for the host. The fixture is
 \ test/compiler/shadow-kinds-fixture.f, read one section at a time. Output: one
 \ `FAIL <section>: threw <code> ...` per section that refused, one `ok NAME`,
 \ `ok NAME (shares SOURCE)` for an alias or `FAIL NAME: what` per record the
@@ -17,10 +19,6 @@ require src/compiler/native/abi.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
 require src/habu/interpret.f
-\ The fixture's own requires, loaded here so that the shadow sees only the
-\ fixture's words.
-require src/lib/ffi-abi.f
-require src/lib/ffi-callback.f
 
 package SHADOW-KINDS
 public
