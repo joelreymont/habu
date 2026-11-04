@@ -366,7 +366,6 @@ public
    LOCK [: UNLOCK ;] finally ;
 
 : REGISTERED-N ( -- n ) REG-U @ ;
-: DIRTY-N ( -- n ) REG-U @ ;
 
 \ The five cells these registries are, handed one at a time to the caller's
 \ claim. A fresh instance's zero (no mapping, no rows, no members, no live arena,
