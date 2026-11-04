@@ -18,6 +18,7 @@ package FS
 package FS-CAUSE-TEST
 
 22 constant DARWIN-EINVAL
+1 constant EPERM                    \ link(2) of a directory on macOS and Linux
 
 create ROOT-BUF PATH-CAP allot
 create PATH-BUF PATH-CAP allot
@@ -57,6 +58,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 : MISSING-LIST ( -- ) s" missing" PATH [: 2drop ;] FS-LIST:EACH ;
 : MISSING-STAT ( -- ) s" missing" PATH FS:STAT-MODE drop ;
 : MISSING-LSTAT ( -- ) s" missing" PATH FS:TRY-LSTAT drop ;
+: LINK-DIR ( -- ) ROOT$ s" link" PATH FS:MAKE-LINK ;
 : CALLBACK-FAIL ( ptr u8 n -- ) 2drop MISSING ;
 : CALLBACK-LIST ( -- ) ROOT$ [: CALLBACK-FAIL ;] FS-LIST:EACH ;
 
@@ -131,11 +133,23 @@ TASK:MIN-STACK TASK:TASK WORKER-B
       FS:ERRNO ENOTDIR T=
    then
    [: CALLBACK-LIST ;] E-FS-OPEN TTHROWSQ
-   FS:ERRNO ENOENT T= ;
+   FS:ERRNO ENOENT T=
+   [: LINK-DIR ;] E-FS-IO TTHROWSQ  FS:ERRNO EPERM T= ;
+
+\ The host's text for a real open failure's errno, the same on macOS and glibc.
+\ A second ERRNO$ replaces the first's text in the task's one buffer.
+: CHECK-TEXT ( -- )
+   [: MISSING ;] E-FS-OPEN TTHROWSQ  FS:ERRNO ENOENT T=
+   FS:ERRNO FS:ERRNO$ s" No such file or directory" T$=
+   FS:ERRNO ENOENT T=
+   100000 FS:ERRNO$ s" Unknown error" STARTS-WITH? TTRUE
+   ENOENT FS:ERRNO$ drop {: a:ptr :}
+   FS:EACCES FS:ERRNO$ {: v:n :} drop
+   a v s" Permission denied" T$= ;
 
 public
 : MAIN ( -- )
-   SETUP CHECK-OS CHECK-TASKS
+   SETUP CHECK-OS CHECK-TEXT CHECK-TASKS
    ROOT$ FS:REMOVE-TREE
    T-REPORT s" fs-cause-test: ok" type cr ;
 ;package

@@ -155,9 +155,11 @@ private
 : CLEANUP-RELEASE ( -- ) 0 CLEANUP-LOCK atomic! ;
 
 public
+\ A throw sets FS:ERRNO.
 : REMOVE-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u >PATHZ unlink 0 < if E-FS-IO throw then ;
 
+\ A throw sets FS:ERRNO.
 : RENAME-FILE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
    src srcu >PATHZ dst dstu >PATHZ2 rename 0 < if E-FS-IO throw then ;
 
@@ -178,20 +180,23 @@ FUNCTION: LINKAT-CALL linkat ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
    true ;
 
 public
+\ A throw sets FS:ERRNO.
 : CHMOD-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
    a u >PATHZ mode chmod 0 < if E-FS-IO throw then ;
 
+\ A throw sets FS:ERRNO.
 : CHMOD-X ( ptr u8 n -- ) {: a:ptr u :}
    a u STAT-MODE MODE-PERM and MODE-EXEC or {: mode :}
    a u mode CHMOD-MODE ;
 
+\ A throw sets FS:ERRNO.
 : MAKE-SYMLINK ( ptr u8 n ptr u8 n -- ) {: target:ptr targetu link:ptr linku :}
    target targetu >PATHZ link linku >PATHZ2 symlink 0 < if E-FS-IO throw then ;
 
-\ A hard link; an existing LINK is E-FS-IO, never replaced.
+\ A hard link; an existing LINK is E-FS-IO, not replaced. A throw sets FS:ERRNO.
 : MAKE-LINK ( ptr u8 n ptr u8 n -- )
    {: target:ptr targetu link:ptr linku :}
-   target targetu >PATHZ link linku >PATHZ2 LINK-CALL 0<> if E-FS-IO throw then ;
+   target targetu >PATHZ link linku >PATHZ2 LINK-CALL 0<> if E-FS-IO ERRNO-FAIL then ;
 
 private
 \ mkdir(2) is bound through libc, the way LINK-CALL binds link(2), so a
@@ -203,12 +208,15 @@ FUNCTION: MKDIR-CALL mkdir ( ptr u8 n -- i32 ) ;FUNCTION
    MKDIR-CALL 0= ;
 
 public
+\ A throw sets FS:ERRNO.
 : MKDIR-MODE ( ptr u8 n n -- ) {: a:ptr u mode :}
    a u >PATHZ mode MADE? 0= if E-FS-IO ERRNO-FAIL then ;
 
+\ A throw sets FS:ERRNO.
 : MAKE-DIR ( ptr u8 n -- )
    MODE-DIR MKDIR-MODE ;
 
+\ A throw sets FS:ERRNO.
 : REMOVE-DIR ( ptr u8 n -- ) {: a:ptr u :}
    a u >PATHZ rmdir 0 < if E-FS-IO throw then ;
 
@@ -310,13 +318,8 @@ private
    code 0<> if code throw then ;
 
 public
-\ Removes the tree at a, or unlinks a symlink a names without descending, a
-\ root spelled with a trailing slash included; a missing root is a no-op and
-\ any partial failure throws. Only the root path meets PATH-CAP: each entry
-\ below is named relative to its parent's descriptor, so only the descriptors
-\ the process may hold open bound the depth. Each call maps its own walk
-\ context, so two tasks remove two trees at once and a WALK-FILES callback
-\ removes a subtree.
+\ Removes the tree at a, unlinking a symlink root even with a trailing slash; a
+\ missing root is a no-op. Descriptors bound its depth. A throw sets FS:ERRNO.
 : REMOVE-TREE ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if CAUSE-CLEAR E-FS-PATH throw then
    a u WALK-HANDLE-BYTES MEM:BYTES-ALLOC-LEN [: REMOVE-SCOPE ;] MEM:WITH-BYTES ;
@@ -331,6 +334,7 @@ private
    a u DIR? 0= if E-FS-IO EEXIST CAUSE-FAIL then ;
 
 public
+\ A throw sets FS:ERRNO.
 : MAKE-DIRS ( ptr u8 n -- ) {: a:ptr u :}
    u 0 <= if CAUSE-CLEAR E-FS-PATH throw then
    1 begin dup u < while
@@ -516,6 +520,7 @@ private
    repeat drop ;
 
 public
+\ A throw sets FS:ERRNO.
 : ATOMIC-CLEAN-TEMP ( ptr u8 n -- ) {: temp:ptr tempu :}
    temp tempu PATH-COLLISION? if temp tempu REMOVE-FILE then ;
 
@@ -575,7 +580,6 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
 
 \ Host errnos: macOS sys/errno.h, Linux asm-generic/errno.h.
 9 constant EBADF
-22 constant EINVAL
 25 constant ENOTTY
 : ENOTSUP ( -- n )
    HB-TARGET-MACOS? if 45 else 95 then ;
@@ -731,10 +735,8 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    published ;
 
 public
-\ Create and open the unique `.tmp-*` sibling in path's directory, for a writer
-\ that streams its file or must finish it before RENAME-FILE publishes it.
-\ Answers the sibling's path, which stays this task's until its next
-\ reservation, and the descriptor. The caller owns both and the removal.
+\ Opens a new `.tmp-*` sibling of path, the caller's to remove; this task's next
+\ sibling, ATOMIC-WRITE-* or ATOMIC-TARGET ends its path. A throw sets FS:ERRNO.
 : RESERVE-SIBLING ( ptr u8 n -- ptr u8 n n ) {: path:ptr pathu :}
    pathu 0 < if CAUSE-CLEAR E-FS-PATH throw then
    path path pathu ATOMIC-BASE-OFF {: pre:ptr preu :}
@@ -748,23 +750,22 @@ public
    repeat drop
    E-FS-IO ERRNO-FAIL ;
 
-\ Replace path's file with src's bytes; a reader or crash sees the old or whole
-\ new file. On return it survives power loss (F_FULLFSYNC on macOS, else fsync)
-\ unless the directory is unlistable on Linux; E-FS-IO may follow the rename.
+\ Replace path's file with src's bytes; a reader or crash sees old or whole new,
+\ durable as ATOMIC-SYNC-DIR says. A throw, even past the rename, sets FS:ERRNO.
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu ATOMIC-SEED false false ATOMIC-WRITE-SEED drop ;
 
 
-\ ATOMIC-WRITE-FILE for a file only its owner may read: the sibling is created
-\ 0600 and the published file is 0600 whatever the destination held.
+\ ATOMIC-WRITE-FILE for a file only its owner may read: sibling and result are
+\ 0600 whatever the destination held. A throw sets FS:ERRNO.
 : ATOMIC-WRITE-PRIVATE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu ATOMIC-SEED true false ATOMIC-WRITE-SEED drop ;
 
 
 \ ATOMIC-WRITE-PRIVATE to a free name, else false, the entry untouched. A final
-\ symlink counts as its target, a dangling one E-FS-STAT.
+\ symlink counts as its target, a dangling one E-FS-STAT. A throw sets FS:ERRNO.
 : ATOMIC-CREATE-PRIVATE ( ptr u8 n ptr u8 n -- bool )
    {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu ATOMIC-SEED true true ATOMIC-WRITE-SEED ;
@@ -1115,17 +1116,8 @@ private
    2dup CLEANUP-FORGET ;
 
 public
-\ Replace the file at path with the one fill writes at the path it is handed:
-\ the sibling FS:RESERVE-SIBLING creates, its descriptor closed, renamed over
-\ path once fill returns. Until then path holds what it held, so it names its
-\ old file or the whole new one. The sibling is registered for removal at exit
-\ while it is held, so a throw from fill or the rename, or a `die` in fill,
-\ takes it with it; only a killed process leaves one behind. A refused
-\ registration refuses the claim, and the sibling goes then. fill must not
-\ reserve a sibling of its own (ATOMIC-WRITE-FILE does): FS:RESERVE-SIBLING's
-\ path is this task's only until its next reservation.
-\ A caller may pass context below path; fill must return that context unchanged
-\ in shape. It can carry typed pointers and complete layout values directly.
+\ Renames the sibling fill writes over path, or removes it on a throw or `die`;
+\ fill must not end RESERVE-SIBLING's path. Throws set FS:ERRNO or keep fill's.
 : REPLACE-STAGED ( R ptr u8 n [ R ptr u8 n -- R ] -- R )
    {: path:ptr pathu fill :}
    path pathu RESERVE-SIBLING {: tmp:ptr tmpu fd :}

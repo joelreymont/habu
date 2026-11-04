@@ -114,7 +114,8 @@ The second command builds the ordinary sealed product and its matching `.map`.
 The first runs on the older host with that host's baked files, so a file the
 build driver loads from disk may name only words those baked files define: a
 new public word in `src/habu/xref.f` or a new `src/habu/layout.f` constant
-named by `src/habu/aot-capture.f` stops the stage with `E-UNDEFINED`.
+named by `src/habu/aot-capture.f` or by `src/lib/fs.f` (`FS-ABI:TEXT-OFF`;
+`tools/native-build-deps.f` loads fs.f) stops the stage with `E-UNDEFINED`.
 
 An older native host cannot build a tree whose disk sources need what the host
 does not supply: a primitive such as `scratch-cell-mark`, which
@@ -223,6 +224,20 @@ from matching source rather than use a saved writer from the previous layout.
 Run `test/native-layout-transition.f` with a saved same-machine donor whose
 reserved layout differs to check the first product, and check multi-generation
 convergence when codegen, self-hosting or capture changes require it.
+
+A per-task band that grows while a file the build tool loads from disk reads
+it, as `src/lib/fs.f` reads FS-ABI, is not built that way from the previous hb:
+its `tools/hb-build.f -- --engine` on a tree whose band is larger stops with
+E-FS-OPEN, rc 74. Build it in stages:
+1. On the previous hb, build a stage engine by `tools/hb-build.f -- --engine`
+   from the tree with the band's new constants declared but its size
+   unchanged. That engine is a build host only: its new member overlaps the
+   next band.
+2. On the stage engine, from the tree itself, stage a whitebox by the
+   compiler-preload route above ("No-Binary Recovery").
+3. Build an engine on the whitebox by `tools/hb-build.f -- --engine`, then each
+   next engine on the last, until two successive engines are the same image
+   (CODESIGN:SAME-IMAGE?).
 
 ## DDC Audit (Diverse Double-Compiling)
 

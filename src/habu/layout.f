@@ -1513,11 +1513,12 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 ;package
 
 \ FS-ABI is src/lib/fs.f's per-call slots: one cause cell and the five cells one
-\ transfer threads, the stat buffer, the one-byte read probe and the NUL-padded
-\ path copy. fs.f is not baked, but tools/native-build-core.f requires it to
-\ build the engine, and a require of src/lib/task.f there would load the task
-\ runtime into the build tool ahead of its target: a module the engine's build
-\ needs takes a declared band too.
+\ transfer threads, the stat buffer, the one-byte read probe, the NUL-padded
+\ path copy and FS:ERRNO$'s text. 64 text bytes hold every errno's text on
+\ macOS (the longest is 47 bytes) and glibc (49). fs.f is not baked, but
+\ tools/native-build-core.f requires it to build the engine, and a require of
+\ src/lib/task.f there would load the task runtime into the build tool ahead of
+\ its target: a module the engine's build needs takes a declared band too.
 \
 \ The product image tools/native-build.f emits carries this file's constants and
 \ src/lib/errors.f's codes from the tree it was built in. fs.f loads from source
@@ -1529,14 +1530,15 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ The walk state is not here: fs.f maps a context per FS:WALK-FILES,
 \ FS:WALK-FILES-IF or FS:REMOVE-TREE call, so two tasks walk at once.
 \
-\ Sized as FMT-ABI: the five cells at the band base, then the buffers.
+\ Sized as FMT-ABI: IO-CELLS cells at the band base, then the buffers.
 package FS-ABI
 public
 6 constant IO-CELLS                    \ ERRNO, IO-FD, IO-LEN, IO-RD, IO-OFF, IO-WR
 256 constant STAT-BYTES                \ src/lib/fs.f STAT-CAP
 1 constant PROBE-BYTES                 \ src/lib/fs.f READ-PROBE-CAP
 PATH-CAP 1 + constant PATHZ-BYTES       \ src/lib/fs.f FS:PATHZ-CAP
-IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + constant MEMBER-BYTES
+64 constant TEXT-BYTES                 \ src/lib/fs.f TEXT-CAP
+IO-CELLS cells STAT-BYTES + PROBE-BYTES + PATHZ-BYTES + TEXT-BYTES + constant MEMBER-BYTES
 MEMBER-BYTES 7 + 8 / 8 * constant BYTES     \ the band base is a cell boundary
 FMT-ABI:START constant END
 END BYTES - constant START
@@ -1549,6 +1551,7 @@ OFF-OFF 8 + constant WR-OFF
 WR-OFF 8 + constant STAT-OFF
 STAT-OFF STAT-BYTES + constant PROBE-OFF
 PROBE-OFF PROBE-BYTES + constant PATHZ-OFF
+PATHZ-OFF PATHZ-BYTES + constant TEXT-OFF
 ;package
 
 \ FS-MUT-ABI is src/lib/fs-mutate.f's per-call path scratch: the second

@@ -1,6 +1,6 @@
 \ fs.f - checked filesystem helpers.
 \ STORAGE CLASS. TASK-LOCAL: the per-call slots, the FS cause, PATHZ-BUF,
-\ STAT-BUF and the read probe are the FS-ABI band of the per-task DATA region
+\ STAT-BUF, the read probe and ERRNO$'s text are the FS-ABI band of the per-task DATA region
 \ (src/habu/layout.f). The data buffers READ-ALL and WRITE-ALL take are
 \ CALLER-OWNED. Each walk (WALK-FILES, WALK-FILES-IF, fs-mutate.f REMOVE-TREE)
 \ maps a context of its own for one call and releases it on return or throw.
@@ -21,6 +21,7 @@ PATH-CAP 1 + constant PATHZ-CAP
 private
 4096 constant DIR-CAP
 256 constant STAT-CAP
+64 constant TEXT-CAP
 4 constant STAT-MODE-OFF
 48 constant STAT-MTIME-SEC-OFF
 56 constant STAT-MTIME-NS-OFF
@@ -76,15 +77,8 @@ private
    HB-TARGET-MACOS? if 62 else 40 then ;
 
 public
-\ The positive host errno the last filesystem primitive in this task saved.
-\ Read it at once after catching an E-FS-* or E-FS-LIST-* throw: any later
-\ primitive, even a successful one or a nested call, replaces it. Zero means a
-\ semantic refusal (path capacity, a malformed path). It covers fs.f,
-\ fs-list.f, fs-anchored.f and fs-mutate.f's REMOVE-TREE, MKDIR-MODE, MAKE-DIR,
-\ MAKE-DIRS, ATOMIC-WRITE-FILE, ATOMIC-WRITE-PRIVATE, ATOMIC-CREATE-PRIVATE,
-\ FS:RESERVE-SIBLING and REPLACE-STAGED, whose cleanup after a failure keeps the
-\ first failure's cause; the identity, lock and other mutation helpers do not
-\ set it. The throws stay the primary contract.
+\ Read at once after an E-FS-* or E-FS-LIST-* throw from fs.f, fs-list.f, fs-anchored.f or
+\ an fs-mutate.f word that says so: the throw's host errno, or 0 for a semantic refusal.
 : ERRNO ( -- n )
    data-base FS-ABI:ERRNO-OFF + @ ;
 
@@ -98,7 +92,44 @@ FUNCTION: FSTAT-CALL fstat ( n ptr u8 -- i32 )
    1 STAT-CAP WRITES-BYTES
 ;FUNCTION
 
+\ XSI strerror_r is `strerror_r` on macOS and `__xpg_strerror_r` on glibc,
+\ whose `strerror_r` is the GNU form answering a pointer. Declaring the other
+\ target's symbol is harmless: a row resolves its symbol at its first call.
+FUNCTION: STRERROR-CALL strerror_r ( n ptr u8 n -- i32 )
+   1 2 WRITES-ARG
+;FUNCTION
+FUNCTION: XPG-STRERROR-CALL __xpg_strerror_r ( n ptr u8 n -- i32 )
+   1 2 WRITES-ARG
+;FUNCTION
+
+22 constant EINVAL
+34 constant ERANGE
+
+: STRERROR ( n ptr u8 n -- n )
+   HB-TARGET-MACOS? if STRERROR-CALL exit then
+   XPG-STRERROR-CALL ;
+
+: NUL-AT ( ptr u8 n -- n )
+   {: buf:ptr u:n :}
+   u 0 ?do buf i + c@ 0= if i unloop exit then loop
+   u ;
+
+: TEXT-BUF ( -- ptr u8 )
+   data-base FS-ABI:TEXT-OFF + BYTE-VIEW ;
+
 public
+\ Errno n's host text without its NUL, valid until this task's next ERRNO$;
+\ ERRNO unchanged. Text and NUL over TEXT-CAP: E-SPAN-CAPACITY, never cut.
+: ERRNO$ ( n -- ptr u8 n )
+   {: e:n :}
+   TEXT-BUF {: buf:ptr :}
+   e buf TEXT-CAP STRERROR {: rc:n :}
+   rc ERANGE = if E-SPAN-CAPACITY throw then
+   buf TEXT-CAP NUL-AT {: len:n :}
+   \ An unknown errno answers EINVAL with a text the host cuts silently.
+   rc EINVAL = if len 1+ TEXT-CAP >= if E-SPAN-CAPACITY throw then then
+   buf len ;
+
 : CAUSE-CLEAR ( -- )
    0 data-base FS-ABI:ERRNO-OFF + ! ;
 
@@ -109,12 +140,13 @@ private
 \ tools/native-build-core.f requires this file, and a `require src/lib/task.f`
 \ here would load the task runtime into the build tool. A region is a fresh
 \ zeroed mapping, so a new task's cells start at zero. layout.f loads before
-\ this file and cannot see STAT-CAP, READ-PROBE-CAP or PATHZ-CAP, so BAND-AGREE
-\ checks those widths once at load.
+\ this file and cannot see STAT-CAP, READ-PROBE-CAP, PATHZ-CAP or TEXT-CAP, so
+\ BAND-AGREE checks those widths once at load.
 : BAND-AGREE ( -- )
    STAT-CAP FS-ABI:STAT-BYTES <> if E-FS-BAND throw then
    READ-PROBE-CAP FS-ABI:PROBE-BYTES <> if E-FS-BAND throw then
-   PATHZ-CAP FS-ABI:PATHZ-BYTES <> if E-FS-BAND throw then ;
+   PATHZ-CAP FS-ABI:PATHZ-BYTES <> if E-FS-BAND throw then
+   TEXT-CAP FS-ABI:TEXT-BYTES <> if E-FS-BAND throw then ;
 BAND-AGREE
 
 : IO-FD ( -- ptr n )
