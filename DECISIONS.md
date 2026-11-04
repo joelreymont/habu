@@ -481,6 +481,15 @@ learned live in the docs for their subject.
   settings from environment variables, he chose "New Maki config file": the
   runner count is a setting in a new Maki config file that takes all of
   Maki's settings, and Habu gets no host-size words.
+- 2026-11-04, Maki's file store (relayed by tim): Maki writes an upload,
+  syncs it and renames it into place before the PostgreSQL row naming it
+  commits, and after a crash cuts a file back to its last committed part.
+  Asked to add FD:SYNC ( fd -- ), fsync for a file or a directory, plain
+  fsync on macOS as PostgreSQL's default is, Joel chose "Add FD:SYNC
+  (Recommended)". Asked to add FD:RESIZE ( fd n -- ), ftruncate, replacing
+  fs-mutate's private binding (TRUNCATE is a global word), Joel chose "Add
+  FD:RESIZE (Recommended)". No write-at-offset word: cutting back and
+  appending covers the case.
 - 2026-11-01, sealing a package: Maki needs a package closed so later
   source cannot reopen it. Offered a new word, Joel answered "we already have
   package sealing, prove me wrong!". Measured: `private get-current
