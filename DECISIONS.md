@@ -635,7 +635,13 @@ learned live in the docs for their subject.
   running hb's own strings move onto this one, he chose "Prohibit
   (Recommended)": while a build's data space is open the table only adds,
   and if HERE moved back the build fails at its next string. He named that
-  error E-INTERN-REWIND.
+  error E-INTERN-REWIND. Shown that a build's string table outlives its data
+  space, so a second build the OS maps at the same address could find the
+  first build's strings at addresses it has since filled with other data, and
+  asked to name the word a build's close calls to drop that table, Joel asked
+  "is there a better name for SPACE here?" and "why not INTERN:RELEASE?", then
+  wrote "better yet, INTERN:CLEANUP": `INTERN:CLEANUP ( -- )` frees the
+  table of the build whose space is closing.
 - 2026-11-03, the callback package: asked what the callback library's
   package FFI-CB should become, and shown that FFI is built into hb and sealed
   there, so a library loaded later cannot add words to it, Joel first chose
