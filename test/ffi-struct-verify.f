@@ -1,9 +1,10 @@
-\ ffi-struct-verify.f - tools/check.f --verify-only reads FUNCTION:'s struct
-\ clauses. Loaded by src/lib/ffi-test.f on macOS arm64, inside package FFI-TEST.
-\ Each declaration is its own source checked by a child tools/check.f, which
-\ stops at its first refusal. Sources select PROCESS-SYMBOLS (LIBRARY leaves the
-\ rest of its file to the run and would hide the clauses) and name no defined
-\ symbol, so a clean certify shows the check resolves none.
+\ ffi-struct-verify.f - CHECK:VERIFY-BYTES, the check of tools/check.f
+\ --verify-only, reads FUNCTION:'s struct clauses. Loaded by src/lib/ffi-test.f
+\ on macOS arm64, inside package FFI-TEST. Each declaration is its own source,
+\ checked in a verifier child that stops at its first refusal. Sources select
+\ PROCESS-SYMBOLS (LIBRARY leaves the rest of its file to the run and would
+\ hide the clauses) and name no defined symbol, so a clean certify shows the
+\ check resolves none.
 
 : FFI-SV-HEAD$ ( -- ptr u8 n )
    S\" require src/lib/ffi-abi.f\nPROCESS-SYMBOLS\n24 constant FFI-SV-W\n" ;
@@ -13,16 +14,41 @@
    E2E-TREE:ROOT$ FS:CLEANUP-TREE+ ;
 
 
-: FFI-SV-CHECK ( -- )
-   s" test/ffi-sv.f" E2E-TREE:AT-A SB$ FS:WRITE-ALL
-   s" tools/check.f" E2E-TREE:ARGS
-   s" --" >LEN PROC-ARGV+
-   s" --verify-only" >LEN PROC-ARGV+
-   s" test/ffi-sv.f" >LEN PROC-ARGV+
-   ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON ;
+\ The source under check, copied out of SB, which the verifier also uses.
+DYNAMIC-BUFFER FFI-SV-SRC u8
+variable FFI-SV-SRC-U
+\ A deadlock guard, as CHECK-VERIFY-TEST GUARD-MS.
+60000 constant FFI-SV-MS
+
+: FFI-SV-SRC$ ( -- ptr u8 n )
+   0 FFI-SV-SRC FFI-SV-SRC-U @ ;
+
+\ Write the source where the load children read it.
+: FFI-SV-WRITE ( -- )
+   s" test/ffi-sv.f" E2E-TREE:AT-A FFI-SV-SRC$ FS:WRITE-ALL ;
+
+\ 0 verified, 1 refused, 2 any other verdict.
+: FFI-SV-KIND ( CHECK:verdict -- n )
+   MATCH CHECK:verdict
+      verified OF 0 ENDOF
+      refused OF 1 ENDOF
+      engine-provided OF 2 ENDOF
+      held OF 2 ENDOF
+      incomplete OF {: status :} 2 ENDOF
+      deferred OF 2 ENDOF
+   ;MATCH ;
+
+\ Check the source SB holds as the tree's test/ffi-sv.f.
+: FFI-SV-CHECK ( -- n )
+   SB$ {: a:ptr u:n :}
+   u 1 max FFI-SV-SRC-RESERVE
+   a 0 FFI-SV-SRC u BYTE-COPY
+   u FFI-SV-SRC-U !
+   FFI-SV-SRC$ s" test/ffi-sv.f" E2E-TREE:AT-A [: drop ;] FFI-SV-MS >MS
+   CHECK:VERIFY-BYTES FFI-SV-KIND ;
 
 \ Check `FUNCTION: FFI-SV no_symbol <decl> ;FUNCTION`.
-: FFI-SV-RUN ( ptr u8 n -- )
+: FFI-SV-RUN ( ptr u8 n -- n )
    {: decl:ptr declu:n :}
    SB-RESET
    FFI-SV-HEAD$ SB-APPEND
@@ -33,14 +59,15 @@
 
 
 : FFI-SV-SHOW ( -- )
-   E2E-TREE:OUT$ type E2E-TREE:ERR$ type ;
+   CHECK:VERIFY-OUT$ type CHECK:VERIFY-LOG$ type ;
 
 
-\ The source certifies: exit 0 and no packet, deferred or refused.
-: FFI-SV-CLEAN ( -- )
-   E2E-TREE:RC@ 0<> E2E-TREE:ERR$ S\" \"code\":" CONTAINS? or IF FFI-SV-SHOW THEN
-   E2E-TREE:RC@ 0 T=
-   E2E-TREE:ERR$ S\" \"code\":" CONTAINS? TFALSE ;
+\ The source certifies: verified, and no packet, deferred or refused.
+: FFI-SV-CLEAN ( n -- )
+   {: kind:n :}
+   kind 0<> CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? or IF FFI-SV-SHOW THEN
+   kind 0 T=
+   CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? TFALSE ;
 
 : FFI-SV-PASS ( ptr u8 n -- )
    {: decl:ptr declu:n :}
@@ -49,12 +76,17 @@
    FFI-SV-CLEAN ;
 
 
+\ The source is refused, with CODE in a packet.
+: FFI-SV-REFUSES ( n ptr u8 n -- )
+   {: kind:n code:ptr codeu:n :}
+   kind 1 <> IF FFI-SV-SHOW THEN
+   kind 1 T=
+   CHECK:VERIFY-OUT$ code codeu CONTAINS? TTRUE ;
+
 : FFI-SV-REFUSED ( ptr u8 n ptr u8 n -- )
    {: decl:ptr declu:n code:ptr codeu:n :}
    decl declu FFI-SV-RUN
-   E2E-TREE:RC@ 70 <> IF FFI-SV-SHOW THEN
-   E2E-TREE:RC@ 70 T=
-   E2E-TREE:ERR$ code codeu CONTAINS? TTRUE ;
+   code codeu FFI-SV-REFUSES ;
 
 : FFI-SV-REFUSE ( ptr u8 n ptr u8 n -- )
    {: decl:ptr declu:n code:ptr codeu:n :}
@@ -148,6 +180,7 @@
    SB-RESET src srcu SB-APPEND
    FFI-SV-CHECK
    FFI-SV-CLEAN
+   FFI-SV-WRITE
    s" test/ffi-sv.f" E2E-TREE:ARGS
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:NEED-OK ;
@@ -161,14 +194,12 @@
 \ A re-export of the declarer's word is that word (docs/forth.md, EXPORT): the
 \ load binds the alias, bare inside its package or qualified outside it, to
 \ STRUCT-ARG's code and refuses the clause, so the check refuses it with the
-\ load's code. Both run in children for FFI-SV-SHADOWED's reason.
+\ load's code. The load runs in a child for FFI-SV-SHADOWED's reason.
 : FFI-SV-ALIASED ( ptr u8 n -- )
    {: src:ptr srcu:n :}
    SB-RESET src srcu SB-APPEND
-   FFI-SV-CHECK
-   E2E-TREE:RC@ 70 <> IF FFI-SV-SHOW THEN
-   E2E-TREE:RC@ 70 T=
-   E2E-TREE:ERR$ S\" \"throw_code\":-3501" CONTAINS? TTRUE
+   FFI-SV-CHECK S\" \"throw_code\":-3501" FFI-SV-REFUSES
+   FFI-SV-WRITE
    s" test/ffi-sv.f" E2E-TREE:ARGS
    ENGINE-CANDIDATE:PATH$ E2E-TREE:ROOT$ E2E-TREE:RUN-ON
    E2E-TREE:RC@ 0 <> TTRUE
@@ -186,7 +217,7 @@
 \ A re-export is the declarer's word only when it names that word: an export
 \ of another package's STRUCT-ARG, or of a global one defined after
 \ `undefine`, is an ordinary call to it, so the check certifies the source and
-\ the load accepts it. Both run in children for FFI-SV-SHADOWED's reason.
+\ the load accepts it. The loads run in children for FFI-SV-SHADOWED's reason.
 : FFI-SV-EXPORTED ( -- )
    s" a re-export of another package's STRUCT-ARG is an ordinary call" T-LABEL
    S\" package FFI-SV-Q\npublic\n: STRUCT-ARG ( n n -- ) 2drop ;\n;package\npackage FFI-SV-P\npublic\nEXPORT FFI-SV-Q:STRUCT-ARG\nPROCESS-SYMBOLS\nFUNCTION: FFI-SV-X no_symbol ( n -- n )\n   0 16 STRUCT-ARG\n;FUNCTION\n;package\n"

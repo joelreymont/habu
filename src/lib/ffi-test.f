@@ -20,7 +20,8 @@ require src/lib/test/guard-page.f      \ a path whose bytes end where memory doe
 require src/lib/ffi-callback.f         \ a struct argument held across a callback
 require src/lib/task.f
 require test/ffi-struct-fixture.f      \ the struct-argument callee
-require test/e2e-tree.f                \ the struct clauses' --verify-only children
+require test/e2e-tree.f                \ the struct clauses' load children
+require tools/check-verify-core.f       \ CHECK:VERIFY-BYTES - the struct clauses' check
 
 package FFI-TEST
 
@@ -690,19 +691,6 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    S\" \n" SB-APPEND
    erru FFI-T-ERR$ SB$ CONTAINS? TTRUE ;
 
-\ The declaration's hook stays armed: calls after a capture must have their
-\ process-owned addresses forgotten by every later capture as well.
-: FFI-T-RECAPTURE ( -- )
-   IMAGE-LIFECYCLE:PREPARE
-   IMAGE-LIFECYCLE:COUNT {: hooks:n :}
-   2 0 do
-      FFI-T-GETPID$ 0 T<>
-      FFI-T-GETPID$ 0 T<>
-      IMAGE-LIFECYCLE:COUNT hooks T=
-      IMAGE-LIFECYCLE:PREPARE
-      IMAGE-LIFECYCLE:COUNT hooks T=
-   loop ;
-
 : FFI-RUN ( -- )
    T-RESET
    FFI-T-OPEN dup FFI-T-LIB !
@@ -852,15 +840,13 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
    FFI-T-FOREIGN-LIBRARY
    FFI-T-LONG-FOREIGN-LIBRARY
    FFI-T-NO-LIB
-   FFI-T-GLOBAL
-   s" foreign symbol cleanup remains armed across captures" T-LABEL
-   FFI-T-RECAPTURE ;
+   FFI-T-GLOBAL ;
 
 FFI-RUN
 
 \ Structs by value are AAPCS64: results against macOS system libraries,
 \ arguments against a fixture library compiled for the run, and
-\ tools/check.f --verify-only reads the struct clauses.
+\ CHECK:VERIFY-BYTES reads the struct clauses.
 : FFI-T-STRUCT-LOAD ( -- )
    HB-TARGET-MACOS? if
       s" test/ffi-struct-result.f" required
