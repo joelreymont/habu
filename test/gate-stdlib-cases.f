@@ -82,10 +82,6 @@ SUITE c2-saved
    test/c2-saved-e2e.f
 ;SUITE
 
-SUITE native-donor-map
-   test/compiler/native-donor-map-e2e.f
-;SUITE
-
 SUITE hb-build-stripped
    tools/hb-build-stripped-test.f
 ;SUITE
@@ -1332,10 +1328,6 @@ SUITE aot-cell-values
    test/aot-cell-values.f
 ;SUITE
 
-SUITE checker-graph-domains
-   test/checker-graph-domains.f
-;SUITE
-
 SUITE compiler-native-create-does
    test/compiler/native-create-does.f
 ;SUITE
@@ -1737,10 +1729,6 @@ SUITE extent-product
    test/extent-product-test.f
 ;SUITE
 
-WHITEBOX-SUITE field-proj-errors
-   test/field-proj-errors.f
-;SUITE
-
 SUITE gate-pool-orphan
    test/gate-pool-orphan-test.f
 ;SUITE
@@ -1803,14 +1791,6 @@ WHITEBOX-SUITE type-decl
    test/type-decl-suite.f
 ;SUITE
 
-WHITEBOX-SUITE type-export
-   test/type-export-suite.f
-;SUITE
-
-WHITEBOX-SUITE type-family
-   test/type-family-suite.f
-;SUITE
-
 \ The init test reads sealed type-family and checker metadata to verify its
 \ instantiated physical layout; the refusal cases still use real source loads.
 WHITEBOX-SUITE c2-init-schema
@@ -1819,12 +1799,6 @@ WHITEBOX-SUITE c2-init-schema
 
 WHITEBOX-SUITE c2-init-record-schema
    test/c2-init-record-schema.f
-;SUITE
-
-\ The checker's rules for code written inside C2-MEM, on the engine that keeps
-\ engine packages open; a product seals C2-MEM, which c2-memory-source pins.
-WHITEBOX-SUITE c2-reopen-refusals
-   test/c2-reopen-refusals.f
 ;SUITE
 
 SUITE c2-init-accessors

@@ -135,8 +135,7 @@ TFAMN@ FID @ 1 + T=                                   \ family registered (param
 s" boxe" FAMID TFAM-FLD-COUNT@ 1 T=                   \ the parameter field committed
 
 \ 4b. The full ENUM parser consumes the shared declaration alphabet. A
-\     maximum-arity declaration accepts g and z while f/n/r remain concrete;
-\     the exact inverse table is tested once in type-family-suite.f.
+\     maximum-arity declaration accepts g and z while f/n/r remain concrete.
 s" ENUM-DECL:ED-RUN emap<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z> VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" evaluate-closed
 s" emap" FAMID TFAM-FLD-COUNT@ 10 T=                  \ every mapped/scalar field committed
 

@@ -35,8 +35,8 @@ public
 ;package
 
 \ A word, a live alias of it (EXPORT publishes a record of its own) and an
-\ alias only the checker's store holds (a direct CHECKER-EXPORT, as
-\ test/type-export-suite.f records its aliases), all made before any pair.
+\ alias only the checker's store holds (a direct CHECKER-EXPORT), all made
+\ before any pair.
 package RB-XS
 public
 : RB-XI ( n -- n ) 1 + ;

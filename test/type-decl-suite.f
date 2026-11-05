@@ -183,8 +183,6 @@ TDF @ TFAM-VAR-START@ 1 + SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-A@ 7 T=
 s" TDOK-WIDE ( tdwide<n,n,n,n,n,n,n,n> -- tdwide<n,n,n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ The arity-six failure boundary exercises the first spelling after reserved f.
-\ The complete mapping is tested directly in type-family-suite.f, so no
-\ intermediate PRODUCT declarations consume dictionary space here.
 PRODUCT tdga06<a,b,c,d,e,g>
   FIELD p00 a FIELD p01 b FIELD p02 c
   FIELD p03 d FIELD p04 e FIELD p05 g
@@ -1248,11 +1246,11 @@ s" NEWTYPE product<a>" E-TDECL-NAME TDT-NEG
 \ Layout-policy header clause (`POLICY <name>`, docs/design.md "Families and
 \ layout policies"). A missing clause keeps the default stack-cell-tag;
 \ stack-cell-tag and packed-tag accept on sum/enum/product (packed bakes only a
-\ memory ABI descriptor at close, stack shape identical, pinned in
-\ test/type-family-suite.f); niche-null and boxed reject as not yet supported;
-\ any other token, `custom` included (the LAY-* registry tolerates it, the
-\ grammar must not expose it), is an unknown policy; POLICY is reserved. Every
-\ reject rolls back to baseline (TDT-NEG asserts TDT-BASE=).
+\ memory ABI descriptor at close, stack shape identical); niche-null and boxed
+\ reject as not yet supported; any other token, `custom` included (the LAY-*
+\ registry tolerates it, the grammar must not expose it), is an unknown policy;
+\ POLICY is reserved. Every reject rolls back to baseline (TDT-NEG asserts
+\ TDT-BASE=).
 
 \ explicit stack-cell-tag accepts and records the default policy on sum, enum
 \ and product headers. The POLICY clause is parsed in the shared
@@ -1267,7 +1265,7 @@ SUMTYPE tdpol<a> POLICY stack-cell-tag
 ;SUMTYPE
 ENUM tdpolen POLICY stack-cell-tag red green blue ;ENUM
 PRODUCT tdpolpr POLICY stack-cell-tag FIELD x n FIELD y n ;PRODUCT
-\ packed-tag accepts on every header (descriptor coverage: type-family-suite).
+\ packed-tag accepts on every header.
 SUMTYPE tdpolpk<a> POLICY packed-tag
   VARIANT none   ;VARIANT
   VARIANT some a ;VARIANT
@@ -1295,7 +1293,7 @@ TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
 s" tpol" s" tdpoldef" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
-\ packed-tag readback on every header kind (descriptor values: type-family-suite).
+\ packed-tag readback on every header kind.
 s" tpol" s" tdpolpk" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=

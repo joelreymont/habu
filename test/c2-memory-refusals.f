@@ -72,8 +72,7 @@ public
    s" TRUSTED: C2-MEM-FORGE ( -- mut-view<p,q,a,u8> ) 0 0 ;" 70 SUBJECT:EXITED? TTRUE
    \ The product seals C2-MEM with every package it bakes (src/core/internal-mark.f
    \ SEAL-PACKAGES): the engine refuses `package C2-MEM` by name, exit 84, before
-   \ the checker sees a body. The checker's reopen cases run where C2-MEM stays
-   \ open (test/c2-reopen-refusals.f).
+   \ the checker sees a body.
    s" the product refuses a reopen of C2-MEM by name" T-LABEL
    s" package C2-MEM ;package" ENGINE-ERROR:SEAL-PACKAGE s" C2-MEM" SUBJECT:REFUSED? TTRUE
    T-REPORT

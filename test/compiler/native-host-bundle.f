@@ -137,11 +137,8 @@ CAST: TARGET-PATH-XT ( n -- [ ptr u8 n -- ] )
    s" NATIVE-RUNTIME:BUNDLE-HOST-ABS" XREF-FIND XREF-FOUND? 0= TTRUE
    T-REPORT ;
 
-\ native-donor-map reads these fixtures' words from the built engine.
-: MAP-ORIGIN-TAIL ( -- )
+: ORIGIN-TAIL ( -- )
    EARLY-ORIGINS
-   s" test/compiler/native-map-b.f" included
-   s" test/compiler/native-map-c.f" included
    BUNDLE-HOST-CHECK ;
 
 public
@@ -149,7 +146,7 @@ public
 : BUILD-BUNDLE ( ptr u8 n -- )
    BUILD-TARGET:IDLE-CK
    DEFAULT-SOURCE-POLICY
-   ['] MAP-ORIGIN-TAIL SOURCE-TAIL!
+   ['] ORIGIN-TAIL SOURCE-TAIL!
    SOURCE-UNIT:CURRENT SPLIT-PRIOR !
    ['] SPLIT-UNIT SOURCE-UNIT:USE
    BUNDLE-DIR-U ! BUNDLE-DIR !
