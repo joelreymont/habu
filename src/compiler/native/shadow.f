@@ -78,7 +78,8 @@ DYNAMIC-BUFFER REC-ENTRY n           \ where in that emission the record enters
 ENUM pending none plain does ;ENUM
 TYPED-VARIABLE PENDING pending
 variable PEND-ENTRY
-TYPED-VARIABLE PEND-PLACED bool      \ it was placed, so it holds any callback stub
+\ It was taken while NCBSTUB was armed, so it holds the callback stub.
+TYPED-VARIABLE PEND-STUB bool
 
 public
 
@@ -245,7 +246,7 @@ $E9 constant TAIL-OP
    TARGET-CK
    UNPLACE? {: unplace:bool :}
    construct pending none PENDING !
-   NEMIT:PLACED? PEND-PLACED !
+   NCBSTUB:ARMED? PEND-STUB !
    COPY-BYTES
    unplace if
       NATIVE-CALLS
@@ -381,14 +382,14 @@ public
 \ selectors retain the same frozen HIR function sequence, even when their
 \ instruction and block layouts differ. The host emission is the one NEMIT
 \ holds sealed, placed at `at`; while NCBSTUB is armed its last function is the
-\ callback stub, which only a copy taken placed also holds. TAKE reserved the
-\ rows; this grows nothing, and a failed publication discards the pending pair
-\ with ABANDON.
+\ callback stub, which a copy taken while NCBSTUB was armed also holds. TAKE
+\ reserved the rows; this grows nothing, and a failed publication discards the
+\ pending pair with ABANDON.
 : SOURCE-FUNS ( n -- ) {: at:n :}
    PENDING? 0= if exit then
    N-EMS @ {: e:n :}
    NEMIT:FUNCTIONS
-   NCBSTUB:ARMED? PEND-PLACED @ 0= and if 1- then
+   NCBSTUB:ARMED? PEND-STUB @ 0= and if 1- then
    e EM-FUNS @ <> if E-NSHADOW-ROW throw then
    e EM-FUNS @ 0 ?do
       at i NEMIT:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !

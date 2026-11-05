@@ -113,6 +113,7 @@ DYNAMIC-BUFFER ADDR-KIND-AT n         \ origin
 DYNAMIC-BUFFER ADDR-TO n
 DYNAMIC-BUFFER ADDR-ORIGIN n
 variable SLOT-AT                      \ the patch slot's offset, or -1
+variable STUB-AT                      \ the callback stub's offset once stamped, or -1
 
 \ The emission's phase: shut from EMIT-SEAL to EMIT-OPEN, open from EMIT-OPEN,
 \ placed from EMIT-PLACE, and only these three words write it (SEALING).
@@ -121,7 +122,7 @@ TYPED-VARIABLE PHASE emission
 variable PLACED-AT                    \ the placed address while placed
 
 : ROWS-CLEAR ( -- )
-   0 N-UNITS !  0 N-CALLS !  0 N-ADDRS !  -1 SLOT-AT ! ;
+   0 N-UNITS !  0 N-CALLS !  0 N-ADDRS !  -1 SLOT-AT !  -1 STUB-AT ! ;
 : SLOT? ( -- bool ) SLOT-AT @ 0 >= ;
 
 \ File a unit's start, a call or tail site and an address site.
@@ -536,8 +537,9 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 \ unplaced and leaves it open, so EMIT-PLACE and EMIT-SEAL still follow.
 \
 \ THE CALLBACK STUB. While NCBSTUB (src/compiler/native/callback-stub.f) is
-\ armed, a placed seal has the emitter append tier 1's stub after the last unit,
-\ files it as the last function and records its placed address as
+\ armed, the emission's first seal has the emitter append tier 1's stub after
+\ the last unit and files it as the last function, and later seals reuse it, so
+\ an unplaced seal's copy holds it; a placed seal records its placed address as
 \ NCBSTUB:ENTRY!.
 
 : EMIT-PLACE ( n -- )
@@ -553,12 +555,14 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    kind ADDR-QUOT-KIND = if NEMIT:ADDR-CODE exit then
    kind ;
 
-\ The callback stub's offset once the emitter appended it, or -1 while NCBSTUB
-\ is not armed (THE CALLBACK STUB).
+\ The callback stub's offset, or -1 while NCBSTUB is not armed (THE CALLBACK STUB).
 : EMIT-CB-STUB ( -- n )
    NCBSTUB:ARMED? 0= if -1 exit then
+   STUB-AT @ 0 >= if STUB-AT @ exit then
    SLOT? if E-T0-SLOT throw then
-   CUR @ EMIT-CB-STUB-XT @ FILLED execute ;
+   CUR @ EMIT-CB-STUB-XT @ FILLED execute {: stub:n :}
+   stub STUB-AT !
+   stub ;
 
 : NEMIT-OPEN ( -- ) EMIT-BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
 
@@ -584,20 +588,25 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    stub 0 >= if at stub + NCBSTUB:ENTRY! then
    stub NEMIT-ROWS ;
 
+: SEAL-OPEN ( -- )
+   EMIT-CB-STUB {: stub:n :}
+   NEMIT-OPEN
+   stub NEMIT-ROWS ;
+
 : EMIT-SEAL ( -- )
    PHASE @ {: phase:emission :}
    PLACED-AT @ {: at:n :}
    construct emission shut PHASE !  0 PLACED-AT !
    phase MATCH emission
       shut OF E-COMP-STATE throw ENDOF
-      open OF NEMIT-OPEN  -1 NEMIT-ROWS ENDOF
+      open OF SEAL-OPEN ENDOF
       placed OF at SEAL-PLACED ENDOF
    ;MATCH ;
 
 : EMIT-SEAL-UNPLACED ( -- )
    PHASE @ MATCH emission
       shut OF E-COMP-STATE throw ENDOF
-      open OF NEMIT-OPEN  -1 NEMIT-ROWS ENDOF
+      open OF SEAL-OPEN ENDOF
       placed OF E-COMP-STATE throw ENDOF
    ;MATCH ;
 

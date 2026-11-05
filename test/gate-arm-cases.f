@@ -2,7 +2,7 @@
 
 \ X64 is a second shadow target beside the ARM host. On an x64 host the same
 \ target's resident map has different records (29 instead of shadow.f's 6).
-\ shadow-kinds.f reads an arm64 shadow beside the host's tier-0 routines.
+\ shadow-kinds.f reads a native arm64 shadow beside the host's tier-0 routines.
 SUITE compiler-shadow
    test/compiler/shadow.f
    test/compiler/shadow-kinds.f

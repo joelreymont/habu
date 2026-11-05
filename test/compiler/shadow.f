@@ -656,7 +656,7 @@ variable REC-CB                      \ SH-CB-ENTRY's record
 variable CB-FUNS                     \ its shadow functions, or -1
 TYPED-VARIABLE CB-ROOT? bool         \ its host entry pairs with function 0
 TYPED-VARIABLE CB-INSIDE? bool       \ the C entry lies inside its host routine
-TYPED-VARIABLE CB-UNPAIRED? bool     \ and pairs with no shadow function
+TYPED-VARIABLE CB-STUB? bool         \ and pairs with its last shadow function
 
 : HOST-BINDING ( -- CBIND:binding )
    RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING ;
@@ -680,14 +680,14 @@ TYPED-VARIABLE CB-UNPAIRED? bool     \ and pairs with no shadow function
    e NSHADOW:BYTES e NSHADOW:SIZE  0 SAME-CODE SAME-U @  STR= NATIVE-SAME? ! ;
 
 : KEEP-CB ( n n -- ) {: rec:n stub:n :}
-   -1 CB-FUNS !  false CB-ROOT? !  false CB-INSIDE? !  false CB-UNPAIRED? !
+   -1 CB-FUNS !  false CB-ROOT? !  false CB-INSIDE? !  false CB-STUB? !
    rec ROW-OF 0< if exit then
    rec EM-OF {: e:n :}
    e NSHADOW:FUNCTIONS CB-FUNS !
    rec HOST-ENTRY {: at:n :}
    at NSHADOW:SOURCE-FUNCTION 0=  swap e =  and CB-ROOT? !
    stub at >  stub at rec XREF-REC XREF-CODE-BYTES + <  and CB-INSIDE? !
-   stub NSHADOW:SOURCE-FUNCTION -1 =  swap -1 =  and CB-UNPAIRED? ! ;
+   stub NSHADOW:SOURCE-FUNCTION CB-FUNS @ 1- =  swap e =  and CB-STUB? ! ;
 
 \ SH-CB-ENTRY's record among those made since REC-CB, or -1.
 : CB-REC ( -- n )
@@ -742,11 +742,11 @@ NSHADOW:CLOSE
    40 SH-SAME 43 T= ;
 
 : CALLBACK-CASE ( -- )
-   s" a native shadow files a tier-0 callback entry word without the C entry stub its host routine ends with" T-LABEL
-   CB-FUNS @ 1 T=
+   s" a native shadow files a tier-0 callback entry word with the C entry stub its host routine ends with, as its last function" T-LABEL
+   CB-FUNS @ 2 T=
    CB-ROOT? @ TTRUE
    CB-INSIDE? @ TTRUE
-   CB-UNPAIRED? @ TTRUE ;
+   CB-STUB? @ TTRUE ;
 
 : CLOSED-CASE ( -- )
    s" a closed shadow answers nothing, and opening one again starts an empty map" T-LABEL
