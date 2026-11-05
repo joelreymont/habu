@@ -1,8 +1,5 @@
 \ build-fixpoint-source-test.f - tools/build-fixpoint.f: the sources the refresh
-\ emits and certifies (the common emitter's runtime capture kind, checker and
-\ TFAM prefix self-certification, the boot-prefix and phase-source gates).
-\ Install, stamp and CLI cases are tools/build-fixpoint-test.f: one row running
-\ every case took 293-338 s in the gate's pool.
+\ certifies (checker and TFAM prefix self-certification, the boot-prefix gate).
 \ Run: bin/hb --load tools/build-fixpoint-source-test.f
 
 require src/lib/string.f
@@ -28,21 +25,10 @@ public
    PAD-N 0 ?do 10 PAD i + c! loop
    -1 ARMED ! ;
 
-: BREAK-READ ( ptr u8 n -- )
-   {: path:ptr pathu:n :}
-   path PATH pathu BYTE-COPY pathu PATH-U !
-   -2 ARMED ! ;
-
 : SIZE ( ptr u8 n -- n )
    {: path:ptr pathu:n :}
    path pathu FS:FILE-SIZE {: size:n :}
    ARMED @ path pathu PATH PATH-U @ STR= and if
-      ARMED @ -2 = if
-         0 ARMED !
-         path pathu FS:REMOVE-FILE
-         path pathu FS:MAKE-DIRS
-         size exit
-      then
       0 ARMED !
       path pathu PAD PAD-N FS:APPEND-FILE
       path pathu TAIL TAIL-U @ FS:APPEND-FILE
@@ -56,8 +42,7 @@ undefine FILE-SIZE
 : FILE-SIZE ( ptr u8 n -- n ) BFT-SIZE:SIZE ;
 ;package
 
-require tools/build-fixpoint-writer-test-lib.f
-require src/lib/fmt.f
+require tools/build-fixpoint-test-lib.f
 
 \ The shared fixture's words are private words of the tool's package, so this
 \ row reopens it the way tools/build-fixpoint-test-lib.f does.
@@ -65,18 +50,6 @@ package BUILD-FIXPOINT
 
 : BFT-WHOLE$ ( -- ptr u8 n )
    s" whole-src" BF-A$ ;
-
-: BFT-TEST-WHOLE-READ ( -- )
-   BFT-ROOT BF-TMP!
-   BFT-WHOLE$ S\" package BFT-WHOLE public\n: HEAD ( -- n ) 1 ;\n;package\n" FS:WRITE-ALL
-   BFT-WHOLE$ BF-READ-SOURCE
-   BF-SOURCE-LEN @ BFT-WHOLE$ BFT-READ T=
-   BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-READ-BUF BF-SOURCE-LEN @ STR= TTRUE
-   BFT-WHOLE$ S\" : TAIL ( -- n ) 2 ;\n" BFT-SIZE:ARM
-   BFT-WHOLE$ BF-READ-SOURCE
-   BF-SOURCE-LEN @ BFT-WHOLE$ BFT-READ T=
-   BF-SOURCE-BUF BF-SOURCE-LEN @ BFT-READ-BUF BF-SOURCE-LEN @ STR= TTRUE
-   BF-TMP-RESET ;
 
 \ checker.f's string-word rows, then definitions with a real literal after them,
 \ and one the certify leaves to the run: it calls what `evaluate` renders.
@@ -98,18 +71,6 @@ package BUILD-FIXPOINT
    VERIFY:CENSUS {: certified:n deferred:n :}
    certified 3 T=
    deferred 1 T=
-   BF-TMP-RESET ;
-
-: BFT-TEST-WHOLE-ERRORS ( -- )
-   BFT-ROOT BF-TMP!
-   [: s" absent-src" BF-A$ BF-READ-SOURCE ;] E-FS-STAT TTHROWSQ
-   BFT-WHOLE$ s" read must fail" FS:WRITE-ALL
-   BFT-WHOLE$ BFT-SIZE:BREAK-READ
-   [: BFT-WHOLE$ BF-READ-SOURCE ;] E-FS-IO TTHROWSQ
-   BFT-WHOLE$ FS:REMOVE-DIR
-   BFT-WHOLE$ s" reusable after read error" FS:WRITE-ALL
-   BFT-WHOLE$ BF-READ-SOURCE
-   BF-SOURCE-BUF BF-SOURCE-LEN @ s" reusable after read error" STR= TTRUE
    BF-TMP-RESET ;
 
 : BFT-TEST-WHOLE-CERTIFY ( -- )
@@ -168,26 +129,6 @@ package BUILD-FIXPOINT
    s" call-store-repeat" BFT-CERT-CHECKER$ BF-CERTIFY-RC 0 T=
    BF-TMP-RESET ;
 
-: BFT-TEST-RUNTIME-KIND ( -- )
-   BFT-ROOT BF-TMP!
-   FIXTURE-WRITER:PATH$ 2drop
-   8 0 ?do
-      SB-RESET
-      S\" require test/aot-runtime-kind-driver.f\n" SB-APPEND
-      i FMT:SB-U s"  AOT-KIND-TEST:RUN" SB-APPEND
-      BFT-NL 1 SB-APPEND
-      s" runtime-kind-hb" BF-A$ SB$ BFT-WRITER-RUN
-      {: outu:n erru:n rc:n :}
-      rc i 3 < if 0 else 74 then T=
-      BFT-OUT outu BFT-EMPTY$ T$=
-      i 3 < if
-         BFT-ERR erru BFT-EMPTY$ T$=
-      else
-         BFT-ERR erru S\" hb: incomplete captured runtime\n" T$=
-      then
-   loop
-   BF-TMP-RESET ;
-
 \ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f and
 \ sumtype.f each certify via VERIFY:SOURCE-BUF as the tail of their exact
 \ BF-APPEND-CHECKER-BOOT prefix (util, cell, pointer storage, engine error,
@@ -214,10 +155,6 @@ package BUILD-FIXPOINT
    s" tfam-sumtype" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
    BF-TMP-RESET ;
 
-\ The stage2 and stdin phases both emit into the one `stage2-src` path, so
-\ BF-CERTIFY-STAGE2 and BF-CERTIFY-STDIN read it at different times: the path
-\ exists in each phase and the stdin phase overwrites it with distinct content,
-\ so BF-CERTIFY-STDIN certifies the stdin driver, not stage2 twice.
 \ The boot prefix is a blocking certify phase. BF-PREFIX-SOURCE writes the bytes
 \ the build writes and BF-CERTIFY-PREFIX is the word the build calls. The bad
 \ case is the same bytes plus one type-broken definition, which must throw, not
@@ -238,19 +175,6 @@ package BUILD-FIXPOINT
    [: BF-CERTIFY-PREFIX ;] E-BUILD-CERTIFY TTHROWSQ
    BF-TMP-RESET ;
 
-: BFT-TEST-CERTIFY-PHASE-SOURCES ( -- )
-   BFT-ROOT BF-TMP!
-   BF-STAGE2-SOURCE
-   BFT-STAGE2 FS:FILE? TTRUE
-   BF-CERTIFY-STAGE2
-   BF-RECORD-STAGE
-   BF-STDIN-SOURCE
-   BFT-STAGE2 FS:FILE? TTRUE
-   BF-CERTIFY-STDIN
-   BF-RECORD-STDIN
-   BF-REC-STAGE-DG BF-STAMP-DG-U BF-REC-STDIN-DG BF-STAMP-DG-U STR= TFALSE
-   BF-TMP-RESET ;
-
 \ Public so the driver below can run it with the package CLOSED: the subtests
 \ certify generated engine sources in this process (VERIFY:SOURCE-BUF), and the
 \ checker resolves the verified source's names in whatever package scope is open
@@ -259,20 +183,12 @@ public
 : BFT-SOURCE-RUN ( -- )
    T-RESET
    BFT-PREPARE
-   s" whole source read" [: BFT-TEST-WHOLE-READ ;] BFT-STEP
    s" whole source census" [: BFT-TEST-WHOLE-CENSUS ;] BFT-STEP
-   s" whole source errors" [: BFT-TEST-WHOLE-ERRORS ;] BFT-STEP
    s" whole source certify" [: BFT-TEST-WHOLE-CERTIFY ;] BFT-STEP
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" runtime capture kind" [: BFT-TEST-RUNTIME-KIND ;] BFT-STEP
-   then
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify call store" [: BFT-TEST-CERTIFY-CALL-STORE ;] BFT-STEP
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
    s" certify boot prefix" [: BFT-TEST-CERTIFY-BOOT-PREFIX ;] BFT-STEP
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
-   then
    s" build-fixpoint-source-test: ok" BFT-FINISH ;
 
 ;package

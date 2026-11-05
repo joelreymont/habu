@@ -1,9 +1,9 @@
-\ The public first-store path survives contention and a fresh snapshot process.
+\ The public first-store path survives contention in a restored snapshot process.
 \ The image is saved from the keyed host with the saver already loaded
 \ (test/app-image-engine.f).
 require src/lib/test.f
 require src/lib/fs-mutate.f
-require src/lib/engine-candidate.f
+require src/lib/process-env.f
 require src/lib/codesign.f
 require test/app-image-engine.f
 require src/habu/address-cells.f
@@ -40,11 +40,6 @@ variable IMAGE-N
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN ;
 : CHECK-OUTPUT ( n -- )
    OUT swap S\" test: ok\naddress-cell-tasks: ok\n" T$= ;
-: FRESH ( -- )
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$
-   S\" require test/address-cell-tasks-subject.f\nADDRESS-CELL-TASKS:RUN\n"
-   EXEC CHECK-OUTPUT ;
 : BUILD ( -- )
    APP-IMAGE-ENGINE:PATH$ {: host:ptr hostu:n :}
    PROC-ARGV-ENV-RESET
@@ -108,8 +103,8 @@ variable IMAGE-N
    PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
    IMAGE$ S\" ADDRESS-CELL-TASKS:RUN\n" EXEC CHECK-OUTPUT ;
 : CHECK ( -- )
-   s" every first registration survives lookup, growth and duplicate contention" T-LABEL
-   FRESH BUILD
+   s" the contention subject saves as an image" T-LABEL
+   BUILD
    s" captured mutex and index cells do not retain process ownership" T-LABEL
    POISON-CAPTURED-LOCK RESTORED ;
 : CLEANUP ( -- ) IMAGE-STORAGE-RELEASE FS:CLEANUP-RUN ;

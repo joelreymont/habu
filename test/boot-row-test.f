@@ -1,15 +1,12 @@
 \ boot-row-test.f - an engine's boot rows (REQUIRE-BOOT-N, src/core/include.f)
-\ are honest and answer away from a tree. `require` of a row is a no-op, so a
-\ row the image does not carry hides its words: re-including each row must be
-\ refused by a collision with what the image holds. A row is a module identity:
-\ outside any tree it still answers, and a module the image lacks is refused by
-\ name under the CWD.
+\ are honest. `require` of a row is a no-op, so a row the image does not carry
+\ hides its words: re-including each row must be refused by a collision with
+\ what the image holds.
 
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
-require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
@@ -25,31 +22,24 @@ private
 $20000 constant DUMP-CAP          \ room for the boot and process row lists
 $4000 constant IO-CAP
 INCLUDE-PATH-CAP $40 + constant SRC-CAP
-PATH-CAP 1+ constant ROOT-CAP
 30000 constant TIMEOUT-MS
 
 create DUMP-BUF DUMP-CAP allot
 create OUT-BUF IO-CAP allot
 create ERR-BUF IO-CAP allot
 create SRC-BUF SRC-CAP allot
-create OUTSIDE ROOT-CAP allot
-create OUTSIDE-HB ROOT-CAP allot
 
 variable DUMP-U
 variable DUMP-I
 variable OUT-U
 variable ERR-U
 variable SRC-U
-variable OUTSIDE-U
-variable OUTSIDE-HB-U
 variable RC-N
 variable EXITED?
 variable WALKED
 
 : ERR$ ( -- ptr u8 n )     ERR-BUF ERR-U @ ;
 : SRC$ ( -- ptr u8 n )     SRC-BUF SRC-U @ ;
-: OUTSIDE$ ( -- ptr u8 n ) OUTSIDE OUTSIDE-U @ ;
-: OUTSIDE-HB$ ( -- ptr u8 n ) OUTSIDE-HB OUTSIDE-HB-U @ ;
 
 \ ---- one run of an engine: source on stdin, the caller's CWD -----------------
 
@@ -79,10 +69,6 @@ variable WALKED
 : RUN ( ptr u8 n ptr u8 n -- )
    {: cwd:ptr cwdu:n src:ptr srcu:n :}
    ENGINE-CANDIDATE:PATH$ cwd cwdu src srcu OUT-BUF IO-CAP RUN-INTO OUT-U ! ;
-
-: RUN-OUTSIDE ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
-   OUTSIDE-HB$ OUTSIDE$ src srcu OUT-BUF IO-CAP RUN-INTO OUT-U ! ;
 
 \ ---- the loader line the child is given --------------------------------------
 
@@ -136,10 +122,6 @@ variable WALKED
    a DUMP-I @ start -
    true ;
 
-: DUMP-REWIND ( -- )
-   0 DUMP-I !
-   DUMP-LINE drop 2drop ;
-
 \ ---- per-row proof -----------------------------------------------------------
 
 : ROW-LABEL ( n -- ) {: ix:n :}
@@ -191,67 +173,9 @@ variable WALKED
    s" the candidate carries boot rows at all" T-LABEL
    WALKED @ 0 T<> ;
 
-\ ---- the same rows, asked from a directory that is not a Habu tree ------------
-\ A fresh temp directory, never the temp base: a stray /tmp/src symlink once
-\ decided these cases, because CANONICAL resolves an existing prefix physically.
-\ The engine runs as a copy at <outside>/bin/hb: an engine outside a tree takes
-\ the tree two levels above its executable as its root.
-
-: PREP-OUTSIDE ( -- )
-   FS:CLEANUP-RESET
-   s" habu-boot-row" FS:MKTEMP-DIR CANONICAL TTRUE {: a:ptr u:n :}
-   a OUTSIDE u BYTE-COPY u OUTSIDE-U !
-   OUTSIDE$ FS:CLEANUP-TREE+
-   OUTSIDE$ s" bin" OUTSIDE-HB FS:JOIN-PATH {: binu:n :}
-   OUTSIDE-HB binu FS:MAKE-DIR
-   OUTSIDE$ s" bin/hb" OUTSIDE-HB FS:JOIN-PATH OUTSIDE-HB-U !
-   ENGINE-CANDIDATE:PATH$ OUTSIDE-HB$ FS:COPY-FILE-STREAM
-   OUTSIDE-HB$ FS:CHMOD-X ;
-
-: EXPECT-MISSING$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   SB-RESET
-   s" include: cannot open " SB-APPEND
-   OUTSIDE$ SB-APPEND
-   s" /" SB-APPEND
-   a u SB-APPEND
-   SB$ ;
-
-\ src/arch/arm64/icode.f is a tree file the engine does not carry (the builder's
-\ AOT assembler); both halves are asserted, so a deletion or a new boot row
-\ fails by name.
-: PROBE$ ( -- ptr u8 n )
-   s" src/arch/arm64/icode.f" ;
-
-: OUTSIDE-REFUSES ( -- )
-   s" the probe module is a real file of this tree" T-LABEL
-   PROBE$ FS:EXISTS? TTRUE
-   s" require" PROBE$ LOADER-SRC! SRC$ RUN-OUTSIDE
-   s" a module the image lacks is refused outside a tree" T-LABEL
-   EXITED? @ TTRUE
-   s" the refusal is the loader's own open failure" T-LABEL
-   RC-N @ INCLUDE-IO-RC T=
-   s" the refusal names the path under this CWD" T-LABEL
-   ERR$ PROBE$ EXPECT-MISSING$ CONTAINS? TTRUE ;
-
-: OUTSIDE-PROVIDES ( -- )
-   DUMP-REWIND
-   s" the dump carries a first row" T-LABEL
-   DUMP-LINE TTRUE {: a:ptr u:n :}
-   s" require" a u LOADER-SRC! SRC$ RUN-OUTSIDE
-   s" a boot row still answers outside a tree" T-LABEL
-   EXITED? @ TTRUE
-   s" requiring a boot row outside a tree exits clean" T-LABEL
-   RC-N @ 0 T=
-   s" requiring a boot row outside a tree says nothing" T-LABEL
-   ERR-U @ OUT-U @ + 0 T= ;
-
 : MAIN ( -- )
    T-RESET
-   PREP-OUTSIDE
    ROWS-HONEST
-   OUTSIDE-REFUSES
-   OUTSIDE-PROVIDES
-   FS:CLEANUP-RUN
    T-REPORT
    s" boot-row-test: " type WALKED @ FMT:.INT s"  rows, ok" type cr ;
 

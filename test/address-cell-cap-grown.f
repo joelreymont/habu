@@ -12,12 +12,15 @@ variable CUT
 
 : ROWS ( -- n ) ADDRESS-CELLS:LIVE-SPAN nip ;
 : HEADER@ ( n -- n ) data-base SNAP-RELOC:XTCELL-N-CELL + + @ ;
-: EXPECT-ROWS ( -- )
-   BASE-N @ 0 ?do i ADDRESS-CELLS:ROW@ SAVED i cells + @ T= loop
-   ROW-N BASE-N @ - 0 ?do
-      BASE-N @ i + ADDRESS-CELLS:ROW@
-      SLOTS i cells + data-base - SNAP-RELOC:XTCELL-DATA-TAG or T=
-   loop ;
+: ROW-WANT ( n -- n ) {: row:n :}
+   row BASE-N @ < if SAVED row cells + @ exit then
+   SLOTS row BASE-N @ - cells + data-base - SNAP-RELOC:XTCELL-DATA-TAG or ;
+\ The first row that differs from its expected value, or -1.
+: FIRST-BAD-ROW ( -- n )
+   ROW-N 0 ?do
+      i ADDRESS-CELLS:ROW@ i ROW-WANT <> if i unloop exit then
+   loop -1 ;
+: EXPECT-ROWS ( -- ) FIRST-BAD-ROW -1 T= ;
 
 : RUN ( -- )
    T-RESET

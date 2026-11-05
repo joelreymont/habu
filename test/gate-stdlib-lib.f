@@ -58,10 +58,8 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
    s" HABU_GATE_COMPILER_IMAGES" >LEN GT-ROOT >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
-\ The spawn path is relative, as every spawn of it in the tree: the gate runs in
-\ the checkout. The variable is absolute: test/boot-row-test.f spawns the engine
-\ under a caller's CWD, where a relative path fails (measured: E-PROC-SPAWN,
-\ exit 67). ENGINE-ID:PATH$ is this process's executable, so both name one file.
+\ The spawn path is relative, as the gate runs in the checkout; the variable is
+\ absolute: ENGINE-CANDIDATE:PATH$ joins a relative one to its reader's own CWD.
 : PRODUCT-SPAWN$ ( -- ptr u8 n )
    s" bin/hb" ;
 
