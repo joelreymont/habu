@@ -6,8 +6,6 @@ language core; [Etch](../etch), a PCB CAD application, is a separate project.
 
 ## Repository
 
-- The root checkout stays on `master` with no work of its own; edits happen in
-  workspaces under `.jj-ws.noindex/`.
 - Build and test candidates in a workspace or a temporary directory. Keep one
   installed Habu tree at a stable path, with matching executable, map and
   library sources, and update it in place: no per-revision release
@@ -42,12 +40,10 @@ language core; [Etch](../etch), a PCB CAD application, is a separate project.
 
 - Use plain English. Keep changes focused, and remove obsolete machinery when
   the language or library already expresses the requirement.
-- Optimize code, data structures and architecture for the long term.
 - Never compress code or data without the user's explicit approval.
   Compression shrinks code or data through a codec; dropping zero-filled,
   unused or unreachable storage, packing allocations tightly and choosing a
   compact table encoding are not compression.
-- A significant feature gets an independent adversarial review before it lands.
 
 ## Machinery being replaced
 
