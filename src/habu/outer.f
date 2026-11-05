@@ -5,6 +5,7 @@ require src/lib/prelude.f
 require src/core/bytes.f
 require src/habu/boot-cells.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/xref.f
 require src/compiler/native/dict.f
 require src/habu/escape.f
@@ -541,7 +542,7 @@ TYPED-VARIABLE REC ptr n
    TOKEN$ FIND REC !
    REC @ POLICY-CHECK-REC
    REC @ XREF-FOUND? 0= if exit then
-   REC @ XREF-WORDLIST BOOT:GLOBAL-WL <> if exit then
+   REC @ XREF-WORDLIST WL:GLOBAL? 0= if exit then
    TOKEN$ scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    flags SCOPE-FIND-AMBIGUOUS and 0<> if E-USING-AMBIGUOUS throw then
    used XREF-FOUND? if SHADOWED then ;

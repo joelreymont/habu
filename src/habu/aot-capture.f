@@ -487,7 +487,7 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
    wid 0 < if NULL$ false exit then
    rec AOT-RNPTR rec AOT-RNLEN {: name:ptr size:n :}
    size 0= if NULL$ false exit then
-   wid 0= if name size else
+   wid WL:GLOBAL? if name size else
       wid FIRST-DYNAMIC-WID < if NULL$ false exit then
       wid ACAP-PKG-PUB {: pkg:n :}
       pkg 0 < pkg ACAP-PRE-R @ >= or if NULL$ false exit then

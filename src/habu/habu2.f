@@ -10332,20 +10332,16 @@ public
 
 package INTERP-EMIT
 public
-\ FIND-SHADOW (LFINDSHADOW leaf): the interpreter's half of E-USING-SHADOW-GLOBAL
-\ (docs/forth.md "Importing a package's public words with `using`"); the checker
-\ enforces it in checked bodies. Called on LFIND's hit path with its outputs
-\ live, for the token in TKA/TKL. A global hit (a record in the global
-\ wordlist) that a used public also exports is refused by name with 105 through
-\ the compile-die tail (a throw inside evaluate, an exit at top level).
-\ Otherwise x5 and x11-x13 are as LFIND left them; it clobbers what LFINDUSED
-\ does.
+\ LFINDSHADOW, on LFIND's hit: when a used public also exports a global hit
+\ (WL:GLOBAL?), dies 105 E-USING-SHADOW-GLOBAL; else x5, x11-x13 stay LFIND's.
 : FIND-SHADOW ( -- )
-   LBL LBL LBL  s" hb: bare word a global and a used package both export: "
-   {: ret:label shadow:label msg:label ma mu :}
+   LBL LBL LBL LBL  s" hb: bare word a global and a used package both export: "
+   {: ret:label hit:label shadow:label msg:label ma mu :}
    LFINDSHADOW LABEL@ LBL,
    14 5 40 LDR,  15 DATA BOOT:GLOBAL-WL-CELL LDR,
-   14 15 CMP,  C-NE ret BCOND,                                 \ a package's word: the inner scope won
+   14 15 CMP,  C-EQ hit BCOND,
+   14 WL:PRIMITIVES CMPI,  C-NE ret BCOND,                     \ a package's word: the inner scope won
+   hit LBL,
    14 USE-DEPTH-CELL LIT64,  14 DATA 14 ADD,  14 14 0 LDR,
    14 ret CBZ,                                                 \ no using open
    SP SP 48 SUBI,  30 SP 0 STR,  5 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,  13 SP 32 STR,

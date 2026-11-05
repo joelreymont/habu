@@ -7,6 +7,7 @@
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/compiler/fixed-body.f
 require src/habu/terminal-call.f
 require src/compiler/native/checker-owner.f
@@ -75,7 +76,7 @@ public
 : USING-REFUSED? ( ptr u8 n -- bool )
    scope-find {: rec:ptr used:ptr used2:ptr flags:n :}
    rec XREF-FOUND? 0= if flags SCOPE-FIND-AMBIGUOUS and 0<> exit then
-   rec XREF-WORDLIST 0=  used XREF-FOUND?  and ;
+   rec XREF-WORDLIST WL:GLOBAL?  used XREF-FOUND?  and ;
 
 \ Whether an operator row may stand for the spelling: the lookup binds the
 \ seeded primitive of that spelling, or nothing at all (a keyword such as `>r`

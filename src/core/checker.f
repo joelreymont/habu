@@ -13573,11 +13573,11 @@ public
    rec CK-REC-WID {: wid:n :}
    a u CHECKER-QUALIFIED? IF
       \ NAME:tail with NAME open reaches the global tail
-      wid BOOT:GLOBAL-WL = IF CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? EXIT THEN
+      wid WL:GLOBAL? IF CHECKER-QTAIL$ CHECKER-GLOBAL-SYM? EXIT THEN
       CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT
    THEN
    PKG-LIVE-XT drop {: pkg:ptr pkgu:n :}
-   wid BOOT:GLOBAL-WL = IF
+   wid WL:GLOBAL? IF
       pkgu 0 <> IF
          pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? {: own:n :}
          own PRIM-FIRST-IDX 0 <> IF own EXIT THEN
@@ -13706,7 +13706,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
 : RECOVERY-RANK ( ptr n -- n ) {: rec:ptr :}
    rec 0= IF RB-NONE EXIT THEN
    rec CK-REC-WID {: wid:n :}
-   wid BOOT:GLOBAL-WL = IF RB-GLOBAL EXIT THEN
+   wid WL:GLOBAL? IF RB-GLOBAL EXIT THEN
    wid data-base CK-PKG-PRI-OFF + @ = IF RB-PRIVATE EXIT THEN
    wid data-base CK-PKG-PUB-OFF + @ = IF RB-PUBLIC EXIT THEN
    wid data-base CK-ENCLOSING-PRI-OFF + @ = IF RB-ENCLOSING-PRIVATE EXIT THEN
@@ -13768,7 +13768,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
       \ beside the pending checker view; a later name query could bind another.
       a u HORIZON-FIND {: held:ptr used:ptr used2:ptr flags:n :}
       held 0= 0= flags SCOPE-FIND-AMBIGUOUS and 0= and IF
-         held CK-REC-WID BOOT:GLOBAL-WL <> used 0= or IF held BIND-REC ! THEN
+         held CK-REC-WID WL:GLOBAL? 0= used 0= or IF held BIND-REC ! THEN
       THEN
       pending 0 EXIT
    THEN
@@ -13786,7 +13786,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    THEN
    a u rec CK-REC-BIND {: sym:n :}
    rec BIND-REC !
-   rec CK-REC-WID BOOT:GLOBAL-WL = IF                 \ a used public exporting the bound global's tail
+   rec CK-REC-WID WL:GLOBAL? IF                       \ a used public exporting the bound global's tail
       two IF a u CK-USED-MARK  0 E-USING-AMBIGUOUS EXIT THEN
       used 0= 0= IF
          a u CK-USED-MARK
