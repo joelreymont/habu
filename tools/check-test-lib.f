@@ -2730,21 +2730,8 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" bad structure declaration 'spcmt'" CONTAINS? TTRUE
    CAP-ERR erru s" at '('" CONTAINS? TTRUE ;
 
-\ How long a declaration may be, and which bound answers when it is too long.
-\
-\ 252 variants is 7812 bytes of body. The ENUM front end reads tokens from the
-\ input with a one-token pushback and buffers no body, so the engine sets no
-\ length bound and the command exits 0; test/decl-replay-verify-source.f counts
-\ every variant of a 1000-variant body through the same front end.
-\
-\ This tool buffers each declaration through src/habu/verify-source.f's
-\ 8000-byte body buffer and replays it. That buffer raises rather than
-\ shortening, so a longer declaration (271 variants, 8401 bytes) fails with the
-\ declaration layer's "declaration too long" code 7118, from this process's
-\ preverify pass, not the child run: a statement throw naming that code, exit
-\ 70. Its exact edge is pinned in test/decl-replay-verify-source.f; this case
-\ pins that a long declaration goes through whole or is refused, and is never
-\ shortened into one that parses.
+\ 252 variants (7812 bytes) fit verify-source's 8000-byte body buffer and pass;
+\ 271 (8401 bytes) are refused whole by preverify with code 7118, exit 70.
 : TEST-DECL-OVER-CAP ( -- )
    252 LONG-ENUM$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}

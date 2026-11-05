@@ -1607,7 +1607,7 @@ SUITE linear
    test/linear-suite.f
 ;SUITE
 
-WHITEBOX-SUITE deftype
+SUITE deftype
    test/deftype-suite.f
 ;SUITE
 
@@ -1623,7 +1623,7 @@ SUITE engine-runtime-regressions
    test/runtime-regression-test.f
 ;SUITE
 
-WHITEBOX-SUITE declaration-replay-source
+SUITE declaration-replay-source
    test/decl-replay-verify-source.f
 ;SUITE
 

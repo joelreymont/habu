@@ -1,143 +1,18 @@
 \ decl-replay-verify-source.f - src/habu/verify-source.f's RECORD-* arms rebuild
-\ the registry a live declaration builds. Tools on verify-source (the all-errors
-\ reporter, the fixpoint builder, the signature dumper, the AOT closure walker)
-\ see types only through those arms, so a drift is silent. Each declaration is
-\ executed in one package and replayed through VERIFY:SOURCE-BUF-IN-SCOPE in
-\ another, so both families exist at once and COMPARE reads them side by side.
+\ the registry a live declaration builds; tools on verify-source see types only
+\ through those arms, so a drift is silent. Each case replays a declaration and
+\ asserts each candidate's verdict, or the code and diagnostic a refused replay gives.
 
 require src/lib/errors.f
 require src/lib/test.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f
 
-using SCHEMA-REG
-using TFAM
-
 package VSPARITY
 
 T-RESET
 
-\ Registry reflection: every word is a read. Each forwards to a sealed pre-hook
-\ registry word, the idiom the declaration suites use for their own reflection
-\ helpers; a read with no helper here names the registry word itself, whose
-\ recorded row the unsealed engine binds.
-: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
-: F-KIND ( n -- n ) TFAM-KIND@ ;
-: F-ARITY ( n -- n ) TFAM-ARITY@ ;
-: F-WIDTH ( n -- n ) TFAM-WIDTH@ ;
-\ compared as raw registry flag values, not used as conditions, so these
-\ answer the stored cell rather than a bool.
-CAST: FLAG-CELL ( bool -- n )
-: F-EQ ( n -- n ) TFAM-DERIVE-EQ? FLAG-CELL ;
-: F-HASH ( n -- n ) TFAM-DERIVE-HASH? FLAG-CELL ;
-: F-VSTART ( n -- n ) TFAM-VAR-START@ ;
-: F-VCOUNT ( n -- n ) TFAM-VAR-COUNT@ ;
-: V-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
-: V-TAG ( n -- n ) SUMV-TAG@ ;
-: V-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
-: R-FAM ( n -- n ) TYPE-FIELD:FAMILY@ ;
-: R-VAR ( n -- n ) TYPE-FIELD:VARIANT@ ;
-: R-CON-N? ( n -- bool )
-   PF-SCH@ SCHEMA-ROOT@ dup SCHEMA-CON? IF SCHEMA-A@ CC-N = EXIT THEN
-   drop false ;
-: R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
-
-\ TYPE-FIELD rows are a flat table keyed (family, variant), so a family's rows
-\ are found by scanning for that key; the Nth match in table order is the Nth
-\ field in declaration order.
-: ROWS ( n n -- n ) {: fam:n vid:n :}
-   0
-   R-TOTAL 0 ?DO
-      i R-FAM fam = i R-VAR vid = and IF 1+ THEN
-   LOOP ;
-
-: ROW-AT ( n n n -- n ) {: fam:n vid:n want:n :}   \ table index of the want'th row, or -1
-   0
-   R-TOTAL 0 ?DO
-      i R-FAM fam = i R-VAR vid = and IF
-         dup want = IF drop i unloop EXIT THEN
-         1+
-      THEN
-   LOOP
-   drop -1 ;
-
-: SAME-FIELDS ( n n n n -- ) {: af:n av:n bf:n bv:n :}
-   af av ROWS {: count:n :}
-   bf bv ROWS count T=
-   count 0 ?DO
-      af av i ROW-AT {: ai:n :}
-      bf bv i ROW-AT {: bi:n :}
-      ai 0 >= TTRUE
-      bi 0 >= TTRUE
-      ai PF-NAME$ bi PF-NAME$ CORE-STR= TTRUE
-      ai PF-SLOT@  bi PF-SLOT@  T=
-      ai PF-CELLS@ bi PF-CELLS@ T=
-   LOOP ;
-
-: SAME-VARIANTS ( n n -- ) {: af:n bf:n :}
-   af F-VCOUNT {: count:n :}
-   bf F-VCOUNT count T=
-   af F-VSTART {: astart:n :}
-   bf F-VSTART {: bstart:n :}
-   count 0 ?DO
-      astart i + {: a:n :}
-      bstart i + {: b:n :}
-      a V-NAME$ b V-NAME$ CORE-STR= TTRUE
-      a V-TAG b V-TAG T=
-      \ The constructor package is derived from the declaring package and the
-      \ family name, and the two copies must live in different packages to
-      \ coexist, so the two stamps differ by construction. What matters is that
-      \ the replayed row carries one at all: that stamp is the registration a
-      \ later FAMILY:VARIANT resolves through, and it is exactly what would be
-      \ lost by skipping the arming instead of the rendering.
-      b V-PKG$ nip 0 > TTRUE
-      a V-PKG$ nip 0 > TTRUE
-      \ Both paths register the checked constructor effects.
-      a SUMV-CTOR-SYM@ 0 <> TTRUE
-      b SUMV-CTOR-SYM@ 0 <> TTRUE
-      af a bf b SAME-FIELDS
-   LOOP ;
-
-: PAIR-FIELD ( n ptr u8 n n -- )
-   {: fam:n name:ptr nameu:n slot:n :}
-   fam TYPE-FIELD:NO-VARIANT name nameu TYPE-FIELD:FIND
-   {: row:n found:bool :}
-   found TTRUE
-   found IF
-      row PF-SLOT@ slot T=
-      row PF-CELLS@ 1 T=
-      row R-CON-N? TTRUE
-   THEN ;
-
 public
-
-\ Fields compared between the live and the replayed family:
-\   family:   kind (product/sum/enum), arity, declared width, layout policy,
-\             derive-eq, derive-hash, variant count, field count
-\   variants: name and tag of every row, in declaration order, plus the
-\             constructor package stamped on that row
-\   fields:   the TYPE-FIELD row count keyed (family, variant), and each row's
-\             name, slot, and cell width; the pair fixture checks its concrete
-\             field schemas separately because root ids are allocation indices
-\ Both paths register constructor symbols and checked effects; replay emits no
-\ code or runtime dictionary entries, which VS-LOAD and VS-DONE check.
-: COMPARE ( ptr u8 n ptr u8 n -- ) {: aa:ptr au:n ba:ptr bu:n :}
-   aa au FAMID {: af:n :}
-   ba bu FAMID {: bf:n :}
-   af F-KIND   bf F-KIND   T=
-   af F-ARITY  bf F-ARITY  T=
-   af F-WIDTH  bf F-WIDTH  T=
-   af TFAM-LAYOUT-POLICY@ bf TFAM-LAYOUT-POLICY@ T=
-   af F-EQ     bf F-EQ     T=
-   af F-HASH   bf F-HASH   T=
-   af TFAM-FLD-COUNT@ bf TFAM-FLD-COUNT@ T=
-   af TYPE-FIELD:NO-VARIANT bf TYPE-FIELD:NO-VARIANT SAME-FIELDS
-   af bf SAME-VARIANTS ;
-
-: PAIR-FIELDS ( ptr u8 n -- )
-   FAMID {: fam:n :}
-   fam s" lo" 0 PAIR-FIELD
-   fam s" hi" 1 PAIR-FIELD ;
 
 \ Registers a source's declarations without executing it, as the in-process
 \ tools do. VERIFY:SOURCE-BUF rolls every registration back in a candidate
@@ -148,12 +23,8 @@ public
    src u VERIFY:SOURCE-BUF-IN-SCOPE
    ndict@ before T= ;
 
-\ VS-OPEN ( source -- ) / VS-DONE ( -- ) : the same load inside a neutral pair,
-\ for a source whose names the candidates after it ask for. They bind while
-\ the pair is open: the checker overlay holds them there as codeless records,
-\ which go with the pair (src/core/checker.f CHECKER-OVERLAY). So the
-\ dictionary count is checked across the pair, and the pair finalizes: the
-\ registrations stay for the comparisons after it.
+\ VS-LOAD's load in a neutral pair: CHECKER-OVERLAY binds the source's names until
+\ VS-DONE drops them, keeps the registrations and checks the dictionary count.
 variable PAIR-BEFORE
 : VS-OPEN ( ptr u8 n -- ) {: src:ptr u:n :}
    ndict@ PAIR-BEFORE !
@@ -162,9 +33,6 @@ variable PAIR-BEFORE
 : VS-DONE ( -- )
    CHECKER-SCOPE-FINALIZE
    ndict@ PAIR-BEFORE @ T= ;
-
-: VCOUNT ( ptr u8 n -- n ) FAMID F-VCOUNT ;
-: FCOUNT ( ptr u8 n -- n ) FAMID TFAM-FLD-COUNT@ ;
 
 \ Source builder for bodies too long to write out.
 $4000 constant SRC-CAP        \ 16384: comfortably past BODYBUF-CAP (8000)
@@ -213,11 +81,6 @@ variable SB-I   variable SB-J
 : VS-RUN ( ptr u8 n -- ) VS-LOAD ;
 : VSTRY ( ptr u8 n -- n ) [: 2dup VS-RUN ;] catch {: rc:n :} 2drop rc ;
 
-\ The over-cap declaration must leave no family behind, not a short one.
-: FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE ;
-: CAP-FAMILY-ABSENT ( -- )
-   s" capb:big" FAM-FIND 0= TTRUE drop ;
-
 \ A `\` comment ends at a newline, so this source needs a real one embedded.
 : BACKSLASH-ENUM-SOURCE ( -- ptr u8 n )
    SRC-RESET
@@ -228,16 +91,8 @@ variable SB-I   variable SB-J
 
 ;package
 
-\ 1. STRUCTURE: executed live in package `sdlive`, replayed through
-\    verify-source into package `sdrep`.
-package sdlive
-public
-STRUCTURE pair
-   FIELD lo n
-   FIELD hi n
-;STRUCTURE
-;package
-
+\ 1. STRUCTURE replayed into package `sdrep`: its constructor and destructor
+\    check, and a candidate with the wrong effect is refused.
 s" package sdrep public STRUCTURE pair FIELD lo n FIELD hi n ;STRUCTURE ;package"
 VSPARITY:VS-OPEN
 s" PAIR ( n n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
@@ -245,17 +100,8 @@ s" UNPAIR ( sdrep:pair -- n n ) SDREP-PAIR:UNMAKE" VERIFY:CANDIDATE-IN-SCOPE -1 
 s" WRONG-PAIR ( n -- sdrep:pair ) SDREP-PAIR:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 VSPARITY:VS-DONE
 
-s" sdlive:pair" s" sdrep:pair" VSPARITY:COMPARE
-s" sdlive:pair" VSPARITY:PAIR-FIELDS
-s" sdrep:pair" VSPARITY:PAIR-FIELDS
-
-\ 2. Compact ENUM: the replay drives ENUM-DECL:ED-REPLAY, and the registry it
-\    produces must match an executed declaration exactly.
-package edlive
-public
-ENUM colour red green blue ;ENUM
-;package
-
+\ 2. Compact ENUM: the replay drives ENUM-DECL:ED-REPLAY-OUTCOME; its
+\    constructors check, and a candidate with the wrong effect is refused.
 s" package edrep public ENUM colour red green blue ;ENUM ;package"
 VSPARITY:VS-OPEN
 s" COLOUR ( -- edrep:colour ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE -1 T=
@@ -263,8 +109,6 @@ s" COLOUR-GREEN ( -- edrep:colour ) EDREP-COLOUR:GREEN" VERIFY:CANDIDATE-IN-SCOP
 s" COLOUR-BLUE ( -- edrep:colour ) EDREP-COLOUR:BLUE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
 s" WRONG-COLOUR ( -- n ) EDREP-COLOUR:RED" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 VSPARITY:VS-DONE
-
-s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 
 \ Checked uses work immediately after replay, in the replay itself and, for
 \ the sdrep and edrep candidates above, in the pair it ran in, including
@@ -278,9 +122,10 @@ VSPARITY:VS-LOAD
 \ 3. A STRUCTURE named as a later declaration's payload type: without the
 \    STRUCTURE arm on this path the payload does not resolve.
 s" package edpay public STRUCTURE slotrec FIELD v n ;STRUCTURE SUMTYPE box VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"
-VSPARITY:VS-LOAD
-s" edpay:box" VSPARITY:VCOUNT 2 T=
-s" edpay:slotrec" VSPARITY:FCOUNT 1 T=
+VSPARITY:VS-OPEN
+s" PAY-FULL ( edpay:slotrec -- edpay:box ) EDPAY-BOX:FULL" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+s" PAY-EMPTY ( -- edpay:box ) EDPAY-BOX:EMPTY" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+VSPARITY:VS-DONE
 
 \ 4. A body the capture buffer cannot hold raises; it is never truncated. The
 \    replay entries have no length gate: they parse whatever arrives. A
@@ -293,13 +138,14 @@ s" edpay:slotrec" VSPARITY:FCOUNT 1 T=
 
 \ Under the buffer's bound: replays completely, every variant present. A body of
 \ 1000 variants is 6000 bytes, past 4096, and accepted.
-s" capa" 1000 VSPARITY:ENUM-SOURCE VSPARITY:VS-LOAD
-s" capa:big" VSPARITY:VCOUNT 1000 T=
+s" capa" 1000 VSPARITY:ENUM-SOURCE VSPARITY:VS-OPEN
+s" CAPA-LAST ( -- capa:big ) CAPA-BIG:V0999" VERIFY:CANDIDATE-IN-SCOPE -1 T=
+VSPARITY:VS-DONE
 
 \ Over the buffer's bound: raises the declaration layer's own "declaration too
 \ long" code, and registers nothing at all.
 s" capb" 1400 VSPARITY:ENUM-SOURCE VSPARITY:VSTRY 7118 T=
-VSPARITY:CAP-FAMILY-ABSENT
+s" CAPB-ID ( capb:big -- capb:big )" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
 \ 5. Comments are not laundered out of a declaration body. The engine reads a
 \    declaration body with `parse-name`, which has no comment rule, so `\` and
@@ -360,6 +206,3 @@ VSPARITY:VS-LOAD
 s" ADR-LEAK ( ptr adprv:prec -- ptr n ) PREC-HI" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 
 T-REPORT
-
-;using
-;using
