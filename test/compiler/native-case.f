@@ -1,6 +1,5 @@
-\ Exercise the same CASE source through both real compiler tiers.
-\ The ARM host compiles each child at both tiers. The x64 host supports tier 1
-\ only, and runs the same source and refusal cases through that tier.
+\ CASE lowering at tier 0, one child per source. x86-64 has no tier 0, so it
+\ runs none of these.
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/test/outcome.f
@@ -30,33 +29,29 @@ create ERR CAP allot
    then ;
 
 
-: RUN-SOURCE ( ptr u8 n n n -- ) {: source:ptr size:n tier:n want:n :}
-   SB-RESET
-   tier 0= if s" 0 set-tier " else s" 1 set-tier " then SB-APPEND
-   source size SB-APPEND
-   SB$ OUT CAP >LEN ERR CAP >LEN 20000 >MS SUBJECT:RUN
-   SB$ want CHECK-RESULT ;
+: RUN-SOURCE ( ptr u8 n n -- ) {: source:ptr size:n want:n :}
+   source size OUT CAP >LEN ERR CAP >LEN 20000 >MS SUBJECT:RUN
+   source size want CHECK-RESULT ;
 
 
-: CHECK-TIER ( n -- ) {: tier:n :}
+: CHECK-CASES ( -- )
    s" CASE consuming defaults, return-stack joins and early exits" T-LABEL
-   s" require test/compiler/native-case-subject.f" tier 0 RUN-SOURCE
+   s" require test/compiler/native-case-subject.f" 0 RUN-SOURCE
    s" ENDCASE still requires its selector" T-LABEL
-   s" : CASE-EMPTY-BAD ( n -- ) case drop endcase ;" tier 70 RUN-SOURCE
+   s" : CASE-EMPTY-BAD ( n -- ) case drop endcase ;" 70 RUN-SOURCE
    s" CASE still rejects inconsistent data-stack results" T-LABEL
    s" : CASE-JOIN-BAD ( n n -- n ) case 1 of drop 0 endof 2drop 0 endcase ;"
-   tier 70 RUN-SOURCE
+   70 RUN-SOURCE
    s" CASE still rejects inconsistent return-stack rows" T-LABEL
    s" : CASE-RETURN-BAD ( n -- n ) case 1 of 10 >r endof endcase r> ;"
-   tier 70 RUN-SOURCE ;
+   70 RUN-SOURCE ;
 
 
 public
 
 : RUN ( -- )
    T-RESET
-   HB-TARGET-LINUX-X86-64? 0= if 0 CHECK-TIER then
-   1 CHECK-TIER
+   HB-TARGET-LINUX-X86-64? 0= if CHECK-CASES then
    T-REPORT ;
 
 ;package

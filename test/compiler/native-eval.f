@@ -2,8 +2,6 @@
 \ stack of its own and refuses residue by name, which is what lets a checked
 \ word evaluate source. Tier-neutral by design: the boundary asserted is the
 \ engine primitive and the checker's row for it, which no compiler tier moves.
-\ The texts a throw takes back run at each tier that reaches their throw, since
-\ each tier records the definitions it compiles its own way.
 require src/core/engine-error.f
 require src/habu/stack-abi.f
 require src/lib/errors.f
@@ -329,18 +327,14 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 \ ---- a definition a thrown text takes back keeps no row ----------------------
 \ A text that throws takes back what it defined, and its frame cuts the
 \ checker's records back to where the text began, so a later word is checked
-\ against the word the engine binds. Each child sets the tier it compiles at,
-\ and the texts outrun a source line, so each is assembled in TEXT.
+\ against the word the engine binds. The texts outrun a source line, so each
+\ is assembled in TEXT.
 create TEXT IO-CAP allot
 variable TEXT-U
 variable OUT-U
 variable ERR-U
 
 : TEXT+ ( ptr u8 n -- ) TEXT IO-CAP TEXT-U BUF-APPEND ;
-
-: TIER-TEXT ( n -- ) {: tier:n :}
-   TEXT-U BUF-RESET
-   tier 0= if s" 0 set-tier " else s" 1 set-tier " then TEXT+ ;
 
 : TEXT-RC ( -- n )
    TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
@@ -354,9 +348,9 @@ variable ERR-U
 
 \ A text that defines X-FORGET and then throws takes X-FORGET back, row and
 \ all, so the next X-FORGET is no duplicate.
-: NAME-THROWN ( n -- ) {: tier:n :}
+: NAME-THROWN ( -- )
    s" a definition its text threw back leaves its name free" T-LABEL
-   tier TIER-TEXT
+   TEXT-U BUF-RESET
    S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n ) 1 ; 77 throw\" evaluate ; " TEXT+
    s" ' EVAL-X-FORGET catch . cr " TEXT+
    s" : X-FORGET ( -- n ) 2 ; X-FORGET . cr" TEXT+
@@ -366,9 +360,9 @@ variable ERR-U
 \ The same text inside Q-FORGET: T-FORGET's X-FORGET is the global ( -- n ),
 \ not the thrown-back Q-FORGET:X-FORGET ( -- n n ), so T-FORGET ( -- n n ) is
 \ refused; typed against the thrown row it would certify and run one cell short.
-: ROW-THROWN ( n -- ) {: tier:n :}
+: ROW-THROWN ( -- )
    s" a definition its text threw back does not type a later caller" T-LABEL
-   tier TIER-TEXT
+   TEXT-U BUF-RESET
    s" : X-FORGET ( -- n ) 1 ; " TEXT+
    S\" TRUSTED: EVAL-X-FORGET ( -- ) s\" : X-FORGET ( -- n n ) 1 2 ; 77 throw\" evaluate ; " TEXT+
    s" package Q-FORGET public ' EVAL-X-FORGET catch . cr " TEXT+
@@ -376,10 +370,6 @@ variable ERR-U
    TEXT-RC 70 T=
    OUT$ S\" 77\n\n" T$=
    s" habu: in t-forget: at 'X-FORGET' expected: n n actual: n" SAYS ;
-
-: THROWN-BACK ( n -- ) {: tier:n :}
-   tier NAME-THROWN
-   tier ROW-THROWN ;
 
 : CHECKED ( -- )
    s" a checked body naming evaluate is refused" T-LABEL
@@ -394,7 +384,7 @@ variable ERR-U
    UNFINISHED-NESTED CALLER-OPEN CALLER-OPEN-REFUSED CALLER-OPEN-IS-REFUSED AGREEMENT OVERFLOW FLOOR-JUMP
    TOP-LEVEL
    UNFINISHED-LINE IN-TASK
-   2 0 do i THROWN-BACK loop
+   NAME-THROWN ROW-THROWN
    CHECKED
    T-REPORT ;
 

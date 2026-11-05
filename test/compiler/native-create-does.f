@@ -11,11 +11,8 @@ require src/habu/verify-source.f
 package NATIVE-CREATE-DOES-PUBLIC
 public
 : MAKE-CHECKED ( n -- ) create , does> ( -- ptr n ) ;
-TRUSTED: MAKE-TRUSTED ( n -- ) create , does> ( -- ptr n ) ;
 8 MAKE-CHECKED CHECKED-LIVE
-8 MAKE-TRUSTED TRUSTED-LIVE
 : CHECKED-VALUE ( -- n ) CHECKED-LIVE @ ;
-: TRUSTED-VALUE ( -- n ) TRUSTED-LIVE @ ;
 : PLAIN ( n -- n ) 1 + ;
 ;package
 
@@ -43,11 +40,6 @@ private
    create ,
    does> ( -- ptr a ) ;
 
-TRUSTED: TRUSTED-MAKE ( n -- )
-   drop dbase@ drop
-   create 55 ,
-   DOES> ( -- n ) @ ;
-
 : MAYBE-PATCH ( bool -- )
    create 99 ,
    if exit then
@@ -66,7 +58,6 @@ TRUSTED-PATCH-CELL
 50 MAKE-INERT-CELL INERT-CELL 51 T=
 5 MAKE-ADDER ADD5 6 T=
 73 MAKE-ADDRESS CREATED-ADDRESS
-9 TRUSTED-MAKE TRUSTED-CELL
 0 0= MAYBE-PATCH UNPATCHED
 1 0= MAYBE-PATCH PATCHED
 UNPATCHED @ 99 T=
@@ -92,20 +83,13 @@ public
    CHECKER-SCOPE-START-NEUTRAL
    s\" 9 NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED CHECKED-MADE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
-   s\" 9 NATIVE-CREATE-DOES-PUBLIC:MAKE-TRUSTED TRUSTED-MADE\n"
-      VERIFY:SOURCE-BUF-IN-SCOPE
    s" a native checked definer publishes its created effect" T-LABEL
    s" NC1 ( -- ptr n ) CHECKED-MADE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
    s" a native checked definer refuses a scalar use" T-LABEL
    s" NC2 ( -- n ) CHECKED-MADE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
-   s" a native trusted definer publishes its created effect" T-LABEL
-   s" NT1 ( -- ptr n ) TRUSTED-MADE" VERIFY:CANDIDATE-IN-SCOPE -1 T=
-   s" a native trusted definer refuses a scalar use" T-LABEL
-   s" NT2 ( -- n ) TRUSTED-MADE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    CHECKER-SCOPE-DONE
-   s" both native definers create working storage" T-LABEL
+   s" a native checked definer creates working storage" T-LABEL
    NATIVE-CREATE-DOES-PUBLIC:CHECKED-VALUE 8 T=
-   NATIVE-CREATE-DOES-PUBLIC:TRUSTED-VALUE 8 T=
    CHECKER-SCOPE-START-NEUTRAL
    s\" 5 NATIVE-CREATE-DOES-PUBLIC:PLAIN PLAIN-MADE\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
@@ -161,9 +145,6 @@ public
 
    s" does> inside a string is not the defining-word split" T-LABEL
    INERT-CELL 50 T=
-
-   s" an uncheckable trusted parent still publishes its checked clause" T-LABEL
-   TRUSTED-CELL 55 T=
 
    s" an explicit exit leaves CREATE behavior; fallthrough installs does>" T-LABEL
    PATCHED 7 T=

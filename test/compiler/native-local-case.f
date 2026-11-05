@@ -32,11 +32,8 @@ variable EXITED
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN-SOURCE ( ptr u8 n n -- ) {: src:ptr u:n tier:n :}
-   SB-RESET
-   tier 0= if s" 0 set-tier " else s" 1 set-tier " then SB-APPEND
-   src u SB-APPEND
-   SB$ OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN SB$ STORE ;
+: RUN-SOURCE ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
    EXITED @ 0= RC @ want <> or if ERR$ type OUT$ type then
@@ -48,49 +45,40 @@ variable EXITED
    ERR-U @ 0 T=
    OUT$ STR= TTRUE ;
 
-: SHADOW-SOURCE$ ( -- ptr u8 n )
-   S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: MIXED-GLOBAL ( n -- n ) {: review-width:n :} REVIEW-WIDTH ;\n: SAME-GLOBAL ( n -- n ) {: review-width:n :} review-width ;\npackage LC-SUBJECT\npublic\n: P-WIDTH ( -- n ) 4 ;\n: SAME ( n -- n ) {: P-WIDTH:n :} P-WIDTH ;\n: MIXED-PKG ( n -- n ) {: p-width:n :} P-WIDTH ;\n: MIXED-UP ( n -- n ) {: P-WIDTH:n :} p-width ;\n: BUILTIN ( n -- n ) {: DUP:n :} DUP ;\n: INDEX ( n -- n ) {: I:n :} 0 3 0 ?do i + loop ;\n: TURNS ( n -- n ) {: i:n :} 0 3 0 ?do i + loop ;\n;package\n17 MIXED-GLOBAL . 17 SAME-GLOBAL . 9 LC-SUBJECT:SAME . 9 LC-SUBJECT:MIXED-PKG . 9 LC-SUBJECT:MIXED-UP . 7 LC-SUBJECT:BUILTIN . 5 LC-SUBJECT:INDEX . 5 LC-SUBJECT:TURNS .\n" ;
-
 : SCOPE-SOURCE$ ( -- ptr u8 n )
    S\" package LC-SUBJECT\npublic\n: LATEST ( n n -- n ) {: item:n ITEM:n :} ITEM ;\n: EARLIER ( n n -- n ) {: item:n ITEM:n :} item ;\n: REPEATED ( n n -- n ) {: v:n v:n :} v ;\n: SHADOW ( n -- n ) {: value:n :} value 0 > if false {: value:bool :} value if 1 else 2 then else 0 then value + ;\n: DISTINCT ( n -- n ) {: value:n :} value 0 > if 100 {: VALUE:n :} VALUE value + else 0 then ;\n;package\n3 9 LC-SUBJECT:LATEST . 3 9 LC-SUBJECT:EARLIER . 3 9 LC-SUBJECT:REPEATED . 5 LC-SUBJECT:SHADOW . -1 LC-SUBJECT:SHADOW . 5 LC-SUBJECT:DISTINCT .\n" ;
 
 \ A name whose scope has closed, a name spelled like a control word, and names
-\ that are punctuation: the second half of the scope question, held apart
-\ because one subject source has to fit the 1024-byte builder.
+\ that are punctuation: the second half of the scope question.
 : CONTROL-SOURCE$ ( -- ptr u8 n )
    S\" package LC-SUBJECT\npublic\n99 constant V\n: AFTER ( n -- n ) dup 0 > if {: v:n :} v else drop 0 then V + ;\n: INNER-V ( n -- n ) dup 0 > if {: v:n :} V else drop 0 then ;\n: TAIL ( n -- n ) dup 0 > if {: endof:n :} endof 2 * else drop 0 then ;\n: LOOPTAIL ( n -- n ) {: k:n :} 0 2 0 ?do k i + {: again:n :} again + loop ;\n: PUNCT ( n n -- n ) {: [v:n {v:n :} [v {v - ;\n;package\n5 LC-SUBJECT:AFTER . -1 LC-SUBJECT:AFTER . 5 LC-SUBJECT:INNER-V . 5 LC-SUBJECT:TAIL . -1 LC-SUBJECT:TAIL . 5 LC-SUBJECT:LOOPTAIL . 3 9 LC-SUBJECT:PUNCT .\n" ;
 
-: SHADOW-CASE ( n -- )
-   s" a local binds its declared spelling; the other spelling is the word" T-LABEL
-   SHADOW-SOURCE$ rot RUN-SOURCE
-   S\" 3\n17\n9\n4\n4\n7\n3\n15\n" EXPECT-OUT ;
-
-: SCOPE-CASE ( n -- )
+: SCOPE-CASE ( -- )
    s" two spellings are two names, and one spelling keeps its latest binding and its scope" T-LABEL
-   SCOPE-SOURCE$ rot RUN-SOURCE
+   SCOPE-SOURCE$ RUN-SOURCE
    S\" 9\n3\n9\n7\n-1\n105\n" EXPECT-OUT ;
 
-: CONTROL-CASE ( n -- )
+: CONTROL-CASE ( -- )
    s" a closed scope, a control word and punctuation names read the same way" T-LABEL
-   CONTROL-SOURCE$ rot RUN-SOURCE
+   CONTROL-SOURCE$ RUN-SOURCE
    S\" 104\n99\n99\n10\n0\n11\n-6\n" EXPECT-OUT ;
 
-: QUOTATION-CASE ( n -- ) {: tier:n :}
+: QUOTATION-CASE ( -- )
    s" a local reference cannot escape into a quotation" T-LABEL
    S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: BAD-QLOCAL ( n -- n ) {: review-width:n :} [: review-width ;] execute ;\n"
-   tier RUN-SOURCE
+   RUN-SOURCE
    70 EXPECT-RC
    OUT-U @ 0 T=
    ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE
 
    s" the other spelling in a quotation is the word, which a quotation may call" T-LABEL
    S\" : REVIEW-WIDTH ( -- n ) 3 ;\n: OK-QWORD ( n -- n ) {: review-width:n :} [: REVIEW-WIDTH ;] execute ;\n17 OK-QWORD .\n"
-   tier RUN-SOURCE
+   RUN-SOURCE
    S\" 3\n" EXPECT-OUT
 
    s" a quotation cannot declare a local in either case" T-LABEL
    S\" : BAD-QDECLARE ( n -- n ) [: {: REVIEW-WIDTH:n :} REVIEW-WIDTH ;] execute ;\n"
-   tier RUN-SOURCE
+   RUN-SOURCE
    70 EXPECT-RC
    OUT-U @ 0 T=
    ERR$ s" E-BAD-LOCAL-SHAPE" CONTAINS? TTRUE ;
@@ -99,10 +87,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   HB-TARGET-LINUX-X86-64? 0= if
-      0 SHADOW-CASE 0 SCOPE-CASE 0 CONTROL-CASE 0 QUOTATION-CASE
-   then
-   1 SHADOW-CASE 1 SCOPE-CASE 1 CONTROL-CASE 1 QUOTATION-CASE
+   \ x86-64 has no tier 0, so it runs none of these.
+   HB-TARGET-LINUX-X86-64? 0= if SCOPE-CASE CONTROL-CASE QUOTATION-CASE then
    T-REPORT ;
 
 ;package

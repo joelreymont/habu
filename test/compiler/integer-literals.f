@@ -1,6 +1,6 @@
 \ Integer admission is shared by interpret, evaluate, and native compilation.
+require src/lib/string.f
 require src/lib/test.f
-require test/gate-common.f
 
 package INTEGER-LITERALS-TEST
 
@@ -52,19 +52,20 @@ package INTEGER-LITERALS-TEST
    s" $10000000000000000G" REFUSED ;
 
 
+\ The text is built in SB, since a quotation cannot reach the caller's locals.
 : BAD-INTERPRETED ( ptr u8 n -- ) {: lit:ptr len:n :}
-   GE-SRC-RESET
-   lit len GE-SRC+
-   s"  drop" GE-SRC-LINE
-   70 lit len s" overflowing interpreted integer" GE-EVAL-FORK-BAD ;
+   SB-RESET
+   lit len SB-APPEND
+   s"  drop" SB-APPEND
+   [: SB$ evaluate-closed ;] 70 TTHROWSQ ;
 
 
 : BAD-COMPILED ( ptr u8 n -- ) {: lit:ptr len:n :}
-   GE-SRC-RESET
-   s" : INTEGER-OVERFLOW-BAD ( -- n ) " GE-SRC+
-   lit len GE-SRC+
-   s"  ;" GE-SRC-LINE
-   70 lit len s" overflowing compiled integer" GE-EVAL-FORK-BAD ;
+   SB-RESET
+   s" : INTEGER-OVERFLOW-BAD ( -- n ) " SB-APPEND
+   lit len SB-APPEND
+   s"  ;" SB-APPEND
+   [: SB$ evaluate-closed ;] 70 TTHROWSQ ;
 
 
 : BAD-LITERAL ( ptr u8 n -- ) {: lit:ptr len:n :}
