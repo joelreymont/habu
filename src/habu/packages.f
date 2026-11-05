@@ -4,7 +4,8 @@
 \ DEF-WL, PKG-*) exits 83: rows, scope and aliases go through the prims.f
 \ writers and CUR through set-current; the using band, DEF-TKA, DEF-TKL and
 \ layout.f PKG-OUTSIDE-CELL are not sealed and are written here. A writer
-\ refuses silently, so each engine refusal is made here.
+\ refuses silently, so each engine refusal is made here. It also exports
+\ OUTER:WITHOUT-PACKAGE, which runs a quotation as at top level.
 
 require src/lib/prelude.f
 require src/habu/boot-cells.f
@@ -437,5 +438,27 @@ variable USE-FLOOR
    s" ;using" TOKEN-IS? if PKG-END-USING true exit then
    s" export" TOKEN-IS? if PKG-EXPORT true exit then
    false ;
+
+\ No package open, and the checker told so.
+: PKG-CLEAR ( -- )
+   -1 0 package-scope!
+   NCOMP-DISPATCH:DECL-PKG-RESYNC-OFF PKG-NOTIFY ;
+
+public
+
+\ Q runs as at top level: no package open, current where the outer package
+\ opened. The scope comes back on either exit, Q's throw rethrown (LINKER:WITH).
+: WITHOUT-PACKAGE ( [ -- ] -- )
+   {: q :}
+   PKG-STATE {: outer-rec:n outer-parent:n rec:n parent:n cur:n floor:n :}
+   PKG-OUTSIDE-CELL CELL@ {: outside:n :}
+   PKG-CLEAR
+   outer-rec 0<> if outer-parent set-current else
+      rec 0<> if parent set-current then
+   then
+   q catch {: rc:n :}
+   outer-rec outer-parent rec parent cur floor PKG-RECOVER
+   outside PKG-OUTSIDE-CELL CELL!
+   rc 0<> if rc throw then ;
 
 ;package

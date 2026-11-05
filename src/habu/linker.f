@@ -1,6 +1,7 @@
 \ linker.f - the cross-build's data space: WITH maps a space beside hb's DATA,
-\ points DP, the wordlists and the image base at it, runs the body there and
-\ closes it. The close undoes exactly the open steps that ran, in reverse.
+\ points DP, the wordlists and the image base at it, runs the body there with no
+\ package of hb's open and closes it. The close undoes exactly the open steps
+\ that ran, in reverse.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -211,13 +212,13 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 
 public
 
-\ Open a build's data space, run the body in it and close it on every exit,
-\ rethrowing the open's or the body's throw; E-COMP-STATE while one is open.
+\ Run the body in a build's space with no package of hb's open, close on every
+\ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
 : WITH ( ptr u8 n [ -- ] -- )
    {: mode:ptr modeu:n body :}
    IDLE? 0= if E-COMP-STATE throw then
    mode modeu s" engine" STR= ENGINE? !
    body BODY !
-   ['] RUN ['] CLOSE finally ;
+   [: ['] RUN ['] CLOSE finally ;] OUTER:WITHOUT-PACKAGE ;
 
 ;package

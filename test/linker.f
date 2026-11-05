@@ -305,9 +305,49 @@ public
    \ The first build installs the typed loop for good; the host is taken after it.
    [: ;] BUILD
    TAKE-HOST
-   CASE-A CASE-B CASE-C CASE-D CASE-E CASE-F CASE-G CASE-H CASE-I CASE-J
-   T-REPORT ;
+   CASE-A CASE-B CASE-C CASE-D CASE-E CASE-F CASE-G CASE-H CASE-I CASE-J ;
 
 ;package
 
 LINKER-TEST:RUN
+
+\ Case k runs at top level with LINKER-TEST open, as a caller's build does.
+package LINKER-TEST
+private
+
+variable PKG-K                       \ PKG-PUB-CELL inside the body
+variable RC-K
+
+: BODY-K ( -- )
+   s" variable LK-K1  1 LK-K1 !" evaluate-closed
+   PKG-PUB-CELL DATA-CELL @ PKG-K ! ;
+
+: CASE-K ( -- )
+   TAKE-HOST
+   -1 PKG-K !
+   [: [: BODY-K ;] BUILD ;] catch RC-K !
+   RC-K @ 0 T=
+   PKG-K @ 0 T=
+   HOST-CHECK
+   s" k: a build run inside a host package sees no package open, and the close reopens it" SAY ;
+
+CASE-K
+
+variable RAN-L
+\ The package it opens writes 0 into PKG-OUTSIDE-CELL; WITHOUT-PACKAGE restores the caller's.
+: OPEN-L ( -- ) [: s" package LK-PX" evaluate-closed ;] OUTER:WITHOUT-PACKAGE ;
+
+: CASE-L ( -- )
+   [: [: s" : LK-L1 ( -- ) ;" evaluate-closed ;] OUTER:WITHOUT-PACKAGE ;] catch 0 T=
+   s" LK-L1" LOOKUP -1 T<>
+   s" package LK-PB ;package" TEST-EVAL:RC 75 T=
+   0 RAN-L !
+   s" OPEN-L -1 RAN-L ! package LK-PB ;package" TEST-EVAL:RC 75 T=
+   RAN-L @ -1 T=
+   s" l: WITHOUT-PACKAGE defines at top level and keeps the caller's package outside" SAY ;
+
+CASE-L
+
+;package
+
+T-REPORT
