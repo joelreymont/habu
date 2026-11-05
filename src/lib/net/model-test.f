@@ -1689,6 +1689,19 @@ variable KEYLESS-U
    MODEL-PEER:CALLS@ refused = ASSERT ;
 
 
+: FAILING-PUT ( n ptr u8 n ptr u8 n -- ) 2drop 2drop drop E-RECORDER throw ;
+
+
+\ A journal put that throws while journaling a refusal is logged with its code,
+\ and the call still throws its own fault.
+: REFUSAL-PUT-FAULT ( -- )
+   false JOURNAL-READY !
+   0 [: JOURNAL-GET ;] [: FAILING-PUT ;] M MODEL:JOURNAL!
+   PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
+   SB-RESET s"  error model: chat test-generation journal put " SB-APPEND
+   E-RECORDER FMT:SB-INT SB-LOGGED ;
+
+
 \ Both producer configurations name this base.
 : BASE-IS ( ptr u8 n -- )
    {: want:ptr want-u:n :}
@@ -1832,7 +1845,7 @@ variable KEYLESS-U
    CHAT EMBEDDINGS
    STOP-ACTIVE
    M MODEL:CLOSE
-   SETUP RECORDED-CALLS REPLAYED-CALLS
+   SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS
    M MODEL:CLOSE
