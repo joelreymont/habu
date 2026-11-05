@@ -2,6 +2,9 @@
 \ loops with leave and unloop, begin/while/repeat, if/else, catch and throw,
 \ nested quotations, a create ... does> definer, variables, a deferred word
 \ rebound at run time, floats, and every string literal form.
+require test/compiler/native-frame-slot-image.f
+require test/compiler/native-div-image.f
+
 package TIER0-SUBJECT
 
 variable BUILT
@@ -92,6 +95,7 @@ public
    4 STEP . cr BIND-MUL 4 STEP . cr BIND-ADD
    FLOATS
    STRINGS
+   FRAME-SLOT-IMAGE:CASES NDIV-IMAGE:RUN cr
    BUILT @ . cr ;
 
 ;package

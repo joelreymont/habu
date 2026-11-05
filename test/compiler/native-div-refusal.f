@@ -135,10 +135,9 @@ variable DIV-AT                           \ where the last sdiv found stands
       lo i 4 * +  dup CODE@ SDIV-MASK and SDIV-X = if DIV-AT ! 1+ else drop then
    loop ;
 
-\ The stripped image is the helper's third reader: tools/hb-build.f compiles
-\ test/compiler/native-div-image.f at tier 1 keeping only its closure, so the
-\ image catches a zero divide only if the closure followed the guard's branch
-\ into the helper. test/compiler/native-frame-slot-e2e.f builds and runs it.
+\ The stripped image is the helper's third reader: tools/hb-build-aot-test.f
+\ HBT-AOT-DIVZ-PKG$ catches a zero divide only if the closure followed the
+\ guard's branch into the helper.
 : HELPER ( -- n ) s" (DIV-ZERO)" NDICT:HELPER-TARGET ;
 
 : GUARD-CASES ( -- )

@@ -575,10 +575,6 @@ SUITE compiler-regfile
    test/compiler/regfile.f
 ;SUITE
 
-SUITE compiler-native-frame-slot-e2e
-   test/compiler/native-frame-slot-e2e.f
-;SUITE
-
 SUITE compiler-native-loop-frame-order
    test/compiler/native-loop-frame-order.f
 ;SUITE

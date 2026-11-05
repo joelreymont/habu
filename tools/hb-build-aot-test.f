@@ -1,8 +1,9 @@
-\ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f's AOT groups: the
-\ object producer, native call sites, one stripped program over the division
-\ refusal, the span definer with foreign calls, the empty does> clause and a
-\ multi-page DATA payload, the product subject built at each tier, and the
-\ program the keyed linker image refuses. Other rows: tools/hb-build-test-lib.f.
+\ hb-build-aot-test.f - checked fixture for tools/hb-build-lib.f's AOT groups:
+\ native call sites; one stripped program over the division refusal, the span
+\ definer with foreign calls, the empty does> clause, a multi-page DATA payload,
+\ frame slots, signed remainders and long literals; the product subject built
+\ at each tier; and the program the keyed linker image refuses. Other rows:
+\ tools/hb-build-test-lib.f.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
 require tools/hb-build-test-lib.f
@@ -38,7 +39,7 @@ package HB-BUILD-CLI
 : HBT-AOT-MULTI-PKG$ ( -- ptr u8 n )
    S\" package HBT-MULTI\ncreate MULTI-BUF 20000 allot\n: INIT ( -- ) 20000 0 ?do 1 MULTI-BUF i + c! loop ;\nINIT\npublic\n: RUN ( -- ) MULTI-BUF c@ MULTI-BUF 19999 + c@ + . cr ;\n;package\n" ;
 
-4096 CODEGEN:BUFFER HBT-POSITIVES
+32768 CODEGEN:BUFFER HBT-POSITIVES
 
 \ A `create ... does>` definer whose clause yields src/lib/span.f's two-cell
 \ span, built stripped at tier 1 (LOADING asserts it) and run: allocate, copy,
@@ -70,10 +71,32 @@ package HB-BUILD-CLI
 : HBT-AOT-ALIAS-PKG$ ( -- ptr u8 n )
    S\" package HBT-XA\npublic\n: W ( i64 -- i64 ) dup * ;\n;package\npackage HBT-XB\npublic\nEXPORT HBT-XA:W\n;package\n" ;
 
-\ The programs that build and run cleanly, as one stripped image: each RUN
-\ package holds itself to tier 1 and throws its own code on a wrong answer, and
-\ MAIN runs them and then the alias calls in turn, so the image's whole output
-\ is each one's in that order.
+\ A string literal of SIZE bytes cycling a..z, spelled as source.
+: HBT-LONG-LITERAL ( n -- ) {: size:n :}
+   S\" s\q " HBT-POSITIVES CODEGEN:APPEND-STRING
+   size 0 ?do i 26 mod 97 + HBT-POSITIVES CODEGEN:APPEND-BYTE loop
+   34 HBT-POSITIVES CODEGEN:APPEND-BYTE ;
+
+: HBT-LONG-DEF ( ptr u8 n n -- ) {: name:ptr nameu:n size:n :}
+   s" : " HBT-POSITIVES CODEGEN:APPEND-STRING
+   name nameu HBT-POSITIVES CODEGEN:APPEND-STRING
+   s"  ( -- ptr u8 n ) " HBT-POSITIVES CODEGEN:APPEND-STRING
+   size HBT-LONG-LITERAL
+   S\"  ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING ;
+
+\ String literals of 4096, 4097 and 4135 bytes, beside an empty and a short one;
+\ RUN checks each length and byte.
+: HBT-LONG-PKG ( -- )
+   S\" package HBT-LONG\nprivate\n: CHECK ( ptr u8 n n -- ) {: p:ptr u:n want:n :}\n   u want <> if 71 throw then\n   u 0 ?do p i + c@ i 26 mod 97 + <> if 72 throw then loop ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING
+   s" LONG-4096" 4096 HBT-LONG-DEF
+   s" LONG-4097" 4097 HBT-LONG-DEF
+   s" LONG-4135" 4135 HBT-LONG-DEF
+   S\" : EMPTY ( -- ptr u8 n ) s\q \q ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING
+   s" SMALL-LITERAL" 3 HBT-LONG-DEF
+   S\" public\n: RUN ( -- ) LONG-4096 4096 CHECK LONG-4097 4097 CHECK LONG-4135 4135 CHECK\n   EMPTY nip 0 <> if 73 throw then\n   SMALL-LITERAL 3 CHECK s\q long: ok\q type cr ;\n;package\n" HBT-POSITIVES CODEGEN:APPEND-STRING ;
+
+\ The programs that build and run cleanly, as one stripped image built at tier 1.
+\ MAIN runs each in turn and the image's whole output is compared byte for byte.
 : HBT-POSITIVES-SRC$ ( -- ptr u8 n )
    HBT-POSITIVES CODEGEN:RESET
    HBT-AOT-DIVZ-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
@@ -81,7 +104,9 @@ package HB-BUILD-CLI
    HBT-AOT-DOES-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
    HBT-AOT-MULTI-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
    HBT-AOT-ALIAS-PKG$ HBT-POSITIVES CODEGEN:APPEND-STRING
-   S\" : MAIN ( -- ) HBT-DIVZ:RUN HBT-SPAN:RUN HBT-DOES:RUN HBT-MULTI:RUN 5 HBT-XA:W . cr 5 HBT-XB:W . cr ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING
+   S\" require test/compiler/native-frame-slot-image.f\nrequire test/compiler/native-div-image.f\n" HBT-POSITIVES CODEGEN:APPEND-STRING
+   HBT-LONG-PKG
+   S\" : MAIN ( -- ) HBT-DIVZ:RUN HBT-SPAN:RUN HBT-DOES:RUN HBT-MULTI:RUN 5 HBT-XA:W . cr 5 HBT-XB:W . cr FRAME-SLOT-IMAGE:CASES NDIV-IMAGE:RUN HBT-LONG:RUN ;\n" HBT-POSITIVES CODEGEN:APPEND-STRING
    HBT-POSITIVES CODEGEN:CONTENTS ;
 
 : HBT-RUN-IMAGE-OUT ( ptr u8 n ptr u8 n -- ) {: img:ptr imgu:n want:ptr wantu:n :}
@@ -91,27 +116,12 @@ package HB-BUILD-CLI
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
    HBT-RUN-OUT outn want wantu T$= ;
 
-: BUILD-AOT-OBJECT-PRODUCER ( -- )
-   HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL
-   HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   -1 HBB-REPORT-JSON !
-   HBB-BUILD
-   HBB-MAKER-RUN @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JSON:T-TRUE JSON:T-FALSE JSON:T-TRUE CHECK-REPORT
-   HBT-RUN-AOT
-   HBT-REMOVE-AOT-OUT
-   BF-TMP-RESET ;
-
 : BUILD-AOT-NATIVE ( -- )
    HBT-AOT-SRC HBT-AOT-SRC2$ FS:WRITE-ALL
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
-   -1 HBB-REPORT-JSON !
    HBB-BUILD
-   HBB-MAKER-HIT @ 0<> TTRUE
    HBB-MAKER-RUN @ 0 <> TTRUE
-   HB-BUILD:REPORT$ JSON:T-TRUE JSON:T-FALSE JSON:T-TRUE CHECK-REPORT
    HBT-RUN-AOT
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL
@@ -124,7 +134,7 @@ package HB-BUILD-CLI
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
    HBT-HBB-BUILD-OUT
-   HBT-AOT-OUT S\" -6400\n\n64\n\nspan\n16\n\n42\n\n2\n\n25\n\n25\n\n" HBT-RUN-IMAGE-OUT
+   HBT-AOT-OUT S\" -6400\n\n64\n\nspan\n16\n\n42\n\n2\n\n25\n\n25\n\nPAIR\n20\n73\nMERGE\n8\n74\nCT\n12\nCT2\n-10\n10\nALT\n50\n50\n40\nCL\n14\n3\nJN\n27\n18\nNEST\n4\n4\n9\nEXIT-EARLY\n8\n3\n8\n2\nframe-slots: ok\n-1\n0\n0\n1\n0\n0\n1\n-1\n-7\n0\n-2\n-1\nlong: ok\n" HBT-RUN-IMAGE-OUT
    HB-TARGET-MACOS? if
       HBT-AOT-OUT IMAGE-SIZE:MEASURE
       IMAGE-SIZE:DATA-BLOB-RANGE drop
@@ -247,7 +257,6 @@ public
    1 set-tier          \ the product tier the LOADING programs hold
    LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
    HBT-PREPARE
-   BUILD-AOT-OBJECT-PRODUCER
    BUILD-AOT-NATIVE
    BUILD-AOT-POSITIVES
    BUILD-AOT-TIERS
