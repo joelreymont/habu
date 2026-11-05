@@ -754,6 +754,14 @@ learned live in the docs for their subject.
   place of its own read; BOOT:GLOBAL-WL reads the global wid beside it.
   Asked on 2026-11-05 to name the header cell holding the start of the hb
   being built (0 while no build runs), Joel chose "BOOT:IMAGE-BASE-CELL".
+  Shown the same day that the product's fresh global wordlist cannot see the
+  kernel's built-in words, and asked to name the wordlist id the design gives
+  them in place of about 700 alias records per build, Joel asked "WL is
+  wordlist? what is DICT here and what does DICT-WL mean?", then wrote "Why
+  not WL? Otherwise, what does <World List ID>:PRIMITIVES mean? WL:PRIMITIVES
+  makes sense" and "collect worldlist-related things in the WL package, not
+  the WID pacakge". The built-ins' wordlist id is WL:PRIMITIVES, and
+  DICT-WL's markers and WID:MAX move into package WL.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."

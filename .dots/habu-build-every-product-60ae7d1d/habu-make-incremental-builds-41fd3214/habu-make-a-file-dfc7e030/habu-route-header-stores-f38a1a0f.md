@@ -1,6 +1,6 @@
 ---
 title: Route header stores into an open space
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-11-04T21:49:02.953190+02:00"
