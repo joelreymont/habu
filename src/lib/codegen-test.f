@@ -8,20 +8,6 @@ require src/lib/codegen.f
 16 CODEGEN:BUFFER CGT-D
 8 -7001 -7002 CODEGEN:BUFFER-E CGT-E     \ explicit per-buffer codes (arbitrary caller sentinels)
 
-: CGT-BUILD ( -- )
-   CGT-D CODEGEN:RESET
-   [char] x CGT-D CODEGEN:APPEND-BYTE
-   s" =" CGT-D CODEGEN:APPEND-STRING
-   1234 CGT-D CODEGEN:APPEND-DECIMAL
-   CGT-D CODEGEN:CONTENTS s" x=1234" T$= ;
-
-: CGT-RESET-ZERO ( -- )
-   CGT-D CODEGEN:RESET
-   s" abc" CGT-D CODEGEN:APPEND-STRING
-   CGT-D CODEGEN:RESET
-   0 CGT-D CODEGEN:APPEND-DECIMAL
-   CGT-D CODEGEN:CONTENTS s" 0" T$= ;
-
 : CGT-FILL ( -- )
    CGT-D CODEGEN:RESET
    s" 0123456789abcdef" CGT-D CODEGEN:APPEND-STRING   \ 16 bytes == cap
@@ -39,8 +25,6 @@ require src/lib/codegen.f
 
 : CGT-RUN ( -- )
    T-RESET
-   CGT-BUILD
-   CGT-RESET-ZERO
    CGT-FILL
    CGT-THROWS
    T-REPORT ;

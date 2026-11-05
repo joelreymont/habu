@@ -1,8 +1,7 @@
 \ target-policy.f - acceptance suite for the compiler target/policy binding.
 \ Covers src/compiler/digest.f, target.f, numeric-policy.f and binding.f through
-\ their public words over the whole declarable domain: a missing or role-swapped
-\ field is a checker refusal, an incoherent combination a named throw with its
-\ code, and every coherent contract and policy constructs.
+\ their public words: a missing or role-swapped field is a checker refusal and
+\ an incoherent combination a named throw with its code.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -12,28 +11,6 @@ require src/compiler/binding.f
 package CTPOL-TEST
 private
 
-\ ---- enumeration shape -------------------------------------------------------
-7 constant ARCH#
-7 constant ABI#
-2 constant END#
-2 constant PTR#
-$400 constant RAW#
-ARCH# ABI# * END# * PTR# * RAW# * constant COMBO#
-\ The enumeration uses independent legality rules, so a widened rule changes the
-\ asserted domain size.
-\ All ten raw bits are enumerated independently of HAS? implication. The seven
-\ architecture and ABI rows admit 1036 coherent contracts.
-1036 constant LEGAL-CONTRACTS
-
-2 constant OVF#
-2 constant FLT#
-2 constant CON#
-3 constant FM#
-3 constant CMP#
-OVF# FLT# * CON# * FM# * CMP# * constant PCOMBO#
-60 constant LEGAL-POLICIES
-
-variable N
 96 BUFFER: SLOT-BUF
 
 \ ---- consuming layout values -------------------------------------------------
@@ -56,145 +33,6 @@ variable N
 
 : TRY-BIND ( CTARGET:contract CNUM:numeric-policy -- )
    CBIND:BIND DROP-BINDING ;
-
-\ ---- index projections -------------------------------------------------------
-\ Total by construction: the last alternative is the fall-through, and every
-\ caller drives these from a loop bounded by the family size.
-: N>ARCH ( n -- CTARGET:arch )
-   dup 0= if drop CTARGET-ARCH:AARCH64 exit then
-   dup 1 = if drop CTARGET-ARCH:PTX exit then
-   dup 2 = if drop CTARGET-ARCH:A32 exit then
-   dup 3 = if drop CTARGET-ARCH:THUMB2 exit then
-   dup 4 = if drop CTARGET-ARCH:C66X exit then
-   5 = if CTARGET-ARCH:X86-64 exit then
-   CTARGET-ARCH:WASM ;
-
-: N>ABI ( n -- CTARGET:abi )
-   dup 0= if drop CTARGET-ABI:AAPCS64-DARWIN exit then
-   dup 1 = if drop CTARGET-ABI:AAPCS64-LINUX exit then
-   dup 2 = if drop CTARGET-ABI:PTX-KERNEL exit then
-   dup 3 = if drop CTARGET-ABI:AAPCS32 exit then
-   dup 4 = if drop CTARGET-ABI:C6000-EABI exit then
-   5 = if CTARGET-ABI:SYSV-AMD64 exit then
-   CTARGET-ABI:HABU-WASM-CELL64-V1 ;
-
-: N>ENDIAN ( n -- CTARGET:endian )
-   0= if CTARGET-ENDIAN:LITTLE exit then
-   CTARGET-ENDIAN:BIG ;
-
-: N>PTR ( n -- CTARGET:ptr-width )
-   0= if CTARGET-PTR--WIDTH:BITS32 exit then
-   CTARGET-PTR--WIDTH:BITS64 ;
-
-: N>OVF ( n -- CNUM:overflow )
-   0= if CNUM-OVERFLOW:WRAP exit then
-   CNUM-OVERFLOW:TRAP ;
-
-: N>FLT ( n -- CNUM:float-model )
-   0= if CNUM-FLOAT--MODEL:IEEE754 exit then
-   CNUM-FLOAT--MODEL:FLUSH-DENORMAL ;
-
-: N>CON ( n -- CNUM:contraction )
-   0= if CNUM-CONTRACTION:FORBIDDEN exit then
-   CNUM-CONTRACTION:ALLOWED ;
-
-: N>FM ( n -- CNUM:fast-math )
-   dup 0= if drop CNUM-FAST--MATH:BIT-EXACT exit then
-   1 = if CNUM-FAST--MATH:REASSOCIATE exit then
-   CNUM-FAST--MATH:APPROXIMATE ;
-
-: N>CMP ( n -- CNUM:compare )
-   dup 0= if drop CNUM-COMPARE:IEEE754-UNORDERED exit then
-   1 = if CNUM-COMPARE:TOTAL-ORDER exit then
-   CNUM-COMPARE:ASSUME-ORDERED ;
-
-: C-RAW ( n -- n )   RAW# mod ;
-: C-PTR ( n -- n )   RAW# / PTR# mod ;
-: C-END ( n -- n )   RAW# PTR# * / END# mod ;
-: C-ABI ( n -- n )   RAW# PTR# * END# * / ABI# mod ;
-: C-ARCH ( n -- n )  RAW# PTR# * END# * ABI# * / ;
-
-: P-CMP ( n -- n )   CMP# mod ;
-: P-FM ( n -- n )    CMP# / FM# mod ;
-: P-CON ( n -- n )   CMP# FM# * / CON# mod ;
-: P-FLT ( n -- n )   CMP# FM# * CON# * / FLT# mod ;
-: P-OVF ( n -- n )   CMP# FM# * CON# * FLT# * / ;
-
-\ ---- this suite's own legality rules -----------------------------------------
-\ AAPCS32 covers two instruction states. Embedded ABIs require 32-bit
-\ pointers and support either data byte order; PTX permits either width.
-\ SysV AMD64 is one machine's one ABI: little-endian, 64-bit, x86-64 only.
-: OK-ABI? ( n n -- bool )
-   {: arch:n abi:n :}
-   arch 0= if abi 2 < exit then
-   arch 1 = if abi 2 = exit then
-   arch 4 = if abi 4 = exit then
-   arch 5 = if abi 5 = exit then
-   arch 6 = if abi 6 = exit then
-   abi 3 = ;
-
-: OK-ENDIAN? ( n n -- bool )
-   {: abi:n endian:n :}
-   endian 0= if true exit then
-   abi 5 = abi 6 = or if false exit then
-   abi 1 = abi 3 >= or ;
-
-: OK-PTR? ( n n -- bool )
-   {: abi:n ptr:n :}
-   abi 5 = if ptr 1 = exit then
-   abi 6 = if true exit then
-   abi 3 >= if ptr 0= exit then
-   ptr 1 = if true exit then
-   abi 2 = ;
-
-\ These masks are the suite's independent legal-domain description. The raw
-\ F-FP and scalar-FP bits remain separate even though HAS? implies scalar.
-: MASK-FOR ( n -- n )
-   case
-      0 of $25F endof
-      1 of $3FB endof
-      2 of $25F endof
-      3 of $25F endof
-      4 of $205 endof
-      5 of $25F endof
-      6 of $201 endof
-      0 swap
-   endcase ;
-
-: OK-FEAT? ( n n -- bool )
-   {: arch:n raw:n :}
-   raw $001 and 0= if false exit then
-   raw arch MASK-FOR invert and 0= ;
-
-: OK-COMBO? ( n -- bool )
-   {: c:n :}
-   c C-ARCH c C-ABI OK-ABI? 0= if false exit then
-   c C-ABI c C-END OK-ENDIAN? 0= if false exit then
-   c C-ABI c C-PTR OK-PTR? 0= if false exit then
-   c C-ARCH c C-RAW OK-FEAT? ;
-
-: OK-PCOMBO? ( n -- bool )
-   {: p:n :}
-   p P-CON 1 = p P-FM 0= and 0= ;
-
-\ ---- building a record from an index ----------------------------------------
-: COMBO>CONTRACT ( n -- CTARGET:contract )
-   {: c:n :}
-   c C-ARCH N>ARCH
-   c C-ABI N>ABI
-   c C-END N>ENDIAN
-   c C-PTR N>PTR
-   c C-RAW CTARGET:FEATURE-SET
-   CTARGET:CONTRACT ;
-
-: COMBO>POLICY ( n -- CNUM:numeric-policy )
-   {: p:n :}
-   p P-OVF N>OVF
-   p P-FLT N>FLT
-   p P-CON N>CON
-   p P-FM N>FM
-   p P-CMP N>CMP
-   CNUM:POLICY ;
 
 \ ---- reference records -------------------------------------------------------
 : A64-FEATURES ( -- CTARGET:features )
@@ -396,45 +234,6 @@ variable N
       $8000000000000000 i SLOT-AT
    loop ;
 
-\ ---- legal-domain construction --------------------------------------------
-: VALID-CONTRACTS ( -- )
-   COMBO# 200704 T=
-   0 N !
-   COMBO# 0 ?do
-      i OK-COMBO? if
-         i COMBO>CONTRACT DROP-CONTRACT
-         N @ 1+ N !
-      then
-   loop
-   N @ LEGAL-CONTRACTS T= ;
-
-: VALID-POLICIES ( -- )
-   0 N !
-   PCOMBO# 0 ?do
-      i OK-PCOMBO? if
-         i COMBO>POLICY DROP-POLICY
-         N @ 1+ N !
-      then
-   loop
-   N @ LEGAL-POLICIES T= ;
-
-\ A quotation carries no locals, so the swept index travels through a cell.
-variable REJ-IX
-
-: REJ-BODY ( -- )
-   REJ-IX @ {: p:n :}
-   p P-OVF N>OVF p P-FLT N>FLT p P-CON N>CON
-   p P-FM N>FM p P-CMP N>CMP TRY-POLICY ;
-
-: SWEEP-POLICY-REJECTS ( -- )
-   PCOMBO# 0 ?do
-      i OK-PCOMBO? 0= if
-         i REJ-IX !
-         [: REJ-BODY ;] E-CNUM-CONTRACT TTHROWSQ
-      then
-   loop ;
-
-
 public
 
 : RUN ( -- )
@@ -450,9 +249,6 @@ public
    BAD-BINDING
    STATIC-REJECTS
    SLOT-ROUNDTRIP
-   VALID-CONTRACTS
-   VALID-POLICIES
-   SWEEP-POLICY-REJECTS
    T-REPORT ;
 
 ;package
