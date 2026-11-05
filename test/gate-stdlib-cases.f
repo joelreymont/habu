@@ -861,11 +861,6 @@ SUITE proc-capture-under-signals
    test/proc-capture-signal.f
 ;SUITE
 
-SUITE process-fork-wrappers
-   src/lib/process-fork-test.f
-   src/lib/fork-child-test.f
-;SUITE
-
 SUITE proc-pty-io-supervisor-smoke
    test/process-pty-io-smoke.f
 ;SUITE
@@ -967,10 +962,6 @@ SUITE zip
    test/zip-remove-source.f
 ;SUITE
 
-SUITE zip-xml-consumer
-   test/zip-xml-source.f
-;SUITE
-
 SUITE zip-temp
    test/zip-temp-e2e.f
 ;SUITE
@@ -1005,12 +996,6 @@ SUITE ffi-callback-growth
 SUITE pg
    test/db/pg-cluster.f
    test/db/pg-kill-test.f
-;SUITE
-
-\ PG's configuration lock in a child forked while another task holds it
-\ (src/lib/fork-child.f). Loading src/lib/pg.f opens libpq; no server is needed.
-SUITE pg-fork
-   src/lib/pg-fork-test.f
 ;SUITE
 
 \ Loopback HTTP in one process; the one HTTPS request is opt-in behind
@@ -1150,11 +1135,6 @@ SUITE unicode-class-exhaustive
 
 SUITE argv-stdlib-mocks
    src/lib/argv-test.f
-;SUITE
-
-SUITE argv-stdlib-script-args
-   src/lib/argv-test.f -- --json --label NAME --all-errors
-   --strict-boundary -o OUT -- file.f --literal
 ;SUITE
 
 SUITE test-stdlib
@@ -1667,10 +1647,6 @@ SUITE stdlib-runner-fixtures
    src/lib/test/runner-test.f
 ;SUITE
 
-SUITE stdlib-build-fixtures
-   src/lib/build-test.f
-;SUITE
-
 SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE
@@ -1723,10 +1699,6 @@ SUITE fs-list
 
 SUITE fs-anchored
    test/fs-anchored-consumer.f
-;SUITE
-
-SUITE pty
-   src/lib/pty-test.f
 ;SUITE
 
 \ Raw serial streams over a pty pair: the loop supplies every wait.

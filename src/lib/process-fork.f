@@ -51,8 +51,8 @@ public
 \ The fork RAW makes. It is a vector only so that a test can refuse a fork:
 \ RLIMIT_NPROC counts every process of the user and never refuses root, so no
 \ limit can refuse a reaper's fork alone - after FORK-REAPER's first fork or a
-\ capture's spawn - without racing the rest of the host. src/lib/process-fork-test.f
-\ and test/gate-pool-test.f install their refusals here. RAW calls it holding
+\ capture's spawn - without racing the rest of the host. test/gate-pool-test.f
+\ installs its refusal here. RAW calls it holding
 \ the four locks of FORK-HELD below, so a replacement registers no
 \ image-lifecycle hook, reserves or releases no dynamic buffer, stores no
 \ quotation and spawns or opens no process descriptor: each takes one of those

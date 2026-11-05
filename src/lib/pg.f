@@ -712,7 +712,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 \ A process just forked frees the lock before anything else (src/lib/fork-child.f):
 \ fork copies only the thread that called it, so a CONFIGURE another task was in
 \ leaves the child's copy held with nobody to free it, and the child's own
-\ CONFIGURE would wait for ever (src/lib/pg-fork-test.f).
+\ CONFIGURE would wait for ever.
 : REGISTER-CHILD-RESET ( -- )
    [: CONFIG-UNLOCK ;] FORK-CHILD:REGISTER ;
 REGISTER-CHILD-RESET
