@@ -1,13 +1,19 @@
 \ link-data.f - a stripped build's DATA: the open space's bytes appended to
 \ A64ICODE's code buffer after the routine band, each declared cell given its
 \ value at DATA-VA, then the DATA list, the offset from DATA-VA of every cell
-\ holding a code address, which start-up adds the load offset to. Words visible
-\ only inside LINKER.
+\ holding a code address, which start-up adds the load offset to. The link
+\ also writes the header cells HEADER-CELLS names and lists the code ones.
+\ Words visible only inside LINKER.
 
 require src/lib/le.f
 require src/habu/layout.f
+require src/habu/boot-cells.f
+require src/habu/wl.f
 require src/habu/address-cells.f
 require src/arch/arm64/icode.f
+require src/arch/arm64/link-kernel.f
+require src/habu/crash.f
+require src/habu/habu2.f
 require src/habu/linker.f
 require src/habu/link-band.f
 
@@ -108,8 +114,52 @@ variable DATA-LIST-N
    1 DATA-LIST-N +! ;
 
 
-\ After PLACE-ROUTINES: the space's bytes at an 8-byte boundary, then the DATA
-\ list at the next one.
+\ A bound kernel label's byte offset in A64ICODE's code buffer.
+: LABEL-OFFSET ( ptr n -- n )
+   A64ICODE:LABEL@ {: l:label :}
+   l A64ICODE:LBL-BOUND? 0= if
+      s" link: a label the link reads is unbound" 74 die
+   then
+   l LABEL>N A64ICODE:LBLP @ 4 * ;
+
+\ A cell the build stored into would be written and slid twice.
+: HEADER! ( n n -- )
+   {: v:n off:n :}
+   off SPACE-AT @ 0<> if
+      s" link: the build stored into the header cell at offset " type off .
+      s" link: a build stored into a header cell the link writes" 74 die
+   then
+   v off COPY-AT LE:U64! ;
+
+
+\ Header cells valued as hb's boot writes them (habu2.f EM-DATA-INIT,
+\ EM-STARTUP-RUNTIME-STATE), but CODE-END-CELL ends the product's own code.
+: HEADER-CELLS ( -- )
+   DATA-VA VA>N {: va:n :}
+   va DATA-IMAGE-LEN @ +  DP-CELL HEADER!
+   va DATA-START +  BOOT:DP-FLOOR-CELL HEADER!
+   va DATA-SIZE + PROF-CNT-BYTES -  BOOT:DP-CEILING-CELL HEADER!
+   DATA-START BOOT:HEAP-START-CELL HEADER!
+   0 BOOT:GLOBAL-WL-CELL HEADER!
+   0 BOOT:IMAGE-BASE-CELL HEADER!
+   WL:NAMESPACE BOOT:NAMESPACE-WL-CELL HEADER!
+   va SIGNAL-ABI:FD-CELL +  SIGNAL-ABI:FD-PTR-CELL HEADER!
+   TEXT-VA RBASE-CELL HEADER!
+   TEXT-VA LUNCAUGHT LABEL-OFFSET +  UNCGH-CELL HEADER!
+   TEXT-VA LSIGH LABEL-OFFSET +  SIGNAL-ABI:STUB-CELL HEADER!
+   TEXT-VA DATA-IMAGE-AT @ +  CODE-END-CELL HEADER! ;
+
+\ The header cells HEADER-CELLS gives a code address.
+: LIST-HEADER ( -- )
+   RBASE-CELL A64ICODE:DCQ,
+   UNCGH-CELL A64ICODE:DCQ,
+   SIGNAL-ABI:STUB-CELL A64ICODE:DCQ,
+   CODE-END-CELL A64ICODE:DCQ,
+   4 DATA-LIST-N +! ;
+
+
+\ After PLACE-ROUTINES: the space's bytes at an 8-byte boundary with the header
+\ cells written, then the DATA list at the next one, the code header cells last.
 : DATA-IMAGE ( -- )
    PAD8
    A64ICODE:ASM-LEN DATA-IMAGE-AT !
@@ -117,10 +167,12 @@ variable DATA-LIST-N
    u DATA-IMAGE-LEN !
    at u A64ICODE:BYTES,
    ['] COPY-ROW EACH-ROW
+   HEADER-CELLS
    PAD8
    A64ICODE:ASM-LEN DATA-LIST-AT !
    0 DATA-LIST-N !
-   ['] LIST-ROW EACH-ROW ;
+   ['] LIST-ROW EACH-ROW
+   LIST-HEADER ;
 
 
 \ A stripped program's routines and DATA, after the kernel ARM64:KERNEL wrote.

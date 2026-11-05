@@ -15,9 +15,8 @@ SUITE arm64-place
    test/compiler/arm64-place.f
 ;SUITE
 
-\ arm64-link-data.f links a stripped build inside its data space: the closure
-\ from its xt cells, its DATA image and DATA list, and refuses a DATA pointer
-\ outside the space.
+\ arm64-link-data.f links a stripped build's closure, DATA image, header cells
+\ and DATA list; it refuses a DATA pointer outside the space and a header store.
 SUITE arm64-link-data
    test/compiler/arm64-link-data.f
 ;SUITE

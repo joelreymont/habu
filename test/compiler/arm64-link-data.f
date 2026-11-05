@@ -5,19 +5,25 @@
 \ quotation's included; a scratch cell's copy is 0 and a DATA pointer's DATA-VA
 \ plus its target's offset, neither listed; a plain cell's is its bytes; a
 \ placed data address site gives DATA-VA plus the variable's offset, and a
-\ variable reached only by data addresses is not placed. A second link gives
-\ the same bytes. One process: the boundary under test is in-process; only the
-\ refusal runs in a child.
+\ variable reached only by data addresses is not placed. The header's DP and
+\ its bounds are the build's at DATA-VA; its heap start, namespace marker and
+\ signal fd pointer are hb's own; its code cells are listed once, and the entry
+\ a build stores with xt! into APP-ENTRY:XT-CELL holds its link address. Every
+\ listed cell holds an address in the product's code. A second link gives the
+\ same bytes. One process: the boundary under test is in-process; only the
+\ refusals run in children.
 \ Fixture words are LD- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
 require src/lib/errors.f
 require src/lib/string.f
+require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/test.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/habu/layout.f
+require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/compiler/native/abi.f
 require src/compiler/native/emission.f
@@ -34,6 +40,7 @@ private
 package ARM64-LINK-DATA
 
 CAST: CELL-XT ( n -- [ -- ptr n ] )
+CAST: ENTRY-XT ( n -- [ n -- n ] )
 
 DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 
@@ -68,13 +75,15 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 \ The image copy of a fixture variable's cell.
 : COPY-VALUE ( ptr u8 n -- n ) CELL-OFF COPY-AT LE:U64@ ;
 
-: LISTED? ( n -- bool )
+\ How many times the DATA list holds offset off.
+: LIST-COUNT ( n -- n )
    {: off:n :}
-   DATA-LIST-N @ 0 ?do
+   0  DATA-LIST-N @ 0 ?do
       A64ICODE:CODE DATA-LIST-AT @ + i 8 * + LE:U64@
-      off = if true unloop exit then
-   loop
-   false ;
+      off = if 1 + then
+   loop ;
+
+: LISTED? ( n -- bool ) LIST-COUNT 0<> ;
 
 : LISTED-NAMED? ( ptr u8 n -- bool ) CELL-OFF LISTED? ;
 
@@ -97,6 +106,12 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    q make BAND-LINK >  q make BAND-LINK make NSHADOW:SIZE + <  and TTRUE
    s" quotation cell: it is in the DATA list" T-LABEL
    s" LD-Q" LISTED-NAMED? TTRUE ;
+
+
+\ The entry store app-image-core.f START! makes; ROUTE-HEADER sends it to the
+\ space's header.
+: STORE-ENTRY ( -- )
+   s" LD-LEAF" HOST-NAMED ENTRY-XT  data-base APP-ENTRY:XT-CELL + xt! ;
 
 
 : DATA-CASE ( -- )
@@ -125,6 +140,52 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    loop
    -1 ;
 
+\ Header cell off's image copy holds v.
+: HEADER-IS ( ptr u8 n n n -- )
+   {: v:n off:n :}
+   T-LABEL  off COPY-AT LE:U64@ v T= ;
+
+: LISTED-ONCE ( ptr u8 n n -- )
+   {: off:n :}
+   T-LABEL  off LIST-COUNT 1 T= ;
+
+
+: HEADER-CASE ( -- )
+   s" header: DP is the space's"
+      DP-CELL HOST@ DATA-ADDRESS  DP-CELL HEADER-IS
+   s" header: the DP floor is the build's"
+      BOOT:DP-FLOOR-CELL HOST@ DATA-ADDRESS  BOOT:DP-FLOOR-CELL HEADER-IS
+   s" header: the DP ceiling is the build's"
+      BOOT:DP-CEILING-CELL HOST@ DATA-ADDRESS  BOOT:DP-CEILING-CELL HEADER-IS
+   s" header: the heap start is hb's"
+      BOOT:HEAP-START-CELL HOST@  BOOT:HEAP-START-CELL HEADER-IS
+   s" header: the namespace marker is hb's"
+      SAVED-NAMESPACE-WL @  BOOT:NAMESPACE-WL-CELL HEADER-IS
+   s" header: the signal fd pointer is hb's"
+      SIGNAL-ABI:FD-PTR-CELL HOST@  SIGNAL-ABI:FD-PTR-CELL HEADER-IS
+   s" header: the code base is listed once"  RBASE-CELL LISTED-ONCE
+   s" header: the uncaught reporter is listed once"  UNCGH-CELL LISTED-ONCE
+   s" header: the signal stub is listed once"  SIGNAL-ABI:STUB-CELL LISTED-ONCE
+   s" header: the code end is listed once"  CODE-END-CELL LISTED-ONCE
+   s" header: the entry is LD-LEAF's link address"
+      s" LD-LEAF" EMISSION-NAMED BAND-LINK  APP-ENTRY:XT-CELL HEADER-IS
+   s" header: the entry is listed once"  APP-ENTRY:XT-CELL LISTED-ONCE ;
+
+
+\ Whether listed cell off's copy lies in the product's code, its end included.
+: IN-CODE? ( n -- bool )
+   {: off:n :}
+   off COPY-AT LE:U64@ {: v:n :}
+   v TEXT-VA >=  v TEXT-VA DATA-IMAGE-AT @ + <=  and ;
+
+: LIST-CASE ( -- )
+   s" list: every listed cell holds an address in the product's code" T-LABEL
+   true  DATA-LIST-N @ 0 ?do
+      A64ICODE:CODE DATA-LIST-AT @ + i 8 * + LE:U64@ IN-CODE? and
+   loop
+   TTRUE ;
+
+
 : CHAIN-CASE ( -- )
    s" data address: LD-ADDR's chain is DATA-VA plus LD-V's offset" T-LABEL
    s" LD-ADDR" EMISSION-NAMED DATA-CHAIN  DATA-VA VA>N s" LD-V" CELL-OFF + T=
@@ -147,25 +208,50 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 
 : BODY ( -- )
    FIXTURE
+   STORE-ENTRY
    ARM64:KERNEL
    LINK-STRIPPED
-   XT-CASE QUOTE-CASE DATA-CASE CHAIN-CASE
+   XT-CASE QUOTE-CASE DATA-CASE HEADER-CASE LIST-CASE CHAIN-CASE
    SECOND-CASE ;
 
 
-: BAD-RUN ( CMD:command -- CMD:command )
-   s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
-   s" refusal: the child names the value" T-LABEL
-   CMD:OUT$
-   s\" ARM64-LINK-DATA-BAD-ARMED\nlink: a DATA pointer outside the build's space: 1\n"
-   T$=
-   s" refusal: the child's reason" T-LABEL
-   CMD:ERR$ s" link: a DATA pointer outside the build's space" CONTAINS? TTRUE
-   s" refusal: the child exits 74" T-LABEL  rc 74 T= ;
+\ Labels what of case name's child.
+: CHILD-LABEL ( ptr u8 n ptr u8 n -- )
+   {: name:ptr name-n:n what:ptr what-n:n :}
+   SB-RESET  s" refusal, " SB-APPEND  name name-n SB-APPEND
+   s" : " SB-APPEND  what what-n SB-APPEND  SB$ T-LABEL ;
 
-\ The refusal dies, so it runs in a child: test/compiler/arm64-link-data-bad.f.
-: REFUSAL-CASE ( -- ) [: BAD-RUN ;] CMD:WITH-COMMAND ;
+\ Case name's child prints its arming line, then pre and v as `.` prints them,
+\ names err on stderr and exits 74.
+: BAD-RUN ( CMD:command ptr u8 n ptr u8 n n ptr u8 n -- CMD:command )
+   {: name:ptr name-n:n pre:ptr pre-n:n v:n err:ptr err-n:n :}
+   s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
+   s" --" CMD:ARG+  name name-n CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+   name name-n s" the child names the value" CHILD-LABEL
+   SB-RESET  s\" ARM64-LINK-DATA-BAD-ARMED\n" SB-APPEND  pre pre-n SB-APPEND
+   v FMT:SB-INT  10 SB-APPEND-C
+   CMD:OUT$ SB$ T$=
+   name name-n s" the child's reason" CHILD-LABEL
+   CMD:ERR$ err err-n CONTAINS? TTRUE
+   name name-n s" the child exits 74" CHILD-LABEL  rc 74 T= ;
+
+: BAD-DATA ( CMD:command -- CMD:command )
+   s" data"  s" link: a DATA pointer outside the build's space: " 1
+   s" link: a DATA pointer outside the build's space"
+   BAD-RUN ;
+
+: BAD-HEADER ( CMD:command -- CMD:command )
+   s" header"
+   s" link: the build stored into the header cell at offset " UNCGH-CELL
+   s" link: a build stored into a header cell the link writes"
+   BAD-RUN ;
+
+\ Each refusal dies, so each runs in its own child process:
+\ test/compiler/arm64-link-data-bad.f.
+: REFUSAL-CASE ( -- )
+   [: BAD-DATA ;] CMD:WITH-COMMAND
+   [: BAD-HEADER ;] CMD:WITH-COMMAND ;
 
 
 public
