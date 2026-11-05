@@ -1989,9 +1989,8 @@ public
 variable LWORD  variable LUNSET  variable LNEUTRAL  variable LENTRY
 : NEUTRAL$ ( -- ptr u8 n )   s" NEUTRAL-PARSE-IMM?" ;
 ;package
-\ ADT lowering keywords: `construct` and MATCH dispatch
-\ through the CMM-CELL mode machine. test/match-factor-pin.f pins their native
-\ CLI positives, negatives, forged-tag diagnostic, and checked round-trips.
+\ ADT lowering keywords: `construct` and MATCH dispatch through the CMM-CELL
+\ mode machine.
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 variable LRESTAB    \ sealed system-package name table

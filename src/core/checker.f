@@ -23021,7 +23021,7 @@ variable IS-PEND-U                   \ and its length
 \ in the ACTIVE package only (cross-package construction never resolves), the
 \ variant within that family. The step is applied inline as a generated
 \ constructor call is. Stage engines without the registry keep the 0 hooks and
-\ fail closed. test/match-factor-pin.f pins native construct execution.
+\ fail closed.
 : CONSTRUCT-BEGIN ( -- )
    EV-OPERAND
    1 CONM ! ;   \ enter family-token mode; an unarmed registry rejects at the family resolve (CONSTRUCT-FAM-XT default)

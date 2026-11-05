@@ -528,10 +528,9 @@ public
 SHADOW-TEST:RUN-PICK
 NSHADOW:CLOSE
 
-\ A value an edge passes on keeps its slot: the x86-64 rows of
-\ test/compiler/native-loop.f SLOT-CASE, whose comment states the shapes;
-\ select-x64.f DSTORED holds the rule. SH-SLOT-LETTER adds a call's result held
-\ in a local across the backedge of a loop that leaves early with a value.
+\ A value an edge passes on keeps its slot; select-x64.f DSTORED holds the rule.
+\ SH-SLOT-LETTER holds a call's result in a local across the backedge of a loop
+\ that leaves early with a value.
 package SHADOW-TEST
 private
 

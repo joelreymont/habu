@@ -263,8 +263,7 @@ PROT-WID-PROBE:COUNT 0 > TTRUE
 \ (cross-package uses the generated words, public families included); kind-gated
 \ to sum/enum, and folded like every body token. Payload rejects match the
 \ generated-word call sites. Operand capture runs before locals and word lookup,
-\ so family/variant tokens never resolve as either. test/match-factor-pin.f pins
-\ native construct execution; these stay CHECK candidates.
+\ so family/variant tokens never resolve as either. These stay CHECK candidates.
 s" CN1 ( n -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN2 ( n -- zres ) construct ZRES OK" CHECK-QUIET-CANDIDATE! -1 T=   \ folded spelling
 s" CN3 ( ptr u8 n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! -1 T=

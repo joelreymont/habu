@@ -3,7 +3,6 @@
 \     bin/hb < test/type-match-suite.f
 \ MATCH refines each branch with its variant's payload, joins branch outputs and
 \ enforces exhaustiveness over declaration-order tags (no default branch).
-\ test/match-factor-pin.f owns the native CLI cases.
 
 require src/lib/string.f
 require src/lib/test.f

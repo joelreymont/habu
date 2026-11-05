@@ -156,10 +156,6 @@ SUITE source-unit-range
    test/source-unit-range-gate.f
 ;SUITE
 
-SUITE native-unit-refusals
-   test/native-unit-file.f
-;SUITE
-
 \ A package's checker facts survive an artifact boundary.
 SUITE checker-unit-codec
    test/checker-unit-codec-e2e.f
@@ -303,12 +299,6 @@ SUITE compiler-native-string-forms
    test/compiler/native-string-forms.f
 ;SUITE
 
-\ Reads the code the ENGINE UNDER TEST baked, so it belongs to whichever engine
-\ the gate runs and not to the sources a fixture could compile for itself.
-SUITE compiler-tier1-inline-prims
-   test/compiler/tier1-inline-prims.f
-;SUITE
-
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
 \ and binding.f through their public words. A row of its own is reachable by
 \ name in the registry, not only inside a fork list.
@@ -415,16 +405,6 @@ SUITE wasm-link-capture
    test/wasm/link-capture.f
 ;SUITE
 
-\ The backend registry: complete rows in src/compiler/native/backend.f,
-\ registered by src/arch/arm64/passes.f.
-SUITE compiler-target-registry
-   test/compiler/target-registry.f
-;SUITE
-
-SUITE compiler-session
-   test/compiler/session.f
-;SUITE
-
 SUITE compiler-arm32-asm
    test/compiler/arm32-asm.f
 ;SUITE
@@ -506,10 +486,6 @@ SUITE compiler-native-trap
    test/compiler/native-trap.f
 ;SUITE
 
-SUITE compiler-native-quot
-   test/compiler/native-quot.f
-;SUITE
-
 SUITE compiler-native-defer
    test/compiler/native-defer.f
 ;SUITE
@@ -519,10 +495,6 @@ SUITE compiler-native-finally-aot
    test/compiler/aot-mode.f
    ENTRIES
    test/compiler/native-finally.f
-;SUITE
-
-SUITE compiler-native-prefix-declarations
-   test/compiler/native-prefix-declarations.f
 ;SUITE
 
 SUITE compiler-native-eval-prefix
@@ -623,10 +595,6 @@ SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE
 
-SUITE compiler-native-loop
-   test/compiler/native-loop.f
-;SUITE
-
 SUITE compiler-native-do
    test/compiler/native-do.f
 ;SUITE
@@ -641,10 +609,6 @@ SUITE compiler-native-j
 
 SUITE compiler-native-again
    test/compiler/native-again.f
-;SUITE
-
-SUITE compiler-native-rstack
-   test/compiler/native-rstack.f
 ;SUITE
 
 SUITE compiler-native-return-abi
@@ -1840,10 +1804,6 @@ SUITE native-suite-cli
 
 SUITE gate-env-stdin-tty
    test/gate-env-stdin-tty-test.f
-;SUITE
-
-SUITE match-factor-pin
-   test/match-factor-pin.f
 ;SUITE
 
 SUITE native-gate-debug

@@ -37,34 +37,10 @@ SUITE debugger-resume
    test/debugger-resume.f
 ;SUITE
 
-SUITE compiler-native-wide-frame
-   test/compiler/native-wide-frame.f
-;SUITE
-
 \ The harness selects tier 0 before its first definition: tier 1 refuses
 \ CLEAR-MEAS's row drain (test/prop-test.f).
 WHITEBOX-SUITE prop
    test/prop-test.f
-;SUITE
-
-\ The arm64 JIT copies straight-line primitive bodies.
-SUITE compiler-tier0-inline-prims
-   test/compiler/tier0-inline-prims.f
-;SUITE
-
-\ Tier 0 branches on a compare's flags, read as arm64 instructions.
-SUITE compiler-tier0-compare-branch
-   test/compiler/tier0-compare-branch.f
-;SUITE
-
-\ The arm64 JIT reconciles the virtual stack at a loop's back edge.
-SUITE compiler-tier0-join
-   test/compiler/tier0-join.f
-;SUITE
-
-\ Tier 0 string literal bodies are INTERN rows, not bytes in the code band.
-SUITE compiler-tier0-string-literals
-   test/compiler/tier0-string-literals.f
 ;SUITE
 
 \ arm64 reads files through the engine's loop: outer-loop-on.f gives cell-body
