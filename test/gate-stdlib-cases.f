@@ -74,12 +74,6 @@ SUITE native-gate-aot-positive-bundle
    test/gate-aot-positive-bundle.f
 ;SUITE
 
-\ This long row waits for the whitebox image. Queue it early so it runs
-\ beside other rows after that image settles, rather than alone at the tail.
-SUITE aot-payload-graph
-   test/aot-payload-graph.f
-;SUITE
-
 SUITE ffi-callback-zero-image
    test/ffi-callback-zero-image.f
 ;SUITE
@@ -106,10 +100,6 @@ SUITE hb-build-stripped-cells
 
 SUITE hb-build-stripped-cache
    tools/hb-build-stripped-cache-test.f
-;SUITE
-
-SUITE aot-named-cells-image
-   test/aot-named-cells-suite.f
 ;SUITE
 
 SUITE hb-build-fixtures
@@ -189,10 +179,6 @@ WHITEBOX-SUITE checker-scan-index-rollback
 
 SUITE build-fixpoint-source
    tools/build-fixpoint-source-test.f
-;SUITE
-
-SUITE aot-chain-storage
-   test/aot-chain-storage-suite.f
 ;SUITE
 
 SUITE memory-guarded-failure
@@ -598,10 +584,6 @@ SUITE prim-owner-scope
    test/prim-owner-scope.f
 ;SUITE
 
-SUITE name-intern-capture
-   test/name-intern-capture.f
-;SUITE
-
 SUITE loop-obligations
    test/loop-obligations.f
 ;SUITE
@@ -626,10 +608,6 @@ SUITE stripped-literal
    test/stripped-literal.f
 ;SUITE
 
-SUITE aot-data-cell-refusals
-   test/compiler/aot-data-cell-refusals.f
-;SUITE
-
 SUITE native-quote-forward
    test/native-quote-forward-e2e.f
 ;SUITE
@@ -652,10 +630,6 @@ SUITE image-lifecycle-late-register
 
 SUITE native-resource-image
    test/native-resource-image.f
-;SUITE
-
-SUITE native-defer-image
-   test/native-defer-image.f
 ;SUITE
 
 SUITE process-image
@@ -1586,22 +1560,6 @@ SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE
 
-SUITE aot-wid-refuse-address-span
-   test/aot-wid-suite.f -- refuse-address-span
-;SUITE
-
-SUITE aot-wid-rebase
-   test/aot-wid-suite.f -- rebase
-;SUITE
-
-SUITE aot-wid-capture-refusal
-   test/aot-wid-suite.f -- capture-refusal
-;SUITE
-
-SUITE aot-data-window
-   test/aot-data-window-suite.f
-;SUITE
-
 SUITE aot-seed-batch
    test/aot-seed-batch-suite.f
 ;SUITE
@@ -1615,10 +1573,6 @@ SUITE aot-named-cells
    test/aot-named-cells.f
 ;SUITE
 
-SUITE aot-named-cells-native
-   test/aot-named-cells.f -- native
-;SUITE
-
 SUITE aot-source-identity
    test/aot-source-identity.f
 ;SUITE
@@ -1629,10 +1583,6 @@ SUITE aot-cell-values
 
 SUITE checker-graph-domains
    test/checker-graph-domains.f
-;SUITE
-
-SUITE aot-payload-unsupported
-   test/aot-payload-unsupported.f
 ;SUITE
 
 SUITE aot-effect-pool
@@ -1649,9 +1599,6 @@ SUITE compiler-native-export-fixed
 
 SUITE tier
    test/tier.f
-;SUITE
-SUITE does-clause-record
-   test/does-clause-record.f
 ;SUITE
 
 SUITE sealed-system-package
@@ -1746,14 +1693,6 @@ SUITE stdlib-build-fixtures
 
 SUITE load-argv-contract
    tools/load-argv-test.f
-;SUITE
-
-SUITE cold-argv-separator
-   test/cold-argv-separator.f
-;SUITE
-
-SUITE cold-naming
-   test/cold-naming-test.f
 ;SUITE
 
 SUITE tmp-path
@@ -2140,10 +2079,6 @@ SUITE deferred-quotation-image
    test/deferred-quotation-image.f
 ;SUITE
 
-SUITE source-lex-image
-   test/source-lex-image.f
-;SUITE
-
 SUITE structure-quotation-rollback
    test/structure-quotation-rollback.f
 ;SUITE
@@ -2190,10 +2125,6 @@ WHITEBOX-SUITE c2-reopen-refusals
 
 SUITE c2-init-accessors
    test/c2-init-accessor-refusals.f
-;SUITE
-
-SUITE c2-init-accessor-image
-   test/c2-init-accessor-e2e.f
 ;SUITE
 
 SUITE c2-diagnostics

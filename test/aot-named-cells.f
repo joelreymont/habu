@@ -1,22 +1,10 @@
-\ Actual captured cells, then byte-exact file/owned and malformed rows. The
-\ harness loads before the tier selection: only the subject below it is compiled
-\ at the requested tier (docs/gate.md
-\ "How a suite runs, and what that demands of its files").
+\ Actual captured cells, then byte-exact file/owned and malformed rows.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
 require src/lib/fs-mutate.f
 require src/lib/engine-id.f
-package NAMED-CELLS-TIER
-: REQUESTED ( -- n )
-   SCRIPT-ARGC 0= if tier@ exit then
-   SCRIPT-ARGC 1 <> if 64 throw then
-   0 SCRIPT-ARGV$ s" native" STR= 0= if 64 throw then
-   1 ;
-REQUESTED
-;package
-set-tier
 
 package NAMED-CELLS-PREFIX
 : ALIAS ( n -- n ) 3 + ;

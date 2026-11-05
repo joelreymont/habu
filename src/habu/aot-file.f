@@ -922,12 +922,8 @@ DYNAMIC-BUFFER SH-SEEN u8
 
 public
 
-\ Fill the live capture buffers from `path`, refusing anything this build must not
-\ bake. `want` is the 32-byte producer key this reader accepts and nothing else.
-\ The artifact REPLACES what the buffers held: it brings its own DATA base, its
-\ own code base and its own wordlist window. test/aot-chain-capture-suite.f drives
-\ a real capture through WRITE and READ in child processes: header, round trip,
-\ corrupt, truncated and trailing payloads, and malformed rows.
+\ Replace the capture buffers' DATA, code and window with `path`'s, which must
+\ carry the 32-byte producer key `want` and nothing this build must not bake.
 : READ ( ptr u8 ptr u8 n -- )
    LOAD-PASS
    BASES-ALONE
@@ -1647,12 +1643,6 @@ variable MERGE-XT-DST
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;   \ the live terminator, uncounted
 
 public
-
-\ Where the artifact's own window begins inside the merged one. It is the one
-\ number in the placement a reader cannot recompute for itself, so
-\ test/aot-artifact-rows.f asks the merge for it and checks the pad against
-\ numbers of its own.
-: WDATA-BASE ( -- n ) H-DATA-R @ ;
 
 \ Append the artifact at `path` to the capture already in the live buffers,
 \ expressed in that capture's coordinates. `want` is the 32-byte producer key

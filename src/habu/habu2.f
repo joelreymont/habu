@@ -8277,11 +8277,8 @@ ardone LBL,
 \ defining into and C-PACKAGE-SEAL-GUARD opening a protected wid. A package's
 \ public wordlist is its record's [0], private [8]; on the merged chain four
 \ callees a boot reach this scan.
-\ The refuse leg has no producer: a call site's scope is one of four shapes
-\ (EM-AOT-PATCH-SITES; a raw pre-window wid dies `pbad`, pinned by
-\ test/aot-wid-suite.f PROBE-WID-FORGED), and LFIND's qualified branch (habu1.f
-\ LHEADROW) searches a package's public slot. It guards an edit that widens
-\ either accept-set.
+\ The refuse leg has no producer (EM-AOT-PATCH-SITES, habu1.f LHEADROW); it
+\ guards an edit that widens either accept-set.
 \ The gate asks the record LFIND matched, not the first record holding the xt:
 \ `EXPORT` gives a body several records in several wordlists, and the xt scan
 \ cost 2.4us per site at 7187 records. The record is checked present, inside the

@@ -101,10 +101,8 @@ $4A constant REFUSE-RC
    s" aot-chain-capture: the capture must be the first file this process loads"
    REFUSE-RC die ;
 
-\ Under bin/hb the chain is baked, its closure is `provided` and the window comes
-\ up empty: only the capture host, the same prefix with no artifact declared, can
-\ run this tool. test/aot-chain-capture-suite.f runs it under bin/hb for this
-\ refusal, the proof that this file and its closure compile in a booted engine.
+\ Under bin/hb the chain is baked and the window comes up empty: only the capture
+\ host, the same prefix with no artifact declared, can run this tool.
 : ?WINDOW ( -- )
    AOT-ARM:R1 @ AOT-ARM:R0 @ <> if exit then
    s" aot-chain-capture: the window is empty - the chain did not load" REFUSE-RC die ;
@@ -400,9 +398,6 @@ variable NAME-COUNT
 \
 \ THE PRODUCER KEY is the SHA-256 of the binary this process runs, over the path
 \ src/lib/engine-id.f resolved (the census prints it through ENGINE-ID:KEY$).
-\ test/aot-chain-capture-suite.f hashes bin/hb from outside and compares the key
-\ in the header of the small-window artifact test/aot-artifact-roundtrip.f
-\ writes: a product engine cannot capture the chain.
 \
 \ THE ROUND TRIP RUNS EVERY TIME AN ARTIFACT IS WRITTEN: write A, destroy the
 \ live buffers, read A back into them, write B from what came back, and require

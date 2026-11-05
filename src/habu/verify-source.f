@@ -1370,10 +1370,8 @@ private
 : RENDERS-MARK? ( ptr u8 n n -- bool )
    NCOMP-DISPATCH:DECL-VERIFY-RENDERS-OFF OWNER-XT RENDERS-ACTION execute ;
 
-\ The masks it is asked with: a text renderer (RECORD-DEFINER?), a text
-\ renderer or a word that calls `create` (TOP-TOKEN), and a text renderer or a
-\ word that registers a nominal type. src/core/cell-effects.f gives the flags
-\ their rows, so a source boot reads them too (test/cold-naming-test.f).
+\ Masks for a text renderer (RECORD-DEFINER?), one or a `create` caller
+\ (TOP-TOKEN), and one or a nominal-type registrar; rows in core/cell-effects.f.
 CTL-RENDERS CTL-CREATES or constant MARK-UNSEEN
 CTL-RENDERS CTL-NOMINAL or constant MARK-NOMINAL
 

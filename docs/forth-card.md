@@ -537,8 +537,7 @@ forth.md: **Files**, **Packages**.
 
 Follow the testing policy in [AGENTS.md](../AGENTS.md). Exercise a complete
 feature through its real load/build path and retain a repeatable artifact.
-See `test/aot-chain-capture-suite.f` for a producer, saved image, and consumer
-flow. Use `require src/lib/test.f` for assertions and keep fixtures package-scoped.
+Use `require src/lib/test.f` for assertions and keep fixtures package-scoped.
 
 `T=` / `T<>` scalars, `T$=` strings, `TTRUE` / `TFALSE` flags, `TTHROWSQ` /
 `TTHROWS` throw codes. `TEST-EVAL:N` / `FLAG` / `RC` take one cell, a flag or

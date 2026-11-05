@@ -1077,7 +1077,7 @@ variable BF-DRV-R
 
 \ The one split of the stdin driver: reads src/habu/stdin.f into BF-SOURCE-BUF and answers
 \ how many bytes a generated driver keeps, up to the terminal `STDIN-DRIVER:RUN` it replaces.
-\ This file's chain driver, tools/aot-chain-bake.f and test/aot-wid-build.f all ask it.
+\ This file's chain driver and tools/aot-chain-bake.f ask it.
 : BF-DRV-SOURCE-KEEP ( -- n )
    s" src/habu/stdin.f" BF-READ-SOURCE
    BF-DRV-KEEP ;

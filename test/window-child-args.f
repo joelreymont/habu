@@ -1,6 +1,6 @@
 \ window-child-args.f - the argv of a native-window child: the owner child
 \ entry, the subject, then the prefix files the include words and the seal
-\ stand on, in the build's order (test/reloc-window-prepare.f), and the
+\ stand on, in the build's order, and the
 \ prepare file. That window stops at src/core/cell-effects.f; PAYLOAD gives
 \ the AOT payload rows' window, which runs through the prelude. EXPECT runs
 \ the staged child on the whitebox engine and holds it to one exact stdout.

@@ -110,8 +110,7 @@ PTR-VARIABLE DP0
    74 die ;
 
 \ The window's four coordinates are AOT-ARM's, latched by the two words that
-\ name the moments. The widened re-captures in test/aot-wid-build.f start their
-\ windows where this one started its own and read the same cells.
+\ name the moments.
 : CAPTURE-REPL ( -- )
    READ-REPL                                     \ REPL sources -> HB scratch buffer
    AOT-ARM:WINDOW-OPEN                            \ the engine declines to inline pre-window chains from here on

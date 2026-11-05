@@ -19,11 +19,8 @@ require src/habu/address-carrier.f
 require src/habu/code-span.f
 require src/habu/cell-grid.f
 
-\ THE PUBLIC TAILS KEEP THEIR `AOT-` PREFIX as recorded debt (docs/forth.md
-\ § Packages asks for `AOT-BUF:BLOB-CAP`); consumers read the bare names through
-\ `using AOT-BUF`. A rename also has to reach test/aot-wid-build.f's GENERATED
-\ program text, which no source-level rename sees, and check each tail against
-\ the global wordlist (layout.f publishes a global MAX). New names drop the prefix.
+\ The public tails keep their AOT- prefix: a bare tail can clash with a global
+\ word (layout.f publishes MAX), so a rename checks each. New names drop it.
 package AOT-BUF
 public
 

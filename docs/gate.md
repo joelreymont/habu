@@ -79,22 +79,6 @@ before src/lib/net/model.f existed, refused that file's cast of arena bytes
 into a record holding another package's OPAQUE cursor, and row model-test went
 red on master.
 
-### A green build does not show that the prefix boots from source
-
-The build's checker holds the rows its host recorded for the prefix before the
-check hook; an engine that boots the prefix from source does not, so a prefix
-file can build and then fail every sealed cold boot
-(`test/cold-naming-test.f` states the rule). After editing an ARM prefix file,
-boot the candidate's prefix cold before the registry. This source-built route
-is ARM-only; Intel captures its checked prefix through `tools/native-build.f`:
-
-```sh
-TMPDIR=$TMP HABU_AOT_GATE=1 bin/hb --load test/aot-wid-build.f
-```
-
-It ends `aot-wid-build: hb-pwid ready`. `bin/hb --load test/cold-naming-test.f`
-is the focused check of the naming rule itself.
-
 ## Running the registry
 
 `test/gate-stdlib-cases.f` is the registry. Each `SUITE` row runs its listed

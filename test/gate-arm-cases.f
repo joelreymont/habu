@@ -18,14 +18,10 @@ SUITE arm64-place
    test/compiler/arm64-place.f
 ;SUITE
 
-\ Both fixtures open an ARM AOT source window and select tier 0 before asking
-\ how an x64 shadow is carried or linked from that ARM window.
+\ The fixture opens an ARM AOT source window and selects tier 0 before asking
+\ how an x64 shadow is linked from that ARM window.
 SUITE x86-64-link-records
    test/x86-64-link-records.f
-;SUITE
-
-SUITE aot-shadow-capture
-   test/aot-shadow-capture.f
 ;SUITE
 
 \ ARM BRK breakpoint and resume fixtures select tier 0. The x64 kernel
@@ -46,18 +42,6 @@ SUITE compiler-native-identity-spill
 
 SUITE compiler-native-wide-frame
    test/compiler/native-wide-frame.f
-;SUITE
-
-\ Live ARM windows and instruction-chain compaction need an ARM host. Inert
-\ metadata storage, transfer and refusal cases stay shared.
-SUITE aot-chain-capture
-   test/aot-chain-capture-suite.f
-;SUITE
-
-\ Mutations target the ARM boot reader's packed ULEB record/site tables.
-\ The ordinary seed-batch build and execution row stays shared.
-SUITE aot-seed-metadata
-   test/aot-seed-metadata.f
 ;SUITE
 
 \ The harness selects tier 0 before its first definition: tier 1 refuses

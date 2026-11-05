@@ -1,6 +1,5 @@
 \ capture.f - a capture taken while a Wasm shadow is open carries the shadow's
-\ routines (src/arch/wasm/capture.f into src/habu/aot-decl.f AOT-SHADOW), as
-\ test/aot-shadow-capture.f proves for x86-64.
+\ routines (src/arch/wasm/capture.f into src/habu/aot-decl.f AOT-SHADOW).
 \ Registered as `SUITE wasm-capture`.
 
 package WSHCAP

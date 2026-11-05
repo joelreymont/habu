@@ -41,6 +41,5 @@ public
 
 ;package
 
-\ After MAIN returns the image runs stdin as a program, which is how
-\ test/aot-wid-build.f forges emitted code.
+\ After MAIN returns the image runs stdin as a program.
 : MAIN ( -- ) NATIVE-FIXTURE-WRITE:RUN ;

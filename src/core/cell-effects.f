@@ -5,20 +5,15 @@ s" CELL-WIDTH-CHECK" s" --" TRUST
 s" CHECKER-CAPTURE-PREPARE" s" --" TRUST
 s" CHECKER-STORAGE-PREPARE" s" --" TRUST
 
-\ src/core/util.f's public constants. util.f loads before the checker, so a
-\ from-source prefix boot gives them no effect of their own and a checked body
-\ that names one is E-UNDEFINED there (test/cold-naming-test.f). Rows rather
-\ than TRUST declarations, so each effect is stated by the checker's own
-\ constructors with no trusted seam behind it.
+\ src/core/util.f's public constants, which load before the checker: without
+\ these rows a body naming one is E-UNDEFINED on a from-source prefix boot.
 PRIM: PATH-CAP PE-N PE-OUT PRIM;
 PRIM: E-PATH-RANGE PE-N PE-OUT PRIM;
 PRIM: E-PATH-NUL PE-N PE-OUT PRIM;
 PRIM: SCOPE-FIND-AMBIGUOUS PE-N PE-OUT PRIM;
 
-\ The control-effect flags src/habu/verify-source.f reads at top level and the
-\ verdict word its body check calls, from src/core/checker.f. A from-source
-\ prefix boot refuses a name with no row (test/cold-naming-test.f), and a built
-\ engine admits a checked call to the verdict word only through its row.
+\ The checker's control-effect flags and verdict word src/habu/verify-source.f
+\ calls: without a row each is E-UNDEFINED on a from-source prefix boot.
 PRIM: CTL-RENDERS PE-N PE-OUT PRIM;
 PRIM: CTL-CREATES PE-N PE-OUT PRIM;
 PRIM: CTL-NOMINAL PE-N PE-OUT PRIM;

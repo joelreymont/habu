@@ -35,8 +35,7 @@ public
 \
 \ A full-band blob plus aot-file.f's framing is the largest artifact. Below the
 \ bound AOT-BLOB-CAP and the site buffer (AOT-DSITE-MAX * 4) are unreachable and
-\ the per-section refusal is dead. test/aot-data-sites.f "the section budget
-\ admits a full code band" pins it; at CODE-BAND:BYTES 30,404,608 the minimum is
+\ the per-section refusal is dead. At CODE-BAND:BYTES 30,404,608 the minimum is
 \ 30,536,128.
 $1E00000 constant AOT-SECTION-CAP  \ aggregate payload budget, including framing/alignment
 $2300000 constant CODE-CAP-BYTES   \ ADR-HI ($100000) + SOURCE-ARENA-CAP ($400000) + AOT-SECTION-CAP

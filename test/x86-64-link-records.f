@@ -91,8 +91,7 @@ package X64LT
 public
 : OPEN-X64 ( -- ) X64ABI:BINDING NSHADOW:OPEN ;
 ;package
-\ The window is compiled as test/aot-shadow-capture.f compiles its own; the
-\ kernel's rows come from test/x86-64-boot-harness.f.
+\ The kernel's rows come from test/x86-64-boot-harness.f.
 X64LT:OPEN-X64
 DATA-START ADDRESS-CELLS:KEEP-BELOW
 AOT-ARM:WINDOW-OPEN

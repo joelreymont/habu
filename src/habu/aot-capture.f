@@ -423,13 +423,8 @@ private
    s" , which the booting engine has and no target does" type cr
    s" aot-capture: window call into the prelude band" 74 die ;
 
-\ Audit (b), the DATA half, is a sentence added to ACAP-UNCLASSIFIED's refusal,
-\ not a second refusal: it says which kind of address the value is, and a
-\ prelude address (allotted after this process started, before the window
-\ opened) would be rebased onto whatever the seeded engine put there. A second
-\ refusal was refuted: with a forged window base (test/aot-wid-suite.f
-\ HABU_AOT_D0_SKEW) every window address falls into the band, so it took the
-\ first refusal's only producer and the tree lost a tested stop.
+\ The band of a refused DATA address. The prelude band has no refusal of its
+\ own: under a forged window base every window address is in it.
 : ACAP-BAND. ( n -- ) {: v:n :}
    v ACAP-PRE-D @ < if s" below this process's own start" type exit then
    v ACAP-W-D0 @ < if s" in the prelude band, which no target carries" type exit then
@@ -2142,12 +2137,11 @@ public
 
 \ What the row table must hold, recounted off the live table with
 \ ACAP-BAKE-DATA's arithmetic, so a producer checks the table against a reading
-\ not taken from it (tools/aot-chain-capture.f ?XTOFF,
-\ test/aot-artifact-roundtrip.f): a row never written, written twice, or for a
-\ cell in neither population. The two are disjoint: a cell inside the window
-\ counts here however its target is placed. DECLARED-IN: cells inside the
-\ window's DATA span, whose bytes stay out of every sparse run, so the seed's
-\ value comes only from their row.
+\ not taken from it (tools/aot-chain-capture.f ?XTOFF): a row never written,
+\ written twice, or for a cell in neither population. The two are disjoint: a
+\ cell inside the window counts here however its target is placed. DECLARED-IN:
+\ cells inside the window's DATA span, whose bytes stay out of every sparse run,
+\ so the seed's value comes only from their row.
 : DECLARED-IN ( n n -- n )
    {: d0:n d1:n :}
    d0 AOT-DATA-N - {: d0off:n :}
@@ -2246,8 +2240,7 @@ public
 \ them before loading this tool, whose compiler dependencies stay outside the
 \ captured window.
 
-\ Not reset with the buffers: the marks describe the process, and a widened
-\ re-capture of one window (test/aot-wid-build.f) is the same process.
+\ Not reset with the buffers: the marks describe the process, not one capture.
 : ACAP-BAND! ( n n n n -- ) {: bstart:n rstart:n rend:n d0:n :}
    ACAP-MARKED? @ 0= if
       s" aot-capture: capture without a declared prelude band" 74 die
