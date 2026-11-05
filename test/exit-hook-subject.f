@@ -1,6 +1,5 @@
-\ A stripped application runs the process-exit hook on every one of its exits.
-\ test/stripped-image.f links this subject; MAIN calls RUN first, which makes
-\ the directory named by argument 0 and registers it with FS:CLEANUP-TREE+.
+\ test/stripped-image.f links this subject; after its `bounds` check MAIN calls
+\ RUN, which makes argument 0's directory and registers it (FS:CLEANUP-TREE+).
 
 \ With a second argument, a code, MAIN calls FINISH. Code 0 returns with no
 \ `die`, throw or REPL exit, so only the entry's inline call to the vector

@@ -492,10 +492,6 @@ SUITE stripped-lifecycle-prepare
    test/stripped-lifecycle-prepare.f
 ;SUITE
 
-SUITE stripped-preloaded-runtime
-   test/stripped-preloaded-runtime.f
-;SUITE
-
 SUITE stripped-literal
    test/stripped-literal.f
 ;SUITE

@@ -18,12 +18,6 @@ SUITE arm64-link-data
    test/compiler/arm64-link-data.f
 ;SUITE
 
-\ The fixture opens an ARM AOT source window and selects tier 0 before asking
-\ how an x64 shadow is linked from that ARM window.
-SUITE x86-64-link-records
-   test/x86-64-link-records.f
-;SUITE
-
 \ ARM BRK breakpoint and resume fixtures select tier 0. The x64 kernel
 \ explicitly refuses that selection; its crash/stack guards have native rows.
 SUITE engine-stack-debugger

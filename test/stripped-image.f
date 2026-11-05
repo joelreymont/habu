@@ -67,15 +67,14 @@ variable EXIT-TREE-U
    S\"  = if s\" chain=ok\" type cr then OPEN-PATH ;\n;package\n" SB-APPEND
    SUBJECT$ SB$ FS:APPEND-FILE ;
 
-\ MAIN is per host: the macOS image starts and stops AIO (src/lib/aio.f's
-\ definers at run time); the Linux image links aio.f without starting it. The
-\ exit-hook subject registers its directory first and a run given its code
-\ leaves before the other subjects; UNMAP ends the process, so it comes last.
+\ MAIN is per host: macOS starts and stops AIO, Linux links aio.f idle. The
+\ exit-hook subject runs first, and UNMAP ends the process, so it comes last.
 : WRITE-SUBJECT ( -- )
    SUBJECT$ S\" require test/stripped-image-subject.f\nrequire test/exit-hook-subject.f\n" FS:WRITE-ALL
    WRITE-CHAIN
    SB-RESET
-   S\" : MAIN ( -- )\n   EXIT-HOOK-SUBJECT:RUN\n   EXIT-HOOK-SUBJECT:RETURN? if EXIT-HOOK-SUBJECT:FINISH exit then\n" SB-APPEND
+   S\" : MAIN ( -- )\n   0 SCRIPT-ARGV$ s\" bounds\" STR= if DATA-SIZE allot exit then\n" SB-APPEND
+   S\"    EXIT-HOOK-SUBJECT:RUN\n   EXIT-HOOK-SUBJECT:RETURN? if EXIT-HOOK-SUBJECT:FINISH exit then\n" SB-APPEND
    S\"    s\" global-main\" type cr\n   STRIPPED-IMAGE-CHAIN:RUN\n   STRIPPED-IMAGE-SUBJECT:RUN\n" SB-APPEND
    HB-TARGET-MACOS? if S\"    AIO:START AIO:STOP\n" SB-APPEND then
    S\"    STRIPPED-IMAGE-SUBJECT:UNMAP ;\n" SB-APPEND
@@ -143,6 +142,16 @@ variable EXIT-TREE-U
    s" 256" 67 S\" hb: uncaught throw code 256\n" RUN-EXIT
    s" -2500" 67 S\" hb: uncaught throw code -2500\n" RUN-EXIT ;
 
+: RUN-BOUNDS ( -- )
+   \ A run of its own: allot past the bound ends the process.
+   GE-HB-RESET
+   IMAGE$ GE-ARGV+ s" bounds" GE-ARG+
+   IMAGE$ TIMEOUT-MS GE-RUN-ENV
+   76 s" stripped data-space bound exit" GE-EXPECT-RC
+   s" hb: data space out of range: DP " s" stripped data-space bound diagnostic" GE-EXPECT-ERR-HAS
+   s"  of " s" stripped data-space bound ceiling" GE-EXPECT-ERR-HAS
+   S\"  bytes\n" s" stripped data-space bound units and newline" GE-EXPECT-ERR-HAS ;
+
 \ The ARM startup carries the xt-cell apply loop, so it must satisfy the image
 \ gate's ARM instruction model; RUN-IMAGE and RUN-EXITS check the x86 behavior.
 : CHECK-SHAPE ( -- )
@@ -150,7 +159,7 @@ variable EXIT-TREE-U
    IMAGE$ AOT-IMAGE:CODE-RANGE 2drop ;
 
 : BODY ( -- )
-   PREPARE WRITE-SUBJECT BUILD CHECK-SIZE RUN-IMAGE RUN-EXITS CHECK-SHAPE
+   PREPARE WRITE-SUBJECT BUILD CHECK-SIZE RUN-IMAGE RUN-EXITS RUN-BOUNDS CHECK-SHAPE
    s" PASS: stripped image subjects" type cr ;
 
 public

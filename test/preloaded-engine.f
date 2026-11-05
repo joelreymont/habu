@@ -83,13 +83,12 @@ public
 \    the window. The maker refuses a closure reaching such a word
 \    (E-AOT-PRE-WINDOW, src/habu/aot-closure.f ADD-CLO) or cell (`aot: address
 \    refers to data outside the restored span`). src/habu/aot-owned-cells.f
-\    COLLECT claims the FFI and TASK state baked below the window
-\    (test/stripped-preloaded-runtime.f). A subject defining a word the image
-\    holds dies at that line (`duplicate definition`, rc 78). A subject that
-\    requires such a module or adds words to such a package, and reaches none of
-\    the image's words, links as on the engine. The linker's persistent hooks
-\    register ahead of the subject's, so PREPARE runs them after the subject's,
-\    where the engine's maker runs them first.
+\    COLLECT claims the FFI and TASK state baked below the window. A subject
+\    defining a word the image holds dies at that line (`duplicate definition`,
+\    rc 78). A subject that requires such a module or adds words to such a
+\    package, and reaches none of the image's words, links as on the engine. The
+\    linker's persistent hooks register ahead of the subject's, so PREPARE runs
+\    them after the subject's, where the engine's maker runs them first.
 \ 4. A row whose children run ENGINE-CANDIDATE:PATH$ does not itself run on it:
 \    inside an image ENGINE-ID:PATH$ names the image.
 : LINKER$ ( -- ptr u8 n )
