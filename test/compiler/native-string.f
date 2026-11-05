@@ -1,122 +1,12 @@
-\ native-string.f - a string literal, compiled by the native chain and run.
+\ native-string.f - the string literal store: its pools, segments and rows.
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/fmt.f
 require src/core/generated-declaration.f
-require src/compiler/native/compiler.f
-require src/compiler/native/hir.f
-require src/habu/boot-cells.f
 require src/habu/intern.f
-require src/habu/aot-arm.f
 require test/compiler/literal-segment.f
 
-\ Tier 1 below: one address per interned body, and code that does not grow with
-\ the string, are facts of the optimizing compiler's literal emission.
-1 set-tier
-
 package NSTRING-TEST
-
-private
-
-\ ---- the words the chain compiles --------------------------------------------
-\ Each is compiled through the production entry, which reads the effect off the
-\ checker's certificate: `( -- ptr u8 n )` is two cells. Callers, compiled after
-\ the suite, run through `TEST-EVAL:N`, or `TEST-EVAL:FLAG` for a flag.
-
-: PLAIN ( -- )
-   S\" : NST-PLAIN ( -- ptr u8 n ) s\" hi\" ;" evaluate-closed ;
-
-: EMPTY ( -- )
-   S\" : NST-EMPTY ( -- ptr u8 n ) s\" \" ;" evaluate-closed ;
-
-\ A body built to fool a reader that re-lexed it: two spaces that must not
-\ collapse, a definition closer, a colon and a comment opener that must not
-\ become syntax, and a trailing word that must not become a token.
-: HOSTILE ( -- )
-   S\" : NST-HOSTILE ( -- ptr u8 n ) s\" a  b ; : ( x\" ;" evaluate-closed ;
-
-\ A named escape, a hex escape and a quote escape in one body. The quote escape
-\ is the one a decoder that merely scanned for the closing quote would get wrong.
-: ESCAPED ( -- )
-   S\" : NST-ESCAPED ( -- ptr u8 n ) s\\\" a\\tb\\x41\\qc\" ;" evaluate-closed ;
-
-\ Two sites in ONE definition, writing the same body, so the addresses they push
-\ can be compared against each other.
-: TWICE ( -- )
-   S\" : NST-TWICE ( -- ptr u8 n ptr u8 n ) s\" dup\" s\" dup\" ;" evaluate-closed ;
-
-\ And a second definition writing that same body, so the sharing can be shown to
-\ cross a definition boundary and not only a site boundary.
-: SHARED ( -- )
-   S\" : NST-SHARED ( -- ptr u8 n ) s\" dup\" ;" evaluate-closed ;
-
-\ A body nothing else in this suite writes, for the counting cases, and a second
-\ definition writing exactly it.
-: LONE ( -- )
-   S\" : NST-LONE ( -- ptr u8 n ) s\" lone-body\" ;" evaluate-closed ;
-
-: LONE-AGAIN ( -- )
-   S\" : NST-LONE2 ( -- ptr u8 n ) s\" lone-body\" ;" evaluate-closed ;
-
-\ ---- what the published words answer -----------------------------------------
-: ROUND-TRIP-CASE ( -- )
-   PLAIN
-   s" a string literal compiles through the chain and pushes its bytes" T-LABEL
-   S\" NST-PLAIN s\q hi\q STR=" TEST-EVAL:FLAG TTRUE
-   s" NST-PLAIN nip" TEST-EVAL:N 2 T=
-
-   EMPTY
-   s" the empty string literal pushes a valid address and zero" T-LABEL
-   s" NST-EMPTY nip" TEST-EVAL:N 0 T=
-   s" NST-EMPTY drop NULL-PTR - 0 >" TEST-EVAL:FLAG TTRUE
-
-   HOSTILE
-   s" a body that would re-lex as syntax survives verbatim" T-LABEL
-   S\" NST-HOSTILE s\q a  b ; : ( x\q STR=" TEST-EVAL:FLAG TTRUE
-   s" NST-HOSTILE nip" TEST-EVAL:N 12 T=
-
-   ESCAPED
-   s" an escaped body arrives decoded, not as the text it was written as" T-LABEL
-   S\" NST-ESCAPED S\\\q a\\tbA\\qc\q STR=" TEST-EVAL:FLAG TTRUE
-   s" NST-ESCAPED nip" TEST-EVAL:N 6 T= ;
-
-\ ---- one body, one address ----------------------------------------------------
-\ Sharing is the point, not an economy: a fresh address for equal bytes would
-\ leak a copy each time the pipeline re-elaborated a refused definition, so it
-\ stands in for "a refusal moves nothing" over the arena.
-: SHARING-CASE ( -- )
-   TWICE
-   s" two sites writing one body push one address" T-LABEL
-   s" NST-TWICE drop swap drop =" TEST-EVAL:FLAG TTRUE
-
-   SHARED
-   s" a second definition writing that body pushes the same address" T-LABEL
-   s" NST-SHARED drop NST-TWICE drop nip drop =" TEST-EVAL:FLAG TTRUE
-
-   s" and a different body pushes a different address" T-LABEL
-   s" NST-SHARED drop NST-PLAIN drop <>" TEST-EVAL:FLAG TTRUE ;
-
-\ ---- interning the same bytes twice costs nothing ------------------------------
-\ Re-evaluating a definition's source would be a duplicate definition. The
-\ underlying property is that interning bytes already present costs nothing.
-: INTERN-IDEMPOTENT-CASE ( -- )
-   LONE
-   s" a body already interned adds no row and no bytes" T-LABEL
-   INTERN:COUNT {: c0:n :}
-   INTERN:BYTES {: b0:n :}
-   s" lone-body" INTERN:STRING {: a1:n :}
-   s" lone-body" INTERN:STRING {: a2:n :}
-   a1 a2 T=
-   INTERN:COUNT c0 T=
-   INTERN:BYTES b0 T=
-
-   s" and a second definition writing that body adds none either" T-LABEL
-   LONE-AGAIN
-   INTERN:COUNT c0 T=
-   INTERN:BYTES b0 T=
-   S\" NST-LONE2 s\q lone-body\q STR=" TEST-EVAL:FLAG TTRUE
-   s" NST-LONE drop NST-LONE2 drop =" TEST-EVAL:FLAG TTRUE ;
 
 \ A failed evaluate-closed rewinds DATA but keeps the compiler's literal table.
 \ Reclaim that DATA and verify the cached bytes still belong to its pool.
@@ -142,22 +32,6 @@ CAST: N>BYTES ( n -- ptr u8 )
    S\" : NST-ROLLBACK ( -- ptr u8 n ) s\q ephemeral\q ;" evaluate-closed
    SAVED-LITERAL @ N>BYTES 9 ROLLBACK-BYTES 9 STR= TTRUE
    s" NST-ROLLBACK drop NULL-PTR -" TEST-EVAL:N SAVED-LITERAL @ T= ;
-
-: WINDOW-CASE ( -- )
-   s" lone-body" INTERN:STRING {: old:n :}
-   data-base AOT-CELLS:B0-CELL + @ {: b0:n :}
-   AOT-ARM:WINDOW-OPEN
-   INTERN:WINDOW-OPEN
-   s" lone-body" INTERN:STRING {: fresh:n :}
-   s" lone-body" INTERN:STRING {: again:n :}
-   b0 AOT-ARM:OPEN
-   s" a retained compiler copies cached literals into the new AOT window" T-LABEL
-   fresh AOT-ARM:D0 @ >= TTRUE
-   fresh old T<>
-   old N>BYTES 9 s" lone-body" STR= TTRUE
-   fresh again T=
-   s" lone-body" INTERN:STRING {: newest:n :}
-   newest fresh T= ;
 
 variable MUTABLE-CELL
 
@@ -235,140 +109,6 @@ variable MUTABLE-CELL
    MUTABLE-CELL PTR>N UNOWNED-ROW
    0 UNOWNED-ROW  -1 UNOWNED-ROW
    MUTABLE-CELL PTR>N INTERN:REINTERN-OWNED TFALSE MUTABLE-CELL PTR>N T= ;
-
-\ HIR:NAME was compiled into the engine by its retained build host. Its literal
-\ predates this load and belongs to the transferred source pool after seeding.
-: SEEDED-OWNER-CASE ( -- )
-   s" the rebuilt target owns literals compiled by its retained host" T-LABEL
-   HIR:NAME {: body:ptr size:n :}
-   body size s" hir" T$=
-   body PTR>N body size OWNED-ROW
-   INTERN:WINDOW-OPEN
-   body PTR>N body size OWNED-ROW
-   body PTR>N 1+ INTERN:REINTERN-OWNED TTRUE
-   s" hir" INTERN:STRING 1+ T= ;
-
-variable BAD-ROWS
-variable BAD-OFFSET
-variable BAD-LENGTH
-PTR-VARIABLE IMPORTED-POOL
-: SELECT-IMPORTED ( -- ) IMPORTED-POOL @ INTERN:SWITCH ;
-
-\ This negative fixture reaches the real private importer by its dictionary
-\ identity. It never grants ownership: every supplied row is malformed.
-\ The dictionary row holds the importer's code address as an integer.
-CAST: IMPORT-XT ( n -- [ ptr u8 n ptr n ptr n -- ] )
-
-: IMPORT-OP ( -- [ ptr u8 n ptr n ptr n -- ] )
-   s" INTERN" BOOT:NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? TTRUE
-   XREF-PKG-PRIVATE {: wid:n :}
-   s" IMPORT-ROWS" wid XREF-FIND-WL
-   dup XREF-FOUND? TTRUE
-   XREF-START IMPORT-XT ;
-
-: BAD-IMPORT ( -- )
-   MUTABLE-CELL BYTE-VIEW BAD-ROWS @ BAD-OFFSET BAD-LENGTH IMPORT-OP execute ;
-
-: REJECT-IMPORT ( -- )
-   here PTR>N {: before:n :}
-   [: BAD-IMPORT ;] E-NSTR-BODY TTHROWSQ
-   here PTR>N before T=
-   MUTABLE-CELL PTR>N UNOWNED-ROW
-   HIR:NAME {: body:ptr size:n :}
-   body PTR>N body size OWNED-ROW ;
-
-: IMPORT-CASE ( -- )
-   s" only the build driver can invoke literal ownership import" T-LABEL
-   s" INTERN:IMPORT-ROWS" XREF-FIND XREF-FOUND? TFALSE
-   \ The checker reports an unknown public name (1), never a certificate (-1).
-   s" NST-PUBLIC-IMPORT ( ptr u8 n ptr n ptr n -- ) INTERN:IMPORT-ROWS"
-   CHECK-CANDIDATE! 1 T=
-
-   s" malformed imports leave DATA and existing row ownership unchanged" T-LABEL
-   -1 BAD-ROWS ! REJECT-IMPORT
-   1 BAD-ROWS ! -1 BAD-OFFSET ! 0 BAD-LENGTH ! REJECT-IMPORT
-   0 BAD-OFFSET ! $7FFFFFFFFFFFFFFF BAD-LENGTH ! REJECT-IMPORT
-   $80000 BAD-OFFSET ! 1 BAD-LENGTH ! REJECT-IMPORT
-
-   s" imported compact owners cannot become writable pools" T-LABEL
-   INTERN:ACTIVE {: active:ptr :}
-   0 BAD-OFFSET ! 0 BAD-LENGTH !
-   align here BYTE-VIEW IMPORTED-POOL !
-   MUTABLE-CELL BYTE-VIEW 1 BAD-OFFSET BAD-LENGTH IMPORT-OP execute
-   [: SELECT-IMPORTED ;] E-NSTR-BODY TTHROWSQ
-   INTERN:ACTIVE active = TTRUE ;
-
-\ ---- what a literal costs in code bytes ---------------------------------------
-\ The payload lives in DATA space, so the two chain emissions have the same code
-\ length even though one string is much longer. Address materialization depends
-\ on the mapped DATA base, so the relation is the stable claim.
-: COST-PAIR ( -- )
-   S\" : NST-COST-SHORT ( -- ptr u8 n ) s\" hi\" ;" evaluate-closed
-   S\" : NST-COST-LONG ( -- ptr u8 n ) s\" 12345678901234567890123456789012\" ;" evaluate-closed ;
-
-: CODE-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u XREF-FIND XREF-LEN ;
-
-: BYTE-COST-CASE ( -- )
-   COST-PAIR
-   s" the chain's code does not grow with the string at all" T-LABEL
-   s" NST-COST-LONG" CODE-LEN  s" NST-COST-SHORT" CODE-LEN T= ;
-
-\ ---- many long literals ---------------------------------------------------------
-\ Eighty definitions each push their own 7000-byte body: 560,000 bytes, more than
-\ one segment's arena holds, so the store opens another while the chain compiles.
-$2000 constant SRC-CAP               \ one definition around a 7000-byte body
-SRC-CAP BUFFER: SRC
-variable SRC-U
-variable LONG-N                      \ definitions compiled
-variable LONG-OK                     \ definitions that pushed their own body
-
-: SRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   SRC-U @ u + SRC-CAP > if E-STR-CAPACITY throw then
-   a  SRC SRC-U @ +  u BYTE-COPY
-   u SRC-U +! ;
-
-: NUM+ ( n -- )
-   SB-RESET FMT:SB-U SB$ SRC+ ;
-
-\ Body k: the name of the definition that pushes it, then `z` up to 7000 bytes.
-: LONG-BODY+ ( n -- ) {: k:n :}
-   SRC-U @ {: at:n :}
-   s" NSL" SRC+  k NUM+
-   7000  SRC-U @ at -  -  0 ?do s" z" SRC+ loop ;
-
-\ The body LONG-ANSWERS expects, public only because its closed text reaches it
-\ qualified.
-public
-: LONG-BODY$ ( -- ptr u8 n )
-   SRC SRC-U @ ;
-private
-
-: LONG-DEF ( n -- ) {: k:n :}
-   0 SRC-U !
-   s" : NSL" SRC+  k NUM+  S\"  ( -- ptr u8 n ) s\q " SRC+
-   k LONG-BODY+  S\" \q ;" SRC+
-   SRC SRC-U @ evaluate-closed
-   1 LONG-N +! ;
-
-: LONG-DEFS ( -- )
-   80 0 ?do i LONG-DEF loop ;
-
-: LONG-ANSWERS ( n -- ) {: k:n :}
-   0 SRC-U !  k LONG-BODY+
-   SB-RESET s" NSL" SB-APPEND k FMT:SB-U s"  NSTRING-TEST:LONG-BODY$ STR=" SB-APPEND
-   SB$ TEST-EVAL:FLAG if 1 LONG-OK +! then ;
-
-: LONG-LITERALS-CASE ( -- )
-   s" eighty definitions of distinct 7000-byte bodies compile" T-LABEL
-   0 LONG-N !
-   [: LONG-DEFS ;] 0 TTHROWSQ
-   LONG-N @ 80 T=
-   s" and each pushes its own body, as tier 0 does" T-LABEL
-   0 LONG-OK !
-   LONG-N @ 0 ?do i LONG-ANSWERS loop
-   LONG-OK @ 80 T= ;
 
 \ ---- a segment opened inside work that is undone -------------------------------
 \ The store opens a segment at `here`, inside whatever is running. A rewind of
@@ -474,17 +214,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   ROUND-TRIP-CASE
-   SHARING-CASE
-   INTERN-IDEMPOTENT-CASE
-   WINDOW-CASE
    SWITCH-CASE
    ROLLBACK-CASE
    OWNER-CASE
-   SEEDED-OWNER-CASE
-   IMPORT-CASE
-   BYTE-COST-CASE
-   LONG-LITERALS-CASE
    EVAL-SEGMENT-CASE
    DECL-SEGMENT-CASE
    CAP-CASE

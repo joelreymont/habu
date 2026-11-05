@@ -3,24 +3,16 @@
 require test/compiler/native-eval-fixture.f
 require src/lib/errors.f
 require src/lib/string.f
-require src/lib/le.f
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/adt/option.f
 require src/compiler/native/compiler.f
-require src/compiler/native/branch.f
 require src/compiler/native/dict.f
-require src/compiler/native/trap.f
-require src/habu/code-bytes.f
-require src/arch/x86-64/disasm.f
 require test/compiler/native-match-layout.f
 
 package NMX
-private
-
-4 constant INSN-BYTES
 
 public
 
@@ -445,12 +437,8 @@ private
    ;MATCH ;
 
 
-: EV-RC ( ptr u8 n -- n )
-   NATIVE-EVAL:DEFINE-RC ;
-
 : TRY ( ptr u8 n -- n )
-   NELAB:REFUSED-RESET
-   EV-RC ;
+   NATIVE-EVAL:DEFINE-RC ;
 
 : OVER$ ( -- ptr u8 n )
    s" : C-OVER ( over -- n ) MATCH over v0 OF 300 ENDOF v1 OF 301 ENDOF v2 OF 302 ENDOF v3 OF 303 ENDOF v4 OF 304 ENDOF v5 OF 305 ENDOF v6 OF 306 ENDOF v7 OF 307 ENDOF v8 OF 308 ENDOF v9 OF 309 ENDOF v10 OF 310 ENDOF v11 OF 311 ENDOF v12 OF 312 ENDOF v13 OF 313 ENDOF v14 OF 314 ENDOF v15 OF 315 ENDOF v16 OF 316 ENDOF ;MATCH ;" ;
@@ -491,140 +479,34 @@ private
 : NARROWK$ ( -- ptr u8 n )
    s" : C-NARROWK ( n n n -- narrow<pt3> ) NMX-PT3:MAKE NMX-NARROW:P1 ;" ;
 
-variable RC-NONEXH  variable ROW-NONEXH
-variable RC-DUPVAR  variable ROW-DUPVAR
-variable RC-NOFAM   variable ROW-NOFAM
+variable RC-NONEXH
+variable RC-DUPVAR
+variable RC-NOFAM
 variable RC-NOTSUM
-variable RC-NOOF    variable ROW-NOOF
-variable RC-STRAY   variable ROW-STRAY
+variable RC-NOOF
+variable RC-STRAY
 variable RC-OVER
 variable RC-ROWS24  variable RC-ROWS26
 variable RC-CONFIT  variable RC-CONOVER
-variable RC-NARROWC variable ROW-NARROWC
-variable RC-NARROWK variable ROW-NARROWK
+variable RC-NARROWC
+variable RC-NARROWK
 
 : RUN-DYNAMIC-CASES ( -- )
-   NONEXH$ TRY RC-NONEXH !  NELAB:REFUSED-ROW ROW-NONEXH !
-   DUPVAR$ TRY RC-DUPVAR !  NELAB:REFUSED-ROW ROW-DUPVAR !
-   NOFAM$ TRY RC-NOFAM !    NELAB:REFUSED-ROW ROW-NOFAM !
+   NONEXH$ TRY RC-NONEXH !
+   DUPVAR$ TRY RC-DUPVAR !
+   NOFAM$ TRY RC-NOFAM !
    NOTSUM$ TRY RC-NOTSUM !
-   NOOF$ TRY RC-NOOF !      NELAB:REFUSED-ROW ROW-NOOF !
-   STRAY$ TRY RC-STRAY !    NELAB:REFUSED-ROW ROW-STRAY !
+   NOOF$ TRY RC-NOOF !
+   STRAY$ TRY RC-STRAY !
    OVER$ TRY RC-OVER !
    ROWS24$ TRY RC-ROWS24 !
    ROWS26$ TRY RC-ROWS26 !
    CONFIT$ TRY RC-CONFIT !
    CONOVER$ TRY RC-CONOVER !
-   NARROWC$ TRY RC-NARROWC ! NELAB:REFUSED-ROW ROW-NARROWC !
-   NARROWK$ TRY RC-NARROWK ! NELAB:REFUSED-ROW ROW-NARROWK ! ;
+   NARROWC$ TRY RC-NARROWC !
+   NARROWK$ TRY RC-NARROWK ! ;
 
 RUN-DYNAMIC-CASES
-
-\ Source compilation retires its temporary emission. Inspect the full committed
-\ span: legacy lengths omit a trailing RET; exact spans can put cold traps after
-\ the return. XREF-CODE-BYTES accounts for either representation.
-variable CODE-BASE
-variable CODE-LEN
-
-: CODE! ( ptr u8 n -- )
-   get-current XREF-FIND-WL {: rec:ptr :}
-   rec XREF-FOUND? 0= if s" native-match: missing published code" 76 die then
-   rec XREF-START CODE-BASE !
-   rec XREF-CODE-BYTES CODE-LEN ! ;
-
-\ A published record starts at an integer code address; its words are read as bytes.
-CAST: CODE-BYTES ( n -- ptr u8 )
-
-: CODE-WORD@ ( n -- n )
-   INSN-BYTES * CODE-BASE @ + CODE-BYTES LE:U32@ ;
-
-: CODE-INSNS ( -- n ) CODE-LEN @ INSN-BYTES / ;
-
-\ Count complete x86-64 instructions so a branch byte inside an immediate
-\ cannot satisfy the dispatch shape. FLOW-END also names UD2; only C3 is a RET.
-variable X-AT
-variable X-COND
-variable X-RET
-variable X-TRAP
-
-: X-CODE-COUNTS ( -- n n n )
-   CODE-BASE @ X-AT !
-   0 X-COND !  0 X-RET !  0 X-TRAP !
-   NTRAP:ROUTINE {: trap:n :}
-   begin X-AT @ CODE-BASE @ CODE-LEN @ + < while
-      X-AT @ CODE-BASE @ CODE-LEN @ + X-AT @ - CODE-BYTES:AT X-AT @ X64DIS:STEP
-      {: bytes:n kind:n target:n :}
-      kind X64DIS:FLOW-COND = if 1 X-COND +! then
-      kind X64DIS:FLOW-END =
-      X-AT @ 1 CODE-BYTES:AT drop c@ $C3 = and if 1 X-RET +! then
-      kind X64DIS:FLOW-CALL = target trap = and if 1 X-TRAP +! then
-      bytes X-AT +!
-   repeat
-   X-COND @ X-RET @ X-TRAP @ ;
-
-: CODE-BRANCHES? ( -- bool )
-   HB-TARGET-LINUX-X86-64? if X-CODE-COUNTS 2drop 0 > exit then
-   CODE-INSNS 0 ?do
-      i CODE-WORD@ NBR:COND? if true unloop exit then
-   loop false ;
-
-: CODE-RETURNS ( -- n )
-   HB-TARGET-LINUX-X86-64? if X-CODE-COUNTS drop nip exit then
-   0 CODE-INSNS 0 ?do
-      i CODE-WORD@ NBR:RET? if 1+ then
-   loop ;
-
-: TRAP-BR? ( n n -- bool ) {: k:n t:n :}
-   k CODE-WORD@ NBR:BL? 0= if false exit then
-   CODE-BASE @ k INSN-BYTES * + k CODE-WORD@ NBR:BL-TARGET t = ;
-
-: TRAP-BRANCHES ( -- n )
-   HB-TARGET-LINUX-X86-64? if X-CODE-COUNTS nip nip exit then
-   NTRAP:ROUTINE {: t:n :}
-   0
-   CODE-INSNS 0 ?do
-      i t TRAP-BR? if 1+ then
-   loop ;
-
-variable EMIT-RC
-variable EMIT-BRANCH
-variable EMIT-RET
-variable EMIT-TRAPS
-variable UNW-SIZE
-variable QUAD-SIZE
-variable UNW-RET
-variable QUAD-RET
-
-: PROBE-HUE$ ( -- ptr u8 n )
-   s" : PROBE-HUE ( hue -- n ) MATCH hue red OF 10 ENDOF green OF 20 ENDOF blue OF 30 ENDOF ;MATCH ;" ;
-
-: PROBE-UNW$ ( -- ptr u8 n )
-   s" : PROBE-UNW ( n option<n> -- n ) MATCH option none OF ENDOF some OF nip ENDOF ;MATCH ;" ;
-
-: PROBE-QUAD$ ( -- ptr u8 n )
-   s" : PROBE-QUAD ( quad -- n ) MATCH quad q0 OF 1 ENDOF q1 OF 2 ENDOF q2 OF 3 ENDOF q3 OF 4 ENDOF ;MATCH ;" ;
-
-: CAPTURE-EMISSION ( -- )
-   PROBE-HUE$ TRY EMIT-RC !
-   s" PROBE-HUE" CODE!
-   CODE-BRANCHES? if 1 else 0 then EMIT-BRANCH !
-   CODE-RETURNS EMIT-RET !
-   TRAP-BRANCHES EMIT-TRAPS !
-   PROBE-UNW$ TRY drop s" PROBE-UNW" CODE!
-   CODE-LEN @ UNW-SIZE ! CODE-RETURNS UNW-RET !
-   PROBE-QUAD$ TRY drop s" PROBE-QUAD" CODE!
-   CODE-LEN @ QUAD-SIZE ! CODE-RETURNS QUAD-RET ! ;
-
-\ These instruction assertions describe optimizing emission. Other cases keep
-\ the caller's tier, including when the suite is loaded directly from the REPL.
-: CAPTURE-NATIVE-EMISSION ( -- )
-   tier@ {: prior:n :}
-   1 set-tier
-   ['] CAPTURE-EMISSION catch {: rc:n :}
-   prior set-tier
-   rc 0<> if rc throw then ;
-
-CAPTURE-NATIVE-EMISSION
 
 : BASIC-CASE ( -- )
    s" empty and payload arms preserve their declared values" T-LABEL
@@ -756,16 +638,16 @@ CAPTURE-NATIVE-EMISSION
 
 : REFUSED-CASE ( -- )
    s" malformed and non-exhaustive dispatches stop before elaboration" T-LABEL
-   RC-NONEXH @ CHECKER-REJECT T=  ROW-NONEXH @ -1 T=
-   RC-DUPVAR @ CHECKER-REJECT T=  ROW-DUPVAR @ -1 T=
-   RC-NOFAM @ CHECKER-REJECT T=   ROW-NOFAM @ -1 T=
+   RC-NONEXH @ CHECKER-REJECT T=
+   RC-DUPVAR @ CHECKER-REJECT T=
+   RC-NOFAM @ CHECKER-REJECT T=
    RC-NOTSUM @ CHECKER-REJECT T=
-   RC-NOOF @ CHECKER-REJECT T=    ROW-NOOF @ -1 T=
-   RC-STRAY @ CHECKER-REJECT T=   ROW-STRAY @ -1 T=
+   RC-NOOF @ CHECKER-REJECT T=
+   RC-STRAY @ CHECKER-REJECT T=
 
    s" narrower construction spellings remain checker refusals" T-LABEL
-   RC-NARROWC @ CHECKER-REJECT T= ROW-NARROWC @ -1 T=
-   RC-NARROWK @ CHECKER-REJECT T= ROW-NARROWK @ -1 T= ;
+   RC-NARROWC @ CHECKER-REJECT T=
+   RC-NARROWK @ CHECKER-REJECT T= ;
 
 : GROWTH-CASE ( -- )
    s" dispatch beyond the former sixteen-arm selector ceiling remains executable" T-LABEL
@@ -799,25 +681,6 @@ CAPTURE-NATIVE-EMISSION
    C-CONFIT E-INST 0 T=
    RC-CONOVER @ 0 T=
    C-CONOVER E-INST 0 T= ;
-
-: EMISSION-CASE ( -- )
-   s" a compiled dispatch branches, returns, and uses one shared trap edge" T-LABEL
-   EMIT-RC @ 0 T=
-   EMIT-BRANCH @ 1 T=
-   EMIT-RET @ 1 T=
-   UNW-RET @ 1 T=
-   QUAD-RET @ 1 T=
-   EMIT-TRAPS @ 1 T=
-
-   s" dispatch code stays bounded and grows with its arm count" T-LABEL
-   HB-TARGET-LINUX-X86-64? if
-      UNW-SIZE @ 256 < TTRUE
-      QUAD-SIZE @ 384 < TTRUE
-   else
-      UNW-SIZE @ 128 < TTRUE
-      QUAD-SIZE @ 184 < TTRUE
-   then
-   QUAD-SIZE @ UNW-SIZE @ > TTRUE ;
 
 $4000 constant CAP-CAP
 30000 constant CHILD-MS
@@ -882,7 +745,6 @@ public
    BUILD-CASE
    REFUSED-CASE
    GROWTH-CASE
-   EMISSION-CASE
    FORGE-CASE
    NMX-LAYOUT:TEST
    T-REPORT

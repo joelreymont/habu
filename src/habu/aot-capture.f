@@ -701,8 +701,8 @@ variable ACAP-ENTRY-N
 \ Dynamic name uses the derived rule cannot see: consumers resolve these names
 \ after this engine is captured. The list is explicit policy.
 \ INTERN:IMPORT-ROWS is a private build-driver seam resolved through the shipped
-\ dictionary; the alternatives are a public wrapper, which
-\ test/compiler/native-string.f forbids, or a fixed engine cell.
+\ dictionary; the alternatives are a public wrapper, which would let any source
+\ import literal ownership, or a fixed engine cell.
 \ The drift guard is the build's refusal "native-build: literal importer
 \ missing".
 \ The FILE cache resolves TFAM:FILE-REF-RESET/USE, TFAM:FILE-IDENTITY$/FILE-FIND

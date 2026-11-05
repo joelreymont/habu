@@ -263,8 +263,8 @@ public
 
 \ The emit row with no slot: a shadow emission (emit-x64.f) whose call fields are
 \ zero and whose rows alone say where they go, for a writer that links the
-\ routine into its own stream (src/compiler/native/shadow.f, and the sealed row
-\ of test/compiler/shadow.f in src/habu/kernel-hir-x64.f). Publication commits
+\ routine into its own stream (src/compiler/native/shadow.f, and the sealed
+\ emission of src/habu/kernel-hir-x64.f). Publication commits
 \ only a placed emission, so it never takes these rows. RETIRE releases this too.
 : EMIT-UNPLACED ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}

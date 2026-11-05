@@ -1,7 +1,7 @@
 \ backend.f - WBACK and WPASS, src/arch/wasm/backend.f and passes.f, on the
 \ product engine: the Wasm backend loaded at run time, installed, and driven by
 \ the engine's own tier-1 driver through an open Wasm shadow
-\ (src/compiler/native/shadow.f), as test/compiler/shadow.f drives x86-64.
+\ (src/compiler/native/shadow.f).
 \ INSTALL's provider serves only the little-endian ptr32 habu-wasm-cell64-v1
 \ contract. The engine's own machine compiles byte for byte as before the load.
 

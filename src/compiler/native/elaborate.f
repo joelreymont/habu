@@ -4390,8 +4390,8 @@ private
    then
    dead  EXIT-USED @ 0=  and 0= if
       EXIT-USED @ 0= if BEFORE-RETURN then
-      \ A CAST: body returns its parameter under the cast's other convention
-      \ (test/compiler/shadow.f RUN-RETYPE), so the parameter's row is not checked.
+      \ A CAST: body returns its parameter under the cast's other convention, so
+      \ the parameter's row is not checked.
       FUN-KIND @ FUN-CAST <> if out QRET-FILL then
       FUN-KIND @ FUN-COLON = if out TRUSTED-FRAME-RESHAPE then
       c b v key out EMIT-RETURN

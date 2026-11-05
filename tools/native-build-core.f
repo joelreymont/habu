@@ -227,9 +227,8 @@ CAST: CELL-XT ( n -- [ -- ptr n ] )
 \ or a fixed engine cell for the token. Two words are found this way.
 \ INTERN:IMPORT-ROWS, the literal row importer, after the window closes
 \ (TARGET-IMPORTER): a public wrapper would be a well-typed way for any source
-\ to invoke literal ownership import, which test/compiler/native-string.f
-\ forbids, and the capture keeps its name for this lookup
-\ (src/habu/aot-capture.f ACAP-KEEP?).
+\ to invoke literal ownership import, so the capture keeps its name for this
+\ lookup (src/habu/aot-capture.f ACAP-KEEP?).
 \ NPUB:IMPORT-UNIT, the package unit importer, while the window is open, at a
 \ unit cut (src/compiler/native/publish.f): a public one would let any
 \ source publish code bytes and dictionary rows, and the lookup precedes the

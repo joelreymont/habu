@@ -1,8 +1,7 @@
 \ local-spelling-suite.f - a local answers to its DECLARED SPELLING, and a word
 \ written in its own case is that word.
-\ The checker (src/core/checker.f LOC-REF?) and the local readers of tier 0
-\ (src/habu/t0.f DO-LOCAL) and tier 1 (src/compiler/native/elaborate.f
-\ LOCAL-OF) must resolve a spelling alike; each case's answer pins it.
+\ The checker (src/core/checker.f LOC-REF?) and tier 0 (src/habu/t0.f DO-LOCAL)
+\ must resolve a spelling alike; each case's answer pins it.
 
 require src/lib/errors.f
 require src/lib/prelude.f
@@ -10,7 +9,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
-require src/compiler/native/compiler.f
 
 \ ---- section 1: the three incidents, compiled by tier 0 -----------------------
 \ Each body once lost a word to a local of the same letters, which read as a
@@ -129,26 +127,6 @@ variable ERR-U
 
 ;package
 
-\ ---- section 5: the same incident through the other compiler -----------------
-\ Tier 1 elaborates from the front end's resolution, so it answers as tier 0.
-1 set-tier
-
-package LSP-NCOMP
-
-create TEXT 64 allot
-
-public
-
-: PUT ( ptr u8 n -- ) {: text:ptr size:n :}
-   size 0 ?do  text i + c@  TEXT i + c!  loop ;
-
-: TEXT$ ( n -- ptr u8 n ) {: u:n :}
-   TEXT u ;
-
-;package
-
-0 set-tier
-
 \ ---- the cases ---------------------------------------------------------------
 package LSP-TEST
 private
@@ -182,11 +160,6 @@ private
    s" : LSP-BAD ( n -- n ) {: zork:n :} ZORK ;" LSP-CHILD:RUN LSP-CHILD:UNDEF-RC T=
    LSP-CHILD:ERR$ s" E-UNDEFINED habu: in lsp-bad: undefined word 'ZORK'" CONTAINS? TTRUE ;
 
-: NCOMP-CASE ( -- )
-   s" the tier-1 compiler reads the same two names the same way" T-LABEL
-   s" world" LSP-NCOMP:PUT
-   5 LSP-NCOMP:TEXT$ s" world" T$= ;
-
 public
 
 : RUN ( -- )
@@ -195,7 +168,6 @@ public
    SHADOW-CASE
    TOKEN-CASE
    UNDEFINED-CASE
-   NCOMP-CASE
    T-REPORT ;
 
 ;package

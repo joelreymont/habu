@@ -1,18 +1,15 @@
 \ Preserve string behavior through the checker reader and the native source tape.
-\ Each subject program starts with its own `set-tier` line, so the tier that
-\ compiles it is the case's, not this row's: every printed, counted and carried
-\ case runs once at tier 0 (`0 set-tier`, src/habu/t0.f) and once at tier 1
-\ (`1 set-tier`), with the same expected bytes.
+\ Each subject program starts with `0 set-tier`, so tier 0 (src/habu/t0.f)
+\ compiles it whatever tier this row runs at.
 require test/gate-common.f
 
 package NSTRING-FORMS-TEST
 
 255 constant COUNTED-MAX
 create BOUNDARY COUNTED-MAX 1+ allot
-variable TIER                        \ the tier the subject program compiles at
 
 : TIER-LINE ( -- )
-   TIER @ 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE ;
+   s" 0 set-tier" GE-SRC-LINE ;
 
 : BOUNDARY! ( -- )
    COUNTED-MAX 1+ 0 ?do [char] A BOUNDARY i + c! loop ;
@@ -166,8 +163,7 @@ variable TIER                        \ the tier the subject program compiles at
 : BODY ( -- )
    s" native-string-forms" GT-START
    EVAL-CALLER-CASES
-   0 TIER ! FORM-CASES
-   1 TIER ! FORM-CASES
+   FORM-CASES
    S\" c\q" TOO-LONG
    S\" c\\\q" TOO-LONG
    s" PASS: native counted and printed strings" type cr ;

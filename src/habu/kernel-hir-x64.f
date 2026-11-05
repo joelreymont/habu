@@ -1,7 +1,7 @@
 \ kernel-hir-x64.f - package X64KHIR: one x86-64 routine compiled from a staged
-\ HIR function, the sealed emission test/compiler/shadow.f reads. A stager builds
-\ the body with ARG and OP2 and names answers with RESULT; the function runs the
-\ backend rows in src/compiler/native/compiler.f's order. A stager that leaves a
+\ HIR function, as a sealed emission. A stager builds the body with ARG and OP2
+\ and names answers with RESULT; the function runs the backend rows in
+\ src/compiler/native/compiler.f's order. A stager that leaves a
 \ result count other than `out`, or reads an argument the function does not take,
 \ ends the build with REFUSE-RC.
 require src/lib/prelude.f

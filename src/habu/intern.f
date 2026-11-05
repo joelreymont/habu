@@ -489,8 +489,8 @@ private
 \ the arena belongs to the capture first. The driver finds this private word by
 \ name after the target loads, since the target's pool did not exist when the
 \ driver compiled. A public wrapper would let any source import literal
-\ ownership, which test/compiler/native-string.f forbids, and an engine cell
-\ costs a fixed slot and a layout row, so the capture keeps the name on purpose
+\ ownership, and an engine cell costs a fixed slot and a layout row, so the
+\ capture keeps the name on purpose
 \ (src/habu/aot-capture.f ACAP-KEEP?).
 : IMPORT-ROWS ( ptr u8 n ptr n ptr n -- )
    {: arena:ptr rows:n source-off:ptr source-len:ptr :}
