@@ -134,6 +134,7 @@ FUNCTION: SETOPT-SPAN curl_easy_setopt ( n n ptr u8 -- i32 ) 2 VARIADIC ;FUNCTIO
 FUNCTION: SLIST-APPEND curl_slist_append ( n n -- n ) ;FUNCTION
 FUNCTION: SLIST-FREE curl_slist_free_all ( n -- ) ;FUNCTION
 FUNCTION: EASY-STRERROR curl_easy_strerror ( n -- ptr u8 ) ;FUNCTION
+FUNCTION: EASY-PAUSE curl_easy_pause ( n n -- i32 ) ;FUNCTION
 
 FUNCTION: GETINFO-CELL curl_easy_getinfo ( n n ptr u8 -- i32 )
    2 VARIADIC
@@ -184,6 +185,7 @@ PROCESS-SYMBOLS
 FUNCTION: STREAM-CLOSE fclose ( n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-FLUSH fflush ( n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-POSITION ftell ( n -- n ) ;FUNCTION
+FUNCTION: STREAM-SEEK fseek ( n n n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-ERROR ferror ( n -- i32 ) ;FUNCTION
 FUNCTION: STREAM-BUFFERING setvbuf ( n n n n -- i32 ) ;FUNCTION
 FUNCTION: FILE-OPEN fopen ( ptr u8 ptr u8 -- n ) ;FUNCTION
@@ -655,7 +657,9 @@ private
 \ how long it may wait, turns those into AIO tickets, and takes the first one
 \ that ends. No CURLMOPT_SOCKETFUNCTION and no CURLMOPT_TIMERFUNCTION: those are
 \ callbacks, and Habu hands libcurl no callback - the same rule PERFORM's
-\ memstream answers.
+\ memstream answers. A streamed record's memstream is rewound once NEXT has taken
+\ all it holds, and its receive is paused while it holds untaken bytes, so a fast
+\ server waits in the kernel's window and not in this process's memory.
 
 $400 constant FD-SETSIZE                  \ an fd_set holds bits 0..1023
 $80 constant FD-SET-BYTES                 \ those bits, eight to the byte
@@ -667,6 +671,9 @@ $40 constant WAKE-CHUNK                   \ bytes taken off the wake pipe at onc
 0 constant CURLM-OK                       \ CURLM_OK
 1 constant MSG-DONE                       \ CURLMSG_DONE
 42 constant CURLE-ABORTED                 \ CURLE_ABORTED_BY_CALLBACK
+1 constant CURLPAUSE-RECV                 \ CURLPAUSE_RECV
+0 constant CURLPAUSE-CONT                 \ CURLPAUSE_CONT
+0 constant SEEK-SET                       \ SEEK_SET
 
 \ struct CURLMsg {int msg; CURL *easy_handle; union {void *whatever; CURLcode
 \ result;} data;}, /usr/include/curl/multi.h, on AArch64 with its int padded.
@@ -715,6 +722,7 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD R.OFFSET
    CELL +FIELD R.BODY
    CELL +FIELD R.DELIVERED
+   CELL +FIELD R.PAUSED                   \ the loop paused the handle's receive
    CELL +FIELD R.OWNER                    \ the TCB pointer TASK:WAKE takes
    CELL +FIELD R.TARGET                   \ the span's address
    \ open_memstream's buffer and length, for the body and for the header
@@ -1015,7 +1023,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    REQUEST-NONE idx REC R.REQUEST atomic!
    0 idx REC R.OFFSET !
    0 idx REC R.BODY !
-   0 idx REC R.DELIVERED ! ;
+   0 idx REC R.DELIVERED !
+   0 idx REC R.PAUSED ! ;
 
 
 \ One byte says "a record changed": a START, a CANCEL, an abandoned record or
@@ -1186,9 +1195,16 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    idx rc WHOLE-FINISH ;
 
 
-\ Only the loop calls fflush or reads the foreign memstream cells. Its copy
-\ completes under CURL-LOCK before it publishes REQUEST-CHUNK to the owner.
-\ The owner's destination is untouched again until that owner calls NEXT.
+: FAIL-RUN ( n n -- n ) {: idx:n rc:n :}
+   idx REMOVE-ONE dup CURLM-OK <> if exit then drop
+   idx STREAM-DROP drop
+   idx rc FAILED-STORE
+   idx SETTLE-FAILED
+   CURLM-OK ;
+
+
+\ The loop alone calls fflush; past the claim, readers hold CURL-LOCK, as the
+\ copy does until REQUEST-CHUNK. Then the destination is untouched until NEXT.
 : STREAM-DELIVER ( n -- n ) {: idx:n :}
    idx REC-MODE@ MODE-STREAM <> if CURLM-OK exit then
    idx REC R.REQUEST atomic@ REQUEST-WAITING <> if CURLM-OK exit then
@@ -1200,13 +1216,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
       else 0 0 CURLE-WRITE-ERROR then
    then
    {: source:n u:n frc:n :}
-   frc CURLE-OK <> if
-      idx REMOVE-ONE dup CURLM-OK <> if exit then drop
-      idx STREAM-DROP drop
-      idx frc FAILED-STORE
-      idx SETTLE-FAILED
-      CURLM-OK exit
-   then
+   frc CURLE-OK <> if idx frc FAIL-RUN exit then
    u idx REC R.OFFSET @ > if
       idx REC-CAP@ u idx REC R.OFFSET @ - min {: count:n :}
       idx REC-STATE@ STATE-DONE = if
@@ -1231,14 +1241,35 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
+\ The loop comment's two rules, as a CURLcode. A rewind first wipes what NEXT
+\ took and goes before the resume, so what libcurl held lands at the start.
+: PACE-STEP ( n -- n ) {: idx:n :}
+   idx REC-STREAM@ STREAM-FLUSH 0<> if CURLE-WRITE-ERROR exit then
+   idx REC-LEN-CELL LE:U64@ idx REC R.OFFSET @ > if
+      idx REC R.PAUSED @ 0<> if CURLE-OK exit then
+      idx REC-EASY@ CURLPAUSE-RECV EASY-PAUSE dup CURLE-OK <> if exit then
+      1 idx REC R.PAUSED ! exit
+   then
+   idx REC-BUF-CELL LE:U64@ idx REC R.OFFSET @ BYTES-WIPE
+   idx REC-STREAM@ 0 SEEK-SET STREAM-SEEK 0<> if CURLE-WRITE-ERROR exit then
+   0 idx REC R.OFFSET !
+   idx REC R.PAUSED @ 0= if CURLE-OK exit then
+   0 idx REC R.PAUSED !
+   idx REC-EASY@ CURLPAUSE-CONT EASY-PAUSE ;
+
+
+: STREAM-PACE ( n -- n ) {: idx:n :}
+   idx REC-MODE@ MODE-STREAM <> if CURLM-OK exit then
+   idx REC-STATE@ STATE-RUNNING <> if CURLM-OK exit then
+   idx PACE-STEP {: rc:n :}
+   rc CURLE-OK = if CURLM-OK exit then
+   idx rc FAIL-RUN ;
+
+
 \ The owner asked for this transfer to end: libcurl's own code for a transfer an
 \ application ended is the answer it gets.
 : CANCEL-RUN ( n -- n ) {: idx:n :}
-   idx REMOVE-ONE dup CURLM-OK <> if exit then drop
-   idx STREAM-DROP drop
-   idx CURLE-ABORTED FAILED-STORE
-   idx SETTLE-FAILED
-   CURLM-OK ;
+   idx CURLE-ABORTED FAIL-RUN ;
 
 
 : LEAVE-RUN ( n -- n ) {: idx:n :}
@@ -1254,7 +1285,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    st STATE-CLAIMED = if idx ADD-ONE exit then
    st STATE-CANCEL = if idx CANCEL-RUN exit then
    idx LEAVING? if idx LEAVE-RUN exit then
-   idx STREAM-DELIVER ;
+   idx STREAM-DELIVER dup CURLM-OK <> if exit then drop
+   idx STREAM-PACE ;
 
 
 : SERVICE-RECORDS ( -- n )

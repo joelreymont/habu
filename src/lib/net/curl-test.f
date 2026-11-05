@@ -24,12 +24,21 @@ require src/lib/aio.f                       \ the loop the multiplexed transfers
 require src/lib/net/tcp4.f
 require src/lib/net/curl.f
 
-\ White-box: reopens CURL so the definition below sees the record count its
-\ chunks hold; it lands in CURL-TEST.
+\ White-box: reopens CURL so the definitions below see the record count and a
+\ record's published length; they land in CURL-TEST.
 package CURL
 
 : CURL-TEST:RECORDS ( -- n )
    REC-COUNT atomic@ ;
+
+
+\ The length the handle's record's memstream last published, read under the
+\ lock the loop publishes it under.
+: CURL-TEST:HELD ( CURL:handle -- n ) {: subject:CURL:handle :}
+   subject HANDLE-CELL OWNED-INDEX {: idx:n :}
+   CURL-LOCK TASK:GET
+   idx REC-LEN-CELL LE:U64@
+   CURL-LOCK TASK:RELEASE ;
 
 ;package
 
@@ -2152,6 +2161,54 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    subject CURL:CLEANUP ;
 
 
+$10000 constant BOUNDED-CAP              \ 64 KiB, the span each NEXT fills
+create BOUNDED-BUF BOUNDED-CAP allot
+variable BOUNDED-READ                    \ body bytes NEXT has delivered
+variable BOUNDED-BAD                     \ chunks that are not the body at their offset
+variable BOUNDED-MOST                    \ the largest memstream length after a NEXT
+
+: BOUNDED-TAKE ( CURL:handle len -- ) {: subject:CURL:handle u:len :}
+   u LEN>N {: count:n :}
+   BOUNDED-READ @ count + HUGE-U <= if
+      BOUNDED-BUF count SENT-BYTES BOUNDED-READ @ + count STR= 0=
+   else true then
+   if 1 BOUNDED-BAD +! then
+   BOUNDED-READ @ count + BOUNDED-READ !
+   subject CURL-TEST:HELD BOUNDED-MOST @ max BOUNDED-MOST ! ;
+
+
+: BOUNDED-DRAIN ( CURL:handle -- ) {: subject:CURL:handle :}
+   begin
+      subject BOUNDED-BUF BOUNDED-CAP >LEN CURL:NEXT JOIN-SERVER
+      MATCH CURL:chunk-result
+         chunk OF nip subject swap BOUNDED-TAKE true ENDOF
+         response OF CURL:HTTP-STATUS>N LAST-STATUS ! false ENDOF
+         failed OF CURL:CODE>N NOT-TIMEOUT 0 T= false ENDOF
+      ;MATCH
+   0= until ;
+
+
+\ The server writes far faster than NEXT takes, so a loop that kept every
+\ untaken byte would hold the whole body; a paused read holds about one turn's.
+: BOUNDED-RUN ( -- )
+   s" a streamed body holds only what NEXT has not taken" T-LABEL
+   HUGE-ALLOC HUGE-SENT !
+   HUGE-FILL
+   0 BOUNDED-READ ! 0 BOUNDED-BAD ! 0 BOUNDED-MOST ! 0 LAST-STATUS !
+   PATH-HUGE$ GET-READY {: subject:CURL:handle :}
+   subject CURL:STREAM-START EXPECT-OK
+   subject BOUNDED-DRAIN
+   subject CURL:CLEANUP
+   LAST-STATUS @ 200 T=
+   BOUNDED-READ @ HUGE-U T=
+   BOUNDED-BAD @ 0 T=
+   BOUNDED-MOST @ HUGE-U 4 / < TTRUE ;
+
+
+: CASE-STREAM-BOUNDED ( -- )
+   [: BOUNDED-RUN ;] [: HUGE-RELEASE ;] finally ;
+
+
 \ One request through PERFORM and the same one through the loop: the answers
 \ must agree, status, length and bytes.
 : PARITY-WHOLE ( -- )
@@ -2667,6 +2724,7 @@ variable DEFER-RETURNED
    CASE-STREAM-HTTP-ERROR
    CASE-STREAM-FAILURES
    CASE-STREAM-PARTIAL
+   CASE-STREAM-BOUNDED
    CASE-HEADER-REUSE
    CASE-HEADER-INDEPENDENT
    CASE-MANY
@@ -2695,7 +2753,7 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 79 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@ 80 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle
