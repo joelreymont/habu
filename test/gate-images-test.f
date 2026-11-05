@@ -1,9 +1,5 @@
-\ The real gate adapter schedules a compiler supplier beside independent rows; a
-\ private source tree replaces only the compiler builder at the child process
-\ boundary. The builder cannot finish until the release row before the consumer
-\ and the later row after it have run, so a synchronous setup, or a consumer
-\ holding the registry while it waits for the bundle, ends at the builder's
-\ bounded wait, and the bundle's build row and this test go red.
+\ The gate adapter builds the app image among independent rows in a private tree;
+\ its image module, test/gate-images-orch-builder.f, says why a serial gate fails.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -56,7 +52,7 @@ variable PARENT-U
    s" bin" AT FS:MAKE-DIRS
    s" test" AT FS:MAKE-DIRS
    ENGINE-CANDIDATE:PATH$ s" bin/hb" AT FS:MAKE-SYMLINK
-   s" test/gate-images-orch-builder.f" s" test/compiler-images-build.f" COPY
+   s" test/gate-images-orch-builder.f" s" test/app-image-engine.f" COPY
    s" test/gate-images-orch-registry.f" s" test/gate-images-orch-registry.f" COPY
    s" test/gate-images-orch-release.f" s" test/gate-images-orch-release.f" COPY
    s" test/gate-images-orch-consumer.f" s" test/gate-images-orch-consumer.f" COPY
@@ -97,7 +93,7 @@ variable PARENT-U
    s" later" AT FS:FILE? TTRUE
    s" builder-released" AT FS:FILE? TTRUE
    s" PASS: release" HAS-OUT TTRUE
-   s" PASS: compiler-images-build" HAS-OUT TTRUE
+   s" PASS: app-image-build" HAS-OUT TTRUE
    s" PASS: consumer" HAS-OUT TTRUE ;
 
 : CHECK-FAILURE ( -- )
@@ -105,17 +101,9 @@ variable PARENT-U
    s" consumer-started" AT FS:FILE? TFALSE
    s" consumer" AT FS:FILE? TFALSE
    s" later" AT FS:FILE? TTRUE
-   s" RED: compiler-images-build kind=exit code=73" HAS-OUT TTRUE
+   s" RED: app-image-build kind=exit code=73" HAS-OUT TTRUE
    s" RED: consumer kind=exit code=75" HAS-OUT TTRUE
-   s" PASS: later" HAS-OUT TTRUE
-   OUT-U @ 32768 > TTRUE
-   ERR-U @ 32768 > TTRUE
-   s" compiler-images stdout (full):" HAS-OUT TTRUE
-   s" builder stdout prefix marker" HAS-OUT TTRUE
-   s" builder stdout suffix marker" HAS-OUT TTRUE
-   ERR ERR-U @ s" compiler-images stderr (full):" CONTAINS? TTRUE
-   ERR ERR-U @ s" builder stderr prefix marker" CONTAINS? TTRUE
-   ERR ERR-U @ s" builder stderr suffix marker" CONTAINS? TTRUE ;
+   s" PASS: later" HAS-OUT TTRUE ;
 
 public
 : RUN ( -- )

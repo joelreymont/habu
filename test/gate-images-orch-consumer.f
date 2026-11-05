@@ -1,6 +1,6 @@
 require src/lib/fs.f
 require src/lib/string.f
-require test/whitebox-engine.f
+require test/app-image-engine.f
 
 package GATE-ORCH-CONSUMER
 private
@@ -15,8 +15,8 @@ public
    s" HABU_GATE_ORCH_FAIL" GETENV s" 1" STR= if
       s" consumer ran after failed builder" 76 die
    then
-   WHITEBOX-ENGINE:PATH$ FS:EXECUTABLE? 0= if
-      s" consumer saw no whitebox source" 75 die
+   APP-IMAGE-ENGINE:PATH$ FS:EXECUTABLE? 0= if
+      s" consumer saw no app image" 75 die
    then
    s" consumer" EVIDENCE$ s" consumer passed" FS:WRITE-ALL
    s" consumer row passed" type cr ;

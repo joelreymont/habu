@@ -7,7 +7,7 @@ private
 create PATH PATH-CAP allot
 public
 : RUN ( -- )
-   s" HABU_GATE_COMPILER_IMAGES" GETENV s" release" PATH FS:JOIN-PATH
+   s" HABU_GATE_ORCH_EVIDENCE" GETENV s" release" PATH FS:JOIN-PATH
    PATH swap s" release" FS:WRITE-ALL
    s" release row passed" type cr ;
 ;package
