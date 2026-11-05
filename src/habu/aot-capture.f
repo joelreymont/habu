@@ -568,19 +568,11 @@ variable ACAP-P
    p 0 < if k w ACAP-REFUSE-SCOPE then
    p AOT-REC AOT-RNPTR  p AOT-REC AOT-RNLEN  a u ACAP-QUAL$  WID-QUAL ;
 
-\ Audit (f): every checked window word's signature travels.
-\ A seeded word is in the runtime dictionary but not the checker's record set,
-\ so a `:` naming it would die E-UNDEFINED; the artifact carries the window's
-\ signatures, collected by the checker while the window is open
-\ (src/core/checker.f, armed by src/habu/aot-arm.f OPEN). This checks the
-\ collection is complete per record, not by count, because its three producers
-\ are an enumeration a fourth would silently escape. Measured on the compiler
-\ chain: 6892 records = 94 package records + 6798 checked words, all carried;
-\ the collection's first version left 17 behind.
-\ Package and retired records are exempt by their wordlist cell, which holds a
-\ negative WL marker, never by name. A word with no checker effect (a
-\ `0 set-check` span) is uncallable from checked code here and in the seed, so
-\ it is not a finding.
+\ Audit (f): each checked window word's signature travels, checked per record:
+\ a `:` naming a seeded word with none dies E-UNDEFINED.
+
+\ Package and retired records are exempt by their negative WL marker, not by
+\ name; a `0 set-check` word is uncallable from checked code, so no finding.
 
 \ The scope half of SYM-FIND's key ( pkg$, public?, found? ) from the record's
 \ own wordlist, not the open package; an empty package name is the global

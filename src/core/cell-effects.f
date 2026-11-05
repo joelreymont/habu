@@ -19,9 +19,7 @@ PRIM: CTL-CREATES PE-N PE-OUT PRIM;
 PRIM: CTL-NOMINAL PE-N PE-OUT PRIM;
 PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
 
-\ src/core/checker.f's constants test/type-ctor-suite.f and
-\ test/type-family-suite.f read at top level.
-PRIM: CHECKER-PACKAGE-PRIVATE PE-N PE-OUT PRIM;
+\ The checker's error code the constructor tests read at top level.
 PRIM: E-CTOR-PROTECTED PE-N PE-OUT PRIM;
 
 s" PTR-VARIABLE" s" --" TRUST

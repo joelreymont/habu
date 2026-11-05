@@ -720,20 +720,6 @@ public
 
 : FILE-FIND ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 
-\ TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool ) : the SPECIFICATION of what
-\ the index answers — the lowest row matching (package, tail), by walking the
-\ registry.
-: TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool )
-   {: pa:ptr pu:n na:ptr nu:n :}
-   0 BEGIN dup TFAM-N @ < WHILE
-      {: i:n :}
-      pa pu i TFAM-PKG-MATCH? IF
-         na nu i TFAM-NAME-MATCH? IF i RES-TRUE EXIT THEN
-      THEN
-      i 1 +
-   REPEAT drop
-   0 RES-FALSE ;
-
 \ PUBLIC package family with this tail. Global rows are lexical and are resolved
 \ separately by TFAM-RESOLVE, so they never enter this fallback set. A
 \ (package,tail) pair is unique (TFAM-DECL rejects DUP), so two matches are always
@@ -967,10 +953,8 @@ private
 : SVX-SYNC ( -- )
    SUMV-N @ SVX-HI @ < IF 0 SVX-GEN ! THEN ;
 
-\ First writer wins, matching SUMV-FROM-CTOR-SYM's lowest-id answer. Under the
-\ store's one-constructor-per-variant rule (SUMV-CTOR-SYM! refuses a second
-\ write) a symbol can key at most one row, so no test can tell first from last;
-\ the condition reproduces the specification without leaning on that rule.
+\ First writer wins, so the head stays the lowest id the SVX header promises
+\ even if two rows ever carried one symbol.
 : SVX-LINK ( n n -- ) {: vid:n sym:n :}
    sym 0= IF EXIT THEN
    sym IDX-SYM-OK
@@ -1023,14 +1007,6 @@ public
    SVX-ENSURE
    sym vid SUMV-REC@ SV.CTOR-SYM !
    vid sym SVX-LINK ;
-
-\ SUMV-CTOR-FIRST-LINEAR ( n -- n ) : the SPECIFICATION of what SVX answers —
-\ the lowest variant id (+1) with this constructor symbol, by walking the store.
-: SUMV-CTOR-FIRST-LINEAR ( n -- n ) {: sym:n :}
-   SUMV-N @ 0 ?do
-      i SUMV-CTOR-SYM@ sym = IF i 1 + unloop EXIT THEN
-   loop
-   0 ;
 
 \ --- variant tail index (VNX). SUMV-FIND wants one tail in one family and the
 \ generated-word recognizer every row spelled like one tail in any family;
@@ -1224,8 +1200,8 @@ package TFAM
 
 public
 
-\ The lowest matching row, as the store walk answered: a chain runs newest
-\ first, so the last match it meets is the lowest.
+\ The lowest matching row: a chain runs newest first, so the last match it meets
+\ is the lowest.
 : SUMV-FIND ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
    VNX-ENSURE
    -1
@@ -1238,15 +1214,6 @@ public
    dup 0 < IF drop 0 RES-FALSE EXIT THEN
    RES-TRUE ;
 
-\ SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) : the SPECIFICATION of what VNX
-\ answers, by walking the store.
-: SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
-   0 BEGIN dup SUMV-N @ < WHILE
-      {: i:n :}
-      fam na nu i SUMV-MATCH? IF i RES-TRUE EXIT THEN
-      i 1 +
-   REPEAT drop
-   0 RES-FALSE ;
 : SUMV-ADD ( n ptr u8 n n n n n -- n )
    {: fam:n na:ptr nu:n tag:n ss:n sc:n pc:n :}
    WRITE-WINDOW-CK
@@ -5732,10 +5699,6 @@ public
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-package TFAM
-
-;package
-
 : TFL-MATCH-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ signature scope
    TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -5761,16 +5724,6 @@ public
    vid SUMV-TAG@  fam vid TFL-VPADS  RES-TRUE ;
 
 package TFAM
-
-public
-
-: TFL-CON? ( ptr u8 n ptr u8 n -- n n bool )   \ construct one-shot: -> tag pads ok
-   {: fa:ptr fu:n va:ptr vu:n :}
-   fa fu TFL-CON-FAM? 0= IF drop 0 0 RES-FALSE EXIT THEN
-   {: fam:n :}
-   va vu fam TFL-CVAR? ;
-
-private
 
 : UNIT-FAM-MARK ( -- )
    REG-AOT-N 0 ?do i REG-AOT-COUNT UNIT-FAM-MARKS i cells + ! loop

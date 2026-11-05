@@ -9391,12 +9391,8 @@ CHECKER-REG:}SCRATCH
    sym USX@ off E-PTR ER.SYMPREV !
    off 1 + sym USX! ;
 
-\ UEND bounds this walk, not the chain alone, as in UIX-BUILD: E-INTERN's hit
-\ rewinds mid-record without a terminator, and the next append overwrites one a
-\ rewind wrote. An unbounded walk answers a symbol's newest record from the dead
-\ region, which the next definition of that name reads as a duplicate
-\ (measured: rc 78 on `CAST: >IMG`). test/effect-intern-suite.f catches it by
-\ reading the answer at the rebuild, before the store grows back.
+\ UEND bounds the walk, as in UIX-BUILD: an unbounded one answers from the dead
+\ region, a duplicate of the next definition of that name (rc 78, `CAST: >IMG`).
 : USX-BUILD ( -- )
    HT-USX IDX-HEADS-CLEAR
    USIGS-USER-OFF @ USX-BP !
@@ -9458,24 +9454,6 @@ RECORD-HOOK-DEFAULTS
    dup PU-TRUNCATE
    UEND !
    UTERM! ;
-
-\ USIG-NEWEST-LINEAR is the specification of what USX answers: the newest user
-\ record for a symbol, offset+1, by walking every record in store order. It
-\ carries USX-BUILD's UEND bound: a specification copying the implementation's
-\ traversal tests the code against itself, and a terminator-only walk named a
-\ dead record exactly as the index did.
-: USIG-NEWEST-LINEAR ( n -- n ) {: sym:n :}
-   0
-   USIGS-USER-OFF @ USX-BP !
-   begin USX-BP @ EFF-REC + UEND @ <= while
-      USX-BP @ E-PTR ER.SYM @ sym = IF drop USX-BP @ 1 + THEN
-      USX-BP @ E-PTR E-NEXT@ USX-BN !
-      USX-BN @ USX-BP @ <=  USX-BN @ UEND @ >  or IF
-         UEND @ 1 + USX-BP !
-      ELSE
-         USX-BN @ USX-BP !
-      THEN
-   repeat ;
 
 : USIG-NEWEST ( n -- n ) {: sym:n :}
    USX-ENSURE
@@ -10003,20 +9981,10 @@ CHECKER-REG:}SCRATCH
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
-\ --- stored-signature intake. USIG-ADD parses a declared or trusted signature
-\ into an effect row. One that does not parse stores no row, reports through
-\ BADSIG-XT (render.f) and refuses as a stale trust row does (TRUST-STALE): the
-\ load throws E-BAD-STORED-SIGNATURE, since a baked or TRUSTed effect must
-\ never be silently wrong. A MULTI-ERROR load reports and counts the row
-\ (USIG-ADD-BAD). A colon definition's bad signature is CHECK's refusal
-\ (MULTI-REFUSED); the engine registers declared text only for `TRUSTED:` and
-\ `defer`, which CHECK does not check. Without a row, later callers refuse as
-\ undefined.
-\ Multi-error mode is off by default, so the ordinary load keeps fail-on-first.
-\ When on, a refused definition (rejected or uncheckable, an undefined word
-\ included) still trusts its declared signature unless it failed to parse, so
-\ later definitions do not cascade, and the refusal is counted so the driver
-\ exits nonzero at end of load.
+\ --- stored-signature intake (USIG-ADD-AS). A signature that does not parse
+\ stores no row; outside a MULTI-ERROR load it throws E-BAD-STORED-SIGNATURE.
+
+\ A MULTI-ERROR load counts each refused definition and goes on (MULTI-REFUSED).
 variable MULTI-ERR      \ multi-error load mode active?
 variable MULTI-ERR-N    \ refused definitions counted this load
 0 MULTI-ERR !   0 MULTI-ERR-N !
@@ -10066,28 +10034,8 @@ BADSIG-DEFAULT
    EFF-RECOVERY CHECKER-REC-SYM @ USIG-NEWEST 1- E-PTR ER.ACTIVE ! ;
 
 \ ---- the AOT signature pool: the capture side --------------------------------
-\ One row per row that enters USIGS: the signature text that built it and the
-\ checker's own symbol key (package, visibility, name) from CHECKER-REC-SYM, not
-\ re-derived from the dictionary, which gets a package word wrong. Rendering
-\ E-ADD-EFFECT's rows back is not faithful (REND-SIG drops a return-stack
-\ clause), so the text is taken at the three words that reach E-ADD-EFFECT:
-\   USIG-ADD             every row built from text: a declared signature, a
-\                        TRUST row, TRUSTED:, `defer NAME ( E )`, typed storage.
-\   render.f REC-SIG     the one row built from an inferred effect (REND-SIG's text).
-\   CHECKER-EXPORT       republishes a record under a package tail; the source
-\                        row's text is copied.
-\ The list is gated: aot-capture.f's audit refuses by name any checked record
-\ with no row here, so a fourth producer stops a capture (the first two alone
-\ left 17 records behind: eleven TRUSTED:, one defer, three typed-storage cells,
-\ two EXPORTs).
-\ Armed only while a capture window is open (aot-arm.f OPEN); otherwise nothing
-\ is mapped or copied.
-\ Signature texts and package names are interned through the distinct list; a
-\ word name is nearly unique (compiler chain: 7556 rows, 120,896 name bytes of
-\ 123,979 string bytes) and is appended unscanned, so the scan is bounded by the
-\ distinct count. Duplicates are legal and newest wins, as USIG-NEWEST does.
-\ aot-capture.f reads bytes through CHECKER-ASIG-ROW-C@ / CHECKER-ASIG-STR-C@,
-\ so this store stays a checked `ptr a` arena with no trusted cast.
+\ Armed while a capture window is open; the freeze writes a row per marked
+\ symbol with a stored effect. ACAP-?SIG refuses a checked word with no row.
 
 $10000 constant ASIG-ROW-INIT           \ bytes; grows geometrically
 $40000 constant ASIG-STR-INIT           \ bytes
@@ -10124,10 +10072,8 @@ PTR-VARIABLE ASIG-LAST-P
 : ASIG-ROW-U32! ( n n -- ) {: v:n at:n :}
    4 0 ?do  v i 8 * rshift $FF and  ASIG-ROW-P @ at i + + c!  loop ;
 
-\ The newest row for a symbol, as a row offset + 1, indexed by symbol id. It is
-\ what makes both the duplicate test and CHECKER-ASIG-EXPORT constant-time; a
-\ backward scan for the same answer is quadratic in the row count, and the chain
-\ writes 7556 of them.
+\ Per symbol: 1 marks a word the window captured, then the freeze stores its row
+\ offset + 1; CHECKER-ASIG-EXPORT and the audit read it in constant time.
 : ASIG-LAST-ROOM ( n -- ) {: sym:n :}
    sym ASIG-LAST-CAP-V @ < IF exit THEN
    ASIG-LAST-CAP-V @ BEGIN dup sym <= WHILE 2 * REPEAT {: nc:n :}
@@ -10143,19 +10089,14 @@ PTR-VARIABLE ASIG-LAST-P
    sym ASIG-LAST-ROOM
    v ASIG-LAST-P @ sym cells + ! ;
 
-\ Forget one symbol's newest row. Bounded by the live capacity for the same
-\ reason ASIG-LAST@ is: a symbol above it never had an entry, and reaching for
-\ one through ASIG-LAST! would grow the arena to store a zero.
+\ Clears one symbol's entry; a symbol at or past the capacity never had one, and
+\ ASIG-LAST! would grow the arena to store a zero.
 : ASIG-LAST-FORGET ( n -- ) {: sym:n :}
    sym ASIG-LAST-CAP-V @ >= IF EXIT THEN
    0 sym ASIG-LAST! ;
 
-\ Forgets the newest-row index for symbols [n, SYM-N) before a scope restores
-\ SYM-N: a rollback hands those ids back, so a stale entry would serve the next
-\ word interned at that id another word's row. HIDX-SYMS-RETIRE is its twin;
-\ SYM-REWIND calls both. The rows stay: each records the name, package and
-\ visibility it was written under; only the claim that it is symbol N's newest
-\ goes.
+\ Clears the entries of symbols [n, SYM-N) before a scope restores SYM-N, whose
+\ ids a rollback hands back. SYM-REWIND calls it and its twin HIDX-SYMS-RETIRE.
 : ASIG-SYMS-RETIRE ( n -- ) {: keep:n :}
    ASIG-MAPPED @ 0= IF EXIT THEN
    SYM-N @ 1 -
@@ -10164,12 +10105,8 @@ PTR-VARIABLE ASIG-LAST-P
       1 -
    REPEAT drop ;
 
-\ SYM-REWIND ( symn symu -- ) : THE symbol table's rewind; the checker frame's
-\ restore lowers SYM-N and SYM-STR-U only through here. The two sym-keyed
-\ indexes read the rows they forget, so they retire first. An image carries the
-\ rows' and the pool's slack, so the rows [symn, SYM-N) and the pool bytes
-\ [symu, SYM-STR-U) it retires are zeroed: a later image then bakes no retired
-\ symbol and matches a run that never interned one.
+\ A rollback lowers SYM-N and SYM-STR-U only here. The indexes retire while HIDX
+\ can read the rows; zeroed rows and bytes leave no retired symbol in an image.
 : SYM-REWIND ( n n -- ) {: symn:n symu:n :}
    symn 1 < symn SYM-N @ > or symu 0 < or symu SYM-STR-U @ > or IF
       s" checker: symbol rewind outside the registry" 76 die
@@ -10180,12 +10117,6 @@ PTR-VARIABLE ASIG-LAST-P
    SYM-STR symu +  SYM-STR-U @ symu -  ARENA-ZERO
    symn SYM-N !
    symu SYM-STR-U ! ;
-
-\ Most significant byte first into the accumulator, so the shift is the running
-\ value's and not the byte's - the same shape aot-file.f U64@ uses, and getting
-\ it the other way round silently reads a different number.
-: ASIG-ROW-U32@ ( n -- n ) {: at:n :}
-   0  4 0 ?do  8 lshift  ASIG-ROW-P @ at 3 i - + + c@ or  loop ;
 
 : ASIG-ROW-ROOM ( -- )
    ASIG-ROW-U @ ASIG-ROW + ASIG-ROW-CAP-V @ <= IF exit THEN
@@ -10234,8 +10165,8 @@ PTR-VARIABLE ASIG-LAST-P
    REPEAT
    RES-TRUE ;
 
-\ Interned append: scan the distinct list, and join it on a miss. Only the two
-\ repeating classes come through here.
+\ Interned append: scan the distinct list, and join it on a miss. Package names
+\ repeat; ASIG-EMIT appends a word name, nearly unique, unscanned.
 : ASIG-STR-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 ASIG-I !
    BEGIN ASIG-I @ ASIG-DIST-N @ < WHILE
@@ -10258,21 +10189,13 @@ PTR-VARIABLE ASIG-LAST-P
    vis  at ASIG.VIS  + ASIG-ROW-U32!
    at ASIG-ROW + ASIG-ROW-U ! ;
 
-\ Write the row and make it the symbol's newest. Both producers end here: they
-\ differ only in where the signature offset comes from.
+\ Writes the symbol's row and points its index entry at it (the freeze only).
 : ASIG-EMIT ( n n -- ) {: sym:n soff:n :}
    sym SYM-NAME$ ASIG-STR+ {: noff:n :}
    sym SYM-PKG$ ASIG-STR-INTERN {: poff:n :}
    ASIG-ROW-U @ {: at:n :}
    noff soff poff  sym SYM-ROW SYM.VIS @  ASIG-ROW+
    at 1 + sym ASIG-LAST! ;
-
-\ Does the symbol's newest row already carry this exact signature text? The
-\ texts are interned, so identity of the offset is identity of the text.
-: ASIG-SAME-AS-NEWEST? ( n n -- bool ) {: sym:n soff:n :}
-   sym ASIG-LAST@ {: prev:n :}
-   prev 0= IF RES-FALSE EXIT THEN
-   prev 1 - ASIG.SIG + ASIG-ROW-U32@ soff = ;
 
 \ Record membership while the definition is being published. The final verified
 \ graph and control flags are copied at freeze, after publication is complete.
@@ -10309,16 +10232,10 @@ PTR-VARIABLE ASIG-LAST-P
 
 : CHECKER-ASIG-DISARM ( -- ) 0 ASIG-ARMED ! ;
 
-\ The read surface src/habu/aot-capture.f copies the pool out through.
+\ The pool's sizes, for tools/aot-chain-capture.f's report.
 : CHECKER-ASIG-N ( -- n ) ASIG-ROW-U @ ASIG-ROW / ;
 : CHECKER-ASIG-ROW-BYTES ( -- n ) ASIG-ROW-U @ ;
 : CHECKER-ASIG-STR-BYTES ( -- n ) ASIG-STR-U @ ;
-: CHECKER-ASIG-ROW-C@ ( n -- n ) {: at:n :}
-   at 0 < at ASIG-ROW-U @ >= or IF s" checker: signature-pool row read out of range" 76 die THEN
-   ASIG-ROW-P @ at + c@ ;
-: CHECKER-ASIG-STR-C@ ( n -- n ) {: at:n :}
-   at 0 < at ASIG-STR-U @ >= or IF s" checker: signature-pool string read out of range" 76 die THEN
-   ASIG-STR-P @ at + c@ ;
 
 \ ---- the names one check pass could not resolve ------------------------------
 \ Collected, not read off FAILTK: DO-TOK1 pins every token until a failure sets
@@ -10404,9 +10321,6 @@ CHECKER-REG:}SCRATCH
    din dout rin rout SGHASR @ external E-ADD-EFFECT
    sa su CHECKER-ASIG-CAPTURE
    RES-TRUE ;
-
-: USIG-ADD ( ptr u8 n ptr u8 n -- )
-   2dup RES-TRUE USIG-ADD-AS drop ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -11564,18 +11478,13 @@ PRIM: CHECKER-CERT-SHAPE-DUP? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-F PE-OUT
 \ own. It answers a question about a name and changes nothing.
 PRIM: CHECKER-SEALED-PKG? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The AOT signature pool's surface, an axiom because this file compiles with the
-\ hook off, so a checked caller outside it has no record to resolve. Callers:
-\ aot-arm.f arms and disarms it with its capture window, aot-capture.f copies the
-\ store out a byte at a time. The axiom restates each word's own signature and
-\ grants no capability.
+\ hook off: tools/aot-chain-capture.f's census reads the three sizes.
 PRIM: CHECKER-ASIG-ARM PRIM;
 PRIM: CHECKER-ASIG-DISARM PRIM;
 PRIM: CHECKER-ASIG-ARMED? PE-F PE-OUT PRIM;
 PRIM: CHECKER-ASIG-N PE-N PE-OUT PRIM;
 PRIM: CHECKER-ASIG-ROW-BYTES PE-N PE-OUT PRIM;
 PRIM: CHECKER-ASIG-STR-BYTES PE-N PE-OUT PRIM;
-PRIM: CHECKER-ASIG-ROW-C@ PE-N PE-IN PE-N PE-OUT PRIM;
-PRIM: CHECKER-ASIG-STR-C@ PE-N PE-IN PE-N PE-OUT PRIM;
 \ The audit's two questions, keyed the way SYM-FIND is keyed. They exist as
 \ axioms so the audit can ask them WITHOUT SYM-FIND and CHECKER-FIND-USIG-SYM
 \ joining this list, which would widen the checker's trusted boundary to answer
@@ -14060,12 +13969,7 @@ package CHECKER-REG
    sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
    sym ASIG-LAST@ 0= ;
 
-\ The row's byte offset plus one, 0 for none; the caller reads its sixteen bytes
-\ through CHECKER-ASIG-ROW-C@, so no field is re-encoded. It answers the newest
-\ row (USIGS' newest-wins rule, so the artifact's reader need not apply it), once
-\ per window record: the artifact carries signatures only for words the target
-\ engine has. A signature for an absent word is worse than none: a definition
-\ naming it would certify and then call nothing.
+\ The word's row offset plus one, 0 for none.
 : CHECKER-ASIG-ROW-FOR ( ptr u8 n bool ptr u8 n -- n )
    ASIG-AUDIT-SYM {: sym:n hit:bool :}
    hit 0= IF 0 EXIT THEN
@@ -15126,10 +15030,6 @@ package CHECKER-REG
 ' CHECKER-DEFER DECLARATIONS DEFER-OFF + xt!
 ;package
 
-
-: CHECKER-USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
-   sa su na nu CHECKER-RECORD-NAME USIG-ADD ;
-
 : CHECKER-REC-NAME-AT! ( ptr u8 n ptr u8 n -- )
    CHECKER-RECORD-NAME-AT CHECKER-REC-U ! CHECKER-REC-A ! ;
 
@@ -15196,15 +15096,8 @@ package CHECKER-REG
 \ effects moving different numbers of cells, at the second definition.
 \ E-NELAB-ARITY stays ncomp's backstop for every shape this cannot see.
 \
-\ Asked only from PUBLISH-REFUSALS, for a colon definition checked against a
-\ declared signature: the one record ncomp reads back through the bare binding.
-\ Not at E-ADD-EFFECT: a definer-made public twin reaches it through the
-\ inferred-effect intake (CHECKER-USIG-CERT-CURRENT, BROW/DCUR) carrying the
-\ definer call's effect (`20 constant SHARED` presents (1 -- 0)), so a rule
-\ there would refuse test/ndict-binding.f's legal public/private SHARED
-\ constants. A definer-made word has no body for ncomp; a colon definition with
-\ an inferred effect and a `TRUSTED:` body (whose declaration arrives through
-\ USIG-ADD as a storage definer's does) are left to ncomp's backstop too.
+\ Asked only from PUBLISH-REFUSALS, for a colon definition with a declared
+\ signature; definer-made words and USIG-ADD-AS rows are left to that backstop.
 7145 constant E-SHADOWED-ARITY
 CHECKER-REG:SCRATCH{
 variable SBA-TWIN                          \ the private twin's sym: the refused public's package and tail
@@ -15848,15 +15741,6 @@ CHECKER-REG:}SCRATCH
    NORETS newend +  NORET-END @ newend -  ARENA-ZERO
    newend NORET-END !
    NORET-TERM ;
-
-\ The specification of what NRX answers, by a linear walk.
-: NORET-NEWEST-LINEAR ( n -- n ) {: sym:n :}
-   0
-   0 NRX-POS !
-   begin NRX-ENTRY-END? 0= while
-      NRX-POS @ NORET-CELL NORET.SYM @ sym = IF drop NRX-POS @ 1 + THEN
-      NRX-POS @ NORET-ENTRY + NRX-POS !
-   repeat ;
 
 : NORET-NEWEST ( n -- n ) {: sym:n :}
    NRX-ENSURE
