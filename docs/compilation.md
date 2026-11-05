@@ -121,12 +121,15 @@ picked up on the next build, and a file not yet compiled is read in due course.
 Do not require an immutable source snapshot or reject the running build solely
 because an editor changed a file.
 
-**The linker places everything at fixed addresses.** It takes the product's
-dictionary space with its reference cells, one unplaced emission per
-definition and the product platform's primitive bodies. It keeps what the
-roots reach (the boot entry and the public words) and writes the image with
-both spaces at the addresses it chose. The boot maps each space at its address
-and refuses to run when it cannot get it; nothing is relocated at boot.
+**The linker places DATA at its fixed address and code where the OS loads
+it.** It takes the product's dictionary space with its reference cells, one
+unplaced emission per definition and the product platform's primitive bodies.
+It keeps what the roots reach (the boot entry and the public words) and writes
+the image with DATA at DATA-VA and the code at a base the OS may move. Calls
+inside the code are relative, so they hold at any base. The linker lists every
+stored address that points into the image, and the boot adds the load offset
+to each, as dyld and ld.so do for a position-independent C program. The boot
+maps DATA at its address and refuses to run when it cannot get it.
 **Now:** only the x86-64 linker places at fixed addresses
 (`src/habu/link-x64.f` `LAYOUT`), and nothing in the product build calls it.
 The ARM64 boot maps the code region wherever the kernel gives it near a hint
