@@ -8,6 +8,10 @@ SUITE compiler-shadow
    test/compiler/shadow-kinds.f
 ;SUITE
 
+SUITE arm64-kernel-head
+   test/compiler/arm64-kernel-head.f
+;SUITE
+
 \ Both fixtures open an ARM AOT source window and select tier 0 before asking
 \ how an x64 shadow is carried or linked from that ARM window.
 SUITE x86-64-link-records
