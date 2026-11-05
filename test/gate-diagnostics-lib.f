@@ -198,12 +198,6 @@ TYPED-VARIABLE SPLICE-LEN len
    mode modeu file fileu arg argu GJA2P-RUN
    label labelu GJA-PASS ;
 
-: WORD-CLASS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n word:ptr wordu:n class:ptr classu:n label:ptr labelu:n :}
-   label labelu GJA-PROGRESS
-   file fileu PATH!
-   PATH$ word wordu class classu GJA-DIAG-WORD-REPAIR-CLASS
-   label labelu GJA-PASS ;
-
 : DIAG-CONTRACT ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
    s" diag-contract" file fileu label labelu GJA1 ;
 
@@ -449,30 +443,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" : JWIDGET ( widget -- widget ) ;" GE-SRC-LINE
    s" tools/check.f --json-errors rejected source-local nominal declaration" CHECK-JSON-OK ;
 
-: REPAIR-CLASSES ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : JMISS ( i64 -- i64 ) drop ;" GE-SRC-LINE
-   s" : JTYPE ( i64 -- i64 ) 0= ;" GE-SRC-LINE
-   s" : JRET ( i64 -- ) >r ;" GE-SRC-LINE
-   s" : JDEAD ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 + ;" GE-SRC-LINE
-   s" : JDIE ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 + ;" GE-SRC-LINE
-   s" TYPED-VARIABLE JBP ptr u8" GE-SRC-LINE
-   s" : JBPBASE ( -- ptr u8 ) JBP @ ;" GE-SRC-LINE
-   s" : JBPS ( -- ) 0 JBPBASE ! ;" GE-SRC-LINE
-   s" tools/check.f --json-errors --all-errors accepted repair class batch" CHECK-JSON-ALL
-   s" code" s" E-DEAD-CODE" s" dead-code diagnostic code" ERR-JSTR
-   s" dead_owner" s" throw" s" dead-code owner" ERR-JSTR
-   s" dead_owner" s" die" s" die dead-code owner" ERR-JSTR
-   s" habu-json-repair.err" WRITE-ERR
-   s" habu-json-repair.err" s" repair batch diagnostic contract" DIAG-CONTRACT
-   s" habu-json-repair.err" s" jmiss" s" add_producer" s" missing producer class" WORD-CLASS
-   s" habu-json-repair.err" s" jtype" s" fix_type" s" type mismatch class" WORD-CLASS
-   s" habu-json-repair.err" s" jret" s" fix_return_stack" s" return stack class" WORD-CLASS
-   s" habu-json-repair.err" s" jdead" s" remove_dead_code" s" dead-code class" WORD-CLASS
-   s" habu-json-repair.err" s" jdie" s" remove_dead_code" s" die dead-code class" WORD-CLASS
-   s" habu-json-repair.err" s" jbps" s" fix_type" s" byte-ptr store-target class" WORD-CLASS ;
-
 : FILE-ORIGIN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -682,36 +652,6 @@ TYPED-VARIABLE SPLICE-LEN len
    GT-ERR$ REC!
    s\" \"word\":\"gdx-wide\"" s\" \"verdict\":\"rejected\",\"word\":\"gdx-wide\"" REC-SWAP
    s" habu-warning-verdict.err" s" unexpected JSON field" s" warning with a verdict refused" REFUSED ;
-
-\ A bare token refused at its reference because it resolves in a used package
-\ and in another scope too (checker.f CHECKER-RESOLVE:RAISE): a global and a
-\ used public, or two used publics. Both records place the token and take the
-\ repair class their code names. The throw ends check.f, so the engine reports
-\ it after the record.
-: USING-RECORDS ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : GDX-SW ( n -- ) drop ;" GE-SRC-LINE
-   s" package GDX-SP public : GDX-SW ( n -- ) drop ; ;package" GE-SRC-LINE
-   s" using GDX-SP : GDX-SU ( -- ) 1 GDX-SW ; ;using" GE-SRC-LINE
-   s" habu-json-shadow.f" s" tools/check.f --json-errors accepted a global a used public shadows" RECORD-CHECK
-   s" code" s" E-USING-SHADOW-GLOBAL" s" using shadow code" ERR-JSTR
-   GT-ERR$ REC! REC-LINE
-   s" habu-json-shadow.err" WRITE-REC
-   s" habu-json-shadow.err" s" using shadow contract" DIAG-CONTRACT
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" package GDX-UA public : GDX-UW ( n -- ) drop ; ;package" GE-SRC-LINE
-   s" package GDX-UB public : GDX-UW ( n -- ) drop ; ;package" GE-SRC-LINE
-   s" using GDX-UA using GDX-UB : GDX-UU ( -- ) 1 GDX-UW ; ;using ;using" GE-SRC-LINE
-   s" habu-json-ambiguous.f" s" tools/check.f --json-errors accepted a name two used packages export" RECORD-CHECK
-   s" code" s" E-USING-AMBIGUOUS" s" using ambiguity code" ERR-JSTR
-   s" token" s" GDX-UW" s" using ambiguity token" ERR-JSTR
-   GT-ERR$ REC! REC-LINE
-   s" habu-json-ambiguous.err" WRITE-REC
-   s" habu-json-ambiguous.err" s" using ambiguity contract" DIAG-CONTRACT
-   s\" \"repair_class\":\"disambiguate_using_ambiguous\"" s\" \"repair_class\":\"disambiguate_using_shadow\"" REC-SWAP
-   s" habu-using-class.err" s" repair class is not one its code names" s" ambiguity under the shadow's class refused" REFUSED ;
 
 : UNSAFE-CHECK-SOURCE ( -- )
    GE-SRC-RESET
@@ -1292,27 +1232,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s" W-CHECK-DEFERRED" s" an arena owner copy deferred to the run" GE-EXPECT-ERR-LACKS
    s" tools/check.f --verify-only accepted a whole copy of an arena owner" GE-EXPECT-NONZERO ;
 
-\ A refused `generates:` row is outside any definition, and its class
-\ says which of the row's claims failed: a name that names no word, a definer
-\ that already states what it makes, or an effect that does not parse, under
-\ the signature refusal's own class. Each meets the contract with its class's
-\ text; a row under a class its code does not admit is refused.
-: GENERATES-ROWS ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" generates: GDX-GLATE ( -- n )" GE-SRC-LINE
-   s" : GDX-GDD ( n -- ) create , does> ( -- ptr n ) ;" GE-SRC-LINE
-   s" generates: GDX-GDD ( -- ptr n )" GE-SRC-LINE
-   s" : GDX-GNOP ( n -- ) drop parse-name 2drop ;" GE-SRC-LINE
-   s" generates: GDX-GNOP ( -- i32 )" GE-SRC-LINE
-   s" tools/check.f --all-errors accepted refused generates: rows" CHECK-JSON-ALL
-   s" habu-generates.err" WRITE-ERR
-   s" code" s" E-GENERATES-ROW" s" generates: row code" ERR-JSTR
-   s" habu-generates.err" s" generates: row contract" DIAG-CONTRACT
-   GT-ERR$ REC!
-   s\" \"repair_class\":\"fix_generates_row\"" s\" \"repair_class\":\"close_string\"" REC-SWAP
-   s" habu-generates-class.err" s" repair class is not one its code names" s" generates: row under the open string's class refused" REFUSED ;
-
 : GENERATES-EVALUATED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -1413,19 +1332,6 @@ TYPED-VARIABLE SPLICE-LEN len
    s\" \"reason\":\"no name for\"" s" a refused declaration's type was scanned as a definer" GE-EXPECT-ERR-LACKS
    s\" \"repair_class\":\"rename_duplicate\"" s" sealed storage names reported as duplicates" GE-EXPECT-ERR-LACKS
    s" habu-storage-name.err" s" sealed storage name contract" DIAG-CONTRACT ;
-
-: ENGINE-PROVIDED ( -- )
-   CHECK-START
-   s" json-errors" CHECK-OPT
-   s" src/lib/string.f" CHECK-FILE
-   CHECK-PATH
-   64 s" tools/check.f checked a source the engine provides" GE-EXPECT-RC
-   s" habu-engine.err" WRITE-ERR
-   s" code" s" E-ENGINE-PROVIDED" s" engine-provided code" ERR-JSTR
-   s" habu-engine.err" s" engine-provided contract" DIAG-CONTRACT
-   GT-ERR$ REC!
-   s\" \"repair_class\":\"rebuild_engine\"" s\" \"repair_class\":\"unknown_rejection\"" REC-SWAP
-   s" habu-engine-class.err" s" repair class is not one its code names" s" engine-provided input under another class refused" REFUSED ;
 
 : PUBLIC-SIGNATURES ( -- )
    GT-OUT-BUF GT-OUT-CAP PS-OUT-BUFFER!

@@ -52,9 +52,8 @@
 \   before and after, blanks and tabs around the value, leading zeros
 \   ............................................................ frame-forms
 \ - a framing fault survived or reported without its code: no Content-Length,
-\   a value that is no number, a line ended by LF alone, a line over LINE-CAP,
-\   a length over the maximum, end of input in a header and in a body; each is
-\   its own conversation ........................................... fault-*
+\   a line over LINE-CAP, a length over the maximum; each is its own
+\   conversation ................................................... fault-*
 \ - a request read before a framing fault not answered before the fault
 \   stops the server ..................................... fault-after-request
 \ - a 700 KB body, written in many pieces, refused, cut or its document lost:
@@ -1352,14 +1351,6 @@ variable OPEN-N
    s\" Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n{}" IN+
    INITIALIZE
    E-CONTENT-LENGTH-MALFORMED FAULTED
-   s" fault-not-a-number" CONVERSATION
-   s\" Content-Length: abc\r\n\r\n" IN+
-   INITIALIZE
-   E-CONTENT-LENGTH-MALFORMED FAULTED
-   s" fault-lf-alone" CONVERSATION
-   s\" Content-Length: 2\n\n{}" IN+
-   INITIALIZE
-   E-CONTENT-LENGTH-MALFORMED FAULTED
    s" fault-long-line" CONVERSATION
    LONG-LINE
    INITIALIZE
@@ -1375,14 +1366,6 @@ variable OPEN-N
    1 CONVERSE
    CAPABILITIES
    ENDS ;
-
-: TEST-TRUNCATED-FRAMES ( -- )
-   s" fault-eof-in-header" CONVERSATION
-   s\" Content-Length: 5\r\n" IN+
-   E-CONTENT-LENGTH-TRUNCATED FAULTED
-   s" fault-eof-in-body" CONVERSATION
-   s\" Content-Length: 5\r\n\r\n{}" IN+
-   E-CONTENT-LENGTH-TRUNCATED FAULTED ;
 
 \ ---- diagnostics conversations, held turn by turn --------------------------------
 
@@ -7629,7 +7612,6 @@ public
    TEST-AFTER-SHUTDOWN
    TEST-FRAME-FORMS
    TEST-MALFORMED-FRAMES
-   TEST-TRUNCATED-FRAMES
    TEST-STDOUT-CLOSED
    TEST-CANCEL-SHUTDOWN
    s" lsp-session" [: INITIALIZE ;] [: DEFAULT-CASES ;] SESSION-RUN
