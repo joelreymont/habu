@@ -1,7 +1,6 @@
 \ program-diagnostics-test.f - direct production-load diagnostic contracts.
 
 require test/gate-common.f
-require test/whitebox-child.f
 require src/lib/string.f
 require src/lib/fmt.f
 
@@ -22,13 +21,6 @@ package PROGRAM-DIAGNOSTICS
    path pathu GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV ;
 
-: RUN-LOAD-WB ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   GE-HB-RESET
-   s" --load" GE-ARG+
-   path pathu GE-ARG+
-   WHITEBOX-CHILD:ENV!
-   WHITEBOX-CHILD:ENGINE$ GE-TIMEOUT-MS GE-RUN-ENV ;
-
 : EXPECT-MARKER ( ptr u8 n ptr u8 n -- )
    {: marker:ptr markeru:n label:ptr labelu:n :}
    SB-RESET marker markeru SB-APPEND GE-SB-LF
@@ -43,13 +35,6 @@ package PROGRAM-DIAGNOSTICS
 : NEGATIVE ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n rc:n marker:ptr markeru:n needle:ptr needleu:n :}
    path pathu RUN-LOAD
-   rc path pathu GE-EXPECT-RC
-   marker markeru path pathu EXPECT-MARKER
-   needle needleu path pathu GE-EXPECT-ERR-HAS ;
-
-: NEGATIVE-WB ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n rc:n marker:ptr markeru:n needle:ptr needleu:n :}
-   path pathu RUN-LOAD-WB
    rc path pathu GE-EXPECT-RC
    marker markeru path pathu EXPECT-MARKER
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
@@ -95,9 +80,9 @@ package PROGRAM-DIAGNOSTICS
    s" test/layout-valid-product-bad.f" 85
       s" LAYOUT-VALID-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-active-bad.f" 85
-      s" LAYOUT-VALID-ACTIVE-ARMED" s" hb: bad layout tag" NEGATIVE-WB
+      s" LAYOUT-VALID-ACTIVE-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-root-bad.f" 85
-      s" LAYOUT-VALID-ROOT-ARMED" s" hb: bad layout tag" NEGATIVE-WB
+      s" LAYOUT-VALID-ROOT-ARMED" s" hb: bad layout tag" NEGATIVE
    s" test/layout-valid-hook-forge.f" 70
       s" LAYOUT-VALID-FORGE-ARMED" s" E-UNDEFINED: LAYOUT-VALID-RECORD-XT" NEGATIVE
    s" test/layout-valid-walk-forge.f" 70
@@ -152,7 +137,6 @@ public
 
 : TEST ( -- )
    s" habu-program-diagnostics" GT-START
-   s" habu-program-diagnostics" WHITEBOX-CHILD:PROVIDE
    NEGATIVES
    DIAGNOSTICS
    GT-CLEANUP
