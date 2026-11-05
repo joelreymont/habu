@@ -625,6 +625,17 @@ learned live in the docs for their subject.
   so a trailing zero would spare no copy, Joel answered "great, keep going":
   each string is a length cell followed by its bytes, the table's slots hold
   only addresses, and no trailing zero is added until a caller can use one.
+  On 2026-11-05 he asked "why are you keeping a list of strings? i thought
+  strings are stored at different addresses in DATA and you just have a hash
+  table of them" and "why are you considering moving HERE back in the first
+  place if you don't have any cases where it does move back? why not just
+  prohibit moving HERE back for now?" Shown that nothing moves HERE back
+  while a build writes the next hb (a failure ends the build and drops its
+  data space) and that the failed REPL line keeps today's store until the
+  running hb's own strings move onto this one, he chose "Prohibit
+  (Recommended)": while a build's data space is open the table only adds,
+  and if HERE moved back the build fails at its next string. He named that
+  error E-INTERN-REWIND.
 - 2026-11-03, the callback package: asked what the callback library's
   package FFI-CB should become, and shown that FFI is built into hb and sealed
   there, so a library loaded later cannot add words to it, Joel first chose
