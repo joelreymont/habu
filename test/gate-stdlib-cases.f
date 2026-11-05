@@ -227,8 +227,8 @@ SUITE content-key
    src/lib/content-key-test.f
 ;SUITE
 
-SUITE engine-id-capture
-   test/engine-id-capture-e2e.f
+SUITE engine-id-override
+   test/engine-id-override.f
 ;SUITE
 
 SUITE engine-id-replace

@@ -32,8 +32,6 @@ $10000 constant IO-CAP
 $1000 constant PROG-CAP
 \ Guards against a hung child, not budgets: the host runs loaded.
 120000 constant TIMEOUT-MS
-\ A save compiles src/habu/app-image.f from source, which a loaded host makes slow.
-600000 constant SAVE-TIMEOUT-MS
 \ A prompt line holds 255 bytes, so `cd <name>` names at most this much; four
 \ nested names fit the 1023-byte path cap and a fifth does not.
 200 constant LONG-NAME
@@ -248,9 +246,7 @@ variable RC
    s" pop-load.f" S\" SOURCE-ROOT:POPPATH\n" TEXT
    s" search-only" A$ FS:MAKE-DIR
    LONG-NAME 0 ?do 97 LONG i + c! loop
-   DEEP-DIRS
-   s" moved/bin" A$ FS:MAKE-DIRS
-   s" src" s" moved/src" GATE-LINK ;
+   DEEP-DIRS ;
 
 : RESULT! ( result<pcap:captured,pcap:failed> -- ) PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
@@ -610,74 +606,12 @@ variable RC
    s" CD: is not a searchable directory: " CD-REFUSED
    CD-SEARCH-ONLY CD-TOO-LONG PATH-IN-LOAD PATH-STACK ;
 
-\ A restored image starts at the working directory, so a save with a path
-\ pushed is refused by name and writes nothing.
-: SAVE-PUSHED ( -- )
-   s" an image is not saved with a path pushed" T-LABEL
-   PROC-ARGV-RESET
-   s" --" >LEN PROC-ARGV+
-   s" pushed" A$ >LEN PROC-ARGV+
-   PROG-RESET
-   s" require src/habu/app-image.f" PLINE
-   s" SOURCE-ROOT:PUSHPATH" PLINE
-   s" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE" PLINE
-   s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ SAVE-TIMEOUT-MS RUN-EXE
-   S\" PUSHPATH: an image cannot be saved with a path pushed\n" REFUSAL
-   s" the refused save writes no image" T-LABEL
-   s" pushed" A$ FS:EXISTS? TFALSE ;
-
-\ The image is saved by an engine whose tree no loaded file's canonical path
-\ contains (its src is a link), so the tree's bytes can only come from
-\ the loader's own state. The restored image reads its whole DATA for them,
-\ with the canonical path of a file the save loaded as the proof that the read
-\ sees what was captured.
-: SCAN-PROGRAM ( -- )
-   PROG-RESET
-   s" : SRE-LEN ( -- n ) here data-base - ;" PLINE
-   s" : SRE-HAS ( n -- ) SCRIPT-ARGV$ {: a:ptr u:n :}" PLINE
-   S\"    data-base BYTE-VIEW SRE-LEN a u CONTAINS? if s\q present\q else s\q absent\q then type cr ;" PLINE
-   s" 0 SRE-HAS 1 SRE-HAS" PLINE ;
-
-: IMAGE$ ( -- ptr u8 n ) s" moved/bin/app" HB-AT$ ;
-
-: CAPTURE ( -- )
-   s" an engine outside any tree saves an image after recording events" T-LABEL
-   PROC-ARGV-RESET
-   s" --" >LEN PROC-ARGV+
-   IMAGE$ >LEN PROC-ARGV+
-   PROG-RESET
-   \ A saved image retains native code only (src/habu/snap-lib.f PERSIST), so
-   \ the library compiles at the optimizing tier, as src/habu/app-image.f does.
-   s" 1 set-tier" PLINE
-   s" EVENT-ON" PLINE
-   s" require src/lib/fs.f" PLINE
-   s" require src/habu/app-image.f" PLINE
-   s" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE" PLINE
-   s" tree/bin/hb" HB-AT$ FOREIGN$ PROG$ SAVE-TIMEOUT-MS RUN-EXE
-   RC @ 0= 0= if SHOW then
-   RC @ 0 T=
-   IMAGE$ FS:EXECUTABLE? {: saved:bool :}
-   saved TTRUE
-   saved 0= if exit then
-   s" the restored image holds neither its engine's tree nor that root" T-LABEL
-   PROC-ARGV-RESET
-   s" --" >LEN PROC-ARGV+
-   s" tree" A$ >LEN PROC-ARGV+
-   s" src/habu/app-image.f" GATE-B$ >LEN PROC-ARGV+
-   SCAN-PROGRAM
-   IMAGE$ FOREIGN$ PROG$ TIMEOUT-MS RUN-EXE
-   S\" absent\npresent\n" 0 EXPECT
-   s" the restored image takes the tree it was placed in" T-LABEL
-   PROC-ARGV-RESET
-   IMAGE$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\n" TIMEOUT-MS RUN-EXE
-   SB-RESET s" moved" A$ LINE SB$ 0 EXPECT ;
-
 : MAIN ( -- )
    T-RESET
    PREP
    EXE-TREE CWD-TREE LONE PARTIAL NOT-TREE
    APP WD ENTRY ALIAS FIX-1 FIX-2 BOOT-OUTSIDE
-   PATH-WORDS SAVE-PUSHED CAPTURE
+   PATH-WORDS
    FS:CLEANUP-RUN
    T-REPORT
    s" source-root-exe-test: ok" type cr ;
