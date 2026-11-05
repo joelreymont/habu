@@ -1019,7 +1019,11 @@ learned live in the docs for their subject.
   runs seed, growth and source-map checks of the capture build, he chose "Drop
   the check (Recommended)". He then wrote "hey, drop what you think should be
   dropped if best for long term" and "then only ask me about what's
-  undecided": which tests to keep, shrink or drop is the lead's call.
+  undecided": which tests to keep, shrink or drop is the lead's call. Shown
+  the second removal wave's full-suite run (about 8 minutes), Joel asked "why
+  are you running and re-running these suites before pruning them? we should
+  fit into 2-3 minutes, 5 at most!": the full suite's wall time is 2-3
+  minutes, 5 at most.
 
 ## Docs
 
