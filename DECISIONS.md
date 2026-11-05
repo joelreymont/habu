@@ -539,8 +539,16 @@ learned live in the docs for their subject.
   the package named source-syntax? is this part of the LSP? drop the LSP work
   and move forward with incremental builds, we'll fix the LSP when we are
   done". The check tool's work, the number-name refusal's second half
-  included, waits until incremental builds are done; loading's refusal of
-  `: 42` stands.
+  included, waits until incremental builds are done, apart from building the
+  verifier into hb (2026-11-05, tools in hb); loading's refusal of `: 42`
+  stands.
+- 2026-11-05, tools in hb: asked why tests need their own images and "why
+  not build those tools in NOW?", Joel wrote "tools should be built in to
+  avoid rebuilding images!" hb carries the tools its tests and builds drive:
+  the cross-build's linker goes into hb at step 5, then app builds and REPL
+  images run on it, and each tool image goes with the step that moves its
+  last user. Asked when hb should carry the verifier, he chose "Right after
+  step 5 (Recommended)".
 - 2026-11-03, the compiler lease: shown a design in which T0's compiles take
   tier 1's compiler lease (NLEASE) so NDEFINITION's M-OPEN flag could go,
   Joel asked "why in the world do you need to take a lease? this smells! are
