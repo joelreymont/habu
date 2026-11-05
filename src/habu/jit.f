@@ -8,7 +8,7 @@ using A64ICODE
 using REGALLOC-ABI
 
 \ This tier 0 is a second ARM64 codegen beside tier 1: `--load` and the REPL use it because tier 1
-\ compiles a trivial definition far slower (tools/compile-floor.f); an executable build compiles at
+\ compiles a trivial definition far slower; an executable build compiles at
 \ its caller's tier (src/lib/executable-build.f).
 variable LVSPILL   variable LVLITPUSH   variable LVPUSHC
 variable LVPUSHF   variable LFFORCEK  variable LFBINPREP

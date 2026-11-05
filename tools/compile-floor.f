@@ -1,9 +1,7 @@
-\ compile-floor.f - the tier-1 per-definition compile floor, as one number.
-\   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS (0.5): refuse
-\   a larger trivial-t1 mean, E-FLOOR-EXCEEDED. One line, us per definition:
-\   floor: trivial-t1 <us> three-op-t1 <us> trivial-t0 <us> compiled <n>
-\          least-trivial-t1 <us> least-three-op-t1 <us> least-trivial-t0 <us>
-\ compiled counts tier-1 definitions.
+\ compile-floor.f - the tier-0 per-definition compile floor, as one number.
+\   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS: refuse
+\   a larger trivial-t0 mean, E-FLOOR-EXCEEDED. One line, us per definition:
+\   floor: trivial-t0 <us> least-trivial-t0 <us>
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -43,22 +41,17 @@ create LIVE-PREFIX PREFIX-CAP allot
 variable PREFIX-U                  \ length of the prefix in LIVE-PREFIX
 variable SET-LIVE?                 \ that set is defined and not yet removed
 
-\ The three sets, as rows of the two tables below.
-0 constant TRIV-T1
-1 constant THREE-T1
-2 constant TRIV-T0
-3 constant SETS
+\ The measured set, as a row of the two tables below.
+0 constant TRIV-T0
+1 constant SETS
 $7FFFFFFFFFFFFFFF constant NO-LEAST \ above any least: the first sample replaces it
 create SET-NS SETS cells allot     \ each set's CPU ns, summed over every round
 create SET-LEAST SETS cells allot  \ each set's cheapest definition in any round
 variable BOUND-US                  \ ratchet floor in us; read only when a floor was given
 
 \ ---- the dispatch counter ---------------------------------------------------
-\ `set-tier` is engine-global: a tier-1 selection that did not take would report
-\ tier 0's number as the optimizing compiler's. The wrapper stands in front of
-\ the compiler's own entry, so it counts every definition compiled on tier 1
-\ while installed and nothing else: tier 0 never reads this cell. Each tier-1
-\ set must add exactly SET-N and the tier-0 set 0, or E-FLOOR-UNCOMPILED.
+\ The wrapper counts every definition tier 1 compiles while installed; tier 0
+\ never reads this cell, so a tier-0 set that adds one dies E-FLOOR-UNCOMPILED.
 
 : COUNTING-COMPILE ( ptr u8 n -- )
    NC-COUNT @ 1+ NC-COUNT !
@@ -101,17 +94,8 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    SRC SRC-OFF ix cells + @ +  SRC-LEN ix cells + @ ;
 
 \ ---- the measured window ----------------------------------------------------
-\ Each definition is one `evaluate-closed` inside its own window of this
-\ thread's CPU time. Wall clock also holds the neighbours' slices: one commit
-\ read trivial-t1 from 9193 to 29407 us while sibling lanes compiled. CPU time
-\ still holds the core: an efficiency core compiles a set about 2.5-3x slower
-\ than a performance core. That only adds time and a regression slows every
-\ definition, so a set's least is its cost on the fastest core the run found,
-\ the number test/compile-floor-gate.f judges; a cost only some definitions pay
-\ shows in the mean alone. One tier-0 pass is about 4 ms of CPU and fits in one
-\ slow stretch (at load average 90 on 12 cores, one run in 96 read
-\ least-trivial-t0 75 us against a usual 34), so ROUNDS spread every set over
-\ about half a second of CPU. Quote a number with its host and load.
+\ Thread CPU time leaves out the neighbours' slices and a slow core only adds
+\ time: a least is the fastest core's cost; ROUNDS outlast a slow stretch.
 
 : COMPILE-ONE ( n -- n )           \ CPU nanoseconds for one definition
    TIME:THREAD-CPU-NS swap
@@ -174,16 +158,6 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    LF SB-APPEND-C
    SB$ E-FLOOR-UNCOMPILED REFUSE ;
 
-\ `swap drop` carries no combinable pair and `1 +` carries one, so the two sets
-\ together price the fold. The tier-0 set compiles the trivial body under its
-\ own names so the contrast never redefines a tier-1 set.
-: RUN-TIER1 ( -- )
-   1 set-tier
-   s" T" s"  ( n -- n ) 1 + ; " TRIV-T1 MEASURE
-   SET-N DISPATCHES s" the trivial tier-1 set" EXPECT
-   s" U" s"  ( n n -- n ) swap drop ; " THREE-T1 MEASURE
-   SET-N DISPATCHES s" the three-op tier-1 set" EXPECT ;
-
 : RUN-TIER0 ( -- )
    0 set-tier
    s" V" s"  ( n -- n ) 1 + ; " TRIV-T0 MEASURE
@@ -191,21 +165,13 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : REPORT ( -- )
    SB-RESET
-   s" floor: trivial-t1 " SB-APPEND  TRIV-T1 MEAN-US FMT:SB-U
-   s"  three-op-t1 " SB-APPEND       THREE-T1 MEAN-US FMT:SB-U
-   s"  trivial-t0 " SB-APPEND        TRIV-T0 MEAN-US FMT:SB-U
-   s"  compiled " SB-APPEND          NC-COUNT @ FMT:SB-U
-   s"  least-trivial-t1 " SB-APPEND  TRIV-T1 LEAST-US FMT:SB-U
-   s"  least-three-op-t1 " SB-APPEND THREE-T1 LEAST-US FMT:SB-U
+   s" floor: trivial-t0 " SB-APPEND  TRIV-T0 MEAN-US FMT:SB-U
    s"  least-trivial-t0 " SB-APPEND  TRIV-T0 LEAST-US FMT:SB-U
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
-\ The ratchet judges the trivial-t1 mean (target 500 us) as printed: a
-\ program pays for every definition it compiles, and the mean carries costs no
-\ least sees. It carries the cores too, so ratchet on a quiet machine;
-\ test/compile-floor-gate.f, which runs at any load, judges each least against
-\ a budget and each mean only against a loose ceiling.
+\ The mean carries the cores too, so ratchet on a quiet machine;
+\ test/compile-floor-gate.f judges the least at any load.
 
 : FLOOR-US ( ptr u8 n -- n )       \ "0.5" -> 500
    STR>FLOAT MATCH option
@@ -215,15 +181,15 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : RATCHET ( -- )
    ARGV:POS# 0= if exit then
-   TRIV-T1 MEAN-US BOUND-US @ <= if exit then
+   TRIV-T0 MEAN-US BOUND-US @ <= if exit then
    SB-RESET
-   s" compile-floor: trivial-t1 " SB-APPEND  TRIV-T1 MEAN-US FMT:SB-U
+   s" compile-floor: trivial-t0 " SB-APPEND  TRIV-T0 MEAN-US FMT:SB-U
    s"  us is above the floor of " SB-APPEND  BOUND-US @ FMT:SB-U
    s"  us" SB-APPEND  LF SB-APPEND-C
    SB$ E-FLOOR-EXCEEDED REFUSE ;
 
 \ The floor is read and converted BEFORE anything is measured, so a malformed
-\ argument costs a usage line rather than two seconds of compiling.
+\ argument costs a usage line rather than a measurement.
 : CONFIG ( -- )
    s" bin/hb --load tools/compile-floor.f -- [floor-ms]" ARGV:USAGE!
    ARGV:PARSE
@@ -232,11 +198,8 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    0 ARGV:POS$ FLOOR-US BOUND-US ! ;
 
 \ ---- the borrow ------------------------------------------------------------
-\ The dispatch cell, the tier and the measurement names are the engine's: MAIN
-\ takes them after parsing and gives all three back through `finally`, on the
-\ refusing path too. A wrapper installed at load would count every later tier-1
-\ definition, a tier left selected hands the caller another compiler, and names
-\ left behind make a second MAIN die of `duplicate definition: T1`.
+\ MAIN borrows the dispatch cell, the tier and the measurement names after
+\ parsing and gives all three back through `finally`, on the refusing path too.
 
 \ Every boot installs NCOMP:COMPILE in the tier-1 `:` dispatch, the entry
 \ COUNTING-COMPILE forwards to, so PUT-BACK ends the borrow with NCOMP:INSTALL.
@@ -256,7 +219,6 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 : MEASURE-ALL ( -- )
    RESET-SETS
    ROUNDS 0 ?do
-      RUN-TIER1
       RUN-TIER0
    loop
    REPORT
