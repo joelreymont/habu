@@ -2253,7 +2253,7 @@ public
       old-u POLICY-ROOT-U !
    else
       0 POLICY-ROOT-U !
-      0 data-base INCLUDE-POLICY-REQUIRE-CELL + !
+      0 data-base INCLUDE-POLICY-REQUIRE-CELL + xt!
    then
    old old-u POLICY-ROOT-RELEASE
    fresh freshu prior prioru rc ROOT-LEAVE ;

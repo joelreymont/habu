@@ -7621,7 +7621,7 @@ public
    \ DP-CHECK's bounds hold from the first DP: EM-AOT-BOOTRUN runs captured
    \ words before EM-STARTUP-RUNTIME-STATE writes the cells again.
    7 DATA BOOT:DP-FLOOR-CELL STR,
-   5 0 MOVZ,  5 DATA BOOT:GLOBAL-WL-CELL STR,
+   5 0 MOVZ,  5 DATA BOOT:GLOBAL-WL-CELL STR,  5 DATA BOOT:IMAGE-BASE-CELL STR,
    5 DICT-WL:NAMESPACE LIT64,  5 DATA BOOT:NAMESPACE-WL-CELL STR,
    5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,  5 DATA BOOT:DP-CEILING-CELL STR, ;
 
@@ -7719,34 +7719,24 @@ public
       0 SNAP-RELOC:CALLMAP-RC MOVZ,  NR-EXIT-GROUP SYS,
    scdone LBL,  RET, ;
 
-\ Declare one persisted DATA cell as holding a JIT-region address, so the snapshot
-\ writer canonicalises it and the loader maps it back onto the live region.
-\   x9 = the cell's address, unchanged on return.
-\ Membership is a set: `defer`, `is` and `xt!` all declare, so one cell arrives
-\ more than once, and a duplicate row would relocate it twice. A derived hash
-\ index maps byte offsets to row ordinals; it never reorders the rows. Overflow
-\ and a cell outside DATA are hard stops: a dropped row leaves a stale address in
-\ a restored image, and the table's consumers index DATA by the offset. Every
-\ producer declares before it stores, so a refused cell is never written.
-\ Containment is the whole rule (src/habu/layout.f XTCELL-OFF-MAX says why not
-\ alignment). Every register is saved: the callers are mid-handler or mid-word.
+\ Saves x0-x17, all MARK writes: its callers are mid-handler or mid-word.
 : MARK-SAVE ( -- )
    SP SP 192 SUBI,
-   18 0 ?do i SP i cells STR, loop ;
+   18 0 ?do i SP i cells STR, loop
+   16 DATA-VA VA>N LIT64,  16 SP 184 STR, ;
 
 : MARK-RESTORE ( -- )
    18 0 ?do i SP i cells LDR, loop
    SP SP 192 ADDI, RET, ;
 
-\ A worker's x20 names its private context; persisted rows belong to the fixed
-\ shared image mapping. Reload x16 at every acquisition, including after mmap
-\ and munmap: SYS, uses x16 on both Linux and macOS.
+\ x16 = the table's base from SP+184: DATA-VA, never a task's x20, or the open
+\ image's base for a cell inside it. SYS, clobbers x16: reload after each.
 : MARK-HEADER ( -- )
-   16 DATA-VA VA>N LIT64,
+   16 SP 184 LDR,
    4 SNAP-RELOC:XTCELL-N-CELL LIT64, 4 16 4 ADD, ;
 
 \ One owner serializes lookup and publication, including backing replacement.
-\ x16 is the shared image base; all registers touched here are MARK-SAVE'd.
+\ x16 is the table's base; all registers touched here are MARK-SAVE'd.
 : MARK-LOCK ( -- )
    LBL {: retry:label :}
    17 16 ADDRESS-CELLS:LOCK-CELL ADDI,
@@ -7957,8 +7947,17 @@ ardone LBL,
    common B,
    LPTRMARK LABEL@ LBL, MARK-SAVE
    15 SNAP-RELOC:XTCELL-DATA-TAG LIT64,
+   \ x9 = the cell, unchanged on return; x15 = its kind (layout.f XTCELL-DATA-TAG).
    common LBL,
+   LBL {: host:label :}
+   6 DATA BOOT:IMAGE-BASE-CELL LDR,  6 host CBZ,      \ x6 = the image's base
+   9 6 CMP,  C-CC host BCOND,
+   7 DATA-SIZE LIT64,  7 6 7 ADD,  9 7 CMP,  C-CS host BCOND,
+   6 SP 184 STR,
+   host LBL,
    MARK-HEADER
+   \ A cell outside DATA and the open image, or a table that cannot grow, stops
+   \ the process: a dropped row would leave a stale address in a saved image.
    12 9 16 SUB,
    6 SNAP-RELOC:XTCELL-OFF-MAX LIT64, 12 6 CMP, C-HI band BCOND,
    MARK-LOCK
@@ -7989,6 +7988,8 @@ ardone LBL,
    8 16 ADDRESS-CELLS:INDEX-CELL LDR,
    10 8 ADDRESS-CELLS:INDEX-SLOTS LDR,
    hit missing shape INDEX-PROBE
+   \ A cell declared again keeps one row, since a second would relocate it
+   \ twice; a second kind stops the process.
    hit LBL,
       6 12 15 ORR, 7 6 CMP, C-EQ ret BCOND, kind B,
    missing LBL,
@@ -8084,6 +8085,15 @@ ardone LBL,
    A G-POP
    LSCRATCHMARK LABEL@ BL, ;
 
+\ While a build writes an image, a store into this engine's header goes to the
+\ same offset in the image. Clobbers x12 and x13, as the store's guard does.
+: ROUTE-HEADER ( n -- ) {: reg:n :}
+   LBL {: own:label :}
+   13 reg DATA SUB,  12 DATA-START LIT64,  13 12 CMP,  C-CS own BCOND,
+   12 DATA BOOT:IMAGE-BASE-CELL LDR,  12 own CBZ,
+   reg 12 13 ADD,
+   own LBL, ;
+
 \ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare
 \ the cell. `defer` and `is` declare cells known at compile time; a table of
 \ dispatch cells picks its cell at run time, so only the store knows. One
@@ -8094,6 +8104,7 @@ ardone LBL,
 \ the rest). Registered framed: the guard and LMARK are both BL.
 : BXTSTORE ( -- )
    B G-POP  A G-POP
+   B ROUTE-HEADER
    7 8 MOVZ,  B 7 PROT-GUARD:CALL
    C A 0 ADDI,                                      \ x11 = the token
    A B 0 ADDI,                                      \ x9 = the cell, for LMARK
@@ -8103,6 +8114,7 @@ ardone LBL,
 \ ptr-cell! ( a ptr -- ): BXTSTORE for a DATA-pointer cell; see BXTSTORE.
 : BPTRCELLSTORE ( -- )
    B G-POP  A G-POP
+   B ROUTE-HEADER
    7 8 MOVZ,  B 7 PROT-GUARD:CALL
    C A 0 ADDI,                                      \ x11 = the pointer
    A B 0 ADDI,                                      \ x9 = the cell, for LPTRMARK
@@ -8918,7 +8930,7 @@ ardone LBL,
    \ DP-CHECK's bounds, written after EM-SNAPSHOT-RESTORE, whose DATA copy
    \ installs the saving process's cells.
    9 DATA-START LIT64,  9 DATA 9 ADD,  9 DATA BOOT:DP-FLOOR-CELL STR,
-   9 0 MOVZ,  9 DATA BOOT:GLOBAL-WL-CELL STR,
+   9 0 MOVZ,  9 DATA BOOT:GLOBAL-WL-CELL STR,  9 DATA BOOT:IMAGE-BASE-CELL STR,
    9 DICT-WL:NAMESPACE LIT64,  9 DATA BOOT:NAMESPACE-WL-CELL STR,
    9 DATA-SIZE PROF-CNT-BYTES - LIT64,  9 DATA 9 ADD,  9 DATA BOOT:DP-CEILING-CELL STR,
    10 LSRC LABEL@ ADR,

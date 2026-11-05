@@ -1,9 +1,11 @@
 ---
 title: Route header stores into an open space
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-11-04T21:49:02.953190+02:00"
+closed-at: "2026-11-05T12:25:28.546222+02:00"
+close-reason: "implemented, reviewed, merged, gates green: 4a ptr-cell! and 4b routing; reviews and comment re-reviews folded; candidate /tmp/jerry-s4/hb built 124 s rc 0 on the stage host; probe bytes match; x86-64 build rc 0; full suite 521 of 521 rc 0 (1207 s); clobber lint clean and catches the x16 probe; x86-64 routing filed as habu-route-x86-64-6b12a597"
 ---
 
 Cross-build step 4 (design r2 3.3, amended by /tmp/jerry-big/step4-amend.md; brief /tmp/jerry-big/step4-brief.md; workspace .jj-ws.noindex/jerry-route when it starts). Found 2026-11-04: three product-boot pointer cells are written with plain ! after a separate ptr-cell-mark (src/core/checker.f:186-188 TARGET-CELL; src/habu/native-runtime.f:219-220,227 BIND-OWNER DECL-A/TARGET-DECL-A; src/lib/task.f:1166-1170 TASK-CHAIN-CELL), so routing the three primitives as 3.3 says cannot move them: with a space open the product's DECLARATIONS would land in the host's $360/$368 and the host's definers would call the product's checker. MARK records offsets from DATA-VA and refuses offsets above DATA-SIZE - 8, so an image cell is out of band. Names: Joel chose "BOOT:IMAGE-BASE-CELL" (2026-11-05) for the cell at $6C8; xt!'s twin for a data pointer is ptr-cell! (lead, after ptr-cell-mark and the card's X! rule; Joel: "re-read global CLAUDE.md. check when you are supposed to ask me and when not").

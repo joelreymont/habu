@@ -454,12 +454,13 @@ DYNAMIC-BUFFER ROLES u8
    a u s" TADR," LINT-STR=CI if 0 EW 1 EW 0 20 CL-ADD CL-ROR exit then
    \ These inline registrar helpers use a fixed machine-register ABI.
    a u s" mark-save" LINT-STR=CI if
-      $3FFFF 31 CL-ADD CL-ROR 0 31 CL-ADD CL-WOR exit then
+      $3FFFF 31 CL-ADD CL-ROR 0 16 CL-ADD 31 CL-ADD CL-WOR exit then
    a u s" mark-restore" LINT-STR=CI if
       0 31 CL-ADD CL-ROR $3FFFF 31 CL-ADD CL-WOR exit then
-   \ RELOC-EMIT:MARK-HEADER materializes the fixed image base in x16 and
-   \ its address-table header in x4. Neither depends on a caller register.
-   a u s" mark-header" LINT-STR=CI if 0 4 CL-ADD 16 CL-ADD CL-WOR exit then
+   \ RELOC-EMIT:MARK-HEADER loads the table base MARK-SAVE's frame keeps at
+   \ SP+184 into x16, and its address-table header into x4.
+   a u s" mark-header" LINT-STR=CI if
+      0 31 CL-ADD CL-ROR 0 4 CL-ADD 16 CL-ADD CL-WOR exit then
    a u s" mark-lock" LINT-STR=CI if
       0 16 CL-ADD CL-ROR 0 6 CL-ADD 7 CL-ADD 17 CL-ADD CL-WOR exit then
    a u s" mark-unlock" LINT-STR=CI if
