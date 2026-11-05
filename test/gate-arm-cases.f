@@ -8,12 +8,8 @@ SUITE compiler-shadow
    test/compiler/shadow-kinds.f
 ;SUITE
 
-SUITE arm64-kernel-head
-   test/compiler/arm64-kernel-head.f
-;SUITE
-
-\ arm64-place.f compares a placed arm64 shadow emission with the host's tier-0
-\ routine.
+\ arm64-place.f checks the product kernel's entry map, compares a placed arm64
+\ shadow emission with the host's tier-0 routine and places every emission.
 SUITE arm64-place
    test/compiler/arm64-place.f
 ;SUITE

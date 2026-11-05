@@ -1,14 +1,20 @@
-\ arm64-place.f - LINKER's ARM64:PLACE over a fixture word's arm64 shadow
-\ emission. Placed at the host routine's entry it matches the routine T0 placed
-\ there, code address chains aside; placed elsewhere its calls and chains reach
-\ what the shadow named. The fixture is test/compiler/arm64-place-fixture.f,
-\ loaded through the typed interpret loop at tier 0 while the shadow is open.
+\ arm64-place.f - LINKER's arm64 link of a build's code. ARM64:KERNEL writes the
+\ kernel at the head of the code buffer and ARM64:KERNEL-ENTRY maps the running
+\ hb's kernel primitive entries to the same primitives' entries there.
+\ ARM64:PLACE copies a fixture word's shadow emission: at the host routine's entry
+\ it matches the routine T0 placed there, code address chains aside; elsewhere
+\ its calls and chains reach what the shadow named. PLACE-ROUTINES lays every
+\ emission out after the kernel, calls reaching product routines and kernel
+\ primitives at their link addresses, and a second placement gives the same
+\ bytes. The fixture is test/compiler/arm64-place-fixture.f, loaded through the
+\ typed interpret loop at tier 0 while a native shadow is open.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/fs.f
 require src/lib/test.f
+require src/lib/ffi-abi.f
 require src/habu/layout.f
 require src/habu/xref.f
 require src/compiler/native/abi.f
@@ -18,12 +24,19 @@ require src/habu/interpret.f
 require src/arch/arm64/asm.f
 require src/habu/address-carrier.f
 require src/arch/arm64/link.f
+require src/arch/arm64/icode.f
+require src/compiler/native/dict.f
+require src/arch/arm64/link-kernel.f
+require src/habu/link-band.f
 
 package LINKER
 private
 package ARM64-PLACE
 
 CAST: CODE>BYTES ( n -- ptr u8 )
+CAST: N>U8 ( n -- ptr u8 )
+CAST: XT>N ( xt -- n )
+CAST: WORD>N ( [ -- ] -- n )
 
 4096 constant SRC-CAP
 SRC-CAP BUFFER: SRC                  \ the fixture's text
@@ -40,7 +53,18 @@ OUT-CAP BUFFER: PLACED               \ a placed copy of the emission
 3 constant DATA-CHAIN
 
 $123450 constant MOVE-BY             \ the second base's distance from the host's
-$10000 constant LINK-BY              \ what ELSEWHERE's resolve and delta add
+\ What ELSEWHERE's resolvers and the band's data resolver add.
+$10000 constant LINK-BY
+
+variable IN-KERNEL
+variable MAPPED
+variable COMPARED
+variable SAME
+variable PCREL
+variable KERNEL-END                  \ A64ICODE:ASM-LEN after ARM64:KERNEL
+variable PRODUCT-CALLS
+variable KERNEL-CALLS
+DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 
 
 : T0? ( -- bool )
@@ -137,16 +161,16 @@ $10000 constant LINK-BY              \ what ELSEWHERE's resolve and delta add
    want = and ;
 
 
-\ Every code address chain of the copy placed at at gives the shadow's value
-\ plus by; the first site that does not, or -1.
-: CHAINS-BAD ( n n n -- n )
-   {: e:n at:n by:n :}
+\ Every code address chain of the copy at dst, placed at at, gives the shadow's
+\ value through map; the first site that does not, or -1.
+: CHAINS-BAD ( n ptr u8 n [ n -- n ] -- n )
+   {: e:n dst:ptr at:n map :}
    e NSHADOW:ADDR-SITES 0 ?do
       e i CODE-CHAIN? if
          e i NSHADOW:ADDR-SITE@ {: s:n :}
-         PLACED s +  at s +
+         dst s +  at s +
          e s SHADOW-AT ADDRESS-CARRIER:ADDR-CHAIN-BYTES ADDRESS-CARRIER:CHAIN-VALUE
-         by +  CHAIN-GIVES? 0= if s unloop exit then
+         map execute  CHAIN-GIVES? 0= if s unloop exit then
       then
    loop
    -1 ;
@@ -175,41 +199,41 @@ $10000 constant LINK-BY              \ what ELSEWHERE's resolve and delta add
    w $3FFFFFF and  dup $2000000 and 0<> if $4000000 - then  4 *  pc + ;
 
 
-\ The first call row of the copy placed at at that does not reach its target
-\ plus by, or -1.
-: CALLS-BAD ( n n n -- n )
-   {: e:n at:n by:n :}
+\ The first call row of the copy at dst, placed at at, that does not reach its
+\ target through map, or -1.
+: CALLS-BAD ( n ptr u8 n [ n -- n ] -- n )
+   {: e:n dst:ptr at:n map :}
    e NSHADOW:CALL-SITES 0 ?do
       e i NSHADOW:CALL-SITE@ {: s:n :}
-      PLACED s +  at s +  e i NSHADOW:CALL-KIND@ CALL-TO
-      e i NSHADOW:CALL-TARGET@ by + <> if s unloop exit then
+      dst s +  at s +  e i NSHADOW:CALL-KIND@ CALL-TO
+      e i NSHADOW:CALL-TARGET@ map execute <> if s unloop exit then
    loop
    -1 ;
 
 
-\ The first data address row of the copy whose chain does not hold the shadow's
-\ value plus by at the shadow's size, or -1.
-: DATA-BAD ( n n -- n )
-   {: e:n by:n :}
+\ The first data address row of the copy at dst whose chain does not hold the
+\ shadow's value through map at the shadow's size, or -1.
+: DATA-BAD ( n ptr u8 [ n -- n ] -- n )
+   {: e:n dst:ptr map :}
    e NSHADOW:ADDR-SITES 0 ?do
       e i DATA-ROW? if
          e i NSHADOW:ADDR-SITE@ {: s:n :}
          e i DATA-SIZE {: size:n :}
-         PLACED s +  PLACED e NSHADOW:SIZE +  ADDRESS-CARRIER:CHAIN-SIZE size <>
-         PLACED s + size ADDRESS-CARRIER:CHAIN-VALUE
-         e s SHADOW-AT size ADDRESS-CARRIER:CHAIN-VALUE by + <> or
+         dst s +  dst e NSHADOW:SIZE +  ADDRESS-CARRIER:CHAIN-SIZE size <>
+         dst s + size ADDRESS-CARRIER:CHAIN-VALUE
+         e s SHADOW-AT size ADDRESS-CARRIER:CHAIN-VALUE map execute <> or
          if s unloop exit then
       then
    loop
    -1 ;
 
 
-\ The first plain word of the copy that differs from the shadow's, or -1.
-: PLAIN-DIFF ( n -- n )
-   {: e:n :}
+\ The first plain word of the copy at dst that differs from the shadow's, or -1.
+: PLAIN-DIFF ( n ptr u8 -- n )
+   {: e:n dst:ptr :}
    e NSHADOW:SIZE 4 / 0 ?do
       e i 4 * WORD-AT PLAIN = if
-         PLACED i 4 * + LE:U32@  e i 4 * SHADOW-AT LE:U32@ <> if
+         dst i 4 * + LE:U32@  e i 4 * SHADOW-AT LE:U32@ <> if
             i 4 * unloop exit
          then
       then
@@ -217,11 +241,11 @@ $10000 constant LINK-BY              \ what ELSEWHERE's resolve and delta add
    -1 ;
 
 
-\ Emission e copied to PLACED to run at at, data moved by delta.
-: PLACE-AT ( n n n [ n -- n ] -- )
-   {: e:n at:n delta:n resolve :}
+\ Emission e copied to PLACED to run at at, data addresses through data.
+: PLACE-AT ( n n [ n -- n ] [ n -- n ] -- )
+   {: e:n at:n data resolve :}
    e NSHADOW:SIZE OUT-CAP > if s" arm64-place: the emission outgrows PLACED" 1 die then
-   e PLACED at delta resolve ARM64:PLACE ;
+   e PLACED at data resolve ARM64:PLACE ;
 
 
 : KINDS ( n -- )
@@ -239,22 +263,24 @@ $10000 constant LINK-BY              \ what ELSEWHERE's resolve and delta add
 \ At the host routine's own entry h the copy is T0's placement of it.
 : AT-HOST ( n n n -- )
    {: e:n h:n hlen:n :}
-   e h 0 [: 0 + ;] PLACE-AT
+   e h [: 0 + ;] [: 0 + ;] PLACE-AT
    s" placed at the host entry: same words" T-LABEL
    e h  hlen e NSHADOW:SIZE min  HOST-DIFF -1 T=
    s" placed at the host entry: code address chains" T-LABEL
-   e h 0 CHAINS-BAD -1 T= ;
+   e PLACED h [: 0 + ;] CHAINS-BAD -1 T= ;
 
 
 \ At at with every target and data address moved by LINK-BY.
 : ELSEWHERE ( n n -- )
    {: e:n at:n :}
-   e at LINK-BY [: LINK-BY + ;] PLACE-AT
-   s" placed elsewhere: calls" T-LABEL  e at LINK-BY CALLS-BAD -1 T=
+   e at [: LINK-BY + ;] [: LINK-BY + ;] PLACE-AT
+   s" placed elsewhere: calls" T-LABEL
+   e PLACED at [: LINK-BY + ;] CALLS-BAD -1 T=
    s" placed elsewhere: code address chains" T-LABEL
-   e at LINK-BY CHAINS-BAD -1 T=
-   s" placed elsewhere: data addresses" T-LABEL  e LINK-BY DATA-BAD -1 T=
-   s" placed elsewhere: other words" T-LABEL  e PLAIN-DIFF -1 T= ;
+   e PLACED at [: LINK-BY + ;] CHAINS-BAD -1 T=
+   s" placed elsewhere: data addresses" T-LABEL
+   e PLACED [: LINK-BY + ;] DATA-BAD -1 T=
+   s" placed elsewhere: other words" T-LABEL  e PLACED PLAIN-DIFF -1 T= ;
 
 
 : ENCODINGS ( -- )
@@ -286,6 +312,79 @@ $10000 constant LINK-BY              \ what ELSEWHERE's resolve and delta add
    $1FFC $2000 SCRATCH ARM64:CODE-ADDRESS!  SCRATCH $2000 $1FFC CHAIN-GIVES? TTRUE ;
 
 
+\ b, bl, b.cond, cbz/cbnz, tbz/tbnz, adr/adrp and ldr (literal) encode a
+\ pc-relative offset, so the same instruction can differ between the kernels.
+: PC-RELATIVE? ( n -- bool )
+   {: w:n :}
+   w $7C000000 and $14000000 =
+   w $FF000010 and $54000000 = or
+   w $7E000000 and $34000000 = or
+   w $7E000000 and $36000000 = or
+   w $1F000000 and $10000000 = or
+   w $3B000000 and $18000000 = or ;
+
+
+: HOST-WORD ( n -- n ) N>U8 LE:U32@ ;
+: PRODUCT-WORD ( n -- n ) A64ICODE:CODE swap + LE:U32@ ;
+
+
+: COMPARE ( n -- )
+   {: host:n :}
+   host ARM64:KERNEL-ENTRY {: off:n :}
+   off 0 < if exit then
+   1 MAPPED +!
+   host HOST-WORD {: w:n :}
+   w PC-RELATIVE? if 1 PCREL +! exit then
+   1 COMPARED +!
+   off PRODUCT-WORD w = if 1 SAME +! then ;
+
+
+\ The running hb's kernel primitives are the records that start in its own
+\ code, [rbase, CODE-END-CELL).
+: VISIT ( ptr n -- )
+   {: rec:ptr :}
+   rec XREF-START {: start:n :}
+   start rbase < if exit then
+   start data-base CODE-END-CELL + @ >= if exit then
+   1 IN-KERNEL +!
+   start COMPARE ;
+
+
+: ENTRIES-CASE ( -- )
+   s" every host kernel primitive maps to a product entry with its first word" T-LABEL
+   0 IN-KERNEL !  0 MAPPED !  0 COMPARED !  0 SAME !  0 PCREL !
+   ndict@ 0 ?do i XREF-REC VISIT loop
+   IN-KERNEL @ 0 > TTRUE
+   MAPPED @ IN-KERNEL @ T=
+   SAME @ COMPARED @ T=
+   s" kernel: primitives " type IN-KERNEL @ .
+   s" compared " type COMPARED @ .
+   s" skipped pc-relative " type PCREL @ . cr ;
+
+
+: KERNEL-ENTRY-MAPS ( n -- ) ARM64:KERNEL-ENTRY 0 >= TTRUE ;
+: MAPS ( xt -- ) XT>N KERNEL-ENTRY-MAPS ;
+
+
+: NAMED-CASE ( -- )
+   s" the primitives T0 compiles in by address map" T-LABEL
+   ['] type MAPS
+   ['] xt! MAPS
+   ['] execute MAPS
+   ['] die MAPS
+   NDICT:DOES-PATCH-ENTRY KERNEL-ENTRY-MAPS ;
+
+
+: THUNK-CASE ( -- )
+   s" the callback thunk T0 bakes maps" T-LABEL
+   -1 FFI:CALLBACK-ENTRY KERNEL-ENTRY-MAPS ;
+
+
+: INTERIOR-CASE ( -- )
+   s" an address inside a primitive maps to nothing" T-LABEL
+   ['] dup XT>N 4 + ARM64:KERNEL-ENTRY -1 T= ;
+
+
 : CHECK ( -- )
    s" PL-RUN" ROW-NAMED {: r:n :}
    r 0< if s" arm64-place: PL-RUN has no shadow record" 1 die then
@@ -299,15 +398,145 @@ $10000 constant LINK-BY              \ what ELSEWHERE's resolve and delta add
    REACH ;
 
 
+\ Emission e's placed copy in the band and the link address it runs at.
+: BAND-AT ( n -- ptr u8 ) OFFSET@ A64ICODE:CODE swap + ;
+: BAND-LINK ( n -- n ) OFFSET@ TEXT-VA + ;
+
+: BAND-CALLS ( n -- n ) {: e:n :} e e BAND-AT e BAND-LINK ['] LINK-ADDRESS CALLS-BAD ;
+: BAND-CHAINS ( n -- n ) {: e:n :} e e BAND-AT e BAND-LINK ['] LINK-ADDRESS CHAINS-BAD ;
+: BAND-DATA ( n -- n ) {: e:n :} e e BAND-AT [: LINK-BY + ;] DATA-BAD ;
+: BAND-PLAIN ( n -- n ) {: e:n :} e e BAND-AT PLAIN-DIFF ;
+
+
+\ The first emission whose placed copy check answers other than -1 for, or -1.
+: FIRST-BAD ( [ n -- n ] -- n )
+   {: check :}
+   NSHADOW:EMISSIONS 0 ?do
+      i check execute -1 <> if i unloop exit then
+   loop
+   -1 ;
+
+
+\ A call to host address a counts as a product call when its link address is in
+\ the band, as a kernel call when it is the kernel primitive's.
+: COUNT-CALL ( n -- )
+   {: a:n :}
+   a LINK-ADDRESS {: to:n :}
+   to TEXT-VA KERNEL-END @ + >= if 1 PRODUCT-CALLS +! exit then
+   a ARM64:KERNEL-ENTRY {: off:n :}
+   off 0 >=  to TEXT-VA off + =  and if 1 KERNEL-CALLS +! then ;
+
+
+: COUNT-CALLS ( -- )
+   0 PRODUCT-CALLS !  0 KERNEL-CALLS !
+   NSHADOW:EMISSIONS 0 ?do
+      i NSHADOW:CALL-SITES 0 ?do j i NSHADOW:CALL-TARGET@ COUNT-CALL loop
+   loop ;
+
+
+\ Whether call row k of emission e's placed copy decodes to to.
+: CALL-REACHES? ( n n n -- bool )
+   {: e:n k:n to:n :}
+   e k NSHADOW:CALL-SITE@ {: s:n :}
+   e BAND-AT s +  e BAND-LINK s +  e k NSHADOW:CALL-KIND@ CALL-TO  to = ;
+
+
+: ANY-CALL-REACHES? ( n n -- bool )
+   {: e:n to:n :}
+   e NSHADOW:CALL-SITES 0 ?do
+      e i to CALL-REACHES? if true unloop exit then
+   loop
+   false ;
+
+
+\ The entry above 0 of a record over emission e: its does> clause, or -1.
+: CLAUSE-ENTRY ( n -- n )
+   {: e:n :}
+   NSHADOW:RECORDS 0 ?do
+      i NSHADOW:EMISSION@ e =  i NSHADOW:ENTRY@ 0 >  and if
+         i NSHADOW:ENTRY@ unloop exit
+      then
+   loop
+   -1 ;
+
+
+: EMISSION-NAMED ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u ROW-NAMED {: r:n :}
+   r 0< if s" arm64-place: a fixture word has no shadow record" 1 die then
+   r NSHADOW:EMISSION@ ;
+
+
+\ PL-FIVE's last call row is its does> slot (NSHADOW:PATCH-CALL?).
+: SLOT-CASE ( -- )
+   s" PL-FIVE" EMISSION-NAMED {: five:n :}
+   s" PL-MAKE" EMISSION-NAMED {: make:n :}
+   s" band: PL-FIVE's does> slot reaches PL-MAKE's clause" T-LABEL
+   make CLAUSE-ENTRY 0 > TTRUE
+   five  five NSHADOW:CALL-SITES 1 -  make BAND-LINK make CLAUSE-ENTRY +
+   CALL-REACHES? TTRUE ;
+
+
+\ The band, cleared and placed again from the kernel's end, gives the bytes the
+\ first placement did.
+: SECOND-CASE ( -- )
+   A64ICODE:ASM-LEN {: len:n :}
+   len KERNEL-END @ - {: u:n :}
+   A64ICODE:CODE KERNEL-END @ + {: band:ptr :}
+   u FIRST-BAND-RESERVE
+   band  0 FIRST-BAND  u BYTE-COPY
+   u 0 ?do 0  band i +  c! loop
+   KERNEL-END @ 4 / A64ICODE:ASM-CP !
+   [: LINK-BY + ;] PLACE-ROUTINES
+   s" band: a second placement gives the same bytes" T-LABEL
+   A64ICODE:ASM-LEN len T=
+   band u  0 FIRST-BAND u  STR= TTRUE
+   FIRST-BAND-RELEASE ;
+
+
+: BAND-CASE ( -- )
+   [: LINK-BY + ;] PLACE-ROUTINES
+   s" band: every call" T-LABEL  ['] BAND-CALLS FIRST-BAD -1 T=
+   s" band: every code address chain" T-LABEL  ['] BAND-CHAINS FIRST-BAD -1 T=
+   s" band: every data address" T-LABEL  ['] BAND-DATA FIRST-BAD -1 T=
+   s" band: every other word" T-LABEL  ['] BAND-PLAIN FIRST-BAD -1 T=
+   COUNT-CALLS
+   s" band: product and kernel calls" T-LABEL
+   PRODUCT-CALLS @ 0 > TTRUE  KERNEL-CALLS @ 0 > TTRUE
+   s" band: product calls " type PRODUCT-CALLS @ .
+   s" kernel calls " type KERNEL-CALLS @ . cr
+   s" PL-RUN" EMISSION-NAMED {: run:n :}
+   s" PL-LEAF" EMISSION-NAMED {: leaf:n :}
+   s" band: PL-RUN reaches PL-LEAF" T-LABEL
+   run  leaf BAND-LINK  ANY-CALL-REACHES? TTRUE
+   s" band: a word outside the product has no link address" T-LABEL
+   ['] T-REPORT WORD>N LINK-ADDRESS -1 T=
+   SLOT-CASE
+   SECOND-CASE ;
+
+
 public
 
 : RUN ( -- )
    T-RESET
    TIER-CK
-   NABI:BINDING NSHADOW:OPEN
+   ARM64:KERNEL
+   A64ICODE:ASM-LEN KERNEL-END !
+   ENTRIES-CASE
+   NAMED-CASE
+   THUNK-CASE
+   INTERIOR-CASE
+   \ PL-MAKE's `create` calls CREATEP-CELL's definer; the kernel's, there until
+   \ this line, throws E-COMP-STATE in SHADOW-FIXED under a native shadow.
+   OUTER:INSTALL-CREATE
+   NABI:BINDING NSHADOW:OPEN-NATIVE
    NSHADOW:RECORDS RECS0 !
    LOAD-FIXTURE
+   A64ICODE:ASM-LEN KERNEL-END @ <> if
+      s" arm64-place: loading the fixture moved A64ICODE:ASM-LEN" 1 die
+   then
    CHECK
+   BAND-CASE
    NSHADOW:CLOSE
    T-REPORT ;
 

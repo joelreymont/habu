@@ -1,6 +1,7 @@
 \ link.f - an arm64 shadow emission copied to its link-time address: calls
 \ become bl/b and code addresses adrp+add relative to where the code runs, data
-\ addresses keep their absolute DATA chain. Words visible only inside LINKER.
+\ address chains take the value a data resolver gives. Words visible only
+\ inside LINKER.
 
 require src/lib/le.f
 require src/core/bytes.f
@@ -13,12 +14,12 @@ package LINKER
 private
 package ARM64
 
-\ The data address chain at p, inside bytes ending at end, moved by delta.
-: DATA-ROW ( ptr u8 ptr u8 n -- )
-   {: p:ptr end:ptr delta:n :}
+\ The data address chain at p, inside bytes ending at end, its value through data.
+: DATA-ROW ( ptr u8 ptr u8 [ n -- n ] -- )
+   {: p:ptr end:ptr data :}
    p end ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
    size 0= if s" a64link: a data address row holds no address chain" 74 die then
-   p  p size ADDRESS-CARRIER:CHAIN-VALUE delta +  size
+   p  p size ADDRESS-CARRIER:CHAIN-VALUE data execute  size
    ADDRESS-CARRIER:SET-CHAIN-VALUE ;
 
 public
@@ -44,9 +45,9 @@ public
 
 
 \ Emission e copied to dst, whose first byte runs at link-time address at: calls
-\ and code address chains to resolve of their target, data addresses by delta.
-: PLACE ( n ptr u8 n n [ n -- n ] -- )
-   {: e:n dst:ptr at:n delta:n resolve :}
+\ and code address chains to resolve of their target, data addresses through data.
+: PLACE ( n ptr u8 n [ n -- n ] [ n -- n ] -- )
+   {: e:n dst:ptr at:n data resolve :}
    e NSHADOW:BYTES dst e NSHADOW:SIZE BYTE-COPY
    dst e NSHADOW:SIZE + {: end:ptr :}
    e NSHADOW:CALL-SITES 0 ?do
@@ -59,7 +60,7 @@ public
       dst s + {: p:ptr :}
       e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
       kind NEMIT:ADDR-DATA = if
-         p end delta DATA-ROW
+         p end data DATA-ROW
       else
          kind NEMIT:ADDR-CODE <> if
             s" a64link: an address row of no known kind" 74 die
