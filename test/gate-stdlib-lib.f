@@ -5,7 +5,6 @@ require src/lib/test.f
 require src/lib/test/runner.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/fs.f
 require test/gate-pool.f
 require test/gate-images.f
 require test/image-grant.f
@@ -38,26 +37,6 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
       then
    loop ;
 
-\ Each item names its own engine to its children: HABU_UNDER_TEST, which
-\ src/lib/engine-candidate.f reads first, names the binary this item runs on, so
-\ an outer value cannot send a whitebox item's children to the sealed product.
-\ HABU_FIXPOINT_ENGINE goes with it: a suite that rebuilds an engine
-\ (tools/build-fixpoint.f BF-ENGINE$) must land on the same one. Both are set
-\ before the inherit, which skips a name already present.
-: SUITE-ENGINE-ENV ( ptr u8 n -- ) {: eng:ptr engu:n :}
-   s" HABU_UNDER_TEST" >LEN eng engu >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN eng engu >LEN PROC-ENV+ ;
-
-\ The grant names the keyed images the gate settled for this row
-\ (test/image-grant.f), and goes in before the inherit for the same reason: a
-\ gate run as a row of another gate grants its own rows, never its parent's.
-: SUITE-ENV ( ptr u8 n ptr u8 n -- ) {: eng:ptr engu:n grant:ptr grantu:n :}
-   PROC-ENV-RESET
-   eng engu SUITE-ENGINE-ENV
-   IMAGE-GRANT:NAME$ >LEN grant grantu >LEN PROC-ENV+
-   s" HABU_GATE_COMPILER_IMAGES" >LEN GT-ROOT >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING ;
-
 \ The spawn path is relative, as the gate runs in the checkout; the variable is
 \ absolute: ENGINE-CANDIDATE:PATH$ joins a relative one to its reader's own CWD.
 : PRODUCT-SPAWN$ ( -- ptr u8 n )
@@ -65,6 +44,20 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 
 : PRODUCT-ENGINE$ ( -- ptr u8 n )
    ENGINE-ID:PATH$ ;
+
+\ HABU_UNDER_TEST (read first by src/lib/engine-candidate.f) and HABU_FIXPOINT_ENGINE name the
+\ product engine to an item's children; set before the inherit, which skips a name already present.
+: SUITE-ENGINE-ENV ( -- )
+   s" HABU_UNDER_TEST" >LEN PRODUCT-ENGINE$ >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN PRODUCT-ENGINE$ >LEN PROC-ENV+ ;
+
+\ The grant names the images the gate settled for this row (test/image-grant.f); set before the
+\ inherit too, so a gate run as a row of another gate grants its own rows, never its parent's.
+: SUITE-ENV ( ptr u8 n -- ) {: grant:ptr grantu:n :}
+   PROC-ENV-RESET
+   SUITE-ENGINE-ENV
+   IMAGE-GRANT:NAME$ >LEN grant grantu >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING ;
 
 \ A row's argv waits with it: the readiness probe may start a build row, which
 \ stages its own argv in the same process-wide table, so the tokens are kept
@@ -115,34 +108,23 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 : SUITE-HB-RUN ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
    GATE-IMAGES:ROW-SETTLED? 0= if false exit then
    label labelu SUITE-READY? 0= if true exit then
-   PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
+   GATE-IMAGES:ROW-GRANT$ SUITE-ENV
    PRODUCT-SPAWN$ label labelu GT-POOL-START
-   true ;
-
-\ A WHITEBOX-SUITE row runs on the gate's private copy of the unsealed engine,
-\ which the whitebox-engine build row puts in place.
-: SUITE-WB-RUN ( ptr u8 n -- bool ) {: label:ptr labelu:n :}
-   GATE-IMAGES:ROW-WHITEBOX
-   GATE-IMAGES:ROW-SETTLED? 0= if false exit then
-   label labelu SUITE-READY? 0= if true exit then
-   GATE-IMAGES:WHITEBOX$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
-   GATE-IMAGES:WHITEBOX$ label labelu GT-POOL-START
    true ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- bool ) {: in:ptr inu:n label:ptr labelu:n :}
    GATE-IMAGES:ROW-SETTLED? 0= if false exit then
    label labelu SUITE-READY? 0= if true exit then
-   PRODUCT-ENGINE$ GATE-IMAGES:ROW-GRANT$ SUITE-ENV
+   GATE-IMAGES:ROW-GRANT$ SUITE-ENV
    PRODUCT-SPAWN$ label labelu in inu GT-POOL-START-STDIN
    true ;
 
 \ A keyed image's build row: the product engine, handed its program on stdin
-\ with no arguments, granted the family it settles and that family's
-\ prerequisites.
+\ with no arguments, granted the family it settles.
 : SUITE-BUILD-RUN ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: prog:ptr progu:n label:ptr labelu:n grant:ptr grantu:n :}
    PROC-ARGV-RESET
-   PRODUCT-ENGINE$ grant grantu SUITE-ENV
+   grant grantu SUITE-ENV
    PRODUCT-SPAWN$ label labelu prog progu GT-POOL-START-STDIN ;
 
 \ The entry guard walks the load graph DERIVE read and refuses the registry
@@ -167,37 +149,6 @@ variable ROW-SCRIPT?                     \ the row's `--` has passed
 : SUITE-DRAIN ( -- )
    GT-POOL-DRAIN-SOFT ;
 
-4096 constant COMPILER-CHUNK-CAP
-create COMPILER-CHUNK COMPILER-CHUNK-CAP allot
-variable COMPILER-OFF
-
-: FORWARD-COMPILER-FILE ( ptr u8 n n -- )
-   {: path:ptr pathu:n dest:n :}
-   path pathu FS:>PATHZ open-rd {: fd:n :}
-   fd 0 < if E-FS-OPEN throw then
-   begin
-      fd COMPILER-CHUNK COMPILER-CHUNK-CAP read {: u:n :}
-      u 0 < if fd close E-FS-IO throw then
-      u 0= if fd close exit then
-      0 COMPILER-OFF !
-      begin COMPILER-OFF @ u < while
-         dest COMPILER-CHUNK COMPILER-OFF @ + u COMPILER-OFF @ - write
-            {: wrote:n :}
-         wrote 0 <= if fd close E-FS-IO throw then
-         COMPILER-OFF @ wrote + COMPILER-OFF !
-      repeat
-   again ;
-
-\ Pool captures contain the full streams, while their printed tails hold 32
-\ KiB. Forward both complete streams before normal pool cleanup removes them.
-: FORWARD-COMPILER-LOGS ( -- )
-   GATE-IMAGES:COMPILER-RED {: red:n :}
-   red 0 < if exit then
-   s" compiler-images stdout (full):" type cr
-   red GT-POOL-RED-OUT$ 1 FORWARD-COMPILER-FILE
-   2 S\" compiler-images stderr (full):\n" write drop
-   red GT-POOL-RED-ERR$ 2 FORWARD-COMPILER-FILE ;
-
 \ The pool drains softly between groups, so every suite runs whatever went red
 \ before it; the red set is reported once here, with exit codes, and decides the
 \ exit status. Cleanup runs before the red die ends the process, else each red
@@ -207,7 +158,6 @@ variable COMPILER-OFF
    s" suites: ran " type TEST:ITEMS-RUN GT-U-TYPE
    s"  of " type TEST:ITEMS-REGISTERED GT-U-TYPE cr
    GT-POOL-RED-REPORT
-   FORWARD-COMPILER-LOGS
    GT-POOL-CLEANUP
    GT-POOL-SIGNAL-CHECK
    rc 0 <> if exit then                 \ the body threw: the framework rethrows that code
@@ -221,7 +171,6 @@ variable COMPILER-OFF
    [: ROW-BEGIN ;] TEST:ARGS-BEGIN!
    [: ROW-ARG+ ;] TEST:ARG+!
    [: SUITE-HB-RUN ;] TEST:RUNNER!
-   [: SUITE-WB-RUN ;] TEST:WHITEBOX-RUNNER!
    [: SUITE-HB-RUN-STDIN ;] TEST:STDIN-RUNNER! ;
 
 public

@@ -9,8 +9,6 @@ using TEST
 
 \ Measure with `/usr/bin/time bin/hb --load <file>`.
 
-\ These long rows lead so they keep the pool busy while the compiler bundle
-\ builds.
 SUITE check-cli-boundary
    tools/check-test.f
 ;SUITE
@@ -473,8 +471,6 @@ SUITE print-min-int
 SUITE genio
    src/lib/genio-test.f
 ;SUITE
-
-\ WHITEBOX-SUITE rows follow docs/gate.md; each says why in its header or row.
 
 SUITE loop-obligations
    test/loop-obligations.f

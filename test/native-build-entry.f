@@ -1,8 +1,5 @@
-\ The production entry refuses a bad command line before it loads the build
-\ closure (tools/native-build-args.f): no output argument, a bad build class, an
-\ unknown --target profile, a profile with no native CORE ABI and one whose
-\ machine has no backend here. The accepted path is every gate's whitebox
-\ engine build (test/whitebox-engine.f runs this entry with `whitebox`).
+\ The production entry refuses a bad command line before it loads the build closure
+\ (tools/native-build-args.f): no output, a bad class or --target profile, or a profile with no CORE ABI or backend here.
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f

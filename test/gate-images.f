@@ -1,8 +1,5 @@
-\ gate-images.f - the keyed images a gate settles in its pool, and which rows
-\ wait for each. One module builds one image family; a row NEEDS a family when
-\ its load closure (the files it loads and those they import or launch,
-\ test/load-refs.f) holds the family's module, so nothing is declared. A
-\ WHITEBOX-SUITE row also needs the whitebox engine.
+\ gate-images.f - the keyed images a gate settles in its pool; a row needs a family when
+\ its load closure (test/load-refs.f) holds the family's module, so nothing is declared.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -17,44 +14,34 @@ require test/image-grant.f
 
 package GATE-IMAGES
 
-0 constant COMPILER
-1 constant APP
-2 constant WHITEBOX
-3 constant AOT-BUILDER
-4 constant APP-BUILDER
-5 constant CHECK-VERIFY
-6 constant FAMILY-N
+0 constant APP
+1 constant AOT-BUILDER
+2 constant APP-BUILDER
+3 constant CHECK-VERIFY
+4 constant FAMILY-N
 
 \ Each row is granted the images settled for it (test/image-grant.f), so its own
 \ settle only finds and dates them; a settle its closure does not show dies in
 \ that child, naming the image, instead of building beside the gate's build row.
 \ The family name each module checks its grant under (test/image-grant.f).
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
-   f COMPILER = if s" compiler-images" exit then
    f APP = if s" app-image" exit then
-   f WHITEBOX = if s" whitebox-engine" exit then
    f AOT-BUILDER = if s" aot-builder" exit then
    f APP-BUILDER = if s" app-builder" exit then
    f CHECK-VERIFY = if s" check-verify" exit then
    E-TBL-BOUNDS throw ;
 
-\ Prerequisites come first (the whitebox engine builds on the compiler images); DERIVE refuses one listed after.
 \ tools/check-verify-image.f has no grant check, so an ungranted test builds its own image.
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
-   f COMPILER = if s" test/compiler-images.f" exit then
    f APP = if s" test/app-image-engine.f" exit then
-   f WHITEBOX = if s" test/whitebox-engine.f" exit then
    f AOT-BUILDER = if s" test/aot-builder-engine.f" exit then
    f APP-BUILDER = if s" test/app-builder-engine.f" exit then
    f CHECK-VERIFY = if s" tools/check-verify-image.f" exit then
    E-TBL-BOUNDS throw ;
 
-\ What the build row runs once the module is loaded. The whitebox row also puts
-\ the gate's private copy in place for the WHITEBOX-SUITE rows (WB$).
+\ What the build row runs once the module is loaded.
 : SETTLE$ ( n -- ptr u8 n ) {: f:n :}
-   f COMPILER = if s" COMPILER-IMAGES:BUILD" exit then
    f APP = if s" APP-IMAGE-ENGINE:ENSURE" exit then
-   f WHITEBOX = if s" WHITEBOX-ENGINE:PROVIDE" exit then
    f AOT-BUILDER = if s" AOT-BUILDER-ENGINE:ENSURE" exit then
    f APP-BUILDER = if s" APP-BUILDER-ENGINE:ENSURE" exit then
    f CHECK-VERIFY = if s" 600000 CHECK-VERIFY-IMAGE:SETTLE" exit then
@@ -217,16 +204,8 @@ variable UNION
    a u FS:FILE? 0= if 0 exit then
    a u SOURCE-ROOT:CANONICAL drop INTERN CLOSURE-OF ;
 
-\ Before its first registry row the gate starts one build row per needed family,
-\ <family>-build: a bin/hb child on the product engine handed `require <module>`
-\ and the family's settle word on stdin. A family starts once its prerequisites
-\ passed, and never if one failed. A row that needs an unsettled image waits out
-\ of the pool and starts at the first start after its images settle, ahead of
-\ every later row not yet started (src/lib/test/suite.f PENDING); before a
-\ sequential group and at the end of the run every wanted image settles. A row
-\ that needs a failed image is its own red pool row, naming the failed build
-\ row. Build rows are spawned, not forked, so the gate loads no family module:
-\ test/run-cli-test.f launches test/run.f and reaches no image through it.
+\ A needed family settles in one build row, a bin/hb child fed its module on
+\ stdin: the gate loads none, so a row that runs test/run.f needs no image.
 
 0 constant IDLE
 1 constant WANTED
@@ -240,14 +219,11 @@ GT-POOL-STDIN-CAP constant PROGRAM-CAP
 
 create STATES FAMILY-N cells allot
 create SEQS FAMILY-N cells allot         \ a live build row's capture seq
-create PRES FAMILY-N cells allot         \ the families each one needs first
 create PROGRAM-BUF PROGRAM-CAP allot
 create LABEL-BUF GT-FAIL-NAME-CAP allot
-create WB-BUF PATH-CAP allot
 
 variable PROGRAM-U
 variable LABEL-U
-variable WB-U
 variable NEEDED
 variable ROW-MASK
 
@@ -258,11 +234,6 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
 : STATE! ( n n -- ) cells STATES + ! ;
 : SEQ@ ( n -- n ) cells SEQS + @ ;
 : SEQ! ( n n -- ) cells SEQS + ! ;
-: PRE@ ( n -- n ) cells PRES + @ ;
-: PRE! ( n n -- ) cells PRES + ! ;
-
-: WB$ ( -- ptr u8 n )
-   WB-BUF WB-U @ ;
 
 : MODULE! ( n -- ) {: f:n :}
    f MODULE$ FS:FILE? 0= if
@@ -273,18 +244,6 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
    f MODULE$ SOURCE-ROOT:CANONICAL drop INTERN {: id:n :}
    f BIT id OWN ! ;
 
-: DERIVE-PRE ( n -- ) {: f:n :}
-   f MODULE$ FILE-MASK f BIT invert and {: pre:n :}
-   pre f BIT 1- invert and 0<> if
-      s" gate images: " type f LABEL$ type
-      s"  needs a family listed after it" type cr
-      E-SUITE-ROW throw
-   then
-   pre f PRE! ;
-
-\ A mask is the families a closure of files reaches, and a family's module
-\ reaches its prerequisites' modules, so every mask holds the prerequisites of
-\ its families.
 : WANT ( n -- ) {: mask:n :}
    mask NEEDED !
    FAMILY-N 0 ?do mask i BIT and 0<> if WANTED i STATE! then loop ;
@@ -301,7 +260,6 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
 : PROGRAM! ( n -- ) {: f:n :}
    0 PROGRAM-U !
    s" require " PROGRAM+ f MODULE$ PROGRAM+ S\" \n" PROGRAM+
-   f WHITEBOX = if S\" s\" " PROGRAM+ WB$ PROGRAM+ S\" \" " PROGRAM+ then
    f SETTLE$ PROGRAM+ S\" \n" PROGRAM+ ;
 
 : LABEL+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -314,12 +272,12 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
    f LABEL$ LABEL+
    s" -build" LABEL+ ;
 
-\ A build row is granted its family and the prerequisites its module settles on
-\ the way.
+\ A build row is granted its own family: settling another family's image dies at
+\ that family's IMAGE-GRANT:CHECK (UNGRANTED-RC); check-verify has none.
 : BUILD ( n -- ) {: f:n :}
    f PROGRAM!
    f BUILD-LABEL!
-   f BIT f PRE@ or GRANT!
+   f BIT GRANT!
    PROGRAM-BUF PROGRAM-U @ LABEL-BUF LABEL-U @ IMAGE-GRANT:VALUE$
    START-XT @ execute
    GT-POOL-SEQ @ f SEQ!
@@ -335,9 +293,7 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
       i STATE@ LIVE = if i SEQ@ GT-POOL-SEQ-LIVE? 0= if i OUTCOME then then
    loop ;
 
-\ The first failed family in a mask, or -1. A family comes after its
-\ prerequisites and a mask holds them, so this is a family whose own build
-\ failed, never one left unbuilt behind it.
+\ The first failed family in a mask, or -1.
 : FAILED-IN ( n -- n ) {: mask:n :}
    FAMILY-N 0 ?do
       mask i BIT and 0<> i STATE@ FAILED = and if i unloop exit then
@@ -355,20 +311,11 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
    s" -build" SB-APPEND
    SB$ RED-ROW-RC die ;
 
-: READY-ALL? ( n -- bool ) {: mask:n :}
-   FAMILY-N 0 ?do
-      mask i BIT and 0<> i STATE@ READY <> and if false unloop exit then
-   loop
-   true ;
-
-\ A family behind a failed prerequisite is never built.
 : STEP-ONE ( n -- ) {: f:n :}
-   f STATE@ WANTED <> if exit then
-   f PRE@ FAILED-IN 0 >= if FAILED f STATE! exit then
-   f PRE@ READY-ALL? if f BUILD then ;
+   f STATE@ WANTED = if f BUILD then ;
 
-\ Retire what finished, then start every wanted family whose prerequisites
-\ passed. A start waits for a free slot.
+\ Retire what finished, then start every wanted family. A start waits for a
+\ free slot.
 : PUMP ( -- )
    REFRESH
    FAMILY-N 0 ?do i STEP-ONE loop ;
@@ -381,8 +328,8 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
    loop
    true ;
 
-\ DERIVE wanted every family a row can need, and PUMP starts a wanted family
-\ once its prerequisites passed, so a build row is live until the mask settles.
+\ DERIVE wanted every family a row can need, and PUMP starts each wanted family,
+\ so a build row is live until the mask settles.
 : AWAIT ( n -- ) {: mask:n :}
    begin
       PUMP
@@ -396,7 +343,7 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
    drop drop ;
 
 : STATES-RESET ( -- )
-   FAMILY-N 0 ?do IDLE i STATE! 0 i PRE! loop
+   FAMILY-N 0 ?do IDLE i STATE! loop
    0 NEEDED ! ;
 
 \ Every family row this gate may start must fit the pool's red table.
@@ -417,12 +364,8 @@ public
    GRAPH-RESET
    STATES-RESET
    FAMILY-N 0 ?do i MODULE! loop
-   FAMILY-N 0 ?do i DERIVE-PRE loop
    0 UNION !
    [: UNION-FILE ;] TEST:VISIT-LOAD-FILES
-   TEST:WHITEBOX-RUNS? if
-      WHITEBOX MODULE$ FILE-MASK UNION @ or UNION !
-   then
    UNION @ WANT ;
 
 \ Start the build rows of the images DERIVE found needed. Call it after
@@ -430,13 +373,7 @@ public
 \ build row from its stdin program, label and grant.
 : START ( [ ptr u8 n ptr u8 n ptr u8 n -- ] -- )
    START-XT !
-   s" hb-whitebox" WB-BUF GT-PATH WB-U !
    PUMP ;
-
-\ The engine the WHITEBOX-SUITE rows run on: this gate's private copy, which
-\ the whitebox-engine build row puts in place.
-: WHITEBOX$ ( -- ptr u8 n )
-   WB$ ;
 
 : ROW-RESET ( -- )
    0 ROW-MASK ! ;
@@ -444,13 +381,8 @@ public
 : ROW-FILE ( ptr u8 n -- )
    FILE-MASK ROW-MASK @ or ROW-MASK ! ;
 
-\ A row on the whitebox engine needs what loading the engine's module would.
-: ROW-WHITEBOX ( -- )
-   WHITEBOX MODULE$ ROW-FILE ;
-
-\ Retire finished build rows, start the wanted ones whose prerequisites
-\ passed, and answer whether every image the row needs is settled. Never
-\ waits for a build row: a start waits only for a free slot.
+\ Retire finished build rows, start the wanted ones, and answer whether every
+\ image the row needs is settled.
 : ROW-SETTLED? ( -- bool )
    PUMP
    ROW-MASK @ SETTLED? ;
@@ -471,12 +403,6 @@ public
 \ beside a sequential group.
 : SETTLE-ALL ( -- )
    NEEDED @ AWAIT ;
-
-\ The adapter retains the full compiler build capture before pool cleanup.
-\ The pool's printed failure tail is shorter than the supplier's capture.
-: COMPILER-RED ( -- n )
-   COMPILER STATE@ FAILED <> if -1 exit then
-   COMPILER SEQ@ GT-POOL-RED-FIND-SEQ ;
 
 \ The load graph DERIVE read. Files are numbered from 0. A file's loads are
 \ EDGE-COUNT consecutive edges from EDGE-FIRST, in source order; each names the

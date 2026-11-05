@@ -178,11 +178,6 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
   entry and any import or launch of one (`test/gate-images.f`);
   `bin/hb --load test/gate-entry-guard-test.f` checks this without starting
   the full suite.
-- A `WHITEBOX-SUITE` row runs on the gate's unsealed engine
-  (`test/whitebox-engine.f`), because its file reaches inside the engine and
-  the sealed `bin/hb` refuses that. A file that only spawns a child needing the
-  unsealed engine names one itself through `test/whitebox-child.f` and stays a
-  plain `SUITE`.
 - A row needs a keyed image when its load closure holds the image's module;
   nothing is declared. A failed build row makes every row that needs its image
   red naming it; every other row runs.
