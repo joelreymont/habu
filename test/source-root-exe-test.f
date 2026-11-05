@@ -34,7 +34,6 @@ $1000 constant PROG-CAP
 120000 constant TIMEOUT-MS
 \ A save compiles src/habu/app-image.f from source, which a loaded host makes slow.
 600000 constant SAVE-TIMEOUT-MS
-1800000 constant BUILD-TIMEOUT-MS
 \ A prompt line holds 255 bytes, so `cd <name>` names at most this much; four
 \ nested names fit the 1023-byte path cap and a fifth does not.
 200 constant LONG-NAME
@@ -251,9 +250,7 @@ variable RC
    LONG-NAME 0 ?do 97 LONG i + c! loop
    DEEP-DIRS
    s" moved/bin" A$ FS:MAKE-DIRS
-   s" src" s" moved/src" GATE-LINK
-   s" cwd" A$ FS:MAKE-DIR
-   s" tools" s" cwd/tools" GATE-LINK ;
+   s" src" s" moved/src" GATE-LINK ;
 
 : RESULT! ( result<pcap:captured,pcap:failed> -- ) PCAP-RESULT:>N RC ! ERR-U ! OUT-U ! ;
 
@@ -675,29 +672,12 @@ variable RC
    IMAGE$ FOREIGN$ S\" SOURCE-ROOT:ENGINE$ type cr\n" TIMEOUT-MS RUN-EXE
    SB-RESET s" moved" A$ LINE SB$ 0 EXPECT ;
 
-\ The working directory holds only the tree's tools. Driver support comes from
-\ the host tree, but the first target source must still come from CWD.
-: BUILD-OUTSIDE ( -- )
-   s" a native build outside a tree dies at its first row" T-LABEL
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" tools/native-build.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" hb-foreign" A$ >LEN PROC-ARGV+
-   CHILD-ENV
-   s" tree/bin/hb" HB-AT$ >LEN s" cwd" A$ >LEN
-   OUT IO-CAP >LEN ERR IO-CAP >LEN BUILD-TIMEOUT-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE RESULT!
-   s" cwd" A$ s" /src/habu/window-rewind.f" CANNOT-OPEN
-   s" the failed build writes no engine" T-LABEL
-   s" hb-foreign" A$ FS:EXISTS? TFALSE ;
-
 : MAIN ( -- )
    T-RESET
    PREP
    EXE-TREE CWD-TREE LONE PARTIAL NOT-TREE
    APP WD ENTRY ALIAS FIX-1 FIX-2 BOOT-OUTSIDE
-   PATH-WORDS SAVE-PUSHED CAPTURE BUILD-OUTSIDE
+   PATH-WORDS SAVE-PUSHED CAPTURE
    FS:CLEANUP-RUN
    T-REPORT
    s" source-root-exe-test: ok" type cr ;

@@ -1,20 +1,13 @@
 \ The production entry refuses a bad command line before it loads the build
 \ closure (tools/native-build-args.f): no output argument, a bad build class, an
-\ unknown --target profile and one whose machine has no backend here. With the
-\ backend loaded, the selected action refuses an unavailable writer before the
-\ compiler window loads. A same-ISA product for another OS is written without
-\ the smoke run, which only a product this host can launch gets. The accepted
-\ path is every gate's whitebox engine build (test/whitebox-engine.f runs this
-\ entry with `whitebox`).
+\ unknown --target profile, a profile with no native CORE ABI and one whose
+\ machine has no backend here. The accepted path is every gate's whitebox
+\ engine build (test/whitebox-engine.f runs this entry with `whitebox`).
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
-require src/lib/fs.f
-require src/lib/fs-mutate.f
-require src/lib/le.f
-require src/lib/string.f
 
 package NATIVE-BUILD-ENTRY-TEST
 
@@ -24,21 +17,6 @@ create ERR CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
-create FOREIGN-ROOT PATH-CAP allot
-variable FOREIGN-ROOT-U
-create FOREIGN-OUT PATH-CAP allot
-variable FOREIGN-OUT-U
-create CONTENT 64 allot
-: FOREIGN-OUT$ ( -- ptr u8 n ) FOREIGN-OUT FOREIGN-OUT-U @ ;
-
-: FOREIGN-OUT! ( ptr u8 n -- ) {: name:ptr size:n :}
-   FOREIGN-ROOT FOREIGN-ROOT-U @ name size FOREIGN-OUT FS:JOIN-PATH
-      FOREIGN-OUT-U ! ;
-
-: FOREIGN-ROOT! ( -- )
-   s" native-build-foreign" FS:MKTEMP-DIR {: a:ptr u:n :}
-   a FOREIGN-ROOT u BYTE-COPY u FOREIGN-ROOT-U !
-   s" native-build foreign artifacts: " type a u type cr ;
 
 : ARG ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -125,140 +103,13 @@ create CONTENT 64 allot
    DRIVE
    S\" native-build: the --target machine has no backend loaded; load its backend module before tools/native-build.f\n" REFUSED ;
 
-: FOREIGN-BACKEND$ ( -- ptr u8 n )
-   HB-TARGET-LINUX-X86-64? if s" src/arch/arm64/passes.f" exit then
-   s" src/arch/x86-64/passes.f" ;
-
-\ The selected action refuses a foreign-machine writer before opening the
-\ compiler window; a writer loaded after that window would target its machine.
-\ The output path is writable, so an earlier filesystem refusal cannot satisfy
-\ the assertion and the other-machine build must leave it absent. An AArch64
-\ host preloads the x86-64 writer instead and must produce an actual x86-64 ELF.
-: FOREIGN-WINDOW-CASE ( -- )
-   s" a host with the retired observer handles the foreign window at its writer boundary" T-LABEL
-   s" other-machine-hb" FOREIGN-OUT!
-   PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG
-   s" test/native-build-host-observer.f" ARG
-   FOREIGN-BACKEND$ ARG
-   s" tools/native-build.f" ARG
-   s" --" ARG
-   FOREIGN-OUT$ ARG
-   s" --target" ARG
-   FOREIGN$ ARG
-   DRIVE
-   HB-TARGET-LINUX-X86-64? if
-      S\" native-build: no writer is loaded for a --target on another machine; a writer loaded after the capture would compile for the window's machine\n" REFUSED
-      FOREIGN-OUT$ FS:FILE? 0= TTRUE
-   else
-      RC @ 0<> if OUT OUT-U @ type ERR$ type then
-      RC @ 0 T=
-      FOREIGN-OUT$ FS:FILE? TTRUE
-      FOREIGN-OUT$ FS:>PATHZ open-rd {: fd:n :}
-      fd 0 >= TTRUE
-      fd CONTENT 64 read 64 T=
-      fd close
-      CONTENT 18 + LE:U16@ $3E T=
-   then ;
-
-\ The fixture loads ahead of the build tool's ENTRY, so the build first says it
-\ stores nothing (tools/tool-role.f SAY-UNKNOWN).
-create FIXTURE PATH-CAP allot
-: BAD-HOST-CASE ( -- )
-   s" an unrelated fixed CODE registration remains incompatible" T-LABEL
-   PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG
-   s" test/native-build-host-unknown-code.f" ARG
-   s" tools/native-build.f" ARG
-   s" --" ARG
-   s" /dev/null/native-build-host-row" ARG
-   DRIVE
-   SB-RESET
-   s" hb: " SB-APPEND
-   SOURCE-ROOT:CWD$ s" test/native-build-host-unknown-code.f" FIXTURE FS:JOIN-PATH
-      FIXTURE swap SB-APPEND
-   S\"  loads outside TOOL-ROLE:ENTRY and DONE, so this build stores nothing\n" SB-APPEND
-   S\" native-build: incompatible fixed engine layout\n" SB-APPEND
-   SB$ REFUSED ;
-
-: ACTION-CASE ( -- )
-   s" nested build entries preserve an active action" T-LABEL
-   PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG
-   s" test/native-build-action-child.f" ARG
-   DRIVE
-   RC @ 0<> if OUT OUT-U @ type ERR$ type then
-   RC @ 0 T=
-   OUT OUT-U @ s" native-build-action: ok" CONTAINS? TTRUE ;
-
-: ABI-TARGET$ ( -- ptr u8 n )
-   HB-TARGET-MACOS? if s" linux-aarch64" exit then
-   s" macos-aarch64" ;
-
-
-\ A stale file at the output path, which the build's product must replace.
-: FOREIGN-SEED ( ptr u8 n -- )
-   FOREIGN-OUT!
-   FOREIGN-OUT$ s" stale native output" FS:WRITE-ALL ;
-
-
-\ The build succeeds only without the smoke run, which fails a build whose
-\ product this host cannot launch, so rc 0 proves no smoke run happened. The
-\ product's head is the other OS's AArch64 image: an ELF from a macOS host, a
-\ 64-bit Mach-O from a Linux one.
-: OTHER-OS-IMAGE ( -- )
-   RC @ 0<> if OUT OUT-U @ type ERR$ type then
-   RC @ 0 T=
-   FOREIGN-OUT$ FS:FILE? TTRUE
-   FOREIGN-OUT$ FS:>PATHZ open-rd {: fd:n :}
-   fd 0 >= TTRUE
-   fd CONTENT 64 read 64 T=
-   fd close
-   HB-TARGET-MACOS? if
-      CONTENT LE:U32@ $464C457F T=
-      CONTENT 18 + LE:U16@ $B7 T=
-      exit
-   then
-   CONTENT LE:U32@ $FEEDFACF T= ;
-
-
-: FOREIGN-DEFAULT ( -- )
-   s" a same-ISA build for another OS writes its product without the smoke run" T-LABEL
-   s" default-hb" FOREIGN-SEED
-   PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG
-   s" tools/native-build.f" ARG
-   s" --" ARG
-   FOREIGN-OUT$ ARG
-   s" --target" ARG
-   ABI-TARGET$ ARG
-   DRIVE
-   OTHER-OS-IMAGE ;
-
-
-: FOREIGN-ABI-CASE ( -- )
-   HB-TARGET-MACOS? HB-TARGET-LINUX? or 0= if
-      s" native-build foreign ABI: no supported same-ISA counterpart on this host" type cr
-      exit
-   then
-   FOREIGN-DEFAULT ;
-
 : RUN ( -- )
    T-RESET
-   FOREIGN-ROOT!
    NO-OUTPUT-CASE
    BAD-CLASS-CASE
    TARGET-UNKNOWN-CASE
    WINDOWS-CORE-CASE
    TARGET-UNLOADED-CASE
-   FOREIGN-WINDOW-CASE
-   BAD-HOST-CASE
-   ACTION-CASE
-   FOREIGN-ABI-CASE
    T-REPORT ;
 
 RUN

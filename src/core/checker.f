@@ -11297,9 +11297,8 @@ variable PE-QDOUT
 \ The atoms keep their operands in PE-SPEC-TERMS, not on the data stack: PE-A
 \ mints a term and PE-IN consumes one, so a data-stack dispatcher has a different
 \ depth per branch and no inferable effect (measured: `ncomp: cannot compile
-\ PE-SPEC-ATOM`; E-NELAB-JOIN, test/compiler/native-hookless-reject.f
-\ SESSION-UNEVEN). Every atom is ( n -- ), and a row ending with an operand left
-\ over is malformed and says so.
+\ PE-SPEC-ATOM`; E-NELAB-JOIN). Every atom is ( n -- ), and a row ending with
+\ an operand left over is malformed and says so.
 $20 constant PE-SPEC-CAP
 create PE-SPEC-TERMS PE-SPEC-CAP cells allot
 variable PE-SPEC-TOS

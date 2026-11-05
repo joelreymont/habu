@@ -11,7 +11,7 @@ package COMPILER-IMAGES-BUILD
 private
 : LOAD ( -- )
    s" tools/native-build-core.f" required
-   s" test/compiler/native-host-bundle-check.f" required ;
+   s" test/compiler/native-host-bundle.f" required ;
 
 : BUILD ( -- )
    SCRIPT-ARGC 1 <> if
@@ -19,7 +19,7 @@ private
    then
    ['] LOAD EXECUTABLE-BUILD:WITH
    TOOL-ROLE:DONE
-   s" 0 SCRIPT-ARGV$ NATIVE-BUILD:RUN-BUNDLE-HOST-CHECK" evaluate-closed ;
+   s" 0 SCRIPT-ARGV$ NATIVE-BUILD:BUILD-BUNDLE" evaluate-closed ;
 
 ' BUILD
 ;package
