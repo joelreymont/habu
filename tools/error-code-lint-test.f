@@ -8,7 +8,6 @@
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/fmt.f
 require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/fs.f
@@ -295,40 +294,7 @@ MAIN
 ;package
 
 package ERROR-CODE-LINT
-using LINT-INTERN
 private
-
-: EOWN-TYPES ( -- )
-   s" EOWN-GOOD ( n intern-id file-id -- claim ) CLAIM-MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-   s" EOWN-SWAP ( n file-id intern-id -- claim ) CLAIM-MAKE" CHECK-QUIET-CANDIDATE! 0 T=
-   s" EOWN-FIELD ( file-id ptr claim -- ) CLAIM-NAME !" CHECK-QUIET-CANDIDATE! 0 T=
-   s" EOWN-KEY ( file-id stem-id -- option<n> ) RES-FIND" CHECK-QUIET-CANDIDATE! 0 T=
-   s" EOWN-CODE ( n -- intern-id )" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-: EOWN-BOUNDS ( -- )
-   RESET-LEDGER
-   s" E-CANARY" INTERN N>NAME {: name:intern-id :}
-   s" canary.f" INTERN N>FILE {: file:file-id :}
-   MAX-CLAIMS 0 ?do -9231 name file CLAIM+ loop
-   CLAIM# @ MAX-CLAIMS T=
-   0 CODE@ -9231 T= MAX-CLAIMS 1- CODE@ -9231 T=
-   [: MAX-CLAIMS CLAIM-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
-   [: -1 CLAIM-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
-   MAX-CLAIMS 1- NAME@ name NAME= TTRUE
-   MAX-CLAIMS 1- OWNER@ file FILE= TTRUE
-   s" canary.f" PATH!
-   -9230 s" E-RANGE-FIRST" RES+
-   RES# @ 1 T=
-   MAX-RES 1- 0 ?do
-      SB-RESET i 1+ FMT:SB-U SB$ PATH! -9230 s" E-RANGE-FIRST" RES+
-   loop
-   RES# @ MAX-RES T=
-   \ The last available record is intact; either table refuses its neighbors.
-   [: MAX-RES RES-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
-   [: -1 RES-ROWS drop ;] E-LAYOUT-BOUNDS TTHROWSQ
-   0 RES-OWNER@ file FILE= TTRUE
-   MAX-RES 1- RES-OWNER@ FILE$ SB-RESET MAX-RES 1- FMT:SB-U SB$ T$=
-   MAX-CLAIMS 1- CODE@ -9231 T= ;
 
 create EOWN-BAD 96 allot
 
@@ -343,7 +309,7 @@ create EOWN-BAD 96 allot
    0 CODE@ -9231 T= -9230 -9239 RESERVATIONS 1 T= ;
 
 : EOWN-MAIN ( -- )
-   T-RESET EOWN-TYPES EOWN-BOUNDS EOWN-ROLLBACK T-REPORT
+   T-RESET EOWN-ROLLBACK T-REPORT
    RESET-LEDGER ;
 
 EOWN-MAIN

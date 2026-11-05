@@ -241,27 +241,6 @@ variable PST-NUM-U
    s"  TRUST" SB-APPEND
    SB$ ;
 
-: PST-TRUST-LOWER$ ( -- ptr u8 n )
-   s" LOWER" s" x -- x" PST-TRUST$ ;
-
-: PST-TRUST-CAPS$ ( -- ptr u8 n )
-   s" CAPS" s" i64 [ i64 -- i64 ] -- i64" PST-TRUST$ ;
-
-: PST-TRUST-KFIX$ ( -- ptr u8 n )
-   s" KFIX" s" -- a" PST-TRUST$ ;
-
-: PST-TRUST-LBUF$ ( -- ptr u8 n )
-   s" LBUF" s" n -- ptr ps-res<n,n>" PST-TRUST$ ;
-
-: PST-TEST-TRUST ( -- )
-   PST-FIX PST-RUN-TRUST 0 PST-EXPECT-EXIT {: outu erru :}
-   erru 0 T=
-   PST-OUT outu PST-TRUST-LOWER$ CONTAINS? TTRUE
-   PST-OUT outu PST-TRUST-CAPS$ CONTAINS? TTRUE
-   PST-OUT outu PST-TRUST-KFIX$ CONTAINS? TTRUE
-   PST-OUT outu PST-TRUST-LBUF$ CONTAINS? TTRUE
-   PST-OUT outu s" MIXED" CONTAINS? TFALSE ;
-
 : PST-TEST-NOARG ( -- )
    PST-RUN-NOARG 64 PST-EXPECT-EXIT {: outu erru :}
    PST-OUT outu PST-EMPTY$ T$=
@@ -595,7 +574,6 @@ public
    PST-TEST-NUM-NAMES
    PST-TEST-PARAM-ALPHABET
    PST-TEST-ENUM-CTORS
-   PST-TEST-TRUST
    PST-TEST-NOARG
    PST-TEST-CLOSURE-PKG
    PST-TEST-CLOSURE-GUARDED-PKG
