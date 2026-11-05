@@ -42,15 +42,8 @@ public
 \ start over. A lock whose holder unmaps a table before it publishes the next
 \ cannot be reset, so RAW holds it across the fork (src/lib/process-fork.f
 \ FORK-HELD).
-\ Owners register their own resets because not all sit beneath process-fork.f:
-\ requiring src/lib/pg.f there would open libpq in every program that forks. A
-\ module the engine provides, or one of the AOT linker's lib closure
-\ (src/habu/app-image-core.f), never requires this file: an engine module's
-\ cells here would belong to no capture claim (src/habu/aot-owned-cells.f), and
-\ a linker module's reset would land in the application's registry with code
-\ and cells the image does not carry. Such an owner publishes its reset
-\ (TASK:CHILD-RESET, FS:CLEANUP-RESET, PROC-TREE:CHILD-RESET) and
-\ src/lib/process-fork.f registers it.
+\ An engine or AOT linker closure module never requires this file (no claim owns
+\ its cells; REFUSE-DATA-SPAN): src/lib/process-fork.f registers its reset.
 : REGISTER ( [ -- ] -- )
    LOCK [: APPEND ;] [: UNLOCK ;] finally ;
 

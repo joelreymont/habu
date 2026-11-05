@@ -2,8 +2,8 @@
 \ a keyed image (test/keyed-image.f), img/app-image, the engine with
 \ src/habu/app-image.f loaded and saved, which saves each saving row's child
 \ about 4.8 s. Its key folds that engine's bytes, the builder's program and the
-\ ordered closure of src/habu/app-image.f. test/preloaded-engine.f builds the
-\ linker image on it; under a gate, test/gate-images.f's row builds it first.
+\ ordered closure of src/habu/app-image.f. Under a gate, test/gate-images.f's
+\ row builds it.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -66,11 +66,5 @@ public
 : PATH$ ( -- ptr u8 n )
    ENSURE
    PATH-BYTES ;
-
-\ The key as hex, for test/preloaded-engine.f: the linker is built on this
-\ image, so its key folds this one.
-: KEY$ ( -- ptr u8 n )
-   RESOLVE
-   KEY-HEX KEYED-IMAGE:KEY-HEX-LEN ;
 
 ;package

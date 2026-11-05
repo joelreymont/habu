@@ -176,9 +176,7 @@ DYNAMIC-BUFFER HBT-MAP-TEXT u8
 public
 : HBT-STRIPPED-CACHE-MAIN ( -- )
    T-RESET
-   \ Baked attribution needs the donor binary's own map; the preloaded linker
-   \ snapshot has different capture coordinates and no map.
-   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
+   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-AOT-ENGINE!
    HBT-PREPARE
    HBT-STRIPPED-SAME-TWICE
    HBT-STRIPPED-CACHED-CARRIED

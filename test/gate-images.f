@@ -19,12 +19,11 @@ package GATE-IMAGES
 
 0 constant COMPILER
 1 constant APP
-2 constant LINKER
-3 constant WHITEBOX
-4 constant AOT-BUILDER
-5 constant APP-BUILDER
-6 constant CHECK-VERIFY
-7 constant FAMILY-N
+2 constant WHITEBOX
+3 constant AOT-BUILDER
+4 constant APP-BUILDER
+5 constant CHECK-VERIFY
+6 constant FAMILY-N
 
 \ Each row is granted the images settled for it (test/image-grant.f), so its own
 \ settle only finds and dates them; a settle its closure does not show dies in
@@ -33,19 +32,17 @@ package GATE-IMAGES
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" compiler-images" exit then
    f APP = if s" app-image" exit then
-   f LINKER = if s" linker" exit then
    f WHITEBOX = if s" whitebox-engine" exit then
    f AOT-BUILDER = if s" aot-builder" exit then
    f APP-BUILDER = if s" app-builder" exit then
    f CHECK-VERIFY = if s" check-verify" exit then
    E-TBL-BOUNDS throw ;
 
-\ Prerequisites come first (the linker builds on the app image); DERIVE refuses one listed after.
+\ Prerequisites come first (the whitebox engine builds on the compiler images); DERIVE refuses one listed after.
 \ tools/check-verify-image.f has no grant check, so an ungranted test builds its own image.
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" test/compiler-images.f" exit then
    f APP = if s" test/app-image-engine.f" exit then
-   f LINKER = if s" test/preloaded-engine.f" exit then
    f WHITEBOX = if s" test/whitebox-engine.f" exit then
    f AOT-BUILDER = if s" test/aot-builder-engine.f" exit then
    f APP-BUILDER = if s" test/app-builder-engine.f" exit then
@@ -57,7 +54,6 @@ package GATE-IMAGES
 : SETTLE$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" COMPILER-IMAGES:BUILD" exit then
    f APP = if s" APP-IMAGE-ENGINE:ENSURE" exit then
-   f LINKER = if s" PRELOADED-ENGINE:ENSURE" exit then
    f WHITEBOX = if s" WHITEBOX-ENGINE:PROVIDE" exit then
    f AOT-BUILDER = if s" AOT-BUILDER-ENGINE:ENSURE" exit then
    f APP-BUILDER = if s" APP-BUILDER-ENGINE:ENSURE" exit then

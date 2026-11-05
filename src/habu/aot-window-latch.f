@@ -29,12 +29,8 @@ variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN
 \ the same one-liner for package AOT-ARM, which this package does not load.
 : HERE-N ( -- n ) here BYTE-VIEW data-base BYTE-VIEW - DATA-VA VA>N + ;
 
-\ The dictionary record count tools/aot-builder.f refreshes immediately before
-\ AOT-DATA-START; every fixed definition a saved maker restores is below it. A
-\ record above the engine's seal and below it was loaded ahead of the
-\ application (on the engine this file's private records, on a saved maker its
-\ support, on the keyed linker image its whole load). The closure refuses to
-\ carry a reachable pre-window word that the engine does not bake.
+\ The record count tools/aot-builder.f latches before AOT-DATA-START: records
+\ above the engine's seal and below it loaded ahead of the application.
 variable OPENER-NDICT
 variable WINDOW-CODE-START
 

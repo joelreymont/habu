@@ -373,15 +373,8 @@ FUNCTION: SYNC-RANGE msync ( n n n -- i32 ) ;FUNCTION
    0 BS-LO !  0 BS-HI !  0 BS-MID !  0 BS-AT !
    found ;
 
-\ A capture drops the map whole: the rows, the Linux text snapshot, the Mach
-\ task port and the EXT-READ record (a read completed, its area count, the map's
-\ bounds, whether it answers alone) are DYNAMIC-BUFFER storage, nulled by every
-\ image capture (src/core/dynamic-storage.f RELEASE-ALL, from the snapshot
-\ writer's CANON-DATA) and by a read before it reads, so a restored image reads
-\ its own map at the first question. No DATA cell says whether the map was read,
-\ because DATA is copied: a DATA flag would start an image saved after the
-\ linker loaded as read, with its builder's count, over released rows
-\ (measured: E-BOUNDS 7122 on the keyed linker image, test/preloaded-engine.f).
+\ A capture drops the map whole: it is DYNAMIC-BUFFER storage, which a capture
+\ nulls; a DATA flag would survive the copy over released rows (E-BOUNDS 7122).
 : UNREAD? ( -- bool ) EXT-READ#base @ 0= ;
 
 \ Does the read's map hold no area at v by its bounds alone? Only macOS reads

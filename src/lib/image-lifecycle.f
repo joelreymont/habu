@@ -93,19 +93,8 @@ private
 public
 
 
-\ Capture runs after application tasks stop. Reverse order releases dependents
-\ first; cleanup can register again, and a failed callback remains for retry. A
-\ refusing callback must not clear its owner's registered flag before it
-\ rethrows: the owner sets that flag only after REGISTER completes, or the next
-\ REGISTER adds a second entry (src/lib/f64-text.f CLEANUP-NATIVE, REGISTER-CLEANUP).
-\ A one-shot hook registered by a persistent one is refused, E-LIFECYCLE-LATE: the
-\ one-shot table is already released, and running the hook now would put cleanup
-\ that may call foreign functions after the hooks that forget their addresses.
-\ Admitted, an image saved from the keyed linker image counted 4 hooks, one in no
-\ table, and its first PREPARE threw E-BOUNDS. The refusal is checked by
-\ test/image-lifecycle-late-register.f.
-\ An arena still live after every hook has run refuses the capture, so a hook
-\ can release its arena (DYNAMIC-STORAGE:ARENA-GUARD).
+\ Newest first, so dependents go first. An owner sets its registered flag after
+\ REGISTER returns, and a failed callback, kept for retry, never clears it.
 : PREPARE ( -- )
    begin N @ 0 > while
       N @ 1- {: at:n :}

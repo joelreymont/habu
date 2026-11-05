@@ -21,14 +21,8 @@ package PROC-FORK
 
 private
 
-\ The child resets whose owners cannot register them themselves. RAW is the one
-\ fork, and it is in this file, so registering them here registers them in
-\ every program that can fork. src/lib/task.f is engine-provided, beneath every
-\ capture window, where src/lib/fork-child.f's cells would belong to no claim.
-\ src/lib/fs-mutate.f and src/lib/process-tree.f belong to the AOT linker's lib closure
-\ (src/habu/app-image-core.f), which loads above an application's window while
-\ it is linked: a reset either one registered as it loaded would land in the
-\ application's registry with code and cells the image does not carry.
+\ Registers the resets of task.f, fs-mutate.f and process-tree.f (fork-child.f
+\ REGISTER): RAW, the one fork, is here, so every program that forks has them.
 \
 \ The fs cleanup table is process-owned state: its entries name paths THIS
 \ process created and promised to remove, and FS:CLEANUP-RUN deletes every entry

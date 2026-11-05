@@ -193,9 +193,9 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
   `1 set-tier` after the harness and tool requires and before the code under
   test, so the harness is not compiled at tier 1. `test/compiler/aot-mode.f` is
   only for the `*-aot` twin rows that run one unchanged file at both tiers.
-- A row whose child compiles `src/habu/app-image.f` or the AOT linker only to
-  reach its subject runs a keyed image with them already loaded:
-  `test/app-image-engine.f` or `test/preloaded-engine.f`, whose headers hold
+- A row whose child compiles `src/habu/app-image.f` or the AOT builder only
+  to reach its subject runs a keyed image with them already loaded:
+  `test/app-image-engine.f` or `test/aot-builder-engine.f`, whose headers hold
   the rules.
 - `bin/hb file.f` (no `--load`) drops to a REPL after a clean load and blocks
   on stdin — it looks like a hang, a WAIT line with no CPU delta. Pipe

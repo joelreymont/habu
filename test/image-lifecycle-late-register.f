@@ -72,7 +72,7 @@ variable SUBJECT-U
 : CHECK ( -- )
    s" a one-shot hook a persistent hook registers stops the link" T-LABEL
    LINK {: outu:len erru:len oc :}
-   AOT-BUILDER-ENGINE:STDIN$ OUT outu LEN>N ERR erru LEN>N oc UNCAUGHT-RC T-OUTCOME-EXITED=
+   PROGRAM$ OUT outu LEN>N ERR erru LEN>N oc UNCAUGHT-RC T-OUTCOME-EXITED=
    s" the refusal names the late registration" T-LABEL
    ERR erru LEN>N NEEDLE$ CONTAINS?
    dup 0= if OUT outu LEN>N type ERR erru LEN>N type then

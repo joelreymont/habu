@@ -74,9 +74,9 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
 create HBT-REPORT-BUF PATH-CAP allot
 
-\ The engine a row's AOT builds run on (HBT-KEYED!); empty, the engine.
-create HBT-LINKER-BUF PATH-CAP allot
-variable HBT-LINKER-U
+\ The engine a row's AOT builds run on (HBT-AOT-ENGINE!); empty, the default.
+create HBT-AOT-ENGINE-BUF PATH-CAP allot
+variable HBT-AOT-ENGINE-U
 
 \ The stripped-window fixtures: an application whose require closure owns the
 \ library cells it touches, and one reading the engine cells the entry owns.
@@ -261,17 +261,13 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ FS:WRITE-ALL
    HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
-\ The engine HBT-KEYED! records runs a row's AOT builds, maker refusals and CLI
-\ makers; empty, the engine. REPL builds, app refusals, HBT-ARGV-BASE-REPL
-\ spawns and HBT-RUN-APP run on ENGINE-CANDIDATE:PATH$. Keyed builders are the
-\ family images the row's load closure grants, built once in the process's out
-\ root (tools/build-out.f, test/image-grant.f); a case that overrides that root
-\ says so beside it. HBT-HBB-PREPARE-AOT-SOURCE builds on BF-ENGINE$.
-: HBT-KEYED! ( ptr u8 n -- )
-   HBT-LINKER-BUF HBT-LINKER-U HBT-COPY! ;
+\ The AOT engine also runs maker refusals and CLI makers; REPL and app runs use
+\ ENGINE-CANDIDATE:PATH$, and HBT-HBB-PREPARE-AOT-SOURCE builds on the default.
+: HBT-AOT-ENGINE! ( ptr u8 n -- )
+   HBT-AOT-ENGINE-BUF HBT-AOT-ENGINE-U HBT-COPY! ;
 
-: HBT-LINKER ( -- ptr u8 n )
-   HBT-LINKER-BUF HBT-LINKER-U @ ;
+: HBT-AOT-ENGINE$ ( -- ptr u8 n )
+   HBT-AOT-ENGINE-BUF HBT-AOT-ENGINE-U @ ;
 
 : HBT-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if BF-ENGINE-RESET exit then
@@ -294,7 +290,7 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    s" --"  >LEN PROC-ARGV+ ;
 
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
-   HBT-LINKER HBT-ARGV-CLI ;
+   HBT-AOT-ENGINE$ HBT-ARGV-CLI ;
 
 : HBT-ARGV-BASE ( -- )
    HBT-TMP HBT-ARGV-BASE-TMP ;
@@ -353,7 +349,7 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBB-RESET-OPTIONS
    HBB-PATHS!
    HBT-TMP BF-TMP!
-   HBT-LINKER HBT-ENGINE! ;
+   HBT-AOT-ENGINE$ HBT-ENGINE! ;
 
 : HBT-HBB-PREPARE-AOT-SOURCE ( ptr u8 n ptr u8 n -- )
    HBT-HBB-PREPARE-AOT
@@ -380,7 +376,7 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    ;MATCH ;
 
 : HBT-RUN-MAKER ( ptr u8 n -- n n n )
-   HBT-LINKER HBT-ENGINE!
+   HBT-AOT-ENGINE$ HBT-ENGINE!
    HBB-RESET-OPTIONS
    HBB-SRC!
    HBT-TMP BF-TMP!

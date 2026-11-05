@@ -8718,12 +8718,8 @@ ardone LBL,
    snok LBL,
    RELOC-EMIT:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
-   \ The image's return- and loop-stack base cells name another run's mappings;
-   \ the data stack survives in XDS, so these two ride the machine stack across
-   \ the copy and are republished beside XDS below. So do the three AOT-SPAN
-   \ cells EM-SEED-AOT published for this boot: the image's copies name the
-   \ writer's table and blob (a keyed linker image then hit SIGSEGV in AOT-W32@
-   \ under SPAN-START; tools/hb-build-stripped-test.f HBT-STRIPPED-ENGINE-CELLS).
+   \ The DATA copy would overwrite this boot's stack-base and AOT-SPAN cells:
+   \ they ride the machine stack, republished below (HBT-STRIPPED-ENGINE-CELLS).
    \ x13 is the copy loops' scratch; x11 holds the snapshot text size the text
    \ pass needs; x9/x10/x0 carry argc/argv/envp.
    SP SP 64 SUBI,

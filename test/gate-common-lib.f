@@ -231,16 +231,6 @@ variable GE-EVAL-SRC-U
    GT-RC@ PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    s" native test failed" 1 die ;
 
-\ Run a row's checks in a process its parent reads by exit status, as on the
-\ linker image (test/preloaded-engine.f LINKER-LOAD). A throw code does not
-\ cross that boundary, so a deadline that escapes the checks ends this process
-\ with PROC-TIMEOUT-RC (src/lib/process.f), which the parent throws again as
-\ E-PROC-TIMEOUT; any other throw reaches the top level with its own code.
-: GE-CHILD-RUN ( [ -- ] -- )
-   catch {: code:n :}
-   code E-PROC-TIMEOUT = if s" native test ran out of time" PROC-TIMEOUT-RC die then
-   code throw ;
-
 \ The entry's exit status for an rc check. A timed-out entry has none, and
 \ GT-RC@ would throw before any report, so it fails here: GE-FAIL prints its
 \ capture and then throws E-PROC-TIMEOUT.

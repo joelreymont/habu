@@ -338,14 +338,8 @@ variable CLO-PROBE  variable CLO-RI
    CLO-SET-EMPTY
    0 CLO-RI !
    BEGIN CLO-RI @ NCLO @ < WHILE  CLO-RI @ CLO-SET+  CLO-RI @ 1+ CLO-RI ! REPEAT ;
-\ A MEMBER LOADED AHEAD OF THE MAKER IS REFUSED, BY NAME. The engine's records
-\ end at its seal watermark, and AOT-BUILDER:OPEN latches OPENER-NDICT
-\ before it loads anything an application can name, so a record between the
-\ two was defined ahead of the maker: on the engine only the latch file's
-\ private records, on the keyed linker image (test/preloaded-engine.f rule 3)
-\ the image's whole load. No production build carries one: the engine's maker
-\ compiles a module the application requires inside the window, and refuses any
-\ other name the application never required.
+\ A pre-window record (OPENER-NDICT); the closure refuses a reachable one
+\ by name.
 : PRE-WINDOW? ( ptr n -- bool ) {: r:ptr :}
    r BYTE-VIEW AOT-DBASE@ - DREC / {: k:n :}
    k data-base SEAL-NDICT-CELL + @ >= k OPENER-NDICT @ < and ;
