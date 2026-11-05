@@ -37,3 +37,4 @@ Acceptance cases folded in by the 2026-11-04 census (the closed dots' full text 
 - habu-keep-prot-wid-3dd32ed9 (closed): "A seal protects any wordlist id" holds after; readers EM-AOTWIDGATE, capture and snapshot restore are habu2.f and window machinery.
 - habu-name-the-file-749de7af (closed): uncaught throw during load lacks file:line; fix sites habu2.f LCOMPILEDIE, stage2.f RUN, driver-io.f are M1/M2; must hold in the one typed loop
 - habu-refuse-removing-a-39fa31f5 (closed): reserved-by-name packages are habu2.f RESTAB-BUF :2019 marks; "removing a word of a sealed package" must hold in the replacement
+- the arm64 assembler (DECISIONS 2026-11-05): habu2.f:735-745 encodes bl at run time with its own BL-REACH window and opcode; the checked interpreter calls A64ASM:ENC-BL and keeps no reach check of its own
