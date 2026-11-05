@@ -342,15 +342,16 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    OUT swap S\" retired address ABI: ok\n" T$= ;
 
 : CHECK-FORGED-ABI ( -- )
-   s" saved image refuses a forged ABI getter" T-LABEL
+   s" a same-named source word is not consulted and an alias in the built-ins' wordlist is refused" T-LABEL
    PROC-ARGV-ENV-RESET
    WHITEBOX-CHILD:ENV!
    SECOND$
-   S\" undefine addr-cells-abi\n: addr-cells-abi ( -- n ) 1 ;\nADDRESS-CELLS:CURRENT? drop\n"
+   S\" undefine addr-cells-abi\n: addr-cells-abi ( -- n ) s\q forged\q type 1 ;\nADDRESS-CELLS:CURRENT? bool>n . cr\nTRUSTED: JALIAS ( ptr u8 n -- ) ndict@ 1- WL:PRIMITIVES alias-record ;\n: FORGED-ABI ( -- n ) s\q forged\q type 1 ;\ns\q addr-cells-abi\q JALIAS\nADDRESS-CELLS:CURRENT? bool>n . cr\n"
    RUN-INPUT {: outu:n erru:n rc:n :}
-   rc 96 T= outu 0 T=
-   ERR erru s" address-cells: version probe is not an engine primitive"
-   CONTAINS? TTRUE ;
+   rc 96 <> if ERR erru type then
+   OUT outu S\" 0\n\n" T$=
+   ERR erru s" address-cells: version probe is not an engine primitive" CONTAINS? TTRUE
+   rc 96 T= ;
 
 \ Restore a grown DATA-backed registry, then perform the actual tier-1
 \ source-window rewind. Its complete backing span must survive outside the retiring heap.

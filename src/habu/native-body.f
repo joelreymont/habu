@@ -7,7 +7,7 @@ CAST: BODY-CELLS-XT ( n -- [ -- ptr u8 ] )
 
 public
 : BODY-CAPABILITY ( -- ptr u8 )
-   s" native-origin-cell" 0 search-wl
+   s" native-origin-cell" WL:PRIMITIVES search-wl
    dup 0= if drop NULL-PTR exit then
    {: entry:n :}
    data-base $1C0 + @ {: base:n :}

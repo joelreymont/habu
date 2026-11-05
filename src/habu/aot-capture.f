@@ -1033,7 +1033,7 @@ $14000000 constant ACAP-GBR-TERM
 \ Capture and elaboration agree on the engine calls with no continuation;
 \ resolved once per site-table rebuild.
 : ACAP-TERMINAL-PRIMITIVE? ( ptr u8 n -- bool )
-   2dup 0 search-wl TERMINAL-CALL:BOUND? ;
+   2dup WL:PRIMITIVES search-wl TERMINAL-CALL:BOUND? ;
 
 : ACAP-TERMINAL-SITE? ( ptr u8 bool bool -- bool )
    {: row:ptr fatal:bool unwinds:bool :}

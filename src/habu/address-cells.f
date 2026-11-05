@@ -57,10 +57,10 @@ CAST: VERSION-XT ( n -- [ -- n ] )
    0 ;
 
 public
-\ A source word shadowing the built-in is refused: only engine text may supply
-\ the discriminator. Recovery and old native hosts answer zero.
+\ A same-named source word is not read; another word aliased into the built-ins'
+\ wordlist is refused. Recovery and old native hosts answer false.
 : CURRENT? ( -- bool )
-   s" addr-cells-abi" 0 search-wl {: xt:n :}
+   s" addr-cells-abi" WL:PRIMITIVES search-wl {: xt:n :}
    xt 0= if 0 0 <> exit then
    xt ENGINE-ABI-XT <> if
       s" address-cells: version probe is not an engine primitive" 96 die

@@ -22,6 +22,7 @@ require src/compiler/native/a64ir.f
 require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 require src/compiler/native/dict.f
+require src/habu/wl.f
 require src/compiler/native/trap.f
 require src/compiler/native/emission.f
 
@@ -3878,7 +3879,7 @@ public
 
 \ ---- the pass ----------------------------------------------------------------
 : GLOBAL-STORE-ENTRY ( ptr u8 n -- n )
-   0 search-wl dup 0= if exit then
+   WL:PRIMITIVES search-wl dup 0= if exit then
    dup TERMINAL-CALL:IN-ENGINE-TEXT? if exit then
    drop 0 ;
 

@@ -1,12 +1,13 @@
 \ The engine calls that have no continuation, shared by lowering and capture.
 require src/lib/prelude.f
 require src/habu/layout.f
+require src/habu/wl.f
 
 package TERMINAL-CALL
 
 \ This engine's actual text extent, as boot published it (layout.f
 \ TEXT-SIZE-CELL), authenticates the primitive binding; a source definition
-\ with the same global name must retain its continuation.
+\ with the same name must retain its continuation.
 : ENGINE-TEXT ( -- n n )
    data-base RBASE-CELL + @  data-base TEXT-SIZE-CELL + @ ;
 
@@ -21,7 +22,7 @@ public
 
 : BOUND? ( ptr u8 n n -- bool ) {: name:ptr size:n entry:n :}
    name size s" throw" CORE-STR=CI name size s" die" CORE-STR=CI or 0= if false exit then
-   name size 0 search-wl entry <> if false exit then
+   name size WL:PRIMITIVES search-wl entry <> if false exit then
    entry IN-ENGINE-TEXT? ;
 
 ;package

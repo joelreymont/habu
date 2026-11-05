@@ -38,7 +38,7 @@ CAST: COMPILER>N ( [ ptr u8 n -- ] -- n )
    xt base >= xt base - size < and ;
 
 : KERNEL$ ( -- ptr u8 n bool )
-   s" kernel-producer$" 0 search-wl {: xt:n :}
+   s" kernel-producer$" WL:PRIMITIVES search-wl {: xt:n :}
    xt 0= if NULL$ 0 0= 0= exit then
    xt ENGINE-TEXT? 0= if NULL$ 0 0= 0= exit then
    xt KERNEL-XT execute ;

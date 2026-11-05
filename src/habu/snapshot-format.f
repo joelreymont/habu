@@ -3,6 +3,7 @@
 \ current source while its native startup still understands only an older
 \ image format.
 require src/habu/layout.f
+require src/habu/wl.f
 
 package SNAPSHOT-FORMAT
 public
@@ -35,10 +36,10 @@ CAST: VERSION-XT ( n -- [ -- n ] )
 
 public
 
-\ Resolve wordlist zero directly: a source definition with the same spelling
+\ Search the built-ins' wordlist: a source definition with the same spelling
 \ cannot supply the loader's capability. Retained engine text is the authority.
 : SUPPORTED? ( -- bool )
-   s" snapshot-format" 0 search-wl {: xt:n :}
+   s" snapshot-format" WL:PRIMITIVES search-wl {: xt:n :}
    xt 0= if false exit then
    xt TEXT-BASE < xt TEXT-BASE - TEXT-SIZE >= or if
       s" snap: format capability is not an engine primitive" 74 die

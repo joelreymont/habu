@@ -65,6 +65,12 @@ create SHADOW-SNAP-BUF PATH-CAP allot
    ROOT s" shadow.f" SHADOW-SRC-BUF FS:JOIN-PATH SHADOW-SRC-BUF swap ;
 : SHADOW-SNAP$ ( -- ptr u8 n )
    ROOT s" shadow-snapshot" SHADOW-SNAP-BUF FS:JOIN-PATH SHADOW-SNAP-BUF swap ;
+create ALIAS-SRC-BUF PATH-CAP allot
+create ALIAS-SNAP-BUF PATH-CAP allot
+: ALIAS-SRC$ ( -- ptr u8 n )
+   ROOT s" alias.f" ALIAS-SRC-BUF FS:JOIN-PATH ALIAS-SRC-BUF swap ;
+: ALIAS-SNAP$ ( -- ptr u8 n )
+   ROOT s" alias-snapshot" ALIAS-SNAP-BUF FS:JOIN-PATH ALIAS-SNAP-BUF swap ;
 
 PTR-VARIABLE IMGP
 variable IMGU
@@ -921,16 +927,29 @@ variable STRAYS
    s\"  ;\n" SB-APPEND
    SB$ ;
 
-\ The shadow answers the version the writer checks for, so only the capability
-\ check can refuse it.
+\ `undefine snapshot-format` retired the built-in, and the writer searches only
+\ the built-ins' wordlist, so the shadow's correct version is never read.
 : SHADOW-CASE ( -- )
    SHADOW-SRC$ SHADOW$ FS:WRITE-ALL
    SHADOW-SNAP$ SHADOW-SRC$ BUILD-WITH-TO
    s" a source-shadowed capability cannot authorize capture" T-LABEL
    RC @ 74 <> if OUT OUT-U @ type ERR$ type then
    RC @ 74 T=
-   ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
+   ERR$ s" snap: donor does not support snapshot format" CONTAINS? TTRUE
    SHADOW-SNAP$ FS:EXISTS? TFALSE ;
+
+: ALIAS$ ( -- ptr u8 n )
+   S\" require src/habu/snapshot-format.f\nTRUSTED: JALIAS ( ptr u8 n -- ) ndict@ 1- WL:PRIMITIVES alias-record ;\nundefine snapshot-format\n: FORGED-FMT ( -- n ) SNAPSHOT-FORMAT:VERSION ;\ns\q snapshot-format\q JALIAS\n" ;
+
+\ A build child of its own: the refusal ends the build with rc 74.
+: ALIAS-CASE ( -- )
+   ALIAS-SRC$ ALIAS$ FS:WRITE-ALL
+   ALIAS-SNAP$ ALIAS-SRC$ BUILD-WITH-TO
+   s" a capability aliased into the built-ins' wordlist is refused" T-LABEL
+   RC @ 74 <> if OUT OUT-U @ type ERR$ type then
+   RC @ 74 T=
+   ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
+   ALIAS-SNAP$ FS:EXISTS? TFALSE ;
 
 : ACTIVE-SNAP$ ( -- ptr u8 n ) s" active" PATH$ ;
 : QUIESCENT-SNAP$ ( -- ptr u8 n ) s" quiescent" PATH$ ;
@@ -1023,6 +1042,7 @@ variable STRAYS
    OPEN-FAIL-CASE
    REPLACE-FAIL-CASE
    SHADOW-CASE
+   ALIAS-CASE
    ACTIVE-CASE
    POLICY-CASE
    IMG IMGU @ munmap drop ;
