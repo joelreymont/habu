@@ -787,9 +787,11 @@ multi-cell type rationale is `docs/design.md` "Types".
   `create` is refused the same way. An image restored from a `--repl` build
   keeps its build's last created word instead, and its first `does>` patches
   that word.
-- **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` comment
-  inside the body is refused with `E-BAD-DECLARATION`; put comments above the
-  opener, including comments explaining the header or fields.
+- **A `STRUCTURE` or `ENUM` body is parsed by its definer.** A `\` or `( … )`
+  comment inside the body is refused, rc 70 (`habu: bad enum declaration 'kind':
+  unexpected token in enum declaration at '('`); `tools/check.f` reports a `\`
+  as `E-BAD-DECLARATION`. Put comments above the opener, including comments
+  explaining the header or fields.
 - **A `FIELD` holds a value, not a body.** A payload is a type expression
   (letter param, concrete cell type, `ptr T`, closed arity-0 family, or a
   quotation `[ in -- out ]`). A quotation field is one execution-token cell;
@@ -856,7 +858,7 @@ reaches](#engine-limits-ordinary-source-reaches)); past it the load fails with
 line before the first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or
 `;DEFINE`, a token after a `FINAL` row's ACTION other than those three, and
 a `\` or `(` in a row. DEFINE reads the table with `parse-name`, so neither
-opens a comment there (a `STRUCTURE` or `ENUM` body rejects `\` too); comments
+opens a comment there (a `STRUCTURE` or `ENUM` body rejects both too); comments
 go above the table. `tools/check.f` skips the table (`parses-through:
 FSM:DEFINE 0 ( ;DEFINE )`) and checks the code after it; the generated words
 are left to the run, so their uses are `W-CHECK-DEFERRED` under
