@@ -257,8 +257,8 @@ Inspect a DIVERGENT result before claiming the routes converge.
 src/habu/native-runtime.f is the ordered manifest of source baked into a
 native product. Loading a baked file by name does not reread edits from disk;
 a native rebuild is needed to test those changes. Files outside that closure
-load normally from disk. Run bin/hb --load tools/manifest-lint.f when changing
-the manifest, and use the generation check for changes baked into the engine.
+load normally from disk. Use the generation check for changes baked into the
+engine.
 
 ## Refresh `bin/hb`
 

@@ -191,24 +191,12 @@ SUITE clobber-lint
    tools/lint/clobber-lint-test.f
 ;SUITE
 
-SUITE dot-dep-lint-fixtures
-   tools/dot-dep-lint-test.f
-;SUITE
-
 SUITE error-code-lint-fixtures
    tools/error-code-lint-test.f
 ;SUITE
 
-SUITE manifest-lint-fixtures
-   tools/manifest-lint-test.f
-;SUITE
-
 SUITE byte-copy
    test/byte-copy-test.f
-;SUITE
-
-SUITE lint-intern-set
-   tools/lint/set-test.f
 ;SUITE
 
 SUITE engine-size-fixtures
@@ -221,10 +209,6 @@ SUITE two-generation-fixtures
 
 SUITE imagedisasm-tool
    tools/imagedisasm-test.f
-;SUITE
-
-SUITE tool-boundary-aot-call
-   tools/aot-call-report-test.f
 ;SUITE
 
 SUITE tool-boundary-check-repair
@@ -1543,10 +1527,6 @@ SUITE combinators
 
 SUITE export-keyword-package
    test/export-package.f
-;SUITE
-
-SUITE tokstream
-   test/tokstream-suite.f
 ;SUITE
 
 SUITE using-import

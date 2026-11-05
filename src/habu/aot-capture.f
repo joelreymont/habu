@@ -699,8 +699,7 @@ variable ACAP-ENTRY-N
    v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@ ;
 
 \ Dynamic name uses the derived rule cannot see: consumers resolve these names
-\ after this engine is captured. The list is explicit policy, as
-\ tools/manifest-lint.f states the engine's entry points.
+\ after this engine is captured. The list is explicit policy.
 \ INTERN:IMPORT-ROWS is a private build-driver seam resolved through the shipped
 \ dictionary; the alternatives are a public wrapper, which
 \ test/compiler/native-string.f forbids, or a fixed engine cell.

@@ -1,5 +1,4 @@
 \ aot-call-report-lib.f - report patched AOT call stencils in a binary.
-\ Load before tools/aot-call-report.f or tools/aot-call-report-test.f.
 \ The gates load it in process, so it refuses misuse by a named throw its
 \ caller reports; only REPORT-MAIN, the CLI boundary, ends the process.
 

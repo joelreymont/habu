@@ -28,8 +28,7 @@ package NCOMP
 private
 
 \ The target predicates are read as this file loads: the running engine's, or in
-\ a build window the window's own src/os/*/target.f. Each path sits on its own
-\ line so tools/manifest-lint.f reads both edges.
+\ a build window the window's own src/os/*/target.f.
 : LOAD-PASSES ( -- )
    HB-TARGET-LINUX? if
       s" src/arch/arm64/passes.f" required
