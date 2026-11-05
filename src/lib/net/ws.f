@@ -62,9 +62,11 @@ private
 CAST: >SOCKET ( n -- socket )
 CAST: SOCKET>N ( socket -- n )
 CAST: BLEN>N ( NUM:byte-len -- n )
-CAST: TICKET>N ( AIO:ticket -- n )
 
 variable CAP                                \ START's limit: the slots the tables hold
+
+\ The number the wake's wait carries in WAITERS; a slot's wait carries its index.
+-1 constant WAKE-WAIT
 
 \ A socket's life. Every change of phase is made under LOCK.
 0 constant PHASE-NONE             \ a free slot
@@ -292,7 +294,7 @@ RUN-IDLE
 
 : WAKE-ARM ( -- )
    WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL {: t:AIO:ticket :}
-   t WAITERS AIO:GROUP+
+   t WAKE-WAIT WAITERS AIO:GROUP+
    t WAKE-TICKET ! ;
 
 
@@ -301,10 +303,6 @@ RUN-IDLE
    LOCK TASK:GET
    0 POKED !
    LOCK TASK:RELEASE ;
-
-
-: SAME-TICKET? ( AIO:ticket AIO:ticket -- bool )
-   TICKET>N swap TICKET>N = ;
 
 
 : OUTCOME-DROP ( AIO:outcome -- )
@@ -818,7 +816,7 @@ RUN-IDLE
 
 : ARM ( n n n -- ) {: idx:n mask:n due:n :}
    idx LINK @ TCP4:CONNECTION-FD mask due REMAINING AIO:POLL {: t:AIO:ticket :}
-   t WAITERS AIO:GROUP+
+   t idx WAITERS AIO:GROUP+
    t idx TICKET !
    mask idx ARMED !
    due idx ARMED-DUE ! ;
@@ -888,15 +886,6 @@ ENUM course
    rev AIO:WRITABLE invert and 0 <> if idx INPUT then ;
 
 
-: SLOT-OF ( AIO:ticket -- n ) {: t:AIO:ticket :}
-   CAP @ 0 ?do
-      i ARMED @ 0 <> if
-         i TICKET @ t SAME-TICKET? if i unloop exit then
-      then
-   loop
-   -1 ;
-
-
 \ A poll that timed out is answered by SYNC, where its socket gives up.
 : POLLED ( n AIO:outcome -- ) {: idx:n out :}
    0 idx ARMED !
@@ -920,11 +909,9 @@ ENUM course
    SYNC-ALL ;
 
 
-: ANSWER ( AIO:ticket AIO:outcome -- ) {: t:AIO:ticket out :}
-   t WAKE-TICKET @ SAME-TICKET? if out OUTCOME-DROP WOKEN exit then
-   t SLOT-OF {: idx:n :}
-   idx 0 < if out OUTCOME-DROP exit then
-   idx out POLLED ;
+: ANSWER ( n AIO:outcome -- ) {: wait:n out :}
+   wait WAKE-WAIT = if out OUTCOME-DROP WOKEN exit then
+   wait out POLLED ;
 
 
 : ANY-SET? ( -- bool )

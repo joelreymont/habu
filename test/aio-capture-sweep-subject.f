@@ -48,7 +48,7 @@ create POKE-BYTE $41 c,
 \ OPS-N polls on the pipe, all in flight at once and all in the group.
 : FILL ( -- )
    OPS-N 0 ?do
-      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup i TICKETS ! SWEPT AIO:GROUP+
+      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup i TICKETS ! i SWEPT AIO:GROUP+
    loop
    SWEPT AIO:GROUP-COUNT OPS-N T= ;
 

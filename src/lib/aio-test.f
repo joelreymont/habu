@@ -119,6 +119,7 @@ ANY-N TYPED-BUFFER ANY-TICKETS AIO:ticket
 GROW-N TYPED-BUFFER GROW-TICKETS AIO:ticket
 AIO-TEST-ALIGN8
 create GROW-IDX GROW-N cells allot
+GROW-N TYPED-BUFFER WIDE-SEEN n          \ how often AWAIT-ANY handed back each number
 TYPED-VARIABLE ANY-CUR AIO:ticket
 TYPED-VARIABLE LONE-TICKET AIO:ticket
 TYPED-VARIABLE LONE-XFER AIO:xfer
@@ -324,7 +325,7 @@ TASK:MIN-STACK TASK:TASK FAN7
 : ANY-ARM ( n -- ) {: i:n :}
    ANY-R CELL-VIEW i SLOT ANY-W CELL-VIEW i SLOT PIPE-OPEN
    ANY-R CELL-VIEW i SLOT @ >FD AIO:READABLE -1 >MS AIO:POLL i ANY-TICKETS !
-   i ANY-TICKETS @ ANY-GROUP AIO:GROUP+ ;
+   i ANY-TICKETS @ i ANY-GROUP AIO:GROUP+ ;
 
 : CASE-AWAIT-ANY ( -- )
    0 ANY-CANCELLED !
@@ -333,7 +334,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    SETTLE-MS TASK:SLEEP
    ANY-W CELL-VIEW 0 SLOT @ POKE
    ANY-GROUP AIO:AWAIT-ANY OUTCOME>N {: got:n :}
-   drop                                     \ the ticket it answered with
+   0 T=                                     \ the number of the wait on pipe 0
    got AIO:READABLE and AIO:READABLE T=
    ANY-GROUP AIO:GROUP-COUNT ANY-N 1 - T=
    ANY-N 0 ?do i ANY-REST loop
@@ -689,7 +690,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    1 >MS AIO:TIMEOUT LIVE-TICKET !
    LIVE-TICKET @ TICKET>N STALE-TICKET @ TICKET>N REUSED
    [: STALE-TICKET @ AIO:AWAIT OUTCOME>N drop ;] E-AIO-STATE TTHROWSQ
-   [: STALE-TICKET @ ANY-GROUP AIO:GROUP+ ;] E-AIO-STATE TTHROWSQ
+   [: STALE-TICKET @ 0 ANY-GROUP AIO:GROUP+ ;] E-AIO-STATE TTHROWSQ
    [: STALE-TICKET @ ANY-GROUP AIO:GROUP- ;] E-AIO-GROUP TTHROWSQ
    ANY-GROUP AIO:GROUP-COUNT 0 T=
    LIVE-TICKET @ AWAIT>N MARK-TIMED-OUT T= ;
@@ -774,20 +775,29 @@ CAST: XFER>N ( AIO:xfer -- n )
 
 : WIDE-FILL ( -- )
    GROW-N 0 ?do
-      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL WIDE-GROUP AIO:GROUP+
+      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i WIDE-GROUP AIO:GROUP+
+      0 i WIDE-SEEN !
    loop
    WIDE-GROUP AIO:GROUP-COUNT GROW-N T= ;
 
-\ One byte makes every member ready, and AWAIT-ANY hands each back once.
+\ One byte makes every member ready, and AWAIT-ANY hands each number back once,
+\ through the row's doublings and the removals that move its last entry.
+: WIDE-COUNT ( n -- ) {: tag:n :}
+   tag 0 >= tag GROW-N < and dup TTRUE 0= if exit then
+   tag WIDE-SEEN @ 1 + tag WIDE-SEEN ! ;
+
 : WIDE-DRAIN ( -- )
    P-W @ POKE
    0 FAN-READY !
    GROW-N 0 ?do
-      WIDE-GROUP AIO:AWAIT-ANY OUTCOME>N nip AIO:READABLE and 0 <> if
+      WIDE-GROUP AIO:AWAIT-ANY OUTCOME>N {: tag:n rev:n :}
+      rev AIO:READABLE and 0 <> if
          1 FAN-READY atomic-add drop
       then
+      tag WIDE-COUNT
    loop
    FAN-READY @ GROW-N T=
+   GROW-N 0 ?do i WIDE-SEEN @ 1 T= loop
    WIDE-GROUP AIO:GROUP-COUNT 0 T= ;
 
 : CASE-GROUP-WIDE ( -- )
@@ -796,17 +806,16 @@ CAST: XFER>N ( AIO:xfer -- n )
    WIDE-DRAIN
    P-R P-W PIPE-CLOSE ;
 
-\ Each group answers the one ticket it holds and no other.
+\ Each group answers the one wait it holds and no other.
 : CASE-GROUP-DEFS ( -- )
    P-R P-W PIPE-OPEN
    DEFS-N 0 ?do
-      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup i GROW-TICKETS !
-      i DEF-GROUPS @ AIO:GROUP+
+      P-R @ >FD AIO:READABLE -1 >MS AIO:POLL i i DEF-GROUPS @ AIO:GROUP+
    loop
    P-W @ POKE
    DEFS-N 0 ?do
       i DEF-GROUPS @ AIO:AWAIT-ANY OUTCOME>N AIO:READABLE and AIO:READABLE T=
-      TICKET>N i GROW-TICKETS @ TICKET>N T=
+      i T=
       i DEF-GROUPS @ AIO:GROUP-COUNT 0 T=
    loop
    P-R P-W PIPE-CLOSE ;
@@ -816,7 +825,7 @@ CAST: XFER>N ( AIO:xfer -- n )
 \ its row, and the second task's own ticket stays out of it.
 : THIEF-WORK ( -- )
    P-R @ >FD AIO:READABLE -1 >MS AIO:POLL THIEF-TICKET !
-   [: THIEF-TICKET @ OWNED-GROUP AIO:GROUP+ ;] catch THIEF-ADD-RC !
+   [: THIEF-TICKET @ 1 OWNED-GROUP AIO:GROUP+ ;] catch THIEF-ADD-RC !
    [: THIEF-TICKET @ OWNED-GROUP AIO:GROUP- ;] catch THIEF-DROP-RC !
    [: OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N drop drop ;] catch THIEF-ANY-RC !
    THIEF-TICKET @ AIO:CANCEL
@@ -824,14 +833,14 @@ CAST: XFER>N ( AIO:xfer -- n )
 
 \ Once its owner has emptied it, the group is any task's to fill.
 : TAKEOVER-WORK ( -- )
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup OWNED-GROUP AIO:GROUP+
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup 0 OWNED-GROUP AIO:GROUP+
    AIO:CANCEL
    OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N nip TAKEOVER-GOT ! ;
 
 : CASE-GROUP-OWNER ( -- )
    0 THIEF-ADD-RC ! 0 THIEF-DROP-RC ! 0 THIEF-ANY-RC ! 0 TAKEOVER-GOT !
    P-R P-W PIPE-OPEN
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! OWNED-GROUP AIO:GROUP+
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! 0 OWNED-GROUP AIO:GROUP+
    ['] THIEF-WORK THIEF-TASK TASK:ACTIVATE
    THIEF-TASK AWAIT-END
    THIEF-TASK TASK:KILL
@@ -841,7 +850,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    OWNED-GROUP AIO:GROUP-COUNT 1 T=
    LONE-TICKET @ AIO:CANCEL
    OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
-   TICKET>N LONE-TICKET @ TICKET>N T=
+   0 T=
    ['] TAKEOVER-WORK TAKEOVER-TASK TASK:ACTIVATE
    TAKEOVER-TASK AWAIT-END
    TAKEOVER-TASK TASK:KILL
@@ -852,17 +861,17 @@ CAST: XFER>N ( AIO:xfer -- n )
 \ A task that ends holding a group gives it back with the ticket it left in
 \ flight, so the group is any task's again: main fills it and waits on it.
 : ABANDON-WORK ( -- )
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL OWNED-GROUP AIO:GROUP+ ;
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL 1 OWNED-GROUP AIO:GROUP+ ;
 
 : CASE-GROUP-ABANDONED ( -- )
    P-R P-W PIPE-OPEN
    ['] ABANDON-WORK ABANDON-TASK TASK:ACTIVATE
    ABANDON-TASK AWAIT-END
    ABANDON-TASK TASK:KILL
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! OWNED-GROUP AIO:GROUP+
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL dup LONE-TICKET ! 0 OWNED-GROUP AIO:GROUP+
    LONE-TICKET @ AIO:CANCEL
    OWNED-GROUP AIO:AWAIT-ANY OUTCOME>N MARK-CANCELLED T=
-   TICKET>N LONE-TICKET @ TICKET>N T=
+   0 T=
    P-R P-W PIPE-CLOSE ;
 
 \ The task ends with the READ in flight; its cleanup forgets and cancels it, and
@@ -1003,9 +1012,9 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R @ POKE-BYTE 1 read drop ;
 
 : ACCEPT-WORK ( -- )
-   [: XL @ TCP4:LISTENER-FD AIO:ACCEPT ACCEPT-GROUP AIO:GROUP+
+   [: XL @ TCP4:LISTENER-FD AIO:ACCEPT 0 ACCEPT-GROUP AIO:GROUP+
       1 REUSE-PARKED atomic!
-      ACCEPT-GROUP AIO:AWAIT-ANY OUTCOME>N drop TICKET-DROP ;]
+      ACCEPT-GROUP AIO:AWAIT-ANY OUTCOME>N drop drop ;]
    [: ACCEPT-CLOSE ;] finally ;
 
 \ A READ cannot join a group, so the group holds an ACCEPT, which Darwin's poll
@@ -1096,7 +1105,7 @@ CAST: XFER>N ( AIO:xfer -- n )
       CHECK-QUIET-CANDIDATE! -1 T=
    s" AIO-XFER-AWAIT ( AIO:xfer -- AIO:outcome ) AIO:AWAIT"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" AIO-XFER-GROUP-IN ( AIO:xfer AIO:group -- ) AIO:GROUP+"
+   s" AIO-XFER-GROUP-IN ( AIO:xfer n AIO:group -- ) AIO:GROUP+"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" AIO-XFER-GROUP-OUT ( AIO:xfer AIO:group -- ) AIO:GROUP-"
       CHECK-QUIET-CANDIDATE! 0 T=

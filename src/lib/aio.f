@@ -229,7 +229,7 @@ $40 constant ROW-FIRST
 
 BEGIN-STRUCTURE G-BYTES
    CELL +FIELD G.COUNT              \ the tickets the group holds
-   CELL +FIELD G.CAP                \ the handle cells its row holds
+   CELL +FIELD G.CAP                \ the entries its row holds
    CELL +FIELD G.ROW                \ the row's address as n, or 0 for none
    \ The holding task's region, TASK:SELF-CONTEXT, or 0 while empty. Not
    \ TASK:SELF-N: the main thread's is 0.
@@ -455,8 +455,10 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 : G-CHUNK-LEN ( -- NUM:alloc-byte-len )
    GROUPS-FIRST G-BYTES * CHUNK-HEAD + MEM:BYTES-ALLOC-LEN ;
 
+\ A row entry is two cells: the handle cell GROUP+ was given, then the caller's
+\ number.
 : ROW-LEN ( n -- NUM:alloc-byte-len )
-   cells MEM:BYTES-ALLOC-LEN ;
+   2 * cells MEM:BYTES-ALLOC-LEN ;
 
 : ROW-RELEASE ( ptr n -- ) {: e:ptr :}
    e G.ROW @ 0= if exit then
@@ -1187,8 +1189,21 @@ INSTALL-HOST
    f addr off kind HOST-SOCKET SUBMIT-LEAVE >TICKET ;
 
 \ ---- groups ------------------------------------------------------------------
+: ROW-SLOT ( n n -- ptr n ) {: row:n i:n :}
+   row i 2 * cells + AIO-N>PTR ;
+
+: ROW-TAG ( n n -- ptr n ) {: row:n i:n :}
+   row i 2 * 1 + cells + AIO-N>PTR ;
+
+: ENTRY-COPY ( n n n n -- ) {: from:n i:n to:n j:n :}
+   from i ROW-SLOT @ to j ROW-SLOT !
+   from i ROW-TAG @ to j ROW-TAG ! ;
+
 : E-SLOT ( ptr n n -- ptr n ) {: e:ptr i:n :}
-   e G.ROW @ i cells + AIO-N>PTR ;
+   e G.ROW @ i ROW-SLOT ;
+
+: E-TAG ( ptr n n -- ptr n ) {: e:ptr i:n :}
+   e G.ROW @ i ROW-TAG ;
 
 : G-COUNT@ ( n -- n )
    G-ENTRY G.COUNT @ ;
@@ -1203,7 +1218,7 @@ INSTALL-HOST
    loop
    -1 ;
 
-\ A full row doubles: the handles move to a fresh mapping and the old one goes
+\ A full row doubles: the entries move to a fresh mapping and the old one goes
 \ back. Only the group's owner reaches here (G-CLAIM), so no other task reads
 \ the row while it moves and the move needs no facility.
 : ROW-GROW ( ptr n -- ) {: e:ptr :}
@@ -1211,7 +1226,7 @@ INSTALL-HOST
    e G.CAP @ 2 * ROW-FIRST max {: cap:n :}
    cap ROW-LEN MEM:ALLOC-BYTES drop FFI:>CELL {: row:n :}
    e G.COUNT @ 0 ?do
-      e i E-SLOT @ row i cells + AIO-N>PTR !
+      e G.ROW @ i row i ENTRY-COPY
    loop
    e ROW-RELEASE
    row e G.ROW !
@@ -1239,17 +1254,18 @@ INSTALL-HOST
    e [: dup ROW-GROW ;] catch dup 0= if 2drop exit then
    nip e G-DISOWN-EMPTY throw ;
 
-: G-ADD ( n n -- ) {: g:n h:n :}
+: G-ADD ( n n n -- ) {: g:n h:n tag:n :}
    g G-ENTRY {: e:ptr :}
    e G-CLAIM
    e G.COUNT @ e G.CAP @ = if e G-WIDEN then
    h e e G.COUNT @ E-SLOT !
+   tag e e G.COUNT @ E-TAG !
    e G.COUNT @ 1 + e G.COUNT ! ;
 
 : G-REMOVE-AT ( n n -- ) {: g:n at:n :}
    g G-ENTRY {: e:ptr :}
    e G.COUNT @ 1 - {: last:n :}
-   e last E-SLOT @ e at E-SLOT !
+   e G.ROW @ last e G.ROW @ at ENTRY-COPY
    last e G.COUNT !
    e G-DISOWN-EMPTY ;
 
@@ -1266,12 +1282,11 @@ INSTALL-HOST
    loop
    -1 ;
 
-\ The ticket the caller gets back is the slot's own handle cell, so it is the
-\ one GROUP+ was given; the record it is taken by is the index inside it.
-: G-TAKE-AT ( n n -- ticket outcome ) {: g:n at:n :}
+: G-TAKE-AT ( n n -- n outcome ) {: g:n at:n :}
    g G-ENTRY at E-SLOT @ {: h:n :}
+   g G-ENTRY at E-TAG @ {: tag:n :}
    g at G-REMOVE-AT
-   h >TICKET h HANDLE>IDX TAKE ;
+   tag h HANDLE>IDX TAKE ;
 
 : GROUP-LOOP ( n -- n ) {: g:n :}
    begin
@@ -1289,7 +1304,7 @@ INSTALL-HOST
       e i E-SLOT @ HANDLE>IDX GIVE-BACK
    loop ;
 
-: AWAIT-GROUP ( n -- ticket outcome ) {: g:n :}
+: AWAIT-GROUP ( n -- n outcome ) {: g:n :}
    g G-ENTRY G-MINE? 0= if E-AIO-GROUP throw then
    -1 AIO-PARKED !
    g [: GROUP-LOOP ;] [: GROUP-GIVE-BACK ;] finally {: at:n :}
@@ -1434,11 +1449,12 @@ public
 \ it while empty until it is empty again; any other task's GROUP+, GROUP- or
 \ AWAIT-ANY on it meanwhile is E-AIO-STATE. When the holder ends, AIO's exit
 \ cleanup empties every group it holds, so a cleanup of the caller's that runs
-\ after AIO's finds them empty.
-: GROUP+ ( ticket group -- ) {: t:ticket g:group :}
+\ after AIO's finds them empty. The number is the caller's, any value; AWAIT-ANY
+\ hands it back for this wait.
+: GROUP+ ( ticket n group -- ) {: t:ticket tag:n g:group :}
    t TICKET>N {: h:n :}
    h OWNED-CHECK drop
-   g GROUP>N h G-ADD ;
+   g GROUP>N h tag G-ADD ;
 
 \ The group holds the handle cell GROUP+ was given, so this matches the caller's
 \ handle exactly: a ticket the group never held is E-AIO-GROUP whether it is
@@ -1453,11 +1469,11 @@ public
 : GROUP-COUNT ( group -- n )
    GROUP>N G-COUNT@ ;
 
-\ The first ticket of the group whose operation has ended, with its outcome. The
-\ ticket leaves the group and its record is released, exactly as AWAIT does; the
-\ others stay. An empty group has nothing to wait for and is E-AIO-GROUP;
-\ another task's group is E-AIO-STATE.
-: AWAIT-ANY ( group -- ticket outcome ) {: g:group :}
+\ The number GROUP+ was given with the first wait of the group whose operation
+\ has ended, with its outcome. That ticket leaves the group and its record is
+\ released, exactly as AWAIT does; the others stay. An empty group has nothing to
+\ wait for and is E-AIO-GROUP; another task's group is E-AIO-STATE.
+: AWAIT-ANY ( group -- n outcome ) {: g:group :}
    RUNNING-CHECK
    g GROUP>N AWAIT-GROUP ;
 

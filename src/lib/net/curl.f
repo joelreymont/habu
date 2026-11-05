@@ -777,12 +777,10 @@ AIO:GROUP LOOP-GROUP
 TYPED-VARIABLE WAKE-TICKET AIO:ticket
 TYPED-VARIABLE TIMER-TICKET AIO:ticket
 
-\ A ticket is matched against the ones this loop holds, never minted here: the
-\ projection out of AIO's nominal is what a comparison needs and all it needs.
-CAST: TICKET>N ( AIO:ticket -- n )
-
-: SAME-TICKET? ( AIO:ticket AIO:ticket -- bool ) {: a:AIO:ticket b:AIO:ticket :}
-   a TICKET>N b TICKET>N = ;
+\ The numbers LOOP-GROUP's own waits carry, outside the fd slots an fd's wait
+\ carries.
+-1 constant WAKE-WAIT
+-2 constant TIMER-WAIT
 
 : COUNT-CELL ( -- ptr u8 )    MULTI-STAGE ;
 : MAXFD-CELL ( -- ptr u8 )    MULTI-STAGE $08 + ;
@@ -1363,31 +1361,37 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    s" curl: no free descriptor slot" E-STATE die ;
 
 
-: FD-SLOT-OF ( AIO:ticket -- n ) {: t:AIO:ticket :}
-   FD-SETSIZE 0 ?do
-      i FD-MASK@ 0 <> if
-         i FD-TICKETS @ t SAME-TICKET? if i unloop exit then
-      then
-   loop
-   -1 ;
-
-
 : FD-RELEASE ( n -- ) {: slot:n :}
    0 slot FD-MASK!
    -1 slot FD-FD! ;
 
 
-\ A ticket this loop no longer wants. The cancel leaves it in the group until
-\ AWAIT-ANY hands it back, where it matches no slot and the turn ignores it.
+: OUTCOME-DROP ( AIO:outcome -- )
+   MATCH AIO:outcome
+      ready OF drop ENDOF
+      timed-out OF ENDOF
+      cancelled OF ENDOF
+      refused OF drop ENDOF
+   ;MATCH ;
+
+
+\ A wait the loop no longer wants leaves the group and is awaited here, so it
+\ never comes back with a number reused since.
+: UNWAIT ( AIO:ticket -- ) {: t:AIO:ticket :}
+   t LOOP-GROUP AIO:GROUP-
+   t AIO:CANCEL
+   t AIO:AWAIT OUTCOME-DROP ;
+
+
 : FD-DROP ( n -- ) {: slot:n :}
-   slot FD-TICKETS @ AIO:CANCEL
+   slot FD-TICKETS @ UNWAIT
    slot FD-RELEASE ;
 
 
 : FD-ARM ( n n -- ) {: fd:n mask:n :}
    FD-FREE-SLOT {: slot:n :}
    fd >FD mask -1 >MS AIO:POLL {: t:AIO:ticket :}
-   t LOOP-GROUP AIO:GROUP+
+   t slot LOOP-GROUP AIO:GROUP+
    t slot FD-TICKETS !
    fd slot FD-FD!
    mask slot FD-MASK! ;
@@ -1440,7 +1444,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 : TIMER-ARM ( n -- ) {: ms:n :}
    ms >MS AIO:TIMEOUT {: t:AIO:ticket :}
-   t LOOP-GROUP AIO:GROUP+
+   t TIMER-WAIT LOOP-GROUP AIO:GROUP+
    t TIMER-TICKET !
    ms TIMER-MS ! ;
 
@@ -1452,7 +1456,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    mrc CURLM-OK <> if mrc exit then
    TIMER-MS @ 0 < if ms TIMER-ARM CURLM-OK exit then
    ms TIMER-MS @ >= if CURLM-OK exit then
-   TIMER-TICKET @ AIO:CANCEL
+   TIMER-TICKET @ UNWAIT
    -1 TIMER-MS !
    ms TIMER-ARM
    CURLM-OK ;
@@ -1460,25 +1464,14 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 : WAKE-ARM ( -- )
    WAKE-R @ >FD AIO:READABLE -1 >MS AIO:POLL {: t:AIO:ticket :}
-   t LOOP-GROUP AIO:GROUP+
+   t WAKE-WAIT LOOP-GROUP AIO:GROUP+
    t WAKE-TICKET ! ;
 
 
-: OUTCOME-DROP ( AIO:outcome -- )
-   MATCH AIO:outcome
-      ready OF drop ENDOF
-      timed-out OF ENDOF
-      cancelled OF ENDOF
-      refused OF drop ENDOF
-   ;MATCH ;
-
-
-\ A ticket no slot owns is one this loop cancelled and is done with.
-: TURN-ANSWER ( AIO:ticket -- n ) {: t:AIO:ticket :}
-   t WAKE-TICKET @ SAME-TICKET? if WAKE-DRAIN WAKE-ARM LOCKED-SERVICE exit then
-   t TIMER-TICKET @ SAME-TICKET? if -1 TIMER-MS ! CURLM-OK exit then
-   t FD-SLOT-OF dup 0 >= if FD-RELEASE CURLM-OK exit then
-   drop CURLM-OK ;
+: TURN-ANSWER ( n -- n ) {: wait:n :}
+   wait WAKE-WAIT = if WAKE-DRAIN WAKE-ARM LOCKED-SERVICE exit then
+   wait TIMER-WAIT = if -1 TIMER-MS ! CURLM-OK exit then
+   wait FD-RELEASE CURLM-OK ;
 
 
 : TURN ( -- n )
@@ -1532,17 +1525,13 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURL-LOCK TASK:RELEASE ;
 
 
-\ Every ticket this loop submitted is ended and handed back before the task
-\ returns: a record still in flight is what AIO:STOP refuses, and a ticket
-\ nobody awaits is a record nobody frees.
+\ Every wait this loop holds is ended and awaited before the task returns: a
+\ record still in flight is what AIO:STOP refuses, and a ticket nobody awaits is
+\ a record nobody frees.
 : GROUP-DRAIN ( -- )
    FD-SETSIZE 0 ?do i FD-MASK@ 0 <> if i FD-DROP then loop
-   WAKE-TICKET @ AIO:CANCEL
-   TIMER-MS @ 0 >= if TIMER-TICKET @ AIO:CANCEL -1 TIMER-MS ! then
-   begin
-      LOOP-GROUP AIO:GROUP-COUNT 0= if exit then
-      LOOP-GROUP AIO:AWAIT-ANY OUTCOME-DROP drop
-   again ;
+   WAKE-TICKET @ UNWAIT
+   TIMER-MS @ 0 >= if TIMER-TICKET @ UNWAIT -1 TIMER-MS ! then ;
 
 
 : LOOP-RUN-STORE ( -- )

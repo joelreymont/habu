@@ -27,7 +27,7 @@ public
    AIO:START
    pipe {: r w rc :}
    rc 0 <> if E-AIO-SETUP throw then
-   r >FD AIO:READABLE -1 >MS AIO:POLL dup HELD-TICKET ! HELD AIO:GROUP+
+   r >FD AIO:READABLE -1 >MS AIO:POLL dup HELD-TICKET ! 0 HELD AIO:GROUP+
    w POKE-BYTE 1 write drop
    HELD-TICKET @ AIO:AWAIT OUTCOME-DROP
    r close-rc drop
