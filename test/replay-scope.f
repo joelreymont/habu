@@ -9,7 +9,7 @@ require src/lib/errors.f
 require src/habu/layout.f
 require src/core/checker-owner-guard.f
 
-package REPLAY-SCOPE
+package TOOL-REPLAY
 
 \ The declaration owner's field at off, as verify-source.f OWNER-XT reads it.
 : OWNER-XT ( n -- n )

@@ -387,12 +387,8 @@ variable ARMED   NO-FAMILY ARMED !   \ the family this declaration armed
    fam TFAM-VAR-COUNT@ 0 <= IF 0 0= 0= EXIT THEN
    fam TFAM-SUM? fam TFAM-ENUM? or ;
 
-\ An existence check on the registry, not a name lookup: planning records the
-\ constructor symbol on each variant row, so a non-zero symbol on the first row
-\ means the words are live. Kept out of GEN-OK?, which ED-CLOSE and OWNS? read
-\ for kind alone. sumtype.f TDPLAN-NAME+ answers a second plan row with
-\ E-TDECL-NAME, so an already-generated family is refused here by a named
-\ throw; production never trips it, test/enum-decl-suite.f §20g drives it.
+\ The words are live when planning recorded a constructor symbol on the first
+\ variant row; a second plan row throws E-TDECL-NAME (sumtype.f TDPLAN-NAME+).
 : GENERATED? ( n -- bool ) {: fam:n :}
    fam TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> ;
 

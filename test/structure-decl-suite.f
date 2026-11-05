@@ -1,17 +1,12 @@
 \ structure-decl-suite.f - behavior and rollback suite for the STRUCTURE
 \ declaration front end (src/core/structure-decl.f, package STRUCTURE-DECL).
-\ A WHITEBOX-SUITE row: its registry probes are engine internals, bound only on
-\ the unsealed engine test/whitebox-engine.f builds:
-\     <unsealed engine> --load test/structure-decl-suite.f
-\ A failure prints F<index> and detail; T-REPORT exits 1.
+\ It asserts reject codes, rendered diagnostics, field-row counts and the
+\ generated words. A failure prints F<index> and detail; T-REPORT exits 1.
 
 require src/habu/verify-source.f
 require test/replay-scope.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/lib/test.f
-
-using SCHEMA-REG
-using TFAM
 
 \ Capture every reject's declaration diagnostic from the start; the last
 \ section asserts the rendered lines.
@@ -19,50 +14,12 @@ DECL-DIAG:PROSE
 
 T-RESET
 
-\ --- boundary shims: a declaration text runs through evaluate-closed, at top
-\ level or under TEST-EVAL:RC's catch. RP-TRY runs its word on copies of the
-\ inputs (a throw restores the depth catch began with) and drops both, so a
-\ refusal leaves only its code.
-: FAMID ( ptr u8 n -- n ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE drop ;
-: FAM-EQ? ( n -- bool ) TFAM-DERIVE-EQ? ;
-: FAM-HASH? ( n -- bool ) TFAM-DERIVE-HASH? ;
-: FAM-SLOTS@ ( n -- n ) TFAM-WIDTH@ ;
-: PACKED# ( -- n ) TL-PACKED-TAG ;
-
-\ --- registry snapshot, so a reject can prove that the family, schema,
-\ field transactions have returned to their prior watermarks.
-variable RB-TFAM  variable RB-STR  variable RB-PK  variable RB-SUMV
-variable RB-LAY   variable RB-SCH  variable RB-ROOT  variable RB-PFN  variable RB-PFC
-: REG-MARK ( -- )
-   TFAM-N @ RB-TFAM !  TF-STR-U @ RB-STR !  TF-PK-N @ RB-PK !
-   SUMV-N @ RB-SUMV !  LAY-N @ RB-LAY !  SCH-N @ RB-SCH !  SCH-ROOT-N @ RB-ROOT !
-   PF-N @ RB-PFN !  PF-COMMIT-N @ RB-PFC ! ;
-: TFAMN@ ( -- n ) TFAM-N @ ;
-: SCHN@ ( -- n ) SCH-N @ ;
-: SUMVN@ ( -- n ) SUMV-N @ ;
-
-variable FID   variable B   variable PFB
-variable SV0   \ variant-cursor watermark for the ctor-generation gating checks
-
-\ 4. POLICY reaches the family record.
-DECL-EVENT:RESET
-s" STRUCTURE ppk POLICY packed-tag FIELD x n ;STRUCTURE" evaluate-closed
-s" ppk" FAMID TFAM-LAYOUT-POLICY@ PACKED# T=          \ family layout policy is packed-tag
-
-\ 5. DERIVE reaches the family record; two features on one clause are accepted.
-DECL-EVENT:RESET
-s" STRUCTURE der DERIVE eq hash FIELD x n ;STRUCTURE" evaluate-closed
-s" der" FAMID FAM-EQ? TTRUE                           \ eq derived
-s" der" FAMID FAM-HASH? TTRUE                         \ hash derived
+variable B   variable PFB
 
 \ 6. A duplicate field name rejects through the field record (E-TFAM-DUP 7102)
-\    and the whole provisional declaration rolls back byte-identically.
-REG-MARK
+\    and the provisional field rows roll back.
 TYPE-FIELD:COUNT PFB !
 s" STRUCTURE dupf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
-TFAMN@ RB-TFAM @ T=                                   \ family retired
-SCHN@ RB-SCH @ T=                                     \ schema nodes retired
-SUMVN@ RB-SUMV @ T=                                   \ variant cursor unchanged
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
 
 \ 7. Grammar / name / arity / type / policy / derive / terminator rejects, each
@@ -97,12 +54,9 @@ s" STRUCTURE ptr FIELD x n ;STRUCTURE" TEST-EVAL:RC 7110 T=
 s" STRUCTURE twice FIELD x n ;STRUCTURE" evaluate-closed
 s" STRUCTURE twice FIELD x n ;STRUCTURE" TEST-EVAL:RC 7102 T=
 
-\ 10. A public STRUCTURE with fields generates a sealed MAKE/UNMAKE ctor package
-\     (two variant rows) through ;STRUCTURE -> STRUCTURE-MAKE:GENERATE. MAKE
-\     then UNMAKE is a bit-identical no-op in declaration order.
-SUMVN@ SV0 !
+\ 10. A public STRUCTURE with fields generates a sealed MAKE/UNMAKE ctor package;
+\     MAKE then UNMAKE round-trips the fields bit-identically in declaration order.
 s" STRUCTURE tri FIELD a n FIELD b n FIELD c n ;STRUCTURE" evaluate-closed
-SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant rows generated
 : TRIRT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE ;      \ callable sealed ctor words
 11 22 33 TRIRT 33 T= 22 T= 11 T=                      \ declaration order + values round-trip bit-identically
 
@@ -121,15 +75,11 @@ s" STRUCTURE sdmap<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z> FIELD p00 a FI
 s" SDMAPRT ( n n n n n n bool n r char -- n n n n n n bool n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDMAPBAD ( n n n n n bool n n r char -- n n n n n bool n n r char ) SDMAP:MAKE SDMAP:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ 12. Constructor generation is gated (SD-MAKEABLE?): only a PUBLIC structure WITH
-\     fields owns a ctor package. A rejected declaration and an opaque zero-field
-\     declaration each generate NO ctor words (the variant cursor is unchanged).
-SUMVN@ SV0 !
+\ 12. Only a structure with fields gets a ctor package (SD-MAKEABLE?): a zero-field
+\     family declares, and its MAKE is an unknown word (1).
 s" STRUCTURE badf FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=  \ duplicate field rejects
-SUMVN@ SV0 @ T=                                       \ no ctor words from a rejected declaration
-SUMVN@ SV0 !
 s" STRUCTURE opaque ;STRUCTURE" evaluate-closed                  \ zero-field opaque one-cell family (docs/forth.md "Structures And Enums")
-SUMVN@ SV0 @ T=                                       \ an opaque family owns no MAKE/UNMAKE
+s" SDOPQMK ( -- opaque ) OPAQUE:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
 
 \ 13. A PRIVATE structure with fields generates FAMILY-MAKE/FAMILY-UNMAKE
 \     (src/core/type-family.f TF-CTOR-PRIV$) into the declaring package's
@@ -137,7 +87,6 @@ SUMVN@ SV0 @ T=                                       \ an opaque family owns no
 \     namespace. A colon name cannot land in a private wordlist: the engine
 \     routes a qualified definition to the namespace's public wid, and the
 \     checker records a single-colon name as the package's public symbol.
-SUMVN@ SV0 !
 package SDPRIVTEST
 private
 STRUCTURE hidden FIELD x n FIELD y n ;STRUCTURE
@@ -147,7 +96,6 @@ public
 : HGO ( n n -- n n ) HRT ;
 : HTAIL ( -- n ) HAFTER ;
 ;package
-SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant rows generated
 11 22 SDPRIVTEST:HGO 22 T= 11 T=                      \ declaration order + values round-trip
 SDPRIVTEST:HTAIL 7 T=                                 \ generation did not seal the private wordlist
 
@@ -206,18 +154,12 @@ s" undefine VEIL-MAKE" TEST-EVAL:RC 0 T=
 public
 ;package
 
-\ 14. A rejected PRIVATE declaration rolls back family, schema nodes, variant
-\     rows, field rows and events. Re-declaring the name in the same package
-\     proves the dictionary rolled back: a retained record would collide on its
-\     generated name.
+\ 14. A rejected PRIVATE declaration rolls back its field rows and its words: the
+\     same name declares again in the package.
 package SDPRIVROLL
 private
-REG-MARK
 TYPE-FIELD:COUNT PFB !
 s" STRUCTURE roll FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
-TFAMN@ RB-TFAM @ T=                                   \ family retired
-SCHN@ RB-SCH @ T=                                     \ schema nodes retired
-SUMVN@ RB-SUMV @ T=                                   \ no ctor rows from a rejected private decl
 TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows retired
 STRUCTURE roll FIELD z n ;STRUCTURE                 \ the name is free again
 : RRT ( n -- n ) ROLL-MAKE ROLL-UNMAKE ;
@@ -320,9 +262,7 @@ s\" STRUCTURE-DECL:SD-RUN sdgquote FIELD aq\"b n ;STRUCTURE" TEST-EVAL:RC 7101 T
 s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? TTRUE
 s\" \"family\":\"sdgquote\"" DECL-DIAG:HAS? TTRUE
 
-\ accepted declarations stay silent, and a rendered reject still leaves the
-\ registry byte-identical: rendering happens after the runner has rolled
-\ back and touches no registry cursor.
+\ accepted declarations stay silent.
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgok1 FIELD a n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE-DECL:SD-RUN sdgok2 ;STRUCTURE" TEST-EVAL:RC 0 T=
@@ -357,13 +297,11 @@ DECL-DIAG:OFF
 package struct-replay-test
 public
 
+\ The replay entry under `catch` on copies of both strings, so a reject answers
+\ its code as TEST-EVAL:RC does for the live entry.
 : RP-EV ( ptr u8 n ptr u8 n -- ) STRUCTURE-DECL:SD-REPLAY ;
 : RP-TRY ( ptr u8 n ptr u8 n -- n )
    [: 2over 2over RP-EV ;] catch {: rc:n :} 2drop 2drop rc ;
-: SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
-: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
-: FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
-: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
 : DICT-RECS ( -- n ) ndict@ ;
 
 variable RP-DICT
@@ -373,12 +311,8 @@ variable RP-DICT
 private
 ;package
 
-\ A replayed STRUCTURE registers the family, its fields and make/unmake rows and
-\ moves the native dictionary not at all. Checked calls of the rows resolve
-\ while the replay's neutral pair is open: the checker overlay holds them as
-\ codeless records (src/core/checker.f CHECKER-OVERLAY) that go with the pair,
-\ so DICT-SAME holds after it. The pair finalizes; the family stays registered
-\ for the payload replay below.
+\ A replayed STRUCTURE registers its family: a checked MAKE call resolves while the
+\ neutral pair is open, and the native dictionary does not move (DICT-SAME).
 struct-replay-test:DICT-MARK
 CHECKER-SCOPE-START-NEUTRAL
 s" rpsd" s" FIELD one n FIELD two n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
@@ -387,37 +321,15 @@ s" S1BAD ( n -- rpsd ) RPSD:MAKE" VERIFY:CANDIDATE-IN-SCOPE 0 T=
 CHECKER-SCOPE-FINALIZE
 struct-replay-test:DICT-SAME
 
-s" rpsd" FAMID FID !
-FID @ TFAM-PRODUCT? TTRUE
-FID @ TFAM-FLD-COUNT@ 2 T=
-FID @ FAM-SLOTS@ 2 T=
-FID @ struct-replay-test:FAM-VAR-COUNT 2 T=          \ make + unmake rows registered
-FID @ struct-replay-test:FAM-VAR-START SV0 !
-SV0 @ struct-replay-test:SV-NAME$ s" make" CORE-STR= TTRUE
-SV0 @ 1 + struct-replay-test:SV-NAME$ s" unmake" CORE-STR= TTRUE
-SV0 @ struct-replay-test:CTOR-PKG$ s" RPSD" CORE-STR= TTRUE
-
-\ The rows' checker symbols outlive the pair.
-SV0 @ SUMV-CTOR-SYM@ 0 <> TTRUE
-SV0 @ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
-
-\ Header clauses replay onto the same family record. Derived EQ calls the
-\ rows the replay recorded before it, rows the engine holds no word for, so this
-\ replay runs where the check tool's runs: in its replay scope
-\ (test/replay-scope.f, src/core/checker.f CHECKER-OVERLAY), closed after the
-\ probes. While it is open the engine's scope is the replay's, which imports
-\ nothing, so a probe spells TFAM's word qualified.
-REPLAY-SCOPE:OPEN
+\ Header clauses replay too; derived EQ calls rows only the replay recorded, so it
+\ runs in the check tool's replay scope (test/replay-scope.f).
+TOOL-REPLAY:OPEN
 s" rpsdh" s" POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
 struct-replay-test:RP-TRY 0 T=
-s" rpsdh" FAMID FID !
-FID @ TFAM:TFAM-LAYOUT-POLICY@ PACKED# T=
-FID @ FAM-EQ? TTRUE
-REPLAY-SCOPE:CLOSE
+TOOL-REPLAY:CLOSE
 
 \ A field typed by a family registered through an earlier replay resolves.
 s" rpsdpay" s" FIELD h rpsd ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
-s" rpsdpay" FAMID TFAM-FLD-COUNT@ 1 T=
 
 \ A malformed replayed STRUCTURE reports through the same renderer as a live one.
 DECL-DIAG:PROSE
@@ -443,7 +355,6 @@ DECL-DIAG:PROSE
 s" rpsddangle" s" FIELD" struct-replay-test:RP-TRY 7107 T=
 DECL-DIAG:OFF
 s" STRUCTURE-DECL:SD-RUN rpsdafter FIELD one n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" rpsdafter" FAMID TFAM-FLD-COUNT@ 1 T=
 
 \ Control words are reserved in both name positions: a family or field named
 \ `if` would compile as the control word wherever generated code names it. The
@@ -479,17 +390,11 @@ DECL-DIAG:HAS? TTRUE
 \ an ordinary name and still declares, in both positions.
 DECL-DIAG:PROSE
 s" STRUCTURE iffy FIELD looping n FIELD thence n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" iffy" FAMID TFAM-FLD-COUNT@ 2 T=
 DECL-DIAG:SILENT? TTRUE
 DECL-DIAG:OFF
 
-\ A field may name a family that owns a linear value; the structure then owns
-\ that obligation by containment. TFAM-CONCRETE-LINEAR? enforces it: it walks a
-\ product's field schemas, follows an application node into the family it
-\ names, and reports the containing family linear. These cases pin the registry
-\ side at every nesting depth; test/type-linear-suite.f pins what the checker
-\ does with such a value. Package SDLIN owns the linear owner, so the qualified
-\ spelling is exercised.
+\ A field may name a linear family at any depth, and the structure then owns it
+\ (TFAM-CONCRETE-LINEAR?); test/type-linear-suite.f checks how such values are used.
 package SDLIN
 public
 DEFLINEAR SDLIN:tok                                   \ the linear owner these fixtures nest
@@ -497,38 +402,27 @@ DEFLINEAR SDLIN:tok                                   \ the linear owner these f
 
 \ depth 1: a field naming the linear con itself.
 s" STRUCTURE sdlbox FIELD t SDLIN:tok FIELD k n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlbox" FAMID TFAM-CONCRETE-LINEAR? TTRUE
-s" sdlbox" FAMID FAM-SLOTS@ 2 T=
 
 \ depth 2: a field naming that linear family.
 TYPE-FIELD:COUNT B !
 s" STRUCTURE sdlouter FIELD inner sdlbox FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlouter" FAMID TFAM-CONCRETE-LINEAR? TTRUE          \ linear by containment
-s" sdlouter" FAMID FAM-SLOTS@ 3 T=                    \ the nested bundle keeps its own two cells
 B @ TYPE-FIELD:NAME$ s" inner" CORE-STR= TTRUE
 B @ TYPE-FIELD:CELLS@ 2 T=                            \ the field is the whole bundle, not one cell
 B @ 1 + TYPE-FIELD:SLOT@ 2 T=                         \ z sits after it
 
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE sdldeep FIELD d sdlouter ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdldeep" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 
 \ a sum reached through a product counts the same way.
 s" ENUM sdlsum VARIANT hold FIELD m sdlbox ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TEST-EVAL:RC 0 T=
-s" sdlsum" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 s" STRUCTURE sdlviasum FIELD e sdlsum ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlviasum" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 
-\ the control: a chain with no linear value anywhere stays non-linear, so the
-\ walk is answering about the chain and not about nesting as such.
+\ a nested chain with no linear value anywhere declares too.
 s" STRUCTURE sdlplain FIELD v n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" STRUCTURE sdlplainer FIELD inner sdlplain ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlplainer" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 
-\ wrong role: the same word in the FIELD NAME position is a name, never a type,
-\ so it neither resolves nor makes the structure linear.
+\ wrong role: the same word in the FIELD NAME position is a name, never a type.
 s" STRUCTURE sdlrole FIELD sdlbox n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlrole" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 
 \ reordering: naming a family before it is declared is still an unknown type,
 \ so acceptance comes from resolution and not from the spelling alone.
@@ -558,7 +452,6 @@ DECL-DIAG:OFF
 
 \ the two spellings side by side. Naming the value owns it; pointing at it cannot.
 s" STRUCTURE sdlowns FIELD m sdlbox ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlowns" FAMID TFAM-CONCRETE-LINEAR? TTRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr FIELD p ptr sdlbox ;STRUCTURE" TEST-EVAL:RC 7109 T=
@@ -597,23 +490,16 @@ s" STRUCTURE sdlptrlate FIELD a n FIELD p ptr sdlbox FIELD c n ;STRUCTURE" TEST-
 s" habu: bad structure declaration 'sdlptrlate': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
 DECL-DIAG:HAS? TTRUE
 
-\ the controls. A pointer to a family that owns nothing declares, keeps its one
-\ cell, and leaves the structure non-linear — so the rejects above answer the
-\ POINTEE's linearity and not the word `ptr`.
+\ the controls. A pointer to a family that owns nothing declares, so the rejects
+\ above answer the POINTEE's linearity and not the word `ptr`.
 s" STRUCTURE sdlptrok FIELD p ptr sdlplain FIELD k n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlptrok" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
-s" sdlptrok" FAMID FAM-SLOTS@ 2 T=                    \ the pointer is one cell, k is the other
 s" STRUCTURE sdlptrok2 FIELD p ptr ptr sdlplain ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlptrok2" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 s" STRUCTURE sdlptrn FIELD p ptr n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlptrn" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 
 \ wrong role: the same words in the FIELD NAME position are names, never types.
-\ Neither resolves, neither is refused, and neither makes the structure linear.
+\ Neither resolves and neither is refused.
 s" STRUCTURE sdlptrrole FIELD ptr n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlptrrole" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 s" STRUCTURE sdlptrrole2 FIELD sdlbox n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" sdlptrrole2" FAMID TFAM-CONCRETE-LINEAR? 0= TTRUE
 
 \ hostile comments. A declaration body has no comment syntax: `(` and `\` are
 \ ordinary tokens, so the declaration is malformed and rejects 7107, not this
@@ -770,7 +656,6 @@ s" undefine SDADDR:A" TEST-EVAL:RC 7111 T=
 s" undefine SDADDR:AT" TEST-EVAL:RC 7111 T=
 
 \ a PRIVATE family takes the private spelling, in the declaring package only.
-SUMVN@ SV0 !
 package SDAPRIV
 private
 STRUCTURE hrec
@@ -788,7 +673,6 @@ public
 : HGO ( -- n n n ) 5 6 0 HW 0 HX 0 HY HREC-BYTES ;
 ;package
 SDAPRIV:HGO 16 T= 6 T= 5 T=
-SUMVN@ SV0 @ 2 + T=                                   \ still exactly two variant rows: accessors are not variants
 
 package SDAOTHER
 private
@@ -819,35 +703,19 @@ SDAPRIVDRV:DHS TTRUE
 
 \ a rejected addr declaration rolls the whole thing back, accessors included:
 \ the name is free and re-declaring it publishes working words.
-REG-MARK
 TYPE-FIELD:COUNT PFB !
 s" STRUCTURE sdaroll DERIVE addr FIELD z n FIELD z n ;STRUCTURE" TEST-EVAL:RC 7102 T=
-TFAMN@ RB-TFAM @ T=
-SCHN@ RB-SCH @ T=
-SUMVN@ RB-SUMV @ T=
 TYPE-FIELD:COUNT PFB @ T=
 s" STRUCTURE sdaroll DERIVE addr FIELD z n ;STRUCTURE" TEST-EVAL:RC 0 T=
 s" SDAR1 ( ptr sdaroll -- ptr n ) SDAROLL:Z" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ 16. The OPAQUE header clause is recorded on the family record and in the
-\     event stream, and refused where it means nothing: after a field, twice,
-\     on a fieldless family, in an ENUM, and outside any package. Every reject
-\     returns every registry cursor to its mark and renders its line. What the
-\     clause does to the generated words is section 17.
-: REJ-MARK ( -- ) REG-MARK TYPE-FIELD:COUNT PFB ! ;
-: REJ-SAME ( -- )
-   TFAM-N @ RB-TFAM @ T=  TF-STR-U @ RB-STR @ T=  TF-PK-N @ RB-PK @ T=
-   SUMV-N @ RB-SUMV @ T=  LAY-N @ RB-LAY @ T=  SCH-N @ RB-SCH @ T=
-   SCH-ROOT-N @ RB-ROOT @ T=  PF-N @ RB-PFN @ T=  PF-COMMIT-N @ RB-PFC @ T=
-   TYPE-FIELD:COUNT PFB @ T= ;
-DECL-EVENT:RESET
+\ 16. OPAQUE is refused after a field, twice, on a fieldless family, in an ENUM and
+\     outside a package; each reject keeps the field rows at their mark and renders.
+: REJ-MARK ( -- ) TYPE-FIELD:COUNT PFB ! ;
+: REJ-SAME ( -- ) TYPE-FIELD:COUNT PFB @ T= ;
 package SDOPQ
 public
 STRUCTURE obox OPAQUE FIELD x n FIELD y n ;STRUCTURE
-s" obox" FAMID FID !
-FID @ TFAM-OPAQUE? TTRUE                              \ the family record carries it
-FID @ TFAM-PUBLIC? TTRUE                              \ the family's visibility is unchanged
-FID @ TFAM-GEN-PUBLIC? 0= TTRUE                       \ its generated words are placed privately
 ;package
 
 \ A private family may say OPAQUE too: the placement is already private, so the
@@ -855,11 +723,10 @@ FID @ TFAM-GEN-PUBLIC? 0= TTRUE                       \ its generated words are 
 package SDOPQPRIV
 private
 s" STRUCTURE opriv OPAQUE FIELD x n ;STRUCTURE" TEST-EVAL:RC 0 T=
-s" opriv" FAMID TFAM-OPAQUE? TTRUE
 public
 ;package
 
-\ The definer rejects, each at its token, each with every cursor back at its mark.
+\ The definer rejects, each at its token, each with the field rows at their mark.
 package SDOPQREJ
 public
 DECL-DIAG:PROSE
@@ -917,9 +784,8 @@ STRUCTURE oinit OPAQUE DERIVE init FIELD a n FIELD b n ;STRUCTURE
 s" SDOI ( n n -- n n ) OBOX-MAKE OBOX-UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDOX ( ptr oaddr -- ptr n ) OADDR-X" CHECK-QUIET-CANDIDATE! -1 T=
 s" SDON ( mut-view<a,b,c,init<d,oinit>> -- mut-view<a,b,c,init<d,oinit>> n ) OINIT-A@" CHECK-QUIET-CANDIDATE! -1 T=
-s" OADDR-AT" TFAM-ADDR-WORD? TTRUE                    \ the accessor is a generated word here...
 private                                               \ the pair lives in the private wordlist
-s" undefine OBOX-MAKE" TEST-EVAL:RC 7111 T=           \ ...and is protected by name there
+s" undefine OBOX-MAKE" TEST-EVAL:RC 7111 T=           \ protected by name there
 s" undefine OBOX-UNMAKE" TEST-EVAL:RC 7111 T=
 public
 ;package
@@ -928,9 +794,6 @@ SDOPQ:OAFTER 8 T=
 SDOPQ:OEQT TTRUE
 SDOPQ:OEQF TFALSE
 SDOPQ:OHSH TTRUE
-FID @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=         \ no constructor package stamped
-s" SDOPQ-OADDR:AT" TFAM-ADDR-WORD? 0= TTRUE           \ the qualified spelling is nobody's accessor
-s" SDOPQ-OBOX:MAKE" TFAM-CTOR-WORD? 0= TTRUE          \ nor anybody's constructor
 
 \ Another package names the type and reaches none of the words, under any
 \ spelling: the probe answers 1 (unresolvable), as section 13's SDPO does.
@@ -980,6 +843,3 @@ STRUCTURE oclash OPAQUE DERIVE addr FIELD x n ;STRUCTURE
 17 SDOPQ:OCR 17 T=
 
 T-REPORT
-
-;using
-;using

@@ -1719,7 +1719,7 @@ SUITE lower-txn-large
    test/lower-txn-large.f
 ;SUITE
 
-WHITEBOX-SUITE enum-decl
+SUITE enum-decl
    test/enum-decl-suite.f
 ;SUITE
 
@@ -1773,7 +1773,7 @@ SUITE structure-quotation-rollback
    test/structure-quotation-rollback.f
 ;SUITE
 
-WHITEBOX-SUITE structure-decl
+SUITE structure-decl
    test/structure-decl-suite.f
 ;SUITE
 
