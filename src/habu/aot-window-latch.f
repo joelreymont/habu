@@ -133,7 +133,7 @@ variable TASK-USER-MARK
 \ for the other captures (src/core/dynamic-storage.f RELEASE-RANGE). Records
 \ declared outside the span (the maker's, the linker's above it) stay live.
 \ Without it a CODEGEN:BUFFER filled at load time was refused for its text
-\ mapping (test/ffi-callback-file-cache.f).
+\ mapping (src/lib/ffi-callback-test.f CASE-STRIPPED).
 : AOT-DATA-RELEASE ( -- )
    data-base BYTE-VIEW BLOB-SRC @ DATA-VA VA>N - + BLOB-LEN @
    DYNAMIC-STORAGE:RELEASE-RANGE ;

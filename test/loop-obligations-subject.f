@@ -1,8 +1,11 @@
-\ Loaded after native-window-owner-child.f replaces the checker from source.
+\ Loop exits: unloop and exit forms run to their values, and the checker refuses
+\ each unbalanced form. test/loop-obligations.f loads it and reads its output.
 package LOOP-OBLIGATION-TEST
 
-\ This reduced prefix has the family registry, before the declaration driver.
-s" choice" s" VARIANT first ;VARIANT VARIANT second ;VARIANT" CHECKER-DEFSUM
+ENUM choice
+   VARIANT first ;VARIANT
+   VARIANT second ;VARIANT
+;ENUM
 
 : FIRST ( -- choice ) CONSTRUCT choice first ;
 : SECOND ( -- choice ) CONSTRUCT choice second ;

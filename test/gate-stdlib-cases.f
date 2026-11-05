@@ -103,10 +103,6 @@ SUITE ffi-callback-full-image
    test/ffi-callback-full-image.f
 ;SUITE
 
-SUITE ffi-callback-file-cache
-   test/ffi-callback-file-cache.f
-;SUITE
-
 SUITE c2-saved
    test/c2-saved-e2e.f
 ;SUITE

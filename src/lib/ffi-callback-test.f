@@ -381,10 +381,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" unexposed" CHILD-CASE
    s" defines" CHILD-CASE
    s" body-defines" CHILD-CASE
-   s" halted" CHILD-CASE
-   s" killed" CHILD-CASE
-   s" woken" CHILD-CASE
-   s" fresh" CHILD-CASE
+   s" released" CHILD-CASE
    s" captures" CHILD-CASE ;
 
 \ test/ffi-callback-direct-child.f calls MARSHAL's and UNSET's entries through
@@ -447,8 +444,19 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
 
-: SUBJECT-SOURCE$ ( -- ptr u8 n )
-   S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) STRIPPED-CALLBACK-SUBJECT:RUN ;\n" ;
+: WRITE-SUBJECT ( -- )
+   SUBJECT$ S\" require src/lib/ffi-callback.f\nCALLBACK: FILE-BOUND ( -- ) ;CALLBACK\n" FS:WRITE-ALL
+   \ Numeric fallbacks grow and retire descriptors before capture. MAIN's seed
+   \ entry needs a code span disjoint from the shared thunk's.
+   SUBJECT$ S\" CALLBACK: FIRST ( -- n ) 456 FALLBACK ;CALLBACK\nCALLBACK: SECOND ( -- n ) 456 FALLBACK ;CALLBACK\n" FS:APPEND-FILE
+   \ FILE-BOUND, the first row, is bound while the build loads; the image must
+   \ start with it unbound and unmoved.
+   SUBJECT$ S\" FILE-BOUND TASK:SELF-CONTEXT FFI-CB:ENTRY drop\n" FS:APPEND-FILE
+   SUBJECT$ S\" PERSISTED-PTR-VARIABLE FILE-ROWS\nvariable FILE-ROW-VISITS\n" FS:APPEND-FILE
+   SUBJECT$ S\" : KEEP-ROW ( ptr u8 n -- ) {: a:ptr u:n :} FILE-ROW-VISITS @ 0= if a 0 ptr-field @ FILE-ROWS ! then 1 FILE-ROW-VISITS +! ;\n" FS:APPEND-FILE
+   SUBJECT$ S\" : BOUND-REGION ( -- n ) 0 FILE-ROW-VISITS ! ['] KEEP-ROW TASK:OWNED-CALLBACK-ROWS FILE-ROWS @ CB-ROW-REGION + CELL-VIEW atomic@ ;\n" FS:APPEND-FILE
+   SUBJECT$ S\" : ROW-MOVES ( -- n ) FILE-ROWS @ 2 cells + CELL-VIEW atomic@ ;\n: FRESH-ROW ( -- ) BOUND-REGION dup . cr 0<> if 74 throw then ROW-MOVES dup . cr 0<> if 74 throw then ;\n" FS:APPEND-FILE
+   SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
 
 : BUILD-IMAGE ( -- len len outcome )
    AOT-BUILDER-ENGINE:ENSURE
@@ -481,7 +489,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" ffi-callback" GT-START
    s" subject.f" SUBJECT-BUF GT-PATH SUBJECT-U !
    s" application" IMAGE-BUF GT-PATH IMAGE-U !
-   SUBJECT$ SUBJECT-SOURCE$ FS:WRITE-ALL
+   WRITE-SUBJECT
    BUILD-IMAGE LINKED
    s" stripped" RUN-IMAGE TRANSCRIBE ;
 
@@ -610,20 +618,14 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" == child body-defines: exit 106" W
    s" --" W
    s" hb: callback: the body defined" W
-   s" == child halted: exit 0" W
+   s" == child released: exit 0" W
    s" halted: the worker is parked inside its comparator" W
    s" halted: the comparator returned, qsort completed and KILL joined the worker" W
-   s" --" W
-   s" == child killed: exit 0" W
    s" killed: the worker is stopped inside its comparator" W
    s" killed: its sort completed" W
    s" killed: the worker ended at its first TASK:PAUSE after the sort" W
-   s" --" W
-   s" == child woken: exit 0" W
    s" woken: a thread is stopped inside its callback" W
    s" woken: WAKE of the exposed task released it to its result" W
-   s" --" W
-   s" == child fresh: exit 0" W
    s" fresh: a hint to a run that ended does not reach an exposure" W
    s" fresh: nor does a hint to an earlier exposure" W
    s" --" W
@@ -634,6 +636,11 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" == a stripped image" W
    s" ok   hb-build links test/stripped-callback-subject.f stripped" W
    s" == child stripped: exit 0" W
+   s" 0" W
+   s" " W
+   s" 0" W
+   s" " W
+   s" fresh callback binding: ok" W
    s" stripped-callback: ok" W
    s" --" W ;
 

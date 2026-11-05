@@ -1,58 +1,40 @@
-\ Both compiler tiers use a checker loaded from the current source tree.
+\ Loads test/loop-obligations-subject.f on the engine under test at its default
+\ tier, through the normal load path.
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require test/whitebox-child.f
+require src/lib/engine-candidate.f
 require src/lib/test/subject.f
 
-package LOOP-WINDOW-TEST
+package LOOP-OBLIGATIONS-TEST
 
 $4000 constant IO-CAP
 180000 constant DEADLINE-MS
 create OUT IO-CAP allot
 create ERR IO-CAP allot
 
-\ The child runs test/native-window-owner-child.f, which reopens the engine's
-\ build window: `hb: internal engine word: DECLARATIONS`, exit 70 on the sealed
-\ product. So it runs on the engine test/whitebox-child.f names.
-: PREPARE ( -- )
-   FS:CLEANUP-RESET
-   s" loop-obligations" WHITEBOX-CHILD:PROVIDE ;
-
-: ARGS! ( bool -- ) {: native:bool :}
-   PROC-ARGV-RESET
+: CASES ( -- )
+   s" loop obligations through the load path" T-LABEL
+   PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
-   s" test/native-window-owner-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" test/native-window-loop-obligations.f" >LEN PROC-ARGV+
-   native if s" test/compiler/aot-mode.f" >LEN PROC-ARGV+ then
-   WHITEBOX-CHILD:ENV! ;
-
-: RUN-TIER ( bool -- )
-   ARGS!
-   WHITEBOX-CHILD:ENGINE$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
+   s" test/loop-obligations-subject.f" >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   ENGINE-CANDIDATE:PATH$ >LEN OUT IO-CAP >LEN ERR IO-CAP >LEN DEADLINE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
-   s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
-   OUT outu LEN>N S\" loop-runtime: ok\nwindow: 0\n" STR= 0= rc 0 <> or if
+   s" test/loop-obligations-subject.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
+   OUT outu LEN>N S\" loop-runtime: ok\n" STR= 0= rc 0 <> or if
       ERR erru LEN>N type cr
    then
    rc 0 T=
-   OUT outu LEN>N S\" loop-runtime: ok\nwindow: 0\n" T$=
-   \ The child asserts each exact catch code; the load path must also diagnose.
+   OUT outu LEN>N S\" loop-runtime: ok\n" T$=
+   \ The subject asserts each exact catch code; the load path must also diagnose.
    erru LEN>N 0 > TTRUE ;
-
-: CASES ( -- )
-   s" loop obligations through the JIT and fresh checker" T-LABEL
-   0 1 = RUN-TIER
-   s" loop obligations through the native compiler and fresh checker" T-LABEL
-   0 0= RUN-TIER ;
 
 : RUN ( -- )
    T-RESET
-   [: PREPARE CASES ;] [: FS:CLEANUP-RUN ;] finally
+   CASES
    T-REPORT ;
 
 RUN

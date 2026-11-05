@@ -1,7 +1,5 @@
-\ ffi-callback-child.f - one scenario per run, in its own process because a
-\ wrong answer ends or wedges it. src/lib/ffi-callback-test.f spawns it per case
-\ and reads the exit status and both streams. An unrefused scenario dies 70 by
-\ name; the halted, killed, woken and fresh cases exit 0 once the task has left.
+\ ffi-callback-child.f - one refused scenario per run, since its refusal ends
+\ the process; the released case runs the four that exit 0.
 \ Run: bin/hb --load test/ffi-callback-child.f -- <case>
 require test/ffi-callback-fixture.f
 require src/lib/string.f
@@ -170,6 +168,7 @@ variable PAST-PAUSE                  \ 1 if the worker ran past that TASK:PAUSE
    1 PAST-PAUSE atomic! ;
 
 : KILLED ( -- )
+   0 INSIDE atomic!
    ['] WORK-YIELDS WORKER-B TASK:ACTIVATE
    WAIT-INSIDE
    s" killed: the worker is stopped inside its comparator" type cr
@@ -256,10 +255,7 @@ variable PAST-STOP                    \ 1 once STOPS's body has left its WAIT
    s" unexposed" CASE? if UNEXPOSED then
    s" defines" CASE? if DEFINES then
    s" body-defines" CASE? if BODY-DEFINES then
-   s" halted" CASE? if HALTED exit then
-   s" killed" CASE? if KILLED exit then
-   s" woken" CASE? if WOKEN exit then
-   s" fresh" CASE? if FRESH exit then
+   s" released" CASE? if HALTED KILLED WOKEN FRESH exit then
    s" captures" CASE? if CAPTURES then
    s" ffi-callback-child: unknown case" SURVIVED-RC die ;
 

@@ -6,9 +6,7 @@
 \ `--load test/compiler/aot-mode.f <subject>`.
 
 \ Only code compiled after this file takes the tier, so a twin row lists the
-\ subject's harness (src/lib/test.f) before it. This file loads nothing:
-\ test/loop-obligations.f passes it inside a native build window, where every
-\ loaded file is compiled by the window.
+\ subject's harness (src/lib/test.f) before it.
 
 package NATIVE-AOT-MODE
 1 set-tier
