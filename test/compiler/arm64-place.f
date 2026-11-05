@@ -3,17 +3,22 @@
 \ hb's kernel primitive entries to the same primitives' entries there.
 \ ARM64:PLACE copies a fixture word's shadow emission: at the host routine's entry
 \ it matches the routine T0 placed there, code address chains aside; elsewhere
-\ its calls and chains reach what the shadow named. PLACE-ROUTINES lays every
-\ emission out after the kernel, calls reaching product routines and kernel
-\ primitives at their link addresses, and a second placement gives the same
-\ bytes. The fixture is test/compiler/arm64-place-fixture.f, loaded through the
-\ typed interpret loop at tier 0 while a native shadow is open.
+\ its calls and chains reach what the shadow named. After REACH-ALL,
+\ PLACE-ROUTINES lays every emission out after the kernel, calls reaching product
+\ routines and kernel primitives at their link addresses, and a second placement
+\ gives the same bytes. A link rooted at one word places only the emissions it
+\ reaches, through calls or a code address; one rooted at PL-MAKE, whose body
+\ calls `create`, is refused in a child process.
+\ The fixture is test/compiler/arm64-place-fixture.f, loaded through the typed
+\ interpret loop at tier 0 while a native shadow is open.
 
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/fs.f
 require src/lib/test.f
+require src/lib/process-command.f
+require src/lib/engine-candidate.f
 require src/lib/ffi-abi.f
 require src/habu/layout.f
 require src/habu/xref.f
@@ -43,7 +48,7 @@ SRC-CAP BUFFER: SRC                  \ the fixture's text
 variable SRC-U
 variable RECS0                       \ shadow records filed before the load
 4096 constant OUT-CAP
-OUT-CAP BUFFER: PLACED               \ a placed copy of the emission
+OUT-CAP BUFFER: COPY                 \ a placed copy of the emission
 16 BUFFER: SCRATCH                   \ one call site or code address chain
 
 \ How a word of a placed copy may differ from the shadow's.
@@ -90,6 +95,11 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    NSHADOW:RECORDS RECS0 @ ?do
       i NSHADOW:RECORD@ XREF-REC XREF-NAME$ a u STR= if drop i then
    loop ;
+
+: REC-NAMED ( ptr u8 n -- n )
+   ROW-NAMED {: r:n :}
+   r 0< if s" arm64-place: a fixture word has no shadow record" 1 die then
+   r ;
 
 
 : SHADOW-AT ( n n -- ptr u8 ) {: e:n off:n :} e NSHADOW:BYTES off + ;
@@ -182,7 +192,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    {: e:n h:n n:n :}
    n 4 / 0 ?do
       e i 4 * WORD-AT CODE-CHAIN <> if
-         PLACED i 4 * + LE:U32@  h i 4 * + CODE>BYTES LE:U32@ <> if
+         COPY i 4 * + LE:U32@  h i 4 * + CODE>BYTES LE:U32@ <> if
             i 4 * unloop exit
          then
       then
@@ -241,11 +251,11 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    -1 ;
 
 
-\ Emission e copied to PLACED to run at at, data addresses through data.
+\ Emission e copied to COPY to run at at, data addresses through data.
 : PLACE-AT ( n n [ n -- n ] [ n -- n ] -- )
    {: e:n at:n data resolve :}
-   e NSHADOW:SIZE OUT-CAP > if s" arm64-place: the emission outgrows PLACED" 1 die then
-   e PLACED at data resolve ARM64:PLACE ;
+   e NSHADOW:SIZE OUT-CAP > if s" arm64-place: the emission outgrows COPY" 1 die then
+   e COPY at data resolve ARM64:PLACE ;
 
 
 : KINDS ( n -- )
@@ -267,7 +277,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    s" placed at the host entry: same words" T-LABEL
    e h  hlen e NSHADOW:SIZE min  HOST-DIFF -1 T=
    s" placed at the host entry: code address chains" T-LABEL
-   e PLACED h [: 0 + ;] CHAINS-BAD -1 T= ;
+   e COPY h [: 0 + ;] CHAINS-BAD -1 T= ;
 
 
 \ At at with every target and data address moved by LINK-BY.
@@ -275,12 +285,12 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    {: e:n at:n :}
    e at [: LINK-BY + ;] [: LINK-BY + ;] PLACE-AT
    s" placed elsewhere: calls" T-LABEL
-   e PLACED at [: LINK-BY + ;] CALLS-BAD -1 T=
+   e COPY at [: LINK-BY + ;] CALLS-BAD -1 T=
    s" placed elsewhere: code address chains" T-LABEL
-   e PLACED at [: LINK-BY + ;] CHAINS-BAD -1 T=
+   e COPY at [: LINK-BY + ;] CHAINS-BAD -1 T=
    s" placed elsewhere: data addresses" T-LABEL
-   e PLACED [: LINK-BY + ;] DATA-BAD -1 T=
-   s" placed elsewhere: other words" T-LABEL  e PLACED PLAIN-DIFF -1 T= ;
+   e COPY [: LINK-BY + ;] DATA-BAD -1 T=
+   s" placed elsewhere: other words" T-LABEL  e COPY PLAIN-DIFF -1 T= ;
 
 
 : ENCODINGS ( -- )
@@ -386,8 +396,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 
 
 : CHECK ( -- )
-   s" PL-RUN" ROW-NAMED {: r:n :}
-   r 0< if s" arm64-place: PL-RUN has no shadow record" 1 die then
+   s" PL-RUN" REC-NAMED {: r:n :}
    r NSHADOW:EMISSION@ {: e:n :}
    r NSHADOW:RECORD@ XREF-REC {: rec:ptr :}
    s" a definition enters at its first byte" T-LABEL  r NSHADOW:ENTRY@ 0 T=
@@ -460,18 +469,18 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    -1 ;
 
 
-: EMISSION-NAMED ( ptr u8 n -- n )
-   {: a:ptr u:n :}
-   a u ROW-NAMED {: r:n :}
-   r 0< if s" arm64-place: a fixture word has no shadow record" 1 die then
-   r NSHADOW:EMISSION@ ;
+: EMISSION-NAMED ( ptr u8 n -- n ) REC-NAMED NSHADOW:EMISSION@ ;
+: HOST-NAMED ( ptr u8 n -- n ) REC-NAMED NSHADOW:RECORD@ XREF-REC XREF-START ;
+
+
+: PLACED? ( ptr u8 n -- bool ) HOST-NAMED LINK-ADDRESS -1 <> ;
 
 
 \ PL-FIVE's last call row is its does> slot (NSHADOW:PATCH-CALL?).
-: SLOT-CASE ( -- )
+: SLOT-CASE ( ptr u8 n -- )
+   T-LABEL
    s" PL-FIVE" EMISSION-NAMED {: five:n :}
    s" PL-MAKE" EMISSION-NAMED {: make:n :}
-   s" band: PL-FIVE's does> slot reaches PL-MAKE's clause" T-LABEL
    make CLAUSE-ENTRY 0 > TTRUE
    five  five NSHADOW:CALL-SITES 1 -  make BAND-LINK make CLAUSE-ENTRY +
    CALL-REACHES? TTRUE ;
@@ -495,6 +504,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 
 
 : BAND-CASE ( -- )
+   ROUTINES REACH-ALL
    [: LINK-BY + ;] PLACE-ROUTINES
    s" band: every call" T-LABEL  ['] BAND-CALLS FIRST-BAD -1 T=
    s" band: every code address chain" T-LABEL  ['] BAND-CHAINS FIRST-BAD -1 T=
@@ -511,8 +521,79 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
    run  leaf BAND-LINK  ANY-CALL-REACHES? TTRUE
    s" band: a word outside the product has no link address" T-LABEL
    ['] T-REPORT WORD>N LINK-ADDRESS -1 T=
-   SLOT-CASE
+   s" band: PL-FIVE's does> slot reaches PL-MAKE's clause" SLOT-CASE
    SECOND-CASE ;
+
+
+\ A fresh link from the kernel's end that places what host address a reaches.
+: LINK-FROM ( n -- )
+   KERNEL-END @ 4 / A64ICODE:ASM-CP !
+   ROUTINES
+   ROOT
+   [: LINK-BY + ;] PLACE-ROUTINES ;
+
+
+\ PL-RUN's calls and code address chain reach PL-LEAF; its data address, PL-V,
+\ is not followed.
+: CLOSURE-CASE ( -- )
+   s" PL-RUN" HOST-NAMED LINK-FROM
+   s" PL-RUN" EMISSION-NAMED {: run:n :}
+   s" PL-LEAF" EMISSION-NAMED {: leaf:n :}
+   s" closure: PL-RUN and PL-LEAF are placed" T-LABEL
+   s" PL-RUN" PLACED? TTRUE  s" PL-LEAF" PLACED? TTRUE
+   s" closure: PL-MAKE, PL-FIVE and PL-V are not" T-LABEL
+   s" PL-MAKE" PLACED? TFALSE  s" PL-FIVE" PLACED? TFALSE  s" PL-V" PLACED? TFALSE
+   s" closure: the band holds PL-RUN and PL-LEAF" T-LABEL
+   A64ICODE:ASM-LEN  KERNEL-END @ run NSHADOW:SIZE + leaf NSHADOW:SIZE +  T=
+   s" closure: PL-RUN reaches PL-LEAF" T-LABEL
+   run  leaf BAND-LINK  ANY-CALL-REACHES? TTRUE ;
+
+
+\ PL-FIVE runs PL-MAKE's clause, never PL-MAKE's own body, which calls `create`:
+\ the link places PL-MAKE's emission whole and is not refused.
+: DOES-CASE ( -- )
+   s" PL-FIVE" HOST-NAMED LINK-FROM
+   s" does: PL-FIVE and PL-MAKE are placed" T-LABEL
+   s" PL-FIVE" PLACED? TTRUE  s" PL-MAKE" PLACED? TTRUE
+   s" does: PL-RUN, PL-LEAF, PL-V, PL-TICK and PL-TOCK are not" T-LABEL
+   s" PL-RUN" PLACED? TFALSE  s" PL-LEAF" PLACED? TFALSE  s" PL-V" PLACED? TFALSE
+   s" PL-TICK" PLACED? TFALSE  s" PL-TOCK" PLACED? TFALSE
+   s" does: PL-MAKE's own body places PL-INIT" T-LABEL  s" PL-INIT" PLACED? TTRUE
+   s" does: PL-FIVE's does> slot reaches PL-MAKE's clause" SLOT-CASE ;
+
+
+: TICK-CASE ( -- )
+   s" PL-TICK" HOST-NAMED LINK-FROM
+   s" PL-TICK" EMISSION-NAMED {: tick:n :}
+   s" PL-TOCK" EMISSION-NAMED {: tock:n :}
+   s" tick: PL-TICK names PL-TOCK by a code address chain and calls it nowhere" T-LABEL
+   tick CODE-CHAINS 0 > TTRUE  tick tock BAND-LINK ANY-CALL-REACHES? TFALSE
+   s" tick: PL-TICK and PL-TOCK are placed" T-LABEL
+   s" PL-TICK" PLACED? TTRUE  s" PL-TOCK" PLACED? TTRUE
+   s" tick: PL-RUN, PL-LEAF, PL-MAKE and PL-INIT are not" T-LABEL
+   s" PL-RUN" PLACED? TFALSE  s" PL-LEAF" PLACED? TFALSE
+   s" PL-MAKE" PLACED? TFALSE  s" PL-INIT" PLACED? TFALSE
+   s" tick: the band holds PL-TICK and PL-TOCK" T-LABEL
+   A64ICODE:ASM-LEN  KERNEL-END @ tick NSHADOW:SIZE + tock NSHADOW:SIZE +  T=
+   s" tick: PL-TICK's code address chain reaches PL-TOCK" T-LABEL
+   tick BAND-CHAINS -1 T= ;
+
+
+: UNSAFE-RUN ( CMD:command -- CMD:command )
+   s" --load" CMD:ARG+  s" test/compiler/arm64-place-unsafe-bad.f" CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+   s" refusal: the child names the caller and the word" T-LABEL
+   CMD:OUT$
+   s\" ARM64-PLACE-UNSAFE-ARMED\nlink: PL-MAKE calls create, which a stripped program cannot run\n"
+   T$=
+   s" refusal: the child's reason" T-LABEL
+   CMD:ERR$ s" link: a stripped program reaches a word it cannot run" CONTAINS? TTRUE
+   s" refusal: the child exits 74" T-LABEL  rc 74 T= ;
+
+
+\ A link rooted at PL-MAKE, whose own body calls `create`, dies, so it runs in
+\ a child process: test/compiler/arm64-place-unsafe-bad.f.
+: REFUSAL-CASE ( -- ) [: UNSAFE-RUN ;] CMD:WITH-COMMAND ;
 
 
 public
@@ -537,7 +618,11 @@ public
    then
    CHECK
    BAND-CASE
+   CLOSURE-CASE
+   DOES-CASE
+   TICK-CASE
    NSHADOW:CLOSE
+   REFUSAL-CASE
    T-REPORT ;
 
 ;package

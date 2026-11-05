@@ -1,0 +1,13 @@
+---
+title: Place only the routines a stripped program reaches (S6 L4)
+status: closed
+priority: 2
+issue-type: task
+created-at: "2026-11-05T20:44:51.194389+02:00"
+closed-at: "2026-11-05T21:14:29.280852+02:00"
+close-reason: "Landed as 'Place only the routines a program reaches': link-band.f ROUTINES/ROOT/REACH-ALL place only the emissions a root reaches (per emission) and refuse a live record range's call or code address to the six kernel words a stripped program cannot run (rc 74, caller and callee named). arm64-place.f band, closure (PL-RUN), does> (PL-FIVE; PL-MAKE's dead part places PL-INIT) and tick (code address only) cases, and a child refusal run rooted at PL-MAKE through ENGINE-CANDIDATE:PATH$. Proof: bin/hb --load test/run.f -- arm64-place at the tip."
+---
+
+Problem: design r2 D9 (.jj-ws.noindex/carl-dots/.out/carl-file/design-s6-r2.md, L4): L3a places every native shadow emission; a stripped program ships only the routines its roots (MAIN, then the XT cells L3b reads) reach, and refuses by name a reached kernel word it cannot run (aot-closure.f:177-183's list: create, patch32, code-publish, callmap-set, addrmap-set, xref-retarget). A does> definer and its clause are one emission, so the refusal follows each record's range [entry, next record entry) while placement follows whole emissions. Acceptance: link-band.f ROUTINES/ROOT/REACH-ALL, the host table keyed to the record index, PLACE-ROUTINES placing only placed emissions, LINK-ADDRESS -1 for an unplaced routine; arm64-place.f closure cases (root PL-RUN: PL-RUN and PL-LEAF only; root PL-FIVE: PL-FIVE and PL-MAKE, no refusal) and a child run refusing root PL-MAKE with rc 74 naming PL-MAKE and create. Files: src/habu/link-band.f, test/compiler/arm64-place.f, test/compiler/arm64-place-unsafe-bad.f (new), test/gate-arm-cases.f comment. Verify: bin/hb --load test/run.f -- arm64-place (baseline PASS 2349 ms at 9e22061e). Depends: L3a (landed 9e22061e). Claim: agent=carl worker workspace=.jj-ws.noindex/carl-s6-l4.
+
+Review (code-reviewer, e5ec48c0): claims 1-8 hold. Folded in by a fresh worker (brief-s6-l4-fold.md): a code-address-only root (PL-TICK -> PL-TOCK) and a dead-part placement (PL-MAKE's own body calls PL-INIT), two stale comments, the child engine through ENGINE-CANDIDATE:PATH$, the test's copy buffer renamed from PLACED. The review's inferred hole, `recurse` in a does> clause calling the definer's byte 0 with no call row (t0-emit.f:177, :361), cannot occur: the engine refuses `recurse` in a clause and in a quotation inside one at compile ("habu: in maker;does: at 'recurse'", probes /tmp/carl-rec/rec2.f and rec3.f on the installed hb).
