@@ -282,6 +282,12 @@ learned live in the docs for their subject.
   under its final name, Joel chose "Approve as designed (Recommended)":
   ATOMIC-WRITE-FILE and ATOMIC-WRITE-PRIVATE sync the sibling before the
   rename and the directory after, with F_FULLFSYNC on macOS, and no new word.
+- 2026-11-05, a write-once file (relayed by stuart from Tender, whose
+  admission replies Joel ruled are "built on a public Habu write-once
+  word"): offered names for a word that writes a file only its owner may
+  read only when its path is free, answering false and leaving an existing
+  file untouched, Joel chose "FS:ATOMIC-CREATE-PRIVATE (Recommended)":
+  FS:ATOMIC-CREATE-PRIVATE ( path pathu text textu -- bool ).
 - 2026-11-05, which wait finished: shown that curl, the WebSocket server and
   the HTTP listener each cast AIO's ticket to a number to compare it and scan
   their slots for the one AWAIT-ANY returned, while epoll, kqueue, io_uring
