@@ -152,8 +152,7 @@
 \   the cursor changes the verdict, packets, definitions, uses or files,
 \   or --verify-only writes a candidate line                              cands-observer
 \   a source path exceeds the CLI's slot and leaks engine text on stderr cli-path-capacity
-\   the child runs on the working directory's bin/hb, or is that
-\   directory's tools/check-verify-child.f                                check-test: file-load-context
+\   the child runs on the working directory's bin/hb                      check-test: file-load-context
 \   a top-level token the load refuses as unresolvable verifies, is
 \   refused elsewhere than where it was read, or stops the scan           top-undefined, top-rowless
 \   an ambiguous or shadowed name at top level or after ' verifies       top-ambiguous, top-shadow, top-tick

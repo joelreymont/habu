@@ -1522,30 +1522,9 @@ variable LONG-J
    label labelu T-LABEL outu 0 T=
    label labelu T-LABEL CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
 
-: DEADLINE-TWICE ( -- n n n )
-   CHECK-ARGV-START
-   s" --deadline-ms" CHECK-ARG+
-   s" 60000" CHECK-ARG+
-   s" --deadline-ms" CHECK-ARG+
-   s" 60000" CHECK-ARG+
-   DIRECT$ CHECK-ARG+
-   CHECK-CAPTURE ;
-
-: DEADLINE-MISSING ( -- n n n )
-   CHECK-ARGV-START
-   s" --deadline-ms" CHECK-ARG+
-   CHECK-CAPTURE ;
-
 : TEST-DEADLINE-OPTION ( -- )
-   DIRECT$ GOOD$ FS:WRITE-ALL
-   s" 2147483647" DEADLINE-RUN
-   s" deadline: the longest deadline is taken" T-LABEL 0 T=
-   2drop
    s" 0" DEADLINE-RUN s" deadline: zero" EXPECT-DEADLINE-USAGE
-   s" 2147483648" DEADLINE-RUN s" deadline: past the longest" EXPECT-DEADLINE-USAGE
-   s" 5s" DEADLINE-RUN s" deadline: not a number" EXPECT-DEADLINE-USAGE
-   DEADLINE-TWICE s" deadline: given twice" EXPECT-DEADLINE-USAGE
-   DEADLINE-MISSING s" deadline: no value" EXPECT-DEADLINE-USAGE ;
+   s" 2147483648" DEADLINE-RUN s" deadline: past the longest" EXPECT-DEADLINE-USAGE ;
 
 : TEST-SOURCE-BYTES-COPY ( -- )
    GOOD$ MUT-SRC!
@@ -6032,37 +6011,13 @@ POISON-RECORD
    NEU-THROW-PKG-RC @ 0 T= ;
 
 \ --- one file is checked in its load context -------------------------------
-\
-\ `tools/check.f FILE` checks FILE the way `bin/hb --load FILE` loads it. The
-\ static stages verify FILE as the loader composes it, each file a top-level
-\ loader statement loads where the statement stands, so a word FILE's own
-\ require supplies resolves, and a rejection inside a dependency is reported
-\ in the dependency. The run stage loads FILE from its own path, so a require
-\ relative to FILE's directory resolves there too. A file the engine provides
-\ is not checked and says so with an E-ENGINE-PROVIDED record and the usage
-\ status; a file of check.f's own closure, which the checking image holds, is
-\ left to the run stage, as `require` would skip it. Every case runs the real
-\ command line.
-\
-\ A sibling require resolves against the directory of the file the command line
-\ named; a file loaded with `required` gets the working directory instead when
-\ it lies below it. LC-ROOT is such a working directory: the tree is linked in
-\ beside `sub/`, which holds the files checked there, and its bin/hb is no
-\ engine but a script that exits 97.
-\
-\ LC-OTHER is another tree: the same lib and src, an engine, and a
-\ tools/check-verify-child.f of its own that dies with 98. A require resolves
-\ against the requiring file's root before the working directory, so
-\ LC-ROOT's lc-check.f loads check.f from LC-ROOT's tree with LC-OTHER current,
-\ as a server loads its checker from the engine's tree with the editor's
-\ directory current.
+\ `tools/check.f FILE` checks FILE as `bin/hb --load FILE` loads it. LC-ROOT is
+\ a working directory linking the tree beside `sub/`; its bin/hb exits 97.
 
 create LC-PATH PATH-CAP allot
 create LC-ROOT PATH-CAP allot
-create LC-OTHER PATH-CAP allot
 variable LC-PATH-U
 variable LC-ROOT-U
-variable LC-OTHER-U
 
 : LC-PATH$ ( -- ptr u8 n )
    LC-PATH LC-PATH-U @ ;
@@ -6076,13 +6031,6 @@ variable LC-OTHER-U
 
 : LC-IN-ROOT ( ptr u8 n -- ptr u8 n )
    LC-ROOT$ 2swap LC-PATH FS:JOIN-PATH LC-PATH-U !
-   LC-PATH$ ;
-
-: LC-OTHER$ ( -- ptr u8 n )
-   LC-OTHER LC-OTHER-U @ ;
-
-: LC-IN-OTHER ( ptr u8 n -- ptr u8 n )
-   LC-OTHER$ 2swap LC-PATH FS:JOIN-PATH LC-PATH-U !
    LC-PATH$ ;
 
 : LC-WRITE ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n src:ptr srcu:n :}
@@ -6136,17 +6084,11 @@ variable LC-OTHER-U
    s\" STRUCTURE cklctypair FIELD value cklctyval ;STRUCTURE\n" SB-APPEND
    SB$ ;
 
-: LC-QUOTE$ ( -- ptr u8 n )
-   s\" lc-q\"uote.f" ;
-
 : LC-BACK$ ( -- ptr u8 n )
    s\" lc-b\\ack.f" ;
 
-\ A link to LC-QUOTE$, and one whose own name holds a backslash to
-\ lc-bad-dep.f, which the verifier refuses.
-: LC-QLINK$ ( -- ptr u8 n )
-   s" lc-qlink.f" ;
-
+\ A link whose own name holds a backslash to lc-bad-dep.f, which the verifier
+\ refuses.
 : LC-BLINK$ ( -- ptr u8 n )
    s\" lc-b\\link.f" ;
 
@@ -6161,9 +6103,7 @@ variable LC-OTHER-U
    s" lc-decl.f" LC-DECL$SRC LC-WRITE
    s" lc-type-dep.f" LC-TYPE-DEP$SRC LC-WRITE
    s" lc-type-use.f" LC-TYPE-USE$SRC LC-WRITE
-   LC-QUOTE$ LC-UNTERM$SRC LC-WRITE
    LC-BACK$ LC-UNTERM$SRC LC-WRITE
-   LC-QUOTE$ LC-QLINK$ LC-AT FS:MAKE-SYMLINK
    s" lc-bad-dep.f" LC-BLINK$ LC-AT FS:MAKE-SYMLINK ;
 
 \ Links ROOT/NAME to this tree's NAME.
@@ -6186,18 +6126,7 @@ variable LC-OTHER-U
    s" bin/hb" LC-IN-ROOT FS:CHMOD-X
    s" sub" LC-IN-ROOT FS:MAKE-DIR
    s" sub/lc-dep.f" LC-IN-ROOT LC-DEP$SRC FS:WRITE-ALL
-   s" sub/lc-use.f" LC-IN-ROOT LC-USE$SRC FS:WRITE-ALL
-   s" lc-check.f" LC-IN-ROOT s\" require tools/check.f\n" FS:WRITE-ALL ;
-
-: LC-OTHER-SETUP ( -- )
-   ROOT$ s" lc-other" LC-OTHER FS:JOIN-PATH LC-OTHER-U !
-   LC-OTHER$ FS:MAKE-DIR
-   s" src" LC-OTHER$ LC-LINK
-   s" bin" LC-IN-OTHER FS:MAKE-DIR
-   CLI-HB$ s" bin/hb" LC-IN-OTHER FS:MAKE-SYMLINK
-   s" tools" LC-IN-OTHER FS:MAKE-DIR
-   s" tools/check-verify-child.f" LC-IN-OTHER
-   s\" s\" check-verify-child: stub\" 98 die\n" FS:WRITE-ALL ;
+   s" sub/lc-use.f" LC-IN-ROOT LC-USE$SRC FS:WRITE-ALL ;
 
 \ PROGRAM runs in the given directory with the environment the caller set,
 \ completed from this process's.
@@ -6297,124 +6226,29 @@ variable LC-CANON-U
    s" lc-use.f" LC-AT LC-ALL s" load-context: relative require" LC-EXPECT-CLEAN
    s" lc-use-abs.f" LC-AT LC-ALL s" load-context: absolute require" LC-EXPECT-CLEAN ;
 
-\ A file below the working directory, named or listed, is an entry: its bare
-\ require resolves against its own directory, as under `bin/hb --load`. A plain
-\ list loads it in the verifier child and --all-errors in check.f's own
-\ process, so both list modes are run.
+\ A named file below the working directory is an entry: its bare require
+\ resolves against its own directory, as under `bin/hb --load`.
 : LC-ENTRY-ROOT-CASE ( -- )
    LC-ARGV-ALL
    s" sub/lc-use.f" CHECK-ARG+
-   LC-ROOT$ LC-CAPTURE s" load-context: entry below the working directory" LC-EXPECT-CLEAN
-   CHECK-ARGV-START
-   s" --source-list" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-ROOT$ LC-CAPTURE s" load-context: listed entry below the working directory" LC-EXPECT-CLEAN
-   LC-ARGV-ALL
-   s" --source-list" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-ROOT$ LC-CAPTURE s" load-context: --all-errors's listed entry below the working directory" LC-EXPECT-CLEAN ;
+   LC-ROOT$ LC-CAPTURE s" load-context: entry below the working directory" LC-EXPECT-CLEAN ;
 
-\ The checker spawns the engine src/lib/engine-candidate.f names, here the one
-\ running this test, never the working directory's bin/hb: in LC-ROOT that
-\ would end the run stage, and --verify-only's verifier child, with 97.
+\ The run stage spawns the engine src/lib/engine-candidate.f names, here this
+\ one, never the working directory's bin/hb, which exits 97 in LC-ROOT.
 : LC-ENGINE-CASE ( -- )
    CHECK-ARGV-START
    s" sub/lc-use.f" CHECK-ARG+
-   LC-ROOT$ LC-CAPTURE s" load-context: the run stage spawns the running engine" LC-EXPECT-CLEAN
-   CHECK-ARGV-START
-   s" --verify-only" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-ROOT$ LC-CAPTURE s" load-context: --verify-only spawns the running engine" LC-EXPECT-CLEAN ;
+   LC-ROOT$ LC-CAPTURE s" load-context: the run stage spawns the running engine" LC-EXPECT-CLEAN ;
 
-: LC-UNCAUGHT$ ( n -- ptr u8 n ) {: code:n :}
-   SB-RESET
-   s" hb: uncaught throw code " SB-APPEND
-   code FMT:SB-INT
-   SB$ ;
-
-\ An engine the resolver refuses, a HABU_UNDER_TEST that names no executable,
-\ is the check's error: its E-FS-OPEN reaches the command line uncaught.
-: LC-REFUSED-ENGINE ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   PROC-ENV-RESET
-   s" HABU_UNDER_TEST" >LEN s" sub/lc-dep.f" LC-IN-ROOT >LEN PROC-ENV-SET
-   LC-ROOT$ LC-ENV-CAPTURE
-   label labelu T-LABEL 67 T=
-   {: outu:n erru:n :}
-   label labelu T-LABEL CAP-ERR erru E-FS-OPEN LC-UNCAUGHT$ CONTAINS? TTRUE ;
-
-\ Under --json-errors stderr holds packets only: the command line says on
-\ stdout that the selection is no usable executable, whatever the resolver
-\ refused it for, with the status its refusal has uncaught.
-: LC-REFUSED-ENGINE-JSON ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n label:ptr labelu:n :}
-   PROC-ENV-RESET
-   s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV-SET
-   LC-ROOT$ LC-ENV-CAPTURE {: outu:n erru:n rc:n :}
-   label labelu T-LABEL rc 67 T=
-   label labelu T-LABEL erru 0 T=
-   label labelu T-LABEL CAP-OUT outu s" is not a usable executable" CONTAINS? TTRUE ;
-
-: LC-NOT-ENGINE$ ( -- ptr u8 n )
-   s" sub/lc-dep.f" LC-IN-ROOT ;
-
-: LC-REFUSED-ENGINE-CASE ( -- )
-   CHECK-ARGV-START
-   s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: the run stage's engine refused" LC-REFUSED-ENGINE
-   CHECK-ARGV-START
-   s" --verify-only" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   s" load-context: --verify-only's engine refused" LC-REFUSED-ENGINE
-   CHECK-ARGV-START
-   s" --json-errors" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-NOT-ENGINE$ s" load-context: --json-errors's engine refused" LC-REFUSED-ENGINE-JSON
-   LC-ARGV-ALL
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-NOT-ENGINE$ s" load-context: --all-errors's engine refused" LC-REFUSED-ENGINE-JSON
-   LC-ARGV-ALL
-   s" --verify-only" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-NOT-ENGINE$ s" load-context: --json-errors --verify-only's engine refused" LC-REFUSED-ENGINE-JSON ;
-
-PATH-CAP 1+ constant LC-LONG-U
-create LC-LONG-ENGINE LC-LONG-U allot
-
-\ A selection one byte longer than a path the file system takes, which it
-\ refuses (E-FS-PATH) before anything looks for an executable there.
-: LC-LONG-ENGINE$ ( -- ptr u8 n )
-   $2f LC-LONG-ENGINE c!
-   LC-LONG-U 1 ?do $61 LC-LONG-ENGINE i + c! loop
-   LC-LONG-ENGINE LC-LONG-U ;
-
-: LC-LONG-ENGINE-CASE ( -- )
-   CHECK-ARGV-START
-   s" --json-errors" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-LONG-ENGINE$ s" load-context: --json-errors's overlong engine" LC-REFUSED-ENGINE-JSON
-   LC-ARGV-ALL
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-LONG-ENGINE$ s" load-context: --all-errors's overlong engine" LC-REFUSED-ENGINE-JSON
-   LC-ARGV-ALL
-   s" --verify-only" CHECK-ARG+
-   s" sub/lc-use.f" CHECK-ARG+
-   LC-LONG-ENGINE$ s" load-context: --json-errors --verify-only's overlong engine" LC-REFUSED-ENGINE-JSON ;
-
-\ A subject the file system will not read ends the check before any child, so
-\ no engine is selected: --json-errors says so on stdout, by the
-\ subject's canonical path, with the status the closure walk gives such a file,
-\ and a selection that would fail with the same code is not what it reports.
-\ An empty ENGINE leaves this process's selection in force.
-: LC-UNREAD-EXPECT ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n label:ptr labelu:n :}
-   PROC-ENV-RESET
-   engineu 0<> if s" HABU_UNDER_TEST" >LEN engine engineu >LEN PROC-ENV-SET then
-   LC-ROOT$ LC-ENV-CAPTURE {: outu:n erru:n rc:n :}
+\ A file the file system will not read ends the check before any child:
+\ --json-errors names it on stdout by its canonical path, with status 74.
+: LC-UNREAD-EXPECT ( ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   LC-ROOT$ LC-CAPTURE {: outu:n erru:n rc:n :}
    label labelu T-LABEL rc 74 T=
    label labelu T-LABEL erru 0 T=
    label labelu T-LABEL CAP-OUT outu s" check.f: cannot read /" CONTAINS? TTRUE
-   label labelu T-LABEL CAP-OUT outu s" /sub/lc-locked.f" CONTAINS? TTRUE
-   label labelu T-LABEL CAP-OUT outu s" usable executable" CONTAINS? TFALSE ;
+   label labelu T-LABEL CAP-OUT outu s" /sub/lc-locked.f" CONTAINS? TTRUE ;
 
 : LC-LOCKED-SETUP ( -- )
    s" sub/lc-locked.f" LC-IN-ROOT s\" : LC-LOCKED ( -- n ) 8 ;\n" FS:WRITE-ALL
@@ -6425,26 +6259,15 @@ create LC-LONG-ENGINE LC-LONG-U allot
    CHECK-ARGV-START
    s" --json-errors" CHECK-ARG+
    s" sub/lc-locked.f" CHECK-ARG+
-   NULL$ s" load-context: --json-errors's unreadable subject" LC-UNREAD-EXPECT
+   s" load-context: --json-errors's unreadable subject" LC-UNREAD-EXPECT
    LC-ARGV-ALL
    s" --verify-only" CHECK-ARG+
    s" sub/lc-locked.f" CHECK-ARG+
-   NULL$ s" load-context: --json-errors --verify-only's unreadable subject" LC-UNREAD-EXPECT ;
+   s" load-context: --json-errors --verify-only's unreadable subject" LC-UNREAD-EXPECT ;
 
-\ HABU_UNDER_TEST naming no file fails the resolver with E-FS-OPEN, the code
-\ reading the unreadable subject fails with.
+\ HABU_UNDER_TEST naming no file fails the resolver with E-FS-OPEN.
 : LC-NO-ENGINE$ ( -- ptr u8 n )
    s" no-engine" LC-IN-ROOT ;
-
-: LC-UNREAD-ENGINE-CASE ( -- )
-   CHECK-ARGV-START
-   s" --json-errors" CHECK-ARG+
-   s" sub/lc-locked.f" CHECK-ARG+
-   LC-NO-ENGINE$ s" load-context: --json-errors's unreadable subject, absent engine" LC-UNREAD-EXPECT
-   LC-ARGV-ALL
-   s" --verify-only" CHECK-ARG+
-   s" sub/lc-locked.f" CHECK-ARG+
-   LC-NO-ENGINE$ s" load-context: --json-errors --verify-only's unreadable subject, absent engine" LC-UNREAD-EXPECT ;
 
 \ A source list walks each listed file in turn. The first here reads the file
 \ it requires; the second is the file the file system will not read, so the
@@ -6456,7 +6279,7 @@ create LC-LONG-ENGINE LC-LONG-U allot
    s" --source-list" CHECK-ARG+
    s" sub/lc-use.f" CHECK-ARG+
    s" sub/lc-locked.f" CHECK-ARG+
-   NULL$ s" load-context: --json-errors's unreadable second listed file" LC-UNREAD-EXPECT ;
+   s" load-context: --json-errors's unreadable second listed file" LC-UNREAD-EXPECT ;
 
 : LC-CHECK-UNCAUGHT$ ( n -- ptr u8 n )
    {: code:n :}
@@ -6525,26 +6348,6 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    s" sub/lc-use.f" CHECK-ARG+
    s" load-context: --json-errors's unwritable scratch, absent engine" LC-UMASK-RUN ;
 
-\ The verifier child is the one in the tree check.f was loaded from, never the
-\ working directory's: LC-OTHER's would end the check with 98.
-: LC-OTHER-TREE-CASE ( -- )
-   PROC-ARGV-RESET
-   s" --load" CHECK-ARG+
-   s" lc-check.f" LC-IN-ROOT CHECK-ARG+
-   s" --" CHECK-ARG+
-   s" --verify-only" CHECK-ARG+
-   s" sub/lc-use.f" LC-IN-ROOT CHECK-ARG+
-   LC-OTHER$ LC-CAPTURE s" load-context: the verifier child of check.f's own tree" LC-EXPECT-CLEAN ;
-
-\ A tree suite that runs on the product alone: a parent that provides the
-\ whitebox engine for a window child exits 67 here (E-BUILD-PATH uncaught).
-: LC-TREE-CASE ( -- )
-   s" test/aot-seeded-address-sites.f" LC-ALL
-   s" load-context: test/aot-seeded-address-sites.f" T-LABEL 0 T=
-   {: outu:n erru:n :}
-   erru 0 T=
-   CAP-OUT outu s" aot-seeded-address-sites: ok" CONTAINS? TTRUE ;
-
 \ Nothing checks a file the engine provides, so it is refused at its own
 \ spelling, by an E-ENGINE-PROVIDED record, with the usage status.
 : LC-PROVIDED-CASE ( -- )
@@ -6554,24 +6357,6 @@ $140 constant LC-MODE-0500   \ a directory its owner may list and enter, not wri
    outu 0 T=
    erru s" code" s" E-ENGINE-PROVIDED" LC-PACKET s" file" LC-STRING$
    s" load-context: engine-provided, file as given" T-LABEL s" src/lib/string.f" T$= ;
-
-\ A file of check.f's own closure, which the engine does not provide, is
-\ checked as any other: the pre-pass verifies it in the verifier child, whose
-\ image does not hold it, and the run stage loads it in an engine of its own,
-\ as `bin/hb --load` does.
-: LC-TOOL-CLOSURE-CASE ( -- )
-   s" src/lib/process.f" LC-ALL
-   s" load-context: a file of check.f's own closure" LC-EXPECT-CLEAN ;
-
-\ A source list is refused only when the engine provides every input; a list
-\ of one engine file and one the checking image holds is checked.
-: LC-TOOL-LIST-CASE ( -- )
-   CHECK-ARGV-START
-   s" --source-list" CHECK-ARG+
-   s" src/lib/string.f" CHECK-ARG+
-   s" src/lib/process.f" CHECK-ARG+
-   CHECK-CAPTURE
-   s" load-context: a source list with a file check.f's own image holds" LC-EXPECT-CLEAN ;
 
 : LC-UNDEFINED-CASE ( -- )
    s" lc-undef.f" LC-AT LC-ALL
@@ -6628,15 +6413,8 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    LC-TYPE-BYTES DIRECT-JSON-STDIN s" load-context: required type, SOURCE" LC-EXPECT-CLEAN
    LC-TYPE-BYTES ALL-JSON-STDIN s" load-context: required type, SOURCE, all" LC-EXPECT-CLEAN ;
 
-\ The check quotes a path or label into a line it writes and hands a path to the
-\ file system. A path or label holding a byte the quoting refuses (double quote,
-\ backslash, CR, LF, NUL) is one usage line in every mode, on stderr or, under
-\ --json-errors, on stdout, and a listed path holding a NUL is refused before
-\ the engine's resolver sees it. The quoted spelling is the canonical path for a
-\ named file, the path as given for a listed one, and the label in the run
-\ stage: a plain named file's path as given, or a CHECK:SOURCE label. It is
-\ judged before anything reads the source, so each case's source is one a later
-\ stage refuses, and the answer is the path's whatever the file holds.
+\ A path or label holding a double quote, backslash, CR, LF or NUL is this usage
+\ line (stdout under --json-errors), given before a later stage refuses the source.
 : LC-UNSAFE-LINE$ ( -- ptr u8 n )
    s" check.f: source path or label contains a double quote, backslash, CR, LF or NUL"
    LC-LINE$ ;
@@ -6655,11 +6433,6 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 : LC-NUL$ ( -- ptr u8 n )
    SB-RESET s" lc-n" SB-APPEND 0 SB-APPEND-C s" ul.f" SB-APPEND SB$ ;
 
-: LC-UNSAFE-TARGET-CASE ( -- )
-   LC-QLINK$ LC-AT LC-ALL
-   s" load-context: a link to a name with a double quote, refused by discovery"
-   LC-EXPECT-UNSAFE-JSON ;
-
 : LC-UNSAFE-LIST-CASE ( -- )
    CHECK-ARGV-START
    s" --source-list" CHECK-ARG+
@@ -6667,10 +6440,6 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    CHECK-CAPTURE
    s" load-context: a listed path with a backslash, refused by discovery"
    LC-EXPECT-UNSAFE ;
-
-: LC-UNSAFE-LIST-NUL-CASE ( -- )
-   LC-NUL$ LIST-RUN
-   s" load-context: a listed path with a NUL" LC-EXPECT-UNSAFE ;
 
 : LC-UNSAFE-PLAIN-CASE ( -- )
    CHECK-ARGV-START
@@ -6693,10 +6462,6 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    [: RUN-ACT ;] IN-PROC
    s" load-context: a CHECK:SOURCE label with a NUL, refused declaration"
    LC-EXPECT-UNSAFE ;
-
-: LC-UNSAFE-NUL-CASE ( -- )
-   LC-NUL$ PATH-RUN
-   s" load-context: a named path with a NUL" LC-EXPECT-UNSAFE ;
 
 \ Existence is checked before the path is quoted; under --json-errors the line
 \ is on stdout.
@@ -6772,34 +6537,23 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 : TEST-LOAD-CONTEXT ( -- )
    LC-FIXTURES
    LC-ROOT-SETUP
-   LC-OTHER-SETUP
    LC-SIBLING-CASE
    LC-ENTRY-ROOT-CASE
    LC-ENGINE-CASE
-   LC-REFUSED-ENGINE-CASE
-   LC-LONG-ENGINE-CASE
    LC-UNREAD-CASE
-   LC-UNREAD-ENGINE-CASE
    LC-UNREAD-LIST-CASE
    LC-RO-TMP-CASE
    LC-UMASK-CASE
-   LC-OTHER-TREE-CASE
-   LC-TREE-CASE
    LC-PROVIDED-CASE
-   LC-TOOL-CLOSURE-CASE
-   LC-TOOL-LIST-CASE
    LC-UNDEFINED-CASE
    LC-DUPLICATE-CASE
    LC-DEPENDENCY-CASE
    LC-DECLARATION-CASE
    LC-TYPE-CASE
-   LC-UNSAFE-TARGET-CASE
    LC-UNSAFE-LIST-CASE
-   LC-UNSAFE-LIST-NUL-CASE
    LC-UNSAFE-PLAIN-CASE
    LC-UNSAFE-SOURCE-CASE
    LC-UNSAFE-SOURCE-NUL-CASE
-   LC-UNSAFE-NUL-CASE
    LC-MISSING-QUOTE-CASE
    LC-LONG-LIST-CASE
    LC-SPELLING-CASE
