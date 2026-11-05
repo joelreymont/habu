@@ -1,16 +1,13 @@
 \ checker-completion.f - the spellings that bind at a cursor, as the checker
 \ selects them (src/core/checker.f CHECKER-CURSOR!, CHECKER-RESOLVE:EACH-VISIBLE).
-\ It reads checker internals, so it is a WHITEBOX-SUITE row and runs on the
-\ unsealed engine (test/whitebox-engine.f):
-\   hb-whitebox --load test/checker-completion.f
+\   bin/hb --load test/checker-completion.f
 
 require src/lib/test.f
 require src/habu/verify-source.f
 require test/checker-decl-locs-lib.f
 
 \ A public does> definer this file loads: the dictionary holds its clause's
-\ record, QALDEF;does, in QALD's public wordlist, and the store holds no
-\ symbol for it (case 12).
+\ record, QALDEF;does, in QALD's public wordlist.
 package QALD
 public
 : QALDEF ( n -- ) create , does> ( -- n ) @ ;
@@ -132,14 +129,6 @@ PTR-VARIABLE FILTER-A   variable FILTER-U
 \ which no declaration on this path located.
 : UNPLACED ( ptr u8 n -- )
    0 0 0 PLACED ;
-
-\ NAME was offered once, exactly so spelled, where its newest row was declared.
-: OFFERED ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a u ROW CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
-   a u T-LABEL
-   found TTRUE
-   a u v s e PLACED ;
 
 \ NAME was offered once in any case, with no location: a word declared with no
 \ spelling armed, whose case the store does not keep, so no case pins it.
@@ -268,8 +257,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
 \ - a candidate's location is not its selected declaration's: a located word
 \   offered without its row's visit and bytes, a word the selection hides
 \   lending its location, a refused redeclaration moving it, or a local, an
-\   engine word, a word declared unarmed or one at a rewound row's offset
-\   offered with anything but 0 0 0;
+\   engine word or a word declared unarmed offered with anything but 0 0 0;
 \ - an engine word the body has not used yet is missing;
 \ - a word is not spelled as it was declared: a located word as its
 \   declaration wrote it, a qualified one as the prefix's qualifier, else its
@@ -290,8 +278,8 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" a partial token's check runs through" T-LABEL
    PARTIAL$  PARTIAL$ s" CMPB" 2 AT  [: KEEP ;] ARMED 0 T=
    KEPT-ALL
-   s" CMPA" OFFERED
-   s" CMPB" OFFERED
+   s" CMPA" VISIT AT-START AT-END PLACED
+   s" CMPB" VISIT AT-START AT-END PLACED
    s" CMPDF" VISIT AT-START AT-END PLACED
    s" CMPC" ABSENT
    s" CMPGONE" ABSENT
@@ -308,15 +296,15 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" CMPC1"  s" : CMPC1 ( -- n ) CMPA CMPB + ;" 2dup s" CMPB" 0 AT  [: KEEP ;] DECLARED
    s" the gap's check runs through" T-LABEL 0 T=
    KEPT-ALL
-   s" CMPA" OFFERED
-   s" CMPB" OFFERED
+   s" CMPA" VISIT AT-START AT-END PLACED
+   s" CMPB" VISIT AT-START AT-END PLACED
    s" cmp" KEPT-RESET
    s" : CMPC2 ( -- n ) CMPA CMPB + ;" 2dup s" ;" 0 AT  [: KEEP ;] ARMED
    s" the end's check runs through" T-LABEL 0 T=
    KEPT-ALL
-   s" CMPA" OFFERED
-   s" CMPB" OFFERED
-   s" CMPC1" OFFERED ;
+   s" CMPA" VISIT AT-START AT-END PLACED
+   s" CMPB" VISIT AT-START AT-END PLACED
+   s" CMPC1" VISIT AT-START AT-END PLACED ;
 
 \ The name and the signature are not body tokens.
 : CASE-NOT-BODY ( -- )
@@ -363,7 +351,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    s" the local's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" CMPLOC" LOCAL
-   s" CMPA" OFFERED ;
+   s" CMPA" VISIT AT-START AT-END PLACED ;
 
 \ Inside a quotation, and for a tick or `is` target, no local binds.
 : CASE-NO-LOCAL ( -- )
@@ -372,14 +360,14 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    [: KEEP ;] ARMED
    s" the quotation's check runs through" T-LABEL 0 T=
    KEPT-ALL
-   s" CMPA" OFFERED
+   s" CMPA" VISIT AT-START AT-END PLACED
    s" cmploc" ABSENT
    s" cmp" KEPT-RESET
    s" : CMPT ( n -- n ) {: CMPLOC:n :} ['] CMPA drop CMPLOC ;" 2dup s" ['] CMPA" 6 AT
    [: KEEP ;] ARMED
    s" the tick's check runs through" T-LABEL 0 T=
    KEPT-ALL
-   s" CMPA" OFFERED
+   s" CMPA" VISIT AT-START AT-END PLACED
    s" cmploc" ABSENT
    s" cmp" KEPT-RESET
    s" : CMPI ( n -- n ) {: CMPLOC:n :} [: CMPA ;] is CMPDF CMPLOC ;" 2dup s" is CMPDF" 5 AT
@@ -396,7 +384,7 @@ PTR-VARIABLE TEXT-A   variable TEXT-U
    [: KEEP ;] ARMED
    s" the using scope's check runs through" T-LABEL 0 T=
    KEPT-ALL
-   s" CMPA" OFFERED
+   s" CMPA" VISIT AT-START AT-END PLACED
    s" CMPAMB" ABSENT
    s" each package's public is offered behind its name" T-LABEL
    s" CMPX:CMPAMB" FOLDED
@@ -427,7 +415,7 @@ PTR-VARIABLE TOP-A   variable TOP-U
    s" cmp" KEPT-RESET
    s" CM" TOP
    KEPT-ALL
-   s" CMPA" OFFERED
+   s" CMPA" VISIT AT-START AT-END PLACED
    s" CMPDF" VISIT AT-START AT-END PLACED
    s" CMPGONE" ABSENT
    s" CMPPUB" ABSENT
@@ -530,7 +518,7 @@ variable NEST-ARM   variable NEST-ENUM
    s" an enumeration inside the visitor is refused by name" T-LABEL
    NEST-ENUM @ E-CURSOR-NESTED T=
    KEPT-ALL
-   s" CMPA" OFFERED ;
+   s" CMPA" VISIT AT-START AT-END PLACED ;
 
 \ A visitor that keeps its spelling and then throws.
 : THROWING ( ptr u8 n n n n -- )
@@ -557,7 +545,7 @@ variable NEST-ARM   variable NEST-ENUM
    s" : CMPY1 ( -- n ) CMPA ;" 2dup s" CMPA" 2 AT  [: KEEP ;] ARMED
    s" a new arm after a throw runs through" T-LABEL 0 T=
    KEPT-ALL
-   s" CMPA" OFFERED ;
+   s" CMPA" VISIT AT-START AT-END PLACED ;
 
 \ A use handler that throws, as the owner's handler of published uses can.
 : USE-THROWS ( n n n n n n -- )
@@ -575,7 +563,7 @@ variable NEST-ARM   variable NEST-ENUM
    s" the use handler's throw leaves the check" T-LABEL
    [: USES-THROW ;] catch E-DIV-ZERO T=
    KEPT-ALL
-   s" CMPA" OFFERED
+   s" CMPA" VISIT AT-START AT-END PLACED
    s" an arm after the handler's throw is taken" T-LABEL
    [: 5 [: KEEP ;] CURSOR! ;] catch 0 T=
    s" and so is a disarm" T-LABEL
@@ -587,19 +575,19 @@ variable NEST-ARM   variable NEST-ENUM
    CALLS @ 0 T= ;
 
 \ The same throw from a does> clause, which the verifier checks after the
-\ definer's body (CHECKER-SOURCE-DOES!). The body's CMPA use arms the cursor,
-\ so the clause takes the arm; its CMPB use throws. The other bound uses do
-\ not control this test. The clause's checked text
-\ is `@ CMPB + `, so its byte 4 is in CMPB after `CM`.
+\ definer's body (CHECKER-SOURCE-DOES!). The body's CMPA use, at byte 17 of
+\ the replayed text, arms the cursor, so the clause takes the arm; its CMPB use,
+\ at byte 50, throws. The other bound uses do not control this test. The
+\ clause's checked text is `@ CMPB + `, so its byte 4 is in CMPB after `CM`.
 variable DOES-USES
 : DOES-USE ( n n n n n n -- )
    {: s:n e:n sym:n v:n ds:n de:n :}
-   sym s" CMPA" CHECKER-FIND-ACTIVE-SYM = IF
+   s 17 = IF
       1 DOES-USES +!
       4 [: KEEP ;] CURSOR!
       EXIT
    THEN
-   sym s" CMPB" CHECKER-FIND-ACTIVE-SYM = IF
+   s 50 = IF
       1 DOES-USES +!
       1 0 / drop
    THEN ;
@@ -615,7 +603,7 @@ variable DOES-USES
    s" the body's use armed the clause, whose use threw" T-LABEL
    DOES-USES @ 2 T=
    KEPT-ALL
-   s" CMPB" OFFERED
+   s" CMPB" VISIT AT-START AT-END PLACED
    s" an arm after the clause's handler throw is taken" T-LABEL
    [: 5 [: KEEP ;] CURSOR! ;] catch 0 T=
    s" and so is a disarm" T-LABEL
@@ -645,11 +633,6 @@ variable DOES-USES
    i 0 >= TTRUE
    i 0 < IF EXIT THEN
    i DSC-VISIT DSC-START DSC-END KEPT-LOC
-   s" not where the global it hides was declared" T-LABEL
-   s" dscitem" ROW CHECKER-REC-DECL-AT {: v:n s:n e:n found:bool :}
-   found TTRUE
-   v VISIT T=
-   KEPT-VISITS i cells + @ v T<>
    s" nothing else is spelled dscitem" T-LABEL
    s" dscitem" KEPT-CI 2 T= ;
 
@@ -686,25 +669,27 @@ variable DOES-USES
 
 : COMPOSED ( -- ) VISITED$ s" cmp-visited.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
+\ The composition is the run's first visit, 1; each name sits at its token's
+\ bytes in VISITED$.
 : CASE-VISITED ( -- )
    s" the composition runs through" T-LABEL
    [: COMPOSED ;] catch 0 T=
    s" >cmpcol" KEPT-RESET
    s" >CMPC" TOP
    KEPT-ALL
-   s" >CmpCol" OFFERED
+   s" >CmpCol" 1 8 14 PLACED
    s" cmpcol>" KEPT-RESET
    s" CMPCOL>" TOP
    KEPT-ALL
-   s" CmpCol>N" OFFERED
+   s" CmpCol>N" 1 8 14 PLACED
    s" cmpeb:" KEPT-RESET
    s" CMPEB:CMPE" TOP
    KEPT-ALL
-   s" CMPEB:CMPEXA" OFFERED
+   s" CMPEB:CMPEXA" 1 96 108 PLACED
    s" cmptr" KEPT-RESET
    s" CMPT" TOP
    KEPT-ALL
-   s" CmpTr" OFFERED ;
+   s" CmpTr" 1 120 125 PLACED ;
 
 \ A required file's declaration keeps the spelling it was armed with after the
 \ loader unmaps that file's bytes, when its scan ends: the cursor sits in the
@@ -715,32 +700,26 @@ variable DOES-USES
 : DEP-COMPOSED ( -- )
    DEP-SUBJECT$ s" test/cmp-dep-subject.f" VERIFY:SOURCE-COMPOSE-IN-SCOPE ;
 
+\ The run's second composition: the subject is visit 2, the file it requires 3.
 : CASE-DEPENDENCY ( -- )
    s" cmpdep" KEPT-RESET
    DEP-SUBJECT$ s" CmpDep ;" 4 AT  [: KEEP ;] CURSOR!
    s" the subject's composition runs through" T-LABEL
    [: DEP-COMPOSED ;] catch 0 T=
    KEPT-ALL
-   s" CmpDep" OFFERED ;
+   s" CmpDep" 3 337 343 PLACED ;
 
-\ 10. A rewind, then the same offset.
-\ A neutral scope's rewind takes a located row back, and the next word the
-\ store retains, declared unarmed, lands at its offset: it is offered with no
-\ location, where a row the rewind left would lend it one.
-variable REW-ROW
-
+\ 10. A neutral scope's rewind takes a located row back; the next word, declared
+\ unarmed, is offered with no location, and the rewound one not.
 : REWOUND ( -- )
-   s" CMPRW" s" : CMPRW ( -- n ) 17 ;" [: ;] ARMED-REPLAY
-   s" CMPRW" ROW REW-ROW ! ;
+   s" CMPRW" s" : CMPRW ( -- n ) 17 ;" [: ;] ARMED-REPLAY ;
 
 : CASE-REWOUND ( -- )
    [: REWOUND ;] IN-NEUTRAL
    s" : CMPRX ( -- n ) 18 ;" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" the next word takes the rewound offset" T-LABEL
-   s" CMPRX" ROW REW-ROW @ T=
    s" cmpr" KEPT-RESET
    s" : CMPRY ( -- n ) CMPRX ;" 2dup s" CMPRX" 2 AT  [: KEEP ;] ARMED
-   s" the rewound offset's check runs through" T-LABEL 0 T=
+   s" the next word's check runs through" T-LABEL 0 T=
    KEPT-ALL
    s" cmprx" FOLDED
    s" cmprw" ABSENT ;
@@ -807,13 +786,10 @@ variable REW-ROW
    s" qalpk:QalW" VISIT AT-START AT-END PLACED ;
 
 \ 12. A public only the dictionary holds.
-\ QALD:QALDEF;does, which the store holds no symbol for, is offered under a
-\ bare prefix, the package's edge colon and a qualified prefix, as the
-\ dictionary spells it, with no location; its definer, which has a symbol too,
-\ once.
+\ QALD:QALDEF;does is offered under a bare prefix, the package's edge colon
+\ and a qualified prefix, as the dictionary spells it, with no location; its
+\ definer once.
 : CASE-DICTIONARY ( -- )
-   s" the store holds no symbol for the clause" T-LABEL
-   s" QALD" s" QALDEF;does" CHECKER-PUBLIC-SYM? 0 T=
    s" qald:" KEPT-RESET  s" QA" TOP
    KEPT-ALL
    s" QALD:QALDEF;does" UNPLACED

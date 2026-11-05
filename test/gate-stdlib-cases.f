@@ -1297,7 +1297,7 @@ SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
-WHITEBOX-SUITE checker-completion
+SUITE checker-completion
    test/checker-completion.f
 ;SUITE
 

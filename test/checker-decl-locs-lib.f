@@ -1,7 +1,5 @@
-\ Arms a declaration location and a completion cursor as the verifier does, and
-\ finds the row a name took (src/core/checker.f DECL-LOCS), for
-\ test/checker-completion.f. It reads checker internals, so only the unsealed
-\ engine (test/whitebox-engine.f) loads it.
+\ Arms a declaration location and a completion cursor as the verifier does
+\ (src/core/checker.f DECL-LOCS), for test/checker-completion.f.
 
 require src/habu/verify-source.f
 
@@ -68,13 +66,5 @@ public
    CHECKER-SCOPE-DONE
    dup 0= IF drop EXIT THEN
    throw ;
-
-\ NAME's newest row, offset+1; 0 when the name or its row is missing. Ask it
-\ where the replay that declared NAME binds it: in that replay's queries, or
-\ in a neutral checker scope the replay ran in.
-: ROW ( ptr u8 n -- n )
-   CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym 0= IF 0 EXIT THEN
-   sym USIG-NEWEST ;
 
 ;package
