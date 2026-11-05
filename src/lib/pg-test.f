@@ -1730,10 +1730,14 @@ MEM-MAX-N constant FOREVER-MS
    c body catch {: stale code:n :}
    code want T= ;
 
+\ Returns once the backend has exited and closed its socket (the timeout form);
+\ a backend still running after PROGRESS-NS is an expired wait.
 : TERMINATE ( PG:connection n -- )
    {: c pid:n :}
-   c PARAMS c pid INT+
-   c s" select pg_terminate_backend($1)" [: OUTCOME-TAG TAG-ROWS T= ;] WITH-RESULT ;
+   c PARAMS c pid INT+ c PROGRESS-NS PROC-NS-PER-MS / INT+
+   c s" select pg_terminate_backend($1, $2)"
+   [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 0 >COL TEXT$ s" t" STR= 0=
+      if s" pg-test TERMINATE" TEST-WAIT:EXPIRED then ;] WITH-RESULT ;
 
 
 \ The worker waits on its own connection, which its cleanup closes. It answers
@@ -1824,6 +1828,47 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    NOTE-HALT-CASES ;
 
 
+: ENDED-NOW ( PG:connection -- PG:connection )
+   dup ENDED? drop ;
+
+\ A pending statement's socket, which stays the connection's for its life.
+: PENDING-SOCKET ( PG:connection -- fd )
+   PG:POLL MATCH PG:progress
+      waiting OF drop ENDOF
+      completed OF CLEAR E-EXEC throw ENDOF
+      connected OF drop E-EXEC throw ENDOF
+      refused OF 2drop E-EXEC throw ENDOF
+   ;MATCH ;
+
+
+\ b's lock keeps a's statement pending, which gives a's socket; b's notify then
+\ arrives there with a idle, so ENDED? is the read that takes it.
+: ENDED-CASES ( -- )
+   OPEN {: a :}
+   OPEN {: b :}
+   s" an idle open connection has not ended and runs a statement" T-LABEL
+   a ENDED? TFALSE
+   a s" select 1" EXEC-TAG TAG-ROWS T=
+   s" a pending connection is rejected" T-LABEL
+   b s" select pg_advisory_lock(987655)" EXEC-TAG TAG-ROWS T=
+   a s" select pg_advisory_xact_lock(987655)" SEND
+   a PENDING-SOCKET {: socket:fd :}
+   a [: ENDED-NOW ;] E-STATEMENT REFUSES
+   b s" select pg_advisory_unlock(987655)" EXEC-TAG TAG-ROWS T=
+   a RESULT-POLL OUTCOME-TAG TAG-ROWS T= CLEAR
+   s" a notification ENDED? reads stays for NOTIFIED?" T-LABEL
+   a s" listen pqtended" EXEC-OK
+   b s" notify pqtended" EXEC-OK
+   socket AIO:READABLE mono-ns PROGRESS-NS + AWAIT-READY
+   a ENDED? TFALSE
+   a 0 >MS NOTIFIED? TTRUE
+   s" a connection the server ended has ended and is closed" T-LABEL
+   b a BACKEND TERMINATE
+   a ENDED? TTRUE
+   a PG:LIVE? TFALSE
+   b PG:CLOSE ;
+
+
 : ABANDON-KEEP ( PG:connection -- PG:connection )
    dup PG:ABANDON ;
 
@@ -1886,6 +1931,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    LOST-CONNECTION-CASES
    DEADLINE-CASES
    NOTIFY-CASES
+   ENDED-CASES
    ABANDON-CASES
    RECYCLE-CASES
    PG:CLOSE

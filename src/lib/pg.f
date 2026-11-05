@@ -1404,6 +1404,19 @@ public
    CONN-SLOT CONN-PG@ LIB-TRANSACTION-STATUS TRANS-IDLE = ;
 
 
+\ True when what has arrived ends the connection, which it then closes; it never
+\ waits, needs AIO:START, and leaves notifications it reads for NOTIFIED?.
+: ENDED? ( connection -- bool )
+   CONN-SLOT {: slot:n :}
+   slot IDLE-CHECK
+   begin slot 0 READABLE-WITHIN while
+      slot CONN-PG@ LIB-CONSUME-INPUT 0=
+      slot CONN-PG@ LIB-STATUS CONNECTION-BAD = or
+      if slot ABANDON-SLOT true exit then
+   repeat
+   false ;
+
+
 \ CLOSE cancels pending SQL, clears owned results and retires the handle even
 \ when dispatch failed. The cancel may block up to the connection's
 \ connect_timeout (with none set, PG imposes no deadline) and cannot undo SQL
