@@ -5,7 +5,6 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/errors.f
 require src/compiler/native/compiler.f
-require tools/codegen-loop-inventory.f
 
 package NAG-FIXTURE
 
@@ -53,42 +52,29 @@ package NAG-TEST
 
 private
 
-\ A back edge is a loop in emitted code; tools/codegen-loop-inventory.f finds
-\ one by walking the span's control flow.
-: LOOPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u NLOOPINV:ROW!
-   NLOOPINV:LOOPS ;
-
-: KEPT ( ptr u8 n -- )
-   LOOPS-IN 1 T= ;
-
 : EV-DEF ( ptr u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
 \ ---- the cases ---------------------------------------------------------------
 : UP-CASE ( -- )
    s" a begin-again loop leaves through exit" T-LABEL
-   s" NAG-FIXTURE:NAG-UP" KEPT
    0 NAG-FIXTURE:NAG-UP 5 T=
    6 NAG-FIXTURE:NAG-UP 6 T=
    -3 NAG-FIXTURE:NAG-UP 5 T= ;
 
 : ACC-CASE ( -- )
    s" and one that never returns throws what its turns accumulated" T-LABEL
-   s" NAG-FIXTURE:NAG-ACC" KEPT
    s" 0 NAG-FIXTURE:NAG-ACC 2drop" TEST-EVAL:RC -1 T=
    s" 2 NAG-FIXTURE:NAG-ACC 2drop" TEST-EVAL:RC -4 T= ;
 
 : CALL-CASE ( -- )
    s" a call in the body carries both values round the back edge" T-LABEL
-   s" NAG-FIXTURE:NAG-CALL" KEPT
    0 7 NAG-FIXTURE:NAG-CALL nip 7 T=
    1 7 NAG-FIXTURE:NAG-CALL nip 357 T=
    3 7 NAG-FIXTURE:NAG-CALL nip 823165 T= ;
 
 : LOCAL-CASE ( -- )
    s" and a bound local crosses it beside them" T-LABEL
-   s" NAG-FIXTURE:NAG-LOCAL" KEPT
    3 7 2 NAG-FIXTURE:NAG-LOCAL nip 828263 T= ;
 
 : AGAIN-LOCAL-CASE ( -- )

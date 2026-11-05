@@ -1,4 +1,4 @@
-\ compile-floor.f - the tier-0 per-definition compile floor, as one number.
+\ compile-floor.f - the tier-0 per-definition compile floor: its mean and least.
 \   bin/hb --load tools/compile-floor.f [-- FLOOR-MS]   with FLOOR-MS: refuse
 \   a larger trivial-t0 mean, E-FLOOR-EXCEEDED. One line, us per definition:
 \   floor: trivial-t0 <us> least-trivial-t0 <us>
@@ -41,12 +41,9 @@ create LIVE-PREFIX PREFIX-CAP allot
 variable PREFIX-U                  \ length of the prefix in LIVE-PREFIX
 variable SET-LIVE?                 \ that set is defined and not yet removed
 
-\ The measured set, as a row of the two tables below.
-0 constant TRIV-T0
-1 constant SETS
 $7FFFFFFFFFFFFFFF constant NO-LEAST \ above any least: the first sample replaces it
-create SET-NS SETS cells allot     \ each set's CPU ns, summed over every round
-create SET-LEAST SETS cells allot  \ each set's cheapest definition in any round
+variable SET-NS                    \ the set's CPU ns, summed over every round
+variable SET-LEAST                 \ the set's cheapest definition in any round
 variable BOUND-US                  \ ratchet floor in us; read only when a floor was given
 
 \ ---- the dispatch counter ---------------------------------------------------
@@ -102,26 +99,20 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    DEF$ evaluate-closed
    TIME:THREAD-CPU-NS swap - ;
 
-: NS-CELL ( n -- ptr n ) cells SET-NS + ;
-
-: LEAST-CELL ( n -- ptr n ) cells SET-LEAST + ;
-
-: COMPILE-SET ( n -- ) {: set :}
+: COMPILE-SET ( -- )
    SET-N 0 ?do
       i COMPILE-ONE
-      dup set NS-CELL +!
-      set LEAST-CELL @ min set LEAST-CELL !
+      dup SET-NS +!
+      SET-LEAST @ min SET-LEAST !
    loop ;
 
-: MEAN-US ( n -- n )  NS-CELL @ NS-PER-US / SET-N ROUNDS * / ;
+: MEAN-US ( -- n )  SET-NS @ NS-PER-US / SET-N ROUNDS * / ;
 
-: LEAST-US ( n -- n )  LEAST-CELL @ NS-PER-US / ;
+: LEAST-US ( -- n )  SET-LEAST @ NS-PER-US / ;
 
-: RESET-SETS ( -- )
-   SETS 0 ?do
-      0 i NS-CELL !
-      NO-LEAST i LEAST-CELL !
-   loop ;
+: RESET-SET ( -- )
+   0 SET-NS !
+   NO-LEAST SET-LEAST ! ;
 
 : DISPATCHES ( -- n )  NC-COUNT @ NC-MARK @ - ;
 
@@ -142,11 +133,11 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 \ COMPILE-SET defines every name in the set or throws, so TEARDOWN's count is
 \ exact; a throw leaves SET-LIVE? clear and the partial set in the dictionary,
 \ reachable only if compiling `1 +` fails, which kills the run anyway.
-: MEASURE ( ptr u8 n ptr u8 n n -- ) {: px:ptr pu tx:ptr tu set :}
+: MEASURE ( ptr u8 n ptr u8 n -- ) {: px:ptr pu tx:ptr tu :}
    TEARDOWN
    px pu tx tu BUILD-SET
    NC-COUNT @ NC-MARK !
-   set COMPILE-SET
+   COMPILE-SET
    1 SET-LIVE? ! ;
 
 : EXPECT ( n n ptr u8 n -- ) {: want got lbl:ptr lu :}
@@ -160,17 +151,17 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : RUN-TIER0 ( -- )
    0 set-tier
-   s" V" s"  ( n -- n ) 1 + ; " TRIV-T0 MEASURE
+   s" V" s"  ( n -- n ) 1 + ; " MEASURE
    0 DISPATCHES s" the trivial tier-0 set" EXPECT ;
 
 : REPORT ( -- )
    SB-RESET
-   s" floor: trivial-t0 " SB-APPEND  TRIV-T0 MEAN-US FMT:SB-U
-   s"  least-trivial-t0 " SB-APPEND  TRIV-T0 LEAST-US FMT:SB-U
+   s" floor: trivial-t0 " SB-APPEND  MEAN-US FMT:SB-U
+   s"  least-trivial-t0 " SB-APPEND  LEAST-US FMT:SB-U
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
-\ The mean carries the cores too, so ratchet on a quiet machine;
+\ The mean carries the cores, so ratchet on a quiet machine;
 \ test/compile-floor-gate.f judges the least at any load.
 
 : FLOOR-US ( ptr u8 n -- n )       \ "0.5" -> 500
@@ -181,9 +172,9 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : RATCHET ( -- )
    ARGV:POS# 0= if exit then
-   TRIV-T0 MEAN-US BOUND-US @ <= if exit then
+   MEAN-US BOUND-US @ <= if exit then
    SB-RESET
-   s" compile-floor: trivial-t0 " SB-APPEND  TRIV-T0 MEAN-US FMT:SB-U
+   s" compile-floor: trivial-t0 " SB-APPEND  MEAN-US FMT:SB-U
    s"  us is above the floor of " SB-APPEND  BOUND-US @ FMT:SB-U
    s"  us" SB-APPEND  LF SB-APPEND-C
    SB$ E-FLOOR-EXCEEDED REFUSE ;
@@ -217,7 +208,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    PRIOR-TIER @ set-tier ;
 
 : MEASURE-ALL ( -- )
-   RESET-SETS
+   RESET-SET
    ROUNDS 0 ?do
       RUN-TIER0
    loop

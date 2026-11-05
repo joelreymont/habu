@@ -1,6 +1,5 @@
 \ aot-call-report-lib.f - report patched AOT call stencils in a binary.
-\ The gates load it in process, so it refuses misuse by a named throw its
-\ caller reports; only REPORT-MAIN, the CLI boundary, ends the process.
+\ test/gate-aot-image.f loads it in process; misuse is a named throw its caller reports.
 
 require src/lib/errors.f
 require src/lib/fs.f
@@ -107,11 +106,6 @@ variable JSON-NUM-N
    cap 0 < if E-JSON-WRITE-OUTPUT throw then
    a REPORT-OUT-A!
    cap REPORT-OUT-CAP !
-   0 REPORT-OUT-U ! ;
-
-: REPORT-BUFFER-OFF ( -- )
-   NULL$ drop REPORT-OUT-A!
-   0 REPORT-OUT-CAP !
    0 REPORT-OUT-U ! ;
 
 : REPORT-OUT$ ( -- ptr u8 n )
@@ -334,40 +328,8 @@ variable JSON-NUM-N
    REPORT-JSON
    REPORT-OUT$ ;
 
-: USAGE ( -- )
-   s" usage: tools/aot-call-report.f binary" 64 die ;
-
-\ The CLI ends a refused report with exit 74 and the refusal in words. Any
-\ other code is a defect no command line can cause, and goes on to the engine.
-: REPORT-REFUSED ( n -- )
-   {: code:n :}
-   code E-FS-PATH = if s" aot-call-report: path too long" 74 die then
-   code E-FS-OPEN = if s" aot-call-report: cannot open input" 74 die then
-   code E-FS-IO = if s" aot-call-report: read failed" 74 die then
-   code throw ;
-
-: REPORT-RUN ( -- )
-   0 SCRIPT-ARGV$ REPORT-FILE!
-   REPORT-BUFFER-OFF
-   REPORT-JSON ;
-
-: REPORT-MAIN ( -- )
-   SCRIPT-ARGC 1 <> if USAGE then
-   [: REPORT-RUN ;] catch
-   dup 0= if drop exit then
-   REPORT-REFUSED ;
-
-\ What the CLI, the AOT gates and the focused test call; the rest stays private.
+\ What the AOT gates call; the rest stays private.
 public
-EXPORT REPORT-BYTES
-EXPORT REPORT-STENCILS
-EXPORT REPORT-BLS
-EXPORT REPORT-FILE!
-EXPORT REPORT-BUFFER!
-EXPORT REPORT-OUT$
-EXPORT JSON-NUM
 EXPORT BL?
-EXPORT REPORT-COUNT
 EXPORT REPORT-JSON-BUFFER
-EXPORT REPORT-MAIN
 ;package

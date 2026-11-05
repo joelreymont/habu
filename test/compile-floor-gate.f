@@ -44,10 +44,8 @@ $4000 constant ERR-CAP
 180000 constant TIMEOUT-MS
 32 constant SP
 10 constant LF
-48 constant ZERO-C
 create OUT OUT-CAP allot
 create ERR ERR-CAP allot
-create TIER-BUF 1 allot
 variable OUT-U
 variable ERR-U
 variable RC
@@ -80,13 +78,12 @@ variable PARSE-POS
    ENGINE-CANDIDATE:PATH$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME FLOOR$ STORE! ;
 
-: RUN-BENCH ( n -- ) {: tier:n :}
+: RUN-BENCH ( -- )
    PROC-ARGV-RESET
    s" --load" ARG+
    BENCH$ ARG+
    s" --" ARG+
-   tier ZERO-C + TIER-BUF c!
-   TIER-BUF 1 ARG+
+   s" 0" ARG+
    s" src/lib/string.f" ARG+
    ENGINE-CANDIDATE:PATH$ >LEN OUT OUT-CAP >LEN ERR ERR-CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME BENCH$ STORE! ;
@@ -186,7 +183,7 @@ variable PARSE-POS
    s" compile-floor-gate: no such R line" 74 die ;
 
 : RUN-BENCH-CASE ( -- )
-   0 RUN-BENCH
+   RUN-BENCH
    REPORT-OUT
    CHILD-OK? TTRUE
    OUT$ s" B harness " CONTAINS? TTRUE

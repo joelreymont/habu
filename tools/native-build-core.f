@@ -959,17 +959,9 @@ variable WRITER-TIER
    [: 0 set-tier READ-WRITER ;]
       [: WRITER-TIER @ set-tier ;] finally ;
 
-\ A caller-supplied writer (RUN-PATH-WRITER-RC) runs after the source writer
-\ loads, so it can bind that writer by name (SOURCE-WRITER-NAMED).
-TYPED-VARIABLE WRITER-OVERRIDE [ AOT-OWNED:capture ptr n n ptr u8 n -- ]
-variable WRITER-OVERRIDE?
-
 \ An x86-64 target's writer was loaded before the window (HOLD-X64).
 : WRITE-OWNED ( AOT-OWNED:capture -- AOT-OWNED:capture )
-   WRITER-OVERRIDE? @ 0<> X64-TARGET? 0= or if LOAD-SOURCE-WRITER then
-   WRITER-OVERRIDE? @ if
-      dup NATIVE-LAYOUT:CURRENT TEMP$ WRITER-OVERRIDE @ execute exit
-   then
+   X64-TARGET? 0= if LOAD-SOURCE-WRITER then
    dup NATIVE-LAYOUT:CURRENT TEMP$ SOURCE-WRITER-DISPATCH ;
 
 : EMIT-TEMP ( AOT-OWNED:capture -- )
@@ -1463,15 +1455,6 @@ public
    ['] SOURCE-NOOP ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY!
    out outu OUTPUT!
    ['] RUN-FILE-INNER WITH-TARGET-ROOT ;
-
-\ RUN-PATH-RC with the image written by `writer` instead of the source writer's
-\ WRITE-C2.
-: RUN-PATH-WRITER-RC ( ptr u8 n [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
-   {: out:ptr outu:n writer :}
-   writer WRITER-OVERRIDE !
-   -1 WRITER-OVERRIDE? !
-   out outu RUN-PATH-RC
-   0 WRITER-OVERRIDE? ! ;
 
 \ The exit status of a finished build, for every driver that ends the process
 \ with one (RUN and tools/build-profile.f): 0,
