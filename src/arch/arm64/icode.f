@@ -1,7 +1,7 @@
 \ icode.f — A64ICODE, the ARM64 single-pass assembler: EMITW appends asm.f
 \ encodings to the CODE window; labels resolve B/BL, B.cond, CBZ/CBNZ, ADR and
-\ LOFF, sites, backward at once and forward by backpatch. ASM-CP counts words and
-\ branch deltas are in words.
+\ LOFF, sites, backward at once and forward by backpatch. ASM-CP counts words;
+\ a branch or ADR distance reaches its asm.f encoder in bytes.
 \ No locals: the Gforth recovery compiler checks this file before the native
 \ checker exists.
 require src/arch/arm64/asm.f
@@ -17,8 +17,8 @@ public
 \ 1. Engine code. The baked-source label LSRC follows it (habu2.f
 \    EMIT-SOURCE-BYTES) and the startup region reaches LSRC by ADR
 \    (C-SOURCE-BAKED, C-SOURCE-APPEND-LSRC under EM-STARTUP), so engine code is
-\    bounded by the 21-bit ADR byte field, ADR-HI; past it ?ADR dies `icode: adr
-\    out of reach`.
+\    bounded by the 21-bit ADR byte field, ADR-HI; past it FX-REACH dies
+\    `icode: adr out of reach`.
 \ 2. Baked source, the whole of src/habu/stage2.f READ-SRC: refused at emission
 \    by CODE-CAP-WORDS. The boot arena maps IBUFSZ plus the source's length.
 \ 3. AOT payload (EMIT-AOT-SEED). No PC-relative field addresses it (habu2.f
@@ -210,28 +210,10 @@ variable FX-NEW
    I-KIND @ I-W @ cells FXK + !
    I-W @ FX-LINK ;
 
-: D26 ( n -- n )  $3FFFFFF and ;                               \ B/BL: bits 0..25 (26-bit field)
-
-: D19 ( n -- n )  $7FFFF and 5 lshift ;                         \ cond/CBZ: bits 5..23
-\ A delta d is in reach iff LO <= d < HI. The bounds match bootstrap/cg/asm.fs
-\ (?REL26, ?REL19, ENC-ADR) so the native assembler refuses where the seed does.
-\ The code window overshoots REL19 and ADR reach, so every emit and patch site
-\ checks a delta before masking it; the mask would wrap to a wrong target.
-      -33554432 constant REL26-LO   \ -2^25 words, inclusive  (B/BL 26-bit field)
-       33554432 constant REL26-HI   \  2^25 words, exclusive
-        -262144 constant REL19-LO   \ -2^18 words, inclusive  (cond/CBZ/CBNZ 19-bit field)
-         262144 constant REL19-HI   \  2^18 words, exclusive
-       -1048576 constant ADR-LO     \ -2^20 bytes, inclusive  (ADR 21-bit field)
-        1048576 constant ADR-HI     \  2^20 bytes, exclusive
-
-: REL26-OK? ( n -- bool )  dup REL26-LO >=  swap REL26-HI <  and ;
-: REL19-OK? ( n -- bool )  dup REL19-LO >=  swap REL19-HI <  and ;
-: ADR-OK?   ( n -- bool )  dup ADR-LO   >=  swap ADR-HI   <  and ;
-
 \ ---- what a reach refusal names ----------------------------------------------
 \ A reach refusal prints site, target, delta and limit in bytes as one message.
-\ Every caller of ?REL26, ?REL19 and ?ADR sets I-RSITE and I-RTARGET just before
-\ the check: BR-EMIT and ADR, from ASM-CP and LBLP, FX-PATCH from FXS and ASM-CP.
+\ Every caller of FX-REACH sets I-RSITE and I-RTARGET just before it: BR-EMIT
+\ and ADR, from ASM-CP and LBLP, FX-PATCH from FXS and ASM-CP.
 variable I-RSITE                    \ byte offset of the instruction under assembly
 variable I-RTARGET                  \ byte offset it has to reach
 variable I-RDELTA                   \ signed byte distance it would need
@@ -313,17 +295,36 @@ variable IMSG-V
    s"  limit="  I-RLIMIT  @ IMSG-FIELD
    IMSG-BUF IMSG-N @ ICODE-EXIT-RC die ;
 
-: ?REL26 ( n -- n )  dup REL26-OK? if exit then
-   dup $4 * I-RDELTA !  REL26-HI $4 * I-RLIMIT !
-   s" icode: branch out of reach" REACH-DIE ;
+private
 
-: ?REL19 ( n -- n )  dup REL19-OK? if exit then
-   dup $4 * I-RDELTA !  REL19-HI $4 * I-RLIMIT !
-   s" icode: cond branch out of reach" REACH-DIE ;
+variable I-RKIND                    \ the fixup kind whose field must hold I-RDELTA
+variable I-RBITS                    \ the field bits FX-BITS packs for I-RDELTA
 
-: ?ADR ( n -- n )  dup ADR-OK? if exit then
-   dup I-RDELTA !  ADR-HI I-RLIMIT !
-   s" icode: adr out of reach" REACH-DIE ;
+\ I-RKIND's encoder's word for I-RDELTA xor its word for 0, into I-RBITS: catch
+\ admits only a stack-preserving word. b.cond, cbz and cbnz share one field.
+: FX-BITS ( -- )
+   I-RKIND @ FX-B26 = if I-RDELTA @ ENC-B  0 ENC-B xor I-RBITS ! exit then
+   I-RKIND @ FX-B19 = if 0 I-RDELTA @ ENC-CBZ  0 0 ENC-CBZ xor I-RBITS ! exit then
+   I-RKIND @ FX-ADR = if 0 I-RDELTA @ ENC-ADR  0 0 ENC-ADR xor I-RBITS ! exit then
+   s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
+
+
+\ A distance the field cannot hold dies with REACH-DIE's report: E-A64EMIT-REACH
+\ must not escape, since LBL, clears FXH before walking the chain FX-PATCH patches.
+: FX-REACH ( n n -- n )                          \ ( bytes kind -- bits )
+   I-RKIND !  I-RDELTA !
+   ['] FX-BITS catch  dup 0= if drop I-RBITS @ exit then
+   dup E-A64EMIT-REACH <> if throw then  drop
+   I-RKIND @ FX-B26 = if
+      REL26-HI $4 * I-RLIMIT !  s" icode: branch out of reach" REACH-DIE
+   then
+   I-RKIND @ FX-B19 = if
+      REL19-HI $4 * I-RLIMIT !  s" icode: cond branch out of reach" REACH-DIE
+   then
+   ADR-HI I-RLIMIT !  s" icode: adr out of reach" REACH-DIE ;
+
+public
+
 \ LOFF, carries a label's non-negative byte offset from the code base in the two
 \ 16-bit lanes of a movz/movk pair, not a delta: the reader adds the runtime code
 \ base, so a label past ADR reach is still addressable. The window must fit
@@ -344,7 +345,7 @@ variable BBASE  variable BKIND
    I-LBL @ LBLP @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
    ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !
-     ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
+     ASM-CP @ - $4 *  BKIND @ FX-REACH  BBASE @ or EMITW  THEN ;
 
 \ A branch base word is its asm.f encoder applied to a zero delta, so ENC-BCOND
 \ and ENC-CBZ/ENC-CBNZ own the bit layout and screen the condition and register
@@ -362,12 +363,14 @@ variable BBASE  variable BKIND
 : CBNZ, ( n label -- )
    LABEL>N I-LBL ! I-RD !  I-RD @ 0 ENC-CBNZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
+
 : ADR, ( n label -- )
    LABEL>N I-LBL ! I-RD !
    I-LBL @ LBLP @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
    ELSE  dup $4 * I-RTARGET !  ASM-CP @ $4 * I-RSITE !
-     ASM-CP @ - $4 *  ?ADR  I-RD @ swap ENC-ADR EMITW  THEN ;
+     ASM-CP @ - $4 *  FX-ADR FX-REACH  I-RD @ 0 ENC-ADR or EMITW  THEN ;
+
 
 \ LOFF, is two words on either side of the label: a forward site reserves both
 \ lanes before the offset is known, and a site's width may not depend on where
@@ -383,12 +386,6 @@ variable BBASE  variable BKIND
      I-RD @ I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW EMITW  THEN ;
 variable LBI
 
-: FX-ENC ( n n -- n )                            \ ( delta kind -- patchbits )
-   dup FX-B26 = if drop ?REL26 D26 exit then
-   dup FX-B19 = if drop ?REL19 D19 exit then
-   dup FX-ADR = if drop $4 * ?ADR ENC-ADRD exit then
-   drop s" icode: invalid fixup kind" ICODE-EXIT-RC die ;
-
 \ A reach die precedes the current fixup's PATCH, so the failing site word and
 \ its slots stay untouched. A chain is not atomic: LBL, clears FXH first, and
 \ fixups patched before the failing one keep their deltas and are freed.
@@ -398,13 +395,15 @@ variable LBI
    0 I-X @ $FFFF and 0 MOVZHW  LBI @ cells FXS + @ PATCH
    0 I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW  LBI @ cells FXS + @ 1 + PATCH ;
 
+
 : FX-PATCH ( -- )
    LBI @ cells FXK + @ FX-LOFF = if FX-LOFF-PATCH exit then
    LBI @ cells FXS + @ $4 * I-RSITE !
    ASM-CP @ $4 * I-RTARGET !
-   ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
-   LBI @ cells FXK + @ FX-ENC
+   ASM-CP @ LBI @ cells FXS + @ - $4 *           \ bytes from the site to here
+   LBI @ cells FXK + @ FX-REACH
    LBI @ cells FXS + @ PATCH ;
+
 
 : LBL, ( label -- )
    dup ?LBL-UNBOUND LABEL>N I-LBL !

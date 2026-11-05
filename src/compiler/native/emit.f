@@ -1310,22 +1310,21 @@ INSN-PER-OP-CK
 : DELTA ( n -- n )
    START-AT N-INS @ - ;
 
-\ Both encoders MASK their displacement field rather than bounding it, so a
-\ branch out of reach would silently become a branch somewhere else.
+\ d counts instructions; the encoders take bytes and throw E-A64EMIT-REACH for
+\ a distance their field cannot hold.
 : B-WORD ( n -- n )
    {: d:n :}
-   d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
-   d ENC-B ;
+   d INSN-BYTES * ENC-B ;
+
 
 : BZ-WORD ( n n -- n )
    {: rt:n d:n :}
-   d A64IR:BZ-FITS? 0= if E-A64EMIT-REACH throw then
-   rt d ENC-CBZ ;
+   rt d INSN-BYTES * ENC-CBZ ;
+
 
 : BCOND-WORD ( n n -- n )
    {: d:n k:n :}
-   d A64IR:BCOND-FITS? 0= if E-A64EMIT-REACH throw then
-   d k ENC-BCOND ;
+   d INSN-BYTES * k ENC-BCOND ;
 
 \ The arguments are already in the destination's registers by the allocation's
 \ own decision, so they reach no encoder and the whole instruction is the jump.
@@ -1487,14 +1486,15 @@ INSN-PER-OP-CK
 
 : BL-WORD ( n -- n )
    {: d:n :}
-   d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
-   d ENC-BL ;
+   d INSN-BYTES * ENC-BL ;
+
 
 : PUT-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id DHEAD@  PUT-DMOVE
    id  SELF-FUN FUN-START  N-INS @ -  BL-WORD  APPEND
    id  id DTAIL@  PUT-DMOVE ;
+
 
 \ ---- calling another word ----------------------------------------------------
 \ Both ends are instruction aligned by construction, so the subtraction is a
@@ -1503,9 +1503,11 @@ INSN-PER-OP-CK
    EM-PLACED @ 0= if E-A64EMIT-PLACE throw then
    EM-PLACE @ ;
 
+
 : WORD-DELTA ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id ENTRY-ADDR  PLACEMENT-CK -  INSN-BYTES /  N-INS @ - ;
+
 
 : PUT-WORD-CALL ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1513,15 +1515,16 @@ INSN-PER-OP-CK
    id  id WORD-DELTA BL-WORD  APPEND
    id  id DTAIL@  PUT-DMOVE ;
 
+
 \ In BYTES, which is the unit this field counts - the branch fields count
 \ instructions.
 : ADR-DELTA ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id FUN-OF FUN-START  N-INS @ -  INSN-BYTES * ;
 
+
 : ADR-WORD ( n n -- n )
    {: rd:n d:n :}
-   d A64IR:ADR-FITS? 0= if E-A64EMIT-REACH throw then
    rd d ENC-ADR ;
 
 \ Both ends of this delta are inside ONE emission, and the stripped link depends
@@ -1575,7 +1578,7 @@ INSN-PER-OP-CK
 \ modular answer, as `+`, `-` and `*` wrap (docs/forth.md).
 : PUT-SDIV ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id  id 1 OPERAND-REG DIV-SKIP  ENC-CBNZ  APPEND
+   id  id 1 OPERAND-REG DIV-SKIP INSN-BYTES *  ENC-CBNZ  APPEND
    id  id COLD-ADDR EXT-DELTA  BL-WORD  APPEND
    id  id TRIPLE  ENC-SDIV  APPEND ;
 

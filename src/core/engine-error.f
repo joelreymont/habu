@@ -27,7 +27,7 @@ public
 \ cannot throw. Every refusal (the CB-DIE rows in habu1.f and kernel-x64.f) and an
 \ outbound FFI call on a context another thread owns write `hb: callback: <reason>`
 \ to fd 2 and exit_group 106 without touching the region; a busy context refuses,
-\ never waits. An uncaught E-NBR-RANGE (-8598) also exits 106, silently.
+\ never waits.
 106 constant CALLBACK           \ a C callback or FFI call found its region or slot unusable
 107 constant POLICY             \ a sealed design named a word outside its admitted vocabulary (src/lib/vocabulary.f)
 108 constant OVERLAY-OPEN       \ a definition, package row, wordlist or undefine while a checker overlay is open (src/core/checker.f CHECKER-OVERLAY)

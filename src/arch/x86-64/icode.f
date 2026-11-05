@@ -21,7 +21,7 @@ public
 \ src/os/image-bytes.f sizes the image buffer from it. The boot maps the
 \ captured engine's code region at VMBASE plus REGION-OFF (src/habu/boot-x64.f),
 \ so the window and its read-write tail end below that. rel32 reaches the whole
-\ image, so the bound is ARM64's engine code allowance (arm64/icode.f ADR-HI).
+\ image, so the bound is ARM64's engine code allowance (arm64/asm.f ADR-HI).
 $100000 constant CODE-CAP-BYTES
 
 private

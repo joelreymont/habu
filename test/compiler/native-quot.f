@@ -4,6 +4,7 @@ require src/compiler/native/compiler.f
 require src/compiler/native/codewalk.f
 require src/compiler/native/emit.f
 require src/habu/code-bytes.f
+require src/arch/arm64/asm.f
 require src/arch/x86-64/disasm.f
 
 \ Tier 1 below: the emission, frames and refusals these cases measure are the
@@ -261,20 +262,16 @@ create HID-TXT
    [: RUN-DEAD ;] E-FS-OPEN TTHROWSQ ;
 
 \ ---- the reach of the address form -------------------------------------------
-\ The field's own boundary, asked of the dialect's reader (a bound, not a mask),
-\ and the invariant that no emission this chain builds reaches it, so
-\ E-A64EMIT-REACH cannot fire for an Adr: raise INSN-MAX past the field and the
-\ second assertion goes red.
-1 20 lshift constant ADR-HI
-
+\ ENC-ADR bounds its field rather than masking it, and no emission this chain
+\ builds reaches the bound: raise INSN-MAX past it and the last assertion fails.
 : REACH-CASE ( -- )
    s" the address field is a bound and not a mask" T-LABEL
-   ADR-HI 1- A64IR:ADR-FITS? TTRUE
-   ADR-HI negate A64IR:ADR-FITS? TTRUE
-   ADR-HI A64IR:ADR-FITS? TFALSE
-   ADR-HI negate 1- A64IR:ADR-FITS? TFALSE
+   0 A64ASM:ADR-HI 1-  A64ASM:ENC-ADR $707FFFE0 T=
+   0 A64ASM:ADR-HI negate  A64ASM:ENC-ADR $10800000 T=
+   [: 0 A64ASM:ADR-HI A64ASM:ENC-ADR drop ;] E-A64EMIT-REACH TTHROWSQ
+   [: 0 A64ASM:ADR-HI negate 1- A64ASM:ENC-ADR drop ;] E-A64EMIT-REACH TTHROWSQ
    s" and no emission this chain can build reaches it" T-LABEL
-   A64EMIT:INSN-MAX INSN-BYTES *  ADR-HI  < TTRUE ;
+   A64EMIT:INSN-MAX INSN-BYTES *  A64ASM:ADR-HI  < TTRUE ;
 
 \ Each callback application preserves its own window while a caller retains
 \ other values beneath it. Forwarding the callback must keep that declaration.

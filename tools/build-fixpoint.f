@@ -720,6 +720,10 @@ package BUILD-FIXPOINT
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f use its checked flag words.
    out outu s" src/lib/prelude.f" BF-APPEND-MODULE
+   out outu s" src/lib/errors.f" BF-APPEND-MODULE   \ asm.f requires it
+   \ The span type family, in the engine prefix's position right after errors.f
+   \ (src/habu/habu2.f PFX-LOAD-STDLIB-FILES says why the registry needs it).
+   out outu s" src/lib/span.f" BF-APPEND-MODULE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-MODULE   \ icode.f requires it
    out outu s" src/arch/arm64/icode.f" BF-APPEND-MODULE   \ aot-decl.f requires it
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
@@ -736,10 +740,6 @@ package BUILD-FIXPOINT
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu BF-APPEND-FDIO
-   out outu s" src/lib/errors.f" BF-APPEND-MODULE
-   \ The span type family, in the engine prefix's position right after errors.f
-   \ (src/habu/habu2.f PFX-LOAD-STDLIB-FILES says why the registry needs it).
-   out outu s" src/lib/span.f" BF-APPEND-MODULE
    out outu s" src/habu/snapshot-format.f" BF-APPEND-MODULE
    out outu s" src/habu/address-carrier.f" BF-APPEND-MODULE
    out outu s" src/habu/cell-grid.f" BF-APPEND-MODULE

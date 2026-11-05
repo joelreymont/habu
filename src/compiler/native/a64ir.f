@@ -163,15 +163,7 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 1 constant COND-NE                   \ not equal
 4 constant COND-MI                   \ negative - less than, after an Fcmp
 
-\ ---- the branch fields -------------------------------------------------------
-26 constant B-BITS
-19 constant BZ-BITS
-19 constant BCOND-BITS
-
-21 constant ADR-BITS
-
-\ Every instruction is four bytes, which is why every displacement field above
-\ counts instructions rather than bytes.
+\ Every arm64 instruction is four bytes.
 4 constant INSN-BYTES
 
 \ ---- the dialect's own symbols -----------------------------------------------
@@ -306,7 +298,7 @@ private
    dup abs WB-MAX > if E-A64IR-DWB throw then ;
 
 \ How far away it is is not asked here: the distance depends on where the
-\ CALLING routine is written, so the reach stays the emitter's.
+\ CALLING routine is written, so A64ASM's encoder refuses one out of reach.
 : ENTRY ( n -- n )
    dup 0 <= if E-A64IR-ENTRY throw then
    dup INSN-BYTES mod 0<> if E-A64IR-ENTRY throw then ;
@@ -318,12 +310,6 @@ private
 \ ---- the checked condition operand -------------------------------------------
 : COND ( n -- n )
    dup 0 < over COND-LIM >= or if E-A64IR-COND throw then ;
-
-\ ---- the checked branch displacement -----------------------------------------
-: FITS? ( n n -- bool )
-   {: d:n bits:n :}
-   1 bits 1- lshift {: half:n :}
-   d half negate >= d half < and ;
 
 public
 
@@ -842,13 +828,6 @@ public
       ne    OF COND-NE ENDOF
       mi    OF COND-MI ENDOF
    ;MATCH ;
-
-\ ---- the reach of each branch form -------------------------------------------
-: B-FITS? ( n -- bool )      B-BITS FITS? ;
-: BZ-FITS? ( n -- bool )     BZ-BITS FITS? ;
-: BCOND-FITS? ( n -- bool )  BCOND-BITS FITS? ;
-
-: ADR-FITS? ( n -- bool )    ADR-BITS FITS? ;
 
 : KEY-IMM ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    K-IMM KEY-BIND ;

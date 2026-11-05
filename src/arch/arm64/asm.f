@@ -1,9 +1,10 @@
 \ asm.f — ARM64 instruction encoders, package A64ASM (operands -> u32).
-\ Every encoder screens its operands before packing a bit; branch and ADR
-\ displacements are the exception, bounded by src/arch/arm64/icode.f
-\ (?REL26/?REL19/?ADR). tools/aot-startup-shape.f reaches RRR, RRI, ENC-CMP,
-\ ENC-BCOND and ENC-ADR in runtime images: their operands stay locals, since a
-\ stripped image cannot read this file's baked scratch.
+\ Every encoder screens its operands before packing a bit: an operand dies with
+\ ASM-EXIT-RC, a branch or ADR distance throws E-A64EMIT-REACH.
+\ tools/aot-startup-shape.f reaches RRR, RRI, ENC-CMP, ENC-BCOND and ENC-ADR in
+\ runtime images: their operands stay locals, since a stripped image cannot
+\ read this file's baked scratch.
+require src/lib/errors.f
 
 package A64ASM
 
@@ -11,7 +12,8 @@ $FFFFFFFF constant ARM64-W32
 
 : MSK ( n -- n ) ARM64-W32 and ;
 
-\ Every refusal here and in src/arch/arm64/icode.f exits with this status.
+\ An operand refusal here, and every refusal in src/arch/arm64/icode.f, exits
+\ with this status.
 72 constant ASM-EXIT-RC
 
 public
@@ -37,7 +39,26 @@ public
  8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
 12 constant C-GT  13 constant C-LE  14 constant C-AL
 
+33554432 constant REL26-HI  \ 2^25 instructions, exclusive: b/bl 26-bit field
+  262144 constant REL19-HI  \ 2^18 instructions, exclusive: b.cond/cbz/cbnz 19-bit field
+ 1048576 constant ADR-HI    \ 2^20 bytes or pages, exclusive: adr/adrp 21-bit field
+
 private
+
+-33554432 constant REL26-LO  \ -2^25 instructions, inclusive
+  -262144 constant REL19-LO  \ -2^18 instructions, inclusive
+ -1048576 constant ADR-LO    \ -2^20 bytes or pages, inclusive
+
+: REL26-OK? ( n -- bool )  dup REL26-LO >=  swap REL26-HI <  and ;
+: REL19-OK? ( n -- bool )  dup REL19-LO >=  swap REL19-HI <  and ;
+: ADR-OK?   ( n -- bool )  dup ADR-LO   >=  swap ADR-HI   <  and ;
+
+: ?REACH ( bool -- )  0= IF E-A64EMIT-REACH throw THEN ;
+
+\ A branch's byte distance as the instruction count its field holds.
+: >INSNS ( n -- n )  dup 3 and 0= ?REACH  4 / ;
+: >REL26 ( n -- n )  >INSNS dup REL26-OK? ?REACH ;
+: >REL19 ( n -- n )  >INSNS dup REL19-OK? ?REACH ;
 
 1 13 lshift constant NIS-LIM     \ packed N:immr:imms of a logical immediate
 1  6 lshift constant SHIFT-LIM
@@ -358,22 +379,27 @@ public
 
 : ENC-STLR ( n n -- n ) XR2 5 lshift or $C89FFC00 or MSK ;
 
-\ Branch deltas count instructions, not bytes; the field mask keeps the sign bits.
-: ENC-B ( n -- n ) $3FFFFFF and $14000000 or MSK ;
+\ A branch distance is in bytes from the branch; one that is not a whole
+\ instruction or that its field cannot hold throws E-A64EMIT-REACH.
+: ENC-B ( n -- n ) >REL26 $3FFFFFF and $14000000 or MSK ;
 
-: ENC-BL ( n -- n ) $3FFFFFF and $94000000 or MSK ;
+: ENC-BL ( n -- n ) >REL26 $3FFFFFF and $94000000 or MSK ;
+
 
 : ENC-BCOND ( n n -- n )
-   {: delta:n cond:n :}
-   delta $7FFFF and 5 lshift $54000000 or  cond ?COND or MSK ;
+   {: bytes:n cond:n :}
+   bytes >REL19 $7FFFF and 5 lshift $54000000 or  cond ?COND or MSK ;
+
 
 : ENC-CBZ ( n n -- n )
-   XR2ND {: rd:n delta:n :}
-   delta $7FFFF and 5 lshift $B4000000 or rd or MSK ;
+   XR2ND {: rd:n bytes:n :}
+   bytes >REL19 $7FFFF and 5 lshift $B4000000 or rd or MSK ;
+
 
 : ENC-CBNZ ( n n -- n )
-   XR2ND {: rd:n delta:n :}
-   delta $7FFFF and 5 lshift $B5000000 or rd or MSK ;
+   XR2ND {: rd:n bytes:n :}
+   bytes >REL19 $7FFFF and 5 lshift $B5000000 or rd or MSK ;
+
 
 : ENC-FMOVXD ( n n -- n ) DR2 XREG? $9E670000 RR ;   \ X->D bits
 
@@ -464,17 +490,27 @@ public
 
 : ENC-ISB ( -- n ) $D5033FDF ;
 
+private
+
 \ d fills the signed 21-bit immhi:immlo field: bytes for adr, pages for adrp.
 : ENC-ADRD ( n -- n ) dup 3 and 29 lshift  swap 2 rshift $7FFFF and 5 lshift or ;
 
+public
+
+
+\ ENC-ADR and ENC-ADRP throw E-A64EMIT-REACH for a distance ADR-OK? refuses.
 : ENC-ADR ( n n -- n )
    XR2ND {: rd:n imm:n :}
+   imm ADR-OK? ?REACH
    $10000000 rd or  imm ENC-ADRD or MSK ;
+
 
 \ pages is the signed 4 KiB page distance from the instruction's own page.
 : ENC-ADRP ( n n -- n )
    XR2ND {: rd:n pages:n :}
+   pages ADR-OK? ?REACH
    $90000000 rd or  pages ENC-ADRD or MSK ;
+
 
 : ENC-FMOVDD ( n n -- n ) DR2 $1E604000 RR ;
 

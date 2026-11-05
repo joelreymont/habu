@@ -12,11 +12,9 @@ using A64ASM
 4 constant INSN-BYTES               \ one A64 instruction
 $10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane (icode.f LOFF,)
 
-\ The bits ENC-ADR packs its displacement into, taken from the encoder itself:
-\ the word with every displacement bit set differs from the word with none in
-\ exactly those two fields (immlo at bit 29, immhi at bit 5).
-$1FFFFF constant ADR-DISP-ONES      \ a 21-bit displacement of all ones
-0 ADR-DISP-ONES ENC-ADR  0 0 ENC-ADR xor constant ADR-DISP-BITS
+\ The bits ENC-ADR packs a displacement into: -1 sets them all, so its word
+\ differs from the word for 0 in exactly immlo (bit 29) and immhi (bit 5).
+0 -1 ENC-ADR  0 0 ENC-ADR xor constant ADR-DISP-BITS
 
 : MOVW-LANE ( n -- n ) 5 rshift $FFFF and ;      \ the 16-bit immediate it carries
 : MOVW-HW ( n -- n ) 21 rshift 3 and ;           \ which lane that immediate is shifted into
@@ -92,9 +90,10 @@ public
 \ address it could not read.
 41 constant COPY-LOOP-WORDS          \ instructions from the loop's test to past its end
 
-: COPY-LOOP-HEAD? ( n n n -- bool ) {: w0:n w1:n w2:n :}
+: COPY-LOOP-HEAD? ( n n n -- bool )
+   {: w0:n w1:n w2:n :}
    w0  9 11 ENC-CMP <> if false exit then
-   w1  COPY-LOOP-WORDS C-CS ENC-BCOND <> if false exit then
+   w1  COPY-LOOP-WORDS INSN-BYTES * C-CS ENC-BCOND <> if false exit then
    w2  23 9 0 ENC-LDRB = ;
 
 ;using

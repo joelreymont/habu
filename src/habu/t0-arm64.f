@@ -119,9 +119,6 @@ DYNAMIC-BUFFER BR-ARG n
 
 4096 constant SINK-START-BYTES
 4095 constant ADJ-MAX                 \ the widest add/sub immediate
-26 constant B-BITS                    \ a b or bl field, in instructions
-19 constant COND-BITS                 \ a b.cond or cbz field, in instructions
-21 constant ADR-BITS                  \ an adr field, in bytes
 
 : HERE-OFF ( -- n ) RAW BUF:LEN@ BUF:BLEN>N ;
 : OUT-OFF ( -- n ) OUT BUF:LEN@ BUF:BLEN>N ;
@@ -134,19 +131,6 @@ DYNAMIC-BUFFER BR-ARG n
 
 : W32! ( n n -- ) {: w:n at:n :}
    w  OUT BUF:SPAN$ drop at +  LE:U32! ;
-
-: SIGNED? ( n n -- bool ) {: d:n bits:n :}
-   1 bits 1 - lshift {: half:n :}
-   d half negate >= d half < and ;
-
-\ The `bl` (link) or `b` that reaches bytes away; a distance no field holds
-\ throws E-A64EMIT-REACH.
-: BRANCH ( n bool -- n ) {: bytes:n link:bool :}
-   bytes 3 and 0<> if E-A64EMIT-REACH throw then
-   bytes 4 / {: d:n :}
-   d B-BITS SIGNED? 0= if E-A64EMIT-REACH throw then
-   link if d ENC-BL exit then
-   d ENC-B ;
 
 : HALF ( n n -- n ) 16 * rshift $FFFF and ;
 
@@ -309,14 +293,16 @@ DYNAMIC-BUFFER BR-ARG n
 : LANDED ( n n n n -- n ) {: x:n base:n p:n e:n :}
    base x + p +  x SITES< e * + ;
 
+
 \ Branch k's word, for its site at and target to in OUT.
-: BR-WORD ( n n n -- n ) {: k:n at:n to:n :}
+: BR-WORD ( n n n -- n )
+   {: k:n at:n to:n :}
    k BR-FORM @ {: form:n :}
-   form FORM-B = if to at - false BRANCH exit then
-   to at - 4 / {: d:n :}
-   d COND-BITS SIGNED? 0= if E-A64EMIT-REACH throw then
+   to at - {: d:n :}
+   form FORM-B = if d ENC-B exit then
    form FORM-BCOND = if d k BR-ARG @ ENC-BCOND exit then
    k BR-ARG @ d ENC-CBZ ;
+
 
 : COPY ( n n -- ) {: from:n to:n :}
    RAW BUF:SPAN$ drop from +  to from - BUF:N>BLEN  OUT BUF:APPEND-SPAN ;
@@ -375,13 +361,14 @@ DYNAMIC-BUFFER BR-ARG n
    0 LIVE ! ;
 ' CAPTURE-PREPARE IMAGE-LIFECYCLE:REGISTER-PERSISTENT
 
+
 \ Point unit n's `adr`, in a closed unit of OUT, at the offset the unit begins
 \ at; the first byte holds its register.
-: QUOT-OPEN ( n -- ) {: n:n :}
+: QUOT-OPEN ( n -- )
+   {: n:n :}
    n NUNIT @ <> if E-T0-UNIT throw then
    n QUOT-SITE @ {: at:n :}
    OUT-OFF at - {: d:n :}
-   d ADR-BITS SIGNED? 0= if E-A64EMIT-REACH throw then
    OUT BUF:SPAN$ drop at + c@ 31 and  d ENC-ADR  at W32!
    UNIT-BEGIN ;
 
@@ -395,6 +382,7 @@ DYNAMIC-BUFFER BR-ARG n
       to 1 + QUOT-SITE-RESERVE  at to QUOT-SITE ! exit
    then
    at kind to origin EMIT-ADDR-ROW+ ;
+
 
 : CLOSE ( -- )
    FRAME-CELLS @ CELL * 15 + 15 invert and {: bytes:n :}
@@ -422,12 +410,13 @@ DYNAMIC-BUFFER BR-ARG n
    loop
    NSELF @ 0 ?do
       i SELF-AT @ base p e PLACED {: at:n :}
-      at negate true BRANCH  at W32!
+      at negate ENC-BL  at W32!
    loop
    NBR @ 0 ?do
       i BR-AT @ base p e PLACED {: at:n :}
       i  at  i BR-TO @ base p e LANDED  BR-WORD  at W32!
    loop ;
+
 
 : SLOT-CLOSE ( -- )
    RETURN CLOSE
@@ -448,10 +437,11 @@ DYNAMIC-BUFFER BR-ARG n
 : BYTES ( -- ptr u8 n ) OUT BUF:SPAN$ BUF:BLEN>N ;
 
 \ Every call row's `bl` or `b`, from its site placed at place to its target.
-: PATCH ( n -- ) {: place:n :}
+: PATCH ( n -- )
+   {: place:n :}
    EMIT-CALL-ROWS 0 ?do
       i EMIT-CALL-ROW {: at:n kind:n to:n :}
-      to place at + -  kind NEMIT:CALL =  BRANCH  at W32!
+      to place at + -  kind NEMIT:CALL = if ENC-BL else ENC-B then  at W32!
    loop ;
 
 \ ---- values ------------------------------------------------------------------
@@ -642,20 +632,24 @@ DYNAMIC-BUFFER BR-ARG n
    n 0 ?do p i at i CELL * + false RS-XFER loop ;
 
 \ ---- calls -------------------------------------------------------------------
-: CALL ( n n -- ) {: to:n loc:n :}
+: CALL ( n n -- )
+   {: to:n loc:n :}
    1 LINKED !  0 HELD !
    HERE-OFF NEMIT:CALL to loc PCALL+
-   0 true BRANCH W ;
+   0 ENC-BL W ;
 
-: TAIL ( n n -- ) {: to:n loc:n :}
+
+: TAIL ( n n -- )
+   {: to:n loc:n :}
    HERE-OFF EPI+
    HERE-OFF NEMIT:TAIL to loc PCALL+
-   0 false BRANCH W ;
+   0 ENC-B W ;
+
 
 : CALL-SELF ( -- )
    1 LINKED !  0 HELD !
    HERE-OFF SELF+
-   0 true BRANCH W ;
+   0 ENC-BL W ;
 
 \ ---- control -----------------------------------------------------------------
 \ The branch primitives LABEL emits through. A forward branch is its number

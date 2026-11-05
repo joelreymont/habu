@@ -725,7 +725,7 @@
 -8502 constant E-NELAB-CTRL     \ a control structure the elaborator cannot close: a closer with no opener, a closer that does not match the opener it meets, a word that stands in the middle of a structure with no such structure open, a second one of those over one structure, a `while` after a word that already left the definition, a loop closed by a word that does not open the block its `while`s branch out to, or a body that ends with a structure still open
 -8503 constant E-NELAB-JOIN     \ two paths into one join that do not agree: arms leaving different numbers of values on the compile-time value stack, two `while`s leaving one loop at different depths, a loop body that does not leave the stack as its header takes it, an edge whose width disagrees with the width the first edge into that block stated, a block opened with arguments that no edge into it stated the types of, or a checked body's result cells grouped otherwise than the row it declares (a `TRUSTED:` body's declared row is the assertion, and its cells take that grouping)
 -8505 constant E-A64EMIT-BLOCK  \ a branch whose successor names no block of the function this emission laid out
--8506 constant E-A64EMIT-REACH  \ a branch whose displacement does not fit the field its form encodes it in
+-8506 constant E-A64EMIT-REACH  \ a branch distance that is not a whole instruction or does not fit the field its form encodes it in, or an adr or adrp distance its 21-bit field cannot hold
 -8504 constant E-NELAB-BLOCK    \ more blocks or more open control structures in one definition than the elaborator's tables hold
 -8507 constant E-A64RA-EDGE     \ a block argument and the values handed to it across an edge cannot share one register: two of them are live at the same time, or the edge hands over a different number of values than the destination takes
 -8508 constant E-A64RA-SPILL    \ a routine needs a value put in a frame slot and has none this pass may take: every class holding a register there is one an edge or a schema tie made of more than one value, holds a block argument, is read by a data-stack operation, or reaches the frame from a block that is neither the one the caller enters nor the one control leaves through
@@ -803,9 +803,8 @@
 -8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double stored into a memory cell, which no leaf places yet
 -8581 constant E-A64RA-FILE     \ two values of two different register files joined into one class: an edge or a schema tie whose two ends cannot share a register because no register holds both
 
-\ Native branch decoding and unit artifacts
+\ Native unit artifacts
 -8597 constant E-NUNIT-PROFILE  \ package state or relocation that this native artifact format cannot represent
--8598 constant E-NBR-RANGE      \ a branch-with-link whose two addresses are not both whole instructions, or whose displacement does not fit the twenty-six-bit field the form encodes it in
 -8599 constant E-NUNIT-FILE     \ malformed or incompatible native package artifact
 
 \ Data-stack residency: -8610..-8619

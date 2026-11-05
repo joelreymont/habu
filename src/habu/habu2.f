@@ -5216,7 +5216,7 @@ public
    C-DATA-ADDR-RAW                                 \ movz/movk x9 = dispatch-cell addr (relocatable data addr)
    16 9 0 W-LDRX C-EMITW
    16 CP ENC-CMP C-EMITW                           \ habu1.f BCALLABLE's fence: `is` stores an xt
-   2 C-CC ENC-BCOND C-EMITW                        \ below CP: past the ISB
+   8 C-CC ENC-BCOND C-EMITW                        \ below CP: past the ISB
    ENC-ISB C-EMITW
    C-CALL-BLR-X16 C-EMITW
    W-LINKREST C-EMITW
@@ -14058,9 +14058,9 @@ public
 \ Emit a complete engine image: engine code, then the baked source, then the AOT
 \ payload, each bounded by a different owner (src/arch/arm64/icode.f derives the
 \ code window from all three). The order is the contract: the boot path reaches
-\ LSRC with an ADR from the startup region, which ?ADR refuses past ADR-HI, so
-\ only engine code may lie before LSRC. The payload is last and addressed only
-\ through TADR,, so its size enters no reach.
+\ LSRC with an ADR from the startup region, which src/arch/arm64/icode.f
+\ FX-REACH refuses past ADR-HI, so only engine code may lie before LSRC. The
+\ payload is last and addressed only through TADR,, so its size enters no reach.
 : EMIT-FORTH-IMAGE ( ptr u8 n -- )
    EMIT-RESET-BUILDER
    LABELS:INIT

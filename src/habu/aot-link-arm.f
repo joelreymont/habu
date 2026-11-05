@@ -88,10 +88,10 @@ variable LDPREFUSE-MSG  variable LDPREFUSE-OF  variable LDPREFUSE-UNIT
 variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-NL
 
 \ ADDRESS A LABEL THE STARTUP CANNOT REACH WITH ADR. `adr` carries a signed
-\ 21-bit byte delta (src/arch/arm64/icode.f ?ADR, ±1 MiB). The startup sits at
+\ 21-bit byte delta (src/arch/arm64/asm.f ADR-HI, ±1 MiB). The startup sits at
 \ text offset zero and four labels bind past the copied code band: MLBL (inside
 \ it), the crash handler, the signal stub and the sparse data blob. They are the
-\ only sites that cross the window: a copied member's body never enters ?ADR
+\ only sites that cross the window: a copied member's body never enters ADR,
 \ (COPY-COMPACT-BLOB emits its words raw, RELOC-W32 re-encodes a member's ADR
 \ with its own refusal), and DATA and string references are movz/movk chains.
 \ THE BASE IS LTEXT, NOT THE TEXT-BASE CLAIM. src/habu/habu2.f TADR, reads the

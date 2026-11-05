@@ -2,11 +2,9 @@
 \ become bl/b and code addresses adrp+add relative to where the code runs, data
 \ addresses keep their absolute DATA chain. Words visible only inside LINKER.
 
-require src/lib/errors.f
 require src/lib/le.f
 require src/core/bytes.f
 require src/arch/arm64/asm.f
-require src/arch/arm64/icode.f
 require src/habu/address-carrier.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
@@ -25,23 +23,19 @@ package ARM64
 
 public
 
-\ The word at p, a call site whose link-time address is at, becomes bl
-\ (NEMIT:CALL) or b (NEMIT:TAIL) to to.
+\ The word at p, a call site at link-time address at, becomes bl (NEMIT:CALL)
+\ or b (NEMIT:TAIL) to to; ENC-BL and ENC-B throw E-A64EMIT-REACH past reach.
 : CALL! ( n n n ptr u8 -- )
    {: to:n kind:n at:n p:ptr :}
    to at - {: d:n :}
-   d 3 and 0<> if E-A64EMIT-REACH throw then
-   d 4 / {: w:n :}
-   w A64ICODE:REL26-OK? 0= if E-A64EMIT-REACH throw then
-   kind NEMIT:CALL = if w A64ASM:ENC-BL else w A64ASM:ENC-B then  p LE:U32! ;
+   kind NEMIT:CALL = if d A64ASM:ENC-BL else d A64ASM:ENC-B then  p LE:U32! ;
 
 
-\ The 16-byte chain at p, link-time address at, becomes adrp rd, page(to);
-\ add rd, rd, #(to & $FFF); nop; nop, in the chain's own register.
+\ The 16-byte chain at p, link-time address at, becomes adrp+add of to and two
+\ nops in its own register; ENC-ADRP throws E-A64EMIT-REACH past adrp's reach.
 : CODE-ADDRESS! ( n n ptr u8 -- )
    {: to:n at:n p:ptr :}
    to 12 rshift  at 12 rshift - {: pages:n :}
-   pages A64ICODE:ADR-OK? 0= if E-A64EMIT-REACH throw then
    p LE:U32@ ADDRESS-CARRIER:ADDR-RD-MASK and {: rd:n :}
    rd pages A64ASM:ENC-ADRP  p LE:U32!
    rd rd to $FFF and A64ASM:ENC-ADDI  p 4 + LE:U32!

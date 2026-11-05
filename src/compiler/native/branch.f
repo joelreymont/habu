@@ -1,10 +1,11 @@
 \ branch.f - reading and writing the target of a `bl` instruction.
 \
 \ AArch64 encodes `bl` as $94000000 plus a signed 26-bit count of INSTRUCTIONS
-\ from the site, so both addresses must be aligned and the count has a limit.
+\ from the site; A64ASM throws E-A64EMIT-REACH for a distance that is not a
+\ whole instruction or that the field cannot hold.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/arch/arm64/asm.f
 
 package NBR
 
@@ -20,13 +21,6 @@ $14000000 constant B-OP
 $03FFFFFF constant IMM26
 $02000000 constant IMM26-SIGN         \ the top bit of the twenty-six-bit field
 $04000000 constant IMM26-SPAN         \ two to the twenty-sixth, the wrap the sign is taken against
-
-\ Instruction counts, not byte distances; decimal because the low one is a value.
-33554431 constant IMM26-MAX
--33554432 constant IMM26-MIN
-
-: ALIGNED? ( n -- bool )
-   INSN-BYTES mod 0= ;
 
 public
 
@@ -93,21 +87,15 @@ $D65F03C0 constant RET-WORD
    d IMM19-SIGN and 0<> if d IMM19-SPAN - INSN-BYTES * at + exit then
    d INSN-BYTES * at + ;
 
-: REACHES? ( n n -- bool ) {: at:n target:n :}
-   at ALIGNED? 0= if false exit then
-   target ALIGNED? 0= if false exit then
-   target at - INSN-BYTES / {: d:n :}
-   d IMM26-MAX > if false exit then
-   d IMM26-MIN < if false exit then
-   true ;
 
-: BL-WORD ( n n -- n ) {: at:n target:n :}
-   at target REACHES? 0= if E-NBR-RANGE throw then
-   target at - INSN-BYTES /  IMM26 and  BL-OP or ;
+: BL-WORD ( n n -- n )
+   {: at:n target:n :}
+   target at - A64ASM:ENC-BL ;
 
-: B-WORD ( n n -- n ) {: at:n target:n :}
-   at target REACHES? 0= if E-NBR-RANGE throw then
-   target at - INSN-BYTES /  IMM26 and  B-OP or ;
+
+: B-WORD ( n n -- n )
+   {: at:n target:n :}
+   target at - A64ASM:ENC-B ;
 
 seal-package
 

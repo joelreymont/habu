@@ -5,6 +5,7 @@
 \ and stepper.f it makes package DEBUG; the rest is private, so a program keeps
 \ its own FIND, FREE or STEP.
 
+require src/arch/arm64/asm.f
 require src/habu/code-bytes.f
 require src/habu/debug-watch.f
 require src/habu/stepper.f
@@ -70,7 +71,6 @@ CAST: N>XT ( n -- [ -- ] )
 \ snapshot and the product capture move it with the code. An instruction that
 \ reads or sets PC cannot run out of line: its breakpoint degrades to one-shot.
 8 constant TRAMP-BYTES
-$14000000 constant B-OP
 
 : TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
 
@@ -84,10 +84,11 @@ TRAMP-INSTALL
 
 \ Slot idx's trampoline for the instruction at `at`: that instruction, then
 \ `b at+4`, whose displacement from the trampoline's second word is at - t.
-: TRAMP! ( n n n -- ) {: instr at idx :}
+: TRAMP! ( n n n -- )
+   {: instr at idx :}
    idx TRAMP-BYTES * TRAMP@ + {: t :}
    instr t CODE!
-   at t - 2 rshift $3FFFFFF and B-OP or  t 4 + CODE! ;
+   at t - A64ASM:ENC-B  t 4 + CODE! ;
 
 \ A slot is filled while its address field holds a code pointer; an empty slot
 \ holds BP-NULL, whose address reads 0.

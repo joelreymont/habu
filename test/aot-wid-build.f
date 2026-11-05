@@ -156,25 +156,16 @@ variable WINDOW-ENDED
    k ku SKEW-BODY
    s" ;package" DRV-LINE ;
 
-\ The terminal and REPL files are INCLUDEd because the window has to compile
-\ them here; the debugger is one REQUIRE because src/habu/debug.f requires the
-\ watch cells and the stepper itself, and naming all three loaded each twice
-\ (`duplicate definition: BPW-MAX`). The cold host provides none of the four, so
-\ the require reads the file.
+\ No debugger: debug.f requires asm.f, which CAPTURE-PRELUDE loads outside the
+\ window, and ACAP-SITE-BAND refuses a window call into it with exit 74.
 : CAPTURE-REPL-LINES ( -- )
    s" AOT-ARM:WINDOW-OPEN" DRV-LINE
    HB-TARGET-LINUX? if s" include src/os/linux/repl-term.f"
    else s" include src/os/macos/repl-term.f" then DRV-LINE
-   s" include src/habu/repl.f" DRV-LINE
-   s" require src/habu/debug.f" DRV-LINE ;
+   s" include src/habu/repl.f" DRV-LINE ;
 
-\ AOT-ARM owns every span and the checker payload. The boot-run list is restated
-\ because CAPTURE resets it, with the three REPL entries first so the engine
-\ installs its REPL before the fixture runs. HABU_AOT_WID_NARROW=N pokes the
-\ window's wordlist end back by N after it was latched, so the window declares
-\ fewer ids than it made; the fixture's package is the last thing the window
-\ creates, so the short end reaches it. The capture must refuse at build time,
-\ naming the record.
+\ HABU_AOT_WID_NARROW=N pulls the latched wordlist end back by N past the
+\ fixture's package; the capture dies `captured wid outside the window`.
 : WID-NARROW-LINE ( -- )
    s" HABU_AOT_WID_NARROW" GETENV {: n:ptr nu:n :}
    nu 0= if exit then
@@ -190,10 +181,10 @@ variable WINDOW-ENDED
    then
    s" AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE" DRV-LINE ;
 
+\ CAPTURE resets the boot-run list; the REPL's INSTALL goes first so the REPL is
+\ installed before the fixture's entries run.
 : REPL-BOOTRUN-LINES ( -- )
-   S\" s\" INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
-   S\" s\" DEBUG:BPW-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE
-   S\" s\" DEBUG:S-INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
+   S\" s\" INSTALL\" AOT-CAPTURE:BOOTRUN+" DRV-LINE ;
 
 \ Two packages, one protected. The unprotected one comes first so the protected
 \ one's window-relative offset is not zero: a seed that dropped the offset and
@@ -387,10 +378,6 @@ variable WINDOW-ENDED
       S\"    s\" src/os/macos/repl-term.f\" AOT-IDENT:PATH+"
    then DRV-LINE
    S\"    s\" src/habu/repl.f\" AOT-IDENT:PATH+" DRV-LINE
-   S\"    s\" src/habu/code-bytes.f\" AOT-IDENT:PATH+" DRV-LINE
-   S\"    s\" src/habu/debug-watch.f\" AOT-IDENT:PATH+" DRV-LINE
-   S\"    s\" src/habu/stepper.f\" AOT-IDENT:PATH+" DRV-LINE
-   S\"    s\" src/habu/debug.f\" AOT-IDENT:PATH+" DRV-LINE
    s"    FSHA-CTX 1 SCRIPT-ARGV$ KEY SHA256-FILE-IN 0<> if 79 throw then" DRV-LINE
    s"    KEY 0 SCRIPT-ARGV$ AOT-FILE:WRITE ;" DRV-LINE
    s" WRITE" DRV-LINE

@@ -1,5 +1,5 @@
 \ aot-startup-reach-lint.f - an emitter may only ADR, a label it binds itself.
-\ `adr` reaches ±1 MiB (src/arch/arm64/icode.f ?ADR) and the stripped startup's
+\ `adr` reaches ±1 MiB (src/arch/arm64/asm.f ADR-HI) and the stripped startup's
 \ labels bind after the copied code band, whose size is the application's; any
 \ other label goes through src/habu/aot-link-arm.f TEXT-ADR,. The triple shape
 \ is in tools/lint/label-triple.f, shared with tools/aot-section-reach-lint.f.
