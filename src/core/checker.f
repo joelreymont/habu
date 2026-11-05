@@ -11169,7 +11169,7 @@ variable PE-EFF-ID
 \ row, and internal-mark.f classifies it by this row (EFFECT-OWNED-MIN-IN)
 \ instead of marking it DNAME-INT, which native/dict.f CALL-BINDING would refuse
 \ from every checked body. The owner's checked callers compile at both tiers;
-\ any other checked caller is refused by name (test/prim-owner-scope.f).
+\ any other checked caller is refused by name.
 : CLOSE-PRIVATE ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;

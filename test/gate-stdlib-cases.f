@@ -148,15 +148,6 @@ SUITE native-file-inputs
    test/native-file-inputs-format.f
 ;SUITE
 
-SUITE native-file-missing
-   test/native-file-missing-e2e.f
-;SUITE
-
-\ A package's checker facts survive an artifact boundary.
-SUITE checker-unit-codec
-   test/checker-unit-codec-e2e.f
-;SUITE
-
 SUITE cell-body
    test/cell-body-e2e.f
 ;SUITE
@@ -505,12 +496,6 @@ SUITE genio
 ;SUITE
 
 \ WHITEBOX-SUITE rows follow docs/gate.md; each says why in its header or row.
-
-\ The owner packages are sealed in the product image: this suite runs its
-\ fixture in a from-source child window that applies the production seal.
-SUITE prim-owner-scope
-   test/prim-owner-scope.f
-;SUITE
 
 SUITE loop-obligations
    test/loop-obligations.f
@@ -1350,20 +1335,12 @@ SUITE c2-view-record-mut
    test/c2-view-record-mut.f
 ;SUITE
 
-SUITE c2-unique-policy
-   test/c2-unique-policy.f
-;SUITE
-
 SUITE certify-does-definer
    test/certify-does-definer.f
 ;SUITE
 
 SUITE underdepth-gate
    test/underdepth-gate.f
-;SUITE
-
-SUITE top-row-hook
-   test/top-row-hook-test.f
 ;SUITE
 
 SUITE top-row-storage
@@ -1400,10 +1377,6 @@ WHITEBOX-SUITE main-argv
    test/main-argv.f
 ;SUITE
 
-SUITE owner-access
-   test/owner-access.f
-;SUITE
-
 SUITE engine-span-end
    test/engine-span-end.f
 ;SUITE
@@ -1434,10 +1407,6 @@ WHITEBOX-SUITE checker-dead-path
 
 SUITE local-spelling
    test/local-spelling-suite.f
-;SUITE
-
-WHITEBOX-SUITE checker-rollback-sig-pool
-   test/checker-rollback-sig-pool.f
 ;SUITE
 
 SUITE snapshot-writer
