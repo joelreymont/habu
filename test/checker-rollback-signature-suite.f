@@ -1,9 +1,9 @@
-\ checker-scan-index-rollback-suite.f - a definition the checker rejects rolls
+\ checker-rollback-signature-suite.f - a definition the checker rejects rolls
 \ its scope back, so the name can take a different effect that holds its callers.
 
 require src/lib/test.f
 
-package SCANIDX-TEST
+package ROLLBACK-SIGNATURE-TEST
 
 T-RESET
 variable TC                    \ last caught throw code

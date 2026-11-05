@@ -1,9 +1,9 @@
-\ checker-scan-index-suite.f - which record of a redefined word its callers are
-\ checked against: the newest wins, and a deletion is an absence.
+\ checker-redefinition-order-suite.f - which record of a redefined word its
+\ callers are checked against: the newest wins, and a deletion is an absence.
 
 require src/lib/test.f
 
-package SCANIDX-TEST
+package REDEFINITION-ORDER-TEST
 
 T-RESET
 variable TC                    \ last caught throw code

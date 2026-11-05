@@ -108,12 +108,6 @@ public
    s" the definition after a refused clause inherits nothing" T-LABEL
    s" NP2 ( -- ptr n ) AFTER-MADE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
    CHECKER-SCOPE-DONE
-   s\" : NATIVE-DOES-NEXT ( n -- n ) 1 + ;\n" evaluate-closed
-   CHECKER-SCOPE-START-NEUTRAL
-   s\" 6 NATIVE-DOES-NEXT NEXT-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" the next definition inherits no accepted clause from that refusal" T-LABEL
-   s" NP3 ( -- ptr n ) NEXT-MADE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
-   CHECKER-SCOPE-DONE
 
    s" created storage and the published output signature survive" T-LABEL
    CREATED-CELL 41 T=

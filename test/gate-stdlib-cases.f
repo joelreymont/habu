@@ -134,12 +134,12 @@ SUITE cell-body
    test/cell-body-e2e.f
 ;SUITE
 
-SUITE checker-scan-index
-   test/checker-scan-index-suite.f
+SUITE checker-redefinition-order
+   test/checker-redefinition-order-suite.f
 ;SUITE
 
-SUITE checker-scan-index-rollback
-   test/checker-scan-index-rollback-suite.f
+SUITE checker-rollback-signature
+   test/checker-rollback-signature-suite.f
 ;SUITE
 
 SUITE build-fixpoint-source

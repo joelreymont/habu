@@ -876,12 +876,7 @@ public
    REGION-BAD @ >LABEL S\" hb: cannot protect the code region\n" MAP-FAIL-RC FAIL,
    booted crash rest stub CLOSE, ;
 
-\ Full-engine entry accepts either its cold RX extent or an appended snapshot
-\ frame. The snapshot's REGION prefix is already loaded at its fixed address
-\ and its DATA prefix rides the carrier, which DATA-LOAD, copies into DATA
-\ once SNAP-CARRIER, accepts it; only the heap needs materialization before
-\ ENGINE-MAIN.
-\ Its stream's kernel precedes it, so it loads the cell SCALAR-CELL, emitted.
+\ Full-engine entry from the cold RX extent or an appended snapshot frame.
 : SNAP-START, ( n n label [ -- ] -- ) {: records:n cp:n floor:label hidx :}
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL
    {: booted:label crash:label rest:label stub:label
