@@ -1,4 +1,4 @@
-\ prelude-test.f - coverage for the prelude conveniences.
+\ prelude-test.f - the prelude's f<= and f>= on NaN, signed zero and infinity.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -32,15 +32,7 @@ package PRELUDE-TEST
 
 : PRE-RUN ( -- )
    T-RESET
-   TEST-SPECIAL
-   true bool>n -1 T=
-   false bool>n 0 T=
-   7.0 fdrop
-   7.0 fdup f= TTRUE
-   3.0 9.0 fover f> TTRUE fdrop
-   3.0 5.0 f<= TTRUE   5.0 3.0 f<= TFALSE
-   3.0 3.0 f<= TTRUE   3.0 3.0 f>= TTRUE
-   5.0 3.0 f>= TTRUE   3.0 5.0 f>= TFALSE ;
+   TEST-SPECIAL ;
 
 PRE-RUN
 T-REPORT

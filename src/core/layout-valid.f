@@ -399,8 +399,7 @@ SNAP-RESET-INSTALL
 public
 
 \ The count of bases not on their boot buffer plus caps not at their init; a
-\ restored engine must answer 0. Public because test/engine-suite.f asks it of a
-\ booted engine.
+\ restored engine must answer 0.
 : ARENAS-STALE ( -- n )
    0
    BUF-P @ BUF-BOOT = 0= if 1 + then

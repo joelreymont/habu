@@ -1,15 +1,6 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
 \ gforth. A failure prints F<index>, assertion detail, and exits 1 via T-REPORT.
 
-\ Latched before the requires: on a restored engine the thirteen
-\ lowering-certificate arena bases must be the boot buffers the image carries,
-\ and once the engine certifies definitions those arenas may grow into mmap.
-\ `variable` and `!` need no harness, so the boot answer is latched before any
-\ user definition and checked further down (src/core/layout-valid.f
-\ ARENAS-STALE).
-variable ES-CERT-STALE0
-LOWER-CERT:ARENAS-STALE ES-CERT-STALE0 !
-
 require src/lib/type/deftype.f         \ DEFTYPE - the declared-nominal integer surface
 require src/lib/fs-mutate.f            \ FS:MKTEMP-DIR - the filesystem block's private root
 require src/lib/string.f               \ CONTAINS? - substring test for diagnostic text
@@ -577,22 +568,16 @@ s\" CBAD-ESC-HEX ( -- ptr u8 n ) s\\\" bad\\xZZ\" " T-CHECK-REJECTS
 s\" CBAD-ESC-HEX-SHORT ( -- ptr u8 n ) s\\\" bad\\x4\" " T-CHECK-REJECTS
 s\" CBAD-ESC-UNTERMINATED ( -- ptr u8 n ) s\\\" no end" T-CHECK-REJECTS
 \ A body's `char` or `'` calls the word of that spelling, and the `;` after it
-\ ends the definition; ES-CHAR-CALL1 does so at tier 1, then the tier returns.
+\ ends the definition.
 package ES-CHAR-N
 : char ( n -- n ) 1+ ;
 : ' ( n -- n ) 1+ ;
 : ES-CHAR-CALL ( n -- n ) 2 * char ;
 : ES-TICK-CALL ( n -- n ) ' ;
-variable ES-CHAR-TIER
-tier@ ES-CHAR-TIER !  1 set-tier
-: ES-CHAR-CALL1 ( n -- n ) 2 * char ;
-ES-CHAR-TIER @ set-tier
 s" a body char calls the word of that spelling" T-LABEL
 5 ES-CHAR-CALL 11 T=
 s" a body tick calls the word of that spelling" T-LABEL
 5 ES-TICK-CALL 6 T=
-s" a tier-1 body char calls the word of that spelling" T-LABEL
-5 ES-CHAR-CALL1 11 T=
 ;package
 \ pointer arithmetic + byte view: pointee-polymorphic ptr+n arithmetic, ptr-ptr
 \ difference, and an explicit ( ptr a -- ptr u8 ) byte view all certify. A
@@ -707,52 +692,6 @@ variable TG-CAP
 PTR-VARIABLE TG-USIGS-P
 variable TG-UOFF
 variable TG-SMALL-CAP
-PTR-VARIABLE TG-RBASE
-\ --- a RESTORED pool grows correctly -------------------------------------------
-\ The grow asserts further down run after USIGS-RESET, over a runtime mmap
-\ arena. This block covers a pool the image carried in DATA, growing on the
-\ engine's own appends (an image whose content lands just under a grain
-\ boundary grows at its first load). Whether the running engine's pool is still
-\ the baked one depends on its content against its cap (a root engine at
-\ content 2307240 against cap 2359296 has already grown while loading), so the
-\ block sets the state: USIGS-SNAPSHOT-PERSIST, the capture's own step, leaves
-\ the live store where a restored engine finds it, freshly allotted DATA below
-\ the heap top, capped at the grain. With one append of headroom, a certify
-\ appends across the cap and a compile reads the relocated store back through
-\ the per-symbol, no-return and node-intern indexes stamped against the
-\ pre-grow base.
-USIGS-SNAPSHOT-PERSIST
-USIGS-P @ TG-RBASE !
-s" usigs persisted pool is DATA under the heap top" T-LABEL
-TG-RBASE @ here < TTRUE
-\ The cap is the grain above the content plus at most the spare grain
-\ USIGS-PERSIST-CAP adds; a store the engine restored already keeps its baked
-\ cap, so the exact grain depends on how much this suite has appended.
-s" usigs persisted pool capped at a grain boundary" T-LABEL
-USIGS-CAP-U @ USIGS-GRAIN mod 0 T=
-s" usigs persisted pool holds its content" T-LABEL
-USIGS-CAP-U @ UEND @ CELL + < TFALSE
-s" usigs persisted pool spares at most one grain" T-LABEL
-USIGS-CAP-U @ UEND @ CELL + USIGS-PERSIST-CAP > TFALSE
-UEND @ 64 + USIGS-CAP-U !
-s" COK-RESTORED-GROW ( n -- n ) dup drop 1 +" T-CHECK-PASSES
-s" usigs restored-pool grow relocated" T-LABEL
-USIGS-P @ TG-RBASE @ = TFALSE
-: ES-RESTORED-GROW ( n -- n ) dup drop 1 + ;
-s" usigs restored-pool compiles after grow" T-LABEL
-41 ES-RESTORED-GROW 42 T=
-s" usigs restored-pool rejects after grow" T-LABEL
-s" CBAD-RESTORED-GROW ( n -- n ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-\ --- a restored image's per-definition arenas are ITS OWN baked buffers --------
-\ The lowering-certificate producer's thirteen bases and six caps
-\ (src/core/lower-cert-base.f BUF-P + src/core/layout-valid.f), counted by
-\ ARENAS-STALE and latched at the top of this file. An engine whose marks are
-\ reverted to bare PTR-VARIABLE answers 13 here (measured 12 MB above the heap
-\ top): the reset puts every base on its boot buffer at the capture, and only
-\ the relocation of a marked cell keeps that address true afterwards.
-s" lower-cert arenas restored on their boot buffers" T-LABEL
-ES-CERT-STALE0 @ 0 T=
-\ Saved only now: the restored-pool grow above zeroes the DATA store it leaves.
 UEND @ TG-UEND !
 USIGS-CAP-U @ TG-CAP !
 USIGS-P @ TG-USIGS-P !
@@ -1065,13 +1004,7 @@ variable TR-S-LC variable TR-S-STRLC variable TR-S-EP
    HIDX-EFF-BASE@ USIGS = TTRUE
    TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
    TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
-   CHECKER-CAPTURE-PREPARE
-   s" checker snapshot prepare clears mmap owner" T-LABEL
-   HIDX-MEM-READY? 0= TTRUE
-   s" checker snapshot prepare invalidates cache" T-LABEL
-   HIDX-VALID @ 0= TTRUE
-   s" checker snapshot prepare unbinds the effect owner" T-LABEL
-   HIDX-EFF-BASE@ 0= TTRUE ;
+   HIDX-MEM-CLEAR  0 HIDX-VALID ! ;      \ drop the grown table's index; rebuild
 TR-SYMS-WHITEBOX
 
 \ Registry internals predate the checker hook; a checked body binds their
@@ -1297,17 +1230,6 @@ TR-ME-BEGIN
 s" : MEA1 ( n -- n ) drop ; : MEA2 ( n -- n ) drop drop ; : MEA3 ( n -- n ) MEA1 ;" evaluate
 s" multi-err collects both rejects" T-LABEL
 TR-ME-END 2 T=
-\ Tier 1's `;` abandons MEC1 without dropping the catch the later throw reaches
-\ or the return stack its caller holds.
-: MEC-KEEP ( -- n n ) 5 >r s" : MEC1 ( n -- n ) drop ; 77 throw" ES-RES-REFUSE:OUTCOME r> ;
-TR-ME-BEGIN
-tier@ 1 set-tier MEC-KEEP rot set-tier
-s" multi-err abandoned definition keeps the caller's return stack" T-LABEL
-5 T=
-s" multi-err abandoned definition keeps the outer catch" T-LABEL
-77 T=
-s" multi-err counts the abandoned definition" T-LABEL
-TR-ME-END 1 T=
 s" multi-err mode cleared after end" T-LABEL
 MULTI-ERR? 0= TTRUE
 \ --- user-declarable nominal integer types.

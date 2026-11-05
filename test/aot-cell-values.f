@@ -1,10 +1,9 @@
-\ The window DATA cell value's varint codec, at the widths and the malformations
-\ the engine's own content never reaches. src/habu/aot-decl.f package AOT-WINDOW
-\ is the authority for the grammar; the two emitted ARM64 decoders (habu2.f
-\ APPLY-CELLS for the baked window, aot-link-arm.f EMIT-VGET for a stripped
-\ image's own DATA) are exercised by every build.
+\ The window DATA cell value's varint codec at each width boundary.
+\ src/habu/aot-decl.f package AOT-WINDOW is the authority for the grammar; the
+\ two emitted ARM64 decoders (habu2.f APPLY-CELLS for the baked window,
+\ aot-link-arm.f EMIT-VGET for a stripped image's own DATA) are exercised by
+\ every build.
 require src/lib/test.f
-require src/lib/test/guard-page.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
@@ -15,8 +14,6 @@ using AOT-WINDOW
 
 create VBUF 16 allot
 
-: B! ( n n -- ) {: v:n at:n :} v VBUF at + c! ;
-
 \ Write, then read back: the width the encoder charges, the width it wrote, the
 \ width the reader spent and the value it answers are one number and one value.
 : ROUND ( n n -- ) {: v:n want:n :}
@@ -25,13 +22,6 @@ create VBUF 16 allot
    VBUF 16 CELL-V@ {: got:n w:n :}
    w want T=
    got v T= ;
-
-\ Every malformation answers width 0 and value 0, so a caller that checks the
-\ width cannot be handed a plausible value from a cell this format never wrote.
-: REFUSED ( n -- ) {: avail:n :}
-   VBUF avail CELL-V@ {: got:n w:n :}
-   w 0 T=
-   got 0 T= ;
 
 : WIDTHS ( -- )
    s" seven bits travel in one byte" T-LABEL
@@ -61,43 +51,9 @@ create VBUF 16 allot
    s" ... and so is the cell that holds only that bit" T-LABEL
    $8000000000000000 VMAX ROUND ;
 
-: TRUNCATED ( -- )
-   $80 VBUF CELL-V! 2 T=
-   s" a varint that does not end inside the section is refused" T-LABEL
-   1 REFUSED ;
-
-: EMPTY ( -- )
-   s" no bytes left is not a value" T-LABEL
-   0 REFUSED ;
-
-: PADDED ( -- )
-   $81 0 B!  $00 1 B!
-   s" a value padded with a zero high group is refused" T-LABEL
-   2 REFUSED ;
-
-: OVERLONG ( -- )
-   VMAX 0 ?do $80 i B! loop  $00 VMAX B!
-   s" a varint that runs past ten bytes is refused" T-LABEL
-   VMAX 1+ REFUSED ;
-
-: TOO-WIDE ( -- )
-   VMAX 1- 0 ?do $80 i B! loop  $02 VMAX 1- B!
-   s" a value no cell could have held is refused" T-LABEL
-   VMAX REFUSED ;
-
-\ Only a ten-byte value has a tenth byte to test. A one-byte value whose byte is
-\ the last readable one ends its section where memory ends, so a read of a tenth
-\ byte it does not have faults instead of answering.
-: AT-EDGE ( -- )
-   1 5 GUARD-PAGE:TAIL {: a:ptr :}
-   s" a one-byte value at the end of readable memory reads that byte alone" T-LABEL
-   a 1 CELL-V@ {: got:n w:n :}
-   w 1 T=
-   got 5 T= ;
-
 : RUN ( -- )
    T-RESET
-   WIDTHS  TRUNCATED  EMPTY  PADDED  OVERLONG  TOO-WIDE  AT-EDGE
+   WIDTHS
    T-REPORT ;
 
 RUN

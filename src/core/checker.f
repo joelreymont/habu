@@ -7431,7 +7431,7 @@ CHECKER-REG:}SCRATCH
    t rest MK-PUSH RECORDED-STEP ;
 
 \ The cap reserves no room for the engine's boot appends: a restored pool grows
-\ as a runtime one does (test/engine-suite.f "usigs restored-pool grow").
+\ as a runtime one does.
 $800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
@@ -7528,9 +7528,8 @@ CHECKER-REG:}SCRATCH
 \ engine at content 2,292,824, cap 2,293,760, doubled to 4,587,520 in its first
 \ load). A grow from a restored pool is correct: the copy is verbatim, USIGS-GROW
 \ carries a valid intern stamp and nulls USX-BASE and HIDX-EFF-BASE, and
-\ NORET-GROW nulls NRX-BASE, so each index rebuilds (test/engine-suite.f "usigs
-\ restored-pool grow"). Only the engine's prefix knows the boot appends; the
-\ worst case is one extra copy.
+\ NORET-GROW nulls NRX-BASE, so each index rebuilds. Only the engine's prefix
+\ knows the boot appends; the worst case is one extra copy.
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
