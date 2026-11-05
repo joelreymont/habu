@@ -465,6 +465,38 @@ $300000 constant BIG-U
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\qnot JSON\q,\qannotations\q:[]}]}],\qincomplete_details\q:null,\qerror\q:null}" ;
 
 
+: REPLY-TAIL ( ptr JSON:writer -- ptr JSON:writer )
+   S\" ],\qincomplete_details\q:null,\qerror\q:null}" JSON:WRITE-RAW ;
+
+
+\ A message whose output_text holds the content and whose phase member, after
+\ its content as the provider sends it, is the JSON value text.
+: PHASED ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
+   {: content:ptr content-u:n phase:ptr phase-u:n :}
+   S\" ,{\qid\q:\qmsg_1\q,\qtype\q:\qmessage\q,\qstatus\q:\qcompleted\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qannotations\q:[]," JSON:WRITE-RAW
+   s" text" content content-u JSON:WRITE-FIELD-S
+   S\" }],\qrole\q:\qassistant\q,\qphase\q:" JSON:WRITE-RAW
+   phase phase-u JSON:WRITE-RAW
+   s" }" JSON:WRITE-RAW ;
+
+
+\ A progress note, a JSON object so that only its phase keeps it from being the
+\ content, and the answer {"answer":true}.
+: NOTE-MESSAGE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qnote\q:\qI'll check the knowledge base.\q}" S\" \qcommentary\q" PHASED ;
+: ANSWER-MESSAGE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qanswer\q:true}" S\" \qfinal_answer\q" PHASED ;
+
+
+\ A completed reply whose one message holds {"answer":true} under the phase,
+\ a JSON value text.
+: ONE-PHASE ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: phase:ptr phase-u:n :}
+   s" completed" REPLY-HEAD
+   S\" {\qanswer\q:true}" phase phase-u PHASED
+   REPLY-TAIL ;
+
+
 : COMPLETED$ ( -- ptr u8 n ) s" response.completed" ;
 : INCOMPLETE$ ( -- ptr u8 n ) s" response.incomplete" ;
 : FAILED$ ( -- ptr u8 n ) s" response.failed" ;
@@ -526,6 +558,31 @@ $300000 constant BIG-U
    then
    t t-u s" bad-content" STR= if
       response [: BAD-CONTENT$ JSON:WRITE-RAW ;] COMPLETED$ STREAMED exit
+   then
+   t t-u s" note-first" STR= if
+      response [: s" completed" REPLY-HEAD NOTE-MESSAGE ANSWER-MESSAGE REPLY-TAIL ;]
+      COMPLETED$ STREAMED exit
+   then
+   t t-u s" note-last" STR= if
+      response [: s" completed" REPLY-HEAD ANSWER-MESSAGE NOTE-MESSAGE REPLY-TAIL ;]
+      COMPLETED$ STREAMED exit
+   then
+   t t-u s" note-only" STR= if
+      response [: s" completed" REPLY-HEAD NOTE-MESSAGE REPLY-TAIL ;] COMPLETED$ STREAMED
+      exit
+   then
+   t t-u s" answer-twice" STR= if
+      response [: s" completed" REPLY-HEAD ANSWER-MESSAGE ANSWER-MESSAGE REPLY-TAIL ;]
+      COMPLETED$ STREAMED exit
+   then
+   t t-u s" phase-null" STR= if response [: s" null" ONE-PHASE ;] COMPLETED$ STREAMED exit then
+   t t-u s" phase-other" STR= if
+      response [: S\" \qanalysis\q" ONE-PHASE ;] COMPLETED$ STREAMED exit
+   then
+   t t-u s" answer-other" STR= if
+      response [: s" completed" REPLY-HEAD ANSWER-MESSAGE
+         S\" {\qnote\q:true}" S\" \qanalysis\q" PHASED REPLY-TAIL ;]
+      COMPLETED$ STREAMED exit
    then
    t t-u s" failed-server" STR= if
       response [: s" server_error" s" The server had an error." FAILED ;] FAILED$ STREAMED
@@ -1034,6 +1091,13 @@ variable REFUSED-BASE-U
    s" error" CHAT-ID-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
    MODEL-PEER:BAD-CONTENT$ SB-APPEND
    s" response.completed" STREAMED-LOGGED
+   s" note-first" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" note-last" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" phase-null" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" note-only" MODEL:E-RESPONSE FAILS
+   s" answer-twice" MODEL:E-RESPONSE FAILS
+   s" phase-other" MODEL:E-RESPONSE FAILS
+   s" answer-other" MODEL:E-RESPONSE FAILS
    s" failed-server" MODEL:E-UNAVAILABLE FAILS
    s" error" CHAT-ID-LINE s" MODEL:E-UNAVAILABLE status 200: The server had an error." SB-APPEND
    s" response.failed" STREAMED-LOGGED

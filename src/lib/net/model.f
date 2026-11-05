@@ -57,7 +57,7 @@ public
 \ The provider's response, or a journal record replayed for it, is malformed
 \ or inconsistent.
 -9705 constant E-RESPONSE
-\ The chat response's message carries a refusal.
+\ The chat response's answer message carries a refusal.
 -9706 constant E-REFUSED
 \ The response ended incomplete: INCOMPLETE-REASON$ names why.
 -9707 constant E-INCOMPLETE
@@ -1788,7 +1788,8 @@ private
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
    part ELEMENT ;
 
-\ The output_text part's text is the content; a reply holds one.
+\ The text of the answer message's output_text part (ANSWER?) is the content;
+\ a reply holds one, so a second, in any answer message, is E-RESPONSE.
 : READ-TEXT ( n n ptr call -- )
    {: idx:n part:n c :}
    c MODEL-CALL:CONTENT-SEEN @ if E-RESPONSE throw then
@@ -1810,15 +1811,31 @@ private
    text if idx part c READ-TEXT then
    true ;
 
-\ Reads the output item at the index, skipping all but a message; false past
-\ the last item. Members come in any order, so its type takes its own pass.
+\ Whether the message item at the index is the answer: no phase, null or
+\ final_answer is; commentary is a progress note; any other is E-RESPONSE.
+: ANSWER? ( n ptr call -- bool )
+   {: idx:n c :}
+   idx c ITEM drop
+   s" phase" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE true exit then
+   JSON:READ-TOKEN dup JSON:T-NULL = if drop JSON:READ-CLOSE true exit then
+   JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   s" final_answer" JSON:READ-STR-EQ? {: final:bool :}
+   s" commentary" JSON:READ-STR-EQ? {: note:bool :}
+   JSON:READ-CLOSE
+   final note or 0= if E-RESPONSE throw then
+   final ;
+
+\ Reads the output item at the index if it is an answer message; false past
+\ the last. Members come in any order, so type and phase each take a pass.
 : READ-ITEM ( n ptr call -- bool )
    {: idx:n c :}
    idx c ITEM 0= if JSON:READ-CLOSE false exit then
    TYPE-AT s" message" JSON:READ-STR-EQ? {: message:bool :}
    JSON:READ-CLOSE
    message if
-      0 begin idx over c READ-PART while 1+ repeat drop
+      idx c ANSWER? if
+         0 begin idx over c READ-PART while 1+ repeat drop
+      then
    then
    true ;
 
