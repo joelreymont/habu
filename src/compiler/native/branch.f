@@ -46,48 +46,6 @@ public
 : B-TARGET ( n n -- n )
    TARGET ;
 
-\ ---- the conditional forms ----------------------------------------------------
-\ NINETEEN signed bits of instruction count, sitting five bits up; the arithmetic
-\ is otherwise the unconditional one above.
-
-private
-
-$FF000010 constant BCOND-MASK         \ b.cond: the opcode byte, and bit 4 clear
-$54000000 constant BCOND-OP
-$FF000000 constant CB-MASK            \ the compare-and-branch pair share a byte
-$B4000000 constant CBZ-OP
-$B5000000 constant CBNZ-OP
-$7FFFF constant IMM19                 \ the nineteen-bit field, once shifted down
-$40000 constant IMM19-SIGN            \ its top bit
-$80000 constant IMM19-SPAN            \ two to the nineteenth, the wrap the sign is taken against
-
-public
-
-$D65F03C0 constant RET-WORD
-
-: RET? ( n -- bool )
-   RET-WORD = ;
-
-: BCOND? ( n -- bool )
-   BCOND-MASK and BCOND-OP = ;
-
-: CBZ? ( n -- bool )
-   CB-MASK and CBZ-OP = ;
-
-: CBNZ? ( n -- bool )
-   CB-MASK and CBNZ-OP = ;
-
-: COND? ( n -- bool ) {: w:n :}
-   w BCOND? if true exit then
-   w CBZ? if true exit then
-   w CBNZ? ;
-
-: COND-TARGET ( n n -- n ) {: at:n w:n :}
-   w 5 rshift IMM19 and {: d:n :}
-   d IMM19-SIGN and 0<> if d IMM19-SPAN - INSN-BYTES * at + exit then
-   d INSN-BYTES * at + ;
-
-
 : BL-WORD ( n n -- n )
    {: at:n target:n :}
    target at - A64ASM:ENC-BL ;

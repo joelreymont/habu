@@ -539,14 +539,8 @@
 \ -8220..-8239 unassigned: E-HIR-UNMODELED refuses what checked source may
 \ compile a word into.
 
-\ Native source fixtures and code probes: -8260..-8279
--8261 constant E-CODEGEN-PROBE-SUBJECT    \ a named subject word is not in the live dictionary
+\ Native source fixtures: -8260..-8279
 -8267 constant E-NSRC-CAP                 \ source text longer than the chain fixture's text buffer
-\ A word's dictionary record states the span its callers may copy, which is
-\ everything before its trailing return - or, for a routine that leaves by a
-\ branch, the whole of it. A reader that wants the code's real extent has to put
-\ the return back, and it is only entitled to do that when the return is there.
--8273 constant E-CODEGEN-PROBE-EXTENT     \ a word's record neither ends in a tail branch nor is followed by the return the engine's record convention puts after it
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299; NELAB
 \ and T0 both throw -8294.

@@ -7,7 +7,6 @@ using A64ASM
 using A64ICODE
 using REGALLOC-ABI
 
-\ An executable build compiles at its caller's tier (src/lib/executable-build.f).
 variable LVSPILL   variable LVLITPUSH   variable LVPUSHC
 variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH

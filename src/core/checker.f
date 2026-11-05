@@ -7430,7 +7430,6 @@ CHECKER-REG:}SCRATCH
    t MK-PTR swap MK-PUSH
    t rest MK-PUSH RECORDED-STEP ;
 
-\ The cap reserves no room for the engine's boot appends.
 $800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
@@ -7521,8 +7520,7 @@ CHECKER-REG:}SCRATCH
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
 
-\ The smallest grain multiple holding the content: an image just under a grain
-\ boundary grows once on its boot appends, a cost of one copy, not a defect.
+\ The smallest grain multiple holding the content.
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN

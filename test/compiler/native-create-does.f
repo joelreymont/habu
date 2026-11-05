@@ -6,8 +6,6 @@ require src/habu/verify-source.f
 
 70 constant RC-REJECT                \ the check hook's reject status (src/core/check-hook.f CHECK-RC)
 
-1 set-tier
-
 package NATIVE-CREATE-DOES-PUBLIC
 public
 : MAKE-CHECKED ( n -- ) create , does> ( -- ptr n ) ;
@@ -109,16 +107,6 @@ public
    s\" 6 NATIVE-DOES-AFTER AFTER-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
    s" the definition after a refused clause inherits nothing" T-LABEL
    s" NP2 ( -- ptr n ) AFTER-MADE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
-   CHECKER-SCOPE-DONE
-   s" a later native refusal retracts an accepted clause" T-LABEL
-   [: s\" : NATIVE-DOES-LATE ( n -- ) NATIVE-CREATE-DOES-PUBLIC:MAKE-CHECKED does> ( -- ptr n ) [: 1 ;] drop ;\n"
-      evaluate-closed ;] E-NELAB-QUOT TTHROWSQ
-   s" a later refusal retracts the parent signature" T-LABEL
-   s" NL0 ( n -- ) NATIVE-DOES-LATE" VERIFY:CANDIDATE-IN-SCOPE 1 T=
-   CHECKER-SCOPE-START-NEUTRAL
-   s\" 9 NATIVE-DOES-LATE LATE-GHOST\n" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" a later failure cannot leave a wrapper child" T-LABEL
-   s" NL1 ( -- ptr n ) LATE-GHOST" VERIFY:CANDIDATE-IN-SCOPE 1 T=
    CHECKER-SCOPE-DONE
    s\" : NATIVE-DOES-NEXT ( n -- n ) 1 + ;\n" evaluate-closed
    CHECKER-SCOPE-START-NEUTRAL

@@ -39,7 +39,7 @@ variable ERR-U
    ERR 19 + c@ 10 T=
    OUT$ s" BODY" CONTAINS? 0= TTRUE ;
 
-: TIER-CASES ( -- )
+: CASES ( -- )
    s" Q @ drop" SOURCE$ RUN-SOURCE 0 T=
    s" : GO ( -- ) Q @ execute ; GO" FATAL
    s" : GO ( -- n ) Q @ catch ; GO ." FATAL
@@ -58,7 +58,7 @@ variable ERR-U
 public
 : RUN ( -- )
    T-RESET
-   TIER-CASES
+   CASES
    T-REPORT
    s" empty-quotation: ok" type cr ;
 ;package

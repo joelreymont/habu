@@ -44,7 +44,6 @@ ACR-READ-CAP ACR-CARRY-CAP + constant ACR-BUF-CAP
 
 create REPORT-PATH PATH-CAP allot
 create ACR-BUF ACR-BUF-CAP allot
-create OUT-BYTE 1 allot
 create JSON-NUM-BUF JSON-NUM-CAP allot
 
 variable REPORT-PATH-U
@@ -111,22 +110,14 @@ variable JSON-NUM-N
 : REPORT-OUT$ ( -- ptr u8 n )
    REPORT-OUT-A@ REPORT-OUT-U @ ;
 
-: REPORT-BUFFERED? ( -- bool )
-   REPORT-OUT-A@ 0= 0= ;
-
 \ The report buffer is the caller's and cannot grow. A byte past its capacity
 \ is refused as the JSON writer refuses fixed output that cannot hold a value,
 \ by E-JSON-WRITE-CAPACITY, and the buffer keeps the report up to it.
-: REPORT-BUF-C ( n -- )
+: OUT-C ( n -- )
    {: c:n :}
    REPORT-OUT-U @ REPORT-OUT-CAP @ >= if E-JSON-WRITE-CAPACITY throw then
    c REPORT-OUT-A@ REPORT-OUT-U @ + c!
    REPORT-OUT-U @ 1+ REPORT-OUT-U ! ;
-
-: OUT-C ( n -- ) {: c:n :}
-   REPORT-BUFFERED? if c REPORT-BUF-C exit then
-   c OUT-BYTE c!
-   OUT-BYTE 1 type ;
 
 : JSON-NIBBLE ( n -- n ) {: n:n :}
    n 10 < if n ACR-C-ZERO + else n 55 + then ;

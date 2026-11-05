@@ -11,13 +11,6 @@ public
 -9511 constant E-UNKNOWN
 -9512 constant E-LENGTH
 
-0 constant FLOW-NEXT
-1 constant FLOW-COND
-2 constant FLOW-JUMP
-3 constant FLOW-CALL
-4 constant FLOW-END
-5 constant FLOW-INDIRECT
-
 private
 
 TYPED-VARIABLE DA ptr u8
@@ -25,19 +18,18 @@ variable DU  variable DI  variable DPC
 variable DREX  variable D-HASREX  variable DPFX  variable DLOCK  variable DOP
 variable DMOD  variable DREG  variable DRM  variable DBASE  variable DINDEX
 variable DSCALE  variable DDISP  variable DRIP
-variable DPRINT  variable DDELTA
 
 : OUT ( ptr u8 n -- ) {: a:ptr u:n :}
-   DPRINT @ if a u type then ;
+   a u type ;
 
 : CHAR-OUT ( n -- ) {: c:n :}
-   DPRINT @ if c emit then ;
+   c emit ;
 
 : GAP ( -- )
-   DPRINT @ if space then ;
+   space ;
 
 : INT-OUT ( n -- ) {: n:n :}
-   DPRINT @ if n FMT:.INT then ;
+   n FMT:.INT ;
 
 : HEX-DIGIT ( n -- )
    dup 10 < if [char] 0 + else 10 - [char] a + then CHAR-OUT ;
@@ -53,7 +45,6 @@ variable DPRINT  variable DDELTA
 : HEX. ( n -- ) s" 0x" OUT HEX-N ;
 
 : REFUSE ( n ptr u8 n -- ) {: code:n msg:ptr u:n :}
-   1 DPRINT !
    s" x64dis: " OUT msg u OUT s"  at " OUT
    DPC @ DI @ + HEX. cr code throw ;
 
@@ -224,7 +215,6 @@ variable DPRINT  variable DDELTA
 : SEP ( -- ) s" , " OUT ;
 
 : PRINT-REL ( n -- ) {: delta:n :}
-   delta DDELTA !
    DPC @ DI @ + delta + HEX. ;
 
 : INT-PREFIX ( -- )
@@ -517,7 +507,6 @@ private
 
 : DECODE ( ptr u8 n n -- ) {: a:ptr u:n pc:n :}
    a DA ! u DU ! pc DPC ! 0 DI ! 0 DREX ! 0 D-HASREX ! 0 DPFX ! 0 DLOCK !
-   0 DDELTA !
    u 0 <= if TRUNC then
    PREFIXES OPCODE
    DECODE-ONE if exit then
@@ -526,32 +515,10 @@ private
    DECODE-TWO if exit then
    UNKNOWN ;
 
-: FLOW ( -- n )
-   DOP @ $70 >= DOP @ $7F <= and if FLOW-COND exit then
-   DOP @ $180 >= DOP @ $18F <= and if FLOW-COND exit then
-   DOP @ $E9 = DOP @ $EB = or if FLOW-JUMP exit then
-   DOP @ $E8 = if FLOW-CALL exit then
-   DOP @ $C3 = DOP @ $10B = or if FLOW-END exit then
-   DOP @ $FF = if
-      DREG @ 4 = if FLOW-INDIRECT exit then
-      DREG @ 2 = if FLOW-CALL exit then
-   then
-   FLOW-NEXT ;
-
 public
 
 \ Returns the consumed byte count (1..15).
 : DIS1 ( ptr u8 n n -- n )
-   1 DPRINT ! DECODE DI @ ;
-
-\ Decode once without presentation. A direct target is in the caller's PC
-\ coordinate system; all other flows return zero for the target.
-: STEP ( ptr u8 n n -- n n n )
-   0 DPRINT ! DECODE
-   FLOW {: kind:n :}
-   DI @ kind
-   kind FLOW-COND = kind FLOW-JUMP = or kind FLOW-CALL = or if
-      DOP @ $FF = if 0 else DPC @ DI @ + DDELTA @ + then
-   else 0 then ;
+   DECODE DI @ ;
 
 ;package
