@@ -532,7 +532,8 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
 \ PLACED-AT before anything can throw, so no image carries the compiling
 \ process's code address (tools/hb-build-repl-twin-test.f). It opens NEMIT with
 \ no trailing return, so the record is the emission's whole span, and files a
-\ quotation's row as NEMIT:ADDR-CODE.
+\ quotation's row as NEMIT:ADDR-CODE. EMIT-SEAL-UNPLACED seals an open emission
+\ unplaced and leaves it open, so EMIT-PLACE and EMIT-SEAL still follow.
 \
 \ THE CALLBACK STUB. While NCBSTUB (src/compiler/native/callback-stub.f) is
 \ armed, a placed seal has the emitter append tier 1's stub after the last unit,
@@ -591,6 +592,13 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
       shut OF E-COMP-STATE throw ENDOF
       open OF NEMIT-OPEN  -1 NEMIT-ROWS ENDOF
       placed OF at SEAL-PLACED ENDOF
+   ;MATCH ;
+
+: EMIT-SEAL-UNPLACED ( -- )
+   PHASE @ MATCH emission
+      shut OF E-COMP-STATE throw ENDOF
+      open OF NEMIT-OPEN  -1 NEMIT-ROWS ENDOF
+      placed OF E-COMP-STATE throw ENDOF
    ;MATCH ;
 
 ;package

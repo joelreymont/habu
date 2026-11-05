@@ -786,8 +786,8 @@ s" AOT-CAPTURE" s" ACAP-DICT>CAP" PRIVATE-TARGET-XT
    s" ENGINE-ORIGIN:INSTALL" AOT-CAPTURE:BOOTRUN+ ;
 
 \ An x86-64 target's routines are the shadow the pre-window writer opened
-\ (NATIVE-EMIT:OPEN-SHADOW). A native shadow reuses the placed emission, so
-\ its capture walks the shadow's reach. An ARM64 host's dual-emission shadow
+\ (NATIVE-EMIT:OPEN-SHADOW). A native shadow copies the engine's own emission,
+\ so its capture walks the shadow's reach. An ARM64 host's dual-emission shadow
 \ goes through TARGET-CAPTURE, which names a live emitted private routine with
 \ its private WID before compaction; x86-only routines travel unnamed. With no
 \ shadow open this is the plain capture. The shadow closes with the capture.

@@ -1,13 +1,13 @@
-\ shadow-kinds.f - every kind of definition but CALLBACK:, whose -ENTRY word T0
-\ seals with a C entry stub the shadow lacks (src/habu/t0-emit.f THE CALLBACK
-\ STUB), so publication refuses it E-NSHADOW-ROW. Each kind loads through the
-\ typed interpret loop at tier 0 while an arm64 shadow is open, each record's
-\ shadow routine read against the routine T0 placed for the host. The fixture is
-\ test/compiler/shadow-kinds-fixture.f, read one section at a time. Output: one
-\ `FAIL <section>: threw <code> ...` per section that refused, one `ok NAME`,
-\ `ok NAME (shares SOURCE)` for an alias or `FAIL NAME: what` per record the
-\ fixture made, the count of shadow rows left by refused sections, and rc 1 if
-\ anything failed.
+\ shadow-kinds.f - every kind of definition loaded through the typed interpret
+\ loop at tier 0 while an arm64 shadow is open, each record's shadow routine
+\ read against the routine T0 placed for the host. A CALLBACK:'s -ENTRY record
+\ is read by the callback rule instead (CB-CHECK): T0 seals its host routine
+\ with a C entry stub the shadow lacks (src/habu/t0-emit.f THE CALLBACK STUB).
+\ The fixture is test/compiler/shadow-kinds-fixture.f, read one section at a
+\ time. Output: one `FAIL <section>: threw <code> ...` per section that refused,
+\ one `ok NAME`, `ok NAME (shares SOURCE)` for an alias or `FAIL NAME: what`
+\ per record the fixture made, the count of shadow rows left by refused
+\ sections, and rc 1 if anything failed.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -19,10 +19,12 @@ require src/compiler/native/abi.f
 require src/compiler/native/emission.f
 require src/compiler/native/shadow.f
 require src/habu/interpret.f
+require src/lib/ffi-callback.f
 
 package SHADOW-KINDS
 public
 variable PROBE                       \ the cell the fixture's KD-READ reads
+variable STUB                        \ the C entry the fixture's CALLBACK: section stores
 private
 
 \ A compiled definer's `create` calls through CREATEP-CELL, which on arm64 holds
@@ -213,9 +215,35 @@ CAST: CODE>BYTES ( n -- ptr u8 )
    off 0< 0= if start e ent off DIFF-LINE then
    cr ;
 
+\ The callback rule for KD-CB-ENTRY: one shadow function, which the host entry
+\ pairs with, and STUB inside the host routine pairing with none.
+: CB-CHECK ( n -- ) {: idx:n :}
+   idx XREF-REC {: rec:ptr :}
+   rec XREF-START {: at:n :}
+   STUB @ {: stub:n :}
+   idx SHADOW-ROW {: r:n :}
+   r 0< if rec XREF-NAME$ FAIL-HEAD s" no shadow record" type cr exit then
+   r NSHADOW:EMISSION@ {: e:n :}
+   e NSHADOW:FUNCTIONS 1 <> if
+      rec XREF-NAME$ FAIL-HEAD
+      s" shadow functions " type e NSHADOW:FUNCTIONS .N cr exit
+   then
+   at NSHADOW:SOURCE-FUNCTION 0=  swap e =  and 0= if
+      rec XREF-NAME$ FAIL-HEAD s" host entry does not pair with function 0" type cr exit
+   then
+   stub at >  stub at rec XREF-CODE-BYTES + <  and 0= if
+      rec XREF-NAME$ FAIL-HEAD s" stub outside the host routine" type cr exit
+   then
+   stub NSHADOW:SOURCE-FUNCTION -1 =  swap -1 =  and 0= if
+      rec XREF-NAME$ FAIL-HEAD s" stub pairs with a shadow function" type cr exit
+   then
+   s" ok " type rec XREF-NAME$ type cr ;
+
 : REPORT ( -- )
    ND1 @ ND0 @ ?do
-      i SKIP? 0= if i CHECK then
+      i SKIP? 0= if
+         i XREF-REC XREF-NAME$ s" KD-CB-ENTRY" STR= if i CB-CHECK else i CHECK then
+      then
    loop
    s" stale shadow rows: " type STALE .N cr ;
 

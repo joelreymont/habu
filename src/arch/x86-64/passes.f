@@ -233,10 +233,11 @@ variable D-SPILLS                    \ padded spill slots that define the cumula
    X64EMIT:CAPTURE-PREPARE ;
 
 \ ---- the native shadow's address sites ---------------------------------------
-\ A native shadow (src/compiler/native/shadow.f OPEN-NATIVE) copies the placed
-\ emission while it is sealed in NEMIT, so each MOVABS site holds a host address.
-\ An address of one of the emission's own function starts goes back to that
-\ function's offset, the unplaced form the shadow linker reads; any other stays.
+\ Tier 1 hands a native shadow (src/compiler/native/shadow.f OPEN-NATIVE) its
+\ placed emission, copied while it is sealed in NEMIT, so each MOVABS site holds
+\ a host address. An address of one of the emission's own function starts goes
+\ back to that function's offset, the unplaced form the shadow linker reads; any
+\ other stays.
 : FUN-OFF ( n -- n ) {: v:n :}
    NEMIT:PLACEMENT {: at:n :}
    NEMIT:FUNCTIONS 0 ?do

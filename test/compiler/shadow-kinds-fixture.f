@@ -1,4 +1,4 @@
-\ shadow-kinds-fixture.f - one definition of each kind but CALLBACK:, read by
+\ shadow-kinds-fixture.f - one definition of each kind, read by
 \ test/compiler/shadow-kinds.f through the typed interpret loop at tier 0 while
 \ an arm64 shadow is open. Each `\ ==` line starts a section the driver reads
 \ alone, so a kind that refuses leaves the others to be read: a section names
@@ -96,4 +96,10 @@ package KINDS-FIXTURE
 : KD-INNER ( -- n ) 3 ;
 public
 EXPORT KD-INNER
+;package
+
+\ == CALLBACK:
+package KINDS-FIXTURE
+CALLBACK: KD-CB ( n -- n ) 0 FALLBACK ;CALLBACK
+KD-CB-ENTRY SHADOW-KINDS:STUB !
 ;package

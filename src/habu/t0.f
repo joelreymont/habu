@@ -1858,7 +1858,7 @@ variable SCAN-LO                     \ the ordinal of its first row
    M-DOES @ 0<> if CLAUSE @ NSHADOW:TAKE-DOES exit then
    NSHADOW:TAKE ;
 
-\ A native shadow takes the host's own placed emission instead (HOSTED).
+\ A native shadow takes HOSTED's unplaced seal of the host walk instead.
 : SHADOWED ( [ -- ] -- )
    NSHADOW:OPEN? 0= if drop exit then
    NSHADOW:NATIVE? if drop exit then
@@ -1929,10 +1929,10 @@ variable SCAN-LO                     \ the ordinal of its first row
 : HOSTED ( [ -- ] -- )
    HOST-ARCH EMIT-SELECT
    execute
+   NSHADOW:NATIVE? if EMIT-SEAL-UNPLACED SHADOW-TAKE NEMIT:CLEAR then
    STUB-ARM
    NPUB:NEXT-SLOT EMIT-PLACE EMIT-SEAL
    STUB-TAKE
-   NSHADOW:NATIVE? if SHADOW-TAKE then
    PUBLISH-IT ;
 
 : LOWER ( n -- ) {: before:n :}

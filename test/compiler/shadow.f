@@ -21,6 +21,8 @@ require src/arch/x86-64/asm.f
 require src/arch/x86-64/abi.f
 require src/arch/x86-64/passes.f
 require src/habu/kernel-hir-x64.f
+require src/habu/interpret.f
+require src/lib/ffi-callback.f
 
 package SHADOW-TEST
 private
@@ -179,9 +181,8 @@ NSHADOW:RECORDS SUBJECT-RECS !  NSHADOW:EMISSIONS SUBJECT-EMS !
 
 \ Refused: an emission another machine's backend sealed before its window
 \ (X64KHIR shows one); a backend with no unplaced emission (nothing published,
-\ the engine compiles on); a native shadow for another system's binding, or for
-\ an unplaced emission under the engine's own. A taken emission no publication
-\ claims files nothing.
+\ the engine compiles on); a native shadow for another system's binding. A taken
+\ emission no publication claims files nothing.
 \ X64KHIR compiles a kernel row through the x86-64 rows and runs `use` while its
 \ unplaced emission stands sealed in NEMIT, which is the only way this host ever
 \ holds one outside a shadow's own context.
@@ -643,20 +644,75 @@ NSHADOW:CLOSE
 : SH-AFTER ( n -- n ) 2 + ;
 0 set-tier
 
-\ A native shadow's own refusals: it opens only for the engine's own binding
-\ (src/compiler/native/shadow.f OPEN-NATIVE) and takes only a placed emission
-\ (TARGET-CK). An AArch64 binding for another system names the engine's machine,
-\ so only the binding comparison refuses it; the unplaced emission is the host
-\ machine's, sealed with no placement, so only the placement refuses it.
-1 BUFFER: UNPLACED-CODE
+DYNAMIC-BUFFER SAME-CODE u8          \ the AArch64 shadow's SH-SAME-A routine
+variable SAME-U
+variable REC-SAME-A                  \ SH-SAME-A's record
+variable REC-SAME                    \ SH-SAME's record
+variable NATIVE-RECS                 \ what the native shadow filed for SH-SAME
+variable NATIVE-EMS
+variable NATIVE-ROW                  \ and where it filed SH-SAME's record
+TYPED-VARIABLE NATIVE-SAME? bool     \ whether that routine is SAME-CODE
+variable REC-CB                      \ SH-CB-ENTRY's record
+variable CB-FUNS                     \ its shadow functions, or -1
+TYPED-VARIABLE CB-ROOT? bool         \ its host entry pairs with function 0
+TYPED-VARIABLE CB-INSIDE? bool       \ the C entry lies inside its host routine
+TYPED-VARIABLE CB-UNPAIRED? bool     \ and pairs with no shadow function
 
 : HOST-BINDING ( -- CBIND:binding )
    RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING ;
 
-: SEAL-UNPLACED ( -- )
-   UNPLACED-CODE 1 1 HOST-BINDING CBIND:TARGET@ CTARGET:ARCH@ NEMIT:OPEN
-   0 NEMIT:FUNCTION+
-   NEMIT:SEAL ;
+: OPEN-HOST ( -- )
+   HOST-BINDING NSHADOW:OPEN-NATIVE ;
+
+: KEEP-A64 ( n -- )
+   EM-OF {: e:n :}
+   e NSHADOW:SIZE SAME-U !
+   SAME-U @ SAME-CODE-RESERVE
+   e NSHADOW:BYTES 0 SAME-CODE SAME-U @ BYTE-COPY ;
+
+: KEEP-NATIVE ( -- )
+   NSHADOW:RECORDS NATIVE-RECS !
+   NSHADOW:EMISSIONS NATIVE-EMS !
+   REC-SAME @ ROW-OF NATIVE-ROW !
+   false NATIVE-SAME? !
+   NATIVE-ROW @ 0< if exit then
+   REC-SAME @ EM-OF {: e:n :}
+   e NSHADOW:BYTES e NSHADOW:SIZE  0 SAME-CODE SAME-U @  STR= NATIVE-SAME? ! ;
+
+: KEEP-CB ( n n -- ) {: rec:n stub:n :}
+   -1 CB-FUNS !  false CB-ROOT? !  false CB-INSIDE? !  false CB-UNPAIRED? !
+   rec ROW-OF 0< if exit then
+   rec EM-OF {: e:n :}
+   e NSHADOW:FUNCTIONS CB-FUNS !
+   rec HOST-ENTRY {: at:n :}
+   at NSHADOW:SOURCE-FUNCTION 0=  swap e =  and CB-ROOT? !
+   stub at >  stub at rec XREF-REC XREF-CODE-BYTES + <  and CB-INSIDE? !
+   stub NSHADOW:SOURCE-FUNCTION -1 =  swap -1 =  and CB-UNPAIRED? ! ;
+
+\ SH-CB-ENTRY's record among those made since REC-CB, or -1.
+: CB-REC ( -- n )
+   -1
+   ndict@ REC-CB @ ?do
+      i XREF-REC XREF-NAME$ s" SH-CB-ENTRY" STR= if drop i leave then
+   loop ;
+
+OPEN-A64
+ndict@ REC-SAME-A !
+: SH-SAME-A ( n -- n ) SH-AFTER 1 + ;
+REC-SAME-A @ KEEP-A64
+NSHADOW:CLOSE
+\ CALLBACK:'s generated definitions load through the evaluate cell.
+OUTER:INSTALL-CREATE
+OUTER:INSTALL-EVALUATE
+OPEN-HOST
+ndict@ REC-SAME !
+: SH-SAME ( n -- n ) SH-AFTER 1 + ;
+KEEP-NATIVE
+ndict@ REC-CB !
+CALLBACK: SH-CB ( n -- n ) 0 FALLBACK ;CALLBACK
+CB-REC REC-CB !
+REC-CB @ SH-CB-ENTRY KEEP-CB
+NSHADOW:CLOSE
 
 : REFUSED-CASE ( -- )
    s" a shadow whose backend has no unplaced emission refuses the definition and publishes nothing, and the next definition compiles" T-LABEL
@@ -666,7 +722,8 @@ NSHADOW:CLOSE
    BAD-EMS @ 0 T=
    40 SH-AFTER 42 T= ;
 
-\ An open that fails to refuse is closed again, so the next case starts closed.
+\ Another system's AArch64 binding names the engine's machine, so only
+\ OPEN-NATIVE's binding comparison refuses it; an open that fails to refuse is closed again.
 : BINDING-CASE ( -- )
    s" a native shadow refuses to open for another system's binding" T-LABEL
    [: HB-TARGET-MACOS? if
@@ -677,12 +734,19 @@ NSHADOW:CLOSE
       NSHADOW:CLOSE ;] E-NSHADOW-TARGET TTHROWSQ ;
 
 : UNPLACED-CASE ( -- )
-   s" a native shadow under the engine's own binding refuses an unplaced emission" T-LABEL
-   HOST-BINDING NSHADOW:OPEN-NATIVE
-   SEAL-UNPLACED
-   [: NSHADOW:TAKE ;] E-NSHADOW-TARGET TTHROWSQ
-   NEMIT:CLEAR
-   NSHADOW:CLOSE ;
+   s" a native shadow files one tier-0 definition once, as the bytes an AArch64 shadow files for its text" T-LABEL
+   NATIVE-RECS @ 1 T=
+   NATIVE-EMS @ 1 T=
+   NATIVE-ROW @ 0 T=
+   NATIVE-SAME? @ TTRUE
+   40 SH-SAME 43 T= ;
+
+: CALLBACK-CASE ( -- )
+   s" a native shadow files a tier-0 callback entry word without the C entry stub its host routine ends with" T-LABEL
+   CB-FUNS @ 1 T=
+   CB-ROOT? @ TTRUE
+   CB-INSIDE? @ TTRUE
+   CB-UNPAIRED? @ TTRUE ;
 
 : CLOSED-CASE ( -- )
    s" a closed shadow answers nothing, and opening one again starts an empty map" T-LABEL
@@ -702,6 +766,7 @@ public
    REFUSED-CASE
    BINDING-CASE
    UNPLACED-CASE
+   CALLBACK-CASE
    CLOSED-CASE
    T-REPORT ;
 

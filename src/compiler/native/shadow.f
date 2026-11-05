@@ -13,6 +13,7 @@ require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/target/native-binding.f
 require src/compiler/native/emission.f
+require src/compiler/native/callback-stub.f
 require src/compiler/session/lease.f
 
 package NSHADOW
@@ -77,6 +78,7 @@ DYNAMIC-BUFFER REC-ENTRY n           \ where in that emission the record enters
 ENUM pending none plain does ;ENUM
 TYPED-VARIABLE PENDING pending
 variable PEND-ENTRY
+TYPED-VARIABLE PEND-PLACED bool      \ it was placed, so it holds any callback stub
 
 public
 
@@ -139,13 +141,11 @@ private
 \ leaves.
 \
 \ Only bytes of the machine the shadow's binding names are its routines. A
-\ native shadow takes the engine's own placed emission; OPEN-NATIVE admitted
-\ only the engine's own binding.
+\ native shadow takes the engine's own emission, placed or not; OPEN-NATIVE
+\ admitted only the engine's own binding.
 : TARGET-CK ( -- )
    NEMIT:ARCH SH-BIND @ CBIND:TARGET@ CTARGET:ARCH@ CTARGET-ARCH:EQ
-   0= if E-NSHADOW-TARGET throw then
-   NATIVE? 0= if exit then
-   NEMIT:PLACED? 0= if E-NSHADOW-TARGET throw then ;
+   0= if E-NSHADOW-TARGET throw then ;
 
 : COPY-BYTES ( -- )
    CODE-N @ {: at:n :}
@@ -153,9 +153,9 @@ private
    at size + CODE-BUF-RESERVE
    NEMIT:BYTES at CODE-BUF size BYTE-COPY ;
 
-\ A native emission is already placed. Keep its exact recorded rows, while
-\ returning only their carried fields to the unplaced form the shadow linker
-\ consumes. Internal relative calls need no row and retain their displacement.
+\ A placed native emission keeps its exact recorded rows, while only their
+\ carried fields return to the unplaced form the shadow linker consumes.
+\ Internal relative calls need no row and retain their displacement.
 5 constant REL32-BYTES
 1 constant REL32-FIELD
 $E8 constant CALL-OP
@@ -231,14 +231,23 @@ $E9 constant TAIL-OP
    N-RECS @ RECS-MAX + {: n:n :}
    n REC-IDX-RESERVE  n REC-EM-RESERVE  n REC-ENTRY-RESERVE ;
 
+\ Whether COPY returns a native shadow's placed emission to the unplaced form,
+\ which needs NATIVE-ADDRS!.
+: UNPLACE? ( -- bool )
+   NATIVE? NEMIT:PLACED? and 0= if false exit then
+   NATIVE-ADDRS-SET @ 0= if E-NSHADOW-STATE throw then
+   true ;
+
 \ A copy taken over one no publication claimed simply replaces it: both lie
 \ past the counts.
 : COPY ( -- )
    OPEN-CK
    TARGET-CK
+   UNPLACE? {: unplace:bool :}
    construct pending none PENDING !
+   NEMIT:PLACED? PEND-PLACED !
    COPY-BYTES
-   NATIVE? if
+   unplace if
       NATIVE-CALLS
       CODE-N @ CODE-BUF NATIVE-ADDRS-XT @ execute
    then
@@ -297,19 +306,18 @@ public
    CLEAR
    construct state open SH-STATE ! ;
 
-\ A native shadow keeps the placed emission's bytes, so each address site still
-\ carries the host address it was placed with. The backend whose emissions a
-\ native shadow takes installs how its sites carry an address and return to the
-\ unplaced form (src/arch/x86-64/passes.f), given the first byte of its copy
-\ while the emission stands sealed in NEMIT; OPEN-NATIVE refuses until one has.
+\ A placed emission's address sites carry the host address it was placed with.
+\ A backend that hands a native shadow a placed emission installs how its sites
+\ carry an address and return to the unplaced form (src/arch/x86-64/passes.f),
+\ given the first byte of its copy while the emission stands sealed in NEMIT;
+\ COPY refuses such an emission until one has.
 : NATIVE-ADDRS! ( [ ptr u8 -- ] -- )
    NATIVE-ADDRS-XT !
    1 NATIVE-ADDRS-SET ! ;
 
-\ The engine's placed emission is compiled for the engine's own binding, so a
+\ The engine's own emission is compiled for the engine's own binding, so a
 \ native shadow opens for no other.
 : OPEN-NATIVE ( CBIND:binding -- ) {: b:CBIND:binding :}
-   NATIVE-ADDRS-SET @ 0= if E-NSHADOW-STATE throw then
    b RTARGET:HOST-TARGET RTARGET:NATIVE-BINDING CBIND:SAME?
    0= if E-NSHADOW-TARGET throw then
    b OPEN
@@ -372,12 +380,16 @@ public
 \ before the host publisher commits either code or dictionary record. Both
 \ selectors retain the same frozen HIR function sequence, even when their
 \ instruction and block layouts differ. The host emission is the one NEMIT
-\ holds sealed, placed at `at`. TAKE reserved the rows; this grows nothing, and
-\ a failed publication discards the pending pair with ABANDON.
+\ holds sealed, placed at `at`; while NCBSTUB is armed its last function is the
+\ callback stub, which only a copy taken placed also holds. TAKE reserved the
+\ rows; this grows nothing, and a failed publication discards the pending pair
+\ with ABANDON.
 : SOURCE-FUNS ( n -- ) {: at:n :}
    PENDING? 0= if exit then
    N-EMS @ {: e:n :}
-   NEMIT:FUNCTIONS e EM-FUNS @ <> if E-NSHADOW-ROW throw then
+   NEMIT:FUNCTIONS
+   NCBSTUB:ARMED? PEND-PLACED @ 0= and if 1- then
+   e EM-FUNS @ <> if E-NSHADOW-ROW throw then
    e EM-FUNS @ 0 ?do
       at i NEMIT:FUNCTION-OFFSET@ +  e EM-FUN0 @ i + FUN-SOURCE !
    loop ;
