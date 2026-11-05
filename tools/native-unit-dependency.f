@@ -1713,10 +1713,8 @@ public
    run 1+ FRUN-N !
    run 1+ false ;
 
-\ A closed run's judgment: a run that declared CWORK storage or wrote a
-\ CWORK DEFAULT orders the frame, as compiler working state is never carried
-\ (test/native-file-cwork-e2e.f). A run that loaded a child file leaves the
-\ child's CWORK writes to the child's own runs.
+\ A run that declared CWORK storage or wrote a CWORK DEFAULT orders its frame,
+\ as compiler working state is never carried; a child file judges its own runs.
 : RUN-JUDGE ( n -- )
    {: run:n :}
    run R-CHILD RFIELD @ 0<> if exit then
@@ -1807,9 +1805,8 @@ public
    FDEPTH @ 0 > if first ndict@ RANGE+ AOT-ARM:WIDN F-WID FFIELD ! then
    UNOBSERVE ;
 
-\ The innermost file frame's cache diagnostic line, on stderr. A file frame's
-\ rows are only reported: a warm load re-runs the file's top level, so an
-\ ordered frame still stores its object (test/native-file-frame-e2e.f).
+\ The innermost file frame's cache diagnostic line, on stderr. An ordered frame
+\ still stores its object: a warm load re-runs the file's top level.
 : FILE-REPORT ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    s" native-file: frame path=" DIAG-W2 path pathu DIAG-W2

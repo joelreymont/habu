@@ -718,9 +718,8 @@ private
    hi at max k FO-EV-AT FRAME !
    k OPEN-SEG? if k FO-SEG-ORD FRAME @ ndict@ k ABSORB-RECORDS then ;
 
-\ The innermost file's premise at its head into the 32 bytes at out: its
-\ context once absorbed, finished on a copy after its open segment's record,
-\ DATA byte and wordlist counts (native-file-frame-e2e.f PREMISE-REBUILT).
+\ The innermost file's 32-byte premise at its head, into out: its absorbed
+\ context, finished with its open segment's record, DATA byte and wid counts.
 : PREMISE ( ptr u8 -- )
    {: out:ptr :}
    FO-DEPTH @ 1- {: k:n :}

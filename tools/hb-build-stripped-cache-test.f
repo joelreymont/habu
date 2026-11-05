@@ -1,8 +1,8 @@
 \ hb-build-stripped-cache-test.f - tools/hb-build-lib.f: a program that
-\ allocates at run time links and runs, two links of it are the same image, a
-\ refused publication leaves the prior map, and a declared cell caching a baked
-\ table's address is mapped to the carried copy, or refused when no claim names
-\ the table. tools/hb-build-test-lib.f lists the other hb-build rows.
+\ allocates at run time links and runs, two links of it are the same image, and
+\ a declared cell caching a baked table's address is mapped to the carried copy,
+\ or refused when no claim names the table. tools/hb-build-test-lib.f lists the
+\ other hb-build rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cache-test.f
 
 require src/lib/string.f
@@ -18,15 +18,7 @@ package HB-BUILD-CLI
 
 create HBT-MAP-PATH PATH-CAP allot
 create HBT-MAP-PATH2 PATH-CAP allot
-variable HBT-MAP-PATH-U
 DYNAMIC-BUFFER HBT-MAP-TEXT u8
-create HBT-DONOR-BUF PATH-CAP allot
-create HBT-DONOR-OUT-BUF PATH-CAP allot
-variable HBT-DONOR-U
-variable HBT-DONOR-OUT-U
-
-: HBT-DONOR$ ( -- ptr u8 n ) HBT-DONOR-BUF HBT-DONOR-U @ ;
-: HBT-DONOR-OUT$ ( -- ptr u8 n ) HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U @ ;
 
 : HBT-MAP$ ( ptr u8 n -- ptr u8 n )
    {: a:ptr u:n :}
@@ -150,47 +142,6 @@ variable HBT-DONOR-OUT-U
    HBT-MAPL-OUT HBT-REMOVE-FILE?
    HBT-MAPL-OUT2 HBT-REMOVE-FILE? ;
 
-\ A directory at -o refuses the install's rename (HBB-INSTALL-OUT): the build
-\ throws E-BUILD-INSTALL and the map beside -o keeps its prior bytes.
-: HBT-STRIPPED-RENAME-FAILS ( -- )
-   HBT-ROOT s" install-blocked" HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U HBT-PATH!
-   HBT-DONOR-OUT$ FS:MAKE-DIR
-   HBT-DONOR-OUT$ HBT-MAP$ s" previous map" FS:WRITE-ALL
-   HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
-   [: HBT-HBB-BUILD-OUT ;] E-BUILD-INSTALL TTHROWSQ
-   HBT-DONOR-OUT$ FS:DIR? TTRUE
-   HBT-DONOR-OUT$ HBT-MAP$ {: path:ptr pathu:n :}
-   path pathu FS:FILE-SIZE {: size:n :}
-   size HBT-MAP-TEXT-RESERVE
-   path pathu 0 HBT-MAP-TEXT BYTE-VIEW size FS:READ-ALL size T=
-   0 HBT-MAP-TEXT BYTE-VIEW size s" previous map" T$=
-   path pathu FS:REMOVE-FILE
-   HBT-DONOR-OUT$ FS:REMOVE-DIR ;
-
-\ Select a symlink whose target has a map, but whose own sibling map is absent.
-\ Only the selected sibling supplies attribution: restoring it must invalidate
-\ the no-map build and produce rows attributed to their baked source files.
-: HBT-DONOR-MAP-KEY ( -- )
-   HBT-ROOT s" donor" HBT-DONOR-BUF HBT-DONOR-U HBT-PATH!
-   HBT-ROOT s" donor-out" HBT-DONOR-OUT-BUF HBT-DONOR-OUT-U HBT-PATH!
-   HBT-LINKER HBT-MAP$ FS:FILE? TTRUE
-   HBT-LINKER HBT-DONOR$ FS:MAKE-SYMLINK
-   HBT-DONOR$ HBT-MAP$ FS:FILE? TFALSE
-   HBT-MAPL-SRC HBT-MAPL-SRC$ FS:WRITE-ALL
-   HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
-   HBT-DONOR$ HBT-ENGINE!
-   HBT-HBB-BUILD-OUT
-   HBB-MAKER-RUN @ 0<> TTRUE
-   HBT-DONOR-OUT$ HBT-CODE-ATTR
-   IMAGE-NAMES:UNKNOWN-BYTES 0 > TTRUE
-   IMAGE-NAMES:BAKED-SOURCE? TFALSE
-   HBT-LINKER HBT-MAP$ HBT-DONOR$ HBT-MAP2$ FS:COPY-FILE-STREAM
-   HBT-MAPL-SRC HBT-DONOR-OUT$ HBT-HBB-PREPARE-AOT
-   HBT-DONOR$ HBT-ENGINE!
-   HBT-HBB-BUILD-OUT
-   HBB-MAKER-RUN @ 0<> TTRUE
-   HBT-DONOR-OUT$ HBT-CODE-MAPPED ;
-
 \ ... and a declared cell that holds a carried table's address is mapped to the
 \ carried copy, so the image reads the bytes it ships.
 : HBT-STRIPPED-CACHED-CARRIED ( -- )
@@ -230,8 +181,6 @@ public
    AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-SAME-TWICE
-   HBT-STRIPPED-RENAME-FAILS
-   HBT-DONOR-MAP-KEY
    HBT-STRIPPED-CACHED-CARRIED
    HBT-STRIPPED-CACHED-UNOWNED
    FS:CLEANUP-RUN

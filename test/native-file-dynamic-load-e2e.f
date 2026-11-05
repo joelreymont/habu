@@ -240,9 +240,8 @@ create EXPECT 512 allot  variable EXPECT-U
    switch if s" HABU_TEST_SINK" >LEN s" 1" >LEN PROC-ENV+ then
    RUN-BUILD ;
 
-\ The full origin journal's rows a build's p.f load recorded, printed by
-\ app.f as oj=, then each row's name and name token span: OJ-SHOW prints the
-\ rows past the serial OJ-SER took (test/native-file-frame-e2e.f FRAME-OJ-PROBE).
+\ app.f prints the origin journal rows p.f's load recorded, as oj= and each
+\ row's name and token span: OJ-SHOW prints the rows past OJ-SER's serial.
 : PROBE ( -- )
    s" probe.f" S\" package OJ-PROBE\nCAST: OJ-MARK ( n -- [ -- n n bool ] )\nCAST: OJ-ROWS ( n -- [ n [ n n n n ptr u8 n ptr u8 n n n -- ] -- ] )\n: OJ-ROW ( n n n n ptr u8 n ptr u8 n n n -- )\n   {: serial:n phase:n xt:n sym:n path:ptr pathu:n name:ptr nameu:n at:n end:n :}\n   space name nameu type s\" :\" type at . end . ;\npublic\n: OJ-SER ( -- n ) s\" ENGINE-ORIGIN-EARLY:FILE-MARK\" NUNIT-ORIGIN:JOURNAL-XT OJ-MARK execute drop drop ;\n: OJ-SHOW ( n -- ) s\" oj=\" type [: OJ-ROW ;] s\" ENGINE-ORIGIN:FILE-ROWS\" NUNIT-ORIGIN:JOURNAL-XT OJ-ROWS execute s\" ;oj\" type cr ;\n;package\n" PUT ;
 

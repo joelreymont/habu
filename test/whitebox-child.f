@@ -23,10 +23,8 @@ public
 
 : ENGINE$ ( -- ptr u8 n ) ENGINE-BUF ENGINE-U @ ;
 
-\ PROVIDE makes a temp root of its own and registers it with FS:CLEANUP-TREE+.
-\ PROVIDE-IN takes a root the caller already made and owns. REMOVE is for the
-\ caller whose own cases FS:CLEANUP-RESET the shared list, where PROVIDE's
-\ registration does not survive to be run.
+\ PROVIDE makes a temp root of its own and registers it with FS:CLEANUP-TREE+;
+\ PROVIDE-IN takes a root the caller already made and owns.
 : PROVIDE-IN ( ptr u8 n -- ) {: root:ptr rootu:n :}
    root rootu s" hb-whitebox" ENGINE-BUF FS:JOIN-PATH ENGINE-U !
    ENGINE$ WHITEBOX-ENGINE:PROVIDE ;
@@ -36,9 +34,6 @@ public
    root ROOT-BUF rootu BYTE-COPY rootu ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
    ROOT$ PROVIDE-IN ;
-
-: REMOVE ( -- )
-   ROOT-U @ 0 > if ROOT$ FS:REMOVE-TREE then ;
 
 \ src/lib/engine-candidate.f, the resolver a child's tools ask, reads
 \ HABU_UNDER_TEST first; a child that rebuilds an engine reads

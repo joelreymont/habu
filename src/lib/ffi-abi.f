@@ -991,7 +991,7 @@ public
 : DECLARE ( ptr u8 n n n -- n ) 0 0 DECLARE-ROW ;
 
 \ The rows every bank has room for; a declaration that grows a bank's table
-\ moves it (test/native-file-frame-e2e.f FFI-FIXTURES declares until it does).
+\ moves it.
 : MARK ( -- n )
    FN-CAP @ LIB-CAP @ + MAKER-FN-CAP @ + MAKER-LIB-CAP @ + ;
 

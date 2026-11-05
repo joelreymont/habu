@@ -47,7 +47,7 @@ Copy that candidate and its matching `hb.map` into the private tree's `bin/`
 as regular files, not symlinks, and run the tests from that tree: the focused
 tests, and the registry when the rule above calls for it. Keep its `TMPDIR`
 outside the checkout. Without the map beside it, `hb-build-stripped-cache`
-fails opening it (E-FS-OPEN) on any engine.
+fails on any engine: its products' baked words carry no source file.
 
 ```sh
 bin/hb --load test/run.f </dev/null

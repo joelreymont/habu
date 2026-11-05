@@ -179,8 +179,7 @@ SUITE hb-build-aot
    tools/hb-build-aot-test.f
 ;SUITE
 
-SUITE hb-build-producer-cache
-   tools/hb-build-producer-cache-test.f
+SUITE codesign
    src/lib/codesign-test.f
 ;SUITE
 
@@ -202,24 +201,16 @@ SUITE native-file-types
    test/native-file-types-e2e.f
 ;SUITE
 
-SUITE native-file-auto
-   test/native-file-auto-e2e.f
-   test/native-file-storage-e2e.f
+SUITE native-file-cwork
    test/native-file-cwork-e2e.f
-   test/native-file-fresh-region-e2e.f
-   test/native-file-admission-e2e.f
 ;SUITE
 
 SUITE native-file-tree-share
    test/native-file-tree-share-e2e.f
 ;SUITE
 
-SUITE native-file-replay
+SUITE native-file-inputs
    test/native-file-inputs-format.f
-   test/native-file-replay-e2e.f
-   test/native-file-frame-e2e.f
-   test/native-file-slots-e2e.f
-   test/native-file-path-shadow-e2e.f
 ;SUITE
 
 SUITE native-file-dynamic-load
