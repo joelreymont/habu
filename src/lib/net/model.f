@@ -31,9 +31,6 @@ require src/lib/time.f
 \ API key reaches a request body, response, error, log line or producer record:
 \ a key is read only into the HTTP header, which is wiped once libcurl copies it.
 
-\ CHAT holds one streaming request open until the response ends. A connection
-\ that drops, or moves no byte for STALL-SECONDS, ends the call E-TRANSPORT,
-\ and the provider may still finish and bill the response.
 package MODEL
 
 private
@@ -48,7 +45,8 @@ public
 \ also refuses an input past INPUT-MAX with it. An invalid setter or builder
 \ argument is E-CONFIG.
 -9702 constant E-CAPACITY
-\ libcurl could not start or finish the transfer.
+\ The transfer failed, stalled, or its stream ended before the response did;
+\ the provider may still finish and bill the response.
 -9703 constant E-TRANSPORT
 \ A status other than 200, or a failed response's error code, that no code
 \ above or E-UNAVAILABLE names.
@@ -2289,15 +2287,17 @@ private
    d SSE:CLOSE
    code ;
 
-\ Posts the chat request and reads its stream until the response ends; a
-\ stream that ends first ends the call E-RESPONSE.
+\ Ending before the response with no event means no event stream: E-RESPONSE.
 : FOLLOW ( ptr call -- ptr call )
    {: c :}
    c STREAM {: s :}
    c REQUEST-URL$ c BODY$ c AS-POST
    c STREAM-EXCHANGE {: code:n :}
    code 0<> if code throw then
-   s STREAM-DONE @ 0= if E-RESPONSE throw then
+   s STREAM-DONE @ 0= if
+      s STREAM-HEARD @ if E-TRANSPORT throw then
+      E-RESPONSE throw
+   then
    s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
    c ;
 
@@ -2674,12 +2674,12 @@ public
 
 private
 
-\ Status and message of a refused reply or failed response, else a refused
-\ reply's body; an unusable reply or refusal: status, body; an error event: all.
+\ FOLLOW's E-TRANSPORT is the only one with a status.
 : REPLY+ ( n ptr call -- )
    {: code:n c :}
    c MODEL-CALL:HTTP-STATUS @ {: status:n :}
-   code E-RESPONSE = code E-REFUSED = or if
+   code E-RESPONSE = code E-REFUSED = or
+   code E-TRANSPORT = status 200 = and or if
       s"  status " LOG:TEXT+ status LOG:INT+
       s"  body: " LOG:TEXT+ c RESPONSE$ LOG:TEXT+ exit
    then
@@ -2749,8 +2749,8 @@ public
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> code CURL:E-STATE <> and if code throw then ;
 
-\ Posts the request as one held stream and reads its events until the response
-\ ends; a dropped or stalled connection ends the call E-TRANSPORT.
+\ A journal hit replays the recorded reply; otherwise one streaming request is
+\ read event by event until the response ends.
 : CHAT ( ptr call -- ptr u8 n )
    {: c :}
    c START-LEDGER

@@ -1043,7 +1043,10 @@ variable REFUSED-BASE-U
    s" id-drop" MODEL:E-TRANSPORT FAILS
    s" error" CHAT-ID-LINE s" MODEL:E-TRANSPORT curl 18: " SB-APPEND
    18 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED
-   s" no-progress" MODEL:E-RESPONSE FAILS ;
+   s" no-progress" MODEL:E-TRANSPORT FAILS
+   s" error" s" chat test-generation" MODEL-PEER:BASE-URL$ s" /responses resp_quiet" SB-LINE
+   S\" MODEL:E-TRANSPORT status 200 body: {\qid\q:\qresp_quiet\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}"
+   SB-APPEND SB-LOGGED ;
 
 
 \ SB holds the log line's text up to its code; the line has the unusable
