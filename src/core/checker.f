@@ -8012,6 +8012,7 @@ $100000001B3 constant HIDX-FNV-PRIME
 \ The mapping survives a file boundary and HIDX-BUILD reuses it; it goes only
 \ where it is dropped (HIDX-MEM-CLEAR), so it lives outside the spans.
 PTR-VARIABLE HIDX-MEM
+variable HIDX-MEM-U    \ its bytes: SYM-GROW changes SYM-CAP before it drops it
 \ HIDX-GEN counts the times this mapping was dropped or re-laid-out. HIDX-EPOCH
 \ below invalidates the memoized ANSWERS in it; HIDX-GEN invalidates the tables
 \ THEMSELVES, so an index built on the mapping — including the ones
@@ -8051,13 +8052,11 @@ CHECKER-REG:}SCRATCH
 : HIDX-GEN+ ( -- )
    HIDX-GEN @ 1 + HIDX-GEN ! ;
 
-\ Dropping the mapping drops every index built on it: the HT-USX, HT-NRX and
-\ HT-SVX cells live in this allocation, so no index word may touch them until it
-\ has rebuilt at the new generation. This is the ONE place the generation moves,
-\ because it is the one event an index cannot survive — a re-laid-out mapping
-\ (SYM-GROW) reaches it too, and HIDX-BUILD only ever runs after it.
+\ Unmapping drops the HT-USX, HT-NRX and HT-SVX indexes that live in it, so
+\ this is the one place HIDX-GEN moves; SYM-GROW reaches it before HIDX-ALLOC.
 : HIDX-MEM-CLEAR ( -- )
    HIDX-GEN+
+   HIDX-MEM@ HIDX-MEM-U @ ARENA-UNMAP  0 HIDX-MEM-U !
    NULL-PTR HIDX-MEM! ;
 
 : HIDX-MEM-READY? ( -- bool )
@@ -8154,12 +8153,11 @@ HIDX-MEM-CLEAR
       USIGS HIDX-EFF-BASE!
    THEN ;
 
-: HIDX-ALLOC-PTR ( -- ptr n )
-   SYM-CAP HIDX-TABLES * cells map-anon 0 <> IF
-      drop s" checker: symbol index mmap failed" 76 die THEN ;
-
 : HIDX-ALLOC ( -- )
-   HIDX-ALLOC-PTR HIDX-MEM! ;
+   SYM-CAP HIDX-TABLES * cells {: u:n :}
+   u map-anon 0 <> IF
+      drop s" checker: symbol index mmap failed" 76 die THEN
+   HIDX-MEM!  u HIDX-MEM-U ! ;
 
 \ The epoch restarts at a file boundary while the mapping stays, so every row's
 \ stamps go with its buckets: HIDX-BUILD pushes no retired row, and a stamp left
