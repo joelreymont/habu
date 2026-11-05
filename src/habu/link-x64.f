@@ -409,11 +409,11 @@ private
 
 : SITE-NAME$ ( n -- ptr u8 n ) 8 SITE@ SITE-TARGET-MASK and POOL$ ;
 
-\ The kernel body a name of the engine's own prefix names: the first global row
-\ of that name, folded, the record the image's index finds; or -1.
+\ The kernel body a name of the engine's own prefix names: the first built-in
+\ row a bare name reaches, folded, the record the image's index finds; or -1.
 : KERNEL-BODY ( ptr u8 n -- n ) {: a:ptr u:n :}
    ENGINE-PRIMS:COUNT 0 ?do
-      i ENGINE-PRIMS:HELPER-WID 0= if
+      i ENGINE-PRIMS:HELPER-WID WL:PRIMITIVES = if
          i ENGINE-PRIMS:NAME$ a u CORE-STR=CI if i unloop exit then
       then
    loop

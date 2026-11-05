@@ -841,7 +841,29 @@ variable CANDIDATE-VERDICT
    $4E s" GD-HDUP" s" hash dup-probe rejects duplicate behind a retired slot" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
-   $4E s" dup" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE ;
+   $4E s" duplicate definition" s" primitive shadow attempt rejects without undefine" RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" variable over" GE-SRC-LINE
+   $4E s" duplicate definition" s" global variable named like a built-in rejects" RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" create swap 1 ," GE-SRC-LINE
+   $4E s" duplicate definition" s" global create named like a built-in rejects" RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" 5 constant drop" GE-SRC-LINE
+   $4E s" duplicate definition" s" global constant named like a built-in rejects" RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" package P4" GE-SRC-LINE
+   s" : dup ( n -- n n ) 7 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : GET ( -- n n ) 1 dup ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" P4:GET . . cr" GE-SRC-LINE
+   s" 1 dup . . cr" GE-SRC-LINE
+   s" private dup shadows a built-in inside its package only" GE-EVAL-RUN-STDIN
+   SB-RESET
+   s" 7" GE-OUT-LINE  s" 1" GE-OUT-LINE  s" " GE-OUT-LINE
+   s" 1" GE-OUT-LINE  s" 1" GE-OUT-LINE  s" " GE-OUT-LINE
+   SB$ s" private dup shadows a built-in inside its package only output" GE-EXPECT-OUT ;
 
 : EXPLICIT-REDEFINITION ( -- )
    GE-HB-RESET

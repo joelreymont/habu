@@ -12808,7 +12808,8 @@ variable SNAP-N
    cl LOGGED? IF -1 EXIT THEN
    cl ;
 
-\ Retire one live record of the name in WID and log it, false when none is.
+\ Retire one live record of the name in WID and log the wid it holds, which a
+\ global probe's built-in does not share (WL:PRIMITIVES); false when none is.
 \ A does> definer's clause goes with it, as the engine's undefine retires it
 \ (src/habu/xref.f XREF-RETIRE-INDEX): left live, the clause would still answer
 \ to its own name, `R;does`, after `undefine R`. The test reads the parent's
@@ -12817,9 +12818,10 @@ variable SNAP-N
    a u wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
    rec NULL-PTR = IF RES-FALSE EXIT THEN
    rec REC>IX {: ix:n :}
+   rec CK-REC-WID {: own:n :}
    ix CLAUSE-OF {: cl:n :}
-   cl 0 >= IF cl wid LOG-RETIRE THEN
-   ix wid LOG-RETIRE
+   cl 0 >= IF cl own LOG-RETIRE THEN
+   ix own LOG-RETIRE
    RES-TRUE ;
 
 public
@@ -22119,7 +22121,7 @@ variable PIMM-N
    {: ord:n sym:n :}
    sym 0= ord 0 < or ord ndict@ >= or IF 0 RES-FALSE EXIT THEN
    ord CHECKER-RESOLVE:REC-AT {: rec:ptr :}
-   rec CK-REC-WID BOOT:GLOBAL-WL <> IF 0 RES-FALSE EXIT THEN
+   rec CK-REC-WID WL:GLOBAL? 0= IF 0 RES-FALSE EXIT THEN
    sym SYM-NAME$ {: tail:ptr tailu:n :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ tail tailu SYM-STR=CI 0= IF 0 RES-FALSE EXIT THEN
    tail tailu BOOT:GLOBAL-WL CHECKER-RESOLVE:WL-PROBE rec <> IF 0 RES-FALSE EXIT THEN

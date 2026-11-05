@@ -4,6 +4,7 @@ require src/lib/fs.f
 require src/lib/string.f
 require src/os/script-argv.f
 require src/habu/boot-cells.f
+require src/habu/wl.f
 require src/habu/code-span.f
 require tools/image-names.f
 
@@ -54,7 +55,7 @@ variable MAP-DONOR-USED
    then NULL$ false ;
 
 : MAP-OWNER ( n -- ptr u8 n n ) {: wid:n :}
-   wid 0= if s" global" IMAGE-NAMES:OWNER-GLOBAL exit then
+   wid WL:GLOBAL? if s" global" IMAGE-NAMES:OWNER-GLOBAL exit then
    wid 0 < if s" -" IMAGE-NAMES:OWNER-UNKNOWN exit then
    ndict@ 0 ?do
       i XREF-REC {: rec:ptr :}
@@ -123,11 +124,14 @@ variable MAP-DONOR-USED
 : MAP-RECORD ( n ptr n -- ) {: k:n rec:ptr :}
    rec REC-NAME@ {: name:ptr nameu:n :}
    rec REC-WID@ {: wid:n :}
+   \ The .map format has one global wid, 0 (native-build-core.f BUILD-NAMES),
+   \ the only one IMAGE-NAMES:PACKAGE$ and DONOR-OWNER? read as global.
+   wid WL:GLOBAL? if 0 else wid then {: column:n :}
    k rec MAP-REC-BAKED? {: baked:bool :}
    baked if s" baked" else
       k CLO-AT-N WINDOW-CODE-START @ >= if s" loaded" else s" unknown" then
    then {: origin:ptr originu:n :}
-   0 k MEMBER-NEWOFF k BLEN @ wid name nameu s" word" origin originu MAP-HEAD
+   0 k MEMBER-NEWOFF k BLEN @ column name nameu s" word" origin originu MAP-HEAD
    baked if
       k CLO-AT-N SPAN-BASE-N - k CLO-BYTES name nameu
       wid MAP-OWNER IMAGE-NAMES:DONOR-SOURCE$

@@ -16,6 +16,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/habu/boot-cells.f
+require src/habu/wl.f
 require src/habu/verify-source.f
 require test/reopen-binding-lib.f
 require test/reopen-binding-late.f
@@ -432,14 +433,14 @@ variable STRAYED       \ inner closes that did not come back to the top level
 \ row runs in the neutral scope: in a package's scope `undefine dup` names no
 \ word of the current wordlist, and the live load refuses it.
 : SEEDED-CASE ( -- )
-   s" dup" 0 XREF-FIND-WL-INDEX {: ix:n :}
-   s" dup" 0 search-wl {: xt:n :}
+   s" dup" WL:PRIMITIVES XREF-FIND-WL-INDEX {: ix:n :}
+   s" dup" WL:PRIMITIVES search-wl {: xt:n :}
    s" a replayed undefine retires a seeded primitive, so a used public binds its name" T-LABEL
    S\" undefine dup\nusing RB-DUP\n: RB-UD ( -- n ) dup ;\n;using\n" 0 REPLAY
    s" and the close gives the primitive's record back its wordlist" T-LABEL
-   ix XREF-REC XREF-WORDLIST 0 T=
-   s" dup" 0 XREF-FIND-WL-INDEX ix T=
-   s" dup" 0 search-wl xt T=
+   ix XREF-REC XREF-WORDLIST WL:PRIMITIVES T=
+   s" dup" WL:PRIMITIVES XREF-FIND-WL-INDEX ix T=
+   s" dup" WL:PRIMITIVES search-wl xt T=
    s" 3 dup +" TEST-EVAL:N 6 T= ;
 
 \ A replay in a neutral scope inside another: the outer scope opened the

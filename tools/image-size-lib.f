@@ -9,6 +9,7 @@ require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/sort.f
 require src/habu/code-span.f
+require src/habu/wl.f
 require src/habu/address-cells.f
 require src/habu/snapshot-format.f
 require src/habu/aot-x64-format.f
@@ -1317,6 +1318,10 @@ $FFFFFFFF constant PKG-ROW
 : REC-WID ( n -- n )
    SNAPSHOT-CLASS? if LREC-WID exit then  CREC-WID ;
 
+\ A live wid gives the built-ins WL:PRIMITIVES; a compact row's is window-relative,
+\ where 3 is a package's wordlist (aot-capture.f ACAP-REL-WID).
+: REC-GLOBAL? ( n -- bool ) SNAPSHOT-CLASS? if LREC-WID WL:GLOBAL? exit then  CREC-WID 0= ;
+
 : REC-PUB-WID ( n -- n )
    SNAPSHOT-CLASS? if LREC-START exit then  CREC-START ;
 
@@ -1381,8 +1386,8 @@ variable WID-CAP
    loop ;
 
 : REC-ROLE ( n -- n ) {: k:n :}
+   k REC-GLOBAL? if ROLE-GLOBAL exit then
    k REC-WID {: w:n :}
-   w 0= if ROLE-GLOBAL exit then
    w WID-OK? 0= if ROLE-UNMAPPED exit then
    w WROLE @ {: role:n :}
    role ROLE-GLOBAL = if ROLE-UNMAPPED exit then

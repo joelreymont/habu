@@ -528,12 +528,11 @@ variable ACAP-P
    s" aot-capture: call site into a wordlist the seed cannot name" 74 die ;
 
 \ The scope column is not window-relative: a scope below FIRST-DYNAMIC-WID
-\ passes through as itself (sites carry OWNER-API-PRI-WID, 2), so relative
-\ offsets 1 to 3 would read as those wordlists, and an in-window scope ends the
-\ build. None arises by structure: a site exists only for a callee outside the
-\ blob (ACAP-SITE-HERE, ACAP-BRANCH-HERE) and below the prelude mark, so its
-\ wordlist predates W0. Measured: all 12516 sites of a whole-tree image carry
-\ scope 0.
+\ passes through as itself (sites carry OWNER-API-PRI-WID, 2, and a built-in's
+\ WL:PRIMITIVES, 3), so relative offsets 1 to 3 would read as those wordlists,
+\ and an in-window scope ends the build. None arises by structure: a site exists
+\ only for a callee outside the blob (ACAP-SITE-HERE, ACAP-BRANCH-HERE) and
+\ below the prelude mark, so its wordlist predates W0.
 : ACAP-REFUSE-WIN-SCOPE ( n n -- ) {: k:n w:n :}
    s" aot-capture: window word " type ACAP-P @ ACAP-REC-AT ACAP-NAME.
    s"  calls " type k ACAP-NAME.

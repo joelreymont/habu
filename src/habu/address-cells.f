@@ -2,6 +2,7 @@
 \ appending a row may move its backing storage, but never changes a row's index.
 s" src/habu/layout.f" required
 s" src/habu/xref.f" required
+s" src/habu/wl.f" required
 
 package ADDRESS-CELLS
 public
@@ -33,19 +34,19 @@ $7FFFFFFFFFFFFFFF CELL / constant MAX-ROWS
 private
 CAST: VERSION-XT ( n -- [ -- n ] )
 
-\ Engine emitters publish these primitives consecutively in global wordlist
-\ zero. Retirement changes a marker's wordlist but keeps its name and position;
-\ a later redefinition must not replace the original pair. Resolved on each
-\ call: a captured image's code addresses differ from its build host's, and a
-\ foreign target layout's header offsets do not describe the running engine.
+\ Engine emitters publish these primitives consecutively in a global wordlist.
+\ Retirement changes a marker's wordlist but keeps its name and position; a
+\ later redefinition must not replace the original pair. Resolved on each call:
+\ a captured image's code addresses differ from its build host's, and a foreign
+\ target layout's header offsets do not describe the running engine.
 : ENGINE-ABI-XT ( -- n )
    ndict@ 1- 0 ?do
       i XREF-REC {: rec:ptr :}
       rec XREF-NAME$ s" ptr-cell-mark" CORE-STR=CI if
          rec XREF-WORDLIST {: wid:n :}
-         wid 0<> wid XREF-RETIRED-WL <> and if 0 unloop exit then
+         wid WL:GLOBAL? 0= wid XREF-RETIRED-WL <> and if 0 unloop exit then
          i 1+ XREF-REC {: next:ptr :}
-         next XREF-WORDLIST 0= if
+         next XREF-WORDLIST WL:GLOBAL? if
             next XREF-NAME$ s" addr-cells-abi" CORE-STR=CI if
                next XREF-START unloop exit
             then
@@ -56,8 +57,8 @@ CAST: VERSION-XT ( n -- [ -- n ] )
    0 ;
 
 public
-\ A source word shadowing the wordlist-zero primitive is refused: only engine
-\ text may supply the discriminator. Recovery and old native hosts answer zero.
+\ A source word shadowing the built-in is refused: only engine text may supply
+\ the discriminator. Recovery and old native hosts answer zero.
 : CURRENT? ( -- bool )
    s" addr-cells-abi" 0 search-wl {: xt:n :}
    xt 0= if 0 0 <> exit then

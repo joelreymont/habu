@@ -9,6 +9,7 @@ require src/lib/string.f
 require src/core/sha256.f
 require src/core/checker-owner-abi.f
 require src/habu/boot-cells.f
+require src/habu/wl.f
 require src/habu/xref.f
 require src/habu/layout.f
 require src/habu/aot-arm.f
@@ -648,7 +649,7 @@ public
    rec XREF-RETIRED? if NULL-PTR 0 3 exit then
    wid OWNER-API-PUB-WID = if s" hb-engine-api" 1 exit then
    wid OWNER-API-PRI-WID = if s" hb-engine-api" 2 exit then
-   wid 0= if NULL-PTR 0 0 exit then
+   wid WL:GLOBAL? if NULL-PTR 0 0 exit then
    wid WID-OWNER if {: ord:n vis:n :}
       ord XREF-REC XREF-NAME$ vis exit
    then 2drop BAD ;

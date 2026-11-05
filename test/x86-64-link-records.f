@@ -219,7 +219,7 @@ using AOT-BUF
    p 8 RF@ CODE-SPAN:FULL? TTRUE
    p 16 RF@ DNAME-MIN-IN-MASK and 52 rshift 1 T=
    p 16 RF@ DNAME-LEN-MASK and 3 T=
-   p X64KERNEL:REC-WID RF@ 0 T= ;
+   p X64KERNEL:REC-WID RF@ WL:PRIMITIVES T= ;
 
 : WID-CASE ( -- )
    s" every wid is the host's, rebased from the window's first wordlist to T0" T-LABEL

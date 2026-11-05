@@ -15,8 +15,7 @@ public
 \ WL:MAX is the largest value a wordlist id may take; it bounds every
 \ WID-indexed table and the snapshot's registry validation.
 $FFFFFFFE constant MAX
-\ The wordlist id kept for the kernel's built-in words; the primitive registry
-\ records them in the global wordlist.
+\ The wordlist id of the kernel's built-in words (primitive-registry.f ADD).
 3 constant PRIMITIVES
 \ Built-in words count as global.
 : GLOBAL? ( n -- bool ) dup BOOT:GLOBAL-WL = swap PRIMITIVES = or ;

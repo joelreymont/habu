@@ -9,6 +9,7 @@ require src/core/bytes.f
 require src/core/roles.f
 require src/habu/layout.f               \ OWNER-API-PRI-WID, DNAME-INT
 require src/habu/prims.f                \ PRIM-SPEC, the specification table
+require src/habu/wl.f                   \ WL:PRIMITIVES, a built-in row's wid
 
 package ENGINE-PRIMS
 
@@ -59,7 +60,7 @@ public
    row ROW-CELLS * ROWS {: dst:ptr :}
    first LABEL>N dst ! last LABEL>N dst cell+ !
    size dst 2 cells + ! NAME-BYTES @ dst 3 cells + !
-   -1 dst 4 cells + ! 0 dst 5 cells + ! -1 dst 6 cells + !
+   -1 dst 4 cells + ! WL:PRIMITIVES dst 5 cells + ! -1 dst 6 cells + !
    name 0 NAMES BYTE-VIEW NAME-BYTES @ + size BYTE-COPY
    NAME-BYTES @ size + NAME-BYTES !
    row 1+ USED !
@@ -138,8 +139,8 @@ public
 
 \ A primitive whose dictionary record is globally searchable but cannot be
 \ executed or ticked by ordinary source. The sentinel lives only in this
-\ build-side registry; the emitted record carries WID 0 and DNAME-INT, and
-\ DNAME-OWNED as well when a package row types the primitive (OWNED?): its
+\ build-side registry; the emitted record carries WL:PRIMITIVES and DNAME-INT,
+\ and DNAME-OWNED as well when a package row types the primitive (OWNED?): its
 \ owner's checked callers compile.
 -1 constant GLOBAL-INT-WID
 
@@ -190,7 +191,7 @@ public
    then ;
 
 : HELPER-WID ( n -- n )
-   WID dup GLOBAL-INT-WID = if drop 0 then ;
+   WID dup GLOBAL-INT-WID = if drop WL:PRIMITIVES then ;
 
 \ COMPLETE, run after the last body, refuses a row this backend never answered:
 \ an effect checked callers believe, with no code for the name.
