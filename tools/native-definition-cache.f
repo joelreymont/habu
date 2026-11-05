@@ -1333,7 +1333,7 @@ private
    ord at end path pathu name nameu NUNIT-OBJECT:ORIGIN+ ;
 
 \ A full journal row the file's own top level drained from the early journal
-\ (ENGINE-ORIGIN:FILE-DRAIN): a warm load installs it as the early row it
+\ (ENGINE-ORIGIN's DRAIN-EARLY): a warm load installs it as the early row it
 \ was, and the same drain makes it this row again. The drain resolved a
 \ missing symbol and made the path relative to the engine's source root: a
 \ live record must hold the row's symbol, and the row keeps the full path the

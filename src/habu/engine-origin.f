@@ -290,7 +290,6 @@ public
 : DISARM ( -- ) 0 ARMED ! ENGINE-ORIGIN-EARLY:FILE-DISARM ;
 : FILE-RESTORE ( bool -- )
    if 1 else 0 then ARMED ! ;
-: FILE-DRAIN ( -- ) DRAIN-EARLY ;
 
 private
 

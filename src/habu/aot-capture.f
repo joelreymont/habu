@@ -749,7 +749,6 @@ variable ACAP-ENTRY-N
    a u s" FILE-IMPORT" CORE-STR=CI or
    a u s" FILE-STATE" CORE-STR=CI or
    a u s" FILE-BOUNDARY" CORE-STR=CI or
-   a u s" FILE-DRAIN" CORE-STR=CI or
    a u s" FILE-RESTORE" CORE-STR=CI or
    a u s" FILE-ACCEPT-USE" CORE-STR=CI or
    a u s" FILE-ACCEPT-CLEAR" CORE-STR=CI or

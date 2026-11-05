@@ -16,16 +16,8 @@ $2000 constant CAP
 300000 constant BUILD-MS
 create OUT CAP allot
 create ERR CAP allot
-create BUNDLE-DIR PATH-CAP allot
-variable BUNDLE-U
-create BUNDLE-FILE PATH-CAP allot
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-
-: BUNDLE$ ( -- ptr u8 n ) BUNDLE-DIR BUNDLE-U @ ;
-
-: BUNDLE-FILE? ( ptr u8 n -- bool )
-   BUNDLE$ 2swap BUNDLE-FILE FS:JOIN-PATH BUNDLE-FILE swap FS:FILE? ;
 
 : BUILD ( -- )
    SCRIPT-ARGC 1 <> if s" layout transition: one donor path required" 76 die then
@@ -45,24 +37,6 @@ create BUNDLE-FILE PATH-CAP allot
    then
    rc 0 T= ;
 
-: BUILD-BUNDLE ( -- )
-   SOURCE-ROOT:CWD$ s" build/layout-bundle" BUNDLE-DIR FS:JOIN-PATH BUNDLE-U !
-   BUNDLE$ FS:MAKE-DIRS
-   PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG
-   s" test/compiler-images-build.f" ARG
-   s" --" ARG
-   BUNDLE$ ARG
-   0 SCRIPT-ARGV$ >LEN
-   OUT CAP >LEN ERR CAP >LEN BUILD-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
-   {: outu:len erru:len rc:n :}
-   rc 0<> if
-      OUT outu LEN>N type ERR erru LEN>N type
-   then
-   rc 0 T= ;
-
 public
 : RUN ( -- )
    T-RESET
@@ -70,10 +44,6 @@ public
    BUILD
    s" build/hb-layout-transition" FS:FILE? TTRUE
    s" build/hb-layout-transition.map" FS:FILE? TTRUE
-   s" old layout donor builds compiler bundle" T-LABEL
-   BUILD-BUNDLE
-   s" hb-whitebox-source" BUNDLE-FILE? TTRUE
-   s" hb-whitebox-source.map" BUNDLE-FILE? TTRUE
    T-REPORT
    s" native-layout-transition: ok" type cr ;
 

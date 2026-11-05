@@ -319,26 +319,7 @@ create HOST-DISPATCH HOST-DISPATCH-N cells allot
    compiler-known HOST-COMPILER-KNOWN !
    ['] HOST-COMPILER$ NUNIT-DEP:USE-COMPILER-ROLE ;
 
-TYPED-VARIABLE SOURCE-BIND [ -- ]
-TYPED-VARIABLE SOURCE-CHECK [ -- ]
-TYPED-VARIABLE SOURCE-CLOSE [ -- ]
-TYPED-VARIABLE SOURCE-TAIL [ -- ]
-
-: SOURCE-NOOP ( -- ) ;
-
-: SOURCE-POLICY! ( [ -- ] [ -- ] [ -- ] -- ) {: bind check close :}
-   bind SOURCE-BIND !
-   check SOURCE-CHECK !
-   close SOURCE-CLOSE !
-   [: SOURCE-NOOP ;] SOURCE-TAIL ! ;
-
-: SOURCE-TAIL! ( [ -- ] -- ) SOURCE-TAIL ! ;
-
-: DEFAULT-SOURCE-BIND ( -- )
-   s" REQUIRE-BOOT-OPEN" OPEN-TARGET-XT SOURCE-RESET-XT execute ;
-
 \ The ordinary loader's completed child is the selected source boundary.
-\ Keep a custom source policy's loader inside the completion callback.
 TYPED-VARIABLE HOST-UNIT-PRIOR [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 variable HOST-UNIT-BOUND
 
@@ -376,9 +357,6 @@ variable HOST-UNIT-BOUND
    HOST-UNIT-PRIOR @ SOURCE-UNIT:USE
    ['] HOST-UNIT-ORDINARY HOST-UNIT-PRIOR !
    0 HOST-UNIT-BOUND ! ;
-
-: DEFAULT-SOURCE-POLICY ( -- )
-   ['] DEFAULT-SOURCE-BIND ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY! ;
 
 : RESET-TARGET-SOURCE ( -- )
    TARGET-SOURCE-BOUND @ if
@@ -632,14 +610,12 @@ variable PRE-ROWS-N
    s" SOURCE-INPUT:RESET" OPEN-TARGET-XT SOURCE-RESET-XT execute
    TARGET-ENGINE-ROOT
    TARGET-ENGINE-UNSEAL
-   SOURCE-BIND @ execute
    NDEF-CACHE:REBIND
    1 TARGET-SOURCE-BOUND !
    s" src/habu/native-runtime.f"
       s" included" OPEN-TARGET-XT SOURCE-INCLUDED-XT execute
    PREFIX-COMPILER-FINISH
-   NDEF-CACHE:REBIND
-   SOURCE-TAIL @ execute ;
+   NDEF-CACHE:REBIND ;
 
 : OPEN-FILE-AND-COMPILE ( -- )
    AOT-ARM:WINDOW-OPEN-PERSISTENT
@@ -1283,63 +1259,12 @@ variable NAMES-NI
    NAMES-PATH!
    NAMES-PATH$ NAMES-A@ NAMES-U @ FS:WRITE-ALL ;
 
-\ The suite builder's private directory is absolute.
-create BUNDLE-PATH OUTPUT-CAP allot
-variable BUNDLE-PATH-U
-TYPED-VARIABLE BUNDLE-DIR ptr u8
-variable BUNDLE-DIR-U
-
-: BUNDLE-OUTPUT ( ptr u8 n ptr u8 n -- )
-   {: dir:ptr diru:n name:ptr nameu:n :}
-   dir diru name nameu BUNDLE-PATH FS:JOIN-PATH BUNDLE-PATH-U !
-   BUNDLE-PATH BUNDLE-PATH-U @ OUTPUT! ;
-
-: OWN-CAPTURE ( -- AOT-OWNED:capture )
-   AOT-CAPTURE:CODE-WINDOW AOT-FILE:OWN-WINDOW ;
-
-: WRITE-BUNDLE-CAPTURE ( AOT-OWNED:capture [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- )
-   {: writer :}
-   NATIVE-LAYOUT:CURRENT OUTPUT$ writer execute
-   OUTPUT$ FS:CHMOD-X
-   OUTPUT$ CODESIGN:ENSURE ;
-
-: BUNDLE-PREPARE ( -- )
-   BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
-      supported OF drop ENDOF
-      unsupported OF RTARGET:E-UNSUPPORTED throw ENDOF
-   ;MATCH
-   CHECK-HOST-LAYOUT
-   RETAIN-HOST-PRODUCERS ;
-
 : FILE-LOAD ( -- )
    ['] PREFIX-INPUT ['] PREFIX-NOOP SOURCE-INPUT:USE-OBSERVER
    CHECKER-OWNER LOGICAL-RESET
    BIND-HOST-UNIT
    PREFIX-START
    OPEN-FILE-AND-COMPILE ;
-
-: BUNDLE-CAPTURE ( -- AOT-OWNED:capture )
-   SOURCE-CHECK @ execute
-   RESET-TARGET-SOURCE
-   SOURCE-CLOSE @ execute
-   TRANSFER-LITERALS
-   AOT-CAPTURE:PAYLOAD-CAPTURE
-   NAMES-SOURCES
-   PREPARE-TARGET
-   CAPTURE
-   \ The capture records the window's compilers too: the host's return after it.
-   RESTORE-HOST-DISPATCH
-   BUILD-NAMES
-   OWN-CAPTURE ;
-
-: BUNDLE-WRITE ( AOT-OWNED:capture -- AOT-OWNED:capture )
-   {: white:AOT-OWNED:capture :}
-   WRITER-MACHINE-CK
-   LOAD-SOURCE-WRITER
-   BUNDLE-DIR @ BUNDLE-DIR-U @ s" hb-whitebox-source" BUNDLE-OUTPUT
-   white s" NATIVE-EMIT:WRITE-C2" SOURCE-WRITER-NAMED WRITE-BUNDLE-CAPTURE
-   WRITE-NAMES
-   white ;
 
 \ The engine build owns its tier: a restored support image starts at tier 0,
 \ so the target sources start at tier 1. A source that sets its own tier keeps
@@ -1352,22 +1277,12 @@ variable BUNDLE-DIR-U
 : TARGET-SCOPE ( R [ R -- S ] -- S )
    ['] AT-TIER-1 EXECUTABLE-BUILD:WITH ;
 
-
-: BUNDLE-FINISH ( -- )
-   ['] BUNDLE-CAPTURE TARGET-SCOPE {: white:AOT-OWNED:capture :}
-   white ['] BUNDLE-WRITE catch {: rc:n :}
-   drop
-   white AOT-OWNED:CLOSE
-   rc 0<> if rc throw then ;
-
 : REMOVE-STALE-TEMP ( -- )
    TEMP$ 2dup FS:SYMLINK? if FS:REMOVE-FILE exit then
    2dup FS:EXISTS? if FS:REMOVE-FILE else 2drop then ;
 
 : IMAGE-CAPTURE ( -- AOT-OWNED:capture )
-   SOURCE-CHECK @ execute
    RESET-TARGET-SOURCE
-   SOURCE-CLOSE @ execute
    TRANSFER-LITERALS
    AOT-CAPTURE:PAYLOAD-CAPTURE
    \ Private source identities are still live before the checker sweep.
@@ -1391,9 +1306,9 @@ variable BUNDLE-DIR-U
    EMIT-TEMP
    IMAGE-INSTALL ;
 
-\ A failed load reaches its policy close without passing IMAGE-CAPTURE.
+\ A failed load resets the target source here, without passing IMAGE-CAPTURE.
 : CLEANUP-SOURCE ( -- )
-   [: RESET-TARGET-SOURCE SOURCE-CLOSE @ execute ;] TARGET-SCOPE ;
+   ['] RESET-TARGET-SOURCE TARGET-SCOPE ;
 
 : FILE-PREPARE ( -- )
    BUILD-TARGET:CURRENT RTARGET:CORE MATCH RTARGET:core-result
@@ -1431,20 +1346,6 @@ variable BUNDLE-DIR-U
 
 public
 
-\ Test-only entry: the suite's compiler bundle, under the caller's source policy.
-: RUN-BUNDLE-READY ( ptr u8 n -- )
-   {: dir:ptr diru:n :}
-   BUILD-TARGET:IDLE-CK
-   CLASS-WHITEBOX CLASS-WANTED !
-   dir BUNDLE-DIR !
-   diru BUNDLE-DIR-U !
-   s" engine" RTARGET:HOST BUILD-TARGET:CURRENT RTARGET:FOR-OUTPUT
-      [: ['] BUNDLE-PREPARE TARGET-SCOPE ;]
-      [: ['] FILE-LOAD TARGET-SCOPE ;] ['] BUNDLE-FINISH
-      ['] BUILD-CORE:WITH WITH-TARGET-ROOT {: rc:n :}
-   RESTORE-HOST-UNIT
-   rc 0<> if rc throw then ;
-
 \ The build proper, to an explicit output path, returning its result code. RUN
 \ adds the argv convention and the exit; `die` is an unconditional exit_group,
 \ so a driver that works after the build (tools/build-profile.f prints the
@@ -1452,7 +1353,6 @@ public
 : RUN-PATH-RC ( ptr u8 n -- n )
    {: out:ptr outu:n :}
    BUILD-TARGET:IDLE-CK
-   ['] SOURCE-NOOP ['] SOURCE-NOOP ['] SOURCE-NOOP SOURCE-POLICY!
    out outu OUTPUT!
    ['] RUN-FILE-INNER WITH-TARGET-ROOT ;
 
