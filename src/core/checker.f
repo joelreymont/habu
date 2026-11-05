@@ -2049,6 +2049,105 @@ variable CT-STR-CAP-V   CT-STR-INIT CT-STR-CAP-V !
 3 constant CS-UNSIGNED
 4 constant CS-ADDR
 
+\ --- the checker's stores during a build --------------------------------------
+\ A store registers an arena row where it holds only its prefix, the rows every
+\ program starts with; CHECK:OPEN and CHECK:CLOSE, further down, walk the rows.
+package CHECK
+private
+64 constant ROW-CAP
+7 constant ROW-WIDTH
+create ROWS ROW-CAP ROW-WIDTH * cells allot
+variable ROW-N   0 ROW-N !
+\ Each row's saved pointer, null outside a build:
+\ a `create` cell holds no address.
+ROW-CAP PTR-U8-TABLE SAVED-PTRS
+
+
+: ROW-CELL ( n n -- ptr n )
+   {: row:n at:n :}
+   ROWS row ROW-WIDTH * at + cells + ;
+
+
+: ROW.PTR ( n -- ptr n ) 0 ROW-CELL ;
+: ROW.CAP ( n -- ptr n ) 1 ROW-CELL ;
+: ROW.BYTES ( n -- ptr n ) 2 ROW-CELL ;
+: ROW.COUNT ( n -- ptr n ) 3 ROW-CELL ;
+: ROW.PREFIX ( n -- ptr n ) 4 ROW-CELL ;
+: ROW.SAVED-CAP ( n -- ptr n ) 5 ROW-CELL ;
+: ROW.SAVED-COUNT ( n -- ptr n ) 6 ROW-CELL ;
+: ROW.SAVED-PTR ( n -- ptr ptr u8 ) cells SAVED-PTRS + 0 ptr-field ;
+
+
+\ A field naming a cell holds the cell's distance from the field, as SR-LINK!
+\ keeps one; LINK@ answers the cell's DATA offset now.
+: LINK! ( ptr a ptr n -- )
+   {: cell:ptr field:ptr :}
+   cell DATA-OFF field DATA-OFF - field ! ;
+
+
+: LINK@ ( ptr n -- n )
+   {: field:ptr :}
+   field DATA-OFF field @ + ;
+
+
+\ Records a store's pointer and capacity cells, with its bytes per unit of
+\ capacity, and no count; answers the row.
+: ROW+ ( ptr ptr a ptr n n -- n )
+   {: pv:ptr capv:ptr bytes:n :}
+   ROW-N @ ROW-CAP >= IF s" checker: store rows full" 76 die THEN
+   ROW-N @ {: row:n :}
+   pv row ROW.PTR LINK!
+   capv row ROW.CAP LINK!
+   bytes row ROW.BYTES !
+   0 row ROW.COUNT !
+   0 row ROW.PREFIX !
+   0 row ROW.SAVED-CAP !
+   0 row ROW.SAVED-COUNT !
+   NULL-PTR row ROW.SAVED-PTR !
+   row 1 + ROW-N !
+   row ;
+
+
+\ Records a store with a count cell; the count now is the store's prefix.
+: STORE+ ( ptr ptr a ptr n n ptr n -- )
+   {: countv:ptr :}
+   ROW+ {: row:n :}
+   countv row ROW.COUNT LINK!
+   countv @ row ROW.PREFIX ! ;
+
+
+\ A table has no count and no prefix: its count field holds 0, the null link,
+\ since a field's distance to another cell is never 0.
+: TABLE+ ( ptr ptr a ptr n n -- ) ROW+ drop ;
+: COUNTED? ( n -- bool ) ROW.COUNT @ 0 <> ;
+
+64 constant CELL-ROW-CAP
+3 constant CELL-ROW-WIDTH
+create CELL-ROWS CELL-ROW-CAP CELL-ROW-WIDTH * cells allot
+variable CELL-ROW-N   0 CELL-ROW-N !
+
+
+: CELL-ROW ( n n -- ptr n )
+   {: row:n at:n :}
+   CELL-ROWS row CELL-ROW-WIDTH * at + cells + ;
+
+
+: CELL-ROW.CELL ( n -- ptr n ) 0 CELL-ROW ;
+: CELL-ROW.VALUE ( n -- ptr n ) 1 CELL-ROW ;
+: CELL-ROW.SAVED ( n -- ptr n ) 2 CELL-ROW ;
+
+
+\ Records a cell that holds V during every build.
+: CELL-ROW+ ( ptr n n -- )
+   {: cv:ptr v:n :}
+   CELL-ROW-N @ CELL-ROW-CAP >= IF s" checker: cell rows full" 76 die THEN
+   CELL-ROW-N @ {: row:n :}
+   cv row CELL-ROW.CELL LINK!
+   v row CELL-ROW.VALUE !
+   0 row CELL-ROW.SAVED !
+   row 1 + CELL-ROW-N ! ;
+;package
+
 \ Registry stores keep a baked DATA boot buffer (build-time defs never exceed
 \ the boot cap) and grow into anon mmap through ARENA-BYTES-GROW.
 \
@@ -8275,6 +8374,95 @@ HIDX-MEM-CLEAR
    HIDX-MEM-CLEAR   0 HIDX-VALID !
    HIDX-EPOCH+ ;
 
+package CHECK
+: PTR-CELL ( n -- ptr ptr u8 ) ROW.PTR LINK@ POINTER-STORAGE:DATA-CELL ;
+: NUM-CELL ( n -- ptr n ) data-base BYTE-VIEW swap + CELL-VIEW ;
+
+
+: ROW-BYTES ( n n -- n )
+   {: row:n units:n :}
+   units row ROW.BYTES @ * ;
+
+
+: FRESH-ARENA ( n -- ptr u8 )
+   {: bytes:n :}
+   bytes 0= IF NULL-PTR EXIT THEN
+   bytes ARENA-ALLOC ;
+
+
+: SAVE-ROW ( n -- )
+   {: row:n :}
+   row PTR-CELL @ row ROW.SAVED-PTR !
+   row ROW.CAP LINK@ NUM-CELL @ row ROW.SAVED-CAP !
+   row COUNTED? IF row ROW.COUNT LINK@ NUM-CELL @ row ROW.SAVED-COUNT ! THEN ;
+
+
+\ The prefix copy is rounded up to cells, as ARENA-CELLS-COPY says it may be.
+: FRESH-ROW ( n -- )
+   {: row:n :}
+   row row ROW.SAVED-CAP @ ROW-BYTES FRESH-ARENA {: dst:ptr :}
+   row row ROW.PREFIX @ ROW-BYTES CELL + 1- CELL / {: n:n :}
+   row ROW.SAVED-PTR @ dst n ARENA-CELLS-COPY
+   dst row PTR-CELL !
+   row COUNTED? IF row ROW.PREFIX @ row ROW.COUNT LINK@ NUM-CELL ! THEN ;
+
+
+\ A store that grew in the build has its own pointer and capacity by now.
+: DROP-ROW ( n -- )
+   {: row:n :}
+   row PTR-CELL @  row row ROW.CAP LINK@ NUM-CELL @ ROW-BYTES  ARENA-UNMAP ;
+
+
+: RESTORE-ROW ( n -- )
+   {: row:n :}
+   row ROW.SAVED-PTR @ row PTR-CELL !
+   row ROW.SAVED-CAP @ row ROW.CAP LINK@ NUM-CELL !
+   row COUNTED? IF row ROW.SAVED-COUNT @ row ROW.COUNT LINK@ NUM-CELL ! THEN
+   NULL-PTR row ROW.SAVED-PTR !
+   0 row ROW.SAVED-CAP !
+   0 row ROW.SAVED-COUNT ! ;
+
+
+: SAVE-CELL ( n -- )
+   {: row:n :}
+   row CELL-ROW.CELL LINK@ NUM-CELL @ row CELL-ROW.SAVED ! ;
+
+
+: FRESH-CELL ( n -- )
+   {: row:n :}
+   row CELL-ROW.VALUE @ row CELL-ROW.CELL LINK@ NUM-CELL ! ;
+
+
+: RESTORE-CELL ( n -- )
+   {: row:n :}
+   row CELL-ROW.SAVED @ row CELL-ROW.CELL LINK@ NUM-CELL !
+   0 row CELL-ROW.SAVED ! ;
+
+
+\ SYM-GROW's drop: the next lookup indexes the stores as they are now.
+: DROP-INDEX ( -- )
+   HIDX-MEM-CLEAR  0 HIDX-VALID !  HIDX-EPOCH+ ;
+
+
+public
+\ Saves every row's cells, then gives each store a fresh arena holding its
+\ prefix and each cell its value: two passes, since stores may share cells.
+: OPEN ( -- )
+   ROW-N @ 0 ?do i SAVE-ROW loop
+   CELL-ROW-N @ 0 ?do i SAVE-CELL loop
+   ROW-N @ 0 ?do i FRESH-ROW loop
+   CELL-ROW-N @ 0 ?do i FRESH-CELL loop
+   DROP-INDEX ;
+
+
+\ Unmaps every build arena before any cell goes back, then restores hb's cells.
+: CLOSE ( -- )
+   ROW-N @ 0 ?do i DROP-ROW loop
+   ROW-N @ 0 ?do i RESTORE-ROW loop
+   CELL-ROW-N @ 0 ?do i RESTORE-CELL loop
+   DROP-INDEX ;
+;package
+
 : SYM-ENSURE ( -- )             \ ensure room for the next id (SYM-N)
    SYM-N @ SYM-CAP-V @ < IF exit THEN
    SYM-N @ 1 + SYM-GROW ;
@@ -11901,6 +12089,9 @@ PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
 \ grants nothing the gate guards: sealing again changes nothing, and no word
 \ opens the gate.
 PPRIM: CHECKER-EFFECT-AUTHORITY SEAL PPRIM;
+\ Their one caller is LINKER:WITH (src/habu/linker.f), at its open and close.
+PPRIM: CHECK OPEN PPRIM;
+PPRIM: CHECK CLOSE PPRIM;
 PRIM: EFFECT-QUERY       PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The scope probe a caller that only observes asks before EFFECT-QUERY (BY-EFFECT?).
 PPRIM: CHECKER-RESOLVE REFUSES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PPRIM;
@@ -11945,6 +12136,12 @@ s" INCLUDE-EVALUATE" PE-SYM-OF drop
 s" INCLUDE-EVALUATE-RANGE" PE-SYM-OF drop
 
 PTABLE-END
+
+package CHECK
+SYMS-P SYM-CAP-V SYM-REC SYM-N STORE+
+SYM-STR-P SYM-STR-CAP-V 1 SYM-STR-U STORE+
+USIGS-P USIGS-CAP-U 1 UEND STORE+
+;package
 
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE CHECKER-REC-A
@@ -13331,6 +13528,13 @@ variable CK-CLOSED-OFF     \ its record, offset+1 (USIG-NEWEST)
 variable CK-CLOSED-OPEN    \ its record is unpublished: RECORD-PUBLISHED-LOCAL links it once
 CHECKER-REG:}SCRATCH
 : CK-CLOSED-OFF@ ( -- n ) CK-CLOSED-OFF @ ;
+\ A build's checker starts with no definition recorded, as at a file boundary.
+package CHECK
+CK-CLOSED-SYM 0 CELL-ROW+
+CK-CLOSED-IX 0 CELL-ROW+
+CK-CLOSED-OFF 0 CELL-ROW+
+CK-CLOSED-OPEN 0 CELL-ROW+
+;package
 
 \ The outermost open candidate scope's floor, set when CHK-CAND turns on
 \ (CHECK-CANDIDATE-START) and read only while it is on: the record end and
@@ -16156,6 +16360,16 @@ variable RECORD-PEND-IX    -1 RECORD-PEND-IX !
 variable RECORD-PEND-SYM   0 RECORD-PEND-SYM !
 variable RECORD-PEND-EFF   0 RECORD-PEND-EFF !
 : RECORD-PEND-EFF@ ( -- n ) RECORD-PEND-EFF @ ;
+\ Rows are keyed by dictionary ordinal but point into the build's effect and
+\ control stores.
+package CHECK
+RECORD-LINK-P RECORD-LINK-CAP RECORD-LINK-ROW TABLE+
+RECORD-LINK-EFFECT-HI 0 CELL-ROW+
+RECORD-LINK-CONTROL-HI 0 CELL-ROW+
+RECORD-PEND-IX -1 CELL-ROW+
+RECORD-PEND-SYM 0 CELL-ROW+
+RECORD-PEND-EFF 0 CELL-ROW+
+;package
 
 : RECORD-LINK-CELL ( n -- ptr n )
    RECORD-LINK-ROW * RECORD-LINK-P @ + CELL-VIEW ;
@@ -16241,6 +16455,12 @@ variable PENDING-OWNER-READY 0 PENDING-OWNER-READY !
 2 constant PENDING-CONTROL
 3 constant PENDING-GRID
 4 constant PENDING-CREATED
+\ Keys are handles in the build's stores; READY 0 seeds from its RECORD-LINK.
+package CHECK
+PENDING-OWNER-P PENDING-OWNER-CAP 2 cells TABLE+
+PENDING-OWNER-N 0 CELL-ROW+
+PENDING-OWNER-READY 0 CELL-ROW+
+;package
 
 : PENDING-OWNER-ROW ( n -- ptr n )
    2 cells * PENDING-OWNER-P @ + CELL-VIEW ;
@@ -16323,6 +16543,12 @@ PERSISTED-PTR-VARIABLE PENDING-DIRTY-P   NULL-PTR PENDING-DIRTY-P !
 variable PENDING-DIRTY-CAP   0 PENDING-DIRTY-CAP !
 variable PENDING-DIRTY-N     0 PENDING-DIRTY-N !
 variable PENDING-MARKED      0 PENDING-MARKED !
+\ A build's ordinals never join the unit hb has marked.
+package CHECK
+PENDING-DIRTY-P PENDING-DIRTY-CAP 1 cells TABLE+
+PENDING-DIRTY-N 0 CELL-ROW+
+PENDING-MARKED 0 CELL-ROW+
+;package
 : PENDING-DIRTY+ ( n -- ) {: ord:n :}
    PENDING-MARKED @ 0= IF EXIT THEN
    PENDING-DIRTY-N @ 0 ?do
@@ -16510,6 +16736,12 @@ variable PENDING-MARKED      0 PENDING-MARKED !
 variable BODY-PEND-ORD    -1 BODY-PEND-ORD !
 variable BODY-PEND-OCC    0 BODY-PEND-OCC !
 variable BODY-PEND-BASE   0 BODY-PEND-BASE !
+\ A build pends its own created bodies; hb's pending body waits out the build.
+package CHECK
+BODY-PEND-ORD -1 CELL-ROW+
+BODY-PEND-OCC 0 CELL-ROW+
+BODY-PEND-BASE 0 CELL-ROW+
+;package
 
 \ An engine `,` run cell holds an address; this is its DATA offset.
 : COMMA-CELL-OFF ( n -- n )
@@ -16985,6 +17217,12 @@ private
 
 NORET-AXIOMS
 NORET-END @ constant NORET-PRIM-END
+
+\ Every entry below NORET-PRIM-END names a prefix symbol (NORET-AXIOM), so a
+\ build's copy of the prefix holds no fact about an hb word.
+package CHECK
+NORET-P NORET-CAP-U 1 NORET-END STORE+
+;package
 
 \ The entry at OFF appended again with no source, when it is its symbol's
 \ newest and names SRC as the word it is: that symbol is then its own word.
@@ -23961,6 +24199,10 @@ variable ASIG-GRAPH-UNIT-OFF   0 ASIG-GRAPH-UNIT-OFF !
 CK-AOT-SEC-N 16 * 8 + constant CK-AOT-TBL-END
 
 variable CK-AOT-STATE                   \ 0 not validated, 1 usable
+\ A build has no signature pool: LINKER:WITH zeroes its two cells.
+package CHECK
+CK-AOT-STATE 0 CELL-ROW+
+;package
 variable CK-AOT-RETRY-ARMED             \ a retry loop is driving this pass
 variable CK-AOT-RETRY-DUE               \ ... and this pass is not the last one
 variable CK-AOT-I   variable CK-AOT-J   variable CK-AOT-K

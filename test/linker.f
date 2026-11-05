@@ -2,8 +2,8 @@
 \ closes it on every exit: the space's words and strings live there, and after
 \ the close hb's dictionary, code, data and header are as before. One process:
 \ the boundary under test is in-process.
-\ Every build defines words of its own names: the host checker keeps a symbol
-\ for each, so a second build of one name is E-DUPLICATE-DEFINITION, 78.
+\ Each build's checker starts from the primitive rows in the stores CHECK
+\ registers, and the close puts them back as hb had them.
 
 require src/lib/test.f
 require src/lib/string.f
@@ -297,6 +297,99 @@ variable FLAGS0
    HOST-CHECK
    s" j: the close clears an immediate a build set on hb's newest word" SAY ;
 
+variable RC-1                        \ a build line's throw code
+variable RC-2
+
+: M1 ( -- ) s" : LK-M1 ( -- n ) 1 ;" evaluate-closed ;
+: M2 ( -- ) s" : LK-M1 ( -- n n ) 1 2 ;" evaluate-closed ;
+: BODY-M1 ( -- ) [: M1 ;] catch RC-1 ! ;
+: BODY-M2 ( -- ) [: M2 ;] catch RC-2 ! ;
+
+: CASE-M ( -- )
+   TAKE-HOST
+   -1 RC-1 !  -1 RC-2 !
+   [: BODY-M1 ;] BUILD
+   [: BODY-M2 ;] BUILD
+   HOST-CHECK
+   RC-1 @ 0 T=
+   RC-2 @ 0 T=
+   s" m: two builds may define one name with different effects" SAY ;
+
+: N1 ( -- ) s" : STR= ( n -- n ) ;" evaluate-closed ;
+: N2 ( -- ) s" : LK-N1 ( -- n ) 5 STR= ;" evaluate-closed ;
+
+: BODY-N ( -- )
+   [: N1 ;] catch RC-1 !
+   [: N2 ;] catch RC-2 ! ;
+
+: CASE-N ( -- )
+   TAKE-HOST
+   -1 RC-1 !  -1 RC-2 !
+   [: BODY-N ;] BUILD
+   HOST-CHECK
+   RC-1 @ 0 T=
+   RC-2 @ 0 T=
+   s\" : LK-N2 ( -- bool ) s\" a\" s\" a\" STR= ;" TEST-EVAL:RC 0 T=
+   s" : LK-N3 ( -- n ) 5 STR= ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" n: a build may redefine an hb word; hb's effect stays" SAY ;
+
+: O1 ( -- )
+   s" package WL public : GLOBAL? ( -- n ) 1 ; ;package" evaluate-closed ;
+
+: O2 ( -- ) s" : LK-O1 ( -- n ) WL:GLOBAL? ;" evaluate-closed ;
+
+: BODY-O ( -- )
+   [: O1 ;] catch RC-1 !
+   [: O2 ;] catch RC-2 ! ;
+
+: CASE-O ( -- )
+   TAKE-HOST
+   -1 RC-1 !  -1 RC-2 !
+   [: BODY-O ;] BUILD
+   HOST-CHECK
+   RC-1 @ 0 T=
+   RC-2 @ 0 T=
+   s" : LK-O2 ( -- bool ) 0 WL:GLOBAL? ;" TEST-EVAL:RC 0 T=
+   s" : LK-O3 ( -- n ) WL:GLOBAL? ;" TEST-EVAL:RC CHECKER-REJECT-RC T=
+   s" o: a build may define a package hb has; hb's stays" SAY ;
+
+: CASE-P ( -- )
+   s" : LK-M1 ( -- n n ) 1 2 ;" TEST-EVAL:RC 0 T=
+   s" p: after the close hb's checker has none of the builds' names" SAY ;
+
+variable Q0-ORD                      \ LK-Q0's dictionary ordinal
+: LK-Q0 ( n -- n ) 1 + ;
+ndict@ 1- Q0-ORD !
+
+CAST: CONTRACT-ACTION ( n -- [ n -- ptr u8 n bool ] )
+
+\ hb's checker owner record's contract for the word at an ordinal, read as the
+\ verifier calls the owner (test/checker-decl-locs-lib.f SLOT).
+: OWNER-CONTRACT ( n -- ptr u8 n bool )
+   data-base NCOMP-DISPATCH:DECL-CELL + 0 ptr-field @
+   CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF CELL + CHECKER-OWNER-GUARD:VALIDATE
+   CHECKER-OWNER-ABI:RECORD-CONTRACT-OFF + CELL-VIEW @ CONTRACT-ACTION
+   execute ;
+
+\ Whether it links the word.
+: LINKED? ( n -- bool ) OWNER-CONTRACT nip nip ;
+
+: Q1 ( -- ) s" : LK-QA ( -- ) ;" evaluate-closed ;
+
+: BODY-Q ( -- )
+   [: Q1 ;] catch RC-1 !
+   [: REFUSE ;] catch RC-2 ! ;
+
+: CASE-Q ( -- )
+   TAKE-HOST
+   -1 RC-1 !  -1 RC-2 !
+   [: BODY-Q ;] BUILD
+   HOST-CHECK
+   RC-1 @ 0 T=
+   RC-2 @ CHECKER-REJECT-RC T=
+   Q0-ORD @ LINKED? TTRUE
+   s" q: a build's definitions leave hb's records linked" SAY ;
+
 public
 
 : RUN ( -- )
@@ -305,7 +398,9 @@ public
    \ The first build installs the typed loop for good; the host is taken after it.
    [: ;] BUILD
    TAKE-HOST
-   CASE-A CASE-B CASE-C CASE-D CASE-E CASE-F CASE-G CASE-H CASE-I CASE-J ;
+   Q0-ORD @ LINKED? TTRUE
+   CASE-A CASE-B CASE-C CASE-D CASE-E CASE-F CASE-G CASE-H CASE-I CASE-J
+   CASE-M CASE-N CASE-O CASE-P CASE-Q ;
 
 ;package
 
@@ -347,6 +442,36 @@ variable RAN-L
    s" l: WITHOUT-PACKAGE defines at top level and keeps the caller's package outside" SAY ;
 
 CASE-L
+
+variable R1-ORD                      \ LK-R1's dictionary ordinal
+\ The grid flag is the eighth cell RECORD-CONTRACT-BUILD writes.
+7 cells constant CONTRACT-GRID
+
+\ Whether hb's checker owner holds a current contract with a storage grid for
+\ the word at an ordinal.
+: RECORD-GRID? ( n -- bool )
+   OWNER-CONTRACT {: p:ptr u:n ok:bool :}
+   ok 0= if false exit then
+   p BYTE-VIEW CONTRACT-GRID + CELL-VIEW @ 0 <> ;
+
+: BODY-R ( -- ) s" create LK-RB 1 ," evaluate-closed ;
+
+: BUILD-R ( -- )
+   TAKE-HOST
+   [: BODY-R ;] BUILD
+   HOST-CHECK ;
+
+: CASE-R ( -- )
+   R1-ORD @ RECORD-GRID? TTRUE
+   s" r: a created body pending across a build keeps its grid" SAY ;
+
+\ Case r: LK-R1's body pends across a build that creates its own, as a build
+\ driver's top level does, and LK-R2 then closes it.
+create LK-R1 7 , 8 ,
+ndict@ 1- R1-ORD !
+BUILD-R
+create LK-R2
+CASE-R
 
 ;package
 

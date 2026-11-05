@@ -1,5 +1,6 @@
 \ linker.f - the cross-build's data space: WITH maps a space beside hb's DATA,
-\ points DP, the wordlists and the image base at it, runs the body there with no
+\ points DP, the wordlists and the image base at it, switches the checker's
+\ registered stores to the build's (CHECK:OPEN), runs the body there with no
 \ package of hb's open and closes it. The close undoes exactly the open steps
 \ that ran, in reverse.
 
@@ -22,7 +23,7 @@ package LINKER
 private
 
 \ The open's progress: each step names the last one that completed.
-ENUM step none mapped shadowed moved required open ;ENUM
+ENUM step none mapped shadowed moved checked required open ;ENUM
 TYPED-VARIABLE PROGRESS step
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
@@ -43,6 +44,8 @@ variable SAVED-COMMA-END
 variable SAVED-COMMA-BASE
 variable SAVED-LASTC
 variable SAVED-CURRENT
+variable SAVED-SIG-POOL
+variable SAVED-SIG-LEN
 variable SAVED-FLAGS                 \ hb's newest record's flags (NEWEST-FLAGS)
 
 $40 constant NORESERVE               \ macOS MAP_NORESERVE
@@ -116,10 +119,14 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
    COMMA-END-CELL HOST@ SAVED-COMMA-END !
    COMMA-BASE-CELL HOST@ SAVED-COMMA-BASE !
    LASTC-CELL HOST@ SAVED-LASTC !
+   AOT-CELLS:SIG-POOL-CELL HOST@ SAVED-SIG-POOL !
+   AOT-CELLS:SIG-LEN-CELL HOST@ SAVED-SIG-LEN !
    get-current SAVED-CURRENT ! ;
 
-\ DATA-FLOOR-CELL is an offset from hb's data-base (layout.f).
+\ DATA-FLOOR-CELL is an offset from hb's data-base (layout.f). The wordlists
+\ come before any host cell moves: `wordlist` throws OVERLAY-OPEN in a replay.
 : MOVE-IN ( -- )
+   wordlist wordlist negate {: global:n ns:n :}
    ndict@ FIRST-REC !
    SAVE
    BASE @ DATA-START + {: start:n :}
@@ -129,11 +136,16 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
    0 DPHW-CELL HOST!
    0 LASTC-CELL HOST!
    start DATA-N - DATA-FLOOR-CELL HOST!
-   wordlist {: global:n :}
+   0 AOT-CELLS:SIG-POOL-CELL HOST!    \ a build has no signature pool
+   0 AOT-CELLS:SIG-LEN-CELL HOST!
    global BOOT:GLOBAL-WL-CELL HOST!
-   wordlist negate BOOT:NAMESPACE-WL-CELL HOST!
+   ns BOOT:NAMESPACE-WL-CELL HOST!
    global set-current
    construct step moved PROGRESS ! ;
+
+: CHECK-IN ( -- )
+   CHECK:OPEN
+   construct step checked PROGRESS ! ;
 
 : REQUIRE-FRESH ( -- )
    REQUIRE-SNAPSHOT
@@ -146,7 +158,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 
 : OPEN ( -- )
    INSTALL-LOOP
-   MAP SHADOW MOVE-IN REQUIRE-FRESH IMAGE-IN ;
+   MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH IMAGE-IN ;
 
 \ ---- the close -----------------------------------------------------------------
 : RESTORE ( -- )
@@ -162,6 +174,8 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
    SAVED-COMMA-END @ COMMA-END-CELL HOST!
    SAVED-COMMA-BASE @ COMMA-BASE-CELL HOST!
    SAVED-LASTC @ LASTC-CELL HOST!
+   SAVED-SIG-POOL @ AOT-CELLS:SIG-POOL-CELL HOST!
+   SAVED-SIG-LEN @ AOT-CELLS:SIG-LEN-CELL HOST!
    SAVED-FLAGS @ NEWEST-FLAGS ! ;
 
 \ Records still below the count would name bodies in the unmapped space; their
@@ -185,8 +199,11 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
       moved OF
          RESTORE FORGET-SPACE construct step shadowed PROGRESS ! true
       ENDOF
+      checked OF
+         CHECK:CLOSE construct step moved PROGRESS ! true
+      ENDOF
       required OF
-         REQUIRE-RESTORE construct step moved PROGRESS ! true
+         REQUIRE-RESTORE construct step checked PROGRESS ! true
       ENDOF
       open OF
          0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
@@ -206,6 +223,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
       mapped OF false ENDOF
       shadowed OF false ENDOF
       moved OF false ENDOF
+      checked OF false ENDOF
       required OF false ENDOF
       open OF false ENDOF
    ;MATCH ;

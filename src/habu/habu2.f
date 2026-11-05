@@ -7500,12 +7500,8 @@ variable LCOUNT   variable LROWS
    bnf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
    bdone LBL, ;
 
-\ Publish the checker payload's position and length (src/habu/layout.f AOT-CELLS
-\ SIG-POOL-CELL, SIG-LEN-CELL; this is their one writer), read by
-\ src/core/checker.f CK-AOT-SIG-POOL / CK-AOT-SIG-LEN without relocation: the
-\ span is __text. Runs after the records are registered and before the boot-run
-\ list, since a boot-run entry word may name a seeded word. A build that
-\ captured nothing (SEEDED-RUNTIME?) leaves both cells zero: no pool.
+\ Publish the checker payload (layout.f AOT-CELLS) after the records register
+\ and before the boot-run list: a boot-run entry word may name a seeded word.
 package AOT-SIG
 public
 : PUBLISH, ( -- )
