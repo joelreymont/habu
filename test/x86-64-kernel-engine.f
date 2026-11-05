@@ -83,7 +83,7 @@ create FILL FILL-BYTES allot
 \ eccwbv and hktfoj are names of one length whose keys share a first slot under
 \ wid 0, so the insert and the probe for hktfoj walk the chain past eccwbv's
 \ record. After the build, a record the index is not told of stays absent until
-\ HIDX-ADD, and another until HIDX-REBUILD, and one under DICT-WL:RETIRED is
+\ HIDX-ADD, and another until HIDX-REBUILD, and one under WL:RETIRED is
 \ found by the scan the probe leaves that wid to.
 : BUILD-UPKEEP ( ptr u8 n -- ) {: path:ptr pathu:n :}
    false X64HARNESS:BOOT-OPEN,
@@ -101,8 +101,8 @@ create FILL FILL-BYTES allot
    s" epsilon" 0 SEARCH,  0 X64HARNESS:EXPECT-POP,
    X64KERNEL:HIDX-REBUILD,
    s" epsilon" 0 SEARCH,  9 X64HARNESS:EXPECT-POP,
-   s" omega" DICT-WL:RETIRED 0 X64HARNESS:RECORD,        \ record 9
-   s" omega" DICT-WL:RETIRED SEARCH,  10 X64HARNESS:EXPECT-POP,
+   s" omega" WL:RETIRED 0 X64HARNESS:RECORD,        \ record 9
+   s" omega" WL:RETIRED SEARCH,  10 X64HARNESS:EXPECT-POP,
    s" alpha" 0 SEARCH,  1 X64HARNESS:EXPECT-POP,
    0 X64HARNESS:EXPECT-DEPTH,
    X64HARNESS:EXPECT-BALANCED,

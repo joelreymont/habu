@@ -1,5 +1,5 @@
 \ pkg-wid-probe.f - which wordlist ids this engine's package records claim.
-\ A package record holds DICT-WL's package marker in its wordlist cell, its public
+\ A package record holds WL's package marker in its wordlist cell, its public
 \ id at [0] and its private id at [8] (0 for none). Two records claiming one id is
 \ a collision, as registering a captured wid into another engine's wid space makes.
 

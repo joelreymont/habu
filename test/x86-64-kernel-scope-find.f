@@ -26,7 +26,7 @@ using X64LAYOUT
    s" Both" 9 0 X64HARNESS:RECORD,                      \ 3
    s" BOTH" 10 0 X64HARNESS:RECORD,                     \ 4
    s" both" 0 0 X64HARNESS:RECORD,                      \ 5
-   s" Pkg" DICT-WL:NAMESPACE 0 X64HARNESS:RECORD,     \ 6: public wid 7
+   s" Pkg" WL:NAMESPACE 0 X64HARNESS:RECORD,     \ 6: public wid 7
    s" OnlyPub" 7 0 X64HARNESS:RECORD,                   \ 7
    s" OnlyPri" 8 0 X64HARNESS:RECORD,                   \ 8
    s" OnlyUsed" 9 0 X64HARNESS:RECORD,                  \ 9

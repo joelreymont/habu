@@ -43,7 +43,7 @@ using X64RT
 \ A namespace row's first cell is its public wid; the harness's RECORD, gives
 \ an ordinary code entry there, so replace only that field before indexing.
 : PACKAGE, ( ptr u8 n n -- ) {: name:ptr size:n wid:n :}
-   name size DICT-WL:NAMESPACE 0 X64HARNESS:RECORD,
+   name size WL:NAMESPACE 0 X64HARNESS:RECORD,
    wid 0 X64KERNEL:REC-CODE + X64HARNESS:REGION!, ;
 
 : ADMIT, ( ptr u8 n -- )

@@ -3115,7 +3115,7 @@ public
       scan LBL,
          10 2 CMP,  C-CS scanned BCOND,
          11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
-         13 11 40 LDR,  14 DICT-WL:RETIRED invert MOVN,  13 14 CMP,  C-EQ span BCOND,
+         13 11 40 LDR,  14 WL:RETIRED invert MOVN,  13 14 CMP,  C-EQ span BCOND,
          13 0 CMPI,  C-LT next BCOND,                      \ a package row, live or retired
       span LBL,
          13 11 0 LDR,  14 11 8 LDR,
@@ -3844,7 +3844,7 @@ public
    loop LBL,
       10 NDICT CMP,  C-CS done BCOND,
       11 DREC MOVZ,  11 10 11 MUL,  11 DBASE 11 ADD,
-      12 11 40 LDR,  13 DICT-WL:RETIRED invert MOVN,
+      12 11 40 LDR,  13 WL:RETIRED invert MOVN,
       12 13 CMP,  C-EQ span BCOND,
       12 0 CMPI,  C-LT next BCOND,                          \ a package row, live or retired
    span LBL,
@@ -4773,7 +4773,7 @@ private
 \     still append duplicates;
 \     XREF's indexed probe below scans the whole chain for its newest-record
 \     rule;
-\   - DICT-WL:RETIRED is not a wordlist: xref.f XREF:RETIRE stamps it onto rows
+\   - WL:RETIRED is not a wordlist: xref.f XREF:RETIRE stamps it onto rows
 \     still keyed under their published wid, and retiring one name twice puts
 \     two rows under the key, so that wid always takes the scan.
 \ The scan also answers for no table and for a chain with no empty slot (as
@@ -4796,7 +4796,7 @@ public
    12 0 MOVZ,                                              \ ... and so does the row: neither loop writes x12
    \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
    \ across it for the scan the two fallbacks reach.
-   4 DICT-WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,   \ not a wordlist key -> scan
+   4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ plin BCOND,   \ not a wordlist key -> scan
    14 DATA HIDXP-CELL LDR,  14 plin CBZ,                   \ no table -> scan
    0 1 15 4 16 7 C-HIDX-HASH
    6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
@@ -4853,7 +4853,7 @@ public
    LBL LBL LBL LBL LBL LBL
    {: nloop:label nnext:label ninl:label ncmp:label nmatch:label nlinear:label :}
    12 0 MOVZ,
-   4 DICT-WL:RETIRED LIT64,  2 4 CMP,  C-EQ nlinear BCOND,
+   4 WL:RETIRED LIT64,  2 4 CMP,  C-EQ nlinear BCOND,
    14 DATA HIDXP-CELL LDR,  14 nlinear CBZ,
    0 1 15 4 16 7 C-HIDX-HASH
    6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
@@ -5748,7 +5748,7 @@ variable LHIDXBUILD
 \ answers x14 = 0 and the caller lowers; the count cannot rise from 0 under it,
 \ since only main or a live task activates one. Else a task may still use the
 \ code and records above, so it stamps each record in [x9, NDICT) with
-\ DICT-WL:RETIRED, a live package row with RETIRED-NAMESPACE, clears a LASTC at
+\ WL:RETIRED, a live package row with RETIRED-NAMESPACE, clears a LASTC at
 \ or above x9 and answers x14 nonzero: the caller keeps CP, NDICT, DP and the
 \ relocation rows. Preserves every register but x14.
 : EMIT-DEF-OCC-RETIRE ( -- )
@@ -5758,8 +5758,8 @@ variable LHIDXBUILD
       SP SP 48 SUBI,  9 SP 0 STR,  10 SP 8 STR,  11 SP 16 STR,  12 SP 24 STR,
       13 SP 32 STR,  15 SP 40 STR,
       11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 DBASE 11 ADD,   \ the records through the alias
-      12 DICT-WL:RETIRED invert MOVN,
-      15 DICT-WL:RETIRED-NAMESPACE invert MOVN,
+      12 WL:RETIRED invert MOVN,
+      15 WL:RETIRED-NAMESPACE invert MOVN,
    loop LBL,
       9 NDICT CMP,  C-CS cut BCOND,
       10 DREC MOVZ,  10 9 10 MUL,  10 11 10 ADD,
@@ -5790,7 +5790,7 @@ variable LHIDXBUILD
       12 0 MOVZ,
       11 10 CMP,  C-EQ hit BCOND,
       9 miss CBZ,
-      15 11 40 LDR,  16 DICT-WL:RETIRED invert MOVN,
+      15 11 40 LDR,  16 WL:RETIRED invert MOVN,
       15 16 CMP,  C-EQ span BCOND,
       15 0 CMPI,  C-LT miss BCOND,                          \ a package row, live or retired
    span LBL,

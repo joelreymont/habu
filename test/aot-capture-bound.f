@@ -125,7 +125,7 @@ variable EXITED
 \ --- the child program --------------------------------------------------------
 \ AOT-SIG-MAX is AOT-REC-MAX (aot-decl.f), so a window of checked words is
 \ refused at the signature buffer first. A package record is exempt from the
-\ signature walk (ACAP-?SIG skips DICT-WL:NAMESPACE) and still costs a record,
+\ signature walk (ACAP-?SIG skips WL:NAMESPACE) and still costs a record,
 \ so the window is two packages of one word each: four records against a bound
 \ of three, two signatures against the same three.
 : ENTRY-PRELUDE+ ( -- )

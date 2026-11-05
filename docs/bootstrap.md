@@ -120,7 +120,7 @@ An older native host cannot build a tree whose disk sources need what the host
 does not supply: a primitive such as `scratch-cell-mark`, which
 `src/core/pointer-storage.f` calls, or the package marker `BOOT:NAMESPACE-WL`
 reads from `BOOT:NAMESPACE-WL-CELL` instead of the constant
-`DICT-WL:NAMESPACE`. A host whose boot leaves that cell 0 stops the build with
+`WL:NAMESPACE`. A host whose boot leaves that cell 0 stops the build with
 rc 70, `hb: no authenticated package context for this definition`. Build a
 host from a tree that adds only the primitive or the cell's boot write, and
 build this tree on it.

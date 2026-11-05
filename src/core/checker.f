@@ -12541,7 +12541,7 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 \ The engine's PKG-OUTSIDE-CELL when it opened: the replay's scopes move that
 \ cell as the engine's buffers do, and CLOSE puts it back.
 variable OUTSIDE0
--2 constant RETIRED                        \ = layout.f DICT-WL:RETIRED
+-2 constant RETIRED                        \ = layout.f WL:RETIRED
 $4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
 
 \ The undo log, at most one pair per record: a replayed `undefine`'s index and
@@ -31494,7 +31494,7 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
 8 constant CK-DLOG-PKG-OFF              \ = layout.f DECLARED-LOG:PKG-OFF
 16 constant CK-DLOG-SIG-A-OFF           \ = layout.f DECLARED-LOG:SIG-A-OFF
 24 constant CK-DLOG-SIG-U-OFF           \ = layout.f DECLARED-LOG:SIG-U-OFF
--2 constant CK-WL-RETIRED               \ = layout.f DICT-WL:RETIRED
+-2 constant CK-WL-RETIRED               \ = layout.f WL:RETIRED
 0 constant CK-NS-PUBLIC-SLOT            \ = xref.f XREF-START-SLOT
 1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
 

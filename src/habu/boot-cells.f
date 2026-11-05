@@ -9,8 +9,8 @@ $47E0 constant HEAP-START-CELL
 \ writes DATA + DATA-START and DATA + DATA-SIZE - PROF-CNT-BYTES (prof-abi.f).
 $7E0 constant DP-FLOOR-CELL
 $7E8 constant DP-CEILING-CELL
-\ The global wordlist and a package row's marker (DICT-WL) the lookups use, and
-\ their readers: every boot writes 0 and DICT-WL:NAMESPACE.
+\ The global wordlist and a package row's marker (WL) the lookups use, and
+\ their readers: every boot writes 0 and WL:NAMESPACE.
 $7F0 constant GLOBAL-WL-CELL
 $7F8 constant NAMESPACE-WL-CELL
 : GLOBAL-WL ( -- n ) data-base GLOBAL-WL-CELL + @ ;

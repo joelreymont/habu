@@ -50,14 +50,14 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-REXT? ( ptr n -- bool ) AOT-RFLAGS DNAME-EXT and 0= 0= ;
 : AOT-RNPTR ( ptr n -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else BYTE-VIEW 24 + then ;
-: AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or a DICT-WL marker
+: AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or a WL marker
 \ Every marker is negative; NAMESPACE is the only live one and RETIRED the only
 \ one whose row keeps code. The stage host runs this file with its own baked
 \ layout.f, so it names only those two (src/habu/xref.f XREF:PACKAGE-WL?).
 : AOT-RPKG? ( ptr n -- bool )                                   \ package row, live or retired
-   AOT-RWID {: w:n :}  w 0 <  w DICT-WL:RETIRED <>  and ;
+   AOT-RWID {: w:n :}  w 0 <  w WL:RETIRED <>  and ;
 : AOT-RRETIRED? ( ptr n -- bool )                               \ retired row, word or package
-   AOT-RWID {: w:n :}  w 0 <  w DICT-WL:NAMESPACE <>  and ;
+   AOT-RWID {: w:n :}  w 0 <  w WL:NAMESPACE <>  and ;
 
 \ Direct calls: every statically known native call is one BL (habu2.f
 \ LCEMITBL). A site's original address is AOT-CODE-B0 plus its blob offset.
@@ -450,7 +450,7 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
 \ The package row whose public ([0]) or private ([8]) wordlist is w, or -1.
 : ACAP-PKG-ROW ( n bool -- n ) {: w:n pub:bool :}
    ndict@ 0 ?do
-      i AOT-REC AOT-RWID DICT-WL:NAMESPACE = if
+      i AOT-REC AOT-RWID WL:NAMESPACE = if
          pub if i AOT-REC AOT-RXT else i AOT-REC AOT-RLEN then
          w = if i unloop exit then
       then
@@ -466,7 +466,7 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
 : ACAP-PKG-PUB ( n -- n ) {: w:n :}
    w ACAP-TGT>REC {: p:n :}
    p 0 < if -1 exit then
-   p AOT-REC AOT-RWID DICT-WL:NAMESPACE = if p exit then
+   p AOT-REC AOT-RWID WL:NAMESPACE = if p exit then
    -1 ;
 
 : ACAP-QUAL$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n wa:ptr wu:n :}
@@ -494,7 +494,7 @@ create ACAP-QUAL-BUF ACAP-QUAL-CAP allot
       wid ACAP-PKG-PUB {: pkg:n :}
       pkg 0 < pkg ACAP-PRE-R @ >= or if NULL$ false exit then
       pkg AOT-REC {: owner:ptr :}
-      owner AOT-RNPTR owner AOT-RNLEN DICT-WL:NAMESPACE XREF-FIND-WL-INDEX
+      owner AOT-RNPTR owner AOT-RNLEN WL:NAMESPACE XREF-FIND-WL-INDEX
       dup 0 < swap ACAP-PRE-R @ >= or if NULL$ false exit then
       owner AOT-RNPTR owner AOT-RNLEN name size ACAP-QUAL$
    then {: a:ptr u:n :}
@@ -587,7 +587,7 @@ variable ACAP-P
 \ chain: 6892 records = 94 package records + 6798 checked words, all carried;
 \ the collection's first version left 17 behind.
 \ Package and retired records are exempt by their wordlist cell, which holds a
-\ negative DICT-WL marker, never by name. A word with no checker effect (a
+\ negative WL marker, never by name. A word with no checker effect (a
 \ `0 set-check` span) is uncallable from checked code here and in the seed, so
 \ it is not a finding.
 
@@ -1420,7 +1420,7 @@ variable ACAP-SIG-EXEMPT                           \ package, retired, and unrec
    a u XREF-QUAL-INDEX {: q:n :}
    q -2 = if 0 exit then
    q 0 < if a u 0 ACAP-WL-XT exit then
-   a q DICT-WL:NAMESPACE AOT-WL-RECORD {: ns:ptr :}
+   a q WL:NAMESPACE AOT-WL-RECORD {: ns:ptr :}
    ns XREF-FOUND? 0= if 0 exit then
    a q 1+ +  u q - 1-  ns XREF-PKG-PUBLIC  ACAP-WL-XT ;
 

@@ -449,7 +449,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 
 \ A FAILED TEXT'S PACKAGES RETIRE AS PACKAGE ROWS. With a task live, a text
 \ that makes two packages and then fails leaves their rows marked
-\ DICT-WL:RETIRED-NAMESPACE with their public and private wids kept in [0] and
+\ WL:RETIRED-NAMESPACE with their public and private wids kept in [0] and
 \ [8]. Here an outer text runs that one, then makes a third package and fails,
 \ so its rollback meets the two rows already retired, which keep their marker.
 \ An image captured over the three must skip them as package rows. A capture

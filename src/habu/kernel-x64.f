@@ -540,7 +540,7 @@ variable HEAD-ROW-CELL
 \ WLFIND:LENTRY's twin ( rdi = name, rsi = length, rdx = wid ): rax = the
 \ name's record in that one wordlist, or 0; the record's code cell is its first.
 \ It keeps rdi, rsi and rdx and clobbers rcx and r8-r11. With a table it probes
-\ the key's chain; with none, for DICT-WL:RETIRED (stamped onto rows already
+\ the key's chain; with none, for WL:RETIRED (stamped onto rows already
 \ indexed under another wid, so no chain holds them), and after a chain walked
 \ through every slot, it scans. The scan's answer is the LAST matching record,
 \ which is the probe's one record wherever a wid holds one row per name.
@@ -549,7 +549,7 @@ variable HEAD-ROW-CELL
    X64CODE:LBL X64CODE:LBL {: row:label skip:label :}
    X64CODE:LBL {: done:label :}
    FIND-LBL X64CODE:LBL,
-   RDX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E FIND-SCAN-LBL JCC,
+   RDX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E FIND-SCAN-LBL JCC,
    RAX DATA-REG HIDXP-CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RAX RAX ASM-SINK ENC-TEST-RR  C-E FIND-SCAN-LBL JCC,
    RDI RSI R8 R9 R10 R11 HASH,
@@ -638,14 +638,14 @@ variable HEAD-ROW-CELL
    probe X64CODE:LBL,
    RDI RSP 16 MEM-OFF ASM-SINK ENC-LEA
    RSI RCX ASM-SINK ENC-MOV-RR
-   RDX DICT-WL:NAMESPACE IMM64,
+   RDX WL:NAMESPACE IMM64,
    FIND-LBL CALL,
    RDI RSP 0 MEM-OFF ASM-SINK ENC-MOV-RM
    RSI RSP CELL MEM-OFF ASM-SINK ENC-MOV-RM
    RSP frame >IMM32 ASM-SINK ENC-ADD-RI32
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
    bare X64CODE:LBL,
-   RDX DICT-WL:NAMESPACE IMM64,
+   RDX WL:NAMESPACE IMM64,
    FIND-LBL JMP,                                       \ its ret is this one's
    done X64CODE:LBL,
    ASM-SINK ENC-RET ;
@@ -3849,7 +3849,7 @@ private
       RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE done JCC,
       RCX RECORD-AT,
       R10 R8 REC-WID MEM-OFF ASM-SINK ENC-MOV-RM
-      R11 DICT-WL:NAMESPACE IMM64,
+      R11 WL:NAMESPACE IMM64,
       R10 R11 ASM-SINK ENC-CMP-RR  C-E next JCC,
       R9 R8 REC-CODE MEM-OFF ASM-SINK ENC-MOV-RM
       R9 CP-REG ASM-SINK ENC-CMP-RR  C-AE next JCC,
@@ -4172,7 +4172,7 @@ private
    {: nopkg:label pkg:label keyword:label nl:label :}
    POLICY-OPEN,
    RSI POP,  RDI POP,                                \ length, name
-   RDX DICT-WL:NAMESPACE IMM64,
+   RDX WL:NAMESPACE IMM64,
    FIND-LBL CALL,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE found JCC,
       R9 RDI ASM-SINK ENC-MOV-RR  R10 RSI ASM-SINK ENC-MOV-RR
@@ -5028,8 +5028,8 @@ $3A constant NAME-COLON                \ a qualified name's separator
 
 \ Wid rdx is a namespace row's or a retired record's, not a wordlist.
 : REAL-WID, ( -- )
-   RDX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
-   RDX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC, ;
+   RDX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RDX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC, ;
 
 \ Store the frame's name in record NDICT, whose address DW-REC takes: [16]
 \ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline,
@@ -5113,7 +5113,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX ASM-SINK ENC-INC
    scan JMP,
    clean X64CODE:LBL,
-   RAX DICT-WL:NAMESPACE >IMM32 ASM-SINK ENC-MOV-RI32
+   RAX WL:NAMESPACE >IMM32 ASM-SINK ENC-MOV-RI32
    RAX RSP DW-WID MOV-STORE,
    FRESH,
    NAME-STORE,
@@ -5143,7 +5143,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   RAX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
    RAX R8 REC-CODE CELL + MOV-LOAD,
    RAX RAX ASM-SINK ENC-TEST-RR  C-NE SEAL-TRAP-LBL JCC,
    R8 ASM-SINK ENC-PUSH                               \ the record, past the span call
@@ -5173,8 +5173,8 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
-   RAX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RAX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
+   RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-E SEAL-TRAP-LBL JCC,
    RAX DNAME-INT IMM64,
    RAX R8 REC-FLAGS MEM-OFF ASM-SINK ENC-TEST-MR  C-NE SEAL-TRAP-LBL JCC,
    DICT-ROOM,
@@ -5218,7 +5218,7 @@ $3A constant NAME-COLON                \ a qualified name's separator
    RCX NDICT-REG ASM-SINK ENC-CMP-RR  C-AE SEAL-TRAP-LBL JCC,
    RCX RECORD-AT,
    RAX R8 REC-WID MOV-LOAD,
-   RAX DICT-WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
+   RAX WL:NAMESPACE >IMM8 ASM-SINK ENC-CMP-RI8  C-NE SEAL-TRAP-LBL JCC,
    R9 R8 REC-CODE CELL + MOV-LOAD,                    \ r9 = the private wid
    R9 R9 ASM-SINK ENC-TEST-RR  C-E SEAL-TRAP-LBL JCC,
    R8 RSI RAX NAME-LEN,  R8 RDI RAX NAME-AT,
@@ -5739,7 +5739,7 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
    R8 LASTC-CELL CELL@,
    R8 R8 ASM-SINK ENC-TEST-RR  C-E none JCC,
    RAX R8 REC-WID MOV-LOAD,
-   RAX DICT-WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-NE have JCC,
+   RAX WL:RETIRED >IMM8 ASM-SINK ENC-CMP-RI8  C-NE have JCC,
    none X64CODE:LBL,
    msg DOES-NONE$ nip STDERR-WRITE,
    RAX 70 IMM32,  THROW,

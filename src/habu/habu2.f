@@ -3448,14 +3448,14 @@ private
 
 \ A LASTC of zero names no record: none was created since boot, or the one it
 \ named was retired by a motion that lowered NDICT (habu1.f LASTC-TRIM,). A
-\ LASTC whose wordlist cell is DICT-WL:RETIRED names a record `undefine`
+\ LASTC whose wordlist cell is WL:RETIRED names a record `undefine`
 \ retired in place (xref.f XREF:RETIRE), which leaves NDICT alone. Either is
 \ refused before anything is patched, recoverable inside evaluate like the
 \ other definition errors.
 : EMIT-NONE ( label -- ) {: have:label :}
    LBL LBL {: none:label msg:label :}
    11 DATA LASTC-CELL LDR,  11 none CBZ,
-   12 11 40 LDR,  13 DICT-WL:RETIRED invert MOVN,  12 13 CMP,  C-NE have BCOND,
+   12 11 40 LDR,  13 WL:RETIRED invert MOVN,  12 13 CMP,  C-NE have BCOND,
    none LBL,
    0 2 MOVZ,  1 msg ADR,  2 NONE$ nip MOVZ,  NR-WRITE SYS,
    0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
@@ -3955,7 +3955,7 @@ package DEFWRITE
 : FRESH, ( label -- ) {: bad:label :}
    WLFIND:LENTRY LABEL@ BL,  12 bad CBNZ, ;
 
-\ Wid x2 is one of layout.f's DICT-WL markers, not a wordlist: every wordlist id
+\ Wid x2 is one of layout.f's WL markers, not a wordlist: every wordlist id
 \ is at least 0.
 : REAL-WID, ( label -- ) {: bad:label :}
    2 0 CMPI,  C-LT bad BCOND, ;
@@ -4087,8 +4087,8 @@ variable LREPLAYTRAP
    0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
    14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
-   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
-   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
    14 9 8 LDR,  14 bad CBNZ,
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
    14 DATA WIDN-CELL LDR,  14 11 8 STR,
@@ -4152,8 +4152,8 @@ variable LREPLAYTRAP
    0 NDICT CMP,  C-CS bad BCOND,
    9 0 REC-AT,
    14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
-   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
-   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
    12 9 8 LDR,  12 bad CBZ,
    2 9 16 LDR,  2 2 DNAME-FLAG-BITS LSLI,  2 2 DNAME-FLAG-BITS LSRI,   \ x2 = the name's length
    4 9 24 ADDI,
@@ -4244,7 +4244,7 @@ variable LREPLAYTRAP
 \ and later gives it back the wid it logged, in reverse order. The wid cell is
 \ half the record's hash key, and a compaction between the two re-keys the
 \ retired record on RETIRED's chain, so after each store the record is indexed
-\ under the wid it now holds (HIDX-EMIT:LREKEY, src/habu/layout.f DICT-WL).
+\ under the wid it now holds (HIDX-EMIT:LREKEY, src/habu/layout.f WL).
 \ Between a restore and replay-close one wordlist can hold two live records of
 \ one name, the restored record and a replay record, and the hash probe and
 \ the wordlist scan may answer with different ones. The owner ends every such
@@ -4260,12 +4260,12 @@ variable LREPLAYTRAP
    3 NDICT CMP,  C-CS bad BCOND,
    9 3 REC-AT,
    14 9 40 LDR,  14 0 CMPI,  C-GE wid BCOND,             \ a live package row
-   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ wid BCOND,
-   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ wid BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-NE bad BCOND,
    wid LBL,
    13 0 CMPI,  C-GE store BCOND,                         \ a live package row's marker
-   15 DICT-WL:RETIRED invert MOVN,  13 15 CMP,  C-EQ store BCOND,
-   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 15 CMP,  C-NE bad BCOND,
+   15 WL:RETIRED invert MOVN,  13 15 CMP,  C-EQ store BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  13 15 CMP,  C-NE bad BCOND,
    store LBL,
    14 DATA REGION-ALIAS:DELTA-CELL LDR,  14 9 14 ADD,  13 14 40 STR,   \ through the alias
    HIDX-EMIT:LREKEY LABEL@ BL,
@@ -4287,8 +4287,8 @@ variable LREPLAYTRAP
    3 NDICT CMP,  C-CS bad BCOND,
    9 3 REC-AT,
    14 9 40 LDR,  14 0 CMPI,  C-GE bad BCOND,             \ a live package row
-   15 DICT-WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
-   15 DICT-WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
+   15 WL:RETIRED-NAMESPACE invert MOVN,  14 15 CMP,  C-EQ bad BCOND,
    14 9 8 LDR,
    13 give CBNZ,
       15 8 REPLAY-SCOPE:WIDN BAND-OFF LDR,  14 15 CMP,  C-CC bad BCOND,
@@ -7622,7 +7622,7 @@ public
    \ words before EM-STARTUP-RUNTIME-STATE writes the cells again.
    7 DATA BOOT:DP-FLOOR-CELL STR,
    5 0 MOVZ,  5 DATA BOOT:GLOBAL-WL-CELL STR,  5 DATA BOOT:IMAGE-BASE-CELL STR,
-   5 DICT-WL:NAMESPACE LIT64,  5 DATA BOOT:NAMESPACE-WL-CELL STR,
+   5 WL:NAMESPACE LIT64,  5 DATA BOOT:NAMESPACE-WL-CELL STR,
    5 DATA-SIZE PROF-CNT-BYTES - LIT64,  5 DATA 5 ADD,  5 DATA BOOT:DP-CEILING-CELL STR, ;
 
 \ Inline bounded byte operations. x0 is destination, x1 source, x2 length;
@@ -7652,8 +7652,8 @@ public
    LSNAPRBD LABEL@ LBL,
    9 8 0 ADDI,  10 0 MOVZ,
    sdl2 LBL,  10 15 CMP,  C-GE sdn2 BCOND,
-      13 9 40 LDR,  14 DICT-WL:NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND, \ package [0]/[8] are raw WID roles, never text pointers
-      14 DICT-WL:RETIRED-NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND,
+      13 9 40 LDR,  14 WL:NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND, \ package [0]/[8] are raw WID roles, never text pointers
+      14 WL:RETIRED-NAMESPACE invert MOVN,  13 14 CMP,  C-EQ sds2 BCOND,
       13 9 0 LDR,
       13 21 CMP,  C-LT sds2 BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
@@ -8931,7 +8931,7 @@ ardone LBL,
    \ installs the saving process's cells.
    9 DATA-START LIT64,  9 DATA 9 ADD,  9 DATA BOOT:DP-FLOOR-CELL STR,
    9 0 MOVZ,  9 DATA BOOT:GLOBAL-WL-CELL STR,  9 DATA BOOT:IMAGE-BASE-CELL STR,
-   9 DICT-WL:NAMESPACE LIT64,  9 DATA BOOT:NAMESPACE-WL-CELL STR,
+   9 WL:NAMESPACE LIT64,  9 DATA BOOT:NAMESPACE-WL-CELL STR,
    9 DATA-SIZE PROF-CNT-BYTES - LIT64,  9 DATA 9 ADD,  9 DATA BOOT:DP-CEILING-CELL STR,
    10 LSRC LABEL@ ADR,
    10 DATA CODE-END-CELL STR,                     \ the crash handler's engine-code bound (crash.f C-CRASH-DATA-RECOVER)
@@ -12700,7 +12700,7 @@ public
 \   - in scope: an index at or above the NDICT the seal stored, in whichever
 \     wordlist; or its wordlist [40] is below PROT-WID-MAX with its bit set in
 \     the admitted bitmap. The bound is tested first, as LPROTWIDQ does, because
-\     PROT-BITS-AT, addresses the band from the wid and a wid reaches WID:MAX.
+\     PROT-BITS-AT, addresses the band from the wid and a wid reaches WL:MAX.
 \   - callable by checked source: no DNAME-INT, not in OWNER-API-PRI-WID, start
 \     cell [0] nonzero (src/compiler/native/dict.f VISIBLE-RECORD? with
 \     `trusted:` off, which sealed source cannot arm).

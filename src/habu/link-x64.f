@@ -373,7 +373,7 @@ private
 : PKG-REC! ( n ptr u8 -- ) {: k:n rec:ptr :}
    k 0 CREC@ IMAGE-WID rec LE:U64!
    k 4 CREC@ IMAGE-WID rec 8 + LE:U64!
-   DICT-WL:NAMESPACE rec X64KERNEL:REC-WID + LE:U64! ;
+   WL:NAMESPACE rec X64KERNEL:REC-WID + LE:U64! ;
 
 : WINDOW-RECS ( -- )
    AOT-REC-N @ 0 ?do
@@ -873,7 +873,7 @@ public
    name len BOOT-SPLIT {: sep:n :}
    sep 0 < if name len 0 BOOT-FIND else
       sep 0= sep len 1- = or if name len BOOT-REFUSE then
-      name sep DICT-WL:NAMESPACE BOOT-FIND {: ns:n :}
+      name sep WL:NAMESPACE BOOT-FIND {: ns:n :}
       ns 0 < if name len BOOT-REFUSE then
       name sep 1+ + len sep - 1- ns 0 REC@ BOOT-FIND
    then

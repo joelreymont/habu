@@ -314,7 +314,7 @@ variable WINDOW-ENDED
 \ constant would be inlined and leave no call site.
 : GATE-SEAL-CHECK-LINES ( -- )
    GATE-ENV$ nip 0= if exit then
-   s" : AWB-PKG-PUB ( ptr u8 n -- n ) DICT-WL:NAMESPACE search-wl ;" DRV-LINE
+   s" : AWB-PKG-PUB ( ptr u8 n -- n ) WL:NAMESPACE search-wl ;" DRV-LINE
    s" : AWB-PROT ( n -- n ) {: w:n :}" DRV-LINE
    s"    w 6 rshift 8 * data-base PROT-BITS-OFF + + @  w 63 and rshift  1 and ;" DRV-LINE
    s" : AWB-?UNSEALED ( ptr u8 n -- ) {: a:ptr u:n :}" DRV-LINE

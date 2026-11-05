@@ -532,7 +532,7 @@ variable BLOB-CV
    EMIT-SIGNAL-PUBLISH                           \ this image's stub address and fd word
    11 DATA-START LIT64,  11 DATA 11 ADD,  11 DATA BOOT:DP-FLOOR-CELL STR,   \ DP-CHECK's bounds
    11 0 MOVZ,  11 DATA BOOT:GLOBAL-WL-CELL STR,  11 DATA BOOT:IMAGE-BASE-CELL STR,   \ the lookups' wids, no image
-   11 DICT-WL:NAMESPACE LIT64,  11 DATA BOOT:NAMESPACE-WL-CELL STR,
+   11 WL:NAMESPACE LIT64,  11 DATA BOOT:NAMESPACE-WL-CELL STR,
    11 DATA-SIZE PROF-CNT-BYTES - LIT64,  11 DATA 11 ADD,  11 DATA BOOT:DP-CEILING-CELL STR,
    11 12 LUNCREP LABEL@ TEXT-ADR,  11 DATA UNCGH-CELL STR,   \ the uncaught-throw reporter (EMIT-UNCAUGHT)
    MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
