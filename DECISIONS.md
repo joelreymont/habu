@@ -820,11 +820,22 @@ learned live in the docs for their subject.
   in src/habu as suffixed files, he chose "src/arch/arm64/boot.f, A64BOOT
   (Recommended)": "One directory per instruction set, as Wasm's linker
   already is."
-- 2026-11-05, the arm64 page-address encoder: shown that the arm64 linker
-  writes each code address as adrp+add so it holds wherever the OS loads the
-  program, and that A64ASM encodes adr but not adrp, Joel chose
-  "A64ASM:ENC-ADRP (Recommended)": "Public beside ENC-ADR; the assembler owns
-  every instruction encoding." `A64ASM:ENC-ADRP ( rd pages -- insn )`.
+- 2026-11-05, the arm64 assembler: shown that the arm64 linker writes each
+  code address as adrp+add so it holds wherever the OS loads the program, and
+  that A64ASM encodes adr but not adrp, Joel chose "A64ASM:ENC-ADRP
+  (Recommended)": "Public beside ENC-ADR; the assembler owns every instruction
+  encoding." `A64ASM:ENC-ADRP ( rd pages -- insn )`. Shown the same day that
+  the linker's call patcher wraps A64ASM's bl/b encoders in its own alignment
+  and reach checks, as T0, tier 1 and the code buffer each do, because those
+  encoders mask a distance that does not fit, and asked whether one public
+  branch word should be shared, Joel wrote "there's no sharing here. we have 1
+  assembler and only one and everyone uses it!" and "there's no fucking way a
+  linker should have its own assembler, prove me wrong!" Shown the fix, he
+  chose "Approve, byte distances (Recommended)": ENC-B, ENC-BL, ENC-BCOND,
+  ENC-CBZ and ENC-CBNZ take a byte distance, as ENC-ADR does; they, ENC-ADR
+  and ENC-ADRP refuse a misaligned or unreachable value with E-A64EMIT-REACH;
+  each field's reach is written once, in asm.f; T0, tier 1, the code buffer
+  and the linker call them and keep no reach check of their own.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
