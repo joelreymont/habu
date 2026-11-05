@@ -562,13 +562,25 @@ private
 : ATOMIC-SEED ( -- n )
    mono-ns getpid xor ;
 
-\ The calls ATOMIC-WRITE-FILE makes relative to its destination's directory:
-\ openat with a mode for the exclusive create, fchmod for the mode copy and
-\ renameat to publish. Each answers -1 with the cause in FFI:ERRNO.
+\ openat, fchmod, renameat, fsync and fcntl for the atomic write; each answers
+\ -1 with the cause in FFI:ERRNO.
 PROCESS-SYMBOLS
 FUNCTION: OPENAT-CALL openat ( n ptr u8 n n -- i32 ) 3 VARIADIC ;FUNCTION
 FUNCTION: FCHMOD-CALL fchmod ( n n -- i32 ) ;FUNCTION
 FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
+FUNCTION: FSYNC-CALL fsync ( n -- i32 ) ;FUNCTION
+FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
+
+\ Darwin's fcntl that flushes the drive's own cache, which its fsync leaves to
+\ a power loss: xnu bsd/sys/fcntl.h.
+51 constant F-FULLFSYNC
+
+\ Host errnos: macOS sys/errno.h, Linux asm-generic/errno.h.
+9 constant EBADF
+22 constant EINVAL
+25 constant ENOTTY
+: ENOTSUP ( -- n )
+   HB-TARGET-MACOS? if 45 else 95 then ;
 
 \ Reporting is best effort after a primary failure: a closed stderr must not
 \ replace the fill or rename error. The sibling is named as a directory prefix
@@ -612,14 +624,44 @@ FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
    repeat drop
    E-FS-IO ERRNO-FAIL ;
 
+\ Write fd's data to the drive; on macOS a filesystem without F_FULLFSYNC gets
+\ fsync.
+: ATOMIC-SYNC ( n -- n ) {: fd :}
+   HB-TARGET-MACOS? if
+      fd F-FULLFSYNC 0 FCNTL-CALL 0= if fd exit then
+      FFI:ERRNO dup EINVAL = over ENOTTY = or swap ENOTSUP = or
+      0= if E-FS-IO ERRNO-FAIL then
+   then
+   fd FSYNC-CALL 0<> if E-FS-IO ERRNO-FAIL then
+   fd ;
+
 \ Stack-preserving under `catch`. The write records its own cause, a refused
-\ mode copy fchmod's.
+\ mode copy fchmod's and a refused sync its own.
 : ATOMIC-FILL ( n ptr u8 n n -- n ptr u8 n n ) {: fd src:ptr srcu mode :}
    fd src srcu ATOMIC-WRITE-FD
    mode 0 >= if
       fd mode FCHMOD-CALL 0<> if E-FS-IO ERRNO-FAIL then
    then
+   fd ATOMIC-SYNC drop
    fd src srcu mode ;
+
+\ Sync dir's entries. Linux refuses fsync on a search-only descriptor (EBADF),
+\ so dir is reopened to read; one the caller may not list stays unsynced.
+: ATOMIC-SYNC-DIR ( n -- n ) {: dir :}
+   dir [: ATOMIC-SYNC ;] catch {: first:n :}
+   drop
+   first 0= if dir exit then
+   ERRNO EBADF <> if first throw then
+   dir S\" .\z" drop OPEN-DIR-FLAGS OPEN-AT-CALL {: rd:n :}
+   rd 0 < if
+      FFI:ERRNO EACCES = if dir exit then
+      E-FS-IO ERRNO-FAIL
+   then
+   rd [: ATOMIC-SYNC ;] catch {: code:n :}
+   drop
+   rd CLOSE-FD drop
+   code 0<> if code throw then
+   dir ;
 
 \ Closed exactly once, before publish: a failed close may already have freed
 \ the descriptor, so retrying it could close an unrelated recycled fd.
@@ -647,10 +689,9 @@ FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
    then
    code cause CAUSE-FAIL ;
 
-\ The write inside the destination's directory dir, whose name for the
-\ destination starts at off. Stack-preserving under `catch`, so the caller
-\ closes dir however it ends. The sibling's descriptor is closed once whatever
-\ the write met; after a failed write its close can only fail too.
+\ Stack-preserving under `catch`, so the caller closes dir however it ends. The
+\ sibling's descriptor is closed once whatever the write met; a throw after the
+\ rename leaves the new file in place.
 : ATOMIC-IN-DIR ( n ptr u8 n ptr u8 n n n -- n ptr u8 n ptr u8 n n n )
    {: dir dst:ptr off src:ptr srcu mode seed :}
    mode 0 >= if MODE-PRIVATE-FILE else MODE-0644 then {: create-mode :}
@@ -667,6 +708,7 @@ FUNCTION: RENAMEAT-CALL renameat ( n ptr u8 n ptr u8 -- i32 ) ;FUNCTION
    dir dst off + [: ATOMIC-PUBLISH ;] catch {: rename-code:n :}
    2drop
    rename-code 0<> if dir dst off nameu rename-code ATOMIC-ABANDON then
+   dir ATOMIC-SYNC-DIR drop
    dir dst off src srcu mode seed ;
 
 \ The sibling and the destination are named relative to the destination's
@@ -705,6 +747,9 @@ public
    repeat drop
    E-FS-IO ERRNO-FAIL ;
 
+\ Replace path's file with src's bytes; a reader or crash sees the old or whole
+\ new file. On return it survives power loss (F_FULLFSYNC on macOS, else fsync)
+\ unless the directory is unlistable on Linux; E-FS-IO may follow the rename.
 : ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu ATOMIC-SEED false ATOMIC-WRITE-SEED ;
 
