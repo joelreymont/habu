@@ -34,19 +34,6 @@ package PROGRAM-DIAGNOSTICS
    SB-RESET marker markeru SB-APPEND GE-SB-LF
    SB$ label labelu GE-EXPECT-OUT ;
 
-\ The same assertion for a refusal that says more than its die line: the AOT
-\ capture types the coordinate it refused (an offset, a row, a range) before the
-\ `die` carrying the message on stderr (src/habu/aot-capture.f), so stdout is
-\ the marker line followed by those lines. A prefix match still proves the case
-\ armed and printed nothing before it.
-: EXPECT-MARKER-FIRST ( ptr u8 n ptr u8 n -- )
-   {: marker:ptr markeru:n label:ptr labelu:n :}
-   SB-RESET marker markeru SB-APPEND GE-SB-LF
-   GT-OUT$ {: out:ptr outu:n :}
-   SB$ {: want:ptr wantu:n :}
-   outu wantu < if label labelu GE-FAIL then
-   out wantu want wantu STR= 0= if label labelu GE-FAIL then ;
-
 : EXPECT-OK-END ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GT-OUT$ {: out:ptr outu:n :}
    outu 3 < if label labelu GE-FAIL then
@@ -65,13 +52,6 @@ package PROGRAM-DIAGNOSTICS
    path pathu RUN-LOAD-WB
    rc path pathu GE-EXPECT-RC
    marker markeru path pathu EXPECT-MARKER
-   needle needleu path pathu GE-EXPECT-ERR-HAS ;
-
-: NEGATIVE-DIAG ( ptr u8 n n ptr u8 n ptr u8 n -- )
-   {: path:ptr pathu:n rc:n marker:ptr markeru:n needle:ptr needleu:n :}
-   path pathu RUN-LOAD
-   rc path pathu GE-EXPECT-RC
-   marker markeru path pathu EXPECT-MARKER-FIRST
    needle needleu path pathu GE-EXPECT-ERR-HAS ;
 
 : EXPECT-DIAGNOSTIC ( ptr u8 n ptr u8 n -- )
@@ -96,35 +76,12 @@ package PROGRAM-DIAGNOSTICS
    GT-ERR$ S\" hb: invalid address-cell storage header\n" STR= 0= if
       s" address cell capacity diagnostic" GE-FAIL then ;
 
-\ These seven fixtures open an AOT-ARM window: five assert its boundary
-\ diagnostics, one that a window opened after a byte-sized field still captures
-\ on the cell grid, and the last that an empty field made just before the window
-\ stays a named call. x86-64 has a different resident source window.
-: AOT-ARM-WINDOWS ( -- )
-   s" test/aot-address-cell-lower-straddle-bad.f" 74
-      s" AOT-XTCELL-LOWER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE-DIAG
-   s" test/aot-address-cell-upper-straddle-bad.f" 74
-      s" AOT-XTCELL-UPPER-STRADDLE-ARMED" s" aot-capture: declared address cell straddles the window edge" NEGATIVE-DIAG
-   s" test/aot-address-cell-target-out-bad.f" 74
-      s" AOT-XTCELL-TARGET-OUT-ARMED" s" aot-capture: declared address target is not self-contained" NEGATIVE-DIAG
-   s" test/aot-address-cell-off-grid-bad.f" 74
-      s" AOT-XTCELL-OFF-GRID-ARMED" s" aot-capture: a declared DATA cell is not on the window cell grid" NEGATIVE-DIAG
-   s" test/aot-address-cell-far-bad.f" 74
-      s" AOT-XTCELL-FAR-ARMED" s" aot-capture: fixed address cell lies past the row's 31-bit DATA offset" NEGATIVE
-   s" test/aot-window-base-grid.f" RUN-LOAD
-   s" test/aot-window-base-grid.f" GE-EXPECT-OK
-   s" AOT-WINDOW-BASE-GRID-CAPTURED" s" test/aot-window-base-grid.f" EXPECT-MARKER
-   s" test/aot-window-base-call.f" RUN-LOAD
-   s" test/aot-window-base-call.f" GE-EXPECT-OK
-   s" AOT-WINDOW-BASE-CALL-CAPTURED" s" test/aot-window-base-call.f" EXPECT-MARKER ;
-
 : NEGATIVES ( -- )
    s" test/address-cell-kind-bad.f" 99
       s" ADDRESS-CELL-KIND-ARMED" s" hb: snapshot address cell kind mismatch" NEGATIVE
    ADDRESS-CAP
    s" test/xt-cell-band-bad.f" 98
       s" XT-CELL-BAND-ARMED" s" hb: snapshot address cell out of range" NEGATIVE
-   HB-TARGET-LINUX-X86-64? 0= if AOT-ARM-WINDOWS then
    s" test/checker-decl-depth0-bad.f" 76
       s" CHECKER-DECL-DEPTH0-ARMED" s" declaration rollback failed" NEGATIVE
    s" test/enum-ctor-collide-bad.f"

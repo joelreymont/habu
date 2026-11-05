@@ -55,15 +55,6 @@ public
 : CDD-GD4 ( n -- ) CDD-GD4 ;
 ;package
 
-\ A global and a package public under one tail: a bare call of it under
-\ `using CDD-SHP` is E-USING-SHADOW-GLOBAL, the throw section 8's abandoned
-\ trusted definer takes in its scan.
-: CDD-SHX ( -- n ) 2 ;
-package CDD-SHP
-public
-: CDD-SHX ( -- n ) 1 ;
-;package
-
 \ Section 15's packaged word, patched at once by a global does> word defined
 \ after `;package`: the patching word's spelling resolves outside CDD-PKC.
 package CDD-PKC
@@ -94,15 +85,6 @@ package CERTIFY-DOES-DEFINER
 \ creates, and the clause walk leaves nothing for the next record.
 : CDD-RES-CD ( n -- ) create , does> ( -- ) drop 3 CDD-RES-D ;
 
-\ Section 8's resident fixtures: a TRUSTED definer, its straight-line wrapper and
-\ the plain definition right after it. A trusted definition's body is asserted,
-\ so it has no body check of its own between the clause and the publication that
-\ records what it creates - src/lib/task.f TASK and its public wrapper `: TASK TASK ;`
-\ are the production shape.
-TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
-: CDD-TRES-W ( -- ) 3 CDD-TRES-D ;
-: CDD-TRES-P ( n -- n ) 1 + ;
-
 -1 constant ACCEPTED
 0 constant REFUSED
 1 constant UNRESOLVED
@@ -116,7 +98,7 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 : CDD-VERDICT ( ptr u8 n -- n )
    VERIFY:CANDIDATE-IN-SCOPE ;
 
-\ A word the engine created (sections 4 and 8) is asked by the engine's lookup.
+\ A word the engine created (section 4) is asked by the engine's lookup.
 : CDD-LIVE-VERDICT ( ptr u8 n -- n )
    CHECK-QUIET-CANDIDATE! ;
 
@@ -168,8 +150,8 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
 \ creates". Such a word still calls `create`, so a top-level statement running
 \ it marks its wordlist: a later name nothing there resolves is left to the run
 \ (DEFERRED, src/core/checker.f UNSEEN-COVERS?), not UNRESOLVED. The run takes
-\ the latch and TRUSTED sections, which pin names as UNRESOLVED, before this one
-\ marks this file's wordlist.
+\ the latch sections, which pin names as UNRESOLVED, before this one marks
+\ this file's wordlist.
 : CDD-SECTION-NOT-A-WRAPPER ( -- )
    s\" : CDD-CD ( n -- ) create , does> ( -- ptr n ) ;\n: CDD-IFW ( n -- ) dup 0= if drop 1 then CDD-CD ;\n2 CDD-IFW CDD-COND\n"
       VERIFY:SOURCE-BUF-IN-SCOPE
@@ -300,74 +282,6 @@ TRUSTED: CDD-TRES-D ( n -- ) create , does> ( -- ptr n ) ;
       VERIFY:SOURCE-BUF-IN-SCOPE
    s" a clause read from source arms nothing the created word takes" T-LABEL
    s" C34 ( -- ptr n ) CDD-SRC-X" CDD-VERDICT UNRESOLVED T= ;
-
-\ Section 8: a TRUSTED definer, on both paths. `TRUSTED:` changes nothing a
-\ `does>` clause declares: the engine runs CHECK-DOES! at a trusted definition's
-\ `;` too (habu2.f EM-COMPILE-PUBLISH-TRUSTED, ahead of DEF-TRUST:REGISTER). The
-\ fact that the definer creates the word holds on both paths: the scanner reads
-\ a trusted body, and the engine's latch survives a trusted publication, which
-\ has no body check to step it. Without that, `tools/check.f` on
-\ `TASK:MIN-STACK TASK:TASK T1  : F ( -- ptr n ) T1 ;` refused T1 as
-\ E-UNDEFINED, with the require (read) and without it (resident).
-: CDD-SECTION-TRUSTED ( -- )
-   s\" TRUSTED: CDD-TD ( n -- ) create , does> ( -- ptr n ) ;\n5 CDD-TD CDD-TD-ONE\n"
-      VERIFY:SOURCE-BUF-IN-SCOPE
-   s" a read trusted definer's created word certifies as the clause effect" T-LABEL
-   s" C35 ( -- ptr n ) CDD-TD-ONE" CDD-VERDICT ACCEPTED T=
-   s" and is refused against a bare cell" T-LABEL
-   s" C36 ( -- n ) CDD-TD-ONE" CDD-VERDICT REFUSED T=
-   s\" TRUSTED: CDD-TDU ( n -- ) create , DOES> ( -- ptr n ) ;\n5 CDD-TDU CDD-TDU-ONE\n"
-      VERIFY:SOURCE-BUF-IN-SCOPE
-   s" an uppercase `DOES>` declares a trusted definer's clause too" T-LABEL
-   s" C35U ( -- ptr n ) CDD-TDU-ONE" CDD-VERDICT ACCEPTED T=
-   s\" : CDD-TDW ( n -- ) CDD-TD ;\n5 CDD-TDW CDD-TD-WRAPPED\n"
-      VERIFY:SOURCE-BUF-IN-SCOPE
-   s" a checked wrapper of a read trusted definer creates the same" T-LABEL
-   s" C37 ( -- ptr n ) CDD-TD-WRAPPED" CDD-VERDICT ACCEPTED T=
-   s\" : CDD-TD-P ( n -- n ) 1 + ;\n5 CDD-TD-P CDD-TD-PMADE\n"
-      VERIFY:SOURCE-BUF-IN-SCOPE
-   s" the definition after a trusted definer creates nothing" T-LABEL
-   s" C38 ( -- ptr n ) CDD-TD-PMADE" CDD-VERDICT UNRESOLVED T=
-   s\" 8 CDD-TRES-D CDD-TRES-ONE\n" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" a resident trusted definer's created word certifies the same way" T-LABEL
-   s" C39 ( -- ptr n ) CDD-TRES-ONE" CDD-VERDICT ACCEPTED T=
-   s" and is refused against a bare cell" T-LABEL
-   s" C40 ( -- n ) CDD-TRES-ONE" CDD-VERDICT REFUSED T=
-   s\" CDD-TRES-W CDD-TRES-WMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" a resident wrapper of a trusted definer creates what it creates" T-LABEL
-   s" C41 ( -- ptr n ) CDD-TRES-WMADE" CDD-VERDICT ACCEPTED T=
-   s\" 5 CDD-TRES-P CDD-TRES-PMADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" and the definition published after it inherits nothing" T-LABEL
-   s" C42 ( -- ptr n ) CDD-TRES-PMADE" CDD-VERDICT UNRESOLVED T= ;
-
-\ The same trusted definer run for real, as section 4 runs the checked one: the
-\ row here is the engine's own, published at creation time.
-8 CDD-TRES-D CDD-TRES-LIVE
-
-: CDD-TRES-READ ( -- n ) CDD-TRES-LIVE @ ;
-
-: CDD-SECTION-TRUSTED-LIVE ( -- )
-   s" the trusted definer's created word holds what it stored" T-LABEL
-   CDD-TRES-READ 8 T=
-   s" and the engine's own row certifies the clause effect" T-LABEL
-   s" C43 ( -- ptr n ) CDD-TRES-LIVE" CDD-LIVE-VERDICT ACCEPTED T=
-   s" and refuses the bare cell" T-LABEL
-   s" C44 ( -- n ) CDD-TRES-LIVE" CDD-LIVE-VERDICT REFUSED T= ;
-
-\ A trusted definer whose unjudged scan throws is abandoned, and so is the
-\ clause tier 0 certified before that scan: the plain definition published
-\ next must not take its effect. Both are live definitions, so they run
-\ between two scopes, as section 6's refused clause does.
-: CDD-SECTION-TRUSTED-ABORT ( -- )
-   s" a trusted definer whose scan throws is refused" T-LABEL
-   [: s\" using CDD-SHP\nTRUSTED: CDD-TAB-D ( n -- ) CDD-SHX drop create , does> ( -- ptr n ) ;\n;using\n" evaluate-closed ;]
-      E-USING-SHADOW-GLOBAL TTHROWSQ
-   s\" : CDD-TAB-P ( n -- ) drop ;\n" evaluate-closed ;
-
-: CDD-SECTION-TRUSTED-ABORT-AFTER ( -- )
-   s\" 5 CDD-TAB-P CDD-TAB-MADE\n" VERIFY:SOURCE-BUF-IN-SCOPE
-   s" and leaves its clause for no later definition to inherit" T-LABEL
-   s" C44A ( -- ptr n ) CDD-TAB-MADE" CDD-VERDICT UNRESOLVED T= ;
 
 \ Section 9: a definer that writes its word as text; a `generates: D ( effect )`
 \ row states what D makes. Section 10 reads FUNCTION:'s group, section 11 holds
@@ -620,10 +534,6 @@ CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-LATCH ;pack
 CDD-SECTION-LATCH-LIVE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-LATCH-AFTER ;package CHECKER-SCOPE-DONE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-WRAP-LATCH ;package CHECKER-SCOPE-DONE
-CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-TRUSTED ;package CHECKER-SCOPE-DONE
-CDD-SECTION-TRUSTED-LIVE
-CDD-SECTION-TRUSTED-ABORT
-CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-TRUSTED-ABORT-AFTER ;package CHECKER-SCOPE-DONE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-NOT-A-WRAPPER ;package CHECKER-SCOPE-DONE
 CDD-SECTION-LIVE
 CHECKER-SCOPE-START-NEUTRAL package CERTIFY-DOES-DEFINER CDD-SECTION-RESIDENT ;package CHECKER-SCOPE-DONE

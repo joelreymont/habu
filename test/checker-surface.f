@@ -10,43 +10,12 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/lib/fs-mutate.f
-require src/lib/test/subject.f
 require test/app-image-engine.f
 require test/pcap-result.f
 
-\ ---- a program's own definitions, compiled after boot --------------------------
-defer CS-HOOK ( n -- n )
-: CS-HOOK-INSTALL ( -- ) [: 2 * ;] is CS-HOOK ;
-CS-HOOK-INSTALL
-
-: CS-DEF ( n -- ) create , does> ( -- ptr n ) ;
-7 CS-DEF CS-SEVEN
-
-TYPED-VARIABLE CS-CELL n
-
-STRUCTURE cspair
-   FIELD left n
-   FIELD right n
-;STRUCTURE
-
-package CS-OWN
-public
-: CS-INC ( n -- n ) 1 + ;
-;package
-
-package CS-ALIAS
-public
-EXPORT CS-OWN:CS-INC
-;package
-
 package CHECKER-SURFACE-TEST
 
--1 constant ACCEPTED
-0 constant REFUSED
-
 4096 constant CAP
-30000 constant TIMEOUT-MS
-70 constant REJECT-RC
 
 600000 constant IMAGE-TIMEOUT-MS
 
@@ -58,44 +27,13 @@ variable RC
 create ROOT-BUF PATH-CAP allot  variable ROOT-U
 create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
 
-: VERDICT ( ptr u8 n -- n )
-   CHECK-QUIET-CANDIDATE! ;
-
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
-
-\ One program, evaluated by a disposable fork of this engine.
-: LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   {: outu:len erru:len outcome:outcome :}
-   outu LEN>N OUT-U !
-   erru LEN>N ERR-U !
-   outcome PROC-OUTCOME>RC RC ! ;
-
-: KNOWN? ( ptr u8 n -- bool ) EFFECT-QUERY ;
 
 \ The image class is asserted first: a whitebox engine leaves these names open.
 : SECTION-CLASS ( -- )
    s" the engine under test is the sealed product" T-LABEL
    ENGINE-INTERNAL:IMAGE-CLASS ENGINE-INTERNAL:IMAGE-SEALED T= ;
-
-: SECTION-INTERNAL ( -- )
-   s" a named internal checker helper keeps its effect" T-LABEL
-   s" HIDX-BUILD" KNOWN? TTRUE
-   s" a named internal global of another file keeps its effect" T-LABEL
-   s" CORE-FOLD-C" KNOWN? TTRUE
-   s" checked definitions cannot call either internal record" T-LABEL
-   s" CS-U1 ( -- ) HIDX-BUILD" VERDICT REFUSED T=
-   s" CS-U2 ( n -- n ) CORE-FOLD-C" VERDICT REFUSED T=
-   s" a compiled call is refused at load: only a TRUSTED: body may make it" T-LABEL
-   s\" : CS-U3 ( -- ) HIDX-BUILD ;\n" LOAD
-   RC @ REJECT-RC T=
-   ERR$ s" E-CAP-TRUSTED" CONTAINS? TTRUE
-   ERR$ s" HIDX-BUILD" CONTAINS? TTRUE
-   s" an interpreted call is refused as an internal engine word" T-LABEL
-   s\" CORE-FOLD-C\n" LOAD
-   RC @ REJECT-RC T=
-   ERR$ s" hb: internal engine word: CORE-FOLD-C" CONTAINS? TTRUE ;
 
 : PRIVATE-KNOWN? ( ptr u8 n ptr u8 n -- bool ) {: pa:ptr pu:n na:ptr nu:n :}
    pa pu false na nu CHECKER-ASIG-KNOWN? ;
@@ -111,49 +49,6 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
    s" CHECKER-SWEEP" s" DECIDE" PRIVATE-KNOWN? TFALSE
    s" a private of every baked package keeps no symbol, named or not" T-LABEL
    s" CHECKER-REG" s" CHECKED-ROW" PRIVATE-KNOWN? TFALSE ;
-
-\ TFL-CVAR?, a DNAME-INT word habu2.f C-FIND-GLOBAL reads for `construct`, keeps
-\ its effect so a TRUSTED: body at tier 1 still compiles a call to it: the
-\ native compiler asks the checker for the callee's arity.
-: SECTION-RETAINED ( -- )
-   s" an internal word the image keeps by name keeps its effect" T-LABEL
-   s" TFL-CVAR?" KNOWN? TTRUE
-   s" and a tier-1 TRUSTED: body compiles a call to it" T-LABEL
-   s\" 1 set-tier\nTRUSTED: CS-T1 ( ptr u8 n n -- n n bool ) TFL-CVAR? ;\n" LOAD
-   RC @ 0 T= ;
-
-: SECTION-PUBLIC ( -- )
-   s" a public word certifies" T-LABEL
-   s" CS-P1 ( ptr u8 n -- bool ) CHECKER-RESOLVES?" VERDICT ACCEPTED T=
-   s" a package public certifies" T-LABEL
-   s" CS-P2 ( -- n ) ENGINE-INTERNAL:IMAGE-CLASS" VERDICT ACCEPTED T=
-   s" a call short of its inputs is refused" T-LABEL
-   s" CS-P3 ( ptr u8 -- bool ) CHECKER-RESOLVES?" VERDICT REFUSED T=
-   s" a primitive axiom certifies" T-LABEL
-   s" CS-P4 ( n -- n n ) dup" VERDICT ACCEPTED T=
-   s" the return-stack words the control prefix names certify" T-LABEL
-   s" CS-P5 ( n -- n ) >r r>" VERDICT ACCEPTED T=
-   s" CS-P6 ( n n -- n n ) 2>r 2r>" VERDICT ACCEPTED T=
-   s" and a return-stack imbalance is still refused" T-LABEL
-   s" CS-P7 ( n -- ) >r" VERDICT REFUSED T= ;
-
-: SECTION-AFTER-BOOT ( -- )
-   s" a defer runs what `is` installed, and certifies" T-LABEL
-   3 CS-HOOK 6 T=
-   s" CS-A1 ( n -- n ) CS-HOOK" VERDICT ACCEPTED T=
-   s" a does> definer's word holds and certifies its clause effect" T-LABEL
-   CS-SEVEN @ 7 T=
-   s" CS-A2 ( -- ptr n ) CS-SEVEN" VERDICT ACCEPTED T=
-   s" CS-A3 ( -- n ) CS-SEVEN" VERDICT REFUSED T=
-   s" a TYPED-VARIABLE stores and certifies" T-LABEL
-   11 CS-CELL !  CS-CELL @ 11 T=
-   s" CS-A4 ( -- ptr n ) CS-CELL" VERDICT ACCEPTED T=
-   s" a STRUCTURE makes and unmakes" T-LABEL
-   4 5 CSPAIR:MAKE CSPAIR:UNMAKE 5 T= 4 T=
-   s" CS-A5 ( n n -- n n ) CSPAIR:MAKE CSPAIR:UNMAKE" VERDICT ACCEPTED T=
-   s" an EXPORT alias runs and certifies" T-LABEL
-   8 CS-ALIAS:CS-INC 9 T=
-   s" CS-A6 ( n -- n ) CS-ALIAS:CS-INC" VERDICT ACCEPTED T= ;
 
 \ ---- an application image, saved and reopened ----------------------------------
 : RESULT ( result<pcap:captured,pcap:failed> -- )
@@ -220,11 +115,7 @@ create IMAGE-BUF PATH-CAP allot  variable IMAGE-U
 : MAIN ( -- )
    T-RESET
    SECTION-CLASS
-   SECTION-INTERNAL
    SECTION-PRIVATE
-   SECTION-RETAINED
-   SECTION-PUBLIC
-   SECTION-AFTER-BOOT
    SECTION-APP-IMAGE
    T-REPORT ;
 

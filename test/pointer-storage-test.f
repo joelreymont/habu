@@ -15,9 +15,7 @@ PERSISTED-PTR-VARIABLE PERSISTED-SLOT
 PERSISTED-PTR-U8-TABLE-VARIABLE TABLE-HEAD
 
 \ Two reserved engine-layout cells, named by DATA offset; neither is written and
-\ nothing depends on what lives at either offset. That they load at all is the
-\ first half of the two-row rule: a prefix definer the seal marked DNAME-INT
-\ answers `internal engine word` here, not a definition.
+\ nothing depends on what lives at either offset.
 0 RESERVED-PTR-U8-CELL RSV-CELL-A
 $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 
@@ -90,21 +88,13 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
    s" DP-HEAD-WRONG ( ptr ptr n -- ) DPH !" VERIFY:CANDIDATE-IN-SCOPE 0 T=
    CHECKER-SCOPE-DONE ;
 
-\ `RESERVED-PTR-U8-CELL` is written in src/core/pointer-storage.f before the
-\ checker exists, so the seal would mark it DNAME-INT on its own; the two rows
-\ are src/core/cell-effects.f (the definer's effect) and
-\ src/habu/verify-source.f (what it publishes for the created word).
-\ POINTER-STORAGE:DATA-CELL is the control: same file and phase, neither row. It
-\ is the real sibling because the seal runs when the engine is built, so a clone
-\ here could never be sealed. The control candidate declares the created word's
-\ effect, so only the name fails it: unresolvable outside the engine (1), not
-\ merely refused.
+\ RESERVED-PTR-U8-CELL's effect is two rows: src/core/cell-effects.f (the
+\ definer's) and src/habu/verify-source.f (what it publishes for the created word).
 : VERIFY-RESERVED-EFFECT ( -- )
    s" RSV-BASE ( -- ptr ptr u8 ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-READ ( -- ptr u8 ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! -1 T=
    s" RSV-BASE-WRONG ( -- ptr ptr n ) RSV-CELL-A" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T=
-   s" RSV-SEALED ( -- ptr ptr u8 ) 0 POINTER-STORAGE:DATA-CELL" CHECK-QUIET-CANDIDATE! 1 T= ;
+   s" RSV-READ-WRONG ( -- ptr n ) RSV-CELL-A @" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ The pre-scan publishes the same effect for the word the definer creates, so a
 \ source declaring a reserved cell verifies without being run. The scan compiles

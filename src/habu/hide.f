@@ -1,4 +1,4 @@
-\ hide.f - bootstrap dictionary marker lookup shared with the recovery test.
+\ hide.f - bootstrap dictionary marker lookup for the recovery launcher.
 \ The launcher appends this source before it clears and lowers the dictionary.
 
 $2 constant BOOT-XREF-FLAGS-SLOT

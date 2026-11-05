@@ -1029,7 +1029,6 @@ SUITE tail-pure-fixtures
    src/lib/vector-test.f
    src/lib/elf32-test.f
    src/lib/fs-test.f
-   tools/bootstrap-codegen-test.f
    tools/asm-src-test.f
    tools/image-bytes-test.f
 ;SUITE

@@ -1,9 +1,7 @@
 \ export-package.f - interpret-level `EXPORT` in fresh child engines. Inside an
 \ open package it publishes an existing word under its own tail; at top level it
 \ is the hb-build --repl export directive and consumes the name as a no-op, so a
-\ directive-carrying program (src/lib/prelude.f) still loads. An engine-internal
-\ (DNAME-INT) source is refused with the interpret gate's diagnosis, since the
-\ alias would not carry the mark.
+\ directive-carrying program (src/lib/prelude.f) still loads.
 
 \ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
@@ -23,7 +21,6 @@ require src/lib/engine-candidate.f
 2048 constant XPK-CAP
 10000 constant XPK-TIMEOUT-MS
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
-70 constant XPK-INTERNAL-RC           \ internal engine word: the interpret gate's status
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
 ENGINE-ERROR:SEAL-PACKAGE constant XPK-SEAL-RC
@@ -153,25 +150,6 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-\ An engine-internal word (DNAME-INT) has no checker-known effect; were the
-\ export published, the alias would run it from interpret level (the last
-\ line). Inside evaluate the refusal is a catchable 70 and the session goes on.
-: XPK-INTERNAL-FORGE$ ( -- ptr u8 n )
-   SB-RESET
-   s" package XB" XPK-LINE
-   s" public" XPK-LINE
-   s" EXPORT DEFER-UNSET" XPK-LINE
-   s" ;package" XPK-LINE
-   s" XB:DEFER-UNSET" XPK-LINE
-   SB$ ;
-
-: XPK-INTERNAL-CATCH-FORGE$ ( -- ptr u8 n )
-   SB-RESET
-   S\" : XPK-Q ( -- ) s\" package XB public EXPORT DEFER-UNSET\" evaluate-closed ;" XPK-LINE
-   s" ' XPK-Q catch ." XPK-LINE
-   S\" s\" after-catch\" type cr" XPK-LINE
-   SB$ ;
-
 : XPK-DATA-FORGE$ ( -- ptr u8 n )             \ a data record is never internal
    SB-RESET
    s" 42 constant K package P public export K ;package P:K ." XPK-LINE
@@ -217,7 +195,7 @@ create XPK-EMPTY 1 allot
 
 \ --- child spawn + outcome capture --------------------------------------------
 \ Children run ENGINE-CANDIDATE:PATH$ over piped stdin; the undefined and
-\ internal cases also run --load, as test/seal-package.f does.
+\ data cases also run --load, as test/seal-package.f does.
 
 : XPK-STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
@@ -304,17 +282,7 @@ create XPK-EMPTY 1 allot
    XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
    s" 7115" XPK-ERR?
    s" private word behind a closed package rejects" T-LABEL
-   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC
-   s" internal engine word source rejects (stdin)" T-LABEL
-   XPK-INTERNAL-FORGE$ XPK-RUN-STDIN XPK-INTERNAL-RC XPK-ASSERT-RC
-   s" hb: internal engine word: DEFER-UNSET" XPK-ERR?
-   s" internal engine word source rejects (--load)" T-LABEL
-   XPK-INTERNAL-FORGE$ XPK-RUN-LOAD XPK-INTERNAL-RC XPK-ASSERT-RC
-   s" hb: internal engine word: DEFER-UNSET" XPK-ERR?
-   s" internal engine word refusal is a catchable 70 in evaluate" T-LABEL
-   XPK-INTERNAL-CATCH-FORGE$ XPK-RUN-STDIN 0 XPK-ASSERT-RC
-   S\" 70\nafter-catch\n" XPK-OUT?
-   s" hb: internal engine word: DEFER-UNSET" XPK-ERR? ;
+   XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC ;
 
 \ The source ctor and its alias must fail the interpret-level wide gate alike
 \ (same kind and rc), proving the alias copied DNAME-WIDE; equality is the

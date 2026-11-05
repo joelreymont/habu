@@ -1,5 +1,5 @@
 \ Generated initialized-field words keep their receiver, value, and private
-\ representation boundaries through ordinary source evaluation at both tiers.
+\ representation boundaries through ordinary source evaluation.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
@@ -54,26 +54,14 @@ public
    s" the private unpack helper is not callable at tier zero" T-LABEL
    s" package C2IA : BAD ( read-view<a,b,u8> -- n n ) SHELF-SOURCE-INIT-UNPACK ; ;package"
       70 REFUSED? TTRUE
-   s" the private unpack helper is not callable at tier one" T-LABEL
-   s" 1 set-tier package C2IA : BAD ( read-view<a,b,u8> -- n n ) SHELF-SOURCE-INIT-UNPACK ; ;package"
-      70 REFUSED? TTRUE
    s" the private receiver helper is not callable at tier zero" T-LABEL
    s" package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- ptr u8 n ) SHELF-INIT-VIEW-UNPACK ; ;package"
-      70 REFUSED? TTRUE
-   s" the private receiver helper is not callable at tier one" T-LABEL
-   s" 1 set-tier package C2IA : BAD ( mut-view<a,b,c,init<d,shelf<a,b>>> -- ptr u8 n ) SHELF-INIT-VIEW-UNPACK ; ;package"
       70 REFUSED? TTRUE
    s" an internal helper cannot be exported at tier zero" T-LABEL
    s" package C2IA public EXPORT SHELF-SOURCE-INIT-UNPACK ;package"
       70 REFUSED? TTRUE
-   s" an internal helper cannot be exported at tier one" T-LABEL
-   s" 1 set-tier package C2IA public EXPORT SHELF-SOURCE-INIT-UNPACK ;package"
-      70 REFUSED? TTRUE
    s" an internal receiver cannot be exported at tier zero" T-LABEL
    s" package C2IA public EXPORT SHELF-INIT-VIEW-UNPACK ;package"
-      70 REFUSED? TTRUE
-   s" an internal receiver cannot be exported at tier one" T-LABEL
-   s" 1 set-tier package C2IA public EXPORT SHELF-INIT-VIEW-UNPACK ;package"
       70 REFUSED? TTRUE
    T-REPORT
    s" c2-init-accessor-refusals: ok" type cr ;

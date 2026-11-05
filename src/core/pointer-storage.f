@@ -61,8 +61,7 @@ public
 \ `off RESERVED-PTR-U8-CELL NAME` publishes NAME as the address of the DATA cell
 \ the engine layout reserves at `off`, declared `ptr ptr u8`. The offset goes
 \ through POINTER-STORAGE:DATA-CELL on every read, so no absolute address is
-\ baked. This definer has both rows, so the seal leaves its name alone; DATA-CELL
-\ has neither and does not resolve outside the engine;
-\ test/pointer-storage-test.f measures the pair.
+\ baked. This definer has both rows, so the seal leaves its name alone;
+\ test/pointer-storage-test.f measures its effect.
 : RESERVED-PTR-U8-CELL ( n -- )
    create , does> ( -- ptr ptr u8 ) @ POINTER-STORAGE:DATA-CELL ;

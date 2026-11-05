@@ -2010,8 +2010,7 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ hook cells, its own captured window's cells): the seeded engine's state is
 \ already right, so the cell is left alone. Refusing it ended every capture in a
 \ booted engine on HOOK-CELL; the refusal
-\ stays for a cell inside the window whose target the window does not place
-\ (test/aot-address-cell-target-out-bad.f).
+\ stays for a cell inside the window whose target the window does not place.
 \ The span is whole cells; the rounding bytes are above the captured DP and
 \ zero in the seed. The base is cell-aligned (src/habu/aot-arm.f LATCH-OPEN
 \ aligns DP before latching D0; ACAP-START admits only the latched span) so
