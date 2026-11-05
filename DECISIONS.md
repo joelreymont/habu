@@ -973,7 +973,14 @@ learned live in the docs for their subject.
   me, each and every one. justify keeping or dropping each before asking
   me". Shown that native-build-recompile (1403 s, the suite's wall time)
   tests the per-definition build cache the file linker replaces, Joel chose
-  "Drop it (Recommended)".
+  "Drop it (Recommended)". Shown that native-build-entry builds a whole x86-64
+  hb through a retired loader fixture and a whole Linux arm64 hb it checks
+  only by its ELF header, beside seven argument checks, he chose "Argument
+  checks only (Recommended)". Shown that the gate's whitebox engine build also
+  runs seed, growth and source-map checks of the capture build, he chose "Drop
+  the check (Recommended)". He then wrote "hey, drop what you think should be
+  dropped if best for long term" and "then only ask me about what's
+  undecided": which tests to keep, shrink or drop is the lead's call.
 
 ## Docs
 
