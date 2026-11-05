@@ -796,6 +796,34 @@ learned live in the docs for their subject.
   bare name looks in this wordlist? what is a bare name?", then chose
   "WL:GLOBAL? (Recommended)": one word in package WL that answers yes for
   the global wordlist and WL:PRIMITIVES.
+- 2026-11-05, the checker during a build: shown that hb's checker refuses the
+  product's IMK-NDICT0 as a duplicate of its own, and asked to name the two
+  words the build's open and close call so the checker checks the product
+  apart from hb's own names, Joel chose "CHECK:OPEN, CHECK:CLOSE
+  (Recommended)": `CHECK:OPEN ( -- )` and `CHECK:CLOSE ( -- )`, called only
+  by LINKER:WITH's open and close.
+- 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
+  for DP, kept only by the old string store so a failed line's rollback never
+  drops DP below strings compiled code points at, and asked when it should go,
+  Joel chose "Move hb's strings now" and wrote "always hard cutover" and "why
+  are we keeping old builders around?! is this a must?" Shown that until the
+  cross-build writes a working hb only the old hb builder can put a change to
+  hb's own files into bin/hb, and that the Wasm and x86-64 builders use the
+  same string windows, he wrote "you do arm64 first, disable x86 and wasm
+  temporarily. once arm64 works you do the cutover of x86 and wasm. this is
+  the way, prove me wrong!" When the arm64 cross-build writes a working hb,
+  the old hb builder, its string windows and DATA-FLOOR-CELL go and hb's own
+  strings move onto the one table; x86-64 and Wasm builds are off until each
+  moves onto the linker.
+- 2026-11-05, cutting the address-cell list: asked "what does
+  ADDRESS-CELLS:KEEP-BELOW do? what else is in that package? is this the best
+  package for it?", and shown that the list records each DATA cell holding an
+  address for whoever writes the program out (the linker, as C's relocations),
+  that a failed line's rollback cuts it, and that an offset from hb's DATA
+  makes a failed line inside a build cut hb's own rows, Joel chose "Address,
+  keep package (Recommended)": `ADDRESS-CELLS:KEEP-BELOW` and `REMOVE-SPAN`
+  take an address and cut the list of the region holding it, as EMIT-MARK
+  picks it; the package stays the engine's.
 - 2026-11-05, where a built program's code runs: asked to name REGION-VA, a
   fixed address the arm64 boot would copy a built program's code to so that
   no stored code address needs adjusting, Joel asked "why do you need any
