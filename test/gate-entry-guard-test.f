@@ -53,7 +53,7 @@ TEST:SUITE direct test/gate-entry-guard-import-wrapper.f TEST:;SUITE
 
 \ Exact literals consumed by load helpers are another way to run a root.
 TEST:RESET
-TEST:WHITEBOX-SUITE target test/gate-entry-guard-target.f TEST:;SUITE
+TEST:SUITE target test/gate-entry-guard-target.f TEST:;SUITE
 TEST:SUITE diagnostics test/gate-entry-guard-diagnostics.f TEST:;SUITE
 ' GUARD E-SUITE-ROW TTHROWS
 

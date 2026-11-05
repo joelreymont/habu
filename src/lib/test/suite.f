@@ -22,7 +22,6 @@ $10000 constant ARG-CAP
 1 constant GROUP-SEQUENTIAL
 0 constant ITEM-FILE
 1 constant ITEM-STDIN
-2 constant ITEM-WHITEBOX
 
 create ITEM-NAMES ITEM-MAX NAME-CAP * allot
 create ITEM-NAME-US ITEM-MAX cells allot
@@ -66,10 +65,6 @@ defer ARG+ ( ptr u8 n -- )
 \ drain and makes every pending row startable: after it no runner declines.
 defer RUNNER ( ptr u8 n -- bool )
 defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- bool )
-\ A whitebox item names the same kind of file as an ordinary one and differs in
-\ ONE thing: the engine it is handed to. The adapter owns that engine, so the
-\ kind picks a second runner here rather than carrying a path through the table.
-defer WHITEBOX-RUNNER ( ptr u8 n -- bool )
 defer SETTLE ( -- )
 
 : TRUE ( -- bool )
@@ -175,7 +170,6 @@ defer SETTLE ( -- )
    a u s" GROUP"       STR=CI
    a u s" SUITE"       STR=CI or
    a u s" SUITE-STDIN" STR=CI or
-   a u s" WHITEBOX-SUITE" STR=CI or
    a u s" ;GROUP"      STR=CI or
    a u s" ;SUITE"      STR=CI or
    a u s" SEQ"         STR=CI or
@@ -211,7 +205,6 @@ defer SETTLE ( -- )
 : ROW-KEYWORD? ( ptr u8 n -- bool )
    UNQUALIFIED {: a:ptr u:n :}
    a u s" SUITE"          STR=CI
-   a u s" WHITEBOX-SUITE" STR=CI or
    a u s" SUITE-STDIN"    STR=CI or
    a u s" GROUP"          STR=CI or
    a u s" ;GROUP"         STR=CI or ;
@@ -324,13 +317,6 @@ defer SETTLE ( -- )
    id ITEM-ARGS-FEED
    id ITEM-NAME$ RUNNER ;
 
-\ The whitebox engine is a second binary, not a second argument list: the item
-\ builds its argv exactly as a file item does and only the spawn differs.
-: ITEM-RUN-WHITEBOX ( n -- bool ) {: id:n :}
-   ARGS-BEGIN
-   id ITEM-ARGS-FEED
-   id ITEM-NAME$ WHITEBOX-RUNNER ;
-
 : ITEM-RUN-STDIN ( n -- bool ) {: id:n :}
    ARGS-BEGIN
    id ITEM-ARGS-FEED
@@ -341,7 +327,6 @@ defer SETTLE ( -- )
    case
       ITEM-FILE of id ITEM-RUN-FILE endof
       ITEM-STDIN of id ITEM-RUN-STDIN endof
-      ITEM-WHITEBOX of id ITEM-RUN-WHITEBOX endof
       E-TBL-FIELD throw
    endcase ;
 
@@ -451,9 +436,6 @@ EXPORT ITEM-NAME$
 : STDIN-RUNNER! ( [ ptr u8 n ptr u8 n -- bool ] -- )
    is STDIN-RUNNER ;
 
-: WHITEBOX-RUNNER! ( [ ptr u8 n -- bool ] -- )
-   is WHITEBOX-RUNNER ;
-
 : SETTLE! ( [ -- ] -- )
    is SETTLE ;
 
@@ -464,7 +446,7 @@ EXPORT ITEM-NAME$
    ITEM-RAN @ ;
 
 \ Mark every item with this name; answer whether one has it. Once any is marked,
-\ RUN, VISIT-LOAD-FILES and WHITEBOX-RUNS? skip the unmarked ones.
+\ RUN and VISIT-LOAD-FILES skip the unmarked ones.
 : ONLY ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    TRUE 0=
@@ -492,14 +474,6 @@ EXPORT ITEM-NAME$
 : VISIT-LOAD-FILES ( [ n bool ptr u8 n -- ] -- ) {: visit :}
    ITEM-N @ 0 ?do i RUNS? if i visit VISIT-ROW-FILES then loop ;
 
-\ Does any item that will run need the whitebox engine? The adapter asks before
-\ the first fork, so a gate with no whitebox suite pays nothing for one.
-: WHITEBOX-RUNS? ( -- bool )
-   ITEM-N @ 0 ?do
-      i RUNS? if i ITEM-KIND@ ITEM-WHITEBOX = if TRUE unloop exit then then
-   loop
-   TRUE 0= ;
-
 : DEFAULTS ( -- )
    [: NOOP ;] SETUP!
    [: drop ;] TEARDOWN!
@@ -508,7 +482,6 @@ EXPORT ITEM-NAME$
    [: ARG-DROP ;] ARG+!
    [: RUN-MISSING ;] RUNNER!
    [: STDIN-RUN-MISSING ;] STDIN-RUNNER!
-   [: RUN-MISSING ;] WHITEBOX-RUNNER!
    [: NOOP ;] SETTLE! ;
 
 : RESET ( -- )
@@ -519,11 +492,8 @@ EXPORT ITEM-NAME$
    0 ARG-U !
    DEFAULT-GROUP ;
 
-\ `TEST:GROUP SEQ name` or `TEST:GROUP PARA name`; the mode token is mandatory.
-\ Rows (SUITE, WHITEBOX-SUITE, SUITE-STDIN) each close with `TEST:;SUITE`, the
-\ group with `TEST:;GROUP`. PARA rows, SUITE-STDIN ones included, start without
-\ waiting for each other, so a row that needs an idle pool belongs in a SEQ
-\ group.
+\ `TEST:GROUP SEQ|PARA name` ... `TEST:;GROUP`; PARA rows start without waiting
+\ for each other, so a row that needs an idle pool belongs in a SEQ group.
 : GROUP ( -- )
    MODE-TOKEN {: mode:n :}
    NAME-TOKEN {: a:ptr u:n :}
@@ -536,12 +506,6 @@ EXPORT ITEM-NAME$
    REQUIRED-NAME {: name:ptr nameu:n :}
    ITEM-FILE name nameu s" " ITEM-ADD ;
 
-\ A suite whose body reaches inside the engine: same registration as SUITE, run
-\ on the adapter's whitebox engine instead of the product one.
-: WHITEBOX-SUITE ( -- )
-   REQUIRED-NAME {: name:ptr nameu:n :}
-   ITEM-WHITEBOX name nameu s" " ITEM-ADD ;
-
 : SUITE-STDIN ( -- )
    REQUIRED-NAME {: name:ptr nameu:n :}
    REQUIRED-NAME {: inptr:ptr inu:n :}
@@ -550,13 +514,10 @@ EXPORT ITEM-NAME$
 : ;SUITE ( -- )
 ;
 
-\ The tokens each row opener reads, so the source pre-verifier checks what
-\ follows a row (docs/forth-card.md § 3): GROUP its mode and name, SUITE and
-\ WHITEBOX-SUITE a name, SUITE-STDIN a name and an input, then each row its
-\ arguments through the terminator ;SUITE? accepts.
+\ What each opener reads, so the source pre-verifier checks what follows it
+\ (docs/forth-card.md § 3).
 parses: GROUP 2
 parses-through: SUITE 1 ( ;SUITE TEST:;SUITE )
-parses-through: WHITEBOX-SUITE 1 ( ;SUITE TEST:;SUITE )
 parses-through: SUITE-STDIN 2 ( ;SUITE TEST:;SUITE )
 
 \ Called once. Offers rows to their runner in registration order between SETUP

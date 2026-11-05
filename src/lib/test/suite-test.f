@@ -23,7 +23,6 @@ variable THROW-N
 variable THROW-LATE-N
 variable STDIN-LABEL-N
 variable MARK-N
-variable WB-N
 variable VISIT-N
 variable VISIT-ONE-N
 
@@ -73,11 +72,6 @@ variable VISIT-ONE-N
    label labelu s" beta" STR= if 1 BETA-N +! true exit then
    true ;
 
-: WB-RUNNER ( ptr u8 n -- bool )
-   2drop
-   1 WB-N +!
-   true ;
-
 : VISIT ( n bool ptr u8 n -- )
    {: id:n entry:bool path:ptr pathu:n :}
    1 VISIT-N +!
@@ -124,8 +118,7 @@ variable VISIT-ONE-N
    [: ARGS-BEGIN ;] TEST:ARGS-BEGIN!
    [: ARG+ ;] TEST:ARG+!
    [: RUNNER ;] TEST:RUNNER!
-   [: STDIN-RUNNER ;] TEST:STDIN-RUNNER!
-   [: WB-RUNNER ;] TEST:WHITEBOX-RUNNER! ;
+   [: STDIN-RUNNER ;] TEST:STDIN-RUNNER! ;
 
 : INSTALL-THROW ( -- )
    [: THROW-RUNNER ;] TEST:RUNNER! ;
@@ -225,7 +218,6 @@ MARK-N @ 5 T=
 \ A chosen row runs alone; the registry still counts every row.
 INSTALL
 RESET-COUNTS
-0 WB-N !
 
 using TEST
 
@@ -236,29 +228,21 @@ SUITE chosen-one
 SUITE chosen-two
    two.f
 ;SUITE
-WHITEBOX-SUITE chosen-wb
-   wb.f
-;SUITE
 
 ;using
 
 s" no-such-row" TEST:ONLY TFALSE
-VISITS 3 T=
+VISITS 2 T=
 s" chosen-one" TEST:ONLY TTRUE
 VISITS 1 T=
 VISIT-ONE-N @ 1 T=
-TEST:WHITEBOX-RUNS? TFALSE
 TEST:RUN
 TEST:ITEMS-RUN 1 T=
-TEST:ITEMS-REGISTERED 3 T=
+TEST:ITEMS-REGISTERED 2 T=
 RUN-N @ 1 T=
-WB-N @ 0 T=
-s" chosen-wb" TEST:ONLY TTRUE
-TEST:WHITEBOX-RUNS? TTRUE
 
 \ RESET clears the choice: the next registration runs every row.
 RESET-COUNTS
-0 WB-N !
 
 using TEST
 
@@ -266,16 +250,12 @@ RESET
 SUITE chosen-one
    one.f
 ;SUITE
-WHITEBOX-SUITE chosen-wb
-   wb.f
-;SUITE
 RUN
 
 ;using
 
-TEST:ITEMS-RUN 2 T=
+TEST:ITEMS-RUN 1 T=
 RUN-N @ 1 T=
-WB-N @ 1 T=
 T-REPORT
 
 ;package
@@ -386,8 +366,6 @@ T-SUBJ-OUT$ s" 2" CONTAINS? TTRUE
 \ A row that reaches the end of input is the same refusal.
 s" TEST:RESET TEST:SUITE row-eof a.f" s" row-eof" T-ROW-REFUSED
 
-s" TEST:RESET TEST:SUITE row-wb a.f TEST:WHITEBOX-SUITE next b.f TEST:;SUITE"
-s" row-wb" T-ROW-REFUSED
 s" TEST:RESET TEST:SUITE row-stdin a.f TEST:SUITE-STDIN next DATA b.f TEST:;SUITE"
 s" row-stdin" T-ROW-REFUSED
 s" TEST:RESET TEST:SUITE row-group a.f TEST:GROUP SEQ g TEST:;SUITE"

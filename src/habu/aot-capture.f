@@ -2458,12 +2458,8 @@ public
    d0 ACAP-COPY-DATA
    ACAP-FINISH ;
 
-\ The whitebox image keeps every name: its build passes true here, as its seal
-\ pass stands down (src/core/util.f ENGINE-UNSEAL?). Whitebox suites are
-\ the callers the derived keep rule cannot see - a suite reopens the package it
-\ audits and calls a private word by name - and an engine that strips them has
-\ nothing for the suite to name. Stripping is a property of the image a build
-\ writes, so the build answers it here rather than through a widening keep-set.
+\ True keeps every name: the whitebox build option passes it
+\ (tools/native-build-core.f CAPTURE).
 : CAPTURE-WITH-NAMES ( n n n n n n bool -- )
    {: bstart:n bend:n rstart:n rend:n d0:n d1:n all:bool :}
    all ACAP-ALL-NAMES !
