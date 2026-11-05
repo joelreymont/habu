@@ -311,6 +311,10 @@ SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
 
+SUITE linker
+   test/linker.f
+;SUITE
+
 SUITE compiler-native-string-forms
    test/compiler/native-string-forms.f
 ;SUITE

@@ -227,7 +227,8 @@ variable SOURCE-ON
 
 \ ---- a build's data space ------------------------------------------------------
 \ Open while BOOT:IMAGE-BASE-CELL is nonzero (boot-cells.f says when it is 0); a
-\ task's region starts at 0. The table grows, so it is mapped outside DATA.
+\ task's region starts at 0. The table grows, so it is mapped outside DATA; the
+\ space's close frees it (CLEANUP).
 variable SPACE-IMAGE     \ the image base the table serves, 0 for no table
 variable SPACE-TABLE     \ the slots' address, as its distance from NULL-PTR
 variable SPACE-SLOTS     \ a power of two
@@ -274,13 +275,18 @@ SPACE-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
    {: base:n slots:n :}
    base 0 CELL-AT slots MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
 
-: SPACE-RELEASE ( -- )
+public
+
+\ Frees the table of the build whose space is closing (LINKER:WITH's close).
+: CLEANUP ( -- )
    SPACE-IMAGE @ 0= if exit then
    SPACE-TABLE @ SPACE-SLOTS @ TABLE-RELEASE
    0 SPACE-TABLE !  0 SPACE-IMAGE ! ;
 
+private
+
 : SPACE-OPEN ( -- )
-   SPACE-RELEASE
+   CLEANUP
    FIRST-SLOTS TABLE-MAP SPACE-TABLE !
    FIRST-SLOTS SPACE-SLOTS !  0 SPACE-FILLED !
    IMAGE-BASE SPACE-IMAGE ! ;
@@ -464,7 +470,6 @@ public
    {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
    SPACE? if a u SPACE-STRING u SOURCE-RECORD exit then
-   SPACE-RELEASE
    a u FIND {: k:n :}
    k 0 >= if BASE k ROW-OFF + u SOURCE-RECORD exit then
    a u ADD {: row:n :}
