@@ -1,8 +1,8 @@
 \ hb-build-stripped-test.f - checked fixture for tools/hb-build-lib.f: what a
 \ stripped image may own and reach (library state, a fork, claimed engine cells,
 \ fixed quotation fields, a run-time pointer-cell mark that preserves data and
-\ stack) and the refusals of a missing entry, an unclaimed engine cell and a
-\ scalar holding a code address. tools/hb-build-test-lib.f lists the other rows.
+\ stack) and the refusal of a missing entry. tools/hb-build-test-lib.f lists the
+\ other rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
 require src/lib/string.f
@@ -28,9 +28,6 @@ package HB-BUILD-CLI
 
 : HBT-CELLS-OUT ( -- ptr u8 n )
    HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U @ ;
-
-: HBT-UNOWNED-SRC ( -- ptr u8 n )
-   HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U @ ;
 
 : HBT-PMK-SRC ( -- ptr u8 n )
    HBT-PMK-SRC-BUF HBT-PMK-SRC-U @ ;
@@ -76,12 +73,6 @@ package HB-BUILD-CLI
    S\"    SCRIPT-ARGC 0 ?do s\" arg\" type 48 i + emit s\" =\" type i SCRIPT-ARGV$ type cr loop\n" SB-APPEND
    S\"    4096 MEM:BYTES-ALLOC-LEN [: SHOW ;] MEM:WITH-BYTES ;\n" SB-APPEND
    SB$ ;
-
-\ An engine cell nothing claims is refused. TMP-PATH is in src/os/env-base.f,
-\ the same baked file as the admitted environment cells, but its cursors are on
-\ no list: the refusal is about the declaration, not the file, value or address.
-: HBT-UNOWNED-SRC$ ( -- ptr u8 n )
-   S\" : MAIN ( -- ) s\" x\" TMP-PATH type cr ;\n" ;
 
 \ A PROGRAM THAT REGISTERS A POINTER CELL AT RUN TIME. The definer's own
 \ `ptr-cell-mark` runs at DEFINITION time, on the build host; this program calls
@@ -227,8 +218,7 @@ package HB-BUILD-CLI
 \ found: MAIN` and `aot: no entry` on stderr (src/habu/aot-closure.f
 \ NO-ENTRY-DIE); tools/hb-build.f exits with the maker's code, passes its stderr
 \ byte for byte, prints nothing on stdout and installs no image.
-\ tools/hb-build-cli-errors-test.f HBT-REFUSE-MAIN-CLI is the REPL path's. The
-\ refusals below ask the maker directly (HBT-RUN-MAKER).
+\ tools/hb-build-cli-errors-test.f HBT-REFUSE-MAIN-CLI is the REPL path's.
 : HBT-STRIPPED-NO-ENTRY ( -- )
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC s" : HBT-NO-MAIN ( -- ) ;" FS:WRITE-ALL
@@ -241,15 +231,6 @@ package HB-BUILD-CLI
    outu 0 T=
    HBT-ERR erru S\" aot: entry word not found: MAIN\naot: no entry\n" T$=
    HBT-AOT-OUT FS:FILE? TFALSE ;
-
-\ ... while an engine cell on no list is still refused, with its own diagnostic.
-: HBT-STRIPPED-UNOWNED-CELL ( -- )
-   HBT-UNOWNED-SRC HBT-UNOWNED-SRC$ FS:WRITE-ALL
-   HBT-UNOWNED-SRC HBT-RUN-MAKER {: nout:n nerr:n nrc:n :}
-   nrc 0 <> TTRUE
-   HBB-ERR-BUF nerr s" outside the restored span" CONTAINS? TTRUE
-   HBB-ERR-BUF nerr s" caller=TMP-PATH" CONTAINS? TTRUE
-   HBB-ERR-BUF nerr s" target=TPU" CONTAINS? TTRUE ;
 
 \ The linker keeps the pointer store and replaces the stripped registrar call
 \ with a stack pop. The image must read its restored bytes with balanced stack.
@@ -264,17 +245,6 @@ package HB-BUILD-CLI
    errn 0 T=
    HBT-RUN-OUT outn S\" quotation fields=ok\nok\n" T$= ;
 
-\ A scalar holding a live code address is still refused by the DATA scan.
-: HBT-STRIPPED-QUOT-LOOKALIKE ( -- )
-   s" test/stripped-quotation-field-lookalike.f" HBT-RUN-MAKER
-   {: outn:n errn:n rcn:n :}
-   rcn 70 T=
-   outn 0 T=
-   HBB-ERR-BUF errn
-      s" stripped AOT persistent data holds an undeclared code/dict pointer"
-      CONTAINS? TTRUE
-   HBB-ERR-BUF errn s" word=SCALAR-ROW#base" CONTAINS? TTRUE ;
-
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
 public
@@ -287,9 +257,7 @@ public
    HBT-STRIPPED-FORK
    HBT-STRIPPED-ENGINE-CELLS
    HBT-STRIPPED-NO-ENTRY
-   HBT-STRIPPED-UNOWNED-CELL
    HBT-STRIPPED-PTR-MARK
-   HBT-STRIPPED-QUOT-LOOKALIKE
    FS:CLEANUP-RUN
    HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT

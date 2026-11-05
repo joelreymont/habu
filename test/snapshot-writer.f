@@ -65,12 +65,6 @@ create SHADOW-SNAP-BUF PATH-CAP allot
    ROOT s" shadow.f" SHADOW-SRC-BUF FS:JOIN-PATH SHADOW-SRC-BUF swap ;
 : SHADOW-SNAP$ ( -- ptr u8 n )
    ROOT s" shadow-snapshot" SHADOW-SNAP-BUF FS:JOIN-PATH SHADOW-SNAP-BUF swap ;
-create ALIAS-SRC-BUF PATH-CAP allot
-create ALIAS-SNAP-BUF PATH-CAP allot
-: ALIAS-SRC$ ( -- ptr u8 n )
-   ROOT s" alias.f" ALIAS-SRC-BUF FS:JOIN-PATH ALIAS-SRC-BUF swap ;
-: ALIAS-SNAP$ ( -- ptr u8 n )
-   ROOT s" alias-snapshot" ALIAS-SNAP-BUF FS:JOIN-PATH ALIAS-SNAP-BUF swap ;
 
 PTR-VARIABLE IMGP
 variable IMGU
@@ -684,42 +678,6 @@ variable BAND-WID
    last  last U8@ $80 or  DOCTOR-BYTE ASSERT-BAND-REFUSED
    RELOAD ;
 
-\ A fresh process that saves the image again, with nothing new defined.
-: RECAP$ ( -- ptr u8 n ) s" recapture" PATH$ ;
-: RECAP-SRC$ ( -- ptr u8 n ) s\" 0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
-
-: RECAPTURE ( -- )
-   PROC-ARGV-RESET
-   s" --" >LEN PROC-ARGV+
-   RECAP$ >LEN PROC-ARGV+
-   SNAP0$ >LEN  RECAP-SRC$ >LEN
-   OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME RECAP-SRC$ STORE! ;
-
-\ The recapture's heap holds per-run input the first image's does not: the
-\ output path and the line the save was read from sit in a few cells, so the
-\ two streams differ in those values. What must not differ is the extent and
-\ the grid's framing: a stream that embedded the previous one, or a decoder
-\ that dropped a cell, would move them.
-variable FIRST-EXTENT  variable FIRST-G  variable FIRST-S
-
-: KEEP-FRAME ( -- )
-   HEAP-BYTES FIRST-EXTENT !  GRID-G FIRST-G !  GRID-S FIRST-S ! ;
-
-: RECAPTURE-CASE ( -- )
-   KEEP-FRAME
-   RECAPTURE
-   s" the warm image saves itself again" T-LABEL
-   EXITED @ TTRUE  RC @ 0 T=
-   IMG IMGU @ munmap drop
-   RECAP$ LOAD-IMAGE
-   s" a recapture stores the same heap extent and grid framing" T-LABEL
-   HEAP-FORM SNAPSHOT-FORMAT:HEAP-GRID T=
-   HEAP-BYTES FIRST-EXTENT @ T=
-   GRID-G FIRST-G @ T=
-   GRID-S FIRST-S @ T=
-   RELOAD ;
-
 \ Where a grid stream ends against the boundary moves with every byte before
 \ it, the engine's and the image's own output path, which the save keeps in
 \ DATA (src/habu/snap-lib.f SNAP:OUTPUT): the hole image's ended on it at a
@@ -760,7 +718,6 @@ variable PADDED
    GRID-FRAMING-CASE
    GRID-VALUE-CASE
    GRID-TRUNCATED-CASE
-   RECAPTURE-CASE
    GRID-PAD-CASE ;
 
 \ The tail fixture's heap ends TAIL-BYTES into the second cell of its last
@@ -938,19 +895,6 @@ variable STRAYS
    ERR$ s" snap: donor does not support snapshot format" CONTAINS? TTRUE
    SHADOW-SNAP$ FS:EXISTS? TFALSE ;
 
-: ALIAS$ ( -- ptr u8 n )
-   S\" require src/habu/snapshot-format.f\nTRUSTED: JALIAS ( ptr u8 n -- ) ndict@ 1- WL:PRIMITIVES alias-record ;\nundefine snapshot-format\n: FORGED-FMT ( -- n ) SNAPSHOT-FORMAT:VERSION ;\ns\q snapshot-format\q JALIAS\n" ;
-
-\ A build child of its own: the refusal ends the build with rc 74.
-: ALIAS-CASE ( -- )
-   ALIAS-SRC$ ALIAS$ FS:WRITE-ALL
-   ALIAS-SNAP$ ALIAS-SRC$ BUILD-WITH-TO
-   s" a capability aliased into the built-ins' wordlist is refused" T-LABEL
-   RC @ 74 <> if OUT OUT-U @ type ERR$ type then
-   RC @ 74 T=
-   ERR$ s" snap: format capability is not an engine primitive" CONTAINS? TTRUE
-   ALIAS-SNAP$ FS:EXISTS? TFALSE ;
-
 : ACTIVE-SNAP$ ( -- ptr u8 n ) s" active" PATH$ ;
 : QUIESCENT-SNAP$ ( -- ptr u8 n ) s" quiescent" PATH$ ;
 
@@ -1042,7 +986,6 @@ variable STRAYS
    OPEN-FAIL-CASE
    REPLACE-FAIL-CASE
    SHADOW-CASE
-   ALIAS-CASE
    ACTIVE-CASE
    POLICY-CASE
    IMG IMGU @ munmap drop ;

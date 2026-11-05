@@ -92,15 +92,13 @@ create HBT-REPORT-BUF PATH-CAP allot
 create HBT-LINKER-BUF PATH-CAP allot
 variable HBT-LINKER-U
 
-\ The three stripped-window fixtures: an application whose own require closure
-\ owns the library cells it touches, one that reads the engine runtime cells the
-\ stripped entry owns, and one that reaches an engine cell nothing claims.
+\ The stripped-window fixtures: an application whose require closure owns the
+\ library cells it touches, and one reading the engine cells the entry owns.
 variable HBT-LIB-SRC-U
 variable HBT-LIB-OUT-U
 variable HBT-LIB-DIR-U
 variable HBT-CELLS-SRC-U
 variable HBT-CELLS-OUT-U
-variable HBT-UNOWNED-SRC-U
 variable HBT-PMK-SRC-U
 variable HBT-PPH-SRC-U
 variable HBT-PPH-OUT-U
@@ -129,7 +127,6 @@ create HBT-LIB-OUT-BUF PATH-CAP allot
 create HBT-LIB-DIR-BUF PATH-CAP allot
 create HBT-CELLS-SRC-BUF PATH-CAP allot
 create HBT-CELLS-OUT-BUF PATH-CAP allot
-create HBT-UNOWNED-SRC-BUF PATH-CAP allot
 create HBT-PMK-SRC-BUF PATH-CAP allot
 create HBT-PPH-SRC-BUF PATH-CAP allot
 create HBT-PPH-OUT-BUF PATH-CAP allot
@@ -268,7 +265,6 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-ROOT s" libdir" HBT-LIB-DIR-BUF HBT-LIB-DIR-U HBT-PATH!
    HBT-ROOT s" cells.f" HBT-CELLS-SRC-BUF HBT-CELLS-SRC-U HBT-PATH!
    HBT-ROOT s" cells" HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U HBT-PATH!
-   HBT-ROOT s" unowned.f" HBT-UNOWNED-SRC-BUF HBT-UNOWNED-SRC-U HBT-PATH!
    HBT-ROOT s" ptrmark.f" HBT-PMK-SRC-BUF HBT-PMK-SRC-U HBT-PATH!
    HBT-ROOT s" pph.f" HBT-PPH-SRC-BUF HBT-PPH-SRC-U HBT-PATH!
    HBT-ROOT s" pph" HBT-PPH-OUT-BUF HBT-PPH-OUT-U HBT-PATH!

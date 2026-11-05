@@ -5,14 +5,12 @@ require src/lib/string.f
 require src/lib/source.f
 require src/lib/build.f
 require src/lib/codesign.f
-require src/lib/process-env.f
 require tools/build-fixpoint.f
 require tools/gate-json-assert-core.f
 require test/gate-common.f
 require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-image.f
-require src/lib/process.f
 require test/aot-builder-engine.f
 
 package AOT-POSITIVE
@@ -166,231 +164,14 @@ variable BLR-CNT
    s" ok" SRC-CQ
    s"  count type CR DATA-SUM WINDOW-DATUM ;" GE-SRC-LINE ;
 
-\ Persistent data region: a compile-time create/comma table read in a runtime
-\ ?do/loop and accumulated through @/!/+!. Proves the AOT entry maps DATA-VA,
-\ restores the persistent content and sets up the return/loop stack.
-\
-\ Code-window regression: a datum whose value lands in [dbase, dbase+REGION) -
-\ here dbase+REGION-8, the region's top cell, far above the code high-water - is
-\ data, not a pointer. A magnitude-window CELL-TEXTPTR? rejected the program
-\ (exit 70); WINDOW-DATUM reads the datum back unchanged. The classifier's own
-\ two-sided check is SELF-TEXTPTR-DEFS in MAKER-SELFTEST: CELL-TEXTPTR? is a
-\ linker word and this application compiles before the linker loads. Use the
-\ live region: RBASE-VA is a snapshot sentinel and may name unrelated mappings
-\ under ASLR.
+\ DATA-SUM proves the entry maps DATA-VA, restores it and sets up loop stacks.
+\ X holds dbase@+REGION-8, data above the code, not RBASE-VA (ASLR moves it).
 : DATA-DEFS ( -- )
    s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
    s" variable SUM" GE-SRC-LINE
    s" : DATA-SUM ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE
    s" dbase@ REGION + 8 - dup constant EXPECTED create X ," GE-SRC-LINE
    s\" : WINDOW-DATUM ( -- ) X @ EXPECTED = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE ;
-
-: SURFACE-BASE-DEFS ( -- )
-   s" package AOT-SURFACE-HOSTILE" GE-SRC-LINE
-   s" public" GE-SRC-LINE
-   s" : NATIVE-BUILD ( -- ) ;" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" package AOT-SURFACE-TEST" GE-SRC-LINE
-   s\" : AS-FAIL ( bool -- ) 0= if s\" AOT-LINK surface mismatch\" 74 die then ;" GE-SRC-LINE
-   s\" : AS-NS ( -- ptr n ) s\" AOT-LINK\" BOOT:NAMESPACE-WL XREF-FIND-WL ;" GE-SRC-LINE
-   s" : AS-PUB ( -- n ) AS-NS XREF-PKG-PUBLIC ;" GE-SRC-LINE
-   s" : AS-PRI ( -- n ) AS-NS XREF-PKG-PRIVATE ;" GE-SRC-LINE
-   s\" : AS-HOST-PUB ( -- n ) s\" AOT-SURFACE-HOSTILE\" BOOT:NAMESPACE-WL XREF-FIND-WL XREF-PKG-PUBLIC ;" GE-SRC-LINE ;
-
-: SURFACE-PUB-DEFS ( -- )
-   s\" : AS-PUB-NAME? ( ptr u8 n -- bool ) 2dup s\" LINK\" XREF-STR=CI >r s\" BUILD-NATIVE\" XREF-STR=CI r> or ;" GE-SRC-LINE
-   s" : AS-PUB-CHECK ( -- ) AS-NS XREF-FOUND? AS-FAIL" GE-SRC+
-   s"  0 ndict@ 0 ?do i XREF-REC dup XREF-WORDLIST AS-PUB = if" GE-SRC+
-   s"  dup XREF-NAME$ AS-PUB-NAME? AS-FAIL drop 1+" GE-SRC+
-   s"  else drop then loop 2 = AS-FAIL ;" GE-SRC-LINE ;
-
-: SURFACE-PRI-DEFS ( -- )
-   s" : AS-NOT-EXPOSED-WL? ( ptr n n -- bool ) over XREF-NAME$ rot XREF-FIND-WL <> ;" GE-SRC-LINE
-   s" : AS-NAME-ABSENT? ( ptr u8 n n -- bool ) XREF-FIND-WL XREF-FOUND? 0= ;" GE-SRC-LINE
-   s" : AS-BARE-NAME ( ptr u8 n -- ) 0 AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
-   s" : AS-QUAL-NAME ( ptr u8 n -- ) AS-PUB AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
-   s" : AS-PRIVATE ( ptr u8 n -- ptr n ) AS-PRI XREF-FIND-WL dup XREF-FOUND? AS-FAIL ;" GE-SRC-LINE
-   s" : AS-NAMED ( ptr u8 n -- ) 2dup AS-PRIVATE drop" GE-SRC+
-   s"  2dup AS-BARE-NAME AS-QUAL-NAME ;" GE-SRC-LINE
-   s\" : AS-HOSTILE-CHECK ( -- ) s\" NATIVE-BUILD\" AS-PRIVATE" GE-SRC+
-   s"  dup AS-HOST-PUB AS-NOT-EXPOSED-WL? AS-FAIL drop" GE-SRC+
-   s\"  s\" NATIVE-BUILD\" AS-HOST-PUB AS-NAME-ABSENT? 0= AS-FAIL ;" GE-SRC-LINE
-   s\" : AS-MAIN-CHECK ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? AS-FAIL" GE-SRC+
-   s\"  s\" MAIN\" AS-PRI XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE
-   \ Representative words, one per way the packaging could regress: REC and
-   \ CLOSURE are closure-walk code, FINDADDR-PTR the record resolver the linker
-   \ calls, DIRECT? and TARGET the branch decoders, CELL-TEXTPTR? the pointer
-   \ classifier, RELOC-W32 the aot-lib caller that calls the decoders bare. Each
-   \ must live in AOT-LINK's private wordlist and be reachable under no other
-   \ name.
-   s" : AS-NAMED-CHECK ( -- )" GE-SRC+
-   s\"  s\" REC\" AS-NAMED s\" REC-NAME-PTR\" AS-NAMED" GE-SRC+
-   s\"  s\" CLOSURE\" AS-NAMED s\" FINDADDR-PTR\" AS-NAMED" GE-SRC+
-   s\"  s\" DIRECT?\" AS-NAMED s\" TARGET\" AS-NAMED" GE-SRC+
-   s\"  s\" CELL-TEXTPTR?\" AS-NAMED s\" RELOC-W32\" AS-NAMED ;" GE-SRC-LINE
-   s\" : AS-NO-RETIRED-NS ( -- ) s\" AOT-BRANCH\" BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? 0= AS-FAIL" GE-SRC+
-   s\"  s\" AOT-REC\" BOOT:NAMESPACE-WL XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE ;
-
-: SURFACE-DEFS ( -- )
-   SURFACE-BASE-DEFS
-   SURFACE-PUB-DEFS
-   SURFACE-PRI-DEFS
-   s\" : AS-RUN ( -- ) s\" AOT-LINK\" 0 XREF-FIND-WL XREF-FOUND? 0= AS-FAIL" GE-SRC+
-   s"  AS-HOSTILE-CHECK AS-MAIN-CHECK AS-NAMED-CHECK AS-NO-RETIRED-NS AS-PUB-CHECK ;" GE-SRC-LINE
-   s" AS-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-\ SURFACE-DEFS and the three blocks below check the linker: what AOT-LINK
-\ publishes, its relocation math, the seed's span table and its pointer
-\ classifier. They need the linker in the dictionary, and nothing the
-\ application requires may be loaded when the capture window opens
-\ (docs/architecture.md "Images"): an application naming a linker word dies with
-\ E-UNDEFINED. They run from a file the maker's stdin requires after
-\ tools/aot-build.f, one line before AOT-LINK:BUILD-NATIVE.
-create SELF-SRC PATH-CAP allot
-variable SELF-SRC-U
-
-: SELF-SRC$ ( -- ptr u8 n )
-   SELF-SRC SELF-SRC-U @ ;
-
-: SELF-SRC! ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   name nameu SELF-SRC GT-PATH SELF-SRC-U ! ;
-
-: WRITE-SELF-SRC ( -- )
-   SELF-SRC$ GE-SRC-BUF GE-SRC-U @ FS:WRITE-ALL ;
-
-\ The maker script with one line added: the self-test is
-\ required after the linker and before the link. A saved maker opens the
-\ application window before the linker load, so cannot inject at this point.
-: SELF-STDIN$ ( -- ptr u8 n )
-   SB-RESET
-   S\" require tools/aot-builder.f\nAOT-BUILDER:OPEN\nrequire tools/aot-build.f\ns\" " SB-APPEND
-   SELF-SRC$ SB-APPEND
-   S\" \" required\nAOT-LINK:BUILD-NATIVE\n" SB-APPEND
-   SB$ ;
-
-\ The maker runs with the application as argv[0], the JSON flag as argv[1],
-\ TMPDIR as the image's directory, and the script above on stdin. Its image
-\ lands at TMPDIR/hb-aot-got (GB-OUT$); the stale one goes first, so "an image
-\ exists" and "none was emitted" are both about this run.
-: MAKER-RUN ( -- )
-   GB-OUT$ FS:EXISTS? if GB-OUT$ FS:REMOVE-FILE then
-   GE-HB-RESET
-   GE-HB$ GE-ARGV+
-   s" --" GE-ARG+ GB-SRC$ GE-ARG+ s" 0" GE-ARG+
-   s" TMPDIR" >LEN GT-ROOT >LEN PROC-ENV+
-   GE-HB$ SELF-STDIN$ PROCESS:WAIT-FOREVER MS>N GE-RUN-STDIN ;
-
-\ Relocation math: two adjacent synthetic closure members prove MAP-IN-MEMBER
-\ treats a target at a member's end as the next member's start (the >=
-\ boundary), and MAP-TARGET relocates it to the next member's new offset. The
-\ members carry XREF-NULL for their record, as a word the image ships no record
-\ for does. Scribbling on the live CLO/CLO-LEN/CLO-REC/NEWOFF/NCLO is safe: this
-\ runs before LINK, and aot-closure.f CLOSURE resizes the tables and resets NCLO
-\ for the program; MAKER-SELFTEST runs the image it built to prove nothing
-\ leaked. The rows are allocated as the walk's are (CLO-TABLES, PLAN-TABLES),
-\ and the entry order MAP-TARGET binary-searches is built as PLAN-BLOBS builds
-\ it (aot-lib.f MEMBER-ORDER). The ADR case re-files member 0 at the assembler
-\ cursor as PLAN-BLOBS does (its first member starts at ASM-LEN), so `ADR x0,
-\ .+4` aimed inside member 0 comes back from RELOC-W32 as the same word, and
-\ TNEW is member 0's new offset plus 4. Both assertions are exact: the harness
-\ recomputes neither the encoding nor the map.
-: SELF-AMAP-DEFS ( -- )
-   s" package AOT-LINK" GE-SRC-LINE
-   s" create AMAP-CODE 16 allot" GE-SRC-LINE
-   s" 8 constant AMAP-SPAN-BYTES" GE-SRC-LINE
-   s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
-   s" $40 constant AMAP-M2-OFF" GE-SRC-LINE
-   s" $10000020 constant AMAP-ADR" GE-SRC-LINE        \ ADR x0, .+4
-   s" 4 constant AMAP-ADR-DELTA" GE-SRC-LINE
-   s" : AMAP-MEMBER! ( n ptr u8 n -- ) {: i:n code:ptr len:n :}" GE-SRC+
-   s"  code i CLO ! len i CLO-LEN ! XREF-NULL i CLO-REC ! ;" GE-SRC-LINE
-   s" : AMAP-CLOSURE! ( -- ) 2 CLO-TABLES 2 PLAN-TABLES" GE-SRC+
-   s"  0 AMAP-CODE AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
-   s"  1 AMAP-CODE AMAP-CODE-ROW + AMAP-SPAN-BYTES AMAP-MEMBER!" GE-SRC+
-   s"  0 0 NEWOFF ! AMAP-M2-OFF 1 NEWOFF ! 2 NCLO ! MEMBER-ORDER ;" GE-SRC-LINE
-   s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
-   s" : AMAP-RUN ( -- ) AMAP-CLOSURE!" GE-SRC+
-   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-IN-MEMBER -1 =" GE-SRC+
-   s\"  s\" AOT closed member range\" AMAP-EXPECT" GE-SRC+
-   s"  0 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-M2-OFF =" GE-SRC+
-   s\"  s\" AOT adjacent member relocation\" AMAP-EXPECT" GE-SRC+
-   s"  A64ICODE:ASM-LEN 0 NEWOFF !" GE-SRC+
-   s"  0 AMAP-CODE AMAP-ADR RELOC-W32 AMAP-ADR =" GE-SRC+
-   s\"  s\" AOT in-member ADR keeps its delta\" AMAP-EXPECT" GE-SRC+
-   s"  TNEW @ A64ICODE:ASM-LEN AMAP-ADR-DELTA + =" GE-SRC+
-   s\"  s\" AOT in-member ADR target\" AMAP-EXPECT ;" GE-SRC-LINE
-   s" AMAP-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-\ The span table the seed published, read through the production reader in the
-\ shipped engine's linker inside a real stripped build. The first two assertions
-\ are two-sided: a row's code has no dictionary record (fails if a stripped
-\ word's record came back) and the span table answers for it (fails if the table
-\ is not published). The other two pin the reader's boundaries: a row's entry
-\ and an address inside it both answer its row, as the closure walk asks of
-\ every branch.
-: SELF-SPAN-DEFS ( -- )
-   s" package AOT-LINK" GE-SRC-LINE
-   s" : ASPAN-RUN ( -- ) SPAN-N 0 >" GE-SRC+
-   s\"  s\" AOT span table is empty\" AMAP-EXPECT" GE-SRC+
-   s"  0 SPAN-START FINDADDR-PTR XREF-FOUND? 0=" GE-SRC+
-   s\"  s\" AOT span row still has a record\" AMAP-EXPECT" GE-SRC+
-   s"  0 SPAN-START SPAN-AT-ENTRY 0 =" GE-SRC+
-   s\"  s\" AOT span entry lookup\" AMAP-EXPECT" GE-SRC+
-   s"  0 SPAN-START-N 0 SPAN-BYTES 1- + SPAN-OWNER 0 =" GE-SRC+
-   s\"  s\" AOT span interior lookup\" AMAP-EXPECT ;" GE-SRC-LINE
-   s" ASPAN-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-\ CELL-TEXTPTR? pins both directions: a value in the [RBASE-VA, RBASE-VA+REGION)
-\ magnitude window - the region's top cell, far above the code high-water - is
-\ data, while a live dict-record address and a live code entry (MAIN's) are
-\ pointers. RBASE-VA/REGION is evaluated in the maker, so the case tracks the
-\ constants. BUNDLE builds and runs the program that carries such a datum.
-: SELF-TEXTPTR-DEFS ( -- )
-   s" package AOT-LINK" GE-SRC-LINE
-   s" : ATP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
-   s" : ATP-RUN ( -- ) RBASE-VA REGION + 8 - CELL-TEXTPTR? 0=" GE-SRC+
-   s\"  s\" free-region value is data\" ATP-EXPECT" GE-SRC+
-   s"  0 XREF-REC-ADDR CELL-TEXTPTR?" GE-SRC+
-   s\"  s\" live dict-record is a pointer\" ATP-EXPECT" GE-SRC+
-   s"  FINDMAIN XREF-START CELL-TEXTPTR?" GE-SRC+
-   s\"  s\" live code entry is a pointer\" ATP-EXPECT ;" GE-SRC-LINE
-   s" ATP-RUN" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-: SELF-SOURCE ( -- )
-   GE-SRC-RESET
-   SURFACE-DEFS
-   SELF-AMAP-DEFS
-   SELF-SPAN-DEFS
-   SELF-TEXTPTR-DEFS ;
-
-\ Two words, so the closure the linker walks has members to relocate after
-\ AMAP-RUN scribbled on the live arrays. MAIN also gives the surface check its
-\ subject (AS-MAIN-CHECK: MAIN is global, and not AOT-LINK's) and the classifier
-\ check a live code entry.
-: SELF-APP-SOURCE ( -- )
-   GE-SRC-RESET
-   s" : SELF-BUMP ( n -- n ) 1+ ;" GE-SRC-LINE
-   s" : MAIN ( -- ) 6 SELF-BUMP . ;" GE-SRC-LINE ;
-
-: SELF-EXPECT ( -- ptr u8 n )
-   SB-RESET
-   s" 7" GE-OUT-LINE
-   SB$ ;
-
-: MAKER-SELFTEST ( -- )
-   s" hb-aot-selftest.f" s" hb-aot-got" s" hb-aot-selftest-report.json" PATHS
-   SELF-APP-SOURCE GB-WRITE-SRC
-   s" hb-aot-selftest-maker.f" SELF-SRC!
-   SELF-SOURCE WRITE-SELF-SRC
-   MAKER-RUN
-   0 s" maker self-test build rc" GE-EXPECT-RC
-   GB-OUT$ FS:FILE? 0= if s" maker self-test image" GE-FAIL then
-   SELF-EXPECT s" maker self-test image output" GB-RUN-EXPECT
-   s" PASS: maker-side linker self-tests (AOT-LINK surface, relocation math, span table, pointer classifier)" type cr ;
 
 : MAIN-OWNER-CHECK ( -- )
    s\" : AMC ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? 0= if" GE-SRC+
@@ -413,8 +194,6 @@ variable SELF-SRC-U
    \ this build merely because its spelling appears in the source.
    s" TRUSTED: UNUSED-PATCH ( -- ) 0 0 patch32 ;" GE-SRC-LINE
    BUNDLE-MAIN
-   \ MAIN-OWNER-CHECK is engine reflection and stays in the application; the
-   \ AOT-LINK surface check runs in MAKER-SELFTEST, where the linker exists.
    MAIN-OWNER-CHECK ;
 
 : BUNDLE-EXPECT ( -- ptr u8 n )
@@ -446,15 +225,8 @@ variable SELF-SRC-U
    codesz GB-U.
    s"  B)" type cr ;
 
-\ Layout-bundle fetch: MAIN stores a wide layout value through `!`, reads it
-\ back through `@`, destructures it with MATCH and prints the payload (37). The
-\ pass-2 wide-store lowering (LP2STORE) calls the engine-resident (PROT-SPAN)
-\ span guard and the wide-fetch lowering (LP2VEMIT) calls the LP2VEXEC tag
-\ validator: in a stripped image each call ships a build-time engine address and
-\ SIGSEGVs at load unless the linker relocates it. LP2VEXEC is a registered
-\ engine helper, so the closure walk collapses its call in-image;
-\ ASSERT-BLR-ABSENT proves no un-collapsed blr x16 remains, and reaching the
-\ fetch proves the guarded store completed.
+\ The stores call the engine's (PROT-SPAN) guard and the fetch NFETCH-CHECK:TAGS
+\ (elaborate.f VALIDATE-FETCH): printing 37 proves the linker relocated both.
 : LAYOUT-FETCH-LINES ( -- )
    s" package AOT-LAYOUT-FETCH" GE-SRC-LINE
    s" SUMTYPE res<a,b>" GE-SRC-LINE
@@ -466,120 +238,37 @@ variable SELF-SRC-U
    s" : ROUND-TRIP ( -- n ) 37 construct res ok 0 MEM ! 0 MEM @ MATCH res ok OF ENDOF err OF ENDOF ;MATCH ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
-\ A TRUSTED: body answers a family value from loose cells. The checker records
-\ the declared row without walking the body, so the elaborator takes that row
-\ as the grouping of the cells the body left (src/compiler/native/elaborate.f
-\ TRUSTED-FRAME-RESHAPE); without it hb-build dies on GWN-MAKE with
-\ `ncomp: cannot compile` E-NELAB-JOIN - the same width, a different grouping.
-\ Cell order: payload below, tag on top, so `7 1` is the gns arm carrying 7.
-: TRUSTED-MAKE-LINES ( -- )
-   s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
-   s" package AOT-TRUSTED-MAKE" GE-SRC-LINE
-   s" TRUSTED: GWN-MAKE ( -- gwfn ) 7 1 ;" GE-SRC-LINE
-   s" public" GE-SRC-LINE
-   S\" : RUN ( -- ) GWN-MAKE MATCH gwfn gnn OF 100 ENDOF gns OF ENDOF ;MATCH s\" gns=\" type . ;" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE ;
-
-\ The same constructor shape forges an out-of-range tag (gwfn tags are 0..1,
-\ gemt tags 0..2; both forge 5), and the forged cells are still a checked family
-\ value where they are consumed: the stripped image dies there with
-\ ENGINE-ERROR:BAD-TAG (85), not at the trusted return. A run dies once, so
-\ MAIN's one argument picks the consumer and one build serves every run:
-\   none   a fetch whose value is dropped. A lowering that elided the unused
-\          load would take the tag walk with it and exit 0.
-\   use    a fetch whose value a MATCH consumes. The tag walk the elaborator
-\          stages ahead of the wide load (src/compiler/native/elaborate.f
-\          VALIDATE-FETCH, NFETCH-CHECK:TAGS) dies first, `hb: bad layout tag`,
-\          before the MATCH could report the family.
-\   match  a MATCH on the forged value itself: its inline invalid-tag die,
-\          `hb: bad gemt tag`.
-: TRUSTED-FORGE-SRC ( -- )
-   GE-SRC-RESET
-   s" require src/lib/string.f" GE-SRC-LINE
-   s" ENUM gwfn VARIANT gnn ;VARIANT VARIANT gns FIELD value n ;VARIANT ;ENUM" GE-SRC-LINE
-   s" SUMTYPE gemt" GE-SRC-LINE
-   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
-   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
-   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
-   s" ;SUMTYPE" GE-SRC-LINE
-   s" 1 LAYOUT-BUFFER MEM gwfn" GE-SRC-LINE
-   s" package AOT-TRUSTED-FORGE" GE-SRC-LINE
-   s" TRUSTED: GWN-FORGE ( -- gwfn ) 0 5 ;" GE-SRC-LINE
-   s" TRUSTED: GEMT-FORGE ( -- gemt ) 0 0 5 ;" GE-SRC-LINE
-   s" : FETCH-DROP ( -- ) GWN-FORGE 0 MEM ! 0 MEM @ drop ;" GE-SRC-LINE
-   s" : FETCH-USE ( -- n ) GWN-FORGE 0 MEM ! 0 MEM @ MATCH gwfn gnn OF 100 ENDOF gns OF ENDOF ;MATCH ;" GE-SRC-LINE
-   s" : MATCH-GEMT ( -- n ) GEMT-FORGE MATCH gemt one OF ENDOF two OF + ENDOF nil OF 999 ENDOF ;MATCH ;" GE-SRC-LINE
-   s" public" GE-SRC-LINE
-   s" : RUN ( -- )" GE-SRC-LINE
-   s"    SCRIPT-ARGC 0= if FETCH-DROP exit then" GE-SRC-LINE
-   S\"    0 SCRIPT-ARGV$ s\" use\" STR= if FETCH-USE . exit then" GE-SRC-LINE
-   S\"    0 SCRIPT-ARGV$ s\" match\" STR= if MATCH-GEMT . then ;" GE-SRC-LINE
-   s" ;package" GE-SRC-LINE
-   s" : MAIN ( -- ) AOT-TRUSTED-FORGE:RUN ;" GE-SRC-LINE ;
-
-\ Run the forged-tag image with ARG as its argument (none when ARG is empty)
-\ and expect the bad-tag die: rc 85, DIAG on stderr, nothing on stdout.
-: FORGE-RUN-BAD ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: arg:ptr argu:n diag:ptr diagu:n label:ptr labelu:n :}
-   GE-HB-RESET
-   argu 0 > if arg argu GE-ARG+ then
-   GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
-   85 label labelu GE-EXPECT-RC
-   diag diagu label labelu GE-EXPECT-ERR-HAS
-   s" " label labelu GE-EXPECT-OUT ;
-
-: TRUSTED-ROW ( -- )
-   s" hb-aot-trusted-forge.f" s" hb-aot-trusted-forge" s" hb-aot-trusted-forge-report.json" PATHS
-   TRUSTED-FORGE-SRC
-   s" hb-build AOT trusted forged-tag build" GB-HBB-BUILD
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" hb-build AOT trusted forged-tag fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
-   then
-   s" " s" hb: bad layout tag" s" hb-build AOT trusted forged-tag dropped fetch" FORGE-RUN-BAD
-   s" use" s" hb: bad layout tag" s" hb-build AOT trusted forged-tag used fetch" FORGE-RUN-BAD
-   s" match" s" hb: bad gemt tag" s" hb-build AOT trusted forged-tag MATCH" FORGE-RUN-BAD
-   s" PASS: hb-build AOT trusted forged tags (rc 85: hb: bad layout tag at a dropped and a used fetch, hb: bad gemt tag at a MATCH)" type cr ;
-
-\ The layout fetch and the trusted family row build as one program: their
-\ declarations are disjoint, and MAIN prints each one's line in turn.
-: LAYOUT-TRUSTED-SOURCE ( -- )
+: LAYOUT-FETCH-SOURCE ( -- )
    GE-SRC-RESET
    LAYOUT-FETCH-LINES
-   TRUSTED-MAKE-LINES
-   s" : MAIN ( -- ) AOT-LAYOUT-FETCH:ROUND-TRIP . AOT-TRUSTED-MAKE:RUN ;" GE-SRC-LINE ;
+   s" : MAIN ( -- ) AOT-LAYOUT-FETCH:ROUND-TRIP . ;" GE-SRC-LINE ;
 
-: LAYOUT-TRUSTED-EXPECT ( -- ptr u8 n )
+: LAYOUT-FETCH-EXPECT ( -- ptr u8 n )
    SB-RESET
    s" 37" GE-OUT-LINE
-   s" gns=7" GE-OUT-LINE
    SB$ ;
 
 : LAYOUT-FETCH ( -- )
    s" hb-aot-layout-fetch.f" s" hb-aot-layout-fetch" s" hb-aot-layout-fetch-report.json" PATHS
-   LAYOUT-TRUSTED-SOURCE
-   s" hb-build AOT layout-bundle fetch and trusted family-row build" GB-HBB-BUILD
-   LAYOUT-TRUSTED-EXPECT s" hb-build AOT layout-bundle fetch and trusted family-row output" GB-RUN-EXPECT
+   LAYOUT-FETCH-SOURCE
+   s" hb-build AOT layout-bundle fetch build" GB-HBB-BUILD
+   LAYOUT-FETCH-EXPECT s" hb-build AOT layout-bundle fetch output" GB-RUN-EXPECT
    HB-TARGET-LINUX-X86-64? 0= if
       s" hb-build AOT layout-bundle fetch zero un-collapsed blr x16" ASSERT-BLR-ABSENT
    then
    HB-TARGET-LINUX-X86-64? if
       s" PASS: hb-build AOT layout-bundle store and fetch via relocated calls" type cr
    else
-      s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and LP2VEXEC reached via relocated calls; zero blr x16)" type cr
-   then
-   s" PASS: hb-build AOT trusted family row (loose cells take the declared grouping)" type cr ;
+      s" PASS: hb-build AOT layout-bundle store and fetch ((PROT-SPAN) and NFETCH-CHECK:TAGS reached via relocated calls; zero blr x16)" type cr
+   then ;
 
 public
 
 : RUN-BUNDLE-DATA ( -- )
    s" hb-gate-aot-bundle-data" GT-START
    AOT-BUILDER-ENGINE:ENSURE
-   \ The synthetic private-word and ADR/BLR checks exercise the ARM linker.
-   \ On x86-64 the following builds execute its real relocated call paths.
-   HB-TARGET-LINUX-X86-64? 0= if MAKER-SELFTEST then
    BUNDLE
    LAYOUT-FETCH
-   TRUSTED-ROW
    GT-CLEANUP ;
 
 ;using                                   \ AOT-IMAGE

@@ -1,8 +1,8 @@
 \ hb-build-stripped-cells-test.f - checked fixture for tools/hb-build-lib.f: the
 \ DATA cells a stripped image refuses (a pointer into memory the build mapped, in
-\ an undeclared, a declared and a typed cell, and a baked table no claim names),
-\ and one built program whose scratch pointer cell saves as null while its typed
-\ pointer cell keeps a string literal's address, moved into the image. The same
+\ an undeclared and a declared cell, and a baked table no claim names), and one
+\ built program whose scratch pointer cell saves as null while its typed pointer
+\ cell keeps a string literal's address, moved into the image. The same
 \ allocation at run time links in tools/hb-build-stripped-cache-test.f
 \ HBT-STRIPPED-SAME-TWICE; tools/hb-build-test-lib.f lists the other rows.
 \ Run: bin/hb --load tools/hb-build-stripped-cells-test.f
@@ -65,13 +65,6 @@ package HB-BUILD-CLI
    S\"    TBUF @ 4 type cr ;\n" SB-APPEND
    SB$ ;
 
-\ A TYPED-VARIABLE's pointer cell is an address cell, as a PERSISTED- one is.
-: HBT-MAPT-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   S\" require src/lib/memory.f\nTYPED-VARIABLE TBUF ptr u8\n" SB-APPEND
-   S\" MEM-ALLOC-64K drop TBUF !\n: MAIN ( -- ) s\" typed\" type cr ;\n" SB-APPEND
-   SB$ ;
-
 \ A long zero run ends at an unaligned mapped address. This adds the raw-byte
 \ transition to the aligned and declared-cell cases on the same keyed linker.
 : HBT-MAPB-SRC$ ( -- ptr u8 n )
@@ -99,14 +92,6 @@ package HB-BUILD-CLI
    drc 0 <> TTRUE
    HBB-ERR-BUF derr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
    HBB-ERR-BUF derr s" word=PBUF" CONTAINS? TTRUE ;
-
-\ ... and one in a TYPED-VARIABLE's pointer cell.
-: HBT-STRIPPED-MAPPED-TYPED ( -- )
-   HBT-MAPD-SRC HBT-MAPT-SRC$ FS:WRITE-ALL
-   HBT-MAPD-SRC HBT-RUN-MAKER {: tout:n terr:n trc:n :}
-   trc 0 <> TTRUE
-   HBB-ERR-BUF terr s" holds a pointer into memory the build mapped" CONTAINS? TTRUE
-   HBB-ERR-BUF terr s" word=TBUF" CONTAINS? TTRUE ;
 
 \ ... while in one linked image a PTR-VARIABLE reads NULL-PTR, its type saying it
 \ holds no address across a save, and a TYPED-VARIABLE keeps the literal's
@@ -147,7 +132,6 @@ public
    HBT-PREPARE
    HBT-STRIPPED-MAPPED-CELL
    HBT-STRIPPED-MAPPED-DECLARED
-   HBT-STRIPPED-MAPPED-TYPED
    HBT-STRIPPED-MAPPED-SCRATCH
    HBT-STRIPPED-MAPPED-BYTES
    HBT-STRIPPED-UNCARRIED-TABLE

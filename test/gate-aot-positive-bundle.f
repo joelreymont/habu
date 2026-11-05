@@ -1,6 +1,5 @@
 \ gate-aot-positive-bundle.f - one gate row of the positive hb-build AOT checks
-\ (test/gate-aot-positive-lib.f): the maker selftest, the bundle, the layout
-\ fetch, the trusted family row and its forged tags.
+\ (test/gate-aot-positive-lib.f): the bundle and the layout fetch.
 require test/gate-aot-positive-lib.f
 
 AOT-POSITIVE:RUN-BUNDLE-DATA
