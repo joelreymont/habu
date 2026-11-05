@@ -15,3 +15,5 @@ A refused declaration under --load prints its diagnostic and then `hb: uncaught 
 An uncaught `0 throw` under --load exits 109 (ENGINE-ERROR:THROW-ZERO, habu1.f BTHROWPRIM) with no line at all: `: ZT ( -- ) 0 throw ; ZT` on the public hb prints nothing, rc 109.
 
 Census 2026-11-04: an acceptance case of its parent; fix it in the code that stays (named above), never in the machinery the parent replaces.
+
+Case from Maki (tim, 2026-11-05): a Maki build failed with only `hb: uncaught throw code -30422`, which is Maki's MODEL:E-MODEL-HANDLE (maki src/model-types.f:18), thrown at maki src/feature.f:780 during a require. THROW-REPORT (src/habu/main.f:204-210) prints only the number: no constant name, no file or line. Reproducer: `printf 'require .out/edit2.f\n' | <maki image> repl` from /Users/joel/Work/maki/.jj-ws.noindex/sheet-history. Acceptance: that run names the code and the throwing file and line.
