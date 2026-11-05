@@ -276,6 +276,12 @@ learned live in the docs for their subject.
   FS:ERRNO-TEXT ( errno buf size -- text ) writing into the caller's buffer,
   Joel chose "FS:ERRNO$ ( errno -- text )": "Like FMT:INT$: text in a
   per-task buffer of fixed size."
+- 2026-11-05, which wait finished: shown that curl, the WebSocket server and
+  the HTTP listener each cast AIO's ticket to a number to compare it and scan
+  their slots for the one AWAIT-ANY returned, while epoll, kqueue, io_uring
+  and mio hand back a number the caller attached to the wait, Joel chose "Tag
+  each wait (Recommended)": GROUP+ ( ticket n group -- ) takes the caller's
+  number and AWAIT-ANY ( group -- n outcome ) hands it back.
 - 2026-11-01, long model calls: Tender lost documents when MODEL's total
   call bound ran out at about 300 s. A call has no total bound; a dead call
   shows as a failed status or a stalled connection. On 2026-11-04, shown that
