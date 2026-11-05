@@ -14,7 +14,7 @@ require src/habu/interpret.f
 require src/habu/repl.f
 require src/lib/fmt.f
 
-package ENGINE-MAIN
+package COMMAND-LINE
 
 private
 

@@ -631,7 +631,7 @@ SUITE native-dstack-alias
    test/compiler/native-dstack-alias.f
 ;SUITE
 
-WHITEBOX-SUITE compiler-native-match
+SUITE compiler-native-match
    test/compiler/native-match.f
 ;SUITE
 
@@ -1257,7 +1257,7 @@ SUITE xt-cell
    test/xt-cell-test.f
 ;SUITE
 
-WHITEBOX-SUITE catch-stale
+SUITE catch-stale
    test/catch-stale-suite.f
 ;SUITE
 
@@ -1273,9 +1273,7 @@ SUITE outer-interpret
    test/outer-interpret.f
 ;SUITE
 
-\ main-argv reloads src/habu/main.f's source, which reopens ENGINE-MAIN; a product
-\ seals every package it ships, so the row runs on the engine that keeps them open.
-WHITEBOX-SUITE main-argv
+SUITE main-argv
    test/main-argv.f
 ;SUITE
 
@@ -1344,7 +1342,7 @@ SUITE engine-error-package
    test/engine-error-package.f
 ;SUITE
 
-WHITEBOX-SUITE snapshot-xt-cell-decl
+SUITE snapshot-xt-cell-decl
    test/snapshot-xt-cell-decl.f
 ;SUITE
 

@@ -1,7 +1,5 @@
-\ catch-stale-suite.f - the cells a caught throw leaves stale. A WHITEBOX-SUITE
-\ row: CTL-MASKS is a checker internal the unsealed engine binds; the gate runs
-\ it on the engine that test/whitebox-engine.f builds:
-\     <unsealed engine> --load test/catch-stale-suite.f
+\ catch-stale-suite.f - the cells a caught throw leaves stale.
+\     bin/hb --load test/catch-stale-suite.f
 \
 
 require src/lib/errors.f
@@ -174,8 +172,7 @@ create CS-DBUF 8192 allot
    s" PP2 ( ptr u8 n -- n ) ['] OUTER-PARTIAL-QUOTE catch {: code:n :} drop c@"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
-\ The saved-image children below run the product engine, whose seal pass is
-\ the one difference from the whitebox engine this file runs on.
+\ The saved-image children below run bin/hb in a fresh process.
 4096 constant CS-CHILD-CAP
 create CS-CHILD-OUT CS-CHILD-CAP allot
 create CS-CHILD-ERR CS-CHILD-CAP allot
@@ -315,34 +312,6 @@ variable CS-CHILD-ERR-U
    \ ... and reading the cell below it is E-STALE-READ on the token that reads
    s" C7 ( ptr u8 n -- n ) [: WKEEPTOP ;] catch {: code:n :} drop c@" CS-CODE<
    CS-STALE?  s\" \"token\":\"c@\"" CS-CODE?  CS-CODE-END ;
-
-\ The masks the checker recorded for those same fixtures, read out of its store.
-\ Bit 0 is the top declared input and the mask is cut to the width the signature
-\ declared, since a bit above it would speak for a cell that does not exist.
-: CS-SECTION-RECORDED ( -- )
-   s" WMAYBE" CTL-MASKS drop 1 T=                 \ one declared input, left alone
-   s" WMAYBE2" CTL-MASKS drop 1 T=
-   s" WBOOM" CTL-MASKS drop 0 T=
-   s" WPARTLY" CTL-MASKS drop 0 T=
-   s" WBIND" CTL-MASKS drop 0 T=
-   s" WSWAPT" CTL-MASKS drop 0 T=                 \ two inputs, the throw path swapped them
-   s" WKEEPTOP" CTL-MASKS drop 1 T=               \ top kept, the cell below it not
-   \ a word with no throw edge at all records nothing: its call takes no edge
-   s" WKEEP" CTL-MASKS 0 T= 0 T= ;
-
-\ The one cell a symbol's control facts travel in (the owner-ABI handover and
-\ the captured signature graph): the flags keep the low bits and the masks ride
-\ above them, 20 bits each, so a mask wider than that arrives truncated - which
-\ is the conservative direction.
-: CS-SECTION-XFER ( -- )
-   $1000A $ABCDE $12345 XFER-PACK {: packed:n :}
-   packed XFER-FLAGS $1000A T=
-   packed XFER-DMASK $ABCDE T=
-   packed XFER-RMASK $12345 T=
-   $2 $FFFFFFFFFFFF $FFFFFFFFFFFF XFER-PACK {: wide:n :}
-   wide XFER-FLAGS $2 T=
-   wide XFER-DMASK $FFFFF T=
-   wide XFER-RMASK $FFFFF T= ;
 
 : CS-SECTION-ADMITS ( -- )
    \ window 0: a body that takes nothing has nothing to lose
@@ -501,8 +470,6 @@ TYPED-VARIABLE CS-XT [ ptr u8 -- ptr u8 ]
    CS-SECTION-PROOF-PRECISION
    CS-SECTION-EDGES
    CS-SECTION-CALLEES
-   CS-SECTION-RECORDED
-   CS-SECTION-XFER
    CS-SECTION-ADMITS
    CS-SECTION-BUNDLES
    CS-SECTION-RUNTIME

@@ -1,6 +1,6 @@
 \ main-argv-child.f - the child side of test/main-argv.f: it builds an argv
 \ vector, argv[0] then this run's script arguments, and hands it to
-\ src/habu/main.f ENGINE-MAIN:RUN.
+\ src/habu/main.f COMMAND-LINE:RUN.
 \
 \   bin/hb --load src/habu/main.f test/main-argv-child.f -- <args>
 \
@@ -31,5 +31,5 @@ TRUSTED: CLEAR-STACK ( -- )
 ;package
 
 \ Outside any package, as at boot.
-MAIN-ARGV-CHILD:VECTOR ENGINE-MAIN:RUN
+MAIN-ARGV-CHILD:VECTOR COMMAND-LINE:RUN
 MAIN-ARGV-CHILD:CLEAR-STACK

@@ -1,4 +1,4 @@
-\ main-argv.f - src/habu/main.f ENGINE-MAIN:RUN against the engine's own argv
+\ main-argv.f - src/habu/main.f COMMAND-LINE:RUN against the engine's own argv
 \ reader: each case runs `bin/hb <args>` (the assembly reads argv) and
 \ `bin/hb --load src/habu/main.f test/main-argv-child.f -- <args>` (RUN reads a
 \ vector built from <args>), both with empty stdin, which must end with the same
