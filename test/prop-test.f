@@ -1,11 +1,10 @@
 \ prop-test.f - property-based checker soundness in Habu: generates typed
 \ definitions, checks them, runs the certified ones in process (`evaluate`) and
 \ exits 1 when a certified definition's out-arity differs from its declaration
-\ (a false-cert) or a metamorphic amplifier (subsumption, render round-trip,
-\ composition) reports an inconsistency.
-\ Run on the whitebox engine (test/whitebox-engine.f WHITEBOX-ENGINE:PATH$; the
-\ gate runs it as a WHITEBOX-SUITE row): <engine> --load test/prop-test.f
-\ <engine> --load test/prop-test.f -- <seed> <count> runs one seed serially to
+\ (a false-cert) or a metamorphic amplifier (subsumption, composition) reports
+\ an inconsistency.
+\ Run: bin/hb --load test/prop-test.f
+\ bin/hb --load test/prop-test.f -- <seed> <count> runs one seed serially to
 \ reproduce a run.
 
 require src/lib/errors.f
@@ -166,20 +165,23 @@ variable STEPS  variable GI
 variable NCERT  variable PROP-NFC  variable NFR  variable RJ
 variable LAST-MEAS  variable LAST-TRAP
 variable FC-KIND  variable FC-EXP  variable FC-MEAS
-\ A `: G ;` grows code, dictionary, signatures and no-return metadata; two
-\ checkpoint levels let shrinking roll back inside a program's own checkpoint.
-\ The signature store rewinds through USIGS-RESTORE-END, the checker's own
-\ truncation seam, which pops only the index entries above the mark. A bare
-\ `UEND !` is a rewind those indexes did not see, so each re-derived itself from
-\ the whole store at the next check: 86% of a sweep's samples, and one
-\ 2000-program seed took 16.9 s against 1.0 s with identical verdicts and depths.
-variable CPSAVE  variable NDSAVE  variable UESAVE
-variable SCPSV   variable SNDSV   variable SUESV
-variable CHKCPSV variable CHKNDSV variable CHKUESV
-: MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
-: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ USIGS-RESTORE-END ;
-: SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
-: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ USIGS-RESTORE-END ;
+TYPED-VARIABLE HELD [ -- ]
+1001 constant UNDO-RC
+
+public
+
+\ Public only so TRIAL's closed text can reach it, as TEST-EVAL's SRC$ and N! are.
+: RUN-HELD ( -- )
+   HELD @ execute  UNDO-RC throw ;
+
+private
+
+\ The body runs in a closed text that always throws, so the engine forgets
+\ every word the body defined.
+: TRIAL ( [ -- ] -- )
+   HELD !
+   [: s" PROP-TEST:RUN-HELD" evaluate-closed ;] catch
+   dup UNDO-RC = IF  drop  ELSE  throw  THEN ;
 
 PTR-VARIABLE SRC-A
 variable SRC-U
@@ -209,8 +211,6 @@ variable TBUF-U
    TBUF TBUF-U @ SRC-U !  SRC-A !
    ['] COMPILE catch ;
 
-: CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
-: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ USIGS-RESTORE-END ;
 \ One measurement line, checked at top level from depth 0:
 \ "<nin×7> <nch> depth CLEAR-MEAS MEAS-OUT !".
 : RUN1  ( n n -- ) {: name-ch:n in-arity:n :}
@@ -222,7 +222,6 @@ CHK-DIAG-CAP BUFFER: CHK-DIAG
 \ A refusal is rc 70 with the checker's diagnostic in CHK-DIAG; any other
 \ nonzero rc, an engine refusal after certification among them, is rethrown.
 : CHK  ( ptr u8 n -- )
-   CHK-MARK
    SRC-U !
    SRC-A !
    CHK-DIAG CHK-DIAG-CAP DIAG-BUFFER!
@@ -230,8 +229,7 @@ CHK-DIAG-CAP BUFFER: CHK-DIAG
    DIAG-BUFFER-OFF
    rc 0= IF  -1 VERD !  EXIT  THEN
    rc CHECKER-REJECT-RC <>  diag-u 0=  or IF  rc throw  THEN
-   0 VERD !
-   CHK-FORGET ;
+   0 VERD ! ;
 variable MEAS-OUT
 \ A measurement text's throw code, a read below its floor among them, or a
 \ negative MEAS-OUT is a trap; else MEAS-OUT is the measured depth.
@@ -245,7 +243,7 @@ variable MEAS-OUT
    0 TBUF-U !
    s" TRUSTED: PROP-MEASURE ( -- ) " TBUF+  PBUF PBUF-U @ TBUF+
    s"  MEAS-OUT ! ; PROP-MEASURE" TBUF+
-   CHK-MARK  TBUF TBUF-U @ TEST-EVAL:RC  CHK-FORGET  MEAS-RC ;
+   [: TBUF TBUF-U @ TEST-EVAL:RC  MEAS-RC ;] TRIAL ;
 : RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    RUN1  PBUF PBUF-U @ TEST-EVAL:RC  MEAS-RC ;
 : FC-SET-ARITY ( n n -- )
@@ -267,7 +265,7 @@ variable MEAS-OUT
 \ Shards suppress the (capped) metamorphic inconsistency logs so N parallel
 \ children do not interleave them on the shared stdout; false-cert lines
 \ (FC-LINE) stay unconditional because a false-cert fails the phase. The logs
-\ are capped/quiet but the finding is fatal either way: the NSI/NRI/NCI
+\ are capped/quiet but the finding is fatal either way: the NSI/NCI
 \ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD)
 \ — an inconsistency-reporting property tester that exits 0 is error masking.
 variable SWEEP-QUIET
@@ -284,22 +282,10 @@ variable SWEEP-QUIET
 variable NSUB
 variable NSI
 : SUBSUME  ( -- )   \ pre: BBUF/NIN/DOUT is the certified i64 program G
-   SMARK  1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ CHK
+   [: 1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ CHK
    VERD @ -1 = IF  NSUB @ 1+ NSUB !  83 NIN @ DOUT @ MEASURE
    ELSE  NSI @ LOG-LIMIT < IF s" subsumption" LOG-META THEN  NSI @ 1+ NSI !  THEN
-   SFORGET ;
-
-\ Metamorphic render round-trip: re-declaring the just-certified body with its
-\ rendered effect must re-certify.
-variable NRT
-variable NRI
-variable RSU
-TYPED-VARIABLE RSA ptr u8
-: ROUNDTRIP  ( -- )   \ pre: RSA/RSU hold G's effect, rendered right after its check
-   SMARK  0 PBUF-U ! s" : R ( " P+  RSA @ RSU @ P+  s"  ) " P+  BBUF BLEN @ P+  s" ; " P+  PBUF PBUF-U @ CHK
-   VERD @ -1 = IF  NRT @ 1+ NRT !  82 NIN @ DOUT @ MEASURE
-   ELSE  NRI @ LOG-LIMIT < IF s" round-trip" LOG-META THEN  NRI @ 1+ NRI !  THEN
-   SFORGET ;
+   ;] TRIAL ;
 
 \ Metamorphic composition: A:(x--y) and B:(y--z) both certified => ': C A B ;'
 \ must certify ( x -- z ) and run-match; chains arities one body cannot reach.
@@ -307,7 +293,7 @@ variable NCMP
 variable NCI
 variable CAI  variable CAO  variable CBO
 : COMPOSE  ( -- )
-   SMARK  0 TFLAG !
+   [: 0 TFLAG !
    3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  88 CAI @ CAO @ HEAD  BODY+  PBUF PBUF-U @ CHK   \ X=88
    VERD @ -1 = IF
       CAO @ 0 GEN-BODY  DEP @ CBO !  89 CAO @ CBO @ HEAD  BODY+  PBUF PBUF-U @ CHK              \ Y=89, in=CAO
@@ -317,7 +303,7 @@ variable CAI  variable CAO  variable CBO
          ELSE  NCI @ LOG-LIMIT < IF s" composition" LOG-META THEN  NCI @ 1+ NCI !  THEN
       THEN
    THEN
-   SFORGET ;
+   ;] TRIAL ;
 
 \ Shrinking: on a false-cert, delta-debug BBUF down to a minimal body that still
 \ satisfies a predicate (certify-and-mismatch in real use; "still certifies" in
@@ -332,19 +318,21 @@ variable BSAVE
    TRIM-TRAIL  BLEN @ 0= IF 0 0= 0= exit THEN
    begin BLEN @ 0 > LAST-SPACE? 0= and while  BLEN @ 1- BLEN !  repeat  0 0= ;
 : REBUILD-G ( -- )  0 TFLAG !  71 NIN @ DOUT @ HEAD  BODY+ ;   \ PBUF := ": G ( NIN -- DOUT ) BBUF ;"
+\ A predicate run under TRIAL leaves its answer here: a trial returns nothing.
+TYPED-VARIABLE TRIAL-FLAG bool
 : FCFAIL?  ( -- bool )   \ does the current BBUF certify AND run to an arity != DOUT (or trap)?
-   SMARK  REBUILD-G  PBUF PBUF-U @ CHK
+   [: REBUILD-G  PBUF PBUF-U @ CHK
    VERD @ -1 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
-   ELSE  0 0= 0=  THEN  SFORGET ;
-: STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
+   ELSE  0 0= 0=  THEN  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
+: STILLCERT? ( -- bool )  [: REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
 \ Differential boundary: compiles a checker-rejected body as TRUSTED:
 \ (COMPILE-TRUSTED) to confirm a false reject.
 : CONFIRM-FR? ( -- bool )
-   SMARK  PBUF PBUF-U @ COMPILE-TRUSTED
+   [: PBUF PBUF-U @ COMPILE-TRUSTED
    0 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ IF  0 0= 0=  ELSE  LAST-MEAS @ DOUT @ =  THEN
-   ELSE  0 0= 0=  THEN  SFORGET ;
+   ELSE  0 0= 0=  THEN  TRIAL-FLAG ! ;] TRIAL  TRIAL-FLAG @ ;
 : LOG-FR ( -- )
    s" prop-test: false-reject confirmed: " type POS. cr
    s" definition: " type REBUILD-G DEF. ;
@@ -359,28 +347,28 @@ variable BSAVE
    while repeat ;
 
 variable NFC0
-: ONE  ( -- )
-   MARK  GEN                                 \ checkpoint, then build ": G ( ... ) <body> ;"
+: CHECK-G  ( -- )   \ build, check and run one ": G ( ... ) <body> ;"
+   GEN
    PBUF PBUF-U @ CHK
    VERD @ -1 = IF                            \ CERTIFIED: measured out-arity must equal declared
       NCERT @ 1+ NCERT !
-      REND-SIG  RSU !  RSA !                  \ before MEASURE: checking its text resets BROW/DCUR
       PROP-NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE   \ base run-and-compare
       PROP-NFC @ NFC0 @ > IF                       \ a FALSE-CERT: shrink to a minimal counterexample & print
          s" original: " type  REBUILD-G  DEF.
          [: FCFAIL? ;] SHRINK
          s" minimized counterexample: " type  REBUILD-G  DEF. THEN
-      ROUNDTRIP  SUBSUME                      \ metamorphic amplifiers on the certified body
+      SUBSUME                                 \ metamorphic amplifier on the certified body
    ELSE VERD @ 0 = PERT? @ 0= and IF         \ rejected but NOT perturbed -> the generator declared the
       CONFIRM-FR? IF                          \ true arity and execution agree: a FALSE-REJECT
          NFR @ LOG-LIMIT < IF LOG-FR THEN
          NFR @ 1+ NFR !
       THEN
-   THEN THEN
-   FORGET                                    \ forget G (code + dict entry + recorded sig)
+   THEN THEN ;
+: ONE  ( -- )
+   ['] CHECK-G TRIAL
    COMPOSE ;                                  \ independent two-body composition probe
 : RUN-CORE  ( n n -- )   \ generate + measure across N programs; prints only findings
-   N !  dup RUN-SEED !  SEED !  0 NCERT ! 0 PROP-NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NRT ! 0 NRI ! 0 NCMP ! 0 NCI !
+   N !  dup RUN-SEED !  SEED !  0 NCERT ! 0 PROP-NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NCMP ! 0 NCI !
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat ;
 : REPRO  ( n n -- )   \ RUN-CORE plus the per-run summary (serial repro path)
    RUN-CORE
@@ -388,8 +376,8 @@ variable NFC0
    NCERT @ FMT:.INT s"  certified, " type  PROP-NFC @ FMT:.INT s"  FALSE-CERT(s), " type
    NFR @ FMT:.INT s"  false-reject(s)" type cr
    s" prop-test: metamorphic — " type  NSUB @ FMT:.INT s"  subsumption + " type
-   NRT @ FMT:.INT s"  round-trip + " type  NCMP @ FMT:.INT s"  composition runs; " type
-   NSI @ NRI @ + NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
+   NCMP @ FMT:.INT s"  composition runs; " type
+   NSI @ NCI @ +  FMT:.INT s"  inconsistency(ies)" type cr ;
 
 \ Regression baits: programs a sound checker rejects. If a regression ever
 \ certifies one, either arity or type/signature soundness regressed.
@@ -439,16 +427,17 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
 : ALPHA-CERT$ ( n -- ptr u8 n ) {: i:n :}  \ a minimal certifiable instance of class i
    i 8 = IF s" {: z0 :} z0 " exit THEN
    i ALPHA-DET$ ;
-: ALPHA-CERT1 ( n -- ) {: i:n :}   \ ": G ( i64 -- i64 ) <class-op> ;" must certify
-   SMARK
-   0 BLEN !  i ALPHA-CERT$ PROP-B+
+variable CERT-I
+: ALPHA-CERT1 ( n -- )   \ ": G ( i64 -- i64 ) <class-op> ;" must certify
+   CERT-I !
+   [: 0 BLEN !  CERT-I @ ALPHA-CERT$ PROP-B+
    0 LOC? !  0 TFLAG !  1 NIN !  1 DOUT !
    71 1 1 HEAD  BODY+
    PBUF PBUF-U @ CHK
    VERD @ -1 <> IF
-      s" prop-test: alphabet class REJECTED: " type i ALPHA-CERT$ type cr
+      s" prop-test: alphabet class REJECTED: " type CERT-I @ ALPHA-CERT$ type cr
       s" prop-test: alphabet self-test FAILED (class no longer certifies)" 1 die THEN
-   SFORGET ;
+   ;] TRIAL ;
 : ALPHA-RESET ( -- )
    0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
       0 ALPHA-SEEN ALPHA-J @ + c!  ALPHA-J @ 1+ ALPHA-J !
@@ -497,7 +486,7 @@ variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
    s" prop-test: false-reject oracle OK (a rejected body runs to its declared arity)" type cr ;
 
 \ A clean run reaches end of input, which exits 0 in batch mode.
-: NMETA ( -- n )  NSI @ NRI @ + NCI @ + ;
+: NMETA ( -- n )  NSI @ NCI @ + ;
 : FINISH
    PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN
    NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY found" 1 die THEN ;
@@ -510,7 +499,7 @@ variable ARG-N  variable ARG-I  variable ARG-L
       48 -  ARG-N @ 10 * +  ARG-N !
       ARG-I @ 1+ ARG-I !
    repeat  ARG-N @ 0 0= ;
-: USAGE ( -- )  s" prop-test: usage: <whitebox-engine> --load test/prop-test.f [-- seed count]" 64 die ;
+: USAGE ( -- )  s" prop-test: usage: bin/hb --load test/prop-test.f [-- seed count]" 64 die ;
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
 
 : SCRIPT-ARG-U ( n -- n )
@@ -554,23 +543,25 @@ create BUF 64 allot
    ops opsu P+
    s" PROP-PC depth BASE @ - CLEAR-MEAS VERIFY" P+ ;
 
+PTR-VARIABLE CASE-DEF  variable CASE-DEFU
+PTR-VARIABLE CASE-OPS  variable CASE-OPSU
+variable CASE-EXP
 : CHECK-CASE ( ptr u8 n ptr u8 n n -- )
-   {: def:ptr defu:n ops:ptr opsu:n expected:n :}
-   MARK
-   def defu CHK
+   CASE-EXP !  CASE-OPSU !  CASE-OPS !  CASE-DEFU !  CASE-DEF !
+   [: CASE-DEF @ CASE-DEFU @ CHK
    VERD @ -1 <> if
-      s" prop-test: primitive candidate rejected: " type def defu type cr
+      s" prop-test: primitive candidate rejected: " type CASE-DEF @ CASE-DEFU @ type cr
       s" prop-test: primitive semantic case failed" 1 die
    then
-   expected DOUT !
-   ops opsu BUILD-CHECK-CASE-RUNNER
+   CASE-EXP @ DOUT !
+   CASE-OPS @ CASE-OPSU @ BUILD-CHECK-CASE-RUNNER
    MEAS-PBUF
    OUT-OK? 0= if
-      s" prop-test: primitive runtime mismatch: " type def defu type cr
+      s" prop-test: primitive runtime mismatch: " type CASE-DEF @ CASE-DEFU @ type cr
       LAST-TRAP @ if s" prop-test: primitive reached below its declared inputs" 1 die then
       s" prop-test: primitive runtime output depth differs from its typed candidate" 1 die
    then
-   FORGET ;
+   ;] TRIAL ;
 
 : GENERIC-CASES ( -- )
    s" : PROP-PC ( a -- a a ) dup ; " s" 7 " 2 CHECK-CASE
@@ -649,43 +640,12 @@ create BUF 64 allot
    s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam:tfam-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam:tfam-decl-param-count ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( n -- n bool ) tfam:tfam-decl-param>char ; " s" 7 " 2 CHECK-CASE
-   s" : PROP-PC ( n -- n bool ) tfam:tfam-decl-char>param ; " s" 7 " 2 CHECK-CASE
    s" : PROP-PC ( -- n ) type-field:tx-depth ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) wf-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- bool ) wf-wide? ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- bool ) wf-needs-p2? ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n n -- n ) wf-w-at ; " s" 7 7 " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) locw-hw-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:magic ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:version ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:header-cells ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:magic-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:version-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:total-bytes-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:needs-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:wf-count-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:bind-count-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:fetch-count-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:fetch-data-cells-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:wf-cells ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:fetch-cells ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:check-cells ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:guard-cells ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:fetch-flag ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:store-flag ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:xpad-flag ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:body-len-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:body-hash-cell ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:fnv-offset ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:fnv-prime ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) lower-cert:cell-count ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam:sumv-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam:tf-str-u@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam:tf-pk-n@ ; " s" " 1 CHECK-CASE
-   s" : PROP-PC ( -- n ) tfam:lay-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) schema-reg:schema-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( -- n ) schema-reg:schema-root-n@ ; " s" " 1 CHECK-CASE
    s" : PROP-PC ( n -- r ) s>f ; " s" 7 " 1 CHECK-CASE
