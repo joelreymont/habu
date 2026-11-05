@@ -84,6 +84,7 @@ OPT-LONG 74 + constant OPT-FRESH-CONNECT  \ CURLOPT_FRESH_CONNECT
 OPT-LONG 80 + constant OPT-HTTPGET        \ CURLOPT_HTTPGET
 OPT-LONG 99 + constant OPT-NO-SIGNAL      \ CURLOPT_NOSIGNAL
 OPT-LONG 155 + constant OPT-TIMEOUT-MS    \ CURLOPT_TIMEOUT_MS
+OPT-LONG 156 + constant OPT-CONNECT-MS    \ CURLOPT_CONNECTTIMEOUT_MS
 OPT-LONG 181 + constant OPT-PROTOCOLS     \ CURLOPT_PROTOCOLS
 OPT-LONG 182 + constant OPT-REDIR-PROTO   \ CURLOPT_REDIR_PROTOCOLS
 INFO-LONG 2 + constant INFO-STATUS        \ CURLINFO_RESPONSE_CODE
@@ -612,18 +613,19 @@ public
    subject OPT-TIMEOUT-MS limit MS>N SET-NUM-RAW CODE>STATUS ;
 
 
-\ A stall test, not a ceiling: the transfer is ended only while it stays below
-\ `rate` bytes per second for `seconds` seconds, so a document that arrives
-\ slowly but never stops still finishes. TIMEOUT!'s limit on the whole transfer
-\ is separate and unchanged. Zero in either value removes the test. The rate is
-\ set first, and a failure there is answered before the window is touched.
+\ Ends a transfer under `rate` bytes a second for `seconds` s, and a connect
+\ (DNS, TCP, TLS) past `seconds`; zero in either restores libcurl's defaults.
 : LOW-SPEED! ( handle n n -- status ) {: subject:handle rate:n seconds:n :}
    rate 0 MAX-TIMEOUT WITHIN-RANGE
    seconds 0 MAX-TIMEOUT WITHIN-RANGE
    subject OPT-LOW-SPEED-LIMIT rate SET-NUM-RAW dup CURLE-OK <> if
       CODE>STATUS exit
    then drop
-   subject OPT-LOW-SPEED-TIME seconds SET-NUM-RAW CODE>STATUS ;
+   subject OPT-LOW-SPEED-TIME seconds SET-NUM-RAW dup CURLE-OK <> if
+      CODE>STATUS exit
+   then drop
+   rate 0= if 0 else seconds 1000 * then {: bound:n :}
+   subject OPT-CONNECT-MS bound SET-NUM-RAW CODE>STATUS ;
 
 
 : FOLLOW! ( handle bool -- status ) {: subject:handle on:bool :}

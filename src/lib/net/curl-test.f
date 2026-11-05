@@ -986,12 +986,18 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    SB$ ;
 
 
-: URL-AT ( n ptr u8 n -- ptr u8 n ) {: port:n path:ptr pathu:n :}
+: SCHEME-URL ( ptr u8 n n ptr u8 n -- ptr u8 n )
+   {: scheme:ptr schemeu:n port:n path:ptr pathu:n :}
    SB-RESET
-   s" http://127.0.0.1:" SB-APPEND
+   scheme schemeu SB-APPEND
+   s" ://127.0.0.1:" SB-APPEND
    port FMT:SB-U
    path pathu SB-APPEND
    SB$ ;
+
+
+: URL-AT ( n ptr u8 n -- ptr u8 n ) {: port:n path:ptr pathu:n :}
+   s" http" port path pathu SCHEME-URL ;
 
 
 : URL-FOR ( ptr u8 n -- ptr u8 n ) {: path:ptr pathu:n :}
@@ -1615,10 +1621,28 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    elapsed STALL-MOST-MS < TTRUE ;
 
 
+\ https on the silent port: TCP completes but no reply ever ends the TLS
+\ handshake, so only a bound on the connect phase can end it before REQUEST-MS.
+: STALL-CONNECT ( -- )
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject s" https" SILENT-PORT @ PATH-STALL$ SCHEME-URL CURL:URL! EXPECT-OK
+   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject 1 LOW-SECONDS CURL:LOW-SPEED! EXPECT-OK
+   mono-ns {: started:n :}
+   subject BODY-CAP >LEN FETCH-LIMIT
+   started ELAPSED-MS {: elapsed:n :}
+   subject CURL:CLEANUP
+   s" a stalled TLS handshake ends under the low-speed window" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 28 T=
+   elapsed STALL-MOST-MS < TTRUE ;
+
+
 : TEST-LOW-SPEED ( -- )
    DRIBBLE-CEILING
    DRIBBLE-LOW-SPEED
-   STALL-LOW-SPEED ;
+   STALL-LOW-SPEED
+   STALL-CONNECT ;
 
 
 : TEST-NO-URL ( -- )
@@ -1683,11 +1707,13 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    subject CURL:CLEANUP ;
 
 
-\ Zero in both values is libcurl's own spelling for "no stall test at all".
+\ Zero in both values is libcurl's own spelling for "no stall test at all". The
+\ largest window also bounds the connect, in milliseconds past an int's range.
 : LOW-SPEED-PAIRS ( -- )
    OPEN-HANDLE {: subject:CURL:handle :}
    subject 0 0 CURL:LOW-SPEED! EXPECT-OK
    subject LOW-RATE 30 CURL:LOW-SPEED! EXPECT-OK
+   subject LOW-RATE OVER-LONG 1- CURL:LOW-SPEED! EXPECT-OK
    subject CURL:CLEANUP ;
 
 
@@ -1706,7 +1732,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    [: LOW-SPEED-RATE ;] CURL:E-OPERAND TTHROWSQ
    s" a low-speed window past the C long ceiling is refused" T-LABEL
    [: LOW-SPEED-WINDOW ;] CURL:E-OPERAND TTHROWSQ
-   s" a handle takes the disabling pair and a real one" T-LABEL
+   s" a handle takes the disabling pair, a real one and the largest window" T-LABEL
    LOW-SPEED-PAIRS ;
 
 
