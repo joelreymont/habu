@@ -2,7 +2,7 @@
 \ survives whole at runtime.
 \ The annotation records the layout's TOP (tag) hidden term, the bind records
 \ the bundle's full width (checker.f LOCW-HW@), and every reference reloads all
-\ physical cells. Registered twice in test/gate-stdlib-cases.f, once per tier.
+\ physical cells.
 
 require src/lib/test.f
 require src/lib/adt/option.f

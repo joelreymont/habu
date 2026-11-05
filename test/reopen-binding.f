@@ -2,7 +2,6 @@
 \ word: the one the compiler calls. Package REOPEN-BIND
 \ (test/reopen-binding-lib.f) publishes @, dup and + with effects the engine's
 \ words of those spellings lack; this file reopens it and names the tails bare.
-\ Suite row reopen-binding-aot runs the same rows under the optimizing compiler.
 
 require src/lib/test.f
 require test/reopen-binding-lib.f

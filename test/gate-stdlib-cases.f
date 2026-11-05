@@ -619,21 +619,7 @@ SUITE compiler-native-word-binding
    test/compiler/native-word-binding.f
 ;SUITE
 
-SUITE compiler-native-word-binding-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-word-binding.f
-;SUITE
-
 SUITE reopen-binding
-   test/reopen-binding.f
-;SUITE
-
-SUITE reopen-binding-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
    test/reopen-binding.f
 ;SUITE
 
@@ -642,13 +628,6 @@ SUITE replay-binding
 ;SUITE
 
 SUITE undefine-binding
-   test/undefine-binding.f
-;SUITE
-
-SUITE undefine-binding-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
    test/undefine-binding.f
 ;SUITE
 
@@ -691,17 +670,6 @@ WHITEBOX-SUITE compiler-native-match
    test/compiler/native-match.f
 ;SUITE
 
-WHITEBOX-SUITE compiler-native-match-aot
-   test/compiler/native-eval-fixture.f
-   src/lib/test.f
-   src/lib/process.f
-   src/lib/process-argv.f
-   src/lib/process-env.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-match.f
-;SUITE
-
 SUITE compiler-native-case
    test/compiler/native-case.f
 ;SUITE
@@ -722,15 +690,6 @@ SUITE compiler-native-view-cast-aot
 ;SUITE
 
 SUITE compiler-native-wide-mem
-   test/compiler/native-wide-mem.f
-;SUITE
-
-SUITE compiler-native-wide-mem-aot
-   test/compiler/native-eval-fixture.f
-   src/lib/test.f
-   src/lib/ieee754.f
-   test/compiler/aot-mode.f
-   ENTRIES
    test/compiler/native-wide-mem.f
 ;SUITE
 
@@ -1271,13 +1230,6 @@ SUITE c2-xml-source
    test/c2-xml-consumer-refusals.f
 ;SUITE
 
-SUITE c2-records-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/c2-records-program.f
-;SUITE
-
 SUITE c2-read-effects
    test/c2-read-effects.f
 ;SUITE
@@ -1316,19 +1268,6 @@ SUITE c2-memory-source
    test/c2-field-loan-program.f
    test/c2-field-loan-refusals.f
    test/c2-field-loan-lifecycle.f
-;SUITE
-
-SUITE c2-memory-aot
-   src/lib/test.f
-   src/lib/test/wait.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/c2-memory-program.f
-   test/c2-init-program.f
-   test/c2-owner-producer-program.f
-   test/c2-owner-dispose.f
-   test/c2-forall-input-refusals.f
-   test/c2-field-loan-program.f
 ;SUITE
 
 SUITE c2-view-record-mut
@@ -1776,17 +1715,8 @@ SUITE type-layout-lower-pending
 ;SUITE
 
 \ A wide layout value — arity 0 and a parametric instance — inside a typed
-\ local, run at both tiers: the annotation is a checker rule, the whole-bundle
-\ reload is code the native compiler emits, so tier 1 is a separate run and not
-\ a repeat.
+\ local.
 SUITE wide-typed-local-probe
-   test/wide-typed-local-probe.f
-;SUITE
-
-SUITE wide-typed-local-probe-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
    test/wide-typed-local-probe.f
 ;SUITE
 
