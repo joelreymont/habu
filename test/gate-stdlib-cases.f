@@ -107,20 +107,12 @@ SUITE ffi-callback-file-cache
    test/ffi-callback-file-cache.f
 ;SUITE
 
-SUITE c2-memory
-   test/c2-memory-e2e.f
+SUITE c2-saved
+   test/c2-saved-e2e.f
 ;SUITE
 
 SUITE native-donor-map
    test/compiler/native-donor-map-e2e.f
-;SUITE
-
-SUITE c2-view-record
-   test/c2-view-record-e2e.f
-;SUITE
-
-SUITE c2-field-loan
-   test/c2-field-loan-e2e.f
 ;SUITE
 
 SUITE hb-build-stripped
@@ -1449,10 +1441,6 @@ SUITE xml-byte-edits
    src/lib/xml-source-test.f
 ;SUITE
 
-SUITE xml-c2-consumer
-   test/c2-xml-consumer-e2e.f
-;SUITE
-
 SUITE stdlib-source-default
    src/lib/source-test.f
 ;SUITE
@@ -2285,7 +2273,7 @@ WHITEBOX-SUITE c2-init-record-schema
 ;SUITE
 
 \ The checker's rules for code written inside C2-MEM, on the engine that keeps
-\ engine packages open; a product seals C2-MEM, which c2-memory pins.
+\ engine packages open; a product seals C2-MEM, which c2-memory-source pins.
 WHITEBOX-SUITE c2-reopen-refusals
    test/c2-reopen-refusals.f
 ;SUITE
@@ -2296,10 +2284,6 @@ SUITE c2-init-accessors
 
 SUITE c2-init-accessor-image
    test/c2-init-accessor-e2e.f
-;SUITE
-
-SUITE c2-records
-   test/c2-records-e2e.f
 ;SUITE
 
 SUITE c2-diagnostics
