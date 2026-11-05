@@ -10,6 +10,7 @@ require src/lib/span.f
 require src/lib/fs-mutate.f
 require src/lib/fmt.f                               \ the TMPDIR child's uncaught code
 require src/lib/process-env.f
+require src/lib/engine-candidate.f                  \ the TMPDIR child's engine
 require src/lib/test/outcome.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 require src/lib/test/wait.f                         \ a worker's deadline at the join
@@ -983,7 +984,7 @@ public
    E-FS-OPEN TTHROWSQ
    s" fexhaust" [: FS:REMOVE-FILE ;] FMT-TEMP-EACH ;
 
-\ Children bin/hb: TMPDIR is read from the process environment, which a running
+\ Child engines: TMPDIR is read from the process environment, which a running
 \ process does not change for itself. A child whose TMPDIR cannot hold a temp
 \ directory or file exits nonzero with one stderr line naming TMPDIR and the
 \ value, and the uncaught code. One whose TMPDIR reaches a directory through a
@@ -1048,7 +1049,7 @@ variable WANT-U
 : CAPTURE ( ptr u8 n -- len len outcome ) {: prog:ptr progu :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN PROC-ARGV+
-   s" bin/hb" >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : WANT+ ( ptr u8 n -- ) {: a:ptr u :}

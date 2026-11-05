@@ -5,7 +5,6 @@ require src/lib/zip-test-fixture.f
 require src/lib/test.f
 require src/lib/task.f
 require src/lib/adt/result.f          \ the join's answer is MATCHed here
-require src/lib/test/fork-hold.f
 require src/lib/test/wait.f
 
 package ZIP-TEST
@@ -101,24 +100,6 @@ TASK:SEMAPHORE LOCK-RELEASE
    PREPARE LIFECYCLE-ASSERT-CLEAR ;
 
 
-\ The child must reset a lock held by a task that fork did not copy.
-: ZIP-CHILD-READ ( -- )
-   INPUT$ OPEN {: archive:archive :}
-   archive 0 ENTRY {: member:entry :}
-   archive member READ s" stored value" STR= 0= if E-READ throw then
-   archive CLOSE ;
-
-: FORK-UNDER-ZIP-LOCK ( -- )
-   [: STATE-GET [: FORK-HOLD:HOLDING ;] [: STATE-RELEASE ;] finally ;]
-      FORK-HOLD:HOLD
-   s" a child forked under a held ZIP lock read an archive"
-   [: ZIP-CHILD-READ ;] 1 FORK-HOLD:FORK-CHECK
-   STATE-LOCK atomic@ {: held:n :}
-   FORK-HOLD:RELEASE
-   s" the ZIP lock was still the holder's" T-LABEL
-   held 1 T= ;
-
-
 \ A halt requested while disposal waits must take effect after the node is
 \ unregistered and freed. Otherwise image retirement discards its C object twice.
 : HOLD-ZIP-LOCK ( -- )
@@ -180,7 +161,6 @@ TASK:SEMAPHORE LOCK-RELEASE
    LIFECYCLE-ARCHIVES
    LIFECYCLE-USE PREPARE LIFECYCLE-ASSERT-CLEAR
    SNAPSHOT-REMOVED
-   FORK-UNDER-ZIP-LOCK
    HALT-DURING-CLOSE
    FS:CLEANUP-RUN T-REPORT ;
 

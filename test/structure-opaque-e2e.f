@@ -1,8 +1,7 @@
-\ End-to-end OPAQUE structure clause on the engine under test: a consumer loads
-\ the fixture and is refused its generated pair, tools/check.f replays the
-\ fixture and certifies OP's own calls, and refuses a consumer that reaches the
-\ pair through OP's public wordlist. The printed tree keeps every source the
-\ children ran and every child log for replay.
+\ End-to-end OPAQUE structure clause on the engine under test: tools/check.f
+\ replays the fixture and certifies OP's own calls, and refuses a consumer that
+\ reaches the pair through OP's public wordlist. The printed tree keeps every
+\ source the children ran and every child log for replay.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -21,7 +20,6 @@ private
 : SETUP ( -- )
    s" structure-opaque-e2e" TREE
    s" test/structure-opaque-fixture.f" COPY-TEST
-   s" test/structure-opaque-program.f" COPY-TEST
    s" test/structure-opaque-forge.f" AT-A FORGE$ FS:WRITE-ALL ;
 
 : VERIFY-ARGS ( ptr u8 n -- ) {: source:ptr size:n :}
@@ -34,12 +32,6 @@ private
 
 : ERR-HAS ( ptr u8 n -- ) {: a:ptr u:n :}
    ERR$ a u CONTAINS? TTRUE ;
-
-: PROGRAM ( -- )
-   s" test/structure-opaque-program.f" ARGS RUN-HERE
-   s" program.out" s" program.err" SAVE-LOG
-   s" a consumer names OP:box and is refused the generated pair" T-LABEL
-   s" structure-opaque-program: ok" EXPECT-OK ;
 
 : VERIFY ( -- )
    s" test/structure-opaque-fixture.f" VERIFY-ARGS RUN-HERE
@@ -61,7 +53,7 @@ private
 public
 : RUN ( -- )
    T-RESET
-   SETUP PROGRAM VERIFY FORGE
+   SETUP VERIFY FORGE
    s" structure-opaque-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 ;package

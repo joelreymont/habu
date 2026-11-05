@@ -1056,10 +1056,10 @@ SUITE ffi-cabi
    src/lib/ffi-test.f
 ;SUITE
 
-\ Raw DEFLATE and CRC-32 through libz in one stripped application; keeps its
-\ executable and 10 MiB original, compressed and decoded payloads.
+\ Raw DEFLATE and CRC-32 through libz; keeps its 10 MiB original, compressed and
+\ decoded payloads.
 SUITE zlib
-   test/zlib-e2e.f
+   test/zlib-source.f
 ;SUITE
 
 \ C calling back into checked code through libc's qsort and pthread_create, on

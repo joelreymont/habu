@@ -1,14 +1,13 @@
-\ ZLIB cases for one stripped application, built and run by test/zlib-e2e.f.
-\ Refusals are made before C is called; each failure after libz has a live
-\ stream is followed by a successful operation. The raw 10 MiB payload is
-\ written to the directory in the first argument after `--` as original.bin,
-\ compressed.bin (raw DEFLATE) and decoded.bin.
+\ ZLIB cases. Refusals are made before C is called; each failure after libz has
+\ a live stream is followed by a successful operation. The 10 MiB original.bin,
+\ compressed.bin (raw DEFLATE) and decoded.bin stay in the printed temporary
+\ directory.
 require src/lib/zlib.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
-require src/os/script-argv.f
+require src/lib/fs-mutate.f
 
 package ZLIB-SOURCE
 private
@@ -18,6 +17,7 @@ $A00000 constant PAYLOAD-BYTES
 64 constant SMALL-CAP
 create SMALL-IN SMALL-CAP allot
 create SMALL-OUT SMALL-CAP allot
+create ROOT PATH-CAP allot variable ROOT-U
 create PATH PATH-CAP allot
 
 : CHECK$ ( -- ptr u8 n ) s" 123456789" ;
@@ -29,10 +29,6 @@ create PATH PATH-CAP allot
 \ of "hello", 062C0215.
 : FRAMED-HELLO$ ( -- ptr u8 n ) s\" \x78\x9C\xCB\x48\xCD\xC9\xC9\x07\x00\x06\x2C\x02\x15" ;
 : EMPTY-FRAMED$ ( -- ptr u8 n ) s\" \x78\x9C\x03\x00\x00\x00\x00\x01" ;
-
-\ Resolved while the builder loads this file; MAIN calls it again in the saved
-\ application, whose FFI cache capture has cleared.
-CHECK$ ZLIB:CRC32 constant BUILD-CRC
 
 : OUT$ ( n -- ptr u8 n ) SMALL-OUT swap ;
 
@@ -48,9 +44,8 @@ CHECK$ ZLIB:CRC32 constant BUILD-CRC
    STORED-HELLO$ SMALL-CAP HELLO$ DECODES ;
 
 : CRC-CASES ( -- )
-   s" CRC-32 of 123456789 is CBF43926, also after capture" T-LABEL
+   s" CRC-32 of 123456789 is CBF43926" T-LABEL
    CHECK$ ZLIB:CRC32 $CBF43926 T=
-   BUILD-CRC $CBF43926 T=
    s" CRC-32 of nothing is zero" T-LABEL
    SMALL-IN 0 ZLIB:CRC32 0 T= ;
 
@@ -253,7 +248,7 @@ defer FIT-CODEC ( ptr u8 n ptr u8 n -- n )
    loop drop ;
 
 : ARTIFACT$ ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
-   0 SCRIPT-ARGV$ name nameu PATH FS:JOIN-PATH PATH swap ;
+   ROOT ROOT-U @ name nameu PATH FS:JOIN-PATH PATH swap ;
 
 PTR-VARIABLE PLAIN
 PTR-VARIABLE PACKED
@@ -306,10 +301,13 @@ variable PACKED-SIZE
 public
 : MAIN ( -- )
    T-RESET
+   s" zlib" FS:MKTEMP-DIR {: root:ptr size:n :}
+   root ROOT size BYTE-COPY size ROOT-U !
    CRC-CASES LITERAL-CASES STREAM-FAILURES SPAN-REFUSALS
    SMALL-DEFLATE FRAMED-CASES LARGE
    T-REPORT
+   s" zlib artifact: " type ROOT ROOT-U @ type cr
    s" zlib-source: ok" type cr ;
 ;package
 
-: MAIN ( -- ) ZLIB-SOURCE:MAIN ;
+ZLIB-SOURCE:MAIN

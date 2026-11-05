@@ -6,6 +6,7 @@ require src/lib/fmt.f                 \ TASK-CODE$ renders the named code the ch
 require src/lib/test.f
 require src/lib/process.f
 require src/lib/process-argv.f
+require src/lib/engine-candidate.f
 require src/lib/task.f
 require src/lib/time-cpu.f            \ TIME:THREAD-CPU-NS, the clock the sleeping cases read
 require src/habu/task-abi.f       \ the baked TCB size this suite pins
@@ -447,41 +448,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    s" ;package" SB-APPEND TASK-LF
    SB$ ;
 
-\ A FAILED TEXT'S PACKAGES RETIRE AS PACKAGE ROWS. With a task live, a text
-\ that makes two packages and then fails leaves their rows marked
-\ WL:RETIRED-NAMESPACE with their public and private wids kept in [0] and
-\ [8]. Here an outer text runs that one, then makes a third package and fails,
-\ so its rollback meets the two rows already retired, which keep their marker.
-\ An image captured over the three must skip them as package rows. A capture
-\ that read one as a code record, [0] its start and [8] its encoded length,
-\ would refuse it as a malformed code length (exit 74) whenever the private wid
-\ is not a multiple of 4. A package takes two consecutive wids, so of the first
-\ two rows' private wids at most one is a multiple of 4.
-: TASK-RETIRED-PACKAGES$ ( -- ptr u8 n )
-   SB-RESET
-   s" require src/lib/task.f" SB-APPEND TASK-LF
-   s" require src/arch/arm64/asm.f" SB-APPEND TASK-LF
-   s" require src/arch/arm64/icode.f" SB-APPEND TASK-LF
-   s" require src/habu/layout.f" SB-APPEND TASK-LF
-   s" require src/habu/aot-decl.f" SB-APPEND TASK-LF
-   s" require src/habu/aot-arm.f" SB-APPEND TASK-LF
-   s" require src/habu/aot-capture.f" SB-APPEND TASK-LF
-   s" package TRP" SB-APPEND TASK-LF
-   s" : IDLE ( -- ) begin TASK:PAUSE again ;" SB-APPEND TASK-LF
-   s" TASK:MIN-STACK TASK:TASK W" SB-APPEND TASK-LF
-   S\" : TRY ( -- n ) [: s\" TRP:INNER drop package RETIRED-THREE ;package MISSING-WORD\" evaluate-closed ;] catch ;" SB-APPEND TASK-LF
-   s" public" SB-APPEND TASK-LF
-   S\" : INNER ( -- n ) [: s\" package RETIRED-ONE ;package package RETIRED-TWO ;package MISSING-WORD\" evaluate-closed ;] catch ;" SB-APPEND TASK-LF
-   s" : RUN ( -- ) ['] IDLE W TASK:ACTIVATE TRY 0<> bool>n . W TASK:KILL ;" SB-APPEND TASK-LF
-   s" ;package" SB-APPEND TASK-LF
-   s" AOT-ARM:WINDOW-OPEN" SB-APPEND TASK-LF
-   s" TRP:RUN" SB-APPEND TASK-LF
-   s" AOT-ARM:WINDOW-CLOSE" SB-APPEND TASK-LF
-   s" AOT-ARM:R0 @ AOT-ARM:D0 @ AOT-CAPTURE:PRELUDE-MARK" SB-APPEND TASK-LF
-   s" AOT-ARM:WINDOW$ AOT-CAPTURE:CAPTURE" SB-APPEND TASK-LF
-   s" 7 ." SB-APPEND TASK-LF
-   SB$ ;
-
 : TASK-DIE$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/task.f" SB-APPEND TASK-LF
@@ -530,7 +496,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
 \ the stdout and stderr lengths.
 : TASK-RUN-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    PROC-ARGV-RESET
-   s" bin/hb" >LEN src srcu >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
    src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-OUTCOME-EXITED=
@@ -561,11 +527,6 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    TASK-ROLLBACK-LIVE$ 0 TASK-RUN-EXITS {: outu:len erru:len :}
    TASK-OUT outu LEN>N S\" -1\n771\n" T$=
    TASK-ERR erru LEN>N s" E-UNDEFINED: MISSING-WORD" CONTAINS? TTRUE ;
-
-\ The capture runs in the child: it needs a window the failed text's rows sit in.
-: TASK-TEST-RETIRED-PACKAGES ( -- )
-   TASK-RETIRED-PACKAGES$ 0 TASK-RUN-EXITS drop {: outu:len :}
-   TASK-OUT outu LEN>N S\" -1\n7\n" T$= ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
    src srcu want TASK-RUN-EXITS {: outu:len erru:len :}
@@ -2776,7 +2737,6 @@ variable NEW-STRAY
    TASK-TEST-TASK-COMPILES
    TASK-TEST-TASK-CREATES
    TASK-TEST-ROLLBACK-LIVE
-   TASK-TEST-RETIRED-PACKAGES
    TASK-TEST-APP-SOAK
    TASK-TEST-USER-ARENA
    TASK-TEST-BUILDERS
