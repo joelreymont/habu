@@ -13,7 +13,7 @@ public
 
 \ ---- the window this assembler emits into ------------------------------------
 \ An image is three parts emitted in this order (src/habu/habu2.f
-\ ENGINE-EMIT:FORTH); the order keeps the first bound true.
+\ ENGINE-EMIT:KERNEL); the order keeps the first bound true.
 \ 1. Engine code. The baked-source label LSRC follows it (habu2.f
 \    EMIT-SOURCE-BYTES) and the startup region reaches LSRC by ADR
 \    (C-SOURCE-BAKED, C-SOURCE-APPEND-LSRC under EM-STARTUP), so engine code is

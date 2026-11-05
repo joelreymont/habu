@@ -13528,28 +13528,8 @@ public
 
 ;package
 
-\ Bake the AOT section: blob length + blob, record count + N compact AOT-CREC-ROW
-\ records (blob-relative code span, name-pool reference, flags, wid), call-site
-\ count/format + call rows (bound u32 offsets or generic SITE-ROW rows), then
-\ the name pool and the DATA/CODE/window offset tables, all u32. Emitted last of
-\ the three image parts (ENGINE-EMIT:FORTH says why), after the baked source, so
-\ it shifts nothing and no reach depends on its size. Every label it binds is
-\ addressed with TADR,, never ADR,, whatever its distance today
-\ (tools/aot-section-reach-lint.f refuses one). Emitted for every engine; an
-\ empty capture bakes LAOTNREC = 0 and EM-SEED-AOT emits no pass.
-\ A baked call site is bound to a record at build time.
-\ The capture records a callee by name and scope, the only host identity that
-\ survives into another process (aot-capture.f ACAP-SITE-SCOPE, proved by
-\ ACAP-?SITE). The boot builds one dictionary from ENGINE-PRIMS:COUNT
-\ primitives (EM-SEED-DICT) then LAOTNREC payload records in capture order
-\ (EM-AOT-REGISTER-RECS), so this word resolves the name once to a position and
-\ the row carries the index: no lookup per site at boot (12,438 sites on this
-\ engine), four bytes less per row, no sealed-WID gate.
-\ A name in neither table keeps its name: a partial capture calls words the
-\ booting engine carries in its own prefix. The row sets SITE-NAME-TAG and the
-\ seed resolves it in the captured scope through the sealed-WID gate. A
-\ qualified scope (WID-QUAL) does the same, since its package id belongs to the
-\ booting engine.
+\ The AOT section goes last, after the baked source; the window header in
+\ src/arch/arm64/icode.f says why and how its labels are reached.
 : AOT-W32@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1+ c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
 
@@ -13908,8 +13888,7 @@ variable CUR
    9 0 MOVN,  9 G-PUSH ;
 
 \ The section emitters join the emitter package habu1.f opens for EMIT-PRIMS,
-\ EMIT-PROTWID and EMIT-DICT, which they call bare; FORTH is its one public
-\ word, called by src/habu/stdin.f and ENGINE-BUILD:BUILD below.
+\ EMIT-PROTWID and EMIT-DICT, which they call bare.
 package ENGINE-EMIT
 
 create KERNEL-CONTEXT SHA256-CTX-BYTES allot
@@ -14052,25 +14031,11 @@ variable KERNEL-CODE-END
 
 public
 
-\ Emit a complete engine image: engine code, then the baked source, then the AOT
-\ payload, each bounded by a different owner (src/arch/arm64/icode.f derives the
-\ code window from all three). The order is the contract: the boot path reaches
-\ LSRC with an ADR from the startup region, which src/arch/arm64/icode.f
-\ FX-REACH refuses past ADR-HI, so only engine code may lie before LSRC. The
-\ payload is last and addressed only through TADR,, so its size enters no reach.
-: EMIT-FORTH-IMAGE ( ptr u8 n -- )
-   EMIT-RESET-BUILDER
-   LABELS:INIT
-   EMIT-CODE-SECTIONS
-   ASM-LEN KERNEL-CODE-END !
-   EMIT-SOURCE-BYTES
-   EMIT-AOT-SEED
-   LIMGEND LABEL@ LBL,                    \ nothing follows: this label IS the content length
-   FILL-KERNEL-DIGEST ;
-
-\ Every ordinary invocation chooses no scoped entry. Only a complete runtime
-\ may bind entries.
-: FORTH ( ptr u8 n -- )
+\ Open a kernel emission at code offset 0 with the labels LABELS:INIT allocates.
+\ Code emitted before KERNEL precedes the start-up, in icode.f's first part.
+: OPEN ( ptr u8 n -- )
+   \ Every ordinary emission chooses no scoped entry; only a complete runtime
+   \ binds entries, through FORTH-C2.
    -1 EM-SCOPE-CHILD-OFF !
    -1 EM-C2-MUT-OFF !
    -1 EM-C2-MUT-LOAN-OFF !
@@ -14078,7 +14043,21 @@ public
    -1 EM-C2-RECORDS-OFF !
    -1 EM-C2-RECORD-OFF !
    -1 EM-C2-FIELD-OFF !
-   EMIT-FORTH-IMAGE ;
+   EMIT-RESET-BUILDER
+   LABELS:INIT ;
+
+\ Emit the image's three parts in the order src/arch/arm64/icode.f's window
+\ header gives.
+: KERNEL ( -- )
+   EMIT-CODE-SECTIONS
+   ASM-LEN KERNEL-CODE-END !
+   EMIT-SOURCE-BYTES
+   EMIT-AOT-SEED
+   LIMGEND LABEL@ LBL,                    \ nothing follows: this label IS the content length
+   FILL-KERNEL-DIGEST ;
+
+: FORTH ( ptr u8 n -- )
+   OPEN KERNEL ;
 
 : FORTH-C2 ( ptr u8 n n n n n n n n -- )
    {: read:n mut:n loan:n init:n records:n record:n field:n :}
@@ -14102,6 +14081,7 @@ public
    records field = or record field = or if
       s" habu2: duplicate C2 entry" 74 die
    then
+   OPEN
    read EM-SCOPE-CHILD-OFF !
    mut EM-C2-MUT-OFF !
    loan EM-C2-MUT-LOAN-OFF !
@@ -14109,7 +14089,7 @@ public
    records EM-C2-RECORDS-OFF !
    record EM-C2-RECORD-OFF !
    field EM-C2-FIELD-OFF !
-   EMIT-FORTH-IMAGE ;
+   KERNEL ;
 
 ;package
 
