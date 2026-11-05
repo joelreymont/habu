@@ -33,3 +33,5 @@ Rulings (Joel 2026-10-30 ~09:15, interview): (1) drop `ms` everywhere: every cap
 Status 2026-11-02 (census against master 430a53e317): lanes 2 and 6 landed (603615e29b 'End pool rows on exit, drop pool clocks', 0b00fee1b0 'Delete PTX-BARRIER!'). Absent: lanes 1 and 5 (no PROC-EXIT-FD, no E-TASK-FORK-HELD), lanes 3 and 4 (PROC-WAIT-BOUNDED in src/lib/process.f, HB_BUILD_TIMEOUT_MS in tools/hb-build-lib.f, READY-MS in test/db/pg-kill-test.f still present). The jerry-tm1/tm2 workspaces are retired.
 
 2026-11-04: recurred in stuart's WITH-BYTES full suite under heavy load: "pg-kill-test REPORT-READ: a deadline expired", rc 67 -2502 (/tmp/stuart-withbytes/w3b-run.log:1811); the row passed twice alone on the same candidate (w3b-pgkill-1.log, -2.log). Still lane 4's case: READY-MS at test/db/pg-kill-test.f:25.
+
+2026-11-05: the same READY-MS expiry was the only red in two full suites (MATCH on base ba1b7627, ERRNO on f90d953b, 522 rows each, 1984 s and 1535 s); WAIT showed pg 65 s wall for 3.7 s CPU; pg alone on the ERRNO engine rc 0 in 12 s.

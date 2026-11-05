@@ -807,6 +807,19 @@ learned live in the docs for their subject.
   built program's code runs where the OS loads it, calls inside it are
   relative, the linker lists every stored address that points into the
   image, and start-up adds the load offset to each, as dyld and ld.so do.
+  Shown the S6 design that follows (one code section loaded anywhere:
+  start-up, the arm64 kernel, the app's words, then a read-only tail with
+  DATA's bytes and the address list; code holds no absolute code address;
+  DATA copied raw at start; a stripped app has no dictionary), he chose
+  "Approve, start lanes (Recommended)".
+- 2026-11-05, where machine-specific code lives: asked to name the arm64
+  start-up's package, Joel asked "what's best for long term? also, why no
+  arch directories under src, e.g. src/habu/arm64/boot.f". Shown that
+  src/arch/<isa>/ already holds one directory per instruction set, Wasm's
+  linker and kernel words included, while the arm64 and x86-64 engines grew
+  in src/habu as suffixed files, he chose "src/arch/arm64/boot.f, A64BOOT
+  (Recommended)": "One directory per instruction set, as Wasm's linker
+  already is."
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
