@@ -118,8 +118,6 @@ SUITE codesign
    src/lib/codesign-test.f
 ;SUITE
 
-\ app-image uses the unsealed engine. test/whitebox-engine.f supplies its
-\ private copy from the initial compiler bundle; later consumers use that copy.
 SUITE app-image
    test/app-image.f
 ;SUITE

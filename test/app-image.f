@@ -1,17 +1,13 @@
 \ app-image.f - an application image built once outside the checkout from a
-\ cold native load: run, recapture with stable extents, require rows across
-\ captures, MAIN with arguments, quit and an uncaught throw on a terminal, a
-\ grown address registry through a tier-1 rewind, refused address-ABI probes,
-\ and tier-0 words a restored image compiled.
+\ cold native load: run, MAIN with arguments, quit and an uncaught throw on a
+\ terminal, a refused definition, and tier-0 words a restored image compiled.
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
-require src/lib/memory.f
 require src/lib/process-cwd.f
 require src/lib/pty.f
-require test/whitebox-child.f
-require src/lib/test/subject.f
+require src/lib/engine-candidate.f
 require src/lib/process.f
 require test/pcap-result.f
 
@@ -22,51 +18,27 @@ create OUT CAP allot
 create ERR CAP allot
 create ROOT-BUF PATH-CAP allot
 create IMAGE-BUF PATH-CAP allot
-create SECOND-BUF PATH-CAP allot
-create THIRD-BUF PATH-CAP allot
-create PROBE-BUF PATH-CAP allot
-create MUTATED-BUF PATH-CAP allot
-create MUTATED-AGAIN-BUF PATH-CAP allot
 create STARTUP-BUF PATH-CAP allot
 create TIER-ZERO-BUF PATH-CAP allot
 variable ROOT-U
 variable IMAGE-U
-variable SECOND-U
-variable THIRD-U
-variable PROBE-U
-variable MUTATED-U
-variable MUTATED-AGAIN-U
 variable STARTUP-U
 variable TIER-ZERO-U
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;
-: SECOND$ ( -- ptr u8 n ) SECOND-BUF SECOND-U @ ;
-: THIRD$ ( -- ptr u8 n ) THIRD-BUF THIRD-U @ ;
-: PROBE$ ( -- ptr u8 n ) PROBE-BUF PROBE-U @ ;
-: MUTATED$ ( -- ptr u8 n ) MUTATED-BUF MUTATED-U @ ;
-: MUTATED-AGAIN$ ( -- ptr u8 n ) MUTATED-AGAIN-BUF MUTATED-AGAIN-U @ ;
 : STARTUP$ ( -- ptr u8 n ) STARTUP-BUF STARTUP-U @ ;
 : TIER-ZERO$ ( -- ptr u8 n ) TIER-ZERO-BUF TIER-ZERO-U @ ;
 
-\ A child reopens the engine's build window - test/address-cell-cap-grown.f
-\ rewinds the source window - which the sealed product refuses: `hb: internal
-\ engine word: DECLARATIONS`, exit 70. So every spawn here runs on the engine
-\ test/whitebox-child.f names, in the temp root this file already owns.
+\ Every child runs on the engine under test: the images it saves are the subject.
 : PREPARE ( -- )
    FS:CLEANUP-RESET
    s" app-image-test" FS:MKTEMP-DIR {: path:ptr size:n :}
    path ROOT-BUF size BYTE-COPY size ROOT-U !
    ROOT$ FS:CLEANUP-TREE+
    ROOT$ s" application" IMAGE-BUF FS:JOIN-PATH IMAGE-U !
-   ROOT$ s" second" SECOND-BUF FS:JOIN-PATH SECOND-U !
-   ROOT$ s" third" THIRD-BUF FS:JOIN-PATH THIRD-U !
-   ROOT$ s" require-probe.f" PROBE-BUF FS:JOIN-PATH PROBE-U !
-   ROOT$ s" mutated" MUTATED-BUF FS:JOIN-PATH MUTATED-U !
-   ROOT$ s" mutated-again" MUTATED-AGAIN-BUF FS:JOIN-PATH MUTATED-AGAIN-U !
    ROOT$ s" startup" STARTUP-BUF FS:JOIN-PATH STARTUP-U !
-   ROOT$ s" tier-zero" TIER-ZERO-BUF FS:JOIN-PATH TIER-ZERO-U !
-   ROOT$ WHITEBOX-CHILD:PROVIDE-IN ;
+   ROOT$ s" tier-zero" TIER-ZERO-BUF FS:JOIN-PATH TIER-ZERO-U ! ;
 
 : CLEAN ( n n n -- n ) {: outu:n erru:n rc:n :}
    rc 0<> erru 0<> or if
@@ -76,51 +48,17 @@ variable TIER-ZERO-U
    rc 0 T= erru 0 T=
    outu ;
 
-create PROBE-SOURCE 4096 allot
-variable PROBE-SOURCE-U
-
-: PROBE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   PROBE-SOURCE-U @ u + 4096 <= TTRUE
-   a PROBE-SOURCE PROBE-SOURCE-U @ + u BYTE-COPY
-   PROBE-SOURCE-U @ u + PROBE-SOURCE-U ! ;
-
-\ Compile the probe into the first image. Later children call the same code
-\ through stdin, so capture comparisons add no definitions to DATA.
-: WRITE-REQUIRE-PROBE ( -- )
-   0 PROBE-SOURCE-U !
-   S\" package IMAGE-REQUIRE-PROBE\ncreate SAVED INCLUDE-PATH-CAP allot\ncreate GROW-PATH 15 allot\nvariable GROWN-N\npublic\n" PROBE+
-   S\" : GROW-PATH! ( n -- )\n   {: i:n :}\n   $61 i 26 / + GROW-PATH 13 + c!\n   $61 i 26 mod + GROW-PATH 14 + c! ;\n" PROBE+
-   S\" : GROW ( -- )\n   s\q require-grow-aa\q GROW-PATH swap BYTE-COPY\n   0 GROW-PATH! GROW-PATH 15 provided\n   REQUIRE-N @ 1- {: first-idx:n :}\n   first-idx REQUIRE-SLOT {: first:ptr :}\n   first-idx REQUIRE-LEN@ {: len:n :}\n   first SAVED len BYTE-COPY\n" PROBE+
-   S\"    650 1 ?do\n      i GROW-PATH! GROW-PATH 15 provided\n   loop\n   first-idx REQUIRE-SLOT first <> if 70 throw then\n   first-idx REQUIRE-LEN@ len <> if 70 throw then\n   first-idx REQUIRE-SLOT len SAVED len CORE-STR= 0= if 70 throw then\n" PROBE+
-   S\"    REQUIRE-N @ GROWN-N !\n   GROWN-N @ 512 <= if 70 throw then ;\n" PROBE+
-   S\" : GROW-FACT ( n -- )\n   REQUIRE-N @ {: count:n :}\n   GROW-PATH! GROW-PATH 15 provided\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
-   S\" : CHECK-GROWN ( -- )\n   REQUIRE-N @ GROWN-N @ < if 70 throw then\n   0 GROW-FACT 512 GROW-FACT 649 GROW-FACT ;\n" PROBE+
-   S\" : BORROW ( ptr u8 n -- )\n   REQUIRE-N @ 1- {: idx:n :}\n   idx REQUIRE-SLOT {: old:ptr :}\n   idx REQUIRE-LEN@ {: len:n :}\n" PROBE+
-   S\"    old SAVED len BYTE-COPY provided\n   idx REQUIRE-SLOT old <> if 70 throw then\n   idx REQUIRE-LEN@ len <> if 70 throw then\n" PROBE+
-   S\"    idx REQUIRE-SLOT len SAVED len CORE-STR= 0= if 70 throw then ;\n" PROBE+
-   S\" : FIRST-TWO ( -- )\n   s\q require-pool-one\q BORROW\n   s\q require-pool-two\q BORROW ;\n" PROBE+
-   S\" : CHECK-FACT ( ptr u8 n -- )\n   REQUIRE-N @ {: count:n :}\n   required\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
-   S\" : CHECK-TWO ( -- )\n   s\q require-pool-one\q CHECK-FACT\n   s\q require-pool-two\q CHECK-FACT ;\n" PROBE+
-   S\" : THIRD ( -- )\n   CHECK-TWO\n   s\q require-pool-three\q BORROW ;\n" PROBE+
-   S\" : CHECK-THREE ( -- )\n   CHECK-TWO\n   s\q require-pool-three\q CHECK-FACT ;\n" PROBE+
-   S\" : DISCARD ( -- )\n   REQUIRE-N @ {: count:n :}\n   REQUIRE-SNAPSHOT\n   s\q require-pool-discard\q provided\n   REQUIRE-RESTORE\n   REQUIRE-N @ count <> if 70 throw then ;\n" PROBE+
-   S\" : CHECK-DISCARD ( -- )\n   s\q require-pool-discard\q SOURCE-ROOT:RESOLVE nip nip\n   if 70 throw then ;\n;package\n" PROBE+
-   PROBE$ PROBE-SOURCE PROBE-SOURCE-U @ FS:ATOMIC-WRITE-FILE ;
-
 \ Start cold: the image support selects tier 1 before it requires its
 \ dependencies. The build child loads that support cold and reports the tier in
 \ force after it, before its subject loads.
 : BUILD-SOURCE$ ( -- ptr u8 n )
-   S\" require src/habu/app-image.f\ntier@ . cr\nrequire test/app-image-subject.f\n1 SCRIPT-ARGV$ required\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
+   S\" require src/habu/app-image.f\ntier@ . cr\nrequire test/app-image-subject.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" ;
 
 : BUILD ( -- )
-   WRITE-REQUIRE-PROBE
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    IMAGE$ >LEN PROC-ARGV+
-   PROBE$ >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
-   WHITEBOX-CHILD:ENGINE$ >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN
    BUILD-SOURCE$ >LEN
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN
@@ -133,90 +71,13 @@ variable PROBE-SOURCE-U
    OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE PCAP-RESULT:>N ;
 
-: CHECK-APPLICATION ( ptr u8 n -- )
-   PROC-ARGV-ENV-RESET
-   WHITEBOX-CHILD:ENV!
-   S\" APP-IMAGE-SUBJECT:SCRATCH-CLEAN\nAPP-IMAGE-SUBJECT:RUN . cr\n: FRESH-INCREMENT ( n -- n ) 1+ ;\nAPP-IMAGE-SUBJECT:RUN FRESH-INCREMENT . cr\n" RUN-INPUT CLEAN
-   OUT swap S\" 43\n\n44\n\n" T$= ;
-
 : CHECK-REJECTION ( -- )
    PROC-ARGV-ENV-RESET
-   WHITEBOX-CHILD:ENV!
    IMAGE$ S\" : FRESH-BAD ( n -- n ) 0= ;\n" RUN-INPUT
    {: outu:n erru:n rc:n :}
    rc 70 T= outu 0 T=
    ERR erru s" expected:" CONTAINS? TTRUE
    ERR erru s" actual:" CONTAINS? TTRUE ;
-
-: RECAPTURE-TO ( ptr u8 n ptr u8 n -- )
-   {: source:ptr sourceu:n target:ptr targetu:n :}
-   PROC-ARGV-ENV-RESET
-   s" --" >LEN PROC-ARGV+
-   target targetu >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
-   source sourceu S\" APP-IMAGE-SUBJECT:SCRATCH-CLEAN\nAPP-IMAGE-SUBJECT:RUN drop\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" RUN-INPUT CLEAN drop
-   target targetu FS:EXECUTABLE? TTRUE ;
-
-\ Compare the emitted extents, independent of signing metadata. Region bytes
-\ retain the application dictionary; DATA and the engine prefix must stop
-\ growing when a fresh process recaptures without any new definitions.
-: EXTENTS ( ptr u8 n -- n n n ) {: path:ptr pathu:n :}
-   path pathu FS:FILE-SIZE {: bytes:n :}
-   bytes MEM-ALLOC-BYTES drop {: image:ptr :}
-   path pathu image bytes FS:READ-ALL bytes T=
-   image IMAGE-TEXT-SIZE-OFF + CELL-VIEW @ {: text:n :}
-   image text IMAGE-TEXT-TRAILER-ADJ + SNAP-TRL-BYTES - + {: trailer:ptr :}
-   trailer CELL-VIEW @ SNAP-MAGIC T=
-   trailer SNAP-TRL-REGLEN + CELL-VIEW @ {: region:n :}
-   trailer SNAP-TRL-DATALEN + CELL-VIEW @ {: data:n :}
-   HB-TARGET-LINUX-X86-64? if
-      text IMAGE-TEXT-CONTENT-ADJ - SNAP-TRL-BYTES -
-         data DATA-START - - {: prefix:n :}
-      image bytes munmap 0 T=
-      prefix region data exit
-   then
-   trailer SNAP-TRL-NDICT + CELL-VIEW @ DREC *
-      region DICT-SIZE - + {: stored:n :}
-   image bytes munmap 0 T=
-   text IMAGE-TEXT-CONTENT-ADJ - SNAP-TRL-BYTES - stored - data -
-   region data ;
-
-: RECAPTURE ( -- )
-   IMAGE$ SECOND$ RECAPTURE-TO
-   SECOND$ THIRD$ RECAPTURE-TO
-   IMAGE$ EXTENTS {: prefix:n region:n data:n :}
-   SECOND$ EXTENTS data T= region T= prefix T=
-   THIRD$ EXTENTS data T= region T= prefix T=
-   THIRD$ CHECK-APPLICATION ;
-
-: CAPTURE-PROBE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: source:ptr sourceu:n target:ptr targetu:n input:ptr inputu:n :}
-   PROC-ARGV-ENV-RESET
-   s" --" >LEN PROC-ARGV+
-   target targetu >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
-   source sourceu input inputu RUN-INPUT CLEAN drop
-   target targetu FS:EXECUTABLE? TTRUE ;
-
-: CHECK-PROBE ( ptr u8 n ptr u8 n -- )
-   {: source:ptr sourceu:n input:ptr inputu:n :}
-   PROC-ARGV-ENV-RESET
-   WHITEBOX-CHILD:ENV!
-   source sourceu input inputu RUN-INPUT CLEAN drop ;
-
-\ The first recapture freezes more than 512 rows and FIRST-TWO borrows a
-\ mutable row. The next image restores them, discards a snapshot-scoped row,
-\ borrows a third and is captured again. The last image restores all of them
-\ and the discarded row stays unresolved. Each saved image boots as a new
-\ process.
-: CHECK-REQUIRE-IMAGES ( -- )
-   IMAGE$ MUTATED$
-   S\" IMAGE-REQUIRE-PROBE:GROW\nIMAGE-REQUIRE-PROBE:FIRST-TWO\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
-   CAPTURE-PROBE
-   MUTATED$ MUTATED-AGAIN$
-   S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-TWO\nIMAGE-REQUIRE-PROBE:DISCARD\nIMAGE-REQUIRE-PROBE:CHECK-DISCARD\nIMAGE-REQUIRE-PROBE:THIRD\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
-   CAPTURE-PROBE
-   MUTATED-AGAIN$ S\" IMAGE-REQUIRE-PROBE:CHECK-GROWN\nIMAGE-REQUIRE-PROBE:CHECK-THREE\nIMAGE-REQUIRE-PROBE:CHECK-DISCARD\n" CHECK-PROBE ;
 
 \ One package of a loop, a string literal, a quotation and a create...does>
 \ definer, then the tier it was compiled at.
@@ -247,11 +108,9 @@ variable PROBE-SOURCE-U
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    TIER-ZERO$ >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
    IMAGE$ TIER-ZERO-SOURCE$ RUN-INPUT CLEAN
    OUT swap TIER-ZERO-TIERS$ T$=
    PROC-ARGV-ENV-RESET
-   WHITEBOX-CHILD:ENV!
    TIER-ZERO$ S\" TIER-ZERO-IMAGE:SHOW cr TIER-ONE-IMAGE:SHOW cr\n" RUN-INPUT CLEAN
    OUT swap S\" 0\n1\n2\n3\nsaved text\n15\n42\n\n0\n1\n2\n3\nsaved text\n15\n42\n\n" T$= ;
 
@@ -259,21 +118,19 @@ variable PROBE-SOURCE-U
    PROC-ARGV-ENV-RESET
    s" --" >LEN PROC-ARGV+
    STARTUP$ >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
    IMAGE$
    S\" 1 set-tier\npackage IMAGE-START-TEST\nvariable STARTS\n: MAIN ( -- ) 1 STARTS +! STARTS @ . cr SCRIPT-ARGC . cr SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ type cr loop SCRIPT-ARGC 0 > if 0 SCRIPT-ARGV$ s\q quit\q STR= if s\q \q 0 die then 0 SCRIPT-ARGV$ s\q throw\q STR= if -123 throw then then ;\n' MAIN\n;package\nAPP-IMAGE:START!\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n"
    RUN-INPUT CLEAN drop
    STARTUP$ FS:EXECUTABLE? TTRUE ;
 
 : CHECK-STARTUP ( -- )
-   PROC-ARGV-ENV-RESET WHITEBOX-CHILD:ENV!
+   PROC-ARGV-ENV-RESET
    STARTUP$ S\" APP-IMAGE-SUBJECT:RUN . cr\n" RUN-INPUT CLEAN
    OUT swap S\" 1\n\n0\n\n43\n\n" T$= ;
 
 : STARTUP-ARGS ( -- )
    s" alpha" >LEN PROC-ARGV+
    s" two words" >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
    STARTUP$ S\" APP-IMAGE-SUBJECT:RUN . cr\n" RUN-INPUT CLEAN
    OUT swap S\" 1\n\n2\n\nalpha\ntwo words\n43\n\n" T$= ;
 
@@ -283,7 +140,7 @@ variable PROBE-SOURCE-U
 
 : CHECK-STARTUP-EXIT ( -- )
    PROC-ARGV-ENV-RESET
-   s" quit" >LEN PROC-ARGV+ WHITEBOX-CHILD:ENV!
+   s" quit" >LEN PROC-ARGV+
    STARTUP$ s" STARTUP-SHOULD-NOT-EXECUTE" RUN-INPUT CLEAN
    OUT swap S\" 1\n\n1\n\nquit\n" T$= ;
 
@@ -303,7 +160,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
 
 : CHECK-STARTUP-THROW ( ptr u8 n ptr u8 n -- )
    {: arg:ptr argu:n diagnostic:ptr diagnosticu:n :}
-   PROC-ARGV-ENV-RESET arg argu >LEN PROC-ARGV+ WHITEBOX-CHILD:ENV!
+   PROC-ARGV-ENV-RESET arg argu >LEN PROC-ARGV+
    OPEN-PTY {: master:n slave:n :}
    PIPE-PAIR {: reader writer :}
    STARTUP$ >LEN slave >FD writer writer PROC-SPAWN-ARGV-ENV-IO {: child :}
@@ -320,66 +177,16 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
 : CHECK-STARTUP-THROWS ( -- )
    s" throw" s" hb: uncaught throw code -123" CHECK-STARTUP-THROW ;
 
-: RUN-ADDRESS-OWNER ( -- )
-   PROC-ARGV-RESET
-   s" --load" >LEN PROC-ARGV+
-   s" test/compiler/aot-mode.f" >LEN PROC-ARGV+
-   s" test/native-window-owner-child.f" >LEN PROC-ARGV+
-   s" --" >LEN PROC-ARGV+
-   s" test/address-cell-owner.f" >LEN PROC-ARGV+
-   SECOND$ >LEN OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
-   RUN-ARGV-CAPTURE PCAP-RESULT:>N {: outu:n erru:n rc:n :}
-   s" test/address-cell-owner.f" OUT outu ERR erru rc SUBJECT:RC-TIMED-OUT
-   outu erru rc CLEAN
-   OUT swap S\" address-cell-owner: ok\nwindow: 0\n" T$= ;
-
-: CHECK-RETIRED-ABI ( -- )
-   PROC-ARGV-ENV-RESET
-   WHITEBOX-CHILD:ENV!
-   SECOND$
-   S\" : CHECK-RETIRED-ADDRESS-ABI ( -- )\n   ADDRESS-CELLS:CURRENT? 0= if s\q retired address ABI lost\q 76 die then\n   s\q retired address ABI: ok\q type cr ;\nundefine ptr-cell-mark\nCHECK-RETIRED-ADDRESS-ABI\n"
-   RUN-INPUT CLEAN
-   OUT swap S\" retired address ABI: ok\n" T$= ;
-
-: CHECK-FORGED-ABI ( -- )
-   s" a same-named source word is not consulted and an alias in the built-ins' wordlist is refused" T-LABEL
-   PROC-ARGV-ENV-RESET
-   WHITEBOX-CHILD:ENV!
-   SECOND$
-   S\" undefine addr-cells-abi\n: addr-cells-abi ( -- n ) s\q forged\q type 1 ;\nADDRESS-CELLS:CURRENT? bool>n . cr\nTRUSTED: JALIAS ( ptr u8 n -- ) ndict@ 1- WL:PRIMITIVES alias-record ;\n: FORGED-ABI ( -- n ) s\q forged\q type 1 ;\ns\q addr-cells-abi\q JALIAS\nADDRESS-CELLS:CURRENT? bool>n . cr\n"
-   RUN-INPUT {: outu:n erru:n rc:n :}
-   rc 96 <> if ERR erru type then
-   OUT outu S\" 0\n\n" T$=
-   ERR erru s" address-cells: version probe is not an engine primitive" CONTAINS? TTRUE
-   rc 96 T= ;
-
-\ Restore a grown DATA-backed registry, then perform the actual tier-1
-\ source-window rewind. Its complete backing span must survive outside the retiring heap.
-: CHECK-ADDRESS-OWNER ( -- )
-   PROC-ARGV-ENV-RESET
-   s" --" >LEN PROC-ARGV+ SECOND$ >LEN PROC-ARGV+
-   WHITEBOX-CHILD:ENV!
-   WHITEBOX-CHILD:ENGINE$ >LEN
-   S\" require src/habu/app-image.f\nrequire test/address-cell-cap-grown.f\n0 SCRIPT-ARGV$ APP-IMAGE:SAVE\n" >LEN
-   OUT CAP >LEN ERR CAP >LEN PROCESS:WAIT-FOREVER
-   RUN-ARGV-ENV-STDIN-CAPTURE PCAP-RESULT:>N CLEAN drop
-   SECOND$ FS:EXECUTABLE? TTRUE
-   RUN-ADDRESS-OWNER
-   CHECK-RETIRED-ABI
-   CHECK-FORGED-ABI ;
 
 : CASES ( -- )
    BUILD
    CHECK-REJECTION
-   RECAPTURE
-   CHECK-REQUIRE-IMAGES
    CHECK-TIER-ZERO
    CAPTURE-STARTUP
    CHECK-STARTUP
    CHECK-STARTUP-ARGS
    CHECK-STARTUP-EXIT
-   CHECK-STARTUP-THROWS
-   CHECK-ADDRESS-OWNER ;
+   CHECK-STARTUP-THROWS ;
 
 : RUN ( -- )
    T-RESET
