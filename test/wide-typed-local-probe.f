@@ -5,6 +5,8 @@
 \ physical cells. Registered twice in test/gate-stdlib-cases.f, once per tier.
 
 require src/lib/test.f
+require src/lib/adt/option.f
+require src/lib/adt/result.f
 
 package WLP
 public
@@ -126,6 +128,27 @@ private
       none OF 0 ENDOF
    ;MATCH ;
 
+\ ---- a constructor's or MATCH's open-width result binds whole ---------------
+: WL-INC ( option<n> -- option<n> )
+   MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF 1+ OPTION:SOME ENDOF
+   ;MATCH {: r:option<n> :}
+   r ;
+
+: WL-INC-BESIDE ( option<n> -- option<n> )   \ beside a scalar in one group
+   MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF 1+ OPTION:SOME ENDOF
+   ;MATCH 0 {: r:option<n> z:n :}
+   r ;
+
+: WL-SHOW ( option<n> -- n )
+   MATCH option
+      none OF -1 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
 \ ---- a bundle and a `:ptr` local in ONE group -------------------------------
 \ The group path binds the pointer's inferred pointee under the same transport
 \ rule as a group without a bundle: the pointee here is a layout, which a bare
@@ -213,6 +236,10 @@ public
    10 WLP-RES:OK WL-MATCH 11 T=
    10 WLP-RES:ERR WL-MATCH 9 T=
    21 WLP-OPT:SOME WL-OPT-ID WL-OPT-MATCH 42 T=
+   7 77 41 OPTION:SOME WL-INC WL-SHOW 42 T=
+   OPTION:NONE WL-INC WL-SHOW -1 T=
+   5 OPTION:SOME WL-INC-BESIDE WL-SHOW 6 T=
+   77 T= 7 T=                             \ the cells below the locals survive
    WL-SHUFFLES
    WL-REALS ;
 
@@ -261,6 +288,32 @@ s" WLC-GROUP-PTR ( pair ptr pair -- n ) {: p:pair q:ptr :} 0 " YES
 s" WLC-GROUP-PTR-BELOW ( ptr pair pair -- n ) {: q:ptr p:pair :} 0 " YES
 s" WLC-GROUP-PTR-ALONE ( ptr pair n -- n ) {: q:ptr k:n :} k " YES
 s" WLC-GROUP-WRONG-FAM ( pair ptr pair -- n ) {: p:trip q:ptr :} 0 " NO
+\ a result whose width read an open argument is one logical cell; its family's
+\ annotation takes it whole and gives an open width (OPTION:NONE's) its own.
+s" WLC-MATCH-SOME ( option<n> -- option<n> ) MATCH option some OF 1+ OPTION:SOME ENDOF none OF OPTION:NONE ENDOF ;MATCH {: r:option<n> :} r " YES
+s" WLC-CTOR-NONE ( -- option<n> ) OPTION:NONE {: r:option<n> :} r " YES
+s" WLC-CTOR-OK ( n -- result<n,n> ) RESULT:OK {: r:result<n,n> :} r " YES
+s" WLC-CTOR-OTHER-FAM ( n -- n ) OPTION:SOME {: r:result<n,n> :} 0 " NO
+s" WLC-CTOR-WRONG-ARG ( bool -- n ) OPTION:SOME {: r:option<n> :} 0 " NO
+s" WLC-CTOR-UNDERFLOW ( n -- option<n> ) OPTION:SOME {: r:option<n> z:n :} r " NO
+\ the cell bound whole keeps the stale lineage `catch` gave it, as a closed
+\ bundle does: WL-OUTER's caught result is refused.
+variable WL-TICK
+: WL-NEW ( -- n ) WL-TICK @ 0= IF 1 throw THEN 31 ;
+: WL-NUM ( n -- n ) drop WL-NEW ;   \ a throw path that overwrote its input
+: WL-OUTER ( n -- n )
+   drop
+   5 ['] WL-NUM catch {: code:n :}
+   code 0= IF OPTION:SOME ELSE drop OPTION:NONE THEN
+   {: r:option<n> :}
+   r MATCH option none OF 0 ENDOF some OF ENDOF ;MATCH
+   1 throw ;
+s" WLC-CTOR-STALE ( n -- n ) ['] WL-OUTER catch drop 1+ " NO
+\ a caught cell bound on the success arm re-pushes its own width.
+: WL-ANY ( option<a> -- option<a> ) ;
+: WL-KEEP ( option<a> -- option<a> ) WL-TICK @ 0= IF WL-ANY 1 throw THEN ;
+s" WLC-CTOR-CAUGHT ( n -- n ) OPTION:SOME ['] WL-KEEP catch {: code:n :} code 0= IF {: r:option<n> :} r WL-SHOW EXIT THEN 1 throw " YES
+s" WLC-CTOR-CAUGHT-WIDE ( n -- option<n> n ) OPTION:SOME ['] WL-KEEP catch {: code:n :} code 0= IF {: r:option<n> :} r WL-SHOW EXIT THEN 1 throw " NO
 
 ;package
 

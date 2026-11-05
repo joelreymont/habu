@@ -769,12 +769,8 @@ CHECKER-REG:}SCRATCH
    LTNT-N @ cells LTNT + !
    LTNT-N @ 1 + LTNT-N ! ;
 
-\ TRIAL-DEPTH counts open prim-overload trials (TRY-EFF), HOLD-N open callable
-\ comparisons (QUOT-PAIR), whose refusal unwinds the bindings it made. T-RES/R-RES
-\ compress var chains only when both are 0, where every binding is permanent, so
-\ a compression write is a direct TVT/RVT store with no undo. While either is
-\ open compression is off, so it never re-points a permanent var past a binding
-\ the unwind takes back.
+\ TRIAL-DEPTH counts open trials (TRY-EFF, LOC-AS-BUNDLE?), HOLD-N open QUOT-PAIR
+\ comparisons; an unwind cannot undo a compression store, so COMPRESS? waits for both 0.
 variable TRIAL-DEPTH   0 TRIAL-DEPTH !
 CHECKER-REG:SCRATCH{
 variable HOLD-N
@@ -3960,15 +3956,16 @@ defer U-DRAIN-XT ( n -- )
 \ bundle once at its tag for each LIN-CHECK, and LIN-EFF-PASS rejects unequal
 \ in/out multiplicity (EN-MULT walks family args). Transport mode
 \ (LAYOUT-XPORT) keeps its own group surgery and is excluded.
-: LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}   \ rh top = group tag, rl top = logical same-family layout
-   LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
-   rh P>TYPE T-RES {: th:n :}
-   rl P>TYPE T-RES {: tl:n :}
+: LOGHID-FAMILY? ( n n -- bool ) {: th:n tl:n :}   \ th hidden, tl a logical layout of th's family
    th HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
    tl TAG T-PARAM = 0= IF RES-FALSE EXIT THEN
    tl HIDDEN-PARAM? IF RES-FALSE EXIT THEN
    tl LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
-   th CELL>FAM tl PARAM>FAM = 0= IF RES-FALSE EXIT THEN   \ th may be a stale window cell
+   th CELL>FAM tl PARAM>FAM = ;   \ th may be a stale window cell
+: LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}   \ rh top = group tag, rl top = logical same-family layout
+   LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
+   rh P>TYPE T-RES {: th:n :}
+   th rl P>TYPE T-RES LOGHID-FAMILY? 0= IF RES-FALSE EXIT THEN
    th HIDDEN-SLOT@ th T-WIDTH 1 - = ;   \ whole group: tag on top (arg-aware bundle width)
 : LOGHID-ROWS ( n n -- n n ) {: rh:n rl:n :}   \ expand rl's logical top
    rl P>TYPE T-RES {: tl:n :}
@@ -20043,6 +20040,38 @@ CHECKER-REG:}SCRATCH
       1 -
    REPEAT 2drop ;
 
+\ A layout whose width read an open argument is one logical cell (PUSH-LOGICAL); a
+\ transport bind cannot meet the annotation's tag with it, so it binds whole here.
+: LOC-AS-BUNDLE? ( n n -- bool ) {: t:n idx:n :}   \ local idx's annotation takes cell t whole
+   idx cells LOCTV + @ T-RES {: ann:n :}
+   t T-RES {: tl:n :}
+   ann tl LOGHID-FAMILY? 0= IF RES-FALSE EXIT THEN
+   TRAIL-N @ {: mark:n :}
+   1 TRIAL-DEPTH +!   \ no path compression past a binding the unwind takes back
+   tl ann MK-LOGICAL UNIFY   \ binds open arguments first, so the width is the annotation's
+   -1 TRIAL-DEPTH +!
+   dup 0= IF mark TRAIL-UNWIND THEN ;   \ a failed trial leaves no binding
+: FIELD-PROOF ( n n -- n ) {: pf:n node:n :}
+   pf 0= IF 0 EXIT THEN
+   pf CP-KIND CP-NORMAL <> IF pf EXIT THEN
+   CP-NORMAL pf CP-ID node P>TYPE dup MK-STALE CP-NEW ;   \ the field's own type, as ROW-NORMAL-PROOF gives a closed cell
+: FIELDS-LINEAGE! ( n n n -- ) {: src:n top:n base:n :}   \ each push above base takes src's lineage
+   top BEGIN dup base <> WHILE
+      src P>PROOF over FIELD-PROOF over P-PROOF!  src P>LOST over P-LOST!  P>REST
+   REPEAT drop ;
+: LOC-BUNDLE-ROW ( n n -- n ) {: row:n gi:n :}   \ groups gi.. of row, such cells expanded
+   gi #LOC @ LGRP @ - >= IF row EXIT THEN
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF row EXIT THEN
+   node P>TYPE {: t:n :}
+   t T-RES HIDDEN-PARAM? IF row PRE-GROUP ELSE 1 THEN {: w:n :}
+   w 0= IF row EXIT THEN
+   row w ROW-DROP-N {: below:n :}
+   below gi 1 + RECURSE {: rest:n :}
+   t #LOC @ 1 - gi - LOC-AS-BUNDLE? IF t rest LAYOUT-PUSH-FIELDS  node over rest FIELDS-LINEAGE! EXIT THEN
+   rest below = IF row EXIT THEN
+   rest row w PRE-PUSH ;
+
 : LOC-BIND
    \ A prior refusal may leave a partially bound row; the names are already parsed.
    OK @ 0= IF FRESH MK-ROW DCUR ! EXIT THEN
@@ -20053,8 +20082,9 @@ CHECKER-REG:}SCRATCH
    UNJ-ARMED? {: unj:bool :}
    DCUR @ {: pre:n :}  RCUR @ {: rpre:n :}  WF-N @ {: wf0:n :}
    unj IF pre LOC-DECL-ROW ELSE 0 THEN {: decl:n :}
-   pre  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
-   pre  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
+   pre 0 LOC-BUNDLE-ROW {: cap:n :}  cap DCUR !
+   cap  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
+   cap  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
       drop
       LOC-BIND-GROUPS                  \ a captured operand is a hidden-field bundle
    ELSE
