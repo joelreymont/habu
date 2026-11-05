@@ -1,6 +1,5 @@
-\ The profiler must give a word that reuses a trimmed or rewound ordinal or code
-\ address fresh counters, and keep deferred samples across a trim. The child
-\ emits JSON as the repeatable report artifact.
+\ A word reusing a trimmed or rewound ordinal or code address gets fresh profiler
+\ counters, and deferred samples survive a trim; the child emits JSON as the artifact.
 
 require src/lib/test.f
 require src/lib/string.f

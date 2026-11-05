@@ -1,5 +1,5 @@
 \ A local binding must win over equally named public words imported from two
-\ packages. The native prior-binding pass runs before the local table exists.
+\ packages.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f

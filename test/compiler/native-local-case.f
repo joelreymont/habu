@@ -1,9 +1,8 @@
 \ A local answers to its declared spelling byte for byte; word lookup stays
 \ case-insensitive, so another spelling is the word (global, package public,
-\ builtin, loop index, control word) or undefined. The readers
-\ src/core/checker.f LOC-REF?, src/habu/habu2.f EMIT-LOC-FIND and
-\ src/compiler/native/elaborate.f LOCAL-OF must agree: a disagreement compiles a
-\ certified body differently with no diagnostic.
+\ builtin, loop index, control word) or undefined. The checker (src/core/checker.f
+\ LOC-REF?) and tier 0 (src/habu/t0.f DO-LOCAL) must agree: a disagreement
+\ compiles a certified body differently with no diagnostic.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f

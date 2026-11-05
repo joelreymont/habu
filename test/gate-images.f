@@ -42,12 +42,8 @@ package GATE-IMAGES
    f CHECK-VERIFY = if s" check-verify" exit then
    E-TBL-BOUNDS throw ;
 
-\ A family's prerequisites come before it here: DERIVE refuses a table that
-\ lists one after. A family whose module loads another's needs that one first
-\ (the linker is built on the app image).
-\ tools/check-verify-image.f is a tool, not a test adapter: it has no grant
-\ check, so a row that reaches it ungranted builds its own keyed image instead
-\ of dying.
+\ Prerequisites come first (the linker builds on the app image); DERIVE refuses one listed after.
+\ tools/check-verify-image.f has no grant check, so an ungranted test builds its own image.
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" test/compiler-images.f" exit then
    f APP = if s" test/app-image-engine.f" exit then

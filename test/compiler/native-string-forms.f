@@ -1,6 +1,6 @@
 \ Preserve string behavior through the checker reader and the native source tape.
 \ Each subject program starts with `0 set-tier`, so tier 0 (src/habu/t0.f)
-\ compiles it whatever tier this row runs at.
+\ compiles it whatever tier this test runs at.
 require test/gate-common.f
 
 package NSTRING-FORMS-TEST

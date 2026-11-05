@@ -1,8 +1,5 @@
-\ The window DATA cell value's varint codec at each width boundary.
-\ src/habu/aot-decl.f package AOT-WINDOW is the authority for the grammar; the
-\ two emitted ARM64 decoders (habu2.f APPLY-CELLS for the baked window,
-\ aot-link-arm.f EMIT-VGET for a stripped image's own DATA) are exercised by
-\ every build.
+\ The window DATA cell value's varint codec at each width boundary;
+\ src/habu/aot-decl.f AOT-WINDOW owns the grammar.
 require src/lib/test.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f

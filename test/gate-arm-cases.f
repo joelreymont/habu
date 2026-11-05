@@ -1,4 +1,4 @@
-\ These rows need the ARM host, its source recovery or the JIT.
+\ These tests need the ARM host or its source recovery.
 
 \ shadow-kinds.f reads a native arm64 shadow beside the host's tier-0 routines.
 SUITE compiler-shadow

@@ -2,7 +2,7 @@
 \ EPRIM;`) is empty: `create` parses a name and defines it (src/habu/habu1.f
 \ BCREATE); the word gets `-- ptr a` from its definer (src/habu/habu2.f
 \ PUBLISH-PTR-A). Restoring `PE-PTR-A PE-OUT` reds INFER-CASE's inferred effect
-\ and both callers, and BODY-CASE's definer bodies answer E-NELAB-ARITY.
+\ and both callers.
 
 require src/lib/test.f
 require src/habu/verify-source.f
@@ -116,8 +116,7 @@ private
 \ A signed body never reads the row (src/core/checker.f DEFINER-TOK models
 \ `create` before TRY-PRIMS in DO-TOK). Its readers ask the effect store by
 \ name: inference for an unsigned body, and src/compiler/native/dict.f
-\ NDICT:SPELL-ARITY, where a `-- ptr a` row refuses every definer body
-\ (`dup create , 1 +`, src/core/enums.f ENUM+) as E-NELAB-ARITY.
+\ NDICT:SPELL-ARITY.
 \ A body with no declared signature reaches the primitive row, the leg
 \ DEFINER-TOK does not shadow, and its inferred effect is recorded under its
 \ name for every later caller.

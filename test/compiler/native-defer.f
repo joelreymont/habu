@@ -69,7 +69,7 @@ variable HIT
 : BIND-CASE ( -- )
    SETUP
    DEF-INSTALL
-   s" the installer is the chain's code" T-LABEL
+   s" the installer compiles" T-LABEL
    s" ND-INSTALL" REC-START 0 T<>
    s" and running it binds the deferred word to the body" T-LABEL
    s" ND-INSTALL" evaluate-closed

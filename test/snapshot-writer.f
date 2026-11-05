@@ -555,7 +555,7 @@ variable BAND-WID
    s" : BAD-EFFECT ( n -- n ) drop ;" WARM-STDIN
    EXITED @ TTRUE RC @ 70 T=
    ERR$ s" hook: non-certified definition: bad-effect" CONTAINS? TTRUE
-   s" restored compiler retains current and prior literal row ownership" T-LABEL
+   s" restored compiler retains literal row ownership" T-LABEL
    s" require test/compiler/native-string.f" WARM-STDIN
    EXITED @ TTRUE RC @ 0 T= ERR-U @ 0 T=
    OUT OUT-U @ s" test: ok" CONTAINS? TTRUE

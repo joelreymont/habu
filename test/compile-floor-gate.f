@@ -1,7 +1,7 @@
 \ compile-floor-gate.f - checked performance budgets for tier 0.
 \ The child tools measure; this gate parses their lines and compares each number
-\ with a named budget. Speed means nothing from a wrong word, so tier-bench checks
-\ every round's result and the gate requires its R lines.
+\ with a named budget. tier-bench requires every round to compute run 0's value,
+\ and the gate requires its R lines.
 \ Child output prints on every run: the pool keeps it for a red suite, and a
 \ standalone run (`bin/hb --load test/compile-floor-gate.f`) shows the numbers.
 

@@ -169,12 +169,8 @@ variable PID
 : PTY-PROMPT ( -- )
    s"  ok" PROMPT-AFTER ;
 
-\ Both boot modes must enumerate one dictionary: the engine seeds its baked REPL
-\ words at the end of the engine prefix on every boot. test/aot-seed-surface.f
-\ folds every dictionary record name into one number; SEED-BATCH runs it as a
-\ piped program and PTY-SEED-SURFACE types it at the terminal and requires the
-\ same number. Neither side hardcodes it (it moves with every tree edit), and a
-\ mode that seeded a different set, order or point cannot produce it.
+\ SEED-BATCH (piped) and PTY-SEED-SURFACE (terminal) must print the same
+\ test/aot-seed-surface.f fold of the dictionary.
 create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 
 : SEEDNUM$ ( -- ptr u8 n )    SEEDNUM SEEDNUM-U @ ;

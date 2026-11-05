@@ -153,9 +153,7 @@ $7FFFFFFFFFFFFFFF constant MAX-INT
    2 3 NDO-FIXTURE:NDO-DOQ 6 T=
    2 3 NDO-FIXTURE:NDO-QDO 6 T= ;
 
-\ A call in the body makes the counters travel as operands of every edge: a
-\ plain opener builds its header edge in the block the `do` stands in, not in a
-\ pre-header of its own.
+\ A call in the body: the counters survive it on every iteration.
 : CALL-CASE ( -- )
    s" a call in a plain do body carries the counters" T-LABEL
    7 3 NDO-FIXTURE:NDO-CALL 823165 T=

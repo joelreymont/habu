@@ -1699,8 +1699,6 @@ SUITE type-layout-lower-pending
    test/type-layout-lower-pending.f
 ;SUITE
 
-\ A wide layout value — arity 0 and a parametric instance — inside a typed
-\ local.
 SUITE wide-typed-local-probe
    test/wide-typed-local-probe.f
 ;SUITE

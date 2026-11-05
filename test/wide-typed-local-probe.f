@@ -162,9 +162,7 @@ private
    p WLP-PAIR:UNMAKE +  q @ WLP-PAIR:UNMAKE +  + ;
 
 \ ---- a record wider than the register pool, shuffled whole -----------------
-\ Each shuffle moves more cells than a routine has registers, so tier 1 loads
-\ them in a run it cannot hold whole and stores each value it puts away right
-\ after that value's own load (src/compiler/native/regalloc.f MB-ANCHOR).
+\ Each shuffle moves more cells than a routine has registers.
 : WL-SWAP2 ( wide pair -- pair wide ) swap ;
 : WL-UNSWAP2 ( pair wide -- wide pair ) swap ;
 : WL-SWAP1 ( wide n -- n wide ) swap ;
