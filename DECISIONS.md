@@ -773,7 +773,12 @@ learned live in the docs for their subject.
   not WL? Otherwise, what does <World List ID>:PRIMITIVES mean? WL:PRIMITIVES
   makes sense" and "collect worldlist-related things in the WL package, not
   the WID pacakge". The built-ins' wordlist id is WL:PRIMITIVES, and
-  DICT-WL's markers and WID:MAX move into package WL.
+  DICT-WL's markers and WID:MAX move into package WL. Shown that eight
+  places test whether a word is global by its wordlist and asked how they
+  should count the built-in words, Joel asked "why do you need to know if a
+  bare name looks in this wordlist? what is a bare name?", then chose
+  "WL:GLOBAL? (Recommended)": one word in package WL that answers yes for
+  the global wordlist and WL:PRIMITIVES.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
