@@ -466,8 +466,7 @@ $150 constant SX-SRC
 \ which a throw puts back with the open package's.
 $158 constant ENCLOSING
 \ PKG-OUTSIDE: PKG-OUTSIDE-CELL as the buffer began, which a throw puts back.
-\ The clean exit puts it back unless the buffer left open a package it opened,
-\ which belongs to the includer from then on (habu2.f EM-EVAL-CLEAN-EXIT).
+\ A clean exit does too unless a `package` ran; one left open is the includer's.
 $178 constant PKG-OUTSIDE
 ;package
 

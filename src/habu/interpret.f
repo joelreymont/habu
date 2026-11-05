@@ -137,13 +137,8 @@ private
    {: record:ptr :}
    0 record NATIVE-BODY-ABI:PENDING-TAKE cells + CELL-VIEW ! ;
 
-\ The buffer ran out (habu2.f EM-EVAL-CLEAN-EXIT). The evaluate error cell is
-\ cleared: an `evaluate` the buffer caught recorded its code there, and
-\ include.f reads a nonzero cell after the buffer as a failed evaluation. The
-\ using depth goes back to the buffer's using floor (packages.f USE-FLOOR); a
-\ package the buffer left open keeps none of its usings: its using floor drops
-\ to the restored depth. A package the buffer opened and left open is the
-\ includer's; otherwise the includer's PKG-OUTSIDE-CELL, n, comes back.
+\ An evaluate the buffer caught left its code; include.f would fail the load.
+\ A `package` in it leaves PKG-OUTSIDE-CELL 0, which matters only in a package.
 : CLEAN-END ( n -- ) {: outside:n :}
    0 EVALERR-CELL CELL!
    USE-FLOOR @ USE-DEPTH-CELL CELL@ min {: back:n :}
