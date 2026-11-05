@@ -6,8 +6,8 @@
 \ that ran INIT (NEED-OWNER); the staging span WAIT and TAKE read into is per task.
 
 s" src/lib/errors.f" required
-s" src/lib/process.f" required                \ PROC-NONBLOCK!, PROC-KILL-RAW, POLLIN, PROC-NO-FD, PROC-DEADLINE-AT and PROC-LEFT-MS
-s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-pipe
+s" src/lib/process.f" required                \ PROC-KILL-RAW, POLLIN, PROC-NO-FD, PROC-DEADLINE-AT and PROC-LEFT-MS
+s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-pipe, and FD:NONBLOCK!
 s" src/lib/aio.f" required                    \ the loop the WAIT window runs on
 s" src/lib/task.f" required                   \ TASK:+USER carries the staging span, TASK:SELF-N the owner
 s" src/lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
@@ -202,15 +202,16 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : READ-FD ( -- fd )
    READ-FD-CELL @ >FD ;
 
-\ BOTH ends are non-blocking. The write end so a full pipe refuses the stub's
-\ write instead of parking whichever thread the signal landed on; the read end
-\ so a WAIT that loses the four bytes to another task is refused instead of
-\ parked in read until the NEXT signal arrives - which is a hang, not a race,
-\ for a window that was meant to close on its own.
+: MARK-PIPE ( fd fd -- fd fd )
+   over FD:NONBLOCK! dup FD:NONBLOCK! ;
+
+\ Both ends are non-blocking: a full pipe refuses the stub's write rather than park
+\ the signalled thread, and a read that lost the bytes to another task is refused.
 : OPEN-PIPE ( -- )
    FD:PIPE {: r:fd w:fd :}
-   r PROC-NONBLOCK!
-   w PROC-NONBLOCK!
+   r w [: MARK-PIPE ;] catch {: code:n :}
+   2drop
+   code 0<> if r FD>N close w FD>N close code throw then
    r FD>N READ-FD-CELL !
    w FD>N WRITE-FD-CELL ! ;
 

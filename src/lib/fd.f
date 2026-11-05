@@ -1,8 +1,9 @@
-\ fd.f - the standard descriptors, close-on-exec pipes, exact reads and full
-\ writes on blocking descriptors (the engine reports EAGAIN as a failed call),
-\ and syncing and resizing a file. A refused pipe, read, write, sync or resize,
-\ a write that takes no byte and a count past the asked one are E-FS-IO; a
-\ negative length is E-SPAN-LENGTH. Signals and descriptors stay the caller's.
+\ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
+\ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
+\ as a failed call), and syncing and resizing a file. A refused pipe, mark, read,
+\ write, sync or resize, a write that takes no byte and a count past the asked
+\ one are E-FS-IO; a negative length is E-SPAN-LENGTH. Signals and descriptors
+\ stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
 
@@ -64,7 +65,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
 : ARM ( fd n -- bool )
    {: f:fd flags:n :}
    flags O-NONBLOCK and 0<> if false exit then
-   f FD>N F-SETFL flags O-NONBLOCK or fcntl 0 < if E-FS-IO throw then
+   f FD>N F-SETFL flags O-NONBLOCK or fcntl 0 < if f flags RESTORE E-FS-IO throw then
    f FD>N F-GETFL 0 fcntl {: armed:n :}
    armed 0 < armed O-NONBLOCK and 0= or if
       f flags RESTORE
@@ -199,6 +200,12 @@ public
    {: f:fd len:n :}
    len 0 < if E-SPAN-LENGTH throw then
    f FD>N len RESIZE-CALL 0<> if E-FS-IO throw then ;
+
+\ Marks the descriptor non-blocking, or leaves it so; a mark refused or not kept
+\ restores its flags.
+: NONBLOCK! ( fd -- )
+   {: f:fd :}
+   f f FLAGS ARM drop ;
 
 \ A pipe, read end then write end, both close-on-exec, made and marked under
 \ FD-LOCK:WITH (see fd-lock.f); a refused mark closes both before E-FS-IO.

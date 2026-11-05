@@ -23,6 +23,9 @@ using FD
 using SPAN
 using MEM
 
+PROCESS-SYMBOLS
+FUNCTION: KQUEUE-CALL kqueue ( -- i32 ) ;FUNCTION
+
 $400000 constant PAYLOAD          \ 4 MiB: 64 default Linux pipes, and past Linux's pipe-max-size
 251 constant PATTERN-MOD          \ prime, so no power-of-two chunk realigns the pattern
 10000 constant WAIT-MS            \ how long a held-back reader waits for the writer's first bytes
@@ -311,6 +314,9 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 : SYNC-CLOSED ( -- )
    ERR-FD @ >FD SYNC ;
 
+: NONBLOCK-ERR ( -- )
+   ERR-FD @ >FD NONBLOCK! ;
+
 : WRITE-NO-READER ( -- )
    ERR-FD @ >FD s" data" WRITE-FULL ;
 
@@ -353,6 +359,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    r FD>N ERR-FD !
    [: READ-CLOSED ;] E-FS-IO TTHROWSQ
    [: SYNC-CLOSED ;] E-FS-IO TTHROWSQ
+   [: NONBLOCK-ERR ;] E-FS-IO TTHROWSQ
    w FD-NOSIGPIPE!
    w FD>N ERR-FD !
    [: WRITE-NO-READER ;] E-FS-IO TTHROWSQ
@@ -360,6 +367,17 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    [: RESIZE-PIPE ;] E-FS-IO TTHROWSQ
    [: RESIZE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    w FD>N close ;
+
+\ XNU stores the flags before a kqueue refuses FIONBIO, so the refused mark
+\ must put them back.
+: REFUSED-MARK ( -- )
+   HB-TARGET-MACOS? 0= if exit then
+   KQUEUE-CALL {: kq:n :}
+   kq >FD FD-FLAGS {: before:n :}
+   kq ERR-FD !
+   [: NONBLOCK-ERR ;] E-FS-IO TTHROWSQ
+   kq >FD FD-FLAGS before T=
+   kq close ;
 
 : MAIN ( -- )
    T-RESET
@@ -379,6 +397,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    CUT-THEN-APPEND
    DIR-SYNC
    ERRORS
+   REFUSED-MARK
    SRC @ FREE-SPAN
    DST @ FREE-SPAN
    T-REPORT
