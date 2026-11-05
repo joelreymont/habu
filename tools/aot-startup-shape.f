@@ -21,8 +21,7 @@ $1FFFFF constant ADR-DISP-ONES      \ a 21-bit displacement of all ones
 : MOVW-LANE ( n -- n ) 5 rshift $FFFF and ;      \ the 16-bit immediate it carries
 : MOVW-HW ( n -- n ) 21 rshift 3 and ;           \ which lane that immediate is shifted into
 
-\ The signed byte displacement of an ADR, the inverse of ENC-ADRD. No division,
-\ so it is exact for a target this startup never has: one off the word grid.
+\ The signed byte displacement of an ADR, the inverse of ENC-ADRD.
 : ADR-DISP ( n -- n ) {: w:n :}
    w 5 rshift $7FFFF and 2 lshift  w 29 rshift 3 and or {: imm:n :}
    imm $100000 >= if imm $200000 - exit then
@@ -52,9 +51,8 @@ public
 : MOVW-CHUNK ( n -- n ) {: w:n :}
    w MOVW-LANE  w MOVW-HW MOVW-LANE-BITS * lshift ;
 
-\ `adr rd, .+d` for this rd, whatever the displacement. Not re-encoded: ENC-ADRD
-\ divides, so a target off the word grid would not round-trip; every bit outside
-\ the displacement field the encoder names is compared instead.
+\ `adr rd, .+d` for this rd, whatever the displacement: every bit outside the
+\ displacement field the encoder names is compared.
 : ADR-RD? ( n n -- bool ) {: w:n rd:n :}
    w ADR-DISP-BITS invert and  rd 0 ENC-ADR = ;
 

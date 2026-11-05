@@ -12,6 +12,12 @@ SUITE arm64-kernel-head
    test/compiler/arm64-kernel-head.f
 ;SUITE
 
+\ arm64-place.f compares a placed arm64 shadow emission with the host's tier-0
+\ routine.
+SUITE arm64-place
+   test/compiler/arm64-place.f
+;SUITE
+
 \ Both fixtures open an ARM AOT source window and select tier 0 before asking
 \ how an x64 shadow is carried or linked from that ARM window.
 SUITE x86-64-link-records

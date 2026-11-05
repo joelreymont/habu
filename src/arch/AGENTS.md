@@ -5,7 +5,7 @@ table (`src/compiler/native/backend.f`) from its `passes.f`.
 
 - `arm64/` — encoders (`asm.f`), code buffer (`icode.f`), mnemonics,
   disassembler, machine description, `backend.f`, `passes.f`; LINKER's arm64
-  part: the product's kernel (`link-kernel.f`).
+  part: the product's kernel (`link-kernel.f`) and code placement (`link.f`).
 - `x86-64/` — encoders (`asm.f`) into a byte sink, the code layer
   (`icode.f`), ABI, machine, runtime emitters (`rt.f`), disassembler.
 - `wasm/` — the Wasm backend (`backend.f`): dialect, selector,

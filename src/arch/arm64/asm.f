@@ -464,12 +464,17 @@ public
 
 : ENC-ISB ( -- n ) $D5033FDF ;
 
-\ d is the byte offset from this instruction.
-: ENC-ADRD ( n -- n ) dup 3 and 29 lshift  swap 4 / $7FFFF and 5 lshift or ;
+\ d fills the signed 21-bit immhi:immlo field: bytes for adr, pages for adrp.
+: ENC-ADRD ( n -- n ) dup 3 and 29 lshift  swap 2 rshift $7FFFF and 5 lshift or ;
 
 : ENC-ADR ( n n -- n )
    XR2ND {: rd:n imm:n :}
    $10000000 rd or  imm ENC-ADRD or MSK ;
+
+\ pages is the signed 4 KiB page distance from the instruction's own page.
+: ENC-ADRP ( n n -- n )
+   XR2ND {: rd:n pages:n :}
+   $90000000 rd or  pages ENC-ADRD or MSK ;
 
 : ENC-FMOVDD ( n n -- n ) DR2 $1E604000 RR ;
 
