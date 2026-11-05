@@ -1,5 +1,5 @@
 ---
-title: Bound the lsp and prefix-provided rows by CPU
+title: Bound the test rows' wall deadlines by CPU
 status: open
 priority: 2
 issue-type: task
@@ -15,3 +15,5 @@ More evidence (tim, stdio re-review, master's engine and the candidate at the sa
 More evidence (tim, Maki canon-ops/.out/fold3/): test/db/pg-cluster.f gives each case a wall deadline, DEFAULT-CASE-MS 60000 (:98) unless HB_PG_CASE_MS overrides it (:165-168). Under load Maki's `pg-cluster.f -- test/chat-case.f` hits it at about 64 s (rc 67) and passes in 226 s with HB_PG_CASE_MS=300000. Add test/db/pg-cluster.f to the files; the same CPU bound applies to its case and step deadlines.
 
 Note 2026-11-03: test/suite-budget.f, cited above, no longer exists. tools/lsp-entry-test.f's two fixed 30000 ms limits go in "Let the LSP entry test wait without a clock" (dots habu-lsp-entry-test-4d67fa4a, habu-make-lsp-entry-c1c4a339); the other deadlines here stay open.
+
+Note 2026-11-05: test/prefix-provided-unfilled.f is deleted, its BUILD-TIMEOUT-MS with it: two whole x86-64 engine builds (578 s, the suite's second slowest test) checked one refusal of the x86-64 capture build, and its second build reused no file object (dot habu-fit-cache-diagnostics-ef6f5f55: reused 0, compiled 176).

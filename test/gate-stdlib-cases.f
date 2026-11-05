@@ -88,10 +88,6 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
-SUITE prefix-provided-unfilled
-   test/prefix-provided-unfilled.f
-;SUITE
-
 \ The positive hb-build AOT checks wait for the saved AOT builder image and
 \ start once it settles.
 SUITE native-gate-aot-positive-bundle

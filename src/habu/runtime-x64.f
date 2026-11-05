@@ -4,7 +4,6 @@
 \ kernel's bodies. CHECKER-REG:SEAL runs SEAL-TARGET, filled here by INSTALL-LOOP;
 \ it binds the four cells and makes COMP tier 0's compiler
 \ (NCOMP-DISPATCH:COMP-CELL) before the capture seals them.
-\ test/prefix-provided-unfilled.f drops the first install line: empty evaluate refused.
 
 require src/habu/t0-x64.f
 require src/habu/t0.f
