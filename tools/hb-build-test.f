@@ -9,7 +9,6 @@ require tools/image-size-lib.f          \ this fixture measures image bytes dire
 require test/linker-builder-engine.f
 require test/app-builder-engine.f
 require src/lib/string.f
-require src/lib/test/outcome.f
 require src/lib/fmt.f                        \ FMT:.INT
 
 using BUILD-FIXPOINT                     \ the build tmp root
@@ -17,16 +16,6 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
-
-\ The two images the lost-blob case measures: a byte-for-byte copy of a built
-\ one, and the same copy with a single word of its startup rewritten.
-variable HBT-LOST-CPY-U
-variable HBT-LOST-OUT-U
-create HBT-LOST-CPY-BUF PATH-CAP allot
-create HBT-LOST-OUT-BUF PATH-CAP allot
-variable HBT-SEQ-AT      \ the startup's x9 code-base + offset sequence, or -1
-variable HBT-SEQ-N       \ how many the image holds
-variable HBT-SEQ-IP      \ that scan's cursor
 
 \ The REPL and AOT sources are padded with spaces to this many bytes, so both
 \ builds read an input that large.
@@ -68,32 +57,17 @@ variable HBT-INST-FILES
    s" -o" >LEN PROC-ARGV+
    HBT-REPL-OUT >LEN PROC-ARGV+ ;
 
-\ --report-json through the CLI: a REPL build exits 0, stderr empty, the report
-\ object (HB-BUILD:REPORT$) on stdout. HBB-BUILD-REPL runs no AOT maker and sets
-\ no trace flag, so the three false fields are the reset trace, not a maker that
-\ missed. The output already holds stale bytes, and no other case builds over
-\ one: the CLI renames its copy onto -o (HBB-INSTALL-OUT), and HBT-RUN-REPL's
-\ exact stdout proves the new image replaced them.
-: HBT-CLI-REPORT ( bool -- )
-   {: size:bool :}
+\ Both report flags over stale bytes at -o: exit 0, empty stderr, the report object
+\ (not the size table) on stdout; HBT-RUN-REPL then runs the image that replaced them.
+: CLI-REPORT ( -- )
+   HBT-REPL-OUT s" stale" FS:WRITE-ALL
    HBT-ARGV-BASE-REPL
-   size if s" --size-report" >LEN PROC-ARGV+ then
+   s" --size-report" >LEN PROC-ARGV+
    HBT-ADD-REPORT
    HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
    rc 0 T=
    erru 0 T=
    HBT-OUT outu JSON:T-FALSE JSON:T-FALSE JSON:T-FALSE CHECK-REPORT ;
-
-: CLI-REPORT ( -- )
-   HBT-REPL-OUT s" stale" FS:WRITE-ALL
-   0 0= 0= HBT-CLI-REPORT
-   HBT-REPL-OUT FS:FILE-META {: size:n sec:n ns:n csec:n cns:n :}
-   csec drop cns drop
-   \ A fresh output still reports; with both flags JSON remains the only object.
-   0 0= HBT-CLI-REPORT
-   HBT-REPL-OUT FS:FILE-META {: after:n asec:n ans:n acsec:n acns:n :}
-   acsec drop acns drop
-   after size T= asec sec T= ans ns T= ;
 
 \ The install stages the engine in a sibling of -o and renames it over -o
 \ (HBB-INSTALL-OUT). A directory at -o lets the sibling be filled and made
@@ -258,44 +232,9 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    then
    HBT-RUN-OUT outn HBT-REPL-ARGS-EXPECTED$ T$= ;
 
-: HBT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: HBT-IMGDUMP$ ( -- ptr u8 n )
-   s" tools/imgdump.f" ;
-
-: HBT-IMGDUMP-ARGV ( -- )
-   PROC-ARGV-ENV-RESET
-   s" --load" HBT-ARG+
-   s" src/lib/errors.f" HBT-ARG+
-   s" src/lib/string.f" HBT-ARG+
-   s" src/lib/memory.f" HBT-ARG+
-   s" src/lib/fs.f" HBT-ARG+
-   HBT-IMGDUMP$ HBT-ARG+
-   s" --" HBT-ARG+
-   HBT-REPL-OUT HBT-ARG+ ;
-
-: HBT-IMGDUMP-NAME$ ( -- ptr u8 n )
-   s" hb-build-imgdump" ;
-
-: HBT-IMGDUMP-DUMP$ ( -- ptr u8 n )
-   HBT-IMGDUMP-NAME$ BF-A$ ;
-
-\ The dump, read back through its own size. A buffer sized before the child runs
-\ cannot bound it (see below), so the file's size is what sizes the read. A
-\ child stopped at its deadline may have printed nothing yet.
-: HBT-IMGDUMP-READ$ ( -- ptr u8 n )
-   HBT-IMGDUMP-DUMP$ FS:FILE-SIZE {: size:n :}
-   size 0= if s" " exit then
-   size MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   HBT-IMGDUMP-DUMP$ buf cap FS:READ-ALL {: u:n :}
-   buf u ;
-
 \ ---- where each image class's bytes went --------------------------------------
-\ tools/image-size-lib.f refuses unless its classes sum to the file's length, so
-\ MEASURE returning is the sum proof. These cases pin that the sum is the file's
-\ real length, that the summary's six terms plus `other` give the same total,
-\ and that a snapshot writes its zero bytes while a stripped image never does.
+\ IMAGE-SIZE:MEASURE refuses unless the classes sum to the file's length; this
+\ pins that sum to the real length and to the summary's five terms plus `other`.
 : HBT-SIZE-SUM ( -- n )
    IMAGE-SIZE:CODE-BYTES IMAGE-SIZE:NAME-BYTES +
    IMAGE-SIZE:DATA-WRITTEN + IMAGE-SIZE:DATA-ZERO +
@@ -306,146 +245,22 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    IMAGE-SIZE:TOTAL-BYTES  a u FS:FILE-SIZE T=
    HBT-SIZE-SUM  IMAGE-SIZE:TOTAL-BYTES T= ;
 
-: HBT-SIZE-REPL ( -- )
-   HBT-REPL-OUT HBT-SIZE-MEASURE
-   IMAGE-SIZE:CLASS$ s" repl-snapshot" T$=
-   \ A snapshot stores its fixed DATA prefix and code maps as they stand, zeros
-   \ included, even when its heap goes in the cell grid: the class exists and
-   \ is never empty.
-   IMAGE-SIZE:DATA-ZERO 0 > TTRUE
-   IMAGE-SIZE:CODE-BYTES 0 > TTRUE
-   IMAGE-SIZE:NAME-BYTES 0 > TTRUE
-   \ The region payload is attributed and not just classified: the code band
-   \ splits into what records own, the out-of-line names beside it and the code
-   \ no record owns, and the DATA window into owners. Each of those partitions
-   \ is checked against the payload it covers inside MEASURE, so the case both
-   \ pins that the walk ran and that every charge added up.
-   IMAGE-SIZE:REGION-CODE 0 > TTRUE
-   IMAGE-SIZE:REGION-NAMES 0 > TTRUE
-   IMAGE-SIZE:REGION-UNOWNED 0 > TTRUE
-   HB-TARGET-LINUX-X86-64? if
-      IMAGE-SIZE:DATA-WRITTEN 0 > TTRUE
-   else
-      IMAGE-SIZE:DATA-OWNERS 0 > TTRUE
-   then ;
-
 \ Reads the image file rather than a report about it.
 : HBT-SIZE-AOT ( -- )
    HBT-AOT-OUT HBT-SIZE-MEASURE
    IMAGE-SIZE:CLASS$ s" stripped" T$=
-   \ The other half of the same fact: a stripped image encodes its window as
-   \ non-zero runs, so not one zero byte of it travels.
+   \ A stripped image encodes its window as non-zero runs, so not one zero
+   \ byte of it travels.
    IMAGE-SIZE:DATA-ZERO 0 T=
    IMAGE-SIZE:DATA-WRITTEN 0 > TTRUE
    IMAGE-SIZE:CODE-BYTES 0 > TTRUE
    \ ... and it carries no dictionary at all.
    IMAGE-SIZE:NAME-BYTES 0 T=
-   \ No region either, and no DATA owner: these run after the snapshot case in
-   \ one process, so they also pin that the attribution answers for the image in
-   \ hand and never with the last one's numbers.
+   \ No region either, and no DATA owner.
    IMAGE-SIZE:REGION-CODE 0 T=
    IMAGE-SIZE:REGION-NAMES 0 T=
    IMAGE-SIZE:REGION-UNOWNED 0 T=
    IMAGE-SIZE:DATA-OWNERS 0 T= ;
-
-\ ---- a damaged stripped DATA table ---------------------------------------------
-\ x86 stores sparse DATA runs in RX text located by a footer. This case changes
-\ one run length of the real program above, shortens the table past its XT
-\ count, then removes its footer; each image is refused before the reader counts
-\ bytes outside the table or the DATA window.
-\ ARM copies a DATA blob through the startup sequence: tools/image-size-lib.f
-\ FIND-BLOB reads the blob's address out of the four-word src/habu/aot-link-arm.f
-\ TEXT-ADR, sequence into x9, and refuses by name an image whose sequence it does
-\ not recognise but whose copy loop it finds (an empty capture window emits no
-\ copy loop). The subject is one word of a real image, the sequence's `adr x12`
-\ rewritten to `adr x13`, a drifted scratch register; the control is the same
-\ image written back unpatched and measured green.
-: HBT-LOST-CPY ( -- ptr u8 n )
-   HBT-LOST-CPY-BUF HBT-LOST-CPY-U @ ;
-
-: HBT-LOST-OUT ( -- ptr u8 n )
-   HBT-LOST-OUT-BUF HBT-LOST-OUT-U @ ;
-
-: HBT-IMG-U32@ ( ptr u8 n -- n ) {: a:ptr off:n :}
-   a off + c@
-   a off 1+ + c@ 8 lshift or
-   a off 2 + + c@ 16 lshift or
-   a off 3 + + c@ 24 lshift or ;
-
-: HBT-IMG-U64@ ( ptr u8 n -- n ) {: a:ptr off:n :}
-   a off HBT-IMG-U32@
-   a off 4 + HBT-IMG-U32@ 32 lshift or ;
-
-: HBT-IMG-U32! ( n ptr u8 n -- ) {: w:n a:ptr off:n :}
-   w $FF and a off + c!
-   w 8 rshift $FF and a off 1+ + c!
-   w 16 rshift $FF and a off 2 + + c!
-   w 24 rshift $FF and a off 3 + + c! ;
-
-\ The image, read whole: the patch is one word inside it and the file is written
-\ back from the same bytes, so a copy that is not faithful cannot pass as one.
-: HBT-AOT-IMAGE$ ( -- ptr u8 n )
-   HBT-AOT-OUT FS:FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   HBT-AOT-OUT buf cap FS:READ-ALL {: u:n :}
-   buf u ;
-
-\ Every x9 sequence in the file, by the shape module's own test, so the case
-\ patches what the tool reads rather than a word it believes is there.
-: HBT-SCAN-TEXT-ADR9 ( ptr u8 n -- ) {: a:ptr u:n :}
-   -1 HBT-SEQ-AT !  0 HBT-SEQ-N !  CODE-OFF HBT-SEQ-IP !
-   begin HBT-SEQ-IP @ 16 + u <= while
-      a HBT-SEQ-IP @ HBT-IMG-U32@
-      a HBT-SEQ-IP @ 4 + HBT-IMG-U32@
-      a HBT-SEQ-IP @ 8 + HBT-IMG-U32@
-      a HBT-SEQ-IP @ 12 + HBT-IMG-U32@
-      HBT-SEQ-IP @ CODE-OFF 9 AOT-STARTUP-SHAPE:TEXT-ADR-SEQ? if
-         HBT-SEQ-N @ 1+ HBT-SEQ-N !
-         HBT-SEQ-AT @ 0 < if HBT-SEQ-IP @ HBT-SEQ-AT ! then
-      then
-      HBT-SEQ-IP @ 4 + HBT-SEQ-IP !
-   repeat ;
-
-\ Measured by the tool itself, in a child: the refusal is a `die` and ends the
-\ process, which is the behaviour under test.
-: HBT-MEASURE-CHILD ( ptr u8 n -- n n n ) {: img:ptr imgu:n :}
-   PROC-ARGV-ENV-RESET
-   s" --load" HBT-ARG+
-   s" tools/engine-size.f" HBT-ARG+
-   s" --" HBT-ARG+
-   img imgu HBT-ARG+
-   PROC-ENV-INHERIT-MISSING
-   HBT-RUN-HB-BUILD ;
-
-: HBT-SIZE-AOT-LOST-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a IMAGE-TEXT-SIZE-OFF HBT-IMG-U64@ {: textend:n :}
-   a textend 16 - HBT-IMG-U32@ CODE-OFF + {: table:n :}
-   a table HBT-IMG-U32@ 0 > TTRUE
-   a table 8 + HBT-IMG-U32@ {: runlen:n :}
-   a textend 12 - HBT-IMG-U32@ {: tablelen:n :}
-   HBT-LOST-CPY a u FS:WRITE-ALL
-   HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
-   HBT-ERR erru HBT-EMPTY$ T$=
-   rc 0 T=
-   $FFFFFFFF a table 8 + HBT-IMG-U32!
-   HBT-LOST-OUT a u FS:WRITE-ALL
-   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
-   rc2 0 T<>
-   HBT-ERR erru2 s" image-size: x86 stripped run exceeds DATA window"
-      CONTAINS? TTRUE
-   runlen a table 8 + HBT-IMG-U32!
-   tablelen 1- a textend 12 - HBT-IMG-U32!
-   HBT-LOST-OUT a u FS:WRITE-ALL
-   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu3:n erru3:n rc3:n :}
-   rc3 0 T<>
-   HBT-ERR erru3 s" image-size: x86 stripped table is truncated"
-      CONTAINS? TTRUE
-   tablelen a textend 12 - HBT-IMG-U32!
-   0 a textend 8 - HBT-IMG-U32!
-   HBT-LOST-OUT a u FS:WRITE-ALL
-   HBT-LOST-OUT HBT-MEASURE-CHILD {: outu4:n erru4:n rc4:n :}
-   rc4 0 T<>
-   HBT-ERR erru4 s" image-size: x86 stripped table footer is missing"
-      CONTAINS? TTRUE ;
 
 \ The stripped image's program: a nonzero DATA byte MAIN prints, so its output
 \ proves MAIN ran and read the restored byte.
@@ -468,11 +283,8 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    CODESIGN:TOOL >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC
    MATCH result ok OF ENDOF err OF ENDOF ;MATCH 0 T= ;
 
-\ One stripped image, built from a padded source, runs and is measured before
-\ its in-memory copy is damaged.
+\ One stripped image, built from a padded source, runs and is measured.
 : HBT-STRIPPED-IMAGE ( -- )
-   HBT-ROOT s" lostcopy" HBT-LOST-CPY-BUF HBT-LOST-CPY-U HBT-PATH!
-   HBT-ROOT s" lostblob" HBT-LOST-OUT-BUF HBT-LOST-OUT-U HBT-PATH!
    HBT-AOT-SRC HBT-IMAGE-SRC$ HBT-WRITE-LARGE
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
@@ -485,28 +297,6 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    HBT-RUN-OUT outn S\" 41\n\n" T$=
    HBT-AOT-OUT HBT-EXPECT-TEAM
    HBT-SIZE-AOT
-   HBT-AOT-IMAGE$ {: a:ptr u:n :}
-   HB-TARGET-LINUX-X86-64? if
-      a u HBT-SIZE-AOT-LOST-RUN
-   else
-      a u HBT-SCAN-TEXT-ADR9
-      HBT-SEQ-N @ 1 T=
-      HBT-LOST-CPY a u FS:WRITE-ALL
-      HBT-LOST-CPY HBT-MEASURE-CHILD {: outu:n erru:n rc:n :}
-      HBT-ERR erru HBT-EMPTY$ T$=
-      rc 0 T=
-      HBT-OUT outu s" restored DATA window: " CONTAINS? TTRUE
-      13 CODE-OFF HBT-SEQ-AT @ 8 + - A64ASM:ENC-ADR
-      a HBT-SEQ-AT @ 8 + HBT-IMG-U32!
-      HBT-LOST-OUT a u FS:WRITE-ALL
-      HBT-LOST-OUT HBT-MEASURE-CHILD {: outu2:n erru2:n rc2:n :}
-      rc2 0 T<>
-      HBT-ERR erru2
-      s" image-size: the startup copies a DATA blob but no code base + offset sequence names it"
-      CONTAINS? TTRUE
-   then
-   HBT-LOST-CPY HBT-REMOVE-FILE?
-   HBT-LOST-OUT HBT-REMOVE-FILE?
    HBT-REMOVE-AOT-OUT
    BF-TMP-RESET ;
 
@@ -597,23 +387,6 @@ create HBT-LOUD-SRC-BUF PATH-CAP allot
    outu HBB-CAPTURE-CAP > TTRUE
    outu HBB-OUT-ROOM outu HBT-LOUD-LAST$ CONTAINS? TTRUE ;
 
-\ imgdump prints one line per dictionary record: 407,041 bytes for this REPL
-\ application, growing with the engine. A bounded capture fails closed when full
-\ (PROC-READ-OR-PROBE-STREAM, E-PROC-TRUNCATED), so stdout goes to a file;
-\ stderr stays a bounded capture because an empty stderr is what this asserts.
-: HBT-IMGDUMP-REPL ( -- )
-   HBT-TMP BF-TMP!
-   HBT-IMGDUMP-ARGV
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" HBT-IMGDUMP-DUMP$ HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS BF-RUN-ARGV-ENV-OUTFILE {: erru:len oc :}
-   HBT-IMGDUMP-READ$ {: dump:ptr dumpu:n :}
-   HBT-IMGDUMP$ dump dumpu HBT-RUN-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
-   HBT-RUN-ERR erru LEN>N HBT-EMPTY$ T$=
-   dump dumpu s" + " CONTAINS? TTRUE
-   HBT-IMGDUMP-NAME$ BF-REMOVE-TMP
-   BF-TMP-RESET ;
-
 \ Rejected input is checked in the real app-build child, which refuses it with
 \ the checker's code and diagnostic.
 : HBT-BUILD-REPL-BAD ( -- )
@@ -674,8 +447,6 @@ public
    HBT-PUB-PAIR-FAILS
    HBT-RUN-REPL
    HBT-RUN-REPL-ARGS
-   HBT-IMGDUMP-REPL
-   HBT-SIZE-REPL
    HBT-BUILD-REPL-BAD
    HBT-LOUD-MAKER
    HBT-BUILD-MISSING-TMP

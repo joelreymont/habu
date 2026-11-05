@@ -30,8 +30,7 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \   tools/hb-build-test.f                     CLI REPL build and report,
 \                                             rejected inputs, image size,
 \                                             large sources, literal bodies
-\   tools/hb-build-cli-errors-test.f          cache path error, refused paths
-\                                             and entry names, MAIN effects
+\   tools/hb-build-cli-errors-test.f          out root error, refused paths
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
 \                                             quotation fields, ptr mark
@@ -54,7 +53,6 @@ variable HBT-BAD-OUT-U
 variable HBT-REPL-SRC-U
 variable HBT-REPL-OUT-U
 variable HBT-REPL-BAD-SRC-U
-variable HBT-REPL-BAD-OUT-U
 variable HBT-AOT-SRC-U
 variable HBT-AOT-OUT-U
 variable HBT-SPAN-SRC-U
@@ -68,7 +66,6 @@ create HBT-BAD-OUT-BUF PATH-CAP allot
 create HBT-REPL-SRC-BUF PATH-CAP allot
 create HBT-REPL-OUT-BUF PATH-CAP allot
 create HBT-REPL-BAD-SRC-BUF PATH-CAP allot
-create HBT-REPL-BAD-OUT-BUF PATH-CAP allot
 create HBT-AOT-SRC-BUF PATH-CAP allot
 create HBT-AOT-OUT-BUF PATH-CAP allot
 create HBT-SPAN-SRC-BUF PATH-CAP allot
@@ -165,9 +162,6 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 : HBT-REPL-BAD-SRC ( -- ptr u8 n )
    HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U @ ;
 
-: HBT-REPL-BAD-OUT ( -- ptr u8 n )
-   HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U @ ;
-
 : HBT-AOT-SRC ( -- ptr u8 n )
    HBT-AOT-SRC-BUF HBT-AOT-SRC-U @ ;
 
@@ -240,7 +234,6 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-ROOT s" repl.f" HBT-REPL-SRC-BUF HBT-REPL-SRC-U HBT-PATH!
    HBT-ROOT s" repl" HBT-REPL-OUT-BUF HBT-REPL-OUT-U HBT-PATH!
    HBT-ROOT s" repl-bad.f" HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U HBT-PATH!
-   HBT-ROOT s" repl-bad" HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U HBT-PATH!
    HBT-ROOT s" aot.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH!
    HBT-ROOT s" aot" HBT-AOT-OUT-BUF HBT-AOT-OUT-U HBT-PATH!
    HBT-ROOT s" span.f" HBT-SPAN-SRC-BUF HBT-SPAN-SRC-U HBT-PATH!
@@ -386,12 +379,8 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBB-BUILD
    BF-TMP-RESET ;
 
-\ Keeps the maker's ( outu erru rc ) where HBB-FINISH-MAKER would die, so a link
-\ refusal's code and stderr (HBB-ERR-BUF) are asserted on the child that made
-\ them; HBT-RUN-APP does the same for HBB-RUN-APP-CMD. A timeout still throws
-\ through HBB-MAKER-TIMED-OUT. The CLI's pass-through of a refusal is asserted
-\ once per build path: tools/hb-build-stripped-test.f HBT-STRIPPED-NO-ENTRY
-\ (AOT), tools/hb-build-cli-errors-test.f HBT-REFUSE-MAIN-CLI (REPL).
+\ Keeps the maker's ( outu erru rc ) where HBB-FINISH-MAKER would die, so a refusal
+\ is asserted on the child that made it; a timeout still goes to HBB-MAKER-TIMED-OUT.
 : HBT-MAKER-CAPTURE>N ( len len outcome -- n n n )
    MATCH outcome
       exited OF {: outu:len erru:len rc:n :}

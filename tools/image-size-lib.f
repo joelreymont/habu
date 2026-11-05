@@ -2373,10 +2373,8 @@ variable HEAD-W     variable HEAD-Z
       s"   (" type DCOST-N @ TOP-ROWS - FMT:.U s"  more owners)" type cr
    then ;
 
-\ One process measures several images (tools/hb-build-test.f measures two), so
-\ every accumulator this section publishes starts at zero for each: a class
-\ with no region and no DATA owners must not answer with the last image's
-\ numbers.
+\ Every accumulator this section publishes starts at zero for each image, so a
+\ class with no region and no DATA owners never answers with the last one's numbers.
 : ATTRIB-RESET ( -- )
    0 BAND-CODE !  0 BAND-CZERO !  0 BAND-NAMES !  0 BAND-NZERO !
    0 BAND-FREE !  0 BAND-FZERO !  0 PKG-GLOBAL !  0 PKG-UNMAPPED !
@@ -3193,7 +3191,7 @@ public
    X64 @ 0= if NOTES then ;
 
 \ The summary line, in the one place that owns its wording. `other` is what no
-\ class claimed, so the six terms and it add up to the file's own length.
+\ class claimed, so the five terms and it add up to the file's own length.
 : .SUMMARY ( ptr u8 n -- ) {: name:ptr nameu:n :}
    s" size: " type name nameu type
    s"  " type TOTAL-BYTES FMT:.U s"  bytes = code " type CODE-BYTES FMT:.U
