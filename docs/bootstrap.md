@@ -123,8 +123,7 @@ reads from `BOOT:NAMESPACE-WL-CELL` instead of the constant
 `DICT-WL:NAMESPACE`. A host whose boot leaves that cell 0 stops the build with
 rc 70, `hb: no authenticated package context for this definition`. Build a
 host from a tree that adds only the primitive or the cell's boot write, and
-build this tree on it; a missing primitive can also be recovered through
-Gforth as above.
+build this tree on it.
 
 These builds, like every build and gate run from the checkout, write their
 objects under its out root ([gate.md](gate.md#scratch-and-cache)).
@@ -135,9 +134,9 @@ native engine, then execute and qualify it on an x86-64 host;
 `docs/xcomp.md` "Build and bootstrap" gives the target-specific build and
 execution path.
 
-A seed primitive used by the cold prefix must also exist in
-bootstrap/cg/forth.fs. The normal native gate does not build that seed,
-which is why the separate no-binary check below exists.
+The cross-build's steps add no mirror to bootstrap/cg/forth.fs, so a
+primitive one of them adds to the cold prefix stops the no-binary check
+below. The normal native gate does not build that seed.
 
 ## Periodic No-Binary Check
 

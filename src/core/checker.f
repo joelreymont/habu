@@ -183,9 +183,7 @@ OWNER-SIZE-AGREE
    CHECKER-OWNER-EXT:PIN-TOKEN-OFF CELL + OWNER-BYTES <> if
       s" checker: declaration-owner last field and record size disagree" 76 die then ;
 OWNER-LAST-FIELD-AGREE
-data-base TARGET-CELL + ptr-cell-mark
-data-base SOURCE-CELL + ptr-cell-mark
-DECLARATIONS data-base TARGET-CELL + 0 ptr-field !
+DECLARATIONS data-base TARGET-CELL + 0 ptr-field ptr-cell!
 ;package
 
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
@@ -17089,6 +17087,7 @@ private
    s" atomic!" INTRINSIC-ATOMIC-STORE INTRINSIC>CTL NORET-AXIOM
    s" atomic-cas" INTRINSIC-ATOMIC-CAS INTRINSIC>CTL NORET-AXIOM
    s" xt!" INTRINSIC-XT-STORE INTRINSIC>CTL NORET-AXIOM
+   s" ptr-cell!" INTRINSIC-CELL-STORE INTRINSIC>CTL NORET-AXIOM
    s" ?dup" INTRINSIC-QDUP INTRINSIC>CTL NORET-AXIOM
    s" depth" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM
    s" .s" INTRINSIC-HIDE-ROW INTRINSIC>CTL NORET-AXIOM

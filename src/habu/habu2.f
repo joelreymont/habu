@@ -8100,6 +8100,15 @@ ardone LBL,
    LMARK LABEL@ BL,
    C B 0 STR, ;
 
+\ ptr-cell! ( a ptr -- ): BXTSTORE for a DATA-pointer cell; see BXTSTORE.
+: BPTRCELLSTORE ( -- )
+   B G-POP  A G-POP
+   7 8 MOVZ,  B 7 PROT-GUARD:CALL
+   C A 0 ADDI,                                      \ x11 = the pointer
+   A B 0 ADDI,                                      \ x9 = the cell, for LPTRMARK
+   LPTRMARK LABEL@ BL,
+   C B 0 STR, ;
+
 \ Move every declared address cell by one signed amount.
 \   x10 = the amount to add
 \ The loader is the only caller; the writer's half is checked Habu in
@@ -13943,6 +13952,7 @@ variable KERNEL-CODE-END
    s" ptr-cell-mark" ['] RELOC-EMIT:BPTRCELLMARK FPRIM
    s" addr-cells-abi" ['] RELOC-EMIT:BVERSION FPRIM
    s" scratch-cell-mark" ['] RELOC-EMIT:BSCRATCHCELLMARK FPRIM
+   s" ptr-cell!" ['] RELOC-EMIT:BPTRCELLSTORE FPRIM
    s" snapshot-format" ['] RELOC-EMIT:BSNAPSHOTFORMAT FPRIM
    s" kernel-producer$" ['] BKERNELPRODUCER FPRIM
    PROF:EMIT-PROF-PRIMS

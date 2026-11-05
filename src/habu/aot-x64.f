@@ -233,14 +233,14 @@ variable X64-MEMBER
 
 : X64-TEXT-REL ( ptr u8 n n -- ) {: p:ptr width:n disp:n :}
    p width + disp + {: target:ptr :}
-   \ Only xt!'s recorded registrar call vanishes; ptr-cell-mark and scratch-cell-mark call the
-   \ registrar at runtime and cannot run stripped.
+   \ Only xt!'s and ptr-cell!'s recorded registrar calls vanish; ptr-cell-mark and
+   \ scratch-cell-mark call the registrar at runtime and cannot run stripped.
    width 4 = if
       p 1- c@ $E8 = if
          target DECLARATION-TARGET? if
             X64-MEMBER @ CLO-REC@ {: caller:ptr :}
             caller XREF-FOUND? if
-               caller s" xt!" REC-NAME= if
+               caller s" xt!" REC-NAME=  caller s" ptr-cell!" REC-NAME=  or if
                   p X64-DEST 1- X64-NOP-CALL exit then
             then
          then

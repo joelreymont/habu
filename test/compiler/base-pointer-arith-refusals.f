@@ -175,6 +175,20 @@ create DIAG-BUF 8192 allot
    s" and a real pointer cannot be put into an undeclared DATA cell either" T-LABEL
    s" BPA-PS ( ptr n n -- ) data-base + !" DB-REFUSED ;
 
+\ ptr-cell! is checked as `!`, so its declaration does not excuse a raw cell.
+: CASE-POINTER-IN-PTR-CELL ( -- )
+   s" nor through ptr-cell!, whose declaration does not excuse an undeclared cell" T-LABEL
+   s" BPA-PCS ( ptr n n -- ) data-base + ptr-cell!" DB-REFUSED ;
+
+\ ptr-cell! takes `!`'s cell-width rule; its prims.f row alone admits a `ptr u8`.
+: CASE-BYTE-PTR-CELL ( -- )
+   s" ptr-cell! refuses a byte pointer as its cell, as ! does" T-LABEL
+   ARM
+   s" BPA-PCB ( u8 ptr u8 -- ) ptr-cell!" CHECK-CANDIDATE! 0 T=
+   S\" \"code\":\"E-MISMATCH\"" HAS?  S\" \"repair_class\":\"fix_type\"" HAS?
+   S\" \"expected\":\"ptr a \"" HAS?  S\" \"actual\":\"ptr u8 \"" HAS?
+   DISARM ;
+
 \ ---- the ways around it ------------------------------------------------------
 \ The fence rides the pointee variable, so every route that keeps it is refused
 \ at the token that reads through it.
@@ -533,6 +547,8 @@ public
    CASE-NULL-POINTER
    CASE-DATA-POINTER
    CASE-POINTER-IN
+   CASE-POINTER-IN-PTR-CELL
+   CASE-BYTE-PTR-CELL
    CASE-OTHER-STEPS
    CASE-REVERSED-ADD
    CASE-THROUGH-QUOTATION

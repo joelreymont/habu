@@ -1165,9 +1165,8 @@ PERSISTED-PTR-VARIABLE TASK-CHAIN
 \ The crash handler reads this chain after an instruction fetch faults in a
 \ task's guard, where task-local RBP is unavailable, so the head is published in
 \ root DATA, declared a DATA pointer so an image remaps it with the window.
-data-base TASK-CHAIN-CELL + ptr-cell-mark
 : TASK-CHAIN-PUBLISH ( -- )
-   TASK-CHAIN data-base TASK-CHAIN-CELL + 0 ptr-field ! ;
+   TASK-CHAIN data-base TASK-CHAIN-CELL + 0 ptr-field ptr-cell! ;
 TASK-CHAIN-PUBLISH
 
 : TASK-CHAIN@ ( -- ptr n )

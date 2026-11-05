@@ -216,8 +216,8 @@ package CHECKER-REG
 \ The entry runs again in each emitted process; capture-time stores alone do
 \ not initialize the engine header copied outside the AOT DATA window.
 TRUSTED: BIND-OWNER ( -- )
-   DECLARATIONS NCOMP-DISPATCH:DECL-A !
-   DECLARATIONS NCOMP-DISPATCH:TARGET-DECL-A ! ;
+   DECLARATIONS NCOMP-DISPATCH:DECL-A ptr-cell!
+   DECLARATIONS NCOMP-DISPATCH:TARGET-DECL-A ptr-cell! ;
 
 : SEAL ( -- )
    NCOMP:INSTALL
@@ -225,7 +225,6 @@ TRUSTED: BIND-OWNER ( -- )
    BIND-OWNER
    SEAL-CAPTURE ;
 
-data-base NCOMP-DISPATCH:DECL-CELL + ptr-cell-mark
 ' SEAL
 ;package
 execute
