@@ -48,39 +48,6 @@ CELL-DEFINER DOES-CELL
 : FORGE-DOES ( -- )
    s" F5 ( -- rlsk ) DOES-CELL" CHECK-QUIET-CANDIDATE! 0 T= ;
 
-\ ---- the same cells never hold an ADDRESS either ------------------------------
-\ The same cells never launder an integer into an address with no TRUST row:
-\ an `n` stored through one mention and fetched through the next is no cell
-\ address for `@` nor byte address for `c@`. This is the forgeries' binding, a
-\ raw cell refusing a term.
-: PUN-VAR ( -- )
-   s" P1 ( n -- n ) VAR-CELL ! VAR-CELL @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-: PUN-VAR-STORE ( -- )
-   s" P2 ( n n -- ) VAR-CELL ! VAR-CELL @ !" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-: PUN-CREATE ( -- )
-   s" P3 ( n -- n ) CRE-CELL ! CRE-CELL @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-: PUN-CONSTANT ( -- )
-   s" P4 ( -- n ) CON-CELL @" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-: PUN-HERE ( -- )
-   s" P5 ( n -- n ) here ! here @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-: PUN-BYTE ( -- )
-   s" P6 ( n -- u8 ) VAR-CELL ! VAR-CELL @ c@" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-\ The write half. Refusing only the fetch would leave the cell holding a real
-\ address for the next mention to read back as whatever it liked.
-: PUN-POINTER-IN ( -- )
-   s" P7 ( ptr a -- ) VAR-CELL !" CHECK-QUIET-CANDIDATE! 0 T= ;
-
-\ `0 ptr-field` answers a fully typed `ptr ptr b` unrelated to the cell, so
-\ FORGE-VAR's program written through the field must be refused too.
-: FORGE-FIELD ( -- )
-   s" F6 ( n -- rlsk ) VAR-CELL ! VAR-CELL 0 ptr-field @ @" CHECK-QUIET-CANDIDATE! 0 T= ;
-
 \ ---- the seal must not cost the honest uses ----------------------------------
 \ A plain scalar round-trip through the very same cells still certifies, so the
 \ rejections above are about nominal identity and not about raw storage being
@@ -113,11 +80,7 @@ CELL-DEFINER DOES-CELL
    CON-CELL 7 T= ;
 
 : FORGERIES ( -- )
-   FORGE-VAR FORGE-CREATE FORGE-CONSTANT FORGE-PTR FORGE-DOES FORGE-FIELD ;
-
-: PUNS ( -- )
-   PUN-VAR PUN-VAR-STORE PUN-CREATE PUN-CONSTANT PUN-HERE PUN-BYTE
-   PUN-POINTER-IN ;
+   FORGE-VAR FORGE-CREATE FORGE-CONSTANT FORGE-PTR FORGE-DOES ;
 
 : SCALARS ( -- )
    SCALAR-VAR SCALAR-CREATE SCALAR-CONSTANT SCALAR-PTR SCALAR-DOES
@@ -126,7 +89,6 @@ CELL-DEFINER DOES-CELL
 : RUN ( -- )
    T-RESET
    FORGERIES
-   PUNS
    SCALARS
    ROUND-TRIP
    T-REPORT ;

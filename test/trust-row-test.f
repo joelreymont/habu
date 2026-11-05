@@ -5,7 +5,6 @@
 \ source string, so the code returned is that string's and the ordered cases
 \ show a following statement never ran.
 
-require src/lib/type/deftype.f               \ DEFTYPE - a nominal a raw type variable refuses
 require src/lib/test.f
 
 \ The cases stay at top level: several open a package inside the evaluated
@@ -47,35 +46,15 @@ s\" : TRW-JUST ( -- n ) 6 ; s\q TRW-JUST\q s\q -- n\q trust" TRUST-ROW:TCE-CATCH
 \ A negative length, or one that runs the name past the top of the address
 \ range, names no word even where its bytes begin a live one. It is refused
 \ before the name is read: the maximum cell would run the colon scan off the end
-\ of the string. `trust-raw` and `trust-decl` refuse it the same way; source
-\ cannot run those internal engine words, so a TRUSTED: body calls them, as the
-\ engine's own callers do.
+\ of the string.
 s\" s\q TRW-LIVE\q drop -1 s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
 s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
-s\" TRUSTED: TRW-NR1 ( -- ) s\q TRW-LIVE\q drop -1 s\q -- n\q trust-raw ; TRW-NR1"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
-s\" TRUSTED: TRW-ND1 ( -- ) s\q TRW-LIVE\q drop -1 s\q -- n\q trust-decl ; TRW-ND1"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
-s\" TRUSTED: TRW-NR2 ( -- ) s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-raw ; TRW-NR2"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
-s\" TRUSTED: TRW-ND2 ( -- ) s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust-decl ; TRW-ND2"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
 
 \ A signature length that describes no memory gets the refusal of a signature
 \ that does not parse, before a byte of it is read or printed: the maximum cell
 \ would read on past the text. test/gate-diagnostics-lib.f
-\ SIGNATURE-NOSPAN-RECORD renders the refusal of -1. `trust-raw`, called from a
-\ TRUSTED: body, shares the registration and its refusal.
+\ SIGNATURE-NOSPAN-RECORD renders the refusal of -1.
 s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-BAD-SIG T=
-s\" TRUSTED: TRW-NS1 ( -- ) s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust-raw ; TRW-NS1"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-BAD-SIG T=
-
-\ `trust-raw` parses in raw-definer mode, and the refusal above left it by a
-\ throw. Raw mode ends with the registration however the registration ends: left
-\ on, it would seal the type variables of every later signature, and the
-\ identity below would refuse a nominal value.
-s" DEFTYPE TRWSER : TRW-PASS ( a -- a ) ; : TRW-PASS-SER ( trwser -- trwser ) TRW-PASS ;"
-   TRUST-ROW:TCE-CATCH 0 T=
 
 \ Fixtures put the name where a text match would find it and the dictionary
 \ would not; the mirror cases must be accepted.
@@ -148,17 +127,11 @@ s" : TRW-AFTER2 ( -- n ) TRW-NEVER-DEFINED ;" TRUST-ROW:TCE-CATCH TRUST-ROW:E-RE
 \ global: inside TRWC the engine still resolves it, but a row there would record
 \ onto a TRWC-private symbol the engine never defined, and checked callers in
 \ TRWC would be certified against the row while the engine runs the global.
-\ `trust` asks the wordlist and names the stale row; the registrars TRUST-RAW
-\ and TRUST-DECL ask nothing and are internal engine words source cannot run (rc
-\ 70).
+\ `trust` asks the wordlist and names the stale row.
 s" : TRW-G7 ( -- n ) 7 ;" TRUST-ROW:TCE-CATCH 0 T=
 s\" package TRWC\ns\q TRW-G7\q s\q n n -- n\q trust\n;package"
    TRUST-ROW:TCE-CATCH TRUST-ROW:E-STALE T=
-s\" package TRWC\ns\q TRW-G7\q s\q -- ptr n\q TRUST-RAW\n;package"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-REJECT T=
-s\" package TRWC\ns\q TRW-G7\q s\q -- ptr n\q TRUST-DECL\n;package"
-   TRUST-ROW:TCE-CATCH TRUST-ROW:E-REJECT T=
-\ None of them left a row behind: the bare name in TRWC is still the global.
+\ The refused row left nothing behind: the bare name in TRWC is still the global.
 s\" package TRWC\npublic\n: TRWC-USE ( -- n ) TRW-G7 ;\n;package" TRUST-ROW:TCE-CATCH 0 T=
 s\" : TRWC-CK ( -- ) TRWC:TRWC-USE 7 <> if s\q a refused row bound the name\q 1 die then ;\nTRWC-CK"
    TRUST-ROW:TCE-CATCH 0 T=

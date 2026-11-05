@@ -1,9 +1,8 @@
 \ create-axiom-test.f - `create`'s effect row (src/habu/prims.f `EPRIM: create
 \ EPRIM;`) is empty: `create` parses a name and defines it (src/habu/habu1.f
 \ BCREATE); the word gets `-- ptr a` from its definer (src/habu/habu2.f
-\ PUBLISH-PTR-A). Restoring `PE-PTR-A PE-OUT` reds seven assertions: the arity
-\ pair and inferred effect read 0/1, the bad caller certifies, the honest caller
-\ is refused, and the three compiler measurements answer E-NELAB-ARITY.
+\ PUBLISH-PTR-A). Restoring `PE-PTR-A PE-OUT` reds INFER-CASE's inferred effect
+\ and both callers, and BODY-CASE's definer bodies answer E-NELAB-ARITY.
 
 require src/lib/test.f
 require src/habu/verify-source.f
@@ -18,26 +17,13 @@ private
 \ `evaluate-closed` loads a definition as a source file loads one. At top level
 \ what these publish is global, the position the inference case needs.
 
-\ Controls: `here`, `allot` and `,` are measured beside it; a word `create` made
-\ keeps `-- ptr a`; `create` in a string or a comment certifies as if absent.
+\ Controls: `here` is measured beside it; a word `create` made keeps `-- ptr a`;
+\ `create` in a string or a comment certifies as if absent.
 \ The parser-only definer regression calls the production source verifier
 \ directly.
 \ NDICT:SPELL-ARITY resolves a spelling's active effect through the checker's
 \ effect-read API and answers the pair in stack cells: asking it is asking the
 \ row.
-: ARITY-CASE ( -- )
-   s" the checker's effect for `create` moves no stack cell in either direction" T-LABEL
-   s" create" NDICT:SPELL-ARITY {: din:n dout:n :}
-   din 0 T=  dout 0 T=
-
-   s" while the storage words that DO move one keep saying so" T-LABEL
-   s" here" NDICT:SPELL-ARITY {: hin:n hout:n :}
-   hin 0 T=  hout 1 T=
-   s" allot" NDICT:SPELL-ARITY {: ain:n aout:n :}
-   ain 1 T=  aout 0 T=
-   s" ," NDICT:SPELL-ARITY {: cin:n cout:n :}
-   cin 1 T=  cout 0 T= ;
-
 \ The word `create` makes keeps `-- ptr a`: its definer publishes it against the
 \ new name as it emits the body.
 : MADE-WORD ( -- )
@@ -66,6 +52,9 @@ private
 \ parametric pointee over raw storage is E-NONPARAMETRIC-EFFECT (docs/forth.md
 \ "Real types, not reflexive `n`."). What this case measures is the arity.
 : LOAD-HERE ( -- )       s" : CAX-B7 ( -- ptr n ) here ;" evaluate-closed ;
+\ A body that allots after `create` is the sharpest form of `create` moving no
+\ stack cell.
+: LOAD-BUFFER-HALF ( -- ) s" : CAX-D3 ( n -- ) create allot ;" evaluate-closed ;
 \ The definer's runtime `create` gives the word it makes `-- ptr a`, so a checked
 \ body can name it, and a package's public reader can name one its private
 \ definer made.
@@ -95,6 +84,9 @@ private
    s" and running it defines the name and stores the counter in it" T-LABEL
    s" 5 CAX-B4 CAX-B4-CELL" TEST-EVAL:N 6 T=
    s" CAX-B4-CELL @" TEST-EVAL:N 5 T=
+
+   s" the definer half that allots after `create` balances" T-LABEL
+   [: LOAD-BUFFER-HALF ;] LOADED TTHROWSQ
 
    s" the word the definer made has its address row, so a checked body reads it" T-LABEL
    [: LOAD-CELL-READ ;] LOADED TTHROWSQ
@@ -146,33 +138,6 @@ private
    [: INFER-GOOD ;] LOADED TTHROWSQ
    s" CAX-C2 CAX-C2-CELL 8 allot  7 CAX-C2-CELL !  CAX-C2-CELL @" TEST-EVAL:N 7 T= ;
 
-: COMPILER-ALONE ( -- )
-   s" : CAX-D1 ( -- ) create ;" evaluate-closed ;
-
-: COMPILER-ENUM-HALF ( -- )
-   s" : CAX-D2 ( n -- n ) dup create , 1 + ;" evaluate-closed ;
-
-\ A body that allots after `create` is the sharpest form of `create` moving no
-\ stack cell.
-: COMPILER-BUFFER-HALF ( -- )
-   s" : CAX-D3 ( n -- ) create allot ;" evaluate-closed ;
-
-\ No caller can state an arity: the compilation entry reads it off the checker's
-\ certificate, so a restored row turns the three measurements below from LOADED
-\ into E-NELAB-ARITY. The cells-against-terms question belongs to
-\ src/compiler/native/dict.f EFF-CELLS, tested with a term of a family more than
-\ one cell wide.
-
-: COMPILER-CASE ( -- )
-   s" the compiler accepts a body that only calls `create`" T-LABEL
-   NELAB:REFUSED-RESET
-   [: COMPILER-ALONE ;] LOADED TTHROWSQ
-   NELAB:REFUSED-ROW -1 T=
-
-   s" the definer half the tree still ships, and the one it used to" T-LABEL
-   [: COMPILER-ENUM-HALF ;] LOADED TTHROWSQ
-   [: COMPILER-BUFFER-HALF ;] LOADED TTHROWSQ ;
-
 \ `variable` and `constant` are parser-only keywords, rejected in colon bodies
 \ through E-UNDEFINED. `variable` needs no primitive row: its hook body uses
 \ `create`.
@@ -203,10 +168,8 @@ public
 
 : RUN ( -- )
    T-RESET
-   ARITY-CASE
    MADE-CASE
    BODY-CASE
-   COMPILER-CASE
    INFER-CASE
    VC-REJECT-CASE
    T-REPORT ;

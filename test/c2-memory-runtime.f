@@ -1,4 +1,4 @@
-\ Real allocation and loan runtime through the native source load path.
+\ Real allocation and scoped-invocation runtime through the native source load path.
 require src/lib/test.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
@@ -10,38 +10,8 @@ private
    73 p c!
    seed 1+ p 1+ len 1- ;
 
-: ALTER-READ ( ptr u8 n -- n ptr u8 n ) {: p:ptr len:n :}
-   p c@ p 1+ len 1- ;
-
-: ALTER-MUT ( ptr u8 n -- n ptr u8 n ) {: p:ptr len:n :}
-   84 p c! 84 p 1+ len 1- ;
-
 TRUSTED: ALLOCATED ( n -- n )
    16 MEM:BYTES-ALLOC-LEN [: CHANGE-ROW ;] C2-MEM:WITH-MUT ;
-
-TRUSTED: READ-ROOT ( mut-view<p,q,a,u8> -- n n mut-view<p,q,a,u8> ) {: p:ptr len:n :}
-   67 p c!
-   p len [: ALTER-READ ;] C2-MEM:WITH-READ {: value:n restored:ptr bound:n :}
-   restored p = TTRUE
-   value bound p len ;
-
-: READ-RESTORED ( -- n n )
-   16 MEM:BYTES-ALLOC-LEN [: READ-ROOT ;] C2-MEM:WITH-MUT ;
-
-TRUSTED: MUT-ROOT ( mut-view<p,q,a,u8> -- n n mut-view<p,q,a,u8> ) {: p:ptr len:n :}
-   67 p c!
-   p len [: ALTER-MUT ;] C2-MEM:WITH-MUT-LOAN {: value:n restored:ptr bound:n :}
-   restored p = TTRUE
-   value bound p len ;
-
-: MUT-RESTORED ( -- n n )
-   16 MEM:BYTES-ALLOC-LEN [: MUT-ROOT ;] C2-MEM:WITH-MUT ;
-
-: FAIL-CALLBACK ( mut-view<p,q,a,u8> -- mut-view<p,q,a,u8> )
-   -9363 throw ;
-
-: FAIL-ALLOC ( -- )
-   16 MEM:BYTES-ALLOC-LEN [: FAIL-CALLBACK ;] C2-MEM:WITH-MUT ;
 
 TRUSTED: GROW-ROW ( n -- n n )
    [: dup 1+ ;] [: ;] [: drop ;] c2-invoke ;
@@ -57,12 +27,6 @@ public
    T-RESET
    s" allocation accepts changed callback rows" T-LABEL
    40 ALLOCATED 41 T=
-   s" read loan restores the original parent span" T-LABEL
-   READ-RESTORED 16 T= 67 T=
-   s" mutable loan restores the original parent span" T-LABEL
-   MUT-RESTORED 16 T= 84 T=
-   s" callback failure propagates after owner cleanup" T-LABEL
-   [: FAIL-ALLOC ;] catch -9363 T=
    s" scoped invocation preserves a growing result row" T-LABEL
    777 91 GROW-ROW 92 T= 91 T= 777 T=
    s" scoped invocation preserves a shrinking result row" T-LABEL

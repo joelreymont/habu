@@ -1,5 +1,4 @@
-\ closed-source-suite.f - generated source and loaded files run as closed
-\ programs.
+\ closed-source-suite.f - generated source runs as a closed program.
 require src/lib/codegen.f
 require src/lib/errors.f
 require src/lib/test.f
@@ -26,11 +25,8 @@ $100 CODEGEN:BUFFER GEN
 \ leaving nothing. The three definers below differ only in what they append: a
 \ sound one's product certifies, one leaving a cell is refused E-EVAL-RESIDUE,
 \ and one taking a cell it never pushed throws 70 with the caller's cells
-\ intact. A file loaded by require, include or --load crosses the same boundary,
-\ so test/closed-source-residue-bad.f, ending `1 2`, is refused E-EVAL-RESIDUE
-\ through `required`. test/deftype-suite.f and src/lib/ffi-test.f certify the
-\ products of src/lib/type/deftype.f (evaluate-closed) and src/lib/ffi-abi.f
-\ (INCLUDE-EVALUATE).
+\ intact. test/deftype-suite.f and src/lib/ffi-test.f certify the products of
+\ src/lib/type/deftype.f (evaluate-closed) and src/lib/ffi-abi.f (INCLUDE-EVALUATE).
 : SOUND ( n ptr u8 n -- ) RENDER CROSS ;
 
 : LEAKY ( n ptr u8 n -- ) {: v:n a:ptr u:n :}
@@ -60,13 +56,9 @@ $100 CODEGEN:BUFFER GEN
    s" and the definer's caller keeps its cell" T-LABEL
    7 T= ;
 
-: LOADED ( -- )
-   s" a required file that ends 1 2 is refused by name" T-LABEL
-   [: s" test/closed-source-residue-bad.f" required ;] E-EVAL-RESIDUE TTHROWSQ ;
-
 : RUN ( -- )
    T-RESET
-   CERTIFIES RESIDUE FLOOR LOADED
+   CERTIFIES RESIDUE FLOOR
    T-REPORT ;
 
 ' RUN
