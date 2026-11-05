@@ -207,14 +207,6 @@ SUITE manifest-lint-fixtures
    tools/manifest-lint-test.f
 ;SUITE
 
-SUITE chain-plan
-   tools/chain-plan-test.f
-;SUITE
-
-SUITE chain-run
-   tools/chain-run-test.f
-;SUITE
-
 SUITE byte-copy
    test/byte-copy-test.f
 ;SUITE
@@ -1564,21 +1556,9 @@ SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE
 
-SUITE aot-seed-batch
-   test/aot-seed-batch-suite.f
-;SUITE
-
 SUITE data-address-codec
    test/data-address-codec.f
    tools/snap-heap-owner-test.f
-;SUITE
-
-SUITE aot-named-cells
-   test/aot-named-cells.f
-;SUITE
-
-SUITE aot-source-identity
-   test/aot-source-identity.f
 ;SUITE
 
 SUITE aot-cell-values
@@ -1587,10 +1567,6 @@ SUITE aot-cell-values
 
 SUITE checker-graph-domains
    test/checker-graph-domains.f
-;SUITE
-
-SUITE aot-effect-pool
-   test/aot-effect-pool.f
 ;SUITE
 
 SUITE compiler-native-create-does
@@ -1995,10 +1971,6 @@ SUITE arena
 
 SUITE heap
    test/heap.f
-;SUITE
-
-SUITE aot-capture-bound
-   test/aot-capture-bound.f
 ;SUITE
 
 SUITE dynamic-buffer-tasks

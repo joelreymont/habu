@@ -174,9 +174,7 @@ variable PID
 \ folds every dictionary record name into one number; SEED-BATCH runs it as a
 \ piped program and PTY-SEED-SURFACE types it at the terminal and requires the
 \ same number. Neither side hardcodes it (it moves with every tree edit), and a
-\ mode that seeded a different set, order or point cannot produce it. The batch
-\ half lives here, not in test/aot-seed-batch-suite.f, because the comparison
-\ needs both modes in one process.
+\ mode that seeded a different set, order or point cannot produce it.
 create SEEDNUM 64 allot   variable SEEDNUM-U   variable SEEDI
 
 : SEEDNUM$ ( -- ptr u8 n )    SEEDNUM SEEDNUM-U @ ;

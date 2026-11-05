@@ -39,8 +39,8 @@ variable AOT-BLOB-LEN
 \ AOT capture has a separate 32,768-record window within the live dictionary.
 \ REPL snapshots retain the full dictionary and do not use this window.
 \ ACAP-REC-REFUSE reports the count, bound and record name before refusing.
-\ test/aot-capture-bound.f lowers this bound in a private copy; AOT-SIG-MAX
-\ shares it, so checked words can reach the signature bound first.
+\ AOT-SIG-MAX shares this bound, so checked words can reach the signature
+\ bound first.
 32768 constant AOT-REC-MAX
 \ AOT-REC-BUF holds two regions (both viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)              verbatim 48B dict records (capture source of truth)

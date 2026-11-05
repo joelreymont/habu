@@ -269,7 +269,7 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 
 \ A record carries no file, so the definition's name is the whole locator.
 \ ACAP-NAME. prints the same pair but is defined below. Three lines, one fact
-\ each with the prefix (test/aot-capture-bound.f reads them as lines).
+\ each with the prefix.
 : ACAP-REC-REFUSE ( n -- ) {: k:n :}
    s" aot-capture: records captured " type AOT-REC-N @ .
    s" aot-capture: record bound " type AOT-REC-MAX .
