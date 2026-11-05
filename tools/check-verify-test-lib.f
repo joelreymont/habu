@@ -205,12 +205,8 @@
 \   a name the load accepts at top level is refused                       top-accepted
 \   a type made by reached source rendering or nominal registration is
 \   refused as absent; an unrelated absence or later error is lost         type-deferred
-\   the suite's engine does not run the image, or the image is not
-\   re-keyed when a file of its closure changes                            image-stale
 \   a word or file of the image's saver reaches a subject, or answers
 \   held                                                                  image-saver-leak
-\   the image checks under the working directory instead of the
-\   engine's root, or a check from another tree builds its own image      image-cwd
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -229,7 +225,6 @@ require test/pcap-result.f
 require src/lib/jsonl.f
 require tools/gate-json-assert-core.f
 require tools/check-verify-core.f
-require tools/check-verify-image.f
 
 package CHECK-VERIFY-TEST
 
@@ -1388,9 +1383,8 @@ $180000 constant LARGE-STDIN-LEN
    0 ERR erru s" check.f: the verifier did not complete: deadline of 1 ms passed" CONTAINS? TTRUE ;
 
 
-\ These cases compare the real loader with both CHECK entry points. An ordered
-\ preload lets EARLY see a later file, loses the using inherited by USE, and
-\ verifies an included file only once. None has a top-level runtime action.
+\ The real loader against check.f --verify-only: LOAD-REPEAT adds the ordinary
+\ check, LOAD-PARSING only it. An ordered preload passes what a load refuses.
 : NATIVE-RC ( ptr u8 n -- n )
    PROC-ARGV-ENV-RESET
    s" --load" ARG+
@@ -1398,10 +1392,9 @@ $180000 constant LARGE-STDIN-LEN
    PROC-ENV-INHERIT-MISSING
    s" " CLI nip ;
 
-: CHECK-RC ( ptr u8 n bool bool -- n )
-   {: path:ptr pathu:n verify:bool all:bool :}
+: CHECK-RC ( ptr u8 n bool -- n )
+   {: path:ptr pathu:n verify:bool :}
    CLI-START
-   all if s" --all-errors" ARG+ then
    verify if s" --verify-only" ARG+ then
    path pathu ARG+
    s" " CLI nip ;
@@ -1409,32 +1402,24 @@ $180000 constant LARGE-STDIN-LEN
 : LOAD-ORDER ( -- )
    s" order-late.f" AT$ {: path:ptr pathu:n :}
    s" load-order: native refuses early reference" T-LABEL path pathu NATIVE-RC 70 T=
-   s" load-order: verify-only refuses early reference" T-LABEL path pathu true false CHECK-RC 70 T=
-   s" load-order: ordinary refuses early reference" T-LABEL path pathu false false CHECK-RC 70 T=
-   s" load-order: all-errors refuses early reference" T-LABEL path pathu false true CHECK-RC 70 T= ;
+   s" load-order: verify-only refuses early reference" T-LABEL path pathu true CHECK-RC 70 T= ;
 
 : LOAD-CONTEXT ( -- )
    s" order-context.f" AT$ {: path:ptr pathu:n :}
    s" load-context: native inherits using" T-LABEL path pathu NATIVE-RC 0 T=
-   s" load-context: verify-only inherits using" T-LABEL path pathu true false CHECK-RC 0 T=
-   s" load-context: ordinary inherits using" T-LABEL path pathu false false CHECK-RC 0 T=
-   s" load-context: all-errors inherits using" T-LABEL path pathu false true CHECK-RC 0 T= ;
+   s" load-context: verify-only inherits using" T-LABEL path pathu true CHECK-RC 0 T= ;
 
 : LOAD-PACKAGE ( -- )
    s" order-package.f" AT$ {: path:ptr pathu:n :}
    s" load-package: native inherits package" T-LABEL path pathu NATIVE-RC 0 T=
-   s" load-package: verify-only inherits package" T-LABEL path pathu true false CHECK-RC 0 T=
-   s" load-package: ordinary inherits package" T-LABEL path pathu false false CHECK-RC 0 T=
-   s" load-package: all-errors inherits package" T-LABEL path pathu false true CHECK-RC 0 T= ;
+   s" load-package: verify-only inherits package" T-LABEL path pathu true CHECK-RC 0 T= ;
 
 \ A part opens only in the buffer its package is open in (CHECKER-RESOLVE:PART-GUARD),
 \ so a file required inside package A opens no part of A.
 : LOAD-PART ( -- )
    s" order-part.f" AT$ {: path:ptr pathu:n :}
    s" load-part: native refuses a package opened in another file" T-LABEL path pathu NATIVE-RC 75 T=
-   s" load-part: verify-only refuses it" T-LABEL path pathu true false CHECK-RC 70 T=
-   s" load-part: ordinary refuses it" T-LABEL path pathu false false CHECK-RC 70 T=
-   s" load-part: all-errors refuses it" T-LABEL path pathu false true CHECK-RC 70 T=
+   s" load-part: verify-only refuses it" T-LABEL path pathu true CHECK-RC 70 T=
    s\" package CVT-PART-A\nrequire order-part-dep.f\n;package\n" s" order-part.f" GUARD-MS CHECK-AS
    1 s" load-part: refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
@@ -1449,9 +1434,7 @@ $180000 constant LARGE-STDIN-LEN
 : PART-LONG ( -- )
    s" part-long.f" AT$ {: path:ptr pathu:n :}
    s" part-long: native refuses the path" T-LABEL path pathu NATIVE-RC 75 T=
-   s" part-long: verify-only refuses it" T-LABEL path pathu true false CHECK-RC 70 T=
-   s" part-long: ordinary refuses it" T-LABEL path pathu false false CHECK-RC 70 T=
-   s" part-long: all-errors refuses it" T-LABEL path pathu false true CHECK-RC 70 T=
+   s" part-long: verify-only refuses it" T-LABEL path pathu true CHECK-RC 70 T=
    PART-LONG$SRC s" part-long.f" GUARD-MS CHECK-AS
    1 s" part-long: refused" EXPECT-KIND
    CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
@@ -1480,24 +1463,19 @@ $180000 constant LARGE-STDIN-LEN
 : LOAD-USING-FLOOR ( -- )
    s" order-floor-include.f" AT$ {: path:ptr pathu:n :}
    s" load-using-floor: native include refuses stale import" T-LABEL path pathu NATIVE-RC 70 T=
-   s" load-using-floor: verify-only include refuses stale import" T-LABEL path pathu true false CHECK-RC 70 T=
-   s" load-using-floor: ordinary include refuses stale import" T-LABEL path pathu false false CHECK-RC 70 T=
-   s" load-using-floor: all-errors include refuses stale import" T-LABEL path pathu false true CHECK-RC 70 T=
+   s" load-using-floor: verify-only include refuses stale import" T-LABEL path pathu true CHECK-RC 70 T=
    s" order-floor-require.f" AT$ {: req:ptr requ:n :}
    s" load-using-floor: native require refuses stale import" T-LABEL req requ NATIVE-RC 70 T=
-   s" load-using-floor: verify-only require refuses stale import" T-LABEL req requ true false CHECK-RC 70 T=
-   s" load-using-floor: ordinary require refuses stale import" T-LABEL req requ false false CHECK-RC 70 T=
-   s" load-using-floor: all-errors require refuses stale import" T-LABEL req requ false true CHECK-RC 70 T= ;
+   s" load-using-floor: verify-only require refuses stale import" T-LABEL req requ true CHECK-RC 70 T= ;
 
 : LOAD-REPEAT ( -- )
    s" order-double.f" AT$ {: path:ptr pathu:n :}
    s" load-repeat: native sees second include" T-LABEL path pathu NATIVE-RC 78 T=
-   s" load-repeat: verify-only sees second include" T-LABEL path pathu true false CHECK-RC 70 T=
-   s" load-repeat: ordinary sees second include" T-LABEL path pathu false false CHECK-RC 78 T=
-   s" load-repeat: all-errors sees second include" T-LABEL path pathu false true CHECK-RC 78 T= ;
+   s" load-repeat: verify-only sees second include" T-LABEL path pathu true CHECK-RC 70 T=
+   s" load-repeat: ordinary sees second include" T-LABEL path pathu false CHECK-RC 78 T= ;
 
 \ Discovery must learn a dependency's parsing row before it reads the
-\ subject's operands. The native load and both closure-walking modes agree.
+\ subject's operands. The native load and the ordinary check agree.
 : LOAD-PARSING ( -- )
    s" row-lib.f"
    s\" require src/lib/string.f\npackage CVT-ROWS public\n: W ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then s\" CVT-ROWS:;W\" STR= until ;\nparses-through: W 1 ( CVT-ROWS:;W )\n;package\n" FIXTURE
@@ -1507,8 +1485,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" require row-lib.f\nCVT-ROWS:W required nosuch.f CVT-ROWS:;W\nrequire row-lib2.f\nCVT-ROWS2:V required nosuch2.f CVT-ROWS2:;V\n: CVT-ROW-AFTER ( -- n ) 1 ;\n" FIXTURE
    s" row-use.f" AT$ {: path:ptr pathu:n :}
    s" load-parsing: native consumes raw operands" T-LABEL path pathu NATIVE-RC 0 T=
-   s" load-parsing: ordinary follows the row" T-LABEL path pathu false false CHECK-RC 0 T=
-   s" load-parsing: all-errors follows the row" T-LABEL path pathu false true CHECK-RC 0 T= ;
+   s" load-parsing: ordinary follows the row" T-LABEL path pathu false CHECK-RC 0 T= ;
 
 
 \ The exit status of check.f --verify-only on tools/source-discovery.f, run
@@ -1870,12 +1847,12 @@ $180000 constant LARGE-STDIN-LEN
    s\" undefine CHECKER-OWNER-ABI:HEADER-BYTES\n' CHECKER-OWNER-ABI:HEADER-BYTES drop\n" FIXTURE
    s" retired-public-call.f" AT$ {: call:ptr callu:n :}
    s" top-retired-public: call load" T-LABEL call callu NATIVE-RC 70 T=
-   s" top-retired-public: call verify" T-LABEL call callu true false CHECK-RC 70 T=
-   s" top-retired-public: call check" T-LABEL call callu false false CHECK-RC 70 T=
+   s" top-retired-public: call verify" T-LABEL call callu true CHECK-RC 70 T=
+   s" top-retired-public: call check" T-LABEL call callu false CHECK-RC 70 T=
    s" retired-public-tick.f" AT$ {: tick:ptr ticku:n :}
    s" top-retired-public: tick load" T-LABEL tick ticku NATIVE-RC 70 T=
-   s" top-retired-public: tick verify" T-LABEL tick ticku true false CHECK-RC 70 T=
-   s" top-retired-public: tick check" T-LABEL tick ticku false false CHECK-RC 70 T= ;
+   s" top-retired-public: tick verify" T-LABEL tick ticku true CHECK-RC 70 T=
+   s" top-retired-public: tick check" T-LABEL tick ticku false CHECK-RC 70 T= ;
 
 
 \ IR-ID's wordlists are protected (src/compiler/ir/id.f, which the engine
@@ -1932,7 +1909,7 @@ $180000 constant LARGE-STDIN-LEN
 : SEALED ( -- )
    s\" require src/compiler/ir/id.f\n: IR-ID:CVT-SZ ( -- n ) 1 ;\n"
    s" sealed-colon.f" s" IR-ID:CVT-SZ" s" 2" s" 3" SEALED-AT
-   s" sealed-colon.f" T-LABEL s" sealed-colon.f" AT$ true false CHECK-RC 70 T=
+   s" sealed-colon.f" T-LABEL s" sealed-colon.f" AT$ true CHECK-RC 70 T=
    s\" require src/compiler/ir/id.f\ntrusted: IR-ID:CVT-ST ( -- n ) 1 ;\n"
    s" sealed-trusted.f" s" IR-ID:CVT-ST" s" 2" s" 10" SEALED-AT
    s\" require src/compiler/ir/id.f\nvariable IR-ID:CVT-SV\n"
@@ -2106,12 +2083,12 @@ $180000 constant LARGE-STDIN-LEN
    s\" undefine dup\npackage CVT-RI public : dup ( -- n ) 7 ; ;package\nusing CVT-RI ' dup drop ;using\n" FIXTURE
    s" retired-call.f" AT$ {: call:ptr callu:n :}
    s" top-retired-import: call loads" T-LABEL call callu NATIVE-RC 0 T=
-   s" top-retired-import: call verifies" T-LABEL call callu true false CHECK-RC 0 T=
-   s" top-retired-import: call checks" T-LABEL call callu false false CHECK-RC 0 T=
+   s" top-retired-import: call verifies" T-LABEL call callu true CHECK-RC 0 T=
+   s" top-retired-import: call checks" T-LABEL call callu false CHECK-RC 0 T=
    s" retired-tick.f" AT$ {: tick:ptr ticku:n :}
    s" top-retired-import: tick loads" T-LABEL tick ticku NATIVE-RC 0 T=
-   s" top-retired-import: tick verifies" T-LABEL tick ticku true false CHECK-RC 0 T=
-   s" top-retired-import: tick checks" T-LABEL tick ticku false false CHECK-RC 0 T= ;
+   s" top-retired-import: tick verifies" T-LABEL tick ticku true CHECK-RC 0 T=
+   s" top-retired-import: tick checks" T-LABEL tick ticku false CHECK-RC 0 T= ;
 
 
 \ Loaded: E-UNDEFINED: CVT-FWD, exit 70.
@@ -4698,148 +4675,6 @@ variable SEEN-U
 
 \ ---- the saved verifier image -----------------------------------------------
 
-\ Two image builds on a loaded host.
-300000 constant IMAGE-MS
-
-create STALE PATH-CAP allot
-create WALK PATH-CAP allot
-create DST PATH-CAP allot
-variable STALE-U
-variable WALK-U
-variable TREE-U                         \ this tree's root, with its slash
-variable LINE-AT
-variable LINE-K
-create KEY-PATH PATH-CAP allot
-create STALE-OUT PATH-CAP allot
-variable STALE-OUT-U
-create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
-
-: STALE$ ( -- ptr u8 n ) STALE STALE-U @ ;
-
-\ The key an image was published under: the text of PATH.key.
-: IMAGE-KEY$ ( ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n :}
-   pathu 4 + PATH-CAP > if E-FS-CAPACITY throw then
-   path KEY-PATH pathu BYTE-COPY
-   s" .key" drop KEY-PATH pathu + 4 BYTE-COPY
-   KEY-PATH pathu 4 + KEY-READ KEYED-IMAGE:KEY-HEX-LEN FS:READ-ALL
-   KEY-READ swap ;
-
-\ The rest of the K-th (from 0) line of TEXT that starts with LEAD, empty for none.
-: LINE-AFTER$ ( ptr u8 n ptr u8 n n -- ptr u8 n )
-   {: text:ptr textu:n lead:ptr leadu:n k:n :}
-   0 LINE-AT !  k LINE-K !
-   begin
-      text textu 10 LINE-AT @ SPLIT-NEXT {: line:ptr lineu:n next:n found:bool :}
-      found 0= if s" " exit then
-      next LINE-AT !
-      line lineu lead leadu STARTS-WITH? if
-         LINE-K @ 0= if line leadu + lineu leadu - exit then
-         -1 LINE-K +!
-      then
-   again ;
-
-\ The source of a driver's word answering a verdict's kind by name.
-: IMAGE-SRC+ ( -- )
-   S\" create CVT-KP PATH-CAP allot\ncreate CVT-KB 64 allot\n: IMAGE. ( -- )\n   ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ {: p:ptr pu:n :}\n   s\" image \" type p pu type cr\n   p CVT-KP pu BYTE-COPY\n   s\" .key\" drop CVT-KP pu + 4 BYTE-COPY\n   CVT-KP pu 4 + CVT-KB 64 FS:READ-ALL {: ku:n :}\n   s\" key \" type CVT-KB ku type cr ;\n" GEN+ ;
-
-: KIND$SRC+ ( -- )
-   S\" : KIND$ ( CHECK:verdict -- ptr u8 n )\n   MATCH CHECK:verdict\n      verified OF s\" verified\" ENDOF\n      refused OF s\" refused\" ENDOF\n      engine-provided OF s\" engine-provided\" ENDOF\n      held OF s\" held\" ENDOF\n      incomplete OF {: status :} s\" incomplete\" ENDOF\n      deferred OF s\" deferred\" ENDOF\n   ;MATCH ;\n" GEN+ ;
-
-\ Run the driver PATH on the candidate engine in directory CWD with out root
-\ OUT-ROOT, stdout in OUT and stderr in ERR: their lengths and the exit code.
-: DRIVE ( ptr u8 n ptr u8 n ptr u8 n -- n n n )
-   {: path:ptr pathu:n cwd:ptr cwdu:n out:ptr outu:n :}
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   s" --load" ARG+ path pathu ARG+
-   s" HABU_OUT" >LEN out outu >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   ENGINE-CANDIDATE:PATH$ >LEN cwd cwdu >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN IMAGE-MS >MS
-   PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE PCAP-RESULT:>N ;
-
-\ ROOT/stale-tree/REL for a tree file, REL its path below this tree.
-: STALE-COPY ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
-   STALE$ src TREE-U @ + srcu TREE-U @ - DST FS:JOIN-PATH {: dstu:n :}
-   DST dstu SOURCE-ROOT:DIRNAME FS:MAKE-DIRS
-   src srcu DST dstu FS:COPY-FILE-STREAM ;
-
-: STALE-DIR ( ptr u8 n -- )
-   SOURCE-ROOT:CWD$ 2swap WALK FS:JOIN-PATH WALK-U !
-   WALK WALK-U @ [: STALE-COPY ;] FS:WALK-FILES ;
-
-\ A copy of this tree's tools/ and src/ under the fixture root: a tree of its own,
-\ whose closure paths key an image of its own and whose files the case edits.
-\ Symlinks would canonicalise to this tree, share its key and edit it.
-: STALE-TREE ( -- )
-   s" stale-tree" AT$ STALE STALE-U COPY!
-   SOURCE-ROOT:CWD$ nip 1+ TREE-U !
-   s" tools" STALE-DIR
-   s" src" STALE-DIR ;
-
-\ The code of the K-th (from 0) "refused " line of TEXT, 0 for none.
-: REFUSED-CODE ( ptr u8 n n -- n )
-   {: text:ptr textu:n k:n :}
-   text textu s" refused " k LINE-AFTER$ STR>NUMBER? MATCH option
-      none OF 0 ENDOF
-      some OF ENDOF
-   ;MATCH ;
-
-\ The image is re-keyed in one process when a file of its closure changes: a driver
-\ in the stale tree checks once, appends a comment to that tree's
-\ tools/check-verify-child-lib.f, a closure member the save file loads, and
-\ checks again; the edit re-keys the family's one image, published under a
-\ private out root so the stale tree never replaces this tree's image. Each
-\ check pays a build (the row's wall). The driver then deletes that member
-\ and asks for the image STALE-REFUSALS times: each walk refuses with the
-\ missing member's E-FS-STAT, so a refused key derivation leaves nothing behind
-\ that changes the next one's outcome.
-2 constant STALE-REFUSALS
-
-: IMAGE-STALE ( -- )
-   s" image-stale: the engine runs the saved image" T-LABEL
-   ENGINE-CANDIDATE:PATH$ CHECK-VERIFY-IMAGE:CAPABLE? TTRUE
-   STALE-TREE
-   0 GEN-U !
-   S\" require src/lib/fs.f\nrequire src/lib/fs-mutate.f\nrequire src/lib/fmt.f\n" GEN+
-   S\" require src/lib/engine-candidate.f\nrequire tools/check-verify-core.f\nrequire tools/check-verify-image.f\npackage CVT-STALE\n" GEN+
-   KIND$SRC+ IMAGE-SRC+
-   s\" : CHECK ( -- )\n   s\" : CVT-STALE-W ( -- n ) 1 ;\" s\" " GEN+ STALE$ GEN+
-   s\" /stale.f\" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
-   s\"    IMAGE. ;\n" GEN+
-   s\" : REFUSE ( -- )\n   " GEN+ STALE-REFUSALS GEN-N+
-   s\"  0 do\n      [: ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ 2drop ;] catch\n" GEN+
-   s\"       s\" refused \" type FMT:.INT cr\n   loop ;\npublic\n" GEN+
-   s\" : MAIN ( -- )\n   CHECK\n   s\" " GEN+ STALE$ GEN+
-   s\" /tools/check-verify-child-lib.f\" s\\\" \\\\ edited\\n\" FS:APPEND-FILE\n   CHECK\n   s\" " GEN+ STALE$ GEN+
-   s\" /tools/check-verify-child-lib.f\" FS:REMOVE-FILE\n   REFUSE ;\n;package\nCVT-STALE:MAIN\n" GEN+
-   s" stale-tree/stale-driver.f" AT$ 0 GEN GEN-U @ FS:WRITE-ALL
-   s" stale-out" AT$ STALE-OUT STALE-OUT-U COPY!
-   s" stale-tree/stale-driver.f" AT$ STALE$ STALE-OUT STALE-OUT-U @ DRIVE
-      {: outu:n erru:n rc:n :}
-   s" image-stale: driver exit" T-LABEL rc 0 T=
-   rc 0<> if 0 ERR erru type cr then
-   0 OUT outu {: out:ptr outn:n :}
-   out outn s" image " 0 LINE-AFTER$ {: a:ptr au:n :}
-   out outn s" image " 1 LINE-AFTER$ {: b:ptr bu:n :}
-   out outn s" key " 0 LINE-AFTER$ {: ka:ptr kau:n :}
-   out outn s" key " 1 LINE-AFTER$ {: kb:ptr kbu:n :}
-   s" image-stale: first verdict" T-LABEL out outn s" verdict " 0 LINE-AFTER$ s" verified" T$=
-   s" image-stale: second verdict" T-LABEL out outn s" verdict " 1 LINE-AFTER$ s" verified" T$=
-   s" image-stale: under the private out root" T-LABEL
-   a au STALE-OUT STALE-OUT-U @ STARTS-WITH? TTRUE
-   s" image-stale: the family's image" T-LABEL
-   a au s" /img/check-verify" ENDS-WITH? TTRUE
-   s" image-stale: one image for the family" T-LABEL a au b bu T$=
-   s" image-stale: published under a key" T-LABEL kau KEYED-IMAGE:KEY-HEX-LEN T=
-   s" image-stale: the edit re-keys" T-LABEL ka kau kb kbu STR= TFALSE
-   s" image-stale: executable" T-LABEL b bu FS:EXECUTABLE? TTRUE
-   STALE-REFUSALS 0 do
-      s" image-stale: each walk refuses with the missing member's cause" T-LABEL
-      out outn i REFUSED-CODE E-FS-STAT T=
-   loop ;
-
-
 \ The image holds nothing of its saver: a word of the dropped support closure
 \ is undefined to a subject, and its file reads as source, not as held. The
 \ source child never loads the saver, so this is green on both children and
@@ -4859,73 +4694,6 @@ create KEY-READ KEYED-IMAGE:KEY-HEX-LEN allot
    CHECK:VERIFY-LOADS$ CV-START
    s" image-saver-leak: and is read, not held" s" require src/lib/engine-id.f" 19
    s" src/lib/engine-id.f" TREE$ s" read" LOAD-NEXT ;
-
-
-create CWD-TREE PATH-CAP allot
-variable CWD-TREE-U
-create CWD-IMAGE PATH-CAP allot
-variable CWD-IMAGE-U
-create CWD-KEY KEYED-IMAGE:KEY-HEX-LEN allot
-
-\ ROOT/cwd-tree, a tree other than the engine's: symlinks to this tree's src and
-\ tools, so TREE? finds the engine's first row under it.
-: CWD-TREE! ( -- )
-   s" cwd-tree" AT$ CWD-TREE CWD-TREE-U COPY!
-   CWD-TREE CWD-TREE-U @ FS:MAKE-DIRS
-   s" src" TREE$ s" cwd-tree/src" AT$ FS:MAKE-SYMLINK
-   s" tools" TREE$ s" cwd-tree/tools" AT$ FS:MAKE-SYMLINK ;
-
-\ The image restores the engine root the source child finds: from a working
-\ directory that is no tree, a primitive use's file is under EXE-ROOT of the
-\ engine, which an image that lost its root at capture would spell as that
-\ directory. Core is loaded nested under this tree (tools/lsp-entry-test.f
-\ NESTED), so its child and image belong to this tree, not the fixture root.
-\ The image's key is one per engine and closure, whatever tree the check runs
-\ from: it finds its root when it starts. The drivers share this process's out
-\ root, so each finds the image this tree published.
-: IMAGE-CWD ( -- )
-   0 GEN-U !
-   s\" require src/lib/engine-candidate.f\npackage CVT-CWD\npublic\n: LOAD ( -- ) s\" " GEN+
-   SOURCE-ROOT:CWD$ GEN+ s\" \" [: s\" " GEN+ SOURCE-ROOT:CWD$ GEN+
-   s\" /tools/check-verify-core.f\" required s\" " GEN+ SOURCE-ROOT:CWD$ GEN+
-   s\" /tools/check-verify-image.f\" required ;] SOURCE-ROOT:WITH ;\n;package\nCVT-CWD:LOAD\npackage CVT-CWD\n" GEN+
-   KIND$SRC+ IMAGE-SRC+
-   s\" public\n: MAIN ( -- )\n   s\" expect \" type ENGINE-CANDIDATE:PATH$ SOURCE-ROOT:ENGINE-FOR$ type s\" /src/habu/prims.f\" type cr\n" GEN+
-   s\"    s\" : CVT-D ( n -- ) drop ;\" s\" " GEN+ s" d.f" AT$ GEN+
-   s\" \" [: drop ;] 60000 >MS CHECK:VERIFY-BYTES\n   s\" verdict \" type KIND$ type cr\n" GEN+
-   s\"    IMAGE. CHECK:VERIFY-USES$ type ;\n;package\nCVT-CWD:MAIN\n" GEN+
-   s" cwd-driver.f" AT$ 0 GEN GEN-U @ FS:WRITE-ALL
-   s" cwd-driver.f" AT$ ROOT$ BUILD-OUT:BASE$ DRIVE
-      {: outu:n erru:n rc:n :}
-   s" image-cwd: driver exit" T-LABEL rc 0 T=
-   rc 0<> if 0 ERR erru type cr then
-   0 OUT outu {: out:ptr outn:n :}
-   s" image-cwd: verified" T-LABEL out outn s" verdict " 0 LINE-AFTER$ s" verified" T$=
-   out outn s" in" s" d.f" AT$ PACKET {: use:SPAN:span<u8> :}
-   s" image-cwd: the use line" T-LABEL use SPAN:LEN 0<> TTRUE
-   s" image-cwd: the primitive's file is under the engine root" T-LABEL
-   use s" file" STRING$ out outn s" expect " 0 LINE-AFTER$ T$=
-   out outn s" image " 0 LINE-AFTER$ CWD-IMAGE CWD-IMAGE-U COPY!
-   s" image-cwd: published under a key" T-LABEL
-   out outn s" key " 0 LINE-AFTER$ {: key:ptr keyu:n :}
-   keyu KEYED-IMAGE:KEY-HEX-LEN T=
-   key CWD-KEY KEYED-IMAGE:KEY-HEX-LEN keyu min BYTE-COPY
-   CWD-TREE!
-   s" cwd-driver.f" AT$ CWD-TREE CWD-TREE-U @
-      BUILD-OUT:BASE$ DRIVE {: toutu:n terru:n trc:n :}
-   s" image-cwd: driver exit from another tree" T-LABEL trc 0 T=
-   trc 0<> if 0 ERR terru type cr then
-   0 OUT toutu {: tout:ptr toutn:n :}
-   s" image-cwd: verified from another tree" T-LABEL
-   tout toutn s" verdict " 0 LINE-AFTER$ s" verified" T$=
-   s" image-cwd: one image from every working directory" T-LABEL
-   tout toutn s" image " 0 LINE-AFTER$ CWD-IMAGE CWD-IMAGE-U @ T$=
-   s" image-cwd: one key from every working directory" T-LABEL
-   tout toutn s" key " 0 LINE-AFTER$ CWD-KEY KEYED-IMAGE:KEY-HEX-LEN T$=
-   s" image-cwd: one image from every working directory" T-LABEL
-   CWD-IMAGE CWD-IMAGE-U @ ENGINE-CANDIDATE:PATH$ 600000 CHECK-VERIFY-IMAGE:PATH$ T$=
-   s" image-cwd: this tree's key" T-LABEL
-   CWD-IMAGE CWD-IMAGE-U @ IMAGE-KEY$ CWD-KEY KEYED-IMAGE:KEY-HEX-LEN T$= ;
 
 
 \ ---- case timings ----------------------------------------------------------
@@ -5066,9 +4834,7 @@ public
    s" type-deferred" [: TYPE-DEFERRED ;] RUN-CASE
    s" def-deferred" [: DEF-DEFERRED ;] RUN-CASE
    s" trusted-tick-order" [: TRUSTED-TICK-ORDER ;] RUN-CASE
-   s" image-stale" [: IMAGE-STALE ;] RUN-CASE
    s" image-saver-leak" [: IMAGE-SAVER-LEAK ;] RUN-CASE
-   s" image-cwd" [: IMAGE-CWD ;] RUN-CASE
    s" top-create" [: TOP-CREATE ;] RUN-CASE
    s" top-trust" [: TOP-TRUST ;] RUN-CASE
    s" top-trust-refused" [: TOP-TRUST-REFUSED ;] RUN-CASE
