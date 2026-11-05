@@ -11934,6 +11934,18 @@ PRIM: EFFECT-FINALLY-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-MATCH-CELLS PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
+\ NORET-AXIOMS also types names no row above interns, the interpreter's keywords
+\ and include.f's loading words: interned here, they are below SYM-PRIM-END.
+s" >r" PE-SYM-OF drop
+s" r>" PE-SYM-OF drop
+s" r@" PE-SYM-OF drop
+s" variable" PE-SYM-OF drop
+s" included" PE-SYM-OF drop
+s" required" PE-SYM-OF drop
+s" script-required" PE-SYM-OF drop
+s" INCLUDE-EVALUATE" PE-SYM-OF drop
+s" INCLUDE-EVALUATE-RANGE" PE-SYM-OF drop
+
 PTABLE-END
 
 CHECKER-REG:SCRATCH{
@@ -16896,10 +16908,14 @@ private
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
-\ Built-in axioms always belong to the global primitive symbol, regardless of
-\ the package active when a source reset needs to re-seed them.
+\ An axiom's symbol is below SYM-PRIM-END: CHECKER-RESET-SOURCE keeps NORETS
+\ to NORET-PRIM-END but retires every symbol from SYM-PRIM-END.
 : NORET-AXIOM {: a:ptr u:n flag:n :}
-   a u PE-SYM-OF flag 0 0 NORET-ADD-SYM ;
+   a u PE-SYM-OF {: sym:n :}
+   sym SYM-PRIM-END @ < 0= IF
+      s" checker: an axiom names a symbol past SYM-PRIM-END" 76 die
+   THEN
+   sym flag 0 0 NORET-ADD-SYM ;
 
 \ The two path-ending words the engine owns: `throw` leaves through the catch
 \ edge and carries both flags; `die` ends the process and is dead only. They are
@@ -26330,9 +26346,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    0 DFER-REWIND
    CHECKER-ASIG-RESET
    SYMS-RETIRE-SOURCE
-   \ The reloaded primitives get fresh symbol ids. Rebind their facts before
-   \ the next checker source uses stack operators ahead of its own axiom table.
-   NORET-AXIOMS
    0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL
 REG-PROTECT
 package CHECKER-REG
