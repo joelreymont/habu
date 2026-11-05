@@ -1,5 +1,5 @@
-\ C2 wrappers saved in one app image, then fresh tier-0 consumers and live capture.
-\ The printed tree retains both products and every child log for replay.
+\ C2 wrappers saved in one app image, then fresh tier-0 consumers.
+\ The printed tree retains the image and every child log for replay.
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fs.f
@@ -16,10 +16,8 @@ private
    s" c2-saved-e2e" TREE
    s" test/c2-memory-wrapper.f" COPY-TEST
    s" test/c2-memory-saved-consumer.f" COPY-TEST
-   s" test/c2-memory-live-save.f" COPY-TEST
    s" test/c2-init-wrapper.f" COPY-TEST
    s" test/c2-init-saved-consumer.f" COPY-TEST
-   s" test/c2-init-live-save.f" COPY-TEST
    s" test/c2-owner-producer-program.f" COPY-TEST
    s" test/c2-owner-dispose.f" COPY-TEST
    s" test/c2-forall-input.f" COPY-TEST
@@ -86,38 +84,11 @@ private
    s" saved-image authority checks remain closed"
    s" c2-xml-consumer-refusals: ok" MARKED ;
 
-\ Live capture runs in its own engine, and hb-after is a second image, so each
-\ is a separate child.
-: LIVE-SAVE ( -- )
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" require test/c2-memory-live-save.f\nC2-MEMORY-LIVE-SAVE:RUN\n"
-   RUN-INPUT
-   s" live-save.out" s" live-save.err" SAVE-LOG
-   s" live capture fails and capture after close succeeds" T-LABEL
-   s" c2-memory-live-save: closed" EXPECT-OK
-   s" hb-live-loan" AT-A FS:EXISTS? TFALSE
-   s" hb-live-owner" AT-A FS:EXISTS? TFALSE
-   s" hb-live-append" AT-A FS:EXISTS? TFALSE
-   s" hb-after" AT-A FS:EXECUTABLE? TTRUE
-   s" hb-after" AT-A s" test/c2-owner-producer-program.f" RUN-IMAGE
-   s" after-append.out" s" after-append.err" SAVE-LOG
-   s" a saved image appends through a fresh owner after refused live capture" T-LABEL
-   s" c2-owner-producer-program: ok" EXPECT-OK
-   PROC-CWD:ARGV-ENV-CWD-RESET
-   ENGINE-CANDIDATE:PATH$
-   S\" require test/c2-init-live-save.f\nC2-INIT-LIVE-SAVE:RUN\n"
-   RUN-INPUT
-   s" live-init.out" s" live-init.err" SAVE-LOG
-   s" live initialized storage refuses capture" T-LABEL
-   s" c2-init-live-save: closed" EXPECT-OK
-   s" hb-live-init" AT-A FS:EXISTS? TFALSE ;
-
 public
 
 : RUN ( -- )
    T-RESET
-   SETUP SAVE RC@ 0= if SAVED-CASES then LIVE-SAVE
+   SETUP SAVE RC@ 0= if SAVED-CASES then
    s" c2-saved-e2e tree: " type ROOT$ type cr
    T-REPORT ;
 

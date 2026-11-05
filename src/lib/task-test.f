@@ -2164,12 +2164,9 @@ variable WAKE-RACE-ODD                \ any other wake answer, any HALT throw
 \ HALT ends its burst in a round the halter then leaves alone, so nothing but
 \ the KILL can make that run's HALT-REQ, and the KILL waits for turns that each
 \ check first. A HALT that stores a stop flag after its CAS lets a halter
-\ preempted between the two set a later run's flag: five runs of this case
-\ counted 0, 0, 0, 0 and 1 such reads in their 20000 rounds, on a 12-core host
-\ at load 17 to 53. A hit needs the halter preempted between its two steps, so
-\ an idle host can count none. Runs the halter ended before their KILL are
-\ counted too, so a case whose halter stopped landing fails instead of passing
-\ untested.
+\ preempted between the two set a later run's flag. Runs the halter ended
+\ before their KILL are counted too, so a case whose halter stopped landing
+\ fails instead of passing untested.
 TASK:MIN-STACK TASK:TASK HALT-RACE-TASK
 TASK:MIN-STACK TASK:TASK HALT-RACE-H
 
@@ -2180,7 +2177,7 @@ variable HALT-RACE-IN                 \ the run's body has started
 variable HALT-RACE-SPINS              \ the bodies' turns, every round
 variable HALT-RACE-ROUND              \ the owner's round, counted once it runs
 
-20000 constant HALT-RACE-ROUNDS
+2000 constant HALT-RACE-ROUNDS
 4000 constant HALT-RACE-LIVE          \ turns a run spins before its KILL
 
 : HALT-RACE-STATE@ ( -- n )

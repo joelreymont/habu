@@ -213,8 +213,7 @@ private section may unpack `( read-view<p,q,T> -- ptr u8 n )`.
 The cast takes an unqualified name; a qualified one is `E-CAST-SCOPE`.
 Ordinary raw pointers remain lifetime-free.
 The task-local frame capacity is fixed; one more live open throws
-`E-C2-CAPACITY` before acquisition. Live owner or loan image capture throws
-`E-C2-CAPTURE`; capture after close succeeds.
+`E-C2-CAPACITY` before acquisition.
 
 `C2-MEM:WITH-INIT` initializes a record in a byte view, `WITH-RECORDS` and
 `WITH-RECORD` own a table of records and lend one element, and `WITH-FIELD

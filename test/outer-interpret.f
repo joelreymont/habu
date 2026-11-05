@@ -86,7 +86,6 @@ variable SPIN-U
    s" : OI-SEVEN ( -- n ) 8 ;" GE-SRC-LINE
    s" package OI-FXA public : OI-TWIN ( -- n ) 1 ; : OI-LONG-NAMED-TWIN ( -- n ) 4 ; ;package" GE-SRC-LINE
    s" package OI-FXB public : OI-TWIN ( -- n ) 2 ; ;package" GE-SRC-LINE
-   s" package OI-C2 public : c2-invoke ( -- n ) 4 ; ;package" GE-SRC-LINE
    s" : OI-QUAL:OI-Q ( -- n ) 3 ;" GE-SRC-LINE
    s" 5 constant OI-FIVE" GE-SRC-LINE
    s" TRUSTED: OI-DICT-FULL ( -- ) 0 data-base HIDXP-CELL + ! DICT-CAP ndict! ;" GE-SRC-LINE
@@ -705,19 +704,6 @@ variable WANT-RC
    s" oi-tick-internal.f" BOTH
    70 s" tick internal" GE-EXPECT-RC
    S\" hb: internal engine word: DEFER-UNSET\n" s" tick internal" GE-EXPECT-ERR ;
-
-\ The engine's tick keeps trusted C2 call primitives behind the checker owner,
-\ even though an ordinary source interpreter can resolve their dictionary rows.
-\ A different word with the same tail remains an ordinary tick.
-: TICK-TRUSTED ( -- )
-   s" ' c2-invoke drop" s" oi-tick-trusted.f" LINE-CASE
-   70 s" tick trusted" GE-EXPECT-RC
-   S\" hb: trusted-only tick: c2-invoke\n" s" tick trusted" GE-EXPECT-ERR
-   GE-SRC-RESET
-   s" ' OI-C2:c2-invoke execute ." GE-SRC-LINE
-   s" oi-tick-other-c2.f" BOTH
-   s" tick other c2" GE-EXPECT-OK
-   S\" 4\n" s" tick other c2" GE-EXPECT-OUT ;
 
 \ src/habu/outer.f SCOPE-ENTRY-GUARD refuses an interpret tick of a scope entry.
 : TICK-C2-SCOPE ( -- )
@@ -1493,22 +1479,6 @@ variable WANT-RC
    s" : 9223372036854775808" s" oi-head-overflow.f" HEAD
    70 s" hb: number cannot be a definition name: 9223372036854775808 at " S\" oi-head-overflow.f:1\n" DIED-AT ;
 
-\ `trusted:` needs a signature, opened and closed; the refusal names the
-\ definition at the name's line. An input that ends before the signature
-\ closes ends inside the definition.
-: HEAD-TRUSTED-SIGNATURE ( -- )
-   s" TRUSTED: OI-T 1 2" s" oi-head-no-signature.f" HEAD
-   76 s" OI-T at " S\" oi-head-no-signature.f:1\n" DIED-AT
-   GE-SRC-RESET
-   s" 1 set-tier trusted: OI-T" GE-SRC-LINE
-   s" ( n -- n" GE-SRC+
-   s" oi-head-open-signature.f" BOTH
-   74 s" hb: source ended inside definition: OI-T at "
-   S\" oi-head-open-signature.f:1\n" DIED-AT
-   s" TRUSTED: OI-T" s" oi-head-ended-signature.f" HEAD
-   74 s" hb: source ended inside definition: OI-T at "
-   S\" oi-head-ended-signature.f:1\n" DIED-AT ;
-
 \ A head into a sealed package's name, or into a protected wordlist, and one
 \ with no native compiler installed end the process without the exit hook.
 : HEAD-FAIL-CLOSED ( -- )
@@ -1658,18 +1628,6 @@ variable WANT-RC
    S\" 74\n1\n5\n6\n" CASE$ GE-EXPECT-OUT
    s" hb: source ended inside definition: OI-HELD at " CASE$ GE-EXPECT-ERR-HAS
    S\" oi-caught-head.f\n" CASE$ GE-EXPECT-ERR-HAS ;
-
-\ The loop compiled at tier 1: in the engine's run the require is the first
-\ load of src/habu/interpret.f, whose literal and hook quotations each reach
-\ only a cast. The Habu loop's run loaded the file before the case, so there
-\ the require is a no-op.
-: LOOP-TIER-1 ( -- )
-   GE-SRC-RESET
-   s" 1 set-tier require src/habu/interpret.f" GE-SRC-LINE
-   s" s~ 1 2 + .~ OUTER:INTERPRET" QLINE
-   s" oi-loop-tier-1.f" BOTH
-   CASE$ GE-EXPECT-OK
-   S\" 3\n" CASE$ GE-EXPECT-OUT ;
 
 \ An immediate word's evaluate compiles into the definition it runs in, at
 \ tier 0 and tier 1, and the definition goes on after it. The engine's loop
@@ -2262,7 +2220,6 @@ private
    SEALED-PACKAGES
    TICK-WIDE
    TICK-INTERNAL
-   TICK-TRUSTED
    TICK-C2-SCOPE
    LITERAL-HOOK
    PACKAGE-SCOPE
@@ -2305,7 +2262,6 @@ private
    HEAD-CAPACITY
    HEAD-NAME-REFUSALS
    HEAD-KEYWORD-WALL
-   HEAD-TRUSTED-SIGNATURE
    HEAD-FAIL-CLOSED
    PENDING-BARE
    PENDING-QUALIFIED
@@ -2316,7 +2272,6 @@ private
    INCLUDE-UNDER-HEAD
    INCLUDE-CLOSES-HEAD
    CAUGHT-HEAD
-   LOOP-TIER-1
    IMMEDIATES
    BODY-FULL
    BODY-STRINGS

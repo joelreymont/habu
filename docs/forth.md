@@ -1794,9 +1794,8 @@ public
   ends.
 - At most 32 owner or initialization frames are live in one task: the 33rd
   open throws `E-C2-CAPACITY` before acquisition, and capacity returns
-  as frames close. Capturing an image while an owner or loan is live throws
-  `E-C2-CAPTURE`. These are runtime boundaries; escape is refused by
-  the checker.
+  as frames close. This is a runtime boundary; escape is refused by the
+  checker.
 
 ### View and scope rules
 

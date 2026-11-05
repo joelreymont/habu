@@ -65,11 +65,6 @@ public
    OUT IO-CAP >LEN ERR IO-CAP >LEN PROCESS:WAIT-FOREVER
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE CAPTURE-RESULT ;
 
-: RUN-IMAGE ( ptr u8 n ptr u8 n -- )
-   {: engine:ptr engineu:n source:ptr sourceu:n :}
-   source sourceu ARGS
-   engine engineu ROOT$ RUN-ON ;
-
 : RUN-INPUT ( ptr u8 n ptr u8 n -- )
    {: engine:ptr engineu:n input:ptr inputu:n :}
    PROC-ENV-INHERIT-MISSING
@@ -85,9 +80,5 @@ public
 : NEED-OK ( -- )
    RC@ 0<> if OUT$ type ERR$ type then
    RC@ 0 T= ;
-
-: EXPECT-OK ( ptr u8 n -- ) {: marker:ptr markeru:n :}
-   NEED-OK
-   OUT$ marker markeru CONTAINS? TTRUE ;
 
 ;package
