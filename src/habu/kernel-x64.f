@@ -538,13 +538,19 @@ variable HEAD-ROW-CELL
    next JMP,
    done X64CODE:LBL, ;
 
-\ WLFIND:LENTRY's twin ( rdi = name, rsi = length, rdx = wid ): rax = the
-\ name's record in that one wordlist, or 0; the record's code cell is its first.
-\ It keeps rdi, rsi and rdx and clobbers rcx and r8-r11. With a table it probes
-\ the key's chain; with none, for WL:RETIRED (stamped onto rows already
-\ indexed under another wid, so no chain holds them), and after a chain walked
-\ through every slot, it scans. The scan's answer is the LAST matching record,
-\ which is the probe's one record wherever a wid holds one row per name.
+\ An entry's end ( rax = answer ): a global miss asks WL:PRIMITIVES by `entry`.
+: RETRY, ( label -- ) {: entry:label :}
+   X64CODE:LBL {: done:label :}
+   RAX RAX ASM-SINK ENC-TEST-RR  C-NE done JCC,
+   RDX DATA-REG BOOT:GLOBAL-WL-CELL MEM-OFF ASM-SINK ENC-CMP-RM  C-NE done JCC,
+   RDX WL:PRIMITIVES IMM32,
+   entry CALL,
+   RDX BOOT:GLOBAL-WL-CELL CELL@,
+   done X64CODE:LBL,
+   ASM-SINK ENC-RET ;
+
+\ WLFIND:LENTRY's twin, by its rules ( rdi = name, rsi = length, rdx = wid ): rax
+\ = the record, code cell first, or 0. Keeps rdi, rsi, rdx; clobbers rcx, r8-r11.
 : FIND-HELPER, ( -- )
    X64CODE:LBL X64CODE:LBL X64CODE:LBL X64CODE:LBL {: probe:label miss:label next:label absent:label :}
    X64CODE:LBL X64CODE:LBL {: row:label skip:label :}
@@ -578,7 +584,7 @@ variable HEAD-ROW-CELL
    probe JMP,
    absent X64CODE:LBL,
    RAX ZERO-REG,
-   ASM-SINK ENC-RET
+   FIND-LBL RETRY,
    FIND-SCAN-LBL X64CODE:LBL,
    R8 ZERO-REG,                                        \ r8 = the last match
    R9 DBASE-REG ASM-SINK ENC-MOV-RR                    \ r9 = the record
@@ -597,7 +603,7 @@ variable HEAD-ROW-CELL
    row JMP,
    done X64CODE:LBL,
    RAX R8 ASM-SINK ENC-MOV-RR
-   ASM-SINK ENC-RET ;
+   FIND-SCAN-LBL RETRY, ;
 
 \ LHEADROW's twin ( rdi = head, rsi = its length ): rax = the namespace row the
 \ head names, or 0. It keeps rdi and rsi and clobbers rcx, rdx and r8-r11.
@@ -3569,8 +3575,8 @@ private
    FIND-LBL CALL,
    RAX R64>N X64RT:G-PUSH ;
 
-\ The scan keeps the highest matching dictionary row even when a native unit
-\ publishes duplicate names into one real wordlist.
+\ The scan keeps the highest matching row when a native unit publishes duplicate
+\ names into one wordlist; a global miss retries WL:PRIMITIVES (FIND-HELPER,).
 : XREF-SEARCH-WL-NEWEST-BODY ( -- )
    FIND-ARGS,
    FIND-SCAN-LBL CALL,

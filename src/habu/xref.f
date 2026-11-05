@@ -316,6 +316,8 @@ INSTALL
    repeat drop
    XREF-NULL ;
 
+\ A miss in the global wordlist answers the walk of WL:PRIMITIVES, the
+\ built-ins' wordlist (kernel-x64.f FIND-HELPER, does the same).
 : XREF-FIND-WL-INDEX ( ptr u8 n n -- n ) {: a:ptr u:n wid:n :}
    u XREF-FU !  a XREF-FN!
    ndict@ 1-
@@ -325,6 +327,7 @@ INSTALL
       then
       1-
    repeat drop
+   wid BOOT:GLOBAL-WL = if a u WL:PRIMITIVES recurse exit then
    -1 ;
 
 variable XREF-QI
