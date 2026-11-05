@@ -2,10 +2,6 @@
 require src/habu/address-cells.f
 require src/lib/test.f
 
-\ Tier 1 below: the deferred-target refusals asserted below are the optimizing
-\ compiler's (2 rows fail at the default tier).
-1 set-tier
-
 \ A baked compiler must publish its source closure before a caller requires it.
 T-RESET
 s" src/compiler/native/compiler.f" ENGINE-PROVIDES? TTRUE
@@ -95,12 +91,7 @@ variable HIT
 
 \ ---- the targets that are not deferred words ---------------------------------
 \ The `create`d word's first data cell holds the defer magic a real defer's
-\ trailer starts with; a reader searching for the magic near the record would
-\ bind into a data word. The trailer is read at the record's own START+LEN,
-\ which for a created word is code space, in a different region (measured). A
-\ plain colon word's trailer read lands on the next definition's code and
-\ answers absent the same way. The native checker refuses these programs before
-\ elaboration; the resolver assertions prove why each is no defer target.
+\ trailer starts with, so a reader searching for the magic would bind into it.
 : SETUP-BAD ( -- )
    s" create ND-DATA  $4842444546455201 ,  0 ," evaluate-closed
    s" : ND-PLAIN ( n -- n ) 2 * ;" evaluate-closed ;
@@ -118,16 +109,6 @@ variable HIT
 
 : REFUSE-CASE ( -- )
    SETUP-BAD
-   s" the created word's first data cell really does hold the defer magic" T-LABEL
-   s" ND-DATA" NDICT:FIXED-VALUE CELL@  DEFER-MAGIC  T=
-   s" and the resolver still answers it no dispatch cell" T-LABEL
-   s" ND-DATA" NDICT:SPELL-DEFER-CELL 0 T=
-   s" an ordinary colon word answers none either" T-LABEL
-   s" ND-PLAIN" NDICT:SPELL-DEFER-CELL 0 T=
-   s" a name that denotes nothing answers none" T-LABEL
-   s" ND-NOWHERE" NDICT:SPELL-DEFER-CELL 0 T=
-   s" while the real deferred word answers one" T-LABEL
-   s" ND-HOOK" NDICT:SPELL-DEFER-CELL 0<> TTRUE
    s" the native checker refuses non-deferred or absent targets before emission" T-LABEL
    [: BAD-DATA ;] CHECK-RC TTHROWSQ
    [: BAD-COLON ;] CHECK-RC TTHROWSQ

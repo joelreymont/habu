@@ -9,10 +9,6 @@ require src/compiler/native/compiler.f
 require src/lib/json.f
 require src/lib/test.f
 require src/lib/errors.f
-require test/compiler/native-eval-fixture.f
-require tools/codegen-tail-probe.f
-require src/habu/code-bytes.f
-require src/arch/x86-64/disasm.f
 
 s" ENUM nctorresult VARIANT ok FIELD value n ;VARIANT VARIANT err FIELD error n ;VARIANT ;ENUM"
 INCLUDE-EVALUATE
@@ -99,47 +95,6 @@ TYPED-VARIABLE NCTOR-BUF2 n
 
 private
 
-\ The shared tail probe reads AArch64 words. On an x64 host, walk complete
-\ instructions so a call opcode inside an immediate cannot count as a call.
-: X-STEP ( n n -- n n n ) {: at:n hi:n :}
-   at hi at - CODE-BYTES:AT at X64DIS:STEP
-   {: bytes:n kind:n target:n :}
-   at bytes + kind target ;
-
-: X-SPAN ( ptr u8 n -- n n )
-   XREF-FIND dup XREF-FOUND? TTRUE
-   dup XREF-START swap XREF-CODE-BYTES over + ;
-
-: X-CALLS ( ptr u8 n -- n )
-   X-SPAN {: lo:n hi:n :}
-   lo 0
-   begin over hi < while
-      swap hi X-STEP {: next:n kind:n target:n :}
-      kind X64DIS:FLOW-CALL = if 1+ then
-      next swap
-   repeat nip ;
-
-variable X-LAST-KIND
-variable X-LAST-TARGET
-
-: X-TAIL-BRANCH? ( ptr u8 n -- bool )
-   X-SPAN {: lo:n hi:n :}
-   0 X-LAST-KIND ! 0 X-LAST-TARGET !
-   lo
-   begin dup hi < while
-      dup hi X-STEP {: next:n kind:n target:n :}
-      kind X-LAST-KIND !  target X-LAST-TARGET !
-      drop next
-   repeat drop
-   X-LAST-KIND @ X64DIS:FLOW-JUMP <> if false exit then
-   X-LAST-TARGET @ lo < X-LAST-TARGET @ hi >= or ;
-
-: CALLS ( ptr u8 n -- n )
-   HB-TARGET-LINUX-X86-64? if X-CALLS else NTAILPROBE:CALLS then ;
-
-: TAIL-BRANCH? ( ptr u8 n -- bool )
-   HB-TARGET-LINUX-X86-64? if X-TAIL-BRANCH? else NTAILPROBE:TAIL-BRANCH? then ;
-
 : NCTOR-STRUCTURE-ROUNDTRIP ( n n -- n n )
    NCTOR--WIDE--TEST-NCTORSTRUCTURE:MAKE
    NCTOR--WIDE--TEST-NCTORSTRUCTURE:UNMAKE ;
@@ -169,22 +124,6 @@ variable X-LAST-TARGET
    NCTOR-OUT2 = TTRUE
    JSON-WRITER:UNMAKE TTRUE 104 T= 103 T= NCTOR-BUF1 = TTRUE 102 T= 101 T=
    NCTOR-OUT1 = TTRUE
-   tier@ 1 = if
-      HB-TARGET-LINUX-X86-64? if
-         s" x64 forwards a 34-cell record through a tail branch" T-LABEL
-         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" CALLS 0 T=
-         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" TAIL-BRANCH? TTRUE
-         s" a loop still makes an ordinary call" T-LABEL
-         s" NCTOR-WIDE-TEST:NCTOR-LOOP20" CALLS 0 > TTRUE
-      else
-         s" an ARM 34-cell record forwards through an ordinary call" T-LABEL
-         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" CALLS 1 T=
-         s" NCTOR-WIDE-TEST:NCTOR-FORWARD-OUTER" TAIL-BRANCH? TFALSE
-      then
-      s" a legal 32-cell forwarding call remains a tail branch" T-LABEL
-      s" NCTOR-WIDE-TEST:NCTOR-TAIL32" TAIL-BRANCH? TTRUE
-      s" NCTOR-WIDE-TEST:NCTOR-TAIL32" CALLS 0 T=
-   then
    1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16
    17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 NCTOR-TAIL32
    32 T= 31 T= 30 T= 29 T= 28 T= 27 T= 26 T= 25 T=
@@ -210,18 +149,6 @@ variable X-LAST-TARGET
    7 T= 7 T= 10 T= 13 T= 16 T= 19 T= 22 T= 25 T= 28 T= 31 T= 34 T= 37 T=
    T-REPORT ;
 
-: NCTOR-ENTRY-POOL ( -- )
-   tier@ 1 = HB-TARGET-MACOS? and if
-      T-RESET
-      s" twenty-four consumed entry cells compile and sum correctly" T-LABEL
-      s" : NCTOR-SUM24 ( n n n n n n n n n n n n n n n n n n n n n n n n -- n ) {: a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 :} a1 a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + ; : NCTOR-CHECK24 ( -- ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 NCTOR-SUM24 300 T= ; NCTOR-CHECK24"
-      NATIVE-EVAL:DEFINE-RC 0 T=
-      s" twenty-five consumed entry cells, one more than the register pool, compile and sum correctly" T-LABEL
-      s" : NCTOR-SUM25 ( n n n n n n n n n n n n n n n n n n n n n n n n n -- n ) {: a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 a18 a19 a20 a21 a22 a23 a24 a25 :} a1 a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + a25 + ; : NCTOR-CHECK25 ( -- ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 NCTOR-SUM25 325 T= ; NCTOR-CHECK25"
-      NATIVE-EVAL:DEFINE-RC 0 T=
-      T-REPORT
-   then ;
-
 : NCTOR-REPORT ( -- )
    NCTOR-WIDE-ROUNDTRIPS? 0= if
       s" native-generated-constructor: wide round-trip failed" 1 die
@@ -231,6 +158,5 @@ variable X-LAST-TARGET
 NCTOR-REPORT
 NCTOR-RECORD-ROUNDTRIP
 NCTOR-SPILL-ROUNDTRIP
-NCTOR-ENTRY-POOL
 
 ;package

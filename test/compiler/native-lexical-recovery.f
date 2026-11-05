@@ -1,12 +1,10 @@
-\ Tier 1's body capture keeps local and parser-operand scope lexical: a failed
+\ Body capture keeps local and parser-operand scope lexical: a failed
 \ nested parser operand rolls back its opener before capture resumes; a local
 \ spelled like a control word, the string opener or a parser word is a local
 \ only inside its block and its definition's head; a parser operand that spells
 \ a closer or a comment opener is data.
 require test/gate-common.f
 require src/lib/test.f
-
-1 set-tier
 
 package NATIVE-LEXICAL-FIXTURE
 public
@@ -47,7 +45,6 @@ package NATIVE-LEXICAL-RECOVERY
    S\" TRUSTED: LEXBAD ( -- ) s\" ['] NEVER-BOUND\" evaluate ;" GE-SRC-LINE
    s" TRUSTED: LEXTRY ( -- ) ['] LEXBAD catch . ; immediate" GE-SRC-LINE
    S\" s\" LEXTRY\" 0 parse-imm" GE-SRC-LINE
-   s" 1 set-tier" GE-SRC-LINE
    S\" : LEXWORD ( -- n ) LEXTRY s\" ; text\" 2drop 7 ;" GE-SRC-LINE
    s" LEXWORD ." GE-SRC-LINE
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN

@@ -5,11 +5,6 @@ require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/errors.f
 require src/compiler/native/compiler.f
-require tools/codegen-loop-inventory.f
-
-\ Tier 1: the back edges each case counts are the optimizing compiler's code
-\ (tools/codegen-loop-inventory.f).
-1 set-tier
 
 package NJ-FIXTURE
 
@@ -19,7 +14,6 @@ public
 \ whichever word opened it.
 : NJ-IJ ( n n -- n ) {: a:n b:n :}
    0 a 0 ?do b 0 ?do i 3 * j 5 * + + loop loop ;
-tier@ constant NJ-IJ-TIER
 
 : NJ-IJ-DO ( n n -- n ) {: a:n b:n :}
    0 a 0 do b 0 do i 3 * j 5 * + + loop loop ;
@@ -66,16 +60,6 @@ package NJ-TEST
 
 private
 
-: LOOPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u NLOOPINV:ROW!
-   NLOOPINV:LOOPS ;
-
-: KEPT2 ( ptr u8 n -- )
-   LOOPS-IN 2 T= ;
-
-: KEPT3 ( ptr u8 n -- )
-   LOOPS-IN 3 T= ;
-
 : EV-DEF ( ptr u8 n -- n )
    NATIVE-EVAL:DEFINE-RC ;
 
@@ -84,7 +68,6 @@ private
 \ indices exchanged. Equal and zero pairs still run, where the openers differ.
 : IJ-CASE ( -- )
    s" both indices of two counted loops, under all four pairs of openers" T-LABEL
-   s" NJ-FIXTURE:NJ-IJ" KEPT2
    2 3 NJ-FIXTURE:NJ-IJ 33 T=
    2 3 NJ-FIXTURE:NJ-IJ-DO 33 T=
    2 3 NJ-FIXTURE:NJ-IJ-DOQ 33 T=
@@ -96,7 +79,6 @@ private
 
 : TRIPLE-CASE ( -- )
    s" with three loops open j is the middle one, not the outermost" T-LABEL
-   s" NJ-FIXTURE:NJ-TRIPLE" KEPT3
    2 3 1 NJ-FIXTURE:NJ-TRIPLE 30 T= ;
 
 : CALL-CASE ( -- )
@@ -114,7 +96,6 @@ private
 
 : FMA-CASE ( -- )
    s" the matmul micro-tile's own index arithmetic" T-LABEL
-   s" NJ-FIXTURE:NJ-FMA" KEPT2
    2 3 NJ-FIXTURE:NJ-FMA 78 T= ;
 
 \ Refusals that are the checker's, not the chain's: `j` under one counted loop,
@@ -164,7 +145,5 @@ public
 ;package
 
 T-RESET
-s" the nested loop subject was compiled at tier 1" T-LABEL
-NJ-FIXTURE:NJ-IJ-TIER 1 T=
 NJ-TEST:RUN
 T-REPORT

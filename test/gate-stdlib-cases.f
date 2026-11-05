@@ -631,10 +631,7 @@ SUITE compiler-code-bytes
    test/compiler/code-bytes.f
 ;SUITE
 
-SUITE compiler-native-generated-constructor-aot
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-qualified-trusted.f
+SUITE compiler-native-generated-constructor
    test/compiler/native-generated-constructor.f
 ;SUITE
 

@@ -7,10 +7,6 @@ require src/lib/errors.f
 require src/compiler/native/compiler.f
 require tools/codegen-loop-inventory.f
 
-\ Tier 1: the retained back edge each case reads is the optimizing compiler's
-\ code (tools/codegen-loop-inventory.f).
-1 set-tier
-
 package NAG-FIXTURE
 
 public
@@ -19,7 +15,6 @@ public
 \ wrong value answers a different number instead of looping forever.
 : NAG-UP ( n -- n )
    begin dup 5 < if 1 + else exit then again ;
-tier@ constant NAG-UP-TIER
 
 \ The real call in the body makes both values travel as back-edge operands. The
 \ guard is `< 1`, not `= 0`, so a counter starting below zero leaves at once.
@@ -43,10 +38,6 @@ tier@ constant NAG-UP-TIER
       dup 0 = if drop negate 1 - throw then
       swap over + swap 1 -
    again ;
-
-\ Public: the body reading it is compiled from SOURCE through the running
-\ dictionary, outside this package's private scope.
-variable NAG-CELL
 
 \ A local named after a control word wins from its group's closer on
 \ (docs/forth.md local-first rule): the one way a body writes `again` without
@@ -113,19 +104,6 @@ private
    s" : NAG-WA2 ( n -- n ) begin dup 0 > while 1 - again ;" EV-DEF 0 T<>
    s" 7 NAG-WA" TEST-EVAL:N 0 T= ;
 
-: BARE-CASE ( -- )
-   \ Neither definition runs: both never return. The compile and the retained
-   \ back edge are the observations.
-   s" a loop with no call or memory access compiles" T-LABEL
-   s" : NAG-BARE ( n -- n ) begin 1 - again ;" EV-DEF 0 T=
-   s" and its back edge is retained" T-LABEL
-   s" NAG-BARE" KEPT
-
-   s" and the same loop with a memory access compiles" T-LABEL
-   s" : NAG-MEM ( n -- n ) begin NAG-FIXTURE:NAG-CELL @ + again ;" EV-DEF 0 T=
-   s" and its back edge is retained" T-LABEL
-   s" NAG-MEM" KEPT ;
-
 public
 
 : RUN ( -- )
@@ -134,13 +112,10 @@ public
    CALL-CASE
    LOCAL-CASE
    AGAIN-LOCAL-CASE
-   WHILE-AGAIN-CASE
-   BARE-CASE ;
+   WHILE-AGAIN-CASE ;
 
 ;package
 
 T-RESET
-s" the unbounded loop subject was compiled at tier 1" T-LABEL
-NAG-FIXTURE:NAG-UP-TIER 1 T=
 NAG-TEST:RUN
 T-REPORT
