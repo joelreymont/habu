@@ -820,6 +820,11 @@ learned live in the docs for their subject.
   in src/habu as suffixed files, he chose "src/arch/arm64/boot.f, A64BOOT
   (Recommended)": "One directory per instruction set, as Wasm's linker
   already is."
+- 2026-11-05, the arm64 page-address encoder: shown that the arm64 linker
+  writes each code address as adrp+add so it holds wherever the OS loads the
+  program, and that A64ASM encodes adr but not adrp, Joel chose
+  "A64ASM:ENC-ADRP (Recommended)": "Public beside ENC-ADR; the assembler owns
+  every instruction encoding." `A64ASM:ENC-ADRP ( rd pages -- insn )`.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
