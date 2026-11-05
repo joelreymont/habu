@@ -214,14 +214,13 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn HBT-CELLS-EXPECTED$ T$=
    HBT-CELLS-NOARG-RUN ;
 
-\ A source with no global MAIN: the link exits 74 with `aot: entry word not
-\ found: MAIN` and `aot: no entry` on stderr (src/habu/aot-closure.f
-\ NO-ENTRY-DIE); tools/hb-build.f exits with the maker's code, passes its stderr
-\ byte for byte, prints nothing on stdout and installs no image.
-\ tools/hb-build-cli-errors-test.f HBT-REFUSE-MAIN-CLI is the REPL path's.
+\ Private and public MAINs, no global one: tools/hb-build.f passes the link's
+\ exit 74 and stderr through (aot-closure.f NO-ENTRY-DIE) and installs no image.
 : HBT-STRIPPED-NO-ENTRY ( -- )
    HBT-REMOVE-AOT-OUT
-   HBT-AOT-SRC s" : HBT-NO-MAIN ( -- ) ;" FS:WRITE-ALL
+   HBT-AOT-SRC
+   S\" package STRIPPED-ENTRY-NO-GLOBAL\nprivate\n: MAIN ( -- ) ;\npublic\n: MAIN ( -- ) ;\n;package\n"
+   FS:WRITE-ALL
    HBT-ARGV-BASE
    HBT-AOT-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+

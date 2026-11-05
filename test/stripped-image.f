@@ -1,8 +1,5 @@
-\ Build one stripped application from the run-time subjects
-\ (test/stripped-image-subject.f) through tools/hb-build.f, measure it, read its
-\ startup shape and run it. Each subject prints its line or dies naming itself;
-\ the same image runs test/exit-hook-subject.f once per exit, and each run must
-\ remove the directory it registered.
+\ One stripped application of the run-time subjects and a generated chain, built
+\ through tools/hb-build.f, measured, read for its startup shape and run per exit.
 require test/gate-common.f
 require test/gate-aot-image.f
 require src/lib/string.f
@@ -14,13 +11,10 @@ private
 
 600000 constant TIMEOUT-MS
 
-\ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole: an image carrying it
-\ is at least that long (that subject's image alone was 1,704,128 bytes before
-\ sparse DATA extents). IMAGE-MAX bounds the whole image: ARM measured 181,884
-\ bytes, bound 80,260 above; the x86-64 fixed-page ELF measured 327,680 bytes,
-\ bound one 64 KiB page above. Below HOLE-BYTES, it also refuses the hole alone.
+\ HOLE-BYTES is test/stripped-sparse-data-subject.f's hole; IMAGE-MAX sits below
+\ it and above the arm64 image (264,764 bytes); x86-64's is unmeasured here.
 1000000 constant HOLE-BYTES
-: IMAGE-MAX ( -- n ) HB-TARGET-LINUX-X86-64? if $60000 else $40000 then ;
+$60000 constant IMAGE-MAX
 
 create SUBJECT PATH-CAP allot
 create IMAGE PATH-CAP allot
@@ -42,18 +36,50 @@ variable EXIT-TREE-U
    s" application" IMAGE GT-PATH IMAGE-U !
    s" die-tree" DIE-TREE GT-PATH DIE-TREE-U ! ;
 
+\ CHAIN-N chained words pass a 1024-member fixed table (a lost one prints no
+\ chain=ok); OPEN-PATH reaches PATH0's scratch (aot-owned-cells.f FRESH-BYTES).
+1100 constant CHAIN-N
+
+: SB-U+ ( n -- ) {: n:n :}
+   n 0 < if E-STR-BOUNDS throw then
+   n 10 >= if n 10 / recurse then
+   n 10 mod STR-ZERO + SB-APPEND-C ;
+
+: CHAIN-WORD! ( n -- ) {: i:n :}
+   SB-RESET
+   s" : CW" SB-APPEND i SB-U+ s"  ( n -- n ) " SB-APPEND
+   i 0 > if s" CW" SB-APPEND i 1- SB-U+ s"  " SB-APPEND then
+   s" dup 0 < if drop 0 then 1 + ;" SB-APPEND 10 SB-APPEND-C
+   SUBJECT$ SB$ FS:APPEND-FILE ;
+
+: WRITE-CHAIN ( -- )
+   SB-RESET
+   S\" package STRIPPED-IMAGE-CHAIN\nprivate\n" SB-APPEND
+   S\" variable FD\n: OPEN-PATH ( -- )\n   s\" /dev/null\" PATH0 0 0 open FD !\n" SB-APPEND
+   S\"    FD @ 0 < IF s\" openpath: cannot open /dev/null\" 74 die THEN\n" SB-APPEND
+   S\"    FD @ close\n   s\" opened\" type cr ;\n" SB-APPEND
+   SUBJECT$ SB$ FS:APPEND-FILE
+   CHAIN-N 0 ?do i CHAIN-WORD! loop
+   SB-RESET
+   s" public" SB-APPEND 10 SB-APPEND-C
+   s" : RUN ( -- ) 0 CW" SB-APPEND CHAIN-N 1- SB-U+
+   s"  " SB-APPEND CHAIN-N SB-U+
+   S\"  = if s\" chain=ok\" type cr then OPEN-PATH ;\n;package\n" SB-APPEND
+   SUBJECT$ SB$ FS:APPEND-FILE ;
+
 \ MAIN is per host: the macOS image starts and stops AIO (src/lib/aio.f's
 \ definers at run time); the Linux image links aio.f without starting it. The
 \ exit-hook subject registers its directory first and a run given its code
 \ leaves before the other subjects; UNMAP ends the process, so it comes last.
 : WRITE-SUBJECT ( -- )
+   SUBJECT$ S\" require test/stripped-image-subject.f\nrequire test/exit-hook-subject.f\n" FS:WRITE-ALL
+   WRITE-CHAIN
    SB-RESET
-   S\" require test/stripped-image-subject.f\nrequire test/exit-hook-subject.f\n" SB-APPEND
    S\" : MAIN ( -- )\n   EXIT-HOOK-SUBJECT:RUN\n   EXIT-HOOK-SUBJECT:RETURN? if EXIT-HOOK-SUBJECT:FINISH exit then\n" SB-APPEND
-   S\"    STRIPPED-IMAGE-SUBJECT:RUN\n" SB-APPEND
+   S\"    s\" global-main\" type cr\n   STRIPPED-IMAGE-CHAIN:RUN\n   STRIPPED-IMAGE-SUBJECT:RUN\n" SB-APPEND
    HB-TARGET-MACOS? if S\"    AIO:START AIO:STOP\n" SB-APPEND then
    S\"    STRIPPED-IMAGE-SUBJECT:UNMAP ;\n" SB-APPEND
-   SUBJECT$ SB$ FS:WRITE-ALL ;
+   SUBJECT$ SB$ FS:APPEND-FILE ;
 
 \ The fresh subject path has no observed-input index, so hb-build links it
 \ with the shared maker instead of restoring an artifact.
@@ -79,7 +105,7 @@ variable EXIT-TREE-U
    bytes IMAGE-MAX < 0= if s" stripped image exceeds IMAGE-MAX" GE-FAIL then ;
 
 : EXPECTED-OUT$ ( -- ptr u8 n )
-   S\" exit-hook-subject: ok\nstripped-quotation: ok\nstripped-address-pool: ok\n8\n0\n1\n23\nstripped-sparse-data: ok\nstripped\nsize=ok\nstripped-engine-id: ok\naot-xt-cells: ok\nstripped-lifecycle-prepare: ok\nstripped-lifecycle-tasks: ok\nstripped-lifecycle-semaphore: ok\nffi-library-lifetime: ok\n" ;
+   S\" exit-hook-subject: ok\nglobal-main\nchain=ok\nopened\nstripped-quotation: ok\nstripped-address-pool: ok\n8\n0\n1\n23\nstripped-sparse-data: ok\nstripped\nsize=ok\nstripped-engine-id: ok\naot-xt-cells: ok\nstripped-lifecycle-prepare: ok\nstripped-lifecycle-tasks: ok\nstripped-lifecycle-semaphore: ok\nffi-library-lifetime: ok\n42\n123\nba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n" ;
 
 \ A failing subject dies with its message and exit $4A; a missing xt row is a
 \ wild call into unmapped builder code. UNMAP's `die` is the exit the registered

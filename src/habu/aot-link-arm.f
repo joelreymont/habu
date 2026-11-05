@@ -106,8 +106,7 @@ variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-
 \ 51.9 s cold, the AOT maker 42.8 s, the same compile behind a one-member
 \ closure 39.3 s: the compile is the cost. aot-common.f MEMBER-ORDER sorts
 \ members once per link and OLD>NEW and MEMBER-AT binary-search it.
-\ tools/hb-build-stripped-chain-test.f HBT-STRIPPED-CHAIN runs the startup at
-\ 1,104 members.
+\ test/stripped-image.f runs the startup with a 1,100-word chain in its closure.
 : TEXT-ADR, ( n n label -- )                      \ ( rd rt label -- ) rd = runtime address of label
    {: rd:n rt:n l:label :}
    rd rt = IF s" aot: TEXT-ADR, destination and scratch are one register" 74 die THEN

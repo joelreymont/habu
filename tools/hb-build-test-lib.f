@@ -35,7 +35,6 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
 \                                             quotation fields, ptr mark
-\   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
 \   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
 \   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
@@ -97,11 +96,7 @@ variable HBT-LIB-DIR-U
 variable HBT-CELLS-SRC-U
 variable HBT-CELLS-OUT-U
 variable HBT-PMK-SRC-U
-variable HBT-PPH-SRC-U
-variable HBT-PPH-OUT-U
 variable HBT-TABLE-SRC-U
-variable HBT-CHAIN-SRC-U
-variable HBT-CHAIN-OUT-U
 variable HBT-PTRC-SRC-U
 variable HBT-PTRC-OUT-U
 variable HBT-PTRU-SRC-U
@@ -125,11 +120,7 @@ create HBT-LIB-DIR-BUF PATH-CAP allot
 create HBT-CELLS-SRC-BUF PATH-CAP allot
 create HBT-CELLS-OUT-BUF PATH-CAP allot
 create HBT-PMK-SRC-BUF PATH-CAP allot
-create HBT-PPH-SRC-BUF PATH-CAP allot
-create HBT-PPH-OUT-BUF PATH-CAP allot
 create HBT-TABLE-SRC-BUF PATH-CAP allot
-create HBT-CHAIN-SRC-BUF PATH-CAP allot
-create HBT-CHAIN-OUT-BUF PATH-CAP allot
 create HBT-PTRC-SRC-BUF PATH-CAP allot
 create HBT-PTRC-OUT-BUF PATH-CAP allot
 create HBT-PTRU-SRC-BUF PATH-CAP allot
@@ -263,11 +254,7 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-ROOT s" cells.f" HBT-CELLS-SRC-BUF HBT-CELLS-SRC-U HBT-PATH!
    HBT-ROOT s" cells" HBT-CELLS-OUT-BUF HBT-CELLS-OUT-U HBT-PATH!
    HBT-ROOT s" ptrmark.f" HBT-PMK-SRC-BUF HBT-PMK-SRC-U HBT-PATH!
-   HBT-ROOT s" pph.f" HBT-PPH-SRC-BUF HBT-PPH-SRC-U HBT-PATH!
-   HBT-ROOT s" pph" HBT-PPH-OUT-BUF HBT-PPH-OUT-U HBT-PATH!
    HBT-ROOT s" table.f" HBT-TABLE-SRC-BUF HBT-TABLE-SRC-U HBT-PATH!
-   HBT-ROOT s" chain.f" HBT-CHAIN-SRC-BUF HBT-CHAIN-SRC-U HBT-PATH!
-   HBT-ROOT s" chain" HBT-CHAIN-OUT-BUF HBT-CHAIN-OUT-U HBT-PATH!
    HBT-ROOT s" ptrcell.f" HBT-PTRC-SRC-BUF HBT-PTRC-SRC-U HBT-PATH!
    HBT-ROOT s" ptrcell" HBT-PTRC-OUT-BUF HBT-PTRC-OUT-U HBT-PATH!
    HBT-ROOT s" ptrunowned.f" HBT-PTRU-SRC-BUF HBT-PTRU-SRC-U HBT-PATH!

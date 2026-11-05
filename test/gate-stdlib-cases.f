@@ -82,13 +82,8 @@ SUITE aot-payload-graph
 
 \ The fixpoint fixtures reuse the suite's whitebox compiler image and the
 \ fixture writer and cold host. This row waits for those images to settle.
-\ The stripped-entry row waits for the saved AOT builder image.
 SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
-;SUITE
-
-SUITE stripped-entry
-   test/stripped-entry.f
 ;SUITE
 
 SUITE ffi-callback-zero-image
@@ -125,10 +120,6 @@ SUITE aot-named-cells-image
 
 SUITE hb-build-fixtures
    tools/hb-build-test.f
-;SUITE
-
-SUITE hb-build-stripped-chain
-   tools/hb-build-stripped-chain-test.f
 ;SUITE
 
 SUITE hb-build-stripped-lifecycle
