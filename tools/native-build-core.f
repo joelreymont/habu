@@ -1466,8 +1466,7 @@ public
    ['] RUN-FILE-INNER WITH-TARGET-ROOT ;
 
 \ RUN-PATH-RC with the image written by `writer` instead of the source writer's
-\ WRITE-C2. The x86-64 fixture writer (test/native-fixture-native.f) merges a
-\ partial artifact into the runtime capture this way.
+\ WRITE-C2.
 : RUN-PATH-WRITER-RC ( ptr u8 n [ AOT-OWNED:capture ptr n n ptr u8 n -- ] -- n )
    {: out:ptr outu:n writer :}
    writer WRITER-OVERRIDE !

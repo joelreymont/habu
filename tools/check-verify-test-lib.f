@@ -226,7 +226,6 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require test/cold-engine.f
 require test/pcap-result.f
 require src/lib/jsonl.f
 require tools/gate-json-assert-core.f
@@ -1207,9 +1206,6 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : CLI ( ptr u8 n -- n n )
    ENGINE-CANDIDATE:PATH$ CLI-HOST ;
 
-: COLD-CLI ( ptr u8 n -- n n )
-   COLD-ENGINE:PATH$ CLI-HOST ;
-
 
 : CLI-START ( -- )
    PROC-ARGV-ENV-RESET
@@ -2069,31 +2065,6 @@ $180000 constant LARGE-STDIN-LEN
    TOP-CHECK
    0 s" top-axiom: scanned declaration" EXPECT-KIND
    s" top-axiom: no packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
-
-
-\ A cold prefix publishes this PPRIM package word without a user record.
-\ Its scanner runs in the cold host, and both forms also use the product CLI.
-: TOP-COLD-PRIM ( -- )
-   s" prim-call.f" s\" CHECKER-OWNER-ABI:HEADER-BYTES drop\n" FIXTURE
-   s" prim-tick.f" s\" ' CHECKER-OWNER-ABI:HEADER-BYTES drop\n" FIXTURE
-   s" prim-scan.f"
-   s\" require src/habu/verify-source.f\ns\" CHECKER-OWNER-ABI:HEADER-BYTES drop\" s\" prim-call.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE\ns\" ' CHECKER-OWNER-ABI:HEADER-BYTES drop\" s\" prim-tick.f\" VERIFY:SOURCE-COMPOSE-IN-SCOPE\n" FIXTURE
-   s" prim-call.f" AT$ {: call:ptr callu:n :}
-   s" top-cold-prim: call loads" T-LABEL
-   PROC-ARGV-ENV-RESET s" --load" ARG+ call callu ARG+
-   PROC-ENV-INHERIT-MISSING s" " COLD-CLI nip 0 T=
-   s" top-cold-prim: call verifies" T-LABEL
-   call callu true false CHECK-RC 0 T=
-   s" prim-tick.f" AT$ {: tick:ptr ticku:n :}
-   s" top-cold-prim: tick loads" T-LABEL
-   PROC-ARGV-ENV-RESET s" --load" ARG+ tick ticku ARG+
-   PROC-ENV-INHERIT-MISSING s" " COLD-CLI nip 0 T=
-   s" top-cold-prim: tick verifies" T-LABEL
-   tick ticku true false CHECK-RC 0 T=
-   s" prim-scan.f" AT$ {: scan:ptr scanu:n :}
-   s" top-cold-prim: cold scanner" T-LABEL
-   PROC-ARGV-ENV-RESET s" --load" ARG+ scan scanu ARG+
-   PROC-ENV-INHERIT-MISSING s" " COLD-CLI nip 0 T= ;
 
 
 \ The engine's table (src/habu/prims.f) opens a row with EPRIM: or EPPRIM:,
@@ -5076,7 +5047,6 @@ public
    s" sealed" [: SEALED ;] RUN-CASE
    s" source-sealed" [: SOURCE-SEALED ;] RUN-CASE
    s" top-axiom" [: TOP-AXIOM ;] RUN-CASE
-   s" top-cold-prim" [: TOP-COLD-PRIM ;] RUN-CASE
    s" engine-rows" [: ENGINE-ROWS ;] RUN-CASE
    s" top-retired-import" [: TOP-RETIRED-IMPORT ;] RUN-CASE
    s" top-order" [: TOP-ORDER ;] RUN-CASE

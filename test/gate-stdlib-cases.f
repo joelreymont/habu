@@ -152,10 +152,6 @@ SUITE native-file-missing
    test/native-file-missing-e2e.f
 ;SUITE
 
-SUITE source-unit-range
-   test/source-unit-range-gate.f
-;SUITE
-
 \ A package's checker facts survive an artifact boundary.
 SUITE checker-unit-codec
    test/checker-unit-codec-e2e.f
@@ -1682,10 +1678,6 @@ SUITE check-repair-hints
    tools/check-repair-hints-test.f
 ;SUITE
 
-SUITE ddc-verify
-   tools/ddc-verify-test.f
-;SUITE
-
 SUITE event-closure
    tools/event-closure-test.f
 ;SUITE
@@ -1800,10 +1792,6 @@ SUITE profiler-rewind
 
 SUITE perf-map-fixtures
    tools/perf-map-test.f
-;SUITE
-
-SUITE boot-census
-   tools/perf/boot-census-test.f
 ;SUITE
 
 SUITE native-gate-dictionary

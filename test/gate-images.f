@@ -18,16 +18,14 @@ require test/image-grant.f
 package GATE-IMAGES
 
 0 constant COMPILER
-1 constant WRITER
-2 constant COLD
-3 constant APP
-4 constant LINKER
-5 constant WHITEBOX
-6 constant AOT-BUILDER
-7 constant LINKER-BUILDER
-8 constant APP-BUILDER
-9 constant CHECK-VERIFY
-10 constant FAMILY-N
+1 constant APP
+2 constant LINKER
+3 constant WHITEBOX
+4 constant AOT-BUILDER
+5 constant LINKER-BUILDER
+6 constant APP-BUILDER
+7 constant CHECK-VERIFY
+8 constant FAMILY-N
 
 \ Each row is granted the images settled for it (test/image-grant.f), so its own
 \ settle only finds and dates them; a settle its closure does not show dies in
@@ -35,8 +33,6 @@ package GATE-IMAGES
 \ The family name each module checks its grant under (test/image-grant.f).
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" compiler-images" exit then
-   f WRITER = if s" fixture-writer" exit then
-   f COLD = if s" cold-engine" exit then
    f APP = if s" app-image" exit then
    f LINKER = if s" linker" exit then
    f WHITEBOX = if s" whitebox-engine" exit then
@@ -48,14 +44,12 @@ package GATE-IMAGES
 
 \ A family's prerequisites come before it here: DERIVE refuses a table that
 \ lists one after. A family whose module loads another's needs that one first
-\ (the cold host is the writer's output; the linker is built on the app image).
+\ (the linker is built on the app image).
 \ tools/check-verify-image.f is a tool, not a test adapter: it has no grant
 \ check, so a row that reaches it ungranted builds its own keyed image instead
 \ of dying.
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" test/compiler-images.f" exit then
-   f WRITER = if s" test/fixture-writer.f" exit then
-   f COLD = if s" test/cold-engine.f" exit then
    f APP = if s" test/app-image-engine.f" exit then
    f LINKER = if s" test/preloaded-engine.f" exit then
    f WHITEBOX = if s" test/whitebox-engine.f" exit then
@@ -69,8 +63,6 @@ package GATE-IMAGES
 \ the gate's private copy in place for the WHITEBOX-SUITE rows (WB$).
 : SETTLE$ ( n -- ptr u8 n ) {: f:n :}
    f COMPILER = if s" COMPILER-IMAGES:BUILD" exit then
-   f WRITER = if s" FIXTURE-WRITER:ENSURE" exit then
-   f COLD = if s" COLD-ENGINE:ENSURE" exit then
    f APP = if s" APP-IMAGE-ENGINE:ENSURE" exit then
    f LINKER = if s" PRELOADED-ENGINE:ENSURE" exit then
    f WHITEBOX = if s" WHITEBOX-ENGINE:PROVIDE" exit then

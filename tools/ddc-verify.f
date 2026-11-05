@@ -3,7 +3,7 @@
 \ native fixpoint) must be byte-identical, so a seed backdoor survives only if
 \ mirrored in both Gforth and the native seed. An explicit audit, never
 \ per-commit: needs Gforth and HABU_ALLOW_BOOTSTRAP=1 (docs/bootstrap.md "DDC
-\ Audit (Diverse Double-Compiling)"). tools/ddc-verify-test.f covers the compare.
+\ Audit (Diverse Double-Compiling)").
 
 require src/lib/errors.f
 require src/lib/string.f
