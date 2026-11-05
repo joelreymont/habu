@@ -2655,31 +2655,13 @@ private
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 
-: REFUSAL-KEEP ( n n ptr call -- n n ptr call )
-   {: kind:n code:n c :}
-   kind code c REFUSAL-PUT kind code c ;
-
-: CALL-NAME+ ( n ptr call -- )
-   {: kind:n c :}
-   kind 1 = if s" chat " LOG:TEXT+ c GEN$ else s" embed " LOG:TEXT+ c EMBED-MODEL$ then
-   LOG:TEXT+ ;
-
-\ One line for a journal put of kind 1 (chat) or 2 (embed) that threw the code.
-: REPORT-PUT ( n n ptr call -- )
-   {: kind:n put:n c :}
-   LOG:ERROR s" model" LOG:LINE
-   kind c CALL-NAME+
-   s"  journal put " LOG:TEXT+ put CODE$ LOG:TEXT+
-   LOG:;LINE ;
-
 \ Journals a live refusal so a replay meets it at the same step and asks for
-\ less with no request. The call's fault stays primary; a put fault is logged.
+\ less with no request. A put fault replaces the refusal as the call's fault.
 : JOURNAL-REFUSAL ( n n bool ptr call -- )
    {: kind:n code:n hit:bool c :}
    c MODEL-CALL:JOURNAL-READY @ 0= hit or if exit then
    code REFUSAL? 0= if exit then
-   kind code c [: REFUSAL-KEEP ;] catch {: put:n :} drop 2drop
-   put 0<> if kind put c REPORT-PUT then ;
+   kind code c REFUSAL-PUT ;
 
 : PREP-JOURNAL-CHAT ( ptr call -- )
    {: c :}
@@ -2785,7 +2767,8 @@ private
 : REPORT ( n n ptr call -- )
    {: kind:n code:n c :}
    code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
-   kind c CALL-NAME+
+   kind 1 = if s" chat " LOG:TEXT+ c GEN$ else s" embed " LOG:TEXT+ c EMBED-MODEL$ then
+   LOG:TEXT+
    s"  " LOG:TEXT+ c REQUEST-URL$ LOG:TEXT+
    c RESPONSE-ID$ nip 0<> if s"  " LOG:TEXT+ c RESPONSE-ID$ LOG:TEXT+ then
    s"  " LOG:TEXT+ code CODE$ LOG:TEXT+

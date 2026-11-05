@@ -1751,14 +1751,11 @@ variable KEYLESS-U
 : FAILING-PUT ( n ptr u8 n ptr u8 n -- ) 2drop 2drop drop E-RECORDER throw ;
 
 
-\ A journal put that throws while journaling a refusal is logged with its code,
-\ and the call still throws its own fault.
+\ A journal put that throws while journaling a refusal is the call's fault.
 : REFUSAL-PUT-FAULT ( -- )
    false JOURNAL-READY !
    0 [: JOURNAL-GET ;] [: FAILING-PUT ;] M MODEL:JOURNAL!
-   PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
-   SB-RESET s"  error model: chat test-generation journal put " SB-APPEND
-   E-RECORDER FMT:SB-INT SB-LOGGED ;
+   PURPOSE s" too-large" E-RECORDER FAILS ;
 
 
 \ Both producer configurations name this base.
