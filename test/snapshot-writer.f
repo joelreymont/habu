@@ -347,9 +347,9 @@ variable BAND-WID
    DATA-OFF 8 + PROT-BITS-OFF + wid 8 / + U8@
    wid 7 and rshift 1 and 0= 0= ;
 
-\ The lowest wordlist this image records as protected, skipping the two every
-\ boot path protects by rule: membership for such a wid comes only from the band
-\ the snapshot carried, which the warm probes test.
+\ The lowest dynamic wordlist this image records as protected: membership for
+\ such a wid comes only from the band the snapshot carried, which the warm
+\ probes test.
 : BAND-WID! ( -- )
    0 BAND-WID !
    PROT-WID-MAX FIRST-DYNAMIC-WID ?do

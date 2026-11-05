@@ -7,6 +7,7 @@
 require src/lib/byte-buffer.f
 require src/lib/string.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/code-span.f
 require src/habu/prof-abi.f
 require src/arch/x86-64/asm.f

@@ -1,6 +1,6 @@
 \ xref.f - live dictionary inspection words for the REPL and debug path, read
-\ through dbase@/ndict@; load after boot-cells.f and layout.f. It requires
-\ neither: the arm64 cold prefix loads it before it records the files it loaded
+\ through dbase@/ndict@; load after boot-cells.f, wl.f and layout.f. It requires
+\ none: the arm64 cold prefix loads it before it records the files it loaded
 \ (habu2.f EMIT-HOST-LOAD-PREFIX), so a require would load one twice. A
 \ cold-prefix row (boot-files.f BOOT-FILES) loaded after check-hook.f with no
 \ `0 set-check` span, so the engine build checks it. tools/check.f refuses it
@@ -16,7 +16,7 @@ require src/habu/native-observer-cells.f
 3 constant XREF-NAME-SLOT
 DICT-WORDLIST-SLOT constant XREF-WORDLIST-SLOT   \ src/core/util.f
 \ Two of the non-wordlist values a record's wordlist cell can carry: the live
-\ package marker BOOT:NAMESPACE-WL answers and RETIRED, src/habu/layout.f's
+\ package marker BOOT:NAMESPACE-WL answers and RETIRED, src/habu/wl.f's
 \ WL:RETIRED. The engine's hash index is keyed on the same cell, and
 \ XREF:RETIRE below and the checker overlay's record-wid! are the two writers
 \ that change it after a record is already in that index - see the
@@ -101,8 +101,7 @@ package XREF
 public
 \ Every marker is negative. RETIRED marks a retired word, whose row keeps code;
 \ RETIRED-NAMESPACE a retired package row; any other negative value is a live
-\ package row's marker. Capture (src/habu/aot-capture.f AOT-RPKG?) states
-\ PACKAGE-WL?'s rule.
+\ package row's marker.
 \ Whether a wordlist cell marks a package row, live or retired: its start and
 \ length cells hold wids, which no code span reader may take for a span.
 : PACKAGE-WL? ( n -- bool ) {: wid:n :}

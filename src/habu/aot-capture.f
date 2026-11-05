@@ -10,6 +10,7 @@ require src/habu/aot-arm.f
 require src/habu/aot-decl.f
 require src/habu/code-span.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/sites.f
 require src/habu/terminal-call.f
 require src/core/does-clause.f
@@ -51,9 +52,6 @@ CAST: AOT-N>U8 ( n -- ptr u8 )
 : AOT-RNPTR ( ptr n -- ptr u8 )
    dup AOT-REXT? if 24 + AOT-CELL@ AOT-N>U8 else BYTE-VIEW 24 + then ;
 : AOT-RWID ( ptr n -- n ) 40 + AOT-CELL@ ;                    \ [40] wordlist or a WL marker
-\ Every marker is negative; NAMESPACE is the only live one and RETIRED the only
-\ one whose row keeps code. The stage host runs this file with its own baked
-\ layout.f, so it names only those two (src/habu/xref.f XREF:PACKAGE-WL?).
 : AOT-RPKG? ( ptr n -- bool )                                   \ package row, live or retired
    AOT-RWID {: w:n :}  w 0 <  w WL:RETIRED <>  and ;
 : AOT-RRETIRED? ( ptr n -- bool )                               \ retired row, word or package
@@ -439,9 +437,9 @@ private
 
 \ A bare name is not an identity: on the chain SLOT@ lives in five wordlists and
 \ none globally. A site carries one of four scopes: a wid below
-\ FIRST-DYNAMIC-WID is a layout.f constant, the same in every engine, as wid 0
-\ is; an in-window wid is rebased like a record's; a wid the window did not
-\ create is carried by qualifying the name with its package's name, resolved
+\ FIRST-DYNAMIC-WID is a layout.f or wl.f constant, the same in every engine, as
+\ wid 0 is; an in-window wid is rebased like a record's; a wid the window did
+\ not create is carried by qualifying the name with its package's name, resolved
 \ through the compile qualifier path. Anything left is refused by name.
 $3A constant ACAP-QUAL-SEP                        \ ':' - the separator LFIND's qualifier scan looks for
 256 constant ACAP-QUAL-CAP
@@ -531,7 +529,7 @@ variable ACAP-P
 
 \ The scope column is not window-relative: a scope below FIRST-DYNAMIC-WID
 \ passes through as itself (sites carry OWNER-API-PRI-WID, 2), so relative
-\ offsets 1 and 2 would read as those wordlists, and an in-window scope ends the
+\ offsets 1 to 3 would read as those wordlists, and an in-window scope ends the
 \ build. None arises by structure: a site exists only for a callee outside the
 \ blob (ACAP-SITE-HERE, ACAP-BRANCH-HERE) and below the prelude mark, so its
 \ wordlist predates W0. Measured: all 12516 sites of a whole-tree image carry

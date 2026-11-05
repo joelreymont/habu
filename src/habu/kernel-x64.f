@@ -16,6 +16,7 @@ require src/core/does-clause.f
 require src/core/util.f
 require src/core/engine-error.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/native-observer-extension.f
 require src/habu/address-cells.f
 require src/habu/stack-abi.f

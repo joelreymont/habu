@@ -10,6 +10,7 @@ require src/os/linux-x86-64/elf.f
 require src/os/linux-x86-64/target-layout.f
 require src/habu/boot-cells.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/code-span.f
 require src/habu/primitive-registry.f
 require src/habu/kernel-x64.f

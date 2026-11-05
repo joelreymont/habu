@@ -5351,7 +5351,7 @@ package ENGINE-EMIT
 \ The OWNER-API wordlists (public=1, private=2; OWNER-API-PRI-WID marks the AOT
 \ direct-branch helpers) are always protected, pinned here because three paths
 \ populate the protected-WID table (cold init, AOT-REPL restore, snapshot
-\ restore). Dynamic wordlists start at FIRST-DYNAMIC-WID (3). Any other WID is one
+\ restore). Dynamic wordlists start at FIRST-DYNAMIC-WID. Any other WID is one
 \ bit in the PROT-BITS-OFF bitmap; one at or above PROT-WID-MAX answers "not
 \ protected", sound because prot-wid-add refuses to protect it. Preserves x5 x6 x7
 \ x9 x14.

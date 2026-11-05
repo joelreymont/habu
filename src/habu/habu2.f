@@ -3955,7 +3955,7 @@ package DEFWRITE
 : FRESH, ( label -- ) {: bad:label :}
    WLFIND:LENTRY LABEL@ BL,  12 bad CBNZ, ;
 
-\ Wid x2 is one of layout.f's WL markers, not a wordlist: every wordlist id
+\ Wid x2 is one of wl.f's WL markers, not a wordlist: every wordlist id
 \ is at least 0.
 : REAL-WID, ( label -- ) {: bad:label :}
    2 0 CMPI,  C-LT bad BCOND, ;
@@ -4244,7 +4244,7 @@ variable LREPLAYTRAP
 \ and later gives it back the wid it logged, in reverse order. The wid cell is
 \ half the record's hash key, and a compaction between the two re-keys the
 \ retired record on RETIRED's chain, so after each store the record is indexed
-\ under the wid it now holds (HIDX-EMIT:LREKEY, src/habu/layout.f WL).
+\ under the wid it now holds (HIDX-EMIT:LREKEY, src/habu/wl.f).
 \ Between a restore and replay-close one wordlist can hold two live records of
 \ one name, the restored record and a replay record, and the hash probe and
 \ the wordlist scan may answer with different ones. The owner ends every such
@@ -6960,7 +6960,7 @@ public
       25 21 8 LDRW,                                  \ x25 = callee scope u32 (survives the lookup)
       5 WID-QUAL LIT64,  25 5 CMP,  C-EQ pqual BCOND,
       25 FIRST-DYNAMIC-WID CMPI,  C-CC pscope BCOND, \ layout constant: this number in every engine
-      \ The column cannot carry a window coordinate while this test reads 1 and 2
+      \ The column cannot carry a window coordinate while this test reads 1 to 3
       \ as wordlists (OWNER-API-PRI-WID is 2): aot-capture.f ACAP-SITE-SCOPE
       \ refuses an in-window scope and aot-file.f a merged one, so a column that
       \ spells one is corrupt and is refused, never rebased.

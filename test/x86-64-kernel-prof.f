@@ -6,6 +6,7 @@
 \ case's word states what it checks.
 require src/habu/boot-cells.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/stack-abi.f
 require src/habu/prof-abi.f
 require src/os/linux-x86-64/target-layout.f

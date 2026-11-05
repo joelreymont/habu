@@ -27,6 +27,7 @@ require src/os/env-base.f
 require src/habu/stack-abi.f
 require src/habu/boot-cells.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/rt.f
 require src/habu/crash.f
 require src/habu/xref.f

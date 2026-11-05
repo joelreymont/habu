@@ -127,22 +127,7 @@ REGION DICT-SIZE - constant BYTES
 16 constant DNAME-INL
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
-3 constant FIRST-DYNAMIC-WID
-\ The wordlist cell's non-wordlist values. A package row keeps its public and
-\ private wids where a word keeps its code span (xref.f XREF:PACKAGE-WL?).
-package WL
-public
-\ The marker BOOT:NAMESPACE-WL-CELL holds at boot: a live package row's.
--1 constant NAMESPACE
-\ A retired record's; the row stays on its old hash chain (habu1.f WLFIND).
--2 constant RETIRED
-\ A package row a rollback retired (habu1.f EM-DEF-OCC:LRETIRE); no lookup is
-\ keyed on it.
--3 constant RETIRED-NAMESPACE
-\ WL:MAX is the largest value a wordlist id may take; it bounds every
-\ WID-indexed table and the snapshot's registry validation.
-$FFFFFFFE constant MAX
-;package
+4 constant FIRST-DYNAMIC-WID
 \ A `constant` or `create`d word pushes one decided value, and a compiled mention
 \ means that value. Only the definer knows this: the value lives in emitted
 \ instructions the region rule below forbids reading, and running a word to ask

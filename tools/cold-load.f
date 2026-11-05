@@ -194,6 +194,7 @@ create ROOT KEEP align
    s" src/core/checker-owner-extension.f" FILE
    s" src/core/checker-owner-abi.f" FILE
    s" src/habu/boot-cells.f" FILE
+   s" src/habu/wl.f" FILE
    s" src/habu/created-body-abi.f" FILE
    s" src/habu/prims.f" FILE
    s" src/core/does-clause.f" FILE

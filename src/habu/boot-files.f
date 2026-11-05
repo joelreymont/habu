@@ -55,6 +55,7 @@ private
    CHECKER COMMON s" src/core/checker-owner-extension.f" ROW
    CHECKER COMMON s" src/core/checker-owner-abi.f" ROW
    CHECKER COMMON s" src/habu/boot-cells.f" ROW
+   CHECKER COMMON s" src/habu/wl.f" ROW
    CHECKER COMMON s" src/habu/created-body-abi.f" ROW
    CHECKER COMMON s" src/habu/prims.f" ROW
    CHECKER COMMON s" src/core/does-clause.f" ROW

@@ -40,7 +40,7 @@ $7FFFFFFF constant CODE-SPAN:MASK
 16      constant DNAME-INL
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
-3 constant FIRST-DYNAMIC-WID
+4 constant FIRST-DYNAMIC-WID
 $FFFFFFFE constant WL:MAX
 18 constant DNAME-FLAG-BITS      \ bits 46-63 above the name length; name reads clear them
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK

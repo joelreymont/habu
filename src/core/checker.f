@@ -11394,7 +11394,7 @@ PRIM: RD32           PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
 PPRIM: ERROR-TEXT LINE PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: ERROR-TEXT DIGITS$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PPRIM: ERROR-TEXT TYPE PE-PTR-U8 PE-IN PE-N PE-IN PPRIM;
-\ src/habu/boot-cells.f's words, defined before the checker.
+\ src/habu/boot-cells.f's and src/habu/wl.f's words, defined before the checker.
 PPRIM: BOOT HEAP-START-CELL PE-N PE-OUT PPRIM;
 PPRIM: BOOT DP-FLOOR-CELL PE-N PE-OUT PPRIM;
 PPRIM: BOOT DP-CEILING-CELL PE-N PE-OUT PPRIM;
@@ -11404,6 +11404,12 @@ PPRIM: BOOT IMAGE-BASE-CELL PE-N PE-OUT PPRIM;
 PPRIM: BOOT GLOBAL-WL PE-N PE-OUT PPRIM;
 PPRIM: BOOT NAMESPACE-WL PE-N PE-OUT PPRIM;
 PPRIM: BOOT USER-END PE-N PE-OUT PPRIM;
+PPRIM: WL NAMESPACE PE-N PE-OUT PPRIM;
+PPRIM: WL RETIRED PE-N PE-OUT PPRIM;
+PPRIM: WL RETIRED-NAMESPACE PE-N PE-OUT PPRIM;
+PPRIM: WL MAX PE-N PE-OUT PPRIM;
+PPRIM: WL PRIMITIVES PE-N PE-OUT PPRIM;
+PPRIM: WL GLOBAL? PE-N PE-IN PE-F PE-OUT PPRIM;
 PRIM: DIAG-FILE!     PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-ORIGIN!   PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-SOURCE!   PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
@@ -12541,7 +12547,6 @@ variable FLOOR0                            \ CHECKER-USE:SOURCE-FLOOR when it op
 \ The engine's PKG-OUTSIDE-CELL when it opened: the replay's scopes move that
 \ cell as the engine's buffers do, and CLOSE puts it back.
 variable OUTSIDE0
--2 constant RETIRED                        \ = layout.f WL:RETIRED
 $4E constant DUPLICATE                     \ E-DUPLICATE-DEFINITION, as CHECKER-DUP-DEFINITION throws it
 
 \ The undo log, at most one pair per record: a replayed `undefine`'s index and
@@ -12766,7 +12771,7 @@ variable SNAP-N
 
 : LOG-RETIRE ( n n -- ) {: ix:n wid:n :}
    ix wid LOG!
-   RETIRED ix record-wid! ;
+   WL:RETIRED ix record-wid! ;
 
 \ Give namespace row REC, which has no private wordlist, one until the log is
 \ undone, as `package` gives one to a row a qualified definition made
@@ -12866,7 +12871,7 @@ public
    rec REC>IX {: ix:n :}
    ix rec CK-REC-WID HIDDEN HIDDEN-N @ PAIR!
    HIDDEN-N @ 1 + HIDDEN-N !
-   RETIRED ix record-wid! ;
+   WL:RETIRED ix record-wid! ;
 
 : UNHIDE ( -- )
    BEGIN HIDDEN-N @ 0 > WHILE
@@ -16232,7 +16237,6 @@ REG-EXT-AOT-DEFAULTS
 4 constant RLINK.FIXED-KIND
 5 constant RLINK.FIXED-VALUE
 6 constant RLINK.GRID
--2 constant RECORD-RETIRED
 package CHECKER-REG
 public
 defer RECORD-FIXED-READ-XT ( ptr n -- n n bool )
@@ -16649,7 +16653,7 @@ variable BODY-PEND-BASE   0 BODY-PEND-BASE !
    -1 BODY-PEND-ORD !  0 BODY-PEND-OCC !  0 BODY-PEND-BASE !
    ord 0 < ord ndict@ >= or IF EXIT THEN
    ord occ RECORD-LINK-MATCH? 0= IF EXIT THEN
-   ord CHECKER-RESOLVE:REC-AT CK-REC-WID RECORD-RETIRED = IF EXIT THEN
+   ord CHECKER-RESOLVE:REC-AT CK-REC-WID WL:RETIRED = IF EXIT THEN
    ord CHECKER-BODY-ALLOC? 0= IF EXIT THEN
    ord RECORD-LINK-CAP @ < IF
       ord RECORD-LINK-CELL RLINK.GRID cells + @ 0 <> IF EXIT THEN
@@ -31248,7 +31252,7 @@ public
          row RLINK.GRID cells + @ {: grid:n :}
          grid 0 <> IF
             grid RECORD-GRID-REC {: rec:ptr :}
-            i CHECKER-RESOLVE:REC-AT CK-REC-WID RECORD-RETIRED =
+            i CHECKER-RESOLVE:REC-AT CK-REC-WID WL:RETIRED =
             rec ER.STORAGE-OFF @ rec ER.STORAGE-N @ cells + used > or IF
                row RECORD-GRID-DISCARD
             THEN
@@ -31494,7 +31498,6 @@ $4398 constant CK-DECLARED-LOG-CELL     \ = layout.f DECLARED-LOG:ADDR-CELL
 8 constant CK-DLOG-PKG-OFF              \ = layout.f DECLARED-LOG:PKG-OFF
 16 constant CK-DLOG-SIG-A-OFF           \ = layout.f DECLARED-LOG:SIG-A-OFF
 24 constant CK-DLOG-SIG-U-OFF           \ = layout.f DECLARED-LOG:SIG-U-OFF
--2 constant CK-WL-RETIRED               \ = layout.f WL:RETIRED
 0 constant CK-NS-PUBLIC-SLOT            \ = xref.f XREF-START-SLOT
 1 constant CK-NS-PRIVATE-SLOT           \ = xref.f XREF-LEN-SLOT
 
@@ -31535,7 +31538,7 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
 : CK-DLOG-ROW ( ptr n n -- )
    {: log:ptr i:n :}
    log i CK-DLOG-REC-OFF CK-DLOG-AT DLOG-CELL @ {: rec:ptr :}
-   rec CK-REC-WID CK-WL-RETIRED = IF EXIT THEN
+   rec CK-REC-WID WL:RETIRED = IF EXIT THEN
    rec log i CK-DLOG-PKG-OFF CK-DLOG-AT DLOG-CELL @ CK-DLOG-SYM {: sym:n :}
    sym CHECKER-FIND-USIG-SYM IF EXIT THEN
    sym

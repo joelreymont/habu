@@ -68,6 +68,7 @@ require src/lib/le.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
 require src/habu/layout.f
+require src/habu/wl.f
 require src/habu/aot-decl.f
 require src/habu/aot-arm.f
 require src/habu/address-cells.f
