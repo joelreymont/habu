@@ -81,10 +81,10 @@ public
 \ primitive, even a successful one or a nested call, replaces it. Zero means a
 \ semantic refusal (path capacity, a malformed path). It covers fs.f,
 \ fs-list.f, fs-anchored.f and fs-mutate.f's REMOVE-TREE, MKDIR-MODE, MAKE-DIR,
-\ MAKE-DIRS, ATOMIC-WRITE-FILE, ATOMIC-WRITE-PRIVATE, FS:RESERVE-SIBLING and
-\ REPLACE-STAGED, whose cleanup after a failure keeps the first failure's cause;
-\ the identity, lock and other mutation helpers do not set it. The throws stay
-\ the primary contract.
+\ MAKE-DIRS, ATOMIC-WRITE-FILE, ATOMIC-WRITE-PRIVATE, ATOMIC-CREATE-PRIVATE,
+\ FS:RESERVE-SIBLING and REPLACE-STAGED, whose cleanup after a failure keeps the
+\ first failure's cause; the identity, lock and other mutation helpers do not
+\ set it. The throws stay the primary contract.
 : ERRNO ( -- n )
    data-base FS-ABI:ERRNO-OFF + @ ;
 

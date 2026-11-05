@@ -9,8 +9,11 @@ require src/lib/test/wait.f
 
 \ The private FS words this test reads, forwarded into its own package.
 package FS
-: FS-NOREPLACE-TEST:RENAME-NOREPLACE ( ptr u8 n ptr u8 n -- bool ) RENAME-NOREPLACE ;
+: FS-NOREPLACE-TEST:RENAME-NOREPLACE ( ptr u8 n ptr u8 n -- bool )
+   {: src:ptr srcu dst:ptr dstu :}
+   AT-CWD src srcu >PATHZ dst dstu >PATHZ2 RENAME-NOREPLACE ;
 : FS-NOREPLACE-TEST:READ-LINK ( ptr u8 n SPAN:span<u8> -- n ) READ-LINK ;
+: FS-NOREPLACE-TEST:ENOENT ( -- n ) ENOENT ;
 ;package
 
 package FS-NOREPLACE-TEST
@@ -157,6 +160,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
 
 : OTHER-ERRORS ( -- )
    [: MISSING-SOURCE ;] E-FS-IO TTHROWSQ
+   FS:ERRNO ENOENT T=
    SOURCE FS:TRY-LSTAT TFALSE
    DEST FS:TRY-LSTAT TFALSE
    SOURCE s" source bytes" FS:WRITE-ALL
@@ -204,6 +208,7 @@ TASK:MIN-STACK TASK:TASK WORKER-B
    ACL-ADD
    true ACL-ON !
    [: SOURCE DEST RENAME-NOREPLACE drop ;] E-FS-IO TTHROWSQ
+   FS:ERRNO FS:EACCES T=
    SOURCE FS:FILE? TTRUE
    DEST FS:FILE? TTRUE
    SOURCE-CONTENT

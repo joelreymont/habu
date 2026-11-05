@@ -27,7 +27,8 @@ package FS
 : FS-TEST:MODE-PERM ( -- n ) MODE-PERM ;
 : FS-TEST:CLEANUP-COUNT ( -- n ) CLEANUP-N @ ;
 : FS-TEST:ATOMIC-BASE-OFF ( ptr u8 n -- n ) ATOMIC-BASE-OFF ;
-: FS-TEST:ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- ) false ATOMIC-WRITE-SEED ;
+: FS-TEST:ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n -- )
+   false false ATOMIC-WRITE-SEED drop ;
 : FS-TEST:MODE-DIR ( -- n ) MODE-DIR ;
 : FS-TEST:BUILD-TEMP-TRY ( ptr u8 n ptr u8 n n n -- ptr u8 n ) BUILD-TEMP-TRY ;
 : FS-TEST:MKTEMP-DIR-SEED ( ptr u8 n ptr u8 n n -- ptr u8 n ) MKTEMP-DIR-SEED ;
@@ -709,6 +710,7 @@ public
 
 package FS-TEST
 $C0 constant MODE-0300
+$140 constant MODE-0500
 create DROP-BOX-BUF PATH-CAP allot
 variable DROP-BOX-U
 
@@ -769,6 +771,42 @@ public
    FMT-REMOVE-PATH FS:REMOVE-FILE
    PRIVATE-OUT$ s" default" FS:ATOMIC-WRITE-FILE
    s" default" fresh PRIVATE-IS
+   PRIVATE-OUT$ FS:REMOVE-FILE
+   PRIVATE-DIR$ FS:REMOVE-DIR ;
+
+
+\ FS:ATOMIC-CREATE-PRIVATE publishes 0600 only to a free name; a taken one keeps
+\ text and mode, in a 0300 or 0500 directory too; REMOVE-DIR shows no sibling.
+: ATOMIC-CREATE ( -- )
+   FMT-ROOT$ s" create" PRIVATE-DIR-BUF FS:JOIN-PATH PRIVATE-DIR-U !
+   PRIVATE-DIR$ s" out.txt" PRIVATE-OUT-BUF FS:JOIN-PATH PRIVATE-OUT-U !
+   PRIVATE-DIR$ FS:MAKE-DIR
+   PRIVATE-OUT$ s" first" FS:ATOMIC-CREATE-PRIVATE TTRUE
+   s" first" FMT-MODE-0600 PRIVATE-IS
+   PRIVATE-OUT$ s" second" FS:ATOMIC-CREATE-PRIVATE TFALSE
+   s" first" FMT-MODE-0600 PRIVATE-IS
+   PRIVATE-OUT$ FS:REMOVE-FILE
+   PRIVATE-OUT$ s" written" FS:WRITE-ALL
+   PRIVATE-OUT$ FS:STAT-MODE FS-TEST:MODE-PERM and {: written:n :}
+   PRIVATE-OUT$ s" second" FS:ATOMIC-CREATE-PRIVATE TFALSE
+   s" written" written PRIVATE-IS
+   PRIVATE-OUT$ FS:REMOVE-FILE
+   PRIVATE-DIR$ MODE-0300 FS:CHMOD-MODE
+   false false
+   [: 2drop PRIVATE-OUT$ s" boxed" FS:ATOMIC-CREATE-PRIVATE
+      PRIVATE-OUT$ s" again" FS:ATOMIC-CREATE-PRIVATE ;] catch {: code:n :}
+   PRIVATE-DIR$ FS-TEST:MODE-DIR FS:CHMOD-MODE
+   code 0 T=
+   code 0= if TFALSE TTRUE else 2drop then
+   s" boxed" FMT-MODE-0600 PRIVATE-IS
+   PRIVATE-DIR$ MODE-0500 FS:CHMOD-MODE
+   false
+   [: drop PRIVATE-OUT$ s" refused" FS:ATOMIC-CREATE-PRIVATE ;]
+   catch {: denied:n :}
+   PRIVATE-DIR$ FS-TEST:MODE-DIR FS:CHMOD-MODE
+   denied 0 T=
+   denied 0= if TFALSE else drop then
+   s" boxed" FMT-MODE-0600 PRIVATE-IS
    PRIVATE-OUT$ FS:REMOVE-FILE
    PRIVATE-DIR$ FS:REMOVE-DIR ;
 ;package
@@ -1875,6 +1913,7 @@ public
    FMT-TEST-ATOMIC-FAILURE
    FS-TEST:ATOMIC-SEARCH-DIR
    FS-TEST:ATOMIC-PRIVATE
+   FS-TEST:ATOMIC-CREATE
    FMT-TEST-STAGED-PRIMARY
    FMT-TEST-DIRS
    FMT-TEST-DIRS-DENIED

@@ -164,19 +164,17 @@ public
 private
 PROCESS-SYMBOLS
 FUNCTION: LINK-CALL link ( ptr u8 ptr u8 -- i32 ) ;FUNCTION
-: LINK-NEW? ( ptr u8 ptr u8 -- bool )
-   LINK-CALL 0<> if
-      FFI:ERRNO EEXIST = if false exit then
-      E-FS-IO throw
-   then
-   true ;
+FUNCTION: LINKAT-CALL linkat ( n ptr u8 n ptr u8 n -- i32 ) ;FUNCTION
 
-\ The link claims the destination atomically. The caller owns a regular-file
-\ source on the same filesystem until this call returns. Source removal is a
-\ second step; if it fails, the published destination stays and E-FS-IO throws.
-: RENAME-NOREPLACE ( ptr u8 n ptr u8 n -- bool ) {: src:ptr srcu dst:ptr dstu :}
-   src srcu >PATHZ dst dstu >PATHZ2 LINK-NEW? 0= if false exit then
-   src srcu REMOVE-FILE
+\ Links NUL-terminated src to dst in dir, then unlinks src; false, src kept, if
+\ dst names an entry. A failed unlink is E-FS-IO, dst published. One mount.
+: RENAME-NOREPLACE ( n ptr u8 ptr u8 -- bool )
+   {: dir src:ptr dst:ptr :}
+   dir src dir dst 0 LINKAT-CALL 0<> if
+      FFI:ERRNO EEXIST = if false exit then
+      E-FS-IO ERRNO-FAIL
+   then
+   dir src 0 UNLINK-AT-CALL 0<> if E-FS-IO ERRNO-FAIL then
    true ;
 
 public
@@ -689,11 +687,10 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    then
    code cause CAUSE-FAIL ;
 
-\ Stack-preserving under `catch`, so the caller closes dir however it ends. The
-\ sibling's descriptor is closed once whatever the write met; a throw after the
-\ rename leaves the new file in place.
-: ATOMIC-IN-DIR ( n ptr u8 n ptr u8 n n n -- n ptr u8 n ptr u8 n n n )
-   {: dir dst:ptr off src:ptr srcu mode seed :}
+\ Stack-preserving under `catch`; a throw after the publish leaves the new file.
+\ Answers whether it published; a claim on a taken name unlinks the sibling.
+: ATOMIC-IN-DIR ( n ptr u8 n ptr u8 n n n bool -- n ptr u8 n ptr u8 n n n bool )
+   {: dir dst:ptr off src:ptr srcu mode seed claim?:bool :}
    mode 0 >= if MODE-PRIVATE-FILE else MODE-0644 then {: create-mode :}
    dir seed create-mode ATOMIC-RESERVE-AT {: nameu fd :}
    fd src srcu mode [: ATOMIC-FILL ;] catch {: write-code:n :}
@@ -705,29 +702,33 @@ FUNCTION: FCNTL-CALL fcntl ( n n n -- i32 ) 2 VARIADIC ;FUNCTION
    fd [: ATOMIC-CLOSE ;] catch {: close-code:n :}
    drop
    close-code 0<> if dir dst off nameu close-code ATOMIC-ABANDON then
-   dir dst off + [: ATOMIC-PUBLISH ;] catch {: rename-code:n :}
+   dir dst off + claim?
+   [: if 2dup SIBLING-Z swap RENAME-NOREPLACE else ATOMIC-PUBLISH true then ;]
+   catch {: publish-code:n :}
+   publish-code 0<> if dir dst off nameu publish-code ATOMIC-ABANDON then
+   {: published:bool :}
    2drop
-   rename-code 0<> if dir dst off nameu rename-code ATOMIC-ABANDON then
-   dir ATOMIC-SYNC-DIR drop
-   dir dst off src srcu mode seed ;
+   published if dir ATOMIC-SYNC-DIR drop else dir ATOMIC-UNLINK drop then
+   dir dst off src srcu mode seed published ;
 
-\ The sibling and the destination are named relative to the destination's
-\ directory, so no sibling path is joined and only the destination's absolute
-\ spelling meets PATH-CAP. A private write publishes 0600; any other gives an
-\ existing regular destination's mode, else 0644 under the umask.
-: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n bool -- )
-   {: path:ptr pathu src:ptr srcu seed private?:bool :}
+\ PATH-CAP bounds only dst: the sibling is named in dst's directory. Private is
+\ 0600, else the old regular mode or umasked 0644; false if claimed and taken.
+: ATOMIC-WRITE-SEED ( ptr u8 n ptr u8 n n bool bool -- bool )
+   {: path:ptr pathu src:ptr srcu seed private?:bool claim?:bool :}
    srcu 0 < if CAUSE-CLEAR E-FS-CAPACITY throw then
    path pathu ATOMIC-TARGET {: dst:ptr dstu :}
    dstu PATHZ2-BUF FFI:CSTR! drop
+   claim? if dst dstu TRY-LSTAT if false exit then then
    private? if MODE-PRIVATE-FILE else dst dstu ATOMIC-OLD-MODE then {: mode:n :}
    dst dstu ATOMIC-OPEN-DIR {: dir :}
-   dir dst dst dstu ATOMIC-BASE-OFF src srcu mode seed
+   dir dst dst dstu ATOMIC-BASE-OFF src srcu mode seed claim?
    [: ATOMIC-IN-DIR ;] catch {: code:n :}
-   2drop 2drop 2drop drop
    ERRNO {: cause :}
    dir CLOSE-FD drop
-   code 0<> if code cause CAUSE-FAIL then ;
+   code 0<> if code cause CAUSE-FAIL then
+   {: published:bool :}
+   2drop 2drop 2drop drop
+   published ;
 
 public
 \ Create and open the unique `.tmp-*` sibling in path's directory, for a writer
@@ -750,15 +751,23 @@ public
 \ Replace path's file with src's bytes; a reader or crash sees the old or whole
 \ new file. On return it survives power loss (F_FULLFSYNC on macOS, else fsync)
 \ unless the directory is unlistable on Linux; E-FS-IO may follow the rename.
-: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu ATOMIC-SEED false ATOMIC-WRITE-SEED ;
+: ATOMIC-WRITE-FILE ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu src:ptr srcu :}
+   path pathu src srcu ATOMIC-SEED false false ATOMIC-WRITE-SEED drop ;
 
 
 \ ATOMIC-WRITE-FILE for a file only its owner may read: the sibling is created
 \ 0600 and the published file is 0600 whatever the destination held.
 : ATOMIC-WRITE-PRIVATE ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu src:ptr srcu :}
-   path pathu src srcu ATOMIC-SEED true ATOMIC-WRITE-SEED ;
+   path pathu src srcu ATOMIC-SEED true false ATOMIC-WRITE-SEED drop ;
+
+
+\ ATOMIC-WRITE-PRIVATE to a free name, else false, the entry untouched. A final
+\ symlink counts as its target, a dangling one E-FS-STAT.
+: ATOMIC-CREATE-PRIVATE ( ptr u8 n ptr u8 n -- bool )
+   {: path:ptr pathu src:ptr srcu :}
+   path pathu src srcu ATOMIC-SEED true true ATOMIC-WRITE-SEED ;
 
 
 \ The longest base FS:MKTEMP-DIR-IN makes its temp in for a prefix of n bytes:
