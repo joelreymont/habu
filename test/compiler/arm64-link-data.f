@@ -1,17 +1,17 @@
 \ arm64-link-data.f - LINKER's link of a stripped build's DATA. Inside one
-\ build, after ARM64:KERNEL, LINK-STRIPPED roots the closure at every xt cell's
-\ value and appends the space's bytes and the DATA list after the routine band:
-\ an xt cell's copy holds its routine's link address and is listed, a
-\ quotation's included; a scratch cell's copy is 0 and a DATA pointer's DATA-VA
-\ plus its target's offset, neither listed; a plain cell's is its bytes; a
-\ placed data address site gives DATA-VA plus the variable's offset, and a
-\ variable reached only by data addresses is not placed. The header's DP and
-\ its bounds are the build's at DATA-VA; its heap start, namespace marker and
-\ signal fd pointer are hb's own; its code cells are listed once, and the entry
-\ a build stores with xt! into APP-ENTRY:XT-CELL holds its link address. Every
-\ listed cell holds an address in the product's code. A second link gives the
-\ same bytes. One process: the boundary under test is in-process; only the
-\ refusals run in children.
+\ build, after the start-up and the kernel, LINK-STRIPPED roots the closure at
+\ every xt cell's value and appends the space's bytes and the DATA list after
+\ the routine band: an xt cell's copy holds its routine's link address and is
+\ listed, a quotation's included; a scratch cell's copy is 0 and a DATA
+\ pointer's DATA-VA plus its target's offset, neither listed; a plain cell's is
+\ its bytes; a placed data address site gives DATA-VA plus the variable's
+\ offset, and a variable reached only by data addresses is not placed. The
+\ header's DP and its bounds are the build's at DATA-VA; its heap start,
+\ namespace marker and signal fd pointer are hb's own; its code cells are listed
+\ once, and the entry a build stores with xt! into APP-ENTRY:XT-CELL holds its
+\ link address. Every listed cell holds an address in the product's code. A
+\ second link gives the same bytes. One process: the boundary under test is
+\ in-process; only the refusals run in children.
 \ Fixture words are LD- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -78,8 +78,8 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 \ How many times the DATA list holds offset off.
 : LIST-COUNT ( n -- n )
    {: off:n :}
-   0  DATA-LIST-N @ 0 ?do
-      A64ICODE:CODE DATA-LIST-AT @ + i 8 * + LE:U64@
+   0  DATA-LIST-N 0 ?do
+      A64ICODE:CODE DATA-LIST-AT + i 8 * + LE:U64@
       off = if 1 + then
    loop ;
 
@@ -176,12 +176,12 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 : IN-CODE? ( n -- bool )
    {: off:n :}
    off COPY-AT LE:U64@ {: v:n :}
-   v TEXT-VA >=  v TEXT-VA DATA-IMAGE-AT @ + <=  and ;
+   v TEXT-VA >=  v TEXT-VA DATA-IMAGE-AT + <=  and ;
 
 : LIST-CASE ( -- )
    s" list: every listed cell holds an address in the product's code" T-LABEL
-   true  DATA-LIST-N @ 0 ?do
-      A64ICODE:CODE DATA-LIST-AT @ + i 8 * + LE:U64@ IN-CODE? and
+   true  DATA-LIST-N 0 ?do
+      A64ICODE:CODE DATA-LIST-AT + i 8 * + LE:U64@ IN-CODE? and
    loop
    TTRUE ;
 
@@ -193,12 +193,11 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    s" LD-V" PLACED? TFALSE ;
 
 
-\ The kernel and a link again from an empty code buffer.
+\ A link again from an empty code buffer.
 : SECOND-CASE ( -- )
    A64ICODE:ASM-LEN {: len:n :}
    len FIRST-LINK-RESERVE
    A64ICODE:CODE  0 FIRST-LINK  len BYTE-COPY
-   ARM64:KERNEL
    LINK-STRIPPED
    s" a second link gives the same code buffer bytes" T-LABEL
    A64ICODE:ASM-LEN len T=
@@ -209,7 +208,6 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
 : BODY ( -- )
    FIXTURE
    STORE-ENTRY
-   ARM64:KERNEL
    LINK-STRIPPED
    XT-CASE QUOTE-CASE DATA-CASE HEADER-CASE LIST-CASE CHAIN-CASE
    SECOND-CASE ;

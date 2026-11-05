@@ -1,6 +1,6 @@
-\ link-kernel.f - the arm64 kernel at the head of a product's code, and the map
-\ from the running hb's kernel primitive entries to the product kernel's. The
-\ two kernels bake different inputs, so the map goes by name and wordlist.
+\ link-kernel.f - the arm64 kernel after a product's start-up, and the map from
+\ the running hb's kernel primitive entries to the product kernel's. The two
+\ kernels bake different inputs, so the map goes by name and wordlist.
 require src/lib/string.f
 require src/arch/arm64/asm.f
 require src/arch/arm64/icode.f
@@ -123,12 +123,13 @@ public
    ENGINE-PRIMS:FIRST-LABEL LABEL>N A64ICODE:LBLP @ 4 * ;
 
 
-\ The kernel starts at offset 0 of A64ICODE's code buffer and the product's
-\ own code at A64ICODE:ASM-LEN. ENGINE-EMIT:FORTH binds no C2 entries.
-: KERNEL ( -- )
+\ Code emitted between OPEN and KERNEL, the start-up, precedes the kernel; the
+\ product's own code follows KERNEL. No C2 entry is bound.
+: OPEN ( -- )
    0 0= STDIN? !
-   NULL$ ENGINE-EMIT:FORTH
-   HOST-ENTRIES ;
+   NULL$ ENGINE-EMIT:OPEN ;
+
+: KERNEL ( -- ) ENGINE-EMIT:KERNEL HOST-ENTRIES ;
 
 
 \ The product kernel offset of the primitive that enters the running hb at the

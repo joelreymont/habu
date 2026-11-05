@@ -25,7 +25,6 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 : DATA-BODY ( -- )
    s" variable LD-BAD  1 LD-BAD !  LD-BAD ptr-cell-mark" evaluate-closed
    s" ARM64-LINK-DATA-BAD-ARMED" type cr
-   ARM64:KERNEL
    LINK-STRIPPED
    s" arm64-link-data-bad: the DATA pointer was not refused" 1 die ;
 
@@ -35,7 +34,6 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    s" LD-HB" XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
    data-base UNCGH-CELL + xt!
    s" ARM64-LINK-DATA-BAD-ARMED" type cr
-   ARM64:KERNEL
    LINK-STRIPPED
    s" arm64-link-data-bad: the header store was not refused" 1 die ;
 
