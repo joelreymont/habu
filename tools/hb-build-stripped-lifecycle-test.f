@@ -6,7 +6,6 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/linker-builder-engine.f
 require test/aot-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
@@ -102,10 +101,6 @@ package HB-BUILD-CLI
    HBT-LIFE-OUT HBT-REMOVE-FILE? ;
 
 \ ... PARSES A NUMBER, REGISTERS a hook, runs it at exit and prints from it.
-\ src/lib/process-argv.f and src/lib/fmt.f are modules of the linker's lib closure the
-\ engine does not bake, and the linker image refuses this program at
-\ PROC-ARGV+ (E-AOT-PRE-WINDOW, test/preloaded-engine.f rule 3), so it builds
-\ on the engine.
 : HBT-STRIPPED-LIFECYCLE-HOOK ( -- )
    HBT-HOOK-SRC HBT-HOOK-SRC$ FS:WRITE-ALL
    HBT-HOOK-OUT HBT-REMOVE-FILE?
@@ -124,8 +119,7 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-LIFECYCLE-MAIN ( -- )
    T-RESET
-   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
-   AOT-BUILDER-ENGINE:ENSURE
+   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-LIFECYCLE-REGISTRY
    HBT-STRIPPED-LIFECYCLE-HOOK

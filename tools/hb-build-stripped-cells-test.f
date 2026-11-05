@@ -9,7 +9,7 @@
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/linker-builder-engine.f
+require test/aot-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
@@ -66,7 +66,7 @@ package HB-BUILD-CLI
    SB$ ;
 
 \ A long zero run ends at an unaligned mapped address. This adds the raw-byte
-\ transition to the aligned and declared-cell cases on the same keyed linker.
+\ transition to the aligned and declared-cell cases on the same builder.
 : HBT-MAPB-SRC$ ( -- ptr u8 n )
    SB-RESET
    S\" require src/lib/memory.f\ncreate BUF 64 allot\n" SB-APPEND
@@ -128,7 +128,7 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-CELLS-MAIN ( -- )
    T-RESET
-   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
+   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-MAPPED-CELL
    HBT-STRIPPED-MAPPED-DECLARED

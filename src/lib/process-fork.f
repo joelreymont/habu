@@ -28,8 +28,7 @@ private
 \ src/lib/fs-mutate.f and src/lib/process-tree.f belong to the AOT linker's lib closure
 \ (src/habu/app-image-core.f), which loads above an application's window while
 \ it is linked: a reset either one registered as it loaded would land in the
-\ application's registry with code and cells the image does not carry
-\ (tools/hb-build-stripped-test.f HBT-STRIPPED-FORK).
+\ application's registry with code and cells the image does not carry.
 \
 \ The fs cleanup table is process-owned state: its entries name paths THIS
 \ process created and promised to remove, and FS:CLEANUP-RUN deletes every entry

@@ -22,10 +22,9 @@ package GATE-IMAGES
 2 constant LINKER
 3 constant WHITEBOX
 4 constant AOT-BUILDER
-5 constant LINKER-BUILDER
-6 constant APP-BUILDER
-7 constant CHECK-VERIFY
-8 constant FAMILY-N
+5 constant APP-BUILDER
+6 constant CHECK-VERIFY
+7 constant FAMILY-N
 
 \ Each row is granted the images settled for it (test/image-grant.f), so its own
 \ settle only finds and dates them; a settle its closure does not show dies in
@@ -37,7 +36,6 @@ package GATE-IMAGES
    f LINKER = if s" linker" exit then
    f WHITEBOX = if s" whitebox-engine" exit then
    f AOT-BUILDER = if s" aot-builder" exit then
-   f LINKER-BUILDER = if s" linker-builder" exit then
    f APP-BUILDER = if s" app-builder" exit then
    f CHECK-VERIFY = if s" check-verify" exit then
    E-TBL-BOUNDS throw ;
@@ -50,7 +48,6 @@ package GATE-IMAGES
    f LINKER = if s" test/preloaded-engine.f" exit then
    f WHITEBOX = if s" test/whitebox-engine.f" exit then
    f AOT-BUILDER = if s" test/aot-builder-engine.f" exit then
-   f LINKER-BUILDER = if s" test/linker-builder-engine.f" exit then
    f APP-BUILDER = if s" test/app-builder-engine.f" exit then
    f CHECK-VERIFY = if s" tools/check-verify-image.f" exit then
    E-TBL-BOUNDS throw ;
@@ -63,7 +60,6 @@ package GATE-IMAGES
    f LINKER = if s" PRELOADED-ENGINE:ENSURE" exit then
    f WHITEBOX = if s" WHITEBOX-ENGINE:PROVIDE" exit then
    f AOT-BUILDER = if s" AOT-BUILDER-ENGINE:ENSURE" exit then
-   f LINKER-BUILDER = if s" LINKER-BUILDER-ENGINE:ENSURE" exit then
    f APP-BUILDER = if s" APP-BUILDER-ENGINE:ENSURE" exit then
    f CHECK-VERIFY = if s" 600000 CHECK-VERIFY-IMAGE:SETTLE" exit then
    E-TBL-BOUNDS throw ;

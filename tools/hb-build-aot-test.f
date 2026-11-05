@@ -2,13 +2,12 @@
 \ native call sites; one stripped program over the division refusal, the span
 \ definer with foreign calls, the empty does> clause, a multi-page DATA payload,
 \ frame slots, signed remainders and long literals; the product subject built
-\ at each tier; and the program the keyed linker image refuses. Other rows:
-\ tools/hb-build-test-lib.f.
+\ at each tier. Other rows: tools/hb-build-test-lib.f.
 \ Run: bin/hb --load tools/hb-build-aot-test.f
 
 require tools/hb-build-test-lib.f
 require tools/image-size-lib.f          \ this fixture measures image bytes directly
-require test/linker-builder-engine.f
+require test/aot-builder-engine.f
 require src/lib/string.f
 require src/lib/codegen.f
 
@@ -17,12 +16,6 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \ The shared fixture's words are private words of the library's package, so
 \ this row reopens it the way tools/hb-build-test-lib.f does.
 package HB-BUILD-CLI
-
-: HBT-SPAN-SRC ( -- ptr u8 n )
-   HBT-SPAN-SRC-BUF HBT-SPAN-SRC-U @ ;
-
-: HBT-SPAN-OUT ( -- ptr u8 n )
-   HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U @ ;
 
 \ A zero divisor in a stripped image catches ARITH-ABI:E-DIV-ZERO: the tier-1
 \ refusal branches to the engine's `throw`, outside the payload window, which the
@@ -47,8 +40,7 @@ package HB-BUILD-CLI
 \ through FUNCTION: at the first call. The clause has a body, so the created word
 \ ends in the B that habu2.f DOESPATCH:EMIT wrote over its RET, aimed at the
 \ parent's `;does` record; only aot-closure.f SCAN-DIRECT following that branch
-\ out of the member puts the record in the closure. The engine bakes both
-\ required modules, so the linker image links it (see KEYED-PRE-WINDOW-REFUSED).
+\ out of the member puts the record in the closure.
 : HBT-SPAN-PKG ( -- )
    S\" require src/lib/span.f\nrequire src/lib/memory.f\nrequire src/lib/ffi-abi.f\npackage HBT-SPAN\n: LOADING ( -- ) tier@ 1 <> if -9060 throw then ;\nLOADING\nPROCESS-SYMBOLS\nFUNCTION: PID getpid ( -- i32 ) ;FUNCTION\n" HBT-POSITIVES CODEGEN:APPEND-STRING
    HB-TARGET-MACOS? if
@@ -174,93 +166,17 @@ package HB-BUILD-CLI
    HBT-REMOVE-AOT-OUT
    HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
-\ A program requiring a module of the linker's lib closure that the engine does
-\ not bake, and calling a word of it.
-: HBT-REQUIRED-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fmt.f\n: MAIN ( -- ) 42 FMT:.INT cr ;\n" ;
-
-\ THE KEYED LINKER IMAGE REFUSES THAT PROGRAM BY NAME (test/preloaded-engine.f
-\ rule 3). The image loaded src/lib/fmt.f with the linker, before its maker
-\ latched the band, so the program's require resolves to that copy: its closure
-\ reaches a word compiled outside the window, and the maker refuses the first
-\ such word rather than carry the image's copy. The module is one the engine
-\ does not bake: a baked module's words lie below the engine's seal watermark,
-\ where the band starts (src/habu/aot-closure.f PRE-WINDOW?), so every maker
-\ carries them and the image links a program that requires one. Without
-\ --json-errors the refusal is PRE-WINDOW-DIE's prose arm, naming the word and
-\ a suggestion.
-: KEYED-PRE-WINDOW-REFUSED ( -- )
-   HBT-SPAN-SRC HBT-REQUIRED-SRC$ FS:WRITE-ALL
-   HBT-SPAN-SRC HBT-RUN-MAKER {: out:n err:n rc:n :}
-   rc 74 T=
-   HBB-ERR-BUF err s" aot: closure reaches a word defined before the capture window opened word=" CONTAINS? TTRUE
-   HBB-ERR-BUF err s"  suggestion='" CONTAINS? TTRUE ;
-
-\ FMT:.INT has two valid placements. When the donor engine bakes src/lib/fmt.f
-\ below its seal (as the x86-64 engine does), every maker carries it and the
-\ keyed image links the program and runs it; otherwise the linker loads it before
-\ the window and the program is refused by name. Ask the keyed linker itself:
-\ HABU_UNDER_TEST can select a donor other than the engine running this row.
-: HBT-FMT-BAKED? ( -- bool )
-   PROC-ARGV-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   HBT-LINKER >LEN
-   S\" : FMT-PLACEMENT ( -- ) s\q FMT:.INT\q XREF-FIND-INDEX SEAL-NDICT@ < if s\q baked\q else s\q pre-window\q then type cr ;\nFMT-PLACEMENT\n" >LEN
-   HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-CAPTURE HBT-CAPTURE>N
-   {: out:n err:n rc:n :}
-   rc 0 T=
-   HBT-RUN-ERR err HBT-EMPTY$ T$=
-   HBT-RUN-OUT out S\" baked\n" T-STR= if true exit then
-   HBT-RUN-OUT out S\" pre-window\n" T$=
-   false ;
-
-: KEYED-BAKED-FMT ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   HBT-SPAN-SRC src srcu FS:WRITE-ALL
-   HBT-SPAN-OUT HBT-REMOVE-FILE?
-   HBT-SPAN-SRC HBT-SPAN-OUT HBT-HBB-PREPARE-AOT
-   HBT-HBB-BUILD-OUT
-   HBT-SPAN-OUT S\" 42\n" HBT-RUN-IMAGE-OUT
-   HBT-SPAN-OUT HBT-REMOVE-FILE? ;
-
-\ The same refusal through the CLI under --json-errors, which promises its
-\ caller JSON: the maker reads the flag from its argv (AOT-BUILDER:OPEN)
-\ and the CLI keeps only the JSON lines of the maker's stderr
-\ (HBB-WERR-JSON-ONLY), so a refusal with no JSON arm reaches the caller as
-\ text.
-: KEYED-PRE-WINDOW-JSON ( -- )
-   HBT-SPAN-SRC HBT-REQUIRED-SRC$ FS:WRITE-ALL
-   HBT-SPAN-OUT HBT-REMOVE-FILE?
-   HBT-ARGV-BASE
-   s" --json-errors" >LEN PROC-ARGV+
-   HBT-SPAN-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-SPAN-OUT >LEN PROC-ARGV+
-   HBT-RUN-HB-BUILD {: outu:n erru:n rc:n :}
-   rc 74 T=
-   outu 0 T=
-   HBT-ERR erru S\" \qschema_version\q:1," CONTAINS? TTRUE
-   HBT-ERR erru S\" \qcode\q:\qE-AOT-PRE-WINDOW\q" CONTAINS? TTRUE
-   HBT-ERR erru S\" \qword\q:\q.INT\q" CONTAINS? TTRUE
-   HBT-SPAN-OUT FS:EXISTS? TFALSE ;
-
-: KEYED-PRE-WINDOW ( -- )
-   HBT-FMT-BAKED? if HBT-REQUIRED-SRC$ KEYED-BAKED-FMT exit then
-   KEYED-PRE-WINDOW-REFUSED
-   KEYED-PRE-WINDOW-JSON ;
-
 \ Public so the driver below runs it with the package CLOSED: the subtests
 \ drive real builds, which resolve names in whatever package scope is open.
 public
 : HBT-AOT-MAIN ( -- )
    T-RESET
    1 set-tier          \ the product tier the LOADING programs hold
-   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
+   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    BUILD-AOT-NATIVE
    BUILD-AOT-POSITIVES
    BUILD-AOT-TIERS
-   KEYED-PRE-WINDOW
    FS:CLEANUP-RUN
    HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT

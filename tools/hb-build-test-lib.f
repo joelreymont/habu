@@ -32,7 +32,7 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \                                             large sources, literal bodies
 \   tools/hb-build-cli-errors-test.f          out root error, refused paths
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
-\   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
+\   tools/hb-build-stripped-test.f            library state, engine cells,
 \                                             quotation fields, ptr mark
 \   tools/hb-build-stripped-lifecycle-test.f  lifecycle registry, number parsing
 \   tools/hb-build-stripped-cells-test.f      mapped cells, uncarried table
@@ -55,8 +55,6 @@ variable HBT-REPL-OUT-U
 variable HBT-REPL-BAD-SRC-U
 variable HBT-AOT-SRC-U
 variable HBT-AOT-OUT-U
-variable HBT-SPAN-SRC-U
-variable HBT-SPAN-OUT-U
 
 create HBT-ROOT-BUF PATH-CAP allot
 create HBT-TMP-BUF PATH-CAP allot
@@ -68,8 +66,6 @@ create HBT-REPL-OUT-BUF PATH-CAP allot
 create HBT-REPL-BAD-SRC-BUF PATH-CAP allot
 create HBT-AOT-SRC-BUF PATH-CAP allot
 create HBT-AOT-OUT-BUF PATH-CAP allot
-create HBT-SPAN-SRC-BUF PATH-CAP allot
-create HBT-SPAN-OUT-BUF PATH-CAP allot
 
 create HBT-OUT HBT-CAPTURE-CAP allot
 create HBT-ERR HBT-CAPTURE-CAP allot
@@ -236,8 +232,6 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-ROOT s" repl-bad.f" HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U HBT-PATH!
    HBT-ROOT s" aot.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH!
    HBT-ROOT s" aot" HBT-AOT-OUT-BUF HBT-AOT-OUT-U HBT-PATH!
-   HBT-ROOT s" span.f" HBT-SPAN-SRC-BUF HBT-SPAN-SRC-U HBT-PATH!
-   HBT-ROOT s" spanimg" HBT-SPAN-OUT-BUF HBT-SPAN-OUT-U HBT-PATH!
    HBT-ROOT s" libstate.f" HBT-LIB-SRC-BUF HBT-LIB-SRC-U HBT-PATH!
    HBT-ROOT s" libstate" HBT-LIB-OUT-BUF HBT-LIB-OUT-U HBT-PATH!
    HBT-ROOT s" libdir" HBT-LIB-DIR-BUF HBT-LIB-DIR-U HBT-PATH!
@@ -268,16 +262,11 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
    HBT-AOT-SRC HBT-AOT-SRC$ FS:WRITE-ALL ;
 
 \ The engine HBT-KEYED! records runs a row's AOT builds, maker refusals and CLI
-\ makers: the linker image (test/linker-builder-engine.f HOST$) for a row whose
-\ subjects test/preloaded-engine.f rule 3 admits there, else the engine. REPL
-\ builds, app refusals, HBT-ARGV-BASE-REPL spawns and HBT-RUN-APP run on
-\ ENGINE-CANDIDATE:PATH$. Keyed builders are the family images the row's load
-\ closure grants, built once in the process's out root (tools/build-out.f,
-\ test/image-grant.f); a case that overrides that root says so beside it.
-\ HBT-HBB-PREPARE-AOT-SOURCE builds on the engine: for a subject that reaches a
-\ word or unclaimed cell of a linker lib module the engine does not bake (the
-\ linker image refuses it by name, rule 3) and for a case about that order.
-\ A subject that only requires such a module links on the image.
+\ makers; empty, the engine. REPL builds, app refusals, HBT-ARGV-BASE-REPL
+\ spawns and HBT-RUN-APP run on ENGINE-CANDIDATE:PATH$. Keyed builders are the
+\ family images the row's load closure grants, built once in the process's out
+\ root (tools/build-out.f, test/image-grant.f); a case that overrides that root
+\ says so beside it. HBT-HBB-PREPARE-AOT-SOURCE builds on BF-ENGINE$.
 : HBT-KEYED! ( ptr u8 n -- )
    HBT-LINKER-BUF HBT-LINKER-U HBT-COPY! ;
 

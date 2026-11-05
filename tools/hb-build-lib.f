@@ -714,8 +714,8 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 
 \ The saved AOT builder a build on BF-ENGINE$ runs, settled: the image
 \ HBB-RUN-MAKER-CMD selects by its producer key, so a row that settles it
-\ once (test/aot-builder-engine.f, test/linker-builder-engine.f) serves every
-\ build on that engine under the same out root. The caller selects BF-ENGINE$.
+\ once (test/aot-builder-engine.f) serves every build on that engine under the
+\ same out root. The caller selects BF-ENGINE$.
 : HBB-MAKER-IMAGE$ ( n -- ptr u8 n )
    {: timeout:n :}
    HBB-RESET-OPTIONS

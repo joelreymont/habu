@@ -1,13 +1,12 @@
 \ hb-build-stripped-test.f - checked fixture for tools/hb-build-lib.f: what a
-\ stripped image may own and reach (library state, a fork, claimed engine cells,
-\ fixed quotation fields, a run-time pointer-cell mark that preserves data and
-\ stack) and the refusal of a missing entry. tools/hb-build-test-lib.f lists the
-\ other rows.
+\ stripped image may own and reach (library state, claimed engine cells, fixed
+\ quotation fields, a run-time pointer-cell mark that preserves data and stack)
+\ and the refusal of a missing entry. tools/hb-build-test-lib.f lists the other
+\ rows.
 \ Run: bin/hb --load tools/hb-build-stripped-test.f
 
 require src/lib/string.f
 require tools/hb-build-test-lib.f
-require test/linker-builder-engine.f
 require test/aot-builder-engine.f
 
 \ The shared fixture's words are private words of the library's package, so
@@ -96,9 +95,7 @@ package HB-BUILD-CLI
 
 \ The window invariant: nothing the application can require is loaded when the
 \ capture window opens, so its own require closure is the only library content
-\ in the restored span. This program builds on the engine: src/lib/fs.f and
-\ src/lib/fs-mutate.f are linker lib modules the engine does not bake, and the
-\ linker image refuses it at FS:COPY-FILE-STREAM (E-AOT-PRE-WINDOW).
+\ in the restored span.
 : HBT-STRIPPED-LIB-STATE ( -- )
    HBT-LIB-DIR FS:MAKE-DIR
    s" a.txt" s" one" HBT-LIB-FILE!
@@ -113,40 +110,6 @@ package HB-BUILD-CLI
    rcn 0 T=
    errn 0 T=
    HBT-RUN-OUT outn HBT-LIB-EXPECTED$ T$= ;
-
-\ A program that holds src/lib/fork-child.f's registry and nothing else the engine
-\ does not provide, so every other module of the AOT linker's lib closure
-\ (src/habu/app-image-core.f) loads above its window when it is linked - as
-\ src/lib/fs-mutate.f and src/lib/process-tree.f do above a src/lib/pg.f or src/lib/serial.f
-\ program's.
-: HBT-REGISTRY-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fork-child.f\n: MAIN ( -- ) ;\n" ;
-
-\ A stripped image forks and its child runs src/lib/fork-child.f's resets:
-\ test/stripped-fork-subject.f's child has a park of its own only after
-\ TASK:CHILD-RESET on Darwin, where the parent's is a Mach port the child does
-\ not hold. The registry sits in the application's window and the linker's lib
-\ closure loads above it, so a lib module that registered a reset as it loaded
-\ would put code and cells the image does not carry into the registry;
-\ HBT-REGISTRY-SRC$'s link refuses that (`aot: address refers to data outside
-\ the restored span`). src/lib/process.f is a linker lib module the engine does
-\ not bake, so the forking program builds on the engine.
-: HBT-STRIPPED-FORK ( -- )
-   HBT-AOT-OUT HBT-REMOVE-FILE?
-   s" test/stripped-fork-subject.f" SOURCE-ROOT:RESOLVE drop
-   HBT-AOT-SRC FS:COPY-FILE-STREAM
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
-   HBT-AOT-OUT FS:FILE? TTRUE
-   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
-   rcn 0 <> if HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
-   rcn 0 T=
-   errn 0 T=
-   HBT-RUN-OUT outn S\" child=ok\n" T$=
-   HBT-AOT-SRC HBT-REGISTRY-SRC$ FS:WRITE-ALL
-   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
-   HBT-RUN-AOT
-   HBT-AOT-OUT HBT-REMOVE-FILE? ;
 
 \ The expected output of HBT-CELLS-SRC$, BUILT AND NOT SPELLED: the second line is
 \ this process's own HOME, which is exactly what PROC-ENV-INHERIT-MISSING hands
@@ -198,12 +161,11 @@ package HB-BUILD-CLI
    HBT-RUN-OUT outn HBT-CELLS-NOARG-EXPECTED$ T$= ;
 
 \ The walk reaches engine words the build stripped through the payload's span
-\ table, which the keyed linker image reads at the address its own boot
-\ published (src/habu/habu2.f EM-SNAPSHOT-RESTORE).
+\ table.
 : HBT-STRIPPED-ENGINE-CELLS ( -- )
    HBT-CELLS-SRC HBT-CELLS-SRC$ FS:WRITE-ALL
    HBT-CELLS-OUT HBT-REMOVE-FILE?
-   HBT-CELLS-SRC HBT-CELLS-OUT HBT-HBB-PREPARE-AOT HBT-HBB-BUILD-OUT
+   HBT-CELLS-SRC HBT-CELLS-OUT HBT-HBB-PREPARE-AOT-SOURCE HBT-HBB-BUILD-OUT
    HBT-CELLS-OUT FS:FILE? TTRUE
    HBT-CELLS-CHILD-ARGV-ENV
    HBT-CELLS-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
@@ -249,11 +211,9 @@ package HB-BUILD-CLI
 public
 : HBT-STRIPPED-MAIN ( -- )
    T-RESET
-   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
-   AOT-BUILDER-ENGINE:ENSURE
+   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    HBT-PREPARE
    HBT-STRIPPED-LIB-STATE
-   HBT-STRIPPED-FORK
    HBT-STRIPPED-ENGINE-CELLS
    HBT-STRIPPED-NO-ENTRY
    HBT-STRIPPED-PTR-MARK

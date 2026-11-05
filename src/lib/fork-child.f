@@ -48,8 +48,7 @@ public
 \ (src/habu/app-image-core.f), never requires this file: an engine module's
 \ cells here would belong to no capture claim (src/habu/aot-owned-cells.f), and
 \ a linker module's reset would land in the application's registry with code
-\ and cells the image does not carry (tools/hb-build-stripped-test.f
-\ HBT-STRIPPED-FORK refuses that link). Such an owner publishes its reset
+\ and cells the image does not carry. Such an owner publishes its reset
 \ (TASK:CHILD-RESET, FS:CLEANUP-RESET, PROC-TREE:CHILD-RESET) and
 \ src/lib/process-fork.f registers it.
 : REGISTER ( [ -- ] -- )

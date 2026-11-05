@@ -6,7 +6,7 @@
 
 require tools/hb-build-test-lib.f
 require tools/image-size-lib.f          \ this fixture measures image bytes directly
-require test/linker-builder-engine.f
+require test/aot-builder-engine.f
 require test/app-builder-engine.f
 require src/lib/string.f
 require src/lib/fmt.f                        \ FMT:.INT
@@ -330,9 +330,7 @@ PATH-CAP BUFFER: HBT-DIR-OUT-BUF
    S\" require test/stripped-literal-subject.f\n' STRIPPED-LITERAL:ANCHOR STRIPPED-LITERAL:RAW\n: MAIN ( -- ) STRIPPED-LITERAL:VALUE . cr ;\n" ;
 
 \ The control runs first: its refusal proves the pattern lands in this build's
-\ code span, so the link that follows is about the declaration. The subject
-\ requires src/lib/codegen.f, which the engine bakes, and neither program reaches
-\ the linker's load, so both link on the image (test/preloaded-engine.f rule 3).
+\ code span, so the link that follows is about the declaration.
 : HBT-STRIPPED-LITERAL-BODY ( -- )
    HBT-LITC-SRC HBT-LITC-SRC$ FS:WRITE-ALL
    HBT-LITC-SRC HBT-RUN-MAKER {: cout:n cerr:n crc:n :}
@@ -438,7 +436,7 @@ create HBT-LOUD-SRC-BUF PATH-CAP allot
 public
 : HBT-MAIN ( -- )
    T-RESET
-   LINKER-BUILDER-ENGINE:ENSURE LINKER-BUILDER-ENGINE:HOST$ HBT-KEYED!
+   AOT-BUILDER-ENGINE:ENSURE ENGINE-CANDIDATE:PATH$ HBT-KEYED!
    APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    HBT-REPL-SRC HBT-REPL-SRC$ HBT-WRITE-LARGE

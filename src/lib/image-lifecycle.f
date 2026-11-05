@@ -102,7 +102,8 @@ public
 \ one-shot table is already released, and running the hook now would put cleanup
 \ that may call foreign functions after the hooks that forget their addresses.
 \ Admitted, an image saved from the keyed linker image counted 4 hooks, one in no
-\ table, and its first PREPARE threw E-BOUNDS (test/image-lifecycle-late-register.f).
+\ table, and its first PREPARE threw E-BOUNDS. The refusal is checked by
+\ test/image-lifecycle-late-register.f.
 \ An arena still live after every hook has run refuses the capture, so a hook
 \ can release its arena (DYNAMIC-STORAGE:ARENA-GUARD).
 : PREPARE ( -- )
