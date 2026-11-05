@@ -968,6 +968,12 @@ learned live in the docs for their subject.
   anyway". Asked whether `bin/hb --load test/run.f -- <test names>` should
   run just those tests in the suite's parallel pool, he answered "yes". A
   landing tip that runs the full suite runs no test separately.
+- 2026-11-05, load-bearing tests: "all tests slow down development so only
+  the load-bearing tests and suites should be left", and "review these with
+  me, each and every one. justify keeping or dropping each before asking
+  me". Shown that native-build-recompile (1403 s, the suite's wall time)
+  tests the per-definition build cache the file linker replaces, Joel chose
+  "Drop it (Recommended)".
 
 ## Docs
 
