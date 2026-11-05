@@ -138,11 +138,16 @@ $D4000001 SYS-SVC-STENCIL SYS-STENCIL-W!                        \ svc #0
    noctty LBL,
    2 6 0 ADDI, ;
 
+\ x3 carries mmap's flags both ways: SHARED, PRIVATE and FIXED keep their bits,
+\ MAP_ANON moves from BSD's $1000 to $20 and MAP_NORESERVE from $40 to $4000.
 : OS-MMAP-FLAGS ( -- )
+   LBL LBL {: noanon nonores :}
    7 $13 MOVZ,  6 3 7 AND,
-   LBL {: noanon :}
    7 $1000 MOVZ,  7 3 7 AND,  7 noanon CBZ,
       7 $20 MOVZ,  6 6 7 ORR,
    noanon LBL,
+   7 $40 MOVZ,  7 3 7 AND,  7 nonores CBZ,
+      7 $4000 MOVZ,  6 6 7 ORR,
+   nonores LBL,
    3 6 0 ADDI, ;
 ;using
