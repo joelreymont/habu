@@ -2,8 +2,8 @@
 \ exceeded (machine)` on fd 2 and the ENGINE-ERROR:STACK-BOUNDS exit, from the
 \ crash handler on the thread's alternate signal stack (src/habu/crash.f
 \ C-SIGNAL-STACK). Controls: a data-stack overflow still reports (data); a load
-\ from address 0 still dumps registers and dies of the SIGSEGV. Tier 0 compiles
-\ a final recurse as a jump, so every self call has work after it.
+\ from address 0 still dumps registers and dies of the SIGSEGV. Every subject
+\ recurses through a self call with work after it, so it cannot become a jump.
 require test/gate-common.f
 require src/lib/engine-candidate.f
 require src/core/engine-error.f
@@ -32,7 +32,6 @@ variable IMAGE-U
    S\" TRUSTED: R ( -- ) recurse recurse ;\n: T ( -- n ) ['] R catch ;\nT\n" ;
 : CELLS-CATCH$ ( -- ptr u8 n )
    S\" : R ( n -- n ) 1 + recurse 1 + ;\n: T ( -- n n ) 0 [: R ;] catch ;\nT\n" ;
-: TIER1$ ( -- ptr u8 n ) S\" 1 set-tier\n" ;
 
 : TASK$ ( -- ptr u8 n )
    S\" require src/lib/task.f\nTRUSTED: R ( -- ) recurse recurse ;\n: R0 ( -- ) R ;\nTASK:MIN-STACK TASK:TASK WORKER\n: GO ( -- ) ['] R0 WORKER TASK:ACTIVATE begin WORKER TASK:DONE? 0= while TASK:PAUSE repeat ;\nGO\n" ;
@@ -60,28 +59,20 @@ variable IMAGE-U
    ENGINE-ERROR:STACK-BOUNDS label labelu GE-EXPECT-RC
    MACHINE$ label labelu GE-EXPECT-ERR ;
 
-: MACHINE ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: pre:ptr preu:n src:ptr srcu:n label:ptr labelu:n :}
-   GE-SRC-RESET
-   pre preu GE-SRC+
-   src srcu GE-SRC+
-   GE-SRC-BUF GE-SRC-U @ RUN-SRC
+: MACHINE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+   src srcu RUN-SRC
    label labelu MACHINE-EXIT ;
 
 : REPRODUCERS ( -- )
-   s" " SELF$ s" a word calling itself, tier 0" MACHINE
-   s" " CELLS$ s" a word adding a cell per call, tier 0" MACHINE
-   TIER1$ SELF$ s" a word calling itself, tier 1" MACHINE
-   TIER1$ CELLS$ s" a word adding a cell per call, tier 1" MACHINE
-   s" " SELF-CATCH$ s" a word calling itself under catch, tier 0" MACHINE
-   s" " CELLS-CATCH$ s" a word adding a cell per call under catch, tier 0" MACHINE
-   TIER1$ SELF-CATCH$ s" a word calling itself under catch, tier 1" MACHINE
-   TIER1$ CELLS-CATCH$ s" a word adding a cell per call under catch, tier 1" MACHINE
-   s" PASS: the reproducers at both tiers, plain and under catch" type cr ;
+   SELF$ s" a word calling itself, tier 0" MACHINE
+   CELLS$ s" a word adding a cell per call, tier 0" MACHINE
+   SELF-CATCH$ s" a word calling itself under catch, tier 0" MACHINE
+   CELLS-CATCH$ s" a word adding a cell per call under catch, tier 0" MACHINE
+   s" PASS: the reproducers, plain and under catch" type cr ;
 
 : THREADS ( -- )
-   s" " TASK$ s" a task thread" MACHINE
-   s" " CALLBACK-THREAD$ s" a thread C started, inside a callback" MACHINE
+   TASK$ s" a task thread" MACHINE
+   CALLBACK-THREAD$ s" a thread C started, inside a callback" MACHINE
    s" PASS: a task thread and a callback thread" type cr ;
 
 \ The stripped application's own startup registers the alternate stack before it

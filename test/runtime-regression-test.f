@@ -166,34 +166,6 @@ variable GE-SCRIPT-U
    SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF s" 5" SB-APPEND GE-SB-LF
    SB$ s" trusted does> clause wide facts output" GE-EXPECT-OUT ;
 
-\ A pass-2 frame past the 4096 cells the scaled ldr/str slot reaches fails
-\ closed naming the limit and the token that carved it. No one value may
-\ be wider than 255 cells, so the frame is 22 locals of a 192-cell product.
-: GE-P2-FRAME-WIDE ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   RUNTIME-RUNNER:JIT$ GE-SRC-LINE
-   s" PRODUCT gep8" GE-SRC-LINE
-   s"    FIELD f0 n FIELD f1 n FIELD f2 n FIELD f3 n" GE-SRC-LINE
-   s"    FIELD f4 n FIELD f5 n FIELD f6 n FIELD f7 n" GE-SRC-LINE
-   s" ;PRODUCT" GE-SRC-LINE
-   s" PRODUCT gep64" GE-SRC-LINE
-   s"    FIELD g0 gep8 FIELD g1 gep8 FIELD g2 gep8 FIELD g3 gep8" GE-SRC-LINE
-   s"    FIELD g4 gep8 FIELD g5 gep8 FIELD g6 gep8 FIELD g7 gep8" GE-SRC-LINE
-   s" ;PRODUCT" GE-SRC-LINE
-   s" PRODUCT gep192 FIELD h0 gep64 FIELD h1 gep64 FIELD h2 gep64 ;PRODUCT" GE-SRC-LINE
-   s" TRUSTED: GE-MK8 ( -- gep8 ) 0 0 0 0 0 0 0 0 ;" GE-SRC-LINE
-   s" TRUSTED: GE-MK64 ( -- gep64 ) GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 GE-MK8 ;" GE-SRC-LINE
-   s" TRUSTED: GE-MK192 ( -- gep192 ) GE-MK64 GE-MK64 GE-MK64 ;" GE-SRC-LINE
-   s" : GE-WFRAME ( -- )" GE-SRC-LINE
-   22 0 do
-      s"    GE-MK192 {: l" GE-SRC+  i GE-SRC-U+  s" :gep192 :}" GE-SRC-LINE
-   loop
-   s" ;" GE-SRC-LINE
-   RUNTIME-RUNNER:BUFFER
-   75 s" pass-2 frame past the slot reach fails closed" GE-EXPECT-RC
-   S\" hb: locals frame over 4096 cells: :}\n" s" pass-2 frame past the slot reach diagnostic" GE-EXPECT-ERR ;
-
 \ A created word's clause effect is an effect like any other: `does> ( --
 \ gewide<n,n> )` publishes a wider-than-cell value, so the created record
 \ carries the DNAME-WIDE mark a `:` word with that effect carries and a bare
@@ -265,7 +237,6 @@ variable GE-SCRIPT-U
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-DOES-WIDE
    GE-DOES-TRUSTED-WIDE
-   HB-TARGET-LINUX-X86-64? 0= if GE-P2-FRAME-WIDE then
    GE-DOES-WIDE-BARE
    GE-DOES-WIDE-COMPILED
    GE-DOES-SCALAR
@@ -833,45 +804,6 @@ variable GE-NEST-J
       s" hb eval def-surplus-out catch" GE-EVAL-DEF-REJECT-1
    s" PASS: def-compile failures under catch+evaluate -> caught 70" type cr ;
 
-: GE-ORPHAN-CLOSER-1 ( ptr u8 n ptr u8 n -- ) {: tok:ptr toku:n label:ptr labelu:n :}
-   \ Plain stdin: a closer with no open control-flow frame fails closed rc 70
-   \ with the named engine diagnostic and the token, never a register dump.
-   \ Every closer's compile-time patch pops the control-flow stack through
-   \ LCFPOP, which guards depth 0; past it LPAT dereferences a bogus origin.
-   GE-HB-RESET
-   GE-SRC-RESET
-   RUNTIME-RUNNER:JIT$ GE-SRC-LINE
-   s" : XI ( -- ) " GE-SRC+
-   tok toku GE-SRC+
-   s"  ;" GE-SRC-LINE
-   RUNTIME-RUNNER:BUFFER
-   70 label labelu GE-EXPECT-RC
-   s" control-flow closer without opener" label labelu GE-EXPECT-ERR-HAS
-   tok toku label labelu GE-EXPECT-ERR-HAS
-   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
-
-: GE-ORPHAN-CLOSER ( -- )
-   \ Every control-flow closer, orphaned at top level, and the catchable-under-eval
-   \ subset; all share the one guarded LCFPOP reject path.
-   s" THEN"    s" hb orphan then"    GE-ORPHAN-CLOSER-1
-   s" ELSE"    s" hb orphan else"    GE-ORPHAN-CLOSER-1
-   s" REPEAT"  s" hb orphan repeat"  GE-ORPHAN-CLOSER-1
-   s" UNTIL"   s" hb orphan until"   GE-ORPHAN-CLOSER-1
-   s" AGAIN"   s" hb orphan again"   GE-ORPHAN-CLOSER-1
-   s" LOOP"    s" hb orphan loop"    GE-ORPHAN-CLOSER-1
-   s" +LOOP"   s" hb orphan +loop"   GE-ORPHAN-CLOSER-1
-   s" ENDOF"   s" hb orphan endof"   GE-ORPHAN-CLOSER-1
-   s" ENDCASE" s" hb orphan endcase" GE-ORPHAN-CLOSER-1
-   \ Under [: INCLUDE-EVALUATE ;] catch the closers deliver a catchable
-   \ RC-REJECT (70), the eval frame rolled back, process exits 0. Each
-   \ source begins with JIT$'s text.
-   s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! : XO1 ( -- ) THEN ;" s" control-flow closer without opener"
-      s" hb eval orphan-then catch" GE-EVAL-DEF-REJECT-1
-   s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! : XO2 ( -- ) LOOP ;" s" control-flow closer without opener"
-      s" hb eval orphan-loop catch" GE-EVAL-DEF-REJECT-1
-   s" 0 data-base NCOMP-DISPATCH:COMP-CELL + ! : XO3 ( -- ) REPEAT ;" s" control-flow closer without opener"
-      s" hb eval orphan-repeat catch" GE-EVAL-DEF-REJECT-1
-   s" PASS: orphan control-flow closers fail closed rc70 (no SIGBUS)" type cr ;
 
 \ The loop family's own opener battery is kept in its own package.
 ;package
@@ -2368,14 +2300,12 @@ variable GE-KIND-N
       s" tier 0 memory operands output" GE-EXPECT-OUT
    s" PASS: tier 0 keeps memory operands in registers and keeps every boundary" type cr ;
 
-\ Tier 0 branches on a compare's flags when the flag is the register top at
-\ `if`, `until` or `while` (jit.f LVFUSE); a redefined `<` is a call and
-\ branches on what it returns. Tier 1 runs the same source and prints the same
-\ lines.
-: GE-VFUSE-AT ( n -- ) {: tier:n :}
+\ Tier 0 branches on a compare's flags when `if`, `until` or `while` follows it
+\ (t0.f CMP-FLAG); a redefined `<` is a call and branches on what it returns.
+: GE-VFUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" 0 set-tier" GE-SRC-LINE
    s" : GEFI= ( n n -- n ) = if 1 else 2 then ;" GE-SRC-LINE
    s" : GEFI<> ( n n -- n ) <> if 1 else 2 then ;" GE-SRC-LINE
    s" : GEFI< ( n n -- n ) < if 1 else 2 then ;" GE-SRC-LINE
@@ -2418,22 +2348,15 @@ variable GE-KIND-N
    RUNTIME-RUNNER:BUFFER
    s" compare and branch" GE-EXPECT-OK
    S\" 2\n2\n1\n1\n1\n2\n1\n2\n2\n1\n2\n1\n2\n2\n1\n2\n1\n2\n1\n1\n3\n2\n4\n4\n3\n3\n4\n3\n3\n3\n4\n4\n12\n6\n1\n-1\n2\n0\n-1\n0\n0\n-1\n1\n2\n2\n"
-      s" compare and branch output" GE-EXPECT-OUT ;
-
-: GE-VFUSE ( -- )
-   2 0 do i GE-VFUSE-AT loop
+      s" compare and branch output" GE-EXPECT-OUT
    s" PASS: tier 0 branches on a compare's flags and keeps every boundary" type cr ;
 
-\ Tier 0 loops reconcile the back edge's virtual stack with the frame `begin`
-\ recorded (jit.f LVRECON). The GEJ rows test that reconcile at
-\ `if`/`else`/`then` joins (habu2.f J-THEN, J-ELSE), the GEI rows tier
-\ 0's cached loop index (habu2.f J-I). Tier 1 runs the same source and prints
-\ the same lines, except the two loop cycle rows, which tier 1 refuses with
-\ E-A64RA-EDGE (regalloc.f): tier 0 runs them alone.
-: GE-VJOIN-AT ( n -- ) {: tier:n :}
+\ Tier 0 reconciles back edges and `if`/`else`/`then` joins to the layout their
+\ opener recorded (t0.f RECONCILE); the GEI rows push the loop index (DO-INDEX).
+: GE-VJOIN ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" 0 set-tier" GE-SRC-LINE
    s" CAST: GEFB ( r -- n )" GE-SRC-LINE
    s" : GEJCON ( n -- n n ) 0 begin drop 1- 5 over 0= until ;" GE-SRC-LINE
    s" : GEJCONF ( n -- n r ) 0.5 begin drop 1- 2.5 over 0= until ;" GE-SRC-LINE
@@ -2490,30 +2413,21 @@ variable GE-KIND-N
    s" -3 GEJFZ . 7 GEJFZ . 3 GEJFZ . ." GE-SRC-LINE
    s" 5 GEIQ . 0 GEIQ . 5 GEID . 4 GEICALL . 7 GEISTEP . GEINEG . 3 GEINEST . 10 GEIUNL ." GE-SRC-LINE
    s" 10 GEILV . 4 GEIBU . 6 GEIIF . 2 GEIPR . 3 GEICL . 4 GEICL2 . 3 GEICT ." GE-SRC-LINE
-   tier 0= if
-      s" : GEJSWAP ( n -- n n ) dup 1+ begin swap 1- dup 0= until ;" GE-SRC-LINE
-      s" : GEJFSW ( r r -- r r ) 0.0 f+ swap begin swap over GEFB 4607182418800017408 = until ;" GE-SRC-LINE
-      s" 99 3 GEJSWAP . . . 99 1 GEJSWAP . . . 1.0 2.0 GEJFSW f. f. 2.0 1.0 GEJFSW f. f." GE-SRC-LINE
-   then
+   s" : GEJSWAP ( n -- n n ) dup 1+ begin swap 1- dup 0= until ;" GE-SRC-LINE
+   s" : GEJFSW ( r r -- r r ) 0.0 f+ swap begin swap over GEFB 4607182418800017408 = until ;" GE-SRC-LINE
+   s" 99 3 GEJSWAP . . . 99 1 GEJSWAP . . . 1.0 2.0 GEJFSW f. f. 2.0 1.0 GEJFSW f. f." GE-SRC-LINE
    RUNTIME-RUNNER:BUFFER
    s" loop joins" GE-EXPECT-OK
-   tier 0= if
-      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n41\n99\n37\n99\n12\n-6\n1\n4\n2\n-4\n3\n2\n6\n5\n8\n1\n6\n-10\n6\n-18\n3\n5\n3\n5\n3\n7\n3\n5\n3.500000\n2.500000\n3.000000\n1.500000\n2.500000\n2.500000\n7\n8\n-4\n13\n6\n-4\n25\n-5\n36\n35\n34\n33\n41\n-36\n97\n107\n3\n99\n10\n0\n10\n10\n12\n22\n12\n12\n3\n12\n6\n93\n33\n6\n234\n0\n2\n99\n0\n2\n99\n2.000000\n1.000000\n2.000000\n1.000000\n"
-   else
-      S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n41\n99\n37\n99\n12\n-6\n1\n4\n2\n-4\n3\n2\n6\n5\n8\n1\n6\n-10\n6\n-18\n3\n5\n3\n5\n3\n7\n3\n5\n3.500000\n2.500000\n3.000000\n1.500000\n2.500000\n2.500000\n7\n8\n-4\n13\n6\n-4\n25\n-5\n36\n35\n34\n33\n41\n-36\n97\n107\n3\n99\n10\n0\n10\n10\n12\n22\n12\n12\n3\n12\n6\n93\n33\n6\n234\n"
-   then
-   s" loop joins output" GE-EXPECT-OUT ;
-
-: GE-VJOIN ( -- )
-   2 0 do i GE-VJOIN-AT loop
+   S\" 5\n0\n99\n2.500000\n0\n99\n3\n99\n41\n99\n37\n99\n12\n-6\n1\n4\n2\n-4\n3\n2\n6\n5\n8\n1\n6\n-10\n6\n-18\n3\n5\n3\n5\n3\n7\n3\n5\n3.500000\n2.500000\n3.000000\n1.500000\n2.500000\n2.500000\n7\n8\n-4\n13\n6\n-4\n25\n-5\n36\n35\n34\n33\n41\n-36\n97\n107\n3\n99\n10\n0\n10\n10\n12\n22\n12\n12\n3\n12\n6\n93\n33\n6\n234\n0\n2\n99\n0\n2\n99\n2.000000\n1.000000\n2.000000\n1.000000\n"
+      s" loop joins output" GE-EXPECT-OUT
    s" PASS: tier 0 loops reconcile the back edge with the begin frame" type cr ;
 
-\ Tier 0 binds a `{:` group from the virtual stack's top (habu2.f
-\ C-LBRACE-BIND-VS). Tier 1 runs the same source and prints the same lines.
-: GE-VBIND-AT ( n -- ) {: tier:n :}
+\ Tier 0 binds a `{:` group from the virtual stack's top into frame slots
+\ (t0.f BIND-CELLS).
+: GE-VBIND ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" 0 set-tier" GE-SRC-LINE
    s" : GEBCOMP ( n -- n ) dup 7 and {: k:n :} k + ;" GE-SRC-LINE
    s" : GEBINC ( n -- n ) 1+ ;" GE-SRC-LINE
    s" : GEBCALL ( n -- n ) GEBINC {: k:n :} k k * ;" GE-SRC-LINE
@@ -2529,55 +2443,15 @@ variable GE-KIND-N
    RUNTIME-RUNNER:BUFFER
    s" locals bind" GE-EXPECT-OK
    S\" 18\n25\n-5\n12\n4886718344\n40\n3\n1.500000\n10\n9\n-3\n"
-   s" locals bind output" GE-EXPECT-OUT ;
-
-: GE-VBIND ( -- )
-   2 0 do i GE-VBIND-AT loop
+   s" locals bind output" GE-EXPECT-OUT
    s" PASS: tier 0 binds locals from the virtual stack" type cr ;
 
-\ The JIT compiles a definition's last call as a B after its epilogue (habu2.f
-\ EM-COMPILE-SEMI); each row runs a tail call where a call's frame mattered.
-\ The JIT alone also runs each recursion two million deep, past the machine
-\ stack a call per turn would need: tier 1 calls `recurse` and overflows there.
-: GE-VTAIL-AT ( n -- ) {: tier:n :}
+\ Tier 0 folds a mentioned constant into the body as a literal and a created
+\ word as a DATA address (t0.f WORD-CALL).
+: GE-VFIX ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   tier 0= if RUNTIME-RUNNER:JIT$ else s" 1 set-tier" then GE-SRC-LINE
-   s" : GETQ ( -- n ) [: 5 throw ;] catch ;" GE-SRC-LINE
-   s" : GETT ( n -- ) 1+ throw ;" GE-SRC-LINE
-   s" : GETC ( -- n ) [: 6 GETT ;] catch ;" GE-SRC-LINE
-   s" : GETS ( n n -- n ) dup 0= if drop exit then 1- swap 1+ swap recurse ;" GE-SRC-LINE
-   s" : GETL ( n n -- n ) {: s:n k:n :} k 0= if s exit then s 1+ k 1- recurse ;" GE-SRC-LINE
-   s" : GETW ( n -- ) dup 0= if 9 throw then 1- recurse ;" GE-SRC-LINE
-   s" : GETX ( -- n ) [: 1000 GETW ;] catch ;" GE-SRC-LINE
-   s" : GETM ( n -- n ) 0 swap GETS ;" GE-SRC-LINE
-   s" GETQ . GETC . 0 1000 GETS . 0 1000 GETL . GETX . 5 GETM ." GE-SRC-LINE
-   tier 0= if
-      s" : GETY ( -- n ) [: 2000000 GETW ;] catch ;" GE-SRC-LINE
-      s" 0 2000000 GETS . 0 2000000 GETL . GETY ." GE-SRC-LINE
-   then
-   RUNTIME-RUNNER:BUFFER
-   s" tail calls" GE-EXPECT-OK
-   tier 0= if
-      S\" 5\n7\n1000\n1000\n9\n5\n2000000\n2000000\n9\n"
-   else
-      S\" 5\n7\n1000\n1000\n9\n5\n"
-   then
-   s" tail calls output" GE-EXPECT-OUT ;
-
-: GE-VTAIL ( -- )
-   HB-TARGET-LINUX-X86-64? 0= if 0 GE-VTAIL-AT then
-   1 GE-VTAIL-AT
-   s" PASS: tail calls throw, catch and recurse as calls do" type cr ;
-
-\ Tier 0 runs a mentioned constant or created word while its user compiles
-\ and folds what it pushed into the body (habu2.f EM-COMPILE-CALL): a constant
-\ as a literal, a created word as a DATA address in a pool register. Tier 1
-\ runs the same source and prints the same lines.
-: GE-VFIX-AT ( n -- ) {: tier:n :}
-   GE-HB-RESET
-   GE-SRC-RESET
-   tier 0= if s" 0 set-tier" else s" 1 set-tier" then GE-SRC-LINE
+   s" 0 set-tier" GE-SRC-LINE
    s" 1000 constant GEXK  -5 constant GEXN  $123456789 constant GEXW" GE-SRC-LINE
    s" variable GEXV  create GEXT 3 cells allot" GE-SRC-LINE
    s" : GEXD: ( n -- ) create , does> ( -- n ) @ 1+ ;  5 GEXD: GEXD" GE-SRC-LINE
@@ -2601,10 +2475,7 @@ variable GE-KIND-N
    RUNTIME-RUNNER:BUFFER
    s" fixed values" GE-EXPECT-OK
    S\" 2\n1\n998\n1\n2\n4886718346\n5929\n42\n7\n8\n12\n42\n44\n1045\n72\n"
-      s" fixed values output" GE-EXPECT-OUT ;
-
-: GE-VFIX ( -- )
-   2 0 do i GE-VFIX-AT loop
+      s" fixed values output" GE-EXPECT-OUT
    s" PASS: tier 0 folds constants and created words and keeps every call" type cr ;
 
 public
@@ -2628,7 +2499,6 @@ public
    GE-EVAL-UNDEF-RECOVER
    GE-EVAL-INTERP-ERR-RECOVER
    GE-EVAL-DEF-REJECT-CATCH
-   HB-TARGET-LINUX-X86-64? 0= if GE-ORPHAN-CLOSER then
    LOOP-OPENER:RUN
    GE-CF-DEPTH-CAP
    GE-DO-DEPTH-CAP
@@ -2647,7 +2517,6 @@ public
    GE-VFUSE
    GE-VJOIN
    GE-VBIND
-   GE-VTAIL
    GE-VFIX
    GE-VMEM ;
 

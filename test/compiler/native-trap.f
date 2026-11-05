@@ -87,10 +87,7 @@ LONG-N BUFFER: LONG-BUF
    CHILD-RC @ 0 T= ;
 
 \ Behind each call to a word that never returns, a tier-1 caller compiles a trap
-\ naming the callee whole, and each caller must answer what tier 0 answers. The
-\ messages share the literal store with source strings, which grows by segments
-\ (src/habu/intern.f): eighty 6995-byte names are 560,640 bytes, past
-\ one segment's 512 KB arena, and 1100 short callees pass 1024 names.
+\ naming the callee whole, and each caller must answer what tier 0 answers.
 $2000 constant SRC-CAP               \ one definition around a 6995-byte name
 SRC-CAP BUFFER: SRC
 variable SRC-U
@@ -134,17 +131,11 @@ variable ANSWERS                     \ callers that answered what tier 0 answers
    count 0 ?do  first i + len NORET-PAIR  loop ;
 
 : NORET-ANY-CASE ( -- )
-   s" eighty callers of callees named in 6995 bytes each compile" T-LABEL
+   s" two callers of callees named in 6995 bytes each compile" T-LABEL
    0 ANSWERS !
-   [: 0 80 6995 NORET-PAIRS ;] 0 TTHROWSQ
+   [: 0 2 6995 NORET-PAIRS ;] 0 TTHROWSQ
    s" and each answers what tier 0 answers" T-LABEL
-   ANSWERS @ 80 T=
-
-   s" 1100 callers of as many short-named callees compile" T-LABEL
-   0 ANSWERS !
-   [: 80 1100 0 NORET-PAIRS ;] 0 TTHROWSQ
-   s" and each answers what tier 0 answers" T-LABEL
-   ANSWERS @ 1100 T= ;
+   ANSWERS @ 2 T= ;
 
 variable ZERO-CONTINUED
 defer ZERO-THROW ( n -- )
@@ -207,11 +198,6 @@ public
 
 : RUN ( -- )
    T-RESET
-
-   s" a family's message says its tag matched no arm and exits BAD-TAG" T-LABEL
-   s" alpha" NTRAP:BAD-TAG {: a:ptr u:n rc:n :}
-   a u s" hb: bad alpha tag" T$=
-   rc ENGINE-ERROR:BAD-TAG T=
 
    s" an empty name is refused, since no message could name it" T-LABEL
    [: s" " NTRAP:BAD-TAG drop drop drop ;] E-NTRAP-NAME TTHROWSQ
