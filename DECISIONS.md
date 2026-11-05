@@ -873,6 +873,12 @@ learned live in the docs for their subject.
   copy, Joel chose "Approve FD:PIPE (Recommended)": "One pipe word in FD;
   HTTP, WebSocket, AIO and process code use it." FD:PIPE ( -- read-fd
   write-fd ) makes a pipe whose ends close on exec.
+- 2026-11-05, a non-blocking descriptor: shown that SIGNAL:INIT marks its
+  pipe non-blocking through process.f's PROC-NONBLOCK!, whose refusal leaves
+  both ends open and cleans up a child-process record SIGNAL:INIT never made,
+  and that O_NONBLOCK's number is written in fd.f, process.f and tcp4.f, Joel
+  chose "Add FD:NONBLOCK! (Recommended)": "One public word in FD, E-FS-IO on
+  refusal; signal.f uses it." FD:NONBLOCK! ( fd -- ).
 
 ## Tests
 
