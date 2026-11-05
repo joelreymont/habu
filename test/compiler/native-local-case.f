@@ -86,8 +86,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   \ x86-64 has no tier 0, so it runs none of these.
-   HB-TARGET-LINUX-X86-64? 0= if SCOPE-CASE CONTROL-CASE QUOTATION-CASE then
+   SCOPE-CASE CONTROL-CASE QUOTATION-CASE
    T-REPORT ;
 
 ;package

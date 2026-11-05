@@ -1,5 +1,4 @@
-\ CASE lowering at tier 0, one child per source. x86-64 has no tier 0, so it
-\ runs none of these.
+\ CASE lowering at tier 0, one child per source.
 require src/lib/test.f
 require src/lib/test/subject.f
 require src/lib/test/outcome.f
@@ -51,7 +50,7 @@ public
 
 : RUN ( -- )
    T-RESET
-   HB-TARGET-LINUX-X86-64? 0= if CHECK-CASES then
+   CHECK-CASES
    T-REPORT ;
 
 ;package

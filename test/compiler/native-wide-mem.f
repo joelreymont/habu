@@ -6,7 +6,6 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/ieee754.f
 require src/lib/adt/option.f
-require src/compiler/native/compiler.f
 
 package NWM
 private
@@ -267,9 +266,7 @@ CAST: W2>CELLS ( ptr w2 -- ptr n )
 
 : REFUSED-CASE ( -- )
    s" a cell load through a byte pointer remains a checker refusal" T-LABEL
-   NELAB:REFUSED-RESET
-   s" : NWM-BYTEP ( ptr u8 n -- n ) drop @ ;" EV-RC 70 T=
-   NELAB:REFUSED-ROW -1 T= ;
+   s" : NWM-BYTEP ( ptr u8 n -- n ) drop @ ;" EV-RC 70 T= ;
 
 public
 

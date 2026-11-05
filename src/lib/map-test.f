@@ -30,7 +30,6 @@ create MT-SPREAD-B MT-SPREAD-CAP >COUNT CELL-COUNT COUNT>N cells allot
 create MT-COLS 3 cells allot            \ letter indices sharing one home slot
 create MT-LETTERS 26 allot              \ the single-byte keys a..z
 create MT-ORDER 52 allot                \ the letters EACH visits: map A, then map B
-create MT-KEY 97 c, 98 c, 99 c,
 create MT-KEY-A 97 c,
 create MT-KEY-B 98 c,
 create MT-KEY-C 99 c,

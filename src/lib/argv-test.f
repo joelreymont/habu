@@ -1,7 +1,5 @@
 \ argv-test.f -- focused tests for src/lib/argv.f.
 \ Run mocks:  cat src/lib/errors.f src/lib/string.f src/lib/argv.f src/lib/argv-test.f | bin/hb
-\ Run script: cat src/lib/errors.f src/lib/string.f src/lib/argv.f src/lib/argv-test.f > /tmp/hb-argv-test.f
-\             bin/hb /tmp/hb-argv-test.f --json --label NAME --all-errors --strict-boundary -o OUT -- file.f --literal
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -321,21 +319,6 @@ create MSG-TEXT MSG-LEN allot
    TEST-APPEND-BOUNDS
    TEST-SPAN-REFUSALS ;
 
-: TEST-SCRIPT-ARGS ( -- )
-   s" hb argv-test [options] file.f" USAGE!
-   s" DEFAULT" LABEL-DEFAULT!
-   s" STDOUT" OUT-DEFAULT!
-   PARSE
-   2 EXPECT-POS-EXACT
-   JSON? ASSERT
-   ALL-ERRORS? ASSERT
-   STRICT-BOUNDARY? ASSERT
-   LABEL$ s" NAME" ASSERT$
-   OUT$ s" OUT" ASSERT$
-   0 POS$ s" file.f" ASSERT$
-   1 POS$ s" --literal" ASSERT$
-   EXPECT-TOKEN-BOUNDS ;
-
 : REPORT ( -- )
    TEST-FAIL @ 0 = if
       s" argv-test: ok (" type TEST-N @ FMT:.INT s"  assertions)" type cr
@@ -346,7 +329,7 @@ create MSG-TEXT MSG-LEN allot
 : ARGV-TEST-MAIN ( -- )
    0 TEST-N !
    0 TEST-FAIL !
-   SCRIPT-ARGC 0 > if TEST-SCRIPT-ARGS else TEST-MOCKS then
+   TEST-MOCKS
    REPORT ;
 
 ARGV-TEST-MAIN

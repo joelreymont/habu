@@ -396,33 +396,6 @@ FULL-PRODUCE-INSTALL
 : SNAP-RESET-INSTALL ( -- ) [: SNAP-RESET ;] is REG-CERT-SNAP-XT ;
 SNAP-RESET-INSTALL
 
-public
-
-\ The count of bases not on their boot buffer plus caps not at their init; a
-\ restored engine must answer 0.
-: ARENAS-STALE ( -- n )
-   0
-   BUF-P @ BUF-BOOT = 0= if 1 + then
-   DATA-P @ DATA-BOOT = 0= if 1 + then
-   ENV-P @ ENV-BOOT = 0= if 1 + then
-   GUARD-OFF-P @ GUARD-OFF-BOOT = 0= if 1 + then
-   GUARD-TAG-P @ GUARD-TAG-BOOT = 0= if 1 + then
-   GUARD-LIM-P @ GUARD-LIM-BOOT = 0= if 1 + then
-   TASK-KIND-P @ TASK-KIND-BOOT = 0= if 1 + then
-   TASK-A-P @ TASK-A-BOOT = 0= if 1 + then
-   TASK-B-P @ TASK-B-BOOT = 0= if 1 + then
-   TASK-C-P @ TASK-C-BOOT = 0= if 1 + then
-   FETCH-KEY-P @ FETCH-KEY-BOOT = 0= if 1 + then
-   FETCH-OFF-P @ FETCH-OFF-BOOT = 0= if 1 + then
-   FETCH-LEN-P @ FETCH-LEN-BOOT = 0= if 1 + then
-   BUF-CAP @ BUF-INIT = 0= if 1 + then
-   DATA-CAP @ DATA-INIT = 0= if 1 + then
-   ENV-CAP @ ENV-INIT = 0= if 1 + then
-   GUARD-CAP @ GUARD-INIT = 0= if 1 + then
-   TASK-CAP @ TASK-INIT = 0= if 1 + then
-   FETCH-CAP @ FETCH-INIT = 0= if 1 + then ;
-
-
 ;package
 
 ;using

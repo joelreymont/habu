@@ -246,7 +246,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-LIBS-SRC+ ( -- )
    s\" 128 CODEGEN:BUFFER ZZ-PATH\nvariable ZZ-FIRST-LIB\nvariable ZZ-LAST-LIB\n" FFI-T-SRC+
    s\" : ZZ-PATH$ ( n -- ptr u8 n ) {: id:n :} ZZ-PATH CODEGEN:RESET\n" FFI-T-SRC+
-   s\"    s\" /tmp/habu-ffi-growth-missing-\" ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    s\" /tmp/habu-ffi-path-missing-\" ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
    s\"    id ZZ-PATH CODEGEN:APPEND-DECIMAL ZZ-PATH CODEGEN:CONTENTS ;\n" FFI-T-SRC+
    s\" : ZZ-LIBS ( -- ) 270 0 ?do i ZZ-PATH$ FFI:LIBRARY-PATH\n" FFI-T-SRC+
    s\"    i 0= if dup ZZ-FIRST-LIB ! then ZZ-LAST-LIB ! loop ;\nZZ-LIBS\n" FFI-T-SRC+
