@@ -1,17 +1,11 @@
 \ A typed callback can receive and execute another typed quotation.
 require src/lib/test.f
-require src/lib/fs.f
-require src/lib/fs-mutate.f
-
-1 set-tier
 
 package NATIVE-QUOTE-FORWARD-E2E
 
 private
 
 variable HIT
-create RESULT 1 allot
-create PATH PATH-CAP allot
 
 : INNER ( -- ) 11 HIT ! ;
 
@@ -51,12 +45,7 @@ EXPORT INVOKE
    HIT @ 2 T=
    s" a callback with the wrong inner effect is rejected" T-LABEL
    [: WRONG-EFFECT ;] 70 TTHROWSQ
-   T-REPORT
-   s" native-quote-forward" FS:MKTEMP-DIR {: dir:ptr len:n :}
-   dir len s" result.bin" PATH FS:JOIN-PATH {: path-u:n :}
-   HIT @ RESULT c!
-   PATH path-u RESULT 1 FS:WRITE-ALL
-   s" native quote artifact: " type PATH path-u type cr ;
+   T-REPORT ;
 
 ;package
 

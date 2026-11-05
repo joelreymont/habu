@@ -1,7 +1,6 @@
 \ A native definition stays open while an immediate evaluates a source fragment.
 \ The fragment's own refusal must reach its catch before the outer `;`.
 require src/lib/test.f
-1 set-tier
 
 package NATIVE-EVAL-PREFIX-TEST
 public

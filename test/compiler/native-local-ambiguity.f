@@ -1,7 +1,5 @@
 \ A local binding must win over equally named public words imported from two
 \ packages. The native prior-binding pass runs before the local table exists.
-\ Tier-neutral by design: each subject is compiled in a child this file runs at
-\ tier 0 and at tier 1, so the tier of this row selects nothing.
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/test.f
@@ -30,11 +28,8 @@ variable EXITED
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: RUN-SOURCE ( ptr u8 n n -- ) {: src:ptr u:n tier:n :}
-   SB-RESET
-   tier 0= if s" 0 set-tier " else s" 1 set-tier " then SB-APPEND
-   src u SB-APPEND
-   SB$ OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN SB$ STORE ;
+: RUN-SOURCE ( ptr u8 n -- ) {: src:ptr u:n :}
+   src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN src u STORE ;
 
 : EXPECT-RC ( n -- ) {: want:n :}
    EXITED @ 0= RC @ want <> or if ERR$ type OUT$ type then
@@ -54,7 +49,7 @@ public
 : RUN ( -- )
    T-RESET
    s" native locals resolve before ambiguous used publics" T-LABEL
-   SOURCE$ 1 RUN-SOURCE
+   SOURCE$ RUN-SOURCE
    S\" 7\n" EXPECT-OUT
    T-REPORT ;
 

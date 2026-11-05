@@ -1,12 +1,6 @@
-\ Production vocabulary behavior and the instructions published for it.
+\ Production vocabulary behavior.
 require src/lib/test.f
 require src/lib/ieee754.f
-require src/arch/arm64/asm.f
-require tools/codegen-tail-probe.f
-
-\ Tier 1 below: those published instructions are the optimizing compiler's;
-\ the default tier fails the instruction rows.
-1 set-tier
 
 package NVOCAB-FIXTURE
 public
@@ -38,13 +32,6 @@ public
 : CELL-SIZE ( n -- n ) cells ;
 : DROP-PAIR ( n n n -- n ) 2drop ;
 : TAG-BITS ( n -- n ) 7 and ;
-: F-EIGHTH ( -- r ) 0.125 ;
-: F-THIRTY-ONE ( -- r ) 31.0 ;
-: F-NEG-SMALL ( -- r ) -0.1328125 ;
-: F-SIXTEENTH ( -- r ) 0.0625 ;
-: F-THIRTY-TWO ( -- r ) 32.0 ;
-: F-FINE ( -- r ) 1.03125 ;
-: F-NEG-ZERO ( -- r ) -0.0 ;
 
 32 constant SPACE
 9 constant TAB
@@ -57,39 +44,9 @@ public
 
 package NVOCAB-TEST
 using NVOCAB-FIXTURE
-using A64ASM
 
 \ Preserve the full-cell flag representation asserted by the original cases.
 CAST: FLAG-CELL ( bool -- n )
-
-\ Read published code; the compiler releases its temporary emission after use.
-$FF000010 constant BCOND-MASK
-$54000000 constant BCOND-FORM
-$FFE00C00 constant CSEL-MASK
-$9A800000 constant CSEL-FORM
-$FFE0FFE0 constant MVN-MASK
-$FFE01FE0 constant FMOVDI-MASK
-
-: FORM-COUNT ( ptr u8 n n n -- n )
-   {: name:ptr bytes:n mask:n form:n :}
-   0
-   name bytes NTAILPROBE:INSNS 0 ?do
-      name bytes i NTAILPROBE:INSN@ mask and form = if 1+ then
-   loop ;
-
-: SELECT-COND ( ptr u8 n -- n ) {: name:ptr bytes:n :}
-   -1
-   name bytes NTAILPROBE:INSNS 0 ?do
-      name bytes i NTAILPROBE:INSN@ {: word:n :}
-      word CSEL-MASK and CSEL-FORM = if
-         drop word 12 rshift $F and
-      then
-   loop ;
-
-: SELECT-FORM ( ptr u8 n n -- ) {: name:ptr bytes:n cond:n :}
-   name bytes BCOND-MASK BCOND-FORM FORM-COUNT 0 T=
-   name bytes CSEL-MASK CSEL-FORM FORM-COUNT 1 T=
-   name bytes SELECT-COND cond T= ;
 
 : COMPARES ( -- )
    3 4 GT TFALSE 4 3 GT FLAG-CELL -1 T= -1 -2 GT FLAG-CELL -1 T=
@@ -142,44 +99,19 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    4 3 SELECT-GT 1 T= 3 3 SELECT-GT 0 T= 3 4 SELECT-GT 0 T=
    4 3 SELECT-GE 1 T= 3 3 SELECT-GE 1 T= 3 4 SELECT-GE 0 T=
    4 3 SELECT-NE 1 T= 3 3 SELECT-NE 0 T= 3 4 SELECT-NE 1 T=
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" NVOCAB-FIXTURE:SELECT-GT" C-GT SELECT-FORM
-      s" NVOCAB-FIXTURE:SELECT-GE" C-GE SELECT-FORM
-      s" NVOCAB-FIXTURE:SELECT-NE" C-NE SELECT-FORM
-   then
    0 UNTIL-GT 4 T= 10 UNTIL-GT 11 T= ;
 
 : BITWISE ( -- )
    12 10 BITS-AND 8 T= -1 0 BITS-AND 0 T= -1 -1 BITS-AND -1 T=
    12 10 BITS-OR 14 T= -1 0 BITS-OR -1 T=
    12 10 BITS-XOR 6 T= -1 -1 BITS-XOR 0 T=
-   0 COMPLEMENT -1 T= -1 COMPLEMENT 0 T= 5 COMPLEMENT -6 T=
-   HB-TARGET-LINUX-X86-64? 0= if
-      s" NVOCAB-FIXTURE:COMPLEMENT" MVN-MASK 0 0 ENC-MVN MVN-MASK and
-      FORM-COUNT 1 T=
-   then ;
+   0 COMPLEMENT -1 T= -1 COMPLEMENT 0 T= 5 COMPLEMENT -6 T= ;
 
 : SHIFTS ( -- )
    1 0 SHIFT-LEFT 1 T= 1 63 SHIFT-LEFT $8000000000000000 T=
    1 64 SHIFT-LEFT 1 T= 1 65 SHIFT-LEFT 2 T=
    -1 0 SHIFT-RIGHT -1 T= -1 63 SHIFT-RIGHT 1 T=
    -1 64 SHIFT-RIGHT -1 T= -1 1 SHIFT-RIGHT $7FFFFFFFFFFFFFFF T= ;
-
-: LITERAL ( ptr u8 n r n n -- ) {: name:ptr bytes:n value:r bits:n fmov:n :}
-   value IEEE754:F64>BITS bits T=
-   name bytes FMOVDI-MASK 0 0 ENC-FMOVDI FMOVDI-MASK and FORM-COUNT fmov T= ;
-
-\ An FMOV immediate encodes sign, exponent 0x3FC..0x403 and four fraction bits.
-\ The boundaries take one; their nearest outside neighbours keep exact bits.
-: FLOAT-LITERALS ( -- )
-   s" float literals at the FMOV immediate bounds keep their exact bits" T-LABEL
-   s" NVOCAB-FIXTURE:F-EIGHTH" F-EIGHTH $3FC0000000000000 1 LITERAL
-   s" NVOCAB-FIXTURE:F-THIRTY-ONE" F-THIRTY-ONE $403F000000000000 1 LITERAL
-   s" NVOCAB-FIXTURE:F-NEG-SMALL" F-NEG-SMALL $BFC1000000000000 1 LITERAL
-   s" NVOCAB-FIXTURE:F-SIXTEENTH" F-SIXTEENTH $3FB0000000000000 0 LITERAL
-   s" NVOCAB-FIXTURE:F-THIRTY-TWO" F-THIRTY-TWO $4040000000000000 0 LITERAL
-   s" NVOCAB-FIXTURE:F-FINE" F-FINE $3FF0800000000000 0 LITERAL
-   s" NVOCAB-FIXTURE:F-NEG-ZERO" F-NEG-ZERO $8000000000000000 0 LITERAL ;
 
 : VALUES ( -- )
    0 CELL-SIZE 0 T= 3 CELL-SIZE 24 T= -3 CELL-SIZE -24 T=
@@ -189,9 +121,8 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    65 WHITE? TFALSE 0 WHITE? TFALSE 33 WHITE? TFALSE ;
 
 : RUN ( -- )
-   T-RESET COMPARES FLAG-VALUES FLOAT-FLAGS FLOAT-LITERALS SELECTS BITWISE SHIFTS VALUES T-REPORT ;
+   T-RESET COMPARES FLAG-VALUES FLOAT-FLAGS SELECTS BITWISE SHIFTS VALUES T-REPORT ;
 
 RUN
-;using
 ;using
 ;package

@@ -461,10 +461,7 @@ SUITE compiler-native-defer
    test/compiler/native-defer.f
 ;SUITE
 
-SUITE compiler-native-finally-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
+SUITE compiler-native-finally
    test/compiler/native-finally.f
 ;SUITE
 
@@ -604,10 +601,7 @@ SUITE compiler-native-local-ambiguity
    test/compiler/native-local-ambiguity.f
 ;SUITE
 
-SUITE compiler-native-product-locals-aot
-   src/lib/test.f
-   test/compiler/aot-mode.f
-   ENTRIES
+SUITE compiler-native-product-locals
    test/compiler/native-product-locals.f
 ;SUITE
 

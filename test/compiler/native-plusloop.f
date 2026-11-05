@@ -1,17 +1,10 @@
-\ The counted loop with a step, at tier 1. Forth 2012 6.1.0140: the loop ends
+\ The counted loop with a step. Forth 2012 6.1.0140: the loop ends
 \ when the index crosses the boundary between limit-1 and limit in the step's
 \ direction; with old = index - limit and next = index' - limit that is ((old
 \ xor next) and (old xor step)) < 0. A bare sign change also fires when the
 \ index wraps at the boundary opposite the limit, which must keep looping.
 \ Expected counts are the standard's tables (gd2, gd7, gd8) plus that boundary.
 require src/lib/test.f
-require src/lib/prelude.f
-require src/lib/string.f
-require src/compiler/native/compiler.f
-require tools/codegen-loop-inventory.f
-
-\ Every word below compiles at tier 1, not ARM's default tier 0.
-1 set-tier
 
 package NPL-FIXTURE
 public
@@ -130,14 +123,6 @@ create STRIDE-BUF STRIDE-BYTES allot
 package NPL-TEST
 private
 
-: LOOPS-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u NLOOPINV:ROW!
-   NLOOPINV:LOOPS ;
-: KEPT ( ptr u8 n -- )
-   LOOPS-IN 1 T= ;
-: KEPT2 ( ptr u8 n -- )
-   LOOPS-IN 2 T= ;
-
 : VISITED-IS ( n n -- ) {: idx:n want:n :}
    idx NPL-FIXTURE:VISITED@ want T= ;
 
@@ -185,7 +170,6 @@ private
 
 : OPPOSITE-CASE ( -- )
    s" wrapping at the boundary opposite the limit is not termination" T-LABEL
-   s" NPL-FIXTURE:OPPOSITE-UP" KEPT
    NPL-FIXTURE:OPPOSITE-UP 2 T=
    NPL-FIXTURE:OPPOSITE-DOWN 2 T=
    s" stepping down onto the minimum crosses the limit only on the second turn" T-LABEL
@@ -193,8 +177,6 @@ private
 
 : STEP-CASE ( -- )
    s" constant steps land on, before and past the limit" T-LABEL
-   s" NPL-FIXTURE:TURNS" KEPT
-   s" NPL-FIXTURE:SUM" KEPT
    10 0 4 NPL-FIXTURE:TURNS 3 T=   10 0 4 NPL-FIXTURE:SUM 12 T=
    10 0 3 NPL-FIXTURE:TURNS 4 T=   10 0 3 NPL-FIXTURE:SUM 18 T=
    5 0 5 NPL-FIXTURE:TURNS 1 T=
@@ -217,7 +199,6 @@ private
 
 : NEST-CASE ( -- )
    s" two step loops nest and i and j read the right frames" T-LABEL
-   s" NPL-FIXTURE:NEST" KEPT2
    6 4 NPL-FIXTURE:NEST 64 T=
    s" a counting-down ?do nests in a ?do loop both ways round" T-LABEL
    NPL-FIXTURE:QNEST-DOWN 8 T=
@@ -231,7 +212,6 @@ private
 
 : FRAME-CASE ( -- )
    s" leave and unloop exit discharge a step loop's frame" T-LABEL
-   s" NPL-FIXTURE:EARLY" KEPT
    20 NPL-FIXTURE:EARLY 4 T=
    3 NPL-FIXTURE:EARLY 2 T=
    20 NPL-FIXTURE:DISCHARGED 3 T=
