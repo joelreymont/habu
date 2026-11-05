@@ -33,7 +33,7 @@ require src/lib/fmt.f                        \ FMT:.INT
 
 package CHECK-TEST
 
-using CHECK
+using LSP-CHECK
 private
 
 $4000 constant BUF-CAP
@@ -178,17 +178,15 @@ variable START-NS
    ERR-A @ 0= if CAP-ALLOC ERR-A! then
    ERR-A@ ;
 
-\ Stream capture for the in-process CHECK drivers: the tool writes diagnostics
-\ with plain `write` on stdout and stderr, so a run moves those two descriptors
-\ (src/lib/test/runner.f GT-CAPTURE-ACTION) and the assertions see the bytes a
-\ command-line user would.
+\ The tool writes with plain `write`, so an in-process run moves stdout and
+\ stderr (GT-CAPTURE-ACTION): assertions see what a command-line user would.
 : IN-PROC ( [ -- ] -- n n n )   \ outn errn code, the same triple the CLI drivers return
    {: q :}
    q ROOT$ CAP-OUT BUF-CAP SPAN:MAKE CAP-ERR BUF-CAP SPAN:MAKE GT-CAPTURE-ACTION
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
 
-\ CHECK:MAIN turns a non-zero run code into a throw, which the engine reports as
+\ LSP-CHECK:MAIN turns a non-zero run code into a throw, which the engine reports as
 \ the exit status; the in-process drivers map it the same way.
 : RUN-ACT ( -- )
    RUN dup 0 <> if throw then drop ;
@@ -290,10 +288,8 @@ variable START-NS
    CAPTURE>N ;
 
 \ ---- command-line drivers ---------------------------------------------------
-\ These run a real child: they cover argument parsing, the program on standard
-\ input, and the exit status of `bin/hb tools/check.f`. Everything else drives
-\ the tool in this process through CHECK's public words; CLI-PATH is the
-\ verdict such an in-process check must repeat.
+\ A real child, for argument parsing, a program on stdin and the exit status;
+\ every other check runs in process, and CLI-PATH is the verdict it must repeat.
 
 : CLI-STDIN ( ptr u8 n -- n n n )
    CHECK-ARGV-START
@@ -320,9 +316,8 @@ variable START-NS
    CHECK-CAPTURE ;
 
 \ ---- in-process drivers -----------------------------------------------------
-\ Sources the command line reads from standard input are selected with
-\ CHECK:SOURCE under the tool's own `<stdin>` label, so every diagnostic names
-\ the same file.
+\ A source the command line reads from stdin goes through LSP-CHECK:SOURCE
+\ under the tool's `<stdin>` label, so every diagnostic names the same file.
 
 : STDIN-LABEL$ ( -- ptr u8 n )
    s" <stdin>" ;
@@ -5912,7 +5907,7 @@ variable AGREE-ERR-U
 \ The tail the subject source below also declares, owned here by CHECK-TEST.
 NEWTYPE ckneub
 
-using CHECK
+using LSP-CHECK
 
 : NEU-FAMILY-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -5951,13 +5946,8 @@ variable NEU-THROW-PKG-RC
    RESET ;
 
 \ --- a rejected declaration must not poison the tail it half-registered ---
-\ The registry chains family rows by id, so a row left chained after its id
-\ goes out of range is found by the next lookup of that tail, which reads past
-\ the end of the store: die 76 `tfam: bad family id` at TFAM-DECL's duplicate
-\ lookup. The first source registers a sum and rejects on a duplicate variant
-\ (exit 70); the second declares the same tail correctly. Both go through
-\ CHECK:RUN, the command line's entry: calling TFAM-DECL directly would miss the
-\ seam the two runs share.
+\ A row still chained once its id is out of range makes the tail's next lookup
+\ die 76 `tfam: bad family id`; both go through LSP-CHECK:RUN, as the CLI does.
 : POISON-BAD-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" SUMTYPE cktpois<a> VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
@@ -6440,14 +6430,14 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
    s" json-errors" OPT
    LC-DECL$SRC LC-BACK$ SOURCE
    [: RUN-ACT ;] IN-PROC
-   s" load-context: a JSON CHECK:SOURCE label with a backslash, refused declaration"
+   s" load-context: a JSON LSP-CHECK:SOURCE label with a backslash, refused declaration"
    LC-EXPECT-UNSAFE-JSON ;
 
 : LC-UNSAFE-SOURCE-NUL-CASE ( -- )
    RESET
    LC-DECL$SRC LC-NUL$ SOURCE
    [: RUN-ACT ;] IN-PROC
-   s" load-context: a CHECK:SOURCE label with a NUL, refused declaration"
+   s" load-context: an LSP-CHECK:SOURCE label with a NUL, refused declaration"
    LC-EXPECT-UNSAFE ;
 
 \ Existence is checked before the path is quoted; under --json-errors the line
@@ -6596,7 +6586,7 @@ create LC-TYPE-BUF LC-TYPE-CAP allot
 
 : USH$ ( -- ptr u8 n )  s" ckt-ush.f" REQ$ ;
 
-\ Run CHECK on the fixture with the selected options: stderr length and the
+\ Run LSP-CHECK on the fixture with the selected options: stderr length and the
 \ same exit status as the command line.
 : REFUSAL-RUN ( ptr u8 n -- n n )
    FILE

@@ -30,7 +30,7 @@ require tools/diag-origin-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
 require tools/check-all-errors-core.f    \ loads src/habu/verify-source.f
-\ The require closure, and CHECK:VERIFY-BYTES: the check that stops before the
+\ The require closure, and LSP-CHECK:VERIFY-BYTES: the check that stops before the
 \ run stage, which --verify-only makes.
 require tools/check-verify-core.f
 require src/core/checker-owner-guard.f
@@ -49,7 +49,7 @@ s" CHECKER-SCOPE-START" s" --" TRUST
 s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
-package CHECK
+package LSP-CHECK
 using SOURCE                             \ the shared source-string emitters
 using SOURCE-ROOT
 
@@ -423,7 +423,7 @@ private
    repeat ;
 
 \ CLI arguments have two path slots; keep their library capacity throw for
-\ direct CHECK:FILE callers, and explain it only at this command-line boundary.
+\ direct LSP-CHECK:FILE callers, and explain it only at this command-line boundary.
 : CHK-PARSE-CLI ( -- )
    [: CHK-PARSE ;] catch {: rc:n :}
    rc E-FS-CAPACITY = if CHK-PATH-TOO-BIG then
@@ -1716,12 +1716,8 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    VERIFY-OUT$ CHK-ERR
    VERIFY-LOG$ CHK-EXPLAIN ;
 
-\ The pre-pass runs in the verifier child, on the engine's image
-\ (CHECK:PREVERIFY-BYTES), so the words it resolves are the engine's and the
-\ ones the subject loads, the words the run will have, never a word only this
-\ process loaded: src/lib/fs.f's FS:FILE-SIZE for check.f, src/lib/test.f's T= for a
-\ harness that checks in process. Its packets and the child's prose come
-\ first, then what its stop leaves.
+\ The pre-pass runs in the verifier child (PREVERIFY-BYTES), resolving only the
+\ run's words; its packets and the child's prose precede what its stop leaves.
 : CHK-PREVERIFY-REPORT ( result<n,outcome> -- )
    CHK-PREVERIFY-RELAY
    MATCH result
@@ -1833,10 +1829,8 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    CHECKER-SCOPE-DONE
    rc 0 <> if rc throw then ;
 
-\ --verify-only is CHECK:VERIFY-BYTES over a named file's bytes, or over stdin's
-\ under --stdin-path, and nothing more: no lint, no in-process verify, no run.
-\ stderr carries its packets and nothing else; stdout carries its prose and, for
-\ an outcome that is not the checker's verdict, a closing line.
+\ --verify-only is VERIFY-BYTES over a file's or stdin's bytes, nothing more:
+\ stderr gets packets; stdout gets prose and, with no verdict, a closing line.
 
 : CHK-VERIFY-READ ( -- )
    0 CHK-POS$ CHK-SRC-READ CHK-SRC-U ! ;

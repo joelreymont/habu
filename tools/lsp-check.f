@@ -1,9 +1,8 @@
-\ lsp-check.f - the language server's check of one open document, and the one
-\ place the server meets the checker: CHECK:VERIFY-BYTES-AT
-\ (tools/check-verify-core.f), which runs none of the text. Every check reads each
-\ other open document in place of its file on disk, under the file's canonical
-\ path. STORAGE CLASS. PROCESS-GLOBAL: the check in progress belongs to the
-\ server's one task.
+\ lsp-check.f - the language server's check of one open document through
+\ VERIFY-BYTES-AT (tools/check-verify-core.f), which runs none of the text.
+\ Every check reads each other open document in place of its file on disk,
+\ under the file's canonical path. STORAGE CLASS. PROCESS-GLOBAL: the check in
+\ progress belongs to the server's one task.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -62,7 +61,7 @@ variable BATCH-K
 : NEWLINE ( -- )  s\" \n" ERR ;
 
 : RELAY ( -- )
-   CHECK:VERIFY-LOG$ {: a:ptr u:n :}
+   VERIFY-LOG$ {: a:ptr u:n :}
    u 0= if exit then
    a u ERR
    a u + 1- c@ LF <> if NEWLINE then ;
@@ -72,7 +71,7 @@ variable BATCH-K
 : COMPLETED ( ptr u8 n -- )
    {: a:ptr u:n :}
    true PUBLISHABLE !
-   CHECK:VERIFY-LOG$ nip 0= if exit then
+   VERIFY-LOG$ nip 0= if exit then
    HEAD a u ERR NEWLINE RELAY ;
 
 : UNFINISHED ( outcome -- )
@@ -89,8 +88,8 @@ variable BATCH-K
 : VERIFY ( -- )
    SUBJECT @ {: slot:n :}
    slot DOC-TEXT$ slot DOC-PATH$ CURSOR @ [: OTHERS ;] CHECK-MS >MS
-   CHECK:VERIFY-BYTES-AT
-   MATCH CHECK:verdict
+   VERIFY-BYTES-AT
+   MATCH verdict
       verified OF true VERIFIED ! s" verified" COMPLETED ENDOF
       refused OF s" refused" COMPLETED ENDOF
       engine-provided OF s" engine-provided" COMPLETED ENDOF
@@ -109,8 +108,8 @@ variable BATCH-K
 
 \ The check of the bytes as the file at the path, for the uses of the tail,
 \ its verdict's name in OUTCOME-B.
-: USES-VERDICT ( CHECK:verdict -- )
-   MATCH CHECK:verdict
+: USES-VERDICT ( verdict -- )
+   MATCH verdict
       verified OF true VERIFIED ! s" verified" COMPLETE-OUTCOME ENDOF
       refused OF s" refused" COMPLETE-OUTCOME ENDOF
       engine-provided OF s" engine-provided" COMPLETE-OUTCOME ENDOF
@@ -129,11 +128,11 @@ variable BATCH-K
 : CHECKED ( -- )
    SRC-A @ SRC-U @ SRC-P @ SRC-PU @ SRC-T @ SRC-TU @
    [: -1 swap DOC-EACH-BUT ;] CHECK-MS >MS
-   CHECK:VERIFY-BYTES-OF USES-VERDICT ;
+   VERIFY-BYTES-OF USES-VERDICT ;
 
 : PROBED ( [ -- ] -- [ -- ] )
    PUBLISHABLE @ if
-      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ VERIFIED @
+      VERIFY-FILES$ VERIFY-DEFS$ VERIFY-USES$ VERIFIED @
       SRC-OWNER @
       LSP-DEFS:DEFS-PROBE
    then
@@ -141,18 +140,8 @@ variable BATCH-K
 
 public
 
-\ Packets are published whatever the verdict: a check stopped by a later
-\ definition still publishes those written before it. A completed check (verified,
-\ refused, deferred, or the engine providing the file) replaces the last
-\ definitions, uses and verified flag (LSP-DEFS:DEFS-KEEP) and top-level loads
-\ (CHECK:VERIFY-LOADS$ into LSP-DOCS:DOC-LOADS!, answering tools/lsp-links.f), and
-\ publishes even when it wrote none. Otherwise (the verifier's image holds the
-\ file, no verdict, a throw) the last definitions stay for workspace symbols, but
-\ uses and loads are dropped at the start (LSP-DEFS:DEFS-USES-DROP): they are
-\ bytes of the text a check completed on. With no packets nothing is published,
-\ so the client keeps its last list. A negative cursor is none; with one, the
-\ checker's spellings at that byte land in CHECK:VERIFY-CANDIDATES$. The
-\ document is clean from here on.
+\ A completed check replaces the document's definitions, uses and loads; another
+\ end keeps its definitions for workspace symbols. A negative cursor is none.
 : RUN-AT ( n n -- )
    {: slot:n at:n :}
    slot DOC-CLEAN
@@ -167,24 +156,17 @@ public
       HEAD s" not checked: throw " ERR code NUMBER$ ERR NEWLINE RELAY
    then
    PUBLISHABLE @ if
-      CHECK:VERIFY-LOADS$ slot DOC-LOADS!
-      CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$
-      CHECK:VERIFY-UNREAD$ slot
+      VERIFY-LOADS$ slot DOC-LOADS!
+      VERIFY-FILES$ VERIFY-DEFS$ VERIFY-USES$
+      VERIFY-UNREAD$ slot
       VERIFIED @ LSP-DEFS:DEFS-KEEP
    then
-   CHECK:VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
-      slot CHECK:VERIFY-OUT$ LSP-DIAG:PUBLISH
+   VERIFY-OUT$ nip 0<> PUBLISHABLE @ or if
+      slot VERIFY-OUT$ LSP-DIAG:PUBLISH
    then ;
 
-: RUN ( n -- )  -1 RUN-AT ;
-
-\ Checks the bytes (an open document's text or the file on disk) as the file at
-\ the path, with no cursor, publishing nothing and writing nothing to stderr. Its
-\ uses are those bound to a located declaration in the file and, in every other
-\ file read, those bound to a declaration of the canonical tail
-\ (CHECK:VERIFY-BYTES-OF). A completed check is the store's probe
-\ (LSP-DEFS:DEFS-PROBE), with its verified flag, while GATHER runs; the probe is
-\ removed once GATHER returns or throws, and an unfinished check adds none.
+\ Checks the bytes as the file at the path, silently; a completed check is the
+\ store's probe (LSP-DEFS:DEFS-PROBE) only while GATHER runs.
 : USES ( ptr u8 n ptr u8 n ptr u8 n n [ -- ] -- )
    {: a:ptr u:n p:ptr pu:n t:ptr tu:n owner:n gather :}
    a SRC-A !
@@ -208,27 +190,27 @@ public
 \ Primitive references can check a bounded group in one isolated child.
 \ Each result is exposed as the usual single probe while GATHER runs.
 : USES-BATCH-BEGIN ( ptr u8 n -- )
-   0 BATCH-CODE ! CHECK:VERIFY-REF-BATCH-BEGIN ;
+   0 BATCH-CODE ! VERIFY-REF-BATCH-BEGIN ;
 
 : USES-BATCH-ADD ( ptr u8 n ptr u8 n -- )
-   [: -1 swap DOC-EACH-BUT ;] CHECK:VERIFY-BATCH-ADD ;
+   [: -1 swap DOC-EACH-BUT ;] VERIFY-BATCH-ADD ;
 
 : USES-BATCH-RUN ( -- )
-   [: CHECK-MS >MS CHECK:VERIFY-BATCH-RUN ;] catch BATCH-CODE ! ;
+   [: CHECK-MS >MS VERIFY-BATCH-RUN ;] catch BATCH-CODE ! ;
 
-: USES-BATCH-WAVE-BEGIN ( -- ) CHECK:VERIFY-BATCH-WAVE-BEGIN ;
-: USES-BATCH-WAVE-ADD ( n -- ) CHECK:VERIFY-BATCH-WAVE-ADD ;
-: USES-BATCH-WAVE-RUN ( n -- ) CHECK-MS >MS CHECK:VERIFY-BATCH-WAVE-RUN ;
-: USES-BATCH-WAVE-LOAD ( n -- ) CHECK:VERIFY-BATCH-WAVE-LOAD BATCH-CODE ! ;
+: USES-BATCH-WAVE-BEGIN ( -- ) VERIFY-BATCH-WAVE-BEGIN ;
+: USES-BATCH-WAVE-ADD ( n -- ) VERIFY-BATCH-WAVE-ADD ;
+: USES-BATCH-WAVE-RUN ( n -- ) CHECK-MS >MS VERIFY-BATCH-WAVE-RUN ;
+: USES-BATCH-WAVE-LOAD ( n -- ) VERIFY-BATCH-WAVE-LOAD BATCH-CODE ! ;
 
-: USES-BATCH-N ( -- n )  CHECK:VERIFY-BATCH-N ;
+: USES-BATCH-N ( -- n )  VERIFY-BATCH-N ;
 
 : USES-BATCH-CLEAN? ( -- bool )
    BATCH-CODE @ 0<> if false exit then
-   CHECK:VERIFY-BATCH-CLEAN? ;
+   VERIFY-BATCH-CLEAN? ;
 
 : USES-BATCH-CHECKED ( -- )
-   BATCH-K @ CHECK:VERIFY-BATCH-RESULT USES-VERDICT ;
+   BATCH-K @ VERIFY-BATCH-RESULT USES-VERDICT ;
 
 \ False leaves the subject untouched so the caller can retry it one-shot.
 : USES-BATCH-RESULT ( n n [ -- ] -- bool )
@@ -239,7 +221,7 @@ public
    BATCH-CODE @ 0<> if false exit then
    k BATCH-K !
    [: USES-BATCH-CHECKED ;] catch 0<> if false exit then
-   CHECK:VERIFY-BATCH-COMPLETE? 0= if false exit then
+   VERIFY-BATCH-COMPLETE? 0= if false exit then
    gather [: PROBED ;] catch {: rc:n :} drop
    LSP-DEFS:DEFS-UNPROBE
    LSP-DEFS:PROBE-DISK-CLEAR

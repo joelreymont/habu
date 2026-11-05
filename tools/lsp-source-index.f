@@ -1,5 +1,5 @@
 \ lsp-source-index.f - locate an image word in current engine source. The verifier
-\ child scans the supplied bytes (CHECK:INDEX-BYTES) and returns surviving
+\ child scans the supplied bytes (LSP-CHECK:INDEX-BYTES) and returns surviving
 \ declaration identities; this file matches them to the image's compiled origins.
 \ An origin row is a binding locator (symbol, code entry, root-relative path, name
 \ span) with no file bytes, so lookups read the file's current text, an open
@@ -116,7 +116,7 @@ variable RESULT-SYM
    DECODE if ROW-SELECT then ;
 
 : ROWS ( -- )
-   CHECK:VERIFY-INDEX$ {: a:ptr u:n :}
+   LSP-CHECK:VERIFY-INDEX$ {: a:ptr u:n :}
    0 begin dup u < while
       {: at:n :}
       a at + u at - 10 INDEX-OF MATCH option
@@ -130,7 +130,7 @@ variable RESULT-SYM
 : SCAN ( ptr u8 n ptr u8 n -- )
    0 COUNT !
    INDEX-MS >MS
-   CHECK:INDEX-BYTES MATCH CHECK:verdict
+   LSP-CHECK:INDEX-BYTES MATCH LSP-CHECK:verdict
       verified OF ROWS ENDOF
       refused OF ROWS ENDOF
       engine-provided OF ENDOF

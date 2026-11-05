@@ -1,5 +1,5 @@
 \ lsp-completion.f - textDocument/completion: one item per spelling the checker
-\ offered at the cursor (LSP-CHECK:RUN-AT; CHECK:VERIFY-CANDIDATES$ lines as
+\ offered at the cursor (LSP-CHECK:RUN-AT; LSP-CHECK:VERIFY-CANDIDATES$ lines as
 \ tools/check-verify-child.f states them), in its order, never incomplete: every
 \ spelling that would bind and begins, case-folded, with the token's bytes before
 \ the cursor, so the client filters it; the server matches no names.
@@ -122,7 +122,7 @@ public
    w WRITE-OBJECT-START
    s" isIncomplete" false WRITE-FIELD-BOOL WRITE-COMMA
    s" items" WRITE-KEY WRITE-ARRAY-START drop
-   CHECK:VERIFY-CANDIDATES$ [: ITEM ;] LSP-LINE:EACH-LINE
+   LSP-CHECK:VERIFY-CANDIDATES$ [: ITEM ;] LSP-LINE:EACH-LINE
    w WRITE-ARRAY-END WRITE-OBJECT-END ;
 
 ;using

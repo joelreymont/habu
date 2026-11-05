@@ -619,7 +619,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 
 \ Checks the document in this slot now, as its turn: the next check due is of
 \ a waiting document after it.
-: CHECK-NOW ( n -- )  dup LAST-CHECKED ! LSP-CHECK:RUN ;
+: CHECK-NOW ( n -- )  dup LAST-CHECKED ! -1 LSP-CHECK:RUN-AT ;
 
 \ Checks the document in this slot first if it waits for a check, so a request
 \ about it is answered from the text the client asked about: LSP orders a

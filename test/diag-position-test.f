@@ -1,8 +1,8 @@
-\ diag-position-test.f - a checker packet locates its token in the checked file.
-\ Packet contract (tools/check.f --json-errors): byte_start and byte_end are
-\ 0-based offsets, end exclusive; line and column are 1-based, the column in
-\ bytes, and LF ends a line. A packet in a required file names and locates
-\ there.
+\ diag-position-test.f - a checker packet locates its token in the checked file,
+\ by tools/diag-code.f's contract, with LF ending a line; a packet in a required
+\ file names and locates there. Semantic checks call LSP-CHECK's public words in
+\ process; the verifier and run stages use HABU_UNDER_TEST when set, else this
+\ engine.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -105,11 +105,8 @@ variable RC
    a DEP-P u BYTE-COPY
    u DEP-PU ! ;
 
-\ Semantic checks call CHECK's public API with captured descriptors; the
-\ verifier and run stages use the child engine: HABU_UNDER_TEST when set, else
-\ this one. The outcome of a child that ran the program src: its exit code, -1
-\ for a signal. A deadline is no exit code: it prints src and the capture and
-\ throws E-PROC-TIMEOUT (T-TIMED-OUT).
+\ The outcome of a child that ran src: its exit code, or -1 for a signal; a
+\ deadline prints src and the capture and throws E-PROC-TIMEOUT (T-TIMED-OUT).
 : STORE! ( ptr u8 n len len outcome -- )
    {: src:ptr srcu:n outu:len erru:len oc :}
    erru LEN>N ERR-U !
@@ -119,19 +116,19 @@ variable RC
      timeout OF src srcu OUT outu LEN>N ERR$ T-TIMED-OUT ENDOF
    ;MATCH ;
 
-\ CHECK:MAIN throws a nonzero run code, which the CLI exits with. Keep that
+\ LSP-CHECK:MAIN throws a nonzero run code, which the CLI exits with. Keep that
 \ mapping while capturing the same stdout and stderr writes in this process.
 : CHECK-RUN ( -- )
-   CHECK:RUN dup 0 <> IF throw THEN drop ;
+   LSP-CHECK:RUN dup 0 <> IF throw THEN drop ;
 
 \ Run the checker on the fixture with FLAG (when not empty) and JSON errors,
 \ splitting its stderr packets into lines; the command-line exit status is WANT.
 : CHECK-EXIT ( ptr u8 n n -- )
    {: flag:ptr flagu:n want:n :}
-   CHECK:RESET
-   flagu 0 > IF flag 2 + flagu 2 - CHECK:OPT THEN
-   s" json-errors" CHECK:OPT
-   FX-PATH$ CHECK:FILE
+   LSP-CHECK:RESET
+   flagu 0 > IF flag 2 + flagu 2 - LSP-CHECK:OPT THEN
+   s" json-errors" LSP-CHECK:OPT
+   FX-PATH$ LSP-CHECK:FILE
    [: CHECK-RUN ;] BASE$ OUT CAP SPAN:MAKE ERR CAP SPAN:MAKE GT-CAPTURE-ACTION
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !

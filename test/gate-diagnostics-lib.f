@@ -100,22 +100,22 @@ TYPED-VARIABLE SPLICE-LEN len
 
 : CHECK-START ( -- )
    GE-HB-RESET
-   CHECK:RESET
+   LSP-CHECK:RESET
    LINT-OUT-BUFFER-OFF ;
 
 : CHECK-OPT ( ptr u8 n -- ) {: a:ptr u:n :}
    a u GE-ARGV+
-   a u CHECK:OPT ;
+   a u LSP-CHECK:OPT ;
 
 : CHECK-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu GE-ARGV+
-   path pathu CHECK:FILE ;
+   path pathu LSP-CHECK:FILE ;
 
 : CHECK-RUN ( -- )
-   CHECK:RUN dup 0 <> if throw then drop ;
+   LSP-CHECK:RUN dup 0 <> if throw then drop ;
 
 : STDIN-ACT ( -- )
-   GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHECK:SOURCE
+   GE-SRC-BUF GE-SRC-U @ s" <stdin>" LSP-CHECK:SOURCE
    CHECK-RUN ;
 
 : CHECK-STDIN ( -- )
@@ -128,7 +128,7 @@ TYPED-VARIABLE SPLICE-LEN len
    [: PATH-ACT ;] GE-CAPTURE-ACTION ;
 
 : LABEL-COPY-ACT ( -- )
-   GE-SRC-BUF GE-SRC-U @ LABEL$ CHECK:SOURCE
+   GE-SRC-BUF GE-SRC-U @ LABEL$ LSP-CHECK:SOURCE
    $58 LABEL-BUF c!
    CHECK-RUN ;
 
@@ -139,10 +139,10 @@ TYPED-VARIABLE SPLICE-LEN len
    CHECK-START
    s" owned-label.f" LABEL!
    [: LABEL-COPY-ACT ;] GE-CAPTURE-ACTION
-   s" public CHECK:SOURCE accepted bad label-copy fixture" GE-EXPECT-NONZERO
+   s" public LSP-CHECK:SOURCE accepted bad label-copy fixture" GE-EXPECT-NONZERO
    s" owned-label.f" s" copied source label appears in diagnostic" GE-EXPECT-ERR-HAS
    s" Xwned-label.f" s" mutated source label absent from diagnostic" GE-EXPECT-ERR-LACKS
-   CHECK:RESET ;
+   LSP-CHECK:RESET ;
 
 : WRITE-ERR ( ptr u8 n -- )
    PATH!

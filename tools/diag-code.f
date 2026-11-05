@@ -2,12 +2,6 @@
 \ repair classes and its evidence field. tools/gate-json-assert.f checks a record
 \ and tools/repair-packet.f builds its packet by the row read here, so a code
 \ enters both through one row.
-
-require src/lib/string.f
-
-package DIAG-CODE
-public
-
 \ The record contract: newline-delimited JSON on stderr, schema_version 1, a
 \ valid line even when the input is rejected; the field set per shape is what
 \ tools/gate-json-assert-core.f requires (diag-contract) over every fixture
@@ -19,11 +13,16 @@ public
 \ it (the engine's own load, `evaluate`, checker-generated definitions) reports
 \ its definition's origin plus the token's offset in the checked text.
 \ source_excerpt is the record's definition_source: packet builders normalize,
-\ the checker emits no aliases. --all-errors and CHECK:VERIFY-BYTES report every
-\ refused definition and go on; at a duplicate name CHECK:VERIFY-BYTES skips the
+\ the checker emits no aliases. --all-errors and LSP-CHECK:VERIFY-BYTES report every
+\ refused definition and go on; at a duplicate name LSP-CHECK:VERIFY-BYTES skips the
 \ definition and --all-errors ends as the load does. A later definition sees a
 \ refused one by its declared signature when that parses, else its use is
 \ E-UNDEFINED. Without --all-errors tools/check.f stops at the first refusal.
+
+require src/lib/string.f
+
+package DIAG-CODE
+public
 
 \ definition: a refused definition, the shape of every code without a row.
 \ declaration and storage: a refused family or storage declaration.

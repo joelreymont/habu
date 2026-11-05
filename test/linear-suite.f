@@ -254,9 +254,9 @@ variable PROG-U
 
 \ Ends as tools/check.f does: a refusal's status is the child's exit code.
 : CHECK-CHILD ( -- )
-   CHECK:RESET
-   PATH$ CHECK:FILE
-   CHECK:RUN dup 0 <> if throw then drop ;
+   LSP-CHECK:RESET
+   PATH$ LSP-CHECK:FILE
+   LSP-CHECK:RUN dup 0 <> if throw then drop ;
 
 : CHECK ( ptr u8 n -- ) {: name:ptr nameu:n :}
    ROOT-BUF ROOT-U @ name nameu PATH-BUF FS:JOIN-PATH PATH-U !

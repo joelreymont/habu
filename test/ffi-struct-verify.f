@@ -1,4 +1,4 @@
-\ ffi-struct-verify.f - CHECK:VERIFY-BYTES, the check of tools/check.f
+\ ffi-struct-verify.f - LSP-CHECK:VERIFY-BYTES, the check of tools/check.f
 \ --verify-only, reads FUNCTION:'s struct clauses. Loaded by src/lib/ffi-test.f
 \ on macOS arm64, inside package FFI-TEST. Each declaration is its own source,
 \ checked in a verifier child that stops at its first refusal. Sources select
@@ -28,8 +28,8 @@ variable FFI-SV-SRC-U
    s" test/ffi-sv.f" E2E-TREE:AT-A FFI-SV-SRC$ FS:WRITE-ALL ;
 
 \ 0 verified, 1 refused, 2 any other verdict.
-: FFI-SV-KIND ( CHECK:verdict -- n )
-   MATCH CHECK:verdict
+: FFI-SV-KIND ( LSP-CHECK:verdict -- n )
+   MATCH LSP-CHECK:verdict
       verified OF 0 ENDOF
       refused OF 1 ENDOF
       engine-provided OF 2 ENDOF
@@ -45,7 +45,7 @@ variable FFI-SV-SRC-U
    a 0 FFI-SV-SRC u BYTE-COPY
    u FFI-SV-SRC-U !
    FFI-SV-SRC$ s" test/ffi-sv.f" E2E-TREE:AT-A [: drop ;] FFI-SV-MS >MS
-   CHECK:VERIFY-BYTES FFI-SV-KIND ;
+   LSP-CHECK:VERIFY-BYTES FFI-SV-KIND ;
 
 \ Check `FUNCTION: FFI-SV no_symbol <decl> ;FUNCTION`.
 : FFI-SV-RUN ( ptr u8 n -- n )
@@ -59,15 +59,15 @@ variable FFI-SV-SRC-U
 
 
 : FFI-SV-SHOW ( -- )
-   CHECK:VERIFY-OUT$ type CHECK:VERIFY-LOG$ type ;
+   LSP-CHECK:VERIFY-OUT$ type LSP-CHECK:VERIFY-LOG$ type ;
 
 
 \ The source certifies: verified, and no packet, deferred or refused.
 : FFI-SV-CLEAN ( n -- )
    {: kind:n :}
-   kind 0<> CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? or IF FFI-SV-SHOW THEN
+   kind 0<> LSP-CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? or IF FFI-SV-SHOW THEN
    kind 0 T=
-   CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? TFALSE ;
+   LSP-CHECK:VERIFY-OUT$ S\" \"code\":" CONTAINS? TFALSE ;
 
 : FFI-SV-PASS ( ptr u8 n -- )
    {: decl:ptr declu:n :}
@@ -81,7 +81,7 @@ variable FFI-SV-SRC-U
    {: kind:n code:ptr codeu:n :}
    kind 1 <> IF FFI-SV-SHOW THEN
    kind 1 T=
-   CHECK:VERIFY-OUT$ code codeu CONTAINS? TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ code codeu CONTAINS? TTRUE ;
 
 : FFI-SV-REFUSED ( ptr u8 n ptr u8 n -- )
    {: decl:ptr declu:n code:ptr codeu:n :}

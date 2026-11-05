@@ -598,13 +598,8 @@ public
    PROC-DEADLINE @ MEM-MAX-N = if -1 >MS exit then
    PROC-DEADLINE @ PROC-LEFT-MS ;
 
-\ A program that answers a stop signal (src/lib/signal.f CATCH-STOPS) must hear
-\ it while a capture polls: every capture poll watches PROC-STOP-FD in the slot
-\ after stdin's and runs PROC-STOP when it is readable, and the reap after the
-\ pipes close asks between its turns. PROC-STOP ends the process when it takes
-\ a signal and returns when it finds none; one that throws ends the capture.
-\ The default is no descriptor, which poll passes over. Process-wide, like
-\ PROC-REAP-ARM: tools/check-core.f CHECK:MAIN installs it.
+\ Each capture poll and reap turn runs PROC-STOP when PROC-STOP-FD is readable,
+\ so a program answering stops (CATCH-STOPS) hears one; LSP-CHECK:MAIN sets it.
 3 constant PROC-STOP-SLOT
 
 variable PROC-STOP-FD

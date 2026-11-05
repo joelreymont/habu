@@ -7,7 +7,7 @@ LSP-TEST:TEST-INIT
 
 \ A missed disk subject grows LSP-REFERENCES's movable pool after BEGIN. The
 \ checker must retain the original tail, not the pool's former address.
-package CHECK
+package LSP-CHECK
 public
 : BATCH-TEST-TAIL$ ( -- ptr u8 n )  VFY-OF-A @ VFY-OF-U @ ;
 ;package
@@ -26,7 +26,7 @@ public
    0 1 PREPARE-WAVE drop
    BATCH-TEST-PAD 32000 POOL+ drop
    s" batch-tail: pool moved" T-LABEL NAME$ drop old <> TTRUE
-   s" batch-tail: retained tail" T-LABEL NAME$ CHECK:BATCH-TEST-TAIL$ T$=
+   s" batch-tail: retained tail" T-LABEL NAME$ LSP-CHECK:BATCH-TEST-TAIL$ T$=
    1 RUN-WAVE
    0 LSP-CHECK:USES-BATCH-WAVE-LOAD
    s" batch-tail: earlier frame" T-LABEL
@@ -81,8 +81,8 @@ public
    1 APPLY-WAVE
    s" named frame was consumed" T-LABEL BATCH-FALLBACK @ 0= TTRUE
    s" final frame belongs to c.f" T-LABEL
-   CHECK:VERIFY-USES$ BATCH-CURSOR-C BATCH-CURSOR-C-U @ CONTAINS? TTRUE
-   CHECK:VERIFY-USES$ BATCH-CURSOR-B BATCH-CURSOR-B-U @ CONTAINS? TFALSE
+   LSP-CHECK:VERIFY-USES$ BATCH-CURSOR-C BATCH-CURSOR-C-U @ CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-USES$ BATCH-CURSOR-B BATCH-CURSOR-B-U @ CONTAINS? TFALSE
    s" changed b.f was named" T-LABEL
    BATCH-CURSOR-B BATCH-CURSOR-B-U @ NAMED? TTRUE
    s" later c.f kept its own use" T-LABEL

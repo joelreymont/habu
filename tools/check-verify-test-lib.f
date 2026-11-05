@@ -1,4 +1,4 @@
-\ check-verify-test-lib.f - CHECK:VERIFY-BYTES and `tools/check.f --verify-only`.
+\ check-verify-test-lib.f - LSP-CHECK:VERIFY-BYTES and `tools/check.f --verify-only`.
 \ Run: bin/hb --load tools/check-verify-test.f
 \
 \ The operation is called directly, as a language server calls it; the command
@@ -278,9 +278,9 @@ variable CLI-OUT-U
 
 
 \ Check SRC as the fixture NAME, which keeps its spelling in SUBJ.
-: CHECK-AS ( ptr u8 n ptr u8 n n -- CHECK:verdict ) {: src:ptr srcu:n name:ptr nameu:n ms:n :}
+: CHECK-AS ( ptr u8 n ptr u8 n n -- LSP-CHECK:verdict ) {: src:ptr srcu:n name:ptr nameu:n ms:n :}
    name nameu AT$ SUBJ SUBJ-U COPY!
-   src srcu SUBJ SUBJ-U @ [: drop ;] ms >MS CHECK:VERIFY-BYTES ;
+   src srcu SUBJ SUBJ-U @ [: drop ;] ms >MS LSP-CHECK:VERIFY-BYTES ;
 
 
 : SUBJ$ ( -- ptr u8 n )
@@ -302,8 +302,8 @@ variable CLI-OUT-U
 
 
 \ 0 verified, 1 refused, 2 engine-provided, 3 held, 4 incomplete, 5 deferred.
-: KIND ( CHECK:verdict -- n )
-   MATCH CHECK:verdict
+: KIND ( LSP-CHECK:verdict -- n )
+   MATCH LSP-CHECK:verdict
       verified OF 0 ENDOF
       refused OF 1 ENDOF
       engine-provided OF 2 ENDOF
@@ -313,23 +313,23 @@ variable CLI-OUT-U
    ;MATCH ;
 
 
-: EXPECT-KIND ( CHECK:verdict n ptr u8 n -- ) {: v want:n label:ptr labelu:n :}
+: EXPECT-KIND ( LSP-CHECK:verdict n ptr u8 n -- ) {: v want:n label:ptr labelu:n :}
    label labelu T-LABEL v KIND want T=
    v KIND want = if exit then
-   s" log: " type CHECK:VERIFY-LOG$ type cr ;
+   s" log: " type LSP-CHECK:VERIFY-LOG$ type cr ;
 
 
 \ How a child that gave no result ended: the exit code, -1 for a signal, and
 \ -3 for a verdict, which is no incomplete one. A deadline is no exit code: the
 \ source and the verifier's capture are printed and E-PROC-TIMEOUT thrown.
-: STATUS ( CHECK:verdict ptr u8 n -- n )
+: STATUS ( LSP-CHECK:verdict ptr u8 n -- n )
    {: v src:ptr srcu:n :}
-   v MATCH CHECK:verdict
+   v MATCH LSP-CHECK:verdict
       incomplete OF
          MATCH outcome
             exited OF ENDOF
             signaled OF drop -1 ENDOF
-            timeout OF src srcu CHECK:VERIFY-OUT$ CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
+            timeout OF src srcu LSP-CHECK:VERIFY-OUT$ LSP-CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
          ;MATCH
       ENDOF
       verified OF -3 ENDOF
@@ -340,8 +340,8 @@ variable CLI-OUT-U
    ;MATCH ;
 
 
-: TIMED-OUT? ( CHECK:verdict -- bool )
-   MATCH CHECK:verdict
+: TIMED-OUT? ( LSP-CHECK:verdict -- bool )
+   MATCH LSP-CHECK:verdict
       incomplete OF
          MATCH outcome
             exited OF drop false ENDOF
@@ -598,12 +598,12 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 s" two-in-turn: the first" EXPECT-KIND
    s\" : CVT-TWO ( -- n ) CVT-ONE ;\n" s" two.f" GUARD-MS CHECK-AS
    1 s" two-in-turn: the second" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" CVT-ONE" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-ONE" PACKET {: p:SPAN:span<u8> :}
    s" two-in-turn: CVT-ONE is undefined" T-LABEL p s" code" STRING$ s" E-UNDEFINED" T$=
    s" two-in-turn: in the second" T-LABEL p s" file" STRING$ SUBJ$ T$=
-   s\" : CVT-OWN ( -- ptr u8 n ) CHECK:VERIFY-OUT$ ;\n" s" own.f" GUARD-MS CHECK-AS
+   s\" : CVT-OWN ( -- ptr u8 n ) LSP-CHECK:VERIFY-OUT$ ;\n" s" own.f" GUARD-MS CHECK-AS
    1 s" two-in-turn: a word of this process" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" CHECK:VERIFY-OUT$" PACKET {: q:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" s" LSP-CHECK:VERIFY-OUT$" PACKET {: q:SPAN:span<u8> :}
    s" two-in-turn: it is undefined" T-LABEL q s" code" STRING$ s" E-UNDEFINED" T$= ;
 
 
@@ -633,7 +633,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : BUFFER-NOT-DISK ( -- )
    s\" \n\n\n: CVT-POS ( n -- n ) drop ;\n" s" pos.f" GUARD-MS CHECK-AS
    1 s" buffer-not-disk: the bytes are checked" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET {: p:SPAN:span<u8> :}
    s" buffer-not-disk: the packet names PATH" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" buffer-not-disk: line in the bytes" T-LABEL p s" line" NUMBER$ s" 4" T$=
    s" buffer-not-disk: byte in the bytes" T-LABEL p s" byte_start" NUMBER$ s" 24" T$= ;
@@ -652,25 +652,25 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : FAILING-DEPENDENCY ( -- )
    s\" require bad-dep.f\n: CVT-USE8 ( -- n ) CVT-EIGHT ;\n" s" use8.f" GUARD-MS CHECK-AS
    1 s" failing-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-broken" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-broken" PACKET {: p:SPAN:span<u8> :}
    s" failing-dependency: the packet names the dependency" T-LABEL
    p s" file" STRING$ s" bad-dep.f" AT$ T$=
    s" failing-dependency: at its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
    s" failing-dependency: none names the subject" T-LABEL
-   CHECK:VERIFY-OUT$ s" file" SUBJ$ PACKET SPAN:LEN 0= TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ s" file" SUBJ$ PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ Bytes no loader would accept, as the engine's own src/lib/string.f.
 : ENGINE-PROVIDED ( -- )
    s\" : STR= ( -- ) drop ;\ns\" never closed\n" s" src/lib/string.f" TREE$
-   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
+   [: drop ;] GUARD-MS >MS LSP-CHECK:VERIFY-BYTES
    2 s" engine-provided: whatever the bytes hold" EXPECT-KIND
-   s" engine-provided: no packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+   s" engine-provided: no packet" T-LABEL LSP-CHECK:VERIFY-OUT$ nip 0 T= ;
 
 
 : HELD ( -- )
    s" src/habu/verify-source.f" TREE-BYTES s" src/habu/verify-source.f" TREE$
-   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
+   [: drop ;] GUARD-MS >MS LSP-CHECK:VERIFY-BYTES
    3 s" held: the verifier's own source" EXPECT-KIND ;
 
 
@@ -684,11 +684,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : OPEN-STOP ( -- )
    s\" : CVT-OPEN ( -- n ) 1\n" s" open.f" GUARD-MS CHECK-AS {: v :}
    v 1 s" open-stop: refused" EXPECT-KIND
-   s" open-stop: the code" T-LABEL CHECK:VERIFY-STOP 7155 T=
-   s" open-stop: the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
-   s" open-stop: its name" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
-   s" open-stop: at the opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T=
-   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   s" open-stop: the code" T-LABEL LSP-CHECK:VERIFY-STOP 7155 T=
+   s" open-stop: the subject" T-LABEL LSP-CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" open-stop: its name" T-LABEL LSP-CHECK:VERIFY-STOPPED$ SUBJ$ T$=
+   s" open-stop: at the opener" T-LABEL LSP-CHECK:VERIFY-STOP-AT 0 T=
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
    s" open-stop: its record names the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" open-stop: with the code" T-LABEL p s" throw_code" NUMBER$ s" 7155" T$=
    s" open-stop: at the opener's line" T-LABEL p s" line" NUMBER$ s" 1" T$=
@@ -706,7 +706,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    SB-RESET
    line execute
    $0a SB-APPEND-C
-   label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-LOG$ SB$ T$= ;
 
 \ A string or a locals group the bytes never close stops the verifier at it,
 \ after the packets it made before, in the file it is in: the subject or a
@@ -728,8 +728,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
       s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
    STOP-LINE
    s" disc-stop: the packet made first is kept" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-disc-bad" PACKET SPAN:LEN 0<> TTRUE
-   CHECK:VERIFY-OUT$ s" code" s" E-UNTERMINATED-STRING" PACKET {: r:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-disc-bad" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-UNTERMINATED-STRING" PACKET {: r:SPAN:span<u8> :}
    s" disc-stop: the stop's record in the subject" T-LABEL r s" file" STRING$ SUBJ$ T$=
    s" disc-stop: at the opener's line" T-LABEL r s" line" NUMBER$ s" 2" T$=
    s\" require loop.f\n" s" disc-dep.f"
@@ -737,9 +737,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    [: s" loop.f" AT$ SB-APPEND
       s" : discovery rejected: unterminated string or locals group" SB-APPEND ;]
    STOP-LINE
-   s" disc-stop: not in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TFALSE
-   s" disc-stop: in the dependency" T-LABEL CHECK:VERIFY-STOPPED$ s" loop.f" AT$ T$=
-   s" disc-stop: at its opener" T-LABEL CHECK:VERIFY-STOP-AT 0 T= ;
+   s" disc-stop: not in the subject" T-LABEL LSP-CHECK:VERIFY-STOP-SUBJECT? TFALSE
+   s" disc-stop: in the dependency" T-LABEL LSP-CHECK:VERIFY-STOPPED$ s" loop.f" AT$ T$=
+   s" disc-stop: at its opener" T-LABEL LSP-CHECK:VERIFY-STOP-AT 0 T= ;
 
 \ A loader path discovery cannot follow, and a required file that is not there
 \ or that the file system will not read (the census's dyn-loader.f and
@@ -772,8 +772,8 @@ CK-USE-MAX 1 + constant OVER-USINGS
    v 4 s" no-result: incomplete" EXPECT-KIND
    s" no-result: the child's exit" T-LABEL v OVER-USING$SRC STATUS 76 T=
    s" no-result: the child's words" T-LABEL
-   CHECK:VERIFY-LOG$ s" checker: using stack overflow" CONTAINS? TTRUE
-   CHECK:VERIFY-OUT$ s" word" s" cvt-refused" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-LOG$ s" checker: using stack overflow" CONTAINS? TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-refused" PACKET {: p:SPAN:span<u8> :}
    s" no-result: the packet made first" T-LABEL p s" file" STRING$ SUBJ$ T$= ;
 
 
@@ -789,22 +789,22 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : STOP-AFTER-PACKET ( -- )
    s\" require open-dep.f\n: CVT-OPEN-USE ( -- n ) 1 ;\n" s" open-use.f" GUARD-MS CHECK-AS {: v :}
    v 1 s" stop-after-packet: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad-dep" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-bad-dep" PACKET {: p:SPAN:span<u8> :}
    s" stop-after-packet: the dependency's packet" T-LABEL
    p s" file" STRING$ s" open-dep.f" AT$ T$=
    s" stop-after-packet: in the dependency" T-LABEL
-   CHECK:VERIFY-STOP-SUBJECT? TFALSE
-   CHECK:VERIFY-STOPPED$ s" open-dep.f" AT$ T$=
+   LSP-CHECK:VERIFY-STOP-SUBJECT? TFALSE
+   LSP-CHECK:VERIFY-STOPPED$ s" open-dep.f" AT$ T$=
    s" stop-after-packet: at its opener" T-LABEL
-   CHECK:VERIFY-STOP-AT OPEN-DEP$SRC LINE-TWO T=
+   LSP-CHECK:VERIFY-STOP-AT OPEN-DEP$SRC LINE-TWO T=
    s\" : CVT-BAD ( -- n n ) 8 ;\n: CVT-OPEN ( -- n ) 1\n" {: own:ptr ownu:n :}
    own ownu s" open-own.f" GUARD-MS CHECK-AS {: w :}
    w 1 s" stop-after-packet: the subject's, refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET {: q:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET {: q:SPAN:span<u8> :}
    s" stop-after-packet: the subject's packet" T-LABEL q s" file" STRING$ SUBJ$ T$=
-   s" stop-after-packet: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" stop-after-packet: in the subject" T-LABEL LSP-CHECK:VERIFY-STOP-SUBJECT? TTRUE
    s" stop-after-packet: at the subject's opener" T-LABEL
-   CHECK:VERIFY-STOP-AT own ownu LINE-TWO T= ;
+   LSP-CHECK:VERIFY-STOP-AT own ownu LINE-TWO T= ;
 
 
 \ A require of a file that is not there refuses the subject, with a packet at
@@ -812,7 +812,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 : MISSING-DEPENDENCY ( -- )
    s\" \\ lost\nrequire cvt-missing.f\n" s" lost.f" GUARD-MS CHECK-AS
    1 s" missing-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:SPAN:span<u8> :}
    s" missing-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" missing-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
    s" missing-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
@@ -840,7 +840,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ LINE and COLUMN.
 : AT-TOKEN ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n code:ptr codeu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ s" code" code codeu PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" code codeu PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
    label labelu T-LABEL p s" token" STRING$ tok toku T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
@@ -850,18 +850,18 @@ CK-USE-MAX 1 + constant OVER-USINGS
 \ The last check's status line names the subject and WHY.
 : SUBJ-STATUS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n why:ptr whyu:n :}
    SB-RESET SUBJ$ SB-APPEND s" : " SB-APPEND why whyu SB-APPEND $0a SB-APPEND-C
-   label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-LOG$ SB$ T$= ;
 
 
 \ The last check's status line names the fixture NAME, which is not there.
 : MISSING-STATUS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n name:ptr nameu:n :}
    SB-RESET name nameu AT$ SB-APPEND s\" : no such source\n" SB-APPEND
-   label labelu T-LABEL CHECK:VERIFY-LOG$ SB$ T$= ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-LOG$ SB$ T$= ;
 
 
 \ VERIFY-OUT$'s last line, without its newline.
 : LAST-LINE ( -- ptr u8 n )
-   CHECK:VERIFY-OUT$ {: a:ptr u:n :}
+   LSP-CHECK:VERIFY-OUT$ {: a:ptr u:n :}
    u 0= if a 0 exit then
    u 1 - {: end:n :}
    end begin dup 0 > if a over 1 - + c@ 10 <> else false then while 1 - repeat
@@ -890,7 +890,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" dyn-dep.f" s\" \\ dyn\nPATH$ included\n" FIXTURE
    s\" require dyn-dep.f\n" s" dyn-use.f" GUARD-MS CHECK-AS
    1 s" loader-form: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:SPAN:span<u8> :}
    s" loader-form: in the dependency" T-LABEL p s" file" STRING$ s" dyn-dep.f" AT$ T$=
    s" loader-form: at the loader word" T-LABEL p s" token" STRING$ s" included" T$=
    s" loader-form: its line" T-LABEL p s" line" NUMBER$ s" 2" T$=
@@ -912,7 +912,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    0 s" commented-literal: verified" EXPECT-KIND
    s\" s\" cvt-lit-gone.f\" ( kept ) required\n" s" lit-gone.f" GUARD-MS CHECK-AS
    1 s" commented-literal: a missing one refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET {: p:SPAN:span<u8> :}
    s" commented-literal: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" commented-literal: at the loader word" T-LABEL p s" token" STRING$ s" required" T$=
    s" commented-literal: its line" T-LABEL p s" line" NUMBER$ s" 1" T$=
@@ -926,7 +926,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s" locked-dep.f" AT$ 0 FS:CHMOD-MODE
    s\" \\ unread\nrequire locked-dep.f\n" s" unread.f" GUARD-MS CHECK-AS
    1 s" unreadable-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-UNREADABLE-SOURCE" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-UNREADABLE-SOURCE" PACKET {: p:SPAN:span<u8> :}
    s" unreadable-dependency: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" unreadable-dependency: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
    s" unreadable-dependency: its line" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
@@ -941,7 +941,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" absent.f\n" GEN+
    0 GEN GEN-U @ s" long.f" GUARD-MS CHECK-AS
    1 s" long-resolved: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET {: p:SPAN:span<u8> :}
    s" long-resolved: in the subject" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" long-resolved: at the loader word" T-LABEL p s" token" STRING$ s" require" T$=
    s" long-resolved: its line" T-LABEL p s" line" NUMBER$ s" 1" T$= ;
@@ -974,21 +974,21 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-INDEX-BAD ( n -- n ) create , does> ( -- n ) @ ;\n" GEN+
    s\" TRUSTED: CVT-INDEX-TRUSTED ( -- n ) 1 ;\n" GEN+
    s\" TRUSTED: CVT-INDEX-REFUSED ( -- zzz-unknown ) ;\n" GEN+
-   0 GEN GEN-U @ s" index.f" AT$ GUARD-MS >MS CHECK:INDEX-BYTES
+   0 GEN GEN-U @ s" index.f" AT$ GUARD-MS >MS LSP-CHECK:INDEX-BYTES
    1 s" index: refused" EXPECT-KIND
    s" index: refused ordinary declaration" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-error" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-error" PACKET SPAN:LEN 0= TTRUE
    s" index: survivor" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-survivor" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-survivor" PACKET SPAN:LEN 0<> TTRUE
    s" index: certified definer" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-mk" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-mk" PACKET SPAN:LEN 0<> TTRUE
    \ A certified clause cannot rescue its refused parent's kept signature.
    s" index: refused definer" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-bad" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-bad" PACKET SPAN:LEN 0= TTRUE
    s" index: completed trusted declaration" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-trusted" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-trusted" PACKET SPAN:LEN 0<> TTRUE
    s" index: refused trusted declaration" T-LABEL
-   CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-refused" PACKET SPAN:LEN 0= TTRUE ;
+   LSP-CHECK:VERIFY-INDEX$ s" decl_name" s" cvt-index-refused" PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ ---- loader calls ------------------------------------------------------------
@@ -1011,9 +1011,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-INC ( -- ) s\" files-inc.f\" included ;\ns\" dep.f\" required\n: CVT-USE-INC ( -- n ) CVT-SEVEN ;\n"
    s" body-files.f" VERIFIED
    s" body-uncalled: the body's file is not read" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" files-inc.f" AT$ PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-FILES$ s" file" s" files-inc.f" AT$ PACKET SPAN:LEN 0= TTRUE
    s" body-uncalled: the top level's is" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" dep.f" AT$ PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-FILES$ s" file" s" dep.f" AT$ PACKET SPAN:LEN 0<> TTRUE
    s\" : CVT-ARGV-LOAD ( -- ) 0 SCRIPT-ARGV$ included ;\n" s" body-argv.f" VERIFIED
    s\" : CVT-ENTRY ( ptr u8 n -- ) {: entry:ptr eu:n :} entry eu included ;\n"
    s" body-entry.f" VERIFIED
@@ -1044,7 +1044,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-IMM-LOADS ( -- n ) include imm.f 1 ;\n: CVT-IMM-USE ( -- n ) CVT-IMM ;\n"
    s" imm-loads.f" GUARD-MS CHECK-AS 1 s" body-immediate: refused for the immediate" EXPECT-KIND
    s" body-immediate: the file's word is there" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-UNDEFINED" PACKET SPAN:LEN 0= TTRUE
    s" pf.f" s\" : CVT-PFW ( -- n ) 1 ;\n" FIXTURE
    0 GEN-U !
    s\" package CVT-PFA\npackage CVT-PFB ;package\n" GEN+
@@ -1136,20 +1136,20 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-FAP-BAD ( -- n n ) 8 ;\nrequire nosuch.f\n" s" fap-missing.f" GUARD-MS CHECK-AS
    1 s" fault-after-packet: refused" EXPECT-KIND
    s" fault-after-packet: the packet made first" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-fap-bad" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-fap-bad" PACKET SPAN:LEN 0<> TTRUE
    s" fault-after-packet: the fault" s" E-MISSING-SOURCE" s" require" s" 2" s" 1" AT-TOKEN
    s" fault-after-packet: the fault last" T-LABEL LAST-LINE s" E-MISSING-SOURCE" CONTAINS? TTRUE
-   s" fault-after-packet: only packets" T-LABEL CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
+   s" fault-after-packet: only packets" T-LABEL LSP-CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
    s" fault-after-packet: its status line" s" nosuch.f" MISSING-STATUS
    s\" : CVT-FAP ( -- n n ) 8 ;\n: CVT-FAP-PATH ( -- ptr u8 n ) s\" x.f\" ;\nCVT-FAP-PATH included\n"
    s" fap-dynamic.f" GUARD-MS CHECK-AS 1 s" fault-after-packet: a dynamic path" EXPECT-KIND
    s" fault-after-packet: its packet made first" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-fap" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-fap" PACKET SPAN:LEN 0<> TTRUE
    s" fault-after-packet: the form" s" E-LOADER-FORM" s" included" s" 3" s" 14" AT-TOKEN
-   s" fault-after-packet: the child's code" T-LABEL CHECK:VERIFY-STOP E-DISC-DYNAMIC T=
-   s" fault-after-packet: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" fault-after-packet: the child's code" T-LABEL LSP-CHECK:VERIFY-STOP E-DISC-DYNAMIC T=
+   s" fault-after-packet: in the subject" T-LABEL LSP-CHECK:VERIFY-STOP-SUBJECT? TTRUE
    \ 79 is the byte of `included`.
-   s" fault-after-packet: at the loader word" T-LABEL CHECK:VERIFY-STOP-AT 79 T=
+   s" fault-after-packet: at the loader word" T-LABEL LSP-CHECK:VERIFY-STOP-AT 79 T=
    s" fault-after-packet: the status line" DYNAMIC$ SUBJ-STATUS ;
 
 
@@ -1181,9 +1181,9 @@ CK-USE-MAX 1 + constant OVER-USINGS
    s\" : CVT-ESC ( -- ) s\\\" a\\k\" included ;\n" s" bad-escape.f" GUARD-MS CHECK-AS
    1 s" bad-escape: refused" EXPECT-KIND
    s" bad-escape: no loader form" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-LOADER-FORM" PACKET SPAN:LEN 0= TTRUE
    s" bad-escape: no missing source" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET SPAN:LEN 0= TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-MISSING-SOURCE" PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ ---- the command line ------------------------------------------------------
@@ -1422,7 +1422,7 @@ $180000 constant LARGE-STDIN-LEN
    s" load-part: verify-only refuses it" T-LABEL path pathu true CHECK-RC 70 T=
    s\" package CVT-PART-A\nrequire order-part-dep.f\n;package\n" s" order-part.f" GUARD-MS CHECK-AS
    1 s" load-part: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
    s" load-part: in the required file" T-LABEL p s" file" STRING$ s" order-part-dep.f" AT$ T$=
    s" load-part: at its package" T-LABEL p s" token" STRING$ s" package" T$=
    s" load-part: on line 1" T-LABEL p s" line" NUMBER$ s" 1" T$=
@@ -1437,7 +1437,7 @@ $180000 constant LARGE-STDIN-LEN
    s" part-long: verify-only refuses it" T-LABEL path pathu true CHECK-RC 70 T=
    PART-LONG$SRC s" part-long.f" GUARD-MS CHECK-AS
    1 s" part-long: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
    s" part-long: on line 2" T-LABEL p s" line" NUMBER$ s" 2" T$=
    s" part-long: at the name" T-LABEL p s" column" NUMBER$ s" 9" T$=
    s" part-long: E-PKG-CONTEXT" T-LABEL p s" throw_code" NUMBER$ s" 7136" T$= ;
@@ -1510,7 +1510,7 @@ $180000 constant LARGE-STDIN-LEN
 \ in the operation and through --verify-only from outside the tree.
 : BODY-COMPUTED ( -- )
    s" tools/source-discovery.f" TREE-BYTES s" tools/source-discovery.f" TREE$
-   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES
+   [: drop ;] GUARD-MS >MS LSP-CHECK:VERIFY-BYTES
    0 s" body-computed: the operation" EXPECT-KIND
    s" body-computed: verify-only from outside" T-LABEL OUTSIDE-RC 0 T= ;
 
@@ -1542,7 +1542,7 @@ $180000 constant LARGE-STDIN-LEN
 : DUPLICATE-IN-DEPENDENCY ( -- )
    s\" include order-dep.f\ninclude order-dep.f\n" s" double.f" GUARD-MS CHECK-AS
    1 s" duplicate-in-dependency: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
    s" duplicate-in-dependency: names the dependency" T-LABEL
    p s" file" STRING$ s" order-dep.f" AT$ T$=
    s" duplicate-in-dependency: the word" T-LABEL p s" word" STRING$ s" VALUE" T$=
@@ -1559,12 +1559,12 @@ $180000 constant LARGE-STDIN-LEN
 : DUPLICATE-MADE ( -- )
    MADE$SRC s" made.f" GUARD-MS CHECK-AS
    1 s" duplicate-made: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
    s" duplicate-made: the placeholder" T-LABEL
    p s" word" STRING$ s" duplicate-definition" T$=
    s" duplicate-made: names PATH" T-LABEL p s" file" STRING$ SUBJ$ T$=
    s" duplicate-made: the scan stopped" T-LABEL
-   CHECK:VERIFY-LOG$ s" verification stopped by throw 78" CONTAINS? TTRUE ;
+   LSP-CHECK:VERIFY-LOG$ s" verification stopped by throw 78" CONTAINS? TTRUE ;
 
 
 \ An open definition after a duplicate stops at its opener, with the duplicate's
@@ -1572,10 +1572,10 @@ $180000 constant LARGE-STDIN-LEN
 : DUPLICATE-THEN-STOPS ( -- )
    s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: CVT-OPEN ( -- n ) 1\n" s" dup-open.f" GUARD-MS CHECK-AS {: v :}
    v 1 s" duplicate-then-stops: refused" EXPECT-KIND
-   s" duplicate-then-stops: the open definition" T-LABEL CHECK:VERIFY-STOP 7155 T=
-   s" duplicate-then-stops: in the subject" T-LABEL CHECK:VERIFY-STOP-SUBJECT? TTRUE
-   s" duplicate-then-stops: the subject path" T-LABEL CHECK:VERIFY-STOPPED$ SUBJ$ T$=
-   CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
+   s" duplicate-then-stops: the open definition" T-LABEL LSP-CHECK:VERIFY-STOP 7155 T=
+   s" duplicate-then-stops: in the subject" T-LABEL LSP-CHECK:VERIFY-STOP-SUBJECT? TTRUE
+   s" duplicate-then-stops: the subject path" T-LABEL LSP-CHECK:VERIFY-STOPPED$ SUBJ$ T$=
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-DUPLICATE-DEFINITION" PACKET {: p:SPAN:span<u8> :}
    s" duplicate-then-stops: the duplicate's record" T-LABEL p s" line" NUMBER$ s" 2" T$= ;
 
 
@@ -1602,47 +1602,47 @@ $180000 constant LARGE-STDIN-LEN
    DEP$SRC s" unclean-verified.f" GUARD-MS CHECK-AS {: verified :}
    verified 4 s" unclean-answer: verified frame is incomplete" EXPECT-KIND
    s" unclean-answer: verified process exit" T-LABEL verified DEP$SRC STATUS 79 T=
-   s" unclean-answer: verified frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   s" unclean-answer: verified frame is not a packet" T-LABEL LSP-CHECK:VERIFY-OUT$ nip 0 T=
    BAD-DEP$SRC s" unclean-refused.f" GUARD-MS CHECK-AS {: refused :}
    refused 4 s" unclean-answer: refused frame is incomplete" EXPECT-KIND
    s" unclean-answer: refused packet remains" T-LABEL
-   CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET SPAN:LEN 0<> TTRUE
-   s" unclean-answer: refused frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-MISMATCH" PACKET SPAN:LEN 0<> TTRUE
+   s" unclean-answer: refused frame is not a packet" T-LABEL LSP-CHECK:VERIFY-OUT$ ALL-JSON? TTRUE
    s" src/habu/verify-source.f" TREE-BYTES s" src/habu/verify-source.f" TREE$
-   [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES {: held :}
+   [: drop ;] GUARD-MS >MS LSP-CHECK:VERIFY-BYTES {: held :}
    held 4 s" unclean-answer: held frame is incomplete" EXPECT-KIND
-   s" unclean-answer: held frame is not a packet" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   s" unclean-answer: held frame is not a packet" T-LABEL LSP-CHECK:VERIFY-OUT$ nip 0 T=
    s\" : CVT-OPEN ( -- n ) 1\n\\" s" unclean-open.f" GUARD-MS CHECK-AS {: stopped :}
    stopped 4 s" unclean-answer: stopped frame is incomplete" EXPECT-KIND
-   s" unclean-answer: stopped 7155 is not a duplicate" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   s" unclean-answer: stopped 7155 is not a duplicate" T-LABEL LSP-CHECK:VERIFY-OUT$ nip 0 T=
    s\" : DA ( -- n ) 1 ;\n: DA ( -- n ) 2 ;\n: CVT-OPEN ( -- n ) 1\n\\"
    s" unclean-dup-open.f" GUARD-MS CHECK-AS {: dup-open :}
    dup-open 4 s" unclean-answer: duplicate and stop are incomplete" EXPECT-KIND
-   CHECK:VERIFY-OUT$ CV-START-STRICT
+   LSP-CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: genuine duplicate before 7155" T-LABEL
    CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" unclean-answer: terminal 7155 adds no packet" T-LABEL CV-NEXT SPAN:LEN 0 T=
    MADE$SRC s" unclean-made.f" GUARD-MS CHECK-AS {: dup-stop :}
    dup-stop 4 s" unclean-answer: duplicate stop is incomplete" EXPECT-KIND
-   CHECK:VERIFY-OUT$ CV-START-STRICT
+   LSP-CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: genuine duplicate before stop 78" T-LABEL
    CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" unclean-answer: terminal 78 adds no packet" T-LABEL CV-NEXT SPAN:LEN 0 T=
    DUP$SRC s" unclean-first-dup.f" GUARD-MS CHECK-AS {: first-dup :}
    first-dup 4 s" unclean-answer: packet before death is incomplete" EXPECT-KIND
-   CHECK:VERIFY-OUT$ CV-START-STRICT
+   LSP-CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: sole code-78 packet survives" T-LABEL
    CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" unclean-answer: sole code-78 packet is last" T-LABEL CV-NEXT SPAN:LEN 0 T=
    s\" include order-dep.f\ninclude order-dep.f\ninclude order-dep.f\n"
    s" unclean-two-dups.f" GUARD-MS CHECK-AS {: two-dups :}
    two-dups 4 s" unclean-answer: two real duplicates are incomplete" EXPECT-KIND
-   CHECK:VERIFY-OUT$ {: packets:ptr packetu:n :}
+   LSP-CHECK:VERIFY-OUT$ {: packets:ptr packetu:n :}
    packets packetu 10 0 SPLIT-NEXT {: first:ptr firstu:n next:n found:bool :}
    s" unclean-answer: first duplicate has a line" T-LABEL found TTRUE
    s" unclean-answer: duplicate records are byte-identical" T-LABEL
    first firstu packets packetu 10 next SPLIT-NEXT 2drop STR= TTRUE
-   CHECK:VERIFY-OUT$ CV-START-STRICT
+   LSP-CHECK:VERIFY-OUT$ CV-START-STRICT
    s" unclean-answer: first identical duplicate survives" T-LABEL
    CV-NEXT s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    s" unclean-answer: second identical duplicate survives" T-LABEL
@@ -1650,17 +1650,17 @@ $180000 constant LARGE-STDIN-LEN
    s" unclean-answer: only two duplicate packets" T-LABEL CV-NEXT SPAN:LEN 0 T=
    s" unclean-pre.f" AT$ SUBJ SUBJ-U COPY!
    s" unclean-answer: preverify remains incomplete" T-LABEL
-   DUP$SRC SUBJ$ s" unclean-pre.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   DUP$SRC SUBJ$ s" unclean-pre.f" GUARD-MS >MS LSP-CHECK:PREVERIFY-BYTES
    MATCH result
       ok OF drop false ENDOF
       err OF MATCH outcome
          exited OF 79 = ENDOF
          signaled OF drop false ENDOF
-         timeout OF DUP$SRC CHECK:VERIFY-OUT$ CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
+         timeout OF DUP$SRC LSP-CHECK:VERIFY-OUT$ LSP-CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
       ;MATCH ENDOF
    ;MATCH
    TTRUE
-   s" unclean-answer: preverify stop is framing" T-LABEL CHECK:VERIFY-OUT$ nip 0 T=
+   s" unclean-answer: preverify stop is framing" T-LABEL LSP-CHECK:VERIFY-OUT$ nip 0 T=
    PROC-ENV-DEFAULT-RESET ;
 
 
@@ -1728,7 +1728,7 @@ $180000 constant LARGE-STDIN-LEN
    CV-NEXT ;
 
 
-: TOP-CHECK ( ptr u8 n -- CHECK:verdict )
+: TOP-CHECK ( ptr u8 n -- LSP-CHECK:verdict )
    s" top.f" GUARD-MS CHECK-AS ;
 
 
@@ -1736,7 +1736,7 @@ $180000 constant LARGE-STDIN-LEN
 \ with no definition's name. LABEL stays set for the caller's next assertion.
 : TOP-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- SPAN:span<u8> )
    {: label:ptr labelu:n tok:ptr toku:n code:ptr codeu:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" code" STRING$ code codeu T$=
    label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
@@ -1747,10 +1747,10 @@ $180000 constant LARGE-STDIN-LEN
 
 
 \ A refused check whose only packet is located at TOKEN.
-: REFUSED-AT ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: REFUSED-AT ( LSP-CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n code:ptr codeu:n line:ptr lineu:n col:ptr colu:n :}
    v 1 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    label labelu tok toku code codeu line lineu col colu TOP-PACKET
    s" verdict" STRING$ s" rejected" T$= ;
 
@@ -1760,16 +1760,16 @@ $180000 constant LARGE-STDIN-LEN
 : TOP-UNDEFINED ( -- )
    s\" 1 NOSUCHWORD drop\n: CVT-AFTER ( -- n ) 1 ;\n" TOP-CHECK
    s" top-undefined" s" NOSUCHWORD" s" E-UNDEFINED-TOP-LEVEL" s" 1" s" 3" REFUSED-AT
-   CHECK:VERIFY-OUT$ s" token" s" NOSUCHWORD" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" s" NOSUCHWORD" PACKET {: p:SPAN:span<u8> :}
    s" top-undefined: its first byte" T-LABEL p s" byte_start" NUMBER$ s" 2" T$=
    s" top-undefined: past its last" T-LABEL p s" byte_end" NUMBER$ s" 12" T$=
    s\" 1 NOSUCHWORD drop\n: CVT-SHORT ( -- n n ) 8 ;\n" TOP-CHECK
    1 s" top-undefined: then a refused definition" EXPECT-KIND
-   s" top-undefined: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-undefined: two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-undefined: the token's first" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" token" STRING$ s" NOSUCHWORD" T$=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" token" STRING$ s" NOSUCHWORD" T$=
    s" top-undefined: the definition's second" T-LABEL
-   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" word" STRING$ s" cvt-short" T$= ;
+   LSP-CHECK:VERIFY-OUT$ 1 NTH-PACKET s" word" STRING$ s" cvt-short" T$= ;
 
 
 \ An engine word the checker holds no row for. Loaded: E-UNDEFINED:
@@ -1782,13 +1782,13 @@ $180000 constant LARGE-STDIN-LEN
 \ A using refusal refuses the token as it refuses a body's definition, and the
 \ scan goes on past it, as past a refused definition: a refused definition after
 \ it is a second packet, in source order, and no throw stopped the scan.
-: GOES-ON ( CHECK:verdict ptr u8 n ptr u8 n -- )
+: GOES-ON ( LSP-CHECK:verdict ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n :}
    v 1 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   label labelu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" token" STRING$ tok toku T$=
-   label labelu T-LABEL CHECK:VERIFY-OUT$ 1 NTH-PACKET s" word" STRING$ s" cvt-short" T$=
-   label labelu T-LABEL CHECK:VERIFY-LOG$ s" verification stopped by throw" CONTAINS? TFALSE ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" token" STRING$ tok toku T$=
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ 1 NTH-PACKET s" word" STRING$ s" cvt-short" T$=
+   label labelu T-LABEL LSP-CHECK:VERIFY-LOG$ s" verification stopped by throw" CONTAINS? TFALSE ;
 
 
 \ Two used packages export AW. Loaded: exit 94.
@@ -1835,7 +1835,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" undefine dup\n: dup ( n -- n n )\n   {: x:n :}\n   x x ;\n' dup drop\npackage CVT-RT\n' CVT-RT:dup drop\n;package\n"
    TOP-CHECK
    0 s" top-retired: redeclared word" EXPECT-KIND
-   s" top-retired: no packet after declaration" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+   s" top-retired: no packet after declaration" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 0 T= ;
 
 
 \ A published prefix primitive can leave a dictionary entry behind after
@@ -1867,7 +1867,7 @@ $180000 constant LARGE-STDIN-LEN
    name nameu T-LABEL name nameu AT$ NATIVE-RC 84 T=
    src srcu name nameu GUARD-MS CHECK-AS
    name nameu tok toku s" E-SEALED-PACKAGE" line lineu col colu REFUSED-AT
-   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" GJA-FIELD? nip TFALSE ;
+   name nameu T-LABEL LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" GJA-FIELD? nip TFALSE ;
 
 \ A deferred word and a cast read their signature before the seal is asked: an
 \ unclosed one in SRC, as the fixture NAME, ends the load with exit 76, and the
@@ -1879,7 +1879,7 @@ $180000 constant LARGE-STDIN-LEN
    name nameu T-LABEL name nameu AT$ NATIVE-RC 76 T=
    src srcu name nameu GUARD-MS CHECK-AS
    name nameu tok toku s" E-MISSING-SIGNATURE" s" 2" s" 1" REFUSED-AT
-   name nameu T-LABEL CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" GJA-FIELD? nip TFALSE ;
+   name nameu T-LABEL LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" throw_code" GJA-FIELD? nip TFALSE ;
 
 \ SRC, as the fixture NAME, loads and verifies.
 : UNSEALED ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n name:ptr nameu:n :}
@@ -1896,8 +1896,8 @@ $180000 constant LARGE-STDIN-LEN
    name nameu src srcu FIXTURE
    name nameu T-LABEL name nameu AT$ NATIVE-RC 78 T=
    src srcu name nameu GUARD-MS CHECK-AS 1 name nameu EXPECT-KIND
-   name nameu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET {: p:SPAN:span<u8> :}
+   name nameu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET {: p:SPAN:span<u8> :}
    name nameu T-LABEL p s" code" STRING$ s" E-DUPLICATE-DEFINITION" T$=
    name nameu T-LABEL p s" token" STRING$ s" IR-ID:COUNT" T$=
    name nameu T-LABEL p s" file" STRING$ SUBJ$ T$=
@@ -1985,7 +1985,7 @@ $180000 constant LARGE-STDIN-LEN
    s" seal-body: load" T-LABEL s" seal-body.f" AT$ NATIVE-RC 70 T=
    src srcu s" seal-body.f" GUARD-MS CHECK-AS
    1 s" seal-body: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" seal-package" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" s" seal-package" PACKET {: p:SPAN:span<u8> :}
    s" seal-body: E-UNDEFINED" T-LABEL p s" code" STRING$ s" E-UNDEFINED" T$=
    s" seal-body: in S" T-LABEL p s" word" STRING$ s" s" T$=
    s" seal-body: on line 2" T-LABEL p s" line" NUMBER$ s" 2" T$=
@@ -2023,7 +2023,7 @@ $180000 constant LARGE-STDIN-LEN
    s" seal-top: load" T-LABEL s" seal-top.f" AT$ NATIVE-RC 75 T=
    top topu s" seal-top.f" GUARD-MS CHECK-AS
    1 s" seal-top: refused" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" code" s" E-STATEMENT-THROW" PACKET {: p:SPAN:span<u8> :}
    s" seal-top: at the word" T-LABEL p s" token" STRING$ s" seal-package" T$=
    s" seal-top: on line 1" T-LABEL p s" line" NUMBER$ s" 1" T$=
    s" seal-top: column 1" T-LABEL p s" column" NUMBER$ s" 1" T$=
@@ -2040,7 +2040,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" : CVT-SCANNED ( -- n ) 7 ;\n' CVT-SCANNED drop\nCVT-SCANNED drop\n"
    TOP-CHECK
    0 s" top-axiom: scanned declaration" EXPECT-KIND
-   s" top-axiom: no packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+   s" top-axiom: no packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 0 T= ;
 
 
 \ The engine's table (src/habu/prims.f) opens a row with EPRIM: or EPPRIM:,
@@ -2053,7 +2053,7 @@ $180000 constant LARGE-STDIN-LEN
    name nameu src srcu FIXTURE
    name nameu T-LABEL name nameu AT$ NATIVE-RC 0 T=
    src srcu name nameu VERIFIED
-   name nameu T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+   name nameu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 0 T= ;
 
 \ A row SRC ends inside, after the words on lines 1-5, stops the verifier at
 \ its opener TOK, on line 6 at column 3, with the record check.f writes for a
@@ -2062,7 +2062,7 @@ $180000 constant LARGE-STDIN-LEN
    {: src:ptr srcu:n name:ptr nameu:n tok:ptr toku:n :}
    src srcu name nameu GUARD-MS CHECK-AS
    name nameu tok toku s" E-MALFORMED-REGISTRY-ROW" s" 6" s" 3" REFUSED-AT
-   name nameu T-LABEL CHECK:VERIFY-STOP 7189 T= ;
+   name nameu T-LABEL LSP-CHECK:VERIFY-STOP 7189 T= ;
 
 : ENGINE-ROWS ( -- )
    s\" : ROW-NAME ( -- ) parse-name 2drop ;\n: EPRIM: ( -- ) ROW-NAME ;\n: EPRIM; ( -- ) ;\n: EPPRIM: ( -- ) parse-name 2drop ROW-NAME ;\n: ECLOSE-PRIVATE ( -- ) ;\nEPRIM: create EPRIM;\nEPRIM: : EPRIM;\nEPRIM: CVT-EM ECLOSE-PRIVATE\n: CVT-EB ( -- ) ;\nCVT-EB\n"
@@ -2136,21 +2136,21 @@ $180000 constant LARGE-STDIN-LEN
 : TOP-DEFERRED ( -- )
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n: CVT-AFTER ( -- n ) 1 ;\nNOSUCH2 drop\n" TOP-CHECK
    5 s" top-deferred: undeclared, deferred" EXPECT-KIND
-   s" top-deferred: undeclared, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-deferred: undeclared, one packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-deferred: undeclared, the word" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nparses: CVT-GRAB 1\nCVT-GRAB NOSUCH\n: CVT-AFTER ( -- n ) 1 ;\nNOSUCH2 drop\n" TOP-CHECK
    1 s" top-deferred: refused past the operand" EXPECT-KIND
-   s" top-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-deferred: two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-deferred: nothing names the operand" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" NOSUCH" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" token" s" NOSUCH" PACKET SPAN:LEN 0= TTRUE
    s" top-deferred: the call" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
    s" top-deferred: past the operand" s" NOSUCH2" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" TOP-PACKET
    s" verdict" STRING$ s" rejected" T$=
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB NOSUCH\n" TOP-CHECK
    5 s" top-deferred: alone, deferred" EXPECT-KIND
-   s" top-deferred: alone, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-deferred: alone, one packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-deferred: alone, the stretch" s" CVT-GRAB" s" W-CHECK-DEFERRED" s" 2" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$= ;
 
@@ -2165,15 +2165,15 @@ $180000 constant LARGE-STDIN-LEN
    s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nGRAB x\n" FIXTURE
    s\" s\" nested-dep.f\" required\nQ:R:S\n" TOP-CHECK
    5 s" top-nested-deferred: undeclared, deferred" EXPECT-KIND
-   s" top-nested-deferred: undeclared, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-nested-deferred: undeclared, one packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-nested-deferred: undeclared, dependency warning" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" nested-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nparses: GRAB 1\nGRAB x\n" FIXTURE
    s\" s\" nested-dep.f\" required\nQ:R:S\n" TOP-CHECK
    1 s" top-nested-deferred: refused" EXPECT-KIND
-   s" top-nested-deferred: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-nested-deferred: two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-nested-deferred: dependency warning" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET {: p:SPAN:span<u8> :}
    p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" top-nested-deferred: dependency path" T-LABEL
    p s" file" STRING$ s" nested-dep.f" AT$ T$=
@@ -2181,14 +2181,14 @@ $180000 constant LARGE-STDIN-LEN
    s" verdict" STRING$ s" rejected" T$=
    s\" s\" nested-dep.f\" required\n7 drop\n" TOP-CHECK
    5 s" top-nested-deferred: warning survives" EXPECT-KIND
-   s" top-nested-deferred: only warning" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T= ;
+   s" top-nested-deferred: only warning" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T= ;
 
 
 \ A deferred check whose only packet is the call TOKEN on LINE at COLUMN.
-: DEFERRED-ONLY ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: DEFERRED-ONLY ( LSP-CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
    v 5 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    label labelu tok toku s" W-CHECK-DEFERRED" line lineu col colu TOP-PACKET
    s" verdict" STRING$ s" deferred" T$= ;
 
@@ -2196,7 +2196,7 @@ $180000 constant LARGE-STDIN-LEN
 \ The deferred stretch packet IDX holds, counted from 0: TOKEN on LINE at COLUMN.
 : DEFERRED-NTH ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n idx:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ idx NTH-PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ idx NTH-PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" token" STRING$ tok toku T$=
    label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
@@ -2206,12 +2206,12 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A refused check of two packets: the call TOKEN deferred at the start of
 \ LINE, then the definition WORD refused with CODE.
-: BOUND-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: BOUND-REFUSED ( LSP-CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n word:ptr wordu:n code:ptr codeu:n :}
    v 1 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    label labelu tok toku s" W-CHECK-DEFERRED" line lineu s" 1" TOP-PACKET drop
-   CHECK:VERIFY-OUT$ 1 NTH-PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ 1 NTH-PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" word" STRING$ word wordu T$=
    label labelu T-LABEL p s" code" STRING$ code codeu T$= ;
 
@@ -2248,13 +2248,13 @@ $180000 constant LARGE-STDIN-LEN
    s" top-parses-through: openers" s" BLK" s" 5" s" g" s" E-MISMATCH" BOUND-REFUSED
    s\" require src/lib/string.f\n: SU? ( ptr u8 n -- bool )\n   {: a:ptr u:n :}\n   a u s\" ;SU\" STR=  a u s\" P:;SU\" STR=  or ;\n: SU ( -- ) parse-name 2drop begin parse-name dup 0= if 2drop exit then SU? until ;\nparses-through: SU 1 ( ;SU P:;SU )\nSU ;SU a b ;SU\nSU name c P:;SU\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
    1 s" top-parses-through: suite" EXPECT-KIND
-   s" top-parses-through: suite, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-parses-through: suite, three packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" top-parses-through: suite, first end" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" line" NUMBER$ s" 7" T$=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" line" NUMBER$ s" 7" T$=
    s" top-parses-through: suite, second end" T-LABEL
-   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" line" NUMBER$ s" 8" T$=
+   LSP-CHECK:VERIFY-OUT$ 1 NTH-PACKET s" line" NUMBER$ s" 8" T$=
    s" top-parses-through: suite, resumed" T-LABEL
-   CHECK:VERIFY-OUT$ 2 NTH-PACKET s" word" STRING$ s" g" T$= ;
+   LSP-CHECK:VERIFY-OUT$ 2 NTH-PACKET s" word" STRING$ s" g" T$= ;
 
 
 \ A row binds the selected definition, never its spelling. Loaded, the unset
@@ -2301,14 +2301,14 @@ $180000 constant LARGE-STDIN-LEN
    s" top-parses-loader: ;package" s" PN" s" 3" s" 1" DEFERRED-ONLY
    s\" require src/lib/string.f\n: BLK? ( ptr u8 n -- bool ) s\" ;BLK\" STR= ;\n: BLK ( -- ) begin parse-name dup 0= if 2drop exit then BLK? until ;\nparses-through: BLK 0 ( ;BLK )\nBLK require nosuch.f s\" x.f\" included\n   variable package ;package using : X ;BLK\ns\" nosuch.f\" required\n" TOP-CHECK
    1 s" top-parses-loader: through" EXPECT-KIND
-   s" top-parses-loader: through, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-parses-loader: through, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-parses-loader: through, the call" s" BLK" s" W-CHECK-DEFERRED" s" 5" s" 1" TOP-PACKET drop
    s" top-parses-loader: through, the loader after" s" E-MISSING-SOURCE" s" required" s" 7" s" 14" AT-TOKEN
    s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\ns\" dep.f\" required\n: X ( -- n ) CVT-SEVEN ;\n" TOP-CHECK
    s" top-parses-loader: a load after" s" PN" s" 3" s" 1" DEFERRED-ONLY
    s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN required\nrequire nosuch.f\n" TOP-CHECK
    1 s" top-parses-loader: a missing file after" EXPECT-KIND
-   s" top-parses-loader: a missing file after, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-parses-loader: a missing file after, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-parses-loader: a missing file after, the call" s" PN" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET drop
    s" top-parses-loader: a missing file after" s" E-MISSING-SOURCE" s" require" s" 4" s" 1" AT-TOKEN
    s\" : PN ( -- ) parse-name 2drop ;\nparses: PN 1\nPN include\n: G ( -- n ) 1 2 ;\n" TOP-CHECK
@@ -2319,11 +2319,11 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A deferred check whose only packet is the call TOKEN on LINE of the fixture
 \ DEP, a file the subject loads.
-: DEP-DEFERRED-ONLY ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: DEP-DEFERRED-ONLY ( LSP-CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n dep:ptr depu:n line:ptr lineu:n :}
    v 5 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
-   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
+   LSP-CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    label labelu T-LABEL p s" file" STRING$ dep depu AT$ T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$= ;
@@ -2357,18 +2357,18 @@ $180000 constant LARGE-STDIN-LEN
    s" row-dep.f" s\" : GRAB ( -- ) parse-name 2drop ;\nparses: GRAB 1\nGRAB required\n" FIXTURE
    s\" require row-dep.f\nrequire nosuch.f\n" TOP-CHECK
    1 s" top-opaque-loader: a bounded dependency" EXPECT-KIND
-   s" top-opaque-loader: a bounded dependency, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-opaque-loader: a bounded dependency, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-opaque-loader: a bounded dependency's call" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" file" STRING$ s" row-dep.f" AT$ T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" GRAB" PACKET s" file" STRING$ s" row-dep.f" AT$ T$=
    s" top-opaque-loader: the subject goes on" s" E-MISSING-SOURCE" s" require" s" 2" s" 1" AT-TOKEN ;
 
 
 \ A refused row: its one packet E-PARSES-ROW at TOKEN, with repair CLASS.
-: ROW-REFUSED ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: ROW-REFUSED ( LSP-CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n class:ptr classu:n :}
    v label labelu tok toku s" E-PARSES-ROW" line lineu col colu REFUSED-AT
    label labelu T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ class classu T$= ;
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ class classu T$= ;
 
 
 \ Loaded, each row below throws E-PARSES-ROW, exit 67, naming its reason. A
@@ -2406,11 +2406,11 @@ $180000 constant LARGE-STDIN-LEN
    s\" : W ( -- ) parses: ;\n" TOP-CHECK
    1 s" top-parses-row: declarer in a body" EXPECT-KIND
    s" top-parses-row: declarer in a body" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" parses:" PACKET s" code" STRING$ s" E-UNSAFE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" parses:" PACKET s" code" STRING$ s" E-UNSAFE" T$=
    s\" : W2 ( -- ) checker-parses-row ;\n" TOP-CHECK
    1 s" top-parses-row: registrar in a body" EXPECT-KIND
    s" top-parses-row: registrar in a body" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" checker-parses-row" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
+   LSP-CHECK:VERIFY-OUT$ s" token" s" checker-parses-row" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
 
 
 \ A names: row whose target names no word, or a word whose input row does not
@@ -2422,19 +2422,19 @@ $180000 constant LARGE-STDIN-LEN
    s\" : CVT-LOOK ( ptr u8 n -- ) 2drop ;\nnames: CVT-NOSUCH\n" TOP-CHECK
    s" names-row: undefined" s" CVT-NOSUCH" s" E-NAMES-ROW" s" 2" s" 8" REFUSED-AT
    s" names-row: undefined" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
    s\" : CVT-LOOK ( ptr u8 n -- ) 2drop ;\nnames:\n" TOP-CHECK
    s" names-row: no target" s" names:" s" E-NAMES-ROW" s" 2" s" 1" REFUSED-AT
    s" names-row: no target" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_syntax" T$=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_syntax" T$=
    s\" names: dup\n" TOP-CHECK
    s" names-row: takes no string" s" dup" s" E-NAMES-ROW" s" 1" s" 8" REFUSED-AT
    s" names-row: takes no string" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
    s\" : CVT-ROOK ( -- n ) 1 ;\nnames: CVT-ROOK\n" TOP-CHECK
    s" names-row: no inputs" s" CVT-ROOK" s" E-NAMES-ROW" s" 2" s" 8" REFUSED-AT
    s" names-row: no inputs" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" repair_class" STRING$ s" fix_names_row" T$=
    s" names-row.f" s\" names: CVT-NOSUCH\n" FIXTURE
    s" names-row: loaded, exit 67" T-LABEL
    PROC-ARGV-ENV-RESET s" --load" ARG+ s" names-row.f" AT$ ARG+
@@ -2446,15 +2446,15 @@ $180000 constant LARGE-STDIN-LEN
    s\" : W ( -- ) names: ;\n" TOP-CHECK
    1 s" names-row: declarer in a body" EXPECT-KIND
    s" names-row: declarer in a body" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" names:" PACKET s" code" STRING$ s" E-UNSAFE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" names:" PACKET s" code" STRING$ s" E-UNSAFE" T$=
    s\" : W2 ( -- ) checker-names-row ;\n" TOP-CHECK
    1 s" names-row: registrar in a body" EXPECT-KIND
    s" names-row: registrar in a body" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" checker-names-row" PACKET s" code" STRING$ s" E-UNSAFE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" checker-names-row" PACKET s" code" STRING$ s" E-UNSAFE" T$=
    s\" : W3 ( -- ) checker-named-use ;\n" TOP-CHECK
    1 s" names-row: use publisher in a body" EXPECT-KIND
    s" names-row: use publisher in a body" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" checker-named-use" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
+   LSP-CHECK:VERIFY-OUT$ s" token" s" checker-named-use" PACKET s" code" STRING$ s" E-UNSAFE" T$= ;
 
 
 \ The rows' checker side, from loaded files that ask the live checker owner
@@ -2505,12 +2505,12 @@ $180000 constant LARGE-STDIN-LEN
 : DEF-DEFERRED ( -- )
    s\" s\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
    5 s" def-deferred: evaluate, deferred" EXPECT-KIND
-   s" def-deferred: evaluate, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" def-deferred: evaluate, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" def-deferred: at the name" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 2" s" 19" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
    s\" : CVT-MK ( -- ) create 0 , ;\nparses: CVT-MK 1\nCVT-MK CVT-FOO\n: CVT-UF ( -- n ) CVT-FOO @ ;\n" TOP-CHECK
    5 s" def-deferred: create caller, deferred" EXPECT-KIND
-   s" def-deferred: create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" def-deferred: create caller, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" def-deferred: the call" s" CVT-MK" s" W-CHECK-DEFERRED" s" 3" s" 1" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$=
    s" def-deferred: at the product" s" CVT-FOO" s" W-CHECK-DEFERRED" s" 4" s" 19" TOP-PACKET
@@ -2519,9 +2519,9 @@ $180000 constant LARGE-STDIN-LEN
    s" def-deferred: undeclared create caller, the stop" s" CVT-MK" s" 2" s" 1" DEFERRED-ONLY
    s\" : CVT-E ( -- n ) CVT-NOPE ;\ns\" : CVT-EG ( -- n ) 2 ;\" evaluate\n: CVT-EF ( -- n ) CVT-NOSUCH ;\n" TOP-CHECK
    1 s" def-deferred: after a refusal, refused" EXPECT-KIND
-   s" def-deferred: after a refusal, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" def-deferred: after a refusal, three packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" def-deferred: the refusal" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" CVT-NOPE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-NOPE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
    s" def-deferred: the deferral" s" CVT-NOSUCH" s" W-CHECK-DEFERRED" s" 3" s" 19" TOP-PACKET
    s" verdict" STRING$ s" deferred" T$= ;
 
@@ -2530,7 +2530,7 @@ $180000 constant LARGE-STDIN-LEN
 : TRUSTED-TICK-ORDER ( -- )
    s\" : CVT-GATE ( -- ) drop ['] patch32 drop CVT-NOT-DEFINED ;\n" TOP-CHECK
    1 s" trusted-tick-order: static tier 0 refusal" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-gate" PACKET {: p:SPAN:span<u8> :}
    s" trusted-tick-order: checking code" T-LABEL p s" code" STRING$ s" E-UNDEFINED" T$=
    s" trusted-tick-order: later token" T-LABEL p s" token" STRING$ s" CVT-NOT-DEFINED" T$=
    s" trusted-tick-order: later line" T-LABEL p s" line" NUMBER$ s" 1" T$=
@@ -2539,7 +2539,7 @@ $180000 constant LARGE-STDIN-LEN
    p s" verdict" STRING$ s" rejected" T$=
    s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n" TOP-CHECK
    5 s" trusted-tick-order: dynamic tier is deferred" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET {: warning:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET {: warning:SPAN:span<u8> :}
    s" trusted-tick-order: warning code" T-LABEL
    warning s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" trusted-tick-order: warning line" T-LABEL
@@ -2548,7 +2548,7 @@ $180000 constant LARGE-STDIN-LEN
    warning s" column" NUMBER$ s" 28" T$=
    s" trusted-tick-order: pre-pass continues to the run" T-LABEL
    s\" 1 set-tier\n: CVT-GATE ( -- ) drop ['] patch32 drop ;\n"
-   SUBJ$ s" dynamic-tier.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   SUBJ$ s" dynamic-tier.f" GUARD-MS >MS LSP-CHECK:PREVERIFY-BYTES
    MATCH result
       ok OF 0= ENDOF
       err OF drop false ENDOF
@@ -2569,38 +2569,38 @@ $180000 constant LARGE-STDIN-LEN
    s" 1 set-tier : CVT-A ( -- ) drop ['] patch32 drop ; : CVT-B ( -- ) CVT-A ;" TOP-CHECK
    5 s" trusted-tick-order: unknown body leaves dependents to the run" EXPECT-KIND
    s" trusted-tick-order: only the uncertain tick is reported" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 1 T=
-   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" W-CHECK-DEFERRED" T$=
    s" 0 set-tier package CVT-TU public : patch32 ( -- n ) 1 ; ;package using CVT-TU : CVT-SH ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
    1 s" trusted-tick-order: current tick resolution beats uncertainty" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" E-USING-SHADOW-GLOBAL" T$=
    s" : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
    1 s" trusted-tick-order: does clause gate precedes parent check" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-does;does" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-does;does" PACKET s" code" STRING$
    s" E-CAP-TRUSTED" T$=
    s" : CVT-DOES ( -- ) CVT-MISSING create does> ( -- ) ['] patch32 drop ;" TOP-CHECK
    1 s" trusted-tick-order: tier 0 parent compile refusal wins" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
    s" E-UNDEFINED" T$=
    s" : CVT-DOES ( -- ) ['] patch32 drop create does> ( -- ) CVT-MISSING ;" TOP-CHECK
    1 s" trusted-tick-order: parent gate precedes later clause refusal" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
    s" E-CAP-TRUSTED" T$=
    s" 0 set-tier : CVT-DOES ( -- ) ['] patch32 drop create does> ( -- ) CVT-MISSING ;" TOP-CHECK
    5 s" trusted-tick-order: unknown parent tick defers clause" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" W-CHECK-DEFERRED" T$=
    s" 0 set-tier : CVT-DOES ( -- ) ['] patch32 drop create does> CVT-MISSING ;" TOP-CHECK
    5 s" trusted-tick-order: unknown parent stops before malformed clause" EXPECT-KIND
    s" trusted-tick-order: unknown parent has one warning" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 1 T=
-   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" W-CHECK-DEFERRED" T$=
    S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate : CVT-DOES ( -- ) create does> ( -- ) drop CVT-GENERATED ;" TOP-CHECK
    5 s" trusted-tick-order: clause warning retains its pin after parent scan" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: clause-warning:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: clause-warning:SPAN:span<u8> :}
    s" trusted-tick-order: clause warning span" T-LABEL
    clause-warning s" line" NUMBER$ s" 1" T$=
    clause-warning s" column" NUMBER$ s" 82" T$=
@@ -2609,23 +2609,23 @@ $180000 constant LARGE-STDIN-LEN
    S\" s\" : CVT-GENERATED ( -- ) ;\" evaluate\n: CVT-DOES ( -- ) CVT-GENERATED create does> ( -- ) CVT-GENERATED ;" TOP-CHECK
    5 s" trusted-tick-order: parent and clause both defer" EXPECT-KIND
    s" trusted-tick-order: one warning for the definition, one for the renderer" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 2 T=
-   CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: parent-warning:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-GENERATED" PACKET {: parent-warning:SPAN:span<u8> :}
    s" trusted-tick-order: parent warning wins" T-LABEL
    parent-warning s" line" NUMBER$ s" 2" T$=
    parent-warning s" column" NUMBER$ s" 19" T$=
    parent-warning s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" 0 set-tier : CVT-DOES ( -- ) drop create does> ( -- ) drop ['] patch32 drop ;" TOP-CHECK
    5 s" trusted-tick-order: unknown does clause defers parent check" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" token" s" patch32" PACKET s" code" STRING$
    s" W-CHECK-DEFERRED" T$=
    s" 0 set-tier : CVT-DOES ( -- ) CVT-MISSING create does> ( -- ) ['] patch32 drop ;" TOP-CHECK
    1 s" trusted-tick-order: earlier parent compile refusal wins" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-does" PACKET s" code" STRING$
    s" E-UNDEFINED" T$=
    s" : CVT-PRIOR ( -- ) ['] patch32 drop ; using CVT-TU : CVT-LATER ( -- ) ['] patch32 drop ; ;using" TOP-CHECK
    1 s" trusted-tick-order: later using cannot replace earlier gate" EXPECT-KIND
-   CHECK:VERIFY-OUT$ s" word" s" cvt-prior" PACKET s" code" STRING$
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-prior" PACKET s" code" STRING$
    s" E-CAP-TRUSTED" T$= ;
 
 
@@ -2633,7 +2633,7 @@ $180000 constant LARGE-STDIN-LEN
 : LOADS-CLEAN ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}
    src srcu TOP-CHECK 0 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 0 T= ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 0 T= ;
 
 
 \ A word that renders source reads only the text it renders: loaded, `: R ( -- )
@@ -2650,18 +2650,18 @@ $180000 constant LARGE-STDIN-LEN
    s" top-renders: at the renderer" s" evaluate" s" 1" s" 27" DEFERRED-ONLY
    s\" s\" : CVT-EV ( -- n ) 1 ;\" evaluate CVT-EV drop\n" TOP-CHECK
    5 s" top-renders: a product, deferred" EXPECT-KIND
-   s" top-renders: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-renders: two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-renders: the renderer first" 0 s" evaluate" s" 1" s" 27" DEFERRED-NTH
    s" top-renders: then the product" 1 s" CVT-EV" s" 1" s" 36" DEFERRED-NTH
    s\" s\" package CVT-RP public : CVT-RW ( -- n ) 1 ; ;package\" evaluate\nCVT-RP:CVT-RW drop\n" TOP-CHECK
    5 s" top-renders: a qualified product, deferred" EXPECT-KIND
-   s" top-renders: qualified, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-renders: qualified, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-renders: qualified, the renderer first" 0 s" evaluate" s" 1" s" 58" DEFERRED-NTH
    s" top-renders: at the qualified product" 1 s" CVT-RP:CVT-RW" s" 2" s" 1" DEFERRED-NTH
    s\" require src/lib/prelude.f\nTYPED-VARIABLE CVT-UA ptr u8   variable CVT-UU\n: CVT-UGO ( -- ) CVT-UA @ CVT-UU @ INCLUDE-EVALUATE ;\n: CVT-UCATCH ( ptr u8 n -- n ) CVT-UU ! CVT-UA ! [: CVT-UGO ;] catch ;\ns\" package CVT-UQ public : CVT-UR ( -- n ) 42 ; ;package\" CVT-UCATCH drop\nCVT-UQ:CVT-UR drop\n"
    TOP-CHECK
    5 s" top-renders: under catch, deferred" EXPECT-KIND
-   s" top-renders: under catch, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-renders: under catch, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-renders: under catch, the renderer first" 0 s" CVT-UCATCH" s" 5" s" 59" DEFERRED-NTH
    s" top-renders: under catch, at the product" 1 s" CVT-UQ:CVT-UR" s" 6" s" 1" DEFERRED-NTH
    s\" : CVT-LD ( n -- ) create , s\" : CVT-LZ ( -- n ) 3 ;\" evaluate-closed does> ( -- n ) @ ;\n1 CVT-LD CVT-LX\nCVT-LX drop\n" TOP-CHECK
@@ -2670,7 +2670,7 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A source whose type is made at load time must really load with the same
 \ engine the verifier child runs. Keep the disk and buffer bytes identical.
-: TYPE-LOAD-CHECK ( ptr u8 n ptr u8 n ptr u8 n -- CHECK:verdict )
+: TYPE-LOAD-CHECK ( ptr u8 n ptr u8 n ptr u8 n -- LSP-CHECK:verdict )
    {: src:ptr srcu:n name:ptr nameu:n label:ptr labelu:n :}
    name nameu src srcu FIXTURE
    label labelu T-LABEL name nameu AT$ NATIVE-RC 0 T=
@@ -2678,183 +2678,186 @@ $180000 constant LARGE-STDIN-LEN
 
 : TYPE-DEFERRED-PACKET ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n :}
-   CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ s" token" tok toku PACKET {: p:SPAN:span<u8> :}
    label labelu T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    label labelu T-LABEL p s" file" STRING$ SUBJ$ T$=
    label labelu T-LABEL p s" line" NUMBER$ line lineu T$=
    label labelu T-LABEL p s" column" NUMBER$ col colu T$=
    label labelu T-LABEL p s" verdict" STRING$ s" deferred" T$= ;
 
-\ All four sources load. The verifier cannot execute their reached renderer or
-\ original registrar, so the declaration depending on the new type is
-\ deferred at that type, and a renderer's call is deferred at itself.
+\ Each source loads. The verifier cannot run the reached renderer or original
+\ registrar: a declaration on the new type defers at it, a renderer's call at itself.
 : TYPE-DEFERRED-DECLS ( -- )
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n"
    s" type-sig-rendered.f" s" type-deferred: signature loads" TYPE-LOAD-CHECK
    5 s" type-deferred: signature defers" EXPECT-KIND
-   s" type-deferred: signature has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: signature has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: signature renderer" s" INCLUDE-EVALUATE" s" 1" s" 40" TYPE-DEFERRED-PACKET
    s" type-deferred: signature type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob FIELD b cbx ;STRUCTURE\n"
    s" type-field-rendered.f" s" type-deferred: field loads" TYPE-LOAD-CHECK
    5 s" type-deferred: field defers" EXPECT-KIND
-   s" type-deferred: field has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: field has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: field type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
    s\" s\" STRUCTURE cbx<a> FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cob FIELD b cbx<n> ;STRUCTURE\n"
    s" type-generic-rendered.f" s" type-deferred: generic field loads" TYPE-LOAD-CHECK
    5 s" type-deferred: generic field defers" EXPECT-KIND
-   s" type-deferred: generic field has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: generic field has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: generic field type" s" cbx<n>" s" 2" s" 23" TYPE-DEFERRED-PACKET
    s\" s\" chz\" s\" VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM\n: CVT-F ( -- chz ) CONSTRUCT chz first ;\n"
    s" type-sum-registered.f" s" type-deferred: sum loads" TYPE-LOAD-CHECK
    5 s" type-deferred: sum defers" EXPECT-KIND
-   s" type-deferred: sum has one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" type-deferred: sum has one packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" type-deferred: sum signature type" s" chz" s" 2" s" 14" TYPE-DEFERRED-PACKET
 
    s\" : CVT-REG ( -- ) s\" chz\" s\" VARIANT first ;VARIANT VARIANT second ;VARIANT\" CHECKER-DEFSUM ;\nCVT-REG\n: CVT-F ( -- chz ) CONSTRUCT chz first ;\n"
    s" type-registrar-wrapper.f" s" type-deferred: registrar wrapper loads" TYPE-LOAD-CHECK
    5 s" type-deferred: registrar wrapper defers" EXPECT-KIND
-   s" type-deferred: registrar wrapper type" s" chz" s" 3" s" 14" TYPE-DEFERRED-PACKET
+   s" type-deferred: registrar wrapper type" s" chz" s" 3" s" 14" TYPE-DEFERRED-PACKET ;
 
+\ A storage, record, payload, field, cast, linear or defer on the new type defers at it.
+: TYPE-DEFERRED-USES ( -- )
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n"
    s" type-storage-rendered.f" s" type-deferred: storage loads" TYPE-LOAD-CHECK
    5 s" type-deferred: storage defers" EXPECT-KIND
-   s" type-deferred: storage has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: storage has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: stored type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTYPED-VARIABLE CVT-ST cbx\n: CVT-USE ( -- ) CVT-ST drop ;\n"
    s" type-storage-use.f" s" type-deferred: storage dependency loads" TYPE-LOAD-CHECK
    5 s" type-deferred: storage dependency defers" EXPECT-KIND
-   s" type-deferred: storage dependency has three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" type-deferred: storage dependency has three packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: storage dependency type" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
    s" type-deferred: storage dependency word" s" CVT-ST" s" 3" s" 18" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nVALUE-RECORD CVT-VR x cbx END-VALUE-RECORD\n"
    s" type-record-rendered.f" s" type-deferred: record loads" TYPE-LOAD-CHECK
    5 s" type-deferred: record defers" EXPECT-KIND
-   s" type-deferred: record has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: record has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: record field" s" cbx" s" 2" s" 23" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one cbx ;VARIANT ;SUMTYPE\n"
    s" type-variant-rendered.f" s" type-deferred: variant loads" TYPE-LOAD-CHECK
    5 s" type-deferred: variant defers" EXPECT-KIND
-   s" type-deferred: variant has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: variant has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: variant payload" s" cbx" s" 2" s" 25" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp FIELD f cbx ;PRODUCT\n"
    s" type-product-rendered.f" s" type-deferred: product loads" TYPE-LOAD-CHECK
    5 s" type-deferred: product defers" EXPECT-KIND
-   s" type-deferred: product has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: product has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: product field" s" cbx" s" 2" s" 21" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx<a> FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one cbx<n> ;VARIANT ;SUMTYPE\n"
    s" type-variant-generic.f" s" type-deferred: applied payload loads" TYPE-LOAD-CHECK
    5 s" type-deferred: applied payload defers" EXPECT-KIND
-   s" type-deferred: applied payload has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: applied payload has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: applied payload type" s" cbx" s" 2" s" 25" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one [ cbx -- n ] ;VARIANT ;SUMTYPE\n"
    s" type-variant-quote.f" s" type-deferred: quoted payload loads" TYPE-LOAD-CHECK
    5 s" type-deferred: quoted payload defers" EXPECT-KIND
-   s" type-deferred: quoted payload has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: quoted payload has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: quoted payload type" s" cbx" s" 2" s" 27" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp FIELD f ptr cbx ;PRODUCT\n"
    s" type-product-pointer.f" s" type-deferred: pointer field loads" TYPE-LOAD-CHECK
    5 s" type-deferred: pointer field defers" EXPECT-KIND
-   s" type-deferred: pointer field has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: pointer field has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: pointer field type" s" cbx" s" 2" s" 25" TYPE-DEFERRED-PACKET
 
    s\" s\" NEWTYPE cbx\" INCLUDE-EVALUATE\nCAST: CVT-C ( n -- cbx )\n"
    s" type-cast-rendered.f" s" type-deferred: cast loads" TYPE-LOAD-CHECK
    5 s" type-deferred: cast defers" EXPECT-KIND
-   s" type-deferred: cast has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: cast has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: cast type" s" cbx" s" 2" s" 20" TYPE-DEFERRED-PACKET
 
    s\" s\" package CVT-L public DEFLINEAR CVT-L:tok ;package\" INCLUDE-EVALUATE\npackage CVT-L LINEAR: CVT-M ( n -- CVT-L:tok ) ;package\n"
    s" type-linear-rendered.f" s" type-deferred: linear loads" TYPE-LOAD-CHECK
    5 s" type-deferred: linear defers" EXPECT-KIND
-   s" type-deferred: linear has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: linear has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: linear type" s" CVT-L:tok" s" 2" s" 36" TYPE-DEFERRED-PACKET
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\ndefer CVT-D ( cbx -- cbx )\n"
    s" type-defer-rendered.f" s" type-deferred: defer loads" TYPE-LOAD-CHECK
    5 s" type-deferred: defer signature defers" EXPECT-KIND
-   s" type-deferred: defer has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
-   s" type-deferred: defer type" s" cbx" s" 2" s" 15" TYPE-DEFERRED-PACKET
+   s" type-deferred: defer has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: defer type" s" cbx" s" 2" s" 15" TYPE-DEFERRED-PACKET ;
 
+\ A duplicate variant or field, or a malformed or wrong-arity payload, still refuses.
+: TYPE-DEFERRED-REFUSED ( -- )
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one cbx ;VARIANT VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
    1 s" type-deferred: duplicate variant refuses after missing type" EXPECT-KIND
    s" type-deferred: duplicate variant stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" one" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" one" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nPRODUCT cvp FIELD f cbx FIELD f n ;PRODUCT\n" TOP-CHECK
    1 s" type-deferred: duplicate field refuses after missing type" EXPECT-KIND
    s" type-deferred: duplicate field stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" f" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" f" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one cbx<n ;VARIANT ;SUMTYPE\n" TOP-CHECK
    1 s" type-deferred: malformed applied payload refuses" EXPECT-KIND
    s" type-deferred: malformed applied payload stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" ;VARIANT" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" ;VARIANT" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE cknown<a> FIELD v a ;STRUCTURE\nSUMTYPE cvs VARIANT one cbx<cknown> ;VARIANT ;SUMTYPE\n" TOP-CHECK
    1 s" type-deferred: known nested arity refuses" EXPECT-KIND
    s" type-deferred: known nested arity stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" cknown" PACKET s" verdict" STRING$ s" rejected" T$= ;
+   LSP-CHECK:VERIFY-OUT$ s" token" s" cknown" PACKET s" verdict" STRING$ s" rejected" T$= ;
 
 : TYPE-DEFERRED-CONTROLS ( -- )
    s\" package CVT-SH private\n: INCLUDE-EVALUATE ( -- ) ;\nINCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n;package\n" TOP-CHECK
    1 s" type-deferred: shadowed nonproducer refuses" EXPECT-KIND
    s" type-deferred: shadowed nonproducer code" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
 
    s\" package CVT-A private\ns\" cbx\" s\" VARIANT first ;VARIANT\" CHECKER-DEFSUM\n;package\n: CVT-G ( CVT-B:cbx -- CVT-B:cbx ) ;\n" TOP-CHECK
    1 s" type-deferred: private registrar cannot supply another package" EXPECT-KIND
    s" type-deferred: other package type refuses" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" CVT-B:cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-B:cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
 
    s\" : CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
    1 s" type-deferred: no producer refuses" EXPECT-KIND
    s" type-deferred: no producer code" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
    s\" : CVT-RENDER ( -- ) s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE ;\n: CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
    1 s" type-deferred: uncalled renderer refuses" EXPECT-KIND
    s" type-deferred: uncalled renderer code" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
    s\" : CVT-RENDER ( -- ) s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE ;\n' CVT-RENDER drop\n: CVT-G ( cbx -- cbx ) ;\n" TOP-CHECK
    1 s" type-deferred: ticked renderer refuses" EXPECT-KIND
    s" type-deferred: ticked renderer code" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" cbx" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-G ( cbx -- cbx ) ;\n: CVT-BAD ( n -- n n ) drop ;\n" TOP-CHECK
    1 s" type-deferred: later mismatch refuses" EXPECT-KIND
-   s" type-deferred: later mismatch has three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" type-deferred: later mismatch has three packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: prior type" s" cbx" s" 2" s" 11" TYPE-DEFERRED-PACKET
    s" type-deferred: later mismatch code" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" drop" PACKET s" code" STRING$ s" E-MISMATCH" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" drop" PACKET s" code" STRING$ s" E-MISMATCH" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\npackage CVT-A public STRUCTURE amb FIELD v n ;STRUCTURE ;package\npackage CVT-B public STRUCTURE amb FIELD v n ;STRUCTURE ;package\n: CVT-BAD ( amb -- amb ) ;\n" TOP-CHECK
    1 s" type-deferred: ambiguous family refuses" EXPECT-KIND
    s" type-deferred: ambiguous family stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" amb" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" amb" PACKET s" verdict" STRING$ s" rejected" T$=
    s\" s\" STRUCTURE cbx<a> FIELD v a ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-BAD ( cbx<n -- cbx<n ) ;\n" TOP-CHECK
    1 s" type-deferred: unclosed generic refuses" EXPECT-KIND
    s" type-deferred: unclosed generic stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" --" PACKET s" verdict" STRING$ s" rejected" T$= ;
+   LSP-CHECK:VERIFY-OUT$ s" token" s" --" PACKET s" verdict" STRING$ s" rejected" T$= ;
 
 : TYPE-DEFERRED-TRUSTED ( -- )
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nTRUSTED: CVT-T ( cbx -- cbx ) create does> ( -- n ) drop 7 ;\n: CVT-NEXT ( -- n ) 1 ;\n"
    s" type-trusted-rendered.f" s" type-deferred: trusted loads" TYPE-LOAD-CHECK
    5 s" type-deferred: trusted signature defers" EXPECT-KIND
-   s" type-deferred: trusted has two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: trusted has two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: trusted signature type" s" cbx" s" 2" s" 18" TYPE-DEFERRED-PACKET
    s" type-deferred: trusted parent absent" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-T" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" CVT-T" PACKET SPAN:LEN 0= TTRUE
    s" type-deferred: trusted clause absent" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-T;does" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" CVT-T;does" PACKET SPAN:LEN 0= TTRUE
    s" type-deferred: following declaration present" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-NEXT" PACKET SPAN:LEN 0<> TTRUE ;
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" CVT-NEXT" PACKET SPAN:LEN 0<> TTRUE ;
 
 : TYPE-DEFERRED-DIRECT ( -- )
    s\" s\" cbx\" CHECKER-DEFLINEAR\n: CVT-KEEP ( cbx -- cbx ) ;\n"
@@ -2870,52 +2873,52 @@ $180000 constant LARGE-STDIN-LEN
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one a ;VARIANT ;SUMTYPE\n" TOP-CHECK
    1 s" type-deferred: known payload letter arity refuses" EXPECT-KIND
    s" type-deferred: known payload letter stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" a" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" a" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one n ;VARIANT ;SUMTYPE\n" TOP-CHECK
    5 s" type-deferred: known payload scalar has no type uncertainty" EXPECT-KIND
    s" type-deferred: known payload scalar has only the renderer's packet" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSUMTYPE cvs VARIANT one bool ;VARIANT ;SUMTYPE\n" TOP-CHECK
    5 s" type-deferred: known payload bool has no type uncertainty" EXPECT-KIND
    s" type-deferred: known payload bool has only the renderer's packet" T-LABEL
-   CHECK:VERIFY-OUT$ PACKETS 1 T=
+   LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE bad FIELD x cbx FIELD x n ;STRUCTURE\n" TOP-CHECK
    1 s" type-deferred: duplicate structure field refuses" EXPECT-KIND
    s" type-deferred: duplicate structure field stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nENUM bad VARIANT one FIELD x cbx FIELD x n ;VARIANT ;ENUM\n" TOP-CHECK
    1 s" type-deferred: duplicate enum field refuses" EXPECT-KIND
    s" type-deferred: duplicate enum field stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" x" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nSTRUCTURE bad FIELD BAD cbx ;STRUCTURE\n" TOP-CHECK
    1 s" type-deferred: reserved structure field refuses" EXPECT-KIND
    s" type-deferred: reserved structure field stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" BAD" PACKET s" verdict" STRING$ s" rejected" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" BAD" PACKET s" verdict" STRING$ s" rejected" T$=
 
    s\" package CVT-P private STRUCTURE hidden FIELD v n ;STRUCTURE ;package\ns\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n: CVT-BAD ( CVT-P:hidden -- CVT-P:hidden ) ;\n" TOP-CHECK
    1 s" type-deferred: other private family refuses" EXPECT-KIND
    s" type-deferred: other private family code" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" CVT-P:hidden" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-P:hidden" PACKET s" code" STRING$ s" E-UNKNOWN-SIGNATURE-TYPE" T$=
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( n n -- cbx )\n" TOP-CHECK
    1 s" type-deferred: cast known row shape refuses" EXPECT-KIND
    s" type-deferred: cast known row shape stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE
 
    s\" s\" NEWTYPE cbx\" INCLUDE-EVALUATE\nCAST: CVT-BAD ( R n -- S cbx )\n" TOP-CHECK
    1 s" type-deferred: cast known tail mismatch refuses" EXPECT-KIND
    s" type-deferred: cast known tail mismatch stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE
 
    s\" s\" STRUCTURE cbx FIELD v n ;STRUCTURE\" INCLUDE-EVALUATE\n0 TYPED-BUFFER CVT-BAD cbx\n" TOP-CHECK
    1 s" type-deferred: buffer known bad count refuses" EXPECT-KIND
    s" type-deferred: buffer known bad count stays rejected" T-LABEL
-   CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ s" verdict" s" rejected" PACKET SPAN:LEN 0<> TTRUE ;
 
 \ A reached renderer makes the type at load time. TRUST changes a seen word's
 \ effect, and a view cast depends on that type too: the quiet scan must not
@@ -2929,10 +2932,10 @@ $180000 constant LARGE-STDIN-LEN
    s" type-trust-rendered.f" AT$ NATIVE-RC 70 T=
    src srcu TOP-CHECK
    5 s" type-deferred: asserted effect defers" EXPECT-KIND
-   s" type-deferred: renderer, assertion and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" type-deferred: renderer, assertion and dependent body" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: assertion type" s" cvt-nom" s" 5" s" 17" TYPE-DEFERRED-PACKET
    s" type-deferred: old effect is unavailable" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" CVT-K" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-K" PACKET s" code" STRING$ s" W-CHECK-DEFERRED" T$=
 
    s\" require src/lib/type/deftype.f\npackage CVT-VIEW\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\nCAST: CVT-UNPACK ( read-view<p,q,cvt-nom> -- ptr u8 n )\n: CVT-AFTER ( read-view<p,q,n> -- ptr u8 n ) CVT-UNPACK ;\n;package\n"
    {: vsrc:ptr vsrcu:n :}
@@ -2941,53 +2944,53 @@ $180000 constant LARGE-STDIN-LEN
    s" type-view-rendered.f" AT$ NATIVE-RC 70 T=
    vsrc vsrcu TOP-CHECK
    5 s" type-deferred: view cast defers" EXPECT-KIND
-   s" type-deferred: renderer, view cast and dependent body" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" type-deferred: renderer, view cast and dependent body" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" type-deferred: unresolved view cast is absent" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-UNPACK" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" CVT-UNPACK" PACKET SPAN:LEN 0= TTRUE
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom ptr\" TRUST\n" TOP-CHECK
    1 s" type-deferred: invalid assertion grammar refuses" EXPECT-KIND
-   s" type-deferred: invalid assertion adds no deferral to the renderer's" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: invalid assertion adds no deferral to the renderer's" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: invalid assertion code" T-LABEL
-   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$=
+   LSP-CHECK:VERIFY-OUT$ 1 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$=
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-RESTORED ( -- n ) CVT-K ;\n"
    TOP-CHECK
    5 s" type-deferred: known assertion restores checking" EXPECT-KIND
-   s" type-deferred: restored assertion has only the renderer's and original warnings" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: restored assertion has only the renderer's and original warnings" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" type-deferred: restored caller is recorded" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-RESTORED" PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" CVT-RESTORED" PACKET SPAN:LEN 0<> TTRUE
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\ns\" CVT-K\" s\" -- n\" TRUST\n: CVT-BAD ( -- bool ) CVT-K ;\n"
    TOP-CHECK
    1 s" type-deferred: restored assertion rejects mismatch" EXPECT-KIND
    s" type-deferred: restored caller mismatch" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-MISMATCH" T$=
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-MISMATCH" T$=
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\npackage CVT-OTHER\n: CVT-K ( -- n ) 2 ;\n: CVT-KEPT ( -- n ) CVT-K ;\n;package\n"
    TOP-CHECK
    5 s" type-deferred: another binding stays checkable" EXPECT-KIND
-   s" type-deferred: another binding has only the renderer's and original warnings" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" type-deferred: another binding has only the renderer's and original warnings" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-K ( -- n ) 1 ;\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-TICK ( -- [ -- n ] ) ['] CVT-K ;\n' CVT-K drop\n"
    TOP-CHECK
    5 s" type-deferred: ticks keep no old effect" EXPECT-KIND
-   s" type-deferred: renderer, assertion and both ticks" T-LABEL CHECK:VERIFY-OUT$ PACKETS 4 T=
+   s" type-deferred: renderer, assertion and both ticks" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 4 T=
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ndefer CVT-K ( -- n )\ns\" CVT-K\" s\" -- cvt-nom\" TRUST\n: CVT-SET ( [ -- n ] -- ) is CVT-K ;\n"
    TOP-CHECK
    5 s" type-deferred: deferred setter keeps no old effect" EXPECT-KIND
-   s" type-deferred: renderer, assertion and deferred setter" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" type-deferred: renderer, assertion and deferred setter" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\n: CVT-PN ( -- ) parse-name 2drop ;\ns\" CVT-PN\" s\" -- cvt-nom\" TRUST\nCVT-PN : CVT-PAYLOAD ( -- n ) 1 ;\n" TOP-CHECK
    5 s" type-deferred: parser still owns its operands" EXPECT-KIND
    s" type-deferred: parser payload is not a declaration" T-LABEL
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-PAYLOAD" PACKET SPAN:LEN 0= TTRUE
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" CVT-PAYLOAD" PACKET SPAN:LEN 0= TTRUE
 
    s\" require src/lib/type/deftype.f\n: CVT-MAKE ( -- ) s\" DEFTYPE CVT-NOM\" evaluate-closed ;\nCVT-MAKE\ns\" patch32\" s\" n n -- cvt-nom\" TRUST\n: CVT-BAD ( n n -- ) patch32 ;\n" TOP-CHECK
    1 s" type-deferred: trusted-only call still refuses" EXPECT-KIND
    s" type-deferred: trusted-only call code" T-LABEL
-   CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-CAP-TRUSTED" T$= ;
+   LSP-CHECK:VERIFY-OUT$ s" word" s" cvt-bad" PACKET s" code" STRING$ s" E-CAP-TRUSTED" T$= ;
 
 : TYPE-LONG-FIELDS ( -- )
    33 0 DO
@@ -3015,7 +3018,8 @@ $180000 constant LARGE-STDIN-LEN
    s" type-enum-long.f" AT$ NATIVE-RC 0 T= ;
 
 : TYPE-DEFERRED ( -- )
-   TYPE-DEFERRED-DECLS TYPE-DEFERRED-CONTROLS TYPE-DEFERRED-TRUSTED
+   TYPE-DEFERRED-DECLS TYPE-DEFERRED-USES TYPE-DEFERRED-REFUSED
+   TYPE-DEFERRED-CONTROLS TYPE-DEFERRED-TRUSTED
    TYPE-DEFERRED-DIRECT TYPE-DEFERRED-REVIEW TYPE-DEFERRED-ROWS TYPE-LONG-LIVE ;
 
 
@@ -3036,10 +3040,10 @@ $180000 constant LARGE-STDIN-LEN
 : TOP-CREATE ( -- )
    s\" : CVT-MKS ( n -- ) create , ;\nparses: CVT-MKS 1\n5 CVT-MKS CVT-Q\nCVT-Q drop\n: CVT-AFTER ( -- n ) 1 ;\nCVT-Q drop\n" TOP-CHECK
    5 s" top-create: deferred" EXPECT-KIND
-   s" top-create: three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-create: three packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" top-create: the call" s" CVT-MKS" s" 3" s" 3" DEFERRED-AT
    s" top-create: its product next" s" CVT-Q" s" 4" s" 1" DEFERRED-AT
-   CHECK:VERIFY-OUT$ 2 NTH-PACKET {: p:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-OUT$ 2 NTH-PACKET {: p:SPAN:span<u8> :}
    s" top-create: its product after it" T-LABEL p s" token" STRING$ s" CVT-Q" T$=
    s" top-create: its product after it" T-LABEL p s" code" STRING$ s" W-CHECK-DEFERRED" T$=
    s" top-create: its product after it" T-LABEL p s" line" NUMBER$ s" 6" T$=
@@ -3050,7 +3054,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" package CVT-RA public : CVT-RMAKE ( -- ) s\" : CVT-RSEVEN ( -- n ) 7 ;\" INCLUDE-EVALUATE ; CVT-RMAKE ;package\n: CVT-DEFR ( n -- ) create , does> ( -- n ) @ ;\n: CVT-MK ( n -- ) CVT-RA:CVT-RSEVEN + CVT-DEFR ;\n5 CVT-MK CVT-Y\n"
    TOP-CHECK
    5 s" top-create: through a word the run checks" EXPECT-KIND
-   s" top-create: three packets, through a word" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-create: three packets, through a word" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" top-create: the renderer's call" s" CVT-RMAKE" s" 1" s" 91" DEFERRED-AT
    s" top-create: that word's body" s" CVT-RA:CVT-RSEVEN" s" 3" s" 19" DEFERRED-AT
    s" top-create: at that word" s" CVT-MK" s" 4" s" 3" DEFERRED-AT ;
@@ -3058,20 +3062,20 @@ $180000 constant LARGE-STDIN-LEN
 
 \ A deferred check of two packets: CVT-TL's call on TLINE at TCOL, then the
 \ row's name TOKEN on LINE at COLUMN.
-: TL-DEFERRED-AT ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: TL-DEFERRED-AT ( LSP-CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n tline:ptr tlineu:n tcol:ptr tcolu:n :}
    v 5 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    label labelu 0 s" CVT-TL" tline tlineu tcol tcolu DEFERRED-NTH
    label labelu 1 tok toku line lineu col colu DEFERRED-NTH ;
 
 
 \ A refused check of two packets: the row's name TOKEN unresolved on LINE at
 \ COLUMN, and CVT-TL's call deferred on TLINE at TCOL.
-: TL-REFUSED-AT ( CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+: TL-REFUSED-AT ( LSP-CHECK:verdict ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: v label:ptr labelu:n tok:ptr toku:n line:ptr lineu:n col:ptr colu:n tline:ptr tlineu:n tcol:ptr tcolu:n :}
    v 1 label labelu EXPECT-KIND
-   label labelu T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   label labelu T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    label labelu tok toku s" E-TRUST-UNRESOLVED" line lineu col colu TOP-PACKET
    s" verdict" STRING$ s" rejected" T$=
    label labelu s" CVT-TL" s" W-CHECK-DEFERRED" tline tlineu tcol tcolu TOP-PACKET
@@ -3094,7 +3098,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n: CVT-TU ( -- n ) CVT-TDW ;\nCVT-TDW drop\n"
    TOP-CHECK
    5 s" top-trust: a product's row, deferred" EXPECT-KIND
-   s" top-trust: four packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 4 T=
+   s" top-trust: four packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 4 T=
    s" top-trust: at the statement" 0 s" CVT-TL" s" 2" s" 1" DEFERRED-NTH
    s" top-trust: at the row's name" 1 s" CVT-TDW" s" 3" s" 4" DEFERRED-NTH
    s" top-trust: a use in a body" 2 s" CVT-TDW" s" 4" s" 19" DEFERRED-NTH
@@ -3102,7 +3106,7 @@ $180000 constant LARGE-STDIN-LEN
    s\" package CVT-TP\n: CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\ns\" CVT-TDW\" s\" -- n\" TRUST\n;package\npackage CVT-TP s\" CVT-TDW\" s\" -- n\" TRUST ;package\n"
    TOP-CHECK
    5 s" top-trust: private, deferred" EXPECT-KIND
-   s" top-trust: private, three packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 3 T=
+   s" top-trust: private, three packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 3 T=
    s" top-trust: private, at the statement" 0 s" CVT-TL" s" 3" s" 1" DEFERRED-NTH
    s" top-trust: in the private section" 1 s" CVT-TDW" s" 4" s" 4" DEFERRED-NTH
    s" top-trust: in that section reopened" 2 s" CVT-TDW" s" 6" s" 19" DEFERRED-NTH
@@ -3120,9 +3124,9 @@ $180000 constant LARGE-STDIN-LEN
    s\" : CVT-TL ( -- ) s\" : CVT-TDW ( -- n ) 1 ;\" evaluate-closed ;\nCVT-TL\n: CVT-TK ( -- n ) 1 ;\ns\" CVT-TK\" s\" -- ptr\" TRUST\n: CVT-TU ( -- n ) CVT-TK ;\n"
    TOP-CHECK
    1 s" top-trust: a seen word's bad row" EXPECT-KIND
-   s" top-trust: a seen word's bad row, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-trust: a seen word's bad row, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-trust: a seen word's bad row, its code" T-LABEL
-   CHECK:VERIFY-OUT$ 1 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$= ;
+   LSP-CHECK:VERIFY-OUT$ 1 NTH-PACKET s" code" STRING$ s" E-BAD-STORED-SIGNATURE" T$= ;
 
 
 \ The rows the scan still refuses where the load does, each E-TRUST-UNRESOLVED,
@@ -3184,16 +3188,16 @@ $180000 constant LARGE-STDIN-LEN
 : TOP-TRUSTED ( -- )
    s\" TRUSTED: CVT-EVW ( ptr u8 n -- ) evaluate ;\ns\" : CVT-EVY ( -- n ) 2 ;\" CVT-EVW\nCVT-EVY drop\n" TOP-CHECK
    5 s" top-trusted: renders" EXPECT-KIND
-   s" top-trusted: renders, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-trusted: renders, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-trusted: renders, at its call" s" CVT-EVW" s" 2" s" 28" DEFERRED-AT
    s" top-trusted: its product" s" CVT-EVY" s" 3" s" 1" DEFERRED-AT
    s\" TRUSTED: CVT-TP ( -- ) parse-name 2drop ;\nCVT-TP NOSUCH\n" TOP-CHECK
    5 s" top-trusted: parses" EXPECT-KIND
-   s" top-trusted: parses, one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-trusted: parses, one packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-trusted: its stretch" s" CVT-TP" s" 2" s" 1" DEFERRED-AT
    s\" s\" : CVT-HID ( -- ) ;\" evaluate\nTRUSTED: CVT-TU ( -- ) CVT-HID ;\nCVT-TU 1 drop\n" TOP-CHECK
    5 s" top-trusted: binds to nothing" EXPECT-KIND
-   s" top-trusted: binds to nothing, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-trusted: binds to nothing, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-trusted: binds to nothing, the renderer's call" s" evaluate" s" 1" s" 24" DEFERRED-AT
    s" top-trusted: that stretch" s" CVT-TU" s" 3" s" 1" DEFERRED-AT
    s\" TRUSTED: CVT-TB ( -- n ) 1 dup drop ;\nCVT-TB NOSUCH\n" TOP-CHECK
@@ -3207,9 +3211,9 @@ $180000 constant LARGE-STDIN-LEN
    s\" KERNEL: CVT-TKI ( n -- n ) 1+ ;\n8 CVT-TKI drop\n" s" top-kernel: a definition" LOADS-CLEAN
    s\" KERNEL: CVT-KB ( -- n ) ;\nNOSUCH drop\n" TOP-CHECK
    1 s" top-kernel: a refused body" EXPECT-KIND
-   s" top-kernel: two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-kernel: two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-kernel: the body's first" T-LABEL
-   CHECK:VERIFY-OUT$ 0 NTH-PACKET s" word" STRING$ s" cvt-kb" T$=
+   LSP-CHECK:VERIFY-OUT$ 0 NTH-PACKET s" word" STRING$ s" cvt-kb" T$=
    s" top-kernel: then the token" s" NOSUCH" s" E-UNDEFINED-TOP-LEVEL" s" 2" s" 1" TOP-PACKET
    s" verdict" STRING$ s" rejected" T$= ;
 
@@ -3232,12 +3236,12 @@ $180000 constant LARGE-STDIN-LEN
    s" top-package-tail: closed" s" CVT-OFP:CVT-OFG" s" E-UNDEFINED-TOP-LEVEL" s" 5" s" 1" REFUSED-AT
    s\" package CVT-OFP\ns\" : CVT-OFQ ( -- n ) 7 ;\" CVT-OFP:evaluate-closed\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a renderer" EXPECT-KIND
-   s" top-package-tail: a renderer, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-package-tail: a renderer, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-package-tail: its call" s" CVT-OFP:evaluate-closed" s" 2" s" 28" DEFERRED-AT
    s" top-package-tail: its product" s" CVT-OFQ" s" 3" s" 1" DEFERRED-AT
    s\" : CVT-OFMK ( -- ) create ;\nparses: CVT-OFMK 1\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
    5 s" top-package-tail: a create caller" EXPECT-KIND
-   s" top-package-tail: a create caller, two packets" T-LABEL CHECK:VERIFY-OUT$ PACKETS 2 T=
+   s" top-package-tail: a create caller, two packets" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 2 T=
    s" top-package-tail: its call" s" CVT-OFP:CVT-OFMK" s" 4" s" 1" DEFERRED-AT
    s" top-package-tail: its product after it" s" CVT-OFQ" s" 6" s" 1" DEFERRED-AT
    s\" : CVT-OFMK ( -- ) create ;\npackage CVT-OFP\nCVT-OFP:CVT-OFMK CVT-OFQ\n: CVT-AFTER ( -- ) ;\nCVT-OFQ drop\n;package\n" TOP-CHECK
@@ -3252,10 +3256,10 @@ $180000 constant LARGE-STDIN-LEN
    s\" defer CVT-D ( -- )\n: CVT-MKC ( -- ) create ;\n: CVT-SET ( -- ) ['] CVT-MKC is CVT-D ;\nCVT-SET\nCVT-D CVT-DQ\n: CVT-AFTER ( -- n ) 1 ;\nCVT-DQ drop\n"
    TOP-CHECK
    5 s" top-defer-word: deferred" EXPECT-KIND
-   s" top-defer-word: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-defer-word: one packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-defer-word: the call" s" CVT-D" s" 5" s" 1" DEFERRED-AT
    s" top-defer-word: the name after it" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" CVT-DQ" PACKET SPAN:LEN 0= TTRUE ;
+   LSP-CHECK:VERIFY-OUT$ s" token" s" CVT-DQ" PACKET SPAN:LEN 0= TTRUE ;
 
 
 \ A deferred word may read whatever follows it, a comment among them, so it is
@@ -3275,7 +3279,7 @@ $180000 constant LARGE-STDIN-LEN
    s" top-defer-comment: a comment in parentheses" s" CVT-CD" s" 5" s" 1" DEFERRED-ONLY
    s" .( a note)" CVT-CD$ TOP-CHECK
    5 s" top-defer-comment: a print, deferred" EXPECT-KIND
-   s" top-defer-comment: one packet" T-LABEL CHECK:VERIFY-OUT$ PACKETS 1 T=
+   s" top-defer-comment: one packet" T-LABEL LSP-CHECK:VERIFY-OUT$ PACKETS 1 T=
    s" top-defer-comment: at the word" s" CVT-CD" s" 5" s" 1" DEFERRED-AT ;
 
 
@@ -3313,7 +3317,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
 
 \ Check the generated source as the fixture NAME, kept for the spans its
 \ definition lines are read against.
-: DEFS-CHECK ( ptr u8 n -- CHECK:verdict )
+: DEFS-CHECK ( ptr u8 n -- LSP-CHECK:verdict )
    {: name:ptr nameu:n :}
    0 GEN DEFS-SRC-A !  GEN-U @ DEFS-SRC-U !
    DEFS-SRC$ name nameu GUARD-MS CHECK-AS ;
@@ -3323,7 +3327,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
 \ none.
 : DEF ( ptr u8 n -- )
    {: w:ptr wu:n :}
-   CHECK:VERIFY-DEFS$ s" word" w wu PACKET DEF-NODE ! ;
+   LSP-CHECK:VERIFY-DEFS$ s" word" w wu PACKET DEF-NODE ! ;
 
 
 \ Where the first LEAD in TEXT ends, -1 for none.
@@ -3429,7 +3433,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s" definitions: public" s" class" s" word" DEF-STR
    s" definitions: public" s" -- n" DEF-EFF
    s" definitions: public" s" : CVT-COUNT" 9 s" defs.f" DEF-SPAN
-   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET DEF-NODE !
+   LSP-CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET DEF-NODE !
    s" definitions: export" s" EXPORT" s" cvt-dp" s" public" DEF-WHO
    s" definitions: export" s" class" s" export" DEF-STR
    s" definitions: export" s" word" s" CVT-DQ:CVT-Y" DEF-STR
@@ -3491,8 +3495,8 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    \ reports each name a registrar publishes.
    s" cvt-nt" DEF
    s" definitions: no family line yet" T-LABEL DEF-NODE @ SPAN:LEN 0= TTRUE
-   s" definitions: one line each" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 15 T=
-   s" definitions: packets unchanged" T-LABEL CHECK:VERIFY-OUT$ nip 0 T= ;
+   s" definitions: one line each" T-LABEL LSP-CHECK:VERIFY-DEFS$ OBJECTS 15 T=
+   s" definitions: packets unchanged" T-LABEL LSP-CHECK:VERIFY-OUT$ nip 0 T= ;
 
 
 \ A refused body keeps its line when the checker kept its signature, and has
@@ -3527,11 +3531,11 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    0 GEN-U !
    s\" : CVT-R ( -- n ) 1 ;\nundefine CVT-R\n: CVT-R ( -- n n ) 2 3 ;\n" GEN+
    s" defs-undefine.f" DEFS-CHECK 0 s" definitions-undefine: verified" EXPECT-KIND
-   s" definitions-undefine: two lines" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 2 T=
+   s" definitions-undefine: two lines" T-LABEL LSP-CHECK:VERIFY-DEFS$ OBJECTS 2 T=
    s" CVT-R" DEF
    s" definitions-undefine: the first first" s" -- n" DEF-EFF
    s" definitions-undefine: the first first" s" : CVT-R" 5 s" defs-undefine.f" DEF-SPAN
-   CHECK:VERIFY-DEFS$ s" effect" s" -- n n" PACKET DEF-NODE !
+   LSP-CHECK:VERIFY-DEFS$ s" effect" s" -- n n" PACKET DEF-NODE !
    s" definitions-undefine: the second" s" :" s" " s" global" DEF-WHO
    s" definitions-undefine: the second" s" word" s" CVT-R" DEF-STR
    s" definitions-undefine: the second" s\" undefine CVT-R\n: CVT-R" 5 s" defs-undefine.f" DEF-SPAN ;
@@ -3544,7 +3548,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s\" require dep.f\n: CVT-USE7 ( -- n ) CVT-SEVEN ;\n" GEN+
    s" defs-dep.f" DEFS-CHECK 0 s" definitions-dependency: verified" EXPECT-KIND
    s" definitions-dependency: the dependency's first" T-LABEL
-   CHECK:VERIFY-DEFS$ CV-START CV-NEXT s" word" STRING$ s" CVT-SEVEN" T$=
+   LSP-CHECK:VERIFY-DEFS$ CV-START CV-NEXT s" word" STRING$ s" CVT-SEVEN" T$=
    s" CVT-SEVEN" DEF
    s" definitions-dependency: the dependency's" s" :" s" " s" global" DEF-WHO
    s" definitions-dependency: the dependency's" s" -- n" DEF-EFF
@@ -3581,8 +3585,8 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s\" require files-mid.f\nrequire files-mid.f\ninclude files-inc.f\ninclude files-inc.f\n" GEN+
    s\" require src/habu/verify-source.f\n\\ files-unread.f\n: CVT-FILES ( -- n ) 1 ;\n" GEN+
    s" files.f" DEFS-CHECK 0 s" files: verified" EXPECT-KIND
-   s" files: five visits" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 5 T=
-   CHECK:VERIFY-FILES$ CV-START
+   s" files: five visits" T-LABEL LSP-CHECK:VERIFY-FILES$ OBJECTS 5 T=
+   LSP-CHECK:VERIFY-FILES$ CV-START
    s" files: the subject" s" files.f" s" subject" NEXT-FILE
    s" files: the required file" s" files-mid.f" s" disk" NEXT-FILE
    s" files: the file it requires" s" files-nested.f" s" disk" NEXT-FILE
@@ -3597,8 +3601,8 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    0 GEN-U !
    s\" require back.f\n: CVT-LOOP ( -- n ) CVT-BACK ;\n" GEN+
    s" loop.f" DEFS-CHECK 0 s" identity-subject: verified" EXPECT-KIND
-   s" identity-subject: two lines" T-LABEL CHECK:VERIFY-FILES$ OBJECTS 2 T=
-   CHECK:VERIFY-FILES$ CV-START
+   s" identity-subject: two lines" T-LABEL LSP-CHECK:VERIFY-FILES$ OBJECTS 2 T=
+   LSP-CHECK:VERIFY-FILES$ CV-START
    s" identity-subject: supplied" s" loop.f" s" subject" NEXT-FILE
    s" identity-subject: loaded" s" back.f" s" disk" NEXT-FILE ;
 
@@ -3608,16 +3612,15 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    0 GEN-U !
    s\" require same-a.f\nrequire same-b.f\n: CVT-SAME ( -- n ) 1 ;\n" GEN+
    s" same.f" DEFS-CHECK 0 s" identity-paths: verified" EXPECT-KIND
-   CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
+   LSP-CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
    s" identity-paths: one path" s" same-a.f" s" disk" NEXT-FILE
    s" identity-paths: the other" s" same-b.f" s" disk" NEXT-FILE ;
 
 
 \ ---- the loads --------------------------------------------------------------
 
-\ The next load line of CHECK:VERIFY-LOADS$, once CV-START has started it:
-\ the load of PATH whose operand is the U bytes the first LEAD in the checked
-\ bytes ends with, and what became of it, OUTCOME.
+\ The next line of LSP-CHECK:VERIFY-LOADS$ after CV-START: PATH's load, whose
+\ operand is the U bytes ending the checked bytes' first LEAD, and its OUTCOME.
 : LOAD-NEXT ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
    {: label:ptr labelu:n lead:ptr leadu:n u:n path:ptr pathu:n out:ptr outu:n :}
    CV-NEXT  lead leadu LEAD-END
@@ -3633,7 +3636,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
 
 : LOAD-COUNT ( ptr u8 n n -- )
    {: label:ptr labelu:n want:n :}
-   label labelu T-LABEL CHECK:VERIFY-LOADS$ OBJECTS want T= ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-LOADS$ OBJECTS want T= ;
 
 
 \ `s" ROOT/NAME" script-required`, NAME in the fixture directory:
@@ -3664,10 +3667,10 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s\" s\" ld-prov.f\" provided\nrequire ld-prov.f\n\\ require ld-inc.f\n" GEN+
    s" loads.f" DEFS-CHECK 0 s" loads: verified" EXPECT-KIND
    s" loads: ten lines" 10 LOAD-COUNT
-   s" loads: each a JSON object" T-LABEL CHECK:VERIFY-LOADS$ ALL-JSON? TTRUE
+   s" loads: each a JSON object" T-LABEL LSP-CHECK:VERIFY-LOADS$ ALL-JSON? TTRUE
    s" loads: the dependency's file read" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" ld-nest.f" AT$ PACKET SPAN:LEN 0<> TTRUE
-   CHECK:VERIFY-LOADS$ CV-START
+   LSP-CHECK:VERIFY-FILES$ s" file" s" ld-nest.f" AT$ PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-LOADS$ CV-START
    s" loads: require" s" require ld-dep.f" 8 s" ld-dep.f" AT$ s" read" LOAD-NEXT
    s" loads: include" s\" include\n   ld-inc.f" 8 s" ld-inc.f" AT$ s" read" LOAD-NEXT
    s" loads: included" s" ld-str-inc.f" 12 s" ld-str-inc.f" AT$ s" read" LOAD-NEXT
@@ -3699,10 +3702,10 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s\" require ld-open.f\n" GEN+
    s" loads-open.f" DEFS-CHECK 1 s" loads-scan-fail: refused" EXPECT-KIND
    s" loads-scan-fail: one line" 1 LOAD-COUNT
-   CHECK:VERIFY-LOADS$ CV-START
+   LSP-CHECK:VERIFY-LOADS$ CV-START
    s" loads-scan-fail: read" s" require ld-open.f" 9 s" ld-open.f" AT$ s" read" LOAD-NEXT
    s" loads-scan-fail: the stop is the file's" T-LABEL
-   CHECK:VERIFY-STOPPED$ s" ld-open.f" AT$ T$= ;
+   LSP-CHECK:VERIFY-STOPPED$ s" ld-open.f" AT$ T$= ;
 
 
 \ An include of the subject's own path reads the bytes given for it, there
@@ -3714,7 +3717,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s\" DYNAMIC-BUFFER CVT-LDSELF u8\nundefine CVT-LDSELF\ninclude loads-self.f\n" GEN+
    s" loads-self.f" DEFS-CHECK 1 s" loads-supplied: refused" EXPECT-KIND
    s" loads-supplied: one line" 1 LOAD-COUNT
-   CHECK:VERIFY-LOADS$ CV-START
+   LSP-CHECK:VERIFY-LOADS$ CV-START
    s" loads-supplied: read" s" include loads-self.f" 12 SUBJ$ s" read" LOAD-NEXT ;
 
 
@@ -3727,7 +3730,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s" loads-body.f" GUARD-MS CHECK-AS 1 s" loads-none: body, refused" EXPECT-KIND
    s" loads-none: body, no line" 0 LOAD-COUNT
    s" loads-none: body, its file read" T-LABEL
-   CHECK:VERIFY-FILES$ s" file" s" ld-body.f" AT$ PACKET SPAN:LEN 0<> TTRUE
+   LSP-CHECK:VERIFY-FILES$ s" file" s" ld-body.f" AT$ PACKET SPAN:LEN 0<> TTRUE
    s\" : CVT-GRAB ( -- ) parse-name 2drop ;\nCVT-GRAB x\nrequire ld-dep.f\n"
    s" loads-opaque.f" GUARD-MS CHECK-AS 5 s" loads-none: opaque, deferred" EXPECT-KIND
    s" loads-none: opaque, no line" 0 LOAD-COUNT ;
@@ -3745,7 +3748,7 @@ TYPED-VARIABLE DEF-NODE SPAN:span<u8>                       \ the definition lin
    s\" require ld-dep.f\n" s" loads-again.f" GUARD-MS CHECK-AS
    0 s" loads-lifetime: again, verified" EXPECT-KIND
    s" loads-lifetime: the pre-pass" T-LABEL
-   s\" require ld-dep.f\n" SUBJ$ s" loads-again.f" GUARD-MS >MS CHECK:PREVERIFY-BYTES
+   s\" require ld-dep.f\n" SUBJ$ s" loads-again.f" GUARD-MS >MS LSP-CHECK:PREVERIFY-BYTES
    MATCH result
       ok OF 0= ENDOF
       err OF drop false ENDOF
@@ -3761,7 +3764,7 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
 \ The first use line of the last check whose use starts at AT; -1 for none.
 : USE-FROM ( n -- )
    {: at:n :}
-   CHECK:VERIFY-USES$ CV-START
+   LSP-CHECK:VERIFY-USES$ CV-START
    begin
       CV-NEXT
       dup SPAN:LEN 0= if USE-NODE ! exit then
@@ -3821,7 +3824,7 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
 
 : USE-COUNT ( ptr u8 n n -- )
    {: label:ptr labelu:n want:n :}
-   label labelu T-LABEL CHECK:VERIFY-USES$ OBJECTS want T= ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-USES$ OBJECTS want T= ;
 
 
 : USES-NEST$SRC ( -- ptr u8 n )
@@ -3918,7 +3921,7 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
 \ whose use starts at AT; -1 for none.
 : USE-IN-FROM ( n ptr u8 n -- )
    {: at:n in:ptr inu:n :}
-   CHECK:VERIFY-USES$ CV-START
+   LSP-CHECK:VERIFY-USES$ CV-START
    begin
       CV-NEXT
       dup SPAN:LEN 0= if USE-NODE ! exit then
@@ -3985,7 +3988,7 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
    s" uses-loaded: none in the dependency" LD-DEP$SRC s" CVT-LDUSE ( -- n ) CVT-LDROOT" 10 s" uses-ld-dep.f" AT$ NO-USE-IN
    s" uses-loaded: none in the fragment" LD-FRAG$SRC s" CVT-LDROOT" 10 s" uses-ld-frag.f" AT$ NO-USE-IN
    s" uses-loaded: the subject's, including both loaders" 7 USE-COUNT
-   DEFS-SRC$ SUBJ$ s" cvt-ldroot" [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES-OF
+   DEFS-SRC$ SUBJ$ s" cvt-ldroot" [: drop ;] GUARD-MS >MS LSP-CHECK:VERIFY-BYTES-OF
    0 s" uses-loaded: of a tail, verified" EXPECT-KIND
    s" uses-loaded: of a tail, the subject's" LD-OWN
    s" uses-loaded: of a tail, the dependency's" LD-DEP$SRC s" CVT-LDUSE ( -- n ) CVT-LDROOT" 10 s" uses-ld-dep.f" AT$ USE-IN
@@ -4091,22 +4094,22 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
    s" uses-visit.f" AT$ {: path:ptr pathu:n :}
    s" uses-visit: native loads" T-LABEL path pathu NATIVE-RC 0 T=
    s" uses-visit.f" DEFS-CHECK 0 s" uses-visit: verified" EXPECT-KIND
-   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET DEF-NODE !
+   LSP-CHECK:VERIFY-DEFS$ s" package" s" p" PACKET DEF-NODE !
    s" uses-visit: P declaration" s" :" s" p" s" public" DEF-WHO
    s" uses-visit: P declaration" s" word" s" K" DEF-STR
    s" uses-visit: P source" T-LABEL DEF-NODE @ s" file" STRING$ s" visit-common.f" AT$ T$=
    s" uses-visit: P span" s" byte_start" 2 DEF-NUM
    s" uses-visit: P span" s" byte_end" 3 DEF-NUM
-   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET DEF-NODE !
+   LSP-CHECK:VERIFY-DEFS$ s" package" s" q" PACKET DEF-NODE !
    s" uses-visit: Q declaration" s" :" s" q" s" public" DEF-WHO
    s" uses-visit: Q declaration" s" word" s" K" DEF-STR
    s" uses-visit: Q source" T-LABEL DEF-NODE @ s" file" STRING$ s" visit-common.f" AT$ T$=
    s" uses-visit: Q span" s" byte_start" 2 DEF-NUM
    s" uses-visit: Q span" s" byte_end" 3 DEF-NUM
-   CHECK:VERIFY-DEFS$ s" package" s" p" PACKET {: pd:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-DEFS$ s" package" s" p" PACKET {: pd:SPAN:span<u8> :}
    s" uses-visit: P canonical tail" T-LABEL pd s" decl_name" STRING$ s" k" T$=
    pd DECL-VISIT {: pv:n :}
-   CHECK:VERIFY-DEFS$ s" package" s" q" PACKET {: qd:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-DEFS$ s" package" s" q" PACKET {: qd:SPAN:span<u8> :}
    s" uses-visit: Q canonical tail" T-LABEL qd s" decl_name" STRING$ s" k" T$=
    qd DECL-VISIT {: qv:n :}
    s" uses-visit: P visit" T-LABEL pv 0 > TTRUE
@@ -4120,12 +4123,12 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
    s" uses-visit: bare P" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
    s" uses-visit: bare Q" s" Q-BARE ( -- n ) K" 1 qv s" q" VISIT-USE
    s" uses-visit: bare Q" VISIT-COMMON$SRC s" : K" 1 s" visit-common.f" USE-TARGET
-   CHECK:VERIFY-DEFS$ s" word" s" >CVT-ID-T" PACKET DEF-NODE !
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" >CVT-ID-T" PACKET DEF-NODE !
    s" uses-visit: converter in" s" DEFTYPE" s" " s" global" DEF-WHO
    s" uses-visit: converter in" s" decl_name" s" >cvt-id-t" DEF-STR
    s" uses-visit: converter in" VISIT-NOMINAL$SRC s" DEFTYPE CVT-ID-T" 8 s" visit-nominal.f" DEF-SPAN-IN
    DEF-NODE @ DECL-VISIT {: iv:n :}
-   CHECK:VERIFY-DEFS$ s" word" s" CVT-ID-T>N" PACKET DEF-NODE !
+   LSP-CHECK:VERIFY-DEFS$ s" word" s" CVT-ID-T>N" PACKET DEF-NODE !
    s" uses-visit: converter out" s" DEFTYPE" s" " s" global" DEF-WHO
    s" uses-visit: converter out" s" decl_name" s" cvt-id-t>n" DEF-STR
    s" uses-visit: converter out" VISIT-NOMINAL$SRC s" DEFTYPE CVT-ID-T" 8 s" visit-nominal.f" DEF-SPAN-IN
@@ -4157,12 +4160,12 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
    s" uses-visibility: native loads" T-LABEL
    s" uses-visibility.f" AT$ NATIVE-RC 0 T=
    s" uses-visibility.f" DEFS-CHECK 0 s" uses-visibility: verified" EXPECT-KIND
-   CHECK:VERIFY-DEFS$ s" visibility" s" private" PACKET {: pd:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-DEFS$ s" visibility" s" private" PACKET {: pd:SPAN:span<u8> :}
    s" uses-visibility: private declaration" T-LABEL pd s" decl_name" STRING$ s" k" T$=
    pd s" package" STRING$ s" cvt-twin" T$=
    pd s" visibility" STRING$ s" private" T$=
    pd DECL-VISIT {: pv:n :}
-   CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:SPAN:span<u8> :}
+   LSP-CHECK:VERIFY-DEFS$ s" kind" s" EXPORT" PACKET {: ed:SPAN:span<u8> :}
    s" uses-visibility: public declaration" T-LABEL ed s" decl_name" STRING$ s" k" T$=
    ed s" package" STRING$ s" cvt-twin" T$=
    ed s" visibility" STRING$ s" public" T$=
@@ -4199,8 +4202,8 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
    s" uses-lifetime.f" AT$ NATIVE-RC 0 T=
    s" uses-lifetime.f" DEFS-CHECK
    0 s" uses-lifetime: verified" EXPECT-KIND
-   s" uses-lifetime: declarations" T-LABEL CHECK:VERIFY-DEFS$ OBJECTS 5 T=
-   CHECK:VERIFY-DEFS$ CV-START
+   s" uses-lifetime: declarations" T-LABEL LSP-CHECK:VERIFY-DEFS$ OBJECTS 5 T=
+   LSP-CHECK:VERIFY-DEFS$ CV-START
    CV-NEXT DECL-VISIT {: first:n :}
    CV-NEXT drop
    CV-NEXT drop
@@ -4349,13 +4352,13 @@ TYPED-VARIABLE USE-NODE SPAN:span<u8>                       \ the use line USE-F
    s" swap.f" DEFS-CHECK 0 s" identity-swap: the first check" EXPECT-KIND
    s" identity-swap: DEF-DEPA" s" ) DEF-DEPA" 8 USE
    s" identity-swap: DEF-DEPA" SWAP-A$SRC s" : DEF-DEPA" 8 s" swap-dep.f" USE-TARGET
-   CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
+   LSP-CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
    s" identity-swap: the first file" s" swap-dep.f" s" disk" NEXT-FILE
    s" swap-dep.f" SWAP-B$SRC FIXTURE
    s" swap.f" DEFS-CHECK 0 s" identity-swap: the second check" EXPECT-KIND
    s" identity-swap: DEF-DEPB" s" ) DEF-DEPB" 8 USE
    s" identity-swap: DEF-DEPB at DEF-DEPA's span" SWAP-A$SRC s" : DEF-DEPA" 8 s" swap-dep.f" USE-TARGET
-   CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
+   LSP-CHECK:VERIFY-FILES$ CV-START CV-NEXT drop
    s" identity-swap: the second file" s" swap-dep.f" s" disk" NEXT-FILE ;
 
 
@@ -4367,15 +4370,15 @@ variable SEEN-U
 
 
 \ Check the generated source as the fixture NAME with its cursor at byte AT.
-: CANDS-AT ( ptr u8 n n -- CHECK:verdict )
+: CANDS-AT ( ptr u8 n n -- LSP-CHECK:verdict )
    {: name:ptr nameu:n at:n :}
    0 GEN DEFS-SRC-A !  GEN-U @ DEFS-SRC-U !
    name nameu AT$ SUBJ SUBJ-U COPY!
-   DEFS-SRC$ SUBJ$ at [: drop ;] GUARD-MS >MS CHECK:VERIFY-BYTES-AT ;
+   DEFS-SRC$ SUBJ$ at [: drop ;] GUARD-MS >MS LSP-CHECK:VERIFY-BYTES-AT ;
 
 
 \ CANDS-AT where the first LEAD in the generated source ends.
-: CANDS ( ptr u8 n ptr u8 n -- CHECK:verdict )
+: CANDS ( ptr u8 n ptr u8 n -- LSP-CHECK:verdict )
    {: name:ptr nameu:n lead:ptr leadu:n :}
    0 GEN GEN-U @ lead leadu END-IN
    {: at:n :}
@@ -4385,7 +4388,7 @@ variable SEEN-U
 \ The candidate line of the last check spelling WORD as written; -1 for none.
 : CAND ( ptr u8 n -- )
    {: w:ptr wu:n :}
-   CHECK:VERIFY-CANDIDATES$ s" word" w wu PACKET CAND-NODE ! ;
+   LSP-CHECK:VERIFY-CANDIDATES$ s" word" w wu PACKET CAND-NODE ! ;
 
 
 : CAND-NUM ( ptr u8 n ptr u8 n n -- )
@@ -4422,7 +4425,7 @@ variable SEEN-U
 
 : CAND-COUNT ( ptr u8 n n -- )
    {: label:ptr labelu:n want:n :}
-   label labelu T-LABEL CHECK:VERIFY-CANDIDATES$ OBJECTS want T= ;
+   label labelu T-LABEL LSP-CHECK:VERIFY-CANDIDATES$ OBJECTS want T= ;
 
 
 \ A body token's prefix offers each word that binds there with the declaration
@@ -4638,13 +4641,13 @@ variable SEEN-U
    0 SEEN-U @ u + SEEN c!
    SEEN-U @ u + 1+ SEEN-U ! ;
 
-: SEEN-CHECK+ ( CHECK:verdict -- )
+: SEEN-CHECK+ ( LSP-CHECK:verdict -- )
    KIND {: k:n :}
    SEEN-U @ 1+ SEEN-RESERVE
    k $30 + SEEN-U @ SEEN c!
    SEEN-U @ 1+ SEEN-U !
-   CHECK:VERIFY-OUT$ SEEN+  CHECK:VERIFY-DEFS$ SEEN+
-   CHECK:VERIFY-USES$ SEEN+  CHECK:VERIFY-FILES$ SEEN+ ;
+   LSP-CHECK:VERIFY-OUT$ SEEN+  LSP-CHECK:VERIFY-DEFS$ SEEN+
+   LSP-CHECK:VERIFY-USES$ SEEN+  LSP-CHECK:VERIFY-FILES$ SEEN+ ;
 
 
 \ The cursor only observes: the same bytes checked with and without it give the
@@ -4683,15 +4686,15 @@ variable SEEN-U
    s\" : CVT-SV ( -- ) s\" a\" APP-IMAGE:SAVE ;\n" s" sv.f" GUARD-MS CHECK-AS
    1 s" image-saver-leak: the saver's word is refused" EXPECT-KIND
    s" image-saver-leak: undefined" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" APP-IMAGE:SAVE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" APP-IMAGE:SAVE" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
    s\" : CVT-EI ( -- ptr u8 n ) ENGINE-ID:PATH$ ;\n" s" ei.f" GUARD-MS CHECK-AS
    1 s" image-saver-leak: the engine identity's word is refused" EXPECT-KIND
    s" image-saver-leak: undefined too" T-LABEL
-   CHECK:VERIFY-OUT$ s" token" s" ENGINE-ID:PATH$" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
+   LSP-CHECK:VERIFY-OUT$ s" token" s" ENGINE-ID:PATH$" PACKET s" code" STRING$ s" E-UNDEFINED" T$=
    0 GEN-U !  s\" require src/lib/engine-id.f\n" GEN+
    s" ei-load.f" DEFS-CHECK
    0 s" image-saver-leak: the saver's dependency verifies" EXPECT-KIND
-   CHECK:VERIFY-LOADS$ CV-START
+   LSP-CHECK:VERIFY-LOADS$ CV-START
    s" image-saver-leak: and is read, not held" s" require src/lib/engine-id.f" 19
    s" src/lib/engine-id.f" TREE$ s" read" LOAD-NEXT ;
 

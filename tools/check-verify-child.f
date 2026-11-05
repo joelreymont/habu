@@ -1,5 +1,5 @@
-\ check-verify-child.f - the verifier child CHECK:VERIFY-BYTES,
-\ CHECK:VERIFY-BYTES-AT and CHECK:PREVERIFY-BYTES run. Only
+\ check-verify-child.f - the verifier child LSP-CHECK:VERIFY-BYTES,
+\ LSP-CHECK:VERIFY-BYTES-AT and LSP-CHECK:PREVERIFY-BYTES run. Only
 \ tools/check-verify-core.f spawns it, on the engine src/lib/engine-candidate.f
 \ names, by its absolute path in that file's tree, in the caller's working
 \ directory. When that engine is its own and can save one, the saved image IMAGE

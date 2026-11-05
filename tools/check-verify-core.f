@@ -1,9 +1,9 @@
 \ check-verify-core.f - check a subject's bytes as its file, in its load context, without running it.
-\ CHECK:VERIFY-BYTES answers what `bin/hb --load PATH` would refuse of the bytes, for a language
+\ LSP-CHECK:VERIFY-BYTES answers what `bin/hb --load PATH` would refuse of the bytes, for a language
 \ server's buffer and `tools/check.f --verify-only`. The closure is composed over the bytes with PATH
 \ as the subject's identity, so a dependency that requires PATH back meets the bytes; a load of an
 \ open document other than PATH meets its text, the first of two for one path holding. A child
-\ (VFY-EXE) runs the check; CHECK:PREVERIFY-BYTES is check.f's pre-pass on the same child.
+\ (VFY-EXE) runs the check; LSP-CHECK:PREVERIFY-BYTES is check.f's pre-pass on the same child.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -26,7 +26,7 @@ require src/lib/verify-diagnostics.f
 require src/habu/verify-source.f
 require tools/check-verify-image.f
 
-package CHECK
+package LSP-CHECK
 using SOURCE-ROOT
 
 \ check.f's exit statuses. The closure walk refuses a source that does not exist
@@ -485,16 +485,8 @@ variable CHK-NOM-JSON-READY
 
 public
 
-\ What one CHECK:VERIFY-BYTES found. verified and refused are the checker's
-\ verdict on PATH in its load context, refused whenever a file of the closure,
-\ or the closure itself, is refused. engine-provided: the engine provides PATH,
-\ so nothing is verified, whatever the bytes hold. held: the verifier's own
-\ image holds PATH though the engine does not, so it cannot be verified there.
-\ incomplete: the child ended without a result line, with the packets it wrote before; status is
-\ how it ended, and its exit status alone is never a verdict.
-\ deferred: nothing is refused, but a stretch of top-level source or a definition
-\ was deferred to the run, so the tokens a W-CHECK-DEFERRED packet locates are
-\ not verified.
+\ Only verified and refused judge PATH, refused for any file of its closure;
+\ deferred leaves W-CHECK-DEFERRED tokens to the run; held: verifier only.
 ENUM verdict
    VARIANT verified ;VARIANT
    VARIANT refused ;VARIANT
@@ -1171,13 +1163,13 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 \ clean, a stop refused; any other end is incomplete.
 : VFY-VERDICT ( outcome -- verdict ) {: o :}
    o VFY-CLEAN-EXIT? if
-      VFY-ANSWER @ VFY-VERIFIED = if CHECK-VERDICT:verified exit then
-      VFY-ANSWER @ VFY-REFUSED = if CHECK-VERDICT:refused exit then
-      VFY-ANSWER @ VFY-STOPPED = if CHECK-VERDICT:refused exit then
-      VFY-ANSWER @ VFY-DEFERRED = if CHECK-VERDICT:deferred exit then
-      VFY-ANSWER @ VFY-HELD = if CHECK-VERDICT:held exit then
+      VFY-ANSWER @ VFY-VERIFIED = if LSP--CHECK-VERDICT:verified exit then
+      VFY-ANSWER @ VFY-REFUSED = if LSP--CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-STOPPED = if LSP--CHECK-VERDICT:refused exit then
+      VFY-ANSWER @ VFY-DEFERRED = if LSP--CHECK-VERDICT:deferred exit then
+      VFY-ANSWER @ VFY-HELD = if LSP--CHECK-VERDICT:held exit then
    then
-   o CHECK-VERDICT:incomplete ;
+   o LSP--CHECK-VERDICT:incomplete ;
 
 
 \ The pre-pass's answer once it has given one and exited clean: 0 verified,
@@ -1197,7 +1189,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
    {: src:ptr srcu:n path:ptr pathu:n open deadline :}
    path pathu VFY-PATH!
    VFY-INDEX? @ 0= if
-      VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+      VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:engine-provided exit then
    then
    src CHK-BYTES-A !
    srcu CHK-BYTES-U !
@@ -1411,7 +1403,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
    k VFY-BATCH-SUBJECT
    false VFY-BATCH-COMPLETE !
    VFY-BATCH-BROKEN @ if
-      VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+      VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:engine-provided exit then
       VFY-BATCH-OUTCOME @ VFY-VERDICT exit
    then
    k VFY-BATCH-MARK {: end:n :}
@@ -1431,7 +1423,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
       k VFY-BATCH-N @ 1- = VFY-BATCH-POS @ VFY-BATCH-OUT-U @ <> and
       if true VFY-BATCH-BROKEN ! false VFY-BATCH-COMPLETE ! then
    else true VFY-BATCH-BROKEN ! then
-   VFY-PATH$ ENGINE-PROVIDES? if CHECK-VERDICT:engine-provided exit then
+   VFY-PATH$ ENGINE-PROVIDES? if LSP--CHECK-VERDICT:engine-provided exit then
    VFY-BATCH-BROKEN @ if VFY-NONE VFY-ANSWER ! then
    VFY-BATCH-OUTCOME @ VFY-VERDICT ;
 

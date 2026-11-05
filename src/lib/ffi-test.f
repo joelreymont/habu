@@ -19,7 +19,7 @@ require src/lib/ffi-callback.f         \ a struct argument held across a callbac
 require src/lib/task.f
 require test/ffi-struct-fixture.f      \ the struct-argument callee
 require test/e2e-tree.f                \ the struct clauses' load children
-require tools/check-verify-core.f       \ CHECK:VERIFY-BYTES - the struct clauses' check
+require tools/check-verify-core.f       \ LSP-CHECK:VERIFY-BYTES - the struct clauses' check
 
 package FFI-TEST
 
@@ -838,9 +838,8 @@ FFI:LIBRARY-PATH-CAP CODEGEN:BUFFER FFI-T-NAME-B
 
 FFI-RUN
 
-\ Structs by value are AAPCS64: results against macOS system libraries,
-\ arguments against a fixture library compiled for the run, and
-\ CHECK:VERIFY-BYTES reads the struct clauses.
+\ Structs by value are AAPCS64, results against macOS libraries and arguments
+\ against a fixture library built for the run.
 : FFI-T-STRUCT-LOAD ( -- )
    HB-TARGET-MACOS? if
       s" test/ffi-struct-result.f" required

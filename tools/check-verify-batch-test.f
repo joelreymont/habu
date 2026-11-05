@@ -18,8 +18,8 @@ variable RECORD-N
 variable RECORD-READ
 variable OVER-U
 
-: KIND ( CHECK:verdict -- n )
-   MATCH CHECK:verdict
+: KIND ( LSP-CHECK:verdict -- n )
+   MATCH LSP-CHECK:verdict
       verified OF 0 ENDOF
       refused OF 1 ENDOF
       engine-provided OF 2 ENDOF
@@ -48,17 +48,17 @@ variable OVER-U
    s\" package CHECK-BATCH-DEP public : OPEN-ONLY ( n -- n ) 2 * ; ;package\n"
    add execute ;
 
-: SINGLE ( n -- CHECK:verdict )
+: SINGLE ( n -- LSP-CHECK:verdict )
    {: k:n :}
    k SRC$ k PATH$ s" *"
    k 3 = if [: OPEN-DEP ;] else [: drop ;] then
-   GUARD-MS >MS CHECK:VERIFY-BYTES-OF ;
+   GUARD-MS >MS LSP-CHECK:VERIFY-BYTES-OF ;
 
 : ADD ( n -- )
    {: k:n :}
    k SRC$ k PATH$
    k 3 = if [: OPEN-DEP ;] else [: drop ;] then
-   CHECK:VERIFY-BATCH-ADD ;
+   LSP-CHECK:VERIFY-BATCH-ADD ;
 
 : SAVE-SPAN ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -75,11 +75,11 @@ variable OVER-U
 : SAVE ( n -- )
    {: k:n :}
    k SINGLE KIND k VERDICTS !
-   CHECK:VERIFY-OUT$ SAVE-SPAN
-   CHECK:VERIFY-FILES$ SAVE-SPAN
-   CHECK:VERIFY-DEFS$ SAVE-SPAN
-   CHECK:VERIFY-USES$ SAVE-SPAN
-   CHECK:VERIFY-LOADS$ SAVE-SPAN ;
+   LSP-CHECK:VERIFY-OUT$ SAVE-SPAN
+   LSP-CHECK:VERIFY-FILES$ SAVE-SPAN
+   LSP-CHECK:VERIFY-DEFS$ SAVE-SPAN
+   LSP-CHECK:VERIFY-USES$ SAVE-SPAN
+   LSP-CHECK:VERIFY-LOADS$ SAVE-SPAN ;
 
 : COMPARE-SPAN ( ptr u8 n -- )
    {: a:ptr u:n :}
@@ -89,12 +89,12 @@ variable OVER-U
 
 : COMPARE ( n -- )
    {: k:n :}
-   k CHECK:VERIFY-BATCH-RESULT KIND k VERDICTS @ T=
-   CHECK:VERIFY-OUT$ COMPARE-SPAN
-   CHECK:VERIFY-FILES$ COMPARE-SPAN
-   CHECK:VERIFY-DEFS$ COMPARE-SPAN
-   CHECK:VERIFY-USES$ COMPARE-SPAN
-   CHECK:VERIFY-LOADS$ COMPARE-SPAN ;
+   k LSP-CHECK:VERIFY-BATCH-RESULT KIND k VERDICTS @ T=
+   LSP-CHECK:VERIFY-OUT$ COMPARE-SPAN
+   LSP-CHECK:VERIFY-FILES$ COMPARE-SPAN
+   LSP-CHECK:VERIFY-DEFS$ COMPARE-SPAN
+   LSP-CHECK:VERIFY-USES$ COMPARE-SPAN
+   LSP-CHECK:VERIFY-LOADS$ COMPARE-SPAN ;
 
 \ A later child failure cannot turn its earlier marker into a clean exit.
 \ The LSP retries all three subjects independently after this verdict.
@@ -102,17 +102,17 @@ variable OVER-U
    SB-RESET
    CK-USE-MAX 1+ 0 ?do s\" using SOURCE-ROOT\n" SB-APPEND loop
    SB$ dup OVER-U ! OVER-SRC swap BYTE-COPY
-   s" *" CHECK:VERIFY-BATCH-BEGIN
-   0 SRC$ s" test/check-batch-first.f" [: drop ;] CHECK:VERIFY-BATCH-ADD
+   s" *" LSP-CHECK:VERIFY-BATCH-BEGIN
+   0 SRC$ s" test/check-batch-first.f" [: drop ;] LSP-CHECK:VERIFY-BATCH-ADD
    OVER-SRC OVER-U @ s" test/check-batch-over.f"
-   [: drop ;] CHECK:VERIFY-BATCH-ADD
-   0 SRC$ s" test/check-batch-last.f" [: drop ;] CHECK:VERIFY-BATCH-ADD
-   GUARD-MS >MS CHECK:VERIFY-BATCH-RUN
+   [: drop ;] LSP-CHECK:VERIFY-BATCH-ADD
+   0 SRC$ s" test/check-batch-last.f" [: drop ;] LSP-CHECK:VERIFY-BATCH-ADD
+   GUARD-MS >MS LSP-CHECK:VERIFY-BATCH-RUN
    3 0 ?do
       s" batch after crash: incomplete" T-LABEL
-      i CHECK:VERIFY-BATCH-RESULT KIND 4 T=
+      i LSP-CHECK:VERIFY-BATCH-RESULT KIND 4 T=
       s" batch after crash: retry" T-LABEL
-      CHECK:VERIFY-BATCH-COMPLETE? 0= TTRUE
+      LSP-CHECK:VERIFY-BATCH-COMPLETE? 0= TTRUE
    loop ;
 
 public
@@ -122,10 +122,10 @@ public
    1 EXPECTED-RESERVE
    0 EXPECTED-U ! 0 RECORD-N ! 0 RECORD-READ !
    CASES 0 ?do i SAVE loop
-   s" *" CHECK:VERIFY-BATCH-BEGIN
+   s" *" LSP-CHECK:VERIFY-BATCH-BEGIN
    CASES 0 ?do i ADD loop
-   GUARD-MS >MS CHECK:VERIFY-BATCH-RUN
-   CASES CHECK:VERIFY-BATCH-N T=
+   GUARD-MS >MS LSP-CHECK:VERIFY-BATCH-RUN
+   CASES LSP-CHECK:VERIFY-BATCH-N T=
    CASES 0 ?do i COMPARE loop
    UNCLEAN
    T-FAILURES 0<> if s" check-verify-batch-test failed" 1 die then

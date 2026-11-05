@@ -96,13 +96,13 @@ variable PKT-U
 \ check.f's own entry with --json-errors and the options of the mode: its
 \ status is typed, its packets go to standard error.
 : CHECK-RUN ( -- )
-   CHECK:RESET
-   s" json-errors" CHECK:OPT
-   s" all" MODE? if s" all-errors" CHECK:OPT then
-   s" check" MODE? if s" all-errors" CHECK:OPT s" verify-only" CHECK:OPT then
-   s" dep" MODE? if s" verify-only" CHECK:OPT then
-   SUBJECT$ CHECK:FILE
-   s" check: " type CHECK:RUN . cr ;
+   LSP-CHECK:RESET
+   s" json-errors" LSP-CHECK:OPT
+   s" all" MODE? if s" all-errors" LSP-CHECK:OPT then
+   s" check" MODE? if s" all-errors" LSP-CHECK:OPT s" verify-only" LSP-CHECK:OPT then
+   s" dep" MODE? if s" verify-only" LSP-CHECK:OPT then
+   SUBJECT$ LSP-CHECK:FILE
+   s" check: " type LSP-CHECK:RUN . cr ;
 
 : CHECK-MODE? ( -- bool )
    s" check" MODE? s" json" MODE? or s" all" MODE? or s" dep" MODE? or ;

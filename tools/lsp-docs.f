@@ -80,7 +80,7 @@ public
 : DOC-DEPS! ( ptr u8 n n -- )  DEPS-AT STORE ;
 
 \ The loads the last completed check reported, one JSON object per line as
-\ CHECK:VERIFY-LOADS$ gives them.
+\ LSP-CHECK:VERIFY-LOADS$ gives them.
 : DOC-LOADS$ ( n -- ptr u8 n )  LOADS-AT BYTES$ ;
 : DOC-LOADS! ( ptr u8 n n -- )  LOADS-AT STORE ;
 

@@ -61,7 +61,7 @@
 \ - a closed stdout ending the server by SIGPIPE instead of exit 1 and the
 \   throw that stopped it .................................... stdout-closed
 \
-\ Diagnostics, each checked against the test's own CHECK:VERIFY-BYTES of the
+\ Diagnostics, each checked against the test's own LSP-CHECK:VERIFY-BYTES of the
 \ same text and path, whose packets, in order, must be the diagnostics' data
 \ - an opened document's list not published with its version, or a diagnostic
 \   whose range is not its packet's byte offsets in lines and UTF-16 units, or
@@ -892,7 +892,7 @@ variable OPEN-N
 : SAID ( ptr u8 n ptr u8 n -- )
    {: p:ptr pu:n w:ptr wu:n :}
    s" lsp: " WANT+ p pu URI-OF WANT+ s" : " WANT+ w wu WANT+ s\" \n" WANT+
-   CHECK:VERIFY-LOG$ {: a:ptr u:n :}
+   LSP-CHECK:VERIFY-LOG$ {: a:ptr u:n :}
    u 0= if exit then
    a u WANT+
    a u + 1- c@ 10 <> if s\" \n" WANT+ then ;
@@ -900,7 +900,7 @@ variable OPEN-N
 \ The lines about a check that completed with this verdict: none unless the
 \ test's own check wrote prose.
 : COMPLETED ( ptr u8 n ptr u8 n -- )
-   CHECK:VERIFY-LOG$ nip 0= if 2drop 2drop exit then
+   LSP-CHECK:VERIFY-LOG$ nip 0= if 2drop 2drop exit then
    SAID ;
 
 \ An isolated conversation is written to the server's stdin whole, and the
@@ -1503,7 +1503,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ below read it.
 : CHECKS-WITH ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    0 PACKET-NEXT !
-   DEADLINE @ PROC-LEFT-MS CHECK:VERIFY-BYTES MATCH CHECK:verdict
+   DEADLINE @ PROC-LEFT-MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF ENDOF
       refused OF ENDOF
       engine-provided OF ENDOF
@@ -1529,7 +1529,7 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ The check's packet AT bytes into its output: the line from there, empty
 \ past the last.
 : PACKET-FROM$ ( n -- ptr u8 n )
-   CHECK:VERIFY-OUT$ {: at:n a:ptr u:n :}
+   LSP-CHECK:VERIFY-OUT$ {: at:n a:ptr u:n :}
    at u min {: from:n :}
    a from + u from - {: p:ptr pu:n :}
    p pu 10 INDEX-OF MATCH option
@@ -4213,7 +4213,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
 \ The test's own check of this text as the file at PATH: whether it was
 \ verified.
 : ID-CHECK ( ptr u8 n ptr u8 n -- bool )
-   [: drop ;] CHECKED-MS >MS CHECK:VERIFY-BYTES MATCH CHECK:verdict
+   [: drop ;] CHECKED-MS >MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF true ENDOF
       refused OF false ENDOF
       engine-provided OF false ENDOF
@@ -4238,8 +4238,8 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    {: slot:n l:ptr lu:n :}
    slot LSP-DOCS:DOC-TEXT$ slot LSP-DOCS:DOC-PATH$ ID-CHECK {: ok:bool :}
    l lu T-LABEL ok TTRUE
-   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$
-   CHECK:VERIFY-UNREAD$ slot ok
+   LSP-CHECK:VERIFY-FILES$ LSP-CHECK:VERIFY-DEFS$ LSP-CHECK:VERIFY-USES$
+   LSP-CHECK:VERIFY-UNREAD$ slot ok
    LSP-DEFS:DEFS-KEEP ;
 
 \ Group G as SNAP-SLOT states it: its path, its URI, whether it
@@ -4373,7 +4373,7 @@ create WAS-B HDR-BYTES allot             \ and as they were before the store cha
    dt twice SNAP WAS!
    TEXT-ID-PROBE ID-PROBE-PATH ID-CHECK {: ok:bool :}
    s" identities-probe: verified" T-LABEL ok TTRUE
-   CHECK:VERIFY-FILES$ CHECK:VERIFY-DEFS$ CHECK:VERIFY-USES$ ok -1
+   LSP-CHECK:VERIFY-FILES$ LSP-CHECK:VERIFY-DEFS$ LSP-CHECK:VERIFY-USES$ ok -1
    LSP-DEFS:DEFS-PROBE
    dt twice SNAP
    s" identities-probe: kept" T-LABEL SNAP$ WAS$ T$=
@@ -7443,9 +7443,8 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    0 6 0 19 1 s" E-BAD-QUALIFIED-RECORD" DIAG+
    0 6 0 19 1 s" E-STATEMENT-THROW" DIAG+ PUBLISHES ;
 
-\ A colon definition CHECK rejects for its undefined NOPE still asks a record
-\ for its malformed name: that packet follows the body's, at the name P:Q:R,
-\ line 0, characters 2-7.
+\ A definition refused for its undefined NOPE still gets a record for its
+\ malformed name P:Q:R, after the body's packet, at line 0, characters 2-7.
 : MALFORMED-REJECTED ( -- ptr u8 n )  s\" : P:Q:R ( -- ) NOPE ;\n" ;
 
 : MALFORMED-REJECTED-TURNS ( -- )

@@ -2,4 +2,4 @@
 
 require tools/check-core.f
 
-CHECK:MAIN
+LSP-CHECK:MAIN

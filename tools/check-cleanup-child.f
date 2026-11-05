@@ -1,4 +1,4 @@
-\ check-cleanup-child.f - CHECK cleanup-failure production-path fixture.
+\ check-cleanup-child.f - LSP-CHECK cleanup-failure production-path fixture.
 \ Run only from tools/check-test-lib.f with a test-owned TMPDIR.
 
 require src/lib/date.f
@@ -49,7 +49,7 @@ variable PROV-U
    PROV-PATH PROV-U @ ;
 
 \ The provider is a fresh FS:MKTEMP file under the parent-owned TMPDIR. Its path
-\ is copied out because CHECK makes temps of its own, which reuse the span.
+\ is copied out because LSP-CHECK makes temps of its own, which reuse the span.
 : PROV-PREPARE ( -- )
    s" boundary" FS:MKTEMP {: path:ptr pathu:n fd:fd :}
    path PROV-PATH pathu BYTE-COPY pathu PROV-U !
@@ -70,30 +70,30 @@ variable PROV-U
    [: CHECKED-BOUNDARY-LINT:FINISH ;] catch 1 T= ;
 
 : CHECK-THROW ( -- )
-   CHECK:RUN dup 0 <> if throw then drop ;
+   LSP-CHECK:RUN dup 0 <> if throw then drop ;
 
 : TEST-PROV-NORMAL ( -- )
-   CHECK:RESET
+   LSP-CHECK:RESET
    PROV-DIRTY
-   s" " s" provider-normal.f" CHECK:SOURCE
-   CHECK:RUN 0 T=
+   s" " s" provider-normal.f" LSP-CHECK:SOURCE
+   LSP-CHECK:RUN 0 T=
    PROV-CLEAN ;
 
 : TEST-PROV-THROW ( -- )
-   CHECK:RESET
-   s" 0 set-check" s" provider-throw.f" CHECK:SOURCE
+   LSP-CHECK:RESET
+   s" 0 set-check" s" provider-throw.f" LSP-CHECK:SOURCE
    PROV-OUT PROV-OUT-CAP LINT-OUT-BUFFER!
    [: CHECK-THROW ;] catch {: rc:n :}
    LINT-OUT$ s" CHECKER-MUTATION" CONTAINS? TTRUE
    LINT-OUT-BUFFER-OFF
    rc 1 T=
    PROV-CLEAN
-   CHECK:RESET
+   LSP-CHECK:RESET
    PROV-CLEAN ;
 
 : TEST-PROV-RESET ( -- )
    PROV-DIRTY
-   CHECK:RESET
+   LSP-CHECK:RESET
    PROV-CLEAN ;
 
 : PROV-CLEANUP ( -- )
@@ -147,16 +147,16 @@ variable PROV-U
    TMP$ FS:REMOVE-DIR ;
 
 : SELECT-PROBE ( -- )
-   s" " s" selection-probe.f" CHECK:SOURCE ;
+   s" " s" selection-probe.f" LSP-CHECK:SOURCE ;
 
 : TEST-CLEANUP ( -- )
-   CHECK:RESET
-   SOURCE$ s" cleanup-source.f" CHECK:SOURCE
-   CHECK:RUN EXPECTED-RC T=
+   LSP-CHECK:RESET
+   SOURCE$ s" cleanup-source.f" LSP-CHECK:SOURCE
+   LSP-CHECK:RUN EXPECTED-RC T=
    RESTORE-TMP
    [: REMOVE-TMP ;] E-FS-IO TTHROWSQ
    [: SELECT-PROBE ;] catch 0 T=
-   CHECK:RESET
+   LSP-CHECK:RESET
    REMOVE-TMP
    TMP$ FS:EXISTS? TFALSE ;
 

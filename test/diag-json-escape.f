@@ -35,12 +35,12 @@ TYPED-VARIABLE READER-STORAGE JSON:cursor
    msg msgu GE-FAIL ;
 
 : CHECK-ACT ( -- )
-   GE-SRC-BUF GE-SRC-U @ s" json-escape.f" CHECK:SOURCE
-   CHECK:RUN dup 0 <> if throw then drop ;
+   GE-SRC-BUF GE-SRC-U @ s" json-escape.f" LSP-CHECK:SOURCE
+   LSP-CHECK:RUN dup 0 <> if throw then drop ;
 
 : CHECK-JSON ( -- )
-   CHECK:RESET
-   s" json-errors" CHECK:OPT
+   LSP-CHECK:RESET
+   s" json-errors" LSP-CHECK:OPT
    [: CHECK-ACT ;] GE-CAPTURE-ACTION
    GT-RC@ 0= if s" the check tool accepted the rejected fixture" FAIL then ;
 
