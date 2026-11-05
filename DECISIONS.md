@@ -276,6 +276,12 @@ learned live in the docs for their subject.
   FS:ERRNO-TEXT ( errno buf size -- text ) writing into the caller's buffer,
   Joel chose "FS:ERRNO$ ( errno -- text )": "Like FMT:INT$: text in a
   per-task buffer of fixed size."
+- 2026-11-05, durable atomic writes (relayed by kevin from Tender): shown
+  that FS:ATOMIC-WRITE-FILE renamed its sibling over the destination with no
+  sync, so after a crash or power loss the destination could stand empty
+  under its final name, Joel chose "Approve as designed (Recommended)":
+  ATOMIC-WRITE-FILE and ATOMIC-WRITE-PRIVATE sync the sibling before the
+  rename and the directory after, with F_FULLFSYNC on macOS, and no new word.
 - 2026-11-05, which wait finished: shown that curl, the WebSocket server and
   the HTTP listener each cast AIO's ticket to a number to compare it and scan
   their slots for the one AWAIT-ANY returned, while epoll, kqueue, io_uring
