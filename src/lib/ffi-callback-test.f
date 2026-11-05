@@ -16,7 +16,6 @@ require src/lib/engine-candidate.f
 require src/lib/test/runner.f
 require src/lib/image-lifecycle.f
 require src/lib/task.f
-require test/whitebox-child.f
 require src/lib/test/subject.f
 require test/ffi-callback-fixture.f
 require test/aot-builder-engine.f
@@ -384,10 +383,8 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" released" CHILD-CASE
    s" captures" CHILD-CASE ;
 
-\ test/ffi-callback-direct-child.f calls MARSHAL's and UNSET's entries through
-\ the FFI owner words test/mcode-window-prepare.f opens before the seal, so it
-\ runs as a window child of test/native-window-owner-child.f, on the unsealed
-\ engine test/whitebox-child.f names: the sealed product refuses the reopen.
+\ test/ffi-callback-direct-child.f calls entries through test/mcode-window-prepare.f's
+\ FFI owner words: a window child of test/native-window-owner-child.f, on hb.
 \ The list is src/lib/ffi-test.f's FFI-T-STUB-ARGS with this child in its place.
 : DIRECT-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
@@ -426,20 +423,16 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" src/core/sha256.f" DIRECT-ARG
    s" src/habu/code-span.f" DIRECT-ARG
    s" test/mcode-window-prepare.f" DIRECT-ARG
-   WHITEBOX-CHILD:ENV! ;
+   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
 
-: DIRECT-RUN ( -- )
-   s" ffi-callback-direct" WHITEBOX-CHILD:PROVIDE
+: CASE-DIRECT ( -- )
    DIRECT-ARGS
-   WHITEBOX-CHILD:ENGINE$ >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
+   ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
    s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    s" direct" outu erru rc TRANSCRIBE-RC
    s" the direct child exits 0" T-LABEL
    rc 0 T= ;
-
-: CASE-DIRECT ( -- )
-   [: DIRECT-RUN ;] [: FS:CLEANUP-RUN ;] finally ;
 
 : SUBJECT$ ( -- ptr u8 n ) SUBJECT-BUF SUBJECT-U @ ;
 : IMAGE$ ( -- ptr u8 n ) IMAGE-BUF IMAGE-U @ ;

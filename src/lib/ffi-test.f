@@ -8,11 +8,9 @@ require src/lib/string.f               \ SB / CONTAINS? - the child's stderr is 
 require src/lib/fmt.f                  \ the code the child prints is rendered from its name
 require src/lib/process.f
 require src/lib/process-argv.f         \ the growth case needs a child engine
-require src/lib/process-env.f          \ the stub child runs on the unsealed engine
-require src/lib/fs-mutate.f            \ FS:CLEANUP-RUN - that engine's private copy
+require src/lib/process-env.f          \ the stub child inherits this environment
 require src/lib/le.f                   \ the spilled %n out-parameter is a C int
 require src/lib/memory.f               \ the read-only page the %n format is copied into
-require test/whitebox-child.f
 require src/lib/test/subject.f
 require src/lib/engine-candidate.f
 require src/lib/test/outcome.f
@@ -410,11 +408,8 @@ create FFI-T-LONG-PATH PATH-CAP allot
 \ takes any of the binary32 shapes. A variadic callee is the only system witness
 \ for a stack spill, and Apple's ABI puts every variadic argument on the stack,
 \ so it never reaches the register exhaustion that spills.
-\ test/ffi-stub-child.f mints fixed stubs for them and calls them through owner
-\ words test/mcode-window-prepare.f opens, so it runs as a window child of
-\ test/native-window-owner-child.f.
-\ Reopening the window is refused on the sealed product (`hb: internal engine
-\ word`, exit 70), so the child runs on the engine test/whitebox-child.f names.
+\ test/ffi-stub-child.f calls fixed stubs for them through mcode-window-prepare.f's
+\ owner words: a window child of test/native-window-owner-child.f, on hb.
 : FFI-T-WIN-ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
 
 : FFI-T-STUB-ARGS ( -- )
@@ -452,10 +447,10 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s" src/core/sha256.f" FFI-T-WIN-ARG
    s" src/habu/code-span.f" FFI-T-WIN-ARG
    s" test/mcode-window-prepare.f" FFI-T-WIN-ARG
-   WHITEBOX-CHILD:ENV! ;
+   PROC-ENV-RESET PROC-ENV-INHERIT-MISSING ;
 
 : FFI-T-STUB-RESULT ( -- )
-   WHITEBOX-CHILD:ENGINE$ >LEN FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
+   ENGINE-CANDIDATE:PATH$ >LEN FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
    PROCESS:WAIT-FOREVER
    RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
    {: outu:len erru:len rc:n :}
@@ -466,8 +461,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    FFI-T-OUT outu LEN>N S\" test: ok\nwindow: 0\n" T$= ;
 
 : FFI-T-STUBS ( -- )
-   [: s" ffi-stub" WHITEBOX-CHILD:PROVIDE FFI-T-STUB-ARGS FFI-T-STUB-RESULT ;]
-   [: FS:CLEANUP-RUN ;] finally ;
+   FFI-T-STUB-ARGS FFI-T-STUB-RESULT ;
 
 \ The libm rows ride the ABI call: sqrt a float argument and a float result,
 \ fma three float registers, scalbln a float register beside all 64 bits of the

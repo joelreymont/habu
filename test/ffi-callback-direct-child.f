@@ -25,12 +25,8 @@ TYPED-VARIABLE MARSHAL-RESULT r
    ok if s" ok   " else s" FAIL " then type
    a u type cr ;
 
-\ A window child: an entry is a bare code address with no symbol for a FUNCTION:
-\ row, and only package FFI's owner words call an address.
-\ test/native-window-owner-child.f loads it after test/mcode-window-prepare.f,
-\ which reopens FFI before the seal; the sealed product refuses the reopen (`hb:
-\ internal engine word`, exit 70), so it runs on the unsealed engine
-\ test/whitebox-child.f names.
+\ A window child (an entry is a bare address only FFI's owner words call): on hb,
+\ test/native-window-owner-child.f loads it after test/mcode-window-prepare.f.
 \ C calling an entry with one integer argument.
 : CALL1 ( n n -- n ) {: arg:n fn:n :}
    FFI:RESET
