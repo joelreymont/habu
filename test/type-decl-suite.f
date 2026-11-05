@@ -986,13 +986,7 @@ s" SUMTYPE tdpv<a> VARIANT product a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdpv2<a> VARIANT field a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" NEWTYPE product<a>" E-TDECL-NAME TDT-NEG
 
-\ Layout-policy header clause (`POLICY <name>`, docs/design.md "Families and
-\ layout policies"). A missing clause keeps the default stack-cell-tag;
-\ stack-cell-tag and packed-tag accept on sum/enum/product (packed bakes only a
-\ memory ABI descriptor at close, stack shape identical); niche-null and boxed
-\ reject as not yet supported; any other token, `custom` included (the LAY-*
-\ registry tolerates it, the grammar must not expose it), is an unknown policy;
-\ POLICY is reserved. Every reject rolls back to baseline.
+\ `POLICY <name>` header clause (docs/design.md "Families and layout policies").
 
 \ explicit stack-cell-tag accepts on sum, enum and product headers. The families
 \ are private, so their constructors take no protected-WID seal slot.

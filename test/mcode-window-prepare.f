@@ -10,9 +10,7 @@
 \ declaration runner, so both participants load before any library.
 \
 \ This file reopens both owners before src/core/internal-mark.f seals the window
-\ and publishes one public word per row. The sealed product refuses such a
-\ reopen, so its children run on the unsealed engine test/whitebox-child.f
-\ names.
+\ and publishes one public word per row.
 require src/core/prefix-boundary.f
 include src/core/generated-declaration-dictionary.f
 include src/core/generated-declaration-protection.f

@@ -111,14 +111,8 @@ create LF-BYTE 10 c,
 : APPEND-LF ( ptr u8 n -- )
    LF-BYTE 1 FS:APPEND-FILE ;
 
-\ These fixtures live under a temporary directory, which is never a registry
-\ hook site, so GOOD$ arms the checker without naming a hook: it re-arms with
-\ `LOWER-CERT-HOOK:INSTALL` (after which `check@ set-check` reinstalls the live
-\ hook, a no-op - the shape test/engine-suite.f uses), and it resumes a
-\ suspended hook with `check@ 0 set-check ... set-check`, which re-arms the hook
-\ saved on the stack together with its preflight. A `' NAME set-check` install
-\ here is an unaudited hook by construction and is exercised on purpose by
-\ NOPREF$ and NAMEONLY$ below.
+\ No temporary directory is a registry hook site, so GOOD$ arms the checker
+\ unnamed; NOPREF$, NAMEONLY$ and ROGUE$ install unaudited hooks on purpose.
 : GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" 0 set-check" SB-APPEND LF
