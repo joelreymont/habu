@@ -14,7 +14,6 @@ require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
-require src/habu/layout.f
 
 package TIER-TEST
 
@@ -82,7 +81,7 @@ variable RC     variable EXITED
    RC @ want T= ;
 
 \ ---- 1. the default tier compiles, runs and checks ---------------------------
-: TEST-BOTH-TIERS ( -- )
+: TEST-TIER-SELECT ( -- )
    s" the default is an available compiler" T-LABEL
    s" tier@ . cr" RUN
    s" 0" ASSERT-OK
@@ -128,10 +127,7 @@ variable RC     variable EXITED
 \ to a word that never returns, a pending definition calling its prior word, and
 \ an ENUM's generated constructors, MATCH and local. Forms holding the name more
 \ than once run at 1000 (pending) or LN-TAIL-MAX (ENUM). A long family's
-\ constructors take the family name as their package name. A refused long name
-\ is reported whole to its newline; a refused TRUSTED: one retracts its
-\ signature. A TRUSTED: body's missing token reaches the elaborator, which
-\ refuses it as undefined, naming the definition and the whole token.
+\ constructors take the family name as their package name.
 $4000 constant LN-CAP
 create LN-BUF LN-CAP allot
 variable LN-U
@@ -345,47 +341,6 @@ TFAM:TF-NAME-MAX constant LN-TAIL-MAX
    TAIL+ s"  red OF 10 ENDOF green OF 20 ENDOF ;MATCH ; : LN-L ( " LN+ TAIL+
    s"  -- n ) {: v:" LN+ TAIL+ s"  :} 7 ; 30 . cr" LN+ LN$ ;
 
-: UNEVEN$ ( n -- ptr u8 n )
-   1 swap TIER-OPEN
-   s" : TN-SHORT ( -- n ) 3 ; : " LN+ NAME+ s"  ( -- n ) ;" LN+ LN$ ;
-
-: TRUSTED-MISSING$ ( n -- ptr u8 n )
-   1 swap TIER-OPEN
-   s" : TN-SHORT ( -- n ) 3 ; TRUSTED: " LN+ NAME+ s"  ( -- n ) LN-MISSING ;" LN+
-   LN$ ;
-
-\ This file: SUBJECT:RUN evaluates a case's text, which is not this file's bytes,
-\ while the file loads, so a refusal in it names the file alone
-\ (SRCLOC:FILE-BUFFER?).
-SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
-
-\ Text a, then `<this file>` and a newline.
-: FILE+ ( ptr u8 n -- )
-   LN+
-   LOADING @ data-base SRCLOC:PATHLEN-CELL + @ LN+
-   S\" \n" LN+ ;
-
-\ The checker refuses an uneven body at its name.
-: REFUSED-LINE$ ( n -- ptr u8 n )
-   LN-OPEN
-   s" ncomp: cannot compile " LN+ NAME+ s"  at " LN+ NAME+ s"  in " FILE+ LN$ ;
-
-: MISSING-LINE$ ( n -- ptr u8 n )
-   LN-OPEN
-   s" ncomp: cannot compile " LN+ NAME+ s"  at LN-MISSING in " FILE+ LN$ ;
-
-: TOKEN-MISSING$ ( n -- ptr u8 n )
-   1 swap TIER-OPEN
-   s" TRUSTED: LN-TOK ( -- n ) " LN+ NAME+ s"  ;" LN+ LN$ ;
-
-: TOKEN-LINE$ ( n -- ptr u8 n )
-   LN-OPEN
-   s" ncomp: cannot compile LN-TOK at " LN+ NAME+ s"  in " FILE+ LN$ ;
-
-: TOKEN-UNDEFINED$ ( n -- ptr u8 n )
-   LN-OPEN
-   s" E-UNDEFINED: " LN+ NAME+ s"  at " FILE+ LN$ ;
-
 : TEST-LONG-NAMES ( -- )
    s" a 65-byte name with a quotation runs on tier 0" T-LABEL
    0 65 QUOT$ RUN  s" 42" ASSERT-OK
@@ -439,21 +394,7 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    0 LN-TAIL-MAX VARIANT$ RUN  s" 10" ASSERT-OK
 
    s" the longest ENUM family, its MATCH and its local compile on tier 0" T-LABEL
-   0 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK
-
-   s" a refused 1000-byte name is reported whole" T-LABEL
-   1000 UNEVEN$ RUN  REJECT-RC ASSERT-RC
-   ERR$ 1000 REFUSED-LINE$ CONTAINS? TTRUE
-
-   s" a refused 1000-byte TRUSTED: name retracts its signature" T-LABEL
-   1000 TRUSTED-MISSING$ RUN  REJECT-RC ASSERT-RC
-   ERR$ 1000 MISSING-LINE$ CONTAINS? TTRUE
-   ERR$ 0 LN-OPEN s" E-UNDEFINED: LN-MISSING at " FILE+ LN$ CONTAINS? TTRUE
-
-   s" a refusal at a 7900-byte body token names the token whole" T-LABEL
-   7900 TOKEN-MISSING$ RUN  REJECT-RC ASSERT-RC
-   ERR$ 7900 TOKEN-LINE$ CONTAINS? TTRUE
-   ERR$ 7900 TOKEN-UNDEFINED$ CONTAINS? TTRUE ;
+   0 LN-TAIL-MAX FAMILY$ RUN  s" 30" ASSERT-OK ;
 
 \ ---- 3. tier 0 runs the constructs its closure owns --------------------------
 \ A definer whose clause breaks its declared effect. The checker reports its
@@ -501,7 +442,16 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    OUT$ s" SHADOW" CONTAINS? TFALSE
 
    s" tier 0 refuses a does> clause whose body breaks its effect" T-LABEL
-   MKW-BAD$ RUN  s" mkw;does" ASSERT-REJECTED ;
+   MKW-BAD$ RUN  s" mkw;does" ASSERT-REJECTED
+
+   \ A signature whose `(` no blank follows opens the clause as `( -- n )` does:
+   \ the clause's scan reads its copy as a comment, not as a word `(--`.
+   s" tier 0 runs a does> clause whose signature is spelled (-- n)" T-LABEL
+   s" : CD ( n -- ) create , does> (-- n) @ ; 41 CD X X . cr" RUN  s" 41" ASSERT-OK
+
+   s" tier 0 checks a does> clause whose signature is spelled (-- n n)" T-LABEL
+   s" : CD ( n -- ) create , does> (-- n n) @ ;" RUN  s" cd;does" ASSERT-REJECTED
+   ERR$ s" expected: n n actual: n" CONTAINS? TTRUE ;
 
 \ ---- 5. the reset stops at the definition boundary ---------------------------
 \ A quotation compiles inline, so a BEGIN in a quotation and a quotation in a
@@ -619,7 +569,7 @@ public
 
 : RUN-ALL ( -- )
    T-RESET
-   TEST-BOTH-TIERS
+   TEST-TIER-SELECT
    TEST-SELECTION
    TEST-BUILD-SCOPE
    TEST-CHECKER-ROWS

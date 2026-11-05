@@ -19,9 +19,8 @@ variable ERR-U
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-: SOURCE$ ( n ptr u8 n -- ptr u8 n ) {: tier:n body:ptr size:n :}
+: SOURCE$ ( ptr u8 n -- ptr u8 n ) {: body:ptr size:n :}
    SB-RESET
-   tier 0= if s" 0 set-tier " else s" 1 set-tier " then SB-APPEND
    s" package EMPTY-Q TYPED-VARIABLE Q [ -- ] " SB-APPEND
    body size SB-APPEND
    s"  ;package" SB-APPEND
@@ -33,33 +32,33 @@ variable ERR-U
    exe exeu >LEN src size >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE PCAP-RESULT:>N >r ERR-U ! OUT-U ! r> ;
 
-: FATAL ( n ptr u8 n -- ) {: tier:n body:ptr size:n :}
-   tier body size SOURCE$ RUN-SOURCE 86 T=
+: FATAL ( ptr u8 n -- ) {: body:ptr size:n :}
+   body size SOURCE$ RUN-SOURCE 86 T=
    ERR$ nip 20 T=
    ERR$ s" hb: unset quotation" CONTAINS? TTRUE
    ERR 19 + c@ 10 T=
    OUT$ s" BODY" CONTAINS? 0= TTRUE ;
 
-: TIER-CASES ( n -- ) {: tier:n :}
-   tier s" Q @ drop" SOURCE$ RUN-SOURCE 0 T=
-   tier s" : GO ( -- ) Q @ execute ; GO" FATAL
-   tier s" : GO ( -- n ) Q @ catch ; GO ." FATAL
-   tier s" : GO ( -- ) Q @ [: ;] finally ; GO" FATAL
-   tier S\" : BODY ( -- ) s\q BODY\q type 7 throw ; : GO ( -- ) [: BODY ;] Q @ finally ; GO" FATAL
-   tier s" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; GO" FATAL
-   tier s" : GO ( -- ) Q @ execute ; : OUTER ( -- n ) [: GO ;] catch ; OUTER ." FATAL
-   tier S\" : BODY ( -- ) s\q BODY\q type ; : INSTALL ( -- ) [: BODY ;] Q ! ; : GO ( -- ) Q @ execute Q @ catch . Q @ [: ;] finally ; INSTALL GO" SOURCE$ RUN-SOURCE 0 T=
+: TIER-CASES ( -- )
+   s" Q @ drop" SOURCE$ RUN-SOURCE 0 T=
+   s" : GO ( -- ) Q @ execute ; GO" FATAL
+   s" : GO ( -- n ) Q @ catch ; GO ." FATAL
+   s" : GO ( -- ) Q @ [: ;] finally ; GO" FATAL
+   S\" : BODY ( -- ) s\q BODY\q type 7 throw ; : GO ( -- ) [: BODY ;] Q @ finally ; GO" FATAL
+   s" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; GO" FATAL
+   s" : GO ( -- ) Q @ execute ; : OUTER ( -- n ) [: GO ;] catch ; OUTER ." FATAL
+   S\" : BODY ( -- ) s\q BODY\q type ; : INSTALL ( -- ) [: BODY ;] Q ! ; : GO ( -- ) Q @ execute Q @ catch . Q @ [: ;] finally ; INSTALL GO" SOURCE$ RUN-SOURCE 0 T=
    OUT$ nip 14 T=
    OUT$ s" BODYBODY0" CONTAINS? TTRUE
-   tier S\" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : BODY ( -- ) s\q BODY\q type ; : INSTALL ( -- ) [: BODY ;] Q ! ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; INSTALL GO" SOURCE$ RUN-SOURCE 0 T=
+   S\" require src/lib/memory.f PTR-VARIABLE POOL-A STACK-ABI:PAGE-BYTES MEM:ALLOC-GUARDED drop POOL-A ! : POOL ( -- ptr u8 ) POOL-A @ ; : BODY ( -- ) s\q BODY\q type ; : INSTALL ( -- ) [: BODY ;] Q ! ; : GO ( -- ) Q @ POOL STACK-ABI:PAGE-BYTES run-in-stack ; INSTALL GO" SOURCE$ RUN-SOURCE 0 T=
    OUT$ s" BODY" STR= TTRUE
-   tier s" defer D ( -- ) D" SOURCE$ RUN-SOURCE 76 T=
+   s" defer D ( -- ) D" SOURCE$ RUN-SOURCE 76 T=
    ERR$ s" defer: unset execution vector" CONTAINS? TTRUE ;
 
 public
 : RUN ( -- )
    T-RESET
-   0 TIER-CASES
+   TIER-CASES
    T-REPORT
    s" empty-quotation: ok" type cr ;
 ;package

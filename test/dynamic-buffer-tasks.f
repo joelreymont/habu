@@ -17,10 +17,8 @@ TASK:MIN-STACK TASK:TASK WORKER-D
 here data-base - negate 7 and allot
 variable READY
 variable START
-variable STOP
 variable BASE-N
-variable ROUNDS
-1000 constant ROUNDS-N
+250 constant ROUNDS-N
 
 : GATE ( -- )
    1 READY atomic-add drop
@@ -44,9 +42,7 @@ variable ROUNDS
    0 D @ k <> if 77 throw then D-RELEASE ;
 
 : SPIN ( [ n -- ] -- ) {: churn :}
-   GATE 0 begin STOP atomic@ 0= while
-      dup churn execute 1+  1 ROUNDS atomic-add drop
-   repeat drop ;
+   GATE ROUNDS-N 0 ?do i churn execute loop ;
 
 : JOIN ( ptr n -- n ) {: worker:ptr :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat
@@ -68,14 +64,11 @@ variable ROUNDS
 : RUN ( -- )
    T-RESET
    s" four tasks churn buffers and leave the registry at its base" T-LABEL
-   \ A task's first activation registers a buffer the runtime keeps.
+   \ The first task activation registers a buffer the runtime keeps.
    [: ;] WORKER-A TASK:ACTIVATE  WORKER-A JOIN 0 T=
    DYNAMIC-STORAGE:REGISTERED-N BASE-N !
-   0 STOP atomic!  0 ROUNDS atomic!
    [: ['] CHURN-A SPIN ;] [: ['] CHURN-B SPIN ;]
    [: ['] CHURN-C SPIN ;] [: ['] CHURN-D SPIN ;] START-ALL
-   begin ROUNDS atomic@ ROUNDS-N < while TASK:PAUSE repeat
-   1 STOP atomic!
    JOIN-ALL
    DYNAMIC-STORAGE:REGISTERED-N BASE-N @ T=
    T-REPORT ;

@@ -56,8 +56,9 @@ create XPK-EMPTY 1 allot
 
 \ --- forge programs -----------------------------------------------------------
 \ Child exits: sealed system-package source 84 (ENGINE-ERROR:SEAL-PACKAGE),
-\ primitive source 67 (uncaught E-EXPORT-PRIM 7115), private word behind a
-\ closed package 70 (qualified lookup is public-only).
+\ primitive source 67 (uncaught E-EXPORT-PRIM 7115), trusted primitive 67
+\ (uncaught E-EXPORT-UNSAFE 7120), private word behind a closed package 70
+\ (qualified lookup is public-only).
 
 : XPK-SRC-PKG ( -- )                          \ shared source package XA with XA:W
    s" package XA" XPK-LINE
@@ -135,6 +136,14 @@ create XPK-EMPTY 1 allot
    s" package XB" XPK-LINE
    s" public" XPK-LINE
    s" EXPORT dup" XPK-LINE
+   s" ;package" XPK-LINE
+   SB$ ;
+
+: XPK-UNSAFE-FORGE$ ( -- ptr u8 n )           \ trusted primitive rejects (E-EXPORT-UNSAFE)
+   SB-RESET
+   s" package TICK-ALIAS" XPK-LINE
+   s" public" XPK-LINE
+   s" EXPORT patch32" XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
 
@@ -281,6 +290,9 @@ create XPK-EMPTY 1 allot
    s" primitive source rejects (E-EXPORT-PRIM)" T-LABEL
    XPK-PRIM-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
    s" 7115" XPK-ERR?
+   s" exporting a trusted primitive rejects (E-EXPORT-UNSAFE)" T-LABEL
+   XPK-UNSAFE-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
+   s" 7120" XPK-ERR?
    s" private word behind a closed package rejects" T-LABEL
    XPK-PRIV-FORGE$ XPK-RUN-STDIN XPK-UNDEF-RC XPK-ASSERT-RC ;
 

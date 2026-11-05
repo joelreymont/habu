@@ -47,11 +47,10 @@ using PTY-HARNESS
 \ and the checker's record of it too: the next definition of that name is no
 \ duplicate, and runs as its own row says. The line fails where an immediate
 \ underflows inside a definition it opened, so the recovery starts with the
-\ code region writable. Tier 1 compiles no body that underflows its own row,
-\ so the immediate is compiled at tier 0.
+\ code region writable.
 : REDEFINE-CASE ( -- )
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY PROMPT
-   s" 0 set-tier TRUSTED: SINK ( -- ) drop ; immediate" STEP
+   s" TRUSTED: SINK ( -- ) drop ; immediate" STEP
    S\" s\" SINK\" 0 parse-imm" STEP
    BUF-CLEAR s" : DROPPED ( -- n n ) 1 2 ; : UNDER ( -- ) SINK ;" SEND-LINE
    s" E-UNDERFLOW: SINK" WAIT-FOR TTRUE
