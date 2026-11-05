@@ -134,11 +134,11 @@ SUITE cell-body
    test/cell-body-e2e.f
 ;SUITE
 
-WHITEBOX-SUITE checker-scan-index
+SUITE checker-scan-index
    test/checker-scan-index-suite.f
 ;SUITE
 
-WHITEBOX-SUITE checker-scan-index-rollback
+SUITE checker-scan-index-rollback
    test/checker-scan-index-rollback-suite.f
 ;SUITE
 
@@ -1295,7 +1295,7 @@ SUITE checker-dup-record
    test/checker-dup-record.f
 ;SUITE
 
-WHITEBOX-SUITE checker-verify-order
+SUITE checker-verify-order
    test/checker-verify-order.f
 ;SUITE
 
@@ -1303,7 +1303,7 @@ WHITEBOX-SUITE checker-completion
    test/checker-completion.f
 ;SUITE
 
-WHITEBOX-SUITE checker-dead-path
+SUITE checker-dead-path
    test/checker-dead-path-suite.f
 ;SUITE
 

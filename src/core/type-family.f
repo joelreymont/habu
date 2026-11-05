@@ -722,7 +722,7 @@ public
 
 \ TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool ) : the SPECIFICATION of what
 \ the index answers — the lowest row matching (package, tail), by walking the
-\ registry. test/checker-scan-index-suite.f differentials the two.
+\ registry.
 : TFAM-FIND-IN-LINEAR ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    0 BEGIN dup TFAM-N @ < WHILE
@@ -1026,7 +1026,6 @@ public
 
 \ SUMV-CTOR-FIRST-LINEAR ( n -- n ) : the SPECIFICATION of what SVX answers —
 \ the lowest variant id (+1) with this constructor symbol, by walking the store.
-\ test/checker-scan-index-suite.f differentials the indexed answer against it.
 : SUMV-CTOR-FIRST-LINEAR ( n -- n ) {: sym:n :}
    SUMV-N @ 0 ?do
       i SUMV-CTOR-SYM@ sym = IF i 1 + unloop EXIT THEN
@@ -1240,8 +1239,7 @@ public
    RES-TRUE ;
 
 \ SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) : the SPECIFICATION of what VNX
-\ answers, by walking the store. test/checker-scan-index-suite.f differentials
-\ the two.
+\ answers, by walking the store.
 : SUMV-FIND-LINEAR ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
    0 BEGIN dup SUMV-N @ < WHILE
       {: i:n :}

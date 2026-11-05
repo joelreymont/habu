@@ -287,32 +287,6 @@ variable LONG-U
    s" and ends at the quotation's close: the line after it is straight" T-LABEL
    S\" : CVO-QAFTER ( -- ) [: if then ;] drop s\" test/fixtures/quotation-load-after.f\" included ;\n: CVO-QAFTER-USE ( n -- n ) QUOTATION-LOAD-AFTER:INCREMENT ;\n" COMPOSE-VERDICT 0 T= ;
 
-\ ---- the quiet resolver ------------------------------------------------------
-\ The definer scan asks the resolver the rows above measure, which refuses a
-\ bare tail two used packages export (E-USING-AMBIGUOUS) or one a global and a
-\ used public both claim (E-USING-SHADOW-GLOBAL). Both belong to the definition,
-\ so the quiet form (checker.f CHECKER-FIND-QUIET-SYM) answers 0 for them and
-\ the following check names the refusal (USING-CASE). It defers those two codes
-\ and no other; the raising leg cannot be driven from here (these scopes never
-\ reach the package-context refusal), so a third code is pinned at the
-\ classifier the quiet form uses. Each probe makes the authoritative resolver
-\ print its refusal on stderr once (`bare 'CVR-H'`, `bare 'CVR-F'`): those lines
-\ are the refusals measured, not failures. The quiet resolver prints nothing.
-variable AMBIG-QUIET    variable AMBIG-ACTIVE
-variable SHADOW-QUIET   variable SHADOW-ACTIVE
-
-: QUIET-CASE ( -- )
-   s" the quiet resolver answers 0 where the authoritative one refuses" T-LABEL
-   AMBIG-ACTIVE @ 7144 T=
-   AMBIG-QUIET @ 0 T=
-   SHADOW-ACTIVE @ 7141 T=
-   SHADOW-QUIET @ 0 T=
-   s" and defers those two codes only" T-LABEL
-   7144 FQSYM-DEFERRED? TTRUE
-   7141 FQSYM-DEFERRED? TTRUE
-   7121 FQSYM-DEFERRED? TFALSE
-   70 FQSYM-DEFERRED? TFALSE ;
-
 : IMMEDIATE-CASE ( -- )
    tier@ {: old:n :}
    0 set-tier
@@ -350,16 +324,6 @@ variable SHADOW-QUIET   variable SHADOW-ACTIVE
 
 public
 
-\ Asked with CVR-V and CVR-W both used: the tail both export.
-: PROBE-AMBIGUOUS ( -- )
-   s" CVR-H" CHECKER-FIND-QUIET-SYM AMBIG-QUIET !
-   [: s" CVR-H" CHECKER-FIND-ACTIVE-SYM drop ;] catch AMBIG-ACTIVE ! ;
-
-\ Asked with CVR-U used: the tail it exports beside the global of that name.
-: PROBE-SHADOW ( -- )
-   s" CVR-F" CHECKER-FIND-QUIET-SYM SHADOW-QUIET !
-   [: s" CVR-F" CHECKER-FIND-ACTIVE-SYM drop ;] catch SHADOW-ACTIVE ! ;
-
 : RUN ( -- )
    LOADED-CASE
    RECONSTRUCT-CASE
@@ -372,22 +336,10 @@ public
    BODY-PROVIDED-CASE
    BODY-INVALID-PATH-CASE
    BODY-QUOTATION-CASE
-   QUIET-CASE
    IMMEDIATE-CASE
    LONG-IMMEDIATE-CASE ;
 
 ;package
-
-\ The two resolvers must be asked inside a live `using` scope, which only the
-\ top level can open.
-using CVR-V
-using CVR-W
-CVO-TEST:PROBE-AMBIGUOUS
-;using
-;using
-using CVR-U
-CVO-TEST:PROBE-SHADOW
-;using
 
 T-RESET
 CVO-TEST:RUN

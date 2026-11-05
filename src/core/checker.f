@@ -9460,11 +9460,10 @@ RECORD-HOOK-DEFAULTS
    UTERM! ;
 
 \ USIG-NEWEST-LINEAR is the specification of what USX answers: the newest user
-\ record for a symbol, offset+1, by walking every record in store order.
-\ test/checker-scan-index-suite.f checks the index against it over shadowing,
-\ deletion and rollback corpora. It carries USX-BUILD's UEND bound: a
-\ specification copying the implementation's traversal tests the code against
-\ itself, and a terminator-only walk named a dead record exactly as the index did.
+\ record for a symbol, offset+1, by walking every record in store order. It
+\ carries USX-BUILD's UEND bound: a specification copying the implementation's
+\ traversal tests the code against itself, and a terminator-only walk named a
+\ dead record exactly as the index did.
 : USIG-NEWEST-LINEAR ( n -- n ) {: sym:n :}
    0
    USIGS-USER-OFF @ USX-BP !
@@ -15850,8 +15849,7 @@ CHECKER-REG:}SCRATCH
    newend NORET-END !
    NORET-TERM ;
 
-\ The specification of what NRX answers, by a linear walk;
-\ test/checker-scan-index-suite.f holds the index against it.
+\ The specification of what NRX answers, by a linear walk.
 : NORET-NEWEST-LINEAR ( n -- n ) {: sym:n :}
    0
    0 NRX-POS !
