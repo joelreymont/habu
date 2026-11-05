@@ -1,8 +1,8 @@
-\ fd.f - the standard descriptors, exact reads and full writes on blocking
-\ descriptors (the engine reports EAGAIN as a failed call), and syncing and
-\ resizing a file. A refused read, write, sync or resize, a write that takes no
-\ byte and a count past the asked one are E-FS-IO; a negative length is
-\ E-SPAN-LENGTH. Signals and descriptors stay the caller's.
+\ fd.f - the standard descriptors, close-on-exec pipes, exact reads and full
+\ writes on blocking descriptors (the engine reports EAGAIN as a failed call),
+\ and syncing and resizing a file. A refused pipe, read, write, sync or resize,
+\ a write that takes no byte and a count past the asked one are E-FS-IO; a
+\ negative length is E-SPAN-LENGTH. Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
 
@@ -10,6 +10,7 @@ require src/lib/errors.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
+require src/lib/fd-lock.f
 require src/lib/le.f
 require src/lib/fs.f
 require src/lib/adt/option.f
@@ -31,6 +32,8 @@ ENUM fill
 
 private
 
+1 constant FD-CLOEXEC
+2 constant F-SETFD
 3 constant F-GETFL
 4 constant F-SETFL
 4 constant POLLOUT
@@ -131,6 +134,15 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
    k want > if E-FS-IO throw then
    k ;
 
+: PIPE-HELD ( -- fd fd )
+   pipe {: r:n w:n rc:n :}
+   rc 0 <> if E-FS-IO throw then
+   r F-SETFD FD-CLOEXEC fcntl
+   w F-SETFD FD-CLOEXEC fcntl or 0 <> if
+      r close w close E-FS-IO throw
+   then
+   r >FD w >FD ;
+
 public
 
 \ A read may answer short (a pipe holds only what its writer has put in), so it
@@ -187,6 +199,11 @@ public
    {: f:fd len:n :}
    len 0 < if E-SPAN-LENGTH throw then
    f FD>N len RESIZE-CALL 0<> if E-FS-IO throw then ;
+
+\ A pipe, read end then write end, both close-on-exec, made and marked under
+\ FD-LOCK:WITH (see fd-lock.f); a refused mark closes both before E-FS-IO.
+: PIPE ( -- fd fd )
+   [: PIPE-HELD ;] FD-LOCK:WITH ;
 
 \ One attempt to open the write end of the existing FIFO at the path, followed
 \ through symlinks; O_NONBLOCK answers ENXIO at once while no reader has it

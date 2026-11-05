@@ -11,6 +11,7 @@ require src/lib/log.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/task.f
+require src/lib/fd.f
 require src/lib/aio.f
 require src/lib/utf8-scalar.f
 require src/lib/base64.f
@@ -1181,10 +1182,7 @@ ENUM course
 
 
 : PIPE-OPEN ( -- )
-   pipe {: r:n w:n rc:n :}
-   rc 0 <> if E-WS-WAKE throw then
-   r WAKE-R !
-   w WAKE-W !
+   FD:PIPE FD>N WAKE-W ! FD>N WAKE-R !
    LOCK TASK:GET
    0 POKED !
    1 PIPED !
@@ -1289,18 +1287,8 @@ ENUM course
 
 public
 
-\ Starts WS's task, holding at most n sockets at once: a handshake past them
-\ is answered 503 websocket_unavailable. Each socket maps REGION-BYTES (about
-\ 1 MiB) and may queue QUEUE-MAX (4 MiB) more, so n is sized from memory and
-\ the descriptor limit, as nginx's worker_connections is. n must also stay
-\ under the platform's AIO ceiling, less the wake pipe: 10240 polled
-\ descriptors on Darwin, 512 completion records on Linux (a poll with a
-\ deadline holds two); the socket that crosses it ends WS's task, which closes
-\ every socket and answers 503 until
-\ STOP and START. n below 1 or past SLOT-MASK is E-WS-LIMIT, and a refused
-\ mapping throws its code with nothing started. The AIO loop must be running
-\ (E-AIO-STATE), and a START while another starts, or before STOP has ended,
-\ is E-WS-STATE.
+\ n bounds open sockets (past it, 503); each maps REGION-BYTES and queues up to
+\ QUEUE-MAX. Size n from memory and descriptors, under AIO's ceiling (SERVE).
 : START ( n -- ) {: n:n :}
    LOCK TASK:GET
    CLAIM-START

@@ -7,7 +7,7 @@
 require src/lib/string.f
 require src/lib/aio.f
 require src/lib/le.f
-require src/lib/fd-lock.f                \ FD-LOCK:WITH orders the wake pipe against spawns
+require src/lib/fd.f                     \ FD:PIPE, the close-on-exec wake pipe
 
 package AIO
 private
@@ -267,17 +267,20 @@ CAST: MAC-SOCKADDR ( n -- ptr u8 )
    idx MAC-ACTIVE? if idx ERR-CANCELED negate MAC-FINISH then
    MAC-NOTIFY ;
 
-: MAC-PIPE-HELD ( -- )
-   pipe {: rd:n wr:n rc:n :}
-   rc 0 <> if E-AIO-SETUP throw then
-   rd MAC-READ-FD ! wr MAC-WRITE-FD !
-   rd 2 1 MAC-FCNTL wr 2 1 MAC-FCNTL or rd 4 MAC-NONBLOCK MAC-FCNTL or
-   wr 4 MAC-NONBLOCK MAC-FCNTL or 0 <> if
+: MAC-PIPE-OPEN ( -- )
+   FD:PIPE FD>N MAC-WRITE-FD ! FD>N MAC-READ-FD ! ;
+
+\ Both ends come close-on-exec from FD:PIPE; a refused pipe or mark is
+\ E-AIO-SETUP, as a refused non-blocking mark is.
+: MAC-PIPE ( -- )
+   [: MAC-PIPE-OPEN ;] catch {: code:n :}
+   code E-FS-IO = if E-AIO-SETUP throw then
+   code 0<> if code throw then
+   MAC-READ-FD @ {: rd:n :}
+   MAC-WRITE-FD @ {: wr:n :}
+   rd 4 MAC-NONBLOCK MAC-FCNTL wr 4 MAC-NONBLOCK MAC-FCNTL or 0 <> if
       rd close wr close E-AIO-SETUP throw
    then ;
-
-: MAC-PIPE ( -- )
-   [: MAC-PIPE-HELD ;] FD-LOCK:WITH ;
 
 : MAC-SETUP ( -- )
    MAC-POLLS-LEN MEM:ALLOC-BYTES drop MAC-POLLS !

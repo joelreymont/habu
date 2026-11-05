@@ -10,6 +10,7 @@ s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row
 s" src/lib/fd-lock.f" required               \ FD-LOCK:WITH orders descriptor creation against spawns
+s" src/lib/fd.f" required                    \ FD:PIPE, the capture pipes
 s" src/lib/spawn.f" required                 \ PROCESS:request and PROCESS:SPAWN, the spawn every RAW word makes
 s" src/lib/process-tree.f" required          \ PROC-TREE:KILL-TREE ends a capture child's tree
 
@@ -305,15 +306,6 @@ public
    rc 0 <> if E-PROC-OUTPUT throw then
    r >FD w >FD ;
 
-: PIPE-PAIR-CLOEXEC-HELD ( -- fd fd )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   w FD-CLOEXEC!
-   r w ;
-
-: PIPE-PAIR-CLOEXEC ( -- fd fd )
-   [: PIPE-PAIR-CLOEXEC-HELD ;] FD-LOCK:WITH ;
-
 : PROC-PFD-SLOT ( idx -- ptr n ) {: idx :}
    idx IDX>N PROC-PFD-SLOT-BYTES * PROC-PFD + CELL-VIEW ;
 
@@ -550,16 +542,13 @@ PROC-REAP-ARM-DEFAULT
 : PROC-CLOEXEC-CELL ( ptr n -- ) {: p:ptr :}
    p @ F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
 
-: PROC-OPEN-PIPE-HELD ( ptr n ptr n -- ) {: rp:ptr wp:ptr :}
-   pipe {: r w rc :}
-   rc 0 <> if E-PROC-OUTPUT PROC-THROW-CAPTURE then
-   r rp !
-   w wp !
-   rp PROC-CLOEXEC-CELL
-   wp PROC-CLOEXEC-CELL ;
+: PROC-PIPE-CELLS ( ptr n ptr n -- ptr n ptr n ) {: rp:ptr wp:ptr :}
+   FD:PIPE FD>N wp ! FD>N rp !
+   rp wp ;
 
 : PROC-OPEN-PIPE ( ptr n ptr n -- )
-   [: PROC-OPEN-PIPE-HELD ;] FD-LOCK:WITH ;
+   [: PROC-PIPE-CELLS ;] catch {: code:n :} 2drop
+   code 0<> if E-PROC-OUTPUT PROC-THROW-CAPTURE then ;
 
 : PROC-CAPTURE-NULL-INPUT-HELD ( -- )
    s\" /dev/null\z" drop open-rd

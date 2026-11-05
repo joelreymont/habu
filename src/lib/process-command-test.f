@@ -232,7 +232,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    EXIT3-KEPT
    [: s" " CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-OUTPUT T=
    EXIT3-KEPT
-   PIPE-PAIR-CLOEXEC FD>N {: w :} FD>N {: r :}
+   FD:PIPE FD>N {: w :} FD>N {: r :}
    r close  w close
    3 >FD w >FD CMD:FD+
    [: s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;] catch E-PROC-SPAWN T=
@@ -457,7 +457,7 @@ create PIPE-BUF PIPE-CAP allot
 \ refused before a capture pipe can take the closed number, so the child, which
 \ would write `ran` to fd 4, never runs.
 : PLACED-CLOSED ( CMD:command -- CMD:command )
-   PIPE-PAIR-CLOEXEC FD>N {: w :} FD>N {: r :}
+   FD:PIPE FD>N {: w :} FD>N {: r :}
    r close  w close
    3 >FD w >FD CMD:FD+
    4 >FD W4 CMD:FD+
@@ -466,8 +466,8 @@ create PIPE-BUF PIPE-CAP allot
    s" /bin/sh" CMD-TIMEOUT-MS >MS CMD:RUN-OUTCOME drop ;
 
 : FD-PLACEMENT ( -- )
-   PIPE-PAIR-CLOEXEC FD>N PIPE-W ! FD>N PIPE-R !
-   PIPE-PAIR-CLOEXEC FD>N PIPE4-W ! FD>N PIPE4-R !
+   FD:PIPE FD>N PIPE-W ! FD>N PIPE-R !
+   FD:PIPE FD>N PIPE4-W ! FD>N PIPE4-R !
    [: PLACED ;] CMD:WITH-COMMAND
    [: PLACED-RESET ;] CMD:WITH-COMMAND
    [: PLACED-NESTED ;] CMD:WITH-COMMAND

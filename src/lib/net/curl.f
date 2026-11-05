@@ -14,6 +14,7 @@ require src/lib/memory.f                      \ the grown record chunks, the tex
 require src/lib/span.f                        \ a text copy's reach
 require src/lib/num-types.f                   \ the alloc-byte-len a chunk carries
 require src/lib/task.f
+require src/lib/fd.f                          \ FD:PIPE, the wake pipe
 require src/lib/aio.f                         \ the loop waits on AIO tickets
 require src/lib/adt/result.f                  \ TASK:JOIN's answer, read by LOOP-STOP
 
@@ -1031,11 +1032,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 : PIPE-OPEN ( -- n )
-   pipe {: r:n w:n rc:n :}
-   rc 0 <> if rc exit then
-   r WAKE-R !
-   w WAKE-W !
-   0 ;
+   [: FD:PIPE FD>N WAKE-W ! FD>N WAKE-R ! ;] catch ;
 
 
 : PIPE-CLOSE ( -- )

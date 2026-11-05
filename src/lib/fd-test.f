@@ -1,5 +1,5 @@
-\ fd-test.f - exact reads and full writes over real pipes; a temp file cut back
-\ and appended to, and a directory synced.
+\ fd-test.f - close-on-exec pipes, exact reads and full writes over real pipes;
+\ a temp file cut back and appended to, and a directory synced.
 \ Run: bin/hb --load src/lib/fd-test.f
 \ A pipe holds far less than PAYLOAD, so one read answers short and READ-EXACT
 \ loops; a blocking write answers short only when a caught signal lands after
@@ -12,6 +12,7 @@ require src/lib/span.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-fork.f
+require src/lib/process-argv.f
 require src/lib/test/outcome.f
 require src/lib/test/wait.f
 require src/lib/fd.f
@@ -29,6 +30,7 @@ $400000 constant PAYLOAD          \ 4 MiB: 64 default Linux pipes, and past Linu
 1000000 constant STORM-LIMIT      \ profiler samples allowed; no case comes near it
 -1 constant FULL-MARK             \ OUTCOME's answer for `full`
 2 constant CHILD-MISMATCH         \ a forked reader's exit code when the bytes are wrong
+5000 constant EXEC-WAIT-MS        \ how long a read end waits for end of file past an exec
 
 TYPED-VARIABLE SRC SPAN:span<u8>
 TYPED-VARIABLE DST SPAN:span<u8>
@@ -37,6 +39,7 @@ variable CHILD-FD                 \ the pipe end a forked child works on
 variable CHILD-CODE               \ the exit code a child's part chose
 variable ERR-FD                   \ the descriptor a word run under catch uses
 variable UNTIL-AT                 \ deadline used by caught bounded-write cases
+1 TYPED-BUFFER NO-ENV ptr u8      \ a NULL slot: the exec'd child's empty environment
 
 : OUTCOME ( FD:fill -- n )        \ FULL-MARK, or the bytes before end of file
    MATCH FD:fill
@@ -320,6 +323,28 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 : RESIZE-NEGATIVE ( -- )
    ERR-FD @ >FD -1 RESIZE ;
 
+\ The rest of a forked child's life: a minute's sleep, outliving the case.
+: SLEEPER ( -- )
+   PROC-ARGV-RESET
+   s" 60" >LEN PROC-ARGV+
+   s" /bin/sleep" >LEN PROC-ARGV-PREPARE 0 NO-ENV execve drop
+   E-PROC-SPAWN throw ;
+
+\ With the parent's write end closed, the read end reaches end of file while the
+\ exec'd child runs; a write end the child kept would make the poll answer 0.
+: PIPE-CLOSES-ON-EXEC ( -- )
+   NULL-PTR 0 NO-ENV !
+   FD:PIPE {: r:fd w:fd :}
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if [: SLEEPER ;] IN-CHILD then
+   w FD>N close
+   r EXEC-WAIT-MS >MS POLL-IN COUNT>N {: ready:n :}
+   ready 1 T=
+   ready 1 = if r SMALL READ-EXACT OUTCOME 0 T= then
+   r FD>N close
+   pid SIGKILL PROC-KILL-RAW RC>N 0 T=
+   s" exec'd sleeper" s" " s" " pid PROC-WAIT-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
+
 \ A closed descriptor, a pipe with no reader (SIGPIPE held off, as a server's
 \ must be), a resized pipe and a negative length are each refused by name.
 : ERRORS ( -- )
@@ -343,6 +368,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    SRC @ PATTERN!
    EMPTY-REQUEST
    EOF-INSIDE
+   PIPE-CLOSES-ON-EXEC
    EXACT-OVER-SHORT-READS
    SHORT-WRITE-PREMISE
    FULL-WRITE-UNDER-STORM

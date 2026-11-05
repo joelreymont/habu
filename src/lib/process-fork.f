@@ -11,6 +11,7 @@ require src/lib/image-lifecycle.f            \ the three locks RAW holds while i
 require src/core/dynamic-storage.f
 require src/habu/address-cells.f
 require src/lib/process.f
+require src/lib/fd.f                         \ FD:PIPE, the death pipe
 require src/lib/fd-lock.f                    \ the fourth lock RAW holds while it forks
 require src/lib/fs-mutate.f                  \ FS:CLEANUP-RESET, registered below
 require src/lib/process-tree.f               \ PROC-TREE:CHILD-RESET, registered below
@@ -151,7 +152,7 @@ public
 \ end. Both ends are close-on-exec so an exec'd grandchild never inherits a
 \ write-end copy that would wedge the reaper's EOF.
 : DEATH-PIPE ( -- fd fd )
-   PIPE-PAIR-CLOEXEC ;
+   FD:PIPE ;
 
 \ A forked reaper inherits every fd the worker held; keeping any capture-pipe
 \ or death-pipe write end open would wedge a downstream EOF, so it closes all

@@ -6,7 +6,8 @@
 \ that ran INIT (NEED-OWNER); the staging span WAIT and TAKE read into is per task.
 
 s" src/lib/errors.f" required
-s" src/lib/process.f" required                \ the pipe words, POLLIN, PROC-NO-FD, close-rc and the two deadline helpers
+s" src/lib/process.f" required                \ PROC-NONBLOCK!, PROC-KILL-RAW, POLLIN, PROC-NO-FD, PROC-DEADLINE-AT and PROC-LEFT-MS
+s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-pipe
 s" src/lib/aio.f" required                    \ the loop the WAIT window runs on
 s" src/lib/task.f" required                   \ TASK:+USER carries the staging span, TASK:SELF-N the owner
 s" src/lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
@@ -207,7 +208,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ parked in read until the NEXT signal arrives - which is a hang, not a race,
 \ for a window that was meant to close on its own.
 : OPEN-PIPE ( -- )
-   PIPE-PAIR-CLOEXEC {: r:fd w:fd :}
+   FD:PIPE {: r:fd w:fd :}
    r PROC-NONBLOCK!
    w PROC-NONBLOCK!
    r FD>N READ-FD-CELL !

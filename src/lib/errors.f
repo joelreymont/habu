@@ -1192,7 +1192,6 @@
 -9411 constant E-WS-CODE          \ a close status no endpoint may send: outside 1000..4999, reserved or unassigned
 -9414 constant E-WS-TEXT          \ SEND-TEXT of bytes that are not UTF-8 (RFC 6455 section 5.6)
 -9415 constant E-WS-STATE         \ ACCEPT or STOP outside a run or while START still starts it, a START while one starts or runs, a STOP while another STOP runs or on WS's own task
--9416 constant E-WS-WAKE          \ START could not open its wake pipe
 -9417 constant E-WS-LIMIT         \ a WS:START limit below 1 or past the handle's 32-bit slot field
 
 \ Native host facts: -9440..-9449, minted by src/compiler/native/host.f,

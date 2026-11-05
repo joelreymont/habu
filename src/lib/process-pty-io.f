@@ -10,6 +10,7 @@ require src/lib/process-fork.f
 require src/lib/process-argv.f
 require src/lib/process.f
 require src/lib/fd-lock.f
+require src/lib/fd.f
 require src/lib/pty.f
 require src/lib/aio.f
 require src/lib/task.f
@@ -146,21 +147,15 @@ variable IO-GO-R                                 \ child-side release gate
    path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROC-ZCOPY drop
    pathu LEN>N IO-PATH-LEN ! ;
 
-\ PIPE-PAIR-CLOEXEC yields ( read write ); each pipe's owner end and child end
-\ land in their own cells. No end reaches a process the owner spawns meanwhile.
 : IO-MK-STDIO ( -- )
-   PIPE-PAIR-CLOEXEC IO-SOUT-W ! IO-MASTER !   \ stdout: owner reads master, child writes
-   PIPE-PAIR-CLOEXEC IO-DONE ! IO-SIN-R ! ;    \ stdin: owner writes done, child reads
+   FD:PIPE IO-SOUT-W ! IO-MASTER !   \ stdout: owner reads master, child writes
+   FD:PIPE IO-DONE ! IO-SIN-R ! ;    \ stdin: owner writes done, child reads
 
 : IO-OPEN-CK ( n -- n ) {: f:n :}
    f 0 < if E-PROC-OUTPUT throw then f ;
 
-\ master -> IO-MASTER (owner reads), a duplicate of it -> IO-DONE (owner
-\ writes), slave -> IO-SIN-R (the child's terminal); IO-SOUT-W stays unused.
-\ The slave is opened here rather than by PTY:OPEN, and with O_NOCTTY: a
-\ session-leading supervisor without a terminal would otherwise adopt it.
-\ All three are close-on-exec, marked under FD-LOCK as PIPE-PAIR-CLOEXEC marks
-\ its ends, so no process the owner spawns meanwhile holds the terminal.
+\ The slave opens here with O_NOCTTY: a session-leading supervisor without a
+\ terminal would adopt it. All three ends close on exec, marked under FD-LOCK.
 : IO-MK-TTY-HELD ( -- )
    IO-PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N >FD IO-MASTER !
    IO-MASTER @ >FD FD-CLOEXEC!
@@ -174,7 +169,7 @@ variable IO-GO-R                                 \ child-side release gate
 \ Neither gate end reaches a process the owner spawns while a target is gated;
 \ the target closes its read end itself before execve.
 : IO-MK-GATE ( -- )
-   PIPE-PAIR-CLOEXEC IO-GO-W ! IO-GO-R ! ;
+   FD:PIPE IO-GO-W ! IO-GO-R ! ;
 
 : IO-FORK-TARGET ( -- )
    PROC-FORK:CHECKED dup PID>N 0= if drop IO-TARGET-CHILD then IO-T-PID ! ;
