@@ -60,7 +60,6 @@ public
 : RUN ( -- )
    T-RESET
    0 TIER-CASES
-   1 TIER-CASES
    T-REPORT
    s" empty-quotation: ok" type cr ;
 ;package

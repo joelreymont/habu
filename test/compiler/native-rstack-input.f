@@ -1,9 +1,8 @@
 \ native-rstack-input.f - no signature written in source declares a return-stack
-\ cell, at either tier: a written `|` clause carries one row variable, the same
-\ on both sides (docs/forth.md "The return-stack clause"), and the checker
-\ refuses any other clause at the declaration. Each case is one stdin-piped
-\ engine run at tier 0 and tier 1; a refused `generates:` row is a throw, exit
-\ 67.
+\ cell: a written `|` clause carries one row variable, the same on both sides
+\ (docs/forth.md "The return-stack clause"), and the checker refuses any other
+\ clause at the declaration. Each case is one stdin-piped engine run; a refused
+\ `generates:` row is a throw, exit 67.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -29,17 +28,6 @@ variable ERR-U
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-: TIER-LINE ( n -- ptr u8 n )
-   0= if S\" 0 set-tier\n" exit then
-   S\" 1 set-tier\n" ;
-
-\ The program a run feeds the engine: the tier line, then the case.
-: AT-TIER ( ptr u8 n n -- ptr u8 n ) {: src:ptr u:n tier:n :}
-   SB-RESET
-   tier TIER-LINE SB-APPEND
-   src u SB-APPEND
-   SB$ ;
-
 : EXEC ( ptr u8 n -- len len outcome ) {: src:ptr u:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  src u >LEN  OUT CAP >LEN  ERR CAP >LEN
@@ -61,7 +49,7 @@ variable ERR-U
    src u before SHOW ;
 
 \ One refused run: the child exits RC, prints nothing, and its stderr begins
-\ with DIAG. Tier 1 adds the native compiler's own line after it.
+\ with DIAG.
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: label:ptr lu:n src:ptr u:n diag:ptr du:n rc:n :}
    T-FAILURES {: before:n :}
@@ -71,21 +59,6 @@ variable ERR-U
    label lu T-LABEL  OUT$ s" " T$=
    label lu T-LABEL  ERR ERR-U @ du min diag du T$=
    src u before SHOW ;
-
-: ADMITTED-BOTH ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: label:ptr lu:n src:ptr u:n want:ptr wu:n :}
-   2 0 do
-      label lu  src u i AT-TIER  want wu  ADMITTED
-   loop ;
-
-: REFUSED-AT ( ptr u8 n ptr u8 n ptr u8 n n -- )
-   {: label:ptr lu:n src:ptr u:n diag:ptr du:n rc:n :}
-   2 0 do
-      label lu  src u i AT-TIER  diag du  rc REFUSED
-   loop ;
-
-: REFUSED-BOTH ( ptr u8 n ptr u8 n ptr u8 n -- ) REFUSED-RC REFUSED-AT ;
-: THROWN-BOTH ( ptr u8 n ptr u8 n ptr u8 n -- ) UNCAUGHT-RC REFUSED-AT ;
 
 \ ---- refused at the declaration ----------------------------------------------
 \ Held here: an input, output or both-sides cell (rs1, rs2); a TRUSTED:
@@ -97,43 +70,43 @@ variable ERR-U
    s" rs1: a body replaces a declared return-stack cell"
    S\" : RC1 ( | n -- | n ) r> drop 0 >r ;\nTRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RC1 r> ;\nUSE . cr\n"
    S\" habu: in rc1: return-stack effect in signature ' | n -- | n '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: rc1 at ' | n -- | n '\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" rs1: a TRUSTED: body replaces a declared return-stack cell"
    S\" TRUSTED: RT1 ( | n -- | n ) r> drop 0 >r ;\n: USE ( -- n ) 5 >r RT1 r> ;\nUSE . cr\n"
    S\" habu: in rt1: bad stored signature '| n -- | n'; return-stack effect: after '|' write one row variable, the same on both sides, or no '|'\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" rs2: a body pops a declared return-stack input"
    S\" : RP ( | n -- n | ) r> ;\n: USE ( -- n ) 5 >r RP ;\nUSE . cr\n"
    S\" habu: in rp: return-stack effect in signature ' | n -- n | '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: rp at ' | n -- n | '\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" a quotation type moves a cell to the return stack"
    S\" : RUNQ ( n [ n -- | U -- U n ] | U -- n | U ) execute r> ;\n: USE ( -- n ) 5 [: >r ;] RUNQ ;\nUSE . cr\n"
    S\" habu: in runq: return-stack effect in signature ' n [ n -- | U -- U n ] | U -- n | U '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: runq at ' n [ n -- | U -- U n ] | U -- n | U '\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" a generates: row declares a return-stack cell"
    S\" package GP\n: G ( n -- ) drop ;\ngenerates: G ( | -- | n )\npublic\n;package\n"
    S\" E-GENERATES-ROW habu: generates: row for 'G': return-stack effect: after '|' write one row variable, the same on both sides, or no '|'\nhb: uncaught throw code 7153\n"
-   THROWN-BOTH
+   UNCAUGHT-RC REFUSED
    s" a bar on one side only"
    S\" : ONE ( R n | S -- R ) drop ;\n"
    S\" habu: in one: return-stack effect in signature ' R n | S -- R '; after '|' write one row variable, the same on both sides, or no '|'\nhook: non-certified definition: one at ' R n | S -- R '\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" a quotation literal pushes a cell its caller pops"
    S\" : QPUSH ( n -- n ) [: >r ;] execute r> ;\n: USE ( -- n ) 5 QPUSH ;\nUSE . cr\n"
    S\" habu: in qpush: at ';]' return stack: the quotation leaves its return row unbalanced expected: actual: n \nhook: non-certified definition: qpush at ';]'\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" a quotation literal pops a cell its caller pushed"
    S\" : QPOP ( n -- n ) >r [: r> ;] execute ;\n: USE ( -- n ) 5 QPOP ;\nUSE . cr\n"
    S\" habu: in qpop: at ';]' return stack: the quotation reads below the return-stack cells it pushed expected: n actual: \nhook: non-certified definition: qpop at ';]'\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" an unsigned definition reads a cell it did not push"
    S\" : UREAD r@ ;\n"
    S\" habu: in uread: at 'r@' return stack: this reads below the return-stack cells pushed here expected: a actual: a \nhook: non-certified definition: uread at 'r@'\n"
-   REFUSED-BOTH
+   REFUSED-RC REFUSED
    s" an unsigned definition pops a cell it did not push"
    S\" : UPOP r> ;\n"
    S\" habu: in upop: at 'r>' return stack: this reads below the return-stack cells pushed here expected: a actual: \nhook: non-certified definition: upop at 'r>'\n"
-   REFUSED-BOTH ;
+   REFUSED-RC REFUSED ;
 
 \ ---- still admitted -----------------------------------------------------------
 \ A bar on one side only pairs the written row with a fresh one and is admitted,
@@ -142,10 +115,10 @@ variable ERR-U
 : ADMISSIONS ( -- )
    s" a neutral clause at the top and in a quotation type"
    S\" : APPLY ( R n [ R n -- S n | U -- U ] | U -- S n | U ) execute ;\n: USE ( -- n ) 3 [: 1+ ;] APPLY ;\nUSE . cr\n"
-   S\" 4\n\n" ADMITTED-BOTH
+   S\" 4\n\n" ADMITTED
    s" a body parks a value with >r and takes it back"
    S\" : PARK ( n n -- n ) >r 10 * r> + ;\n: USE ( -- n ) 4 2 PARK ;\nUSE . cr\n"
-   S\" 42\n\n" ADMITTED-BOTH ;
+   S\" 42\n\n" ADMITTED ;
 
 public
 

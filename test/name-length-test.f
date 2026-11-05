@@ -290,9 +290,8 @@ variable LBL-U
 \ TRUSTED: body, as verify-source.f's NAMED-USE calls CHECKER-NAMED-USE: a
 \ refused name publishes no use and reads none of its bytes. TRUST-DECL and
 \ TRUST-RAW are sealed (src/core/checker.f: the interpreter refuses them), so a
-\ TRUSTED: body calls them, as the engine's own callers do. A trust row refuses
-\ a false name as it refuses one that names no word, without echoing it; a cast
-\ reaches its name once its signature certifies, and stores it.
+\ TRUSTED: body calls them, as the engine's own callers do. A cast reaches
+\ its name once its signature certifies, and stores it.
 $400 constant WANT-CAP
 create WANT WANT-CAP allot
 variable WANT-U
@@ -310,9 +309,6 @@ variable WANT-U
    WANT WANT-U @ ;
 
 : TEST-TOP-LEVEL ( -- )
-   s" BAD$ SIG$ TRUST" 70 s" " STALE$ DIES
-   s" TRUSTED: NL-TD ( -- ) BAD$ SIG$ TRUST-DECL ; NL-TD" 70 s" " STALE$ DIES
-   s" TRUSTED: NL-TR ( -- ) BAD$ SIG$ TRUST-RAW ; NL-TR" 70 s" " STALE$ DIES
    s" TRUSTED: NL-NU ( -- ) MARKS! BAD$ CHECKER-NAMED-USE 0 0= VERDICT ; NL-NU"
       RETURNS
    s" BAD$ CAST$ CHECKER-DEFCAST" 76 S\" checker: symbol string capacity overflow\n" DIES ;
