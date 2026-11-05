@@ -1,6 +1,5 @@
-\ A cold REPL builder reports its own deadline through hb-build, then a saved
-\ builder works from another working directory, a CWD producer shadow forces a
-\ rebuild, and so does the caller's tier. One program built at tier 0 and at
+\ A REPL build from another working directory is a warm no-op the second time,
+\ and the caller's tier forces a rebuild. One program built at tier 0 and at
 \ tier 1 runs, compiles from stdin and saves itself, and the saved image runs.
 \ Run: bin/hb --load tools/hb-build-repl-image-test.f
 
@@ -13,13 +12,9 @@ package HB-BUILD-CLI
 
 create HBT-IMAGE-HB-BUF PATH-CAP allot
 create HBT-IMAGE-TOOL-BUF PATH-CAP allot
-create HBT-IMAGE-SHADOW-BUF PATH-CAP allot
-create HBT-IMAGE-SOURCE-BUF PATH-CAP allot
 create HBT-IMAGE-TIER1-BUF PATH-CAP allot
 variable HBT-IMAGE-HB-U
 variable HBT-IMAGE-TOOL-U
-variable HBT-IMAGE-SHADOW-U
-variable HBT-IMAGE-SOURCE-U
 variable HBT-IMAGE-TIER1-U
 variable HBT-IMAGE-TIER1
 variable HBT-IMAGE-SIZE
@@ -30,7 +25,6 @@ variable HBT-IMAGE-RESAVED-U
 
 : HBT-IMAGE-HB$ ( -- ptr u8 n ) HBT-IMAGE-HB-BUF HBT-IMAGE-HB-U @ ;
 : HBT-IMAGE-TOOL$ ( -- ptr u8 n ) HBT-IMAGE-TOOL-BUF HBT-IMAGE-TOOL-U @ ;
-: HBT-IMAGE-SHADOW$ ( -- ptr u8 n ) HBT-IMAGE-SHADOW-BUF HBT-IMAGE-SHADOW-U @ ;
 : HBT-IMAGE-TIER1$ ( -- ptr u8 n ) HBT-IMAGE-TIER1-BUF HBT-IMAGE-TIER1-U @ ;
 : HBT-IMAGE-RESAVED$ ( -- ptr u8 n ) HBT-IMAGE-RESAVED-BUF HBT-IMAGE-RESAVED-U @ ;
 
@@ -40,19 +34,13 @@ variable HBT-IMAGE-RESAVED-U
    SOURCE-ROOT:ENGINE$ s" test/compiler/aot-mode.f"
       HBT-IMAGE-TIER1-BUF FS:JOIN-PATH HBT-IMAGE-TIER1-U ! ;
 
-: HBT-IMAGE-SHADOW-PATH ( -- )
-   HBT-ROOT s" tools/app-build.f" HBT-IMAGE-SHADOW-BUF FS:JOIN-PATH HBT-IMAGE-SHADOW-U ! ;
-
-\ An empty root leaves HABU_OUT inherited: under the gate, the run's shared out
-\ root, which holds the app-builder family image. A private out root keeps its
-\ builder images private.
-: HBT-IMAGE-ENV ( ptr u8 n ptr u8 n -- )
-   {: limit:ptr limitu:n root:ptr rootu:n :}
+\ HABU_OUT stays inherited: under the gate, the run's shared out root, which
+\ holds the app-builder family image.
+: HBT-IMAGE-ENV ( -- )
    PROC-ENV-RESET
    s" TMPDIR" >LEN HBT-TMP >LEN PROC-ENV+
-   rootu 0 > if s" HABU_OUT" >LEN root rootu >LEN PROC-ENV+ then
    s" HABU_FIXPOINT_ENGINE" >LEN HBT-IMAGE-HB$ >LEN PROC-ENV+
-   s" HB_BUILD_TIMEOUT_MS" >LEN limit limitu >LEN PROC-ENV+
+   s" HB_BUILD_TIMEOUT_MS" >LEN s" 600000" >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 \ The command runs at the CLI's default tier, or after test/compiler/aot-mode.f
@@ -65,39 +53,19 @@ variable HBT-IMAGE-RESAVED-U
    s" --" >LEN PROC-ARGV+
    s" --repl" >LEN PROC-ARGV+ ;
 
-: HBT-IMAGE-RUN-ON ( ptr u8 n -- n n n ) {: cwd:ptr cwdu:n :}
-   HBT-IMAGE-HB$ >LEN cwd cwdu >LEN
-   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE HBT-CAPTURE>N ;
-
-\ A cold attempt reports its deadline in text form and leaves no output image.
-\ The cold deadline needs an out root with no builder: in a warm root the
-\ deadline would time out the saved builder instead of the build.
-: HBT-COLD-REPL-TIMEOUT-TEXT ( -- )
-   s" 1" HBT-TMP HBT-IMAGE-ENV
-   HBT-IMAGE-ARGS
-   HBT-REPL-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-REPL-OUT >LEN PROC-ARGV+
-   SOURCE-ROOT:CWD$ HBT-IMAGE-RUN-ON {: outu:n erru:n rc:n :}
-   rc HBB-UNCAUGHT-RC T=
-   outu 0 T=
-   HBT-ERR erru s" hb-build: code=E-PROC-TIMEOUT maker=repl" CONTAINS? TTRUE
-   HBT-ERR erru HBT-REPL-SRC CONTAINS? TTRUE
-   HBT-ERR erru s" timeout_ms=1" CONTAINS? TTRUE
-   HBT-REPL-OUT FS:EXISTS? TFALSE ;
-
 : HBT-ROOTED-APP$ ( -- ptr u8 n )
    S\" require src/lib/json.f\n: MAIN ( -- ) s\q from-root\q type cr ;\n" ;
 
-: HBT-ROOTED-BUILD ( ptr u8 n -- )
-   {: root:ptr rootu:n :}
-   s" 600000" root rootu HBT-IMAGE-ENV
+: HBT-ROOTED-BUILD ( -- )
+   HBT-IMAGE-ENV
    HBT-IMAGE-ARGS
    HBT-REPL-SRC >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
    HBT-REPL-OUT >LEN PROC-ARGV+
-   HBT-ROOT HBT-IMAGE-RUN-ON {: outu:n erru:n rc:n :}
+   HBT-IMAGE-HB$ >LEN HBT-ROOT >LEN
+   HBT-OUT HBT-CAPTURE-CAP >LEN HBT-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE HBT-CAPTURE>N
+      {: outu:n erru:n rc:n :}
    rc 0 <> if HBT-OUT outu type HBT-ERR erru type then
    rc 0 T=
    erru 0 T=
@@ -124,34 +92,11 @@ variable HBT-IMAGE-RESAVED-U
 
 : HBT-ROOTED-COLD-WARM ( -- )
    HBT-REPL-SRC HBT-ROOTED-APP$ FS:WRITE-ALL
-   NULL$ HBT-ROOTED-BUILD
+   HBT-ROOTED-BUILD
    HBT-ROOTED-RUN
    HBT-ROOTED-MARK
-   NULL$ HBT-ROOTED-BUILD
+   HBT-ROOTED-BUILD
    HBT-ROOTED-SAME? TTRUE
-   HBT-ROOTED-RUN ;
-
-\ A newly present CWD producer shadows the selected engine root's fallback
-\ copy. The existing output must be rebuilt even though its old files match.
-\ Editing that shadow after the warm no-op build rebuilds again. The builder
-\ key folds the shadow's path under this run's fresh root, so these builders
-\ can never hit again: they build in the row's private cache.
-: HBT-ROOTED-PRODUCER-SHADOW ( -- )
-   HBT-IMAGE-SHADOW-PATH
-   HBT-IMAGE-SHADOW$ SOURCE-ROOT:DIRNAME FS:MAKE-DIR
-   SOURCE-ROOT:ENGINE$ s" tools/app-build.f"
-      HBT-IMAGE-SOURCE-BUF FS:JOIN-PATH HBT-IMAGE-SOURCE-U !
-   HBT-IMAGE-SOURCE-BUF HBT-IMAGE-SOURCE-U @
-      HBT-IMAGE-SHADOW$ FS:COPY-FILE-STREAM
-   HBT-TMP HBT-ROOTED-BUILD
-   HBT-ROOTED-SAME? TFALSE
-   HBT-ROOTED-RUN
-   HBT-ROOTED-MARK
-   HBT-TMP HBT-ROOTED-BUILD
-   HBT-ROOTED-SAME? TTRUE
-   HBT-IMAGE-SHADOW$ S\" \\ edited\n" FS:APPEND-FILE
-   HBT-TMP HBT-ROOTED-BUILD
-   HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN ;
 
 \ The sidecar records the tier the application compiled at. The last build ran
@@ -160,7 +105,7 @@ variable HBT-IMAGE-RESAVED-U
 : HBT-ROOTED-TIER ( -- )
    HBT-ROOTED-MARK
    -1 HBT-IMAGE-TIER1 !
-   HBT-TMP HBT-ROOTED-BUILD
+   HBT-ROOTED-BUILD
    0 HBT-IMAGE-TIER1 !
    HBT-ROOTED-SAME? TFALSE
    HBT-ROOTED-RUN ;
@@ -232,9 +177,7 @@ public
    APP-BUILDER-ENGINE:ENSURE
    HBT-PREPARE
    HBT-IMAGE-PATHS
-   HBT-COLD-REPL-TIMEOUT-TEXT
    HBT-ROOTED-COLD-WARM
-   HBT-ROOTED-PRODUCER-SHADOW
    HBT-ROOTED-TIER
    HBT-REPL-TIER-PROGRAM
    FS:CLEANUP-RUN

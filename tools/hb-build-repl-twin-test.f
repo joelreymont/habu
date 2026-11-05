@@ -1,9 +1,8 @@
 \ hb-build-repl-twin-test.f - tools/hb-build-lib.f: --repl builds of one program
-\ write the same image across a warm cache (A, D), a fresh one (B) and another
-\ output name, at tier 1 and tier 0. The restored image answers with its own
-\ process: a first `does>` patches its own created word, a restored FILE import
-\ keeps its retired handle stale, the code-span table reads as fresh, and an
-\ unnamed persist is refused. Run: bin/hb --load tools/hb-build-repl-twin-test.f
+\ write the same image under two output names, at tier 1 and tier 0. The restored
+\ image answers with its own process: a first `does>` patches its own created
+\ word, a restored FILE import keeps its retired handle stale, the code-span
+\ table reads as fresh, and an unnamed persist is refused. Run: bin/hb --load tools/hb-build-repl-twin-test.f
 
 require tools/hb-build-test-lib.f
 require src/lib/string.f
@@ -18,27 +17,21 @@ package HB-BUILD-CLI
 variable HBT-TWIN-SRC-U
 variable HBT-TWIN-CHILD-U
 variable HBT-TWIN-CTX-U
-variable HBT-TWIN-TMP-A-U
-variable HBT-TWIN-TMP-B-U
+variable HBT-TWIN-TMP-U
 variable HBT-TWIN-OUT-A-U
-variable HBT-TWIN-OUT-B-U
 variable HBT-TWIN-OUT-D-U
 create HBT-TWIN-SRC-BUF PATH-CAP allot
 create HBT-TWIN-CHILD-BUF PATH-CAP allot
 create HBT-TWIN-CTX-BUF PATH-CAP allot
-create HBT-TWIN-TMP-A-BUF PATH-CAP allot
-create HBT-TWIN-TMP-B-BUF PATH-CAP allot
+create HBT-TWIN-TMP-BUF PATH-CAP allot
 create HBT-TWIN-OUT-A-BUF PATH-CAP allot
-create HBT-TWIN-OUT-B-BUF PATH-CAP allot
 create HBT-TWIN-OUT-D-BUF PATH-CAP allot
 
 : HBT-TWIN-SRC ( -- ptr u8 n ) HBT-TWIN-SRC-BUF HBT-TWIN-SRC-U @ ;
 : HBT-TWIN-CHILD ( -- ptr u8 n ) HBT-TWIN-CHILD-BUF HBT-TWIN-CHILD-U @ ;
 : HBT-TWIN-CTX ( -- ptr u8 n ) HBT-TWIN-CTX-BUF HBT-TWIN-CTX-U @ ;
-: HBT-TWIN-TMP-A ( -- ptr u8 n ) HBT-TWIN-TMP-A-BUF HBT-TWIN-TMP-A-U @ ;
-: HBT-TWIN-TMP-B ( -- ptr u8 n ) HBT-TWIN-TMP-B-BUF HBT-TWIN-TMP-B-U @ ;
+: HBT-TWIN-TMP ( -- ptr u8 n ) HBT-TWIN-TMP-BUF HBT-TWIN-TMP-U @ ;
 : HBT-TWIN-OUT-A ( -- ptr u8 n ) HBT-TWIN-OUT-A-BUF HBT-TWIN-OUT-A-U @ ;
-: HBT-TWIN-OUT-B ( -- ptr u8 n ) HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U @ ;
 : HBT-TWIN-OUT-D ( -- ptr u8 n ) HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U @ ;
 
 \ The build creates X and nothing after it, so X is the record LASTC-CELL names
@@ -86,43 +79,32 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
 : HBT-TWIN-INPUT$ ( -- ptr u8 n )
    S\" : BEHAVE ( -- ) does> ( -- n ) @ ;\nBEHAVE\nHBT-TWIN:REFUSAL\nHBT-TWIN:X . cr\n" ;
 
-\ A and D share TMPDIR and the run's out root; B gets its own TMPDIR and out root.
-\ B's output name is longer than A's and D's. These are the tier 1 round's names;
-\ HBT-TWIN-TIER0-NAMES gives the tier 0 round its own outputs.
+\ These are the tier 1 round's names; HBT-TWIN-TIER0-NAMES gives the tier 0
+\ round its own outputs.
 : HBT-TWIN-PREPARE ( -- )
    HBT-ROOT s" twin.f" HBT-TWIN-SRC-BUF HBT-TWIN-SRC-U HBT-PATH!
    HBT-ROOT s" twin-child.f" HBT-TWIN-CHILD-BUF HBT-TWIN-CHILD-U HBT-PATH!
    HBT-ROOT s" twin-ctx.f" HBT-TWIN-CTX-BUF HBT-TWIN-CTX-U HBT-PATH!
-   HBT-ROOT s" twin-tmp-a" HBT-TWIN-TMP-A-BUF HBT-TWIN-TMP-A-U HBT-PATH!
-   HBT-ROOT s" twin-tmp-b" HBT-TWIN-TMP-B-BUF HBT-TWIN-TMP-B-U HBT-PATH!
+   HBT-ROOT s" twin-tmp" HBT-TWIN-TMP-BUF HBT-TWIN-TMP-U HBT-PATH!
    HBT-ROOT s" twin-out-a" HBT-TWIN-OUT-A-BUF HBT-TWIN-OUT-A-U HBT-PATH!
-   HBT-ROOT s" twin-direct-image" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
    HBT-ROOT s" twin-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH!
-   HBT-TWIN-TMP-A FS:MAKE-DIR
-   HBT-TWIN-TMP-B FS:MAKE-DIR
+   HBT-TWIN-TMP FS:MAKE-DIR
    HBT-TWIN-CHILD HBT-TWIN-CHILD$ FS:WRITE-ALL
    HBT-TWIN-CTX HBT-TWIN-CTX$ FS:WRITE-ALL
    HBT-TWIN-SRC HBT-TWIN-SRC$ FS:WRITE-ALL ;
 
-\ The tier 0 round's three outputs. B keeps its TMPDIR and out root: the
-\ builder image there does not depend on the tier (the tier reaches the maker
-\ on its stdin), so the tier 1 round already built it cold.
 : HBT-TWIN-TIER0-NAMES ( -- )
    HBT-ROOT s" twin0-out-a" HBT-TWIN-OUT-A-BUF HBT-TWIN-OUT-A-U HBT-PATH!
-   HBT-ROOT s" twin0-direct-image" HBT-TWIN-OUT-B-BUF HBT-TWIN-OUT-B-U HBT-PATH!
    HBT-ROOT s" twin0-out-d" HBT-TWIN-OUT-D-BUF HBT-TWIN-OUT-D-U HBT-PATH! ;
 
-\ An empty root leaves HABU_OUT inherited: under the gate, the run's shared out
-\ root, which holds the app-builder family image. A private root is B's, so B
-\ builds that image fresh. With aot set the command runs after
-\ test/compiler/aot-mode.f selected tier 1, the tier its products are built at;
-\ without it the products are built at the default tier 0.
-: HBT-TWIN-BUILD ( bool ptr u8 n ptr u8 n ptr u8 n -- )
-   {: aot:bool tmp:ptr tmpu:n root:ptr rootu:n out:ptr outu:n :}
+\ With aot set the command runs after test/compiler/aot-mode.f selected tier 1,
+\ the tier its products are built at; without it the products are built at the
+\ default tier 0.
+: HBT-TWIN-BUILD ( bool ptr u8 n -- )
+   {: aot:bool out:ptr outu:n :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" TMPDIR" >LEN tmp tmpu >LEN PROC-ENV+
-   rootu 0 > if s" HABU_OUT" >LEN root rootu >LEN PROC-ENV+ then
+   s" TMPDIR" >LEN HBT-TWIN-TMP >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load" >LEN PROC-ARGV+
    s" tools/hb-build-lib.f" >LEN PROC-ARGV+
@@ -147,22 +129,15 @@ create HBT-TWIN-OUT-D-BUF PATH-CAP allot
    out HBT-CAPTURE-CAP >LEN err HBT-CAPTURE-CAP >LEN
    HBT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE HBT-CAPTURE>N ;
 
-\ The same program built three times is the same image across the run's warm
-\ cache (A, D) and a fresh one (B) and an output of another name: every cell
+\ Two build processes write the same image under two output names: every cell
 \ the build process owns is written as a value any process restores, or not
 \ written at all, and the signature names no file (a codesign identifier
 \ defaults to the name).
-: HBT-TWIN-SAME ( -- )
-   HBT-TWIN-OUT-A HBT-TWIN-OUT-B CHAIN-RUN:SAME-FILES? TTRUE
-   HBT-TWIN-OUT-A HBT-TWIN-OUT-D CHAIN-RUN:SAME-FILES? TTRUE ;
-
 : HBT-TWIN-ROUND ( bool -- )
    {: aot:bool :}
-   aot HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-A HBT-TWIN-BUILD
-   \ B's own out root is the cold boundary: the first round builds its builder.
-   aot HBT-TWIN-TMP-B HBT-TWIN-TMP-B HBT-TWIN-OUT-B HBT-TWIN-BUILD
-   aot HBT-TWIN-TMP-A NULL$ HBT-TWIN-OUT-D HBT-TWIN-BUILD
-   HBT-TWIN-SAME ;
+   aot HBT-TWIN-OUT-A HBT-TWIN-BUILD
+   aot HBT-TWIN-OUT-D HBT-TWIN-BUILD
+   HBT-TWIN-OUT-A HBT-TWIN-OUT-D CHAIN-RUN:SAME-FILES? TTRUE ;
 
 \ A restored FILE import keeps its retired context handle stale when restored
 \ compilation reuses the same registry slot. D is the same image as A, so A

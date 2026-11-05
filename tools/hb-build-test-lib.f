@@ -44,7 +44,7 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \   tools/hb-build-stripped-cache-test.f      link equality, cached table cells
 \   tools/hb-build-repl-twin-test.f           two REPL builds, restored LASTC
 \   tools/hb-build-repl-fresh-test.f          no-op output, dynamic child edits
-\   tools/hb-build-repl-image-test.f          saved REPL builder, CWD shadow, tier
+\   tools/hb-build-repl-image-test.f          saved REPL builder, tier
 
 \ Reopens HB-BUILD-CLI to drive its internals: exporting them would widen the
 \ library's interface for its own test.

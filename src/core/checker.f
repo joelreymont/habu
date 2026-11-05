@@ -25608,8 +25608,8 @@ PTR-VARIABLE TOK-A    variable TOK-U
 variable FAM
 variable CODE
 defer DIAG-XT ( -- )
-\ Zeros outside a declaration: a saved image holds the same cells whatever a
-\ cache supplied (tools/hb-build-repl-twin-test.f HBT-TWIN-SAME).
+\ Zeros outside a declaration, so a saved image holds none of the build
+\ process's addresses (docs/debugging.md "the ASLR intersect").
 : CLEAR ( -- )
    NULL-PTR WORD-A !  0 WORD-U !  NULL-PTR KEY-A !  0 KEY-U !  NULL-PTR SIG-A !
    NULL-PTR WHY-A !  0 WHY-U !  NULL-PTR TOK-A !  0 TOK-U !  0 FAM !  0 CODE ! ;

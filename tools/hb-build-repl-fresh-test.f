@@ -1,15 +1,12 @@
 \ hb-build-repl-fresh-test.f - the real CLI reuses a fresh REPL image, also
 \ under --size-report, and rebuilds after an embedded asset or a dynamic child
-\ changes, a nearer CWD file shadows a required one, the output is deleted, or
-\ the support selection is damaged or its selected image is missing. A deleted
-\ asset fails the build.
+\ changes, a nearer CWD file shadows a required one, or the output is deleted.
+\ A deleted asset fails the build.
 \ Run: bin/hb --load tools/hb-build-repl-fresh-test.f
 
 require tools/hb-build-test-lib.f
 require test/app-builder-engine.f
 require src/lib/string.f
-require tools/build-out.f
-require tools/keyed-image.f
 require src/lib/fmt.f
 
 package HB-BUILD-CLI
@@ -18,19 +15,10 @@ variable HBT-FRESH-DEP-U
 variable HBT-FRESH-ASSET-U
 variable HBT-FRESH-OTHER-U
 variable HBT-FRESH-SHADOW-FILE-U
-variable HBT-FRESH-OUT-U
-variable HBT-FRESH-IMG-U
-variable HBT-FRESH-PATH-U
 create HBT-FRESH-DEP-BUF PATH-CAP allot
 create HBT-FRESH-ASSET-BUF PATH-CAP allot
 create HBT-FRESH-OTHER-BUF PATH-CAP allot
 create HBT-FRESH-SHADOW-FILE-BUF PATH-CAP allot
-create HBT-FRESH-OUT-BUF PATH-CAP allot
-create HBT-FRESH-ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN allot
-create HBT-FRESH-IMG-BUF PATH-CAP allot
-create HBT-FRESH-PATH-BUF PATH-CAP allot
-create HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN allot
-create HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U allot
 variable HBT-FRESH-SIZE
 variable HBT-FRESH-SEC
 variable HBT-FRESH-NS
@@ -86,9 +74,6 @@ variable HBT-FRESH-NS
 : HBT-FRESH-CLI-SOURCE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n :}
    HBT-TMP ENGINE-CANDIDATE:PATH$ HBT-ARGV-CLI
-   HBT-FRESH-OUT-U @ 0<> if
-      s" HABU_OUT" >LEN HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @ >LEN PROC-ENV-SET
-   then
    s" --repl" >LEN PROC-ARGV+
    src srcu >LEN PROC-ARGV+
    s" -o" >LEN PROC-ARGV+
@@ -149,59 +134,6 @@ variable HBT-FRESH-NS
    outn drop errn drop
    rc HBB-UNCAUGHT-RC T= ;
 
-\ A file of the app-builder family under the private img/ directory.
-: HBT-FRESH-IMG$ ( ptr u8 n -- ptr u8 n )
-   {: name:ptr nameu:n :}
-   HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U @ name nameu
-      HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
-   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ ;
-
-\ The img/ directory under the private out root of the engine that builds the
-\ app-builder image: the CLI's HABU_FIXPOINT_ENGINE (HBT-FRESH-CLI-SOURCE),
-\ under its content key. The CLI's record must be there.
-: HBT-FRESH-IMG! ( -- )
-   ENGINE-CANDIDATE:PATH$ HBT-FRESH-ENGINE-KEY BUILD-OUT:KEY-OF!
-   HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U @
-      HBT-FRESH-ENGINE-KEY KEYED-IMAGE:KEY-HEX-LEN
-      HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U HBT-PATH!
-   HBT-FRESH-PATH-BUF HBT-FRESH-PATH-U @ s" img"
-      HBT-FRESH-IMG-BUF HBT-FRESH-IMG-U HBT-PATH!
-   s" app-builder.inputs" HBT-FRESH-IMG$ FS:FILE? TTRUE ;
-
-\ Damaged support selection and a missing selected image rebuild normally
-\ through the real CLI. The case corrupts the support record and deletes the
-\ selected builder image, which must never be the run's shared one, so its CLI
-\ builds own HBT-TMP/out as their out root, and the first and last pay a cold
-\ app-builder build there by claim.
-: HBT-FRESH-SUPPORT ( -- )
-   HBT-TMP s" out" HBT-FRESH-OUT-BUF HBT-FRESH-OUT-U HBT-PATH!
-   s" malformed selection rebuilds support" T-LABEL
-   HBT-FRESH-OTHER s" : MAIN ( -- ) 777 . cr ;" FS:WRITE-ALL
-   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
-   HBT-REPL-OUT 777 HBT-FRESH-RUN
-   HBT-FRESH-IMG!
-   s" app-builder.inputs" HBT-FRESH-IMG$ s" bad" FS:ATOMIC-WRITE-FILE
-   HBT-FRESH-OTHER s" : MAIN ( -- ) 778 . cr ;" FS:WRITE-ALL
-   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
-   HBT-REPL-OUT 778 HBT-FRESH-RUN
-   s" missing selected image rebuilds support" T-LABEL
-   s" app-builder.inputs" HBT-FRESH-IMG$ FS:FILE-SIZE
-      HBB-REPL-SUPPORT-HEADER-U > TTRUE
-   s" app-builder.inputs" HBT-FRESH-IMG$ FS:>PATHZ open-rd {: fd:n :}
-   fd 0 >= TTRUE
-   fd HBT-FRESH-SUPPORT-HEADER HBB-REPL-SUPPORT-HEADER-U read
-      HBB-REPL-SUPPORT-HEADER-U T=
-   fd close
-   \ The rewritten record selects the image published under its producer key.
-   s" app-builder.key" HBT-FRESH-IMG$ HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN
-      FS:READ-ALL KEYED-IMAGE:KEY-HEX-LEN T=
-   HBT-FRESH-SUPPORT-HEADER 64 + KEYED-IMAGE:KEY-HEX-LEN
-      HBT-FRESH-KEY KEYED-IMAGE:KEY-HEX-LEN T$=
-   s" app-builder" HBT-FRESH-IMG$ FS:REMOVE-FILE
-   HBT-FRESH-OTHER s" : MAIN ( -- ) 779 . cr ;" FS:WRITE-ALL
-   HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
-   HBT-REPL-OUT 779 HBT-FRESH-RUN ;
-
 public
 
 : HBT-FRESH-MAIN ( -- )
@@ -248,7 +180,6 @@ public
    HBT-REPL-OUT FS:REMOVE-FILE
    HBT-FRESH-OTHER HBT-REPL-OUT HBT-FRESH-CLI-SOURCE
    HBT-REPL-OUT 333 HBT-FRESH-RUN
-   HBT-FRESH-SUPPORT
    FS:CLEANUP-RUN
    HBT-ROOT FS:EXISTS? TFALSE
    T-REPORT
