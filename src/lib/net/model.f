@@ -162,11 +162,12 @@ STRUCTURE ledger DERIVE addr
 CAST: >LEDGER ( ptr u8 -- ptr ledger )
 
 \ A chat's event stream: whether it delivered an event, whether the response
-\ ended, and the fault an error event named.
+\ ended, an error event's fault, and its first output's TIME:MONO-NS, 0 if none.
 STRUCTURE stream DERIVE addr
    FIELD heard bool
    FIELD done bool
    FIELD fault n
+   FIELD output-ns n
 ;STRUCTURE
 
 CAST: >STREAM ( ptr u8 -- ptr stream )
@@ -216,7 +217,9 @@ ROWS-HDR-AT BUF:HDR-BYTES + constant ROW-TEXT-HDR-AT
 ROW-TEXT-HDR-AT BUF:HDR-BYTES + constant CACHE-KEY-HDR-AT
 CACHE-KEY-HDR-AT BUF:HDR-BYTES + constant RESPONSE-ID-HDR-AT
 RESPONSE-ID-HDR-AT BUF:HDR-BYTES + constant CHUNK-HDR-AT
-CHUNK-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
+CHUNK-HDR-AT BUF:HDR-BYTES + constant EVENT-ROWS-HDR-AT
+EVENT-ROWS-HDR-AT BUF:HDR-BYTES + constant EVENT-TEXT-HDR-AT
+EVENT-TEXT-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
 COUNTS-AT TOKENS-BYTES + constant ACCOUNTS-AT
 ACCOUNTS-AT LEDGER-BYTES + constant EVENTS-AT
 EVENTS-AT STREAM-BYTES + constant DECODER-AT
@@ -224,6 +227,9 @@ DECODER-AT SSE:STORAGE-BYTES + constant HASH-AT
 \ A purpose row: the offset and length in the row text of its purpose, model,
 \ effort and service tier.
 8 cells constant ROW-BYTES
+\ An event row: the offset and length in the event text of an event type, and
+\ how many events of it the stream carried.
+3 cells constant EVENT-ROW-BYTES
 \ The row the call in progress uses, plus one, then a row being added.
 HASH-AT SHA256-CTX-BYTES + 96 + 7 + 7 invert and constant PICK-AT
 PICK-AT 1 cells + constant ROW-NEW-AT
@@ -269,7 +275,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base ROW-TEXT-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base CACHE-KEY-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base RESPONSE-ID-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
-   base CHUNK-HDR-AT + CELL-VIEW CHUNK-BYTES BUF:N>BLEN BUF:INIT ;
+   base CHUNK-HDR-AT + CELL-VIEW CHUNK-BYTES BUF:N>BLEN BUF:INIT
+   base EVENT-ROWS-HDR-AT + CELL-VIEW EVENT-ROW-BYTES BUF:N>BLEN BUF:INIT
+   base EVENT-TEXT-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT ;
 
 : DISPOSE-BUFFERS ( ptr u8 -- )
    {: base:ptr :}
@@ -306,7 +314,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base ROW-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base CACHE-KEY-HDR-AT + CELL-VIEW BUF:DISPOSE
    base RESPONSE-ID-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base CHUNK-HDR-AT + CELL-VIEW BUF:DISPOSE ;
+   base CHUNK-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base EVENT-ROWS-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base EVENT-TEXT-HDR-AT + CELL-VIEW BUF:DISPOSE ;
 
 : STORAGE ( ptr call -- SPAN:span<u8> )
    {: c :}
@@ -360,6 +370,9 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : PURPOSE-BUF ( ptr call -- ptr n ) PURPOSE-HDR-AT HEADER ;
 : ROWS-BUF ( ptr call -- ptr n ) ROWS-HDR-AT HEADER ;
 : ROW-TEXT-BUF ( ptr call -- ptr n ) ROW-TEXT-HDR-AT HEADER ;
+\ The event types the call's stream carried, one row each in first-seen order.
+: EVENT-ROWS-BUF ( ptr call -- ptr n ) EVENT-ROWS-HDR-AT HEADER ;
+: EVENT-TEXT-BUF ( ptr call -- ptr n ) EVENT-TEXT-HDR-AT HEADER ;
 : CACHE-KEY-BUF ( ptr call -- ptr n ) CACHE-KEY-HDR-AT HEADER ;
 \ The id of the call's response, empty until its reply names it.
 : RESPONSE-ID-BUF ( ptr call -- ptr n ) RESPONSE-ID-HDR-AT HEADER ;
@@ -439,6 +452,31 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    c ROW-COUNT 0 ?do
       i 0 c ROW$ a u STR= if i 1+ unloop exit then
    loop 0 ;
+
+: EVENT-ROW-COUNT ( ptr call -- n )
+   EVENT-ROWS-BUF BUF:LEN@ BUF:BLEN>N EVENT-ROW-BYTES / ;
+\ Cell k of event row idx.
+: EVENT-CELL ( n n ptr call -- ptr n )
+   {: idx:n k:n c :}
+   c EVENT-ROWS-BUF BUF:SPAN idx EVENT-ROW-BYTES * k cells + 1 cells SPAN:SUB
+   SPAN:$ drop CELL-VIEW ;
+: EVENT-TYPE$ ( n ptr call -- ptr u8 n )
+   {: idx:n c :}
+   c EVENT-TEXT-BUF BUF:SPAN idx 0 c EVENT-CELL @ idx 1 c EVENT-CELL @ SPAN:SUB
+   SPAN:$ ;
+\ Counts one event of the type, adding its row the first time it is seen.
+: COUNT-EVENT ( ptr u8 n ptr call -- )
+   {: a:ptr u:n c :}
+   c EVENT-ROW-COUNT {: rows:n :}
+   rows rows 0 ?do i c EVENT-TYPE$ a u STR= if drop i leave then loop {: idx:n :}
+   idx rows = if
+      c EVENT-TEXT-BUF BUF:LEN@ BUF:BLEN>N {: off:n :}
+      a u BUF:N>BLEN c EVENT-TEXT-BUF BUF:APPEND-SPAN
+      c EVENT-ROWS-BUF EVENT-ROW-BYTES BUF:N>BLEN BUF:GROW SPAN:$ drop CELL-VIEW
+      {: row:ptr :}
+      off row !  u row 1 cells + !  0 row 2 cells + !
+   then
+   1 idx 2 c EVENT-CELL +! ;
 
 : BUFFER$ ( ptr n -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
 \ The generation model, effort and tier: the purpose row's while the call in
@@ -2069,6 +2107,9 @@ private
    0 c STREAM STREAM-FAULT !
    false c STREAM STREAM-DONE !
    false c STREAM STREAM-HEARD !
+   0 c STREAM STREAM-OUTPUT-NS !
+   c EVENT-ROWS-BUF BUF:CLEAR
+   c EVENT-TEXT-BUF BUF:CLEAR
    true c MODEL-CALL:BUSY !
    false c MODEL-CALL:CANCELLED !
    0 c MODEL-CALL:CONTENT-U !
@@ -2182,8 +2223,8 @@ private
    c RESPONSE-ID$ nip 0= if c KEEP-ID then
    c RUNNING? 0= if true c STREAM STREAM-DONE ! then ;
 
-\ One event of the stream, its data a JSON object with a string type; the call's
-\ first event starts its reply afresh, and a keepalive is skipped.
+\ One event, its data a JSON object with a string type, counted by type; the
+\ call's first event starts its reply afresh, and a keepalive is skipped.
 : READ-EVENT ( ptr call ptr u8 n -- ptr call ptr u8 n )
    {: c a:ptr u:n :}
    c STREAM {: s :}
@@ -2195,6 +2236,12 @@ private
    a u c JSON-OBJECT? 0= if E-RESPONSE throw then
    a u s" type" c DATA-AT 0= if JSON:READ-CLOSE E-RESPONSE throw then
    JSON:READ-TOKEN JSON:T-STR <> if JSON:READ-CLOSE E-RESPONSE throw then
+   \ The span of a string token holds its bytes without the quotes.
+   JSON:READ-SPAN$ {: t:ptr t-u:n :}
+   t t-u c COUNT-EVENT
+   s STREAM-OUTPUT-NS @ 0= t t-u s" response.output_" STARTS-WITH? and if
+      TIME:MONO-NS s STREAM-OUTPUT-NS !
+   then
    s" keepalive" JSON:READ-STR-EQ? {: keepalive:bool :}
    s" error" JSON:READ-STR-EQ? {: failed:bool :}
    JSON:READ-CLOSE
@@ -2716,9 +2763,25 @@ private
    rc 0<> if rc CURL+ then ;
 
 
-\ One line for a failed call of kind 1 (chat) or 2 (embed): the model, the
-\ request URL, the response id once known, the code's name and what the call
-\ holds of its cause.
+\ The count of each event type the stream carried and how long after dispatch
+\ its first output event came; nothing when it carried none.
+: EVENTS+ ( ptr call -- )
+   {: c :}
+   c EVENT-ROW-COUNT {: rows:n :}
+   rows 0= if exit then
+   s" ; events" LOG:TEXT+
+   rows 0 ?do
+      s"  " LOG:TEXT+ i c EVENT-TYPE$ LOG:TEXT+
+      s" =" LOG:TEXT+ i 2 c EVENT-CELL @ LOG:INT+
+   loop
+   c STREAM STREAM-OUTPUT-NS @ {: at:n :}
+   at 0= if s" ; no output" LOG:TEXT+ exit then
+   s" ; first output after " LOG:TEXT+
+   at c LEDGER LEDGER-STARTED-NS @ - NS-PER-MS / LOG:INT+ s"  ms" LOG:TEXT+ ;
+
+
+\ One line for a failed call of kind 1 (chat) or 2 (embed): its model and URL,
+\ response id once known, the code's name and cause, and a chat stream's events.
 : REPORT ( n n ptr call -- )
    {: kind:n code:n c :}
    code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
@@ -2728,6 +2791,7 @@ private
    s"  " LOG:TEXT+ code CODE$ LOG:TEXT+
    code c REPLY+
    code c CAUSE+
+   c EVENTS+
    LOG:;LINE ;
 
 \ Logs a failure the provider or the transport caused: the request went out or

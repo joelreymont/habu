@@ -21,6 +21,7 @@ require src/lib/task.f
 require src/lib/test.f
 require src/lib/test/stderr.f
 require src/lib/test/wait.f
+require src/lib/time.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/model.f
@@ -552,6 +553,12 @@ $300000 constant BIG-U
    t t-u s" early-drop" STR= if
       r STREAM-OPEN s" keepalive" 0 EVENT-OPEN EVENT-CLOSE RAW-STREAM RAW-CLOSE exit
    then
+   \ A keepalive, resp_1's OPENING, a keepalive and then a drop.
+   t t-u s" twice-drop" STR= if
+      r STREAM-OPEN s" keepalive" 0 EVENT-OPEN EVENT-CLOSE s" resp_1" OPENING
+      s" keepalive" 2 EVENT-OPEN EVENT-CLOSE
+      RAW-STREAM RAW-CLOSE exit
+   then
    \ resp_1's PRELUDE and then a drop, before the response ends.
    t t-u s" id-drop" STR= if
       r STREAM-OPEN s" resp_1" PRELUDE RAW-STREAM RAW-CLOSE exit
@@ -793,7 +800,8 @@ variable JOURNAL-READY
 : M ( -- ptr MODEL:call ) 0 CALL ;
 : TRUE-CONTENT$ ( -- ptr u8 n ) S\" {\qanswer\q:true}" ;
 : CODE-OF ( n [ n -- n ] -- n ) catch {: code:n :} drop code ;
-: CHAT-CODE ( -- n ) M [: dup MODEL:CHAT 2drop ;] catch {: code:n :} drop code ;
+variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
+: CHAT-CODE ( -- n ) TIME:MONO-NS CHAT-NS ! M [: dup MODEL:CHAT 2drop ;] catch {: code:n :} drop code ;
 : EMBED-CODE ( -- n ) M [: dup MODEL:EMBED ;] catch {: code:n :} drop code ;
 : PREP ( ptr u8 n -- ) M MODEL:PARTS-RESET M MODEL:TEXT+ ;
 : INPUTS ( ptr u8 n -- ) M MODEL:INPUT-RESET M MODEL:INPUT+ ;
@@ -844,15 +852,19 @@ variable REFUSED-BASE-U
    line DATE:TIME-LEN + line-u DATE:TIME-LEN - want want-u STR= ;
 
 
-: LOGGED? ( ptr u8 n -- bool )
-   {: want:ptr want-u:n :}
+\ Whether a captured line, after its stamp, passes the test against the text.
+: LOGGED-BY? ( ptr u8 n [ ptr u8 n ptr u8 n -- bool ] -- bool )
+   {: want:ptr want-u:n pred :}
    LOG$ {: a:ptr u:n :}
    0 u 0 ?do
       a i + c@ LF = if
-         i over - over a swap + swap want want-u LINE? if drop true unloop exit then
+         i over - over a swap + swap want want-u pred execute if drop true unloop exit then
          drop i 1+
       then
    loop drop false ;
+
+
+: LOGGED? ( ptr u8 n -- bool ) [: LINE? ;] LOGGED-BY? ;
 
 
 \ SB holds a log line's text up to its code: ` <level> model: <kind> <model>
@@ -885,6 +897,27 @@ variable REFUSED-BASE-U
    SB$ LOGGED? dup 0= if SB$ type cr LOG$ type then ASSERT ;
 
 
+\ Whether a captured line, after its stamp, is the text, a count of at most the
+\ milliseconds since CHAT-CODE began and " ms".
+: MS-LINE? ( ptr u8 n ptr u8 n -- bool )
+   {: line:ptr line-u:n want:ptr want-u:n :}
+   line-u DATE:TIME-LEN - want-u - 3 - {: digits:n :}
+   digits 1 < if false exit then
+   line DATE:TIME-LEN + {: text:ptr :}
+   text want-u want want-u STR= 0= if false exit then
+   text want-u + digits + 3 s"  ms" STR= 0= if false exit then
+   0 digits 0 ?do
+      text want-u + i + c@ dup STR-DIGIT? 0= if 2drop false unloop exit then
+      [char] 0 - swap 10 * +
+   loop
+   TIME:MONO-NS CHAT-NS @ - 1000000 / <= ;
+
+
+\ SB-LOGGED for a line that ends with SB, a count of milliseconds and " ms".
+: SB-MS-LOGGED ( -- )
+   SB$ [: MS-LINE? ;] LOGGED-BY? dup 0= if SB$ type cr LOG$ type then ASSERT ;
+
+
 : CHAT-LOGGED ( ptr u8 n ptr u8 n -- )
    {: level:ptr level-u:n tail:ptr tail-u:n :}
    level level-u CHAT-LINE tail tail-u SB-APPEND SB-LOGGED ;
@@ -894,6 +927,18 @@ variable REFUSED-BASE-U
 : CHAT-ID-LOGGED ( ptr u8 n ptr u8 n -- )
    {: level:ptr level-u:n tail:ptr tail-u:n :}
    level level-u CHAT-ID-LINE tail tail-u SB-APPEND SB-LOGGED ;
+
+
+\ The event counts of a stream PRELUDE wrote.
+: PRELUDE-EVENTS$ ( -- ptr u8 n )
+   s" ; events response.created=1 response.in_progress=1 response.output_text.delta=1 keepalive=1" ;
+
+
+\ SB-MS-LOGGED for a stream STREAMED wrote, which ends with an event of the type.
+: STREAMED-LOGGED ( ptr u8 n -- )
+   {: type:ptr type-u:n :}
+   PRELUDE-EVENTS$ SB-APPEND s"  " SB-APPEND type type-u SB-APPEND
+   s" =1; first output after " SB-APPEND SB-MS-LOGGED ;
 
 
 \ The body logs no line.
@@ -975,10 +1020,11 @@ variable REFUSED-BASE-U
    s" refusal" MODEL:E-REFUSED FAILS
    s" error" CHAT-ID-LINE s" MODEL:E-REFUSED status 200 body: " SB-APPEND
    MODEL-PEER:REFUSAL$ SB-APPEND
-   SB-LOGGED
+   s" response.completed" STREAMED-LOGGED
    s" length" MODEL:E-INCOMPLETE FAILS
    M MODEL:INCOMPLETE-REASON$ s" max_output_tokens" STR= ASSERT
-   s" warn" s" MODEL:E-INCOMPLETE incomplete max_output_tokens" CHAT-ID-LOGGED
+   s" warn" CHAT-ID-LINE s" MODEL:E-INCOMPLETE incomplete max_output_tokens" SB-APPEND
+   s" response.incomplete" STREAMED-LOGGED
    s" filtered" MODEL:E-INCOMPLETE FAILS
    M MODEL:INCOMPLETE-REASON$ s" content_filter" STR= ASSERT
    s" long-finish" MODEL:E-INCOMPLETE FAILS
@@ -987,9 +1033,10 @@ variable REFUSED-BASE-U
    M MODEL:INCOMPLETE-REASON$ nip 0= ASSERT
    s" error" CHAT-ID-LINE s" MODEL:E-RESPONSE status 200 body: " SB-APPEND
    MODEL-PEER:BAD-CONTENT$ SB-APPEND
-   SB-LOGGED
+   s" response.completed" STREAMED-LOGGED
    s" failed-server" MODEL:E-UNAVAILABLE FAILS
-   s" error" s" MODEL:E-UNAVAILABLE status 200: The server had an error." CHAT-ID-LOGGED
+   s" error" CHAT-ID-LINE s" MODEL:E-UNAVAILABLE status 200: The server had an error." SB-APPEND
+   s" response.failed" STREAMED-LOGGED
    s" failed-size" MODEL:E-CAPACITY FAILS
    s" failed-other" MODEL:E-HTTP FAILS
    M MODEL:ERROR$ s" bad prompt" STR= ASSERT
@@ -997,7 +1044,9 @@ variable REFUSED-BASE-U
    M MODEL:ERROR$ s" The server had an error." STR= ASSERT
    s" error" CHAT-ID-LINE
    s" MODEL:E-UNAVAILABLE status 200: The server had an error. body: " SB-APPEND
-   MODEL-PEER:FLAT-ERROR$ SB-APPEND SB-LOGGED
+   MODEL-PEER:FLAT-ERROR$ SB-APPEND
+   s" ; events response.created=1 response.in_progress=1 error=1; no output" SB-APPEND
+   SB-LOGGED
    s" error-nested" MODEL:E-UNAVAILABLE FAILS
    M MODEL:ERROR$ s" The server had an error." STR= ASSERT
    s" big" PREP M MODEL:CHAT MODEL-PEER:BIG$ STR= ASSERT
@@ -1039,35 +1088,45 @@ variable REFUSED-BASE-U
    M MODEL:HTTP-STATUS 200 = ASSERT
    s" early-drop" MODEL:E-TRANSPORT FAILS
    s" error" CHAT-LINE s" MODEL:E-TRANSPORT curl 18: " SB-APPEND
-   18 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED
+   18 CURL:>CODE CURL:ERROR$ SB-APPEND s" ; events keepalive=1; no output" SB-APPEND
+   SB-LOGGED
    s" id-drop" MODEL:E-TRANSPORT FAILS
    s" error" CHAT-ID-LINE s" MODEL:E-TRANSPORT curl 18: " SB-APPEND
-   18 CURL:>CODE CURL:ERROR$ SB-APPEND SB-LOGGED
+   18 CURL:>CODE CURL:ERROR$ SB-APPEND
+   PRELUDE-EVENTS$ SB-APPEND s" ; first output after " SB-APPEND SB-MS-LOGGED
+   s" twice-drop" MODEL:E-TRANSPORT FAILS
+   s" error" CHAT-ID-LINE s" MODEL:E-TRANSPORT curl 18: " SB-APPEND
+   18 CURL:>CODE CURL:ERROR$ SB-APPEND
+   s" ; events keepalive=2 response.created=1 response.in_progress=1; no output" SB-APPEND
+   SB-LOGGED
    s" no-progress" MODEL:E-TRANSPORT FAILS
    s" error" s" chat test-generation" MODEL-PEER:BASE-URL$ s" /responses resp_quiet" SB-LINE
    S\" MODEL:E-TRANSPORT status 200 body: {\qid\q:\qresp_quiet\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}"
-   SB-APPEND SB-LOGGED ;
+   SB-APPEND s" ; events response.created=1; no output" SB-APPEND SB-LOGGED ;
 
 
 \ SB holds the log line's text up to its code; the line has the unusable
-\ reply's status 200 and the whole body.
-: BODY-LOGGED ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   s" MODEL:E-RESPONSE status 200 body: " SB-APPEND a u SB-APPEND SB-LOGGED ;
+\ reply's status 200, the whole body and then the tail.
+: BODY-LOGGED ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n tail:ptr tail-u:n :}
+   s" MODEL:E-RESPONSE status 200 body: " SB-APPEND a u SB-APPEND
+   tail tail-u SB-APPEND SB-LOGGED ;
 
 
 \ A reply the call cannot read is logged whole, an event that is not UTF-8 as
 \ its chunk with line feeds escaped.
 : UNREADABLE ( -- )
    s" plain-json" MODEL:E-RESPONSE FAILS
-   s" error" CHAT-LINE MODEL-PEER:PLAIN$ BODY-LOGGED
+   s" error" CHAT-LINE MODEL-PEER:PLAIN$ s" " BODY-LOGGED
    s" bad-type" MODEL:E-RESPONSE FAILS
-   s" error" CHAT-ID-LINE MODEL-PEER:BAD-TYPE$ BODY-LOGGED
+   s" error" CHAT-ID-LINE MODEL-PEER:BAD-TYPE$
+   s" ; events response.created=1 response.in_progress=1; no output" BODY-LOGGED
    s" no-id" MODEL:E-RESPONSE FAILS
-   s" error" CHAT-LINE MODEL-PEER:NO-ID$ BODY-LOGGED
+   s" error" CHAT-LINE MODEL-PEER:NO-ID$ s" ; events response.created=1; no output" BODY-LOGGED
    s" bad-utf8" MODEL:E-RESPONSE FAILS
    s" error" CHAT-ID-LINE
-   S\" event: response.created\\x0adata: {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qid\q:\qresp_1\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}}\\x0a\\x0adata: \xff\\x0a\\x0a" BODY-LOGGED ;
+   S\" event: response.created\\x0adata: {\qtype\q:\qresponse.created\q,\qsequence_number\q:0,\qresponse\q:{\qid\q:\qresp_1\q,\qstatus\q:\qqueued\q,\qoutput\q:[]}}\\x0a\\x0adata: \xff\\x0a\\x0a"
+   s" ; events response.created=1; no output" BODY-LOGGED ;
 
 
 \ A loopback port nothing listens on: bound, then closed.
