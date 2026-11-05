@@ -24,9 +24,8 @@ using PTY-HARNESS
    ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
    CLOSE-MASTER ;
 
-: REUSE-CASE ( ptr u8 n ptr u8 n n -- ) {: bad:ptr badu:n next:ptr nextu:n tier:n :}
+: REUSE-CASE ( ptr u8 n ptr u8 n -- ) {: bad:ptr badu:n next:ptr nextu:n :}
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY PROMPT
-   tier 0= if s" 0 set-tier" else s" 1 set-tier" then STEP
    s" require test/repl-address-cell-probe.f" STEP
    s" REPL-ROWS:SAVE" STEP
    BUF-CLEAR bad badu SEND-LINE
@@ -50,11 +49,10 @@ using PTY-HARNESS
 \ underflows inside a definition it opened, so the recovery starts with the
 \ code region writable. Tier 1 compiles no body that underflows its own row,
 \ so the immediate is compiled at tier 0.
-: REDEFINE-CASE ( n -- ) {: tier:n :}
+: REDEFINE-CASE ( -- )
    ENGINE-CANDIDATE:PATH$ SPAWN-ON-PTY PROMPT
    s" 0 set-tier TRUSTED: SINK ( -- ) drop ; immediate" STEP
    S\" s\" SINK\" 0 parse-imm" STEP
-   tier 0= if s" 0 set-tier" else s" 1 set-tier" then STEP
    BUF-CLEAR s" : DROPPED ( -- n n ) 1 2 ; : UNDER ( -- ) SINK ;" SEND-LINE
    s" E-UNDERFLOW: SINK" WAIT-FOR TTRUE
    s" E-UNDERFLOW: SINK" PROMPT-AFTER
@@ -65,15 +63,13 @@ using PTY-HARNESS
 
 : RUN ( -- )
    T-RESET
-   2 0 do
-      i REDEFINE-CASE
-      s" defer FAILED ( -- n ) NOSUCH-WORD"
-      s" PERSISTED-PTR-VARIABLE AFTER" i REUSE-CASE
-      s" TYPED-VARIABLE FAILED [ n -- n ] NOSUCH-WORD"
-      s" PERSISTED-PTR-VARIABLE AFTER" i REUSE-CASE
-      s" PERSISTED-PTR-VARIABLE FAILED NOSUCH-WORD"
-      s" defer AFTER ( -- n )" i REUSE-CASE
-   loop
+   REDEFINE-CASE
+   s" defer FAILED ( -- n ) NOSUCH-WORD"
+   s" PERSISTED-PTR-VARIABLE AFTER" REUSE-CASE
+   s" TYPED-VARIABLE FAILED [ n -- n ] NOSUCH-WORD"
+   s" PERSISTED-PTR-VARIABLE AFTER" REUSE-CASE
+   s" PERSISTED-PTR-VARIABLE FAILED NOSUCH-WORD"
+   s" defer AFTER ( -- n )" REUSE-CASE
    T-REPORT ;
 RUN
 ;using

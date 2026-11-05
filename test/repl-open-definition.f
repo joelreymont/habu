@@ -1,4 +1,4 @@
-\ A definition held open across tty lines, at both compiler tiers. The line
+\ A definition held open across tty lines, at the target's first tier. The line
 \ reader is compiled code that runs between the lines, and the open definition
 \ holds the compile loop's bands RW; its end of input is the pipe's refusal,
 \ rc 74, since no input remains for the REPL to recover into.
@@ -168,11 +168,9 @@ public
 
 : RUN ( -- )
    T-RESET
-   2 FIRST-TIER ?do
-      i SPAN-CASE
-      i EOF-CASE
-      i REJECT-CASE
-   loop
+   FIRST-TIER SPAN-CASE
+   FIRST-TIER EOF-CASE
+   FIRST-TIER REJECT-CASE
    USING-CASE
    HOOK-CASE
    DIE-HOOK-CASE

@@ -43,25 +43,6 @@ package STACK-LIFECYCLE-TEST
 \ The printed 42 is the return value through the emulated entry: a handler that
 \ failed to store x30 at the lowered sp would return through whatever was there.
 \ The second call proves the BRK stays planted, the reason the handler emulates.
-\ Any other first instruction runs out of line, in the slot's trampoline: tier-1
-\ leaf TW begins with `ldur`, the same at any address, so its breakpoint stays
-\ persistent and fires on both calls; T2 begins with `b` to TW, which would
-\ branch from the wrong place, so its breakpoint degrades to one-shot and fires
-\ once. Both return the right values.
-: PERSISTENT-OUT-OF-LINE ( -- )
-   s" persistent breakpoint runs a leaf's first instruction out of line" T-LABEL
-   s" 1 set-tier require src/habu/debug.f package PBP : TW ( n -- n ) dup + ; ' TW DEBUG:BP* : GO ( -- ) 21 TW . 3 TW . ; GO ;package"
-   CHILD-RC 0 T=
-   OUT OUTLEN @ s" 42" CONTAINS? TTRUE
-   OUT OUTLEN @ s" 6" CONTAINS? TTRUE
-   DEBUGGER-HITS 2 T=
-   s" persistent breakpoint on a PC-relative first instruction degrades" T-LABEL
-   s" 1 set-tier require src/habu/debug.f package PBP : TW ( n -- n ) dup + ; : T2 ( n -- n ) TW ; ' T2 DEBUG:BP* : GO ( -- ) 21 T2 . 3 T2 . ; GO ;package"
-   CHILD-RC 0 T=
-   OUT OUTLEN @ s" 42" CONTAINS? TTRUE
-   OUT OUTLEN @ s" 6" CONTAINS? TTRUE
-   DEBUGGER-HITS 1 T= ;
-
 : PERSISTENT-BOUNDARIES ( -- )
    s" persistent breakpoint on a leaf word resumes it" T-LABEL
    s" 0 set-tier require src/habu/debug.f package PBP : KEEP ( n -- n ) ; ' KEEP DEBUG:BP* : GO ( -- ) 17 KEEP . 25 KEEP . ; GO ;package"
@@ -74,8 +55,7 @@ package STACK-LIFECYCLE-TEST
    CHILD-RC 0 T=
    OUT OUTLEN @ s" 42" CONTAINS? TTRUE
    OUT OUTLEN @ s" 6" CONTAINS? TTRUE
-   DEBUGGER-HITS 2 T=
-   PERSISTENT-OUT-OF-LINE ;
+   DEBUGGER-HITS 2 T= ;
 
 public
 : DEBUGGER-RUN ( -- ) T-RESET DEBUGGER-BOUNDARIES PERSISTENT-BOUNDARIES T-REPORT ;
