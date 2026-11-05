@@ -3,13 +3,16 @@
 \ same after a snapshot restore and an mmap one does not. Tier 1 interns through
 \ src/compiler/native/elaborate.f EMIT-STRING, tier 0 through
 \ NSTR-ABI:INTERN-CELL (set when this file loads); fetch descriptors
-\ (src/compiler/native/fetch.f KEEP) are bodies under the same rule.
+\ (src/compiler/native/fetch.f KEEP) are bodies under the same rule. A build's
+\ data space keeps its strings at `here` ("a build's data space" below).
 
 require src/lib/prelude.f
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/memory.f
+require src/lib/image-lifecycle.f
 require src/habu/layout.f
+require src/habu/boot-cells.f
 
 package INTERN
 private
@@ -182,14 +185,18 @@ variable SOURCE-ON
    loop ;
 
 \ ---- finding a body that is already here --------------------------------------
-\ FNV-1a, masked by an `and` against a positive constant so a hash whose top bit
-\ ran into the sign still lands inside the table.
-: HASH ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ FNV-1a; the top bit can run into the sign.
+: FNV ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    $811C9DC5 HV !
    u 0 ?do
       a i + c@ HV @ xor  $1000193 *  HV !
    loop
-   HV @ SLOTS 1- and ;
+   HV @ ;
+
+\ Masked by an `and` against a positive constant so a hash whose top bit ran
+\ into the sign still lands inside the table.
+: HASH ( ptr u8 n -- n ) FNV SLOTS 1- and ;
 
 : PROBE-NEXT ( -- )
    PROBE @ 1+ SLOTS 1- and PROBE ! ;
@@ -217,6 +224,100 @@ variable SOURCE-ON
 
 : SLOT-CLEAR ( -- )
    SLOTS 0 ?do 0 i cells SLOT + ! loop ;
+
+\ ---- a build's data space ------------------------------------------------------
+\ Open while BOOT:IMAGE-BASE-CELL is nonzero (boot-cells.f says when it is 0); a
+\ task's region starts at 0. The table grows, so it is mapped outside DATA.
+variable SPACE-IMAGE     \ the image base the table serves, 0 for no table
+variable SPACE-TABLE     \ the slots' address, as its distance from NULL-PTR
+variable SPACE-SLOTS     \ a power of two
+variable SPACE-FILLED
+SPACE-IMAGE IMAGE-LIFECYCLE:PROCESS-CELL
+SPACE-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
+1024 constant FIRST-SLOTS
+
+: IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
+: SPACE? ( -- bool ) IMAGE-BASE 0<> ;
+
+: CELL-AT ( n n -- ptr n )
+   {: base:n k:n :}
+   NULL-PTR BYTE-VIEW base + k cells + CELL-VIEW ;
+
+: SLOT-CELL ( n -- ptr n ) SPACE-TABLE @ swap CELL-AT ;
+
+\ A slot holds a body's address, 0 when empty; the length is the cell before it.
+: BODY$ ( n -- ptr u8 n )
+   {: body:n :}
+   NULL-PTR BYTE-VIEW body +
+   body CELL - 0 CELL-AT @ ;
+
+: SLOT-ENDS? ( ptr u8 n n -- bool )
+   {: a:ptr u:n k:n :}
+   k SLOT-CELL @ {: body:n :}
+   body 0= if true exit then
+   body BODY$ a u STR= ;
+
+\ The slot holding the body equal to a u, else the empty slot it goes in: one
+\ exists, since the table is never more than half full (SPACE-ADD).
+: SPACE-SLOT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u FNV SPACE-SLOTS @ 1- and
+   begin dup a u rot SLOT-ENDS? 0= while 1+ SPACE-SLOTS @ 1- and repeat ;
+
+: SLOT-PUT ( n -- )
+   {: body:n :}
+   body  body BODY$ SPACE-SLOT SLOT-CELL ! ;
+
+: TABLE-MAP ( n -- n ) MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS NULL-PTR - ;
+
+: TABLE-RELEASE ( n n -- )
+   {: base:n slots:n :}
+   base 0 CELL-AT slots MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS ;
+
+: SPACE-RELEASE ( -- )
+   SPACE-IMAGE @ 0= if exit then
+   SPACE-TABLE @ SPACE-SLOTS @ TABLE-RELEASE
+   0 SPACE-TABLE !  0 SPACE-IMAGE ! ;
+
+: SPACE-OPEN ( -- )
+   SPACE-RELEASE
+   FIRST-SLOTS TABLE-MAP SPACE-TABLE !
+   FIRST-SLOTS SPACE-SLOTS !  0 SPACE-FILLED !
+   IMAGE-BASE SPACE-IMAGE ! ;
+
+: SPACE-GROW ( -- )
+   SPACE-TABLE @ {: old:n :}
+   SPACE-SLOTS @ {: slots:n :}
+   slots 2 * TABLE-MAP SPACE-TABLE !
+   slots 2 * SPACE-SLOTS !
+   slots 0 ?do
+      old i CELL-AT @ dup 0<> if SLOT-PUT else drop then
+   loop
+   old slots TABLE-RELEASE ;
+
+\ One `allot` checks the bounds and zeroes before the copy; no `,`, so the
+\ length cell never joins a created body's cell grid (BCOMMA).
+: SPACE-ADD ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   SPACE-FILLED @ 1+ 2 * SPACE-SLOTS @ > if SPACE-GROW then
+   align here NULL-PTR - {: head:n :}
+   CELL u + allot
+   u head 0 CELL-AT !
+   head CELL + {: address:n :}
+   a  NULL-PTR BYTE-VIEW address +  u BYTE-COPY
+   address SLOT-PUT
+   1 SPACE-FILLED +!
+   address ;
+
+\ The refusal comes before any lookup: a found address may sit above a lowered
+\ DP.
+: SPACE-STRING ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   data-base DPHW-CELL + @ 0<> if E-INTERN-REWIND throw then
+   SPACE-IMAGE @ IMAGE-BASE <> if SPACE-OPEN then
+   a u SPACE-SLOT SLOT-CELL @ {: body:n :}
+   body 0<> if body exit then
+   a u SPACE-ADD ;
 
 \ ---- putting one in ------------------------------------------------------------
 \ The last segment cannot take the body: open the pool's next one behind it. A
@@ -359,8 +460,11 @@ public
    ROLE-CLOSED ACTIVE-P @ ROLE-FIELD ! ;
 
 \ `s" "` is a body: it gets a row and an address like any other.
-: STRING ( ptr u8 n -- n ) {: a:ptr u:n :}
+: STRING ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
+   SPACE? if a u SPACE-STRING u SOURCE-RECORD exit then
+   SPACE-RELEASE
    a u FIND {: k:n :}
    k 0 >= if BASE k ROW-OFF + u SOURCE-RECORD exit then
    a u ADD {: row:n :}
