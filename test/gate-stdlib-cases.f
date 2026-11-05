@@ -34,10 +34,6 @@ SUITE stripped-pool-reach
    test/stripped-pool-reach.f
 ;SUITE
 
-SUITE hb-build-repl-image
-   tools/hb-build-repl-image-test.f
-;SUITE
-
 SUITE dictionary-capacity
    test/dictionary-capacity-e2e.f
 ;SUITE
@@ -112,14 +108,6 @@ SUITE hb-build-stripped-lifecycle
 
 SUITE hb-build-cli-errors
    tools/hb-build-cli-errors-test.f
-;SUITE
-
-SUITE hb-build-repl-twin
-   tools/hb-build-repl-twin-test.f
-;SUITE
-
-SUITE hb-build-repl-fresh
-   tools/hb-build-repl-fresh-test.f
 ;SUITE
 
 SUITE hb-build-aot

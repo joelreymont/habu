@@ -435,9 +435,8 @@ private
    idx LIB-CHECK
    value idx LIB-FAILED-OFF LIB-FIELD ! ;
 
-\ The register, spill, dlopen/dlsym and length buffers keep the last call's
-\ values, which made two --repl builds of one program differ
-\ (tools/hb-build-repl-twin-test.f). Kernel params stay until FFI-KPARAM-RESET.
+\ Clears a staged buffer (registers, spills, dlopen/dlsym, lengths) so two builds
+\ of one program match; kernel params stay until FFI-KPARAM-RESET.
 : FORGET-STAGED ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 ?do 0 a i + c! loop ;
 

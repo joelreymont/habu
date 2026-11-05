@@ -78,10 +78,8 @@ BIND-ADD
 
 public
 
-\ RUN's last line is the tier it loaded at. tools/hb-build-test-lib.f
-\ HBT-SUBJECT-OUT holds the output; tools/hb-build-aot-test.f BUILD-AOT-TIERS
-\ and tools/hb-build-repl-image-test.f HBT-REPL-TIER-PROGRAM build it at both
-\ tiers.
+\ RUN's last line is the tier it loaded at; tools/hb-build-aot-test.f
+\ BUILD-AOT-TIERS builds it at both tiers and checks HBT-SUBJECT-OUT.
 : RUN ( -- )
    GRID . cr
    20 FIRST-OVER . cr

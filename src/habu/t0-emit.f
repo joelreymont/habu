@@ -116,7 +116,7 @@ variable SLOT-AT                      \ the patch slot's offset, or -1
 variable STUB-AT                      \ the callback stub's offset once stamped, or -1
 
 \ The emission's phase: shut from EMIT-SEAL to EMIT-OPEN, open from EMIT-OPEN,
-\ placed from EMIT-PLACE, and only these three words write it (SEALING).
+\ placed from EMIT-PLACE; only these three words write it.
 ENUM emission shut open placed ;ENUM
 TYPED-VARIABLE PHASE emission
 variable PLACED-AT                    \ the placed address while placed
@@ -524,17 +524,9 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    a CUR-ARCH ! ;
 
 \ ---- sealing -----------------------------------------------------------------
-\ SEALING. A placed emission seals at n, the address EMIT-PLACE gave, where
-\ EMIT-PATCH writes every call row's displacement and every quotation address
-\ as n plus the unit's offset, because publication
-\ (src/compiler/native/publish.f) only copies the bytes and records
-\ relocations. An open one seals unplaced, its bytes as the emitter wrote them,
-\ the form src/habu/aot-shadow.f reads. EMIT-SEAL shuts the emission and clears
-\ PLACED-AT before anything can throw, so no image carries the compiling
-\ process's code address (tools/hb-build-repl-twin-test.f). It opens NEMIT with
-\ no trailing return, so the record is the emission's whole span, and files a
-\ quotation's row as NEMIT:ADDR-CODE. EMIT-SEAL-UNPLACED seals an open emission
-\ unplaced and leaves it open, so EMIT-PLACE and EMIT-SEAL still follow.
+\ A placed seal patches addresses as EMIT-PLACE's address plus the unit's
+\ offset, since publish.f only copies bytes; an unplaced one keeps the bytes
+\ aot-shadow.f reads.
 \
 \ THE CALLBACK STUB. While NCBSTUB (src/compiler/native/callback-stub.f) is
 \ armed, the emission's first seal has the emitter append tier 1's stub after
@@ -564,6 +556,7 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    stub STUB-AT !
    stub ;
 
+\ No trailing return, so the record spans the whole emission.
 : NEMIT-OPEN ( -- ) EMIT-BYTES 0 CUR-ARCH @ NEMIT:OPEN ;
 
 : NEMIT-ROWS ( n -- ) {: stub:n :}
@@ -593,6 +586,8 @@ ARCHES TYPED-BUFFER EMIT-LOOP-CLOSE-XT [ -- ]
    NEMIT-OPEN
    stub NEMIT-ROWS ;
 
+\ Shuts and clears PLACED-AT before anything can throw, so no image carries
+\ this process's code address.
 : EMIT-SEAL ( -- )
    PHASE @ {: phase:emission :}
    PLACED-AT @ {: at:n :}

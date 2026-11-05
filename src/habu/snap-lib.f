@@ -170,10 +170,8 @@ PTR-VARIABLE SNC-A
    snap-rebase ;
 
 
-\ Live-state cells in DATA (ASLR text base, stack, argv, cached label addresses) differ per run
-\ and are rewritten by habu2.f EM-SNAPSHOT-RESTORE and EM-STARTUP-RUNTIME-STATE; they are zeroed
-\ in the copy. tools/hb-build-repl-twin-test.f builds one program twice and compares the images,
-\ so a live cell missing here fails that row.
+\ Live-state cells in DATA (ASLR text base, stack, argv, label addresses) are zeroed in the copy so
+\ two builds of one program match; habu2.f EM-SNAPSHOT-RESTORE and EM-STARTUP-RUNTIME-STATE refill them.
 PTR-VARIABLE SND-A
 
 : SND-PTR ( -- ptr u8 ) SND-A @ ;
