@@ -1250,6 +1250,30 @@ variable REFUSED-BASE-U
    1 M MODEL:VECTOR@ s" [0.4,0.5,0.6]" STR= ASSERT ;
 
 
+\ Finishes the request for `text` with JOURNAL-INPUT$.
+: PREPARE ( ptr u8 n -- ) PREP M MODEL:JOURNAL-INPUT$ 2drop ;
+
+
+\ With no journal, CHAT sends the request JOURNAL-INPUT$ finished once and
+\ consumes it: a second CHAT has no request and is E-STATE. EMBED, PURPOSE! and
+\ SYSTEM! discard a finished request, so the CHAT after them is E-STATE too.
+: PREPARED-CHAT ( -- )
+   MODEL-PEER:CALLS@ {: before:n :}
+   s" valid" PREPARE
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   s" valid" PREPARE
+   s" x" INPUTS M MODEL:EMBED
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   s" valid" PREPARE
+   s" assemble" M MODEL:PURPOSE!
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   s" valid" PREPARE
+   s" Read source evidence." M MODEL:SYSTEM!
+   CHAT-CODE MODEL:E-STATE = ASSERT ;
+
+
 : BAD-VECTORS ( -- )
    s" wrong-dims" INPUTS
    EMBED-CODE MODEL:E-RESPONSE = ASSERT
@@ -1758,6 +1782,60 @@ variable KEYLESS-U
    PURPOSE s" too-large" E-RECORDER FAILS ;
 
 
+create ASKED 32768 allot    \ the journal input JOURNAL-INPUT$ last answered
+variable ASKED-U
+: ASKED$ ( -- ptr u8 n ) ASKED ASKED-U @ ;
+\ Finishes the request for `text` and keeps the journal input it answers.
+: ASK ( ptr u8 n -- )
+   PREP M MODEL:JOURNAL-INPUT$ {: a:ptr u:n :}
+   a u ASKED 32768 SPAN:MAKE SPAN:COPY u ASKED-U ! ;
+: REPLAYED ( ptr MODEL:call -- ptr MODEL:call ) {: c :} RECORD$ c MODEL:REPLAY 2drop c ;
+: REPLAY-CODE ( -- n ) M [: REPLAYED ;] catch {: code:n :} drop code ;
+: ADD-TEXT ( ptr MODEL:call -- ptr MODEL:call ) {: c :} s" x" c MODEL:TEXT+ c ;
+
+
+\ A caller that looks its journal up itself reads the journal input of the
+\ finished request with no request sent, then either sends exactly that
+\ request with CHAT or restores a saved record with REPLAY, which sends and
+\ records nothing and restores the call id the record was saved from. The
+\ pending purpose's row reaches that input. REPLAY needs a request
+\ JOURNAL-INPUT$ finished and not yet consumed or discarded by a builder.
+: CALLER-JOURNAL ( -- )
+   CAPTURE
+   MODEL-PEER:CALLS@ {: before:n :}
+   PURPOSE s" valid" ASK
+   MODEL-PEER:CALLS@ before = ASSERT
+   M MODEL:JOURNAL-INPUT$ ASKED$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   INPUT$ ASKED$ STR= ASSERT
+   M MODEL:CALL-ID {: id:n :}
+   ROWS-MADE @ {: rows:n :}
+   MODEL-PEER:CALLS@ {: calls:n :}
+   PURPOSE s" valid" ASK
+   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ rows = ASSERT
+   M MODEL:CALL-ID id = ASSERT
+   M [: dup MODEL:JOURNAL-INPUT$ 2drop ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
+   PURPOSE s" valid" PREP
+   REPLAY-CODE MODEL:E-STATE = ASSERT
+   PURPOSE s" valid" ASK
+   M [: ADD-TEXT ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
+   REPLAY-CODE MODEL:E-STATE = ASSERT
+   s" reason" s" test-generation" s" low" s" " M MODEL:PURPOSE-MODEL!
+   s" reason" M MODEL:PURPOSE! s" valid" ASK
+   ASKED$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY ASSERT s" low" STR-IS
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   s" effort" ROW s" low" STR-IS
+   \ A saved refusal replays as the refusal, with no request and no line.
+   PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
+   MODEL-PEER:CALLS@ {: refused:n :}
+   PURPOSE s" too-large" ASK
+   [: REPLAY-CODE MODEL:E-CAPACITY = ASSERT ;] QUIET
+   MODEL-PEER:CALLS@ refused = ASSERT ;
+
+
 \ Both producer configurations name this base.
 : BASE-IS ( ptr u8 n -- )
    {: want:ptr want-u:n :}
@@ -1898,10 +1976,10 @@ variable KEYLESS-U
    STOP-BETWEEN
    M MODEL:CLOSE
    SETUP
-   CHAT EMBEDDINGS
+   CHAT EMBEDDINGS PREPARED-CHAT
    STOP-ACTIVE
    M MODEL:CLOSE
-   SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT
+   SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS
    M MODEL:CLOSE

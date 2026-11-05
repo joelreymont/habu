@@ -30,6 +30,9 @@ require src/lib/time.f
 \ before HTTP calls and keeps model work outside PostgreSQL transactions. No
 \ API key reaches a request body, response, error, log line or producer record:
 \ a key is read only into the HTTP header, which is wiped once libcurl copies it.
+\ A caller that looks its journal up itself, such as on another task, finishes
+\ the request with JOURNAL-INPUT$, looks that input up, then sends the request
+\ with CHAT or restores the saved record with REPLAY.
 
 package MODEL
 
@@ -62,7 +65,8 @@ public
 -9709 constant E-CANCELLED
 \ A word out of turn: an unopened or busy call, settings closed or opened
 \ twice, a part added before PARTS-RESET or after a failed builder, VECTOR@
-\ before EMBED, or a recorded call without a purpose.
+\ before EMBED, REPLAY without JOURNAL-INPUT$, or a recorded call without a
+\ purpose.
 -9710 constant E-STATE
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
 \ response's error code rate_limit_exceeded or server_error.
@@ -121,6 +125,7 @@ STRUCTURE call DERIVE addr
    FIELD journal-put [ n ptr u8 n ptr u8 n -- ]
    FIELD journal-ready bool
    FIELD replay-kind n
+   FIELD prepared bool
 ;STRUCTURE
 
 private
@@ -479,8 +484,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    1 idx 2 c EVENT-CELL +! ;
 
 : BUFFER$ ( ptr n -- ptr u8 n ) BUF:SPAN$ BUF:BLEN>N ;
-\ The generation model, effort and tier: the purpose row's while the call in
-\ progress, or the last one, has one, else the call's own.
+\ The generation model, effort and tier: the purpose row's when the latest call
+\ or JOURNAL-INPUT$ selected one, else the call's own.
 : GEN$ ( ptr call -- ptr u8 n )
    {: c :}
    c PICK-CELL @ {: r:n :}
@@ -511,7 +516,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : BASE-URL$ ( ptr call -- ptr u8 n ) BASE-URL-BUF BUFFER$ ;
 : GEN-CONFIG$ ( ptr call -- ptr u8 n ) GEN-CONFIG-BUF BUFFER$ ;
 : EMBED-CONFIG$ ( ptr call -- ptr u8 n ) EMBED-CONFIG-BUF BUFFER$ ;
-: JOURNAL-INPUT$ ( ptr call -- ptr u8 n ) JOURNAL-INPUT-BUF BUFFER$ ;
+: JOURNAL-INPUT-SPAN$ ( ptr call -- ptr u8 n ) JOURNAL-INPUT-BUF BUFFER$ ;
 : JOURNAL-RECORD$ ( ptr call -- ptr u8 n ) JOURNAL-RECORD-BUF BUFFER$ ;
 : JOURNAL-OUT$ ( ptr call -- ptr u8 n ) JOURNAL-OUT-BUF BUFFER$ ;
 : REPLAY-CONTENT$ ( ptr call -- ptr u8 n ) REPLAY-CONTENT-BUF BUFFER$ ;
@@ -523,6 +528,11 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    {: c :}
    c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
    c MODEL-CALL:BUSY @ if E-STATE throw then ;
+
+\ Drops the finished request; JOURNAL-INPUT$ names the words that discard it.
+: UNPREPARE ( ptr call -- )
+   {: c :}
+   false c MODEL-CALL:PREPARED ! ;
 
 : REPLACE-SOME ( ptr u8 n ptr n -- )
    {: a:ptr u:n buf:ptr :}
@@ -578,6 +588,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false c MODEL-CALL:EMBEDDED !
    false c MODEL-CALL:JOURNAL-READY !
    0 c MODEL-CALL:REPLAY-KIND !
+   false c MODEL-CALL:PREPARED !
    0 c PICK-CELL !
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
@@ -696,6 +707,7 @@ public
 : PURPOSE! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    a u PURPOSE? 0= if E-CONFIG throw then
    a u BUF:N>BLEN c PURPOSE-BUF BUF:REPLACE
    u c LEDGER LEDGER-PENDING-U ! ;
@@ -713,6 +725,7 @@ public
 : BASE-URL! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    u 0<> if a u BASE-URL? 0= if E-CONFIG throw then then
    0 c MODEL-CALL:REPLAY-KIND !
    u 0= if c BASE-URL-BUF BUF:CLEAR exit then
@@ -721,6 +734,7 @@ public
 : GENERATION-MODEL! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    a u c GEN-BUF REPLACE-SOME
    c MODEL-CALL:REPLAY-KIND @ 1 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
 
@@ -729,6 +743,7 @@ public
 : EFFORT! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    u 0= if c EFFORT-BUF BUF:CLEAR else a u c EFFORT-BUF REPLACE-SOME then
    c MODEL-CALL:REPLAY-KIND @ 1 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
 
@@ -738,6 +753,7 @@ public
 : CACHE-KEY! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    u 0= if c CACHE-KEY-BUF BUF:CLEAR else a u c CACHE-KEY-BUF REPLACE-SOME then ;
 
 \ The service tier every generation request without a purpose row names,
@@ -747,6 +763,7 @@ public
 : SERVICE-TIER! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    u 0= if c TIER-BUF BUF:CLEAR else a u c TIER-BUF REPLACE-SOME then ;
 
 \ The generation model, effort and service tier of every later call for the
@@ -756,6 +773,7 @@ public
 : PURPOSE-MODEL! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr call -- )
    {: p:ptr p-u:n m:ptr m-u:n e:ptr e-u:n t:ptr t-u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    p p-u PURPOSE? 0= if E-CONFIG throw then
    m-u 0 <= e-u 0< or t-u 0< or if E-CONFIG throw then
    p p-u c ROW-OF 0<> if E-CONFIG throw then
@@ -794,11 +812,13 @@ public
 : SYSTEM! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    a u c SYSTEM-BUF REPLACE-SOME ;
 
 : SCHEMA! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    a u c SCHEMA-BUF REPLACE-SOME ;
 
 \ Model settings a host files in the native credential store under one
@@ -1053,6 +1073,7 @@ public
 : PARTS-RESET ( ptr call -- )
    {: c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    0 c MODEL-CALL:HTTP-STATUS !
    c PARTS-BUF c RESET-SCRATCH
    c JOURNAL-PARTS-BUF c RESET-SCRATCH
@@ -1064,6 +1085,7 @@ public
 : TEXT+ ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
    c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
    false c MODEL-CALL:PARTS-VALID !
@@ -1108,6 +1130,7 @@ public
 : IMAGE+ ( ptr u8 n ptr u8 n ptr call -- )
    {: mime:ptr mu:n data:ptr du:n c :}
    c REQUIRE-IDLE
+   c UNPREPARE
    c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
    c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
    mime mu IMAGE-MIME? 0= if E-CONFIG throw then
@@ -1180,9 +1203,10 @@ private
    {: c :}
    c WRITER JSON:WRITE-CLOSE ;
 
-: CHAT-BODY ( ptr call -- )
-   {: c :}
-   c MODEL-CALL:JOURNAL-READY @ 0= if
+\ finished: the request was finished before the call.
+: CHAT-BODY ( bool ptr call -- )
+   {: finished:bool c :}
+   finished 0= if
       c CHECK-CHAT
       c PART-FINISH
    then
@@ -2348,9 +2372,9 @@ private
    s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
    c ;
 
-: RUN-CHAT ( ptr call -- ptr call )
-   {: c :}
-   c CHAT-BODY
+: RUN-CHAT ( bool ptr call -- ptr call )
+   {: finished:bool c :}
+   finished c CHAT-BODY
    true c MODEL-CALL:ENDPOINT !
    c [: FOLLOW ;] SEND
    c PARSE-USAGE
@@ -2372,7 +2396,7 @@ private
 : JOURNAL-GET? ( ptr call -- bool )
    {: c :}
    c JOURNAL-OUT-BUF c RESET-SCRATCH
-   c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT$
+   c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-OUT-BUF c MODEL-CALL:JOURNAL-GET @ execute ;
 
 : JOURNAL-FIELD ( ptr u8 n ptr call -- ptr u8 n )
@@ -2602,6 +2626,11 @@ private
    l LEDGER-CALL-ID !
    c ;
 
+\ The row of the purpose PURPOSE! left pending, plus one; 0 is none.
+: PENDING-ROW ( ptr call -- n )
+   {: c :}
+   c PURPOSE-BUF HELD c LEDGER LEDGER-PENDING-U @ SPAN:TAKE SPAN:$ c ROW-OF ;
+
 \ A call starts: its pending purpose becomes its label, required when a
 \ recorder is installed, and selects the purpose's row. A fault before it
 \ sends reports no HTTP status, as PARTS-RESET and INPUT-RESET ensure for the
@@ -2613,8 +2642,8 @@ private
    c LEDGER {: l :}
    l LEDGER-PENDING-U @ {: u:n :}
    u l LEDGER-LABEL-U !
+   c PENDING-ROW c PICK-CELL !
    0 l LEDGER-PENDING-U !
-   c LABEL$ c ROW-OF c PICK-CELL !
    false l LEDGER-DISPATCHED !
    0 l LEDGER-CALL-ID !
    0 l LEDGER-FAULT !
@@ -2638,7 +2667,7 @@ private
 : JOURNAL-PUT ( n ptr call -- )
    {: kind:n c :}
    kind c JOURNAL-RECORD
-   c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT$
+   c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 
 \ Whether the provider's reply refused the request for its size or did not
@@ -2652,7 +2681,7 @@ private
       s" incomplete" then JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE
-   c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT$
+   c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 
 \ Journals a live refusal so a replay meets it at the same step and asks for
@@ -2676,10 +2705,10 @@ private
    c CHECK-EMBED
    c JOURNAL-EMBED-INPUT ;
 
-: RUN-CHAT-SELECT ( ptr call bool -- ptr call bool )
-   {: c hit:bool :}
-   hit if 1 c JOURNAL-RESTORE else c RUN-CHAT drop then
-   c hit ;
+: RUN-CHAT-SELECT ( ptr call bool bool -- ptr call bool bool )
+   {: c finished:bool hit:bool :}
+   hit if 1 c JOURNAL-RESTORE else finished c RUN-CHAT drop then
+   c finished hit ;
 
 : RUN-EMBED-SELECT ( ptr call bool -- ptr call bool )
    {: c hit:bool :}
@@ -2785,6 +2814,22 @@ private
    l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if exit then
    kind code c REPORT ;
 
+\ Sends the request, finishing it unless it was finished, or on a hit restores
+\ the journal record in JOURNAL-OUT-BUF, and answers the reply's content.
+: CALL-CHAT ( bool bool ptr call -- ptr u8 n )
+   {: finished:bool hit:bool c :}
+   0 c MODEL-CALL:INPUT-TOKENS !
+   0 c MODEL-CALL:CACHED-TOKENS !
+   c BEGIN-CALL
+   c finished hit [: RUN-CHAT-SELECT ;] catch {: code:n :} 2drop drop
+   c END-CALL {: cancelled:bool :}
+   1 code cancelled c END-LEDGER {: recorded:n :}
+   cancelled if E-CANCELLED throw then
+   code 0<> if 1 code c REPORT-FAILURE 1 code hit c JOURNAL-REFUSAL code throw then
+   c MODEL-CALL:JOURNAL-READY @ hit 0= and if 1 c JOURNAL-PUT then
+   recorded 0<> if recorded throw then
+   c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
+
 public
 
 \ Ends a busy call with E-CANCELLED at once and answers whether one was busy;
@@ -2807,29 +2852,58 @@ public
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> code CURL:E-STATE <> and if code throw then ;
 
+\ Finishes the chat request built since PARTS-RESET as CHAT does before its
+\ journal lookup and answers the journal input a journal's get and put receive
+\ for it, valid until the next JOURNAL-INPUT$, CHAT, EMBED or CLOSE. The
+\ pending purpose selects the model and effort as at CHAT, so PURPOSE! comes
+\ first. A second call answers the same input. The next CHAT sends that
+\ request, or REPLAY restores a saved reply for it. A call that changes the chat
+\ request (PARTS-RESET, TEXT+, IMAGE+, PURPOSE!, PURPOSE-MODEL! and the
+\ generation model, base URL, system, schema, effort, service tier and cache
+\ key setters) or EMBED first discards it, and the request is built again from
+\ PARTS-RESET.
+: JOURNAL-INPUT$ ( ptr call -- ptr u8 n )
+   {: c :}
+   c REQUIRE-IDLE
+   c MODEL-CALL:PREPARED @ 0= if
+      c PENDING-ROW c PICK-CELL !
+      c PREP-JOURNAL-CHAT
+      true c MODEL-CALL:PREPARED !
+   then
+   c JOURNAL-INPUT-SPAN$ ;
+
 \ A journal hit replays the recorded reply; otherwise one streaming request is
-\ read event by event until the response ends.
+\ read event by event until the response ends. It sends the request
+\ JOURNAL-INPUT$ finished, else finishes the one built since PARTS-RESET.
 : CHAT ( ptr call -- ptr u8 n )
    {: c :}
+   c MODEL-CALL:PREPARED @ {: ready:bool :}
+   c UNPREPARE
    c START-LEDGER
-   c MODEL-CALL:JOURNAL-READY @ if
-      c PREP-JOURNAL-CHAT
-      c JOURNAL-GET?
-   else false then {: hit:bool :}
-   0 c MODEL-CALL:INPUT-TOKENS !
-   0 c MODEL-CALL:CACHED-TOKENS !
-   c BEGIN-CALL
-   c hit [: RUN-CHAT-SELECT ;] catch {: code:n :} 2drop
-   c END-CALL {: cancelled:bool :}
-   1 code cancelled c END-LEDGER {: recorded:n :}
-   cancelled if E-CANCELLED throw then
-   code 0<> if 1 code c REPORT-FAILURE 1 code hit c JOURNAL-REFUSAL code throw then
-   c MODEL-CALL:JOURNAL-READY @ hit 0= and if 1 c JOURNAL-PUT then
-   recorded 0<> if recorded throw then
-   c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
+   c MODEL-CALL:JOURNAL-READY @ {: journal:bool :}
+   journal ready 0= and if c PREP-JOURNAL-CHAT then
+   journal if c JOURNAL-GET? else false then {: hit:bool :}
+   ready journal or hit c CALL-CHAT ;
+
+\ Restores, for the request JOURNAL-INPUT$ finished, a record a journal's put
+\ received for a chat call, as a journal hit does: its configuration, response,
+\ content and the call id its live call recorded; it answers the content as
+\ CHAT does and consumes the pending purpose. A saved refusal throws E-CAPACITY
+\ or E-INCOMPLETE. It sends nothing and records nothing. Without a request
+\ JOURNAL-INPUT$ finished it is E-STATE.
+: REPLAY ( ptr u8 n ptr call -- ptr u8 n )
+   {: a:ptr u:n c :}
+   c REQUIRE-IDLE
+   c MODEL-CALL:PREPARED @ 0= if E-STATE throw then
+   c UNPREPARE
+   c START-LEDGER
+   c JOURNAL-OUT-BUF c RESET-SCRATCH
+   a u BUF:N>BLEN c JOURNAL-OUT-BUF BUF:REPLACE
+   true true c CALL-CHAT ;
 
 : EMBED ( ptr call -- )
    {: c :}
+   c UNPREPARE
    c START-LEDGER
    c MODEL-CALL:JOURNAL-READY @ if
       c PREP-JOURNAL-EMBED

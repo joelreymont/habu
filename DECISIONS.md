@@ -333,6 +333,11 @@ learned live in the docs for their subject.
   MODEL:TOKENS-PER-INPUT-MAX 8192, OpenAI's documented limits, which MODEL
   does not check, he chose "Approve both (Recommended)": "Names and values as
   listed; Zen groups texts into requests by them."
+- 2026-11-05, a saved reply checked before sending (relayed by phil from
+  Zen): for MODEL:JOURNAL-INPUT$, which finishes a chat request and answers
+  the journal input a lookup needs, and MODEL:REPLAY, which restores a saved
+  reply for that request and sends nothing, Joel chose "Add both words
+  (Recommended)": "Check saved reply first, then send; carl lands them."
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself
