@@ -1,12 +1,13 @@
 \ spawn-test.f - focused tests for src/lib/spawn.f.
 \ Run: bin/hb --load src/lib/spawn-test.f
-\ A script names a child's fd by one digit, as a shell redirection needs, so a
-\ test placing a pipe on a chosen parent fd takes a closed one below 9 and
-\ patches its digit in. Environment cases use the first inherited row not named
+\ A script names a child's fd as /dev/fd/N, which dash and macOS sh open for any
+\ N, so a test places a pipe on any closed parent fd and patches its number in.
+\ Environment cases use the first inherited row not named
 \ DYLD_* (macOS strips those from env and printenv); without one, each fails.
 
 require src/lib/errors.f
 require src/lib/fd.f
+require src/lib/fmt.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f
@@ -18,7 +19,6 @@ private
 1 constant F-GETFD                       \ fcntl's F_GETFD on Darwin and Linux alike
 2 constant ENOENT
 9 constant EBADF
-9 constant FD-CEILING                    \ single-digit fds a script can name
 $3D constant EQUAL-BYTE
 $0A constant LF-BYTE
 
@@ -52,19 +52,30 @@ variable SCRIPT-LEN
 : SCRIPT$ ( -- ptr u8 n ) SCRIPT-BYTES SCRIPT-LEN @ ;
 
 
+: MARKER-AT ( n -- n )
+   {: c :}
+   0 begin dup SCRIPT-LEN @ < if dup SCRIPT-BYTES + c@ c <> else false then while 1+ repeat ;
+
+\ Writes fd's decimal digits over the first byte c, moving the bytes after it.
 : PATCH ( n n -- )
    {: fd c :}
-   SCRIPT-LEN @ 0 ?do
-      SCRIPT-BYTES i + c@ c = if fd $30 + SCRIPT-BYTES i + c! leave then
-   loop ;
+   c MARKER-AT {: at :}
+   at SCRIPT-LEN @ < 0= if exit then
+   fd FMT:INT$ {: d:ptr du :}
+   SCRIPT-LEN @ 1- du + {: len :}
+   len SCRIPT-CAP > if s" spawn-test: script too long" T-EX-FAIL die then
+   SCRIPT-LEN @ begin 1- dup at > while
+      dup SCRIPT-BYTES + c@ over du + 1- SCRIPT-BYTES + c!
+   repeat drop
+   d SCRIPT-BYTES at + du BYTE-COPY
+   len SCRIPT-LEN ! ;
 
 
 : FD-OPEN? ( n -- bool ) F-GETFD 0 fcntl 0 >= ;
 
-\ The first fd at or above n this process has closed; it must be one digit.
+\ The first fd at or above n this process has closed.
 : CLOSED-FD ( n -- n )
-   begin dup FD-OPEN? while 1+ repeat
-   dup FD-CEILING < TTRUE ;
+   begin dup FD-OPEN? while 1+ repeat ;
 
 
 : DRAIN ( fd -- )
@@ -160,7 +171,7 @@ variable SCRIPT-LEN
    a 1+ CLOSED-FD {: b :}
    w2 FD>N b dup2 drop
    w2 FD>N close
-   s" printf A >&@; printf B >&#" SCRIPT!
+   s" printf A >/dev/fd/@; printf B >/dev/fd/#" SCRIPT!
    a [char] @ PATCH
    b [char] # PATCH
    s" /bin/sh" PROCESS:NEW
@@ -177,17 +188,19 @@ variable SCRIPT-LEN
    pid WAIT 0 T= ;
 
 
-\ 2: parent fd d is open and unmapped, inside the gap the FD 9 opened.
+\ 2: parent fd d is open and unmapped, inside the gap the map's child fd d+1
+\ opened.
 : TEST-GAP ( -- )
    s" a map grown past its end leaves the gap closed" T-LABEL
    PIPE-PAIR {: r:fd w:fd :}
    3 CLOSED-FD {: d :}
    w FD>N d dup2 drop
-   s" exec 2>/dev/null; echo x >&9; echo y >&@ || exit 7" SCRIPT!
+   s" exec 2>/dev/null; echo x >/dev/fd/#; echo y >/dev/fd/@ || exit 7" SCRIPT!
    d [char] @ PATCH
+   d 1+ [char] # PATCH
    s" /bin/sh" PROCESS:NEW
    SCRIPT$ SH
-   9 >FD w PROCESS:FD
+   d 1+ >FD w PROCESS:FD
    PROCESS:SPAWN {: pid :}
    w FD>N close
    d close
