@@ -155,7 +155,11 @@ variable LLIST-END
    TEXT-VA RBASE-CELL HEADER!
    TEXT-VA LUNCAUGHT LABEL-OFFSET +  UNCGH-CELL HEADER!
    TEXT-VA LSIGH LABEL-OFFSET +  SIGNAL-ABI:STUB-CELL HEADER!
-   TEXT-VA DATA-IMAGE-AT +  CODE-END-CELL HEADER! ;
+   TEXT-VA DATA-IMAGE-AT +  CODE-END-CELL HEADER!
+   \ The build's MARK left its own index mapping's address here; the product's
+   \ first MARK builds one from 0.
+   0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
+
 
 \ The header cells HEADER-CELLS gives a code address.
 : LIST-HEADER ( -- )
