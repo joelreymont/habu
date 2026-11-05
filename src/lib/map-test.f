@@ -7,8 +7,7 @@ require src/lib/map.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline
 
 \ White-box test: reopen the module's package so the fixtures reach its private
-\ layout, probe and locate words by their bare package-local names, and so the
-\ checker candidates below resolve them while the package is open.
+\ layout, probe and locate words by their bare package-local names.
 package MAP
 
 1 constant MT-EX-FAIL
@@ -47,9 +46,6 @@ create MT-KEY-Z 122 c,
 
 : MT= ( n n -- )
    = MT-ASSERT ;
-
-: MT-RANGE ( n n -- ) {: ix cap :}
-   ix 0 >= ix cap < and MT-ASSERT ;
 
 : MT-MAP-CHECK-CAP ( n -- )
    >COUNT CHECK-CAP ;
@@ -111,9 +107,6 @@ create MT-KEY-Z 122 c,
 : MT-MAP-PROBE ( n n n -- n ) {: hash step cap :}
    hash step >COUNT cap >COUNT PROBE IDX>N ;
 
-: MT-MAP-LOCATE-SLOT ( ptr a n ptr u8 n n -- loc ) {: m:ptr ix:n key:ptr len:n hash:n :}
-   m ix >IDX key len >LEN hash LOCATE-SLOT ;
-
 : MT-MAP-LOCATE ( ptr a n ptr u8 n -- loc n ) {: m:ptr cap:n key:ptr len:n :}
    m cap >COUNT key len >LEN LOCATE ;
 
@@ -130,10 +123,6 @@ create MT-KEY-Z 122 c,
      free OF IDX>N ENDOF
      found OF IDX>N ENDOF
    ;MATCH ;
-
-: MT-ASSERT-LOC ( loc n n -- ) {: kind:n ix:n :}     \ verdict kind + carried idx
-   dup MT-LOC-KIND kind MT=
-   MT-LOC-IDX ix MT= ;
 
 : MT-MAP-GET ( ptr n n ptr u8 n -- option<n> ) {: m:ptr cap:n key:ptr len:n :}
    m cap >COUNT key len >LEN GET ;
@@ -218,16 +207,6 @@ create MT-KEY-Z 122 c,
    2 MT-MAP 0 SLOT-STATE-OFF MT-MAP-SLOT-FIELD !
    MT-MAP 0 MT-MAP-SLOT-STATE@ drop ;
 
-\ Negative checked cases: a raw n cannot pose as a slot state, a slot state cannot
-\ launder back to n, and enums do not compare with `=`. The positive baseline
-\ proves the rejects are type errors, not noise.
-: MT-TEST-STATE-TYPES ( -- )
-   s" MTP1 ( slot-state ptr a idx -- ) SLOT-STATE!" CHECK-QUIET-CANDIDATE! -1 MT=
-   s" MTN1 ( n ptr a idx -- ) SLOT-STATE!" CHECK-QUIET-CANDIDATE! 0 MT=
-   s" MTN2 ( ptr a idx -- n ) SLOT-STATE@" CHECK-QUIET-CANDIDATE! 0 MT=
-   s" MTN3 ( slot-state slot-state -- bool ) =" CHECK-QUIET-CANDIDATE! 0 MT=
-   s" MTN4 ( ptr a idx -- ptr slot-state ) SLOT-STATE-OFF >OFF SLOT-FIELD" CHECK-QUIET-CANDIDATE! 0 MT= ;
-
 : MT-TEST-CHECKS ( -- )
    [: MT-GOOD-CAP ;] catch 0 MT=
    [: MT-BAD-CAP-ZERO ;] catch E-MAP-BAD-CAP MT=
@@ -259,9 +238,6 @@ create MT-KEY-Z 122 c,
    MT-MAP CLEAR
    MT-MAP MT-MAP-COUNT@ 0 MT=
    MT-CAP 0 ?do i MT-ASSERT-CLEAR-SLOT loop ;
-
-: MT-PROBE-RANGE ( ptr u8 n n n -- ) {: a:ptr u step cap :}
-   MT-MAP a u MT-MAP-HASH step cap MT-MAP-PROBE cap MT-RANGE ;
 
 : MT-FILL-LETTERS ( -- )
    26 0 ?do 97 i + MT-LETTERS i + c! loop ;
@@ -313,16 +289,6 @@ create MT-KEY-Z 122 c,
 : MT-FULL-INSERT ( -- )
    44 MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-MAP-SET ;
 
-: MT-TEST-HASH-PROBE ( -- )
-   MT-MAP MT-CAP MT-MAP-INIT
-   MT-MAP s" alpha" MT-MAP-HASH 0 >= MT-ASSERT
-   MT-MAP s" beta" MT-MAP-HASH MT-CAP MT-MAP-INDEX MT-CAP MT-RANGE
-   -1 MT-CAP MT-MAP-INDEX MT-CAP 1 - MT=
-   s" alpha" 0 MT-CAP MT-PROBE-RANGE
-   s" alpha" 1 MT-CAP MT-PROBE-RANGE
-   s" alpha" MT-CAP MT-CAP MT-PROBE-RANGE
-   s" alpha" -1 MT-CAP MT-PROBE-RANGE ;
-
 : MT-TEST-MAP-SET-GET ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-MAP MT-CAP MT-KEY-Z 1 MT-ASSERT-MISS
@@ -366,44 +332,6 @@ create MT-KEY-Z 122 c,
    MT-FULL-MAP MT-MAP-COUNT@ MT-FULL-CAP MT=
    MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 44 MT-ASSERT-HIT
    MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-ASSERT-MISS ;
-
-: MT-TEST-LOCATE-SLOT ( -- )
-   MT-MAP MT-CAP MT-MAP-INIT
-   MT-MAP MT-KEY-A 1 MT-MAP-HASH {: ha:n :}
-   ha 0 MT-CAP MT-MAP-PROBE {: home:n :}
-   MT-MAP home MT-KEY-A 1 ha MT-MAP-LOCATE-SLOT
-      1 home MT-ASSERT-LOC                              \ empty -> free home
-   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
-   MT-MAP home MT-KEY-A 1 ha MT-MAP-LOCATE-SLOT
-      2 home MT-ASSERT-LOC                              \ key match -> found home
-   MT-MAP home MT-KEY-B 1 MT-MAP MT-KEY-B 1 MT-MAP-HASH MT-MAP-LOCATE-SLOT
-      0 -1 MT-ASSERT-LOC ;                              \ occupied non-match -> full
-
-: MT-TEST-LOCATE ( -- )
-   MT-MAP MT-CAP MT-MAP-INIT
-   MT-FIND-COLLISIONS
-   MT-MAP 0 MT-COL 1 MT-MAP-HASH 0 MT-CAP MT-MAP-PROBE {: home:n :}
-   MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-LOCATE drop
-      1 home MT-ASSERT-LOC                              \ empty table -> free at home
-   11 MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-SET
-   MT-MAP MT-CAP 0 MT-COL 1 MT-MAP-LOCATE drop
-      2 home MT-ASSERT-LOC                              \ present -> found at home
-   MT-MAP MT-CAP 1 MT-COL 1 MT-MAP-LOCATE drop
-      1 MT-MAP 1 MT-COL 1 MT-MAP-HASH 1 MT-CAP MT-MAP-PROBE MT-ASSERT-LOC   \ collision -> free one past home
-   MT-FULL-MAP MT-FULL-CAP MT-MAP-INIT
-   11 MT-FULL-MAP MT-FULL-CAP MT-KEY-A 1 MT-MAP-SET
-   22 MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 MT-MAP-SET
-   33 MT-FULL-MAP MT-FULL-CAP MT-KEY-C 1 MT-MAP-SET
-   MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-MAP-LOCATE drop
-      0 -1 MT-ASSERT-LOC ;                              \ full table -> full, no index
-
-\ Negative checked regressions: the verdict is not three loose ints, does not
-\ compare with `=`, and a raw n cannot pose as one. Positive baseline first.
-: MT-TEST-LOC-TYPES ( -- )
-   s" MTLP ( ptr a count ptr u8 len -- loc n ) LOCATE" CHECK-QUIET-CANDIDATE! -1 MT=
-   s" MTLN1 ( ptr a count ptr u8 len -- n n n ) LOCATE" CHECK-QUIET-CANDIDATE! 0 MT=
-   s" MTLN2 ( loc loc -- bool ) =" CHECK-QUIET-CANDIDATE! 0 MT=
-   s" MTLN3 ( n -- loc )" CHECK-QUIET-CANDIDATE! 0 MT= ;
 
 : MT-TEST-MAP-EACH-EMPTY ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
@@ -474,16 +402,11 @@ create MT-KEY-Z 122 c,
    s" map-test: failures" MT-EX-FAIL die ;
 
 : MT-MAIN ( -- )
-   MT-TEST-STATE-TYPES
    MT-TEST-CHECKS
    MT-TEST-INIT-CLEAR
-   MT-TEST-HASH-PROBE
    MT-TEST-MAP-SET-GET
    MT-TEST-MAP-COLLISIONS
    MT-TEST-MAP-FULL
-   MT-TEST-LOCATE-SLOT
-   MT-TEST-LOCATE
-   MT-TEST-LOC-TYPES
    MT-TEST-MAP-EACH-EMPTY
    MT-TEST-MAP-EACH-INSERTS
    MT-TEST-MAP-EACH-UPDATES

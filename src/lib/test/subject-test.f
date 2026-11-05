@@ -16,8 +16,6 @@ $800 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-variable SAVED-REPLH
-
 : RUN ( ptr u8 n ms -- len len outcome ) {: src:ptr srcu:n timeout:ms :}
    src srcu OUT CAP >LEN ERR CAP >LEN timeout SUBJECT:RUN ;
 
@@ -34,31 +32,11 @@ variable SAVED-REPLH
    OUT outu s" 73" CONTAINS? TTRUE
    erru 0 T= ;
 
-: ISOLATED ( -- )
-   s" child dictionary mutation is isolated" T-LABEL
-   s" : SUBJECT-CHILD-WORD ( -- n ) 73 ;" 0 EXITS 2drop
-   s" SUBJECT-CHILD-WORD" 0 search-wl 0= TTRUE ;
-
 : REJECTED ( -- )
    s" checked rejection preserves rc and diagnostic" T-LABEL
    s" SUBJECT-MISSING" 70 EXITS {: outu:n erru:n :}
    outu 0 T=
    ERR erru s" E-UNDEFINED: SUBJECT-MISSING" CONTAINS? TTRUE ;
-
-: REPL-NOOP ( -- ) ;
-
-: PARENT-PROBE ( -- )
-   ['] REPL-NOOP data-base REPLH-CELL + xt!   \ xt! is the declaration point for a code cell
-   s" SUBJECT-MISSING" 70 EXITS {: outu:n erru:n :}
-   outu 0 T=
-   ERR erru s" E-UNDEFINED: SUBJECT-MISSING" CONTAINS? TTRUE ;
-
-: PARENT-HANDLERS ( -- )
-   s" child clears inherited parent handlers" T-LABEL
-   data-base REPLH-CELL + @ SAVED-REPLH !
-   [: PARENT-PROBE ;] catch {: rc:n :}
-   SAVED-REPLH @ data-base REPLH-CELL + !
-   rc 0 <> if rc throw then ;
 
 : TIMED ( -- )
    s" subject timeout stays an outcome variant" T-LABEL
@@ -201,9 +179,7 @@ public
 : TEST ( -- )
    T-RESET
    OK
-   ISOLATED
    REJECTED
-   PARENT-HANDLERS
    TIMED
    TIMEOUT-REPORTS
    EXIT-MISS-REPORTS

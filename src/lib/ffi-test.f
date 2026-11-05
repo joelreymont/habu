@@ -214,9 +214,9 @@ variable FFI-T-PAIR-AFTER
 : FFI-T-REDECLARE ( -- )
    s" FUNCTION: FFI-T-X9 getpid ( -- n ) ;FUNCTION" INCLUDE-EVALUATE ;
 
-\ A child declares 270 distinct symbols, past any fixed declaration table, then
-\ calls an exact alias through the real source path; the alias takes no row.
-$400 constant FFI-T-SRC-CAP
+\ A child declares 270 distinct symbols and 270 library paths, past any fixed
+\ table: an exact alias takes no row, paths keep their ids and later rows call.
+$800 constant FFI-T-SRC-CAP
 $4000 constant FFI-T-CAP
 30000 constant FFI-T-TIMEOUT-MS
 67 constant FFI-T-UNCAUGHT-RC             \ hb's exit status for an uncaught throw
@@ -243,13 +243,30 @@ create FFI-T-LONG-PATH PATH-CAP allot
    s\"    s\" undefine ZZ-OVER\" INCLUDE-EVALUATE\n" FFI-T-SRC+
    s\" loop ;\nZZ-FILL\nZZ-FN-N constant ZZ-BEFORE\n" FFI-T-SRC+ ;
 
+: FFI-T-LIBS-SRC+ ( -- )
+   s\" 128 CODEGEN:BUFFER ZZ-PATH\nvariable ZZ-FIRST-LIB\nvariable ZZ-LAST-LIB\n" FFI-T-SRC+
+   s\" : ZZ-PATH$ ( n -- ptr u8 n ) {: id:n :} ZZ-PATH CODEGEN:RESET\n" FFI-T-SRC+
+   s\"    s\" /tmp/habu-ffi-growth-missing-\" ZZ-PATH CODEGEN:APPEND-STRING\n" FFI-T-SRC+
+   s\"    id ZZ-PATH CODEGEN:APPEND-DECIMAL ZZ-PATH CODEGEN:CONTENTS ;\n" FFI-T-SRC+
+   s\" : ZZ-LIBS ( -- ) 270 0 ?do i ZZ-PATH$ FFI:LIBRARY-PATH\n" FFI-T-SRC+
+   s\"    i 0= if dup ZZ-FIRST-LIB ! then ZZ-LAST-LIB ! loop ;\nZZ-LIBS\n" FFI-T-SRC+
+   s\" : ZZ-SYSTEM$ ( -- ptr u8 n ) HB-TARGET-MACOS? if s\" /usr/lib/libSystem.B.dylib\" exit then\n" FFI-T-SRC+
+   s\"    s\" libc.so.6\" ;\n" FFI-T-SRC+
+   s\" s\" getpid\" ZZ-SYSTEM$ FFI:LIBRARY-PATH 0 FFI:DECLARE constant ZZ-LIB-ROW\n" FFI-T-SRC+
+   s\" : ZZ-LIB-CHECK ( -- )\n" FFI-T-SRC+
+   s\"    0 ZZ-PATH$ FFI:LIBRARY-PATH ZZ-FIRST-LIB @ <> if s\" early library\" 1 die then\n" FFI-T-SRC+
+   s\"    ZZ-LAST-LIB @ ZZ-FIRST-LIB @ <= if s\" library ids\" 1 die then\n" FFI-T-SRC+
+   s\"    FFI:RESET ZZ-LIB-ROW FFI:CALL 0 <= if s\" late library call\" 1 die then ;\n" FFI-T-SRC+ ;
+
 : FFI-T-GROW-SRC$ ( -- ptr u8 n )
    FFI-T-SRC CODEGEN:RESET
    FFI-T-FILL-SRC+
    s\" FUNCTION: ZZ-ALIAS getpid ( -- i32 ) ;FUNCTION\n" FFI-T-SRC+
    s\" ZZ-FN-N constant ZZ-AFTER\n" FFI-T-SRC+
+   FFI-T-LIBS-SRC+
    s\" : ZZ-CHECK ( -- ) ZZ-BEFORE ZZ-AFTER <> if s\" alias took row\" 1 die then\n" FFI-T-SRC+
    s\"    ZZ-BASE 0 <= ZZ-ALIAS 0 <= or if s\" getpid refused\" 1 die then\n" FFI-T-SRC+
+   s\"    ZZ-LIB-CHECK\n" FFI-T-SRC+
    s\"    s\" growth-alias:ok\" type cr ;\nZZ-CHECK\n" FFI-T-SRC+
    FFI-T-SRC CODEGEN:CONTENTS ;
 : FFI-T-ERR$ ( len -- ptr u8 n ) {: u:len :}
@@ -286,7 +303,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    SB$ ;
 
 : FFI-T-GROW-ALIAS ( -- )
-   s" distinct descriptors grow past 256 and an exact alias keeps its row" T-LABEL
+   s" descriptors and library paths grow past 256 and an alias keeps its row" T-LABEL
    FFI-T-GROW-SRC$ 0 FFI-T-RUN-EXITS
    {: outu:len erru:len :}
    FFI-T-OUT outu LEN>N s\" growth-alias:ok\n" T$=

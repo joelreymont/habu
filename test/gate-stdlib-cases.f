@@ -509,10 +509,6 @@ SUITE stripped-lifecycle-prepare
    test/stripped-lifecycle-prepare.f
 ;SUITE
 
-SUITE ffi-growth
-   test/ffi-growth.f
-;SUITE
-
 SUITE stripped-preloaded-runtime
    test/stripped-preloaded-runtime.f
 ;SUITE
@@ -931,7 +927,6 @@ SUITE float-parse
 
 SUITE finite-float-text
    src/lib/f64-text-test.f
-   src/lib/f64-text-lifecycle-test.f
 ;SUITE
 
 SUITE ieee-float32

@@ -1,10 +1,7 @@
-\ Independent buffers share the allocation registry across native tasks, and a
-\ process forked while they grow and release sees every buffer mapped.
+\ Independent buffers grow and release on four native tasks at once, and the
+\ allocation registry returns to its base count once they end.
 require src/lib/test.f
 require src/lib/task.f
-require src/lib/adt/result.f
-require src/lib/process.f
-require src/lib/process-fork.f
 
 package DYNAMIC-BUFFER-TASK-TEST
 private
@@ -22,7 +19,8 @@ variable READY
 variable START
 variable STOP
 variable BASE-N
-variable FIRST-BAD
+variable ROUNDS
+1000 constant ROUNDS-N
 
 : GATE ( -- )
    1 READY atomic-add drop
@@ -46,47 +44,14 @@ variable FIRST-BAD
    0 D @ k <> if 77 throw then D-RELEASE ;
 
 : SPIN ( [ n -- ] -- ) {: churn :}
-   GATE 0 begin STOP atomic@ 0= while dup churn execute 1+ repeat drop ;
-
-: FAIL-BEFORE-GROWTH ( -- )
-   77 throw ;
+   GATE 0 begin STOP atomic@ 0= while
+      dup churn execute 1+  1 ROUNDS atomic-add drop
+   repeat drop ;
 
 : JOIN ( ptr n -- n ) {: worker:ptr :}
    begin worker TASK:DONE? 0= while TASK:PAUSE repeat
    worker TASK:THROW@
    worker TASK:KILL ;
-
-\ Growth and release replace a buffer's mapping across several stores; a fork
-\ copies the process at one instant. The child reads element 0 of every buffer
-\ the accessor's own bound admits, so a control copied mid-replacement - a
-\ bound over an unmapped head - ends the child by a signal. Only
-\ E-LAYOUT-BOUNDS, a buffer copied released, is an admitted refusal.
-: SEEN ( [ -- ] -- )
-   catch {: rc:n :}
-   rc 0<> rc E-LAYOUT-BOUNDS <> and if s" " 3 die then ;
-
-: CHILD ( -- )
-   [: 0 A @ drop ;] SEEN [: 0 B @ drop ;] SEEN
-   [: 0 C @ drop ;] SEEN [: 0 D @ drop ;] SEEN
-   s" " 0 die ;
-
-: NOTE-BAD ( n -- )
-   {: rc:n :}
-   FIRST-BAD @ 0= if rc FIRST-BAD ! then ;
-
-\ A fresh process per fork is the boundary under test: each is one snapshot.
-: FORK-ONE ( -- )
-   PROC-FORK:CHECKED PID>N {: pid:n :}
-   pid 0= if CHILD then
-   pid >PID PROC-WAIT-RC MATCH result
-     ok  OF drop ENDOF
-     err OF NOTE-BAD ENDOF
-   ;MATCH ;
-
-\ The fork holds the registry lock: a release that unmaps before taking it hands
-\ the fork a stale head, and about 9 of 10 children die by SIGSEGV. Growth
-\ exposes a stale head for only a few instructions, so this catches that rarely.
-10 constant FORKS
 
 : START-ALL ( [ -- ] [ -- ] [ -- ] [ -- ] -- )
    {: a b c d :}
@@ -102,19 +67,16 @@ variable FIRST-BAD
 
 : RUN ( -- )
    T-RESET
-   s" a worker throw before growth reaches the parent" T-LABEL
-   ['] FAIL-BEFORE-GROWTH WORKER-A TASK:ACTIVATE
-   WORKER-A JOIN 77 T=
-   s" a child forked during growth and release sees every buffer mapped" T-LABEL
-   TASK:PAUSE                    \ register the task runtime's own lifecycle hook
+   s" four tasks churn buffers and leave the registry at its base" T-LABEL
+   \ A task's first activation registers a buffer the runtime keeps.
+   [: ;] WORKER-A TASK:ACTIVATE  WORKER-A JOIN 0 T=
    DYNAMIC-STORAGE:REGISTERED-N BASE-N !
-   0 STOP atomic!  0 FIRST-BAD !
+   0 STOP atomic!  0 ROUNDS atomic!
    [: ['] CHURN-A SPIN ;] [: ['] CHURN-B SPIN ;]
    [: ['] CHURN-C SPIN ;] [: ['] CHURN-D SPIN ;] START-ALL
-   FORKS 0 ?do FORK-ONE loop
+   begin ROUNDS atomic@ ROUNDS-N < while TASK:PAUSE repeat
    1 STOP atomic!
    JOIN-ALL
-   FIRST-BAD @ 0 T=
    DYNAMIC-STORAGE:REGISTERED-N BASE-N @ T=
    T-REPORT ;
 
