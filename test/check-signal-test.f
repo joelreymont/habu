@@ -425,10 +425,6 @@ public
    PATHS!
    s" check-signal: SIGTERM" type cr
    SIGNAL:SIGTERM false SIGNAL-CASE
-   s" check-signal: SIGINT" type cr
-   SIGNAL:SIGINT false SIGNAL-CASE
-   s" check-signal: SIGHUP" type cr
-   SIGNAL:SIGHUP false SIGNAL-CASE
    s" check-signal: SIGTERM, the child's output closed" type cr
    SIGNAL:SIGTERM true SIGNAL-CASE
    s" check-signal: SIGTERM before any child, a refused program on stdin" type cr

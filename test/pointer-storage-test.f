@@ -96,8 +96,7 @@ $18 RESERVED-PTR-U8-CELL RSV-CELL-B
 \ src/habu/verify-source.f (what it publishes for the created word).
 \ POINTER-STORAGE:DATA-CELL is the control: same file and phase, neither row. It
 \ is the real sibling because the seal runs when the engine is built, so a clone
-\ here could never be sealed; test/internal-word-gate.f owns what outside source
-\ sees of a sealed name. The control candidate declares the created word's
+\ here could never be sealed. The control candidate declares the created word's
 \ effect, so only the name fails it: unresolvable outside the engine (1), not
 \ merely refused.
 : VERIFY-RESERVED-EFFECT ( -- )

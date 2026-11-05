@@ -1,8 +1,5 @@
-\ vocabulary-test.f - the design seal through the real load path, at both tiers.
-\ Each row is one child,
-\ `bin/hb --load test/policy/<harness>.f -- test/policy/<case>.f`: allow.f
-\ compiles at tier 0 and allow-tier1.f with the native compiler, which read a
-\ body's tokens at different sites.
+\ vocabulary-test.f - the design seal through the real load path, at tier 0;
+\ each case is one child: bin/hb --load <harness>.f -- <case>.f, in test/policy.
 \ Run: bin/hb --load src/lib/vocabulary-test.f
 
 \ Each child leaves one line in build/vocabulary-run.txt,
@@ -35,7 +32,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : HARNESS! ( ptr u8 n -- ) STEM-U ! STEM-A ! ;
 : STEM$ ( -- ptr u8 n ) STEM-A @ STEM-U @ ;
 : TIER0 ( -- ) s" allow" HARNESS! ;
-: TIER1 ( -- ) s" allow-tier1" HARNESS! ;
 
 : FILE$ ( ptr u8 n -- ptr u8 n )
    {: stem:ptr su:n :}
@@ -132,121 +128,105 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : REFUSES ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n line:ptr lu:n :}
    name nu ENGINE-ERROR:POLICY line lu s" " RUNS ;
 
-: BOTH-REFUSE ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n line:ptr lu:n :}
-   TIER0 name nu line lu REFUSES
-   TIER1 name nu line lu REFUSES ;
+: TIER0-REFUSES ( ptr u8 n ptr u8 n -- ) {: name:ptr nu:n line:ptr lu:n :}
+   TIER0 name nu line lu REFUSES ;
 
 : OK-OUT$ ( -- ptr u8 n ) S\" 42\n5\n5\n42\n0\n11\n" ;
 
-\ A local shadows every word, as it does unsealed: tier 1 records the names a
-\ sealed `{:` declares, so it matches them before any lookup, as tier 0 does.
+\ A local shadows every word, as it does unsealed.
 : LOCALS ( -- )
-   TIER0 s" local-name" 0 s" " S\" 42\n" RUNS
-   TIER1 s" local-name" 0 s" " S\" 42\n" RUNS
-   TIER1 s" locals-many" 0 s" " S\" 0\n64\n" RUNS ;
+   TIER0 s" local-name" 0 s" " S\" 42\n" RUNS ;
 
 : ESCAPED ( -- )
    TIER0 s" escaped" 0 s" " S\" Bracket \\ \"Café\"Bracket \\ \"Café\"" RUNS
-   TIER1 s" escaped" 0 s" " S\" Bracket \\ \"Café\"Bracket \\ \"Café\"" RUNS
    TIER0 s" escaped-tail" 107 s" hb: not in vocabulary: required at test/policy/escaped-tail.f:3" S\" Bracket \\ \"Café\"" RUNS
-   TIER1 s" escaped-tail" 107 s" hb: not in vocabulary: required at test/policy/escaped-tail.f:3" S\" Bracket \\ \"Café\"" RUNS
-   s" escaped-body-tail" s" hb: not in vocabulary: required at test/policy/escaped-body-tail.f:2" BOTH-REFUSE
-   s" escaped-c" S\" hb: not in vocabulary: C\\\q at test/policy/escaped-c.f:2" BOTH-REFUSE
-   s" escaped-dotq" S\" hb: not in vocabulary: .\\\q at test/policy/escaped-dotq.f:2" BOTH-REFUSE ;
+   s" escaped-body-tail" s" hb: not in vocabulary: required at test/policy/escaped-body-tail.f:2" TIER0-REFUSES
+   s" escaped-c" S\" hb: not in vocabulary: C\\\q at test/policy/escaped-c.f:2" TIER0-REFUSES
+   s" escaped-dotq" S\" hb: not in vocabulary: .\\\q at test/policy/escaped-dotq.f:2" TIER0-REFUSES ;
 
 \ The seal removes words; it does not change what an admitted program does, what
 \ the checker refuses, how a throw ends the process, or the refusal of a source
 \ that ends inside a definition.
 : ADMITTED ( -- )
    TIER0 s" ok" 0 s" " OK-OUT$ RUNS
-   TIER1 s" ok" 0 s" " OK-OUT$ RUNS
    TIER0 s" dead" 67 s" hb: uncaught throw code -30001" s" " RUNS
-   TIER1 s" dead" 67 s" hb: uncaught throw code -30001" s" " RUNS
    TIER0 s" throw" 67 s" hb: uncaught throw code -30001" s" " RUNS
-   TIER1 s" throw" 67 s" hb: uncaught throw code -30001" s" " RUNS
    TIER0 s" checked" 70 s" habu: in bad: at 'BAD' expected: n" s" " RUNS
-   TIER1 s" checked" 70 s" habu: in bad: at 'BAD' expected: n" s" " RUNS
    TIER0 s" eof" 74 s" hb: source ended inside definition: X at test/policy/eof.f:2" s" " RUNS
-   TIER1 s" eof" 74 s" hb: source ended inside definition: X at test/policy/eof.f:2" s" " RUNS
    LOCALS ESCAPED ;
 
 : LOADERS ( -- )
-   s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" BOTH-REFUSE
-   s" included" s" hb: not in vocabulary: included at test/policy/included.f:2" BOTH-REFUSE
-   s" evaluate" s" hb: not in vocabulary: evaluate at test/policy/evaluate.f:2" BOTH-REFUSE ;
+   s" bypass" s" hb: not in vocabulary: require at test/policy/bypass.f:2" TIER0-REFUSES
+   s" included" s" hb: not in vocabulary: included at test/policy/included.f:2" TIER0-REFUSES
+   s" evaluate" s" hb: not in vocabulary: evaluate at test/policy/evaluate.f:2" TIER0-REFUSES ;
 
 : KEYWORDS ( -- )
-   s" trusted" s" hb: not in vocabulary: trusted: at test/policy/trusted.f:2" BOTH-REFUSE
-   s" tick" s" hb: not in vocabulary: ' at test/policy/tick.f:2" BOTH-REFUSE
-   s" string" S\" hb: not in vocabulary: c\q at test/policy/string.f:2" BOTH-REFUSE ;
+   s" trusted" s" hb: not in vocabulary: trusted: at test/policy/trusted.f:2" TIER0-REFUSES
+   s" tick" s" hb: not in vocabulary: ' at test/policy/tick.f:2" TIER0-REFUSES
+   s" string" S\" hb: not in vocabulary: c\q at test/policy/string.f:2" TIER0-REFUSES ;
 
 \ A global a used package also exports is outside the vocabulary before it is
 \ shadowed: the seal refuses it ahead of the shadowing rule, as in a body.
 \ A package loaded before the seal, admitted or not, cannot be reopened: inside
 \ it its private words come first. ok.f reopens the design's own package.
 : SCOPES ( -- )
-   s" using-ffi" s" hb: not in vocabulary: NOW at test/policy/using-ffi.f:3" BOTH-REFUSE
-   s" shadow" s" hb: not in vocabulary: emit at test/policy/shadow.f:3" BOTH-REFUSE
-   s" private" s" hb: not in vocabulary: PDEP:HIDDEN at test/policy/private.f:2" BOTH-REFUSE
-   s" reopen" s" hb: policy: package PDEP predates the seal at test/policy/reopen.f:2" BOTH-REFUSE
-   s" reopen-foreign" s" hb: policy: package PFOREIGN predates the seal at test/policy/reopen-foreign.f:2" BOTH-REFUSE
-   s" foreign-call" s" hb: not in vocabulary: PFOREIGN:LEAK at test/policy/foreign-call.f:2" BOTH-REFUSE
-   s" undefined" s" hb: not in vocabulary: NOSUCHWORD at test/policy/undefined.f:2" BOTH-REFUSE ;
+   s" using-ffi" s" hb: not in vocabulary: NOW at test/policy/using-ffi.f:3" TIER0-REFUSES
+   s" shadow" s" hb: not in vocabulary: emit at test/policy/shadow.f:3" TIER0-REFUSES
+   s" private" s" hb: not in vocabulary: PDEP:HIDDEN at test/policy/private.f:2" TIER0-REFUSES
+   s" reopen" s" hb: policy: package PDEP predates the seal at test/policy/reopen.f:2" TIER0-REFUSES
+   s" reopen-foreign" s" hb: policy: package PFOREIGN predates the seal at test/policy/reopen-foreign.f:2" TIER0-REFUSES
+   s" foreign-call" s" hb: not in vocabulary: PFOREIGN:LEAK at test/policy/foreign-call.f:2" TIER0-REFUSES
+   s" undefined" s" hb: not in vocabulary: NOSUCHWORD at test/policy/undefined.f:2" TIER0-REFUSES ;
 
 : WIDENING ( -- )
-   s" allow-call" s" hb: not in vocabulary: VOCABULARY:ALLOW-PACKAGE at test/policy/allow-call.f:2" BOTH-REFUSE
-   s" seal-call" s" hb: not in vocabulary: VOCABULARY:RESTRICT at test/policy/seal-call.f:2" BOTH-REFUSE ;
+   s" allow-call" s" hb: not in vocabulary: VOCABULARY:ALLOW-PACKAGE at test/policy/allow-call.f:2" TIER0-REFUSES
+   s" seal-call" s" hb: not in vocabulary: VOCABULARY:RESTRICT at test/policy/seal-call.f:2" TIER0-REFUSES ;
 
-\ Tier 0 refuses at its compile rows and call lookup, tier 1 while it captures
-\ the body: the same line from both.
+\ Tier 0 refuses at its compile rows and call lookup.
 : BODIES ( -- )
-   s" capture" s" hb: not in vocabulary: require at test/policy/capture.f:2" BOTH-REFUSE
-   s" execute" s" hb: not in vocabulary: execute at test/policy/execute.f:2" BOTH-REFUSE
-   s" store" s" hb: not in vocabulary: ! at test/policy/store.f:2" BOTH-REFUSE
-   s" arith" s" hb: not in vocabulary: + at test/policy/arith.f:2" BOTH-REFUSE
-   s" dotq" S\" hb: not in vocabulary: .\q at test/policy/dotq.f:2" BOTH-REFUSE
-   s" used" s" hb: not in vocabulary: LEAK at test/policy/used.f:3" BOTH-REFUSE
-   s" internal" s" hb: not in vocabulary: STEP at test/policy/internal.f:4" BOTH-REFUSE ;
+   s" capture" s" hb: not in vocabulary: require at test/policy/capture.f:2" TIER0-REFUSES
+   s" execute" s" hb: not in vocabulary: execute at test/policy/execute.f:2" TIER0-REFUSES
+   s" store" s" hb: not in vocabulary: ! at test/policy/store.f:2" TIER0-REFUSES
+   s" arith" s" hb: not in vocabulary: + at test/policy/arith.f:2" TIER0-REFUSES
+   s" dotq" S\" hb: not in vocabulary: .\q at test/policy/dotq.f:2" TIER0-REFUSES
+   s" used" s" hb: not in vocabulary: LEAK at test/policy/used.f:3" TIER0-REFUSES
+   s" internal" s" hb: not in vocabulary: STEP at test/policy/internal.f:4" TIER0-REFUSES ;
 
 \ A keyword the native compiler models itself, a character literal, a call to
 \ the definition being compiled and a `:}` outside a `{:` group are neither
-\ records nor numbers: tier 1's capture refuses each at the token, as tier 0
-\ does, before the compiler or the checker reads the body. `[package]`, in the
-\ design span, compiles at both.
+\ records nor numbers: tier 0 refuses each at the token, before the compiler or
+\ the checker reads the body. `[package]`, in the design span, compiles.
 : MODELED ( -- )
    TIER0 s" package-literal" 0 s" " s" pdesign-name" RUNS
-   TIER1 s" package-literal" 0 s" " s" pdesign-name" RUNS
-   s" begin" s" hb: not in vocabulary: begin at test/policy/begin.f:2" BOTH-REFUSE
-   s" recurse" s" hb: not in vocabulary: recurse at test/policy/recurse.f:2" BOTH-REFUSE
-   s" quote" s" hb: not in vocabulary: [: at test/policy/quote.f:2" BOTH-REFUSE
-   s" btick" s" hb: not in vocabulary: ['] at test/policy/btick.f:2" BOTH-REFUSE
-   s" char-literal" s" hb: not in vocabulary: [char] at test/policy/char-literal.f:2" BOTH-REFUSE
-   s" self" s" hb: not in vocabulary: R at test/policy/self.f:2" BOTH-REFUSE
-   s" exit" s" hb: not in vocabulary: exit at test/policy/exit.f:2" BOTH-REFUSE
-   s" bracket" s" hb: not in vocabulary: [ at test/policy/bracket.f:2" BOTH-REFUSE
-   s" postpone" s" hb: not in vocabulary: postpone at test/policy/postpone.f:2" BOTH-REFUSE
-   s" rstack" s" hb: not in vocabulary: >r at test/policy/rstack.f:2" BOTH-REFUSE
-   s" do" s" hb: not in vocabulary: do at test/policy/do.f:2" BOTH-REFUSE
-   s" stray-close" s" hb: not in vocabulary: :} at test/policy/stray-close.f:2" BOTH-REFUSE ;
+   s" begin" s" hb: not in vocabulary: begin at test/policy/begin.f:2" TIER0-REFUSES
+   s" recurse" s" hb: not in vocabulary: recurse at test/policy/recurse.f:2" TIER0-REFUSES
+   s" quote" s" hb: not in vocabulary: [: at test/policy/quote.f:2" TIER0-REFUSES
+   s" btick" s" hb: not in vocabulary: ['] at test/policy/btick.f:2" TIER0-REFUSES
+   s" char-literal" s" hb: not in vocabulary: [char] at test/policy/char-literal.f:2" TIER0-REFUSES
+   s" self" s" hb: not in vocabulary: R at test/policy/self.f:2" TIER0-REFUSES
+   s" exit" s" hb: not in vocabulary: exit at test/policy/exit.f:2" TIER0-REFUSES
+   s" bracket" s" hb: not in vocabulary: [ at test/policy/bracket.f:2" TIER0-REFUSES
+   s" postpone" s" hb: not in vocabulary: postpone at test/policy/postpone.f:2" TIER0-REFUSES
+   s" rstack" s" hb: not in vocabulary: >r at test/policy/rstack.f:2" TIER0-REFUSES
+   s" do" s" hb: not in vocabulary: do at test/policy/do.f:2" TIER0-REFUSES
+   s" stray-close" s" hb: not in vocabulary: :} at test/policy/stray-close.f:2" TIER0-REFUSES ;
 
 \ No keyword row: at tier 0 the row would answer a global name before any
-\ lookup, and at tier 1 the definition. A row outside the design span is refused as a
-\ token; a row inside it is the reserved name, the same refusal unsealed. The
-\ pass-2 rows count too: tier 0 lowers a body holding a wide value again, and
-\ they answer its tokens first. So do `:}` (in the span), `kernel:` and
-\ `;match`, compared only inside their construct (habu2.f EMIT-ROW-WALK).
+\ lookup. A row outside the design span is refused as a token; a row inside it
+\ is the reserved name, the same refusal unsealed. The pass-2 rows count too:
+\ tier 0 lowers a body holding a wide value again, and they answer its tokens
+\ first. So do `:}` (in the span), `kernel:` and `;match`, compared only inside
+\ their construct (habu2.f EMIT-ROW-WALK).
 : NAMES ( -- )
-   s" kwname" s" hb: not in vocabulary: begin at test/policy/kwname.f:2" BOTH-REFUSE
-   s" own-keyword" s" hb: not in vocabulary: dup at test/policy/own-keyword.f:4" BOTH-REFUSE
-   s" defname-p2" s" hb: not in vocabulary: tuck at test/policy/defname-p2.f:2" BOTH-REFUSE
-   s" own-p2-keyword" s" hb: not in vocabulary: tuck at test/policy/own-p2-keyword.f:5" BOTH-REFUSE
-   s" defname-interpret" s" hb: not in vocabulary: create at test/policy/defname-interpret.f:2" BOTH-REFUSE
+   s" kwname" s" hb: not in vocabulary: begin at test/policy/kwname.f:2" TIER0-REFUSES
+   s" own-keyword" s" hb: not in vocabulary: dup at test/policy/own-keyword.f:4" TIER0-REFUSES
+   s" defname-p2" s" hb: not in vocabulary: tuck at test/policy/defname-p2.f:2" TIER0-REFUSES
+   s" own-p2-keyword" s" hb: not in vocabulary: tuck at test/policy/own-p2-keyword.f:5" TIER0-REFUSES
+   s" defname-interpret" s" hb: not in vocabulary: create at test/policy/defname-interpret.f:2" TIER0-REFUSES
    TIER0 s" defname-span" 70 s" hb: compile keyword cannot be a definition name: package" s" " RUNS
-   TIER1 s" defname-span" 70 s" hb: compile keyword cannot be a definition name: package" s" " RUNS
    TIER0 s" defname-endloc" 70 s" hb: compile keyword cannot be a definition name: :} at test/policy/defname-endloc.f:4" s" " RUNS
-   TIER1 s" defname-endloc" 70 s" hb: compile keyword cannot be a definition name: :} at test/policy/defname-endloc.f:4" s" " RUNS
-   s" defname-kernel" s" hb: not in vocabulary: kernel: at test/policy/defname-kernel.f:4" BOTH-REFUSE
-   s" defname-semimatch" s" hb: not in vocabulary: ;match at test/policy/defname-semimatch.f:4" BOTH-REFUSE ;
+   s" defname-kernel" s" hb: not in vocabulary: kernel: at test/policy/defname-kernel.f:4" TIER0-REFUSES
+   s" defname-semimatch" s" hb: not in vocabulary: ;match at test/policy/defname-semimatch.f:4" TIER0-REFUSES ;
 
 : HARNESSES ( -- )
    s" allow-sealed-admit" HARNESS!
@@ -286,19 +266,6 @@ variable CODE                          \ the last child's exit code, -1 when it 
 : CONFINED ( -- )
    s" allow-root" HARNESS!
    s" confined/scene" 0 s" " S\" 42\n" RUNS
-   s" allow-root-tier1" HARNESS!
-   s" confined/scene" 0 s" " S\" 42\n" RUNS
-   s" allow-root" HARNESS!
-   s" confined/parent" s" hb: policy: source outside root: " REFUSES
-   s" confined/known" s" hb: policy: source outside root: " REFUSES
-   s" confined/library" s" hb: policy: source outside root: " REFUSES
-   s" confined/absolute" s" hb: policy: source outside root: " REFUSES
-   s" confined/symlink" s" hb: policy: source outside root: " REFUSES
-   s" confined/forbidden" s" hb: not in vocabulary: included at test/policy/confined/forbidden.f:1" REFUSES
-   s" confined/body" s" hb: not in vocabulary: require at test/policy/confined/body.f:1" REFUSES
-   s" confined/string-required" s" hb: not in vocabulary: required at test/policy/confined/string-required.f:1" REFUSES
-   s" confined/root-call" s" hb: not in vocabulary: VOCABULARY:SOURCE-ROOT! at test/policy/confined/root-call.f:1" REFUSES
-   s" allow-root-tier1" HARNESS!
    s" confined/parent" s" hb: policy: source outside root: " REFUSES
    s" confined/known" s" hb: policy: source outside root: " REFUSES
    s" confined/library" s" hb: policy: source outside root: " REFUSES

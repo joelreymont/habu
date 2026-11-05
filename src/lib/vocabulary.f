@@ -53,7 +53,7 @@ public
 \ prot-wid-add, evaluate or included on caller data).
 \ Refusals are one stderr line and ENGINE-ERROR:POLICY (107), a throw a `catch`
 \ around `included` can take: `hb: not in vocabulary: <token> at <path>:<line>`,
-\ at the same token in both tiers; `hb: policy: package <name> predates the seal
+\ at the token; `hb: policy: package <name> predates the seal
 \ at <path>:<line>`; `hb: policy: sealed` from any of the four words once sealed;
 \ `hb: policy: no package <name>`; `hb: policy: package wid above the bound` (wid
 \ >= PROT-WID-MAX has no admission bit); `hb: policy: package <name> publishes

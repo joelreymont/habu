@@ -272,8 +272,6 @@
 -6100 constant E-SPAN-RANGE      \ a narrowing or an index outside the span's byte reach
 -6101 constant E-SPAN-CAPACITY   \ a copy source longer than the destination span's reach
 -6102 constant E-SPAN-LENGTH     \ a negative reach at the mint, or a negative source length
--6103 constant E-SPAN-UNTERM     \ bare-copy lint: unterminated string literal hid the rest of a file
--6104 constant E-SPAN-REGISTRY   \ bare-copy lint: malformed primitive-axiom row hid the rest of a file
 
 \ JSON reader performance samples: -6300..-6399
 -6300 constant E-JRP-FIRST

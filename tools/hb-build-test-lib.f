@@ -32,9 +32,6 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \                                             large sources, literal bodies
 \   tools/hb-build-cli-errors-test.f          cache path error, refused paths
 \                                             and entry names, MAIN effects
-\   tools/hb-build-timeout-test.f             maker deadlines and diagnostics
-\   tools/hb-build-timeout-env-test.f         deadline override validation
-\   tools/hb-build-timeout-json-test.f        empty override, JSON refusal
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
 \                                             quotation fields, ptr mark
@@ -339,18 +336,6 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 \ A --repl build's CLI, whose app-build child runs the product engine.
 : HBT-ARGV-BASE-REPL ( -- )
    HBT-TMP ENGINE-CANDIDATE:PATH$ HBT-ARGV-CLI ;
-
-: HBT-TIMEOUT-ENV ( ptr u8 n -- )
-   PROC-ENV-RESET
-   s" TMPDIR" >LEN HBT-TMP >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN HBT-AOT-OUT >LEN PROC-ENV+
-   s" HB_BUILD_TIMEOUT_MS" >LEN 2swap >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING ;
-
-: HBT-ADD-TIMEOUT-ARGS ( -- )
-   HBT-AOT-SRC >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   HBT-REPL-BAD-OUT >LEN PROC-ARGV+ ;
 
 : HBT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result

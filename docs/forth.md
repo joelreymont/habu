@@ -2664,6 +2664,5 @@ against the reach the span carries. Take the span from a producer — `n
 SPAN-BUFFER: NAME`, `n SPAN-CELLS: NAME`, `MEM:ALLOC-SPAN` — or narrow one you
 were handed with `SPAN:SKIP` / `SPAN:TAKE` / `SPAN:SUB`, which can never widen
 it. `SPAN:MAKE`, the one place an address and a number become a reach, belongs
-to library source; a lint reports it, and bare `BYTE-COPY`, in a consumer
-(the `tools/lint/bare-copy-lint.f` header states where). A read-only source stays the `( ptr u8 n
+to library source, and so does bare `BYTE-COPY`. A read-only source stays the `( ptr u8 n
 )` string idiom. The reach is counted in bytes whatever the element type.

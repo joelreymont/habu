@@ -35,13 +35,8 @@ private
 
 public
 
-\ The one crossing where an address and a number become a reach. Only src/lib/
-\ and src/ call it: producers there publish spans (SPAN-BUFFER:, SPAN-CELLS:, and
-\ MEM:ALLOC-SPAN in src/lib/memory.f), and every consumer takes one from a
-\ producer or narrows one. tools/lint/bare-copy-lint.f reports a call anywhere
-\ else; the audit is that lint, not a TRUST row. `n` is the reach in bytes from
-\ `p`, and the caller owes that fact: the checker knows the pointee, never the
-\ extent behind it.
+\ The one place an address and a number become a reach. `n` counts bytes from
+\ `p`, and the caller owes it: the checker knows the pointee, never the extent.
 : MAKE ( ptr t n -- span<t> )
    dup 0 < if E-SPAN-LENGTH throw then
    SPAN-SPAN:MAKE ;

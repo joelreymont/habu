@@ -5816,7 +5816,7 @@ variable LCODEINV
 
 \ A body's `['] W` carries C-TICK's DNAME-INT gate: an internal word has no
 \ checker-known effect, so the tick erases to a plain cell an interpret-level
-\ `execute` would run (test/internal-word-gate.f LAUNDER-CASES).
+\ `execute` would run.
 \ Resolution is EM-COMPILE-CALL's: LFIND, then the used packages' publics, then
 \ LUNDEF (test/xt-effect-test.f XE-USING).
 \ C-TICK's DNAME-WIDE gate does not belong here: a body's tick hands the

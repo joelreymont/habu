@@ -65,7 +65,7 @@ TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
 
 \ ---- package publics, under their qualified name ---------------------------
 \ IMK-WALK misses package words, which sit in their package's wordlist; only
-\ publics have a qualified spelling (habu1.f LFIND, test/internal-word-gate.f).
+\ publics have a qualified spelling (habu1.f LFIND).
 1024 constant IMK-QCAP        \ qualified-name scratch: package + ':' + tail
 create IMK-QBUF IMK-QCAP allot
 variable IMK-QU

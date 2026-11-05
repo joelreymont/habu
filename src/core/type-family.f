@@ -415,8 +415,7 @@ using TFAM
 \ written, and bootstrap/cg/forth.fs mirrors the four spellings. TFAM-CTOR-WORD?
 \ is named by an AOT-captured call site, and the boot seed re-resolves a baked
 \ callee only through a global scope. Each sits between `;package` and
-\ `package TFAM` and reads the registry through `using TFAM`;
-\ test/internal-word-gate.f pins that the surface stops there.
+\ `package TFAM` and reads the registry through `using TFAM`.
 : TFAM-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
 

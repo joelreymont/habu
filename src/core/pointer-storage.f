@@ -62,7 +62,7 @@ public
 \ the engine layout reserves at `off`, declared `ptr ptr u8`. The offset goes
 \ through POINTER-STORAGE:DATA-CELL on every read, so no absolute address is
 \ baked. This definer has both rows, so the seal leaves its name alone; DATA-CELL
-\ has neither and does not resolve outside the engine (test/internal-word-gate.f).
+\ has neither and does not resolve outside the engine;
 \ test/pointer-storage-test.f measures the pair.
 : RESERVED-PTR-U8-CELL ( n -- )
    create , does> ( -- ptr ptr u8 ) @ POINTER-STORAGE:DATA-CELL ;

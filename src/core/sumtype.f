@@ -2552,8 +2552,7 @@ using TYPE-DECL
 \ user program can spell. They stay global because a user declaration must
 \ register without opening any package (test/type-decl-suite.f declares from
 \ top level). Each is a one-line entry into package TYPE-DECL, as ENUM is in
-\ enum-decl.f; test/internal-word-gate.f SEAL-CASES pins that the surface
-\ stops there.
+\ enum-decl.f.
 : NEWTYPE ( -- ) TDECL-NEWTYPE ;
 : SUMTYPE ( -- ) TDECL-SUMTYPE ;
 : PRODUCT ( -- ) TDECL-PRODUCT ;

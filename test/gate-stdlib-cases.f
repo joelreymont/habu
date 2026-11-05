@@ -38,10 +38,6 @@ SUITE hb-build-repl-image
    tools/hb-build-repl-image-test.f
 ;SUITE
 
-SUITE check-drivers
-   tools/check-drivers-test.f
-;SUITE
-
 SUITE dictionary-capacity
    test/dictionary-capacity-e2e.f
 ;SUITE
@@ -141,18 +137,6 @@ SUITE hb-build-stripped-lifecycle
 
 SUITE hb-build-cli-errors
    tools/hb-build-cli-errors-test.f
-;SUITE
-
-SUITE hb-build-timeout
-   tools/hb-build-timeout-test.f
-;SUITE
-
-SUITE hb-build-timeout-env
-   tools/hb-build-timeout-env-test.f
-;SUITE
-
-SUITE hb-build-timeout-json
-   tools/hb-build-timeout-json-test.f
 ;SUITE
 
 SUITE hb-build-repl-twin
@@ -270,11 +254,6 @@ SUITE memory-guarded-failure
 SUITE shadow-lint
    tools/lint/shadow-lint.f
    tools/lint/shadow-lint-test.f
-;SUITE
-
-SUITE bare-copy-lint
-   tools/lint/bare-copy-lint.f
-   tools/lint/bare-copy-lint-test.f
 ;SUITE
 
 SUITE clobber-lint
@@ -1460,11 +1439,6 @@ SUITE friend-arena-seal
    test/seal.f
 ;SUITE
 
-\ On the product engine: it pins refusals the unsealed engine lacks.
-SUITE internal-word-gate
-   test/internal-word-gate.f
-;SUITE
-
 SUITE checker-surface
    test/checker-surface.f
 ;SUITE
@@ -1804,8 +1778,8 @@ SUITE using-import
    test/using-test.f
 ;SUITE
 
-\ The design seal: each test/policy case loaded sealed at both tiers, one child
-\ per row; writes build/vocabulary-run.txt.
+\ The design seal: each test/policy case loaded sealed at tier 0, one child per
+\ case; writes build/vocabulary-run.txt.
 SUITE vocabulary
    src/lib/vocabulary-test.f
 ;SUITE

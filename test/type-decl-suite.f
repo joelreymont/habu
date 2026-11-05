@@ -103,12 +103,8 @@ NEWTYPE tdzero
 s" TDOK-ZERO ( tdzero -- tdzero )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ TYPEFAMILY is not a word: NEWTYPE has no alias. test/internal-word-gate.f
-\ proves the live reject in a child, because E-UNDEFINED comes from the engine's
-\ undefined-word handler, which DIAG-BUFFER! and DIAG-QUIET do not capture.
-\ This suite owns the registry half: the spelling in a line comment, a paren
-\ comment or a string literal throws nothing and leaves every registry
-\ high-water mark untouched (TDT-NEG).
+\ TYPEFAMILY is not a word: in a line comment, paren comment or string literal
+\ it throws nothing and moves no registry high-water mark (TDT-NEG).
 s" \ TYPEFAMILY tdtombline 0" 0 TDT-NEG
 s" " s" tdtombline" TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
@@ -122,8 +118,7 @@ s" " s" tdtombstr" TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
 
 \ The live spelling needs no separate control here: `tdfoo` and `tdzero` above
-\ already pin what a NEWTYPE declaration registers, and the internal-word-gate
-\ child declares one beside the inert text to prove the child loads clean.
+\ already pin what a NEWTYPE declaration registers.
 
 \ SUMTYPE: registers a TK-SUM family + SUMV variants + payload schemas, and
 \ closes the declaration by wiring the variant range and max payload slots.
