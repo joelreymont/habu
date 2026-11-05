@@ -2296,6 +2296,10 @@ SUITE deferred-quotation-image
    test/deferred-quotation-image.f
 ;SUITE
 
+SUITE source-lex-image
+   test/source-lex-image.f
+;SUITE
+
 SUITE structure-quotation-rollback
    test/structure-quotation-rollback.f
 ;SUITE

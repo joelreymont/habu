@@ -3,12 +3,14 @@
 \ tokens. Tokens point into the span SOURCE was given, so that span stays in
 \ place while they are read. It requires src/lib/vector.f, which the engine lacks.
 \ STORAGE CLASS. PROCESS-WIDE: one token table and scan state for the image;
-\ SOURCE replaces the last scan's tokens.
+\ SOURCE replaces the last scan's tokens. The tables are released before an
+\ image capture and mapped again by the next SOURCE.
 
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f
 require src/lib/source.f
+require src/lib/image-lifecycle.f
 
 package LINT-LEX
 private
@@ -22,7 +24,10 @@ $22 constant DQUOTE             \ the byte that closes a string literal
 2 constant ROW-EBARE            \ FAM: engine `EPRIM:` row, closed by either engine closer
 3 constant ROW-EPKG             \ FAM: engine `EPPRIM:` row, closed by either engine closer
 
-variable CAP
+\ released: no release hook, no table mapped; hooked: the hook registered, the
+\ tables possibly part mapped; mapped: the hook registered, every table mapped.
+ENUM tables released hooked mapped ;ENUM
+TYPED-VARIABLE TABLES tables
 TYPED-VARIABLE SRC-A ptr u8   \ start of the source span being lexed
 variable TOK-N   variable SRC-U   variable POS
 variable LINE-N  variable COL-N  variable START  variable START-LINE  variable START-COL
@@ -68,10 +73,45 @@ CAST: ITEM>N ( NUM:item-count -- n )
    SRC-A ! ;
 
 : INIT-ONE ( ptr a -- )
-   MIN-CAP VEC:N>ITEM VEC:INIT ;
+   dup VEC:DISPOSE MIN-CAP VEC:N>ITEM VEC:INIT ;
 
 : CLEAR-ONE ( ptr a -- )
    VEC:CLEAR ;
+
+: CLEAR-ERROR ( -- )
+   NO-ERROR ERR-KIND !
+   0 ERR-BYTE !
+   0 ERR-LINE !
+   0 ERR-COL !
+   false HALTED ! ;
+
+: TABLES-RELEASED ( -- )
+   construct tables released TABLES ! ;
+
+: RELEASE-TABLES ( -- )
+   KIND-V VEC:DISPOSE
+   0 ADDR-V VEC:DISPOSE
+   LEN-V VEC:DISPOSE
+   BYTE-V VEC:DISPOSE
+   LINE-V VEC:DISPOSE
+   COL-V VEC:DISPOSE
+   0 CADDR-V VEC:DISPOSE
+   CLEN-V VEC:DISPOSE
+   OPND-V VEC:DISPOSE
+   LOCAL-V VEC:DISPOSE
+   LDEPTH-V VEC:DISPOSE
+   TABLES-RELEASED
+   0 TOK-N !
+   0 STEPPED !
+   0 DEPTH !
+   false IN-GROUP !
+   false IN-BODY !
+   CLEAR-ERROR ;
+
+TABLES-RELEASED
+
+: HOOK-TABLES ( -- )
+   [: RELEASE-TABLES ;] IMAGE-LIFECYCLE:REGISTER construct tables hooked TABLES ! ;
 
 : INIT-VECTORS ( -- )
    KIND-V INIT-ONE
@@ -85,7 +125,7 @@ CAST: ITEM>N ( NUM:item-count -- n )
    OPND-V INIT-ONE
    LOCAL-V INIT-ONE
    LDEPTH-V INIT-ONE
-   MIN-CAP CAP ! ;
+   construct tables mapped TABLES ! ;
 
 : CLEAR-VECTORS ( -- )
    KIND-V CLEAR-ONE
@@ -108,8 +148,15 @@ CAST: ITEM>N ( NUM:item-count -- n )
    false IN-GROUP !
    false IN-BODY ! ;
 
+\ The hook is registered before any table is mapped: a failed map leaves
+\ hooked, and the retry remaps each table under that hook.
 : RESET-TABLES ( -- )
-   CAP @ 0= if INIT-VECTORS else CLEAR-VECTORS then
+   TABLES @
+   MATCH tables
+      released OF HOOK-TABLES INIT-VECTORS ENDOF
+      hooked OF INIT-VECTORS ENDOF
+      mapped OF CLEAR-VECTORS ENDOF
+   ;MATCH
    0 TOK-N !
    LOCALS-RESET ;
 
@@ -230,13 +277,6 @@ private
       then
    repeat
    false ;
-
-: CLEAR-ERROR ( -- )
-   NO-ERROR ERR-KIND !
-   0 ERR-BYTE !
-   0 ERR-LINE !
-   0 ERR-COL !
-   false HALTED ! ;
 
 : MARK-UNTERM ( n -- ) {: k:n :}
    UNTERMINATED-QUOTE ERR-KIND !
