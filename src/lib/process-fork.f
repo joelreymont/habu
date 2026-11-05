@@ -48,15 +48,8 @@ REGISTER-RESETS
 
 public
 
-\ The fork RAW makes. It is a vector only so that a test can refuse a fork:
-\ RLIMIT_NPROC counts every process of the user and never refuses root, so no
-\ limit can refuse a reaper's fork alone - after FORK-REAPER's first fork or a
-\ capture's spawn - without racing the rest of the host. test/gate-pool-test.f
-\ installs its refusal here. RAW calls it holding
-\ the four locks of FORK-HELD below, so a replacement registers no
-\ image-lifecycle hook, reserves or releases no dynamic buffer, stores no
-\ quotation and spawns or opens no process descriptor: each takes one of those
-\ locks, and its own thread holds it.
+\ Vectored so test/gate-pool-test.f can refuse RAW's fork (RLIMIT_NPROC races
+\ the host). Runs under FORK-HELD's locks: no hook, buffer, quotation or spawn.
 defer FORK-CALL ( -- n )
 
 : FORK-CALL-DEFAULT ( -- )

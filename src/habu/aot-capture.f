@@ -268,8 +268,7 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
    idx ACAP-W-R0 @ - ACAP-REC-OF @ ;
 
 \ A record carries no file, so the definition's name is the whole locator.
-\ ACAP-NAME. prints the same pair but is defined below. Three lines, one fact
-\ each with the prefix.
+\ ACAP-NAME. prints the same pair but is defined below.
 : ACAP-REC-REFUSE ( n -- ) {: k:n :}
    s" aot-capture: records captured " type AOT-REC-N @ .
    s" aot-capture: record bound " type AOT-REC-MAX .
@@ -699,7 +698,7 @@ variable ACAP-ENTRY-N
    v  v ACAP-REC-EXT?  ACAP-REC-NAME  v 16 + ACAP-W32@ ;
 
 \ Dynamic name uses the derived rule cannot see: consumers resolve these names
-\ after this engine is captured. The list is explicit policy.
+\ after this engine is captured.
 \ INTERN:IMPORT-ROWS is a private build-driver seam resolved through the shipped
 \ dictionary; the alternatives are a public wrapper, which would let any source
 \ import literal ownership, or a fixed engine cell.
@@ -2008,8 +2007,8 @@ variable ACAP-WLEN    \ the window's content length: bytes above it are not read
 \ carries: `set-check` storing the recompiled checker's xt into HOOK-CELL is row
 \ 0. Any other target is state the window did not create (a booted engine's own
 \ hook cells, its own captured window's cells): the seeded engine's state is
-\ already right, so the cell is left alone. Refusing it ended every capture in a
-\ booted engine on HOOK-CELL; the refusal
+\ already right, so the cell is left alone: refusing it would end every capture
+\ in a booted engine on HOOK-CELL. The refusal (ACAP-TARGET-REFUSE, exit 74)
 \ stays for a cell inside the window whose target the window does not place.
 \ The span is whole cells; the rounding bytes are above the captured DP and
 \ zero in the seed. The base is cell-aligned (src/habu/aot-arm.f LATCH-OPEN

@@ -709,10 +709,8 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 : CONFIG-LOCK ( -- ) begin 0 1 CONFIG-MUTEX atomic-cas 0= until ;
 : CONFIG-UNLOCK ( -- ) 0 CONFIG-MUTEX atomic! ;
 
-\ A process just forked frees the lock before anything else (src/lib/fork-child.f):
-\ fork copies only the thread that called it, so a CONFIGURE another task was in
-\ leaves the child's copy held with nobody to free it, and the child's own
-\ CONFIGURE would wait for ever.
+\ A just-forked child frees the lock first (src/lib/fork-child.f): it inherits a
+\ CONFIGURE another task was in, so its own CONFIGURE would wait for ever.
 : REGISTER-CHILD-RESET ( -- )
    [: CONFIG-UNLOCK ;] FORK-CHILD:REGISTER ;
 REGISTER-CHILD-RESET

@@ -7430,8 +7430,7 @@ CHECKER-REG:}SCRATCH
    t MK-PTR swap MK-PUSH
    t rest MK-PUSH RECORDED-STEP ;
 
-\ The cap reserves no room for the engine's boot appends: a restored pool grows
-\ as a runtime one does.
+\ The cap reserves no room for the engine's boot appends.
 $800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
@@ -7522,14 +7521,8 @@ CHECKER-REG:}SCRATCH
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
 
-\ Headroom is not counted here, and a boot-time grow is a cost, not a defect:
-\ the cap is the smallest grain multiple holding the content, so an image just
-\ under a grain boundary grows at once on its boot appends (measured: a gen-1
-\ engine at content 2,292,824, cap 2,293,760, doubled to 4,587,520 in its first
-\ load). A grow from a restored pool is correct: the copy is verbatim, USIGS-GROW
-\ carries a valid intern stamp and nulls USX-BASE and HIDX-EFF-BASE, and
-\ NORET-GROW nulls NRX-BASE, so each index rebuilds. Only the engine's prefix
-\ knows the boot appends; the worst case is one extra copy.
+\ The smallest grain multiple holding the content: an image just under a grain
+\ boundary grows once on its boot appends, a cost of one copy, not a defect.
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
@@ -11167,8 +11160,7 @@ variable PE-EFF-ID
 \ A primitive may have its private row alone: its global record has no top-level
 \ row, and internal-mark.f classifies it by this row (EFFECT-OWNED-MIN-IN)
 \ instead of marking it DNAME-INT, which native/dict.f CALL-BINDING would refuse
-\ from every checked body. The owner's checked callers compile at both tiers;
-\ any other checked caller is refused by name.
+\ from every checked body.
 : CLOSE-PRIVATE ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;

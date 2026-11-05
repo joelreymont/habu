@@ -706,13 +706,8 @@ public
    WALK-GET
    pid PID>N [: CPU-READ ;] [: WALK-RELEASE ;] finally ;
 
-\ Frees the walk storage in a process just forked. fork copies only the thread
-\ that called it, so a WALKING another task held stays held in the child with
-\ nothing there to release it, and the child's first walk or query would wait
-\ for ever. No walk or query forks, so the walk this
-\ ends is never the child's own. src/lib/process-fork.f registers it with
-\ src/lib/fork-child.f, which runs it in the child alone; anywhere else it would
-\ let a second walk in beside a running one.
+\ Frees the walk a forked child inherits held (no walk forks), or its first walk
+\ waits for ever; it runs in the child alone (src/lib/fork-child.f).
 : CHILD-RESET ( -- )
    WALK-RELEASE ;
 
