@@ -141,9 +141,8 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
 
 : DISPATCHES ( -- n )  NC-COUNT @ NC-MARK @ - ;
 
-\ A measured set is scaffolding: a second MAIN in one process would collide with
-\ every name (the engine refuses a redefinition), so removing them is what lets
-\ test/compiler/compile-floor.f's in-process controls call this tool twice.
+\ Every round rebuilds the same names and the engine refuses a redefinition,
+\ so TEARDOWN removes a measured set before the next is built.
 : UNDEF-ONE ( n -- ) {: ix :}
    SB-RESET
    s" undefine " SB-APPEND  LIVE-PREFIX PREFIX-U @ SB-APPEND  ix FMT:SB-U

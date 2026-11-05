@@ -17,19 +17,8 @@ create BUILDER PATH-CAP allot variable BUILDER-U
 create SRC-PATH PATH-CAP allot
 create PROD-PATH PATH-CAP allot
 create CACHE-PATH PATH-CAP allot
-create OBJ-PATH PATH-CAP allot
-DYNAMIC-BUFFER SOURCE u8
-variable SOURCE-START
 
 : ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-: SKIP-LINE ( n -- ) {: size:n :}
-   begin SOURCE-START @ size < while
-      SOURCE-START @ SOURCE c@ 10 = if
-         1 SOURCE-START +! exit
-      then
-      1 SOURCE-START +!
-   repeat
-   E-FS-IO throw ;
 
 \ A child's streams grow to what it writes.
 : OUT-ROOM ( n -- ptr u8 ) OUT-RESERVE 0 OUT ;
@@ -47,22 +36,9 @@ public
    then
    BUILDER BUILDER-U @ ;
 
-\ Rehost the explicit-build fixtures: app.f requires local prefix/unit files,
-\ so their original leading compiler/prefix requires are omitted.
-: COPY-SKIP-LINES ( ptr u8 n ptr u8 n n -- )
-   {: from:ptr fromu:n into:ptr intou:n lines:n :}
-   from fromu FS:FILE-SIZE {: size:n :}
-   size SOURCE-RESERVE
-   from fromu 0 SOURCE BYTE-VIEW size FS:READ-ALL size <> if E-FS-IO throw then
-   0 SOURCE-START !
-   lines 0 ?do size SKIP-LINE loop
-   into intou 0 SOURCE BYTE-VIEW SOURCE-START @ +
-      size SOURCE-START @ - FS:WRITE-ALL ;
 \ An empty stream reserved nothing, so it has no byte to view.
 : OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
-\ While DIAG? holds true, BUILD turns its builder's cache diagnostics on.
-variable DIAG?
 \ The builder writes its file objects under the out root out (HABU_OUT,
 \ tools/build-out.f).
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- n )
@@ -70,7 +46,6 @@ variable DIAG?
    BUILDER$ {: builder:ptr builderu:n :}
    PROC-ARGV-ENV-RESET
    s" HABU_OUT" >LEN out outu >LEN PROC-ENV+
-   DIAG? @ if s" HABU_NATIVE_CACHE_DIAG" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    s" --" ARG source sourceu ARG product productu ARG
    S\" 1 set-tier\nAPP-BUILD:RUN-SAVED-REPORT\n" {: stdin:ptr stdinu:n :}
@@ -89,8 +64,4 @@ variable DIAG?
    root rootu product productu PROD-PATH FS:JOIN-PATH PROD-PATH swap
    root rootu s" cache" CACHE-PATH FS:JOIN-PATH CACHE-PATH swap
    BUILD ;
-
-\ The object directory under the out root out.
-: OBJ-DIR$ ( ptr u8 n -- ptr u8 n )
-   s" obj" OBJ-PATH FS:JOIN-PATH OBJ-PATH swap ;
 ;package

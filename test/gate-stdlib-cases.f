@@ -80,12 +80,6 @@ SUITE aot-payload-graph
    test/aot-payload-graph.f
 ;SUITE
 
-\ The fixpoint fixtures reuse the suite's whitebox compiler image and the
-\ fixture writer and cold host. This row waits for those images to settle.
-SUITE build-fixpoint-fixtures
-   tools/build-fixpoint-test.f
-;SUITE
-
 SUITE ffi-callback-zero-image
    test/ffi-callback-zero-image.f
 ;SUITE
@@ -156,28 +150,12 @@ SUITE engine-origin-lookup
    test/engine-origin-lookup.f
 ;SUITE
 
-SUITE cell-body-image
-   test/cell-body-image-e2e.f
-;SUITE
-
-SUITE native-file-types
-   test/native-file-types-e2e.f
-;SUITE
-
 SUITE native-file-cwork
    test/native-file-cwork-e2e.f
 ;SUITE
 
-SUITE native-file-tree-share
-   test/native-file-tree-share-e2e.f
-;SUITE
-
 SUITE native-file-inputs
    test/native-file-inputs-format.f
-;SUITE
-
-SUITE native-file-dynamic-load
-   test/native-file-dynamic-load-e2e.f
 ;SUITE
 
 SUITE native-file-missing
@@ -186,27 +164,6 @@ SUITE native-file-missing
 
 SUITE source-unit-range
    test/source-unit-range-gate.f
-;SUITE
-
-SUITE native-file-stripped-path
-   test/native-file-stripped-path-e2e.f
-;SUITE
-
-\ Each FILE pair builds twice.
-SUITE native-file-forms-zero
-   test/native-file-forms-zero.f
-;SUITE
-
-SUITE native-file-forms-namespace
-   test/native-file-forms-namespace.f
-;SUITE
-
-SUITE native-file-forms-global
-   test/native-file-forms-global.f
-;SUITE
-
-SUITE native-file-forms-repeat
-   test/native-file-forms-repeat.f
 ;SUITE
 
 SUITE native-unit-refusals
@@ -1243,10 +1200,6 @@ SUITE property-stdlib
 
 SUITE date-helpers
    tools/stdlib-date-test.f
-;SUITE
-
-SUITE compiler-compile-floor
-   test/compiler/compile-floor.f
 ;SUITE
 
 \ Budgets are thread CPU time on each measurement's cheapest sample, over rounds

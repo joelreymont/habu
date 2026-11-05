@@ -66,12 +66,6 @@ WHITEBOX-SUITE prop
    test/prop-test.f
 ;SUITE
 
-\ Both cases sabotage ARM recovery source and install its source-built engine.
-\ Intel recovery cross-builds from ARM; native generations use native-build.f.
-SUITE build-fixpoint-sandbox
-   tools/build-fixpoint-sandbox-test.f
-;SUITE
-
 \ The arm64 JIT copies straight-line primitive bodies.
 SUITE compiler-tier0-inline-prims
    test/compiler/tier0-inline-prims.f

@@ -9,9 +9,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
-require src/lib/engine-candidate.f
 require src/lib/test/subject.f
-require test/native-file-app-lib.f
 
 package NATIVE-FILE-E2E
 private
@@ -54,8 +52,6 @@ public
    {: name:ptr nameu:n body:ptr bodyu:n :}
    name nameu AT body bodyu FS:WRITE-ALL ;
 
-: ARG ( ptr u8 n -- ) >LEN PROC-ARGV+ ;
-
 \ exe with the staged argv and environment and the given stdin, under the hang
 \ guard; the streams stay in OUT$ and ERR$. On 124, the capture's own deadline
 \ or one the child met, SUBJECT:RC-TIMED-OUT prints the program and its streams
@@ -70,28 +66,6 @@ public
    outu LEN>N OUT-U ! erru LEN>N ERR-U !
    PROGRAM PROGRAM-U @ OUT$ ERR$ rc SUBJECT:RC-TIMED-OUT
    rc ;
-
-: RUN-APP ( -- n )
-   PROC-ARGV-ENV-RESET PROC-ENV-INHERIT-MISSING
-   s" app-hb" AT s" " CAPTURE ;
-
-\ tools/hb-build.f on the candidate engine: root/app.f into root/app-hb as a
-\ REPL build with the ambient out root (tools/build-out.f). It runs at tier 1
-\ (test/compiler/aot-mode.f): hb-build builds at its caller's tier, and only a
-\ tier 1 product compiles through file objects. The tool library loads first,
-\ at the default tier, so only the product compiles at tier 1.
-\ HABU_FIXPOINT_ENGINE names the same engine, so the builder image hb-build spawns
-\ (tools/app-build-image.f, BUILD-FIXPOINT:BF-ENGINE$) comes from it and
-\ never from the bin/hb fallback.
-: BUILD-APP ( -- n )
-   NATIVE-FILE-APP:BUILDER$ 2drop
-   PROC-ARGV-ENV-RESET
-   s" HABU_FIXPOINT_ENGINE" >LEN ENGINE-CANDIDATE:PATH$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" --load" ARG s" tools/hb-build-lib.f" ARG s" test/compiler/aot-mode.f" ARG
-   s" tools/hb-build.f" ARG s" --" ARG
-   s" --repl" ARG s" app.f" AT ARG s" -o" ARG s" app-hb" AT ARG
-   ENGINE-CANDIDATE:PATH$ s" " CAPTURE ;
 
 : SUCCESS ( n -- )
    dup 0<> if OUT$ type ERR$ type then

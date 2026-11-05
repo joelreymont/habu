@@ -1377,18 +1377,12 @@ variable CHAIN-I
    ENTRY$ CHAIN-DG CHAIN-DIGEST!
    BF-TRUE CHAIN-DONE? ! ;
 
-\ The preimage tag for the capture-source digest, a word because tools/build-fixpoint-test.f
-\ rebuilds the same framed field: two literals drift apart on a rename unseen, since the
-\ fixture's negative case passes on an absent tag either way.
-: BF-STAMP-CAPTURE-TAG$ ( -- ptr u8 n )
-   s" capture-src" ;
-
 : BF-STAMP-KEY-BEGIN ( -- )
    CHAIN-RECORD
    0 BF-STAMP-U !
    s" build-fixpoint-stamp-v2" BF-STAMP-FRAG+
    BF-STAMP-ENGINE+
-   BF-STAMP-CAPTURE-TAG$ CHAIN-DG BF-STAMP-DG+ ;
+   s" capture-src" CHAIN-DG BF-STAMP-DG+ ;
 
 \ The boot prefix is a keyed build input in its own right. Its bytes reach no
 \ stage source, so without this row an edit to checker.f would leave every
