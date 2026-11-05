@@ -4586,8 +4586,11 @@ public
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 $4E MOVZ,  LCOMPILEDIE LABEL@ B, ;
 
+\ A definition in the global wid is also refused by a row of its name in
+\ WL:PRIMITIVES. Clobbers x0-x17 and x30.
 : C-REJECT-DUP-DEF ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL {: nloop:label nnext:label ncmp:label nmatch:label nend:label ninl:label done:label nlin:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: nloop:label nnext:label ncmp:label nmatch:label nend:label ninl:label done:label nlin:label fresh:label :}
    14 DATA HIDXP-CELL LDR,  14 nlin CBZ,  C-HIDX-DUP?  13 nmatch CBNZ,  done B,  nlin LBL,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    nloop LBL,
       6 nend CBZ,
@@ -4611,7 +4614,12 @@ public
          C-DUP-DEF-FAIL
       nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
    nend LBL,
-   done LBL, ;
+   done LBL,
+   15 DATA DEF-WL-CELL LDR,  14 DATA BOOT:GLOBAL-WL-CELL LDR,  15 14 CMP,  C-NE fresh BCOND,
+   0 DATA TKA-CELL LDR,  1 DATA TKL-CELL LDR,  2 WL:PRIMITIVES MOVZ,
+   WLFIND:LENTRY LABEL@ BL,
+   12 nmatch CBNZ,
+   fresh LBL, ;
 
 \ Sealed system-package guard: the shared fail writes `E-SEALED-PACKAGE: `, the
 \ offending token (in TKA/TKL) and its location, and exits

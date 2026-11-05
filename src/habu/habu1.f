@@ -4779,7 +4779,19 @@ private
 \ The scan also answers for no table and for a chain with no empty slot (as
 \ LFIND's FIND-START). An empty slot means absent: every record below NDICT is
 \ in the table and slots only go empty -> occupied.
+\ A miss in the global wid asks WL:PRIMITIVES by the same entry's rule and
+\ answers that, with x2 restored.
 package WLFIND
+\ One entry's end. x30 and x2 ride the machine stack across the second search,
+\ in 16 bytes to keep sp aligned.
+: RETRY, ( label -- ) {: entry:label :}
+   LBL {: done:label :}
+   12 done CBNZ,
+   4 DATA BOOT:GLOBAL-WL-CELL LDR,  2 4 CMP,  C-NE done BCOND,
+   SP SP 16 SUBI,  30 SP 0 STR,  2 SP 8 STR,
+   2 WL:PRIMITIVES MOVZ,  entry BL,
+   30 SP 0 LDR,  2 SP 8 LDR,  SP SP 16 ADDI,
+   done LBL,  RET, ;
 public
 : EMIT ( -- )
    LENTRY LABEL@ LBL,
@@ -4791,7 +4803,8 @@ public
    LBL SWL-F1 !
    LBL SWL-F2 !
    LBL SWL-INL !
-   LBL LBL LBL LBL LBL LBL {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: plin:label ploop:label pnext:label pinl:label pcmp:label pmatch:label pend:label nend:label :}
    11 0 MOVZ,                                              \ result defaults to absent
    12 0 MOVZ,                                              \ ... and so does the row: neither loop writes x12
    \ Hash probe. x0 (name), x1 (len), x2 (wid) and x11 (result) are preserved
@@ -4803,7 +4816,7 @@ public
    8 HIDX-SLOTS LIT64,
    ploop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,            \ x3 = slot value (index+1)
-      3 SWL-END LABEL@ CBZ,                                \ empty slot -> absent from this wordlist
+      3 pend CBZ,                                          \ empty slot -> absent from this wordlist
       4 3 1 SUBI,  4 NDICT CMP,  C-GE pnext BCOND,         \ stale (truncated) index
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,             \ x5 = record ptr
       16 5 40 LDR,  16 2 CMP,  C-NE pnext BCOND,           \ wid mismatch (retired / other wordlist)
@@ -4822,11 +4835,12 @@ public
          15 4 CMP,  C-NE pnext BCOND,
          7 7 1 ADDI,  pcmp B,
       pmatch LBL,
-         11 5 0 LDR,  12 5 0 ADDI,  SWL-END LABEL@ B,
+         11 5 0 LDR,  12 5 0 ADDI,  RET,
       pnext LBL,
          8 8 1 SUBI,  8 plin CBZ,
          6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  ploop B,
    plin LBL,
+   4 0 MOVZ,                                               \ x4 = the entry the shared scan ends as: 0 LENTRY, 1 LNEWEST
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
       9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
@@ -4847,7 +4861,8 @@ public
          7 7 1 ADDI,  SWL-CMP LABEL@ B,
       SWL-MATCH LABEL@ LBL,  11 5 0 LDR,  12 5 0 ADDI,  SWL-NEXT LABEL@ B,
       SWL-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  SWL-LOOP LABEL@ B,
-   SWL-END LABEL@ LBL,  RET,
+   SWL-END LABEL@ LBL,  4 nend CBNZ,
+   pend LBL,  LENTRY LABEL@ RETRY,
 
    WLFIND:LNEWEST LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL
@@ -4860,7 +4875,7 @@ public
    8 HIDX-SLOTS LIT64,
    nloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,
-      3 SWL-END LABEL@ CBZ,
+      3 nend CBZ,
       4 3 1 SUBI,  4 NDICT CMP,  C-GE nnext BCOND,
       5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,
       16 5 40 LDR,  16 2 CMP,  C-NE nnext BCOND,
@@ -4885,7 +4900,9 @@ public
       nnext LBL,
          8 8 1 SUBI,  8 nlinear CBZ,
          6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  nloop B,
+   nend LBL,  WLFIND:LNEWEST LABEL@ RETRY,
    nlinear LBL,
+      4 1 MOVZ,
       3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
       SWL-LOOP LABEL@ B, ;
 ;package
@@ -5926,7 +5943,8 @@ variable LHEADROW
 \ tools/lint/clobber-lint-core.f lists Laotwidgate's preserved set as x11,
 \ without x5: a false red, never a false green.
 : EMIT-FIND ( -- )
-   LBL LBL LBL LBL {: open-pub:label enclosing-pri:label enclosing-pub:label global:label :}
+   LBL LBL LBL LBL LBL
+   {: open-pub:label enclosing-pri:label enclosing-pub:label global:label primitives:label :}
    LFIND LABEL@ LBL,
    LBL FIND-QSCAN !
    LBL FIND-QNONE !
@@ -6056,10 +6074,12 @@ variable LHEADROW
          FIND-NEXT LABEL@ B,
       FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
    FIND-DONE LABEL@ LBL,
-      \ The global wordlist is searched last: a miss there ends the search; a
-      \ qualified name (x11 = 1) skips the enclosing package.
+      \ The global wordlist and then WL:PRIMITIVES are searched last: a miss in
+      \ WL:PRIMITIVES ends the search; a qualified name (x11 = 1) skips the
+      \ enclosing package.
       13 FIND-FOUND LABEL@ CBNZ,
-      14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 14 CMP,  C-EQ FIND-MISS LABEL@ BCOND,
+      2 WL:PRIMITIVES CMPI,  C-EQ FIND-MISS LABEL@ BCOND,
+      14 DATA BOOT:GLOBAL-WL-CELL LDR,  2 14 CMP,  C-EQ primitives BCOND,
       14 DATA PKG-PRI-CELL LDR,  14 2 CMP,  C-NE open-pub BCOND,
          2 DATA PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
       open-pub LBL,
@@ -6074,6 +6094,8 @@ variable LHEADROW
       14 DATA ENCLOSING:PUB LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
       global LBL,
          2 0 MOVZ,  FIND-START LABEL@ B,
+      primitives LBL,
+         2 WL:PRIMITIVES MOVZ,  FIND-START LABEL@ B,
       \ Only the LINEAR scan can arrive here with x13 set - the hash probe's own
       \ match returns from FIND-HMATCH - so the parked pointer is this call's.
       FIND-FOUND LABEL@ LBL,  5 17 0 ADDI,  RET,
