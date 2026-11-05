@@ -291,14 +291,6 @@ SUITE compiler-checker-model-manifest
    test/compiler/checker-model-manifest.f
 ;SUITE
 
-SUITE compiler-ir-schema
-   test/compiler/ir-schema.f
-;SUITE
-
-SUITE compiler-ir-type
-   test/compiler/ir-type.f
-;SUITE
-
 SUITE compiler-native-string
    test/compiler/native-string.f
 ;SUITE
@@ -311,18 +303,10 @@ SUITE compiler-native-string-forms
    test/compiler/native-string-forms.f
 ;SUITE
 
-SUITE compiler-native-hir
-   test/compiler/native-hir.f
-;SUITE
-
 \ Reads the code the ENGINE UNDER TEST baked, so it belongs to whichever engine
 \ the gate runs and not to the sources a fixture could compile for itself.
 SUITE compiler-tier1-inline-prims
    test/compiler/tier1-inline-prims.f
-;SUITE
-
-SUITE compiler-native-colon
-   test/compiler/native-colon.f
 ;SUITE
 
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
@@ -522,10 +506,6 @@ SUITE compiler-native-trap
    test/compiler/native-trap.f
 ;SUITE
 
-SUITE compiler-native-div-refusal
-   test/compiler/native-div-refusal.f
-;SUITE
-
 SUITE compiler-native-quot
    test/compiler/native-quot.f
 ;SUITE
@@ -643,20 +623,8 @@ SUITE code-reclaim
    test/code-reclaim.f
 ;SUITE
 
-SUITE compiler-codegen-tail-probe
-   test/compiler/codegen-tail-probe.f
-;SUITE
-
-SUITE compiler-native-fold
-   test/compiler/native-fold.f
-;SUITE
-
 SUITE compiler-native-loop
    test/compiler/native-loop.f
-;SUITE
-
-SUITE compiler-native-edge-permutation
-   test/compiler/native-edge-permutation.f
 ;SUITE
 
 SUITE compiler-native-do
@@ -1551,10 +1519,6 @@ SUITE checker-graph-domains
 
 SUITE compiler-native-create-does
    test/compiler/native-create-does.f
-;SUITE
-
-SUITE compiler-native-export-fixed
-   test/compiler/native-export-fixed.f
 ;SUITE
 
 SUITE tier

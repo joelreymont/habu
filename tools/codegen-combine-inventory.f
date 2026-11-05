@@ -3,7 +3,7 @@
 \ routines hold. It reads emitted code through tools/codegen-tail-probe.f's walk:
 \ inlining, materialised constants and register allocation decide which pairs
 \ exist. Counts read finished code, so they undercount what a combine before
-\ register allocation can fuse. test/compiler/native-fold.f asserts them.
+\ register allocation can fuse.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -302,8 +302,7 @@ public
    loop ;
 
 \ ---- the counts themselves ----------------------------------------------------
-\ One word per report column, so the printer and test/compiler/native-fold.f read
-\ one measurement.
+\ One word per report column.
 
 : MULS ( -- n )
    [: MUL? ;] COUNT1 ;

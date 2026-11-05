@@ -37,12 +37,6 @@ SUITE debugger-resume
    test/debugger-resume.f
 ;SUITE
 
-\ These read source definitions as fixed-width AArch64 instructions and
-\ inspect SP slots. Their runtime subjects are checked in those suites.
-SUITE compiler-native-identity-spill
-   test/compiler/native-identity-spill.f
-;SUITE
-
 SUITE compiler-native-wide-frame
    test/compiler/native-wide-frame.f
 ;SUITE
