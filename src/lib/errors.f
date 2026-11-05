@@ -1112,7 +1112,7 @@
 -9290 constant E-AIO-SETUP        \ io_uring_setup or one of the ring mappings was refused
 -9291 constant E-AIO-ENTER        \ io_uring_enter was refused, or took fewer entries than offered
 -9292 constant E-AIO-STATE        \ no loop running, a second START, or a ticket this task does not own
--9293 constant E-AIO-FULL         \ the kernel's io_uring ring is full: no submission entry free, or as many operations in flight as the completion ring holds
+-9293 constant E-AIO-FULL         \ the kernel's io_uring ring is full: no submission entry free, or as many operations in flight as half the completion ring holds
 -9294 constant E-AIO-BUSY         \ STOP with an operation still in flight
 -9295 constant E-AIO-GROUP        \ the group is empty, holds no such ticket, or names no defined group
 -9296 constant E-AIO-BOUNDS       \ a transfer count past its allocation or below zero, a file offset below -1, or a socket address length not positive

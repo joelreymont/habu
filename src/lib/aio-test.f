@@ -54,6 +54,7 @@ package AIO-TEST
 8 constant FAN-EACH
 FAN-TASKS FAN-EACH * constant FAN-N
 $180 constant GROW-N                 \ into the third record chunk: chunks end at $40, $C0, $1C0
+$400 constant FULL-CAP                \ more polls than the Linux record ceiling admits
 $11 constant DEFS-N                  \ more groups than the first $10 definitions
 4 constant ANY-N
 
@@ -97,6 +98,8 @@ variable OWN-EXIT-DONE
 variable REUSE-PARKED
 variable REUSE-CLOSED
 variable CLEAN-GOT
+variable FULL-N
+variable FULL-I
 
 create POKE-BYTE $41 c,
 AIO-TEST-ALIGN8
@@ -117,6 +120,7 @@ create ANY-W ANY-N cells allot
 FAN-N TYPED-BUFFER FAN-TICKETS AIO:ticket
 ANY-N TYPED-BUFFER ANY-TICKETS AIO:ticket
 GROW-N TYPED-BUFFER GROW-TICKETS AIO:ticket
+FULL-CAP TYPED-BUFFER FULL-TICKETS AIO:ticket
 AIO-TEST-ALIGN8
 create GROW-IDX GROW-N cells allot
 GROW-N TYPED-BUFFER WIDE-SEEN n          \ how often AWAIT-ANY handed back each number
@@ -308,6 +312,44 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R @ >FD AIO:READABLE SILENT-MS >MS AIO:POLL LONE-TICKET !
    PENDING 0 T=
    LONE-TICKET @ AWAIT>N MARK-TIMED-OUT T=
+   P-R P-W PIPE-CLOSE ;
+
+: FULL-ONE ( -- )
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL FULL-N @ FULL-TICKETS !
+   1 FULL-N +! ;
+
+\ Polls until the ring refuses one: answers the refusal's code, or 0 when
+\ FULL-CAP polls went in.
+: FULL-FILL ( -- n )
+   0 FULL-N !
+   begin FULL-N @ FULL-CAP < while
+      [: FULL-ONE ;] catch dup 0<> if exit then drop
+   repeat
+   0 ;
+
+\ Cancels every poll FULL-FILL made and answers the last refusal's code, or 0.
+: FULL-CANCEL ( -- n )
+   0 FULL-N @ 0 ?do
+      i FULL-I !
+      [: FULL-I @ FULL-TICKETS @ AIO:CANCEL ;] catch
+      dup 0<> if nip else drop then
+   loop ;
+
+: FULL-CANCELLED ( -- n )
+   0 FULL-N @ 0 ?do
+      i FULL-TICKETS @ AWAIT>N MARK-CANCELLED = if 1 + then
+   loop ;
+
+\ A cancel takes no record of its own, so polls that fill every record can
+\ still be cancelled. A refused cancel pokes the pipe so the awaits end.
+: CASE-CANCEL-FULL ( -- )
+   P-R P-W PIPE-OPEN
+   FULL-FILL E-AIO-FULL T=
+   FULL-CANCEL dup 0 T= 0<> if P-W @ POKE then
+   FULL-CANCELLED FULL-N @ T=
+   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL LONE-TICKET !
+   LONE-TICKET @ AIO:CANCEL
+   LONE-TICKET @ AWAIT>N MARK-CANCELLED T=
    P-R P-W PIPE-CLOSE ;
 
 : ANY-DROP? ( -- bool )
@@ -898,17 +940,14 @@ CAST: XFER>N ( AIO:xfer -- n )
    P-R P-W PIPE-CLOSE
    AIO:START ;
 
-\ The registration AIO makes at the first submission is one entry in the task's
-\ TASK:AT-EXIT chain, so the cleanup the task registered before submitting runs
-\ too: the mark is set once, and AIO's own cleanup still cancelled and forgot the
-\ poll the task left in flight, which is what lets the loop stop with no record
-\ busy. The mark counts rather than latches, so a cleanup run twice is a FAIL.
+\ The poll's deadline lies past STOP-LOOP's bound: only AIO's cleanup ending it
+\ lets the loop stop in time. The mark counts, so a cleanup run twice is a FAIL.
 : OWN-EXIT-MARK+ ( -- )
    1 OWN-EXIT-MARK atomic-add drop ;
 
 : OWN-EXIT-WORK ( -- )
    ['] OWN-EXIT-MARK+ TASK:SELF TASK:AT-EXIT
-   P-R @ >FD AIO:READABLE -1 >MS AIO:POLL TICKET-DROP
+   P-R @ >FD AIO:READABLE WAIT-MS 2 * >MS AIO:POLL TICKET-DROP
    1 OWN-EXIT-DONE atomic! ;
 
 : CASE-OWN-EXIT ( -- )
@@ -1127,6 +1166,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    HB-TARGET-LINUX-KERNEL? if
       CASE-PLANTED-TIMER
       CASE-PLANTED-POLL
+      CASE-CANCEL-FULL
    then
    CASE-AWAIT-ANY
    CASE-FAN

@@ -77,12 +77,12 @@ CAST: AIO-N>PTR ( n -- ptr n )
 425 constant NR-SETUP
 426 constant NR-ENTER
 
-\ The ring's sizes. Each record in flight owes at most one completion entry of
-\ its own (a linked poll's second is its link record's), so the completion ring
-\ bounds the records in flight (URING-CLAIM below). A submission entry is
-\ held only from a stage's publish to its enter.
+\ The ring's sizes. A record in flight owes at most two completion entries: its
+\ own and one cancel's (a linked poll's second is its link record's own).
+\ A submission entry is held only from a stage's publish to its enter.
 $100 constant AIO-ENTRIES           \ 256 submission entries
-$200 constant AIO-CQ-ENTRIES        \ 512 completion entries
+$200 constant AIO-RECS-MAX          \ 512 records in flight
+AIO-RECS-MAX 2 * constant AIO-CQ-ENTRIES
 
 8 constant SETUP-CQSIZE             \ IORING_SETUP_CQSIZE
 1 constant ENTER-GETEVENTS          \ IORING_ENTER_GETEVENTS
@@ -156,6 +156,9 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 \ The user_data of the NOP that wakes the loop for its stop: all ones, which no
 \ record index reaches.
 -1 constant NOP-ID
+\ Set in a cancel's user_data above the index of the record it cancels; no
+\ record index reaches it.
+1 62 lshift constant CANCEL-BIT
 
 0 constant STATE-FREE
 1 constant STATE-SUBMITTED
@@ -164,17 +167,16 @@ $10 constant SPEC-BYTES             \ struct __kernel_timespec: two __s64
 
 0 constant KIND-POLL
 1 constant KIND-TIMEOUT
-2 constant KIND-CANCEL
-3 constant KIND-LINK                \ the link timeout of a poll with a deadline
-4 constant KIND-READ
-5 constant KIND-WRITE
-6 constant KIND-ACCEPT
-7 constant KIND-CONNECT
+2 constant KIND-LINK                \ the link timeout of a poll with a deadline
+3 constant KIND-READ
+4 constant KIND-WRITE
+5 constant KIND-ACCEPT
+6 constant KIND-CONNECT
 
 \ The io_uring opcode each kind submits, one row per kind in kind order: a new
 \ kind is a row here and a constant above.
 create KIND-OPS
-   OP-POLL-ADD ,  OP-TIMEOUT ,  OP-ASYNC-CANCEL ,  OP-LINK-TIMEOUT ,
+   OP-POLL-ADD ,  OP-TIMEOUT ,  OP-LINK-TIMEOUT ,
    OP-READ ,  OP-WRITE ,  OP-ACCEPT ,  OP-CONNECT ,
 
 : KIND>OP ( n -- n ) {: kind:n :}
@@ -189,9 +191,10 @@ BEGIN-STRUCTURE REC-BYTES
    CELL +FIELD REC.RES
    CELL +FIELD REC.FLAGS
    CELL +FIELD REC.KIND
-   CELL +FIELD REC.PENDING          \ completions still owed: 2 for a linked poll
+   CELL +FIELD REC.PENDING          \ completions still owed (SETTLE)
    CELL +FIELD REC.PEER             \ the link's record, or -1
    CELL +FIELD REC.TIMED-OUT        \ the link fired, so -ECANCELED means timed out
+   CELL +FIELD REC.CANCELING        \ a cancel was submitted; a record gets one
    CELL +FIELD REC.HOLD             \ REC.BUF and REC.BUF-LEN are this record's
    CELL +FIELD REC.GEN              \ the handle's other half, bumped by REC-RESET
    CELL +FIELD REC.OWNER            \ the submitting task, as TASK:WAKE takes it
@@ -588,7 +591,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ every handle over this record is stale from the moment somebody can claim it.
 : REC-RESET ( n -- ) {: idx:n :}
    idx REC {: r:ptr :}
-   0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT !
+   0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT ! 0 r REC.CANCELING !
    0 r REC.PENDING ! -1 r REC.PEER ! KIND-POLL r REC.KIND !
    0 r REC.HOLD !
    r REC.GEN @ 1 + r REC.GEN !
@@ -648,7 +651,7 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    kind r REC.KIND !
    owed r REC.PENDING !
    0 r REC.RES ! 0 r REC.FLAGS ! 0 r REC.TIMED-OUT ! -1 r REC.PEER !
-   0 r REC.HOLD !
+   0 r REC.HOLD ! 0 r REC.CANCELING !
    TASK:SELF idx REC-OWNER ! ;
 
 \ Read from the record states themselves, so what STOP refuses is exactly a
@@ -786,10 +789,8 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    v slot SQE-AT SQE-OPFLAGS + LE:U32! ;
 
 \ ---- completion --------------------------------------------------------------
-\ A record owes one completion, or two when a poll carries a link timeout. The
-\ last one settles it: a forgotten record is freed and a waited-for one is
-\ marked done and its owner woken. Both CQEs of a linked pair are always posted,
-\ so the count is exact whichever of the two the kernel finishes first.
+\ The count is exact: the kernel posts both CQEs of a linked pair (POLL-LINKED)
+\ and one per cancel (CANCEL-STAGE), so the last one owed settles the record.
 : SETTLE ( n -- ) {: idx:n :}
    idx REC {: r:ptr :}
    r REC.PENDING @ 1 - dup r REC.PENDING !
@@ -805,17 +806,16 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    res ERR-TIME negate = if 1 peer REC REC.TIMED-OUT ! then
    peer SETTLE ;
 
-\ The NOP that wakes the loop for its stop is nobody's record and is simply
-\ dropped; any other user_data is a record's index. A completion for a record
-\ that is free is this module's own defect (every record the kernel still owns
-\ is submitted or forgotten until its last completion), so it ends the process
-\ by name like the other defects here.
+\ user_data is NOP-ID, the stop's wake, or a record's index; a cancel's carries
+\ CANCEL-BIT and only settles. A free record here is this module's own defect.
 : COMPLETE ( ptr u8 -- ) {: cqe :}
    cqe LE:U64@ {: id:n :}
    cqe CQE-RES + LE:S32@ {: res:n :}
    cqe CQE-FLAGS + LE:U32@ {: fl:n :}
    id NOP-ID = if exit then
-   id REC-STATE@ STATE-FREE = if s" aio: completion of a free record" E-AIO-STATE die then
+   id CANCEL-BIT invert and {: idx:n :}
+   idx REC-STATE@ STATE-FREE = if s" aio: completion of a free record" E-AIO-STATE die then
+   idx id <> if idx SETTLE exit then
    id REC REC.KIND @ KIND-LINK = if id res COMPLETE-LINK exit then
    res id REC REC.RES !
    fl id REC REC.FLAGS !
@@ -918,11 +918,10 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
 \ Each answers a code instead of throwing, because it runs with the facility
 \ held and a throw would leave it locked. The caller releases and then throws.
 
-\ A record for an io_uring operation. The records in flight stay within the
-\ completion ring the kernel sized, because each owes at most one entry of its
-\ own there; past it the kernel's ring is full and the claim is E-AIO-FULL.
+\ A record for an io_uring operation; past half the ring the kernel sized it
+\ is E-AIO-FULL (the ring's sizes above).
 : URING-CLAIM ( -- n n )
-   REC-LIVE @ CQ-ENTRIES-N @ >= if E-AIO-FULL -1 exit then
+   REC-LIVE @ CQ-ENTRIES-N @ 2 / >= if E-AIO-FULL -1 exit then
    REC-CLAIM ;
 
 \ The prologue every single-SQE stage shares: room for one more entry and a
@@ -1000,14 +999,18 @@ CAST: AIO-MAPPED>PTR ( n -- ptr u8 )
    SQ-PUBLISH
    idx SUBMIT-OR-FORGET idx ;
 
-\ A cancel is submitted on a record nobody waits for, so its own completion
-\ frees it; the operation it names completes cancelled on its own record.
+\ A cancel claims no record: its completion is one more the target settles on.
+\ A link (its poll's cancel ends it), an ended or a cancelled record answers 0.
 : CANCEL-STAGE ( n -- n ) {: target:n :}
-   CLAIM-ONE {: rc:n idx:n :}
-   rc 0<> if rc exit then
-   idx KIND-CANCEL 1 REC-ARM
-   STATE-FORGET idx REC REC.STATE atomic!
-   SQ-SLOT dup idx target SQE-CANCEL SQ-PUBLISH
+   target REC {: r:ptr :}
+   r REC.STATE atomic@ {: st:n :}
+   st STATE-SUBMITTED <> st STATE-FORGET <> and if 0 exit then
+   r REC.KIND @ KIND-LINK = if 0 exit then
+   r REC.CANCELING @ 0<> if 0 exit then
+   1 SQ-ROOM? 0= if E-AIO-FULL exit then
+   r REC.PENDING @ 1 + r REC.PENDING !
+   1 r REC.CANCELING !
+   SQ-SLOT dup target CANCEL-BIT or target SQE-CANCEL SQ-PUBLISH
    ENTER-SUBMIT ;
 
 : NOP-STAGE ( -- n )
@@ -1032,6 +1035,9 @@ INSTALL-HOST
 \ woken by the loop through a TCB whose memory the join has released. It is one
 \ entry in that task's TASK:AT-EXIT chain, so a task that submits keeps its own
 \ cleanups: they run beside this one, newest registration first.
+
+\ A cancel is refused only by a failed ring (an SQ full of entries nobody
+\ entered, or a refused enter) or by a failed write to Darwin's wake pipe.
 : TRY-CANCEL ( n -- ) {: target:n :}
    target HOST-CANCEL drop ;
 

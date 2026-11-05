@@ -1,9 +1,0 @@
----
-title: "Linux AIO refuses a cancel once its records reach the ring's size"
-status: active
-priority: 2
-issue-type: task
-created-at: "2026-11-05T11:39:16.938926+02:00"
----
-
-Measured 2026-11-05 on spark (Linux arm64, linux-aarch64 engine cross-built from master): bin/hb --load src/lib/net/ws-test.f exits 67 after ~10 s with no output; build/ws-stderr.txt: 'error ws: task failed, throw -9293' (E-AIO-FULL). Problem: FAULT-CASE (ws-test.f:1629-1641) fills AIO to its ceiling, and its cleanup's AIO:CANCEL is refused: src/lib/aio.f CANCEL-STAGE (:1005) claims a record of its own through CLAIM-ONE/URING-CLAIM (:924-934), which refuses once REC-LIVE reaches the completion ring's size (512), so at the ceiling nothing can be cancelled until something completes. SCRUB-ONE's TRY-CANCEL (:1035-1044) drops the same refusal, so an ending task's poll stays live holding a record until its fd fires. macOS passes: MAC-CANCEL-STAGE (aio-macos.f:266-268) claims nothing. Not the engine or the Linux seam: a cancel below the ceiling works; reduced reproducer spark:/tmp/carl-linux/hunt-ws/probe/cancel-full.f (local copy /tmp/carl-hunt-probe), which needs no WS or HTTP. Fix (lead's design): a cancel claims no record. Its CQE settles on the record it cancels (user_data = that record's index with a cancel bit; the target's REC.PENDING counts it, as a linked poll's record counts two), a record gets at most one cancel, and one not submitted or forgotten gets none; the completion ring is twice the record bound, so the op ceiling stays 512 and a cancel always has room. Acceptance: ws-test rc 0 on spark; an aio-test Linux case cancels every poll of a ring filled to its ceiling and awaits each cancelled; macOS and spark aio, curl, ws, aio-capture-sweep, model rc 0. Files: src/lib/aio.f, src/lib/aio-test.f. Verify: those tests on macOS and spark. Depends: none. Ownership: carl. Claim: agent=worker workspace=.jj-ws.noindex/carl-aiocancel
