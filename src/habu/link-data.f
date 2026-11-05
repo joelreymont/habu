@@ -3,8 +3,9 @@
 \ value at DATA-VA, then the DATA list, the offset from DATA-VA of every cell
 \ holding a code address, which start-up adds the load offset to. The link
 \ also writes the header cells HEADER-CELLS names and lists the code ones.
-\ Words visible only inside LINKER.
+\ LINKER:WRITE writes the linked program; the other words are LINKER's own.
 
+require src/lib/errors.f
 require src/lib/le.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
@@ -13,6 +14,9 @@ require src/habu/address-cells.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link-kernel.f
 require src/arch/arm64/boot.f
+require src/habu/fdio.f
+require src/habu/sign-id.f
+require src/habu/driver-io.f
 require src/habu/crash.f
 require src/habu/habu2.f
 require src/habu/linker.f
@@ -197,5 +201,20 @@ variable LLIST-END
    ROOT-CELLS
    ['] DATA-ADDRESS PLACE-ROUTINES
    DATA-IMAGE ;
+
+
+public
+
+\ Link the open space's program and write it, signed, to the path; the caller
+\ first stores its entry as app-image-core.f START! does.
+: WRITE ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   IDLE? if E-COMP-STATE throw then
+   ENGINE? @ if E-COMP-STATE throw then
+   APP-ENTRY:XT-CELL SPACE-AT @ 0= if
+      s" link: the build stored no entry in APP-ENTRY:XT-CELL" 74 die
+   then
+   LINK-STRIPPED
+   SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE ;
 
 ;package

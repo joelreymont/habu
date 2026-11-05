@@ -18,6 +18,11 @@ SUITE arm64-link-data
    test/compiler/arm64-link-data.f
 ;SUITE
 
+\ arm64-link-run.f writes three stripped programs from one build and runs them.
+SUITE arm64-link-run
+   test/compiler/arm64-link-run.f
+;SUITE
+
 \ ARM BRK breakpoint and resume fixtures select tier 0. The x64 kernel
 \ explicitly refuses that selection; its crash/stack guards have native rows.
 SUITE engine-stack-debugger
