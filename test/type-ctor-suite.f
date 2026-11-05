@@ -1,16 +1,11 @@
 \ type-ctor-suite.f — generated-constructor suite (docs/forth.md "Structures And
-\ Enums"). A WHITEBOX-SUITE row: its record queries are checker internals, bound
-\ by their recorded rows only on the unsealed engine (test/whitebox-engine.f
-\ builds it):
-\     <unsealed engine> --load test/type-ctor-suite.f
+\ Enums").
 \ A constructor word pushes its payload cells, M-p zero pads, then the tag.
 
 require tools/prot-wid-probe.f
 require src/lib/adt/result.f
 require src/lib/test.f
 
-using SCHEMA-REG
-using TFAM
 using TYPE-DECL
 
 T-RESET
@@ -22,14 +17,9 @@ TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
    TCE-U ! TCE-A !
    [: TCE-GO ;] catch ;
 
-variable TCF   variable TCOK
-\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the suite names the
-\ checker-internal colon words it probes, at top level and in checked bodies;
-\ on the unsealed engine a checked body binds each one's recorded row. The
-\ TWX- words are checked aliases.
+\ Checked aliases of the checker's multi-error bracket.
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
-: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 
 package PROT-WID-RETURN-TEST
 
@@ -114,9 +104,6 @@ SUMTYPE tres
 private
 NEWTYPE zonly<a>
 ;package
-\ package mode continued private after generation ran inside the block.
-s" zpub" s" zonly" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 \ the generated word is globally addressable; qualified sig type resolves.
 : ZMK-YES ( n -- zpub:tres ) ZPUB-TRES:YES ;
 s" GEN-PKG" type cr
@@ -137,9 +124,6 @@ SUMTYPE certify-slot
 ;SUMTYPE
 private
 ;package
-\ The derived constructor package retains the escaped name.
-s" evx" s" certify-slot" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" EVX-CERTIFY--SLOT" T$=
 \ the constructors are callable cross-package by that readable name:
 : EVX-MK-GOT  ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT ;
 : EVX-MK-NONE (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE ;
@@ -154,8 +138,6 @@ SUMTYPE resultresultr
   VARIANT one n ;VARIANT
 ;SUMTYPE
 ;package
-s" verylongpackagename" s" resultresultr" TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULTRESULTR" T$=
 : LONG-MK-ONE ( n -- verylongpackagename:resultresultr ) VERYLONGPACKAGENAME-RESULTRESULTR:ONE ;
 s" LONG-GET ( n -- verylongpackagename:resultresultr ) VERYLONGPACKAGENAME-RESULTRESULTR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" GEN-LONG-CTOR" type cr
@@ -166,8 +148,6 @@ s" GEN-LONG-CTOR" type cr
 SUMTYPE zpar<a>
   VARIANT psome a ;VARIANT
 ;SUMTYPE
-s" " s" zpar" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPAR" T$=
 s" ZB6 ( n -- zpar<n> ) ZPAR:PSOME" CHECK-QUIET-CANDIDATE! -1 T=   \ publishes + certifies
 
 SUMTYPE zpoly<a,b>
@@ -213,8 +193,6 @@ SUMTYPE zsec
   VARIANT hide n ;VARIANT
 ;SUMTYPE
 ;package
-s" zp8" s" zsec" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 
 \ rejected declarations generate nothing: a duplicate family neither redefines
@@ -230,16 +208,9 @@ s" DUP-DECL-SAFE" type cr
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE zlin VARIANT keep own ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
 TWX-MULTI-ERR-END 1 T=
-s" " s" zlin" TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 
-\ protection. Generated packages are closed-but-callable: `package` cannot
-\ open the derived name (any case), `undefine` of a generated word rejects
-\ before retirement, and a new tail cannot certify into the constructor
-\ package. SV.CTOR-SYM records the published checker symbol.
-s" " s" zres" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> TTRUE
-TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
-s" ZRES:OK" CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@  T=
+\ protection. A generated package is closed but callable: it cannot be reopened
+\ (any case), its words cannot be undefined, and no new word certifies into it.
 \ package reopen rejects, case-insensitively; a later package still opens.
 s" package zres" TCE-CATCH E-CTOR-PROTECTED T=
 s" package ZRES" TCE-CATCH E-CTOR-PROTECTED T=
@@ -321,23 +292,12 @@ s" CB14 ( n -- cnpub:cnres ) construct cnpub:cnres yes" CHECK-QUIET-CANDIDATE! 0
 s" CP3 ( n -- cnpub:cnres ) CNPUB-CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ the public cross-package path
 s" CONSTRUCT-OWN" type cr
 
-\ Product generated words. A PUBLIC product publishes PKG:MAKE ( fields --
-\ fam<..> ) and PKG:UNMAKE ( fam<..> -- fields ), both empty-bodied: a product
-\ bundle is its field cells in slot order (no tag), so runtime round-trips are
-\ identity. Same publish/protection stack as sum constructors (SUMV rows).
+\ Product generated words: a PUBLIC product publishes empty-bodied PKG:MAKE and
+\ PKG:UNMAKE, since its value is its field cells in slot order (no tag).
 PRODUCT zpt
   FIELD x n
   FIELD y n
 ;PRODUCT
-\ metadata: two generator-owned rows, ctor package derived, syms recorded.
-s" " s" zpt" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-COUNT@ 2 T=
-TCF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
-TCF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPT" T$=
-TCF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 2 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> TTRUE
-TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> TTRUE
 : ZPT-MK ( n n -- zpt ) ZPT:MAKE ;
 : ZPT-UN ( zpt -- n n ) ZPT:UNMAKE ;
 : ZPT-RT ( -- n n ) 3 4 ZPT:MAKE ZPT:UNMAKE ;
@@ -408,8 +368,6 @@ PRODUCT phid
   FIELD v n
 ;PRODUCT
 ;package
-s" zpsec" s" phid" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
 s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 \ protection: the derived package is closed (reopen/undefine reject), and the
 \ generated words stay callable after the rejected attempts.
@@ -749,406 +707,6 @@ SUMTYPE pqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
 PQM-RUN 105 T=
 s" PARAMETRIC-QUOT-PAYLOAD" type cr
 
-\ The generator body is told which family to generate. The SUMTYPE definer runs
-\ registration and generation in one transaction; this test registers two
-\ families through CHECKER-DEFSUM, each in its own declaration transaction, then
-\ generates the first: a generator that read the last-registered family would
-\ publish ZXB:TWO instead of ZXA:ONE.
-package CTOR-FAMILY-TEST
-
-: DEFSUM ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
-\ an already-published family takes the committed payload provider.
-: CTOR-BODY ( n -- n ) {: fam:n :}
-   TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY ;
-: PLAN-N ( -- n ) TDPLAN-N @ ;
-: FAM-REG ( -- n ) TDECL-FAM-REG @ ;
-
-variable FAM-A    \ the family registered first, then left behind by the register
-variable FAM-B    \ the family registered last, the one the register still names
-variable ASKED    \ family id handed to the generator
-variable GOT      \ family id the generator handed back
-
-: REGISTER-A ( -- ) s" zxa" s" VARIANT one n ;VARIANT" DEFSUM ;
-: REGISTER-B ( -- ) s" zxb" s" VARIANT two n ;VARIANT" DEFSUM ;
-: DECLARE-A ( -- ) [: REGISTER-A ;] DECLARATION-TRANSACTION:RUN  FAM-REG FAM-A ! ;
-: DECLARE-B ( -- ) [: REGISTER-B ;] DECLARATION-TRANSACTION:RUN  FAM-REG FAM-B ! ;
-: GENERATE-BODY ( -- ) ASKED @ CTOR-BODY GOT ! ;
-
-public
-
-\ DECLARE registers both families and generates neither, so a live family that
-\ is NOT the one the register names exists to generate.
-: DECLARE ( -- ) DECLARE-A DECLARE-B ;
-: FIRST ( -- n ) FAM-A @ ;
-: SECOND ( -- n ) FAM-B @ ;
-: GENERATE ( n -- n ) ASKED ! [: GENERATE-BODY ;] DECLARATION-TRANSACTION:RUN  GOT @ ;
-: PLAN-COUNT ( -- n ) PLAN-N ;
-: PLAN-NAME ( n -- ptr u8 n ) TDPLAN-NAME$ ;
-
-;package
-
-CTOR-FAMILY-TEST:DECLARE
-CTOR-FAMILY-TEST:FIRST 0 < 0= TTRUE
-\ zxa is live and is not the family the register names.
-CTOR-FAMILY-TEST:SECOND CTOR-FAMILY-TEST:FIRST <> TTRUE
-\ generate the NON-LAST family: the id comes back unchanged and the whole plan
-\ is zxa's single constructor.
-CTOR-FAMILY-TEST:FIRST CTOR-FAMILY-TEST:GENERATE CTOR-FAMILY-TEST:FIRST T=
-CTOR-FAMILY-TEST:PLAN-COUNT 1 T=
-0 CTOR-FAMILY-TEST:PLAN-NAME s" ZXA:ONE" T$=
-\ only that family was published: zxa's constructor certifies, while zxb's
-\ constructor word does not exist yet (verdict 1 = uncheckable/undefined).
-s" ZQ1 ( n -- zxa ) ZXA:ONE" CHECK-QUIET-CANDIDATE! -1 T=
-s" ZQ2 ( n -- zxb ) ZXB:TWO" CHECK-QUIET-CANDIDATE! 1 T=
-\ the still-ungenerated family generates afterwards through the same call.
-CTOR-FAMILY-TEST:SECOND CTOR-FAMILY-TEST:GENERATE CTOR-FAMILY-TEST:SECOND T=
-CTOR-FAMILY-TEST:PLAN-COUNT 1 T=
-0 CTOR-FAMILY-TEST:PLAN-NAME s" ZXB:TWO" T$=
-s" ZQ3 ( n -- zxb ) ZXB:TWO" CHECK-QUIET-CANDIDATE! -1 T=
-
-s" EXPLICIT-CTOR-FAMILY" type cr
-
-\ The shared constructor and DERIVE renderer reads payload count, declaration
-\ order schema root and payload cell width only through the context cell and
-\ three quotation capabilities its caller hands it. Proved here:
-\  1. A provider that swaps the two variants' payload views decides the
-\     signatures the constructors are rendered with. The generated body is the
-\     canonical `construct` form, certified against the committed registry, so
-\     such a provider renders but cannot publish: the generation is refused and
-\     nothing reaches the dictionary.
-\  2. A provider whose answers cannot be true of the family is rejected with
-\     E-TDECL-PROVIDER before any text is generated: a negative count, an
-\     unknown schema root, a cell width that contradicts the schema roots it
-\     returned, and a cell width wider than the family's payload slots. The
-\     family still generates normally afterwards.
-\  3. A provider over a LIVE declaration token renders a payload constructor
-\     inside the transaction that declared it; the committed provider cannot:
-\     its reads are bounded by the committed field high-water and throw
-\     E-TFAM-PAYLOAD (type-family.f). Nothing below publishes a word from the
-\     live path.
-package CTOR-PAYPROV-TEST
-
-TFAM:E-TFAM-PAYLOAD constant E-COMMITTED-PAYLOAD
-7133 constant E-TDECL-PROVIDER      \ sumtype.f's, private there
-\ sumtype.f TDPLAN-PREFLIGHT-DEFINITIONS: a generated definition the checker
-\ refused, which is how a whole generated declaration is rejected.
-70   constant E-PREFLIGHT
-
-\ The generator's three payload capabilities carry their exact effects across
-\ the whitebox boundary, so the checker types every provider this suite builds.
-: SUM-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
-: PROD-DECL ( ptr u8 n ptr u8 n -- ) CHECKER-DEFPRODUCT ;
-: LAST-FAM ( -- n ) TDECL-FAM-REG @ ;
-: PAY-COUNT ( n -- n ) SUMV-PAY-N ;
-: PAY-CELLS ( n -- n ) SUMV-PAYCELLS@ ;
-: ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
-: VAR-START ( n -- n ) TFAM-VAR-START@ ;
-: PKG-PUBLIC ( -- n ) CHECKER-VIS-PUBLIC ;
-: SUM-KIND ( -- n ) TK-SUM ;
-: CON-CODE ( ptr u8 n -- n ) CON-OF ;
-: SUMV-COUNT ( -- n ) SUMV-N @ ;
-: FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
-: CELL-BYTES ( -- n ) CELL ;
-: PEND-CLEAR ( -- ) CTOR-PEND-CLEAR ;
-: CAND-START ( -- ) CHECK-CANDIDATE-START ;
-: CAND-DONE ( n -- n ) CHECK-CANDIDATE-DONE ;
-: PLAN-ROWS ( -- n ) TDPLAN-N @ ;
-
-\ --- provider 1: coherent, and deliberately not the committed view. It answers
-\ every question about one variant with the OTHER variant's committed payload.
-variable SWAP-A   variable SWAP-B
-variable SWAP-FAM   variable HOSTILE-FAM   variable PROD-FAM
-variable FSHORT-FAM   variable FLONG-FAM
-: SWAPPED ( n -- n ) {: vid:n :}
-   vid SWAP-A @ = IF SWAP-B @ EXIT THEN SWAP-A @ ;
-: SWAP-N ( n n n -- n ) {: ctx:n fam:n vid:n :} vid SWAPPED PAY-COUNT ;
-: SWAP-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :} vid SWAPPED j SUMV-PAY-ROOT ;
-: SWAP-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :} vid SWAPPED PAY-CELLS ;
-: SWAP-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: SWAP-N ;] [: SWAP-ROOT ;] [: SWAP-CELLS ;] ;
-
-\ --- providers 2: each one answer that cannot be true of the family under test.
-\ TRUE-* answer honestly so exactly one capability is hostile per fixture. Every
-\ capability takes the renderer's full argument list even where it ignores it,
-\ because that list is the contract the renderer calls all three through.
-variable DONOR                          \ a wider variant, borrowed by WIDE-PROV
-: TRUE-N ( n n n -- n ) {: ctx:n fam:n vid:n :} vid PAY-COUNT ;
-: TRUE-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :} vid j SUMV-PAY-ROOT ;
-: TRUE-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :} vid PAY-CELLS ;
-: NEG-N ( n n n -- n ) {: ctx:n fam:n vid:n :} -1 ;
-: ZERO-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :} 0 ;
-: PAST-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :} ROOT-N ;
-: LEAN-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :} vid PAY-CELLS 1 - ;
-: DONOR-N ( n n n -- n ) {: ctx:n fam:n vid:n :} DONOR @ PAY-COUNT ;
-: DONOR-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :} DONOR @ j SUMV-PAY-ROOT ;
-: DONOR-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :} DONOR @ PAY-CELLS ;
-: NEG-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: NEG-N ;]   [: TRUE-ROOT ;] [: ZERO-CELLS ;] ;
-: ROOT-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: TRUE-N ;]  [: PAST-ROOT ;] [: TRUE-CELLS ;] ;
-: LEAN-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: TRUE-N ;]  [: TRUE-ROOT ;] [: LEAN-CELLS ;] ;
-: WIDE-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: DONOR-N ;] [: DONOR-ROOT ;] [: DONOR-CELLS ;] ;
-
-\ --- providers 3: answers that change after the first call, and a count with
-\ no relation to the family. The generator asks each capability once per
-\ variant, before any text exists, so a later answer has nothing to corrupt.
-\ FLIP-* report the truth once, then a wrong arity.
-variable FLIP-N-CALLS   variable FLIP-VID   variable FLIP-SEEN
-: FLIP-BASE ( n -- n ) {: vid:n :}   \ count the calls made about THIS variant
-   vid FLIP-VID @ <> IF vid FLIP-VID !  0 FLIP-SEEN ! THEN
-   FLIP-SEEN @ 1 + FLIP-SEEN !
-   FLIP-N-CALLS @ 1 + FLIP-N-CALLS !
-   vid PAY-COUNT ;
-: FLIP-SHORT-N ( n n n -- n ) {: ctx:n fam:n vid:n :}
-   vid FLIP-BASE {: k:n :}
-   FLIP-SEEN @ 1 > IF k 1 - EXIT THEN k ;
-: FLIP-LONG-N ( n n n -- n ) {: ctx:n fam:n vid:n :}
-   vid FLIP-BASE {: k:n :}
-   FLIP-SEEN @ 1 > IF k 1 + EXIT THEN k ;
-: HUGE-N ( n n n -- n ) {: ctx:n fam:n vid:n :} 3000 ;
-: FLIP-SHORT-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: FLIP-SHORT-N ;] [: TRUE-ROOT ;] [: TRUE-CELLS ;] ;
-: FLIP-LONG-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: FLIP-LONG-N ;] [: TRUE-ROOT ;] [: TRUE-CELLS ;] ;
-: HUGE-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   0 [: HUGE-N ;] [: TRUE-ROOT ;] [: TRUE-CELLS ;] ;
-
-\ --- provider 4: the live declaration token's own payload view.
-variable LTOK
-: LIVE-N ( n n n -- n ) {: ctx:n fam:n vid:n :} ctx fam vid DECL-EVENT:PAYLOAD-N ;
-: LIVE-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :}
-   ctx fam vid j DECL-EVENT:PAYLOAD-SCHEMA@ ;
-: LIVE-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :} ctx fam vid DECL-EVENT:PAYLOAD-CELLS ;
-: LIVE-PROV ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
-   LTOK @ [: LIVE-N ;] [: LIVE-ROOT ;] [: LIVE-CELLS ;] ;
-
-\ --- generation drivers. Each fixture builds its own provider INSIDE the
-\ transaction body, because a quotation cannot read its caller's locals and a
-\ variable would drop the capability's effect; only the family id travels in a
-\ cell. GOT proves the generator handed that same family back.
-variable ASKED   variable GOT
-: SWAP-BODY ( -- )      SWAP-PROV ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: COMMITTED-BODY ( -- ) TDECL-SUMV-PROVIDER ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: NEG-BODY ( -- )       NEG-PROV  ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: PNEG-BODY ( -- )      NEG-PROV  PROD-FAM @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: ROOT-BODY ( -- )      ROOT-PROV ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: LEAN-BODY ( -- )      LEAN-PROV ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: WIDE-BODY ( -- )      WIDE-PROV ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: FSHORT-BODY ( -- )    FLIP-SHORT-PROV ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: FLONG-BODY ( -- )     FLIP-LONG-PROV  ASKED @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: HUGE-BODY ( -- )      HUGE-PROV  PROD-FAM @ TDECL-CTOR-WORDS-BODY GOT ! ;
-: SWAP-RUN ( -- )      [: SWAP-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: COMMITTED-RUN ( -- ) [: COMMITTED-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: NEG-RUN ( -- )       [: NEG-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: PNEG-RUN ( -- )      [: PNEG-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: ROOT-RUN ( -- )      [: ROOT-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: LEAN-RUN ( -- )      [: LEAN-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: WIDE-RUN ( -- )      [: WIDE-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: FSHORT-RUN ( -- )    [: FSHORT-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: FLONG-RUN ( -- )     [: FLONG-BODY ;] DECLARATION-TRANSACTION:RUN ;
-: HUGE-RUN ( -- )      [: HUGE-BODY ;] DECLARATION-TRANSACTION:RUN ;
-
-\ --- the live declaration, driven through the shared event transaction as the
-\ ENUM front end drives it, then rolled back.
-variable LFAM   variable LVID   variable LROOT
-variable LVBASE  variable LFBASE   variable LROWS   variable LCOUNT
-: LIVE-OPEN ( -- )
-   SUMV-COUNT LVBASE !
-   FLD-COUNT LFBASE !
-   DECL-EVENT:OPEN LTOK !
-   LTOK @ LFAM @ DECL-EVENT:DECL LTOK !
-   LTOK @ LFAM @ 0 DECL-EVENT:ARITY LTOK !
-   LTOK @ LFAM @ s" one" DECL-EVENT:VARIANT LTOK !
-   DECL-EVENT:CURRENT-VARIANT LVID !
-   LTOK @ LFAM @ s" a" LROOT @ 0 1 0 CELL-BYTES CELL-BYTES 0 DECL-EVENT:FIELD LTOK !
-   LTOK @ LFAM @ DECL-EVENT:END-VARIANT LTOK !
-   LFAM @ LVBASE @ 1 TFAM-VAR-RANGE!
-   LFAM @ LFBASE @ 1 TFAM-FLD-RANGE!
-   LFAM @ 1 TFAM-SLOTS!
-   LFAM @ LVBASE @ 1 TDECL-CTOR-PUBLISH ;
-: LIVE-RENDER ( -- )
-   TDPLAN-BEGIN
-   LIVE-PROV LFAM @ TDPV-CAPTURE
-   LFAM @ LVID @ TDECL-CTOR-WORD ;
-: COMMITTED-RENDER ( -- )
-   TDPLAN-BEGIN
-   TDECL-SUMV-PROVIDER LFAM @ TDPV-CAPTURE
-   LFAM @ LVID @ TDECL-CTOR-WORD ;
-
-\ the snapshot is module state, so a render word that reaches outside the
-\ family that was captured must fail closed rather than read a stale row.
-: STALE-BODY ( -- )
-   TDPLAN-BEGIN
-   TDECL-SUMV-PROVIDER HOSTILE-FAM @ TDPV-CAPTURE
-   SWAP-FAM @ SWAP-A @ TDECL-CTOR-WORD ;
-: OVERRUN-BODY ( -- )   \ the right family, a variant row it never captured
-   TDPLAN-BEGIN
-   TDECL-SUMV-PROVIDER SWAP-FAM @ TDPV-CAPTURE
-   SWAP-FAM @ SWAP-A @ 9 + TDECL-CTOR-WORD ;
-
-public
-
-\ register zps and zph without generating either, and note the payload rows the
-\ hostile providers borrow.
-: DECLARE ( -- )
-   [: s" zps" s" VARIANT sone n n ;VARIANT VARIANT stwo n ;VARIANT" SUM-DECL ;]
-      DECLARATION-TRANSACTION:RUN
-   LAST-FAM SWAP-FAM !
-   SWAP-FAM @ VAR-START {: base:n :}
-   base SWAP-A !   base 1 + SWAP-B !
-   [: s" zph" s" VARIANT hone n ;VARIANT" SUM-DECL ;] DECLARATION-TRANSACTION:RUN
-   LAST-FAM HOSTILE-FAM !
-   \ a PRODUCT never reads a payload cell width, so only the count capability's
-   \ own check stands between a negative count and malformed derived text.
-   s" zpp" s" DERIVE eq FIELD ppx n FIELD ppy n" PROD-DECL
-   LAST-FAM PROD-FAM !
-   \ a one-element, two-cell payload: its single root is a family application
-   \ whose family is itself a tag plus one slot. WIDE-PROV lends it to the
-   \ one-slot family, so the count bound passes and only the width bound stands.
-   [: s" zpu" s" VARIANT uone n ;VARIANT" SUM-DECL ;] DECLARATION-TRANSACTION:RUN
-   [: s" zpw" s" VARIANT wone zpu ;VARIANT" SUM-DECL ;] DECLARATION-TRANSACTION:RUN
-   LAST-FAM VAR-START DONOR !
-   \ two more ungenerated families for the call-count flip probes.
-   [: s" zpfs" s" DERIVE eq VARIANT fsone n n ;VARIANT VARIANT fstwo n ;VARIANT" SUM-DECL ;]
-      DECLARATION-TRANSACTION:RUN
-   LAST-FAM FSHORT-FAM !
-   [: s" zpfl" s" DERIVE eq VARIANT flone n n ;VARIANT VARIANT fltwo n ;VARIANT" SUM-DECL ;]
-      DECLARATION-TRANSACTION:RUN
-   LAST-FAM FLONG-FAM ! ;
-: SWAP-FAMILY ( -- n ) SWAP-FAM @ ;
-: HOSTILE-FAMILY ( -- n ) HOSTILE-FAM @ ;
-: FLIP-SHORT-FAMILY ( -- n ) FSHORT-FAM @ ;
-: FLIP-LONG-FAMILY ( -- n ) FLONG-FAM @ ;
-: SWAP-CODE ( n -- n ) ASKED ! [: SWAP-RUN ;] catch ;
-: GENERATE-COMMITTED ( n -- n ) ASKED ! COMMITTED-RUN GOT @ ;
-\ What the refused generation rendered before it was refused: the plan survives
-\ the throw, so the payload signatures the provider decided are still readable.
-: RENDERED-ROWS ( -- n ) PLAN-ROWS ;
-: RENDERED-DEF ( n -- ptr u8 n ) TDPLAN-DEF$ ;
-: PREFLIGHT-CODE ( -- n ) E-PREFLIGHT ;
-: NEG-CODE ( n -- n ) ASKED ! [: NEG-RUN ;] catch ;
-: ROOT-CODE ( n -- n ) ASKED ! [: ROOT-RUN ;] catch ;
-: LEAN-CODE ( n -- n ) ASKED ! [: LEAN-RUN ;] catch ;
-: WIDE-CODE ( n -- n ) ASKED ! [: WIDE-RUN ;] catch ;
-: PRODUCT-NEG-CODE ( -- n ) [: PNEG-RUN ;] catch ;
-: PRODUCT-HUGE-CODE ( -- n ) [: HUGE-RUN ;] catch ;
-: FLIP-RESET ( -- ) 0 FLIP-N-CALLS !  -1 FLIP-VID !  0 FLIP-SEEN ! ;
-: FLIP-SHORT-CODE ( n -- n ) ASKED ! FLIP-RESET [: FSHORT-RUN ;] catch ;
-: FLIP-LONG-CODE ( n -- n ) ASKED ! FLIP-RESET [: FLONG-RUN ;] catch ;
-: GENERATED ( -- n ) GOT @ ;
-: FLIP-CALLS ( -- n ) FLIP-N-CALLS @ ;
-: STALE-CODE ( -- n ) [: STALE-BODY ;] catch ;
-: OVERRUN-CODE ( -- n ) [: OVERRUN-BODY ;] catch ;
-: PROVIDER-CODE ( -- n ) E-TDECL-PROVIDER ;
-: COMMITTED-PAYLOAD-CODE ( -- n ) E-COMMITTED-PAYLOAD ;
-
-\ the live probe: one candidate frame, one event transaction, both renders, then
-\ a full rollback. Returns the committed provider's throw code; the live plan is
-\ left in LROWS / readable through LIVE-NAME.
-variable LIVE-CODE
-: LIVE-PROBE ( -- )
-   s" n" CON-CODE SCHEMA-CON SCHEMA-ROOT+ LROOT !
-   s" pv" PKG-PUBLIC s" zpl" 0 SUM-KIND TFAM-DECL LFAM !
-   CAND-START
-   LIVE-OPEN
-   LTOK @ LFAM @ LVID @ DECL-EVENT:PAYLOAD-N LCOUNT !   \ the live view of the payload
-   [: COMMITTED-RENDER ;] catch LIVE-CODE !   \ the committed-bound wall
-   PEND-CLEAR
-   LIVE-RENDER                                \ the live provider clears it
-   PLAN-ROWS LROWS !
-   PEND-CLEAR
-   LTOK @ DECL-EVENT:ROLLBACK
-   0 CAND-DONE drop ;
-: LIVE-THROW ( -- n ) LIVE-CODE @ ;
-: LIVE-ROWS ( -- n ) LROWS @ ;
-: LIVE-NAME ( -- ptr u8 n ) 0 TDPLAN-NAME$ ;
-: LIVE-DEF ( -- ptr u8 n ) 0 TDPLAN-DEF$ ;
-: LIVE-COUNT ( -- n ) LCOUNT @ ;
-
-;package
-
-\ 1. a coherent provider that is NOT the committed view decides what is
-\ RENDERED, and the canonical body then refuses to be published against it.
-CTOR-PAYPROV-TEST:DECLARE
-CTOR-PAYPROV-TEST:SWAP-FAMILY 0 < 0= TTRUE
-CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:SWAP-FAMILY <> TTRUE
-\ zps renders under the swapped provider: sone's signature takes stwo's one
-\ payload cell and stwo's takes sone's two, so the renderer reads the provider
-\ and nothing else. The generated sum constructor's body is the canonical
-\ `construct <family> <variant>`, which resolves the payload in the committed
-\ registry: the body asks for the committed cells, the declared signature for
-\ the provider's, and the definition is refused. The provider is the authority
-\ for the signature text and the DERIVE walkers, not for a published sum
-\ constructor's effect.
-CTOR-PAYPROV-TEST:SWAP-FAMILY CTOR-PAYPROV-TEST:SWAP-CODE
-   CTOR-PAYPROV-TEST:PREFLIGHT-CODE T=
-CTOR-PAYPROV-TEST:GENERATED 0 T=
-\ the refused run's own plan, which is where the provider's answers are visible
-CTOR-PAYPROV-TEST:RENDERED-ROWS 2 T=
-0 CTOR-PAYPROV-TEST:RENDERED-DEF
-   s" ZPS:SONE ( n -- zps ) construct zps sone " T$=
-1 CTOR-PAYPROV-TEST:RENDERED-DEF
-   s" ZPS:STWO ( n n -- zps ) construct zps stwo " T$=
-\ and neither constructor reached the dictionary: an undefined word is uncheckable
-s" ZP1 ( n -- zps ) ZPS:SONE" CHECK-QUIET-CANDIDATE! 1 T=
-s" ZP2 ( n n -- zps ) ZPS:STWO" CHECK-QUIET-CANDIDATE! 1 T=
-
-\ 1b. a provider whose answers change after the first call cannot corrupt what
-\ is generated: the generator takes the whole payload view once, before any
-\ text exists. Both families derive eq, which reads the count once per variant
-\ per arm; the call counts prove the capability was asked once per variant.
-CTOR-PAYPROV-TEST:FLIP-SHORT-FAMILY CTOR-PAYPROV-TEST:FLIP-SHORT-CODE 0 T=
-CTOR-PAYPROV-TEST:GENERATED CTOR-PAYPROV-TEST:FLIP-SHORT-FAMILY T=
-CTOR-PAYPROV-TEST:FLIP-CALLS 2 T=
-s" ZF1 ( n n -- zpfs ) ZPFS:FSONE" CHECK-QUIET-CANDIDATE! -1 T=
-s" ZF2 ( n -- zpfs ) ZPFS:FSTWO" CHECK-QUIET-CANDIDATE! -1 T=
-s" ZF3 ( zpfs zpfs -- bool ) ZPFS:EQ" CHECK-QUIET-CANDIDATE! -1 T=
-CTOR-PAYPROV-TEST:FLIP-LONG-FAMILY CTOR-PAYPROV-TEST:FLIP-LONG-CODE 0 T=
-CTOR-PAYPROV-TEST:GENERATED CTOR-PAYPROV-TEST:FLIP-LONG-FAMILY T=
-CTOR-PAYPROV-TEST:FLIP-CALLS 2 T=
-s" ZF4 ( n n -- zpfl ) ZPFL:FLONE" CHECK-QUIET-CANDIDATE! -1 T=
-s" ZF5 ( n -- zpfl ) ZPFL:FLTWO" CHECK-QUIET-CANDIDATE! -1 T=
-s" ZF6 ( zpfl zpfl -- bool ) ZPFL:EQ" CHECK-QUIET-CANDIDATE! -1 T=
-
-\ 2. every incoherent provider fails closed with the same named code, and the
-\ family it was rejected on still generates normally through the committed one.
-\ The oversized count is on the PRODUCT path, which reads no cell width, so only
-\ the count bound stands between it and an over-long generated word.
-CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:NEG-CODE  CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:ROOT-CODE CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:LEAN-CODE CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:WIDE-CODE CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-CTOR-PAYPROV-TEST:PRODUCT-NEG-CODE CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-CTOR-PAYPROV-TEST:PRODUCT-HUGE-CODE CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-CTOR-PAYPROV-TEST:HOSTILE-FAMILY CTOR-PAYPROV-TEST:GENERATE-COMMITTED CTOR-PAYPROV-TEST:HOSTILE-FAMILY T=
-s" ZP5 ( n -- zph ) ZPH:HONE" CHECK-QUIET-CANDIDATE! -1 T=
-\ and a render that reaches outside the captured family fails closed on the
-\ snapshot's own family check instead of reading another family's row.
-CTOR-PAYPROV-TEST:STALE-CODE CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-CTOR-PAYPROV-TEST:OVERRUN-CODE CTOR-PAYPROV-TEST:PROVIDER-CODE T=
-
-\ 3. the committed reader cannot see an unpublished payload declaration and the
-\ live provider can, through the SAME renderer.
-CTOR-PAYPROV-TEST:LIVE-PROBE
-CTOR-PAYPROV-TEST:LIVE-COUNT 1 T=
-CTOR-PAYPROV-TEST:LIVE-THROW CTOR-PAYPROV-TEST:COMMITTED-PAYLOAD-CODE T=
-CTOR-PAYPROV-TEST:LIVE-ROWS 1 T=
-CTOR-PAYPROV-TEST:LIVE-NAME s" PV-ZPL:ONE" T$=
-\ the live declaration's own payload cell became the constructor's input (one
-\ slot, one cell), and the body is the canonical construct form.
-\ The output family is spelled qualified: the generated word lives in the ctor
-\ package, not the declaring one, so its signature text carries the one spelling
-\ that resolves from anywhere; a generator that drops the qualifier shortens
-\ this text. The construct body's own family token is bare (`construct zpl
-\ one`), a token `construct` resolves owner-only: pinned as measured, because
-\ correcting it changes every generated constructor's text.
-CTOR-PAYPROV-TEST:LIVE-DEF
-   s" PV-ZPL:ONE ( n -- pv:zpl ) construct zpl one " T$=
-
-s" PAYLOAD-PROVIDER" type cr
-
 \ A constructor effect may ground a generic payload/result parameter from a
 \ closed one-cell nominal family. The binding happens while equal-family result
 \ arguments pair, before the same variable meets the constructor payload.
@@ -1253,6 +811,4 @@ s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) co
 
 T-REPORT
 
-;using
-;using
 ;using

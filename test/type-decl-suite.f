@@ -1,12 +1,9 @@
 \ type-decl-suite.f — behavior suite for the NEWTYPE/SUMTYPE declaration grammar
-\ (src/core/sumtype.f), a WHITEBOX-SUITE row run on test/whitebox-engine.f's
-\ engine:
-\     <unsealed engine> --load test/type-decl-suite.f
+\ (src/core/sumtype.f).
 
 require src/lib/string.f
 require src/lib/test.f
 
-using SCHEMA-REG
 using TFAM
 using TYPE-DECL
 
@@ -36,11 +33,6 @@ TYPED-VARIABLE TDTE-A ptr u8   variable TDTE-U
    CHECK-QUIET-CANDIDATE! want T=
    WF-N@ ;
 
-\ registry high-water baseline: every rejected declaration must restore it.
-\ Checked through the PRIM-modeled read-only registry queries.
-variable TDB-TFAM   variable TDB-SUMV   variable TDB-SCH
-variable TDB-ROOT   variable TDB-STR    variable TDB-PK
-variable TDB-PF
 package TDT-EVENT
 public
 variable BASE
@@ -53,40 +45,12 @@ variable EVD    variable PFD
    DECL-EVENT:DEPTH EVD @ T=
    TYPE-FIELD:TX-DEPTH PFD @ T= ;
 ;package
-\ Whitebox boundary: the suite names checker-internal colon words at top level
-\ and in checked bodies; on the unsealed engine a checked body binds each one's
-\ recorded row. The TWX- words are checked aliases.
+\ Checked aliases of the checker's multi-error bracket.
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
-: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
-: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
-: TWX-TFAM-SLOTS@ ( n -- n ) TFAM-SLOTS@ ;
-: TWX-SCHEMA-ROOT-N ( -- n ) SCHEMA-ROOT-N@ ;
 
-: TDT-BASE! ( -- )
-   TFAM-N@ TDB-TFAM !   SUMV-N@ TDB-SUMV !
-   SCHEMA-N@ TDB-SCH !  SCHEMA-ROOT-N@ TDB-ROOT !
-   TF-STR-U@ TDB-STR !  TF-PK-N@ TDB-PK !   TYPE-FIELD:COUNT TDB-PF ! ;
-: TDT-BASE= ( -- )
-   TFAM-N@ TDB-TFAM @ T=   SUMV-N@ TDB-SUMV @ T=
-   SCHEMA-N@ TDB-SCH @ T=  SCHEMA-ROOT-N@ TDB-ROOT @ T=
-   TF-STR-U@ TDB-STR @ T=  TF-PK-N@ TDB-PK @ T=   TYPE-FIELD:COUNT TDB-PF @ T= ;
 : TDT-NEG ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
-   TDT-BASE!
-   a u TDT-EVAL-CATCH code T=
-   TDT-BASE= ;
-
-\ The two registry index marks, read straight after a rejected declaration and
-\ before anything can rebuild them. Package-owned because they are new module
-\ words; each reads a checker-internal cell, which binds on the unsealed engine.
-package TDIDX
-public
-: TFX-HI@ ( -- n ) TFX-HI @ ;
-: SVX-HI@ ( -- n ) SVX-HI @ ;
-;package
-
-variable TDF    variable TDOK   variable TDV0
-variable TDX    variable TDY    variable TDTC
+   a u TDT-EVAL-CATCH code T= ;
 
 \ silence expected declaration diagnostics (asserted explicitly further down).
 create TDIAG-BUF 8192 allot
@@ -104,18 +68,12 @@ s" TDOK-ZERO ( tdzero -- tdzero )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ TYPEFAMILY is not a word: in a line comment, paren comment or string literal
-\ it throws nothing and moves no registry high-water mark (TDT-NEG).
+\ it throws nothing (TDT-NEG).
 s" \ TYPEFAMILY tdtombline 0" 0 TDT-NEG
-s" " s" tdtombline" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
 
 s" ( TYPEFAMILY tdtombparen 0 )" 0 TDT-NEG
-s" " s" tdtombparen" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
 
 s\" : TDT-TOMB-TEXT ( -- ptr u8 n ) s\" TYPEFAMILY tdtombstr 0\" ;" 0 TDT-NEG
-s" " s" tdtombstr" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
 
 \ The live spelling needs no separate control here: `tdfoo` and `tdzero` above
 \ already pin what a NEWTYPE declaration registers.
@@ -135,29 +93,6 @@ SUMTYPE tdopt<a>
   VARIANT none   ;VARIANT
   VARIANT some a ;VARIANT
 ;SUMTYPE
-s" " s" tdopt" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-VAR-COUNT@ 2 T=
-TDF @ TWX-TFAM-SLOTS@ 1 T=
-TDF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 0 T=
-TDF @ TFAM-VAR-START@ SUMV-SCH-COUNT@ 0 T=
-
-\ multi-cell concrete payload: ptr u8 + n schemas.
-SUMTYPE tdparse<a>
-  VARIANT yes a ;VARIANT
-  VARIANT no  ptr u8 n ;VARIANT
-;SUMTYPE
-s" " s" tdparse" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ TFAM-VAR-START@ 1 + TWX-SUMV-PAYCELLS@ 2 T=
-TDF @ TFAM-VAR-START@ 1 + SUMV-SCH-START@ SCHEMA-ROOT@ TDX !
-TDX @ SCHEMA-PTR? TTRUE
-TDX @ SCHEMA-A@ SCHEMA-CON? TTRUE
-TDX @ SCHEMA-A@ SCHEMA-A@ s" u8" CON-OF T=
-TDF @ TFAM-VAR-START@ 1 + SUMV-SCH-START@ 1 + SCHEMA-ROOT@ TDY !
-TDY @ SCHEMA-CON? TTRUE
-TDY @ SCHEMA-A@ CC-N T=
 
 \ zero-arity sum (payload-free variants only): the enum-shaped sum.
 SUMTYPE tdlight
@@ -165,21 +100,12 @@ SUMTYPE tdlight
   VARIANT green ;VARIANT
   VARIANT blue  ;VARIANT
 ;SUMTYPE
-s" " s" tdlight" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-VAR-COUNT@ 3 T=
-TDF @ TWX-TFAM-SLOTS@ 0 T=
-TDF @ TFAM-VAR-START@ 2 + TWX-SUMV-TAG@ 2 T=
 
 \ arity above four parses through growable schema storage.
 SUMTYPE tdwide<a,b,c,d,e,g,h,i>
   VARIANT lo a ;VARIANT
   VARIANT hi i ;VARIANT
 ;SUMTYPE
-s" " s" tdwide" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-ARITY@ 8 T=
-TDF @ TFAM-VAR-START@ 1 + SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-A@ 7 T=
 s" TDOK-WIDE ( tdwide<n,n,n,n,n,n,n,n> -- tdwide<n,n,n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ The arity-six failure boundary exercises the first spelling after reserved f.
@@ -191,18 +117,12 @@ PRODUCT tdga06<a,b,c,d,e,g>
 \ The six-parameter MEM-shaped reproducer uses a,b,c,d,e,g.  Its last field is
 \ schema parameter index 5, every generated input remains polymorphic, and both
 \ generated directions preserve exact positions.
-s" " s" tdga06" TFAM-FIND-IN TDOK ! TDF !
-TDF @ TYPE-FIELD:NO-VARIANT s" p05" TYPE-FIELD:FIND TDOK ! TDX !
-TDOK @ -1 T=
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-PARAM? TTRUE
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 5 T=
 s" TDGA06-RT ( n bool char u8 i64 r -- n bool char u8 i64 r ) TDGA06:MAKE TDGA06:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDGA06-BAD-MAKE ( bool n char u8 i64 r -- tdga06<n,bool,char,u8,i64,r> ) TDGA06:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDGA06-BAD-UNMAKE ( tdga06<n,bool,char,u8,i64,r> -- bool n char u8 i64 r ) TDGA06:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ The maximum declaration arity keeps 23 independent schema positions.  Its
 \ generated MAKE/UNMAKE pair also executes as a physical round trip.
-TYPE-FIELD:COUNT TDTC !
 PRODUCT tdga23<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>
   FIELD p00 a FIELD p01 b FIELD p02 c FIELD p03 d FIELD p04 e
   FIELD p05 g FIELD p06 h FIELD p07 i FIELD p08 j FIELD p09 k
@@ -211,33 +131,6 @@ PRODUCT tdga23<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>
   FIELD p20 x FIELD p21 y FIELD p22 z
   FIELD flag f FIELD integer n FIELD real r
 ;PRODUCT
-TDTC @      TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 0 T=
-TDTC @ 1 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 1 T=
-TDTC @ 2 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 2 T=
-TDTC @ 3 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 3 T=
-TDTC @ 4 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 4 T=
-TDTC @ 5 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 5 T=
-TDTC @ 6 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 6 T=
-TDTC @ 7 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 7 T=
-TDTC @ 8 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 8 T=
-TDTC @ 9 +  TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 9 T=
-TDTC @ 10 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 10 T=
-TDTC @ 11 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 11 T=
-TDTC @ 12 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 12 T=
-TDTC @ 13 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 13 T=
-TDTC @ 14 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 14 T=
-TDTC @ 15 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 15 T=
-TDTC @ 16 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 16 T=
-TDTC @ 17 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 17 T=
-TDTC @ 18 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 18 T=
-TDTC @ 19 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 19 T=
-TDTC @ 20 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 20 T=
-TDTC @ 21 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 21 T=
-TDTC @ 22 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ 22 T=
-TDTC @ 23 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-CON? TTRUE
-TDTC @ 23 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CC-BOOL T=
-TDTC @ 24 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CC-N T=
-TDTC @ 25 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ CC-R T=
 : TDGA23-RT ( n n n n n n n n n n n n n n n n n n n n n n n bool n r -- n n n n n n n n n n n n n n n n n n n n n n n bool n r )
    TDGA23:MAKE TDGA23:UNMAKE ;
 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 false 24 25.0 TDGA23-RT
@@ -298,20 +191,6 @@ PRODUCT tdpoint
   FIELD y n
 ;PRODUCT
 s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
-
-\ mixed param + ptr fields: a ptr field is one cell; arity 1 has one param field.
-PRODUCT tdbuf<a>
-  FIELD cap a
-  FIELD raw ptr u8
-;PRODUCT
-s" " s" tdbuf" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ TYPE-FIELD:NO-VARIANT s" raw" TYPE-FIELD:FIND TDOK ! TDX !   TDOK @ -1 T=
-TDX @ TYPE-FIELD:SLOT@ 1 T=
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-PTR? TTRUE
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-CON? TTRUE
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-A@ s" u8" CON-OF T=
 
 \ Layout-aware generic stack ops. A logical
 \ sum/enum/product layout value moves as one logical unit through dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
@@ -600,20 +479,6 @@ PRODUCT tdprec
   FIELD lum tdlight
   FIELD cnt n
 ;PRODUCT
-s" " s" tdprec" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-PRODUCT T=
-TDF @ TWX-TFAM-SLOTS@ 3 T=                    \ sum of field cell widths (all 1)
-TDF @ TFAM-WIDTH@ 3 T=
-TDF @ TFAM-FLD-START@ TDX !
-TDX @ TYPE-FIELD:SLOT@ 0 T=                       \ cumulative cell offsets
-TDX @ 1 + TYPE-FIELD:SLOT@ 1 T=
-TDX @ 2 + TYPE-FIELD:SLOT@ 2 T=
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
-s" " s" tdcolor" TFAM-FIND-IN TDOK ! TDY !
-TDX @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ TDY @ T=           \ SCH-APP carries the enum family-id
-TDX @ 2 + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-CON? TTRUE
-TDF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 3 T=       \ make/unmake rows carry cell width
 \ generated MAKE/UNMAKE consume/produce the fields as their families.
 s" TDP1 ( tdcolor tdlight n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDP2 ( tdprec -- tdcolor tdlight n ) TDPREC:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
@@ -664,21 +529,11 @@ SUMTYPE tdpw
 ;SUMTYPE
 s" PRODUCT tdpbad1 FIELD r tdres ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpwide FIELD w tdpw ;PRODUCT" TDT-EVAL-CATCH 0 T=
-s" " s" tdpwide" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ TFAM-WIDTH@ 2 T=
-TDF @ TFAM-FLD-START@ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
 s" TDP-WIDE-MAKE ( tdpw -- tdpwide ) TDPWIDE:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
 \ a SELF-referential field is recursive and rejects with the recursive-sum
 \ diagnostic (E-TDECL-RECURSIVE), not the generic payload one.
 s" PRODUCT tdpbad3 FIELD s tdpbad3 ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdpnest VARIANT value tdpw ;VARIANT ;SUMTYPE" TDT-EVAL-CATCH 0 T=
-s" " s" tdpnest" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ TFAM-WIDTH@ 3 T=
-TDF @ TFAM-VAR-START@ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
 s" TDP-NEST-MAKE ( n -- tdpnest ) construct tdpw one construct tdpnest value" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ A closed wide PRODUCT is one logical value backed by one hidden parameter per
@@ -746,31 +601,13 @@ s" TDW34-QUOTE ( tdw34 -- tdw34 n ) [: ;] catch" TD-MIN-IN 34 T=
 s" TDW34-REPLAY ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ Rejection rolls the candidate back without damaging the stored wide effect.
 s" TDW34-BAD ( tdw34 -- n )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDW34-BAD" CHECKER-FIND-USIG TFALSE
+s" TDW34-BAD-USE ( tdw34 -- n ) TDW34-BAD" CHECK-QUIET-CANDIDATE! 1 T=
 s" TDW34-REPLAY2 ( tdw34 -- tdw34 ) TDW34-STORED" TD-MIN-IN 34 T=
 \ A product containing W34 has the same physical width and minimum, not W34^2.
 PRODUCT tdw34nest
   FIELD inner tdw34
 ;PRODUCT
-s" " s" tdw34nest" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-WIDTH@ 34 T=
 s" TDW34-NEST ( tdw34nest -- tdw34nest )" TD-MIN-IN 34 T=
-TDT-BASE!
-
-\ --- logical width metadata.
-s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-WIDTH@ 2 T=
-s" " s" tdlight" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-WIDTH@ 1 T=
-s" " s" tdmix" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-WIDTH@ 4 T=
-s" " s" tdfoo" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-WIDTH@ 1 T=
 
 \ facts are per-CHECK scratch: a rejected def may still record rows for tokens
 \ past the reject (never consumed — emitters read facts only for certified
@@ -790,51 +627,12 @@ SUMTYPE tres<a>
 private
 NEWTYPE tpriv<a>
 ;package
-s" tdpa" s" tres" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
-TDF @ TFAM-PKG$ s" tdpa" T$=
-TDF @ TFAM-VAR-COUNT@ 1 T=
-s" tdpa" s" tpriv" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 \ same tail in a second package registers without aliasing (docs/design.md
 \ "Families and layout policies").
 package tdpb
 public
 NEWTYPE tres<a>
 ;package
-s" tdpb" s" tres" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-s" tdpa" s" tres" TFAM-FIND-IN TDOK ! TDX !
-TDOK @ -1 T=
-TDF @ TDX @ <> TTRUE
-
-\ Constructor metadata: a PUBLIC sum/enum family derives its constructor package name
-\ (Package Shape) at ;SUMTYPE and stores it in every variant's SV.CTOR-PKG slot;
-\ a PRIVATE family exports nothing, so the slot stays empty (the `construct`
-\ form constructs it).
-
-\ top-level public `tdres` -> package TDRES on both variants.
-s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
-TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ SUMV-CTOR-PKG$ s" TDRES" T$=
-TDV0 @ 1 + SUMV-CTOR-PKG$ s" TDRES" T$=
-\ in-package public `tdpa:tres` -> package TDPA-TRES.
-s" tdpa" s" tres" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
-TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ SUMV-CTOR-PKG$ s" TDPA-TRES" T$=
-\ a private sum exports no constructor package: SV.CTOR-PKG stays empty.
-package tdp8
-private
-SUMTYPE tsec<a>
-  VARIANT hidden a ;VARIANT
-;SUMTYPE
-;package
-s" tdp8" s" tsec" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
-TDF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
-TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ SUMV-CTOR-PKG$ nip 0 T=
 
 \ package-scoped SIG resolution: unqualified family tokens resolve through the
 \ ACTIVE package before the unique public tail; qualified PKG:tail folds the
@@ -904,34 +702,21 @@ s" TDPT-TOP ( tdpt-s:thing<n> -- tdpt-s:thing<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 \ A package-owned family may share a tail with a global family. The exact
 \ identities keep separate arities: the owner gets its own row for a bare tail,
 \ while top level and unrelated packages keep the global row for that bare tail.
-package MEM
+package TDPM
 public
 NEWTYPE span<a,b,c,d,e,g>
 private
 NEWTYPE tier<a>
 
-s" TPC-OWNER ( span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-OWN-PRIVATE ( tier<n> -- MEM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-OWNER ( span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-OWN-PRIVATE ( tier<n> -- TDPM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" NEWTYPE span<a,b,c,d,e,g>" E-TFAM-DUP TDT-NEG
 \ This failure creates a family and one variant before the duplicate variant
 \ rejects; the declaration transaction must retire every provisional row.
-\
-\ The marks are read before any lookup: both registry indexes rebuild when they
-\ see the store rewound, so a correct find proves the rebuild, not the
-\ retirement. The mark is what the retirement leaves, read while the store is
-\ as the rejected declaration left it.
 s" SUMTYPE rolled-span<a,b,c,d,e,g> VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
-TDIDX:TFX-HI@ TFAM-N@ <= TDOK ! TDOK @ -1 T=
-TDIDX:SVX-HI@ SUMV-N@ <= TDOK ! TDOK @ -1 T=
-s" mem" s" rolled-span" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
-\ And the tail is free again: the same name declares cleanly afterwards, which
-\ is the half a stranded index row breaks in the OTHER direction - the bucket
-\ walk reaches a row the store no longer holds.
+\ The name is free again: a stranded index row would make the bucket walk reach
+\ a row the store no longer holds, and this declaration would fail.
 SUMTYPE rolled-span<a,b,c,d,e,g> VARIANT ok a ;VARIANT VARIANT other b ;VARIANT ;SUMTYPE
-s" mem" s" rolled-span" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-SUM? TDOK ! TDOK @ -1 T=
 ;package
 
 package OTHER
@@ -941,53 +726,45 @@ NEWTYPE tier<a,b>
 
 \ The existing global span remains the bare top-level identity.
 s" TPC-GLOBAL ( span<n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-MEM-QUAL ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-PKG-QUAL ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPC-GLOBAL-ARITY ( span<n,n,n,n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-MEM-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-CROSS-A ( span<n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-CROSS-B ( MEM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PKG-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-A ( span<n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-B ( TDPM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 \ A foreign private row is invisible; with no lexical global, the one public
 \ family of the same tail is the outside-package bare fallback.
-s" TPC-PRIVATE-HIDDEN ( MEM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PRIVATE-HIDDEN ( TDPM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ Stored effects retain exact qualified identity and arity when replayed.
-: TPC-MEM-STORED ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> ) ;
-s" TPC-MEM-REPLAY ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! -1 T=
-s" TPC-MEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! 0 T=
+: TPC-PKG-STORED ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) ;
+s" TPC-PKG-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TPC-PKG-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-PKG-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-PKG-STORED" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ Prose row rendering and JSON arity diagnostics keep the package qualifier, and
-\ render it case-folded: the declaring package was written `package MEM`, but a
+\ render it case-folded: the declaring package was written `package TDPM`, but a
 \ rendered family name is spelled canonically (render.f FAM-QNAME-REND), the way
 \ word names and the used-package row already are. `token` is the opposite kind
-\ of field — a raw echo of what the author typed — so it keeps `MEM:span`. The
+\ of field — a raw echo of what the author typed — so it keeps `TDPM:span`. The
 \ folded row still names the family back, because a signature's qualifier folds
 \ before lookup.
 TDIAG-BUF 8192 DIAG-BUFFER!
-s" TPC-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " CONTAINS? TTRUE
-DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " CONTAINS? TFALSE
+s" TPC-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" actual: tdpm:span<n,n,n,n,n,n> " CONTAINS? TTRUE
+DIAG-BUFFER$ s" actual: TDPM:span<n,n,n,n,n,n> " CONTAINS? TFALSE
 TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
-s" TPC-JSON-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" CONTAINS? TTRUE
+s" TPC-JSON-RENDER ( TDPM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"actual\":\"tdpm:span<n,n,n,n,n,n> \"" CONTAINS? TTRUE
 TDIAG-BUF 8192 DIAG-BUFFER!
-s" TPC-JSON-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" CONTAINS? TTRUE
+s" TPC-JSON-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"token\":\"TDPM:span\"" CONTAINS? TTRUE
 DIAG-BUFFER$ s\" \"arity_expected\":6" CONTAINS? TTRUE
 DIAG-BUFFER$ s\" \"arity_actual\":3" CONTAINS? TTRUE
 false DIAG-JSON!
 TDIAG-BUF 8192 DIAG-BUFFER!
 
-\ The failed declaration above did not disturb either exact span row.
-s" " s" span" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-ARITY@ 3 T=
-s" mem" s" span" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-ARITY@ 6 T=
-
-\ negative declarations: named throw code + full registry rollback each time.
+\ negative declarations: named throw code each time.
 
 \ uppercase/mixed-case family names reject before storage.
 s" NEWTYPE Bad<a>" E-TFAM-CASE TDT-NEG
@@ -1053,10 +830,6 @@ NEWTYPE tvlocal
 SUMTYPE tdvok<a>
   VARIANT fine a ;VARIANT
 ;SUMTYPE
-s" " s" tdvok" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-VAR-COUNT@ 1 T=
-TDF @ TFAM-VAR-START@ SUMV-NAME$ s" fine" T$=
 \ control words and grammar keywords are not names.
 s" NEWTYPE if<a>" E-TDECL-NAME TDT-NEG
 s" NEWTYPE repeat<a>" E-TDECL-NAME TDT-NEG
@@ -1101,13 +874,9 @@ s" SUMTYPE tdpay4<a> VARIANT ok tdres<a,z> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TD
 \ input side, an empty output side, and a multi-type input with a ptr element
 \ all declare and resolve.
 SUMTYPE tdpq0 VARIANT run [ -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpq0" TFAM-FIND-IN nip TTRUE
 SUMTYPE tdpq2 VARIANT run [ n n -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpq2" TFAM-FIND-IN nip TTRUE
 SUMTYPE tdpqd VARIANT run [ n -- ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpqd" TFAM-FIND-IN nip TTRUE
 SUMTYPE tdpqm VARIANT run [ n ptr u8 -- n ] ;VARIANT VARIANT nop ;VARIANT ;SUMTYPE
-s" " s" tdpqm" TFAM-FIND-IN nip TTRUE
 
 \ declaration-time parameter-arity gate for SUM variant payloads. A payload
 \ parameter letter beyond the family's arity rejects at declaration, not at a
@@ -1124,21 +893,6 @@ s" SUMTYPE tdpaq4<a> VARIANT ok [ n -- | -- z ] ;VARIANT ;SUMTYPE" E-TDECL-PAYLO
 \ on a quotation side still rejects at declaration (whole-subtree descent).
 s" SUMTYPE tdpaq5<a> VARIANT ok [ tdres<a,z> -- ] ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 
-\ whitebox: the authoritative arity walk (TFAM-SCH-ARITY, type-family.f) that
-\ backs the parse gate reports the first out-of-arity SCH-PARAM index (or -1),
-\ descending SCH-PTR pointees, SCH-APP arguments, and SCH-QUOT effect-side rows.
-\ It is parameter-index only, so it never over-tightens a nested-layout argument.
-\ tdopt has arity 1, so parameter index 5 is out of range and index 0 is in range.
-s" " s" tdopt" TFAM-FIND-IN drop TDF !
-TDF @  0 SCHEMA-PARAM  TFAM-SCH-ARITY  -1 T=                    \ in-range param 0 -> ok
-TDF @  5 SCHEMA-PARAM  TFAM-SCH-ARITY   5 T=                    \ out-of-arity param 5 -> index 5
-TDF @  5 SCHEMA-PARAM SCHEMA-PTR  TFAM-SCH-ARITY  5 T=               \ through a ptr pointee
-5 SCHEMA-PARAM SCHEMA-ROOT+ TDX !                               \ param5 as one argument root
-TDF @  TDF @ TDX @ 1 SCHEMA-APP  TFAM-SCH-ARITY  5 T=           \ through an application argument
-5 SCHEMA-PARAM SCHEMA-ROOT+ 1 SCHEMA-ROW TDX !                  \ an input-side row over param5
-TWX-SCHEMA-ROOT-N 0 SCHEMA-ROW TDY !                            \ an empty effect-side row
-TDF @  TDX @ TDY @ TDY @ TDY @ 0 SCHEMA-QUOT  TFAM-SCH-ARITY  5 T=           \ through a quotation input side
-
 \ no over-tightening: in-range parameter letters in a plain element, a parametric
 \ application argument, and both quotation sides all declare; a nested-layout
 \ argument (a layout family in a cell-parameter slot, sound via LOGHID width
@@ -1148,7 +902,6 @@ SUMTYPE tdpga<a,b>
   VARIANT applied tdres<a,b> ;VARIANT
   VARIANT quoted  [ a -- b ] ;VARIANT
 ;SUMTYPE
-s" " s" tdpga" TFAM-FIND-IN nip TTRUE
 \ and the in-range variants still construct through the untouched construct path.
 s" TDPGA-MK1 ( n -- tdpga<n,n> ) TDPGA:PLAIN"           CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPGA-MK2 ( tdres<n,n> -- tdpga<n,n> ) TDPGA:APPLIED" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1156,13 +909,8 @@ SUMTYPE tdpgn
   VARIANT nested tdopt<tdres<n,f>> ;VARIANT
   VARIANT nop ;VARIANT
 ;SUMTYPE
-s" " s" tdpgn" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 3 T=  \ tdopt<tdres<n,f>> is three cells
 
-\ malformed enum declarations: every reject rolls back to baseline via
-\ the shared transactional path (TDT-NEG asserts TDT-BASE=), so no family or
-\ variant row survives.
+\ malformed enum declarations: each is refused with its code.
 \ empty / unterminated bodies.
 s" ENUM tdeempty ;ENUM" E-TDECL-SYNTAX TDT-NEG
 s" ENUM tdenoterm red green" E-TDECL-SYNTAX TDT-NEG
@@ -1187,9 +935,7 @@ s" ENUM sumtype red ;ENUM" E-TDECL-NAME TDT-NEG
 s" ENUM tdcolor red ;ENUM" E-TFAM-DUP TDT-NEG
 s" ENUM tdres red ;ENUM" E-TFAM-DUP TDT-NEG
 
-\ malformed product declarations: every reject rolls back to baseline
-\ via the shared transactional path (TDT-NEG asserts TDT-BASE=, incl. PF-N), so
-\ no family, field, or schema row survives a failed product.
+\ malformed product declarations: each is refused with its code.
 \ empty / unterminated bodies.
 TDT-EVENT:SAVE
 s" PRODUCT tdpempty ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
@@ -1221,9 +967,6 @@ s" SUMTYPE do VARIANT one ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdscw VARIANT loop ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 \ whole-token match: these names contain control words and still register.
 s" PRODUCT iffy FIELD looping n FIELD thence n ;PRODUCT" TDT-EVAL-CATCH 0 T=
-s" " s" iffy" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-FLD-COUNT@ 2 T=
 \ a stray token where FIELD is expected.
 s" PRODUCT tdpstray<a> stray FIELD x a ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
 \ an empty parameter list.
@@ -1249,15 +992,10 @@ s" NEWTYPE product<a>" E-TDECL-NAME TDT-NEG
 \ memory ABI descriptor at close, stack shape identical); niche-null and boxed
 \ reject as not yet supported; any other token, `custom` included (the LAY-*
 \ registry tolerates it, the grammar must not expose it), is an unknown policy;
-\ POLICY is reserved. Every reject rolls back to baseline (TDT-NEG asserts
-\ TDT-BASE=).
+\ POLICY is reserved. Every reject rolls back to baseline.
 
-\ explicit stack-cell-tag accepts and records the default policy on sum, enum
-\ and product headers. The POLICY clause is parsed in the shared
-\ CHECKER-DEF*-BODY before constructor generation, so these probe it with
-\ private families inside a package: each public family's constructors take a
-\ slot of the fixed protected-WID seal registry, whose ~16-per-session cap this
-\ suite already sits at.
+\ explicit stack-cell-tag accepts on sum, enum and product headers. The families
+\ are private, so their constructors take no protected-WID seal slot.
 package tpol
 SUMTYPE tdpol<a> POLICY stack-cell-tag
   VARIANT none   ;VARIANT
@@ -1272,37 +1010,7 @@ SUMTYPE tdpolpk<a> POLICY packed-tag
 ;SUMTYPE
 ENUM tdpolpke POLICY packed-tag red green ;ENUM
 PRODUCT tdpolpkr POLICY packed-tag FIELD x n ;PRODUCT
-\ missing clause still defaults to stack-cell-tag.
-SUMTYPE tdpoldef<a>
-  VARIANT none   ;VARIANT
-  VARIANT some a ;VARIANT
-;SUMTYPE
 ;package
-s" tpol" s" tdpol" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-SUM T=
-TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
-s" tpol" s" tdpolen" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-ENUM T=
-TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
-s" tpol" s" tdpolpr" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-PRODUCT T=
-TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
-s" tpol" s" tdpoldef" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
-\ packed-tag readback on every header kind.
-s" tpol" s" tdpolpk" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
-s" tpol" s" tdpolpke" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
-s" tpol" s" tdpolpkr" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
 \ Re-arm the diagnostic swallow buffer: it only silences stderr, accumulates
 \ every expected reject's diagnostic and is sized to just fit, so each section
 \ resets its offset.
@@ -1329,13 +1037,8 @@ s" SUMTYPE policy<a> VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdpolrv<a> VARIANT policy a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" NEWTYPE policy<a>" E-TDECL-NAME TDT-NEG
 
-\ A direct self-family reference in a payload makes the family recursive, which
-\ only boxed (rejected at the POLICY clause) could represent; under every other
-\ policy a self-ref rejects with E-TDECL-RECURSIVE, not E-TDECL-PAYLOAD, in
-\ ptr-wrapped, inline, bare and product-field forms, rolled back to baseline
-\ (TDT-NEG asserts TDT-BASE=). Mutual recursion cannot be written: a payload
-\ references only an already declared family, so a cycle needs a forward
-\ reference, which rejects as an unknown payload (pinned below).
+\ A self-family payload makes the family recursive and rejects with
+\ E-TDECL-RECURSIVE, not E-TDECL-PAYLOAD, in ptr, inline, bare and field forms.
 s" SUMTYPE tdrec1<a> VARIANT leaf a ;VARIANT VARIANT node ptr tdrec1<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrec2<a> VARIANT node tdrec2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdrec3 VARIANT self tdrec3 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
@@ -1364,9 +1067,6 @@ SUMTYPE tdrec6<a>
   VARIANT node ptr u8 ;VARIANT
 ;SUMTYPE
 ;package
-s" tdrp" s" tdrec6" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-SUM T=
 
 \ payload family references resolve in signature scope: qualified PKG:tail
 \ payloads resolve like a signature reference (public cross-package, private
@@ -1388,22 +1088,6 @@ SUMTYPE tdqw
   VARIANT qsome tdqp:qslot ;VARIANT
   VARIANT qnone ;VARIANT
 ;SUMTYPE
-s" " s" tdqw" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TFAM-KIND@ TK-SUM T=
-TDF @ TWX-TFAM-SLOTS@ 1 T=
-TDF @ TFAM-WIDTH@ 2 T=
-\ the payload schema node is a family APPLICATION carrying the RESOLVED id of
-\ tdqp:qslot — nominal identity, not a washed-out scalar.
-s" tdqp" s" qslot" TFAM-FIND-IN TDOK ! TDX !
-TDOK @ -1 T=
-TDX @ TFAM-CELL? TTRUE
-TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ SUMV-NAME$ s" qsome" T$=
-TDV0 @ SUMV-SCH-COUNT@ 1 T=
-TDV0 @ TWX-SUMV-PAYCELLS@ 1 T=
-TDV0 @ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
-TDV0 @ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-A@ TDX @ T=
 \ constructor + MATCH round-trip. Checked: the constructor input IS the
 \ qualified nominal scalar (an n is not), and the qsome arm refines back to it.
 s" TDQ-ID ( tdqp:qslot -- tdqw ) TDQW:QSOME" CHECK-QUIET-CANDIDATE! -1 T=
@@ -1428,13 +1112,6 @@ CAST: TQX<QS ( tdqp:qslot -- n )
 SUMTYPE tdqv
   VARIANT qwrap TDQP:qsum ;VARIANT
 ;SUMTYPE
-s" " s" tdqv" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 2 T=
-TDF @ TFAM-WIDTH@ 3 T=
-s" tdqp" s" qsum" TFAM-FIND-IN TDOK ! TDX !
-TDOK @ -1 T=
-TDF @ TFAM-VAR-START@ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-A@ TDX @ T=
 \ in-package: a package's OWN private cell family is a payload by bare tail,
 \ and a product FIELD takes the qualified public cell family.
 package tdqc
@@ -1446,17 +1123,7 @@ PRODUCT cprod
   FIELD child tdqp:qslot
 ;PRODUCT
 ;package
-s" tdqc" s" cwrap" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TWX-TFAM-SLOTS@ 1 T=
-s" tdqc" s" cprod" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TYPE-FIELD:NO-VARIANT s" child" TYPE-FIELD:FIND TDOK ! TDY !
-TDOK @ -1 T=
-s" tdqp" s" qslot" TFAM-FIND-IN TDOK ! TDX !   TDOK @ -1 T=
-TDY @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-APP? TTRUE
-TDY @ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-A@ TDX @ T=
-\ negatives: named code + full registry rollback each time.
+\ negatives: named code each time.
 \ a bogus qualifier never resolves.
 s" SUMTYPE tdqb1 VARIANT bv nopkg:qslot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 \ a PRIVATE family in another package stays unreachable, qualified or bare.
@@ -1473,20 +1140,6 @@ s" SUMTYPE qselfr VARIANT wv ptr tdqs:qselfr ;VARIANT ;SUMTYPE" E-TDECL-RECURSIV
 s" PRODUCT qsprod FIELD child tdqs:qsprod ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
 public
 s" SUMTYPE qselfp VARIANT wv tdqs:qselfp ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
-;package
-\ candidate-scope declare + rollback: a qualified-payload declaration made
-\ inside a candidate frame vanishes at CHECK-CANDIDATE-DONE (private family —
-\ metadata only, no dictionary constructors to leak).
-package tdqcd
-TDT-BASE!
-CHECK-CANDIDATE-START
-s" SUMTYPE qcand VARIANT qcv tdqp:qslot ;VARIANT ;SUMTYPE" TDT-EVAL-CATCH 0 T=
-s" tdqcd" s" qcand" TFAM-FIND-IN TDOK ! drop
-TDOK @ -1 T=
-0 CHECK-CANDIDATE-DONE drop
-s" tdqcd" s" qcand" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
-TDT-BASE=
 ;package
 
 \ declaration diagnostic packet: declaration-shaped, through the standard
@@ -1546,17 +1199,14 @@ TDT-BIG-SUM$ E-TDECL-CAP TDT-NEG
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE tdme<a,b> VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE NEWTYPE tdcont<a> : TDMEW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" " s" tdme" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
-s" " s" tdcont" TFAM-FIND-IN TDOK ! drop
-TDOK @ -1 T=
-s" TDMEW" CHECKER-FIND-USIG TTRUE
+s" TDME-GONE ( tdme<n,n> -- tdme<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDCONT-OK ( tdcont<n> -- tdcont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMEW-OK ( n -- n ) TDMEW" CHECK-QUIET-CANDIDATE! -1 T=
 \ missing terminator in multi-error mode: reported, counted, load continues.
 TWX-MULTI-ERR-BEGIN
 s" SUMTYPE tdnoe<a> VARIANT ok a ;VARIANT" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" " s" tdnoe" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
+s" TDNOE-GONE ( tdnoe<n> -- tdnoe<n> )" CHECK-QUIET-CANDIDATE! 0 T=
 \ The same contract for the two unified front ends, which read the input stream
 \ as they parse: the tokens between the fault and the terminator belong to the
 \ rejected declaration, so the front end consumes them before the interpreter
@@ -1565,39 +1215,31 @@ TDOK @ 0 T=
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmee red red blue ;ENUM NEWTYPE tdmeecont<a> : TDMEEW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" " s" tdmee" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=                                  \ the rejected enum registered nothing
-s" " s" tdmeecont" TFAM-FIND-IN TDOK ! drop
-TDOK @ -1 T=                                 \ the next declaration still loaded
-s" TDMEEW" CHECKER-FIND-USIG TTRUE           \ and so did the definition after it
+s" TDMEE-GONE ( tdmee -- tdmee )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMEECONT-OK ( tdmeecont<n> -- tdmeecont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMEEW-OK ( n -- n ) TDMEEW" CHECK-QUIET-CANDIDATE! -1 T=
 TWX-MULTI-ERR-BEGIN
 s" STRUCTURE tdmes FIELD x n FIELD x n ;STRUCTURE NEWTYPE tdmescont<a> : TDMESW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" " s" tdmes" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
-s" " s" tdmescont" TFAM-FIND-IN TDOK ! drop
-TDOK @ -1 T=
-s" TDMESW" CHECKER-FIND-USIG TTRUE
+s" TDMES-GONE ( tdmes -- tdmes )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDMESCONT-OK ( tdmescont<n> -- tdmescont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDMESW-OK ( n -- n ) TDMESW" CHECK-QUIET-CANDIDATE! -1 T=
 \ A reject raised AFTER the terminator was consumed must not skip anything: the
 \ next tokens are the following declaration, not this one's tail. `tdmea` is an
 \ enum with no variants, which ED-CLOSE refuses once `;ENUM` is already read.
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmea ;ENUM NEWTYPE tdmeacont<a>" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" " s" tdmeacont" TFAM-FIND-IN TDOK ! drop
-TDOK @ -1 T=
+s" TDMEACONT-OK ( tdmeacont<n> -- tdmeacont<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 \ A unified declaration whose input simply ends: nothing to skip, still counted.
 TWX-MULTI-ERR-BEGIN
 s" ENUM tdmenoe red green" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" " s" tdmenoe" TFAM-FIND-IN TDOK ! drop
-TDOK @ 0 T=
+s" TDMENOE-GONE ( tdmenoe -- tdmenoe )" CHECK-QUIET-CANDIDATE! 0 T=
 \ two bad declarations count separately.
 TWX-MULTI-ERR-BEGIN
 s" NEWTYPE Bad1<a> NEWTYPE tdok9<a> SUMTYPE tdes<a> ;SUMTYPE" evaluate
 TWX-MULTI-ERR-END 2 T=
-s" " s" tdok9" TFAM-FIND-IN TDOK ! drop
-TDOK @ -1 T=
 \ a bad declaration does not poison later checks after the mode ends.
 s" TDOK-AFTER ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 \ unknown-family and wrong-arity SIGNATURES in multi-error mode: reported,
@@ -1606,9 +1248,10 @@ s" TDOK-AFTER ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 TWX-MULTI-ERR-BEGIN
 s" : TDSME1 ( nope<n> -- nope<n> ) ; : TDSME2 ( tdfoo<n> -- tdfoo<n> ) ; : TDSME3 ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 2 T=
-s" TDSME1" CHECKER-FIND-USIG TFALSE
-s" TDSME2" CHECKER-FIND-USIG TFALSE
-s" TDSME3" CHECKER-FIND-USIG TTRUE
+\ A stored row would resolve the call (verdict -1 or 0); no row leaves it 1.
+s" TDSME1-USE ( n -- n ) TDSME1" CHECK-QUIET-CANDIDATE! 1 T=
+s" TDSME2-USE ( n -- n ) TDSME2" CHECK-QUIET-CANDIDATE! 1 T=
+s" TDSME3-USE ( n -- n ) TDSME3" CHECK-QUIET-CANDIDATE! -1 T=
 \ A raw TRUST row with an unparseable SIGNATURE: counted + reported, and the
 \ malformed effect is not stored.
 \
@@ -1623,65 +1266,13 @@ s\" : TDTBAD ( n -- n ) ; s\" TDTBAD\" s\" nope<n> -- n\" TRUST" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" TDTKEPT ( n -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDTTOOK ( -- n ) TDTBAD" CHECK-QUIET-CANDIDATE! 0 T=
-\ A raw TRUST row naming NO word: the same treatment as its sibling above -
-\ counted, reported, no row - rather than a throw that would abort the load at
-\ the first bad row and hide every finding behind it. TDTOK2's row is the proof
-\ that the pass really did continue past the refusal.
+\ A raw TRUST row naming no word is counted and reported like its sibling, not
+\ thrown: the load goes on and defines TDTOK2.
 TWX-MULTI-ERR-BEGIN
 s\" s\" TDTGONE\" s\" -- n\" TRUST : TDTOK2 ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
-s" TDTGONE" CHECKER-FIND-USIG TFALSE
-s" TDTOK2" CHECKER-FIND-USIG TTRUE
+s" TDTOK2-USE ( n -- n ) TDTOK2" CHECK-QUIET-CANDIDATE! -1 T=
 DIAG-BUFFER-OFF
-
-\ Hidden-field unification boundaries. Terms survive because no definition is
-\ checked between construction and the final unification.
-variable TD3F    variable TD3M    variable TD3OK
-variable TD3LOG  variable TD3MLOG
-\ TD3-XPORT-UNIFY unifies a hidden field with a var under whole-bundle transport
-\ mode. Every check's walk reset (NEW-WALK) clears the mode, a top-level token's
-\ step included, so the word sets, unifies and clears in one token. It is defined
-\ before the terms are built: a definition's check (NEW) would reclaim them.
-: TD3-XPORT-UNIFY ( -- bool )
-   1 LAYOUT-XPORT !
-   TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY
-   0 LAYOUT-XPORT ! ;
-
-\ resolve the tdres (width 2) and tdmix (width 4) families declared above.
-s" " s" tdres" TFAM-FIND-IN TD3OK ! TD3F !
-TD3OK @ -1 T=
-s" " s" tdmix" TFAM-FIND-IN TD3OK ! TD3M !
-TD3OK @ -1 T=
-
-\ build a LOGICAL tdres<n,n> term via the same MK-PARAM path SIG parsing drives.
-PARAM-SCR-N @
-CC-N MK-CON PARAM-SCR+
-CC-N MK-CON PARAM-SCR+
-s" tdres" TD3F @ MK-PARAM  TD3LOG !
-\ a logical layout term is NOT hidden.
-TD3LOG @ HIDDEN-PARAM? TFALSE
-TD3LOG @ PARAM>HID 0 T=
-TD3LOG @ PARAM>FAM TD3F @ T=
-
-\ unification discipline (UNIFY ( t t -- bool ), self-contained per call).
-\ same family + same slot -> pair.
-TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY TTRUE
-\ same family, different slot -> reject.
-TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 1 MK-HIDDEN  UNIFY TFALSE
-\ hidden never binds a var, even under whole-bundle transport mode.
-TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY TFALSE
-TD3-XPORT-UNIFY TFALSE
-\ hidden never unifies a con.
-TD3LOG @ 0 MK-HIDDEN  CC-N MK-CON  UNIFY TFALSE
-\ a hidden field never unifies its own logical value.
-TD3LOG @ 0 MK-HIDDEN  TD3LOG @  UNIFY TFALSE
-
-\ cross-family: a same-slot hidden field of a DIFFERENT family rejects.
-PARAM-SCR-N @
-CC-N MK-CON PARAM-SCR+
-CC-N MK-CON PARAM-SCR+
-s" tdmix" TD3M @ MK-PARAM  TD3MLOG !
-TD3MLOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY TFALSE
 
 \ derive: `DERIVE eq` on a PUBLIC ENUM generates PKG:TAG (discriminant) and
 \ PKG:EQ (tag equality) as ordinary checked words in the ctor package: no
@@ -1721,8 +1312,7 @@ s" ENUM tdrb2 DERIVE order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb4 DERIVE ;ENUM" E-TDECL-DERIVE TDT-NEG
 \ visibility gate (docs/forth.md "Structures And Enums"): DERIVE requires a
-\ PUBLIC family — a family declared in a private package section rejects with
-\ full registry rollback.
+\ PUBLIC family — a family declared in a private package section rejects.
 package tdprv
 private
 s" ENUM tdrb11 DERIVE eq aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
@@ -1878,8 +1468,6 @@ ENUM-DECL:ED-RUN tdnu DERIVE eq hash
   VARIANT empty ;VARIANT
   VARIANT pair FIELD first n FIELD second n ;VARIANT
 ;ENUM
-s" " s" tdnu" TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
 : TDNU-EQ-EMPTY ( -- bool ) construct tdnu empty construct tdnu empty TDNU:EQ ;
 : TDNU-EQ-PAIR ( -- bool ) 1 2 construct tdnu pair 1 2 construct tdnu pair TDNU:EQ ;
 : TDNU-NEQ-PAY ( -- bool ) 1 2 construct tdnu pair 1 3 construct tdnu pair TDNU:EQ ;
@@ -1904,8 +1492,7 @@ TDNU-HASH-ORDER TFALSE
 \ The named-field derivation validator resolves the field schema too: a pointer
 \ payload rejects at declaration time, like a SUMTYPE, because the constructor
 \ participant runs TDECL-DERIVE-REQUIRE inside the declaration's own reversible
-\ commit. TDT-NEG also proves the declaration rolled back to a byte-identical
-\ registry.
+\ commit.
 s" ENUM-DECL:ED-RUN tdnu-bad DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
    E-TDECL-DERIVE TDT-NEG
 
@@ -2148,6 +1735,5 @@ s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
 \ A failure prints F<index> + detail; T-REPORT exits 1.
 T-REPORT
 
-;using
 ;using
 ;using

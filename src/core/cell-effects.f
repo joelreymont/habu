@@ -19,8 +19,8 @@ PRIM: CTL-CREATES PE-N PE-OUT PRIM;
 PRIM: CTL-NOMINAL PE-N PE-OUT PRIM;
 PRIM: REPORT-UNCHECKABLE PE-N PE-IN PE-N PE-OUT PRIM;
 
-\ src/core/checker.f's constants test/type-ctor-suite.f reads at top level;
-\ tools/bootstrap.sh runs that suite on the from-source prefix engine hb-stdin.
+\ src/core/checker.f's constants test/type-ctor-suite.f and
+\ test/type-family-suite.f read at top level.
 PRIM: CHECKER-PACKAGE-PRIVATE PE-N PE-OUT PRIM;
 PRIM: E-CTOR-PROTECTED PE-N PE-OUT PRIM;
 

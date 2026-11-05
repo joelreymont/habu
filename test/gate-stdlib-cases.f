@@ -1781,11 +1781,11 @@ SUITE structure-opaque
    test/structure-opaque-e2e.f
 ;SUITE
 
-WHITEBOX-SUITE type-ctor
+SUITE type-ctor
    test/type-ctor-suite.f
 ;SUITE
 
-WHITEBOX-SUITE type-decl
+SUITE type-decl
    test/type-decl-suite.f
 ;SUITE
 

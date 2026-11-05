@@ -399,7 +399,7 @@ CHECKER-REG:}SCRATCH
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
 \ Measured high-water over a self-build: 1112 vars in one definition (the pool
 \ resets per definition); 1280 leaves 15% headroom. A larger workload grows the
-\ arena: test/type-decl-suite.f peaks at 2573.
+\ arena.
 1280 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
 16 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
