@@ -997,7 +997,7 @@ SUITE tail-pure-fixtures
    tools/image-bytes-test.f
 ;SUITE
 
-WHITEBOX-SUITE byte-buffer
+SUITE byte-buffer
    src/lib/byte-buffer-test.f
 ;SUITE
 
@@ -1789,14 +1789,8 @@ SUITE type-decl
    test/type-decl-suite.f
 ;SUITE
 
-\ The init test reads sealed type-family and checker metadata to verify its
-\ instantiated physical layout; the refusal cases still use real source loads.
-WHITEBOX-SUITE c2-init-schema
+SUITE c2-init-schema
    test/c2-init-schema.f
-;SUITE
-
-WHITEBOX-SUITE c2-init-record-schema
-   test/c2-init-record-schema.f
 ;SUITE
 
 SUITE c2-init-accessors

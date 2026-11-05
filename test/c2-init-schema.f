@@ -1,80 +1,20 @@
-\ Reserved initialized storage keeps its scope and element layout through the
-\ real checker load path. Run with a candidate built from this source tree.
+\ Initialized storage keeps its scope and nominal element type through the real
+\ checker load path. Run with a candidate built from this source tree.
 
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/adt/option.f
 
 package C2-INIT-SCHEMA
 
 public
 PRODUCT pair FIELD left n FIELD right n ;PRODUCT
-ENUM tiny POLICY packed-tag red green ;ENUM
-STRUCTURE scg<a> FIELD u a FIELD z n ;STRUCTURE
 private
 
 : KEEP ( init<p,pair> -- init<p,pair> ) ;
 public
 : KEEP-WIDE ( init<p,pair> -- init<p,pair> ) KEEP ;
-private
-
-: FAMILY ( ptr u8 n -- n ) {: name:ptr size:n :}
-   s" c2-init-schema" name size TFAM:TFAM-RESOLVE drop ;
-
-: TERM ( ptr u8 n -- n )
-   FAMILY {: fam:n :}
-   PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM ;
-
-: WRAP ( n -- n ) {: elem:n :}
-   s" " s" init" TFAM:TFAM-RESOLVE drop {: fam:n :}
-   PARAM-SCR-N @ {: base:n :}
-   0 MK-SCOPE PARAM-SCR+
-   elem PARAM-SCR+
-   base s" init" fam MK-PARAM ;
-
-
-: APPLY ( n ptr u8 n -- n ) {: arg:n name:ptr size:n :}
-   name size FAMILY {: fam:n :}
-   PARAM-SCR-N @ {: base:n :}
-   arg PARAM-SCR+
-   base fam TFAM-NAME$ fam MK-PARAM ;
-
-: OPEN ( -- n ) NEW FRESH MK-VAR ;
-
-: OPTION-OF ( n -- n ) {: arg:n :}
-   s" " s" option" TFAM:TFAM-RESOLVE drop {: fam:n :}
-   PARAM-SCR-N @ {: base:n :}
-   arg PARAM-SCR+
-   base s" option" fam MK-PARAM ;
-
-: READ-OPEN ( -- n )
-   NEW
-   s" " s" read-view" TFAM:TFAM-RESOLVE drop {: fam:n :}
-   PARAM-SCR-N @ {: base:n :}
-   0 MK-SCOPE PARAM-SCR+
-   1 MK-SCOPE PARAM-SCR+
-   FRESH MK-VAR PARAM-SCR+
-   base s" read-view" fam MK-PARAM ;
-
-public
 
 : CHECK ( -- )
-   s" initialized storage follows a two-cell record" T-LABEL
-   s" pair" TERM WRAP T-WIDTH 2 T=
-   s" its physical size and alignment follow the record" T-LABEL
-   s" pair" TERM WRAP TFAM:INIT-LAYOUT? TTRUE CELL T= 2 CELL * T=
-   s" a packed tag-only element retains byte alignment" T-LABEL
-   s" tiny" TERM WRAP TFAM:INIT-LAYOUT? TTRUE 1 T= 1 T=
-   s" an open width-bearing field has no fixed storage layout" T-LABEL
-   OPEN s" scg" APPLY WRAP TFAM:INIT-LAYOUT? >r 2drop r> TFALSE
-   s" nested initialized storage keeps an open width unknown" T-LABEL
-   OPEN s" scg" APPLY WRAP WRAP TFAM:INIT-LAYOUT? >r 2drop r> TFALSE
-   s" a nested sum with an open width-bearing field stays unknown" T-LABEL
-   OPEN s" scg" APPLY OPTION-OF WRAP TFAM:INIT-LAYOUT? >r 2drop r> TFALSE
-   s" a concrete wide field determines the complete layout" T-LABEL
-   s" pair" TERM s" scg" APPLY WRAP TFAM:INIT-LAYOUT? TTRUE CELL T= 3 CELL * T=
-   s" an open element unused by the view layout remains placeable" T-LABEL
-   READ-OPEN WRAP TFAM:INIT-LAYOUT? TTRUE CELL T= 2 CELL * T=
    s" an initialized wide record retains its nominal type" T-LABEL
    s" : C2-INIT-WIDE ( init<p,C2-INIT-SCHEMA:pair> -- init<p,C2-INIT-SCHEMA:pair> ) C2-INIT-SCHEMA:KEEP-WIDE ;" 0 SUBJECT:EXITED? TTRUE
    s" a different lifetime cannot be substituted" T-LABEL

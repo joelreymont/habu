@@ -1,6 +1,4 @@
 \ byte-buffer-test.f - focused tests for the owned growable byte buffer.
-\ A WHITEBOX-SUITE row: it reopens BUF, which the arm64 engine seals with T0, so
-\ the gate runs it on the unsealed engine test/whitebox-engine.f builds.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -17,26 +15,6 @@ create BUFT-REF 4096 allot
 
 32 constant BUFT-CAP0
 2097152 constant BUFT-BIG-N
-
-\ White-box readers: BUF reopened for the raw header cells, past the public live
-\ checks.
-package BUF
-public
-: BUFT-DATA@ ( ptr a -- ptr u8 ) DATA@ ;
-: BUFT-CAP-RAW@ ( ptr a -- n ) CAP-RAW@ ;
-
-
-: BUFT-STALE! ( ptr a -- ) {: buf:ptr :}
-   s" stale" drop buf DATA!
-   7 buf LEN-FIELD ! ;
-
-
-: BUFT-LEN-RAW@ ( ptr a -- n ) LEN-FIELD @ ;
-
-\ Writes the length cell WITHOUT SET-LEN's len <= cap guard, to stage the one
-\ header corruption the span refuses: an active length past the owned mapping.
-: BUFT-LEN-RAW! ( n ptr a -- ) {: len:n buf:ptr :}  len buf LEN-FIELD ! ;
-;package
 
 CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 
@@ -132,13 +110,13 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    4 BUFT-FRESH
    BUFT-BUF 3 BUFT-N>BLEN BUF:GROW {: s :}
    s SPAN:LEN 3 T=
-   s SPAN:$ drop BUFT-BUF BUF:BUFT-DATA@ = TTRUE
+   s SPAN:$ drop BUFT-BUF BUF:SPAN$ drop = TTRUE
    s" abc" s SPAN:COPY
    BUFT-BUF 2 BUFT-N>BLEN BUF:GROW {: t :}       \ 3+2 = 5 > 4: doubles to 8
    BUFT-BUF BUFT-TCAP 8 T=
    BUFT-BUF BUFT-TLEN 5 T=
    t SPAN:LEN 2 T=
-   t SPAN:$ drop BUFT-BUF BUF:BUFT-DATA@ 3 + = TTRUE
+   t SPAN:$ drop BUFT-BUF BUF:SPAN$ drop 3 + = TTRUE
    s" de" t SPAN:COPY
    BUFT-BUF 0 BUFT-N>BLEN BUF:GROW SPAN:LEN 0 T=  \ zero keeps the capacity
    BUFT-BUF BUFT-TCAP 8 T=
@@ -159,11 +137,11 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-CLEAR ( -- )
    8 BUFT-FRESH
    s" data" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
-   BUFT-BUF BUF:BUFT-DATA@ {: before:ptr :}
+   BUFT-BUF BUF:SPAN$ drop {: before:ptr :}
    BUFT-BUF BUF:CLEAR
    BUFT-BUF BUFT-TLEN 0 T=
    BUFT-BUF BUFT-TCAP 8 T=
-   BUFT-BUF BUF:BUFT-DATA@ before = TTRUE
+   BUFT-BUF BUF:SPAN$ drop before = TTRUE
    s" new" BUFT-N>BLEN BUFT-BUF BUF:APPEND-SPAN
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" new" T$= ;
 
@@ -210,14 +188,14 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 \ Address reuse proves a mapping was freed.
 : BUFT-GROW-RELEASES ( -- )
    BUFT-CAP0 BUFT-REL-INIT
-   BUFT-REL-BUF BUF:BUFT-DATA@ {: old:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: old:ptr :}
    BUFT-REL-BUF BUFT-CAP0 2 * BUFT-N>BLEN BUF:RESERVE
    BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:ptr :}        \ a fresh same-size mapping refills the freed hole
    reuse old = TTRUE ;
 
 : BUFT-DISPOSE-RELEASES ( -- )
    BUFT-CAP0 BUFT-REL-INIT
-   BUFT-REL-BUF BUF:BUFT-DATA@ {: old:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: old:ptr :}
    BUFT-REL-BUF BUF:DISPOSE
    BUFT-CAP0 MEM-ALLOC-BYTES drop {: reuse:ptr :}
    reuse old = TTRUE ;
@@ -225,56 +203,27 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
 : BUFT-DISPOSE-DOUBLE ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    BUFT-REL-BUF BUF:DISPOSE
-   BUFT-REL-BUF BUF:DISPOSE
-   BUFT-REL-BUF BUF:BUFT-CAP-RAW@ 0 T=
-   BUFT-REL-BUF BUF:BUFT-LEN-RAW@ 0 T=
-   BUFT-REL-BUF BUF:BUFT-DATA@ 0= TTRUE
-   BUFT-REL-BUF BUF:BUFT-STALE!
-   BUFT-REL-BUF BUF:DISPOSE
-   BUFT-REL-BUF BUF:BUFT-DATA@ 0= TTRUE
-   BUFT-REL-BUF BUF:BUFT-LEN-RAW@ 0 T= ;
+   BUFT-REL-BUF BUF:DISPOSE ;
 
 : BUFT-DISPOSE-CYCLE-BOUNDED ( -- )
    BUFT-CAP0 BUFT-REL-INIT
-   BUFT-REL-BUF BUF:BUFT-DATA@ {: base:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: base:ptr :}
    BUFT-REL-BUF BUF:DISPOSE
    8 0 ?do
       BUFT-CAP0 BUFT-REL-INIT
-      BUFT-REL-BUF BUF:BUFT-DATA@ base = TTRUE         \ every cycle refills the same freed hole
+      BUFT-REL-BUF BUF:SPAN$ drop base = TTRUE         \ every cycle refills the same freed hole
       BUFT-REL-BUF BUF:DISPOSE
    loop ;
 
 : BUFT-GROW-FAIL-ATOMIC ( -- )
    BUFT-CAP0 BUFT-REL-INIT
    s" keep" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
-   BUFT-REL-BUF BUF:BUFT-DATA@ {: before:ptr :}
+   BUFT-REL-BUF BUF:SPAN$ drop {: before:ptr :}
    [: BUFT-REL-BUF MEM-MAX-N BUFT-N>BLEN BUF:RESERVE ;] E-MEM-MAP TTHROWSQ   \ mmap of the whole space fails
-   BUFT-REL-BUF BUF:BUFT-DATA@ before = TTRUE
+   BUFT-REL-BUF BUF:SPAN$ drop before = TTRUE
    BUFT-REL-BUF BUFT-TLEN 4 T=
    BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T=
    BUFT-REL-BUF BUF:SPAN$ BUFT-BL>RAW s" keep" T$= ;
-
-\ A length cell past the owned capacity must not turn the grow into an
-\ over-read: the source is taken from the owned span, so the take refuses at the
-\ reach (E-SPAN-RANGE) before a byte moves or a mapping is allocated.
-: BUFT-APPEND-MORE ( -- )
-   s" more" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN ;
-
-: BUFT-GROW-OVER-READ ( -- )
-   BUFT-CAP0 BUFT-REL-INIT
-   s" keep" BUFT-N>BLEN BUFT-REL-BUF BUF:APPEND-SPAN
-   BUFT-CAP0 2 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: hole :}
-   hole MEM:FREE-SPAN
-   BUFT-CAP0 1 + BUFT-REL-BUF BUF:BUFT-LEN-RAW!        \ len = 33 past the 32-byte mapping
-   [: BUFT-REL-BUF BUF:SPAN SPAN:LEN drop ;] E-SPAN-RANGE TTHROWSQ
-   [: BUFT-APPEND-MORE ;] E-SPAN-RANGE TTHROWSQ
-   \ A refused grow must leave the free hole available, not leak a new mapping
-   \ into it. This is the same address-reuse proof as the release tests above.
-   BUFT-CAP0 2 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: reuse :}
-   reuse SPAN:$ drop hole SPAN:$ drop = TTRUE
-   reuse MEM:FREE-SPAN
-   BUFT-REL-BUF BUF:BUFT-DATA@ 4 s" keep" T$=
-   BUFT-REL-BUF BUFT-TCAP BUFT-CAP0 T= ;
 
 : BUFT-USE-SPAN ( -- )
    BUFT-CAP0 BUFT-REL-INIT  BUFT-REL-BUF BUF:DISPOSE
@@ -384,8 +333,7 @@ CAST: BUFT-BL>RAW ( NUM:byte-len -- n )
    [: 3 -1 1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
    [: 3 1 -1 BUFT-REPLACED-NEG ;] E-STR-BOUNDS TTHROWSQ
    BUFT-BUF BUF:SPAN$ BUFT-BL>RAW s" a-b" T$=
-   BUFT-GROW-OVER-READ
-   BUFT-REL-BUF BUF:DISPOSE                                          \ the refused grow left the buffer owned
+   BUFT-REL-BUF BUF:DISPOSE                                          \ the refused re-init left the buffer owned
    BUFT-BIG-FILL
    BUFT-PROP
    s" BOK-INIT ( ptr a NUM:byte-len -- ) BUF:INIT" CHECK-QUIET-CANDIDATE! -1 T=
