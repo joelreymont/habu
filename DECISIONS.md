@@ -851,6 +851,11 @@ learned live in the docs for their subject.
   chain of links long enough fails stat too), Joel asked "does this test
   carry its weight? how can it be fixed?", then chose "Delete test, keep
   refusal": TMPDIR-CHECK keeps the refusal, untested.
+- 2026-11-05, chosen tests: Joel asked to "have rows run tests in parallel if
+  possible and not repeat the master test suite if you are gonna run it
+  anyway". Asked whether `bin/hb --load test/run.f -- <test names>` should
+  run just those tests in the suite's parallel pool, he answered "yes". A
+  landing tip that runs the full suite runs no test separately.
 
 ## Docs
 

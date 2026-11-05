@@ -19,12 +19,12 @@ bin/hb --load src/lib/errors.f src/lib/process.f test/proc-pty.f
 The runner prepends nothing to a registry row, so a focused run of a row's
 files measures what the row measures.
 
-A lane's proof is its engine build and the rows of a few seconds that load the
+A lane's proof is its engine build and the tests of a few seconds that load the
 files it changes, picked from that code, never copied from another lane's
-list. Rows that run for minutes, and the registry, run once on the landing tip.
-Every focused file is a registry row, so a tip that runs the registry runs no
-row separately. A list of 21 rows run one at a time takes 8.3 minutes, six of
-them 429 s, and the registry runs all 21 again.
+list. Tests that run for minutes, and the full test suite, run once on the
+landing tip. The full suite holds every test, so a tip that runs it runs no
+test separately. A list of 21 tests run one at a time takes 8.3 minutes, six of
+them 429 s, and the full suite runs all 21 again.
 
 ## Qualifying a candidate
 
