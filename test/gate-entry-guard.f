@@ -2,10 +2,10 @@
 \ importing or launching another row's entry silently runs that suite twice.
 \
 \ The guard walks the load graph test/gate-images.f derived, from every file a
-\ row loads through every import and launch. A load of another row's entry is
-\ refused, naming the file and line that makes it, and so is a preload that is
-\ another row's entry. A file may name itself, and rows may share an entry: a
-\ tier twin runs one file at both tiers.
+\ running row loads through every import and launch. A load of another running
+\ row's entry is refused, naming the file and line that makes it, and so is a
+\ preload that is another running row's entry. A file may name itself, and rows
+\ may share an entry: a tier twin runs one file at both tiers.
 
 require src/lib/errors.f
 require src/lib/fmt.f
@@ -92,8 +92,8 @@ variable ERRORS
 
 public
 
-\ Refuse a registry whose rows run another row's entry. Call it after
-\ GATE-IMAGES:DERIVE read the registry's graph.
+\ Refuse a registry whose running rows load one another's entries. Call it
+\ after GATE-IMAGES:DERIVE read the registry's graph.
 : CHECK ( -- )
    RESET
    [: ENTRY-ADD ;] TEST:VISIT-LOAD-FILES

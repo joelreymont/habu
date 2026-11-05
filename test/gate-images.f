@@ -430,8 +430,8 @@ TYPED-VARIABLE START-XT [ ptr u8 n ptr u8 n ptr u8 n -- ]
 public
 
 \ Read the registry's load graph and derive the images its rows need, starting
-\ nothing. Call it once the registry is complete, before START and before the
-\ graph readers below.
+\ nothing. Call it once the registry and its TEST:ONLY choice are complete,
+\ before START and before the graph readers below.
 : DERIVE ( -- )
    SIDE-CHECK
    GRAPH-RESET
@@ -440,7 +440,7 @@ public
    FAMILY-N 0 ?do i DERIVE-PRE loop
    0 UNION !
    [: UNION-FILE ;] TEST:VISIT-LOAD-FILES
-   TEST:WHITEBOX-REGISTERED? if
+   TEST:WHITEBOX-RUNS? if
       WHITEBOX MODULE$ FILE-MASK UNION @ or UNION !
    then
    UNION @ WANT ;

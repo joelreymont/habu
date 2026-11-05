@@ -23,6 +23,9 @@ variable THROW-N
 variable THROW-LATE-N
 variable STDIN-LABEL-N
 variable MARK-N
+variable WB-N
+variable VISIT-N
+variable VISIT-ONE-N
 
 : RESET-COUNTS ( -- )
    0 SETUP-N !
@@ -70,6 +73,22 @@ variable MARK-N
    label labelu s" beta" STR= if 1 BETA-N +! true exit then
    true ;
 
+: WB-RUNNER ( ptr u8 n -- bool )
+   2drop
+   1 WB-N +!
+   true ;
+
+: VISIT ( n bool ptr u8 n -- )
+   {: id:n entry:bool path:ptr pathu:n :}
+   1 VISIT-N +!
+   path pathu s" one.f" STR= if 1 VISIT-ONE-N +! then ;
+
+: VISITS ( -- n )
+   0 VISIT-N !
+   0 VISIT-ONE-N !
+   [: VISIT ;] TEST:VISIT-LOAD-FILES
+   VISIT-N @ ;
+
 : THROWER ( -- )
    E-STR-BOUNDS throw ;
 
@@ -105,7 +124,8 @@ variable MARK-N
    [: ARGS-BEGIN ;] TEST:ARGS-BEGIN!
    [: ARG+ ;] TEST:ARG+!
    [: RUNNER ;] TEST:RUNNER!
-   [: STDIN-RUNNER ;] TEST:STDIN-RUNNER! ;
+   [: STDIN-RUNNER ;] TEST:STDIN-RUNNER!
+   [: WB-RUNNER ;] TEST:WHITEBOX-RUNNER! ;
 
 : INSTALL-THROW ( -- )
    [: THROW-RUNNER ;] TEST:RUNNER! ;
@@ -201,6 +221,61 @@ TEST:RESET
 TEST:SUITE marked preload.f ENTRIES first.f second.f -- ENTRIES TEST:;SUITE
 TEST:RUN
 MARK-N @ 5 T=
+
+\ A chosen row runs alone; the registry still counts every row.
+INSTALL
+RESET-COUNTS
+0 WB-N !
+
+using TEST
+
+RESET
+SUITE chosen-one
+   one.f -- arg
+;SUITE
+SUITE chosen-two
+   two.f
+;SUITE
+WHITEBOX-SUITE chosen-wb
+   wb.f
+;SUITE
+
+;using
+
+s" no-such-row" TEST:ONLY TFALSE
+VISITS 3 T=
+s" chosen-one" TEST:ONLY TTRUE
+VISITS 1 T=
+VISIT-ONE-N @ 1 T=
+TEST:WHITEBOX-RUNS? TFALSE
+TEST:RUN
+TEST:ITEMS-RUN 1 T=
+TEST:ITEMS-REGISTERED 3 T=
+RUN-N @ 1 T=
+WB-N @ 0 T=
+s" chosen-wb" TEST:ONLY TTRUE
+TEST:WHITEBOX-RUNS? TTRUE
+
+\ RESET clears the choice: the next registration runs every row.
+RESET-COUNTS
+0 WB-N !
+
+using TEST
+
+RESET
+SUITE chosen-one
+   one.f
+;SUITE
+WHITEBOX-SUITE chosen-wb
+   wb.f
+;SUITE
+RUN
+
+;using
+
+TEST:ITEMS-RUN 2 T=
+RUN-N @ 1 T=
+WB-N @ 1 T=
 T-REPORT
 
 ;package

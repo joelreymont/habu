@@ -19,6 +19,13 @@ bin/hb --load src/lib/errors.f src/lib/process.f test/proc-pty.f
 The runner prepends nothing to a registry row, so a focused run of a row's
 files measures what the row measures.
 
+Run chosen tests of the suite in its parallel pool by name; an unknown name is
+refused with exit 64:
+
+```sh
+bin/hb --load test/run.f -- clobber-lint websocket
+```
+
 A lane's proof is its engine build and the tests of a few seconds that load the
 files it changes, picked from that code, never copied from another lane's
 list. Tests that run for minutes, and the full test suite, run once on the

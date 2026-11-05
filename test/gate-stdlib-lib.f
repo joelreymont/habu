@@ -24,11 +24,19 @@ variable ROW-SCAN
 variable ROW-SCRIPT?                     \ the row's `--` has passed
 
 : SUITE-USAGE ( -- )
-   s" usage: bin/hb --load test/run.f" SUITE-USAGE-RC die ;
+   s" usage: bin/hb --load test/run.f [-- test-name ...]" SUITE-USAGE-RC die ;
 
 : SUITE-CHECK-ARGS ( -- )
    ARGC 3 > if 3 SCRIPT-SEP? 0= if SUITE-USAGE then then
-   SCRIPT-ARGC 0 <> if SUITE-USAGE then ;
+   SCRIPT-ARGC 0 ?do
+      i SCRIPT-ARGV$ {: a:ptr u:n :}
+      a u TEST:ONLY 0= if
+         2 s" test/run.f: no test named " write drop
+         2 a u write drop
+         2 S\" \n" write drop
+         SUITE-USAGE
+      then
+   loop ;
 
 \ Each item names its own engine to its children: HABU_UNDER_TEST, which
 \ src/lib/engine-candidate.f reads first, names the binary this item runs on, so

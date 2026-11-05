@@ -33,6 +33,7 @@ create ITEM-ARG-COUNTS ITEM-MAX cells allot
 create ITEM-PRELOAD-COUNTS ITEM-MAX cells allot
 create ITEM-STDINS ITEM-MAX STDIN-CAP * allot
 create ITEM-STDIN-US ITEM-MAX cells allot
+create ITEM-CHOSEN ITEM-MAX cells allot
 create GROUP-NAMES GROUP-MAX NAME-CAP * allot
 create GROUP-NAME-US GROUP-MAX cells allot
 create GROUP-MODES GROUP-MAX cells allot
@@ -40,6 +41,7 @@ create ARGS ARG-CAP allot
 
 variable ITEM-N
 variable ITEM-RAN
+variable CHOSEN?
 variable GROUP-N
 variable GROUP-CUR
 variable ARG-U
@@ -302,6 +304,7 @@ defer SETTLE ( -- )
    kind ITEM-KINDS id ITEM-CELL !
    GROUP-CUR @ ITEM-GROUPS id ITEM-CELL !
    inptr inu id ITEM-STDIN!
+   0 ITEM-CHOSEN id ITEM-CELL !
    id ITEM-ARGS-BEGIN
    id PARSE-ARGS ;
 
@@ -398,14 +401,21 @@ defer SETTLE ( -- )
    id ITEM-START 0= if id PEND then
    id SEQUENTIAL? if DRAIN-ALL then ;
 
+: RUNS? ( n -- bool )
+   {: id:n :}
+   CHOSEN? @ 0= if TRUE exit then
+   ITEM-CHOSEN id ITEM-CELL @ 0<> ;
+
 \ A pending row starts at the first start after its runner accepts it, ahead
 \ of every later row not yet started.
 : RUN-BODY ( -- )
    -1 LAST-GROUP !
    0 PENDING-N !
    ITEM-N @ 0 ?do
-      PENDING-RETRY
-      i ITEM-RUN
+      i RUNS? if
+         PENDING-RETRY
+         i ITEM-RUN
+      then
    loop
    DRAIN-ALL ;
 
@@ -453,6 +463,19 @@ EXPORT ITEM-NAME$
 : ITEMS-RUN ( -- n )
    ITEM-RAN @ ;
 
+\ Mark every item with this name; answer whether one has it. Once any is marked,
+\ RUN, VISIT-LOAD-FILES and WHITEBOX-RUNS? skip the unmarked ones.
+: ONLY ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   TRUE 0=
+   ITEM-N @ 0 ?do
+      i ITEM-NAME$ a u STR= if
+         TRUE ITEM-CHOSEN i ITEM-CELL !
+         TRUE CHOSEN? !
+         drop TRUE
+      then
+   loop ;
+
 \ Visit the source files before a row's script separator. The registry is the
 \ authority for what the adapter passes after --load; the same file can belong
 \ to several rows with different argv or engine tiers.
@@ -467,13 +490,13 @@ EXPORT ITEM-NAME$
    loop drop ;
 
 : VISIT-LOAD-FILES ( [ n bool ptr u8 n -- ] -- ) {: visit :}
-   ITEM-N @ 0 ?do i visit VISIT-ROW-FILES loop ;
+   ITEM-N @ 0 ?do i RUNS? if i visit VISIT-ROW-FILES then loop ;
 
-\ Does any registered item need the whitebox engine? The adapter asks before the
-\ first fork, so a gate with no whitebox suite pays nothing for one.
-: WHITEBOX-REGISTERED? ( -- bool )
+\ Does any item that will run need the whitebox engine? The adapter asks before
+\ the first fork, so a gate with no whitebox suite pays nothing for one.
+: WHITEBOX-RUNS? ( -- bool )
    ITEM-N @ 0 ?do
-      i ITEM-KIND@ ITEM-WHITEBOX = if TRUE unloop exit then
+      i RUNS? if i ITEM-KIND@ ITEM-WHITEBOX = if TRUE unloop exit then then
    loop
    TRUE 0= ;
 
@@ -491,6 +514,7 @@ EXPORT ITEM-NAME$
 : RESET ( -- )
    0 ITEM-N !
    0 ITEM-RAN !
+   0 CHOSEN? !
    0 GROUP-N !
    0 ARG-U !
    DEFAULT-GROUP ;
