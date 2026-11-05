@@ -727,6 +727,8 @@ learned live in the docs for their subject.
   USER-END) are package BOOT. He chose "BOOT:NAMESPACE-WL (Recommended)", the
   owner's reader in a file loaded before the checker, which every file calls in
   place of its own read; BOOT:GLOBAL-WL reads the global wid beside it.
+  Asked on 2026-11-05 to name the header cell holding the start of the hb
+  being built (0 while no build runs), Joel chose "BOOT:IMAGE-BASE-CELL".
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
