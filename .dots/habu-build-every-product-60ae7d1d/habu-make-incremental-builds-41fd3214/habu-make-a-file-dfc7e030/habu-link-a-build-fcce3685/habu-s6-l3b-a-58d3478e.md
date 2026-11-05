@@ -1,9 +1,11 @@
 ---
 title: "S6 L3b: a stripped build's DATA image and its address list"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-05T21:41:26.359584+02:00"
+closed-at: "2026-11-06T00:10:09.812420+02:00"
+close-reason: "landed as \"Copy a build's data into its product\": linker 1305 ms, arm64-place 2475 ms, arm64-link-data 2590 ms (load 13); reviewed twice, folds: a DATA pointer case, a not-placed case, mirror and unfailable assertions dropped, QUOTE-ROOT dies on a record miss, ROOT matches kernel primitives before the function scan; QUOTE-ROOT's outside-definition branch removed (no such quotation exists)"
 ---
 
 Problem: design-s6-r2.md D3/D7: a product's DATA is the build space's raw bytes copied to DATA-VA at start, with a list of the DATA cells holding code addresses; L4 placed the routines but nothing writes the DATA image, its list, the closure's roots at xt cells, or code's data address values. Acceptance: src/habu/link-data.f (SPACE-DATA, ROWS, DATA-ADDRESS, ROOT-CELLS, DATA-IMAGE, LINK-STRIPPED, LINKER private); QUOTE-ROOT and a SOURCE-FUNCTION fallback in link-band.f LINK-ADDRESS; test/compiler/arm64-link-data.f through LINKER:WITH. Files: src/habu/link-band.f, src/habu/link-data.f, test/compiler/arm64-link-data.f, test/gate-arm-cases.f. Verify: brief .jj-ws.noindex/carl-dots/.out/carl-file/brief-s6-l3b.md: bin/hb --load test/run.f -- arm64-link-data arm64-place linker. Depends: S5b1 (landed 6f3717e8), L4 (landed). Ownership: carl. Claim: agent=carl worker workspace=.jj-ws.noindex/carl-s6-l3b

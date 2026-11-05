@@ -15,6 +15,13 @@ SUITE arm64-place
    test/compiler/arm64-place.f
 ;SUITE
 
+\ arm64-link-data.f links a stripped build inside its data space: the closure
+\ from its xt cells, its DATA image and DATA list, and refuses a DATA pointer
+\ outside the space.
+SUITE arm64-link-data
+   test/compiler/arm64-link-data.f
+;SUITE
+
 \ The fixture opens an ARM AOT source window and selects tier 0 before asking
 \ how an x64 shadow is linked from that ARM window.
 SUITE x86-64-link-records

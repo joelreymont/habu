@@ -259,14 +259,41 @@ variable UNSAFE-COUNT
    repeat ;
 
 
-\ Host address a the program starts from: a record's entry makes that record
-\ and every record its code reaches live; a kernel primitive reaches nothing.
+\ Emission e's record whose range [ENTRY@, RANGE-END) holds byte off, or -1.
+: RANGE-REC ( n n -- n )
+   {: e:n off:n :}
+   e EM-FIRST @
+   begin dup 0 >= while
+      dup NSHADOW:ENTRY@ off <=  over RANGE-END off > and if exit then
+      REC-NEXT @
+   repeat ;
+
+
+\ A quotation's entry a makes the record holding it live, and NSHADOW:PUBLISH
+\ files each emission under a record at offset 0; XT-VALUE refuses any other a.
+: QUOTE-ROOT ( n -- )
+   {: a:n :}
+   a NSHADOW:SOURCE-FUNCTION {: e:n f:n :}
+   e 0< if exit then
+   e  e f NSHADOW:FUNCTION-OFFSET@  RANGE-REC {: r:n :}
+   r 0< if
+      s" link: no record holds the function at " type a .
+      s" link: a function lies outside every record" 74 die
+   then
+   r MAKE-LIVE DRAIN ;
+
+
+\ Host address a the program starts from: a record's entry, or a quotation's
+\ (QUOTE-ROOT), makes live all the code it reaches; a kernel primitive, none.
 : ROOT ( n -- )
    {: a:n :}
    a REC-AT {: r:n :}
    r 0 >= if r MAKE-LIVE DRAIN exit then
    a UNSAFE@ {: d:n :}
-   d 0< if exit then
+   d 0< if
+      a ARM64:KERNEL-ENTRY 0 >= if exit then
+      a QUOTE-ROOT exit
+   then
    s" link: the program starts at " type d CANNOT-RUN ;
 
 
@@ -294,7 +321,8 @@ variable UNSAFE-COUNT
 
 
 \ A host address's link address: a placed product routine's entry, a kernel
-\ primitive's, or -1. ROUTINES builds the table and PLACE-ROUTINES the offsets.
+\ primitive's, a placed quotation's, or -1. ROUTINES builds the table and
+\ PLACE-ROUTINES the offsets.
 : LINK-ADDRESS ( n -- n )
    {: a:n :}
    a REC-AT {: r:n :}
@@ -305,7 +333,12 @@ variable UNSAFE-COUNT
    then
    a ARM64:KERNEL-ENTRY {: off:n :}
    off 0 >= if TEXT-VA off + exit then
-   -1 ;
+   \ Only a value no record or kernel entry matched scans every emission's
+   \ functions: (quotation xt cells) x (functions), here and in QUOTE-ROOT.
+   a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
+   qe 0< if -1 exit then
+   qe PLACED @ 0= if -1 exit then
+   TEXT-VA  qe OFFSET@ +  qe qf NSHADOW:FUNCTION-OFFSET@ + ;
 
 
 : TARGET-ADDRESS ( n -- n )
