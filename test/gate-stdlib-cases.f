@@ -1615,7 +1615,7 @@ SUITE closed-source
    test/closed-source-suite.f
 ;SUITE
 
-WHITEBOX-SUITE engine
+SUITE engine
    test/engine-suite.f
 ;SUITE
 
