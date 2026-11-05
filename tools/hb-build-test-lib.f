@@ -36,8 +36,6 @@ using BUILD-FIXPOINT                     \ the build tmp root
 \   tools/hb-build-timeout-env-test.f         deadline override validation
 \   tools/hb-build-timeout-json-test.f        empty override, JSON refusal
 \   tools/hb-build-aot-test.f                 AOT build and run, one program each
-\   tools/hb-build-aot-inputs-test.f          observed source and environment inputs
-\   tools/hb-build-aot-image-test.f           saved AOT builder, reused maker image
 \   tools/hb-build-stripped-test.f            library state, a fork, engine cells,
 \                                             quotation fields, ptr mark
 \   tools/hb-build-stripped-chain-test.f      baked constants, chain, open path

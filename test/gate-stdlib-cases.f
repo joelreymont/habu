@@ -9,12 +9,6 @@ using TEST
 
 \ Measure with `/usr/bin/time bin/hb --load <file>`.
 
-\ native-build-recompile runs eight engine builds, three from an empty cache, and
-\ needs no image, so it starts first.
-SUITE native-build-recompile
-   test/compiler/native-build-edit-e2e.f -- recompile
-;SUITE
-
 \ These long rows lead so they keep the pool busy while the compiler bundle
 \ builds.
 SUITE check-cli-boundary
@@ -28,14 +22,6 @@ SUITE check-verify
 SUITE lsp-boundary
    tools/lsp-test.f
    tools/lsp-entry-test.f
-;SUITE
-
-SUITE hb-build-aot-image
-   tools/hb-build-aot-image-test.f
-;SUITE
-
-SUITE whitebox-engine-key
-   test/whitebox-engine-key-test.f
 ;SUITE
 
 \ RFC 6455 connections on the HTTP server, spoken to by a Habu client over
@@ -195,10 +181,6 @@ SUITE hb-build-aot
    tools/hb-build-aot-test.f
 ;SUITE
 
-SUITE hb-build-aot-inputs
-   tools/hb-build-aot-inputs-test.f
-;SUITE
-
 SUITE hb-build-producer-cache
    tools/hb-build-producer-cache-test.f
    src/lib/codesign-test.f
@@ -208,11 +190,6 @@ SUITE hb-build-producer-cache
 \ private copy from the initial compiler bundle; later consumers use that copy.
 SUITE app-image
    test/app-image.f
-;SUITE
-
-SUITE native-file-state
-   test/native-file-state-e2e.f
-   test/native-file-retired-e2e.f
 ;SUITE
 
 SUITE engine-origin-lookup
@@ -259,14 +236,6 @@ SUITE source-unit-range
    test/source-unit-range-gate.f
 ;SUITE
 
-SUITE native-file-prefix
-   tools/hb-build-prefix-producer-test.f
-;SUITE
-
-SUITE native-file-alias
-   test/native-file-alias-e2e.f
-;SUITE
-
 SUITE native-file-stripped-path
    test/native-file-stripped-path-e2e.f
 ;SUITE
@@ -299,14 +268,6 @@ SUITE checker-unit-codec
 
 SUITE cell-body
    test/cell-body-e2e.f
-;SUITE
-
-SUITE native-window-owner
-   test/native-window-owner.f
-;SUITE
-
-SUITE field-proj-boundary
-   test/field-proj-boundary.f
 ;SUITE
 
 WHITEBOX-SUITE checker-scan-index

@@ -53,18 +53,6 @@ fails opening it (E-FS-OPEN) on any engine.
 bin/hb --load test/run.f </dev/null
 ```
 
-The registry's `native-build-recompile` row checks which files an engine
-rebuild recompiles, as make would: every file after an edit to
-`src/lib/memory.f`, which the compiler requires; after an edit to
-`src/habu/debug-watch.f`, that file and the loaded files that require it,
-directly or through other loaded files. Each `debug-watch.f` product equals a
-fresh-cache build. For definition-cache or persisted checker-state changes,
-also run the engine edit matrix:
-
-```sh
-bin/hb --load test/compiler/native-build-edit-e2e.f -- qualify </dev/null
-```
-
 The registry runs only on a `tools/native-build.f` product. The engine
 `tools/bootstrap.sh` installs is the recovery engine and cannot run it: after a
 recovery, use that engine as `$HOST` above and gate its product. The

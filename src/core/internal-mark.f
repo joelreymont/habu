@@ -127,10 +127,9 @@ variable IMK-QI
 \ (tools/native-build-core.f TARGET-ENGINE-UNSEAL); every other load is sealed.
 
 \ The pass writes its verdict into IMK-CLASS and the capture bakes it, so later
-\ readers (the build's smoke run in tools/native-build-core.f,
-\ test/whitebox-engine-key-test.f, SEAL-PACKAGES below) read the image, never the
-\ request. A cold engine reruns the pass at every boot; only a seeded image
-\ carries a verdict its build wrote.
+\ readers (the build's smoke run in tools/native-build-core.f, SEAL-PACKAGES
+\ below) read the image, never the request. A cold engine reruns the pass at
+\ every boot; only a seeded image carries a verdict its build wrote.
 0 constant IMAGE-SEALED         \ the pass ran: internal names are DNAME-INT
 1 constant IMAGE-WHITEBOX       \ the pass stood down: they are ordinary words
 variable IMK-CLASS
