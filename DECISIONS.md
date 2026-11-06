@@ -1232,6 +1232,19 @@ learned live in the docs for their subject.
   are you running and re-running these suites before pruning them? we should
   fit into 2-3 minutes, 5 at most!": the full suite's wall time is 2-3
   minutes, 5 at most.
+- 2026-11-06, which tests stay: Joel asked "if you deleted all your tests,
+  how would you verify that habu is working correctly?", then "what tests
+  would keep absolutely keep and which ones would you get rid of?" and "i'm
+  not asking to eval time, i'm asking to apply the criteria above", and wrote
+  "get rid of the ones to get rid of". The suite keeps the self-build
+  fixpoint (hb builds an hb that builds the same hb), rejected programs (one
+  per type rule), programs at boundaries hb's own build never reaches
+  (network, C and the OS, file formats, library behavior) and other
+  targets' tests. It drops change detectors (exact addresses, layouts, record
+  bytes), tests of what the self-build already proves, tests of machinery
+  being replaced, tests that one tool agrees with another, tests of the test
+  harness except one catching a failure a running suite cannot show, and
+  lints.
 
 ## Docs
 
