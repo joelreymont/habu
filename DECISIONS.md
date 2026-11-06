@@ -287,6 +287,11 @@ learned live in the docs for their subject.
   FS:ERRNO-TEXT ( errno buf size -- text ) writing into the caller's buffer,
   Joel chose "FS:ERRNO$ ( errno -- text )": "Like FMT:INT$: text in a
   per-task buffer of fixed size."
+- 2026-11-06, an error code's name (relayed by kevin from Tender): asked when
+  one Habu word that turns an error number into its constant's name and
+  comment, for Habu's codes and an application's own, should be designed,
+  given that it means a definer for every error constant while incremental
+  builds come first, Joel chose "Design now, in parallel".
 - 2026-11-05, durable atomic writes (relayed by kevin from Tender): shown
   that FS:ATOMIC-WRITE-FILE renamed its sibling over the destination with no
   sync, so after a crash or power loss the destination could stand empty
