@@ -17,10 +17,8 @@ require src/lib/fs-mutate.f           \ the temporary directory the READ file li
 require src/lib/net/tcp4.f            \ the loopback listener ACCEPT and CONNECT run on
 require src/lib/aio.f
 
-\ White-box helpers, compiled in package AIO so its private submission plumbing
-\ is visible. A qualified definition lands in the wordlist it names, so these
-\ two go to AIO-TEST, which calls them bare, and AIO's public surface gains
-\ nothing for being tested.
+\ White-box helpers, compiled in package AIO to reach its private plumbing;
+\ each qualified name lands in AIO-TEST, so AIO's public surface gains nothing.
 package AIO
 
 \ One OP-NOP published and nobody entered for: NOP-STAGE's entry without its
@@ -40,6 +38,10 @@ package AIO
 \ without restating how a handle encodes it.
 : AIO-TEST:HANDLE-IDX ( n -- n )
    HANDLE>IDX ;
+
+\ The loop's task, so a case can hold it busy and make START's activation fail.
+: AIO-TEST:LOOP-TASK ( -- ptr n )
+   AIO-LOOP ;
 
 ;package
 
@@ -78,6 +80,7 @@ variable BASE-THREADS
 variable C1-GOT
 variable C2-GOT
 variable OWNER-RC
+variable OCCUPY-GO
 variable THIEF-ADD-RC
 variable THIEF-DROP-RC
 variable THIEF-ANY-RC
@@ -1123,6 +1126,31 @@ CAST: XFER>N ( AIO:xfer -- n )
    AIO:RUNNING? TFALSE
    [: TIMER-MS >MS AIO:TIMEOUT TICKET-DROP ;] E-AIO-STATE TTHROWSQ ;
 
+: NEXT-FD ( -- n )
+   P-R P-W PIPE-OPEN P-R @ P-R P-W PIPE-CLOSE ;
+
+: OCCUPY-WORK ( -- )
+   OCCUPY-GO 1 REACH ;
+
+\ The loop's task already running makes START's activation E-TASK-STATE after
+\ its host setup; NEXT-FD finds any descriptor the failed START kept.
+: CASE-START-ROLLBACK ( -- )
+   0 OCCUPY-GO !
+   ['] OCCUPY-WORK AIO-TEST:LOOP-TASK TASK:ACTIVATE
+   NEXT-FD {: fd0:n :}
+   [: AIO:START ;] E-TASK-STATE TTHROWSQ
+   NEXT-FD fd0 T=
+   AIO:RUNNING? TFALSE
+   [: AIO:STOP ;] E-AIO-STATE TTHROWSQ
+   1 OCCUPY-GO atomic!
+   AIO-TEST:LOOP-TASK AWAIT-END
+   AIO-TEST:LOOP-TASK TASK:KILL
+   AIO:START
+   AIO:RUNNING? TTRUE
+   1 >MS AIO:TIMEOUT AWAIT>N MARK-TIMED-OUT T=
+   AIO:STOP
+   AIO:RUNNING? TFALSE ;
+
 : AIO-TEST-TYPES ( -- )
    s" AIO-POLL-OK ( fd n ms -- AIO:ticket ) AIO:POLL"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -1196,6 +1224,7 @@ CAST: XFER>N ( AIO:xfer -- n )
    CASE-HALTED-CLEANUP-IO
    CASE-HALTED-AWAIT
    CASE-RESTART
+   CASE-START-ROLLBACK
    T-REPORT ;
 
 AIO-TEST-RUN

@@ -1327,7 +1327,7 @@ public
    EV-WRITABLE ;
 
 \ Opens the ring and starts the completion task. A second start is
-\ E-AIO-STATE.
+\ E-AIO-STATE; a START that throws leaves nothing for STOP.
 : START ( -- )
    RING-LIVE @ 0 <> if E-AIO-STATE throw then
    RING-READY @ 0= if AIO-LOCK TASK:FACILITY-INIT 1 RING-READY ! then
@@ -1335,7 +1335,8 @@ public
    0 RING-STOP atomic!
    HOST-SETUP
    1 RING-LIVE !
-   ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;
+   [: ['] LOOP-BODY AIO-LOOP TASK:ACTIVATE ;] catch {: code:n :}
+   code 0 <> if HOST-CLOSE 0 RING-LIVE ! code throw then ;
 
 \ Stops the loop and gives the ring back. Every ticket must have been awaited or
 \ cancelled and drained first: a record still in flight is E-AIO-BUSY, because
