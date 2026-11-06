@@ -1008,6 +1008,17 @@ learned live in the docs for their subject.
   seed or its mirror to run the Gforth recovery check, Joel chose "Retire it
   from the rules (Recommended)": no change runs a Gforth check or edits
   bootstrap/ to follow the tree.
+- 2026-11-06, renaming a file hb has built in: shown that the installed hb
+  knows its built-in files only by path, so on a tree that renames
+  src/lib/errors.f to error.f every tool loads error.f a second time and dies
+  on its first constant, while an hb built from that tree dies on `require
+  src/lib/errors.f`, Joel chose "Bootstrap once (Recommended)": "One-line file
+  builds once; rebuild twice at normal limits; record route in bootstrap.md."
+  The first build loads a one-line file that marks the new path provided,
+  valid only while the renamed file's bytes equal the old file's, and is never
+  installed; the second and third builds run at the normal limits, and the
+  third, matching the second, is installed. Clients requiring the old path
+  change their require (hard cutover).
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
