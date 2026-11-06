@@ -35,3 +35,5 @@ Status 2026-11-02 (census against master 430a53e317): lanes 2 and 6 landed (6036
 2026-11-04: recurred in stuart's WITH-BYTES full suite under heavy load: "pg-kill-test REPORT-READ: a deadline expired", rc 67 -2502 (/tmp/stuart-withbytes/w3b-run.log:1811); the row passed twice alone on the same candidate (w3b-pgkill-1.log, -2.log). Still lane 4's case: READY-MS at test/db/pg-kill-test.f:25.
 
 2026-11-05: the same READY-MS expiry was the only red in two full suites (MATCH on base ba1b7627, ERRNO on f90d953b, 522 rows each, 1984 s and 1535 s); WAIT showed pg 65 s wall for 3.7 s CPU; pg alone on the ERRNO engine rc 0 in 12 s.
+
+2026-11-06: recurred in kevin's master baseline suite (/tmp/kevin-habu-base-suite.log:845, "pg-kill-test REPORT-READ: a deadline expired", rc 67 -2502); the same row passed in carl's full suites that day.
