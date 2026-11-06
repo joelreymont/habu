@@ -4786,6 +4786,159 @@ $7FFFF constant XFER-FLAG-MASK       \ the control flags, the defer bit, CTL-NAM
 : XFER-DMASK ( n -- n ) XFER-DMASK-SHIFT rshift XFER-MASK-ALL and ;
 : XFER-RMASK ( n -- n ) XFER-RMASK-SHIFT rshift XFER-MASK-ALL and ;
 
+\ Control-effect flags are append-only and later-wins, so a redefinition can
+\ clear stale metadata. CTL-DEAD: a call has no normal continuation. CTL-THROW:
+\ a call may reach a catchable throw edge. CTL-BARRIER: the call is a block
+\ collective whose emitter contains bar.sync, sound only under block-uniform
+\ control (refused inside an open control frame, BARRIER-CUR?).
+1 constant CTL-DEAD
+2 constant CTL-THROW
+4 constant CTL-BARRIER
+\ Positive provenance: this binding's effect was explicitly declared or its
+\ check was enforced. An ABI-only or old producer row carries no grant.
+$8 constant EFFECT-EXTERNAL
+$10 constant CTL-CORE-OP
+$20 constant CTL-ZERO-TRUE
+$40 constant CTL-ZERO-FALSE
+\ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so
+\ define words at run time that no source text spells. The loader's audited
+\ evaluate boundaries carry it by axiom (NORET-AXIOMS) and every checked body
+\ that calls a flagged word inherits it; the source pre-pass asks for it
+\ (CHECKER-VERIFY-RENDERS) and leaves such words to the run.
+$80 constant CTL-RENDERS
+
+\ Which engine word a symbol is: identity, not spelling. A rule that types an
+\ engine word by what it does (CELL-FETCH-TOK for `@`, RECORD-AT-STEP for
+\ `record-at`) may judge a token only when the token binds that word: `@` in a
+\ package that defines `@`, or `dup` after `undefine dup`, is another word of
+\ the same spelling. The identity is kept apart from the effect and registered
+\ where the engine defines the word: NORET-AXIOMS for a primitive, INTRINSIC
+\ right after a source definition. Two forms carry it:
+\   CTL-CORE-OP    the engine's own word of a spelling within a family the
+\                  rule chooses by spelling: the transport shuffles, the
+\                  return-stack transfers with execute/catch/finally, the
+\                  zero tests, and `evaluate` (a top-level step, TOP-WORD-STEP).
+\   CTL-INTRINSIC  a five-bit id naming one engine word (the INTRINSIC-* rows
+\                  below), for the rules that dispatch on the word itself.
+\ Both sit inside XFER-FLAG-MASK and travel with the control flags (owner
+\ handover, unit import, captured graph). `undefine` retires them
+\ (CHECKER-UNDEFINE), a redefinition records none, and an export does not copy
+\ them (EXPORT-META-COPY).
+\ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
+\ CTL-PARSES and 14 CTL-CREATES (below), 15 CTL-NOMINAL, 16 the defer bit
+\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17 CTL-NAMES and 18 CTL-GENERATES
+\ (below), 19 free outside the flag mask, 20-39 and 40-59 the intact masks
+\ (XFER-PACK).
+CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
+CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
+CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
+1 constant INTRINSIC-CELL-FETCH                \ @
+2 constant INTRINSIC-CELL-STORE                \ !
+3 constant INTRINSIC-QDUP                      \ ?dup
+4 constant INTRINSIC-HIDE-ROW                  \ depth .s
+5 constant INTRINSIC-RAW-FIELD                 \ ptr-field
+6 constant INTRINSIC-RECORD-AT                 \ record-at (src/core/structure-make.f)
+7 constant INTRINSIC-FIELD-PROJECT             \ field-project (src/core/structure-make.f)
+8 constant INTRINSIC-CREATE                    \ create
+9 constant INTRINSIC-VARIABLE                  \ variable
+10 constant INTRINSIC-CONSTANT                 \ constant
+CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses: (src/core/cell-effects.f)
+CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through: (src/core/cell-effects.f)
+CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names: (src/core/cell-effects.f)
+14 constant INTRINSIC-ARENA-NEW                \ ARENA-NEW (src/core/dynamic-storage.f)
+15 constant INTRINSIC-ARENA-RELEASE            \ ARENA-RELEASE (src/core/dynamic-storage.f)
+16 constant INTRINSIC-XT-STORE                 \ xt!
+17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
+18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
+19 constant INTRINSIC-RECORD-NEW               \ RECORD-NEW (src/core/dynamic-storage.f)
+20 constant INTRINSIC-RECORD-RELEASE           \ RECORD-RELEASE (src/core/dynamic-storage.f)
+: INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
+: CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
+
+\ CTL-PARSES means a call may read the source after it, so which tokens it takes
+\ cannot be known without running it. parse-name carries it by axiom, the
+\ operand declarers by their id (INTRINSIC-CTL), and every checked body that
+\ calls a flagged word inherits it, as CTL-RENDERS is inherited; the source
+\ pre-pass stops at such a top-level word unless a source row bounds what it
+\ reads (CHECKER-VERIFY-TOP, CHECKER-VERIFY-TOP-BINDING).
+CHECKER-OWNER-ABI:BINDING-PARSES constant CTL-PARSES
+\ CTL-CREATES means a call may define the name it reads: `create` carries it by
+\ axiom, inherited alike. Unlike rendered text it defines exactly that name,
+\ which a definer the pre-pass learned names where it takes the statement
+\ (src/habu/verify-source.f RECORD-DEFINER?), so it marks only a statement no
+\ such definer takes (TOP-TOKEN, CHECKER-VERIFY-RENDERS).
+$4000 constant CTL-CREATES
+\ A call may register a nominal type without rendering source. The flag is a
+\ may-effect of the selected word, inherited by a wrapper as the other control
+\ effects are; it grants no registration authority to checked code.
+$8000 constant CTL-NOMINAL
+\ CTL-GENERATES means the symbol's created effect (NORET-CREATES@) is what a
+\ `generates:` row states: its own row (CHECKER-GENERATES) or the exported
+\ word's (EXPORT-META-COPY). The source pre-pass then reads a call of it as
+\ declared, not as text it never reads (src/habu/verify-source.f
+\ DECLARED-RENDER?). It describes that cell, not what a call may do, so
+\ CTL-INHERITED leaves it out and a wrapper never takes it (STORE).
+CHECKER-OWNER-ABI:BINDING-GENERATES constant CTL-GENERATES
+CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
+\ CTL-NAMES means a `names:` row declared that the word looks its top string
+\ operand up as XREF-FIND does, so a string literal just before a call of it
+\ is a use of the word it names (NAMED-OPERAND-USE, CHECKER-NAMED-USE). The
+\ row is a trusted claim about that word alone: a caller passing its own
+\ operand on inherits nothing and declares its own row.
+CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
+$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
+CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
+   constant CTL-GRAPH-FLAGS
+
+
+\ The `intrinsic` tag's operand for intrinsic id n (render.f CTL-INTRINSIC-TAG,
+\ SIG-INTRINSIC), empty for an id no INTRINSIC-* constant names.
+: INTRINSIC-NAME$ ( n -- ptr u8 n )
+   {: id:n :}
+   id INTRINSIC-CELL-FETCH = IF s" cell-fetch" EXIT THEN
+   id INTRINSIC-CELL-STORE = IF s" cell-store" EXIT THEN
+   id INTRINSIC-QDUP = IF s" qdup" EXIT THEN
+   id INTRINSIC-HIDE-ROW = IF s" hide-row" EXIT THEN
+   id INTRINSIC-RAW-FIELD = IF s" raw-field" EXIT THEN
+   id INTRINSIC-RECORD-AT = IF s" record-at" EXIT THEN
+   id INTRINSIC-FIELD-PROJECT = IF s" field-project" EXIT THEN
+   id INTRINSIC-CREATE = IF s" create" EXIT THEN
+   id INTRINSIC-VARIABLE = IF s" variable" EXIT THEN
+   id INTRINSIC-CONSTANT = IF s" constant" EXIT THEN
+   id INTRINSIC-PARSES = IF s" parses" EXIT THEN
+   id INTRINSIC-PARSES-THROUGH = IF s" parses-through" EXIT THEN
+   id INTRINSIC-NAMES = IF s" names" EXIT THEN
+   id INTRINSIC-ARENA-NEW = IF s" arena-new" EXIT THEN
+   id INTRINSIC-ARENA-RELEASE = IF s" arena-release" EXIT THEN
+   id INTRINSIC-XT-STORE = IF s" xt-store" EXIT THEN
+   id INTRINSIC-ATOMIC-STORE = IF s" atomic-store" EXIT THEN
+   id INTRINSIC-ATOMIC-CAS = IF s" atomic-cas" EXIT THEN
+   id INTRINSIC-RECORD-NEW = IF s" record-new" EXIT THEN
+   id INTRINSIC-RECORD-RELEASE = IF s" record-release" EXIT THEN
+   s" " ;
+
+
+\ The facts tag of control word bit n, empty for CTL-THROW's and the intrinsic
+\ id's bits, whose tags carry operands (render.f REND-CTL, SIG-CTL-TAG).
+: CTL-BIT>TAG$ ( n -- ptr u8 n )
+   {: bit:n :}
+   1 bit lshift {: f:n :}
+   f CTL-DEAD = IF s" noret" EXIT THEN
+   f CTL-BARRIER = IF s" barrier" EXIT THEN
+   f EFFECT-EXTERNAL = IF s" external" EXIT THEN
+   f CTL-CORE-OP = IF s" core-op" EXIT THEN
+   f CTL-ZERO-TRUE = IF s" zero-true" EXIT THEN
+   f CTL-ZERO-FALSE = IF s" zero-false" EXIT THEN
+   f CTL-RENDERS = IF s" renders" EXIT THEN
+   f CTL-PARSES = IF s" parses" EXIT THEN
+   f CTL-CREATES = IF s" creates" EXIT THEN
+   f CTL-NOMINAL = IF s" nominal" EXIT THEN
+   f CHECKER-OWNER-ABI:BINDING-DEFER = IF s" defer" EXIT THEN
+   f CTL-NAMES = IF s" names" EXIT THEN
+   f CTL-GENERATES = IF s" generates" EXIT THEN
+   s" " ;
+
+
 CHECKER-REG:SCRATCH{
 variable XM-I   variable XM-ACC   variable XS-I
 variable XE-PD  variable XE-PR       \ the rows a token step started from
@@ -6188,6 +6341,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ REND-FACTS), never a source signature.
 variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 : SIG-FACTS! ( bool -- ) SIG-FACTS-MODE ! ;
+variable SIG-CTL   \ the control word, XFER-PACK form, the last facts text's tags gave
 variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave
 variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's tags gave, -1 for none
 \ The created words' facts text inside the last facts text, 0 0 for none. A
@@ -7097,6 +7251,62 @@ CHECKER-REG:}SCRATCH
    -1 ;
 
 
+\ The control flag a plain facts tag names (CTL-BIT>TAG$), 0 for any other
+\ token.
+: TAG>CTL-FLAG ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   19 0 ?do
+      i CTL-BIT>TAG$ a u CORE-STR= IF 1 i lshift unloop EXIT THEN
+   loop
+   0 ;
+
+
+\ A `throws` mask operand after tag ta tu: any spelling num-parse reads as a
+\ whole number, hex, a sign and leading zeros included, from 0 to XFER-MASK-ALL.
+: SIG-MASK ( ptr u8 n -- n )
+   {: ta:ptr tu:n :}
+   NEXT-SIG-TOK {: a:ptr u:n :}
+   u 0 = IF ta tu SGBAD-SYNTAX! 0 EXIT THEN
+   a u num-parse {: v:n flt:bool ok:bool :}
+   ok  flt 0=  and  v 0 >=  and  v XFER-MASK-ALL <=  and IF v EXIT THEN
+   a u SGBAD-SYNTAX!  0 ;
+
+
+: SIG-THROWS ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   SIG-CTL @ CTL-THROW and 0 <> IF ta tu SGBAD-SYNTAX! THEN
+   ta tu SIG-MASK {: dmask:n :}
+   ta tu SIG-MASK {: rmask:n :}
+   SIG-CTL @ CTL-THROW or  dmask rmask XFER-PACK SIG-CTL ! ;
+
+
+: SIG-INTRINSIC ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   SIG-CTL @ CTL-INTRINSIC-MASK and 0 <> IF ta tu SGBAD-SYNTAX! THEN
+   NEXT-SIG-TOK {: a:ptr u:n :}
+   u 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
+   32 1 ?do
+      i INTRINSIC-NAME$ a u CORE-STR= IF
+         SIG-CTL @ i INTRINSIC>CTL or SIG-CTL !  unloop EXIT
+      THEN
+   loop
+   a u SGBAD-SYNTAX! ;
+
+
+\ Reads control tag ta tu (render.f REND-CTL) into SIG-CTL, refusing a repeated
+\ one; false for a token that is no control tag.
+: SIG-CTL-TAG ( ptr u8 n -- bool )
+   {: ta:ptr tu:n :}
+   ta tu TAG>CTL-FLAG {: flag:n :}
+   flag 0 <> IF
+      SIG-CTL @ flag and 0 <> IF ta tu SGBAD-SYNTAX! THEN
+      SIG-CTL @ flag or SIG-CTL !  RES-TRUE EXIT
+   THEN
+   ta tu s" throws" CORE-STR= IF ta tu SIG-THROWS RES-TRUE EXIT THEN
+   ta tu s" intrinsic" CORE-STR= IF ta tu SIG-INTRINSIC RES-TRUE EXIT THEN
+   RES-FALSE ;
+
+
 \ The PE flag a facts tag names, 0 for any other token.
 : TAG>PE ( ptr u8 n -- n )
    {: a:ptr u:n :}
@@ -7133,7 +7343,9 @@ CHECKER-REG:}SCRATCH
    ta tu TAG>KIND {: kind:n :}
    ta tu s" noscope" CORE-STR= {: ns:bool :}
    kind RVK-QUOT =  kind RVK-INFERRED =  or {: rk:bool :}
-   kind TVK-ANY =  ns 0=  and IF ta tu SGBAD-SYNTAX! EXIT THEN
+   kind TVK-ANY =  ns 0=  and IF
+      ta tu SIG-CTL-TAG 0= IF ta tu SGBAD-SYNTAX! THEN EXIT
+   THEN
    NEXT-SIG-TOK {: la:ptr lu:n :}
    lu 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
    la lu  rk 0=  ns rk or  TAG-VAR {: id:n :}
@@ -7161,11 +7373,12 @@ CHECKER-REG:}SCRATCH
       s" )" CORE-STR= IF SI @ EXIT THEN
    REPEAT 2drop -1 ;
 
+
 \ PSIG reads the effect between the opening `(` and the first `)` token,
 \ SIG-TAGS what follows. A text without both parses as empty, refused.
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
-   0 SIG-PE !  -1 SIG-PIMM !
+   0 SIG-CTL !  0 SIG-PE !  -1 SIG-PIMM !
    NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
    PKRESET NEXT-SIG-TOK s" (" CORE-STR= {: open:bool :}
    SI @ {: from:n :}
@@ -7175,6 +7388,7 @@ CHECKER-REG:}SCRATCH
    PSIG
    len SL !  close SI !  PKRESET
    SIG-TAGS ;
+
 
 \ The declared effect as four rows without CHECKER-STEP, to verify a body
 \ against its own signature. CHECK-DOES! and CHECKER-DEFCAST pass their callers'
@@ -15799,109 +16013,6 @@ PTR-VARIABLE SFX-GEN-A   variable SFX-GEN-U
    CHECKER-EFFECT-AUTHORITY:CERTIFIED? E-ADD-EFFECT DL-TAKE
    CHECKER-EFFECT-AUTHORITY:RECOVERY-USED? IF RECOVERY-RECORD THEN ;
 
-\ Control-effect flags are append-only and later-wins, so a redefinition can
-\ clear stale metadata. CTL-DEAD: a call has no normal continuation. CTL-THROW:
-\ a call may reach a catchable throw edge. CTL-BARRIER: the call is a block
-\ collective whose emitter contains bar.sync, sound only under block-uniform
-\ control (refused inside an open control frame, BARRIER-CUR?).
-1 constant CTL-DEAD
-2 constant CTL-THROW
-4 constant CTL-BARRIER
-\ Positive provenance: this binding's effect was explicitly declared or its
-\ check was enforced. An ABI-only or old producer row carries no grant.
-$8 constant EFFECT-EXTERNAL
-$10 constant CTL-CORE-OP
-$20 constant CTL-ZERO-TRUE
-$40 constant CTL-ZERO-FALSE
-\ CTL-RENDERS means a call may hand rendered source to INCLUDE-EVALUATE and so
-\ define words at run time that no source text spells. The loader's audited
-\ evaluate boundaries carry it by axiom (NORET-AXIOMS) and every checked body
-\ that calls a flagged word inherits it; the source pre-pass asks for it
-\ (CHECKER-VERIFY-RENDERS) and leaves such words to the run.
-$80 constant CTL-RENDERS
-
-\ Which engine word a symbol is: identity, not spelling. A rule that types an
-\ engine word by what it does (CELL-FETCH-TOK for `@`, RECORD-AT-STEP for
-\ `record-at`) may judge a token only when the token binds that word: `@` in a
-\ package that defines `@`, or `dup` after `undefine dup`, is another word of
-\ the same spelling. The identity is kept apart from the effect and registered
-\ where the engine defines the word: NORET-AXIOMS for a primitive, INTRINSIC
-\ right after a source definition. Two forms carry it:
-\   CTL-CORE-OP    the engine's own word of a spelling within a family the
-\                  rule chooses by spelling: the transport shuffles, the
-\                  return-stack transfers with execute/catch/finally, the
-\                  zero tests, and `evaluate` (a top-level step, TOP-WORD-STEP).
-\   CTL-INTRINSIC  a five-bit id naming one engine word (the INTRINSIC-* rows
-\                  below), for the rules that dispatch on the word itself.
-\ Both sit inside XFER-FLAG-MASK and travel with the control flags (owner
-\ handover, unit import, captured graph). `undefine` retires them
-\ (CHECKER-UNDEFINE), a redefinition records none, and an export does not copy
-\ them (EXPORT-META-COPY).
-\ The control word's bits: 0-7 the flags above, 8-12 the INTRINSIC id, 13
-\ CTL-PARSES and 14 CTL-CREATES (below), 15 CTL-NOMINAL, 16 the defer bit
-\ (ASIG-GRAPH-DEFER, TRANSFER-DEFER), 17 CTL-NAMES and 18 CTL-GENERATES
-\ (below), 19 free outside the flag mask, 20-39 and 40-59 the intact masks
-\ (XFER-PACK).
-CHECKER-OWNER-ABI:BINDING-ID-SHIFT constant CTL-INTRINSIC-SHIFT
-CHECKER-OWNER-ABI:BINDING-ID-MASK constant CTL-INTRINSIC-MASK
-CTL-CORE-OP CTL-INTRINSIC-MASK or constant CTL-IDENTITY
-1 constant INTRINSIC-CELL-FETCH                \ @
-2 constant INTRINSIC-CELL-STORE                \ !
-3 constant INTRINSIC-QDUP                      \ ?dup
-4 constant INTRINSIC-HIDE-ROW                  \ depth .s
-5 constant INTRINSIC-RAW-FIELD                 \ ptr-field
-6 constant INTRINSIC-RECORD-AT                 \ record-at (src/core/structure-make.f)
-7 constant INTRINSIC-FIELD-PROJECT             \ field-project (src/core/structure-make.f)
-8 constant INTRINSIC-CREATE                    \ create
-9 constant INTRINSIC-VARIABLE                  \ variable
-10 constant INTRINSIC-CONSTANT                 \ constant
-CHECKER-OWNER-ABI:BINDING-PARSES-ID constant INTRINSIC-PARSES    \ parses: (src/core/cell-effects.f)
-CHECKER-OWNER-ABI:BINDING-THROUGH-ID constant INTRINSIC-PARSES-THROUGH \ parses-through: (src/core/cell-effects.f)
-CHECKER-OWNER-ABI:BINDING-NAMES-ID constant INTRINSIC-NAMES      \ names: (src/core/cell-effects.f)
-14 constant INTRINSIC-ARENA-NEW                \ ARENA-NEW (src/core/dynamic-storage.f)
-15 constant INTRINSIC-ARENA-RELEASE            \ ARENA-RELEASE (src/core/dynamic-storage.f)
-16 constant INTRINSIC-XT-STORE                 \ xt!
-17 constant INTRINSIC-ATOMIC-STORE             \ atomic!
-18 constant INTRINSIC-ATOMIC-CAS               \ atomic-cas
-19 constant INTRINSIC-RECORD-NEW               \ RECORD-NEW (src/core/dynamic-storage.f)
-20 constant INTRINSIC-RECORD-RELEASE           \ RECORD-RELEASE (src/core/dynamic-storage.f)
-: INTRINSIC>CTL ( n -- n ) CTL-INTRINSIC-SHIFT lshift ;
-: CTL>INTRINSIC ( n -- n ) CTL-INTRINSIC-MASK and CTL-INTRINSIC-SHIFT rshift ;
-
-\ CTL-PARSES means a call may read the source after it, so which tokens it takes
-\ cannot be known without running it. parse-name carries it by axiom, the
-\ operand declarers by their id (INTRINSIC-CTL), and every checked body that
-\ calls a flagged word inherits it, as CTL-RENDERS is inherited; the source
-\ pre-pass stops at such a top-level word unless a source row bounds what it
-\ reads (CHECKER-VERIFY-TOP, CHECKER-VERIFY-TOP-BINDING).
-CHECKER-OWNER-ABI:BINDING-PARSES constant CTL-PARSES
-\ CTL-CREATES means a call may define the name it reads: `create` carries it by
-\ axiom, inherited alike. Unlike rendered text it defines exactly that name,
-\ which a definer the pre-pass learned names where it takes the statement
-\ (src/habu/verify-source.f RECORD-DEFINER?), so it marks only a statement no
-\ such definer takes (TOP-TOKEN, CHECKER-VERIFY-RENDERS).
-$4000 constant CTL-CREATES
-\ A call may register a nominal type without rendering source. The flag is a
-\ may-effect of the selected word, inherited by a wrapper as the other control
-\ effects are; it grants no registration authority to checked code.
-$8000 constant CTL-NOMINAL
-\ CTL-GENERATES means the symbol's created effect (NORET-CREATES@) is what a
-\ `generates:` row states: its own row (CHECKER-GENERATES) or the exported
-\ word's (EXPORT-META-COPY). The source pre-pass then reads a call of it as
-\ declared, not as text it never reads (src/habu/verify-source.f
-\ DECLARED-RENDER?). It describes that cell, not what a call may do, so
-\ CTL-INHERITED leaves it out and a wrapper never takes it (STORE).
-CHECKER-OWNER-ABI:BINDING-GENERATES constant CTL-GENERATES
-CTL-RENDERS CTL-PARSES or CTL-CREATES or CTL-NOMINAL or constant CTL-INHERITED
-\ CTL-NAMES means a `names:` row declared that the word looks its top string
-\ operand up as XREF-FIND does, so a string literal just before a call of it
-\ is a use of the word it names (NAMED-OPERAND-USE, CHECKER-NAMED-USE). The
-\ row is a trusted claim about that word alone: a caller passing its own
-\ operand on inherits nothing and declares its own row.
-CHECKER-OWNER-ABI:BINDING-NAMES constant CTL-NAMES
-$1000F CTL-CORE-OP or CTL-ZERO-TRUE or CTL-ZERO-FALSE or CTL-INHERITED or
-CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
-   constant CTL-GRAPH-FLAGS
 \ 4096 five-cell entries.
 $28000 constant NORET-INIT-CAP
 

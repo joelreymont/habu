@@ -658,6 +658,45 @@ LOCSHOW-INSTALL
    0 RDST !  RSBUF RSN @ ;
 
 
+: CTL-FLAG-TAG ( n n -- )
+   {: ctl:n bit:n :}
+   ctl 1 bit lshift and 0= IF EXIT THEN
+   bit CTL-BIT>TAG$ {: a:ptr u:n :}
+   u 0 = IF EXIT THEN
+   a u DTXT  32 EMIT1 ;
+
+
+: CTL-THROWS-TAG ( n -- )
+   {: ctl:n :}
+   ctl CTL-THROW and 0= IF EXIT THEN
+   s" throws " DTXT  ctl XFER-DMASK RNUM  32 EMIT1  ctl XFER-RMASK RNUM  32 EMIT1 ;
+
+
+: CTL-INTRINSIC-TAG ( n -- )
+   {: ctl:n :}
+   ctl CTL>INTRINSIC {: id:n :}
+   id 0 = IF EXIT THEN
+   id INTRINSIC-NAME$ {: a:ptr u:n :}
+   u 0 = IF 1 RQM ! EXIT THEN
+   s" intrinsic " DTXT  a u DTXT  32 EMIT1 ;
+
+
+\ Control word n's tags for checker.f SIG-CTL-TAG, in bit order, appended at RSN.
+\ RQM: a bit XFER-PACK does not keep, an unnamed intrinsic id, masks without CTL-THROW.
+: REND-CTL ( n -- ptr u8 n )
+   {: ctl:n :}
+   1 RDST !
+   ctl XFER-FLAGS  ctl XFER-DMASK  ctl XFER-RMASK  XFER-PACK  ctl <> IF 1 RQM ! THEN
+   ctl CTL-THROW and 0=  ctl XFER-DMASK ctl XFER-RMASK or 0 <>  and IF 1 RQM ! THEN
+   ctl 0 CTL-FLAG-TAG
+   ctl CTL-THROWS-TAG
+   19 2 ?do
+      i CTL-INTRINSIC-SHIFT = IF ctl CTL-INTRINSIC-TAG THEN
+      ctl i CTL-FLAG-TAG
+   loop
+   0 RDST !  RSBUF RSN @ ;
+
+
 \ A PE row's flags as facts tags appended at RSN; only the PE-TRUSTED-ONLY and
 \ PE-TOP-ONLY bits are facts a caller's check reads.
 : REND-PE ( n -- ptr u8 n )
