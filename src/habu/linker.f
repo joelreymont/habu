@@ -138,6 +138,9 @@ create OLD-RECS BUF:HDR-BYTES allot
 create OLD-EMS BUF:HDR-BYTES allot
 DYNAMIC-BUFFER STORED n              \ the stores' cells as distances from NULL-PTR (FIND-STORES)
 variable STORED-N
+DYNAMIC-BUFFER STRS n                \ the file's string bodies as distances from NULL-PTR (DATA+)
+variable STRS-N
+DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-data.f), zero-padded cells
 
 \ ndict@, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR and WIDN-CELL
 \ as a file's compile starts; RUN-FILE refuses a nested file, whose marks would overwrite them.
@@ -163,7 +166,8 @@ variable FILE-CELLS                  \ the space's address-cell rows as the file
 4 constant KIND-PRIVATE              \ a package gaining its private wordlist after its record
 
 : DISPOSE-OBJECTS ( -- )
-   STORED-RELEASE  OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
+   COPY-CELLS-RELEASE  STRS-RELEASE  STORED-RELEASE
+   OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  PIECES BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
    LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE ;
 
@@ -619,10 +623,6 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    row CELL-VALUE {: v:n :}
    row SCRATCH-ROW?  v 0=  or if 5 PIECES U64+ exit then
    row DATA-ROW? if v DATA-REF+ else v CODE-REF+ then ;
-
-\ The bodies of the build's strings that lie in the file's data, as distances from NULL-PTR.
-DYNAMIC-BUFFER STRS n
-variable STRS-N
 
 : BODY-U ( n -- n ) CELL - BASE @ - SPACE-AT @ ;
 

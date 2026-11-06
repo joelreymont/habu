@@ -75,10 +75,6 @@ variable LLIST-END
 
 : PAD8 ( -- ) A64ICODE:ASM-LEN 7 and 0<> if 0 A64ICODE:EMITW then ;
 
-\ The image copy the link patches: the space's bytes in cells, the last cell
-\ padded with zeros.
-DYNAMIC-BUFFER COPY-CELLS n
-
 : COPY-N ( -- n ) DATA-IMAGE-LEN CELL 1- + CELL / ;
 : COPY-AT ( n -- ptr u8 ) 0 COPY-CELLS BYTE-VIEW swap + ;
 
