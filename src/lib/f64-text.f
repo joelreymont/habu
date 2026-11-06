@@ -3,7 +3,7 @@
 \ rounding state is borrowed, and caller output is copied only after success.
 \ The immutable C numeric locale lives until the process image is prepared.
 \ STORAGE CLASS. PROCESS-WIDE: the library and the C locale, made by the first
-\ call and only read after it; no conversion yields, so any task may convert.
+\ call, then only read; no conversion yields. TASK-LOCAL: the work buffers.
 
 require src/lib/ffi-abi.f
 require src/lib/image-lifecycle.f
@@ -100,7 +100,6 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    then out NATIVE-BYTES format value STRFROMD-CALL ;
 
 : FINITE? ( r -- bool ) IEEE754:F64>BITS EXPONENT-MASK and EXPONENT-MASK <> ;
-: FREE-WORK ( ptr u8 n -- ) BYTES-ALLOC-LEN RELEASE-BYTES ;
 : DIGIT? ( n -- bool ) dup $30 >= swap $39 <= and ;
 : DIGITS ( ptr u8 n n -- n ) {: text:ptr len:n offset:n :}
    offset begin dup len < if text over + c@ DIGIT? else false then while 1+ repeat ;
@@ -135,8 +134,8 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    work C-PARSE dup FINITE? 0= if drop E-FINITE throw then
    IEEE754:F64>BITS work CELL-VIEW ! work ;
 
-\ Round to nearest around strtod_l and restore the caller's mode. PARSE owns
-\ the work buffer and frees it whatever this throws.
+\ Round to nearest around strtod_l and restore the caller's mode. PARSE-COPY
+\ catches whatever this throws, inside the scope that holds the work buffer.
 : PARSE-SCOPED ( ptr u8 -- ptr u8 ) {: work:ptr :}
    GET-ROUND {: prior:n :}
    prior 0 < if E-NATIVE throw then
@@ -144,6 +143,15 @@ FUNCTION: SET-ROUND fesetround ( n -- i32 ) ;FUNCTION
    work [: PARSE-ROUND ;] catch nip {: code:n :}
    prior SET-ROUND 0 <> if E-NATIVE throw then
    code 0 <> if code throw then work ;
+
+
+\ The bits and the status, both read before the scope releases the copy.
+: PARSE-COPY ( ptr u8 n ptr u8 NUM:alloc-byte-len -- n n )
+   ALLOCATION>SPAN {: text:ptr len:n copy :}
+   text len copy FFI:CSTR {: work:ptr :}
+   work [: PARSE-SCOPED ;] catch nip {: status:n :}
+   work CELL-VIEW @ status ;
+
 
 public
 \ Complete signed decimal/exponent syntax; padding, hex, nonfinite values and
@@ -159,11 +167,8 @@ public
    code 2 = if F64--TEXT-FAULT:TRAILING RESULT:ERR exit then
    len MAGNITUDE-MASK 1- > if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
    NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   len FFI:CSTR-ROOM 8 max BYTES-ALLOC-LEN ALLOC-SPAN {: copy :}
-   text len copy FFI:CSTR {: work:ptr :}
-   work [: PARSE-SCOPED ;] catch nip {: status:n :}
-   work CELL-VIEW @ {: bits:n :}
-   copy FREE-SPAN
+   text len len FFI:CSTR-ROOM 8 max BYTES-ALLOC-LEN [: PARSE-COPY ;] WITH-BYTES
+   {: bits:n status:n :}
    status 0= if bits IEEE754:BITS>F64 RESULT:OK exit then
    status E-FINITE = if F64--TEXT-FAULT:NONFINITE RESULT:ERR else F64--TEXT-FAULT:RUNTIME RESULT:ERR then ;
 
@@ -314,6 +319,17 @@ private
    code 0 <> if code throw then
    locale-rc 0= if E-NATIVE throw then bits work ;
 
+
+\ The output is copied out before the scope releases the work buffer.
+: FORMAT-COPY ( n ptr u8 n ptr u8 NUM:alloc-byte-len -- result<n,fault> )
+   drop {: bits:n out:ptr capacity:n work:ptr :}
+   bits work [: FORMAT-SCOPED ;] catch >r 2drop r> {: code:n :}
+   code 0 <> if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
+   work 112 + CELL-VIEW @ {: len:n :}
+   len capacity > if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
+   work 128 + out len BYTE-COPY len RESULT:OK ;
+
+
 public
 \ A shortest round-trip plain decimal, no terminator; equally close shortest
 \ decimals resolve away from zero, as Rust Display does. The thread switches to
@@ -323,12 +339,8 @@ public
    value FINITE? 0= if F64--TEXT-FAULT:NONFINITE RESULT:ERR exit then
    capacity 0 < if F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
    NATIVE-READY? 0= if F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   WORK-BYTES MEM-ALLOC-BYTES {: work:ptr size:n :}
-   value IEEE754:F64>BITS work [: FORMAT-SCOPED ;] catch >r 2drop r> {: code:n :}
-   code 0 <> if work size FREE-WORK F64--TEXT-FAULT:RUNTIME RESULT:ERR exit then
-   work 112 + CELL-VIEW @ {: len:n :}
-   len capacity > if work size FREE-WORK F64--TEXT-FAULT:CAPACITY RESULT:ERR exit then
-   work 128 + out len BYTE-COPY work size FREE-WORK len RESULT:OK ;
+   value IEEE754:F64>BITS out capacity
+   WORK-BYTES BYTES-ALLOC-LEN [: FORMAT-COPY ;] WITH-BYTES ;
 
 ;using
 ;package
