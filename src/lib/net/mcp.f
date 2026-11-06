@@ -30,6 +30,7 @@ require src/lib/span.f
 require src/lib/base64.f
 require src/lib/json.f
 require src/lib/json-rpc.f
+require src/lib/log.f
 require src/lib/memory.f
 require src/lib/utf8-scalar.f
 require src/lib/byte-buffer.f
@@ -1178,10 +1179,46 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx url uu ;
 
 
-: CHECK ( CURL:status -- )
+: SCHEME-LEN ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u 8 < 0= if a 8 s" https://" STR=CI if 8 exit then then
+   u 7 < 0= if a 7 s" http://" STR=CI if 7 exit then then
+   0 ;
+
+: AUTHORITY-BYTE? ( n -- bool )
+   {: b:n :}
+   b [char] / <> b [char] ? <> and b [char] # <> and ;
+
+\ The URL's host and port, its userinfo cut; empty when an @ follows the
+\ authority, where a password holding /, ? or # may have ended it early.
+: HOST$ ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   a u SCHEME-LEN {: from:n :}
+   from begin
+      dup u < if dup a + c@ AUTHORITY-BYTE? else false then
+   while 1+ repeat {: end:n :}
+   a end + u end - s" @" CONTAINS? if a 0 exit then
+   from end from ?do a i + c@ [char] @ = if drop i 1+ then loop {: start:n :}
+   a start + end start - ;
+
+\ Curl's failure on the row's exchange, logged with the row's host, unless
+\ CANCEL stopped the row: then the program ended it.
+: CURL-FAULT ( CURL:code n -- )
+   {: rc:CURL:code idx:n :}
+   idx STOP@ if E-TRANSFER throw then
+   idx URL-BUF BUF$ HOST$ {: host:ptr hu:n :}
+   LOG:ERROR s" mcp" LOG:LINE  s" exchange" LOG:TEXT+
+   hu 0<> if s"  with " LOG:TEXT+  host hu LOG:TEXT+ then
+   s"  failed: curl " LOG:TEXT+  rc CURL:CODE>N LOG:INT+
+   s" : " LOG:TEXT+  rc CURL:ERROR$ LOG:TEXT+
+   LOG:;LINE
+   E-TRANSFER throw ;
+
+: CHECK ( CURL:status n -- )
+   {: idx:n :}
    MATCH CURL:status
       ok OF ENDOF
-      failed OF drop E-TRANSFER throw ENDOF
+      failed OF idx CURL-FAULT ENDOF
    ;MATCH ;
 
 
@@ -1305,17 +1342,17 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    CURL:INIT
    MATCH CURL:init-result
       ready OF ENDOF
-      failed OF drop E-TRANSFER throw ENDOF
+      failed OF idx CURL-FAULT ENDOF
    ;MATCH {: h:CURL:handle :}
    h OPTION:SOME idx HANDLE!
-   h idx URL-BUF BUF$ CURL:URL! CHECK
-   h idx REQUEST-BUF BUF$ CURL:BODY! CHECK
-   idx TOKEN-BUF BUF$ nip 0<> if h idx BEARER-LINE CURL:HEADER+ CHECK then
-   h limit CURL:TIMEOUT! CHECK
-   h s" Content-Type: application/json" CURL:HEADER+ CHECK
-   h s" Accept: application/json, text/event-stream" CURL:HEADER+ CHECK
-   h s" MCP-Protocol-Version: 2026-07-28" CURL:HEADER+ CHECK
-   h line lu CURL:HEADER+ CHECK
+   h idx URL-BUF BUF$ CURL:URL! idx CHECK
+   h idx REQUEST-BUF BUF$ CURL:BODY! idx CHECK
+   idx TOKEN-BUF BUF$ nip 0<> if h idx BEARER-LINE CURL:HEADER+ idx CHECK then
+   h limit CURL:TIMEOUT! idx CHECK
+   h s" Content-Type: application/json" CURL:HEADER+ idx CHECK
+   h s" Accept: application/json, text/event-stream" CURL:HEADER+ idx CHECK
+   h s" MCP-Protocol-Version: 2026-07-28" CURL:HEADER+ idx CHECK
+   h line lu CURL:HEADER+ idx CHECK
    h ;
 
 
@@ -1370,7 +1407,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    {: idx:n h:CURL:handle :}
    idx REPLY-BUF {: buf:ptr :}
    buf BUF:CLEAR
-   h CURL:STREAM-START CHECK
+   h CURL:STREAM-START idx CHECK
    idx STOP@ if h CURL:CANCEL then
    begin
       buf buf BUF:LEN@ BUF:BLEN>N 1+ BUF:N>BLEN BUF:ENSURE
@@ -1379,7 +1416,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       MATCH CURL:chunk-result
          chunk OF nip LEN>N room swap buf BUF+ false ENDOF
          response OF CURL:HTTP-STATUS>N idx ROW PEER-STATUS ! true ENDOF
-         failed OF drop E-TRANSFER throw ENDOF
+         failed OF idx CURL-FAULT ENDOF
       ;MATCH
    until
    idx h STREAM? idx ROW PEER-STREAM ! ;
@@ -1392,7 +1429,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 : CALL-EXCHANGE ( n ptr u8 n ms -- n ptr u8 n ms )
    {: idx:n name:ptr nu:n limit:ms :}
    idx s" Mcp-Method: tools/call" limit PREPARE {: h:CURL:handle :}
-   h idx name nu NAME-LINE CURL:HEADER+ CHECK
+   h idx name nu NAME-LINE CURL:HEADER+ idx CHECK
    idx h TRANSFER
    idx name nu limit ;
 

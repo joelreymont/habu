@@ -19,6 +19,11 @@ require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/base64.f
 require src/lib/byte-buffer.f
+require src/lib/date.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/test/stderr.f
+require src/lib/memory.f
 require src/lib/json.f
 require src/lib/process.f
 require src/lib/spawn.f
@@ -433,6 +438,40 @@ OVERSIZE-FILL
    s" api://zen/.default" s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
 : FAULT-REFUSED ( -- ) [: FAULT-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
 
+create LOG-PATH PATH-CAP allot      \ a case's stderr capture file
+variable LOG-PATH-U
+create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
+$A constant LF
+
+: LOG-PATH$ ( -- ptr u8 n ) LOG-PATH LOG-PATH-U @ ;
+
+: LOG-INIT ( -- )
+   s" test-issuer-test" FS:MKTEMP-DIR {: dir:ptr dir-u:n :}
+   dir dir-u FS:CLEANUP-TREE+
+   dir dir-u s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
+   LOG-B 1 BUF:N>BLEN BUF:INIT ;
+
+\ The whole capture file, valid until the next read.
+: LOG$ ( -- ptr u8 n )
+   LOG-PATH$ FS:FILE-SIZE {: size:n :}
+   LOG-B BUF:CLEAR
+   LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
+   LOG-B BUF:SPAN$ BUF:BLEN>N ;
+
+: LINES ( -- n )
+   LOG$ {: a:ptr u:n :}
+   0 u 0 ?do a i + c@ LF = if 1+ then loop ;
+
+: CAPTURED ( [ -- ] -- )
+   LOG-PATH$ STDERR:CAPTURE
+   [: STDERR:;CAPTURE ;] finally ;
+
+\ The one captured line after its stamp, empty when the capture is shorter.
+: LINE$ ( -- ptr u8 n )
+   LOG$ {: a:ptr u:n :}
+   u DATE:TIME-LEN < if a 0 exit then
+   a DATE:TIME-LEN + u DATE:TIME-LEN - ;
+
 : BEARER-GRANTS ( -- )
    s" TOKEN before CLIENT! is E-HTTP-STATE" T-LABEL
    [: OWN-TOKEN drop 2drop ;] E-HTTP-STATE TTHROWSQ
@@ -446,8 +485,13 @@ OVERSIZE-FILL
    BODY$ s" user-1" T$=
    s" a wrong secret is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
-   [: OWN-TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   [: [: OWN-TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED
    GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_client\"}" T$=
+   s" a refusal logs the issuer's status and answer once, tagged bearer" T-LABEL
+   LINES 1 T=
+   FORM-RESET S\"  error bearer: token request answered 401: " FORM+
+   S\" {\"error\":\"invalid_client\"}\n" FORM+
+   LINE$ FORM$ T$=
    s" an assertion inside the BUF is E-BUF-BOUNDS" T-LABEL
    [: UP GOT BUF:SPAN$ BUF:BLEN>N BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] E-BUF-BOUNDS TTHROWSQ ;
 
@@ -468,7 +512,12 @@ OVERSIZE-FILL
    s" a 200 whose access_token is not a string is E-TRANSFER" T-LABEL
    NOT-STRING FAULT-MODE ! FAULT-REFUSED
    s" a 200 without expires_in is E-TRANSFER" T-LABEL
-   NO-LIFETIME FAULT-MODE ! FAULT-REFUSED
+   NO-LIFETIME FAULT-MODE ! [: FAULT-REFUSED ;] CAPTURED
+   s" its line names the status and the member, never the answer" T-LABEL
+   LINES 1 T=
+   FORM-RESET s"  error bearer: token answer 200 lacks " FORM+
+   S\" a positive integer expires_in\n" FORM+
+   LINE$ FORM$ T$=
    s" a 200 whose expires_in is a string is E-TRANSFER" T-LABEL
    LIFETIME-STRING FAULT-MODE ! FAULT-REFUSED
    s" a 200 whose expires_in is 0 is E-TRANSFER" T-LABEL
@@ -481,6 +530,27 @@ OVERSIZE-FILL
    s" an endpoint on a closed loopback port is E-TRANSFER" T-LABEL
    ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!
    [: OWN-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
+
+8000001 constant PAST-CURL-INPUT          \ CURL_MAX_INPUT_LENGTH + 1
+
+\ An endpoint of PAST-CURL-INPUT bytes; the caller releases it with
+\ MEM:FREE-SPAN.
+: LONG-URL ( -- SPAN:span<u8> )
+   PAST-CURL-INPUT MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: url :}
+   [char] a url SPAN:FILL
+   s" http://127.0.0.1:1/" url SPAN:COPY
+   url ;
+
+: BEARER-LONG ( -- )
+   s" an endpoint libcurl refuses to set is E-TRANSFER, logged with curl 43"
+   T-LABEL
+   LONG-URL {: url :}
+   url SPAN:$ s" app" s" s3cr&t+1" BEARER:CLIENT!
+   [: [: OWN-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;] CAPTURED
+   ENDPOINT$ s" app" s" s3cr&t+1" BEARER:CLIENT!   \ CLIENT! borrows the URL
+   url MEM:FREE-SPAN
+   LINES 1 T=
+   LINE$ s"  error bearer: token request failed: curl 43: " STARTS-WITH? TTRUE ;
 
 
 \ The tool's child process.
@@ -535,7 +605,7 @@ OVERSIZE-FILL
 \ BEARER:ISSUER! names this server's URL and is refused while HTTP serves, so
 \ the server starts once to take a port and serves again on it.
 : SERVE-CASES ( -- )
-   AIO:START
+   AIO:START LOG-INIT
    s" app" s" s3cr&t+1" TEST-ISSUER:CLIENT+
    HTTP:ROUTES-RESET
    TEST-ISSUER:ROUTES
@@ -549,7 +619,7 @@ OVERSIZE-FILL
    DISCOVERY KEYS CLIENT-CREDENTIALS CLIENTS REQUESTS OBO MINTS
    BEARER-GRANTS BEARER-FAULTS
    HTTP:STOP
-   BEARER-UNREACHED
+   BEARER-UNREACHED BEARER-LONG
    TOOL
    AIO:STOP ;
 

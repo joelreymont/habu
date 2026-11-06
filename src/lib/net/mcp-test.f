@@ -25,6 +25,12 @@
 
 require src/lib/test.f
 require src/lib/test/wait.f
+require src/lib/byte-buffer.f
+require src/lib/fs.f
+require src/lib/fs-mutate.f
+require src/lib/test/stderr.f
+require src/lib/memory.f
+require src/lib/span.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/aio.f
@@ -1024,12 +1030,101 @@ TASK:MIN-STACK TASK:TASK STALLER
    BIG 1+ BIG-U 2 - W+ S\" \\\"\"}],\"structuredContent\":{\"data\":" W+
    BIG BIG-U W+ S\" },\"isError\":false," W+ W-SERVER s" }" W+ W$ T$= ;
 
+create LOG-PATH PATH-CAP allot      \ a case's stderr capture file
+variable LOG-PATH-U
+create LOG-B BUF:HDR-BYTES allot    \ the capture file's bytes, read back
+$A constant LF
+
+: LOG-PATH$ ( -- ptr u8 n ) LOG-PATH LOG-PATH-U @ ;
+
+: LOG-INIT ( -- )
+   s" mcp-test" FS:MKTEMP-DIR {: dir:ptr dir-u:n :}
+   dir dir-u FS:CLEANUP-TREE+
+   dir dir-u s" stderr.txt" LOG-PATH FS:JOIN-PATH LOG-PATH-U !
+   LOG-B 1 BUF:N>BLEN BUF:INIT ;
+
+\ The whole capture file, valid until the next read.
+: LOG$ ( -- ptr u8 n )
+   LOG-PATH$ FS:FILE-SIZE {: size:n :}
+   LOG-B BUF:CLEAR
+   LOG-PATH$ LOG-B size BUF:N>BLEN BUF:GROW SPAN:$ FS:READ-ALL size T=
+   LOG-B BUF:SPAN$ BUF:BLEN>N ;
+
+: LINES ( -- n )
+   LOG$ {: a:ptr u:n :}
+   0 u 0 ?do a i + c@ LF = if 1+ then loop ;
+
+: CAPTURED ( [ -- ] -- )
+   LOG-PATH$ STDERR:CAPTURE
+   [: STDERR:;CAPTURE ;] finally ;
+
 : CLIENT-TIMEOUT ( -- )
    s" a call past its limit is E-TRANSFER and the client serves the next call" T-LABEL
    ARM
-   [: CLIENT @ s" stall" s" {}" 300 >MS MCP:CALL 2drop drop ;] MCP:E-TRANSFER TTHROWSQ
+   [: [: CLIENT @ s" stall" s" {}" 300 >MS MCP:CALL 2drop drop ;]
+      MCP:E-TRANSFER TTHROWSQ ;] CAPTURED
+   s" the call past its limit logs curl's timeout once, tagged mcp" T-LABEL
+   LINES 1 T=
+   SB-RESET s"  error mcp: exchange with 127.0.0.1:" SB-APPEND
+   HTTP:PORT FMT:SB-U s"  failed: curl 28: Timeout was reached" SB-APPEND
+   LOG$ SB$ CONTAINS? TTRUE
    1 RELEASED atomic!
    CLIENT @ s" echo" s" {}" 300 >MS MCP:CALL TFALSE 2drop SETTLE ;
+
+8000001 constant PAST-CURL-INPUT          \ CURL_MAX_INPUT_LENGTH + 1
+
+\ The capture of one call on a client of the URL, which must fail with one
+\ logged line; valid until the next read.
+: FAILED-ON ( ptr u8 n -- ptr u8 n )
+   MCP:OPEN ROUTE-CLIENT !
+   [: [: ROUTE-CLIENT @ s" echo" s" {}" WAIT-MS >MS MCP:CALL 2drop drop ;]
+      MCP:E-TRANSFER TTHROWSQ ;] CAPTURED
+   ROUTE-CLIENT @ MCP:CLOSE
+   LINES 1 T=  LOG$ ;
+
+: SECRET-CUT ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl " CONTAINS? TTRUE
+   a u s" user" CONTAINS? TFALSE
+   a u s" SECRET" CONTAINS? TFALSE
+   a u s" api_key" CONTAINS? TFALSE
+   a u s" /mcp" CONTAINS? TFALSE ;
+
+: HOST-HIDDEN ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u s"  error mcp: exchange failed: curl " CONTAINS? TTRUE
+   a u s" user" CONTAINS? TFALSE
+   a u s" PASS" CONTAINS? TFALSE
+   a u s" WORD" CONTAINS? TFALSE ;
+
+\ Port 1 refuses the connection.
+: CLIENT-SECRET ( -- )
+   s" a failed exchange logs the URL's host, not its userinfo or query" T-LABEL
+   s" http://user:SECRET@127.0.0.1:1/mcp?api_key=KEY" FAILED-ON SECRET-CUT
+   s" an uppercase scheme's userinfo is cut too" T-LABEL
+   s" HTTP://user:SECRET@127.0.0.1:1/mcp?api_key=KEY" FAILED-ON SECRET-CUT
+   s" a password holding /, ? or # leaves the line without a host" T-LABEL
+   s" http://user:PASS/WORD@127.0.0.1:1/mcp" FAILED-ON HOST-HIDDEN
+   s" http://user:PASS?WORD@127.0.0.1:1/mcp" FAILED-ON HOST-HIDDEN
+   s" http://user:PASS#WORD@127.0.0.1:1/mcp" FAILED-ON HOST-HIDDEN ;
+
+\ http://u:LONGPW@127.0.0.1:1/ padded to PAST-CURL-INPUT bytes; the caller
+\ releases it with MEM:FREE-SPAN.
+: LONG-URL ( -- SPAN:span<u8> )
+   PAST-CURL-INPUT MEM:BYTES-ALLOC-LEN MEM:ALLOC-SPAN {: url :}
+   [char] a url SPAN:FILL
+   s" http://u:LONGPW@127.0.0.1:1/" url SPAN:COPY
+   url ;
+
+: CLIENT-LONG ( -- )
+   s" a URL libcurl refuses to set logs curl 43 with its host, not its userinfo"
+   T-LABEL
+   LONG-URL {: url :}
+   url SPAN:$ FAILED-ON {: a:ptr u:n :}
+   a u s"  error mcp: exchange with 127.0.0.1:1 failed: curl 43: "
+   CONTAINS? TTRUE
+   a u s" LONGPW" CONTAINS? TFALSE
+   url MEM:FREE-SPAN ;
 
 : CLIENT-PAGES ( -- )
    s" TOOLS follows nextCursor across pages" T-LABEL
@@ -1140,7 +1235,9 @@ TASK:MIN-STACK TASK:TASK STALLER
 : CLIENT-CANCEL ( -- )
    s" CANCEL from another task ends a CALL in flight with E-TRANSFER" T-LABEL
    s" /mcp" URL MCP:OPEN STALL-CLIENT !
-   ['] CANCEL-CALL STALL-CLIENT @ CANCELLED
+   [: ['] CANCEL-CALL STALL-CLIENT @ CANCELLED ;] CAPTURED
+   s" the cancelled CALL logs nothing: the program ended it" T-LABEL
+   LINES 0 T=
    s" the cancelled client then serves a CALL" T-LABEL
    STALL-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
    s" CANCEL of an idle client leaves its next CALL to run" T-LABEL
@@ -1163,11 +1260,12 @@ TYPED-VARIABLE NEVER MCP:client
 
 
 : CLIENT-CASES ( -- )
-   CURL:LOOP-START OK
+   CURL:LOOP-START OK LOG-INIT
    s" /mcp" URL MCP:OPEN CLIENT !
-   CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN CLIENT-BIG CLIENT-TIMEOUT
-   CLIENT-PAGES CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT
-   CLIENT-LIST-PAGES-TIMEOUT CLIENT-LIST-LATE-PAGE
+   CLIENT-LIST CLIENT-RESULT CLIENT-BLOCKS CLIENT-FAULT CLIENT-UNKNOWN
+   CLIENT-BIG CLIENT-TIMEOUT CLIENT-SECRET CLIENT-LONG CLIENT-PAGES
+   CLIENT-NAMES CLIENT-EVENTS CLIENT-LIST-TIMEOUT CLIENT-LIST-PAGES-TIMEOUT
+   CLIENT-LIST-LATE-PAGE
    CLIENT @ MCP:CLOSE
    CLIENT-HALTED CLIENT-CANCEL CLIENT-NEVER
    s" no transfer is left in flight" T-LABEL

@@ -22,6 +22,7 @@ require src/lib/memory.f
 require src/lib/image-lifecycle.f
 require src/lib/base64.f
 require src/lib/json.f
+require src/lib/log.f
 require src/lib/task.f
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
@@ -665,19 +666,37 @@ private
    0 buf BUF:SPAN SPAN:FILL
    buf BUF:CLEAR ;
 
+: OPEN-LINE ( -- )  LOG:ERROR s" bearer" LOG:LINE ;
+
+: CURL-FAULT ( CURL:code -- )
+   {: rc:CURL:code :}
+   OPEN-LINE
+   s" token request failed: curl " LOG:TEXT+  rc CURL:CODE>N LOG:INT+
+   s" : " LOG:TEXT+  rc CURL:ERROR$ LOG:TEXT+
+   LOG:;LINE ;
+
+\ Whether the setting took; logs one that did not.
+: SET? ( CURL:status -- bool )
+   MATCH CURL:status
+      ok OF true ENDOF
+      failed OF CURL-FAULT false ENDOF
+   ;MATCH ;
+
 \ The BUF's form set as the request's body, then wiped from the BUF since the
-\ secret is in it; whether every setting took.
+\ secret is in it; whether every setting took, logging the first that did not.
 : REQUESTED? ( CURL:handle ptr n -- bool )
    {: h:CURL:handle buf:ptr :}
-   h buf BUF:SPAN$ BUF:BLEN>N CURL:BODY! OK?
+   h buf BUF:SPAN$ BUF:BLEN>N CURL:BODY!
    buf WIPE
-   h ENDPOINT @ SPAN:$ CURL:URL! OK? and
-   h s" Content-Type: application/x-www-form-urlencoded" CURL:HEADER+ OK? and
-   h s" Accept: application/json" CURL:HEADER+ OK? and
-   h TOKEN-TIMEOUT-MS >MS CURL:TIMEOUT! OK? and ;
+   SET? 0= if false exit then
+   h ENDPOINT @ SPAN:$ CURL:URL! SET? 0= if false exit then
+   h s" Content-Type: application/x-www-form-urlencoded" CURL:HEADER+ SET?
+   0= if false exit then
+   h s" Accept: application/json" CURL:HEADER+ SET? 0= if false exit then
+   h TOKEN-TIMEOUT-MS >MS CURL:TIMEOUT! SET? ;
 
 \ The answer read into the BUF, which then holds exactly its bytes: its HTTP
-\ status, -1 for a failed transfer or one past TOKEN-CAP.
+\ status, -1 for a failed transfer or one past TOKEN-CAP, which it logs.
 : RECEIVED ( CURL:handle ptr n -- n )
    {: h:CURL:handle buf:ptr :}
    buf TOKEN-CAP BUF:N>BLEN BUF:GROW {: room :}
@@ -687,8 +706,12 @@ private
       response OF {: status:CURL:http-status got:len :}
          room SPAN:$ drop got LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
          status CURL:HTTP-STATUS>N ENDOF
-      truncated OF drop drop -1 ENDOF
-      failed OF drop -1 ENDOF
+      truncated OF
+         drop drop
+         OPEN-LINE s" token answer past " LOG:TEXT+  TOKEN-CAP LOG:INT+
+         s"  bytes" LOG:TEXT+  LOG:;LINE
+         -1 ENDOF
+      failed OF CURL-FAULT -1 ENDOF
    ;MATCH ;
 
 : POST ( CURL:handle ptr n -- n )
@@ -700,8 +723,8 @@ private
    drop {: h:CURL:handle buf:ptr :} h buf h buf POST ;
 
 \ The form posted and the answer read into the BUF: its HTTP status, -1 when
-\ there is none. The handle is cleaned up on every exit, and a throw wipes the
-\ BUF too.
+\ there is none, which is logged. The handle is cleaned up on every exit, and a
+\ throw wipes the BUF too.
 : EXCHANGE ( ptr n -- n )
    {: buf:ptr :}
    CURL:INIT
@@ -710,7 +733,7 @@ private
          h buf -1 [: POSTED ;] catch {: code:n :}
          code 0<> if 2drop drop h CURL:CLEANUP buf WIPE code throw then
          nip nip h CURL:CLEANUP ENDOF
-      failed OF drop buf WIPE -1 ENDOF
+      failed OF CURL-FAULT buf WIPE -1 ENDOF
    ;MATCH ;
 
 \ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's
@@ -753,17 +776,30 @@ private
 : PARSING ( R [ R -- S ] -- S )
    ANSWER-LOCK TASK:GET [: ANSWER-LOCK TASK:RELEASE ;] finally ;
 
+\ A 2xx answer lacking a member, logged without the answer, which can hold a
+\ token.
+: LACKS ( n ptr u8 n -- )
+   {: status:n what:ptr wu:n :}
+   OPEN-LINE s" token answer " LOG:TEXT+  status LOG:INT+
+   s"  lacks " LOG:TEXT+  what wu LOG:TEXT+  LOG:;LINE
+   E-TRANSFER throw ;
+
 \ The 2xx answer's access_token decoded into the BUF past the answer's bytes,
-\ which a decoded string never outgrows, and its expires_in. E-TRANSFER for an
-\ answer without an access_token string, or without a positive integer
-\ expires_in.
-: ISSUED ( ptr n -- ptr u8 n n )
-   {: buf:ptr :}
+\ which a decoded string never outgrows, and its expires_in.
+: ISSUED ( n ptr n -- ptr u8 n n )
+   {: status:n buf:ptr :}
    buf BUF:LEN@ {: u:NUM:byte-len :}
    buf u BUF:GROW {: room :}
    buf BUF:SPAN u BUF:BLEN>N SPAN:TAKE room [: PARSED ;] PARSING {: got:n secs:n :}
-   got 0< secs 0< or if E-TRANSFER throw then
+   got 0< if status s" an access_token string" LACKS then
+   secs 0< if status s" a positive integer expires_in" LACKS then
    room SPAN:$ drop got secs ;
+
+\ The issuer's status and answer for a non-2xx.
+: ANSWERED ( n ptr n -- )
+   {: status:n buf:ptr :}
+   OPEN-LINE s" token request answered " LOG:TEXT+  status LOG:INT+
+   s" : " LOG:TEXT+  buf BUF:SPAN$ BUF:BLEN>N LOG:TEXT+  LOG:;LINE ;
 
 public
 
@@ -772,14 +808,16 @@ public
 \ to it again, then the answer's expires_in: the token's lifetime in seconds,
 \ positive. E-TRANSFER for no answer, a 5xx, or a 2xx without an access_token
 \ string, or without a positive integer expires_in; E-REFUSED for a 4xx, the
-\ BUF then holding the issuer's answer. A scope or assertion lying in the BUF
-\ throws E-BUF-BOUNDS. E-HTTP-STATE before CLIENT!.
+\ BUF then holding the issuer's answer. Each of those failures first logs one
+\ line tagged bearer, never a 2xx answer's text. A scope or assertion lying in
+\ the BUF throws E-BUF-BOUNDS. E-HTTP-STATE before CLIENT!.
 : TOKEN ( ptr u8 n grant ptr n -- ptr u8 n n )
    {: scope:ptr su:n g buf:ptr :}
    ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then
    scope su g buf FORM
    buf EXCHANGE {: status:n :}
-   status 200 >= status 300 < and if buf ISSUED exit then
+   status 200 >= status 300 < and if status buf ISSUED exit then
+   status 0 >= if status buf ANSWERED then
    status 400 >= status 500 < and if E-REFUSED throw then
    E-TRANSFER throw ;
 
