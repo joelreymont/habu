@@ -149,6 +149,33 @@ learned live in the docs for their subject.
   name must resolve differently: a bare type name is found as a bare word is
   (the open package, the globals, `using` imports), the fallback goes, and its
   users name the package or import it.
+- 2026-11-06, where a word's facts text is laid: shown that a text laid at
+  `here` while `create`, `variable` or a definer's run-time `create` has its
+  body open becomes that body's first bytes (src/habu/definers.f DEF-ADDR
+  fixes the body before the checker's TRUST-RAW runs, and the engine's
+  EMIT-CREATE likewise), and that a table forgetting a text only when its
+  body lies at or above `here` misreads once DP grows past it again. Joel had
+  written that night "i'm leaving for the night so make your own judgement
+  and do everything without asking me. apply the what's best for long term
+  criteria". The lead chose: the checker is the only writer of entry bytes
+  32-39, through `CHECK:FACTS!`, which interns the text at `here` only where
+  the definition or declaration row that owns `here` has ended (a colon or
+  does> definer's `;`, a `cast:` or `linear:` declaration, a `defer` after
+  its cell, a top-level row). A created word's writer only looks its text up
+  (`INTERN:FIND`) and leaves 0 when it is not there; a definer lays its
+  `creates-effect` tail as a string of its own, so its created words find it,
+  and the linker lays the kernel definers' texts before a product's first
+  file. The bytes hold the text's offset from the DATA that owns the record:
+  the build's space for the product's records, hb's DATA for its own. The
+  one string table loads before the checker as package INTERN's first part
+  (`INTERN:TEXT`). As Joel ruled for strings, a failed line's texts go with
+  DATA's rewind and the table forgets them: the typed loop's rollback cuts
+  the table at the DP it restores, as it cuts the address-cell list, and an
+  older entry the line amended gets its previous bytes back from the
+  checker's journal. As in every Forth, a created body's data follows its
+  `create` before the next definition or row. The arm64 engine loop's
+  `evaluate` recovery is old machinery and forgets nothing; that case goes
+  with it at the T0 release.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
