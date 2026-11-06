@@ -6190,6 +6190,9 @@ variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 : SIG-FACTS! ( bool -- ) SIG-FACTS-MODE ! ;
 variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave
 variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's tags gave, -1 for none
+\ The created words' facts text inside the last facts text, 0 0 for none. A
+\ caller parses that span itself, after building the first text's effect.
+PTR-VARIABLE SIG-CREATES-A   variable SIG-CREATES-U
 
 \ One locals group only: a second `{: i :}` group mis-reads the slot in the
 \ standalone, collapsing every var to one.
@@ -7140,9 +7143,17 @@ CHECKER-REG:}SCRATCH
 
 
 \ The tags after a facts text's effect, read while NMAP and ROWMAP still hold
-\ PSIG's letters.
+\ PSIG's letters; `creates-effect` and its space end them (SIG-CREATES-A).
 : SIG-TAGS ( -- )
-   BEGIN NEXT-SIG-TOK dup 0 <> WHILE SIG-TAG REPEAT 2drop ;
+   BEGIN NEXT-SIG-TOK dup 0 <> WHILE
+      2dup s" creates-effect" CORE-STR= IF
+         SIG-SPACE? 0= IF SGBAD-SYNTAX! EXIT THEN
+         SL @ SI @ - 1 -  dup 1 < IF drop SGBAD-SYNTAX! EXIT THEN
+         SIG-CREATES-U !  2drop  SB@ SI @ + 1 + SIG-CREATES-A !  EXIT
+      THEN
+      SIG-TAG
+   REPEAT 2drop ;
+
 
 \ The SI just past the first `)` token from SI on, -1 for none.
 : FACTS-CLOSE ( -- n )
@@ -7155,6 +7166,7 @@ CHECKER-REG:}SCRATCH
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
    0 SIG-PE !  -1 SIG-PIMM !
+   NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
    PKRESET NEXT-SIG-TOK s" (" CORE-STR= {: open:bool :}
    SI @ {: from:n :}
    open IF FACTS-CLOSE ELSE -1 THEN {: close:n :}

@@ -677,6 +677,22 @@ LOCSHOW-INSTALL
    0 RDST !  RSBUF RSN @ ;
 
 
+\ `creates-effect ` and the facts text of n, a created effect as checker.f
+\ NORET-CREATES@ answers it, appended at RSN; 0 appends nothing. RQM stays set.
+: REND-CREATES ( n -- ptr u8 n )
+   {: n:n :}
+   n 0= IF 0 RDST !  RSBUF RSN @ EXIT THEN
+   RQM @ {: qm:n :}
+   n 1 - {: off:n :}
+   1 RDST !  s" creates-effect " DTXT
+   off E-PTR E-INST-RESET
+   off E-PTR E-HASR@ 0 <> {: hasr:bool :}
+   off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
+   hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
+   hasr REND-FACTS
+   qm 0 <> IF 1 RQM ! THEN ;
+
+
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG ( -- ptr u8 n )
    0 RSN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
