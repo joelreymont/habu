@@ -102,6 +102,7 @@ create FILE-BUF PATH-CAP allot
 create JAR-BUF PATH-CAP allot
 create BODY-BUF BODY-CAP allot
 create REQ-BUF REQ-CAP allot
+create PLAIN-BUF REQ-CAP allot          \ the plain peer's, apart from the server task's
 create RES-BUF RES-CAP allot
 create HEADER-BUF HEADER-CAP allot
 create HEADER-SAVED HEADER-CAP allot
@@ -143,6 +144,10 @@ variable NO-PROXY-UP-OLD
 variable RETRY-POST-HITS
 variable SILENT-LISTENER
 variable SILENT-PORT
+variable CLOSED-LISTENER                \ opened only to learn a free port, then closed
+variable CLOSED-PORT
+variable PLAIN-LISTENER                 \ the one-shot peer that answers TLS with plain HTTP
+variable PLAIN-PORT
 variable CEILING-HITS                   \ the cut dribble's request, if it got out
 variable DRIBBLE-SENT                   \ body bytes the last dribble wrote before it ended
 variable DRIBBLE-ENDS                   \ dribbles served to the end or cut by the client
@@ -172,6 +177,7 @@ PTR-VARIABLE HUGE-GOT                   \ the span the client receives it in
 2 constant EXPIRED-RETRY                \ RETRY-NEXT ran out before either readiness
 
 TASK:MIN-STACK TASK:TASK SERVER-TASK
+TASK:MIN-STACK TASK:TASK PLAIN-TASK
 
 
 : ROOT$ ( -- ptr u8 n )       ROOT-BUF ROOT-U @ ;
@@ -1558,7 +1564,106 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    s" a server that never answers ends as CURLE_OPERATION_TIMEDOUT" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 28 T=
+   LAST-CODE @ CURL:>CODE CURL:LOST? TTRUE
    LAST-CODE @ CURL:>CODE CURL:ERROR$ s" Timeout was reached" T$= ;
+
+
+\ A loopback port whose listener was closed: nothing listens there, so the
+\ connection is refused and the server is never reached.
+: TEST-REFUSED ( -- )
+   s" a free loopback port is found and closed again" T-LABEL
+   CLOSED-LISTENER CLOSED-PORT LISTEN-LOOPBACK TTRUE
+   CLOSED-LISTENER @ TCP4:>LISTENER TCP4:CLOSE-LISTENER SERVER-STATUS
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject CLOSED-PORT @ PATH-HELLO$ URL-AT CURL:URL! EXPECT-OK
+   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   s" a port nobody listens on fails as CURLE_COULDNT_CONNECT, lost" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 7 T=
+   LAST-CODE @ CURL:>CODE CURL:LOST? TTRUE ;
+
+
+\ libcurl refuses a URL it cannot parse before it tries any server.
+: TEST-MALFORMED ( -- )
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject s" http://[" CURL:URL! EXPECT-OK
+   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   s" a malformed URL fails as CURLE_URL_MALFORMAT, not lost" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 3 T=
+   LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE
+   s" success is not lost" T-LABEL
+   0 CURL:>CODE CURL:LOST? TFALSE ;
+
+
+\ A wait polled to DEADLINE that passes it names itself on stdout and throws
+\ E-PROC-TIMEOUT (src/lib/test/wait.f), so the suite ends as a timeout, not a hang.
+
+2000 constant WAIT-MS                   \ the bound on every wait polled to DEADLINE
+
+\ The end of a wait's WAIT-MS window, an absolute mono-ns.
+: DEADLINE ( -- n )
+   mono-ns WAIT-MS NS-PER-MS * + ;
+
+
+\ Returns once the task has ended.
+: AWAIT-END ( ptr n -- )
+   [: dup TASK:DONE? ;] DEADLINE s" curl-test AWAIT-END" TEST-WAIT:POLL
+   drop ;
+
+
+: PLAIN-ANSWER$ ( -- ptr u8 n )
+   S\" HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n" ;
+
+
+\ The client hello is read before the answer goes, so the close that follows
+\ leaves no unread bytes to turn it into a reset.
+: PLAIN-SERVE ( TCP4:connection -- ) {: conn:TCP4:connection :}
+   conn PLAIN-BUF REQ-CAP TCP4:TRANSFER-BYTES TCP4:READ
+   MATCH TCP4:read-result
+      data OF drop conn PLAIN-ANSWER$ TCP4:TRANSFER-BYTES TCP4:WRITE SERVER-STATUS ENDOF
+      closed OF drop ENDOF
+      failed OF SERVER-FAILED ENDOF
+   ;MATCH
+   conn TCP4:CLOSE PEER-STATUS ;
+
+
+: PLAIN-ACCEPTED ( TCP4:connection TCP4:address TCP4:port -- )
+   {: conn:TCP4:connection peer:TCP4:address peer-port:TCP4:port :}
+   conn PLAIN-SERVE ;
+
+
+\ Serves one connection, then closes its listener.
+: PLAIN-WORK ( -- )
+   PLAIN-LISTENER @ TCP4:>LISTENER {: listener:TCP4:listener :}
+   listener TCP4:ACCEPT
+   MATCH TCP4:accept-result
+      accepted OF PLAIN-ACCEPTED ENDOF
+      failed OF SERVER-FAILED ENDOF
+   ;MATCH
+   listener TCP4:CLOSE-LISTENER SERVER-STATUS ;
+
+
+\ libcurl gives 35 for a refused TLS handshake, such as this plain HTTP answer, as
+\ for one cut off, so LOST? leaves it out.
+: TEST-TLS-PLAIN ( -- )
+   s" a listener for the plain peer opens on loopback" T-LABEL
+   PLAIN-LISTENER PLAIN-PORT LISTEN-LOOPBACK TTRUE
+   ['] PLAIN-WORK PLAIN-TASK TASK:ACTIVATE
+   OPEN-HANDLE {: subject:CURL:handle :}
+   subject s" https" PLAIN-PORT @ s" /" SCHEME-URL CURL:URL! EXPECT-OK
+   subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
+   subject BODY-CAP >LEN FETCH
+   subject CURL:CLEANUP
+   PLAIN-TASK AWAIT-END PLAIN-TASK TASK:KILL
+   s" a plain HTTP answer to a TLS handshake fails as CURLE_SSL_CONNECT_ERROR, not lost" T-LABEL
+   LAST-KIND @ KIND-FAILED T=
+   LAST-CODE @ 35 T=
+   LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE ;
 
 
 \ A client its ceiling ended can return while the serial server still drains
@@ -1680,6 +1785,7 @@ TASK:MIN-STACK TASK:TASK SERVER-TASK
    FILE$ FS:FILE? TTRUE
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 1 T=
+   LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE
    LAST-CODE @ CURL:>CODE CURL:ERROR$ s" Unsupported protocol" T$=
    UNTOUCHED? TTRUE ;
 
@@ -1808,11 +1914,6 @@ variable LONG-ANSWER
    LONG-ANSWER @ CURLE-BAD-ARGUMENT T= ;
 
 
-\ Every wait below is bounded. A wait whose bound passes names itself on stdout
-\ and throws E-PROC-TIMEOUT (src/lib/test/wait.f), so a transfer the loop never
-\ answers ends the row as a timeout and not as a hung suite.
-
-2000 constant WAIT-MS                   \ the bound on every wait in these cases
 \ No more: macOS caps listen queues at kern.ipc.somaxconn = 128; HTTP/1.1 connects per transfer
 100 constant MANY-N                     \ the concurrent transfers of case one, past 32 + 64 records
 2 constant MANY-ROUNDS                  \ and its rounds, the second on the first's records
@@ -1846,21 +1947,10 @@ TASK:MIN-STACK TASK:TASK HALT-TASK
 TASK:MIN-STACK TASK:TASK DONE-TASK
 
 
-\ The end of a wait's WAIT-MS window, an absolute mono-ns.
-: DEADLINE ( -- n )
-   mono-ns WAIT-MS NS-PER-MS * + ;
-
-
 \ Returns once the count in the cell reaches want.
 : REACH ( ptr n n -- )
    [: 2dup swap atomic@ <= ;] DEADLINE s" curl-test REACH" TEST-WAIT:POLL
    2drop ;
-
-
-\ Returns once the task has ended.
-: AWAIT-END ( ptr n -- )
-   [: dup TASK:DONE? ;] DEADLINE s" curl-test AWAIT-END" TEST-WAIT:POLL
-   drop ;
 
 
 \ An abandoned record is given back by the loop and not by the task that left
@@ -2160,7 +2250,7 @@ TASK:MIN-STACK TASK:TASK DONE-TASK
    MATCH CURL:chunk-result
       chunk OF 2drop false TTRUE ENDOF
       response OF drop false TTRUE ENDOF
-      failed OF CURL:CODE>N NOT-TIMEOUT 18 T= ENDOF
+      failed OF dup CURL:LOST? TTRUE CURL:CODE>N NOT-TIMEOUT 18 T= ENDOF
    ;MATCH
    subject CURL:CLEANUP ;
 
@@ -2937,6 +3027,9 @@ public
    TEST-HEADER-REDIRECT
    TEST-HEADER-INTERIM
    TEST-TIMEOUT
+   TEST-REFUSED
+   TEST-MALFORMED
+   TEST-TLS-PLAIN
    TEST-LOW-SPEED
    TEST-NO-URL
    TEST-FILE-SCHEME
