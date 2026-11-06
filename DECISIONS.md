@@ -439,6 +439,14 @@ learned live in the docs for their subject.
   TAKE as listed; NEXT and its tests unchanged." CURL:NEXT-ARM ( handle ptr
   u8 len -- ), NEXT-READY? ( handle -- bool ) and NEXT-TAKE ( handle --
   chunk-result ).
+- 2026-11-06, embeddings as binary numbers (relayed by phil from Zen):
+  shown each OpenAI reply as 22.9 MB of decimal numbers read a character
+  at a time, then sent to PostgreSQL as text and parsed again, for the
+  request Joel chose "Ask for base64 (Recommended)": "Replies 3.7 times
+  smaller; no decimal reading; Ollama unchanged."; for MODEL:VECTOR@,
+  "Float bytes (Recommended)": "One form for every provider; search
+  prints its one vector." VECTOR@ answers DIMS little-endian binary32
+  values, 4 bytes each.
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself

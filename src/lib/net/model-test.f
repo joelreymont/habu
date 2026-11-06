@@ -8,6 +8,8 @@
 require src/lib/aio.f
 require src/lib/byte-buffer.f
 require src/lib/date.f
+require src/lib/float32.f
+require src/lib/float32-buffer.f
 require src/lib/fmt.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -709,12 +711,65 @@ $300000 constant BIG-U
    s" ]}]}" JSON:WRITE-RAW ;
 
 
-\ Responds by the request's inputs: a bound input is all x.
+\ Two base64 vectors out of index order, 0.4 0.5 0.6 then 0.1 0.2 0.3.
+: BASE64-VECTORS ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qobject\q:\qlist\q,\qdata\q:[" JSON:WRITE-RAW
+   S\" {\qembedding\q:\qzczMPgAAAD+amRk/\q,\qindex\q:1}," JSON:WRITE-RAW
+   S\" {\qindex\q:0,\qembedding\q:\qzczMPc3MTD6amZk+\q}]," JSON:WRITE-RAW
+   S\" \qusage\q:{\qprompt_tokens\q:2,\qtotal_tokens\q:2}}" JSON:WRITE-RAW ;
+
+
+\ A reply of one vector at index 0 whose embedding is the JSON text v.
+: ONE-VECTOR ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: v:ptr v-u:n :}
+   S\" {\qobject\q:\qlist\q,\qdata\q:" JSON:WRITE-RAW
+   S\" [{\qindex\q:0,\qembedding\q:" JSON:WRITE-RAW
+   v v-u JSON:WRITE-RAW
+   s" }]}" JSON:WRITE-RAW ;
+
+
+\ Answers the base64 vector a reply case names, true, or false for none.
+: BASE64-CASE? ( HTTP:response ptr u8 n -- bool )
+   {: response:HTTP:response i:ptr i-u:n :}
+   \ The first z escaped as \u007a: 0.1 0.2 0.3.
+   i i-u s" escaped" STR= if
+      response [: S\" \q\\u007aczMPc3MTD6amZk+\q" ONE-VECTOR ;] HTTP:JSON!
+      true exit
+   then
+   \ Two values, 0.1 0.2.
+   i i-u s" b64-short" STR= if
+      response [: S\" \qzczMPc3MTD4=\q" ONE-VECTOR ;] HTTP:JSON! true exit
+   then
+   \ Four values, 0.1 0.2 0.3 0.4.
+   i i-u s" b64-long" STR= if
+      response [: S\" \qzczMPc3MTD6amZk+zczMPg==\q" ONE-VECTOR ;] HTTP:JSON!
+      true exit
+   then
+   \ A character outside the base64 alphabet.
+   i i-u s" b64-bad" STR= if
+      response [: S\" \qzczMPc3MTD6amZk*\q" ONE-VECTOR ;] HTTP:JSON! true exit
+   then
+   \ 0.1, a quiet NaN ($7FC00000), 0.3.
+   i i-u s" b64-nan" STR= if
+      response [: S\" \qzczMPQAAwH+amZk+\q" ONE-VECTOR ;] HTTP:JSON! true exit
+   then
+   \ 0.1, positive infinity ($7F800000), 0.3.
+   i i-u s" b64-inf" STR= if
+      response [: S\" \qzczMPQAAgH+amZk+\q" ONE-VECTOR ;] HTTP:JSON! true exit
+   then
+   false ;
+
+
+\ Responds by the request's inputs: a bound input is all x. The request asks
+\ for base64; the replies that stay arrays stand for a provider ignoring it.
 : EMBEDDINGS ( HTTP:request HTTP:response -- )
    {: r:HTTP:request response:HTTP:response :}
    1 CALLS atomic-add drop
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
+   r s" encoding_format" BODY-MEMBER
+   JSON:READ-TOKEN JSON:T-STR = ASSERT
+   s" base64" JSON:READ-STR-EQ? ASSERT JSON:READ-CLOSE
    r INPUT-LINES RECEIVED$ {: i:ptr i-u:n :}
    i i-u 1 min s" x" STR= if
       response [: LENGTH-VECTOR ;] HTTP:JSON! exit
@@ -724,9 +779,9 @@ $300000 constant BIG-U
    then
    i i-u S\" one\ntwo" STR= if
       \ The provider may list them out of order; index decides each slot.
-      response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.4,0.5,0.6],\qindex\q:1},{\qindex\q:0,\qembedding\q:[0.1,0.2,0.3]}],\qusage\q:{\qprompt_tokens\q:2,\qtotal_tokens\q:2}}" JSON:WRITE-RAW ;] HTTP:JSON!
-      exit
+      response [: BASE64-VECTORS ;] HTTP:JSON! exit
    then
+   response i i-u BASE64-CASE? if exit then
    i i-u s" wide" STR= if
       response [: WIDE-VECTOR ;] HTTP:JSON! exit
    then
@@ -751,13 +806,15 @@ $300000 constant BIG-U
    response 400 HTTP:STATUS! ;
 
 
-\ Ollama's /api/embed: no Authorization header, and truncation refused.
+\ Ollama's /api/embed: no Authorization header, truncation refused and no
+\ encoding asked for.
 : OLLAMA ( HTTP:request HTTP:response -- )
    {: r:HTTP:request response:HTTP:response :}
    1 CALLS atomic-add drop
    r s" Authorization" HTTP:HEADER-OF$ {: a:ptr u:n present:bool :}
    present if response 401 HTTP:STATUS! exit then
    r s" truncate" BODY-MEMBER JSON:READ-TOKEN JSON:T-FALSE = ASSERT JSON:READ-CLOSE
+   r HTTP:BODY$ s" encoding_format" CONTAINS? 0= ASSERT
    r INPUT-LINES RECEIVED$ {: i:ptr i-u:n :}
    i i-u S\" one\ntwo" STR= if
       response [: S\" {\qembeddings\q:[[0.1,0.2,0.3],[0,1,2]]}" JSON:WRITE-RAW ;] HTTP:JSON!
@@ -771,6 +828,11 @@ $300000 constant BIG-U
    then
    i i-u s" bad-finite" STR= if
       response [: S\" {\qembeddings\q:[[1e309,0,1]]}" JSON:WRITE-RAW ;] HTTP:JSON! exit
+   then
+   \ Finite as a double, past binary32's range.
+   i i-u s" bad-single" STR= if
+      response [: S\" {\qembeddings\q:[[1e39,0,1]]}" JSON:WRITE-RAW ;]
+      HTTP:JSON! exit
    then
    i i-u s" too-large" STR= if
       response 400 HTTP:STATUS!
@@ -864,6 +926,7 @@ variable JOURNAL-READY
 variable CHAT-NS    \ TIME:MONO-NS as the last CHAT-CODE began
 : CHAT-CODE ( -- n ) TIME:MONO-NS CHAT-NS ! M [: dup MODEL:CHAT 2drop ;] catch {: code:n :} drop code ;
 : EMBED-CODE ( -- n ) M [: dup MODEL:EMBED ;] catch {: code:n :} drop code ;
+: VECTOR-CODE ( -- n ) 0 [: drop 0 M MODEL:VECTOR@ 2drop 0 ;] CODE-OF ;
 : PREP ( ptr u8 n -- ) M MODEL:PARTS-RESET M MODEL:TEXT+ ;
 : INPUTS ( ptr u8 n -- ) M MODEL:INPUT-RESET M MODEL:INPUT+ ;
 : CHAT ( -- ) s" valid" PREP M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT ;
@@ -1310,12 +1373,21 @@ variable REFUSED-BASE-U
    CHAT-CODE MODEL:E-CANCELLED = ASSERT ;
 
 
+\ The vector is three binary32 values with these bits.
+: VECTOR-IS ( ptr u8 n n n n -- )
+   {: v:ptr v-u:n x:n y:n z:n :}
+   v-u 12 = ASSERT
+   v F32-BUF:LOAD x = ASSERT
+   v 4 + F32-BUF:LOAD y = ASSERT
+   v 8 + F32-BUF:LOAD z = ASSERT ;
+
+
 : EMBEDDINGS ( -- )
    s" one" INPUTS
    s" two" M MODEL:INPUT+
    M MODEL:EMBED
-   0 M MODEL:VECTOR@ s" [0.1,0.2,0.3]" STR= ASSERT
-   1 M MODEL:VECTOR@ s" [0.4,0.5,0.6]" STR= ASSERT ;
+   0 M MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
+   1 M MODEL:VECTOR@ $3ECCCCCD $3F000000 $3F19999A VECTOR-IS ;
 
 
 \ Finishes the request for `text` with JOURNAL-INPUT$.
@@ -1340,6 +1412,26 @@ variable REFUSED-BASE-U
    s" valid" PREPARE
    s" Read source evidence." M MODEL:SYSTEM!
    CHAT-CODE MODEL:E-STATE = ASSERT ;
+
+
+\ A malformed embeddings reply fails the call and leaves no vectors.
+: EMBED-ERROR ( ptr u8 n -- )
+   INPUTS
+   EMBED-CODE MODEL:E-RESPONSE = ASSERT
+   VECTOR-CODE MODEL:E-STATE = ASSERT ;
+
+
+\ An escaped base64 vector reads as the plain one; a short, long, malformed,
+\ NaN or infinite one fails the call.
+: BASE64-CASES ( -- )
+   s" escaped" INPUTS
+   M MODEL:EMBED
+   0 M MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
+   s" b64-short" EMBED-ERROR
+   s" b64-long" EMBED-ERROR
+   s" b64-bad" EMBED-ERROR
+   s" b64-nan" EMBED-ERROR
+   s" b64-inf" EMBED-ERROR ;
 
 
 : BAD-VECTORS ( -- )
@@ -1368,8 +1460,7 @@ variable REFUSED-BASE-U
    M MODEL:INPUT-RESET
    PAD-U INPUT-LEN drop
    M MODEL:EMBED
-   SB-RESET s" [" SB-APPEND PAD-U FMT:SB-INT s" ,0,0]" SB-APPEND
-   0 M MODEL:VECTOR@ SB$ STR= ASSERT
+   0 M MODEL:VECTOR@ PAD-U s>f F32:NARROW 0 0 VECTOR-IS
    0 [: drop 1 M MODEL:VECTOR@ 2drop 0 ;] CODE-OF MODEL:E-CONFIG = ASSERT
    M MODEL:INPUT-RESET
    0 [: INPUT-LEN ;] CODE-OF MODEL:E-CONFIG = ASSERT
@@ -1386,26 +1477,17 @@ variable REFUSED-BASE-U
    M MODEL:EMBED
    MODEL-PEER:CALLS@ calls 1+ = ASSERT
    MODEL:INPUT-MAX 0 ?do
-      SB-RESET s" [" SB-APPEND i FMT:SB-INT s" ,0,0]" SB-APPEND
-      i M MODEL:VECTOR@ SB$ STR= ASSERT
+      i M MODEL:VECTOR@ i s>f F32:NARROW 0 0 VECTOR-IS
    loop ;
 
 
-\ The vector text is the WIDE-VECTOR components, 0 up.
+\ The vector is the WIDE-VECTOR components, 0 up, as binary32 values.
 : WIDE-IS ( ptr u8 n -- )
    {: v:ptr v-u:n :}
-   v-u 0 > ASSERT
-   v c@ [char] [ = ASSERT
-   1 MODEL-PEER:WIDE-DIMS 0 ?do
-      {: at:n :}
-      SB-RESET i FMT:SB-INT SB$ {: d:ptr d-u:n :}
-      at d-u + v-u < ASSERT
-      v at + d-u d d-u STR= ASSERT
-      v at + d-u + c@
-         i MODEL-PEER:WIDE-DIMS 1- = if [char] ] else [char] , then = ASSERT
-      at d-u + 1+
-   loop
-   v-u = ASSERT ;
+   v-u MODEL-PEER:WIDE-DIMS 4 * = ASSERT
+   MODEL-PEER:WIDE-DIMS 0 ?do
+      v i 4 * + F32-BUF:LOAD i s>f F32:NARROW = ASSERT
+   loop ;
 
 
 \ Every positive dimension count is accepted and 0 is refused; a
@@ -1943,16 +2025,6 @@ variable ASKED-U
 : IDENTITY$ ( -- ptr u8 n ) s" 7907646426070047a77226ac3e684fbbe8410524f7b4a74d02837e43f2146bab" ;
 
 
-: VECTOR-CODE ( -- n ) M [: dup 0 swap MODEL:VECTOR@ 2drop ;] catch {: code:n :} drop code ;
-
-
-\ A malformed Ollama reply fails the call and leaves no vectors.
-: OLLAMA-ERROR ( ptr u8 n -- )
-   INPUTS
-   EMBED-CODE MODEL:E-RESPONSE = ASSERT
-   VECTOR-CODE MODEL:E-STATE = ASSERT ;
-
-
 : OLLAMA-DIMS ( n -- n )
    {: d:n :}
    MODEL-PEER:OLLAMA-URL$ s" bge-m3:567m" IDENTITY$ d M MODEL:OLLAMA! d ;
@@ -1964,11 +2036,12 @@ variable ASKED-U
    s" one" INPUTS
    s" two" M MODEL:INPUT+
    M MODEL:EMBED
-   0 M MODEL:VECTOR@ s" [0.1,0.2,0.3]" STR= ASSERT
-   1 M MODEL:VECTOR@ s" [0,1,2]" STR= ASSERT
-   s" bad-count" OLLAMA-ERROR
-   s" bad-dims" OLLAMA-ERROR
-   s" bad-finite" OLLAMA-ERROR
+   0 M MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
+   1 M MODEL:VECTOR@ 0 $3F800000 $40000000 VECTOR-IS
+   s" bad-count" EMBED-ERROR
+   s" bad-dims" EMBED-ERROR
+   s" bad-finite" EMBED-ERROR
+   s" bad-single" EMBED-ERROR
    s" too-large" INPUTS
    EMBED-CODE MODEL:E-CAPACITY = ASSERT
    M MODEL:HTTP-STATUS 400 = ASSERT
@@ -2045,7 +2118,8 @@ variable ASKED-U
    M MODEL:CANCEL 0= ASSERT
    BASES CHAT-REQUEST IMAGE STORE-KEY NEGATIVE-KEY INVALID-IMAGE INVALID-SCHEMA
    REPLIES EARLY-ENDS UNREADABLE REFUSED [: CANCELLATION ;] QUIET
-   EMBEDDINGS BAD-VECTORS EMBED-TOO-LARGE INPUT-BOUNDS INPUT-MAX-EMBED
+   EMBEDDINGS BAD-VECTORS BASE64-CASES EMBED-TOO-LARGE INPUT-BOUNDS
+   INPUT-MAX-EMBED
    DIMS-PROPERTY
    STOP-BETWEEN
    M MODEL:CLOSE

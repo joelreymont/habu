@@ -10,6 +10,8 @@
 require src/lib/base64.f
 require src/lib/byte-buffer.f
 require src/lib/f64-text.f
+require src/lib/float32.f
+require src/lib/float32-buffer.f
 require src/lib/fmt.f
 require src/lib/fsm.f
 require src/lib/json.f
@@ -1326,6 +1328,9 @@ private
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
       JSON:WRITE-COMMA
       s" truncate" false JSON:WRITE-FIELD-BOOL
+   else
+      JSON:WRITE-COMMA
+      s" encoding_format" s" base64" JSON:WRITE-FIELD-S
    then
    JSON:WRITE-COMMA
    s" input" JSON:WRITE-KEY
@@ -1883,12 +1888,6 @@ private
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
    c JSON-OBJECT? 0= if E-RESPONSE throw then ;
 
-: VECTOR-BYTE+ ( n ptr call -- ) VECTORS-BUF BUF:APPEND-BYTE ;
-
-: VECTOR-BYTES+ ( ptr u8 n ptr call -- )
-   {: a:ptr u:n c :}
-   a u BUF:N>BLEN c VECTORS-BUF BUF:APPEND-SPAN ;
-
 : VECTORS-U ( ptr call -- n ) VECTORS-BUF BUF:LEN@ BUF:BLEN>N ;
 
 \ The vector just read is the one at idx.
@@ -1904,33 +1903,81 @@ private
    INPUT-MAX 0 ?do 0 c i VECTOR-LEN ! loop
    c VECTORS-BUF c RESET-SCRATCH ;
 
-: READ-VECTOR ( JSON:reader ptr call -- JSON:reader )
+\ A vector's length in bytes.
+: VECTOR-BYTES ( ptr call -- n ) MODEL-CALL:DIMS @ 4 * ;
+
+\ Whether binary32 bits have an exponent field of all ones: NaN or infinity.
+: NONFINITE? ( n -- bool ) $7F800000 and $7F800000 = ;
+
+
+\ Grows the vectors by one vector's room, which VECTOR-AT marks, and answers
+\ its address.
+: VECTOR-ROOM ( ptr call -- ptr u8 )
+   {: c :}
+   c VECTORS-U c MODEL-CALL:VECTOR-AT !
+   c VECTORS-BUF c VECTOR-BYTES BUF:N>BLEN BUF:GROW SPAN:$ drop ;
+
+
+\ A JSON array of DIMS numbers, each narrowed to binary32.
+: READ-NUMBERS ( JSON:reader ptr call -- JSON:reader )
    {: c :}
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
-   c VECTORS-U c MODEL-CALL:VECTOR-AT !
    0 c MODEL-CALL:COMPONENT-COUNT !
-   91 c VECTOR-BYTE+
+   c VECTOR-ROOM {: v:ptr :}
    begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
       dup JSON:T-INT = swap JSON:T-FLOAT = or 0= if
          JSON:READ-CLOSE E-RESPONSE throw
       then
       c MODEL-CALL:COMPONENT-COUNT @ {: idx:n :}
       idx c MODEL-CALL:DIMS @ >= if JSON:READ-CLOSE E-RESPONSE throw then
-      JSON:READ-SPAN$ {: a:ptr u:n :}
-      a u F64-TEXT:PARSE MATCH result
-         ok OF drop ENDOF
+      JSON:READ-SPAN$ F64-TEXT:PARSE MATCH result
+         ok OF F32:NARROW ENDOF
          err OF drop JSON:READ-CLOSE E-RESPONSE throw ENDOF
-      ;MATCH
-      idx 0 > if 44 c VECTOR-BYTE+ then
-      a u c VECTOR-BYTES+
+      ;MATCH {: bits:n :}
+      bits NONFINITE? if JSON:READ-CLOSE E-RESPONSE throw then
+      bits v idx 4 * + F32-BUF:STORE
       idx 1+ c MODEL-CALL:COMPONENT-COUNT !
    repeat
    drop
    c MODEL-CALL:COMPONENT-COUNT @ c MODEL-CALL:DIMS @ <> if
       JSON:READ-CLOSE E-RESPONSE throw
    then
-   93 c VECTOR-BYTE+
    true c MODEL-CALL:VECTOR-SEEN ! ;
+
+
+\ Decodes base64 a u into the vector's room, answering the decoded length in
+\ place of the n under it, so a catch keeps the shape.
+: DECODE-VECTOR ( n ptr u8 n ptr call -- n ptr u8 n ptr call )
+   {: a:ptr u:n c :}
+   drop
+   a u c VECTORS-BUF BUF:SPAN c MODEL-CALL:VECTOR-AT @ c VECTOR-BYTES SPAN:SUB
+   BASE64:DECODE a u c ;
+
+
+\ Base64 of DIMS little-endian binary32 values. An escaped string is unescaped
+\ into the room before its vector, unused until the next reply.
+: READ-BASE64 ( JSON:reader ptr call -- JSON:reader )
+   {: c :}
+   JSON:READ-SPAN$ {: a:ptr u:n :}
+   a u [char] \ INDEX-OF MATCH option
+      none OF a u c VECTOR-ROOM drop ENDOF
+      some OF
+         drop c VECTORS-U {: t:n :}
+         c VECTORS-BUF u BUF:N>BLEN BUF:GROW SPAN:$ JSON:READ-STR {: m:n :}
+         c VECTOR-ROOM drop
+         c VECTORS-BUF BUF:SPAN SPAN:$ drop t + m
+      ENDOF
+   ;MATCH
+   0 -rot c [: DECODE-VECTOR ;] catch {: code:n :}
+   code 0<> if 2drop 2drop JSON:READ-CLOSE E-RESPONSE throw then
+   2drop drop {: len:n :}
+   len c VECTOR-BYTES <> if JSON:READ-CLOSE E-RESPONSE throw then
+   c VECTORS-BUF BUF:SPAN SPAN:$ drop c MODEL-CALL:VECTOR-AT @ + {: v:ptr :}
+   c MODEL-CALL:DIMS @ 0 ?do
+      v i 4 * + F32-BUF:LOAD NONFINITE? if JSON:READ-CLOSE E-RESPONSE throw then
+   loop
+   true c MODEL-CALL:VECTOR-SEEN ! ;
+
 
 : EMBED-MEMBER ( JSON:reader ptr u8 n ptr call -- JSON:reader )
    {: key:ptr key-u:n c :}
@@ -1945,7 +1992,8 @@ private
    then
    key key-u s" embedding" STR= if
       c MODEL-CALL:VECTOR-SEEN @ if JSON:READ-CLOSE E-RESPONSE throw then
-      c READ-VECTOR exit
+      JSON:READ-TOKEN JSON:T-STR = if c READ-BASE64 else c READ-NUMBERS then
+      exit
    then
    JSON:READ-SKIP-VALUE ;
 
@@ -1985,7 +2033,7 @@ private
          drop JSON:READ-CLOSE E-RESPONSE throw
       then
       drop
-      c READ-VECTOR
+      c READ-NUMBERS
       c MODEL-CALL:DATA-COUNT @ c VECTOR-KEEP
       c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
    repeat
@@ -3149,6 +3197,8 @@ public
    rc 0<> if rc throw then
    true c MODEL-CALL:EMBEDDED ! ;
 
+\ Input idx's vector: DIMS IEEE-754 binary32 values of 4 little-endian bytes
+\ each, borrowed until the next CHAT, EMBED or CLOSE.
 : VECTOR@ ( n ptr call -- ptr u8 n )
    {: idx:n c :}
    c MODEL-CALL:EMBEDDED @ 0= if E-STATE throw then
