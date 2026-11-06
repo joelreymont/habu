@@ -245,35 +245,40 @@ REG-SCRATCH-SNAP-INSTALL
    dup 10 >= IF dup 10 / RECURSE THEN
    10 mod 48 + EMIT1 ;
 
-\ A T-PARAM's stored name span may point into a transient scan buffer (TKF, a
-\ callee-sig scratch) that later tokens overwrite before DIAG-PRINT or REC-SIG
-\ renders, so the name comes from the family registry: `pkg:tail` for a foreign
-\ package, the bare tail for "" and "@". An id outside the registry (a term
-\ minted before it loads) uses the stored span. A partial rollback that reuses an
-\ in-range slot renders the new occupant's name; the command path never sees it,
-\ because a mismatch diagnostic renders before any rollback.
-\ The package half folds because a package compares case-insensitively
-\ everywhere (TFAM-PKG-MATCH?, TFAM-QUAL-RESOLVE); raw source echoes
-\ (`token`, `definition_source`, `declared_effect_source`) stay verbatim.
-\ FAM-FOREIGN? compares exactly: the engine keeps a package's first-registered
-\ spelling, and both sides read the one interned string. While REND-EFFECT
-\ renders (RNAMES) it qualifies the active package too: facts text is read
-\ back in other packages.
-: FAM-INTERNED? ( n -- f ) {: fam:n :}
+
+\ A term minted before the registry loads holds an id outside it. A slot a
+\ partial rollback reused names its new occupant; diagnostics render before it.
+: FAM-INTERNED? ( n -- f )
+   {: fam:n :}
    fam 0 >=  fam TFAM-N@ <  and ;
-: FAM-FOREIGN? ( n -- f ) {: fam:n :}
+
+
+\ Exact: both sides read a package's one interned spelling. Facts text (RNAMES)
+\ names every package but "" ("@" included), for FACTS-RESOLVE to read exactly.
+: FAM-FOREIGN? ( n -- f )
+   {: fam:n :}
    fam TFAM-PKG$ {: pa:ptr pu:n :}
    pu 0 = IF RES-FALSE EXIT THEN
-   pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
    RNAMES @ 0 <> IF RES-TRUE EXIT THEN
+   pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
    pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
-: FAM-QNAME-REND ( n -- ) {: fam:n :}
+
+
+\ The package folds: packages compare case-insensitively (TFAM-PKG-MATCH?).
+: FAM-QNAME-REND ( n -- )
+   {: fam:n :}
    fam FAM-FOREIGN? IF fam TFAM-PKG$ RFOLD 58 EMIT1 THEN
    fam TFAM-NAME$ RSTR ;
-: FAM-NAME-REND ( n -- ) {: t:n :}
+
+
+\ A T-PARAM's name span may point into a scan buffer later tokens overwrite
+\ (TKF), so an interned family's name comes from the registry.
+: FAM-NAME-REND ( n -- )
+   {: t:n :}
    t PARAM>FAM {: fam:n :}
    fam FAM-INTERNED? 0= IF t PARAM>NAME-A t PARAM>NAME-U RSTR EXIT THEN
    fam FAM-QNAME-REND ;
+
 
 \ A hidden physical field renders as the diagnostic-only '@family.slotN<args>'
 \ or '@family.tag<args>' form and sets RQM, so REC-SIG never records a lone

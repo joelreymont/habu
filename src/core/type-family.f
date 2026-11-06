@@ -4834,12 +4834,6 @@ REGISTER-STOW
 REGISTER-ARENA-HEAD
 public
 
-\ Signature-token resolution, the checker's TFAM-RESOLVE-XT target, over
-\ TFAM-RESOLVE's package-scope rules. A qualified `PKG:tail` reads the package
-\ PKG names here (TFQ-HEAD$), requires a lowercase tail, and resolves public
-\ rows plus the active package's own private rows. Unqualified
-\ ambiguity (E-TFAM-AMBIG) becomes an unresolved token, so the signature is
-\ rejected with a diagnostic instead of aborting the load.
 $100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
 create TFQ-BUF TFQ-CAP allot
 variable TFQ-U
@@ -4905,11 +4899,29 @@ variable TFSR-AMBIG
    TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
    TFSR-FLAG !  TFSR-ID ! ;
 
+private
+
+\ Facts text (render.f FAM-QNAME-REND) names a family exactly: a bare tail is
+\ package "", else path:tail split at the last colon; no scope or fallback.
+: FACTS-RESOLVE ( ptr u8 n -- n bool )
+   {: a:ptr u:n :}
+   -1 0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@ 58 = IF drop i THEN
+      i 1 +
+   REPEAT drop {: c:n :}
+   c 0 < IF s" " a u TFAM-FIND-IN EXIT THEN
+   c 0 = c u 1 - = or IF 0 RES-FALSE EXIT THEN
+   a c  a c + 1 +  u c - 1 -  TFAM-FIND-IN ;
+
 public
 
+\ The checker's TFAM-RESOLVE-XT target. In source an ambiguous public tail
+\ (E-TFAM-AMBIG) leaves the token unresolved, so the signature is refused.
 : TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    0 TFSR-AMBIG !  0 TFSR-HIDDEN !
+   SIG-FACTS-MODE @ IF na nu FACTS-RESOLVE EXIT THEN   \ facts may start "@:"
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
    pa TFSR-PA !  pu TFSR-PU !  na TFSR-NA !  nu TFSR-NU !
