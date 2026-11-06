@@ -1,0 +1,13 @@
+---
+title: "Census the checker facts a caller's check reads"
+status: closed
+priority: 2
+issue-type: task
+created-at: "2026-11-06T18:20:33.920868+02:00"
+closed-at: "2026-11-06T18:32:10.257285+02:00"
+close-reason: "done: finding written in the dot; census /tmp/jerry-cen/census.md"
+---
+
+Problem: design r1 (/tmp/jerry-big/design-facts-r1.md D3) puts a control word with masks, storage facts, a parse count, a created effect, primitive-only bits and a defer bit on every entry; Joel 2026-11-06: 'a word either typechecks or it does not. the type info on other words can be fetched from the word list. this strongly smells of overengineering'. An entry keeps a fact only when a check of a caller reads it. Acceptance: per fact (each control bit separately), every reader in src/ as path:line classed caller-check / own-definition / codegen / replaced machinery / other, and a verdict keep / derivable / no caller reads it. Files: none (read-only; output /tmp/jerry-cen/census.md). Verify: the census's path:line evidence. Depends: none. Ownership: workspace jerry-cen. Claim: agent=worker workspace=.jj-ws.noindex/jerry-cen (brief /tmp/jerry-big/brief-cen.md).
+
+Finding (census /tmp/jerry-cen/census.md; facts 1-7 enumerated, fact 8 needs none): read by a caller's check, so kept: CTL-DEAD (DEAD-CUR? checker.f:23414), CTL-THROW (:23413, BTICK-EDGE :23009), CTL-BARRIER (:23415), EFFECT-EXTERNAL (CALL-AUTHORITY :19185), CTL-CORE-OP (TOK-CORE-OP? :19161), ZERO-TRUE/FALSE (ZERO-USE-TEST :19361), RENDERS/PARSES/CREATES/NOMINAL (source pre-pass :17486, :17508, verify-source.f:4095; inherited through INHSET :19323), intrinsic id (TOK-INTRINSIC :19157, SYM-INTRINSIC :23039), CTL-NAMES (:19121), CTL-GENERATES (verify-source.f:2992), both throw masks (CALL-THROW-EDGE :17648, BTICK-EDGE :23011), parse-immediate count (REJECT-IMMEDIATE :23420), created effect (DO-TOK :19343), PE-TRUSTED-ONLY (PRIM-TRUSTED-SYM? :11163), defer bit (IS-TOK :22973, TOP-CONTROL :17475). Derivable: the defer bit from its definer (definers.f:1014 DEF-DEFER; DKIND has no spare value); parse-immediate presence is DNAME-IMM on [16], the count is not; probably derivable, not confirmed: BARRIER (set from the rows at :10138), EXTERNAL (means certified or declared), CORE-OP and the intrinsic id. Read by no caller's check: the storage facts ER-STORAGE-* (only capture, grid lifetime, unit export and the per-definition cache read them) and PE-FIXED-ABI (codegen only, SELECTED-PRIM-ABI? :14730). Fact 8 (hasr, variable counts, min-in) is part of the effect's content, which FID2's E-CONTENT-SAME? already compares; ER.ACTIVE is per-record run state, not a saved fact.

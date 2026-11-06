@@ -1,0 +1,13 @@
+---
+title: Measure what effect text still loses with kind and scope
+status: closed
+priority: 2
+issue-type: task
+created-at: "2026-11-06T18:20:33.895263+02:00"
+closed-at: "2026-11-06T18:32:10.242400+02:00"
+close-reason: "done: finding written in the dot; probe data /tmp/jerry-fid2"
+---
+
+Problem: the first text measurement (dot habu-measure-whether-effect-1c94c9a8) parsed every rendered effect at the global scope with raw-definer mode off; 7,924 of its 8,814 differences are TVK-RAW variables a raw storage definer mints (src/core/checker.f SIG-RAW-MODE :6163-6181) and the entry's flags cell already records the definer kind (src/habu/layout.f DKIND); 359 refusals name families private to a package. Acceptance: totals per verdict on /tmp/jerry-gate/gen2 with the parse in raw mode exactly for DKIND val/addr records and in the symbol's own package scope (SIGSCOPE! :6298), split by definer kind and record found; residual classes with counts and examples. Files: probe only (/tmp/jerry-fid2; never lands). Verify: the counts. Depends: none. Ownership: workspace jerry-fid2. Claim: agent=worker workspace=.jj-ws.noindex/jerry-fid2 (brief /tmp/jerry-big/brief-fid2.md).
+
+Finding (probe /tmp/jerry-fid2/fid2.f, report /tmp/jerry-fid2/report.md, rows /tmp/jerry-fid2/rows.tsv, on /tmp/jerry-gate/gen2): baseline equals the first run (15,324 same / 8,814 different / 359 refused). With the parse in raw mode exactly when DKIND is val or addr (layout.f DKIND, bits 50-51 of [16]) and in the symbol's own package scope (checker.f SIGSCOPE! :6298): 19,293 / 4,845 / 359; no val, addr or cast record differs. 13,441 of the 24,497 symbols are retired (empty name and package, SYM-RETIRED? checker.f:7989) and have no record, so no entry ever holds their facts; they hold 4,351 of the differences and 352 of the refusals. Live symbols (11,056): 10,555 same, 494 different, 7 refused. Live residual classes: no-scope restriction NSCOPE (EN.C -1; checker.f NO-SCOPE?* :2614, TV! :2958 refuses binding a marked var to a scoped term) 299 words, e.g. arena-alloc `( n -- ptr a )`, tv-plane, dfer.sym; base row of kind RVK-QUOT parsed as kind 0, 177 words, e.g. horizon-find (checker.f:13750, body uses `finally`), checker-defcast (:27296); the renderer drops named rows, 16 words plus each/map/fold (`DIP ( R a [ R -- S ] -- S a )` renders `( a [ -- ] -- a )`, though the grammar can spell it); fresh-atom suffix, 2 words (c2-mem alloc, alloc-dispose: ATOM-REND writes `fresh-region-b-a`, FRESH-ATOM>TYPE strips only `fresh-`); the 7 live refusals are c2-mem `with-*` words whose return clause renders `| --` where WITH-MUT declares `| U -- U` (c2-memory.f:46). Probe 8.25 s wall.

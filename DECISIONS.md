@@ -119,7 +119,27 @@ learned live in the docs for their subject.
   with every type named with its package, `( TASK:sem -- n )`, parsed on first
   use: binary would be misread without an error by a checker that numbers its
   types differently, and text with bare type names read in another package
-  finds that package's type of the same name.
+  finds that package's type of the same name. Shown a design that saved the
+  checker's own graph of each word instead, because text then carried 63% of
+  the effects, Joel wrote "why do you need to do type-checking graphs and keep
+  them around? a word either typechecks or it does not. the type info on other
+  words can be fetched from the word list. this strongly smells of
+  overengineering, prove me wrong!" and "any build object files should keep
+  the wordlists and thus the type info on them"; leaving for the night, he
+  wrote "make your own judgement and do everything without asking me. apply
+  the what's best for long term criteria". Measured with each effect read in
+  its own package, text carried 95.5% of the live words. The lead chose: an
+  entry holds one text, the certified effect with every type and shared row
+  named, then tags for each fact a caller's check reads (noret, throws with
+  its intact masks, the zero tests, core-op, intrinsic, parses, parse-imm,
+  creates, names, generates, renders, nominal, defer, trusted-only, top-only,
+  and the no-scope and kind marks of variables); nothing else about a checked
+  word is kept. The writer parses what it wrote, caches that parse as the
+  word's effect, and refuses the definition when it differs from what the
+  body proved, so a fact the text cannot say fails the build instead of
+  weakening a caller's check. A type is an entry whose text is its
+  declaration; a file object carries its records' texts, and the cross-built
+  hb copies them with DATA.
 - 2026-11-06, type names: shown that a bare type name also resolves when
   exactly one package anywhere makes a type of that name public (type-family.f
   TFAM-FIND-PUBLIC), a step bare words do not have, used at about 130 places
