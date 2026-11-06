@@ -1126,6 +1126,22 @@ learned live in the docs for their subject.
   copy, Joel chose "Approve FD:PIPE (Recommended)": "One pipe word in FD;
   HTTP, WebSocket, AIO and process code use it." FD:PIPE ( -- read-fd
   write-fd ) makes a pipe whose ends close on exec.
+- 2026-11-06, library packages (asked from Tender, whose approved package
+  OUTCOME would not load because process.f declares its `outcome` type
+  outside any package): "fix it, habu libraries should use packages too. and
+  outcome is a bad name in process.f"; then, shown 177 more global words in
+  ten other library files, "those should be packaged but file a dot for this,
+  don't do it now. just do process.f for now" (dot habu-put-habu-s-b5c7fb62);
+  of option<a> and result<a,b>, "these should be global, prove me wrong!",
+  not disproved: they stay global. Shown the design, Joel chose "Approve,
+  ending (Recommended)": process.f's type becomes `ENUM ending` in PROCESS
+  (exited n, signaled n, timeout); every process.f word goes into PROCESS,
+  public only when used outside the file, its `PROC-` prefix dropped and
+  OUTCOME in a name becoming ENDING; process.f's descriptor words (the POLL*
+  and F-* constants, EINTR#, FD-CLOEXEC, O-NONBLOCK, FD-CLOEXEC!,
+  FD-NOSIGPIPE!, PIPE-PAIR) become FD's public words in place of FD's private
+  copies; SIGKILL, ESRCH# and WNOHANG stay in PROCESS; test/outcome.f becomes
+  test/ending.f with T-ENDING-* asserts (paraphrase of the design's items).
 - 2026-11-05, a non-blocking descriptor: shown that SIGNAL:INIT marks its
   pipe non-blocking through process.f's PROC-NONBLOCK!, whose refusal leaves
   both ends open and cleans up a child-process record SIGNAL:INIT never made,
