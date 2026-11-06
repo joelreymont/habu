@@ -108,7 +108,11 @@ learned live in the docs for their subject.
   word's dictionary entry, and a type, its fields and the primitives' effects
   live in the wordlists of the program that declares them. The checker finds
   them through the dictionary's own lookup, and they travel in the records
-  the linker writes.
+  the linker writes. On 2026-11-06, asked where a word's facts live on its
+  48-byte dictionary entry, Joel chose "Reuse name bytes (Recommended)":
+  "Inline names shrink 16→8 bytes; old builder needs one expression until
+  retired." Bytes 32-39 of every entry hold the word's facts; a name of 9 or
+  more bytes is stored out of line, as names over 16 bytes were.
 - 2026-11-06, type names: shown that a bare type name also resolves when
   exactly one package anywhere makes a type of that name public (type-family.f
   TFAM-FIND-PUBLIC), a step bare words do not have, used at about 130 places
