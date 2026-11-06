@@ -11658,10 +11658,9 @@ PRIM: CHECKER-CERT-DUP? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-CERT-SHAPE-DUP? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
 \ CHECKER-SEALED-PKG? is the one Habu list of the sealed system packages, the
 \ declared mirror of the engine's RESTAB (src/habu/habu2.f). This file's guards
-\ read it, and so does src/habu/outer.f SEAL-GUARD, the Habu loop's copy of the
-\ engine's C-QUALIFY-SEAL-GUARD. Without the row the seal marks the word
-\ DNAME-INT, the product drops its name, and the loop would need a list of its
-\ own. It answers a question about a name and changes nothing.
+\ read it, and so does src/habu/verify-source.f SEALED-PACKAGE. Without the row
+\ the seal marks the word DNAME-INT and the product drops its name. It answers a
+\ question about a name and changes nothing.
 PRIM: CHECKER-SEALED-PKG? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The AOT signature pool's surface, an axiom because this file compiles with the
 \ hook off: tools/aot-chain-capture.f's census reads the three sizes.

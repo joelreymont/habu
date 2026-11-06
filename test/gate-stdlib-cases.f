@@ -1330,10 +1330,6 @@ SUITE tier
    test/tier.f
 ;SUITE
 
-SUITE sealed-system-package
-   test/seal-package.f
-;SUITE
-
 SUITE engine-error-package
    test/engine-error-package.f
 ;SUITE

@@ -332,20 +332,12 @@ variable USE-FLOOR
    q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
-\ After the engine's seal a protected wordlist takes no record: the definition
-\ ends the process (habu2.f LSTOREDEFNAME, SEALED-FAIL).
-: PKG-OPEN-WID ( n -- ) {: wid:n :}
-   SEAL-NDICT@ 0= if exit then
-   wid PROTECTED? 0= if exit then
-   TOKEN$ SEALED-FAIL ;
-
 \ The source is the record the operand names as the engine's LFIND resolves it
 \ (FIND-SCOPE), never a used public's. It must not be internal: an alias would
 \ carry its body past the interpret gate without the DNAME-INT mark, so the
 \ gate's refusal is made here (alias-record refuses the source too). DEF-TKA
 \ and DEF-TKL take the operand, which the refusals after them name.
 : PKG-EXPORT-SOURCE ( -- ptr n )
-   SEAL-GUARD
    TOKEN$ FIND-SCOPE {: src:ptr :}
    src XREF-FOUND? 0= if RC-REJECT PKG-FAIL then
    src XREF-FLAGS DNAME-INT and 0<> if
@@ -405,7 +397,6 @@ variable USE-FLOOR
    then
    src PKG-CLAUSE {: clause:n :}
    clause 0 >= if clause PKG-CLAUSE-ROOM then
-   get-current PKG-OPEN-WID
    ta tu PKG-CODE-ROOM
    clause 0 >= if
       clause XREF-REC XREF-NAME$ tu PKG-CODE-SPAN PKG-CODE-ROOM-AFTER

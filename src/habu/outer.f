@@ -375,7 +375,7 @@ create NL NEWLINE c,
    s" " rc die ;
 
 \ A sealed package's refusal ends the process with its code, the token and
-\ where it stands (habu2.f C-SEAL-PACKAGE-FAIL, EMIT-STORE-DEF-NAME).
+\ where it stands (habu2.f C-SEAL-PACKAGE-FAIL).
 : SEALED-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
    s" E-SEALED-PACKAGE: " ERROR-TEXT:TYPE  a u ERROR-TEXT:TYPE  AT-SOURCE
    s" " ENGINE-ERROR:SEAL-PACKAGE FAIL-CLOSED ;
@@ -396,14 +396,6 @@ create NL NEWLINE c,
    REPLAY-SCOPE:LATCH CELL@ 0= if exit then
    s" hb: definition while a checker replay is open: " ERROR-TEXT:TYPE
    TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:OVERLAY-OPEN THROW-AT ;
-
-\ Whether wid is protected (habu1.f EMIT-PROTWID): the two engine-reserved
-\ wordlists, then its PROT-BITS-OFF bit, set only within [0, PROT-WID-MAX).
-: PROTECTED? ( n -- bool ) {: wid:n :}
-   wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if true exit then
-   wid 0 < wid PROT-WID-MAX >= or if false exit then
-   wid 6 rshift cells PROT-BITS-OFF + CELL@
-   wid 63 and rshift 1 and 0<> ;
 
 \ The engine's twin: habu2.f EM-COMMENT.
 \ A backslash or `(` opens a comment only as a whole one-byte token. The comment
@@ -894,19 +886,6 @@ CAST: CELL-TAKE ( [ n -- ] -- n )
 : PUSH-CHAR ( -- )
    [: FIRST-BYTE TOP-EV-CHAR 0 HOOK ;] CELL-LITERAL RUN-LITERAL ;
 
-\ The engine's twin: habu2.f C-QUALIFY-SEAL-GUARD. A part's head answers its path
-\ `A:head`, which names no sealed package; a sealed one ends in SEALED-FAIL.
-: SEAL-GUARD ( -- )
-   SEAL-NDICT@ 0= if exit then
-   TOKEN$ {: a:ptr u:n :}
-   a u 0 COLON-AT {: q:n :}
-   q 1 < if exit then
-   q 1+ u >= if exit then
-   a q CHECKER-RESOLVE:HEAD-ROW {: row:ptr :}
-   row XREF-FOUND? if row XREF-NAME$ else a q then
-   CHECKER-SEALED-PKG? 0= if exit then
-   a u SEALED-FAIL ;
-
 \ The active checker owner supplies the trusted-only query, not a source name.
 \ Mirror C-TRUSTED-TICK?'s cold-prefix and replacement-checker windows.
 : TICK-QUERY-READY? ( -- bool )
@@ -931,7 +910,6 @@ CAST: TICK-ACTION ( n -- [ ptr u8 n -- bool ] )
 \ has no depth gate; a name no word has is undefined, as a word to run is.
 : TICKED ( -- )
    s" '" OPERAND
-   SEAL-GUARD
    LOOKUP
    XT-GATE
    SCOPE-ENTRY-GUARD

@@ -204,7 +204,7 @@ create XPK-EMPTY 1 allot
 
 \ --- child spawn + outcome capture --------------------------------------------
 \ Children run ENGINE-CANDIDATE:PATH$ over piped stdin; the undefined and
-\ data cases also run --load, as test/seal-package.f does.
+\ data cases also run --load.
 
 : XPK-STORE! ( len len outcome ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}

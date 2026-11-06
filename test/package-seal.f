@@ -71,8 +71,8 @@ variable OPEN
    s" with the sealed package's code and the definition" T-LABEL
    ERR$ s" E-SEALED-PACKAGE: TOP-ROW:ZZ at " CONTAINS? TTRUE ;
 
-\ A head naming a sealed system package is refused unless the open top-level
-\ package has a part of that name (test/outer-interpret.f PACKAGE-PART-NAME).
+\ A head naming a sealed system package is refused, at top level and inside a
+\ package with no part of that name.
 : SECTION-SYSTEM ( -- )
    s" a definition qualified by a sealed system package is refused"
    s" : MATCH:ZZ ( -- n ) 2 ;" s" MATCH:ZZ" SEALED

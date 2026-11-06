@@ -156,7 +156,6 @@ CAST: AS-DECLARE ( n -- [ ptr u8 n ptr u8 n -- ] )
 : DEF-QUALIFY ( -- ptr u8 n n )
    OVERLAY-GUARD
    DEF-UNIT-GUARD
-   SEAL-GUARD
    TKA-CELL CELL@ DEF-TKA-CELL CELL!
    TKL-CELL CELL@ DEF-TKL-CELL CELL!
    TOKEN$ {: a:ptr u:n :}
@@ -348,9 +347,9 @@ private
    DEF-COMPILER 0<> if exit then
    s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
-\ The tail and its wordlist pass the wall, the room, the duplicate test and the
-\ seal's protected wordlists, then the name's code room, before def-open
-\ writes anything (habu2.f EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME). The
+\ The tail and its wordlist pass the wall, the room and the duplicate test,
+\ then the name's code room, before def-open writes anything (habu2.f
+\ EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME). The
 \ refusals name the token, but the wall and the code room name the tail. The
 \ kind is the record's: 0 for a body the compiler compiles, DKIND:ADDR for a
 \ created word, DKIND:VAL for a constant, DKIND:CAST for a retype.
@@ -360,7 +359,6 @@ private
    a u wid WL-PROBE XREF-FOUND? if
       s" duplicate definition: " ERROR-TEXT:TYPE PKG-RC-DUPLICATE PKG-FAIL
    then
-   wid PKG-OPEN-WID
    a u PKG-CODE-ROOM
    a u wid kind def-open ;
 

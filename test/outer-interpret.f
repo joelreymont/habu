@@ -669,28 +669,6 @@ variable WANT-RC
    s" oi-tick-no-name.f" BOTH
    74 s" hb: reader keyword needs a name: ' at " S\" oi-tick-no-name.f:4\n" DIED-AT ;
 
-\ ' of a token qualified by a sealed package ends the process with the sealed
-\ package's refusal of the token. Every package the engine seals is asked once, in
-\ assorted case, and a second colon does not spare the token. The exit is
-\ fail-closed: the exit hook the program armed, `cr` (in src/habu/layout.f
-\ EXIT-HOOK-CELL), does not run.
-: SEALED ( ptr u8 n -- ) {: t:ptr u:n :}
-   GE-SRC-RESET
-   s" ' OI-CR OI-ARM" GE-SRC-LINE
-   s" ' " GE-SRC+ t u GE-SRC-LINE
-   s" oi-sealed.f" BOTH
-   ENGINE-ERROR:SEAL-PACKAGE t u GE-EXPECT-RC
-   t u SEALED-LINE ;
-
-: SEALED-PACKAGES ( -- )
-   s" tfam:x" SEALED
-   s" TYPE:x" SEALED
-   s" Match:x" SEALED
-   s" checker-cert:x:y" SEALED
-   s" lower-cert:x" SEALED
-   s" LOWER-CERT-HOOK:x" SEALED
-   s" engine-error:x" SEALED ;
-
 : TICK-WIDE ( -- )
    GE-SRC-RESET
    s" ' OI-WIDE" GE-SRC-LINE
@@ -901,8 +879,7 @@ variable WANT-RC
 \ part OI-QB shadows the top-level OI-QB for lookup, the checker (OI-QW's
 \ refusal names the part's two-cell effect), `using` and a qualified
 \ definition, and inside the part its qualifier still reaches only its publics.
-\ A part named like a sealed system package (MATCH) is no sealed package. A
-\ qualified definition naming no part makes a top-level package. At top level
+\ A qualified definition naming no part makes a top-level package. At top level
 \ OI-QB is the top-level package again.
 : PACKAGE-PART-NAME ( -- )
    GE-SRC-RESET
@@ -1471,15 +1448,9 @@ variable WANT-RC
    s" : 9223372036854775808" s" oi-head-overflow.f" HEAD
    70 s" hb: number cannot be a definition name: 9223372036854775808 at " S\" oi-head-overflow.f:1\n" DIED-AT ;
 
-\ A head into a sealed package's name, or into a protected wordlist, and one
-\ with no native compiler installed end the process without the exit hook.
+\ A head with no native compiler installed ends the process without the exit
+\ hook.
 : HEAD-FAIL-CLOSED ( -- )
-   s" 1 set-tier : tfam:x" s" oi-head-sealed.f" ARMED
-   s" tfam:x" SEALED-LINE
-   s" 1 set-tier package OI-EX public get-current prot-wid-add ;package : OI-EX:OI-T" s" oi-head-protected.f" ARMED
-   s" OI-EX:OI-T" SEALED-LINE
-   s" 1 set-tier package OI-EX public get-current prot-wid-add : OI-T" s" oi-head-protected-current.f" ARMED
-   s" OI-T" SEALED-LINE
    GE-SRC-RESET
    s" ' OI-CR OI-ARM" GE-SRC-LINE
    s" 1 set-tier 0 data-base NCOMP-DISPATCH:XT-CELL + ! : OI-T ( -- )" GE-SRC-LINE
@@ -2209,7 +2180,6 @@ private
    ESCAPED-TOO-LONG
    CHAR-NO-NAME
    TICK-NO-NAME
-   SEALED-PACKAGES
    TICK-WIDE
    TICK-INTERNAL
    TICK-C2-SCOPE
