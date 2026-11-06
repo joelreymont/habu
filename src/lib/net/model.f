@@ -1971,7 +1971,6 @@ private
    {: c :}
    c VECTORS-RESET
    0 c MODEL-CALL:DATA-COUNT !
-   c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c WIRE-READER
    JSON:T-OBJ EXPECT
    s" data" DESCEND
@@ -1981,7 +1980,7 @@ private
       c READ-EMBED-OBJECT
       c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
    repeat
-   drop JSON:READ-CLOSE
+   drop JSON:READ-FINISH
    c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
       E-RESPONSE throw
    then ;
@@ -1990,7 +1989,6 @@ private
    {: c :}
    c VECTORS-RESET
    0 c MODEL-CALL:DATA-COUNT !
-   c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c WIRE-READER JSON:T-OBJ EXPECT
    s" embeddings" DESCEND
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
@@ -2003,7 +2001,7 @@ private
       c MODEL-CALL:DATA-COUNT @ c VECTOR-KEEP
       c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
    repeat
-   drop JSON:READ-CLOSE
+   drop JSON:READ-FINISH
    c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
       E-RESPONSE throw
    then ;
@@ -2018,14 +2016,16 @@ private
    c [: dup ACCEPT-CHAT ;] catch {: code:n :} drop
    code RESPONSE-ERROR ;
 
-\ A reader at the usage member of the JSON object in the bytes, and whether
-\ that member is an object.
-: USAGE ( ptr u8 n ptr call -- JSON:reader bool )
+\ The bytes of the usage member of the JSON object in the bytes, and whether
+\ it is there as an object; no bytes when it is absent or not one.
+: USAGE ( ptr u8 n ptr call -- ptr u8 n bool )
    {: a:ptr u:n c :}
    c MODEL-CALL:READER a u JSON:READ-INIT
    JSON:T-OBJ EXPECT
-   s" usage" JSON:READ-FIND-KEY 0= if false exit then
-   JSON:READ-TOKEN JSON:T-OBJ = ;
+   s" usage" JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE a 0 false exit then
+   JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE a 0 false exit then
+   JSON:READ-VALUE-SPAN$ {: o:ptr o-u:n :}
+   JSON:READ-CLOSE o o-u true ;
 
 \ The current usage count: an integer, or none for null.
 : USAGE-COUNT ( JSON:reader -- JSON:reader option<n> )
@@ -2045,38 +2045,40 @@ private
    JSON:READ-FIND-KEY 0= if OPTION:NONE exit then
    USAGE-COUNT ;
 
-\ The count at the key of the bytes' usage object, which is present. Each
-\ count takes its own pass because providers order the members freely.
+\ The count at the key of the usage object the bytes hold. Each count reads
+\ the object again, as providers order its members freely.
 : USAGE-AT ( ptr u8 n ptr call ptr u8 n -- option<n> )
    {: a:ptr u:n c key:ptr key-u:n :}
-   a u c USAGE drop
+   c MODEL-CALL:READER a u JSON:READ-INIT
+   JSON:T-OBJ EXPECT
    key key-u COUNT-AT {: got :}
    JSON:READ-CLOSE got ;
 
-\ The count at the key of a usage member object; none when that member is
-\ absent or not an object.
+\ The count at the key of a member object of the usage object the bytes hold;
+\ none when that member is absent or not an object.
 : DETAIL-AT ( ptr u8 n ptr call ptr u8 n ptr u8 n -- option<n> )
    {: a:ptr u:n c detail:ptr detail-u:n key:ptr key-u:n :}
-   a u c USAGE drop
+   c MODEL-CALL:READER a u JSON:READ-INIT
+   JSON:T-OBJ EXPECT
    detail detail-u JSON:READ-FIND-KEY 0= if JSON:READ-CLOSE OPTION:NONE exit then
    JSON:READ-TOKEN JSON:T-OBJ <> if JSON:READ-CLOSE OPTION:NONE exit then
    key key-u COUNT-AT {: got :}
    JSON:READ-CLOSE got ;
 
-\ Whether the bytes carry a usage object; marks the call's usage seen.
-: USAGE? ( ptr u8 n ptr call -- bool )
+\ The bytes' usage object and whether they carry one; marks the call's usage
+\ seen.
+: USAGE? ( ptr u8 n ptr call -- ptr u8 n bool )
    {: a:ptr u:n c :}
-   a u c USAGE {: present:bool :}
-   JSON:READ-CLOSE
+   a u c USAGE {: o:ptr o-u:n present:bool :}
    present if true c TOKENS TOKENS-SEEN ! then
-   present ;
+   o o-u present ;
 
 \ The HTTP reply's usage counts: a chat reply's in the Responses protocol's
 \ names, an embeddings reply's prompt_tokens alone.
 : ACCEPT-USAGE ( ptr call -- )
    {: c :}
-   c RESPONSE$ {: a:ptr u:n :}
-   a u c USAGE? 0= if exit then
+   c RESPONSE$ c USAGE? {: a:ptr u:n present:bool :}
+   present 0= if exit then
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF ENDOF
       embed OF
