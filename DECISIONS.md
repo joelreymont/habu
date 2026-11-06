@@ -60,9 +60,9 @@ learned live in the docs for their subject.
   as it is. Shown that then no public `STRUCTURE` or `ENUM` gets a namespace
   of its own (`OPTION:SOME` becomes `OPTION-SOME`), he chose "Delete them
   all": everything that only builds or reads those namespaces goes, the
-  public error E-PROTECTION-CAP included. Package sealing's registry of
-  protected wordlists, the private path's protections and E-CTOR-PROTECTED,
-  which now guards public families too, stay.
+  public error E-PROTECTION-CAP included. The private path's protections and
+  E-CTOR-PROTECTED, which now guards public families too, stay; package
+  sealing is the entry "sealing a package".
 - 2026-11-03, how the compiler reaches the checker: shown that the compiler
   can call the word named CHECK:DEFINITION whenever the dictionary has it,
   with no hidden cell and no install step, so that only the kernel, before
@@ -561,7 +561,20 @@ learned live in the docs for their subject.
   "One word, seal-package": `seal-package ( -- )`, written inside the
   package, which the run executes and the checker's scan reads by name; it
   replaces the idiom in the engine's files. Application images otherwise stay
-  reopenable.
+  reopenable. On 2026-11-06, asked "why do we need to seal anything? are you
+  fixing the cause or the symptoms?" and shown that any program can run a
+  private hb word through the dictionary's public lookup words and a cast,
+  Joel wrote "there's a fine balance here. i don't want to complicate things
+  unnecessarily. this is forth and you could get to the private words by
+  calculating offsets, etc. i only care about sealing if it's light and
+  easy!" The lead decided: a sealed package is one flag on the package's own
+  record, which `seal-package` sets; `package` refuses to reopen a sealed
+  package, and nothing else reads the flag. The fixed list of sealed package
+  names, the header's list of protected wordlists, `prot-wid-add` and the
+  build pass that seals every package go; the engine files' `get-current
+  prot-wid-add` becomes `seal-package`. The image's own words stay
+  unremovable through the dictionary floor, which the linker writes into the
+  image it builds instead of the startup text setting it.
 
 ## Compiler and builds
 
