@@ -319,7 +319,14 @@ learned live in the docs for their subject.
   writes `-9701 MODEL:E-KEY: the provider refused the key`, the number alone
   when undeclared. For tools/check.f's records of a thrown code he chose
   "Real name (Recommended)" over E-STATEMENT-THROW, and for building it "Now,
-  in parallel".
+  in parallel". Shown that the design made `ERROR:` a global word, which
+  needed a public ERROR:DECLARE to reach the package's table, Joel wrote
+  "words ending in a colon should either be rejected OR they should be part
+  of the package they are defined in. there's no rule that says they should
+  be global!", chose "ERROR:DEFINE (Recommended)", then wrote "actually, you
+  don't define an error so make it ERROR:CODE": the definer is package
+  ERROR's public word, `-9701 s" text" ERROR:CODE E-KEY`, with no global and
+  no DECLARE.
 - 2026-11-06, outages apart from bad replies (relayed by kevin from Tender):
   Joel chose "Add E-UNAVAILABLE (Recommended)" for MCP: MCP:E-UNAVAILABLE for
   an HTTP 408, 429 or 5xx, as MODEL:E-UNAVAILABLE; E-RESPONSE keeps every
