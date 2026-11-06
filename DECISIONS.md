@@ -948,6 +948,20 @@ learned live in the docs for their subject.
   apart from hb's own names, Joel chose "CHECK:OPEN, CHECK:CLOSE
   (Recommended)": `CHECK:OPEN ( -- )` and `CHECK:CLOSE ( -- )`, called only
   by LINKER:WITH's open and close.
+- 2026-11-06, a failure caught inside a build: a build that catches a
+  refused file or a rolled-back definition and goes on keeps traces of the
+  failure: the shadow's records and emissions for the words the rollback
+  removed, so its next link names one word at two addresses, and data the
+  refused load left between files, so a later file's object differs by what
+  failed before it. Joel had written that night "i'm leaving for the night so
+  make your own judgement and do everything without asking me. apply the
+  what's best for long term criteria". The lead chose, as Joel did for
+  strings (E-INTERN-REWIND), that a failed build does not go on: once a
+  file's compile throws, or DP moves back inside the build's space, the
+  linker loads no other file and writes neither that file's object nor the
+  program, refusing with `LINKER:E-FAILED`. The build's body may still catch
+  and report. Nothing rolls the shadow back and no tier-1 package changes. A
+  refused file ends its build, as in make.
 - 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
   for DP, kept only by the old string store so a failed line's rollback never
   drops DP below strings compiled code points at, and asked when it should go,
