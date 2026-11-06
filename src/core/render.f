@@ -507,7 +507,9 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
            NLET @ 1 + NLET !
            r F>DOMAIN BIND-REGION = IF s" forall-region<" ELSE s" forall<" THEN RSTR letter EMIT1
            r F>PARENT dup 0= IF drop ELSE
-              s"  inside " RSTR d 1+ 0 RECURSE THEN
+              r F>SECOND 0= IF s"  inside " RSTR d 1+ 0 RECURSE ELSE
+                 s"  inside [" RSTR d 1+ 0 RECURSE  44 EMIT1
+                 r F>SECOND d 1+ 0 RECURSE  93 EMIT1 THEN THEN
            RBIND-N @ 1 + RBIND-N !
            44 EMIT1
            r F>BODY d 1+ 0 RECURSE 62 EMIT1
