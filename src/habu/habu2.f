@@ -3590,11 +3590,8 @@ public
    15 11 CMP,  C-CS full BCOND,                       \ so do the padded bytes
    fits LBL, ;
 
-\ Store the name in record x9, whose room NAME-ROOM has already admitted: [16]
-\ its length, with DNAME-EXT for a long one; [24] and [32] the bytes inline, or
-\ [24] the address of a copy at CP, with CP moved past it. x10 = the name's
-\ address, x12 = its length, at least one byte. x9 and x12 survive; x10, x11
-\ and x13-x16 are clobbered.
+\ Store record x9's name, x12 >= 1 bytes at x10, in room NAME-ROOM admitted:
+\ inline at [24], or at CP (moved) with DNAME-EXT. Clobbers x10 x11 x13-x16.
 : NAME-COPY ( -- )
    LBL LBL LBL LBL LBL LBL {: short lcopy lcd scopy scd done :}
    11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = record x9 through the alias
@@ -6628,20 +6625,6 @@ variable CFSK2
       12 12 1 ADDI,  acopy B,
    adone LBL, ;
 
-\ Register the LAOTNREC baked records at &dict[NDICT], rebasing each [0] xt from a
-\ blob offset to CP+offset, and hash-indexing it (LHIDXADD). All records first, so
-\ EM-AOT-PATCH-SITES can resolve sibling calls by name.
-\ Each source record is a compact 20 bytes (word0 = blob-off-or-package-public u32;
-\ word1 = code-len-or-package-private u32; word2 = name-off u32; word3 = flags u8 |
-\ min-in u8<<8; word4 = wid u32). Expand it to the full 48B dict record, rebasing
-\ ordinary [0] to CP+blob-off while package [0]/[8] remain raw u32 WID roles, and reconstructing [16]
-\ flags|len, the [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded),
-\ and [40] wid (full u32 so wordlist IDs above 255 survive) -- the EXACT inverse of
-\ the build-time ACAP-COMPACT-RECS. Every wid is rebased out of the capture's window and
-\ into this engine's space first (AOT-WINDOW:REBASE-WID,), and WIDN moves once, past
-\ the whole window, after the loop.
-\ x2..x7 are LHIDXADD's saved set; x9/x11/x12 survive it. Records are 4B-aligned so
-\ each 32-bit word loads with LDRW.
 package AOT-META
 public
 
@@ -6745,6 +6728,8 @@ public
       0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES, ;
 
+\ Register each 20-byte record ACAP-COMPACT-RECS wrote as a 48-byte record at
+\ &dict[NDICT]; all of them before EM-AOT-PATCH-SITES resolves calls by name.
 : EM-AOT-REGISTER-RECS ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    S\" hb: AOT wid outside the capture window\n"

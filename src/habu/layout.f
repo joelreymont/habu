@@ -124,7 +124,9 @@ public
 REGION DICT-SIZE - constant BYTES
 ;package
 48 constant DREC
-16 constant DNAME-INL
+\ A name past DNAME-INL bytes or a `;does` clause's (DOES-REC) is out of line:
+\ [24] holds its address and [16] DNAME-EXT, which readers test, not the length.
+8 constant DNAME-INL
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 4 constant FIRST-DYNAMIC-WID

@@ -303,9 +303,8 @@ DYNAMIC-BUFFER ACAP-REC-OF n                    \ window offset -> capture index
 : ACAP-REC-EXT? ( ptr u8 -- bool ) {: v:ptr :}
    v 20 + ACAP-W32@ 28 rshift 2 and 0= 0= ;
 
-\ An inline name (up to DNAME-INL = 16) sits at [24]; a longer one is written
-\ at CP in the code region (habu2.f C-STORE-NAME) with its address at [24]. Both
-\ go into the pool, so the seed reads every name the same way.
+\ The source record's name: inline at [24], or at the address [24] holds when
+\ DNAME-EXT is set (habu2.f C-STORE-NAME). Both go into the pool the seed reads.
 : ACAP-REC-NAME ( ptr u8 bool -- ptr u8 ) {: v:ptr ext:bool :}
    ext 0= if v 24 + exit then
    v 24 + ACAP-W32@  v 28 + ACAP-W32@ 32 lshift or  AOT-N>U8 ;
@@ -1277,7 +1276,10 @@ $14000000 constant ACAP-GBR-TERM
    v ext ACAP-REC-NAME len ACAP-POOL-ADD {: noff:n :}
    AOT-REC-N @ ACAP-CREC-DST {: c:ptr :}                   \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + dkind u8 + wid u32
    start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
-   flags  minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!   \ one store so the spare byte is written zero
+   \ The shipped row's DNAME-EXT follows DNAME-INL, so a name a builder with a
+   \ larger inline limit kept inline boots out of line.
+   len DNAME-INL > if DNAME-EXT 60 rshift else 0 then flags or
+   minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!   \ one store so the spare byte is written zero
    wid c 16 + AOT-P32!
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 

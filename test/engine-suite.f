@@ -1497,7 +1497,7 @@ s" CERT-BYTES-BAD ( -- ptr u8 n ) LOWER-CERT:BYTES" T-CHECK-REJECTS
 variable ES-CPX-CP
 variable ES-CPX-ND
 \ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
-: ES-CPX-BAD$ ( -- ptr u8 n ) s" : ES-CPX-BAD evaluate ;" ;
+: ES-CPX-BAD$ ( -- ptr u8 n ) s" : CPX-BAD evaluate ;" ;
 \ a name longer than DNAME-INL: the definer copies it into code space before
 \ the entry, so the reject rollback must reclaim the name bytes too
 : ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
@@ -1525,8 +1525,8 @@ s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 -1 DIAG-QUIET +!
 \ after the refusals, new definitions compile and run, one with a name longer
 \ than DNAME-INL
-: ES-CPX-GOOD ( n -- n ) 1 + ;
-6 ES-CPX-GOOD 7 T=
+: CPX-GOOD ( n -- n ) 1 + ;
+6 CPX-GOOD 7 T=
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
 
