@@ -1553,6 +1553,45 @@ variable REFUSED-BASE-U
    FIXTURE-KEY ;
 
 
+: SERVE-WORK ( -- ) M MODEL:SERVE drop 0 TASK:RETURN ;
+: AWAIT-WORK ( -- ) M MODEL:AWAIT 0 TASK:RETURN ;
+
+
+\ The work task's run ended with E-STATE.
+: STATE-WORK ( -- )
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF drop FAIL ENDOF
+      err OF MODEL:E-STATE = ASSERT ENDOF
+   ;MATCH ;
+
+
+\ SERVE and AWAIT of a started call are E-STATE on a task that did not start
+\ it; its starter then lands, ends and closes it.
+: STARTER-ONLY ( -- )
+   MODEL-PEER:CALLS@ {: before:n :}
+   s" valid" PREP M MODEL:START
+   ['] SERVE-WORK WORK-TASK TASK:ACTIVATE STATE-WORK
+   ['] AWAIT-WORK WORK-TASK TASK:ACTIVATE STATE-WORK
+   M SERVED
+   M MODEL:AWAIT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   M MODEL:CLOSE ;
+
+
+\ A halt of the starter while it waits lands the call with the transfer's
+\ aborted fault before the task ends; another task then ends and closes it.
+: HALTED-STARTER ( -- )
+   HOLD
+   WORK-TASK TASK:HALT
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF drop FAIL ENDOF
+      err OF drop ENDOF
+   ;MATCH
+   AWAIT-CODE MODEL:E-TRANSPORT = ASSERT
+   M MODEL:CLOSE ;
+
+
 \ SERVE never waits for a held stream; after CANCEL the call lands and AWAIT
 \ throws E-CANCELLED.
 : HELD-SERVE ( -- )
@@ -2455,7 +2494,8 @@ variable ASKED-U
    SETUP
    CHAT EMBEDDINGS PREPARED-CHAT
    [: STARTED-CALLS HELD-START LANDED-START ;] QUIET FAILED-START
-   SERVED-CALL HELD-SERVE MANY-CALLS SPOILED-SERVE
+   SERVED-CALL STARTER-ONLY SETUP HALTED-STARTER
+   SETUP HELD-SERVE MANY-CALLS SPOILED-SERVE
    STOP-ACTIVE
    M MODEL:CLOSE
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL

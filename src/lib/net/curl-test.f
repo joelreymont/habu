@@ -2776,14 +2776,19 @@ variable DEFER-RETURNED
    STOP-LOOP
    HALT-HANDLE @ CURL:CLEANUP ;
 
-\ A throw after submission can reach task exit without either wait's explicit
-\ HALTED? branch. The loop must not keep a record that can wake this dead owner.
-: EARLY-WORK ( -- )
+
+: START-EARLY ( -- )
    EARLY-MODE @ if
       HALT-HANDLE @ CURL:STREAM-START EXPECT-OK
    else
       HALT-HANDLE @ BODY-BUF BODY-CAP >LEN CURL:START EXPECT-OK
-   then
+   then ;
+
+
+\ A throw after submission can reach task exit without either wait's explicit
+\ HALTED? branch. The loop must not keep a record that can wake this dead owner.
+: EARLY-WORK ( -- )
+   START-EARLY
    -12345 throw ;
 
 : CASE-EARLY-EXIT ( n -- )
@@ -2797,6 +2802,41 @@ variable DEFER-RETURNED
    s" task exit releases an uncollected whole or streaming transfer" T-LABEL
    STOP-LOOP
    HALT-HANDLE @ CURL:CLEANUP ;
+
+
+: CLEANUP-WORK ( -- ) HALT-HANDLE @ CURL:CLEANUP ;
+
+
+\ Starts a stalled transfer from the main thread, which never collects it, and
+\ returns once the server has its request.
+: START-STALL ( -- )
+   PATH-STALL$ GET-READY HALT-HANDLE !
+   SERVER-HITS atomic@ {: before:n :}
+   START-EARLY
+   before WAIT-HIT ;
+
+
+\ The owner's CLEANUP leaves the loop no record, so it stops on the first try.
+: CLEANUP-STOPS ( -- )
+   s" CLEANUP gives up the caller's uncollected transfer" T-LABEL
+   [: HALT-HANDLE @ CURL:CLEANUP ;] catch 0 T=
+   s" the loop stops at once after the owner's CLEANUP" T-LABEL
+   [: CURL:LOOP-STOP ;] catch 0 T= ;
+
+
+: CASE-CLEANUP-OWNED ( n -- )
+   EARLY-MODE !
+   START-STALL
+   CLEANUP-STOPS
+   CURL:LOOP-START EXPECT-OK
+   START-STALL
+   ['] CLEANUP-WORK HALT-TASK TASK:ACTIVATE
+   s" CLEANUP of a transfer another task started is refused" T-LABEL
+   HALT-TASK TASK:JOIN MATCH result
+      ok OF drop false TTRUE ENDOF
+      err OF CURL:E-STATE T= ENDOF
+   ;MATCH
+   CLEANUP-STOPS ;
 
 
 \ Read the handle's existing libcurl private slot before START transfers it to
@@ -2938,6 +2978,10 @@ variable DEFER-RETURNED
    CURL:LOOP-START EXPECT-OK
    1 CASE-EARLY-EXIT
    CURL:LOOP-START EXPECT-OK
+   0 CASE-CLEANUP-OWNED
+   CURL:LOOP-START EXPECT-OK
+   1 CASE-CLEANUP-OWNED
+   CURL:LOOP-START EXPECT-OK
    CASE-HALTED-DONE
    CASE-RESTART ;
 
@@ -2949,7 +2993,7 @@ variable DEFER-RETURNED
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
    SERVER-HITS atomic@
-   83 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   87 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle

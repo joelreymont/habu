@@ -40,7 +40,10 @@ require src/lib/time.f
 \ by STARTing each, SERVEing each until it answers true, then AWAITing it. It
 \ TASK:WAITs only straight after a round in which every SERVE answered false:
 \ landing a call runs its journal and recorder, and a wait there takes the
-\ CURL loop's hint for another call.
+\ CURL loop's hint for another call. SERVE and AWAIT of a started call run on
+\ the task that started it; a halt while AWAIT waits lands the call first. A
+\ task that may be halted CANCELs, then AWAITs, each call still started in a
+\ finally, catching each AWAIT's fault.
 
 \ A journal's and a recorder's callbacks each get the caller's ctx unchanged.
 \ get fills the MODEL-owned buffer with one record on a hit, which restores
@@ -95,8 +98,8 @@ public
 -9707 constant E-INCOMPLETE
 \ CANCEL ended the call, or REQUEST-STOP came before or during it.
 -9709 constant E-CANCELLED
-\ A word out of turn: a busy or unopened call, a part or item outside building,
-\ SERVE or AWAIT on an unstarted call, VECTOR@ or CONTENT$ without its result.
+\ Out of turn: a busy or unopened call, a part or item outside building, SERVE
+\ or AWAIT unstarted or on another task, VECTOR@ or CONTENT$ without its result.
 -9710 constant E-STATE
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
 \ response's error code rate_limit_exceeded or server_error.
@@ -155,6 +158,7 @@ STRUCTURE call DERIVE addr
    FIELD journal-put [ n ptr u8 n ptr u8 n -- ]
    FIELD journal-ready bool
    FIELD replay-kind option<call-kind>
+   FIELD starter n
 ;STRUCTURE
 
 private
@@ -2318,6 +2322,7 @@ private
    OPTION:NONE c STREAM STREAM-DECODER !
    c EVENT-ROWS-BUF BUF:CLEAR
    c EVENT-TEXT-BUF BUF:CLEAR
+   TASK:SELF-N c MODEL-CALL:STARTER !
    construct call-state started c MODEL-CALL:STATE !
    false c MODEL-CALL:CANCELLED !
    0 c MODEL-CALL:CONTENT-U !
@@ -3394,6 +3399,27 @@ FSM:DEFINE SEND-MACHINE ( ptr call ) send-step send-event
       finished OF construct input-state none c MODEL-CALL:CHAT-INPUT ! ENDOF
    ;MATCH ;
 
+
+\ The starter is a TCB, as CURL's record owner is: a later task on that TCB
+\ passes, and the main thread's null TCB is a starter like any other.
+: REQUIRE-STARTER ( ptr call -- )
+   MODEL-CALL:STARTER @ TASK:SELF-N <> if E-STATE throw then ;
+
+
+: RECEIVE-CAUGHT ( [ ptr call -- ptr call ] ptr call -- )
+   {: receive c :}
+   c receive catch {: code:n :} drop code c LAND-FAULT ;
+
+
+\ Runs a started call's receive deferred, so a halt while it waits lands the
+\ call first; SERVE's never waits, so a halt there leaves the call started.
+: RECEIVE-STARTED ( [ ptr call -- ptr call ] ptr call -- )
+   {: receive c :}
+   c REQUIRE-STARTER
+   TASK:DEFER-ENTER
+   receive c [: RECEIVE-CAUGHT ;] [: TASK:DEFER-LEAVE ;] finally
+   0 TASK:HALT-UNWIND ;
+
 public
 
 \ Makes a started call end with E-CANCELLED, cutting any transfer at once, and
@@ -3448,17 +3474,16 @@ public
    construct call-kind embed c MODEL-CALL:KIND !
    c BEGIN-SEND ;
 
-\ Takes what a started call's transfer holds without waiting and answers
-\ whether the call landed, as a landed call has; AWAIT ends it.
+\ Takes what a started call's transfer holds without waiting for more and
+\ answers whether the call landed, as a landed call has; AWAIT ends it. A take
+\ that faults gives the transfer up and waits until the loop leaves it.
 : SERVE ( ptr call -- bool )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
       idle OF E-STATE throw ENDOF
       prepared OF E-STATE throw ENDOF
-      started OF
-         c [: dup RECEIVE-READY ;] catch {: code:n :} drop code c LAND-FAULT
-      ENDOF
+      started OF [: dup RECEIVE-READY ;] c RECEIVE-STARTED ENDOF
       landed OF ENDOF
    ;MATCH
    c MODEL-CALL:STATE @ MATCH call-state
@@ -3476,9 +3501,7 @@ public
    c MODEL-CALL:STATE @ MATCH call-state
       idle OF E-STATE throw ENDOF
       prepared OF E-STATE throw ENDOF
-      started OF
-         c [: dup RECEIVE ;] catch {: code:n :} drop code c LAND-FAULT
-      ENDOF
+      started OF [: dup RECEIVE ;] c RECEIVE-STARTED ENDOF
       landed OF ENDOF
    ;MATCH
    c IDLE!

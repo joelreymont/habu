@@ -990,9 +990,10 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 \ An owner that left never collects the response, even if FINISH already
 \ closed both streams and published it before the halt reached AWAIT. Runs
-\ under CURL-LOCK once the handle is out of the multi handle. A halted owner
-\ waiting in ABANDON is woken to free the record itself; the lock it takes to
-\ do so keeps it alive until this wake has landed. Any other record is free.
+\ under CURL-LOCK once the handle is out of the multi handle. An owner waiting
+\ in ABANDON, halted or in CLEANUP, is woken to free the record itself; the lock
+\ it takes to do so keeps it alive until this wake has landed. Any other record
+\ is free.
 : LEAVE-DONE ( n -- ) {: idx:n :}
    idx REC-EASY@ STATE-GET STATE-CLEAR-RESPONSE
    idx REC R.BODY @ idx REC R.LEN @ BYTES-RELEASE
@@ -1165,8 +1166,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 \ A finished streamed transfer keeps its body for the reads NEXT-ARM arms. An
-\ owner that left gets no result: LEAVE-DONE wakes only a halted owner still
-\ waiting in ABANDON, which keeps this loop from waking a TCB the join released.
+\ owner that left gets no result: LEAVE-DONE wakes only an owner still waiting
+\ in ABANDON, which keeps this loop from waking a TCB the join released.
 : STREAM-FINISH ( n n -- n ) {: idx:n rc:n :}
    idx REC-STREAM-TAKE {: source:n u:n bodyrc:n :}
    idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
@@ -1633,9 +1634,16 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    idx ;
 
 
+\ The record of a transfer on easy whose owner has not left, or -1: an
+\ ABANDONED, LEAVING or LEFT one is no task's, whatever task now has its TCB.
+: LIVE-FIND ( n -- n )
+   REC-FIND dup 0 < if exit then
+   dup LEAVING? over REC-STATE@ STATE-LEFT = or if drop -1 then ;
+
+
 : OWNED-INDEX ( n -- n ) {: easy:n :}
    CURL-LOCK TASK:GET
-   easy REC-FIND
+   easy LIVE-FIND
    CURL-LOCK TASK:RELEASE
    dup 0 < if drop E-STATE throw then
    {: idx:n :}
@@ -1659,8 +1667,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    RESULT-BUILD ;
 
 
-\ A halted owner gives its record up and returns only once the loop holds no
-\ part of it: the loop takes the handle out of the multi handle, cleans it up
+\ An owner that leaves, halted or in CLEANUP, gives its record up and returns
+\ only once the loop holds no part of it: the loop takes the handle out of the multi handle, cleans it up
 \ and marks it LEFT before the span is the owner's to free or reuse. The wait
 \ is a TASK:WAIT loop, which parks normally once the halt's hint is taken, and
 \ the owner frees the record itself. A DONE record is already out of the multi
@@ -1913,17 +1921,11 @@ public
 
 
 \ Waits for that handle's transfer and answers the same fetch-result PERFORM
-\ would have. It is what gives the record back, so every started transfer is
-\ awaited exactly once, cancelled ones included. A handle with no transfer in
-\ flight, and one another task started, are E-STATE.
-\
-\ The wait is a TASK:WAIT loop, so it costs no CPU and the main thread may wait
-\ too. A TASK:HALT while it waits ends the calling task at the PAUSE below, and
-\ the record is abandoned first: ABANDON returns once the loop has let go of the
-\ handle and the span, and the loop wakes nobody after that, which is what keeps
-\ it from waking a TCB the join has released. The wait has no PAUSE of its own:
-\ HALT posts the park this WAIT waits on, so every halt is read at HALTED? and
-\ ends the task only at the PAUSE after ABANDON.
+\ would have. It gives the record back, so every started transfer is awaited
+\ once, cancelled ones included, unless its owner's CLEANUP gives it up. A
+\ handle with no transfer in flight, and one another task started, are E-STATE.
+\ The wait is a TASK:WAIT loop. A halt gives the record up, then ends the task
+\ at the PAUSE below, or answers failed CURLE-ABORTED where PAUSE cannot end it.
 : AWAIT ( handle -- fetch-result ) {: subject:handle :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-WHOLE <> if E-STATE throw then
@@ -2073,10 +2075,11 @@ public
    status u full FETCH-RESULT ;
 
 
-\ A later use of the handle is a use-after-free the nominal type does not catch.
+\ Gives up the caller's uncollected transfer as a halted owner does; another
+\ task's is E-STATE. A later use is a use-after-free the type does not catch.
 : CLEANUP ( handle -- ) {: subject:handle :}
    subject HANDLE-CELL {: easy:n :}
-   easy HANDLE-BUSY? if E-STATE throw then
+   easy HANDLE-BUSY? if easy OWNED-INDEX ABANDON then
    easy STATE-GET {: state:n :}
    easy EASY-CLEANUP
    state STATE-DESTROY ;
