@@ -1501,12 +1501,6 @@ private
    OPTION:NONE c MODEL-CALL:TRANSPORT !
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
-\ Statuses by which the provider reports itself temporarily unavailable:
-\ request timeout, rate limit and every server error.
-: UNAVAILABLE? ( n -- bool )
-   {: status:n :}
-   status 408 = status 429 = or status 500 >= status 600 < and or ;
-
 : WIRE-READER ( ptr call -- JSON:reader )
    {: c :}
    c MODEL-CALL:READER c RESPONSE$ JSON:READ-INIT ;
@@ -1637,50 +1631,51 @@ private
 \ Receives the reply into the response buffer, which grows with it: NEXT
 \ writes each chunk into the buffer's room past the bytes received, and
 \ appending the chunk from where it lies adds it to them. Answers the HTTP
-\ status and libcurl code the transfer ended with, a failed one without a
-\ status, and the fault that kept the buffer from growing, after which the
-\ transfer is dropped.
-: RECEIVE ( CURL:handle ptr call -- n n n )
+\ status and libcurl code the transfer ended with, a failed one with status 0,
+\ and the fault that kept the buffer from growing, after which the transfer is
+\ dropped.
+: RECEIVE ( CURL:handle ptr call -- CURL:http-status n n )
    {: h:CURL:handle c :}
    c RESPONSE-BUF {: buf:ptr :}
    buf BUF:CLEAR
    begin
       c [: GROW-REPLY ;] catch {: fault:n :} drop
-      fault 0<> if h buf DROP-TRANSFER 0 0 fault exit then
+      fault 0<> if h buf DROP-TRANSFER 0 CURL:>HTTP-STATUS 0 fault exit then
       buf HELD buf BUF:LEN@ BUF:BLEN>N SPAN:SKIP SPAN:$ {: room:ptr room-u:n :}
       h room room-u >LEN CURL:NEXT
       MATCH CURL:chunk-result
          chunk OF nip LEN>N {: got:n :}
             room got BUF:N>BLEN buf BUF:APPEND-SPAN
          ENDOF
-         response OF CURL:HTTP-STATUS>N 0 0 exit ENDOF
-         failed OF CURL:CODE>N 0 swap 0 exit ENDOF
+         response OF 0 0 exit ENDOF
+         failed OF CURL:CODE>N 0 CURL:>HTTP-STATUS swap 0 exit ENDOF
       ;MATCH
    again ;
 
 
 \ The fault a refused reply's status names when its body names no refusal for
 \ size.
-: STATUS-FAULT ( n -- n )
-   {: status:n :}
-   status UNAVAILABLE? if E-UNAVAILABLE exit then
-   status 401 = status 403 = or if E-KEY exit then
-   status 404 = if E-CONFIG exit then
+: STATUS-FAULT ( CURL:http-status -- n )
+   {: status:CURL:http-status :}
+   status CURL:UNAVAILABLE? if E-UNAVAILABLE exit then
+   status CURL:HTTP-STATUS>N {: code:n :}
+   code 401 = code 403 = or if E-KEY exit then
+   code 404 = if E-CONFIG exit then
    E-HTTP ;
 
 
 \ Ends the call's transfer, keeping its status and reply; throws the fault of
 \ a cut or failed exchange or a refused reply.
-: SETTLE ( n n n ptr call -- )
-   {: status:n rc:n fault:n c :}
+: SETTLE ( CURL:http-status n n ptr call -- )
+   {: status:CURL:http-status rc:n fault:n c :}
    c END-TRANSFER {: cut:bool :}
-   status c MODEL-CALL:HTTP-STATUS !
+   status CURL:HTTP-STATUS>N c MODEL-CALL:HTTP-STATUS !
    c RESPONSE-BUF BUF:LEN@ BUF:BLEN>N c MODEL-CALL:RESPONSE-U !
    cut if E-CANCELLED throw then
    fault 0<> if fault throw then
    rc c LEDGER LEDGER-TRANSPORT !
    rc 0<> if E-TRANSPORT throw then
-   status 200 <> if
+   status CURL:HTTP-STATUS>N 200 <> if
       c KEEP-ERROR
       c SIZE-REFUSAL? if E-CAPACITY throw then
       status STATUS-FAULT throw
@@ -2335,7 +2330,7 @@ private
 \ Reads an event stream into the chunk buffer, feeding 200 chunks to the
 \ decoder and keeping any other as the reply; answers as RECEIVE does, 200 once
 \ the response ended however it ends.
-: STREAM-RECEIVE ( SSE:decoder CURL:handle ptr call -- n n n )
+: STREAM-RECEIVE ( SSE:decoder CURL:handle ptr call -- CURL:http-status n n )
    {: d:SSE:decoder h:CURL:handle c :}
    c RESPONSE-BUF BUF:CLEAR
    begin
@@ -2343,20 +2338,20 @@ private
       h room room-u >LEN CURL:NEXT
       MATCH CURL:chunk-result
          chunk OF LEN>N {: got:n :}
-            CURL:HTTP-STATUS>N {: status:n :}
+            {: status:CURL:http-status :}
             c CHUNK-BUF BUF:CLEAR
             room got BUF:N>BLEN c CHUNK-BUF BUF:APPEND-SPAN
-            status 200 = if
+            status CURL:HTTP-STATUS>N 200 = if
                d c [: 2dup FEED-CHUNK ;] catch
             else
                d c [: dup KEEP-CHUNK ;] catch
             then {: fault:n :} 2drop
             fault 0<> if h c CHUNK-BUF DROP-TRANSFER status 0 fault READ-FAULT exit then
          ENDOF
-         response OF CURL:HTTP-STATUS>N 0 0 exit ENDOF
+         response OF 0 0 exit ENDOF
          failed OF CURL:CODE>N {: rc:n :}
-            c STREAM STREAM-DONE @ if 200 0 0 exit then
-            0 rc 0 exit
+            c STREAM STREAM-DONE @ if 200 CURL:>HTTP-STATUS 0 0 exit then
+            0 CURL:>HTTP-STATUS rc 0 exit
          ENDOF
       ;MATCH
    again ;

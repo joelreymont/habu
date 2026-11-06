@@ -1,9 +1,0 @@
----
-title: Throw outage codes from MCP and BEARER
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-11-06T14:48:40.915493+02:00"
----
-
-Problem: MCP's RESULT$ (src/lib/net/mcp.f:1465-1469) throws E-RESPONSE for an HTTP 408, 429 or 5xx, and BEARER:TOKEN (src/lib/net/bearer.f:777-784) throws E-REFUSED for 408/429 and E-TRANSFER both for a 5xx and for a malformed 2xx (ISSUED :760-765), so Tender cannot tell an outage (wait) from a bad reply (stop). Joel 2026-11-06 (DECISIONS 'outages apart from bad replies'): MCP:E-UNAVAILABLE for 408, 429, 5xx; BEARER:E-UNAVAILABLE for 408, 429, 5xx, E-REFUSED the other 4xx, E-TRANSFER no answer, BEARER:E-RESPONSE a 2xx without access_token or positive expires_in; one public CURL:UNAVAILABLE? ( http-status -- bool ) replaces MODEL's private UNAVAILABLE? (model.f:1506), the three clients carrying the typed status until the check. Acceptance: MCP -9487 E-UNAVAILABLE, BEARER -9633 E-UNAVAILABLE and -9634 E-RESPONSE, plain constants with comments (the ERROR: sweep converts them later); CURL:UNAVAILABLE? in curl.f beside HTTP-STATUS; MODEL STATUS-FAULT, MCP RESULT$ (PEER-STATUS typed) and BEARER RECEIVED/TOKEN carry CURL:http-status; tests: an MCP route answering 503 and 429 throws MCP:E-UNAVAILABLE, 500-other non-2xx stays E-RESPONSE; a test issuer answering 429 and 503 throws BEARER:E-UNAVAILABLE, 400 E-REFUSED, a 200 without access_token BEARER:E-RESPONSE; MODEL's existing E-UNAVAILABLE tests pass unchanged. Files: src/lib/net/curl.f, model.f, mcp.f, bearer.f, mcp-test.f, test-issuer-test.f (or bearer-test.f). Verify: ~/.local/bin/hb --load each of src/lib/net/{curl,model,mcp,bearer,test-issuer}-test.f. Depends: none (netlog lane 931fdb54 touches mcp.f/bearer.f; the merge resolves). Ownership: carl; tell kevin the master commit. Claim: unassigned.

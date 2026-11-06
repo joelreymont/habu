@@ -24,6 +24,7 @@ require src/lib/base64.f
 require src/lib/json.f
 require src/lib/log.f
 require src/lib/task.f
+require src/lib/adt/option.f                  \ an exchange's status, none without an answer
 require src/lib/crypto/evp.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
@@ -31,9 +32,11 @@ require src/lib/net/http.f
 package BEARER
 public
 
--9630 constant E-TRANSFER           \ no answer from the token endpoint, a 5xx, or a 2xx without an access_token string or without a positive integer expires_in
--9631 constant E-REFUSED            \ the issuer refused with a 4xx; the BUF holds its answer
+-9630 constant E-TRANSFER           \ no answer from the token endpoint
+-9631 constant E-REFUSED            \ the issuer refused with a 4xx CURL:UNAVAILABLE? does not accept
 -9632 constant E-OPERAND            \ a METADATA! text holding a byte its quoted challenge value cannot carry, or a scope that is not space-separated scope tokens
+-9633 constant E-UNAVAILABLE        \ the token endpoint answered a status CURL:UNAVAILABLE? accepts
+-9634 constant E-RESPONSE           \ a reply TOKEN cannot use
 private
 -9630 constant E-FIRST
 -9639 constant E-LAST
@@ -695,9 +698,22 @@ private
    h s" Accept: application/json" CURL:HEADER+ SET? 0= if false exit then
    h TOKEN-TIMEOUT-MS >MS CURL:TIMEOUT! SET? ;
 
+\ No answer, typed: EXCHANGE's catch drops it after a throw, where a bare
+\ OPTION:NONE is E-REJECTED at the 2drop (rc 70).
+: UNANSWERED ( -- option<CURL:http-status> ) OPTION:NONE ;
+
+\ The error TOKEN throws for an answer it cannot use, by the answer's status.
+: STATUS-ERROR ( CURL:http-status -- n )
+   {: status:CURL:http-status :}
+   status CURL:UNAVAILABLE? if E-UNAVAILABLE exit then
+   status CURL:HTTP-STATUS>N {: code:n :}
+   code 400 >= code 500 < and if E-REFUSED exit then
+   E-RESPONSE ;
+
 \ The answer read into the BUF, which then holds exactly its bytes: its HTTP
-\ status, -1 for a failed transfer or one past TOKEN-CAP, which it logs.
-: RECEIVED ( CURL:handle ptr n -- n )
+\ status, none for a failed transfer, which it logs. An answer past TOKEN-CAP
+\ is logged and throws its status's STATUS-ERROR.
+: RECEIVED ( CURL:handle ptr n -- option<CURL:http-status> )
    {: h:CURL:handle buf:ptr :}
    buf TOKEN-CAP BUF:N>BLEN BUF:GROW {: room :}
    h room SPAN:$ >LEN CURL:PERFORM
@@ -705,35 +721,37 @@ private
    MATCH CURL:fetch-result
       response OF {: status:CURL:http-status got:len :}
          room SPAN:$ drop got LEN>N BUF:N>BLEN buf BUF:APPEND-SPAN
-         status CURL:HTTP-STATUS>N ENDOF
+         status OPTION:SOME ENDOF
       truncated OF
-         drop drop
-         OPEN-LINE s" token answer past " LOG:TEXT+  TOKEN-CAP LOG:INT+
-         s"  bytes" LOG:TEXT+  LOG:;LINE
-         -1 ENDOF
-      failed OF CURL-FAULT -1 ENDOF
+         drop {: status:CURL:http-status :}
+         OPEN-LINE
+         s" token answer " LOG:TEXT+  status CURL:HTTP-STATUS>N LOG:INT+
+         s"  past " LOG:TEXT+  TOKEN-CAP LOG:INT+  s"  bytes" LOG:TEXT+
+         LOG:;LINE
+         status STATUS-ERROR throw ENDOF
+      failed OF CURL-FAULT UNANSWERED ENDOF
    ;MATCH ;
 
-: POST ( CURL:handle ptr n -- n )
+: POST ( CURL:handle ptr n -- option<CURL:http-status> )
    {: h:CURL:handle buf:ptr :}
-   h buf REQUESTED? if h buf RECEIVED else -1 then ;
+   h buf REQUESTED? if h buf RECEIVED else UNANSWERED then ;
 
 \ POST's status in place of the third cell, the handle and BUF kept for catch.
-: POSTED ( CURL:handle ptr n n -- CURL:handle ptr n n )
+: POSTED ( CURL:handle ptr n option<CURL:http-status> -- CURL:handle ptr n option<CURL:http-status> )
    drop {: h:CURL:handle buf:ptr :} h buf h buf POST ;
 
-\ The form posted and the answer read into the BUF: its HTTP status, -1 when
-\ there is none, which is logged. The handle is cleaned up on every exit, and a
-\ throw wipes the BUF too.
-: EXCHANGE ( ptr n -- n )
+\ The form posted and the answer read into the BUF: its HTTP status, none when
+\ there is no answer, which is logged. The handle is cleaned up on every exit,
+\ and a throw wipes the BUF too.
+: EXCHANGE ( ptr n -- option<CURL:http-status> )
    {: buf:ptr :}
    CURL:INIT
    MATCH CURL:init-result
       ready OF {: h:CURL:handle :}
-         h buf -1 [: POSTED ;] catch {: code:n :}
+         h buf UNANSWERED [: POSTED ;] catch {: code:n :}
          code 0<> if 2drop drop h CURL:CLEANUP buf WIPE code throw then
          nip nip h CURL:CLEANUP ENDOF
-      failed OF CURL-FAULT buf WIPE -1 ENDOF
+      failed OF CURL-FAULT buf WIPE UNANSWERED ENDOF
    ;MATCH ;
 
 \ Under ANSWER-LOCK: the answer's reader on a JSON object text at a member's
@@ -782,7 +800,7 @@ private
    {: status:n what:ptr wu:n :}
    OPEN-LINE s" token answer " LOG:TEXT+  status LOG:INT+
    s"  lacks " LOG:TEXT+  what wu LOG:TEXT+  LOG:;LINE
-   E-TRANSFER throw ;
+   E-RESPONSE throw ;
 
 \ The 2xx answer's access_token decoded into the BUF past the answer's bytes,
 \ which a decoded string never outgrows, and its expires_in.
@@ -806,19 +824,24 @@ public
 \ An access token for the scope (for Entra a resource's `api://.../.default`)
 \ from the endpoint CLIENT! names, borrowed from the BUF until the caller writes
 \ to it again, then the answer's expires_in: the token's lifetime in seconds,
-\ positive. E-TRANSFER for no answer, a 5xx, or a 2xx without an access_token
-\ string, or without a positive integer expires_in; E-REFUSED for a 4xx, the
-\ BUF then holding the issuer's answer. Each of those failures first logs one
-\ line tagged bearer, never a 2xx answer's text. A scope or assertion lying in
-\ the BUF throws E-BUF-BOUNDS. E-HTTP-STATE before CLIENT!.
+\ positive. E-TRANSFER for no answer; E-UNAVAILABLE for a status
+\ CURL:UNAVAILABLE? accepts; E-REFUSED for another 4xx, the BUF then holding
+\ the issuer's answer, empty past TOKEN-CAP; E-RESPONSE for a 2xx without an
+\ access_token string or a positive integer expires_in, or any other status.
+\ Each of those failures first logs one line tagged bearer, never a 2xx
+\ answer's text. A scope or assertion lying in the BUF throws E-BUF-BOUNDS.
+\ E-HTTP-STATE before CLIENT!.
 : TOKEN ( ptr u8 n grant ptr n -- ptr u8 n n )
    {: scope:ptr su:n g buf:ptr :}
    ENDPOINT @ SPAN:LEN 0= if E-HTTP-STATE throw then
    scope su g buf FORM
-   buf EXCHANGE {: status:n :}
-   status 200 >= status 300 < and if status buf ISSUED exit then
-   status 0 >= if status buf ANSWERED then
-   status 400 >= status 500 < and if E-REFUSED throw then
-   E-TRANSFER throw ;
+   buf EXCHANGE MATCH option
+      none OF E-TRANSFER throw ENDOF
+      some OF ENDOF
+   ;MATCH {: status:CURL:http-status :}
+   status CURL:HTTP-STATUS>N {: code:n :}
+   code 200 >= code 300 < and if code buf ISSUED exit then
+   code buf ANSWERED
+   status STATUS-ERROR throw ;
 
 ;package

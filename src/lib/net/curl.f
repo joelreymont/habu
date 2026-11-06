@@ -27,6 +27,11 @@ DEFTYPE HANDLE
 DEFTYPE CODE
 DEFTYPE HTTP-STATUS
 
+\ Whether the server reports itself unavailable for now: 408, 429 or 5xx.
+: UNAVAILABLE? ( http-status -- bool )
+   HTTP-STATUS>N {: status:n :}
+   status 408 = status 429 = or status 500 >= status 600 < and or ;
+
 SUMTYPE init-result
    VARIANT ready handle ;VARIANT
    VARIANT failed code ;VARIANT

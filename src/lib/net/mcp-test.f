@@ -20,7 +20,8 @@
 \ and of a closed one. Then /mcp guarded by BEARER:ADMIT?: VISIBLE! hiding a
 \ tool by the caller's claim from tools/list and tools/call, and refused while
 \ HTTP serves; a client's TOKEN!, E-DENIED for no token, an empty one and a
-\ 403, and TOKEN! of a closed client.
+\ 403, E-UNAVAILABLE for a 503 and a 429, E-RESPONSE for a 418, and TOKEN! of a
+\ closed client.
 \ Run: bin/hb --load src/lib/net/mcp-test.f
 
 require src/lib/test.f
@@ -1339,6 +1340,9 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    asked answer BEARER:ADMIT? if asked answer MCP:HANDLE then ;
 
 : DENIED-ROUTE ( HTTP:request HTTP:response -- ) nip 403 HTTP:STATUS! ;
+: BUSY-ROUTE ( HTTP:request HTTP:response -- ) nip 503 HTTP:STATUS! ;
+: LIMITED-ROUTE ( HTTP:request HTTP:response -- ) nip 429 HTTP:STATUS! ;
+: TEAPOT-ROUTE ( HTTP:request HTTP:response -- ) nip 418 HTTP:STATUS! ;
 : KEYS-ROUTE ( HTTP:request HTTP:response -- ) nip KEY-SET$ HTTP:BODY! ;
 
 \ Hides echo, the first tool listed, and secret from every caller but owner-app.
@@ -1399,13 +1403,20 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    200 SB$ ANSWERED ;
 
 
-: DENIED-CALL ( -- ) CLIENT @ s" whoami" s" {}" 0 >MS MCP:CALL 2drop drop ;
+: WHOAMI-CALL ( -- ) CLIENT @ s" whoami" s" {}" 0 >MS MCP:CALL 2drop drop ;
+
+\ A call on a client of the path throws the code.
+: PATH-THROWS ( ptr u8 n n -- )
+   {: a:ptr u:n code:n :}
+   a u URL MCP:OPEN CLIENT !
+   ['] WHOAMI-CALL code TTHROWSQ
+   CLIENT @ MCP:CLOSE ;
 
 : GUARDED-CLIENT ( -- )
    CURL:LOOP-START OK
    s" /mcp" URL MCP:OPEN CLIENT !
    s" a client without a token is E-DENIED" T-LABEL
-   ['] DENIED-CALL MCP:E-DENIED TTHROWSQ
+   ['] WHOAMI-CALL MCP:E-DENIED TTHROWSQ
    s" TOKEN! sends the token on TOOLS and CALL" T-LABEL
    ZEN CLIENT @ TOKEN$ MCP:TOKEN!
    OWNER
@@ -1417,12 +1428,16 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    W-SERVER s" }" W+ W$ T$=
    s" TOKEN! of an empty text sends none" T-LABEL
    CLIENT @ s" " MCP:TOKEN!
-   ['] DENIED-CALL MCP:E-DENIED TTHROWSQ
+   ['] WHOAMI-CALL MCP:E-DENIED TTHROWSQ
    CLIENT @ MCP:CLOSE
    s" a 403 is E-DENIED" T-LABEL
-   s" /denied" URL MCP:OPEN CLIENT !
-   ['] DENIED-CALL MCP:E-DENIED TTHROWSQ
-   CLIENT @ MCP:CLOSE
+   s" /denied" MCP:E-DENIED PATH-THROWS
+   s" a 503 is E-UNAVAILABLE" T-LABEL
+   s" /busy" MCP:E-UNAVAILABLE PATH-THROWS
+   s" a 429 is E-UNAVAILABLE" T-LABEL
+   s" /limited" MCP:E-UNAVAILABLE PATH-THROWS
+   s" a 418 is E-RESPONSE" T-LABEL
+   s" /teapot" MCP:E-RESPONSE PATH-THROWS
    s" TOKEN! refuses a closed client" T-LABEL
    [: CLIENT @ s" t" MCP:TOKEN! ;] MCP:E-STATE TTHROWSQ
    s" no transfer is left in flight" T-LABEL
@@ -1445,6 +1460,9 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    s" GET" s" /keys" [: KEYS-ROUTE ;] HTTP:ROUTE
    s" POST" s" /mcp" [: GUARDED-ROUTE ;] HTTP:ROUTE
    s" POST" s" /denied" [: DENIED-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /busy" [: BUSY-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /limited" [: LIMITED-ROUTE ;] HTTP:ROUTE
+   s" POST" s" /teapot" [: TEAPOT-ROUTE ;] HTTP:ROUTE
    KEY-SET-FILL
    s" https://issuer.test" s" api://mcp-test" KEYS-URL KEYS-URL-U @ BEARER:ISSUER!
    ['] OWNER-ONLY MCP:VISIBLE!

@@ -4,11 +4,12 @@
 \ media type, On-Behalf-Of with a minted assertion and its invalid_grant
 \ refusals, /mint against MINT, and tools/test-issuer.f as a child process.
 \ BEARER's client against it: TOKEN before CLIENT!, for each grant admitted by
-\ ADMIT? with the caller's claims, a refusal, an assertion inside the BUF, a
-\ closed port, and on /token-fault the form's exact bytes, the answer's
-\ lifetime and the answers TOKEN refuses: a 500, a 2xx that is not JSON, one
-\ whose access_token is not a string, one without expires_in, one whose
-\ expires_in is a string, one whose expires_in is 0 and one past TOKEN-CAP.
+\ ADMIT? with the caller's claims, a 400 and a 401 refusal, an assertion inside
+\ the BUF, a closed port, and on /token-fault the form's exact bytes, the
+\ answer's lifetime and the answers TOKEN refuses: a 503, a 429 and a 302, a
+\ 2xx that is not JSON, one without access_token, one whose access_token is not
+\ a string, one without expires_in, one whose expires_in is a string, one whose
+\ expires_in is 0, and a 200 and a 503 past TOKEN-CAP.
 \ Run: bin/hb --load src/lib/net/test-issuer-test.f
 
 require src/lib/test.f
@@ -96,13 +97,17 @@ GOT $100 BUF:N>BLEN BUF:INIT
 
 \ /token-fault's answers, by FAULT-MODE.
 0 constant ECHO                     \ keeps the form in POSTED and answers a token
-1 constant FAILING
+1 constant BUSY
 2 constant NOT-JSON
 3 constant OVERSIZED
 4 constant NOT-STRING
 5 constant NO-LIFETIME
 6 constant LIFETIME-STRING
 7 constant LIFETIME-ZERO
+8 constant LIMITED
+9 constant NO-TOKEN
+10 constant MOVED
+11 constant BUSY-OVERSIZED
 variable FAULT-MODE
 CAP BUFFER: POSTED
 variable POSTED-U
@@ -409,9 +414,13 @@ OVERSIZE-FILL
 : FAULT-ROUTE ( HTTP:request HTTP:response -- )
    {: asked:HTTP:request answer:HTTP:response :}
    FAULT-MODE @ {: mode:n :}
-   mode FAILING = if answer 500 HTTP:STATUS! exit then
+   mode BUSY = if answer 503 HTTP:STATUS! exit then
+   mode LIMITED = if answer 429 HTTP:STATUS! exit then
+   mode MOVED = if answer 302 HTTP:STATUS! exit then
+   mode NO-TOKEN = if answer S\" {\"expires_in\":60}" HTTP:BODY! exit then
    mode NOT-JSON = if answer s" not json" HTTP:BODY! exit then
    mode OVERSIZED = if answer OVERSIZE PAST-CAP HTTP:BODY! exit then
+   mode BUSY-OVERSIZED = if answer 503 HTTP:STATUS! answer OVERSIZE PAST-CAP HTTP:BODY! exit then
    mode NOT-STRING = if answer S\" {\"access_token\":1,\"expires_in\":60}" HTTP:BODY! exit then
    mode NO-LIFETIME = if answer S\" {\"access_token\":\"t\"}" HTTP:BODY! exit then
    mode LIFETIME-STRING = if answer S\" {\"access_token\":\"t\",\"expires_in\":\"3600\"}" HTTP:BODY! exit then
@@ -436,7 +445,11 @@ OVERSIZE-FILL
 : OWN-TOKEN ( -- ptr u8 n n ) UP BEARER-GRANT:own GOT BEARER:TOKEN ;
 : FAULT-TOKEN ( -- ptr u8 n n )
    s" api://zen/.default" s" a.b-c_d~e" BEARER-GRANT:for-person GOT BEARER:TOKEN ;
-: FAULT-REFUSED ( -- ) [: FAULT-TOKEN drop 2drop ;] BEARER:E-TRANSFER TTHROWSQ ;
+\ /token-fault answering as the mode makes TOKEN throw the code.
+: FAULT-THROWS ( n n -- )
+   {: mode:n code:n :}
+   mode FAULT-MODE !
+   [: FAULT-TOKEN drop 2drop ;] code TTHROWSQ ;
 
 create LOG-PATH PATH-CAP allot      \ a case's stderr capture file
 variable LOG-PATH-U
@@ -483,6 +496,9 @@ $A constant LF
    s" app" LATER ASSERT
    UP ASSERTION$ BEARER-GRANT:for-person GOT BEARER:TOKEN drop s" oid" CLAIM 200 T=
    BODY$ s" user-1" T$=
+   s" a 400 is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
+   [: UP s" a.b.c" BEARER-GRANT:for-person GOT BEARER:TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ
+   GOT BUF:SPAN$ BUF:BLEN>N S\" {\"error\":\"invalid_grant\"}" T$=
    s" a wrong secret is E-REFUSED, the BUF holding the issuer's answer" T-LABEL
    ENDPOINT$ s" app" s" wrong" BEARER:CLIENT!
    [: [: OWN-TOKEN drop 2drop ;] BEARER:E-REFUSED TTHROWSQ ;] CAPTURED
@@ -505,25 +521,41 @@ $A constant LF
    s" &client_id=app&client_secret=s3cr%26t%2B1&assertion=a.b-c_d~e" FORM+
    s" &scope=api%3A%2F%2Fzen%2F.default&requested_token_use=on_behalf_of" FORM+
    POSTED POSTED-U @ FORM$ T$=
-   s" a 500 is E-TRANSFER" T-LABEL
-   FAILING FAULT-MODE ! FAULT-REFUSED
-   s" a 200 that is not JSON is E-TRANSFER" T-LABEL
-   NOT-JSON FAULT-MODE ! FAULT-REFUSED
-   s" a 200 whose access_token is not a string is E-TRANSFER" T-LABEL
-   NOT-STRING FAULT-MODE ! FAULT-REFUSED
-   s" a 200 without expires_in is E-TRANSFER" T-LABEL
-   NO-LIFETIME FAULT-MODE ! [: FAULT-REFUSED ;] CAPTURED
+   s" a 503 is E-UNAVAILABLE" T-LABEL
+   BUSY BEARER:E-UNAVAILABLE FAULT-THROWS
+   s" a 429 is E-UNAVAILABLE" T-LABEL
+   LIMITED BEARER:E-UNAVAILABLE FAULT-THROWS
+   s" a 302 is E-RESPONSE" T-LABEL
+   MOVED BEARER:E-RESPONSE FAULT-THROWS
+   s" a 200 that is not JSON is E-RESPONSE" T-LABEL
+   NOT-JSON BEARER:E-RESPONSE FAULT-THROWS
+   s" a 200 without access_token is E-RESPONSE" T-LABEL
+   NO-TOKEN BEARER:E-RESPONSE FAULT-THROWS
+   s" a 200 whose access_token is not a string is E-RESPONSE" T-LABEL
+   NOT-STRING BEARER:E-RESPONSE FAULT-THROWS
+   s" a 200 without expires_in is E-RESPONSE" T-LABEL
+   [: NO-LIFETIME BEARER:E-RESPONSE FAULT-THROWS ;] CAPTURED
    s" its line names the status and the member, never the answer" T-LABEL
    LINES 1 T=
    FORM-RESET s"  error bearer: token answer 200 lacks " FORM+
    S\" a positive integer expires_in\n" FORM+
    LINE$ FORM$ T$=
-   s" a 200 whose expires_in is a string is E-TRANSFER" T-LABEL
-   LIFETIME-STRING FAULT-MODE ! FAULT-REFUSED
-   s" a 200 whose expires_in is 0 is E-TRANSFER" T-LABEL
-   LIFETIME-ZERO FAULT-MODE ! FAULT-REFUSED
-   s" a 200 past TOKEN-CAP is E-TRANSFER" T-LABEL
-   OVERSIZED FAULT-MODE ! FAULT-REFUSED ;
+   s" a 200 whose expires_in is a string is E-RESPONSE" T-LABEL
+   LIFETIME-STRING BEARER:E-RESPONSE FAULT-THROWS
+   s" a 200 whose expires_in is 0 is E-RESPONSE" T-LABEL
+   LIFETIME-ZERO BEARER:E-RESPONSE FAULT-THROWS
+   s" a 200 past TOKEN-CAP is E-RESPONSE" T-LABEL
+   [: OVERSIZED BEARER:E-RESPONSE FAULT-THROWS ;] CAPTURED
+   s" its one line names the status and TOKEN-CAP" T-LABEL
+   LINES 1 T=
+   FORM-RESET S\"  error bearer: token answer 200 past 65536 bytes\n" FORM+
+   LINE$ FORM$ T$=
+   s" a 503 past TOKEN-CAP is E-UNAVAILABLE" T-LABEL
+   [: BUSY-OVERSIZED BEARER:E-UNAVAILABLE FAULT-THROWS ;] CAPTURED
+   s" its one line names the status and TOKEN-CAP" T-LABEL
+   LINES 1 T=
+   FORM-RESET S\"  error bearer: token answer 503 past 65536 bytes\n" FORM+
+   LINE$ FORM$ T$= ;
 
 \ Run once the server has stopped: its port is closed.
 : BEARER-UNREACHED ( -- )

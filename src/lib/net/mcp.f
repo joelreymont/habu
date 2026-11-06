@@ -51,14 +51,15 @@ public
 \ ADD-TOOL of a registered name or ADD-RESOURCE of a registered uri, compared decoded.
 -9482 constant E-DUPLICATE
 -9483 constant E-TRANSFER    \ a client's request could not be sent or its reply received
-\ A reply that is not a 2xx JSON-RPC success for the request, or whose result
-\ lacks the shape its method answers.
+\ A reply whose status is not 2xx and is neither E-DENIED's nor E-UNAVAILABLE's, one
+\ that is not a JSON-RPC success for the request, or a result without its method's shape.
 -9484 constant E-RESPONSE
 \ A descriptor, outputSchema or meta not one JSON object or repeating a top-level key; a required
 \ member absent or mistyped; meta naming serverInfo; a non-UTF-8 page; a result ADD-TOOL
 \ refuses; content blocks RESULT-CONTENT refuses.
 -9485 constant E-SCHEMA
 -9486 constant E-DENIED      \ the server refused a client's call with 401 or 403
+-9487 constant E-UNAVAILABLE \ the server answered a status CURL:UNAVAILABLE? accepts
 
 \ A client of one server's endpoint, from OPEN until CLOSE.
 NEWTYPE client
@@ -1020,7 +1021,7 @@ CAST: CLIENT>N ( client -- n )
 STRUCTURE peer DERIVE addr
    FIELD cursor JSON:cursor
    FIELD writer JSON:writer
-   FIELD status n
+   FIELD status CURL:http-status
    FIELD stream bool
    FIELD region SPAN:span<u8>
 ;STRUCTURE
@@ -1415,7 +1416,7 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
       h room ru >LEN CURL:NEXT
       MATCH CURL:chunk-result
          chunk OF nip LEN>N room swap buf BUF+ false ENDOF
-         response OF CURL:HTTP-STATUS>N idx ROW PEER-STATUS ! true ENDOF
+         response OF idx ROW PEER-STATUS ! true ENDOF
          failed OF idx CURL-FAULT ENDOF
       ;MATCH
    until
@@ -1498,12 +1499,15 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
 
 
 \ The result object's text of a 2xx reply whose message answers the request;
-\ E-DENIED for a 401 or 403.
+\ E-DENIED for a 401 or 403, E-UNAVAILABLE for a status CURL:UNAVAILABLE?
+\ accepts.
 : RESULT$ ( n -- ptr u8 n )
    {: idx:n :}
-   idx ROW PEER-STATUS @ {: status:n :}
-   status 401 = status 403 = or if E-DENIED throw then
-   status 200 < status 299 > or if E-RESPONSE throw then
+   idx ROW PEER-STATUS @ {: status:CURL:http-status :}
+   status CURL:HTTP-STATUS>N {: code:n :}
+   code 401 = code 403 = or if E-DENIED throw then
+   status CURL:UNAVAILABLE? if E-UNAVAILABLE throw then
+   code 200 < code 299 > or if E-RESPONSE throw then
    idx MESSAGE$ {: m:ptr mu:n :}
    idx ROW PEER-CURSOR m mu JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
@@ -1601,8 +1605,9 @@ public
 \ Every tool the server lists, following nextCursor to the last page, the
 \ whole call within ms (0: no limit): one JSON array of the tool objects in
 \ order. E-TRANSFER when an exchange fails, the pages run past ms or CANCEL
-\ ends the call, E-DENIED when the server refuses the client, E-RESPONSE for a
-\ reply that is no tools/list result.
+\ ends the call, E-DENIED when the server refuses the client, E-UNAVAILABLE
+\ when the server reports itself unavailable, E-RESPONSE for a reply that is no
+\ tools/list result.
 : TOOLS ( client ms -- ptr u8 n )
    {: who:client limit:ms :}
    TIME:MONO-NS {: start:n :}
@@ -1619,8 +1624,9 @@ public
 \ tools/call of the named tool with the arguments' JSON object, within ms for
 \ the whole transfer (0: no limit): answers the result object's JSON text and
 \ its isError. E-TRANSFER when the exchange fails, runs past ms or CANCEL ends
-\ it, E-DENIED when the server refuses the client, E-RESPONSE for a JSON-RPC
-\ error, an unknown tool included, or a reply that is no result.
+\ it, E-DENIED when the server refuses the client, E-UNAVAILABLE when the
+\ server reports itself unavailable, E-RESPONSE for a JSON-RPC error, an
+\ unknown tool included, or a reply that is no result.
 : CALL ( client ptr u8 n ptr u8 n ms -- ptr u8 n bool )
    {: who:client name:ptr nu:n args:ptr au:n limit:ms :}
    who LIVE {: idx:n :}
