@@ -166,12 +166,12 @@ $0001000000000000 constant DNAME-CELL
 \ LINEAR: records never carry it. Capture carries it in the compact record's
 \ kind byte (src/habu/aot-capture.f) and a native unit object row in its flags.
 $0000400000000000 constant DNAME-REP
-\ The flag bits above the name length in [16], bits 46-63. Every native length
-\ read clears them by this count (LSLI then LSRI). Two files load before this
-\ one and spell the mask as a literal: src/core/checker.f CK-REC-LEN-MASK and
-\ src/habu/engine-origin-early.f RECORD-LEN-MASK. A flag carved from the length
-\ is this edit and those two.
-18 constant DNAME-FLAG-BITS
+\ DNAME-SEALED (bit 45): packages.f PKG-SEAL sets it on a package's namespace record; XREF:SEALED? reads it
+\ for `package` and the check tool's scan of it. Capture refuses a record carrying it (aot-capture.f ACAP-COMPACT-ONE).
+$0000200000000000 constant DNAME-SEALED
+\ [16] bits 45-63: flags above the name length, which every length read clears by this count. Copies that load before
+\ or apart from this file: checker.f CK-REC-LEN-MASK, engine-origin-early.f RECORD-LEN-MASK.
+19 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification (checker RECMI latch -> publish tails / seal-time internal-mark
@@ -180,7 +180,7 @@ $0000400000000000 constant DNAME-REP
 \ (unchecked words and words without signatures). Compiled calls inside checked
 \ words are checker-proven and carry no guard. Flags cell [16]: IMM/EXT/WIDE/INT
 \ 60-63, min-in 52-59, definer kind 50-51, DNAME-OWNED 49, DNAME-CELL 48,
-\ DNAME-ALLOC 47, DNAME-REP 46, name length 0-45.
+\ DNAME-ALLOC 47, DNAME-REP 46, DNAME-SEALED 45, name length 0-44.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT

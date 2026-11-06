@@ -145,17 +145,14 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
 : PKG-ROW ( -- ptr n )
    TOKEN$ BOOT:NAMESPACE-WL WL-PROBE ;
 
-\ Once the engine is sealed, a sealed package's name ends the process, and so
-\ does a package whose public wordlist is protected (habu2.f
-\ C-PACKAGE-SEAL-GUARD, SEALED-FAIL).
+\ A package whose record carries DNAME-SEALED ends the process when named
+\ again (SEALED-FAIL); a package is sealed only by the last file that opens it.
 : PKG-SEALED? ( -- bool )
-   TOKEN$ CHECKER-SEALED-PKG? if true exit then
    PKG-ROW {: row:ptr :}
    row XREF-FOUND? 0= if false exit then
-   row XREF-PKG-PUBLIC PROTECTED? ;
+   row XREF:SEALED? ;
 
 : PKG-SEAL-GUARD ( -- )
-   SEAL-NDICT@ 0= if exit then
    PKG-SEALED? 0= if exit then
    TOKEN$ SEALED-FAIL ;
 
@@ -233,12 +230,10 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    package-scope!
    USE-PKG-SAVE-CELL CELL@ USE-DEPTH-CELL CELL! ;
 
-\ The open package's wordlists protected (habu2.f C-SEAL-PACKAGE).
 : PKG-SEAL ( -- )
    TASK-GUARD
    PKG-PUB-CELL CELL@ 0= if PKG-RC-CONTEXT PKG-FAIL then
-   PKG-PUB-CELL CELL@ prot-wid-add
-   PKG-PRI-CELL CELL@ prot-wid-add ;
+   PKG-REC-CELL CELL@ XREF-ADDR>REC XREF:SEAL ;
 
 \ A throw puts the package scope back (habu1.f B-EVAL, habu2.f LEVALREC).
 \ The enclosing package's row and parent wordlist, the open package's row and
@@ -337,9 +332,8 @@ variable USE-FLOOR
    q 1 <  q 1+ u >=  or if a u exit then
    a q 1+ ZPTR+  u q - 1- ;
 
-\ After the seal a protected wordlist takes no record: it is a sealed package's,
-\ and the definition ends the process as reopening it does (habu2.f
-\ LSTOREDEFNAME, SEALED-FAIL).
+\ After the engine's seal a protected wordlist takes no record: the definition
+\ ends the process (habu2.f LSTOREDEFNAME, SEALED-FAIL).
 : PKG-OPEN-WID ( n -- ) {: wid:n :}
    SEAL-NDICT@ 0= if exit then
    wid PROTECTED? 0= if exit then

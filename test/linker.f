@@ -473,6 +473,31 @@ BUILD-R
 create LK-R2
 CASE-R
 
+TYPED-VARIABLE SEALED-S bool
+
+: S$ ( -- ptr u8 n ) s" LK-S" ;
+
+\ LK-S's row in the namespace wordlist BOOT:NAMESPACE-WL names, the build's
+\ inside a body.
+: S-ROW ( -- ptr n ) S$ BOOT:NAMESPACE-WL XREF-FIND-WL ;
+
+: BODY-S ( -- )
+   s" package LK-S seal-package ;package" evaluate-closed
+   S-ROW {: row:ptr :}
+   row XREF-FOUND? 0= if exit then
+   row XREF:SEALED? SEALED-S ! ;
+
+: CASE-S ( -- )
+   TAKE-HOST
+   false SEALED-S !
+   [: BODY-S ;] BUILD
+   SEALED-S @ TTRUE
+   S-ROW XREF-FOUND? TFALSE
+   HOST-CHECK
+   s" s: seal-package in a build marks its package's record sealed" SAY ;
+
+CASE-S
+
 ;package
 
 T-REPORT

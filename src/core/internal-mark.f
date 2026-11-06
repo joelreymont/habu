@@ -186,7 +186,7 @@ EXPORT IMAGE-WHITEBOX
 
 private
 
-get-current prot-wid-add
+seal-package
 ' IMK-PASS
 ;package
 execute

@@ -843,10 +843,8 @@ variable BODY-DEAD                            \ in an arm that never runs: 1 + t
    w at PEND-WORD-AT !  wu at PEND-WORD-U !
    at 1 + PEND-N ! ;
 
-\ The packages this scan's source sealed (`seal-package`), their names end to
-\ end, cleared by RUN-IN-SCOPE. A reopening, a definition or an export into one
-\ stops, as the run's guards do in a sealed engine (packages.f PKG-SEAL-GUARD,
-\ PKG-OPEN-WID).
+\ The packages this scan's source sealed, cleared by RUN-IN-SCOPE. A reopening stops as packages.f PKG-SEAL-GUARD
+\ does; a definition or export into one as the arm64 engine loop does (habu2.f C-SEAL-PACKAGE protects the wordlists).
 DYNAMIC-BUFFER SEALS u8                       \ the sealed packages' names
 DYNAMIC-BUFFER SEALS-AT n                     \ a name's offset
 DYNAMIC-BUFFER SEALS-U n                      \ and its length
@@ -2187,10 +2185,17 @@ DUPLICATE-INIT
    row XREF-FOUND? 0= IF -1 EXIT THEN
    row XREF-PKG-PUBLIC ;
 
-\ Stop at `package`'s name, read from byte AT, when the source sealed it or, in
-\ a sealed engine's load, it was sealed there (packages.f PKG-SEALED?).
+\ Whether the package NAME names has a namespace record carrying DNAME-SEALED.
+: ROW-SEALED? ( ptr u8 n -- bool )
+   BOOT:NAMESPACE-WL XREF-FIND-WL {: row:ptr :}
+   row XREF-FOUND? 0= IF false EXIT THEN
+   row XREF:SEALED? ;
+
+\ Stop at `package`'s name, read from byte AT, when the source sealed it, its record
+\ carries DNAME-SEALED, or a sealed engine's guards seal it (habu2.f C-PACKAGE-SEAL-GUARD).
 : SEALED-PACKAGE ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    a u SEAL-LISTED? IF at SEAL-STOP THEN
+   a u ROW-SEALED? IF at SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
    a u CHECKER-SEALED-PKG?  a u PUBLIC-WID XREF-WID-PROTECTED?  or IF at SEAL-STOP THEN ;
 

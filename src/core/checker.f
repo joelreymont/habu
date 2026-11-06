@@ -12261,7 +12261,7 @@ public
 \ Dictionary record slots and flags (src/habu/layout.f DREC).
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-$00003FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
+$00001FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 
 \ The dictionary record at index IX, minted as src/habu/xref.f XREF-REC mints it
@@ -17571,7 +17571,7 @@ private
 \ bodies bind its name through the engine (CHECKER-OVERLAY:PUBLISH).
 : INSTALL ( -- ) [: over >r STORE r> CHECKER-OVERLAY:PUBLISH ;] is PUBLISH-XT ;
 INSTALL
-get-current prot-wid-add
+seal-package
 ;package
 
 \ ---- what a definer creates, asked about a resident definer -------------------

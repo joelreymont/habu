@@ -1254,9 +1254,8 @@ $14000000 constant ACAP-GBR-TERM
    v 20 + ACAP-W32@ 16 rshift 1 and 2 lshift or
    v 20 + ACAP-W32@ 15 rshift 1 and 3 lshift or
    v 20 + ACAP-W32@ 14 rshift 1 and 4 lshift or {: dkind:n :} \ DKIND, CELL, ALLOC, REP
-   \ [16] bits 32-45 hold the length's high bits, and bit 49 is DNAME-OWNED.
-   \ The compact record carries neither; bits 47-48 are allocation geometry and
-   \ bit 46 is DNAME-REP.
+   \ [16] bits 32-44: the length's high bits; bit 45 DNAME-SEALED, bit 49 DNAME-OWNED: the compact
+   \ record carries none of them. Bits 47-48 are allocation geometry and bit 46 DNAME-REP.
    v 20 + ACAP-W32@ $00023FFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
    v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
    v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)

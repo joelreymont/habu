@@ -632,8 +632,7 @@ EPRIM: fork          PE-N PE-OUT EPRIM;
 EPRIM: wait-status   PE-N PE-IN  PE-N PE-OUT EPRIM;
 EPRIM: patch32       PE-N PE-IN PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code (F3)
-\ Retiring a dictionary record rewrites its write-protected wordlist cell, and
-\ that is package XREF's (src/habu/xref.f RETIRE) to do.
+\ Rewriting a write-protected dictionary record cell (xref.f RETIRE and SEAL) is package XREF's to do.
 EPPRIM: XREF patch32 PE-N PE-IN PE-PTR-N PE-IN ECLOSE-PRIVATE
 \ Planting and clearing a breakpoint instruction is package DEBUG's (src/habu/debug.f BP-PATCH32).
 EPPRIM: DEBUG patch32 PE-N PE-IN PE-PTR-U8 PE-IN ECLOSE-PRIVATE

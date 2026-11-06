@@ -456,7 +456,7 @@ public
 
 private
 
-get-current prot-wid-add
+seal-package
 
 ;package
 

@@ -112,12 +112,8 @@ public
    wid XREF-RETIRED-WL =  wid WL:RETIRED-NAMESPACE =  or ;
 ;package
 
-\ Whether wordlist `wid` is protected: the answer the engine's own guards read
-\ (src/habu/habu1.f EMIT-PROTWID). The two OWNER-API wordlists are protected by
-\ rule rather than by a bit; any other wid by its bit in the band at
-\ PROT-BITS-OFF; a wid at or past PROT-WID-MAX has no bit and never is, because
-\ prot-wid-add refuses to protect one. A package whose PUBLIC wid is protected
-\ cannot be reopened (habu2.f C-PACKAGE-PROT-GUARD reads exactly that wid).
+\ Whether `wid` is protected, as habu1.f EMIT-PROTWID reads it: the OWNER-API wordlists by
+\ rule, any other wid below PROT-WID-MAX by its bit at PROT-BITS-OFF.
 : XREF-WID-PROTECTED? ( n -- bool ) {: wid:n :}
    wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if XREF-TRUE exit then
    wid 0 < wid PROT-WID-MAX < 0= or if XREF-FALSE exit then
@@ -477,14 +473,12 @@ private
    [: CHECK ;] is TYPE-DECL:TDECL-NAME-PREFLIGHT-XT ;
 
 INSTALL
-get-current prot-wid-add
+seal-package
 
 ;package
 
-\ RETIRING A RECORD IN PLACE stamps XREF-RETIRED-WL over its wordlist cell. The
-\ records are write-protected, so the cell is written through patch32, as two
-\ 32-bit halves; that primitive is trusted-only everywhere but here, where this
-\ package's own row (src/habu/prims.f EPPRIM: XREF patch32) types it.
+\ RETIRE and SEAL rewrite a write-protected record cell through patch32, which
+\ this package's row in src/habu/prims.f (EPPRIM: XREF patch32) types for it.
 package XREF
 private
 
@@ -533,6 +527,14 @@ variable RETIRE-HOOK
    rec BEFORE-RETIRE
    rec GRID-RETIRE
    rec RETIRE-RAW ;
+
+\ DNAME-SEALED is bit 13 of the flags cell's upper half, rewritten whole with
+\ its other bits kept.
+: SEAL ( ptr n -- ) {: rec:ptr :}
+   rec XREF-FLAGS DNAME-SEALED or 32 rshift
+   rec XREF-FLAGS-SLOT cells + 4 + patch32 ;
+
+: SEALED? ( ptr n -- bool ) XREF-FLAGS DNAME-SEALED and 0= 0= ;
 
 ;package
 
