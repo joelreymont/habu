@@ -283,6 +283,16 @@ public
    SPACE-TABLE @ SPACE-SLOTS @ TABLE-RELEASE
    0 SPACE-TABLE !  0 SPACE-IMAGE ! ;
 
+\ Hands visit each body the build's table holds, as its distance from NULL-PTR. Bodies go
+\ stale only once DP moves back, and the build then writes nothing (linker.f GOING).
+: EACH-STRING ( [ n -- ] -- )
+   {: visit :}
+   SPACE-IMAGE @ 0=  SPACE-IMAGE @ IMAGE-BASE <>  or if exit then
+   SPACE-SLOTS @ 0 ?do
+      i SLOT-CELL @ {: body:n :}
+      body 0<> if body visit execute then
+   loop ;
+
 private
 
 : SPACE-OPEN ( -- )

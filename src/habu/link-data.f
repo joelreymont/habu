@@ -38,18 +38,12 @@ variable LLIST-END
 : LABEL-OFFSET ( ptr n -- n ) A64ICODE:LABEL@ ARM64:OFFSET ;
 
 
-\ The open space's bytes, [BASE, DP).
-: SPACE-DATA ( -- ptr u8 n )
-   NULL-PTR BYTE-VIEW BASE @ +  DP-CELL HOST@ BASE @ - ;
-
 \ The image is the space's runs: its length is the space's, not the distance
 \ between its labels.
 : DATA-IMAGE-AT ( -- n ) LIMAGE LABEL-OFFSET ;
 : DATA-IMAGE-LEN ( -- n ) SPACE-DATA nip ;
 : DATA-LIST-AT ( -- n ) LLIST LABEL-OFFSET ;
 : DATA-LIST-N ( -- n ) LLIST-END LABEL-OFFSET DATA-LIST-AT - 8 / ;
-
-: ROWS ( -- ptr n n ) SPACE-DATA ADDRESS-CELLS:DATA-SPAN ;
 
 
 \ A host address in the open space at its DATA-VA address: the resolver code's
@@ -60,16 +54,6 @@ variable LLIST-END
    off 0 >=  off DATA-SIZE < and if DATA-VA VA>N off + exit then
    s" link: a DATA pointer outside the build's space: " type v .
    s" link: a DATA pointer outside the build's space" 74 die ;
-
-
-\ A row's cell offset from the space's start, and its kind (layout.f).
-: ROW-OFF ( n -- n ) SNAP-RELOC:XTCELL-OFF-MASK and ;
-: SCRATCH-ROW? ( n -- bool ) SNAP-RELOC:XTCELL-SCRATCH-TAG and 0<> ;
-: DATA-ROW? ( n -- bool ) SNAP-RELOC:XTCELL-DATA-TAG and 0<> ;
-: XT-ROW? ( n -- bool )
-   SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or and 0= ;
-
-: CELL-VALUE ( n -- n ) ROW-OFF SPACE-AT @ ;
 
 
 \ Each row of the space's address cells, handed to visit.

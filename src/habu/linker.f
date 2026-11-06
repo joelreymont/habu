@@ -13,6 +13,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
 require src/lib/le.f
+require src/lib/sort.f
 require src/lib/engine-id.f
 require src/lib/build-out.f
 require src/core/sha256.f
@@ -83,6 +84,21 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : SPACE-AT ( n -- ptr n )
    {: off:n :}
    NULL-PTR BYTE-VIEW BASE @ + off + CELL-VIEW ;
+
+\ The open space's bytes, [BASE, DP).
+: SPACE-DATA ( -- ptr u8 n )
+   NULL-PTR BYTE-VIEW BASE @ +  DP-CELL HOST@ BASE @ - ;
+
+: ROWS ( -- ptr n n ) SPACE-DATA ADDRESS-CELLS:DATA-SPAN ;
+
+\ A row's cell offset from the space's start, and its kind (layout.f).
+: ROW-OFF ( n -- n ) SNAP-RELOC:XTCELL-OFF-MASK and ;
+: SCRATCH-ROW? ( n -- bool ) SNAP-RELOC:XTCELL-SCRATCH-TAG and 0<> ;
+: DATA-ROW? ( n -- bool ) SNAP-RELOC:XTCELL-DATA-TAG and 0<> ;
+: XT-ROW? ( n -- bool )
+   SNAP-RELOC:XTCELL-DATA-TAG SNAP-RELOC:XTCELL-SCRATCH-TAG or and 0= ;
+
+: CELL-VALUE ( n -- n ) ROW-OFF SPACE-AT @ ;
 
 : UNMAP ( -- )
    NULL-PTR BYTE-VIEW BASE @ + DATA-SIZE munmap
@@ -545,7 +561,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    then ;
 
 
-\ CODE, after the piece's entries; every number is 8 bytes, low byte first:
+\ CODE, after the piece's entries, then DATA and STRINGS (DATA+); every number is 8 bytes, low
+\ byte first:
 \   E                      emissions this file's compile filed, from the file's first
 \   per emission, in number order:
 \     S, R                 size in bytes; return bytes (R <= S)
@@ -559,15 +576,87 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ A reference is a tag, then its fields: 0 a dictionary record (file, index in that
 \ file); 1 hb's own code (offset from rbase); 2 a quotation (file, emission, function);
 \ 3 a file's data (file, offset from that file's first data byte, at most its data size:
-\ a body of no bytes at the file's end); 4 the open's header data (offset from BASE); 5 none
-\ (only as a patch target). A file field is 0 for this object, else its FILES row from 1 (REF-FILE).
+\ a body of no bytes at the file's end); 4 the open's header data (offset from BASE); 5 none: a
+\ patch target, or a cell row's 0 or scratch cell. A file field is 0 for this object, else its
+\ FILES row from 1 (REF-FILE).
 : CODE+ ( -- )
    ENTRIES
    NSHADOW:EMISSIONS FILE-EM @ - PIECES U64+
    NSHADOW:EMISSIONS FILE-EM @ ?do i EMISSION-CODE+ loop ;
 
-\ Piece count 1 (RUN-FILE); entry count; records in index order, each late private wordlist (ids
-\ ascending) before the first record marked above its id; CODE; REQUEST -1. Ids mint in entry order.
+\ The bytes the file's compile laid, [FILE-DP, FILE-END).
+: FILE-DATA ( -- ptr u8 n )
+   NULL-PTR BYTE-VIEW FILE-DP @ +  FILE-END @ FILE-DP @ - ;
+
+\ The distance from NULL-PTR of a row's cell, when it lies whole in the file's data.
+: ROW-AT ( n -- n ) ROW-OFF BASE @ + ;
+: IN-FILE? ( n -- bool ) ROW-AT {: at:n :}  at FILE-DP @ >=  at CELL + FILE-END @ <=  and ;
+
+\ A cell row's kind: 0 xt, 1 data, 2 scratch.
+: ROW-KIND ( n -- n )
+   {: row:n :}
+   row SCRATCH-ROW? if 2 exit then
+   row DATA-ROW? if 1 else 0 then ;
+
+\ A cell row's reference, from the space's value: PIECES' copy has it cleared.
+: CELL-REF+ ( n -- )
+   {: row:n :}
+   row CELL-VALUE {: v:n :}
+   row SCRATCH-ROW?  v 0=  or if 5 PIECES U64+ exit then
+   row DATA-ROW? if v DATA-REF+ else v CODE-REF+ then ;
+
+\ The bodies of the build's strings that lie in the file's data, as distances from NULL-PTR.
+DYNAMIC-BUFFER STRS n
+variable STRS-N
+
+: BODY-U ( n -- n ) CELL - BASE @ - SPACE-AT @ ;
+
+: STRING+ ( n -- )
+   {: b:n :}
+   b CELL - FILE-DP @ <  b FILE-END @ >  or if exit then
+   b b BODY-U +  FILE-END @ > if exit then
+   STRS-N @ 1 + STRS-RESERVE
+   b STRS-N @ STRS !  1 STRS-N +! ;
+
+\ DATA and STRINGS, after CODE:
+\   D                      the bytes the file's compile laid, FILE-END - FILE-DP
+\   D raw bytes            from FILE-DP, unpadded; each address cell's 8 bytes written as 0
+\   K, then K cell rows    offset from FILE-DP, a multiple of 8 (else E-COMP-STATE), kind
+\                          (ROW-KIND), reference (CELL-REF+); in the order of the space's
+\                          address-cell rows, only cells inside the D bytes
+\   N, then N string rows  a body's offset from FILE-DP, then its length; offsets ascending,
+\                          only bodies whose length cell and bytes lie inside the D bytes
+: DATA+ ( -- )
+   FILE-DATA {: a:ptr d:n :}
+   d PIECES U64+  a d PIECES SPAN+
+   PIECES BYTES$ {: buf:ptr bufu:n :}
+   buf bufu + d - {: at:ptr :}
+   ROWS {: rows:ptr count:n :}
+   0  count 0 ?do
+      rows i cells + @ {: row:n :}
+      row IN-FILE? if
+         row ROW-AT FILE-DP @ - {: off:n :}
+         off 7 and 0<> if E-COMP-STATE throw then
+         0  at off +  LE:U64!  1 +
+      then
+   loop  PIECES U64+
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row IN-FILE? if
+         row ROW-AT FILE-DP @ - PIECES U64+  row ROW-KIND PIECES U64+  row CELL-REF+
+      then
+   loop
+   0 STRS-N !  ['] STRING+ INTERN:EACH-STRING
+   STRS-N @ {: n:n :}
+   n 0 > if 0 STRS n [: < ;] SORT:SORT! then
+   n PIECES U64+
+   n 0 ?do
+      i STRS @ {: b:n :}
+      b FILE-DP @ - PIECES U64+  b BODY-U PIECES U64+
+   loop ;
+
+\ Piece count 1 (RUN-FILE); entry count; records by index, each late private wordlist (by id) before
+\ the first record marked above its id; CODE; DATA; STRINGS; REQUEST -1. Ids mint in entry order.
 : PIECES! ( -- )
    PIECES BUF:CLEAR  REFS BUF:CLEAR  LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
@@ -576,7 +665,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ndict@ FILE-REC @ -  LATE-N +  PIECES U64+
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
    LATE-REST
-   CODE+
+   CODE+  DATA+
    -1 PIECES U64+ ;
 
 \ FILE-KEY's object; INPUT sums the bytes the runner gets (`#!` read as `\ `).
