@@ -1,7 +1,7 @@
 \ boot.f - the arm64 start-up at offset 0 of a stripped product's code. START,
-\ maps the stacks and DATA, copies the DATA image in, adds the load offset to
-\ each cell the DATA list names, writes the run-time cells and calls the entry
-\ the build stored. Its caller binds the four labels in the tail.
+\ maps the stacks and DATA, stores the DATA image's runs in it, adds the load
+\ offset to each cell the DATA list names, writes the run-time cells and calls
+\ the entry the build stored. Its caller binds the four labels in the tail.
 require src/arch/arm64/link-kernel.f
 
 package A64BOOT
@@ -17,15 +17,19 @@ using A64ICODE
    rd l LOFF,  rd 9 rd ADD, ;
 
 
-\ x0 = DATA, x1 = the image in the code, x2 = the bytes between its labels,
-\ BYTES,' pad included.
+\ Store each run in [x1, x2) (link-data.f RUNS,) at DATA + off, x3 the target
+\ and x4 the cells left; DATA outside the runs stays zero (EM-MMAP-DATA-REGION).
 : COPY-DATA, ( label label label -- )
    {: text0:label start:label end:label :}
+   LBL LBL LBL {: more:label each:label done:label :}
    text0 TEXT-BASE,
-   0 DATA 0 ADDI,
-   1 start TEXT-AT,
-   2 end LOFF,  3 start LOFF,  2 2 3 SUB,
-   EM-SNAPSHOT-COPY ;
+   1 start TEXT-AT,  2 end TEXT-AT,
+   more LBL,  1 2 CMP,  C-CS done BCOND,
+      3 1 0 LDR,  4 1 8 LDR,  1 1 16 ADDI,  3 DATA 3 ADD,
+      each LBL,  4 more CBZ,
+         5 1 0 LDR,  5 3 0 STR,
+         1 1 8 ADDI,  3 3 8 ADDI,  4 4 1 SUBI,  each B,
+   done LBL, ;
 
 
 \ x21 = text base - the address the code is linked at, added to the cell at
@@ -62,7 +66,7 @@ public
    C-SIGNAL-STACK                           \ the crash handler's stack (crash.f)
    STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP   \ x19 = the boot data stack (rt.f)
    EM-MMAP-DATA-REGION  DATA 0 0 ADDI,      \ x20 = DATA (habu2.f)
-   text0 image image-end COPY-DATA,         \ the DATA image (habu2.f EM-SNAPSHOT-COPY)
+   text0 image image-end COPY-DATA,         \ the DATA image's runs
    linked text0 list list-end SLIDE,        \ each listed code address, at its load address
    RUNTIME-CELLS,                           \ as habu2.f EM-DATA-INIT writes them
    EM-FRAME-STACKS                          \ return and loop stacks (habu2.f)

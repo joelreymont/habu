@@ -3,7 +3,8 @@
 \ for it: LR-HI prints `Hi` and exits 0; LR-THROW prints nothing and exits 3,
 \ its uncaught throw code; LR-XT stores a quotation with xt! at run time and
 \ prints `Hi` only if the product's MARK accepts its address-cell header and
-\ index. WRITE outside a build is E-COMP-STATE. Each program runs in its own
+\ index. Each file is smaller than DATA-START: the zero bands below it are not
+\ written. WRITE outside a build is E-COMP-STATE. Each program runs in its own
 \ process: the boundary under test is the written file and its start-up.
 \ Fixture words are LR- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
@@ -78,6 +79,17 @@ create PROG-BUF PATH-CAP allot
 : RUN-XT ( CMD:command -- CMD:command ) s" xt" s\" Hi\n" 0 RUN-PROG ;
 
 
+: SMALLER ( ptr u8 n -- )
+   {: file:ptr file-n:n :}
+   file file-n PROG$ FS:FILE-SIZE {: size:n :}
+   size DATA-START < 0= if
+      s" arm64-link-run: " type file file-n type s"  has bytes: " type size .
+   then
+   s" each file is smaller than DATA-START: the zero bands are not written"
+      T-LABEL
+   size DATA-START < TTRUE ;
+
+
 public
 
 : RUN ( -- )
@@ -90,6 +102,7 @@ public
    [: RUN-HI ;] CMD:WITH-COMMAND
    [: RUN-THROW ;] CMD:WITH-COMMAND
    [: RUN-XT ;] CMD:WITH-COMMAND
+   s" hi" SMALLER  s" throw" SMALLER  s" xt" SMALLER
    ROOT$ FS:REMOVE-TREE
    T-REPORT ;
 

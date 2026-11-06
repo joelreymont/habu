@@ -1,8 +1,9 @@
-\ link-data.f - a stripped build's DATA: the open space's bytes appended to
-\ A64ICODE's code buffer after the routine band, each declared cell given its
-\ value at DATA-VA, then the DATA list, the offset from DATA-VA of every cell
-\ holding a code address, which start-up adds the load offset to. The link
-\ also writes the header cells HEADER-CELLS names and lists the code ones.
+\ link-data.f - a stripped build's DATA: a copy of the open space's cells, each
+\ declared cell given its value at DATA-VA, appended to A64ICODE's code buffer
+\ after the routine band as its non-zero runs, then the DATA list, the offset
+\ from DATA-VA of every cell holding a code address, which start-up adds the
+\ load offset to. The link also writes the header cells HEADER-CELLS names and
+\ lists the code ones.
 \ LINKER:WRITE writes the linked program; the other words are LINKER's own.
 
 require src/lib/errors.f
@@ -46,8 +47,8 @@ variable LLIST-END
 : SPACE-DATA ( -- ptr u8 n )
    NULL-PTR BYTE-VIEW BASE @ +  DP-CELL HOST@ BASE @ - ;
 
-\ BYTES, pads the image to a word, so its length is the space's, not the
-\ distance between its labels.
+\ The image is the space's runs: its length is the space's, not the distance
+\ between its labels.
 : DATA-IMAGE-AT ( -- n ) LIMAGE LABEL-OFFSET ;
 : DATA-IMAGE-LEN ( -- n ) SPACE-DATA nip ;
 : DATA-LIST-AT ( -- n ) LLIST LABEL-OFFSET ;
@@ -95,7 +96,19 @@ variable LLIST-END
 
 : PAD8 ( -- ) A64ICODE:ASM-LEN 7 and 0<> if 0 A64ICODE:EMITW then ;
 
-: COPY-AT ( n -- ptr u8 ) A64ICODE:CODE DATA-IMAGE-AT + swap + ;
+\ The image copy the link patches: the space's bytes in cells, the last cell
+\ padded with zeros.
+DYNAMIC-BUFFER COPY-CELLS n
+
+: COPY-N ( -- n ) DATA-IMAGE-LEN CELL 1- + CELL / ;
+: COPY-AT ( n -- ptr u8 ) 0 COPY-CELLS BYTE-VIEW swap + ;
+
+: FILL-COPY ( -- )
+   COPY-N {: n:n :}
+   n COPY-CELLS-RESERVE
+   0  n 1- COPY-CELLS !
+   SPACE-DATA {: p:ptr u:n :}
+   p 0 COPY-AT u BYTE-COPY ;
 
 
 \ The link address xt cell off's value v gives the image.
@@ -173,16 +186,40 @@ variable LLIST-END
    CODE-END-CELL A64ICODE:DCQ, ;
 
 
-\ After PLACE-ROUTINES: the space's bytes at an 8-byte boundary with the header
-\ cells written, then the DATA list at the next one, the code header cells last.
+: SET? ( n -- bool ) COPY-CELLS @ 0<> ;
+
+\ The first non-zero cell at or after cell i, or COPY-N.
+: NEXT-SET ( n -- n )
+   begin dup COPY-N < if dup SET? 0= else false then while 1+ repeat ;
+
+\ The cell after the run whose first cell is i. A run's header costs two
+\ cells, so a gap of one or two zero cells stays inside it and three end it.
+: RUN-END ( n -- n )
+   begin dup 1+ NEXT-SET  2dup swap - 3 <=  over COPY-N < and while nip repeat
+   drop 1+ ;
+
+: RUN, ( n n -- )
+   {: first:n end:n :}
+   first CELL * A64ICODE:DCQ,  end first - A64ICODE:DCQ,
+   end first ?do i COPY-CELLS @ A64ICODE:DCQ, loop ;
+
+\ The copy as runs [off u64][n u64][n cells], off the run's byte offset from
+\ DATA; zero cells outside a run are not written (boot.f COPY-DATA,).
+: RUNS, ( -- )
+   0 NEXT-SET
+   begin dup COPY-N < while dup RUN-END tuck RUN, NEXT-SET repeat drop ;
+
+
+\ After PLACE-ROUTINES: at an 8-byte boundary the copy's runs with the header
+\ cells written, then the DATA list, the code header cells last.
 : DATA-IMAGE ( -- )
    PAD8
    LIMAGE A64ICODE:LABEL@ A64ICODE:LBL,
-   SPACE-DATA A64ICODE:BYTES,
-   LIMAGE-END A64ICODE:LABEL@ A64ICODE:LBL,
+   FILL-COPY
    ['] COPY-ROW EACH-ROW
    HEADER-CELLS
-   PAD8
+   RUNS,
+   LIMAGE-END A64ICODE:LABEL@ A64ICODE:LBL,
    LLIST A64ICODE:LABEL@ A64ICODE:LBL,
    ['] LIST-ROW EACH-ROW
    LIST-HEADER
