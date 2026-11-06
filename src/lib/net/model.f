@@ -193,17 +193,20 @@ STRUCTURE stream DERIVE addr
    FIELD done bool
    FIELD fault n
    FIELD output-ns n
-   FIELD decoder SSE:decoder
+   FIELD decoder option<SSE:decoder>
 ;STRUCTURE
 
 CAST: >STREAM ( ptr u8 -- ptr stream )
 
-\ How the transfer ended: the HTTP status, libcurl code and the fault that
-\ spoiled the reply, 0 when none; SETTLE reads it.
+\ How the call ended, for the land machine: the transfer's HTTP status, libcurl
+\ code, spoiling fault and cut (END-TRANSFER); outcome, the fault it throws.
 STRUCTURE receipt DERIVE addr
    FIELD status CURL:http-status
    FIELD code n
    FIELD fault n
+   FIELD cut bool
+   FIELD replayed bool
+   FIELD outcome n
 ;STRUCTURE
 
 CAST: >RECEIPT ( ptr u8 -- ptr receipt )
@@ -1583,15 +1586,15 @@ private
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> if code throw then ;
 
-\ Clears the call's transfer, answering whether a CANCEL cut it: CANCEL-LOCKED
-\ clears the transfer it cuts.
-: END-TRANSFER ( ptr call -- bool )
+\ Clears the call's transfer, keeping in the receipt whether a CANCEL cut it:
+\ CANCEL-LOCKED clears the transfer it cuts.
+: END-TRANSFER ( ptr call -- )
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:TRANSPORT @ MATCH option
       none OF true ENDOF
       some OF drop false ENDOF
-   ;MATCH
+   ;MATCH c RECEIPT RECEIPT-CUT !
    OPTION:NONE c MODEL-CALL:TRANSPORT !
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM ;
 
@@ -1711,14 +1714,13 @@ private
    E-HTTP ;
 
 
-\ Ends the call's transfer, keeping its status and reply; throws the fault of
-\ a cut or failed exchange or a refused reply.
-: SETTLE ( ptr call -- )
+\ Keeps the transfer's status and reply; throws the fault of a cut or failed
+\ exchange or a refused reply.
+: RECEIPT-CHECK ( ptr call -- ptr call )
    {: c :}
    c RECEIPT {: r :}
-   r RECEIPT-STATUS @ r RECEIPT-CODE @ r RECEIPT-FAULT @
-   {: status:CURL:http-status rc:n fault:n :}
-   c END-TRANSFER {: cut:bool :}
+   r RECEIPT-STATUS @ r RECEIPT-CODE @ r RECEIPT-FAULT @ r RECEIPT-CUT @
+   {: status:CURL:http-status rc:n fault:n cut:bool :}
    status CURL:HTTP-STATUS>N c MODEL-CALL:HTTP-STATUS !
    c RESPONSE-BUF BUF:LEN@ BUF:BLEN>N c MODEL-CALL:RESPONSE-U !
    cut if E-CANCELLED throw then
@@ -1729,7 +1731,8 @@ private
       c KEEP-ERROR
       c SIZE-REFUSAL? if E-CAPACITY throw then
       status STATUS-FAULT throw
-   then ;
+   then
+   c ;
 
 : CALL-HANDLE ( ptr call -- CURL:handle )
    MODEL-CALL:HANDLE @ MATCH option
@@ -1755,19 +1758,13 @@ private
    c body execute drop
    c body ;
 
-\ Runs the body's exchanges on one fresh handle, cleaned up after them.
+\ Runs the body's exchanges on one fresh handle; the land machine cleans it up.
 : SEND ( ptr call [ ptr call -- ptr call ] -- )
    {: c body :}
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:HTTP-STATUS !
    c OPEN-HANDLE OPTION:SOME c MODEL-CALL:HANDLE !
-   c body [: EXCHANGES ;] catch {: code:n :} 2drop
-   c MODEL-CALL:HANDLE @ MATCH option
-      none OF ENDOF
-      some OF CURL:CLEANUP ENDOF
-   ;MATCH
-   OPTION:NONE c MODEL-CALL:HANDLE !
-   code c WIPE-AFTER ;
+   c body EXCHANGES 2drop ;
 
 : EXPECT ( JSON:reader n -- JSON:reader )
    {: want:n :}
@@ -2287,6 +2284,7 @@ private
    false c STREAM STREAM-DONE !
    false c STREAM STREAM-HEARD !
    0 c STREAM STREAM-OUTPUT-NS !
+   OPTION:NONE c STREAM STREAM-DECODER !
    c EVENT-ROWS-BUF BUF:CLEAR
    c EVENT-TEXT-BUF BUF:CLEAR
    construct call-state started c MODEL-CALL:STATE !
@@ -2511,7 +2509,10 @@ ENUM answer fed spoiled done ;ENUM
 : CHAT-CHUNK ( CURL:http-status n ptr call -- answer )
    {: status:CURL:http-status got:n c :}
    c CHUNK-BUF HELD SPAN:$ drop {: room:ptr :}
-   c STREAM STREAM-DECODER @ {: d:SSE:decoder :}
+   c STREAM STREAM-DECODER @ MATCH option
+      none OF E-STATE throw ENDOF
+      some OF ENDOF
+   ;MATCH {: d:SSE:decoder :}
    c CHUNK-BUF BUF:CLEAR
    room got BUF:N>BLEN c CHUNK-BUF BUF:APPEND-SPAN
    status CURL:HTTP-STATUS>N 200 = if
@@ -2615,51 +2616,10 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 : RECEIVE ( ptr call -- ) construct receive-step arming RECEIVE-MACHINE ;
 
 
-: AWAIT-TRANSFER ( ptr call -- )
-   {: c :}
-   c RECEIVE
-   c SETTLE ;
-
-
-\ Runs the exchange set on the call's handle; the response buffer holds its
-\ reply.
-: EXCHANGE ( ptr call -- )
-   {: c :}
-   c START-TRANSFER
-   c AWAIT-TRANSFER ;
-
-
-: POST-REQUEST ( ptr call -- ptr call )
-   {: c :}
-   c REQUEST-URL$ c BODY$ c AS-POST
-   c EXCHANGE
-   c ;
-
-
-: STREAM-TRANSFER ( ptr call -- )
-   {: c :}
-   c START-TRANSFER
-   c RECEIVE
-   c SETTLE ;
-
-
-\ Runs the exchange set on the call's handle on a fresh decoder, answering its
-\ fault, 0 when it ended clean.
-: STREAM-EXCHANGE ( ptr call -- n )
-   {: c :}
-   c DECODER-STORAGE SSE:OPEN {: d:SSE:decoder :}
-   d c STREAM STREAM-DECODER !
-   c [: dup STREAM-TRANSFER ;] catch {: code:n :} drop
-   d SSE:CLOSE
-   code ;
-
 \ Ending before the response with no event means no event stream: E-RESPONSE.
-: FOLLOW ( ptr call -- ptr call )
+: STREAM-CHECK ( ptr call -- ptr call )
    {: c :}
    c STREAM {: s :}
-   c REQUEST-URL$ c BODY$ c AS-POST
-   c STREAM-EXCHANGE {: code:n :}
-   code 0<> if code throw then
    s STREAM-DONE @ 0= if
       s STREAM-HEARD @ if E-TRANSPORT throw then
       E-RESPONSE throw
@@ -2667,10 +2627,31 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
    c ;
 
+\ Posts the request on a fresh decoder and receives its event stream.
+: FOLLOW ( ptr call -- ptr call )
+   {: c :}
+   c REQUEST-URL$ c BODY$ c AS-POST
+   c DECODER-STORAGE SSE:OPEN OPTION:SOME c STREAM STREAM-DECODER !
+   c START-TRANSFER
+   c RECEIVE
+   c ;
+
+: POST-REQUEST ( ptr call -- ptr call )
+   {: c :}
+   c REQUEST-URL$ c BODY$ c AS-POST
+   c START-TRANSFER
+   c RECEIVE
+   c ;
+
 : RUN-CHAT ( bool ptr call -- ptr call )
    {: finished:bool c :}
    finished c CHAT-BODY
    c [: FOLLOW ;] SEND
+   c ;
+
+\ Reads a chat reply's usage, service tier and content.
+: CHAT-PARSE ( ptr call -- ptr call )
+   {: c :}
    c PARSE-USAGE
    c PARSE-TIER
    c PARSE-CHAT
@@ -2682,6 +2663,11 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    {: c :}
    c EMBED-BODY
    c [: POST-REQUEST ;] SEND
+   c ;
+
+\ Reads an embed reply's vectors and usage.
+: EMBED-PARSE ( ptr call -- ptr call )
+   {: c :}
    s" " false c [: >r 2drop drop r@ PARSE-EMBED r> ;] catch {: walk:n :}
    walk 0<> if 2drop 2drop c FAULT-USAGE walk throw then
    drop {: a:ptr u:n present:bool :}
@@ -3011,14 +2997,6 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 
-\ Journals a live refusal so a replay meets it at the same step and asks for
-\ less with no request. A put fault replaces the refusal as the call's fault.
-: JOURNAL-REFUSAL ( n bool ptr call -- )
-   {: code:n hit:bool c :}
-   c MODEL-CALL:JOURNAL-READY @ 0= hit or if exit then
-   code REFUSAL? 0= if exit then
-   code c REFUSAL-PUT ;
-
 : PREP-JOURNAL-CHAT ( ptr call -- )
    {: c :}
    c REQUIRE-REST
@@ -3074,7 +3052,7 @@ public
 
 private
 
-\ FOLLOW's E-TRANSPORT is the only one with a status.
+\ STREAM-CHECK's E-TRANSPORT is the only one with a status.
 : REPLY+ ( n ptr call -- )
    {: code:n c :}
    c MODEL-CALL:HTTP-STATUS @ {: status:n :}
@@ -3138,26 +3116,115 @@ private
    c EVENTS+
    LOG:;LINE ;
 
-\ Logs a failure the provider or the transport caused: the request went out or
-\ a libcurl step failed.
-: REPORT-FAILURE ( n ptr call -- )
-   {: code:n c :}
-   c LEDGER {: l :}
-   l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if exit then
-   code c REPORT ;
+ENUM land-step settling landed ;ENUM
+ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
+
+\ Keeps n as the call's outcome unless one is kept.
+: KEEP-FAULT ( n ptr call -- )
+   RECEIPT {: fault:n r :}
+   r RECEIPT-OUTCOME @ 0= if fault r RECEIPT-OUTCOME ! then ;
+
+: RUN-STEP ( ptr call [ ptr call -- ptr call ] -- ptr call [ ptr call -- ptr call ] )
+   {: c step :}
+   c step execute drop
+   c step ;
+
+\ Runs the step on the call while it keeps no outcome, keeping the step's fault.
+: CHECK-STEP ( ptr call [ ptr call -- ptr call ] -- )
+   {: c step :}
+   c RECEIPT RECEIPT-OUTCOME @ 0<> if exit then
+   c step [: RUN-STEP ;] catch {: code:n :} 2drop
+   code c KEEP-FAULT ;
 
 
-\ Records a landed chat or embed call, then throws its fault.
-: FINISH-CALL ( n bool bool ptr call -- n bool bool ptr call )
-   {: code:n cancelled:bool hit:bool c :}
-   code cancelled c END-LEDGER {: recorded:n :}
-   cancelled if E-CANCELLED throw then
-   code 0<> if
-      code c REPORT-FAILURE code hit c JOURNAL-REFUSAL code throw
+\ Ends the call's transfer, decoder and handle, wipes its header and parses its
+\ reply, keeping the first fault; then lands, records and answers its ending.
+: SETTLE-SENSE ( ptr call -- ending )
+   {: c :}
+   c RECEIPT {: r :}
+   r RECEIPT-REPLAYED @ {: replayed:bool :}
+   c END-TRANSFER
+   replayed 0= if c [: RECEIPT-CHECK ;] CHECK-STEP then
+   c STREAM STREAM-DECODER @ MATCH option
+      none OF ENDOF
+      some OF
+         [: dup SSE:CLOSE ;] catch {: closed:n :} drop
+         closed c KEEP-FAULT
+      ENDOF
+   ;MATCH
+   OPTION:NONE c STREAM STREAM-DECODER !
+   replayed 0= if
+      c MODEL-CALL:KIND @ MATCH call-kind
+         chat OF c [: STREAM-CHECK ;] CHECK-STEP ENDOF
+         embed OF ENDOF
+      ;MATCH
    then
-   c MODEL-CALL:JOURNAL-READY @ hit 0= and if c JOURNAL-PUT then
-   recorded 0<> if recorded throw then
-   code cancelled hit c ;
+   c MODEL-CALL:HANDLE @ MATCH option
+      none OF ENDOF
+      some OF
+         [: dup CURL:CLEANUP ;] catch {: freed:n :} drop
+         freed c KEEP-FAULT
+      ENDOF
+   ;MATCH
+   OPTION:NONE c MODEL-CALL:HANDLE !
+   replayed 0= if
+      c [: dup HEADER-WIPE ;] catch {: wiped:n :} drop
+      wiped c KEEP-FAULT
+      c MODEL-CALL:KIND @ MATCH call-kind
+         chat OF c [: CHAT-PARSE ;] CHECK-STEP ENDOF
+         embed OF c [: EMBED-PARSE ;] CHECK-STEP ENDOF
+      ;MATCH
+   then
+   c END-CALL {: cancelled:bool :}
+   r RECEIPT-OUTCOME @ {: fault:n :}
+   fault cancelled c END-LEDGER {: recorded:n :}
+   cancelled if construct ending cut exit then
+   replayed if
+      fault 0= if construct ending replayed exit then
+      construct ending replay-failed exit
+   then
+   fault 0= if recorded r RECEIPT-OUTCOME ! construct ending served exit then
+   c LEDGER {: l :}
+   l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if
+      construct ending unsent exit
+   then
+   fault REFUSAL? if construct ending refused exit then
+   construct ending failed ;
+
+: LAND-CUT ( ptr call -- ) E-CANCELLED swap RECEIPT RECEIPT-OUTCOME ! ;
+
+\ A put fault replaces the outcome.
+: LAND-SERVED ( ptr call -- )
+   {: c :}
+   c MODEL-CALL:JOURNAL-READY @ 0= if exit then
+   c [: dup JOURNAL-PUT ;] catch {: put:n :} drop
+   put 0<> if put c RECEIPT RECEIPT-OUTCOME ! then ;
+
+\ Journals a live refusal so a replay meets it at the same step and asks for
+\ less with no request. A put fault replaces the outcome.
+: LAND-REFUSED ( ptr call -- )
+   {: c :}
+   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
+   fault c REPORT
+   c MODEL-CALL:JOURNAL-READY @ 0= if exit then
+   fault c [: 2dup REFUSAL-PUT ;] catch {: put:n :} 2drop
+   put 0<> if put c RECEIPT RECEIPT-OUTCOME ! then ;
+
+: LAND-FAILED ( ptr call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
+
+\ Lands a chat or embed call once its run ends: what each ending reports, saves
+\ and leaves as the outcome.
+FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
+   IN settling  SETTLE-SENSE
+      cut            LAND-CUT      >landed
+      replayed       -             >landed
+      replay-failed  -             >landed
+      served         LAND-SERVED   >landed
+      unsent         -             >landed
+      refused        LAND-REFUSED  >landed
+      failed         LAND-FAILED   >landed
+   FINAL landed  -
+;DEFINE
 
 
 \ CHAT and REPLAY have used a finished input; one the call refused before
@@ -3179,12 +3246,16 @@ private
    0 c MODEL-CALL:CACHED-TOKENS !
    construct call-kind chat c MODEL-CALL:KIND !
    c BEGIN-CALL
+   hit c RECEIPT RECEIPT-REPLAYED !
+   0 c RECEIPT RECEIPT-OUTCOME !
    c finished hit [: RUN-CHAT-SELECT ;] catch {: code:n :} 2drop drop
-   c END-CALL {: cancelled:bool :}
-   code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop
+   code c KEEP-FAULT
+   c [: dup construct land-step settling LAND-MACHINE ;] catch {: rc:n :} drop
    c IDLE!
    c USED
    rc 0<> if rc throw then
+   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
+   fault 0<> if fault throw then
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
 
 public
@@ -3270,11 +3341,15 @@ public
    else false then {: hit:bool :}
    construct call-kind embed c MODEL-CALL:KIND !
    c BEGIN-CALL
+   hit c RECEIPT RECEIPT-REPLAYED !
+   0 c RECEIPT RECEIPT-OUTCOME !
    c hit [: RUN-EMBED-SELECT ;] catch {: code:n :} 2drop
-   c END-CALL {: cancelled:bool :}
-   code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop
+   code c KEEP-FAULT
+   c [: dup construct land-step settling LAND-MACHINE ;] catch {: rc:n :} drop
    c IDLE!
    rc 0<> if rc throw then
+   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
+   fault 0<> if fault throw then
    true c MODEL-CALL:EMBEDDED ! ;
 
 \ Input idx's vector: DIMS IEEE-754 binary32 values of 4 little-endian bytes
