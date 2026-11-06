@@ -1019,11 +1019,6 @@ TASK:MIN-STACK TASK:TASK STALLER
    W-RESET S\" {\"resultType\":\"complete\",\"content\":[{\"type\":\"text\",\"text\":\"nope\"}]," W+
    S\" \"isError\":true," W+ W-SERVER s" }" W+ W$ T$= ;
 
-: CLIENT-UNKNOWN ( -- )
-   s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
-   [: s" nosuch" s" {}" ASK 2drop drop ;] MCP:E-RESPONSE TTHROWSQ
-   s" echo" s" {}" ASK TFALSE 2drop ;
-
 : CLIENT-BIG ( -- )
    s" a result past the first reply buffer arrives whole" T-LABEL
    s" big" s" {}" ASK TFALSE
@@ -1058,6 +1053,20 @@ $A constant LF
 : CAPTURED ( [ -- ] -- )
    LOG-PATH$ STDERR:CAPTURE
    [: STDERR:;CAPTURE ;] finally ;
+
+\ The capture holds one line: MCP's account of a reply from this server, with
+\ the rest after the host.
+: REPLY-LOGGED ( ptr u8 n -- )
+   {: rest:ptr ru:n :}
+   LINES 1 T=
+   SB-RESET s"  error mcp: reply from 127.0.0.1:" SB-APPEND
+   HTTP:PORT FMT:SB-U s"  " SB-APPEND rest ru SB-APPEND
+   LOG$ SB$ CONTAINS? TTRUE ;
+
+: CLIENT-UNKNOWN ( -- )
+   s" an unknown tool is E-RESPONSE and the client serves the next call" T-LABEL
+   [: [: s" nosuch" s" {}" ASK 2drop drop ;] MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
+   s" echo" s" {}" ASK TFALSE 2drop ;
 
 : CLIENT-TIMEOUT ( -- )
    s" a call past its limit is E-TRANSFER and the client serves the next call" T-LABEL
@@ -1149,10 +1158,14 @@ $A constant LF
    ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE
    S\" {\"content\":[],\"isError\":false}" T$=
    s" a stream with no response is E-RESPONSE and the client serves the next call" T-LABEL
-   [: ROUTE-CLIENT @ s" none" s" {}" 0 >MS MCP:CALL 2drop drop ;] MCP:E-RESPONSE TTHROWSQ
+   [: [: ROUTE-CLIENT @ s" none" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+      MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
+   s" has no event answering the request: status 200" REPLY-LOGGED
    ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
    s" an event that is not UTF-8 is E-RESPONSE and the client serves the next call" T-LABEL
-   [: ROUTE-CLIENT @ s" bad" s" {}" 0 >MS MCP:CALL 2drop drop ;] MCP:E-RESPONSE TTHROWSQ
+   [: [: ROUTE-CLIENT @ s" bad" s" {}" 0 >MS MCP:CALL 2drop drop ;]
+      MCP:E-RESPONSE TTHROWSQ ;] CAPTURED
+   s" is an event stream that is not UTF-8: status 200" REPLY-LOGGED
    ROUTE-CLIENT @ s" echo" s" {}" 0 >MS MCP:CALL TFALSE 2drop
    ROUTE-CLIENT @ MCP:CLOSE ;
 
@@ -1342,7 +1355,9 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 : DENIED-ROUTE ( HTTP:request HTTP:response -- ) nip 403 HTTP:STATUS! ;
 : BUSY-ROUTE ( HTTP:request HTTP:response -- ) nip 503 HTTP:STATUS! ;
 : LIMITED-ROUTE ( HTTP:request HTTP:response -- ) nip 429 HTTP:STATUS! ;
-: TEAPOT-ROUTE ( HTTP:request HTTP:response -- ) nip 418 HTTP:STATUS! ;
+: TEAPOT-ROUTE ( HTTP:request HTTP:response -- )
+   nip {: answer:HTTP:response :}
+   answer 418 HTTP:STATUS!  answer s" short and stout" HTTP:BODY! ;
 : KEYS-ROUTE ( HTTP:request HTTP:response -- ) nip KEY-SET$ HTTP:BODY! ;
 
 \ Hides echo, the first tool listed, and secret from every caller but owner-app.
@@ -1405,18 +1420,27 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
 
 : WHOAMI-CALL ( -- ) CLIENT @ s" whoami" s" {}" 0 >MS MCP:CALL 2drop drop ;
 
-\ A call on a client of the path throws the code.
-: PATH-THROWS ( ptr u8 n n -- )
-   {: a:ptr u:n code:n :}
-   a u URL MCP:OPEN CLIENT !
-   ['] WHOAMI-CALL code TTHROWSQ
-   CLIENT @ MCP:CLOSE ;
+: CAPTURED-CALL ( -- ) ['] WHOAMI-CALL CAPTURED ;
+
+\ A call on a client of the URL throws the code and logs one line, the rest
+\ after the host.
+: URL-THROWS ( ptr u8 n n ptr u8 n -- )
+   {: a:ptr u:n code:n rest:ptr ru:n :}
+   a u MCP:OPEN CLIENT !
+   ['] CAPTURED-CALL code TTHROWSQ
+   CLIENT @ MCP:CLOSE
+   rest ru REPLY-LOGGED ;
+
+: PATH-THROWS ( ptr u8 n n ptr u8 n -- )
+   {: a:ptr u:n code:n rest:ptr ru:n :}
+   a u URL code rest ru URL-THROWS ;
 
 : GUARDED-CLIENT ( -- )
    CURL:LOOP-START OK
    s" /mcp" URL MCP:OPEN CLIENT !
    s" a client without a token is E-DENIED" T-LABEL
-   ['] WHOAMI-CALL MCP:E-DENIED TTHROWSQ
+   ['] CAPTURED-CALL MCP:E-DENIED TTHROWSQ
+   s" refused the client: status 401" REPLY-LOGGED
    s" TOKEN! sends the token on TOOLS and CALL" T-LABEL
    ZEN CLIENT @ TOKEN$ MCP:TOKEN!
    OWNER
@@ -1428,16 +1452,21 @@ CRYPTO:RS256-MAX-BYTES BUFFER: SIGNATURE
    W-SERVER s" }" W+ W$ T$=
    s" TOKEN! of an empty text sends none" T-LABEL
    CLIENT @ s" " MCP:TOKEN!
-   ['] WHOAMI-CALL MCP:E-DENIED TTHROWSQ
+   ['] CAPTURED-CALL MCP:E-DENIED TTHROWSQ
    CLIENT @ MCP:CLOSE
    s" a 403 is E-DENIED" T-LABEL
-   s" /denied" MCP:E-DENIED PATH-THROWS
+   s" /denied" MCP:E-DENIED s" refused the client: status 403" PATH-THROWS
    s" a 503 is E-UNAVAILABLE" T-LABEL
-   s" /busy" MCP:E-UNAVAILABLE PATH-THROWS
+   s" /busy" MCP:E-UNAVAILABLE s" reports the server unavailable: status 503" PATH-THROWS
    s" a 429 is E-UNAVAILABLE" T-LABEL
-   s" /limited" MCP:E-UNAVAILABLE PATH-THROWS
-   s" a 418 is E-RESPONSE" T-LABEL
-   s" /teapot" MCP:E-RESPONSE PATH-THROWS
+   s" /limited" MCP:E-UNAVAILABLE s" reports the server unavailable: status 429" PATH-THROWS
+   s" a 418 is E-RESPONSE, logged with its body" T-LABEL
+   s" /teapot" MCP:E-RESPONSE s" is not a success: status 418 body: short and stout" PATH-THROWS
+   s" the log line leaves out the URL's userinfo" T-LABEL
+   SB-RESET s" http://user:SECRET@127.0.0.1:" SB-APPEND HTTP:PORT FMT:SB-U
+   s" /denied" SB-APPEND SB$ MCP:E-DENIED s" refused the client" URL-THROWS
+   LOG$ s" user" CONTAINS? TFALSE
+   LOG$ s" SECRET" CONTAINS? TFALSE
    s" TOKEN! refuses a closed client" T-LABEL
    [: CLIENT @ s" t" MCP:TOKEN! ;] MCP:E-STATE TTHROWSQ
    s" no transfer is left in flight" T-LABEL

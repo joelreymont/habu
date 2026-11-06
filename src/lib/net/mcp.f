@@ -1215,6 +1215,20 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    LOG:;LINE
    E-TRANSFER throw ;
 
+\ Logs what is wrong with the row's reply, its status and its whole body, then
+\ throws the code.
+: BAD-REPLY ( ptr u8 n n n -- )
+   {: what:ptr wu:n idx:n code:n :}
+   idx URL-BUF BUF$ HOST$ {: host:ptr hu:n :}
+   idx REPLY-BUF BUF$ {: body:ptr bu:n :}
+   LOG:ERROR s" mcp" LOG:LINE  s" reply" LOG:TEXT+
+   hu 0<> if s"  from " LOG:TEXT+  host hu LOG:TEXT+ then
+   s"  " LOG:TEXT+  what wu LOG:TEXT+
+   s" : status " LOG:TEXT+  idx ROW PEER-STATUS @ CURL:HTTP-STATUS>N LOG:INT+
+   bu 0<> if s"  body: " LOG:TEXT+  body bu LOG:TEXT+ then
+   LOG:;LINE
+   code throw ;
+
 : CHECK ( CURL:status n -- )
    {: idx:n :}
    MATCH CURL:status
@@ -1470,9 +1484,8 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    d SSE:FINISH
    d a u rec ;
 
-\ The reply's JSON-RPC text: its body, or for an event stream the data of the
-\ event that answers the request, E-RESPONSE when no event does or when the
-\ stream is not UTF-8. The decoder is closed before this answers or throws.
+\ The reply's JSON-RPC text: its body, or the data of the stream's event that
+\ answers the request, else a logged E-RESPONSE; the decoder is always closed.
 : MESSAGE$ ( n -- ptr u8 n )
    {: idx:n :}
    idx REPLY-BUF BUF$ {: a:ptr u:n :}
@@ -1482,42 +1495,60 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx DECODER {: d:SSE:decoder :}
    d a u idx ROW [: DECODE ;] catch {: code:n :} 2drop 2drop
    d SSE:CLOSE
-   code SSE:E-UTF8 = if E-RESPONSE throw then
+   code SSE:E-UTF8 = if
+      s" is an event stream that is not UTF-8" idx E-RESPONSE BAD-REPLY
+   then
    code 0<> if code throw then
-   buf BUF$ dup 0= if E-RESPONSE throw then ;
+   buf BUF$ dup 0= if
+      s" has no event answering the request" idx E-RESPONSE BAD-REPLY
+   then ;
 
 
-\ A member of a JSON object text: its text (a string with quotes) and token
-\ kind, and whether it is there. Text that is not an object is E-RESPONSE.
+\ A member of a JSON object text: its text (a string with quotes), token kind
+\ and whether it is there; text that is not an object is a logged E-RESPONSE.
 : MEMBER ( n ptr u8 n ptr u8 n -- ptr u8 n n bool )
    {: idx:n data:ptr len:n key:ptr ku:n :}
    idx ROW PEER-CURSOR data len JSON:READ-INIT
-   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
+   JSON:READ-NEXT JSON:T-OBJ <> if
+      JSON:READ-CLOSE
+      s" has a result that is not a JSON object" idx E-RESPONSE BAD-REPLY
+   then
    key ku JSON:READ-FIND-KEY if
       JSON:READ-TOKEN {: k:n :} RAW$ {: a:ptr u:n :} JSON:READ-CLOSE a u k true
    else JSON:READ-CLOSE s" " JSON:T-END false then ;
 
 
-\ The result object's text of a 2xx reply whose message answers the request;
-\ E-DENIED for a 401 or 403, E-UNAVAILABLE for a status CURL:UNAVAILABLE?
-\ accepts.
+\ The result text of a 2xx reply answering the request, else a logged E-DENIED
+\ (401, 403), E-UNAVAILABLE (CURL:UNAVAILABLE?) or E-RESPONSE (any other).
 : RESULT$ ( n -- ptr u8 n )
    {: idx:n :}
    idx ROW PEER-STATUS @ {: status:CURL:http-status :}
    status CURL:HTTP-STATUS>N {: code:n :}
-   code 401 = code 403 = or if E-DENIED throw then
-   status CURL:UNAVAILABLE? if E-UNAVAILABLE throw then
-   code 200 < code 299 > or if E-RESPONSE throw then
+   code 401 = code 403 = or if
+      s" refused the client" idx E-DENIED BAD-REPLY
+   then
+   status CURL:UNAVAILABLE? if
+      s" reports the server unavailable" idx E-UNAVAILABLE BAD-REPLY
+   then
+   code 200 < code 299 > or if
+      s" is not a success" idx E-RESPONSE BAD-REPLY
+   then
    idx MESSAGE$ {: m:ptr mu:n :}
    idx ROW PEER-CURSOR m mu JSON-RPC:>MESSAGE
    MATCH JSON-RPC:message
       success OF {: id value:ptr vu:n :}
-         id JSON-RPC:ID$ REQUEST-ID$ STR= 0= if E-RESPONSE throw then
+         id JSON-RPC:ID$ REQUEST-ID$ STR= 0= if
+            s" answers another request" idx E-RESPONSE BAD-REPLY
+         then
          value vu ENDOF
-      request OF 2drop 2drop drop E-RESPONSE throw ENDOF
-      notification OF 2drop 2drop E-RESPONSE throw ENDOF
-      failure OF 2drop drop E-RESPONSE throw ENDOF
-      invalid OF 2drop 2drop E-RESPONSE throw ENDOF
+      request OF 2drop 2drop drop
+         s" is a request, not a response" idx E-RESPONSE BAD-REPLY ENDOF
+      notification OF 2drop 2drop
+         s" is a notification, not a response" idx E-RESPONSE BAD-REPLY ENDOF
+      failure OF 2drop drop
+         s" is a JSON-RPC error" idx E-RESPONSE BAD-REPLY ENDOF
+      invalid OF 2drop 2drop
+         s" is not JSON-RPC" idx E-RESPONSE BAD-REPLY ENDOF
    ;MATCH ;
 
 
@@ -1551,11 +1582,17 @@ DYNAMIC-BUFFER ROW-GEN n            \ an open row's generation, 0 for a free one
    idx limit [: LIST-EXCHANGE ;] catch {: code:n :} 2drop
    idx code SETTLE
    idx RESULT$ {: result:ptr ru:n :}
-   idx result ru s" tools" MEMBER 0= if E-RESPONSE throw then
-   JSON:T-ARR <> if E-RESPONSE throw then
+   idx result ru s" tools" MEMBER 0= if
+      s" has no tools member" idx E-RESPONSE BAD-REPLY
+   then
+   JSON:T-ARR <> if
+      s" has tools that are not an array" idx E-RESPONSE BAD-REPLY
+   then
    {: tools:ptr tu:n :}
    idx result ru s" nextCursor" MEMBER {: more:bool :} {: k:n :}
-   more if k JSON:T-STR <> if E-RESPONSE throw then then
+   more if k JSON:T-STR <> if
+      s" has a nextCursor that is not a string" idx E-RESPONSE BAD-REPLY
+   then then
    idx tools tu GATHER
    more ;
 
@@ -1637,7 +1674,9 @@ public
    idx RESULT$ {: result:ptr ru:n :}
    idx result ru s" isError" MEMBER if
       {: k:n :} 2drop
-      k JSON:T-TRUE <> k JSON:T-FALSE <> and if E-RESPONSE throw then
+      k JSON:T-TRUE <> k JSON:T-FALSE <> and if
+         s" has an isError that is not true or false" idx E-RESPONSE BAD-REPLY
+      then
       k JSON:T-TRUE =
    else drop 2drop false then
    {: fault:bool :}
