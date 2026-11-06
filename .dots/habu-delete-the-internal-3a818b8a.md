@@ -14,3 +14,5 @@ Acceptance: DNAME-INT, DNAME-OWNED and the trusted-only flag, with every reader 
 Files: src/habu/layout.f (DNAME-* bits), src/core/internal-mark.f, src/habu/prims.f, src/core/checker.f, src/habu/aot-capture.f, src/habu/habu2.f (prompt/tick refusals), tests naming the marks.
 Verify: full suite on the built hb; product probes for formerly internal names answer E-UNDEFINED.
 Depends: the dot moving internal primitives into the system package. Ownership: lead. Claim: unassigned.
+
+Acceptance case (S5c census 4, 2026-11-06, /tmp/jerry-ckrows/census4.md G): inside a build (LINKER:WITH), after the product's src/core/internal-mark.f has run, the startup driver's top-level REQUIRE-BOOT-FREEZE is refused "hb: internal engine word" (rc 70), so a build cannot finish hb's startup list. With the marks deleted, the build's driver completes the list's freeze step.
