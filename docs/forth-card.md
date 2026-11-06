@@ -456,6 +456,11 @@ holds an address**.
   `E-X-LAST` (arrays, filesystem, strings, …) and
   reserves that whole range whether or not every code is minted;
   `tools/error-code-lint.f` reports a file minting inside another's.
+- A code is declared with its text: `-9701 s" the provider refused the key"
+  ERROR:CODE E-KEY` defines the constant `E-KEY` and keeps its name, qualified
+  by the open package (`MODEL:E-KEY`), and the text in the program's data.
+  `ERROR:NAME$` and `ERROR:TEXT$` ( n -- ptr u8 n ) answer them, empty for an
+  undeclared code. `src/lib/error.f` states the refusals (CODE, CHECK).
 - A block with codes in a package (`JSON:E-READ-SOURCE`) is minted, bounds and
   all, in the file that throws its codes and that every other file throwing
   them requires (`src/lib/json/read.f`, which `src/lib/json/copy.f` requires;
@@ -467,7 +472,8 @@ holds an address**.
 - A failure caused outside the program (a provider, the network, the OS) is
   logged once, with its text, by the library that saw it, just before it
   throws: `LOG:ERROR s" model" LOG:LINE … LOG:TEXT+ … LOG:;LINE`
-  (`src/lib/log.f`), the tag its package name in lower case.
+  (`src/lib/log.f`), the tag its package name in lower case. `LOG:CODE+`
+  appends a code with its declared name and text.
 - `throw` is catchable and belongs to the checker's exception edge. `die`
   (`ptr u8 n n --`, a real message and exit code) ends the process and is
   no-return, so nothing may follow a call to a word that ends in one. `throw`

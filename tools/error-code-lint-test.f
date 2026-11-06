@@ -130,6 +130,22 @@ variable FIX-U
    s"   E-XA" FIX+
    FIX$ ;
 
+\ `-9001 s" the text" ERROR:CODE E-XB`: ERROR:CODE declares a code as constant
+\ does, so its number is a claim.
+: CODE-FORM+ ( -- )
+   s" -9001 s" FIX+  Q+
+   s"  the text" FIX+  Q+
+   s"  ERROR:CODE E-XB" FIX+ ;
+
+: CODE-FORM$ ( -- ptr u8 n )
+   FIX-RESET CODE-FORM+ FIX$ ;
+
+\ `-9001 constant E-XA  -9001 s" the text" ERROR:CODE E-XB`
+: CODE-PAIR$ ( -- ptr u8 n )
+   FIX-RESET
+   s" -9001 constant E-XA  " FIX+  CODE-FORM+
+   FIX$ ;
+
 \ `: BAD s" nope` - the literal opened here never closes, so the lexer stops the
 \ scan at that quote and every claim after it in the source is unreadable.
 : UNTERM$ ( -- ptr u8 n )
@@ -265,6 +281,12 @@ variable FIX-U
    COMMENT-THEN-LINE$ ERROR-CODE-LINT:COUNT 1 T=
    SPLIT-CLAIM$ ERROR-CODE-LINT:COUNT 0 T= ;
 
+\ A claim in the ERROR:CODE form collides with a constant's in its own file and
+\ in another.
+: CODE-FORM ( -- )
+   CODE-PAIR$ ERROR-CODE-LINT:COUNT 1 T=
+   s" -9001 constant E-XA" CODE-FORM$ ERROR-CODE-LINT:COUNT2 1 T= ;
+
 \ A source the lexer cannot read to the end stops the gate by name instead of
 \ reporting zero findings for the part it read.
 : FAIL-CLOSED ( -- )
@@ -285,6 +307,7 @@ variable FIX-U
    PRINT-PAREN
    STRINGS
    HOSTILE
+   CODE-FORM
    FAIL-CLOSED
    T-REPORT
    LIVE ;

@@ -1,9 +1,17 @@
-\ errors.f - canonical stdlib throw codes. -999999..-100000 is reserved for
+\ error.f - canonical stdlib throw codes. -999999..-100000 is reserved for
 \ external applications and libraries (docs/forth.md, Errors). A file owns the
 \ whole block between its FIRST and LAST, minted or not (tools/error-code-lint.f);
 \ a subsystem that outgrows its block takes a second region, never renumbers.
 \ A package's block is minted in the package's file; a comment here says where.
-\ STORAGE CLASS. CALLER-OWNED: the module keeps no state (constants only).
+\ STORAGE CLASS. PROCESS-WIDE: the rows ERROR:CODE lays in data space and the
+\ head cell that reaches the newest of them.
+
+\ ERROR-TEXT is src/core/util.f's, which every prefix loads first. Not required: the
+\ window in test/native-window-owner-child.f loads it unrecorded, so a require loads it twice.
+require src/habu/layout.f
+require src/habu/xref.f
+require src/core/bytes.f
+require src/lib/prelude.f
 
 \ Arrays: -2000..-2099
 -2000 constant E-A-FIRST
@@ -1222,6 +1230,8 @@
 \ CODESIGN.
 \ State machines: -9660..-9669, minted in src/lib/fsm.f, which owns package
 \ FSM.
+\ Codes the ERROR:CODE tests declare: -9670..-9689, in src/lib/error-test.f,
+\ src/lib/log-test.f and test/fixtures/error/.
 \ Model chat and embedding client: -9700..-9799, minted in src/lib/net/model.f,
 \ which owns package MODEL.
 
@@ -1239,3 +1249,173 @@
 -9606 constant E-T0-MATCH        \ a MATCH or construct the checker's facts do not bear out, as tier 1's E-NELAB-MATCH: COMP's UNSUPPORTED$
 -9607 constant E-T0-DEFER        \ `is` names no deferred word: COMP's UNSUPPORTED$
 -9608 constant E-T0-BUNDLE       \ an operation over a width it cannot move, as tier 1's E-NELAB-BUNDLE
+
+\ A declared code's row holds no address: HEAD and each row's prev are byte
+\ distances to the newest row and to the row before, 0 for none.
+package ERROR
+
+private
+
+255 constant NAME-CAP
+\ `-`, 19 digits, ` constant ` and the name.
+NAME-CAP 30 + constant LINE-CAP
+
+variable HEAD
+create LINE LINE-CAP allot
+variable LINE-U
+create NL $0A c,
+
+\ A row by its distance from HEAD.
+: ROW-AT ( n -- ptr n )  HEAD BYTE-VIEW + CELL-VIEW ;
+: ROW-PREV ( n -- n )  ROW-AT @ ;
+: ROW-CODE ( n -- n )  ROW-AT cell+ @ ;
+
+
+: ROW-NAME$ ( n -- ptr u8 n )
+   ROW-AT {: r:ptr :}
+   r 4 cells + BYTE-VIEW r 2 cells + @ ;
+
+
+: ROW-TEXT$ ( n -- ptr u8 n )
+   ROW-AT {: r:ptr :}
+   r 4 cells + BYTE-VIEW r 2 cells + @ + r 3 cells + @ ;
+
+
+\ The newest row with this code, by its distance from HEAD; 0 for none.
+: FIND ( n -- n ) {: code:n :}
+   HEAD @
+   begin dup 0<> while
+      dup ROW-CODE code = if exit then
+      dup ROW-PREV dup 0= if 2drop 0 exit then
+      -
+   repeat ;
+
+
+\ The open package's own spelling, empty outside a package.
+: PKG$ ( -- ptr u8 n )
+   data-base PKG-REC-CELL + @ dup 0= if drop s" " exit then
+   XREF-ADDR>REC XREF-NAME$ ;
+
+
+: SAY ( ptr u8 n -- )  ERROR-TEXT:TYPE ;
+
+
+: SAY-INT ( n -- )
+   dup 0< if s" -" SAY then
+   ERROR-TEXT:DIGITS$ SAY ;
+
+
+\ The name as the row keeps it: `PKG:E-X` in a package, else `E-X`.
+: SAY-NAME ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   PKG$ {: p:ptr pu:n :}
+   pu 0<> if p pu SAY s" :" SAY then
+   name nameu SAY ;
+
+
+\ A refusal's line ends here; the empty die adds nothing to it.
+: REFUSE ( -- )
+   NL 1 SAY
+   s" " 70 die ;
+
+
+\ Whether the row at this distance carries the name this declaration gives:
+\ PKG$, `:` and the name in a package, else the name.
+: SAME-NAME? ( n ptr u8 n -- bool )
+   {: at:n name:ptr nameu:n :}
+   at ROW-NAME$ {: r:ptr ru:n :}
+   PKG$ {: p:ptr pu:n :}
+   pu 0= if r ru name nameu XREF-STR=CI exit then
+   ru pu nameu + 1+ <> if false exit then
+   r pu + c@ $3A <> if false exit then
+   r pu p pu XREF-STR=CI if r pu + 1+ nameu name nameu XREF-STR=CI exit then
+   false ;
+
+
+\ Ends the process, exit 70 and one line on fd 2, for a missing name, a name
+\ past 255 bytes, an empty text, or a code outside 0..255 another name holds.
+: CHECK ( n ptr u8 n n -- )
+   {: code:n name:ptr nameu:n textu:n :}
+   nameu 0= if
+      s" ERROR:CODE: no name after the code " SAY code SAY-INT REFUSE
+   then
+   nameu NAME-CAP > if
+      s" ERROR:CODE: the name " SAY name nameu SAY
+      s"  is longer than 255 bytes" SAY REFUSE
+   then
+   textu 0= if
+      s" ERROR:CODE: " SAY name nameu SAY-NAME s"  has an empty text" SAY REFUSE
+   then
+   code 0 < code 255 > or 0= if exit then
+   code FIND {: at:n :}
+   at 0= if exit then
+   at name nameu SAME-NAME? if exit then
+   s" ERROR:CODE: " SAY code SAY-INT s"  is " SAY at ROW-NAME$ SAY
+   s" , declared again as " SAY name nameu SAY-NAME REFUSE ;
+
+
+: LINE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a LINE LINE-U @ + u BYTE-COPY
+   u LINE-U +! ;
+
+
+: LINE-INT+ ( n -- )
+   dup 0< if s" -" LINE+ then
+   ERROR-TEXT:DIGITS$ LINE+ ;
+
+
+\ Evaluated text keeps every E- word a folded constant in the current wordlist.
+: DEFINE ( n ptr u8 n -- ) {: code:n name:ptr nameu:n :}
+   0 LINE-U !
+   code LINE-INT+ s"  constant " LINE+ name nameu LINE+
+   LINE LINE-U @ evaluate-closed ;
+
+
+: BYTES, ( ptr u8 n -- ) {: a:ptr u:n :}
+   a here u BYTE-COPY
+   u allot ;
+
+
+: PAD, ( -- )
+   begin here NULL-PTR - 1 cells 1- and 0<> while 0 c, repeat ;
+
+
+: ROW, ( n ptr u8 n ptr u8 n -- )
+   {: code:n name:ptr nameu:n text:ptr textu:n :}
+   align
+   PKG$ {: p:ptr pu:n :}
+   here NULL-PTR - HEAD NULL-PTR - - {: at:n :}
+   HEAD @ dup 0<> if at swap - then ,
+   code ,
+   pu nameu + pu 0<> if 1+ then ,
+   textu ,
+   p pu BYTES,
+   pu 0<> if s" :" BYTES, then
+   name nameu BYTES,
+   text textu BYTES,
+   PAD,
+   at HEAD ! ;
+
+public
+
+\ A name `constant` refuses is refused as `constant` refuses it,
+\ E-DUPLICATE-DEFINITION for one the wordlist holds.
+: CODE ( n ptr u8 n -- )
+   {: code:n text:ptr textu:n :}
+   parse-name {: name:ptr nameu:n :}
+   code name nameu textu CHECK
+   code name nameu DEFINE
+   code name nameu text textu ROW, ;
+generates: CODE ( -- n )
+
+\ The newest declaration's name or text for a code, empty when none.
+: NAME$ ( n -- ptr u8 n )
+   FIND dup 0= if drop s" " exit then
+   ROW-NAME$ ;
+
+
+: TEXT$ ( n -- ptr u8 n )
+   FIND dup 0= if drop s" " exit then
+   ROW-TEXT$ ;
+
+seal-package
+;package

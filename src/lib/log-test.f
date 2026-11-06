@@ -26,6 +26,8 @@ package LOG
 
 package LOG-TEST
 
+-9672 s" the log test's code" ERROR:CODE E-LOG-CODE
+-9678 constant UNDECLARED          \ no ERROR:CODE declares it
 $A constant LF
 $100000 constant BIG-U              \ 1 MiB of text in one line
 $10000 constant PAD-U               \ a pipe line's padding, far past PIPE_BUF
@@ -417,6 +419,24 @@ TASK:MIN-STACK TASK:TASK READER
    [: REOPEN ;] catch 0 T= ;
 
 
+: CODE-LINES ( -- )
+   LOG:ERROR s" t" LOG:LINE E-LOG-CODE LOG:CODE+ LOG:;LINE
+   LOG:ERROR s" t" LOG:LINE UNDECLARED LOG:CODE+ LOG:;LINE ;
+
+
+: CODE-REST$ ( -- ptr u8 n )  S\"  error t: -9672 LOG-TEST:E-LOG-CODE: the log test's code\n" ;
+: BARE-REST$ ( -- ptr u8 n )  S\"  error t: -9678\n" ;
+
+
+: CODE-CASE ( -- )
+   s" a declared code is written with its name and text, another alone" T-LABEL
+   [: CODE-LINES ;] CAPTURED
+   FILE$ {: at:ptr u:n :}
+   u DATE:TIME-LEN 2 * CODE-REST$ nip + BARE-REST$ nip + T=
+   at u CODE-REST$ LINE-OK
+   BARE-REST$ LINE-OK nip 0 T= ;
+
+
 : LOG-RUN ( -- )
    PATH-MAKE
    FILE-B 1 BLEN BUF:INIT
@@ -430,6 +450,7 @@ TASK:MIN-STACK TASK:TASK READER
    PIPE-CASE
    REFUSED-CASE
    NESTED-CASE
+   CODE-CASE
    BIG-B BUF:DISPOSE
    FILE-B BUF:DISPOSE ;
 

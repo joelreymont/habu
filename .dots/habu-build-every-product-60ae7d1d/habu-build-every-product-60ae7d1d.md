@@ -28,6 +28,9 @@ Beside steps 1-4: one T0 front end (habu-share-one-front-199b02a2, habu-copy-eve
 
 Other replacements, not ordered against this one: TRUSTED: and privacy (habu-shrink-trusted-to-f4e84345, habu-delete-the-trusted-42b30edd, habu-move-engine-internal-fc2ba551, habu-delete-the-internal-3a818b8a); the hard cutover (habu-drop-schema-and-12ddb887, habu-retire-the-engine-b5850c5c, habu-delete-the-unused-0f33a3e4); hooks to plain calls (habu-remove-the-checker-4425bcef, habu-make-the-src-f0bdcbe1, habu-move-type-family-c1875868, habu-simplify-the-lower-2f175f5c); fork only to exec (habu-fork-only-to-59d3557e).
 
+Acceptance cases (defects the replaced machinery shows):
+- A stripped or cross-built program names a baked error code and its own (ERROR:NAME$, ERROR:TEXT$). Today a stripped hb-build refuses every below-window cell no claim names (src/habu/aot-closure.f, the claims in src/habu/aot-owned-cells.f), among them ERROR's HEAD cell (src/lib/error.f), and ERROR:CODE is E-UNDEFINED inside LINKER:WITH.
+
 Rule (Habu CLAUDE.md "Machinery being replaced"): no change extends or patches replaced machinery; a defect it shows becomes an acceptance case of the replacement here.
 Campaign only; do not dispatch.
 Claim: unassigned.

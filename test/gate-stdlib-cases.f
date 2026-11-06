@@ -913,6 +913,10 @@ SUITE log
    src/lib/log-test.f
 ;SUITE
 
+SUITE error
+   src/lib/error-test.f
+;SUITE
+
 SUITE hashmap
    src/lib/hashmap-test.f
 ;SUITE

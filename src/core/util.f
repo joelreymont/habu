@@ -120,10 +120,12 @@ public
    {: b:ptr p:ptr :}
    1 p b - 0 ?do b i + c@ 10 = if 1 + then loop ;
 
-\ A non-negative number's decimal digits, written from the end of DIGITS.
+\ A number's digits without its sign, from the end of DIGITS: taken on the
+\ non-positive side, so MIN-N has them too, as / and mod truncate toward zero.
 : DIGITS$ ( n -- ptr u8 n )
    DIGITS-CAP DIGIT-AT !
-   begin dup 10 mod $30 + DIGIT+ 10 / dup 0= until drop
+   dup 0 > if negate then
+   begin dup 10 mod negate $30 + DIGIT+ 10 / dup 0= until drop
    DIGITS DIGIT-AT @ +  DIGITS-CAP DIGIT-AT @ - ;
 
 \ Descriptor 2; a failed write has nowhere further to be reported.

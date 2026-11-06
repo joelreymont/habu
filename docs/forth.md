@@ -1887,6 +1887,15 @@ backend answers alike.
 - **Fallible words `throw` a named code** (`src/lib/error.f` or the owning
   module's package, e.g. `E-FS-PATH`), never a silent failure or an
   out-of-band flag.
+- **`ERROR:CODE` declares a code with its name and text**, so a program can
+  say what a thrown number means:
+  `-9701 s" the provider refused the key" ERROR:CODE E-KEY` defines `E-KEY` as
+  a constant, as `constant` would, and records its name qualified by the open
+  package (`MODEL:E-KEY` inside package MODEL) and the text. `ERROR:NAME$` and
+  `ERROR:TEXT$` answer the newest declaration of a code, empty when there is
+  none; `LOG:CODE+` writes both after the number. `src/lib/error.f` states the
+  refusals (CODE, CHECK). Codes minted in files that load before
+  `src/lib/error.f` are plain constants and have no name or text.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
   assertions, stack-preserving outcome adapters returning the exact code. No `…
   catch drop`, no `catch 2drop`, no masking.

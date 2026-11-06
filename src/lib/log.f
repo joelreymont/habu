@@ -1,7 +1,7 @@
 \ log.f - lines on fd 2 that say why a program failed, package LOG. A failure
 \ caused outside the program (a provider, the network, the OS) is logged once,
 \ with its text, by the library that saw it, just before it throws.
-\ LINE opens a line, TEXT+ and INT+ append to it, ;LINE writes it as
+\ LINE opens a line, TEXT+, INT+ and CODE+ append to it, ;LINE writes it as
 \ `<YYYY-MM-DDTHH:MM:SSZ> <level> <tag>: <text>` and LF, the stamp UTC. The tag
 \ is the caller's package name in lower case; LOG does not check it.
 \ TEXT+ writes a byte below $20, $7F and `\` as `\xHH`, so a line stays one
@@ -190,6 +190,15 @@ public
 
 
 : INT+ ( n -- )  FMT:INT$ TEXT+ ;
+
+
+\ A code and the name and text ERROR:CODE declared for it:
+\ `-9701 MODEL:E-KEY: the provider refused the key`, the number alone when none.
+: CODE+ ( n -- ) {: code:n :}
+   code INT+
+   code ERROR:NAME$ {: name:ptr nameu:n :}
+   nameu 0= if exit then
+   s"  " TEXT+ name nameu TEXT+ s" : " TEXT+ code ERROR:TEXT$ TEXT+ ;
 
 
 \ A line a throw abandoned between LINE and ;LINE is never written; the next
