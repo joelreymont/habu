@@ -13,6 +13,7 @@ require src/os/script-argv.f
 package NATIVE-LAYOUT-TRANSITION-TEST
 
 $2000 constant CAP
+\ ms per engine build: docs/gate.md "Qualifying a candidate"
 300000 constant BUILD-MS
 create OUT CAP allot
 create ERR CAP allot

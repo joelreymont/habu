@@ -23,6 +23,8 @@ public
 
 private
 
+\ ms per engine build: docs/gate.md "Qualifying a candidate"
+300000 constant BUILD-MS
 DYNAMIC-BUFFER FILES u8
 
 : ARG ( n -- ptr u8 n ) SCRIPT-ARGV$ ;
@@ -51,7 +53,7 @@ DYNAMIC-BUFFER FILES u8
    s" TMPDIR" tmp tmpu CMD:ENV+
    s" HABU_UNDER_TEST" host hostu CMD:ENV+
    s" HABU_FIXPOINT_ENGINE" host hostu CMD:ENV+
-   host hostu 1800000 >MS CMD:RUN-RC MATCH result
+   host hostu BUILD-MS >MS CMD:RUN-RC MATCH result
       ok OF drop ENDOF
       err OF BUILD-FAILED ENDOF
    ;MATCH

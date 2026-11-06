@@ -30,6 +30,7 @@ Other replacements, not ordered against this one: TRUSTED: and privacy (habu-shr
 
 Acceptance cases (defects the replaced machinery shows):
 - A stripped or cross-built program names a baked error code and its own (ERROR:NAME$, ERROR:TEXT$). Today a stripped hb-build refuses every below-window cell no claim names (src/habu/aot-closure.f, the claims in src/habu/aot-owned-cells.f), among them ERROR's HEAD cell (src/lib/error.f), and ERROR:CODE is E-UNDEFINED inside LINKER:WITH.
+- One 5-minute deadline bounds each engine build whole, and the build's own timeout names the step that ran out. Today tools/native-build.f gives the support image 180000 ms (tools/native-build-image.f:145) and then the engine child 300000 ms (tools/hb-build-lib.f:1084), up to 480 s; native-build.f with a preload or `--target` (tools/native-build.f:19-28) and tools/build-profile.f:62 run in process with no deadline; recovery stage runs (tools/build-fixpoint.f:278) have at most the chain's total (tools/seed.f SEED-BUILD-TIMEOUT-MS; none under tools/bootstrap.sh); HB_BUILD_TIMEOUT_MS takes up to 2147483647 (hb-build-lib.f:417-425); and wrappers holding native-build.f to the same 300000 ms (chain-run.f, two-generation-core.f, host-checker-row-e2e.f, native-layout-transition.f) fire before hb-build's named E-PROC-TIMEOUT can.
 
 Rule (Habu CLAUDE.md "Machinery being replaced"): no change extends or patches replaced machinery; a defect it shows becomes an acceptance case of the replacement here.
 Campaign only; do not dispatch.

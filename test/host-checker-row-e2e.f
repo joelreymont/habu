@@ -19,7 +19,8 @@ require test/pcap-result.f
 package HOST-ROW-TEST
 
 $4000 constant CAP
-1800000 constant BUILD-TIMEOUT-MS
+\ ms per engine build: docs/gate.md "Qualifying a candidate"
+300000 constant BUILD-TIMEOUT-MS
 
 create ROOT PATH-CAP allot          variable ROOT-U
 create TREE PATH-CAP allot          variable TREE-U

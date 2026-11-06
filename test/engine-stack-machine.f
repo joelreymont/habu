@@ -12,7 +12,8 @@ require test/aot-builder-engine.f
 package MACHINE-STACK-TEST
 private
 
-600000 constant BUILD-MS
+\ ms for the stripped application's hb-build, held to an engine build's limit
+300000 constant BUILD-MS
 11 constant SIGSEGV
 
 create SUBJECT PATH-CAP allot

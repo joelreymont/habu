@@ -43,6 +43,9 @@ HABU_UNDER_TEST=$HOST HABU_FIXPOINT_ENGINE=$HOST TMPDIR=$TMP \
   $HOST --load tools/native-build.f -- $OUT
 ```
 
+An engine build takes at most 5 minutes; a build that runs out of its limit has
+a defect to root-cause, never a longer limit.
+
 Copy that candidate and its matching `hb.map` into the private tree's `bin/`
 as regular files, not symlinks, and run the tests from that tree: the focused
 tests, and the registry when the rule above calls for it. Keep its `TMPDIR`

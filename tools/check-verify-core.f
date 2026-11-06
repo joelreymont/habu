@@ -728,7 +728,7 @@ TYPED-VARIABLE CHK-ENGINE-REFUSED bool  \ a child's engine selection ended the c
 \ tools/check-verify-child.f, named absolutely. Either runs in this process's working directory.
 \ Resolved before the child's argv is staged: a build stages its own argv and environment in the
 \ same process-wide tables (tools/keyed-image.f BUILD-RUN). A failed build throws or dies.
-600000 constant VFY-BUILD-MS            \ as tools/hb-build-lib.f HBB-MAKER-DEFAULT-MS
+300000 constant VFY-BUILD-MS            \ as tools/hb-build-lib.f HBB-MAKER-DEFAULT-MS
 create VFY-EXE PATH-CAP allot
 variable VFY-EXE-U
 TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the source child

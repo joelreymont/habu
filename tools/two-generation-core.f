@@ -27,7 +27,8 @@ package TWO-GEN
 $8000 constant TG-CAP-OUT
 $1000 constant TG-SHAPE-CAP
 $8000 constant TG-CMP-CAP          \ one compare chunk per side
-1800000 constant TG-BUILD-MS       \ a cold generation is ~30-50 s here
+\ ms per engine build: docs/gate.md "Qualifying a candidate"
+300000 constant TG-BUILD-MS
 60000 constant TG-PROBE-MS
 
 create TG-OUT TG-CAP-OUT allot

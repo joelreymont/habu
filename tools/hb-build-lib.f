@@ -40,7 +40,8 @@ using BUILD-FIXPOINT                     \ shared build paths, child env and sou
 74 constant HBB-BUILD-RC
 34 constant HBB-DQ
 10 constant HBB-LF
-600000 constant HBB-MAKER-DEFAULT-MS
+\ ms per maker run, an engine build included: docs/gate.md "Qualifying a candidate"
+300000 constant HBB-MAKER-DEFAULT-MS
 $7FFFFFFF constant HBB-MAKER-MAX-MS
 65536 constant HBB-CAPTURE-CAP
 80 constant HBB-REPL-DEPS-HEADER-U
