@@ -1,0 +1,9 @@
+---
+title: "File objects L1: the build's per-file runner"
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-11-06T12:21:31.078116+02:00"
+---
+
+Problem: a LINKER:WITH build compiles each file through the loader's default runner (src/core/include.f:1403-1427 SOURCE-UNIT), so the build has no per-file seam to save or link an object at. Acceptance: LINKER:WITH's open gains a step between required and open that installs, through SOURCE-UNIT:USE, LINKER's runner, and the close restores the runner SOURCE-UNIT:CURRENT held (test/linker.f's host checks stay green); the runner compiles the file (calls the quotation as SOURCE-UNIT's ORDINARY does) and counts it; public LINKER:COMPILED ( -- n ), the files the last build compiled, 0 at each open. New end-to-end test test/file-objects.f over fixture files in test/file-objects/: b.f requires a.f; cases: a top-level store into an earlier file's variable, a string literal, a does> definer used from another file, a quotation stored with xt!, a package with a private word, an alias, a require inside a file and a require already satisfied; the driver builds main.f in s" app" LINKER:WITH, writes the program with LINKER:WRITE, runs it in its own process (the boundary under test is the written file) and checks its output, rc 0 and LINKER:COMPILED. SUITE file-objects in test/gate-arm-cases.f. Design: .out/carl-file/design-fobj.md section 2 item 8, section 5 L1. Files: src/habu/linker.f, test/file-objects.f, test/file-objects/*.f, test/gate-arm-cases.f. Verify: ~/.local/bin/hb --load test/file-objects.f; ~/.local/bin/hb --load test/linker.f; ~/.local/bin/hb --load test/compiler/arm64-link-run.f; the program cmp-identical to one built from the same fixture at master. Depends: none. Ownership: carl (lead), worker lane. Claim: agent=carl workspace=.jj-ws.noindex/carl-fobj-l1.

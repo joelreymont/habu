@@ -750,6 +750,17 @@ learned live in the docs for their subject.
   right? otherwise, keep going and keep it simple!" A linker writes a file's
   object as the instructions that remake the file's result, and a reused
   file is linked without reading its source.
+- 2026-11-06, the saved file object: shown the object a build saves for each
+  file it loads (one file under <out>/obj named by a key over hb's own
+  bytes, the build's mode and target, the file's path, load kind and loader;
+  overwritten when the file compiles again; references by name, not
+  address), against keeping every version or saving raw memory, Joel wrote
+  "i don't know enough to approve it. is it what's best for long term?" The
+  lead chose one object per file, overwritten on recompile: objects are a
+  cache any change of hb rebuilds, so a later layout change costs one cold
+  build; keeping every version helps only a return to an old edit and needs
+  a cleaner; raw memory would rebuild every later file after an edit, not
+  just its dependents.
 - 2026-11-03, x86-64 builds: asked whether to remove two of SOURCE-EXEC's
   words while a lane gave the x86-64 kernel the observer the build cache
   watches a file's re-run through, Joel asked "what is source-exec and why do
