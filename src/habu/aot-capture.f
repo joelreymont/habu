@@ -1258,7 +1258,7 @@ $14000000 constant ACAP-GBR-TERM
    v 20 + ACAP-W32@ $00023FFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
    v ACAP-REC-EXT? {: ext:bool :}                          \ name out of line (DNAME-EXT)
    v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
-   ext 0= len 16 > and if s" aot-capture: rec name too long for inline" 74 die then
+   ext 0= len DNAME-INL > and if s" aot-capture: rec name too long for inline" 74 die then
    pkg if $FFFFFFFF else v 40 + ACAP-W32@ ACAP-REL-WID then {: wid:n :} \ package marker or window-relative u32 WID
    v ACAP-W32@ pkg ACAP-WID-FIELD {: start:n :}            \ a package row's [0]/[8] are WIDs, not a code span
    v 8 + ACAP-W32@ pkg ACAP-WID-FIELD {: clen:n :}
@@ -1276,9 +1276,7 @@ $14000000 constant ACAP-GBR-TERM
    v ext ACAP-REC-NAME len ACAP-POOL-ADD {: noff:n :}
    AOT-REC-N @ ACAP-CREC-DST {: c:ptr :}                   \ 20B: start u32 + len u32 + name-off u32 + flags u8 + min-in u8 + dkind u8 + wid u32
    start c AOT-P32!  clen c 4 + AOT-P32!  noff c 8 + AOT-P32!
-   \ The shipped row's DNAME-EXT follows DNAME-INL, so a name a builder with a
-   \ larger inline limit kept inline boots out of line.
-   len DNAME-INL > if DNAME-EXT 60 rshift else 0 then flags or
+   flags
    minin 8 lshift or  dkind 16 lshift or  c 12 + AOT-P32!   \ one store so the spare byte is written zero
    wid c 16 + AOT-P32!
    AOT-REC-N @ 1+ AOT-REC-N ! ;
