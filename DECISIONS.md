@@ -880,6 +880,18 @@ learned live in the docs for their subject.
   and ENC-ADRP refuse a misaligned or unreachable value with E-A64EMIT-REACH;
   each field's reach is written once, in asm.f; T0, tier 1, the code buffer
   and the linker call them and keep no reach check of their own.
+- 2026-11-06, the kernel a program carries: shown that every built program
+  copied the whole arm64 kernel (hello world 247,932 bytes, of which it runs
+  about 2 KB), and that the landed cut has the assembler record every label
+  reference it writes so the linker keeps only the kernel code a program
+  reaches and the assembler moves it together and re-encodes its references,
+  as `ld --gc-sections` does (hello world 33,276 bytes), Joel chose "Keep the
+  cut (Recommended)" over the whole kernel or rewriting habu2.f's generator to
+  write each primitive alone. He chose `A64ICODE:REFS ( -- n )`,
+  `A64ICODE:REF-SITE ( n -- n )` and `A64ICODE:REF-LABEL ( n -- label )` for
+  reading the recorded references. Asked to name the cutting word, he asked
+  "is this not something you can decide yourself using the "what's best for
+  long term" lens?"
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."
