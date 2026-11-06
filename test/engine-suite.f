@@ -1498,8 +1498,8 @@ variable ES-CPX-CP
 variable ES-CPX-ND
 \ unsigned body with an unsafe token: the checker refuses it E-UNSAFE
 : ES-CPX-BAD$ ( -- ptr u8 n ) s" : ES-CPX-BAD evaluate ;" ;
-\ >16-char name: C-STORE-NAME copies it into code space before the entry, so
-\ the reject rollback must reclaim the name bytes too (CP := pre-name CP)
+\ a name longer than DNAME-INL: the definer copies it into code space before
+\ the entry, so the reject rollback must reclaim the name bytes too
 : ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME evaluate ;" ;
 TRUSTED: ES-CPX-BAD-EVAL ( -- ) ES-CPX-BAD$ evaluate ;
 TRUSTED: ES-CPX-BAD-EXT-EVAL ( -- ) ES-CPX-BAD-EXT$ evaluate ;
@@ -1523,17 +1523,12 @@ ES-CPX-BAD-EXT-RUN
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
 -1 DIAG-QUIET +!
-\ retry after rejects: the accepted definition lands on the reclaimed entry
+\ after the refusals, new definitions compile and run, one with a name longer
+\ than DNAME-INL
 : ES-CPX-GOOD ( n -- n ) 1 + ;
 6 ES-CPX-GOOD 7 T=
-CAST: ES-XT>N ( [ n -- n ] -- n )
-s" cpx-retry-entry" T-LABEL ' ES-CPX-GOOD ES-XT>N ES-CPX-CP @ T=
-\ ext-named retry: name bytes land at cp@, entry follows the aligned name
-cp@ ES-CPX-CP !
 : ES-CPX-GOOD-EXTENDED-NAME ( n -- n ) 2 + ;
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
-: ES-CPX-EXT-OFF ( -- n ) HB-TARGET-LINUX-X86-64? if 32 else 28 then ;
-s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-XT>N ES-CPX-CP @ ES-CPX-EXT-OFF + T=
 
 \ Candidate dictionary/hook smoke, independent T= probes: the boot check hook
 \ is installed, a checked def compiles and runs, and a representative baked

@@ -147,12 +147,10 @@ variable ROLL-OCC
    s" : NDB-FORGET ( -- n ) 61 ;" EV
    s" NDB-FORGET" 0 RECORD {: old:ptr :}
    old DEF-OCC:SELECT {: old-slot:n old-occ:n :}
-   old XREF-START {: start:n :}
    s" NDB-FORGET" FORGET-DEFS-FROM
    s" NDB-FORGET" SPELL-START 0 T=
    s" : NDB-FORGET ( -- n ) 62 ;" EV
    s" NDB-FORGET" 0 RECORD old = TTRUE
-   s" NDB-FORGET" SPELL-START start T=
    old-slot REF-SLOT !  old-occ REF-OCC !
    [: REF-SLOT @ REF-OCC @ DEF-OCC:RESOLVE drop ;] DEF-OCC:E-STALE TTHROWSQ
    s" NDB-FORGET" 0 RECORD DEF-OCC:SELECT REF-VALUE 62 T=

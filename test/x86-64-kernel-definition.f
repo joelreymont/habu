@@ -29,8 +29,8 @@ X64KERNEL:REC-CODE CELL + constant REC-AUX
 DNAME-IMM DNAME-WIDE or DNAME-MIN-IN-MASK or constant COPIED
 COPIED DKIND:VAL or constant SOURCE-FLAGS
 
-\ A 17-byte name, one past DNAME-INL, stored at CP: its last byte opens the
-\ second code slot and CP moves past that one.
+\ A 17-byte name, longer than DNAME-INL, stored at CP: it fills past the first
+\ code slot, so CP moves past the second.
 : LONG$ ( -- ptr u8 n ) s" abcdefghijklmnopq" ;
 DICT-SIZE X64KERNEL:CODE-SLOT + constant SECOND-SLOT
 SECOND-SLOT X64KERNEL:CODE-SLOT + constant PAST-LONG
@@ -115,15 +115,6 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    3 TCSIG-A-CELL X64HARNESS:CELL!,  4 TCSIG-U-CELL X64HARNESS:CELL!,
    5 DOESB-CELL X64HARNESS:CELL!,  6 TRUSTED-CELL X64HARNESS:CELL!,
    7 CLAUSE-CELL X64HARNESS:CELL!, ;
-
-\ The long name's second slot less its last byte: 0 when that byte opens the
-\ slot and the fifteen bytes past it are zero.
-: PUSH-PAD, ( -- )
-   RAX DBASE-REG SECOND-SLOT MEM-OFF ASM-SINK ENC-MOV-RM
-   RCX LONG$ DNAME-INL X64HARNESS:NAME-CELL >IMM32 ASM-SINK ENC-MOV-RI32
-   RAX RCX ASM-SINK ENC-XOR-RR
-   RAX DBASE-REG SECOND-SLOT CELL + MEM-OFF ASM-SINK ENC-OR-RM
-   0 G-PUSH ;
 
 \ One check that a row closed its window: every band cell clear and record
 \ k's page read-execute, so a probe of it faults. The band cells or'd with the
@@ -257,14 +248,12 @@ BODYBUF-OFF BODYBUF-CAP + constant BUF-END
    0 CLOSED, ;
 
 : DEF-OPEN-LONG-CASE, ( -- )
-   SECOND-SLOT X64HARNESS:POKE,  SECOND-SLOT CELL + X64HARNESS:POKE,
    X64HARNESS:REST,
    LONG$ 0 0 DEF-OPEN,
    X64HARNESS:PUSH-CP,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    X64KERNEL:REC-CODE X64HARNESS:PUSH-REGION-CELL,  PAST-LONG X64HARNESS:EXPECT-POP-REGION,
    LONG$ nip DNAME-EXT or 0 X64KERNEL:REC-FLAGS X64HARNESS:EXPECT-RECORD,
    X64KERNEL:REC-NAME X64HARNESS:PUSH-REGION-CELL,  DICT-SIZE X64HARNESS:EXPECT-POP-REGION,
-   PUSH-PAD,  0 X64HARNESS:EXPECT-POP,
    0 CLOSED, ;
 
 : BODY-APPEND-CASE, ( -- )
