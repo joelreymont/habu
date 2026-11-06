@@ -1,0 +1,9 @@
+---
+title: "S6 L6: write hb's dictionary from the build's records"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-06T13:49:26.989499+02:00"
+---
+
+Problem: when the product keeps a dictionary (step 6, hb), design-s6-r2.md D3/D5 (.jj-ws.noindex/carl-dots/.out/carl-file/) copies the space's dictionary band (DREC 48 bytes, layout.f:126) into the region and slides only each record's entry [0] and out-of-line name [24]. It says nothing of [8] (EMIT-DICT's LAST-LABEL, habu1.f:6270, inferred a code address), and it has no rule for a record cell that points into the space's DATA: copied raw, such a cell keeps the build's host address. jerry's checker-facts design (dot habu-design-the-checker-b77c228b) stores facts on dictionary entries in the records the linker writes, so record cells that point into DATA are coming. Today no linker writes an arm64 dictionary (link-band.f:145; a stripped program has none) and hb's records come from EM-SEED-DICT, untyped. Acceptance: the linker writes each product record from one declared record layout that gives every cell's kind: code address (record list, slid at start), DATA address (DATA-ADDRESS, link-data.f:57, at link time; DATA sits at DATA-VA so start-up needs no list entry), or number (raw); [8] is classified; a cell whose value lies in neither image is refused, naming record and cell; cells jerry adds join the same layout. Primitive records come from EMIT-DICT's labels (D8). EM-SEED-DICT goes with step 7. Files: src/habu/linker.f, src/habu/link-arm64.f, src/habu/link-data.f, src/habu/layout.f, src/arch/arm64/boot.f. Verify: a cross-built hb runs the suite (step 6). Depends: L5 (landed), S5c, jerry's record layout for facts. Ownership: carl. Claim: unassigned.
