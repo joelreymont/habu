@@ -109,6 +109,15 @@ learned live in the docs for their subject.
   live in the wordlists of the program that declares them. The checker finds
   them through the dictionary's own lookup, and they travel in the records
   the linker writes.
+- 2026-11-06, type names: shown that a bare type name also resolves when
+  exactly one package anywhere makes a type of that name public (type-family.f
+  TFAM-FIND-PUBLIC), a step bare words do not have, used at about 130 places
+  in Habu and Tender (Tender's `request` and `response` from HTTP), and asked
+  whether type names should follow the word scope rules, Joel wrote "a bare
+  type name is still a word, prove me wrong!" No case was found where a type
+  name must resolve differently: a bare type name is found as a bare word is
+  (the open package, the globals, `using` imports), the fallback goes, and its
+  users name the package or import it.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
