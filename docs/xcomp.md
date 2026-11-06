@@ -213,17 +213,12 @@ it.
 
 ### Fixed segments
 
-An x86-64 image places its code region by `PT_LOAD`, where the ARM64 boot maps
-it near a hint. DATA is no segment on either target: both boots map it at its
-fixed address and copy in the bytes the image carries, which an x86-64 image
-holds in a read-only carrier `LOAD` at the region's end
-(`src/os/linux-x86-64/elf.f`).
+DATA is no segment on any target: the boot maps it at its fixed address and
+copies in the bytes the image carries. Where the code runs is the linker's rule
+([Building an image](compilation.md#building-an-image)).
 
 - No `LOAD` reserves DATA, so the kernel neither commit-charges it nor starts
   the brk inside it.
-- Boot copies bytes; nothing rebases. The region and DATA addresses are fixed,
-  so neither code nor DATA pointers are rebased on restart, and a snapshot
-  restore checks the carrier before it maps DATA.
 - The target's layout is not the host's: a macOS host places its own DATA
   elsewhere, so x86 code reads the target's layout from
   `src/os/linux-x86-64/target-layout.f`, qualified.

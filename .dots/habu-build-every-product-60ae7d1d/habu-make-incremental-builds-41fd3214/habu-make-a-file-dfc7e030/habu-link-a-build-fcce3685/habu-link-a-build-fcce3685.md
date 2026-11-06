@@ -11,3 +11,5 @@ Problem: step 5's arm64-to-arm64 cross-build needs the space LINKER:WITH opens (
 Acceptance from the arm64 assembler (DECISIONS 2026-11-05): aot-link-arm.f's own reach checks and bl/b packing (:644-666, :774, :973-980) go with it; the one linker calls A64ASM's encoders and keeps no reach check of its own.
 
 Acceptance from the capture's prelude band: a product file that requires a file the build itself has loaded (debug.f requires asm.f, which aot-decl.f's icode.f require puts in the build) gets that file in the product's own space. The in-process capture cannot: a window debugger calls A64ASM:ENC-B in the prelude band and ACAP-SITE-BAND dies with exit 74, so test/aot-wid-build.f leaves the debugger out of its window.
+
+Status 2026-11-06 (carl): S6 L1-L5 and the kernel cut (a67cf6b8) are on master; L5's docs are done (compilation.md "Building an image" Now line, xcomp.md "Fixed segments"), and architecture.md "Images" waits for step 5a (dot habu-build-stripped-apps-805dee2b). L5's remaining proof is S7 on spark, blocked: `ssh spark` asks for a Tailscale browser sign-in on Joel's account. L6 is step 6.
