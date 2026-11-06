@@ -6,16 +6,16 @@
 \ pad.f first, so its later files' records, emissions and data sit elsewhere,
 \ and writes seven. Each of A's objects must be byte-identical to B's of the
 \ same name: an address in an object shows as different bytes. Build C, in
-\ build.f's `stop` mode, runs four failed builds and writes one object,
+\ build.f's `stop` mode, runs seven failed builds and writes one object,
 \ count.f's, byte-identical to A's: a refused file and DP moved back write none.
 \ Each of A's PIECES reads entry by entry, then its CODE emission by emission,
-\ then its DATA and STRINGS, to its final REQUEST. Every CODE's sizes,
-\ functions, sites, zeroed sites and chains and references are checked, and
-\ every DATA's size, zeroed cells, cell rows and length cells; reopen.f's
-\ entries field by field, count.f's entry count and package entries, and the
-\ fixtures' calls, addresses, cells and strings by name. The first build's
-\ program prints `Hi` and `ok` and exits 0, run in its own process: the
-\ boundary under test is the written file.
+\ then its DATA, STRINGS and STORES, to its final REQUEST. Every CODE's sizes,
+\ functions, sites, zeroed sites and chains and references are checked, every
+\ DATA's size, zeroed cells, cell rows and length cells, and every STORES row's
+\ cell, kind, bytes and value; reopen.f's entries field by field, count.f's
+\ entry count and package entries, and the fixtures' calls, addresses, cells,
+\ strings and stores by name. The first build's program prints `Hi` and `ok` and
+\ exits 0, run in its own process: the boundary under test is the written file.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -83,6 +83,8 @@ variable LATE-REC                        \ count.f's LATE record, or -1
 variable BUMP-REC  variable HI-REC
 variable DOUBLE-REC  variable TWICE-REC
 variable TALLY-OFF                       \ the DATA offset count.f's TALLY body names
+variable LATER-OFF                       \ and its LATER body's
+variable MARKED-OFF                      \ and its MARKED body's
 \ An entry walk of BYTES-A: the next entry's offset, and the final REQUEST's,
 \ which no entry reaches; an overrun leaves WALK-AT past WALK-END.
 variable WALK-AT
@@ -348,16 +350,23 @@ variable OBJ-RECS                        \ the object's records, from its entrie
    used cap < if false exit then
    1 FULL !  OVERRUN  true ;
 
-\ Read the next reference into row k: its tag and the tag's fields. A tag
-\ above 5 stops the walk.
+\ The last reference read: its tag and the tag's fields, -1 where it has none.
+variable REF-TAG  variable REF-A  variable REF-B  variable REF-C
+
+\ Read the next reference. A tag above 5 stops the walk.
+: NEXT-REF ( -- )
+   NUM {: tag:n :}
+   tag REF-TAG !  -1 REF-A !  -1 REF-B !  -1 REF-C !
+   tag 0 =  tag 3 =  or if NUM REF-A !  NUM REF-B !  exit then
+   tag 1 =  tag 4 =  or if NUM REF-A !  exit then
+   tag 2 = if NUM REF-A !  NUM REF-B !  NUM REF-C !  exit then
+   tag 5 <> if OVERRUN then ;
+
+\ Read the next reference into row k.
 : REF-ROW ( n -- )
    {: k:n :}
-   NUM {: tag:n :}
-   tag k ROW-TAG !  -1 k ROW-A !  -1 k ROW-B !  -1 k ROW-C !
-   tag 0 =  tag 3 =  or if NUM k ROW-A !  NUM k ROW-B !  exit then
-   tag 1 =  tag 4 =  or if NUM k ROW-A !  exit then
-   tag 2 = if NUM k ROW-A !  NUM k ROW-B !  NUM k ROW-C !  exit then
-   tag 5 <> if OVERRUN then ;
+   NEXT-REF
+   REF-TAG @ k ROW-TAG !  REF-A @ k ROW-A !  REF-B @ k ROW-B !  REF-C @ k ROW-C ! ;
 
 \ A row of emission e: what it is, its site and kind, then the next reference.
 : ROW+ ( n n n n -- )
@@ -440,6 +449,42 @@ variable N-STRS
    WALK-AT @ DATA-AT !  d WALK-AT +!
    CELLS@  STRS@ ;
 
+
+\ ---- STORES ----------------------------------------------------------------------
+\ After STRINGS: S, then each store row: the cell's reference, kind, bytes and the
+\ value's reference, into tables of their own.
+16 constant STORES-CAP
+40 constant STORE-MIN                    \ a row's least bytes: tag 4, kind, bytes, tag 5
+STORES-CAP TYPED-BUFFER ST-TAG n         \ the cell's reference: tag and fields
+STORES-CAP TYPED-BUFFER ST-A n
+STORES-CAP TYPED-BUFFER ST-B n
+STORES-CAP TYPED-BUFFER ST-KIND n
+STORES-CAP TYPED-BUFFER ST-BYTES n
+STORES-CAP TYPED-BUFFER VAL-TAG n        \ the value's reference: tag and fields
+STORES-CAP TYPED-BUFFER VAL-A n
+STORES-CAP TYPED-BUFFER VAL-B n
+STORES-CAP TYPED-BUFFER VAL-C n
+variable STORES-S                        \ S as read; -1 past the walk's end
+variable N-STORES
+
+: STORE@ ( n -- )
+   {: j:n :}
+   NEXT-REF  REF-TAG @ j ST-TAG !  REF-A @ j ST-A !  REF-B @ j ST-B !
+   NUM j ST-KIND !  NUM j ST-BYTES !
+   NEXT-REF  REF-TAG @ j VAL-TAG !  REF-A @ j VAL-A !  REF-B @ j VAL-B !  REF-C @ j VAL-C ! ;
+
+\ An S below 0, or of more rows than the walk's bytes left can hold, stops the walk.
+: READ-STORES ( -- )
+   0 N-STORES !
+   NUM {: s:n :}
+   s STORES-S !
+   s 0 <  s  WALK-END @ WALK-AT @ - STORE-MIN /  >  or if OVERRUN exit then
+   s 0 ?do
+      PAST? if unloop exit then
+      N-STORES @ STORES-CAP FULL? if unloop exit then
+      N-STORES @ STORE@  1 N-STORES +!
+   loop ;
+
 \ The entries, then CODE, of the object in BYTES-A.
 : WALK-CODE ( n -- )
    WALK-START WALK drop  WALK-RECS @ OBJ-RECS !  READ-CODE ;
@@ -516,7 +561,8 @@ variable N-STRS
    all 0 >  e ADDR-ROW 1 3 0 off N-OF all =  and ;
 
 
-\ count.f's FILES row and records, and the DATA offset its TALLY body names.
+\ count.f's FILES row and records, and the DATA offsets its TALLY, LATER and MARKED
+\ bodies name.
 : COUNT-FOUND ( n -- )
    {: au:n :}
    au COUNT-ROW KEEP-ROW
@@ -524,7 +570,10 @@ variable N-STRS
    s" BUMP" 0 au FIND-ENTRY BUMP-REC !
    s" HI" 0 au FIND-ENTRY HI-REC !
    s" TALLY" au EM-OF {: tally:n :}
-   au WALK-CODE  tally OWN-OFF TALLY-OFF ! ;
+   s" LATER" au EM-OF {: later:n :}
+   s" MARKED" au EM-OF {: marked:n :}
+   au WALK-CODE  tally OWN-OFF TALLY-OFF !  later OWN-OFF LATER-OFF !
+   marked OWN-OFF MARKED-OFF ! ;
 
 : SHAPE-FOUND ( n -- )
    {: au:n :}
@@ -537,7 +586,7 @@ variable N-STRS
 : FIND-FIXTURES ( -- )
    0 MATCHED !  -1 SHAPE-I !  -1 REOPEN-I !  -1 COUNT-I !  -1 MAIN-I !
    -1 LATE-REC !  -1 BUMP-REC !  -1 HI-REC !  -1 DOUBLE-REC !  -1 TWICE-REC !
-   -1 TALLY-OFF !
+   -1 TALLY-OFF !  -1 LATER-OFF !  -1 MARKED-OFF !
    FILES 0 ?do
       i READ-A {: au:n :}
       BYTES-A INPUT-AT + FIXTURE-OF {: j:n :}
@@ -604,7 +653,10 @@ variable N-STRS
    s" CODE ends where DATA starts" LABEL  WALK-AT @ 8 + WALK-END @ <= TTRUE
    READ-DATA
    s" DATA and STRINGS fit the test's tables" LABEL  FULL @ 0 T=
-   s" STRINGS end at the final REQUEST" LABEL  WALK-AT @ WALK-END @ T= ;
+   s" STRINGS end where STORES start" LABEL  WALK-AT @ 8 + WALK-END @ <= TTRUE
+   READ-STORES
+   s" STORES fit the test's tables" LABEL  FULL @ 0 T=
+   s" STORES end at the final REQUEST" LABEL  WALK-AT @ WALK-END @ T= ;
 
 
 \ Emission e's functions: the first at 0, ascending, each below its size.
@@ -774,6 +826,42 @@ variable N-STRS
    s" DATA's D bytes fit the object" LABEL  DATA-AT @ 0 >= TTRUE
    N-STRS @ 0 ?do i CHECK-STR loop ;
 
+\ Store row j's cell: its file, a FILES row or 0 for the header data, and its offset there.
+: ST-FILE ( n -- n ) {: j:n :}  j ST-TAG @ 3 = if j ST-A @ else 0 then ;
+: ST-OFF ( n -- n ) {: j:n :}  j ST-TAG @ 3 = if j ST-B @ else j ST-A @ then ;
+
+\ True when a value's tag fits the store's kind: kind 0 code or none, kind 1 data or
+\ none, kinds 2 and 3 none.
+: VALUE-FITS? ( n n -- bool )
+   {: kind:n tag:n :}
+   kind 0 = if tag CODE-TAG?  tag 5 =  or exit then
+   kind 1 = if tag 3 =  tag 4 =  or  tag 5 =  or exit then
+   tag 5 = ;
+
+\ True when every earlier row naming row j's file names a lower offset in it.
+: STORE-ASCENDS? ( n -- bool )
+   {: j:n :}
+   true  j 0 ?do
+      i ST-FILE j ST-FILE = if  i ST-OFF j ST-OFF <  and  then
+   loop ;
+
+: CHECK-STORE ( n -- )
+   {: j:n :}
+   j ST-TAG @ {: tag:n :}
+   j ST-KIND @ {: kind:n :}
+   s" a store's cell is a file's DATA or the header data" LABEL  tag 3 =  tag 4 =  or TTRUE
+   tag 3 = if
+      s" a store's file is a FILES row" LABEL  j ST-A @ 1 >=  j ST-A @ FILES-N <=  and TTRUE
+   then
+   s" a store is an xt, data, scratch or number cell" LABEL  kind 0 >=  kind 4 <  and TTRUE
+   kind 0 >=  kind 3 <  and if
+      s" an address cell's store's bytes are 0" LABEL  j ST-BYTES @ 0 T=
+   then
+   s" a store's value fits its kind" LABEL  kind j VAL-TAG @ VALUE-FITS? TTRUE
+   s" stores into one file's data ascend" LABEL  j STORE-ASCENDS? TTRUE ;
+
+: CHECK-STORES ( -- ) N-STORES @ 0 ?do i CHECK-STORE loop ;
+
 \ The first cell row at DATA offset off, or -1.
 : CELL-ROW-AT ( n -- n )
    {: off:n :}
@@ -857,11 +945,11 @@ variable N-STRS
    s" MAKER;does enters at a function of it above 0" LABEL
    maker entry FUN-AT?  entry 0 >  and TTRUE ;
 
-\ count.f's object: six entries, so no kind 4 writes FILE-OBJECTS-COUNT's private
+\ count.f's object: eight entries, so no kind 4 writes FILE-OBJECTS-COUNT's private
 \ wordlist again, and that package's entry says the wordlist is its own.
 : CHECK-COUNT ( n -- )
    {: au:n :}
-   s" count.f's object holds six entries" T-LABEL  au WALK-START 6 T=
+   s" count.f's object holds eight entries" T-LABEL  au WALK-START 8 T=
    s" FILE-OBJECTS-COUNT" au FIND-PKG 0 >= if ENT-MINTED @ else -1 then {: own:n :}
    s" FILE-OBJECTS-COUNT's private wordlist is its own" T-LABEL  own 1 T=
    s" count.f's object holds FILE-OBJECTS-LATE's package entry" T-LABEL
@@ -917,13 +1005,22 @@ variable N-STRS
 
 
 \ ---- the fixtures' cells and strings, by name ------------------------------------
-\ count.f's TALLY holds a number, 0 as the file's compile leaves it, so it has no
-\ cell row; the one string is the `Hi` HI prints.
+\ count.f's TALLY, LATER and MARKED hold 0 as the file's compile leaves them, so
+\ none has a cell row (LATER's and MARKED's are reopen.f's); the one string is the
+\ `Hi` HI prints.
 : COUNT-DATA ( -- )
    TALLY-OFF @ {: off:n :}
+   LATER-OFF @ {: later:n :}
+   MARKED-OFF @ {: marked:n :}
    s" TALLY's cell lies in DATA" LABEL  off CELL-IN? TTRUE
    off CELL-IN? if s" TALLY's cell is 0" LABEL  off DATA@ 0 T= then
    s" TALLY's cell has no cell row" LABEL  off CELL-ROW-AT -1 T=
+   s" LATER's cell lies in DATA" LABEL  later CELL-IN? TTRUE
+   later CELL-IN? if s" LATER's cell is 0" LABEL  later DATA@ 0 T= then
+   s" LATER's cell has no cell row" LABEL  later CELL-ROW-AT -1 T=
+   s" MARKED's cell lies in DATA" LABEL  marked CELL-IN? TTRUE
+   marked CELL-IN? if s" MARKED's cell is 0" LABEL  marked DATA@ 0 T= then
+   s" MARKED's cell has no cell row" LABEL  marked CELL-ROW-AT -1 T=
    s" DATA holds one string" LABEL  N-STRS @ 1 T=
    s" the string is Hi" LABEL  0 s" Hi" STR-IS ;
 
@@ -956,6 +1053,33 @@ variable N-STRS
    s" the third string is blue" LABEL  2 s" blue" STR-IS
    s" the fourth string is ok" LABEL  3 s" ok" STR-IS ;
 
+\ True when STORES' row r exists and is a store into file's DATA at off of that kind
+\ and bytes, its value's reference of tag vtag.
+: STORE-ROW? ( n n n n n n -- bool )
+   {: r:n file:n off:n kind:n bytes:n vtag:n :}
+   N-STORES @ r 1 + < if false exit then
+   r ST-TAG @ 3 =  r ST-A @ file FIELD= and  r ST-B @ off FIELD= and
+   r ST-KIND @ kind = and  r ST-BYTES @ bytes = and  r VAL-TAG @ vtag = and ;
+
+\ main.f's top level stores RUN's xt into the header's entry cell and 5 into
+\ count.f's TALLY, a cell with no row.
+: MAIN-STORES ( n -- )
+   {: au:n :}
+   COUNT-ROW ROW-OF {: cf:n :}
+   s" RUN" 0 au FIND-ENTRY {: run:n :}
+   s" STORES is two rows" LABEL  STORES-S @ 2 T=
+   s" the first store is an xt cell, the header's entry cell" LABEL
+   N-STORES @ 1 >= if
+      0 ST-TAG @ 4 =  0 ST-A @ APP-ENTRY:XT-CELL =  and
+      0 ST-KIND @ 0 =  and  0 ST-BYTES @ 0 =  and
+   else false then TTRUE
+   s" the entry store's value is RUN's record" LABEL
+   N-STORES @ 1 >= if
+      0 VAL-TAG @ 0 =  0 VAL-A @ 0 =  and  0 VAL-B @ run FIELD=  and
+   else false then TTRUE
+   s" the second store is 5 into count.f's TALLY, with no row" LABEL
+   1 cf TALLY-OFF @ 3 5 5 STORE-ROW? TTRUE ;
+
 : SIZES= ( n n n -- )
    {: d:n k:n s:n :}
    s" DATA's size" LABEL  DATA-D @ d T=
@@ -965,6 +1089,20 @@ variable N-STRS
 \ reopen.f's DATA is one string: MAKER's does> effect ` -- n `, 6 bytes after
 \ its length cell.
 : REOPEN-DATA ( -- ) 14 0 1 SIZES= ;
+
+\ reopen.f's top level stores TOP's xt into count.f's LATER, an xt cell, and marks
+\ count.f's MARKED a data cell holding 0, with no store.
+: REOPEN-STORES ( n -- )
+   {: au:n :}
+   COUNT-ROW ROW-OF {: cf:n :}
+   s" TOP" 0 au FIND-ENTRY {: top:n :}
+   s" STORES is two rows" LABEL  STORES-S @ 2 T=
+   s" the store is an xt cell, count.f's LATER" LABEL
+   0 cf LATER-OFF @ 0 0 0 STORE-ROW? TTRUE
+   s" the store's value is TOP's record" LABEL
+   N-STORES @ 1 >= if  0 VAL-A @ 0 =  0 VAL-B @ top FIELD=  and  else false then TTRUE
+   s" the second row is a data cell, count.f's MARKED, holding 0" LABEL
+   1 cf MARKED-OFF @ 1 0 5 STORE-ROW? TTRUE ;
 
 : CHECK-OBJECT ( n -- )
    {: idx:n :}
@@ -993,12 +1131,15 @@ variable N-STRS
    au CHECK-PIECES
    au PIECES-OK? 0= if exit then
    au CHECK-WALK
-   CHECK-EMS  CHECK-ROWS  CHECK-DATA
+   CHECK-EMS  CHECK-ROWS  CHECK-DATA  CHECK-STORES
    FIX @ 3 = if s" CODE holds no emission" LABEL  CODE-E @ 0 T=  0 0 0 SIZES= then
    idx COUNT-I @ = if au CHECK-COUNT  au COUNT-NAMES  COUNT-DATA then
    idx SHAPE-I @ = if au SHAPE-NAMES  0 0 0 SIZES= then
-   idx MAIN-I @ = if au RUN-NAMES  au SET-Q-NAMES  au MAIN-DATA then
-   idx REOPEN-I @ = if au CHECK-REOPEN  au MAKER-NAMES  REOPEN-DATA then ;
+   idx MAIN-I @ = if au RUN-NAMES  au SET-Q-NAMES  au MAIN-DATA  au MAIN-STORES then
+   idx REOPEN-I @ = if au CHECK-REOPEN  au MAKER-NAMES  REOPEN-DATA  au REOPEN-STORES then
+   idx MAIN-I @ =  idx REOPEN-I @ =  or 0= if
+      s" STORES is empty" LABEL  STORES-S @ 0 T=
+   then ;
 
 \ Build C's one object: count.f's, the same name and bytes as A's.
 : CHECK-STOP ( -- )

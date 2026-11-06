@@ -3,7 +3,8 @@
 \ the count is 7 and ok when DOUBLE agrees. AT-EDGE answers shape.f's EDGE,
 \ which build.f's cell parts from main.f's data. The top level also lays a data
 \ cell naming its own Q, one naming count.f's TALLY, a scratch cell and a data
-\ cell holding 0; COLORS holds three strings.
+\ cell holding 0; COLORS holds three strings. After the package the top level
+\ stores RUN as the program's entry, as APP-IMAGE:START! does.
 
 package FILE-OBJECTS-MAIN
 private
@@ -24,3 +25,6 @@ public
    FILE-OBJECTS-COUNT:TALLY @ 7 = if FILE-OBJECTS-COUNT:HI then
    21 FILE-OBJECTS-SHAPE:DOUBLE 42 = if ." ok" cr then ;
 ;package
+
+\ $43A0 is APP-ENTRY:XT-CELL (src/habu/layout.f), E-UNDEFINED in a build's file.
+' FILE-OBJECTS-MAIN:RUN data-base $43A0 + xt!

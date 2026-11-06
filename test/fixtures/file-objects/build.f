@@ -3,10 +3,13 @@
 \ twice in the same build, then host.f loaded after the build closes; prints
 \ `compiled ` and LINKER:COMPILED. The body lays one cell between shape.f and
 \ main.f, which no file's data holds. With the script argument `second` the
-\ build loads pad.f first. With `stop`, four builds each fail: in STOP-FILE and
+\ build loads pad.f first. With `stop`, seven builds each fail: in STOP-FILE and
 \ STOP-BODY every later load and write is LINKER:E-FAILED, STOP-INSIDE's file
-\ moves DP back and its own load is LINKER:E-FAILED, and STOP-ALIGN's file marks
-\ a cell its object cannot place, E-COMP-STATE.
+\ moves DP back and its own load is LINKER:E-FAILED, STOP-ALIGN's file marks a
+\ cell its object cannot place, E-COMP-STATE, STOP-STORE's file marks count.f's
+\ record immediate, LINKER:E-STORE, STOP-GAP's file stores into a cell the body
+\ laid, which no file holds, LINKER:E-STORE, and STOP-STRADDLE's file stores
+\ into a cell straddling count.f's TALLY and LATER, E-COMP-STATE.
 \ The build's files load from its body: in a build's file `require` is
 \ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
 \ at rec-wide-publish (rc 70).
@@ -15,15 +18,11 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/build-out.f
-require src/habu/layout.f
-require src/habu/xref.f
 require src/habu/linker.f
 require src/habu/link-data.f
 require src/os/script-argv.f
 
 package FILE-OBJECTS-BUILD
-
-CAST: ENTRY-XT ( n -- [ -- ] )
 
 PATH-CAP BUFFER: PROG-BUF
 
@@ -33,17 +32,15 @@ PATH-CAP BUFFER: PROG-BUF
 
 70 constant REFUSED   \ the checker's refusal (src/core/check-hook.f CHECK-RC)
 
-\ The entry store app-image-core.f START! makes, of the word named a u.
-: STORE-ENTRY ( ptr u8 n -- )
-   XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
-   data-base APP-ENTRY:XT-CELL + xt! ;
-
 : PAD ( -- ) s" test/fixtures/file-objects/pad.f" included ;
 : RESIDUE ( -- ) s" test/fixtures/file-objects/residue.f" included ;
 : LOAD-AGAIN ( -- ) s" test/fixtures/file-objects/again.f" included ;
 
 : ROLLBACK ( -- ) s" test/fixtures/file-objects/rollback.f" included ;
 : UNALIGNED ( -- ) s" test/fixtures/file-objects/unaligned.f" included ;
+: STRADDLE ( -- ) s" test/fixtures/file-objects/straddle.f" included ;
+: FLAG ( -- ) s" test/fixtures/file-objects/flag.f" included ;
+: GAP ( -- ) s" test/fixtures/file-objects/gap.f" included ;
 
 \ The one argument, second or stop, or empty; any other ends the build, rc 1.
 : MODE$ ( -- ptr u8 n )
@@ -83,6 +80,22 @@ PATH-CAP BUFFER: PROG-BUF
    ['] UNALIGNED catch E-COMP-STATE
    s" build: STOP-ALIGN: an unaligned address cell was not refused" EXPECT ;
 
+: STOP-STORE ( -- )
+   s" test/fixtures/file-objects/count.f" included
+   ['] FLAG catch LINKER:E-STORE
+   s" build: STOP-STORE: a flag set on count.f's record was not refused" EXPECT ;
+
+: STOP-GAP ( -- )
+   s" test/fixtures/file-objects/count.f" included
+   8 allot
+   ['] GAP catch LINKER:E-STORE
+   s" build: STOP-GAP: a store into a cell no file holds was not refused" EXPECT ;
+
+: STOP-STRADDLE ( -- )
+   s" test/fixtures/file-objects/count.f" included
+   ['] STRADDLE catch E-COMP-STATE
+   s" build: STOP-STRADDLE: a cell straddling count.f's TALLY was not refused" EXPECT ;
+
 : BODY ( -- )
    SECOND? {: second:bool :}
    second if PAD then
@@ -92,7 +105,6 @@ PATH-CAP BUFFER: PROG-BUF
    s" test/fixtures/file-objects/main.f" included
    s" test/fixtures/file-objects/reopen.f" included
    LOAD-AGAIN LOAD-AGAIN
-   s" FILE-OBJECTS-MAIN:RUN" STORE-ENTRY
    PROG$ LINKER:WRITE ;
 
 : STOPS ( -- )
@@ -100,6 +112,9 @@ PATH-CAP BUFFER: PROG-BUF
    s" app" [: STOP-BODY ;] LINKER:WITH
    s" app" [: STOP-INSIDE ;] LINKER:WITH
    s" app" [: STOP-ALIGN ;] LINKER:WITH
+   s" app" [: STOP-STORE ;] LINKER:WITH
+   s" app" [: STOP-GAP ;] LINKER:WITH
+   s" app" [: STOP-STRADDLE ;] LINKER:WITH
    s" stopped" type cr ;
 
 public

@@ -1,8 +1,11 @@
-\ count.f - a counter and a greeting the other fixture files use.
+\ count.f - a counter and a greeting the other fixture files use, LATER, which
+\ reopen.f stores an xt into, and MARKED, the cell reopen.f marks.
 
 package FILE-OBJECTS-COUNT
 public
 variable TALLY
+variable LATER
+variable MARKED
 : BUMP ( -- ) TALLY @ 1 + TALLY ! ;
 : HI ( -- ) ." Hi" cr ;
 ;package
