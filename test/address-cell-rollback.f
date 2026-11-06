@@ -94,7 +94,22 @@ DYNAMIC-BUFFER SAVED n
    ROWS 0 ?do i ADDRESS-CELLS:ROW@ i SAVED @ T= loop
    SAVED-RELEASE ;
 
+: LAY-TEXT ( -- ) s" address-cell-rollback-text" INTERN:TEXT drop ;
+: FAIL-TEXT ( -- ) s" LAY-TEXT 12345 throw" INCLUDE-EVALUATE ;
+: TEXT-GONE ( -- )
+   s" a failed load's text leaves the string table" T-LABEL
+   START [: FAIL-TEXT ;] catch RESTORED
+   s" address-cell-rollback-text" INTERN:FIND 0 T= ;
+
+\ here lands 3 bytes into the text's length cell.
+: CUT-TEXT ( -- )
+   s" a negative allot into a text forgets it" T-LABEL
+   s" address-cell-rollback-cut" INTERN:TEXT CELL - 3 +
+   here NULL-PTR - - allot
+   s" address-cell-rollback-cut" INTERN:FIND 0 T=
+   align ;
+
 : RUN ( -- )
-   T-RESET THREE-SHAPES UNORDERED NESTED BACKING T-REPORT ;
+   T-RESET THREE-SHAPES UNORDERED NESTED BACKING TEXT-GONE CUT-TEXT T-REPORT ;
 RUN
 ;package

@@ -195,7 +195,7 @@ variable SOURCE-ON
 
 \ Ends at the body's row or at an empty slot, which always exists (FREE-SLOT
 \ says why).
-: FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+: ROW-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u HASH PROBE !
    begin SLOT@ 0<> while
       SLOT@ 1- ROW$ a u STR= if SLOT@ 1- exit then
@@ -217,6 +217,7 @@ variable SOURCE-ON
 \ The cells are src/habu/intern-table.f's; image-lifecycle.f loads after it.
 SPACE-IMAGE IMAGE-LIFECYCLE:PROCESS-CELL
 SPACE-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
+OWN-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
 
 \ ---- putting one in ------------------------------------------------------------
 \ The last segment cannot take the body: open the pool's next one behind it. A
@@ -363,7 +364,7 @@ public
    {: a:ptr u:n :}
    u 0 < if E-NSTR-BODY throw then
    SPACE? if a u SPACE-STRING u SOURCE-RECORD exit then
-   a u FIND {: k:n :}
+   a u ROW-FIND {: k:n :}
    k 0 >= if BASE k ROW-OFF + u SOURCE-RECORD exit then
    a u ADD {: row:n :}
    BASE row ROW-OFF + u SOURCE-RECORD ;
@@ -418,7 +419,7 @@ variable PLAN-ON
       then
    loop
    PLAN-LIVE @ if
-      a u FIND {: row:n :}
+      a u ROW-FIND {: row:n :}
       row 0 >= if PLAN-BASE @ row ROW-OFF + true exit then
    then
    0 false ;

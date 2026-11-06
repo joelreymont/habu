@@ -23,11 +23,13 @@ PTR-VARIABLE DP-MARK
 \ out again (src/habu/layout.f DPHW-CELL), and the `,` run ends
 \ (src/habu/layout.f COMMA-RUN-CELL).
 : DICTIONARY-DP! ( ptr a -- )
+   {: mark:ptr :}
    data-base NULL-PTR - {: base:n :}
+   mark NULL-PTR -  data-base DATA-FLOOR-CELL + @ base +  max {: cut:n :}
    data-base DP-CELL + @ base -  data-base DPHW-CELL + @ max  data-base DPHW-CELL + !
    0 data-base COMMA-RUN-CELL + !
-   NULL-PTR -  data-base DATA-FLOOR-CELL + @ base + max
-   data-base DP-CELL + ! ;
+   cut INTERN:KEEP-BELOW
+   cut data-base DP-CELL + ! ;
 
 public
 

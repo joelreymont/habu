@@ -169,13 +169,18 @@ learned live in the docs for their subject.
   the build's space for the product's records, hb's DATA for its own. The
   one string table loads before the checker as package INTERN's first part
   (`INTERN:TEXT`). As Joel ruled for strings, a failed line's texts go with
-  DATA's rewind and the table forgets them: the typed loop's rollback cuts
-  the table at the DP it restores, as it cuts the address-cell list, and an
-  older entry the line amended gets its previous bytes back from the
-  checker's journal. As in every Forth, a created body's data follows its
-  `create` before the next definition or row. The arm64 engine loop's
-  `evaluate` recovery is old machinery and forgets nothing; that case goes
-  with it at the T0 release.
+  DATA's rewind and the table forgets them: every rollback cuts the table at
+  the DP it restores, and an older entry the line amended gets its previous
+  bytes back from the checker's journal. The typed loop's rollback and a
+  rejected declaration's call the cut themselves. On arm64 the engine's
+  machine-code recoveries (habu2.f, which undo a failed REPL line and every
+  failure inside an evaluate frame) and a negative `allot` already call one
+  checker word with the lowered DP; that word (checker.f DP-CUT) cuts the
+  table too, so no machine code changes. Left in the table, a failed line's
+  text was answered again in place of a new copy and, once data overwrote its
+  length, hung the table's next growth (20 s at full CPU in the review's
+  probe). As in every Forth, a created body's data follows its `create`
+  before the next definition or row.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
