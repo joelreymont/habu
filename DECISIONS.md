@@ -294,14 +294,47 @@ learned live in the docs for their subject.
   one Habu word that turns an error number into its constant's name and
   comment, for Habu's codes and an application's own, should be designed,
   given that it means a definer for every error constant while incremental
-  builds come first, Joel chose "Design now, in parallel".
+  builds come first, Joel chose "Design now, in parallel". Shown the design,
+  he chose "ERROR: definer (Recommended)": `-9701 s" text" ERROR: E-KEY`
+  defines the constant as today and records its qualified name and text in
+  the program's data, so a stripped program can name a code; every error
+  constant converts, and the lead made the text required. The 107 codes
+  minted before the error file loads stay plain constants for now. Asked
+  about ERRORS:NAME$, Joel wrote "the package should be ERROR in error.f, why
+  invent ERRORS?": package ERROR in src/lib/error.f (errors.f renamed), with
+  `ERROR:NAME$ ( n -- ptr u8 n )` and, chosen "(Recommended)",
+  `ERROR:TEXT$ ( n -- ptr u8 n )`, empty for an undeclared code. He chose
+  "LOG:CODE+ (Recommended)", then wrote "what i want to see in the logs is
+  the description of what happened" and "why not reverse this instead and
+  write the number / name and then the description?": `LOG:CODE+ ( n -- )`
+  writes `-9701 MODEL:E-KEY: the provider refused the key`, the number alone
+  when undeclared. For tools/check.f's records of a thrown code he chose
+  "Real name (Recommended)" over E-STATEMENT-THROW, and for building it "Now,
+  in parallel".
+- 2026-11-06, outages apart from bad replies (relayed by kevin from Tender):
+  Joel chose "Add E-UNAVAILABLE (Recommended)" for MCP: MCP:E-UNAVAILABLE for
+  an HTTP 408, 429 or 5xx, as MODEL:E-UNAVAILABLE; E-RESPONSE keeps every
+  other non-2xx and malformed reply. For BEARER he chose "Add E-UNAVAILABLE
+  (Recommended)": BEARER:E-UNAVAILABLE for 408, 429 and 5xx, E-REFUSED the
+  other 4xx, E-TRANSFER no answer; and "Add E-RESPONSE (Recommended)":
+  BEARER:E-RESPONSE for a 2xx without an access_token or a positive
+  expires_in.
 - 2026-11-06, Maki's load cost (relayed by tim from Maki): shown that the
   checker costs about 116k instructions per token on Maki's 17.6 MB generated
   design (type unification, re-walked stack rows, guards on the checker's own
   stores) and that Habu has no one-token exact float literal, so
   `$403E… IEEE754:BITS>F64` makes 41% of its tokens, Joel chose "Both now, in
   parallel (Recommended)": workers find the checker's three costs and the
-  literal is designed for his approval.
+  literal is designed for his approval. Shown the literal's design, Joel wrote
+  "the issue here is that maki needs precision. we are dealing with
+  solidworks models that are often very precise. what's best for long term
+  here?" The lead chose widening the decimal literal: any number of digits,
+  correctly rounded to the nearest double, no exponent; every double has a
+  decimal text that reads back to its exact bits, so no spelling is more
+  precise than another. He chose "Keep num-parse (Recommended)": one reader
+  in checked Habu, `num-parse ( ptr u8 n -- n bool bool bool )`, the last
+  flag a number-shaped token out of range, replaces the machine-code readers
+  and OUTER:NUMBER. It lands with arm64's move onto the typed interpreter.
 - 2026-11-05, durable atomic writes (relayed by kevin from Tender): shown
   that FS:ATOMIC-WRITE-FILE renamed its sibling over the destination with no
   sync, so after a crash or power loss the destination could stand empty
