@@ -1003,11 +1003,24 @@ learned live in the docs for their subject.
   make your own judgement and do everything without asking me. apply the
   what's best for long term criteria". The lead chose, as Joel did for
   strings (E-INTERN-REWIND), that a failed build does not go on: once a
-  file's compile throws, or DP moves back inside the build's space, the
-  linker loads no other file and writes neither that file's object nor the
-  program, refusing with `LINKER:E-FAILED`. The build's body may still catch
-  and report. Nothing rolls the shadow back and no tier-1 package changes. A
-  refused file ends its build, as in make.
+  file's load throws, from its key to its object's write, or DP moves back
+  inside the build's space, the linker loads no other file and writes neither
+  that file's object nor the program, refusing with `LINKER:E-FAILED`. The
+  build's body may still catch and report. Nothing rolls the shadow back and
+  no tier-1 package changes. A refused file ends its build, as in make.
+- 2026-11-06, a file that changes what earlier files made: a file's compile
+  can store into cells below its own data (a number into an earlier file's
+  variable, an xt into the header's entry cell), mark an earlier cell as an
+  address, flag an earlier record or patch earlier code. Under Joel's words
+  that night ("make your own judgement and do everything without asking me.
+  apply the what's best for long term criteria") the lead chose that the
+  file's object lists every store below its data (STORES: the cell by its
+  file and offset or the header data, its kind and its value), so a link
+  replays it; a file that changes an earlier record, other than a package
+  gaining its private wordlist, or earlier code, or stores into a cell no
+  file holds, ends the build with `LINKER:E-STORE`, and an address cell below
+  its data off a cell boundary ends it with E-COMP-STATE, as one in its own
+  data does.
 - 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
   for DP, kept only by the old string store so a failed line's rollback never
   drops DP below strings compiled code points at, and asked when it should go,

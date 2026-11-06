@@ -37,13 +37,14 @@ require src/habu/link-band.f
 package LINKER
 private
 
-\ The open's progress: each step names the last one that completed. Past open, loading: a file's compile
-\ or its object's write runs, and a throw out of it stays there; failed: DP moved back.
+\ The open's progress: each step names the last one that completed. Past open, loading: a file's load
+\ runs, from its key to its object's write, and a throw out of it stays there; failed: DP moved back or E-STORE.
 ENUM step none mapped shadowed moved checked required objects routed open loading failed ;ENUM
 TYPED-VARIABLE PROGRESS step
 
 public
 -9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes nothing" ERROR:CODE E-FAILED
+-9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
 private
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
@@ -130,6 +131,14 @@ KEY-BYTES BUFFER: INPUT-SUM
 KEY-BYTES BUFFER: OBJECT-SUM
 KEY-BYTES 2 * BUFFER: KEY-HEX
 
+\ As a file's compile starts (COPY-BELOW): the space's cells below its data, the records
+\ [FIRST-REC - 1, FILE-REC), and each emission's size, patch site and bytes.
+create OLD-SPACE BUF:HDR-BYTES allot
+create OLD-RECS BUF:HDR-BYTES allot
+create OLD-EMS BUF:HDR-BYTES allot
+DYNAMIC-BUFFER STORED n              \ the stores' cells as distances from NULL-PTR (FIND-STORES)
+variable STORED-N
+
 \ ndict@, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR and WIDN-CELL
 \ as a file's compile starts; RUN-FILE refuses a nested file, whose marks would overwrite them.
 variable FILE-REC
@@ -138,6 +147,7 @@ variable FILE-EM
 variable FILE-DP
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-END                    \ here's distance as the file's compile returns
+variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 
 \ The magic, the key, and an offset from the file's start and a length for each
 \ of INPUT FILES REQUESTS NAMES PIECES, 0 0 while empty; then the sections in
@@ -153,6 +163,7 @@ variable FILE-END                    \ here's distance as the file's compile ret
 4 constant KIND-PRIVATE              \ a package gaining its private wordlist after its record
 
 : DISPOSE-OBJECTS ( -- )
+   STORED-RELEASE  OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  PIECES BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
    LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE ;
 
@@ -163,7 +174,11 @@ variable FILE-END                    \ here's distance as the file's compile ret
    REFS 256 BUF:N>BLEN BUF:INIT
    PIECES 256 BUF:N>BLEN BUF:INIT
    OBJECT 256 BUF:N>BLEN BUF:INIT
-   LATE 256 BUF:N>BLEN BUF:INIT ;
+   LATE 256 BUF:N>BLEN BUF:INIT
+   OLD-SPACE 256 BUF:N>BLEN BUF:INIT
+   OLD-RECS 256 BUF:N>BLEN BUF:INIT
+   OLD-EMS 256 BUF:N>BLEN BUF:INIT
+   0 STORED-N ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -618,7 +633,7 @@ variable STRS-N
    STRS-N @ 1 + STRS-RESERVE
    b STRS-N @ STRS !  1 STRS-N +! ;
 
-\ DATA and STRINGS, after CODE:
+\ DATA, STRINGS and STORES, after CODE:
 \   D                      the bytes the file's compile laid, FILE-END - FILE-DP
 \   D raw bytes            from FILE-DP, unpadded; each address cell's 8 bytes written as 0
 \   K, then K cell rows    offset from FILE-DP, a multiple of 8 (else E-COMP-STATE), kind
@@ -626,6 +641,10 @@ variable STRS-N
 \                          address-cell rows, only cells inside the D bytes
 \   N, then N string rows  a body's offset from FILE-DP, then its length; offsets ascending,
 \                          only bodies whose length cell and bytes lie inside the D bytes
+\   S, then S store rows   each cell below FILE-DP the compile stored into or gave an address-cell
+\                          row, ascending by address: its reference (tag 3 with a FILES row, or
+\                          4), kind (ROW-KIND, 3 for none), bytes (the cell's value for kind 3,
+\                          else 0), its value's reference (CELL-REF+ for kinds 0-2, else 5)
 : DATA+ ( -- )
    FILE-DATA {: a:ptr d:n :}
    d PIECES U64+  a d PIECES SPAN+
@@ -655,8 +674,161 @@ variable STRS-N
       b FILE-DP @ - PIECES U64+  b BODY-U PIECES U64+
    loop ;
 
+\ ---- the stores ----------------------------------------------------------------
+\ A file's compile may store into cells below its data, but must leave earlier records and
+\ emissions alone; REFUSE-STORE ends the build as E-FAILED does.
+: REFUSE-STORE ( -- ) construct step failed PROGRESS !  E-STORE throw ;
+
+\ The space's cells a store can reach, as [from, to) offsets from BASE: [0, FILE-DP) less
+\ INDEX-CELL and the address-cell header and boot rows, which EMIT-MARK writes.
+: EACH-RANGE ( [ n n -- ] -- )
+   {: q :}
+   0 ADDRESS-CELLS:INDEX-CELL q execute
+   ADDRESS-CELLS:INDEX-CELL CELL +  SNAP-RELOC:XTCELL-N-CELL q execute
+   SNAP-RELOC:XTCELL-END  FILE-DP @ BASE @ -  q execute ;
+
+
+: SPACE-BYTES ( n -- ptr u8 ) NULL-PTR BYTE-VIEW BASE @ + swap + ;
+: COPY-REC ( n -- ) XREF-REC BYTE-VIEW DREC OLD-RECS SPAN+ ;
+
+
+: COPY-RANGE ( n n -- )
+   {: from:n to:n :}
+   from SPACE-BYTES  to from -  OLD-SPACE SPAN+ ;
+
+
+: COPY-EM ( n -- )
+   {: e:n :}
+   e NSHADOW:SIZE {: s:n :}
+   s OLD-EMS U64+  e NSHADOW:PATCH-SITE@ OLD-EMS U64+
+   s 0 > if e NSHADOW:BYTES s OLD-EMS SPAN+ then ;
+
+
+\ What the file's compile may change below its own data, as it starts.
+: COPY-BELOW ( -- )
+   OLD-SPACE BUF:CLEAR  OLD-RECS BUF:CLEAR  OLD-EMS BUF:CLEAR
+   [: COPY-RANGE ;] EACH-RANGE
+   FILE-REC @ FIRST-REC @ 1 - ?do i COPY-REC loop
+   FILE-EM @ 0 ?do i COPY-EM loop
+   ROWS nip FILE-CELLS ! ;
+
+
+\ True when a cell of the record differs from its copy, other than a late private wordlist (LATE?).
+: REC-CHANGED? ( ptr u8 n -- bool )
+   {: old:ptr idx:n :}
+   idx XREF-REC BYTE-VIEW {: rec:ptr :}
+   DREC CELL / 0 ?do
+      old i cells + CELL-VIEW @  rec i cells + CELL-VIEW @  <> if
+         i XREF-LEN-SLOT =  idx LATE?  and 0= if true unloop exit then
+      then
+   loop
+   false ;
+
+
+\ The emission's entry in the copy, its length and whether the size, patch site or bytes differ.
+: EM-CHANGED? ( ptr u8 n -- n bool )
+   {: at:ptr e:n :}
+   at LE:U64@ {: s:n :}
+   s 16 +
+   s e NSHADOW:SIZE <>  at 8 + LE:U64@ e NSHADOW:PATCH-SITE@ <>  or if true exit then
+   s 0= if false exit then
+   at 16 + s  e NSHADOW:BYTES s  STR= 0= ;
+
+
+\ E-STORE when the compile changed an earlier record or emission.
+: CHECK-EARLIER ( -- )
+   OLD-RECS BYTES$ {: recs:ptr recsu:n :}
+   recsu DREC / 0 ?do
+      recs i DREC * +  FIRST-REC @ 1 - i +  REC-CHANGED? if REFUSE-STORE then
+   loop
+   OLD-EMS BYTES$ drop {: ems:ptr :}
+   0  FILE-EM @ 0 ?do
+      ems over +  i EM-CHANGED? if REFUSE-STORE then +
+   loop drop ;
+
+
+variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
+
+: STORED+ ( n -- )
+   {: v:n :}
+   STORED-N @ 1 + STORED-RESERVE
+   v STORED-N @ STORED !  1 STORED-N +! ;
+
+
+\ Each cell of [from, to) that differs from the copy at OLD-AT, into STORED.
+: COMPARE-RANGE ( n n -- )
+   {: from:n to:n :}
+   OLD-SPACE BYTES$ drop OLD-AT @ + {: old:ptr :}
+   to from - CELL / 0 ?do
+      old i cells + CELL-VIEW @  from i cells + SPACE-AT @  <> if
+         BASE @ from + i cells + STORED+
+      then
+   loop
+   to from - OLD-AT +! ;
+
+
+\ A store's cell lies in an earlier file's data or the header data.
+: HELD? ( n -- bool )
+   {: v:n :}
+   v DP-ROW nip  v OPEN-DP @ <  or ;
+
+
+\ Drops repeats from the sorted list: a changed cell with a new row is one store.
+: DEDUPE ( -- )
+   STORED-N @ {: n:n :}
+   n 0= if exit then
+   1  n 1 ?do
+      i STORED @  over 1 - STORED @  <> if i STORED @ over STORED !  1 + then
+   loop  STORED-N ! ;
+
+
+\ STORED, ascending: each changed cell below FILE-DP and each new row's cell there, aligned (else
+\ E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the header holds.
+: FIND-STORES ( -- )
+   0 STORED-N !  0 OLD-AT !
+   [: COMPARE-RANGE ;] EACH-RANGE
+   ROWS {: rows:ptr count:n :}
+   count FILE-CELLS @ ?do
+      rows i cells + @ ROW-AT {: at:n :}
+      at FILE-DP @ < if
+         at BASE @ - 7 and 0<> if E-COMP-STATE throw then
+         at STORED+
+      then
+   loop
+   STORED-N @ {: n:n :}
+   n 0 > if 0 STORED n [: < ;] SORT:SORT! then
+   DEDUPE
+   STORED-N @ 0 ?do i STORED @ HELD? 0= if REFUSE-STORE then loop ;
+
+
+\ The space's address-cell row of the cell at v, and true; false when it has none.
+: ROW-OF ( n -- n bool )
+   {: v:n :}
+   ROWS {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row ROW-AT v = if row true unloop exit then
+   loop
+   0 false ;
+
+
+\ STORES, after STRINGS (DATA+).
+: STORES+ ( -- )
+   STORED-N @ PIECES U64+
+   STORED-N @ 0 ?do
+      i STORED @ {: v:n :}
+      v DATA-REF+
+      v ROW-OF {: row:n hit:bool :}
+      hit if
+         row ROW-KIND PIECES U64+  0 PIECES U64+  row CELL-REF+
+      else
+         3 PIECES U64+  v BASE @ - SPACE-AT @ PIECES U64+  5 PIECES U64+
+      then
+   loop ;
+
+
 \ Piece count 1 (RUN-FILE); entry count; records by index, each late private wordlist (by id) before
-\ the first record marked above its id; CODE; DATA; STRINGS; REQUEST -1. Ids mint in entry order.
+\ the first record marked above its id, so ids mint in entry order; CODE; DATA; STRINGS; STORES; REQUEST -1.
 : PIECES! ( -- )
    PIECES BUF:CLEAR  REFS BUF:CLEAR  LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
@@ -665,7 +837,7 @@ variable STRS-N
    ndict@ FILE-REC @ -  LATE-N +  PIECES U64+
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
    LATE-REST
-   CODE+  DATA+
+   CODE+  DATA+  STORES+
    -1 PIECES U64+ ;
 
 \ FILE-KEY's object; INPUT sums the bytes the runner gets (`#!` read as `\ `).
@@ -784,7 +956,7 @@ variable STRS-N
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
-\ E-FAILED once a file's compile or its object's write threw, or DP moved back in the space: a failed
+\ E-FAILED once a file's load threw or DP moved back in the space (PROGRESS loading, failed): a failed
 \ build loads and writes nothing more. E-COMP-STATE with no build open.
 : GOING ( -- )
    PROGRESS @
@@ -807,22 +979,25 @@ variable STRS-N
    ;MATCH ;
 
 \ The build's file runner: a file whose compile returns with DP never lowered is counted, and its
-\ object written and added to BUILT; any other ends the build.
+\ object written and added to BUILT; any other ends the build. A file that changes an earlier
+\ record or emission, or stores into a cell no file holds, is refused E-STORE.
 : RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    LOADER$ nip 0<> if E-COMP-STATE throw then
    GOING
+   construct step loading PROGRESS !
    path pathu root rootu UNDER-ROOT KEY!
    ndict@ FILE-REC !  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !   \ hb's DATA, where namespace-record and namespace-private mint ids
+   COPY-BELOW
    PUSH-KEY
-   construct step loading PROGRESS !
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
    DPHW-CELL HOST@ 0<> if
       construct step failed PROGRESS !  E-FAILED throw
    then
    here NULL-PTR - FILE-END !
+   CHECK-EARLIER  FIND-STORES
    1 COMPILED-N +!
    source sourceu WRITE-OBJECT
    BUILT+
