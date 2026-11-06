@@ -11,7 +11,10 @@ variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 16384 constant RSBUF-CAP
 \ RSBUF and RSN outlive no record; snap-lib.f SND-ZERO-LIVE zeroes them in an image.
 create RSBUF RSBUF-CAP allot   variable RSN
-variable RQM                             \ a '?' rendered = unknown tag, don't record
+\ RQM: the text cannot say the effect (a '?', a type or a row no signature
+\ spells), so REC-SIG does not record it; RROW-UNSAID: a row, for REC-REFUSE-WHY.
+variable RQM
+variable RROW-UNSAID
 variable RJSON   0 RJSON !               \ inside a JSON string: EMIT1 escapes
 variable RDIAG-ON
 variable RDIAG-FD   2 RDIAG-FD !
@@ -32,19 +35,23 @@ public
 \ RTAILS is set while TAIL-CAPTURE renders: every quotation then shows its row
 \ tails.
 variable RTAILS   0 RTAILS !
+\ RNAMES is 1 while REND-EFFECT's first pass records each row's tail (RPOS) and
+\ 2 while its second pass names the rows that share one; 0 otherwise.
+variable RNAMES   0 RNAMES !
 
 
-\ A record past RSBUF is refused whole by a throw; the reset before it leaves the
-\ renderer on stdout, outside any JSON string and without row tails, as a
-\ delivered record does.
+\ A record past RSBUF is refused whole by a throw, after a reset to stdout with
+\ no JSON string, row tails or names open, as a delivered record leaves it.
+: RSBUF-FULL ( -- )
+   0 RDST !  0 RSN !  0 RJSON !  0 RTAILS !  0 RNAMES !
+   RDIAG:E-DIAG-CAPACITY throw ;
+
+
 : EMIT-RAW ( n -- )
    {: c:n :}
    c 63 = IF 1 RQM ! THEN
    RDST @ IF
-     RSN @ RSBUF-CAP 2 - > IF
-        0 RDST !  0 RSN !  0 RJSON !  0 RTAILS !
-        RDIAG:E-DIAG-CAPACITY throw
-     THEN
+     RSN @ RSBUF-CAP 2 - > IF RSBUF-FULL THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
 
@@ -320,7 +327,7 @@ variable HRC  variable HRI  variable HRF  variable HRS
 \ the data stack (exit 102) and one leaving 8000 filled RSBUF.
 6 constant QDEPTH-MAX
 64 constant RBUF-CAP                         \ row render budget (values), top-level or nested
-create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
+create QPATH QDEPTH-MAX 1 + cells allot      \ node on the current render path, by depth
 create RBIND QDEPTH-MAX cells allot
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
@@ -340,7 +347,7 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
       dup cells RROW-KEY + @ id = IF 65 + EXIT THEN
       1 +
    REPEAT drop
-   RROW-N @ RROW-CAP >= IF 63 EXIT THEN
+   RROW-N @ RROW-CAP >= IF 1 RROW-UNSAID ! 63 EXIT THEN
    id RROW-N @ cells RROW-KEY + !
    RROW-N @ 65 +  RROW-N @ 1 + RROW-N ! ;
 
@@ -350,7 +357,63 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
    row ROW-TAIL RROW-LETTER EMIT1  32 EMIT1 ;
 
 
-\ A quot node already on QPATH below depth d is a type-graph cycle.
+\ Each quotation records at most four rows and writes at least `[ -- ]`, so
+\ RSBUF fills before RPOS does.
+RSBUF-CAP 2 * 3 / 4 + constant RPOS-CAP
+\ RPOS holds a (tail, owner) pair per row REND-EFFECT's first pass visits: owner
+\ 0 is the effect's data rows, 1 its return rows, 2v and 2v+1 the v-th quotation's.
+create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
+
+: RPOS+ ( n n -- )
+   {: t:n owner:n :}
+   RPOS-N @ RPOS-CAP >= IF RSBUF-FULL THEN
+   t RPOS-N @ 2 * cells RPOS + !
+   owner RPOS-N @ 2 * 1 + cells RPOS + !
+   RPOS-N @ 1 + RPOS-N ! ;
+
+
+\ A row is named unless its tail is shared by exactly its owner's other row,
+\ the pair the parser reads as one unnamed row.
+: RPOS-NAMED? ( n n -- bool )
+   {: t:n owner:n :}
+   0 0
+   RPOS-N @ 0 ?DO
+      i 2 * cells RPOS + @ t = IF
+         swap 1 + swap
+         i 2 * 1 + cells RPOS + @ owner <> IF 1 + THEN
+      THEN
+   LOOP
+   {: hits:n others:n :}
+   hits 2 <>  others 0 <>  or ;
+
+
+\ The letter REND-EFFECT writes at the bottom of a row, 0 for none.
+: RPOS-LETTER ( n n -- n )
+   {: row:n owner:n :}
+   row ROW-TAIL {: t:n :}
+   RNAMES @ 1 = IF t owner RPOS+ 0 EXIT THEN
+   t owner RPOS-NAMED? IF t RROW-LETTER ELSE 0 THEN ;
+
+
+: RROW-NAME ( n n -- )
+   {: row:n owner:n :}
+   RNAMES @ 0= IF EXIT THEN
+   row owner RPOS-LETTER {: l:n :}
+   l 0 <> IF l EMIT1 32 EMIT1 THEN ;
+
+
+\ The return clause of quotation q whose sides resolve to one row. The parser
+\ admits only `| U -- U` there, so a row holding cells sets RQM.
+: QRET-NAME ( n n -- )
+   {: q:n owner:n :}
+   q Q>RIN R-RES TAG S-PUSH = IF 1 RQM !  1 RROW-UNSAID ! EXIT THEN
+   q Q>RIN owner RPOS-LETTER {: l:n :}
+   q Q>ROUT owner RPOS-LETTER drop
+   l 0 = IF EXIT THEN
+   124 EMIT1 32 EMIT1  l EMIT1 32 EMIT1  45 EMIT1 45 EMIT1 32 EMIT1  l EMIT1 32 EMIT1 ;
+
+
+\ A node already on QPATH below depth d is a type-graph cycle.
 : QANCESTOR? {: r:n d:n :}
    0 BEGIN dup d < WHILE
       dup cells QPATH + @ r = IF drop -1 EXIT THEN
@@ -406,20 +469,24 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
         d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
            r d cells QPATH + !
            RTAILS @ 0 <> {: named:bool :}
-           91 EMIT1 32 EMIT1  named IF r Q>DIN QTAIL THEN  r Q>DIN d 1+ 1 RECURSE
-           45 EMIT1 45 EMIT1 32 EMIT1  named IF r Q>DOUT QTAIL THEN  r Q>DOUT d 1+ 1 RECURSE
+           RNAMES @ 0 <> IF RVISIT @ 1 + RVISIT ! THEN  RVISIT @ 2 * {: owner:n :}
+           91 EMIT1 32 EMIT1  named IF r Q>DIN QTAIL THEN
+           r Q>DIN owner RROW-NAME  r Q>DIN d 1+ 1 RECURSE
+           45 EMIT1 45 EMIT1 32 EMIT1  named IF r Q>DOUT QTAIL THEN
+           r Q>DOUT owner RROW-NAME  r Q>DOUT d 1+ 1 RECURSE
            r QRET? IF
-              124 EMIT1 32 EMIT1
-              r Q>RIN d 1+ 1 RECURSE  45 EMIT1 45 EMIT1 32 EMIT1
-              r Q>ROUT d 1+ 1 RECURSE
-           THEN
+              RNAMES @ 0 <> IF 1 RQM !  1 RROW-UNSAID ! THEN
+              124 EMIT1 32 EMIT1  r Q>RIN d 1+ 1 RECURSE
+              45 EMIT1 45 EMIT1 32 EMIT1  r Q>ROUT d 1+ 1 RECURSE
+           ELSE RNAMES @ 0 <> IF r owner 1 + QRET-NAME THEN THEN
            93 EMIT1
         ELSE 63 EMIT1 THEN
       endof
       T-FORALL of
         NLET @ 23 >= IF
            NLET @ 1 + NLET ! 63 EMIT1
-        ELSE RBIND-N @ QDEPTH-MAX < IF
+        ELSE RBIND-N @ QDEPTH-MAX <  d QDEPTH-MAX <  and  r d QANCESTOR? 0=  and IF
+           r d cells QPATH + !
            NLET @ RLETTER {: letter:n :}
            letter RBIND-N @ cells RBIND + !
            NLET @ 1 + NLET !
@@ -502,17 +569,6 @@ variable RSHOW-DST
 : LOCSHOW-INSTALL ( -- ) [: SHOW-LOCAL-TYPE ;] is LOCSHOWXT ;
 LOCSHOW-INSTALL
 
-\ REND-SIG ( -- a u ): inputs from the base row's instantiation (BROW), outputs
-\ from DCUR.
-: REND-SIG
-   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET RATOM-RESET 0 NLET !
-   BROW @ REND-COLLECT
-   RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop
-   45 EMIT1  45 EMIT1
-   DCUR @ REND-COLLECT
-   RBN @ BEGIN dup 0 > WHILE 1 - 32 EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
-   0 RDST !  RSBUF RSN @ ;
-
 \ DIAG-PRINT writes one reject line to stderr:
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row>
 \ A top-level step's line names its place instead (DSITE): habu: PATH:LINE: ...
@@ -522,6 +578,34 @@ LOCSHOW-INSTALL
 
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
+
+
+: REND-PASS ( n n n n bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool :}
+   0 RSN !  0 RQM !  0 RROW-UNSAID !  SEEN-RESET RATOM-RESET 0 NLET !  0 RROW-N !  0 RVISIT !
+   din 0 RROW-NAME  din DROW
+   hasr IF  s" | " DTXT  rin 1 RROW-NAME  rin DROW  THEN
+   45 EMIT1  45 EMIT1
+   dout 0 RPOS-LETTER {: lo:n :}
+   lo 0 <> IF 32 EMIT1 lo EMIT1 THEN
+   dout REND-COLLECT
+   RBN @ BEGIN dup 0 > WHILE 1 - 32 EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
+   hasr IF  s"  | " DTXT  rout 1 RROW-NAME  rout DROW  THEN ;
+
+
+\ Rows are named as RPOS-NAMED? decides, and RQM is set where the text cannot
+\ say a clause. The first pass only records the tails.
+: REND-EFFECT ( n n n n bool -- ptr u8 n )
+   {: din:n dout:n rin:n rout:n hasr:bool :}
+   1 RDST !  0 RPOS-N !
+   1 RNAMES !  din dout rin rout hasr REND-PASS
+   2 RNAMES !  din dout rin rout hasr REND-PASS
+   0 RNAMES !  0 RDST !  RSBUF RSN @ ;
+
+
+\ Inputs from the base row's instantiation (BROW), outputs from DCUR.
+: REND-SIG ( -- ptr u8 n )
+   BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
 \ `JSON-DIAGS ON` emits one JSON object per reject or uncheckable verdict.
 create JNBUF 20 allot  variable JNV  variable JNN
@@ -1429,14 +1513,16 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ A certified sig-less word with an unknown tag or an absurd var count stays
-\ unrecorded, and the refusal names the word and why: its callers otherwise fail
-\ later as undefined with no hint that the producer was the problem.
+\ Why a certified sig-less word stays unrecorded: more than 23 letters, a row the
+\ effect text cannot say (RROW-UNSAID), or any other RQM cause, as an unmodeled tag.
 : REC-REFUSE-WHY ( -- ptr u8 n )
    \ RLETTER emits '?' when names run out; the count distinguishes that
    \ placeholder from an unmodeled type tag.
    NLET @ 24 >= IF
       s" more than 23 type variables or binders in inferred effect" EXIT
+   THEN
+   RROW-UNSAID @ IF
+      s" quotation return-stack clause or more than 26 named rows the effect text cannot say" EXIT
    THEN
    s" unmodeled type tag in inferred effect" ;
 
@@ -1469,9 +1555,8 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
    WARN-DIAGS @ 0= IF 2drop EXIT THEN
    REC-REFUSE-WHY REC-REFUSE-EMIT ;
 
-\ The render is also the text an AOT capture carries for a word whose effect was
-\ inferred; CHECK's declared arm hands its text to CHECKER-USIG-CERT-ADD. The
-\ capture runs after the record exists, because it reads the record's symbol.
+\ A sig-less word's inferred effect is recorded (CHECKER-USIG-CERT-CURRENT) unless
+\ its text sets RQM or has more than 23 letters; no capture keeps the text.
 : REC-SIG ( ptr u8 n -- ) {: na:ptr nu:n :}
    REND-SIG {: sa:ptr su:n :}
    RQM @ 0 =  NLET @ 24 <  and IF
