@@ -144,8 +144,7 @@ REGION DICT-SIZE - constant BYTES
 \ definer's own.
 \ Band: bits 50-51 of the record flags cell [16] (map at DNAME-MIN-IN-MASK).
 \ The AOT seed carries the pair in a byte of its compact record
-\ (src/habu/aot-capture.f). The recovery CAST: definer stamps the same kind, so
-\ bootstrap/cg's name readers clear the same bits.
+\ (src/habu/aot-capture.f).
 package DKIND
 public
 $0004000000000000 constant VAL       \ kind 1: the body pushes a decided number
@@ -212,7 +211,7 @@ $8000000000000000 constant DNAME-INT
 \ DNAME-INT without it keeps the compile refusal outside a TRUSTED: body.
 $0002000000000000 constant DNAME-OWNED
 \ DICT-CAP: dictionary record slots. 131072 exceeds the imm16 field, so the
-\ DICT-CAP comparison sites (habu2.f, bootstrap/cg/forth.fs) load it with LIT64,
+\ DICT-CAP comparison sites in habu2.f load it with LIT64,
 \ one instruction for a single-chunk value; asm.f ?IMM16 dies on a missed site.
 131072 constant DICT-CAP
 $600000 constant CFSTK-OFF
@@ -1401,13 +1400,12 @@ $4CA8 constant CLAUSE-CELL
 STACK-ABI:RETURN-CELLS constant RSTK-CELLS
 
 \ The catch/throw handler frame (habu1.f BCATCH/BTHROW, habu2.f
-\ EM-EVAL-THROW-RECOVER; bootstrap/cg/forth.fs mirrors it).
+\ EM-EVAL-THROW-RECOVER).
 \ A HNDF-SIZE machine-stack frame chained through HND-CELL ([DATA+8]). It saves
 \ RSP-CELL, LOOPSP-CELL and the active data-stack allocation, so a caught throw
-\ restores the complete caller frame. Every delivery site (BTHROW, LEVLD, seed
-\ BTHROW) validates the sentinel, saved depths and allocation before any restore
-\ store. Keep the layout byte-for-byte in step with bootstrap/cg/forth.fs. The
-\ native catch family (habu1.f BCATCH-FORWARD, BFINALLY, BC2-INVOKE;
+\ restores the complete caller frame. Every delivery site (BTHROW, LEVLD)
+\ validates the sentinel, saved depths and allocation before any restore
+\ store. The native catch family (habu1.f BCATCH-FORWARD, BFINALLY, BC2-INVOKE;
 \ kernel-x64.f twins) reads HALT-UNWIND-CELL to keep a halt unwinding; the frame
 \ carries nothing for it.
 STACK-ABI:CATCH-BYTES constant HNDF-SIZE
@@ -1964,7 +1962,6 @@ $4DD0 constant PKG-OUTSIDE-CELL
 \ one added row widens both. The zero-length row ends every walk, so no count
 \ can fall out of step with the rows. src/habu/data-claims.f BANDS-ASSERT checks
 \ every row against its DATA-CLAIMS claim when an engine is built.
-\ bootstrap/cg/forth.fs mirrors the six bands its stage0 engine owns.
 package DATA-BANDS
 
 create TAB
@@ -2015,7 +2012,7 @@ PD-TABLE-OFF PD-SLOTS-REL + PD-CAP PD-SLOT * + constant PD-TABLE-END
 \ (src/core/checker.f CHECKER-DECLARED-ROW!), recorded by the source owner. A
 \ cold boot has no owner until checker.f claims the source at its end
 \ (CLAIM-COLD-SOURCE), so the empty-hook publish arm (habu2.f
-\ EM-COMPILE-PUBLISH-HOOKED, seed forth.fs EMIT-COMPILE-PUBLISH-HOOKED) appends
+\ EM-COMPILE-PUBLISH-HOOKED) appends
 \ each signed `:` definition it publishes before then to this log; the claim
 \ records every logged declaration's row (checker.f CK-DECLARED-LOG-DRAIN), then
 \ zeroes the slots and ADDR-CELL. The log is empty whenever user source runs and
