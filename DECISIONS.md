@@ -1037,7 +1037,12 @@ learned live in the docs for their subject.
 - 2026-10-29, build cost: "i need fast incremental builds to enable you and
   other agents to quickly iterate on features. right now we are in rust cargo
   build times and it fucking sucks because we are forth!" A build whose cost
-  is out of proportion has a defect to root-cause first.
+  is out of proportion has a defect to root-cause first. On 2026-11-06,
+  shown a chain build's engine step timing out at 600 s and its rerun with a
+  30-minute limit, Joel wrote "rca and troubleshoot, always immediately! and
+  30 minutes to build an engine is denied. 5 minutes at most!": an engine
+  build takes at most 5 minutes, a slow or failed build is root-caused at
+  once, and no limit is raised to get a build past it.
 - 2026-10-31, startup reuse: asked to approve a public word that compares the
   tree's source hashes with the engine's so hb-build could skip its 3.3 s
   startup reload, Joel answered "why are we developing incremental building if
