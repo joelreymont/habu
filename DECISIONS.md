@@ -139,7 +139,17 @@ learned live in the docs for their subject.
   body proved, so a fact the text cannot say fails the build instead of
   weakening a caller's check. A type is an entry whose text is its
   declaration; a file object carries its records' texts, and the cross-built
-  hb copies them with DATA.
+  hb copies them with DATA. Facts text writes a plain atom, such as the record
+  and field names in a value record's cells, as `'NAME`, a spelling only facts
+  text reads: the record's name alone cannot say which type variable two of
+  its values share (`VALUE-RECORD box value a`). Past the 23 letters a
+  source signature may use, facts text names a type variable or binder by its
+  decimal ordinal, `23`, `24` and on, a token no word or type can be named
+  (`: 42` is invalid), up to 256 names, past which the text cannot say the
+  effect: a source signature reaches more than 23 variables through a type's
+  implicit parameters (`( box box ... -- )`, 33 in
+  test/c2-retained-contract-wide.f). The parser keeps one cell per name, and
+  an effect that names 256 is far past any the tree declares.
 - 2026-11-06, type names: shown that a bare type name also resolves when
   exactly one package anywhere makes a type of that name public (type-family.f
   TFAM-FIND-PUBLIC), a step bare words do not have, used at about 130 places
@@ -180,7 +190,14 @@ learned live in the docs for their subject.
   text was answered again in place of a new copy and, once data overwrote its
   length, hung the table's next growth (20 s at full CPU in the review's
   probe). As in every Forth, a created body's data follows its `create`
-  before the next definition or row.
+  before the next definition or row. On 2026-11-07, under the same words, shown
+  that a text laid at `here` inside a build lands in a file's DATA only when
+  no earlier file of that build interned it, so a file's object would depend
+  on what loaded before it (test/file-objects.f's two builds would write
+  different objects for count.f), the lead chose that `CHECK:FACTS!` writes
+  only while no build's space is open; a build's records keep 0 until their
+  texts travel by value in the file objects and the link interns each once,
+  after the file's DATA.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
