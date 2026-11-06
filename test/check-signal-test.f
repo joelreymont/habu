@@ -61,9 +61,9 @@ TYPED-VARIABLE CASE-CLOSED bool      \ the subject closes its output before it r
 false CHECK-LIVE !
 true FIFO-DONE !
 false CASE-CLOSED !
-PROC-NO-FD FIFO-RD !
-PROC-NO-FD CHECK-WATCH !
-PROC-NO-FD FEED-WR !
+PROCESS:NO-FD FIFO-RD !
+PROCESS:NO-FD CHECK-WATCH !
+PROCESS:NO-FD FEED-WR !
 
 : TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
 : LOG$ ( -- ptr u8 n )    LOG LOG-U @ ;
@@ -114,15 +114,15 @@ PROC-NO-FD FEED-WR !
 \ ms ran out first, a negative errno when the poll failed.
 : POLL-WITHIN ( n n n -- n )
    {: fd:n events:n ms:n :}
-   fd >FD events PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
+   fd >FD events PROCESS:PFD!
+   1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART ;
 
 \ fd within ms, answered as POLL-WITHIN answers: ready once it has bytes to read
 \ or has reached end of file. A descriptor the poll reports broken (POLLERR or
 \ POLLNVAL) is no answer either way: it throws E-PROC-OUTPUT.
 : READY-WITHIN ( n n -- n )
-   POLLIN swap POLL-WITHIN {: ready:n :}
-   0 >IDX PROC-PFD-REVENTS POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   FD:POLLIN swap POLL-WITHIN {: ready:n :}
+   0 >IDX PROCESS:PFD-REVENTS FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
    ready ;
 
 \ The subject's pid, before READY-MS runs out. End of file first means check.f
@@ -131,9 +131,9 @@ PROC-NO-FD FEED-WR !
 \ deadline, named and thrown as a timeout. On macOS, whose poll never reports a
 \ FIFO's end of file, a subject that dies before its report is that timeout.
 : REPORT-READ? ( -- bool )
-   READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      FIFO-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      FIFO-RD @ deadline PROCESS:LEFT-MS MS>N READY-WITHIN {: ready:n :}
       ready 0= if s" check-signal-test REPORT-READ" TEST-WAIT:EXPIRED then
       ready 0 < if false exit then
       FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
@@ -215,9 +215,9 @@ PROC-NO-FD FEED-WR !
 \ stdin open.
 : CHECK-START-STDIN ( -- )
    CHECK-BEGIN
-   PIPE-PAIR {: r:fd w:fd :}
-   w FD-CLOEXEC!
-   w FD-NOSIGPIPE!
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   w FD:FD-CLOEXEC!
+   w FD:FD-NOSIGPIPE!
    w FD>N FEED-WR !
    r FD>N CHECK-SPAWN ;
 
@@ -227,7 +227,7 @@ PROC-NO-FD FEED-WR !
 \ test's own, named and thrown as a timeout.
 : FEED? ( ptr u8 n n -- bool )
    {: a:ptr u:n deadline:n :}
-   FEED-WR @ POLLOUT deadline PROC-LEFT-MS MS>N POLL-WITHIN {: ready:n :}
+   FEED-WR @ FD:POLLOUT deadline PROCESS:LEFT-MS MS>N POLL-WITHIN {: ready:n :}
    ready 0= if s" check-signal-test FEED" TEST-WAIT:EXPIRED then
    ready 0 < if false exit then
    FEED-WR @ a u write u = ;
@@ -239,7 +239,7 @@ PROC-NO-FD FEED-WR !
 \ check.f reads its program, which it does after it has caught the stops.
 : FEED-PAD? ( -- bool )
    FEED-FILL
-   READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    PAD-BYTES FEED-CHUNK / 0 ?do
       FEED FEED-CHUNK deadline FEED? 0= if false unloop exit then
    loop
@@ -247,11 +247,11 @@ PROC-NO-FD FEED-WR !
 
 \ A definition that leaves nothing for its declared n, then end of file.
 : FEED-REFUSED? ( -- bool )
-   s" : BAD ( -- n ) ;" READY-MS >MS PROC-DEADLINE-AT FEED?
-   FEED-WR PROC-CLOSE-CELL ;
+   s" : BAD ( -- n ) ;" READY-MS >MS PROCESS:DEADLINE-AT FEED?
+   FEED-WR PROCESS:CLOSE-CELL ;
 
 : CHECK-SIGNAL ( n -- ) {: sig:n :}
-   CHECK-PID @ >PID sig PROC-KILL-RAW drop ;
+   CHECK-PID @ >PID sig PROCESS:KILL-RAW drop ;
 
 \ Returns once check.f has ended, within ms. ms running out first is this
 \ test's own deadline, named and thrown as a timeout; a failed poll of the
@@ -266,15 +266,15 @@ PROC-NO-FD FEED-WR !
 : CHECK-ENDED ( -- )
    EXIT-MS CHECK-ENDED-WITHIN ;
 
-: CHECK-REAP ( -- outcome )
-   CHECK-PID @ >PID PROC-WAIT-OUTCOME
+: CHECK-REAP ( -- PROCESS:ending )
+   CHECK-PID @ >PID PROCESS:WAIT-ENDING
    false CHECK-LIVE ! ;
 
-\ PROC-WAIT-OUTCOME never makes `timeout`: its wait blocks until the child ends.
-\ The arm throws, as PROC-OUTCOME>RC's does, so a deadline wait fed here later
+\ PROCESS:WAIT-ENDING never makes `timeout`: its wait blocks until the child ends.
+\ The arm throws, as PROCESS:ENDING>RC's does, so a deadline wait fed here later
 \ cannot read as no kill.
-: KILLED-BY? ( outcome n -- bool ) {: sig:n :}
-   MATCH outcome
+: KILLED-BY? ( PROCESS:ending n -- bool ) {: sig:n :}
+   MATCH PROCESS:ending
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
       timeout OF E-PROC-TIMEOUT throw ENDOF
@@ -284,14 +284,14 @@ PROC-NO-FD FEED-WR !
 \ the kill's own outcome is no claim of this test.
 : CHECK-END ( -- )
    CHECK-LIVE @ 0= if exit then
-   CHECK-PID @ >PID SIGKILL PROC-KILL-RAW drop
-   CHECK-REAP PROC-OUTCOME>RC drop
+   CHECK-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   CHECK-REAP PROCESS:ENDING>RC drop
    s" the late check.f's output:" type cr
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
 
 \ check.f names each step of its answer that threw (tools/check-core.f
 \ CHK-SAY-THROW), and src/lib/process.f a walk of the child's tree it could not
-\ finish (PROC-WALK-REPORT).
+\ finish (PROCESS:WALK-REPORT).
 : LOG-THREW? ( -- bool )
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL {: a:ptr u:n :}
    a u s" threw" CONTAINS? a u s" not walked" CONTAINS? or ;
@@ -374,7 +374,7 @@ PROC-NO-FD FEED-WR !
    REPORT-READ? TTRUE
    DEADLINE-MS EXIT-MS + CHECK-ENDED-WITHIN
    s" deadline: check.f exits its refusal status" T-LABEL
-   CHECK-REAP PROC-OUTCOME>RC RC>N 70 T=
+   CHECK-REAP PROCESS:ENDING>RC RC>N 70 T=
    s" deadline: one line names the subject and the deadline" T-LABEL
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL json LATE-LINE$ T$=
    s" deadline: the scratch is gone when check.f has ended" T-LABEL
@@ -399,9 +399,9 @@ PROC-NO-FD FEED-WR !
 : CASE-END ( -- )
    [: [: CHECK-END ;]
       [: LEFT-ENDED ;] finally ;]
-   [: CHECK-WATCH PROC-CLOSE-CELL
-      FEED-WR PROC-CLOSE-CELL
-      FIFO-RD PROC-CLOSE-CELL
+   [: CHECK-WATCH PROCESS:CLOSE-CELL
+      FEED-WR PROCESS:CLOSE-CELL
+      FIFO-RD PROCESS:CLOSE-CELL
       true FIFO-DONE !
       TMP-CLEAR ;] finally ;
 

@@ -3,7 +3,7 @@
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/adt/option.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
@@ -23,7 +23,7 @@ create ERR CAP allot
    src srcu OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu erru
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
       exited OF expected = ENDOF
       signaled OF drop false ENDOF
       timeout OF src srcu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF

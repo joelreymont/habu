@@ -535,7 +535,7 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 \ Whether stdin holds input, or its end, a poll that a signal cut short asked
 \ again.
 : POLLED? ( -- bool )
-   begin FD:STDIN 0 >MS POLL-IN COUNT>N dup EINTR# negate = while drop repeat
+   begin FD:STDIN 0 >MS PROCESS:POLL-IN COUNT>N dup FD:EINTR# negate = while drop repeat
    0<> ;
 
 \ Whether a message waits: begun in the reader's buffer, or on stdin; or
@@ -1140,8 +1140,8 @@ variable FAULT                            \ and the throw a read of it took, 0 w
 : TAKE-INPUT ( -- )  READ-ON SETTLE ;
 
 : SERVE ( -- )
-   FD:STDOUT FD-NOSIGPIPE!
-   FD:STDERR FD-NOSIGPIPE!
+   FD:STDOUT FD:FD-NOSIGPIPE!
+   FD:STDERR FD:FD-NOSIGPIPE!
    REPLY-BUF 1 BUF:N>BLEN BUF:INIT       \ the smallest buffers: replies grow one,
    HELD-B 1 BUF:N>BLEN BUF:INIT          \ held bodies the other
    0 HELD-COUNT !

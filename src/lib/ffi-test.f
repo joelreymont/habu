@@ -13,7 +13,7 @@ require src/lib/le.f                   \ the spilled %n out-parameter is a C int
 require src/lib/memory.f               \ the read-only page the %n format is copied into
 require src/lib/test/subject.f
 require src/lib/engine-candidate.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/guard-page.f      \ a path whose bytes end where memory does
 require src/lib/ffi-callback.f         \ a struct argument held across a callback
 require src/lib/task.f
@@ -277,7 +277,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
    FFI-T-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   src srcu FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
 \ A bounded mixed call guards every register extent, including x8. Staging a
@@ -452,7 +452,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
 : FFI-T-STUB-RESULT ( -- )
    ENGINE-CANDIDATE:PATH$ >LEN FFI-T-OUT FFI-T-CAP >LEN FFI-T-ERR FFI-T-CAP >LEN
    PROCESS:WAIT-FOREVER
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    s" test/native-window-owner-child.f" FFI-T-OUT outu LEN>N FFI-T-ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    FFI-T-OUT outu LEN>N S\" test: ok\nwindow: 0\n" STR= 0= rc 0 <> or

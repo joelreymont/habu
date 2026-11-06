@@ -7,7 +7,7 @@ require src/lib/float.f
 require src/lib/memory.f
 require src/lib/test.f
 require src/lib/json.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/guard-page.f
 require src/lib/test/subject.f
 
@@ -800,7 +800,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    src srcu JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    src srcu JRT-SUBJECT-OUT outu LEN>N JRT-SUBJECT-ERR erru LEN>N
-   oc ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED= ;
+   oc ENGINE-ERROR:SEAL-PACKAGE T-ENDING-EXITED= ;
 
 : JRT-TEST-PRIVATE-STATE ( -- )
    s" JRT-BAD-MINT ( ptr n -- JSON:reader ) JSON:MINT-READER" JRT-REJECTED

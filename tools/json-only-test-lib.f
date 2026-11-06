@@ -7,7 +7,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/process-argv.f
 require tools/cli-run.f
 require tools/json-only-core.f
@@ -145,7 +145,7 @@ variable JOT-ERR-A
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/json-only.f"  >LEN PROC-ARGV+ ;
 
-: JOT-RUN-NOARG ( -- len len outcome )
+: JOT-RUN-NOARG ( -- len len PROCESS:ending )
    JOT-ARGV-LOAD
    CLI-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
    JOT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
@@ -160,10 +160,10 @@ variable JOT-ERR-A
    JSON-ONLY-PROSE$ nip
    JSON-ONLY-BUFFERS-OFF ;
 
-: JOT-EXPECT-EXIT ( len len outcome n -- n n )
+: JOT-EXPECT-EXIT ( len len PROCESS:ending n -- n n )
    {: outu:len erru:len oc expect:n :}
    s" tools/json-only.f" JOT-OUT outu LEN>N JOT-ERR erru LEN>N oc expect
-   T-OUTCOME-EXITED=
+   T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 : JOT-MIXED-CASE ( -- )

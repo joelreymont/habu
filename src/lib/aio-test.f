@@ -8,7 +8,7 @@
 require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/wait.f
-require src/lib/process.f           \ FD-NOSIGPIPE! for the broken-pipe write
+require src/lib/fd.f                \ FD:FD-NOSIGPIPE! for the broken-pipe write
 require src/lib/task.f
 require src/lib/memory.f              \ the allocations the transfers own
 require src/lib/num-types.f           \ the alloc-byte-len those allocations carry
@@ -577,7 +577,7 @@ TASK:MIN-STACK TASK:TASK FAN7
    P-R @ 0 0 0 READ-ONCE 0 T=
    P-R @ 3 0 fcntl oldflags T=
    P-R @ close -1 P-R !
-   P-W @ >FD FD-NOSIGPIPE!
+   P-W @ >FD FD:FD-NOSIGPIPE!
    XFER-ALLOC {: buf cap:NUM:alloc-byte-len :}
    P-W @ >FD buf cap 1 0 AIO:WRITE AIO:AWAIT-XFER
       {: rb rc2:NUM:alloc-byte-len out:AIO:outcome :}

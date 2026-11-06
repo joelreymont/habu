@@ -88,7 +88,7 @@ HERM-AT 1+ constant RECORD-CELLS
 \ A C-string copy of the bytes in the request's own chunks. This and ADD-ENV's
 \ FFI:CSTR! refuse a path, argument, row or directory holding a 0 byte:
 \ E-FFI-NUL.
-: ZCOPY ( ptr u8 n ptr n -- ptr u8 )
+: CHUNK-ZCOPY ( ptr u8 n ptr n -- ptr u8 )
    {: src:ptr len h:ptr :}
    len FFI:CSTR-ROOM {: need :}
    src len need h CHUNKS PROC-CHUNKS:OWNED-ROOM need SPAN:MAKE FFI:CSTR ;
@@ -98,7 +98,7 @@ HERM-AT 1+ constant RECORD-CELLS
 : ROWS+ ( ptr ptr u8 ptr n ptr ptr u8 -- )
    {: rows:ptr h:ptr vec:ptr :}
    0 begin rows over cells + @ dup NULL-PTR - 0<> while
-      dup ZLEN h ZCOPY vec VEC:PUSH drop
+      dup ZLEN h CHUNK-ZCOPY vec VEC:PUSH drop
       1+
    repeat 2drop ;
 
@@ -111,7 +111,7 @@ HERM-AT 1+ constant RECORD-CELLS
    0 h MAP VEC:PUSH drop
    1 h MAP VEC:PUSH drop
    2 h MAP VEC:PUSH drop
-   path len h ZCOPY h PATH-CELL !
+   path len h CHUNK-ZCOPY h PATH-CELL !
    h path len ;
 
 
@@ -120,7 +120,7 @@ HERM-AT 1+ constant RECORD-CELLS
    {: h:ptr a:ptr len :}
    len 0 < if E-PROC-OUTPUT throw then
    h ARGS VEC:LEN@ ITEM>N 0= if h PATH-CELL @ h ARGS VEC:PUSH drop then
-   a len h ZCOPY h ARGS VEC:PUSH drop
+   a len h CHUNK-ZCOPY h ARGS VEC:PUSH drop
    h a len ;
 
 
@@ -159,7 +159,7 @@ HERM-AT 1+ constant RECORD-CELLS
 : SET-CWD ( ptr n ptr u8 n -- ptr n ptr u8 n )
    {: h:ptr dir:ptr len :}
    len 0 <= if E-PROC-PATH throw then
-   dir len h ZCOPY h CWD-CELL !
+   dir len h CHUNK-ZCOPY h CWD-CELL !
    h dir len ;
 
 

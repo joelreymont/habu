@@ -8,7 +8,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 $800 constant WSS-CAP
@@ -120,13 +120,13 @@ create WSS-ERR WSS-CAP allot
    s" WSS-TXN" WSS-LINE
    SB$ ;
 
-: WSS-RUN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
+: WSS-RUN ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr srcu:n :}
    src srcu WSS-OUT WSS-CAP >LEN WSS-ERR WSS-CAP >LEN
    WSS-TIMEOUT-MS >MS SUBJECT:RUN ;
 
 : WSS-EXPECT ( ptr u8 n n -- ) {: src:ptr srcu:n want:n :}
    src srcu WSS-RUN {: outu:len erru:len oc :}
-   src srcu WSS-OUT outu LEN>N WSS-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   src srcu WSS-OUT outu LEN>N WSS-ERR erru LEN>N oc want T-ENDING-EXITED=
    WSS-OUT outu LEN>N s" WSS-ARMED" CONTAINS? TTRUE ;
 
 : WSS-NORMAL-TEST ( -- )

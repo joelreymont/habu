@@ -8,7 +8,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/guard-page.f
 require src/lib/process-env.f
 require src/lib/task.f
@@ -78,7 +78,7 @@ TASK:SEMAPHORE PET-ENV-START
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
-: PET-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
+: PET-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
@@ -88,7 +88,7 @@ TASK:SEMAPHORE PET-ENV-START
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PET-CAPTURE>N ;
 
-: PET-STDIN-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
+: PET-STDIN-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
@@ -129,7 +129,7 @@ TASK:SEMAPHORE PET-ENV-START
    mono-ns PET-START-NS !
    q execute
    s" PASS: " type label labelu type
-   s"  (" type mono-ns PET-START-NS @ - PROC-NS-PER-MS / PET-U-TYPE s" ms)" type cr ;
+   s"  (" type mono-ns PET-START-NS @ - PROCESS:NS-PER-MS / PET-U-TYPE s" ms)" type cr ;
 
 : PET-RUN-ENV-CHILD ( -- )
    PET-RESET
@@ -281,7 +281,7 @@ TASK:SEMAPHORE PET-ENV-START
    PET-RESET
    s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-OUTCOME
    {: outu:len erru:len oc :}
-   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : PET-RUN-ARGV-ENV-CAPTURE-RESULT ( -- )
@@ -302,13 +302,13 @@ TASK:SEMAPHORE PET-ENV-START
    PET-RESET
    s" 5"  >LEN PROC-ARGV+
    s" /bin/sleep" PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-OUTCOME
-   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
+   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME ( -- )
    PET-RESET
    s" /bin/cat" s" env-stdin" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-OUTCOME
    {: outu:len erru:len oc :}
-   s" /bin/cat" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   s" /bin/cat" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 9 T=
    PET-OUT 9 s" env-stdin" T$= ;
 
@@ -325,14 +325,14 @@ TASK:SEMAPHORE PET-ENV-START
    s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
    PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-OUTCOME
    {: outu:len erru:len oc :}
-   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   s" /usr/bin/false" PET-OUT outu LEN>N PET-ERR erru LEN>N oc 1 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ( -- )
    PET-RESET
    s" 5"  >LEN PROC-ARGV+
    s" /bin/sleep" s" " PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-STDIN-OUTCOME
-   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
+   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
 package PET-GROW-BOTH
 
@@ -350,7 +350,7 @@ DYNAMIC-BUFFER ERR u8
    s" -c" >LEN PROC-ARGV+
    >LEN PROC-ARGV+ ;
 
-: CAPTURE ( ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len outcome )
+: CAPTURE ( ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len PROCESS:ending )
    {: in:ptr inu out err timeout :}
    s" /bin/sh" >LEN in inu out err timeout
    RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
@@ -365,7 +365,7 @@ DYNAMIC-BUFFER ERR u8
    s" /usr/bin/tee /dev/stderr; printf out; printf err >&2; exit 7" SHELL
    PET-EARLY-IN PET-EARLY-IN-CAP >LEN [: OUT-ROOM ;] [: ERR-ROOM ;]
    PET-HB-TIMEOUT-MS >MS CAPTURE {: outu:len erru:len oc :}
-   oc PROC-OUTCOME>RC RC>N 7 T=
+   oc PROCESS:ENDING>RC RC>N 7 T=
    outu LEN>N PET-EARLY-IN-CAP 3 + T=
    erru LEN>N PET-EARLY-IN-CAP 3 + T=
    0 OUT PET-EARLY-IN-CAP PET-EARLY-IN PET-EARLY-IN-CAP T$=
@@ -376,16 +376,16 @@ DYNAMIC-BUFFER ERR u8
 : TIMEOUT ( -- )
    s" printf before-out; printf before-err >&2; exec /bin/sleep 5" SHELL
    s" " >LEN [: OUT-ROOM ;] [: ERR-ROOM ;] 300 >MS CAPTURE
-   T-OUTCOME-TIMEOUT LEN>N 10 T= LEN>N 10 T=
+   T-ENDING-TIMEOUT LEN>N 10 T= LEN>N 10 T=
    0 OUT 10 s" before-out" T$=
    0 ERR 10 s" before-err" T$= ;
 
 \ The child closes its pipes and lives on, so the reap after EOF waits on a
-\ running child with no deadline (PROC-REAP-CAPTURE-BOUNDED).
+\ running child with no deadline (PROCESS:REAP-CAPTURE-BOUNDED).
 : NO-DEADLINE ( -- )
    s" printf out; printf err >&2; exec >&- 2>&-; exec /bin/sleep 0.2" SHELL
    s" " >LEN [: OUT-ROOM ;] [: ERR-ROOM ;] PROCESS:WAIT-FOREVER CAPTURE
-   PROC-OUTCOME>RC RC>N 0 T= LEN>N 3 T= LEN>N 3 T= ;
+   PROCESS:ENDING>RC RC>N 0 T= LEN>N 3 T= LEN>N 3 T= ;
 
 \ Each sink yields while the child fills the other pipe. Readiness therefore
 \ continues past the deadline: poll(0) alone cannot end this capture.
@@ -395,7 +395,7 @@ DYNAMIC-BUFFER ERR u8
    [: OUT-ROOM 10 >MS TASK:SLEEP ;]
    [: ERR-ROOM 10 >MS TASK:SLEEP ;] 300 >MS CAPTURE
    {: outu:len erru:len oc :}
-   oc T-OUTCOME-TIMEOUT
+   oc T-ENDING-TIMEOUT
    outu LEN>N 10 > TTRUE erru LEN>N 10 > TTRUE
    0 OUT 10 s" before-out" T$=
    0 ERR 10 s" before-err" T$= ;
@@ -410,9 +410,9 @@ DYNAMIC-BUFFER ERR u8
    drop 2drop ;
 
 : CLEANED ( -- )
-   PROC-PID @ PROC-NO-PID T=
-   PROC-CAPTURE-DONE? TTRUE
-   PROC-IN-W @ PROC-NO-FD T= ;
+   PROCESS:PID @ PROCESS:NO-PID T=
+   PROCESS:CAPTURE-DONE? TTRUE
+   PROCESS:IN-W @ PROCESS:NO-FD T= ;
 
 public
 : RUN ( -- )
@@ -445,7 +445,7 @@ public
    pathz argv envp -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 > TTRUE
-   pid PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
+   pid PROCESS:WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : PET-SPAWN-RAW-TRUE ( -- )
    0 begin dup 16 < while
@@ -628,7 +628,7 @@ DYNAMIC-BUFFER OUT u8
    PET-ENV-CMD$ >LEN s" " >LEN [: OUT-ROOM ;] PET-ERR PET-CAP >LEN
    PET-HB-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
-   oc PROC-OUTCOME>RC RC>N 0 T=
+   oc PROCESS:ENDING>RC RC>N 0 T=
    outu LEN>N ;
 
 : MISMATCHES ( n n ptr u8 -- n ) {: rows:n outu:n prefix:ptr :}

@@ -246,11 +246,11 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-CODE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-CODES + ;
 
-\ Decompose a worker outcome into the slot's exited/code cells (lossless: exit
+\ Decompose a worker's ending into the slot's exited/code cells (lossless: exit
 \ codes >= 128 stay distinct from signal deaths). A wait for the pid never
 \ answers a timeout.
-: GT-POOL-OUTCOME! ( outcome idx -- ) {: idx:idx :}
-   MATCH outcome
+: GT-POOL-OUTCOME! ( PROCESS:ending idx -- ) {: idx:idx :}
+   MATCH PROCESS:ending
      exited OF idx GT-POOL-CODE-PTR ! true idx GT-POOL-EXITED-PTR ! ENDOF
      signaled OF idx GT-POOL-CODE-PTR ! false idx GT-POOL-EXITED-PTR ! ENDOF
      timeout OF E-PROC-TIMEOUT throw ENDOF
@@ -404,8 +404,8 @@ GT-POOL-ABORT-BARE!
 \ Forked slots never arm a reaper (pid stays -1), so the guard makes this a no-op.
 : GT-POOL-KILL-REAPER ( idx -- ) {: idx:idx :}
    idx GT-POOL-REAPER-PID@ PID>N 0 >= if
-      idx GT-POOL-REAPER-PID@ SIGKILL PROC-KILL-RAW drop
-      idx GT-POOL-REAPER-PID@ PROC-WAIT-STATUS drop
+      idx GT-POOL-REAPER-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
+      idx GT-POOL-REAPER-PID@ PROCESS:WAIT-STATUS drop
       -1 >PID idx GT-POOL-REAPER-PID-PTR !
    then ;
 
@@ -426,9 +426,9 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-KILL-SLOT ( idx -- ) {: idx :}
    idx GT-POOL-PID@ PID>N 0 >= if
       idx GT-POOL-KILL-TREE
-      idx GT-POOL-PID@ SIGKILL PROC-FORK:KILL-GROUP drop
-      idx GT-POOL-PID@ SIGKILL PROC-KILL-RAW drop
-      idx GT-POOL-PID@ PROC-WAIT-STATUS drop
+      idx GT-POOL-PID@ PROCESS:SIGKILL PROC-FORK:KILL-GROUP drop
+      idx GT-POOL-PID@ PROCESS:SIGKILL PROCESS:KILL-RAW drop
+      idx GT-POOL-PID@ PROCESS:WAIT-STATUS drop
       -1 >PID idx GT-POOL-PID-PTR !
    then
    idx GT-POOL-KILL-REAPER
@@ -538,7 +538,7 @@ false GT-POOL-CAUGHT !
    false idx GT-POOL-ASKED-PTR !
    idx GT-POOL-PID@ PID>N 0 < if exit then
    idx GT-POOL-CATCHES-TERM? 0= if exit then
-   idx GT-POOL-PID@ SIGNAL:SIGTERM PROC-KILL-RAW drop
+   idx GT-POOL-PID@ SIGNAL:SIGTERM PROCESS:KILL-RAW drop
    true idx GT-POOL-ASKED-PTR ! ;
 
 \ Until the asked root has exited or the deadline passes. macOS cannot watch a
@@ -548,8 +548,8 @@ false GT-POOL-CAUGHT !
    idx GT-POOL-ASKED-PTR @ 0= if exit then
    idx GT-POOL-PID@ PID>N proc-watch-open {: w:n :}
    w 0 < if exit then
-   w >FD POLLIN PROC-PFD!
-   1 deadline PROC-LEFT-MS MS>N deadline PROC-POLL-RESTART drop
+   w >FD FD:POLLIN PROCESS:PFD!
+   1 deadline PROCESS:LEFT-MS MS>N deadline PROCESS:POLL-RESTART drop
    w close ;
 
 \ A slot killed here is never reaped, so it never retires: its directories go
@@ -567,7 +567,7 @@ false GT-POOL-CAUGHT !
          i >IDX GT-POOL-CHILD-TMP-REMOVE
       then
    loop
-   GT-POOL-GRACE-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   GT-POOL-GRACE-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    GT-POOL-MAX 0 ?do
       i >IDX GT-POOL-DONE@ 0= i >IDX GT-POOL-ASKED-PTR @ and if
          i >IDX deadline GT-POOL-AWAIT-END
@@ -639,12 +639,12 @@ false GT-POOL-CATCHING !
    drop GT-POOL-DEFAULT ;
 
 : GT-POOL-OPEN-PIPE ( ptr fd ptr fd -- ) {: rp:ptr wp:ptr :}
-   PIPE-PAIR {: r w :}
+   FD:PIPE-PAIR {: r w :}
    r rp !
    w wp ! ;
 
 : GT-POOL-CLOEXEC@ ( ptr fd -- ) {: p:ptr :}
-   p @ FD-CLOEXEC! ;
+   p @ FD:FD-CLOEXEC! ;
 
 : GT-POOL-PIPES ( idx -- ) {: idx :}
    idx GT-POOL-OUT-R-PTR idx GT-POOL-OUT-W-PTR GT-POOL-OPEN-PIPE
@@ -732,7 +732,7 @@ false GT-POOL-CATCHING !
    GT-POOL-SEQ-SLOT 0 >= ;
 
 : GT-POOL-ELAPSED-MS ( idx -- n ) {: idx :}
-   mono-ns idx GT-POOL-START-PTR @ - PROC-NS-PER-MS / ;
+   mono-ns idx GT-POOL-START-PTR @ - PROCESS:NS-PER-MS / ;
 
 : GT-POOL-PASS-LINE ( idx -- )
    {: idx :}
@@ -746,7 +746,7 @@ false GT-POOL-CATCHING !
    s"   sampled CPU: " type cpu GT-U-TYPE s" ms" type cr ;
 
 : GT-POOL-WAIT-DUE? ( idx -- bool ) {: idx :}
-   mono-ns idx GT-POOL-LAST-PTR @ - PROC-NS-PER-MS / GT-HEARTBEAT-MS >= ;
+   mono-ns idx GT-POOL-LAST-PTR @ - PROCESS:NS-PER-MS / GT-HEARTBEAT-MS >= ;
 
 \ A reading that throws ends the run, as a refused reaper fork does.
 variable GT-POOL-CPU-NS                  \ the reading, out of its catch
@@ -754,7 +754,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 : GT-POOL-CPU-READ ( idx -- ) {: idx:idx :}
    idx GT-POOL-PID@ [: dup PROC-TREE:CPU-NS GT-POOL-CPU-NS ! ;] catch {: code:n :}
    drop
-   code 0= if GT-POOL-CPU-NS @ PROC-NS-PER-MS / idx GT-POOL-CPU-USED-PTR ! exit then
+   code 0= if GT-POOL-CPU-NS @ PROCESS:NS-PER-MS / idx GT-POOL-CPU-USED-PTR ! exit then
    s" test pool: CPU time of " type idx GT-POOL-LABEL$ type
    s"  not read, throw " type code FMT:.INT cr
    code GT-POOL-THROW ;
@@ -832,7 +832,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 : GT-POOL-WATCH-OPEN ( idx -- ) {: idx:idx :}
    idx GT-POOL-PID@ PID>N proc-watch-open {: w:n :}
    w 0 >= if w >FD idx GT-POOL-WATCH-PTR ! exit then
-   w ESRCH# negate = if true idx GT-POOL-ENDED-PTR ! exit then
+   w PROCESS:ESRCH# negate = if true idx GT-POOL-ENDED-PTR ! exit then
    E-PROC-OUTPUT GT-POOL-THROW ;
 
 \ Spawns path with the staged argv and only the staged env, which its caller
@@ -1011,7 +1011,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 
 : GT-POOL-CAPTURE-FD! ( idx n -- ) {: idx:idx stream:n :}
    idx stream GT-POOL-STREAM-FILE$ GT-POOL-CAPTURE-OPEN-FD {: fd:fd :}
-   fd FD-CLOEXEC!
+   fd FD:FD-CLOEXEC!
    fd idx stream GT-POOL-STREAM-FILE-FD-PTR ! ;
 
 : GT-POOL-CAPTURE-START ( idx -- ) {: idx:idx :}
@@ -1230,10 +1230,10 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    {: path:ptr pathu label:ptr labelu bytes:ptr byten idx :}
    label labelu idx GT-POOL-OPEN-SLOT
    idx GT-POOL-CHILD-TMP!
-   PIPE-PAIR {: r w :}
-   r FD-CLOEXEC!
-   w FD-CLOEXEC!
-   w FD-NOSIGPIPE!
+   FD:PIPE-PAIR {: r w :}
+   r FD:FD-CLOEXEC!
+   w FD:FD-CLOEXEC!
+   w FD:FD-NOSIGPIPE!
    idx path pathu r GT-POOL-SPAWN-FD
    r FD>N close
    w bytes byten GT-POOL-FEED-STDIN
@@ -1271,9 +1271,9 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
       -1 >FD 0 idx GT-POOL-WATCH-SLOT GT-POOL-PFD!
       exit
    then
-   idx GT-POOL-OUT-R@ POLLIN idx GT-POOL-OUT-SLOT GT-POOL-PFD!
-   idx GT-POOL-ERR-R@ POLLIN idx GT-POOL-ERR-SLOT GT-POOL-PFD!
-   idx GT-POOL-WATCH-PTR @ POLLIN idx GT-POOL-WATCH-SLOT GT-POOL-PFD! ;
+   idx GT-POOL-OUT-R@ FD:POLLIN idx GT-POOL-OUT-SLOT GT-POOL-PFD!
+   idx GT-POOL-ERR-R@ FD:POLLIN idx GT-POOL-ERR-SLOT GT-POOL-PFD!
+   idx GT-POOL-WATCH-PTR @ FD:POLLIN idx GT-POOL-WATCH-SLOT GT-POOL-PFD! ;
 
 : GT-POOL-POLL-BUILD ( -- )
    0 begin dup GT-POOL-MAX < while
@@ -1287,7 +1287,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
 : GT-POOL-POLL ( -- n )
    GT-POOL-POLL-BUILD
    GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-POOL-POLL-MS poll {: rc :}
-   rc EINTR# negate = if 0 exit then
+   rc FD:EINTR# negate = if 0 exit then
    rc 0 < if E-PROC-OUTPUT GT-POOL-THROW then
    rc ;
 
@@ -1354,8 +1354,8 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx stream GT-POOL-STREAM-FD-PTR @ {: fd:fd :}
    fd FD>N 0 < if false exit then
    idx IDX>N GT-POOL-FDS * stream + >IDX {: ps:idx :}
-   fd POLLIN ps GT-POOL-PFD!
-   begin ps GT-POOL-PFD-SLOT 1 0 poll dup EINTR# negate = while drop repeat
+   fd FD:POLLIN ps GT-POOL-PFD!
+   begin ps GT-POOL-PFD-SLOT 1 0 poll dup FD:EINTR# negate = while drop repeat
    {: rc:n :}
    rc 0 < if E-PROC-OUTPUT GT-POOL-THROW then
    rc 0 > ;
@@ -1408,7 +1408,7 @@ variable GT-POOL-CPU-NS                  \ the reading, out of its catch
    idx GT-POOL-RED+ ;
 
 : GT-POOL-REAP ( idx -- ) {: idx :}
-   idx GT-POOL-PID@ PROC-WAIT-OUTCOME idx GT-POOL-OUTCOME!
+   idx GT-POOL-PID@ PROCESS:WAIT-ENDING idx GT-POOL-OUTCOME!
    -1 >PID idx GT-POOL-PID-PTR !
    idx GT-POOL-KILL-REAPER
    idx GT-POOL-CLOSE-CAPTURE

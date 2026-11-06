@@ -212,7 +212,7 @@ PTR-VARIABLE SRC-OWNER
 public
 
 \ The verdict prints as `window: <code>`, 0 accepted or the thrown code, so a
-\ refusal stays distinct from an acceptance; a deadline exits PROC-TIMEOUT-RC
+\ refusal stays distinct from an acceptance; a deadline exits PROCESS:TIMEOUT-RC
 \ instead (src/lib/test/subject.f RC-TIMED-OUT).
 : RUN ( ptr u8 n -- )
    PATH!
@@ -221,7 +221,7 @@ public
    SRC-OWNER @ LOGICAL-RESET
    [: SRC-OWNER @ LOAD-WINDOW ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if
-      s" window: a deadline expired in the window load" PROC-TIMEOUT-RC die
+      s" window: a deadline expired in the window load" PROCESS:TIMEOUT-RC die
    then
    s" window: " type code . ;
 

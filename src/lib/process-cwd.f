@@ -27,7 +27,7 @@ package PROC-CWD
 
 private
 
-create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
+create PROC-CWDZ-BUF PROCESS:PATHZ-CAP allot
 
 public
 
@@ -38,7 +38,7 @@ public
 
 : CWDZ ( ptr u8 len -- ptr u8 ) {: a:ptr u:len :}
    u LEN>N 0 <= if E-PROC-OUTPUT throw then
-   a u PROC-CWDZ-BUF PROC-PATHZ-CAP >LEN PROC-ZCOPY ;
+   a u PROC-CWDZ-BUF PROCESS:PATHZ-CAP >LEN PROCESS:ZCOPY ;
 
 : ARGV-ENV-CWD-RESET ( -- )
    PROC-ARGV-ENV-RESET ;
@@ -54,25 +54,25 @@ public
 private
 
 : PROC-RUN-ARGV-ENV-CWD-IO-RC ( ptr u8 len ptr u8 len fd fd fd -- result<n,n> )   \ ok = clean exit (0), err = nonzero completion rc
-   SPAWN-ARGV-ENV-CWD-IO PROC-WAIT-RC ;
+   SPAWN-ARGV-ENV-CWD-IO PROCESS:WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD
+   pathz argv envp cwdz PROCESS:CAPTURE-NULL-INPUT PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD
    SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
    ARGV-ENV-CWD-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-CAPTURE-PID!
-   PROC-IN-R PROC-CLOSE-CELL
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
+   pid PROCESS:CAPTURE-PID!
+   PROCESS:IN-R PROCESS:CLOSE-CELL
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}
-   pathz argv envp cwdz PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
+   pathz argv envp cwdz PROCESS:IN-R @ >FD PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD
    SPAWN-ARGV-ENV-CWD-RAW {: pid:pid :}
    ARGV-ENV-CWD-RESET
-   pid PROC-CAPTURE-ADOPT-SPAWN ;
+   pid PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 public
 
@@ -80,41 +80,41 @@ public
    {: path:ptr pathu cwd:ptr cwdu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    cwd cwdu CWDZ {: cwdz:ptr :}
-   timeout PROC-CAPTURE-BEGIN
+   timeout PROCESS:CAPTURE-BEGIN
    pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-CAPTURE
-   out outcap err errcap PROC-RUN-CAPTURE-LOOP
-   PROC-CAPTURE-FINISH-RC ;
+   out outcap err errcap PROCESS:RUN-CAPTURE-LOOP
+   PROCESS:CAPTURE-FINISH-RC ;
 
 : RUN-ARGV-ENV-CWD-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   inu PROC-CAPTURE-CHECK-STDIN
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   inu PROCESS:CAPTURE-CHECK-STDIN
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    cwd cwdu CWDZ {: cwdz:ptr :}
-   timeout PROC-STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE
-   in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
-   PROC-CAPTURE-FINISH-RC ;
+   in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
+   PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
+: RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending )
    {: path:ptr pathu cwd:ptr cwdu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    cwdu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   inu PROC-CAPTURE-CHECK-STDIN
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   inu PROCESS:CAPTURE-CHECK-STDIN
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    cwd cwdu CWDZ {: cwdz:ptr :}
-   timeout PROC-STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp cwdz PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE
-   in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME ;
+   in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING ;
 
 ;package

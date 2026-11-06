@@ -260,7 +260,7 @@ $0A constant PROBE-MS              \ the pause between two probes of its pid
    pid 0 <= if false exit then
    ms WAIT-OPEN
    begin
-      pid 0 kill-errno ESRCH# negate = if true exit then
+      pid 0 kill-errno PROCESS:ESRCH# negate = if true exit then
       WAIT-LEFT 0= if s" process-pty-tty-smoke GONE-WITHIN" TEST-WAIT:EXPIRED then
       PROBE-MS >MS TASK:SLEEP
    again ;

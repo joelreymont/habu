@@ -108,7 +108,7 @@ variable ENTRY-NO                        \ reopen.f's entry checked, from 1
    second if s" --" CMD:ARG+  s" second" CMD:ARG+ then
    s" HABU_OUT" out outu CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
-   PROC-OUTCOME>RC RC>N {: rc:n :}
+   PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ second COMPILED$ ENDS-WITH? {: done:bool :}
    done  rc 0 =  and 0= if rc SHOW then
    s" the build compiled its loads, residue.f and host.f none" T-LABEL
@@ -118,7 +118,7 @@ variable ENTRY-NO                        \ reopen.f's entry checked, from 1
 : RUN-PROG ( CMD:command ptr u8 n -- CMD:command ) {: out:ptr outu:n :}
    CMD:RESET
    out outu s" prog" JOINED FS:JOIN-PATH {: u:n :}
-   JOINED u 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+   JOINED u 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ s\" Hi\nok\n" STR=  rc 0 =  and 0= if rc SHOW then
    s" the program prints Hi and ok" T-LABEL  CMD:OUT$ s\" Hi\nok\n" T$=
    s" the program exits 0" T-LABEL  rc 0 T= ;

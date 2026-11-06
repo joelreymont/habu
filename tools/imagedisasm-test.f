@@ -9,7 +9,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/process-argv.f
 require src/arch/arm64/disasm.f
 require tools/imagedisasm.f
@@ -77,7 +77,7 @@ variable IMDT-LDRB-U
    s" tools/imagedisasm.f" IMDT-ARG+
    s" --" IMDT-ARG+ ;
 
-: IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- len len outcome )
+: IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- len len PROCESS:ending )
    {: path:ptr pathu off:ptr offu count:ptr countu :}
    IMDT-ARGV-BASE
    path pathu IMDT-ARG+
@@ -86,10 +86,10 @@ variable IMDT-LDRB-U
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
    IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: IMDT-EXPECT-EXIT ( len len outcome n -- n n )
+: IMDT-EXPECT-EXIT ( len len PROCESS:ending n -- n n )
    {: outu:len erru:len oc expect:n :}
    s" tools/imagedisasm.f" IMDT-OUT outu LEN>N IMDT-ERR erru LEN>N oc expect
-   T-OUTCOME-EXITED=
+   T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 : IMDT-TEST-RET ( -- )

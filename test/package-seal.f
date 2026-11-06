@@ -31,10 +31,10 @@ variable OPEN
 : LOAD ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   {: outu:len erru:len outcome:outcome :}
+   {: outu:len erru:len outcome:PROCESS:ending :}
    outu LEN>N OUT-U !
    erru LEN>N ERR-U !
-   outcome PROC-OUTCOME>RC RC>N RC ! ;
+   outcome PROCESS:ENDING>RC RC>N RC ! ;
 
 : REPORT ( -- )
    s" package-seal child rc " type RC @ . OUT$ type ERR$ type cr ;

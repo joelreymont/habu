@@ -13,7 +13,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 
 2048 constant SL-CAP
 20000 constant SL-TIMEOUT-MS
@@ -29,7 +29,7 @@ create SL-EMPTY 1 allot                 \ zero-length stdin
    s" bin/hb" >LEN  SL-EMPTY 0 >LEN  SL-OUT SL-CAP >LEN
    SL-ERR SL-CAP >LEN  SL-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
-   p u SL-OUT outu LEN>N SL-ERR erru LEN>N oc 0 T-OUTCOME-EXITED= ;
+   p u SL-OUT outu LEN>N SL-ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
 
 : SL-MAIN ( -- )
    T-RESET

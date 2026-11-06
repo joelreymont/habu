@@ -7,7 +7,7 @@
 \ With CHECK_SIGNAL_CLOSED set, the subject closes stdout and stderr first and
 \ the sleeper starts without them, so the capture reads end of file on both
 \ while the subject runs: it then waits in the reap (src/lib/process.f
-\ PROC-REAP-CAPTURE-BOUNDED), not in the capture's poll.
+\ PROCESS:REAP-CAPTURE-BOUNDED), not in the capture's poll.
 
 require src/lib/error.f
 require src/lib/process.f
@@ -49,7 +49,7 @@ public
    CLOSED? if 1 close 2 close else LINE$ type then
    w SLEEPER {: sleeper:pid :}
    w REPORT-PID
-   sleeper PROC-WAIT-STATUS drop ;
+   sleeper PROCESS:WAIT-STATUS drop ;
 
 ;package
 

@@ -332,7 +332,7 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 
 : HBT-RUN-REPL ( -- )
    HBT-REPL-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
+   HBT-TIMEOUT-MS >MS PROCESS:RUN-CAPTURE HBT-CAPTURE>N {: outn errn rcn :}
    rcn 0 <> if s" repl rc: " type rcn FMT:.INT cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
@@ -366,8 +366,8 @@ create HBT-LITC-SRC-BUF PATH-CAP allot
 
 \ Keeps the maker's ( outu erru rc ) where HBB-FINISH-MAKER would die, so a refusal
 \ is asserted on the child that made it; a timeout still goes to HBB-MAKER-TIMED-OUT.
-: HBT-MAKER-CAPTURE>N ( len len outcome -- n n n )
-   MATCH outcome
+: HBT-MAKER-CAPTURE>N ( len len PROCESS:ending -- n n n )
+   MATCH PROCESS:ending
       exited OF {: outu:len erru:len rc:n :}
          outu LEN>N erru LEN>N rc ENDOF
       signaled OF {: outu:len erru:len sig:n :}
@@ -433,7 +433,7 @@ TYPED-VARIABLE READER-STATE JSON:cursor
 
 : HBT-RUN-AOT ( -- )
    HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
-   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   HBT-TIMEOUT-MS >MS PROCESS:RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
    rcn 0 T=
    outn 0 T=
    errn 0 T= ;

@@ -5838,8 +5838,9 @@ variable AGREE-ERR-U
 \ loads. A word only the checking process loaded - src/lib/test.f's T= in this
 \ harness, src/lib/process-env.f's PROC-ENV-INHERIT-MISSING in check.f - is
 \ undefined to it in both. A subject that requires process-env.f has that word.
-\ One that includes src/lib/process.f declares its `outcome` family afresh,
-\ as the load does, though this process declared it when it loaded the file.
+\ One that includes src/lib/process.f declares its `PROCESS:ending` family
+\ afresh, as the load does, though this process declared it when it loaded the
+\ file.
 : TEST-PREPASS-VIEW ( -- )
    SB-RESET s" : CKT-PV-ASSERT ( n n -- ) T= ;" REQ-LINE+
    s" view-harness.f" REQ-WRITE
@@ -5883,7 +5884,7 @@ variable AGREE-ERR-U
       s" FAIL: " type label labelu type
       s"  - failed asserts: " type fails FMT:.INT
    then
-   s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / FMT:.INT s"  ms)" type cr ;
+   s"  (" type mono-ns START-NS @ - PROCESS:NS-PER-MS / FMT:.INT s"  ms)" type cr ;
 
 \ --- package-owned caller: the checker's replay scopes start neutral --------
 \ Every scope tools/check-core.f opens around a replay of the subject starts at

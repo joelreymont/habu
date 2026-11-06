@@ -12,7 +12,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 
 using SOURCE-ROOT
 
@@ -43,9 +43,9 @@ variable WALKED
 
 \ ---- one run of an engine: source on stdin, the caller's CWD -----------------
 
-: STORE ( ptr u8 n ptr u8 n outcome -- )
+: STORE ( ptr u8 n ptr u8 n PROCESS:ending -- )
    {: src:ptr srcu:n out:ptr outu:n oc :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF   RC-N ! true  EXITED? ! ENDOF
      signaled OF RC-N ! false EXITED? ! ENDOF
      timeout OF src srcu out outu ERR$ T-TIMED-OUT ENDOF

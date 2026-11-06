@@ -2,7 +2,7 @@
 \ Run: bin/hb --load src/lib/test/suite-test.f
 
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/test/subject.f
@@ -298,9 +298,9 @@ variable T-SUBJ-RC
 : T-SUBJ-ERR$ ( -- ptr u8 n )
    T-SUBJ-ERR T-SUBJ-ERR-U @ ;
 
-: T-SUBJ-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: T-SUBJ-STORE! ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N T-SUBJ-ERR-U !  outu LEN>N T-SUBJ-OUT-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF T-SUBJ-RC ! 0 0= T-SUBJ-EXITED ! ENDOF
      signaled OF T-SUBJ-RC ! 0 0= 0= T-SUBJ-EXITED ! ENDOF
      timeout OF src u T-SUBJ-OUT$ T-SUBJ-ERR$ T-TIMED-OUT ENDOF

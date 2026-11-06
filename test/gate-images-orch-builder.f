@@ -28,7 +28,7 @@ create PATH PATH-CAP allot
    [: WAIT-RELEASE ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if
       s" gate orchestration: independent rows never released builder"
-      PROC-TIMEOUT-RC die
+      PROCESS:TIMEOUT-RC die
    then
    code 0<> if code throw then ;
 

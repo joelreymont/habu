@@ -15,7 +15,7 @@ require src/lib/process-argv.f
 require tools/gate-json-assert-core.f
 require src/lib/argv.f
 require tools/repair-packet-core.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 package LOAD-REJECT-TEST
@@ -243,10 +243,10 @@ variable RC
    PATHS!
    FIXTURES! ;
 
-: STORE! ( len len outcome ptr u8 n -- )
+: STORE! ( len len PROCESS:ending ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
      timeout OF src srcu OUT OUT-U @ ERR ERR-U @ T-TIMED-OUT ENDOF
@@ -302,9 +302,9 @@ variable RC
 
 : TEST-STORE-SIGNALED ( -- )
    s" signaled outcome remains distinguishable from exit" T-LABEL
-   TEST-OUT-U >LEN TEST-ERR-U >LEN SIGKILL OUTCOME:SIGNALED s" " STORE!
+   TEST-OUT-U >LEN TEST-ERR-U >LEN PROCESS:SIGKILL PROCESS-ENDING:signaled s" " STORE!
    EXITED @ TFALSE
-   RC @ SIGKILL T=
+   RC @ PROCESS:SIGKILL T=
    OUT-U @ TEST-OUT-U T=
    ERR-U @ TEST-ERR-U T= ;
 

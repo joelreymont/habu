@@ -4,7 +4,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 package HOOKLESS-REJECT-TEST
@@ -30,9 +30,9 @@ variable RC
 : PRINTS ( ptr u8 n -- ) {: a:ptr u:n :}
    OUT$ a u CONTAINS? SHOW TTRUE ;
 
-: SUBJECT-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: SUBJECT-STORE! ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF
       exited OF RC ! ENDOF
       signaled OF drop -1 RC ! ENDOF

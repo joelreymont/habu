@@ -100,7 +100,7 @@ variable WATCH-N
 : OPEN-MASTER-HELD ( -- )
    PTYNAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N {: m:n :}
    m MFD !
-   m >FD FD-CLOEXEC! ;
+   m >FD FD:FD-CLOEXEC! ;
 
 
 : OPEN-PAIR ( -- )
@@ -157,7 +157,7 @@ public
 \ descriptors are blocking, so a read no poll authorised could block past the
 \ caller's deadline.
 : READ-STEP ( fd -- n ) {: f:fd :}
-   f POLL-MS >MS POLL-IN COUNT>N 0 <= if 0 exit then
+   f POLL-MS >MS PROCESS:POLL-IN COUNT>N 0 <= if 0 exit then
    f READ-CHUNK 0 > if 1 exit then
    -1 ;
 
@@ -170,11 +170,11 @@ public
 
 
 : WAIT-OPEN ( n -- ) {: ms:n :}
-   ms >MS PROC-DEADLINE-AT DEADLINE ! ;
+   ms >MS PROCESS:DEADLINE-AT DEADLINE ! ;
 
 
 : WAIT-LEFT ( -- n )
-   DEADLINE @ PROC-LEFT-MS MS>N ;
+   DEADLINE @ PROCESS:LEFT-MS MS>N ;
 
 
 \ Read fd until `quiet` polls in a row bring nothing, the far side hangs up, or
@@ -247,7 +247,7 @@ private
 \ there may be more. The far side is gone by the time this runs, so a ready
 \ descriptor that reads nothing ends the count instead of blocking.
 : LEFTOVER-STEP ( n -- n bool )
-   MASTER-FD POLL-MS >MS POLL-IN COUNT>N 0 <= if false exit then
+   MASTER-FD POLL-MS >MS PROCESS:POLL-IN COUNT>N 0 <= if false exit then
    MASTER-FD READ-CHUNK dup 0 <= if drop false exit then
    + true ;
 
@@ -260,17 +260,17 @@ private
 
 \ Kill the child and every process it started, then reap the child. What the
 \ child spawned holds the terminal too, and the master hangs up only once that
-\ is gone; src/lib/process.f PROC-KILL-TREE reports a walk that throws.
+\ is gone; src/lib/process.f PROCESS:KILL-TREE reports a walk that throws.
 : KILL-REAP ( pid -- ) {: p:pid :}
-   p PROC-KILL-TREE
-   p PROC-WAIT-STATUS drop ;
+   p PROCESS:KILL-TREE
+   p PROCESS:WAIT-STATUS drop ;
 
 
 \ True once the watch reports the exit within ms. A signal that lands mid-wait
 \ restarts against the same deadline, so no signal storm shortens the budget.
 : WATCH-READY? ( fd n -- bool ) {: w:fd ms:n :}
-   w POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+   w FD:POLLIN PROCESS:PFD!
+   1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART 0 > ;
 
 
 \ A child that has hung up is not yet a child that has exited: the terminal can
@@ -281,7 +281,7 @@ private
 : EXIT-READY? ( pid n -- bool ) {: p:pid ms:n :}
    p PID>N proc-watch-open {: w:n :}
    w 0 < if
-      w ESRCH# negate = if true exit then
+      w PROCESS:ESRCH# negate = if true exit then
       E-PROC-OUTPUT throw
    then
    w >FD ms WATCH-READY? {: ready:bool :}
@@ -291,31 +291,31 @@ private
 
 \ The expiry: name the child that did not exit, kill it, and answer the killed
 \ outcome, which reds a case that wanted a clean exit instead of hanging it.
-: KILL-EXPIRED ( pid n -- outcome ) {: p:pid ms:n :}
+: KILL-EXPIRED ( pid n -- PROCESS:ending ) {: p:pid ms:n :}
    s" pty reap: no exit within ms " type ms .
    s" pty reap: killed pid " type p PID>N .
    p KILL-REAP
-   OUTCOME:TIMEOUT ;
+   PROCESS-ENDING:timeout ;
 
 public
 
 \ Reap a child that is no longer writing to us, bounded by ms: the exit if it
 \ comes, the killed outcome if the budget runs out first. Never an unbounded
-\ wait - that is PROC-WAIT-RC's contract, not this one's. A pid at or below 0
+\ wait - that is PROCESS:WAIT-RC's contract, not this one's. A pid at or below 0
 \ names no child: macOS watches pid 0 and never reports its exit, so the expiry
 \ would kill(0), the caller's own process group, and a negative pid reads as
 \ exited and its waitpid reaps some other child.
-: WAIT-EXIT ( pid n -- outcome ) {: p:pid ms:n :}
+: WAIT-EXIT ( pid n -- PROCESS:ending ) {: p:pid ms:n :}
    p PID>N 0 <= if E-PTY-IO throw then
    p ms EXIT-READY? 0= if p ms KILL-EXPIRED exit then
-   p PROC-WAIT-OUTCOME ;
+   p PROCESS:WAIT-ENDING ;
 
 private
 
 \ The wedge: the child still held the terminal when the clock ran out. Kill it
 \ first, so the count below ends, then name the bytes it left for a reader that
 \ never came.
-: WEDGE-OUTCOME ( n -- outcome ) {: ms:n :}
+: WEDGE-OUTCOME ( n -- PROCESS:ending ) {: ms:n :}
    CHILD-PID ms KILL-EXPIRED
    s" pty reap: bytes still unread at the master " type LEFTOVER .
    -1 KID ! ;
@@ -328,7 +328,7 @@ public
 \ hang-up first, what is left of the budget waits out the exit on the child's
 \ lifetime watch, and on expiry the child and every process it started are
 \ killed and named with the bytes left unread.
-: REAP-WITHIN ( n -- outcome ) {: ms:n :}
+: REAP-WITHIN ( n -- PROCESS:ending ) {: ms:n :}
    CHILD-PID PID>N 0 <= if E-PTY-IO throw then
    ms WAIT-OPEN
    DRAIN-TO-HANGUP 0= if ms WEDGE-OUTCOME exit then
@@ -336,7 +336,7 @@ public
    -1 KID ! ;
 
 
-: REAP ( -- outcome )
+: REAP ( -- PROCESS:ending )
    WAIT-BUDGET-MS REAP-WITHIN ;
 
 
@@ -354,7 +354,7 @@ private
 \ ends to the abort path: the child owns the slave only once the spawn returned.
 : SPAWN-BUILD ( -- )
    OPEN-PAIR
-   PATH-BUF PATH-U @ >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROC-SPAWN-IO PID>N KID !
+   PATH-BUF PATH-U @ >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROCESS:SPAWN-IO PID>N KID !
    KID @ 0 <= if E-PTY-IO throw then
    SFD CLOSE-FD! ;
 

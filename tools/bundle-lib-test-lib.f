@@ -114,24 +114,24 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ARGV-BASE
    s" error"  >LEN PROC-ARGV+ ;
 
-: BLTT-HB-CAPTURE ( -- len len outcome )
+: BLTT-HB-CAPTURE ( -- len len PROCESS:ending )
    s" bin/hb"  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
    BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME ;
 
-: BLTT-TOOL-CAPTURE ( -- len len outcome )
+: BLTT-TOOL-CAPTURE ( -- len len PROCESS:ending )
    CLI-TOOLS$  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
    BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME ;
 
-: BLTT-RUN-MISSING-MODULE ( -- len len outcome )
+: BLTT-RUN-MISSING-MODULE ( -- len len PROCESS:ending )
    BLTT-ARGV-ERROR
    s" missing-module" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-DRIVER BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
-: BLTT-RUN-MISSING-SCRIPT ( -- len len outcome )
+: BLTT-RUN-MISSING-SCRIPT ( -- len len PROCESS:ending )
    BLTT-ARGV-ERROR
    s" array" BLTT-ARG+
    s" --" BLTT-ARG+
@@ -151,12 +151,12 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 \ its exit status, stdout and stderr are the builder's own: a builder that dies
 \ or prints fails the row by its exit code and streams, instead of killing the
 \ test with no row or passing silently.
-: BLTT-RUN-BUNDLE-LIB ( -- len len outcome )
+: BLTT-RUN-BUNDLE-LIB ( -- len len PROCESS:ending )
    s" BLTT-BUILD" BLTT-OUT BLTT-BUF-CAP >LEN
    BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
    SUBJECT:RUN ;
 
-: BLTT-RUN-BUNDLE ( -- len len outcome )
+: BLTT-RUN-BUNDLE ( -- len len PROCESS:ending )
    PROC-ARGV-RESET
    s" --load" BLTT-ARG+
    BLTT-BUNDLE BLTT-ARG+
@@ -167,14 +167,14 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 \ The program is what the run executed: the forked builder's source or the
 \ bundle's path, so a timeout report names the right one.
-: BLTT-EXPECT-EXIT ( len len outcome n ptr u8 n -- n n )
+: BLTT-EXPECT-EXIT ( len len PROCESS:ending n ptr u8 n -- n n )
    {: outu:len erru:len oc expect:n prog:ptr progu:n :}
    prog progu BLTT-OUT outu LEN>N BLTT-ERR erru LEN>N oc expect
-   T-OUTCOME-EXITED=
+   T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
-: BLTT-EXPECT-EXIT-NZ ( len len outcome -- n n )
-   MATCH outcome
+: BLTT-EXPECT-EXIT-NZ ( len len PROCESS:ending -- n n )
+   MATCH PROCESS:ending
      exited OF 0 T<> ENDOF
      signaled OF drop 1 0 T= ENDOF
      timeout OF

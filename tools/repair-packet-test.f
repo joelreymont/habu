@@ -8,7 +8,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
@@ -150,7 +150,7 @@ TYPED-VARIABLE J-W JSON:writer
 
 \ The tool runs with this process's environment, so tools/check.f makes its
 \ scratch root under the TMPDIR this run was handed.
-: HB-CAPTURE ( -- len len outcome )
+: HB-CAPTURE ( -- len len PROCESS:ending )
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$  >LEN OUT CAPTURE-CAP >LEN
@@ -189,15 +189,15 @@ TYPED-VARIABLE J-W JSON:writer
    s" tools/check.f" ;
 
 \ Each child this file spawns loads a tool; the caller names it last.
-: EXPECT-EXIT ( len len outcome n ptr u8 n -- n n )
+: EXPECT-EXIT ( len len PROCESS:ending n ptr u8 n -- n n )
    {: outu:len erru:len oc expect:n ran:ptr ranu:n :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF dup expect <> if outu LEN>N erru LEN>N rot expect ran ranu DUMP-CAPTURE else drop then ENDOF
      signaled OF outu LEN>N erru LEN>N rot 128 + expect ran ranu DUMP-CAPTURE ENDOF
      timeout OF ENDOF
    ;MATCH
    LABEL$ T-LABEL
-   ran ranu OUT outu LEN>N ERR erru LEN>N oc expect T-OUTCOME-EXITED=
+   ran ranu OUT outu LEN>N ERR erru LEN>N oc expect T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 : EXPECT-EXIT-NZ ( len len n -- n n )
@@ -504,7 +504,7 @@ TYPED-VARIABLE J-W JSON:writer
    REPAIR-TOOL$ >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
-: RUN-REPAIR-NOARGS ( -- len len outcome )
+: RUN-REPAIR-NOARGS ( -- len len PROCESS:ending )
    ARGV-REPAIR-NOARGS
    HB-CAPTURE ;
 

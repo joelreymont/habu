@@ -115,7 +115,7 @@ public
 \ src/lib/process-tree.f KILL-TREE refuses one.
 : KILL-GROUP ( pid n -- rc ) {: pid:pid sig:n :}
    pid PID>N 1 <= if E-PROC-OUTPUT throw then
-   pid PID>N negate >PID sig PROC-KILL-RAW ;
+   pid PID>N negate >PID sig PROCESS:KILL-RAW ;
 
 \ A pool worker in its own process group forks a reaper that watches the pool
 \ parent's death-pipe write end. When the parent is SIGKILLed - the exact case
@@ -152,7 +152,7 @@ public
 private
 
 : PROC-REAP-KILL-GROUP ( -- )
-   0 >PID SIGKILL PROC-KILL-RAW drop ;
+   0 >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop ;
 
 : PROC-REAP-PFD-SLOT ( idx -- ptr n ) {: idx:idx :}
    idx IDX>N 8 * PROC-REAP-PFD + ;
@@ -173,14 +173,14 @@ private
 \ without signalling rather than spinning on a descriptor it can no longer read.
 : PROC-REAP-WATCH2 ( fd fd -- ) {: pd:fd wa:fd :}
    begin
-      pd POLLIN 0 >IDX PROC-REAP-PFD!
-      wa POLLIN 1 >IDX PROC-REAP-PFD!
+      pd FD:POLLIN 0 >IDX PROC-REAP-PFD!
+      wa FD:POLLIN 1 >IDX PROC-REAP-PFD!
       PROC-REAP-PFD 2 -1 poll {: rc:n :}
       rc 0 > if
          0 >IDX PROC-REAP-REVENTS 0 <> if PROC-REAP-KILL-GROUP then
          exit
       then
-      rc EINTR# negate <> if exit then
+      rc FD:EINTR# negate <> if exit then
    again ;
 
 \ FORK-REAPER's intermediate exits with this when it cannot fork the reaper.
@@ -191,7 +191,7 @@ public
 \ Arm a parent-death reaper that is INVISIBLE to the worker's own wait(-1):
 \ a throwaway intermediate forks the real reaper (a grandchild) and exits, so
 \ the reaper reparents to init rather than staying the worker's child. A worker
-\ body may itself call wait(-1) expecting no children (e.g. a PROC-WAIT-STATUS
+\ body may itself call wait(-1) expecting no children (e.g. a PROCESS:WAIT-STATUS
 \ error test), and a reaper child would make that wait block forever. The reaper
 \ still inherits the worker's process group, so a timeout group-kill reaps it
 \ and a parent death lets it kill the group. It also watches the worker-alive
@@ -215,7 +215,7 @@ public
       r2 PID>N 0 < if s" " REAPER-REFUSED-RC die then
       s" " 0 die
    then
-   ipid PROC-WAIT-STATUS 0<> if E-PROC-SPAWN throw then ;
+   ipid PROCESS:WAIT-STATUS 0<> if E-PROC-SPAWN throw then ;
 
 \ Reaper body for a spawned (exec'd) child: block until the single parent-death
 \ read end (pd) EOFs, then reap the reaper's own process group. The reaper has
@@ -227,13 +227,13 @@ private
 
 : PROC-REAP-WATCH1 ( fd -- ) {: pd:fd :}
    begin
-      pd POLLIN 0 >IDX PROC-REAP-PFD!
+      pd FD:POLLIN 0 >IDX PROC-REAP-PFD!
       PROC-REAP-PFD 1 -1 poll {: rc:n :}
       rc 0 > if
          0 >IDX PROC-REAP-REVENTS 0 <> if PROC-REAP-KILL-GROUP then
          exit
       then
-      rc EINTR# negate <> if exit then
+      rc FD:EINTR# negate <> if exit then
    again ;
 
 public
@@ -251,7 +251,7 @@ public
 \ successful join it closes every inherited fd but the pool-death read end and
 \ blocks; when the pool parent is SIGKILLed the write end EOFs and the reaper
 \ SIGKILLs the child's group. A failed fork throws E-PROC-SPAWN; no reaper
-\ watches the child, and its caller ends it (PROC-CAPTURE-PID! kills the
+\ watches the child, and its caller ends it (PROCESS:CAPTURE-PID! kills the
 \ capture child, the gate pool kills every slot).
 : SPAWN-REAPER ( fd pid -- pid ) {: pd:fd cpid:pid :}
    CHECKED {: rpid:pid :}
@@ -267,8 +267,8 @@ public
 
 \ A worker that owns a death-watch read end (its worker-alive pipe: the write
 \ end is held only by the worker, so EOF == this worker died, whatever killed
-\ it) publishes the fd here; every capture spawn (PROC-RUN-CAPTURE family, via
-\ PROC-CAPTURE-PID!) then arms a co-located SPAWN-REAPER in the child's
+\ it) publishes the fd here; every capture spawn (PROCESS:RUN-CAPTURE family,
+\ via PROCESS:CAPTURE-PID!) then arms a co-located SPAWN-REAPER in the child's
 \ group watching that fd. Spawned capture children are their own group leaders,
 \ so neither the worker's group-kill nor its parent-death reaper reaches them;
 \ this closes that gap. -1 = no context: PROC-REAP-ARM-ON arms nothing, so
@@ -284,7 +284,7 @@ private
    >FD cpid SPAWN-REAPER ;
 
 : PROC-REAP-ARM-INSTALL ( -- )
-   [: PROC-REAP-ARM-ON ;] is PROC-REAP-ARM ;
+   [: PROC-REAP-ARM-ON ;] is PROCESS:REAP-ARM ;
 PROC-REAP-ARM-INSTALL
 
 ;package

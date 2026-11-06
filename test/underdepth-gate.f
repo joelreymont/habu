@@ -13,7 +13,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -62,9 +62,9 @@ create UDG-EMPTY 1 allot            \ zero-length stdin
 : UDG-ERR$ ( -- ptr u8 n )
    UDG-ERR UDG-ERR-U @ ;
 
-: UDG-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: UDG-STORE! ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N UDG-ERR-U !  outu LEN>N UDG-OUT-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF UDG-RC ! 0 0= UDG-EXITED ! ENDOF
      signaled OF UDG-RC ! 0 0= 0= UDG-EXITED ! ENDOF
      timeout OF src u UDG-OUT UDG-OUT-U @ UDG-ERR UDG-ERR-U @ T-TIMED-OUT ENDOF

@@ -1538,7 +1538,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
    SB$ CHK-E-CHECK CHK-FAIL ;
 
 \ A run still going at its deadline is ended by the capture with every process
-\ it started (src/lib/process.f PROC-KILL-CAPTURE), and refused: what it wrote is
+\ it started (src/lib/process.f PROCESS:KILL-CAPTURE), and refused: what it wrote is
 \ not replayed, and one line names the subject and the deadline. A subject that
 \ needs longer is checked with a longer --deadline-ms.
 : CHK-RUN-LATE ( -- )
@@ -1698,10 +1698,10 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
 \ How a verifier child that gave no answer ended, as the closing line of its
 \ report, where CHK-EXPLAIN-LN puts prose.
-: CHK-STATUS-LN ( outcome -- )
+: CHK-STATUS-LN ( PROCESS:ending -- )
    SB-RESET
    s" check.f: the verifier did not complete: " SB-APPEND
-   MATCH outcome
+   MATCH PROCESS:ending
       exited OF s" exit " SB-APPEND CHK-U$ SB-APPEND ENDOF
       signaled OF s" signal " SB-APPEND CHK-U$ SB-APPEND ENDOF
       timeout OF s" deadline of " SB-APPEND CHK-DEADLINE@ MS>N CHK-U$ SB-APPEND s"  ms passed" SB-APPEND ENDOF
@@ -1718,7 +1718,7 @@ CAST: CHK-VERIFIER-ACTION ( n -- [ -- ] )
 
 \ The pre-pass runs in the verifier child (PREVERIFY-BYTES), resolving only the
 \ run's words; its packets and the child's prose precede what its stop leaves.
-: CHK-PREVERIFY-REPORT ( result<n,outcome> -- )
+: CHK-PREVERIFY-REPORT ( result<n,PROCESS:ending> -- )
    CHK-PREVERIFY-RELAY
    MATCH result
       ok OF {: rc:n :} rc 0<> if rc CHK-PREVERIFY-STOPPED then ENDOF
@@ -1938,11 +1938,11 @@ private
 \ CATCH-STOPS): under the default action its run stage's child, a process group of its own,
 \ runs on under init beside the temporary directory, out of reach of a `timeout` that kills
 \ check.f's group. MAIN catches the three before it makes that directory, the capture waiting
-\ on the child hears them (src/lib/process.f PROC-STOP), and MAIN asks once more after the
+\ on the child hears them (src/lib/process.f PROCESS:STOP), and MAIN asks once more after the
 \ run's cleanup. RUN catches nothing: a program that checks in process keeps its own answer.
-\ The answer kills and reaps the child's processes (PROC-KILL-CAPTURE), removes the temporary
+\ The answer kills and reaps the child's processes (PROCESS:KILL-CAPTURE), removes the temporary
 \ directory and dies of the signal; a step that throws is named and the answer goes on. A run
-\ that ended before its child started leaves its pid 0 or PROC-NO-PID, and PROC-KILL-CAPTURE
+\ that ended before its child started leaves its pid 0 or PROCESS:NO-PID, and PROCESS:KILL-CAPTURE
 \ kills nothing for either: kill(0) is check.f's own process group.
 : CHK-SAY-THROW ( ptr u8 n n -- ) {: what:ptr whatu:n code:n :}
    code 0= if exit then
@@ -1950,7 +1950,7 @@ private
    SB-RESET code FMT:SB-INT SB$ CHK-ERR-LN ;
 
 : CHK-SIGNAL-ANSWER ( n -- ) {: sig:n :}
-   s" child kill" [: PROC-KILL-CAPTURE ;] catch CHK-SAY-THROW
+   s" child kill" [: PROCESS:KILL-CAPTURE ;] catch CHK-SAY-THROW
    s" cleanup" [: CHK-TEMP-CLEAN ;] catch CHK-SAY-THROW
    s" check: signal" sig SIGNAL:DIE-OF ;
 
@@ -1962,8 +1962,8 @@ private
 
 : CHK-CATCH-STOPS ( -- )
    SIGNAL:CATCH-STOPS
-   SIGNAL:FD FD>N PROC-STOP-FD !
-   [: CHK-SIGNAL-CHECK ;] is PROC-STOP ;
+   SIGNAL:FD FD>N PROCESS:STOP-FD !
+   [: CHK-SIGNAL-CHECK ;] is PROCESS:STOP ;
 
 : CHK-MAIN-RUN ( -- )
    RESET

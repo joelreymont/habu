@@ -10,7 +10,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/source.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require tools/source-discovery.f
 
@@ -375,7 +375,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
    20000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
    s" SDT-ENTRY$ ;package included"
-   SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   SDT-LOAD-OUT outu LEN>N SDT-LOAD-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT outu LEN>N s" LOADED" T$=
    [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ
    DISCOVER:LAST-TOKEN {: off:n len:n :}
@@ -388,7 +388,7 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
    SDT-LOAD-OUT SDT-LOAD-CAP >LEN SDT-LOAD-ERR SDT-LOAD-CAP >LEN
    20000 >MS SUBJECT:RUN {: qoutu:len qerru:len qoc :}
    s" SDT-ENTRY$ ;package included"
-   SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-OUTCOME-EXITED=
+   SDT-LOAD-OUT qoutu LEN>N SDT-LOAD-ERR qerru LEN>N qoc 0 T-ENDING-EXITED=
    SDT-LOAD-OUT qoutu LEN>N s" LOADED" T$=
    [: SDT-DISCOVER ;] E-DISC-SHADOW TTHROWSQ ;
 

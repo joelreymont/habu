@@ -57,7 +57,7 @@ variable MARK-U
    fd F-GETFD 0 fcntl 0 >= ;
 
 : FD-FLAGS ( n -- n ) {: fd:n :}
-   fd F-GETFL 0 fcntl ;
+   fd FD:F-GETFL 0 fcntl ;
 
 : TIO-GET ( -- n )
    HB-TARGET-MACOS? if TIO-GET-BSD exit then

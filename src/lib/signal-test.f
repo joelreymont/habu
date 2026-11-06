@@ -52,7 +52,7 @@ $98 constant SA-BUF-BYTES
 0 constant SA-NO-FLAGS
 0 constant SIG-DFL                 \ the handler an unarmed signal carries
 $FFFFFFFF constant INT-MASK        \ sa_flags is an int; the cell read carries its padding
-1 constant F-GETFD                 \ src/lib/process.f names only F-SETFD
+1 constant F-GETFD                 \ src/lib/fd.f names only FD:F-SETFD
 
 0 constant SIG-BELOW               \ one below the lowest signal sigaction installs
 65 constant SIG-ABOVE              \ one above the highest
@@ -135,9 +135,9 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 \ F_GETFL reads the flags back, so "INIT asked for non-blocking" and "the
 \ descriptor IS non-blocking" are different claims and this is the second one.
 : NONBLOCK? ( n -- bool ) {: fd:n :}
-   fd F-GETFL 0 fcntl {: flags :}
+   fd FD:F-GETFL 0 fcntl {: flags :}
    flags 0 < if false exit then
-   flags O-NONBLOCK and 0 <> ;
+   flags FD:O-NONBLOCK and 0 <> ;
 
 : ELAPSED-MS ( n -- n ) {: started:n :}
    mono-ns started - NS-PER-MS / ;
@@ -311,7 +311,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    1 TASK-RAISED ! ;
 
 : JOIN-TASK ( ptr n -- )
-   [: dup TASK:DONE? ;] TASK-JOIN-MS >MS PROC-DEADLINE-AT
+   [: dup TASK:DONE? ;] TASK-JOIN-MS >MS PROCESS:DEADLINE-AT
    s" signal-test JOIN-TASK" TEST-WAIT:POLL
    drop ;
 

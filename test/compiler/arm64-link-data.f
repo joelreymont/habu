@@ -224,7 +224,7 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    {: name:ptr name-n:n :}
    s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
    s" --" CMD:ARG+  name name-n CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N ;
+   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N ;
 
 \ Case name's child prints its arming line, then pre and v as `.` prints them,
 \ names err on stderr and exits 74.

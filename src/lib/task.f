@@ -2095,7 +2095,7 @@ private
    spec TASK-SPEC-SEC-OFF + @ TASK-NS-PER-S *
    spec TASK-SPEC-NSEC-OFF + @ + ;
 
-\ The deadline shape src/lib/process.f states as PROC-DEADLINE-AT and PROC-LEFT-MS,
+\ The deadline shape src/lib/process.f states as PROCESS:DEADLINE-AT and PROCESS:LEFT-MS,
 \ in nanoseconds because a sleep resumes on the nanosecond the kernel hands back
 \ and not on a millisecond boundary. Same arithmetic, same floor at zero. A
 \ duration below zero, or one whose deadline lies past TASK-NS-MAX, is

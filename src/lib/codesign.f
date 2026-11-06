@@ -84,7 +84,7 @@ private
    {: o:len e:len oc :}
    o LEN>N CODESIGN-OUT-U !
    e LEN>N CODESIGN-ERR-U !
-   oc PROC-OUTCOME>RC RC>N ;
+   oc PROCESS:ENDING>RC RC>N ;
 
 \ A failing tool's own reason (a locked keychain, a denied dialog) goes to
 \ stderr ahead of the status code.

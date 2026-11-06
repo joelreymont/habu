@@ -552,7 +552,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/span.f
 require src/lib/memory.f
@@ -974,10 +974,10 @@ variable OPEN-N
 
 \ The server ended so, and must have exited with this code; past its deadline,
 \ the conversation and what the server wrote are printed.
-: EXITED ( outcome n -- )
+: EXITED ( PROCESS:ending n -- )
    {: r want:n :}
-   LABEL$ T-LABEL IN$ OUT$ ERR$ r want T-OUTCOME-EXITED=
-   r PROC-OUTCOME>RC RC>N ARCHIVE ;
+   LABEL$ T-LABEL IN$ OUT$ ERR$ r want T-ENDING-EXITED=
+   r PROCESS:ENDING>RC RC>N ARCHIVE ;
 
 \ Exercise this adapter's timeout arm without waiting for a slow server.
 : TIMEOUT-EXIT-PROBE ( -- )
@@ -985,7 +985,7 @@ variable OPEN-N
    s" timeout input" IN+
    s" timeout stdout" dup OUT-LEN ! OUT-SPAN SPAN:COPY
    s" timeout stderr" dup ERR-LEN ! ERR-SPAN SPAN:COPY
-   OUTCOME:TIMEOUT 0 EXITED ;
+   PROCESS-ENDING:timeout 0 EXITED ;
 
 : TEST-EXIT-TIMEOUT ( -- )
    s" LSP timeout reports the conversation and both streams" T-LABEL
@@ -993,7 +993,7 @@ variable OPEN-N
    src srcu OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN
    CONVERSATION-MS >MS SUBJECT:RUN {: outu:len erru:len r :}
    src srcu OUT-SPAN SPAN:$ drop outu LEN>N
-   ERR-SPAN SPAN:$ drop erru LEN>N r UNCAUGHT-RC T-OUTCOME-EXITED=
+   ERR-SPAN SPAN:$ drop erru LEN>N r UNCAUGHT-RC T-ENDING-EXITED=
    OUT-SPAN SPAN:$ drop outu LEN>N s" timed-out conversation" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout input" CONTAINS? TTRUE
    OUT-SPAN SPAN:$ drop outu LEN>N s" timeout stdout" CONTAINS? TTRUE
@@ -1013,13 +1013,13 @@ variable OPEN-N
    SB$ T-LABEL ok TTRUE ;
 
 \ Runs the server on the conversation's input and reads all it writes. It must
-\ exit with RC. The capture writes the input in pieces of PROC-STDIN-CHUNK-CAP,
+\ exit with RC. The capture writes the input in pieces of PROCESS:STDIN-CHUNK-CAP,
 \ and one piece lands in the empty pipe whole, so the server reads every
 \ message of a conversation no larger before it would look for a document to
 \ check: none of these conversations expects a check.
 : CONVERSE ( n -- )
    {: rc:n :}
-   IN$ nip PROC-STDIN-CHUNK-CAP <= s" input past one write" HOLDS
+   IN$ nip PROCESS:STDIN-CHUNK-CAP <= s" input past one write" HOLDS
    mono-ns {: t0:n :}
    STAGED IN$ >LEN OUT-SPAN SPAN:$ >LEN ERR-SPAN SPAN:$ >LEN CONVERSATION-MS >MS
    RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: o:len e:len r :}
@@ -1125,7 +1125,7 @@ variable OPEN-N
 \ Waits until the descriptor holds a byte or its end; past the deadline, a
 \ mono-ns time, it throws E-PROC-TIMEOUT.
 : AWAIT ( fd n -- )
-   PROC-LEFT-MS POLL-IN-OR-TIMEOUT drop ;
+   PROCESS:LEFT-MS PROCESS:POLL-IN-OR-TIMEOUT drop ;
 
 \ Reads the byte past the span's first N once the descriptor holds it: whether
 \ one came before the end. A wait promises one byte, and READ-EXACT reads until
@@ -1149,17 +1149,17 @@ variable OPEN-N
    while 1+ repeat drop ;
 
 : KILLED ( pid -- n )
-   dup SIGKILL PROC-KILL-RAW drop
-   PROC-WAIT-STATUS ;
+   dup PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   PROCESS:WAIT-STATUS ;
 
 \ The server's outcome once its output is read. A wait that ran out kills it,
 \ and the outcome is a timeout, as a capture's is; any other throw goes on.
-: SETTLED ( n pid -- outcome )
+: SETTLED ( n pid -- PROCESS:ending )
    {: code:n pid :}
-   code 0= if pid PROC-WAIT-OUTCOME exit then
+   code 0= if pid PROCESS:WAIT-ENDING exit then
    pid KILLED drop
    code E-PROC-TIMEOUT <> if code throw then
-   OUTCOME:TIMEOUT ;
+   PROCESS-ENDING:timeout ;
 
 \ The reply's first byte while the input stays open; the input then ends,
 \ whether the byte came or the wait ran out.
@@ -1174,14 +1174,14 @@ variable OPEN-N
 \ stdout and stderr to their ends.
 : HEAR-AT-ONCE ( fd fd fd -- fd fd fd )
    {: in-w:fd out-r:fd err-r:fd :}
-   CONVERSATION-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   CONVERSATION-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    in-w out-r deadline FIRST-BYTE
    out-r OUT-SPAN OUT-LEN deadline DRAIN
    err-r ERR-SPAN ERR-LEN deadline DRAIN
    in-w out-r err-r ;
 
 : HEAR-ERR ( fd -- fd )
-   dup ERR-SPAN ERR-LEN CONVERSATION-MS >MS PROC-DEADLINE-AT DRAIN ;
+   dup ERR-SPAN ERR-LEN CONVERSATION-MS >MS PROCESS:DEADLINE-AT DRAIN ;
 
 \ The reply to initialize starts while the input stays open: a server that
 \ waited for more input, or for its end, would never answer a client waiting
@@ -1190,13 +1190,13 @@ variable OPEN-N
    s" answers-at-once" CONVERSATION
    INITIALIZE
    CUT-SHORT
-   PIPE-PAIR {: in-r:fd in-w:fd :}
-   PIPE-PAIR {: out-r:fd out-w:fd :}
-   PIPE-PAIR {: err-r:fd err-w:fd :}
-   in-w FD-CLOEXEC!
-   in-w FD-NOSIGPIPE!
-   out-r FD-CLOEXEC!
-   err-r FD-CLOEXEC!
+   FD:PIPE-PAIR {: in-r:fd in-w:fd :}
+   FD:PIPE-PAIR {: out-r:fd out-w:fd :}
+   FD:PIPE-PAIR {: err-r:fd err-w:fd :}
+   in-w FD:FD-CLOEXEC!
+   in-w FD:FD-NOSIGPIPE!
+   out-r FD:FD-CLOEXEC!
+   err-r FD:FD-CLOEXEC!
    in-r out-w err-w SPAWN {: pid :}
    in-r FD>N close
    out-w FD>N close
@@ -1217,13 +1217,13 @@ variable OPEN-N
    INITIALIZE
    SIGN-OFF
    E-FS-IO STOPPED
-   PIPE-PAIR {: in-r:fd in-w:fd :}
-   PIPE-PAIR {: out-r:fd out-w:fd :}
-   PIPE-PAIR {: err-r:fd err-w:fd :}
+   FD:PIPE-PAIR {: in-r:fd in-w:fd :}
+   FD:PIPE-PAIR {: out-r:fd out-w:fd :}
+   FD:PIPE-PAIR {: err-r:fd err-w:fd :}
    in-w IN$ FD:WRITE-FULL
    in-w FD>N close
    out-r FD>N close
-   err-r FD-CLOEXEC!
+   err-r FD:FD-CLOEXEC!
    in-r out-w err-w SPAWN {: pid :}
    in-r FD>N close
    out-w FD>N close
@@ -1370,8 +1370,8 @@ variable OPEN-N
 \ ---- diagnostics conversations, held turn by turn --------------------------------
 
 : WRITABLE ( -- )
-   IN-W @ POLLOUT PROC-PFD!
-   1 DEADLINE @ PROC-LEFT-MS MS>N DEADLINE @ PROC-POLL-RESTART {: rc:n :}
+   IN-W @ FD:POLLOUT PROCESS:PFD!
+   1 DEADLINE @ PROCESS:LEFT-MS MS>N DEADLINE @ PROCESS:POLL-RESTART {: rc:n :}
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if E-PROC-TIMEOUT throw then ;
 
@@ -1394,7 +1394,7 @@ variable OPEN-N
 : SAY ( -- )
    IN$ {: a:ptr u:n :}
    u SENT @ - {: left:n :}
-   left PROC-STDIN-CHUNK-CAP > if STREAM exit then
+   left PROCESS:STDIN-CHUNK-CAP > if STREAM exit then
    WRITABLE
    IN-W @ a SENT @ + left FD:WRITE-FULL
    u SENT ! ;
@@ -1448,13 +1448,13 @@ variable OPEN-N
 \ by name, and its real outcome is still asserted. True when nothing threw.
 : HELD-BY ( [ -- ] [ [ -- ] -- [ -- ] ] n -- bool )
    {: turns run rc:n :}
-   PIPE-PAIR {: in-r:fd in-w:fd :}
-   PIPE-PAIR {: out-r:fd out-w:fd :}
-   PIPE-PAIR {: err-r:fd err-w:fd :}
-   in-w FD-CLOEXEC!
-   in-w FD-NOSIGPIPE!
-   out-r FD-CLOEXEC!
-   err-r FD-CLOEXEC!
+   FD:PIPE-PAIR {: in-r:fd in-w:fd :}
+   FD:PIPE-PAIR {: out-r:fd out-w:fd :}
+   FD:PIPE-PAIR {: err-r:fd err-w:fd :}
+   in-w FD:FD-CLOEXEC!
+   in-w FD:FD-NOSIGPIPE!
+   out-r FD:FD-CLOEXEC!
+   err-r FD:FD-CLOEXEC!
    in-r out-w err-w SPAWN {: pid :}
    in-r FD>N close
    out-w FD>N close
@@ -1465,7 +1465,7 @@ variable OPEN-N
    err-r ERR-R !
    0 SENT !
    mono-ns {: t0:n :}
-   CHECKED-MS >MS PROC-DEADLINE-AT DEADLINE !
+   CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE !
    turns run catch {: code:n :}
    drop
    in-w FD>N close
@@ -1477,7 +1477,7 @@ variable OPEN-N
    why 0= why E-PROC-TIMEOUT = or if
       why pid SETTLED
    else
-      pid KILLED PROC-STATUS>OUTCOME
+      pid KILLED PROCESS:STATUS>ENDING
    then {: r :}
    why E-PROC-TIMEOUT <> if
       SB-RESET LABEL$ SB-APPEND s" : throw" SB-APPEND SB$ T-LABEL
@@ -1503,12 +1503,12 @@ variable PACKET-NEXT                     \ where the check's next packet starts
 \ below read it.
 : CHECKS-WITH ( ptr u8 n ptr u8 n [ [ ptr u8 n ptr u8 n -- ] -- ] -- )
    0 PACKET-NEXT !
-   DEADLINE @ PROC-LEFT-MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
+   DEADLINE @ PROCESS:LEFT-MS LSP-CHECK:VERIFY-BYTES MATCH LSP-CHECK:verdict
       verified OF ENDOF
       refused OF ENDOF
       engine-provided OF ENDOF
       held OF ENDOF
-      incomplete OF PROC-OUTCOME>RC drop ENDOF
+      incomplete OF PROCESS:ENDING>RC drop ENDOF
       deferred OF ENDOF
    ;MATCH ;
 
@@ -1676,7 +1676,7 @@ variable PUB-COUNT
    a u CONVERSATION
    SHARED? @ 0= if turns HELD exit then
    0 SENT !
-   CHECKED-MS >MS PROC-DEADLINE-AT DEADLINE !
+   CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE !
    s" " ARTIFACT$ FS:MAKE-DIR
    turns execute
    LOGGED
@@ -7316,7 +7316,7 @@ variable PROBE-DECLS                     \ the decls a gather saw in the probe
    false SHARED? !
    SESSION$ CONVERSATION
    0 SENT !
-   CHECKED-MS >MS PROC-DEADLINE-AT DEADLINE ! ;
+   CHECKED-MS >MS PROCESS:DEADLINE-AT DEADLINE ! ;
 
 : SESSION-RUN ( ptr u8 n [ -- ] [ -- ] -- )
    {: a:ptr u:n init cases :}

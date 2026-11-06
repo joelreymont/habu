@@ -212,7 +212,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -326,7 +326,7 @@ variable CLI-OUT-U
    {: v src:ptr srcu:n :}
    v MATCH LSP-CHECK:verdict
       incomplete OF
-         MATCH outcome
+         MATCH PROCESS:ending
             exited OF ENDOF
             signaled OF drop -1 ENDOF
             timeout OF src srcu LSP-CHECK:VERIFY-OUT$ LSP-CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
@@ -343,7 +343,7 @@ variable CLI-OUT-U
 : TIMED-OUT? ( LSP-CHECK:verdict -- bool )
    MATCH LSP-CHECK:verdict
       incomplete OF
-         MATCH outcome
+         MATCH PROCESS:ending
             exited OF drop false ENDOF
             signaled OF drop false ENDOF
             timeout OF true ENDOF
@@ -620,7 +620,7 @@ CK-USE-MAX 1 + constant OVER-USINGS
    PROC-ENV-INHERIT-MISSING
    ENGINE-CANDIDATE:PATH$ >LEN 0 OUT CAP >LEN 0 ERR CAP >LEN GUARD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME {: outu:len erru:len o :}
-   s" no-run: a load runs both" T-LABEL o MATCH outcome
+   s" no-run: a load runs both" T-LABEL o MATCH PROCESS:ending
       exited OF ENDOF
       signaled OF drop -1 ENDOF
       timeout OF MARK$SRC 0 OUT outu LEN>N 0 ERR erru LEN>N T-TIMED-OUT ENDOF
@@ -1591,7 +1591,7 @@ $180000 constant LARGE-STDIN-LEN
    S\" : ARGS ( -- )\n   PROC-ARGV-ENV-RESET\n   s\" --load\" >LEN PROC-ARGV+\n   s\" tools/check-verify-child.f\" >LEN PROC-ARGV+\n   s\" --\" >LEN PROC-ARGV+\n   SCRIPT-ARGC 0 ?do i SCRIPT-ARGV$ >LEN PROC-ARGV+ loop\n   PROC-ENV-INHERIT-MISSING ;\n" GEN+
    S\" : INPUT ( -- )\n   0 SRC-U !\n   begin SRC-U @ 4096 < while\n      0 SRC-U @ SRC 4096 SRC-U @ - read\n      dup 0< if s\" read failed\" 74 die then\n      dup 0= if drop exit then\n      SRC-U +!\n   repeat ;\n" GEN+
    S\" : LINE-END ( n n -- n )\n   {: at:n u:n :}\n   u at ?do i OUT c@ 10 = if i 1+ unloop exit then loop u ;\n" GEN+
-   S\" : DUP-END ( n n -- n )\n   {: u:n :}\n   begin\n      {: at:n :}\n      at u >= if u exit then\n      at u LINE-END\n      {: end:n :}\n      at OUT end at - s\" check-verify: duplicate \" STARTS-WITH? if end exit then\n      end\n   again ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH outcome\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if 0 outu LEN>N DUP-END else\n      SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-two-dups.f\" CONTAINS?\n      if 0 outu LEN>N DUP-END outu LEN>N DUP-END else outu LEN>N then\n   then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
+   S\" : DUP-END ( n n -- n )\n   {: u:n :}\n   begin\n      {: at:n :}\n      at u >= if u exit then\n      at u LINE-END\n      {: end:n :}\n      at OUT end at - s\" check-verify: duplicate \" STARTS-WITH? if end exit then\n      end\n   again ;\npublic\n: MAIN ( -- )\n   4096 SRC-RESERVE 65536 OUT-RESERVE 65536 ERR-RESERVE\n   INPUT ARGS\n   ENGINE-ID:PATH$ >LEN 0 SRC SRC-U @ >LEN\n   0 OUT 65536 >LEN 0 ERR 65536 >LEN 60000 >MS\n   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len o :}\n   o MATCH PROCESS:ending\n      exited OF 0<> if s\" real verifier failed\" 74 die then ENDOF\n      signaled OF drop s\" real verifier signaled\" 74 die ENDOF\n      timeout OF s\" real verifier timed out\" 74 die ENDOF\n   ;MATCH\n   SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-first-dup.f\" CONTAINS?\n   if 0 outu LEN>N DUP-END else\n      SCRIPT-ARGC 1- SCRIPT-ARGV$ s\" unclean-two-dups.f\" CONTAINS?\n      if 0 outu LEN>N DUP-END outu LEN>N DUP-END else outu LEN>N then\n   then\n   0 OUT swap type\n   s\" completed child output\" 79 die ;\n;package\nCVT-UNCLEAN:MAIN\n" GEN+
    s" unclean.f" 0 GEN GEN-U @ FIXTURE
    s" unclean.f" AT$ FS:CHMOD-X ;
 
@@ -1653,7 +1653,7 @@ $180000 constant LARGE-STDIN-LEN
    DUP$SRC SUBJ$ s" unclean-pre.f" GUARD-MS >MS LSP-CHECK:PREVERIFY-BYTES
    MATCH result
       ok OF drop false ENDOF
-      err OF MATCH outcome
+      err OF MATCH PROCESS:ending
          exited OF 79 = ENDOF
          signaled OF drop false ENDOF
          timeout OF DUP$SRC LSP-CHECK:VERIFY-OUT$ LSP-CHECK:VERIFY-LOG$ T-TIMED-OUT ENDOF
@@ -4702,7 +4702,7 @@ variable SEEN-U
 \ ---- case timings ----------------------------------------------------------
 
 : MS. ( -- )
-   mono-ns START-NS @ - PROC-NS-PER-MS / FMT:.INT s"  ms" type ;
+   mono-ns START-NS @ - PROCESS:NS-PER-MS / FMT:.INT s"  ms" type ;
 
 
 : RUN-CASE ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}

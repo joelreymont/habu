@@ -9,7 +9,7 @@ require src/lib/test.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/test/eval.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
@@ -259,7 +259,7 @@ variable ERR-U
 
 \ ---- children -----------------------------------------------------------------
 
-: CHILD ( ptr u8 n -- outcome ) {: src:ptr srcu:n :}
+: CHILD ( ptr u8 n -- PROCESS:ending ) {: src:ptr srcu:n :}
    src srcu OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !  oc ;
@@ -269,7 +269,7 @@ variable ERR-U
 
 : EXITS ( ptr u8 n n -- ) {: src:ptr srcu:n want:n :}
    src srcu CHILD {: oc :}
-   src srcu OUT$ ERR$ oc want T-OUTCOME-EXITED= ;
+   src srcu OUT$ ERR$ oc want T-ENDING-EXITED= ;
 
 : ERR-HAS? ( ptr u8 n -- )   ERR$ 2swap CONTAINS? TTRUE ;
 : ERR-LACKS? ( ptr u8 n -- )   ERR$ 2swap CONTAINS? TFALSE ;
@@ -494,7 +494,7 @@ variable ERR-U
    s" E-" IN-BUF? TFALSE
    4 SEND-BYTE
    REAP {: oc :}
-   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
+   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-ENDING-EXITED=
    CLOSE-MASTER ;
 
 public

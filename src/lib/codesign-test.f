@@ -313,7 +313,7 @@ variable CST-ERR-U
    CODESIGN-TIMEOUT-MS >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME
    {: o:len e:len oc :}
    e LEN>N CST-ERR-U !
-   oc PROC-OUTCOME>RC RC>N ;
+   oc PROCESS:ENDING>RC RC>N ;
 
 : CST-ERR-HAS? ( ptr u8 n -- bool )
    {: a:ptr u :}

@@ -581,7 +581,7 @@ DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
 
 : UNSAFE-RUN ( CMD:command -- CMD:command )
    s" --load" CMD:ARG+  s" test/compiler/arm64-place-unsafe-bad.f" CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    s" refusal: the child names the caller and the word" T-LABEL
    CMD:OUT$
    s\" ARM64-PLACE-UNSAFE-ARMED\nlink: PL-MAKE calls create, which a stripped program cannot run\n"

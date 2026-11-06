@@ -18,7 +18,7 @@ require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/lib/codesign.f
 require test/app-image-engine.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require test/pcap-result.f
 
 package SNAP-WRITER-TEST
@@ -304,10 +304,10 @@ variable IMGU
    loop
    BAD-SNAP$ IMG IMGU @ FS:WRITE-ALL ;
 
-: STORE! ( len len outcome ptr u8 n -- )
+: STORE! ( len len PROCESS:ending ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF RC ! 0 0= EXITED ! ENDOF
      signaled OF RC ! 0 0= 0= EXITED ! ENDOF
      timeout OF src srcu OUT OUT-U @ ERR$ T-TIMED-OUT ENDOF

@@ -49,7 +49,7 @@ variable IMAGE-U
 \ The child ended by the signal, not by an exit: crash.f EMIT-CRASH-HANDLER
 \ re-raises it after the dump. An exit of 128 + n is no signal death.
 : KILLED-BY ( n ptr u8 n -- ) {: sig:n label:ptr labelu:n :}
-   GT-OUTCOME@ MATCH outcome
+   GT-OUTCOME@ MATCH PROCESS:ending
      exited OF drop label labelu GE-FAIL ENDOF
      signaled OF sig <> if label labelu GE-FAIL then ENDOF
      timeout OF label labelu GE-FAIL ENDOF

@@ -72,7 +72,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 2 cells TASK:+USER CMD-TASK drop
 : ENV-NAMES ( ptr n -- ptr n ) 44 cells + ;    \ a MAP indexing envp rows by name during PREPARE
 47 constant HEAD-CELLS
 
-PROC-PATHZ-CAP constant PATHZ-CAP
+PROCESS:PATHZ-CAP constant PATHZ-CAP
 HEAD-CELLS PATHZ-CAP 2 * 7 + 8 / + constant CTX-CELLS
 
 : PATHZ ( ptr n -- ptr u8 ) BYTE-VIEW HEAD-CELLS cells + ;
@@ -122,7 +122,7 @@ LINEAR: ERASE ( CMD:command -- ptr n )
    h UNSET-OFF VEC:CLEAR
    0 h CWD-LEN !
    1 h INHERIT !
-   PROC-NO-FD h CANCEL-FD !
+   PROCESS:NO-FD h CANCEL-FD !
    h CAPTURE-RESET ;
 
 : INIT-MEMBERS ( ptr n -- )
@@ -191,11 +191,11 @@ public
    CTX CLEAR-BUILD ;
 
 \ Lend a pipe's read end until the next run returns or throws. Another task
-\ writes or closes its writer; it never mutates a running command. PROC-NO-FD
+\ writes or closes its writer; it never mutates a running command. PROCESS:NO-FD
 \ disconnects. The owner must keep the read end open through run completion.
 \ A byte or a closed writer cancels the run: it kills the child's tree, reaps
 \ the child, closes its captures and throws E-PROC-CANCELLED. A completion
-\ already collected wins, and PROC-STOP is answered first. The descriptor is
+\ already collected wins, and PROCESS:STOP is answered first. The descriptor is
 \ never read or closed, so a byte left from one request cancels the next run:
 \ drain or replace the pipe before lending it again.
 : CANCEL-FD! ( CMD:command fd -- CMD:command ) {: fd:fd :}
@@ -271,7 +271,7 @@ public
 : CWD! ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
    CTX {: h:ptr :}
    a u CWD-CHECK
-   a u >LEN h CWDZ PATHZ-CAP >LEN PROC-ZCOPY drop
+   a u >LEN h CWDZ PATHZ-CAP >LEN PROCESS:ZCOPY drop
    u h CWD-LEN ! ;
 
 : IN! ( CMD:command ptr u8 n -- CMD:command ) {: a:ptr u:n :}
@@ -367,7 +367,7 @@ private
 \ with its last value, then the inherited ones, the NULL; both rebuilt every run.
 : PREPARE ( ptr n ptr u8 n -- )
    {: h:ptr path:ptr pathu:n :}
-   path pathu >LEN h PATHZ PATHZ-CAP >LEN PROC-ZCOPY {: z:ptr :}
+   path pathu >LEN h PATHZ PATHZ-CAP >LEN PROCESS:ZCOPY {: z:ptr :}
    h ARGV-VEC VEC:CLEAR
    z h ARGV-VEC VEC:PUSH drop
    h h ARG-OFF [: ARG-ADDR+ ;] VEC:EACH drop
@@ -401,9 +401,9 @@ private
 
 \ The capture pipes at the child's 0, 1 and 2.
 : STDIO ( PROCESS:request -- PROCESS:request )
-   0 >FD PROC-IN-R @ >FD PROCESS:FD
-   1 >FD PROC-OUT-W @ >FD PROCESS:FD
-   2 >FD PROC-ERR-W @ >FD PROCESS:FD ;
+   0 >FD PROCESS:IN-R @ >FD PROCESS:FD
+   1 >FD PROCESS:OUT-W @ >FD PROCESS:FD
+   2 >FD PROCESS:ERR-W @ >FD PROCESS:FD ;
 
 
 : PLACE ( PROCESS:request ptr n -- PROCESS:request )
@@ -424,11 +424,11 @@ private
 
 
 \ A refused request or spawn closes the capture descriptors before its code goes
-\ on (PROC-THROW-CAPTURE); a child becomes this task's capture child.
+\ on (PROCESS:THROW-CAPTURE); a child becomes this task's capture child.
 : SPAWN ( ptr n -- )
    0 >PID [: drop dup REQUEST PROCESS:SPAWN ;] catch {: rc:n :}
-   rc 0<> if drop drop rc PROC-THROW-CAPTURE then
-   nip PROC-CAPTURE-ADOPT-SPAWN ;
+   rc 0<> if drop drop rc PROCESS:THROW-CAPTURE then
+   nip PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 
 \ process.f's growing loop asks for room for `need` bytes and keeps the length
@@ -446,46 +446,46 @@ private
    size cap !
    fresh ;
 
-: OUT-ROOM ( n -- ptr u8 ) RUNNING @ {: h:ptr :} h OUT-BASE h OUT-CAP PROC-OUT-LEN @ ROOM ;
-: ERR-ROOM ( n -- ptr u8 ) RUNNING @ {: h:ptr :} h ERR-BASE h ERR-CAP PROC-ERR-LEN @ ROOM ;
+: OUT-ROOM ( n -- ptr u8 ) RUNNING @ {: h:ptr :} h OUT-BASE h OUT-CAP PROCESS:OUT-LEN @ ROOM ;
+: ERR-ROOM ( n -- ptr u8 ) RUNNING @ {: h:ptr :} h ERR-BASE h ERR-CAP PROCESS:ERR-LEN @ ROOM ;
 
-\ Decompose the outcome sum into exited/timed-out flags plus the code cell
+\ Decompose the ending sum into exited/timed-out flags plus the code cell
 \ (all one cell, lossless): exit codes >= 128 stay distinct from signal deaths.
-: STORE-OUTCOME ( outcome ptr n -- )
+: STORE-OUTCOME ( PROCESS:ending ptr n -- )
    {: h:ptr :}
-   MATCH outcome
+   MATCH PROCESS:ending
      exited OF h CODE ! 1 h EXITED ! 0 h TIMED-OUT ! ENDOF
      signaled OF h CODE ! 0 h EXITED ! 0 h TIMED-OUT ! ENDOF
      timeout OF 0 h CODE ! 0 h EXITED ! 1 h TIMED-OUT ! ENDOF
    ;MATCH ;
 
 \ The command disconnects at entry; release the capture's borrowed reference
-\ after its cleanup. A throw has no outcome variant: OUTCOME@ and RC@ throw its
+\ after its cleanup. A throw has no ending variant: OUTCOME@ and RC@ throw its
 \ code again until the next run or RESET.
 : RUN-DONE ( n ptr n -- )
    {: code:n h:ptr :}
-   PROC-NO-FD PROC-CANCEL-FD !
+   PROCESS:NO-FD PROCESS:CANCEL-FD !
    code h FAILED !
    code 0<> if code throw then ;
 
 : START-CANCEL ( fd -- )
-   FD>N PROC-CANCEL-FD !
-   PROC-STOP-ASK ;
+   FD>N PROCESS:CANCEL-FD !
+   PROCESS:STOP-ASK ;
 
 : CAPTURE ( ptr n fd ms -- ptr n fd ms )
    {: h:ptr cancel:fd timeout:ms :}
-   timeout PROC-STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    cancel START-CANCEL
    h SPAWN
    h IN-BUF BUF-BASE h IN-BUF BUF-LEN >LEN
-   [: OUT-ROOM ;] [: ERR-ROOM ;] PROC-RUN-STDIN-GROWING-BOTH-CAPTURE-OUTCOME-LOOP
+   [: OUT-ROOM ;] [: ERR-ROOM ;] PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
    h cancel timeout ;
 
-: OUTCOME-OF ( ptr n -- outcome ) {: h:ptr :}
+: OUTCOME-OF ( ptr n -- PROCESS:ending ) {: h:ptr :}
    h FAILED @ dup 0<> if throw then drop
-   h TIMED-OUT @ 0<> if OUTCOME:TIMEOUT exit then
-   h EXITED @ 0<> if h CODE @ OUTCOME:EXITED exit then
-   h CODE @ OUTCOME:SIGNALED ;
+   h TIMED-OUT @ 0<> if PROCESS-ENDING:timeout exit then
+   h EXITED @ 0<> if h CODE @ PROCESS-ENDING:exited exit then
+   h CODE @ PROCESS-ENDING:signaled ;
 
 \ A refused path, deadline or closed placed fd throws before CAPTURE-RESET
 \ forgets the last run, so a refused run keeps the previous outcome; from the
@@ -497,7 +497,7 @@ private
 : RUN-CAPTURE ( ptr n ptr u8 n ms -- )
    {: h:ptr path:ptr pathu:n timeout:ms :}
    h CANCEL-FD @ >FD {: cancel:fd :}
-   PROC-NO-FD h CANCEL-FD !
+   PROCESS:NO-FD h CANCEL-FD !
    path pathu timeout CHECK-RUN
    h CHECK-PLACED
    h path pathu PREPARE
@@ -505,25 +505,25 @@ private
    h RUNNING !
    h cancel timeout [: CAPTURE ;] catch {: code:n :} drop 2drop
    NULL-PTR RUNNING !
-   PROC-OUT-LEN @ h OUT-LEN !
-   PROC-ERR-LEN @ h ERR-LEN !
+   PROCESS:OUT-LEN @ h OUT-LEN !
+   PROCESS:ERR-LEN @ h ERR-LEN !
    code h RUN-DONE
-   PROC-CAPTURE-FINISH-OUTCOME h STORE-OUTCOME 2drop ;
+   PROCESS:CAPTURE-FINISH-ENDING h STORE-OUTCOME 2drop ;
 
 : RC>RESULT ( n -- result<n,n> ) {: rc:n :}
    rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
 public
 
-: OUTCOME@ ( CMD:command -- CMD:command outcome )
+: OUTCOME@ ( CMD:command -- CMD:command PROCESS:ending )
    CTX OUTCOME-OF ;
 
 \ Run the prepared command at path, feed it the stdin and capture both streams
-\ whole; a deadline-killed run answers OUTCOME:TIMEOUT. A spawn failure, a
+\ whole; a deadline-killed run answers PROCESS-ENDING:timeout. A spawn failure, a
 \ refused path, deadline or placed fd and cancellation throw their own codes; a
 \ path, deadline or closed placed fd refused before the run leaves the previous
 \ outcome in place.
-: RUN-OUTCOME ( CMD:command ptr u8 n ms -- CMD:command outcome )
+: RUN-OUTCOME ( CMD:command ptr u8 n ms -- CMD:command PROCESS:ending )
    {: path:ptr pathu:n timeout:ms :}
    CTX {: h:ptr :}
    h path pathu timeout RUN-CAPTURE
@@ -532,10 +532,10 @@ public
 \ The stored outcome's completion rc as a result<n,n>: ok = clean exit (0), err =
 \ the nonzero completion code (a nonzero exit code, or 128+signal). A run its
 \ deadline killed has no completion code: RC@ and RUN-RC throw E-PROC-TIMEOUT for
-\ it (PROC-OUTCOME>RC), and only a caller that acts on the deadline reads it as
+\ it (PROCESS:ENDING>RC), and only a caller that acts on the deadline reads it as
 \ data through OUTCOME@ or RUN-OUTCOME.
 : RC@ ( CMD:command -- CMD:command result<n,n> )
-   OUTCOME@ PROC-OUTCOME>RC RC>N RC>RESULT ;
+   OUTCOME@ PROCESS:ENDING>RC RC>N RC>RESULT ;
 
 : RUN-RC ( CMD:command ptr u8 n ms -- CMD:command result<n,n> )
    RUN-OUTCOME drop RC@ ;
@@ -551,10 +551,10 @@ public
 
 \ RUN-OUTCOME, then: a clean exit returns; any other completion writes ERR$ to
 \ this process's stderr and throws code, which must be nonzero; a deadline-killed
-\ run throws E-PROC-TIMEOUT (PROC-OUTCOME>RC).
+\ run throws E-PROC-TIMEOUT (PROCESS:ENDING>RC).
 : RUN ( CMD:command ptr u8 n ms n -- CMD:command )
    {: path:ptr pathu:n timeout:ms code:n :}
-   path pathu timeout RUN-OUTCOME PROC-OUTCOME>RC RC>N 0= if exit then
+   path pathu timeout RUN-OUTCOME PROCESS:ENDING>RC RC>N 0= if exit then
    ERR$ {: err:ptr erru:n :}
    FD:STDERR err erru FD:WRITE-FULL code throw ;
 

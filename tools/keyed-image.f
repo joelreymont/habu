@@ -178,13 +178,13 @@ private
    TMP$ ARGS-XT @ execute
    ENGINE$ >LEN PROGRAM$ >LEN
    OUT IO-CAP >LEN ERR IO-CAP >LEN CHILD-TIMEOUT-MS @ >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-OUTCOME>DEADLINE-RC RC>N
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROCESS:ENDING>DEADLINE-RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N CAPTURE-OUT-U !
    erru LEN>N CAPTURE-ERR-U !
    \ The caller owns timeout reporting. Keep the capture off stdout so a
    \ structured CLI error can be the only output, then EMIT closes the work.
-   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   rc PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    QUIET @ 0= rc 0<> or if OUT outu LEN>N type then
    2 ERR erru LEN>N write drop
    rc 0 <> if s" image build failed" FAILED$ rc die then ;

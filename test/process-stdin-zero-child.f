@@ -11,7 +11,7 @@ require src/lib/process.f
 package PROC-STDIN-ZERO-CHILD
 
 : CAT ( -- n )
-   s" /bin/cat" >LEN PROC-IN-R @ >FD -1 >FD -1 >FD PROC-RUN-IO-RC
+   s" /bin/cat" >LEN PROCESS:IN-R @ >FD -1 >FD -1 >FD PROCESS:RUN-IO-RC
    MATCH result
      ok  OF ENDOF
      err OF ENDOF
@@ -21,11 +21,11 @@ public
 
 : RUN ( -- )
    0 close
-   PROC-CAPTURE-RESET
-   PROC-SETUP-STDIN-FDS
-   PROC-IN-R @ 0 <> if s" stdin pipe is not on fd 0" 3 die then
-   PROC-IN-W @ s" stdin-zero" write 10 <> if s" short write to the stdin pipe" 4 die then
-   PROC-IN-W PROC-CLOSE-CELL
+   PROCESS:CAPTURE-RESET
+   PROCESS:SETUP-STDIN-FDS
+   PROCESS:IN-R @ 0 <> if s" stdin pipe is not on fd 0" 3 die then
+   PROCESS:IN-W @ s" stdin-zero" write 10 <> if s" short write to the stdin pipe" 4 die then
+   PROCESS:IN-W PROCESS:CLOSE-CELL
    CAT {: rc:n :}
    rc 0 <> if s" cat failed" rc die then ;
 

@@ -12,7 +12,7 @@ require src/lib/fs.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 package STDLIB-STANDALONE-LOAD
@@ -81,7 +81,7 @@ variable PATHS-USED
    ERR CAP >LEN  TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
    p u T-LABEL
-   p u OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED= ;
+   p u OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED= ;
 
 : LOAD-ALL ( -- )
    0 begin dup PATHS-N @ < while

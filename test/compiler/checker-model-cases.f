@@ -5,7 +5,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require test/compiler/checker-model-schema.f
 
 package CHECKER-MODEL-CASES

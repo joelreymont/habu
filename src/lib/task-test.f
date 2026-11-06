@@ -12,7 +12,7 @@ require src/lib/time-cpu.f            \ TIME:THREAD-CPU-NS, the clock the sleepi
 require src/habu/task-abi.f       \ the baked TCB size this suite pins
 require src/habu/code-bytes.f     \ CODE-BYTES:AT: the byte view the entry is read through
 require src/lib/adt/result.f          \ the join's answer is MATCHed here
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/wait.f
 
 package TASK-TEST
@@ -499,7 +499,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    ENGINE-CANDIDATE:PATH$ >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   src srcu TASK-OUT outu LEN>N TASK-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
 : TASK-TEST-MAIN-COMPILES ( -- )

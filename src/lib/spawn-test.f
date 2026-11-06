@@ -90,7 +90,7 @@ variable SCRIPT-LEN
 
 : OUT$ ( -- ptr u8 n ) 0 OUT OUT-LEN @ ;
 
-: WAIT ( pid -- n ) PROC-WAIT-STATUS PROC-STATUS>RC RC>N ;
+: WAIT ( pid -- n ) PROCESS:WAIT-STATUS PROCESS:STATUS>RC RC>N ;
 
 
 : NAME-LEN ( ptr u8 n -- n )
@@ -163,8 +163,8 @@ variable SCRIPT-LEN
 \ placement.
 : TEST-CROSSING ( -- )
    s" a crossing map: child fd a is parent fd b and child fd b is parent fd a" T-LABEL
-   PIPE-PAIR {: r1:fd w1:fd :}
-   PIPE-PAIR {: r2:fd w2:fd :}
+   FD:PIPE-PAIR {: r1:fd w1:fd :}
+   FD:PIPE-PAIR {: r2:fd w2:fd :}
    3 CLOSED-FD {: a :}
    w1 FD>N a dup2 drop
    w1 FD>N close
@@ -192,7 +192,7 @@ variable SCRIPT-LEN
 \ opened.
 : TEST-GAP ( -- )
    s" a map grown past its end leaves the gap closed" T-LABEL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    3 CLOSED-FD {: d :}
    w FD>N d dup2 drop
    s" exec 2>/dev/null; echo x >/dev/fd/#; echo y >/dev/fd/@ || exit 7" SCRIPT!
@@ -221,7 +221,7 @@ variable SCRIPT-LEN
 \ 4
 : TEST-CWD ( -- )
    s" CWD starts the child in the directory" T-LABEL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    s" /bin/sh" PROCESS:NEW
    s" pwd" SH
    s" /" PROCESS:CWD
@@ -236,7 +236,7 @@ variable SCRIPT-LEN
 \ 5: the arguments reach the child in the order ARG gave them, after the path.
 : TEST-ARG-ORDER ( -- )
    s" ARG appends argv[1] onward in order" T-LABEL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    s" /bin/echo" PROCESS:NEW
    s" a" PROCESS:ARG
    s" b" PROCESS:ARG
@@ -252,7 +252,7 @@ variable SCRIPT-LEN
 \ 6: the value bytes are rewritten before the spawn; the request keeps a copy.
 : TEST-HERMETIC ( -- )
    s" HERMETIC gives the child only the request's rows, copied" T-LABEL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    s" one" SCRIPT!
    s" /usr/bin/env" PROCESS:NEW
    PROCESS:HERMETIC
@@ -271,7 +271,7 @@ variable SCRIPT-LEN
    s" a request inherits this process's environment" T-LABEL
    PARENT-ROW {: row :}
    row 0 >= dup TTRUE 0= if exit then
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    s" /usr/bin/printenv" PROCESS:NEW
    row PARENT-NAME$ PROCESS:ARG
    1 >FD w PROCESS:FD
@@ -289,7 +289,7 @@ variable SCRIPT-LEN
    s" an ENV row replaces the inherited row of its name" T-LABEL
    PARENT-ROW {: row :}
    row 0 >= dup TTRUE 0= if exit then
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    s" /usr/bin/env" PROCESS:NEW
    row PARENT-NAME$ s" over" PROCESS:ENV
    1 >FD w PROCESS:FD
@@ -316,7 +316,7 @@ variable SCRIPT-LEN
 \ grows and copies its entries more than once.
 : TEST-ARGV-CHUNKS ( -- )
    s" argv rows past one chunk reach the child whole" T-LABEL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    s" /bin/sh" PROCESS:NEW
    ARGV-CHUNKS
    1 >FD w PROCESS:FD
@@ -379,7 +379,7 @@ variable DEAD-FD
 \ 12: this process's fd 1 is closed for the spawn and restored after it.
 : TEST-CLOSED-STDIO ( -- )
    s" a default stdio slot whose parent fd is closed starts closed" T-LABEL
-   1 F-DUPFD-CLOEXEC 10 fcntl {: saved :}
+   1 FD:F-DUPFD-CLOEXEC 10 fcntl {: saved :}
    saved 0 >= TTRUE
    1 close
    0 [: drop CLOSED-STDOUT-CHILD ;] catch {: rc :}

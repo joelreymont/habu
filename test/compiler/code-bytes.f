@@ -7,7 +7,7 @@
 \ the same live `rbase`, `dbase@` and `cp@` the boundary reads.
 
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/habu/boot-cells.f
 require src/habu/code-bytes.f
@@ -56,7 +56,7 @@ private
    s" : CB-OUT-OF-REGION ( -- ) 12 4 CODE-BYTES:AT drop drop ; CB-OUT-OF-REGION"
    {: src:ptr srcu:n :}
    src srcu OUT CAP >LEN ERR CAP >LEN 1000 >MS SUBJECT:RUN {: outu:len erru:len oc :}
-   src srcu OUT outu LEN>N ERR erru LEN>N oc 74 T-OUTCOME-EXITED=
+   src srcu OUT outu LEN>N ERR erru LEN>N oc 74 T-ENDING-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N S\" hb: span outside the code region\n" T$= ;
 

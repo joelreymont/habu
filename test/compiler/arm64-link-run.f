@@ -72,7 +72,7 @@ create PROG-BUF PATH-CAP allot
 \ shows what it printed on both streams.
 : RUN-PROG ( CMD:command ptr u8 n ptr u8 n n -- CMD:command )
    {: file:ptr file-n:n out:ptr out-n:n want:n :}
-   file file-n PROG$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+   file file-n PROG$ 60000 >MS CMD:RUN-OUTCOME PROCESS:ENDING>RC RC>N {: rc:n :}
    CMD:OUT$ out out-n STR=  rc want =  and 0= if
       s" arm64-link-run: " type file file-n type s"  exited " type rc .
       s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr

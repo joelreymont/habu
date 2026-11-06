@@ -268,7 +268,7 @@ create ERR IO-CAP allot
 : OVERFLOW ( -- )
    s" an overflow inside a closed text exits STACK-BOUNDS" T-LABEL
    OVERFLOW$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
+   PROCESS:ENDING>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
    ERR erru S\" hb: stack bounds exceeded (data)\n" T$= ;
@@ -281,7 +281,7 @@ create ERR IO-CAP allot
 : FLOOR-JUMP ( -- )
    s" a jump under a closed text's floor exits STACK-BOUNDS" T-LABEL
    FLOOR-JUMP$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
+   PROCESS:ENDING>RC RC>N ENGINE-ERROR:STACK-BOUNDS T=
    nip LEN>N {: erru:n :}
    s" and names the data stack" T-LABEL
    ERR erru s" hb: stack bounds exceeded (data)" CONTAINS? TTRUE ;
@@ -294,7 +294,7 @@ create ERR IO-CAP allot
 : TOP-LEVEL ( -- )
    s" a word reaching below the base outside a closed text throws 70" T-LABEL
    TOP-LEVEL$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N 70 T=
+   PROCESS:ENDING>RC RC>N 70 T=
    nip LEN>N {: erru:n :}
    s" and names the token the interpreter was running" T-LABEL
    ERR erru s" hb: interpret stack underdepth: execute" CONTAINS? TTRUE
@@ -309,7 +309,7 @@ create ERR IO-CAP allot
 : UNFINISHED-LINE ( -- )
    s" an uncaught unfinished text exits 74" T-LABEL
    UNFINISHED-LINE$ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N UNCLOSED T=
+   PROCESS:ENDING>RC RC>N UNCLOSED T=
    nip LEN>N {: erru:n :}
    s" and names the definition and where the text ran" T-LABEL
    ERR erru s" hb: source ended inside definition: NATIVE-EVAL-F at " CONTAINS?
@@ -320,7 +320,7 @@ $4F constant TASK-THREAD                \ habu1.f B-TASK-GUARD's exit
 : IN-TASK ( -- )
    s" evaluation in a task exits before it reads the text" T-LABEL
    s" NATIVE-EVAL-TEST:EVAL-IN-TASK" OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N TASK-THREAD T=
+   PROCESS:ENDING>RC RC>N TASK-THREAD T=
    s" and nothing is printed" T-LABEL
    LEN>N 0 T=  LEN>N 0 T= ;
 
@@ -338,7 +338,7 @@ variable ERR-U
 
 : TEXT-RC ( -- n )
    TEXT TEXT-U BUF-LEN@ OUT IO-CAP >LEN ERR IO-CAP >LEN 10000 >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N {: rc:n :}
+   PROCESS:ENDING>RC RC>N {: rc:n :}
    LEN>N ERR-U !  LEN>N OUT-U !  rc ;
 
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;

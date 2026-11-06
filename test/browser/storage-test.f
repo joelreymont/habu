@@ -50,7 +50,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 
 : SPAWN ( ptr u8 len -- n )
    OUT CAP >LEN ERR CAP >LEN DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !
    rc 0<> if ERR erru LEN>N type cr then

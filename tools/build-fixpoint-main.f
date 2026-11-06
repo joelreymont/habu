@@ -1,7 +1,7 @@
 \ build-fixpoint-main.f - CLI entrypoint for tools/build-fixpoint.f.
 \ tools/bootstrap.sh, tools/seed.f and tools/ddc-verify.f load the whole chain in
 \ one --load list, so the require is a no-op there; tools/build-fixpoint-refresh.f
-\ is the self-contained entry. BUILD-FIXPOINT:BF-CLI exits 124 (PROC-TIMEOUT-RC)
+\ is the self-contained entry. BUILD-FIXPOINT:BF-CLI exits 124 (PROCESS:TIMEOUT-RC)
 \ for an expired deadline, 74 (BF-BUILD-RC) for any other escaped throw, and 64 for
 \ a refused command line.
 

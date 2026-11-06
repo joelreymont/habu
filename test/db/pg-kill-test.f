@@ -50,7 +50,7 @@ TYPED-VARIABLE REPORTED bool         \ the whole line is in
 TYPED-VARIABLE FIFO-DONE bool        \ the read end has reported end of file
 false REPORTED !
 true FIFO-DONE !
-PROC-NO-FD FIFO-RD !
+PROCESS:NO-FD FIFO-RD !
 
 : SOCKETS$ ( -- ptr u8 n )  LINE LINE-U @ ;
 
@@ -75,8 +75,8 @@ PROC-NO-FD FIFO-RD !
 \ file, 0 when ms ran out first, a negative errno when the poll failed.
 : READY-WITHIN ( n n -- n )
    {: fd:n ms:n :}
-   fd >FD POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
+   fd >FD FD:POLLIN PROCESS:PFD!
+   1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART ;
 
 \ One line into buf, a byte at a time up to its newline, before the deadline.
 \ End of file first means the case died before it reported: that, a line that
@@ -87,7 +87,7 @@ PROC-NO-FD FIFO-RD !
    0 count !
    begin
       count @ PATH-CAP >= if false exit then
-      FIFO-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      FIFO-RD @ deadline PROCESS:LEFT-MS MS>N READY-WITHIN {: ready:n :}
       ready 0= if s" pg-kill-test REPORT-READ" TEST-WAIT:EXPIRED then
       ready 0 < if false exit then
       FIFO-RD @ buf count @ + 1 read 1 <> if false exit then
@@ -97,7 +97,7 @@ PROC-NO-FD FIFO-RD !
 
 \ A report the case could not finish answers false and leaves REPORTED false.
 : REPORT-READ? ( -- bool )
-   READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    LINE LINE-U deadline LINE-READ? 0= if false exit then
    SHM SHM-U deadline LINE-READ? 0= if false exit then
    true REPORTED !
@@ -231,7 +231,7 @@ PROC-NO-FD FIFO-RD !
 : CASE-END ( -- )
    [: [: GT-POOL-KILL-ALL ;]
       [: FIFO-DONE @ 0= if SWEEP then ;] finally ;]
-   [: FIFO-RD PROC-CLOSE-CELL ;] finally ;
+   [: FIFO-RD PROCESS:CLOSE-CELL ;] finally ;
 
 \ The pool is reset before the body: GT-POOL-KILL-ALL reads the slot table the
 \ reset fills in.

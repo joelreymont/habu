@@ -1,8 +1,8 @@
-\ outcome.f - checked assertions over the process outcome sum (src/lib/process.f).
+\ ending.f - checked assertions over the process ending enum (src/lib/process.f).
 \ One MATCH per assert, so a child that completed by another variant fails under
 \ that variant's name. A deadline is no verdict on the child: on an expired one
 \ an exit or signal assert prints the program and its capture under the case
-\ label and throws E-PROC-TIMEOUT; T-OUTCOME-TIMEOUT expects the deadline.
+\ label and throws E-PROC-TIMEOUT; T-ENDING-TIMEOUT expects the deadline.
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 
 require src/lib/error.f
@@ -17,7 +17,7 @@ require src/lib/test/subject.f
 
 \ The failed case for a child that completed by another variant than the one
 \ asserted, as `expected exit got signal 9`.
-: T-OUTCOME-MISS ( n ptr u8 n ptr u8 n -- )
+: T-ENDING-MISS ( n ptr u8 n ptr u8 n -- )
    {: code:n want:ptr wantu:n got:ptr gotu:n :}
    T-NEXT
    T-FAIL
@@ -30,12 +30,12 @@ require src/lib/test/subject.f
    code want T=
    code want <> if src srcu out outu err erru SUBJECT:SHOW then ;
 
-: T-OUTCOME-EXITED= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
+: T-ENDING-EXITED= ( ptr u8 n ptr u8 n ptr u8 n PROCESS:ending n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF want src srcu out outu err erru T-CODE-MISS ENDOF
      signaled OF
-       s" exit" s" signal" T-OUTCOME-MISS src srcu out outu err erru SUBJECT:SHOW
+       s" exit" s" signal" T-ENDING-MISS src srcu out outu err erru SUBJECT:SHOW
      ENDOF
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
@@ -44,21 +44,21 @@ require src/lib/test/subject.f
    {: exe:ptr xu:n deadline:ms status:n :}
    exe xu deadline CMD:RUN-OUTCOME {: o :}
    CMD:OUT$ {: out:ptr ou:n :}  CMD:ERR$ {: err:ptr eu:n :}
-   exe xu out ou err eu o status T-OUTCOME-EXITED= ;
+   exe xu out ou err eu o status T-ENDING-EXITED= ;
 
-: T-OUTCOME-SIGNALED= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
+: T-ENDING-SIGNALED= ( ptr u8 n ptr u8 n ptr u8 n PROCESS:ending n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n oc want:n :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF
-       s" signal" s" exit" T-OUTCOME-MISS src srcu out outu err erru SUBJECT:SHOW
+       s" signal" s" exit" T-ENDING-MISS src srcu out outu err erru SUBJECT:SHOW
      ENDOF
      signaled OF want src srcu out outu err erru T-CODE-MISS ENDOF
      timeout OF src srcu out outu err erru T-TIMED-OUT ENDOF
    ;MATCH ;
 
-: T-OUTCOME-TIMEOUT ( outcome -- )   \ the deadline passed before a terminal status
-   MATCH outcome
-     exited OF s" timeout" s" exit" T-OUTCOME-MISS ENDOF
-     signaled OF s" timeout" s" signal" T-OUTCOME-MISS ENDOF
+: T-ENDING-TIMEOUT ( PROCESS:ending -- )   \ the deadline passed before a terminal status
+   MATCH PROCESS:ending
+     exited OF s" timeout" s" exit" T-ENDING-MISS ENDOF
+     signaled OF s" timeout" s" signal" T-ENDING-MISS ENDOF
      timeout OF 0 0= TTRUE ENDOF
    ;MATCH ;

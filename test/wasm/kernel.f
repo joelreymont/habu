@@ -38,7 +38,7 @@ CAP BUFFER: ERR-K
    SB-RESET  a au SB-APPEND  s"  " SB-APPEND  w wu SB-APPEND
    s"  " SB-APPEND  t tu SB-APPEND
    SB$  o CAP >LEN  e CAP >LEN  DEADLINE-MS >MS  SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N {: ou:len eu:len rc:n :}
+   PROCESS:ENDING>RC RC>N {: ou:len eu:len rc:n :}
    ou LEN>N  eu LEN>N  rc ;
 
 \ The engine name on args, its results consumed by tail, against the word the

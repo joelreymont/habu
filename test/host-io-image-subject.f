@@ -92,13 +92,13 @@ TASK:MIN-STACK TASK:TASK SERIAL-WORKER
 \ of the exchange (docs/gate.md "How a suite runs, and what that demands of its
 \ files"). A task asserts nothing: it ends on E-PROC-TIMEOUT, which the task
 \ runtime records, and RUN reads it once both have ended. A throw code cannot
-\ cross the process boundary, so the child exits PROC-TIMEOUT-RC.
+\ cross the process boundary, so the child exits PROCESS:TIMEOUT-RC.
 : DEADLINE ( -- )
    UDP-WORKER TASK:THROW@ E-PROC-TIMEOUT = if
-      s" host-io-image-subject UDP-RUN: a deadline expired" PROC-TIMEOUT-RC die
+      s" host-io-image-subject UDP-RUN: a deadline expired" PROCESS:TIMEOUT-RC die
    then
    SERIAL-WORKER TASK:THROW@ E-PROC-TIMEOUT = if
-      s" host-io-image-subject SERIAL-RUN: a deadline expired" PROC-TIMEOUT-RC die
+      s" host-io-image-subject SERIAL-RUN: a deadline expired" PROCESS:TIMEOUT-RC die
    then ;
 
 public

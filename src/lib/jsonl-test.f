@@ -8,7 +8,7 @@ require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
 require src/lib/json.f
 require src/lib/jsonl.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 package JSONL-TEST
@@ -296,7 +296,7 @@ private
    s" ' JSONL-TEST:SABOTAGE catch $53 emit" {: src:ptr srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-OUTCOME-EXITED=
+   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
    CAP-ERR erru LEN>N s\" jsonl: close failed\n" T$= ;
 

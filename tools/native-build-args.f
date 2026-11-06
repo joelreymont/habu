@@ -1,7 +1,7 @@
 \ The native build's command line: an output path, an optional `whitebox`, an
 \ optional `--target <target>`. tools/native-build.f checks it before the build
 \ closure loads; NATIVE-BUILD:RUN checks it again for its other callers.
-\ Exit status (NATIVE-BUILD:EXIT-RC): 0 promoted; 124 (PROC-TIMEOUT-RC) for an
+\ Exit status (NATIVE-BUILD:EXIT-RC): 0 promoted; 124 (PROCESS:TIMEOUT-RC) for an
 \ expired deadline; BUILD-RC for a refused command line or a caught failure
 \ (`native-build: uncaught throw code N`); 76 for a broken internal invariant.
 

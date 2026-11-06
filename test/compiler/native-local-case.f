@@ -6,7 +6,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 package LOCAL-CASE-TEST
@@ -23,9 +23,9 @@ variable EXITED
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-: STORE ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: STORE ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N ERR-U !  outu LEN>N OUT-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
       exited OF RC ! true EXITED ! ENDOF
       signaled OF RC ! false EXITED ! ENDOF
       timeout OF src u OUT$ ERR$ T-TIMED-OUT ENDOF

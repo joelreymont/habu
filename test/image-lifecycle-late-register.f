@@ -2,7 +2,7 @@
 \ at the stripped link, and no image is written. IMAGE-LIFECYCLE:PREPARE runs
 \ the one-shot hooks and releases their table before it runs the persistent ones.
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f
@@ -56,7 +56,7 @@ variable SUBJECT-U
    SB$ ;
 
 \ The saved AOT builder links the program into $TMPDIR/hb-aot-got.
-: LINK ( -- len len outcome )
+: LINK ( -- len len PROCESS:ending )
    AOT-BUILDER-ENGINE:PATH$ {: maker:ptr makeru:n :}
    SUBJECT$ PROGRAM$ FS:WRITE-ALL
    PROC-ARGV-ENV-RESET
@@ -72,7 +72,7 @@ variable SUBJECT-U
 : CHECK ( -- )
    s" a one-shot hook a persistent hook registers stops the link" T-LABEL
    LINK {: outu:len erru:len oc :}
-   PROGRAM$ OUT outu LEN>N ERR erru LEN>N oc UNCAUGHT-RC T-OUTCOME-EXITED=
+   PROGRAM$ OUT outu LEN>N ERR erru LEN>N oc UNCAUGHT-RC T-ENDING-EXITED=
    s" the refusal names the late registration" T-LABEL
    ERR erru LEN>N NEEDLE$ CONTAINS?
    dup 0= if OUT outu LEN>N type ERR erru LEN>N type then

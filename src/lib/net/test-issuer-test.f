@@ -607,8 +607,8 @@ $A constant LF
 \ and its exit when stdin ends.
 : TOOL ( -- )
    s" the tool names its issuer, serves it and exits 0 when stdin ends" T-LABEL
-   PIPE-PAIR {: in-r:fd in-w:fd :}
-   PIPE-PAIR {: out-r:fd out-w:fd :}
+   FD:PIPE-PAIR {: in-r:fd in-w:fd :}
+   FD:PIPE-PAIR {: out-r:fd out-w:fd :}
    ENGINE-CANDIDATE:PATH$ PROCESS:NEW
    s" --load" PROCESS:ARG
    s" tools/test-issuer.f" PROCESS:ARG
@@ -621,7 +621,7 @@ $A constant LF
    PROCESS:SPAWN {: pid :}
    in-r FD>N close
    out-w FD>N close
-   out-r PROC-NONBLOCK!
+   out-r PROCESS:NONBLOCK!
    out-r FD>N CHILD-OUT !
    0 LINE-U !
    [: LINE? ;] DEADLINE s" test-issuer-test TOOL" TEST-WAIT:POLL
@@ -630,7 +630,7 @@ $A constant LF
    SB$ OPEN-AT FINISH 200 T=
    BODY$ s" issuer" MEMBER$ url uu T$=
    in-w FD>N close
-   pid WAIT-MS >MS PROC-WAIT-BOUNDED PROC-OUTCOME>RC RC>N 0 T=
+   pid WAIT-MS >MS PROCESS:WAIT-BOUNDED PROCESS:ENDING>RC RC>N 0 T=
    out-r FD>N close ;
 
 

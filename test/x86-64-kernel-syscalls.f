@@ -83,7 +83,7 @@ $400001 constant PID-CEIL               \ past the kernel's pid_max ceiling
 1 constant F-GETFD
 2 constant F-SETFD
 1 constant FD-CLOEXEC
-73 constant F-SETNOSIGPIPE              \ src/lib/process.f: ignore SIGPIPE
+73 constant F-SETNOSIGPIPE              \ src/lib/fd.f: ignore SIGPIPE
 1 32 lshift constant POLLIN-ASKED       \ a pollfd's events cell: POLLIN
 1 48 lshift constant POLLIN-SEEN        \ its revents: POLLIN
 1100 constant POLL-MS

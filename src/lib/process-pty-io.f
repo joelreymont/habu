@@ -53,11 +53,11 @@ variable IO-GO-R                                 \ child-side release gate
 \ Best-effort reap for both the abort path and teardown: neither may throw,
 \ because a throw would strand the linear teardown token and leak the slot. The
 \ pid is killed with every process it started, which would otherwise hold its
-\ pipe or terminal open under init; src/lib/process.f PROC-KILL-TREE reports a
+\ pipe or terminal open under init; src/lib/process.f PROCESS:KILL-TREE reports a
 \ walk that throws rather than throwing it. The wait status is discarded.
 : IO-KILL-REAP ( pid -- ) {: p:pid :}
    p PID>N 0 <= if exit then
-   p PROC-KILL-TREE
+   p PROCESS:KILL-TREE
    p PID>N wait-status drop ;
 
 \ kill-errno reports 0 (delivered), -ESRCH (gone), or -EPERM (exists, denied). A
@@ -72,14 +72,14 @@ variable IO-GO-R                                 \ child-side release gate
 \ True only when the descriptor reports a clean readable exit; a POLLERR/POLLNVAL
 \ revent means the descriptor is broken and must not masquerade as an exit.
 : IO-WATCH-EVENT? ( n -- bool ) {: ev:n :}
-   ev POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
-   ev POLLIN and 0 <> ;
+   ev FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   ev FD:POLLIN and 0 <> ;
 
 \ What the master had to give once the loop answered: the bytes read, or -1 for
 \ a hang-up or an end of file. POLLNVAL is a broken descriptor, not an exit.
 : IO-READ-READY ( n fd ptr u8 n -- n ) {: ev:n m:fd buf:ptr cap:n :}
-   ev POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
-   ev POLLIN and 0= if -1 exit then
+   ev FD:POLLNVAL and 0 <> if E-PROC-OUTPUT throw then
+   ev FD:POLLIN and 0= if -1 exit then
    m FD>N buf cap read {: got:n :}
    got 0 > if got exit then
    -1 ;
@@ -109,7 +109,7 @@ variable IO-GO-R                                 \ child-side release gate
 \ up. An owner with a standard descriptor closed hands the child an end on
 \ that number, where wiring 0-2 would overwrite it.
 : IO-LIFT ( fd -- fd ) {: f:fd :}
-   f FD>N F-DUPFD-CLOEXEC 3 fcntl {: n:n :}
+   f FD>N FD:F-DUPFD-CLOEXEC 3 fcntl {: n:n :}
    n 0 < if s" " IO-EXEC-FAIL die then
    n >FD ;
 
@@ -144,7 +144,7 @@ variable IO-GO-R                                 \ child-side release gate
    -1 IO-SOUT-W !  -1 IO-SIN-R !  -1 IO-GO-R ! ;
 
 : IO-STORE-PATH ( ptr u8 len -- ) {: path:ptr pathu:len :}
-   path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROC-ZCOPY drop
+   path pathu IO-PATH-BUF IO-PATH-CAP >LEN PROCESS:ZCOPY drop
    pathu LEN>N IO-PATH-LEN ! ;
 
 : IO-MK-STDIO ( -- )
@@ -158,10 +158,10 @@ variable IO-GO-R                                 \ child-side release gate
 \ terminal would adopt it. All three ends close on exec, marked under FD-LOCK.
 : IO-MK-TTY-HELD ( -- )
    IO-PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N >FD IO-MASTER !
-   IO-MASTER @ >FD FD-CLOEXEC!
+   IO-MASTER @ >FD FD:FD-CLOEXEC!
    IO-PTY-NAME PTY:PTY-OPEN-FLAGS 0 open IO-OPEN-CK >FD IO-SIN-R !
-   IO-SIN-R @ >FD FD-CLOEXEC!
-   IO-MASTER @ >FD FD>N F-DUPFD-CLOEXEC 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
+   IO-SIN-R @ >FD FD:FD-CLOEXEC!
+   IO-MASTER @ >FD FD>N FD:F-DUPFD-CLOEXEC 3 fcntl IO-OPEN-CK >FD IO-DONE ! ;
 
 : IO-MK-TTY ( -- )
    [: IO-MK-TTY-HELD ;] FD-LOCK:WITH ;
@@ -325,7 +325,7 @@ public
 \ POLL spells the same way; `cancelled` cannot arrive, for the reason
 \ IO-POLL-READY? gives. AIO:START comes first: a wait with no loop running is
 \ E-AIO-STATE. It answers ONE read, never a whole reply: a caller waiting for
-\ text loops to its marker under one absolute deadline (PROC-DEADLINE-AT).
+\ text loops to its marker under one absolute deadline (PROCESS:DEADLINE-AT).
 : AWAIT-BYTES ( process-pty-handle ptr u8 n n -- process-pty-handle n ) {: buf:ptr cap:n ms:n :}
    cap 0 <= if E-PROC-OUTPUT throw then
    HANDLE-MASTER@ {: m:fd :}

@@ -7,7 +7,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/runner.f
 require src/lib/memory.f
 require src/lib/span.f
@@ -107,10 +107,10 @@ variable RC
 
 \ The outcome of a child that ran src: its exit code, or -1 for a signal; a
 \ deadline prints src and the capture and throws E-PROC-TIMEOUT (T-TIMED-OUT).
-: STORE! ( ptr u8 n len len outcome -- )
+: STORE! ( ptr u8 n len len PROCESS:ending -- )
    {: src:ptr srcu:n outu:len erru:len oc :}
    erru LEN>N ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF RC ! ENDOF
      signaled OF drop -1 RC ! ENDOF
      timeout OF src srcu OUT outu LEN>N ERR$ T-TIMED-OUT ENDOF

@@ -275,7 +275,7 @@ variable GPT-GK-SENTINEL-U
 \ Wall-clock sleep by polling no fds until the deadline; poll rc (timeout or
 \ EINTR) is intentionally ignored because both just re-loop toward the deadline.
 : GPT-SLEEP-MS ( n -- ) {: ms:n :}
-   mono-ns ms PROC-NS-PER-MS * + {: deadline:n :}
+   mono-ns ms PROCESS:NS-PER-MS * + {: deadline:n :}
    begin mono-ns deadline < while
       GPT-GK-SLEEP-PFD 0 50 poll drop
    repeat ;
@@ -292,8 +292,8 @@ variable GPT-GK-SENTINEL-U
 
 \ True once every holder of the pipe's write end has exited.
 : GPT-GK-GONE? ( fd -- bool ) {: rd:fd :}
-   rd POLLIN PROC-PFD!
-   1 GPT-GK-GONE-MS GPT-GK-GONE-MS >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+   rd FD:POLLIN PROCESS:PFD!
+   1 GPT-GK-GONE-MS GPT-GK-GONE-MS >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART 0 > ;
 
 : GPT-GK-SENTINEL! ( -- )
    GT-ROOT s" group-kill-sentinel" GPT-GK-SENTINEL FS:JOIN-PATH GPT-GK-SENTINEL-U ! ;
@@ -304,7 +304,7 @@ variable GPT-GK-SENTINEL-U
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    GT-POOL-RED-RESET
-   PIPE-PAIR {: rd:fd wr:fd :}
+   FD:PIPE-PAIR {: rd:fd wr:fd :}
    s" group-kill worker" [: GPT-GK-CHILD ;] GT-POOL-START-FORK
    wr FD>N close
    GT-POOL-DRAIN-SOFT
@@ -331,7 +331,7 @@ GT-HEARTBEAT-MS 5 * 2 / constant GPT-CF-END-MS       \ between the second WAIT l
 GPT-CF-END-MS GPT-TIMEOUT-MS + constant GPT-CF-TIMEOUT-MS
 
 : GPT-CF-SPIN ( -- )
-   mono-ns GPT-CF-SPIN-MS PROC-NS-PER-MS * + {: deadline:n :}
+   mono-ns GPT-CF-SPIN-MS PROCESS:NS-PER-MS * + {: deadline:n :}
    begin mono-ns deadline < while repeat ;
 
 : GPT-CF-B ( -- )
@@ -376,7 +376,7 @@ GPT-CF-END-MS GPT-TIMEOUT-MS + constant GPT-CF-TIMEOUT-MS
 \ the reaper was a direct child. If the reaper regresses to a worker child, the
 \ worker blocks and its WAIT lines show a CPU delta of zero.
 : GPT-WAIT-ANY ( -- )
-   -1 >PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
+   -1 >PID PROCESS:WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
 
 : GPT-WAIT-NEG-WORKER ( -- )
    T-RESET
@@ -395,11 +395,11 @@ GPT-CF-END-MS GPT-TIMEOUT-MS + constant GPT-CF-TIMEOUT-MS
 \ A child that dies by a SIGKILL the pool did NOT send: it signals its own
 \ process group (an OOM/AMFI kill is the real-world analog). It reaps as
 \ signaled(9) - rc 137 when flattened - and is a plain FAIL (kind=signal).
-\ waitpid's WIFSIGNALED vs WIFEXITED (PROC-STATUS>OUTCOME) keeps a
+\ waitpid's WIFSIGNALED vs WIFEXITED (PROCESS:STATUS>ENDING) keeps a
 \ self-exit(137) distinct: that would read exited(137)/kind=exit.
 : GPT-EXTERNAL-KILL-WORKER ( -- )
    s" gate-pool external-kill worker" type cr
-   0 >PID SIGKILL PROC-KILL-RAW drop ;
+   0 >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop ;
 
 : GPT-EXTERNAL-KILL-CASE ( -- )
    s" gate-pool-external-kill" GT-START
@@ -411,7 +411,7 @@ GPT-CF-END-MS GPT-TIMEOUT-MS + constant GPT-CF-TIMEOUT-MS
    s" external-kill: pool-unsent SIGKILL is a plain signal FAIL" T-LABEL
    GT-POOL-RED# 1 T=
    0 GT-POOL-RED-EXITED-PTR @ TFALSE
-   0 GT-POOL-RED-CODE-PTR @ SIGKILL T=
+   0 GT-POOL-RED-CODE-PTR @ PROCESS:SIGKILL T=
    GT-CLEANUP ;
 
 \ Fork-inherited cleanup registrations. src/lib/fs-mutate.f's cleanup table records
@@ -617,9 +617,9 @@ variable GPT-RF-VIC-PID
 \ group, and its intermediate and reaper stay in it. The sibling's reaper
 \ leaves on its own once its worker exits, so this waits a bounded time.
 : GPT-RF-GONE? ( n -- bool ) {: pgid:n :}
-   mono-ns GPT-TIMEOUT-MS PROC-NS-PER-MS * + {: deadline:n :}
+   mono-ns GPT-TIMEOUT-MS PROCESS:NS-PER-MS * + {: deadline:n :}
    begin
-      pgid negate 0 kill-errno ESRCH# negate = if true exit then
+      pgid negate 0 kill-errno PROCESS:ESRCH# negate = if true exit then
       mono-ns deadline <
    while
       20 GPT-SLEEP-MS
@@ -677,7 +677,7 @@ variable GPT-RF-VIC-PID
    S\" require src/lib/fs-mutate.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr ;\nW\n" ;
 
 : GPT-CT-KILL-SRC$ ( -- ptr u8 n )
-   S\" require src/lib/fs-mutate.f\nrequire src/lib/process.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr 0 >PID SIGKILL PROC-KILL-RAW drop ;\nW\n" ;
+   S\" require src/lib/fs-mutate.f\nrequire src/lib/process.f\n: W ( -- ) s\" gpt-child\" FS:MKTEMP-DIR type cr 0 >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop ;\nW\n" ;
 
 : GPT-CT-PRINTED$ ( -- ptr u8 n )        \ slot 0's captured line, without its newline
    0 >IDX GT-POOL-OUT-BUF 0 >IDX GT-POOL-OUT-U-PTR @ {: a:ptr u:n :}
@@ -716,7 +716,7 @@ variable GPT-RF-VIC-PID
    GPT-CT-KILL-SRC$ s" child tmp kill worker" GPT-CT-RUN
    s" child tmp: the killed child died of SIGKILL" T-LABEL
    0 >IDX GT-POOL-EXITED-PTR @ TFALSE
-   0 >IDX GT-POOL-CODE-PTR @ SIGKILL T=
+   0 >IDX GT-POOL-CODE-PTR @ PROCESS:SIGKILL T=
    GPT-CT-EXPECT
    GPT-CT-GREEN-SRC$ s" child tmp green worker" GPT-CT-RUN
    s" child tmp: the green child exited clean" T-LABEL

@@ -1,9 +1,11 @@
 \ fd.f - the standard descriptors, close-on-exec pipes, the non-blocking mark,
 \ exact reads and full writes on blocking descriptors (the engine reports EAGAIN
-\ as a failed call), and syncing and resizing a file. A refused pipe, mark, read,
-\ write, sync or resize, a write that takes no byte and a count past the asked
-\ one are E-FS-IO; a negative length is E-SPAN-LENGTH. Signals and descriptors
-\ stay the caller's.
+\ as a failed call), and syncing and resizing a file. A refused PIPE, mark,
+\ read, write, sync or resize, a write that takes no byte and a count past the
+\ asked one are E-FS-IO; a negative length is E-SPAN-LENGTH. A refused
+\ PIPE-PAIR, FD-CLOEXEC! or FD-NOSIGPIPE! is E-PROC-OUTPUT, and O-NONBLOCK and
+\ F-DUPFD-CLOEXEC throw E-PROC-HOST on a host that is neither Linux nor macOS.
+\ Signals and descriptors stay the caller's.
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
 
@@ -31,18 +33,49 @@ ENUM fill
    VARIANT eof FIELD bytes n ;VARIANT
 ;ENUM
 
-private
-
-1 constant FD-CLOEXEC
+1 constant POLLIN
+4 constant POLLOUT
+8 constant POLLERR
+16 constant POLLHUP
+32 constant POLLNVAL
+4 constant EINTR#                  \ "interrupted by a signal" (POSIX, identical on Linux/macOS)
 2 constant F-SETFD
 3 constant F-GETFL
 4 constant F-SETFL
-4 constant POLLOUT
-4 constant EINTR
+73 constant F-SETNOSIGPIPE
+1 constant FD-CLOEXEC
+
+\ O_NONBLOCK is not one number: $800 (0o4000) on Linux, 4 on macOS. F_SETFL
+\ silently drops a bit the host does not know, so the wrong constant arms
+\ nothing at all and the descriptor stays blocking.
+: O-NONBLOCK ( -- n )
+   HB-TARGET-LINUX-KERNEL? if $800 exit then
+   HB-TARGET-MACOS? if 4 exit then
+   E-PROC-HOST throw ;
+
+\ F_DUPFD_CLOEXEC is not one number either: 1030 (F_LINUX_SPECIFIC_BASE + 6) on
+\ both Linux targets, 67 on macOS.
+: F-DUPFD-CLOEXEC ( -- n )
+   HB-TARGET-LINUX-KERNEL? if 1030 exit then
+   HB-TARGET-MACOS? if 67 exit then
+   E-PROC-HOST throw ;
+
+: FD-CLOEXEC! ( fd -- ) {: fd :}
+   fd FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;
+
+: FD-NOSIGPIPE! ( fd -- ) {: fd :}
+   fd FD>N F-SETNOSIGPIPE 1 fcntl 0 <> if E-PROC-OUTPUT throw then ;
+
+: PIPE-PAIR ( -- fd fd )
+   pipe {: r w rc :}
+   rc 0 <> if E-PROC-OUTPUT throw then
+   r >FD w >FD ;
+
+private
+
 6 constant ENXIO                     \ the same number on macOS and Linux
 1000000 constant NS-PER-MS
 $7FFFFFFF constant MAX-POLL-MS
-: O-NONBLOCK ( -- n ) HB-TARGET-MACOS? if 4 else $800 then ;
 : EAGAIN ( -- n ) HB-TARGET-MACOS? if 35 else 11 then ;
 
 PROCESS-SYMBOLS
@@ -87,7 +120,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
       0 POLL-FD 6 + LE:U16!
       POLL-FD 1 ms poll {: rc:n :}
       rc 0 > if exit then
-      rc 0 < rc EINTR negate <> and if E-FS-IO throw then
+      rc 0 < rc EINTR# negate <> and if E-FS-IO throw then
    again ;
 
 \ A positive result advances; EINTR and EAGAIN retry against the same deadline.
@@ -102,7 +135,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 TASK:+USER POLL-STORAGE drop
    then
    k 0= if E-FS-IO throw then
    FFI:ERRNO {: cause:n :}
-   cause EINTR = if 0 exit then
+   cause EINTR# = if 0 exit then
    cause EAGAIN = if f deadline WAIT-OUT 0 exit then
    E-FS-IO throw ;
 
@@ -163,7 +196,7 @@ public
 \ moved. Every handler that returns (the profiler's, src/lib/signal.f's) sets
 \ SA_RESTART, so a blocked write that moved nothing resumes. A write to a pipe
 \ with no reader raises SIGPIPE, which ends the process unless the caller armed
-\ FD-NOSIGPIPE! (src/lib/process.f); then it is E-FS-IO.
+\ FD-NOSIGPIPE!; then it is E-FS-IO.
 : WRITE-FULL ( fd ptr u8 n -- )
    {: f:fd src:ptr u:n :}
    u 0 < if E-SPAN-LENGTH throw then

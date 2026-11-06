@@ -6,8 +6,8 @@
 \ that ran INIT (NEED-OWNER); the staging span WAIT and TAKE read into is per task.
 
 s" src/lib/error.f" required
-s" src/lib/process.f" required                \ PROC-KILL-RAW, POLLIN, PROC-NO-FD, PROC-DEADLINE-AT and PROC-LEFT-MS
-s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-pipe, and FD:NONBLOCK!
+s" src/lib/process.f" required                \ PROCESS:KILL-RAW, PROCESS:NO-FD, PROCESS:DEADLINE-AT and PROCESS:LEFT-MS
+s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-pipe, FD:NONBLOCK! and FD:POLLIN
 s" src/lib/aio.f" required                    \ the loop the WAIT window runs on
 s" src/lib/task.f" required                   \ TASK:+USER carries the staging span, TASK:SELF-N the owner
 s" src/lib/ffi-abi.f" required                \ sigaction is declared here, not assumed
@@ -216,8 +216,8 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
    w FD>N WRITE-FD-CELL ! ;
 
 : FORGET-FDS ( -- )
-   PROC-NO-FD READ-FD-CELL !
-   PROC-NO-FD WRITE-FD-CELL ! ;
+   PROCESS:NO-FD READ-FD-CELL !
+   PROCESS:NO-FD WRITE-FD-CELL ! ;
 
 \ Both ends are closed before either failure is named, so a refused close never
 \ leaks the other end.
@@ -242,7 +242,7 @@ FUNCTION: SIGACTION-CALL sigaction ( n ptr u8 ptr u8 -- i32 )
 : READABLE-WITHIN? ( ms -- bool ) {: window:ms :}
    READ-FD AIO:READABLE window AIO:POLL AIO:AWAIT
    MATCH AIO:outcome
-      ready OF POLLIN and 0= if E-SIGNAL-POLL throw then true ENDOF
+      ready OF FD:POLLIN and 0= if E-SIGNAL-POLL throw then true ENDOF
       timed-out OF false ENDOF
       cancelled OF E-SIGNAL-POLL throw ENDOF
       refused OF drop E-SIGNAL-POLL throw ENDOF
@@ -377,9 +377,9 @@ public
 \ unbounded. Like PENDING?, it needs AIO:START or throws E-AIO-STATE.
 : WAIT ( ms -- signal-result ) {: window:ms :}
    NEED-READY
-   window PROC-DEADLINE-AT {: deadline :}
+   window PROCESS:DEADLINE-AT {: deadline :}
    begin
-      window MS>N 0 < if window else deadline PROC-LEFT-MS then
+      window MS>N 0 < if window else deadline PROCESS:LEFT-MS then
       READABLE-WITHIN? 0= if SIGNAL-SIGNAL--RESULT:timeout exit then
       SIGNO@ dup SIGNO-REFUSED <> if SIGNAL-SIGNAL--RESULT:signal exit then
       drop
@@ -431,7 +431,7 @@ public
 \ reached when this one took it.
 : DIE-OF ( ptr u8 n n -- ) {: msg:ptr msgu:n sig:n :}
    RELEASE
-   getpid >PID sig PROC-KILL-RAW drop
+   getpid >PID sig PROCESS:KILL-RAW drop
    msg msgu 128 sig + die ;
 
 ;package

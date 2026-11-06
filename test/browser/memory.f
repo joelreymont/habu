@@ -50,7 +50,7 @@ private
    s" --memory" ARG+
    s" bun" >LEN EXE RESOLVE-EXECUTABLE {: eu:len :}
    EXE eu OUT CAP >LEN ERR CAP >LEN DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0<> if ERR erru LEN>N type cr then
    label lu T-LABEL rc 0 T=

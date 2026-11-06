@@ -39,8 +39,8 @@ variable CHILD-RC
    OUT-BUF CAP-CAP >LEN
    ERR-BUF CAP-CAP >LEN
    CHILD-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME       \ ( out-len err-len outcome )
-   PROC-OUTCOME>RC RC>N CHILD-RC !
+   RUN-ARGV-CAPTURE-OUTCOME       \ ( out-len err-len PROCESS:ending )
+   PROCESS:ENDING>RC RC>N CHILD-RC !
    LEN>N CHILD-ERR-N !
    LEN>N CHILD-OUT-N ! ;
 

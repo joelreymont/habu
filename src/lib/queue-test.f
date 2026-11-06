@@ -8,7 +8,7 @@ require src/lib/process-argv.f
 require src/lib/codegen.f
 require src/lib/task.f
 require src/lib/queue.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/wait.f
 
 package QUEUE-TEST
@@ -162,7 +162,7 @@ variable Q-POOL-RC
    0 code - Q-NEEDLE CODEGEN:APPEND-DECIMAL
    Q-NEEDLE CODEGEN:CONTENTS ;
 
-: Q-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
+: Q-RUN-STDIN ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
    Q-OUT Q-CAPTURE-CAP >LEN Q-ERR Q-CAPTURE-CAP >LEN
@@ -171,7 +171,7 @@ variable Q-POOL-RC
 : Q-EXPECT-THROW ( n -- ) {: code:n :}
    Q-SRC CODEGEN:CONTENTS {: src:ptr srcu:n :}
    src srcu Q-RUN-STDIN {: outu:len erru:len oc :}
-   src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc Q-THROW-RC T-OUTCOME-EXITED=
+   src srcu Q-OUT outu LEN>N Q-ERR erru LEN>N oc Q-THROW-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
    Q-ERR erru LEN>N code Q-THROW-NEEDLE CONTAINS? TTRUE ;
 

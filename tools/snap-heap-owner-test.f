@@ -1,6 +1,6 @@
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require tools/snap-heap-owner.f
 
@@ -78,7 +78,7 @@ variable BAD-LINES
    {: src:ptr srcu:n :}
    src srcu MAP-OUT MAP-CAP >LEN MAP-ERR MAP-ERR-CAP >LEN MAP-TIMEOUT-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
-   src srcu MAP-OUT outu LEN>N MAP-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   src srcu MAP-OUT outu LEN>N MAP-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    MAP-ERR erru LEN>N s" " T$=
    MAP-OUT outu LEN>N S\" \n" ENDS-WITH? TTRUE
    MAP-OUT outu LEN>N MAP-LINES

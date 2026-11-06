@@ -15,7 +15,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 2048 constant XPK-CAP
@@ -206,10 +206,10 @@ create XPK-EMPTY 1 allot
 \ Children run ENGINE-CANDIDATE:PATH$ over piped stdin; the undefined and
 \ data cases also run --load.
 
-: XPK-STORE! ( len len outcome ptr u8 n -- )
+: XPK-STORE! ( len len PROCESS:ending ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
    outu LEN>N XPK-OUT-U !  erru LEN>N XPK-ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF XPK-RC ! 0 0= XPK-EXITED ! ENDOF
      signaled OF XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
      timeout OF

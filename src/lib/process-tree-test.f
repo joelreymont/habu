@@ -8,7 +8,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-pty-io.f
@@ -32,11 +32,11 @@ create SANDBOX PATH-CAP allot
 variable VICTIM
 variable TARGET
 
-\ PROC-WAIT-OUTCOME never makes `timeout`: its wait blocks until the child ends.
-\ The arm throws, as PROC-OUTCOME>RC's does, so a deadline wait fed here later
+\ PROCESS:WAIT-ENDING never makes `timeout`: its wait blocks until the child ends.
+\ The arm throws, as PROCESS:ENDING>RC's does, so a deadline wait fed here later
 \ cannot read as no kill.
-: KILLED-BY? ( outcome n -- bool ) {: sig:n :}
-   MATCH outcome
+: KILLED-BY? ( PROCESS:ending n -- bool ) {: sig:n :}
+   MATCH PROCESS:ending
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
       timeout OF E-PROC-TIMEOUT throw ENDOF
@@ -67,15 +67,15 @@ variable TARGET
    VICTIM-START
    s" refused: KILL-TREE throws E-PROC-OUTPUT" T-LABEL
    ['] VICTIM-KILL-TREE E-PROC-OUTPUT TTHROWS
-   VICTIM @ >PID SIGTERM PROC-KILL-RAW drop
-   VICTIM @ >PID SIGCONT-MACOS PROC-KILL-RAW drop
+   VICTIM @ >PID SIGTERM PROCESS:KILL-RAW drop
+   VICTIM @ >PID SIGCONT-MACOS PROCESS:KILL-RAW drop
    s" refused: the named process died of SIGKILL" T-LABEL
-   VICTIM @ >PID PROC-WAIT-OUTCOME SIGKILL KILLED-BY? TTRUE
+   VICTIM @ >PID PROCESS:WAIT-ENDING PROCESS:SIGKILL KILLED-BY? TTRUE
    T-REPORT ;
 
 \ The capture walker runs, under the listing denial, two captures of a sleeper
 \ whose deadline passes, so each capture's early end walks a tree the kernel
-\ will not list (src/lib/process.f PROC-KILL-CAPTURE). A walk that throws there
+\ will not list (src/lib/process.f PROCESS:KILL-CAPTURE). A walk that throws there
 \ must not replace the capture's code: a capture past its deadline throws
 \ E-PROC-TIMEOUT, one read as data answers the timeout outcome, each sleeper
 \ dies of SIGKILL and is reaped, and stderr is one line per capture naming the
@@ -100,13 +100,13 @@ variable TARGET
 : SLEEPER-OUTCOME ( -- )
    SLEEPER-ARGS
    s" /bin/sleep" >LEN OUT CAP >LEN ERR CAP >LEN CAPTURE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME T-OUTCOME-TIMEOUT 2drop ;
+   RUN-ARGV-CAPTURE-OUTCOME T-ENDING-TIMEOUT 2drop ;
 
 : SLEEPER-REAPED ( ptr u8 n -- )
    {: label:ptr labelu:n :}
    label labelu T-LABEL
-   PROC-PID @ PROC-NO-PID T=
-   PROC-STATUS @ PROC-STATUS>RC RC>N 128 SIGKILL + T= ;
+   PROCESS:PID @ PROCESS:NO-PID T=
+   PROCESS:STATUS @ PROCESS:STATUS>RC RC>N 128 PROCESS:SIGKILL + T= ;
 
 : CAPTURE-WALK ( -- )
    T-RESET
@@ -130,7 +130,7 @@ variable TARGET
       PROCESS-PTY:TARGET PID>N TARGET !
    ;] PROCESS-PTY:WITH-TARGET
    s" refused: a torn-down session's target was reaped" T-LABEL
-   TARGET @ 0 kill-errno ESRCH# negate T=
+   TARGET @ 0 kill-errno PROCESS:ESRCH# negate T=
    T-REPORT ;
 
 \ A walk with a fixed table of 1,024 members, or 1,024 listed children of one,
@@ -156,9 +156,9 @@ variable CROWD-WR
 variable PID-ACC                     \ the pid TALLY is reading
 variable SEEN                        \ pids TALLY read
 variable ALIVE                       \ of those, still there
-PROC-NO-PID ROOT !
-PROC-NO-FD CROWD-RD !
-PROC-NO-FD CROWD-WR !
+PROCESS:NO-PID ROOT !
+PROCESS:NO-FD CROWD-RD !
+PROCESS:NO-FD CROWD-WR !
 
 : CROWD-SCRIPT$ ( -- ptr u8 n )
    SB-RESET
@@ -168,9 +168,9 @@ PROC-NO-FD CROWD-WR !
    SB$ ;
 
 : CROWD-START ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   w FD-CLOEXEC!
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD:FD-CLOEXEC!
+   w FD:FD-CLOEXEC!
    r FD>N CROWD-RD !
    w FD>N CROWD-WR !
    0 LISTING-U !
@@ -178,7 +178,7 @@ PROC-NO-FD CROWD-WR !
    s" -c" >LEN PROC-ARGV+
    CROWD-SCRIPT$ >LEN PROC-ARGV+
    s" /bin/sh" >LEN -1 >FD w -1 >FD PROC-SPAWN-ARGV-IO PID>N ROOT !
-   CROWD-WR PROC-CLOSE-CELL ;
+   CROWD-WR PROCESS:CLOSE-CELL ;
 
 \ Everything the root writes, until it closes the pipe.
 : CROWD-READ ( -- )
@@ -190,7 +190,7 @@ PROC-NO-FD CROWD-WR !
    while
       LISTING-U @ got + LISTING-U !
    repeat
-   CROWD-RD PROC-CLOSE-CELL ;
+   CROWD-RD PROCESS:CLOSE-CELL ;
 
 \ The listing read again: SEEN pids, ALIVE of them still answering a signal.
 : TALLY ( -- )
@@ -235,12 +235,12 @@ PROC-NO-FD CROWD-WR !
 \ Whatever the body asserted or threw: the group, the root with it, is killed
 \ and the root reaped, so no sleeper outlives a failed case.
 : CROWD-END ( -- )
-   CROWD-WR PROC-CLOSE-CELL
-   CROWD-RD PROC-CLOSE-CELL
-   ROOT @ PROC-NO-PID <> if
-      ROOT @ negate SIGKILL kill drop
-      ROOT @ >PID PROC-WAIT-STATUS drop
-      PROC-NO-PID ROOT !
+   CROWD-WR PROCESS:CLOSE-CELL
+   CROWD-RD PROCESS:CLOSE-CELL
+   ROOT @ PROCESS:NO-PID <> if
+      ROOT @ negate PROCESS:SIGKILL kill drop
+      ROOT @ >PID PROCESS:WAIT-STATUS drop
+      PROCESS:NO-PID ROOT !
    then
    LISTING-RELEASE ;
 

@@ -113,8 +113,8 @@ private
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if STREAM-WRITER then
    q catch {: rc:n :}
-   pid SIGKILL PROC-KILL-RAW drop
-   pid PROC-WAIT-STATUS drop
+   pid PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   pid PROCESS:WAIT-STATUS drop
    rc 0<> if rc throw then ;
 
 variable STREAM-SEEN

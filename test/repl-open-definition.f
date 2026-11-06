@@ -3,7 +3,7 @@
 \ holds the compile loop's bands RW; its end of input is the pipe's refusal,
 \ rc 74, since no input remains for the REPL to recover into.
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
 
@@ -34,7 +34,7 @@ using PTY-HARNESS
 : EXIT= ( n -- )
    {: want:n :}
    REAP {: oc :}
-   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc want T-OUTCOME-EXITED=
+   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc want T-ENDING-EXITED=
    CLOSE-MASTER ;
 
 \ The body of the definition SPAN-CASE opened, on its own line, defines a

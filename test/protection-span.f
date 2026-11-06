@@ -2,7 +2,7 @@
 
 require src/lib/error.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 package PROTECTION-TEST
@@ -16,12 +16,12 @@ ENGINE-ERROR:SEAL-VIOLATION constant VIOLATION-RC
 create OUT CAP allot
 create ERR CAP allot
 
-: CAPTURE ( ptr u8 n -- len len outcome ) {: src:ptr u:n :}
+: CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN ;
 
 : EXPECT ( ptr u8 n n -- ) {: src:ptr u:n want:n :}
    src u CAPTURE {: outu:len erru:len oc :}
-   src u OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED= ;
+   src u OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED= ;
 
 : REJECTS ( ptr u8 n -- )
    VIOLATION-RC EXPECT ;

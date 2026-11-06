@@ -7,7 +7,7 @@ require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 \ ---- section 1: the three incidents, compiled by tier 0 -----------------------
@@ -116,7 +116,7 @@ variable ERR-U
 : RUN ( ptr u8 n -- n ) {: src:ptr u:n :}   \ source -> child exit status (-1 = signal)
    src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF ENDOF
      signaled OF drop -1 ENDOF
      timeout OF src u OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF

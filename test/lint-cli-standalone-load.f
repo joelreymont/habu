@@ -14,7 +14,7 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/argv.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 package LINT-CLI-STANDALONE-LOAD
@@ -78,7 +78,7 @@ variable PATHS-USED
    repeat drop FALSE ;
 
 \ ---- spawn one entry -------------------------------------------------------
-: SPAWN ( ptr u8 n n -- len len outcome ) {: p:ptr u:n ms:n :}
+: SPAWN ( ptr u8 n n -- len len PROCESS:ending ) {: p:ptr u:n ms:n :}
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    p u >LEN PROC-ARGV+
@@ -112,7 +112,7 @@ variable PATHS-USED
 : LOAD-VERDICT ( ptr u8 n n -- )
    {: p:ptr u:n ms:n :}
    p u ms SPAWN {: outu:len erru:len oc :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited   OF {: rc:n :} p u T-LABEL rc REJECT-RC <> TTRUE ENDOF
      signaled OF {: sig:n :} p u sig SIGNALLED ENDOF
      timeout  OF p u ms OVER-BUDGET$ T-LABEL

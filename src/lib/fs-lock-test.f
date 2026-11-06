@@ -38,7 +38,7 @@ variable HELD-FD
 : CHILD-EXIT ( n -- ) s" " rot die ;
 
 : EXPECT-CLEAN ( pid -- )
-   PROC-WAIT-RC MATCH result
+   PROCESS:WAIT-RC MATCH result
       ok OF 0 T= ENDOF
       err OF drop 1 0 T= ENDOF
    ;MATCH ;
@@ -92,7 +92,7 @@ variable HELD-FD
 \ and a further holder's TRY answers false.
 : WAIT-BLOCKS ( -- )
    ROOT$ s" released" MARK-PATH FS:JOIN-PATH MARK-U !
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    PROC-FORK:CHECKED {: holder:pid :}
    holder PID>N 0= if w CHILD-HOLDS then
    w FD>N close
@@ -113,10 +113,10 @@ variable HELD-FD
 \ only write end the parent holds, so it lives until the parent closes that end.
 : EXEC-DOES-NOT-INHERIT ( -- )
    ROOT$ FS-LOCK:OPEN-DIR {: fd:fd :}
-   fd FD>N F-GETFD 0 fcntl FD-CLOEXEC and FD-CLOEXEC T=
+   fd FD>N F-GETFD 0 fcntl FD:FD-CLOEXEC and FD:FD-CLOEXEC T=
    fd FS-LOCK:TRY TTRUE
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!  w FD-CLOEXEC!
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD:FD-CLOEXEC!  w FD:FD-CLOEXEC!
    PROC-ARGV-RESET
    s" /bin/cat" >LEN r -1 >FD -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
    r FD>N close

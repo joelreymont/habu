@@ -47,7 +47,7 @@ PTR-VARIABLE MAPPED
    S\" test \q$HABU_IMAGE_ENV\q = command-value && printf process-image-ok"
    CMD:ARG+
    s" /bin/sh" 10000 >MS CMD:RUN-OUTCOME
-   PROC-OUTCOME>RC RC>N 0 T=
+   PROCESS:ENDING>RC RC>N 0 T=
    CMD:OUT$ s" process-image-ok" T$=
    CMD:ERR$ 0 T= drop ;
 
@@ -137,12 +137,12 @@ private
 public
 
 \ The signal wait and COMMAND's capture each have a deadline, and a throw code
-\ cannot cross the process boundary: this child exits PROC-TIMEOUT-RC for
+\ cannot cross the process boundary: this child exits PROCESS:TIMEOUT-RC for
 \ E-PROC-TIMEOUT so test/process-image.f throws it again (src/lib/process.f).
 : USE ( -- )
    [: USE-CASES ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if
-      s" process-image: a deadline expired in the restored child" PROC-TIMEOUT-RC die
+      s" process-image: a deadline expired in the restored child" PROCESS:TIMEOUT-RC die
    then
    code 0<> if code throw then ;
 

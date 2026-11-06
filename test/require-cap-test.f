@@ -6,8 +6,8 @@
 \ path.
 
 require src/lib/test.f
-require src/lib/test/outcome.f       \ T-TIMED-OUT - the report of a child past its deadline
-require src/lib/process.f            \ outcome sumtype for the child completion
+require src/lib/test/ending.f       \ T-TIMED-OUT - the report of a child past its deadline
+require src/lib/process.f            \ PROCESS:ending, the child completion
 require src/lib/test/subject.f       \ SUBJECT:RUN - isolated evaluation of the subject
 
 package REQUIRE-CAP
@@ -56,9 +56,9 @@ variable EXITED?
    s" SAME-COUNT" FORGE-APPEND  10 FORGE-C
    FORGE$ ;
 
-: STORE ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: STORE ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF   RC-N ! -1 EXITED? ! ENDOF
      signaled OF RC-N !  0 EXITED? ! ENDOF
      timeout OF src u OUT-BUF outu LEN>N ERR-BUF ERR-U @ T-TIMED-OUT ENDOF
@@ -70,7 +70,7 @@ variable EXITED?
    OUT-BUF IO-CAP >LEN
    ERR-BUF IO-CAP >LEN
    TIMEOUT-MS >MS
-   SUBJECT:RUN                          \ -- out-len err-len outcome
+   SUBJECT:RUN                          \ -- out-len err-len PROCESS:ending
    src u STORE ;
 
 : ASSERT-LOADS ( -- )                   \ child accepted every require and exited clean

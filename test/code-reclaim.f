@@ -3,7 +3,7 @@
 
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/habu/layout.f
 
@@ -134,7 +134,7 @@ LC-CAP BUFFER: LC-ERR
 : LC-EXITS ( ptr u8 n n -- len len ) {: src:ptr srcu:n want:n :}
    src srcu LC-OUT LC-CAP >LEN LC-ERR LC-CAP >LEN LC-TIMEOUT-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu LC-OUT outu LEN>N LC-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   src srcu LC-OUT outu LEN>N LC-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu erru ;
 
 \ The program runs to the end and prints this.

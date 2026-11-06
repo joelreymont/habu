@@ -6,7 +6,7 @@
 \ the images of test/x86-64-peer-image.f.
 
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/lib/byte-buffer.f
 require src/lib/error.f
@@ -345,7 +345,7 @@ create ERR CAPTURE-CAP allot
    {: source:ptr sourceu:n want:ptr wantu:n :}
    source sourceu OUT CAPTURE-CAP >LEN ERR CAPTURE-CAP >LEN TIMEOUT-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
-   source sourceu OUT outu LEN>N ERR erru LEN>N oc REFUSE-RC T-OUTCOME-EXITED=
+   source sourceu OUT outu LEN>N ERR erru LEN>N oc REFUSE-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
    ERR erru LEN>N want wantu T$= ;
 

@@ -37,7 +37,7 @@ variable CODE
 : SPAWN ( ptr u8 n -- n )
    >LEN EXE RESOLVE-EXECUTABLE {: u:len :}
    EXE u  OUT OUT-CAP >LEN  ERR ERR-CAP >LEN  DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 

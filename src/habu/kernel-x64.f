@@ -1059,7 +1059,7 @@ $80000 constant PIPE-CLOEXEC        \ O_CLOEXEC
 2 constant F-SETFD
 3 constant SPAWN-MIN-FD             \ the lowest the pipe's write end may sit
 127 constant SPAWN-FAIL-RC
-73 constant FCNTL-NOSIGPIPE         \ src/lib/process.f F-SETNOSIGPIPE
+73 constant FCNTL-NOSIGPIPE         \ src/lib/fd.f FD:F-SETNOSIGPIPE
 13 constant SIGPIPE
 1 constant SIG-IGN
 8 constant SIGSET-BYTES

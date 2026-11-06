@@ -11,7 +11,7 @@ require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/process-argv.f
 require src/lib/task.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/wait.f
 require src/lib/fmt.f
 
@@ -41,7 +41,7 @@ create PT-CAPTURE-HANG-BUF PATH-CAP allot
 create PT-CAPTURE-ERR-LONG-BUF PATH-CAP allot
 create PT-CAPTURE-FALSE-BUF PATH-CAP allot
 create PT-CAPTURE-EOF-BUF PATH-CAP allot
-4096 constant PT-CHUNK                   \ one PROC-STDIN-CHUNK-CAP write
+4096 constant PT-CHUNK                   \ one PROCESS:STDIN-CHUNK-CAP write
 1024 constant PT-FILL-MAX                \ bounds the pipe fill at 4 MiB
 create PT-CHUNK-BUF PT-CHUNK allot
 create PT-DRAIN-BUF PT-CHUNK allot
@@ -127,7 +127,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
-: PT-RUN-HB-SCRIPT-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
+: PT-RUN-HB-SCRIPT-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
    {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
@@ -135,54 +135,54 @@ create PT-DRAIN-BUF PT-CHUNK allot
 
 : PT-RUN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
-   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-CAPTURE
+   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS PROCESS:RUN-CAPTURE
    PT-CAPTURE>N ;
 
 : PT-READ ( n -- n )
    PT-BUF 32 read ;
 
 : TEST-SPAWN-FAIL ( -- )
-   s" /no/such/habu-process-test" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO drop ;
+   s" /no/such/habu-process-test" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO drop ;
 
 : TEST-SPAWN-RAW-MISSING ( -- )
-   s" /no/such/habu-process-test" >LEN PROC-PATHZ
-   -1 >FD -1 >FD -1 >FD PROC-SPAWN-RAW PID>N {: code:n :}
+   s" /no/such/habu-process-test" >LEN PROCESS:PATHZ
+   -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-RAW PID>N {: code:n :}
    code 0 < TTRUE
    HB-TARGET-MACOS? if code PT-ENOENT negate T= then ;
 
 : TEST-WAIT-BAD ( -- )
-   -1 >PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
+   -1 >PID PROCESS:WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
 
 : TEST-POLL-WAIT ( -- )
-   PT-R @ 1 >MS POLL-IN-OR-TIMEOUT drop ;
+   PT-R @ 1 >MS PROCESS:POLL-IN-OR-TIMEOUT drop ;
 
 : TEST-PATHZ ( -- )
-   s" /usr/bin/true" >LEN PROC-PATHZ dup ZLEN 13 T=
+   s" /usr/bin/true" >LEN PROCESS:PATHZ dup ZLEN 13 T=
    13 + c@ 0 T=
-   s" /usr/bin/true" >LEN PROC-RUN-RC MATCH result
+   s" /usr/bin/true" >LEN PROCESS:RUN-RC MATCH result
      ok  OF 0 T= ENDOF                          \ true exits clean -> ok(0)
      err OF drop 1 0 T= ENDOF                    \ unexpected failure
    ;MATCH
-   s" /usr/bin/false" >LEN PROC-RUN-RC MATCH result
+   s" /usr/bin/false" >LEN PROCESS:RUN-RC MATCH result
      ok  OF drop 1 0 T= ENDOF                     \ unexpected clean exit
      err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
    ;MATCH ;
 
 : TEST-SPAWN-WAIT ( -- )
    TEST-SPAWN-RAW-MISSING
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-RC
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-RC
    MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    [: TEST-SPAWN-FAIL ;] E-PROC-SPAWN TTHROWSQ ;
 
 : TEST-PROC-WAIT-STATUS ( -- )
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-STATUS 0 T=
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-STATUS 256 T= ;
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-STATUS 0 T=
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-STATUS 256 T= ;
 
 : PT-FORK-EXIT ( n -- )
    s" " rot die ;
 
 : TEST-PROC-FORK-WAIT ( -- )
-   PIPE-PAIR PT-W ! PT-R !
+   FD:PIPE-PAIR PT-W ! PT-R !
    PROC-FORK:CHECKED PID>N {: pid:n :}
    pid 0= if
       PT-R @ close
@@ -191,11 +191,11 @@ create PT-DRAIN-BUF PT-CHUNK allot
       0 PT-FORK-EXIT
    then
    PT-W @ close
-   PT-R @ 1000 >MS POLL-IN COUNT>N
+   PT-R @ 1000 >MS PROCESS:POLL-IN COUNT>N
    dup 0= if s" process-test TEST-PROC-FORK-WAIT" TEST-WAIT:EXPIRED then 1 T=
    PT-R @ PT-READ 1 T=
    PT-BUF c@ 102 T=
-   pid >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   pid >PID PROCESS:WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PT-R @ close ;
 
 : TEST-PROC-FORK-COW ( -- )
@@ -205,12 +205,12 @@ create PT-DRAIN-BUF PT-CHUNK allot
       9 PT-FORK-CELL !
       0 PT-FORK-EXIT
    then
-   pid >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
+   pid >PID PROCESS:WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PT-FORK-CELL @ 7 T= ;
 
 : TEST-PROC-WAIT-OUTCOME-EXIT ( -- )
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-OUTCOME
-   MATCH outcome
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:SPAWN-IO PROCESS:WAIT-ENDING
+   MATCH PROCESS:ending
      exited OF 1 T= ENDOF                           \ /usr/bin/false -> exited 1
      signaled OF drop 1 0 T= ENDOF
      timeout OF 1 0 T= ENDOF
@@ -220,66 +220,66 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -TERM $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-OUTCOME
-   MATCH outcome
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT-ENDING
+   MATCH PROCESS:ending
      exited OF drop 1 0 T= ENDOF
      signaled OF 15 T= ENDOF                        \ SIGTERM death -> signaled 15
      timeout OF 1 0 T= ENDOF
    ;MATCH ;
 
 : TEST-PROC-OUTCOME>RC ( -- )
-   7 OUTCOME:EXITED PROC-OUTCOME>RC RC>N 7 T=
-   SIGKILL OUTCOME:SIGNALED PROC-OUTCOME>RC RC>N 137 T=      \ a deliberate kill
-   [: OUTCOME:TIMEOUT PROC-OUTCOME>RC drop ;] E-PROC-TIMEOUT TTHROWSQ ;   \ a deadline
+   7 PROCESS-ENDING:exited PROCESS:ENDING>RC RC>N 7 T=
+   PROCESS:SIGKILL PROCESS-ENDING:signaled PROCESS:ENDING>RC RC>N 137 T=      \ a deliberate kill
+   [: PROCESS-ENDING:timeout PROCESS:ENDING>RC drop ;] E-PROC-TIMEOUT TTHROWSQ ;   \ a deadline
 
 \ Negative checked regressions: the outcome is not a loose (kind code) pair,
 \ does not compare with `=`, and a raw pair cannot pose as one.
 : TEST-PROC-OUTCOME-TYPES ( -- )
-   s" PTP1 ( n -- outcome ) PROC-STATUS>OUTCOME" CHECK-QUIET-CANDIDATE! -1 T=
-   s" PTN1 ( n -- n n ) PROC-STATUS>OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTN2 ( n n -- rc ) PROC-OUTCOME>RC" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTN3 ( outcome outcome -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTN4 ( pid -- n n ) PROC-WAIT-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTP1 ( n -- PROCESS:ending ) PROCESS:STATUS>ENDING" CHECK-QUIET-CANDIDATE! -1 T=
+   s" PTN1 ( n -- n n ) PROCESS:STATUS>ENDING" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN2 ( n n -- rc ) PROCESS:ENDING>RC" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN3 ( PROCESS:ending PROCESS:ending -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN4 ( pid -- n n ) PROCESS:WAIT-ENDING" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN5 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTP2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
+   s" PTP2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
 
-\ A signal-killed child reports 128+sig through PROC-WAIT-RC, never a masked
+\ A signal-killed child reports 128+sig through PROCESS:WAIT-RC, never a masked
 \ rc 0.
 : TEST-PROC-WAIT-RC-SIGNAL ( -- )
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -KILL $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-RC
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROCESS:WAIT-RC
    MATCH result ok OF drop 1 0 T= ENDOF err OF 137 T= ENDOF ;MATCH ;   \ SIGKILL -> err(128+9)
 
 : TEST-WAIT-FAIL ( -- )
    [: TEST-WAIT-BAD ;] E-PROC-WAIT TTHROWSQ ;
 
 : TEST-PIPE ( -- )
-   PIPE-PAIR PT-W ! PT-R !
-   PT-R @ FD-CLOEXEC!
-   PT-W @ FD-CLOEXEC!
-   PT-R @ 0 >MS POLL-IN COUNT>N 0 T=
+   FD:PIPE-PAIR PT-W ! PT-R !
+   PT-R @ FD:FD-CLOEXEC!
+   PT-W @ FD:FD-CLOEXEC!
+   PT-R @ 0 >MS PROCESS:POLL-IN COUNT>N 0 T=
    PT-W @ s" x" write 1 T=
-   PT-R @ 100 >MS POLL-IN COUNT>N 1 T=
+   PT-R @ 100 >MS PROCESS:POLL-IN COUNT>N 1 T=
    PT-R @ PT-READ 1 T=
    PT-R @ close
    PT-W @ close ;
 
 : TEST-WRITE-CLOSED-PIPE-NOSIGPIPE ( -- )
-   PIPE-PAIR PT-W ! PT-R !
-   PT-W @ FD-NOSIGPIPE!
+   FD:PIPE-PAIR PT-W ! PT-R !
+   PT-W @ FD:FD-NOSIGPIPE!
    PT-R @ close
    PT-W @ s" 12345678901234567890123456789012" write -1 T=
    PT-W @ close ;
 
 \ O_NONBLOCK is $800 on Linux and 4 on macOS, and F_SETFL drops a bit the host
-\ does not know without saying so, so the only honest proof that PROC-NONBLOCK!
+\ does not know without saying so, so the only honest proof that PROCESS:NONBLOCK!
 \ armed anything is the flag read back.
 : PT-NONBLOCK-ARMED? ( fd -- bool ) {: fd :}
-   fd FD>N F-GETFL 0 fcntl {: flags :}
+   fd FD>N FD:F-GETFL 0 fcntl {: flags :}
    flags 0 < if 0 0= 0= exit then
-   flags O-NONBLOCK and O-NONBLOCK = ;
+   flags FD:O-NONBLOCK and FD:O-NONBLOCK = ;
 
 
 \ Chunks that land before the pipe refuses one. PT-FILL-MAX bounds the loop, but
@@ -308,8 +308,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ pipe, which no drain would fix and which this engine cannot tell apart by
 \ errno -- every failed write answers a bare -1.
 : TEST-PROC-NONBLOCK-ARMED ( -- )
-   PIPE-PAIR PT-W ! PT-R !
-   PT-W @ PROC-NONBLOCK!
+   FD:PIPE-PAIR PT-W ! PT-R !
+   PT-W @ PROCESS:NONBLOCK!
    PT-W @ PT-NONBLOCK-ARMED? dup TTRUE
    if
       PT-W @ PT-FILL-FD {: filled:n :}
@@ -327,24 +327,24 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ under the capture deadline resumes the feed; closing there would truncate the
 \ child's input without a word.
 : TEST-PROC-STDIN-BACKPRESSURE ( -- )
-   PROC-CAPTURE-RESET
-   PROC-SETUP-STDIN-FDS
-   PROC-IN-W @ >FD PT-NONBLOCK-ARMED? dup TTRUE
+   PROCESS:CAPTURE-RESET
+   PROCESS:SETUP-STDIN-FDS
+   PROCESS:IN-W @ >FD PT-NONBLOCK-ARMED? dup TTRUE
    if
-      PROC-IN-W @ PT-FILL-FD {: filled:n :}
+      PROCESS:IN-W @ PT-FILL-FD {: filled:n :}
       filled 0 > TTRUE
-      PT-CHUNK-BUF PT-CHUNK >LEN PROC-WRITE-STDIN
-      PROC-IN-W @ 0 >= TTRUE
-      PROC-IN-OFF @ 0 T=
-      PROC-IN-R @ filled PT-DRAIN-FD filled T=
-      PT-CHUNK-BUF PT-CHUNK >LEN PROC-WRITE-STDIN
-      PROC-IN-OFF @ PT-CHUNK T=
+      PT-CHUNK-BUF PT-CHUNK >LEN PROCESS:WRITE-STDIN
+      PROCESS:IN-W @ 0 >= TTRUE
+      PROCESS:IN-OFF @ 0 T=
+      PROCESS:IN-R @ filled PT-DRAIN-FD filled T=
+      PT-CHUNK-BUF PT-CHUNK >LEN PROCESS:WRITE-STDIN
+      PROCESS:IN-OFF @ PT-CHUNK T=
    then
-   PROC-CLOSE-STDIN-FDS ;
+   PROCESS:CLOSE-STDIN-FDS ;
 
 
 : TEST-POLL-TIMEOUT ( -- )
-   PIPE-PAIR PT-W ! PT-R !
+   FD:PIPE-PAIR PT-W ! PT-R !
    [: TEST-POLL-WAIT ;] E-PROC-TIMEOUT TTHROWSQ
    PT-R @ close
    PT-W @ close ;
@@ -375,13 +375,13 @@ create PT-DRAIN-BUF PT-CHUNK allot
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT ( -- )
    PT-CAPTURE-FALSE PT-OUT 32 PT-ERR 32 PT-HB-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
    {: outu:len erru:len oc :}
-   PT-CAPTURE-FALSE PT-OUT outu LEN>N PT-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   PT-CAPTURE-FALSE PT-OUT outu LEN>N PT-ERR erru LEN>N oc 1 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT ( -- )
    PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T=
-   PROC-CAPTURE-OUTCOME T-OUTCOME-TIMEOUT ;             \ derived getter agrees
+   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 0 T=
+   PROCESS:CAPTURE-ENDING T-ENDING-TIMEOUT ;             \ derived getter agrees
 
 \ The child closes its output pipes but remains alive for one second. The
 \ prefix proves it reached that path before the shorter capture deadline.
@@ -391,13 +391,13 @@ create PT-DRAIN-BUF PT-CHUNK allot
 
 : TEST-CAPTURE-EARLY-EOF ( -- )
    [: PT-RUN-EARLY-EOF ;] E-PROC-TIMEOUT TTHROWSQ
-   PROC-OUT-LEN @ 2 T= PT-OUT 2 s" ok" T$=
-   PROC-PID @ PROC-NO-PID T=
-   PROC-OUT-R @ PROC-NO-FD T= PROC-ERR-R @ PROC-NO-FD T=
+   PROCESS:OUT-LEN @ 2 T= PT-OUT 2 s" ok" T$=
+   PROCESS:PID @ PROCESS:NO-PID T=
+   PROCESS:OUT-R @ PROCESS:NO-FD T= PROCESS:ERR-R @ PROCESS:NO-FD T=
    PT-CAPTURE-EOF PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 2 T=
+   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 2 T=
    PT-OUT 2 s" ok" T$=
-   PROC-PID @ PROC-NO-PID T= ;
+   PROCESS:PID @ PROCESS:NO-PID T= ;
 
 \ Signal-death capture: the reap path derives signaled(sig) from the raw wait
 \ status alone -- no stored pair. The API return and the derived getter agree.
@@ -408,9 +408,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
    s" kill -KILL $$" >LEN PROC-ARGV+
    s" /bin/sh" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PT-HB-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
-   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N oc SIGKILL T-OUTCOME-SIGNALED=
+   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N oc PROCESS:SIGKILL T-ENDING-SIGNALED=
    erru LEN>N 0 T= outu LEN>N 0 T=
-   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N PROC-CAPTURE-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
+   cmd cmdu PT-OUT outu LEN>N PT-ERR erru LEN>N PROCESS:CAPTURE-ENDING PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
 \ A deliberately tiny deadline proves that capture reports a timeout. The child
 \ never ends: the ok fixture finishes in about 9 ms on this host, so a race
@@ -432,11 +432,11 @@ create PT-DRAIN-BUF PT-CHUNK allot
    repeat drop ;
 
 : TEST-RUN-IO-CAT ( -- )
-   PIPE-PAIR PT-IN-W ! PT-IN-R !
-   PIPE-PAIR PT-OUT-W ! PT-OUT-R !
+   FD:PIPE-PAIR PT-IN-W ! PT-IN-R !
+   FD:PIPE-PAIR PT-OUT-W ! PT-OUT-R !
    PT-IN-W @ s" cat-in" write 6 T=
    PT-IN-W @ close
-   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD PROC-RUN-IO-RC MATCH result
+   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD PROCESS:RUN-IO-RC MATCH result
      ok  OF 0 T= ENDOF                          \ cat exits clean -> ok(0)
      err OF drop 1 0 T= ENDOF                    \ signaled/nonzero -> unexpected failure
    ;MATCH
@@ -447,7 +447,7 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-OUT-R @ close ;
 
 : TEST-RUN-IO-FALSE ( -- )                          \ /usr/bin/false exits 1 -> err(1)
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-IO-RC MATCH result
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROCESS:RUN-IO-RC MATCH result
      ok  OF drop 1 0 T= ENDOF                     \ unexpected clean exit
      err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
    ;MATCH ;
@@ -456,14 +456,14 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ ok(captured) with the two lengths; a nonzero exit matches err(failed) with the
 \ same lengths and the code.
 : TEST-RUN-CAPTURE-RESULT-OK ( -- )                 \ /bin/pwd exits clean -> ok(captured)
-   s" /bin/pwd" >LEN PT-PWD-OUT PT-PWD-CAP >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS RUN-CAPTURE
+   s" /bin/pwd" >LEN PT-PWD-OUT PT-PWD-CAP >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS PROCESS:RUN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N 0 > TTRUE  e LEN>N 0 T= ENDOF
      err OF PCAP-FAILED:UNMAKE 2drop drop 1 0 T= ENDOF                \ pwd must exit clean
    ;MATCH ;
 
 : TEST-RUN-CAPTURE-RESULT-ERR ( -- )                \ /usr/bin/false exits 1 -> err(failed,code=1)
-   s" /usr/bin/false" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS RUN-CAPTURE
+   s" /usr/bin/false" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PT-CMD-TIMEOUT-MS >MS PROCESS:RUN-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 2drop 1 0 T= ENDOF                  \ false must not exit clean
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} o LEN>N 0 T=  e LEN>N 0 T=  c RC>N 1 T= ENDOF
@@ -472,34 +472,34 @@ create PT-DRAIN-BUF PT-CHUNK allot
 \ Negative checked regression: the return is the pcap result, not a (len len rc)
 \ triple, and the ok arm cannot leak the failed payload.
 : TEST-RUN-CAPTURE-RESULT-TYPES ( -- )
-   s" PTC1 ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> ) RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
-   s" PTC2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc ) RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTC1 ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! -1 T=
+   s" PTC2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc ) PROCESS:RUN-CAPTURE" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTC3 ( result<pcap:captured,pcap:failed> -- pcap:captured ) MATCH result ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : TEST-PROC-READ-NEG-LEN ( -- )
    -1 PT-CAPTURE-OK-U !
-   PT-R PT-OUT 32 >LEN PT-CAPTURE-OK-U PROC-READ-STREAM ;
+   PT-R PT-OUT 32 >LEN PT-CAPTURE-OK-U PROCESS:READ-STREAM ;
 
 : TEST-PROC-READ-HIGH-LEN ( -- )
    33 PT-CAPTURE-OK-U !
-   PT-R PT-OUT 32 >LEN PT-CAPTURE-OK-U PROC-READ-STREAM ;
+   PT-R PT-OUT 32 >LEN PT-CAPTURE-OK-U PROCESS:READ-STREAM ;
 
 8 constant PT-Z-CAP
 create PT-Z PT-Z-CAP allot
 
 : TEST-ZCOPY-EXACT ( -- )
    s" a copy fits when its bytes and NUL fit the destination" T-LABEL
-   s" 1234567" >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY ZLEN 7 T= ;
+   s" 1234567" >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY ZLEN 7 T= ;
 
 : TEST-ZCOPY-FULL ( -- )
-   s" 12345678" >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
+   s" 12345678" >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 : TEST-ZCOPY-NEG-LEN ( -- )
-   PT-BUF -1 >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
+   PT-BUF -1 >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 \ A length whose NUL wraps the sum must not reach the copy loop.
 : TEST-ZCOPY-HUGE-LEN ( -- )
-   PT-BUF MEM-MAX-N >LEN PT-Z PT-Z-CAP >LEN PROC-ZCOPY drop ;
+   PT-BUF MEM-MAX-N >LEN PT-Z PT-Z-CAP >LEN PROCESS:ZCOPY drop ;
 
 5000 constant PT-WAIT-MS                 \ far above any child here that is meant to end
 100 constant PT-HOLD-MS                  \ a window the held child outlasts
@@ -527,9 +527,9 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 \ closes, and exits 5. Every pipe end is close-on-exec, so the child holds only
 \ the copies on its fds 0, 1 and 2: EOF at the read end means it closed both.
 : PT-HOLD ( -- )
-   PIPE-PAIR {: in-r:fd in-w:fd :}
-   PIPE-PAIR {: out-r:fd out-w:fd :}
-   in-r FD-CLOEXEC!  in-w FD-CLOEXEC!  out-r FD-CLOEXEC!  out-w FD-CLOEXEC!
+   FD:PIPE-PAIR {: in-r:fd in-w:fd :}
+   FD:PIPE-PAIR {: out-r:fd out-w:fd :}
+   in-r FD:FD-CLOEXEC!  in-w FD:FD-CLOEXEC!  out-r FD:FD-CLOEXEC!  out-w FD:FD-CLOEXEC!
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PT-HOLD-SCRIPT >LEN PROC-ARGV+
@@ -544,25 +544,25 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 
 \ What one read at the shared end takes once it is readable: 0 is EOF.
 : PT-HOLD-EOF ( -- n )
-   PT-HOLD-OUT @ >FD PT-WAIT-MS >MS POLL-IN COUNT>N
+   PT-HOLD-OUT @ >FD PT-WAIT-MS >MS PROCESS:POLL-IN COUNT>N
    dup 0= if s" process-test PT-HOLD-EOF" TEST-WAIT:EXPIRED then 1 T=
    PT-HOLD-OUT @ PT-READ ;
 
 \ The pid and the window as plain cells, so a case can name any value.
-: PT-WAIT-AT ( n n -- outcome )
+: PT-WAIT-AT ( n n -- PROCESS:ending )
    {: pid:n ms:n :}
-   pid >PID ms >MS PROC-WAIT-BOUNDED ;
+   pid >PID ms >MS PROCESS:WAIT-BOUNDED ;
 
-: PT-WAIT-HOLD ( n -- outcome )
+: PT-WAIT-HOLD ( n -- PROCESS:ending )
    PT-HOLD-PID @ swap PT-WAIT-AT ;
 
 \ The held child's exit, read once it is released.
-: PT-HOLD-EXITED= ( outcome -- )
+: PT-HOLD-EXITED= ( PROCESS:ending -- )
    {: oc :}
-   PT-HOLD-SCRIPT s" " s" " oc 5 T-OUTCOME-EXITED= ;
+   PT-HOLD-SCRIPT s" " s" " oc 5 T-ENDING-EXITED= ;
 
-: PT-TIMEOUT? ( outcome -- bool )
-   MATCH outcome
+: PT-TIMEOUT? ( PROCESS:ending -- bool )
+   MATCH PROCESS:ending
      exited OF drop 0 0= 0= ENDOF
      signaled OF drop 0 0= 0= ENDOF
      timeout OF 0 0= ENDOF
@@ -571,8 +571,8 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 \ ms 0, one probe a turn, after the release: the first probe that finds the exit
 \ answers it. A wait that read its deadline before it probed would answer timeout
 \ every turn, and after PT-WAIT-MS this hands that timeout back.
-: PT-HOLD-REAP-AT-ZERO ( -- outcome )
-   mono-ns PT-WAIT-MS PROC-NS-PER-MS * + {: until:n :}
+: PT-HOLD-REAP-AT-ZERO ( -- PROCESS:ending )
+   mono-ns PT-WAIT-MS PROCESS:NS-PER-MS * + {: until:n :}
    begin
       0 PT-WAIT-HOLD {: oc :}
       oc PT-TIMEOUT? 0= if oc exit then
@@ -588,21 +588,21 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 : TEST-WAIT-BOUNDED-STATUS ( -- )
    s" exit 0" PT-SH {: child:pid :}
    child PID>N PT-WAIT-PID !
-   child PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: oc0 :}
-   s" exit 0" s" " s" " oc0 0 T-OUTCOME-EXITED=
+   child PT-WAIT-MS >MS PROCESS:WAIT-BOUNDED {: oc0 :}
+   s" exit 0" s" " s" " oc0 0 T-ENDING-EXITED=
    [: PT-WAIT-AGAIN ;] E-PROC-WAIT TTHROWSQ
-   s" exit 7" PT-SH PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: oc7 :}
-   s" exit 7" s" " s" " oc7 7 T-OUTCOME-EXITED=
-   s" kill -TERM $$" PT-SH PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: ocs :}
-   s" kill -TERM $$" s" " s" " ocs 15 T-OUTCOME-SIGNALED= ;
+   s" exit 7" PT-SH PT-WAIT-MS >MS PROCESS:WAIT-BOUNDED {: oc7 :}
+   s" exit 7" s" " s" " oc7 7 T-ENDING-EXITED=
+   s" kill -TERM $$" PT-SH PT-WAIT-MS >MS PROCESS:WAIT-BOUNDED {: ocs :}
+   s" kill -TERM $$" s" " s" " ocs 15 T-ENDING-SIGNALED= ;
 
 \ The run's evidence line for the EOF case.
-: PT-HOLD-EVIDENCE ( n n outcome -- )
+: PT-HOLD-EVIDENCE ( n n PROCESS:ending -- )
    {: eof:n waited:n oc :}
    s" wait-bounded: read " type eof FMT:.INT
    s"  at EOF; ms 0 -> timeout; ms " type PT-HOLD-MS FMT:.INT
-   s"  -> timeout after " type waited PROC-NS-PER-MS / FMT:.INT
-   s"  ms; released, ms 0 -> rc " type oc PROC-OUTCOME>RC RC>N FMT:.INT cr ;
+   s"  -> timeout after " type waited PROCESS:NS-PER-MS / FMT:.INT
+   s"  ms; released, ms 0 -> rc " type oc PROCESS:ENDING>RC RC>N FMT:.INT cr ;
 
 \ EOF is not exit. The held child has closed stdout and stderr, yet ms 0 probes
 \ once and a 100 ms window waits it out, each answering timeout and taking
@@ -618,16 +618,16 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
    PT-HOLD-REAP-AT-ZERO {: done :}
    PT-HOLD-OUT @ close
    eof 0 T=
-   probed T-OUTCOME-TIMEOUT
-   held T-OUTCOME-TIMEOUT
-   waited PT-HOLD-MS PROC-NS-PER-MS * >= TTRUE
+   probed T-ENDING-TIMEOUT
+   held T-ENDING-TIMEOUT
+   waited PT-HOLD-MS PROCESS:NS-PER-MS * >= TTRUE
    done PT-HOLD-EXITED=
    eof waited done PT-HOLD-EVIDENCE ;
 
 \ The first window whose nanoseconds carry mono-ns past the largest cell. The
 \ wait reads mono-ns after this does, so its own bound is no larger.
 : PT-PAST-CELL-MS ( -- n )
-   MEM-MAX-N mono-ns - PROC-NS-PER-MS / 1 + ;
+   MEM-MAX-N mono-ns - PROCESS:NS-PER-MS / 1 + ;
 
 : PT-LONGEST-MS ( -- n )
    PT-PAST-CELL-MS PT-LONGEST-SLACK-MS - ;
@@ -658,17 +658,17 @@ variable PT-HOLD-OUT                     \ the read end its stdout and stderr sh
 \ The deadline every capture, poll and signal wait derives refuses the first
 \ window past the cell, rather than wrapping to a deadline already gone.
 : TEST-DEADLINE-PAST-CELL ( -- )
-   [: PT-PAST-CELL-MS >MS PROC-DEADLINE-AT drop ;] E-PROC-TIMEOUT TTHROWSQ ;
+   [: PT-PAST-CELL-MS >MS PROCESS:DEADLINE-AT drop ;] E-PROC-TIMEOUT TTHROWSQ ;
 
 \ Cut down to whole milliseconds, a wait for what is left of a 3 ms window
 \ wakes before its deadline in most rounds.
 : PT-LEFT-REACHED? ( -- bool )
-   3 >MS PROC-DEADLINE-AT {: deadline:n :}
-   1 deadline PROC-LEFT-MS MS>N deadline PROC-POLL-RESTART drop
+   3 >MS PROCESS:DEADLINE-AT {: deadline:n :}
+   1 deadline PROCESS:LEFT-MS MS>N deadline PROCESS:POLL-RESTART drop
    mono-ns deadline >= ;
 
 : TEST-WAIT-REACHES-DEADLINE ( -- )
-   PROC-NO-FD >FD 0 PROC-PFD!
+   PROCESS:NO-FD >FD 0 PROCESS:PFD!
    0 10 0 ?do PT-LEFT-REACHED? 0= if 1+ then loop 0 T= ;
 
 \ A child's stdio end may be close-on-exec, and one above 2 may be unmarked: the
@@ -697,19 +697,19 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
 \ read end sees EOF only if the spawn closed the source in the child. The kill
 \ and the signal it answers prove the child was alive at EOF.
 : TEST-SPAWN-UNMARKED-SOURCE ( -- )
-   PIPE-PAIR {: in-r:fd in-w:fd :}
-   PIPE-PAIR {: out-r:fd out-w:fd :}
-   in-r FD-CLOEXEC!  in-w FD-CLOEXEC!  out-r FD-CLOEXEC!
+   FD:PIPE-PAIR {: in-r:fd in-w:fd :}
+   FD:PIPE-PAIR {: out-r:fd out-w:fd :}
+   in-r FD:FD-CLOEXEC!  in-w FD:FD-CLOEXEC!  out-r FD:FD-CLOEXEC!
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PT-UNMARKED-SCRIPT >LEN PROC-ARGV+
    s" /bin/sh" >LEN in-r out-w -1 >FD PROC-SPAWN-ARGV-IO {: child:pid :}
    in-r FD>N close
    out-w FD>N close
-   out-r PT-WAIT-MS >MS POLL-IN COUNT>N {: ready:n :}
+   out-r PT-WAIT-MS >MS PROCESS:POLL-IN COUNT>N {: ready:n :}
    ready 1 = if out-r FD>N PT-READ else -1 then {: got:n :}
-   child SIGKILL PROC-KILL-RAW RC>N {: killed:n :}
-   child PT-WAIT-MS >MS PROC-WAIT-BOUNDED {: oc :}
+   child PROCESS:SIGKILL PROCESS:KILL-RAW RC>N {: killed:n :}
+   child PT-WAIT-MS >MS PROCESS:WAIT-BOUNDED {: oc :}
    in-w FD>N close
    out-r FD>N close
    s" spawn-stdio: unmarked source: fd " type out-w FD>N FMT:.INT
@@ -719,7 +719,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    ready 1 T=
    got 0 T=
    killed 0 T=
-   PT-UNMARKED-SCRIPT s" " s" " oc SIGKILL T-OUTCOME-SIGNALED= ;
+   PT-UNMARKED-SCRIPT s" " s" " oc PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
@@ -776,4 +776,7 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    T-REPORT
    s" process-test: ok" type cr ;
 
+\ process.f declares nothing outside its packages, so a program that loads it may name its own packages OUTCOME and ENDING.
+package OUTCOME ;package
+package ENDING ;package
 PROCESS-TEST-MAIN

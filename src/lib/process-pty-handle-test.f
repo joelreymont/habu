@@ -39,20 +39,20 @@ variable BAD-GATE
    PROC-FORK:CHECKED dup PID>N 0= if drop WAITER-CHILD then ;
 
 : SETUP-PID ( -- )
-   PIPE-PAIR WAIT-W ! WAIT-R !
+   FD:PIPE-PAIR WAIT-W ! WAIT-R !
    SPAWN-WAITER TARGET-PID-V ! ;
 
 : TEARDOWN-PID ( -- )
    WAIT-W @ >FD CLOSE-OK
-   TARGET-PID-V @ >PID PROC-WAIT-STATUS 0 T=
+   TARGET-PID-V @ >PID PROCESS:WAIT-STATUS 0 T=
    WAIT-R @ >FD CLOSE-OK ;
 
 : TARGET-PID ( -- pid )
    TARGET-PID-V @ >PID ;
 
 : MAKE-FDS ( -- fd fd fd fd )
-   PIPE-PAIR {: master:fd done:fd :}
-   PIPE-PAIR {: watch:fd gate:fd :}
+   FD:PIPE-PAIR {: master:fd done:fd :}
+   FD:PIPE-PAIR {: watch:fd gate:fd :}
    master done watch gate ;
 
 : MAKE ( -- process-pty-handle )
@@ -155,7 +155,7 @@ variable BAD-GATE
 
 : CHECK-OWNER ( -- )
    MAKE SAVE
-   FORK-OWNER PROC-WAIT-STATUS 0 T=
+   FORK-OWNER PROCESS:WAIT-STATUS 0 T=
    RAW @ N>HANDLE TEST-TARGET
    PID>N TARGET-PID PID>N T=
    RETIRE ;

@@ -12,7 +12,7 @@ require src/lib/test.f
 require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require test/pcap-result.f
 
 package PROC-CAPTURE-SIGNAL
@@ -62,8 +62,8 @@ create PCS-ERR PCS-ERR-CAP allot
 \ stdin's write end. Both pipe ends are close-on-exec, so closing that write end
 \ releases the child.
 : PCS-HOLD ( -- pid n )
-   PIPE-PAIR {: in-r:fd in-w:fd :}
-   in-r FD-CLOEXEC!  in-w FD-CLOEXEC!
+   FD:PIPE-PAIR {: in-r:fd in-w:fd :}
+   in-r FD:FD-CLOEXEC!  in-w FD:FD-CLOEXEC!
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    PCS-HOLD-SCRIPT >LEN PROC-ARGV+
@@ -80,15 +80,15 @@ create PCS-ERR PCS-ERR-CAP allot
    PCS-HOLD {: pid:pid in-w:n :}
    PCS-SAMPLE-LIMIT prof-on
    mono-ns {: started :}
-   pid PCS-HOLD-MS >MS PROC-WAIT-BOUNDED {: held :}
+   pid PCS-HOLD-MS >MS PROCESS:WAIT-BOUNDED {: held :}
    mono-ns started - {: elapsed :}
    in-w close
-   pid PCS-TIMEOUT-MS >MS PROC-WAIT-BOUNDED {: done :}
+   pid PCS-TIMEOUT-MS >MS PROCESS:WAIT-BOUNDED {: done :}
    prof-off
-   held T-OUTCOME-TIMEOUT
-   elapsed PCS-HOLD-MS PROC-NS-PER-MS * >= TTRUE
+   held T-ENDING-TIMEOUT
+   elapsed PCS-HOLD-MS PROCESS:NS-PER-MS * >= TTRUE
    elapsed PCS-HOLD-MAX-NS < TTRUE
-   PCS-HOLD-SCRIPT s" " s" " done 3 T-OUTCOME-EXITED= ;
+   PCS-HOLD-SCRIPT s" " s" " done 3 T-ENDING-EXITED= ;
 
 : RUN ( -- )
    T-RESET

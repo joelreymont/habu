@@ -81,11 +81,11 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    SLAVE PTY:SLAVE-PATH-CAP PTY:OPEN {: m:PTY:master len:n :}
    m PTY:MASTER>N MASTER !
    len SLAVE-U !
-   MASTER @ >FD FD-CLOEXEC!
+   MASTER @ >FD FD:FD-CLOEXEC!
    SLAVE PTY:PTY-OPEN-FLAGS 0 open {: sfd:n :}
    sfd 0 >= TTRUE
    sfd SLAVE-FD !
-   sfd >FD FD-CLOEXEC!
+   sfd >FD FD:FD-CLOEXEC!
    LOOPBACK UDP4:ADDRESS 0 UDP4:PORT UDP4:BIND MATCH UDP4:open-result
       opened OF UDP4:SOCKET>N SOCK ! ENDOF
       failed OF UDP4:ERRNO>N throw ENDOF
@@ -189,7 +189,7 @@ TASK:MIN-STACK TASK:TASK UDP-PEER
    a SCRIPT u BYTE-COPY
    u SCRIPT-U ! ;
 
-\ A generation that met its own transfer deadline exits PROC-TIMEOUT-RC: the
+\ A generation that met its own transfer deadline exits PROCESS:TIMEOUT-RC: the
 \ row's deadline, printed with the program and capture and thrown, not asserted.
 : CHECK-RUN ( n n n -- )
    {: outu:n erru:n rc:n :}

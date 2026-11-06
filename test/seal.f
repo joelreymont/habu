@@ -7,7 +7,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -362,9 +362,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" SLF-MAIN" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-STORE! ( len len outcome ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
+: SLV-STORE! ( len len PROCESS:ending ptr u8 n -- ) {: outu:len erru:len oc src:ptr u:n :}
    erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF SLV-RC ! 0 0= SLV-EXITED ! ENDOF
      signaled OF SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
      timeout OF src u SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ T-TIMED-OUT ENDOF

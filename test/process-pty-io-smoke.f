@@ -137,7 +137,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    PROC-FORK:CHECKED dup PID>N 0= if drop DEAD-CHILD then ;
 
 : DEAD-WATCH ( -- )
-   PIPE-PAIR ALIVE-W ! ALIVE-R !
+   FD:PIPE-PAIR ALIVE-W ! ALIVE-R !
    FORK-DEAD {: cpid:pid :}
    ALIVE-W @ >FD CLOSE-OK
    ALIVE-R @ >FD FD>N WAIT-BYTE 1 read 0 T=       \ block until the child has exited (EOF)
@@ -149,7 +149,7 @@ TASK:MIN-STACK TASK:TASK HALTEE
    else
       wfd 0 < TTRUE                                \ macOS kqueue cannot register on the exited process
    then
-   cpid PROC-WAIT-STATUS drop ;                    \ reap the zombie
+   cpid PROCESS:WAIT-STATUS drop ;                    \ reap the zombie
 
 \ A gated target stays alive beyond the 100 ms deadline. A 1 kHz profiler storms
 \ the process while its watch wait is on the AIO loop; no signal reaches a

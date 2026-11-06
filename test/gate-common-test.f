@@ -134,7 +134,7 @@ variable LATE-ODD                        \ the first code no capture may end wit
    nip nip dup 0 <> if throw then drop ;
 
 : LATE-REAP ( -- )
-   LATE-PID @ 0 > if LATE-PID @ >PID PROC-WAIT-OUTCOME drop then ;
+   LATE-PID @ 0 > if LATE-PID @ >PID PROCESS:WAIT-ENDING drop then ;
 
 : LATE-NOTE ( n -- ) {: code:n :}
    code 0= if exit then

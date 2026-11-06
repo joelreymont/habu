@@ -7,7 +7,7 @@
 require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/engine-candidate.f
@@ -28,7 +28,7 @@ variable ERR-U
 : OUT$ ( -- ptr u8 n ) OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR ERR-U @ ;
 
-: EXEC ( ptr u8 n -- len len outcome ) {: src:ptr u:n :}
+: EXEC ( ptr u8 n -- len len PROCESS:ending ) {: src:ptr u:n :}
    PROC-ARGV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN  src u >LEN  OUT CAP >LEN  ERR CAP >LEN
    TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
@@ -44,7 +44,7 @@ variable ERR-U
    T-FAILURES {: before:n :}
    src u EXEC {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
-   label lu T-LABEL  src u OUT$ ERR$ oc 0 T-OUTCOME-EXITED=
+   label lu T-LABEL  src u OUT$ ERR$ oc 0 T-ENDING-EXITED=
    label lu T-LABEL  OUT$ want wu T$=
    src u before SHOW ;
 
@@ -55,7 +55,7 @@ variable ERR-U
    T-FAILURES {: before:n :}
    src u EXEC {: outu:len erru:len oc :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
-   label lu T-LABEL  src u OUT$ ERR$ oc rc T-OUTCOME-EXITED=
+   label lu T-LABEL  src u OUT$ ERR$ oc rc T-ENDING-EXITED=
    label lu T-LABEL  OUT$ s" " T$=
    label lu T-LABEL  ERR ERR-U @ du min diag du T$=
    src u before SHOW ;

@@ -49,7 +49,7 @@ variable FILE-U
    s" --load" ARG+  s" tools/wasm-build.f" ARG+  s" --" ARG+
    s" test/wasm/storage.f" ARG+  entry eu ARG+  MOD MOD-U @ ARG+
    s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0<> if  ERR erru LEN>N type cr  then
    rc ;

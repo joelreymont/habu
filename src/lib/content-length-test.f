@@ -10,7 +10,7 @@ require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/task.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/fd.f
 require src/lib/fmt.f
 require src/lib/adt/option.f
@@ -46,7 +46,7 @@ variable CHILD-CODE
 \ maximum reads its read end.
 : FEED-MAX ( ptr u8 n n -- )
    {: a:ptr u:n max:n :}
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    w a u WRITE-FULL
    w FD>N close
    r FD>N FEED-FD !
@@ -97,7 +97,7 @@ variable CHILD-CODE
 \ the read end; the child's pid comes back for the case to reap.
 : FORKED ( [ -- ] -- pid )
    {: part :}
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    w FD>N CHILD-FD !
    0 CHILD-CODE !
    PROC-FORK:CHECKED {: pid:pid :}
@@ -234,7 +234,7 @@ TYPED-VARIABLE PAD-LEN len
    NEXT-LEN 2 T=  2 BODY$ s" {}" T$=
    NEXT-LEN -1 T=
    DONE
-   s" big writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" big writer" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
 
 
 : PIECE ( ptr u8 n -- )
@@ -256,7 +256,7 @@ TYPED-VARIABLE PAD-LEN len
    3 BODY$ s" abc" T$=
    NEXT-LEN -1 T=
    DONE
-   s" piece writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" piece writer" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
 
 
 : FRESH-NEXT ( -- )
@@ -333,7 +333,7 @@ TYPED-VARIABLE PAD-LEN len
 \ The exact header and body, an empty body, a body built in SB, read back by a
 \ reader. A pipe with no reader, SIGPIPE disarmed: E-FS-IO.
 : TEST-SEND ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    w s" hello" SEND
    r 26 SENT$ s\" Content-Length: 5\r\n\r\nhello" T$=
    w s" " SEND
@@ -350,8 +350,8 @@ TYPED-VARIABLE PAD-LEN len
    NEXT-LEN 0 T=  0 BODY$ nip 0 T=
    NEXT-LEN -1 T=
    DONE
-   PIPE-PAIR {: r2:fd w2:fd :}
-   w2 FD-NOSIGPIPE!
+   FD:PIPE-PAIR {: r2:fd w2:fd :}
+   w2 FD:FD-NOSIGPIPE!
    r2 FD>N close
    w2 FD>N CHILD-FD !
    [: NO-READER ;] E-FS-IO TTHROWSQ

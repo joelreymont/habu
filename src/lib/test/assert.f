@@ -136,7 +136,7 @@ variable T-LABEL-U
    s" test: " type T-FAIL# @ FMT:.INT s"  failure(s)" type cr
    s" test: failures" T-EX-FAIL die ;
 
-\ A deadline is no verdict on the code under test (src/lib/test/outcome.f): a
+\ A deadline is no verdict on the code under test (src/lib/test/ending.f): a
 \ check that wants another code lets E-PROC-TIMEOUT go uncaught and counts
 \ nothing. The expected code is a local, so a throw check inside the xt keeps
 \ its own.

@@ -44,7 +44,7 @@ FUNCTION: READ-CALL read ( n ptr u8 n -- n )
    a u FS:>PATHZ FS:O-NONBLOCK 0 open {: rd:n :}
    rd 0 < if E-FS-OPEN throw then
    rd >FD {: r:fd :}
-   r FD-CLOEXEC!
+   r FD:FD-CLOEXEC!
    r ;
 
 public
@@ -99,17 +99,17 @@ public
 \ with no writer, EAGAIN with one), polling at most SLICE-MS between reads,
 \ through its own read: no library word reads a nonblocking fd with its errno.
 : EOF-WITHIN ( fd n -- n ) {: rd:fd ms:n :}
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
+   ms >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
       rd FD>N SINK SINK-CAP READ-CALL {: got:n :}
       got 0= if 1 exit then
       got 0 < if
          FFI:ERRNO {: cause:n :}
          cause EAGAIN <> cause EINTR <> and if cause negate exit then
-         deadline PROC-LEFT-MS MS>N SLICE-MS min {: left:n :}
+         deadline PROCESS:LEFT-MS MS>N SLICE-MS min {: left:n :}
          left 0= if 0 exit then
-         rd POLLIN PROC-PFD!
-         1 left left >MS PROC-DEADLINE-AT PROC-POLL-RESTART {: rc:n :}
+         rd FD:POLLIN PROCESS:PFD!
+         1 left left >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART {: rc:n :}
          rc 0 < if rc exit then
       then
    again ;

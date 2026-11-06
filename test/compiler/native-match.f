@@ -86,7 +86,7 @@ SUMTYPE grow<a>
 ;SUMTYPE
 
 \ Two parameters instantiated to different widths, the shape of
-\ src/lib/process.f RUN-CAPTURE's `result<pcap:captured,pcap:failed>` (a
+\ src/lib/process.f PROCESS:RUN-CAPTURE's `result<pcap:captured,pcap:failed>` (a
 \ two-cell ok, a three-cell err): ok needs a cell added and err none. The chain
 \ refused it with -8503 (measured).
 SUMTYPE pair<a,b>
@@ -717,7 +717,7 @@ variable CHILD-RC
    ERR-BUF CAP-CAP >LEN
    CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME
-   PROC-OUTCOME>RC RC>N CHILD-RC !
+   PROCESS:ENDING>RC RC>N CHILD-RC !
    LEN>N CHILD-ERR-N !
    LEN>N CHILD-OUT-N ! ;
 

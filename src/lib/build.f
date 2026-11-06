@@ -144,7 +144,7 @@ public
    cmdu 0 <= if E-BUILD-COMMAND throw then
    cmd cmdu FS:FILE? 0= if E-BUILD-COMMAND throw then
    BUILD-DEV-NULL-RD {: nullfd:fd :}
-   cmd cmdu >LEN nullfd -1 >FD -1 >FD PROC-RUN-IO-RC
+   cmd cmdu >LEN nullfd -1 >FD -1 >FD PROCESS:RUN-IO-RC
    nullfd FD>N close
    MATCH result
      ok  OF ENDOF

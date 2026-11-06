@@ -117,7 +117,7 @@ create DGT-ERR DGT-BUF-CAP allot
 \ A tool on the input, its standard output captured into the given buffer. The
 \ tool runs with this process's environment, so tools/check.f makes its scratch
 \ root under the TMPDIR this run was handed.
-: DGT-RUN ( ptr u8 n ptr u8 n -- len len outcome )
+: DGT-RUN ( ptr u8 n ptr u8 n -- len len PROCESS:ending )
    {: tool:ptr toolu:n out:ptr outcap:n :}
    PROC-ARGV-RESET
    s" --load" DGT-ARG+
@@ -134,16 +134,16 @@ create DGT-ERR DGT-BUF-CAP allot
 : DGT-RUN-OK ( ptr u8 n -- n )
    {: tool:ptr toolu:n :}
    tool toolu DGT-OUT DGT-BUF-CAP DGT-RUN {: outu:len erru:len oc :}
-   tool toolu DGT-OUT outu LEN>N DGT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   tool toolu DGT-OUT outu LEN>N DGT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    DGT-ERR erru LEN>N DGT-EMPTY$ T$=
    outu LEN>N ;
 
 \ The diag-origin run, its output captured into out, exited with the expected
 \ status; its output and error lengths.
-: DGT-EXPECT-EXIT ( ptr u8 len len outcome n -- n n )
+: DGT-EXPECT-EXIT ( ptr u8 len len PROCESS:ending n -- n n )
    {: out:ptr outu:len erru:len oc expect:n :}
    s" tools/diag-origin.f" out outu LEN>N DGT-ERR erru LEN>N oc expect
-   T-OUTCOME-EXITED=
+   T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 : DGT-TEST-CLI ( -- )
@@ -187,7 +187,7 @@ DGT-BIG-LEN DGT-SIZED-OUT-CAP + constant DGT-SIZED-ALLOC
    u du - 0 ?do $0a a i + c! loop
    d a u + du - du BYTE-COPY ;
 
-: DGT-SIZED-RUN ( ptr u8 n ptr u8 -- ptr u8 len len outcome ) {: src:ptr u:n out:ptr :}
+: DGT-SIZED-RUN ( ptr u8 n ptr u8 -- ptr u8 len len PROCESS:ending ) {: src:ptr u:n out:ptr :}
    src u DGT-SIZED-FILL
    DGT-IN src u FS:WRITE-ALL
    out s" tools/diag-origin.f" out DGT-SIZED-OUT-CAP DGT-RUN ;

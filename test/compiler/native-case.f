@@ -1,7 +1,7 @@
 \ CASE lowering at tier 0, one child per source.
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 
 package CASE-LOWERING-TEST
 
@@ -9,10 +9,10 @@ $2000 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: CHECK-RESULT ( len len outcome ptr u8 n n -- )
+: CHECK-RESULT ( len len PROCESS:ending ptr u8 n n -- )
    {: outl:len errl:len oc src:ptr u:n want:n :}
    outl LEN>N {: outu:n :} errl LEN>N {: erru:n :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
       exited OF want T= ENDOF
       signaled OF drop false TTRUE ENDOF
       timeout OF src u OUT outu ERR erru T-TIMED-OUT ENDOF

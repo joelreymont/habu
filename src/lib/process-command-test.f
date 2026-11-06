@@ -14,7 +14,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/spawn.f
 require src/lib/process-command.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/wait.f
 
 package CMD-TEST
@@ -167,13 +167,13 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
 
 \ A deadline is no completion code: RC@ and RUN-RC throw E-PROC-TIMEOUT for
 \ it, where RUN-OUTCOME and OUTCOME@ keep it as data.
-: SLEEP ( CMD:command -- CMD:command outcome )
+: SLEEP ( CMD:command -- CMD:command PROCESS:ending )
    s" 5" CMD:ARG+
    s" /bin/sleep" SHORT-TIMEOUT-MS >MS CMD:RUN-OUTCOME ;
 
 : TIMEOUT ( CMD:command -- CMD:command )
-   SLEEP T-OUTCOME-TIMEOUT
-   CMD:OUTCOME@ T-OUTCOME-TIMEOUT
+   SLEEP T-ENDING-TIMEOUT
+   CMD:OUTCOME@ T-ENDING-TIMEOUT
    CMD:OUT$ nip 0 T=
    CMD:ERR$ nip 0 T= ;
 
@@ -221,7 +221,7 @@ create NUL-NAME 74 c, 74 c, 0 c, 88 c,      \ J J NUL X
    CMD:OUTCOME@ {: oc :}
    CMD:OUT$ {: out:ptr outu:n :}
    CMD:ERR$ {: err:ptr erru:n :}
-   EXIT3$ out outu err erru oc 3 T-OUTCOME-EXITED=
+   EXIT3$ out outu err erru oc 3 T-ENDING-EXITED=
    out outu s" x" T$= ;
 
 : REFUSED-KEEPS ( CMD:command -- CMD:command )
@@ -605,7 +605,7 @@ TASK:MIN-STACK TASK:TASK LATE-TASK
 : LATE-BODY ( -- ) [: LATE-RUN ;] CMD:WITH-COMMAND 0 TASK:RETURN ;
 
 : LATE-PREPARED? ( -- bool )
-   LATE-TASK PROC-STORAGE TASK:HIS BYTE-VIEW PROC-RC-OFF + CELL-VIEW @ -1 = ;
+   LATE-TASK PROCESS:STORAGE TASK:HIS BYTE-VIEW PROCESS:RC-OFF + CELL-VIEW @ -1 = ;
 
 : LATE-WINDOW ( -- )
    ['] LATE-BODY LATE-TASK TASK:ACTIVATE
@@ -678,7 +678,7 @@ TASK:MIN-STACK TASK:TASK PARKER
 variable YES-ADDR
 
 : RUNAWAY ( CMD:command -- CMD:command )
-   s" /usr/bin/yes" SHORT-TIMEOUT-MS >MS CMD:RUN-OUTCOME T-OUTCOME-TIMEOUT
+   s" /usr/bin/yes" SHORT-TIMEOUT-MS >MS CMD:RUN-OUTCOME T-ENDING-TIMEOUT
    CMD:OUT$ {: a:ptr u:n :}
    u PAGE-PROBE > TTRUE
    a NULL-PTR BYTE-VIEW - YES-ADDR !

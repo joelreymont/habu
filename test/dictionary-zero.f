@@ -4,7 +4,7 @@
 require src/lib/test.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/habu/interpret.f
 
 package DICTIONARY-ZERO-TEST
@@ -63,7 +63,7 @@ OUTER-RC  create OU-B 3 cells allot  constant OU-RC
 : STOP ( -- )
    4 SEND-BYTE
    REAP {: oc :}
-   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
+   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-ENDING-EXITED=
    CLOSE-MASTER ;
 
 

@@ -64,8 +64,8 @@ false ROOT-LIVE !
 true FIFO-DONE !
 false CASE-AGAIN !
 false CASE-NOHUP !
-PROC-NO-FD FIFO-RD !
-PROC-NO-FD ROOT-WATCH !
+PROCESS:NO-FD FIFO-RD !
+PROCESS:NO-FD ROOT-WATCH !
 
 : TMP$ ( -- ptr u8 n )    TMP TMP-U @ ;
 : LOG$ ( -- ptr u8 n )    LOG LOG-U @ ;
@@ -207,10 +207,10 @@ variable STAT-PATH-U
 \ POLLNVAL), is no answer either way: it throws E-PROC-OUTPUT.
 : READY-WITHIN? ( n n -- bool )
    {: fd:n ms:n :}
-   fd >FD POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART {: rc:n :}
+   fd >FD FD:POLLIN PROCESS:PFD!
+   1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART {: rc:n :}
    rc 0 < if E-PROC-OUTPUT throw then
-   0 >IDX PROC-PFD-REVENTS POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   0 >IDX PROCESS:PFD-REVENTS FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
    rc 0 > ;
 
 \ Both pids, before READY-MS runs out. End of file first means a reporter died:
@@ -219,9 +219,9 @@ variable STAT-PATH-U
 \ On macOS, whose poll never reports a FIFO's end of file, a reporter that dies
 \ before its report is this timeout instead.
 : REPORTS-READ? ( -- bool )
-   READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      FIFO-RD @ deadline PROC-LEFT-MS MS>N READY-WITHIN? 0= if
+      FIFO-RD @ deadline PROCESS:LEFT-MS MS>N READY-WITHIN? 0= if
          s" gate-signal-test REPORTS-READ" TEST-WAIT:EXPIRED
       then
       FIFO-RD @ REPORTS REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
@@ -274,12 +274,12 @@ variable STAT-PATH-U
 \ than once. GONE-MS running out first is this wait's own deadline, named and
 \ thrown as a timeout.
 : REPORTED-GONE ( -- )
-   GONE-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   GONE-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
       true
       REPORTED# 0 ?do i REPORTED-SAME? if drop false then loop
       if exit then
-      deadline PROC-LEFT-MS MS>N 0= if
+      deadline PROCESS:LEFT-MS MS>N 0= if
          s" gate-signal-test REPORTED-GONE" TEST-WAIT:EXPIRED
       then
       SETTLE-MS PAUSE
@@ -298,7 +298,7 @@ variable STAT-PATH-U
 \ deadline, named and thrown as a timeout.
 : SWEEP ( -- )
    REPORTED# 0 ?do
-      i REPORTED-SAME? if i REPORTED SIGKILL PROC-KILL-RAW drop then
+      i REPORTED-SAME? if i REPORTED PROCESS:SIGKILL PROCESS:KILL-RAW drop then
    loop
    EXPIRE-MS GONE-WITHIN ;
 
@@ -357,7 +357,7 @@ variable STAT-PATH-U
 
 \ A second signal may find the root already gone, so the answer is not read.
 : ROOT-SIGNAL ( n -- ) {: sig:n :}
-   ROOT-PID @ >PID sig PROC-KILL-RAW drop ;
+   ROOT-PID @ >PID sig PROCESS:KILL-RAW drop ;
 
 \ Returns once the root has ended. EXIT-MS running out first is this wait's own
 \ deadline, named and thrown as a timeout; a failed poll throws E-PROC-OUTPUT.
@@ -366,15 +366,15 @@ variable STAT-PATH-U
       s" gate-signal-test ROOT-ENDED" TEST-WAIT:EXPIRED
    then ;
 
-: ROOT-REAP ( -- outcome )
-   ROOT-PID @ >PID PROC-WAIT-OUTCOME
+: ROOT-REAP ( -- PROCESS:ending )
+   ROOT-PID @ >PID PROCESS:WAIT-ENDING
    false ROOT-LIVE ! ;
 
-\ PROC-WAIT-OUTCOME never makes `timeout`: its wait blocks until the child ends.
-\ The arm throws, as PROC-OUTCOME>RC's does, so a deadline wait fed here later
+\ PROCESS:WAIT-ENDING never makes `timeout`: its wait blocks until the child ends.
+\ The arm throws, as PROCESS:ENDING>RC's does, so a deadline wait fed here later
 \ cannot read as no kill.
-: KILLED-BY? ( outcome n -- bool ) {: sig:n :}
-   MATCH outcome
+: KILLED-BY? ( PROCESS:ending n -- bool ) {: sig:n :}
+   MATCH PROCESS:ending
       exited OF drop false ENDOF
       signaled OF sig = ENDOF
       timeout OF E-PROC-TIMEOUT throw ENDOF
@@ -385,8 +385,8 @@ variable STAT-PATH-U
 \ kill's own outcome is no claim of this test.
 : ROOT-END ( -- )
    ROOT-LIVE @ 0= if exit then
-   ROOT-PID @ >PID SIGKILL PROC-KILL-RAW drop
-   ROOT-REAP PROC-OUTCOME>RC drop
+   ROOT-PID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   ROOT-REAP PROCESS:ENDING>RC drop
    s" the late root's output:" type cr
    LOG-TEXT LOG$ LOG-TEXT LOG-CAP FS:READ-ALL type cr ;
 
@@ -421,8 +421,8 @@ variable STAT-PATH-U
 : SIGNAL-END ( -- )
    [: [: ROOT-END ;]
       [: FIFO-DONE @ 0= if SWEEP then ;] finally ;]
-   [: ROOT-WATCH PROC-CLOSE-CELL
-      FIFO-RD PROC-CLOSE-CELL
+   [: ROOT-WATCH PROCESS:CLOSE-CELL
+      FIFO-RD PROCESS:CLOSE-CELL
       TMP-CLEAR ;] finally ;
 
 \ The signal the root is to answer, whether it is sent twice, and whether the

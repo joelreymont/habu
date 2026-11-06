@@ -9,7 +9,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 
 package CLI-CONTRACTS
 
@@ -118,10 +118,10 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF FS:JOIN-PATH HCT-CHILD-U !
    HCT-CHILD HCT-CHILD$ FS:WRITE-ALL ;
 
-: HCT-STORE! ( len len outcome ptr u8 n -- )
+: HCT-STORE! ( len len PROCESS:ending ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
    outu LEN>N HCT-OUT-U !  erru LEN>N HCT-ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF HCT-RC ! 0 0= HCT-EXITED ! ENDOF
      signaled OF HCT-RC ! 0 0= 0= HCT-EXITED ! ENDOF
      timeout OF

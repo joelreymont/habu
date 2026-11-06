@@ -141,27 +141,27 @@ variable GT-TAIL-U
       got gotu type cr
    then ;
 
-\ Decompose an outcome into the runner's exited/timed-out/code cells (all one
+\ Decompose an ending into the runner's exited/timed-out/code cells (all one
 \ cell, lossless: exit codes >= 128 stay distinct from signal deaths).
-: GT-OUTCOME! ( outcome -- )
-   MATCH outcome
+: GT-OUTCOME! ( PROCESS:ending -- )
+   MATCH PROCESS:ending
      exited OF GT-CODE ! 0 0= GT-EXITED ! 0 0= 0= GT-TIMED-OUT ! ENDOF
      signaled OF GT-CODE ! 0 0= 0= GT-EXITED ! 0 0= 0= GT-TIMED-OUT ! ENDOF
      timeout OF 0 GT-CODE ! 0 0= 0= GT-EXITED ! 0 0= GT-TIMED-OUT ! ENDOF
    ;MATCH ;
 
-: GT-OUTCOME@ ( -- outcome )
-   GT-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
-   GT-EXITED @ if GT-CODE @ OUTCOME:EXITED exit then
-   GT-CODE @ OUTCOME:SIGNALED ;
+: GT-OUTCOME@ ( -- PROCESS:ending )
+   GT-TIMED-OUT @ if PROCESS-ENDING:timeout exit then
+   GT-EXITED @ if GT-CODE @ PROCESS-ENDING:exited exit then
+   GT-CODE @ PROCESS-ENDING:signaled ;
 
-: GT-STORE-RUN ( len len outcome -- )
+: GT-STORE-RUN ( len len PROCESS:ending -- )
    GT-OUTCOME!
    LEN>N GT-ERR-U !
    LEN>N GT-OUT-U ! ;
 
 : GT-CAPTURE-STORE ( -- )
-   PROC-CAPTURE-OUTCOME@ GT-STORE-RUN ;
+   PROCESS:CAPTURE-ENDING@ GT-STORE-RUN ;
 
 \ A test's child: path with the argv the caller staged. The child inherits this
 \ process's environment, so the scratch it makes lies under the TMPDIR this run
@@ -173,7 +173,7 @@ variable GT-TAIL-U
    GT-STORE-RUN ;
 
 : GT-CAPTURE-DRAIN ( -- )
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-DRAIN-READY ;
+   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROCESS:DRAIN-READY ;
 
 : GT-RUN-DEFAULT ( ptr u8 n -- )
    GT-DEFAULT-TIMEOUT-MS GT-RUN ;
@@ -224,7 +224,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 \ A copy of fd at GT-FD-HOLD-MIN or above, close-on-exec from its first
 \ instant; -1 when the host refuses.
 : GT-CAP-DUP ( n -- n )
-   F-DUPFD-CLOEXEC GT-FD-HOLD-MIN fcntl ;
+   FD:F-DUPFD-CLOEXEC GT-FD-HOLD-MIN fcntl ;
 
 \ A new empty file named name under dir, open for appending (the writer) and,
 \ held, for reading from its start (the reader). It is unlinked before either
@@ -369,12 +369,12 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    0 lenp ! ;
 
 : GT-CAPTURE-FLUSH-LINES ( -- )
-   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-LINES-FD
-   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-LINES-FD ;
+   1 GT-OUT-BUF PROCESS:OUT-LEN GT-FLUSH-LINES-FD
+   2 GT-ERR-BUF PROCESS:ERR-LEN GT-FLUSH-LINES-FD ;
 
 : GT-CAPTURE-FLUSH-FINAL ( -- )
-   1 GT-OUT-BUF PROC-OUT-LEN GT-FLUSH-REMAINDER-FD
-   2 GT-ERR-BUF PROC-ERR-LEN GT-FLUSH-REMAINDER-FD ;
+   1 GT-OUT-BUF PROCESS:OUT-LEN GT-FLUSH-REMAINDER-FD
+   2 GT-ERR-BUF PROCESS:ERR-LEN GT-FLUSH-REMAINDER-FD ;
 
 \ Call before a long subcheck and GT-PROGRESS-PASS after it; a long poll caps its
 \ timeout at GT-PROGRESS-SLICE-MS and calls GT-PROGRESS-WAIT when quiet, so a
@@ -385,7 +385,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    s" RUN: " type label labelu type cr ;
 
 : GT-PROGRESS-ELAPSED-MS ( -- n )
-   mono-ns GT-PROGRESS-START-NS @ - PROC-NS-PER-MS / ;
+   mono-ns GT-PROGRESS-START-NS @ - PROCESS:NS-PER-MS / ;
 
 : GT-U-TYPE ( n -- ) {: n :}
    n 0 < if E-TBL-FIELD throw then
@@ -393,7 +393,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    n 10 mod STR-ZERO + emit ;
 
 : GT-PROGRESS-DUE? ( -- bool )
-   mono-ns GT-PROGRESS-LAST-NS @ - PROC-NS-PER-MS / GT-HEARTBEAT-MS >= ;
+   mono-ns GT-PROGRESS-LAST-NS @ - PROCESS:NS-PER-MS / GT-HEARTBEAT-MS >= ;
 
 : GT-PROGRESS-WAIT ( ptr u8 n -- ) {: label:ptr labelu :}
    GT-PROGRESS-DUE? if
@@ -404,13 +404,13 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
 
 \ The heartbeat cadence, cut short only by a capture deadline that comes first.
 : GT-PROGRESS-SLICE-MS ( -- ms )
-   PROC-REMAINING-MS MS>N {: left:n :}
+   PROCESS:REMAINING-MS MS>N {: left:n :}
    left 0 < left GT-HEARTBEAT-MS > or if GT-HEARTBEAT-MS >MS exit then
    left >MS ;
 
 : GT-PROGRESS-CAPTURE-TIMEOUT? ( ptr u8 n -- bool ) {: label:ptr labelu :}
-   PROC-REMAINING-MS MS>N 0= if
-      PROC-REAP-CAPTURE-TIMEOUT
+   PROCESS:REMAINING-MS MS>N 0= if
+      PROCESS:REAP-CAPTURE-TIMEOUT
       0 0=
       exit
    then
@@ -427,7 +427,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    label labelu GT-PROGRESS-WAIT ;
 
 : GT-PROGRESS-CAPTURE-STEP? ( ptr u8 n -- bool ) {: label:ptr labelu :}
-   GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
+   GT-PROGRESS-SLICE-MS PROCESS:POLL-CAPTURE-ENDING dup COUNT>N 0= if
       drop
       label labelu GT-PROGRESS-CAPTURE-TIMEOUT?
       exit
@@ -437,7 +437,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    0 0= 0= ;
 
 : GT-PROGRESS-CAPTURE-STEP-FLUSH? ( ptr u8 n -- bool ) {: label:ptr labelu :}
-   GT-PROGRESS-SLICE-MS PROC-POLL-CAPTURE-OUTCOME dup COUNT>N 0= if
+   GT-PROGRESS-SLICE-MS PROCESS:POLL-CAPTURE-ENDING dup COUNT>N 0= if
       drop
       label labelu GT-PROGRESS-CAPTURE-TIMEOUT? dup if
          GT-CAPTURE-FLUSH-FINAL
@@ -449,13 +449,13 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    0 0= 0= ;
 
 : GT-PROGRESS-STDIN-READY ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
-   in inu PROC-DRIVE-STDIN
+   in inu PROCESS:DRIVE-STDIN
    GT-CAPTURE-DRAIN
    label labelu GT-PROGRESS-WAIT ;
 
 : GT-PROGRESS-STDIN-STEP? ( ptr u8 len ptr u8 n -- bool )
    {: in:ptr inu label:ptr labelu :}
-   GT-PROGRESS-SLICE-MS PROC-POLL-IO-OUTCOME dup COUNT>N 0= if
+   GT-PROGRESS-SLICE-MS PROCESS:POLL-IO-ENDING dup COUNT>N 0= if
       drop
       label labelu GT-PROGRESS-CAPTURE-TIMEOUT?
       exit
@@ -465,26 +465,26 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    0 0= 0= ;
 
 : GT-PROGRESS-CAPTURE ( ptr u8 n -- ) {: label:ptr labelu :}
-   begin PROC-CAPTURE-DONE? 0= while
+   begin PROCESS:CAPTURE-DONE? 0= while
       label labelu GT-PROGRESS-CAPTURE-STEP? if GT-CAPTURE-STORE exit then
    repeat
-   PROC-REAP-CAPTURE
+   PROCESS:REAP-CAPTURE
    GT-CAPTURE-STORE ;
 
 : GT-PROGRESS-CAPTURE-FLUSH ( ptr u8 n -- ) {: label:ptr labelu :}
-   begin PROC-CAPTURE-DONE? 0= while
+   begin PROCESS:CAPTURE-DONE? 0= while
       label labelu GT-PROGRESS-CAPTURE-STEP-FLUSH? if GT-CAPTURE-STORE exit then
    repeat
-   PROC-REAP-CAPTURE
+   PROCESS:REAP-CAPTURE
    GT-CAPTURE-FLUSH-FINAL
    GT-CAPTURE-STORE ;
 
 : GT-PROGRESS-STDIN-CAPTURE ( ptr u8 len ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
-   inu LEN>N 0 <= if PROC-IN-W PROC-CLOSE-CELL then
-   begin PROC-STDIN-CAPTURE-DONE? 0= while
+   inu LEN>N 0 <= if PROCESS:IN-W PROCESS:CLOSE-CELL then
+   begin PROCESS:STDIN-CAPTURE-DONE? 0= while
       in inu label labelu GT-PROGRESS-STDIN-STEP? if GT-CAPTURE-STORE exit then
    repeat
-   PROC-REAP-CAPTURE
+   PROCESS:REAP-CAPTURE
    GT-CAPTURE-STORE ;
 
 : GT-PROGRESS-PASS ( ptr u8 n -- ) {: label:ptr labelu :}
@@ -494,7 +494,7 @@ create GT-CAP-PATH PATH-CAP allot     \ a file's path while GT-CAP-FILE opens it
    s" ms)" type cr ;
 
 : GT-RC@ ( -- n )
-   GT-OUTCOME@ PROC-OUTCOME>RC RC>N ;
+   GT-OUTCOME@ PROCESS:ENDING>RC RC>N ;
 
 : GT-RC= ( n ptr u8 n -- ) {: want name:ptr nameu :}
    GT-RC@ want name nameu GT-CHECK-N ;

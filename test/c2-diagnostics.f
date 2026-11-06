@@ -3,7 +3,7 @@
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/c2-memory.f
 require src/lib/c2-owner.f
 require test/c2-records-types.f
@@ -20,7 +20,7 @@ create ERR CAP allot
    {: source:ptr source-u:n operation:ptr operation-u:n culprit:ptr culprit-u:n reason:ptr reason-u:n :}
    source source-u OUT CAP >LEN ERR CAP >LEN 10000 >MS SUBJECT:RUN
    {: out-u:len err-u:len oc :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
       exited OF 70 = ENDOF
       signaled OF drop false ENDOF
       timeout OF source source-u OUT out-u LEN>N ERR err-u LEN>N T-TIMED-OUT ENDOF

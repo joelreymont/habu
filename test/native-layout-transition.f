@@ -30,7 +30,7 @@ create ERR CAP allot
    s" build/hb-layout-transition" ARG
    0 SCRIPT-ARGV$ >LEN
    OUT CAP >LEN ERR CAP >LEN BUILD-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    rc 0<> if
       OUT outu LEN>N type ERR erru LEN>N type

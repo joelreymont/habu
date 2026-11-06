@@ -39,7 +39,7 @@ DYNAMIC-BUFFER MODULE u8
 
 : DRIVER ( -- n )
    s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    erru LEN>N ERR-U !
    rc ;
 

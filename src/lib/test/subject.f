@@ -52,12 +52,12 @@ create STATUS-ERR STATUS-CAP allot
    drop ;
 
 : CHILD-FDS ( -- )
-   PROC-OUT-R PROC-CLOSE-CELL
-   PROC-ERR-R PROC-CLOSE-CELL
-   PROC-OUT-W @ >FD FD:STDOUT FD>N DUP2!
-   PROC-ERR-W @ >FD FD:STDERR FD>N DUP2!
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   PROCESS:OUT-R PROCESS:CLOSE-CELL
+   PROCESS:ERR-R PROCESS:CLOSE-CELL
+   PROCESS:OUT-W @ >FD FD:STDOUT FD>N DUP2!
+   PROCESS:ERR-W @ >FD FD:STDERR FD>N DUP2!
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : EVAL ( -- )
    SRC$ evaluate-closed ;
@@ -71,23 +71,23 @@ create STATUS-ERR STATUS-CAP allot
 
 : SPAWN ( -- )
    PROC-FORK:RAW {: pid:pid :}
-   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
+   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
    pid PID>N 0= if CHILD then
-   pid PROC-CAPTURE-PID!
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   pid PROCESS:CAPTURE-PID!
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 public
 
-: RUN ( ptr u8 n ptr u8 len ptr u8 len ms -- len len outcome )
+: RUN ( ptr u8 n ptr u8 len ptr u8 len ms -- len len PROCESS:ending )
    {: src:ptr srcu:n out:ptr outcap:len err:ptr errcap:len timeout:ms :}
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    src srcu SRC!
    STACK 2drop
-   timeout PROC-CAPTURE-BEGIN
+   timeout PROCESS:CAPTURE-BEGIN
    SPAWN
-   out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME ;
+   out outcap err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING ;
 
 : SHOW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n :}
@@ -105,12 +105,12 @@ public
    E-PROC-TIMEOUT throw ;
 
 \ A throw code cannot cross a process boundary, so a child that met a deadline
-\ exits PROC-TIMEOUT-RC. Its parent passes the program, the captured stdout and
+\ exits PROCESS:TIMEOUT-RC. Its parent passes the program, the captured stdout and
 \ stderr and the exit code; on that code TIMED-OUT prints them and throws
 \ E-PROC-TIMEOUT. Any other code is the caller's to assert.
 : RC-TIMED-OUT ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: src:ptr srcu:n out:ptr outu:n err:ptr erru:n rc:n :}
-   rc PROC-TIMEOUT-RC = if src srcu out outu err erru TIMED-OUT then ;
+   rc PROCESS:TIMEOUT-RC = if src srcu out outu err erru TIMED-OUT then ;
 
 private
 
@@ -121,7 +121,7 @@ private
    src srcu STATUS-OUT STATUS-CAP >LEN STATUS-ERR STATUS-CAP >LEN STATUS-MS >MS RUN
    {: outu:len erru:len oc :}
    outu erru
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
       exited OF want = ENDOF
       signaled OF drop false ENDOF
       timeout OF

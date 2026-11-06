@@ -53,7 +53,7 @@ DYNAMIC-BUFFER AFTER u8
    {: exe:ptr eu:n :}
    exe eu >LEN EXE RESOLVE-EXECUTABLE {: xu:len :}
    EXE xu OUT CAP >LEN ERR CAP >LEN DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N
    {: ou:len er:len rc:n :}
    ou LEN>N OUT-U !
    rc 0<> if ERR er LEN>N type cr then

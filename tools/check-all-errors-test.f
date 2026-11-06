@@ -718,7 +718,7 @@ $100000 constant CAE-CHILD-ERR-CAP
    mono-ns CAE-START-NS !
    q execute
    s" PASS: " type label labelu type
-   s"  (" type mono-ns CAE-START-NS @ - PROC-NS-PER-MS / CAE-U-TYPE s" ms)" type cr ;
+   s"  (" type mono-ns CAE-START-NS @ - PROCESS:NS-PER-MS / CAE-U-TYPE s" ms)" type cr ;
 
 : CAE-CASCADE-SOURCE$ ( -- ptr u8 n )
    SB-RESET

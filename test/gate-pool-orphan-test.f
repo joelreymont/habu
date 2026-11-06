@@ -48,10 +48,10 @@ create GPO-SLEEP-PFD 8 allot
    GPO-REFUSED-RC GPO-EXIT ;
 
 \ True when the wait status is a kill; a child that exited is reported.
-\ PROC-STATUS>OUTCOME never makes `timeout` from a wait status; the arm throws,
-\ as PROC-OUTCOME>RC's does, so it cannot read as no kill.
+\ PROCESS:STATUS>ENDING never makes `timeout` from a wait status; the arm throws,
+\ as PROCESS:ENDING>RC's does, so it cannot read as no kill.
 : GPO-KILLED? ( n -- bool )
-   PROC-STATUS>OUTCOME MATCH outcome
+   PROCESS:STATUS>ENDING MATCH PROCESS:ending
      exited OF
         s" gate-pool-orphan-test: a child exited before it was killed, code " type .
         false
@@ -91,12 +91,12 @@ create GPO-SLEEP-PFD 8 allot
    GPO-IDLE
    0 GPO-EXIT ;
 
-\ Observe W's death via alive-pipe EOF within a hard deadline. POLL-IN reports
+\ Observe W's death via alive-pipe EOF within a hard deadline. PROCESS:POLL-IN reports
 \ the read end ready (POLLHUP) once its last write end closes; nobody ever writes
 \ AW, so a ready poll can only mean EOF.
 : GPO-OBSERVE-DEAD? ( fd -- bool ) {: ar:fd :}
    0 begin dup GPO-OBSERVE-STEPS < while
-      ar GPO-POLL-MS >MS POLL-IN COUNT>N 0 > if
+      ar GPO-POLL-MS >MS PROCESS:POLL-IN COUNT>N 0 > if
          drop 0 0= exit
       then
       1+
@@ -104,7 +104,7 @@ create GPO-SLEEP-PFD 8 allot
 
 : GPO-RUN ( -- bool )
    PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
-   PIPE-PAIR {: ar:fd aw:fd :}
+   FD:PIPE-PAIR {: ar:fd aw:fd :}
    PROC-FORK:CHECKED {: ppid:pid :}
    ppid PID>N 0= if rd wr ar aw GPO-PARENT then
    PROC-FORK:CHECKED {: wpid:pid :}
@@ -113,11 +113,11 @@ create GPO-SLEEP-PFD 8 allot
    wr FD>N close
    aw FD>N close
    GPO-SETTLE-MS GPO-SLEEP
-   ppid SIGKILL PROC-KILL-RAW drop
-   ppid PROC-WAIT-STATUS drop
+   ppid PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   ppid PROCESS:WAIT-STATUS drop
    ar GPO-OBSERVE-DEAD?
-   wpid SIGKILL PROC-FORK:KILL-GROUP drop
-   wpid PROC-WAIT-STATUS GPO-KILLED? and
+   wpid PROCESS:SIGKILL PROC-FORK:KILL-GROUP drop
+   wpid PROCESS:WAIT-STATUS GPO-KILLED? and
    ar FD>N close ;
 
 \ ---- spawned-child co-located reaper (PROC-FORK:SPAWN-REAPER) ----------------
@@ -141,8 +141,8 @@ create GPO-SLEEP-PFD 8 allot
 
 \ No reaper watches C once P's arm is refused, so P ends C before it exits.
 : GSR-REFUSED ( n pid -- ) {: code:n cpid:pid :}
-   cpid SIGKILL PROC-KILL-RAW drop
-   cpid PROC-WAIT-STATUS-RAW drop
+   cpid PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   cpid PROCESS:WAIT-STATUS-RAW drop
    code GPO-REFUSED ;
 
 \ P makes C its own group leader before arming, so the reaper's setpgid join
@@ -164,19 +164,19 @@ create GPO-SLEEP-PFD 8 allot
 
 : GSR-RUN ( -- bool )
    PROC-FORK:DEATH-PIPE {: rd:fd wr:fd :}
-   PIPE-PAIR {: ar:fd aw:fd :}
+   FD:PIPE-PAIR {: ar:fd aw:fd :}
    PROC-FORK:CHECKED {: ppid:pid :}
    ppid PID>N 0= if rd wr ar aw GSR-PARENT then
    rd FD>N close
    wr FD>N close
    aw FD>N close
    GPO-SETTLE-MS GPO-SLEEP
-   ppid SIGKILL PROC-KILL-RAW drop
-   ppid PROC-WAIT-STATUS GPO-KILLED?
+   ppid PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   ppid PROCESS:WAIT-STATUS GPO-KILLED?
    ar GPO-OBSERVE-DEAD? and
    ar FD>N close ;
 
-\ ---- capture-spawn reaper (PROC-REAP-ARM seam) -------------------------------
+\ ---- capture-spawn reaper (PROCESS:REAP-ARM seam) -------------------------------
 \ A worker publishes its worker-alive read end as PROC-FORK:REAP-WATCH-FD; a
 \ capture spawn then arms a reaper in the leaf's group watching it. A quiet leaf
 \ leads its own group, so the worker group-kill misses it, and writes nothing,
@@ -185,7 +185,7 @@ create GPO-SLEEP-PFD 8 allot
 \ SIGKILLs W's group and polls kill(L,0) to a deadline. The control publishes no
 \ watch fd and L must survive (T then kills it). The in-process legs show both
 \ capture terminators (a timeout, and two completed captures) leave
-\ PROC-REAP-PID at the no-reaper sentinel.
+\ PROCESS:REAP-PID at the no-reaper sentinel.
 
 256 constant GCR-CAP
 200 constant GCR-SHORT-MS
@@ -209,7 +209,7 @@ variable GCR-LPID   variable GCR-RPID
 : GCR-SPAWN-LEAF ( -- )
    GCR-SLEEP-ARGV
    s" /bin/sh" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
-   GCR-HANG-MS >MS PROC-CAPTURE-BEGIN
+   GCR-HANG-MS >MS PROCESS:CAPTURE-BEGIN
    pathz argv PROC-SPAWN-ARGV-CAPTURE ;
 
 \ The control arm clears the watch fd explicitly: under the gate this test runs
@@ -225,8 +225,8 @@ variable GCR-LPID   variable GCR-RPID
    then
    [: GCR-SPAWN-LEAF ;] catch {: arm:n :}
    arm 0<> if arm GPO-REFUSED then
-   PROC-PID @ GCR-PID-BUF !
-   PROC-REAP-PID @ GCR-PID-BUF 8 + !
+   PROCESS:PID @ GCR-PID-BUF !
+   PROCESS:REAP-PID @ GCR-PID-BUF 8 + !
    pp-wr FD>N GCR-PID-BUF 16 write drop
    pp-wr FD>N close
    GPO-IDLE
@@ -240,7 +240,7 @@ variable GCR-LPID   variable GCR-RPID
    true ;
 
 : GCR-DEAD? ( n -- bool ) {: lpid:n :}
-   lpid >PID 0 PROC-KILL-RAW RC>N 0 < ;
+   lpid >PID 0 PROCESS:KILL-RAW RC>N 0 < ;
 
 : GCR-OBSERVE-DEAD? ( n -- bool ) {: lpid:n :}
    0 begin dup GPO-OBSERVE-STEPS < while
@@ -251,15 +251,15 @@ variable GCR-LPID   variable GCR-RPID
 
 \ True when W reported its pids and ran until the group kill.
 : GCR-LAUNCH ( n -- bool ) {: armed:n :}
-   PIPE-PAIR {: pp-rd:fd pp-wr:fd :}
+   FD:PIPE-PAIR {: pp-rd:fd pp-wr:fd :}
    PROC-FORK:CHECKED {: wpid:pid :}
    wpid PID>N 0= if pp-rd pp-wr armed GCR-WORKER then
    pp-wr FD>N close
    pp-rd GCR-READ-PIDS
    pp-rd FD>N close
    GPO-SETTLE-MS GPO-SLEEP
-   wpid SIGKILL PROC-FORK:KILL-GROUP drop
-   wpid PROC-WAIT-STATUS GPO-KILLED? and ;
+   wpid PROCESS:SIGKILL PROC-FORK:KILL-GROUP drop
+   wpid PROCESS:WAIT-STATUS GPO-KILLED? and ;
 
 : GCR-ARMED? ( -- bool bool )   \ ( -- reaper-armed leaf-reaped )
    1 GCR-LAUNCH 0= if false false exit then
@@ -271,7 +271,7 @@ variable GCR-LPID   variable GCR-RPID
    GCR-RPID @ 0 <
    GPO-SETTLE-MS GPO-SLEEP
    GCR-LPID @ GCR-DEAD? 0=
-   GCR-LPID @ >PID SIGKILL PROC-KILL-RAW drop ;
+   GCR-LPID @ >PID PROCESS:SIGKILL PROCESS:KILL-RAW drop ;
 
 \ The in-process legs run in whatever context hosts this test (under the gate a
 \ pool worker with its own live watch fd), so they save and restore the cell:
@@ -280,12 +280,12 @@ variable GCR-SAVED-FD
 
 : GCR-TIMEOUT-DISARMED? ( -- bool bool )   \ timeout terminator disarms
    PROC-FORK:REAP-WATCH-FD @ GCR-SAVED-FD !
-   PIPE-PAIR {: dw-rd:fd dw-wr:fd :}
+   FD:PIPE-PAIR {: dw-rd:fd dw-wr:fd :}
    dw-rd FD>N PROC-FORK:REAP-WATCH-FD !
    GCR-SLEEP-ARGV
    s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
    GCR-SHORT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   MATCH outcome
+   MATCH PROCESS:ending
      exited OF drop 0 0= 0= ENDOF
      signaled OF drop 0 0= 0= ENDOF
      timeout OF 0 0= ENDOF
@@ -293,14 +293,14 @@ variable GCR-SAVED-FD
    GCR-SAVED-FD @ PROC-FORK:REAP-WATCH-FD !
    dw-rd FD>N close
    dw-wr FD>N close
-   PROC-REAP-PID @ 0 < ;
+   PROCESS:REAP-PID @ 0 < ;
 
 : GCR-CODE ( result<pcap:captured,pcap:failed> -- n )   \ completion code: 0 on a clean exit, else nonzero
    PCAP-RESULT:>N nip nip ;
 
 : GCR-DONE-DISARMED? ( -- bool bool )   \ completion terminator disarms, twice
    PROC-FORK:REAP-WATCH-FD @ GCR-SAVED-FD !
-   PIPE-PAIR {: dw-rd:fd dw-wr:fd :}
+   FD:PIPE-PAIR {: dw-rd:fd dw-wr:fd :}
    dw-rd FD>N PROC-FORK:REAP-WATCH-FD !
    GCR-NOOP-ARGV
    s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
@@ -312,7 +312,7 @@ variable GCR-SAVED-FD
    dw-rd FD>N close
    dw-wr FD>N close
    r1 0 = r2 0 = and
-   PROC-REAP-PID @ 0 < ;
+   PROCESS:REAP-PID @ 0 < ;
 
 : GPO-MAIN ( -- )
    T-RESET

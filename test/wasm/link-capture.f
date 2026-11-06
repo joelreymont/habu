@@ -70,7 +70,7 @@ DYNAMIC-BUFFER MODULE u8
    a u SB-APPEND
    s"  0 set-tier LINK-CAPTURE:REFUSED-LINK" SB-APPEND
    SB$  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS  SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N {: ou:len eu:len rc:n :}
+   PROCESS:ENDING>RC RC>N {: ou:len eu:len rc:n :}
    ou LEN>N  eu LEN>N  rc ;
 
 \ The window refused: it exits 74, stdout naming what and stderr the refusal.

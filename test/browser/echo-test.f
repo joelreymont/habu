@@ -64,7 +64,7 @@ DYNAMIC-BUFFER PAYLOAD u8
 \ ERR.
 : SPAWN ( ptr u8 len -- n )
    OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    outu LEN>N OUT-U !  erru LEN>N ERR-U !
    rc ;
 

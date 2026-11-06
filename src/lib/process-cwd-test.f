@@ -10,13 +10,13 @@ require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 
 package PROCESS-CWD-TEST
 
 4096 constant PCT-CAP
 6 constant PCT-OK-U
-PROC-PATHZ-CAP 1 + constant PCT-LONG-U
+PROCESS:PATHZ-CAP 1 + constant PCT-LONG-U
 
 create PCT-ROOT PATH-CAP allot
 create PCT-REL PATH-CAP allot
@@ -107,15 +107,15 @@ variable PCT-I
 
 : PCT-RUN-EARLY-EOF ( -- )
    [: PCT-EARLY-EOF ;] E-PROC-TIMEOUT TTHROWSQ
-   PROC-OUT-LEN @ 2 T= PCT-OUT 2 s" ok" T$=
-   PROC-PID @ PROC-NO-PID T= PROC-IN-W @ PROC-NO-FD T=
+   PROCESS:OUT-LEN @ 2 T= PCT-OUT 2 s" ok" T$=
+   PROCESS:PID @ PROCESS:NO-PID T= PROCESS:IN-W @ PROCESS:NO-FD T=
    PCT-RESET
    s" bin/hb" >LEN s" ." >LEN PCT-EARLY-EOF$ >LEN
    PCT-OUT PCT-CAP >LEN PCT-ERR PCT-CAP >LEN 300 >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-STDIN-CAPTURE-OUTCOME
-   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 2 T=
+   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 2 T=
    PCT-OUT 2 s" ok" T$=
-   PROC-PID @ PROC-NO-PID T= PROC-IN-W @ PROC-NO-FD T= ;
+   PROCESS:PID @ PROCESS:NO-PID T= PROCESS:IN-W @ PROCESS:NO-FD T= ;
 
 : PCT-RUN-MISSING-CWD ( -- )
    [: PCT-MISSING-CWD ;] E-PROC-SPAWN TTHROWSQ

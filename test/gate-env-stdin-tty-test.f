@@ -34,7 +34,7 @@ variable OUTPUT-RD
 : OPEN-PTY ( -- )
    PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N MASTER-FD !
    MASTER-FD @ 2 <= if E-FS-OPEN throw then
-   MASTER-FD @ >FD FD-CLOEXEC!
+   MASTER-FD @ >FD FD:FD-CLOEXEC!
    PTY-NAME PTY:PTY-OPEN-FLAGS 0 open SLAVE-FD !
    SLAVE-FD @ 2 <= if E-FS-OPEN throw then ;
 
@@ -56,7 +56,7 @@ variable OUTPUT-RD
    SLAVE-FD @ close ;
 
 : WAIT-SESSION ( -- )
-   SESSION-PID @ >PID PROC-WAIT-RC
+   SESSION-PID @ >PID PROCESS:WAIT-RC
    MATCH result
      ok  OF SESSION-RC ! ENDOF
      err OF SESSION-RC ! ENDOF
@@ -66,7 +66,7 @@ variable OUTPUT-RD
    OUTPUT OUTPUT-U @ s" gate-env-stdin-tty-driver: ok" CONTAINS? ;
 
 : READ-OUTPUT-STEP ( -- bool )
-   MASTER-FD @ >FD OUTPUT-POLL-MS >MS POLL-IN COUNT>N {: ready:n :}
+   MASTER-FD @ >FD OUTPUT-POLL-MS >MS PROCESS:POLL-IN COUNT>N {: ready:n :}
    ready 0 < if E-PROC-OUTPUT throw then
    ready 0= if false exit then
    OUTPUT-U @ OUTPUT-CAP >= if E-STR-CAPACITY throw then
@@ -109,11 +109,11 @@ variable OUTPUT-RD
    s" gate-env-stdin-tty-test: ok" type cr ;
 
 \ A throw code cannot cross the fork, so a deadline in the case exits
-\ PROC-TIMEOUT-RC; the wait already named itself on stdout. Any other throw
+\ PROCESS:TIMEOUT-RC; the wait already named itself on stdout. Any other throw
 \ stays an uncaught throw of the child.
 : RUN-CASE-CHILD ( -- )
    [: RUN-CASE ;] catch {: code:n :}
-   code E-PROC-TIMEOUT = if s" " PROC-TIMEOUT-RC die then
+   code E-PROC-TIMEOUT = if s" " PROCESS:TIMEOUT-RC die then
    code 0<> if code throw then
    s" " 0 die ;
 
@@ -126,11 +126,11 @@ variable OUTPUT-RD
    PROC-FORK:CHECKED PID>N {: pid:n :}
    pid 0= if RUN-CASE-CHILD then
    s" controlling-terminal case worker exits cleanly" T-LABEL
-   pid >PID PROC-WAIT-RC
+   pid >PID PROCESS:WAIT-RC
    MATCH result
      ok  OF 0 T= ENDOF
      err OF
-        PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+        PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
         false TTRUE
      ENDOF
    ;MATCH

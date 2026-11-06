@@ -157,17 +157,17 @@ DEFAULT-CASE-MS CASE-MS !
    true FAILED !
    late LATE ! ;
 
-\ A case engine exits PROC-TIMEOUT-RC (124) when a wait of its own passed its
+\ A case engine exits PROCESS:TIMEOUT-RC (124) when a wait of its own passed its
 \ deadline (src/lib/pg-test.f RUN), so that exit is a late step, as is a case
 \ ended at CASE-MS.
-: EXITED-0? ( outcome ptr u8 n -- bool )
+: EXITED-0? ( PROCESS:ending ptr u8 n -- bool )
    {: what:ptr whatu:n :}
-   MATCH outcome
+   MATCH PROCESS:ending
       exited OF
          s" pg-cluster: " type what whatu type
          dup 0= if drop s"  ok" type cr true exit then
          s"  exited " type dup FMT:.INT
-         PROC-TIMEOUT-RC = dup if s" , past its own deadline" type then
+         PROCESS:TIMEOUT-RC = dup if s" , past its own deadline" type then
          STEP-FAILED
       ENDOF
       signaled OF
@@ -191,8 +191,8 @@ DEFAULT-CASE-MS CASE-MS !
 \ process with no watch has ended.
 : GONE-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
    watch 0 < if true exit then
-   watch >FD POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART 0 > ;
+   watch >FD FD:POLLIN PROCESS:PFD!
+   1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART 0 > ;
 
 : CLOSE-WATCH ( ptr n -- ) {: p:ptr :}
    p @ 0 >= if p @ close then
@@ -213,9 +213,9 @@ DEFAULT-CASE-MS CASE-MS !
 \ reaped here and READY? finds no server. The SIGQUIT is for a host whose -1
 \ means something else: a live server is stopped rather than waited on.
 : ENDED-EARLY ( -- )
-   SERVER @ >PID SIGQUIT PROC-KILL-RAW drop
+   SERVER @ >PID SIGQUIT PROCESS:KILL-RAW drop
    s" pg-cluster: postgres ended before it was ready" type cr
-   SERVER @ >PID PROC-WAIT-OUTCOME s" postgres" EXITED-0? drop
+   SERVER @ >PID PROCESS:WAIT-ENDING s" postgres" EXITED-0? drop
    NO-PID SERVER ! ;
 
 \ postgres is spawned directly, not through pg_ctl, whose postmaster calls
@@ -231,8 +231,8 @@ DEFAULT-CASE-MS CASE-MS !
    s" -c" ARG+ s" listen_addresses=" ARG+
    ENV!
    OPEN-NULL LOG$ OPEN-LOG {: in:n log:n :}
-   in >FD FD-CLOEXEC!
-   log >FD FD-CLOEXEC!
+   in >FD FD:FD-CLOEXEC!
+   log >FD FD:FD-CLOEXEC!
    POSTGRES$ >LEN in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N SERVER !
    in close
    log close
@@ -266,13 +266,13 @@ DEFAULT-CASE-MS CASE-MS !
 \ leaves its shared-memory segment.
 : STOP ( n -- ) {: ms:n :}
    SERVER @ NO-PID = if exit then
-   SERVER @ >PID SIGQUIT PROC-KILL-RAW drop
+   SERVER @ >PID SIGQUIT PROCESS:KILL-RAW drop
    WATCH @ ms GONE-WITHIN? if
-      SERVER @ >PID PROC-WAIT-OUTCOME s" postgres stop" EXITED-0? STOPPED !
+      SERVER @ >PID PROCESS:WAIT-ENDING s" postgres stop" EXITED-0? STOPPED !
    else
       SERVER @ >PID PROC-TREE:KILL-TREE
-      SERVER @ >PID PROC-WAIT-STATUS drop
-      OUTCOME:TIMEOUT s" postgres stop" EXITED-0? STOPPED !
+      SERVER @ >PID PROCESS:WAIT-STATUS drop
+      PROCESS-ENDING:timeout s" postgres stop" EXITED-0? STOPPED !
    then
    NO-PID SERVER !
    WATCH CLOSE-WATCH ;
@@ -286,14 +286,14 @@ DEFAULT-CASE-MS CASE-MS !
    s" --" ARG+ CONNINFO$ ARG+
    ENV!
    OPEN-NULL {: in:n :}
-   in >FD FD-CLOEXEC!
+   in >FD FD:FD-CLOEXEC!
    ENGINE-CANDIDATE:PATH$ >LEN in >FD NO-FD >FD NO-FD >FD PROC-SPAWN-ARGV-ENV-IO
    PID>N RUNNING !
    in close
    RUNNING @ proc-watch-open CASE-WATCH ! ;
 
-: CASE-REAP ( -- outcome )
-   RUNNING @ >PID PROC-WAIT-OUTCOME
+: CASE-REAP ( -- PROCESS:ending )
+   RUNNING @ >PID PROCESS:WAIT-ENDING
    NO-PID RUNNING !
    CASE-WATCH CLOSE-WATCH ;
 
@@ -303,7 +303,7 @@ DEFAULT-CASE-MS CASE-MS !
 : CASE-KILL ( -- )
    RUNNING @ NO-PID = if exit then
    RUNNING @ >PID PROC-TREE:KILL-TREE
-   RUNNING @ >PID PROC-WAIT-STATUS drop
+   RUNNING @ >PID PROCESS:WAIT-STATUS drop
    NO-PID RUNNING !
    CASE-WATCH CLOSE-WATCH ;
 
@@ -319,15 +319,15 @@ DEFAULT-CASE-MS CASE-MS !
    s" --no-sync" ARG+
    ENV!
    OPEN-NULL INITDB-LOG$ OPEN-LOG {: in:n log:n :}
-   in >FD FD-CLOEXEC!
-   log >FD FD-CLOEXEC!
+   in >FD FD:FD-CLOEXEC!
+   log >FD FD:FD-CLOEXEC!
    INITDB$ >LEN in >FD log >FD log >FD HOLD @ >FD TEST-FIFO:SPAWN PID>N INITDB-PID !
    in close
    log close
    INITDB-PID @ proc-watch-open INITDB-WATCH ! ;
 
-: INITDB-REAP ( -- outcome )
-   INITDB-PID @ >PID PROC-WAIT-OUTCOME
+: INITDB-REAP ( -- PROCESS:ending )
+   INITDB-PID @ >PID PROCESS:WAIT-ENDING
    NO-PID INITDB-PID !
    INITDB-WATCH CLOSE-WATCH ;
 
@@ -336,12 +336,12 @@ DEFAULT-CASE-MS CASE-MS !
 \ too, which leaves the segment.
 : INITDB-STOP ( -- )
    INITDB-PID @ NO-PID = if exit then
-   INITDB-PID @ >PID SIGNAL:SIGTERM PROC-KILL-RAW drop
+   INITDB-PID @ >PID SIGNAL:SIGTERM PROCESS:KILL-RAW drop
    INITDB-WATCH @ QUIT-MS GONE-WITHIN? 0= if
       INITDB-PID @ >PID PROC-TREE:KILL-TREE
-      OUTCOME:TIMEOUT s" initdb stop" EXITED-0? drop
+      PROCESS-ENDING:timeout s" initdb stop" EXITED-0? drop
    then
-   INITDB-PID @ >PID PROC-WAIT-STATUS drop
+   INITDB-PID @ >PID PROCESS:WAIT-STATUS drop
    NO-PID INITDB-PID !
    INITDB-WATCH CLOSE-WATCH ;
 
@@ -375,7 +375,7 @@ DEFAULT-CASE-MS CASE-MS !
 : ANSWER ( n -- ) {: sig:n :}
    s" pg-cluster: signal " type sig FMT:.INT s" , stopping the cluster" type cr
    s" initdb stop" [: INITDB-STOP ;] catch SAY-THROW
-   SERVER @ NO-PID <> if SERVER @ >PID SIGQUIT PROC-KILL-RAW drop then
+   SERVER @ NO-PID <> if SERVER @ >PID SIGQUIT PROCESS:KILL-RAW drop then
    s" case engine kill" [: CASE-KILL ;] catch SAY-THROW
    s" postgres stop" [: QUIT-MS STOP ;] catch SAY-THROW
    s" cleanup" [: FS:CLEANUP-RUN ;] catch SAY-THROW
@@ -398,15 +398,15 @@ DEFAULT-CASE-MS CASE-MS !
 \ A caught signal is answered here.
 : ENDED-WITHIN? ( n n -- bool ) {: watch:n ms:n :}
    watch 0 < if true exit then
-   ms >MS PROC-DEADLINE-AT {: deadline:n :}
+   ms >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
-      watch >FD POLLIN 0 >IDX PROC-PFD-AT!
-      SIGNAL:FD POLLIN 1 >IDX PROC-PFD-AT!
-      2 deadline PROC-LEFT-MS MS>N deadline PROC-POLL-RESTART {: rc:n :}
+      watch >FD FD:POLLIN 0 >IDX PROCESS:PFD-AT!
+      SIGNAL:FD FD:POLLIN 1 >IDX PROCESS:PFD-AT!
+      2 deadline PROCESS:LEFT-MS MS>N deadline PROCESS:POLL-RESTART {: rc:n :}
       rc 0 < if E-PROC-OUTPUT throw then
       rc 0= if false exit then
-      1 >IDX PROC-PFD-REVENTS 0<> if SIGNAL-CHECK then
-      0 >IDX PROC-PFD-REVENTS 0<> if true exit then
+      1 >IDX PROCESS:PFD-REVENTS 0<> if SIGNAL-CHECK then
+      0 >IDX PROCESS:PFD-REVENTS 0<> if true exit then
    again ;
 
 
@@ -415,7 +415,7 @@ DEFAULT-CASE-MS CASE-MS !
    INITDB-WATCH @ TOOL-MS ENDED-WITHIN? if
       INITDB-REAP
    else
-      INITDB-STOP OUTCOME:TIMEOUT
+      INITDB-STOP PROCESS-ENDING:timeout
    then
    s" initdb" EXITED-0? if exit then
    INITDB-LOG$ SHOW-LOG
@@ -423,10 +423,10 @@ DEFAULT-CASE-MS CASE-MS !
 
 : READY? ( -- bool )
    SERVER @ NO-PID = if false exit then
-   TOOL-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   TOOL-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin
       STATUS-READY? if s" pg-cluster: postgres ready" type cr true exit then
-      deadline PROC-LEFT-MS MS>N {: left:n :}
+      deadline PROCESS:LEFT-MS MS>N {: left:n :}
       left 0= if
          s" pg-cluster READY?: a deadline expired" type cr
          true STEP-FAILED false exit
@@ -444,7 +444,7 @@ DEFAULT-CASE-MS CASE-MS !
    CASE-WATCH @ CASE-MS @ ENDED-WITHIN? if
       CASE-REAP
    else
-      CASE-KILL OUTCOME:TIMEOUT
+      CASE-KILL PROCESS-ENDING:timeout
    then
    file fileu EXITED-0? ;
 

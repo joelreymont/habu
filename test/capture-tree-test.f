@@ -8,7 +8,7 @@
 require src/lib/error.f
 require src/lib/fs.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/wait.f
 require src/lib/test/runner.f
 require src/lib/test/fifo.f
@@ -44,7 +44,7 @@ false REPORTED !
 false REPORT-EXPIRED !
 true FIFO-DONE !
 false CASE-CLOSED !
-PROC-NO-FD FIFO-RD !
+PROCESS:NO-FD FIFO-RD !
 
 \ What test/check-signal-subject.f writes before it starts the sleeper.
 : LINE$ ( -- ptr u8 n )
@@ -74,8 +74,8 @@ PROC-NO-FD FIFO-RD !
 \ of file, 0 when ms ran out first, a negative errno when the poll failed.
 : READY-WITHIN ( n -- n )
    {: ms:n :}
-   FIFO-RD @ >FD POLLIN PROC-PFD!
-   1 ms ms >MS PROC-DEADLINE-AT PROC-POLL-RESTART ;
+   FIFO-RD @ >FD FD:POLLIN PROCESS:PFD!
+   1 ms ms >MS PROCESS:DEADLINE-AT PROCESS:POLL-RESTART ;
 
 \ The subject's pid, before READY-MS runs out. End of file first means the
 \ subject died before it reported: that, a short report or a failed read or
@@ -84,9 +84,9 @@ PROC-NO-FD FIFO-RD !
 \ poll never reports a FIFO's end of file, a subject dying before its report is
 \ that timeout.
 : REPORT-READ? ( -- bool )
-   READY-MS >MS PROC-DEADLINE-AT {: deadline:n :}
+   READY-MS >MS PROCESS:DEADLINE-AT {: deadline:n :}
    begin REPORT-U @ REPORT-BYTES < while
-      deadline PROC-LEFT-MS MS>N READY-WITHIN {: ready:n :}
+      deadline PROCESS:LEFT-MS MS>N READY-WITHIN {: ready:n :}
       ready 0= if true REPORT-EXPIRED ! false exit then
       ready 0 < if false exit then
       FIFO-RD @ REPORT REPORT-U @ + REPORT-BYTES REPORT-U @ - read {: got:n :}
@@ -109,7 +109,7 @@ PROC-NO-FD FIFO-RD !
 
 \ ---- the reaper arm ---------------------------------------------------------
 
-\ A capture runs PROC-REAP-ARM between its spawn and its first poll, after the
+\ A capture runs PROCESS:REAP-ARM between its spawn and its first poll, after the
 \ subject has opened the write end, so this vector waits there for the report,
 \ which follows the sleeper's start: CAPTURE-MS has passed by the first poll,
 \ which still finds the line the subject wrote. The wait records its deadline in
@@ -125,7 +125,7 @@ PROC-NO-FD FIFO-RD !
 
 \ Arms no reaper, as the default vector does, once the subject has reported.
 : ARM-AFTER-REPORT ( pid -- pid )
-   drop AWAIT-REPORT PROC-NO-PID >PID ;
+   drop AWAIT-REPORT PROCESS:NO-PID >PID ;
 
 \ Refuses the capture once the subject has reported.
 : REFUSE-AFTER-REPORT ( pid -- pid )
@@ -154,7 +154,7 @@ PROC-NO-FD FIFO-RD !
    ENGINE-CANDIDATE:PATH$ >LEN OUT-BUF cap >LEN ERR-BUF CAP >LEN CAPTURE-MS >MS
    RUN-ARGV-ENV-CAPTURE DROP-RESULT ;
 
-: CAPTURE-OUTCOME ( -- len len outcome )
+: CAPTURE-OUTCOME ( -- len len PROCESS:ending )
    SUBJECT-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN OUT-BUF CAP >LEN ERR-BUF CAP >LEN CAPTURE-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
@@ -175,52 +175,52 @@ PROC-NO-FD FIFO-RD !
    s" the subject started its sleeper and reported" T-LABEL
    REPORTED @ TTRUE
    s" the capture reaped the subject after a SIGKILL" T-LABEL
-   PROC-PID @ PROC-NO-PID T=
-   PROC-STATUS @ PROC-STATUS>RC RC>N 128 SIGKILL + T=
+   PROCESS:PID @ PROCESS:NO-PID T=
+   PROCESS:STATUS @ PROCESS:STATUS>RC RC>N 128 PROCESS:SIGKILL + T=
    s" nothing the subject started is left" T-LABEL
    GONE-MS GONE-WITHIN? TTRUE ;
 
 : POLL-STATUS-BODY ( -- )
    false CASE-BEGIN
-   [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
+   [: ARM-AFTER-REPORT ;] is PROCESS:REAP-ARM
    s" a deadline in the poll throws E-PROC-TIMEOUT" T-LABEL
    [: CAP CAPTURE-RC ;] CAPTURE-CODE E-PROC-TIMEOUT T=
    s" the line the subject wrote stays captured" T-LABEL
-   OUT-BUF PROC-OUT-LEN @ LINE$ T$=
+   OUT-BUF PROCESS:OUT-LEN @ LINE$ T$=
    ASSERT-ENDED ;
 
 : POLL-DATA-BODY ( -- )
    false CASE-BEGIN
-   [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
+   [: ARM-AFTER-REPORT ;] is PROCESS:REAP-ARM
    [: CAPTURE-OUTCOME ;] [: REPORT-DEADLINE ;] finally
    s" a deadline in the poll answers the timeout outcome" T-LABEL
-   T-OUTCOME-TIMEOUT {: outu:len erru:len :}
+   T-ENDING-TIMEOUT {: outu:len erru:len :}
    s" the timeout outcome carries the line the subject wrote" T-LABEL
    OUT-BUF outu LEN>N LINE$ T$=
    erru LEN>N 0 T=
    ASSERT-ENDED ;
 
 \ The subject closed its output first, so the capture reads end of file on both
-\ pipes and waits for the status (PROC-REAP-CAPTURE-BOUNDED) until the deadline.
+\ pipes and waits for the status (PROCESS:REAP-CAPTURE-BOUNDED) until the deadline.
 : REAP-BODY ( -- )
    true CASE-BEGIN
-   [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
+   [: ARM-AFTER-REPORT ;] is PROCESS:REAP-ARM
    s" a deadline in the reap throws E-PROC-TIMEOUT" T-LABEL
    [: CAP CAPTURE-RC ;] CAPTURE-CODE E-PROC-TIMEOUT T=
    ASSERT-ENDED ;
 
 : OVERFLOW-BODY ( -- )
    false CASE-BEGIN
-   [: ARM-AFTER-REPORT ;] is PROC-REAP-ARM
+   [: ARM-AFTER-REPORT ;] is PROCESS:REAP-ARM
    s" a line longer than the capture throws E-PROC-TRUNCATED" T-LABEL
    [: [: SHORT-CAP CAPTURE-RC ;] CAPTURE-CODE throw ;] E-PROC-TRUNCATED TTHROWSQ
    ASSERT-ENDED ;
 
-\ PROC-REAP-ARM throws after the spawn, as src/lib/process-fork.f SPAWN-REAPER
+\ PROCESS:REAP-ARM throws after the spawn, as src/lib/process-fork.f SPAWN-REAPER
 \ does when its fork is refused.
 : REFUSED-BODY ( -- )
    false CASE-BEGIN
-   [: REFUSE-AFTER-REPORT ;] is PROC-REAP-ARM
+   [: REFUSE-AFTER-REPORT ;] is PROCESS:REAP-ARM
    s" a refused reaper arm throws E-PROC-SPAWN" T-LABEL
    [: [: CAP CAPTURE-RC ;] CAPTURE-CODE throw ;] E-PROC-SPAWN TTHROWSQ
    ASSERT-ENDED ;
@@ -236,8 +236,8 @@ PROC-NO-FD FIFO-RD !
 \ passed. The read end closes even when the wait for what the case left runs
 \ out.
 : CASE-END ( -- )
-   PROC-REAP-ARM-DEFAULT
-   [: LEFT-ENDED ;] [: FIFO-RD PROC-CLOSE-CELL ;] finally ;
+   PROCESS:REAP-ARM-DEFAULT
+   [: LEFT-ENDED ;] [: FIFO-RD PROCESS:CLOSE-CELL ;] finally ;
 
 public
 

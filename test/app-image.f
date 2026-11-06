@@ -153,7 +153,7 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
 \ because this process must not adopt the terminal it hands the child.
 : OPEN-PTY ( -- n n )
    PTY-NAME PTY:SLAVE-PATH-CAP PTY:OPEN drop PTY:MASTER>N {: master:n :}
-   master >FD FD-CLOEXEC!
+   master >FD FD:FD-CLOEXEC!
    PTY-NAME PTY:PTY-OPEN-FLAGS 0 open {: slave:n :}
    slave 0 >= TTRUE
    master slave ;
@@ -162,10 +162,10 @@ create PTY-NAME PTY:SLAVE-PATH-CAP allot
    {: arg:ptr argu:n diagnostic:ptr diagnosticu:n :}
    PROC-ARGV-ENV-RESET arg argu >LEN PROC-ARGV+
    OPEN-PTY {: master:n slave:n :}
-   PIPE-PAIR {: reader writer :}
+   FD:PIPE-PAIR {: reader writer :}
    STARTUP$ >LEN slave >FD writer writer PROC-SPAWN-ARGV-ENV-IO {: child :}
    slave close writer FD>N close
-   child PROC-WAIT-RC MATCH result
+   child PROCESS:WAIT-RC MATCH result
       ok OF 67 T= ENDOF
       err OF 67 T= ENDOF
    ;MATCH

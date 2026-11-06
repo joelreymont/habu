@@ -13,7 +13,7 @@ require src/lib/memory.f
 require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/process-argv.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/wait.f
 require src/lib/fd.f
 require src/lib/fs-mutate.f
@@ -63,12 +63,12 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    s" " rot die ;
 
 \ The rest of a forked child's life: its part runs under catch, and the exit
-\ code is PROC-TIMEOUT-RC for a deadline, 1 for any other throw, else the code
+\ code is PROCESS:TIMEOUT-RC for a deadline, 1 for any other throw, else the code
 \ the part chose. A throw code cannot cross the process boundary; the parent
 \ reads the deadline back from the exit (REAP-READER).
 : IN-CHILD ( [ -- ] -- )
    catch {: code:n :}
-   code 0<> if code 1 PROC-EXIT-RC CHILD-EXIT then
+   code 0<> if code 1 PROCESS:EXIT-RC CHILD-EXIT then
    CHILD-CODE @ CHILD-EXIT ;
 
 : WRITER ( -- )
@@ -80,7 +80,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 \ bytes within WAIT-MS is the row's deadline, named here and thrown; any other
 \ code is rethrown unchanged.
 : HOLD-BACK ( -- )
-   [: CHILD-FD @ >FD WAIT-MS >MS POLL-IN-OR-TIMEOUT drop ;] catch {: code:n :}
+   [: CHILD-FD @ >FD WAIT-MS >MS PROCESS:POLL-IN-OR-TIMEOUT drop ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if s" fd-test HOLD-BACK" TEST-WAIT:EXPIRED then
    code 0<> if code throw then
    READER-DELAY-MS >MS TASK:SLEEP ;
@@ -100,13 +100,13 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    DELIVERED? if 0 else CHILD-MISMATCH then CHILD-CODE ! ;
 
 \ Reaps a held-back reader and answers its outcome. A reader whose HOLD-BACK
-\ wait expired has named it and exited PROC-TIMEOUT-RC: the row's deadline,
+\ wait expired has named it and exited PROCESS:TIMEOUT-RC: the row's deadline,
 \ thrown again here. Its writer holds off SIGPIPE, closes its end and reaps the
 \ reader before it acts on its write, so a write into the pipe a starved reader
 \ left fails rather than ending the row before the 124 is read back.
-: REAP-READER ( pid -- outcome )
-   PROC-WAIT-OUTCOME {: oc :}
-   oc PROC-OUTCOME>DEADLINE-RC RC>N PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+: REAP-READER ( pid -- PROCESS:ending )
+   PROCESS:WAIT-ENDING {: oc :}
+   oc PROCESS:ENDING>DEADLINE-RC RC>N PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    oc ;
 
 : FD-FLAGS ( fd -- n )
@@ -130,11 +130,11 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 \ A descriptor already nonblocking remains nonblocking. An expired request
 \ writes nothing; an empty request has no transfer to time out.
 : BOUNDED-EDGES ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    w FD-FLAGS {: flags:n :}
-   w FD>N 4 flags O-NONBLOCK or fcntl 0 T=
+   w FD>N 4 flags FD:O-NONBLOCK or fcntl 0 T=
    w s" abc" mono-ns 1000 1000000 * + WRITE-FULL-UNTIL
-   w FD-FLAGS O-NONBLOCK and O-NONBLOCK T=
+   w FD-FLAGS FD:O-NONBLOCK and FD:O-NONBLOCK T=
    r SMALL 3 TAKE READ-EXACT OUTCOME FULL-MARK T=
    SMALL $ drop 3 s" abc" T$=
    w FD>N ERR-FD !
@@ -142,7 +142,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    [: UNTIL-EXPIRED ;] E-FS-TIMEOUT TTHROWSQ
    [: UNTIL-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ
    w s" " UNTIL-AT @ WRITE-FULL-UNTIL
-   r 0 >MS POLL-IN COUNT>N 0 T=
+   r 0 >MS PROCESS:POLL-IN COUNT>N 0 T=
    w FD>N 4 flags fcntl 0 T=
    r FD>N close
    w FD>N close ;
@@ -154,13 +154,13 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 \ deadline, named and thrown; any other code is rethrown unchanged.
 : BOUNDED-SUCCESS ( -- )
    0 DST @ FILL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N CHILD-FD !
    w FD-FLAGS {: flags:n :}
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if w FD>N close [: SLOW-READER ;] IN-CHILD then
    r FD>N close
-   w FD-NOSIGPIPE!
+   w FD:FD-NOSIGPIPE!
    w FD>N ERR-FD !
    mono-ns 3000 1000000 * + UNTIL-AT !
    [: UNTIL-WRITE ;] catch {: code:n :}
@@ -169,8 +169,8 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    pid REAP-READER {: oc :}
    code E-FS-TIMEOUT = if s" fd-test BOUNDED-SUCCESS" TEST-WAIT:EXPIRED then
    code 0<> if code throw then
-   after O-NONBLOCK and flags O-NONBLOCK and T=
-   s" bounded reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
+   after FD:O-NONBLOCK and flags FD:O-NONBLOCK and T=
+   s" bounded reader" s" " s" " oc 0 T-ENDING-EXITED= ;
 
 \ The child keeps the read end open and never reads. The deadline must stop a
 \ large write after filling the pipe, with the original descriptor flags put
@@ -180,7 +180,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    0 CHILD-CODE ! ;
 
 : BOUNDED-TIMEOUT ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N CHILD-FD !
    w FD-FLAGS {: flags:n :}
    PROC-FORK:CHECKED {: pid:pid :}
@@ -189,29 +189,29 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    w FD>N ERR-FD !
    mono-ns 30 1000000 * + UNTIL-AT !
    [: UNTIL-WRITE ;] E-FS-TIMEOUT TTHROWSQ
-   w FD-FLAGS O-NONBLOCK and flags O-NONBLOCK and T=
+   w FD-FLAGS FD:O-NONBLOCK and flags FD:O-NONBLOCK and T=
    w FD>N close
-   s" nonreading child" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" nonreading child" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
 
 : BOUNDED-BROKEN ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   w FD-NOSIGPIPE!
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   w FD:FD-NOSIGPIPE!
    w FD-FLAGS {: flags:n :}
    r FD>N close
    w FD>N ERR-FD !
    mono-ns 1000 1000000 * + UNTIL-AT !
    [: UNTIL-BROKEN ;] E-FS-IO TTHROWSQ
-   w FD-FLAGS O-NONBLOCK and flags O-NONBLOCK and T=
+   w FD-FLAGS FD:O-NONBLOCK and flags FD:O-NONBLOCK and T=
    w FD>N close ;
 
 \ An empty span is full before any read, so it cannot mistake read's zero for
 \ end of file or block on a pipe with nothing in it; an empty write writes
 \ nothing.
 : EMPTY-REQUEST ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    r SMALL 0 TAKE READ-EXACT OUTCOME FULL-MARK T=
    w s" " WRITE-FULL
-   r 0 >MS POLL-IN COUNT>N 0 T=
+   r 0 >MS PROCESS:POLL-IN COUNT>N 0 T=
    r FD>N close
    w FD>N close ;
 
@@ -219,7 +219,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 \ count that did arrive, and those bytes are in the span. At a boundary it is
 \ `eof` after zero bytes.
 : EOF-INSIDE ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    w FD>N s" abc" write 3 T=
    w FD>N close
    r SMALL 8 TAKE READ-EXACT OUTCOME 3 T=
@@ -232,7 +232,7 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
 \ of file then lands on the boundary.
 : EXACT-OVER-SHORT-READS ( -- )
    0 DST @ FILL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    w FD>N CHILD-FD !
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if r FD>N close [: WRITER ;] IN-CHILD then
@@ -244,46 +244,46 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    DST @ PATTERN? TTRUE
    r SMALL READ-EXACT OUTCOME 0 T=
    r FD>N close
-   s" forked writer" s" " s" " pid PROC-WAIT-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" forked writer" s" " s" " pid PROCESS:WAIT-ENDING 0 T-ENDING-EXITED= ;
 
 \ The premise of WRITE-FULL's case: with the storm landing on a write blocked by
 \ a full pipe, one raw write of PAYLOAD comes back short.
 : SHORT-WRITE-PREMISE ( -- )
    0 DST @ FILL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N CHILD-FD !
    STORM-LIMIT prof-on
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if w FD>N close [: DRAIN ;] IN-CHILD then
    r FD>N close
-   w FD-NOSIGPIPE!
+   w FD:FD-NOSIGPIPE!
    w FD>N SRC @ $ write {: wrote:n :}
    prof-off
    w FD>N close
    pid REAP-READER {: oc :}
    wrote 0 > TTRUE
    wrote PAYLOAD < TTRUE
-   s" forked reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
+   s" forked reader" s" " s" " oc 0 T-ENDING-EXITED= ;
 
 \ The same storm and the same held-back reader: WRITE-FULL meets the short
 \ writes the premise proved, and the reader gets every byte in order, then the
 \ end of file.
 : FULL-WRITE-UNDER-STORM ( -- )
    0 DST @ FILL
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N CHILD-FD !
    STORM-LIMIT prof-on
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if w FD>N close [: SLOW-READER ;] IN-CHILD then
    r FD>N close
-   w FD-NOSIGPIPE!
+   w FD:FD-NOSIGPIPE!
    w FD>N ERR-FD !
    [: FULL-WRITE ;] catch {: code:n :}
    prof-off
    w FD>N close
    pid REAP-READER {: oc :}
    code 0<> if code throw then
-   s" forked reader" s" " s" " oc 0 T-OUTCOME-EXITED= ;
+   s" forked reader" s" " s" " oc 0 T-ENDING-EXITED= ;
 
 \ An append descriptor writes the next part at the end RESIZE leaves, once the
 \ part written after the kept one is cut away.
@@ -344,23 +344,23 @@ variable UNTIL-AT                 \ deadline used by caught bounded-write cases
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if [: SLEEPER ;] IN-CHILD then
    w FD>N close
-   r EXEC-WAIT-MS >MS POLL-IN COUNT>N {: ready:n :}
+   r EXEC-WAIT-MS >MS PROCESS:POLL-IN COUNT>N {: ready:n :}
    ready 1 T=
    ready 1 = if r SMALL READ-EXACT OUTCOME 0 T= then
    r FD>N close
-   pid SIGKILL PROC-KILL-RAW RC>N 0 T=
-   s" exec'd sleeper" s" " s" " pid PROC-WAIT-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
+   pid PROCESS:SIGKILL PROCESS:KILL-RAW RC>N 0 T=
+   s" exec'd sleeper" s" " s" " pid PROCESS:WAIT-ENDING PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
 \ A closed descriptor, a pipe with no reader (SIGPIPE held off, as a server's
 \ must be), a resized pipe and a negative length are each refused by name.
 : ERRORS ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    r FD>N close
    r FD>N ERR-FD !
    [: READ-CLOSED ;] E-FS-IO TTHROWSQ
    [: SYNC-CLOSED ;] E-FS-IO TTHROWSQ
    [: NONBLOCK-ERR ;] E-FS-IO TTHROWSQ
-   w FD-NOSIGPIPE!
+   w FD:FD-NOSIGPIPE!
    w FD>N ERR-FD !
    [: WRITE-NO-READER ;] E-FS-IO TTHROWSQ
    [: WRITE-NEGATIVE ;] E-SPAN-LENGTH TTHROWSQ

@@ -354,10 +354,10 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    s" --" SAY
    ERR erru LEN>N STREAM+ ;
 
-: TRANSCRIBE ( ptr u8 n len len outcome -- )
-   PROC-OUTCOME>RC RC>N TRANSCRIBE-RC ;
+: TRANSCRIBE ( ptr u8 n len len PROCESS:ending -- )
+   PROCESS:ENDING>RC RC>N TRANSCRIBE-RC ;
 
-: CHILD ( ptr u8 n -- len len outcome ) {: name:ptr nameu:n :}
+: CHILD ( ptr u8 n -- len len PROCESS:ending ) {: name:ptr nameu:n :}
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
    s" test/ffi-callback-child.f" >LEN PROC-ARGV+
@@ -428,7 +428,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
 : CASE-DIRECT ( -- )
    DIRECT-ARGS
    ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   RUN-ARGV-ENV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    s" test/native-window-owner-child.f" OUT outu LEN>N ERR erru LEN>N rc SUBJECT:RC-TIMED-OUT
    s" direct" outu erru rc TRANSCRIBE-RC
    s" the direct child exits 0" T-LABEL
@@ -451,7 +451,7 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    SUBJECT$ S\" : ROW-MOVES ( -- n ) FILE-ROWS @ 2 cells + CELL-VIEW atomic@ ;\n: FRESH-ROW ( -- ) BOUND-REGION dup . cr 0<> if 74 throw then ROW-MOVES dup . cr 0<> if 74 throw then ;\n" FS:APPEND-FILE
    SUBJECT$ S\" require test/stripped-callback-subject.f\n: MAIN ( -- ) 0 FFI:CALLBACK-ENTRY drop FRESH-ROW s\q fresh callback binding: ok\q type cr STRIPPED-CALLBACK-SUBJECT:RUN ;\n" FS:APPEND-FILE ;
 
-: BUILD-IMAGE ( -- len len outcome )
+: BUILD-IMAGE ( -- len len PROCESS:ending )
    AOT-BUILDER-ENGINE:ENSURE
    PROC-ARGV-ENV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -466,15 +466,15 @@ CALLBACK: PAD-F ( -- ) ;CALLBACK
    OUT CAP >LEN ERR CAP >LEN BUILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-: RUN-IMAGE ( -- len len outcome )
+: RUN-IMAGE ( -- len len PROCESS:ending )
    PROC-ARGV-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    IMAGE$ >LEN
    OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS
    RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
-: LINKED ( len len outcome -- )
-   PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+: LINKED ( len len PROCESS:ending -- )
+   PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    rc 0 <> if OUT outu LEN>N type ERR erru LEN>N type then
    rc 0= s" hb-build links test/stripped-callback-subject.f stripped" FACT ;
 

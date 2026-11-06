@@ -10,7 +10,7 @@
 
 require src/lib/test.f
 require src/lib/string.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 package WASM-NUMERIC-TEST
@@ -39,7 +39,7 @@ public
    src SRC-A !  su SRC-U !  name NAME-A !  nu NAME-U !
    s" WASM-NUMERIC-TEST:ROW-EVAL"
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
-   name nu T-LABEL  src su OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   name nu T-LABEL  src su OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    name nu T-LABEL  OUT outu LEN>N want wu T$=
    name nu T-LABEL  erru LEN>N 0 T= ;
 

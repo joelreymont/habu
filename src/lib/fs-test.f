@@ -955,18 +955,18 @@ variable WRITER
 \ sees end of file is killed and reaped rather than read from forever.
 : REAP ( pid -- )
    {: child:pid :}
-   child OPEN-MS >MS PROC-WAIT-BOUNDED MATCH outcome
+   child OPEN-MS >MS PROCESS:WAIT-BOUNDED MATCH PROCESS:ending
       exited OF 0 FS-TEST= ENDOF
       signaled OF drop false FS-TEST-TRUE ENDOF
       timeout OF
-         child SIGKILL PROC-KILL-RAW drop
-         child PROC-WAIT-STATUS drop
+         child PROCESS:SIGKILL PROCESS:KILL-RAW drop
+         child PROCESS:WAIT-STATUS drop
          false FS-TEST-TRUE
       ENDOF
    ;MATCH ;
 
 : READER ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
+   FD:PIPE-PAIR {: r:fd w:fd :}
    w SPAWN-CAT {: child:pid :}
    w FD>N close
    AWAIT-READER {: opened:bool :}

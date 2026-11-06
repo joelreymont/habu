@@ -492,7 +492,7 @@ ENUM verdict
    VARIANT refused ;VARIANT
    VARIANT engine-provided ;VARIANT
    VARIANT held ;VARIANT
-   VARIANT incomplete FIELD status outcome ;VARIANT
+   VARIANT incomplete FIELD status PROCESS:ending ;VARIANT
    VARIANT deferred ;VARIANT
 ;ENUM
 
@@ -767,7 +767,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 
 \ The child's run on VFY-IN, the open documents and the subject's bytes: its
 \ stdout into VFY-OUT, which grows to what the child writes, and its stderr
-\ into VFY-LOG, their lengths and its end left where PROC-CAPTURE-OUTCOME@
+\ into VFY-LOG, their lengths and its end left where PROCESS:CAPTURE-ENDING@
 \ reads them. The end is read there, so the one returned here is dropped
 \ through the conversion that reads a deadline as a status rather than throwing it.
 : VFY-CAPTURE ( -- )
@@ -776,7 +776,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
    VFY-EXE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
    [: VFY-OUT-ROOM ;] 0 VFY-LOG VFY-ERR-CAP >LEN
    VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
-   PROC-OUTCOME>DEADLINE-RC drop 2drop ;
+   PROCESS:ENDING>DEADLINE-RC drop 2drop ;
 
 
 : VFY-STOPPED$ ( -- ptr u8 n )
@@ -863,8 +863,8 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 
 \ A result line grants a verdict only after a clean child exit. A complete
 \ result line is still framing, even when the process ends uncleanly.
-: VFY-CLEAN-EXIT? ( outcome -- bool )
-   MATCH outcome
+: VFY-CLEAN-EXIT? ( PROCESS:ending -- bool )
+   MATCH PROCESS:ending
       exited OF 0= ENDOF
       signaled OF drop false ENDOF
       timeout OF false ENDOF
@@ -1147,11 +1147,11 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 \ E-PROC-TRUNCATED is thrown on once what was captured is kept. The executable
 \ is resolved before the capture, so a throw from building the image is the
 \ build's, never read as the child's truncation.
-: VFY-RUN ( -- outcome )
+: VFY-RUN ( -- PROCESS:ending )
    VFY-EXE!
    [: VFY-CAPTURE ;] catch {: rc:n :}
    rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
-   PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}
+   PROCESS:CAPTURE-ENDING@ {: outu:len erru:len o :}
    erru LEN>N VFY-LOG-U !
    outu LEN>N VFY-TAKE
    VFY-DUP-RECORDS
@@ -1161,7 +1161,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 
 \ The child's answer once it has given one of the first form's and exited
 \ clean, a stop refused; any other end is incomplete.
-: VFY-VERDICT ( outcome -- verdict ) {: o :}
+: VFY-VERDICT ( PROCESS:ending -- verdict ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if LSP--CHECK-VERDICT:verified exit then
       VFY-ANSWER @ VFY-REFUSED = if LSP--CHECK-VERDICT:refused exit then
@@ -1174,7 +1174,7 @@ TYPED-VARIABLE VFY-IMAGE? bool          \ VFY-EXE is the image: no --load of the
 
 \ The pre-pass's answer once it has given one and exited clean: 0 verified,
 \ else the code it stopped with. Any other end is the error.
-: VFY-PREVERDICT ( outcome -- result<n,outcome> ) {: o :}
+: VFY-PREVERDICT ( PROCESS:ending -- result<n,PROCESS:ending> ) {: o :}
    o VFY-CLEAN-EXIT? if
       VFY-ANSWER @ VFY-VERIFIED = if 0 RESULT:OK exit then
       VFY-ANSWER @ VFY-DEFERRED = if 0 RESULT:OK exit then
@@ -1323,7 +1323,7 @@ variable VFY-BATCH-OUT-U
 variable VFY-BATCH-POS
 variable VFY-BATCH-BROKEN
 variable VFY-BATCH-COMPLETE
-TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
+TYPED-VARIABLE VFY-BATCH-OUTCOME PROCESS:ending
 
 : BATCH@ ( n n -- n )  swap VFY-BATCH-CELLS * + VFY-BATCH-META @ ;
 : BATCH! ( n n n -- )  swap VFY-BATCH-CELLS * + VFY-BATCH-META ! ;
@@ -1365,7 +1365,7 @@ TYPED-VARIABLE VFY-BATCH-OUTCOME outcome
    VFY-EXE$ >LEN 0 VFY-IN VFY-IN-U @ >LEN
    [: VFY-BATCH-ROOM ;] 0 VFY-LOG errcap >LEN
    VFY-DEADLINE @ RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME
-   PROC-OUTCOME>DEADLINE-RC drop 2drop ;
+   PROCESS:ENDING>DEADLINE-RC drop 2drop ;
 
 : VFY-BATCH-RESET-RESULT ( -- )
    0 VFY-OUT-U ! 0 VFY-DEFS-U ! 0 VFY-FILES-U !
@@ -1472,7 +1472,7 @@ VFY-LANES TYPED-BUFFER VFY-LANE-OF-U n
 VFY-LANES TYPED-BUFFER VFY-LANE-REF bool
 VFY-LANES TYPED-BUFFER VFY-LANE-CODE n
 VFY-LANES TYPED-BUFFER VFY-LANE-STARTED n
-VFY-LANES TYPED-BUFFER VFY-LANE-END outcome
+VFY-LANES TYPED-BUFFER VFY-LANE-END PROCESS:ending
 variable VFY-LANE-IN-TOP
 variable VFY-LANE-META-TOP
 variable VFY-LANE-OPEN-TOP
@@ -1724,7 +1724,7 @@ public
    VFY-EXE!
    [: VFY-BATCH-CAPTURE ;] catch {: rc:n :}
    rc 0<> rc E-PROC-TRUNCATED <> and if rc throw then
-   PROC-CAPTURE-OUTCOME@ {: outu:len erru:len o :}
+   PROCESS:CAPTURE-ENDING@ {: outu:len erru:len o :}
    outu LEN>N VFY-BATCH-OUT-U !
    erru LEN>N VFY-LOG-U !
    o VFY-BATCH-OUTCOME !
@@ -1749,7 +1749,7 @@ public
 \ err is how a child ended that gave no answer. An empty PATH is E-FS-PATH; a
 \ failed spawn throws, and more child stderr than the capture holds is
 \ E-PROC-TRUNCATED, as for VERIFY-BYTES.
-: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,outcome> )
+: PREVERIFY-BYTES ( ptr u8 n ptr u8 n ptr u8 n ms -- result<n,PROCESS:ending> )
    {: src:ptr srcu:n path:ptr pathu:n label:ptr labelu:n deadline :}
    VFY-RESET
    path pathu VFY-PATH!

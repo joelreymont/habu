@@ -62,7 +62,7 @@ variable GEN-U
 \ stdout and stderr, and its exit status.
 : HB ( -- n n n )
    s" bin/hb" >LEN  OUT CAP >LEN  ERR CAP >LEN  DEADLINE-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME PROC-OUTCOME>RC RC>N {: o:len e:len rc:n :}
+   RUN-ARGV-CAPTURE-OUTCOME PROCESS:ENDING>RC RC>N {: o:len e:len rc:n :}
    o LEN>N  e LEN>N  rc ;
 
 \ The engine's line for an uncaught throw of code.

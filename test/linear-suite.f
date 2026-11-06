@@ -195,7 +195,7 @@ variable ERR-U
 : RUN ( ptr u8 n -- n ) {: src:ptr u:n :}   \ source -> child exit status (-1 = signal)
    src u OUT CAP >LEN ERR CAP >LEN CHILD-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
    erru LEN>N ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF ENDOF
      signaled OF drop -1 ENDOF
      timeout OF src u OUT outu LEN>N ERR erru LEN>N SUBJECT:TIMED-OUT ENDOF
@@ -263,7 +263,7 @@ variable PROG-U
    PATH$ PROG$ FS:WRITE-ALL
    0 PROG-U !
    s" CHECK-CHILD" OUT CAP >LEN ERR CAP >LEN CHECK-MS >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N {: outu:len erru:len rc:n :}
+   PROCESS:ENDING>RC RC>N {: outu:len erru:len rc:n :}
    rc RC !  erru LEN>N ERR-U !  outu LEN>N OUT-U ! ;
 
 : OK-FIXTURE ( -- )

@@ -74,9 +74,9 @@ variable BATCH-K
    VERIFY-LOG$ nip 0= if exit then
    HEAD a u ERR NEWLINE RELAY ;
 
-: UNFINISHED ( outcome -- )
+: UNFINISHED ( PROCESS:ending -- )
    HEAD s" not checked: " ERR
-   MATCH outcome
+   MATCH PROCESS:ending
       exited OF s" exit " ERR NUMBER$ ERR ENDOF
       signaled OF s" signal " ERR NUMBER$ ERR ENDOF
       timeout OF s" deadline passed" ERR ENDOF
@@ -115,7 +115,7 @@ variable BATCH-K
       engine-provided OF s" engine-provided" COMPLETE-OUTCOME ENDOF
       held OF s" held" OUTCOME! ENDOF
       incomplete OF
-         MATCH outcome
+         MATCH PROCESS:ending
             exited OF drop ENDOF
             signaled OF drop ENDOF
             timeout OF ENDOF

@@ -275,7 +275,7 @@ SUITE wasm-numeric
 SUITE wasm-numeric-aot
    src/lib/test.f
    src/lib/string.f
-   src/lib/test/outcome.f
+   src/lib/test/ending.f
    src/lib/test/subject.f
    src/lib/ieee754.f
    test/compiler/aot-mode.f

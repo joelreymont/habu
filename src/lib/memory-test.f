@@ -5,7 +5,7 @@ require src/lib/string.f
 require src/lib/string-roles.f
 require src/lib/test.f
 require src/lib/memory.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/process-fork.f
 require src/lib/test/subject.f
 require src/lib/task.f
@@ -262,19 +262,19 @@ create RBT-ERR RBT-CAP allot
 : MEMT-EXIT0 ( -- )
    s" " 0 die ;
 
-: MEMT-FORK ( [ -- ] -- outcome )
+: MEMT-FORK ( [ -- ] -- PROCESS:ending )
    {: body :}
    PROC-FORK:CHECKED {: pid:pid :}
    pid PID>N 0= if
       body execute
       MEMT-EXIT0
    then
-   pid PROC-WAIT-OUTCOME ;
+   pid PROCESS:WAIT-ENDING ;
 
 \ The child ran to a clean exit. A blocking wait has no deadline, so there is no
 \ capture to report and the outcome reads as the child's rc.
 : MEMT-FORK-CLEAN ( [ -- ] -- )
-   MEMT-FORK PROC-OUTCOME>RC RC>N 0 T= ;
+   MEMT-FORK PROCESS:ENDING>RC RC>N 0 T= ;
 
 : RBT-RELEASED-BASE ( -- ptr u8 )
    MEM-64K 2 * BYTES-ALLOC-LEN ALLOC-BYTES
@@ -372,13 +372,13 @@ create RBT-ERR RBT-CAP allot
 : RBT-EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
    RBT-TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
-   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc want T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 : RBT-EXPECT-FAULT ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
    RBT-TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
-   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc MEMT-FAULT-SIG T-OUTCOME-SIGNALED=
+   src srcu RBT-OUT outu LEN>N RBT-ERR erru LEN>N oc MEMT-FAULT-SIG T-ENDING-SIGNALED=
    erru LEN>N 0 > TTRUE
    outu LEN>N 0 T= ;
 
@@ -444,7 +444,7 @@ create CAP-ERR CAP allot
 : EXPECT-FATAL ( ptr u8 n -- ) {: src:ptr srcu:n :}
    src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
    {: outu:len erru:len oc :}
-   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-OUTCOME-EXITED=
+   src srcu CAP-OUT outu LEN>N CAP-ERR erru LEN>N oc FATAL-RC T-ENDING-EXITED=
    outu LEN>N 0 T=
    CAP-ERR erru LEN>N S\" memory: unmap failed\n" T$= ;   \ die ends the message with one newline
 
@@ -487,7 +487,7 @@ variable WBT-PEER-IN
 
 : WBT-RELEASED ( -- )
    [: WBT-PROBE-RELEASED ;] MEMT-FORK
-   MATCH outcome
+   MATCH PROCESS:ending
       exited OF drop E-PRIMARY throw ENDOF
       signaled OF MEMT-FAULT-SIG <> if E-PRIMARY throw then ENDOF
       timeout OF E-PRIMARY throw ENDOF

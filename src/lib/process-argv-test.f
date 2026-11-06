@@ -9,7 +9,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/process-cwd.f
 require src/lib/engine-candidate.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 
 variable PAT-IN-R
 variable PAT-IN-W
@@ -79,7 +79,7 @@ variable PAT-I
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE
    PAT-CAPTURE>N ;
 
-: PAT-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
+: PAT-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
@@ -89,7 +89,7 @@ variable PAT-I
    PAT-CAP-OUT outu PAT-LTRIM-SPACES PAT-WC-COUNT PAT-WC-COUNT-U T$= ;
 
 : PAT-RUN-PRINTF ( -- )
-   PIPE-PAIR PAT-OUT-W ! PAT-OUT-R !
+   FD:PIPE-PAIR PAT-OUT-W ! PAT-OUT-R !
    PROC-ARGV-RESET
    s" %s-%s"  >LEN PROC-ARGV+
    s" left"  >LEN PROC-ARGV+
@@ -102,8 +102,8 @@ variable PAT-I
    PAT-OUT-R @ close ;
 
 : PAT-RUN-CAT ( -- )
-   PIPE-PAIR PAT-IN-W ! PAT-IN-R !
-   PIPE-PAIR PAT-OUT-W ! PAT-OUT-R !
+   FD:PIPE-PAIR PAT-IN-W ! PAT-IN-R !
+   FD:PIPE-PAIR PAT-OUT-W ! PAT-OUT-R !
    PAT-IN-W @ s" argv-stdin" write 10 T=
    PAT-IN-W @ close
    PROC-ARGV-RESET
@@ -179,9 +179,9 @@ variable PAT-I
 \ taken, a negative length taken, and a length whose NUL wraps the sum back into
 \ range.
 : PAT-PATH-BOUNDS ( -- )
-   s" a path fits when its bytes and NUL fit PROC-PATHZ-CAP" T-LABEL
-   [: PAT-LONG PROC-PATHZ-CAP 1- >LEN PROC-ARGV-CHECK-PATH ;] catch 0 T=
-   [: PAT-LONG PROC-PATHZ-CAP >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
+   s" a path fits when its bytes and NUL fit PROCESS:PATHZ-CAP" T-LABEL
+   [: PAT-LONG PROCESS:PATHZ-CAP 1- >LEN PROC-ARGV-CHECK-PATH ;] catch 0 T=
+   [: PAT-LONG PROCESS:PATHZ-CAP >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-LONG -1 >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ
    [: PAT-LONG MEM-MAX-N >LEN PROC-ARGV-CHECK-PATH ;] E-PROC-OUTPUT TTHROWSQ ;
 
@@ -259,7 +259,7 @@ variable PAT-I
    PROC-ARGV-RESET
    s" /bin/cat" s" stdin-outcome" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE-OUTCOME
    {: outu:len erru:len oc :}
-   s" /bin/cat" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   s" /bin/cat" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 13 T=
    PAT-CAP-OUT 13 s" stdin-outcome" T$= ;
 
@@ -267,7 +267,7 @@ variable PAT-I
    PROC-ARGV-RESET
    s" 5"  >LEN PROC-ARGV+
    s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 PAT-STDIN-CAPTURE-OUTCOME
-   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
+   T-ENDING-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-FALSE-LARGE ( -- )
    PROC-ARGV-RESET
@@ -275,7 +275,7 @@ variable PAT-I
    s" /usr/bin/false" PAT-EARLY-IN PAT-EARLY-IN-CAP
    PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000
    PAT-STDIN-CAPTURE-OUTCOME {: outu:len erru:len oc :}
-   s" /usr/bin/false" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 1 T-OUTCOME-EXITED=
+   s" /usr/bin/false" PAT-CAP-OUT outu LEN>N PAT-CAP-ERR erru LEN>N oc 1 T-ENDING-EXITED=
    erru LEN>N 0 T= outu LEN>N 0 T= ;
 
 \ Direct both-arm coverage for RUN-ARGV-CAPTURE: printf exits clean -> ok(captured)
@@ -297,11 +297,11 @@ variable PAT-I
 
 : PAT-READ-NEG-LEN ( -- )
    -1 PAT-I !
-   PAT-IN-R PAT-CAP-OUT 64 >LEN PAT-I PROC-READ-STREAM ;
+   PAT-IN-R PAT-CAP-OUT 64 >LEN PAT-I PROCESS:READ-STREAM ;
 
 : PAT-READ-HIGH-LEN ( -- )
    65 PAT-I !
-   PAT-IN-R PAT-CAP-OUT 64 >LEN PAT-I PROC-READ-STREAM ;
+   PAT-IN-R PAT-CAP-OUT 64 >LEN PAT-I PROCESS:READ-STREAM ;
 
 variable PAT-SAVED-STDIN
 
@@ -315,7 +315,7 @@ variable PAT-SAVED-STDIN
    ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS RUN-ARGV-CAPTURE PAT-EOF-RESULT
    ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
-   3000 >MS RUN-CAPTURE PAT-EOF-RESULT
+   3000 >MS PROCESS:RUN-CAPTURE PAT-EOF-RESULT
    PROC-ARGV-RESET PROC-ENV-RESET
    ENGINE-CANDIDATE:PATH$ >LEN PAT-CAP-OUT 64 >LEN PAT-CAP-ERR 32 >LEN
    3000 >MS RUN-ARGV-ENV-CAPTURE PAT-EOF-RESULT
@@ -332,7 +332,7 @@ variable PAT-SAVED-STDIN
 : PAT-RUN-IDLE-STDIN ( -- )
    s" default captures ignore an idle inherited stdin" T-LABEL
    0 0 3 fcntl dup 0 < if drop E-PROC-OUTPUT throw then PAT-SAVED-STDIN !
-   PIPE-PAIR PAT-IN-W ! PAT-IN-R !
+   FD:PIPE-PAIR PAT-IN-W ! PAT-IN-R !
    PAT-IN-R @ FD>N 0 dup2 0 < if E-PROC-OUTPUT throw then
    [: PAT-IDLE-CAPTURES ;] [: PAT-RESTORE-STDIN ;] finally ;
 

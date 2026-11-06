@@ -61,9 +61,9 @@ variable HOLD                        \ the FIFO's write end
    s\" { mkdir -p \"$TMPDIR/use\" && : > \"$TMPDIR/use/$$\" && exec sleep 20; } >/dev/null & exit" ;
 
 : START-HELPER ( -- )
-   PIPE-PAIR {: r:fd w:fd :}
-   r FD-CLOEXEC!
-   w FD-CLOEXEC!
+   FD:PIPE-PAIR {: r:fd w:fd :}
+   r FD:FD-CLOEXEC!
+   w FD:FD-CLOEXEC!
    PROC-ARGV-ENV-RESET
    s" -c" >LEN PROC-ARGV+
    HELPER$ >LEN PROC-ARGV+
@@ -93,9 +93,9 @@ variable HOLD                        \ the FIFO's write end
       BURST-GAP-MS PAUSE
    loop
    BURST-N 0 ?do
-      i cells WRITERS + @ >PID PROC-WAIT-STATUS drop
+      i cells WRITERS + @ >PID PROCESS:WAIT-STATUS drop
    loop
-   HELPER @ >PID PROC-WAIT-STATUS drop ;
+   HELPER @ >PID PROCESS:WAIT-STATUS drop ;
 
 : ROW ( -- )
    OPEN-HOLD

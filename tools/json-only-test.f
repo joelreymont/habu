@@ -7,7 +7,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/process-argv.f
 require src/lib/argv.f
 require tools/cli-run.f

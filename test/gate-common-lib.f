@@ -59,11 +59,11 @@ variable GE-EVAL-SRC-U
    GE-EVAL-SRC-A @ GE-EVAL-SRC-U @ ;
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
-   rc RC>N OUTCOME:EXITED GT-OUTCOME!
+   rc RC>N PROCESS-ENDING:exited GT-OUTCOME!
    erru LEN>N GT-ERR-U !
    outu LEN>N GT-OUT-U ! ;
 
-: GE-STORE-OUTCOME ( len len outcome -- )
+: GE-STORE-OUTCOME ( len len PROCESS:ending -- )
    GT-STORE-RUN ;
 
 : GE-ARGV-RESET ( -- )
@@ -99,9 +99,9 @@ variable GE-EVAL-SRC-U
    argv PROCESS:ARGV-ROWS
    envp PROCESS:ENV-ROWS
    0 >FD in PROCESS:FD
-   1 >FD PROC-OUT-W @ >FD PROCESS:FD
-   2 >FD PROC-ERR-W @ >FD PROCESS:FD
-   PROCESS:SPAWN PID>N PROC-PID !
+   1 >FD PROCESS:OUT-W @ >FD PROCESS:FD
+   2 >FD PROCESS:ERR-W @ >FD PROCESS:FD
+   PROCESS:SPAWN PID>N PROCESS:PID !
    pathz argv envp in ;
 
 \ GE-LAUNCH's catch code, with the staged argv and env reset either way.
@@ -115,59 +115,59 @@ variable GE-EVAL-SRC-U
 : GE-LAUNCHED ( n -- ) {: code:n :}
    code 0= if exit then
    GE-SPAWN-FAIL.
-   code PROC-THROW-CAPTURE ;
+   code PROCESS:THROW-CAPTURE ;
 
 : GE-SPAWN-STDIN-CAPTURE ( ptr u8 ptr ptr u8 ptr ptr u8 -- )
-   PROC-IN-R @ >FD GE-LAUNCH-RC GE-LAUNCHED
-   PROC-IN-R PROC-CLOSE-CELL
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   PROCESS:IN-R @ >FD GE-LAUNCH-RC GE-LAUNCHED
+   PROCESS:IN-R PROCESS:CLOSE-CELL
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu:n timeout:n :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout >MS PROC-STDIN-CAPTURE-BEGIN
+   timeout >MS PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    GT-OUT-BUF 0 >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
-   PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n in:ptr inu:n timeout:n :}
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout >MS PROC-STDIN-CAPTURE-BEGIN
+   timeout >MS PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-STDIN-CAPTURE
    in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
-   PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-SPAWN-FILE-CAPTURE ( ptr u8 ptr ptr u8 ptr ptr u8 -- )
    GE-INFD @ >FD GE-LAUNCH-RC
    GE-INFD @ close
    GE-LAUNCHED
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : GE-RUN-STDIN-FILE ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n inpath:ptr inpathu:n timeout:n :}
    inpath inpathu FS:>PATHZ open-rd GE-INFD !
    GE-INFD @ 0 < if E-FS-OPEN throw then
-   GT-OUT-CAP >LEN GT-ERR-CAP >LEN PROC-CAPTURE-CHECK-CAPS
+   GT-OUT-CAP >LEN GT-ERR-CAP >LEN PROCESS:CAPTURE-CHECK-CAPS
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout >MS PROC-CAPTURE-BEGIN
+   timeout >MS PROCESS:CAPTURE-BEGIN
    pathz argv envp GE-SPAWN-FILE-CAPTURE
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROCESS:RUN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
-: GE-OUTCOME. ( outcome -- )
-   MATCH outcome
+: GE-OUTCOME. ( PROCESS:ending -- )
+   MATCH PROCESS:ending
      exited OF drop s" exit" type ENDOF
      signaled OF drop s" signal" type ENDOF
      timeout OF s" timeout" type ENDOF
    ;MATCH ;
 
-: GE-OUTCOME-CODE. ( outcome -- )
-   MATCH outcome
+: GE-OUTCOME-CODE. ( PROCESS:ending -- )
+   MATCH PROCESS:ending
      exited OF FMT:.INT ENDOF
      signaled OF FMT:.INT ENDOF
      timeout OF s" -" type ENDOF
@@ -226,9 +226,9 @@ variable GE-EVAL-SRC-U
    GT-ERR$ type
    \ A child whose deadline expired failed no check of its own: rethrow the
    \ deadline instead of failing this check. That is this capture's deadline, or
-   \ one inside the child, which then exits PROC-TIMEOUT-RC (src/lib/process.f).
+   \ one inside the child, which then exits PROCESS:TIMEOUT-RC (src/lib/process.f).
    GT-TIMED-OUT @ if E-PROC-TIMEOUT throw then
-   GT-RC@ PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   GT-RC@ PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    s" native test failed" 1 die ;
 
 \ The entry's exit status for an rc check. A timed-out entry has none, and
@@ -371,10 +371,10 @@ variable GE-EVAL-SRC-U
    src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
 
 : GE-EVAL-REDIRECT! ( -- )
-   PROC-OUT-W @ FD:STDOUT FD>N GE-EVAL-DUP2!
-   PROC-ERR-W @ FD:STDERR FD>N GE-EVAL-DUP2!
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   PROCESS:OUT-W @ FD:STDOUT FD>N GE-EVAL-DUP2!
+   PROCESS:ERR-W @ FD:STDERR FD>N GE-EVAL-DUP2!
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : GE-EVAL-SOURCE-ACT ( -- )
    GE-EVAL-SRC$ evaluate-closed ;
@@ -392,7 +392,7 @@ variable GE-EVAL-SRC-U
    {: q :}
    q GT-ROOT GT-OUT-BUF GT-OUT-CAP SPAN:MAKE GT-ERR-BUF GT-ERR-CAP SPAN:MAKE
    GT-CAPTURE-ACTION {: outu:len erru:len rc:n :}
-   outu erru rc OUTCOME:EXITED GE-STORE-OUTCOME ;
+   outu erru rc PROCESS-ENDING:exited GE-STORE-OUTCOME ;
 
 : GE-EVAL-CAPTURE-SRC ( ptr u8 n -- )
    GE-EVAL-SRC!
@@ -413,17 +413,17 @@ variable GE-EVAL-SRC-U
    PROC-FORK:RAW {: pid:pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid PID>N 0= if GE-EVAL-FORK-CHILD then
-   pid PID>N PROC-PID !
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   pid PID>N PROCESS:PID !
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 : GE-EVAL-FORK-CAPTURE ( -- )
    GE-SRC-BUF GE-SRC-U @ GE-EVAL-SRC!
-   GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
+   GE-TIMEOUT-MS >MS PROCESS:CAPTURE-BEGIN
    GE-EVAL-FORK-SPAWN
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
-   PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+   PROCESS:RUN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING GE-STORE-OUTCOME ;
 
 : GE-EVAL-FORK-BAD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}

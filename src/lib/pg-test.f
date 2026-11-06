@@ -562,7 +562,7 @@ TYPED-VARIABLE HELD-ID n
 
 
 : ELAPSED-MS ( n -- n )
-   mono-ns swap - PROC-NS-PER-MS / ;
+   mono-ns swap - PROCESS:NS-PER-MS / ;
 
 
 : DESCRIBED$ ( -- ptr u8 n )
@@ -1734,7 +1734,7 @@ MEM-MAX-N constant FOREVER-MS
 \ a backend still running after PROGRESS-NS is an expired wait.
 : TERMINATE ( PG:connection n -- )
    {: c pid:n :}
-   c PARAMS c pid INT+ c PROGRESS-NS PROC-NS-PER-MS / INT+
+   c PARAMS c pid INT+ c PROGRESS-NS PROCESS:NS-PER-MS / INT+
    c s" select pg_terminate_backend($1, $2)"
    [: OUTCOME-TAG TAG-ROWS T= 0 >ROW 0 >COL TEXT$ s" t" STR= 0=
       if s" pg-test TERMINATE" TEST-WAIT:EXPIRED then ;] WITH-RESULT ;
@@ -1985,11 +1985,11 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
 \ The case engine's entry. A throw code does not cross the process boundary:
 \ an uncaught one exits UNCAUGHT-RC (67), as a failure does. So a progress wait
 \ past its deadline, which CHECK-PROGRESS has named on stdout, ends the engine
-\ with PROC-TIMEOUT-RC (124), the case engine's timeout outcome, which
+\ with PROCESS:TIMEOUT-RC (124), the case engine's timeout outcome, which
 \ test/db/pg-cluster.f reads as a late step. Every other code is rethrown.
 : RUN ( -- )
    ['] MAIN catch {: code:n :}
-   code E-PROC-TIMEOUT = if s" " PROC-TIMEOUT-RC die then
+   code E-PROC-TIMEOUT = if s" " PROCESS:TIMEOUT-RC die then
    code 0<> if code throw then ;
 
 T-RESET

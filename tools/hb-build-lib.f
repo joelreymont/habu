@@ -727,7 +727,7 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
 \ Select the saved maker before HBB-RUN-MAKER-ARGS stages argv and env: image
 \ publication has its own child and staging buffer. RUN loads the linker after
 \ OPEN latched the application span.
-: HBB-RUN-MAKER-CMD ( -- len len outcome )
+: HBB-RUN-MAKER-CMD ( -- len len PROCESS:ending )
    KEYED-IMAGE:CAPTURE-RESET
    ['] HBB-SELECT-MAKER catch {: rc:n :}
    rc E-PROC-TIMEOUT = if HBB-AOT-BUILDER-TIMED-OUT then
@@ -739,8 +739,8 @@ HBB-COUNTS-MAX BUFFER: HBB-COUNTS-BUF
    [: HBB-ERR-ROOM ;]
    HBB-MAKER-TIMEOUT-MS @ >MS RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ;
 
-: HBB-FINISH-MAKER ( len len outcome -- )
-   MATCH outcome
+: HBB-FINISH-MAKER ( len len PROCESS:ending -- )
+   MATCH PROCESS:ending
       exited OF {: outu:len erru:len rc:n :}
          outu LEN>N erru LEN>N rc HBB-FINISH-MAKER-RC ENDOF
       signaled OF {: outu:len erru:len sig:n :}
@@ -1063,7 +1063,7 @@ defer HBB-REPORT-HOOK ( -- )
       FS:ATOMIC-WRITE-FILE
    HBB-ENGINE-RECORD-RELEASE ;
 
-: HBB-ENGINE-CMD ( -- len len outcome )
+: HBB-ENGINE-CMD ( -- len len PROCESS:ending )
    ['] HBB-ENGINE-IMAGE! catch {: rc:n :}
    rc E-PROC-TIMEOUT = if HBB-AOT-BUILDER-TIMED-OUT then
    rc 0<> if rc throw then
@@ -1258,7 +1258,7 @@ defer HBB-REPORT-HOOK ( -- )
    err HBB-ERR-BUF erru BYTE-COPY
    outu erru HBB-MAKER-TIMED-OUT ;
 
-: HBB-RUN-APP-CMD ( -- len len outcome )
+: HBB-RUN-APP-CMD ( -- len len PROCESS:ending )
    ['] HBB-RESOLVE-APP-BUILDER catch {: rc:n :}
    rc E-PROC-TIMEOUT = if HBB-APP-BUILDER-TIMED-OUT then
    rc 0 <> if rc throw then
@@ -1353,7 +1353,7 @@ defer HBB-REPORT-HOOK ( -- )
    rc 0= if exit then
    rc E-PROC-TIMEOUT = if
       HBB-CLEANUP
-      HBB-ENGINE @ if PROC-TIMEOUT-RC HBB-EXIT then
+      HBB-ENGINE @ if PROCESS:TIMEOUT-RC HBB-EXIT then
       HBB-UNCAUGHT-RC HBB-EXIT
    then
    rc E-BUILD-INSTALL = if

@@ -1,7 +1,7 @@
 \ Build checks remain live; their map and helper words do not ship in the runtime.
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/habu/boot-cells.f
 
@@ -15,7 +15,7 @@ create ERR CAP allot
 : EXPECT ( ptr u8 n n ptr u8 n -- )
    {: src:ptr u:n rc:n msg:ptr msgu:n :}
    src u OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN {: outu:len erru:len oc :}
-   src u OUT outu LEN>N ERR erru LEN>N oc rc T-OUTCOME-EXITED=
+   src u OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
    OUT outu LEN>N type
    ERR erru LEN>N msg msgu T$= ;
 

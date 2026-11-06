@@ -1358,11 +1358,11 @@ public
 
 \ The exit status of a finished build, for every driver that ends the process
 \ with one (RUN and tools/build-profile.f): 0,
-\ PROC-TIMEOUT-RC when a deadline expired (src/lib/process.f), and BUILD-RC
+\ PROCESS:TIMEOUT-RC when a deadline expired (src/lib/process.f), and BUILD-RC
 \ for any other failure. RUN-FILE-INNER has already printed the throw code,
 \ or for CODESIGN:E-IDENTITY that the host has no signing identity.
 : EXIT-RC ( n -- n )
-   BUILD-RC PROC-EXIT-RC ;
+   BUILD-RC PROCESS:EXIT-RC ;
 
 \ The build says which of the two images it wrote, on the way out, so a build
 \ log records the class instead of leaving it to be inferred from a size.

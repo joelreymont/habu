@@ -4,7 +4,7 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/process-command.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 
 package SUBJECT-TEST
@@ -16,14 +16,14 @@ $800 constant CAP
 create OUT CAP allot
 create ERR CAP allot
 
-: RUN ( ptr u8 n ms -- len len outcome ) {: src:ptr srcu:n timeout:ms :}
+: RUN ( ptr u8 n ms -- len len PROCESS:ending ) {: src:ptr srcu:n timeout:ms :}
    src srcu OUT CAP >LEN ERR CAP >LEN timeout SUBJECT:RUN ;
 
 \ Runs the program under TIMEOUT-MS and asserts its exit code, leaving the
 \ stdout and stderr lengths.
 : EXITS ( ptr u8 n n -- n n ) {: src:ptr srcu:n want:n :}
    src srcu TIMEOUT-MS >MS RUN {: outu:len erru:len oc :}
-   src srcu OUT outu LEN>N ERR erru LEN>N oc want T-OUTCOME-EXITED=
+   src srcu OUT outu LEN>N ERR erru LEN>N oc want T-ENDING-EXITED=
    outu LEN>N erru LEN>N ;
 
 : OK ( -- )
@@ -39,10 +39,10 @@ create ERR CAP allot
    ERR erru s" E-UNDEFINED: SUBJECT-MISSING" CONTAINS? TTRUE ;
 
 : TIMED ( -- )
-   s" subject timeout stays an outcome variant" T-LABEL
+   s" subject timeout stays an ending variant" T-LABEL
    \ Bare BEGIN rejects in interpret mode and races the deadline instead of looping.
    s" : SUBJECT-TIMEOUT-HANG ( -- ) begin again ; SUBJECT-TIMEOUT-HANG" SHORT-MS >MS RUN
-   T-OUTCOME-TIMEOUT
+   T-ENDING-TIMEOUT
    LEN>N drop LEN>N drop ;
 
 \ An exit or signal assert handed a deadline reports the case, the program and
@@ -50,28 +50,28 @@ create ERR CAP allot
 \ so the parent reads that report back from the child's stdout.
 : EXITED-PROBE ( -- )
    s" timed-out probe" T-LABEL
-   s" probe program" s" probe stdout" s" probe stderr" OUTCOME:TIMEOUT
-   0 T-OUTCOME-EXITED= ;
+   s" probe program" s" probe stdout" s" probe stderr" PROCESS-ENDING:timeout
+   0 T-ENDING-EXITED= ;
 
 : SIGNALED-PROBE ( -- )
    s" timed-out probe" T-LABEL
-   s" probe program" s" probe stdout" s" probe stderr" OUTCOME:TIMEOUT
-   9 T-OUTCOME-SIGNALED= ;
+   s" probe program" s" probe stdout" s" probe stderr" PROCESS-ENDING:timeout
+   9 T-ENDING-SIGNALED= ;
 
 : UNSIGNALED-PROBE ( -- )
    s" unsignaled probe" T-LABEL
-   s" probe program" s" probe stdout" s" probe stderr" 3 OUTCOME:EXITED
-   9 T-OUTCOME-SIGNALED= ;
+   s" probe program" s" probe stdout" s" probe stderr" 3 PROCESS-ENDING:exited
+   9 T-ENDING-SIGNALED= ;
 
 : WRONG-SIGNAL-PROBE ( -- )
    s" wrong-signal probe" T-LABEL
-   s" probe program" s" probe stdout" s" probe stderr" 9 OUTCOME:SIGNALED
-   15 T-OUTCOME-SIGNALED= ;
+   s" probe program" s" probe stdout" s" probe stderr" 9 PROCESS-ENDING:signaled
+   15 T-ENDING-SIGNALED= ;
 
 : EXIT-MISS-PROBE ( -- )
    s" exit-miss probe" T-LABEL
-   s" probe program" s" probe stdout" s" probe stderr" 70 OUTCOME:EXITED
-   0 T-OUTCOME-EXITED= ;
+   s" probe program" s" probe stdout" s" probe stderr" 70 PROCESS-ENDING:exited
+   0 T-ENDING-EXITED= ;
 
 : SHOWS ( n ptr u8 n -- ) {: outu:n want:ptr wantu:n :}
    OUT outu want wantu CONTAINS? TTRUE ;

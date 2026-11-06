@@ -33,13 +33,13 @@ DYNAMIC-BUFFER FILES u8
    then ;
 
 \ A native build that failed, by its exit status; its stderr names the step.
-\ The build exits PROC-TIMEOUT-RC when a deadline expired in it
+\ The build exits PROCESS:TIMEOUT-RC when a deadline expired in it
 \ (tools/native-build-args.f), and that verdict is thrown again as
 \ E-PROC-TIMEOUT so it reaches the top of the chain. Any other status is a
 \ failed build.
 : BUILD-FAILED ( CMD:command n -- CMD:command ) {: rc:n :}
    s" chain-run: native-build stderr: " type CMD:ERR$ type cr
-   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   rc PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    E-BUILD-STATUS throw ;
 
 : BUILD-IN ( ptr u8 n ptr u8 n ptr u8 n CMD:command -- CMD:command )

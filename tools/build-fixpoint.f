@@ -176,12 +176,12 @@ variable BF-CERT-PATH-U
 : BF-FALSE ( -- bool )
    0 0= 0= ;
 
-\ A child's completion code. PROC-TIMEOUT-RC is a deadline that expired in the
+\ A child's completion code. PROCESS:TIMEOUT-RC is a deadline that expired in the
 \ child (native-build's smoke check, src/lib/process.f), so it throws E-PROC-TIMEOUT
 \ again here instead of becoming one more failed child.
 : BF-RC0 ( n -- ) {: rc:n :}
    rc 0= if exit then
-   rc PROC-TIMEOUT-RC = if E-PROC-TIMEOUT throw then
+   rc PROCESS:TIMEOUT-RC = if E-PROC-TIMEOUT throw then
    E-BUILD-STATUS throw ;
 
 : BF-RENAME-TMP ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu dst:ptr dstu :}
@@ -194,7 +194,7 @@ variable BF-CERT-PATH-U
    FS:>PATHZ open-rd dup 0 < if E-BUILD-PATH throw then ;
 
 : BF-FINISH-PID ( pid -- n )
-   PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code (ok 0 / err nonzero)
+   PROCESS:WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code (ok 0 / err nonzero)
 
 \ The request for pathz with the staged argv and only the staged env, which are
 \ reset once the request holds its copy; the child inherits stdin, stdout and
@@ -227,13 +227,13 @@ variable BF-CERT-PATH-U
 
 \ Spawns pathz with the staged argv and env as the capture child, its stdout on
 \ outfd and its stderr on the capture pipe, and records its pid. Stack-preserving
-\ under catch, so a refused spawn reaches PROC-THROW-CAPTURE.
+\ under catch, so a refused spawn reaches PROCESS:THROW-CAPTURE.
 : BF-OUTFD-LAUNCH ( ptr u8 ptr ptr u8 ptr ptr u8 n -- ptr u8 ptr ptr u8 ptr ptr u8 n )
    {: pathz:ptr argv:ptr envp:ptr outfd:n :}
    pathz argv envp BF-REQUEST
    1 >FD outfd >FD PROCESS:FD
-   2 >FD PROC-ERR-W @ >FD PROCESS:FD
-   PROCESS:SPAWN PID>N PROC-PID !
+   2 >FD PROCESS:ERR-W @ >FD PROCESS:FD
+   PROCESS:SPAWN PID>N PROCESS:PID !
    pathz argv envp outfd ;
 
 \ PROC-SPAWN-ARGV-ENV-CAPTURE with the child's stdout on a caller fd instead of
@@ -243,26 +243,26 @@ variable BF-CERT-PATH-U
 : BF-SPAWN-OUTFD-CAPTURE ( ptr u8 ptr ptr u8 ptr ptr u8 n -- )
    [: BF-OUTFD-LAUNCH ;] catch {: code:n :}
    drop drop drop drop
-   code 0<> if code PROC-THROW-CAPTURE then
-   PROC-PID @ >PID PROC-CAPTURE-PID!
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   code 0<> if code PROCESS:THROW-CAPTURE then
+   PROCESS:PID @ >PID PROCESS:CAPTURE-PID!
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 \ Spawn the argv and env the caller built, stdout on a file and stderr captured under the
 \ deadline every child here gets. A file, unlike a capture buffer, does not bound a child's
 \ output before it runs, and FS:FILE-SIZE reads its size afterwards: the only way to read a
 \ source transform's output back. The answer is an outcome, so a deadline expiry is an arm.
-: BF-RUN-ARGV-ENV-OUTFILE ( ptr u8 n ptr u8 n ptr u8 len ms -- len outcome )
+: BF-RUN-ARGV-ENV-OUTFILE ( ptr u8 n ptr u8 n ptr u8 len ms -- len PROCESS:ending )
    {: exe:ptr exeu:n out:ptr outu:n err:ptr errcap:len timeout:ms :}
    out outu BF-LF-BUF 0 FS:WRITE-ALL
    out outu FS:OPEN-APPEND-FD {: outfd:n :}
    exe exeu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROC-CAPTURE-BEGIN
+   timeout PROCESS:CAPTURE-BEGIN
    pathz argv envp outfd BF-SPAWN-OUTFD-CAPTURE
    outfd close
-   BF-CAP-SINK 1 >LEN err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME             \ ( len len outcome )
+   BF-CAP-SINK 1 >LEN err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING             \ ( len len PROCESS:ending )
    rot drop ;                              \ the sunk stdout length is nobody's business
 
 : BF-PREPARE-STAGE-ARGV ( ptr u8 n -- ptr u8 ptr ptr u8 )
@@ -1514,7 +1514,7 @@ DYNAMIC-BUFFER BF-IMAGES u8
    BF-USAGE ;
 
 \ Fail-closed CLI boundary: BF-CLI catches every throw out of BF-MAIN, names it on stderr
-\ and dies with the tool's exit contract: PROC-TIMEOUT-RC (src/lib/process.f) for a deadline
+\ and dies with the tool's exit contract: PROCESS:TIMEOUT-RC (src/lib/process.f) for a deadline
 \ that expired here or in a child that exited with it (BF-RC0), BF-BUILD-RC for any other
 \ throw, BF-USAGE-RC for a refused command line.
 $80 constant BF-FAIL-CAP
@@ -1564,7 +1564,7 @@ variable BF-FAIL-N
    s" build-fixpoint: failed: uncaught throw code " BF-FAIL+
    rc BF-FAIL-CODE+
    rc BF-FAIL-NAME+
-   BF-FAIL-BUF BF-FAIL-U @ rc BF-BUILD-RC PROC-EXIT-RC die ;
+   BF-FAIL-BUF BF-FAIL-U @ rc BF-BUILD-RC PROCESS:EXIT-RC die ;
 
 variable BF-CLI-RAN
 

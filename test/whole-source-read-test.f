@@ -57,7 +57,7 @@ create ERR IO-CAP allot
    mode modeu SUBJECT$ GROW$ WHOLE-SOURCE-READ-CHILD:CASE!
    s" WHOLE-SOURCE-READ-CHILD:MAIN"
    OUT OUT-CAP >LEN ERR IO-CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   PROC-OUTCOME>RC RC>N
+   PROCESS:ENDING>RC RC>N
    {: outu:len erru:len rc:n :}
    outu LEN>N erru LEN>N rc ;
 

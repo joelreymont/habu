@@ -4,7 +4,7 @@
 \ judges.
 
 require src/lib/pty-harness.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 require src/lib/test.f
 
@@ -22,7 +22,7 @@ variable ERR-R
 variable ERR-W
 variable PID
 
-\ The engine bakes neither POLL-IN nor the process primitives, so both library
+\ The engine bakes neither PROCESS:POLL-IN nor the process primitives, so both library
 \ files are part of the run line; test/runtime-regression-test.f GE-PROCESS-PTY
 \ drives this file, with the engine to test as `-- <path>` or in
 \ HABU_UNDER_TEST.
@@ -56,9 +56,9 @@ variable PID
 : TCONTAINS ( ptr u8 n -- )
    IN-BUF? PTY-TRUE ;
 
-: T-EXIT= ( ptr u8 n ptr u8 n ptr u8 n outcome n -- )
+: T-EXIT= ( ptr u8 n ptr u8 n ptr u8 n PROCESS:ending n -- )
    T-FAILURES {: before:n :}
-   T-OUTCOME-EXITED= before BUF-ON-FAIL ;
+   T-ENDING-EXITED= before BUF-ON-FAIL ;
 
 \ A drain clears the buffer first: the bytes it swallows must not answer a later
 \ wait.
@@ -110,15 +110,15 @@ variable PID
    WINDOW-ABSENT? PTY-TRUE ;
 
 : CAPTURE-PIPES ( -- )
-   PIPE-PAIR IN-W ! IN-R !
-   PIPE-PAIR OUT-W ! OUT-R !
-   PIPE-PAIR ERR-W ! ERR-R !
-   IN-W @ >FD FD-CLOEXEC!
-   OUT-R @ >FD FD-CLOEXEC!
-   ERR-R @ >FD FD-CLOEXEC! ;
+   FD:PIPE-PAIR IN-W ! IN-R !
+   FD:PIPE-PAIR OUT-W ! OUT-R !
+   FD:PIPE-PAIR ERR-W ! ERR-R !
+   IN-W @ >FD FD:FD-CLOEXEC!
+   OUT-R @ >FD FD:FD-CLOEXEC!
+   ERR-R @ >FD FD:FD-CLOEXEC! ;
 
 : CAPTURE-START-HB ( -- )
-   HB-EXE$ >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD PROC-SPAWN-IO PID !
+   HB-EXE$ >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD PROCESS:SPAWN-IO PID !
    PID @ 0 > PTY-TRUE ;
 
 : CAPTURE-CLOSE-CHILD-ENDS ( -- )
@@ -790,7 +790,7 @@ variable PTY-LONG-U
 \ A terminal that hangs up mid-line ends the session. KEY1 is one 1-byte read of
 \ descriptor 0; a read of 0 (the pty master closed) or -1 must leave the editor,
 \ not replay the byte still in the key buffer for ever. That regression is a
-\ spin, so this case bounds its own reap: PROC-WAIT-RC has no timeout. The watch
+\ spin, so this case bounds its own reap: PROCESS:WAIT-RC has no timeout. The watch
 \ descriptor opens while the child is alive: macOS cannot register a process
 \ that has already exited. This case runs last and owns the second child:
 \ PTY-STOP-HB reaped the first and closed the master, and the harness holds one
@@ -806,16 +806,16 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
 \ True once the watch says the child is gone; a broken descriptor throws instead
 \ of passing for an exit.
 : PTY-WATCH-EXITED? ( fd n -- bool ) {: wfd:fd ms:n :}
-   wfd ms >MS POLL-IN COUNT>N {: rc:n :}
+   wfd ms >MS PROCESS:POLL-IN COUNT>N {: rc:n :}
    rc 0 < if E-PROC-OUTPUT throw then
    rc 0= if false exit then
-   0 >IDX PROC-PFD-REVENTS {: ev:n :}
-   ev POLLERR POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
-   ev POLLIN and 0 <> ;
+   0 >IDX PROCESS:PFD-REVENTS {: ev:n :}
+   ev FD:POLLERR FD:POLLNVAL or and 0 <> if E-PROC-OUTPUT throw then
+   ev FD:POLLIN and 0 <> ;
 
 : PTY-KILL-CHILD ( -- )
-   CHILD-PID SIGKILL PROC-KILL-RAW drop
-   CHILD-PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
+   CHILD-PID PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   CHILD-PID PROCESS:WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
 
 \ A child that left the editor is reaped for its status; one still in it at the
 \ deadline is killed and reaped, so a failing run reports instead of hanging and
@@ -824,7 +824,7 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
    wfd PTY-EXIT-MS PTY-WATCH-EXITED? {: gone:bool :}
    gone PTY-TRUE
    gone if
-      CHILD-PID PROC-WAIT-RC MATCH result ok OF 0 PTY= ENDOF err OF drop 1 0 PTY= ENDOF ;MATCH
+      CHILD-PID PROCESS:WAIT-RC MATCH result ok OF 0 PTY= ENDOF err OF drop 1 0 PTY= ENDOF ;MATCH
    else
       PTY-KILL-CHILD
    then
@@ -893,13 +893,13 @@ $1388 constant PTY-EXIT-MS         \ what a hung-up child gets to leave its edit
 \ A deadline is no failed case: a reap that ran out of clock, or a wait whose
 \ clock ended with the child still at the terminal (src/lib/pty-harness.f
 \ WAIT-AFTER-WITHIN), throws E-PROC-TIMEOUT. This run then exits
-\ PROC-TIMEOUT-RC (src/lib/process.f), and the gate entry that runs it reports a
+\ PROCESS:TIMEOUT-RC (src/lib/process.f), and the gate entry that runs it reports a
 \ timeout instead of counting a failure. Every other throw is the run's own.
 : RUN ( -- )
    [: CAPTURE-HB PTY-HB ;] catch {: code:n :}
    code E-PROC-TIMEOUT = if
       s" proc-pty: deadline in case " type T-CASES 1 + . cr
-      s" proc-pty: a wait or a reap ran out of time" PROC-TIMEOUT-RC die
+      s" proc-pty: a wait or a reap ran out of time" PROCESS:TIMEOUT-RC die
    then
    code 0<> if code throw then
    T-REPORT ;

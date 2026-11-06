@@ -177,7 +177,7 @@ public
    0 u PROC-ENV-NEED {: need:n :}
    need MEM-MAX-N >= if E-PROC-ENV throw then
    a u PROC-ENV-CHECK-ENTRY
-   a u need PROC-ENV-ROWS:BYTES need >LEN PROC-ZCOPY ;
+   a u need PROC-ENV-ROWS:BYTES need >LEN PROCESS:ZCOPY ;
 
 : PROC-ENV-INSTALL-Z ( ptr u8 -- )
    PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
@@ -309,100 +309,100 @@ public
    pid ;
 
 : PROC-RUN-ARGV-ENV-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )   \ ok = clean exit (0), err = nonzero completion rc
-   PROC-SPAWN-ARGV-ENV-IO PROC-WAIT-RC ;
+   PROC-SPAWN-ARGV-ENV-IO PROCESS:WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp PROC-CAPTURE-NULL-INPUT PROC-OUT-W @ >FD PROC-ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW {: pid :}
+   pathz argv envp PROCESS:CAPTURE-NULL-INPUT PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-CAPTURE-PID!
-   PROC-IN-R PROC-CLOSE-CELL
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
+   pid PID>N 0 < if E-PROC-SPAWN PROCESS:THROW-CAPTURE then
+   pid PROCESS:CAPTURE-PID!
+   PROCESS:IN-R PROCESS:CLOSE-CELL
+   PROCESS:OUT-W PROCESS:CLOSE-CELL
+   PROCESS:ERR-W PROCESS:CLOSE-CELL ;
 
 \ The staging is reset ahead of the failed spawn's throw, so a refused spawn
 \ cannot leave rows for the next one.
 : PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- )
    {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp PROC-IN-R @ >FD PROC-OUT-W @ >FD PROC-ERR-W @ >FD
+   pathz argv envp PROCESS:IN-R @ >FD PROCESS:OUT-W @ >FD PROCESS:ERR-W @ >FD
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
-   pid PROC-CAPTURE-ADOPT-SPAWN ;
+   pid PROCESS:CAPTURE-ADOPT-SPAWN ;
 
 : RUN-ARGV-ENV-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROC-CAPTURE-BEGIN
+   timeout PROCESS:CAPTURE-BEGIN
    pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
-   out outcap err errcap PROC-RUN-CAPTURE-LOOP
-   PROC-CAPTURE-FINISH-RC ;
+   out outcap err errcap PROCESS:RUN-CAPTURE-LOOP
+   PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
+: RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROC-CAPTURE-BEGIN
+   timeout PROCESS:CAPTURE-BEGIN
    pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
-   out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME ;
+   out outcap err errcap PROCESS:RUN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING ;
 
 : RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- result<pcap:captured,pcap:failed> )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu PROC-CAPTURE-CHECK-STDIN
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   inu PROCESS:CAPTURE-CHECK-STDIN
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROC-STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
-   PROC-CAPTURE-FINISH-RC ;
+   in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-LOOP
+   PROCESS:CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
+: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu PROC-CAPTURE-CHECK-STDIN
-   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   inu PROCESS:CAPTURE-CHECK-STDIN
+   outcap errcap PROCESS:CAPTURE-CHECK-CAPS
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROC-STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME ;
+   in inu out outcap err errcap PROCESS:RUN-STDIN-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING ;
 
 \ The child's stdout goes to storage that grows to what it writes: SINK makes
 \ room and answers the first byte (src/lib/process.f). The length answered is
 \ what the child wrote.
-: RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len outcome )
+: RUN-ARGV-ENV-STDIN-GROWING-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] ptr u8 len ms -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu sink err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu PROC-CAPTURE-CHECK-STDIN
-   errcap PROC-CAPTURE-CHECK-CAP
+   inu PROCESS:CAPTURE-CHECK-STDIN
+   errcap PROCESS:CAPTURE-CHECK-CAP
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROC-STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu sink err errcap PROC-RUN-STDIN-GROWING-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME ;
+   in inu sink err errcap PROCESS:RUN-STDIN-GROWING-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING ;
 
 \ Both streams use independent caller-owned growing storage. Sinks have the
 \ same contract as the stdout sink above; their buffers stay with the caller
 \ on every outcome, including a timeout or a nonzero child completion.
-: RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len outcome )
+: RUN-ARGV-ENV-STDIN-GROWING-BOTH-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len [ n -- ptr u8 ] [ n -- ptr u8 ] ms -- len len PROCESS:ending )
    {: path:ptr pathu in:ptr inu out err timeout :}
    path pathu PROC-ARGV-CHECK-PATH
-   inu PROC-CAPTURE-CHECK-STDIN
+   inu PROCESS:CAPTURE-CHECK-STDIN
    path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout PROC-STDIN-CAPTURE-BEGIN
+   timeout PROCESS:STDIN-CAPTURE-BEGIN
    pathz argv envp PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE
-   in inu out err PROC-RUN-STDIN-GROWING-BOTH-CAPTURE-OUTCOME-LOOP
-   PROC-CAPTURE-FINISH-OUTCOME ;
+   in inu out err PROCESS:RUN-STDIN-GROWING-BOTH-CAPTURE-ENDING-LOOP
+   PROCESS:CAPTURE-FINISH-ENDING ;
 
 : PROC-HAS-SLASH? ( ptr u8 len -- bool )
    LEN>N STR:LENGTH PROC-PATH-SLASH STR:INDEX-OF MATCH option

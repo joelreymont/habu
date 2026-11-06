@@ -5,7 +5,7 @@
 \
 \ Run: bin/hb --load src/lib/pty-harness-test.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/wait.f
 require src/lib/string.f
 require src/lib/pty-harness.f
@@ -299,7 +299,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    \ The terminal carries both of the child's streams, so BUF$ is its stdout
    \ and there is no stderr apart from it.
    REAP {: oc :}
-   HB$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
+   HB$ BUF$ s" " oc 0 T-ENDING-EXITED=
    CLOSE-MASTER ;
 
 
@@ -314,9 +314,9 @@ variable HIT                       \ did the loop reach the case it was feeding 
    s" y" WAIT-FOR TTRUE
    mono-ns {: t0:n :}
    s" a child that never stops writing is reaped as a timeout" T-LABEL
-   WEDGE-MS REAP-WITHIN T-OUTCOME-TIMEOUT
+   WEDGE-MS REAP-WITHIN T-ENDING-TIMEOUT
    s" and the reap returned on the clock, not on the child" T-LABEL
-   mono-ns t0 - PROC-NS-PER-MS / WEDGE-MS WEDGE-SLACK-MS + < TTRUE
+   mono-ns t0 - PROCESS:NS-PER-MS / WEDGE-MS WEDGE-SLACK-MS + < TTRUE
    CLOSE-MASTER ;
 
 
@@ -348,7 +348,7 @@ variable HIT                       \ did the loop reach the case it was feeding 
    s" the child started a sleeper on its terminal" T-LABEL
    s" 48879" s" habu> " WAIT-AFTER TTRUE
    s" a child at its prompt is reaped as a timeout" T-LABEL
-   WEDGE-MS REAP-WITHIN T-OUTCOME-TIMEOUT
+   WEDGE-MS REAP-WITHIN T-ENDING-TIMEOUT
    [: HANGUP-MS HANGUP ;] [: CLOSE-MASTER ;] finally ;
 
 

@@ -7,7 +7,7 @@ require src/lib/error.f
 require src/lib/memory.f
 require src/lib/string.f
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require src/habu/layout.f
 
@@ -177,7 +177,7 @@ variable LBL-U
 
 \ A declaring word's refusal ends the process, so every case runs `src` in a
 \ forked child, with LEN at `u`.
-: RUN-AT ( n ptr u8 n ptr u8 n -- len len outcome )
+: RUN-AT ( n ptr u8 n ptr u8 n -- len len PROCESS:ending )
    {: u:n at:ptr atu:n src:ptr srcu:n :}
    0 LBL-U !  src srcu LBL+  s"  at " LBL+  at atu LBL+
    u LEN !
@@ -187,7 +187,7 @@ variable LBL-U
 : RETURNS-AT ( n ptr u8 n ptr u8 n -- )
    {: u:n at:ptr atu:n src:ptr srcu:n :}
    u at atu src srcu RUN-AT {: outu:len erru:len oc :}
-   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    RELABEL ERR erru LEN>N s" " T$=
    RELABEL OUT outu LEN>N S\" refused\n" T$= ;
 
@@ -195,7 +195,7 @@ variable LBL-U
 : DIES-AT ( n ptr u8 n ptr u8 n n ptr u8 n -- )
    {: u:n at:ptr atu:n src:ptr srcu:n rc:n want:ptr wantu:n :}
    u at atu src srcu RUN-AT {: outu:len erru:len oc :}
-   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-OUTCOME-EXITED=
+   RELABEL src srcu OUT outu LEN>N ERR erru LEN>N oc rc T-ENDING-EXITED=
    RELABEL outu LEN>N 0 T=
    RELABEL ERR erru LEN>N want wantu T$= ;
 
@@ -397,13 +397,13 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL LOADING
    CEIL 119 DEF-SRC {: da:ptr du:n :}
    0 s" ceiling" da du RUN-AT {: outu:len erru:len oc :}
    s" `:` defines a name of the ceiling" T-LABEL
-   da du OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   da du OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    s" ... and says nothing" T-LABEL
    ERR erru LEN>N s" " T$=
    CEIL 1 + 119 DEF-SRC {: ea:ptr eu:n :}
    0 s" ceiling+1" ea eu RUN-AT {: outv:len errv:len od :}
    s" `:` refuses a name one byte past it" T-LABEL
-   ea eu OUT outv LEN>N ERR errv LEN>N od 71 T-OUTCOME-EXITED=
+   ea eu OUT outv LEN>N ERR errv LEN>N od 71 T-ENDING-EXITED=
    s" ... for the body text it would need" T-LABEL
    ERR FULL$ nip FULL$ T$= ;
 

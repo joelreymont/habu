@@ -4,7 +4,7 @@
 require src/lib/test.f
 require src/lib/pty-harness.f
 require src/lib/engine-candidate.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 
 package REPL-SEGMENT-TEST
 using PTY-HARNESS
@@ -18,7 +18,7 @@ using PTY-HARNESS
 : STOP ( -- )
    4 SEND-BYTE
    REAP {: oc :}
-   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-OUTCOME-EXITED=
+   ENGINE-CANDIDATE:PATH$ BUF$ s" " oc 0 T-ENDING-EXITED=
    CLOSE-MASTER ;
 
 : RUN ( -- )

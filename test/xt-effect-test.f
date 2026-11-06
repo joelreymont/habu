@@ -13,7 +13,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-argv.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/engine-candidate.f
 
 package XT-EFFECT-TEST
@@ -44,10 +44,10 @@ create XE-EMPTY 1 allot
 : XE-OUT$ ( -- ptr u8 n ) XE-OUT XE-OUT-U @ ;
 : XE-ERR$ ( -- ptr u8 n ) XE-ERR XE-ERR-U @ ;
 
-: XE-STORE! ( len len outcome ptr u8 n -- )
+: XE-STORE! ( len len PROCESS:ending ptr u8 n -- )
    {: outu:len erru:len oc src:ptr srcu:n :}
    outu LEN>N XE-OUT-U !  erru LEN>N XE-ERR-U !
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF XE-RC ! 0 0= XE-EXITED ! ENDOF
      signaled OF XE-RC ! 0 0= 0= XE-EXITED ! ENDOF
      timeout OF src srcu XE-OUT$ XE-ERR$ T-TIMED-OUT ENDOF

@@ -14,7 +14,7 @@ require src/lib/fs-mutate.f
 require src/lib/source.f
 require src/lib/content-key.f
 require src/lib/fmt.f                  \ the code a child prints is rendered from its name
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/test/subject.f
 require tools/source-discovery.f
 require tools/event-closure-lib.f
@@ -303,7 +303,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$=
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 3 T=
@@ -319,7 +319,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$=
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 3 T=
@@ -335,7 +335,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" CYCLE" T$=
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 3 T=
@@ -351,7 +351,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$=
    [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
 
@@ -375,7 +375,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-RA-ENTRY$ included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" AB" T$=
    ECT-RA-ENTRY$ EC:BUILD
    EC:COUNT 5 T=
@@ -397,7 +397,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: rout:len rerr:len rcode :}
    s" ECT-RA-ENTRY$ included"
-   ECT-OUT rout LEN>N ECT-ERR rerr LEN>N rcode 0 T-OUTCOME-EXITED=
+   ECT-OUT rout LEN>N ECT-ERR rerr LEN>N rcode 0 T-ENDING-EXITED=
    ECT-OUT rout LEN>N s" A" T$=
    ECT-RA-ENTRY$ [: ECT-READ-PATH ;] EC:BUILD-WITH
    EC:COUNT 4 T=
@@ -411,7 +411,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: aout:len aerr:len acode :}
    s" ECT-RA-ENTRY$ included"
-   ECT-OUT aout LEN>N ECT-ERR aerr LEN>N acode 0 T-OUTCOME-EXITED=
+   ECT-OUT aout LEN>N ECT-ERR aerr LEN>N acode 0 T-ENDING-EXITED=
    ECT-OUT aout LEN>N s" AB" T$=
    ECT-RA-ENTRY$ EC:BUILD
    EC:COUNT 5 T=
@@ -425,7 +425,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" XX" T$=
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 2 T= ;
@@ -444,7 +444,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    src srcu ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    src srcu ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc ECT-UNCAUGHT-RC
-   T-OUTCOME-EXITED=
+   T-ENDING-EXITED=
    ECT-ERR erru LEN>N E-FS-STAT ECT-CODE$ CONTAINS? TTRUE
    ECT-ERR erru LEN>N ECT-DC$ CONTAINS? TTRUE ;
 
@@ -462,7 +462,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$= ;
 
 \ Discovery refuses the entry. In the family cases dep-b.f's `structure` is a
@@ -722,7 +722,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$=
    ECT-ENTRY$ EC:BUILD
    EC:COUNT 4 T=
@@ -743,7 +743,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADEDLOADED" T$=
    [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ ;
 
@@ -757,7 +757,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$=
    [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ
    [: ECT-ENTRY$ EC:LOAD-ORDER ;] E-DISC-SHADOW TTHROWSQ
@@ -775,7 +775,7 @@ ECT-ERR-CAP BUFFER: ECT-ERR
    ECT-OUT ECT-OUT-CAP >LEN ECT-ERR ECT-ERR-CAP >LEN ECT-CHILD-MS >MS
    SUBJECT:RUN {: outu:len erru:len oc :}
    s" ECT-ENTRY$ ;package included"
-   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   ECT-OUT outu LEN>N ECT-ERR erru LEN>N oc 0 T-ENDING-EXITED=
    ECT-OUT outu LEN>N s" LOADED" T$=
    [: ECT-ENTRY$ EC:BUILD ;] E-DISC-SHADOW TTHROWSQ
    DISCOVER:LAST-TOKEN {: off:n len:n :}

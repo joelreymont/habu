@@ -7,7 +7,7 @@
 \ tree-relative path.
 
 require src/lib/test.f
-require src/lib/test/outcome.f
+require src/lib/test/ending.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require src/lib/fmt.f
@@ -40,11 +40,11 @@ variable CODE                          \ the last child's exit code, -1 when it 
 
 \ A deadline is no exit code: the file the child loaded last and its capture
 \ are printed and E-PROC-TIMEOUT thrown.
-: CODE! ( CMD:command outcome ptr u8 n -- CMD:command )
+: CODE! ( CMD:command PROCESS:ending ptr u8 n -- CMD:command )
    {: oc ran:ptr ranu:n :}
    CMD:OUT$ {: out:ptr outu:n :}
    CMD:ERR$ {: err:ptr erru:n :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF CODE ! ENDOF
      signaled OF drop -1 CODE ! ENDOF
      timeout OF ran ranu out outu err erru T-TIMED-OUT ENDOF

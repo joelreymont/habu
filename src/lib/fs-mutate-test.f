@@ -11,7 +11,7 @@ require src/lib/fs-mutate.f
 require src/lib/fmt.f                               \ the TMPDIR child's uncaught code
 require src/lib/process-env.f
 require src/lib/engine-candidate.f                  \ the TMPDIR child's engine
-require src/lib/test/outcome.f                      \ the TMPDIR child's outcome
+require src/lib/test/ending.f                      \ the TMPDIR child's outcome
 require src/lib/task.f                              \ the two-task rows at the end
 require src/lib/test/wait.f                         \ a worker's deadline at the join
 
@@ -1046,7 +1046,7 @@ variable WANT-U
    PROC-ARGV-ENV-RESET
    s" TMPDIR" >LEN a u >LEN PROC-ENV-SET ;
 
-: CAPTURE ( ptr u8 n -- len len outcome ) {: prog:ptr progu :}
+: CAPTURE ( ptr u8 n -- len len PROCESS:ending ) {: prog:ptr progu :}
    PROC-ENV-INHERIT-MISSING
    prog progu >LEN PROC-ARGV+
    ENGINE-CANDIDATE:PATH$ >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
@@ -1073,9 +1073,9 @@ variable WANT-U
 : REFUSED ( ptr u8 n ptr u8 n ptr u8 n n -- )
    {: prog:ptr progu a:ptr u why:ptr whyu code:n :}
    a u CHILD-ENV prog progu CAPTURE {: outu:len erru:len oc :}
-   oc MATCH outcome
+   oc MATCH PROCESS:ending
      exited OF 0 T<> ENDOF
-     signaled OF s" exit" s" signal" T-OUTCOME-MISS ENDOF
+     signaled OF s" exit" s" signal" T-ENDING-MISS ENDOF
      timeout OF prog progu OUT outu LEN>N ERR erru LEN>N T-TIMED-OUT ENDOF
    ;MATCH
    ERR erru LEN>N why whyu a u WANT$ CONTAINS? TTRUE
@@ -1091,7 +1091,7 @@ variable WANT-U
    CANON-PROG$ FS:CLEANUP+
    FMT-PARENT-LINK CHILD-ENV
    CANON-PROG$ CAPTURE {: outu:len erru:len oc :}
-   CANON-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-OUTCOME-EXITED=
+   CANON-PROG$ OUT outu LEN>N ERR erru LEN>N oc 0 T-ENDING-EXITED=
    OUT outu LEN>N NL 0 SPLIT-NEXT 2drop {: td:ptr tdu:n :}
    td tdu td tdu FMT-REAL T$=
    td tdu FS:REMOVE-DIR
@@ -1324,8 +1324,8 @@ variable SOCAT-U
 
 
 : STOP-LISTENER ( -- )
-   LISTENER @ SIGKILL PROC-KILL-RAW drop
-   LISTENER @ PROC-WAIT-STATUS drop ;
+   LISTENER @ PROCESS:SIGKILL PROCESS:KILL-RAW drop
+   LISTENER @ PROCESS:WAIT-STATUS drop ;
 
 
 : WAIT-LISTENER ( -- )
