@@ -143,7 +143,7 @@ STRUCTURE call DERIVE addr
    FIELD journal-get [ n ptr u8 n ptr n -- bool ]
    FIELD journal-put [ n ptr u8 n ptr u8 n -- ]
    FIELD journal-ready bool
-   FIELD replay-kind n
+   FIELD replay-kind option<call-kind>
 ;STRUCTURE
 
 private
@@ -176,7 +176,6 @@ STRUCTURE ledger DERIVE addr
    FIELD started-ns n
    FIELD call-id n
    FIELD fault n
-   FIELD kind n
    FIELD code n
    FIELD cancelled bool
    FIELD transport n
@@ -575,6 +574,25 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    ;MATCH ;
 
 
+\ Whether kind k's configuration is the one the last call restored from a
+\ journal record, with no setter of it since.
+: REPLAYED? ( call-kind ptr call -- bool )
+   {: k:call-kind c :}
+   c MODEL-CALL:REPLAY-KIND @ MATCH option
+      none OF false ENDOF
+      some OF
+         MATCH call-kind
+            chat OF
+               k MATCH call-kind chat OF true ENDOF embed OF false ENDOF ;MATCH
+            ENDOF
+            embed OF
+               k MATCH call-kind chat OF false ENDOF embed OF true ENDOF ;MATCH
+            ENDOF
+         ;MATCH
+      ENDOF
+   ;MATCH ;
+
+
 \ Drops the finished request and answers whether there was one;
 \ JOURNAL-INPUT$ names the words that discard it.
 : UNPREPARE ( ptr call -- bool )
@@ -643,7 +661,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false c MODEL-CALL:PARTS-VALID !
    false c MODEL-CALL:EMBEDDED !
    false c MODEL-CALL:JOURNAL-READY !
-   0 c MODEL-CALL:REPLAY-KIND !
+   OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
@@ -788,7 +806,7 @@ public
    {: a:ptr u:n c :}
    c UNPREPARE drop
    u 0<> if a u BASE-URL? 0= if E-CONFIG throw then then
-   0 c MODEL-CALL:REPLAY-KIND !
+   OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    u 0= if c BASE-URL-BUF BUF:CLEAR exit then
    a u c BASE-URL-BUF REPLACE-SOME ;
 
@@ -796,7 +814,9 @@ public
    {: a:ptr u:n c :}
    c UNPREPARE drop
    a u c GEN-BUF REPLACE-SOME
-   c MODEL-CALL:REPLAY-KIND @ 1 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
+   construct call-kind chat c REPLAYED? if
+      OPTION:NONE c MODEL-CALL:REPLAY-KIND !
+   then ;
 
 \ The reasoning effort of every generation call without a purpose row; empty
 \ sends none.
@@ -804,7 +824,9 @@ public
    {: a:ptr u:n c :}
    c UNPREPARE drop
    u 0= if c EFFORT-BUF BUF:CLEAR else a u c EFFORT-BUF REPLACE-SOME then
-   c MODEL-CALL:REPLAY-KIND @ 1 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
+   construct call-kind chat c REPLAYED? if
+      OPTION:NONE c MODEL-CALL:REPLAY-KIND !
+   then ;
 
 \ The provider's prompt cache key of every later generation call: requests
 \ sharing a key share cache routing. Empty sends none. It leaves the reply,
@@ -838,7 +860,9 @@ public
    e e-u 2 c ROW-TEXT+
    t t-u 3 c ROW-TEXT+
    c ROW-NEW-AT ROW-BYTES REGION SPAN:$ BUF:N>BLEN c ROWS-BUF BUF:APPEND-SPAN
-   c MODEL-CALL:REPLAY-KIND @ 1 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
+   construct call-kind chat c REPLAYED? if
+      OPTION:NONE c MODEL-CALL:REPLAY-KIND !
+   then ;
 
 : EMBEDDING-MODEL! ( ptr u8 n n ptr call -- )
    {: a:ptr u:n dims:n c :}
@@ -846,7 +870,9 @@ public
    dims 0 <= if E-CONFIG throw then
    a u c EMBED-BUF REPLACE-SOME
    dims c MODEL-CALL:DIMS !
-   c MODEL-CALL:REPLAY-KIND @ 2 = if 0 c MODEL-CALL:REPLAY-KIND ! then
+   construct call-kind embed c REPLAYED? if
+      OPTION:NONE c MODEL-CALL:REPLAY-KIND !
+   then
    OPENAI c MODEL-CALL:EMBEDDING-KIND ! ;
 
 \ Names the native credential store's item, by service and account, holding
@@ -1059,13 +1085,13 @@ public
 : GENERATION-CONFIG$ ( ptr call -- ptr u8 n )
    {: c :}
    c REQUIRE-REST
-   c MODEL-CALL:REPLAY-KIND @ 1 <> if c BUILD-GEN-CONFIG then
+   construct call-kind chat c REPLAYED? 0= if c BUILD-GEN-CONFIG then
    c GEN-CONFIG$ ;
 
 : EMBEDDING-CONFIG$ ( ptr call -- ptr u8 n )
    {: c :}
    c REQUIRE-REST
-   c MODEL-CALL:REPLAY-KIND @ 2 <> if c BUILD-EMBED-CONFIG then
+   construct call-kind embed c REPLAYED? 0= if c BUILD-EMBED-CONFIG then
    c EMBED-CONFIG$ ;
 
 \ Ollama's native /api/embed at endpoint. identity names the model artifact,
@@ -1083,7 +1109,9 @@ public
    identity identity-u c IDENTITY-BUF REPLACE-SOME
    dims c MODEL-CALL:DIMS !
    OLLAMA c MODEL-CALL:EMBEDDING-KIND !
-   c MODEL-CALL:REPLAY-KIND @ 2 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
+   construct call-kind embed c REPLAYED? if
+      OPTION:NONE c MODEL-CALL:REPLAY-KIND !
+   then ;
 
 private
 
@@ -2258,7 +2286,7 @@ private
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:INCOMPLETE-U !
    false c MODEL-CALL:EMBEDDED !
-   0 c MODEL-CALL:REPLAY-KIND !
+   OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    c RESET-USAGE
    c ;
 
@@ -2633,7 +2661,6 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 : RUN-CHAT ( bool ptr call -- ptr call )
    {: finished:bool c :}
    finished c CHAT-BODY
-   construct call-kind chat c MODEL-CALL:KIND !
    c [: FOLLOW ;] SEND
    c PARSE-USAGE
    c PARSE-TIER
@@ -2645,7 +2672,6 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 : RUN-EMBED ( ptr call -- ptr call )
    {: c :}
    c EMBED-BODY
-   construct call-kind embed c MODEL-CALL:KIND !
    c [: POST-REQUEST ;] SEND
    s" " false c [: >r 2drop drop r@ PARSE-EMBED r> ;] catch {: walk:n :}
    walk 0<> if 2drop 2drop c FAULT-USAGE walk throw then
@@ -2729,8 +2755,8 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    s" incomplete" JSON:READ-STR-EQ? if JSON:READ-CLOSE E-INCOMPLETE exit then
    JSON:READ-CLOSE E-RESPONSE throw ;
 
-: JOURNAL-RESTORE ( n ptr call -- )
-   {: kind:n c :}
+: JOURNAL-RESTORE ( ptr call -- )
+   {: c :}
    0 c MODEL-CALL:HTTP-STATUS !
    c JOURNAL-OUT$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c JOURNAL-REFUSAL-FAULT {: refusal:n :}
@@ -2738,24 +2764,26 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    c JOURNAL-ORIGIN
    s" configuration" c JOURNAL-FIELD {: config:ptr config-u:n :}
    config config-u c JSON-OBJECT? 0= if E-RESPONSE throw then
-   kind 1 = if
-      config config-u BUF:N>BLEN c GEN-CONFIG-BUF BUF:REPLACE
-   else
-      config config-u BUF:N>BLEN c EMBED-CONFIG-BUF BUF:REPLACE
-   then
+   config config-u BUF:N>BLEN c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c GEN-CONFIG-BUF ENDOF
+      embed OF c EMBED-CONFIG-BUF ENDOF
+   ;MATCH BUF:REPLACE
    c JOURNAL-RESPONSE
    s" content" c REPLAY-CONTENT-BUF c JOURNAL-STRING-BUF
-   kind 1 = if
-      c PARSE-CHAT
-      c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-      c REPLAY-CONTENT$ STR= 0= if E-RESPONSE throw then
-   else
-      c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
-      c PARSE-EMBED 2drop drop
-      true c MODEL-CALL:EMBEDDED !
-   then
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF
+         c PARSE-CHAT
+         c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
+         c REPLAY-CONTENT$ STR= 0= if E-RESPONSE throw then
+      ENDOF
+      embed OF
+         c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
+         c PARSE-EMBED 2drop drop
+         true c MODEL-CALL:EMBEDDED !
+      ENDOF
+   ;MATCH
    c JOURNAL-CALL-ID c LEDGER LEDGER-CALL-ID !
-   kind c MODEL-CALL:REPLAY-KIND ! ;
+   c MODEL-CALL:KIND @ OPTION:SOME c MODEL-CALL:REPLAY-KIND ! ;
 
 \ A usage count, null when the reply omitted it.
 : COUNT-FIELD ( ptr JSON:writer ptr u8 n option<n> -- ptr JSON:writer )
@@ -2766,14 +2794,19 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 
 \ The call's kind, configured model and usage counts, when the reply carried
 \ usage.
-: USAGE-FIELD ( ptr JSON:writer n ptr call -- ptr JSON:writer )
-   {: kind:n c :}
+: USAGE-FIELD ( ptr JSON:writer ptr call -- ptr JSON:writer )
+   {: c :}
    c TOKENS TOKENS-SEEN @ 0= if exit then
    JSON:WRITE-COMMA s" usage" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START
-   s" kind" kind 1 = if s" generation" else s" embedding" then JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" model" kind 1 = if c GEN$ else c EMBED-MODEL$ then JSON:WRITE-FIELD-S
+   s" kind" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF s" generation" ENDOF
+      embed OF s" embedding" ENDOF
+   ;MATCH JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" model" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c GEN$ ENDOF
+      embed OF c EMBED-MODEL$ ENDOF
+   ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" input_tokens" c TOKENS TOKENS-INPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
    JSON:WRITE-COMMA s" output_tokens" c TOKENS TOKENS-OUTPUT @ COUNT-FIELD
@@ -2781,23 +2814,29 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    JSON:WRITE-OBJECT-END ;
 
 \ Opens the journal record with the call's configuration.
-: RECORD-OPEN ( n ptr call -- ptr JSON:writer )
-   {: kind:n c :}
-   kind 1 = if c BUILD-GEN-CONFIG else c BUILD-EMBED-CONFIG then
+: RECORD-OPEN ( ptr call -- ptr JSON:writer )
+   {: c :}
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c BUILD-GEN-CONFIG ENDOF
+      embed OF c BUILD-EMBED-CONFIG ENDOF
+   ;MATCH
    c JOURNAL-RECORD-BUF c RESET-SCRATCH
    c WRITER c JOURNAL-RECORD-BUF JSON:WRITE-OPEN-BUF drop
    c WRITER JSON:WRITE-OBJECT-START
-   s" configuration" kind 1 = if c GEN-CONFIG$ else c EMBED-CONFIG$ then
-   JSON:WRITE-FIELD-RAW ;
+   s" configuration" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c GEN-CONFIG$ ENDOF
+      embed OF c EMBED-CONFIG$ ENDOF
+   ;MATCH JSON:WRITE-FIELD-RAW ;
 
-: JOURNAL-RECORD ( n ptr call -- )
-   {: kind:n c :}
-   kind c RECORD-OPEN
-   JSON:WRITE-COMMA s" content" kind 1 = if
-      c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-   else s" " then JSON:WRITE-FIELD-S
+: JOURNAL-RECORD ( ptr call -- )
+   {: c :}
+   c RECORD-OPEN
+   JSON:WRITE-COMMA s" content" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ENDOF
+      embed OF s" " ENDOF
+   ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" response" c RESPONSE$ JSON:WRITE-FIELD-S
-   kind c USAGE-FIELD
+   c USAGE-FIELD
    c LEDGER LEDGER-CALL-ID @ {: id:n :}
    id 0<> if JSON:WRITE-COMMA s" call_id" id JSON:WRITE-FIELD-INT then
    JSON:WRITE-COMMA s" origin" JSON:WRITE-KEY
@@ -2810,11 +2849,15 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 \ A nonzero count, else none.
 : NONZERO ( n -- option<n> ) dup 0<> if OPTION:SOME else drop OPTION:NONE then ;
 
-: BACKEND$ ( n ptr call -- ptr u8 n )
-   {: kind:n c :}
-   kind 1 <> c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = and if
-      s" ollama"
-   else s" openai" then ;
+: BACKEND$ ( ptr call -- ptr u8 n )
+   {: c :}
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF s" openai" ENDOF
+      embed OF
+         c MODEL-CALL:EMBEDDING-KIND @ OLLAMA =
+         if s" ollama" else s" openai" then
+      ENDOF
+   ;MATCH ;
 
 
 \ The sha256 hex of the model, system text and schema every generation
@@ -2836,22 +2879,32 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 : CALL-RECORD ( ptr call -- )
    {: c :}
    c LEDGER {: l :}
-   l LEDGER-KIND @ {: kind:n :}
    l LEDGER-CANCELLED @ if E-CANCELLED else l LEDGER-CODE @ then {: fault:n :}
    c JOURNAL-RECORD-BUF c RESET-SCRATCH
    c WRITER c JOURNAL-RECORD-BUF JSON:WRITE-OPEN-BUF drop
    c WRITER JSON:WRITE-OBJECT-START
-   s" kind" kind 1 = if s" generation" else s" embedding" then JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" backend" kind c BACKEND$ JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" model" kind 1 = if c GEN$ else c EMBED-MODEL$ then
-   JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" effort" kind 1 = c EFFORT$ nip 0<> and if
+   s" kind" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF s" generation" ENDOF
+      embed OF s" embedding" ENDOF
+   ;MATCH JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" backend" c BACKEND$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" model" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c GEN$ ENDOF
+      embed OF c EMBED-MODEL$ ENDOF
+   ;MATCH JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" effort" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c EFFORT$ nip 0<> ENDOF
+      embed OF false ENDOF
+   ;MATCH if
       c EFFORT$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
    JSON:WRITE-COMMA s" service_tier" c SERVED$ nip 0<> if
       c SERVED$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
-   JSON:WRITE-COMMA s" requested_tier" kind 1 = c TIER$ nip 0<> and if
+   JSON:WRITE-COMMA s" requested_tier" c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c TIER$ nip 0<> ENDOF
+      embed OF false ENDOF
+   ;MATCH if
       c TIER$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
    JSON:WRITE-COMMA s" purpose" c LABEL$ JSON:WRITE-FIELD-S
@@ -2863,11 +2916,14 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
       c CONTENT-BUF HELD c MODEL-CALL:INCOMPLETE-U @ SPAN:TAKE SPAN:$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
    JSON:WRITE-COMMA s" request_bytes" c BODY$ nip JSON:WRITE-FIELD-INT
-   kind 1 = if
-      JSON:WRITE-COMMA s" prefix_bytes" c GEN$ nip c SYSTEM$ nip + c SCHEMA$ nip +
-      JSON:WRITE-FIELD-INT
-      JSON:WRITE-COMMA s" prefix_hash" c PREFIX-HASH$ JSON:WRITE-FIELD-S
-   then
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF
+         JSON:WRITE-COMMA s" prefix_bytes"
+         c GEN$ nip c SYSTEM$ nip + c SCHEMA$ nip + JSON:WRITE-FIELD-INT
+         JSON:WRITE-COMMA s" prefix_hash" c PREFIX-HASH$ JSON:WRITE-FIELD-S
+      ENDOF
+      embed OF ENDOF
+   ;MATCH
    JSON:WRITE-COMMA s" duration_ms" TIME:MONO-NS l LEDGER-STARTED-NS @ - NS-PER-MS /
    JSON:WRITE-FIELD-INT
    JSON:WRITE-COMMA s" input_tokens" c TOKENS TOKENS-INPUT @ COUNT-FIELD
@@ -2916,20 +2972,19 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 
 \ Records a dispatched request and answers the recorder's fault when the header
 \ says it propagates, else 0, so a model fault stays primary.
-: END-LEDGER ( n n bool ptr call -- n )
-   {: kind:n code:n cancelled:bool c :}
+: END-LEDGER ( n bool ptr call -- n )
+   {: code:n cancelled:bool c :}
    c LEDGER {: l :}
    l LEDGER-READY @ l LEDGER-DISPATCHED @ and 0= if 0 exit then
-   kind l LEDGER-KIND !
    code l LEDGER-CODE !
    cancelled l LEDGER-CANCELLED !
    c [: RECORD-RUN ;] catch {: rc:n :} drop
    rc l LEDGER-FAULT !
    code 0= cancelled 0= and if rc else 0 then ;
 
-: JOURNAL-PUT ( n ptr call -- )
-   {: kind:n c :}
-   kind c JOURNAL-RECORD
+: JOURNAL-PUT ( ptr call -- )
+   {: c :}
+   c JOURNAL-RECORD
    c MODEL-CALL:JOURNAL-CONTEXT @ c JOURNAL-INPUT-SPAN$
    c JOURNAL-RECORD$ c MODEL-CALL:JOURNAL-PUT @ execute ;
 
@@ -2937,9 +2992,9 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 \ finish: a fault the caller may answer by asking for less.
 : REFUSAL? ( n -- bool ) dup E-CAPACITY = swap E-INCOMPLETE = or ;
 
-: REFUSAL-PUT ( n n ptr call -- )
-   {: kind:n code:n c :}
-   kind c RECORD-OPEN
+: REFUSAL-PUT ( n ptr call -- )
+   {: code:n c :}
+   c RECORD-OPEN
    JSON:WRITE-COMMA s" refusal" code E-CAPACITY = if s" capacity" else
       s" incomplete" then JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END drop
@@ -2949,11 +3004,11 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 
 \ Journals a live refusal so a replay meets it at the same step and asks for
 \ less with no request. A put fault replaces the refusal as the call's fault.
-: JOURNAL-REFUSAL ( n n bool ptr call -- )
-   {: kind:n code:n hit:bool c :}
+: JOURNAL-REFUSAL ( n bool ptr call -- )
+   {: code:n hit:bool c :}
    c MODEL-CALL:JOURNAL-READY @ 0= hit or if exit then
    code REFUSAL? 0= if exit then
-   kind code c REFUSAL-PUT ;
+   code c REFUSAL-PUT ;
 
 : PREP-JOURNAL-CHAT ( ptr call -- )
    {: c :}
@@ -2970,12 +3025,12 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 
 : RUN-CHAT-SELECT ( ptr call bool bool -- ptr call bool bool )
    {: c finished:bool hit:bool :}
-   hit if 1 c JOURNAL-RESTORE else finished c RUN-CHAT drop then
+   hit if c JOURNAL-RESTORE else finished c RUN-CHAT drop then
    c finished hit ;
 
 : RUN-EMBED-SELECT ( ptr call bool -- ptr call bool )
    {: c hit:bool :}
-   hit if 2 c JOURNAL-RESTORE else c RUN-EMBED drop then
+   hit if c JOURNAL-RESTORE else c RUN-EMBED drop then
    c hit ;
 
 : CANCEL-LOCKED ( ptr call -- ptr call )
@@ -3057,13 +3112,15 @@ private
    at c LEDGER LEDGER-STARTED-NS @ - NS-PER-MS / LOG:INT+ s"  ms" LOG:TEXT+ ;
 
 
-\ One line for a failed call of kind 1 (chat) or 2 (embed): its model and URL,
-\ response id once known, the code's name and cause, and a chat stream's events.
-: REPORT ( n n ptr call -- )
-   {: kind:n code:n c :}
+\ One line for a failed chat or embed call: its model and URL, response id
+\ once known, the code's name and cause, and a chat stream's events.
+: REPORT ( n ptr call -- )
+   {: code:n c :}
    code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
-   kind 1 = if s" chat " LOG:TEXT+ c GEN$ else s" embed " LOG:TEXT+ c EMBED-MODEL$ then
-   LOG:TEXT+
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF s" chat " LOG:TEXT+ c GEN$ ENDOF
+      embed OF s" embed " LOG:TEXT+ c EMBED-MODEL$ ENDOF
+   ;MATCH LOG:TEXT+
    s"  " LOG:TEXT+ c REQUEST-URL$ LOG:TEXT+
    c RESPONSE-ID$ nip 0<> if s"  " LOG:TEXT+ c RESPONSE-ID$ LOG:TEXT+ then
    s"  " LOG:TEXT+ code CODE$ LOG:TEXT+
@@ -3074,24 +3131,24 @@ private
 
 \ Logs a failure the provider or the transport caused: the request went out or
 \ a libcurl step failed.
-: REPORT-FAILURE ( n n ptr call -- )
-   {: kind:n code:n c :}
+: REPORT-FAILURE ( n ptr call -- )
+   {: code:n c :}
    c LEDGER {: l :}
    l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if exit then
-   kind code c REPORT ;
+   code c REPORT ;
 
 
-\ Records a landed call of kind 1 (chat) or 2 (embed), then throws its fault.
-: FINISH-CALL ( n n bool bool ptr call -- n n bool bool ptr call )
-   {: kind:n code:n cancelled:bool hit:bool c :}
-   kind code cancelled c END-LEDGER {: recorded:n :}
+\ Records a landed chat or embed call, then throws its fault.
+: FINISH-CALL ( n bool bool ptr call -- n bool bool ptr call )
+   {: code:n cancelled:bool hit:bool c :}
+   code cancelled c END-LEDGER {: recorded:n :}
    cancelled if E-CANCELLED throw then
    code 0<> if
-      kind code c REPORT-FAILURE kind code hit c JOURNAL-REFUSAL code throw
+      code c REPORT-FAILURE code hit c JOURNAL-REFUSAL code throw
    then
-   c MODEL-CALL:JOURNAL-READY @ hit 0= and if kind c JOURNAL-PUT then
+   c MODEL-CALL:JOURNAL-READY @ hit 0= and if c JOURNAL-PUT then
    recorded 0<> if recorded throw then
-   kind code cancelled hit c ;
+   code cancelled hit c ;
 
 
 \ Sends the request, finishing it unless it was finished, or on a hit restores
@@ -3100,10 +3157,11 @@ private
    {: finished:bool hit:bool c :}
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
+   construct call-kind chat c MODEL-CALL:KIND !
    c BEGIN-CALL
    c finished hit [: RUN-CHAT-SELECT ;] catch {: code:n :} 2drop drop
    c END-CALL {: cancelled:bool :}
-   1 code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop drop
+   code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop
    c IDLE!
    rc 0<> if rc throw then
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
@@ -3189,10 +3247,11 @@ public
       c PREP-JOURNAL-EMBED
       c JOURNAL-GET?
    else false then {: hit:bool :}
+   construct call-kind embed c MODEL-CALL:KIND !
    c BEGIN-CALL
    c hit [: RUN-EMBED-SELECT ;] catch {: code:n :} 2drop
    c END-CALL {: cancelled:bool :}
-   2 code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop drop
+   code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop
    c IDLE!
    rc 0<> if rc throw then
    true c MODEL-CALL:EMBEDDED ! ;
