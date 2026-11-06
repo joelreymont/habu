@@ -813,6 +813,9 @@ DEFINE <NAME> ( <ctx> ) <states> <inputs>
    IN <state> <SENSE>
       <input> <ACTION> <NEXT>
       …
+   IN <state> <SENSE> ( <row-inputs> )
+      <input> <ACTION> <NEXT>
+      …
    FINAL <state> <ACTION>
 ;DEFINE
 ```
@@ -820,14 +823,18 @@ DEFINE <NAME> ( <ctx> ) <states> <inputs>
 `<ctx>` is the type of the machine's one-cell context, copied into every
 generated effect; `<states>` and `<inputs>` are compact `ENUM`s, `<states>` of
 the open package. `IN` opens a state's row: SENSE is `( <ctx> -- <inputs> )`,
-and each line names an input, an ACTION `( <ctx> -- )` or `-` for none, and a
-NEXT: `>state`, any token starting with `>`, for a fixed next state, else a
-word `( <ctx> -- <states> )` that picks one. `FINAL <state> <ACTION>` ends a
-run in that state. For each `IN` row and then the machine DEFINE writes:
+with `<inputs>` the row's own ENUM when it names one in `( … )` after SENSE,
+else the header's. A state whose SENSE answers only some of the machine's
+inputs names an ENUM of just those, so it gives no line for an input it never
+gets, which could only throw. Each line names an input, an ACTION
+`( <ctx> -- )` or `-` for none, and a NEXT: `>state`, any token starting with
+`>`, for a fixed next state, else a word `( <ctx> -- <states> )` that picks
+one. `FINAL <state> <ACTION>` ends a run in that state. For each `IN` row and
+then the machine DEFINE writes:
 
 ```forth
 : <NAME>/<state> ( <ctx> -- <states> )
-   dup <SENSE> MATCH <inputs>
+   dup <SENSE> MATCH <inputs>                     \ the row's ENUM, else the header's
       <input> OF construct <states> <next> swap <ACTION> ENDOF   \ a >next line
       <input> OF dup <ACTION> <NEXT> ENDOF                      \ a NEXT word
       …
@@ -853,20 +860,23 @@ visibility. The machine keeps no state of its own; a throw
 from a SENSE, ACTION or NEXT leaves `<NAME>` as thrown. Neither `MATCH` has a
 default arm, so the checker fails the load, 70 under `evaluate-closed`, for a
 row missing an input, an unknown `>state`, a state with neither an `IN` nor a
-`FINAL` row, and a word with the wrong effect. Each row word and the run word
+`FINAL` row, and a word with the wrong effect; for a row naming its own
+ENUM, that covers a row missing one of its inputs, a line for a tag outside
+it and a SENSE answering another ENUM. Each row word and the run word
 is one definition, so a row's inputs and the machine's states are bounded by
 the engine's definition body-text ceiling ([Engine limits ordinary source
 reaches](#engine-limits-ordinary-source-reaches)); past it the load fails with
 `hb: definition body text full`. The table's own grammar is
 `FSM:E-SYNTAX`: the source ending before `;DEFINE`, a header not `( … )`, a
 line before the first `IN` or `FINAL`, a row cut short by `IN`, `FINAL` or
-`;DEFINE`, a token after a `FINAL` row's ACTION other than those three, and
-a `\` or `(` in a row. DEFINE reads the table with `parse-name`, so neither
-opens a comment there (a `STRUCTURE` or `ENUM` body rejects both too); comments
-go above the table. `tools/check.f` skips the table (`parses-through:
-FSM:DEFINE 0 ( ;DEFINE )`) and checks the code after it; the generated words
-are left to the run, so their uses are `W-CHECK-DEFERRED` under
-`--verify-only`.
+`;DEFINE`, a row with no line, a `(` after SENSE not followed by one name
+and `)`, a token after a `FINAL` row's ACTION other than those three, a `\`
+anywhere in a row, and a `(` in a row but right after SENSE. DEFINE reads the
+table with `parse-name`, so neither opens a comment there (a `STRUCTURE` or
+`ENUM` body rejects both too); comments go above the table. `tools/check.f`
+skips the table (`parses-through: FSM:DEFINE 0 ( ;DEFINE )`) and checks the
+code after it; the generated words are left to the run, so their uses are
+`W-CHECK-DEFERRED` under `--verify-only`.
 
 GETAFIX reads a fixed-point number from a key line, keeping digits, the first
 point and a leading minus (`src/lib/fsm-test.f`):

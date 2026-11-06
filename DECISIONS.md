@@ -185,7 +185,15 @@ learned live in the docs for their subject.
   FINAL and `>state` stand. He added that "state machines are easy to verify
   with formal methods, e.g. TLA+ so you need to think in state machines if at
   all possible and appropriate", and asked to "commit state machines and move
-  it to habu master so that others can use it".
+  it to habu master so that others can use it". On 2026-11-06 (relayed by tim
+  from Maki, whose job runner needed 13 lines that could only throw for
+  inputs a state's sense never answers), under Joel's words that night ("make
+  your own judgement and do everything without asking me. apply the what's
+  best for long term criteria"), the lead approved one grammar change: an IN
+  row may name its own inputs ENUM, `IN <state> <SENSE> ( <inputs> )`, and
+  its lines then cover exactly that ENUM, so the checker proves the row
+  handles what its sense answers and no arm only a bug reaches remains; a row
+  naming none keeps the header's.
 - 2026-11-03, package names: asked in Zen whether its package NUMFMT (for
   OOXML's numFmt, a number format) may keep a name the card's rule against
   coined abbreviations forbids: "NUMFMT is perfectly fine with me. the rule

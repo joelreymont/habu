@@ -2,6 +2,8 @@
 \ input each state senses, and the action and next state for each input, and
 \ writes it as checked words under evaluate-closed, so a missing input, an
 \ unknown next state or a state with neither row fails the load in the checker.
+\ A row may name its own inputs ENUM, the one its SENSE answers, in place of
+\ the header's.
 \ The grammar and the generated words are in docs/forth.md "State machines".
 \ STORAGE CLASS. PROCESS-WIDE: the text buffers and header cells serve one
 \ DEFINE at a time, as only the main thread compiles; the buffers are released
@@ -68,7 +70,8 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    a u s" ;DEFINE" STR= or ;
 
 \ `\` and `(` would be table tokens, and copied into a generated arm they
-\ could comment the arm out, so a row holds neither.
+\ could comment the arm out, so no line holds either; `(` only opens a row's
+\ inputs right after its SENSE.
 : COMMENT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" \" STR=
    a u s" (" STR= or ;
@@ -95,10 +98,10 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    TOKEN INPUTS-U ! INPUTS-A ! ;
 
 \ `: <NAME>/<state> ( <ctx> -- <states> ) dup <SENSE> MATCH <inputs>`
-: ROW-HEAD ( ptr u8 n ptr u8 n -- ) {: s:ptr su:n f:ptr fu:n :}
+: ROW-HEAD ( ptr u8 n ptr u8 n ptr u8 n -- ) {: s:ptr su:n f:ptr fu:n i:ptr iu:n :}
    s" : " ROW+ NAME$ ROW+ s" /" ROW+ s su ROW+
    s"  ( " ROW+ CTX$ ROW+ s"  -- " ROW+ STATES$ ROW+
-   s"  ) dup " ROW+ f fu ROW+ s"  MATCH " ROW+ INPUTS$ ROW+ s\" \n" ROW+ ;
+   s"  ) dup " ROW+ f fu ROW+ s"  MATCH " ROW+ i iu ROW+ s\" \n" ROW+ ;
 
 \ `[dup <ACTION>]`, nothing for `-`.
 : ACTION+ ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -125,10 +128,29 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
 : ROW-END ( -- ) s\"    ;MATCH ;\n" ROW+ ;
 
 
-\ `IN <state> <SENSE>`: opens the state's row word and its arm in the run word.
+\ `<inputs> )`, after a row's `(`: one name, then `)`.
+: ROW-INPUTS ( -- ptr u8 n )
+   OPERAND {: i:ptr iu:n :}
+   i iu s" )" STR= if E-SYNTAX throw then
+   TOKEN s" )" STR= 0= if E-SYNTAX throw then
+   i iu ;
+
+
+\ `IN <state> <SENSE> <line>` with the header's inputs, or
+\ `IN <state> <SENSE> ( <inputs> ) <line>` with the row's own: opens the
+\ state's row word and its arm in the run word. In both forms a row has at
+\ least one line, so the token after SENSE, or after the `)`, is its first.
 : IN-ROW ( -- )
    OPERAND {: s:ptr su:n :}
-   OPERAND s su 2swap ROW-HEAD
+   OPERAND {: f:ptr fu:n :}
+   TOKEN {: t:ptr tu:n :}
+   t tu s" (" STR= if
+      s su f fu ROW-INPUTS ROW-HEAD TOKEN
+   else
+      s su f fu INPUTS$ ROW-HEAD t tu
+   then {: l:ptr lu:n :}
+   l lu KEYWORD? l lu COMMENT? or if E-SYNTAX throw then
+   l lu LINE
    s"    " RUN+ s su RUN+ s"  OF false over " RUN+ NAME$ RUN+ s" /" RUN+ s su RUN+
    s\"  ENDOF\n" RUN+ ;
 
