@@ -318,7 +318,15 @@ learned live in the docs for their subject.
   (Recommended)": BEARER:E-UNAVAILABLE for 408, 429 and 5xx, E-REFUSED the
   other 4xx, E-TRANSFER no answer; and "Add E-RESPONSE (Recommended)":
   BEARER:E-RESPONSE for a 2xx without an access_token or a positive
-  expires_in.
+  expires_in. Asked whether the check of a reply's status for 408, 429 or
+  5xx becomes one public word, he asked "why do you need to poll for
+  errors? should those not be returned to you?"; told that nothing polls
+  and that the status picks which error the call throws, he chose "One
+  shared word (Recommended)": `CURL:UNAVAILABLE? ( http-status -- bool )`,
+  called by MODEL, MCP and BEARER, replaces MODEL's private copy. Shown that
+  the three clients turn the status into a number on arrival, he chose
+  "Typed, clients carry it (Recommended)": they keep the typed status until
+  the check.
 - 2026-11-06, Maki's load cost (relayed by tim from Maki): shown that the
   checker costs about 116k instructions per token on Maki's 17.6 MB generated
   design (type unification, re-walked stack rows, guards on the checker's own
