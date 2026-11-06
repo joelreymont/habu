@@ -106,21 +106,21 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    s" dup " ROW+ a u ROW+ s"  " ROW+ ;
 
 
-\ `>state` constructs the state; any other NEXT is a word that picks one.
-: NEXT+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a c@ [char] > = if
-      s" drop construct " ROW+ STATES$ ROW+ s"  " ROW+ a 1+ u 1- ROW+
-   else
-      a u ROW+
-   then ;
+\ `>state` constructs the state, then the ACTION runs on the context under it;
+\ any other NEXT is a word that picks one, after `[dup <ACTION>]`.
+: NEXT+ ( ptr u8 n ptr u8 n -- ) {: a:ptr au:n x:ptr xu:n :}
+   x c@ [char] > = 0= if a au ACTION+ x xu ROW+ exit then
+   a au s" -" STR= if s" drop " ROW+ then
+   s" construct " ROW+ STATES$ ROW+ s"  " ROW+ x 1+ xu 1- ROW+
+   a au s" -" STR= if exit then
+   s"  swap " ROW+ a au ROW+ ;
 
 
-\ `<input> <ACTION> <NEXT>`: one arm of the row word.
 : LINE ( ptr u8 n -- ) {: i:ptr iu:n :}
    OPERAND {: a:ptr au:n :}
    OPERAND {: x:ptr xu:n :}
    s"    " ROW+ i iu ROW+ s"  OF " ROW+
-   a au ACTION+ x xu NEXT+ s\"  ENDOF\n" ROW+ ;
+   a au x xu NEXT+ s\"  ENDOF\n" ROW+ ;
 
 : ROW-END ( -- ) s\"    ;MATCH ;\n" ROW+ ;
 
@@ -129,21 +129,20 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
 : IN-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    OPERAND s su 2swap ROW-HEAD
-   s"    " RUN+ s su RUN+ s"  OF dup " RUN+ NAME$ RUN+ s" /" RUN+ s su RUN+
-   s\"  false ENDOF\n" RUN+ ;
+   s"    " RUN+ s su RUN+ s"  OF false over " RUN+ NAME$ RUN+ s" /" RUN+ s su RUN+
+   s\"  ENDOF\n" RUN+ ;
 
 
-\ `FINAL <state> <ACTION>`: the run word's arm that ends the run. The ACTION
-\ goes last, so one that always throws leaves no dead code after it.
+\ `FINAL <state> <ACTION>`: the run word's arm that ends the run.
 : FINAL-ROW ( -- )
    OPERAND {: s:ptr su:n :}
    OPERAND {: a:ptr au:n :}
-   s"    " RUN+ s su RUN+ s"  OF construct " RUN+ STATES$ RUN+ s"  " RUN+ s su RUN+
-   a au s" -" STR= if
-      s\"  true ENDOF\n" RUN+
-   else
-      s"  over true swap " RUN+ a au RUN+ s\"  ENDOF\n" RUN+
-   then ;
+   a au s" -" STR= {: none:bool :}
+   s"    " RUN+ s su RUN+ s"  OF " RUN+
+   none 0= if s" dup " RUN+ then
+   s" true construct " RUN+ STATES$ RUN+ s"  " RUN+ s su RUN+
+   none 0= if s"  rot " RUN+ a au RUN+ then
+   s\"  ENDOF\n" RUN+ ;
 
 
 \ One token after the header, in one of two states, an IN row's word open or
@@ -162,12 +161,12 @@ PTR-VARIABLE INPUTS-A variable INPUTS-U
    E-SYNTAX throw ;
 
 
-\ `: <NAME> ( <ctx> <states> -- ) begin MATCH <states> … ;MATCH until 2drop ;`
+\ `: <NAME> ( <ctx> <states> -- ) begin MATCH <states> … ;MATCH swap until 2drop ;`
 : RUN-WORD ( -- )
    s" : " ROW+ NAME$ ROW+ s"  ( " ROW+ CTX$ ROW+ s"  " ROW+ STATES$ ROW+
    s"  -- ) begin MATCH " ROW+ STATES$ ROW+ s\" \n" ROW+
    RUN-LEN @ 0 > if 0 RUN-TEXT RUN-LEN @ ROW+ then
-   s\"    ;MATCH until 2drop ;\n" ROW+ ;
+   s\"    ;MATCH swap until 2drop ;\n" ROW+ ;
 
 
 : GENERATE ( -- )

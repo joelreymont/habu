@@ -213,6 +213,45 @@ DEFINE JOB ( ptr n ) job work
 : FAILS ( -- )
    [: JOB-RUN ;] FAIL-CODE TTHROWSQ ;
 
+\ A total table: kick is refused by an ACTION that always throws, and every
+\ line of stuck by a NEXT that does; the cell picks the input.
+using FSM
+ENUM gate closed stuck opened ;ENUM
+ENUM knock tap kick wedge ;ENUM
+TYPED-VARIABLE GATE-CELL n
+44 constant KICK-CODE
+45 constant STUCK-CODE
+
+: KNOCK ( ptr n -- knock )
+   @ {: k:n :}
+   k 0= if construct knock tap exit then
+   k 1 = if construct knock kick exit then
+   construct knock wedge ;
+
+: OPEN-UP ( ptr n -- ) 10 swap ! ;
+: KICKED ( ptr n -- ) drop KICK-CODE throw ;
+: JAMMED ( ptr n -- gate ) drop STUCK-CODE throw ;
+
+DEFINE GATE ( ptr n ) gate knock
+   IN closed  KNOCK
+      tap    OPEN-UP  >opened
+      kick   KICKED   >closed
+      wedge  -        >stuck
+   IN stuck  KNOCK
+      tap    -  JAMMED
+      kick   -  JAMMED
+      wedge  -  JAMMED
+   FINAL opened  -
+;DEFINE
+;using
+
+: GATE-RUN ( n -- ) GATE-CELL ! GATE-CELL construct gate closed GATE ;
+
+: TOTAL ( -- )
+   [: 1 GATE-RUN ;] KICK-CODE TTHROWSQ
+   [: 2 GATE-RUN ;] STUCK-CODE TTHROWSQ
+   0 GATE-RUN GATE-CELL @ 10 T= ;
+
 \ SRC builds texts for TEST-EVAL.
 DYNAMIC-BUFFER SRC u8
 variable SRC-LEN
@@ -283,7 +322,13 @@ variable SRC-LEN
    3 VALID 2 T=
    s" package FSM-BAD-ACTION ENUM ph idle busy ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : KEEP ( n -- n ) ; using FSM DEFINE M ( n ) ph sig IN idle S go KEEP >busy halt - >idle FINAL busy - ;DEFINE ;using ;package"
    TEST-EVAL:RC 70 T=
-   4 VALID 2 T= ;
+   4 VALID 2 T=
+   s" package FSM-DEAD-NEXT 46 constant E-K ENUM st ready done ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : KICKED ( n -- ) drop E-K throw ; : PICK ( n -- st ) drop construct st done ; using FSM DEFINE M ( n ) st sig IN ready S go KICKED PICK halt - >done FINAL done - ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   6 VALID 2 T=
+   s" package FSM-DEAD-RUN 47 constant E-L ENUM st ready only ;ENUM ENUM sig go halt ;ENUM : S ( n -- sig ) drop construct sig go ; : LOST ( n -- ) drop E-L throw ; using FSM DEFINE M ( n ) st sig IN ready S go LOST >only halt LOST >only FINAL only LOST ;DEFINE ;using ;package"
+   TEST-EVAL:RC 70 T=
+   7 VALID 2 T= ;
 
 \ The size table: STATES states of INPUTS inputs each, every arm calling the
 \ one action, whose long name keeps a row word under the engine's body-text
@@ -340,6 +385,7 @@ public
    FINALS
    THROWS
    FAILS
+   TOTAL
    SYNTAX
    REJECTED
    SIZE

@@ -829,23 +829,28 @@ run in that state. For each `IN` row and then the machine DEFINE writes:
 ```forth
 : <NAME>/<state> ( <ctx> -- <states> )
    dup <SENSE> MATCH <inputs>
-      <input> OF dup <ACTION> drop construct <states> <next> ENDOF   \ or <NEXT>
+      <input> OF construct <states> <next> swap <ACTION> ENDOF   \ a >next line
+      <input> OF dup <ACTION> <NEXT> ENDOF                      \ a NEXT word
       …
    ;MATCH ;
 : <NAME> ( <ctx> <states> -- )
    begin MATCH <states>
-      <state> OF dup <NAME>/<state> false ENDOF               \ an IN row
-      <final> OF construct <states> <final> over true swap <ACTION> ENDOF
-   ;MATCH until 2drop ;
+      <state> OF false over <NAME>/<state> ENDOF                \ an IN row
+      <final> OF dup true construct <states> <final> rot <ACTION> ENDOF
+   ;MATCH swap until 2drop ;
 ```
 
-An ACTION of `-` on an `IN` line writes no `dup <ACTION>`, and a NEXT word
-replaces `drop construct <states> <next>`. A `FINAL` row writes its ACTION
-last, so an ACTION that always throws (a failure end) loads and its throw
-leaves `<NAME>` as thrown; a `FINAL` ACTION of `-` writes no `over true swap
-<ACTION>`. The words land in the package and section DEFINE
-is called in, so `<NAME>/<state>`
-shares `<NAME>`'s visibility. The machine keeps no state of its own; a throw
+An ACTION of `-` writes `drop construct <states> <next>` on a `>next` line,
+`<NEXT>` alone before a NEXT word and `true construct <states> <final>` on a
+`FINAL` row. Every call the table names ends its arm, an ACTION before a NEXT
+word excepted, so an ACTION that never returns (a refused pair or a failure
+end) loads on a `>next` line or a `FINAL` row, and so does a state whose every
+line refuses. Two shapes fail the load with `E-DEAD-CODE`: an ACTION that
+never returns before a NEXT word, at that word, and a machine none of whose
+arms returns (every IN row's lines refuse and every FINAL's ACTION never
+returns), at the `swap` after the run word's `;MATCH`. The words land in the
+package and section DEFINE is called in, so `<NAME>/<state>` shares `<NAME>`'s
+visibility. The machine keeps no state of its own; a throw
 from a SENSE, ACTION or NEXT leaves `<NAME>` as thrown. Neither `MATCH` has a
 default arm, so the checker fails the load, 70 under `evaluate-closed`, for a
 row missing an input, an unknown `>state`, a state with neither an `IN` nor a
