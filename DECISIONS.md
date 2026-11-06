@@ -98,6 +98,17 @@ learned live in the docs for their subject.
   become one, he answered "yes if they both point to the same type of data":
   both key on the interned name's address, and they merge where both map a
   name to the same kind of record.
+- 2026-11-05, where the checker's facts live: on whether the checker's facts
+  should piggyback on the wordlist, Joel wrote "you don't need to send of a
+  designer to answer the question of whether it should piggyback on the
+  wordlist, it's something you can decide here and now!" The lead decided
+  that they do, and on 2026-11-06 Joel wrote "we decided just yesterday that
+  you are storing types with the words they apply to". What the checker
+  knows about a word (its effect, its kind, its flags) is stored on that
+  word's dictionary entry, and a type, its fields and the primitives' effects
+  live in the wordlists of the program that declares them. The checker finds
+  them through the dictionary's own lookup, and they travel in the records
+  the linker writes.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
