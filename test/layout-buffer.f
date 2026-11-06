@@ -99,9 +99,6 @@ here LB-DP 0 ptr-field @ = TTRUE
 here LB-DP 0 ptr-field !
 s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
 
-here LB-DP 0 ptr-field !
-s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL CHECKER-REJECT-RC T=
-
 \ Nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction.
 NEWTYPE lbtk
 NEWTYPE lbtk2

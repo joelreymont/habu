@@ -1,9 +1,11 @@
 ---
 title: "S5c A2: delete the name-list seal guards"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-06T13:23:46.146153+02:00"
+closed-at: "2026-11-06T20:17:12.420716+02:00"
+close-reason: "A2a and A2b landed (A2b: 'Drop the checker's sealed package names'); full suite at the stack top 292 of 292, rc=0"
 ---
 
 Problem: after A1 (habu-s5c-a1-seal-ab9438d1) the typed loop and the checker still read the fixed list of sealed package names (src/core/checker.f:13293-13300 CHECKER-SEALED-PKG? and its PRIM row :11659-11665) and protected wordlists (src/habu/outer.f:404 PROTECTED?, :899-911 SEAL-GUARD; src/habu/packages.f:340-346 PKG-OPEN-WID), which DECISIONS 'sealing a package' (2026-11-06) retires. Acceptance: those go with their callers (packages.f:354/:414, definers.f:159/:363, outer.f:936, checker.f:13375-13381 STG-SEALED-NAME refusal, :17872-17881 EXPORT-SEAL-GUARD and E-EXPORT-SEALED, verify-source.f:2195's name-list half), and so do the tests of them (test/name-length-test.f:123; test/gate-diagnostics-lib.f:1305-1335 and its render.f:1739/1751 and gate-json-assert-core.f:523 rows; test/outer-interpret.f's SEALED-PACKAGES :672-692 and HEAD-FAIL-CLOSED's sealed/protected heads :1482-1489, which leave the engine/loop parity). Files: those. Verify: candidate build; rows outer-interpret name-length native-gate-diagnostics check-verify sealed-system-package. Depends: habu-s5c-a1-seal-ab9438d1. Ownership: those files. Claim: agent=worker workspace=.jj-ws.noindex/jerry-a2b (A2b fold-in, brief /tmp/jerry-big/brief-a2b-fold.md; A2a landed).

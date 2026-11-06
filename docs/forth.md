@@ -328,13 +328,12 @@ public
   cost. `EXPORT EVAL:RUN` in `package MAKI public` publishes `MAKI:RUN`; a bare
   `EXPORT HELPER` in the public section promotes the private `HELPER`.
   Refused: an undefined source, a private word behind a CLOSED package, a
-  source qualified into a sealed system package, a primitive and a duplicate
-  tail in the target section (`E-EXPORT-UNDEFINED`). An exported `does>`
-  definer `MK` brings its clause along as `MK;does`. Re-exporting a generated
-  constructor under a second name is allowed; adding tails INTO a generated
-  constructor package is not. At TOP LEVEL `EXPORT name…` is the hb-build
-  `--repl` export directive: the build strips it and a plain load consumes the
-  name as a no-op.
+  primitive and a duplicate tail in the target section (`E-EXPORT-UNDEFINED`).
+  An exported `does>` definer `MK` brings its clause along as `MK;does`.
+  Re-exporting a generated constructor under a second name is allowed; adding
+  tails INTO a generated constructor package is not. At TOP LEVEL `EXPORT
+  name…` is the hb-build `--repl` export directive: the build strips it and a
+  plain load consumes the name as a no-op.
 - **A process can be sealed to the packages a harness admits**:
   `src/lib/vocabulary.f` states the vocabulary and the refusals.
 
@@ -2112,14 +2111,14 @@ documentation-only edits need no rebuild.
   of `DYNAMIC-BUFFER`. It declares the family `name`, NAME folded to lower case
   as `DEFTYPE` folds it, whose record is the arena: an owner holds one in a
   `FIELD` or a `TYPED-VARIABLE`. The declaration passes three gates in order:
-  the storage definers' own name gate (one ':' at most, not a name qualified
-  into a sealed package, unused NAME-NEW and NAME-RELEASE), the element type,
-  then STRUCTURE's: NAME must fold to a family tail (letters, digits and single
-  inner hyphens, with at least one letter) and is refused exactly as
-  `STRUCTURE name` refuses it. NAME longer than 255 bytes is refused with
-  `TYPE-DECL:E-TDECL-CAP` (7118); at top level, a name whose constructor
-  package name (hyphens doubled) exceeds 255 bytes with `E-PACKAGE-NAME-CAP`
-  (7154). In every case nothing is defined, under `--all-errors` too.
+  the storage definers' own name gate (one ':' at most, unused NAME-NEW and
+  NAME-RELEASE), the element type, then STRUCTURE's: NAME must fold to a family
+  tail (letters, digits and single inner hyphens, with at least one letter) and
+  is refused exactly as `STRUCTURE name` refuses it. NAME longer than 255 bytes
+  is refused with `TYPE-DECL:E-TDECL-CAP` (7118); at top level, a name whose
+  constructor package name (hyphens doubled) exceeds 255 bytes with
+  `E-PACKAGE-NAME-CAP` (7154). In every case nothing is defined, under
+  `--all-errors` too.
   `NAME-NEW ( ptr name -- ptr Type )` answers a fresh zeroed element that never
   moves; `NAME-RELEASE ( ptr name -- )` frees every element at once and is safe
   to repeat. It runs nothing for the elements, so free what they own first. A
@@ -2311,15 +2310,15 @@ sections above.
   `SAME-ID` is `( x x -- )`) compares two allocations:
   `E-RIGID-REGION-MISMATCH`, as two calls of `RG-ONE` are.
 - **A refused storage declaration defines nothing.** `LAYOUT-BUFFER`,
-  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER`
-  and `ARENA` require a valid storable type and name, plus a valid count
-  where the definer takes one. Unknown, malformed or missing types; missing
-  names; names with more than one `:` or in sealed packages; and an invalid
-  literal count are `E-BAD-STORAGE` at the offending token. The name is on the
-  definer's line, the type starts on the name's line; a following-line token
-  belongs to the next statement. A computed count is bounded by the definer at
-  run time with catchable `E-LAYOUT-BUFFER`. For example, `4 TYPED-BUFFER B
-  no-such-type` prints `habu: in B: unknown type 'no-such-type'`.
+  `DEFER-LAYOUT-BUFFER`, `TYPED-BUFFER`, `TYPED-VARIABLE`, `DYNAMIC-BUFFER` and
+  `ARENA` require a valid storable type and name, plus a valid count where the
+  definer takes one. Unknown, malformed or missing types; missing names; names
+  with more than one `:`; and an invalid literal count are `E-BAD-STORAGE` at
+  the offending token. The name is on the definer's line, the type starts on the
+  name's line; a following-line token belongs to the next statement. A computed
+  count is bounded by the definer at run time with catchable `E-LAYOUT-BUFFER`.
+  For example, `4 TYPED-BUFFER B no-such-type` prints `habu: in B: unknown type
+  'no-such-type'`.
 - **Fixed `TYPED-BUFFER` elements occupy whole cells.** `2 TYPED-BUFFER TB
   u8` is refused (`type this definer cannot store 'u8'`). Use `n BUFFER: B`
   for fixed bytes, yielding `( -- ptr u8 )`. `DYNAMIC-BUFFER` and `ARENA`

@@ -1736,7 +1736,7 @@ RECORD-DIAG-INSTALL
 \ word, refused token and reason, the definer standing in for both when the line
 \ has no name; no definition fields. A run-time refusal carries no place.
 : STGR-NAME-WHY? ( n -- f ) {: why:n :}
-   why STG-MALFORMED-NAME =  why STG-SEALED-NAME = or
+   why STG-MALFORMED-NAME =
    why STG-NO-NAME = or ;
 : STGR-COUNT-WHY? ( n -- f ) {: why:n :}
    why STG-BAD-COUNT =  why STG-NO-COUNT = or
@@ -1748,7 +1748,6 @@ RECORD-DIAG-INSTALL
    why STG-SCHEME-TYPE = IF s" scheme in a stored type" EXIT THEN
    why STG-XT-TYPE = IF s" xt in a stored type" EXIT THEN
    why STG-MALFORMED-NAME = IF s" more than one ':' in name" EXIT THEN
-   why STG-SEALED-NAME = IF s" name in a sealed package" EXIT THEN
    why STG-BAD-COUNT = IF s" count outside the buffer's extent" EXIT THEN
    why STG-COUNT-WORD = IF s" count resolves to no ( -- n ) word" EXIT THEN
    why STG-NO-TYPE = IF s" no type for" EXIT THEN
@@ -1759,7 +1758,7 @@ RECORD-DIAG-INSTALL
    why STGR-COUNT-WHY? IF s" fix_storage_count" EXIT THEN
    s" fix_storage_type" ;
 : STGR-SUGGEST$ ( n -- ptr u8 n ) {: why:n :}
-   why STGR-NAME-WHY? IF s" Name the storage with at most one inner ':', outside a sealed system package." EXIT THEN
+   why STGR-NAME-WHY? IF s" Name the storage with at most one inner ':'." EXIT THEN
    why STGR-COUNT-WHY? IF s" Put a positive count before the definer whose cells fit in memory: a literal, a constant or an expression." EXIT THEN
    s" Declare the type before the storage, or store a closed, copyable type this definer admits." ;
 : STGR-LOCATE ( ptr u8 -- )   \ the token's place, counted from the start of the verifier's buffer

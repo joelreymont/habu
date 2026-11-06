@@ -11644,12 +11644,6 @@ PRIM: CHECKER-RESOLVES? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ (REFUSE-SHAPE).
 PRIM: CHECKER-CERT-DUP? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: CHECKER-CERT-SHAPE-DUP? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
-\ CHECKER-SEALED-PKG? is the one Habu list of the sealed system packages, the
-\ declared mirror of the engine's RESTAB (src/habu/habu2.f). This file's guards
-\ read it, and so does src/habu/verify-source.f SEALED-PACKAGE. Without the row
-\ the seal marks the word DNAME-INT and the product drops its name. It answers a
-\ question about a name and changes nothing.
-PRIM: CHECKER-SEALED-PKG? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 \ The AOT signature pool's surface, an axiom because this file compiles with the
 \ hook off: tools/aot-chain-capture.f's census reads the three sizes.
 PRIM: CHECKER-ASIG-ARM PRIM;
@@ -13277,15 +13271,6 @@ package CHECKER-REG
 ' CHECKER-VERIFY-FILE DECLARATIONS CHECKER-OWNER-ABI:VERIFY-FILE-OFF + xt!
 ;package
 
-: CHECKER-SEALED-PKG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" tfam" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" type" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" checker-cert" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" lower-cert" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" lower-cert-hook" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" engine-error" CORE-STR=CI ;
-
 \ --- storage declaration refusals ---------------------------------------------
 \ A storage definer refuses a declaration whose type it cannot size, that has no
 \ name or one it cannot publish, or whose count is a literal outside its extent
@@ -13304,7 +13289,6 @@ package CHECKER-REG
 2 constant STG-MALFORMED-TYPE   \ the type does not parse
 3 constant STG-UNSTORABLE-TYPE  \ the type parses, and this definer cannot store it
 4 constant STG-MALFORMED-NAME   \ the name has more than one inner ':'
-5 constant STG-SEALED-NAME      \ the name is qualified into a sealed package
 6 constant STG-BAD-COUNT        \ the literal count is outside the definer's extent
 7 constant STG-NO-COUNT         \ no token precedes the definer to be its count
 8 constant STG-SCHEME-TYPE      \ the type parses and holds a scheme, which no storage holds
@@ -13348,23 +13332,13 @@ STORAGE-DIAG-DEFAULT
 : CHECKER-STORAGE-NAME-REFUSE ( ptr u8 n -- ) {: da:ptr du:n :}
    da du da du STG-NO-NAME CHECKER-STORAGE-REFUSE ;
 
-\ A name a storage definer publishes has at most one inner ':' and, once the
-\ seal is captured, is not qualified into a sealed package. A refused name
-\ answers false. A length no name has is refused before the refusal that would
-\ echo the name: a definer hands this a token it parsed, so only a direct call
-\ can.
+\ A published storage name has at most one inner ':'. A length no name has is
+\ refused before the refusal that would echo it.
 : CHECKER-LBUF-NAME-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CK-NAME-SPAN? 0= IF RES-FALSE EXIT THEN
    a u CHECKER-QUALIFIED? drop
    CHECKER-QBAD-TOK @ 0 <> IF
       a u a u STG-MALFORMED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
-   THEN
-   seal-captured? IF
-      a u CHECKER-QUALIFIED? IF
-         CHECKER-QPKG$ CHECKER-SEALED-PKG? IF
-            a u a u STG-SEALED-NAME CHECKER-STORAGE-REFUSE RES-FALSE EXIT
-         THEN
-      THEN
    THEN
    a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    RES-TRUE ;
@@ -17804,36 +17778,9 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 
 \ --- EXPORT: alias an existing word's checked effect under its own tail -----
 \ `EXPORT NAME` in an open package section publishes NAME's effect under NAME's
-\ tail in the current package scope: one word, two names. The alias is a fresh
-\ scheme copy (E-INST into working terms, E-ADD-EFFECT under the new sym) plus
-\ the source's defer and control-effect flags; its SYM/USIG/DFER/NORET rows sit
-\ under the RBF-PUSH/POP watermarks. Fail-closed:
-\ - E-EXPORT-NO-PACKAGE: no open package (outside a package there is no target
-\   scope, and a global re-export would un-namespace a package word);
-\ - E-EXPORT-SEALED: source qualified into a sealed system package (checker
-\   mirror of the native RESTAB set, latch-gated like the engine seal guards);
-\ - E-EXPORT-PRIM: source resolves only to a primitive axiom (prims may be
-\   overloaded; copying the first row would silently narrow the effect);
-\ - E-EXPORT-UNDEFINED: source has no checked signature (undefined, private in
-\   a closed package — qualified lookup is public-only — or uncertified);
-\ - E-EXPORT-UNSAFE: the tail is an UNSAFE-TOK? name (openers, roles.f definers,
-\   trust/evaluate class) or the resolved symbol is in the UNSAFE-SYM? identity
-\   set: the alias would give the word a second spelling past the name-keyed
-\   body reject, and the symbol leg catches a qualified or renamed reference;
-\ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E);
-\ - in a replay, a loaded record of the tail with a does> clause where the
-\   source carries none, or with none where it carries one
-\   (CHECKER-CERT-SHAPE-DUP? -> $4E);
-\ - in a replay, a word of the current section already holding the name of the
-\   clause a does> definer's export publishes (CHECKER-OVERLAY:EXPORT-ROOM ->
-\   $4E), as the live engine refuses it (habu2.f C-EXPORT-CLAUSE-ROOM).
-\ INTO a generated ctor package is structurally unreachable: CHECKER-PACKAGE
-\ rejects opening one (E-CTOR-PROTECTED), so the current package can never be
-\ a ctor package. Re-export FROM a ctor package stays allowed by design
-\ (generated words are closed-but-callable).
+\ tail in the current package scope: one word, two names.
 7112 constant E-EXPORT-NO-PACKAGE
-7113 constant E-EXPORT-UNDEFINED
-7114 constant E-EXPORT-SEALED
+7113 constant E-EXPORT-UNDEFINED  \ the source has no checked signature
 7115 constant E-EXPORT-PRIM
 7120 constant E-EXPORT-UNSAFE    \ 7116-7119 = sumtype.f E-TDECL block
 
@@ -17857,13 +17804,6 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 7195 constant E-LINEAR-PAYLOAD \ not one linear con and one non-linear payload
 7196 constant E-LINEAR-OWNER  \ the linear type was not declared by this package
 7197 constant E-LINEAR-SCOPE  \ the row is outside its owner's private section
-
-\ sealed system-package names: checker mirror of the native RESTAB table
-\ (src/habu/habu2.f) — foundational and stable.
-: EXPORT-SEAL-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
-   seal-captured? 0= IF EXIT THEN
-   a u CHECKER-QUALIFIED? 0= IF EXIT THEN
-   CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
 
 : EXPORT-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ EXIT THEN
@@ -17939,7 +17879,6 @@ PPRIM: DOES-CLAUSE SUFFIX$ PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 
 : CHECKER-EXPORT-ROW ( ptr u8 n bool -- ) {: a:ptr u:n publish:bool :}
    CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
-   a u EXPORT-SEAL-GUARD
    a u EXPORT-RESOLVE
    \ The source symbol is read once, before the export's record is published:
    \ inside a replay the operand's spelling can bind the published tail after.

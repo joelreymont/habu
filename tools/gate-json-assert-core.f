@@ -520,7 +520,6 @@ variable GJA-DIRECT
    s" scheme in a stored type" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" no type for" s" fix_storage_type" GJA-MAP-ROW IF exit THEN
    s" more than one ':' in name" s" fix_storage_name" GJA-MAP-ROW IF exit THEN
-   s" name in a sealed package" s" fix_storage_name" GJA-MAP-ROW IF exit THEN
    s" no name for" s" fix_storage_name" GJA-MAP-ROW IF exit THEN
    s" count outside the buffer's extent" s" fix_storage_count" GJA-MAP-ROW IF exit THEN
    s" count resolves to no ( -- n ) word" s" fix_storage_count" GJA-MAP-ROW IF exit THEN

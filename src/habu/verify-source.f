@@ -2192,12 +2192,12 @@ DUPLICATE-INIT
    row XREF:SEALED? ;
 
 \ Stop at `package`'s name, read from byte AT, when the source sealed it, its record
-\ carries DNAME-SEALED, or a sealed engine's guards seal it (habu2.f C-PACKAGE-SEAL-GUARD).
+\ carries DNAME-SEALED, or, in a sealed engine's load, its public wordlist is protected.
 : SEALED-PACKAGE ( ptr u8 n n -- ) {: a:ptr u:n at:n :}
    a u SEAL-LISTED? IF at SEAL-STOP THEN
    a u ROW-SEALED? IF at SEAL-STOP THEN
    SEALED-LOAD? 0= IF EXIT THEN
-   a u CHECKER-SEALED-PKG?  a u PUBLIC-WID XREF-WID-PROTECTED?  or IF at SEAL-STOP THEN ;
+   a u PUBLIC-WID XREF-WID-PROTECTED? IF at SEAL-STOP THEN ;
 
 \ The symbol the name's recording scope holds a live record under, 0 for none.
 \ Where a guard refused a live record before the registrar ran, one there now
