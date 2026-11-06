@@ -542,6 +542,7 @@ variable PRE-ROWS-N
    s" src/core/checker-owner-extension.f" included
    s" src/core/checker-owner-abi.f" included
    s" src/habu/boot-cells.f" included
+   s" src/habu/intern-table.f" included
    s" src/habu/wl.f" included
    s" src/habu/created-body-abi.f" included
    s" src/habu/prims.f" included

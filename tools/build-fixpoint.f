@@ -578,6 +578,7 @@ package BUILD-FIXPOINT
    out outu s" src/core/checker-owner-extension.f" BF-APPEND-SOURCE
    out outu s" src/core/checker-owner-abi.f" BF-APPEND-SOURCE
    out outu s" src/habu/boot-cells.f" BF-APPEND-SOURCE
+   out outu s" src/habu/intern-table.f" BF-APPEND-SOURCE
    out outu s" src/habu/wl.f" BF-APPEND-SOURCE
    out outu s" src/habu/created-body-abi.f" BF-APPEND-SOURCE
    out outu s" src/habu/prims.f" BF-APPEND-SOURCE
