@@ -6,9 +6,7 @@
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
 require src/lib/error.f
-require src/lib/string.f
 require src/lib/span.f
-require src/lib/adt/option.f
 
 package BASE64
 private
@@ -18,6 +16,9 @@ $3F constant SEXTET              \ the six bits one character carries
 $FF constant OCTET
 $0F constant ONE-BYTE-SPARE      \ "xx==" carries 12 bits for 8: the second character's low 4
 $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third character's low 2
+26 constant LOWER-FIRST          \ the value of 'a' in Table 1
+52 constant DIGIT-FIRST          \ the value of '0' in Table 1
+62 constant SYMBOL-FIRST         \ '+', or Table 2's '-'; '/' or '_' is next
 
 \ RFC 4648 section 4, Table 1: the character for each six-bit value, in order.
 : ALPHABET ( -- ptr u8 n )
@@ -32,19 +33,22 @@ $03 constant TWO-BYTE-SPARE      \ "xxx=" carries 18 bits for 16: the third char
 : URL-SEXTET>CHAR ( n -- n ) {: v:n :}
    URL-ALPHABET drop v + c@ ;
 
-\ A character's six bits. Here '=' is padding out of place, and any other byte
-\ outside the alphabet is a bad character.
-: CHAR>SEXTET ( n -- n ) {: c:n :}
-   ALPHABET c INDEX-OF MATCH option
-      none OF c PAD-CHAR = if E-BASE64-PAD else E-BASE64-CHAR then throw ENDOF
-      some OF IDX>N ENDOF
-   ;MATCH ;
 
-: URL-CHAR>SEXTET ( n -- n ) {: c:n :}
-   URL-ALPHABET c INDEX-OF MATCH option
-      none OF c PAD-CHAR = if E-BASE64-PAD else E-BASE64-CHAR then throw ENDOF
-      some OF IDX>N ENDOF
-   ;MATCH ;
+\ A character's six bits by its range in Table 1, or as the symbol sym62 or
+\ sym63. '=' is padding out of place, and any other byte is a bad character.
+: TABLE-SEXTET ( n n n -- n )
+   {: c:n sym62:n sym63:n :}
+   c [char] A >= c [char] Z <= and if c [char] A - exit then
+   c [char] a >= c [char] z <= and if c [char] a - LOWER-FIRST + exit then
+   c [char] 0 >= c [char] 9 <= and if c [char] 0 - DIGIT-FIRST + exit then
+   c sym62 = if SYMBOL-FIRST exit then
+   c sym63 = if SYMBOL-FIRST 1+ exit then
+   c PAD-CHAR = if E-BASE64-PAD else E-BASE64-CHAR then throw ;
+
+
+: CHAR>SEXTET ( n -- n )  [char] + [char] / TABLE-SEXTET ;
+: URL-CHAR>SEXTET ( n -- n )  [char] - [char] _ TABLE-SEXTET ;
+
 
 : GATHER ( ptr u8 n -- n ) {: p k:n :}
    0 k 0 ?do p i + c@ 16 i 8 * - lshift or loop ;

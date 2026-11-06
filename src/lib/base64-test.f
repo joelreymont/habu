@@ -224,6 +224,36 @@ variable STAGED-LEN
    s" a byte above ASCII" T-LABEL
    [: STAGED$ OUT BASE64:DECODE drop ;] E-BASE64-CHAR TTHROWSQ ;
 
+
+: WANT ( ptr u8 n n -- n )
+   {: a u:n c:n :}
+   u 0 ?do a i + c@ c = if i unloop exit then loop
+   c [char] = = if E-BASE64-PAD else E-BASE64-CHAR then ;
+
+
+: DECODED ( [ -- ] -- n )
+   catch {: code:n :}
+   code 0<> if code exit then
+   OUT 0 SPAN:U8@ 2 rshift ;
+
+
+: JUDGES ( ptr u8 n [ -- ] -- )
+   {: a u:n q :}
+   256 0 do
+      s" ?AAA" STAGE i STAGED 0 SPAN:U8!
+      s" each byte as a group's first character" T-LABEL
+      q DECODED a u i WANT T=
+   loop ;
+
+
+\ Every byte is judged as Tables 1 and 2 say.
+: EVERY-BYTE ( -- )
+   s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+   [: STAGED$ OUT BASE64:DECODE drop ;] JUDGES
+   s" ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+   [: STAGED$ OUT BASE64:DECODE-URL drop ;] JUDGES ;
+
+
 \ Padding ends the last group and only it, and the bits it leaves below the
 \ last byte are zero: 'h' leaves 0001 and '9' leaves 01.
 : PADS ( -- )
@@ -287,7 +317,7 @@ public
 : RUN ( -- )
    T-RESET
    VECTORS ALPHABET ROUND-TRIP LENGTHS CHARS PADS CAPACITY HANDSHAKE
-   URL-VECTORS URL-ALPHABET PKCE URL-REFUSALS URL-CAPACITY ;
+   URL-VECTORS URL-ALPHABET PKCE URL-REFUSALS URL-CAPACITY EVERY-BYTE ;
 
 ;package
 
