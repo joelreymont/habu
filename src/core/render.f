@@ -658,6 +658,25 @@ LOCSHOW-INSTALL
    0 RDST !  RSBUF RSN @ ;
 
 
+\ A PE row's flags as facts tags appended at RSN; only the PE-TRUSTED-ONLY and
+\ PE-TOP-ONLY bits are facts a caller's check reads.
+: REND-PE ( n -- ptr u8 n )
+   {: flags:n :}
+   1 RDST !
+   flags PE-TRUSTED-ONLY and 0 <> IF s" trusted-only " DTXT THEN
+   flags PE-TOP-ONLY and 0 <> IF s" top-only " DTXT THEN
+   0 RDST !  RSBUF RSN @ ;
+
+
+\ A parsing immediate's payload count as a facts tag appended at RSN, nothing
+\ for -1.
+: REND-PIMM ( n -- ptr u8 n )
+   {: cnt:n :}
+   1 RDST !
+   cnt 0 >= IF s" parse-imm " DTXT  cnt RNUM  32 EMIT1 THEN
+   0 RDST !  RSBUF RSN @ ;
+
+
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG ( -- ptr u8 n )
    0 RSN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;

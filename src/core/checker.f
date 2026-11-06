@@ -6168,6 +6168,13 @@ CHECKER-REG:}SCRATCH
        1 + REPEAT drop THEN
    NRES @ ;
 
+1 constant PE-ACTIVE
+2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
+4 constant PE-FIXED-ABI
+8 constant PE-C2-INIT
+16 constant PE-C2-RECORDS
+32 constant PE-TOP-ONLY           \ prim types a top-level keyword: a body token never takes the row
+
 \ While set, every type var the signature parser mints is TVK-RAW.
 \ verify-source and the two-stage native definer hook bracket a raw storage
 \ definer's effect (create/variable/constant, PTR-VARIABLE,
@@ -6181,6 +6188,8 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ REND-FACTS), never a source signature.
 variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
 : SIG-FACTS! ( bool -- ) SIG-FACTS-MODE ! ;
+variable SIG-PE     \ the PE-TRUSTED-ONLY and PE-TOP-ONLY bits the last facts text's tags gave
+variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's tags gave, -1 for none
 
 \ One locals group only: a second `{: i :}` group mis-reads the slot in the
 \ standalone, collapsing every var to one.
@@ -7084,7 +7093,40 @@ CHECKER-REG:}SCRATCH
    rows a c@ UPPER? and IF a c@ 65 - cells ROWMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
    -1 ;
 
-: SIG-TAG ( ptr u8 n -- ) {: ta:ptr tu:n :}
+
+\ The PE flag a facts tag names, 0 for any other token.
+: TAG>PE ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a u s" trusted-only" CORE-STR= IF PE-TRUSTED-ONLY EXIT THEN
+   a u s" top-only" CORE-STR= IF PE-TOP-ONLY EXIT THEN
+   0 ;
+
+
+: SIG-PIMM-TAG ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   SIG-PIMM @ 0 < 0= IF ta tu SGBAD-SYNTAX! EXIT THEN
+   NEXT-SIG-TOK {: ca:ptr cu:n :}
+   cu 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
+   ca cu num-parse {: v:n flt:bool ok:bool :}
+   ok 0=  flt or  v 0 <  or IF ca cu SGBAD-SYNTAX! EXIT THEN
+   v SIG-PIMM ! ;
+
+
+\ Reads a PE flag or parse-imm tag, each at most once; false for a token that
+\ is neither.
+: SIG-PE-TAG ( ptr u8 n -- bool )
+   {: ta:ptr tu:n :}
+   ta tu TAG>PE {: bit:n :}
+   bit 0 <> IF
+      SIG-PE @ bit and 0 <> IF ta tu SGBAD-SYNTAX! RES-TRUE EXIT THEN
+      SIG-PE @ bit or SIG-PE !  RES-TRUE EXIT THEN
+   ta tu s" parse-imm" CORE-STR= IF ta tu SIG-PIMM-TAG RES-TRUE EXIT THEN
+   RES-FALSE ;
+
+
+: SIG-TAG ( ptr u8 n -- )
+   {: ta:ptr tu:n :}
+   ta tu SIG-PE-TAG IF EXIT THEN
    ta tu TAG>KIND {: kind:n :}
    ta tu s" noscope" CORE-STR= {: ns:bool :}
    kind RVK-QUOT =  kind RVK-INFERRED =  or {: rk:bool :}
@@ -7095,6 +7137,7 @@ CHECKER-REG:}SCRATCH
    id 0 < IF la lu SGBAD-SYNTAX! EXIT THEN
    ns IF id NSCOPE! EXIT THEN
    kind id TVK! ;
+
 
 \ The tags after a facts text's effect, read while NMAP and ROWMAP still hold
 \ PSIG's letters.
@@ -7111,6 +7154,7 @@ CHECKER-REG:}SCRATCH
 \ SIG-TAGS what follows. A text without both parses as empty, refused.
 : PARSE-FACTS ( -- n n n n )
    SL @ {: len:n :}
+   0 SIG-PE !  -1 SIG-PIMM !
    PKRESET NEXT-SIG-TOK s" (" CORE-STR= {: open:bool :}
    SI @ {: from:n :}
    open IF FACTS-CLOSE ELSE -1 THEN {: close:n :}
@@ -11109,12 +11153,6 @@ CHECKER-REG:}SCRATCH
 : TICK-QUOT ( ptr u8 -- n ) EFF-QUOT dup QUOT-ROWS-GENERALIZE dup CHECKER-QUOT-FRESH:MARK ;
 
 $200 constant PE-CAP-INIT
-1 constant PE-ACTIVE
-2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
-4 constant PE-FIXED-ABI
-8 constant PE-C2-INIT
-16 constant PE-C2-RECORDS
-32 constant PE-TOP-ONLY           \ prim types a top-level keyword: a body token never takes the row
 
 $0 constant PE-SYM-OFF
 $8 constant PE-EFF-OFF
