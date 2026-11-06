@@ -742,6 +742,17 @@ s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE
 s" TPC-PKG-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TPC-PKG-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPC-PKG-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-PKG-STORED" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ An inferred effect in TDPM writes the global span bare and TDPM's own span
+\ qualified; the hook certifies both only if each reads back to the same type.
+: TPC-GLOBAL-KEEP ( span<n,n,n> -- span<n,n,n> ) ;
+package TDPM
+public
+: TPC-FACTS-GLOBAL TPC-GLOBAL-KEEP ;
+: TPC-FACTS-OWN TPC-PKG-STORED ;
+;package
+s" TPC-FACTS-GLOBAL-REPLAY ( span<n,n,n> -- span<n,n,n> ) TDPM:TPC-FACTS-GLOBAL" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-FACTS-OWN-REPLAY ( TDPM:span<n,n,n,n,n,n> -- TDPM:span<n,n,n,n,n,n> ) TDPM:TPC-FACTS-OWN" CHECK-QUIET-CANDIDATE! -1 T=
+
 \ Prose row rendering and JSON arity diagnostics keep the package qualifier, and
 \ render it case-folded: the declaring package was written `package TDPM`, but a
 \ rendered family name is spelled canonically (render.f FAM-QNAME-REND), the way

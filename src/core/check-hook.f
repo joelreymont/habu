@@ -71,17 +71,40 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    AT-SOURCE
    S\" \n" ERROR-TEXT:TYPE ;
 
+
+\ Only a record this check published, at or above MARK and still active, is
+\ asked: a duplicate or an unrecorded effect publishes none.
+: CHECK-FACTS ( ptr u8 n n -- )
+   {: na:ptr nu:n mark:n :}
+   na nu CHECKER-RECORD-SYM? {: sym:n :}
+   sym 0= if exit then
+   sym USIG-NEWEST {: rec1:n :}
+   rec1 0= if exit then
+   rec1 1 - mark < if exit then
+   rec1 1 - E-PTR ER.ACTIVE @ EFF-ACTIVE <> if exit then
+   sym FACTS-SAME? if exit then
+   s" hook: facts text differs: " ERROR-TEXT:TYPE
+   NMB NMU @ ERROR-TEXT:TYPE
+   s" : " ERROR-TEXT:TYPE
+   RSBUF RSN @ ERROR-TEXT:TYPE
+   S\" \n" ERROR-TEXT:TYPE
+   CHECK-RC throw ;
+
+
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject
 \ and kept the declared signature. A non-zero hook return publishes the
 \ definition (zero rejects and unpublishes it), so the name resolves for later
 \ definitions; the driver exits nonzero via MULTI-ERR-END.
 public
 
-: HOOK ( ptr u8 n -- n ) {: a:ptr u:n :}
+: HOOK ( ptr u8 n -- n )
+   {: a:ptr u:n :}
    CHECKER-REPORT-RESET
    a u FIRST-TOKEN {: na:ptr nu:n :}
    na nu CHECKER-CERT-DUP? if na nu REPORT-DUPLICATE DUP-RC throw then
+   UEND @ {: mark:n :}
    a u CHECK! REPORT-UNCHECKABLE
+   dup -1 = if na nu mark CHECK-FACTS then
    MULTI-ERR? if drop -1 exit then
    dup -1 <> if
       \ A muted or replaced DIAGXT can emit nothing even in JSON mode.

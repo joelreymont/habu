@@ -728,20 +728,80 @@ LOCSHOW-INSTALL
    0 RDST !  RSBUF RSN @ ;
 
 
+\ Record off's facts text, appended at RSN.
+: REND-RECORD ( n -- ptr u8 n )
+   {: off:n :}
+   off E-PTR E-INST-RESET
+   off E-PTR E-HASR@ 0 <> {: hasr:bool :}
+   off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
+   hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
+   hasr REND-FACTS ;
+
+
 \ `creates-effect ` and the facts text of n, a created effect as checker.f
 \ NORET-CREATES@ answers it, appended at RSN; 0 appends nothing. RQM stays set.
 : REND-CREATES ( n -- ptr u8 n )
    {: n:n :}
    n 0= IF 0 RDST !  RSBUF RSN @ EXIT THEN
    RQM @ {: qm:n :}
-   n 1 - {: off:n :}
    1 RDST !  s" creates-effect " DTXT
-   off E-PTR E-INST-RESET
-   off E-PTR E-HASR@ 0 <> {: hasr:bool :}
-   off E-PTR E-DIN@ E-INST  off E-PTR E-DOUT@ E-INST
-   hasr IF off E-PTR E-RIN@ E-INST  off E-PTR E-ROUT@ E-INST ELSE 0 0 THEN
-   hasr REND-FACTS
+   n 1 - REND-RECORD
    qm 0 <> IF 1 RQM ! THEN ;
+
+
+\ FACTS-SAME?'s state for the quotations it runs; FACTS-CLEAN zeroes it, so
+\ none outlives a call. FACTS-NEW is the parsed record, offset+1, 0 for none.
+variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-NEW
+
+
+\ Writes record off's facts text into RSBUF from its start.
+: FACTS-REND ( n -- )
+   NEW  0 RSN !  REND-RECORD 2drop ;
+
+
+: FACTS-PARSE ( -- n n n n )
+   RES-TRUE SIG-FACTS!
+   [: RSBUF RSN @ PARSE-SIG-RAW ;] [: RES-FALSE SIG-FACTS! ;] finally ;
+
+
+\ The record is built under symbol 0, as CREATED-RECORD-BUILD builds one, so no
+\ lookup sees it; a row no record can hold is refused before E-BUILD-EFFECT dies.
+: FACTS-BUILD ( -- )
+   NEW
+   FACTS-PARSE {: din:n dout:n rin:n rout:n :}
+   SGBAD @ 0 <>  SIG-UNRES @ 0 <>  or IF EXIT THEN
+   RSBUF RSN @ din dout rin rout SGBAD-UNFIT!
+   SGBAD @ 0 <> IF EXIT THEN
+   0 CHECKER-REC-SYM !
+   din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + FACTS-NEW ! ;
+
+
+\ A throw from the parse refuses the text as SGBAD does.
+: FACTS-ANSWER ( -- bool )
+   [: FACTS-BUILD ;] catch {: rc:n :}
+   rc 0 <> IF RES-FALSE EXIT THEN
+   FACTS-NEW @ 0= IF RES-FALSE EXIT THEN
+   FACTS-REC @ E-PTR ER.CONTENT @  FACTS-NEW @ 1 - E-PTR ER.CONTENT @ E-CONTENT-SAME? ;
+
+
+: FACTS-CLEAN ( -- )
+   FACTS-MARK @ USIGS-RESTORE-END
+   FACTS-WAS @ CHECKER-REC-SYM !
+   SIGSCOPE-OFF  SGBAD-CLEAR  SIG-UNRES-CLEAR
+   0 FACTS-REC !  0 FACTS-MARK !  0 FACTS-WAS !  0 FACTS-NEW ! ;
+
+
+\ Whether sym's newest record survives its facts text: rendered, parsed in the
+\ symbol's package and built again, the same content. RSBUF and RSN keep the text.
+: FACTS-SAME? ( n -- bool )
+   {: sym:n :}
+   sym USIG-NEWEST 1 - {: off:n :}
+   off FACTS-REND
+   RQM @ 0 <> IF RES-FALSE EXIT THEN
+   off FACTS-REC !  UEND @ FACTS-MARK !  CHECKER-REC-SYM @ FACTS-WAS !  0 FACTS-NEW !
+   SGBAD-CLEAR  SIG-UNRES-CLEAR
+   sym SYM-PKG$ SIGSCOPE!
+   [: FACTS-ANSWER ;] [: FACTS-CLEAN ;] finally ;
 
 
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.
