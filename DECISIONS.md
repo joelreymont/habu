@@ -1001,7 +1001,11 @@ learned live in the docs for their subject.
   On 2026-11-04, shown the Gforth chain red on master and a seed mirror
   planned for the cross-build's wid cells, Joel wrote "why do you need gforth
   to build habu from habu? your priority is arm64-to-arm64 cross-build": the
-  cross-build's steps carry no Gforth seed mirror.
+  cross-build's steps carry no Gforth seed mirror. On 2026-11-06, shown that
+  AGENTS.md, docs/bootstrap.md and docs/gate.md still told a change to the
+  seed or its mirror to run the Gforth recovery check, Joel chose "Retire it
+  from the rules (Recommended)": no change runs a Gforth check or edits
+  bootstrap/ to follow the tree.
 - 2026-10-28, one compiler: "we want a unified backend and frontend that
   allows for cross-compilation. so we want to reuse as much as possible and
   only change arch-specific bits." One T0 front end, one publisher and
