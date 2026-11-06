@@ -355,6 +355,15 @@ PRODUCT cspt
 : CS-BUNDLE-GUARD ( option<cspt> -- n )
    [: CS-BUNDLE-MAYBE ;] catch {: o code:n :}
    code 0= IF o CS-READ-BUNDLE ELSE 0 THEN ;
+\ Overwrites the option, then throws.
+: CS-NUM-THROW ( option<n> -- option<n> )
+   drop 4 OPTION:SOME E-CS-BOOM throw ;
+\ An option a generic constructor built inline: the call learns the width
+\ (`a` := n gives two cells), so the stale group is two cells one drop removes.
+: CS-INLINE-RT ( -- n )
+   depth {: d:n :}
+   5 OPTION:SOME [: CS-NUM-THROW ;] catch drop drop
+   depth d - ;
 
 : CS-SECTION-BUNDLES ( -- )
    \ the stale bundle is dropped by one drop, the cspt below it by the other
@@ -385,7 +394,11 @@ PRODUCT cspt
    1 CS-TICK ! CS-SOME CS-BUNDLE-GUARD 42 T=
    0 CS-TICK ! CS-SOME CS-BUNDLE-GUARD 0 T=
    \ B1's shape, run: the drops agree with the checker on the bundle's width
-   CS-PT CS-SOME CS-BUNDLE-RT E-CS-BOOM T= ;
+   CS-PT CS-SOME CS-BUNDLE-RT E-CS-BOOM T=
+   \ an option a generic constructor built inline refuses to be read
+   s" B10 ( -- n ) 5 OPTION:SOME [: CS-NUM-THROW ;] catch drop MATCH option none OF 0 ENDOF some OF ENDOF ;MATCH"
+      CS-CODE<  CS-STALE?  CS-CODE-END
+   CS-INLINE-RT 0 T= ;
 
 \ A4's shape, run: the caught body reads the address and throws, and the catch
 \ hands back the SAME address with the throw code on top.

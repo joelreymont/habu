@@ -149,6 +149,61 @@ private
       some OF ENDOF
    ;MATCH ;
 
+\ ---- a generic call's result binds whole to an untyped local ---------------
+\ The call learns the width of its open output (`a` := n gives two cells), so
+\ an untyped local takes both: each word returns how far the stack moved.
+: WL-WRAP ( a -- option<a> ) OPTION:SOME ;
+: WL-KEEPO ( option<n> -- option<n> ) ;
+: WL-BIND-CTOR ( -- n ) depth {: d:n :} 3 OPTION:SOME {: c :} depth d - ;
+: WL-BIND-WRAP ( -- n ) depth {: d:n :} 3 WL-WRAP {: c :} depth d - ;
+: WL-BIND-CAUGHT ( -- n )
+   depth {: d:n :} 3 OPTION:SOME ['] WL-KEEPO catch {: c code:n :} depth d - ;
+\ `OPTION:NONE` leaves `a` open; the catch's unify with WL-KEEPO resolves it in
+\ the window, which then holds the option's two cells.
+: WL-BIND-OPEN ( -- n )
+   depth {: d:n :} OPTION:NONE ['] WL-KEEPO catch drop {: c :} depth d - ;
+
+\ ---- an open option meets a built one at a join or a loop's back edge --------
+\ `OPTION:NONE` leaves `a` open, `5 OPTION:SOME` is two cells: the edge binds
+\ the width and the row holds the two cells whichever side came first.
+variable WL-RT
+: WL-RT? ( -- bool ) WL-RT @ 0 > ;
+: WL-EAT ( option<n> -- ) WL-SHOW drop  WL-RT @ 1 - WL-RT ! ;
+: WL-LOOP-NONE ( n -- option<n> )
+   WL-RT !  OPTION:NONE BEGIN WL-RT? WHILE WL-EAT 5 OPTION:SOME REPEAT ;
+: WL-LOOP-SOME ( n -- option<n> )
+   WL-RT !  5 OPTION:SOME BEGIN WL-RT? WHILE WL-EAT OPTION:NONE REPEAT ;
+\ The loop's exit restores the row saved before the body: `c` takes both cells.
+: WL-LOOP-BIND ( n -- n )
+   WL-RT !  depth {: d:n :}
+   OPTION:NONE BEGIN WL-RT? WHILE WL-EAT 5 OPTION:SOME REPEAT {: c :} depth d - ;
+\ The ELSE arm restores the row the IF arm's unify resolved: `c` takes both cells.
+: WL-ELSE-BIND ( bool -- n )
+   {: f:bool :} depth {: d:n :}
+   OPTION:NONE f IF WL-EAT 0 ELSE {: c :} depth d - THEN ;
+\ Both options share `a`: eating the top one resolves the one below for `c`.
+: WL-TWO-NONE ( -- option<a> option<a> ) OPTION:NONE OPTION:NONE ;
+: WL-SHARED-BIND ( -- n ) depth {: d:n :} WL-TWO-NONE WL-EAT {: c :} depth d - ;
+\ A resolved option beside a built one: `swap` moves each whole.
+: WL-LOOP-SWAP ( n -- n n )
+   WL-RT !  OPTION:NONE BEGIN WL-RT? WHILE WL-EAT 5 OPTION:SOME REPEAT
+   9 OPTION:SOME swap WL-SHOW swap WL-SHOW ;
+: WL-SHARED-SWAP ( -- n n ) WL-TWO-NONE WL-EAT 9 OPTION:SOME swap WL-SHOW swap WL-SHOW ;
+: WL-JOIN-NONE ( bool -- n )
+   {: f:bool :}
+   depth {: d:n :} f IF OPTION:NONE ELSE 5 OPTION:SOME THEN {: c :} depth d - ;
+: WL-JOIN-SOME ( bool -- n )
+   {: f:bool :}
+   depth {: d:n :} f IF 5 OPTION:SOME ELSE OPTION:NONE THEN {: c :} depth d - ;
+: WL-JOIN-MATCH ( option<n> -- n )
+   {: o :}
+   depth {: d:n :}
+   o MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF 1+ OPTION:SOME ENDOF
+   ;MATCH {: c :}
+   depth d - ;
+
 \ ---- a bundle and a `:ptr` local in ONE group -------------------------------
 \ The group path binds the pointer's inferred pointee under the same transport
 \ rule as a group without a bundle: the pointee here is a layout, which a bare
@@ -238,6 +293,16 @@ public
    OPTION:NONE WL-INC WL-SHOW -1 T=
    5 OPTION:SOME WL-INC-BESIDE WL-SHOW 6 T=
    77 T= 7 T=                             \ the cells below the locals survive
+   WL-BIND-CTOR 0 T=  WL-BIND-WRAP 0 T=  WL-BIND-CAUGHT 0 T=  WL-BIND-OPEN 0 T=
+   0 WL-LOOP-NONE WL-SHOW -1 T=  1 WL-LOOP-NONE WL-SHOW 5 T=  2 WL-LOOP-NONE WL-SHOW 5 T=
+   0 WL-LOOP-SOME WL-SHOW 5 T=  1 WL-LOOP-SOME WL-SHOW -1 T=  2 WL-LOOP-SOME WL-SHOW -1 T=
+   true WL-JOIN-NONE 0 T=  false WL-JOIN-NONE 0 T=
+   true WL-JOIN-SOME 0 T=  false WL-JOIN-SOME 0 T=
+   OPTION:NONE WL-JOIN-MATCH 0 T=  5 OPTION:SOME WL-JOIN-MATCH 0 T=
+   0 WL-LOOP-BIND 0 T=  2 WL-LOOP-BIND 0 T=
+   true WL-ELSE-BIND 0 T=  false WL-ELSE-BIND 0 T=
+   WL-SHARED-BIND 0 T=  WL-SHARED-SWAP 9 T= -1 T=
+   0 WL-LOOP-SWAP 9 T= -1 T=  2 WL-LOOP-SWAP 9 T= 5 T=
    WL-SHUFFLES
    WL-REALS ;
 

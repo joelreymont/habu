@@ -1747,36 +1747,6 @@ PTX-BARRIER-DEFAULT
 CHECKER-REG:SCRATCH{
 variable JOIN-FACTS
 CHECKER-REG:}SCRATCH
-: ROW-JOIN-PREP ( n n -- n n ) {: a:n b:n :}
-   a R-RES {: an:n :}  b R-RES {: bn:n :}
-   an TAG S-PUSH <> bn TAG S-PUSH <> or IF
-      an ROW-NO-PROOF bn ROW-NO-PROOF EXIT
-   THEN
-   an P>REST bn P>REST RECURSE {: ar:n br:n :}
-   an P>PROOF bn P>PROOF CP-SAME? IF
-      an JOIN-FACTS @ P-VIEW-TYPE ar MK-PUSH {: ao:n :}
-      bn JOIN-FACTS @ P-VIEW-TYPE br MK-PUSH {: bo:n :}
-      an P>PROOF ao P-PROOF!  bn P>PROOF bo P-PROOF!
-      an P>LOST bn P>LOST or dup ao P-LOST! bo P-LOST!
-      ao bo EXIT
-   THEN
-   an P>TYPE ar MK-PUSH {: ao:n :}
-   bn P>TYPE br MK-PUSH {: bo:n :}
-   an P>LOST bn P>LOST or dup ao P-LOST! bo P-LOST!
-   ao bo ;
-: ROW-META= ( n n -- bool )
-   BEGIN
-      over R-RES over R-RES
-      over TAG S-PUSH = IF
-         dup TAG S-PUSH <> IF 2drop 2drop RES-FALSE EXIT THEN
-      ELSE
-         dup TAG S-PUSH = IF 2drop 2drop RES-FALSE EXIT THEN
-         2drop 2drop RES-TRUE EXIT
-      THEN
-      over P>PROOF over P>PROOF CP-SAME? 0= IF 2drop 2drop RES-FALSE EXIT THEN
-      over P>LOST over P>LOST <> IF 2drop 2drop RES-FALSE EXIT THEN
-      P>REST swap P>REST swap 2swap 2drop
-   AGAIN ;
 
 \ The two readers of the stale arena declared above. Idempotent: a cell two
 \ nested catches both leave stale is stale once, so the wrapper never nests and
@@ -3054,8 +3024,9 @@ public
 \ move the W-cell group by row surgery (XPORT-STEP?).
 \ The physical questions see through a stale wrapper; the type question does
 \ not. `catch` wraps each window cell it cannot vouch for one cell at a time
-\ (ROW-STALE-FROM), so an option<pt> window is three stale cells. Answered on
-\ the wrapper, every group walker (XG-READ-GROUP, LOGHID-AT?, WF-POS-RECORD,
+\ (ROW-STALE-FROM), so an option<pt> window is three stale cells: CWIN-LIVE first
+\ expands a window cell whose width the unify resolved. Answered on the wrapper,
+\ every group walker (XG-READ-GROUP, LOGHID-AT?, WF-POS-RECORD,
 \ locals capture, the renderer's compaction) would stop seeing a group and a
 \ W-cell bundle would become W cells no single `drop` removes. U-TYPE pairs a
 \ stale cell only with a var or an equally stale cell, so every typed use of the
@@ -3072,11 +3043,8 @@ public
 : CELL>FAM ( n -- n ) T-UNSTALE PARAM>FAM ;
 
 \ ---- the one authority for a row's width in stack cells ------------------------
-\ ROW-TERM-CELLS and ROW-CELLS sit high in the file because three passes ask
-\ one question the same way: E-COPY* records each fixed term's width, EFFECT-
-\ MIN-IN reads the floor a call must provide, and RSCATCH measures the window a
-\ caught quotation takes before the fit-check binds anything. Portable graphs
-\ revalidate the stored claim against their captured registry.
+\ E-COPY* records each fixed term's width, EFFECT-MIN-IN the floor a call must provide,
+\ CWIN-LIVE a unified window's cells.
 \
 \ A hidden layout parameter already denotes one physical cell; charging its
 \ family's full logical width again would turn a W-cell bundle into W^2 cells.
@@ -3277,6 +3245,77 @@ variable NMOFF                           \ its token's offset in the checked tex
       THEN
       1 +
    REPEAT drop RES-FALSE ;
+
+\ ---- a cell whose width a call resolved is expanded there --------------------
+\ A call pushes a logical cell of resolved width as its W hidden fields (OUTPUT-COPY), as
+\ PUSH-LOGICAL does; ROW-JOIN-PREP, CWIN-LIVE, LOC-BIND and XPORT-APPLY expand one too.
+
+: LOGICAL-KNOWN? ( n -- bool )
+   {: t:n :}
+   t T-RES {: r:n :}
+   r HIDDEN-PARAM? IF RES-FALSE EXIT THEN
+   r LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   r T-UNSTALE LAYOUT-WIDTH-OPEN? 0= ;
+
+
+\ A field's proof from its cell's: a normal proof names the field's own type,
+\ as ROW-NORMAL-PROOF gives a closed cell.
+: FIELD-PROOF ( n n -- n )
+   {: pf:n t:n :}
+   pf 0= IF 0 EXIT THEN
+   pf CP-KIND CP-NORMAL <> IF pf EXIT THEN
+   CP-NORMAL pf CP-ID t dup MK-STALE CP-NEW ;
+
+
+\ Each push above base takes src's lineage.
+: FIELDS-LINEAGE! ( n n n -- )
+   {: src:n top:n base:n :}
+   top BEGIN dup base <> WHILE
+      src P>PROOF over P>TYPE T-UNSTALE FIELD-PROOF over P-PROOF!
+      src P>LOST over P-LOST!  P>REST
+   REPEAT drop ;
+
+
+\ The layout cell at `node` as its W hidden fields over rest, slot 0 deepest, each
+\ with node's lineage; a stale cell gives stale fields, as `catch` wraps a group.
+: CELL-FIELDS ( n n -- n )
+   {: node:n rest:n :}
+   node P>TYPE T-RES {: t:n :}
+   t T-UNSTALE {: src:n :}
+   t TAG T-STALE = {: stale:bool :}
+   rest  src T-WIDTH 0 ?do
+      src i MK-HIDDEN  stale IF MK-STALE THEN  swap MK-PUSH
+   loop
+   node over rest FIELDS-LINEAGE! ;
+
+
+\ One output cell copied over rest with no proof and its lost lineage widened
+\ by `lost`; a logical cell the step resolved the width of is copied expanded.
+: OUTPUT-COPY ( n n n -- n )
+   {: node:n rest:n lost:n :}
+   node P>TYPE LOGICAL-KNOWN? IF node rest CELL-FIELDS ELSE node rest P-COPY THEN
+   {: top:n :}
+   lost node P>LOST or {: l:n :}
+   top BEGIN dup rest <> WHILE  0 over P-PROOF!  l over P-LOST!  P>REST  REPEAT drop
+   top ;
+
+
+\ The cells a term occupies once expanded: W for a logical cell of known width.
+: CELL-TERMS ( n -- n ) dup LOGICAL-KNOWN? IF T-WIDTH ELSE drop 1 THEN ;
+
+
+\ The row with its top cells expanded, down to `want` terms of the expanded row;
+\ an unchanged row comes back as itself.
+: ROW-EXPAND-TERMS ( n n -- n )
+   {: row:n want:n :}
+   want 1 < IF row EXIT THEN
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF row EXIT THEN
+   node P>REST  want node P>TYPE CELL-TERMS -  RECURSE {: rest:n :}
+   node P>TYPE LOGICAL-KNOWN? IF node rest CELL-FIELDS EXIT THEN
+   rest node P>REST = IF row EXIT THEN
+   node rest P-COPY ;
+
 
 \ Typed memory keeps the fail-closed rule for every family argument, phantom
 \ ones included: a payload count alone does not make a generic instantiation
@@ -4091,6 +4130,73 @@ defer U-DRAIN-XT ( n -- )
    rh re ;
 : LOGHID-EXPAND ( n n -- ) LOGHID-ROWS PAIR ;
 : LOGHID-EXPAND-REV ( n n -- ) LOGHID-ROWS swap PAIR ;
+
+\ ---- an open layout cell meets its known group at a join or back edge -------
+\ One edge holds the logical cell, the other the whole group at the same width:
+\ the edge binds the width, so both compare and join as the W-cell group.
+
+\ rh's top is the group's tag, rl's top its logical cell.
+: LOGHID-JOIN? ( n n -- bool )
+   {: rh:n rl:n :}
+   rh rl LOGHID-AT? 0= IF RES-FALSE EXIT THEN
+   rl P>TYPE T-RES T-WIDTH  rh P>TYPE T-RES T-WIDTH = ;
+
+
+\ The row below the group at grp, true when each field has node's proof (as
+\ CELL-FIELDS gives a field) and lost lineage.
+: GROUP-META= ( n n -- n bool )
+   {: node:n grp:n :}
+   grp  grp P>TYPE T-RES T-WIDTH 0 ?do
+      R-RES dup TAG S-PUSH <> IF RES-FALSE unloop EXIT THEN
+      dup P>TYPE T-UNSTALE node P>PROOF swap FIELD-PROOF  over P>PROOF CP-SAME?
+      0= IF RES-FALSE unloop EXIT THEN
+      dup P>LOST node P>LOST <> IF RES-FALSE unloop EXIT THEN
+      P>REST
+   loop RES-TRUE ;
+
+
+\ Two edges carry the same proofs and lost lineage; a logical cell compares
+\ with each field of its group (LOGHID-JOIN?).
+: ROW-META= ( n n -- bool )
+   {: a:n b:n :}
+   a R-RES {: an:n :}  b R-RES {: bn:n :}
+   an TAG S-PUSH = {: ap:bool :}  bn TAG S-PUSH = {: bp:bool :}
+   ap bp or 0= IF RES-TRUE EXIT THEN
+   ap bp and 0= IF RES-FALSE EXIT THEN
+   bn an LOGHID-JOIN? IF
+      an bn GROUP-META= IF an P>REST swap RECURSE ELSE drop RES-FALSE THEN EXIT
+   THEN
+   an bn LOGHID-JOIN? IF
+      bn an GROUP-META= IF bn P>REST RECURSE ELSE drop RES-FALSE THEN EXIT
+   THEN
+   an P>PROOF bn P>PROOF CP-SAME? 0= IF RES-FALSE EXIT THEN
+   an P>LOST bn P>LOST <> IF RES-FALSE EXIT THEN
+   an P>REST bn P>REST RECURSE ;
+
+
+\ A logical cell meeting its group (LOGHID-JOIN?) joins as its W fields, each
+\ merged with the group's field, so the joined row holds the group.
+: ROW-JOIN-PREP ( n n -- n n )
+   {: a:n b:n :}
+   a R-RES {: an:n :}  b R-RES {: bn:n :}
+   an TAG S-PUSH <> bn TAG S-PUSH <> or IF
+      an ROW-NO-PROOF bn ROW-NO-PROOF EXIT
+   THEN
+   bn an LOGHID-JOIN? IF an an P>REST CELL-FIELDS bn RECURSE EXIT THEN
+   an bn LOGHID-JOIN? IF an bn bn P>REST CELL-FIELDS RECURSE EXIT THEN
+   an P>REST bn P>REST RECURSE {: ar:n br:n :}
+   an P>PROOF bn P>PROOF CP-SAME? IF
+      an JOIN-FACTS @ P-VIEW-TYPE ar MK-PUSH {: ao:n :}
+      bn JOIN-FACTS @ P-VIEW-TYPE br MK-PUSH {: bo:n :}
+      an P>PROOF ao P-PROOF!  bn P>PROOF bo P-PROOF!
+      an P>LOST bn P>LOST or dup ao P-LOST! bo P-LOST!
+      ao bo EXIT
+   THEN
+   an P>TYPE ar MK-PUSH {: ao:n :}
+   bn P>TYPE br MK-PUSH {: bo:n :}
+   an P>LOST bn P>LOST or dup ao P-LOST! bo P-LOST!
+   ao bo ;
+
 
 \ Root-spine position plumbing: a spine row pair carries encoded cursor
 \ -(c+2); its type pair gets slot c, its rest pair cursor c+1. Non-spine row
@@ -5036,14 +5142,16 @@ CHECKER-REG:}SCRATCH
       dup P>LOST 0 <> IF drop -1 EXIT THEN
       P>REST
    REPEAT drop 0 ;
-: ROW-OUTPUT-LOSS ( n n n -- n ) {: row:n base:n lost:n :}
+
+
+: ROW-OUTPUT-LOSS ( n n n -- n )
+   {: row:n base:n lost:n :}
    row R-RES base R-RES = IF row EXIT THEN
    row R-RES {: node:n :}
    node TAG S-PUSH <> IF node EXIT THEN
-   node P>REST base lost RECURSE node swap P-COPY {: copy:n :}
-   0 copy P-PROOF!
-   lost node P>LOST or copy P-LOST!
-   copy ;
+   node P>REST base lost RECURSE  node swap lost OUTPUT-COPY ;
+
+
 : STEP-LINEAGE ( n n -- n ) {: pre:n post:n :}
    pre post ROW-COMMON {: common:n :}
    pre common ROW-WINDOW-LOST {: lost:n :}
@@ -5197,14 +5305,15 @@ CHECKER-REG:}SCRATCH
       over R-RES P>LOST 0 <> IF 2drop -1 EXIT THEN
       swap R-RES P>REST swap 1 +
    REPEAT 2drop 0 ;
-: ROW-TOP-OUTPUT-LOSS ( n n n -- n ) {: row:n cnt:n lost:n :}
+
+
+: ROW-TOP-OUTPUT-LOSS ( n n n -- n )
+   {: row:n cnt:n lost:n :}
    cnt 0= IF row EXIT THEN
    row R-RES {: node:n :}
    node TAG S-PUSH <> IF node EXIT THEN
-   node P>REST cnt 1 - lost RECURSE node swap P-COPY {: copy:n :}
-   0 copy P-PROOF!
-   lost node P>LOST or copy P-LOST!
-   copy ;
+   node P>REST cnt 1 - lost RECURSE  node swap lost OUTPUT-COPY ;
+
 
 \ The edge a throwing call leaves. `ROW-COMMON pre post` is what popping the
 \ callee's declared inputs leaves of the caller's row; nothing below it is in
@@ -5275,20 +5384,17 @@ variable CWIN-OUT
 variable CWIN-KIND                  \ 0 catch, 1 execute, -1 finally
 variable CWIN-DTERMS  variable CWIN-RTERMS   \ the window in row terms (mask positions)
 variable CWIN-DOUT-TERMS  variable CWIN-ROUT-TERMS
+variable CWIN-DMASK                 \ the callee's intact bits over the live window's cells
 variable FINALLY-CLEANUP-OUT
 
 : QUOT-WINDOW ( n -- ) {: kind:n :}
    kind CWIN-KIND !
-   QTT @ Q>DIN ROW-CELLS CWIN-IN !
-   \ The same window counted in TERMS, which is what a mask bit indexes and what
-   \ the exceptional row of an applied quotation has to skip. Measured here for
-   \ the same reason CWIN-IN is: after UNIFY-IN the quotation's own tail IS the
-   \ live row and its fixed prefix can no longer be told from the caller's stack.
+   \ Counted before UNIFY-IN: after it the quotation's own tail IS the live row
+   \ and its fixed prefix can no longer be told from the caller's stack.
    QTT @ Q>DIN ROW-TERMS CWIN-DTERMS !
    QTT @ Q>RIN ROW-TERMS CWIN-RTERMS !
    QTT @ Q>DOUT ROW-TERMS CWIN-DOUT-TERMS !
    QTT @ Q>ROUT ROW-TERMS CWIN-ROUT-TERMS !
-   QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT ROW-CELLS THEN CWIN-OUT !
    \ Preserve the executed or caught quotation's argument boundaries before
    \ unification extends the rows. Final metadata resolves their widths.
    REC-ON @ IF
@@ -5296,6 +5402,42 @@ variable FINALLY-CLEANUP-OUT
       CALL-FREEZE-XT
    THEN
    -1 CWIN-HIT ! ;
+
+\ ---- the window in the cells it holds once unified ----------------------------
+\ After the unify a logical input term of known width covers its W live cells:
+\ CWIN-LIVE expands them and restates the window and its intact mask in cells.
+
+\ ( cells mask ): the cells from term k at cell `at` down cnt terms, and each term's
+\ intact bit in mask (Q>XDMASK, from the callee's input top) spread over its cells.
+: CWIN-SPREAD ( n n n n n -- n n )
+   {: row:n cnt:n mask:n k:n at:n :}
+   cnt 0= IF at 0 EXIT THEN
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF at cnt + 0 EXIT THEN
+   node P>TYPE CELL-TERMS {: w:n :}
+   node P>REST  cnt 1 -  mask  k 1 +  at w +  RECURSE {: cells:n m:n :}
+   k XMASK-BITS < IF mask 1 k lshift and 0 <> ELSE RES-FALSE THEN IF
+      m  w 0 ?do  at i + XMASK-BITS < IF 1 at i + lshift or THEN  loop
+   ELSE m THEN
+   cells swap ;
+
+
+\ The physical cells of the row's top cnt terms.
+: ROW-TOP-CELLS ( n n -- n )
+   {: row:n cnt:n :}
+   cnt 0= IF 0 EXIT THEN
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF 0 EXIT THEN
+   node P>TYPE ROW-TERM-CELLS  node P>REST cnt 1 - RECURSE + ;
+
+
+: CWIN-LIVE ( -- )
+   QTT @ Q>DIN CWIN-DTERMS @ QTT @ Q>XDMASK 0 0 CWIN-SPREAD CWIN-DMASK ! {: live:n :}
+   QTT @ Q>DIN CWIN-DTERMS @ ROW-TOP-CELLS CWIN-IN !
+   QTT @ Q>XDEAD IF CELLS-NONE ELSE QTT @ Q>DOUT CWIN-DOUT-TERMS @ ROW-TOP-CELLS THEN CWIN-OUT !
+   DCUR @ live ROW-EXPAND-TERMS DCUR !
+   live CWIN-DTERMS ! ;
+
 
 : QUOT-TAIL-MARK ( n -- )
    BEGIN R-RES dup TAG S-PUSH = WHILE P>REST REPEAT
@@ -5347,12 +5489,13 @@ variable QUOT-LOSS
    QTT @ TAG T-QUOT = IF
      QTT @ QUOT-APPLY-INST QTT !
      1 QUOT-WINDOW
-     DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
-     RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
      \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
      \ with the stack they resolve to linears and would look falsely explicit.
      QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
      QTT @ QUOT-STEP-IN
+     CWIN-LIVE                             \ the window in the cells it holds
+     DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
+     RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
      QTT @ Q>XHAS IF
         \ A callee may overwrite every cell it was given before it throws and can
         \ reach nothing below them, so its exceptional row is the live row with
@@ -5380,16 +5523,8 @@ variable QUOT-LOSS
    ELSE QTT @ XT-MISMATCH THEN THEN ;
 
 \ ---- how wide the window a catch site takes is, measured where it is knowable --
-\ A compiler that turns a catch site into a call must know how many cells the
-\ caught body may disturb: a throw restores depth, never contents, so every
-\ window cell must be in its data-stack home across the call. That number is
-\ the caught quotation's own input row in cells, measured before the fit-check:
-\ UNIFY-IN binds din's row variable to the rest of the live stack, after which
-\ ROW-CELLS reports the whole stack depth (`[: 1 2 3 throw ;] catch` over a
-\ one-deep stack answers 0 before the check and 1 after).
-\ A body that never returns has no instantiated output row (the fit-check skips
-\ a dead fall-through's dout), so CELLS-NONE is recorded, not 0, which is the
-\ real width of a window-0 body.
+\ The cells of the callee's declared input terms, as many as QUOT-WINDOW counted, measured
+\ after the unify (CWIN-LIVE); a body that never returns records CELLS-NONE as its output.
 
 \ ---- what the catch site hands back --------------------------------------------
 \ The fit-check proves the caught body takes and leaves the same stack, not that
@@ -5450,8 +5585,6 @@ variable QUOT-LOSS
    QTT @ TAG T-QUOT = IF
      0 QUOT-WINDOW
      CATCH-N @ 1 + CATCH-N !
-     DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
-     RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
      QTT @ QUOT-STEP-IN
      QTT @ Q>XDEAD IF
         QTT @ Q>XHAS 0= IF -1 DEADP ! THEN
@@ -5464,14 +5597,18 @@ variable QUOT-LOSS
         fit OK @ and OK !
         QTT @ Q>ROUT RSUNI-IN
      THEN
+     CWIN-LIVE                             \ the window in the cells it holds
+     DCUR @ CWIN-DTERMS @ ROW-TOP-LOST
+     RCUR @ CWIN-RTERMS @ ROW-TOP-LOST or QUOT-LOSS !
      DCUR @ CWIN-DTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS DCUR !
      RCUR @ CWIN-RTERMS @ QUOT-LOSS @ ROW-TOP-OUTPUT-LOSS RCUR !
      \ Normal output loss is per occurrence, including when this quotation
      \ has no exceptional edge of its own. Only consumed-input loss is shared.
      OK @ 0 <> returns and IF
-        QTT @ Q>XDEAD IF 0 ELSE QTT @ Q>DOUT THEN {: nd:n :}
+        \ the normal row walks beside the live one, so it is expanded alike
+        QTT @ Q>XDEAD IF 0 ELSE QTT @ Q>DOUT CWIN-DTERMS @ ROW-EXPAND-TERMS THEN {: nd:n :}
         QTT @ Q>XDEAD IF 0 ELSE QTT @ Q>ROUT THEN {: nr:n :}
-        DCUR @ nd CWIN-DTERMS @ QTT @ Q>XDMASK QTT @ Q>XHAS ROW-STALE-TOP DCUR !
+        DCUR @ nd CWIN-DTERMS @ CWIN-DMASK @ QTT @ Q>XHAS ROW-STALE-TOP DCUR !
         RCUR @ nr CWIN-RTERMS @ QTT @ Q>XRMASK QTT @ Q>XHAS ROW-STALE-TOP RCUR !
      THEN
    ELSE QTT @ TAG T-VAR =  QTT @ OPAQUE-XT? or IF
@@ -19893,6 +20030,11 @@ variable XG-N   variable XG-TN   variable XG-ROW
    {: a:ptr u:n :}
    LIN-SNAPSHOT {: bef:n :}
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   0  a u WF-XPORT-K 0 ?do   \ ( row cells ): each operand's logical cell of known width expanded
+      2dup ROW-DROP-N R-RES  dup TAG S-PUSH <> IF drop leave THEN
+      P>TYPE CELL-TERMS  over +  rot swap ROW-EXPAND-TERMS swap
+      2dup ROW-DROP-N R-RES P>TYPE T-RES  dup HIDDEN-PARAM? IF T-WIDTH ELSE drop 1 THEN  +
+   loop drop
    a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
    REC-ON @ IF a u XPORT-CALL THEN
    a u XP-RS? IF
@@ -20231,8 +20373,8 @@ CHECKER-REG:}SCRATCH
 \ cell); an undeclared local takes the pre-token cell group it lies over, a
 \ one-cell term or a whole hidden group, as XG-READ-GROUP would read it.
 \ LOC-DECL-ROW reads that row from the top local down, before the bind unifies
-\ anything, and is 0 when a width is unknown: a declared layout whose width is
-\ open, or an undeclared local over an open-width cell, part of a hidden
+\ anything, and is 0 when it reads no width: a declared layout whose width is
+\ open, or an undeclared local over a logical layout cell, part of a hidden
 \ group, or the pre row's open tail. `at` is the pre row below the locals
 \ above, 0 once that is unknown.
 : PRE-SKIP ( n n -- n ) {: at:n w:n :}   \ `at` less its top w cells
@@ -20344,19 +20486,12 @@ CHECKER-REG:}SCRATCH
    tl ann MK-LOGICAL UNIFY   \ binds open arguments first, so the width is the annotation's
    -1 TRIAL-DEPTH +!
    dup 0= IF mark TRAIL-UNWIND THEN ;   \ a failed trial leaves no binding
-: FIELD-PROOF ( n n -- n ) {: pf:n node:n :}
-   pf 0= IF 0 EXIT THEN
-   pf CP-KIND CP-NORMAL <> IF pf EXIT THEN
-   CP-NORMAL pf CP-ID node P>TYPE dup MK-STALE CP-NEW ;   \ the field's own type, as ROW-NORMAL-PROOF gives a closed cell
-: FIELDS-LINEAGE! ( n n n -- ) {: src:n top:n base:n :}   \ each push above base takes src's lineage
-   top BEGIN dup base <> WHILE
-      src P>PROOF over FIELD-PROOF over P-PROOF!  src P>LOST over P-LOST!  P>REST
-   REPEAT drop ;
 : LOC-BUNDLE-ROW ( n n -- n ) {: row:n gi:n :}   \ groups gi.. of row, such cells expanded
    gi #LOC @ LGRP @ - >= IF row EXIT THEN
    row R-RES {: node:n :}
    node TAG S-PUSH <> IF row EXIT THEN
    node P>TYPE {: t:n :}
+   t LOGICAL-KNOWN? IF row t CELL-TERMS ROW-EXPAND-TERMS gi RECURSE EXIT THEN   \ as its hidden fields
    t T-RES HIDDEN-PARAM? IF row PRE-GROUP ELSE 1 THEN {: w:n :}
    w 0= IF row EXIT THEN
    row w ROW-DROP-N {: below:n :}
@@ -23162,7 +23297,8 @@ variable IS-PEND-U                   \ and its length
 \ does: the has-edge flag from W's control word and the intact masks the NORET
 \ store recorded. The masks need no recomposition: a mask bit counts from the
 \ top of W's declared input row, which (instantiated by TICK-QUOT) is this term's
-\ own din, the window RSCATCH measures against (CWIN-DTERMS / ROW-STALE-TOP).
+\ own din, the window RSCATCH measures against (CWIN-LIVE spreads it over the
+\ live cells for ROW-STALE-TOP).
 \ A symbol with no entry or no CTL-THROW, a recovery record included, answers 0.
 \ The edge is not part of the quotation type: it does not survive a typed
 \ `xt<effect>` cell, a quotation parameter or a `defer` (test/xt-cell-test.f,
