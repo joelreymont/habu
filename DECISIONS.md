@@ -528,8 +528,10 @@ learned live in the docs for their subject.
   before the transfer lands it at once (phil's ruling), and AWAIT ( ptr
   call -- ) throws its fault. CONTENT$ ( ptr call -- ptr u8 n ) answers
   the chat's content. CHAT is START, AWAIT and CONTENT$; EMBED is
-  START-EMBED and AWAIT. SERVE comes with serving many calls on one
-  task.
+  START-EMBED and AWAIT. SERVE ( ptr call -- bool ) takes what a started
+  call's transfer holds without waiting and answers whether the call
+  landed, true for a landed call; one task starts many calls and serves
+  each until it lands.
 - 2026-11-06, embeddings as binary numbers (relayed by phil from Zen):
   shown each OpenAI reply as 22.9 MB of decimal numbers read a character
   at a time, then sent to PostgreSQL as text and parsed again, for the

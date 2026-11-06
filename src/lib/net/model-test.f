@@ -144,12 +144,12 @@ PTR-VARIABLE BIG
 create SENT-BODY SENT-CAP allot
 variable SENT-U
 TASK:SEMAPHORE HELD
-\ An event stream being written. Requests reach the peer one at a time apart
-\ from the held stream's.
+\ The handlers share this package's buffers and parsers, so one runs at a time
+\ (ALONE); the held stream gives its turn up while it waits.
+TASK:SEMAPHORE TURN
+\ An event stream being written.
 create STREAM-B BUF:HDR-BYTES allot
 TYPED-VARIABLE STREAM-W JSON:writer
-\ Requests reach the peer one at a time, so one parser and one reply buffer
-\ serve them all.
 TYPED-VARIABLE PARSER JSON:cursor
 \ A second parser reads one content part apart from the request.
 TYPED-VARIABLE PART JSON:cursor
@@ -373,11 +373,13 @@ $300000 constant BIG-U
 
 \ The longest a held stream waits for its client to close it.
 10000 constant HOLD-MS
-\ Signals HELD and keeps the connection open until the client closes it.
+\ Signals HELD and keeps the connection open until the client closes it, with
+\ the turn given up.
 : HOLD-OPEN ( TCP4:connection -- )
    {: conn:TCP4:connection :}
    HELD TASK:SIGNAL-SEM
-   conn HOLD-MS >MS TCP4:READABLE-WITHIN?
+   TURN TASK:SIGNAL-SEM
+   conn [: HOLD-MS >MS TCP4:READABLE-WITHIN? ;] [: TURN TASK:WAIT-SEM ;] finally
    MATCH TCP4:ready-result
       ready OF ENDOF
       idle OF FAIL ENDOF
@@ -850,6 +852,12 @@ $300000 constant BIG-U
    a u dst 64 SPAN:MAKE SPAN:COPY u ;
 
 
+\ Runs the handler while no other handler runs.
+: ALONE ( HTTP:request HTTP:response [ HTTP:request HTTP:response -- ] -- )
+   TURN TASK:WAIT-SEM
+   [: TURN TASK:SIGNAL-SEM ;] finally ;
+
+
 public
 EXPORT LONG-FINISH$
 EXPORT REFUSAL$
@@ -872,17 +880,19 @@ EXPORT WIDE-DIMS
 : AWAIT-HOLD ( -- ) HELD TAKE ;
 
 
+\ Four workers serve MANY-CALLS' four calls at once, one of them held.
 : START ( -- )
    BIG-U MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BIG !
    BIG-FILL
    0 HELD TASK:SEMAPHORE-INIT
+   1 TURN TASK:SEMAPHORE-INIT
    0 CALLS atomic!
    STREAM-B 1 BUF:N>BLEN BUF:INIT
    HTTP:ROUTES-RESET
-   s" POST" s" /responses" [: CHAT ;] HTTP:ROUTE
-   s" POST" s" /embeddings" [: EMBEDDINGS ;] HTTP:ROUTE
-   s" POST" s" /api/embed" [: OLLAMA ;] HTTP:ROUTE
-   $7F000001 0 2 1000 HTTP:START
+   s" POST" s" /responses" [: [: CHAT ;] ALONE ;] HTTP:ROUTE
+   s" POST" s" /embeddings" [: [: EMBEDDINGS ;] ALONE ;] HTTP:ROUTE
+   s" POST" s" /api/embed" [: [: OLLAMA ;] ALONE ;] HTTP:ROUTE
+   $7F000001 0 4 1000 HTTP:START
    BASE-URL s" " URL! BASE-URL-U !
    OLLAMA-URL s" /api/embed" URL! OLLAMA-URL-U ! ;
 
@@ -890,6 +900,7 @@ EXPORT WIDE-DIMS
 : STOP ( -- )
    HTTP:STOP
    HELD TASK:SEMAPHORE-DESTROY
+   TURN TASK:SEMAPHORE-DESTROY
    STREAM-B BUF:DISPOSE
    BIG$ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 ;using
@@ -899,7 +910,7 @@ EXPORT WIDE-DIMS
 package MODEL-TEST
 using MODEL-FIXTURE
 private
-1 TYPED-BUFFER CALL MODEL:call
+4 TYPED-BUFFER CALL MODEL:call
 $10000 TASK:TASK WORK-TASK
 TASK:SEMAPHORE STOP-READY
 TASK:SEMAPHORE STOP-GO
@@ -1075,14 +1086,19 @@ variable REFUSED-BASE-U
 : FIXTURE-KEY ( -- ) KEY-SERVICE$ KEY-ACCOUNT$ M MODEL:API-KEY! ;
 
 
-: SETUP ( -- )
-   M MODEL:OPEN
-   MODEL-PEER:BASE-URL$ M MODEL:BASE-URL!
-   s" test-generation" M MODEL:GENERATION-MODEL!
-   s" test-embedding" 3 M MODEL:EMBEDDING-MODEL!
-   FIXTURE-KEY
-   s" Read source evidence." M MODEL:SYSTEM!
-   SCHEMA$ M MODEL:SCHEMA! ;
+\ Opens call n against the peer with the fixture key, system text and schema.
+: SETUP-CALL ( n -- )
+   CALL {: c:ptr :}
+   c MODEL:OPEN
+   MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
+   s" test-generation" c MODEL:GENERATION-MODEL!
+   s" test-embedding" 3 c MODEL:EMBEDDING-MODEL!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
+   s" Read source evidence." c MODEL:SYSTEM!
+   SCHEMA$ c MODEL:SCHEMA! ;
+
+
+: SETUP ( -- ) 0 SETUP-CALL ;
 
 
 : IMAGE ( -- )
@@ -1418,6 +1434,28 @@ variable REFUSED-BASE-U
 : AWAIT-CODE ( -- n ) 0 [: drop M MODEL:AWAIT 0 ;] CODE-OF ;
 : CONTENT-CODE ( -- n ) 0 [: drop M MODEL:CONTENT$ 2drop 0 ;] CODE-OF ;
 : STATE-IS ( n [ n -- n ] -- ) CODE-OF MODEL:E-STATE = ASSERT ;
+: SERVE-CODE ( -- n ) 0 [: drop M MODEL:SERVE drop 0 ;] CODE-OF ;
+\ The longest a test serves calls before it fails, and the longest one wait
+\ between tries; a transfer's bytes or end wake the task sooner.
+5000000000 constant SERVE-NS
+100 constant SERVE-WAIT-MS
+
+
+\ Fails and answers true once SERVE-NS has passed since mono-ns t0; else waits
+\ for a wake or SERVE-WAIT-MS and answers false.
+: SERVE-OVER? ( n -- bool )
+   {: t0:n :}
+   mono-ns t0 - SERVE-NS > if FAIL true exit then
+   SERVE-WAIT-MS >MS TASK:WAIT-MS drop false ;
+
+
+: SERVED ( ptr MODEL:call -- )
+   {: c:ptr :}
+   mono-ns {: t0:n :}
+   begin
+      c MODEL:SERVE if exit then
+      t0 SERVE-OVER?
+   until ;
 
 
 \ START sends the request JOURNAL-INPUT$ finished, else the one built since
@@ -1490,6 +1528,105 @@ variable REFUSED-BASE-U
    CHAT
    s" too-large" INPUTS M MODEL:START-EMBED
    AWAIT-CODE MODEL:E-CAPACITY = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT ;
+
+
+\ SERVE refuses a call not started; a started call answers true once it lands
+\ and again until AWAIT ends it, and a fault before the transfer lands it.
+: SERVED-CALL ( -- )
+   CHAT
+   SERVE-CODE MODEL:E-STATE = ASSERT
+   s" valid" PREPARE
+   SERVE-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ {: before:n :}
+   M MODEL:START M SERVED
+   M MODEL:SERVE ASSERT
+   M MODEL:AWAIT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   SERVE-CODE MODEL:E-STATE = ASSERT
+   SERVICE$ s" missing" M MODEL:API-KEY!
+   s" valid" PREP M MODEL:START
+   M MODEL:SERVE ASSERT
+   AWAIT-CODE MODEL:E-KEY = ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   FIXTURE-KEY ;
+
+
+\ SERVE never waits for a held stream; after CANCEL the call lands and AWAIT
+\ throws E-CANCELLED.
+: HELD-SERVE ( -- )
+   s" hold" PREP M MODEL:START MODEL-PEER:AWAIT-HOLD
+   M MODEL:SERVE 0= ASSERT
+   M MODEL:SERVE 0= ASSERT
+   M MODEL:CANCEL ASSERT
+   M SERVED
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   SERVE-CODE MODEL:E-STATE = ASSERT ;
+
+
+: START-CHAT ( ptr u8 n ptr MODEL:call -- )
+   {: a:ptr u:n c:ptr :}
+   c MODEL:PARTS-RESET
+   a u c MODEL:TEXT+
+   c MODEL:START ;
+
+
+\ Bit i is set once call i's SERVE has answered true.
+variable LANDED
+: SERVE-BIT ( n -- ) {: i:n :} i CALL MODEL:SERVE if LANDED @ 1 i lshift or LANDED ! then ;
+
+
+\ Serves calls 0 to 3 once each; call 0 is held. Answers whether calls 1, 2
+\ and 3 have each answered true.
+: ROUND ( -- bool )
+   0 CALL MODEL:SERVE 0= ASSERT
+   1 SERVE-BIT 2 SERVE-BIT 3 SERVE-BIT
+   LANDED @ 14 = ;
+
+
+: ROUNDS ( -- )
+   0 LANDED !
+   mono-ns {: t0:n :}
+   begin
+      ROUND if exit then
+      t0 SERVE-OVER?
+   until ;
+
+
+\ One task serves four started calls in rounds: three land while the held one
+\ stays out, and each ends with its own result.
+: MANY-CALLS ( -- )
+   1 SETUP-CALL 2 SETUP-CALL 3 SETUP-CALL
+   MODEL-PEER:CALLS@ {: before:n :}
+   s" hold" M START-CHAT MODEL-PEER:AWAIT-HOLD
+   s" valid" 1 CALL START-CHAT
+   2 CALL MODEL:INPUT-RESET
+   s" one" 2 CALL MODEL:INPUT+
+   s" two" 2 CALL MODEL:INPUT+
+   2 CALL MODEL:START-EMBED
+   s" valid" 3 CALL START-CHAT
+   ROUNDS
+   M MODEL:CANCEL ASSERT
+   M SERVED
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   1 CALL MODEL:AWAIT
+   1 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   2 CALL MODEL:AWAIT
+   0 2 CALL MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
+   1 2 CALL MODEL:VECTOR@ $3ECCCCCD $3F000000 $3F19999A VECTOR-IS
+   3 CALL MODEL:AWAIT
+   3 CALL MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 4 + = ASSERT
+   1 CALL MODEL:CLOSE 2 CALL MODEL:CLOSE 3 CALL MODEL:CLOSE ;
+
+
+\ A reply spoiled mid-stream is the served call's fault, the code CHAT throws.
+: SPOILED-SERVE ( -- )
+   s" bad-utf8" PREP CHAT-CODE {: c:n :}
+   c MODEL:E-RESPONSE = ASSERT
+   s" bad-utf8" PREP M MODEL:START M SERVED
+   AWAIT-CODE c = ASSERT
    CONTENT-CODE MODEL:E-STATE = ASSERT ;
 
 
@@ -2318,6 +2455,7 @@ variable ASKED-U
    SETUP
    CHAT EMBEDDINGS PREPARED-CHAT
    [: STARTED-CALLS HELD-START LANDED-START ;] QUIET FAILED-START
+   SERVED-CALL HELD-SERVE MANY-CALLS SPOILED-SERVE
    STOP-ACTIVE
    M MODEL:CLOSE
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL

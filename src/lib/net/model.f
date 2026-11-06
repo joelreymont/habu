@@ -36,7 +36,11 @@ require src/lib/time.f
 \ HTTP header, which is wiped once libcurl copies it.
 \ A caller that looks its journal up itself, such as on another task, finishes
 \ the request with JOURNAL-INPUT$, looks that input up, then sends the request
-\ with CHAT or restores the saved record with REPLAY.
+\ with CHAT or restores the saved record with REPLAY. A task drives many calls
+\ by STARTing each, SERVEing each until it answers true, then AWAITing it. It
+\ TASK:WAITs only straight after a round in which every SERVE answered false:
+\ landing a call runs its journal and recorder, and a wait there takes the
+\ CURL loop's hint for another call.
 
 \ A journal's and a recorder's callbacks each get the caller's ctx unchanged.
 \ get fills the MODEL-owned buffer with one record on a hit, which restores
@@ -61,8 +65,8 @@ ENUM call-state idle prepared started landed ;ENUM
 ENUM call-kind chat embed ;ENUM
 \ What the last awaited call left for CONTENT$ or VECTOR@.
 ENUM call-result none content vectors ;ENUM
-\ How AWAIT resumes a started call's transfer: reading feeds each chunk;
-\ dropping discards them until it ends.
+\ How SERVE and AWAIT resume a started call's transfer: reading feeds each
+\ chunk; dropping discards them until it ends.
 ENUM receive-rest reading dropping ;ENUM
 \ A call's chat input: none, building (PARTS-RESET started it, every write
 \ done), broken (a write did not complete) or finished (PART-FINISH closed it).
@@ -92,7 +96,7 @@ public
 \ CANCEL ended the call, or REQUEST-STOP came before or during it.
 -9709 constant E-CANCELLED
 \ A word out of turn: a busy or unopened call, a part or item outside building,
-\ AWAIT on an unstarted call, VECTOR@ with no vectors, CONTENT$ with no content.
+\ SERVE or AWAIT on an unstarted call, VECTOR@ or CONTENT$ without its result.
 -9710 constant E-STATE
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
 \ response's error code rate_limit_exceeded or server_error.
@@ -2503,8 +2507,10 @@ private
    code throw ;
 
 
-ENUM receive-step waiting drop-waiting ended lost ;ENUM
+ENUM receive-step reading waiting dropping drop-waiting parked parked-dropping ended lost ;ENUM
 ENUM answer fed spoiled done ;ENUM
+\ What SERVE's takes answer: none while the armed read holds nothing yet.
+ENUM poll none fed spoiled done ;ENUM
 
 \ Records how the transfer ended.
 : KEEP-ENDING ( CURL:http-status n n ptr call -- )
@@ -2602,6 +2608,29 @@ ENUM answer fed spoiled done ;ENUM
    ;MATCH ;
 
 
+: POLLED ( answer -- poll )
+   MATCH answer
+      fed OF construct poll fed ENDOF
+      spoiled OF construct poll spoiled ENDOF
+      done OF construct poll done ENDOF
+   ;MATCH ;
+
+
+\ As TAKE-WAIT, but answers none at once while the armed read holds nothing.
+: TAKE ( ptr call -- poll )
+   {: c :}
+   c CALL-HANDLE CURL:NEXT-READY? 0= if construct poll none exit then
+   c TAKE-WAIT POLLED ;
+
+
+\ As DISCARD-WAIT, but answers none at once while the armed read holds
+\ nothing.
+: DISCARD ( ptr call -- poll )
+   {: c :}
+   c CALL-HANDLE CURL:NEXT-READY? 0= if construct poll none exit then
+   c DISCARD-WAIT POLLED ;
+
+
 : REARM ( ptr call -- )
    {: c :}
    c CALL-HANDLE
@@ -2628,8 +2657,8 @@ ENUM answer fed spoiled done ;ENUM
 : LOST ( ptr call -- ) drop E-STATE throw ;
 
 
-\ Arms a started transfer's first read and keeps how RECEIVE resumes it: a
-\ reply the call cannot hold is dropped and drained.
+\ Arms a started transfer's first read and keeps how SERVE and AWAIT resume it:
+\ a reply the call cannot hold is dropped and drained.
 : ARM ( ptr call -- )
    {: c :}
    c CLEAR-REPLY MATCH answer
@@ -2639,28 +2668,11 @@ ENUM answer fed spoiled done ;ENUM
    ;MATCH c MODEL-CALL:RECEIVE ! ;
 
 
-\ Receives the reply into the response buffer, or gives up a reply it cannot
-\ keep and drains its transfer, until the transfer ends; the receipt says how.
-FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
-   IN waiting       TAKE-WAIT
-      fed      REARM       >waiting
-      spoiled  DROP-REPLY  >drop-waiting
-      done     -           >ended
-   IN drop-waiting  DISCARD-WAIT
-      fed      REARM-DROP  >drop-waiting
-      spoiled  -           >lost
-      done     -           >ended
-   FINAL ended  -
-   FINAL lost   LOST
-;DEFINE
-
-
-: RECEIVE ( ptr call -- )
-   {: c :}
-   c c MODEL-CALL:RECEIVE @ MATCH receive-rest
-      reading OF construct receive-step waiting ENDOF
-      dropping OF construct receive-step drop-waiting ENDOF
-   ;MATCH RECEIVE-MACHINE ;
+\ Keeps where SERVE or AWAIT resumes a parked transfer.
+: PARK ( ptr call -- )
+   construct receive-rest reading swap MODEL-CALL:RECEIVE ! ;
+: PARK-DROP ( ptr call -- )
+   construct receive-rest dropping swap MODEL-CALL:RECEIVE ! ;
 
 
 \ Ending before the response with no event means no event stream: E-RESPONSE.
@@ -3295,6 +3307,56 @@ ENUM send-event missed replayed armed faulted ;ENUM
       rc c RECEIPT RECEIPT-OUTCOME !
    then ;
 
+\ Receives the reply, or drops one the call cannot keep and drains its
+\ transfer, landing the call when it ends; reading and dropping park, not wait.
+FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
+   IN reading       TAKE ( poll )
+      none     -           >parked
+      fed      REARM       >reading
+      spoiled  DROP-REPLY  >dropping
+      done     -           >ended
+   IN waiting       TAKE-WAIT
+      fed      REARM       >waiting
+      spoiled  DROP-REPLY  >drop-waiting
+      done     -           >ended
+   IN dropping      DISCARD ( poll )
+      none     -           >parked-dropping
+      fed      REARM-DROP  >dropping
+      spoiled  -           >lost
+      done     -           >ended
+   IN drop-waiting  DISCARD-WAIT
+      fed      REARM-DROP  >drop-waiting
+      spoiled  -           >lost
+      done     -           >ended
+   FINAL parked           PARK
+   FINAL parked-dropping  PARK-DROP
+   FINAL ended            LAND
+   FINAL lost             LOST
+;DEFINE
+
+
+: RECEIVE ( ptr call -- )
+   {: c :}
+   c c MODEL-CALL:RECEIVE @ MATCH receive-rest
+      reading OF construct receive-step waiting ENDOF
+      dropping OF construct receive-step drop-waiting ENDOF
+   ;MATCH RECEIVE-MACHINE ;
+
+: RECEIVE-READY ( ptr call -- )
+   {: c :}
+   c c MODEL-CALL:RECEIVE @ MATCH receive-rest
+      reading OF construct receive-step reading ENDOF
+      dropping OF construct receive-step dropping ENDOF
+   ;MATCH RECEIVE-MACHINE ;
+
+\ Lands a call whose receive threw n before the machine ended; 0: the machine
+\ landed or parked it.
+: LAND-FAULT ( n ptr call -- )
+   {: code:n c :}
+   code 0= if exit then
+   code c KEEP-FAULT
+   c LAND ;
+
 \ Sends a begun call's request, or restores its journal hit: out with the
 \ transfer armed, or landed.
 FSM:DEFINE SEND-MACHINE ( ptr call ) send-step send-event
@@ -3386,6 +3448,26 @@ public
    construct call-kind embed c MODEL-CALL:KIND !
    c BEGIN-SEND ;
 
+\ Takes what a started call's transfer holds without waiting and answers
+\ whether the call landed, as a landed call has; AWAIT ends it.
+: SERVE ( ptr call -- bool )
+   {: c :}
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF E-STATE throw ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF
+         c [: dup RECEIVE-READY ;] catch {: code:n :} drop code c LAND-FAULT
+      ENDOF
+      landed OF ENDOF
+   ;MATCH
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF E-STATE throw ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF false ENDOF
+      landed OF true ENDOF
+   ;MATCH ;
+
 \ Waits for a started call to land, makes it idle and throws its fault, else
 \ keeps its result for CONTENT$ or VECTOR@.
 : AWAIT ( ptr call -- )
@@ -3395,9 +3477,7 @@ public
       idle OF E-STATE throw ENDOF
       prepared OF E-STATE throw ENDOF
       started OF
-         c [: dup RECEIVE ;] catch {: code:n :} drop
-         code c KEEP-FAULT
-         c LAND
+         c [: dup RECEIVE ;] catch {: code:n :} drop code c LAND-FAULT
       ENDOF
       landed OF ENDOF
    ;MATCH
