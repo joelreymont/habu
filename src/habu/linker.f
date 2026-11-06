@@ -12,6 +12,7 @@ require src/lib/memory.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/byte-buffer.f
+require src/lib/le.f
 require src/lib/engine-id.f
 require src/lib/build-out.f
 require src/core/sha256.f
@@ -81,30 +82,57 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ ---- the object ----------------------------------------------------------------
 \ LOADERS stacks the key of each file whose compile is running; LOADS holds a
 \ row per load: the loader's key, zeros for the build's body, then the SHA-256
-\ of the path under its root.
+\ of the path under its root. BUILT holds a row per file whose object is
+\ written: its key, its first and end record index, its object's SHA-256.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
+ROW-BYTES 16 + constant BUILT-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
+create BUILT BUF:HDR-BYTES allot
+create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
+create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create OBJECT BUF:HDR-BYTES allot    \ a key's fields, then an object's bytes
+create LATE BUF:HDR-BYTES allot      \ the file's late private wordlists
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
 KEY-BYTES BUFFER: INPUT-SUM
+KEY-BYTES BUFFER: OBJECT-SUM
 KEY-BYTES 2 * BUFFER: KEY-HEX
 
+\ ndict@, NSHADOW:RECORDS, NSHADOW:EMISSIONS and WIDN-CELL as the running file's
+\ compile starts; RUN-FILE refuses a nested file, whose marks would overwrite them.
+variable FILE-REC
+variable FILE-ROW
+variable FILE-EM
+variable FILE-WID                    \ the first wordlist id the file's compile can mint
+
 \ The magic, the key, and an offset from the file's start and a length for each
-\ of INPUT FILES REQUESTS NAMES PIECES, 0 0 while empty.
+\ of INPUT FILES REQUESTS NAMES PIECES, 0 0 while empty; then the sections in
+\ the order INPUT FILES PIECES. Every number is eight bytes, low byte first.
 8 KEY-BYTES + 5 2 * 8 * + constant HEADER-BYTES
 8 KEY-BYTES + constant INPUT-BYTES   \ the source's size, then its SHA-256
 
+\ A record's kind in PIECES.
+0 constant KIND-DEF
+1 constant KIND-PACKAGE
+2 constant KIND-ALIAS
+3 constant KIND-DOES                 \ a `does>` definer's `;does` record
+4 constant KIND-PRIVATE              \ a package gaining its private wordlist after its record
+
 : DISPOSE-OBJECTS ( -- )
-   OBJECT BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE ;
+   LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  PIECES BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
+   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
    LOADS 256 BUF:N>BLEN BUF:INIT
-   OBJECT 256 BUF:N>BLEN BUF:INIT ;
+   BUILT 256 BUF:N>BLEN BUF:INIT
+   REFS 256 BUF:N>BLEN BUF:INIT
+   PIECES 256 BUF:N>BLEN BUF:INIT
+   OBJECT 256 BUF:N>BLEN BUF:INIT
+   LATE 256 BUF:N>BLEN BUF:INIT ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -172,18 +200,247 @@ KEY-BYTES 2 * BUFFER: KEY-HEX
    top FILE-KEY topu BYTE-COPY
    LOADERS BYTES$ KEY-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
 
+\ ---- the records ---------------------------------------------------------------
+\ No address reaches PIECES: a record names another by file and index in it, an
+\ emission by its number in the file, so a build whose earlier files are larger
+\ writes the same bytes (test/file-objects.f).
+
+: BUILT-N ( -- n ) BUILT BYTES$ {: a:ptr u:n :}  u BUILT-BYTES / ;
+
+: BUILT-AT ( n -- ptr u8 )
+   {: row:n :}
+   BUILT BYTES$ {: a:ptr u:n :}  a row BUILT-BYTES * + ;
+
+: HOLDS? ( n n -- bool )
+   {: idx:n row:n :}
+   row BUILT-AT KEY-BYTES + {: at:ptr :}
+   at LE:U64@ idx <=  at 8 + LE:U64@ idx >  and ;
+
+\ The BUILT row whose [first, end) holds the record index.
+: BUILT-ROW ( n -- n )
+   {: idx:n :}
+   BUILT-N 0 ?do
+      idx i HOLDS? if i unloop exit then
+   loop
+   E-COMP-STATE throw ;
+
+\ The FILES row naming the BUILT row's file, 1-based; added on first use.
+: REF-FILE ( n -- n )
+   {: row:n :}
+   row BUILT-AT {: at:ptr :}
+   REFS BYTES$ {: refs:ptr refsu:n :}
+   refsu ROW-BYTES / {: n:n :}
+   n 0 ?do
+      refs i ROW-BYTES * + KEY-BYTES  at KEY-BYTES  STR= if i 1 + unloop exit then
+   loop
+   at KEY-BYTES REFS SPAN+
+   at KEY-BYTES 16 + + KEY-BYTES REFS SPAN+
+   n 1 + ;
+
+\ A record reference: the file, 0 for this one, then the index in that file.
+: REF+ ( n -- )
+   {: idx:n :}
+   idx FILE-REC @ >= if
+      0 PIECES U64+  idx FILE-REC @ - PIECES U64+  exit
+   then
+   idx BUILT-ROW {: row:n :}
+   row REF-FILE PIECES U64+
+   idx  row BUILT-AT KEY-BYTES + LE:U64@ -  PIECES U64+ ;
+
+: PKG? ( n -- bool ) XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = ;
+
+\ A slot holding 0 holds no wordlist.
+: PKG-HOLDS? ( n n n -- bool )
+   {: idx:n wid:n slot:n :}
+   wid 0= if false exit then
+   idx PKG?  idx XREF-REC slot XREF-CELL@ wid =  and ;
+
+\ A package record of this file whose private wordlist it minted right after its
+\ public one: made with a private section, or given one with nothing minted between.
+: OWN-PRIVATE? ( n -- bool )
+   {: idx:n :}
+   idx FILE-REC @ < if false exit then
+   idx XREF-REC {: rec:ptr :}
+   rec XREF-PKG-PRIVATE {: w:n :}
+   w 0<>  w rec XREF-PKG-PUBLIC 1 + =  and ;
+
+\ The wordlist's role: 0 global, 1 primitives, 2 package names, 3 or 4 a package's
+\ public or private one, then the package: the build's nearest below (ids are unique).
+: WORDLIST+ ( n -- )
+   {: idx:n :}
+   idx XREF-REC XREF-WORDLIST {: wid:n :}
+   wid BOOT:GLOBAL-WL = if 0 PIECES U64+ exit then
+   wid WL:PRIMITIVES = if 1 PIECES U64+ exit then
+   wid BOOT:NAMESPACE-WL = if 2 PIECES U64+ exit then
+   idx FIRST-REC @ ?do
+      idx FIRST-REC @ + 1- i -
+      dup wid XREF-START-SLOT PKG-HOLDS? if 3 PIECES U64+  REF+ unloop exit then
+      dup wid XREF-LEN-SLOT PKG-HOLDS? if 4 PIECES U64+  REF+ unloop exit then
+      drop
+   loop
+   E-COMP-STATE throw ;
+
+variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow rows
+
+: SHADOW-LIVE? ( -- bool ) SHADOW-AT @ NSHADOW:RECORDS < ;
+
+\ The file's shadow row of the record, or -1. Rows are in publication order, so
+\ their record indices rise and the cursor, asked in index order, only advances.
+: SHADOW-ROW ( n -- n )
+   {: idx:n :}
+   begin
+      SHADOW-LIVE? if SHADOW-AT @ NSHADOW:RECORD@ idx < else false then
+   while
+      1 SHADOW-AT +!
+   repeat
+   SHADOW-LIVE? if
+      SHADOW-AT @ NSHADOW:RECORD@ idx = if SHADOW-AT @ exit then
+   then
+   -1 ;
+
+\ An alias's source: the lowest of the build's records before it with its start.
+: ALIAS-SOURCE ( n -- n )
+   {: idx:n :}
+   idx XREF-REC XREF-START {: start:n :}
+   idx FIRST-REC @ ?do
+      i XREF-REC XREF-START start = if i unloop exit then
+   loop
+   E-COMP-STATE throw ;
+
+: KIND ( n n -- n )
+   {: idx:n row:n :}
+   row 0 >= if
+      row NSHADOW:ENTRY@ 0 > if KIND-DOES else KIND-DEF then exit
+   then
+   idx XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = if KIND-PACKAGE exit then
+   KIND-ALIAS ;
+
+\ A definition's or does record's emission, numbered from the file's first.
+: EMISSION+ ( n -- ) NSHADOW:EMISSION@ FILE-EM @ - PIECES U64+ ;
+
+\ The kind, the name, the flags without the name length and EXT, the wordlist
+\ and the entry: an emission, a does record's also its ENTRY@, an alias's
+\ source, 1 for a package with its own private wordlist (OWN-PRIVATE?). A
+\ KIND-PRIVATE entry is the kind and the package's reference (LATE+).
+: RECORD+ ( n -- )
+   {: idx:n :}
+   idx XREF-REC {: rec:ptr :}
+   idx SHADOW-ROW {: row:n :}
+   idx row KIND {: kind:n :}
+   kind PIECES U64+
+   rec XREF-NAME$ PIECES FIELD+
+   rec XREF-FLAGS  DNAME-LEN-MASK DNAME-EXT or invert and  PIECES U64+
+   idx WORDLIST+
+   kind KIND-DEF = if row EMISSION+ exit then
+   kind KIND-DOES = if row EMISSION+  row NSHADOW:ENTRY@ PIECES U64+ exit then
+   kind KIND-PACKAGE = if
+      idx OWN-PRIVATE? if 1 else 0 then PIECES U64+ exit
+   then
+   idx ALIAS-SOURCE REF+ ;
+
+\ The late private wordlists in id order, 16 bytes each: the id, then the package.
+: LATE-N ( -- n ) LATE BYTES$ {: a:ptr u:n :}  u 16 / ;
+
+: LATE-AT ( n -- ptr u8 )
+   {: k:n :}
+   LATE BYTES$ {: a:ptr u:n :}  a k 16 * + ;
+
+: LATE-W ( n -- n ) LATE-AT LE:U64@ ;
+: LATE-P ( n -- n ) LATE-AT 8 + LE:U64@ ;
+
+: LATE! ( n n n -- )
+   {: w:n p:n k:n :}
+   k LATE-AT {: at:ptr :}
+   w at LE:U64!  p at 8 + LE:U64! ;
+
+: LATE-SHIFT ( n -- )
+   {: k:n :}
+   k LATE-W  k LATE-P  k 1 + LATE! ;
+
+\ The id and package into their place by id.
+: LATE-INSERT ( n n -- )
+   {: w:n p:n :}
+   LATE-N {: n:n :}
+   0  n 0 ?do i LATE-W w < if 1 + then loop {: k:n :}
+   w LATE U64+  p LATE U64+
+   n k ?do  n k + 1- i - LATE-SHIFT  loop
+   w p k LATE! ;
+
+\ True for a build's package record whose private wordlist this file's compile
+\ minted (id at least FILE-WID), unless OWN-PRIVATE? holds for it.
+: LATE? ( n -- bool )
+   {: p:n :}
+   p PKG? 0= if false exit then
+   p XREF-REC XREF-PKG-PRIVATE FILE-WID @ >=  p OWN-PRIVATE? 0=  and ;
+
+: LATE-COLLECT ( -- )
+   ndict@ FIRST-REC @ ?do
+      i LATE? if i XREF-REC XREF-PKG-PRIVATE i LATE-INSERT then
+   loop ;
+
+: LATE+ ( n -- ) KIND-PRIVATE PIECES U64+  LATE-P REF+ ;
+
+\ Writes into PIECES each late private wordlist from the kth whose id is below
+\ the mark, and answers the next k.
+: LATE-BELOW ( n n -- n )
+   {: mark:n :}
+   begin
+      dup LATE-N < if dup LATE-W mark < else false then
+   while
+      dup LATE+  1 +
+   repeat ;
+
+: LATE-REST ( n -- ) LATE-N swap ?do i LATE+ loop ;
+
+\ A record's mark: a package record's public id, the first it mints; any other
+\ record's wordlist id plus one, so that wordlist comes before it.
+: RECORD-MARK ( n -- n )
+   XREF-REC {: rec:ptr :}
+   rec XREF-WORDLIST BOOT:NAMESPACE-WL = if rec XREF-PKG-PUBLIC exit then
+   rec XREF-WORDLIST 1 + ;
+
+\ One piece, since a build's file loads no other file: the count of entries,
+\ the records in index order, each late private wordlist (ids ascending) before
+\ the first record whose mark is above its id, then REQUEST, -1 for none. A
+\ linker mints ids in entry order, and a wordlist exists before a word enters it.
+: PIECES! ( -- )
+   PIECES BUF:CLEAR  REFS BUF:CLEAR  LATE BUF:CLEAR
+   FILE-ROW @ SHADOW-AT !
+   LATE-COLLECT
+   1 PIECES U64+
+   ndict@ FILE-REC @ -  LATE-N +  PIECES U64+
+   0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
+   LATE-REST
+   -1 PIECES U64+ ;
+
 \ FILE-KEY's object; INPUT sums the bytes the runner gets (`#!` read as `\ `).
-: WRITE-OBJECT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+: WRITE-OBJECT ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
    SHA-CTX src srcu INPUT-SUM SHA256-IN
+   PIECES!
+   REFS BYTES$ {: refs:ptr refsu:n :}
+   PIECES BYTES$ {: pieces:ptr piecesu:n :}
+   HEADER-BYTES INPUT-BYTES + {: files-at:n :}
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
    FILE-KEY KEY-BYTES OBJECT SPAN+
    HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
-   8 0 ?do 0 OBJECT U64+ loop          \ FILES REQUESTS NAMES PIECES, empty
+   refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
+   4 0 ?do 0 OBJECT U64+ loop          \ REQUESTS NAMES, empty
+   files-at refsu + OBJECT U64+  piecesu OBJECT U64+
    srcu OBJECT U64+
    INPUT-SUM KEY-BYTES OBJECT SPAN+
+   refs refsu OBJECT SPAN+
+   pieces piecesu OBJECT SPAN+
    FILE-KEY KEY-HEX SHA256>HEX
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  OBJECT BYTES$  FS:ATOMIC-WRITE-FILE ;
+
+\ The written file's BUILT row.
+: BUILT+ ( -- )
+   SHA-CTX OBJECT BYTES$ OBJECT-SUM SHA256-IN
+   FILE-KEY KEY-BYTES BUILT SPAN+
+   FILE-REC @ BUILT U64+  ndict@ BUILT U64+
+   OBJECT-SUM KEY-BYTES BUILT SPAN+ ;
 
 \ ---- the open ------------------------------------------------------------------
 \ Installed while IMAGE-BASE-CELL is 0, so its xt! stores reach hb's own cells.
@@ -271,14 +528,21 @@ KEY-BYTES 2 * BUFFER: KEY-HEX
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
 \ The build's file runner: each file a load reaches compiles, and is counted
-\ and its object written once its compile returns; a throw writes none.
+\ and its object, with the records its compile appended, written and added to
+\ BUILT once its compile returns; a throw writes none. A file a file's compile
+\ loads is E-COMP-STATE. WIDN-CELL is read in hb's DATA, where namespace-record
+\ and namespace-private mint ids.
 : RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   LOADER$ nip 0<> if E-COMP-STATE throw then
    path pathu root rootu UNDER-ROOT KEY!
+   ndict@ FILE-REC !  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
+   WIDN-CELL HOST@ FILE-WID !
    PUSH-KEY
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
    1 COMPILED-N +!
-   source sourceu WRITE-OBJECT ;
+   source sourceu WRITE-OBJECT
+   BUILT+ ;
 
 : OBJECTS-IN ( -- )
    INIT-OBJECTS
