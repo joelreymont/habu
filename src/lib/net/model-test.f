@@ -1414,6 +1414,85 @@ variable REFUSED-BASE-U
    CHAT-CODE MODEL:E-STATE = ASSERT ;
 
 
+: START-CODE ( -- n ) 0 [: drop M MODEL:START 0 ;] CODE-OF ;
+: AWAIT-CODE ( -- n ) 0 [: drop M MODEL:AWAIT 0 ;] CODE-OF ;
+: CONTENT-CODE ( -- n ) 0 [: drop M MODEL:CONTENT$ 2drop 0 ;] CODE-OF ;
+: STATE-IS ( n [ n -- n ] -- ) CODE-OF MODEL:E-STATE = ASSERT ;
+
+
+\ START sends the request JOURNAL-INPUT$ finished, else the one built since
+\ PARTS-RESET; CONTENT$ reads only the chat AWAIT last ended.
+: STARTED-CALLS ( -- )
+   CHAT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   AWAIT-CODE MODEL:E-STATE = ASSERT
+   s" valid" PREPARE
+   AWAIT-CODE MODEL:E-STATE = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ {: before:n :}
+   M MODEL:START M MODEL:AWAIT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   s" valid" PREP
+   M MODEL:START M MODEL:AWAIT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 2 + = ASSERT
+   s" one" INPUTS
+   s" two" M MODEL:INPUT+
+   M MODEL:START-EMBED M MODEL:AWAIT
+   0 M MODEL:VECTOR@ $3DCCCCCD $3E4CCCCD $3E99999A VECTOR-IS
+   1 M MODEL:VECTOR@ $3ECCCCCD $3F000000 $3F19999A VECTOR-IS
+   CONTENT-CODE MODEL:E-STATE = ASSERT ;
+
+
+\ A started call refuses the words that send, prepare, set or close it, and
+\ CONTENT$; CANCEL cuts it, so AWAIT throws E-CANCELLED at once.
+: HELD-START ( -- )
+   s" hold" PREP M MODEL:START MODEL-PEER:AWAIT-HOLD
+   START-CODE MODEL:E-STATE = ASSERT
+   0 [: drop M MODEL:START-EMBED 0 ;] STATE-IS
+   CHAT-CODE MODEL:E-STATE = ASSERT
+   EMBED-CODE MODEL:E-STATE = ASSERT
+   0 [: drop M MODEL:JOURNAL-INPUT$ 2drop 0 ;] STATE-IS
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   0 [: drop s" Read source evidence." M MODEL:SYSTEM! 0 ;] STATE-IS
+   0 [: drop M MODEL:CLOSE 0 ;] STATE-IS
+   mono-ns {: t0:n :}
+   M MODEL:CANCEL ASSERT
+   AWAIT-CODE MODEL:E-CANCELLED = ASSERT
+   mono-ns t0 - PROMPT-NS < ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   AWAIT-CODE MODEL:E-STATE = ASSERT ;
+
+
+\ A fault before the transfer lands the call in START, which still returns;
+\ AWAIT throws it.
+: LANDED-START ( -- )
+   SERVICE$ s" missing" M MODEL:API-KEY!
+   MODEL-PEER:CALLS@ {: calls:n :}
+   s" valid" PREP M MODEL:START
+   M MODEL:CANCEL 0= ASSERT
+   START-CODE MODEL:E-STATE = ASSERT
+   AWAIT-CODE MODEL:E-KEY = ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   FIXTURE-KEY ;
+
+
+\ A provider's refusal of a started chat or embed is AWAIT's fault, the code
+\ CHAT or EMBED throws for it, and leaves no content of the chat before it.
+: FAILED-START ( -- )
+   s" too-large" PREP CHAT-CODE {: c:n :}
+   c MODEL:E-CAPACITY = ASSERT
+   CHAT
+   s" too-large" PREP M MODEL:START
+   AWAIT-CODE c = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   CHAT
+   s" too-large" INPUTS M MODEL:START-EMBED
+   AWAIT-CODE MODEL:E-CAPACITY = ASSERT
+   CONTENT-CODE MODEL:E-STATE = ASSERT ;
+
+
 \ A malformed embeddings reply fails the call and leaves no vectors.
 : EMBED-ERROR ( ptr u8 n -- )
    INPUTS
@@ -1920,6 +1999,14 @@ variable KEYLESS-U
    0 REJECTED-ROW !
    M MODEL:REJECTED
    REJECTED-ROW @ id = ASSERT
+   \ START lands a journal hit at once: no request, no row, the live call's id.
+   PURPOSE JOURNAL-TEXT JOURNAL-U PREP M MODEL:START
+   M MODEL:CANCEL 0= ASSERT
+   M MODEL:AWAIT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ rows = ASSERT
+   M MODEL:CONTENT$ TRUE-CONTENT$ STR= ASSERT
+   M MODEL:CALL-ID id = ASSERT
    \ A refusal its live call journaled replays with no request and no line.
    false JOURNAL-READY !
    PURPOSE s" too-large" MODEL:E-CAPACITY FAILS
@@ -2230,6 +2317,7 @@ variable ASKED-U
    M MODEL:CLOSE
    SETUP
    CHAT EMBEDDINGS PREPARED-CHAT
+   [: STARTED-CALLS HELD-START LANDED-START ;] QUIET FAILED-START
    STOP-ACTIVE
    M MODEL:CLOSE
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL

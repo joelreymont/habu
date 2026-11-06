@@ -27,12 +27,13 @@ require src/lib/task.f
 require src/lib/time.f
 
 \ One exclusive call context per worker. Results borrow its arena until the
-\ next CHAT/EMBED or CLOSE. CANCEL and REQUEST-STOP may run concurrently
-\ with a call. Generation and embedding are each configured explicitly, with
-\ no implicit model or fallback. The caller starts Habu's AIO and CURL loops
-\ before HTTP calls and keeps model work outside PostgreSQL transactions. No
-\ API key reaches a request body, response, error, log line or producer record:
-\ a key is read only into the HTTP header, which is wiped once libcurl copies it.
+\ next CHAT, START, EMBED, START-EMBED, REPLAY or CLOSE. CANCEL and
+\ REQUEST-STOP may run concurrently with a call. Generation and embedding are
+\ each configured explicitly, with no implicit model or fallback. The caller
+\ starts Habu's AIO and CURL loops before HTTP calls and keeps model work
+\ outside PostgreSQL transactions. No API key reaches a request body,
+\ response, error, log line or producer record: a key is read only into the
+\ HTTP header, which is wiped once libcurl copies it.
 \ A caller that looks its journal up itself, such as on another task, finishes
 \ the request with JOURNAL-INPUT$, looks that input up, then sends the request
 \ with CHAT or restores the saved record with REPLAY.
@@ -54,10 +55,15 @@ package MODEL
 private
 -9700 constant E-FIRST
 -9799 constant E-LAST
-\ prepared: JOURNAL-INPUT$ finished the chat request. A busy call is started,
-\ not yet ended, or landed: ended, with CHAT, EMBED or REPLAY not yet done.
+\ idle; prepared: JOURNAL-INPUT$ finished the chat request; started: START or
+\ START-EMBED began it; landed: ended, not yet awaited. Busy: started or landed.
 ENUM call-state idle prepared started landed ;ENUM
 ENUM call-kind chat embed ;ENUM
+\ What the last awaited call left for CONTENT$ or VECTOR@.
+ENUM call-result none content vectors ;ENUM
+\ How AWAIT resumes a started call's transfer: reading feeds each chunk;
+\ dropping discards them until it ends.
+ENUM receive-rest reading dropping ;ENUM
 \ A call's chat input: none, building (PARTS-RESET started it, every write
 \ done), broken (a write did not complete) or finished (PART-FINISH closed it).
 ENUM input-state none building broken finished ;ENUM
@@ -86,7 +92,7 @@ public
 \ CANCEL ended the call, or REQUEST-STOP came before or during it.
 -9709 constant E-CANCELLED
 \ A word out of turn: a busy or unopened call, a part or item outside building,
-\ or VECTOR@ before EMBED.
+\ AWAIT on an unstarted call, VECTOR@ with no vectors, CONTENT$ with no content.
 -9710 constant E-STATE
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
 \ response's error code rate_limit_exceeded or server_error.
@@ -127,13 +133,14 @@ STRUCTURE call DERIVE addr
    FIELD input-count n
    FIELD input-u n
    FIELD vector-at n
-   FIELD embedded bool
+   FIELD result call-result
    FIELD parts-count n
    FIELD chat-input input-state
    FIELD content-seen bool
    FIELD parsed-index n
    FIELD vector-seen bool
    FIELD kind call-kind
+   FIELD receive receive-rest
    FIELD component-count n
    FIELD data-count n
    FIELD http-status n
@@ -678,7 +685,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    0 c MODEL-CALL:INCOMPLETE-U !
    0 c MODEL-CALL:PARTS-COUNT !
    construct input-state none c MODEL-CALL:CHAT-INPUT !
-   false c MODEL-CALL:EMBEDDED !
+   construct call-result none c MODEL-CALL:RESULT !
    false c MODEL-CALL:JOURNAL-READY !
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    0 c PICK-CELL !
@@ -796,9 +803,8 @@ public
    reject l LEDGER-REJECT !
    true l LEDGER-READY ! ;
 
-\ What the next CHAT or EMBED is for: nonblank.
-\ Every CHAT and EMBED consumes it; with a recorder installed, one without a
-\ purpose is E-STATE.
+\ What the next CHAT, START, EMBED, START-EMBED or REPLAY is for: nonblank.
+\ Each consumes it; with a recorder installed, one without a purpose is E-STATE.
 : PURPOSE? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    u 0= if false exit then
@@ -1319,13 +1325,8 @@ private
    {: c :}
    c WRITER JSON:WRITE-CLOSE ;
 
-\ finished: the request was finished before the call.
-: CHAT-BODY ( bool ptr call -- )
-   {: finished:bool c :}
-   finished 0= if
-      c CHECK-CHAT
-      c PART-FINISH
-   then
+: CHAT-BODY ( ptr call -- )
+   {: c :}
    c BODY-OPEN
    c WRITER
    JSON:WRITE-OBJECT-START
@@ -1390,7 +1391,6 @@ private
 
 : EMBED-BODY ( ptr call -- )
    {: c :}
-   c MODEL-CALL:JOURNAL-READY @ 0= if c CHECK-EMBED then
    c BODY-OPEN
    c WRITER
    JSON:WRITE-OBJECT-START
@@ -1415,6 +1415,15 @@ private
    JSON:WRITE-OBJECT-END drop
    c BODY-DONE ;
 
+\ A change to the inputs drops the vectors they gave; a chat's content stays.
+: DROP-VECTORS ( ptr call -- )
+   {: c :}
+   c MODEL-CALL:RESULT @ MATCH call-result
+      none OF ENDOF
+      content OF ENDOF
+      vectors OF construct call-result none c MODEL-CALL:RESULT ! ENDOF
+   ;MATCH ;
+
 public
 
 : INPUT-RESET ( ptr call -- )
@@ -1424,7 +1433,7 @@ public
    c INPUT-BUF BUF:CLEAR
    0 c MODEL-CALL:INPUT-U !
    0 c MODEL-CALL:INPUT-COUNT !
-   false c MODEL-CALL:EMBEDDED ! ;
+   c DROP-VECTORS ;
 
 : INPUT+ ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
@@ -1436,7 +1445,7 @@ public
    a u BUF:N>BLEN c INPUT-BUF BUF:APPEND-SPAN
    c MODEL-CALL:INPUT-U @ u + c MODEL-CALL:INPUT-U !
    c MODEL-CALL:INPUT-COUNT @ 1+ c MODEL-CALL:INPUT-COUNT !
-   false c MODEL-CALL:EMBEDDED ! ;
+   c DROP-VECTORS ;
 
 private
 
@@ -1783,24 +1792,6 @@ private
    h url url-u CURL:URL! c CHECK-STATUS
    h s" POST" CURL:METHOD! c CHECK-STATUS
    h body body-u CURL:BODY! c CHECK-STATUS ;
-
-\ The headers, the key read once and wiped once libcurl copies it, and the
-\ stall test hold for every exchange the body runs on the call's handle.
-: EXCHANGES ( ptr call [ ptr call -- ptr call ] -- ptr call [ ptr call -- ptr call ] )
-   {: c body :}
-   c CALL-HANDLE {: h:CURL:handle :}
-   h c SET-HEADERS
-   h 1 STALL-SECONDS CURL:LOW-SPEED! c CHECK-STATUS
-   c body execute drop
-   c body ;
-
-\ Runs the body's exchanges on one fresh handle; the land machine cleans it up.
-: SEND ( ptr call [ ptr call -- ptr call ] -- )
-   {: c body :}
-   0 c MODEL-CALL:RESPONSE-U !
-   0 c MODEL-CALL:HTTP-STATUS !
-   c OPEN-HANDLE OPTION:SOME c MODEL-CALL:HANDLE !
-   c body EXCHANGES 2drop ;
 
 : EXPECT ( JSON:reader n -- JSON:reader )
    {: want:n :}
@@ -2328,7 +2319,7 @@ private
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:INCOMPLETE-U !
-   false c MODEL-CALL:EMBEDDED !
+   construct call-result none c MODEL-CALL:RESULT !
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
    c RESET-USAGE
    c ;
@@ -2340,6 +2331,14 @@ private
    c [: BEGIN-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> if code throw then ;
+
+\ A stopped call is E-CANCELLED before its request is checked.
+: REQUIRE-GOING ( ptr call -- )
+   {: c :}
+   c MODEL-CALL:GATE @ TASK:WAIT-SEM
+   c MODEL-CALL:STOPPED @ {: stopped:bool :}
+   c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
+   stopped if E-CANCELLED throw then ;
 
 : END-CALL ( ptr call -- bool )
    {: c :}
@@ -2504,7 +2503,7 @@ private
    code throw ;
 
 
-ENUM receive-step arming waiting drop-waiting ended lost ;ENUM
+ENUM receive-step waiting drop-waiting ended lost ;ENUM
 ENUM answer fed spoiled done ;ENUM
 
 \ Records how the transfer ended.
@@ -2629,13 +2628,20 @@ ENUM answer fed spoiled done ;ENUM
 : LOST ( ptr call -- ) drop E-STATE throw ;
 
 
+\ Arms a started transfer's first read and keeps how RECEIVE resumes it: a
+\ reply the call cannot hold is dropped and drained.
+: ARM ( ptr call -- )
+   {: c :}
+   c CLEAR-REPLY MATCH answer
+      fed OF c REARM construct receive-rest reading ENDOF
+      spoiled OF c DROP-REPLY construct receive-rest dropping ENDOF
+      done OF E-STATE throw ENDOF
+   ;MATCH c MODEL-CALL:RECEIVE ! ;
+
+
 \ Receives the reply into the response buffer, or gives up a reply it cannot
 \ keep and drains its transfer, until the transfer ends; the receipt says how.
 FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
-   IN arming        CLEAR-REPLY
-      fed      REARM       >waiting
-      spoiled  DROP-REPLY  >drop-waiting
-      done     -           >lost
    IN waiting       TAKE-WAIT
       fed      REARM       >waiting
       spoiled  DROP-REPLY  >drop-waiting
@@ -2649,7 +2655,12 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
 ;DEFINE
 
 
-: RECEIVE ( ptr call -- ) construct receive-step arming RECEIVE-MACHINE ;
+: RECEIVE ( ptr call -- )
+   {: c :}
+   c c MODEL-CALL:RECEIVE @ MATCH receive-rest
+      reading OF construct receive-step waiting ENDOF
+      dropping OF construct receive-step drop-waiting ENDOF
+   ;MATCH RECEIVE-MACHINE ;
 
 
 \ Ending before the response with no event means no event stream: E-RESPONSE.
@@ -2663,28 +2674,6 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    s STREAM-FAULT @ 0<> if s STREAM-FAULT @ throw then
    c ;
 
-\ Posts the request on a fresh decoder and receives its event stream.
-: FOLLOW ( ptr call -- ptr call )
-   {: c :}
-   c REQUEST-URL$ c BODY$ c AS-POST
-   c DECODER-STORAGE SSE:OPEN OPTION:SOME c STREAM STREAM-DECODER !
-   c START-TRANSFER
-   c RECEIVE
-   c ;
-
-: POST-REQUEST ( ptr call -- ptr call )
-   {: c :}
-   c REQUEST-URL$ c BODY$ c AS-POST
-   c START-TRANSFER
-   c RECEIVE
-   c ;
-
-: RUN-CHAT ( bool ptr call -- ptr call )
-   {: finished:bool c :}
-   finished c CHAT-BODY
-   c [: FOLLOW ;] SEND
-   c ;
-
 \ Reads a chat reply's usage, service tier and content.
 : CHAT-PARSE ( ptr call -- ptr call )
    {: c :}
@@ -2693,12 +2682,6 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    c PARSE-CHAT
    c TOKENS TOKENS-INPUT @ OR-ZERO c MODEL-CALL:INPUT-TOKENS !
    c TOKENS TOKENS-CACHED @ OR-ZERO c MODEL-CALL:CACHED-TOKENS !
-   c ;
-
-: RUN-EMBED ( ptr call -- ptr call )
-   {: c :}
-   c EMBED-BODY
-   c [: POST-REQUEST ;] SEND
    c ;
 
 \ Reads an embed reply's vectors and usage.
@@ -2810,7 +2793,6 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
       embed OF
          c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
          c PARSE-EMBED 2drop drop
-         true c MODEL-CALL:EMBEDDED !
       ENDOF
    ;MATCH
    c JOURNAL-CALL-ID c LEDGER LEDGER-CALL-ID !
@@ -3046,16 +3028,6 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    c CHECK-EMBED
    c JOURNAL-EMBED-INPUT ;
 
-: RUN-CHAT-SELECT ( ptr call bool bool -- ptr call bool bool )
-   {: c finished:bool hit:bool :}
-   hit if c JOURNAL-RESTORE else finished c RUN-CHAT drop then
-   c finished hit ;
-
-: RUN-EMBED-SELECT ( ptr call bool -- ptr call bool )
-   {: c hit:bool :}
-   hit if c JOURNAL-RESTORE else c RUN-EMBED drop then
-   c hit ;
-
 : CANCEL-LOCKED ( ptr call -- ptr call )
    {: c :}
    c MODEL-CALL:STATE @ MATCH call-state
@@ -3263,8 +3235,94 @@ FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
 ;DEFINE
 
 
-\ CHAT and REPLAY have used a finished input; one the call refused before
-\ finishing it is kept.
+ENUM send-step looking sending out ended lost ;ENUM
+ENUM send-event missed replayed armed faulted ;ENUM
+
+\ Restores the journal record in JOURNAL-OUT-BUF as the call's reply.
+: RESTORE ( ptr call -- )
+   {: c :}
+   true c RECEIPT RECEIPT-REPLAYED !
+   c [: dup JOURNAL-RESTORE ;] catch {: code:n :} drop
+   code c KEEP-FAULT ;
+
+: LOOK-UP ( ptr call -- send-event )
+   {: c :}
+   c MODEL-CALL:JOURNAL-READY @ 0= if construct send-event missed exit then
+   false c [: >r drop r@ JOURNAL-GET? r> ;] catch {: code:n :} drop
+   code 0<> if drop code c KEEP-FAULT construct send-event faulted exit then
+   if c RESTORE construct send-event replayed exit then
+   construct send-event missed ;
+
+\ Sends the request on a fresh handle the land machine cleans up; the key is
+\ read once and wiped once libcurl copies it.
+: POST ( ptr call -- ptr call )
+   {: c :}
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c CHAT-BODY ENDOF
+      embed OF c EMBED-BODY ENDOF
+   ;MATCH
+   0 c MODEL-CALL:RESPONSE-U !
+   0 c MODEL-CALL:HTTP-STATUS !
+   c OPEN-HANDLE OPTION:SOME c MODEL-CALL:HANDLE !
+   c CALL-HANDLE {: h:CURL:handle :}
+   h c SET-HEADERS
+   h 1 STALL-SECONDS CURL:LOW-SPEED! c CHECK-STATUS
+   c REQUEST-URL$ c BODY$ c AS-POST
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF
+         c DECODER-STORAGE SSE:OPEN OPTION:SOME c STREAM STREAM-DECODER !
+      ENDOF
+      embed OF ENDOF
+   ;MATCH
+   c START-TRANSFER
+   c ARM
+   c ;
+
+: DISPATCH ( ptr call -- send-event )
+   {: c :}
+   c [: POST ;] catch {: code:n :} drop
+   code 0= if construct send-event armed exit then
+   code c KEEP-FAULT
+   construct send-event faulted ;
+
+\ Runs the land machine, keeping a fault it throws as the call's outcome with
+\ the call landed.
+: LAND ( ptr call -- )
+   {: c :}
+   c [: dup construct land-step settling LAND-MACHINE ;] catch {: rc:n :} drop
+   rc 0<> if
+      c END-CALL drop
+      rc c RECEIPT RECEIPT-OUTCOME !
+   then ;
+
+\ Sends a begun call's request, or restores its journal hit: out with the
+\ transfer armed, or landed.
+FSM:DEFINE SEND-MACHINE ( ptr call ) send-step send-event
+   IN looking  LOOK-UP
+      missed    -  >sending
+      replayed  -  >ended
+      armed     -  >lost
+      faulted   -  >ended
+   IN sending  DISPATCH
+      missed    -  >lost
+      replayed  -  >lost
+      armed     -  >out
+      faulted   -  >ended
+   FINAL out    -
+   FINAL ended  LAND
+   FINAL lost   LOST
+;DEFINE
+
+: BEGIN-SEND ( ptr call -- )
+   {: c :}
+   c BEGIN-CALL
+   false c RECEIPT RECEIPT-REPLAYED !
+   0 c RECEIPT RECEIPT-OUTCOME !
+   c construct send-step looking SEND-MACHINE ;
+
+
+\ AWAIT has used a finished input; one the call refused before finishing it is
+\ kept.
 : USED ( ptr call -- )
    {: c :}
    c MODEL-CALL:CHAT-INPUT @ MATCH input-state
@@ -3273,26 +3331,6 @@ FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
       broken OF ENDOF
       finished OF construct input-state none c MODEL-CALL:CHAT-INPUT ! ENDOF
    ;MATCH ;
-
-\ Sends the request, finishing it unless it was finished, or on a hit restores
-\ the journal record in JOURNAL-OUT-BUF, and answers the reply's content.
-: CALL-CHAT ( bool bool ptr call -- ptr u8 n )
-   {: finished:bool hit:bool c :}
-   0 c MODEL-CALL:INPUT-TOKENS !
-   0 c MODEL-CALL:CACHED-TOKENS !
-   construct call-kind chat c MODEL-CALL:KIND !
-   c BEGIN-CALL
-   hit c RECEIPT RECEIPT-REPLAYED !
-   0 c RECEIPT RECEIPT-OUTCOME !
-   c finished hit [: RUN-CHAT-SELECT ;] catch {: code:n :} 2drop drop
-   code c KEEP-FAULT
-   c [: dup construct land-step settling LAND-MACHINE ;] catch {: rc:n :} drop
-   c IDLE!
-   c USED
-   rc 0<> if rc throw then
-   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
-   fault 0<> if fault throw then
-   c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
 
 public
 
@@ -3316,16 +3354,93 @@ public
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    code 0<> code CURL:E-STATE <> and if code throw then ;
 
+\ Sends the chat request JOURNAL-INPUT$ finished, else the one built since
+\ PARTS-RESET; a fault before the call begins is thrown, a later one AWAIT's.
+: START ( ptr call -- )
+   {: c :}
+   c UNPREPARE {: ready:bool :}
+   construct call-result none c MODEL-CALL:RESULT !
+   c START-LEDGER
+   c REQUIRE-GOING
+   ready 0= if
+      c MODEL-CALL:JOURNAL-READY @ if
+         c PREP-JOURNAL-CHAT
+      else
+         c CHECK-CHAT
+         c PART-FINISH
+      then
+   then
+   0 c MODEL-CALL:INPUT-TOKENS !
+   0 c MODEL-CALL:CACHED-TOKENS !
+   construct call-kind chat c MODEL-CALL:KIND !
+   c BEGIN-SEND ;
+
+\ Sends the embed request as START sends a chat's.
+: START-EMBED ( ptr call -- )
+   {: c :}
+   c UNPREPARE drop
+   construct call-result none c MODEL-CALL:RESULT !
+   c START-LEDGER
+   c REQUIRE-GOING
+   c MODEL-CALL:JOURNAL-READY @ if c PREP-JOURNAL-EMBED else c CHECK-EMBED then
+   construct call-kind embed c MODEL-CALL:KIND !
+   c BEGIN-SEND ;
+
+\ Waits for a started call to land, makes it idle and throws its fault, else
+\ keeps its result for CONTENT$ or VECTOR@.
+: AWAIT ( ptr call -- )
+   {: c :}
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF E-STATE throw ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF
+         c [: dup RECEIVE ;] catch {: code:n :} drop
+         code c KEEP-FAULT
+         c LAND
+      ENDOF
+      landed OF ENDOF
+   ;MATCH
+   c IDLE!
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c USED ENDOF
+      embed OF ENDOF
+   ;MATCH
+   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
+   fault 0<> if fault throw then
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF construct call-result content ENDOF
+      embed OF construct call-result vectors ENDOF
+   ;MATCH c MODEL-CALL:RESULT ! ;
+
+\ The content of the chat AWAIT last ended, read on an idle call and borrowed
+\ until the next CHAT, START, EMBED, START-EMBED, REPLAY or CLOSE.
+: CONTENT$ ( ptr call -- ptr u8 n )
+   {: c :}
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF E-STATE throw ENDOF
+   ;MATCH
+   c MODEL-CALL:RESULT @ MATCH call-result
+      none OF E-STATE throw ENDOF
+      content OF ENDOF
+      vectors OF E-STATE throw ENDOF
+   ;MATCH
+   c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
+
 \ Finishes the chat request built since PARTS-RESET as CHAT does before its
 \ journal lookup and answers the journal input a journal's get and put receive
-\ for it, valid until the next JOURNAL-INPUT$, CHAT, EMBED or CLOSE. The
-\ pending purpose selects the model and effort as at CHAT, so PURPOSE! comes
-\ first. A second call answers the same input. The next CHAT sends that
-\ request, or REPLAY restores a saved reply for it. A call that changes the chat
-\ request (PARTS-RESET, TEXT+, IMAGE+, ITEM+, PURPOSE!, PURPOSE-MODEL! and the
-\ generation model, base URL, system, schema, effort, service tier and cache
-\ key setters) or EMBED first discards it, and the request is built again from
-\ PARTS-RESET.
+\ for it, valid until the next JOURNAL-INPUT$, CHAT, START, EMBED, START-EMBED
+\ or CLOSE. The pending purpose selects the model and effort as at CHAT, so
+\ PURPOSE! comes first. A second call answers the same input. The next CHAT or
+\ START sends that request, or REPLAY restores a saved reply for it. A call
+\ that changes the chat request (PARTS-RESET, TEXT+, IMAGE+, ITEM+, PURPOSE!,
+\ PURPOSE-MODEL! and the generation model, base URL, system, schema, effort,
+\ service tier and cache key setters) or EMBED or START-EMBED first discards
+\ it, and the request is built again from PARTS-RESET.
 : JOURNAL-INPUT$ ( ptr call -- ptr u8 n )
    {: c :}
    c REQUIRE-OPEN
@@ -3342,16 +3457,12 @@ public
    c JOURNAL-INPUT-SPAN$ ;
 
 \ A journal hit replays the recorded reply; otherwise one streaming request is
-\ read event by event until the response ends. It sends the request
-\ JOURNAL-INPUT$ finished, else finishes the one built since PARTS-RESET.
+\ read event by event until the response ends. START, AWAIT and CONTENT$.
 : CHAT ( ptr call -- ptr u8 n )
    {: c :}
-   c UNPREPARE {: ready:bool :}
-   c START-LEDGER
-   c MODEL-CALL:JOURNAL-READY @ {: journal:bool :}
-   journal ready 0= and if c PREP-JOURNAL-CHAT then
-   journal if c JOURNAL-GET? else false then {: hit:bool :}
-   ready journal or hit c CALL-CHAT ;
+   c START
+   c AWAIT
+   c CONTENT$ ;
 
 \ Restores, for the request JOURNAL-INPUT$ finished, a record a journal's put
 \ received for a chat call, as a journal hit does: its configuration, response,
@@ -3362,37 +3473,36 @@ public
 : REPLAY ( ptr u8 n ptr call -- ptr u8 n )
    {: a:ptr u:n c :}
    c UNPREPARE 0= if E-STATE throw then
+   construct call-result none c MODEL-CALL:RESULT !
    c START-LEDGER
+   c REQUIRE-GOING
    c JOURNAL-OUT-BUF c RESET-SCRATCH
    a u BUF:N>BLEN c JOURNAL-OUT-BUF BUF:REPLACE
-   true true c CALL-CHAT ;
+   0 c MODEL-CALL:INPUT-TOKENS !
+   0 c MODEL-CALL:CACHED-TOKENS !
+   construct call-kind chat c MODEL-CALL:KIND !
+   c BEGIN-CALL
+   0 c RECEIPT RECEIPT-OUTCOME !
+   c RESTORE
+   c LAND
+   c AWAIT
+   c CONTENT$ ;
 
+\ START-EMBED and AWAIT.
 : EMBED ( ptr call -- )
    {: c :}
-   c UNPREPARE drop
-   c START-LEDGER
-   c MODEL-CALL:JOURNAL-READY @ if
-      c PREP-JOURNAL-EMBED
-      c JOURNAL-GET?
-   else false then {: hit:bool :}
-   construct call-kind embed c MODEL-CALL:KIND !
-   c BEGIN-CALL
-   hit c RECEIPT RECEIPT-REPLAYED !
-   0 c RECEIPT RECEIPT-OUTCOME !
-   c hit [: RUN-EMBED-SELECT ;] catch {: code:n :} 2drop
-   code c KEEP-FAULT
-   c [: dup construct land-step settling LAND-MACHINE ;] catch {: rc:n :} drop
-   c IDLE!
-   rc 0<> if rc throw then
-   c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
-   fault 0<> if fault throw then
-   true c MODEL-CALL:EMBEDDED ! ;
+   c START-EMBED
+   c AWAIT ;
 
-\ Input idx's vector: DIMS IEEE-754 binary32 values of 4 little-endian bytes
-\ each, borrowed until the next CHAT, EMBED or CLOSE.
+\ Input idx's vector: DIMS little-endian IEEE-754 binary32 values, borrowed
+\ until the next CHAT, START, EMBED, START-EMBED, REPLAY or CLOSE.
 : VECTOR@ ( n ptr call -- ptr u8 n )
    {: idx:n c :}
-   c MODEL-CALL:EMBEDDED @ 0= if E-STATE throw then
+   c MODEL-CALL:RESULT @ MATCH call-result
+      none OF E-STATE throw ENDOF
+      content OF E-STATE throw ENDOF
+      vectors OF ENDOF
+   ;MATCH
    idx 0 < idx c MODEL-CALL:INPUT-COUNT @ >= or if E-CONFIG throw then
    c VECTORS-BUF BUF:SPAN c idx VECTOR-OFF @ c idx VECTOR-LEN @ SPAN:SUB SPAN:$ ;
 

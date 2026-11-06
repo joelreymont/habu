@@ -459,6 +459,17 @@ learned live in the docs for their subject.
   TAKE as listed; NEXT and its tests unchanged." CURL:NEXT-ARM ( handle ptr
   u8 len -- ), NEXT-READY? ( handle -- bool ) and NEXT-TAKE ( handle --
   chunk-result ).
+- 2026-11-06, a model call started and awaited (relayed by phil from
+  Zen): shown Zen's worker keeping a thread per model call, for
+  MODEL:START, START-EMBED, SERVE, AWAIT and CONTENT$ Joel chose
+  "Approve all five (Recommended)": "Names and shapes as listed; CHAT and
+  EMBED behave as today." START ( ptr call -- ) and START-EMBED ( ptr
+  call -- ) throw only before the call begins; a journal hit or a fault
+  before the transfer lands it at once (phil's ruling), and AWAIT ( ptr
+  call -- ) throws its fault. CONTENT$ ( ptr call -- ptr u8 n ) answers
+  the chat's content. CHAT is START, AWAIT and CONTENT$; EMBED is
+  START-EMBED and AWAIT. SERVE comes with serving many calls on one
+  task.
 - 2026-11-06, embeddings as binary numbers (relayed by phil from Zen):
   shown each OpenAI reply as 22.9 MB of decimal numbers read a character
   at a time, then sent to PostgreSQL as text and parsed again, for the
