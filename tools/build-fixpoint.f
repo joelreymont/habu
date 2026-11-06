@@ -93,7 +93,7 @@ require tools/build-support.f            \ shared path, child env and source scr
 require src/lib/content-key.f                \ the chain fold
 require tools/event-closure-lib.f        \ the chain fold
 require src/lib/tree-copy.f                  \ the candidate's copied boot tree
-require tools/build-out.f                \ BASE$: the out root the refresh stamp lives under
+require src/lib/build-out.f              \ BASE$: the out root the refresh stamp lives under
 
 package BUILD-FIXPOINT
 

@@ -865,7 +865,7 @@ private
 public
 \ The walk visits regular files only, depth-first, in the order the directory
 \ stream returns (a caller that needs lexical order sorts), skips SKIP-DIR?'s
-\ directories (.out holds tools/build-out.f's outputs) and closes every
+\ directories (.out holds src/lib/build-out.f's outputs) and closes every
 \ descriptor it opened however it ends. A callback's path is valid only during
 \ the callback. Two walks in flight cover disjoint trees: getdirentries64 on a
 \ directory removed meanwhile answers -1 and the walk reports E-FS-DIR.

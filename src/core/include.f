@@ -1371,13 +1371,8 @@ variable SCRIPT-NAMED-PEND
 : INCLUDE-EVALERR? ( -- bool )
    data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
 
-\ Evaluate generated source: core declarations (TYPE-DECL:TDECL-EVAL-XT) and
-\ library code that generates source. Each runs as a closed
-\ program: its floor is the loader's depth, whatever it leaves is refused
-\ E-EVAL-RESIDUE by the engine, and a failure rolls back the require rows it
-\ added. Loaded files do not cross it: they run inside LOAD-UNIT's
-\ source-unit-run, where CALL-UNIT names a residue's cell count and file and
-\ the engine's check is the backstop.
+\ Generated source (TYPE-DECL:TDECL-EVAL-XT) runs as a closed program, refused
+\ E-EVAL-RESIDUE for what it leaves; files run in LOAD-UNIT (RESIDUE-CHECK).
 : INCLUDE-EVALUATE ( ptr u8 n -- )
    REQUIRE-REG:MARK {: mark:n epoch:n :}
    [: 2dup evaluate-closed ;] catch {: rc:n :}
@@ -1414,6 +1409,8 @@ public
 variable GEN
 : LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    1 GEN +! LOAD-XT @ execute ;
+\ A runner calls the file's quotation as `0 sourceu q execute` with nothing of
+\ its own beneath it; the quotation throws for a refused file.
 : USE ( [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] -- ) LOAD-XT ! ;
 : CURRENT ( -- [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ] ) LOAD-XT @ ;
 : RESET ( -- ) [: ORDINARY ;] LOAD-XT ! ;
@@ -1949,10 +1946,8 @@ create RESIDUE-DIGIT 1 allot
    dup 10 >= if dup 10 / recurse then
    10 mod 48 + RESIDUE-DIGIT c!  2 RESIDUE-DIGIT 1 write drop ;
 
-\ The file left N cells: name the count and the file, then refuse it as the
-\ engine would. A nested file's refusal leaves SOURCE-UNIT:LOAD by its throw
-\ before the file that required it reaches this check, so only the innermost
-\ file is named.
+\ A nested file's refusal throws out of its loader's run before the loader
+\ reaches its own check, so only the innermost file is named.
 : RESIDUE-REFUSE ( n -- )
    2 s" E-EVAL-RESIDUE: stack depth " write drop
    RESIDUE-DEC
@@ -1961,6 +1956,12 @@ create RESIDUE-DIGIT 1 allot
    2 frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @ write drop
    2 POLICY-LF 1 write drop
    STACK-ABI:E-EVAL-RESIDUE throw ;
+
+\ Run at the end of the unit, where depth is what the file left
+\ (SOURCE-UNIT:USE).
+: RESIDUE-CHECK ( -- )
+   depth {: n:n :}
+   n 0 > if n RESIDUE-REFUSE then ;
 
 CAST: CLOSE-ACTION ( n -- [ -- ] )
 
@@ -1978,18 +1979,14 @@ CAST: CLOSE-ACTION ( n -- [ -- ] )
    close 0= if exit then
    close CLOSE-ACTION execute ;
 
-\ The unit runs inside LOAD-UNIT's source-unit-run, on a stack of its own:
-\ whatever depth reads after the load is what the file left. A created body
-\ the file's source left pending closes at its end, inside the file's unit, so
-\ a native build records its grid in the file's object.
+\ A pending created body closes and the residue check runs inside the file's
+\ unit, so a runner's call returns only for an accepted file.
 : CALL-UNIT ( -- )
    TOP@ {: frame:ptr :}
    frame FR-PATH + frame FR-PATHLEN + CELL-VIEW @
    frame FR-ROOT + frame FR-ROOTLEN + CELL-VIEW @
-   EXEC-SOURCE frame FR-SIZE + CELL-VIEW @ [: RUN-RANGE BODY-CLOSE ;]
-      SOURCE-UNIT:LOAD
-   depth {: n:n :}
-   n 0 > if n RESIDUE-REFUSE then ;
+   EXEC-SOURCE frame FR-SIZE + CELL-VIEW @
+   [: RUN-RANGE BODY-CLOSE RESIDUE-CHECK ;] SOURCE-UNIT:LOAD ;
 
 \ A loaded file's DATA starts and ends on a cell, so its bytes are a function
 \ of its own source and a stored object installs whatever earlier files

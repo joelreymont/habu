@@ -3,7 +3,8 @@
 \ required CHECK-VERIFY-SAVE:TICK! 0 SCRIPT-ARGV$ CHECK-VERIFY-SAVE:SAVE
 \ It loads the verifier and tools/check-verify-child-lib.f rooted at its own tree, as
 \ tools/check-verify-child.f does. The image runs as `IMAGE -- SUBJECT ...`; ENTER
-\ finds the root the source child finds, never its executable's (tools/build-out.f).
+\ finds the root the source child finds, never its executable's
+\ (src/lib/build-out.f).
 
 package CHECK-VERIFY-SAVE
 

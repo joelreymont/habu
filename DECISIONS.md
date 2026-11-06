@@ -852,7 +852,9 @@ learned live in the docs for their subject.
   cache any change of hb rebuilds, so a later layout change costs one cold
   build; keeping every version helps only a return to an old edit and needs
   a cleaner; raw memory would rebuild every later file after an edit, not
-  just its dependents.
+  just its dependents. The lead later left the load kind out of the key, as
+  the linker's runner does not see it, and put in its place the count of
+  that loader's earlier loads of the same path.
 - 2026-11-03, x86-64 builds: asked whether to remove two of SOURCE-EXEC's
   words while a lane gave the x86-64 kernel the observer the build cache
   watches a file's re-run through, Joel asked "what is source-exec and why do

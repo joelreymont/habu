@@ -5,7 +5,7 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/content-key.f
 require tools/build-support.f
-require tools/build-out.f
+require src/lib/build-out.f
 require tools/keyed-image.f
 
 package AOT-BUILDER-IMAGE

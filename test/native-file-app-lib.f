@@ -40,7 +40,7 @@ public
 : OUT$ ( -- ptr u8 n ) OUT-U @ 0= if s" " exit then 0 OUT OUT-U @ ;
 : ERR$ ( -- ptr u8 n ) ERR-U @ 0= if s" " exit then 0 ERR ERR-U @ ;
 \ The builder writes its file objects under the out root out (HABU_OUT,
-\ tools/build-out.f).
+\ src/lib/build-out.f).
 : BUILD ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: source:ptr sourceu:n product:ptr productu:n out:ptr outu:n :}
    BUILDER$ {: builder:ptr builderu:n :}

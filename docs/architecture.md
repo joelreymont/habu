@@ -197,7 +197,7 @@ nor inside the product's spaces is refused, naming the cell.
 can open or reopen. The loader reads source from disk in its normal order, and
 a file is compiled again when its inputs, the facts it consumed, the compiler
 or the target change. Objects and images live in the tree's own out root
-(tools/build-out.f); no build cache is shared between trees.
+(src/lib/build-out.f); no build cache is shared between trees.
 
 **A file's object holds its compiled definitions.** For each `:` and
 `TRUSTED:` definition it holds the code, literals and checker state the

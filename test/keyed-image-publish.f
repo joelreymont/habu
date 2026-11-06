@@ -8,7 +8,7 @@ require src/lib/process-argv.f
 require src/lib/process-env.f
 require src/lib/engine-candidate.f
 require src/os/script-argv.f
-require tools/build-out.f
+require src/lib/build-out.f
 require tools/keyed-image.f
 
 package KEYED-IMAGE-PUBLISH

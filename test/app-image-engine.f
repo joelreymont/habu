@@ -10,7 +10,7 @@ require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/content-key.f
 require src/lib/engine-candidate.f
-require tools/build-out.f
+require src/lib/build-out.f
 require test/keyed-image.f
 
 package APP-IMAGE-ENGINE

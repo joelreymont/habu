@@ -22,7 +22,7 @@ require src/core/sha256.f
 require src/lib/adt/option.f                 \ option<NUM:index> STR:INDEX-OF consumer
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require tools/native-file-inputs.f
-require tools/build-out.f
+require src/lib/build-out.f
 require tools/build-support.f
 require tools/app-build-image.f
 require tools/aot-builder-image.f

@@ -11,7 +11,7 @@ require src/lib/process-argv.f
 require src/lib/content-key.f
 require src/lib/engine-id.f
 require src/lib/engine-candidate.f
-require tools/build-out.f
+require src/lib/build-out.f
 require tools/keyed-image.f
 require tools/native-file-inputs.f
 

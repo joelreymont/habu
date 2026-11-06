@@ -148,7 +148,7 @@ bytes of socket path on macOS (107 on Linux), of which macOS's default
 there when run on its own.
 
 Build outputs live with the tree, under `<cwd>/.out/<engine>/` or
-`$HABU_OUT/<engine>/` (tools/build-out.f states the layout). They are
+`$HABU_OUT/<engine>/` (src/lib/build-out.f states the layout). They are
 disposable: no other cache exists, deleting them costs only a rebuild, and a
 deliberate cold measurement selects a fresh `HABU_OUT`.
 

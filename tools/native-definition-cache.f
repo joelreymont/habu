@@ -1,7 +1,7 @@
 \ native-definition-cache.f - automatic native definition reuse. The ordinary
 \ source loader always runs; the pending native dispatch selects one
 \ definition after its source actions. Each file's object lives at
-\ BUILD-OUT:OBJ$ (tools/build-out.f).
+\ BUILD-OUT:OBJ$ (src/lib/build-out.f).
 require src/lib/errors.f
 require src/lib/string.f
 require src/lib/fmt.f
@@ -23,7 +23,7 @@ require src/habu/terminal-call.f
 require src/habu/xref.f
 require src/habu/native-body-abi.f
 require src/compiler/native/compiler.f
-require tools/build-out.f
+require src/lib/build-out.f
 require tools/build-target.f
 require tools/build-producer.f
 require tools/native-file-inputs.f
