@@ -1,7 +1,9 @@
 \ icode.f — A64ICODE, the ARM64 single-pass assembler: EMITW appends asm.f
 \ encodings to the CODE window; labels resolve B/BL, B.cond, CBZ/CBNZ, ADR and
 \ LOFF, sites, backward at once and forward by backpatch. ASM-CP counts words;
-\ a branch or ADR distance reaches its asm.f encoder in bytes.
+\ a branch or ADR distance reaches its asm.f encoder in bytes. Every label
+\ reference, DLBL, cells included, is recorded until ARESET; CUT removes code
+\ and re-encodes the references that stay.
 \ No locals: the Gforth recovery compiler checks this file before the native
 \ checker exists.
 require src/arch/arm64/asm.f
@@ -78,10 +80,36 @@ variable I-W
 : ICODE-TAB ( n -- ptr n )
    ICODE-TABS swap ICODE-TAB-CELLS * cells + ;
 
+private
+
+\ One record per label reference: REF-SITES its first word, REF-LABELS LABEL>N
+\ of its label, REF-KINDS its kind. ARESET empties them with the code buffer.
+DYNAMIC-BUFFER REF-SITES n
+DYNAMIC-BUFFER REF-LABELS n
+DYNAMIC-BUFFER REF-KINDS n
+variable NREF
+4 constant FX-CELL                  \ DLBL,: the label's byte offset as one cell; never pending
+\ CUT's map: the new position of each word from CUT-FROM up to ASM-CP, -1 for
+\ a cut word; ASM-CP's own cell holds the new end.
+DYNAMIC-BUFFER CUT-MAP n
+
+\ Stack only: BR-EMIT reads BKIND and BBASE after it.
+: REF+ ( n label n -- )                          \ ( site label kind -- )
+   NREF @ 1 + REF-SITES-RESERVE
+   NREF @ 1 + REF-LABELS-RESERVE
+   NREF @ 1 + REF-KINDS-RESERVE
+   NREF @ REF-KINDS !
+   LABEL>N NREF @ REF-LABELS !
+   NREF @ REF-SITES !
+   NREF @ 1 + NREF ! ;
+
+public
+
 : ARESET ( -- )
    CODE drop
    ICODE-TABS drop
-   0 ASM-CP ! ;
+   0 ASM-CP !
+   0 NREF ! ;
 
 : CODE-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
@@ -111,9 +139,8 @@ PTR-VARIABLE EP
 \ LBLP[label] is the label's word position, or -1 while unbound.
 DYNAMIC-BUFFER LBLP n
 variable NLBL
-\ Fixup rows: FXS site word position, FXN next slot (pending chain or free list),
-\ FXK kind; FXH[label] heads that label's pending chain, the target's only
-\ record. A kind is validated before any table or code mutation.
+\ Fixup rows: FXS site word, FXN next slot (pending chain or free list), FXK
+\ kind; FXH[label] heads its pending chain. A kind is checked before any change.
 0 constant FX-B26                              \ B/BL: 26-bit word delta
 1 constant FX-B19                              \ cond/CBZ/CBNZ: 19-bit word delta
 2 constant FX-ADR                              \ ADR: 21-bit byte delta
@@ -133,6 +160,7 @@ variable FX-NEW
 : ASM-INIT ( -- )
    ARESET
    LBLP-RELEASE FXH-RELEASE
+   REF-SITES-RELEASE REF-LABELS-RELEASE REF-KINDS-RELEASE CUT-MAP-RELEASE
    0 NLBL !
    0 NFX !
    FX-INIT ;
@@ -172,6 +200,12 @@ variable FX-NEW
 : ?LBL-UNBOUND ( label -- )
    LBL-BOUND? if s" icode: label redefined" ICODE-EXIT-RC die then ;
 
+\ Records ascend by site: each is appended at ASM-CP, and CUT keeps their order
+\ below its new end.
+: REFS ( -- n ) NREF @ ;
+: REF-SITE ( n -- n ) REF-SITES @ ;
+: REF-LABEL ( n -- label ) REF-LABELS @ >LABEL ;
+
 : FX-TAKE ( -- n )
    FX?
    FX-FREE @ 0 >= if
@@ -210,9 +244,8 @@ variable FX-NEW
    I-W @ FX-LINK ;
 
 \ ---- what a reach refusal names ----------------------------------------------
-\ A reach refusal prints site, target, delta and limit in bytes as one message.
-\ Every caller of FX-REACH sets I-RSITE and I-RTARGET just before it: BR-EMIT
-\ and ADR, from ASM-CP and LBLP, FX-PATCH from FXS and ASM-CP.
+\ BR-EMIT, ADR, and FX-FILL set I-RSITE and I-RTARGET before FX-REACH, which
+\ prints them in bytes when it refuses; FX-CLEAR's fixed distances always fit.
 variable I-RSITE                    \ byte offset of the instruction under assembly
 variable I-RTARGET                  \ byte offset it has to reach
 variable I-RDELTA                   \ signed byte distance it would need
@@ -340,6 +373,7 @@ $10 constant MOVW-LANE-BITS         \ one movz/movk immediate lane
 variable BBASE  variable BKIND
 
 : BR-EMIT ( label -- )
+   ASM-CP @ over BKIND @ REF+
    LABEL>N I-LBL !
    I-LBL @ LBLP @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
@@ -364,6 +398,7 @@ variable BBASE  variable BKIND
 
 
 : ADR, ( n label -- )
+   ASM-CP @ over FX-ADR REF+
    LABEL>N I-LBL ! I-RD !
    I-LBL @ LBLP @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-ADR FX+  I-RD @ 0 ENC-ADR EMITW
@@ -376,6 +411,7 @@ variable BBASE  variable BKIND
 \ it was emitted. The base words come from MOVZHW and MOVKHW, as ADR,'s from
 \ ENC-ADR.
 : LOFF, ( n label -- )
+   ASM-CP @ over FX-LOFF REF+
    LABEL>N I-LBL ! I-RD !
    I-LBL @ LBLP @ dup 0 < IF
      drop  ASM-CP @ I-LBL @ >LABEL FX-LOFF FX+
@@ -385,23 +421,63 @@ variable BBASE  variable BKIND
      I-RD @ I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW EMITW  THEN ;
 variable LBI
 
-\ A reach die precedes the current fixup's PATCH, so the failing site word and
-\ its slots stay untouched. A chain is not atomic: LBL, clears FXH first, and
-\ fixups patched before the failing one keep their deltas and are freed.
-\ FX-LOFF binds from ASM-CP alone and patches two words, both after ?LOFF.
-: FX-LOFF-PATCH ( -- )
-   ASM-CP @ $4 * ?LOFF I-X !
-   0 I-X @ $FFFF and 0 MOVZHW  LBI @ cells FXS + @ PATCH
-   0 I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW  LBI @ cells FXS + @ 1 + PATCH ;
+private
 
+variable FILL-KIND
+variable FILL-SITE                  \ word position of the site's first word
+variable FILL-TARGET                \ word position the site names
 
+\ An FX-LOFF field holds the target's byte offset, not a delta, and both words
+\ are patched after ?LOFF.
+: FILL-LOFF ( -- )
+   FILL-TARGET @ $4 * ?LOFF I-X !
+   0 I-X @ $FFFF and 0 MOVZHW  FILL-SITE @ PATCH
+   0 I-X @ MOVW-LANE-BITS rshift $FFFF and 1 MOVKHW  FILL-SITE @ 1 + PATCH ;
+
+\ The target's byte offset, low 32 bits first, as DCQ, lays a cell.
+: FILL-CELL ( -- )
+   FILL-TARGET @ $4 * dup $FFFFFFFF and FILL-SITE @ PATCH
+   $20 rshift FILL-SITE @ 1 + PATCH ;
+
+\ A reach die precedes PATCH, so the failing site's words stay untouched.
+: FX-FILL ( n n n -- )                           \ ( kind site target -- ), zero field
+   FILL-TARGET ! FILL-SITE ! FILL-KIND !
+   FILL-KIND @ FX-LOFF = if FILL-LOFF exit then
+   FILL-KIND @ FX-CELL = if FILL-CELL exit then
+   FILL-SITE @ $4 * I-RSITE !
+   FILL-TARGET @ $4 * I-RTARGET !
+   FILL-TARGET @ FILL-SITE @ - $4 *              \ bytes from the site to the target
+   FILL-KIND @ FX-REACH
+   FILL-SITE @ PATCH ;
+
+: UNPATCH ( n n -- )                             \ ( mask pos -- ): clears the mask's bits
+   I-N ! invert I-W !
+   I-N @ CW@ EP !
+   I-W @ $FF and EP@ c@ and EP@ c!
+   I-W @ $8 rshift $FF and EP@ 1 CODE-BYTE+ c@ and EP@ 1 CODE-BYTE+ c!
+   I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c@ and EP@ 2 CODE-BYTE+ c!
+   I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c@ and EP@ 3 CODE-BYTE+ c! ;
+
+\ A field's mask is its encoder's all-ones word xor its word for zero, as
+\ FX-BITS derives bits: -4 bytes fills a branch field and -1 byte ADR's.
+: FX-CLEAR ( n n -- )                            \ ( kind site -- )
+   FILL-SITE ! FILL-KIND !
+   FILL-KIND @ FX-LOFF = if
+      0 $FFFF 0 MOVZHW  0 0 0 MOVZHW xor  FILL-SITE @ UNPATCH
+      0 $FFFF 1 MOVKHW  0 0 1 MOVKHW xor  FILL-SITE @ 1 + UNPATCH  exit
+   then
+   FILL-KIND @ FX-CELL = if
+      $FFFFFFFF FILL-SITE @ UNPATCH  $FFFFFFFF FILL-SITE @ 1 + UNPATCH  exit
+   then
+   FILL-KIND @ FX-ADR = if -1 FX-ADR FX-REACH FILL-SITE @ UNPATCH exit then
+   -4 FILL-KIND @ FX-REACH FILL-SITE @ UNPATCH ;
+
+public
+
+\ A chain is not atomic: LBL, clears FXH first, and fixups patched before a
+\ failing one keep their deltas and are freed.
 : FX-PATCH ( -- )
-   LBI @ cells FXK + @ FX-LOFF = if FX-LOFF-PATCH exit then
-   LBI @ cells FXS + @ $4 * I-RSITE !
-   ASM-CP @ $4 * I-RTARGET !
-   ASM-CP @ LBI @ cells FXS + @ - $4 *           \ bytes from the site to here
-   LBI @ cells FXK + @ FX-REACH
-   LBI @ cells FXS + @ PATCH ;
+   LBI @ cells FXK + @  LBI @ cells FXS + @  ASM-CP @  FX-FILL ;
 
 
 : LBL, ( label -- )
@@ -416,12 +492,152 @@ variable LBI
       I-N @ LBI !
    repeat ;
 
+private
+
+variable CUT-FROM                   \ first word position of the region CUT edits
+variable CUT-N                      \ kept range count
+variable CUT-I
+variable CUT-J
+variable CUT-W
+variable CUT-NEW                    \ next new word position
+PTR-VARIABLE CUT-RANGES
+PTR-VARIABLE CUT-SRC
+: RANGES@ ( -- ptr n ) CUT-RANGES @ ;
+: CUT-SRC@ ( -- ptr u8 ) CUT-SRC @ ;
+: RANGE-START ( n -- n ) 2 * cells RANGES@ swap + @ ;
+: RANGE-END ( n -- n ) 2 * 1 + cells RANGES@ swap + @ ;
+: MAP-CELL ( n -- ptr n ) CUT-FROM @ - CUT-MAP ;
+: REF-POS ( n -- n ) REF-LABELS @ LBLP @ ;      \ record's label position, -1 unbound
+
+\ A position after the cut: itself outside [CUT-FROM, ASM-CP], else its map
+\ cell, so an unbound label's -1 stays -1.
+: >MOVED ( n -- n )
+   dup CUT-FROM @ < if exit then
+   dup ASM-CP @ > if exit then
+   MAP-CELL @ ;
+
+: SITE-KEPT? ( n -- bool ) >MOVED 0 >= ;
+
+\ A range may start where the previous one ends.
+: ?RANGES ( -- )
+   CUT-N @ 0 <  CUT-FROM @ 0 < or if s" icode: cut ranges malformed" ICODE-EXIT-RC die then
+   CUT-FROM @ CUT-W !                            \ the previous range's end
+   0 CUT-I !
+   BEGIN CUT-I @ CUT-N @ < WHILE
+      CUT-I @ RANGE-START CUT-W @ <
+      CUT-I @ RANGE-START CUT-I @ RANGE-END >= or
+      if s" icode: cut ranges malformed" ICODE-EXIT-RC die then
+      CUT-I @ RANGE-END CUT-W !
+      CUT-I @ 1 + CUT-I !
+   REPEAT
+   CUT-W @ ASM-CP @ > if s" icode: cut ranges malformed" ICODE-EXIT-RC die then ;
+
+
+: MAP-BUILD ( -- )
+   ASM-CP @ CUT-FROM @ - 1 + CUT-MAP-RESERVE
+   CUT-FROM @ CUT-W !
+   BEGIN CUT-W @ ASM-CP @ < WHILE  -1 CUT-W @ MAP-CELL !  CUT-W @ 1 + CUT-W !  REPEAT
+   CUT-FROM @ CUT-NEW !
+   0 CUT-I !
+   BEGIN CUT-I @ CUT-N @ < WHILE
+      CUT-I @ RANGE-START CUT-W !
+      BEGIN CUT-W @ CUT-I @ RANGE-END < WHILE
+         CUT-NEW @ CUT-W @ MAP-CELL !
+         CUT-NEW @ 1 + CUT-NEW !  CUT-W @ 1 + CUT-W !
+      REPEAT
+      CUT-I @ 1 + CUT-I !
+   REPEAT
+   CUT-NEW @ ASM-CP @ MAP-CELL ! ;
+
+
+\ A LOFF pair (movz at the site, movk after it) and a DLBL, cell span two words.
+: TWO-WORD? ( n -- bool ) REF-KINDS @ dup FX-LOFF = swap FX-CELL = or ;
+
+\ A site's two words are split when only one is kept: kept words stay adjacent.
+: PAIR-SPLIT? ( n -- bool ) dup SITE-KEPT? swap 1 + SITE-KEPT? xor ;
+
+\ Refuses a pending reference sited in the region (FXS holds its old site), a
+\ kept reference naming cut code and a cut that splits a two-word reference.
+: ?REFS ( -- )
+   0 CUT-I !
+   BEGIN CUT-I @ NREF @ < WHILE
+      CUT-I @ REF-SITES @ CUT-FROM @ >=  CUT-I @ REF-POS 0 <  and if
+         s" icode: a pending reference lies in the cut region" ICODE-EXIT-RC die
+      then
+      CUT-I @ REF-SITES @ SITE-KEPT?  CUT-I @ REF-POS 0 >=  and
+      CUT-I @ REF-POS >MOVED 0 <  and if
+         s" icode: a kept reference names cut code" ICODE-EXIT-RC die
+      then
+      CUT-I @ TWO-WORD?  CUT-I @ REF-SITES @ PAIR-SPLIT?  and if
+         s" icode: a cut splits a two-word reference" ICODE-EXIT-RC die
+      then
+      CUT-I @ 1 + CUT-I !
+   REPEAT ;
+
+
+: WORD-MOVE ( n n -- )                           \ ( from to -- ) word positions
+   CW@ EP !  CW@ CUT-SRC !
+   CUT-SRC@ c@ EP@ c!
+   CUT-SRC@ 1 CODE-BYTE+ c@ EP@ 1 CODE-BYTE+ c!
+   CUT-SRC@ 2 CODE-BYTE+ c@ EP@ 2 CODE-BYTE+ c!
+   CUT-SRC@ 3 CODE-BYTE+ c@ EP@ 3 CODE-BYTE+ c! ;
+
+\ Ascending order: every destination is at or below its source, so no word is
+\ overwritten before it is read.
+: CODE-MOVE ( -- )
+   0 CUT-I !
+   BEGIN CUT-I @ CUT-N @ < WHILE
+      CUT-I @ RANGE-START CUT-W !
+      BEGIN CUT-W @ CUT-I @ RANGE-END < WHILE
+         CUT-W @ CUT-W @ MAP-CELL @ WORD-MOVE
+         CUT-W @ 1 + CUT-W !
+      REPEAT
+      CUT-I @ 1 + CUT-I !
+   REPEAT ;
+
+\ Runs before LABEL-MOVE: REF-POS still reads a label's old position.
+: REF-MOVE ( -- )
+   0 CUT-I !  0 CUT-J !
+   BEGIN CUT-I @ NREF @ < WHILE
+      CUT-I @ REF-SITES @ SITE-KEPT? if
+         CUT-I @ REF-SITES @ >MOVED CUT-J @ REF-SITES !
+         CUT-I @ REF-LABELS @ CUT-J @ REF-LABELS !
+         CUT-I @ REF-KINDS @ CUT-J @ REF-KINDS !
+         CUT-J @ REF-POS 0 >= if
+            CUT-J @ REF-KINDS @ CUT-J @ REF-SITES @ FX-CLEAR
+            CUT-J @ REF-KINDS @ CUT-J @ REF-SITES @ CUT-J @ REF-POS >MOVED FX-FILL
+         then
+         CUT-J @ 1 + CUT-J !
+      then
+      CUT-I @ 1 + CUT-I !
+   REPEAT
+   CUT-J @ NREF ! ;
+
+: LABEL-MOVE ( -- )
+   0 CUT-I !
+   BEGIN CUT-I @ NLBL @ < WHILE
+      CUT-I @ LBLP @ >MOVED CUT-I @ LBLP !
+      CUT-I @ 1 + CUT-I !
+   REPEAT ;
+
+public
+
+\ CUT ( ranges count from -- ) keeps only the ranges' words of [from, ASM-CP),
+\ moved down with their references; ranges: count ascending [start, end) pairs.
+: CUT ( ptr n n n -- )
+   CUT-FROM ! CUT-N ! CUT-RANGES !
+   ?RANGES  MAP-BUILD  ?REFS
+   CODE-MOVE  REF-MOVE  LABEL-MOVE
+   ASM-CP @ MAP-CELL @ ASM-CP ! ;
+
 \ --- data layer ---
 : DCQ, ( n -- )
    dup $FFFFFFFF and EMITW  $20 rshift EMITW ;   \ one 64-bit cell, LE
 
 : DLBL, ( label -- )                                  \ cell = label's byte offset
-   LABEL>N LBLP @ dup 0 < if s" icode: DLBL forward ref" ICODE-EXIT-RC die then  $4 * DCQ, ;
+   dup LABEL>N LBLP @ 0 < if s" icode: DLBL forward ref" ICODE-EXIT-RC die then
+   ASM-CP @ over FX-CELL REF+
+   LABEL>N LBLP @ $4 * DCQ, ;
 PTR-VARIABLE BYP
 PTR-VARIABLE BYA
 variable BYU

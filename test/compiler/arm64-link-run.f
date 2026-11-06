@@ -1,11 +1,13 @@
 \ arm64-link-run.f - LINKER:WRITE's stripped programs, run. One build stores
-\ each of three entries with xt! into APP-ENTRY:XT-CELL and writes a program
+\ each of four entries with xt! into APP-ENTRY:XT-CELL and writes a program
 \ for it: LR-HI prints `Hi` and exits 0; LR-THROW prints nothing and exits 3,
 \ its uncaught throw code; LR-XT stores a quotation with xt! at run time and
 \ prints `Hi` only if the product's MARK accepts its address-cell header and
-\ index. Each file is smaller than DATA-START: the zero bands below it are not
-\ written. WRITE outside a build is E-COMP-STATE. Each program runs in its own
-\ process: the boundary under test is the written file and its start-up.
+\ index; LR-DEEP overflows the machine stack and exits 102 through the crash
+\ path the start-up installs. Each file is under 64 KiB, which the whole kernel
+\ alone exceeds: only the kernel code the program reaches is written. WRITE
+\ outside a build is E-COMP-STATE. Each program runs in its own process: the
+\ boundary under test is the written file and its start-up.
 \ Fixture words are LR- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
@@ -40,7 +42,9 @@ create PROG-BUF PATH-CAP allot
    s" : LR-HI ( -- ) 72 emit 105 emit cr ;" evaluate-closed
    s" : LR-THROW ( -- ) 3 throw ;" evaluate-closed
    s" variable LR-V" evaluate-closed
-   s" : LR-XT ( -- ) [: ;] LR-V xt!  LR-HI ;" evaluate-closed ;
+   s" : LR-XT ( -- ) [: ;] LR-V xt!  LR-HI ;" evaluate-closed
+   s" : LR-REC ( n -- n ) 1 + recurse 1 + ;" evaluate-closed
+   s" : LR-DEEP ( -- ) 0 LR-REC drop ;" evaluate-closed ;
 
 
 \ The entry store app-image-core.f START! makes, of the word named a u.
@@ -60,7 +64,8 @@ create PROG-BUF PATH-CAP allot
    FIXTURE
    s" LR-HI" s" hi" WRITE-PROG
    s" LR-THROW" s" throw" WRITE-PROG
-   s" LR-XT" s" xt" WRITE-PROG ;
+   s" LR-XT" s" xt" WRITE-PROG
+   s" LR-DEEP" s" deep" WRITE-PROG ;
 
 
 \ Program file runs, prints out on stdout and exits want; a failed check
@@ -72,22 +77,25 @@ create PROG-BUF PATH-CAP allot
       s" arm64-link-run: " type file file-n type s"  exited " type rc .
       s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr
    then
-   file file-n T-LABEL  CMD:OUT$ out out-n T$=  rc want T= ;
+   file file-n T-LABEL  CMD:OUT$ out out-n T$=
+   file file-n T-LABEL  rc want T= ;
 
 : RUN-HI ( CMD:command -- CMD:command ) s" hi" s\" Hi\n" 0 RUN-PROG ;
 : RUN-THROW ( CMD:command -- CMD:command ) s" throw" s" " 3 RUN-PROG ;
 : RUN-XT ( CMD:command -- CMD:command ) s" xt" s\" Hi\n" 0 RUN-PROG ;
+: RUN-DEEP ( CMD:command -- CMD:command ) s" deep" s" " 102 RUN-PROG
+   s" deep" T-LABEL  CMD:ERR$ s\" hb: stack bounds exceeded (machine)\n" T$= ;
 
 
 : SMALLER ( ptr u8 n -- )
    {: file:ptr file-n:n :}
    file file-n PROG$ FS:FILE-SIZE {: size:n :}
-   size DATA-START < 0= if
+   size $10000 < 0= if
       s" arm64-link-run: " type file file-n type s"  has bytes: " type size .
    then
-   s" each file is smaller than DATA-START: the zero bands are not written"
+   s" each file is under 64 KiB: only the kernel code the program reaches is written"
       T-LABEL
-   size DATA-START < TTRUE ;
+   size $10000 < TTRUE ;
 
 
 public
@@ -102,7 +110,8 @@ public
    [: RUN-HI ;] CMD:WITH-COMMAND
    [: RUN-THROW ;] CMD:WITH-COMMAND
    [: RUN-XT ;] CMD:WITH-COMMAND
-   s" hi" SMALLER  s" throw" SMALLER  s" xt" SMALLER
+   [: RUN-DEEP ;] CMD:WITH-COMMAND
+   s" hi" SMALLER  s" throw" SMALLER  s" xt" SMALLER  s" deep" SMALLER
    ROOT$ FS:REMOVE-TREE
    T-REPORT ;
 

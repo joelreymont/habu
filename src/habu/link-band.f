@@ -225,8 +225,8 @@ variable UNSAFE-COUNT
    s" link: a stripped program reaches a word it cannot run" 74 die ;
 
 
-\ A target naming no record and no UNSAFE-NAME? word is a kernel primitive, or
-\ a foreign word TARGET-ADDRESS refuses at placement.
+\ A target naming no record and no UNSAFE-NAME? word is a kernel primitive,
+\ whose code PLACE-TARGET keeps, or a foreign word TARGET-ADDRESS refuses.
 : LIVE-TARGET ( n -- )
    {: a:n :}
    a REC-AT {: r:n :}
@@ -238,8 +238,10 @@ variable UNSAFE-COUNT
 
 
 : PLACE-TARGET ( n -- )
-   REC-AT {: r:n :}
-   r 0 >= if r NSHADOW:EMISSION@ PLACE-EM then ;
+   {: a:n :}
+   a REC-AT {: r:n :}
+   r 0 >= if r NSHADOW:EMISSION@ PLACE-EM exit then
+   a ARM64:ROOT-ENTRY drop ;
 
 
 : LIVE-STEP ( -- )
@@ -286,15 +288,15 @@ variable UNSAFE-COUNT
    r MAKE-LIVE DRAIN ;
 
 
-\ Host address a the program starts from: a record's entry, or a quotation's
-\ (QUOTE-ROOT), makes live all the code it reaches; a kernel primitive, none.
+\ Host address a the program starts from: a record's or QUOTE-ROOT's entry makes
+\ live the code it reaches; a kernel primitive's entry keeps its kernel code.
 : ROOT ( n -- )
    {: a:n :}
    a REC-AT {: r:n :}
    r 0 >= if r MAKE-LIVE DRAIN exit then
    a UNSAFE@ {: d:n :}
    d 0< if
-      a ARM64:KERNEL-ENTRY 0 >= if exit then
+      a ARM64:ROOT-ENTRY if exit then
       a QUOTE-ROOT exit
    then
    s" link: the program starts at " type d CANNOT-RUN ;

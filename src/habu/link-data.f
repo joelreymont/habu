@@ -35,12 +35,7 @@ variable LLIST-END
 
 
 \ A bound label's byte offset in A64ICODE's code buffer.
-: LABEL-OFFSET ( ptr n -- n )
-   A64ICODE:LABEL@ {: l:label :}
-   l A64ICODE:LBL-BOUND? 0= if
-      s" link: a label the link reads is unbound" 74 die
-   then
-   l LABEL>N A64ICODE:LBLP @ 4 * ;
+: LABEL-OFFSET ( ptr n -- n ) A64ICODE:LABEL@ ARM64:OFFSET ;
 
 
 \ The open space's bytes, [BASE, DP).
@@ -226,7 +221,8 @@ DYNAMIC-BUFFER COPY-CELLS n
    LLIST-END A64ICODE:LABEL@ A64ICODE:LBL, ;
 
 
-\ A stripped program's code: the start-up, the kernel, the routines and DATA.
+\ A stripped program's code: the start-up, the kernel code the program reaches,
+\ the routines and DATA. HEADER-CELLS reads LUNCAUGHT and LSIGH after the cut.
 : LINK-STRIPPED ( -- )
    ARM64:OPEN
    A64ICODE:LBL LIMAGE !  A64ICODE:LBL LIMAGE-END !
@@ -236,6 +232,9 @@ DYNAMIC-BUFFER COPY-CELLS n
    ARM64:KERNEL
    ROUTINES
    ROOT-CELLS
+   LUNCAUGHT A64ICODE:LABEL@ ARM64:ROOT-LABEL
+   LSIGH A64ICODE:LABEL@ ARM64:ROOT-LABEL
+   ARM64:CUT
    ['] DATA-ADDRESS PLACE-ROUTINES
    DATA-IMAGE ;
 
