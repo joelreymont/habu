@@ -292,6 +292,13 @@ learned live in the docs for their subject.
   comment, for Habu's codes and an application's own, should be designed,
   given that it means a definer for every error constant while incremental
   builds come first, Joel chose "Design now, in parallel".
+- 2026-11-06, Maki's load cost (relayed by tim from Maki): shown that the
+  checker costs about 116k instructions per token on Maki's 17.6 MB generated
+  design (type unification, re-walked stack rows, guards on the checker's own
+  stores) and that Habu has no one-token exact float literal, so
+  `$403E… IEEE754:BITS>F64` makes 41% of its tokens, Joel chose "Both now, in
+  parallel (Recommended)": workers find the checker's three costs and the
+  literal is designed for his approval.
 - 2026-11-05, durable atomic writes (relayed by kevin from Tender): shown
   that FS:ATOMIC-WRITE-FILE renamed its sibling over the destination with no
   sync, so after a crash or power loss the destination could stand empty
