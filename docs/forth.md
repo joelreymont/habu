@@ -2512,7 +2512,10 @@ sections above.
   owner's public words.
 - **Nominal declaration placement and inference matter.** A `DEFTYPE` handed
   out by a definer's `does>` body must be public, so a reader can resolve the
-  stored signature; a private one is `E-BAD-STORED-SIGNATURE`. Constructing
+  stored signature; a private one is `E-BAD-STORED-SIGNATURE`. A generated
+  constructor takes its family's arguments from the declared output, else from
+  its payloads on the stack: `( kk -- ) OPTION:SOME drop` builds an
+  `option<kk>`. Constructing
   only `RESULT:OK` leaves the error type variable of `result<a,b>` free;
   that variable cannot unify with a nominal enum or family. Use a result
   family whose error alternatives are nullary, such as

@@ -3,6 +3,7 @@
 \ A constructor word pushes its payload cells, M-p zero pads, then the tag.
 
 require src/lib/adt/result.f
+require src/lib/string.f               \ CONTAINS? - substring test for diagnostic text
 require src/lib/test.f
 
 using TYPE-DECL
@@ -540,6 +541,13 @@ XPGW-RT
    5551 1 2 XPGINR:MAKE 3 XPGW-MK XPGW-DROP 8 T= 7 T= 5551 T=
    5551 1 2 XPGINR:MAKE 3 XPGW-MK XPGW-DROPQ 8 T= 7 T= 5551 T= ;
 XPGW-DROP-RT
+\ With no declared output, MAKE and SOME take their family's argument from their payloads on the
+\ stack, and the wide value keeps its pads through UNMAKE and MATCH.
+: XPGW-LIVE ( -- )
+   5551 1 2 XPGINR:MAKE 3 XPG:MAKE XPG:UNMAKE 3 T= XPGINR:UNMAKE 2 T= 1 T= 5551 T=
+   5551 1 2 XPGINR:MAKE OPTION:SOME
+   MATCH option some OF XPGINR:UNMAKE - ENDOF none OF 0 ENDOF ;MATCH -1 T= 5551 T= ;
+XPGW-LIVE
 ;package
 \ (b) NEGATIVE: tagged-sum contradictions fail closed (candidate 0 / rc 70)
 \ through the real generated constructor (FAM:VARIANT). A concrete
@@ -763,6 +771,31 @@ s" RFB-XFAM ( rfbtag -- clopt<rfbtag> ) RESULT:OK"
    CHECK-QUIET-CANDIDATE! 0 T=
 s" RFB-XPAY ( rfberr -- result<rfbtag,rfberr> ) RESULT:OK"
    CHECK-QUIET-CANDIDATE! 0 T=
+
+\ With no declared output, SOME takes option's argument from its payload on the stack and a store
+\ checks it; RESULT:OK still leaves err's argument free (docs/forth.md).
+TYPED-VARIABLE RFB-OV option<rfbtag>
+TYPED-VARIABLE RFB-ON option<n>
+s" RFB-SOME-DROP ( rfbtag -- ) OPTION:SOME drop" CHECK-QUIET-CANDIDATE! -1 T=
+create RFB-DIAG 512 allot
+RFB-DIAG 512 DIAG-BUFFER!
+s" RFB-SOME-WRONG ( rfbtag -- ) OPTION:SOME RFB-ON !" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" actual: option<rfbtag>" CONTAINS? TTRUE   \ SOME took rfbtag: the store refuses
+DIAG-BUFFER-OFF
+s" RFB-OK-FREE ( rfbtag -- ) RESULT:OK drop" CHECK-QUIET-CANDIDATE! 0 T=
+: RFB-REST# ( option<rfbtag> -- n ) MATCH option some OF RFB-TAG# ENDOF none OF 0 ENDOF ;MATCH ;
+: RFB-SOME-RUN ( -- )
+   ZPUB-RFBTAG:BLUE OPTION:SOME RFB-OV !
+   RFB-OV @ RFB-REST# 12 T= ;
+RFB-SOME-RUN
+\ A payload below an open option seeds the constructor: MAKE needs no declared output.
+STRUCTURE rfbslot<a> FIELD head a FIELD rest option<a> ;STRUCTURE
+: RFB-SLOT-RUN ( -- )
+   5551 ZPUB-RFBTAG:BLUE OPTION:NONE ZPUB-RFBSLOT:MAKE ZPUB-RFBSLOT:UNMAKE
+   RFB-REST# 0 T= RFB-TAG# 12 T= 5551 T=
+   5551 ZPUB-RFBTAG:RED ZPUB-RFBTAG:BLUE OPTION:SOME ZPUB-RFBSLOT:MAKE ZPUB-RFBSLOT:UNMAKE
+   RFB-REST# 12 T= RFB-TAG# 11 T= 5551 T= ;
+RFB-SLOT-RUN
 s" RESULT-FAMILY-BIND" type cr
 
 ;package

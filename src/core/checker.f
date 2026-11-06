@@ -1075,7 +1075,7 @@ defer TFAM-INIT-RECORD-XT ( n -- n n n bool )          \ committed fixed-cell pr
 defer TFAM-INIT-FIELD-XT ( n ptr u8 n -- n n n bool ) \ committed field descriptor, offset, bytes
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ construct variant resolve + step effect
-defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL seeded by a direct closed layout arg (declared output; a product UNMAKE's live input) takes the construct step; scalar/pointer/open/linear args fall through
+defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL seeded by a direct closed layout arg (type-family.f TFC-SEED; a product UNMAKE's live input) takes the construct step; scalar/pointer/open/linear args fall through
 defer CTOR-ROW?-XT ( n -- bool )                       \ symbol is a generated constructor row (sum variant, product make/unmake)
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
@@ -4613,14 +4613,8 @@ CHECKER-REG:}SCRATCH
    THEN
    0 OK ! ;
 
-\ The constructed value's type args are named only by the declared output (a
-\ payloadless variant like `none`, or one binding only some family params, has
-\ no other source). Scans SGOUT for a resolved hidden-field bundle of `fam`;
-\ the construct step copies its args over its fresh param vars (TFC-ARGS!), so
-\ a concrete layout arg such as option<tdpbw2> makes the payload and output
-\ expand at the arg-aware width. An open declared output (option<a>) stays one
-\ logical cell and is skipped. Nothing found: fresh vars, and a multi-cell
-\ construction fails closed.
+\ The first resolved hidden-field bundle of FAM in the declared output; an open one (option<a>) is
+\ one logical cell and skipped. Which seed wins: type-family.f TFC-SEED.
 : CONSTRUCT-DECL-TERM ( n -- n bool )
    {: fam:n :}
    SGOUT @
@@ -4631,13 +4625,8 @@ CHECKER-REG:}SCRATCH
    REPEAT
    drop 0 RES-FALSE ;
 
-\ Should the constructor pre-seed its fresh args from the declared output? Any
-\ direct argument wider than one cell takes the arg-aware construct path with
-\ its open and linear checks. A closed, non-linear declared instantiation with a
-\ direct layout-family arg also needs pre-seeding: its hidden input cannot bind
-\ an ordinary payload var. Pointer-wrapped families are not direct args; nominal
-\ scalars and plain con or pointer args stay on the stored-effect word path.
-\ SEED-TERM? is that rule over one resolved family term.
+\ Whether a constructor seeded by family term T takes the arg-aware step: a direct arg wider than a
+\ cell, or a layout-family arg of a closed non-linear T, whose hidden input binds no payload var.
 : SEED-TERM? ( n -- bool ) {: t:n :}
    0 BEGIN dup t PARAM>ARGC < WHILE
       t over PARAM>ARG T-WIDTH 1 > IF drop RES-TRUE EXIT THEN

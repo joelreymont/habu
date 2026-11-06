@@ -5478,18 +5478,87 @@ private
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
 
-\ TFC-CONSTRUCT-STEP-VID ( fam vid -- ) : the inline generated-constructor
-\ effect for a resolved (family, variant). The concrete args named by the
-\ declared output are recovered over fresh vars (CONSTRUCT-DECL-LAYOUT), so a
-\ direct closed layout argument makes the payload input and the bundle output
-\ PUSH-LOGICAL-expand even at width 1; open, linear, scalar and pointer args keep
-\ the fresh var. Shared by the `construct` token and the generated-constructor
-\ call (TFAM-CTOR-STEP?).
-: TFC-CONSTRUCT-STEP-VID ( n n -- )
+\ Whether ROW's top cell is the unstale hidden slot SLOT of family FAM.
+: TFC-GROUP-CELL? ( n n n -- bool )
+   {: row:n fam:n slot:n :}
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM fam <> IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@ slot = ;
+
+
+\ Whether ROW's top cells are the hidden slots TOP down to 0 of family FAM.
+: TFC-GROUP-CELLS? ( n n n -- bool )
+   {: row:n fam:n top:n :}
+   row top
+   BEGIN dup 0 >= WHILE                       \ ( row slot )
+      2dup fam swap TFC-GROUP-CELL? 0= IF 2drop RES-FALSE EXIT THEN
+      swap R-RES P>REST swap 1 -
+   REPEAT 2drop RES-TRUE ;
+
+
+\ The value DEPTH cells below the live top: a whole hidden group answers its term, width and true;
+\ a non-hidden cell, open ones included, 0 1 false; a stale or missing cell or a partial group width 0.
+: TFC-LIVE-GROUP ( n -- n n bool )
+   {: depth:n :}
+   DCUR @ depth
+   BEGIN dup 0 > WHILE                        \ ( row cells-left )
+      over R-RES TAG S-PUSH <> IF 2drop 0 0 RES-FALSE EXIT THEN
+      swap R-RES P>REST swap 1 -
+   REPEAT drop {: row:n :}
+   row R-RES {: node:n :}
+   node TAG S-PUSH <> IF 0 0 RES-FALSE EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t TAG T-STALE = IF 0 0 RES-FALSE EXIT THEN
+   t HIDDEN-PARAM? 0= IF 0 1 RES-FALSE EXIT THEN
+   t T-WIDTH {: w:n :}
+   row t PARAM>FAM w 1 - TFC-GROUP-CELLS? 0= IF 0 0 RES-FALSE EXIT THEN
+   t MK-LOGICAL w RES-TRUE ;
+
+
+\ Payload J of VID over the value DEPTH cells down: a bare family parameter over a whole hidden
+\ group takes the group's type. Answers the next payload's depth, -1 for no seed.
+: TFC-LIVE-PAY ( n n n -- n )
+   {: j:n depth:n vid:n :}
+   depth TFC-LIVE-GROUP {: lt:n w:n group:bool :}
+   w 0= IF -1 EXIT THEN
+   vid j SUMV-PAY-ROOT SCHEMA-ROOT@ {: node:n :}
+   group node SCHEMA-PARAM? and IF lt node SCHEMA-A@ cells TFC-VARS + ! THEN
+   depth w + ;
+
+
+\ The args VID's payloads on the stack give FAM, walked from the top payload down; a parameter no
+\ payload sets stays fresh. A payload of width 0, or a term SEED-TERM? refuses, is no seed.
+: TFC-LIVE-SEED ( n n -- n bool )
    {: fam:n vid:n :}
-   \ The layout query walks ownership through TFC-VARS, so populate this
-   \ constructor's arguments only after that query has finished.
-   fam CONSTRUCT-DECL-LAYOUT {: dt:n seeded:bool :}
+   fam TFAM-ARITY@ 0= IF 0 RES-FALSE EXIT THEN
+   fam TFAM-ARITY@ TFC-MINT-VARS
+   vid SUMV-PAY-N 1 - 0
+   BEGIN over 0 >= WHILE                      \ ( payload depth )
+      2dup vid TFC-LIVE-PAY nip
+      dup 0 < IF 2drop 0 RES-FALSE EXIT THEN
+      swap 1 - swap
+   REPEAT 2drop
+   fam TFC-FAM-TERM {: t:n :}
+   t SEED-TERM? IF t RES-TRUE EXIT THEN
+   0 RES-FALSE ;
+
+
+\ The seed: FAM's first bundle in the declared output when that seeds (CONSTRUCT-DECL-LAYOUT), else
+\ the payloads' (TFC-LIVE-SEED); with neither, vars stay fresh and a multi-cell value fails closed.
+: TFC-SEED ( n n -- n bool )
+   {: fam:n vid:n :}
+   fam CONSTRUCT-DECL-LAYOUT IF RES-TRUE EXIT THEN drop
+   fam vid TFC-LIVE-SEED ;
+
+
+\ The construct step for (FAM, VID) over DT SEEDED, which TFC-SEED answers before TFC-ARGS! rewrites
+\ the TFC-VARS it walks: a seeded closed layout arg expands payload and output even at width 1.
+: TFC-CONSTRUCT-STEP-VID ( n n n bool -- )
+   {: fam:n vid:n dt:n seeded:bool :}
    seeded IF dt TFC-ARGS! ELSE fam TFAM-ARITY@ TFC-MINT-VARS THEN
    FRESH MK-ROW {: base:n :}
    vid base TFC-PAY-ROW {: din:n :}
@@ -5506,16 +5575,11 @@ private
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
    fam na nu SUMV-FIND 0= IF drop MD-CON-VAR MDIAG-COMPILE! RES-FALSE EXIT THEN
    {: vid:n :}
-   fam vid TFC-CONSTRUCT-STEP-VID
+   fam vid 2dup TFC-SEED TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
 
-\ TFAM-CTOR-STEP? ( sym -- bool ) : a generated-constructor CALL whose stored
-\ var effect cannot absorb a direct logical-layout argument. Reverse the resolved
-\ word symbol to its variant; if CONSTRUCT-DECL-LAYOUT finds an eligible declared
-\ output, apply the bidirectionally seeded step and report handled. Otherwise
-\ report unhandled so DO-TOK runs the ordinary word call. A product's UNMAKE row
-\ never takes the construct step: TFAM-UNMAKE-STEP? runs it backwards, seeded from
-\ the value it takes apart.
+\ TFAM-CTOR-STEP? ( sym -- bool ): a generated-constructor call TFC-SEED seeds takes the construct
+\ step, a product's UNMAKE the reversed one (TFAM-UNMAKE-STEP?); any other runs DO-TOK's word call.
 
 public
 
@@ -5554,8 +5618,9 @@ private
    {: vid:n :}
    vid SUMV-FAM@ {: fam:n :}
    fam vid TFAM-UNMAKE-ROW? IF fam vid TFAM-UNMAKE-STEP? EXIT THEN
-   fam CONSTRUCT-DECL-LAYOUT nip 0= IF RES-FALSE EXIT THEN
-   fam vid TFC-CONSTRUCT-STEP-VID
+   fam vid TFC-SEED {: dt:n seeded:bool :}
+   seeded 0= IF RES-FALSE EXIT THEN
+   fam vid dt seeded TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
 
 \ MATCH resolution (docs/forth.md "Structures And Enums") follows signature

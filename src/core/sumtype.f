@@ -842,24 +842,8 @@ public
    s" sumtype" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
-\ A PRODUCT is a single-shape TK-PRODUCT record: no tag, no variants. Each
-\ `FIELD name type` adds one PF-* row (fam, tail, schema root, slot) and one cell
-\ of width, so TFAM-WIDTH@ is the field cell count. Field tails are their own
-\ namespace: one-letter names are legal (the family RESERVED gate does not
-\ apply); TYPE-FIELD-OWNER:ADD enforces lowercase and no duplicate.
-\ The generated surface is `make` ( fields -- fam<..> ) and `unmake`
-\ ( fam<..> -- fields ), two SUMV rows sharing the sum publish and protection
-\ path, compiled with empty bodies: a product bundle is its field cells in slot
-\ order. Each is an ordinary stored-effect call unless the instantiation has a
-\ layout argument (checker.f SEED-TERM?): one wider than a cell, or a direct
-\ layout-family argument of a closed non-linear instantiation, one cell wide
-\ included (onebox<oneleaf>). There MAKE takes the construct step seeded from
-\ the declared output and UNMAKE the reversed step seeded from its live input
-\ (checker.f CTOR-STEP-XT, type-family.f TFAM-UNMAKE-STEP?). Linear
-\ instantiations are refused at the sig and argument-bind layers. Only the
-\ engine PRODUCT definer generates dictionary words. MATCH and `construct`
-\ accept sum/enum only: product rows are never matchable variants and private
-\ products have no construction surface.
+\ A PRODUCT is a single-shape TK-PRODUCT record (MAKE and UNMAKE: TDECL-PROD-WORD). Field tails are
+\ their own namespace, one-letter names legal; linear instantiations are refused at the sig and bind layers.
 
 private
 
