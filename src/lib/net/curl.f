@@ -3,6 +3,8 @@
 \ construction; TLS, redirects, proxies and the CA bundle are libcurl's. Every
 \ setter copies its span before it returns. PERFORM holds its task; START/AWAIT
 \ and STREAM-START/NEXT run on one CURL loop task (the multi interface below).
+\ NEXT-ARM, NEXT-READY? and NEXT-TAKE let one task have several streams armed
+\ and take each as it answers.
 \ Only HABU_NET_TESTS=1 runs the case that leaves the machine (TLS, CA bundle).
 require src/lib/errors.f
 require src/lib/string.f                      \ BUFFER:, the transfer table's byte rows
@@ -651,15 +653,18 @@ private
 \ PERFORM holds its task for a whole transfer, so ten transfers that way cost
 \ ten threads parked in libcurl. The words below are the other shape: ONE
 \ package-owned task drives libcurl's multi interface and a task that starts a
-\ transfer is free until it asks for the answer. That loop task parks in package
-\ AIO and not in libcurl: after every curl_multi_perform it asks
+\ transfer is free until it asks for the answer. The loop wakes a stream's owner
+\ for every chunk and end, so with NEXT-ARM, NEXT-READY? and NEXT-TAKE one task
+\ has several streams armed and takes each as it answers. That loop task parks
+\ in package AIO and not in libcurl: after every curl_multi_perform it asks
 \ curl_multi_fdset which descriptors libcurl is waiting on and curl_multi_timeout
 \ how long it may wait, turns those into AIO tickets, and takes the first one
 \ that ends. No CURLMOPT_SOCKETFUNCTION and no CURLMOPT_TIMERFUNCTION: those are
 \ callbacks, and Habu hands libcurl no callback - the same rule PERFORM's
-\ memstream answers. A streamed record's memstream is rewound once NEXT has taken
-\ all it holds, and its receive is paused while it holds untaken bytes, so a fast
-\ server waits in the kernel's window and not in this process's memory.
+\ memstream answers. A streamed record's memstream is rewound once all it holds
+\ is copied into spans NEXT-ARM armed, and its receive is paused while it holds
+\ uncopied bytes, so a fast server waits in the kernel's window and not in this
+\ process's memory.
 
 $400 constant FD-SETSIZE                  \ an fd_set holds bits 0..1023
 $80 constant FD-SET-BYTES                 \ those bits, eight to the byte
@@ -1111,7 +1116,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 \ Failure paths that drop an active stream have no later loop turn to deliver
-\ buffered bytes. Answer a pending NEXT before waking its owner.
+\ buffered bytes. Answer a read NEXT-ARM left waiting before waking its owner.
 : SETTLE-FAILED ( n -- ) {: idx:n :}
    idx REC-MODE@ MODE-STREAM = if
       idx REC R.REQUEST atomic@ REQUEST-WAITING = if
@@ -1138,9 +1143,9 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
-\ A finished streamed transfer keeps its body for NEXT to deliver. An owner
-\ that left gets no result: LEAVE-DONE wakes only a halted owner still waiting
-\ in ABANDON, which keeps this loop from waking a TCB the join has released.
+\ A finished streamed transfer keeps its body for the reads NEXT-ARM arms. An
+\ owner that left gets no result: LEAVE-DONE wakes only a halted owner still
+\ waiting in ABANDON, which keeps this loop from waking a TCB the join released.
 : STREAM-FINISH ( n n -- n ) {: idx:n rc:n :}
    idx REC-STREAM-TAKE {: source:n u:n bodyrc:n :}
    idx CAPTURE-CLOSE {: headers:n headeru:n headrc:n :}
@@ -1204,7 +1209,7 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
 
 
 \ The loop alone calls fflush; past the claim, readers hold CURL-LOCK, as the
-\ copy does until REQUEST-CHUNK. Then the destination is untouched until NEXT.
+\ copy does until REQUEST-CHUNK; then the loop leaves the span until NEXT-ARM.
 : STREAM-DELIVER ( n -- n ) {: idx:n :}
    idx REC-MODE@ MODE-STREAM <> if CURLM-OK exit then
    idx REC R.REQUEST atomic@ REQUEST-WAITING <> if CURLM-OK exit then
@@ -1241,8 +1246,8 @@ CAST: TARGET-SLOT ( ptr n -- ptr ptr u8 )
    CURLM-OK ;
 
 
-\ The loop comment's two rules, as a CURLcode. A rewind first wipes what NEXT
-\ took and goes before the resume, so what libcurl held lands at the start.
+\ The loop comment's two rules, as a CURLcode. A rewind first wipes what reads
+\ NEXT-ARM armed copied, before the resume, so what libcurl held lands at start.
 : PACE-STEP ( n -- n ) {: idx:n :}
    idx REC-STREAM@ STREAM-FLUSH 0<> if CURLE-WRITE-ERROR exit then
    idx REC-LEN-CELL LE:U64@ idx REC R.OFFSET @ > if
@@ -1739,7 +1744,7 @@ public
 private
 
 \ A whole body goes straight into the owner's span; a streamed one grows in the
-\ record's memstream until NEXT copies it out.
+\ record's memstream until the loop copies it into a span NEXT-ARM armed.
 : BODY-OPEN ( n ptr u8 n n -- n ) {: idx:n target capacity:n mode:n :}
    mode MODE-WHOLE = if target capacity SPAN-OPEN exit then
    idx REC-BUF-CELL idx REC-LEN-CELL STREAM-OPEN ;
@@ -1818,13 +1823,16 @@ public
    subject target capacity MODE-WHOLE START-WITH ;
 
 
-\ Queues the same prepared handle for incremental receive. NEXT supplies each
-\ destination; no caller span is held while the transfer is in flight.
+\ Queues the handle for incremental receive. The loop may write each span NEXT
+\ or NEXT-ARM gives until that read is taken or the task exits, after cleanups.
 : STREAM-START ( handle -- status ) {: subject:handle :}
    subject BUF-CELL 0 >LEN MODE-STREAM START-WITH ;
 
 
-: NEXT ( handle ptr u8 len -- chunk-result ) {: subject:handle target capacity:len :}
+\ Arms the next read into the span. The loop may write it until NEXT-TAKE
+\ answers or the task's exit, after its cleanups: none may free it.
+: NEXT-ARM ( handle ptr u8 len -- )
+   {: subject:handle target capacity:len :}
    subject HANDLE-CELL OWNED-INDEX {: idx:n :}
    idx REC-MODE@ MODE-STREAM <> if E-STATE throw then
    capacity LEN>N 1 AT-LEAST
@@ -1842,8 +1850,26 @@ public
    {: request:n ready:bool :}
    request idx REC R.REQUEST atomic!
    CURL-LOCK TASK:RELEASE
-   ready if idx STREAM-RESULT-TAKE exit then
-   WAKE-POKE
+   ready if exit then
+   WAKE-POKE ;
+
+
+\ Answers whether the armed read holds a chunk or the end; it never waits.
+: NEXT-READY? ( handle -- bool )
+   {: subject:handle :}
+   subject HANDLE-CELL OWNED-INDEX {: idx:n :}
+   idx REC R.REQUEST atomic@ {: request:n :}
+   request REQUEST-NONE = if E-STATE throw then
+   request REQUEST-WAITING <> ;
+
+
+\ Takes the armed read's answer, waiting for it if it has none yet.
+: NEXT-TAKE ( handle -- chunk-result )
+   {: subject:handle :}
+   subject HANDLE-CELL OWNED-INDEX {: idx:n :}
+   idx REC R.REQUEST atomic@ {: request:n :}
+   request REQUEST-NONE = if E-STATE throw then
+   request REQUEST-WAITING <> if idx STREAM-RESULT-TAKE exit then
    begin
       TASK:WAIT
       TASK:HALTED? if
@@ -1857,6 +1883,12 @@ public
          idx STREAM-RESULT-TAKE exit
       then
    again ;
+
+
+: NEXT ( handle ptr u8 len -- chunk-result )
+   {: subject:handle target capacity:len :}
+   subject target capacity NEXT-ARM
+   subject NEXT-TAKE ;
 
 
 \ Waits for that handle's transfer and answers the same fetch-result PERFORM

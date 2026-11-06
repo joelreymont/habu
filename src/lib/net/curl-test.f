@@ -113,6 +113,7 @@ create DRIBBLE-BUF DRIBBLE-U allot
 create STREAM-BUF STREAM-U allot
 create STREAM-GOT STREAM-U allot
 create STREAM-CHUNK STREAM-CAP allot
+create STREAM-CHUNK-TWO STREAM-CAP allot
 create RETRY-POLLS 16 allot             \ two pollfd rows: pooled socket and listener
 
 : TEST-ALIGN8 ( -- )
@@ -148,6 +149,9 @@ variable DRIBBLE-ENDS                   \ dribbles served to the end or cut by t
 variable STREAM-ACK                     \ the peer may finish only after NEXT delivered
 variable STREAM-DONE
 variable STREAM-READ
+variable TWO-TOOK                       \ CASE-STREAM-TWO's pass took an answer
+2 TYPED-BUFFER TWO-READ n               \ body bytes each stream delivered
+2 TYPED-BUFFER TWO-END n                \ 1 once that stream answered its end
 variable LAST-STATUS
 variable LAST-LEN
 variable LAST-CODE
@@ -2209,6 +2213,99 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    [: BOUNDED-RUN ;] [: HUGE-RELEASE ;] finally ;
 
 
+\ Stream i's span, its body, and that body's room in bytes.
+: TWO-CHUNK ( n -- ptr u8 ) 0= if STREAM-CHUNK else STREAM-CHUNK-TWO then ;
+: TWO-BODY ( n -- ptr u8 ) 0= if STREAM-GOT else BODY-BUF then ;
+: TWO-ROOM ( n -- n ) 0= if STREAM-U else STREAM-CAP then ;
+
+
+: TWO-APPEND ( len n -- )
+   {: u:len i:n :}
+   u LEN>N {: count:n :}
+   i TWO-READ @ count + i TWO-ROOM <= TTRUE
+   i TWO-CHUNK i TWO-BODY i TWO-READ @ + count BYTE-COPY
+   i TWO-READ @ count + i TWO-READ ! ;
+
+
+\ Takes stream i's answer: a chunk joins its body and the read is armed again;
+\ answers true at the end.
+: TWO-TAKE ( CURL:handle n -- bool )
+   {: subject:CURL:handle i:n :}
+   subject CURL:NEXT-TAKE JOIN-SERVER
+   MATCH CURL:chunk-result
+      chunk OF
+         swap CURL:HTTP-STATUS>N 200 T=
+         i TWO-APPEND
+         subject i TWO-CHUNK STREAM-CAP >LEN CURL:NEXT-ARM
+         false
+      ENDOF
+      response OF CURL:HTTP-STATUS>N 200 T= true ENDOF
+      failed OF CURL:CODE>N NOT-TIMEOUT 0 T= true ENDOF
+   ;MATCH ;
+
+
+: TWO-STEP ( CURL:handle n -- )
+   {: subject:CURL:handle i:n :}
+   i TWO-END @ 0<> if exit then
+   subject CURL:NEXT-READY? if
+      1 TWO-TOOK !
+      subject i TWO-TAKE if 1 i TWO-END ! then
+   then ;
+
+
+: READY-UNARMED ( -- )
+   OWNER-HANDLE @ CURL:NEXT-READY? drop ;
+
+: TAKE-UNARMED ( -- )
+   OWNER-HANDLE @ CURL:NEXT-TAKE drop ;
+
+: ARM-AGAIN ( -- )
+   OWNER-HANDLE @ STREAM-CHUNK STREAM-CAP >LEN CURL:NEXT-ARM ;
+
+
+\ The server holds stream one's connection until STREAM-ACK and accepts no
+\ other meanwhile, so stream two's read and stream one's next read both wait.
+: CASE-STREAM-TWO ( -- )
+   s" one task takes two armed streams as each answers" T-LABEL
+   0 STREAM-ACK atomic! 0 STREAM-DONE atomic! 0 STREAM-READ !
+   0 0 TWO-READ ! 0 1 TWO-READ ! 0 0 TWO-END ! 0 1 TWO-END !
+   PATH-STREAM$ GET-READY {: one:CURL:handle :}
+   one CURL:STREAM-START EXPECT-OK
+   one STREAM-FIRST
+   STREAM-READ @ 0 TWO-READ !
+   PATH-HELLO$ GET-READY {: two:CURL:handle :}
+   two CURL:STREAM-START EXPECT-OK
+   two 1 TWO-CHUNK STREAM-CAP >LEN CURL:NEXT-ARM
+   two CURL:NEXT-READY? TFALSE
+   one 0 TWO-CHUNK STREAM-CAP >LEN CURL:NEXT-ARM
+   one CURL:NEXT-READY? TFALSE
+   1 STREAM-ACK atomic!
+   begin
+      0 TWO-TOOK !
+      one 0 TWO-STEP
+      two 1 TWO-STEP
+      TWO-TOOK @ 0= if TASK:WAIT then
+      0 TWO-END @ 1 TWO-END @ and 0<>
+   until
+   STREAM-DONE atomic@ 1 T=
+   0 TWO-READ @ STREAM-U T=
+   0 TWO-BODY STREAM-U STREAM-BUF STREAM-U T$=
+   1 TWO-BODY 1 TWO-READ @ HELLO$ T$=
+   s" a stream is armed once and read only when armed" T-LABEL
+   PATH-HELLO$ GET-READY {: three:CURL:handle :}
+   three OWNER-HANDLE !
+   three CURL:STREAM-START EXPECT-OK
+   [: READY-UNARMED ;] CURL:E-STATE TTHROWSQ
+   [: TAKE-UNARMED ;] CURL:E-STATE TTHROWSQ
+   three 0 TWO-CHUNK STREAM-CAP >LEN CURL:NEXT-ARM
+   [: ARM-AGAIN ;] CURL:E-STATE TTHROWSQ
+   0 0 TWO-READ !
+   begin three 0 TWO-TAKE until
+   one CURL:CLEANUP
+   two CURL:CLEANUP
+   three CURL:CLEANUP ;
+
+
 \ One request through PERFORM and the same one through the loop: the answers
 \ must agree, status, length and bytes.
 : PARITY-WHOLE ( -- )
@@ -2725,6 +2822,7 @@ variable DEFER-RETURNED
    CASE-STREAM-FAILURES
    CASE-STREAM-PARTIAL
    CASE-STREAM-BOUNDED
+   CASE-STREAM-TWO
    CASE-HEADER-REUSE
    CASE-HEADER-INDEPENDENT
    CASE-MANY
@@ -2753,7 +2851,8 @@ variable DEFER-RETURNED
    s" the server task served every request and reported no fault" T-LABEL
    SERVER-BAD @ 0 T=
    SERVER-ERRNO @ 0 T=
-   SERVER-HITS atomic@ 80 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
+   SERVER-HITS atomic@
+   83 MANY-N MANY-ROUNDS * + DONE-ATTEMPTS @ + CEILING-HITS @ + T= ;
 
 
 \ Opt-in: the one case that leaves the machine. It proves the system CA bundle

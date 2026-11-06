@@ -414,6 +414,13 @@ learned live in the docs for their subject.
   the journal input a lookup needs, and MODEL:REPLAY, which restores a saved
   reply for that request and sends nothing, Joel chose "Add both words
   (Recommended)": "Check saved reply first, then send; carl lands them."
+- 2026-11-06, many streams on one task (relayed by phil from Zen): shown
+  that Zen's worker kept a thread per model call because CURL:NEXT arms,
+  waits and takes in one word, Joel said "fix the cause and not the
+  symptoms!" and chose "Approve three words (Recommended)": "ARM, READY?,
+  TAKE as listed; NEXT and its tests unchanged." CURL:NEXT-ARM ( handle ptr
+  u8 len -- ), NEXT-READY? ( handle -- bool ) and NEXT-TAKE ( handle --
+  chunk-result ).
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself
