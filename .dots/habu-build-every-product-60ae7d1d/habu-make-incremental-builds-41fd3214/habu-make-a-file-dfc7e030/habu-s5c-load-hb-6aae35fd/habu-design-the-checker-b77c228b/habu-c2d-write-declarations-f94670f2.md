@@ -7,6 +7,8 @@ created-at: "2026-11-06T20:16:59.603881+02:00"
 blocks:
   - habu-c2c2-store-a-34061842
   - habu-c2b2-read-a-5a60b460
+  - habu-c2b3-read-a-971f0ede
+  - habu-c2b4-read-a-c1a69d3c
 ---
 
-Problem: design r2 D4: every writer of checker facts (definers, declarations, PRIM: rows) finds its record through the dictionary, and the 125 forward PRIM: rows name words not yet defined. Acceptance: each declaration writer stores its facts through CHECK:FACTS!; the 125 forward PRIM: rows move below their definitions; the checker's separate stores for those facts go. Files: src/core/checker.f, the files holding the forward rows. Verify: candidate build; bin/hb --load test/run.f. Depends: C2c2, C2b2. Ownership: those files. Claim: unassigned.
+Problem: design r2 D4: every writer of checker facts (definers, declarations, PRIM: rows) finds its record through the dictionary, and the 125 forward PRIM: rows name words not yet defined. Acceptance: each declaration writer stores its facts through CHECK:FACTS!; the 125 forward PRIM: rows move below their definitions; the checker's separate stores for those facts go. Files: src/core/checker.f, the files holding the forward rows. Verify: candidate build; bin/hb --load test/run.f. Depends: C2c2, C2b2, C2b3, C2b4. Ownership: those files. Claim: unassigned.
