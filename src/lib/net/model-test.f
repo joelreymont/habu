@@ -1992,6 +1992,111 @@ variable ASKED-U
    MODEL-PEER:CALLS@ refused = ASSERT ;
 
 
+\ The user message of the part "valid" as a chat request writes it.
+: HEAD$ ( -- ptr u8 n )
+   S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" ;
+
+
+\ A call with parts and no items: its journal input, by which a saved record
+\ is found, and its sent body, byte for byte.
+: PINNED ( -- )
+   s" valid" ASK
+   SB-RESET
+   S\" {\qkind\q:\qgeneration\q,\qconfiguration\q:{\qbackend\q:\qopenai-responses\q," SB-APPEND
+   S\" \qmodel\q:\qtest-generation\q,\qendpoint\q:\q" SB-APPEND
+   MODEL-PEER:BASE-URL$ SB-APPEND
+   S\" /responses\q},\qinstructions\q:\qRead source evidence.\q,\qschema\q:" SB-APPEND
+   SCHEMA$ SB-APPEND
+   S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
+   ASKED$ SB$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   SB-RESET
+   S\" {\qmodel\q:\qtest-generation\q,\qstore\q:false,\qstream\q:true," SB-APPEND
+   S\" \qinstructions\q:\qRead source evidence.\q,\qinput\q:[" SB-APPEND
+   HEAD$ SB-APPEND
+   S\" ],\qtext\q:{\qformat\q:{\qtype\q:\qjson_schema\q,\qname\q:\qanswer\q," SB-APPEND
+   S\" \qstrict\q:true,\qschema\q:" SB-APPEND
+   SCHEMA$ SB-APPEND
+   s" }}}" SB-APPEND
+   MODEL-PEER:SENT$ SB$ STR= ASSERT ;
+
+
+\ History items in OpenAI's shapes; OUTPUT$ keeps a space between members.
+: CALLED$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qfunction_call\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{}\q}" ;
+: OUTPUT$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qfunction_call_output\q, \qcall_id\q:\qcall_1\q,\qoutput\q:\qfound\q}" ;
+: USER-ITEM$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" ;
+: ITEM ( ptr u8 n -- ) M MODEL:ITEM+ ;
+: ADD-ITEM ( ptr u8 n ptr MODEL:call -- ptr u8 n ptr MODEL:call )
+   {: a:ptr u:n c :}
+   a u c MODEL:ITEM+ a u c ;
+: ITEM-CODE ( ptr u8 n -- n )
+   M [: ADD-ITEM ;] catch {: code:n :} drop 2drop code ;
+\ The array or object the reader is on is exactly these source bytes.
+: RAW-IS ( JSON:reader ptr u8 n -- )
+   {: want:ptr want-u:n :}
+   JSON:READ-VALUE-SPAN$ want want-u STR= ASSERT JSON:READ-CLOSE ;
+
+
+\ ITEM+ before PARTS-RESET, after CHAT or after JOURNAL-INPUT$ is E-STATE, the
+\ last dropping the request as a builder does; no part or item is E-CONFIG.
+: ITEM-TURNS ( -- )
+   CALLED$ ITEM-CODE MODEL:E-STATE = ASSERT
+   CHAT
+   CALLED$ ITEM-CODE MODEL:E-STATE = ASSERT
+   s" valid" ASK
+   CALLED$ ITEM-CODE MODEL:E-STATE = ASSERT
+   REPLAY-CODE MODEL:E-STATE = ASSERT
+   M MODEL:PARTS-RESET
+   CALLED$ ITEM-CODE 0= ASSERT
+   M MODEL:PARTS-RESET
+   CHAT-CODE MODEL:E-CONFIG = ASSERT ;
+
+
+\ Items follow the head message of the parts in the order added, verbatim in
+\ the request and in the journal input's `items`, after `parts`.
+: ITEM-ORDER ( -- )
+   M MODEL:PARTS-RESET CALLED$ ITEM s" valid" M MODEL:TEXT+ OUTPUT$ ITEM
+   M MODEL:JOURNAL-INPUT$ {: a:ptr u:n :}
+   SB-RESET
+   S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
+   CALLED$ SB-APPEND s" ," SB-APPEND OUTPUT$ SB-APPEND s" ]}" SB-APPEND
+   a u SB$ ENDS-WITH? ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   SB-RESET s" [" SB-APPEND HEAD$ SB-APPEND s" ," SB-APPEND
+   CALLED$ SB-APPEND s" ," SB-APPEND OUTPUT$ SB-APPEND s" ]" SB-APPEND
+   s" input" SENT SB$ RAW-IS ;
+
+
+\ A call of items alone sends them as its whole input; its journal input names
+\ no part.
+: ITEMS-ONLY ( -- )
+   M MODEL:PARTS-RESET USER-ITEM$ ITEM
+   M MODEL:JOURNAL-INPUT$ {: a:ptr u:n :}
+   SB-RESET S\" ,\qparts\q:[],\qitems\q:[" SB-APPEND
+   USER-ITEM$ SB-APPEND s" ]}" SB-APPEND
+   a u SB$ ENDS-WITH? ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   SB-RESET s" [" SB-APPEND USER-ITEM$ SB-APPEND s" ]" SB-APPEND
+   s" input" SENT SB$ RAW-IS ;
+
+
+\ An item that is not exactly one JSON object is E-CONFIG and adds nothing.
+: ITEM-REFUSALS ( -- )
+   s" valid" PREP CALLED$ ITEM
+   s" " ITEM-CODE MODEL:E-CONFIG = ASSERT
+   s" []" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   S\" \qx\q" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   s" {}{}" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   s" {" ITEM-CODE MODEL:E-CONFIG = ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   SB-RESET s" [" SB-APPEND HEAD$ SB-APPEND s" ," SB-APPEND
+   CALLED$ SB-APPEND s" ]" SB-APPEND
+   s" input" SENT SB$ RAW-IS ;
+
+
 \ Both producer configurations name this base.
 : BASE-IS ( ptr u8 n -- )
    {: want:ptr want-u:n :}
@@ -2128,6 +2233,8 @@ variable ASKED-U
    STOP-ACTIVE
    M MODEL:CLOSE
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL
+   M MODEL:CLOSE
+   SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REFUSALS PINNED
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS
    M MODEL:CLOSE

@@ -467,6 +467,32 @@ learned live in the docs for their subject.
   "Float bytes (Recommended)": "One form for every provider; search
   prints its one vector." VECTOR@ answers DIMS little-endian binary32
   values, 4 bytes each.
+- 2026-11-06, tool calls and compaction in MODEL (relayed by kevin from
+  Tender, for Zen's reasoning steps): shown that Zen fakes tool calls through
+  one JSON answer whose free-text `args` the model fills with arguments Zen
+  rejects, Joel chose "Approve (Recommended)" for strict tools, compaction
+  before 272,000 tokens and a final built per task, and "Add it
+  (Recommended)" for `MODEL:TOOLS!` (a call offers tools and must answer with
+  exactly one tool call), `MODEL:ITEM+` (one history item in OpenAI's own
+  shape) and `MODEL:OUTPUT$` (a tool reply's output items whole, anything but
+  exactly one tool call an E-RESPONSE). Asked about `MODEL:COUNT-INPUT` (a
+  call's exact input tokens, counted before it is sent), he said "resolve
+  yourself, get shit done"; the lead added it with `MODEL:COMPACT` (the
+  call's input replaced by the provider's compacted window), which the
+  approved design names. Leaving for the night he said "i'm leaving for the
+  night so make your own judgement and do everything without asking me.
+  apply the what's best for long term criteria"; the lead's call on the
+  saved formats: three additive changes, no version, nothing migrated: the
+  journal input writes `tools` in place of `schema` for a tools call and
+  gains `items` verbatim and in order; journal kinds gain `input_tokens` and
+  `compaction`; the recorder kind gains `input_tokens` and `compaction`, so
+  a free count or a compaction is never priced as a generation. An input
+  without tools or items stays byte-identical. Items are kept verbatim, not
+  by hash as images are: they are JSON the caller holds, the record shows
+  what the model was given, and a lookup needs no second store. The journal
+  record keeps its keys, with empty content for a tool reply, a count or a
+  compaction, and `compaction` as a usage kind. TEST-MODEL:OUTPUT!,
+  INPUT-TOKENS! and COMPACTION! answer those replies in tests.
 - 2026-11-01, indented JSON (relayed by stuart): shown that Tender lays out
   every indented report itself, about 600 line-break and indent calls each
   passing its depth, against a writer that tracks nesting and indents itself

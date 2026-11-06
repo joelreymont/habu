@@ -85,10 +85,8 @@ public
 -9707 constant E-INCOMPLETE
 \ CANCEL ended the call, or REQUEST-STOP came before or during it.
 -9709 constant E-CANCELLED
-\ A word out of turn: an unopened or busy call, settings closed or opened
-\ twice, a part added before PARTS-RESET or after a failed builder, VECTOR@
-\ before EMBED, REPLAY without JOURNAL-INPUT$, or a recorded call without a
-\ purpose.
+\ A word out of turn: a busy or unopened call, a part or item outside building,
+\ or VECTOR@ before EMBED.
 -9710 constant E-STATE
 \ The provider is temporarily unavailable: status 408, 429 or 5xx, or a failed
 \ response's error code rate_limit_exceeded or server_error.
@@ -229,7 +227,8 @@ KEY-SPEC-HDR-AT BUF:HDR-BYTES + constant SYSTEM-HDR-AT
 SYSTEM-HDR-AT BUF:HDR-BYTES + constant SCHEMA-HDR-AT
 SCHEMA-HDR-AT BUF:HDR-BYTES + constant PARTS-HDR-AT
 PARTS-HDR-AT BUF:HDR-BYTES + constant JOURNAL-PARTS-HDR-AT
-JOURNAL-PARTS-HDR-AT BUF:HDR-BYTES + constant BODY-HDR-AT
+JOURNAL-PARTS-HDR-AT BUF:HDR-BYTES + constant ITEMS-HDR-AT
+ITEMS-HDR-AT BUF:HDR-BYTES + constant BODY-HDR-AT
 BODY-HDR-AT BUF:HDR-BYTES + constant INPUT-HDR-AT
 INPUT-HDR-AT BUF:HDR-BYTES + constant URI-HDR-AT
 URI-HDR-AT BUF:HDR-BYTES + constant EFFORT-HDR-AT
@@ -289,6 +288,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base SCHEMA-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
    base PARTS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base JOURNAL-PARTS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
+   base ITEMS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base BODY-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base INPUT-HDR-AT + CELL-VIEW 256 BUF:N>BLEN BUF:INIT
    base URI-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
@@ -328,6 +328,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base SCHEMA-HDR-AT + CELL-VIEW BUF:DISPOSE
    base PARTS-HDR-AT + CELL-VIEW BUF:DISPOSE
    base JOURNAL-PARTS-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base ITEMS-HDR-AT + CELL-VIEW BUF:DISPOSE
    base BODY-HDR-AT + CELL-VIEW BUF:DISPOSE
    base INPUT-HDR-AT + CELL-VIEW BUF:DISPOSE
    base URI-HDR-AT + CELL-VIEW BUF:DISPOSE
@@ -383,6 +384,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : PARTS-BUF ( ptr call -- ptr n ) PARTS-HDR-AT HEADER ;
 \ The parts as the journal input names them: an image by its digest.
 : JOURNAL-PARTS-BUF ( ptr call -- ptr n ) JOURNAL-PARTS-HDR-AT HEADER ;
+\ The history items as given, joined by single commas.
+: ITEMS-BUF ( ptr call -- ptr n ) ITEMS-HDR-AT HEADER ;
 : BODY-BUF ( ptr call -- ptr n ) BODY-HDR-AT HEADER ;
 : INPUT-BUF ( ptr call -- ptr n ) INPUT-HDR-AT HEADER ;
 : URI-BUF ( ptr call -- ptr n ) URI-HDR-AT HEADER ;
@@ -534,6 +537,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : SCHEMA$ ( ptr call -- ptr u8 n ) SCHEMA-BUF BUFFER$ ;
 : PARTS$ ( ptr call -- ptr u8 n ) PARTS-BUF BUFFER$ ;
 : JOURNAL-PARTS$ ( ptr call -- ptr u8 n ) JOURNAL-PARTS-BUF BUFFER$ ;
+: ITEMS$ ( ptr call -- ptr u8 n ) ITEMS-BUF BUFFER$ ;
 : BODY$ ( ptr call -- ptr u8 n ) BODY-BUF BUFFER$ ;
 : EFFORT$ ( ptr call -- ptr u8 n )
    {: c :}
@@ -1173,6 +1177,7 @@ public
    0 c MODEL-CALL:HTTP-STATUS !
    c PARTS-BUF c RESET-SCRATCH
    c JOURNAL-PARTS-BUF c RESET-SCRATCH
+   c ITEMS-BUF c RESET-SCRATCH
    0 c MODEL-CALL:PARTS-COUNT !
    c PART-OPEN
    construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
@@ -1266,24 +1271,44 @@ private
    then
    JSON:READ-CLOSE false ;
 
-: SCHEMA-STEP ( ptr call -- ptr call )
-   {: c :}
-   c SCHEMA$ c JSON-OBJECT? 0= if E-CONFIG throw then
-   c ;
+: OBJECT-STEP ( ptr u8 n ptr call -- ptr u8 n ptr call )
+   {: a:ptr u:n c :}
+   a u c JSON-OBJECT? 0= if E-CONFIG throw then
+   a u c ;
 
-: CHECK-SCHEMA ( ptr call -- )
-   {: c :}
-   c [: SCHEMA-STEP ;] catch {: code:n :} drop
+\ Bytes that are not exactly one JSON object, a reader fault included, are
+\ E-CONFIG.
+: CHECK-OBJECT ( ptr u8 n ptr call -- )
+   [: OBJECT-STEP ;] catch {: code:n :} drop 2drop
    code JSON-FAULT? if E-CONFIG throw then
    code 0<> if code throw then ;
 
+public
+
+\ One history item in OpenAI's shape; E-CONFIG unless one JSON object. Items
+\ follow the parts' message, in the order added, verbatim in body and journal.
+: ITEM+ ( ptr u8 n ptr call -- )
+   {: a:ptr u:n c :}
+   c UNPREPARE drop
+   c REQUIRE-BUILDING
+   a u c CHECK-OBJECT
+   construct input-state broken c MODEL-CALL:CHAT-INPUT !
+   c ITEMS-BUF BUF:LEN@ BUF:BLEN>N 0<> if
+      s" ," BUF:N>BLEN c ITEMS-BUF BUF:APPEND-SPAN
+   then
+   a u BUF:N>BLEN c ITEMS-BUF BUF:APPEND-SPAN
+   construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
+
+private
+
 : CHECK-CHAT ( ptr call -- )
    {: c :}
+   c MODEL-CALL:PARTS-COUNT @ 0= c ITEMS$ nip 0= and {: empty:bool :}
    c GEN$ nip 0=
-   c SYSTEM$ nip 0= or c MODEL-CALL:PARTS-COUNT @ 0= or if
+   c SYSTEM$ nip 0= or empty or if
       E-CONFIG throw
    then
-   c CHECK-SCHEMA ;
+   c SCHEMA$ c CHECK-OBJECT ;
 
 : BODY-OPEN ( ptr call -- )
    {: c :}
@@ -1323,11 +1348,18 @@ private
    JSON:WRITE-COMMA
    s" input" JSON:WRITE-KEY
    JSON:WRITE-ARRAY-START
-   JSON:WRITE-OBJECT-START
-   s" role" s" user" JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" content" c PARTS$ JSON:WRITE-FIELD-RAW
-   JSON:WRITE-OBJECT-END
+   c MODEL-CALL:PARTS-COUNT @ 0 > {: head:bool :}
+   head if
+      JSON:WRITE-OBJECT-START
+      s" role" s" user" JSON:WRITE-FIELD-S
+      JSON:WRITE-COMMA
+      s" content" c PARTS$ JSON:WRITE-FIELD-RAW
+      JSON:WRITE-OBJECT-END
+   then
+   c ITEMS$ nip 0<> if
+      head if JSON:WRITE-COMMA then
+      c ITEMS$ JSON:WRITE-RAW
+   then
    JSON:WRITE-ARRAY-END
    JSON:WRITE-COMMA
    s" text" JSON:WRITE-KEY
@@ -1424,6 +1456,10 @@ private
    JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" schema" c SCHEMA$ JSON:WRITE-FIELD-RAW
    JSON:WRITE-COMMA s" parts" c JOURNAL-PARTS$ JSON:WRITE-FIELD-RAW
+   c ITEMS$ nip 0<> if
+      JSON:WRITE-COMMA s" items" JSON:WRITE-KEY
+      JSON:WRITE-ARRAY-START c ITEMS$ JSON:WRITE-RAW JSON:WRITE-ARRAY-END
+   then
    JSON:WRITE-OBJECT-END drop
    c WRITER JSON:WRITE-CLOSE ;
 
@@ -3286,7 +3322,7 @@ public
 \ pending purpose selects the model and effort as at CHAT, so PURPOSE! comes
 \ first. A second call answers the same input. The next CHAT sends that
 \ request, or REPLAY restores a saved reply for it. A call that changes the chat
-\ request (PARTS-RESET, TEXT+, IMAGE+, PURPOSE!, PURPOSE-MODEL! and the
+\ request (PARTS-RESET, TEXT+, IMAGE+, ITEM+, PURPOSE!, PURPOSE-MODEL! and the
 \ generation model, base URL, system, schema, effort, service tier and cache
 \ key setters) or EMBED first discards it, and the request is built again from
 \ PARTS-RESET.
