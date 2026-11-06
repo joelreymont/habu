@@ -112,7 +112,14 @@ learned live in the docs for their subject.
   48-byte dictionary entry, Joel chose "Reuse name bytes (Recommended)":
   "Inline names shrink 16→8 bytes; old builder needs one expression until
   retired." Bytes 32-39 of every entry hold the word's facts; a name of 9 or
-  more bytes is stored out of line, as names over 16 bytes were.
+  more bytes is stored out of line, as names over 16 bytes were. Asked
+  whether those facts are stored as declaration text or as binary in the
+  checker's own type numbers, Joel asked "what is best for long term? why are
+  you asking me before asking that yourself?" The lead chose declaration text
+  with every type named with its package, `( TASK:sem -- n )`, parsed on first
+  use: binary would be misread without an error by a checker that numbers its
+  types differently, and text with bare type names read in another package
+  finds that package's type of the same name.
 - 2026-11-06, type names: shown that a bare type name also resolves when
   exactly one package anywhere makes a type of that name public (type-family.f
   TFAM-FIND-PUBLIC), a step bare words do not have, used at about 130 places
@@ -1194,6 +1201,13 @@ learned live in the docs for their subject.
   before we settle them". Asked where lessons learned go, he chose "Decisions
   only (Recommended)": "Lessons move to docs by subject, or the global rules
   for ways of working."
+
+- 2026-11-06, the rules file: Joel wrote "review CLAUDE.md and throw out
+  anything that's not governing rules" and, on its scope, "local only, either
+  AGENTS.md or CLAUDE.md, whatever we are using". AGENTS.md at the root, which
+  CLAUDE.md links to, holds only rules. Asked about lines that only say where
+  a doc lives, he chose "Reword as steps (Recommended)": such a line becomes a
+  step that names the doc.
 
 ## Installing
 
