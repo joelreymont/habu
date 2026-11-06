@@ -116,10 +116,8 @@ public
 s" SDPG ( n n -- n n ) HIDDEN-MAKE HIDDEN-UNMAKE" CHECK-QUIET-CANDIDATE! 1 T=
 s" SDPGT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
-\ A private family reserves no wordlist to protect, so its words are protected BY
-\ NAME: the checker's undefine guard recognises the private spelling while the
-\ declaring package is open (E-CTOR-PROTECTED 7111). It protects the MEMBER SET
-\ the generator publishes — MAKE and UNMAKE for a product — and nothing else.
+\ While its package is open, a private product's MAKE and UNMAKE refuse undefine
+\ by name, E-CTOR-PROTECTED 7111; a word only sharing their prefix does not.
 package SDPRIVTEST
 private
 s" undefine HIDDEN-MAKE" TEST-EVAL:RC 7111 T=

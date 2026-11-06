@@ -1393,11 +1393,7 @@ public
    loop RES-FALSE ;
 
 \ `DERIVE addr` accessors are recognized from the field registry, declared
-\ further down, so the predicate is a friend xt bound at its definition. It
-\ joins the two scans because every consumer asks one question (does the
-\ generator own this name): the undefine guard, the closed-package extra-tail
-\ rule, xref.f's protected-WID assertions and the generated-declaration name
-\ preflight.
+\ further down, so the predicate is a friend xt bound at its definition.
 defer TFAM-ADDR-WORD-XT ( ptr u8 n -- bool )
 
 ;package

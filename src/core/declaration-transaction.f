@@ -1,7 +1,6 @@
 \ declaration-transaction.f - the one declaration transaction's open state.
-\ The runner is in src/core/generated-declaration-protection.f, the last
-\ participant to load; it reopens this package. Declarations never nest
-\ (generated-declaration.f, DECL-REJECT "Nesting"), so the state is one cell.
+\ Its runner is in generated-declaration-protection.f; declarations never nest
+\ (OPEN throws E-ACTIVE), so the state is one cell.
 
 package DECLARATION-TRANSACTION
 

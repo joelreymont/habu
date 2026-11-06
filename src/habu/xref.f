@@ -391,19 +391,6 @@ names: XREF-FIND-INDEX
    dup 0 >= if exit then
    s" undefine: word not found" 70 die ;
 
-: PROT-WID-CTOR-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TFAM-CTOR-WORD? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
-   a u XREF-FIND dup XREF-FOUND? 0= IF
-      drop s" xref: protected-WID constructor not found" 76 die
-   THEN
-   XREF-WORDLIST prot-wid-add ;
-
-using TYPE-DECL
-: PROT-WID-CTOR-INSTALL ( -- ) [: PROT-WID-CTOR-ADD ;] is TYPE-DECL:TDECL-PROT-WID-XT ;
-PROT-WID-CTOR-INSTALL
--1 TDECL-PROT-WID-ARMED !
-;using
-
 package GENERATED-DECL-NAME-PREFLIGHT
 
 private
@@ -433,13 +420,8 @@ $7FFFFFFFFFFFFFFF constant COUNT-MAX
    ns XREF-FOUND? 0= IF XREF-NULL EXIT THEN
    a q 1+ ZPTR+  u q - 1-  ns XREF-PKG-PUBLIC WL-RECORD ;
 
-public
-
 \ A generated declaration is qualified exactly when it reserves a constructor
-\ NAMESPACE. A private family's words carry the bare FAMILY-MEMBER spelling
-\ (src/core/type-family.f TF-CTOR-PRIV$) and land in the declaring package's own
-\ private wordlist, so they allocate no wordlist and protect none; every question
-\ below that is about a namespace has to ask this first.
+\ namespace; a private family's bare words (TF-CTOR-PRIV$) allocate no wordlist.
 : NAMESPACED? ( ptr u8 n -- bool )
    XREF-QUAL-INDEX 0 >= ;
 
@@ -455,6 +437,8 @@ public
       s" xref: generated declaration already exists" 76 die
    THEN ;
 
+public
+
 : DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
    words 0 <= words COUNT-MAX >= or IF
       s" xref: generated declaration word count overflow" 76 die
@@ -462,10 +446,6 @@ public
    a u NAMESPACED? 0= IF words EXIT THEN
    a u NAMESPACE-EXISTS? IF words EXIT THEN
    words 1 + ;
-
-: NEW-WORDLIST? ( ptr u8 n -- bool )
-   2dup NAMESPACED? 0= IF 2drop XREF-FALSE EXIT THEN
-   NAMESPACE-EXISTS? 0= ;
 
 private
 

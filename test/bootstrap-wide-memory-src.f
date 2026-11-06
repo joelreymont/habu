@@ -3,20 +3,6 @@
 \ the values it delivers. Only the Gforth recovery checks run it, through
 \ test/bootstrap-wide-memory.fs (tools/bootstrap.sh, test/nf-path-test.f).
 
-\ This isolated fixture does not load xref.f's constructor-package registration
-\ bridge. Keep the hook inert while the fixture exercises wide codegen.
-using TYPE-DECL
-
-package BWM-PROT
-private
-: STAGE0-NOP ( ptr u8 n -- ) 2drop ;
-: INSTALL ( -- ) [: STAGE0-NOP ;] is TYPE-DECL:TDECL-PROT-WID-XT ;
-INSTALL
-;package
-
--1 TDECL-PROT-WID-ARMED !
-;using
-
 SUMTYPE bwm2<a>
   VARIANT pair a ;VARIANT
   VARIANT other a ;VARIANT

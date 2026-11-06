@@ -397,10 +397,8 @@ create NL NEWLINE c,
    s" hb: definition while a checker replay is open: " ERROR-TEXT:TYPE
    TOKEN$ ERROR-TEXT:TYPE ENGINE-ERROR:OVERLAY-OPEN THROW-AT ;
 
-\ Whether wordlist wid is protected (habu1.f EMIT-PROTWID, read as
-\ tools/prot-wid-probe.f MEMBER? reads it): the two engine-reserved wordlists
-\ by rule, then the wid's bit in the bitmap at PROT-BITS-OFF, which no wid
-\ outside [0, PROT-WID-MAX) has.
+\ Whether wid is protected (habu1.f EMIT-PROTWID): the two engine-reserved
+\ wordlists, then its PROT-BITS-OFF bit, set only within [0, PROT-WID-MAX).
 : PROTECTED? ( n -- bool ) {: wid:n :}
    wid OWNER-API-PUB-WID = wid OWNER-API-PRI-WID = or if true exit then
    wid 0 < wid PROT-WID-MAX >= or if false exit then

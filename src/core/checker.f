@@ -26170,19 +26170,11 @@ variable CAST-PATH-N
    SGOUT @ SUNI-COERCE
    FRESH-CLAIM ;
 
-\ The refusals a recorded name meets, a closed constructor package and a
-\ duplicate tail, are asked before the record step's first write: its control
-\ entry goes in ahead of the effect record and that store is later-wins, so a
-\ refusal asked after the append would leave the refused body's flags as the
-\ name's newest entry and strip the first definition of its source authority
-\ (test/checker-dup-record.f). The constructor refusal is asked only for a
-\ declared signature, as the writers that publish one ask it; RECXT does not.
-\ CHECKER-CERT-DUP? asks without interning. The deferred and multi-error
-\ branches of CHECK ask these before their NORET row; the certified branch
-\ asks them in PUBLISH-REFUSALS.
+\ A recorded name's refusals (closed constructor package, duplicate tail) come
+\ before the record step's later-wins first write (test/checker-dup-record.f).
 : CHECK-REC-ADMIT ( ptr u8 n -- )
    {: a:ptr u:n :}
-   CHECK-SIG? IF a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN THEN
+   a u CTOR-EXTEND?-XT IF E-CTOR-PROTECTED throw THEN
    a u CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
 
 \ Every refusal a certified definition can meet at publication, asked before its

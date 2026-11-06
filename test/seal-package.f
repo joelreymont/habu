@@ -95,16 +95,6 @@ variable SPK-WANT-U
    s" ;package" SPK-LINE
    SB$ ;
 
-: SPK-CTOR-WID-FORGE$ ( -- ptr u8 n )       \ generated ctor WID closes to later tails
-   SB-RESET
-   s" SUMTYPE spkw" SPK-LINE
-   s"   VARIANT ok n ;VARIANT" SPK-LINE
-   s"   VARIANT err n ;VARIANT" SPK-LINE
-   s" ;SUMTYPE" SPK-LINE
-   S\" s\" ctor-ready\" type cr" SPK-LINE
-   s" : SPKW:EVIL ( -- n ) 7 ;" SPK-LINE
-   SB$ ;
-
 : SPK-FFI-REOPEN$ ( -- ptr u8 n )
    SB-RESET
    s" require src/lib/ffi-abi.f" SPK-LINE
@@ -217,9 +207,6 @@ variable SPK-WANT-U
 : SPK-ASSERT-OK ( -- )
    SPK-EXITED @ TTRUE
    SPK-RC @ 0 T= ;
-
-: SPK-ASSERT-CTOR-MARK ( -- )
-   SPK-OUT SPK-OUT-U @ s" ctor-ready" CONTAINS? TTRUE ;
 
 : SPK-RESULT ( -- ptr u8 n ptr u8 n n )
    SPK-OUT SPK-OUT-U @ SPK-ERR SPK-ERR-U @ SPK-RC @ ;
@@ -345,10 +332,6 @@ SRCLOC:PATH-CELL RESERVED-PTR-U8-CELL SPK-LOADING
    s" qualified def ENGINE-ERROR:tail traps" T-LABEL
       s" ENGINE-ERROR" SPK-QUAL-NEG ;
 
-: SPK-NEGATIVE-CTOR-WID ( -- )
-   s" generated constructor WID rejects new tail" T-LABEL
-   SPK-CTOR-WID-FORGE$ SPK-SUBJECT SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK ;
-
 : SPK-NEGATIVE-FFI-WIDS ( -- )
    s" sealed FFI rejects reopen" T-LABEL
    SPK-FFI-REOPEN$ SPK-SUBJECT SPK-ASSERT-SEAL
@@ -409,7 +392,6 @@ public
    SPK-PARITY-TEST
    SPK-NEGATIVES
    SPK-NEGATIVES-QUAL
-   SPK-NEGATIVE-CTOR-WID
    SPK-NEGATIVE-FFI-WIDS
    SPK-NEGATIVES-TICK
    SPK-NEGATIVES-BTICK

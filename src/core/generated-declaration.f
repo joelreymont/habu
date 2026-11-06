@@ -355,16 +355,8 @@ public
 seal-package
 ;package
 
-\ GENERATED-DECL-CTOR renders, evaluates, certifies and publishes one family's
-\ checked FAMILY:VARIANT constructors inside the transaction. Commit order
-\ (generated-declaration-protection.f COMMITS): checker | DECL-EVENT | here |
-\ address surface | dictionary | protection. DECL-EVENT's commit has advanced
-\ PF-COMMIT-N over this declaration's field rows (TYPE-FIELD-OWNER:COMMIT), the
-\ watermark SUMV-NAMED-PAYLOAD? / SUMV-PAY-N read, so the generator runs from
-\ the committed provider (TDECL-SUMV-PROVIDER). A throw here rolls every
-\ participant back; the dictionary savepoint predates the body, so a failure
-\ mid-set publishes no constructor. The family comes from ARM, never an ambient
-\ register.
+\ One family's checked FAMILY:VARIANT constructors, generated from ARM's family
+\ inside the transaction; a throw mid-set rolls back and publishes none.
 package GENERATED-DECL-CTOR
 
 7176 constant E-CTOR-ARM   \ armed family is not a public ENUM family with variants

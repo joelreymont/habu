@@ -184,13 +184,11 @@ and the checker records a colon name as a public symbol. A
 private sum or enum publishes no words at all; it constructs through
 checker-owned tokens keyed by package, family and variant.
 
-**Protection follows where the generated words live.** A public family's
-constructor namespace is a protected wordlist, which refuses an extra tail and
-an `undefine`. A private family's words share the package's own wordlist, and
-protecting that wordlist would refuse every later definition the package
-makes, so they are protected by name instead: `undefine` of a generated member
-is refused. A variant name is not a generated member, so a package
-may still define a word that happens to share it.
+**Generated words are protected by name.** A declaration protects no wordlist.
+The checker refuses with `E-CTOR-PROTECTED` an `undefine` of a generated word
+and, for a family's constructor namespace, reopening it or defining a new word
+into it. A variant name is not a generated member, so a package may still
+define a word that happens to share it.
 
 ## Type substrate
 

@@ -4811,13 +4811,8 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
 : C-QUALIFY-DEF ( -- )  C-UNIT-DEF-NAME-GUARD  LQUALIFYDEF LABEL@ BL, ;
 
-\ The shared guarded name publication at LSTOREDEFNAME.
-\ A new record's WID is DEF-WL-CELL (CUR-CELL, which `set-current` redirects, or
-\ a resolved package WID); publishing into a protected WID after the namespace
-\ watermark seals is refused, so user source cannot define into a sealed system
-\ or generated constructor package. x9 = record pointer, preserved (saved across
-\ LPROTWIDQ, used for the [40] wid store); x30 is saved too. The
-\ protected-publish exit is exit_group, so its unbalanced frame never returns.
+\ At LSTOREDEFNAME, once sealed, publishing into a protected DEF-WL-CELL wid
+\ exits via exit_group, so its unbalanced frame never returns; x9 is preserved.
 : EMIT-STORE-DEF-NAME ( -- )
    LSTOREDEFNAME LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                          \ save link register across the internal LPROTWIDQ BL

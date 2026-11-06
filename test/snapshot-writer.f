@@ -337,10 +337,8 @@ variable IMGU
    RC @ FORGE-RC T=
    ERR$ s" E-SEALED-PACKAGE: FOO" CONTAINS? TTRUE ;
 
-\ Same shape and rules as the engine's read-only view (tools/prot-wid-probe.f):
-\ bit w of the band at PROT-BITS-OFF is set exactly when wordlist w is
-\ protected; the two OWNER-API wordlists are protected by rule on every boot
-\ path, not by a bit.
+\ As habu1.f EMIT-PROTWID: bit w of the PROT-BITS-OFF band is set exactly when
+\ wordlist w is protected; the two OWNER-API wordlists are protected by rule.
 variable BAND-WID
 
 : BAND-BIT? ( n -- bool ) {: wid:n :}

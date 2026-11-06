@@ -2,7 +2,6 @@
 \ Enums").
 \ A constructor word pushes its payload cells, M-p zero pads, then the tag.
 
-require tools/prot-wid-probe.f
 require src/lib/adt/result.f
 require src/lib/test.f
 
@@ -21,33 +20,11 @@ TYPED-VARIABLE TCE-A ptr u8   variable TCE-U
 : TWX-MULTI-ERR-BEGIN ( -- ) MULTI-ERR-BEGIN ;
 : TWX-MULTI-ERR-END ( -- n ) MULTI-ERR-END ;
 
-package PROT-WID-RETURN-TEST
-
-variable BEFORE
-
-public
-
-: START ( -- )
-   PROT-WID-PROBE:COUNT BEFORE ! ;
-
-\ One constructor package protects exactly one wordlist; protecting the same
-\ constructor again is a no-op.
-: FINISH ( -- )
-   PROT-WID-PROBE:COUNT BEFORE @ 1+ T=
-   PROT-WID-PROBE:COUNT {: before:n :}
-   s" ZRES:OK" PROT-WID-CTOR-ADD
-   PROT-WID-PROBE:COUNT before T= ;
-
-;package
-
-
 \ top-level public arity-0 sum: constructors exist, certify, enforce payloads.
-PROT-WID-RETURN-TEST:START
 SUMTYPE zres
   VARIANT ok  n ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
-PROT-WID-RETURN-TEST:FINISH
 \ Variants spelled like stack words: ZWV:DUP/ZWV:SWAP are qualified constructor
 \ defs, declared early so every later body that uses bare dup/swap proves the
 \ qualified def records no bare-global effect row.
@@ -222,13 +199,12 @@ s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
 \ ...and the constructor is still fully usable afterwards.
 : ZMK-OK3 ( n -- zres ) ZRES:OK ;
 s" UNDEF-SAFE" type cr
-\ a new tail is caught by the native protected-WID wall; seal-package.f runs
-\ that process-exit regression because it cannot be caught in-process.
+\ a new tail in a generated package rejects in the checker.
+s" : ZRES:EXTRA ( -- n ) 1 ;" TCE-CATCH E-CTOR-PROTECTED T=
+s" : ZRES:EXTRA2 1 ;" TCE-CATCH E-CTOR-PROTECTED T=
 \ ordinary undefine of a user word still works.
 : ZDOOMED ( -- n ) 5 ;
 s" undefine ZDOOMED" TCE-CATCH 0 T=
-\ native producer populated the protected-WID registry for constructor packages.
-PROT-WID-PROBE:COUNT 0 > TTRUE
 
 \ `construct family variant`. The family must live in the ACTIVE package
 \ (cross-package uses the generated words, public families included); kind-gated

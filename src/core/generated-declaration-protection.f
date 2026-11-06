@@ -1,111 +1,10 @@
-\ generated-declaration-protection.f - atomic constructor protection owner and
-\ the declaration runner DECLARATION-TRANSACTION:RUN. PREPARE proves the
-\ irreversible engine registry has room; this owner publishes last, after every
-\ reversible owner committed. This is the last participant to load: once the
-\ runner is installed, every participant step word and the field owner's cleanup
-\ and release seams are retired, and the compiled runner holds the only capabilities.
+\ generated-declaration-protection.f - the runner DECLARATION-TRANSACTION:RUN.
 
-package GENERATED-DECL-PROTECTION
+package DECLARATION-TRANSACTION
 
-7169 constant E-PROTECTION-CAP
-\ The reason names the registry, so a full registry is not blamed on whichever
-\ declaration comes next.
-s" the protected-wordlist registry is full" E-PROTECTION-CAP DECL-REJECT:EXPLAIN
-$FFFFFFFF constant WID-MAX
-4 constant CAP-INIT
-$0FFFFFFFFFFFFFFF constant CELL-CAP-MAX
-
-private
-
-create STAGE-BOOT CAP-INIT cells allot
-PERSISTED-PTR-VARIABLE STAGE-P   STAGE-BOOT STAGE-P !
-variable STAGE-N
-variable STAGE-CAP
-variable BASE         \ STAGE-N when the declaration took its savepoint
-
-: CELL@ ( ptr a n -- a ) {: base:ptr idx:n :}
-   base idx cells + @ ;
-
-: CELL! ( a ptr a n -- ) {: value:a base:ptr idx:n :}
-   value base idx cells + ! ;
-
-: GROW-CAP ( n n -- n ) {: need:n cap:n :}
-   need 0 <= need CELL-CAP-MAX > or
-   cap 0 <= cap CELL-CAP-MAX > or or IF E-PROTECTION-CAP throw THEN
-   cap CELL-CAP-MAX 2 / <= IF cap 2 * need max EXIT THEN
-   need ;
-
-: STAGE-ENSURE ( -- )
-   STAGE-N @ STAGE-CAP @ < IF EXIT THEN
-   STAGE-N @ CELL-CAP-MAX >= IF E-PROTECTION-CAP throw THEN
-   STAGE-N @ 1 + STAGE-CAP @ GROW-CAP {: cap:n :}
-   STAGE-P STAGE-CAP @ cells cap cells REG-GROW1
-   cap STAGE-CAP ! ;
-
-: STAGE@ ( n -- n )
-   STAGE-P @ swap CELL@ ;
-
-: STAGE+ ( n -- ) {: wid:n :}
-   STAGE-ENSURE
-   wid STAGE-P @ STAGE-N @ CELL!
-   STAGE-N @ 1 + STAGE-N ! ;
-
-: SCRUB-TO-BASE ( -- )
-   BASE @ {: keep:n :}
-   keep
-   BEGIN dup STAGE-N @ < WHILE
-      0 STAGE-P @ over CELL!
-      1 +
-   REPEAT
-   drop
-   keep STAGE-N ! ;
-
-public
-
-: SNAPSHOT ( -- )
-   STAGE-N @ BASE ! ;
-
-: PREPARE ( -- )
-   STAGE-N @ BASE @ - prot-wid-room > IF E-PROTECTION-CAP throw THEN ;
-
-: PUBLISH ( -- )
-   BASE @
-   BEGIN dup STAGE-N @ < WHILE
-      dup STAGE@ prot-wid-add
-      1 +
-   REPEAT
-   drop
-   SCRUB-TO-BASE ;
-
-: ROLLBACK ( -- )
-   SCRUB-TO-BASE ;
-
-private
-
-: STAGE-WORDLIST ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TFAM-CTOR-WORD? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
-   a u XREF-FIND dup XREF-FOUND? 0= IF
-      drop s" xref: protected-WID constructor not found" 76 die
-   THEN
-   XREF-WORDLIST STAGE+ ;
-
-: PLAN-PREFLIGHT ( ptr u8 n n -- ) {: a:ptr u:n words:n :}
-   a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
-      GENERATED-DECL-DICTIONARY:PREFLIGHT
-   \ A private family's words go into the declaring package's own private
-   \ wordlist: no wordlist is allocated and none is protected, so the
-   \ protected-WID registry is not on that path and must not gate it.
-   a u GENERATED-DECL-NAME-PREFLIGHT:NAMESPACED? 0= IF EXIT THEN
-   a u GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? IF
-      data-base WIDN-CELL + @ dup 0 < swap WID-MAX > or
-         IF E-PROTECTION-CAP throw THEN
-   THEN
-   \ `words` counts generated dictionary entries, not protected wordlists (a
-   \ family of twenty words protects one), so this gate refuses only a declaration
-   \ that generates anything when the registry is full; PREPARE checks the staged
-   \ wordlist count against prot-wid-room.
-   words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
-   STAGE-ENSURE ;
+: PLAN-PREFLIGHT ( ptr u8 n n -- )
+   GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
+   GENERATED-DECL-DICTIONARY:PREFLIGHT ;
 
 \ This file anchors the participants' snapshot-reset chain: it loads last, so it
 \ owns TDECL-OWNER-SNAPSHOT-XT, which CHECKER-CAPTURE-PREPARE reaches; an earlier
@@ -113,9 +12,7 @@ private
 \ its grown buffers back to its boot store: a persisted host address is a wild
 \ pointer in the process that restores the image.
 : SNAPSHOT-RESET ( -- )
-   DECLARATION-TRANSACTION:ACTIVE? STAGE-N @ 0 <> or IF E-PROTECTION-CAP throw THEN
-   STAGE-P STAGE-BOOT STAGE-CAP @ cells ARENA-BOOT-RESTORE
-   CAP-INIT STAGE-CAP !
+   ACTIVE? IF E-ACTIVE throw THEN
    GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
    DECL-EVENT:SNAPSHOT-RESET
    STRUCTURE-DECL:SNAPSHOT-RESET
@@ -123,57 +20,34 @@ private
    DECL-REJECT:SNAPSHOT-RESET ;
 
 : INSTALL ( -- )
-   0 STAGE-N !
-   CAP-INIT STAGE-CAP !
-   [: STAGE-WORDLIST ;] is TYPE-DECL:TDECL-PROT-WID-XT
    [: PLAN-PREFLIGHT ;] is TYPE-DECL:TDECL-CAPACITY-PREFLIGHT-XT
    [: SNAPSHOT-RESET ;] is TYPE-DECL:TDECL-OWNER-SNAPSHOT-XT ;
-
-public
-
-: STAGED-COUNT ( -- n ) STAGE-N @ ;
-
-private
-
 INSTALL
 
-get-current prot-wid-add
-
-;package
-
-package DECLARATION-TRANSACTION
-
-\ DECL-EVENT's savepoint can refuse (DEV-OPEN -> TYPE-FIELD-OWNER:OPEN
-\ TX-PARENT-REQUIRE throws E-PF-TX); only the checker frame's is taken before
-\ it, and the four after it store cells and cannot fail.
+\ DECL-EVENT's savepoint can throw E-PF-TX (TX-PARENT-REQUIRE); only the checker
+\ frame's is taken before it, and the three after it cannot fail.
 : SAVEPOINTS ( -- )
    CHECKER-DECL-FRAME:PART-SNAPSHOT
    [: DECL-EVENT:PART-SNAPSHOT ;] catch {: rc:n :}
    rc 0 <> IF CHECKER-DECL-FRAME:PART-ROLLBACK rc throw THEN
    GENERATED-DECL-CTOR:PART-SNAPSHOT
    STRUCTURE-MAKE:PART-SNAPSHOT
-   GENERATED-DECL-DICTIONARY:SNAPSHOT
-   GENERATED-DECL-PROTECTION:SNAPSHOT ;
+   GENERATED-DECL-DICTIONARY:SNAPSHOT ;
 
 : PREPARES ( -- )
    CHECKER-DECL-FRAME:PART-PREPARE
    DECL-EVENT:PART-PREPARE
    GENERATED-DECL-CTOR:PART-PREPARE
-   STRUCTURE-MAKE:PART-PREPARE
-   GENERATED-DECL-PROTECTION:PREPARE ;
+   STRUCTURE-MAKE:PART-PREPARE ;
 
-\ DECL-EVENT commits first: its commit advances PF-COMMIT-N over the
-\ declaration's field rows, which the constructor and address-surface commits
-\ read through the committed provider. Protection publishes last, after every
-\ reversible owner committed.
+\ DECL-EVENT commits first: it advances PF-COMMIT-N over the declaration's field
+\ rows, which the constructor and address-surface commits read.
 : COMMITS ( -- )
    DECL-EVENT:PART-COMMIT
    GENERATED-DECL-CTOR:PART-COMMIT
-   STRUCTURE-MAKE:PART-COMMIT
-   GENERATED-DECL-PROTECTION:PUBLISH ;
+   STRUCTURE-MAKE:PART-COMMIT ;
 
 : ROLLBACKS ( -- )
-   GENERATED-DECL-PROTECTION:ROLLBACK
    GENERATED-DECL-DICTIONARY:ROLLBACK
    STRUCTURE-MAKE:PART-ROLLBACK
    GENERATED-DECL-CTOR:PART-ROLLBACK
@@ -249,10 +123,6 @@ undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
 undefine STRUCTURE-DECL:SNAPSHOT-RESET
 undefine ENUM-DECL:SNAPSHOT-RESET
 undefine DECL-REJECT:SNAPSHOT-RESET
-undefine GENERATED-DECL-PROTECTION:SNAPSHOT
-undefine GENERATED-DECL-PROTECTION:PREPARE
-undefine GENERATED-DECL-PROTECTION:PUBLISH
-undefine GENERATED-DECL-PROTECTION:ROLLBACK
 
 \ The field owner's cleanup and release vectors are bound into the compiled
 \ declaration-event participant, their only caller, so they are retired too, by

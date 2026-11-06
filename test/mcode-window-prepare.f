@@ -5,10 +5,9 @@
 \ append window (package NPUB); outside its owner a checked caller is refused by
 \ name.
 
-\ src/lib/ffi-abi.f requires src/lib/adt/option.f, whose ENUM dies on the unset
-\ TYPE-DECL:TDECL-TXN-XT until the last declaration participant installs the
-\ declaration runner, so both participants load before any library.
-\
+\ src/lib/ffi-abi.f requires option.f, whose ENUM dies on an unset TDECL-TXN-XT,
+\ so generated-declaration-protection.f and generated-declaration-dictionary.f load before it.
+
 \ This file reopens both owners before src/core/internal-mark.f seals the window
 \ and publishes one public word per row.
 require src/core/prefix-boundary.f

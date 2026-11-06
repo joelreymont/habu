@@ -988,8 +988,7 @@ s" NEWTYPE product<a>" E-TDECL-NAME TDT-NEG
 
 \ `POLICY <name>` header clause (docs/design.md "Families and layout policies").
 
-\ explicit stack-cell-tag accepts on sum, enum and product headers. The families
-\ are private, so their constructors take no protected-WID seal slot.
+\ explicit stack-cell-tag accepts on sum, enum and product headers.
 package tpol
 SUMTYPE tdpol<a> POLICY stack-cell-tag
   VARIANT none   ;VARIANT
@@ -1053,9 +1052,7 @@ s" SUMTYPE tdrecbx1<a> POLICY boxed VARIANT node tdrecbx1<a> ;VARIANT ;SUMTYPE" 
 s" SUMTYPE tdmuta VARIANT mk tdmutb ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 \ a NON-self family payload is unchanged: still the generic unknown-payload reject.
 s" SUMTYPE tdrec5<a> VARIANT node tdother<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
-\ non-recursive payloads are unaffected: a ptr-to-concrete payload still accepts
-\ (private family: no public constructors, so the protected-WID seal cap is
-\ untouched).
+\ non-recursive payloads are unaffected: a ptr-to-concrete payload still accepts.
 package tdrp
 SUMTYPE tdrec6<a>
   VARIANT node ptr u8 ;VARIANT

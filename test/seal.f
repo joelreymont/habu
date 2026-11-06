@@ -392,8 +392,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-ERR SLV-CAP >LEN  SLV-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
    SLV-IN$ SLV-STORE! ;
 
-\ Fixtures run in SUBJECT forks of the sealed candidate; clean-start
-\ registry-capacity fixtures run directly.
+\ Fixtures run in SUBJECT forks of the sealed candidate.
 : SLV-SUBJECT ( ptr u8 n -- ) {: src:ptr u:n :}
    src u SLV-OUT SLV-CAP >LEN SLV-ERR SLV-CAP >LEN
    SLV-TIMEOUT-MS >MS SUBJECT:RUN src u SLV-STORE! ;
@@ -406,68 +405,10 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-EXITED @ TTRUE
    SLV-RC @ 0 T= ;
 
-\ Protected-WID capacity: each public ADT family protects one wordlist (xref.f
-\ PROT-WID-CTOR-ADD -> prot-wid-add). The registry is a WID-indexed bitmap
-\ bounded by PROT-WID-MAX, and prot-wid-room reports the ids left. At zero room
-\ a declaration is refused at the preflight with E-PROTECTION-CAP (7169), not at
-\ the irreversible prot-wid-add (exit 84), which would break atomic publication.
-\ The child burns room to a known value with `wordlist`, the allocator a
-\ declaration consumes, and reads prot-wid-room rather than assuming a baseline.
-16384 constant PWG-CAP                       \ room for 256+ families at ~46 bytes each
-create PWG-BUF PWG-CAP allot
-variable PWG-U
-
-: PWG$ ( -- ptr u8 n )  PWG-BUF PWG-U @ ;
-: PWG-RESET ( -- )  0 PWG-U ! ;
-: PWG-C ( n -- ) {: c:n :}
-   PWG-U @ 1+ PWG-CAP > if E-FS-CAPACITY throw then
-   c  PWG-BUF PWG-U @ +  c!
-   PWG-U @ 1+ PWG-U ! ;
-: PWG-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
-   PWG-U @ u + PWG-CAP > if E-FS-CAPACITY throw then
-   a  PWG-BUF PWG-U @ +  u BYTE-COPY
-   PWG-U @ u + PWG-U ! ;
-: PWG-FAMILY ( n -- ) {: i:n :}              \ one public 1-variant SUMTYPE, unique name f<a-z><a-z>
-   s" SUMTYPE f" PWG-APPEND
-   $61 i 26 / +   PWG-C
-   $61 i 26 mod + PWG-C
-   s" <a> VARIANT foo a ;VARIANT ;SUMTYPE" PWG-APPEND
-   10 PWG-C ;
-: PWG-GEN ( n -- ptr u8 n ) {: k:n :}        \ K public families as one batch program
-   PWG-RESET
-   0 begin dup k < while dup PWG-FAMILY 1+ repeat drop
-   PWG$ ;
-
-\ Burn `prot-wid-room - spare` wordlist ids in the child, leaving exactly `spare`,
-\ then declare one public family.
-: PWG-BURN ( n -- ptr u8 n ) {: spare:n :}
-   PWG-RESET
-   s" : PWG-BURN-N ( n -- ) 0 ?do wordlist drop loop ;" PWG-APPEND  10 PWG-C
-   s" prot-wid-room " PWG-APPEND
-   $30 spare 10 / + PWG-C  $30 spare 10 mod + PWG-C
-   s"  - PWG-BURN-N" PWG-APPEND  10 PWG-C
-   \ An ENUM, not a SUMTYPE: the unified ENUM front end renders the declaration
-   \ diagnostic packet, which is where the reason text under test appears.
-   s" ENUM zz DERIVE eq" PWG-APPEND  10 PWG-C
-   s"    z-a" PWG-APPEND  10 PWG-C
-   s"    z-b" PWG-APPEND  10 PWG-C
-   s" ;ENUM" PWG-APPEND  10 PWG-C
-   PWG$ ;
-
-\ The ENUM front end renders its refusal before it throws 7169, so the child
-\ exits 70, the refusal status (src/habu/habu2.f RC-REJECT).
-70 constant SLV-PWID-PREFLIGHT-RC
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
-: SLV-ASSERT-PWID-PREFLIGHT ( -- )
-   SLV-EXITED @ TTRUE
-   SLV-RC @ SLV-PWID-PREFLIGHT-RC T=
-   SLV-ERR$ s" hb: uncaught throw code 7169" CONTAINS? TTRUE
-   \ The diagnostic names the registry, not the family that declared next.
-   SLV-ERR$ s" the protected-wordlist registry is full" CONTAINS? TTRUE ;
 
-\ The irreversible sink refuses an id it has no bit for, names the bound, and exits
-\ 84 rather than writing outside the band. That range check is the whole
-\ memory-safety argument for a primitive that takes a caller-supplied index.
+\ prot-wid-add refuses an id at or above PROT-WID-MAX, the protected-WID
+\ bitmap's bound, naming the bound, and exits 84 rather than writing outside it.
 : PWG-OOR-FORGE$ ( -- ptr u8 n )
    s" PROT-WID-MAX prot-wid-add" ;
 : SLV-ASSERT-PWID-OOR ( -- )
@@ -475,35 +416,16 @@ variable PWG-U
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
    SLV-ERR$ S\" hb: protected-WID id above the bound\n" CONTAINS? TTRUE ;
 
-: SLV-PWID-CAP ( -- )
-   s" 17 public ADT families succeed past the old 16 cap" T-LABEL
-   17 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" a public family succeeds while protected-WID room remains" T-LABEL
-   8 PWG-BURN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" a public family at zero room is rejected before protected-WID publication" T-LABEL
-   0 PWG-BURN SLV-RUN-LOAD SLV-ASSERT-PWID-PREFLIGHT
+: SLV-PWID-BOUND ( -- )
    s" prot-wid-add refuses an id at the bitmap bound and names it" T-LABEL
    PWG-OOR-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PWID-OOR ;
 
-\ After the seal, publishing into a protected WID (a public family's generated
-\ constructor package) via `<pkg>:WORD` fails closed: habu2.f C-STORE-DEF-NAME
-\ writes `E-SEALED-PACKAGE: ` and the offending word before exit 84. The
-\ sibling AOT boot-pass gate EM-AOTWIDGATE writes the same line, and fires only
-\ on a crafted AOT or snapshot image, which has no fixture here.
-: SLV-PUBLISH-FORGE$ ( -- ptr u8 n )         \ define a word into a public family's protected WID
-   SB-RESET
-   s" SUMTYPE foo<a> VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
-   s" : foo:BOGUS ( -- ) ;" SB-APPEND SLV-LF
-   SB$ ;
-
+\ Publishing into a protected WID dies 84 with `E-SEALED-PACKAGE: <word>` from
+\ C-STORE-DEF-NAME; EM-AOTWIDGATE's same line needs a crafted image, untested.
 : SLV-ASSERT-PROT-PUBLISH ( ptr u8 n -- ) {: line:ptr lineu:n :}   \ child died ENGINE-ERROR:SEAL-PACKAGE with LINE
    SLV-EXITED @ TTRUE
    SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
    SLV-ERR$ line lineu CONTAINS? TTRUE ;
-
-: SLV-PROT-PUBLISH ( -- )
-   s" : foo:BOGUS ; into a protected WID -> labeled exit 84" T-LABEL
-   SLV-PUBLISH-FORGE$ SLV-SUBJECT s" E-SEALED-PACKAGE: foo:BOGUS at " SLV-ASSERT-PROT-PUBLISH ;
 
 \ The two engine-reserved OWNER-API wordlists are permanently protected, so a
 \ checked program cannot forge a record into them with set-current. Without this,
@@ -662,8 +584,7 @@ public
    SLV-NEGATIVES-SINKS
    SLV-NEGATIVES-TRUNCATE
    SLV-POSITIVES
-   SLV-PWID-CAP
-   SLV-PROT-PUBLISH
+   SLV-PWID-BOUND
    SLV-OWNER-FORGE
    SLV-CLEANUP
    T-REPORT

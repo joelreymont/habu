@@ -362,11 +362,7 @@ SD-QUOT-INSTALL
    FAM @ TFAM-OPAQUE? SD-MAKEABLE? 0= and IF
       s" opaque requires a family with fields" E-SYNTAX DECL-REJECT:REJECT throw THEN
    \ Only a structure with fields gets MAKE / UNMAKE; a fieldless one is an opaque
-   \ one-cell family, as a bare NEWTYPE declares. A private family's generated
-   \ words carry no colon (habu2.f C-QUALIFY-DEF routes a qualified definition to
-   \ the public wordlist), and their package keeps defining into its wordlist, so
-   \ they are guarded by name (TFAM-CTOR-WORD?); a public family's constructor
-   \ namespace is a protected wid.
+   \ one-cell family, as a bare NEWTYPE declares.
    SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN
    SD-ADDR-ARM ;
 

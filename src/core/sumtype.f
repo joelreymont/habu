@@ -870,9 +870,8 @@ variable TDP-EVT
 
 public
 
-\ TDECL-TXN-ARMED carries REG-PROTECT and the two ARMED flags below do not: its
-\ only writer is TXN-INSTALL, a compiled reference in this file, and REG-PROTECT
-\ closes interpret and the tick, not compile mode.
+\ TDECL-TXN-ARMED carries REG-PROTECT: its only writer, TXN-INSTALL, stores in
+\ compile mode, which REG-PROTECT leaves open (it closes interpret and tick).
 defer TDECL-TXN-XT ( [ -- ] -- )   REG-PROTECT
 variable TDECL-TXN-ARMED   REG-PROTECT
 \ The declaration owner installs its runner once, at load; a second install is refused,
@@ -1030,41 +1029,14 @@ public
    s" newtype" na nu s" " TDECL-CTX!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
-\ Only the engine's SUMTYPE word below generates dictionary words; TDECL-DEFSUM
-\ stays metadata-only, so preverify and all-errors dispatch never mutate the
-\ tool dictionary and checker rollback stays complete. Each PUBLIC variant
-\ becomes, from SUMV metadata only,
-\    : <CTOR-PKG>:<VARIANT> ( payload.. -- family<a,..> )
-\       construct <family> <variant> ;
-\ Before any generated source reaches the evaluator, the generator renders every
-\ constructor and derived word, rejects duplicate, live or visibility-invalid
-\ symbols, grows all plan-determined registry storage and seals the checker's
-\ constructor queue. It checks the dependency-ordered source in one candidate
-\ scope, each earlier row pending for later ones (a product's derived HASH calls
-\ its UNMAKE; checker.f CK-PENDING-SYM), discards the provisional checker rows
-\ and rewinds the queue. Only the accepted plan crosses INCLUDE-EVALUATE, once.
-\ Generated text never contains TRUST, TRUSTED: or set-check.
-\ include.f binds TDECL-EVAL-XT and xref.f binds TDECL-PROT-WID-XT; a `defer`
-\ keeps the call effect-known but cannot be probed for its binding, so an ARMED
-\ flag records it: a stage builder that omits those files leaves it 0 and the
-\ generator refuses.
+\ include.f binds TDECL-EVAL-XT, the evaluator of core declarations' generated source.
+\ A defer cannot be probed: TDECL-EVAL-ARMED says it is bound.
 defer TDECL-EVAL-XT ( ptr u8 n -- )   REG-PROTECT
-defer TDECL-PROT-WID-XT ( ptr u8 n -- )   REG-PROTECT
 defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )   REG-PROTECT
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )   REG-PROTECT
-\ TDECL-EVAL-ARMED and TDECL-PROT-WID-ARMED carry no REG-PROTECT. Their writers
-\ (include.f, xref.f, test/bootstrap-wide-*-src.f) arm at top level: this file
-\ loads unchecked, so nothing it defines except a `defer` is checker-known, and
-\ include.f and xref.f load after the checker hook. Measured: the store inside a
-\ checked word in include.f answers `undefined word 'TDECL-EVAL-ARMED'`, rc 70;
-\ with REG-PROTECT the top-level store in test/bootstrap-wide-memory-src.f
-\ answers `hb: internal engine word`, rc 70. The bare name is still hidden:
-\ `0 TDECL-EVAL-ARMED !` from user source is E-UNDEFINED, and the qualified
-\ spelling dies rc 76 naming its owner. Retiring this needs a checker-known
-\ arming surface: a checked half of this file with the flags private behind an
-\ ARM word.
+\ No REG-PROTECT: include.f arms it at top level, where a REG-PROTECT cell dies
+\ `hb: internal engine word`, rc 70; user source meets E-UNDEFINED or rc 76.
 variable TDECL-EVAL-ARMED
-variable TDECL-PROT-WID-ARMED
 
 
 private
@@ -1752,19 +1724,6 @@ public
 
 private
 
-\ A PRIVATE or OPAQUE family protects no wordlist: its words live in the
-\ declaring package's private wordlist, and protecting that wid would refuse
-\ every later definition the package makes (in a sealed engine
-\ EMIT-STORE-DEF-NAME, habu2.f, exits 84 ENGINE-ERROR:SEAL-PACKAGE). The words
-\ stay protected by name through TFAM-CTOR-WORD? and the checker's CTOR-WORD?-XT
-\ undefine guard.
-: TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
-   vid SUMV-FAM@ TFAM-GEN-PUBLIC? 0= IF EXIT THEN
-   TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
-   TDGEN-CLEAR
-   vid TDGEN-NAME
-   TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT ;
-
 \ `: PKG:MAKE ( fields -- fam<..> ) ;` and `: PKG:UNMAKE ( fam<..> -- fields ) ;`:
 \ empty bodies under a k=0 pending window, because a product bundle is its field
 \ cells in slot order (no pads, no tag); the declared sig, rendered from the PF
@@ -1995,8 +1954,7 @@ $100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
    drop ;
 
 : TDECL-PROD-WORDS-BODY ( n -- ) {: fam:n :}
-   fam RES-FALSE [: dup TDECL-PROD-PLAN TDECL-GEN-EVAL ;] TDECL-GEN-PLACED
-   fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID ;
+   fam RES-FALSE [: dup TDECL-PROD-PLAN TDECL-GEN-EVAL ;] TDECL-GEN-PLACED ;
 
 \ The ( fam -- ) product generator structure-make.f calls: it declares its
 \ variant rows through SUMV-ADD before generating, so the committed view is its
@@ -2343,12 +2301,8 @@ private
    [: TDECL-INIT-ARM-MISSING ;] is TDECL-INIT-ARM-XT ;
 TDECL-INIT-ARM-DEFAULT
 
-\ TDECL-GEN-BODY generates one family through the caller's provider;
-\ TDECL-CTOR-WORDS-BODY is its failure boundary. Rendering can fail after
-\ constructors have entered the authority queue, before TDECL-GEN-EVAL, so the
-\ boundary owns the whole render/preflight/evaluate/protect lifetime and clears
-\ the queue before every result escapes. Provider and family id travel on the
-\ data stack because a quotation cannot read its caller's locals.
+\ TDECL-CTOR-WORDS-BODY clears the authority queue rendering fills, on any exit;
+\ provider and family ride the stack, as a quotation cannot read caller locals.
 
 private
 
@@ -2381,8 +2335,7 @@ private
 : TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
    dup TDECL-GENERATES? 0= IF EXIT THEN
    TDECL-GEN-PLAN
-   TDECL-GEN-EVAL
-   dup TFAM-VAR-START@ TDECL-CTOR-PROT-WID ;
+   TDECL-GEN-EVAL ;
 
 \ Replay publishes checked effects from the same constructor bodies as a live
 \ declaration. It emits no code and creates no runtime dictionary entries.
