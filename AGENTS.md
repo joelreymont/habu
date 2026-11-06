@@ -8,6 +8,8 @@ Application-specific policy and model workflows stay out of the language core.
   installed Habu tree at a stable path, with matching executable, map and
   library sources, and update it in place: no per-revision release
   directories. Ordinary development needs no installation or publication.
+- `spec/` holds TLA+ specs of Habu's state machines;
+  [spec/README.md](spec/README.md) says how to check them.
 
 ## Writing Habu
 
