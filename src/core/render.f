@@ -234,8 +234,11 @@ REG-SCRATCH-SNAP-INSTALL
       p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop EMIT-UNSAID THEN
    ELSE EMIT-UNSAID THEN THEN ;
 
+\ Facts text (RNAMES) writes a plain atom as `'NAME`, which TOK-TYPE reads back.
 : ATOM-REND {: t :}
-   t ATOM>K 0 = IF t ATOM>A t ATOM>U RSTR EXIT THEN
+   t ATOM>K 0 = IF
+      RNAMES @ 0 <> IF 39 EMIT1 THEN
+      t ATOM>A t ATOM>U RSTR EXIT THEN
    s" fresh-" RSTR
    t ATOM>A t ATOM>U RSTR
    45 EMIT1

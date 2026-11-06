@@ -1064,6 +1064,8 @@ VALUE-RECORD hdl owner ES-OWN:own raw ptr u8 END-VALUE-RECORD
 : T-POINT-Y! ( point n -- point ) >r drop r> ;
 : T->BOX ( a -- box ) ;
 : T-BOX> ( box -- a ) ;
+\ Loads only when a lone field cell's atoms read back from its facts text.
+: T-POINT-XCELL T->POINT drop ;
 3 4 T->POINT T-POINT> 4 T= 3 T=
 3 4 T->POINT T-POINT-DUP T-POINT> 4 T= 3 T= T-POINT> 4 T= 3 T=
 3 4 T->POINT T-POINT-X 3 T=

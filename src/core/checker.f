@@ -6678,6 +6678,7 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
 : TOK-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}  a c@ {: c:n :}
+   SIG-FACTS-MODE @ 0 <> u 1 > and c 39 = and IF a 1 + u 1 - MK-ATOM EXIT THEN   \ facts text's `'NAME` atom (render.f ATOM-REND)
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
