@@ -443,9 +443,8 @@ SUMTYPE cnpayloadg<a>
 : CNPG-GET ( cnpayloadg<clw2> -- n ) MATCH cnpayloadg wrapped OF CND-GET ENDOF nop OF 999 ENDOF ;MATCH ;
 : CNPG-RT ( -- n ) 3 4 CND-IOK CND-SOME CNPG-WRAP CNPG-GET ;
 CNPG-RT 7 T=
-\ real-compile fail-closed adversarials (rc 70): wrong inner width, cross-family
-\ inner, scalar inner, truncated (no inner value). Full diagnostics (E-MISMATCH,
-\ arg-aware inner slot render) are pinned in test/type-decl-suite.f.
+\ Real compiles refuse each (rc 70). test/type-decl-suite.f TDNA1-2 pin the
+\ first two's E-MISMATCH, TDNA1 the inner type at its argument-aware width.
 s" : CN-BADW ( clfres<n,n> -- clopt<clfres<clw2,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
 s" : CN-BADF ( clopt<n> -- clopt<clfres<n,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
 s" : CN-BADS ( n -- clopt<clfres<n,n>> ) CLOPT:SOME ;" TCE-CATCH 70 T=

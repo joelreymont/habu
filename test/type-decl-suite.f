@@ -1670,14 +1670,12 @@ s" TDPN4 ( tdpbw2 -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T
 s" TDPN5 ( -- tdpbopt<tdpbw2> ) TDPBOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN6 ( tdpbw2 -- tdpbres<tdpbw2,n> ) TDPBRES:OK" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDPN7 ( n -- tdpbres<tdpbw2,n> ) TDPBRES:ERR" CHECK-QUIET-CANDIDATE! -1 T=
-\ adversarial set: wrong-width payload two ways, cross-family.
-\ TDPA1's reject also renders the arg-aware expansion: option<tdpbw2>'s tag is at
-\ slot 2 (declared family width would put it at slot 1) — the W=3 slot the
-\ certified TDPN4-7 satisfy by construction.
+\ TDPA1: the output run is read at the width it is laid at, so it prints as one
+\ tdpbopt<tdpbw2>; test/type-ctor-suite.f CLFC-RT-SOME proves that width.
 TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDPA1 ( n -- tdpbopt<tdpbw2> ) TDPBOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-DIAG-BUFFER$ s\" @tdpbopt.slot2<tdpbw2>" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"inferred_effect\":\"n -- tdpbopt<tdpbw2> \"" CONTAINS? TTRUE
 false DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDPA2 ( tdpbw2 -- tdpbopt<n> ) TDPBOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
@@ -1691,15 +1689,8 @@ s" TDPA4B ( tdown -- tdpbopt<tdown> tdpbopt<tdown> ) TDPBOPT:SOME dup" CHECK-QUI
 \ real compiles of wide constructs are pinned in test/type-ctor-suite.f (CN-OPEN
 \ for the rc 70 refusal); this suite stays stderr-clean.
 
-\ NESTED named ADTs: a named multi-cell family instantiation as the payload arg
-\ of another family (tdnopt<tdnres<n,n>>) identity-checks and certifies; every
-\ width site recurses through the arg tree (TFAM-INST-WIDTH@ / TFC-VAR-PAYCELLS
-\ / famterm T-WIDTH). TDNEST1-4 positive; TDNA1-3 (wrong inner width,
-\ cross-family inner, scalar inner) reject with exact E-MISMATCH diagnostics,
-\ and TDNA1's expected renders the arg-aware inner slot (tdnres<tdnw2,n> carries
-\ an extra @tdnres.slot2). An open inner var cannot determine the enclosing
-\ layout's width: its row stays logical, the candidate rejects, and
-\ test/type-ctor-suite.f CN-OPEN pins the real load.
+\ A named multi-cell family instance as another's payload: every width site
+\ recurses through the arguments (TFAM-INST-WIDTH@, TFC-VAR-PAYCELLS, T-WIDTH).
 PRODUCT tdnw2 FIELD x n FIELD y n ;PRODUCT
 SUMTYPE tdnopt<a> VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
 SUMTYPE tdnres<a,b> VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE
@@ -1707,14 +1698,18 @@ s" TDNEST1 ( tdnopt<tdnres<n,n>> -- tdnopt<tdnres<n,n>> )" CHECK-QUIET-CANDIDATE
 s" TDNEST2 ( tdnres<n,n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST3 ( -- tdnopt<tdnres<n,n>> ) TDNOPT:NONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDNEST4 ( tdnres<tdnw2,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! -1 T=
+\ An open inner var leaves the layout's width unknown, so the candidate refuses;
+\ test/type-ctor-suite.f CN-OPEN pins the real load.
 TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDNOPEN ( tdnres<n,a> -- tdnopt<tdnres<n,a>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
+\ TDNA1's expected renders tdnres<tdnw2,n> whole: its width-3 instance has its
+\ tag at slot 2, so the full run compacts to the sum type.
 TDIAG-BUF 8192 DIAG-BUFFER!  true DIAG-JSON!
 s" TDNA1 ( tdnres<n,n> -- tdnopt<tdnres<tdnw2,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE
-DIAG-BUFFER$ s\" @tdnres.slot2<tdnw2,n>" CONTAINS? TTRUE
+DIAG-BUFFER$ s\" \"expected\":\"tdnres<tdnw2,n> \"" CONTAINS? TTRUE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDNA2 ( tdnopt<n> -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"code\":\"E-MISMATCH\"" CONTAINS? TTRUE

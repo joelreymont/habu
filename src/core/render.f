@@ -285,7 +285,7 @@ REG-SCRATCH-SNAP-INSTALL
       64 EMIT1
       t FAM-NAME-REND
       46 EMIT1
-      t HIDDEN-SLOT@  t PARAM>FAM TFAM-WIDTH@* 1 -  = IF
+      t HIDDEN-SLOT@  t T-WIDTH 1 -  = IF
          s" tag" RSTR
       ELSE
          s" slot" RSTR  t HIDDEN-SLOT@ RNUM
@@ -294,9 +294,7 @@ REG-SCRATCH-SNAP-INSTALL
       t FAM-NAME-REND
    THEN ;
 
-\ HID-RUN-REST ( node -- rest f ): f is true for a full W-cell run of one family
-\ (tag W-1 on top down to slot0), rest the row below it; else rest is the row
-\ below the one cell, which renders in its '@' form.
+
 \ HRS: the run holds a cell `catch` left stale. The whole logical value is
 \ unusable, so the row prints `stale<option<pt>>` once, never three cells.
 variable HRC  variable HRI  variable HRF  variable HRS
@@ -308,10 +306,14 @@ variable HRC  variable HRI  variable HRF  variable HRS
    t HIDDEN-SLOT@ slot <> IF RES-FALSE EXIT THEN
    t TAG T-STALE = IF -1 HRS ! THEN
    RES-TRUE ;
+
+
+\ True when node heads a full run of its family, tag at T-WIDTH-1 down to slot0;
+\ rest is the row below the run, else below node, whose cell renders as '@'.
 : HID-RUN-REST ( n -- n bool ) {: node:n :}
    node P>TYPE T-RES {: t:n :}
    t CELL>FAM {: fam:n :}
-   fam TFAM-WIDTH@* {: w:n :}
+   t T-WIDTH {: w:n :}
    t HIDDEN-SLOT@ w 1 - <> IF node P>REST RES-FALSE EXIT THEN
    node HRC !  -1 HRF !
    t TAG T-STALE = IF -1 ELSE 0 THEN HRS !
