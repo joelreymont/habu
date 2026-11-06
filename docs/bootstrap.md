@@ -11,9 +11,10 @@ chain below builds `hb` from them. A host the seed does not target gets its firs
 cross-build from any `hb` ([cross-compilation](architecture.md#cross-compilation)).
 
 **The seed mirrors the engine.** It copies the engine facts it needs from the
-Habu sources, and `bootstrap/cg/forth.fs` names each mirror where it stands. A
-change to the seed or to anything it mirrors runs the
-[no-binary recovery check](#periodic-no-binary-check).
+Habu sources, and `bootstrap/cg/forth.fs` names each mirror where it stands.
+No change edits it to follow the tree or runs the
+[no-binary recovery check](#periodic-no-binary-check) (DECISIONS.md
+"recovery").
 
 ## Recovery routes
 
@@ -142,9 +143,8 @@ below. The normal native gate does not build that seed.
 ## Periodic No-Binary Check
 
 The normal native gate uses an existing `bin/hb`; it does not prove the
-from-scratch Gforth recovery path. Run this separate check after changes to
-the recovery seed, mirror, launcher or dependencies, or for an explicit release
-recovery audit:
+from-scratch Gforth recovery path. No change runs this check (DECISIONS.md
+"recovery"); it runs only when a recovery audit is asked for:
 
 ```sh
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/habu-bootstrap-check.XXXXXX")
@@ -245,7 +245,7 @@ tools/ddc-verify.f is an explicit trust audit. It builds through the
 Gforth recovery route and the native route, then compares their refreshed
 products byte for byte. It is separate from the ordinary gate and requires
 HABU_ALLOW_BOOTSTRAP=1 and a working Gforth. Run the driver from the
-repository root only when auditing recovery or a changed seed:
+repository root only when auditing recovery:
 
     HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth bin/hb --load tools/ddc-drive.f
 

@@ -23,6 +23,6 @@ Keep generated artifacts out of the commit and delete gate caches only when
 testing uncached behavior. See [the gate instructions](../../docs/gate.md) for
 candidate setup and execution.
 
-Run generation convergence and Gforth recovery checks only for the impacts
-named in the testing policy; [bootstrap.md](../../docs/bootstrap.md) gives
-their commands.
+Run generation convergence checks only for the impacts named in the testing
+policy; [bootstrap.md](../../docs/bootstrap.md) gives their commands. No change
+runs a Gforth recovery check.

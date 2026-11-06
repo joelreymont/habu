@@ -220,15 +220,12 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
 
 ## Separate Gforth recovery checks
 
-Run `bin/hb --load test/nf-path-test.f` when changing the Gforth fixture's
-scratch paths or build/run contract. This still executes the complete fixture,
-including its Gforth child, but does not make every native suite pay for it.
-
-Run the [no-binary recovery check](bootstrap.md#periodic-no-binary-check) for
-changes to the recovery seed, mirror, launcher or dependencies, or as an
-explicit release recovery audit. The [DDC audit](bootstrap.md#ddc-audit-diverse-double-compiling)
-is also explicit. Neither is part of the normal native registry or an
-automatic per-commit or release gate.
+No change runs a Gforth check (DECISIONS.md "recovery"). `bin/hb --load
+test/nf-path-test.f`, which runs the Gforth fixture, the
+[no-binary recovery check](bootstrap.md#periodic-no-binary-check) and the
+[DDC audit](bootstrap.md#ddc-audit-diverse-double-compiling) run only when a
+recovery audit is asked for. None is part of the native registry or a
+per-commit or release gate.
 
 If a private `XDG_CACHE_HOME` is used for a Gforth check, first check
 `gforth -e bye` with that environment. A Gforth snapshot may reopen precompiled

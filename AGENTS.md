@@ -89,10 +89,11 @@ add.
   for shared checker or compiler behavior, runtime ABI, capture format, effects
   across libraries, or an impact focused tests cannot bound; a file's location
   alone does not require it. Check multi-generation convergence when codegen,
-  self-hosting or capture changes can alter successive engine output. Gforth
-  recovery is an occasional check for seed, mirror, launcher or recovery
-  dependency changes, or a release recovery audit. Etch owns its downstream
-  checks. Documentation and mechanical changes need proportionate checks.
+  self-hosting or capture changes can alter successive engine output. Recovery
+  starts from a released hb and the Gforth seed retires with the JIT
+  (DECISIONS.md "recovery"): no change runs a Gforth check or edits bootstrap/
+  to follow the tree. Etch owns its downstream checks. Documentation and
+  mechanical changes need proportionate checks.
 - Report actual results and untested boundaries; never weaken a claim to make a
   check pass. [docs/gate.md](docs/gate.md) "Verification claims" states the
   limits.
