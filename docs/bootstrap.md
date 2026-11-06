@@ -260,6 +260,23 @@ a native rebuild is needed to test those changes. Files outside that closure
 load normally from disk. Use the generation check for changes baked into the
 engine.
 
+The engine knows the files it carries by path only (`src/core/include.f`
+ENGINE-PROVIDES?). Once the tree renames one, a tool the previous engine runs
+that requires the new path loads the file a second time and stops at its first
+definition (`duplicate definition`, rc 78), and an engine built from the tree
+stops at a `require` of the old path. While the renamed file's bytes equal the
+old file's, build the first engine in three steps; edit the file in a later
+change:
+1. Run the previous engine with a one-line file, `s" <new path>" provided`,
+   loaded before `tools/native-build.f -- $OUT`; the preload keeps the build in
+   this process, where that `provided` fact holds, instead of hb-build's maker
+   child (`tools/native-build.f` PRELOADED?). Never install this engine: the next
+   one differs from it.
+2. On that engine, build again by the candidate command in
+   [gate.md](gate.md) "Qualifying a candidate", at the normal limits.
+3. On the step-2 engine, build once more; qualify and install it once
+   CODESIGN:SAME-IMAGE? holds between it and the step-2 engine.
+
 ## Refresh `bin/hb`
 
 After `bin/hb` exists, use it as the host for normal native builds. Build a

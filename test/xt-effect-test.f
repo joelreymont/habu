@@ -2,10 +2,10 @@
 \ level"). `['] W` is xt<effect(W)>, a T-QUOT of W's certified effect;
 \ execute, catch and is fit-check it by quotation unification
 \ (src/core/checker.f BTICK-TOK).
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/xt-effect-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
@@ -71,7 +71,7 @@ create XE-EMPTY 1 allot
 \ outcome without depending on checker-internal diagnostics.
 : XE-PRELUDE ( -- )
    SB-RESET
-   s" require src/lib/errors.f" XE-LINE
+   s" require src/lib/error.f" XE-LINE
    s" require src/lib/string.f" XE-LINE
    s" : A ( n -- n n ) dup ;" XE-LINE
    s" : SP ( n -- n ) 1 + ;" XE-LINE
@@ -137,7 +137,7 @@ create XE-EMPTY 1 allot
 
 : XE-USING-PRELUDE ( -- )
    SB-RESET
-   s" require src/lib/errors.f" XE-LINE
+   s" require src/lib/error.f" XE-LINE
    s" require src/lib/string.f" XE-LINE
    s" package XEU-P" XE-LINE
    s" public" XE-LINE
@@ -170,7 +170,7 @@ create XE-EMPTY 1 allot
 \ them: the refusals a tick shares with a call.
 : XE-AMB-PROG$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
-   s" require src/lib/errors.f" XE-LINE
+   s" require src/lib/error.f" XE-LINE
    s" package XEU-A  public  : XEU-W ( n -- n ) 1 + ;  ;package" XE-LINE
    s" package XEU-B  public  : XEU-W ( n -- n ) 2 + ;  ;package" XE-LINE
    s" using XEU-A" XE-LINE

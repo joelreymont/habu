@@ -1,7 +1,7 @@
 \ request.f - real Wasm fixture for the browser request/reply protocol.
 \ Build with tools/wasm-build.f, entry REQUEST-TURN:TURN.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/browser/event.f
 

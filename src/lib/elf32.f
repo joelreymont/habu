@@ -6,7 +6,7 @@
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state; no error changes input.
 require src/lib/type/deftype.f
 require src/lib/num-types.f
-require src/lib/errors.f
+require src/lib/error.f
 
 package ELF32
 public

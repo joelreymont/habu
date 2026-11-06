@@ -10,7 +10,7 @@
 \ reach a snapshot. STORED prints only if the store went through, so its absence
 \ from the expected stdout proves the refusal precedes the mutation.
 
-require src/lib/errors.f
+require src/lib/error.f
 
 package XT-CELL-BAND
 

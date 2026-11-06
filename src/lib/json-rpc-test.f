@@ -1,7 +1,7 @@
 \ json-rpc-test.f - the JSON-RPC 2.0 envelope, through src/lib/json-rpc.f.
 \ Run: bin/hb --load src/lib/json-rpc-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fmt.f

@@ -3,7 +3,7 @@
 \ outside the package.
 \ Run: bin/hb --load test/process-pty-tty-smoke.f   (HABU_UNDER_TEST names the child)
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fmt.f
 require src/lib/process-pty-io.f
 require src/lib/pty-harness.f

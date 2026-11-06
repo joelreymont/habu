@@ -21,7 +21,7 @@ variable RDIAG-U
 variable RDIAG-I
 
 \ E-DIAG-CAPACITY refuses a record that does not fit RSBUF or the caller's
-\ buffer. src/lib/errors.f owns it but compiles after this file, so the same
+\ buffer. src/lib/error.f owns it but compiles after this file, so the same
 \ (code, name) pair is re-registered here, the one form tools/error-code-lint.f
 \ admits.
 package RDIAG

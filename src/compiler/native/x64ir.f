@@ -6,7 +6,7 @@
 \ one `mov r64, imm64`, and `call` leaves no link register.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/habu/layout.f
 require src/compiler/target.f

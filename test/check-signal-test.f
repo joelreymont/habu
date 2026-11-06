@@ -5,7 +5,7 @@
 \ starts a sleeper and reports. Each case signals check.f once the report is in,
 \ or gives it a deadline the subject's wait on its sleeper outlasts.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f

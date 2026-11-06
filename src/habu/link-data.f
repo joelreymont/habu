@@ -6,7 +6,7 @@
 \ lists the code ones.
 \ LINKER:WRITE writes the linked program; the other words are LINKER's own.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 require src/habu/layout.f
 require src/habu/boot-cells.f

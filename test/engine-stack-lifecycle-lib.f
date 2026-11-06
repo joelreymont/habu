@@ -1,7 +1,7 @@
 \ engine-stack-lifecycle-lib.f - the active stack allocation follows stack
 \ switches and nonlocal frame restoration.
 require src/habu/stack-abi.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/test.f
 require src/lib/process-argv.f

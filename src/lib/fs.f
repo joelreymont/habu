@@ -5,7 +5,7 @@
 \ CALLER-OWNED. Each walk (WALK-FILES, WALK-FILES-IF, fs-mutate.f REMOVE-TREE)
 \ maps a context of its own for one call and releases it on return or throw.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/adt/option.f                        \ option<n> for TRY-*STAT-MODE
 require src/lib/le.f                                \ stat and dirent fields

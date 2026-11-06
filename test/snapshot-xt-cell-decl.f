@@ -5,7 +5,7 @@
 \ cell holding a region-shaped value or a live token must stay out of the table.
 
 require src/habu/address-cells.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 
 package XT-CELL-DECL

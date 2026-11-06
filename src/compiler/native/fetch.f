@@ -1,6 +1,6 @@
 \ Copy source-bound frozen fetch descriptors and bind widths before another
 \ checker scan runs.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/compiler/digest.f
 require src/compiler/native/fetch-owner.f

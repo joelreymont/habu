@@ -1,7 +1,7 @@
 \ asm-src-test.f - unchecked source ARM64 encoder regression.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f tools/asm-src-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f tools/asm-src-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 

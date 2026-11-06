@@ -5,7 +5,7 @@
 \ refuses a second pair while one is open. The reading words take a descriptor,
 \ so the same buffer also serves a suite's pipe children.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/type/deftype.f
 require src/lib/process.f

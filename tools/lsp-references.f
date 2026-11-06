@@ -5,7 +5,7 @@
 \ -1 and its image origin; both answer for workspace files, not engine source outside them.
 \ STORAGE CLASS. PROCESS-GLOBAL: the request belongs to the server's one task; SELECT starts each afresh.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f

@@ -5,7 +5,7 @@
 \ only while its flags still carry its definer's stamp.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/habu/layout.f
 require src/habu/wl.f
 require src/compiler/fixed-body.f

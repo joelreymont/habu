@@ -4,7 +4,7 @@
 \ not the key, decides the mask bit; an unmasked frame's key is 0.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/span.f
 
 package WS

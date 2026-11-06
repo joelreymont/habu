@@ -1,5 +1,5 @@
 \ Imports compiled into the retained engine builder before logical reset.
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/prefix-boundary.f
 require src/lib/string.f
 require src/lib/memory.f

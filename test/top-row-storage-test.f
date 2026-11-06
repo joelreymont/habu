@@ -4,7 +4,7 @@
 \ through `evaluate-closed`, the row --load keeps in this process; a child runs
 \ only the boundaries named at their cases (a crash, a rewired search order, the
 \ file label, the REPL).
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/memory.f

@@ -5,7 +5,7 @@
 \
 \ STORAGE CLASS. No state of its own; each loaded module states its class.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test/assert.f
 require src/lib/test/suite.f

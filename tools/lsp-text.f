@@ -5,7 +5,7 @@
 \ PROCESS-GLOBAL: the text, the file read and the cursor belong to the server's
 \ one task.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fd.f
@@ -86,7 +86,7 @@ public
 
 : TEXT$ ( -- ptr u8 n )  TEXT-A @ TEXT-U @ ;
 
-\ Whether a throw of this code is a file system call's (src/lib/errors.f E-FS-*).
+\ Whether a throw of this code is a file system call's (src/lib/error.f E-FS-*).
 : FS-RC? ( n -- bool )
    {: rc:n :}
    rc E-FS-FIRST <= rc E-FS-LAST >= and ;

@@ -5,7 +5,7 @@
 \   scale: <family> k <k> ops <n> plan <n> calls <n> ns-per-call <n> ns-per-handled <n>
 \   scale: slope spill-line <milli> spill-frame <milli> compiled <n>
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/float.f

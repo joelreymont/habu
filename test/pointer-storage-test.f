@@ -1,6 +1,6 @@
 \ pointer-storage-test.f - focused pointer-slot ownership and effect regression.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/habu/verify-source.f

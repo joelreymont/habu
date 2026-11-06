@@ -5,7 +5,7 @@
 \
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/task.f
 
 package TEST-WAIT

@@ -5,7 +5,7 @@
 \ symbol. Both decoders check the whole input before writing.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/adt/option.f

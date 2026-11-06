@@ -1,5 +1,5 @@
 \ Construct native support from the bytes the child actually consumed.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/le.f
 require src/lib/memory.f

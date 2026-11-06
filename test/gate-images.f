@@ -1,7 +1,7 @@
 \ gate-images.f - the keyed images a gate settles in its pool; a row needs a family when
 \ its load closure (test/load-refs.f) holds the family's module, so nothing is declared.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/test/suite.f

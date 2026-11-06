@@ -5,7 +5,7 @@
 \ and the DLSYM loader block; calls nest only through a C callback, which shares
 \ them (src/lib/ffi-callback.f). PROCESS-WIDE: rows, cleared before each capture.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/span.f" required                   \ CSTR's destination carries its reach
 s" src/lib/string.f" required
 s" src/lib/image-lifecycle.f" required

@@ -5,7 +5,7 @@
 \ MATCHes one concrete instantiation, mapping it to 0 (ok) or the exact E-NUM-*
 \ refusal.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/num-types.f

@@ -7,7 +7,7 @@
 \ STORAGE CLASS. CALLER-OWNED: each token holds its assertion id.
 \ PROCESS-WIDE: the backend hooks, bound when this file loads and only read
 \ afterwards.
-require src/lib/errors.f
+require src/lib/error.f
 
 package POWER
 

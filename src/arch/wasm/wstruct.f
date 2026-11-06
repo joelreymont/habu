@@ -6,7 +6,7 @@
 \ it. src/arch/wasm/structure.f derives the nesting from the frozen graph.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/target.f
 require src/compiler/native/backend.f
 require src/compiler/binding.f
@@ -16,7 +16,7 @@ require src/compiler/ir/type.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/build.f
 
-\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
+\ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
 -9805 constant E-WSTRUCT-FIRST
 -9809 constant E-WSTRUCT-LAST
 -9805 constant E-WSTRUCT-DIALECT   \ a module whose schema table was created for another dialect or another schema version

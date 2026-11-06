@@ -4,7 +4,7 @@
 \ verifier checks what the interim freeze skipped (src/arch/wasm/wstruct.f).
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/core/engine-error.f

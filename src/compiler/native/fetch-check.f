@@ -1,5 +1,5 @@
 \ Execute the frozen tag checks before a native fetch produces a typed value.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/core/engine-error.f
 require src/compiler/digest.f

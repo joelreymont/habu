@@ -1,8 +1,8 @@
 \ fs-mutate-test.f - focused tests for src/lib/fs-mutate.f.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-mutate-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/fs-mutate-test.f
 \ Real special-inode fixtures require mkfifo and socat on PATH.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f

@@ -103,7 +103,7 @@ s" src/core/dynamic-storage.f" required
 s" src/core/checker-owner-guard.f" required
 s" src/core/lower-cert-seal.f" required
 s" src/lib/prelude.f" required
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/span.f" required
 s" src/core/layout-buffer-address.f" required
 s" src/lib/image-lifecycle.f" required

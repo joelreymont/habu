@@ -4,7 +4,7 @@
 \ run on Linux: the non-blocking path, TRY-READ, TRY-SEND, UNREAD and UNSENT.
 \ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one TASK:+USER row; the
 \ payload spans the transfers take are caller-owned.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f
 require src/lib/num-types.f

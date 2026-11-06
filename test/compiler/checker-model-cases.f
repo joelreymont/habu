@@ -1,7 +1,7 @@
 \ checker-model-cases.f - Exercise checker vocabulary and control-flow vectors through the real checker.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f

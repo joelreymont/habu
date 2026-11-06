@@ -1,6 +1,6 @@
 \ Process resources are reset before an executable image captures live data.
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 \ HOOKS below is a checked quotation store; the optimizing tier lowers such a
 \ store through QUOTATION-STORAGE:STORE, so this file owns that dependency.
 require src/core/quotation-storage.f

@@ -2,7 +2,7 @@
 \ kernel's `create`, is refused; test/compiler/arm64-place.f runs it and checks
 \ the refusal.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/fs.f

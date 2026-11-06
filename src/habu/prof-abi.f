@@ -153,11 +153,11 @@ $18000004 constant LINUX-SA-PROF-FLAGS   \ SA_SIGINFO | SA_ONSTACK | SA_RESTART
 
 \ A negative interval is the caller's error: prof-rate throws E-PROF-RATE before
 \ it maps or stores anything, so a caller that catches it keeps its rate.
-\ src/lib/errors.f owns the code; prof.f compiles before any src/lib/ file
+\ src/lib/error.f owns the code; prof.f compiles before any src/lib/ file
 \ exists, so the (code, name) pair is re-registered here, the one form
 \ tools/error-code-lint.f admits, and test/gate-debug-lib.f
 \ GDB-PROFILER-RATE-REFUSED keeps the spellings equal. Qualify it: a bare
-\ E-PROF-RATE under `using PROF-ABI` meets src/lib/errors.f's global.
+\ E-PROF-RATE under `using PROF-ABI` meets src/lib/error.f's global.
 -3803 constant E-PROF-RATE
 
 ;package

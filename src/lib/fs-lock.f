@@ -5,7 +5,7 @@
 \ ownership. Other flock failures are E-FS-IO; an OPEN-DIR failure is E-FS-OPEN.
 \ STORAGE CLASS. CALLER-OWNED: the held descriptor; no module state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/ffi-abi.f
 

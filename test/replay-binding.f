@@ -6,7 +6,7 @@
 \ candidate scope, which opens where its caller stands, and in the
 \ package-neutral scope tools/check.f preverifies in.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

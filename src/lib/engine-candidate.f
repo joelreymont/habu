@@ -7,7 +7,7 @@
 \ another directory. It is validated as an executable here, so a bad override
 \ fails closed (E-FS-OPEN) before any spawn.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/process-env.f
 require src/lib/engine-id.f

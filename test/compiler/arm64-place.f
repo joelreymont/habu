@@ -12,7 +12,7 @@
 \ The fixture is test/compiler/arm64-place-fixture.f, loaded through the typed
 \ interpret loop at tier 0 while a native shadow is open.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/fs.f

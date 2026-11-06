@@ -5,7 +5,7 @@
 \ then enters its REPL and stops on SIGTTOU unless given an explicit stdin.
 \ See docs/debugging.md "A child-process fixture disagrees with itself".
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-argv.f

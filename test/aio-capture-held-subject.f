@@ -1,7 +1,7 @@
 \ A ticket AWAITed directly while its group still holds it: the group carries a
 \ handle into the capture, which the capture cleanup refuses by name. Run as its
 \ own process by test/aio-capture-sweep.f, because the refusal ends the process.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/num-types.f
 require src/lib/image-lifecycle.f
 require src/lib/aio.f

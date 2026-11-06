@@ -3,7 +3,7 @@
 \ src/core/cell-effects.f. Later script arguments load the fixture's
 \ dependencies through the retained compiler.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/prefix-boundary.f
 require src/lib/string.f
 \ src/lib/memory.f is required here and in no window prefix file, so NUM's

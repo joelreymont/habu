@@ -5,7 +5,7 @@
 \ facts.f, checked on the host by sim.f. test/compiler/tic6x-asm.f pins every
 \ form to the word GNU tic6x-elf-as 2.47 writes.
 require src/lib/type/deftype.f
-require src/lib/errors.f
+require src/lib/error.f
 
 package C6XASM
 public

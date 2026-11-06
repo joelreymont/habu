@@ -5,7 +5,7 @@
 \ label's offset is, so the section's rows may reorder freely.
 \ Run: bin/hb --load tools/aot-section-reach-lint.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f

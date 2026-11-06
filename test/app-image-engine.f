@@ -5,7 +5,7 @@
 \ ordered closure of src/habu/app-image.f. Under a gate, test/gate-images.f's
 \ row builds it.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/content-key.f

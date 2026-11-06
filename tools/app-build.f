@@ -2,7 +2,7 @@
 1 set-tier
 require tools/tool-role.f
 TOOL-ROLE:ENTRY
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/habu/app-image.f
 require src/os/script-argv.f

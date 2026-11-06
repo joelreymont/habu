@@ -4,10 +4,10 @@
 \ again refuses with E-PKG-CONTEXT unless the mirror equals the live record, so
 \ a second replay from the same open package is the exact test of the restore.
 
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f
 \   src/habu/verify-source.f test/checker-verify-pkg-scope.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/habu/verify-source.f
@@ -131,7 +131,7 @@ CVPS:REPLAY-NEUTRAL 0 T=
 \ outside for a global; DEFINED-HERE? keeps the narrow answer, or the duplicate
 \ guards would refuse legal shadowing.
 
-\ The sentinel is an existing global (src/lib/errors.f's codes), so the test
+\ The sentinel is an existing global (src/lib/error.f's codes), so the test
 \ adds no unpackaged global.
 
 s" top level: RESOLVES? sees a global" T-LABEL

@@ -1,7 +1,7 @@
 \ Whether the target compiler defined a pending source-origin provider above
 \ the floor its definition cache was seeded with.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/habu/xref.f
 
 package NUNIT-ORIGIN

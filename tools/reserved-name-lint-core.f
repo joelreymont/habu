@@ -2,7 +2,7 @@
 \ Also rejects number-shaped names (E-NUMERIC-DEFINITION), as hb does, and a
 \ dot-digit tail (U.0): one inserted space makes it a float literal.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

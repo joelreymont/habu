@@ -150,12 +150,12 @@ private
    s" src" ENGINE-LINK s" test" ENGINE-LINK
    ROOT$ s" other/nested" JOIN FS:MAKE-DIRS
    ROOT$ s" other/src/lib" JOIN FS:MAKE-DIRS
-   ROOT$ s" other/src/lib/errors.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
+   ROOT$ s" other/src/lib/error.f" JOIN s" 100 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
    ROOT$ s" other/nested" JOIN TARGET TARGET-U COPY!
    TARGET TARGET-U @ INVOCATION$ s" branch" JOIN FS:MAKE-SYMLINK
    s" src/lib" A-PATH FS:MAKE-DIRS s" src/lib" B-PATH FS:MAKE-DIRS
-   s" src/lib/errors.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
-   s" src/lib/errors.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL ;
+   s" src/lib/error.f" A-PATH s" 1 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL
+   s" src/lib/error.f" B-PATH s" 10 SOURCE-ROOT-ALIAS-CHILD:BUMP" FS:WRITE-ALL ;
 
 \ A fresh process must carry its frozen engine facts into a symlinked checkout.
 \ The child also keeps owner-local modules and symlink/.. targets distinct.

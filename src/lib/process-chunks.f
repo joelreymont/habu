@@ -5,7 +5,7 @@
 \ OWNED-CELLS adds the table's address and capacity; zeroed cells are empty.
 \ STORAGE CLASS. CALLER-OWNED: the caller frees every chunk and table.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/memory.f" required
 
 package PROC-CHUNKS

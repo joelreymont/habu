@@ -3,7 +3,7 @@
 \ points fd 2 at a pipe a reader task drains.
 \ Run: bin/hb --load src/lib/log-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f

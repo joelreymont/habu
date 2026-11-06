@@ -39,7 +39,7 @@ RETURN-BYTES 8 / constant RETURN-CELLS
 PAGE-BYTES constant LOOP-BYTES
 LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
-\ run-in-stack's refusal code. src/lib/errors.f owns it as E-STACK-UNGUARDED; the
+\ run-in-stack's refusal code. src/lib/error.f owns it as E-STACK-UNGUARDED; the
 \ engine emitters (src/habu/habu1.f BRUNSTACK) and the Gforth recovery mirror
 \ compile before any src/lib/ file exists, so the same (code, name) pair is
 \ re-registered here -- the one form tools/error-code-lint.f admits -- and
@@ -48,7 +48,7 @@ LOOP-BYTES LOOP-FRAME-BYTES / constant LOOP-FRAMES
 
 \ evaluate-closed's refusal of a text that left cells above its floor
 \ (src/habu/habu1.f B-EVAL-CLOSED), re-registered for the same reason:
-\ src/lib/errors.f owns it as E-EVAL-RESIDUE and test/compiler/native-eval.f keeps
+\ src/lib/error.f owns it as E-EVAL-RESIDUE and test/compiler/native-eval.f keeps
 \ the two spellings equal.
 -3804 constant E-EVAL-RESIDUE
 

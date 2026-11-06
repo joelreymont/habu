@@ -1,7 +1,7 @@
 \ array-test.f - focused tests for checked stdlib array helpers.
 \ Run: bin/hb --load src/lib/array-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/array.f
 require src/lib/test.f
 

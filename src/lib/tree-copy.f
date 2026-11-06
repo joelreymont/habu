@@ -5,7 +5,7 @@
 \ STORAGE CLASS. PROCESS-WIDE (root and destination cells, the fs.f walk stack,
 \ the fs-mutate.f copy buffer): a copy is single-task.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/core/include.f

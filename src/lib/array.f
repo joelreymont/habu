@@ -5,7 +5,7 @@
 \ smallest index among ties, and mutating kernels take it as a no-op. Index-aware
 \ quotations take the index before the value. STORAGE CLASS. CALLER-OWNED.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/adt/option.f
 
 package ARRAY

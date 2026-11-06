@@ -34,7 +34,7 @@ $10000 constant BF-CERT-DIAG-CAP
 : BF-NEED-PREAMBLE ( -- )
    s" CODESIGN:TOOL" CHECKER-RESOLVES?
    s" PROC-ENV-INHERIT-MISSING" CHECKER-RESOLVES? and if exit then
-   s" build-fixpoint: missing required load; --load src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb" BF-USAGE-RC die ;
+   s" build-fixpoint: missing required load; --load src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f tools/build-fixpoint.f tools/build-fixpoint-main.f before the build verb" BF-USAGE-RC die ;
 BF-NEED-PREAMBLE
 
 \ The stage source rewinds to the mark src/core/lower-cert-seal.f records at the core
@@ -688,12 +688,12 @@ package BUILD-FIXPOINT
    out outu s" src/habu/spawn-abi.f" BF-APPEND-MODULE
    out outu s" src/habu/habu1.f" BF-APPEND-MODULE ;
 
-\ fmt requires float and string; float requires string and option, string requires errors
+\ fmt requires float and string; float requires string and option, string requires error
 \ and option. num-types.f, num-arithmetic.f, memory.f and fixed-body.f, which fmt does not
 \ reach, come in the prefix's order (src/habu/habu2.f PFX-LOAD-STDLIB-FILES) because
 \ num-types.f, memory.f (its WITH-BYTES `frame` STRUCTURE) and fixed-body.f (COMP:body)
 \ declare type families and the seed refuses a captured registry that does not start where
-\ the prefix's does (src/core/type-family.f REG-AOT-BASE-BAD). Prelude and errors are
+\ the prefix's does (src/core/type-family.f REG-AOT-BASE-BAD). Prelude and error are
 \ restored already; each provided fact makes the remaining require a no-op.
 : BF-APPEND-FMT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/lib/adt/option.f" BF-APPEND-MODULE
@@ -707,7 +707,7 @@ package BUILD-FIXPOINT
 
 \ Core-prefix files the compiling host carries from its own boot are absent: the payload
 \ rewinds to the mark at that prefix's end (src/habu/prefix-rewind.f, BF-APPEND-RUN-PRELUDE).
-\ script-argv, prelude and errors load after that mark, so the payload brings them back.
+\ script-argv, prelude and error load after that mark, so the payload brings them back.
 \ The absent files are checked as their own phase, BF-APPEND-BOOT-PREFIX.
 : BF-RECOVERY-ONLY ( -- )
    HB-TARGET-LINUX-X86-64? BUILD-TARGET:LINUX-X86-64? or if
@@ -720,8 +720,8 @@ package BUILD-FIXPOINT
    \ The rewind removed the prelude. Restore it before build-side dependencies
    \ such as habu1.f use its checked flag words.
    out outu s" src/lib/prelude.f" BF-APPEND-MODULE
-   out outu s" src/lib/errors.f" BF-APPEND-MODULE   \ asm.f requires it
-   \ The span type family, in the engine prefix's position right after errors.f
+   out outu s" src/lib/error.f" BF-APPEND-MODULE   \ asm.f requires it
+   \ The span type family, in the engine prefix's position right after error.f
    \ (src/habu/habu2.f PFX-LOAD-STDLIB-FILES says why the registry needs it).
    out outu s" src/lib/span.f" BF-APPEND-MODULE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-MODULE   \ icode.f requires it

@@ -4,7 +4,7 @@
 \ definition certified by CHECK-QUIET-CANDIDATE!, and each reject has a control
 \ differing only in the element type, so refusing all pointer traffic fails.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 

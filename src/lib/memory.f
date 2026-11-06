@@ -6,7 +6,7 @@
 \ cell in the MEM-ABI band (src/habu/layout.f), a halted task unwinds its scopes
 \ at TASK:PAUSE, and MEM:RELEASE-SCOPES unmaps a freed region's chunks.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 require src/lib/num-arithmetic.f
 require src/lib/span.f
 

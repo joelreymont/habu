@@ -5,7 +5,7 @@
 \ Not registered in the suite; run it by hand.
 \ The printed directory retains the copied trees and all four products.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

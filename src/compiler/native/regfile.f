@@ -6,7 +6,7 @@
 \ the allocatable set. src/compiler/native/machine.f holds this in a machine.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 
 package NREGFILE
 public

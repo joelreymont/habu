@@ -5,7 +5,7 @@
 \ between. Only the innermost context may take (TOP-CK).
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f

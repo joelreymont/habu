@@ -5,7 +5,7 @@
 \ open document other than PATH meets its text, the first of two for one path holding. A child
 \ (VFY-EXE) runs the check; LSP-CHECK:PREVERIFY-BYTES is check.f's pre-pass on the same child.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/memory.f

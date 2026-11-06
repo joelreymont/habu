@@ -1,6 +1,6 @@
 \ closed-source-suite.f - generated source runs as a closed program.
 require src/lib/codegen.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 
 package CLOSED-SOURCE-TEST

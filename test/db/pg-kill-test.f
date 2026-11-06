@@ -5,7 +5,7 @@
 \ pg_sleep; the pool's walk starts at the row's child and this test sees the
 \ tree only through its FIFO.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f

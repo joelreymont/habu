@@ -1,7 +1,7 @@
 \ fmt-test.f - checked number formatting coverage.
 \ Run: bin/hb --load src/lib/fmt-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/float.f

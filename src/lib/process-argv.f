@@ -5,7 +5,7 @@
 \ the task preparing a spawn until the spawn resets them; a reset keeps the storage,
 \ an image save releases it. An owned CMD run (process-command.f) touches none of it.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/memory.f" required
 s" src/lib/process.f" required
 require src/lib/process-chunks.f

@@ -1,5 +1,5 @@
 \ proc-pty.f — focused native process/PTY harness. Run with:
-\   bin/hb --load src/lib/errors.f src/lib/process.f test/proc-pty.f
+\   bin/hb --load src/lib/error.f src/lib/process.f test/proc-pty.f
 \ src/lib/pty-harness.f owns the terminal; this file types at the child and
 \ judges.
 

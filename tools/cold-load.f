@@ -36,7 +36,7 @@
 \   - the loading file's path cells, PATH-CELL and PATHLEN-CELL below, which
 \     name this file while it loads and so give the tree's root;
 \   - CORE-PREFIX:FIRST-RECORD (src/core/prefix-boundary.f), called by name.
-require src/lib/errors.f
+require src/lib/error.f
 require src/habu/boot-files.f
 
 package COLD-LOAD

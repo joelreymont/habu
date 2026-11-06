@@ -4,7 +4,7 @@
 \ name. --verify-only stops before the run stage.
 
 require src/lib/date.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f

@@ -314,7 +314,7 @@ variable GDB-CUT      \ GDB-AFTER's cut point
 
 \ A negative interval is the caller's error: prof-rate throws E-PROF-RATE
 \ before it stores anything. Uncaught, the engine reports the code and exits
-\ UNCAUGHT-RC before the next line runs. Caught, the code is src/lib/errors.f's
+\ UNCAUGHT-RC before the next line runs. Caught, the code is src/lib/error.f's
 \ E-PROF-RATE, printed negated since GDB-FIELD reads a digit run, and the next
 \ prof-on arms the 250 us set before it, which the report states.
 : GDB-PROFILER-RATE-REFUSED ( -- )

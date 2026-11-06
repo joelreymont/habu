@@ -5,7 +5,7 @@
 \ child (SPAWN). STORAGE CLASS. PROCESS-WIDE: MADE, the counter naming each
 \ FIFO, and SINK, the bytes EOF-WITHIN reads past, never read back.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/fmt.f
 require src/lib/string.f

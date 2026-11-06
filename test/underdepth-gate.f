@@ -6,11 +6,11 @@
 \ before its body runs.
 
 \ The REPL recovery case is test/proc-pty.f PTY-UNDERDEPTH.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f
 \   test/underdepth-gate.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

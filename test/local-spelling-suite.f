@@ -3,7 +3,7 @@
 \ The checker (src/core/checker.f LOC-REF?) and tier 0 (src/habu/t0.f DO-LOCAL)
 \ must resolve a spelling alike; each case's answer pins it.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/test.f

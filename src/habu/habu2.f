@@ -1077,11 +1077,11 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    BOOT-FILES:DECL ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
 \ The boot stdlib: files the tree requires
-\ everywhere (src/lib/string.f has 548 requiring files, src/lib/errors.f 472),
+\ everywhere (src/lib/string.f has 548 requiring files, src/lib/error.f 472),
 \ loaded once so each of those requires is a registry no-op.
 \ Order is the files' require graph, read from the files (some spell it
 \ `s" path" required`); image-lifecycle needs quotation-storage, which the core
-\ prefix loads before include.f. span.f sits right after errors.f because it
+\ prefix loads before include.f. span.f sits right after error.f because it
 \ declares a type family: tools/build-fixpoint.f BF-APPEND-COMMON and
 \ tools/bootstrap.sh SRC_COMMON rebuild the registry in this order, and the seed
 \ refuses a registry that does not start where its capture did

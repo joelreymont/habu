@@ -5,7 +5,7 @@
 \ STORAGE CLASS: the SB builder is TASK-LOCAL (SB-BUF); the BUF-* family is
 \ CALLER-OWNED, the builder for one shared by two tasks; the rest is pure.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/adt/option.f" required
 
 9 constant STR-TAB

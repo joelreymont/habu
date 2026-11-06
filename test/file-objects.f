@@ -8,7 +8,7 @@
 \ `Hi` and `ok` and exits 0, run in its own process: the boundary under test is
 \ the written file.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f

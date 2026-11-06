@@ -6,7 +6,7 @@
 \ engine's data-stack register to src/habu/layout.f.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/native/regfile.f
 
 package NMACH

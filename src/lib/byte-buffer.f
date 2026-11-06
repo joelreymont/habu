@@ -5,7 +5,7 @@
 \ Storage discipline mirrors src/lib/vector.f.
 \ STORAGE CLASS. CALLER-OWNED: the caller embeds the header; BUF owns the mapping.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/string.f

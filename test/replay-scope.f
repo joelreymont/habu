@@ -5,7 +5,7 @@
 \ through the codeless record the checker's overlay (CHECKER-OVERLAY) publishes
 \ while open.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/habu/layout.f
 require src/core/checker-owner-guard.f
 

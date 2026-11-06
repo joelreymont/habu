@@ -1,6 +1,6 @@
 \ task-test.f - CPU tasking smoke, isolation, and exit fixtures.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f                 \ TASK-CODE$ renders the named code the child prints
 require src/lib/test.f
@@ -462,7 +462,7 @@ s" strlen" FFI:PROCESS 1 FFI:DECLARE constant TASK-STRLEN-ROW
    SB$ ;
 
 \ The diagnostic a child prints for an uncaught code, built from the named
-\ constant so a pinned message follows src/lib/errors.f instead of repeating its
+\ constant so a pinned message follows src/lib/error.f instead of repeating its
 \ number. It lands in its own buffer because the caller builds the child's
 \ source in SB straight afterwards.
 : TASK-CODE$ ( n -- ptr u8 n ) {: code:n :}

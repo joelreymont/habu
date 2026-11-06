@@ -4,7 +4,7 @@
 \ BUILD-RUN, PUBLISH). No IMAGE-GRANT:CHECK: this is a tool, not a test adapter, so
 \ an ungranted gate row builds its own keyed image beside the gate's.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/process-argv.f

@@ -5,7 +5,7 @@
 \ cannot write; FORMAT-EPOCH-UTC also refuses negative epoch seconds.
 \ STORAGE CLASS. CALLER-OWNED: output goes to the caller's buffer; no module state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/adt/option.f
 
 package DATE

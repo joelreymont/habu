@@ -1884,7 +1884,7 @@ backend answers alike.
   error-code lint scans this repository, not external dependency trees.
 - Engine process failures use only the sealed `ENGINE-ERROR` package, whose
   names and values are `src/core/engine-error.f`. No global `E-*` aliases.
-- **Fallible words `throw` a named code** (`src/lib/errors.f` or the owning
+- **Fallible words `throw` a named code** (`src/lib/error.f` or the owning
   module's package, e.g. `E-FS-PATH`), never a silent failure or an
   out-of-band flag.
 - **`catch` only at explicit recovery boundaries**: REPL/CLI wrappers, test
@@ -1977,7 +1977,7 @@ ceiling is a named constant beside the code that enforces it.
 
 - **Named constants, no magic numbers.** Limits and codes are named
   constants in the module that owns them, stdlib throw codes in
-  `src/lib/errors.f`; a literal is acceptable only for a true primitive of the
+  `src/lib/error.f`; a literal is acceptable only for a true primitive of the
   encoding (the `3`/`7` of the 3-bit tag), with a comment.
 - **Default to `$hex`**: byte values, masks, addresses, memory, struct and byte
   offsets, field strides, syscall and exit constants, instruction encodings,

@@ -4,7 +4,7 @@
 \ plaintext fallback; calls are synchronous and may block on the store.
 \ STORAGE CLASS. PROCESS-WIDE: the store binding, written before use and only
 \ read afterwards. CALLER-OWNED: each native call's request record.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f

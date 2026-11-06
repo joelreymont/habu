@@ -1,6 +1,6 @@
 \ native-dead-path.f - production compilation of calls that do not return.
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/compiler/native/compiler.f
 

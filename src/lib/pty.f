@@ -5,7 +5,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: OPEN stages its ioctl arguments in this file's
 \ cells, so one task opens a pair at a time.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/type/deftype.f
 require src/lib/fs.f
 require src/lib/aio.f

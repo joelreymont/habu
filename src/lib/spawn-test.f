@@ -5,7 +5,7 @@
 \ Environment cases use the first inherited row not named
 \ DYLD_* (macOS strips those from env and printenv); without one, each fails.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fd.f
 require src/lib/fmt.f
 require src/lib/string.f

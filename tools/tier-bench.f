@@ -7,7 +7,7 @@
 
 \ The clock loads ahead of the selection, at the engine's tier: after it, its FFI
 \ and task runtime cost a tier-1 run about a second of compiling. The files it
-\ shares with the targets are baked (src/lib/errors.f, string.f, memory.f,
+\ shares with the targets are baked (src/lib/error.f, string.f, memory.f,
 \ adt/option.f), so no word under test compiles before the selection.
 require src/lib/time-cpu.f
 

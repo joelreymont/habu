@@ -4,7 +4,7 @@
 \ the routed REPL reader in the same package.
 \ STORAGE CLASS. TASK-LOCAL: the device indices (GENIO-ABI) and the byte scratch.
 \ PROCESS-WIDE: the device table, so a task inherits its creator's devices.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
 require src/lib/image-lifecycle.f

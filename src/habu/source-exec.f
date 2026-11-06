@@ -1,5 +1,5 @@
 \ Observation of original interpreter actions during one owned source range.
-require src/lib/errors.f
+require src/lib/error.f
 
 package SOURCE-EXEC
 public

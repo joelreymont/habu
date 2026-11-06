@@ -2,7 +2,7 @@
 \ builds the operations of a colon definition into a module under construction.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/does-clause.f
 require src/core/quotation-storage.f
 require src/habu/xref.f

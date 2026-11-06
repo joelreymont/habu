@@ -1,7 +1,7 @@
 \ build-fixpoint-test-lib.f - the fixture tools/build-fixpoint-source-test.f
 \ loads: the scratch tree, BFT-PREPARE and the step and finish words. No MAIN.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

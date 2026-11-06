@@ -1,7 +1,7 @@
 \ json-write-test.f - focused tests for the caller-owned checked JSON writer.
 \ Run: bin/hb --load src/lib/json-write-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/property.f

@@ -548,7 +548,7 @@
 \ can make one. Nor can one make a check outlast LSP-CHECK's deadline or
 \ overflow the verifier's capture.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f

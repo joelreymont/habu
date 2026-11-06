@@ -6,7 +6,7 @@
 \ its words into the EMIT- and src/habu/t0-label.f (LABEL) cells for
 \ CTARGET-ARCH:AARCH64.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/image-lifecycle.f
 require src/lib/byte-buffer.f
 require src/lib/le.f

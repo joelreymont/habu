@@ -48,7 +48,7 @@ variable SUBJECT-U
    SB$ ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
-\ needle follows src/lib/errors.f instead of repeating its number.
+\ needle follows src/lib/error.f instead of repeating its number.
 : NEEDLE$ ( -- ptr u8 n )
    SB-RESET
    s" uncaught throw code " SB-APPEND

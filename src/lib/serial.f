@@ -4,7 +4,7 @@
 \ close live descriptors before an image is prepared.
 \ STORAGE CLASS. TASK-LOCAL: the termios and saved termios are one row per task,
 \ so separate tasks drive separate ports; byte spans are caller-owned.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/le.f
 require src/lib/type/deftype.f

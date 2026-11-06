@@ -5,7 +5,7 @@
 \ byte UTF8:NEXT answers as `raw-byte` is one unit. The column cases are the
 \ language server's use: the units before a byte offset on one line.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/byte-buffer.f
 require src/lib/test.f
 require src/lib/utf16.f

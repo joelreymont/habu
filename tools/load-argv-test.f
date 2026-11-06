@@ -5,7 +5,7 @@
 \ Run: bin/hb --load src/lib/test.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f \
 \   src/lib/process-argv.f tools/load-argv-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
@@ -22,7 +22,7 @@ $4000 constant LA-CAP
 \ A path the boot prefix already carries, and one it does not. Both are read
 \ from the engine's own behaviour by the first two cases below rather than
 \ asserted here, so this file does not have to track the prefix table.
-: LA-SEEDED$ ( -- ptr u8 n )   s" src/lib/errors.f" ;
+: LA-SEEDED$ ( -- ptr u8 n )   s" src/lib/error.f" ;
 
 create LA-ROOT   PATH-CAP allot
 create LA-PROBE  PATH-CAP allot
@@ -62,7 +62,7 @@ variable LA-DANGLING-LINK-U
 \ and in a string, and defines a word of its own. A loader that matched on text
 \ rather than on the registry key would skip it; it must load.
 : LA-DECOY-SRC$ ( -- ptr u8 n )
-   s\" \\ mentions src/lib/errors.f in a comment\n: LA-D ( -- ptr u8 n ) s\" src/lib/errors.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
+   s\" \\ mentions src/lib/error.f in a comment\n: LA-D ( -- ptr u8 n ) s\" src/lib/error.f\" ;\ns\" load-argv: decoy loaded\" type cr\n" ;
 
 : LA-SETUP ( -- )
    FS:CLEANUP-RESET

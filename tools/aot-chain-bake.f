@@ -5,7 +5,7 @@
 \ is the production path: BUILD-FIXPOINT's generated driver and BF-EMIT-ENGINE.
 \ Run: bin/hb --load tools/aot-chain-bake.f -- <artifact> <producer-engine>
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

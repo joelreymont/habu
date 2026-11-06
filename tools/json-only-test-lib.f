@@ -1,6 +1,6 @@
 \ json-only-test-lib.f - checked fixtures for tools/json-only.f.
 \ Run: bin/hb --load tools/json-only-test.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
@@ -139,7 +139,7 @@ variable JOT-ERR-A
    PROC-ARGV-RESET
    s" tools/json-only.f" CLI-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
-   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/error.f"  >LEN PROC-ARGV+
    s" src/lib/memory.f"  >LEN PROC-ARGV+
    s" src/lib/argv.f"  >LEN PROC-ARGV+
    s" tools/json-only-core.f"  >LEN PROC-ARGV+

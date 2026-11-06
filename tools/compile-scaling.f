@@ -5,7 +5,7 @@
 \   scaling: values <n> compile <us> alloc <us>, then scaling: slope <x.xx>;
 \   scaling-locals: the same for the locals shape. Means in us per definition.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/float.f

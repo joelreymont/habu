@@ -3,7 +3,7 @@ require test/compiler/native-eval-fixture.f
 require src/lib/test.f
 require src/lib/prelude.f
 require src/lib/string.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/native/compiler.f
 
 package NJ-FIXTURE

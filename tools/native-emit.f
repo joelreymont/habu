@@ -3,7 +3,7 @@
 \ AArch64 Linux and macOS, tools/native-emit-x64.f for x86-64 Linux. The x86
 \ writer must bind X64CODE before its Linux syscall seam; the ARM writer binds
 \ A64 instead.
-require src/lib/errors.f
+require src/lib/error.f
 
 package NATIVE-EMIT-LOAD
 private

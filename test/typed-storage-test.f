@@ -4,10 +4,10 @@
 \ live LAYOUT-BUFFER keeps working and a raw `variable` still cannot mint a
 \ nominal family. Closed structural cells are typed-storage-structural-test.f's.
 
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/typed-storage-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f

@@ -5,7 +5,7 @@
 \ environment variable enters a key. STORAGE CLASS. SCOPE-OWNED: WITH-FOLD maps
 \ the fold's state and releases it when the body returns or throws.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 

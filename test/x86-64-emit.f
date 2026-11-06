@@ -9,7 +9,7 @@ require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f
 require src/lib/byte-buffer.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fmath.f                       \ FMATH:E-DOMAIN, borrowed for a malformed expected string
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f

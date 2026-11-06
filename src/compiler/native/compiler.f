@@ -6,7 +6,7 @@
 \ the same reader that answers for every callee.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/native/fetch-check.f
 require src/compiler/ir/symbol.f
 require src/compiler/native/checker-owner.f

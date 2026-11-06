@@ -8,7 +8,7 @@
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/fmt.f
-require src/lib/errors.f                    \ E-DIV-ZERO, the dividing rows' refusal
+require src/lib/error.f                    \ E-DIV-ZERO, the dividing rows' refusal
 require src/habu/prim-ref.f
 require src/lib/ieee754.f                  \ the bit shapes' casts
 

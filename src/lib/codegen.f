@@ -8,7 +8,7 @@
 require src/lib/prelude.f
 require src/core/dynamic-storage.f
 
-\ errors.f leaves -4700..-4799 unclaimed, so this module declares its block;
+\ error.f leaves -4700..-4799 unclaimed, so this module declares its block;
 \ error-code-lint keeps every E-* unique across the tree.
 -4700 constant E-CG-CAP     \ an append would exceed a codegen buffer's capacity
 -4701 constant E-CG-VALUE   \ APPEND-DECIMAL was handed a negative value

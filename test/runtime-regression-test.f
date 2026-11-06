@@ -551,7 +551,7 @@ variable GE-NEST-J
 : GE-PROCESS-PTY ( -- )
    GE-HB-RESET
    s" --load" GE-ARG+
-   s" src/lib/errors.f" GE-ARG+
+   s" src/lib/error.f" GE-ARG+
    s" src/lib/process.f" GE-ARG+
    s" test/proc-pty.f" GE-ARG+
    s" --" GE-ARG+

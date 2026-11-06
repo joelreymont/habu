@@ -4,7 +4,7 @@
 \ e.g. a temp root, is redacted to <root>) then compared byte-exact against a
 \ committed golden under test/golden/.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

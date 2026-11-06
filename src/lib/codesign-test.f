@@ -1,7 +1,7 @@
 \ codesign-test.f - focused tests for src/lib/codesign.f.
 \ Run: bin/hb --load src/lib/codesign-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

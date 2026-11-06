@@ -8,7 +8,7 @@
 require src/compiler/native/compiler.f
 require src/lib/json.f
 require src/lib/test.f
-require src/lib/errors.f
+require src/lib/error.f
 
 s" ENUM nctorresult VARIANT ok FIELD value n ;VARIANT VARIANT err FIELD error n ;VARIANT ;ENUM"
 INCLUDE-EVALUATE

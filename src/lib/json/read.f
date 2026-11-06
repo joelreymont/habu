@@ -1,7 +1,7 @@
 \ read.f - the JSON pull/cursor reader, READ-INIT through READ-REPEATS?. A file
 \ of package JSON (src/lib/json.f).
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/string.f

@@ -6,7 +6,7 @@
 \ in reverse. The runner writes each compiled file's object under the out root.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

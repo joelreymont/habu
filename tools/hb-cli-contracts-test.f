@@ -1,7 +1,7 @@
 \ hb-cli-contracts-test.f - checked coverage for hb startup/data-stdin contracts.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-cli-contracts-test.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/hb-cli-contracts-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
@@ -132,7 +132,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
 : HCT-EXPECT-LOAD-STDIN ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/error.f"  >LEN PROC-ARGV+
    s" src/lib/string.f"  >LEN PROC-ARGV+
    s" src/lib/memory.f"  >LEN PROC-ARGV+
    s" src/lib/fs.f"  >LEN PROC-ARGV+

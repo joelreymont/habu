@@ -5,7 +5,7 @@
 \ per-commit: needs Gforth and HABU_ALLOW_BOOTSTRAP=1 (docs/bootstrap.md "DDC
 \ Audit (Diverse Double-Compiling)").
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f
@@ -173,7 +173,7 @@ variable DDC-FXP-U
 \ scratch engine path via HABU_FIXPOINT_ENGINE.
 : DDC-REFRESH-ARGV+ ( -- )
    s" --load" DDC-ARG
-   s" src/lib/errors.f" DDC-ARG        s" src/lib/string.f" DDC-ARG
+   s" src/lib/error.f" DDC-ARG        s" src/lib/string.f" DDC-ARG
    s" src/lib/memory.f" DDC-ARG        s" src/lib/fs.f" DDC-ARG
    s" src/lib/fs-mutate.f" DDC-ARG
    s" src/lib/process.f" DDC-ARG       s" src/lib/process-argv.f" DDC-ARG

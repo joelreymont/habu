@@ -6,7 +6,7 @@
 \ image and its keyed images under img/<family> (tools/keyed-image.f). Outputs a
 \ later engine must find live under <out> itself (BASE$). PROCESS-WIDE: cleared
 \ before image capture.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/image-lifecycle.f

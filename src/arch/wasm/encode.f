@@ -6,7 +6,7 @@
 \ buffers until the next ENCODE or RETIRE.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/adt/option.f
@@ -26,7 +26,7 @@ require src/arch/wasm/wstruct.f
 require src/arch/wasm/profile.f
 require src/arch/wasm/structure.f
 
-\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
+\ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
 -9825 constant E-WENC-FIRST
 -9829 constant E-WENC-LAST
 -9825 constant E-WENC-STATE    \ a read of no emission or past its rows

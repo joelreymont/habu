@@ -3,7 +3,7 @@
 \ can tell whether the definition still resolves the same way. The product
 \ ships the engine's OUTER package sealed, so this build tool keeps a package
 \ of its own and reads the engine cells directly.
-require src/lib/errors.f
+require src/lib/error.f
 require src/habu/layout.f
 require src/lib/le.f
 require src/lib/memory.f

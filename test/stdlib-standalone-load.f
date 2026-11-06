@@ -5,7 +5,7 @@
 \ src/lib/<sub>/ and *-test.f files are out of scope, covered by their own
 \ suites.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

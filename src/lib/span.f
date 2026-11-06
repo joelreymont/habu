@@ -8,7 +8,7 @@
 \ destination E-SPAN-CAPACITY (nothing moves), a negative reach or length
 \ E-SPAN-LENGTH.
 
-require src/lib/errors.f
+require src/lib/error.f
 
 package SPAN
 public

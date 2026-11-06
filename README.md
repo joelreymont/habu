@@ -18,7 +18,7 @@ backend, the checked GPU-kernel vocabulary and the CUDA driver bindings. Loom
 depends on Habu. Habu's language, compiler, runtime, standard libraries, numeric
 types and FFI remain here, including the substrate the moved code still needs:
 the GPU type families and barrier hooks in the checker, the PTX target row in
-the compiler, and the PTX error codes in `src/lib/errors.f`.
+the compiler, and the PTX error codes in `src/lib/error.f`.
 
 ## Quick start
 

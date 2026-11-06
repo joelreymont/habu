@@ -6,7 +6,7 @@
 \ some bytes moved, so write cases run under the engine's 1 kHz SIGALRM profiler.
 \ Each loop case proves its premise with one raw call first.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/span.f
 require src/lib/memory.f

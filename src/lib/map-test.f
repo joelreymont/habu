@@ -1,7 +1,7 @@
 \ map-test.f - map operations, ownership, capacity and corrupt-state refusals.
 \ Run: bin/hb --load src/lib/map-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/map.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline

@@ -4,7 +4,7 @@
 \ Registration publishes the row count only after storing both together.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/source-producer.f
 require src/compiler/target.f
 require src/compiler/binding.f

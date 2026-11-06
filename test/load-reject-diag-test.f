@@ -4,7 +4,7 @@
 \ as it is read, before any compiler sees it. Covers the direct --load,
 \ require-chain and checked-body legs on generated fixtures; the child engine is
 \ HABU_UNDER_TEST when set, else the running engine.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

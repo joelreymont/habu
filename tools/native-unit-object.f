@@ -3,7 +3,7 @@
 \ checker facts. Address-bearing fields use local offsets, literal rows or
 \ imported declaration identities.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/memory.f

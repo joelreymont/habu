@@ -5,7 +5,7 @@
 \ entry runs in a fresh child with empty stdin; exit 0 proves it pulled its
 \ whole closure itself.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

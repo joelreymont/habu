@@ -5,7 +5,7 @@
 \ for lengths 255-257 of bytes (i*37+$80) & $FF: high-bit bytes, and lengths
 \ whose low byte, the only one the final block carries, wraps.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/siphash.f
 require src/lib/entropy.f

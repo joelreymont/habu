@@ -5,7 +5,7 @@
 \ again after it: the second round grows the records and the group row anew
 \ and fills them, and a ticket kept from a grown record of the first round is
 \ refused. Whether the chunks went back to the system is not observed here.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/num-types.f
 require src/lib/image-lifecycle.f

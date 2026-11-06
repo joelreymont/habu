@@ -5,7 +5,7 @@
 \ `i64.const`) can be rewritten in place. Every refusal comes before a byte is
 \ written. Readers take any LEB Wasm admits and answer the value and its length.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/span.f
 
 package WLEB

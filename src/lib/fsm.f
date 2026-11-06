@@ -7,7 +7,7 @@
 \ DEFINE at a time, as only the main thread compiles; the buffers are released
 \ before DEFINE returns or throws, so it keeps no state after.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/core/bytes.f
 

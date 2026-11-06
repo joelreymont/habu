@@ -6,7 +6,7 @@
 \ backend), so tier 0 can require it on every target.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/habu/boot-cells.f
 require src/habu/layout.f

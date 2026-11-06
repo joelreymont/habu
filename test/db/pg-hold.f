@@ -5,7 +5,7 @@
 \ it waits in pg_sleep, a backend busy for it, until killed or the harness's
 \ case deadline.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/aio.f
 require src/lib/pg.f

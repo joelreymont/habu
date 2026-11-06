@@ -5,7 +5,7 @@
 \ is written.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 
 package ENTROPY

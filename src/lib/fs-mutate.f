@@ -5,7 +5,7 @@
 \ are src/lib/fs.f's; the FS-MUT-ABI band is declared in src/habu/layout.f.
 \ STORAGE CLASS. TASK-LOCAL staged paths; PROCESS-WIDE COPY-BUF and registry.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f

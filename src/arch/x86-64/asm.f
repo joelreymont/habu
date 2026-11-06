@@ -6,7 +6,7 @@
 \ sink (src/lib/byte-buffer.f) last and appends to it.
 
 require src/lib/type/deftype.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/byte-buffer.f
 
 package X64ASM

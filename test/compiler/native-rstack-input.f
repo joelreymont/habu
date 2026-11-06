@@ -4,7 +4,7 @@
 \ clause at the declaration. Each case is one stdin-piped engine run; a refused
 \ `generates:` row is a throw, exit 67.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

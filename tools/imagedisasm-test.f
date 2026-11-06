@@ -1,8 +1,8 @@
 \ imagedisasm-test.f - fixture coverage for native raw image disassembly.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f tools/imagedisasm-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f
@@ -71,7 +71,7 @@ variable IMDT-LDRB-U
 : IMDT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
    s" --load" IMDT-ARG+
-   s" src/lib/errors.f" IMDT-ARG+
+   s" src/lib/error.f" IMDT-ARG+
    s" src/lib/string.f" IMDT-ARG+
    s" src/arch/arm64/disasm.f" IMDT-ARG+
    s" tools/imagedisasm.f" IMDT-ARG+

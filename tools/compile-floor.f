@@ -3,7 +3,7 @@
 \   a larger trivial-t0 mean, E-FLOOR-EXCEEDED. One line, us per definition:
 \   floor: trivial-t0 <us> least-trivial-t0 <us>
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/float.f

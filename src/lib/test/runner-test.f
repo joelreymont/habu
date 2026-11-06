@@ -1,9 +1,9 @@
 \ runner-test.f - focused tests for src/lib/test/runner.f.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/test/runner.f
 \ src/lib/test/runner-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/test.f
@@ -152,7 +152,7 @@ variable GTT-OFI
 \ fixture path takes its own write, so SB never holds it beside the rest.
 : GTT-DETAIL-WRITE ( -- )
    SB-RESET
-   s" require src/lib/errors.f" SB-APPEND GTT-LF
+   s" require src/lib/error.f" SB-APPEND GTT-LF
    s" require src/lib/string.f" SB-APPEND GTT-LF
    s" require src/lib/fs.f" SB-APPEND GTT-LF
    s" require src/lib/fs-mutate.f" SB-APPEND GTT-LF

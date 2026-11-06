@@ -5,7 +5,7 @@
 \
 \ STORAGE CLASS. PROCESS-WIDE: the record line is built in one static buffer.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 
 512 constant TREC-CAP

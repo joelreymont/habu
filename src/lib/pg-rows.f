@@ -5,7 +5,7 @@
 \ STORAGE CLASS. TASK-LOCAL arenas and refusal texts, one row per reading task;
 \ the declared connection and reader counts are PROCESS-WIDE.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/span.f

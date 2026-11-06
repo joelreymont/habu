@@ -8,7 +8,7 @@
 \ COLD-LOAD:RUN first: the build runs on this tree's startup files.
 require tools/cold-load.f
 COLD-LOAD:RUN
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

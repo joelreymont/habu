@@ -53,7 +53,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-DRIVER$ ( -- ptr u8 n )
    SB-RESET
-   92 SB-APPEND-C s"  bundle-lib smoke driver; loaded after errors and array." SB-APPEND BLTT-LF
+   92 SB-APPEND-C s"  bundle-lib smoke driver; loaded after error and array." SB-APPEND BLTT-LF
    BLTT-LF
    s" 100 constant BLT-FAIL" SB-APPEND BLTT-LF
    BLTT-LF
@@ -97,7 +97,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    PROC-ARGV-RESET
    s" tools/bundle-lib-core.f" s" tools/bundle-lib.f" CLI-TOOLS-LOAD2 if exit then
    s" --load" BLTT-ARG+
-   s" src/lib/errors.f" BLTT-ARG+
+   s" src/lib/error.f" BLTT-ARG+
    s" src/lib/string.f" BLTT-ARG+
    s" src/lib/fs.f" BLTT-ARG+
    s" src/lib/fs-mutate.f" BLTT-ARG+
@@ -110,9 +110,9 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    s" -o" BLTT-ARG+
    BLTT-BUNDLE BLTT-ARG+ ;
 
-: BLTT-ARGV-ERRORS ( -- )
+: BLTT-ARGV-ERROR ( -- )
    BLTT-ARGV-BASE
-   s" errors"  >LEN PROC-ARGV+ ;
+   s" error"  >LEN PROC-ARGV+ ;
 
 : BLTT-HB-CAPTURE ( -- len len outcome )
    s" bin/hb"  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
@@ -125,14 +125,14 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    RUN-ARGV-CAPTURE-OUTCOME ;
 
 : BLTT-RUN-MISSING-MODULE ( -- len len outcome )
-   BLTT-ARGV-ERRORS
+   BLTT-ARGV-ERROR
    s" missing-module" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-DRIVER BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
 : BLTT-RUN-MISSING-SCRIPT ( -- len len outcome )
-   BLTT-ARGV-ERRORS
+   BLTT-ARGV-ERROR
    s" array" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-MISSING BLTT-ARG+
@@ -141,7 +141,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 : BLTT-BUILD ( -- )
    BL-RESET
    BLTT-BUNDLE BL-OUT!
-   s" errors" BL-MOD+
+   s" error" BL-MOD+
    s" array" BL-MOD+
    BLTT-DRIVER BL-SCRIPT!
    BL-VERIFY
@@ -194,9 +194,9 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    outu 0 T=
    BLTT-ERR erru s" missing script" CONTAINS? TTRUE ;
 
-\ src/lib/errors.f is in the boot prefix, so the builder assumes it and carries
+\ src/lib/error.f is in the boot prefix, so the builder assumes it and carries
 \ the rest. Every path appears in the bundle on an assume or a provided row, so
-\ the assertions check STRUCTURE: E-A-FIRST (src/lib/errors.f) and A-LEN
+\ the assertions check STRUCTURE: E-A-FIRST (src/lib/error.f) and A-LEN
 \ (src/lib/array.f) mark a module's text.
 : BLTT-TEST-BUILD-BUNDLE ( -- )
    BLTT-RUN-BUNDLE-LIB 0 s" BLTT-BUILD" BLTT-EXPECT-EXIT {: outu:n erru:n :}
@@ -204,7 +204,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP FS:READ-ALL {: bundleu:n :}
    s" an engine-provided module is stated, not copied" T-LABEL
-   BLTT-BUNDLE-READ bundleu s\" s\q src/lib/errors.f\q ?ENGINE-PROVIDES" CONTAINS? TTRUE
+   BLTT-BUNDLE-READ bundleu s\" s\q src/lib/error.f\q ?ENGINE-PROVIDES" CONTAINS? TTRUE
    s" an engine-provided module's body is absent" T-LABEL
    BLTT-BUNDLE-READ bundleu s" E-A-FIRST" CONTAINS? TFALSE
    s" a module the engine lacks is carried, and marked provided" T-LABEL

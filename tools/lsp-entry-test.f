@@ -3,7 +3,7 @@
 \ starts it from a project directory containing older Habu tool sources.
 \ The printed artifact keeps both server conversations and their fixtures.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f

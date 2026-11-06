@@ -1,6 +1,6 @@
 \ lower-txn-large.f - dynamic lowering transaction capacity regression.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/bytes.f
 
 package LOWER-TXN-LARGE-TEST

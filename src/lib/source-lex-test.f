@@ -1,7 +1,7 @@
 \ source-lex-test.f - focused tests for src/lib/source-lex.f, package LINT-LEX.
 \ Run: bin/hb --load src/lib/source-lex-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/memory.f

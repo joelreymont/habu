@@ -5,7 +5,7 @@
 \ flagged. Prim names come from habu1.f's `s" NAME"` literals (plain tokenizer).
 \ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f src/lib/source-lex.f tools/lint/shadow-lint.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f
@@ -80,7 +80,7 @@ variable SI
 \ so a definer keyword written in prose is never a definition. ----
 \ Negative so error-code-lint keeps it globally unique: a positive code is a
 \ shared sysexits status. -4800 sits in the gap between src/lib/codegen.f's E-CG
-\ codes (-4700/-4701) and the -5000 cluster; src/lib/errors.f owns -2000..-4499.
+\ codes (-4700/-4701) and the -5000 cluster; src/lib/error.f owns -2000..-4499.
 -4800 constant E-SHADOW-UNTERM
 \ The second lexer defect: a primitive-axiom row with no header or no
 \ closer. It hides definitions the same way an open string does, but a scan that

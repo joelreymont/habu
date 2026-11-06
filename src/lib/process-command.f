@@ -4,7 +4,7 @@
 \ the body returns or throws. Every member grows; no caller-visible ceiling.
 \ No word writes the process-wide argv/env staging: a run spawns from the
 \ context's own vectors. STORAGE CLASS. TASK-LOCAL.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/task.f
 require src/lib/fs.f

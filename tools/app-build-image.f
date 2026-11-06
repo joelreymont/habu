@@ -2,7 +2,7 @@
 \ The default engine remains suitable for stripped AOT images. This image is
 \ selected only by hb-build --repl, before that command stages child argv/env.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/source.f
 require src/lib/process-argv.f

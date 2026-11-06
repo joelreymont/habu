@@ -5,7 +5,7 @@
 \ tools/lint/clobber-lint.f still answers from hand tables.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/native/machine.f
 
 package NEFF

@@ -4,7 +4,7 @@
 \ one cross path, two memory accesses on one register file, two multicycle NOPs
 \ in a packet, two taken branches in a cycle, two writes landing on one register
 \ in a cycle. It models no other hazard and no instruction outside the subset.
-require src/lib/errors.f
+require src/lib/error.f
 require src/arch/tic6x/asm.f
 require src/arch/tic6x/facts.f
 

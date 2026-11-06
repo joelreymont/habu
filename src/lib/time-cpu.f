@@ -5,7 +5,7 @@
 \ STORAGE CLASS. TASK-LOCAL: clock_gettime writes through a pointer, so the
 \ timespec is a TASK:+USER row; tasks are OS threads and share nothing.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 

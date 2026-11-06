@@ -6,7 +6,7 @@
 \ NBACK:FREEZE froze for the engine's own selector.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 require src/core/bytes.f
 require src/compiler/target.f

@@ -4,7 +4,7 @@
 \ own return-stack leak.
 \ Run: bin/hb --load tools/check-repair-hints-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

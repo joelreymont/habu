@@ -13,7 +13,7 @@ library files the engine does not bake ahead of it, as the test's header
 states; never concatenate files with shell logic:
 
 ```sh
-bin/hb --load src/lib/errors.f src/lib/process.f test/proc-pty.f
+bin/hb --load src/lib/error.f src/lib/process.f test/proc-pty.f
 ```
 
 The runner prepends nothing to a registry row, so a focused run of a row's

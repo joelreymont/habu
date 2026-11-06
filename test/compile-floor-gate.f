@@ -5,7 +5,7 @@
 \ Child output prints on every run: the pool keeps it for a red suite, and a
 \ standalone run (`bin/hb --load test/compile-floor-gate.f`) shows the numbers.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f

@@ -5,7 +5,7 @@
 \ unfiltered, 13 definitions became 386. An unseeded host has none below the mark
 \ and says so. Run: bin/hb --load tools/public-signatures-bracket-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

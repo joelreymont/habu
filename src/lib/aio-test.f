@@ -5,7 +5,7 @@
 \ Every wait in this file is bounded: a wait that never finishes ends the row as a
 \ timeout and not a hung suite, and what a finished wait leaves is asserted.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/process.f           \ FD-NOSIGPIPE! for the broken-pipe write

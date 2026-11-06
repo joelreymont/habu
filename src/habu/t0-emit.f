@@ -5,7 +5,7 @@
 \ The front end names values by vreg (0 .. EMIT-VREGS - 1), never by machine
 \ register, so the types, constants and rules here hold on every target.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/type/deftype.f
 require src/compiler/target.f
 require src/compiler/native/emission.f
@@ -13,7 +13,7 @@ require src/compiler/native/callback-stub.f
 
 package COMP
 
-\ Tier 0 emitter seam: -9590..-9599, the block src/lib/errors.f names.
+\ Tier 0 emitter seam: -9590..-9599, the block src/lib/error.f names.
 -9590 constant E-FIRST
 -9599 constant E-LAST
 -9590 constant E-T0-TARGET   \ EMIT-SELECT of an architecture with no emitter

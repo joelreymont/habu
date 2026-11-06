@@ -5,7 +5,7 @@
 \ name between spaces, with one space before the first and after the last, so a
 \ row granted nothing still carries the variable.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 
 package IMAGE-GRANT

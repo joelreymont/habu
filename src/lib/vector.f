@@ -5,7 +5,7 @@
 \ checker reject. Bad capacity is E-VEC-CAPACITY, a bad index E-VEC-BOUNDS,
 \ growing a dead header E-VEC-STATE. STORAGE CLASS. CALLER-OWNED.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 
 \ The private words keep the header cells and address arithmetic on bare `count`,

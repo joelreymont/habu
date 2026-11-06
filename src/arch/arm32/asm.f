@@ -4,7 +4,7 @@
 \ stores included. ARM arithmetic is unconditional and sets no flags; CMP and
 \ the Thumb MOVS, ADDS, SUBS and CMP set them.
 require src/lib/type/deftype.f
-require src/lib/errors.f
+require src/lib/error.f
 
 package A32ASM
 public

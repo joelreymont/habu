@@ -1,7 +1,7 @@
 \ json-read-test.f - focused tests for the checked JSON pull parser.
 \ Run: bin/hb --load src/lib/json-read-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/float.f
 require src/lib/memory.f

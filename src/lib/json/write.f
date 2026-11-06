@@ -1,7 +1,7 @@
 \ write.f - the emit-only JSON writer, WRITE-OPEN through WRITE-FIELD-NULL.
 \ A file of package JSON (src/lib/json.f).
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/byte-buffer.f
 require src/lib/utf8-scalar.f

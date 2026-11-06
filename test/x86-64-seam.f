@@ -6,7 +6,7 @@
 \ are not reached here.
 
 require src/lib/test.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/byte-buffer.f
 require src/arch/x86-64/asm.f
 require src/arch/x86-64/icode.f

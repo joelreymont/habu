@@ -4,7 +4,7 @@
 \ fifteen bytes.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/num-types.f
 require src/lib/byte-buffer.f
 require src/compiler/ir/id.f

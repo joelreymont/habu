@@ -5,7 +5,7 @@
 \ it with `using X64CODE`. Refusals end the build with REFUSE-RC, the code
 \ src/arch/arm64/icode.f uses; test/x86-64-emit.f runs each one.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/byte-buffer.f
 require src/core/roles.f
 require src/arch/x86-64/asm.f

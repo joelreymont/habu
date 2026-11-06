@@ -3,7 +3,7 @@
 \ The argument is a REGION OFFSET, not an address: the region moves every boot, so
 \ an absolute address caught in one process is meaningless in this one.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require tools/code-owner.f

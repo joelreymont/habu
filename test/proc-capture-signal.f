@@ -5,7 +5,7 @@
 \ capture must also have waited, since output and rc alone pass if the timer
 \ stops arming; prof-report before prof-off shows some 260 samples, all in poll.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/test.f

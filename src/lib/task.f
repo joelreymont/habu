@@ -32,7 +32,7 @@
 \ STORAGE CLASS. TASK-LOCAL: SLEEP's timespecs (a TASK:+USER row). PROCESS-WIDE:
 \ semaphore pool, AT-EXIT rows, TCB chain and pool, callback rows; a CAS per move.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/memory.f" required
 s" src/lib/ffi-abi.f" required
 require src/lib/le.f

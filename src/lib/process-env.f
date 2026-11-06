@@ -8,7 +8,7 @@
 \ A row's bytes never move once added: process-command.f INHERIT-Z holds them
 \ from PREPARE to spawn.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-roles.f
 require src/lib/memory.f

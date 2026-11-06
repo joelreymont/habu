@@ -1,7 +1,7 @@
 \ process-command-test.f - focused tests for src/lib/process-command.f.
 \ Run: bin/hb --load src/lib/process-command-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fd.f
 require src/lib/string.f
 require src/lib/test.f

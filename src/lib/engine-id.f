@@ -5,7 +5,7 @@
 \ query buffers clear before image capture through a one-shot hook, registered
 \ again by the next use that caches either value.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/ffi-abi.f
 require src/lib/span.f

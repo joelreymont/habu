@@ -1,11 +1,11 @@
 \ typed-storage-structural-test.f - closed structural storage cells.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   src/habu/verify-source.f test/typed-storage-structural-test.f
 \ TYPED-VARIABLE / TYPED-BUFFER admit a closed structural cell: a non-linear
 \ one-cell con (n, bool, i64, the role tokens) or a `ptr` chain bottoming at
 \ one.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f

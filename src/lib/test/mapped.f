@@ -5,7 +5,7 @@
 \ answers 1 for a released span (measured; mapped-test.f asserts both answers).
 \ STORAGE CLASS. PROCESS-WIDE: the sink path and descriptor are static.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 

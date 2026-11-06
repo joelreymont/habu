@@ -8,7 +8,7 @@
 \ stack. The read control pins that the refusal is about writability, not an
 \ unmapped address.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f

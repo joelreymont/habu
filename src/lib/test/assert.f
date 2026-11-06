@@ -5,7 +5,7 @@
 \ T-EX-FAIL. T-LABEL (at most T-LABEL-CAP bytes, else T-EX-FAIL) names the next one.
 \ STORAGE CLASS. PROCESS-WIDE: static counters, label and report; see below.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test/record.f
 require src/lib/fmt.f                          \ FMT:.INT - one-line number text, shared builder untouched

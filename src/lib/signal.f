@@ -5,7 +5,7 @@
 \ PROCESS-WIDE: one pipe, one caught set and one armed fd word, owned by the task
 \ that ran INIT (NEED-OWNER); the staging span WAIT and TAKE read into is per task.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/process.f" required                \ PROC-KILL-RAW, POLLIN, PROC-NO-FD, PROC-DEADLINE-AT and PROC-LEFT-MS
 s" src/lib/fd.f" required                     \ FD:PIPE, the close-on-exec self-pipe, and FD:NONBLOCK!
 s" src/lib/aio.f" required                    \ the loop the WAIT window runs on

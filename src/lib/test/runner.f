@@ -5,7 +5,7 @@
 \ the root, capture buffers, failure table and capture frames are static; the
 \ standard streams are the process's, so two tasks never capture at once.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/fs.f

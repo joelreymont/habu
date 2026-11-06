@@ -294,7 +294,7 @@ create FFI-T-LONG-PATH PATH-CAP allot
    erru LEN>N 0 T= ;
 
 \ The line the child prints for an uncaught code, rendered from the name so the
-\ needle follows src/lib/errors.f instead of repeating its number.
+\ needle follows src/lib/error.f instead of repeating its number.
 : FFI-T-CODE$ ( n -- ptr u8 n ) {: code:n :}
    SB-RESET
    s" uncaught throw code " SB-APPEND

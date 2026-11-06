@@ -6,7 +6,7 @@
 \ the registry: the one row test/gate-signal-row.f in place of
 \ test/gate-stdlib-cases.f.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/memory.f

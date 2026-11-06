@@ -5,7 +5,7 @@
 \ generation: a stale handle is E-CLEARED, another task's E-HANDLE (docs/design.md
 \ "Models taken from other Forths"). A task that needs two databases opens two.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/span.f
 require src/lib/string.f
@@ -22,7 +22,7 @@ require src/lib/fork-child.f
 -9250 constant E-PG-FIRST
 -9259 constant E-PG-LAST
 \ That block is full, so PG's later codes take a second, separately named
-\ region, -9560..-9569, the decade after OS-CPU (src/lib/errors.f).
+\ region, -9560..-9569, the decade after OS-CPU (src/lib/error.f).
 -9560 constant E-PG-GROWTH-FIRST
 -9569 constant E-PG-GROWTH-LAST
 

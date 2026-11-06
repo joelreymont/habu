@@ -5,7 +5,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: seed, count and the source buffer are static;
 \ one task runs a property at a time.
 
-require src/lib/errors.f
+require src/lib/error.f
 
 package PROP
 

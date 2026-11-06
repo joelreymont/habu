@@ -12,7 +12,7 @@
 \ (src/lib/byte-buffer.f). A call's scratch is one MEM:WITH-BYTES scope,
 \ zeroed on entry and released whole when the call returns or throws.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/string.f

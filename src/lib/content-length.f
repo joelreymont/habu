@@ -5,7 +5,7 @@
 \ STORAGE CLASS. CALLER-OWNED reader record and buffer; SEND's header row is a
 \ TASK:+USER row, TASK-LOCAL.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/task.f

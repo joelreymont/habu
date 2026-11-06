@@ -2,7 +2,7 @@
 \ src/arch/tic6x/asm.f constructs, read by the emitter's packet scheduler and
 \ the interpreter's packet checks (SPRUGH7 section 3.8). A word outside the
 \ subset is refused, never misjudged. The p bit is packet structure and ignored.
-require src/lib/errors.f
+require src/lib/error.f
 
 package C6XFACTS
 public

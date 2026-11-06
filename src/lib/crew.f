@@ -9,7 +9,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: a row to each task START made and nobody has
 \ given back, and the STOPPING mark, read and written under one TASK:FACILITY.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/adt/result.f
 require src/lib/task.f
 require src/lib/log.f

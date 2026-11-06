@@ -5,7 +5,7 @@
 \ word's source authority fails its later callers E-CAP-TRUSTED (checker.f
 \ CHECK-REC-ADMIT).
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/habu/verify-source.f
 

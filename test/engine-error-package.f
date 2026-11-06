@@ -3,7 +3,7 @@
 \ closed with 70 and naming the refused state on fd 2. Native gates run it on
 \ HABU_UNDER_TEST, bootstrap.sh on the Gforth-recovered candidate.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/process-argv.f

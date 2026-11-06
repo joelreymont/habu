@@ -6,7 +6,7 @@
 \ parent block (IR-FUN) and effect class (the schema) are not stored here.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f

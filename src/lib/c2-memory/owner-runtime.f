@@ -4,7 +4,7 @@
 \ then CLOSING -> CLOSED as disposers run; at most FRAME-CAP nest (E-C2-CAPACITY).
 \ Image capture refuses an open frame or loan (E-C2-CAPTURE).
 \ STORAGE CLASS. TASK-LOCAL: the frame chain is one TASK:+USER row (OWNER-REGION).
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/task.f
 require src/lib/memory.f
 require src/lib/image-lifecycle.f

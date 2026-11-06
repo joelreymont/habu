@@ -5,7 +5,7 @@
 \ handler's (test/gate-pool.f); WHY-THREW runs a quotation under catch, dumps and
 \ rethrows. Run: bin/hb --load tools/why-threw.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 
 package WHY-THREW

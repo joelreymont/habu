@@ -5,7 +5,7 @@
 \ gen1, gen1 builds gen2, and gen2 builds gen3 only when the first two differ.
 \ tools/chain-run-build.f states the exit statuses.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

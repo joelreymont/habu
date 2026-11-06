@@ -4,7 +4,7 @@
 \ delivery (src/lib/browser/event.f), so typed text and an answer's body are
 \ copies, in REQ and ANSWER.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/browser/event.f
 

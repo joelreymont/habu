@@ -1,7 +1,7 @@
 \ fs-cause-test.f - real filesystem failures through the public FS load path.
 \ Run: bin/hb --load src/lib/fs-cause-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

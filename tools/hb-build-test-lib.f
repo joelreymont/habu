@@ -3,7 +3,7 @@
 \ check. It defines no MAIN; each row listed below loads it and runs its own
 \ groups. test/gate-stdlib-cases.f registers each row and says why.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

@@ -2,7 +2,7 @@
 \ prof-on builds a pc-sorted live-range index of every record that owns code;
 \ the SIGALRM handler and prof-pc>rec run the same search, so this tests the
 \ handler's attribution itself.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 
 1 set-tier

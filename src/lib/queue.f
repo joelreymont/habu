@@ -5,7 +5,7 @@
 \ semaphores from src/lib/task.f's pool. Elements are cells: a pointer pushed
 \ through a queue stays the sender's to keep alive.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/task.f" required
 s" src/lib/type/deftype.f" required
 

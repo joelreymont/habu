@@ -4,7 +4,7 @@
 \ XOR, high byte first; the checksum is the payload sum modulo 256. Unused
 \ payload bytes are $1A. STORAGE CLASS. CALLER-OWNED: ENCODE writes the caller's
 \ BUF; DECODE borrows the packet.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/type/deftype.f
 require src/lib/byte-buffer.f
 

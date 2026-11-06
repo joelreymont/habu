@@ -1,6 +1,6 @@
 \ id.f - shared compiler IR identity and module-mint authority.
 
-require src/lib/errors.f
+require src/lib/error.f
 
 package IR-ID
 public

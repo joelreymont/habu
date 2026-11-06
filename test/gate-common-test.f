@@ -1,7 +1,7 @@
 \ gate-common-test.f - the capture checks of test/gate-common-lib.f, through the
 \ real load path. GE-CAPTURE-ACTION runs in process.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/process.f

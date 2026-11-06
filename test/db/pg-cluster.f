@@ -2,7 +2,7 @@
 \ PostgreSQL cluster.
 \
 \     bin/hb --load test/db/pg-cluster.f [-- case.f ...]
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f

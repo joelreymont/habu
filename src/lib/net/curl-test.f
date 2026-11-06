@@ -5,7 +5,7 @@
 \ on: the peer that never answers. HABU_NET_TESTS=1 adds one real HTTPS request.
 \ Run: bin/hb --load src/lib/net/curl-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/fmt.f

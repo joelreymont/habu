@@ -112,7 +112,7 @@ private
    TOPROW COMMON s" src/core/top-row.f" ROW
    \ The stdlib rows' order: src/habu/habu2.f, above PFX-LOAD-STDLIB-FILES.
    BASELIB COMMON s" src/lib/prelude.f" ROW
-   BASELIB COMMON s" src/lib/errors.f" ROW
+   BASELIB COMMON s" src/lib/error.f" ROW
    BASELIB COMMON s" src/habu/address-cells.f" ROW
    BASELIB COMMON s" src/core/layout-buffer-address.f" ROW
    RESTLIB COMMON s" src/lib/span.f" ROW

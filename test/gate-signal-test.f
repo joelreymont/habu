@@ -5,7 +5,7 @@
 \ each its own process group, writing under the row's scratch and then sleeping
 \ 20 s. The root is signalled once both engines have reported, mid-burst.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/ffi-abi.f

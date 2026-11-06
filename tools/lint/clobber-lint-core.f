@@ -1,7 +1,7 @@
 \ clobber-lint-core.f - register-clobber analysis for BL-able emitter routines.
 \ Run: bin/hb --load tools/lint/clobber-lint.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require tools/lint/text.f
 require tools/lint/token.f

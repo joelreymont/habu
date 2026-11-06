@@ -6,7 +6,7 @@
 \ NEXT-ARM, NEXT-READY? and NEXT-TAKE let one task have several streams armed
 \ and take each as it answers.
 \ Only HABU_NET_TESTS=1 runs the case that leaves the machine (TLS, CA bundle).
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f                      \ BUFFER:, the transfer table's byte rows
 require src/lib/le.f                          \ the foreign cells are little-endian
 require src/lib/ffi-abi.f

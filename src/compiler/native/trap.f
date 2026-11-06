@@ -5,7 +5,7 @@
 \ site compiles, so nothing here bounds the count or length of trapped names.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/bytes.f
 require src/core/engine-error.f
 

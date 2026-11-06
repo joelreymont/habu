@@ -4,7 +4,7 @@
 \ tools/aot-startup-shape.f reaches RRR, RRI, ENC-CMP, ENC-BCOND and ENC-ADR in
 \ runtime images: their operands stay locals, since a stripped image cannot
 \ read this file's baked scratch.
-require src/lib/errors.f
+require src/lib/error.f
 
 package A64ASM
 

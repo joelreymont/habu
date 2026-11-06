@@ -447,7 +447,7 @@ holds an address**.
   tools and tests allocate outside it. Loaded dependencies need nonoverlapping
   blocks: package names do not distinguish thrown numbers. The application
   integrator resolves collisions; the checker does not enforce this convention.
-- Library codes are named constants in `src/lib/errors.f`; checker throws also use
+- Library codes are named constants in `src/lib/error.f`; checker throws also use
   positive codes above 255 in their owning source. Codes 0..255 serve as
   process exit statuses and may be shared. Every other code, negative or above
   255, has one `E-` name across the tree; a file that needs it under its own
@@ -460,8 +460,8 @@ holds an address**.
   all, in the file that throws its codes and that every other file throwing
   them requires (`src/lib/json/read.f`, which `src/lib/json/copy.f` requires;
   both reopen package JSON, which `src/lib/json.f` loads), and
-  `src/lib/errors.f` says where.
-  The engine bakes `src/lib/errors.f`, and a package the engine bakes has one
+  `src/lib/error.f` says where.
+  The engine bakes `src/lib/error.f`, and a package the engine bakes has one
   owning file: no source a product engine loads reopens it.
 - A fallible word `throw`s a named code, never an out-of-band flag.
 - A failure caused outside the program (a provider, the network, the OS) is
@@ -520,7 +520,7 @@ forth.md: **Errors**, **Integer arithmetic**.
   `CD` prints it), `PUSHPATH` / `POPPATH` save and restore it, all public in
   `SOURCE-ROOT`; inside a loaded file (`--load`, `require`) they are refused:
   scope a root with `SOURCE-ROOT:WITH`.
-- The engine provides `src/lib/prelude.f`, `errors.f`, `string.f`, `span.f`,
+- The engine provides `src/lib/prelude.f`, `error.f`, `string.f`, `span.f`,
   `memory.f`, `num-types.f`, `num-arithmetic.f`, `image-lifecycle.f` and the
   `src/` files its boot prefix loads: their words resolve with no require and
   a `require` is a no-op, and `tools/check.f` answers `E-ENGINE-PROVIDED` for

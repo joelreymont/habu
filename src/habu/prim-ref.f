@@ -5,7 +5,7 @@
 \ no `REF`. Names never shadow a primitive spelling (`S-DUP`, `ABSOLUTE`). Not
 \ baked; loop cursors are package variables, so no word here is reentrant.
 
-require src/lib/errors.f                    \ E-DIV-ZERO
+require src/lib/error.f                    \ E-DIV-ZERO
 
 package PRIM-REF
 private

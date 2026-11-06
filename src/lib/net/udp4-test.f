@@ -8,7 +8,7 @@ require src/lib/test.f
 require src/lib/test/wait.f
 require src/lib/prelude.f
 require src/lib/string.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/task.f
 require src/lib/aio.f                  \ the loop a waiting RECEIVE runs on

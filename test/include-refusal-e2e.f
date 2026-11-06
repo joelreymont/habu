@@ -5,7 +5,7 @@
 \ (src/lib/engine-candidate.f) from this working directory; each case's program
 \ and streams stay in the printed cases/ tree, which no missing path lies below.
 require src/lib/test.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f

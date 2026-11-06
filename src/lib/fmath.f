@@ -5,7 +5,7 @@
 \ Errors: E-DOMAIN. Sampled accuracy: FLN-ACC. Error bounds: BOUND-INPUTS.
 \ STORAGE CLASS. CALLER-OWNED: pure functions over stack values; no module state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ieee754.f
 
 \ Floating mathematics: -9020..-9029, a small shared range because application

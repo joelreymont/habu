@@ -3,7 +3,7 @@
 \ with `tools/build-fixpoint-main.f -- install --force`. The --force keeps the
 \ content-key stamp skip from standing in for the self-rebuild fixpoint.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/span.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
@@ -166,7 +166,7 @@ variable SEED-LAST
 : SEED-PREPARE-BUILD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/error.f"  >LEN PROC-ARGV+
    s" src/lib/string.f"  >LEN PROC-ARGV+
    s" src/lib/memory.f"  >LEN PROC-ARGV+
    s" src/lib/fs.f"  >LEN PROC-ARGV+

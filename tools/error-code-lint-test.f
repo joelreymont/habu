@@ -5,7 +5,7 @@
 \ each fixture's claims stay inside a plain string body: the lint scans this file
 \ for the live ledger too.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

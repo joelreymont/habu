@@ -1,6 +1,6 @@
 \ cli-run.f - checked helpers for explicitly installed CLI fixture subprocesses.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/process-argv.f
 

@@ -1,9 +1,9 @@
 \ seed-test.f - focused tests for checked seed recovery helpers.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f src/lib/process-env.f
 \ src/core/sha256.f src/lib/codesign.f tools/seed.f tools/seed-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
@@ -134,7 +134,7 @@ variable SET-FAIL-SCRIPT-U
 : SET-FAIL-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
-   s" src/lib/errors.f"  >LEN PROC-ARGV+
+   s" src/lib/error.f"  >LEN PROC-ARGV+
    s" src/lib/string.f"  >LEN PROC-ARGV+
    s" src/lib/memory.f"  >LEN PROC-ARGV+
    s" src/lib/fs.f"  >LEN PROC-ARGV+

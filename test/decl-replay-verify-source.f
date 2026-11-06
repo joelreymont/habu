@@ -3,7 +3,7 @@
 \ through those arms, so a drift is silent. Each case replays a declaration and
 \ asserts each candidate's verdict, or the code and diagnostic a refused replay gives.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 require src/habu/verify-source.f

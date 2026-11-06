@@ -17,7 +17,7 @@
 \ process writing the same fd can still split a line longer than PIPE_BUF), and
 \ NOTICE, written under it.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/type/deftype.f
 require src/lib/task.f

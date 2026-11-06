@@ -6,7 +6,7 @@
 \ and fixed registers satisfiable; regalloc.f places them, emit-x64.f renders.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/symbol.f

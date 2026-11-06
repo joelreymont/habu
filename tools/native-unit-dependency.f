@@ -8,7 +8,7 @@
 \ A file frame holds one row per kind and key, only about records before its
 \ first ordinal or made by a child.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/lib/string.f

@@ -5,7 +5,7 @@
 \ ordinary cell store. Exact ENGINE-ERROR:SEAL-VIOLATION catches a missing guard
 \ or a write before the latch load, including loop iterations after the first.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

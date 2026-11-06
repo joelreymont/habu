@@ -4,7 +4,7 @@
 \ (src/core/checker.f CHECK-SCAN) and records what it consumes.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/compiler/digest.f
 require src/compiler/native/checker-owner.f

@@ -24,7 +24,7 @@ public
 : TCE-CATCH ( ptr u8 n -- n )  TCE-U ! TCE-A !  [: TCE-GO ;] catch ;
 
 \ The codes live in the package because a global `E-*` constant is
-\ src/lib/errors.f's surface alone.
+\ src/lib/error.f's surface alone.
 70 constant E-REJECT            \ E-UNDEFINED / checker rejection
 E-TRUST-UNRESOLVED constant E-STALE   \ the row names no word here
 E-BAD-STORED-SIGNATURE constant E-BAD-SIG   \ the row's signature does not parse

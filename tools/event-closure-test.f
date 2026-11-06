@@ -1,11 +1,11 @@
 \ event-closure-test.f - checked fixtures for tools/event-closure-lib.f: the
 \ closure list's rules, and the property a closure key relies on: an edit to any
 \ closure file changes it, an untouched closure or a non-closure edit does not.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \ src/lib/fs-mutate.f src/lib/source.f src/lib/content-key.f tools/source-discovery.f
 \ tools/event-closure-lib.f tools/event-closure-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

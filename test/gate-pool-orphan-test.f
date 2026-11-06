@@ -3,10 +3,10 @@
 \ the case the pool's own GT-POOL-KILL-ALL cleanup never reaches. Every wait has
 \ a hard deadline so a broken mechanism fails instead of hanging.
 
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f
 \ src/lib/process.f src/lib/process-fork.f test/gate-pool-orphan-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

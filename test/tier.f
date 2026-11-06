@@ -4,7 +4,7 @@
 \ child: `set-tier` is engine-global. The width refusals are the JIT's
 \ (src/habu/habu2.f INCOMP-MSG$); >JIT selects the JIT, which is arm64's.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/test.f

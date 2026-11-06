@@ -6,7 +6,7 @@
 \ Missing fields refuse with E-COMP-OWNER; they never fall back by name.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/checker-owner-guard.f
 require src/habu/layout.f
 

@@ -1,7 +1,7 @@
 \ repair-packet-test.f - checked fixture for repair packet generation.
 \ Run: bin/hb --load tools/repair-packet-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

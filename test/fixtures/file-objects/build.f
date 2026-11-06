@@ -7,7 +7,7 @@
 \ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
 \ at rec-wide-publish (rc 70).
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/build-out.f

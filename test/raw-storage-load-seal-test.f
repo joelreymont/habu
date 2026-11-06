@@ -5,7 +5,7 @@
 \ verify-source). CHECK-QUIET-CANDIDATE! verdicts: -1 certified, 0 refused, 1
 \ unresolvable.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/core/pointer-storage.f

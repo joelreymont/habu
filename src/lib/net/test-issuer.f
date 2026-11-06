@@ -10,7 +10,7 @@
 \ and the process keeps.
 \ https://learn.microsoft.com/entra/identity-platform/v2-oauth2-on-behalf-of-flow
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/fmt.f

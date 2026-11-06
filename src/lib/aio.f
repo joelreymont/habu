@@ -7,7 +7,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: ring, records and loop, under one TASK:FACILITY.
 \ TASK-LOCAL: AIO-REGISTERED and AIO-PARKED, a submitting task's own cells.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/string.f               \ BUFFER:, the record and group tables
 require src/lib/le.f                   \ the ring and SQE fields are little-endian

@@ -40,7 +40,7 @@ package PS
 
 \ Two live sources: the entry file, whose bytes must survive the closure prescan
 \ that renders before them, and the dependency being prescanned. Each slab is
-\ sized from its file; src/lib/errors.f alone is past 80 KB.
+\ sized from its file; src/lib/error.f alone is past 80 KB.
 create SRC-SLAB LINT-SLAB:CELLS cells allot
 create DEP-SLAB LINT-SLAB:CELLS cells allot
 

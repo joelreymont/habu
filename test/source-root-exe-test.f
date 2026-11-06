@@ -211,14 +211,14 @@ variable RC
    s" q/bin" A$ FS:MAKE-DIRS
    s" q/bin/hb" PLACE-ENGINE
    s" q/src/lib" A$ FS:MAKE-DIRS
-   s" SOURCE-ROOT-EXE-NOT-TREE" 4 MARKER s" q/src/lib/errors.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-NOT-TREE" 4 MARKER s" q/src/lib/error.f" SB$ TEXT
    \ A real copy of the tree, with an engine of its own.
    B-TREE
    s" b/bin" A$ FS:MAKE-DIRS
    s" b/bin/hb" PLACE-ENGINE
    s" app/src/lib" A$ FS:MAKE-DIRS
    s" test/source-root-exe-app.f" s" app/app.f" A$ COPY-CAP COPY-FILE
-   s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/errors.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-APP-ERRORS" 1 MARKER s" app/src/lib/error.f" SB$ TEXT
    s" wd-app/src/lib" A$ FS:MAKE-DIRS
    WD-APP s" wd-app/wd.f" SB$ TEXT
    s" SOURCE-ROOT-EXE-ENTRY-DECOY" DECOY s" wd-app/src/lib/fs.f" SB$ TEXT
@@ -233,7 +233,7 @@ variable RC
    s" real/x.f" B$ s" links/tool" A$ FS:MAKE-SYMLINK
    s" other/nested" A$ FS:MAKE-DIRS
    s" other/src/lib" A$ FS:MAKE-DIRS
-   s" SOURCE-ROOT-EXE-OTHER" 3 MARKER s" other/src/lib/errors.f" SB$ TEXT
+   s" SOURCE-ROOT-EXE-OTHER" 3 MARKER s" other/src/lib/error.f" SB$ TEXT
    s" other/nested" B$ s" tree/branch" A$ FS:MAKE-SYMLINK
    s" wd" A$ FS:MAKE-DIR
    s" wd/src" A$ FS:MAKE-DIRS
@@ -400,18 +400,18 @@ variable RC
    SB-RESET FOREIGN$ LINE s" yes" LINE SB$ 0 EXPECT ;
 
 \ q holds no first row, so the working directory is the root and q's
-\ src/lib/errors.f is an application file, by its absolute path and under CD.
+\ src/lib/error.f is an application file, by its absolute path and under CD.
 : NOT-TREE ( -- )
    s" a file beside an engine whose directory is not a tree is the application's"
    T-LABEL
    PROG-RESET
-   SB-RESET S\" s\q " SB-APPEND s" q/src/lib/errors.f" A$ SB-APPEND
+   SB-RESET S\" s\q " SB-APPEND s" q/src/lib/error.f" A$ SB-APPEND
    S\" \q required" SB-APPEND SB$ PLINE
    NOT-TREE-RUN
    s" so is one a relative require reaches under CD" T-LABEL
    PROG-RESET
    s" SOURCE-ROOT:CD" s" q" PATH-LINE
-   s" require src/lib/errors.f" PLINE
+   s" require src/lib/error.f" PLINE
    NOT-TREE-RUN ;
 
 : APP ( -- )
@@ -459,19 +459,19 @@ variable RC
    FOREIGN$ s" /src/lib/fs.f" CANNOT-OPEN ;
 
 \ The root's src is a symlink into the gate tree; branch is a symlink
-\ elsewhere, so branch/../src/lib/errors.f only reads like the root's file.
+\ elsewhere, so branch/../src/lib/error.f only reads like the root's file.
 : ALIAS ( -- )
    s" the root's files keep the engine's identity through its symlinks" T-LABEL
    PROG-RESET
-   s" require src/lib/errors.f" PLINE
+   s" require src/lib/error.f" PLINE
    s" require src/core/util.f" PLINE
-   s" require branch/../src/lib/errors.f" PLINE
+   s" require branch/../src/lib/error.f" PLINE
    s" package SOURCE-ROOT-EXE-ALIAS" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   S\"    s\q src/lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
    S\"    s\q src/core/util.f\q ENGINE-PROVIDES? YN" PLINE
-   S\"    s\q branch/../src/lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q branch/../src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT-EXE-OTHER:MARK 3 = YN ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE
@@ -483,7 +483,7 @@ variable RC
 : FIX-1 ( -- )
    s" the root's file required through its parent directory is the engine's" T-LABEL
    PROC-ARGV-RESET
-   s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire b/src/lib/errors.f\n"
+   s" b/bin/hb" HB-AT$ TOP$ S\" SOURCE-ROOT:ENGINE$ type cr\nrequire b/src/lib/error.f\n"
    TIMEOUT-MS RUN-EXE
    SB-RESET s" b" A$ LINE SB$ 0 EXPECT
    s" the root's files reached through a symlinked working directory are the engine's"
@@ -493,17 +493,17 @@ variable RC
    TIMEOUT-MS RUN-EXE
    NULL$ 0 EXPECT ;
 
-\ The working directory's src/lib/errors.f is provided by its absolute path, so a
-\ require of src/lib/errors.f stops there, at the application's fact.
+\ The working directory's src/lib/error.f is provided by its absolute path, so a
+\ require of src/lib/error.f stops there, at the application's fact.
 : FIX-2 ( -- )
    s" an application fact steers ENGINE-PROVIDES? and leaves the resolved root" T-LABEL
    PROG-RESET
    s" package SOURCE-ROOT-EXE-FACT" PLINE
    YN-LINE
    s" : RUN ( -- )" PLINE
-   S\"    SOURCE-ROOT:CWD$ s\q src/lib/errors.f\q SOURCE-ROOT:JOIN provided" PLINE
+   S\"    SOURCE-ROOT:CWD$ s\q src/lib/error.f\q SOURCE-ROOT:JOIN provided" PLINE
    S\"    s\q src/lib/fs.f\q SOURCE-ROOT:RESOLVE drop 2drop" PLINE
-   S\"    s\q src/lib/errors.f\q ENGINE-PROVIDES? YN" PLINE
+   S\"    s\q src/lib/error.f\q ENGINE-PROVIDES? YN" PLINE
    s"    SOURCE-ROOT:RESOLVED-ROOT$ type cr ;" PLINE
    s" RUN" PLINE
    s" ;package" PLINE

@@ -4,7 +4,7 @@
 \ the link writes; `eval`, an entry that calls `evaluate-closed`.
 \ test/compiler/arm64-link-data.f runs each and checks it.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/os/script-argv.f
 require src/habu/layout.f

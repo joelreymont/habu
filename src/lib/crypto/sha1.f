@@ -5,7 +5,7 @@
 \ STORAGE CLASS. CALLER-OWNED: one context of CTX-BYTES per digest, unaligned
 \ (fields are read a byte at a time); no file state, so tasks hash at once.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 require src/lib/span.f
 

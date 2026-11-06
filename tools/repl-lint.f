@@ -1,6 +1,6 @@
 \ repl-lint.f -- CLI wrapper for REPL exit lint.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f

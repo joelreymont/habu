@@ -3,7 +3,7 @@
 \ words the checker needs before the native compiler compiles them. Loads after
 \ the checker, render and hook support.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/source-syntax.f
 require src/core/checker-owner-guard.f
 require src/lib/string.f

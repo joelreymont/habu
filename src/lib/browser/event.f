@@ -5,7 +5,7 @@
 \ through the module's reserve export. HANDLE frees each delivery its turn does
 \ not TAKE. STORAGE CLASS. MODULE-OWNED: EVENT, written by the host between runs.
 
-require src/lib/errors.f
+require src/lib/error.f
 
 package BROWSER-EVENT
 private

@@ -7,7 +7,7 @@
 \ STORAGE CLASS. TASK-LOCAL: one pollfd row, and src/lib/fs.f's task-local path
 \ and stat buffers for TRY-FIFO-WRITER; byte spans stay with the caller.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/span.f
 require src/lib/ffi-abi.f
 require src/lib/task.f

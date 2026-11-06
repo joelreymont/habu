@@ -5,7 +5,7 @@
 \ E- names anywhere under the Habu source roots src/ src/lib/ tools/ test/ fails the
 \ gate.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f

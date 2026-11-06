@@ -5,7 +5,7 @@
 \ bit at boot. TOP-ROW and NATIVE-RUNTIME load after the internal-word pass and
 \ seal nothing themselves.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/process.f

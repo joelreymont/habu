@@ -1,7 +1,7 @@
 \ native-hookless-reject.f - the native compiler refuses an ambiguous bare
 \ callee under the definition's name, and a refused definition keeps no row.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

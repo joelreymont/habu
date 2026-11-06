@@ -2,7 +2,7 @@
 \ itself. Only SIGUSR1 and SIGUSR2 are raised: SIGTERM and SIGINT would end the
 \ run on any path that reaches them before their disposition is installed.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/wait.f

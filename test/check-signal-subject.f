@@ -9,7 +9,7 @@
 \ while the subject runs: it then waits in the reap (src/lib/process.f
 \ PROC-REAP-CAPTURE-BOUNDED), not in the capture's poll.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/process.f
 require src/lib/process-argv.f
 require src/lib/process-env.f

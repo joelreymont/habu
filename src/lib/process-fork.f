@@ -5,7 +5,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: the reaper's pollfd pair and REAP-WATCH-FD
 \ belong to the process, not to a task.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/task.f                       \ TASK:CHILD-RESET, registered below
 require src/lib/image-lifecycle.f            \ the three locks RAW holds while it forks
 require src/core/dynamic-storage.f

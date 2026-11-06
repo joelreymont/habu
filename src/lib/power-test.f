@@ -3,7 +3,7 @@
 \ Failure modes: a hold the OS never lists, or still lists after ALLOW-SLEEP; a
 \ name that is not UTF-8 taken; a target without a backend that answers a token.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fmt.f

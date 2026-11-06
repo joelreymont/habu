@@ -11,7 +11,7 @@
 \ no text, through the same step.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/core/bytes.f
 require src/compiler/native/checker-owner.f
 require src/compiler/fixed-body.f

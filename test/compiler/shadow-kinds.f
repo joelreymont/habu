@@ -1,7 +1,7 @@
 \ shadow-kinds.f - each kind of definition, loaded by the typed loop at tier 0
 \ under a native arm64 shadow: its shadow routine against T0's host routine.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/le.f
 require src/lib/fs.f

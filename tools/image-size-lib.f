@@ -51,7 +51,7 @@ package IMAGE-SIZE
 
 \ The walk's own refusal: thrown, never died, since the payload search probes
 \ many offsets and a wrong one must come back as a failed walk.
-\ Throw range -9240..-9249 (the -9180 decade is src/lib/errors.f TCP4).
+\ Throw range -9240..-9249 (the -9180 decade is src/lib/error.f TCP4).
 -9240 constant E-ES-FIRST
 -9249 constant E-ES-LAST
 -9240 constant E-ES-WALK

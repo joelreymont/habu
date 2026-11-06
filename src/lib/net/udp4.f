@@ -4,7 +4,7 @@
 \ before image capture: they are process resources.
 \ STORAGE CLASS. TASK-LOCAL: the endpoint storage is one $18 TASK:+USER row
 \ (IO-STORAGE); the datagram spans are caller-owned.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/ffi-abi.f
 require src/lib/type/deftype.f

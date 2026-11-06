@@ -4,7 +4,7 @@
 \   perf script | <engine> --load tools/perf-map.f
 \ An address resolves through the profiler's own index (prof-pc>rec, the code
 \ the SIGALRM handler runs), never a second implementation that could disagree.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/habu/boot-cells.f
 

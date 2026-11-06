@@ -5,7 +5,7 @@
 \ this test runs around the capture is named and thrown as E-PROC-TIMEOUT
 \ (src/lib/test/wait.f), so the row ends as a timeout, not a FAIL.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/test.f
 require src/lib/test/outcome.f

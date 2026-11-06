@@ -3,7 +3,7 @@
 \ Both transports wait on the AIO loop, so RUN starts it before the workers and
 \ stops it after they end: a saved image holds no live task, and the next RUN's
 \ START needs the loop down.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/process.f
 require src/lib/task.f
 require src/lib/aio.f

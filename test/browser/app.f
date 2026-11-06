@@ -3,7 +3,7 @@
 \ entry APP-TURN:TURN. Each event it reads answers a text record naming its
 \ fields; typed text names the record to make.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/browser/event.f
 

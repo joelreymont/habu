@@ -2,7 +2,7 @@
 \ private but for the export block at the end. The name HB-BUILD belongs to the
 \ report module, tools/hb-build-report.f.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/memory.f

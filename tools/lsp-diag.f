@@ -5,7 +5,7 @@
 \ `lsp: `, as it came. Strings are copied as the packet escapes them, never
 \ decoded. PROCESS-GLOBAL: the buffers belong to the server's one task.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/byte-buffer.f

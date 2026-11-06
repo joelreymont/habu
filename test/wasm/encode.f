@@ -4,7 +4,7 @@
 \ form with no bytes refused by name.
 
 require src/lib/test.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/core/sha256.f
 require src/compiler/numeric-policy.f

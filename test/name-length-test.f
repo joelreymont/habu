@@ -3,7 +3,7 @@
 \ and the maximum cell. A query answers no and moves no pool mark; a declaring
 \ word ends with its own refusal. A name of exactly the ceiling is still taken.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/string.f
 require src/lib/test.f

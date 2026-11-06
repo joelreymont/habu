@@ -1,7 +1,7 @@
 \ argv-test.f -- focused tests for src/lib/argv.f.
-\ Run mocks:  cat src/lib/errors.f src/lib/string.f src/lib/argv.f src/lib/argv-test.f | bin/hb
+\ Run mocks:  cat src/lib/error.f src/lib/string.f src/lib/argv.f src/lib/argv-test.f | bin/hb
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/argv.f
 require src/lib/fmt.f                   \ FMT:.INT - report numbers inline

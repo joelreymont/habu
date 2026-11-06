@@ -1,6 +1,6 @@
 \ eval-test.f - typed values and throw codes out of evaluated test text.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fmt.f
 require src/lib/test.f
 

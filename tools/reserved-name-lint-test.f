@@ -1,6 +1,6 @@
 \ reserved-name-lint-test.f - thin entry for reserved-name-lint-test-lib.f.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

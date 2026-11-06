@@ -2,7 +2,7 @@
 \ actual published records here; section 13 keeps identities instead of live
 \ dictionary ordinals or DATA addresses.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 require src/lib/memory.f
 require src/lib/string.f

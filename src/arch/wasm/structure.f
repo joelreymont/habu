@@ -6,7 +6,7 @@
 \ operations and branches. src/arch/wasm/encode.f writes the steps.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/ir/id.f
 require src/compiler/ir/source.f
 require src/compiler/ir/type.f
@@ -14,7 +14,7 @@ require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/frozen.f
 
-\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
+\ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
 -9815 constant E-WCTL-FIRST
 -9819 constant E-WCTL-LAST
 -9815 constant E-WCTL-IRREDUCIBLE  \ a function whose control enters a cycle at more than one block

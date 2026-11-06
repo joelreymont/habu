@@ -7,7 +7,7 @@ require src/lib/test.f
 require src/lib/test/wait.f            \ a wait's expired deadline, by name
 require src/lib/prelude.f
 require src/lib/string.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/ffi-abi.f
 require src/lib/memory.f               \ the write cases' 16 MiB source
 require src/lib/fmt.f                  \ the sipped slices' durations, on one line

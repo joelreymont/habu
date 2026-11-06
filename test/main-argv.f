@@ -5,7 +5,7 @@
 \ rc, stdout and stderr. Each case states the rc and output that show which
 \ route ran, so two runs failing alike do not pass.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

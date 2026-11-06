@@ -6,7 +6,7 @@
 \ built from, so nothing is stated twice.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/native/regfile.f
 require src/compiler/native/machine.f
 

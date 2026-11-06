@@ -5,7 +5,7 @@
 \ ABSORB-BYTEs at any alignment; FINISH answers BYTES's hash and spends the state.
 \ STORAGE CLASS. CALLER-OWNED: distinct STATE-CELLS states serve concurrent Tasks.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 
 package SIPHASH

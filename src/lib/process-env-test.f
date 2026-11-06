@@ -1,7 +1,7 @@
 \ process-env-test.f - focused tests for src/lib/process-env.f.
 \ Run: bin/hb --load src/lib/process-env-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

@@ -5,7 +5,7 @@
 \ HASH64 mixes the whole key; folding a non-integer key is the caller's job.
 \ STORAGE CLASS. CALLER-OWNED: distinct tables may be used by concurrent Tasks.
 
-require src/lib/errors.f
+require src/lib/error.f
 
 package HM
 

@@ -4,7 +4,7 @@
 \ engine primitive and the checker's row for it, which no compiler tier moves.
 require src/core/engine-error.f
 require src/habu/stack-abi.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/subject.f

@@ -1,6 +1,6 @@
 \ gate-pool-test.f - focused coverage for fork-backed test pool workers.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-roles.f               \ package STR: the typed string surface
 require src/lib/fmt.f

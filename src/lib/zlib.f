@@ -5,7 +5,7 @@
 \ STORAGE CLASS. TASK-LOCAL scratch: one z_stream and an overflow byte per task,
 \ cleared after every call, so no address survives into a saved image.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 require src/lib/ffi-abi.f
 require src/lib/task.f

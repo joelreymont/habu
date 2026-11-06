@@ -6,7 +6,7 @@
 \ buffers until RESET, and the module LINK answers until the next LINK.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/arch/wasm/leb.f
@@ -15,7 +15,7 @@ require src/arch/wasm/profile.f
 require src/arch/wasm/encode.f
 require src/compiler/native/emission.f
 
-\ The Wasm backend's error block is -9800..-9834 (src/lib/errors.f).
+\ The Wasm backend's error block is -9800..-9834 (src/lib/error.f).
 -9830 constant E-WLINK-FIRST
 -9834 constant E-WLINK-LAST
 -9830 constant E-WLINK-UNRESOLVED  \ an entry, site, cell or slot naming no function, image byte or table slot of the link

@@ -4,7 +4,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: fd 2 and the descriptor saving it belong to the
 \ process, so one capture is open at a time.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fd.f
 require src/lib/fs.f
 

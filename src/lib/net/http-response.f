@@ -5,7 +5,7 @@
 require src/lib/net/http-request.f
 require src/lib/json.f
 require src/lib/string.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/span.f
 require src/lib/aio.f
 

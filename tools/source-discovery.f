@@ -1,11 +1,11 @@
 \ source-discovery.f - whole-file ordered source-composition discovery pass.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/memory.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/memory.f
 \ src/lib/fs.f src/lib/source.f tools/source-discovery.f
 \ RUN replays every literal loader form, colon bodies included, in the core
 \ loader's record-only mode (src/core/include.f event log): the closure is a
 \ superset of the runtime one. Recorded loader-token spans are entry-file offsets.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/span.f

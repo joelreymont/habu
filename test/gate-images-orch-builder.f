@@ -1,6 +1,6 @@
 \ Stands in for test/app-image-engine.f in gate-images-test.f's private tree.
 \ ENSURE waits for a row queued after the consumer, so a serial gate times out.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/string.f

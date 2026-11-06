@@ -1,6 +1,6 @@
 \ A keyed saved image of the fixed AOT builder support, selected by a producer
 \ key the caller has validated.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/process-argv.f
 require src/lib/content-key.f

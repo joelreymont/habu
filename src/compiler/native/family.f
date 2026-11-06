@@ -2,7 +2,7 @@
 \ variant operands of a tag-dispatch form.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/native/checker-owner.f
 
 package NFAM

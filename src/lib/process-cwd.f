@@ -2,7 +2,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: the cwd copy buffer is one per image, so one task
 \ at a time prepares a cwd child through RUN-ARGV-ENV-CWD-*.
 \ src/lib/process.f "SPAWN" states how these words spawn.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/process.f

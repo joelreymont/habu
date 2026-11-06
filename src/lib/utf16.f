@@ -5,7 +5,7 @@
 \ E-STR-BOUNDS, as UTF8:NEXT refuses a negative length.
 \ STORAGE CLASS. CALLER-OWNED: the module keeps no state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/le.f
 require src/lib/byte-buffer.f
 require src/lib/utf8-scalar.f

@@ -1,10 +1,10 @@
 \ seal.f - friend-arena seal regressions: the post-seal raw-write guard
 \ (PROT-GUARD, exit ENGINE-ERROR:SEAL-VIOLATION) traps every store sink into a
 \ sealed band, and engine primitives that update protected cells still work.
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f src/lib/fs.f
 \   src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f test/seal.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

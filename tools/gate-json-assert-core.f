@@ -1,6 +1,6 @@
 \ gate-json-assert-core.f - native JSON assertion library for gate tests.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 require src/lib/memory.f
 require src/lib/span.f

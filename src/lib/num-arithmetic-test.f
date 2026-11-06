@@ -5,7 +5,7 @@
 \ words; each classifier answers the ok payload's raw value (nonnegative) or the
 \ E-NUM-* refusal (negative), so one `T=` pins both.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/property.f

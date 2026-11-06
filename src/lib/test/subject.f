@@ -5,7 +5,7 @@
 \ child's changes from the parent; `evaluate-closed` fails a source leaving cells.
 \ STORAGE CLASS. PROCESS-WIDE: static buffers; one task runs a subject at a time.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/process.f

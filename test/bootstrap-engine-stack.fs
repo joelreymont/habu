@@ -80,8 +80,8 @@ require nf.fs
 
 \ The leaf comparison covers exactly the constants src/habu/stack-abi.f
 \ publishes as STACK-ABI: words, because those are the ones the built engine
-\ can evaluate. E-STACK-UNGUARDED is not one of them: src/lib/errors.f owns that
-\ code and this Gforth stage, which has no src/lib/errors.f, spells its own mirror
+\ can evaluate. E-STACK-UNGUARDED is not one of them: src/lib/error.f owns that
+\ code and this Gforth stage, which has no src/lib/error.f, spells its own mirror
 \ under the same name in bootstrap/cg/forth.fs. The stage value is pinned where
 \ it is observable instead -- BES-DATA's run-in-stack refusals print -3802.
 : BES-ABI ( -- )

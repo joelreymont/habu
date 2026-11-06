@@ -1,6 +1,6 @@
 \ Checked helpers for native tests, loaded through test/gate-common.f.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/span.f

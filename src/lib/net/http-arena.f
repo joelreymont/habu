@@ -8,7 +8,7 @@
 \ A narrowing past the region throws E-SPAN-RANGE instead of reaching the next
 \ slot. No socket here.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/memory.f
 require src/lib/span.f

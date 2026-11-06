@@ -21,7 +21,7 @@ private
 
 \ The signal-frame offsets and loads below are AArch64 Darwin/Linux facts
 \ (docs/xcomp.md "Syscalls And Signals"); a target whose frame this file does not
-\ model is refused at load. The refusal is a die and not src/lib/errors.f's
+\ model is refused at load. The refusal is a die and not src/lib/error.f's
 \ E-PLATFORM because this file loads inside the engine-build window, which has no
 \ src/lib/ in it.
 : PROF-TARGET-OK ( -- )

@@ -4,7 +4,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: the slots, descriptor and dispatch tables and
 \ fault cells are one set for the image. The tables grow contiguously and a
 \ slot is never given back, so a C pointer stays valid; binding rows are task.f's.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/codegen.f
 require src/lib/ffi-abi.f

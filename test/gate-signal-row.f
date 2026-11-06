@@ -3,7 +3,7 @@
 \ `leaf`. Every spawn makes a process group of its own, the shape of a row
 \ building an engine: two spawns deep and, during the burst, between two spawns.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/process.f
 require src/lib/process-argv.f

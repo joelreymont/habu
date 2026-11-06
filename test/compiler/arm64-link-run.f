@@ -11,7 +11,7 @@
 \ Fixture words are LR- and defined once per process: the host checker keeps a
 \ symbol for each name a build defines.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f

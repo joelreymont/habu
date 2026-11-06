@@ -4,7 +4,7 @@
 \ cells their bodies report through. Each file reopens package FFI-CB-TEST.
 \ Every row sorted here is ROW-N cells, which is the extent QSORT declares
 \ written.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/ffi-abi.f
 require src/lib/ffi-callback.f

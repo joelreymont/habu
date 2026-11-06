@@ -1,6 +1,6 @@
 \ hook-sites.f - immutable checker-hook installation registry.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 

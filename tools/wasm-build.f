@@ -45,7 +45,7 @@ public
 \ NUM's families and SPAN's family must be declared before their consumers.
 : LOAD-BASE ( -- )
    s" src/lib/prelude.f" required
-   s" src/lib/errors.f" required
+   s" src/lib/error.f" required
    s" src/lib/span.f" required
    s" src/lib/image-lifecycle.f" required
    s" src/lib/adt/option.f" required

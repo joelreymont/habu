@@ -5,7 +5,7 @@
 \ one: `CC-I` to `IX`) is E-RESERVED-DEFINITION with file, line and token
 \ instead of a silent rc 70.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f

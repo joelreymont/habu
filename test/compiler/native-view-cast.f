@@ -5,7 +5,7 @@
 \ compiler-native-view-cast-aot runs this at tier 1 (test/compiler/aot-mode.f).
 
 require src/lib/test.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/c2-memory.f
 

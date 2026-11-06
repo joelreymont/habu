@@ -4,7 +4,7 @@
 \ process; the verifier and run stages use HABU_UNDER_TEST when set, else this
 \ engine.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/outcome.f

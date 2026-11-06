@@ -4,7 +4,7 @@
 \ it by hand. The engine under test must carry this tree's compiler: a pending
 \ codegen change makes reference and rebuild differ.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/memory.f

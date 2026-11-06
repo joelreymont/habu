@@ -3,7 +3,7 @@
 \ The program below loads first, as a source file does, then its text is
 \ verified warm in this engine as a build certifies a generated prefix: the
 \ verifier reconstructs each word's compile-time order and hides nothing older.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/test/eval.f

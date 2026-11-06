@@ -5,7 +5,7 @@
 \ SOURCE-ROOT:USE-INTERPRETER) and `--load <prelude> <case>`: rc, stdout and
 \ stderr must match, and each case states the rc and output it exercises.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f

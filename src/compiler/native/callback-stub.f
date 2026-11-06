@@ -2,7 +2,7 @@
 \ A native compiler arms this before it seals the accessor's host emission
 \ (NCOMP after its shadow work, T0) and clears it when that emission retires.
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 
 package NCBSTUB
 private

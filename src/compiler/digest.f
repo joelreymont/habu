@@ -3,7 +3,7 @@
 \ Not reentrant: this package keeps one digest context (SHA-CTX) and one output
 \ span (DG), so digests run on one thread at a time.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/workspace.f
 
 package CDIGEST

@@ -4,7 +4,7 @@
 \ mints a top-level DEFLINEAR. Fronts: the engine keyword, the source pre-pass,
 \ tools/check.f fixtures in fork children, and a reopened application image.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs-mutate.f

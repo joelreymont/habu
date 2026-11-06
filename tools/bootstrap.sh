@@ -91,7 +91,7 @@ T="$(mktemp -d "${TMPDIR:-/tmp}/habu-gforth.XXXXXX")"
 # refuses one that does not start where its boot prefix's does
 # (src/core/type-family.f REG-AOT-BASE-BAD). The families therefore come in
 # the prefix's order (src/habu/habu2.f PFX-LOAD-STDLIB-FILES): span.f right
-# after errors.f, then option.f, num-types.f, memory.f (its WITH-BYTES
+# after error.f, then option.f, num-types.f, memory.f (its WITH-BYTES
 # `frame` STRUCTURE) and fixed-body.f (COMP:body) ahead of habu2.f. The list
 # names each family file at its prefix position instead of relying on a
 # require to reach it: nothing else in this text requires memory.f, and
@@ -119,7 +119,7 @@ SRC_COMMON=(
   src/core/layout-buffer-seal.f
   src/core/lower-cert-seal.f
   src/lib/prelude.f
-  src/lib/errors.f
+  src/lib/error.f
   src/lib/span.f
   src/core/dynamic-storage.f
   src/arch/arm64/asm.f
@@ -561,7 +561,7 @@ restore_hb_on_failure() {
 trap restore_hb_on_failure EXIT
 mv "$T/hb-stdin" bin/hb
 env TMPDIR="$T/native" bin/hb --load \
-  src/lib/errors.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f \
+  src/lib/error.f src/lib/string.f src/lib/memory.f src/lib/fs.f src/lib/fs-mutate.f \
   src/lib/process.f src/lib/process-argv.f src/lib/process-env.f src/lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install --force
 trap - EXIT

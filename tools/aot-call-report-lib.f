@@ -1,7 +1,7 @@
 \ aot-call-report-lib.f - report patched AOT call stencils in a binary.
 \ test/gate-aot-image.f loads it in process; misuse is a named throw its caller reports.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fs.f
 
 package AOT-CALL-REPORT

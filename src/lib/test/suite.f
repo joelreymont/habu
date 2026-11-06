@@ -5,7 +5,7 @@
 \ STORAGE CLASS. PROCESS-WIDE: the row and group tables, argument buffer and
 \ hooks are static; one task registers and runs a suite.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 
 package TEST

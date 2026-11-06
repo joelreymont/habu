@@ -1,6 +1,6 @@
 \ protection-span.f - span-aware compiler-state protection regressions.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/test.f
 require src/lib/test/outcome.f
 require src/lib/test/subject.f

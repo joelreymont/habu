@@ -3,7 +3,7 @@
 \ selection reads next. One loop per function, the first one recognised.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f

@@ -6,7 +6,7 @@
 \ (`native-build: uncaught throw code N`); 76 for a broken internal invariant.
 
 require src/lib/string.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/os/script-argv.f
 require src/compiler/target.f
 require src/compiler/native/backend.f

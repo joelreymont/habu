@@ -5,7 +5,7 @@
 \ schema table's.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f

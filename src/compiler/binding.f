@@ -5,7 +5,7 @@
 \ revalidates both halves, so a forged component cannot enter a binding.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/target.f
 require src/compiler/numeric-policy.f
 

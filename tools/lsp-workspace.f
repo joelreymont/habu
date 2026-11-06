@@ -5,7 +5,7 @@
 \ PROCESS-GLOBAL: the roots and the request's graph belong to the server's one
 \ task; only the roots are kept between requests.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/sort.f
@@ -111,7 +111,7 @@ variable CUR-ROOT                        \ and the root being walked
    at ;
 
 \ The name of a code that keeps a file's loads from being found, as
-\ src/lib/errors.f names a discovery's code, and whether RC is one.
+\ src/lib/error.f names a discovery's code, and whether RC is one.
 : FAULT$ ( n -- ptr u8 n bool )
    {: rc:n :}
    rc LSP-TEXT:FS-RC? if s" cannot be read" true exit then
@@ -492,7 +492,7 @@ public
 
 \ The files whose loads the last REACHING could not find, in the byte order
 \ of their paths: each one's path, and why, a discovery's code as
-\ src/lib/errors.f names it or "cannot be read".
+\ src/lib/error.f names it or "cannot be read".
 : UNREADABLE ( -- n )  BAD-N @ ;
 : UNREADABLE$ ( n -- ptr u8 n ptr u8 n )
    BAD @ {: k:n :}

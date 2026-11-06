@@ -1,6 +1,6 @@
 \ Bind the retained compiler's producer words that object import calls.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/compiler/native/publish.f
 require src/habu/intern.f
 require src/habu/xref.f

@@ -4,7 +4,7 @@
 \ fields are separate because a compilation can need any mixture of answers.
 
 require src/lib/prelude.f
-require src/lib/errors.f
+require src/lib/error.f
 
 package CNUM
 public

@@ -5,7 +5,7 @@
 \ SCALAR (empty included). FIT cuts a span at a cap without ending in a character.
 \ Negative lengths, caps and cursors are E-STR-BOUNDS. STORAGE CLASS. CALLER-OWNED.
 
-require src/lib/errors.f
+require src/lib/error.f
 
 package UTF8
 

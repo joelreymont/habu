@@ -5,7 +5,7 @@
 \ STORAGE CLASS. CALLER-OWNED: each request maps its own record, string chunks and
 \ vectors, shared with no process-wide staging. PROCESS:ERRNO is a TASK:+USER cell.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/lib/span.f
 require src/lib/ffi-abi.f

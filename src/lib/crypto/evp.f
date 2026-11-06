@@ -4,7 +4,7 @@
 \ STORAGE CLASS. TASK-LOCAL: each task's EVP_CIPHER_CTX slot and RS256 record
 \ are TASK:+USER rows. Input spans are borrowed per call and nothing is kept
 \ between calls; a SEAL or UNSEAL context is freed on every path, a throw included.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/prelude.f
 require src/lib/string.f
 require src/lib/ffi-abi.f

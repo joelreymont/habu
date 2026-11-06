@@ -1511,7 +1511,7 @@ SCI-LIMBS-OFF SCI-LIMBS cells + constant NUM-BUF-OFF
 \ its target: a module the engine's build needs takes a declared band too.
 \
 \ The product image tools/native-build.f emits carries this file's constants and
-\ src/lib/errors.f's codes from the tree it was built in. fs.f loads from source
+\ src/lib/error.f's codes from the tree it was built in. fs.f loads from source
 \ in the build tool, so an engine that predates a band here dies `E-UNDEFINED:
 \ FS-ABI:STAT-BYTES`, rc 70, before any target work: build one engine from the
 \ declaration alone (with E-FS-BAND), then the tree with it. A baked module costs

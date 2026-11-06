@@ -1,7 +1,7 @@
 \ string-test.f - focused tests for checked stdlib string helpers.
 \ Run: bin/hb --load src/lib/string-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/string-roles.f
 require src/lib/test/guard-page.f

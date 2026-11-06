@@ -5,7 +5,7 @@
 \ capacity, malformed storage or a full table throws E-MAP-*.
 \ STORAGE CLASS. CALLER-OWNED: the caller's cells; no module state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/siphash.f
 require src/lib/entropy.f

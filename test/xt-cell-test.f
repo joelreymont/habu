@@ -5,10 +5,10 @@
 \ accessor's declared effect bakes a concrete T-QUOT into its usig scheme,
 \ freshened per occurrence, so E-INST raw-var freshening cannot erase it.
 
-\ Run: bin/hb --load src/lib/errors.f src/lib/string.f src/lib/test.f src/lib/fs.f
+\ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/fs.f
 \   test/xt-cell-test.f
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f

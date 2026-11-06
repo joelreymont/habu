@@ -5,7 +5,7 @@
 \ E-FS-LIST-ACTIVE, the first listing undisturbed); distinct contexts nest. The
 \ convenience words release a private context after one call.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/span.f
 require src/lib/memory.f
 require src/lib/fs.f

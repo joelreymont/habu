@@ -5,7 +5,7 @@
 \ LINT-LEX (src/lib/source-lex.f) decides which bytes are code; a lexer defect
 \ stops the scan. STRICT is the gate entry; LEDGER prints without throwing.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/vector.f

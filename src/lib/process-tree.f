@@ -5,7 +5,7 @@
 \ STORAGE CLASS. PROCESS-WIDE, one walk or CPU reading at a time (WALKING): the
 \ member table and listings grow with the tree and are released as each ends.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/adt/option.f
 require src/lib/le.f

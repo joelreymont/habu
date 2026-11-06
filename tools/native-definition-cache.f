@@ -2,7 +2,7 @@
 \ source loader always runs; the pending native dispatch selects one
 \ definition after its source actions. Each file's object lives at
 \ BUILD-OUT:OBJ$ (src/lib/build-out.f).
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/fmt.f
 require src/lib/fs.f

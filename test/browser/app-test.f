@@ -8,7 +8,7 @@
 \ --chrome check writes MCP-APP:PAGE+ of the module and runs it in Chrome under
 \ test/browser/app-peer.mjs, which plays ChatGPT's MCP Apps host.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/span.f
 require src/lib/fs.f

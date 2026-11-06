@@ -3,7 +3,7 @@
 \ final CLI or script boundary.
 \ STORAGE CLASS. PROCESS-WIDE, single-task: ARTIFACT's path lives until the
 \ next call; CHECK's file mapping is released when it returns or throws.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/string.f
 require src/lib/memory.f
 require src/lib/fs.f

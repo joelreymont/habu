@@ -5,7 +5,7 @@
 \ are src/lib/spawn.f's, tree kills src/lib/process-tree.f's; process-argv.f,
 \ process-env.f and process-cwd.f add spawn shapes.
 
-s" src/lib/errors.f" required
+s" src/lib/error.f" required
 s" src/lib/memory.f" required                \ MEM-MAX-N bounds PROC-DEADLINE-AT
 s" src/lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC
 s" src/lib/task.f" required                  \ TASK:+USER carries the per-call row

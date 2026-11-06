@@ -5,7 +5,7 @@
 \ label and throws E-PROC-TIMEOUT; T-OUTCOME-TIMEOUT expects the deadline.
 \ STORAGE CLASS. CALLER-OWNED: no module state.
 
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/fmt.f
 require src/lib/test/assert.f
 require src/lib/process.f

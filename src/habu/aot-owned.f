@@ -1,7 +1,7 @@
 \ A frozen capture passed from host readers to a later source-bound writer.
 \ These are the existing artifact sections in memory, without a disk stage.
 \ OWN copies every used byte; later capture/writer storage cannot change it.
-require src/lib/errors.f
+require src/lib/error.f
 require src/lib/memory.f
 require src/habu/aot-decl.f
 require src/habu/aot-file.f
