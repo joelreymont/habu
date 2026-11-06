@@ -1,7 +1,8 @@
 \ arm64-link-data-bad.f - the link's refusals, one per process, chosen by the
 \ first script argument: `data`, a cell declared as a DATA pointer that holds an
 \ address outside the build's space; `header`, a build's xt! into a header cell
-\ the link writes. test/compiler/arm64-link-data.f runs each and checks it.
+\ the link writes; `eval`, an entry that calls `evaluate-closed`.
+\ test/compiler/arm64-link-data.f runs each and checks it.
 
 require src/lib/errors.f
 require src/lib/string.f
@@ -38,13 +39,23 @@ CAST: ENTRY-XT ( n -- [ -- ] )
    s" arm64-link-data-bad: the header store was not refused" 1 die ;
 
 
+: EVAL-BODY ( -- )
+   s\" : LD-EV ( -- ) s\" \" evaluate-closed ;" evaluate-closed
+   s" LD-EV" XREF-FIND-INDEX XREF-REC XREF-START ENTRY-XT
+   data-base APP-ENTRY:XT-CELL + xt!
+   s" ARM64-LINK-DATA-BAD-ARMED" type cr
+   LINK-STRIPPED
+   s" arm64-link-data-bad: the evaluate-closed call was not refused" 1 die ;
+
+
 public
 
 : RUN ( -- )
    0 SCRIPT-ARGV$ {: at:ptr u:n :}
    at u s" data" STR= if s" app" [: DATA-BODY ;] LINKER:WITH exit then
    at u s" header" STR= if s" app" [: HEADER-BODY ;] LINKER:WITH exit then
-   s" arm64-link-data-bad: the case is data or header" 1 die ;
+   at u s" eval" STR= if s" app" [: EVAL-BODY ;] LINKER:WITH exit then
+   s" arm64-link-data-bad: the case is data, header or eval" 1 die ;
 
 ;package
 

@@ -219,13 +219,18 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    SB-RESET  s" refusal, " SB-APPEND  name name-n SB-APPEND
    s" : " SB-APPEND  what what-n SB-APPEND  SB$ T-LABEL ;
 
+\ Runs case name's child and gives its exit code.
+: CHILD-RC ( CMD:command ptr u8 n -- CMD:command n )
+   {: name:ptr name-n:n :}
+   s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
+   s" --" CMD:ARG+  name name-n CMD:ARG+
+   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N ;
+
 \ Case name's child prints its arming line, then pre and v as `.` prints them,
 \ names err on stderr and exits 74.
 : BAD-RUN ( CMD:command ptr u8 n ptr u8 n n ptr u8 n -- CMD:command )
    {: name:ptr name-n:n pre:ptr pre-n:n v:n err:ptr err-n:n :}
-   s" --load" CMD:ARG+  s" test/compiler/arm64-link-data-bad.f" CMD:ARG+
-   s" --" CMD:ARG+  name name-n CMD:ARG+
-   ENGINE-CANDIDATE:PATH$ 60000 >MS CMD:RUN-OUTCOME PROC-OUTCOME>RC RC>N {: rc:n :}
+   name name-n CHILD-RC {: rc:n :}
    name name-n s" the child names the value" CHILD-LABEL
    SB-RESET  s\" ARM64-LINK-DATA-BAD-ARMED\n" SB-APPEND  pre pre-n SB-APPEND
    v FMT:SB-INT  10 SB-APPEND-C
@@ -245,11 +250,24 @@ DYNAMIC-BUFFER FIRST-LINK u8         \ the first link's code buffer
    s" link: a build stored into a header cell the link writes"
    BAD-RUN ;
 
+\ The eval child names its caller and no number, so it is checked apart from
+\ BAD-RUN.
+: BAD-EVAL ( CMD:command -- CMD:command )
+   s" eval" CHILD-RC {: rc:n :}
+   s" eval" s" the child names the caller and evaluate-closed" CHILD-LABEL
+   CMD:OUT$
+   s\" ARM64-LINK-DATA-BAD-ARMED\nlink: LD-EV calls evaluate-closed, which a stripped program cannot run\n"
+   T$=
+   s" eval" s" the child's reason" CHILD-LABEL
+   CMD:ERR$ s" link: a stripped program reaches a word it cannot run" CONTAINS? TTRUE
+   s" eval" s" the child exits 74" CHILD-LABEL  rc 74 T= ;
+
 \ Each refusal dies, so each runs in its own child process:
 \ test/compiler/arm64-link-data-bad.f.
 : REFUSAL-CASE ( -- )
    [: BAD-DATA ;] CMD:WITH-COMMAND
-   [: BAD-HEADER ;] CMD:WITH-COMMAND ;
+   [: BAD-HEADER ;] CMD:WITH-COMMAND
+   [: BAD-EVAL ;] CMD:WITH-COMMAND ;
 
 
 public

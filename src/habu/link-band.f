@@ -136,11 +136,14 @@ variable UNSAFE-COUNT
    a u s" code-publish" XREF-STR=CI or
    a u s" callmap-set" XREF-STR=CI or
    a u s" addrmap-set" XREF-STR=CI or
-   a u s" xref-retarget" XREF-STR=CI or ;
+   a u s" xref-retarget" XREF-STR=CI or
+   a u s" evaluate" XREF-STR=CI or
+   a u s" evaluate-range" XREF-STR=CI or
+   a u s" evaluate-closed" XREF-STR=CI or ;
 
 
-\ A stripped program has no dictionary and no writable code, so it cannot run
-\ these six (aot-closure.f AOT-UNSAFE?).
+\ The words UNSAFE-NAME? names: a stripped program has no dictionary and no
+\ writable code for the first six, and no interpreter for the evaluate words.
 : UNSAFE-TABLE ( -- )
    0 UNSAFE-COUNT !
    ndict@ 0 ?do
@@ -222,8 +225,8 @@ variable UNSAFE-COUNT
    s" link: a stripped program reaches a word it cannot run" 74 die ;
 
 
-\ A target naming no record and none of the six is a kernel primitive, or a
-\ foreign word TARGET-ADDRESS refuses at placement.
+\ A target naming no record and no UNSAFE-NAME? word is a kernel primitive, or
+\ a foreign word TARGET-ADDRESS refuses at placement.
 : LIVE-TARGET ( n -- )
    {: a:n :}
    a REC-AT {: r:n :}

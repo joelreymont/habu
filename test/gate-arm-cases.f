@@ -13,7 +13,7 @@ SUITE arm64-place
 ;SUITE
 
 \ arm64-link-data.f links a stripped build's closure, DATA image, header cells
-\ and DATA list; it refuses a DATA pointer outside the space and a header store.
+\ and DATA list, and the refusals its REFUSAL-CASE runs.
 SUITE arm64-link-data
    test/compiler/arm64-link-data.f
 ;SUITE
