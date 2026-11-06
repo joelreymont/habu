@@ -1,0 +1,9 @@
+---
+title: "Drop a refused file's shadow records"
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-11-06T19:57:24.011908+02:00"
+---
+
+Problem: when a file's compile throws inside an evaluate frame, FRAME-RECOVER and FRAME-ROLLBACK-CODE (src/core/interpret.f:254-270) lower the dictionary count, truncate code and lower DP to the file's start, but nothing lowers NSHADOW's N-RECS or N-EMS (src/compiler/native/shadow.f), so the shadow keeps the records and emissions the rollback removed. Reproduced by review a5b40c31 of L2c-A (probe /tmp/rva-probe.Nbur: bad.f defines two words then fails E-UNDEFINED, caught; records 16->18, emissions 15->17, dictionary count unchanged; good.f reuses those indices; the next LINKER ENTRIES ends the process rc 74 'link: UNO enters at two link addresses', src/habu/link-band.f:88-95). A stale record past the count reads its key from a dictionary slot past ndict, and a stale emission names code addresses the next file reuses, so REC-AT, SOURCE-FUNCTION and the from-scratch ENTRY-TABLE at any later link can answer them. Acceptance: a file whose compile throws and whose dictionary returns to its FILE-REC leaves the shadow at the file's FILE-ROW and FILE-EM; a fixture in test/file-objects.f that catches a refused file and then builds another writes and links with no E-COMP-STATE and no two-address entry. Fix at the cause, in NSHADOW (a word the rollback path calls), not in ENTRIES. Files: src/compiler/native/shadow.f, src/core/interpret.f or the linker's runner (src/habu/linker.f RUN-FILE), test/file-objects.f. Verify: test/file-objects.f, test/linker.f, test/compiler/arm64-link-run.f, test/compiler/arm64-link-data.f; shadow.f is built into hb (through t0.f): one candidate build. Depends: none. Ownership: carl (lead), worker lane. Claim: unassigned.
