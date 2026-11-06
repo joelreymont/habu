@@ -244,7 +244,10 @@ learned live in the docs for their subject.
 - 2026-10-08, privacy: Joel called the owner rows, the marks on engine-only
   names and the per-caller checks "severe over-engineering". A word is
   restricted by putting it in a package's private section, and the product
-  build strips private names.
+  build strips private names. On 2026-11-06, told that the installed hb keeps
+  its private names and that nothing strips them, Joel wrote "we need to
+  deploy T0 ASAP and can tweak sealing and stripping later": the hb the
+  cross-build writes keeps its private names until after the T0 release.
 - 2026-10-27, formats: "why do you need to version any schemas? we have no
   legacy. hard cutover only!" On 2026-11-03, told that a cached native unit
   file carries a format number that the family-words change alters, and that
