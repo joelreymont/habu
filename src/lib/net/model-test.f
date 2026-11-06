@@ -734,6 +734,10 @@ $300000 constant BIG-U
       response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2],\qindex\q:0}]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
    then
+   i i-u s" bad-data" STR= if
+      response [: S\" {\qobject\q:\qlist\q,\qdata\q:\qx\q,\qusage\q:{\qprompt_tokens\q:2,\qtotal_tokens\q:2}}" JSON:WRITE-RAW ;] HTTP:JSON!
+      exit
+   then
    i i-u s" wrong-index" STR= if
       response [: S\" {\qobject\q:\qlist\q,\qdata\q:[{\qembedding\q:[0.1,0.2,0.3],\qindex\q:1}]}" JSON:WRITE-RAW ;] HTTP:JSON!
       exit
@@ -1635,7 +1639,13 @@ create HASH 64 allot
    PURPOSE CHAT
    M MODEL:RECORD-FAULT 0= ASSERT
    PURPOSE s" length" MODEL:E-INCOMPLETE FAILS
-   s" incomplete_reason" ROW s" max_output_tokens" STR-IS ;
+   s" incomplete_reason" ROW s" max_output_tokens" STR-IS
+   \ A reply whose vectors fail records its usage counts.
+   s" embed" M MODEL:PURPOSE!
+   s" bad-data" INPUTS
+   EMBED-CODE MODEL:E-RESPONSE = ASSERT
+   s" fault" ROW MODEL:E-RESPONSE INT-IS
+   s" input_tokens" ROW 2 INT-IS ;
 
 
 \ A reader at the value of the last request's member `key`.

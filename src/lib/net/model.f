@@ -1967,30 +1967,18 @@ private
    c idx VECTOR-LEN @ 0<> if JSON:READ-CLOSE E-RESPONSE throw then
    idx c VECTOR-KEEP ;
 
-: ACCEPT-EMBED ( ptr call -- )
+: READ-DATA ( JSON:reader ptr call -- JSON:reader )
    {: c :}
-   c VECTORS-RESET
-   0 c MODEL-CALL:DATA-COUNT !
-   c WIRE-READER
-   JSON:T-OBJ EXPECT
-   s" data" DESCEND
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
    begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
       JSON:T-OBJ <> if JSON:READ-CLOSE E-RESPONSE throw then
       c READ-EMBED-OBJECT
       c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
    repeat
-   drop JSON:READ-FINISH
-   c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
-      E-RESPONSE throw
-   then ;
+   drop ;
 
-: ACCEPT-OLLAMA ( ptr call -- )
+: READ-EMBEDDINGS ( JSON:reader ptr call -- JSON:reader )
    {: c :}
-   c VECTORS-RESET
-   0 c MODEL-CALL:DATA-COUNT !
-   c WIRE-READER JSON:T-OBJ EXPECT
-   s" embeddings" DESCEND
    JSON:READ-TOKEN JSON:T-ARR <> if JSON:READ-CLOSE E-RESPONSE throw then
    begin JSON:READ-NEXT dup JSON:T-ARR-END <> while
       c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ >= if
@@ -2001,10 +1989,68 @@ private
       c MODEL-CALL:DATA-COUNT @ c VECTOR-KEEP
       c MODEL-CALL:DATA-COUNT @ 1+ c MODEL-CALL:DATA-COUNT !
    repeat
-   drop JSON:READ-FINISH
+   drop ;
+
+\ The reader at the reply's top object, under no usage bytes, no usage member
+\ and no vectors read. Kept usage has a length: an object's bytes are not empty.
+: REPLY-START ( ptr call -- ptr u8 n bool bool JSON:reader )
+   {: c :}
+   c VECTORS-RESET
+   0 c MODEL-CALL:DATA-COUNT !
+   s" " false false c WIRE-READER
+   JSON:T-OBJ EXPECT ;
+
+\ Whether the reader's key is the first under these bytes, which leaves it at
+\ the value; the flag under the reader says whether one came.
+: FIRST-KEY? ( bool JSON:reader ptr u8 n -- bool JSON:reader bool )
+   {: key:ptr key-u:n :}
+   >r {: seen:bool :} r>
+   key key-u JSON:READ-STR-EQ? seen 0= and {: hit:bool :}
+   hit if JSON:READ-NEXT drop then
+   >r seen hit or r> hit ;
+
+\ The reader at a member's key, under the usage bytes and whether a usage member
+\ came: the first one is kept there when an object; any other is skipped.
+: USAGE-MEMBER ( ptr u8 n bool bool JSON:reader -- ptr u8 n bool bool JSON:reader )
+   >r {: o:ptr o-u:n came:bool seen:bool :} r>
+   s" usage" JSON:READ-STR-EQ? came 0= and {: first:bool :}
+   JSON:READ-NEXT JSON:T-OBJ = first and if
+      JSON:READ-VALUE-SPAN$ {: v:ptr v-u:n :}
+      >r v v-u true seen r> exit
+   then
+   JSON:READ-SKIP-VALUE
+   >r o o-u came first or seen r> ;
+
+\ The usage bytes and whether there are any, once the reader has closed the
+\ top object; a reply with no vectors, or not one per input, is refused.
+: REPLY-END ( ptr u8 n bool bool JSON:reader ptr call -- ptr u8 n bool )
+   {: c :}
+   JSON:READ-FINISH
+   0= if E-RESPONSE throw then
    c MODEL-CALL:DATA-COUNT @ c MODEL-CALL:INPUT-COUNT @ <> if
       E-RESPONSE throw
-   then ;
+   then
+   drop dup 0<> ;
+
+\ An embeddings reply's vectors, and the bytes of its usage object and whether
+\ it has one, in one walk of its top object.
+: ACCEPT-EMBED ( ptr call -- ptr u8 n bool )
+   {: c :}
+   c REPLY-START
+   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
+      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
+      s" data" FIRST-KEY? if c READ-DATA else USAGE-MEMBER then
+   repeat
+   drop c REPLY-END ;
+
+: ACCEPT-OLLAMA ( ptr call -- ptr u8 n bool )
+   {: c :}
+   c REPLY-START
+   begin JSON:READ-NEXT dup JSON:T-OBJ-END <> while
+      JSON:T-KEY <> if JSON:READ-CLOSE E-RESPONSE throw then
+      s" embeddings" FIRST-KEY? if c READ-EMBEDDINGS else USAGE-MEMBER then
+   repeat
+   drop c REPLY-END ;
 
 : RESPONSE-ERROR ( n -- )
    {: code:n :}
@@ -2073,24 +2119,29 @@ private
    present if true c TOKENS TOKENS-SEEN ! then
    o o-u present ;
 
-\ The HTTP reply's usage counts: a chat reply's in the Responses protocol's
-\ names, an embeddings reply's prompt_tokens alone.
+\ A chat reply's usage counts, in the Responses protocol's names.
 : ACCEPT-USAGE ( ptr call -- )
    {: c :}
    c RESPONSE$ c USAGE? {: a:ptr u:n present:bool :}
    present 0= if exit then
-   c MODEL-CALL:KIND @ MATCH call-kind
-      chat OF ENDOF
-      embed OF
-         a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT ! exit
-      ENDOF
-   ;MATCH
    a u c s" input_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
    a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-OUTPUT !
    a u c s" input_tokens_details" s" cached_tokens" DETAIL-AT
    c TOKENS TOKENS-CACHED !
    a u c s" output_tokens_details" s" reasoning_tokens" DETAIL-AT
    c TOKENS TOKENS-REASONING ! ;
+
+\ An embeddings reply's prompt_tokens, from its usage object's bytes.
+: EMBED-TOKENS ( ptr u8 n ptr call -- ptr u8 n ptr call )
+   {: a:ptr u:n c :}
+   a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
+   a u c ;
+
+\ The prompt_tokens of a reply the walk rejected, read from the whole reply;
+\ the walk's fault is the one passed on.
+: FAULT-USAGE ( ptr call -- )
+   [: dup >r RESPONSE$ r@ USAGE? if r@ EMBED-TOKENS drop then 2drop r> ;]
+   catch {: code:n :} drop ;
 
 : PARSE-USAGE ( ptr call -- )
    {: c :}
@@ -2116,14 +2167,20 @@ private
    c [: dup ACCEPT-TIER ;] catch {: code:n :} drop
    code RESPONSE-ERROR ;
 
-: PARSE-EMBED ( ptr call -- )
+\ The reply's vectors, and its usage object's bytes and whether it has one.
+\ One catch: a code merged from two catches proves nothing, E-STALE-READ.
+: PARSE-EMBED ( ptr call -- ptr u8 n bool )
    {: c :}
+   s" " false c
    c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if
-      c [: dup ACCEPT-OLLAMA ;] catch
+      [: >r 2drop drop r@ ACCEPT-OLLAMA r> ;]
    else
-      c [: dup ACCEPT-EMBED ;] catch
-   then {: code:n :} drop
-   code RESPONSE-ERROR ;
+      [: >r 2drop drop r@ ACCEPT-EMBED r> ;]
+   then catch {: code:n :}
+   code 0= if drop exit then
+   2drop 2drop
+   code JSON-FAULT? if E-RESPONSE throw then
+   code throw ;
 
 : BEGIN-LOCKED ( ptr call -- ptr call )
    {: c :}
@@ -2542,8 +2599,14 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
    c EMBED-BODY
    construct call-kind embed c MODEL-CALL:KIND !
    c [: POST-REQUEST ;] SEND
-   c PARSE-USAGE
-   c PARSE-EMBED
+   s" " false c [: >r 2drop drop r@ PARSE-EMBED r> ;] catch {: walk:n :}
+   walk 0<> if 2drop 2drop c FAULT-USAGE walk throw then
+   drop {: a:ptr u:n present:bool :}
+   present if
+      true c TOKENS TOKENS-SEEN !
+      a u c [: EMBED-TOKENS ;] catch {: code:n :} 2drop drop
+      code RESPONSE-ERROR
+   then
    c ;
 
 : JOURNAL-GET? ( ptr call -- bool )
@@ -2640,7 +2703,7 @@ FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
       c REPLAY-CONTENT$ STR= 0= if E-RESPONSE throw then
    else
       c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
-      c PARSE-EMBED
+      c PARSE-EMBED 2drop drop
       true c MODEL-CALL:EMBEDDED !
    then
    c JOURNAL-CALL-ID c LEDGER LEDGER-CALL-ID !
