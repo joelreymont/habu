@@ -3,8 +3,10 @@
 \ twice in the same build, then host.f loaded after the build closes; prints
 \ `compiled ` and LINKER:COMPILED. The body lays one cell between shape.f and
 \ main.f, which no file's data holds. With the script argument `second` the
-\ build loads pad.f first. With `stop`, three builds each fail, and every later
-\ load and write in it is LINKER:E-FAILED: STOP-FILE, STOP-BODY and STOP-INSIDE.
+\ build loads pad.f first. With `stop`, four builds each fail: in STOP-FILE and
+\ STOP-BODY every later load and write is LINKER:E-FAILED, STOP-INSIDE's file
+\ moves DP back and its own load is LINKER:E-FAILED, and STOP-ALIGN's file marks
+\ a cell its object cannot place, E-COMP-STATE.
 \ The build's files load from its body: in a build's file `require` is
 \ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
 \ at rec-wide-publish (rc 70).
@@ -41,6 +43,7 @@ PATH-CAP BUFFER: PROG-BUF
 : LOAD-AGAIN ( -- ) s" test/fixtures/file-objects/again.f" included ;
 
 : ROLLBACK ( -- ) s" test/fixtures/file-objects/rollback.f" included ;
+: UNALIGNED ( -- ) s" test/fixtures/file-objects/unaligned.f" included ;
 
 \ The one argument, second or stop, or empty; any other ends the build, rc 1.
 : MODE$ ( -- ptr u8 n )
@@ -76,6 +79,10 @@ PATH-CAP BUFFER: PROG-BUF
    ['] ROLLBACK catch LINKER:E-FAILED
    s" build: STOP-INSIDE: a file that moved DP back was not refused" EXPECT ;
 
+: STOP-ALIGN ( -- )
+   ['] UNALIGNED catch E-COMP-STATE
+   s" build: STOP-ALIGN: an unaligned address cell was not refused" EXPECT ;
+
 : BODY ( -- )
    SECOND? {: second:bool :}
    second if PAD then
@@ -92,6 +99,7 @@ PATH-CAP BUFFER: PROG-BUF
    s" app" [: STOP-FILE ;] LINKER:WITH
    s" app" [: STOP-BODY ;] LINKER:WITH
    s" app" [: STOP-INSIDE ;] LINKER:WITH
+   s" app" [: STOP-ALIGN ;] LINKER:WITH
    s" stopped" type cr ;
 
 public

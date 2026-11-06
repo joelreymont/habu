@@ -6,14 +6,16 @@
 \ pad.f first, so its later files' records, emissions and data sit elsewhere,
 \ and writes seven. Each of A's objects must be byte-identical to B's of the
 \ same name: an address in an object shows as different bytes. Build C, in
-\ build.f's `stop` mode, runs three failed builds and writes one object,
+\ build.f's `stop` mode, runs four failed builds and writes one object,
 \ count.f's, byte-identical to A's: a refused file and DP moved back write none.
 \ Each of A's PIECES reads entry by entry, then its CODE emission by emission,
-\ to its final REQUEST. Every CODE's sizes, functions, sites, zeroed sites and
-\ chains and references are checked; reopen.f's entries field by field,
-\ count.f's entry count and package entries, and the fixtures' calls and
-\ addresses by name. The first build's program prints `Hi` and `ok` and exits
-\ 0, run in its own process: the boundary under test is the written file.
+\ then its DATA and STRINGS, to its final REQUEST. Every CODE's sizes,
+\ functions, sites, zeroed sites and chains and references are checked, and
+\ every DATA's size, zeroed cells, cell rows and length cells; reopen.f's
+\ entries field by field, count.f's entry count and package entries, and the
+\ fixtures' calls, addresses, cells and strings by name. The first build's
+\ program prints `Hi` and `ok` and exits 0, run in its own process: the
+\ boundary under test is the written file.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -322,8 +324,8 @@ EMS-CAP TYPED-BUFFER EM-FUN0 n           \ its first FUN-OFF row
 EMS-CAP TYPED-BUFFER EM-P n              \ the does> patch site, or -1
 FUNS-CAP TYPED-BUFFER FUN-OFF n
 ROWS-CAP TYPED-BUFFER ROW-EM n
-ROWS-CAP TYPED-BUFFER ROW-WHAT n         \ CALL-ROW, ADDR-ROW or PATCH-ROW
-ROWS-CAP TYPED-BUFFER ROW-SITE n
+ROWS-CAP TYPED-BUFFER ROW-WHAT n         \ CALL-ROW, ADDR-ROW, PATCH-ROW or CELL-ROW
+ROWS-CAP TYPED-BUFFER ROW-SITE n         \ a CELL-ROW's: its DATA offset
 ROWS-CAP TYPED-BUFFER ROW-KIND n
 ROWS-CAP TYPED-BUFFER ROW-TAG n
 ROWS-CAP TYPED-BUFFER ROW-A n
@@ -332,6 +334,7 @@ ROWS-CAP TYPED-BUFFER ROW-C n
 0 constant CALL-ROW
 1 constant ADDR-ROW
 2 constant PATCH-ROW
+3 constant CELL-ROW                      \ a DATA address cell, of emission -1
 variable CODE-E                          \ E as read; -1 past the walk's end
 variable N-EMS  variable N-FUNS  variable N-ROWS
 variable FULL                            \ 1 once a table's cap stopped the walk
@@ -404,6 +407,38 @@ variable OBJ-RECS                        \ the object's records, from its entrie
       N-EMS @ EMS-CAP FULL? if unloop exit then
       N-EMS @ EM@  1 N-EMS +!
    loop ;
+
+
+\ ---- DATA and STRINGS ------------------------------------------------------------
+\ After CODE: D, the D bytes, the cell rows into the row tables as CELL-ROWs,
+\ then each string body's offset and length.
+64 constant STRS-CAP
+STRS-CAP TYPED-BUFFER STR-OFF n
+STRS-CAP TYPED-BUFFER STR-U n
+variable DATA-D                          \ D as read; -1 past the walk's end
+variable DATA-AT                         \ the first DATA byte's offset in BYTES-A, or -1
+variable N-STRS
+
+: CELLS@ ( -- )
+   NUM 0 ?do
+      PAST? if unloop exit then
+      -1 CELL-ROW NUM NUM ROW+
+   loop ;
+
+: STRS@ ( -- )
+   NUM 0 ?do
+      PAST? if unloop exit then
+      N-STRS @ STRS-CAP FULL? if unloop exit then
+      NUM N-STRS @ STR-OFF !  NUM N-STRS @ STR-U !  1 N-STRS +!
+   loop ;
+
+: READ-DATA ( -- )
+   0 N-STRS !  -1 DATA-AT !
+   NUM {: d:n :}
+   d DATA-D !
+   d 0 <  WALK-AT @ d + WALK-END @ >  or if OVERRUN exit then
+   WALK-AT @ DATA-AT !  d WALK-AT +!
+   CELLS@  STRS@ ;
 
 \ The entries, then CODE, of the object in BYTES-A.
 : WALK-CODE ( n -- )
@@ -566,7 +601,10 @@ variable OBJ-RECS                        \ the object's records, from its entrie
    s" the entries end where CODE starts" LABEL  WALK-AT @ 8 + WALK-END @ <= TTRUE
    READ-CODE
    s" CODE fits the test's tables" LABEL  FULL @ 0 T=
-   s" CODE ends at the final REQUEST" LABEL  WALK-AT @ WALK-END @ T= ;
+   s" CODE ends where DATA starts" LABEL  WALK-AT @ 8 + WALK-END @ <= TTRUE
+   READ-DATA
+   s" DATA and STRINGS fit the test's tables" LABEL  FULL @ 0 T=
+   s" STRINGS end at the final REQUEST" LABEL  WALK-AT @ WALK-END @ T= ;
 
 
 \ Emission e's functions: the first at 0, ascending, each below its size.
@@ -657,13 +695,13 @@ variable OBJ-RECS                        \ the object's records, from its entrie
    e EM-OK? 0= if false exit then
    f 0 >=  f e EM-F @ <  and ;
 
-\ Row k's reference: tag 0-4, or 5 for a patch target; a file 0 or a FILES row;
-\ a file-0 record or quotation that this object holds.
+\ Row k's reference: tag 0-4, or 5 for a patch target or a cell row; a file 0 or
+\ a FILES row; a file-0 record or quotation that this object holds.
 : CHECK-REF ( n -- )
    {: k:n :}
    k ROW-TAG @ {: tag:n :}
    k ROW-A @ {: file:n :}
-   k ROW-WHAT @ PATCH-ROW = if 6 else 5 then {: tags:n :}
+   k ROW-WHAT @ PATCH-ROW =  k ROW-WHAT @ CELL-ROW =  or if 6 else 5 then {: tags:n :}
    s" a reference's tag is known" LABEL  tag 0 >=  tag tags <  and TTRUE
    tag 0 =  tag 2 =  or  tag 3 =  or if
       s" a reference's file is 0 or a FILES row" LABEL
@@ -677,14 +715,87 @@ variable OBJ-RECS                        \ the object's records, from its entrie
       then
    then ;
 
-: CHECK-CODE ( -- )
-   CHECK-EMS
+\ The number in DATA's 8 bytes at off.
+: DATA@ ( n -- n ) BYTES-A DATA-AT @ + swap + LE:U64@ ;
+
+\ True when DATA holds a whole cell at off.
+: CELL-IN? ( n -- bool )
+   {: off:n :}
+   DATA-AT @ 0 >=  off 0 >=  and  off 7 and 0 =  and  off 8 +  DATA-D @ <=  and ;
+
+\ An address cell: written as 0, an xt naming code, a data cell naming data, or
+\ either holding 0 and every scratch cell naming none.
+: CHECK-CELL ( n -- )
+   {: k:n :}
+   k ROW-SITE @ {: off:n :}
+   k ROW-KIND @ {: kind:n :}
+   k ROW-TAG @ {: tag:n :}
+   s" a cell row is a cell of DATA" LABEL  off CELL-IN? TTRUE
+   off CELL-IN? if s" a cell row's DATA bytes are 0" LABEL  off DATA@ 0 T= then
+   s" a cell row is an xt, data or scratch cell" LABEL  kind 0 >=  kind 3 <  and TTRUE
+   kind 0 = if
+      s" an xt cell names a record, hb's code, a quotation or none" LABEL
+      tag CODE-TAG?  tag 5 =  or TTRUE
+   then
+   kind 1 = if
+      s" a data cell names a file's DATA, the header data or none" LABEL
+      tag 3 =  tag 4 =  or  tag 5 =  or TTRUE
+   then
+   kind 2 = if s" a scratch cell names none" LABEL  tag 5 T= then ;
+
+: CHECK-ROWS ( -- )
    N-ROWS @ 0 ?do
       i ROW-WHAT @ CALL-ROW = if i CHECK-CALL then
       i ROW-WHAT @ ADDR-ROW = if i CHECK-ADDR then
       i ROW-WHAT @ PATCH-ROW = if i CHECK-PATCH then
+      i ROW-WHAT @ CELL-ROW = if i CHECK-CELL then
       i CHECK-REF
    loop ;
+
+\ True when string j's body and the length cell before it lie in DATA.
+: STR-IN? ( n -- bool )
+   {: j:n :}
+   j STR-OFF @ {: off:n :}
+   j STR-U @ {: u:n :}
+   DATA-AT @ 0 >=  off 8 >=  and  off 7 and 0 =  and  u 0 >=  and  off u +  DATA-D @ <=  and ;
+
+: STR$ ( n -- ptr u8 n ) {: j:n :}  BYTES-A DATA-AT @ + j STR-OFF @ +  j STR-U @ ;
+
+: CHECK-STR ( n -- )
+   {: j:n :}
+   s" a string's body and length cell lie in DATA" LABEL  j STR-IN? TTRUE
+   j 0 > if s" string offsets ascend" LABEL  j STR-OFF @  j 1 - STR-OFF @  > TTRUE then
+   j STR-IN? if
+      s" a string's length cell holds its length" LABEL
+      j STR-OFF @ 8 - DATA@  j STR-U @ T=
+   then ;
+
+: CHECK-DATA ( -- )
+   s" DATA's D bytes fit the object" LABEL  DATA-AT @ 0 >= TTRUE
+   N-STRS @ 0 ?do i CHECK-STR loop ;
+
+\ The first cell row at DATA offset off, or -1.
+: CELL-ROW-AT ( n -- n )
+   {: off:n :}
+   N-ROWS @ 0 ?do
+      i ROW-WHAT @ CELL-ROW =  i ROW-SITE @ off =  and if i unloop exit then
+   loop
+   -1 ;
+
+: N-CELLS ( -- n ) -1 CELL-ROW ANY ANY ANY ANY N-OF ;
+
+\ True when the cell row at DATA offset off has that kind, tag and fields a and b.
+: CELL-ROW? ( n n n n n -- bool )
+   {: off:n kind:n tag:n a:n b:n :}
+   off CELL-ROW-AT {: k:n :}
+   k 0 < if false exit then
+   k -1 CELL-ROW kind tag a b ROW? ;
+
+\ Checks that string j's bytes are s; they read as empty unless DATA holds string j.
+: STR-IS ( n ptr u8 n -- )
+   {: j:n s:ptr u:n :}
+   j N-STRS @ <  if j STR-IN? if j STR$ s u T$= exit then then
+   BYTES-A 0 s u T$= ;
 
 
 \ ---- the fixtures' calls and addresses, by name ----------------------------------
@@ -804,6 +915,57 @@ variable OBJ-RECS                        \ the object's records, from its entrie
    3 s" MAKER;does" 3 NEXT-RECORD  0 0 REF=
    0 s" TOP" 0 NEXT-RECORD ;
 
+
+\ ---- the fixtures' cells and strings, by name ------------------------------------
+\ count.f's TALLY holds a number, 0 as the file's compile leaves it, so it has no
+\ cell row; the one string is the `Hi` HI prints.
+: COUNT-DATA ( -- )
+   TALLY-OFF @ {: off:n :}
+   s" TALLY's cell lies in DATA" LABEL  off CELL-IN? TTRUE
+   off CELL-IN? if s" TALLY's cell is 0" LABEL  off DATA@ 0 T= then
+   s" TALLY's cell has no cell row" LABEL  off CELL-ROW-AT -1 T=
+   s" DATA holds one string" LABEL  N-STRS @ 1 T=
+   s" the string is Hi" LABEL  0 s" Hi" STR-IS ;
+
+\ main.f's Q holds SET-Q's second function, stored with xt!; TO-Q and TO-TALLY name data,
+\ SCRATCH is scratch, NOWHERE holds 0, and the store into count.f's TALLY adds no row.
+: MAIN-DATA ( n -- )
+   {: au:n :}
+   COUNT-ROW ROW-OF {: cf:n :}
+   s" SET-Q" au EM-OF {: set:n :}
+   s" Q" au EM-OF OWN-OFF {: q:n :}
+   q CELL-ROW-AT {: k:n :}
+   s" Q's cell has a cell row" LABEL  k 0 >= TTRUE
+   k 0 >= if
+      s" Q's cell row is an xt naming SET-Q's quotation" LABEL
+      k ROW-KIND @ 0 =  k ROW-TAG @ 2 =  and  k ROW-A @ 0 =  and
+      k ROW-B @ set =  and  k ROW-C @ 1 =  and TTRUE
+   then
+   s" main.f's DATA has five cell rows" LABEL  N-CELLS 5 T=
+   s" TO-Q's cell row is data naming Q" LABEL
+   s" TO-Q" au EM-OF OWN-OFF  1 3 0 q CELL-ROW? TTRUE
+   s" TO-TALLY's cell row is data naming count.f's TALLY" LABEL
+   s" TO-TALLY" au EM-OF OWN-OFF  1 3 cf TALLY-OFF @ CELL-ROW? TTRUE
+   s" SCRATCH's cell row is scratch naming none" LABEL
+   s" SCRATCH" au EM-OF OWN-OFF  2 5 ANY ANY CELL-ROW? TTRUE
+   s" NOWHERE's cell row is data naming none" LABEL
+   s" NOWHERE" au EM-OF OWN-OFF  1 5 ANY ANY CELL-ROW? TTRUE
+   s" DATA holds four strings" LABEL  N-STRS @ 4 T=
+   s" the first string is red" LABEL  0 s" red" STR-IS
+   s" the second string is green" LABEL  1 s" green" STR-IS
+   s" the third string is blue" LABEL  2 s" blue" STR-IS
+   s" the fourth string is ok" LABEL  3 s" ok" STR-IS ;
+
+: SIZES= ( n n n -- )
+   {: d:n k:n s:n :}
+   s" DATA's size" LABEL  DATA-D @ d T=
+   s" DATA's cell rows" LABEL  N-CELLS k T=
+   s" DATA's strings" LABEL  N-STRS @ s T= ;
+
+\ reopen.f's DATA is one string: MAKER's does> effect ` -- n `, 6 bytes after
+\ its length cell.
+: REOPEN-DATA ( -- ) 14 0 1 SIZES= ;
+
 : CHECK-OBJECT ( n -- )
    {: idx:n :}
    idx NAME {: name:ptr nameu:n :}
@@ -831,12 +993,12 @@ variable OBJ-RECS                        \ the object's records, from its entrie
    au CHECK-PIECES
    au PIECES-OK? 0= if exit then
    au CHECK-WALK
-   CHECK-CODE
-   FIX @ 3 = if s" CODE holds no emission" LABEL  CODE-E @ 0 T= then
-   idx COUNT-I @ = if au CHECK-COUNT  au COUNT-NAMES then
-   idx SHAPE-I @ = if au SHAPE-NAMES then
-   idx MAIN-I @ = if au RUN-NAMES  au SET-Q-NAMES then
-   idx REOPEN-I @ = if au CHECK-REOPEN  au MAKER-NAMES then ;
+   CHECK-EMS  CHECK-ROWS  CHECK-DATA
+   FIX @ 3 = if s" CODE holds no emission" LABEL  CODE-E @ 0 T=  0 0 0 SIZES= then
+   idx COUNT-I @ = if au CHECK-COUNT  au COUNT-NAMES  COUNT-DATA then
+   idx SHAPE-I @ = if au SHAPE-NAMES  0 0 0 SIZES= then
+   idx MAIN-I @ = if au RUN-NAMES  au SET-Q-NAMES  au MAIN-DATA then
+   idx REOPEN-I @ = if au CHECK-REOPEN  au MAKER-NAMES  REOPEN-DATA then ;
 
 \ Build C's one object: count.f's, the same name and bytes as A's.
 : CHECK-STOP ( -- )
