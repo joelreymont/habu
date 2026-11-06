@@ -11,6 +11,7 @@ require src/lib/base64.f
 require src/lib/byte-buffer.f
 require src/lib/f64-text.f
 require src/lib/fmt.f
+require src/lib/fsm.f
 require src/lib/json.f
 require src/lib/log.f
 require src/lib/memory.f
@@ -54,6 +55,7 @@ private
 \ prepared: JOURNAL-INPUT$ finished the chat request. A busy call is started,
 \ not yet ended, or landed: ended, with CHAT, EMBED or REPLAY not yet done.
 ENUM call-state idle prepared started landed ;ENUM
+ENUM call-kind chat embed ;ENUM
 public
 \ From CHAT and EMBED, a provider's 404 to the request (an unknown model) is
 \ also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS keeps the status.
@@ -129,7 +131,7 @@ STRUCTURE call DERIVE addr
    FIELD content-seen bool
    FIELD parsed-index n
    FIELD vector-seen bool
-   FIELD endpoint bool
+   FIELD kind call-kind
    FIELD component-count n
    FIELD data-count n
    FIELD http-status n
@@ -181,15 +183,27 @@ STRUCTURE ledger DERIVE addr
 CAST: >LEDGER ( ptr u8 -- ptr ledger )
 
 \ A chat's event stream: whether it delivered an event, whether the response
-\ ended, an error event's fault, and its first output's TIME:MONO-NS, 0 if none.
+\ ended, an error event's fault, its first output's TIME:MONO-NS, 0 if none,
+\ and the decoder reading it.
 STRUCTURE stream DERIVE addr
    FIELD heard bool
    FIELD done bool
    FIELD fault n
    FIELD output-ns n
+   FIELD decoder SSE:decoder
 ;STRUCTURE
 
 CAST: >STREAM ( ptr u8 -- ptr stream )
+
+\ How the transfer ended: the HTTP status, libcurl code and the fault that
+\ spoiled the reply, 0 when none; SETTLE reads it.
+STRUCTURE receipt DERIVE addr
+   FIELD status CURL:http-status
+   FIELD code n
+   FIELD fault n
+;STRUCTURE
+
+CAST: >RECEIPT ( ptr u8 -- ptr receipt )
 
 256 constant SCRATCH-INITIAL
 1000000 constant NS-PER-MS
@@ -242,7 +256,8 @@ EVENT-TEXT-HDR-AT BUF:HDR-BYTES + constant COUNTS-AT
 COUNTS-AT TOKENS-BYTES + constant ACCOUNTS-AT
 ACCOUNTS-AT LEDGER-BYTES + constant EVENTS-AT
 EVENTS-AT STREAM-BYTES + constant DECODER-AT
-DECODER-AT SSE:STORAGE-BYTES + constant HASH-AT
+DECODER-AT SSE:STORAGE-BYTES + constant ENDING-AT
+ENDING-AT RECEIPT-BYTES + constant HASH-AT
 \ A purpose row: the offset and length in the row text of its purpose, model,
 \ effort and service tier.
 8 cells constant ROW-BYTES
@@ -414,6 +429,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    ACCOUNTS-AT LEDGER-BYTES REGION SPAN:$ drop >LEDGER ;
 : STREAM ( ptr call -- ptr stream )
    EVENTS-AT STREAM-BYTES REGION SPAN:$ drop >STREAM ;
+: RECEIPT ( ptr call -- ptr receipt )
+   ENDING-AT RECEIPT-BYTES REGION SPAN:$ drop >RECEIPT ;
 : DECODER-STORAGE ( ptr call -- ptr n n )
    DECODER-AT SSE:STORAGE-BYTES REGION SPAN:$ {: a:ptr u:n :}
    a CELL-VIEW u ;
@@ -612,6 +629,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false c MODEL-CALL:CANCELLED !
    false c MODEL-CALL:STOPPED !
    OPENAI c MODEL-CALL:EMBEDDING-KIND !
+   construct call-kind chat c MODEL-CALL:KIND !
    0 c MODEL-CALL:DIMS !
    0 c MODEL-CALL:INPUT-COUNT !
    0 c MODEL-CALL:INPUT-U !
@@ -682,9 +700,13 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 
 : REQUEST-URL$ ( ptr call -- ptr u8 n )
    {: c :}
-   c MODEL-CALL:ENDPOINT @ if c CHAT-URL$ exit then
-   c MODEL-CALL:EMBEDDING-KIND @ OLLAMA = if c ENDPOINT$ exit then
-   c EMBED-URL$ ;
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c CHAT-URL$ ENDOF
+      embed OF
+         c MODEL-CALL:EMBEDDING-KIND @ OLLAMA =
+         if c ENDPOINT$ else c EMBED-URL$ then
+      ENDOF
+   ;MATCH ;
 
 public
 
@@ -1486,7 +1508,10 @@ private
 : SET-HEADERS ( CURL:handle ptr call -- )
    {: h:CURL:handle c :}
    h s" Content-Type: application/json" CURL:HEADER+ c CHECK-STATUS
-   c MODEL-CALL:ENDPOINT @ c MODEL-CALL:EMBEDDING-KIND @ OLLAMA <> or if
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF true ENDOF
+      embed OF c MODEL-CALL:EMBEDDING-KIND @ OLLAMA <> ENDOF
+   ;MATCH if
       h c [: KEY-HEADER-KEEP ;] catch {: fault:n :} 2drop
       fault c WIPE-AFTER
    then ;
@@ -1633,53 +1658,6 @@ private
    c ;
 
 
-\ Drains a transfer into the buffer, answering its HTTP status and libcurl
-\ code; a failed one answers status 0.
-: DISCARD-REPLY ( CURL:handle ptr n -- n n )
-   {: h:CURL:handle buf:ptr :}
-   begin
-      h buf HELD SPAN:$ >LEN CURL:NEXT
-      MATCH CURL:chunk-result
-         chunk OF 2drop ENDOF
-         response OF CURL:HTTP-STATUS>N 0 exit ENDOF
-         failed OF CURL:CODE>N 0 swap exit ENDOF
-      ;MATCH
-   again ;
-
-
-\ Gives up a transfer whose reply cannot be kept: cancels it and collects its
-\ end, so its handle has no transfer left for cleanup to refuse.
-: DROP-TRANSFER ( CURL:handle ptr n -- )
-   {: h:CURL:handle buf:ptr :}
-   h CURL:CANCEL
-   h buf DISCARD-REPLY 2drop ;
-
-
-\ Receives the reply into the response buffer, which grows with it: NEXT
-\ writes each chunk into the buffer's room past the bytes received, and
-\ appending the chunk from where it lies adds it to them. Answers the HTTP
-\ status and libcurl code the transfer ended with, a failed one with status 0,
-\ and the fault that kept the buffer from growing, after which the transfer is
-\ dropped.
-: RECEIVE ( CURL:handle ptr call -- CURL:http-status n n )
-   {: h:CURL:handle c :}
-   c RESPONSE-BUF {: buf:ptr :}
-   buf BUF:CLEAR
-   begin
-      c [: GROW-REPLY ;] catch {: fault:n :} drop
-      fault 0<> if h buf DROP-TRANSFER 0 CURL:>HTTP-STATUS 0 fault exit then
-      buf HELD buf BUF:LEN@ BUF:BLEN>N SPAN:SKIP SPAN:$ {: room:ptr room-u:n :}
-      h room room-u >LEN CURL:NEXT
-      MATCH CURL:chunk-result
-         chunk OF nip LEN>N {: got:n :}
-            room got BUF:N>BLEN buf BUF:APPEND-SPAN
-         ENDOF
-         response OF 0 0 exit ENDOF
-         failed OF CURL:CODE>N 0 CURL:>HTTP-STATUS swap 0 exit ENDOF
-      ;MATCH
-   again ;
-
-
 \ The fault a refused reply's status names when its body names no refusal for
 \ size.
 : STATUS-FAULT ( CURL:http-status -- n )
@@ -1693,8 +1671,11 @@ private
 
 \ Ends the call's transfer, keeping its status and reply; throws the fault of
 \ a cut or failed exchange or a refused reply.
-: SETTLE ( CURL:http-status n n ptr call -- )
-   {: status:CURL:http-status rc:n fault:n c :}
+: SETTLE ( ptr call -- )
+   {: c :}
+   c RECEIPT {: r :}
+   r RECEIPT-STATUS @ r RECEIPT-CODE @ r RECEIPT-FAULT @
+   {: status:CURL:http-status rc:n fault:n :}
    c END-TRANSFER {: cut:bool :}
    status CURL:HTTP-STATUS>N c MODEL-CALL:HTTP-STATUS !
    c RESPONSE-BUF BUF:LEN@ BUF:BLEN>N c MODEL-CALL:RESPONSE-U !
@@ -1714,10 +1695,6 @@ private
       some OF ENDOF
    ;MATCH ;
 
-: AWAIT-TRANSFER ( ptr call -- )
-   {: c :}
-   c CALL-HANDLE c RECEIVE c SETTLE ;
-
 \ Sets the next exchange: a POST of the body to the url.
 : AS-POST ( ptr u8 n ptr u8 n ptr call -- )
    {: url:ptr url-u:n body:ptr body-u:n c :}
@@ -1725,19 +1702,6 @@ private
    h url url-u CURL:URL! c CHECK-STATUS
    h s" POST" CURL:METHOD! c CHECK-STATUS
    h body body-u CURL:BODY! c CHECK-STATUS ;
-
-\ Runs the exchange set on the call's handle; the response buffer holds its
-\ reply.
-: EXCHANGE ( ptr call -- )
-   {: c :}
-   c START-TRANSFER
-   c AWAIT-TRANSFER ;
-
-: POST-REQUEST ( ptr call -- ptr call )
-   {: c :}
-   c REQUEST-URL$ c BODY$ c AS-POST
-   c EXCHANGE
-   c ;
 
 \ The headers, the key read once and wiped once libcurl copies it, and the
 \ stall test hold for every exchange the body runs on the call's handle.
@@ -2113,9 +2077,12 @@ private
    {: c :}
    c RESPONSE$ {: a:ptr u:n :}
    a u c USAGE? 0= if exit then
-   c MODEL-CALL:ENDPOINT @ 0= if
-      a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT ! exit
-   then
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF ENDOF
+      embed OF
+         a u c s" prompt_tokens" USAGE-AT c TOKENS TOKENS-INPUT ! exit
+      ENDOF
+   ;MATCH
    a u c s" input_tokens" USAGE-AT c TOKENS TOKENS-INPUT !
    a u c s" output_tokens" USAGE-AT c TOKENS TOKENS-OUTPUT !
    a u c s" input_tokens_details" s" cached_tokens" DETAIL-AT
@@ -2359,46 +2326,186 @@ private
    code throw ;
 
 
-\ Reads an event stream into the chunk buffer, feeding 200 chunks to the
-\ decoder and keeping any other as the reply; answers as RECEIVE does, 200 once
-\ the response ended however it ends.
-: STREAM-RECEIVE ( SSE:decoder CURL:handle ptr call -- CURL:http-status n n )
-   {: d:SSE:decoder h:CURL:handle c :}
-   c RESPONSE-BUF BUF:CLEAR
-   begin
-      c CHUNK-BUF HELD SPAN:$ {: room:ptr room-u:n :}
-      h room room-u >LEN CURL:NEXT
-      MATCH CURL:chunk-result
-         chunk OF LEN>N {: got:n :}
-            {: status:CURL:http-status :}
-            c CHUNK-BUF BUF:CLEAR
-            room got BUF:N>BLEN c CHUNK-BUF BUF:APPEND-SPAN
-            status CURL:HTTP-STATUS>N 200 = if
-               d c [: 2dup FEED-CHUNK ;] catch
-            else
-               d c [: dup KEEP-CHUNK ;] catch
-            then {: fault:n :} 2drop
-            fault 0<> if h c CHUNK-BUF DROP-TRANSFER status 0 fault READ-FAULT exit then
-         ENDOF
-         response OF 0 0 exit ENDOF
-         failed OF CURL:CODE>N {: rc:n :}
-            c STREAM STREAM-DONE @ if 200 CURL:>HTTP-STATUS 0 0 exit then
-            0 CURL:>HTTP-STATUS rc 0 exit
-         ENDOF
-      ;MATCH
-   again ;
+ENUM receive-step arming waiting drop-waiting ended lost ;ENUM
+ENUM answer fed spoiled done ;ENUM
 
-: STREAM-TRANSFER ( SSE:decoder ptr call -- )
-   {: d:SSE:decoder c :}
+\ Records how the transfer ended.
+: KEEP-ENDING ( CURL:http-status n n ptr call -- )
+   RECEIPT {: status:CURL:http-status rc:n fault:n r :}
+   status r RECEIPT-STATUS !
+   rc r RECEIPT-CODE !
+   fault r RECEIPT-FAULT ! ;
+
+
+\ The response buffer's room past the bytes received: an embed read lands
+\ there, and appending it from where it lies adds it to them.
+: REPLY-ROOM ( ptr call -- ptr u8 n )
+   RESPONSE-BUF {: buf:ptr :}
+   buf HELD buf BUF:LEN@ BUF:BLEN>N SPAN:SKIP SPAN:$ ;
+
+
+\ Room for the next read of an embed reply; a fault spoils the reply.
+: MAKE-ROOM ( ptr call -- answer )
+   {: c :}
+   c [: GROW-REPLY ;] catch {: fault:n :} drop
+   fault 0= if construct answer fed exit then
+   0 CURL:>HTTP-STATUS 0 fault c KEEP-ENDING
+   construct answer spoiled ;
+
+
+: CLEAR-REPLY ( ptr call -- answer )
+   {: c :}
+   0 CURL:>HTTP-STATUS 0 0 c KEEP-ENDING
+   c RESPONSE-BUF BUF:CLEAR
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF construct answer fed ENDOF
+      embed OF c MAKE-ROOM ENDOF
+   ;MATCH ;
+
+
+\ A 200 chunk feeds the decoder; any other is kept as the reply.
+: CHAT-CHUNK ( CURL:http-status n ptr call -- answer )
+   {: status:CURL:http-status got:n c :}
+   c CHUNK-BUF HELD SPAN:$ drop {: room:ptr :}
+   c STREAM STREAM-DECODER @ {: d:SSE:decoder :}
+   c CHUNK-BUF BUF:CLEAR
+   room got BUF:N>BLEN c CHUNK-BUF BUF:APPEND-SPAN
+   status CURL:HTTP-STATUS>N 200 = if
+      d c [: 2dup FEED-CHUNK ;] catch
+   else
+      d c [: dup KEEP-CHUNK ;] catch
+   then {: fault:n :} 2drop
+   fault 0= if construct answer fed exit then
+   status 0 fault READ-FAULT c KEEP-ENDING
+   construct answer spoiled ;
+
+
+: EMBED-CHUNK ( n ptr call -- answer )
+   {: got:n c :}
+   c REPLY-ROOM drop {: room:ptr :}
+   room got BUF:N>BLEN c RESPONSE-BUF BUF:APPEND-SPAN
+   c MAKE-ROOM ;
+
+
+\ A chat whose response already ended keeps it, however the transfer ends.
+: FAILED-END ( n ptr call -- )
+   {: rc:n c :}
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c STREAM STREAM-DONE @ ENDOF
+      embed OF false ENDOF
+   ;MATCH
+   if 200 CURL:>HTTP-STATUS 0 0 c KEEP-ENDING exit then
+   0 CURL:>HTTP-STATUS rc 0 c KEEP-ENDING ;
+
+
+: TAKE-WAIT ( ptr call -- answer )
+   {: c :}
+   c CALL-HANDLE CURL:NEXT-TAKE MATCH CURL:chunk-result
+      chunk OF LEN>N {: got:n :}
+         c MODEL-CALL:KIND @ MATCH call-kind
+            chat OF got c CHAT-CHUNK ENDOF
+            embed OF drop got c EMBED-CHUNK ENDOF
+         ;MATCH
+      ENDOF
+      response OF 0 0 c KEEP-ENDING construct answer done ENDOF
+      failed OF CURL:CODE>N c FAILED-END construct answer done ENDOF
+   ;MATCH ;
+
+
+\ The receipt keeps the fault that spoiled the reply, however the drained
+\ transfer ends.
+: DISCARD-WAIT ( ptr call -- answer )
+   CALL-HANDLE CURL:NEXT-TAKE MATCH CURL:chunk-result
+      chunk OF 2drop construct answer fed ENDOF
+      response OF drop construct answer done ENDOF
+      failed OF drop construct answer done ENDOF
+   ;MATCH ;
+
+
+: REARM ( ptr call -- )
+   {: c :}
+   c CALL-HANDLE
+   c MODEL-CALL:KIND @ MATCH call-kind
+      chat OF c CHUNK-BUF HELD SPAN:$ ENDOF
+      embed OF c REPLY-ROOM ENDOF
+   ;MATCH >LEN CURL:NEXT-ARM ;
+
+
+\ Either kind drains into the chunk buffer, so the bytes of a dropped embed
+\ reply stay as they arrived.
+: REARM-DROP ( ptr call -- )
+   {: c :}
+   c CALL-HANDLE c CHUNK-BUF HELD SPAN:$ >LEN CURL:NEXT-ARM ;
+
+
+: DROP-REPLY ( ptr call -- )
+   {: c :}
+   c CALL-HANDLE CURL:CANCEL
+   c REARM-DROP ;
+
+
+\ An input the state cannot receive.
+: LOST ( ptr call -- ) drop E-STATE throw ;
+
+
+\ Receives the reply into the response buffer, or gives up a reply it cannot
+\ keep and drains its transfer, until the transfer ends; the receipt says how.
+FSM:DEFINE RECEIVE-MACHINE ( ptr call ) receive-step answer
+   IN arming        CLEAR-REPLY
+      fed      REARM       >waiting
+      spoiled  DROP-REPLY  >drop-waiting
+      done     -           >lost
+   IN waiting       TAKE-WAIT
+      fed      REARM       >waiting
+      spoiled  DROP-REPLY  >drop-waiting
+      done     -           >ended
+   IN drop-waiting  DISCARD-WAIT
+      fed      REARM-DROP  >drop-waiting
+      spoiled  -           >lost
+      done     -           >ended
+   FINAL ended  -
+   FINAL lost   LOST
+;DEFINE
+
+
+: RECEIVE ( ptr call -- ) construct receive-step arming RECEIVE-MACHINE ;
+
+
+: AWAIT-TRANSFER ( ptr call -- )
+   {: c :}
+   c RECEIVE
+   c SETTLE ;
+
+
+\ Runs the exchange set on the call's handle; the response buffer holds its
+\ reply.
+: EXCHANGE ( ptr call -- )
+   {: c :}
    c START-TRANSFER
-   d c CALL-HANDLE c STREAM-RECEIVE c SETTLE ;
+   c AWAIT-TRANSFER ;
+
+
+: POST-REQUEST ( ptr call -- ptr call )
+   {: c :}
+   c REQUEST-URL$ c BODY$ c AS-POST
+   c EXCHANGE
+   c ;
+
+
+: STREAM-TRANSFER ( ptr call -- )
+   {: c :}
+   c START-TRANSFER
+   c RECEIVE
+   c SETTLE ;
+
 
 \ Runs the exchange set on the call's handle on a fresh decoder, answering its
 \ fault, 0 when it ended clean.
 : STREAM-EXCHANGE ( ptr call -- n )
    {: c :}
    c DECODER-STORAGE SSE:OPEN {: d:SSE:decoder :}
-   d c [: 2dup STREAM-TRANSFER ;] catch {: code:n :} 2drop
+   d c STREAM STREAM-DECODER !
+   c [: dup STREAM-TRANSFER ;] catch {: code:n :} drop
    d SSE:CLOSE
    code ;
 
@@ -2419,7 +2526,7 @@ private
 : RUN-CHAT ( bool ptr call -- ptr call )
    {: finished:bool c :}
    finished c CHAT-BODY
-   true c MODEL-CALL:ENDPOINT !
+   construct call-kind chat c MODEL-CALL:KIND !
    c [: FOLLOW ;] SEND
    c PARSE-USAGE
    c PARSE-TIER
@@ -2431,7 +2538,7 @@ private
 : RUN-EMBED ( ptr call -- ptr call )
    {: c :}
    c EMBED-BODY
-   false c MODEL-CALL:ENDPOINT !
+   construct call-kind embed c MODEL-CALL:KIND !
    c [: POST-REQUEST ;] SEND
    c PARSE-USAGE
    c PARSE-EMBED
