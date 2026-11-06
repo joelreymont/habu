@@ -53,7 +53,6 @@ STRUCTURE cursor OPAQUE DERIVE addr
    FIELD dst-cap n
    FIELD out n
    FIELD in n
-   FIELD num-at n
    FIELD mode n
    FIELD matched n
    FIELD fail n
@@ -458,71 +457,46 @@ create UNESC-MAP
    dup EXP-LOWER = if drop true exit then
    EXP-UPPER = ;
 
-: SCAN-NUMBER ( ptr cursor -- n n ) {: state:ptr :}
-   state CURSOR-POS @ {: at:n :}
-   begin
-      state CURSOR-POS @ state CURSOR-SRC-LEN @ < if
-         state CURSOR-SRC @ state CURSOR-POS @ + c@ NUM-CHAR?
-      else
-         false
-      then
-   while
-      state CURSOR-POS dup @ 1+ swap !
-   repeat
-   at state CURSOR-POS @ at - ;
 
-: NV-DIGIT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state CURSOR-NUM-AT @ u >= if false exit then
-   a state CURSOR-NUM-AT @ + c@ STR-DIGIT? ;
+\ The position after the digit run at i.
+: DIGITS-END ( ptr u8 n n -- n )
+   {: src:ptr len:n i:n :}
+   i begin
+      dup len < if dup src + c@ STR-DIGIT? else false then
+   while 1+ repeat ;
 
-: NV-SKIP-DIGITS ( ptr cursor ptr u8 n -- n ) {: state:ptr a:ptr u:n :}
-   0 begin state a u NV-DIGIT? while
-      state CURSOR-NUM-AT dup @ 1+ swap !
-      1+
-   repeat ;
 
-: NV-INT? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state a u NV-DIGIT? 0= if false exit then
-   a state CURSOR-NUM-AT @ + c@ ZERO = if
-      state CURSOR-NUM-AT dup @ 1+ swap !
-      state a u NV-DIGIT? if false exit then
-      true exit
+\ The number's span and kind, T-FLOAT once a fraction or exponent is read.
+\ READ-VALUE starts a number only at a minus or a digit, so at is in the source.
+: SCAN-NUMBER ( ptr cursor -- n n n )
+   {: state:ptr :}
+   state CURSOR-SRC @ state CURSOR-SRC-LEN @ state CURSOR-POS @
+   {: src:ptr len:n at:n :}
+   src at + c@ MINUS = if at 1+ else at then {: int-at:n :}
+   src len int-at DIGITS-END {: int-end:n :}
+   int-end int-at = if E-JSON-READ-NUMBER throw then
+   src int-at + c@ ZERO = int-end int-at 1+ > and if
+      E-JSON-READ-NUMBER throw
    then
-   state a u NV-SKIP-DIGITS drop true ;
+   int-end len < if src int-end + c@ DOT = else false then
+   if
+      src len int-end 1+ DIGITS-END
+      dup int-end 1+ = if E-JSON-READ-NUMBER throw then
+   else int-end then {: frac-end:n :}
+   frac-end len < if
+      src frac-end + c@ dup EXP-LOWER = swap EXP-UPPER = or
+   else false then
+   if
+      frac-end 1+
+      dup len < if dup src + c@ dup PLUS = swap MINUS = or if 1+ then then
+      {: exp-at:n :}
+      src len exp-at DIGITS-END
+      dup exp-at = if E-JSON-READ-NUMBER throw then
+   else frac-end then {: end:n :}
+   end len < if src end + c@ NUM-CHAR? if E-JSON-READ-NUMBER throw then then
+   end state CURSOR-POS !
+   at end at - end int-end > if T-FLOAT else T-INT then ;
 
-: NV-FRAC? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state CURSOR-NUM-AT @ u >= if true exit then
-   a state CURSOR-NUM-AT @ + c@ DOT <> if true exit then
-   state CURSOR-NUM-AT dup @ 1+ swap !
-   state a u NV-SKIP-DIGITS 0= if false exit then
-   true ;
-
-: NV-EXP? ( ptr cursor ptr u8 n -- bool ) {: state:ptr a:ptr u:n :}
-   state CURSOR-NUM-AT @ u >= if true exit then
-   a state CURSOR-NUM-AT @ + c@ dup EXP-LOWER <> swap EXP-UPPER <> and if true exit then
-   state CURSOR-NUM-AT dup @ 1+ swap !
-   state CURSOR-NUM-AT @ u < if
-      a state CURSOR-NUM-AT @ + c@ dup PLUS = swap MINUS = or if
-         state CURSOR-NUM-AT dup @ 1+ swap !
-      then
-   then
-   state a u NV-SKIP-DIGITS 0= if false exit then
-   true ;
-
-\ The kind of this number lexeme: T-INT for an integer part alone, T-FLOAT
-\ once a fraction or exponent follows it. A malformed lexeme is E-JSON-READ-NUMBER.
-\ READ-VALUE starts a number only at a minus or a digit, so u is positive.
-: NUMBER-KIND ( ptr cursor ptr u8 n -- n ) {: state:ptr a:ptr u:n :}
-   0 state CURSOR-NUM-AT !
-   a state CURSOR-NUM-AT @ + c@ MINUS = if
-      state CURSOR-NUM-AT dup @ 1+ swap !
-   then
-   state a u NV-INT? 0= if E-JSON-READ-NUMBER throw then
-   state CURSOR-NUM-AT @ {: int-end:n :}
-   state a u NV-FRAC? 0= if E-JSON-READ-NUMBER throw then
-   state a u NV-EXP? 0= if E-JSON-READ-NUMBER throw then
-   state CURSOR-NUM-AT @ u <> if E-JSON-READ-NUMBER throw then
-   state CURSOR-NUM-AT @ int-end > if T-FLOAT else T-INT then ;
 
 : RAW-SPAN$ ( ptr cursor -- ptr u8 n ) {: state:ptr :}
    state CURSOR-SRC @ state CURSOR-TOK-AT @ +
@@ -609,9 +583,9 @@ create UNESC-MAP
    ST-VALUE state CURSOR-STATE !
    T-KEY ;
 
-: READ-NUMBER ( ptr cursor -- n ) {: state:ptr :}
-   state SCAN-NUMBER {: at:n len:n :}
-   state state CURSOR-SRC @ at + len NUMBER-KIND {: kind:n :}
+: READ-NUMBER ( ptr cursor -- n )
+   {: state:ptr :}
+   state SCAN-NUMBER {: at:n len:n kind:n :}
    state at len kind PUBLISH
    state AFTER-VALUE
    kind ;
