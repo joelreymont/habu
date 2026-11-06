@@ -7375,7 +7375,11 @@ CHECKER-REG:}SCRATCH
       PD-IN @ RES-TRUE FORALL-PLACE? PD-OUT @ RES-FALSE FORALL-PLACE? and
       PR-IN @ RES-FALSE FORALL-PLACE? PR-OUT @ RES-FALSE FORALL-PLACE? and and 0= IF
          SB@ SL @ SGBAD-SYNTAX! THEN
-      PD-OUT @ SCOPE-SUPPLIED? PR-OUT @ SCOPE-SUPPLIED? and 0= IF SB@ SL @ SGBAD-UNSUPPLIED! THEN
+      \ Facts text skips this rule: a cast's certified view pack has outputs
+      \ that no input supplies.
+      SIG-FACTS-MODE @ 0= IF
+         PD-OUT @ SCOPE-SUPPLIED? PR-OUT @ SCOPE-SUPPLIED? and 0= IF SB@ SL @ SGBAD-UNSUPPLIED! THEN
+      THEN
    THEN
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
