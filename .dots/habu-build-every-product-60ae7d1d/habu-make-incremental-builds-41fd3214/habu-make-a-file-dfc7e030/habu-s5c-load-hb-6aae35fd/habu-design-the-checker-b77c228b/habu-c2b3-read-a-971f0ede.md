@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-11-06T22:04:00.354206+02:00"
-blocks:
-  - habu-c2b-read-facts-f698adb6
 ---
 
 Problem: design r2 D2: facts a caller's check reads kept outside the control word: the primitive table's flags (checker.f PE-TRUSTED-ONLY 2, a trust boundary refused in checked code, PRIM-TRUSTED-SYM?; PE-TOP-ONLY 32, a top-level keyword whose row a body token never takes, PE-TAKES?; and whether PE-FIXED-ABI 4, PE-C2-INIT 8 and PE-C2-RECORDS 16 are read by a caller's check), the parse-imm payload count (PIMM-IX, PIMM-CNT@ :22180-22187, read by REJECT-IMMEDIATE) and the parses: token count (only in src/habu/verify-source.f PRS-* :2945-2970). Acceptance (brief /tmp/jerry-big/brief-c2b3.md): tags `trusted-only` (PE-TRUSTED-ONLY), `top-only` (PE-TOP-ONLY) and `parse-imm N` (decimal), written by render.f REND-PE and REND-PIMM after REND-FACTS's tags and read by SIG-TAGS into SIG-PE and SIG-PIMM beside SIG-FACTS-MODE; the PE flag constants move before the signature parser unchanged; a probe over every active PE row and every PIMM row finds each read back equal, and a repeated tag or a bad count is refused. No tag for PE-FIXED-ABI or the C2-STOW bits (design r2 D3: read only by an unjudged scan) or for a `parses:` row's count (the engine's row check keeps nothing; CTL-PARSES is C2b2's `parses`). Files: src/core/checker.f, src/core/render.f. Verify: the probe; bin/hb --load test/run.f -- engine checker-soundness. Depends: C2b1 (parallel with C2b2). Ownership: those files. Claim: unassigned.

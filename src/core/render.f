@@ -11,9 +11,10 @@ variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 16384 constant RSBUF-CAP
 \ RSBUF and RSN outlive no record; snap-lib.f SND-ZERO-LIVE zeroes them in an image.
 create RSBUF RSBUF-CAP allot   variable RSN
-\ RQM: the text cannot say the effect (a '?', a type or a row no signature
-\ spells), so REC-SIG does not record it; RROW-UNSAID: a row, for REC-REFUSE-WHY.
+\ RQM: the text cannot say the effect, so REC-SIG does not record it; set where the
+\ text writes `?` and where it meets a type or row no signature spells.
 variable RQM
+\ RROW-UNSAID: the unsaid part is a row, for REC-REFUSE-WHY.
 variable RROW-UNSAID
 variable RJSON   0 RJSON !               \ inside a JSON string: EMIT1 escapes
 variable RDIAG-ON
@@ -49,7 +50,6 @@ variable RNAMES   0 RNAMES !
 
 : EMIT-RAW ( n -- )
    {: c:n :}
-   c 63 = IF 1 RQM ! THEN
    RDST @ IF
      RSN @ RSBUF-CAP 2 - > IF RSBUF-FULL THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
@@ -77,6 +77,7 @@ variable RNAMES   0 RNAMES !
 \ Between JOPEN and JCLOSE every byte is escaped: a package may be named `\`.
 : EMIT1 {: c :}
    RJSON @ IF c JCHAR ELSE c EMIT-RAW THEN ;
+: EMIT-UNSAID ( -- ) 1 RQM !  63 EMIT1 ;
 : JOPEN ( -- )   34 EMIT-RAW  -1 RJSON ! ;
 : JCLOSE ( -- )  0 RJSON !  34 EMIT-RAW ;
 
@@ -190,7 +191,7 @@ REG-SCRATCH-SNAP-INSTALL
 \ positions. The parser reserves f, n and r as built-in types, so no inferred
 \ name may use them.
 : RLETTER ( n -- n ) {: idx:n :}
-   idx 0 < idx 22 > or IF 63 EXIT THEN
+   idx 0 < idx 22 > or IF 1 RQM !  63 EXIT THEN
    idx 97 +
    dup 102 >= IF 1+ THEN
    dup 110 >= IF 1+ THEN
@@ -230,8 +231,8 @@ REG-SCRATCH-SNAP-INSTALL
 : CON-OUT ( n -- ) {: p:n :}
    p 2 = IF 102 EMIT1 ELSE
    p 0 > p CTN @ < and IF
-      p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop 63 EMIT1 THEN
-   ELSE 63 EMIT1 THEN THEN ;
+      p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop EMIT-UNSAID THEN
+   ELSE EMIT-UNSAID THEN THEN ;
 
 : ATOM-REND {: t :}
    t ATOM>K 0 = IF t ATOM>A t ATOM>U RSTR EXIT THEN
@@ -255,13 +256,16 @@ REG-SCRATCH-SNAP-INSTALL
 \ everywhere (TFAM-PKG-MATCH?, TFAM-QUAL-RESOLVE); raw source echoes
 \ (`token`, `definition_source`, `declared_effect_source`) stay verbatim.
 \ FAM-FOREIGN? compares exactly: the engine keeps a package's first-registered
-\ spelling, and both sides read the one interned string.
+\ spelling, and both sides read the one interned string. While REND-EFFECT
+\ renders (RNAMES) it qualifies the active package too: facts text is read
+\ back in other packages.
 : FAM-INTERNED? ( n -- f ) {: fam:n :}
    fam 0 >=  fam TFAM-N@ <  and ;
 : FAM-FOREIGN? ( n -- f ) {: fam:n :}
    fam TFAM-PKG$ {: pa:ptr pu:n :}
    pu 0 = IF RES-FALSE EXIT THEN
    pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
+   RNAMES @ 0 <> IF RES-TRUE EXIT THEN
    pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
 : FAM-QNAME-REND ( n -- ) {: fam:n :}
    fam FAM-FOREIGN? IF fam TFAM-PKG$ RFOLD 58 EMIT1 THEN
@@ -347,7 +351,7 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
       dup cells RROW-KEY + @ id = IF 65 + EXIT THEN
       1 +
    REPEAT drop
-   RROW-N @ RROW-CAP >= IF 1 RROW-UNSAID ! 63 EXIT THEN
+   RROW-N @ RROW-CAP >= IF 1 RROW-UNSAID !  1 RQM !  63 EXIT THEN
    id RROW-N @ cells RROW-KEY + !
    RROW-N @ 65 +  RROW-N @ 1 + RROW-N ! ;
 
@@ -372,10 +376,14 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
    RPOS-N @ 1 + RPOS-N ! ;
 
 
-\ A row is named unless its tail is shared by exactly its owner's other row,
-\ the pair the parser reads as one unnamed row.
+\ A row is named when its tail has no scope, its kind is not its unnamed form's
+\ (RVK-QUOT in a quotation, else 0), or the tail is not its owner's two rows' alone.
 : RPOS-NAMED? ( n n -- bool )
    {: t:n owner:n :}
+   t ISROW IF
+      t PAY NSCOPE@ IF RES-TRUE EXIT THEN
+      t PAY TVK@  owner 2 >= IF RVK-QUOT ELSE 0 THEN  <> IF RES-TRUE EXIT THEN
+   THEN
    0 0
    RPOS-N @ 0 ?DO
       i 2 * cells RPOS + @ t = IF
@@ -480,11 +488,11 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
               45 EMIT1 45 EMIT1 32 EMIT1  r Q>ROUT d 1+ 1 RECURSE
            ELSE RNAMES @ 0 <> IF r owner 1 + QRET-NAME THEN THEN
            93 EMIT1
-        ELSE 63 EMIT1 THEN
+        ELSE EMIT-UNSAID THEN
       endof
       T-FORALL of
         NLET @ 23 >= IF
-           NLET @ 1 + NLET ! 63 EMIT1
+           NLET @ 1 + NLET ! EMIT-UNSAID
         ELSE RBIND-N @ QDEPTH-MAX <  d QDEPTH-MAX <  and  r d QANCESTOR? 0=  and IF
            r d cells QPATH + !
            NLET @ RLETTER {: letter:n :}
@@ -497,12 +505,12 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
            44 EMIT1
            r F>BODY d 1+ 0 RECURSE 62 EMIT1
            RBIND-N @ 1 - RBIND-N !
-        ELSE 63 EMIT1 THEN THEN
+        ELSE EMIT-UNSAID THEN THEN
       endof
       T-BVAR of
         r B>DEPTH 0 >= r B>DEPTH RBIND-N @ < and IF
            RBIND-N @ r B>DEPTH - 1 - cells RBIND + @ EMIT1
-        ELSE 63 EMIT1 THEN
+        ELSE EMIT-UNSAID THEN
       endof
       T-SCOPE of
         1 RQM !
@@ -523,9 +531,9 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
                 1 +
               REPEAT drop 62 EMIT1
            THEN
-        ELSE 63 EMIT1 THEN
+        ELSE EMIT-UNSAID THEN
       endof
-      63 EMIT1
+      EMIT-UNSAID
    endcase ;
 
 
@@ -582,7 +590,7 @@ LOCSHOW-INSTALL
 
 : REND-PASS ( n n n n bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   0 RSN !  0 RQM !  0 RROW-UNSAID !  SEEN-RESET RATOM-RESET 0 NLET !  0 RROW-N !  0 RVISIT !
+   0 RQM !  0 RROW-UNSAID !  SEEN-RESET RATOM-RESET 0 NLET !  0 RROW-N !  0 RVISIT !
    din 0 RROW-NAME  din DROW
    hasr IF  s" | " DTXT  rin 1 RROW-NAME  rin DROW  THEN
    45 EMIT1  45 EMIT1
@@ -593,19 +601,66 @@ LOCSHOW-INSTALL
    hasr IF  s"  | " DTXT  rout 1 RROW-NAME  rout DROW  THEN ;
 
 
-\ Rows are named as RPOS-NAMED? decides, and RQM is set where the text cannot
-\ say a clause. The first pass only records the tails.
+\ Both passes write from the RSN it is called with, after what the caller wrote:
+\ the first records the row tails, the second writes them as RPOS-NAMED? names them.
 : REND-EFFECT ( n n n n bool -- ptr u8 n )
    {: din:n dout:n rin:n rout:n hasr:bool :}
+   RSN @ {: base:n :}
    1 RDST !  0 RPOS-N !
-   1 RNAMES !  din dout rin rout hasr REND-PASS
-   2 RNAMES !  din dout rin rout hasr REND-PASS
+   1 RNAMES !  base RSN !  din dout rin rout hasr REND-PASS
+   2 RNAMES !  base RSN !  din dout rin rout hasr REND-PASS
    0 RNAMES !  0 RDST !  RSBUF RSN @ ;
+
+
+: FACT-TAG ( ptr u8 n n -- ) {: a:ptr u:n letter:n :}
+   a u DTXT  32 EMIT1  letter EMIT1  32 EMIT1 ;
+
+\ The type variable REND-EFFECT gave letter index idx, -1 for a forall's letter.
+: SEEN-VAR ( n -- n ) {: idx:n :}
+   0 BEGIN dup SEEN-HW @ < WHILE
+      dup cells SEEN + @ idx = IF EXIT THEN
+      1 +
+   REPEAT drop -1 ;
+
+: VAR-KIND-TAG ( n -- ) {: idx:n :}
+   idx SEEN-VAR {: id:n :}
+   id 0 < IF EXIT THEN
+   id TVK@ KIND>TAG$ {: a:ptr u:n :}
+   u 0 = IF EXIT THEN
+   a u idx RLETTER FACT-TAG ;
+
+: VAR-SCOPE-TAG ( n -- ) {: idx:n :}
+   idx SEEN-VAR {: id:n :}
+   id 0 < IF EXIT THEN
+   id NSCOPE@ IF s" noscope" idx RLETTER FACT-TAG THEN ;
+
+: ROW-SCOPE-TAG ( n -- ) {: idx:n :}
+   idx cells RROW-KEY + @ NSCOPE@ IF s" noscope" idx 65 + FACT-TAG THEN ;
+
+: ROW-KIND-TAG ( n -- ) {: idx:n :}
+   idx cells RROW-KEY + @ TVK@ {: kind:n :}
+   kind 0 = IF EXIT THEN
+   kind KIND>TAG$ {: a:ptr u:n :}
+   u 0 = IF 1 RQM ! EXIT THEN
+   a u idx 65 + FACT-TAG ;
+
+\ Facts text for checker.f SIG-TAGS, `( E ) offset a noscope A `, written from the
+\ RSN it is called with: a caller that wants a fresh text sets `0 RSN !` first.
+: REND-FACTS ( n n n n bool -- ptr u8 n )
+   {: din:n dout:n rin:n rout:n hasr:bool :}
+   1 RDST !  s" ( " DTXT
+   din dout rin rout hasr REND-EFFECT 2drop
+   1 RDST !  s"  ) " DTXT
+   0 BEGIN dup NLET @ < WHILE dup VAR-KIND-TAG 1 + REPEAT drop
+   0 BEGIN dup NLET @ < WHILE dup VAR-SCOPE-TAG 1 + REPEAT drop
+   0 BEGIN dup RROW-N @ < WHILE dup ROW-KIND-TAG 1 + REPEAT drop
+   0 BEGIN dup RROW-N @ < WHILE dup ROW-SCOPE-TAG 1 + REPEAT drop
+   0 RDST !  RSBUF RSN @ ;
 
 
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG ( -- ptr u8 n )
-   BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
+   0 RSN !  BROW @ DCUR @ 0 0 RES-FALSE REND-EFFECT ;
 
 \ `JSON-DIAGS ON` emits one JSON object per reject or uncheckable verdict.
 create JNBUF 20 allot  variable JNV  variable JNN

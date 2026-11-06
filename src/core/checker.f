@@ -558,6 +558,7 @@ TV-CLEAR
 \ row when it did neither.
 10 constant TVK-BASE-ONLY
 : TVK@ ( n -- n ) cells TVK + @ ;
+: TVK! ( n n -- ) cells TVK + ! ;
 : TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 : BASE-KIND? ( n -- bool )   \ is this KIND one of the two base addresses?
    dup TVK-NULL = swap TVK-DBASE = or ;
@@ -614,6 +615,27 @@ TV-CLEAR
    dup RVK-QUOT? swap TVK@ RVK-INFERRED = or ;
 
 : MK-QROW ( n -- n ) dup RVK-QUOT! MK-ROW ;
+
+\ The facts tag of a kind (render.f REND-FACTS, SIG-TAG), empty for one the type
+\ syntax decides: TVK-ANY, TVK-SCOPE, TVK-REGION.
+: KIND>TAG$ ( n -- ptr u8 n ) {: kind:n :}
+   kind TVK-RAW = IF s" raw" EXIT THEN
+   kind RVK-QUOT = IF s" quot" EXIT THEN
+   kind RVK-INFERRED = IF s" inferred" EXIT THEN
+   kind TVK-NULL = IF s" null" EXIT THEN
+   kind TVK-DBASE = IF s" dbase" EXIT THEN
+   kind TVK-OFF = IF s" offset" EXIT THEN
+   kind TVK-CELL = IF s" cell" EXIT THEN
+   kind TVK-BASE-ONLY = IF s" base-only" EXIT THEN
+   s" " ;
+
+\ The kind a facts tag names, TVK-ANY for any other token.
+: TAG>KIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 0 = IF TVK-ANY EXIT THEN
+   TVK-BASE-ONLY 1 + 1 ?do
+      i KIND>TAG$ a u CORE-STR= IF i unloop EXIT THEN
+   loop
+   TVK-ANY ;
 
 1024 constant MAXPTR-INIT       \ ptr terms (grows on demand)
 CHECKER-REG:SCRATCH{
@@ -844,11 +866,8 @@ $10000 constant BVAR-REGION-BIT
 : Q>XHAS ( n -- bool ) PAY cells QXHA + @ 0 <> ;
 : Q>XDEAD ( n -- bool ) PAY cells QXNA + @ 0 <> ;
 
-\ The two exceptional slots hold the intact masks of the quotation's window
-\ (THROW-EDGE), tagged with XMASK-MARK; the persistence and freshening copies
-\ carry them unchanged. A row term's tag is always S-ROW or S-PUSH, so only
-\ T-QUOT's tag, which no row carries, marks a mask, and any other field reads as
-\ "no cell proved intact", never a mask made of a pointer's bits.
+\ A slot holds the window's intact mask (THROW-EDGE) tagged XMASK-MARK, a zero
+\ mask as 0; no row term carries T-QUOT's tag, so any other field reads as 0.
 T-QUOT constant XMASK-MARK
 : XMASK ( n -- n ) TAG-SHIFT lshift XMASK-MARK or ;      \ mask -> stored field
 : XMASK> ( n -- n ) dup TAG XMASK-MARK = IF PAY ELSE drop 0 THEN ;
@@ -861,8 +880,8 @@ T-QUOT constant XMASK-MARK
 : QX! ( n bool bool n n -- ) {: q:n xhas:bool xdead:bool xd:n xr:n :}
    xhas Q-FLAG>N q PAY cells QXHA + !
    xdead Q-FLAG>N q PAY cells QXNA + !
-   xd q PAY cells QXDA + !
-   xr q PAY cells QXRA + ! ;
+   xd XMASK> 0 = IF 0 ELSE xd THEN q PAY cells QXDA + !
+   xr XMASK> 0 = IF 0 ELSE xr THEN q PAY cells QXRA + ! ;
 
 512 constant MAXATOM-INIT       \ atom terms (grows on demand)
 \ An atom or param term owns its name: MK-ATOM-K and MK-PARAM copy the bytes
@@ -6158,6 +6177,11 @@ CHECKER-REG:}SCRATCH
 variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 : SIG-RAW-DEFINER! ( bool -- ) SIG-RAW-MODE ! ;
 
+\ While set, the signature parser reads facts text, `( EFFECT ) TAGS` (render.f
+\ REND-FACTS), never a source signature.
+variable SIG-FACTS-MODE   0 SIG-FACTS-MODE !
+: SIG-FACTS! ( bool -- ) SIG-FACTS-MODE ! ;
+
 \ One locals group only: a second `{: i :}` group mis-reads the slot in the
 \ standalone, collapsing every var to one.
 : VAR-OF ( n -- n ) {: c:n :}
@@ -6274,9 +6298,18 @@ defer TYPE-MAY-ARRIVE-XT ( ptr u8 n -- bool )
    a u s" fresh-gen-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" fresh-mask-" SIG-PREFIX? ;
 : XT-TOK? ( ptr u8 n -- bool ) s" xt" CORE-STR= ;   \ a ticked engine primitive's token
+\ Facts text writes a fresh atom with its ordinal, `fresh-region-b-a`.
+: FRESH-ORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 9 < IF RES-FALSE EXIT THEN
+   a u + 2 - c@ 45 =  a u + 1 - c@ LOWER?  and ;
+
+\ In facts text the whole token keys the atom, so one ordinal read twice is one
+\ identity and two ordinals of one name are two.
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
-   a 6 + u 6 - FAM-K @ MK-ATOM-K ;
+   SIG-FACTS-MODE @ 0= IF a 6 + u 6 - FAM-K @ MK-ATOM-K EXIT THEN
+   a u FRESH-ORD? 0= IF a u SGBAD-SYNTAX!  a 6 + u 6 - FAM-K @ MK-ATOM-K EXIT THEN
+   a 6 + u 8 - FAM-K @ MK-ATOM-K ;
 \ The package a signature parse resolves bare family tails in: the checked
 \ definition's package, except a stored signature at AOT intake (CK-AOT-TAKE),
 \ whose text was written in the row's package (`make` in ir-source says `span`,
@@ -6790,7 +6823,8 @@ variable SG-ROWS-PUBLISH
 \ cell.
 : PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
    t T-RES {: r:n :}
-   r ISVAR IF r PAY TVK-CELL TVK-RAISE-TO THEN
+   \ In facts text a variable's kind is its tag alone.
+   r ISVAR  SIG-FACTS-MODE @ 0=  and IF r PAY TVK-CELL TVK-RAISE-TO THEN
    r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
       r LAYOUT-WIDTH-OPEN? 0= IF
          r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear and width-free open args): rows tell the truth
@@ -7042,6 +7076,50 @@ CHECKER-REG:}SCRATCH
    THEN
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
+\ The variable a tag's one-letter operand names in PSIG's maps, NMAP when vars is
+\ set and ROWMAP when rows is; -1 for a letter the effect did not name.
+: TAG-VAR ( ptr u8 n bool bool -- n ) {: a:ptr u:n vars:bool rows:bool :}
+   u 1 <> IF -1 EXIT THEN
+   vars a c@ LOWER? and IF a c@ 97 - cells NMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
+   rows a c@ UPPER? and IF a c@ 65 - cells ROWMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
+   -1 ;
+
+: SIG-TAG ( ptr u8 n -- ) {: ta:ptr tu:n :}
+   ta tu TAG>KIND {: kind:n :}
+   ta tu s" noscope" CORE-STR= {: ns:bool :}
+   kind RVK-QUOT =  kind RVK-INFERRED =  or {: rk:bool :}
+   kind TVK-ANY =  ns 0=  and IF ta tu SGBAD-SYNTAX! EXIT THEN
+   NEXT-SIG-TOK {: la:ptr lu:n :}
+   lu 0 = IF ta tu SGBAD-SYNTAX! EXIT THEN
+   la lu  rk 0=  ns rk or  TAG-VAR {: id:n :}
+   id 0 < IF la lu SGBAD-SYNTAX! EXIT THEN
+   ns IF id NSCOPE! EXIT THEN
+   kind id TVK! ;
+
+\ The tags after a facts text's effect, read while NMAP and ROWMAP still hold
+\ PSIG's letters.
+: SIG-TAGS ( -- )
+   BEGIN NEXT-SIG-TOK dup 0 <> WHILE SIG-TAG REPEAT 2drop ;
+
+\ The SI just past the first `)` token from SI on, -1 for none.
+: FACTS-CLOSE ( -- n )
+   BEGIN NEXT-SIG-TOK dup 0 <> WHILE
+      s" )" CORE-STR= IF SI @ EXIT THEN
+   REPEAT 2drop -1 ;
+
+\ PSIG reads the effect between the opening `(` and the first `)` token,
+\ SIG-TAGS what follows. A text without both parses as empty, refused.
+: PARSE-FACTS ( -- n n n n )
+   SL @ {: len:n :}
+   PKRESET NEXT-SIG-TOK s" (" CORE-STR= {: open:bool :}
+   SI @ {: from:n :}
+   open IF FACTS-CLOSE ELSE -1 THEN {: close:n :}
+   close 0 < IF SB@ len SGBAD-SYNTAX!  0 SL !  0 SI !  PSIG EXIT THEN
+   close 1 - SL !  from SI !
+   PSIG
+   len SL !  close SI !  PKRESET
+   SIG-TAGS ;
+
 \ The declared effect as four rows without CHECKER-STEP, to verify a body
 \ against its own signature. CHECK-DOES! and CHECKER-DEFCAST pass their callers'
 \ signature, so a length that describes no memory parses as the empty text,
@@ -7051,6 +7129,7 @@ CHECKER-REG:}SCRATCH
    a SB!
    a u BYTE-SPAN? IF u ELSE 0 THEN SL !
    0 SI !
+   SIG-FACTS-MODE @ IF PARSE-FACTS EXIT THEN
    PSIG ;
 
 : ATOM-REKEY ( n n n -- ) {: from:n key:n id:n :}   \ atoms from `from` on keyed `key` take `id`
