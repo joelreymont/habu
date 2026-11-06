@@ -16,9 +16,8 @@ package GATE-IMAGES
 
 0 constant APP
 1 constant AOT-BUILDER
-2 constant APP-BUILDER
-3 constant CHECK-VERIFY
-4 constant FAMILY-N
+2 constant CHECK-VERIFY
+3 constant FAMILY-N
 
 \ Each row is granted the images settled for it (test/image-grant.f), so its own
 \ settle only finds and dates them; a settle its closure does not show dies in
@@ -27,7 +26,6 @@ package GATE-IMAGES
 : LABEL$ ( n -- ptr u8 n ) {: f:n :}
    f APP = if s" app-image" exit then
    f AOT-BUILDER = if s" aot-builder" exit then
-   f APP-BUILDER = if s" app-builder" exit then
    f CHECK-VERIFY = if s" check-verify" exit then
    E-TBL-BOUNDS throw ;
 
@@ -35,7 +33,6 @@ package GATE-IMAGES
 : MODULE$ ( n -- ptr u8 n ) {: f:n :}
    f APP = if s" test/app-image-engine.f" exit then
    f AOT-BUILDER = if s" test/aot-builder-engine.f" exit then
-   f APP-BUILDER = if s" test/app-builder-engine.f" exit then
    f CHECK-VERIFY = if s" tools/check-verify-image.f" exit then
    E-TBL-BOUNDS throw ;
 
@@ -43,7 +40,6 @@ package GATE-IMAGES
 : SETTLE$ ( n -- ptr u8 n ) {: f:n :}
    f APP = if s" APP-IMAGE-ENGINE:ENSURE" exit then
    f AOT-BUILDER = if s" AOT-BUILDER-ENGINE:ENSURE" exit then
-   f APP-BUILDER = if s" APP-BUILDER-ENGINE:ENSURE" exit then
    f CHECK-VERIFY = if s" 600000 CHECK-VERIFY-IMAGE:SETTLE" exit then
    E-TBL-BOUNDS throw ;
 

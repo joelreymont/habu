@@ -2,8 +2,7 @@
 \ Run: bin/hb --load tools/tier-bench.f -- <tier> <source-file>
 \ Per benchmark: `B <name> <run1> ... <run15> <median>` in microseconds of thread
 \ CPU, then `R <name> <value>`, its result over the whole output. Every round
-\ must compute run 0's value; test/compile-floor-gate.f judges tier 0's least
-\ run. Subtract `harness`, the bare timing loop.
+\ must compute run 0's value. Subtract `harness`, the bare timing loop.
 
 \ The clock loads ahead of the selection, at the engine's tier: after it, its FFI
 \ and task runtime cost a tier-1 run about a second of compiling. The files it

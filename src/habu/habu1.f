@@ -4420,7 +4420,7 @@ public
    done LBL, ;
 
 \ tier@ ( -- n ): the live tier, for a driver that wants to assert its own
-\ selection and for test/tier.f.
+\ selection.
 : BTIERFETCH ( -- ) 9 DATA NCOMP-DISPATCH:TIER-CELL LDR,  A G-PUSH ;
 
 \ The same readiness supplies the live tick gate and the verifier's entry

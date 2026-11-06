@@ -618,10 +618,7 @@ private
 
 : PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
-   \ `constant` bakes one cell: the trust is `-- a`, as native C-CONSTANT,
-   \ verify-source and all-errors model it; the interpret stack is untyped and
-   \ wide layout values never land there (DNAME-WIDE gate). Misuse fails closed
-   \ at use (public-signatures-test const-layout).
+   \ `constant` bakes one cell, trusted `-- a` as C-CONSTANT records it.
    a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
@@ -789,12 +786,8 @@ private
    s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
    PS-DEF-END ;
 
-\ Public, so tools/public-signatures-bracket-test.f names a family this walk
-\ would publish without restating the rule.
-public
 : PS-ENUM-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-KIND@ PS-TK-ENUM = fam TFAM-PUBLIC? and ;
-private
 
 \ DERIVE eq adds PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ), from the
 \ same registry metadata.

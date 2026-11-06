@@ -4891,12 +4891,9 @@ package INTERP-EMIT
    10 9 16 LDR,  10 10 DNAME-CELL ORRI,  10 11 16 STR,
    10 DATA 0 LDR,  7 10 8 ADDI,  7 DP-CHECK  31 10 0 STR,  7 DATA 0 STR, ;
 
-\ `constant` pops ONE physical cell and records the one-cell `-- a` trust
-\ (LASTC-TRUST:PUBLISH-A) — the permanent contract: the interpret stack is
-\ untyped, so no shape source exists here, and a wider-than-cell layout value
-\ never lands on it (DNAME-WIDE dispatch gate). Parity with verify-source /
-\ public-signatures / all-errors is locked by the check-all-errors-test
-\ const-layout-narrow fixture.
+\ `constant` pops one cell and records the trust `-- a`: the interpret stack is
+\ untyped, and the DNAME-WIDE dispatch keeps wider values off it. definers.f
+\ DEF-CONSTANT, verify-source.f and public-signatures-core.f record the same.
 : C-CONSTANT ( -- )
    C-TASK-GUARD
    LTOK LABEL@ BL,
@@ -5814,8 +5811,7 @@ variable LCODEINV
 \ Resolution is EM-COMPILE-CALL's: LFIND, then the used packages' publics, then
 \ LUNDEF (test/xt-effect-test.f XE-USING).
 \ C-TICK's DNAME-WIDE gate does not belong here: a body's tick hands the
-\ address to a checked consumer, not the untyped interpret stack (with it,
-\ test/compiler/native-finally.f's certified NAMED was refused).
+\ address to a checked consumer, not the untyped interpret stack.
 \ A TRUSTED: body skips C-TICK's trusted-only query, as tier 1 does: it may use
 \ a trusted-only primitive (prims.f ETRUSTED-ONLY!) and the checker never walks
 \ its tick. The native compiler's generated-call entries are such bodies,
@@ -8710,7 +8706,7 @@ ardone LBL,
    RELOC-EMIT:LINDEXRELEASE LABEL@ BL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    \ The DATA copy would overwrite this boot's stack-base and AOT-SPAN cells:
-   \ they ride the machine stack, republished below (HBT-STRIPPED-ENGINE-CELLS).
+   \ they ride the machine stack, republished below.
    \ x13 is the copy loops' scratch; x11 holds the snapshot text size the text
    \ pass needs; x9/x10/x0 carry argc/argv/envp.
    SP SP 64 SUBI,
@@ -9360,7 +9356,7 @@ public
    \ LFIND's result; x9/x10 the original spelling. A non-immediate does> stays
    \ an ordinary captured token. An immediate meets an armed checker's preflight
    \ (a neutral one in C-CALL-COMPILE-IMMEDIATE) unless spelled does>, the
-   \ keyword (test/outer-interpret.f DOES-CALLED). Twin: DEF-IMMEDIATE.
+   \ keyword. Twin: DEF-IMMEDIATE.
    SP SP 64 SUBI,
    30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
    5 SP 24 STR,  11 SP 32 STR,  13 SP 40 STR,

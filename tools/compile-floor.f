@@ -161,8 +161,7 @@ variable BOUND-US                  \ ratchet floor in us; read only when a floor
    SB$ type cr ;
 
 \ ---- the ratchet ------------------------------------------------------------
-\ The mean carries the cores, so ratchet on a quiet machine;
-\ test/compile-floor-gate.f judges the least at any load.
+\ The mean carries the cores, so ratchet on a quiet machine.
 
 : FLOOR-US ( ptr u8 n -- n )       \ "0.5" -> 500
    STR>FLOAT MATCH option

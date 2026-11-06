@@ -94,9 +94,9 @@ $48425350414E5321 constant SNAP-MAGIC
 \ text-size field + IMAGE-TEXT-TRAILER-ADJ) - SNAP-TRL-BYTES; the codesign blob
 \ and page padding follow outside the extent. Every trailer reader and writer
 \ derives size and offsets from here (src/habu/snap-lib.f SNAP:WRITE-BYTES,
-\ src/habu/habu2.f EM-SNAPSHOT-RESTORE, tools/imgdump.f,
-\ test/snapshot-writer.f). The cell at offset 8 changed meaning with the outer
-\ format: src/habu/snapshot-format.f names it (SNAPSHOT-FORMAT:HEAP-FIELD).
+\ src/habu/habu2.f EM-SNAPSHOT-RESTORE, tools/imgdump.f). The cell at offset 8
+\ changed meaning with the outer format: src/habu/snapshot-format.f names it
+\ (SNAPSHOT-FORMAT:HEAP-FIELD).
 48 constant SNAP-TRL-BYTES        \ magic, heap form, ndict, region len, data len, version
 16 constant SNAP-TRL-NDICT        \ dictionary record count
 24 constant SNAP-TRL-REGLEN       \ region payload length
@@ -257,7 +257,7 @@ CFSTK-REGION-CAP CFSTK-SANE-MAX min constant CFSTK-DEPTH-MAX         \ 127 = min
 DICT-CAP cells PROF-STATE-BYTES + constant PROF-CNT-BYTES
 
 \ The cold prefix, argv files and stdin share this allowance, less an EOF probe;
-\ overflow exits 74 `hb: source prefix buffer full` (test/main-argv.f).
+\ overflow exits 74 `hb: source prefix buffer full`.
 $400000 constant SOURCE-ARENA-CAP
 SOURCE-ARENA-CAP constant IBUFSZ
 20 constant DATA
@@ -1213,8 +1213,7 @@ $2818 constant EXIT-HOOK-CELL
 \ One mark serves every frame. Popping a frame leaves it at the innermost
 \ buffer's current token, or at that buffer's end once it exits cleanly, a
 \ point after a complete token, so each frame a throw pops keeps its buffer's
-\ completed tokens, as the control-flow stack, locals and quotation state do
-\ (test/runtime-regression-test.f GE-EMIT-DEEP).
+\ completed tokens, as the control-flow stack, locals and quotation state do.
 \ $2820..$2848 follow EXIT-HOOK-CELL in the $2800..$3000 header band.
 $2820 constant TOKBODY-CELL
 $2828 constant TOKLOCN-CELL

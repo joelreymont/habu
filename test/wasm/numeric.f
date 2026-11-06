@@ -5,9 +5,6 @@
 \ SOURCE as a closed program and then NAME, as the Wasm driver builds the module
 \ and calls its entry.
 
-\ The wasm-numeric-aot row reruns this file after test/compiler/aot-mode.f, at
-\ the optimizing compiler's tier.
-
 require src/lib/test.f
 require src/lib/string.f
 require src/lib/test/ending.f

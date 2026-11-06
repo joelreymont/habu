@@ -1584,7 +1584,7 @@ package BUILD-FIXPOINT
 \ CLI when the command line named this file (SCRIPT-NAMED-LOAD?; a required file stays
 \ inert) and a build verb follows `--`. INCLUDE-DEPTH 0 cannot answer this: `--load` loads
 \ named files at depth 1 through the require registry. The verb gate keeps a co-loaded tool
-\ that consumes its own `--` arguments (tools/hb-build.f under tools/hb-build-test-lib.f)
+\ that consumes its own `--` arguments (tools/hb-build.f)
 \ from being hijacked, and BF-CLI runs once per process.
 : BF-CLI-VERB-ARG0? ( -- bool )
    SCRIPT-ARGC 0 <= if BF-FALSE exit then

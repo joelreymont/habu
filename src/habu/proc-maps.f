@@ -410,8 +410,7 @@ public
 \ kernel query calls Mach (on Linux, getpagesize, msync and errno) through
 \ FFI's shared table, so a miss in LINK would resolve a C library address into
 \ that table, which an application's FUNCTION: rows can place in the capture
-\ window, and the link would refuse the address it just stored
-\ (test/stripped-image.f).
+\ window, and the link would refuse the address it just stored.
 : RELOAD ( -- )  true READ-MAP ;
 
 \ Areas the last read found, and none before this process has read its map.

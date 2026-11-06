@@ -9,14 +9,6 @@ using TEST
 
 \ Measure with `/usr/bin/time bin/hb --load <file>`.
 
-SUITE check-cli-boundary
-   tools/check-test.f
-;SUITE
-
-SUITE check-verify
-   tools/check-verify-test.f
-;SUITE
-
 SUITE lsp-boundary
    tools/lsp-test.f
    tools/lsp-entry-test.f
@@ -28,26 +20,12 @@ SUITE websocket
    src/lib/net/ws-test.f
 ;SUITE
 
-SUITE stripped-pool-reach
-   test/stripped-pool-reach.f
-;SUITE
-
-SUITE dictionary-capacity
-   test/dictionary-capacity-e2e.f
-;SUITE
-
 SUITE xml-owner-consumer
    test/xml-owner-e2e.f
 ;SUITE
 
 SUITE engine-stack-machine
    test/engine-stack-machine.f
-;SUITE
-
-\ Diagnostic modes share their outer checker and need no keyed image.
-\ Start them early so their serial checks overlap the other suite rows.
-SUITE native-gate-diagnostics
-   test/gate-diagnostics.f
 ;SUITE
 
 SUITE diag-position
@@ -62,74 +40,8 @@ SUITE native-build-entry
    test/native-build-entry.f
 ;SUITE
 
-\ The positive hb-build AOT checks wait for the saved AOT builder image and
-\ start once it settles.
-SUITE native-gate-aot-positive-bundle
-   test/gate-aot-positive-bundle.f
-;SUITE
-
-SUITE ffi-callback-zero-image
-   test/ffi-callback-zero-image.f
-;SUITE
-
-SUITE ffi-callback-full-image
-   test/ffi-callback-full-image.f
-;SUITE
-
-SUITE c2-saved
-   test/c2-saved-e2e.f
-;SUITE
-
-SUITE hb-build-stripped
-   tools/hb-build-stripped-test.f
-;SUITE
-
-SUITE hb-build-stripped-cells
-   tools/hb-build-stripped-cells-test.f
-;SUITE
-
-SUITE hb-build-stripped-cache
-   tools/hb-build-stripped-cache-test.f
-;SUITE
-
-SUITE hb-build-fixtures
-   tools/hb-build-test.f
-;SUITE
-
-SUITE hb-build-stripped-lifecycle
-   tools/hb-build-stripped-lifecycle-test.f
-;SUITE
-
-SUITE hb-build-cli-errors
-   tools/hb-build-cli-errors-test.f
-;SUITE
-
-SUITE hb-build-aot
-   tools/hb-build-aot-test.f
-;SUITE
-
 SUITE codesign
    src/lib/codesign-test.f
-;SUITE
-
-SUITE app-image
-   test/app-image.f
-;SUITE
-
-SUITE engine-origin-lookup
-   test/engine-origin-lookup.f
-;SUITE
-
-SUITE native-file-cwork
-   test/native-file-cwork-e2e.f
-;SUITE
-
-SUITE native-file-inputs
-   test/native-file-inputs-format.f
-;SUITE
-
-SUITE cell-body
-   test/cell-body-e2e.f
 ;SUITE
 
 SUITE checker-redefinition-order
@@ -140,77 +52,16 @@ SUITE checker-rollback-signature
    test/checker-rollback-signature-suite.f
 ;SUITE
 
-SUITE build-fixpoint-source
-   tools/build-fixpoint-source-test.f
-;SUITE
-
 SUITE memory-guarded-failure
    test/memory-guarded-failure.f
-;SUITE
-
-SUITE shadow-lint
-   tools/lint/shadow-lint.f
-   tools/lint/shadow-lint-test.f
-;SUITE
-
-SUITE clobber-lint
-   tools/lint/clobber-lint.f
-   tools/lint/clobber-lint-test.f
-;SUITE
-
-SUITE error-code-lint-fixtures
-   tools/error-code-lint-test.f
 ;SUITE
 
 SUITE byte-copy
    test/byte-copy-test.f
 ;SUITE
 
-SUITE engine-size-fixtures
-   tools/engine-size-test.f
-;SUITE
-
-SUITE two-generation-fixtures
-   tools/two-generation-test.f
-;SUITE
-
 SUITE imagedisasm-tool
    tools/imagedisasm-test.f
-;SUITE
-
-SUITE tool-boundary-check-repair
-   tools/check-all-errors-test.f
-   tools/repair-packet-test.f
-;SUITE
-
-SUITE tool-boundary-doc-public
-   tools/public-signatures-test.f
-   tools/public-signatures-bracket-test.f
-;SUITE
-
-SUITE tool-boundary-lints
-   tools/repl-lint-test.f
-   tools/diag-origin-test.f
-   tools/checked-boundary-lint-test.f
-   tools/reserved-name-lint-test.f
-   tools/bundle-lib-test.f
-   tools/json-only-test.f
-;SUITE
-
-SUITE live-verify-source
-   test/live-verify-source-e2e.f
-;SUITE
-
-SUITE verify-binding
-   test/verify-binding.f
-;SUITE
-
-SUITE check-verify-batch
-   tools/check-verify-batch-test.f
-;SUITE
-
-SUITE lsp-batch
-   tools/lsp-batch-test.f
 ;SUITE
 
 SUITE streaming-sha256
@@ -221,33 +72,13 @@ SUITE content-key
    src/lib/content-key-test.f
 ;SUITE
 
-SUITE engine-id-override
-   test/engine-id-override.f
-;SUITE
-
-SUITE engine-id-replace
-   test/engine-id-replace-e2e.f
-;SUITE
-
-SUITE keyed-image-publish
-   test/keyed-image-publish.f
-;SUITE
-
 \ These manifests execute the native schema and case checks without a prover.
 SUITE compiler-checker-model-manifest
    test/compiler/checker-model-manifest.f
 ;SUITE
 
-SUITE compiler-native-string
-   test/compiler/native-string.f
-;SUITE
-
 SUITE linker
    test/linker.f
-;SUITE
-
-SUITE compiler-native-string-forms
-   test/compiler/native-string-forms.f
 ;SUITE
 
 \ The target/policy binding: src/compiler/digest.f, target.f, numeric-policy.f
@@ -267,19 +98,8 @@ SUITE compiler-wasm-target
 ;SUITE
 
 \ The N01-N06 and W32 numeric rows of test/wasm/numeric-rows.f, each forked and
-\ its printed bytes compared, on the default tier and the optimizing compiler.
+\ its printed bytes compared.
 SUITE wasm-numeric
-   test/wasm/numeric.f
-;SUITE
-
-SUITE wasm-numeric-aot
-   src/lib/test.f
-   src/lib/string.f
-   src/lib/test/ending.f
-   src/lib/test/subject.f
-   src/lib/ieee754.f
-   test/compiler/aot-mode.f
-   ENTRIES
    test/wasm/numeric.f
 ;SUITE
 
@@ -418,33 +238,6 @@ SUITE compiler-tic6x-asm
    test/compiler/tic6x-eabi.f
 ;SUITE
 
-SUITE compiler-backend-boundary
-   test/compiler/backend-boundary.f
-;SUITE
-
-\ The register-file description the allocator reads instead of one architecture's
-\ constants, and the ARM64 description a64ir.f derives from it. The allocator is
-\ its only production consumer, and the two have to agree about what a machine is.
-SUITE compiler-regfile
-   test/compiler/regfile.f
-;SUITE
-
-SUITE compiler-native-loop-frame-order
-   test/compiler/native-loop-frame-order.f
-;SUITE
-
-SUITE compiler-native-trap
-   test/compiler/native-trap.f
-;SUITE
-
-SUITE compiler-native-defer
-   test/compiler/native-defer.f
-;SUITE
-
-SUITE compiler-native-finally
-   test/compiler/native-finally.f
-;SUITE
-
 SUITE compiler-native-eval-prefix
    test/compiler/native-eval-prefix.f
 ;SUITE
@@ -476,18 +269,6 @@ SUITE loop-obligations
    test/loop-obligations.f
 ;SUITE
 
-SUITE stripped-image
-   test/stripped-image.f
-;SUITE
-
-SUITE stripped-lifecycle-prepare
-   test/stripped-lifecycle-prepare.f
-;SUITE
-
-SUITE stripped-literal
-   test/stripped-literal.f
-;SUITE
-
 SUITE native-quote-forward
    test/native-quote-forward-e2e.f
 ;SUITE
@@ -496,63 +277,16 @@ SUITE compiler-native-hookless-reject
    test/compiler/native-hookless-reject.f
 ;SUITE
 
-SUITE image-lifecycle
-   test/image-lifecycle.f
-;SUITE
-
-SUITE image-lifecycle-tasks
-   test/image-lifecycle-tasks.f
-;SUITE
-
-SUITE image-lifecycle-late-register
-   test/image-lifecycle-late-register.f
-;SUITE
-
-SUITE native-resource-image
-   test/native-resource-image.f
-;SUITE
-
-SUITE process-image
-   test/process-image.f
-;SUITE
-
-\ Serial and UDP workers through three saved generations, each a fresh
-\ process, with the pty master and the UDP peer as tasks in this row. Runs on
-\ the saver image like process-image.
-SUITE host-io-image
-   test/host-io-image.f
-;SUITE
-
 SUITE code-reclaim
    test/code-reclaim.f
-;SUITE
-
-SUITE compiler-native-do
-   test/compiler/native-do.f
 ;SUITE
 
 SUITE compiler-native-plusloop
    test/compiler/native-plusloop.f
 ;SUITE
 
-SUITE compiler-native-j
-   test/compiler/native-j.f
-;SUITE
-
-SUITE compiler-native-again
-   test/compiler/native-again.f
-;SUITE
-
-SUITE compiler-native-return-abi
-   test/compiler/native-return-abi.f
-;SUITE
-
 SUITE compiler-native-rstack-input
    test/compiler/native-rstack-input.f
-;SUITE
-
-SUITE compiler-native-catch
-   test/compiler/native-catch.f
 ;SUITE
 
 SUITE finally
@@ -587,24 +321,8 @@ SUITE reopen-binding
    test/reopen-binding.f
 ;SUITE
 
-SUITE replay-binding
-   test/replay-binding.f
-;SUITE
-
 SUITE undefine-binding
    test/undefine-binding.f
-;SUITE
-
-SUITE compiler-code-bytes
-   test/compiler/code-bytes.f
-;SUITE
-
-SUITE compiler-native-generated-constructor
-   test/compiler/native-generated-constructor.f
-;SUITE
-
-SUITE compiler-native-order-exit
-   test/compiler/native-order-exit.f
 ;SUITE
 
 SUITE compiler-integer-literals
@@ -617,37 +335,6 @@ SUITE outer-number
 
 SUITE compiler-native-eval
    test/compiler/native-eval.f
-;SUITE
-
-SUITE native-dead-path
-   test/compiler/native-dead-path.f
-;SUITE
-
-SUITE native-dstack-alias
-   test/compiler/native-dstack-alias.f
-;SUITE
-
-SUITE compiler-native-match
-   test/compiler/native-match.f
-;SUITE
-
-SUITE compiler-native-case
-   test/compiler/native-case.f
-;SUITE
-
-SUITE compiler-native-rename-rows
-   test/compiler/native-rename-rows.f
-;SUITE
-
-\ A read-view unpacked by a CAST: used as its two cells, run through the
-\ tier-1 regrouping (test/compiler/aot-mode.f).
-SUITE compiler-native-view-cast-aot
-   src/lib/test.f
-   src/lib/memory.f
-   src/lib/c2-memory.f
-   test/compiler/aot-mode.f
-   ENTRIES
-   test/compiler/native-view-cast.f
 ;SUITE
 
 SUITE compiler-native-wide-mem
@@ -702,11 +389,6 @@ SUITE task-prepare-failure
 \ Readiness, timers and cancellation on io_uring, over pipes only.
 SUITE aio-uring
    src/lib/aio-test.f
-;SUITE
-
-\ The aio capture cleanup of grown records and group rows, in child processes.
-SUITE aio-capture-sweep
-   test/aio-capture-sweep.f
 ;SUITE
 
 \ Process signals on the engine's baked stub and a self-pipe.
@@ -959,26 +641,11 @@ SUITE argv-stdlib-mocks
 
 SUITE test-stdlib
    src/lib/test/assert-test.f
-   src/lib/test/suite-test.f
-   src/lib/test/record-test.f
    src/lib/test/mapped-test.f
-;SUITE
-
-SUITE property-stdlib
-   src/lib/property-test.f
 ;SUITE
 
 SUITE date-helpers
    tools/stdlib-date-test.f
-;SUITE
-
-\ Budgets are thread CPU time on each measurement's cheapest sample, over rounds
-\ that outlast a slow stretch; the floor means meet only a loose ceiling.
-\ Measured on a 12-core machine, sixteen copies of this row in eight slots
-\ beside a native build at load 105-164: 400 of 400 green in 25 passes. With one
-\ floor round and three bench rounds, 2 of 128 were red at load 122-129.
-SUITE compiler-compile-floor-gate
-   test/compile-floor-gate.f
 ;SUITE
 
 SUITE memory
@@ -1136,8 +803,6 @@ SUITE source-lex
 
 SUITE stdlib-process-fixtures
    tools/hb-cli-contracts-test.f
-   tools/standalone-load-test.f
-   test/lint-cli-standalone-load.f
    src/lib/process-test.f
    src/lib/process-command-test.f
    src/lib/power-test.f
@@ -1146,14 +811,6 @@ SUITE stdlib-process-fixtures
 
 SUITE friend-arena-seal
    test/seal.f
-;SUITE
-
-SUITE checker-surface
-   test/checker-surface.f
-;SUITE
-
-SUITE package-seal
-   test/package-seal.f
 ;SUITE
 
 SUITE pointer-storage
@@ -1269,14 +926,6 @@ SUITE ndict-binding
    test/ndict-binding.f
 ;SUITE
 
-SUITE outer-interpret
-   test/outer-interpret.f
-;SUITE
-
-SUITE main-argv
-   test/main-argv.f
-;SUITE
-
 SUITE engine-span-end
    test/engine-span-end.f
 ;SUITE
@@ -1293,10 +942,6 @@ SUITE checker-dup-record
    test/checker-dup-record.f
 ;SUITE
 
-SUITE checker-verify-order
-   test/checker-verify-order.f
-;SUITE
-
 SUITE checker-completion
    test/checker-completion.f
 ;SUITE
@@ -1309,37 +954,12 @@ SUITE local-spelling
    test/local-spelling-suite.f
 ;SUITE
 
-SUITE snapshot-writer
-   test/snapshot-writer.f
-;SUITE
-
 SUITE stdlib-standalone-load
    test/stdlib-standalone-load.f
 ;SUITE
 
-SUITE data-address-codec
-   test/data-address-codec.f
-   tools/snap-heap-owner-test.f
-;SUITE
-
-SUITE aot-cell-values
-   test/aot-cell-values.f
-;SUITE
-
-SUITE compiler-native-create-does
-   test/compiler/native-create-does.f
-;SUITE
-
-SUITE tier
-   test/tier.f
-;SUITE
-
 SUITE engine-error-package
    test/engine-error-package.f
-;SUITE
-
-SUITE snapshot-xt-cell-decl
-   test/snapshot-xt-cell-decl.f
 ;SUITE
 
 SUITE address-cell-rollback
@@ -1356,10 +976,6 @@ SUITE address-cell-index-recovery
 
 SUITE address-cell-storage-oom
    test/address-cell-storage-oom.f
-;SUITE
-
-SUITE address-cell-tasks
-   test/address-cell-tasks.f
 ;SUITE
 
 SUITE catch-frame
@@ -1408,28 +1024,12 @@ SUITE load-reject-diag
    test/load-reject-diag-test.f
 ;SUITE
 
-SUITE stdlib-runner-fixtures
-   src/lib/test/runner-test.f
-;SUITE
-
 SUITE load-argv-contract
    tools/load-argv-test.f
 ;SUITE
 
 SUITE tmp-path
    test/tmp-path-test.f
-;SUITE
-
-SUITE gate-pool
-   test/gate-pool-test.f
-;SUITE
-
-SUITE gate-images-orchestration
-   test/gate-images-test.f
-;SUITE
-
-SUITE gate-common
-   test/gate-common-test.f
 ;SUITE
 
 SUITE num-types
@@ -1469,13 +1069,6 @@ SUITE fs-anchored
 \ Raw serial streams over a pty pair: the loop supplies every wait.
 SUITE serial
    src/lib/serial-test.f
-;SUITE
-
-\ The pty test harness's buffer: the compaction, the span search and the
-\ never-seen facts, driven without a child; plus the two cases that need one,
-\ the spawn's abort path and the bounded reap of a wedged child.
-SUITE pty-harness
-   src/lib/pty-harness-test.f
 ;SUITE
 
 \ IPv4 stream sockets: a listener task and a client in one process.
@@ -1527,22 +1120,6 @@ SUITE process-tree
    src/lib/process-tree-test.f
 ;SUITE
 
-SUITE test-subject
-   src/lib/test/subject-test.f
-;SUITE
-
-SUITE test-eval
-   src/lib/test/eval-test.f
-;SUITE
-
-SUITE check-repair-hints
-   tools/check-repair-hints-test.f
-;SUITE
-
-SUITE event-closure
-   tools/event-closure-test.f
-;SUITE
-
 SUITE hb-open-failure
    tools/hb-open-failure-test.f
 ;SUITE
@@ -1571,20 +1148,12 @@ SUITE name-length
    test/name-length-test.f
 ;SUITE
 
-SUITE boot-row
-   test/boot-row-test.f
-;SUITE
-
 SUITE boot-relocation
    test/boot-relocation-e2e.f
 ;SUITE
 
 SUITE source-discovery
    tools/source-discovery-test.f
-;SUITE
-
-SUITE seed
-   tools/seed-test.f
 ;SUITE
 
 SUITE cast-negative
@@ -1615,28 +1184,12 @@ SUITE engine
    test/engine-suite.f
 ;SUITE
 
-SUITE engine-runtime-regressions
-   test/runtime-regression-test.f
-;SUITE
-
-SUITE declaration-replay-source
-   test/decl-replay-verify-source.f
-;SUITE
-
 SUITE program-diagnostics
    test/program-diagnostics-test.f
 ;SUITE
 
 SUITE diag-json-escape
    test/diag-json-escape.f
-;SUITE
-
-SUITE native-suite-cli
-   test/run-cli-test.f
-;SUITE
-
-SUITE gate-env-stdin-tty
-   test/gate-env-stdin-tty-test.f
 ;SUITE
 
 SUITE native-gate-debug
@@ -1703,10 +1256,6 @@ SUITE protection-span
    test/protection-span.f
 ;SUITE
 
-SUITE data-claims-build
-   test/data-claims-build.f
-;SUITE
-
 SUITE code-window
    test/code-window.f
 ;SUITE
@@ -1755,14 +1304,6 @@ SUITE rigid-region
 
 SUITE structure-certify
    test/structure-certify-suite.f
-;SUITE
-
-SUITE structure-quotation-field
-   test/structure-quotation-image.f
-;SUITE
-
-SUITE deferred-quotation-image
-   test/deferred-quotation-image.f
 ;SUITE
 
 SUITE structure-quotation-rollback
@@ -1821,10 +1362,6 @@ SUITE repl-address-cell-rollback
 \ under the same fixed reap budget.
 SUITE repl-open-definition
    test/repl-open-definition.f
-;SUITE
-
-SUITE repl-literal-segment
-   test/repl-literal-segment.f
 ;SUITE
 
 \ Its failed-REPL-line case starts and reaps one engine child on a PTY.

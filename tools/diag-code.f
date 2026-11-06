@@ -4,10 +4,10 @@
 \ enters both through one row.
 \ The record contract: newline-delimited JSON on stderr, schema_version 1, a
 \ valid line even when the input is rejected; the field set per shape is what
-\ tools/gate-json-assert-core.f requires (diag-contract) over every fixture
-\ test/gate-diagnostics.f emits. verdict is `uncheckable` for E-UNCHECKABLE,
-\ `deferred` on a deferral, else `rejected`; a certified definition writes no
-\ record. A record names one refusal, the first the engine's own load reports.
+\ tools/gate-json-assert-core.f requires (diag-contract). verdict is
+\ `uncheckable` for E-UNCHECKABLE, `deferred` on a deferral, else `rejected`; a
+\ certified definition writes no record. A record names one refusal, the first
+\ the engine's own load reports.
 \ line and column are one-based, column in bytes; byte_start and byte_end are
 \ zero-based, end exclusive, in the labeled file. Text with no file bytes behind
 \ it (the engine's own load, `evaluate`, checker-generated definitions) reports

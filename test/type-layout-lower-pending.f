@@ -67,7 +67,7 @@ TRUSTED: TLPX-TRUST-FREE ( n n n n n -- n ) 2drop 2drop ;
 : TLPX-TRUST-CALL ( -- n ) 37 TLP-MK4 TLP-UN4 TLPX-TRUST-FREE ;
 TLPX-TRUST-CALL 37 T=
 \ The checked does> clause has a wide input, so its positive execution runs
-\ at tier 1. Tier 0's named refusal is exercised by runtime-regression-test.f.
+\ at tier 1.
 variable TLPX-SAVED-TIER
 tier@ TLPX-SAVED-TIER !
 1 set-tier

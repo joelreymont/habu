@@ -21,8 +21,7 @@ CHECKER-BOUND:REWIND
 PREFIX-MARK:DICT seed-ndict!
 \ Four cells point into the include rows above the mark. Left alone,
 \ ENGINE-PROVIDES? answers yes for removed files, a later `require` is a silent
-\ no-op, and a snapshot ships an image claiming a stdlib it lacks
-\ (test/snapshot-writer.f).
+\ no-op, and a snapshot ships an image claiming a stdlib it lacks.
 PREFIX-MARK:REQ REQUIRE-REG:PREFIX-REWIND
 \ The host captured its seal floor at the end of its boot, above the dictionary
 \ this rewind shortened, so a later FORGET/HIDE dies `seal: cannot FORGET/HIDE

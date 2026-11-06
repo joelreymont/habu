@@ -418,8 +418,7 @@ variable CRS-MACHINE-M variable CRS-MACHINE-H
 \
 \ Each of the three writes x0, x1, x12 and the system call's own registers, and
 \ x2 on the path that exits, and nothing else, and holds no BL and no ADR into
-\ x9: test/gate-aot-image.f SCAN-STARTUP reads a stripped startup up to its
-\ first BL.
+\ x9.
 : SIGSTKMSG$ ( -- ptr u8 n ) S\" hb: cannot install the signal stack\n" ;
 
 \ sp drops SIGNAL-BYTES and the band above it is registered. A refused

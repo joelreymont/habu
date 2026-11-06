@@ -1,5 +1,5 @@
 \ reserved-name-lint.f - CLI wrapper for reserved definition-name lint.
-\ Standalone: it loads its own dependencies (test/lint-cli-standalone-load.f).
+\ Standalone: it loads its own dependencies.
 \ tools/check.f runs the same lint (check-core.f CHK-RUN-RESERVED-NAMES) before
 \ spawning the checker child, so a reserved name (a prefix-stripping rename makes
 \ one: `CC-I` to `IX`) is E-RESERVED-DEFINITION with file, line and token

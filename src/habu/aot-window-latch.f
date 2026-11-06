@@ -58,8 +58,8 @@ PTR-VARIABLE APP-POOL
    0 INTERN:SOURCE-SPAN drop data-base BYTE-VIEW - DATA-VA VA>N + BLOB-SRC ! ;
 
 \ Latch the span before loading the linker and hand the maker its pool back:
-\ with the application's pool still active, the linker carried fs-identity's
-\ three NUL-terminated symbol strings into an empty MAIN image (HBT-SIZE-AOT).
+\ with the application's pool still active, the linker carries fs-identity's
+\ three NUL-terminated symbol strings into an empty MAIN image.
 \
 \ THE CARRIED RUN: room inside the window for baked engine constants the
 \ application reads (the i64 bound digits, SHA-256's round constants), which live

@@ -1,6 +1,6 @@
 \ hb-open-failure-test.f - from a directory that is not a checkout, the seeded
-\ product boots silently and opens no prefix source. test/main-argv.f owns a file
-\ argument it cannot open; tools/load-argv-test.f owns --load.
+\ product boots silently and opens no prefix source. tools/load-argv-test.f owns
+\ --load.
 \ Run: bin/hb --load src/lib/error.f src/lib/string.f src/lib/test.f src/lib/memory.f \
 \   src/lib/fs.f src/lib/fs-mutate.f src/lib/process.f src/lib/process-argv.f \
 \   src/lib/process-env.f src/lib/process-cwd.f tools/hb-open-failure-test.f

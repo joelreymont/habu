@@ -2464,8 +2464,7 @@ variable HEAD-W     variable HEAD-Z
 \
 \ The blob is named by the startup's single code-base-relative address into x9
 \ (EMIT-DATA-COPY loads the sparse header there through src/habu/aot-link-arm.f
-\ TEXT-ADR,; test/gate-aot-image.f admits exactly one such sequence in the
-\ startup). A Mach-O blob lies in __text or immediately after the GOT
+\ TEXT-ADR,). A Mach-O blob lies in __text or immediately after the GOT
 \ (BLOB-PLACE?). The blob frames itself: a u32 of groups and a u32 of stored
 \ bitmap bytes, the presence map and those groups, then one varint per present
 \ cell. The format is the AOT-WINDOW encoding (src/habu/aot-decl.f), so RUN-V@

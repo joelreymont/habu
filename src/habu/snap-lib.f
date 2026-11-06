@@ -521,9 +521,7 @@ PTR-VARIABLE SGR-A                   \ grid stream scratch
 
 \ The final-close fault hook: WRITE-BYTES runs it on the output fd just before
 \ the close it checks, and it does nothing. It is private, so no qualified name
-\ reaches it; test/snapshot-writer-close-fail.f reopens this package to make it
-\ close the fd early, which proves WRITE-BYTES fails closed (rc 74) and leaves
-\ the output path as it was.
+\ reaches it.
 defer BEFORE-CLOSE ( n -- )
 
 : CLOSE-NOOP ( n -- )

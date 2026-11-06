@@ -54,8 +54,8 @@ TEST-EVAL:RC  create EV-B 3 cells allot  constant EV-RC
 s" create OU-A 3 cells allot  -1 OU-A !  -1 OU-A cell+ !  -1 OU-A 2 cells + !  OU-A OU-SEEN !  7 throw"
 OUTER-RC  create OU-B 3 cells allot  constant OU-RC
 
-\ As test/repl-literal-segment.f: after a line the prompt that proves the child
-\ holds the terminal raw again is the one AFTER the answer.
+\ After a line the prompt that proves the child holds the terminal raw again is
+\ the one AFTER the answer.
 : PROMPT ( -- ) s" habu> " WAIT-FOR TTRUE ;
 : PROMPT-AFTER ( ptr u8 n -- ) s" habu> " WAIT-AFTER TTRUE ;
 : STEP ( ptr u8 n -- )

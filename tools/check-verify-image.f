@@ -53,8 +53,8 @@ TYPED-VARIABLE RESOLVED bool
 \ (tools/check-verify-core.f fixes its child the same way). ENTRY is the
 \ canonical path of the save driver and ROOT its tree, the tree
 \ tools/check-verify-save.f ROOT! builds from, so the key walks the closure the
-\ build loads: a root that links to a tree (tools/check-test-lib.f LC-ROOT)
-\ keys the same files and shares the image.
+\ build loads: a root that links to a tree keys the same files and shares the
+\ image.
 SOURCE-ROOT:CURRENT$ s" tools/check-verify-save.f" ENTRY FS:JOIN-PATH
 ENTRY swap SOURCE-ROOT:CANONICAL drop ENTRY ENTRY-U COPY!
 ENTRY$ SOURCE-ROOT:DIRNAME SOURCE-ROOT:DIRNAME ROOT ROOT-U COPY!

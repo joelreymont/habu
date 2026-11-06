@@ -81,7 +81,7 @@ TEST:SUITE first test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-wrapper.
 TEST:SUITE second test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-wrapper.f -- second TEST:;SUITE
 GUARD
 
-\ A file may launch itself, even as an entry tier twins share.
+\ A file may launch itself, even as an entry two rows share.
 TEST:RESET
 TEST:SUITE self test/gate-entry-guard-self-launch.f TEST:;SUITE
 TEST:SUITE self-aot test/compiler/aot-mode.f ENTRIES test/gate-entry-guard-self-launch.f TEST:;SUITE

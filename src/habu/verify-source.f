@@ -3885,10 +3885,7 @@ variable VARIADIC-XT s" VARIADIC" VARIADIC-XT LIBRARY-XT!
       [: RECORD-CWORK-SPAN ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
    a u CWORK-VARIABLE-XT @ s" CWORK-VARIABLE" LIBRARY-DEFINER? IF
       [: RECORD-CWORK-VARIABLE ;] catch STORAGE-OUTCOME 0 0= EXIT THEN
-   \ `constant` bakes one cell, so its trust is `-- a`, as native C-CONSTANT,
-   \ all-errors and public-signatures read it: the interpret stack is untyped,
-   \ and a wider-than-cell layout value never lands there (DNAME-WIDE gate).
-   \ Pinned by tools/check-all-errors-test.f const-layout-narrow.
+   \ `constant` bakes one cell, trusted `-- a` as C-CONSTANT records it.
    a u s" constant" STR=CI IF s" -- a" DEF-CONSTANT RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" DEF-STORAGE RAW-TRUST-NEXT 0 0= EXIT THEN

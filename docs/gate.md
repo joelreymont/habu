@@ -10,11 +10,7 @@ effects focused tests bound needs only those tests.
 
 Run a test file directly with `bin/hb --load`, naming on one command line the
 library files the engine does not bake ahead of it, as the test's header
-states; never concatenate files with shell logic:
-
-```sh
-bin/hb --load src/lib/error.f src/lib/process.f test/proc-pty.f
-```
+states; never concatenate files with shell logic.
 
 The runner prepends nothing to a registry row, so a focused run of a row's
 files measures what the row measures.
@@ -23,7 +19,7 @@ Run chosen tests of the suite in its parallel pool by name; an unknown name is
 refused with exit 64:
 
 ```sh
-bin/hb --load test/run.f -- clobber-lint websocket
+bin/hb --load test/run.f -- lsp-boundary websocket
 ```
 
 A lane's proof is its engine build and the tests of a few seconds that load the
@@ -49,8 +45,8 @@ a defect to root-cause, never a longer limit.
 Copy that candidate and its matching `hb.map` into the private tree's `bin/`
 as regular files, not symlinks, and run the tests from that tree: the focused
 tests, and the registry when the rule above calls for it. Keep its `TMPDIR`
-outside the checkout. Without the map beside it, `hb-build-stripped-cache`
-fails on any engine: its products' baked words carry no source file.
+outside the checkout. Tools that name an image's words read the `.map` beside
+it (tools/image-names.f), so a stale map names the wrong words.
 
 ```sh
 bin/hb --load test/run.f </dev/null
@@ -189,8 +185,7 @@ that daemonizes it: the `pg` row runs `postgres`, not `pg_ctl`.
   before splitting a slow row.
 - A suite whose assertions depend on the compiler tier selects it itself, with
   `1 set-tier` after the harness and tool requires and before the code under
-  test, so the harness is not compiled at tier 1. `test/compiler/aot-mode.f` is
-  only for the `*-aot` twin rows that run one unchanged file at both tiers.
+  test, so the harness is not compiled at tier 1.
 - A row whose child compiles `src/habu/app-image.f` or the AOT builder only
   to reach its subject runs a keyed image with them already loaded:
   `test/app-image-engine.f` or `test/aot-builder-engine.f`, whose headers hold
@@ -261,8 +256,8 @@ exercised, not a formal soundness or refinement theorem.
   failures on both sides. Revert the tool source in a scratch copy of the
   tree and run it through an entry file at the copy's root: `--load` of a
   file below the root resolves `require tools/…` against the running hb's
-  tree (card section 7), so loading the copy's tools/lint/clobber-lint-test.f
-  directly runs the workspace's lint.
+  tree (card section 7), so loading a test below the copy's root directly
+  runs the workspace's tool.
 - Behaviour is a defect only against its module's contract: read the
   header before reporting one. SECRET on Linux reads only, and its WRITE and
   ERASE throw E-UNAVAILABLE unless the host binds its own store with

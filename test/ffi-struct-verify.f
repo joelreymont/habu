@@ -17,7 +17,7 @@
 \ The source under check, copied out of SB, which the verifier also uses.
 DYNAMIC-BUFFER FFI-SV-SRC u8
 variable FFI-SV-SRC-U
-\ A deadlock guard, as CHECK-VERIFY-TEST GUARD-MS.
+\ A deadlock guard.
 60000 constant FFI-SV-MS
 
 : FFI-SV-SRC$ ( -- ptr u8 n )

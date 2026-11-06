@@ -106,7 +106,6 @@ variable LUNCREP  variable LUNCREP-MSG  variable LUNCREP-SIGN  variable LUNCREP-
 \ 51.9 s cold, the AOT maker 42.8 s, the same compile behind a one-member
 \ closure 39.3 s: the compile is the cost. aot-common.f MEMBER-ORDER sorts
 \ members once per link and OLD>NEW and MEMBER-AT binary-search it.
-\ test/stripped-image.f runs the startup with a 1,100-word chain in its closure.
 : TEXT-ADR, ( n n label -- )                      \ ( rd rt label -- ) rd = runtime address of label
    {: rd:n rt:n l:label :}
    rd rt = IF s" aot: TEXT-ADR, destination and scratch are one register" 74 die THEN
@@ -308,10 +307,7 @@ variable FFI-BASE-INDEX
 \ THE ROWS NEED NO ADDRESS OF THEIR OWN. The copy loop's byte cursor x10 ends one
 \ past the blob's last payload byte, which is where the rows begin (BYTES, pads
 \ the blob to the four-byte boundary they sit on), so the startup adds no second
-\ address-of-the-blob sequence ahead of the root call: test/gate-aot-image.f
-\ admits exactly one of them in the startup and ends the reported code range at
-\ the blob, and rows placed past the blob are outside that range rather than read
-\ as instructions.
+\ address-of-the-blob sequence ahead of the root call.
 \ The cell is x20-relative (DATA is mapped at a fixed address, so its offset is the same
 \ number the declaration carries) and the value is relative to the image's own
 \ code base, which is the label at text offset zero.
@@ -500,10 +496,7 @@ variable BLOB-CV
 \ frame nor a saved exit code; the reporter saves its code itself. THE CELL IS
 \ CLEARED BEFORE THE CALL, exactly as the engine's trampoline clears it: a hook
 \ that dies re-enters an exit path and must find the vector empty. An image that
-\ arms nothing pays one load and a CBZ. No gate reads this sequence: the image
-\ gate's walk (test/gate-aot-image.f SCAN-STARTUP) stops at the root call. Its
-\ behaviour is test/stripped-image.f RUN-EXITS, one run per exit, each of which
-\ must remove the directory its hook registered.
+\ arms nothing pays one load and a CBZ.
 : EMIT-EXIT-HOOK ( -- )
    LBL {: nohk:label :}
    9 DATA EXIT-HOOK-CELL LDR,  9 nohk CBZ,
@@ -540,13 +533,13 @@ variable BLOB-CV
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
 
 \ The handler body and its hex printer follow the copied code, so the root
-\ closure record stays the first word after the startup (test/gate-aot-image.f
-\ pins that). Nothing bounds how far past the startup they land: the entry
-\ addresses them with TEXT-ADR,, whose LOFF, lanes span the whole code buffer.
-\ DP-CHECK still uses its engine diagnostic and evaluate recovery in a native
-\ process. In a stripped image its exact (LDPBAD) branch is redirected here:
-\ the same candidate and ceiling are printed, then the process exits 76.
-\ No compiler/evaluator state is part of this handler.
+\ closure record stays the first word after the startup. Nothing bounds how far
+\ past the startup they land: the entry addresses them with TEXT-ADR,, whose
+\ LOFF, lanes span the whole code buffer. DP-CHECK still uses its engine
+\ diagnostic and evaluate recovery in a native process. In a stripped image its
+\ exact (LDPBAD) branch is redirected here: the same candidate and ceiling are
+\ printed, then the process exits 76. No compiler/evaluator state is part of
+\ this handler.
 : DP-REFUSE-MSG$ ( -- ptr u8 n ) s" hb: data space out of range: DP " ;
 : DP-REFUSE-OF$ ( -- ptr u8 n ) s"  of " ;
 : DP-REFUSE-UNIT$ ( -- ptr u8 n ) S\"  bytes\n" ;

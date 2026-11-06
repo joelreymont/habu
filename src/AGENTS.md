@@ -10,4 +10,3 @@ states its contract in its header comment. Every program starts from the
 - `compiler/` — the tier-1 native compiler: target contract, IR, pipeline.
 - `arch/` — one directory per instruction set; `os/` — one per target seam.
 - `lib/` — the library, one concern per file.
-- `examples/llm/good.f` — a fixture the public-signatures tests scan.

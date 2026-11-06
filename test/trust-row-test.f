@@ -52,8 +52,7 @@ s\" s\q TRW-LIVE\q drop -1 1 rshift s\q -- n\q trust" TRUST-ROW:TCE-CATCH TRUST-
 
 \ A signature length that describes no memory gets the refusal of a signature
 \ that does not parse, before a byte of it is read or printed: the maximum cell
-\ would read on past the text. test/gate-diagnostics-lib.f
-\ SIGNATURE-NOSPAN-RECORD renders the refusal of -1.
+\ would read on past the text.
 s\" s\q TRW-LIVE\q s\q -- n\q drop -1 1 rshift trust" TRUST-ROW:TCE-CATCH TRUST-ROW:E-BAD-SIG T=
 
 \ Fixtures put the name where a text match would find it and the dictionary

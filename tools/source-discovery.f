@@ -697,7 +697,7 @@ variable SD-SCOPES
    qual 1 = bare 1 = ;
 
 \ ROW lies earlier in this file than OFF, after a declaration of its tail in its
-\ package: a row before that binds another word (ECT-TEST-BARE-ROW-FIRST).
+\ package: a row before that binds another word.
 : SD-R-SEEN? ( n n -- bool ) {: row:n off:n :}
    row SD-R-FILE @ SD-FILE-ID @ <> row SD-R-OFF @ off >= or if false exit then
    row SD-R-NAME$ SD-TAIL$ {: tail:ptr tailu:n :}

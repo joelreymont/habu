@@ -23,9 +23,7 @@ require src/lib/verify-diagnostics.f
 \ so verify-source.f is required here at top level; every checker scope below
 \ replays source through VERIFY. It is not in the engine's baked prefix: the
 \ require registry's dedupe of co-loaded sites is the only one this line has.
-\ A replayed `constant` gets VERIFY's one-cell `-- a` effect. A wider layout
-\ value never reaches the interpret stack (DNAME-WIDE); its use is refused
-\ (tools/check-all-errors-test.f const-layout-narrow).
+\ A replayed `constant` gets VERIFY's `-- a` effect (habu2.f C-CONSTANT).
 require src/habu/verify-source.f
 
 package CHECK-ALL-ERRORS
@@ -40,8 +38,8 @@ $4E constant DUP-RC
 \ The scratch a caller gives BUFFERS! or STREAM!. The checker renders a whole
 \ pass's diagnostics into it and src/core/render.f cannot grow a caller's
 \ buffer, so a pass whose diagnostics outgrow it reports those that fit, each
-\ whole, then E-DIAG-CAPACITY (tools/check-test-lib.f, "a report past the
-\ scratch"). A JSON record is a few hundred bytes: this holds thousands.
+\ whole, then E-DIAG-CAPACITY. A JSON record is a few hundred bytes: this holds
+\ thousands.
 $100000 constant SCRATCH-CAP
 
 private

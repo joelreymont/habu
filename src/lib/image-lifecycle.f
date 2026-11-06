@@ -66,8 +66,7 @@ public
 \ Number of hooks currently registered, read under the lock REGISTER takes so
 \ a concurrent registration is either counted or not, never half-applied. A
 \ cell read cannot throw, so the unwind path REGISTER needs is not needed here.
-\ A hook that throws during PREPARE is not removed, so it still counts;
-\ test/image-lifecycle.f observes both through this word.
+\ A hook that throws during PREPARE is not removed, so it still counts.
 : COUNT ( -- n )
    LOCK N @ PERSISTENT-N @ + UNLOCK ;
 

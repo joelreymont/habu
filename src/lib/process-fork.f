@@ -41,8 +41,7 @@ REGISTER-RESETS
 
 public
 
-\ Vectored so test/gate-pool-test.f can refuse RAW's fork (RLIMIT_NPROC races
-\ the host). Runs under FORK-HELD's locks: no hook, buffer, quotation or spawn.
+\ Runs under FORK-HELD's locks: no hook, buffer, quotation or spawn.
 defer FORK-CALL ( -- n )
 
 : FORK-CALL-DEFAULT ( -- )

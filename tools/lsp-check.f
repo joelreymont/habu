@@ -20,8 +20,7 @@ using LSP-DOCS
 private
 
 \ A deadlock guard and nothing else: a check measured 43 ms for one definition
-\ and 433 ms for tools/check-core.f's whole closure; check-verify-test's guard is
-\ the same.
+\ and 433 ms for tools/check-core.f's whole closure.
 60000 constant CHECK-MS
 
 10 constant LF

@@ -7821,8 +7821,7 @@ USIGS-RUNTIME-INIT
 \ just under a grain boundary left a restored engine a few rows, its first
 \ definitions regrew the store, and its own capture copied the grown store into
 \ fresh DATA past everything the program laid last (measured on the NORETS of
-\ test/app-image-engine.f's image: 32 bytes left, and
-\ test/snapshot-writer-tail.f's heap no longer ended inside its cell).
+\ test/app-image-engine.f's image: 32 bytes left).
 : USIGS-PERSIST-CAP ( n -- n )
    USIGS-GRAIN + USIGS-ROUND-CAP ;
 
@@ -13990,11 +13989,9 @@ package CHECKER-REG
 \ CHECKER-FIND-QUIET-SYM ( ptr u8 n -- n ): the same resolution for a caller
 \ that only asks (the source pre-verifier, of every token: "does this name a
 \ definer?"). The two used-scope refusals (a used public shadowing a global, a
-\ bare tail two used packages export) belong to the definition being checked:
-\ raised here, they turned test/checker-verify-order.f's legal later-public
-\ case into E-USING-AMBIGUOUS (7144) during the scan (measured). Such a name is
-\ not a definer here; the body check names the refusal. A deferred refusal is
-\ not rendered.
+\ bare tail two used packages export) belong to the definition being checked.
+\ Such a name is not a definer here; the body check names the refusal. A
+\ deferred refusal is not rendered.
 \
 \ Exactly those two are deferred: the package-context refusal is raised as
 \ CHECKER-FIND-ACTIVE-SYM raises it, and anything else the walk throws (an

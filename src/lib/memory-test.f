@@ -916,7 +916,7 @@ private
 \ A released guarded stack must leave its neighbours mapped: the kernel's
 \ granule puts the page-aligned base up to a page into the span, so a release
 \ computed from the span reaches past its end into the next mapping (a task's
-\ DATA region; test/address-cell-tasks.f).
+\ DATA region).
 : GUARDED-SIZE-REFUSAL ( -- )
    100 MEM:ALLOC-GUARDED MEM:RELEASE-GUARDED ;
 

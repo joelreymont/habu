@@ -22,7 +22,6 @@ TYPED-VARIABLE RCP-HK [ -- n ]
 2 TYPED-BUFFER RCP-HKB [ -- n ]
 
 \ The nominal identity CASE-FIELD-FORGE-NOMINAL tries to forge.
-\ test/snapshot-xt-cell-decl.f keeps its own subject through a declared handle.
 NEWTYPE rcpthing
 
 package RAW-CELL-PTR-TEST

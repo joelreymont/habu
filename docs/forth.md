@@ -74,7 +74,7 @@ rules. Build and test procedures live in [bootstrap.md](bootstrap.md) and
 - **Check for collisions with built-ins**: the dictionary is case-insensitive,
   so `CON?`/`VAR?` clash; prefix (`TYCON?`, `TYVAR?`). If `' NAME` resolves in a
   REPL, the name is taken.
-- **Never shadow a native primitive name**; `shadow-lint` gates this.
+- **Never shadow a native primitive name**.
 - **Never define a parser or control reserved word** as a published name (by
   `:`, `TRUSTED:`, `KERNEL:`, `create`, `variable`, `constant`, `defer`): `I`,
   `J`, `DO`, `LOOP`, `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`,
@@ -2422,8 +2422,7 @@ sections above.
   diagnostic and throws the checker's rc before the word runs. A word the
   engine holds with no row the step can see is `E-UNDEFINED`, as a body call
   to an unknown word is. `set-tier`'s row is global, so a program's first
-  line may choose the tier before any `require`. `test/outer-interpret.f`
-  ROWLESS-STEP measures the refusal.
+  line may choose the tier before any `require`.
 - **Unknown top-level parsers stop discovery unless declared.** A word whose
   body reaches `parse-name` or `create`, or a `defer`, may consume or define
   following tokens. In `--verify-only`, it is `W-CHECK-DEFERRED`; later text

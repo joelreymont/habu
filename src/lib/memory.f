@@ -409,7 +409,7 @@ public
 \ stays mapped is exactly the two guard pages around the capacity and the
 \ release below unmaps exactly that. A release computed from the span would
 \ reach past its end into whatever the kernel mapped next (a task's DATA
-\ region; test/address-cell-tasks.f).
+\ region).
 : ALLOC-GUARDED ( n -- ptr u8 n ) {: cap:n :}
    cap STACK-ABI:PAGE-BYTES mod 0 <> if E-MEM-SIZE throw then
    cap GUARDED-SPAN-BYTES {: span-bytes:n :}

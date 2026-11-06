@@ -1,9 +1,8 @@
 \ The cleanup registry runs at process exit: one child per exit path (normal,
 \ `die`, uncaught throw, dying inside a chained foreign hook), judged by what it
-\ left on disk. A stripped image's MAIN exits run in test/stripped-image.f. A
-\ child registers inside this fixture's temp root, given as argument 0, so a
-\ failing case leaves its evidence where the fixture removes it; it resolves
-\ `require src/lib/fs-mutate.f` against the checkout (cwd), as test/app-image.f.
+\ left on disk. A child registers inside this fixture's temp root, given as
+\ argument 0, so a failing case leaves its evidence where the fixture removes
+\ it; it resolves `require src/lib/fs-mutate.f` against the checkout (cwd).
 require src/lib/test.f
 require src/lib/error.f
 require src/lib/string.f

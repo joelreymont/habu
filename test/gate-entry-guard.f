@@ -5,7 +5,7 @@
 \ running row loads through every import and launch. A load of another running
 \ row's entry is refused, naming the file and line that makes it, and so is a
 \ preload that is another running row's entry. A file may name itself, and rows
-\ may share an entry: a tier twin runs one file at both tiers.
+\ may share an entry.
 
 require src/lib/error.f
 require src/lib/fmt.f

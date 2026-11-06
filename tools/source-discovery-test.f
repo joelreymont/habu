@@ -401,9 +401,9 @@ create SDT-LOAD-ERR SDT-LOAD-CAP allot
 \ A library storage definer (src/core/layout-buffer.f, pointer-storage.f) is a
 \ word, not a keyword, so its operand is code: storage named with a loader
 \ word's spelling is refused at it, E-DISC-DYNAMIC at PROVIDED, though it loads
-\ and checks (check-verify-test-lib.f res-typed.f). The walk has no wordlists:
-\ after a redefinition of the definer, `require x.f` as its operand loads x.f.
-\ A refusal is safe, a missed load is not.
+\ and checks. The walk has no wordlists: after a redefinition of the definer,
+\ `require x.f` as its operand loads x.f. A refusal is safe, a missed load is
+\ not.
 : SDT-TEST-STORAGE-DEFINER ( -- )
    s" storage.f" S\" package CVT-RES\nTYPED-VARIABLE PROVIDED n\n;package\n" SDT-WRITE-ENTRY
    [: SDT-RUN-ENTRY ;] E-DISC-DYNAMIC TTHROWSQ

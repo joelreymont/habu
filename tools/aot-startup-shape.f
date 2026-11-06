@@ -1,8 +1,7 @@
 \ aot-startup-shape.f - the instruction shapes a stripped image's startup is
-\ made of, named once for both readers of a built image: test/gate-aot-image.f
-\ validates the startup and tools/image-size-lib.f attributes its bytes, so a
-\ startup change is made in one place. PURE on instruction words: each reader
-\ fetches with its own bounds check and passes the words in.
+\ made of, named once for tools/image-size-lib.f, which attributes a built
+\ image's bytes. PURE on instruction words: the reader fetches with its own
+\ bounds check and passes the words in.
 
 require src/arch/arm64/asm.f
 

@@ -20,10 +20,10 @@ private
 
 \ Lifecycle callbacks run before the capture reads application data: a registrant
 \ holds process-local state (FFI symbols, a mapped buffer, a session) the image
-\ does not restore, and a load-time foreign address is refused without PREPARE
-\ (test/stripped-lifecycle-prepare.f). Last before LINK: phase two loads the
-\ linker above the span and shares lib modules the application loaded, so a
-\ cache released sooner could be retaken inside the span.
+\ does not restore, and a load-time foreign address is refused without PREPARE.
+\ Last before LINK: phase two loads the linker above the span and shares lib
+\ modules the application loaded, so a cache released sooner could be retaken
+\ inside the span.
 : NATIVE-BUILD ( -- )
    AOT-WINDOW-LATCHED
    IMAGE-LIFECYCLE:PREPARE

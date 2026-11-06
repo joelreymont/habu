@@ -179,7 +179,7 @@ private
 \ PZB (src/core/util.f) is the one path scratch, PATH-CAP + 1 bytes: PATHZ writes it and PATH0
 \ hands it over within one call.
 \ Every other below-window engine cell is refused, including env-base.f's TMP-PATH buffers (TPB
-\ TPP TPQ TPS TPU): tools/hb-build-stripped-cells-test.f HBT-STRIPPED-UNCARRIED-TABLE pins it.
+\ TPP TPQ TPS TPU).
 public
 
 \ Collect after the application's one-shot lifecycle cleanup, when the window
