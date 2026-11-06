@@ -1,8 +1,6 @@
 # Habu — checked Forth
 
-Habu is a general-purpose Forth with a native compiler and a stack-effect type
-checker. Application-specific policy and model workflows stay out of the
-language core; [Etch](../etch), a PCB CAD application, is a separate project.
+Application-specific policy and model workflows stay out of the language core.
 
 ## Repository
 
@@ -13,11 +11,8 @@ language core; [Etch](../etch), a PCB CAD application, is a separate project.
 
 ## Writing Habu
 
-- Read [docs/forth-card.md](docs/forth-card.md) before writing Habu: naming and
-  packages, typed effects and locals, what the checker refuses and admits, the
-  storage definers, errors, require order, tests and comments, with each
-  refusal measured on the engine. Look things up in
-  [docs/forth.md](docs/forth.md) at the heading the card names.
+- Read [docs/forth-card.md](docs/forth-card.md) before writing Habu. Look
+  things up in [docs/forth.md](docs/forth.md) at the heading the card names.
 - Habu tools are written in Habu: tools, test harnesses and build drivers are
   checked Habu programs run by `bin/hb`. A shell or Python file may only invoke
   `bin/hb` and carries no logic, parsing or policy. Two exceptions exist:
@@ -31,10 +26,10 @@ language core; [Etch](../etch), a PCB CAD application, is a separate project.
 - Keep unchecked or foreign boundaries explicit, small and tested, and use one
   only after checking that the language cannot express the operation normally.
 - When checked code misbehaves, reduce the failure, find whether the
-  declaration, checker, compiler or runtime is wrong, and fix that layer. The
-  type checker does not prove unmodeled semantics.
-- Native failures: [docs/debugging.md](docs/debugging.md). Missing or stale
-  `bin/hb`: [docs/bootstrap.md](docs/bootstrap.md) "Recovery routes".
+  declaration, checker, compiler or runtime is wrong, and fix that layer.
+- Diagnose a native failure by [docs/debugging.md](docs/debugging.md), and
+  recover a missing or stale `bin/hb` by [docs/bootstrap.md](docs/bootstrap.md)
+  "Recovery routes".
 
 ## Changes
 
@@ -89,14 +84,13 @@ add.
   for shared checker or compiler behavior, runtime ABI, capture format, effects
   across libraries, or an impact focused tests cannot bound; a file's location
   alone does not require it. Check multi-generation convergence when codegen,
-  self-hosting or capture changes can alter successive engine output. Recovery
-  starts from a released hb and the Gforth seed retires with the JIT
-  (DECISIONS.md "recovery"): no change runs a Gforth check or edits bootstrap/
-  to follow the tree. Etch owns its downstream checks. Documentation and
-  mechanical changes need proportionate checks.
+  self-hosting or capture changes can alter successive engine output. No
+  change runs a Gforth check or edits bootstrap/ to follow the tree
+  (DECISIONS.md "recovery"). [Etch](../etch) owns its downstream checks.
+  Documentation and mechanical changes need proportionate checks.
 - Report actual results and untested boundaries; never weaken a claim to make a
-  check pass. [docs/gate.md](docs/gate.md) "Verification claims" states the
-  limits.
+  check pass. Keep each verification claim within the limits
+  [docs/gate.md](docs/gate.md) "Verification claims" states.
 
 ## Where findings go
 
