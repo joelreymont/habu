@@ -34,11 +34,26 @@ require src/lib/time.f
 \ the request with JOURNAL-INPUT$, looks that input up, then sends the request
 \ with CHAT or restores the saved record with REPLAY.
 
+\ A journal's and a recorder's callbacks each get the caller's ctx unchanged.
+\ get fills the MODEL-owned buffer with one record on a hit, which restores
+\ the record's content, vectors and producing configuration without a
+\ provider call; put commits a newly accepted record before returning. After
+\ each request dispatched to a backend, served or failed, record gets the
+\ call's JSON record and returns its call id; reject gets the id of a call whose
+\ reply the library rejected. A journal replay sends nothing and records
+\ nothing. Neither get nor put runs with a transfer out. put and record run
+\ with the call landed, reject inside REJECTED; none of the three may CLOSE
+\ it. A get, put or reject failure propagates, as does a record failure from a
+\ call that otherwise succeeded; RECORD-FAULT keeps record's either way.
+
 package MODEL
 
 private
 -9700 constant E-FIRST
 -9799 constant E-LAST
+\ prepared: JOURNAL-INPUT$ finished the chat request. A busy call is started,
+\ not yet ended, or landed: ended, with CHAT, EMBED or REPLAY not yet done.
+ENUM call-state idle prepared started landed ;ENUM
 public
 \ From CHAT and EMBED, a provider's 404 to the request (an unknown model) is
 \ also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS keeps the status.
@@ -95,7 +110,7 @@ STRUCTURE call DERIVE addr
    FIELD gate-ready bool
    FIELD handle option<CURL:handle>
    FIELD transport option<CURL:handle>
-   FIELD busy bool
+   FIELD state call-state
    FIELD cancelled bool
    FIELD stopped bool
    FIELD key-split n
@@ -125,7 +140,6 @@ STRUCTURE call DERIVE addr
    FIELD journal-put [ n ptr u8 n ptr u8 n -- ]
    FIELD journal-ready bool
    FIELD replay-kind n
-   FIELD prepared bool
 ;STRUCTURE
 
 private
@@ -524,15 +538,37 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    {: c :}
    c RESPONSE-BUF HELD c MODEL-CALL:RESPONSE-U @ SPAN:TAKE SPAN:$ ;
 
-: REQUIRE-IDLE ( ptr call -- )
-   {: c :}
-   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
-   c MODEL-CALL:BUSY @ if E-STATE throw then ;
+: REQUIRE-OPEN ( ptr call -- )
+   MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then ;
 
-\ Drops the finished request; JOURNAL-INPUT$ names the words that discard it.
-: UNPREPARE ( ptr call -- )
+: IDLE! ( ptr call -- ) construct call-state idle swap MODEL-CALL:STATE ! ;
+
+
+\ The setters that keep the finished request run it.
+: REQUIRE-REST ( ptr call -- )
    {: c :}
-   false c MODEL-CALL:PREPARED ! ;
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF ENDOF
+      prepared OF ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF E-STATE throw ENDOF
+   ;MATCH ;
+
+
+\ Drops the finished request and answers whether there was one;
+\ JOURNAL-INPUT$ names the words that discard it.
+: UNPREPARE ( ptr call -- bool )
+   {: c :}
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF false ENDOF
+      prepared OF true ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF E-STATE throw ENDOF
+   ;MATCH
+   c IDLE! ;
+
 
 : REPLACE-SOME ( ptr u8 n ptr n -- )
    {: a:ptr u:n buf:ptr :}
@@ -572,7 +608,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    1 c MODEL-CALL:GATE @ TASK:SEMAPHORE-INIT
    OPTION:NONE c MODEL-CALL:HANDLE !
    OPTION:NONE c MODEL-CALL:TRANSPORT !
-   false c MODEL-CALL:BUSY !
+   c IDLE!
    false c MODEL-CALL:CANCELLED !
    false c MODEL-CALL:STOPPED !
    OPENAI c MODEL-CALL:EMBEDDING-KIND !
@@ -588,7 +624,6 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    false c MODEL-CALL:EMBEDDED !
    false c MODEL-CALL:JOURNAL-READY !
    0 c MODEL-CALL:REPLAY-KIND !
-   false c MODEL-CALL:PREPARED !
    0 c PICK-CELL !
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
@@ -664,32 +699,36 @@ public
    c [: OPEN-PREP ;] catch {: code:n :} drop
    code 0<> if c RELEASE-OPEN code throw then ;
 
+
+\ Frees the open call; a started one is E-STATE.
+\ A landed one, left so by a halt in its recorder or journal put, is freed.
 : CLOSE ( ptr call -- )
    {: c :}
-   c REQUIRE-IDLE
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF ENDOF
+      prepared OF ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF ENDOF
+   ;MATCH
    c RELEASE-OPEN ;
 
-\ Resumes completed calls from the caller's durable store. ctx passes unchanged
-\ to get, which fills the MODEL-owned buffer with one record on a hit, and to
-\ put, which commits a newly accepted record before returning. Both run while
-\ MODEL is idle, and a callback failure propagates. A hit restores the
-\ record's content, vectors and producing configuration without a provider
-\ call. OPEN disables the journal.
+
+\ Installs the journal, which resumes completed calls from the caller's
+\ durable store through get and put under the header's rules. OPEN disables it.
 : JOURNAL! ( n [ n ptr u8 n ptr n -- bool ] [ n ptr u8 n ptr u8 n -- ] ptr call -- )
    {: ctx:n get put c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    ctx c MODEL-CALL:JOURNAL-CONTEXT !
    get c MODEL-CALL:JOURNAL-GET !
    put c MODEL-CALL:JOURNAL-PUT !
    true c MODEL-CALL:JOURNAL-READY ! ;
 
-\ Installs the recorder. After each request a backend receives, served or
-\ failed, record gets the context and the call's JSON record and returns its
-\ call id; reject gets the context and the id of a call whose reply the
-\ library rejected. A journal replay sends nothing and records nothing.
+\ Installs the recorder, which records each request a backend receives through
+\ record and each rejected reply through reject, under the header's rules.
 : RECORDER! ( n [ n ptr u8 n -- n ] [ n n -- ] ptr call -- )
    {: ctx:n record reject c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    c LEDGER {: l :}
    ctx l LEDGER-CONTEXT !
    record l LEDGER-RECORD !
@@ -706,8 +745,7 @@ public
 
 : PURPOSE! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    a u PURPOSE? 0= if E-CONFIG throw then
    a u BUF:N>BLEN c PURPOSE-BUF BUF:REPLACE
    u c LEDGER LEDGER-PENDING-U ! ;
@@ -724,8 +762,7 @@ public
 \ restores OpenAI's.
 : BASE-URL! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    u 0<> if a u BASE-URL? 0= if E-CONFIG throw then then
    0 c MODEL-CALL:REPLAY-KIND !
    u 0= if c BASE-URL-BUF BUF:CLEAR exit then
@@ -733,8 +770,7 @@ public
 
 : GENERATION-MODEL! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    a u c GEN-BUF REPLACE-SOME
    c MODEL-CALL:REPLAY-KIND @ 1 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
 
@@ -742,8 +778,7 @@ public
 \ sends none.
 : EFFORT! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    u 0= if c EFFORT-BUF BUF:CLEAR else a u c EFFORT-BUF REPLACE-SOME then
    c MODEL-CALL:REPLAY-KIND @ 1 = if 0 c MODEL-CALL:REPLAY-KIND ! then ;
 
@@ -752,8 +787,7 @@ public
 \ so the journal input and replay, unchanged.
 : CACHE-KEY! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    u 0= if c CACHE-KEY-BUF BUF:CLEAR else a u c CACHE-KEY-BUF REPLACE-SOME then ;
 
 \ The service tier every generation request without a purpose row names,
@@ -762,8 +796,7 @@ public
 \ not depend on it.
 : SERVICE-TIER! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    u 0= if c TIER-BUF BUF:CLEAR else a u c TIER-BUF REPLACE-SOME then ;
 
 \ The generation model, effort and service tier of every later call for the
@@ -772,8 +805,7 @@ public
 \ E-CONFIG.
 : PURPOSE-MODEL! ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr call -- )
    {: p:ptr p-u:n m:ptr m-u:n e:ptr e-u:n t:ptr t-u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    p p-u PURPOSE? 0= if E-CONFIG throw then
    m-u 0 <= e-u 0< or t-u 0< or if E-CONFIG throw then
    p p-u c ROW-OF 0<> if E-CONFIG throw then
@@ -786,7 +818,7 @@ public
 
 : EMBEDDING-MODEL! ( ptr u8 n n ptr call -- )
    {: a:ptr u:n dims:n c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    dims 0 <= if E-CONFIG throw then
    a u c EMBED-BUF REPLACE-SOME
    dims c MODEL-CALL:DIMS !
@@ -795,15 +827,15 @@ public
 
 \ Names the native credential store's item, by service and account, holding
 \ the API key: the only source of a key. Each CHAT and EMBED reads it with
-\ SECRET:READ into the request header. An idle open call is required, else
-\ E-STATE; an empty service or account is E-CONFIG. At CHAT and EMBED a
-\ missing, empty or non-printable item is E-KEY, and SECRET:E-CONFIG,
-\ SECRET:E-ACCESS and SECRET:E-UNAVAILABLE pass through; a call with no item
-\ named fails there with E-CONFIG. The key spec holds the service, then the
-\ account from byte key-split.
+\ SECRET:READ into the request header. An open call that is idle or holds a
+\ finished request is required, else E-STATE; an empty service or account is
+\ E-CONFIG. At CHAT and EMBED a missing, empty or non-printable item is E-KEY,
+\ and SECRET:E-CONFIG, SECRET:E-ACCESS and SECRET:E-UNAVAILABLE pass through;
+\ a call with no item named fails there with E-CONFIG. The key spec holds the
+\ service, then the account from byte key-split.
 : API-KEY! ( ptr u8 n ptr u8 n ptr call -- )
    {: svc:ptr su:n acct:ptr au:n c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    su 0 <= au 0 <= or if E-CONFIG throw then
    svc su c KEY-SPEC-BUF REPLACE-SOME
    acct au BUF:N>BLEN c KEY-SPEC-BUF BUF:APPEND-SPAN
@@ -811,14 +843,12 @@ public
 
 : SYSTEM! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    a u c SYSTEM-BUF REPLACE-SOME ;
 
 : SCHEMA! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    a u c SCHEMA-BUF REPLACE-SOME ;
 
 \ Model settings a host files in the native credential store under one
@@ -960,7 +990,7 @@ public
 \ A busy or unopened call, or closed settings, is E-STATE.
 : SETTINGS-APPLY ( ptr settings ptr call -- )
    {: s c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    s SETTINGS-MODEL$ c GENERATION-MODEL!
    s SETTINGS-BASE$ c BASE-URL!
    s SETTINGS-SERVICE$ s" api-key" c API-KEY! ;
@@ -1004,13 +1034,13 @@ public
 
 : GENERATION-CONFIG$ ( ptr call -- ptr u8 n )
    {: c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    c MODEL-CALL:REPLAY-KIND @ 1 <> if c BUILD-GEN-CONFIG then
    c GEN-CONFIG$ ;
 
 : EMBEDDING-CONFIG$ ( ptr call -- ptr u8 n )
    {: c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    c MODEL-CALL:REPLAY-KIND @ 2 <> if c BUILD-EMBED-CONFIG then
    c EMBED-CONFIG$ ;
 
@@ -1021,7 +1051,7 @@ public
 \ truncates by default; a context overflow fails the call.
 : OLLAMA! ( ptr u8 n ptr u8 n ptr u8 n n ptr call -- )
    {: endpoint:ptr endpoint-u:n model:ptr model-u:n identity:ptr identity-u:n dims:n c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    dims 0 <= if E-CONFIG throw then
    endpoint endpoint-u BASE-URL? 0= if E-CONFIG throw then
    endpoint endpoint-u c ENDPOINT-BUF REPLACE-SOME
@@ -1072,8 +1102,7 @@ public
 
 : PARTS-RESET ( ptr call -- )
    {: c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    0 c MODEL-CALL:HTTP-STATUS !
    c PARTS-BUF c RESET-SCRATCH
    c JOURNAL-PARTS-BUF c RESET-SCRATCH
@@ -1084,8 +1113,7 @@ public
 
 : TEXT+ ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
    c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
    false c MODEL-CALL:PARTS-VALID !
@@ -1129,8 +1157,7 @@ public
 \ image replays it.
 : IMAGE+ ( ptr u8 n ptr u8 n ptr call -- )
    {: mime:ptr mu:n data:ptr du:n c :}
-   c REQUIRE-IDLE
-   c UNPREPARE
+   c UNPREPARE drop
    c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
    c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
    mime mu IMAGE-MIME? 0= if E-CONFIG throw then
@@ -1293,7 +1320,7 @@ public
 
 : INPUT-RESET ( ptr call -- )
    {: c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    0 c MODEL-CALL:HTTP-STATUS !
    c INPUT-BUF BUF:CLEAR
    0 c MODEL-CALL:INPUT-U !
@@ -1302,7 +1329,7 @@ public
 
 : INPUT+ ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    u 0= if E-CONFIG throw then
    c MODEL-CALL:INPUT-COUNT @ INPUT-MAX >= if E-CAPACITY throw then
    c MODEL-CALL:INPUT-U @ c c MODEL-CALL:INPUT-COUNT @ INPUT-OFF !
@@ -2132,9 +2159,14 @@ private
 : BEGIN-LOCKED ( ptr call -- ptr call )
    {: c :}
    c MODEL-CALL:STOPPED @ if E-CANCELLED throw then
-   c MODEL-CALL:BUSY @ if E-STATE throw then
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF E-STATE throw ENDOF
+   ;MATCH
    \ The reply buffers keep the room the last call's reply took. They are
-   \ resized before the call is busy, so a failed resize leaves it idle.
+   \ resized before the call is started, so a failed resize leaves it idle.
    c CONTENT-BUF c MODEL-CALL:CONTENT-U @ c MODEL-CALL:INCOMPLETE-U @ max c RESET-SIZED
    c RESPONSE-BUF c MODEL-CALL:RESPONSE-U @ c RESET-SIZED
    c ERROR-BUF c RESET-SCRATCH
@@ -2146,7 +2178,7 @@ private
    0 c STREAM STREAM-OUTPUT-NS !
    c EVENT-ROWS-BUF BUF:CLEAR
    c EVENT-TEXT-BUF BUF:CLEAR
-   true c MODEL-CALL:BUSY !
+   construct call-state started c MODEL-CALL:STATE !
    false c MODEL-CALL:CANCELLED !
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:RESPONSE-U !
@@ -2158,7 +2190,7 @@ private
 
 : BEGIN-CALL ( ptr call -- )
    {: c :}
-   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
+   c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: BEGIN-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
@@ -2168,7 +2200,7 @@ private
    {: c :}
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c MODEL-CALL:CANCELLED @ {: cancelled:bool :}
-   false c MODEL-CALL:BUSY !
+   construct call-state landed c MODEL-CALL:STATE !
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
    cancelled ;
 
@@ -2649,7 +2681,7 @@ private
 \ builders.
 : START-LEDGER ( ptr call -- )
    {: c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    0 c MODEL-CALL:HTTP-STATUS !
    c LEDGER {: l :}
    l LEDGER-PENDING-U @ {: u:n :}
@@ -2662,9 +2694,8 @@ private
    0 l LEDGER-TRANSPORT !
    l LEDGER-READY @ u 0= and if E-STATE throw then ;
 
-\ Records a request the backend received. The recorder's fault is kept for
-\ RECORD-FAULT and returned only when the call succeeded, so a model fault
-\ stays primary.
+\ Records a dispatched request and answers the recorder's fault when the header
+\ says it propagates, else 0, so a model fault stays primary.
 : END-LEDGER ( n n bool ptr call -- n )
    {: kind:n code:n cancelled:bool c :}
    c LEDGER {: l :}
@@ -2706,14 +2737,14 @@ private
 
 : PREP-JOURNAL-CHAT ( ptr call -- )
    {: c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    c CHECK-CHAT
    c PART-FINISH
    c JOURNAL-GEN-INPUT ;
 
 : PREP-JOURNAL-EMBED ( ptr call -- )
    {: c :}
-   c REQUIRE-IDLE
+   c REQUIRE-REST
    c CHECK-EMBED
    c JOURNAL-EMBED-INPUT ;
 
@@ -2729,14 +2760,17 @@ private
 
 : CANCEL-LOCKED ( ptr call -- ptr call )
    {: c :}
-   c MODEL-CALL:BUSY @ 0= if
-      false c MODEL-CALL:CANCELLED !
-      c exit
-   then
-   true c MODEL-CALL:CANCELLED !
-   c MODEL-CALL:TRANSPORT @ MATCH option
-      none OF ENDOF
-      some OF OPTION:NONE c MODEL-CALL:TRANSPORT ! CURL:CANCEL ENDOF
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF false c MODEL-CALL:CANCELLED ! ENDOF
+      prepared OF false c MODEL-CALL:CANCELLED ! ENDOF
+      started OF
+         true c MODEL-CALL:CANCELLED !
+         c MODEL-CALL:TRANSPORT @ MATCH option
+            none OF ENDOF
+            some OF OPTION:NONE c MODEL-CALL:TRANSPORT ! CURL:CANCEL ENDOF
+         ;MATCH
+      ENDOF
+      landed OF false c MODEL-CALL:CANCELLED ! ENDOF
    ;MATCH
    c ;
 
@@ -2826,6 +2860,20 @@ private
    l LEDGER-DISPATCHED @ l LEDGER-TRANSPORT @ 0<> or 0= if exit then
    kind code c REPORT ;
 
+
+\ Records a landed call of kind 1 (chat) or 2 (embed), then throws its fault.
+: FINISH-CALL ( n n bool bool ptr call -- n n bool bool ptr call )
+   {: kind:n code:n cancelled:bool hit:bool c :}
+   kind code cancelled c END-LEDGER {: recorded:n :}
+   cancelled if E-CANCELLED throw then
+   code 0<> if
+      kind code c REPORT-FAILURE kind code hit c JOURNAL-REFUSAL code throw
+   then
+   c MODEL-CALL:JOURNAL-READY @ hit 0= and if kind c JOURNAL-PUT then
+   recorded 0<> if recorded throw then
+   kind code cancelled hit c ;
+
+
 \ Sends the request, finishing it unless it was finished, or on a hit restores
 \ the journal record in JOURNAL-OUT-BUF, and answers the reply's content.
 : CALL-CHAT ( bool bool ptr call -- ptr u8 n )
@@ -2835,20 +2883,18 @@ private
    c BEGIN-CALL
    c finished hit [: RUN-CHAT-SELECT ;] catch {: code:n :} 2drop drop
    c END-CALL {: cancelled:bool :}
-   1 code cancelled c END-LEDGER {: recorded:n :}
-   cancelled if E-CANCELLED throw then
-   code 0<> if 1 code c REPORT-FAILURE 1 code hit c JOURNAL-REFUSAL code throw then
-   c MODEL-CALL:JOURNAL-READY @ hit 0= and if 1 c JOURNAL-PUT then
-   recorded 0<> if recorded throw then
+   1 code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop drop
+   c IDLE!
+   rc 0<> if rc throw then
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
 
 public
 
-\ Ends a busy call with E-CANCELLED at once and answers whether one was busy;
-\ the provider is not told, so a response it started may still finish and bill.
+\ Makes a started call end with E-CANCELLED, cutting any transfer at once, and
+\ answers whether the call was started; the provider, not told, may bill it.
 : CANCEL ( ptr call -- bool )
    {: c :}
-   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
+   c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: CANCEL-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:CANCELLED @ {: selected:bool :}
@@ -2858,7 +2904,7 @@ public
 
 : REQUEST-STOP ( ptr call -- )
    {: c :}
-   c MODEL-CALL:ARENA MODEL-ALLOCATION:BASE @ 0= if E-STATE throw then
+   c REQUIRE-OPEN
    c MODEL-CALL:GATE @ TASK:WAIT-SEM
    c [: STOP-LOCKED ;] catch {: code:n :} drop
    c MODEL-CALL:GATE @ TASK:SIGNAL-SEM
@@ -2876,12 +2922,17 @@ public
 \ PARTS-RESET.
 : JOURNAL-INPUT$ ( ptr call -- ptr u8 n )
    {: c :}
-   c REQUIRE-IDLE
-   c MODEL-CALL:PREPARED @ 0= if
-      c PENDING-ROW c PICK-CELL !
-      c PREP-JOURNAL-CHAT
-      true c MODEL-CALL:PREPARED !
-   then
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF
+         c PENDING-ROW c PICK-CELL !
+         c PREP-JOURNAL-CHAT
+         construct call-state prepared c MODEL-CALL:STATE !
+      ENDOF
+      prepared OF ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF E-STATE throw ENDOF
+   ;MATCH
    c JOURNAL-INPUT-SPAN$ ;
 
 \ A journal hit replays the recorded reply; otherwise one streaming request is
@@ -2889,8 +2940,7 @@ public
 \ JOURNAL-INPUT$ finished, else finishes the one built since PARTS-RESET.
 : CHAT ( ptr call -- ptr u8 n )
    {: c :}
-   c MODEL-CALL:PREPARED @ {: ready:bool :}
-   c UNPREPARE
+   c UNPREPARE {: ready:bool :}
    c START-LEDGER
    c MODEL-CALL:JOURNAL-READY @ {: journal:bool :}
    journal ready 0= and if c PREP-JOURNAL-CHAT then
@@ -2905,9 +2955,7 @@ public
 \ JOURNAL-INPUT$ finished it is E-STATE.
 : REPLAY ( ptr u8 n ptr call -- ptr u8 n )
    {: a:ptr u:n c :}
-   c REQUIRE-IDLE
-   c MODEL-CALL:PREPARED @ 0= if E-STATE throw then
-   c UNPREPARE
+   c UNPREPARE 0= if E-STATE throw then
    c START-LEDGER
    c JOURNAL-OUT-BUF c RESET-SCRATCH
    a u BUF:N>BLEN c JOURNAL-OUT-BUF BUF:REPLACE
@@ -2915,7 +2963,7 @@ public
 
 : EMBED ( ptr call -- )
    {: c :}
-   c UNPREPARE
+   c UNPREPARE drop
    c START-LEDGER
    c MODEL-CALL:JOURNAL-READY @ if
       c PREP-JOURNAL-EMBED
@@ -2924,11 +2972,9 @@ public
    c BEGIN-CALL
    c hit [: RUN-EMBED-SELECT ;] catch {: code:n :} 2drop
    c END-CALL {: cancelled:bool :}
-   2 code cancelled c END-LEDGER {: recorded:n :}
-   cancelled if E-CANCELLED throw then
-   code 0<> if 2 code c REPORT-FAILURE 2 code hit c JOURNAL-REFUSAL code throw then
-   c MODEL-CALL:JOURNAL-READY @ hit 0= and if 2 c JOURNAL-PUT then
-   recorded 0<> if recorded throw then
+   2 code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop drop
+   c IDLE!
+   rc 0<> if rc throw then
    true c MODEL-CALL:EMBEDDED ! ;
 
 : VECTOR@ ( n ptr call -- ptr u8 n )

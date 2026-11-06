@@ -1,8 +1,9 @@
 \ test-model-test.f - MODEL:CHAT against a loopback HTTP server whose
 \ /responses routes answer through TEST-MODEL: a completed reply gives its text,
 \ JSON escapes included; an incomplete one MODEL:E-INCOMPLETE with its reason;
-\ a refusal MODEL:E-REFUSED. Every key item reads as one key from a store the
-\ test binds with SECRET:STORE!, so none reaches the desktop store.
+\ a refusal MODEL:E-REFUSED; a halt in the recorder leaves the call free to
+\ close. Every key item reads as one key from a store the test binds with
+\ SECRET:STORE!, so none reaches the desktop store.
 \ Run: bin/hb --load src/lib/net/test-model-test.f
 
 require src/lib/test.f
@@ -11,6 +12,7 @@ require src/lib/span.f
 require src/lib/fmt.f
 require src/lib/aio.f
 require src/lib/secret.f
+require src/lib/task.f
 require src/lib/net/curl.f
 require src/lib/net/http.f
 require src/lib/net/model.f
@@ -25,6 +27,10 @@ $7F000001 constant LOOPBACK
 
 1 TYPED-BUFFER CALL MODEL:call
 : M ( -- ptr MODEL:call ) 0 CALL ;
+
+$10000 TASK:TASK WORK-TASK
+TASK:SEMAPHORE IN-REC
+TASK:SEMAPHORE GO
 
 : KEY$ ( -- ptr u8 n ) s" test-model-key" ;
 \ The completed reply's text, a JSON object whose string holds escaped quotes.
@@ -99,6 +105,43 @@ $7F000001 constant LOOPBACK
    [: M MODEL:CHAT 2drop ;] MODEL:E-REFUSED TTHROWSQ ;
 
 
+: RECORD ( n ptr u8 n -- n )
+   2drop drop
+   IN-REC TASK:SIGNAL-SEM
+   GO TASK:WAIT-SEM
+   TASK:PAUSE
+   7 ;
+
+
+: WORK ( -- )
+   [: M MODEL:CHAT 2drop ;] catch
+   {: code:n :}
+   IN-REC TASK:SIGNAL-SEM
+   code 0<> if code throw then
+   0 TASK:RETURN ;
+
+
+: HALTED ( -- )
+   s" a halt in the recorder leaves the call free to close" T-LABEL
+   s" /completed" AT
+   0 [: RECORD ;] [: 2drop ;] M MODEL:RECORDER!
+   s" probe" M MODEL:PURPOSE!
+   0 IN-REC TASK:SEMAPHORE-INIT
+   0 GO TASK:SEMAPHORE-INIT
+   ['] WORK WORK-TASK TASK:ACTIVATE
+   IN-REC TASK:WAIT-SEM
+   WORK-TASK TASK:HALT
+   GO TASK:SIGNAL-SEM
+   WORK-TASK TASK:JOIN MATCH result
+      ok OF drop T-FAIL ENDOF
+      err OF E-TASK-NO-RESULT T= ENDOF
+   ;MATCH
+   [: M MODEL:CLOSE ;] catch 0 T=
+   [: M MODEL:CLOSE ;] MODEL:E-STATE TTHROWSQ
+   IN-REC TASK:SEMAPHORE-DESTROY
+   GO TASK:SEMAPHORE-DESTROY ;
+
+
 : CURL-OK ( CURL:status -- )
    MATCH CURL:status
       ok OF true ENDOF
@@ -113,8 +156,7 @@ $7F000001 constant LOOPBACK
    ROUTES
    LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
    SETUP
-   COMPLETED INCOMPLETE REFUSAL
-   M MODEL:CLOSE
+   COMPLETED INCOMPLETE REFUSAL HALTED
    HTTP:STOP
    CURL:LOOP-STOP
    AIO:STOP ;

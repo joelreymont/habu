@@ -1537,8 +1537,8 @@ variable ROW-FAIL
 create HASH 64 allot
 
 
-\ Every request the backend receives is recorded once, served or failed,
-\ under the purpose set for it; a call refused before it is sent is not. Its
+\ Every request dispatched to the backend is recorded once, served or failed,
+\ under the purpose set for it; a call refused before dispatch is not. Its
 \ journal record names the call's kind, configured model and the reply's usage
 \ counts, null for each the reply omits, and no usage when the reply has none.
 \ Generation rows share a prefix hash across user text; another system text
