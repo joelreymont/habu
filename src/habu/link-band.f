@@ -25,6 +25,7 @@ DYNAMIC-BUFFER ENTRY-KEYS n
 DYNAMIC-BUFFER ENTRY-USED n
 DYNAMIC-BUFFER ENTRY-RECS n
 variable ENTRY-CAP
+variable ENTRY-N                     \ the table holds shadow records [0, ENTRY-N)
 variable PLACING                     \ the emission being placed
 
 \ Each emission's records, chained from EM-FIRST through REC-NEXT; -1 ends it.
@@ -95,14 +96,26 @@ variable UNSAFE-COUNT
    1 s ENTRY-USED !  key s ENTRY-KEYS !  r s ENTRY-RECS ! ;
 
 
-\ HM:PROBE needs a power-of-two cap; at least twice the records keeps the table
-\ at most half full.
-: ENTRY-TABLE ( -- )
-   NSHADOW:RECORDS 2 * 16 max  1 begin 2dup > while 2 * repeat nip {: cap:n :}
+\ An empty table for n records. HM:PROBE needs a power-of-two cap; at least
+\ twice the records keeps the table at most half full.
+: EMPTY-ENTRIES ( n -- )
+   2 * 16 max  1 begin 2dup > while 2 * repeat nip {: cap:n :}
    cap ENTRY-CAP !
    cap ENTRY-KEYS-RESERVE  cap ENTRY-USED-RESERVE  cap ENTRY-RECS-RESERVE
    0 ENTRY-USED cap HM:CLEAR
-   NSHADOW:RECORDS 0 ?do i FILE-ENTRY loop ;
+   0 ENTRY-N ! ;
+
+\ Adds the records published since the last call, re-adding every record into
+\ a larger table once they would fill more than half of it.
+: ENTRIES ( -- )
+   NSHADOW:RECORDS {: recs:n :}
+   recs ENTRY-N @ < if E-COMP-STATE throw then
+   recs 2 * ENTRY-CAP @ > if recs EMPTY-ENTRIES then
+   recs ENTRY-N @ ?do i FILE-ENTRY loop
+   recs ENTRY-N ! ;
+
+: ENTRY-TABLE ( -- )
+   NSHADOW:RECORDS EMPTY-ENTRIES  ENTRIES ;
 
 
 : CHAINS ( -- )

@@ -521,6 +521,10 @@ public
    e k PATCH-CALL? if e EM-PATCH-TGT @ exit then
    e k CALL-ROW CALL-TGT @ ;
 
+\ Emission e's does> jump slot, or -1, whether or not a clause has patched it.
+: PATCH-SITE@ ( n -- n )
+   EM-CK EM-PATCH @ ;
+
 : ADDR-SITES ( n -- n )
    EM-CK EM-ADDRS @ ;
 

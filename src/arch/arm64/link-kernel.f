@@ -65,11 +65,14 @@ DYNAMIC-BUFFER ROWS n
 variable N-HOSTS
 
 
+public
+
 \ The running hb's own code is [rbase, CODE-END-CELL).
 : HOST-KERNEL? ( n -- bool )
    {: a:n :}
    a rbase >= a data-base CODE-END-CELL + @ < and ;
 
+private
 
 : SHIFT-UP ( n -- )
    {: j:n :}

@@ -9,3 +9,6 @@ variable TALLY
 
 \ A package with no private wordlist: reopen.f gives it one.
 : FILE-OBJECTS-LATE:ONE ( -- n ) 1 ;
+
+\ Ends on a cell, so shape.f's data starts where count.f's ends.
+align

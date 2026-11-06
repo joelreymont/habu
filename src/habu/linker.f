@@ -26,6 +26,7 @@ require src/habu/intern.f
 require src/core/include.f
 require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
+require src/habu/link-band.f
 
 package LINKER
 private
@@ -37,6 +38,7 @@ TYPED-VARIABLE PROGRESS step
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 variable BASE                        \ the space's address, its distance from NULL-PTR
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
+variable OPEN-DP                     \ here's distance once open; header data is [BASE, OPEN-DP)
 TYPED-VARIABLE BODY [ -- ]
 variable COMPILED-N                  \ files the last build compiled
 TYPED-VARIABLE PRIOR-RUNNER [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
@@ -83,10 +85,11 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ LOADERS stacks the key of each file whose compile is running; LOADS holds a
 \ row per load: the loader's key, zeros for the build's body, then the SHA-256
 \ of the path under its root. BUILT holds a row per file whose object is
-\ written: its key, its first and end record index, its object's SHA-256.
+\ written: its key, its first and end record index, its object's SHA-256, its
+\ first and end emission, and the data pointer as its compile starts and returns.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
-ROW-BYTES 16 + constant BUILT-BYTES
+ROW-BYTES 48 + constant BUILT-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
 create BUILT BUF:HDR-BYTES allot
@@ -101,12 +104,14 @@ KEY-BYTES BUFFER: INPUT-SUM
 KEY-BYTES BUFFER: OBJECT-SUM
 KEY-BYTES 2 * BUFFER: KEY-HEX
 
-\ ndict@, NSHADOW:RECORDS, NSHADOW:EMISSIONS and WIDN-CELL as the running file's
-\ compile starts; RUN-FILE refuses a nested file, whose marks would overwrite them.
+\ ndict@, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR and WIDN-CELL
+\ as a file's compile starts; RUN-FILE refuses a nested file, whose marks would overwrite them.
 variable FILE-REC
 variable FILE-ROW
 variable FILE-EM
+variable FILE-DP
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
+variable FILE-END                    \ here's distance as the file's compile returns
 
 \ The magic, the key, and an offset from the file's start and a length for each
 \ of INPUT FILES REQUESTS NAMES PIECES, 0 0 while empty; then the sections in
@@ -136,6 +141,7 @@ variable FILE-WID                    \ the first wordlist id the file's compile 
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
+   0 ENTRY-N !  0 ENTRY-CAP !
    ['] INIT-BUFFERS catch {: rc:n :}
    rc 0<> if DISPOSE-OBJECTS rc throw then ;
 
@@ -201,9 +207,8 @@ variable FILE-WID                    \ the first wordlist id the file's compile 
    LOADERS BYTES$ KEY-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
 
 \ ---- the records ---------------------------------------------------------------
-\ No address reaches PIECES: a record names another by file and index in it, an
-\ emission by its number in the file, so a build whose earlier files are larger
-\ writes the same bytes (test/file-objects.f).
+\ No address reaches PIECES: a record is named by file and index, code and data by
+\ span and offset, so larger earlier files leave its bytes alone (test/file-objects.f).
 
 : BUILT-N ( -- n ) BUILT BYTES$ {: a:ptr u:n :}  u BUILT-BYTES / ;
 
@@ -223,6 +228,33 @@ variable FILE-WID                    \ the first wordlist id the file's compile 
       idx i HOLDS? if i unloop exit then
    loop
    E-COMP-STATE throw ;
+
+\ The BUILT row whose [first, end) emission holds the emission number.
+: EM-ROW ( n -- n )
+   {: e:n :}
+   BUILT-N 0 ?do
+      i BUILT-AT ROW-BYTES 16 + + {: at:ptr :}
+      at LE:U64@ e <=  at 8 + LE:U64@ e >  and if i unloop exit then
+   loop
+   E-COMP-STATE throw ;
+
+\ The BUILT row whose [first, end) data pointer holds v, and true; false when none.
+: DP-ROW ( n -- n bool )
+   {: v:n :}
+   BUILT-N 0 ?do
+      i BUILT-AT ROW-BYTES 32 + + {: at:ptr :}
+      at LE:U64@ v <=  at 8 + LE:U64@ v >  and if i true unloop exit then
+   loop
+   0 false ;
+
+\ The last BUILT row whose data end is v, and true; false when none.
+: DP-END-ROW ( n -- n bool )
+   {: v:n :}
+   BUILT-N 0 ?do
+      BUILT-N 1 - i - {: row:n :}
+      row BUILT-AT ROW-BYTES 40 + + LE:U64@ v = if row true unloop exit then
+   loop
+   0 false ;
 
 \ The FILES row naming the BUILT row's file, 1-based; added on first use.
 : REF-FILE ( n -- n )
@@ -399,10 +431,133 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    rec XREF-WORDLIST BOOT:NAMESPACE-WL = if rec XREF-PKG-PUBLIC exit then
    rec XREF-WORDLIST 1 + ;
 
-\ One piece, since a build's file loads no other file: the count of entries,
-\ the records in index order, each late private wordlist (ids ascending) before
-\ the first record whose mark is above its id, then REQUEST, -1 for none. A
-\ linker mints ids in entry order, and a wordlist exists before a word enters it.
+\ A code address's reference: a record's entry, a quotation's function, or hb's
+\ own code, last since a record's host copy may lie inside hb's code range.
+: CODE-REF+ ( n -- )
+   {: a:n :}
+   a REC-AT {: r:n :}
+   r 0 >= if 0 PIECES U64+  r NSHADOW:RECORD@ REF+ exit then
+   a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
+   qe 0 >= if
+      2 PIECES U64+
+      qe FILE-EM @ >= if
+         0 PIECES U64+  qe FILE-EM @ - PIECES U64+
+      else
+         qe EM-ROW {: row:n :}
+         row REF-FILE PIECES U64+
+         qe  row BUILT-AT ROW-BYTES 16 + + LE:U64@ -  PIECES U64+
+      then
+      qf PIECES U64+ exit
+   then
+   a ARM64:HOST-KERNEL? if 1 PIECES U64+  a rbase - PIECES U64+ exit then
+   E-COMP-STATE throw ;
+
+
+\ A data address's reference: a file's data, or the open's header data. A file's end
+\ names it only after every span, so a later file's first byte names that later file.
+: DATA-REF+ ( n -- )
+   {: v:n :}
+   v FILE-DP @ >=  v FILE-END @ <  and if
+      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ exit
+   then
+   v DP-ROW {: row:n hit:bool :}
+   hit if
+      3 PIECES U64+  row REF-FILE PIECES U64+
+      v  row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ exit
+   then
+   v BASE @ >=  v OPEN-DP @ <  and if 4 PIECES U64+  v BASE @ - PIECES U64+ exit then
+   v FILE-END @ = if
+      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ exit
+   then
+   v DP-END-ROW {: end-row:n end-hit:bool :}
+   end-hit if
+      3 PIECES U64+  end-row REF-FILE PIECES U64+
+      v  end-row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ exit
+   then
+   E-COMP-STATE throw ;
+
+
+\ One emission of CODE+; chain values are read from the shadow's bytes:
+\ PIECES' copy has them cleared.
+: EMISSION-CODE+ ( n -- )
+   {: e:n :}
+   e NSHADOW:SIZE {: s:n :}
+   e NSHADOW:BYTES {: src:ptr :}
+   e NSHADOW:PATCH-SITE@ {: p:n :}
+   e NSHADOW:CALL-SITES {: calls:n :}
+   s PIECES U64+  e NSHADOW:RET-BYTES PIECES U64+
+   src s PIECES SPAN+
+   PIECES BYTES$ {: buf:ptr bufu:n :}
+   bufu s - {: off:n :}
+   calls 0 ?do 0  buf off + e i NSHADOW:CALL-SITE@ +  LE:U32! loop
+   p 0 >= if 0  buf off + p +  LE:U32! then
+   e NSHADOW:FUNCTIONS {: f:n :}
+   f PIECES U64+
+   f 0 ?do e i NSHADOW:FUNCTION-OFFSET@ PIECES U64+ loop
+   0  calls 0 ?do e i NSHADOW:PATCH-CALL? 0= if 1 + then loop  PIECES U64+
+   calls 0 ?do
+      e i NSHADOW:PATCH-CALL? 0= if
+         e i NSHADOW:CALL-KIND@ {: kind:n :}
+         kind NEMIT:CALL <>  kind NEMIT:TAIL <>  and if E-COMP-STATE throw then
+         e i NSHADOW:CALL-SITE@ PIECES U64+
+         kind NEMIT:TAIL = if 1 else 0 then PIECES U64+
+         e i NSHADOW:CALL-TARGET@ CODE-REF+
+      then
+   loop
+   e NSHADOW:ADDR-SITES PIECES U64+
+   e NSHADOW:ADDR-SITES 0 ?do
+      e i NSHADOW:ADDR-SITE@ {: at:n :}
+      e i NSHADOW:ADDR-SITE-KIND@ {: kind:n :}
+      kind NEMIT:ADDR-CODE <>  kind NEMIT:ADDR-DATA <>  and if E-COMP-STATE throw then
+      kind NEMIT:ADDR-CODE = if
+         ADDRESS-CARRIER:ADDR-CHAIN-BYTES
+      else
+         src at +  src s +  ADDRESS-CARRIER:CHAIN-SIZE
+      then {: size:n :}
+      size 0= if E-COMP-STATE throw then
+      src at +  size ADDRESS-CARRIER:CHAIN-VALUE {: v:n :}
+      PIECES BYTES$ drop off + at +  0 size ADDRESS-CARRIER:SET-CHAIN-VALUE
+      at PIECES U64+
+      kind NEMIT:ADDR-CODE = if
+         0 PIECES U64+  v CODE-REF+
+      else
+         1 PIECES U64+  v DATA-REF+
+      then
+   loop
+   p PIECES U64+
+   p 0 >= if
+      calls 0 > if calls 1 - else -1 then {: k:n :}
+      k 0 >= if e k NSHADOW:PATCH-CALL? else false then if
+         e k NSHADOW:CALL-TARGET@ CODE-REF+
+      else
+         5 PIECES U64+
+      then
+   then ;
+
+
+\ CODE, after the piece's entries; every number is 8 bytes, low byte first:
+\   E                      emissions this file's compile filed, from the file's first
+\   per emission, in number order:
+\     S, R                 size in bytes; return bytes (R <= S)
+\     S raw bytes          unpadded; each call site's 4 bytes, the does> slot's 4 bytes
+\                          and every 16-bit immediate of each address chain written as 0
+\     F, then F offsets    function starts
+\     C, then C call rows  site, kind (0 call, 1 tail), reference; no does> slot row
+\     A, then A addr rows  site, kind (0 code, 1 data), reference
+\     P                    the does> slot's site, -1 for none; when P >= 0 its target's
+\                          reference
+\ A reference is a tag, then its fields: 0 a dictionary record (file, index in that
+\ file); 1 hb's own code (offset from rbase); 2 a quotation (file, emission, function);
+\ 3 a file's data (file, offset from that file's first data byte, at most its data size:
+\ a body of no bytes at the file's end); 4 the open's header data (offset from BASE); 5 none
+\ (only as a patch target). A file field is 0 for this object, else its FILES row from 1 (REF-FILE).
+: CODE+ ( -- )
+   ENTRIES
+   NSHADOW:EMISSIONS FILE-EM @ - PIECES U64+
+   NSHADOW:EMISSIONS FILE-EM @ ?do i EMISSION-CODE+ loop ;
+
+\ Piece count 1 (RUN-FILE); entry count; records in index order, each late private wordlist (ids
+\ ascending) before the first record marked above its id; CODE; REQUEST -1. Ids mint in entry order.
 : PIECES! ( -- )
    PIECES BUF:CLEAR  REFS BUF:CLEAR  LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
@@ -411,6 +566,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ndict@ FILE-REC @ -  LATE-N +  PIECES U64+
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
    LATE-REST
+   CODE+
    -1 PIECES U64+ ;
 
 \ FILE-KEY's object; INPUT sums the bytes the runner gets (`#!` read as `\ `).
@@ -440,7 +596,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    SHA-CTX OBJECT BYTES$ OBJECT-SUM SHA256-IN
    FILE-KEY KEY-BYTES BUILT SPAN+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
-   OBJECT-SUM KEY-BYTES BUILT SPAN+ ;
+   OBJECT-SUM KEY-BYTES BUILT SPAN+
+   FILE-EM @ BUILT U64+  NSHADOW:EMISSIONS BUILT U64+
+   FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+ ;
 
 \ ---- the open ------------------------------------------------------------------
 \ Installed while IMAGE-BASE-CELL is 0, so its xt! stores reach hb's own cells.
@@ -537,9 +695,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    LOADER$ nip 0<> if E-COMP-STATE throw then
    path pathu root rootu UNDER-ROOT KEY!
    ndict@ FILE-REC !  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
+   here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !
    PUSH-KEY
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
+   here NULL-PTR - FILE-END !
    1 COMPILED-N +!
    source sourceu WRITE-OBJECT
    BUILT+ ;
@@ -556,6 +716,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ Last: from here header stores go to the space (habu2.f ROUTE-HEADER).
 : IMAGE-IN ( -- )
    BASE @ BOOT:IMAGE-BASE-CELL HOST!
+   here NULL-PTR - OPEN-DP !
    construct step open PROGRESS ! ;
 
 : OPEN ( -- )

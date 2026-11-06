@@ -1,7 +1,8 @@
 \ build.f - test/file-objects.f's child: a build of count.f, shape.f, main.f and
 \ reopen.f written as the program `prog` under the out root, with residue.f
 \ refused and again.f loaded twice in the same build, then host.f loaded after
-\ the build closes; prints `compiled ` and LINKER:COMPILED. With the script
+\ the build closes; prints `compiled ` and LINKER:COMPILED. The body lays one
+\ cell between shape.f and main.f, which no file's data holds. With the script
 \ argument `second` the build loads pad.f first and skips residue.f.
 \ The build's files load from its body: in a build's file `require` is
 \ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
@@ -53,6 +54,7 @@ PATH-CAP BUFFER: PROG-BUF
    second if PAD then
    s" test/fixtures/file-objects/count.f" included
    s" test/fixtures/file-objects/shape.f" included
+   8 allot
    s" test/fixtures/file-objects/main.f" included
    s" test/fixtures/file-objects/reopen.f" included
    second 0= if REFUSE-RESIDUE then
