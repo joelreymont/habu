@@ -23,6 +23,12 @@ SUITE arm64-link-run
    test/compiler/arm64-link-run.f
 ;SUITE
 
+\ file-objects.f builds three files into a program, runs it and counts the
+\ files the build compiled; LINKER:WRITE writes arm64 programs.
+SUITE file-objects
+   test/file-objects.f
+;SUITE
+
 \ ARM BRK breakpoint and resume fixtures select tier 0. The x64 kernel
 \ explicitly refuses that selection; its crash/stack guards have native rows.
 SUITE engine-stack-debugger

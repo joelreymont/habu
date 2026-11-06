@@ -1,8 +1,9 @@
 \ linker.f - the cross-build's data space: WITH maps a space beside hb's DATA,
 \ points DP, the wordlists and the image base at it, switches the checker's
-\ registered stores to the build's (CHECK:OPEN), runs the body there with no
-\ package of hb's open and closes it. The close undoes exactly the open steps
-\ that ran, in reverse.
+\ registered stores to the build's (CHECK:OPEN), routes every file load to the
+\ build's runner (SOURCE-UNIT:USE), runs the body there with no package of
+\ hb's open and closes it. The close undoes exactly the open steps that ran,
+\ in reverse.
 
 require src/lib/prelude.f
 require src/lib/errors.f
@@ -23,13 +24,15 @@ package LINKER
 private
 
 \ The open's progress: each step names the last one that completed.
-ENUM step none mapped shadowed moved checked required open ;ENUM
+ENUM step none mapped shadowed moved checked required routed open ;ENUM
 TYPED-VARIABLE PROGRESS step
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 variable BASE                        \ the space's address, its distance from NULL-PTR
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
 TYPED-VARIABLE BODY [ -- ]
+variable COMPILED-N                  \ files the last build compiled
+TYPED-VARIABLE PRIOR-RUNNER [ ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- ]
 
 \ The host cells a build changes; RESTORE puts them back.
 variable SAVED-DP
@@ -151,14 +154,27 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
    REQUIRE-SNAPSHOT
    construct step required PROGRESS ! ;
 
+\ The build's file runner: each file a load reaches compiles, and is counted
+\ once its compile returns.
+: RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   0 sourceu q execute
+   1 COMPILED-N +! ;
+
+: ROUTE ( -- )
+   SOURCE-UNIT:CURRENT PRIOR-RUNNER !
+   [: RUN-FILE ;] SOURCE-UNIT:USE
+   construct step routed PROGRESS ! ;
+
 \ Last: from here header stores go to the space (habu2.f ROUTE-HEADER).
 : IMAGE-IN ( -- )
    BASE @ BOOT:IMAGE-BASE-CELL HOST!
    construct step open PROGRESS ! ;
 
 : OPEN ( -- )
+   0 COMPILED-N !
    INSTALL-LOOP
-   MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH IMAGE-IN ;
+   MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH ROUTE IMAGE-IN ;
 
 \ ---- the close -----------------------------------------------------------------
 : RESTORE ( -- )
@@ -205,9 +221,13 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
       required OF
          REQUIRE-RESTORE construct step checked PROGRESS ! true
       ENDOF
+      routed OF
+         PRIOR-RUNNER @ SOURCE-UNIT:USE
+         construct step required PROGRESS ! true
+      ENDOF
       open OF
          0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
-         construct step required PROGRESS ! true
+         construct step routed PROGRESS ! true
       ENDOF
    ;MATCH ;
 
@@ -225,6 +245,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
       moved OF false ENDOF
       checked OF false ENDOF
       required OF false ENDOF
+      routed OF false ENDOF
       open OF false ENDOF
    ;MATCH ;
 
@@ -238,5 +259,8 @@ public
    mode modeu s" engine" STR= ENGINE? !
    body BODY !
    [: ['] RUN ['] CLOSE finally ;] OUTER:WITHOUT-PACKAGE ;
+
+\ The files the last build compiled, from its open until the next open.
+: COMPILED ( -- n ) COMPILED-N @ ;
 
 ;package
