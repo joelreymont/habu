@@ -1,18 +1,19 @@
-\ file-objects.f - two builds of the files in test/fixtures/file-objects/, each
-\ by build.f in a fresh hb with HABU_OUT its own temp directory: a fresh
+\ file-objects.f - three builds of the files in test/fixtures/file-objects/,
+\ each by build.f in a fresh hb with HABU_OUT its own temp directory: a fresh
 \ process, since objects must be a function of the files, not of the process.
-\ Each build compiles count.f, shape.f, main.f, reopen.f and again.f twice and
-\ loads host.f after it closes. Build A refuses residue.f and writes six
-\ objects; build B loads pad.f first and skips residue.f, so its later files'
-\ records, emissions and data sit elsewhere, and writes seven. Each of A's
-\ objects must be byte-identical to B's of the same name: an address or a
-\ refused load's trace in an object shows as different bytes. Each of A's
-\ PIECES reads entry by entry, then its CODE emission by emission, to its final
-\ REQUEST. Every CODE's sizes, functions, sites, zeroed sites and chains and
-\ references are checked; reopen.f's entries field by field, count.f's entry
-\ count and package entries, and the fixtures' calls and addresses by name. The
-\ first build's program prints `Hi` and `ok` and exits 0, run in its own
-\ process: the boundary under test is the written file.
+\ Builds A and B compile count.f, shape.f, main.f, reopen.f and again.f twice
+\ and load host.f after they close. Build A writes six objects; build B loads
+\ pad.f first, so its later files' records, emissions and data sit elsewhere,
+\ and writes seven. Each of A's objects must be byte-identical to B's of the
+\ same name: an address in an object shows as different bytes. Build C, in
+\ build.f's `stop` mode, runs three failed builds and writes one object,
+\ count.f's, byte-identical to A's: a refused file and DP moved back write none.
+\ Each of A's PIECES reads entry by entry, then its CODE emission by emission,
+\ to its final REQUEST. Every CODE's sizes, functions, sites, zeroed sites and
+\ chains and references are checked; reopen.f's entries field by field,
+\ count.f's entry count and package entries, and the fixtures' calls and
+\ addresses by name. The first build's program prints `Hi` and `ok` and exits
+\ 0, run in its own process: the boundary under test is the written file.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -49,10 +50,12 @@ KEY-BYTES 2 * constant ROW-BYTES         \ a FILES row: a key, then a SHA-256
 
 PATH-CAP BUFFER: OUT-A   variable OUT-A-U
 PATH-CAP BUFFER: OUT-B   variable OUT-B-U
+PATH-CAP BUFFER: OUT-C   variable OUT-C-U
 PATH-CAP BUFFER: OBJ-DIR
 PATH-CAP BUFFER: JOINED
 CAP BUFFER: NAMES-A      variable NAMES-A-U
 CAP BUFFER: NAMES-B      variable NAMES-B-U
+CAP BUFFER: NAMES-C      variable NAMES-C-U
 CAP BUFFER: BYTES-A
 CAP BUFFER: BYTES-B
 CAP BUFFER: SOURCE-BYTES
@@ -98,6 +101,7 @@ variable ENTRY-NO                        \ reopen.f's entry checked, from 1
 
 : A$ ( -- ptr u8 n ) OUT-A OUT-A-U @ ;
 : B$ ( -- ptr u8 n ) OUT-B OUT-B-U @ ;
+: C$ ( -- ptr u8 n ) OUT-C OUT-C-U @ ;
 
 : OBJ$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: out:ptr outu:n name:ptr nameu:n :}
    out outu s" obj" OBJ-DIR FS:JOIN-PATH {: du:n :}
@@ -110,22 +114,28 @@ variable ENTRY-NO                        \ reopen.f's entry checked, from 1
    s" file-objects: exited " type rc .
    s" stdout: " type CMD:OUT$ type cr  s" stderr: " type CMD:ERR$ type cr ;
 
-: COMPILED$ ( bool -- ptr u8 n )
-   {: second:bool :}
-   second if s\" compiled 7\n" exit then
+: DONE$ ( ptr u8 n -- ptr u8 n )
+   {: mode:ptr modeu:n :}
+   mode modeu s" second" STR= if s\" compiled 7\n" exit then
+   mode modeu s" stop" STR= if s\" stopped\n" exit then
    s\" compiled 6\n" ;
 
-: BUILD ( CMD:command ptr u8 n bool -- CMD:command )
-   {: out:ptr outu:n second:bool :}
+\ A build by build.f with the mode as its script argument, none when empty.
+: BUILD ( CMD:command ptr u8 n ptr u8 n -- CMD:command )
+   {: out:ptr outu:n mode:ptr modeu:n :}
    CMD:RESET
    s" --load" CMD:ARG+  s" test/fixtures/file-objects/build.f" CMD:ARG+
-   second if s" --" CMD:ARG+  s" second" CMD:ARG+ then
+   modeu 0<> if s" --" CMD:ARG+  mode modeu CMD:ARG+ then
    s" HABU_OUT" out outu CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N {: rc:n :}
-   CMD:OUT$ second COMPILED$ ENDS-WITH? {: done:bool :}
+   CMD:OUT$ mode modeu DONE$ ENDS-WITH? {: done:bool :}
    done  rc 0 =  and 0= if rc SHOW then
-   s" the build compiled its loads, residue.f and host.f none" T-LABEL
+   mode modeu s" stop" STR= if
+      s" the build stopped after each failed build" T-LABEL
+   else
+      s" the build compiled its loads and host.f none" T-LABEL
+   then
    done TTRUE
    s" the build exits 0" T-LABEL  rc 0 T= ;
 
@@ -144,6 +154,7 @@ variable ENTRY-NO                        \ reopen.f's entry checked, from 1
 
 : LIST-A ( -- ) A$ NAMES-A LIST NAMES-A-U ! ;
 : LIST-B ( -- ) B$ NAMES-B LIST NAMES-B-U ! ;
+: LIST-C ( -- ) C$ NAMES-C LIST NAMES-C-U ! ;
 
 \ A build that made no obj directory lists no names.
 : LIST-OR-NONE ( [ -- ] -- ) catch {: rc:n :}
@@ -827,10 +838,27 @@ variable OBJ-RECS                        \ the object's records, from its entrie
    idx MAIN-I @ = if au RUN-NAMES  au SET-Q-NAMES then
    idx REOPEN-I @ = if au CHECK-REOPEN  au MAKER-NAMES then ;
 
+\ Build C's one object: count.f's, the same name and bytes as A's.
+: CHECK-STOP ( -- )
+   s" build C wrote one object" T-LABEL
+   NAMES-C NAMES-C-U @ s" .hfo" COUNT-SUB 1 T=
+   s" C's names are one key" T-LABEL  NAMES-C-U @ 1 LISTING-BYTES T=
+   s" A wrote count.f's object" T-LABEL  COUNT-I @ 0 >= TTRUE
+   NAMES-C-U @ 1 LISTING-BYTES <>  COUNT-I @ 0 <  or if exit then
+   COUNT-I @ NAME {: name:ptr nameu:n :}
+   s" C's object is count.f's" T-LABEL  NAMES-C NAME-BYTES name nameu T$=
+   NAMES-C NAME-BYTES name nameu STR= 0= if exit then
+   COUNT-I @ READ-A {: au:n :}
+   C$ name nameu OBJ$ BYTES-B CAP FS:READ-ALL {: cu:n :}
+   s" C's count.f object has A's bytes" T-LABEL  BYTES-A au BYTES-B cu T$= ;
+
 : CHECKS ( -- )
-   [: A$ false BUILD  A$ RUN-PROG  B$ true BUILD ;] CMD:WITH-COMMAND
+   [:
+      A$ s" " BUILD  A$ RUN-PROG  B$ s" second" BUILD  C$ s" stop" BUILD
+   ;] CMD:WITH-COMMAND
    0 NAMES-A-U !  ['] LIST-A LIST-OR-NONE
    0 NAMES-B-U !  ['] LIST-B LIST-OR-NONE
+   0 NAMES-C-U !  ['] LIST-C LIST-OR-NONE
    s" build A wrote six objects" T-LABEL
    NAMES-A NAMES-A-U @ s" .hfo" COUNT-SUB FILES T=
    s" A's names are six keys" T-LABEL  NAMES-A-U @ FILES LISTING-BYTES T=
@@ -845,16 +873,23 @@ variable OBJ-RECS                        \ the object's records, from its entrie
       s" one object is main.f's" T-LABEL  MAIN-I @ 0 >= TTRUE
       s" one object is reopen.f's" T-LABEL  REOPEN-I @ 0 >= TTRUE
       FILES 0 ?do i CHECK-OBJECT loop
+      CHECK-STOP
    then ;
 
 
 : REMOVE-A ( -- ) A$ FS:REMOVE-TREE ;
 : REMOVE-B ( -- ) B$ FS:REMOVE-TREE ;
+: REMOVE-C ( -- ) C$ FS:REMOVE-TREE ;
+
+: WITH-C ( -- )
+   s" habu-file-objects-c" FS:MKTEMP-DIR {: c:ptr u:n :}
+   c OUT-C u BYTE-COPY  u OUT-C-U !
+   ['] CHECKS ['] REMOVE-C finally ;
 
 : WITH-B ( -- )
    s" habu-file-objects-b" FS:MKTEMP-DIR {: b:ptr u:n :}
    b OUT-B u BYTE-COPY  u OUT-B-U !
-   ['] CHECKS ['] REMOVE-B finally ;
+   ['] WITH-C ['] REMOVE-B finally ;
 
 public
 

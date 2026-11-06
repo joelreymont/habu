@@ -28,12 +28,22 @@ require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
 require src/habu/link-band.f
 
+\ The linker's failed build: -9690..-9699, minted here, beside the package its
+\ codes belong to (docs/forth-card.md § 6).
+-9690 constant E-LINKER-FIRST
+-9699 constant E-LINKER-LAST
+
 package LINKER
 private
 
-\ The open's progress: each step names the last one that completed.
-ENUM step none mapped shadowed moved checked required objects routed open ;ENUM
+\ The open's progress: each step names the last one that completed. Past open, loading: a file's compile
+\ or its object's write runs, and a throw out of it stays there; failed: DP moved back.
+ENUM step none mapped shadowed moved checked required objects routed open loading failed ;ENUM
 TYPED-VARIABLE PROGRESS step
+
+public
+-9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes nothing" ERROR:CODE E-FAILED
+private
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
 variable BASE                        \ the space's address, its distance from NULL-PTR
@@ -685,24 +695,49 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
-\ The build's file runner: each file a load reaches compiles, and is counted
-\ and its object, with the records its compile appended, written and added to
-\ BUILT once its compile returns; a throw writes none. A file a file's compile
-\ loads is E-COMP-STATE. WIDN-CELL is read in hb's DATA, where namespace-record
-\ and namespace-private mint ids.
+\ E-FAILED once a file's compile or its object's write threw, or DP moved back in the space: a failed
+\ build loads and writes nothing more. E-COMP-STATE with no build open.
+: GOING ( -- )
+   PROGRESS @
+   MATCH step
+      none OF E-COMP-STATE throw ENDOF
+      mapped OF E-COMP-STATE throw ENDOF
+      shadowed OF E-COMP-STATE throw ENDOF
+      moved OF E-COMP-STATE throw ENDOF
+      checked OF E-COMP-STATE throw ENDOF
+      required OF E-COMP-STATE throw ENDOF
+      objects OF E-COMP-STATE throw ENDOF
+      routed OF E-COMP-STATE throw ENDOF
+      open OF
+         DPHW-CELL HOST@ 0<> if
+            construct step failed PROGRESS !  E-FAILED throw
+         then
+      ENDOF
+      loading OF E-FAILED throw ENDOF
+      failed OF E-FAILED throw ENDOF
+   ;MATCH ;
+
+\ The build's file runner: a file whose compile returns with DP never lowered is counted, and its
+\ object written and added to BUILT; any other ends the build.
 : RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    LOADER$ nip 0<> if E-COMP-STATE throw then
+   GOING
    path pathu root rootu UNDER-ROOT KEY!
    ndict@ FILE-REC !  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
-   WIDN-CELL HOST@ FILE-WID !
+   WIDN-CELL HOST@ FILE-WID !   \ hb's DATA, where namespace-record and namespace-private mint ids
    PUSH-KEY
+   construct step loading PROGRESS !
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
+   DPHW-CELL HOST@ 0<> if
+      construct step failed PROGRESS !  E-FAILED throw
+   then
    here NULL-PTR - FILE-END !
    1 COMPILED-N +!
    source sourceu WRITE-OBJECT
-   BUILT+ ;
+   BUILT+
+   construct step open PROGRESS ! ;
 
 : OBJECTS-IN ( -- )
    INIT-OBJECTS
@@ -749,6 +784,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    FIRST-REC @ ndict!
    floor CODE-RECLAIM:TRUNCATE ;
 
+\ Undo IMAGE-IN, from open or from a file's loading or failed step.
+: IMAGE-OUT ( -- bool )
+   0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
+   construct step routed PROGRESS ! true ;
+
 \ Undo the last step that ran; false once none is left.
 : UNDO ( -- bool )
    PROGRESS @
@@ -775,10 +815,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       routed OF
          PRIOR-RUNNER @ SOURCE-UNIT:USE construct step objects PROGRESS ! true
       ENDOF
-      open OF
-         0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
-         construct step routed PROGRESS ! true
-      ENDOF
+      open OF IMAGE-OUT ENDOF
+      loading OF IMAGE-OUT ENDOF
+      failed OF IMAGE-OUT ENDOF
    ;MATCH ;
 
 : CLOSE ( -- )
@@ -798,6 +837,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       objects OF false ENDOF
       routed OF false ENDOF
       open OF false ENDOF
+      loading OF false ENDOF
+      failed OF false ENDOF
    ;MATCH ;
 
 public

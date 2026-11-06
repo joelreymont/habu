@@ -245,7 +245,7 @@ public
 \ first stores its entry as app-image-core.f START! does.
 : WRITE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   IDLE? if E-COMP-STATE throw then
+   GOING
    ENGINE? @ if E-COMP-STATE throw then
    APP-ENTRY:XT-CELL SPACE-AT @ 0= if
       s" link: the build stored no entry in APP-ENTRY:XT-CELL" 74 die

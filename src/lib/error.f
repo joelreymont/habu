@@ -1232,6 +1232,8 @@ require src/lib/prelude.f
 \ FSM.
 \ Codes the ERROR:CODE tests declare: -9670..-9689, in src/lib/error-test.f,
 \ src/lib/log-test.f and test/fixtures/error/.
+\ The linker's failed build: -9690..-9699, minted in src/habu/linker.f, package
+\ LINKER.
 \ Model chat and embedding client: -9700..-9799, minted in src/lib/net/model.f,
 \ which owns package MODEL.
 
