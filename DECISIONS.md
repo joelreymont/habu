@@ -599,6 +599,12 @@ learned live in the docs for their subject.
   notification reaches anyone, and that pools check a connection as they hand
   it out, he chose "Approve, check on reuse (Recommended)": one zero-wait
   readiness query when Zen's pool takes a connection out.
+- 2026-11-06, a binary statement parameter (relayed by phil from Zen):
+  shown Zen's embeddings reaching PostgreSQL as decimal text that the
+  server parses again, about 60 KB a text, Joel chose "Add PG:BINARY+
+  (Recommended)": "Vectors reach PostgreSQL as binary; text-only
+  statements unchanged." PG:BINARY+ ( connection ptr u8 n -- ) appends a
+  parameter in its type's binary form.
 - 2026-10-31, Maki's Habu words (design r2): offered CMD:RUN-LINES for a run
   that hands each stdout line to a callback and ends the child after a silence
   window, Joel asked "why are we using \"a stretch of silence\" as terminator?";

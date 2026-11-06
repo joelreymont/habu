@@ -13,6 +13,7 @@ require src/lib/task.f
 require src/lib/aio.f
 require src/lib/net/tcp4.f
 require src/lib/image-lifecycle.f
+require src/lib/be.f
 require src/lib/pg.f
 
 package PG-TEST
@@ -426,6 +427,76 @@ TYPED-VARIABLE HELD-ID n
    c S\" \xc3\xa9A" TEXT+
    c s" select $1::text, $2::text"
    [: 0 >ROW 0 >COL TEXT$ s" " T$= 0 >ROW 1 >COL TEXT$ S\" \xc3\xa9A" T$= ;] WITH-RESULT
+   c ;
+
+
+3 BUFFER: HEX-BYTES
+5 BUFFER: FIVE-BYTES
+36 BUFFER: REAL-PAIR
+700 constant FLOAT4-OID                   \ real, from pg_type.dat
+
+: HEX-BYTES! ( -- )
+   0 HEX-BYTES c!  $FF HEX-BYTES 1 + c!  $10 HEX-BYTES 2 + c! ;
+
+
+\ PostgreSQL's array binary form of {1.5,-2}: ndim, has-null, element type,
+\ length, lower bound, then each element's length and IEEE-754 binary32 bits.
+: REAL-PAIR! ( -- )
+   1 REAL-PAIR BE:U32!
+   0 REAL-PAIR 4 + BE:U32!
+   FLOAT4-OID REAL-PAIR 8 + BE:U32!
+   2 REAL-PAIR 12 + BE:U32!
+   1 REAL-PAIR 16 + BE:U32!
+   4 REAL-PAIR 20 + BE:U32!
+   $3FC00000 REAL-PAIR 24 + BE:U32!
+   4 REAL-PAIR 28 + BE:U32!
+   $C0000000 REAL-PAIR 32 + BE:U32! ;
+
+
+: HEX-ANSWER ( PG:result -- PG:result )
+   0 >ROW 0 >COL TEXT$ s" 00ff10" T$= ;
+
+
+\ One past a C int's largest length; reading it would run past HEX-BYTES.
+: HUGE-BINARY ( PG:connection -- PG:connection )
+   dup HEX-BYTES $80000000 BINARY+ ;
+
+
+: BINARY-CASES ( PG:connection -- PG:connection )
+   {: c :}
+   HEX-BYTES! REAL-PAIR!
+   s" a binary parameter's bytes arrive exactly" T-LABEL
+   c PARAMS
+   c HEX-BYTES 3 BINARY+
+   c s" select encode($1::bytea, 'hex')" [: HEX-ANSWER ;] WITH-RESULT
+   s" a binary real[] arrives in PostgreSQL's array binary form" T-LABEL
+   c PARAMS
+   c REAL-PAIR 36 BINARY+
+   c s" select array_to_string($1::real[], ',')"
+   [: 0 >ROW 0 >COL TEXT$ s" 1.5,-2" T$= ;] WITH-RESULT
+   s" text and binary parameters share one statement" T-LABEL
+   c PARAMS
+   c s" ab" TEXT+
+   c FIVE-BYTES 5 BINARY+
+   c s" select $1::text || ':' || length($2::bytea)"
+   [: 0 >ROW 0 >COL TEXT$ s" ab:5" T$= ;] WITH-RESULT
+   s" an empty binary parameter is zero bytes, not NULL" T-LABEL
+   c PARAMS
+   c HEX-BYTES 0 BINARY+
+   c s" select length($1::bytea)"
+   [: 0 >ROW 0 >COL TEXT$ s" 0" T$= ;] WITH-RESULT
+   s" a prepared statement takes a binary parameter" T-LABEL
+   c s" pqt_hex" s" select encode($1::bytea, 'hex')"
+   [: OUTCOME-TAG TAG-OK T= ;] WITH-PREPARE
+   c PARAMS
+   c HEX-BYTES 3 BINARY+
+   c s" pqt_hex" [: HEX-ANSWER ;] WITH-PREPARED
+   s" BINARY+ refuses a length past a C int and keeps what is staged" T-LABEL
+   c PARAMS
+   c s" kept" TEXT+
+   c [: HUGE-BINARY ;] catch {: stale-huge huge-code:n :}
+   huge-code E-CAPACITY T=
+   c s" select $1::text" [: 0 >ROW 0 >COL TEXT$ s" kept" T$= ;] WITH-RESULT
    c ;
 
 
@@ -1901,6 +1972,7 @@ TASK:MIN-STACK TASK:TASK NOTE-WORKER
    DDL-CASES
    PARAM-CASES
    TEXT-BOUNDARY-CASES
+   BINARY-CASES
    HELD-SPAN-CASES
    LONG-MESSAGE-CASES
    NESTED-SPAN-CASES

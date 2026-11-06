@@ -7,6 +7,7 @@
 
 require src/lib/error.f
 require src/lib/ffi-abi.f
+require src/lib/le.f
 require src/lib/span.f
 require src/lib/string.f
 require src/lib/memory.f
@@ -102,6 +103,9 @@ $100000000 constant HANDLE-STRIDE         \ low 32 bits name the registry slot
 $7FFFFFFF constant GENERATION-MAX         \ positive signed handle, high 31 bits
 $FFFFFFFFFFFFFFF8 constant CELL-MASK      \ round an arena offset up to a cell
 -1 constant NO-OFFSET                     \ a NULL parameter has no arena bytes
+-1 constant TEXT-LEN                      \ a text or NULL parameter: format 0
+$7FFFFFFF constant BINARY-MAX             \ a libpq parameter length is a C int
+4 constant INT-BYTES                      \ a C int's size
 -1 constant NO-CONN                       \ RES-CONN of a free or half-claimed slot
 10 constant DEC-BASE
 $30 constant DIGIT-ZERO
@@ -127,6 +131,7 @@ DYNAMIC-BUFFER CONN-LAST-RESULT ptr u8
 DYNAMIC-BUFFER CONN-PENDING n
 DYNAMIC-BUFFER CONN-CONNECTING n
 DYNAMIC-BUFFER CONN-PARAM-OFFS ptr n
+DYNAMIC-BUFFER CONN-PARAM-LENS ptr n
 DYNAMIC-BUFFER CONN-PARAM-OFFS-CAP n
 DYNAMIC-BUFFER CONN-VERB n
 DYNAMIC-BUFFER CONN-BOUND n
@@ -246,6 +251,11 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot CONN-CHECK
    slot CONN-PARAM-OFFS ;
 
+: PARAM-LENS-CELL ( n -- ptr ptr n )
+   {: slot:n :}
+   slot CONN-CHECK
+   slot CONN-PARAM-LENS ;
+
 : DRAIN-LAST-CELL ( n -- ptr ptr u8 ) {: slot:n :}
    slot CONN-CHECK
    slot CONN-LAST-RESULT ;
@@ -266,6 +276,8 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 : ARENA-BASE! ( ptr u8 n -- ) {: p slot:n :}   p slot ARENA-CELL ! ;
 : PARAM-OFFS ( n -- ptr n )   PARAM-OFFS-CELL @ ;
 : PARAM-OFFS! ( ptr n n -- ) {: p slot:n :}   p slot PARAM-OFFS-CELL ! ;
+: PARAM-LENS ( n -- ptr n )   PARAM-LENS-CELL @ ;
+: PARAM-LENS! ( ptr n n -- ) {: p slot:n :}   p slot PARAM-LENS-CELL ! ;
 
 \ The generation publishes the slot's owner: written with release after the
 \ owner and read with acquire before it, so a reader that sees a generation
@@ -305,6 +317,18 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
 : PARAM-OFF! ( n n n -- ) {: v:n slot:n idx:n :}
    slot idx PARAM-CHECK
    v slot PARAM-OFFS idx cells + ! ;
+
+
+: PARAM-LEN@ ( n n -- n )
+   {: slot:n idx:n :}
+   slot idx PARAM-CHECK
+   slot PARAM-LENS idx cells + @ ;
+
+
+: PARAM-LEN! ( n n n -- )
+   {: v:n slot:n idx:n :}
+   slot idx PARAM-CHECK
+   v slot PARAM-LENS idx cells + ! ;
 
 
 : RES-CHECK ( n -- ) {: slot:n :}
@@ -408,6 +432,17 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    off ;
 
 
+\ Copy bytes into the arena, with no terminator, and answer their offset.
+\ Reserve first, as ARENA-CSTR does.
+: ARENA-BYTES ( ptr u8 n n -- n )
+   {: a u:n slot:n :}
+   slot u ARENA-ENSURE
+   slot ARENA-U@ {: off:n :}
+   a slot ARENA-BASE off + u BYTE-COPY
+   off u + slot ARENA-U!
+   off ;
+
+
 : ARENA-DIGITS ( n n -- ) {: value:n slot:n :}
    value DEC-BASE < if
       value DIGIT-ZERO + slot ARENA-BYTE+ exit
@@ -442,20 +477,40 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot ARENA-RELEASE ;
 
 
-\ The offsets mapping outlives CLOSE and goes with the registry.
-: PARAM-OFFS-RELEASE ( n -- ) {: slot:n :}
+\ The offset and length mappings outlive CLOSE and go with the registry.
+: PARAM-OFFS-RELEASE ( n -- )
+   {: slot:n :}
    slot PARAM-OFFS-CAP@ {: cap:n :}
-   cap 0<> if slot PARAM-OFFS cap MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS then
+   cap 0<> if
+      slot PARAM-OFFS cap MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS
+      slot PARAM-LENS cap MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS
+   then
    NULL-PTR slot PARAM-OFFS!
+   NULL-PTR slot PARAM-LENS!
    0 slot PARAM-OFFS-CAP! ;
 
 
-: PARAM-GROW ( n n -- ) {: slot:n cap:n :}
-   cap MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: fresh :}
+: PARAM-CELLS ( n -- ptr n )   MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS ;
+
+\ catch's preserving shape: a mapping and its count in, a new one out.
+: SECOND-CELLS ( ptr n n -- ptr n n )   nip dup PARAM-CELLS swap ;
+
+
+\ Offsets and lengths share one capacity. A failed second mapping releases
+\ the first, so a throw leaves both lists as they were.
+: PARAM-GROW ( n n -- )
+   {: slot:n cap:n :}
+   cap PARAM-CELLS {: offs :}
+   offs cap ['] SECOND-CELLS catch nip {: lens code:n :}
+   code 0<> if offs cap MEM:CELLS-ALLOC-COUNT MEM:RELEASE-CELLS code throw then
    slot PARAM-N@ {: used:n :}
-   used 0 > if slot PARAM-OFFS BYTE-VIEW fresh BYTE-VIEW used cells BYTE-COPY then
+   used 0 > if
+      slot PARAM-OFFS BYTE-VIEW offs BYTE-VIEW used cells BYTE-COPY
+      slot PARAM-LENS BYTE-VIEW lens BYTE-VIEW used cells BYTE-COPY
+   then
    slot PARAM-OFFS-RELEASE
-   fresh slot PARAM-OFFS!
+   offs slot PARAM-OFFS!
+   lens slot PARAM-LENS!
    cap slot PARAM-OFFS-CAP! ;
 
 
@@ -466,16 +521,23 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    slot slot PARAM-OFFS-CAP@ cells used 1 + cells ARENA-FIT CELL / PARAM-GROW ;
 
 
-: PARAM-OFF+ ( n n -- ) {: off:n slot:n :}
+: PARAM-OFF+ ( n n n -- )
+   {: off:n len:n slot:n :}
    slot PARAM-N@ {: idx:n :}
    off slot idx PARAM-OFF!
+   len slot idx PARAM-LEN!
    idx 1 + slot PARAM-N! ;
 
 
-: PARAM-PTR ( n n -- ptr u8 ) {: slot:n idx:n :}
-   slot idx PARAM-OFF@ {: off:n :}
+: ARENA-ARG ( n n -- ptr u8 )
+   {: slot:n off:n :}
    off NO-OFFSET = if NULL-ARG exit then
    slot ARENA-BASE off + ;
+
+
+: PARAM-PTR ( n n -- ptr u8 )
+   {: slot:n idx:n :}
+   slot slot idx PARAM-OFF@ ARENA-ARG ;
 
 
 : FILL-PARAM-ARRAY ( n n -- ) {: slot:n off:n :}
@@ -485,17 +547,48 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    loop ;
 
 
-\ The `const char *const *` libpq reads, appended last so the pointers it holds
-\ are computed against the arena's final base. Parameters are text format, so
-\ paramTypes, paramLengths and paramFormats are NULL: the server infers each
-\ type and lengths are ignored for text.
-: PARAM-ARRAY ( n -- n ) {: slot:n :}
+\ A binary parameter's length and format 1; a text or NULL one's 0 and 0.
+: FORMAT-PAIR ( n -- n n )
+   dup TEXT-LEN = if drop 0 0 else 1 then ;
+
+
+: FILL-LENS-FORMATS ( n n n -- )
+   {: slot:n lens:n fmts:n :}
+   slot ARENA-BASE {: base :}
+   slot PARAM-N@ 0 ?do
+      slot i PARAM-LEN@ FORMAT-PAIR
+      base fmts + i INT-BYTES * + LE:U32!
+      base lens + i INT-BYTES * + LE:U32!
+   loop ;
+
+
+: BINARY? ( n -- bool )
+   {: slot:n :}
+   slot PARAM-N@ 0 ?do
+      slot i PARAM-LEN@ TEXT-LEN <> if true unloop exit then
+   loop
+   false ;
+
+
+\ The pointer array, then with a binary parameter C ints of lengths and formats
+\ (else NO-OFFSET: all text), appended last against the arena's final base.
+: PARAM-ARRAY ( n -- n n n )
+   {: slot:n :}
    slot ARENA-U@ CELL 1 - + CELL-MASK and {: off:n :}
-   off slot PARAM-N@ cells + {: end:n :}
+   slot PARAM-N@ {: count:n :}
+   off count cells + {: lens:n :}
+   lens count INT-BYTES * + {: fmts:n :}
+   slot BINARY? {: binary:bool :}
+   binary if fmts count INT-BYTES * + else lens then {: end:n :}
    slot end slot ARENA-U@ - ARENA-ENSURE
    end slot ARENA-U!
    slot off FILL-PARAM-ARRAY
-   off ;
+   binary if
+      slot lens fmts FILL-LENS-FORMATS
+      off lens fmts
+   else
+      off NO-OFFSET NO-OFFSET
+   then ;
 
 
 : PACK-HANDLE ( n n -- n ) {: gen:n slot:n :}
@@ -589,6 +682,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-PENDING-RELEASE
    CONN-CONNECTING-RELEASE
    CONN-PARAM-OFFS-RELEASE
+   CONN-PARAM-LENS-RELEASE
    CONN-PARAM-OFFS-CAP-RELEASE
    CONN-VERB-RELEASE
    CONN-BOUND-RELEASE
@@ -618,6 +712,7 @@ FUNCTION: LIB-FREEMEM PQfreemem ( ptr u8 -- ) ;FUNCTION
    CONN-CAP CONN-PENDING-RESERVE
    CONN-CAP CONN-CONNECTING-RESERVE
    CONN-CAP CONN-PARAM-OFFS-RESERVE
+   CONN-CAP CONN-PARAM-LENS-RESERVE
    CONN-CAP CONN-PARAM-OFFS-CAP-RESERVE
    CONN-CAP VERB-CAP * CELL / CONN-VERB-RESERVE
    CONN-CAP CONN-BOUND-RESERVE
@@ -1048,7 +1143,8 @@ REGISTER-CHILD-RESET
 \ without ever leaving a PGresult nobody can clear, and the arena is released
 \ the instant libpq returns - it has copied everything into its own message by
 \ then. A throw before that leaves the arena for the next PARAMS or CLOSE.
-: CLAIM-STATEMENT ( n -- n n ) {: slot:n :}
+: CLAIM-STATEMENT ( n -- n n n n )
+   {: slot:n :}
    slot PARAM-ARRAY CLAIM-RES-SLOT ;
 
 
@@ -1059,27 +1155,31 @@ REGISTER-CHILD-RESET
    E-EXEC throw ;
 
 
-: EXEC-START ( n ptr u8 n -- ) {: slot:n a u:n :}
+: EXEC-START ( n ptr u8 n -- )
+   {: slot:n a u:n :}
    slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    a u slot ARENA-CSTR {: sql-off:n :}
-   slot CLAIM-STATEMENT {: arr-off:n res:n :}
+   slot CLAIM-STATEMENT {: arr-off:n lens-off:n fmts-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base sql-off + slot PARAM-N@ NULL-ARG base arr-off +
-   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PARAMS {: sent:n :}
+   slot lens-off ARENA-ARG slot fmts-off ARENA-ARG
+   TEXT-RESULT LIB-SEND-QUERY-PARAMS {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
 
 
-: PREPARED-START ( n ptr u8 n -- ) {: slot:n a u:n :}
+: PREPARED-START ( n ptr u8 n -- )
+   {: slot:n a u:n :}
    slot IDLE-CHECK
    u 0 <= if E-STATEMENT throw then
    a u slot ARENA-CSTR {: name-off:n :}
-   slot CLAIM-STATEMENT {: arr-off:n res:n :}
+   slot CLAIM-STATEMENT {: arr-off:n lens-off:n fmts-off:n res:n :}
    slot ARENA-BASE {: base :}
    slot CONN-PG@ base name-off + slot PARAM-N@ base arr-off +
-   NULL-ARG NULL-ARG TEXT-RESULT LIB-SEND-QUERY-PREPARED {: sent:n :}
+   slot lens-off ARENA-ARG slot fmts-off ARENA-ARG
+   TEXT-RESULT LIB-SEND-QUERY-PREPARED {: sent:n :}
    sent 0= if slot res SEND-FAILED then
    slot res ARM-QUERY
    slot RESET-PARAMS ;
@@ -1434,10 +1534,8 @@ public
    CONN-SLOT FINISH-SLOT ;
 
 
-\ PARAMS empties the connection's parameter list and releases its call arena;
-\ TEXT+, INT+ and NULL+ append in $1, $2, ... order. WITH-RESULT and
-\ WITH-PREPARED consume the list and leave it empty, so no call inherits
-\ another's parameters.
+\ PARAMS empties the list; TEXT+, INT+, NULL+ and BINARY+ append $1, $2, ...;
+\ WITH-RESULT and WITH-PREPARED consume it, so no call inherits another's.
 : PARAMS ( connection -- )
    CONN-SLOT dup IDLE-CHECK RESET-PARAMS ;
 
@@ -1446,21 +1544,32 @@ public
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
    slot PARAM-ROOM
-   a u slot ARENA-CSTR slot PARAM-OFF+ ;
+   a u slot ARENA-CSTR TEXT-LEN slot PARAM-OFF+ ;
 
 
 : INT+ ( connection n -- ) {: handle:connection value:n :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
    slot PARAM-ROOM
-   value slot ARENA-INT slot PARAM-OFF+ ;
+   value slot ARENA-INT TEXT-LEN slot PARAM-OFF+ ;
 
 
 : NULL+ ( connection -- ) {: handle:connection :}
    handle CONN-SLOT {: slot:n :}
    slot IDLE-CHECK
    slot PARAM-ROOM
-   NO-OFFSET slot PARAM-OFF+ ;
+   NO-OFFSET TEXT-LEN slot PARAM-OFF+ ;
+
+
+\ The bytes are the binary form of the type PostgreSQL infers from a cast or
+\ the statement's context; u = 0 is an empty value, not NULL.
+: BINARY+ ( connection ptr u8 n -- )
+   {: handle:connection a u:n :}
+   handle CONN-SLOT {: slot:n :}
+   slot IDLE-CHECK
+   slot PARAM-ROOM
+   u BINARY-MAX > if E-CAPACITY throw then
+   a u slot ARENA-BYTES u slot PARAM-OFF+ ;
 
 
 : SEND ( connection ptr u8 n -- ) {: handle:connection a u:n :}
