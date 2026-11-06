@@ -58,6 +58,9 @@ private
 \ not yet ended, or landed: ended, with CHAT, EMBED or REPLAY not yet done.
 ENUM call-state idle prepared started landed ;ENUM
 ENUM call-kind chat embed ;ENUM
+\ A call's chat input: none, building (PARTS-RESET started it, every write
+\ done), broken (a write did not complete) or finished (PART-FINISH closed it).
+ENUM input-state none building broken finished ;ENUM
 public
 \ From CHAT and EMBED, a provider's 404 to the request (an unknown model) is
 \ also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS keeps the status.
@@ -128,8 +131,7 @@ STRUCTURE call DERIVE addr
    FIELD vector-at n
    FIELD embedded bool
    FIELD parts-count n
-   FIELD parts-open bool
-   FIELD parts-valid bool
+   FIELD chat-input input-state
    FIELD content-seen bool
    FIELD parsed-index n
    FIELD vector-seen bool
@@ -593,14 +595,25 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    ;MATCH ;
 
 
-\ Drops the finished request and answers whether there was one;
-\ JOURNAL-INPUT$ names the words that discard it.
+: REQUIRE-BUILDING ( ptr call -- )
+   MODEL-CALL:CHAT-INPUT @ MATCH input-state
+      none OF E-STATE throw ENDOF
+      building OF ENDOF
+      broken OF E-STATE throw ENDOF
+      finished OF E-STATE throw ENDOF
+   ;MATCH ;
+
+
+\ Drops the request JOURNAL-INPUT$ finished, leaving no input, and answers
+\ whether there was one; JOURNAL-INPUT$ names the words that discard it.
 : UNPREPARE ( ptr call -- bool )
    {: c :}
    c REQUIRE-OPEN
    c MODEL-CALL:STATE @ MATCH call-state
       idle OF false ENDOF
-      prepared OF true ENDOF
+      prepared OF
+         construct input-state none c MODEL-CALL:CHAT-INPUT ! true
+      ENDOF
       started OF E-STATE throw ENDOF
       landed OF E-STATE throw ENDOF
    ;MATCH
@@ -657,8 +670,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    0 c MODEL-CALL:CONTENT-U !
    0 c MODEL-CALL:INCOMPLETE-U !
    0 c MODEL-CALL:PARTS-COUNT !
-   false c MODEL-CALL:PARTS-OPEN !
-   false c MODEL-CALL:PARTS-VALID !
+   construct input-state none c MODEL-CALL:CHAT-INPUT !
    false c MODEL-CALL:EMBEDDED !
    false c MODEL-CALL:JOURNAL-READY !
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
@@ -1123,12 +1135,11 @@ private
 
 : PART-FINISH ( ptr call -- )
    {: c :}
-   c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
-   c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
-   false c MODEL-CALL:PARTS-VALID !
+   c REQUIRE-BUILDING
+   construct input-state broken c MODEL-CALL:CHAT-INPUT !
    c PART-WRITER JSON:WRITE-ARRAY-END JSON:WRITE-CLOSE
    c JOURNAL-PART-WRITER JSON:WRITE-ARRAY-END JSON:WRITE-CLOSE
-   false c MODEL-CALL:PARTS-OPEN ! ;
+   construct input-state finished c MODEL-CALL:CHAT-INPUT ! ;
 
 : PART-COMMA ( ptr call -- )
    {: c :}
@@ -1140,7 +1151,7 @@ private
 : PART-ADDED ( ptr call -- )
    {: c :}
    c MODEL-CALL:PARTS-COUNT @ 1+ c MODEL-CALL:PARTS-COUNT !
-   true c MODEL-CALL:PARTS-VALID ! ;
+   construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
 
 : TEXT-PART ( ptr u8 n ptr JSON:writer -- )
    {: a:ptr u:n w :}
@@ -1155,20 +1166,19 @@ public
 : PARTS-RESET ( ptr call -- )
    {: c :}
    c UNPREPARE drop
+   construct input-state broken c MODEL-CALL:CHAT-INPUT !
    0 c MODEL-CALL:HTTP-STATUS !
    c PARTS-BUF c RESET-SCRATCH
    c JOURNAL-PARTS-BUF c RESET-SCRATCH
    0 c MODEL-CALL:PARTS-COUNT !
    c PART-OPEN
-   true c MODEL-CALL:PARTS-OPEN !
-   true c MODEL-CALL:PARTS-VALID ! ;
+   construct input-state building c MODEL-CALL:CHAT-INPUT ! ;
 
 : TEXT+ ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c UNPREPARE drop
-   c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
-   c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
-   false c MODEL-CALL:PARTS-VALID !
+   c REQUIRE-BUILDING
+   construct input-state broken c MODEL-CALL:CHAT-INPUT !
    c PART-COMMA
    a u c PART-WRITER TEXT-PART
    a u c JOURNAL-PART-WRITER TEXT-PART
@@ -1210,8 +1220,7 @@ public
 : IMAGE+ ( ptr u8 n ptr u8 n ptr call -- )
    {: mime:ptr mu:n data:ptr du:n c :}
    c UNPREPARE drop
-   c MODEL-CALL:PARTS-OPEN @ 0= if E-STATE throw then
-   c MODEL-CALL:PARTS-VALID @ 0= if E-STATE throw then
+   c REQUIRE-BUILDING
    mime mu IMAGE-MIME? 0= if E-CONFIG throw then
    data du c IMAGE-DIGEST {: hex:ptr hex-u:n :}
    c URI-BUF BUF:CLEAR
@@ -1219,7 +1228,7 @@ public
    mime mu BUF:N>BLEN c URI-BUF BUF:APPEND-SPAN
    s" ;base64," BUF:N>BLEN c URI-BUF BUF:APPEND-SPAN
    data du BUF:N>BLEN c URI-BUF BUF:APPEND-SPAN
-   false c MODEL-CALL:PARTS-VALID !
+   construct input-state broken c MODEL-CALL:CHAT-INPUT !
    c PART-COMMA
    c PART-WRITER
    JSON:WRITE-OBJECT-START
@@ -3151,6 +3160,17 @@ private
    code cancelled hit c ;
 
 
+\ CHAT and REPLAY have used a finished input; one the call refused before
+\ finishing it is kept.
+: USED ( ptr call -- )
+   {: c :}
+   c MODEL-CALL:CHAT-INPUT @ MATCH input-state
+      none OF ENDOF
+      building OF ENDOF
+      broken OF ENDOF
+      finished OF construct input-state none c MODEL-CALL:CHAT-INPUT ! ENDOF
+   ;MATCH ;
+
 \ Sends the request, finishing it unless it was finished, or on a hit restores
 \ the journal record in JOURNAL-OUT-BUF, and answers the reply's content.
 : CALL-CHAT ( bool bool ptr call -- ptr u8 n )
@@ -3163,6 +3183,7 @@ private
    c END-CALL {: cancelled:bool :}
    code cancelled hit c [: FINISH-CALL ;] catch {: rc:n :} 2drop 2drop
    c IDLE!
+   c USED
    rc 0<> if rc throw then
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
 
