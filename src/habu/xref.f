@@ -669,7 +669,7 @@ CAST: INVALIDATE-XT ( n -- [ n -- ] )
 \ late record for an earlier routine, so a floor read off one record's start
 \ can be too low and give back a surviving routine.
 \
-\ THE FLOOR IS A RETIRED ROUTINE'S OWN START, CHOSEN BY ADDRESS: every
+\ THE FLOOR IS A RETIRED RECORD'S OWN START, CHOSEN BY ADDRESS: every
 \ surviving routine lies below it. A start is the one address nameable without
 \ knowing the length of the routine below it (the recorded length excludes a
 \ trailing return). The cost, when the lowest retirement is not the first
@@ -689,6 +689,16 @@ CAST: INVALIDATE-XT ( n -- [ n -- ] )
    s ARENA-LO < if 0 exit then
    s cp@ < if s exit then
    0 ;
+
+\ A record's lowest arena byte: its out-of-line name copy (layout.f DNAME-EXT),
+\ else its routine (REC-CODE), for an alias its source's, which it never wrote.
+: REC-LOW ( n -- n ) {: k:n :}
+   k REC-CODE {: s:n :}
+   k XREF-REC {: rec:ptr :}
+   rec XREF-EXT? 0= if s exit then
+   rec XREF-NAME-SLOT XREF-CELL@ {: a:n :}
+   a ARENA-LO <  a cp@ < 0=  or if s exit then
+   a ;
 
 \ The highest address any routine below the cut begins at. A record that is
 \ already RETIRED still counts: `undefine` retires the name and leaves the
@@ -727,14 +737,12 @@ public
 7179 constant E-LIVE
 
 \ The floor of a sweep that retires every record from CUT upwards: the lowest
-\ address a retired routine begins at that is above every surviving routine's
-\ start. When the sweep retires no routine that sits above the survivors there
-\ is nothing to give back and the answer is the free slot itself.
+\ REC-LOW of a retired record above every surviving routine's start, else cp@.
 : FLOOR-FROM ( n -- n ) {: cut:n :}
    cut LIVE-SCAN {: live:n :}
    cp@
    ndict@ cut ?do
-      live swap i REC-CODE MIN-ABOVE-LIVE
+      live swap i REC-LOW MIN-ABOVE-LIVE
    loop ;
 
 \ Reclaim the code space above floor: both relocation maps are cleared over

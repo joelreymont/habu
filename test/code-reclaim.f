@@ -119,6 +119,25 @@ variable U-INDEX
    s" : CR-REUSE-CALL ( n -- n ) CR-REUSE ;" evaluate-closed
    s" 5 CR-REUSE-CALL" TEST-EVAL:N 15 T= ;
 
+variable L-CP
+
+\ A `:` word's name copy lies just below its routine.
+: LONG-CASE ( -- )
+   cp@ L-CP !
+   s" : CR-LONG-NAMED-WORD ( -- n ) 7 ;" evaluate-closed
+   s" CR-LONG-NAMED-WORD" FORGET-DEFS-FROM
+   s" forget gives back a long name's bytes" T-LABEL
+   cp@ L-CP @ T= ;
+
+\ The alias record's name copy lies above the routine it names.
+: ALIAS-LONG-CASE ( -- )
+   cp@ L-CP !
+   s" package CRECL-ALIAS public EXPORT CRECL-SUBJ:CR-LONG-SUBJECT-WORD ;package"
+   evaluate-closed
+   s" CRECL-ALIAS:CR-LONG-SUBJECT-WORD" FORGET-DEFS-FROM
+   s" forgetting a long-named alias gives back its name's bytes" T-LABEL
+   cp@ L-CP @ T= ;
+
 \ LASTC-CELL names the record the last create, variable or constant wrote, and
 \ does> patches that record. Every motion that lowers the dictionary count
 \ retires the records above it, and the next definition reuses their slots, so
@@ -190,6 +209,8 @@ public
    PLAIN-CASE
    REFUSE-CASE
    REUSE-CASE
+   LONG-CASE
+   ALIAS-LONG-CASE
    LASTC-CASE
    T-REPORT ;
 
@@ -204,6 +225,9 @@ public
 
 : CR-HIGH ( -- n )
    22 ;
+
+: CR-LONG-SUBJECT-WORD ( -- n )
+   33 ;
 
 ;package
 
