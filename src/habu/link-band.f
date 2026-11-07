@@ -59,24 +59,34 @@ variable UNSAFE-COUNT
    s ENTRY-RECS @ ;
 
 
+\ The linker's error lines go whole to the error output, as error.f's do.
+: SAY ( ptr u8 n -- ) ERROR-TEXT:TYPE ;
+
+: SAY-INT ( n -- )
+   dup 0< if s" -" SAY then
+   ERROR-TEXT:DIGITS$ SAY ;
+
+: SAY-CR ( -- ) s\" \n" SAY ;
+
+
 \ The name of the record entering emission e at its first byte.
 : ROUTINE. ( n -- )
    {: e:n :}
    NSHADOW:RECORDS 0 ?do
       i NSHADOW:EMISSION@ e =  i NSHADOW:ENTRY@ 0= and if
-         i NSHADOW:RECORD@ XREF-REC XREF-NAME$ type unloop exit
+         i NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY unloop exit
       then
    loop
-   s" emission " type e . ;
+   s" emission " SAY e SAY-INT ;
 
 
 \ The name of the dictionary record entering at a, else a itself.
 : TARGET. ( n -- )
    {: a:n :}
    ndict@ 0 ?do
-      i XREF-REC XREF-START a = if i XREF-REC XREF-NAME$ type unloop exit then
+      i XREF-REC XREF-START a = if i XREF-REC XREF-NAME$ SAY unloop exit then
    loop
-   a . ;
+   a SAY-INT ;
 
 
 \ Two records share a host entry only where they enter one emission at one
@@ -89,8 +99,8 @@ variable UNSAFE-COUNT
       s ENTRY-RECS @ {: q:n :}
       q NSHADOW:EMISSION@ r NSHADOW:EMISSION@ =
       q NSHADOW:ENTRY@ r NSHADOW:ENTRY@ = and if exit then
-      s" link: " type r NSHADOW:RECORD@ XREF-REC XREF-NAME$ type
-      s"  enters at two link addresses" type cr
+      s" link: " SAY r NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY
+      s"  enters at two link addresses" SAY SAY-CR
       s" link: one host entry at two link addresses" 74 die
    then
    1 s ENTRY-USED !  key s ENTRY-KEYS !  r s ENTRY-RECS ! ;
@@ -233,8 +243,8 @@ variable UNSAFE-COUNT
 
 
 : CANNOT-RUN ( n -- )
-   XREF-REC XREF-NAME$ type
-   s" , which a stripped program cannot run" type cr
+   XREF-REC XREF-NAME$ SAY
+   s" , which a stripped program cannot run" SAY SAY-CR
    s" link: a stripped program reaches a word it cannot run" 74 die ;
 
 
@@ -246,8 +256,8 @@ variable UNSAFE-COUNT
    r 0 >= if r MAKE-LIVE exit then
    a UNSAFE@ {: d:n :}
    d 0< if exit then
-   s" link: " type WALKING @ NSHADOW:RECORD@ XREF-REC XREF-NAME$ type
-   s"  calls " type d CANNOT-RUN ;
+   s" link: " SAY WALKING @ NSHADOW:RECORD@ XREF-REC XREF-NAME$ SAY
+   s"  calls " SAY d CANNOT-RUN ;
 
 
 : PLACE-TARGET ( n -- )
@@ -295,7 +305,7 @@ variable UNSAFE-COUNT
    e 0< if exit then
    e  e f NSHADOW:FUNCTION-OFFSET@  RANGE-REC {: r:n :}
    r 0< if
-      s" link: no record holds the function at " type a .
+      s" link: no record holds the function at " SAY a SAY-INT SAY-CR
       s" link: a function lies outside every record" 74 die
    then
    r MAKE-LIVE DRAIN ;
@@ -312,7 +322,7 @@ variable UNSAFE-COUNT
       a ARM64:ROOT-ENTRY if exit then
       a QUOTE-ROOT exit
    then
-   s" link: the program starts at " type d CANNOT-RUN ;
+   s" link: the program starts at " SAY d CANNOT-RUN ;
 
 
 \ An engine ships every routine.
@@ -329,7 +339,7 @@ variable UNSAFE-COUNT
          -1 i OFFSETS !
       else
          i NSHADOW:SIZE 3 and 0<> if
-            s" link: " type i ROUTINE. s"  is not whole 4-byte words" type cr
+            s" link: " SAY i ROUTINE. s"  is not whole 4-byte words" SAY SAY-CR
             s" link: a routine is not whole 4-byte words" 74 die
          then
          dup i OFFSETS !  i NSHADOW:SIZE +
@@ -363,8 +373,8 @@ variable UNSAFE-COUNT
    {: a:n :}
    a LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   s" link: " type PLACING @ ROUTINE. s"  names " type a TARGET.
-   s" , neither a product word nor a kernel primitive" type cr
+   s" link: " SAY PLACING @ ROUTINE. s"  names " SAY a TARGET.
+   s" , neither a product word nor a kernel primitive" SAY SAY-CR
    s" link: a product routine names a word outside the product" 74 die ;
 
 

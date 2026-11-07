@@ -178,6 +178,8 @@ variable FILE-DP
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-END                    \ here's distance as the file's load returns
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
+PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
+variable FILE-PATH-N
 variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the object written or read
 
 \ The magic, the key, the SHA-256 of every byte after this checksum, and an offset
@@ -507,28 +509,106 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
 : NAMED+ ( -- ) BUILT-N 0 ?do i HITS @ 0<> if i REF-FILE drop then loop ;
 
 
-\ A data address's reference: a file's data, or the open's header data. A file's end
-\ names it only after every span, so a later file's first byte names that later file.
-: DATA-REF+ ( n -- )
+\ A data address's reference, and true: a file's data, or the open's header data; false,
+\ writing nothing, for any other address. A file's end names it only after every span, so
+\ a later file's first byte names that later file.
+: DATA-REF+ ( n -- bool )
    {: v:n :}
    v FILE-DP @ >=  v FILE-END @ <  and if
-      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ exit
+      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
    then
    v DP-ROW {: row:n hit:bool :}
    hit if
       3 PIECES U64+  row REF-FILE PIECES U64+
-      v  row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ exit
+      v  row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ true exit
    then
-   v BASE @ >=  v OPEN-DP @ <  and if 4 PIECES U64+  v BASE @ - PIECES U64+ exit then
+   v BASE @ >=  v OPEN-DP @ <  and if 4 PIECES U64+  v BASE @ - PIECES U64+ true exit then
    v FILE-END @ = if
-      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ exit
+      3 PIECES U64+  0 PIECES U64+  v FILE-DP @ - PIECES U64+ true exit
    then
    v DP-END-ROW {: end-row:n end-hit:bool :}
    end-hit if
       3 PIECES U64+  end-row REF-FILE PIECES U64+
-      v  end-row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ exit
+      v  end-row BUILT-AT ROW-BYTES 32 + + LE:U64@ -  PIECES U64+ true exit
    then
-   E-COMP-STATE throw ;
+   false ;
+
+
+\ ---- a refused reference --------------------------------------------------------
+\ A value no reference can name ends the build with one error line naming the file, the
+\ site and the value, then E-COMP-STATE. The scans run only on refusal.
+
+\ The record whose code holds a, as its name and a's offset in it, hb's below FIRST-REC.
+: CODE-VALUE. ( n -- )
+   {: a:n :}
+   ndict@ 0 ?do
+      i XREF-REC XREF-START {: s:n :}
+      a s >=  a s i XREF-REC XREF-CODE-BYTES + <  and if
+         i FIRST-REC @ < if s" hb's " SAY then
+         i XREF-REC XREF-NAME$ SAY  s"  +" SAY  a s - SAY-INT  unloop exit
+      then
+   loop
+   s" code at " SAY  a SAY-INT  s"  in no record" SAY ;
+
+
+\ Where the data address v lies: hb's DATA, the build's space outside every file's data,
+\ or neither.
+: DATA-VALUE. ( n -- )
+   {: v:n :}
+   v DATA-N >=  v DATA-N DATA-SIZE + <  and if s" hb's data +" SAY  v DATA-N - SAY-INT exit then
+   v BASE @ >=  v BASE @ DATA-SIZE + <  and if
+      s" the build's space +" SAY  v BASE @ - SAY-INT  s" , in no file's data" SAY exit
+   then
+   v SAY-INT  s" , outside hb's data and the build's space" SAY ;
+
+: VALUE. ( n bool -- ) if CODE-VALUE. else DATA-VALUE. then ;
+
+
+\ The highest value at most at among emission e's data address chains, -1 for none.
+: EM-BELOW ( n n -- n )
+   {: e:n at:n :}
+   e NSHADOW:BYTES {: src:ptr :}
+   e NSHADOW:SIZE {: s:n :}
+   -1  e NSHADOW:ADDR-SITES 0 ?do
+      e i NSHADOW:ADDR-SITE-KIND@ NEMIT:ADDR-DATA = if
+         e i NSHADOW:ADDR-SITE@ {: c:n :}
+         src c +  src s +  ADDRESS-CARRIER:CHAIN-SIZE {: size:n :}
+         size 0<> if
+            src c +  size ADDRESS-CARRIER:CHAIN-VALUE {: w:n :}
+            w at <= if w max then
+         then
+      then
+   loop ;
+
+
+\ The record nearest below the cell at by the data addresses the build's emissions hold:
+\ the first emission filed with the highest such address at most at, as its record's name
+\ and at's offset from that address; nothing when none is at most at.
+: OWNER. ( n -- )
+   {: at:n :}
+   -1 -1  NSHADOW:EMISSIONS 0 ?do
+      i at EM-BELOW {: w:n :}
+      w over > if 2drop i w then
+   loop {: e:n v:n :}
+   e 0< if exit then
+   s"  in " SAY  e ROUTINE.  s"  +" SAY  at v - SAY-INT ;
+
+
+: REFUSAL ( -- ) s" linker: " SAY  FILE-PATH FILE-PATH-N @ SAY  s" : " SAY ;
+: REFUSED ( -- ) s" , which an object cannot name" SAY SAY-CR  E-COMP-STATE throw ;
+
+
+\ Emission e's site holding v, a code address when code is true.
+: REFUSE-SITE ( n n n bool -- )
+   {: e:n site:n v:n code:bool :}
+   REFUSAL  e ROUTINE.  s"  +" SAY  site SAY-INT  s"  names " SAY  v code VALUE.  REFUSED ;
+
+
+\ The space's cell at holding v, a code address when code is true.
+: REFUSE-CELL ( n n bool -- )
+   {: at:n v:n code:bool :}
+   REFUSAL  s" the cell at space +" SAY  at BASE @ - SAY-INT  at OWNER.
+   s"  holds " SAY  v code VALUE.  REFUSED ;
 
 
 : PKG? ( n -- bool ) XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = ;
@@ -595,9 +675,11 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 \ The record's dispatch cell, a defer's trailer cell, as a data reference; 5 for none.
 : DISPATCH+ ( ptr n -- )
-   NDICT:TRAILER-CELL {: cell:n :}
+   {: rec:ptr :}
+   rec NDICT:TRAILER-CELL {: cell:n :}
    cell 0= if 5 PIECES U64+ exit then
-   cell DATA-REF+ ;
+   cell DATA-REF+ if exit then
+   REFUSAL  rec XREF-NAME$ SAY  s" 's dispatch cell is " SAY  cell false VALUE.  REFUSED ;
 
 \ The kind, the name, the flags without the name length and EXT, the wordlist (WORDLIST+), then
 \ the kind's fields (DISPATCH+, OWN-PRIVATE?); a KIND-PRIVATE entry is LATE+'s.
@@ -705,12 +787,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    rec XREF-WORDLIST BOOT:NAMESPACE-WL = if rec XREF-PKG-PUBLIC exit then
    rec XREF-WORDLIST 1 + ;
 
-\ A code address's reference: a record's entry, a quotation's function, or hb's
-\ own code, last since a record's host copy may lie inside hb's code range.
-: CODE-REF+ ( n -- )
+\ A code address's reference, and true: a record's entry, a quotation's function, or hb's
+\ own code, last since a record's host copy may lie inside hb's code range; false, writing
+\ nothing, for any other address.
+: CODE-REF+ ( n -- bool )
    {: a:n :}
    a REC-AT {: r:n :}
-   r 0 >= if 0 PIECES U64+  r NSHADOW:RECORD@ REF+ exit then
+   r 0 >= if 0 PIECES U64+  r NSHADOW:RECORD@ REF+ true exit then
    a NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
    qe 0 >= if
       2 PIECES U64+
@@ -721,10 +804,10 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
          row REF-FILE PIECES U64+
          qe  row BUILT-AT ROW-BYTES 16 + + LE:U64@ -  PIECES U64+
       then
-      qf PIECES U64+ exit
+      qf PIECES U64+ true exit
    then
-   a ARM64:HOST-KERNEL? if 1 PIECES U64+  a rbase - PIECES U64+ exit then
-   E-COMP-STATE throw ;
+   a ARM64:HOST-KERNEL? if 1 PIECES U64+  a rbase - PIECES U64+ true exit then
+   false ;
 
 
 \ One emission of CODE+; chain values are read from the shadow's bytes:
@@ -751,7 +834,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
          kind NEMIT:CALL <>  kind NEMIT:TAIL <>  and if E-COMP-STATE throw then
          e i NSHADOW:CALL-SITE@ PIECES U64+
          kind NEMIT:TAIL = if 1 else 0 then PIECES U64+
-         e i NSHADOW:CALL-TARGET@ CODE-REF+
+         e i NSHADOW:CALL-TARGET@ {: t:n :}
+         t CODE-REF+ 0= if e  e i NSHADOW:CALL-SITE@  t true REFUSE-SITE then
       then
    loop
    e NSHADOW:ADDR-SITES PIECES U64+
@@ -768,17 +852,20 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       src at +  size ADDRESS-CARRIER:CHAIN-VALUE {: v:n :}
       PIECES BYTES$ drop off + at +  0 size ADDRESS-CARRIER:SET-CHAIN-VALUE
       at PIECES U64+
-      kind NEMIT:ADDR-CODE = if
+      kind NEMIT:ADDR-CODE = {: code:bool :}
+      code if
          0 PIECES U64+  v CODE-REF+
       else
          1 PIECES U64+  v DATA-REF+
       then
+      0= if e at v code REFUSE-SITE then
    loop
    p PIECES U64+
    p 0 >= if
       calls 0 > if calls 1 - else -1 then {: k:n :}
       k 0 >= if e k NSHADOW:PATCH-CALL? else false then if
-         e k NSHADOW:CALL-TARGET@ CODE-REF+
+         e k NSHADOW:CALL-TARGET@ {: t:n :}
+         t CODE-REF+ 0= if e p t true REFUSE-SITE then
       else
          5 PIECES U64+
       then
@@ -827,7 +914,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    {: row:n :}
    row CELL-VALUE {: v:n :}
    row SCRATCH-ROW?  v 0=  or if 5 PIECES U64+ exit then
-   row DATA-ROW? if v DATA-REF+ else v CODE-REF+ then ;
+   row DATA-ROW? {: data:bool :}
+   data if v DATA-REF+ else v CODE-REF+ then if exit then
+   row ROW-AT v data 0= REFUSE-CELL ;
 
 : BODY-U ( n -- n ) CELL - BASE @ - SPACE-AT @ ;
 
@@ -1027,7 +1116,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    STORED-N @ PIECES U64+
    STORED-N @ 0 ?do
       i STORED @ {: v:n :}
-      v DATA-REF+
+      v DATA-REF+ 0= if E-COMP-STATE throw then   \ FIND-STORES refused a cell nothing holds
       v ROW-OF {: row:n hit:bool :}
       hit if
          row ROW-KIND PIECES U64+  0 PIECES U64+  row CELL-REF+
@@ -2253,6 +2342,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    GOING
    construct step loading PROGRESS !
    path pathu KEY!
+   path FILE-PATH  pathu PATH-CAP min dup FILE-PATH-N !  BYTE-COPY
    ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !

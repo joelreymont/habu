@@ -48,12 +48,12 @@ variable LLIST-END
 
 
 \ A host address in the open space at its DATA-VA address: the resolver code's
-\ data address sites get. Native `.` ends its line.
+\ data address sites get.
 : DATA-ADDRESS ( n -- n )
    {: v:n :}
    v BASE @ - {: off:n :}
    off 0 >=  off DATA-SIZE < and if DATA-VA VA>N off + exit then
-   s" link: a DATA pointer outside the build's space: " type v .
+   s" link: a DATA pointer outside the build's space: " SAY v SAY-INT SAY-CR
    s" link: a DATA pointer outside the build's space" 74 die ;
 
 
@@ -102,8 +102,7 @@ variable LLIST-END
    v 0= if 0 exit then
    v LINK-ADDRESS {: to:n :}
    to -1 <> if to exit then
-   s" link: the xt cell at offset " type off .
-   s" link: holds " type v .
+   s" link: the xt cell at offset " SAY off SAY-INT s"  holds " SAY v SAY-INT SAY-CR
    s" link: an xt cell names a routine the product does not place" 74 die ;
 
 
@@ -113,7 +112,7 @@ variable LLIST-END
    {: row:n :}
    row ROW-OFF {: off:n :}
    off CELL + DATA-IMAGE-LEN > if
-      s" link: a declared cell past the build's data, at offset " type off .
+      s" link: a declared cell past the build's data, at offset " SAY off SAY-INT SAY-CR
       s" link: a declared cell lies past the build's data" 74 die
    then
    row CELL-VALUE {: v:n :}
@@ -143,7 +142,7 @@ variable LLIST-END
 : HEADER! ( n n -- )
    {: v:n off:n :}
    off SPACE-AT @ 0<> if
-      s" link: the build stored into the header cell at offset " type off .
+      s" link: the build stored into the header cell at offset " SAY off SAY-INT SAY-CR
       s" link: a build stored into a header cell the link writes" 74 die
    then
    v off COPY-AT LE:U64! ;
