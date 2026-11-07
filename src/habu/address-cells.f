@@ -101,11 +101,12 @@ CAST: N>ROWS ( n -- ptr n )
 : LOCK ( -- ) begin 0 1 LOCK-ADDR atomic-cas 0= until ;
 : UNLOCK ( -- ) 0 LOCK-ADDR atomic! ;
 
-\ Main-owner preparation is quiescent. The mutex is held through release AND the
-\ following row/header mutation, so a marker cannot rebuild the derived view
-\ between invalidation and compaction.
-: INDEX-RELEASE ( -- )
-   INDEX-ADDR @ dup 0= if drop exit then {: address:n :}
+public
+\ Unmaps the index the cell holds and zeroes the cell. On a table markers reach, the caller holds
+\ its mutex through this AND the row/header mutation after, so no marker rebuilds the view between.
+: INDEX-RELEASE ( ptr n -- )
+   {: held:ptr :}
+   held @ dup 0= if drop exit then {: address:n :}
    address 0 < address 7 and 0<> or
    address $7FFFFFFFFFFFFFFF INDEX-HEADER - > or if REFUSE then
    address N>ROWS INDEX-SLOTS + @ {: slots:n :}
@@ -115,7 +116,8 @@ CAST: N>ROWS ( n -- ptr n )
    bytes $7FFFFFFFFFFFFFFF address - > if REFUSE then
    address N>ROWS bytes munmap 0<> if
       s" address-cells: cannot release index" 96 die then
-   0 INDEX-ADDR ! ;
+   0 held ! ;
+private
 
 \ Subtraction precedes addition/multiplication, including on malformed input.
 : WITHIN ( n n n -- ) {: off:n cap:n bytes:n :}
@@ -203,7 +205,7 @@ private
    0 HEADER MODE-FIELD + ! ;
 
 : KEEP-LOCKED ( n -- )
-   INDEX-RELEASE dup KEEP-STORAGE KEEP-ROWS ;
+   INDEX-ADDR INDEX-RELEASE dup KEEP-STORAGE KEEP-ROWS ;
 
 \ allot and protected memory sinks can throw through an active evaluator.
 \ Cleanup must release the mutex before such a caller resumes after catch.
@@ -232,7 +234,7 @@ public
 \ Drop every row in [first, limit), code and data alike; rows outside stay.
 private
 : REMOVE-LOCKED ( n n -- ) {: first:n limit:n :}
-   INDEX-RELEASE
+   INDEX-ADDR INDEX-RELEASE
    LIVE-SPAN {: rows:ptr count:n :}
    0
    count 0 ?do
@@ -257,7 +259,7 @@ public
 \ An already DATA-backed vector still releases its process-owned index.
 : PERSIST ( -- )
    CURRENT? 0= if exit then
-   [: INDEX-RELEASE PERSIST-ROWS ;] WITH-LOCK ;
+   [: INDEX-ADDR INDEX-RELEASE PERSIST-ROWS ;] WITH-LOCK ;
 
 \ Strict v9 reader for a complete snapshot DATA copy. Legacy admission is a
 \ separate caller decision; malformed v9 headers never take that branch.
