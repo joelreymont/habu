@@ -704,7 +704,7 @@ create JWT-PARTS-WANT
 : JWT-CLOSED-PART ( -- ) JWT-CLOSED s" x" WRITE-STRING-PART drop ;
 : JWT-CLOSED-END ( -- ) JWT-CLOSED WRITE-STRING-END drop ;
 
-\ A refused key keeps its depth and pending break: the null that fits the same
+\ A refused key keeps its depth and due break: the null that fits the same
 \ eight bytes writes after the break.
 : JWT-TEST-KEY-FULL ( -- )
    [: JWT-KEY-FULL ;] s" {" JWT-REFUSED-KEEPS$
@@ -726,6 +726,58 @@ create JWT-PARTS-WANT
    [: JWT-CLOSED-START ;] E-JSON-WRITE-STATE TTHROWSQ
    [: JWT-CLOSED-PART ;] E-JSON-WRITE-STATE TTHROWSQ
    [: JWT-CLOSED-END ;] E-JSON-WRITE-STATE TTHROWSQ ;
+
+
+\ WRITE-COMMA before every element, the first included, writes what the same
+\ calls without the first comma write.
+: JWT-COMMA-ARRAY ( ptr writer -- ptr writer )
+   WRITE-ARRAY-START WRITE-COMMA 1 WRITE-U WRITE-COMMA 2 WRITE-U
+   WRITE-ARRAY-END ;
+
+
+: JWT-COMMA-OBJECT ( ptr writer -- ptr writer )
+   WRITE-OBJECT-START WRITE-COMMA s" a" 1 WRITE-FIELD-U
+   WRITE-COMMA s" b" 2 WRITE-FIELD-U WRITE-OBJECT-END ;
+
+
+: JWT-TEST-COMMA-FIRST ( -- )
+   JWT-OPEN-A JWT-COMMA-ARRAY WRITTEN$ s" [1,2]" T$=
+   JWT-OPEN-A 2 WRITE-INDENT! JWT-COMMA-ARRAY WRITTEN$ s\" [\n  1,\n  2\n]" T$=
+   JWT-OPEN-A JWT-COMMA-OBJECT WRITTEN$ s\" {\"a\":1,\"b\":2}" T$=
+   JWT-OPEN-A 2 WRITE-INDENT! JWT-COMMA-OBJECT WRITTEN$
+   s\" {\n  \"a\": 1,\n  \"b\": 2\n}" T$= ;
+
+
+: JWT-STATE-KEEPS$ ( [ -- ] ptr u8 n -- )   \ refusal left the document untouched
+   {: want:ptr wu:n :}
+   E-JSON-WRITE-STATE TTHROWSQ
+   JWT-A WRITTEN$ want wu T$= ;
+
+
+: JWT-COMMA-TWICE ( -- )
+   JWT-OPEN-A WRITE-ARRAY-START 1 WRITE-U WRITE-COMMA WRITE-COMMA drop ;
+
+
+: JWT-ARRAY-END-COMMA ( -- )
+   JWT-OPEN-A WRITE-ARRAY-START 1 WRITE-U WRITE-COMMA WRITE-ARRAY-END drop ;
+
+
+: JWT-OBJECT-END-COMMA ( -- )
+   JWT-OPEN-A WRITE-OBJECT-START s" a" 1 WRITE-FIELD-U WRITE-COMMA
+   WRITE-OBJECT-END drop ;
+
+
+\ A writer closed right after a START still refuses a comma.
+: JWT-CLOSED-OPEN-COMMA ( -- )
+   JWT-OPEN-B WRITE-ARRAY-START WRITE-CLOSE JWT-B WRITE-COMMA drop ;
+
+
+: JWT-TEST-COMMA-REFUSALS ( -- )
+   [: JWT-COMMA-TWICE ;] s" [1," JWT-STATE-KEEPS$
+   [: JWT-ARRAY-END-COMMA ;] s" [1," JWT-STATE-KEEPS$
+   [: JWT-OBJECT-END-COMMA ;] s\" {\"a\":1," JWT-STATE-KEEPS$
+   [: JWT-CLOSED-OPEN-COMMA ;] E-JSON-WRITE-STATE TTHROWSQ ;
+
 
 \ The handle is nominal: a raw cell is not a writer.
 : JWT-TEST-CHECKER ( -- )
@@ -775,6 +827,8 @@ create JWT-PARTS-WANT
    JWT-TEST-PARTS
    JWT-TEST-KEY-FULL
    JWT-TEST-LAYOUT-REFUSALS
+   JWT-TEST-COMMA-FIRST
+   JWT-TEST-COMMA-REFUSALS
    JWT-TEST-CHECKER
    T-REPORT
    s" json-write-test: ok" type cr ;

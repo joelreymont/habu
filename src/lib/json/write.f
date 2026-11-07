@@ -10,10 +10,14 @@ package JSON
 
 public
 
+\ opened: the last token is a START; separated: a comma was written after the
+\ last token; valued: any other, or none yet. Unless valued, a break is due
+\ before the next token other than an END.
+ENUM writer-layout valued opened separated ;ENUM
+
 \ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
 \ through buf. A closed writer keeps CLOSED-CAP. indent is the spaces per
-\ nesting level; 0 is compact. depth counts the open containers; pending is
-\ set by a START or COMMA, when a break is due before the next token.
+\ nesting level; 0 is compact. depth counts the open containers.
 STRUCTURE writer
   FIELD out ptr u8
   FIELD cap n
@@ -21,7 +25,7 @@ STRUCTURE writer
   FIELD buf ptr n
   FIELD indent n
   FIELD depth n
-  FIELD pending bool
+  FIELD layout writer-layout
 ;STRUCTURE
 
 private
@@ -74,20 +78,21 @@ create JW-ESC-W
    1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c, 1 c,   \ $F0
 
 : JW-BUF@ ( ptr writer -- ptr n )
-   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n pending:bool :}
+   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n layout:writer-layout :}
    buf ;
 
-\ indent, depth, pending. Unchecked: also reads a closed writer.
-: JW-LAYOUT@ ( ptr writer -- n n bool )
-   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n pending:bool :}
-   indent depth pending ;
+\ indent, depth, layout. Unchecked: also reads a closed writer.
+: JW-LAYOUT@ ( ptr writer -- n n writer-layout )
+   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n layout:writer-layout :}
+   indent depth layout ;
 
-: JW-LAYOUT! ( ptr writer n bool -- ) {: w depth:n pending:bool :}
+: JW-LAYOUT! ( ptr writer n writer-layout -- )
+   {: w depth:n layout:writer-layout :}
    w @ JSON-WRITER:UNMAKE 2drop {: vp:ptr cap:n used:n buf:ptr indent:n :}
-   vp cap used buf indent depth pending JSON-WRITER:MAKE w ! ;
+   vp cap used buf indent depth layout JSON-WRITER:MAKE w ! ;
 
 : JW-LIVE ( ptr writer -- ptr u8 n n )   \ output buffer, capacity, length
-   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n pending:bool :}
+   @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr indent:n depth:n layout:writer-layout :}
    cap 0 < if E-JSON-WRITE-STATE throw then
    buf 0= if
       vp 0= if E-JSON-WRITE-STATE throw then
@@ -96,9 +101,10 @@ create JW-ESC-W
    buf BUF:SPAN$ BUF:BLEN>N {: data:ptr length:n :}
    data buf BUF:CAP@ BUF:BLEN>N length ;
 
-: JW-USED! ( ptr writer ptr u8 n n -- ) {: w vp:ptr cap:n used:n :}
-   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
-   vp cap used NULL-PTR indent depth pending JSON-WRITER:MAKE w ! ;
+: JW-USED! ( ptr writer ptr u8 n n -- )
+   {: w vp:ptr cap:n used:n :}
+   w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
+   vp cap used NULL-PTR indent depth layout JSON-WRITER:MAKE w ! ;
 
 \ A negative or null-with-bytes span is E-JSON-WRITE-SOURCE.
 : JW-SPAN ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -178,31 +184,43 @@ create JW-ESC-W
    JW-LF s 0 SPAN:U8!
    w ;
 
-\ Make room for a token of count bytes and any pending break, write the break
-\ and clear pending. A refusal leaves the length, depth and pending unchanged.
-: JW-TOKEN ( ptr writer n -- ptr writer ) {: w count:n :}
+\ Make room for a token of count bytes and any due break, write the break and
+\ leave valued. A refusal leaves the length, depth and layout unchanged.
+: JW-TOKEN ( ptr writer n -- ptr writer )
+   {: w count:n :}
    w JW-LIVE 2drop drop
-   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
-   pending if indent depth JW-BREAK-N else 0 then {: brk:n :}
+   w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
+   layout MATCH writer-layout
+      valued OF 0 ENDOF
+      opened OF indent depth JW-BREAK-N ENDOF
+      separated OF indent depth JW-BREAK-N ENDOF
+   ;MATCH {: brk:n :}
    w count brk JW-BREAK-AT
-   depth false JW-LAYOUT!
+   depth construct writer-layout valued JW-LAYOUT!
    w ;
 
 \ A START opens a container: its bracket, one level deeper, a break due.
-: JW-START ( ptr writer n -- ptr writer ) {: w c:n :}
+: JW-START ( ptr writer n -- ptr writer )
+   {: w c:n :}
    w 1 JW-TOKEN c JW-C drop
-   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
-   w depth 1+ true JW-LAYOUT!
+   w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
+   w depth 1+ construct writer-layout opened JW-LAYOUT!
    w ;
 
-\ An END closes on its own line at the outer depth, or right after its START.
-: JW-END ( ptr writer n -- ptr writer ) {: w c:n :}
+\ An END closes on its own line at the outer depth, or right after its START;
+\ right after a written comma it is refused.
+: JW-END ( ptr writer n -- ptr writer )
+   {: w c:n :}
    w JW-LIVE 2drop drop
-   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
+   w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    depth 0= if E-JSON-WRITE-STATE throw then
-   pending if 0 else indent depth 1- JW-BREAK-N then {: brk:n :}
+   layout MATCH writer-layout
+      valued OF indent depth 1- JW-BREAK-N ENDOF
+      opened OF 0 ENDOF
+      separated OF E-JSON-WRITE-STATE throw ENDOF
+   ;MATCH {: brk:n :}
    w 1 brk JW-BREAK-AT c JW-C drop
-   w depth 1- false JW-LAYOUT!
+   w depth 1- construct writer-layout valued JW-LAYOUT!
    w ;
 
 public
@@ -210,22 +228,25 @@ public
 \ Fixed output refuses a value that will not fit with E-JSON-WRITE-CAPACITY: size it for
 \ the worst case, one byte escaping to six (\u00XX). A null or negative output is
 \ E-JSON-WRITE-OUTPUT. The caller keeps its buffer live and exclusive until WRITE-CLOSE.
-: WRITE-OPEN ( ptr writer ptr u8 n -- ptr writer ) {: w vp:ptr cap:n :}
+: WRITE-OPEN ( ptr writer ptr u8 n -- ptr writer )
+   {: w vp:ptr cap:n :}
    vp 0= if E-JSON-WRITE-OUTPUT throw then
    cap 0 < if E-JSON-WRITE-OUTPUT throw then
-   vp cap 0 NULL-PTR 0 0 false JSON-WRITER:MAKE w !
+   vp cap 0 NULL-PTR 0 0 construct writer-layout valued JSON-WRITER:MAKE w !
    w ;
 
 \ Clears the BUF and grows it as needed, including when an emitter reads bytes
 \ already in it; allocation failures propagate. WRITE-CLOSE leaves the bytes to the
 \ caller, who disposes the BUF after their last use.
-: WRITE-OPEN-BUF ( ptr writer ptr n -- ptr writer ) {: w buf:ptr :}
+: WRITE-OPEN-BUF ( ptr writer ptr n -- ptr writer )
+   {: w buf:ptr :}
    buf 0= if E-JSON-WRITE-OUTPUT throw then
    buf BUF:CLEAR
-   NULL-PTR 0 0 buf 0 0 false JSON-WRITER:MAKE w !
+   NULL-PTR 0 0 buf 0 0 construct writer-layout valued JSON-WRITER:MAKE w !
    w ;
 
-: WRITE-RESET ( ptr writer -- ptr writer ) {: w :}
+: WRITE-RESET ( ptr writer -- ptr writer )
+   {: w :}
    w JW-BUF@ {: buf:ptr :}
    buf 0= if
       w JW-LIVE {: vp:ptr cap:n used:n :}
@@ -233,7 +254,7 @@ public
    else
       buf BUF:CLEAR
    then
-   w 0 false JW-LAYOUT!
+   w 0 construct writer-layout valued JW-LAYOUT!
    w ;
 
 : WRITE-CLOSE ( ptr writer -- ) {: w :}
@@ -254,11 +275,12 @@ public
    w a off JW-REBASE u s SPAN:COPY
    w ;
 
-: WRITE-INDENT! ( ptr writer n -- ptr writer ) {: w indent:n :}
+: WRITE-INDENT! ( ptr writer n -- ptr writer )
+   {: w indent:n :}
    indent 0 < if E-JSON-WRITE-BYTE throw then
    w JW-LIVE 2drop drop
-   w @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr old:n depth:n pending:bool :}
-   vp cap used buf indent depth pending JSON-WRITER:MAKE w !
+   w @ JSON-WRITER:UNMAKE {: vp:ptr cap:n used:n buf:ptr old:n depth:n layout:writer-layout :}
+   vp cap used buf indent depth layout JSON-WRITER:MAKE w !
    w ;
 
 private
@@ -327,7 +349,7 @@ private
 \ span before reading it, then text that is not UTF-8. Both reservations may
 \ relocate caller-owned output; rebase the source after each before scanning or
 \ emitting it. A quoted string or key is a token, so its width reserves any
-\ pending break with it; a string part never breaks. The escapes go straight
+\ due break with it; a string part never breaks. The escapes go straight
 \ into the span JW-TAKE answers over the whole width: the delimiters when
 \ quoted, then the first sep bytes of JW-KEY-SEP.
 : JW-QUOTED ( ptr writer ptr u8 n bool n -- ptr writer )
@@ -380,10 +402,20 @@ public
 : WRITE-ARRAY-END ( ptr writer -- ptr writer )
    JW-RBRACK JW-END ;
 
-: WRITE-COMMA ( ptr writer -- ptr writer ) {: w :}
-   w JW-COMMA-C JW-C drop
-   w JW-LAYOUT@ {: indent:n depth:n pending:bool :}
-   w depth true JW-LAYOUT!
+\ The separator: nothing right after a START, refused right after a written
+\ comma, else a comma.
+: WRITE-COMMA ( ptr writer -- ptr writer )
+   {: w :}
+   w JW-LIVE 2drop drop
+   w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
+   layout MATCH writer-layout
+      valued OF
+         w JW-COMMA-C JW-C drop
+         w depth construct writer-layout separated JW-LAYOUT!
+      ENDOF
+      opened OF ENDOF
+      separated OF E-JSON-WRITE-STATE throw ENDOF
+   ;MATCH
    w ;
 
 : WRITE-NULL ( ptr writer -- ptr writer )
