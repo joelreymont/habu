@@ -851,8 +851,8 @@ $3818 constant CALLBACK-ENTRY-CELL
 \ TRUSTED: heads call with their record pending (src/habu/habu2.f
 \ C-BODY-HOOK).
 $3838 constant BODY-HOOK-CELL
-\ Tier 0's compiler: COMP's COMPILE, installed by CHECKER-REG:SEAL through
-\ src/habu/runtime-arm64.f and src/habu/runtime-x64.f.
+\ Tier 0's compiler: COMP's COMPILE, installed by COMP:INSTALL (RUNTIME:INSTALL,
+\ and CHECKER-REG:SEAL through src/habu/runtime-arm64.f).
 $3840 constant COMP-CELL
 \ Tier 0's compiler for a body with no text ( val kind ), installed with
 \ COMP-CELL; the Habu loop's `constant`, `create` and `defer` call it.
