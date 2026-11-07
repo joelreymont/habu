@@ -32,7 +32,13 @@
 \ `twins: compiled ` print each build's result: its LINKER:COMPILED, or the
 \ code it threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
 \ over an edit of its object the link refuses or links wrong, then a plain
-\ build.
+\ build. With `facts`, a build loads count.f and facts.f, then its body compiles
+\ FOB-AFTER, a caller of count.f's words, and FOB-WRAP, a caller of facts.f's
+\ definer BOX, each line printing the code its compile threw (`after: 0`), runs
+\ FOB-AFTER when it compiled and prints `after ran`, writes the program with
+\ FOB-AFTER its entry, then compiles two definitions the checker refuses, a
+\ string passed to TAKE and a token after FAIL, printed as `misuse: ` and
+\ `dead: `; its last line is `facts: compiled ` and LINKER:COMPILED.
 \ The build's files load from its body: in a build's file `require` is
 \ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
 \ at rec-wide-publish (rc 70).
@@ -78,19 +84,21 @@ PATH-CAP BUFFER: PROG-BUF
 : GAP ( -- ) s" test/fixtures/file-objects/gap.f" included ;
 : NEW-WORDLIST ( -- ) s" test/fixtures/file-objects/wordlist.f" included ;
 
-\ The one argument, second, shifted or stop, or empty; any other ends the build, rc 1.
+\ The one argument, second, shifted, stop or facts, or empty; any other ends the build, rc 1.
 : MODE$ ( -- ptr u8 n )
    SCRIPT-ARGC 0 = if s" " exit then
    SCRIPT-ARGC 1 = if
       0 SCRIPT-ARGV$ s" second" STR= if s" second" exit then
       0 SCRIPT-ARGV$ s" shifted" STR= if s" shifted" exit then
       0 SCRIPT-ARGV$ s" stop" STR= if s" stop" exit then
+      0 SCRIPT-ARGV$ s" facts" STR= if s" facts" exit then
    then
    s" build: unknown argument" 1 die ;
 
 : SECOND? ( -- bool ) MODE$ s" second" STR= ;
 : SHIFTED? ( -- bool ) MODE$ s" shifted" STR= ;
 : STOP? ( -- bool ) MODE$ s" stop" STR= ;
+: FACTS? ( -- bool ) MODE$ s" facts" STR= ;
 
 \ The case's code is the one wanted, or the build ends rc 1 with the message.
 : EXPECT ( n n ptr u8 n -- )
@@ -591,10 +599,51 @@ variable SLOT-S                          \ and their count
    STALES CORRUPT EDITS TAILS SHARES TWINS CRAFTS
    s" stopped" type cr ;
 
+\ ---- facts mode: a body compiled against the words count.f and facts.f define ----
+
+\ The label, then a case's caught code, on a line of its own.
+: CODE. ( n ptr u8 n -- ) {: rc:n a:ptr u:n :}  a u type  rc FMT:.INT cr ;
+
+: FACTS-AFTER ( -- n )
+   [: s" : FOB-AFTER ( -- ) FILE-OBJECTS-COUNT:BUMP FILE-OBJECTS-COUNT:HI FILE-OBJECTS-COUNT:TALLY @ drop FILE-OBJECTS-LATE:ONE drop ;  ' FOB-AFTER data-base $43A0 + xt!" evaluate-closed ;]
+   catch dup s" after: " CODE. ;
+
+\ Never run: creating through a does> definer in a build ends the process.
+: FACTS-WRAP ( -- )
+   [: s" : FOB-WRAP ( n -- ) FILE-OBJECTS-FACTS:BOX ;" evaluate-closed ;]
+   catch s" wrap: " CODE. ;
+
+: FACTS-MISUSE ( -- )
+   [: s\" : FOB-MISUSE ( -- ) s\" x\" FILE-OBJECTS-FACTS:TAKE ;" evaluate-closed ;]
+   catch s" misuse: " CODE. ;
+
+: FACTS-DEAD ( -- )
+   [: s" : FOB-DEAD ( -- ) FILE-OBJECTS-FACTS:FAIL 2 drop ;" evaluate-closed ;]
+   catch s" dead: " CODE. ;
+
+\ FOB-AFTER is the program's entry ($43A0 is APP-ENTRY:XT-CELL, as main.f writes it).
+\ The refusals come after the write: a refused definition fails the build (STOP-BODY).
+: FACTS-BODY ( -- )
+   s" test/fixtures/file-objects/count.f" included
+   s" test/fixtures/file-objects/facts.f" included
+   FACTS-AFTER {: after:n :}
+   FACTS-WRAP
+   after 0= if
+      s" FOB-AFTER" ENTRY >RUN execute
+      s" after ran" type cr
+   then
+   PROG$ LINKER:WRITE
+   FACTS-MISUSE FACTS-DEAD ;
+
+: FACTS ( -- )
+   s" app" [: FACTS-BODY ;] LINKER:WITH
+   s" facts: compiled " type  LINKER:COMPILED FMT:.INT cr ;
+
 public
 
 : RUN ( -- )
    STOP? if STOPS exit then
+   FACTS? if FACTS exit then
    s" app" [: BODY ;] LINKER:WITH
    s" test/fixtures/file-objects/host.f" included
    s" compiled " type LINKER:COMPILED . ;

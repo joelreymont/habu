@@ -33,7 +33,12 @@
 \ builds never loaded, first, so it compiles all eight, prints B's state,
 \ writes B's program and leaves A's root holding B's objects. Each warm build
 \ compares its program's bytes, its printed state and the objects' bytes with a
-\ cold build's.
+\ cold build's. Build E, in `facts` mode in its own out root, loads count.f and
+\ facts.f, compiles callers of their words, runs one and writes the program,
+\ then compiles two definitions the checker refuses for misusing them; it
+\ compiles 2. E2, in E's root after E's program moves aside, compiles none and
+\ prints E's lines, E's refusals on stderr and writes E's program byte for byte:
+\ its body's code is checked against the linked words as against compiled ones.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -64,6 +69,7 @@ PATH-CAP BUFFER: OUT-A   variable OUT-A-U
 PATH-CAP BUFFER: OUT-B   variable OUT-B-U
 PATH-CAP BUFFER: OUT-C   variable OUT-C-U
 PATH-CAP BUFFER: OUT-D   variable OUT-D-U
+PATH-CAP BUFFER: OUT-E   variable OUT-E-U
 PATH-CAP BUFFER: OBJ-DIR
 PATH-CAP BUFFER: JOINED
 PATH-CAP BUFFER: JOINED-2
@@ -79,6 +85,8 @@ INPUT-BYTES BUFFER: EXPECT
 STATE-CAP BUFFER: STATE-A  variable STATE-A-U
 STATE-CAP BUFFER: STATE-B  variable STATE-B-U
 STATE-CAP BUFFER: STATE-W  variable STATE-W-U  \ a warm build's, C's or D's
+STATE-CAP BUFFER: STATE-E  variable STATE-E-U
+STATE-CAP BUFFER: ERR-E    variable ERR-E-U    \ E's stderr
 PROG-CAP BUFFER: PROG-1
 PROG-CAP BUFFER: PROG-2
 8 BUFFER: WHICH          variable WHICH-U  \ the build the labels name
@@ -92,6 +100,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
 : B$ ( -- ptr u8 n ) OUT-B OUT-B-U @ ;
 : C$ ( -- ptr u8 n ) OUT-C OUT-C-U @ ;
 : D$ ( -- ptr u8 n ) OUT-D OUT-D-U @ ;
+: E$ ( -- ptr u8 n ) OUT-E OUT-E-U @ ;
 
 : IN$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: out:ptr outu:n name:ptr nameu:n :}
    out outu name nameu JOINED FS:JOIN-PATH {: u:n :}
@@ -317,12 +326,38 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" main.f's literal lies at HI's text" LABEL
    STATE-A STATE-A-U @ s\" shared -1 \n" CONTAINS? TTRUE ;
 
+\ E's build, a fresh process as every build is: E2's process then holds E's
+\ objects alone, never the checker memory of the process that compiled them.
+: COLD-E ( CMD:command -- CMD:command )
+   s" E" WHICH!  E$ s" facts" s\" facts: compiled 2\n" STATE-E BUILD 0 max STATE-E-U !
+   CMD:ERR$ {: e:ptr eu:n :}
+   s" the build's stderr fits its buffer" LABEL  eu STATE-CAP <= TTRUE
+   eu STATE-CAP min {: u:n :}
+   e ERR-E u BYTE-COPY  u ERR-E-U ! ;
+
+\ Whether E's output before its last line holds the line, newline-ended, as a test.
+: E-LINE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   s" the build prints " a u 1 - s" " LABEL-NAMING
+   STATE-E STATE-E-U @ a u CONTAINS? TTRUE ;
+
+\ The callers compile and run; the misuse and the dead code are refused, by TAKE and FAIL.
+: CHECK-E ( -- )
+   s" E" WHICH!
+   s\" after: 0\n" E-LINE  s\" wrap: 0\n" E-LINE  s\" Hi\n" E-LINE  s\" after ran\n" E-LINE
+   s\" misuse: 70\n" E-LINE  s\" dead: 70\n" E-LINE
+   s" the misuse refusal names TAKE" LABEL
+   ERR-E ERR-E-U @ s" fob-misuse at 'FILE-OBJECTS-FACTS:TAKE'" CONTAINS? TTRUE
+   s" the dead-code refusal names FAIL" LABEL
+   ERR-E ERR-E-U @ s" at '2' after 'FILE-OBJECTS-FACTS:FAIL'" CONTAINS? TTRUE ;
+
 : COLD ( CMD:command -- CMD:command )
    s" A" WHICH!  A$ s" " s\" compiled 7\n" STATE-A BUILD 0 max STATE-A-U !
    A$ RUN-PROG
    s" B" WHICH!  B$ s" second" s\" compiled 8\n" STATE-B BUILD 0 max STATE-B-U !
    s" D" WHICH!  D$ s" shifted" s\" compiled 7\n" STATE-W BUILD drop
-   s" C" WHICH!  C$ s" stop" s\" stopped\n" STATE-W BUILD 0 max STATE-W-U ! ;
+   s" C" WHICH!  C$ s" stop" s\" stopped\n" STATE-W BUILD 0 max STATE-W-U !
+   COLD-E ;
 
 : CHECK-COLD ( -- )
    RELIST-A
@@ -338,12 +373,30 @@ variable INPUT-N                         \ those holding count.f's INPUT
    NAMES-B NAMES-B-U @ s" .hfo" COUNT-SUB FILES-B T=
    s" the names are eight keys" LABEL  NAMES-B-U @ FILES-B LISTING-BYTES T=
    s" A" WHICH!  B-NAMES  SAME-AS-D
-   CHECK-FACTS CHECK-STOP CHECK-EDIT ;
+   CHECK-FACTS CHECK-STOP CHECK-EDIT CHECK-E ;
 
 \ Moves A's program to prog-cold, so A2 writes its own.
 : COLD-ASIDE ( -- )
    A$ s" prog-cold" JOINED-2 FS:JOIN-PATH {: u:n :}
    A$ s" prog" IN$ JOINED-2 u FS:RENAME-FILE ;
+
+\ Moves E's program to prog-cold, so E2 writes its own.
+: COLD-ASIDE-E ( -- )
+   E$ s" prog-cold" JOINED-2 FS:JOIN-PATH {: u:n :}
+   E$ s" prog" IN$ JOINED-2 u FS:RENAME-FILE ;
+
+\ E2, a build in E's out root after E's. A failed E2 fails BUILD's checks; its
+\ output and stderr are still compared, and it wrote no program to compare.
+: WARM-E ( CMD:command -- CMD:command )
+   STATE-E-U @ 0= if exit then
+   s" E2" WHICH!  COLD-ASIDE-E
+   E$ s" facts" s\" facts: compiled 0\n" STATE-W BUILD {: u:n :}
+   CMD:OUT$ {: o:ptr ou:n :}
+   u 0< if ou else u then {: shown:n :}
+   s" the build prints E's lines" LABEL  o shown STATE-E STATE-E-U @ T$=
+   s" the build's stderr is E's" LABEL  CMD:ERR$ ERR-E ERR-E-U @ T$=
+   u 0< if exit then
+   s" the program has E's bytes" LABEL  E$ s" prog" E$ s" prog-cold" SAME-FILE? TTRUE ;
 
 \ A build of A's files in A's out root, whose last line is the given one:
 \ it prints A's state, writes A's program and leaves A's objects with D's bytes.
@@ -421,18 +474,24 @@ variable INPUT-N                         \ those holding count.f's INPUT
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-FLIP WARM-CUT WARM-GROW WARM-B ;] CMD:WITH-COMMAND ;
+   [: WARM-A WARM-FLIP WARM-CUT WARM-GROW WARM-B WARM-E ;] CMD:WITH-COMMAND ;
 
 
 : REMOVE-A ( -- ) A$ FS:REMOVE-TREE ;
 : REMOVE-B ( -- ) B$ FS:REMOVE-TREE ;
 : REMOVE-C ( -- ) C$ FS:REMOVE-TREE ;
 : REMOVE-D ( -- ) D$ FS:REMOVE-TREE ;
+: REMOVE-E ( -- ) E$ FS:REMOVE-TREE ;
+
+: WITH-E ( -- )
+   s" habu-file-objects-e" FS:MKTEMP-DIR {: e:ptr u:n :}
+   e OUT-E u BYTE-COPY  u OUT-E-U !
+   ['] CHECKS ['] REMOVE-E finally ;
 
 : WITH-D ( -- )
    s" habu-file-objects-d" FS:MKTEMP-DIR {: d:ptr u:n :}
    d OUT-D u BYTE-COPY  u OUT-D-U !
-   ['] CHECKS ['] REMOVE-D finally ;
+   ['] WITH-E ['] REMOVE-D finally ;
 
 : WITH-C ( -- )
    s" habu-file-objects-c" FS:MKTEMP-DIR {: c:ptr u:n :}
