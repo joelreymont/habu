@@ -6,10 +6,11 @@
 \ The body lays one cell between shape.f and main.f, which no file's data
 \ holds. With the script argument `second` the build loads pad.f first; with
 \ `shifted` it declares a package and lays three cells before count.f. With
-\ `stop`, these builds run in the one out root. Nine fail: in
+\ `stop`, these builds run in the one out root. Ten fail: in
 \ STOP-FILE and STOP-BODY every later load and write is LINKER:E-FAILED,
 \ STOP-INSIDE's file moves DP back and its own load is LINKER:E-FAILED,
 \ STOP-ALIGN's file marks a cell its object cannot place, E-COMP-STATE,
+\ STOP-PAST's file marks a cell past its own end, E-COMP-STATE,
 \ STOP-STORE's file marks hb's newest record immediate, LINKER:E-STORE,
 \ STOP-GAP's file stores into a cell the body laid, which no file holds,
 \ LINKER:E-STORE, STOP-STRADDLE's file stores into a cell straddling the
@@ -64,6 +65,7 @@ PATH-CAP BUFFER: PROG-BUF
 
 : ROLLBACK ( -- ) s" test/fixtures/file-objects/rollback.f" included ;
 : UNALIGNED ( -- ) s" test/fixtures/file-objects/unaligned.f" included ;
+: PAST ( -- ) s" test/fixtures/file-objects/past.f" included ;
 : STRADDLE ( -- ) s" test/fixtures/file-objects/straddle.f" included ;
 : FLAG ( -- ) s" test/fixtures/file-objects/flag.f" included ;
 : GAP ( -- ) s" test/fixtures/file-objects/gap.f" included ;
@@ -108,6 +110,10 @@ PATH-CAP BUFFER: PROG-BUF
 : STOP-ALIGN ( -- )
    ['] UNALIGNED catch E-COMP-STATE
    s" build: STOP-ALIGN: an unaligned address cell was not refused" EXPECT ;
+
+: STOP-PAST ( -- )
+   ['] PAST catch E-COMP-STATE
+   s" build: STOP-PAST: an address cell past its file's end was not refused" EXPECT ;
 
 \ A file with no object after a linked one can be LINKER:E-STALE, so these
 \ builds' refused file is their first.
@@ -314,6 +320,7 @@ variable LIST-N
    s" app" [: STOP-BODY ;] LINKER:WITH
    s" app" [: STOP-INSIDE ;] LINKER:WITH
    s" app" [: STOP-ALIGN ;] LINKER:WITH
+   s" app" [: STOP-PAST ;] LINKER:WITH
    s" app" [: STOP-STORE ;] LINKER:WITH
    s" app" [: STOP-GAP ;] LINKER:WITH
    s" app" [: STOP-STRADDLE ;] LINKER:WITH

@@ -713,7 +713,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \   D raw bytes            from FILE-DP, unpadded; each address cell's 8 bytes written as 0
 \   K, then K cell rows    offset from FILE-DP, a multiple of 8 (else E-COMP-STATE), kind
 \                          (ROW-KIND), reference (CELL-REF+); in the order of the space's
-\                          address-cell rows, only cells inside the D bytes
+\                          address-cell rows, only cells inside the D bytes; a cell at or
+\                          above FILE-DP that ends past them is E-COMP-STATE
 \   N, then N string rows  a body's offset from FILE-DP, then its length; offsets ascending,
 \                          only bodies whose length cell and bytes lie inside the D bytes
 \   S, then S store rows   each cell below FILE-DP the compile stored into or gave an address-cell
@@ -732,6 +733,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
          row ROW-AT FILE-DP @ - {: off:n :}
          off 7 and 0<> if E-COMP-STATE throw then
          0  at off +  LE:U64!  1 +
+      else
+         row ROW-AT FILE-DP @ >= if E-COMP-STATE throw then
       then
    loop  PIECES U64+
    count 0 ?do
