@@ -533,12 +533,6 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
 
 : PKG? ( n -- bool ) XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = ;
 
-\ A slot holding 0 holds no wordlist.
-: PKG-HOLDS? ( n n n -- bool )
-   {: idx:n wid:n slot:n :}
-   wid 0= if false exit then
-   idx PKG?  idx XREF-REC slot XREF-CELL@ wid =  and ;
-
 \ A package record of this file whose private wordlist it minted right after its
 \ public one: made with a private section, or given one with nothing minted between.
 : OWN-PRIVATE? ( n -- bool )
@@ -549,20 +543,17 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
    w 0<>  w rec XREF-PKG-PUBLIC 1 + =  and ;
 
 \ The wordlist's role: 0 global, 1 primitives, 2 package names, 3 or 4 a package's
-\ public or private one, then the package: the build's nearest below (ids are unique).
+\ public or private one, then the package, which is the build's and below the record.
 : WORDLIST+ ( n -- )
    {: idx:n :}
    idx XREF-REC XREF-WORDLIST {: wid:n :}
    wid BOOT:GLOBAL-WL = if 0 PIECES U64+ exit then
    wid WL:PRIMITIVES = if 1 PIECES U64+ exit then
    wid BOOT:NAMESPACE-WL = if 2 PIECES U64+ exit then
-   idx FIRST-REC @ ?do
-      idx FIRST-REC @ + 1- i -
-      dup wid XREF-START-SLOT PKG-HOLDS? if 3 PIECES U64+  REF+ unloop exit then
-      dup wid XREF-LEN-SLOT PKG-HOLDS? if 4 PIECES U64+  REF+ unloop exit then
-      drop
-   loop
-   E-COMP-STATE throw ;
+   wid CHECK:WORDLIST-PACKAGE {: pkg:n hit:bool :}
+   hit 0=  pkg FIRST-REC @ <  or  pkg idx >=  or if E-COMP-STATE throw then
+   pkg XREF-REC XREF-PKG-PUBLIC wid = if 3 else 4 then PIECES U64+
+   pkg REF+ ;
 
 variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow rows
 

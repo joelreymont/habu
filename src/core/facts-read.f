@@ -161,6 +161,13 @@ variable READ-WAS   \ CHECKER-REC-SYM while a read runs
    ix RECORD-LINK-CURRENT? IF ix ix CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED! THEN ;
 
 public
+\ The index of the newest package record whose public or private wordlist is wid,
+\ and true; false when none is.
+: WORDLIST-PACKAGE ( n -- n bool )
+   NS-FIND {: row:n :}
+   row 0= IF 0 RES-FALSE EXIT THEN
+   row 1 - RES-TRUE ;
+
 \ What a compile of the file that made record ix taught the checker, read back
 \ from the record's facts text a u, so a later file's compile can call it.
 : READ-FACTS ( ptr u8 n n -- )
