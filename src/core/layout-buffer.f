@@ -118,10 +118,15 @@ variable LBUF-BYTES
 : LBUF-BASE, ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu LBUF-APP  LBUF-BASE$ LBUF-APP ;
 
+: LBUF-ALLOT, ( n -- ) {: bytes:n :}
+   s"  " LBUF-APP  bytes LBUF-DEC,  s"  allot" LBUF-APP ;
+
+\ Every generated text allots its storage right after its `create`, so each
+\ definition in the text, which may lay data at `here`, follows the storage.
 : LBUF-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
-   s" create " LBUF-APP  name nameu LBUF-BASE,
+   s" create " LBUF-APP  name nameu LBUF-BASE,  LBUF-BYTES @ LBUF-ALLOT,
    s"  : " LBUF-APP
    name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP  type typeu LBUF-APP
@@ -170,14 +175,6 @@ PTR-VARIABLE STGT-START
 \ measures it; `create` rounds the same way and leaves it in place.
 : LBUF-ALIGN ( -- )
    align ;
-
-\ The generated `create` publishes the storage word at the DP the definer
-\ measured; if anything moved DP before the allot, accessor and storage would
-\ name different places, so this refuses. Only the alignment pad is allotted
-\ before the eval, so a rejected accessor needs no rewind.
-: LBUF-ALLOT ( ptr n -- ) {: base:ptr :}
-   here base <> if E-LAYOUT-BUFFER throw then
-   LBUF-BYTES @ allot ;
 
 \ The capture walk marks by the active sum tag: a shared payload slot is a code
 \ cell while it holds a quotation and an address cell while it holds a pointer.
@@ -242,9 +239,8 @@ STORAGE-CAPTURE-INSTALL
 
 \ Quotation cells belong to the image even while null; the term walk declares
 \ each code and address cell of these DATA allocations for capture.
-: STORAGE-ALLOT ( n ptr n n ptr u8 n bool -- )
+: STORAGE-BIND ( n ptr n n ptr u8 n bool -- )
    {: handle:n base:ptr count:n type:ptr typeu:n hasaddr:bool :}
-   base LBUF-ALLOT
    hasaddr if
       base type typeu STORAGE-MARK-FIXED
    then
@@ -300,7 +296,7 @@ $36A0 constant STGT-INP-CELL
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
-   handle base LBUF-N @ type typeu hasaddr STORAGE-ALLOT ;
+   handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
 \ The axiom keeps LAYOUT-BUFFER executable at top level after the internal-mark.f
 \ seal pass; UNSAFE-TOK? refuses it inside checked bodies (it evaluates generated
@@ -391,7 +387,7 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
 : LDEFER-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
-   s" create " LBUF-APP  name nameu LBUF-BASE,
+   s" create " LBUF-APP  name nameu LBUF-BASE,  LBUF-BYTES @ LBUF-ALLOT,
    s"  : " LBUF-APP
    name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP  type typeu LBUF-APP
@@ -432,7 +428,6 @@ PRIM: LDEFER-GROW PE-N PE-IN PE-PTR-N PE-IN PE-N PE-IN PRIM;
    here {: cbase:ptr :}
    name nameu type typeu LDEFER-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
-   cbase LBUF-ALLOT                                        \ all 0 = unbound
    handle cbase CHECKER-STORAGE-DEFER ;
 
 \ The axiom keeps DEFER-LAYOUT-BUFFER executable at top level after the seal
@@ -456,7 +451,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
 : TYPED-VAR-SOURCE ( ptr u8 n ptr u8 n -- ptr u8 n ptr u8 n )
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
-   s" create " LBUF-APP  name nameu LBUF-BASE,
+   s" create " LBUF-APP  name nameu LBUF-BASE,  LBUF-BYTES @ LBUF-ALLOT,
    s"  : " LBUF-APP
    name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( -- ptr " LBUF-APP  type typeu LBUF-APP
@@ -477,7 +472,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: base:ptr :}
    name nameu type typeu LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
-   handle base LBUF-N @ type typeu hasaddr STORAGE-ALLOT ;
+   handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
 : TYPED-VARIABLE ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
@@ -491,7 +486,7 @@ PRIM: DEFER-LAYOUT-BUFFER PRIM;
    here {: base:ptr :}
    name nameu type typeu TYPED-VAR-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
-   handle base LBUF-N @ type typeu hasaddr STORAGE-ALLOT ;
+   handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
 \ As for LAYOUT-BUFFER: top-level executable after the seal pass, refused inside
 \ checked bodies by UNSAFE-TOK?.
@@ -532,7 +527,7 @@ variable DBUF-W
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
    s" PTR-VARIABLE " LBUF-APP name nameu LBUF-BASE,
-   s"  create " LBUF-APP name nameu DBUF-CTL,
+   s"  create " LBUF-APP name nameu DBUF-CTL,  DBUF-CTRL-BYTES CELL - LBUF-ALLOT,
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
    s"  ) " LBUF-APP name nameu DBUF-RECORD,
@@ -545,14 +540,6 @@ variable DBUF-W
    s"  DYNAMIC-STORAGE:RELEASE ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu ;
 
-\ The generated PTR-VARIABLE commits the head's cell and `create NAME#ctl` names
-\ the next cell without allotting, so this allots the count cells behind the
-\ head, refusing if DP moved since the measurement. A rejected accessor leaves
-\ the head's cell allotted and unnamed, like the alignment pad.
-: DBUF-ALLOT ( ptr n -- ) {: base:ptr :}
-   here base CELL + <> if E-LAYOUT-BUFFER throw then
-   LBUF-BYTES @ CELL - allot ;
-
 : DYNAMIC-BUFFER ( -- )
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if s" DYNAMIC-BUFFER" CHECKER-STORAGE-NAME-REFUSE exit then
@@ -563,12 +550,8 @@ variable DBUF-W
    name nameu s" -RELEASE" LBUF-SUFFIX-OK? 0= if exit then
    name nameu DBUF-CTL$ LBUF-SUFFIX-OK? 0= if exit then
    name nameu type typeu DBUF-VALIDATE 0= if exit then
-   DBUF-CTRL-BYTES LBUF-BYTES !
-   LBUF-ALIGN
-   here {: base:ptr :}
    name nameu type typeu DBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
-   src srcu pna pnu LBUF-EVAL! drop
-   base DBUF-ALLOT ;
+   src srcu pna pnu LBUF-EVAL! drop ;
 
 PRIM: DYNAMIC-BUFFER PRIM;
 

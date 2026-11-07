@@ -491,7 +491,6 @@ TRUSTED: DECLARE ( n n -- ) {: operand:n kind:n :}
    then
    s" ;" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu LBUF-EVAL! drop
-   here base CELL + <> if E-LAYOUT-BUFFER throw then
    off base !
    ndict@ 1- {: decl:n :}
    desc 1+ decl <> if E-LAYOUT-BUFFER throw then
