@@ -197,7 +197,23 @@ learned live in the docs for their subject.
   different objects for count.f), the lead chose that `CHECK:FACTS!` writes
   only while no build's space is open; a build's records keep 0 until their
   texts travel by value in the file objects and the link interns each once,
-  after the file's DATA.
+  after the file's DATA. The same day, under the same words, shown that a plain
+  store into bytes 32-39 faults (the record table's own view is read-only; the
+  engine writes a record through the region's writable alias) and that six
+  definers (LAYOUT-BUFFER, DEFER-LAYOUT-BUFFER, TYPED-BUFFER, TYPED-VARIABLE,
+  DYNAMIC-BUFFER and the compiler workspace's DECLARE) measure `here`, evaluate
+  a generated `create` and accessor, and only then allot at the measured
+  place, so the accessor's text became the storage's first bytes, the lead
+  chose: `CHECK:FACTS!` stores through a kernel primitive `record-facts! ( n n
+  -- )`, offset then record index, which writes through the alias and refuses
+  an index past the pending record or a call off the main task. It has no
+  checker row, so only the kernel's checker calls it and a checked caller is
+  E-UNDEFINED, with no owner row or mark; x86-64 refuses it until x86-64 moves
+  onto the linker. Each of the six definers allots its storage in its
+  generated text right after the `create`, so a definition in that text comes
+  after the storage, and the guards that refused a moved `here` go. A program
+  that lays data after a definition gets Forth's result, the data after the
+  text, with no refusal.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
