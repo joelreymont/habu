@@ -600,26 +600,31 @@ s" quot nested past the diagnostic budget certifies" T-LABEL
 s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
 s" quot nested past the diagnostic budget records" T-LABEL
 DIAG-BUFFER$ s" effect not recorded" CONTAINS? TFALSE
+\ Past its 23 letters an effect's text names a type variable or binder by its
+\ ordinal, so a word with up to TYPE-VAR-MAX names records; past that it does not.
 defer T-V14 ( -- a b c d e g h i j k l m o p )
-RSD-BUF RSD-CAP DIAG-BUFFER!
-s" rec-refuse var overflow still certifies" T-LABEL
-s" RSV28 T-V14 T-V14" CHECK-QUIET-CANDIDATE! -1 T=
-s" rec-refuse diag names var-count word" T-LABEL
-DIAG-BUFFER$ s" rsv28" CONTAINS? TTRUE
-s" rec-refuse diag names var-count reason" T-LABEL
-DIAG-BUFFER$ s" more than 23 type variables or binders" CONTAINS? TTRUE
-: T-FQ ( forall<p,[ n -- n ]> -- ) drop ;
+\ RSV28C and RSB24C certify against the recorded effects of RSV28 and RSB24.
+: RSV28 T-V14 T-V14 ;
+s" a caller of RSV28 calls the recorded word" T-LABEL
+s" RSV28C RSV28" CHECK-QUIET-CANDIDATE! -1 T=
+: T-FQ ( forall<p,[ read-view<p,p,u8> -- ]> -- ) drop ;
 : T-D23 ( a b c d e g h i j k l m o p q s t u v w x y z -- )
    drop drop drop drop drop drop drop drop drop drop drop drop
    drop drop drop drop drop drop drop drop drop drop drop ;
+: RSB24 T-FQ T-D23 ;
+s" a caller of RSB24 calls the recorded word" T-LABEL
+s" RSB24C RSB24" CHECK-QUIET-CANDIDATE! -1 T=
+defer T-Q23 ( -- [ a b c d e g h i j k l m o p q s t u v w x y z -- ] )
 RSD-BUF RSD-CAP DIAG-BUFFER!
-s" rec-refuse binder overflow still certifies" T-LABEL
-s" RSB24 T-FQ T-D23" CHECK-QUIET-CANDIDATE! -1 T=
-s" rec-refuse diag names binder-count word" T-LABEL
-DIAG-BUFFER$ s" rsb24" CONTAINS? TTRUE
-s" rec-refuse diag names binder-count reason" T-LABEL
-DIAG-BUFFER$ s" more than 23 type variables or binders" CONTAINS? TTRUE
+s" 276 type variables certify" T-LABEL
+s" RSQ276 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23 T-Q23" CHECK-QUIET-CANDIDATE! -1 T=
+s" 276 type variables: the refusal names the word" T-LABEL
+DIAG-BUFFER$ s" rsq276" CONTAINS? TTRUE
+s" 276 type variables: the refusal names the reason" T-LABEL
+DIAG-BUFFER$ s" more than 256 type variables or binders" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
+s" a source signature cannot name a type variable by its ordinal" T-LABEL
+s" RSO23 ( 23 -- 23 )" CHECK-QUIET-CANDIDATE! -1 = TFALSE
 \ recurse checks against the cached declared sig (fresh instance per site)
 s" recurse against declared sig certifies" T-LABEL
 s" CREC-OK ( n -- n ) dup 2 < if drop 1 exit then 1 - recurse 1 +" CHECK-QUIET-CANDIDATE! -1 T=

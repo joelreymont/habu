@@ -16,6 +16,8 @@ create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM
 \ RROW-UNSAID: the unsaid part is a row, for REC-REFUSE-WHY.
 variable RROW-UNSAID
+\ RBIND-FULL: a forall past BINDER-DEPTH-MAX nested binders, for REC-REFUSE-WHY.
+variable RBIND-FULL
 variable RJSON   0 RJSON !               \ inside a JSON string: EMIT1 escapes
 variable RDIAG-ON
 variable RDIAG-FD   2 RDIAG-FD !
@@ -187,20 +189,12 @@ REG-SCRATCH-SNAP-INSTALL
 : RATOM-RESET ( -- )
    0 RATOM-N ! ;
 
-\ Diagnostic letters are their own a..z namespace, independent of declaration
-\ positions. The parser reserves f, n and r as built-in types, so no inferred
-\ name may use them.
-: RLETTER ( n -- n ) {: idx:n :}
-   idx 0 < idx 22 > or IF 1 RQM !  63 EXIT THEN
-   idx 97 +
-   dup 102 >= IF 1+ THEN
-   dup 110 >= IF 1+ THEN
-   dup 114 >= IF 1+ THEN ;
-: LET-OF {: vp :}
+: SEEN-IDX ( n -- n )
+   {: vp:n :}
    SEEN-ENSURE
    vp 1 + SEEN-HW @ < 0= IF vp 1 + SEEN-HW ! THEN
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
-   vp cells SEEN + @ RLETTER ;
+   vp cells SEEN + @ ;
 : RATOM-CHAR ( n -- n ) {: idx:n :}
    idx 26 < IF idx 97 + ELSE 1 RQM ! 63 THEN ;
 : RATOM-FIND ( n -- n bool ) {: key:n :}
@@ -247,6 +241,18 @@ REG-SCRATCH-SNAP-INSTALL
 : RNUM ( n -- )                 \ small non-negative number (hidden slot index)
    dup 10 >= IF dup 10 / RECURSE THEN
    10 mod 48 + EMIT1 ;
+
+
+\ Name index idx: a..z without f, n and r, which the parser reads as types,
+\ then the ordinal (checker.f SIG-VAR-SLOT reads both back).
+: VAR-NAME ( n -- )
+   {: idx:n :}
+   idx 0 < idx TYPE-VAR-MAX >= or IF 1 RQM !  63 EMIT1 EXIT THEN
+   idx 22 > IF idx RNUM EXIT THEN
+   idx 97 +
+   dup 102 >= IF 1+ THEN
+   dup 110 >= IF 1+ THEN
+   dup 114 >= IF 1+ THEN EMIT1 ;
 
 
 \ A term minted before the registry loads holds an id outside it. A slot a
@@ -338,7 +344,7 @@ variable HRC  variable HRI  variable HRF  variable HRS
 
 6 constant QDEPTH-MAX                        \ a diagnostic's nesting budget
 64 constant RBUF-CAP                         \ values a diagnostic shows of one row
-create RBIND 23 cells allot                  \ one RLETTER letter per binder in scope
+create RBIND BINDER-DEPTH-MAX cells allot    \ the name index of each binder in scope
 \ A row renders from RBUF without recursion: a nested quotation's row pushes
 \ above the rows that hold it, so QREND recurses once per level, never per value.
 create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
@@ -473,7 +479,7 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
    THEN
    x T-RES {: r:n :}
    r TAG case
-      T-VAR of r PAY LET-OF EMIT1 endof
+      T-VAR of r PAY SEEN-IDX VAR-NAME endof
       T-CON of r PAY CON-OUT endof
       T-PTR of s" ptr " RSTR  r PTR>INNER d 0 RECURSE endof
       \ A cell a caught throw may have overwritten names the type it lost.
@@ -500,14 +506,14 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
         ELSE EMIT-UNSAID THEN
       endof
       T-FORALL of
-        NLET @ 23 >= IF
+        NLET @ TYPE-VAR-MAX >=  RBIND-N @ BINDER-DEPTH-MAX >=  or IF
+           RBIND-N @ BINDER-DEPTH-MAX >= IF 1 RBIND-FULL ! THEN
            NLET @ 1 + NLET ! EMIT-UNSAID
         ELSE d QDEPTH-CAP < IF
            NLET @ {: idx:n :}
-           idx RLETTER {: letter:n :}
-           letter RBIND-N @ cells RBIND + !
+           idx RBIND-N @ cells RBIND + !
            NLET @ 1 + NLET !
-           r F>DOMAIN BIND-REGION = IF s" forall-region<" ELSE s" forall<" THEN RSTR letter EMIT1
+           r F>DOMAIN BIND-REGION = IF s" forall-region<" ELSE s" forall<" THEN RSTR idx VAR-NAME
            r F>PARENT dup 0= IF drop ELSE
               r F>SECOND 0= IF s"  inside " RSTR d 1+ 0 RECURSE ELSE
                  s"  inside [" RSTR d 1+ 0 RECURSE  44 EMIT1
@@ -516,13 +522,13 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
            44 EMIT1
            r F>BODY d 1+ 0 RECURSE 62 EMIT1
            RBIND-N @ 1 - RBIND-N !
-           \ A body that lettered no free variable frees the letter for a sibling.
+           \ A body that named no free variable frees the name for a sibling.
            NLET @ idx 1 + = IF idx NLET ! THEN
         ELSE EMIT-UNSAID THEN THEN
       endof
       T-BVAR of
         r B>DEPTH 0 >= r B>DEPTH RBIND-N @ < and IF
-           RBIND-N @ r B>DEPTH - 1 - cells RBIND + @ EMIT1
+           RBIND-N @ r B>DEPTH - 1 - cells RBIND + @ VAR-NAME
         ELSE EMIT-UNSAID THEN
       endof
       T-SCOPE of
@@ -583,7 +589,7 @@ LOCSHOW-INSTALL
 
 : REND-PASS ( n n n n bool -- )
    {: din:n dout:n rin:n rout:n hasr:bool :}
-   0 RQM !  0 RROW-UNSAID !  SEEN-RESET RATOM-RESET 0 NLET !  0 RROW-N !  0 RVISIT !
+   0 RQM !  0 RROW-UNSAID !  0 RBIND-FULL !  SEEN-RESET RATOM-RESET 0 NLET !  0 RROW-N !  0 RVISIT !
    din 0 RROW-NAME  din DROW
    hasr IF  s" | " DTXT  rin 1 RROW-NAME  rin DROW  THEN
    45 EMIT1  45 EMIT1
@@ -608,7 +614,12 @@ LOCSHOW-INSTALL
 : FACT-TAG ( ptr u8 n n -- ) {: a:ptr u:n letter:n :}
    a u DTXT  32 EMIT1  letter EMIT1  32 EMIT1 ;
 
-\ The type variable REND-EFFECT gave letter index idx, -1 for a forall's letter.
+
+: VAR-FACT-TAG ( ptr u8 n n -- )
+   {: a:ptr u:n idx:n :}
+   a u DTXT  32 EMIT1  idx VAR-NAME  32 EMIT1 ;
+
+\ The type variable REND-EFFECT gave name index idx, -1 for a forall's name.
 : SEEN-VAR ( n -- n ) {: idx:n :}
    0 BEGIN dup SEEN-HW @ < WHILE
       dup cells SEEN + @ idx = IF EXIT THEN
@@ -620,12 +631,12 @@ LOCSHOW-INSTALL
    id 0 < IF EXIT THEN
    id TVK@ KIND>TAG$ {: a:ptr u:n :}
    u 0 = IF EXIT THEN
-   a u idx RLETTER FACT-TAG ;
+   a u idx VAR-FACT-TAG ;
 
 : VAR-SCOPE-TAG ( n -- ) {: idx:n :}
    idx SEEN-VAR {: id:n :}
    id 0 < IF EXIT THEN
-   id NSCOPE@ IF s" noscope" idx RLETTER FACT-TAG THEN ;
+   id NSCOPE@ IF s" noscope" idx VAR-FACT-TAG THEN ;
 
 : ROW-SCOPE-TAG ( n -- ) {: idx:n :}
    idx cells RROW-KEY + @ NSCOPE@ IF s" noscope" idx 65 + FACT-TAG THEN ;
@@ -1695,37 +1706,47 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ Why a certified sig-less word stays unrecorded: more than 23 letters, a row the
-\ effect text cannot say (RROW-UNSAID), or any other RQM cause, as an unmodeled tag.
-: REC-REFUSE-WHY ( -- ptr u8 n )
-   \ RLETTER emits '?' when names run out; the count distinguishes that
-   \ placeholder from an unmodeled type tag.
-   NLET @ 24 >= IF
-      s" more than 23 type variables or binders in inferred effect" EXIT
+\ Why a certified sig-less word stays unrecorded: more than TYPE-VAR-MAX names
+\ (VAR-NAME wrote '?', not an unmodeled tag), more than BINDER-DEPTH-MAX nested
+\ binders (RBIND-FULL), a row the text cannot say (RROW-UNSAID), or any other RQM
+\ cause, as an unmodeled tag. Digits, letters and spaces only, so one word serves
+\ the prose line and the JSON string.
+: REC-REFUSE-WHY ( -- )
+   NLET @ TYPE-VAR-MAX > IF
+      s" more than " DTXT  TYPE-VAR-MAX JNUM
+      s"  type variables or binders in inferred effect" DTXT EXIT
+   THEN
+   RBIND-FULL @ IF
+      s" more than " DTXT  BINDER-DEPTH-MAX JNUM
+      s"  nested binders in inferred effect" DTXT EXIT
    THEN
    RROW-UNSAID @ IF
-      s" quotation return-stack clause or more than 26 named rows the effect text cannot say" EXIT
+      s" quotation return-stack clause or more than " DTXT  RROW-CAP JNUM
+      s"  named rows the effect text cannot say" DTXT EXIT
    THEN
-   s" unmodeled type tag in inferred effect" ;
+   s" unmodeled type tag in inferred effect" DTXT ;
 
-: REC-REFUSE-PROSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
+: REC-REFUSE-PROSE ( ptr u8 n -- )
+   {: na:ptr nu:n :}
    s" habu: in " DTXT  na nu DTXT
-   s" : effect not recorded: " DTXT  wa wu DTXT ;
+   s" : effect not recorded: " DTXT  REC-REFUSE-WHY ;
 
 \ W-EFFECT-NOT-RECORDED is a warning outside the repair contract: the word
 \ certified and loaded, but a later call refuses it as undefined. The JSON
 \ carries no verdict, repair class or suggestion, and the run's status stands.
-: REC-REFUSE-JSON ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
+: REC-REFUSE-JSON ( ptr u8 n -- )
+   {: na:ptr nu:n :}
    s" W-EFFECT-NOT-RECORDED" JSTART
    s" word" JKEY na nu JSTR 44 EMIT1
    s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
    NM-SPAN JTOKEN-FIELDS
-   s" reason" JKEY wa wu JSTR
+   s" reason" JKEY JOPEN REC-REFUSE-WHY JCLOSE
    125 EMIT1 ;
 
-: REC-REFUSE-EMIT ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
+: REC-REFUSE-EMIT ( ptr u8 n -- )
+   {: na:ptr nu:n :}
    1 RDST !  0 RSN !
-   na nu wa wu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
+   na nu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
    10 EMIT1
    RSBUF-FLUSH ;
 
@@ -1735,13 +1756,14 @@ variable WARN-DIAGS   -1 WARN-DIAGS !
 
 : REC-REFUSE-DIAG ( ptr u8 n -- )
    WARN-DIAGS @ 0= IF 2drop EXIT THEN
-   REC-REFUSE-WHY REC-REFUSE-EMIT ;
+   REC-REFUSE-EMIT ;
 
 \ A sig-less word's inferred effect is recorded (CHECKER-USIG-CERT-CURRENT) unless
-\ its text sets RQM or has more than 23 letters; no capture keeps the text.
-: REC-SIG ( ptr u8 n -- ) {: na:ptr nu:n :}
+\ its text sets RQM or has more than TYPE-VAR-MAX names; no capture keeps the text.
+: REC-SIG ( ptr u8 n -- )
+   {: na:ptr nu:n :}
    REND-SIG {: sa:ptr su:n :}
-   RQM @ 0 =  NLET @ 24 <  and IF
+   RQM @ 0 =  NLET @ TYPE-VAR-MAX 1 + <  and IF
       na nu CHECKER-USIG-CERT-CURRENT
       sa su CHECKER-ASIG-CAPTURE
       EXIT

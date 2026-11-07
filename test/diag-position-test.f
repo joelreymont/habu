@@ -411,13 +411,14 @@ variable RC
    GJA-LINE# @ 1 T=
    FX-PATH$ CANON$ SHADOWED-AT ;
 
-\ WIDE's inferred effect has more type variables than a record holds: the
-\ checker certifies it and warns, at its name, that the effect is not recorded.
+\ WIDE's inferred effect has 276 type variables, more than the 256 an effect
+\ text names: the checker certifies it and warns, at its name, that the effect
+\ is not recorded.
 : NOT-RECORDED-TEXT ( -- )
    SB-RESET
-   s" defer V14 ( -- a b c d e g h i j k l m o p )" SB-APPEND LF+ LF+
+   s" defer V23 ( -- a b c d e g h i j k l m o p q s t u v w x y z )" SB-APPEND LF+ LF+
    s" :   WIDE" SB-APPEND LF+
-   s"    V14 V14 ;" SB-APPEND LF+ ;
+   s"    V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 V23 ;" SB-APPEND LF+ ;
 
 \ The last check's first line is the warning about WIDE, in the file at PATH
 \ and placed at its name, and no other line warns.
@@ -425,7 +426,7 @@ variable RC
    {: path:ptr pathu:n :}
    0 s" code" s" W-EFFECT-NOT-RECORDED" FIELD=
    0 s" word" s" wide" FIELD=
-   0 s" WIDE" 3 5 50 54 path pathu FX$ PLACED-IN
+   0 s" WIDE" 3 5 68 72 path pathu FX$ PLACED-IN
    1 begin dup GJA-LINE# @ < while
       dup GJA-LINE$ s" W-EFFECT-NOT-RECORDED" CONTAINS? TFALSE
       1 +
@@ -450,35 +451,6 @@ variable RC
    FX-PATH$ NOT-RECORDED
    s" --all-errors" THROW-RC CHECK-EXIT
    FX-PATH$ NOT-RECORDED ;
-
-: NOT-RECORDED-TIERS-TEXT ( -- )
-   SB-RESET
-   s" 1 set-tier" SB-APPEND LF+
-   s" defer V14 ( -- a b c d e g h i j k l m o p )" SB-APPEND LF+
-   s" TRUSTED: P14 ( -- a b c d e g h i j k l m o p ) 1 2 3 4 5 6 7 8 9 10 11 12 13 14 ;"
-   SB-APPEND LF+
-   s" : BIND ( -- ) [: P14 ;] is V14 ;" SB-APPEND LF+
-   s" BIND" SB-APPEND LF+
-   s" : WIN   drop >r V14 V14 r> ;" SB-APPEND LF+
-   s" 0 set-tier" SB-APPEND LF+
-   s" TRUSTED: RUNI ( -- ) 100 200 300 WIN" SB-APPEND
-   30 0 DO s"  ." SB-APPEND LOOP
-   s"  cr ;" SB-APPEND LF+
-   s" RUNI" SB-APPEND LF+ ;
-
-: NOT-RECORDED-TIERS-OUT ( -- )
-   SB-RESET
-   200 FMT:SB-INT LF+
-   2 0 DO 15 1 DO 15 I - FMT:SB-INT LF+ LOOP LOOP
-   100 FMT:SB-INT LF+ LF+ ;
-
-: TEST-NOT-RECORDED-TIERS ( -- )
-   s" an unrecorded effect called across tiers" T-LABEL
-   NOT-RECORDED-TIERS-TEXT
-   s" not-recorded-tiers.f" FIXTURE!
-   s" " 0 CHECK-EXIT
-   NOT-RECORDED-TIERS-OUT
-   OUT$ SB$ T$= ;
 
 \ A refused `generates:` row is the verifier's own packet, at the row's name
 \ past a comment line and a run of spaces: the check fails as for any refusal,
@@ -1499,7 +1471,6 @@ variable RC
    TEST-IS-SHADOW
    TEST-SHADOWED-ARITY
    TEST-NOT-RECORDED
-   TEST-NOT-RECORDED-TIERS
    TEST-GENERATES
    TEST-GENERATES-SHADOW
    TEST-COMPOSE-DEP

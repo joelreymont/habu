@@ -6209,14 +6209,23 @@ variable VRC-RVN
 \ in/out of one signature; `n` = int (con 1), `f` = flag (CC-BOOL); an unknown
 \ multi-char token marks the signature malformed. Row variables are shared, so
 \ the effect is row-polymorphic. Quantifiers keep their source letter; this is
-\ not the declaration parameter alphabet.
-create NMAP 26 cells allot
+\ not the declaration parameter alphabet. Facts text names a variable past the
+\ letters by its ordinal (render.f VAR-NAME).
+\ The names one effect text gives its type variables and binders: 23 letters,
+\ then the ordinals 23 to 255. A letter's NMAP slot is its code minus 97, an
+\ ordinal's the ordinal plus 3.
+256 constant TYPE-VAR-MAX
+32 constant BINDER-DEPTH-MAX   \ binders nested in one signature
+create NMAP TYPE-VAR-MAX 3 + cells allot
 CHECKER-REG:SCRATCH{
 variable BIND-DEPTH
-create BIND-DOMAINS 32 cells allot
+create BIND-DOMAINS BINDER-DEPTH-MAX cells allot
 CHECKER-REG:}SCRATCH
 
-: NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
+
+: NMAP-RESET ( -- )
+   0 BEGIN dup TYPE-VAR-MAX 3 + < WHILE dup cells NMAP + UNBOUND swap ! 1 + REPEAT drop ;
+
 
 CHECKER-REG:SCRATCH{
 FAM-CAP PTR-U8-TABLE FAM-A       \ name pointers: declared storage (src/core/pointer-storage.f)
@@ -6485,15 +6494,36 @@ variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's 
 \ caller parses that span itself, after building the first text's effect.
 PTR-VARIABLE SIG-CREATES-A   variable SIG-CREATES-U
 
+\ The NMAP slot a type-variable token names, -1 for none: a lowercase letter
+\ other than f, n and r, or, in facts text only, an ordinal 23 to TYPE-VAR-MAX - 1.
+: SIG-VAR-SLOT ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u 1 = IF
+      a c@ dup LOWER? over 102 <> and over 110 <> and over 114 <> and
+      IF 97 - ELSE drop -1 THEN EXIT
+   THEN
+   SIG-FACTS-MODE @ 0= u 0 = or IF -1 EXIT THEN
+   a c@ 48 = IF -1 EXIT THEN
+   \ The value stops growing at TYPE-VAR-MAX, so no digit run overflows.
+   0 0 BEGIN over TYPE-VAR-MAX < over u < and WHILE
+      a over + c@ dup DIGIT? 0= IF drop 2drop -1 EXIT THEN
+      48 - rot 10 * + swap 1 +
+   REPEAT drop
+   dup 23 < over TYPE-VAR-MAX >= or IF drop -1 EXIT THEN
+   3 + ;
+
 \ One locals group only: a second `{: i :}` group mis-reads the slot in the
 \ standalone, collapsing every var to one.
-: VAR-OF ( n -- n ) {: c:n :}
-   c 97 - cells NMAP +
+: SLOT>VAR ( n -- n )
+   {: slot:n :}
+   slot cells NMAP +
    dup @ UNBOUND = IF FRESH over ! THEN
    @ dup UNBOUND < IF
       BIND-DEPTH @ + 1 + dup BIND-DEPTH @ swap - 1- cells BIND-DOMAINS + @
       MK-BVAR-DOMAIN EXIT THEN
    SIG-RAW-MODE @ IF dup TVK-RAW! THEN MK-VAR ;
+
+: VAR-OF ( n -- n ) 97 - SLOT>VAR ;
 
 \ Declare locals at word top, never inside IF or a loop (corrupts the frame).
 \ Concrete width types get distinct con codes; n stays the generic int (con 1),
@@ -6677,7 +6707,9 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
-: TOK-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}  a c@ {: c:n :}
+: TOK-TYPE ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   a c@ {: c:n :}
    SIG-FACTS-MODE @ 0 <> u 1 > and c 39 = and IF a 1 + u 1 - MK-ATOM EXIT THEN   \ facts text's `'NAME` atom (render.f ATOM-REND)
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
@@ -6686,7 +6718,7 @@ CK-BODYBUF-CAP 1 - constant CK-NAME-MAX
    a u FRESH-ATOM-TOK? IF a u FRESH-ATOM>TYPE ELSE
    a u ATOM-TOK? IF a u MK-ATOM ELSE
    a u XT-TOK? IF OPAQUE-XT ELSE
-   u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
+   a u SIG-VAR-SLOT dup 0 >= IF SLOT>VAR ELSE drop
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ Typed local annotations (LOCAL-TYPE, below SIG-TYPE) share the signature type
@@ -6850,15 +6882,16 @@ defer SIG-QUOT-XT ( -- n )
 defer SIG-BINDER-BODY-XT ( -- n )
 defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
 
-: SIG-PARENT-NAME? ( ptr u8 n n -- bool ) {: a:ptr u:n bound:n :}
-   u 1 <> IF RES-FALSE EXIT THEN
-   a c@ {: c:n :}
-   c LOWER? c bound <> and
-   c 110 <> and c 102 <> and c 114 <> and ;
+: SIG-PARENT-NAME? ( ptr u8 n n -- bool )
+   {: a:ptr u:n bound:n :}
+   a u SIG-VAR-SLOT {: slot:n :}
+   slot 0 >= slot bound <> and ;
 
-: SIG-PARENT-ROOT ( ptr u8 n n -- n ) {: a:ptr u:n bound:n :}
+
+: SIG-PARENT-ROOT ( ptr u8 n n -- n )
+   {: a:ptr u:n bound:n :}
    a u bound SIG-PARENT-NAME? 0= IF a u SGBAD-SYNTAX! 0 EXIT THEN
-   a c@ VAR-OF {: parent:n :}
+   a u SIG-VAR-SLOT SLOT>VAR {: parent:n :}
    parent TAG T-VAR = IF
       parent PAY TVK@ dup TVK-ANY = swap TVK-SCOPE = or 0= IF a u SGBAD-SYNTAX! THEN
       parent PAY TVK-SCOPE!
@@ -6878,21 +6911,19 @@ defer SIG-BOUND-TYPE-XT ( ptr u8 n -- n )
    THEN
    bound SIG-PARENT-ROOT 0 ;
 
-\ The bound letter shadows only its type-name slot. Row names inside the
+\ The binder's name shadows only its NMAP slot. Row names inside the
 \ quotation still share their surrounding R/S/U map.
 : SIG-FORALL-DOMAIN ( n -- n ) {: domain:n :}
    NEXT-SIG-TOK 2dup s" <" CORE-STR= 0= IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN 2drop
    NEXT-SIG-TOK {: name:ptr width:n :}
-   width 1 <> IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-   name c@ LOWER? 0= IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-   name c@ dup 110 = swap 102 = or IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-   name c@ 114 = IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-   BIND-DEPTH @ 32 >= IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   name width SIG-VAR-SLOT {: bound:n :}
+   bound 0 < IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
+   BIND-DEPTH @ BINDER-DEPTH-MAX >= IF name width SGBAD-SYNTAX! 1 MK-CON EXIT THEN
    NEXT-SIG-TOK 2dup s" inside" CORE-STR= IF
       domain BIND-SCOPE <> IF SGBAD-SYNTAX! 1 MK-CON EXIT THEN
-      2drop name c@ SIG-INSIDE-ROOTS
+      2drop bound SIG-INSIDE-ROOTS
    ELSE PK! 0 0 THEN {: parent:n second:n :}
-   name c@ 97 - cells NMAP + {: slot:ptr :}
+   bound cells NMAP + {: slot:ptr :}
    slot @ {: saved:n :}
    BIND-DEPTH @ negate 2 - slot !
    domain BIND-DEPTH @ cells BIND-DOMAINS + !
@@ -7384,11 +7415,15 @@ CHECKER-REG:}SCRATCH
    THEN
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
-\ The variable a tag's one-letter operand names in PSIG's maps, NMAP when vars is
-\ set and ROWMAP when rows is; -1 for a letter the effect did not name.
-: TAG-VAR ( ptr u8 n bool bool -- n ) {: a:ptr u:n vars:bool rows:bool :}
+\ The variable a tag's letter or ordinal operand names in PSIG's maps, NMAP when
+\ vars is set and ROWMAP when rows is; -1 for a name the effect did not give.
+: TAG-VAR ( ptr u8 n bool bool -- n )
+   {: a:ptr u:n vars:bool rows:bool :}
+   vars IF
+      a u SIG-VAR-SLOT dup 0 >= IF cells NMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
+      drop
+   THEN
    u 1 <> IF -1 EXIT THEN
-   vars a c@ LOWER? and IF a c@ 97 - cells NMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
    rows a c@ UPPER? and IF a c@ 65 - cells ROWMAP + @ dup 0 < IF drop -1 THEN EXIT THEN
    -1 ;
 
@@ -7497,7 +7532,7 @@ CHECKER-REG:}SCRATCH
 
 
 \ The tags after a facts text's effect, read while NMAP and ROWMAP still hold
-\ PSIG's letters; `creates-effect` and its space end them (SIG-CREATES-A).
+\ PSIG's names; `creates-effect` and its space end them (SIG-CREATES-A).
 : SIG-TAGS ( -- )
    BEGIN NEXT-SIG-TOK dup 0 <> WHILE
       2dup s" creates-effect" CORE-STR= IF
