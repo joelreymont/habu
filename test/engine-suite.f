@@ -645,6 +645,12 @@ VALUE-RECORD rsw3-wide-value-rec f10aaaaaaaaaaaaa n f11aaaaaaaaaaaaa n f12aaaaaa
 : RSW3 ( rsw3-wide-value-rec rsw3-wide-value-rec rsw3-wide-value-rec -- rsw3-wide-value-rec rsw3-wide-value-rec rsw3-wide-value-rec ) ;
 s" a caller of a word whose facts text passes 16 KB calls the recorded word" T-LABEL
 s" RSW3C RSW3" CHECK-QUIET-CANDIDATE! -1 T=
+\ RSR17's effect takes RPOS past its first 64 pairs; a growth that loses them
+\ names more than RROW-CAP rows, so RSR17 stays unrecorded.
+defer T-R17 ( [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] -- )
+: RSR17 T-R17 ;
+s" a caller of RSR17 calls the recorded word" T-LABEL
+s" RSR17C RSR17" CHECK-QUIET-CANDIDATE! -1 T=
 \ engine FIND parity for colon tokens: a non-edge first colon plus a second
 \ colon never resolves (FIND-QBAD); edge colons stay ordinary names. No row can
 \ name such a token: `trust` refuses it (test/name-length-test.f). A qualified
