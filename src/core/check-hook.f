@@ -109,6 +109,30 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    CHECK-RC throw ;
 
 
+\ The does> field entry, once the definer's record ndict@ 1 - is appended: it
+\ refuses nothing and writes facts only there, as `: PKG:X` hands it the tail X.
+: DOES-PUBLISHED ( ptr u8 n bool -- )
+   {: a:ptr u:n committed:bool :}
+   a u committed CHECKER-NATIVE-DOES-FINISH
+   committed 0= if exit then
+   a u CHECKER-RECORD-SYM? {: sym:n :}
+   sym 0= if exit then
+   sym USIG-NEWEST {: rec1:n :}
+   rec1 0= if exit then
+   rec1 1 - E-PTR ER.ACTIVE @ EFF-ACTIVE <> if exit then
+   sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   ix ndict@ 1 - <> if exit then
+   sym FACTS-SAME? 0= if exit then
+   sym FACTS-TAGS
+   RQM @ 0 <> if exit then
+   RSBUF RSN @ ix CHECK:FACTS!
+   sym NORET-CREATES@ {: made:n :}
+   made 0= if exit then
+   0 RSN !  made 1 - REND-RECORD
+   RQM @ 0 <> if 2drop exit then
+   CHECK:LAY-FACTS ;
+
+
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject
 \ and kept the declared signature. A non-zero hook return publishes the
 \ definition (zero rejects and unpublishes it), so the name resolves for later
@@ -141,6 +165,8 @@ TRUSTED: INSTALL ( -- )
    ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;
 
+\ Replaces checker.f's CHECKER-NATIVE-DOES-FINISH now that the renderer exists.
+' DOES-PUBLISHED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 INSTALL
 
 ;package

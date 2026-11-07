@@ -64,6 +64,14 @@ variable CDD-PKV
 : CDD-PKB ( -- ) does> ( -- n ) drop 9 ;
 CDD-PKB
 
+\ Section 16's definer, defined from outside its package: its publication gets
+\ the tail bool>n, which names hb's sealed global word, not this definer.
+package CDD-QQ
+public
+;package
+: CDD-QQ:bool>n ( n -- ) create , does> ( -- n n ) @ dup ;
+7 CDD-QQ:bool>n CDD-QF
+
 package CERTIFY-DOES-DEFINER
 
 \ The rest of section 5's fixtures, also compiled by the engine here: this
@@ -523,6 +531,11 @@ variable CDD-GOT
    s" variable CDD-PV2 : CDD-PB2 ( -- ) does> ( -- n ) drop 9 ; CDD-PB2 CDD-PV2 @ drop"
       TEST-EVAL:RC 70 T= ;
 
+\ Section 16: the qualified definer's created word gives the clause's cells.
+: CDD-SECTION-QUALIFIED ( -- )
+   s" a definer named like an hb word from outside its package runs" T-LABEL
+   CDD-QF + 14 T= ;
+
 \ Each scan runs with its probes in one neutral scope; sections 2 and 9 open
 \ theirs outside this package, as a scan begun inside one refuses `package`.
 T-RESET
@@ -548,6 +561,7 @@ CDD-SECTION-GENERATES-REFUSED
 CDD-SECTION-CLAUSE-TAIL
 CDD-SECTION-QUIET-CLAUSE
 CDD-SECTION-PATCH
+CDD-SECTION-QUALIFIED
 T-REPORT
 
 ;package

@@ -12800,13 +12800,19 @@ public
 ;package
 
 package CHECK
+\ While a build's space is open no record holds a text: one laid then lands in
+\ DATA only if no earlier file of the build has it.
+: BUILDING? ( -- bool ) data-base BOOT:IMAGE-BASE-CELL + @ 0 <> ;
 public
-\ Stores the interned text's offset in the record's bytes 32-39. While a build's
-\ space is open it keeps 0: a text laid then lands only if no earlier file has it.
+\ Stores the interned text's offset in the record's bytes 32-39.
 : FACTS! ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
-   data-base BOOT:IMAGE-BASE-CELL + @ 0 <> IF EXIT THEN
+   BUILDING? IF EXIT THEN
    a u INTERN:TEXT  data-base NULL-PTR - -  ix record-facts! ;
+\ Interns a text no record holds: a definer's created effect its words look up.
+: LAY-FACTS ( ptr u8 n -- )
+   BUILDING? IF 2drop EXIT THEN
+   INTERN:TEXT drop ;
 ;package
 
 package CHECKER-RESOLVE
