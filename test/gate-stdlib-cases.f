@@ -28,6 +28,10 @@ SUITE engine-stack-machine
    test/engine-stack-machine.f
 ;SUITE
 
+SUITE aot-shifted-bytes
+   test/aot-shifted-bytes.f
+;SUITE
+
 SUITE diag-position
    test/diag-position-test.f
 ;SUITE

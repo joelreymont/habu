@@ -39,8 +39,8 @@ s" DBASE@" s" -- ptr u8" TRUST
 \ A created body's `,` cells up to its first other allocation are a declared
 \ grid (src/core/checker.f CHECKER-BODY-CLOSE), as CELL-BODY's cells are.
 \ Undeclared CREATE bytes overlap no span (FREE-WINDOW?): the final AOT scan
-\ reads them bytewide, and FILE admission reads them only for a file whose top
-\ level ran with checking off.
+\ does not read them as cells, and FILE admission reads them only for a file
+\ whose top level ran with checking off.
 0 constant CELL-SPAN
 1 constant BYTE-SPAN
 2 constant ALLOC-START
@@ -274,8 +274,8 @@ variable SITE-HIT
 
 : NONCELL-WINDOW? ( n -- bool ) WINDOW-KIND WINDOW-NONCELL = ;
 
-\ Whether no declared span overlaps the cell window at: undeclared CREATE
-\ bytes, which only a write made with checking off can fill with an address.
+\ Whether no declared span overlaps the cell window at: bytes no span
+\ declares, such as undeclared CREATE bytes, which are read as bytes.
 : FREE-WINDOW? ( n -- bool ) WINDOW-KIND WINDOW-FREE = ;
 
 \ The caller supplies its target's literal row query. A compiler host must not

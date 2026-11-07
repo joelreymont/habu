@@ -159,38 +159,40 @@ CAST: TASK-EXIT-SLOT ( ptr n -- ptr [ -- ] )
       THEN
    loop ;
 
-\ Every window cell NOTHING DECLARED, classified by aot-closure.f CELL-TEXTPTR?
-\ (live engine extents). Declared xt cells (COLLECT-XT-CELLS, EMIT-XT-ROWS) and
-\ string-literal bodies (aot-closure.f CELL-LITERAL?) are skipped by their
-\ declaration, not their value, so the two answers cannot disagree about a cell.
-\ What is left is a code or dictionary pointer no declaration accounts for (a
-\ `' word ,` table); the first is reported with its owning word, its DATA offset
-\ and the pointer it holds.
-\ RAW AND TYPED STORAGE BOTH STAY UNDER THE VALUE SCAN: a value can come from a
-\ `0 set-check` window or an unchecked body, and a declared pointer cell's type
-\ does not say whether its mapping survives capture. Nothing stores into a
-\ literal body.
-\ The value decides only WHICH refusal; whether one is drawn is the
-\ declaration's answer, so CELL-LITERAL? is asked before either refusal. It is
-\ asked second because its row walk is a pass over the pools while the two
-\ extent tests are arithmetic.
-: SCAN-DATA-CELL ( n -- ) {: at:n :}
-   at DATA-CELL@ {: v:n :}
-   v CELL-TEXTPTR? v CELL-MAPPED? or 0= IF exit THEN
-   at AOT-CELL:NONCELL-WINDOW? IF exit THEN
+\ This scan value-checks declared cells only (DECISIONS.md "typed data"): a
+\ cell's type does not say whether its mapping survives capture.
+: SUSPECT? ( n -- bool ) {: v:n :} v CELL-TEXTPTR? v CELL-MAPPED? or ;
+
+: REFUSE-CELL ( n n -- ) {: at:n v:n :}
    at CELL-LITERAL? IF exit THEN
    v CELL-TEXTPTR? IF at v REFUSE-UNDECLARED-CELL THEN
    v CELL-MAPPED? IF at v REFUSE-MAPPED-CELL THEN ;
 
+\ The value tests come first: the window kind and CELL-LITERAL? walk rows.
+: SCAN-DATA-CELL ( n -- ) {: at:n :}
+   at DATA-CELL@ {: v:n :}
+   v SUSPECT? 0= IF exit THEN
+   at AOT-CELL:FREE-WINDOW? IF exit THEN
+   at AOT-CELL:NONCELL-WINDOW? IF exit THEN
+   at v REFUSE-CELL ;
+
 \ Carried byte fields can resemble a pointer when read across adjacent bytes.
-\ Check only their declared cell fields before the general window scan.
+\ Check only their declared cell fields before the general window scan. No span
+\ covers the carried run (the linker allots it, CARRY-RESERVE), so the free-window
+\ skip of SCAN-DATA-CELL would pass every carried cell: the declaration here is
+\ the claim's own cell layout, and each such cell is value-checked.
+: SCAN-CARRIED-CELL ( n -- ) {: at:n :}
+   at DATA-CELL@ {: v:n :}
+   v SUSPECT? 0= IF exit THEN
+   at v REFUSE-CELL ;
+
 : AOT-CARRIED-CELLS-CHECK ( -- )
    XTC-REWIND
    AOT-OWNED:N 0 ?do
       i AOT-OWNED:CARRIED-CELLS? IF
          i AOT-OWNED:LEN CELL / 0 ?do
             j AOT-OWNED:DEST i CELL * + {: at:n :}
-            at XTC-DECLARED? 0= IF at SCAN-DATA-CELL THEN
+            at XTC-DECLARED? 0= IF at SCAN-CARRIED-CELL THEN
          loop
       THEN
    loop ;

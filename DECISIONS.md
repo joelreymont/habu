@@ -706,6 +706,24 @@ learned live in the docs for their subject.
   it answers for pointers too, Joel asked "why the TFAM prefix? do you have
   any other storage?"; told that the prefix only repeats the package and that
   only typed storage asks, he chose "TFAM:HAS-ADDRESS? (Recommended)".
+  On 2026-11-07 (relayed by kevin from Tender, whose stripped server build
+  failed), Joel had written the night before "i'm leaving for the night so
+  make your own judgement and do everything without asking me. apply the
+  what's best for long term criteria". Shown that a stripped build's last
+  scan read undeclared library rows as cells at every byte offset, so the
+  length cell of a 96-byte ERROR:CODE text, read through the window 5 bytes
+  below it, spelled an address the build had mapped and failed that build
+  on every macOS run, as FFI declaration rows and json.f's escape table did
+  by address layout, the lead chose that the scan follows the rule above
+  too: it value-checks only declared cells (variables and cell grids, typed
+  storage, pointer cells, address-cell rows, carried claims) and reads no
+  undeclared bytes as cells. Checked code can still put an address into
+  undeclared storage through `ptr-field` over a parameter, as
+  src/lib/byte-buffer.f does in the header its caller allots, and so can
+  `TRUSTED:` and a `0 set-check` window: a stripped build that maps a BUF at
+  load time, which the byte scan refused, builds and crashes when it uses
+  the buffer. That is the checker's to refuse (dot
+  habu-refuse-ptr-field-331a9731), not a scan of undeclared bytes to keep.
 
 - 2026-10-31, a public XML word: asked whether lane cown may add
   `XML:EMPTY-CURSOR ( ptr u8 n -- ptr XML:cursor )`, which checks the size and

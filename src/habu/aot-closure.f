@@ -785,17 +785,13 @@ variable XTC-N  variable XTC-CX  variable XTC-I  variable XTC-J
 : XTC-IN-WINDOW? ( n -- bool ) {: at:n :}
    at BLOB-SRC @ >= at 8 + BLOB-END @ <= and ;
 
-\ A declared DATA cell's value: in-window needs nothing (restored where
-\ captured); below the window (engine DATA, not restored) goes through
-\ MAPPED-DATA, and an address no claim covers is refused by its cell. The rewrite
-\ is stored into the live window cell before aot-common.f BLOB-SRC@ reads the
-\ blob, so no second pass patches it. A value that is not a DATA address is a
-\ zero, a scalar or a code or dict address; the last is refused here by the span
-\ scan's predicate, because the scan (aot-common.f AOT-DATA-TEXTPTR-CHECK) skips
-\ declared cells.
+\ AOT-DATA-TEXTPTR-CHECK reads this cell again only as a whole cell of a cell
+\ span or of a CARRIED-CELLS copy; otherwise this row is its only check.
 : XTD-ROW ( n -- ) {: at:n :}
    at DATA-CELL@ {: v:n :}
    v DATA-ADDRESS? 0= IF
+      v CELL-DICTPTR? IF at v REFUSE-DICT-CELL THEN
+      v CELL-TEXTPTR? IF at v REFUSE-UNDECLARED-CELL THEN
       v CELL-MAPPED? IF at v REFUSE-MAPPED-CELL THEN
       exit THEN
    v MAPPED-DATA {: w:n ok:bool :}

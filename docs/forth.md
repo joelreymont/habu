@@ -2196,11 +2196,11 @@ documentation-only edits need no rebuild.
   and `here` must equal its end; otherwise the declaration throws `E-LAYOUT-BUFFER`. In a checked definer such as `:
   GRID: ( n -- ) create , 2 , 2 CELL-BODY does> ( -- SPAN:span<u8> ) cell+
   byte-view CELL SPAN:MAKE ;`, the declaration stays with the created
-  allocation when `does>` changes the callable result. Image capture then
-  scans only those complete cells instead of byte-shifted windows through
-  them. `CELL-BODY` does not declare their values or authorize a pointer:
-  an aligned cell containing a build-time mapping address remains refused in
-  a stripped image, and undeclared raw bytes retain the conservative scan.
+  allocation when `does>` changes the callable result. A stripped image's
+  capture value-checks those complete cells and reads undeclared raw bytes as
+  bytes, never as cells. `CELL-BODY` does not declare their values or
+  authorize a pointer: an aligned cell containing a build-time mapping
+  address remains refused in a stripped image.
 - **Missing convenience words are not bugs in the standard.** Core lacks `pick`,
   `within`, `s>number?`, `move`, `fill`, `erase`, `bl` and `*/`; each is
   `E-UNDEFINED` in a checked body (`: W ( -- ) bl ;`). Use cells, explicit
