@@ -1744,18 +1744,8 @@ variable LINK-EM                     \ that emission's number in this object, -1
    file KEY-BYTES BUILT@ idx + ;
 
 
-\ The record entering shadow emission e at its first byte: a linear scan over the
-\ shadow's rows, as link-band.f ROUTINE. scans.
-: EM-RECORD ( n -- n )
-   {: e:n :}
-   NSHADOW:RECORDS 0 ?do
-      i NSHADOW:EMISSION@ e =  i NSHADOW:ENTRY@ 0=  and if i NSHADOW:RECORD@ unloop exit then
-   loop
-   E-COMP-STATE throw ;
-
-
-\ A quotation reference's address: function f of the file's emission e. A placed
-\ emission's function is where SOURCE-FUNCTION finds it, which makes the sum exact.
+\ A quotation reference's address: function f of the file's emission e, the host
+\ entry the shadow filed for it, which CODE-REF+ wrote through SOURCE-FUNCTION.
 : FN-ADDR ( n n n -- n )
    {: file:n e:n f:n :}
    file 0=  e LINK-EM @ =  and if LINK-FN @  e f OWN-FUN-AT + exit then
@@ -1764,10 +1754,8 @@ variable LINK-EM                     \ that emission's number in this object, -1
    else
       file ROW-BYTES 16 + BUILT@ e +
    then {: em:n :}
-   em EM-RECORD XREF-REC XREF-START
-   em f NSHADOW:FUNCTION-OFFSET@ +  em 0 NSHADOW:FUNCTION-OFFSET@ - {: addr:n :}
-   addr NSHADOW:SOURCE-FUNCTION {: qe:n qf:n :}
-   qe em <>  qf f <>  or if E-COMP-STATE throw then
+   em f NSHADOW:FUNCTION-SOURCE@ {: addr:n :}
+   addr 0= if E-COMP-STATE throw then
    addr ;
 
 

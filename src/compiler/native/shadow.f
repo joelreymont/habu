@@ -8,6 +8,7 @@
 require src/lib/prelude.f
 require src/lib/error.f
 require src/lib/le.f
+require src/lib/hashmap.f
 require src/core/bytes.f
 require src/compiler/target.f
 require src/compiler/binding.f
@@ -61,6 +62,16 @@ DYNAMIC-BUFFER CALL-TGT n            \ the absolute address it goes to
 variable N-ADDRS
 DYNAMIC-BUFFER ADDR-OFF n            \ where an address chain starts
 DYNAMIC-BUFFER ADDR-KIND n           \ which kind of address it carries
+
+\ SOURCE-FUNCTION's table over HM: a host entry to the first published emission
+\ and function holding it. It covers emissions [0, SOURCE-N); a query adds the
+\ ones published since. Zero SOURCE-CAP marks it empty.
+DYNAMIC-BUFFER SOURCE-KEYS n
+DYNAMIC-BUFFER SOURCE-USED n
+DYNAMIC-BUFFER SOURCE-EM n
+DYNAMIC-BUFFER SOURCE-FUN n
+variable SOURCE-CAP
+variable SOURCE-N
 
 \ ---- the map -----------------------------------------------------------------
 \ Keyed by dictionary record, the way an image names a word.
@@ -261,7 +272,8 @@ $E9 constant TAIL-OP
 \ ---- the counts -------------------------------------------------------------
 : CLEAR ( -- )
    construct pending none PENDING !  0 PEND-ENTRY !
-   0 CODE-N !  0 N-EMS !  0 N-FUNS !  0 N-CALLS !  0 N-ADDRS !  0 N-RECS ! ;
+   0 CODE-N !  0 N-EMS !  0 N-FUNS !  0 N-CALLS !  0 N-ADDRS !  0 N-RECS !
+   0 SOURCE-CAP !  0 SOURCE-N ! ;
 
 : RELEASE-ROWS ( -- )
    CODE-BUF-RELEASE
@@ -273,6 +285,7 @@ $E9 constant TAIL-OP
    FUN-OFF-RELEASE  FUN-SOURCE-RELEASE
    CALL-OFF-RELEASE  CALL-KIND-RELEASE  CALL-TGT-RELEASE
    ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
+   SOURCE-KEYS-RELEASE  SOURCE-USED-RELEASE  SOURCE-EM-RELEASE  SOURCE-FUN-RELEASE
    REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE ;
 
 : SUB-ROW ( n n n -- n ) {: k:n first:n count:n :}
@@ -294,6 +307,41 @@ $E9 constant TAIL-OP
 \ call CALL-SITES reports past its rows. An emission with no slot carries none.
 : SLOT-CALL? ( n -- bool ) {: e:n :}
    e EM-PATCH @ 0 >=  e EM-PATCH-TGT @ 0<>  and ;
+
+: SOURCE-SLOT ( n -- n )
+   {: key:n :}
+   0 SOURCE-KEYS  0 SOURCE-USED  SOURCE-CAP @  key HM:PROBE ;
+
+
+: SOURCE-FILE ( n n -- )
+   {: e:n f:n :}
+   e f FUN-ROW FUN-SOURCE @ {: key:n :}
+   key SOURCE-SLOT {: s:n :}
+   s SOURCE-USED @ 0<> if exit then
+   1 s SOURCE-USED !  key s SOURCE-KEYS !  e s SOURCE-EM !  f s SOURCE-FUN ! ;
+
+
+\ An empty table for n functions. HM:PROBE needs a power-of-two cap; at least
+\ twice the functions keeps the table at most half full.
+: SOURCE-EMPTY ( n -- )
+   2 * 16 max  1 begin 2dup > while 2 * repeat nip {: cap:n :}
+   cap SOURCE-CAP !
+   cap SOURCE-KEYS-RESERVE  cap SOURCE-USED-RESERVE
+   cap SOURCE-EM-RESERVE  cap SOURCE-FUN-RESERVE
+   0 SOURCE-USED cap HM:CLEAR
+   0 SOURCE-N ! ;
+
+
+\ Adds the emissions published since the last query, refiling every one into a
+\ larger table once their functions would fill more than half of it. Published
+\ rows never change until CLEAR, so filing in publication order keeps the first.
+: SOURCE-INDEX ( -- )
+   N-FUNS @ {: funs:n :}
+   SOURCE-CAP @ 0=  funs 2 * SOURCE-CAP @ >  or if funs SOURCE-EMPTY then
+   N-EMS @ SOURCE-N @ ?do
+      i EM-FUNS @ 0 ?do j i SOURCE-FILE loop
+   loop
+   N-EMS @ SOURCE-N ! ;
 
 public
 
@@ -475,17 +523,19 @@ public
 : FUNCTION-OFFSET@ ( n n -- n )
    FUN-ROW FUN-OFF @ ;
 
+\ Its published host entry, or zero when publication filed none.
+: FUNCTION-SOURCE@ ( n n -- n )
+   FUN-ROW FUN-SOURCE @ ;
+
 \ A quotation has no dictionary record. An exact published host function entry
 \ still identifies its HIR sibling in the shadow emission; no interior address
 \ or nearest routine span is accepted as an identity.
 : SOURCE-FUNCTION ( n -- n n ) {: xt:n :}
    OPEN-CK
-   N-EMS @ 0 ?do
-      i EM-FUNS @ 0 ?do
-         j i FUN-ROW FUN-SOURCE @ xt = if j i unloop unloop exit then
-      loop
-   loop
-   -1 -1 ;
+   SOURCE-INDEX
+   xt SOURCE-SLOT {: s:n :}
+   s SOURCE-USED @ 0= if -1 -1 exit then
+   s SOURCE-EM @  s SOURCE-FUN @ ;
 
 : CALL-SITES ( n -- n )
    EM-CK {: e:n :}
