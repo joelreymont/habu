@@ -21166,6 +21166,8 @@ CHECKER-REG:}SCRATCH
    RECEFF-SYM @ CHECKER-REC-SYM !
    -1 RECEFF-ON ! ;
 
+\ Back to the cache's start, or to the end of the last facts read since (CHECK
+\ READ-LEAVE).
 : SIG-EFF-DROP
    RECEFF-ON? 0= IF EXIT THEN
    RECEFF-UEND @ USIGS-RESTORE-END
@@ -32412,9 +32414,14 @@ CHECKER-REG:}SCRATCH
    RES-TRUE GUEST-KEEP  -1 GUEST-OPEN !
    0 SIG-RAW-MODE ! ;
 
+\ A read's records are what an earlier file's compile taught, not the host
+\ check's scratch: the drop of the host's signature cache (SIG-EFF-DROP) stops
+\ above them, and the cache record stays, unnamed. A dropped created effect left
+\ a wrapper of the read definer (WRAPC) naming a record the next one overwrote.
 : READ-LEAVE ( -- )
    GUEST-SAVED @ TV-CLEAR-FROM
-   RES-FALSE GUEST-KEEP  0 GUEST-OPEN ! ;
+   RES-FALSE GUEST-KEEP  0 GUEST-OPEN !
+   RECEFF-ON? IF UEND @ RECEFF-UEND ! THEN ;
 
 
 \ Facts text a u parsed; false when the parse refuses it, names a type no
