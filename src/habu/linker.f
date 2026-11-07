@@ -652,8 +652,21 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    p PKG? 0= if false exit then
    p XREF-REC XREF-PKG-PRIVATE FILE-WID @ >=  p OWN-PRIVATE? 0=  and ;
 
+\ The build's package record whose late private wordlist (LATE?) is wid, else -1.
+\ A package keeps one record when reopened, so wid names at most one.
+: LATE-OF ( n -- n )
+   {: wid:n :}
+   wid CHECK:WORDLIST-PACKAGE {: p:n hit:bool :}
+   hit 0= if -1 exit then
+   p FIRST-REC @ < if -1 exit then
+   p XREF-REC XREF-PKG-PRIVATE wid <> if -1 exit then
+   p LATE? 0= if -1 exit then
+   p ;
+
+
 \ The wordlist ids the file's records account for: a package record's public one,
-\ its own private one (OWN-PRIVATE?), and each late private one (LATE?).
+\ its own private one (OWN-PRIVATE?), and each late private one, among the ids
+\ minted since FILE-WID.
 : MINTED ( -- n )
    0
    ndict@ FILE-REC @ ?do
@@ -662,13 +675,13 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
          i OWN-PRIVATE? if 1 + then
       then
    loop
-   ndict@ FIRST-REC @ ?do
-      i LATE? if 1 + then
+   WIDN-CELL HOST@ FILE-WID @ ?do
+      i LATE-OF 0 >= if 1 + then
    loop ;
 
 : LATE-COLLECT ( -- )
-   ndict@ FIRST-REC @ ?do
-      i LATE? if i XREF-REC XREF-PKG-PRIVATE i LATE-INSERT then
+   WIDN-CELL HOST@ FILE-WID @ ?do
+      i LATE-OF dup 0 >= if i swap LATE-INSERT else drop then
    loop ;
 
 : LATE+ ( n -- ) KIND-PRIVATE PIECES U64+  LATE-P REF+ ;
