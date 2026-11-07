@@ -119,7 +119,7 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ LOADERS stacks the key of each file whose compile is running; LOADS holds a
 \ row per load: the loader's key, zeros for the build's body, then the SHA-256
 \ of the path. BUILT holds a row per file compiled or linked: its key, its
-\ first and end record index, its object's SHA-256, its first and end emission,
+\ first and end record index, its object's checksum, its first and end emission,
 \ and the data pointer as its load starts and returns.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
@@ -136,7 +136,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
 KEY-BYTES BUFFER: INPUT-SUM
-KEY-BYTES BUFFER: OBJECT-SUM         \ the object's SHA-256 (BUILT+)
 KEY-BYTES BUFFER: CK-SUM             \ the SHA-256 of the object past its checksum (HEADER-CK)
 KEY-BYTES 2 * BUFFER: KEY-HEX
 DYNAMIC-BUFFER ENTRY-OFFS n          \ a read object's entries' offsets in OBJECT (FRESH?)
@@ -1113,13 +1112,13 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    FILE-KEY KEY-HEX SHA256>HEX
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  OBJECT BYTES$  FS:ATOMIC-WRITE-FILE ;
 
-\ The loaded file's BUILT row, summing OBJECT, the object written or read; NAMES takes its records.
+\ The loaded file's BUILT row, with the checksum of OBJECT, the object written or read; NAMES
+\ takes its records.
 : BUILT+ ( -- )
    ndict@ BUILT-N INDEX-RECS
-   SHA-CTX OBJECT BYTES$ OBJECT-SUM SHA256-IN
    FILE-KEY KEY-BYTES BUILT SPAN+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
-   OBJECT-SUM KEY-BYTES BUILT SPAN+
+   OBJECT BYTES$ drop 8 KEY-BYTES + +  KEY-BYTES BUILT SPAN+
    FILE-EM @ BUILT U64+  NSHADOW:EMISSIONS BUILT U64+
    FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+ ;
 
@@ -1141,12 +1140,13 @@ variable LAST-EM                      \ the entry just read's emission when it i
 variable OWN-DATA-MAX                 \ the furthest a reference reaches into this file's data
 
 \ The reader over OBJECT: [RD-AT, RD-END), and a failure that sticks until RD-OPEN.
+\ A failure also empties the window, so a later read fails on its bounds alone.
 ENUM reading good bad ;ENUM
 TYPED-VARIABLE READER reading
 variable RD-AT
 variable RD-END
 
-: BAD ( -- ) construct reading bad READER ! ;
+: BAD ( -- ) construct reading bad READER !  RD-AT @ RD-END ! ;
 
 
 : GOOD? ( -- bool )
@@ -1164,19 +1164,19 @@ variable RD-END
    at 0<  at end >  or  end OBJECT BYTES$ nip >  or if BAD then ;
 
 
-\ Advances n bytes; bad when they pass RD-END.
-: RD-SKIP ( n -- )
+\ Advances n bytes, and true; bad, and false, when they pass RD-END.
+: RD-STEP ( n -- bool )
    {: u:n :}
-   GOOD? 0= if exit then
-   u 0<  u RD-END @ RD-AT @ - >  or if BAD exit then
-   u RD-AT +! ;
+   u 0<  u RD-END @ RD-AT @ - >  or if BAD false exit then
+   u RD-AT +!  true ;
+
+: RD-SKIP ( n -- ) RD-STEP drop ;
 
 
 \ The next 8 bytes, low byte first; 0 once bad.
 : RD-U64 ( -- n )
    RD-AT @ {: at:n :}
-   8 RD-SKIP
-   GOOD? 0= if 0 exit then
+   8 RD-STEP 0= if 0 exit then
    OBJECT BYTES$ drop at + LE:U64@ ;
 
 
@@ -1187,8 +1187,7 @@ variable RD-END
 : RD-SAME ( ptr u8 n -- )
    {: a:ptr u:n :}
    RD-AT @ {: at:n :}
-   u RD-SKIP
-   GOOD? 0= if exit then
+   u RD-STEP 0= if exit then
    OBJECT BYTES$ drop at + u  a u  STR= 0= if BAD then ;
 
 
@@ -1317,7 +1316,7 @@ variable RD-END
    BAD ;
 
 
-\ The BUILT row with the FILES row's key and object SHA-256 (REF-FILE), and true; false when none.
+\ The BUILT row with the FILES row's key and object checksum (REF-FILE), and true; false when none.
 : BUILT-MATCH ( ptr u8 -- n bool )
    {: at:ptr :}
    BUILT-N 0 ?do

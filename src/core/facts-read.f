@@ -3,27 +3,67 @@
 \ and PARSE-IMM.
 package CHECK
 
+\ Per wordlist id, one plus the index of the newest namespace record whose public
+\ or private wordlist it is, 0 for none, over the records below NS-SEEN. A lookup
+\ first indexes the records made since; it indexes from 0 again when the count
+\ went down, or when the answer is missing or no longer holds, as after a package
+\ gains its private wordlist. The cells rest in a scratch span: SR-RETIRE empties it.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
+CHECKER-REG:}SCRATCH
+
+: NS-ENSURE ( n -- ) {: need:n :}
+   need NS-CAP @ <= IF EXIT THEN
+   need NS-CAP @ 2 * max 64 max {: nc:n :}
+   NS-ROWS-P @ NS-CAP @ cells nc cells SR-GROW NS-ROWS-P !
+   nc NS-CAP ! ;
+
+: NS-PUT ( n n -- ) {: wid:n i:n :}
+   wid 0 <= IF EXIT THEN
+   wid 1 + NS-ENSURE
+   i 1 +  NS-ROWS-P @ wid cells + ! ;
+
+: NS-NOTE ( n -- ) {: i:n :}
+   i CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   ns CK-REC-WID BOOT:NAMESPACE-WL <> IF EXIT THEN
+   ns @ i NS-PUT  ns CELL + @ i NS-PUT ;
+
+: NS-CLEAR ( -- ) NS-ROWS-P @ 0 NS-CAP @ ARENA-CELLS-ZERO  0 NS-SEEN ! ;
+
+: NS-INDEX ( -- )
+   ndict@ NS-SEEN @ < IF NS-CLEAR THEN
+   ndict@ NS-SEEN @ ?DO i NS-NOTE LOOP
+   ndict@ NS-SEEN ! ;
+
+: NS-ROW@ ( n -- n ) {: wid:n :}
+   wid 0 >  wid NS-CAP @ <  and IF NS-ROWS-P @ wid cells + @ ELSE 0 THEN ;
+
+: NS-HOLDS? ( n n -- bool ) {: wid:n row:n :}
+   row 0= IF RES-FALSE EXIT THEN
+   row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
+
+\ One plus the index of the newest namespace record holding wid, 0 for none.
+: NS-FIND ( n -- n ) {: wid:n :}
+   NS-INDEX
+   wid  wid NS-ROW@  NS-HOLDS? 0= IF NS-CLEAR NS-INDEX THEN
+   wid NS-ROW@ {: row:n :}
+   wid row NS-HOLDS? IF row ELSE 0 THEN ;
+
 \ The checker symbol of record rec, interned: a global's, else the package
-\ symbol of the namespace whose public or private wordlist holds it, newest
-\ first; 0 when none does.
+\ symbol of the newest namespace whose public or private wordlist holds it; 0
+\ when none does.
 : REC-SYM ( ptr n -- n ) {: rec:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF 0 EXIT THEN
    wid BOOT:GLOBAL-WL = IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
-   ndict@ 0 ?DO
-      ndict@ 1- i - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
-      ns CK-REC-WID BOOT:NAMESPACE-WL = IF
-         wid ns @ = IF
-            ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC name nameu CHECKER-PKG-SYM
-            UNLOOP EXIT
-         THEN
-         wid ns CELL + @ = IF
-            ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PRIVATE name nameu CHECKER-PKG-SYM
-            UNLOOP EXIT
-         THEN
-      THEN
-   LOOP 0 ;
+   wid NS-FIND {: row:n :}
+   row 0= IF 0 EXIT THEN
+   row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   ns CHECKER-RESOLVE:CK-REC-NAME$
+   wid ns @ = IF SYM-PUBLIC ELSE SYM-PRIVATE THEN
+   name nameu CHECKER-PKG-SYM ;
 
 : PIMM-ADD ( n n -- ) {: sym:n cnt:n :}
    PIMM-N @ PIMM-CAP < 0= IF s" checker: parse-imm table full" 76 die THEN
