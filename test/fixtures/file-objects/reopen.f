@@ -9,6 +9,8 @@
 package FILE-OBJECTS-LATE
 private
 : TWO ( -- n ) 2 ;
+\ Keeps the xt, so the program reaches TWO.
+variable KEEP-TWO  ' TWO KEEP-TWO xt!
 ;package
 
 package FILE-OBJECTS-SOLO
@@ -16,6 +18,10 @@ private
 : THREE ( -- n ) 3 ;
 public
 : MAKER ( n -- ) create , does> ( -- n ) @ ;
+private
+\ Keeps the xts, so the program reaches ONE and THREE.
+variable KEEP-ONE  ' ONE KEEP-ONE xt!
+variable KEEP-THREE  ' THREE KEEP-THREE xt!
 ;package
 
 : TOP ( -- n ) 4 ;

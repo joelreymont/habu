@@ -19,6 +19,9 @@ variable SCRATCH  7 SCRATCH !  SCRATCH scratch-cell-mark
 variable NOWHERE  NOWHERE ptr-cell-mark
 : COLORS ( -- ) s" red" type  s" green" type  s" blue" type ;
 : AT-EDGE ( -- ptr u8 ) FILE-OBJECTS-SHAPE:EDGE ;
+\ Keeps the xts, so the program reaches both words.
+variable KEEP-COLORS  ' COLORS KEEP-COLORS xt!
+variable KEEP-EDGE  ' AT-EDGE KEEP-EDGE xt!
 public
 : RUN ( -- )
    FILE-OBJECTS-SHAPE:BUMP  Q @ XT execute
