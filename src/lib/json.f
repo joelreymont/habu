@@ -31,6 +31,11 @@
 \ value; escaped strings can never decode to more source bytes. It writes the
 \ value through the writer's tokens, keeping member order and numeric lexemes,
 \ and answers the reader at the end of that value and the writer.
+\ VALUE= (src/lib/json/equal.f) answers whether two texts, each one JSON value,
+\ hold the same value, whatever their member order, spacing and escapes; numbers
+\ are equal when their mathematical values are, as JSON Schema defines
+\ equality: 1, 1.0, 1e0 and 10e-1 are equal, -0 equals 0, and 0.1 differs from
+\ 0.10000000000000001.
 \ STORAGE CLASS. CALLER-OWNED: the caller owns the JSON:cursor record
 \ (zero-filled typed storage owns nothing, and READ-DISPOSE leaves it so) and the
 \ source span, and keeps both live and exclusive until READ-CLOSE or
@@ -39,6 +44,7 @@
 require src/lib/json/read.f
 require src/lib/json/write.f
 require src/lib/json/copy.f
+require src/lib/json/equal.f
 
 package JSON
 seal-package
