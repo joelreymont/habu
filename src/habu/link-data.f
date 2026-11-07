@@ -11,6 +11,7 @@
 require src/lib/error.f
 require src/lib/le.f
 require src/lib/sort.f
+require src/lib/fs-mutate.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/wl.f
@@ -457,7 +458,8 @@ public
 \ first stores its entry, a stripped program's as app-image-core.f START! does,
 \ an engine's in ENGINE-MAIN:XT-CELL, and writes its names beside it as
 \ <path>.map. The facts texts the build's body held lie after every file, so
-\ no file's literal can name one.
+\ no file's literal can name one. The program goes to a sibling renamed over
+\ the path: macOS kills a signed program rewritten in place (docs/bootstrap.md).
 : WRITE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    false GOING
@@ -467,7 +469,7 @@ public
       s" link: the build stored no entry for the program" 74 die
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
-   SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE
+   path pathu [: 2dup SIGN-ID:PROG$ 2swap DRV-EMIT-IMAGE  FS:CHMOD-X ;] FS:REPLACE-STAGED
    path pathu DATA-IMAGE-AT WRITE-MAP ;
 
 ;package
