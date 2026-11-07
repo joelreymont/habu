@@ -1420,6 +1420,17 @@ learned live in the docs for their subject.
   30 minutes to build an engine is denied. 5 minutes at most!": an engine
   build takes at most 5 minutes, a slow or failed build is root-caused at
   once, and no limit is raised to get a build past it.
+- 2026-11-07, the path to arm-to-arm: Joel wrote "your rebuilds, gates, etc.
+  are slowing you down. what's the fastest path to build arm-to-arm with a
+  minimum number of rebuilds, gates and checks?" Shown that an engine built at
+  tier 0 builds itself in 36 s of wall time against 289 s at tier 1 and
+  converges, he chose "Yes, go (Recommended)": "Fewest rebuilds and checks;
+  push precise commits once arm-to-arm works." The lead writes every change
+  toward the arm64-to-arm64 cross-build in one unpushed stack, builds the
+  engine at tier 0, rebuilds hb only when a file built into it changed, and
+  checks each change by the load stop it clears; once arm-to-arm works, the
+  cross-built hb rebuilds itself byte for byte and the full suite runs on it,
+  then the stack is pushed as precise commits.
 - 2026-10-31, startup reuse: asked to approve a public word that compares the
   tree's source hashes with the engine's so hb-build could skip its 3.3 s
   startup reload, Joel answered "why are we developing incremental building if

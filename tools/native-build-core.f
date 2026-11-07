@@ -1267,16 +1267,15 @@ variable NAMES-NI
    PREFIX-START
    OPEN-FILE-AND-COMPILE ;
 
-\ The engine build owns its tier: a restored support image starts at tier 0,
-\ so the target sources start at tier 1. A source that sets its own tier keeps
-\ it, as in any product, and nothing refuses tier 0 bodies in the engine. The
-\ build scope's cleanup restores the caller's tier.
-: AT-TIER-1 ( R [ R -- S ] -- S )
-   1 set-tier execute ;
+\ The engine build owns its tier: the target sources compile at tier 0. A
+\ source that sets its own tier keeps it, as in any product. The build scope's
+\ cleanup restores the caller's tier.
+: AT-TIER-0 ( R [ R -- S ] -- S )
+   0 set-tier execute ;
 
 
 : TARGET-SCOPE ( R [ R -- S ] -- S )
-   ['] AT-TIER-1 EXECUTABLE-BUILD:WITH ;
+   ['] AT-TIER-0 EXECUTABLE-BUILD:WITH ;
 
 : REMOVE-STALE-TEMP ( -- )
    TEMP$ 2dup FS:SYMLINK? if FS:REMOVE-FILE exit then
