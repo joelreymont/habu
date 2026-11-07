@@ -321,9 +321,7 @@ PTR-VARIABLE SND-A
    NCOMP-DISPATCH:DEF-TIER-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-DEPTH-CELL SND-ZERO-CELL
    NCOMP-DISPATCH:BUILD-TIER-CELL SND-ZERO-CELL
-   RSN SND-ZERO-OFF SND-ZERO-CELL
-   RSBUF SND-ZERO-OFF {: rs:n :}
-   RSBUF-CAP 0 ?do 0 SND-PTR rs i + + c! loop ;
+   RSN SND-ZERO-OFF SND-ZERO-CELL ;
 
 \ Admissions and the seal belong to the writing process. A saved image starts
 \ with a fresh vocabulary even when its writer was sealed during capture.

@@ -97,8 +97,8 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 
 \ CS-K90's literal leaves 40 values of that type, so its escape refusal renders
 \ about 10 KB as the inferred effect and as much again as the actual callable,
-\ passing the renderer's 16 KiB record buffer while it shows row tails: the
-\ capture throws E-DIAG-CAPACITY.
+\ growing the renderer's record buffer and its tail capture past their first
+\ sizes while it shows row tails.
 : CAPTURE-PAST$ ( -- ptr u8 n )
    s" CS-K90 ( -- ) [: 0 CHECKER-SOUNDNESS:>WIDE dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup dup ;] CHECKER-SOUNDNESS:TAIL-ONCE" ;
 
@@ -156,9 +156,9 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" its inferred effect is the body's up to the refusal, not the declared one" T-LABEL
    s" -1 JSON-DIAGS ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s" a -- a [ -- n ] " SUBJECT:REFUSED? TTRUE
-   s" a capture past the render buffer leaves later renders without row tails" T-LABEL
-   [: CAPTURE-PAST$ CHECK-QUIET-CANDIDATE! drop ;] catch E-DIAG-CAPACITY T=
-   \ The subject is a fork of this process, so it renders after the caught throw.
+   s" a capture past the render buffers' first sizes grows them and keeps later row tails" T-LABEL
+   CAPTURE-PAST$ CHECK-QUIET-CANDIDATE! 0 T=
+   \ The subject is a fork of this process, so it renders with the grown buffers.
    s" : CS-K91 ( -- ) [: CHECKER-SOUNDNESS:TAKE-U8 ;] CHECKER-SOUNDNESS:CALL-I64 ;" 70
    s" expected: [ i64 -- ] actual: [ u8 -- ]" SUBJECT:REFUSED? TTRUE
    s" a forwarder may not pass the word's own input row as the callable's" T-LABEL

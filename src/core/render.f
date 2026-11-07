@@ -8,9 +8,27 @@ using TFAM
 
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
-16384 constant RSBUF-CAP
-\ RSBUF and RSN outlive no record; snap-lib.f SND-ZERO-LIVE zeroes them in an image.
-create RSBUF RSBUF-CAP allot   variable RSN
+\ RSBUF and RSN outlive no record: RSBUF is mapped on first use and released
+\ at snapshot (REND-SNAPSHOT-RESET); snap-lib.f SND-ZERO-LIVE zeroes RSN in an
+\ image.
+16384 constant RSBUF-FIRST                \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE RSBUF-P   NULL-PTR RSBUF-P !
+variable RSBUF-CAP   0 RSBUF-CAP !        \ bytes mapped at RSBUF-P, 0 for none
+variable RSN
+
+: RSBUF-MAP ( -- )
+   RSBUF-FIRST ARENA-ALLOC-BYTES RSBUF-P !  RSBUF-FIRST RSBUF-CAP ! ;
+
+: RSBUF ( -- ptr u8 )
+   RSBUF-CAP @ 0= IF RSBUF-MAP THEN
+   RSBUF-P @ ;
+
+\ Doubles RSBUF, keeping its bytes; a span taken from it before is stale.
+: RSBUF-GROW ( -- )
+   RSBUF-CAP @ 0= IF RSBUF-MAP EXIT THEN
+   RSBUF-CAP @ {: oc:n :}
+   RSBUF-P @ oc oc 2 * ARENA-BYTES-GROW RSBUF-P !
+   oc 2 * RSBUF-CAP ! ;
 \ RQM: the text cannot say the effect, so REC-SIG does not record it; set where the
 \ text writes `?` and where it meets a type or row no signature spells.
 variable RQM
@@ -26,10 +44,9 @@ variable RDIAG-CAP
 variable RDIAG-U
 variable RDIAG-I
 
-\ E-DIAG-CAPACITY refuses a record that does not fit RSBUF or the caller's
-\ buffer. src/lib/error.f owns it but compiles after this file, so the same
-\ (code, name) pair is re-registered here, the one form tools/error-code-lint.f
-\ admits.
+\ E-DIAG-CAPACITY refuses a record that does not fit the caller's buffer.
+\ src/lib/error.f owns it but compiles after this file, so the same (code, name)
+\ pair is re-registered here, the one form tools/error-code-lint.f admits.
 package RDIAG
 public
 -2901 constant E-DIAG-CAPACITY
@@ -43,17 +60,10 @@ variable RTAILS   0 RTAILS !
 variable RNAMES   0 RNAMES !
 
 
-\ A record past RSBUF is refused whole by a throw, after a reset to stdout with
-\ no JSON string, row tails or names open, as a delivered record leaves it.
-: RSBUF-FULL ( -- )
-   0 RDST !  0 RSN !  0 RJSON !  0 RTAILS !  0 RNAMES !
-   RDIAG:E-DIAG-CAPACITY throw ;
-
-
 : EMIT-RAW ( n -- )
    {: c:n :}
    RDST @ IF
-     RSN @ RSBUF-CAP 2 - > IF RSBUF-FULL THEN
+     RSN @ RSBUF-CAP @ 2 - > IF RSBUF-GROW THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
 
@@ -181,11 +191,6 @@ $7FFFFFFFFFFFFFFF CELL / constant SEEN-MAX-CAP
    REPEAT drop
    0 SEEN-HW ! 0 RBIND-N ! ;
 
-: SEEN-SNAPSHOT-RESET ( -- )
-   SEEN-RELEASE ;
-
-: REG-SCRATCH-SNAP-INSTALL ( -- ) [: SEEN-SNAPSHOT-RESET ;] is REG-SCRATCH-SNAP-XT ;
-REG-SCRATCH-SNAP-INSTALL
 : RATOM-RESET ( -- )
    0 RATOM-N ! ;
 
@@ -406,16 +411,18 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
    row ROW-TAIL RROW-LETTER EMIT1  32 EMIT1 ;
 
 
-\ Each quotation records at most four rows and writes at least `[ -- ]`, so
-\ RSBUF fills before RPOS does.
-RSBUF-CAP 2 * 3 / 4 + constant RPOS-CAP
 \ RPOS holds a (tail, owner) pair per row REND-EFFECT's first pass visits: owner
 \ 0 is the effect's data rows, 1 its return rows, 2v and 2v+1 the v-th quotation's.
-create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
+\ It is mapped on first use and released at snapshot (REND-SNAPSHOT-RESET).
+PERSISTED-PTR-VARIABLE RPOS-P   NULL-PTR RPOS-P !
+variable RPOS-CAP   0 RPOS-CAP !          \ pairs mapped at RPOS-P, 0 for none
+variable RPOS-N   variable RVISIT
+: RPOS ( -- ptr n ) RPOS-P @ ;
 
+\ ARENA-ROWS-ENSURE maps 64 pairs first, then doubles RPOS, keeping its pairs.
 : RPOS+ ( n n -- )
    {: t:n owner:n :}
-   RPOS-N @ RPOS-CAP >= IF RSBUF-FULL THEN
+   RPOS-P RPOS-CAP RPOS-N @ 1 + 2 ARENA-ROWS-ENSURE
    t RPOS-N @ 2 * cells RPOS + !
    owner RPOS-N @ 2 * 1 + cells RPOS + !
    RPOS-N @ 1 + RPOS-N ! ;
@@ -874,8 +881,14 @@ variable DSUGE  variable DSUGA
 \ hold it (TAIL-ROW), so a join whose two callables read alike still says which
 \ side escaped. MDIAG gates every read, so a capture an abandoned trial made is
 \ never rendered.
-create TCAP RSBUF-CAP allot
+\ TCAP is mapped by the first capture and released at snapshot
+\ (REND-SNAPSHOT-RESET); its lengths are 0 until a capture, so a reader reads
+\ nothing.
+4096 constant TCAP-FIRST                  \ bytes of the first mapping
+PERSISTED-PTR-VARIABLE TCAP-P   NULL-PTR TCAP-P !
+variable TCAP-CAP   0 TCAP-CAP !          \ bytes mapped at TCAP-P, 0 for none
 variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
+: TCAP ( -- ptr u8 ) TCAP-P @ ;
 : TCAP-INF$ ( -- ptr u8 n ) TCAP TCAP-INF @ ;
 : TCAP-EXP$ ( -- ptr u8 n ) TCAP TCAP-INF @ +  TCAP-EXP @ TCAP-INF @ - ;
 : TCAP-ACT$ ( -- ptr u8 n ) TCAP TCAP-EXP @ +  TCAP-ACT @ TCAP-EXP @ - ;
@@ -888,6 +901,16 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
    x QTAIL  x DROW ;
 
 
+\ Each capture rewrites every byte a reader sees, so a grow keeps none.
+: TCAP-ROOM ( n -- )
+   {: need:n :}
+   need TCAP-CAP @ <= IF EXIT THEN
+   need TCAP-CAP @ 2 * max TCAP-FIRST max {: nc:n :}
+   nc ARENA-ALLOC-BYTES {: next:ptr :}
+   TCAP-P @ TCAP-CAP @ ARENA-UNMAP
+   next TCAP-P !  nc TCAP-CAP ! ;
+
+
 : TAIL-CAPTURE ( -- )
    RDST @ {: dst:n :}  RSN @ {: base:n :}  RQM @ {: qm:n :}
    1 RDST !  SEEN-RESET 0 NLET !  0 RROW-N !
@@ -898,6 +921,7 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
    TAIL-SKOLEM @ ROW-TAIL RROW-LETTER EMIT1  s"  would escape into " DTXT
    TAIL-ROW @ TCAP-ROW  RSN @ base - TCAP-HELD !
    0 RTAILS !
+   TCAP-HELD @ TCAP-ROOM
    0 BEGIN dup TCAP-HELD @ < WHILE
       dup base + RSBUF + c@  over TCAP + c!  1 +
    REPEAT drop
@@ -906,6 +930,18 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 
 : TAIL-CAPTURE-INSTALL ( -- ) [: TAIL-CAPTURE ;] is TAIL-CAPTURE-XT ;
 TAIL-CAPTURE-INSTALL
+
+
+: REND-SNAPSHOT-RESET ( -- )
+   SEEN-RELEASE
+   RSBUF-P @ RSBUF-CAP @ ARENA-UNMAP  NULL-PTR RSBUF-P !  0 RSBUF-CAP !  0 RSN !
+   RPOS-P RPOS-CAP 2 ARENA-ROWS-RELEASE  0 RPOS-N !
+   TCAP-P @ TCAP-CAP @ ARENA-UNMAP  NULL-PTR TCAP-P !  0 TCAP-CAP !
+   0 TCAP-INF !  0 TCAP-EXP !  0 TCAP-ACT !  0 TCAP-HELD ! ;
+
+
+: REG-SCRATCH-SNAP-INSTALL ( -- ) [: REND-SNAPSHOT-RESET ;] is REG-SCRATCH-SNAP-XT ;
+REG-SCRATCH-SNAP-INSTALL
 \ Match/construct reasons (docs/forth.md "Structures And Enums"): MDIAG's latched
 \ code maps to a JSON code, repair class, suggestion and prose. MD-NONEXH names
 \ the missing variants from the latched (family, seen-bitset, count):
