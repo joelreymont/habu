@@ -8,9 +8,8 @@ using TFAM
 
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
-\ RSBUF and RSN outlive no record. RSBUF is mapped on first use;
-\ REND-SNAPSHOT-RESET releases it, and snap-lib.f SND-ZERO-LIVE zeroes RSN in an
-\ image.
+\ RSBUF and RSN outlive no record: REND-SNAPSHOT-RESET releases RSBUF, mapped on
+\ first use, and snap-lib.f SND-ZERO-LIVE zeroes RSN in an image.
 16384 constant RSBUF-FIRST                \ bytes of the first mapping
 PERSISTED-PTR-VARIABLE RSBUF-P   NULL-PTR RSBUF-P !
 variable RSBUF-CAP   0 RSBUF-CAP !        \ bytes mapped at RSBUF-P, 0 for none
@@ -418,7 +417,6 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 
 \ RPOS holds a (tail, owner) pair per row REND-EFFECT's first pass visits: owner
 \ 0 is the effect's data rows, 1 its return rows, 2v and 2v+1 the v-th quotation's.
-\ It is mapped on first use; REND-SNAPSHOT-RESET releases it.
 PERSISTED-PTR-VARIABLE RPOS-P   NULL-PTR RPOS-P !
 variable RPOS-CAP   0 RPOS-CAP !          \ pairs mapped at RPOS-P, 0 for none
 variable RPOS-N   variable RVISIT
@@ -935,9 +933,8 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 TAIL-CAPTURE-INSTALL
 
 
-\ Releases every render buffer, so no mapping's address enters an image. It runs
-\ through REG-SCRATCH-SNAP-XT at image capture (CHECKER-QUIESCE-END) and at
-\ every file boundary (CHECKER-REG:FILE-SCRATCH-RETIRE).
+\ Releases every render buffer, so no mapping's address enters an image; it runs
+\ as REG-SCRATCH-SNAP-XT, whose comment in checker.f says when.
 : REND-SNAPSHOT-RESET ( -- )
    SEEN-RELEASE
    RSBUF-P @ RSBUF-CAP @ ARENA-UNMAP  NULL-PTR RSBUF-P !  0 RSBUF-CAP !  0 RSN !
@@ -1748,10 +1745,8 @@ BADSIG-DIAG-INSTALL
    10 EMIT1
    RSBUF-FLUSH ;
 
-\ Why a certified sig-less word stays unrecorded: more than TYPE-VAR-MAX names
-\ ('?' stood for a name past it, not an unmodeled tag), more than
-\ BINDER-DEPTH-MAX nested binders (RBIND-FULL), a row the text cannot say
-\ (RROW-UNSAID), or any other RQM cause, as an unmodeled tag.
+\ Why REC-SIG left a certified sig-less word unrecorded; the last arm answers
+\ every other RQM cause, a stale or scoped type among them, as an unmodeled tag.
 : REC-REFUSE-WHY ( -- )
    NLET @ TYPE-VAR-MAX > IF
       s" more than " DTXT  TYPE-VAR-MAX JNUM

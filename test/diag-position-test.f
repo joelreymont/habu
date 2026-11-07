@@ -411,9 +411,8 @@ variable RC
    GJA-LINE# @ 1 T=
    FX-PATH$ CANON$ SHADOWED-AT ;
 
-\ WIDE's inferred effect has 276 type variables, more than the 256 an effect
-\ text names: the checker certifies it and warns, at its name, that the effect
-\ is not recorded.
+\ WIDE's inferred effect has more than TYPE-VAR-MAX type variables: the checker
+\ certifies it and warns, at its name, that the effect is not recorded.
 : NOT-RECORDED-TEXT ( -- )
    SB-RESET
    s" defer V23 ( -- a b c d e g h i j k l m o p q s t u v w x y z )" SB-APPEND LF+ LF+
