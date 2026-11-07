@@ -874,6 +874,12 @@ learned live in the docs for their subject.
   fs-mutate's private binding (TRUNCATE is a global word), Joel chose "Add
   FD:RESIZE (Recommended)". No write-at-offset word: cutting back and
   appending covers the case.
+- 2026-11-07, Maki's finite test (relayed by tim): Maki refuses a computed
+  length that is not finite, testing it inline with `0.0 f* f0=`, while
+  FMATH, F64-TEXT and FBASIS each hold the test privately. Asked "Should
+  Habu publish its private FMATH:FINITE? ( r -- bool ) so Maki's two copies
+  of the finite test go", Joel chose "Make it public (Recommended)":
+  `FMATH:FINITE? ( r -- bool )` is public.
 - 2026-11-01, sealing a package: Maki needs a package closed so later
   source cannot reopen it. Offered a new word, Joel answered "we already have
   package sealing, prove me wrong!". Measured: `private get-current

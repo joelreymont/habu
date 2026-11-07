@@ -9,6 +9,7 @@ require src/lib/fs.f
 require src/lib/fs-mutate.f
 require src/lib/task.f
 require src/lib/ieee754.f
+require src/lib/fmath.f
 require src/lib/le.f
 require src/lib/span.f
 
@@ -100,7 +101,7 @@ TASK:#USER 7 + $FFFFFFFFFFFFFFF8 and 8 cells TASK:+USER STATE drop
 
 : POSITIVE-FINITE? ( r -- bool )
    {: value:r :}
-   value IEEE754:F64>BITS $7FF0000000000000 and $7FF0000000000000 <>
+   value FMATH:FINITE?
    value 0.0 f> and ;
 
 : OPEN-SVG ( ptr u8 n -- )
