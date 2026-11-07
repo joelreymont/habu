@@ -273,7 +273,9 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    loop ;
 
 \ FILE-KEY for a load of the path, recorded in LOADS: a SHA-256 over hb's own bytes, the build's
-\ mode and target, the whole path, the loader's key and that loader's earlier loads of the path.
+\ mode and target, the record count at the open, the whole path, the loader's key and that
+\ loader's earlier loads of the path. The count follows what loaded before the open, and a file
+\ can store a record index (util.f REG-PROTECT); the close restores it for the next build.
 : KEY! ( ptr u8 n -- ) {: path:ptr pathu:n :}
    KEY-BYTES 0 ?do 0 ROW i + c! loop
    LOADER$ {: ld:ptr ldu:n :}
@@ -284,6 +286,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    ENGINE-ID:KEY$ OBJECT FIELD+
    ENGINE? @ if s" engine" else s" app" then OBJECT FIELD+
    s" arm64" OBJECT FIELD+
+   8 OBJECT U64+  FIRST-REC @ OBJECT U64+
    path pathu OBJECT FIELD+
    ld ldu OBJECT FIELD+
    8 OBJECT U64+  n OBJECT U64+
