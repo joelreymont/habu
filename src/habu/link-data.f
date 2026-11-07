@@ -47,6 +47,8 @@ variable LRLIST-END
 DYNAMIC-BUFFER RLISTED n
 variable RLISTED-N
 DYNAMIC-BUFFER NAME-AT n
+\ Each kernel primitive's facts text, as its offset from the space, 0 for none.
+DYNAMIC-BUFFER PRIM-FACTS-AT n
 
 
 \ A bound label's byte offset in A64ICODE's code buffer.
@@ -209,6 +211,32 @@ DYNAMIC-BUFFER NAME-AT n
    {: k:n slot:n :}
    A64ICODE:CODE LDICT LABEL-OFFSET +  k DREC * +  slot cells +  LE:U64@ ;
 
+\ Primitive k's name: at code offset [24] when out of line, else in [24].
+: PRIM-NAME$ ( n -- ptr u8 n )
+   {: k:n :}
+   k 2 PRIM@ {: flags:n :}
+   flags DNAME-EXT and 0<> if
+      A64ICODE:CODE k 3 PRIM@ +
+   else
+      A64ICODE:CODE LDICT LABEL-OFFSET +  k DREC * +  24 +
+   then
+   flags DNAME-LEN-MASK and ;
+
+
+\ A built-in primitive's facts text, laid in the space; 0 for a package row, an
+\ owned primitive or a primitive no text says.
+: PRIM-TEXT ( n -- n )
+   {: k:n :}
+   k 5 PRIM@ WL:PRIMITIVES <> if 0 exit then
+   k PRIM-NAME$ LOWER-CERT-HOOK:PRIMITIVE-FACTS {: a:ptr u:n :}
+   u 0= if 0 exit then
+   a u INTERN:TEXT BASE @ - ;
+
+\ After the kernel and before DATA-IMAGE copies the space.
+: PRIM-TEXTS ( -- )
+   PRIMS PRIM-FACTS-AT-RESERVE
+   PRIMS 0 ?do i PRIM-TEXT i PRIM-FACTS-AT ! loop ;
+
 : RLIST+ ( n -- )
    RLISTED-N @ 1 + RLISTED-RESERVE
    RLISTED-N @ RLISTED !  1 RLISTED-N +! ;
@@ -220,7 +248,7 @@ DYNAMIC-BUFFER NAME-AT n
 
 
 \ As habu2.f EM-SEED-DICT seeds it: [8] the body's length, a package row's
-\ [0] and [8] its wordlist ids.
+\ [0] and [8] its wordlist ids; [32] the facts text PRIM-TEXTS laid.
 : PRIM-REC, ( n -- )
    {: k:n :}
    k DREC * {: at:n :}
@@ -239,7 +267,7 @@ DYNAMIC-BUFFER NAME-AT n
    else
       k 3 PRIM@ A64ICODE:DCQ,
    then
-   k 4 PRIM@ A64ICODE:DCQ,
+   k PRIM-FACTS-AT @ A64ICODE:DCQ,
    wid A64ICODE:DCQ, ;
 
 
@@ -309,7 +337,7 @@ DYNAMIC-BUFFER NAME-AT n
    LRLIST A64ICODE:LABEL@ A64ICODE:LBL,
    RLISTED-N @ 0 ?do i RLISTED @ A64ICODE:DCQ, loop
    LRLIST-END A64ICODE:LABEL@ A64ICODE:LBL,
-   RLISTED-RELEASE  NAME-AT-RELEASE ;
+   RLISTED-RELEASE  NAME-AT-RELEASE  PRIM-FACTS-AT-RELEASE ;
 
 
 \ An engine's header cells beside HEADER-CELLS': the record count the seal
@@ -402,6 +430,7 @@ DYNAMIC-BUFFER NAME-AT n
    LRECS A64ICODE:LABEL@  LRECS-END A64ICODE:LABEL@
    LRLIST A64ICODE:LABEL@  LRLIST-END A64ICODE:LABEL@  A64BOOT:ENGINE-START,
    ARM64:KERNEL
+   PRIM-TEXTS
    ROUTINES REACH-ALL
    ['] DATA-ADDRESS PLACE-ROUTINES
    DATA-IMAGE

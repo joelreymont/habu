@@ -6483,6 +6483,9 @@ variable SIG-PIMM   -1 SIG-PIMM !   \ the parse-imm count the last facts text's 
 \ The created words' facts text inside the last facts text, 0 0 for none. A
 \ caller parses that span itself, after building the first text's effect.
 PTR-VARIABLE SIG-CREATES-A   variable SIG-CREATES-U
+\ A primitive's next row inside the last facts text, after `overload`, 0 0 for
+\ none; parsed the same way.
+PTR-VARIABLE SIG-OVERLOAD-A   variable SIG-OVERLOAD-U
 
 \ The NMAP slot a type-variable token names, -1 for none: a lowercase letter
 \ other than f, n and r, or, in facts text only, an ordinal 23 to TYPE-VAR-MAX - 1.
@@ -7521,14 +7524,26 @@ CHECKER-REG:}SCRATCH
    kind id TVK! ;
 
 
+\ The rest of the text after tag ta tu and its space; false, the tag refused,
+\ when nothing follows.
+: SIG-REST ( ptr u8 n -- ptr u8 n bool )
+   {: ta:ptr tu:n :}
+   SIG-SPACE? 0= IF ta tu SGBAD-SYNTAX!  NULL-PTR 0 RES-FALSE EXIT THEN
+   SL @ SI @ - 1 - {: u:n :}
+   u 1 < IF ta tu SGBAD-SYNTAX!  NULL-PTR 0 RES-FALSE EXIT THEN
+   SB@ SI @ + 1 +  u  RES-TRUE ;
+
+
 \ The tags after a facts text's effect, read while NMAP and ROWMAP still hold
-\ PSIG's names; `creates-effect` and its space end them (SIG-CREATES-A).
+\ PSIG's names; `creates-effect` or `overload` and its space end them, the rest
+\ held in SIG-CREATES-A or SIG-OVERLOAD-A.
 : SIG-TAGS ( -- )
    BEGIN NEXT-SIG-TOK dup 0 <> WHILE
       2dup s" creates-effect" CORE-STR= IF
-         SIG-SPACE? 0= IF SGBAD-SYNTAX! EXIT THEN
-         SL @ SI @ - 1 -  dup 1 < IF drop SGBAD-SYNTAX! EXIT THEN
-         SIG-CREATES-U !  2drop  SB@ SI @ + 1 + SIG-CREATES-A !  EXIT
+         SIG-REST IF SIG-CREATES-U !  SIG-CREATES-A ! ELSE 2drop THEN EXIT
+      THEN
+      2dup s" overload" CORE-STR= IF
+         SIG-REST IF SIG-OVERLOAD-U !  SIG-OVERLOAD-A ! ELSE 2drop THEN EXIT
       THEN
       SIG-TAG
    REPEAT 2drop ;
@@ -7547,6 +7562,7 @@ CHECKER-REG:}SCRATCH
    SL @ {: len:n :}
    0 SIG-CTL !  0 SIG-PE !  -1 SIG-PIMM !
    NULL-PTR SIG-CREATES-A !  0 SIG-CREATES-U !
+   NULL-PTR SIG-OVERLOAD-A !  0 SIG-OVERLOAD-U !
    PKRESET NEXT-SIG-TOK s" (" CORE-STR= {: open:bool :}
    SI @ {: from:n :}
    open IF FACTS-CLOSE ELSE -1 THEN {: close:n :}
@@ -32148,14 +32164,14 @@ CAST: DLOG-CELL ( ptr n -- ptr ptr n )
 \ wordlist it was published into; NS is the open package's namespace record,
 \ NULL-PTR outside one, holding that package's public and private wordlist ids
 \ in the slots where a word keeps its code span (xref.f XREF-PKG-PUBLIC,
-\ XREF-PKG-PRIVATE). A record in neither the global wordlist nor NS's is a
+\ XREF-PKG-PRIVATE). A record in neither a global wordlist nor NS's is a
 \ qualified definition, which no file before the claim makes: its row would be
 \ keyed in a scope no lookup of the engine reaches, so the boot stops.
 : CK-DLOG-SYM ( ptr n ptr n -- n )
    {: rec:ptr ns:ptr :}
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: a:ptr u:n :}
    rec CK-REC-WID {: wid:n :}
-   wid BOOT:GLOBAL-WL = IF a u CHECKER-GLOBAL-SYM EXIT THEN
+   wid WL:GLOBAL? IF a u CHECKER-GLOBAL-SYM EXIT THEN
    ns NULL-PTR <> IF
       wid ns CK-NS-PUBLIC-SLOT cells + @ = IF
          ns CHECKER-RESOLVE:CK-REC-NAME$ SYM-PUBLIC a u CHECKER-PKG-SYM EXIT
@@ -32208,7 +32224,7 @@ CLAIM-COLD-SOURCE
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF s" checker: nominal provider has no live record" 76 die THEN
-   wid BOOT:GLOBAL-WL = IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
+   wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    ndict@ 0 ?DO
       i CHECKER-RESOLVE:REC-AT {: ns:ptr :}
       ns CK-REC-WID BOOT:NAMESPACE-WL = IF
@@ -32293,7 +32309,7 @@ CHECKER-REG:}SCRATCH
 \ global and namespace wordlists are no package's: a miss on them would index
 \ every record again.
 : NS-FIND ( n -- n ) {: wid:n :}
-   wid BOOT:GLOBAL-WL =  wid BOOT:NAMESPACE-WL =  or IF 0 EXIT THEN
+   wid WL:GLOBAL?  wid BOOT:NAMESPACE-WL =  or IF 0 EXIT THEN
    NS-INDEX
    wid  wid NS-ROW@  NS-HOLDS? 0= IF NS-CLEAR NS-INDEX THEN
    wid NS-ROW@ {: row:n :}
@@ -32306,7 +32322,7 @@ CHECKER-REG:}SCRATCH
    rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
    rec CK-REC-WID {: wid:n :}
    nameu 0= wid -2 = or IF 0 EXIT THEN
-   wid BOOT:GLOBAL-WL = IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
+   wid WL:GLOBAL? IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
    wid NS-FIND {: row:n :}
    row 0= IF 0 EXIT THEN
    row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
@@ -32373,7 +32389,7 @@ CHECKER-REG:}SCRATCH
    SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
    SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
    SIG-PE save GUEST-CELL  SIG-PIMM save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
-   SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
+   SIG-OVERLOAD-U save GUEST-CELL  SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
 
 \ The latches E-ADD-EFFECT sets for the record the engine publishes next.
 : GUEST-LATCHES ( n bool -- n ) {: save:bool :}
@@ -32383,7 +32399,8 @@ CHECKER-REG:}SCRATCH
 : GUEST-POINTERS ( bool -- ) {: save:bool :}
    0  SB 1 save GUEST-PTRS  SS 1 save GUEST-PTRS  PKA 1 save GUEST-PTRS
    SGBAD-A 1 save GUEST-PTRS  SIG-UNRES-A 1 save GUEST-PTRS
-   SIG-CREATES-A 1 save GUEST-PTRS  SIGSCOPE-P 1 save GUEST-PTRS
+   SIG-CREATES-A 1 save GUEST-PTRS  SIG-OVERLOAD-A 1 save GUEST-PTRS
+   SIGSCOPE-P 1 save GUEST-PTRS
    FAM-A FAM-CAP save GUEST-PTRS  drop ;
 
 : GUEST-KEEP ( bool -- ) {: save:bool :}
@@ -32430,13 +32447,41 @@ CHECKER-REG:}SCRATCH
 
 \ A primitive row's tags (render.f REND-PE) state that row again over the effect
 \ just read, as PE-CLOSE-SYM does, so TRY-PRIMS and PRIM-TRUSTED-SYM? answer a
-\ caller as in the compile. The caller's PE-LAST stays: a read is its guest.
-: READ-PE ( n n -- ) {: sym:n pe:n :}
-   pe 0=  sym PREFIX-SYM? or IF EXIT THEN
+\ caller as in the compile; so does a first row with more after it, since a
+\ symbol with rows calls through TRY-PRIMS (CALL-AUTHORITY). The caller's
+\ PE-LAST stays: a read is its guest.
+: READ-PE ( n n bool -- ) {: sym:n pe:n more:bool :}
+   pe 0=  more 0=  and  sym PREFIX-SYM? or IF EXIT THEN
    PE-LAST @ {: last:n :}
    sym  sym USIG-NEWEST 1 -  pe PE-ACTIVE or  PRIM-ADD
    last PE-LAST !
    HIDX-VALID @ IF  HIDX-EPOCH @ 1- sym HT-PRM-E HIDX-CELL !  THEN ;
+
+
+\ One more primitive row of sym from the text after `overload` (render.f
+\ REND-OVERLOAD): its effect and PE tags, stated as PE-CLOSE-SYM states a row.
+\ Answers the text of the row after it; false when the text is refused or
+\ carries a tag only a first row may.
+: READ-OVERLOAD ( ptr u8 n n -- ptr u8 n bool )
+   {: a:ptr u:n sym:n :}
+   a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
+   SIG-PE @  SGHASR @  SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: pe:n hasr:bool ra:ptr ru:n :}
+   ok 0=  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
+      NULL-PTR 0 RES-FALSE EXIT
+   THEN
+   sym CHECKER-REC-SYM !
+   sym  din dout rin rout hasr E-BUILD-EFFECT  pe PE-ACTIVE or  PRIM-ADD
+   ra ru RES-TRUE ;
+
+\ Sym's rows after its first, from text a u; false when one is refused.
+: READ-OVERLOADS ( ptr u8 n n -- bool )
+   {: a:ptr u:n sym:n :}
+   sym PREFIX-SYM? IF RES-TRUE EXIT THEN
+   PE-LAST @ {: last:n :}
+   a u BEGIN dup 0 <> WHILE
+      sym READ-OVERLOAD 0= IF 2drop  last PE-LAST !  RES-FALSE EXIT THEN
+   REPEAT 2drop
+   last PE-LAST !  RES-TRUE ;
 
 \ A text's control bits beside the ones storing an effect derives from its rows.
 : READ-FLAGS ( n n -- n )
@@ -32456,9 +32501,11 @@ CHECKER-REG:}SCRATCH
    ok 0= IF a u name nameu READ-REFUSE EXIT THEN
    SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
       {: ctl:n pimm:n pe:n ca:ptr cu:n hasr:bool :}
+   SIG-OVERLOAD-A @  SIG-OVERLOAD-U @ {: oa:ptr ou:n :}
    sym CHECKER-REC-SYM !
    din dout rin rout hasr RES-TRUE E-ADD-EFFECT
-   sym pe READ-PE
+   sym pe ou 0 <> READ-PE
+   oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REFUSE EXIT THEN
    ca cu READ-MADE {: made:n good:bool :}
    good 0= IF a u name nameu READ-REFUSE EXIT THEN
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES

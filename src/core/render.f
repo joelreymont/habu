@@ -750,6 +750,15 @@ LOCSHOW-INSTALL
    qm 0 <> IF 1 RQM ! THEN ;
 
 
+\ `overload `, primitive row k's effect and its tags, appended at RSN; checker.f
+\ SIG-TAGS reads the rest of the text as the primitive's next row.
+: REND-OVERLOAD ( n -- ptr u8 n )
+   {: k:n :}
+   1 RDST !  s" overload " DTXT
+   k PE-EFF@ REND-RECORD 2drop
+   k PE-FLAGS@ REND-PE ;
+
+
 \ FACTS-SAME?'s state for the quotations it runs; FACTS-CLEAN zeroes it, so
 \ none outlives a call. FACTS-NEW is the parsed record, offset+1, 0 for none.
 variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-NEW
@@ -792,17 +801,19 @@ variable FACTS-REC   variable FACTS-MARK   variable FACTS-WAS   variable FACTS-N
    0 FACTS-REC !  0 FACTS-MARK !  0 FACTS-WAS !  0 FACTS-NEW ! ;
 
 
-\ Whether sym's newest record survives its facts text: rendered, parsed in the
+\ Whether record off, sym's, survives its facts text: rendered, parsed in the
 \ symbol's package and built again, the same content. RSBUF and RSN keep the text.
-: FACTS-SAME? ( n -- bool )
-   {: sym:n :}
-   sym USIG-NEWEST 1 - {: off:n :}
+: FACTS-SAME-AT? ( n n -- bool )
+   {: sym:n off:n :}
    off FACTS-REND
    RQM @ 0 <> IF RES-FALSE EXIT THEN
    off FACTS-REC !  UEND @ FACTS-MARK !  CHECKER-REC-SYM @ FACTS-WAS !  0 FACTS-NEW !
    SGBAD-CLEAR  SIG-UNRES-CLEAR
    sym SYM-PKG$ SIGSCOPE!
    [: FACTS-ANSWER ;] [: FACTS-CLEAN ;] finally ;
+
+\ Whether sym's newest record survives its facts text, as FACTS-SAME-AT?.
+: FACTS-SAME? ( n -- bool ) {: sym:n :} sym  sym USIG-NEWEST 1 -  FACTS-SAME-AT? ;
 
 
 \ Inputs from the base row's instantiation (BROW), outputs from DCUR.

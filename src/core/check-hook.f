@@ -247,6 +247,53 @@ public
       then
    loop ;
 
+\ The active primitive rows of sym after row k: whether one is, and whether
+\ each survives its facts text (FACTS-SAME-AT?).
+: ROW-OF? ( n n -- bool ) {: sym:n k:n :} k PE-ACTIVE?  k PE-SYM@ sym =  and ;
+
+: MORE-ROWS? ( n n -- bool )
+   {: sym:n k:n :}
+   #PE @ k 1 + ?do sym i ROW-OF? if RES-TRUE unloop exit then loop
+   RES-FALSE ;
+
+: ROWS-SAY? ( n n -- bool )
+   {: sym:n k:n :}
+   #PE @ k 1 + ?do
+      sym i ROW-OF? if
+         sym i PE-EFF@ FACTS-SAME-AT? 0= if RES-FALSE unloop exit then
+      then
+   loop
+   RES-TRUE ;
+
+
+\ Sym's primitive rows as one facts text in RSBUF: the first row's effect and
+\ tags, then each further row after `overload`. False when a text cannot say
+\ them, or a created effect, whose text ends the facts, would hide the rows.
+: ROWS-TEXT? ( n -- bool )
+   {: sym:n :}
+   sym PRIM-FIRST-IDX {: first:n :}
+   first 0= if RES-FALSE exit then
+   first 1 - {: k:n :}
+   sym k ROWS-SAY? 0= if RES-FALSE exit then
+   sym k PE-EFF@ FACTS-SAME-AT? 0= if RES-FALSE exit then
+   sym FACTS-TAGS
+   sym k MORE-ROWS? 0= if RQM @ 0= exit then
+   sym NORET-CREATES@ 0 <> if RES-FALSE exit then
+   #PE @ k 1 + ?do sym i ROW-OF? if i REND-OVERLOAD 2drop then loop
+   RQM @ 0= ;
+
+
+\ The facts text this checker gives the primitive named na nu, for a linked
+\ engine's record of it, its rows' (ROWS-TEXT?); the primitive's own record is
+\ read first when it has a text. Empty when no primitive has the name or no
+\ text says its rows. The text lies in RSBUF, which the next render reuses.
+: PRIMITIVE-FACTS ( ptr u8 n -- ptr u8 n )
+   {: na:ptr nu:n :}
+   na nu WL:PRIMITIVES CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = if NULL-PTR 0 exit then
+   rec FACTS-READ-XT
+   na nu CHECKER-GLOBAL-SYM ROWS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then ;
+
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation.
 TRUSTED: INSTALL ( -- )
