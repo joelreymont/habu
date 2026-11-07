@@ -195,6 +195,7 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
 2 constant KIND-ALIAS
 3 constant KIND-DOES                 \ a `does>` definer's `;does` record
 4 constant KIND-PRIVATE              \ a package gaining its private wordlist after its record
+5 constant KIND-SEALED               \ an earlier file's package this file sealed
 
 \ NAMES maps each name the build's records define, by its NAME-SUM, to the BUILT row holding the
 \ record, -1 for a record the build's body made (INDEX-RECS); HITS marks the rows whose records
@@ -685,7 +686,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    REFUSAL  rec XREF-NAME$ SAY  s" 's dispatch cell is " SAY  cell false VALUE.  REFUSED ;
 
 \ The kind, the name, the flags without the name length and EXT, the wordlist (WORDLIST+), then
-\ the kind's fields (DISPATCH+, OWN-PRIVATE?); a KIND-PRIVATE entry is LATE+'s.
+\ the kind's fields (DISPATCH+, OWN-PRIVATE?); a KIND-PRIVATE entry is LATE+'s, a KIND-SEALED
+\ one SEAL+'s.
 : RECORD+ ( n -- )
    {: idx:n :}
    idx XREF-REC {: rec:ptr :}
@@ -1015,13 +1017,35 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    ROWS nip FILE-CELLS ! ;
 
 
-\ True when a cell of the record differs from its copy, other than a late private wordlist (LATE?).
+\ Earlier record k's copy (COPY-BELOW) and its index.
+: OLD-REC ( n -- ptr u8 n )
+   {: k:n :}
+   OLD-RECS BYTES$ drop  k DREC * +  FIRST-REC @ 1 - k + ;
+
+: OLD-RECS-N ( -- n ) OLD-RECS BYTES$ nip DREC / ;
+
+
+\ True when the file's compile sealed the build's package record, given its copy: the flags
+\ differ by DNAME-SEALED alone, which the record now holds.
+: SEALED-NOW? ( ptr u8 n -- bool )
+   {: old:ptr idx:n :}
+   idx FIRST-REC @ < if false exit then
+   idx PKG? 0= if false exit then
+   old XREF-FLAGS-SLOT cells + CELL-VIEW @ {: was:n :}
+   idx XREF-REC XREF-FLAGS {: now:n :}
+   was now xor DNAME-SEALED =  now DNAME-SEALED and 0<>  and ;
+
+
+\ True when a cell of the record differs from its copy, other than a late private wordlist (LATE?)
+\ or a seal (SEALED-NOW?).
 : REC-CHANGED? ( ptr u8 n -- bool )
    {: old:ptr idx:n :}
    idx XREF-REC BYTE-VIEW {: rec:ptr :}
    DREC CELL / 0 ?do
       old i cells + CELL-VIEW @  rec i cells + CELL-VIEW @  <> if
-         i XREF-LEN-SLOT =  idx LATE?  and 0= if true unloop exit then
+         i XREF-LEN-SLOT =  idx LATE?  and
+         i XREF-FLAGS-SLOT =  old idx SEALED-NOW?  and  or
+         0= if true unloop exit then
       then
    loop
    false ;
@@ -1039,10 +1063,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 \ E-STORE when the compile changed an earlier record or emission.
 : CHECK-EARLIER ( -- )
-   OLD-RECS BYTES$ {: recs:ptr recsu:n :}
-   recsu DREC / 0 ?do
-      recs i DREC * +  FIRST-REC @ 1 - i +  REC-CHANGED? if REFUSE-STORE then
-   loop
+   OLD-RECS-N 0 ?do i OLD-REC REC-CHANGED? if REFUSE-STORE then loop
    OLD-EMS BYTES$ drop {: ems:ptr :}
    0  FILE-EM @ 0 ?do
       ems over +  i EM-CHANGED? if REFUSE-STORE then +
@@ -1167,17 +1188,28 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    loop ;
 
 
+: SEALED-N ( -- n ) 0  OLD-RECS-N 0 ?do i OLD-REC SEALED-NOW? if 1 + then loop ;
+
+\ A KIND-SEALED entry for the earlier record when the file's compile sealed it.
+: SEAL+ ( ptr u8 n -- )
+   {: old:ptr idx:n :}
+   old idx SEALED-NOW? 0= if exit then
+   KIND-SEALED PIECES U64+  idx REF+ ;
+
+
 \ Piece count 1 (RUN-FILE); entry count; records by index, each late private wordlist (by id) before
-\ the first record marked above its id, so ids mint in entry order; CODE; DATA; STRINGS; STORES;
-\ FACTS, whose offset in PIECES it leaves in FACTS-AT; REQUEST -1.
+\ the first record marked above its id, so ids mint in entry order; each earlier package the file
+\ sealed, after every record, so a link seals it once the file's definitions are in; CODE; DATA;
+\ STRINGS; STORES; FACTS, whose offset in PIECES it leaves in FACTS-AT; REQUEST -1.
 : PIECES! ( -- )
    PIECES BUF:CLEAR  REFS BUF:CLEAR  LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
    LATE-COLLECT
    1 PIECES U64+
-   ndict@ FILE-REC @ -  LATE-N +  PIECES U64+
+   ndict@ FILE-REC @ -  LATE-N +  SEALED-N +  PIECES U64+
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
    LATE-REST
+   OLD-RECS-N 0 ?do i OLD-REC SEAL+ loop
    CODE+  DATA+  STORES+
    PIECES BYTES$ nip FACTS-AT !  FACTS+
    -1 PIECES U64+ ;
@@ -1222,7 +1254,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 \ FRESH? reads FILE-KEY's object into OBJECT and checks every field WRITE-OBJECT writes.
 \ The link reads these variables, ENTRY-OFFS, EM-OFFS and FILE-ROWS, valid once FRESH? answers true.
 variable ENTRIES-N                    \ the object's entries
-variable RECS-N                       \ its entries other than KIND-PRIVATE: its records
+variable RECS-N                       \ its records: entries neither KIND-PRIVATE nor KIND-SEALED
 variable EMS-N                        \ its emissions, E
 variable DATA-AT                      \ the offset in OBJECT of DATA's D
 variable CELLS-AT                     \ of its K
@@ -1511,6 +1543,15 @@ variable RD-END
    file KEY-BYTES BUILT@ idx + XREF-REC XREF-PKG-PRIVATE 0<> ;
 
 
+\ A KIND-SEALED entry's package: an earlier file's, unsealed until the link seals it. A package of
+\ this file carries its seal in its own record's flags.
+: SEALED-CK ( -- )
+   PKG-REF-CK {: file:n idx:n :}
+   GOOD? 0= if exit then
+   file 0= if BAD exit then
+   file KEY-BYTES BUILT@ idx + XREF-REC XREF:SEALED? if BAD then ;
+
+
 \ A name: its length, at least 1, then its bytes.
 : NAME-CK ( -- ) RD-U64 {: u:n :}  u 1 < if BAD exit then  u RD-SKIP ;
 
@@ -1574,19 +1615,20 @@ variable RD-END
    y 8 + OWN-DATA-MAX @ max OWN-DATA-MAX ! ;
 
 
-\ Entry i: its offset into ENTRY-OFFS, then its fields (RECORD+, LATE+); a record's index is
-\ RECS-N as it starts.
+\ Entry i: its offset into ENTRY-OFFS, then its fields (RECORD+, LATE+, SEAL+); a record's index
+\ is RECS-N as it starts.
 : ENTRY-CK ( n -- )
    {: i:n :}
    RD-AT @ i ENTRY-OFFS !
    RD-U64 {: kind:n :}
-   kind 0<  kind KIND-PRIVATE >  or if BAD exit then
+   kind 0<  kind KIND-SEALED >  or if BAD exit then
    kind KIND-PRIVATE = if
       \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it).
       PKG-REF-CK {: file:n idx:n :}
       GOOD? if file idx PRIVATE? if BAD else file idx PRIV+ then then
       -1 LAST-EM ! exit
    then
+   kind KIND-SEALED = if SEALED-CK  -1 LAST-EM ! exit then
    NAME-CK  FLAGS-CK  kind ROLE-CK
    kind KIND-DEF = if EM-NAMED else -1 then {: em:n :}
    kind KIND-DEF =  GOOD? and if RECS-N @ em EM-RECS ! then
@@ -1599,7 +1641,8 @@ variable RD-END
    1 RECS-N +! ;
 
 
-\ The piece count, 1, then the entries (PIECES!); 24 bytes is a KIND-PRIVATE entry's size.
+\ The piece count, 1, then the entries (PIECES!); 24 bytes is a KIND-PRIVATE or KIND-SEALED entry's
+\ size.
 : ENTRIES-CK ( -- )
    1 RD-EQ
    24 RD-COUNT {: n:n :}
@@ -1948,6 +1991,16 @@ variable LINK-EM                     \ that emission's number in this object, -1
    file idx REC-INDEX OUTER:PACKAGE-PRIVATE ;
 
 
+\ Entry i, an earlier file's package this file sealed (SEAL+), sealed again.
+: LINK-SEALED ( n -- )
+   {: i:n :}
+   i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
+   RD-U64 KIND-SEALED <> if E-COMP-STATE throw then
+   RD-U64 RD-U64 {: file:n idx:n :}
+   GOOD? 0= if E-COMP-STATE throw then
+   file idx REC-INDEX XREF-REC XREF:SEAL ;
+
+
 \ Entry i, an alias (RECORD+), as the next record.
 : LINK-ALIAS ( n -- )
    {: i:n :}
@@ -2169,6 +2222,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    kind KIND-PACKAGE = if i LINK-PACKAGE exit then
    kind KIND-ALIAS = if i LINK-ALIAS exit then
    kind KIND-PRIVATE = if i LINK-PRIVATE exit then
+   kind KIND-SEALED = if i LINK-SEALED exit then
    kind KIND-DOES = if exit then
    E-COMP-STATE throw ;
 
