@@ -126,9 +126,9 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ ---- the object ----------------------------------------------------------------
 \ LOADERS stacks the key of each file whose compile is running; LOADS holds a
 \ row per load: the loader's key, zeros for the build's body, then the SHA-256
-\ of the path under its root. BUILT holds a row per file compiled or linked: its
-\ key, its first and end record index, its object's SHA-256, its first and end
-\ emission, and the data pointer as its load starts and returns.
+\ of the path. BUILT holds a row per file compiled or linked: its key, its
+\ first and end record index, its object's SHA-256, its first and end emission,
+\ and the data pointer as its load starts and returns.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
 ROW-BYTES 48 + constant BUILT-BYTES
@@ -243,16 +243,6 @@ variable FILE-CELLS                  \ the space's address-cell rows as the file
 : FIELD+ ( ptr u8 n ptr a -- ) {: a:ptr u:n buf:ptr :}
    u buf U64+  a u buf SPAN+ ;
 
-\ The path with the root and the slash after it removed when it starts there.
-: UNDER-ROOT ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: path:ptr pathu:n root:ptr rootu:n :}
-   pathu rootu > if
-      path pathu root rootu STARTS-WITH?  path rootu + c@ FS:SLASH =  and if
-         path rootu + 1 +  pathu rootu - 1 -  exit
-      then
-   then
-   path pathu ;
-
 \ The key of the file whose compile is running, empty for the build's body.
 : LOADER$ ( -- ptr u8 n )
    LOADERS BYTES$ {: a:ptr u:n :}
@@ -266,18 +256,19 @@ variable FILE-CELLS                  \ the space's address-cell rows as the file
       rows i ROW-BYTES * +  ROW-BYTES  ROW ROW-BYTES  STR= if 1 + then
    loop ;
 
-\ FILE-KEY for a load of the path under its root, recorded in LOADS.
-: KEY! ( ptr u8 n -- ) {: rel:ptr relu:n :}
+\ FILE-KEY for a load of the path, recorded in LOADS: a SHA-256 over hb's own bytes, the build's
+\ mode and target, the whole path, the loader's key and that loader's earlier loads of the path.
+: KEY! ( ptr u8 n -- ) {: path:ptr pathu:n :}
    KEY-BYTES 0 ?do 0 ROW i + c! loop
    LOADER$ {: ld:ptr ldu:n :}
    ld ROW ldu BYTE-COPY
-   SHA-CTX rel relu ROW KEY-BYTES + SHA256-IN
+   SHA-CTX path pathu ROW KEY-BYTES + SHA256-IN
    SEEN {: n:n :}
    OBJECT BUF:CLEAR
    ENGINE-ID:KEY$ OBJECT FIELD+
    ENGINE? @ if s" engine" else s" app" then OBJECT FIELD+
    s" arm64" OBJECT FIELD+
-   rel relu OBJECT FIELD+
+   path pathu OBJECT FIELD+
    ld ldu OBJECT FIELD+
    8 OBJECT U64+  n OBJECT U64+
    SHA-CTX OBJECT BYTES$ FILE-KEY SHA256-IN
@@ -2070,7 +2061,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    GOING
    construct step loading PROGRESS !
    WALK-ONCE
-   path pathu root rootu UNDER-ROOT KEY!
+   path pathu KEY!
    path pathu root rootu LIST-ROW+
    ndict@ FILE-REC !  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !

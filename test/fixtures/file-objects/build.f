@@ -25,9 +25,11 @@
 \ build: edit/a.f under the out root, edited, and edit-b.f beside build.f;
 \ tail/c.f and tail/d.f under the out root with d.f edited, then a fourth
 \ build of d.f alone; share/p.f and share/q.f under the out root with p.f
-\ edited to declare q.f's package too. `edit: compiled `, `tail: compiled `
-\ and `share: compiled ` print each build's result: its LINKER:COMPILED, or
-\ the code it threw.
+\ edited to declare q.f's package too. Then twin-x/a.f and twin-y/a.f under the
+\ out root, one name in two directories, are each built alone in turn x, y, x,
+\ y. `edit: compiled `, `tail: compiled `, `share: compiled ` and
+\ `twins: compiled ` print each build's result: its LINKER:COMPILED, or the
+\ code it threw.
 \ The build's files load from its body: in a build's file `require` is
 \ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
 \ at rec-wide-publish (rc 70).
@@ -190,7 +192,7 @@ CAST: >RUN ( n -- [ -- ] )
    PROG$ LINKER:WRITE
    first STATE.  RUN-WORDS ;
 
-\ ---- sequences of builds of two files, one edited after the first build ----
+\ ---- stop mode's later builds: stale and corrupt lists, edit sequences, the twins ----
 PATH-CAP BUFFER: DIR-BUF
 PATH-CAP BUFFER: FIRST-BUF
 PATH-CAP BUFFER: SECOND-BUF
@@ -206,13 +208,13 @@ PATH-CAP BUFFER: SECOND-BUF
    d du DIR$ name nameu dst FS:JOIN-PATH {: u:n :}
    dst u ;
 
-\ A file outside every search root is keyed by its name alone (SOURCE-ROOT's
-\ ABS-OWNER), so each generated file has a name of its own.
 : EDIT-A$ ( -- ptr u8 n ) s" edit" s" a.f" FIRST-BUF FILE-IN ;
 : TAIL-C$ ( -- ptr u8 n ) s" tail" s" c.f" FIRST-BUF FILE-IN ;
 : TAIL-D$ ( -- ptr u8 n ) s" tail" s" d.f" SECOND-BUF FILE-IN ;
 : SHARE-P$ ( -- ptr u8 n ) s" share" s" p.f" FIRST-BUF FILE-IN ;
 : SHARE-Q$ ( -- ptr u8 n ) s" share" s" q.f" SECOND-BUF FILE-IN ;
+: TWIN-X$ ( -- ptr u8 n ) s" twin-x" s" a.f" FIRST-BUF FILE-IN ;
+: TWIN-Y$ ( -- ptr u8 n ) s" twin-y" s" a.f" SECOND-BUF FILE-IN ;
 
 \ Given a build's caught code: that code, or its LINKER:COMPILED when it threw none.
 : RESULT ( n -- n ) dup 0= if drop LINKER:COMPILED then ;
@@ -315,6 +317,20 @@ variable LIST-N
    SHARE-BUILD {: three:n :}
    s" share: compiled " one two three RESULTS. cr ;
 
+: TWIN-X-BUILD ( -- n ) [: s" app" [: TWIN-X$ included ;] LINKER:WITH ;] catch RESULT ;
+: TWIN-Y-BUILD ( -- n ) [: s" app" [: TWIN-Y$ included ;] LINKER:WITH ;] catch RESULT ;
+
+\ Two files of one name, each built alone in turn: each keeps an object of its own.
+: TWINS ( -- )
+   s" twin-x" DIR$ FS:MAKE-DIR  s" twin-y" DIR$ FS:MAKE-DIR
+   TWIN-X$ s\" package FILE-OBJECTS-TWIN-X public variable V ;package\n" FS:WRITE-ALL
+   TWIN-Y$ s\" package FILE-OBJECTS-TWIN-Y public variable V ;package\n" FS:WRITE-ALL
+   TWIN-X-BUILD {: one:n :}
+   TWIN-Y-BUILD {: two:n :}
+   TWIN-X-BUILD {: three:n :}
+   TWIN-Y-BUILD {: four:n :}
+   s" twins: compiled " one two three RESULTS.  space four FMT:.INT cr ;
+
 : STOPS ( -- )
    s" app" [: STOP-FILE ;] LINKER:WITH
    s" app" [: STOP-BODY ;] LINKER:WITH
@@ -325,7 +341,7 @@ variable LIST-N
    s" app" [: STOP-GAP ;] LINKER:WITH
    s" app" [: STOP-STRADDLE ;] LINKER:WITH
    s" app" [: STOP-WORDLIST ;] LINKER:WITH
-   STALES CORRUPT EDITS TAILS SHARES
+   STALES CORRUPT EDITS TAILS SHARES TWINS
    s" stopped" type cr ;
 
 public

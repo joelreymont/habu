@@ -1056,7 +1056,14 @@ learned live in the docs for their subject.
   a cleaner; raw memory would rebuild every later file after an edit, not
   just its dependents. The lead later left the load kind out of the key, as
   the linker's runner does not see it, and put in its place the count of
-  that loader's earlier loads of the same path.
+  that loader's earlier loads of the same path. On 2026-11-07, under Joel's
+  words of the night before ("i'm leaving for the night so make your own
+  judgement and do everything without asking me. apply the what's best for
+  long term criteria", then "get the incremental builds done already"), the
+  lead made the key cover the file's whole canonical path, not its path under
+  its search root: a file outside every root takes its own directory as its
+  root, so /x/a.f and /y/a.f shared a key and each build overwrote the
+  other's object. A tree moved to another directory compiles once.
 - 2026-11-03, x86-64 builds: asked whether to remove two of SOURCE-EXEC's
   words while a lane gave the x86-64 kernel the observer the build cache
   watches a file's re-run through, Joel asked "what is source-exec and why do

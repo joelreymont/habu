@@ -223,14 +223,11 @@ in a clean build. The proof is a warm build whose product equals the product
 of a build from an empty cache.
 
 **A file's key names what compiles it and its place in the load, never its
-text.** What compiles it is the kernel, the compiler and the build tool, each
-named by its role, with the target, the build mode and the ambient compile
-state; its place is the file that loaded it, its root, its path under that root
-and its load kind, so a copy of the tree, or the tree at another path, shares
-the objects. A file is stale when a file it depends on changed, comments
-included, as make decides: an edit recompiles the file and its consumers, and
-an edit to a file the kernel, compiler or build tool is made from recompiles
-every file.
+text** (src/habu/linker.f KEY! says what it covers). Its place includes its
+whole path, so a tree moved to another path compiles once. A file is stale
+when a file it depends on changed, comments included, as make decides: an edit
+recompiles the file and its consumers, and an edit to a file the kernel,
+compiler or build tool is made from recompiles every file.
 
 **An entry is valid while what it consumed still holds.** In order: the file's
 size and change time match, or else its bytes hash the same; the

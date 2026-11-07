@@ -7,24 +7,26 @@
 \ so its records, emissions, wordlist ids and data sit elsewhere, and writes
 \ seven with A's bytes: an absolute index or address in an object shows as
 \ different bytes. B loads pad.f first and writes eight, under A's names and
-\ pad.f's. Build C, in `stop` mode, runs its refused builds,
-\ its stale builds and three edit sequences in one out root: the stale build
-\ writes a load list of 8 bytes, the magic alone, the build of count.f and
-\ shape.f after it compiles 2, and so does one over a list whose path holds a 0
-\ byte; each sequence compiles 2, 2 and 0, and the tail sequence's fourth
-\ build, of d.f alone, compiles 1: d.f's object's prefix sums c.f. C writes
-\ eight objects, and the two whose names A also wrote, count.f's and shape.f's,
-\ have A's bytes: a refused file writes none. A's program prints Hi and ok and
-\ exits 0, run in its own process: the boundary under test is the written file.
-\ Then five warm builds in A's out root. A2 compiles none, prints A's state and
-\ writes A's program byte for byte, A's objects unchanged. A3, after one byte of
-\ the string green in an object changes, A4, after count.f's object is cut to
-\ half its length, and A5, on macOS, after it grows to 2^48 bytes, more than a
-\ build can hold, each compile all seven with A2's outcome. B2, in `second`
-\ mode, loads pad.f, which A's builds never loaded, first, so it compiles all
-\ eight, prints B's state, writes B's program and leaves A's root holding B's
-\ objects. Each warm build compares its program's bytes, its printed state and
-\ the objects' bytes with a cold build's.
+\ pad.f's. Build C, in `stop` mode, runs its refused builds, its stale builds,
+\ three edit sequences and the twins in one out root: the stale build writes a
+\ load list of 8 bytes, the magic alone, the build of count.f and shape.f after
+\ it compiles 2, and so does one over a list whose path holds a 0 byte; each
+\ sequence compiles 2, 2 and 0, and the tail sequence's fourth build, of d.f
+\ alone, compiles 1: d.f's object's prefix sums c.f. Two files named a.f in
+\ two directories, each built alone in turn twice, compile 1, 1, 0 and 0: each
+\ keeps an object of its own. C writes ten objects, and the two whose names A
+\ also wrote, count.f's and shape.f's, have A's bytes: a refused file writes
+\ none. A's program prints Hi and ok and exits 0, run in its own process: the
+\ boundary under test is the written file. Then five warm builds in A's out
+\ root. A2 compiles none, prints A's state and writes A's program byte for
+\ byte, A's objects unchanged. A3, after one byte of the string green in an
+\ object changes, A4, after count.f's object is cut to half its length, and
+\ A5, on macOS, after it grows to 2^48 bytes, more than a build can hold, each
+\ compile all seven with A2's outcome. B2, in `second` mode, loads pad.f,
+\ which A's builds never loaded, first, so it compiles all eight, prints B's
+\ state, writes B's program and leaves A's root holding B's objects. Each warm
+\ build compares its program's bytes, its printed state and the objects' bytes
+\ with a cold build's.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -41,7 +43,7 @@ package FILE-OBJECTS-TEST
 
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
-8 constant FILES-C                       \ build C's: count.f's, shape.f's, two per sequence
+10 constant FILES-C                      \ build C's: count.f's, shape.f's, two per sequence, the twins'
 68 constant NAME-BYTES                   \ <hex key>.hfo
 \ The names, newline-separated.
 : LISTING-BYTES ( n -- n ) NAME-BYTES 1 + * 1 - ;
@@ -246,11 +248,11 @@ variable INPUT-N                         \ those holding count.f's INPUT
    A$ name nameu OBJ$ BYTES-A CAP FS:READ-ALL {: au:n :}
    s" each object A also wrote has A's bytes" LABEL  BYTES-A au BYTES-B cu T$= ;
 
-\ Build C's objects: the edit sequences' two each, count.f's and shape.f's,
+\ Build C's objects: each sequence's two, the twins', and count.f's and shape.f's,
 \ whose names A also wrote; count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote eight objects" LABEL  NAMES-C-U @ FILES-C LISTING-BYTES T=
+   s" the build wrote ten objects" LABEL  NAMES-C-U @ FILES-C LISTING-BYTES T=
    NAMES-C-U @ NAME-COUNT {: n:n :}
    NAMES-C-U @ n LISTING-BYTES <> if exit then
    s" test/fixtures/file-objects/count.f" EXPECT!
@@ -274,7 +276,9 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" the tail builds compile 2, 2, 0 and 1 files" LABEL
    STATE-W STATE-W-U @ s\" tail: compiled 2 2 0 1\n" CONTAINS? TTRUE
    s" the share builds compile 2, 2 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" CONTAINS? TTRUE ;
+   STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" CONTAINS? TTRUE
+   s" the twin builds compile 1, 1, 0 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE ;
 
 : COLD ( CMD:command -- CMD:command )
    s" A" WHICH!  A$ s" " s\" compiled 7\n" STATE-A BUILD 0 max STATE-A-U !
