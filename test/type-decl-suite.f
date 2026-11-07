@@ -635,9 +635,9 @@ NEWTYPE tres<a>
 ;package
 
 \ package-scoped SIG resolution: unqualified family tokens resolve through the
-\ ACTIVE package before the unique public tail; qualified PKG:tail folds the
-\ qualifier, requires a lowercase tail, and resolves public rows only (plus the
-\ active package's own private rows).
+\ ACTIVE package, then the globals and `using` imports; qualified PKG:tail folds
+\ the qualifier, requires a lowercase tail, and resolves public rows only (plus
+\ the active package's own private rows).
 package tdpa
 s" TPOK-LOCAL ( tres<n> -- tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPOK-PRIV ( tpriv<n> -- tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -646,7 +646,7 @@ s" TPOK-QSELF ( tdpa:tpriv<n> -- tdpa:tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 \ cross-package: a private family never resolves, qualified or not...
 s" TXBAD-PRIV ( tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TXBAD-QPRIV ( tdpa:tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-\ ...two public same-tail families are ambiguous unqualified...
+\ ...a public family outside the open package does not resolve bare...
 s" TXBAD-AMBIG ( tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ ...and qualified references resolve each package distinctly.
 s" TQOK-A ( tdpa:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
@@ -731,10 +731,10 @@ s" TPC-GLOBAL-ARITY ( span<n,n,n,n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PKG-ARITY ( TDPM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-CROSS-A ( span<n,n,n> -- TDPM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-CROSS-B ( TDPM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
-\ A foreign private row is invisible; with no lexical global, the one public
-\ family of the same tail is the outside-package bare fallback.
+\ A foreign private row is invisible, and a foreign public family needs its
+\ package named or imported: the one public `tier` does not resolve bare.
 s" TPC-PRIVATE-HIDDEN ( TDPM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ Stored effects retain exact qualified identity and arity when replayed.

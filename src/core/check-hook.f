@@ -223,18 +223,29 @@ public
       then
       CHECK-RC throw then ;
 
-\ The facts of the record a `TRUST` row recorded sym's effect for, from that
-\ newest effect, as a definition's are (CHECK:HELD-TRUSTED). A text that cannot
-\ say the effect, or a symbol no record holds, fails the build: a link would
-\ read the record's older facts.
-: SYM-FACTS! ( n -- )
-   {: sym:n :}
-   sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
-   ix 0 >=  sym FACTS-TEXT?  and if RSBUF RSN @ ix CHECK:FACTS! exit then
-   s" hook: facts text cannot say: " ERROR-TEXT:TYPE
-   sym SYM-NAME$ ERROR-TEXT:TYPE
-   S\" \n" ERROR-TEXT:TYPE
-   CHECK-RC throw ;
+\ At a piece's end (src/habu/linker.f PIECE-END), each record a `TRUST` row or an
+\ amender (`INTRINSIC`, `generates:`, `names:`, NOMINAL-PROVIDER, a does>
+\ publication) changed, held from entry FROM on, takes its facts text again from
+\ its symbol's newest effect, as a definition's does: the record the symbol names
+\ takes the text, and a held record it no longer names an empty one. A text that
+\ cannot say the effect, or a symbol no record holds, fails the build: a link
+\ would read the record's older facts.
+: AMENDED ( n -- )
+   {: from:n :}
+   CHECK:HELD-FACTS from ?do
+      i CHECK:HELD-FACT@ 2drop CHECK:HELD-AMENDED = if
+         i CHECK:HELD-AMENDED@ {: ix:n sym:n :}
+         sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: now:n :}
+         now ix <> if NULL-PTR 0 ix CHECK:FACTS! then
+         now 0 >=  sym FACTS-TEXT?  and 0= if
+            s" hook: facts text cannot say: " ERROR-TEXT:TYPE
+            sym SYM-NAME$ ERROR-TEXT:TYPE
+            S\" \n" ERROR-TEXT:TYPE
+            CHECK-RC throw
+         then
+         RSBUF RSN @ now CHECK:FACTS!
+      then
+   loop ;
 
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation.

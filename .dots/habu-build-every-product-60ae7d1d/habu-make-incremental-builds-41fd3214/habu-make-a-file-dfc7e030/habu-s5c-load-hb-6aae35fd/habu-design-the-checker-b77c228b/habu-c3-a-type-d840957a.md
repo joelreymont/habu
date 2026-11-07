@@ -1,6 +1,6 @@
 ---
 title: "C3: a type is an entry"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-11-06T21:30:02.478114+02:00"
@@ -8,4 +8,4 @@ blocks:
   - habu-c2d-write-declarations-f94670f2
 ---
 
-Problem: design r2 D6 (/tmp/jerry-big/design-facts-r2.md): types live in the checker's family registry (src/core/type-family.f), not in the declaring program's wordlists (DECISIONS 'where the checker's facts live'). Acceptance: STRUCTURE, ENUM, NEWTYPE, SUMTYPE and DEFTYPE define a record named for the type in the open section whose facts text is the type's declaration in the definer's clause syntax, every referenced type named with its package; run as a word it refuses by name; the registry becomes a cache filled from that text on first use; built-in types (n, u8, ptr, span<...>) stay grammar; a type and a word of one name in one package are twins and are refused; the public clashes (NUM index, byte-len, alignment; TCP4 ADDRESS, PORT; QUEUE QUEUE) are renamed by one rule, the type keeps the noun and the word takes a verb. Files: src/core/type-family.f, the definers, src/core/checker.f, the renamed words' files and callers. Verify: candidate build; bin/hb --load test/run.f; a rejected program per refusal. Depends: C2d. Ownership: those files. Claim: unassigned.
+Problem: types live in the checker's family registry (src/core/type-family.f), filled only by a compiled declaration, so a linked file's types never reach a warm build (the lazy warm test stops at string.f on `( -- option<a> )`) and the cross-built hb lacks them at first start. DECISIONS 'where the checker's facts live' (a type is an entry whose text is its declaration) and 'type names' (types in a wordlist of their own, found by the word rules, no renames, no twins refused; the public fallback TFAM-FIND-PUBLIC goes). Acceptance: in a build the linker writes, at each compiled file's end, an entry in the types wordlist (header cell BOOT:TYPES-WL-CELL $2D78) for each family the file declared, its facts text the family's rows with every family named by package; the object carries it (KIND-TYPE) and a link remakes it; a lookup that misses the registry reads the entry's text (reentrant, write-again compare refuses a text that does not say the rows); run as a word an entry refuses by name; TFAM-FIND-PUBLIC goes and task.f, queue.f and aio.f qualify their does> rows. The lazy warm test stops 0 and its objects cmp equal to a cold build's of the edited tree. Files: src/core/type-family.f, src/core/checker.f, src/habu/linker.f, src/habu/boot-cells.f, src/habu/layout.f, src/lib/task.f, queue.f, aio.f. Verify: .out/a2a census scripts (lazy warm, rf, r, z). Depends: C2d. Ownership: those files. Claim: agent=jerry workspace=.jj-ws.noindex/jerry-a2a.

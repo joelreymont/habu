@@ -96,6 +96,12 @@ CHECKER-OWNER-ABI:VARIANT-PAY-TERMS-OFF constant VARIANT-PAY-TERMS-OFF
 CHECKER-FETCH-ABI:BYTES constant OWNER-BYTES
 create OWNER-STORAGE
    CHECKER-OWNER-ABI:MAGIC , OWNER-BYTES ,
+public
+\ The captured declaration owner is validated by address and descriptor, not by
+\ its dictionary name. A `create` body, so a checked file registers a word with
+\ `' W DECLARATIONS <off> + xt!`.
+create DECLARATIONS
+private
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
@@ -165,14 +171,11 @@ create OWNER-STORAGE
    0 ,
    0 ,
 \ Measure before another definition can allocate or intern in DATA.
-here OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES - constant OWNER-COMMITTED
-public
-\ The captured declaration owner is validated by address and descriptor, not by
-\ its dictionary name.
-: DECLARATIONS ( -- ptr u8 ) OWNER-STORAGE CHECKER-OWNER-ABI:HEADER-BYTES + ;
-private
+here DECLARATIONS - constant OWNER-COMMITTED
 OWNER-BYTES constant OWNER-CELLS-BYTES   \ what the field list says the record is
 : OWNER-SIZE-AGREE ( -- )
+   DECLARATIONS OWNER-STORAGE - CHECKER-OWNER-ABI:HEADER-BYTES <> if
+      s" checker: declaration-owner header and fields are not adjacent" 76 die then
    OWNER-COMMITTED OWNER-CELLS-BYTES <> if
       s" checker: declaration-owner field list and record size disagree" 76 die then ;
 OWNER-SIZE-AGREE
@@ -399,11 +402,12 @@ CHECKER-REG:}SCRATCH
 \ TVT, RVT, EC-TV and EC-RV store logical values plus one: zero means UNBOUND.
 \ Measured high-water over a self-build: 1112 vars in one definition (the pool
 \ resets per definition); 1280 leaves 15% headroom. A larger workload grows the
-\ arena.
+\ arena. A saved program starts with none: the planes and TV-CAP are scratch,
+\ so TV-ENSURE maps the arena on first use.
 1280 constant MAXTV-INIT       \ initial typevar pool (grows on demand)
 16 constant TV-PLANES
 $7FFFFFFFFFFFFFFF TV-PLANES CELL * / constant TV-MAX-CAP
-variable TV-CAP   0 TV-CAP !
+variable TV-CAP   TV-CAP scratch-cell-mark   0 TV-CAP !
 : MAXTV ( -- n ) TV-CAP @ ;    \ live cap; every var-id array is TV-CAP cells
 
 \ TVK: per-type-var kind. TVK-RAW marks a var minted by a raw storage definer
@@ -412,14 +416,14 @@ variable TV-CAP   0 TV-CAP !
 \ pointer. TVK rides the TV arena so a fresh var id indexes it too, is zeroed
 \ (TVK-ANY) on grow, reset and trial rollback, and persists on stored effect
 \ records (EN.B on var nodes) across snapshot and AOT.
-PERSISTED-PTR-VARIABLE TVT-P     PERSISTED-PTR-VARIABLE RVT-P
-PERSISTED-PTR-VARIABLE VRC-TV-P  PERSISTED-PTR-VARIABLE VRC-RV-P   PERSISTED-PTR-VARIABLE VRI-TV-P  PERSISTED-PTR-VARIABLE VRI-RV-P
-PERSISTED-PTR-VARIABLE EC-TV-P   PERSISTED-PTR-VARIABLE EC-RV-P    PERSISTED-PTR-VARIABLE EI-TV-P   PERSISTED-PTR-VARIABLE EI-RV-P
-PERSISTED-PTR-VARIABLE TVK-P
-PERSISTED-PTR-VARIABLE NSCOPE-P   \ orthogonal storage restriction for type and row vars
-PERSISTED-PTR-VARIABLE TVP-P      \ a bound type var was bound from a provided side (TV-BIND)
-PERSISTED-PTR-VARIABLE QCON-IDS-P   PERSISTED-PTR-VARIABLE QCON-KINDS-P
-PERSISTED-PTR-VARIABLE QCON-RIDS-P
+PTR-VARIABLE TVT-P     PTR-VARIABLE RVT-P
+PTR-VARIABLE VRC-TV-P  PTR-VARIABLE VRC-RV-P   PTR-VARIABLE VRI-TV-P  PTR-VARIABLE VRI-RV-P
+PTR-VARIABLE EC-TV-P   PTR-VARIABLE EC-RV-P    PTR-VARIABLE EI-TV-P   PTR-VARIABLE EI-RV-P
+PTR-VARIABLE TVK-P
+PTR-VARIABLE NSCOPE-P   \ orthogonal storage restriction for type and row vars
+PTR-VARIABLE TVP-P      \ a bound type var was bound from a provided side (TV-BIND)
+PTR-VARIABLE QCON-IDS-P   PTR-VARIABLE QCON-KINDS-P
+PTR-VARIABLE QCON-RIDS-P
 
 : TV-BYTES ( n -- n ) TV-PLANES * cells ;
 : TV-PLANE ( ptr a n n -- ptr a ) {: base:ptr cap:n plane:n :}
@@ -1142,7 +1146,6 @@ package CHECKER-EFFECT-AUTHORITY
 variable ABI-DEPTH
 variable RECOVERY-FLOOR
 variable RECOVERY-USED
-variable SEALED
 defer PUBLISH-XT ( n bool -- )
 : DEFAULT ( -- ) [: 2drop ;] is PUBLISH-XT ;
 DEFAULT
@@ -1163,17 +1166,6 @@ public
 : RECOVERY-USED! ( bool -- ) RECOVERY-USED ! ;
 : CERTIFIED? ( -- bool ) ENFORCED? RECOVERY-USED? 0= and ;
 
-\ The gate on a row without source authority is a seal state. Such a row (one a
-\ build window or an unjudged scan records for an internal word) binds a
-\ checked call (CALL-AUTHORITY) only while this checker is unsealed, so a
-\ whitebox image, and a prefix before src/core/internal-mark.f runs, check a
-\ body naming an internal word against that word's row. The pass's sealed arm
-\ calls SEAL, so a product image, a cold boot and every image saved from either
-\ refuse that call. Sealing changes no row's authority (ENFORCED?, CERTIFIED?,
-\ EFFECT-EXTERNAL). No word opens the gate; on a whitebox image a reopen of this
-\ package can write SEALED, on a product the reopen exits 84.
-: SEALED? ( -- bool ) SEALED @ 0 <> ;
-: SEAL ( -- ) 0 0= SEALED ! ;
 ;package
 
 \ --- checker package scope state, declared here so signature parsing (SIG-FAM?)
@@ -8955,11 +8947,15 @@ package CHECK
 : DROP-INDEX ( -- )
    HIDX-MEM-CLEAR  0 HIDX-VALID !  HIDX-EPOCH+ ;
 
+\ ndict@ at the open: records from here on are the build's, their facts in its space.
+variable BUILD-FIRST   0 BUILD-FIRST !
+
 
 public
 \ Saves every row's cells, then gives each store a fresh arena holding its
 \ prefix and each cell its value: two passes, since stores may share cells.
 : OPEN ( -- )
+   ndict@ BUILD-FIRST !
    ROW-N @ 0 ?do i SAVE-ROW loop
    CELL-ROW-N @ 0 ?do i SAVE-CELL loop
    ROW-N @ 0 ?do i FRESH-ROW loop
@@ -11593,6 +11589,17 @@ variable PE-I
 : PE-TOP-ONLY? ( n -- bool )
    PE-FLAGS@ PE-TOP-ONLY and 0 <> ;
 
+\ The row the last PRIM-ADD wrote, or -1 when the last row recorded nothing.
+variable PE-LAST   -1 PE-LAST !
+\ The symbols of a build's prefix end here, set after the host loop's rows below;
+\ 0 until then.
+variable BUILD-SYM-END   0 BUILD-SYM-END !
+
+\ Whether sym's rows are hb's prefix's: a build's stores start from that prefix
+\ (CHECK:OPEN), which holds the row of every symbol below BUILD-SYM-END.
+: PREFIX-SYM? ( n -- bool ) {: sym:n :}
+   data-base BOOT:IMAGE-BASE-CELL + @ 0 <>  sym BUILD-SYM-END @ <  and ;
+
 : PRIM-ENSURE ( -- )
    #PE @ PE-CAP-V @ < IF EXIT THEN
    PE-CAP-V @ 2 * {: next:n :}
@@ -11604,23 +11611,26 @@ variable PE-I
    sym #PE @ PE-ROW PE.SYM !
    eff #PE @ PE-ROW PE.EFF !
    flags #PE @ PE-ROW PE.FLAGS !
+   #PE @ PE-LAST !
    #PE @ 1 + #PE ! ;
+
+\ Ors a flag into the row just stated; a row that recorded nothing
+\ (PE-CLOSE-SYM) takes none.
+: PE-LAST-FLAG! ( n -- ) {: flag:n :}
+   PE-LAST @ 0 < IF EXIT THEN
+   PE-LAST @ PE-ROW PE.FLAGS dup @ flag or swap ! ;
 
 \ Marks the just-registered prim a trust boundary: a checked caller is refused,
 \ a TRUSTED: body (never checked) may use it.
-: PRIM-TRUSTED-ONLY! ( -- )
-   #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-TRUSTED-ONLY or swap ! ;
+: PRIM-TRUSTED-ONLY! ( -- ) PE-TRUSTED-ONLY PE-LAST-FLAG! ;
 
-: PRIM-TOP-ONLY! ( -- )
-   #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-TOP-ONLY or swap ! ;
+: PRIM-TOP-ONLY! ( -- ) PE-TOP-ONLY PE-LAST-FLAG! ;
 
-: PRIM-FIXED-ABI! ( -- )
-   #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-FIXED-ABI or swap ! ;
+: PRIM-FIXED-ABI! ( -- ) PE-FIXED-ABI PE-LAST-FLAG! ;
 
 : PRIM-C2-STOW! ( n -- )
    {: kind:n :}
-   #PE @ 1 - PE-ROW PE.FLAGS dup @
-   kind 1 = IF PE-C2-INIT ELSE PE-C2-RECORDS THEN or swap ! ;
+   kind 1 = IF PE-C2-INIT ELSE PE-C2-RECORDS THEN PE-LAST-FLAG! ;
 
 variable PRM-FIRST
 
@@ -11692,6 +11702,15 @@ variable PRM-FIRST
       1 +
    REPEAT drop RES-FALSE ;
 
+\ Whether the effect record at off is the one a primitive row of sym stated. A
+\ row stated after the table records its effect as a user record of its symbol,
+\ but defines no word.
+: PE-ROW-EFF? ( n n -- bool ) {: sym:n off:n :}
+   0 BEGIN dup #PE @ < WHILE
+      dup PE-SYM@ sym =  over PE-EFF@ off =  and IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
 : PE-SYM-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
@@ -11725,14 +11744,8 @@ variable PE-EFF-ID
    FRESH MK-ROW dup PE-BASE ! dup PE-DIN ! PE-DOUT !
    0 PE-RIN !  0 PE-ROUT !  0 PE-HASR ! ;
 
-: PRIM: ( -- )
-   parse-name PE-OPEN ;
-
-: PPRIM: ( -- )
-   parse-name PE-PKG-U ! PE-PKG-A !
-   parse-name PE-OPEN ;
-
 : PE-CLOSE-SYM ( n -- )
+   dup PREFIX-SYM? IF  drop  -1 PE-LAST !  EXIT  THEN
    PE-DIN @ EFFECT-MIN-IN drop
    dup PE-SYM-ID ! CHECKER-REC-SYM !
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
@@ -11747,19 +11760,18 @@ variable PE-EFF-ID
 : PE-CLOSE ( -- )
    PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
 
-: PRIM; ( -- )
-   PE-CLOSE ;
-
-: PPRIM; ( -- )
+\ A package row's public closer: interns the axiom into the package's public
+\ wordlist.
+: CLOSE-PUBLIC ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PUBLIC PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
 
 \ The package row's other closer: interns the axiom into the owner's private
 \ wordlist, so the row resolves only while that package is open
 \ (CHECKER-FIND-ACTIVE-SYM's private leg); every other scope misses the symbol.
-\ It is global because every package may use it; the token is the toolchain's
-\ (verify-source.f scans it, source-lex.f classifies it, check-all-errors-core.f
-\ names it in the unterminated-row hint).
+\ PPRIM: reads its token, `CLOSE-PRIVATE`, by spelling; the token is also the
+\ toolchain's (verify-source.f scans it, source-lex.f classifies it,
+\ check-all-errors-core.f names it in the unterminated-row hint).
 \ A primitive may have its private row alone: its global record has no top-level
 \ row.
 : CLOSE-PRIVATE ( -- )
@@ -11862,20 +11874,6 @@ variable PE-QDOUT
    0 USX-GEN !
    UTERM! ;
 
-\ ---- package FFI's two retypes ----------------------------------------------
-\ A foreign call takes and returns raw machine cells: a buffer slot holds a
-\ pointer as a cell, and __errno_location returns an address read as bytes.
-\ `( ptr a -- n )` cannot be a CAST:, since a type-variable pointee is refused
-\ as possibly linear (E-CAST-LINEAR; test/cast-negative-suite.f), and no
-\ primitive converts a pointer to a cell. `( n -- ptr u8 )` is the class mint a
-\ CAST: declares only in a private section; the axiom gives package FFI that row.
-\ Both are identity words whose effects are axiom rows near the end of this
-\ table, in package FFI's private section. With no signature, a window that
-\ parks the host hook scans each empty body into an ABI-only `( -- )` global
-\ row, which refuses outside checked callers after the seal.
-: FFI-PTR>CELL ;                         \ ( ptr a -- n ) by axiom
-: FFI-CELL>PTR ;                         \ ( n -- ptr u8 ) by axiom
-
 \ ---- the engine primitives' rows ---------------------------------------------
 \ Every machine-body primitive is specified once, in src/habu/prims.f (name,
 \ checker effect, reference implementation, per-backend bodies), which loads
@@ -11932,6 +11930,61 @@ variable PE-SPEC-I   variable PE-SPEC-J
    code PRIM-SPEC:A-C2-INVOKE = IF PE-C2-INVOKE EXIT THEN
    s" checker: unknown primitive-spec atom" 76 die ;
 
+\ A source row (PRIM: name effect... PRIM;, PPRIM: package name effect...
+\ PPRIM; or CLOSE-PRIVATE) reads its effect tokens itself, up to its closer, and
+\ runs each as the table's atoms, matched by spelling, never looked up: inside a
+\ build the product's checker.f defines its own PE words, which would record
+\ into a checker that checks nothing. A row is hb's own text, so a token the
+\ grammar lacks, a missing closer or an operand left over is hb's defect.
+
+\ A token's atoms, the second 0 when it has one; 0 0 outside the grammar.
+: PE-TOKEN-ATOMS ( ptr u8 n -- n n ) {: a:ptr u:n :}
+   a u s" PE-IN"     CORE-STR=CI IF PRIM-SPEC:A-IN       0 EXIT THEN
+   a u s" PE-OUT"    CORE-STR=CI IF PRIM-SPEC:A-OUT      0 EXIT THEN
+   a u s" PE-N"      CORE-STR=CI IF PRIM-SPEC:A-NUM      0 EXIT THEN
+   a u s" PE-F"      CORE-STR=CI IF PRIM-SPEC:A-BOOL     0 EXIT THEN
+   a u s" PE-PTR"    CORE-STR=CI IF PRIM-SPEC:A-PTR      0 EXIT THEN
+   a u s" PE-Q"      CORE-STR=CI IF PRIM-SPEC:A-QUOT     0 EXIT THEN
+   a u s" PE-QIN"    CORE-STR=CI IF PRIM-SPEC:A-QUOT-IN  0 EXIT THEN
+   a u s" PE-QOUT"   CORE-STR=CI IF PRIM-SPEC:A-QUOT-OUT 0 EXIT THEN
+   a u s" ;PE-Q"     CORE-STR=CI IF PRIM-SPEC:A-QUOT-END 0 EXIT THEN
+   a u s" PE-PTR-A"  CORE-STR=CI IF PRIM-SPEC:A-VAR-A PRIM-SPEC:A-PTR EXIT THEN
+   a u s" PE-PTR-N"  CORE-STR=CI IF PRIM-SPEC:A-NUM   PRIM-SPEC:A-PTR EXIT THEN
+   a u s" PE-PTR-U8" CORE-STR=CI IF PRIM-SPEC:A-U8    PRIM-SPEC:A-PTR EXIT THEN
+   0 0 ;
+
+: PE-TOKEN ( ptr u8 n -- )
+   PE-TOKEN-ATOMS {: one:n two:n :}
+   one 0= IF s" checker: a primitive row token outside the row grammar" 76 die THEN
+   one PE-SPEC-ATOM
+   two 0 <> IF two PE-SPEC-ATOM THEN ;
+
+\ Whether a token closes the row: a bare row's PRIM;, a package row's PPRIM; or
+\ CLOSE-PRIVATE. The other family's closer is outside the grammar.
+: PE-CLOSER? ( ptr u8 n bool -- bool ) {: a:ptr u:n pkg:bool :}
+   pkg 0= IF a u s" PRIM;" CORE-STR=CI EXIT THEN
+   a u s" PPRIM;" CORE-STR=CI  a u s" CLOSE-PRIVATE" CORE-STR=CI  or ;
+
+\ Runs the effect tokens after PE-OPEN and answers the closer.
+: PE-READ ( bool -- ptr u8 n ) {: pkg:bool :}
+   0 PE-SPEC-TOS !
+   BEGIN
+      parse-name  dup 0= IF s" checker: a primitive row has no closer" 76 die THEN
+      2dup pkg PE-CLOSER? 0=
+   WHILE
+      PE-TOKEN
+   REPEAT
+   PE-SPEC-TOS @ 0 <> IF s" checker: primitive row operand left over" 76 die THEN ;
+
+: PRIM: ( -- )
+   parse-name PE-OPEN
+   RES-FALSE PE-READ 2drop PE-CLOSE ;
+
+: PPRIM: ( -- )
+   parse-name PE-PKG-U ! PE-PKG-A !
+   parse-name PE-OPEN
+   RES-TRUE PE-READ s" CLOSE-PRIVATE" CORE-STR=CI IF CLOSE-PRIVATE ELSE CLOSE-PUBLIC THEN ;
+
 : PE-SPEC-ROW ( n -- ) {: row:n :}
    row PRIM-SPEC:KIND@ {: kind:n :}
    kind PRIM-SPEC:K-ELAB = IF
@@ -11966,6 +12019,47 @@ PTABLE-START
 
 PE-SPEC-REPLAY
 
+\ The host loop's own words, which every program starts with.
+PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
+PRIM: ."     PRIM;
+PRIM: s\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: c\"    PE-PTR-U8 PE-OUT PRIM;
+PRIM: .\"    PRIM;
+PRIM: [']    PE-N PE-OUT PRIM;
+\ The row types top-level `char`, as a storage count (`CHAR 0 TYPED-BUFFER`);
+\ a body never reaches it (TRY-PRIMS), so a body `char` is a word or undefined.
+PRIM: char   PE-N PE-OUT PRIM;  PRIM-TOP-ONLY!
+PRIM: [char] PE-N PE-OUT PRIM;
+PRIM: [package] PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: constant PE-N PE-IN PRIM;
+
+\ NORET-AXIOMS also types names no row above interns, the interpreter's keywords
+\ and include.f's loading words.
+s" >r" PE-SYM-OF drop
+s" r>" PE-SYM-OF drop
+s" r@" PE-SYM-OF drop
+s" variable" PE-SYM-OF drop
+s" included" PE-SYM-OF drop
+s" required" PE-SYM-OF drop
+s" script-required" PE-SYM-OF drop
+s" INCLUDE-EVALUATE" PE-SYM-OF drop
+s" INCLUDE-EVALUATE-RANGE" PE-SYM-OF drop
+
+\ A build starts with the kernel's rows and the host loop's words only: the
+\ rows below name hb's own words, which a product defines for itself. Below
+\ BUILD-SYM-END is the prim region during a build. The prim rows are cut with
+\ the symbols, since a build's new symbols take the ids hb's later rows name.
+SYM-N @ BUILD-SYM-END !
+package CHECK
+SYMS-P SYM-CAP-V SYM-REC SYM-N STORE+
+SYM-STR-P SYM-STR-CAP-V 1 SYM-STR-U STORE+
+USIGS-P USIGS-CAP-U 1 UEND STORE+
+PES-P PE-CAP-V PE-REC #PE STORE+
+SYM-PRIM-END BUILD-SYM-END @ CELL-ROW+
+USIGS-USER-OFF UEND @ CELL-ROW+
+;package
+
 PRIM: script-argc  PE-N PE-OUT PRIM;
 PRIM: script-argv$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: path0    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
@@ -11991,6 +12085,8 @@ PPRIM: BOOT NAMESPACE-WL-CELL PE-N PE-OUT PPRIM;
 PPRIM: BOOT IMAGE-BASE-CELL PE-N PE-OUT PPRIM;
 PPRIM: BOOT GLOBAL-WL PE-N PE-OUT PPRIM;
 PPRIM: BOOT NAMESPACE-WL PE-N PE-OUT PPRIM;
+PPRIM: BOOT TYPES-WL-CELL PE-N PE-OUT PPRIM;
+PPRIM: BOOT TYPES-WL PE-N PE-OUT PPRIM;
 PPRIM: BOOT USER-END PE-N PE-OUT PPRIM;
 PPRIM: WL NAMESPACE PE-N PE-OUT PPRIM;
 PPRIM: WL RETIRED PE-N PE-OUT PPRIM;
@@ -12063,15 +12159,7 @@ PRIM: CHECKER-RESET-SOURCE PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-TRUSTED-TICK? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
-\ Outside TYPE-DECL only a TRUSTED: caller arms the window through this global
-\ row.
-PRIM: FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
-PRIM-TRUSTED-ONLY!
-\ The type declarer arms the window for each generated accessor
-\ (src/core/sumtype.f FIELD-ARM), as checked code inside TYPE-DECL. That
-\ caller compiles before the seal.
-PPRIM: TYPE-DECL FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
-\ The same restriction covers direct access to the armer's private storage.
+\ The field-projection armer's storage; FIELD-PROJ! writes it.
 PRIM: FIELD-PROJ-A PE-PTR-U8 PE-PTR PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: FIELD-PROJ-U PE-PTR-N PE-OUT PRIM;
@@ -12224,10 +12312,6 @@ PRIM: CHECKER-NAMES-ROW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PR
 PRIM: CHECKER-NAMED-USE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
-\ The native compiler's does> split (src/compiler/native/checker-owner.f
-\ DOES-CHECK) calls it as checked code inside its owner. The global row above
-\ stays for the TRUSTED: callers outside CHECKER-OWNER.
-PPRIM: CHECKER-OWNER CHECK-DOES! PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 \ The does> frame writers behind checker-owner.f's public DOES-BEGIN,
 \ DOES-FINISH and DOES-COMMIT; the rows reach nothing those words do not.
 PRIM: CHECKER-NATIVE-DOES-BEGIN PRIM;
@@ -12266,6 +12350,13 @@ PRIM: TRUST-RAW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ on TFAM:TFAM-N@. TFAM-NAME$ stays PRIM: at global scope:
 \ habu2.f C-FIND-GLOBAL resolves it by bare spelling for `;match`.
 PPRIM: TFAM TFAM-N@ PE-N PE-OUT PPRIM;
+PPRIM: TFAM TYPE-WORD PPRIM;
+PPRIM: TFAM ENTRY? PE-N PE-IN  PE-F PE-OUT PPRIM;
+PPRIM: TFAM ENTRY! PE-N PE-IN PE-N PE-IN PPRIM;
+PPRIM: TFAM ENTRY-LINKED PPRIM;
+PPRIM: TFAM ENTRY-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+PPRIM: TFAM ENTRY-TEXT$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+PPRIM: TFAM READ-PENDING PPRIM;
 PPRIM: TFAM TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 \ Read-only registry reads for the public-signatures tool, which synthesizes
 \ constructor signatures from TFAM/SUMV metadata; not trust boundaries.
@@ -12440,18 +12531,6 @@ PRIM: CHECKER-USING-POP PRIM;
 PRIM: CHECKER-PUBLIC PRIM;
 PRIM: CHECKER-PRIVATE PRIM;
 PRIM: CHECKER-END-PACKAGE PRIM;
-\ ---- package FFI's two retypes ----------------------------------------------
-\ Rows for the two identity words defined above PTABLE-START. Each is the word's
-\ only primitive row and package FFI owns it, so only a CHECKED body compiled
-\ inside FFI resolves it.
-PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
-\ FFI-CELL>PTR's result carries no length: every consumer pairs it with the
-\ width it knows (errno is 4 bytes).
-PPRIM: FFI FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT CLOSE-PRIVATE
-\ The `linear:` registrar for the source pre-pass (src/habu/verify-source.f
-\ LINEAR-DECLARATION); the engine reaches it through LINEAR-OFF. It certifies
-\ against the live package and section, so a reopened VERIFY gains nothing.
-PPRIM: VERIFY CHECKER-LINEAR PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
 \ The source pre-pass counts a refused `cast:` or `linear:` declaration in a
 \ multi-error check with it (src/habu/verify-source.f IDENTITY-OUTCOME).
 PPRIM: CAST-ERROR SKIP PE-N PE-IN PPRIM;
@@ -12459,24 +12538,11 @@ PPRIM: CAST-ERROR SKIP PE-N PE-IN PPRIM;
 \ CHK-PREVERIFY-STOPPED).
 PRIM: REPORTED-ERROR? PE-N PE-IN  PE-F PE-OUT PRIM;
 
-PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
-PRIM: ."     PRIM;
-PRIM: s\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: c\"    PE-PTR-U8 PE-OUT PRIM;
-PRIM: .\"    PRIM;
 \ ESC-DECODE's row, public: without it the sealed checker refuses the decoder
 \ and no checked reader of an escaped literal could call it. It writes at most n
 \ bytes at the caller's n-byte destination and answers the count written and
 \ whether every escape was valid.
 PRIM: ESC-DECODE PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
-PRIM: [']    PE-N PE-OUT PRIM;
-\ The row types top-level `char`, as a storage count (`CHAR 0 TYPED-BUFFER`);
-\ a body never reaches it (TRY-PRIMS), so a body `char` is a word or undefined.
-PRIM: char   PE-N PE-OUT PRIM;  PRIM-TOP-ONLY!
-PRIM: [char] PE-N PE-OUT PRIM;
-PRIM: [package] PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: constant PE-N PE-IN PRIM;
 \ EXT-MARK-FREE-TAIL marks a product's free factor; the row keeps it callable
 \ after the seal, like CHECKER-DEFFAMILY. Its unique name makes row order
 \ immaterial; it must be registered before PTABLE-END.
@@ -12572,12 +12638,6 @@ PPRIM: CHECKER-BOUND REWIND PPRIM;
 \ Run in a booted engine it fails closed like REWIND (measured; a following enum
 \ declaration and arithmetic body still certify).
 PPRIM: CHECKER-BOUND EMPTY-STORE PPRIM;
-\ CHECKER-EFFECT-AUTHORITY SEAL closes the authority gate. Its caller is
-\ src/core/internal-mark.f's sealed arm, a checked body after the hook, which an
-\ engine that boots its prefix from source checks with axiom rows alone. The row
-\ grants nothing the gate guards: sealing again changes nothing, and no word
-\ opens the gate.
-PPRIM: CHECKER-EFFECT-AUTHORITY SEAL PPRIM;
 \ Their one caller is LINKER:WITH (src/habu/linker.f), at its open and close.
 PPRIM: CHECK OPEN PPRIM;
 PPRIM: CHECK CLOSE PPRIM;
@@ -12612,25 +12672,7 @@ PRIM: EFFECT-FINALLY-CELLS PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
 PRIM: EFFECT-MATCH-CELLS PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CTL-DEAD?          PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 
-\ NORET-AXIOMS also types names no row above interns, the interpreter's keywords
-\ and include.f's loading words: interned here, they are below SYM-PRIM-END.
-s" >r" PE-SYM-OF drop
-s" r>" PE-SYM-OF drop
-s" r@" PE-SYM-OF drop
-s" variable" PE-SYM-OF drop
-s" included" PE-SYM-OF drop
-s" required" PE-SYM-OF drop
-s" script-required" PE-SYM-OF drop
-s" INCLUDE-EVALUATE" PE-SYM-OF drop
-s" INCLUDE-EVALUATE-RANGE" PE-SYM-OF drop
-
 PTABLE-END
-
-package CHECK
-SYMS-P SYM-CAP-V SYM-REC SYM-N STORE+
-SYM-STR-P SYM-STR-CAP-V 1 SYM-STR-U STORE+
-USIGS-P USIGS-CAP-U 1 UEND STORE+
-;package
 
 CHECKER-REG:SCRATCH{
 PTR-VARIABLE CHECKER-REC-A
@@ -12650,10 +12692,16 @@ $10 constant DFER-REC
 : DFER.FLAG ( ptr a -- ptr a ) DFER-FLAG-OFF + ;
 
 
-create DFERS DFER-CAP allot
-variable DFER-END
-0 DFERS !
+\ Its rows name symbols by id, and a build numbers its symbols anew, so the
+\ table is reached through a pointer a build points at a copy of its own
+\ (CHECK:OPEN); none of hb's rows is a prefix symbol's.
+create DFERS-BOOT DFER-CAP allot
+PERSISTED-PTR-VARIABLE DFERS-P   variable DFER-CAP-V   variable DFER-END
+DFERS-BOOT DFERS-P !   DFER-CAP DFER-CAP-V !
+0 DFERS-BOOT !
 0 DFER-END !
+: DFERS ( -- ptr n ) DFERS-P @ ;
+DFERS-P DFER-CAP-V 1 DFER-END CHECK:STORE+
 
 : CHECKER-FOLD-C ( n -- n ) {: c:n :}
    c $41 < IF c EXIT THEN
@@ -12750,7 +12798,7 @@ public
 \ Dictionary record slots and flags (src/habu/layout.f DREC).
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
-4 constant CK-REC-FACTS-SLOT                \ the facts text's offset from data-base, 0 for none
+4 constant CK-REC-FACTS-SLOT                \ the facts text's offset from its DATA (CHECK:FACTS@), 0 for none
 $00001FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 
@@ -12790,7 +12838,7 @@ public
 -1 constant HELD-LAID                \ a laid text
 -2 constant HELD-UNDEFINE            \ an `undefine`: the symbol's identity (HOLD-UNDEFINE)
 -3 constant HELD-RETIRED             \ a retired record: its index and wordlist cell before
--4 constant HELD-TRUSTED             \ a `TRUST` row's symbol, whose facts the linker writes
+-4 constant HELD-AMENDED             \ an amended record: its index and symbol (HOLD-AMENDED)
 private
 \ A build's facts writes and retirements, in order: per entry its kind or record
 \ index, the text's offset in HELD-TEXT and its length. Only a build appends.
@@ -12875,7 +12923,24 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 \ While a build's space is open the facts words hold each write for the linker:
 \ a text laid then lands in DATA only if no earlier file of the build has it.
 : BUILDING? ( -- bool ) IMAGE-BASE 0 <> ;
+
 public
+\ Record ix's facts text, empty for none: bytes 32-39 hold its offset from the
+\ DATA owning the record, a build's space from the build's first record on, else
+\ hb's. Both DATAs have the size the current one's DP-CEILING-CELL bounds. The
+\ kernel checks only a write's index, so a text or length cell outside DATA dies.
+: FACTS@ ( n -- ptr u8 n )
+   {: ix:n :}
+   ix CHECKER-RESOLVE:REC-AT CK-REC-FACTS-SLOT cells + @ {: off:n :}
+   off 0= IF NULL-PTR BYTE-VIEW 0 EXIT THEN
+   BUILDING? IF IMAGE-BASE ELSE data-base NULL-PTR - THEN {: now:n :}
+   data-base BOOT:DP-CEILING-CELL + @ now - {: size:n :}
+   BUILDING? ix BUILD-FIRST @ >= and IF IMAGE-BASE ELSE data-base NULL-PTR - THEN {: base:n :}
+   off CELL < off size >= or IF s" checker: facts text outside DATA" 76 die THEN
+   NULL-PTR BYTE-VIEW base + off + {: a:ptr :}
+   a CELL - CELL-VIEW @ {: u:n :}
+   u 0 < u size off - > or IF s" checker: facts text outside DATA" 76 die THEN
+   a u ;
 \ Stores the interned text's offset in the record's bytes 32-39.
 : FACTS! ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
@@ -12913,21 +12978,22 @@ public
       s" checker: held entry is not a retired record" 76 die
    THEN
    a CELL-VIEW @   a CELL + CELL-VIEW @ ;
-\ While a build's space is open, holds the symbol a `TRUST` row recorded an
-\ effect for. A row cannot write its facts text here, before the renderer: the
-\ linker writes it at the piece's end (LOWER-CERT-HOOK:SYM-FACTS!).
-: HOLD-TRUSTED ( n -- )
-   {: sym:n :}
-   BUILDING? 0=  sym 0=  or IF EXIT THEN
-   1 cells HELD-TRUSTED HOLD {: at:ptr :}
-   sym at CELL-VIEW ! ;
-\ Entry k's trusted symbol.
-: HELD-TRUSTED@ ( n -- n )
+\ While a build's space is open, holds that a `TRUST` row or an amender
+\ (RECORD-CONTROL-AT!) changed record ix's facts after its text was written, and
+\ sym, the symbol they are read from. Neither can write the text then, before the
+\ renderer: src/core/check-hook.f AMENDED writes it again at the piece's end.
+: HOLD-AMENDED ( n n -- )
+   {: ix:n sym:n :}
+   BUILDING? 0=  ix 0 <  or  sym 0=  or IF EXIT THEN
+   2 cells HELD-AMENDED HOLD {: at:ptr :}
+   ix at CELL-VIEW !   sym at CELL + CELL-VIEW ! ;
+\ Entry k's amended record and its symbol.
+: HELD-AMENDED@ ( n -- n n )
    HELD-FACT@ {: ix:n a:ptr u:n :}
-   ix HELD-TRUSTED <>  u 1 cells <>  or IF
-      s" checker: held entry is not a trusted symbol" 76 die
+   ix HELD-AMENDED <>  u 2 cells <>  or IF
+      s" checker: held entry is not an amended record" 76 die
    THEN
-   a CELL-VIEW @ ;
+   a CELL-VIEW @   a CELL + CELL-VIEW @ ;
 \ Keeps the first n entries.
 : DROP-FACTS ( n -- ) dup HELD-N @ 1+ HELD-RANGE HELD-KEEP ;
 \ Interns entries n and on in order, then keeps the first n. A created word's
@@ -14228,7 +14294,7 @@ CHECKER-REG:}SCRATCH
 
 : PE-CONST-ROW ( ptr n -- )
    CHECKER-RESOLVE:CK-REC-NAME$ PE-OPEN
-   PE-N PE-OUT PPRIM; ;
+   PE-N PE-OUT CLOSE-PUBLIC ;
 
 : PE-PUBLIC-CONSTS ( ptr u8 n -- ) {: pa:ptr pu:n :}
    pa pu BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: ns:ptr :}
@@ -14281,7 +14347,8 @@ public
 \ inside a package, or a part of one, whose private section holds an
 \ owner-private primitive row of that name (CLOSE-PRIVATE) is that row, the
 \ part's before its package's: the row is the owner's view of the same record,
-\ which the engine holds once, globally (FFI-PTR>CELL inside package FFI).
+\ which the engine holds once, globally (source-exec-live? inside package
+\ SOURCE-EXEC, src/habu/prims.f).
 \ The engine finds a bare name in the open package whatever current is, so the
 \ binding asks PKG-LIVE-XT for the open package; only a definition needs current
 \ in it, and LIVE-BIND refuses a bare token in one where it is not. A top-level
@@ -14469,6 +14536,12 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
    rank RB-NONE = IF a u RECOVERY-USED-BIND EXIT THEN
    0 ;
 
+\ Reads a bound record's facts text into the stores the first time a lookup binds
+\ it (CHECK:READ-BOUND, which needs words defined below).
+defer FACTS-READ-XT ( ptr n -- )
+: FACTS-READ-DEFAULT ( -- ) [: drop ;] is FACTS-READ-XT ;
+FACTS-READ-DEFAULT
+
 : LIVE-BIND ( ptr u8 n -- n n ) {: a:ptr u:n :}
    NULL-PTR BIND-REC !  0 BIND-PEND-IX !  0 BIND-PEND-OFF !
    0 BIND-SEEDED !
@@ -14501,6 +14574,7 @@ variable BODY-WALK      \ a definition body's walk runs (CHECK-SCAN)
       a u CHECKER-QUALIFIED? IF 0 0 EXIT THEN
       a u CK-AXIOM-SYM 0 EXIT
    THEN
+   rec FACTS-READ-XT
    a u rec CK-REC-BIND {: sym:n :}
    rec BIND-REC !
    rec CK-REC-WID WL:GLOBAL? IF                       \ a used public exporting the bound global's tail
@@ -14682,20 +14756,10 @@ package CHECKER-REG
    IF RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM drop
    ELSE TYPE-MARK$ CHECKER-RECORD-SYM drop THEN ;
 
-: ANY-PUBLIC-TYPE-MARK? ( -- bool )
-   1 BEGIN dup SYM-N @ < WHILE
-      dup SYM-RETIRED? 0= IF
-         dup SYM-ROW SYM.VIS @ SYM-PUBLIC = IF
-            dup SYM-NAME$ TYPE-MARK$ SYM-STR=CI IF drop RES-TRUE EXIT THEN
-         THEN
-      THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-
-\ Asked only after the nominal resolver found no family. A public declaration
-\ could be the unique-public fallback for any bare tail; a private declaration
-\ affects its own package, an own-qualified spelling included, and the bare
-\ tails of that package's parts.
+\ Asked only after the nominal resolver found no family. A bare tail reaches the
+\ marks of its own package, the enclosing package of a part, the globals and the
+\ `using` imports' public sections, as TFAM-RESOLVE reaches families; a
+\ qualified tail reaches its named package's public mark, or its own private one.
 : CHECKER-TYPE-MARK-COVERS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    RENDER-TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
    a u CHECKER-QUALIFIED? IF
@@ -14714,7 +14778,12 @@ package CHECKER-REG
       THEN
    THEN
    TYPE-MARK$ CHECKER-GLOBAL-SYM? 0 <> IF RES-TRUE EXIT THEN
-   ANY-PUBLIC-TYPE-MARK? ;
+   CHECKER-USING-N 0 ?DO
+      i CHECKER-USING$ SYM-PUBLIC TYPE-MARK$ CHECKER-PKG-SYM? 0 <> IF
+         RES-TRUE unloop EXIT
+      THEN
+   LOOP
+   RES-FALSE ;
 
 \ Every wordlist CHECKER-FIND-ACTIVE-SYM walks for a token; the bare order is
 \ docs/forth.md "Packages".
@@ -15747,7 +15816,7 @@ RESOLUTION-LIFETIME-DEFAULT
    n 0 < n DFER-END @ > or IF
       s" checker: defer table rewind outside the registry" 76 die
    THEN
-   DFERS CELL-VIEW  n CELL /  DFER-END @ CELL /  ARENA-CELLS-ZERO
+   DFERS  n CELL /  DFER-END @ CELL /  ARENA-CELLS-ZERO
    n DFER-END !
    DFER-TERM ;
 
@@ -15850,9 +15919,9 @@ package CHECKER-REG
 \ engine's builder made, such as a primitive. A candidate's scanned definition
 \ is one too when the verifier pass already declared the name there: its
 \ OWN-RECORD is at or above PASS-FLOOR. A record from before the pass (in a warm
-\ engine, the loaded twin), a deletion or a seeded record declares nothing. The
-\ check hook and the source scan ask this before a body is checked, so they
-\ refuse exactly what the guard would.
+\ engine, the loaded twin), a deletion, a seeded record or a primitive row's
+\ effect declares nothing. The check hook and the source scan ask this before a
+\ body is checked, so they refuse exactly what the guard would.
 : CHECKER-CERT-DUP? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    CHK-CAND @ 0 <>  CHK-PROBE @ 0 <>  and IF RES-FALSE EXIT THEN
@@ -15861,7 +15930,9 @@ package CHECKER-REG
       PASS-FLOOR @ 0 <= IF RES-FALSE EXIT THEN
       a u OWN-RECORD PASS-FLOOR @ >= EXIT
    THEN
-   a u CHECKER-RECORD-SYM? CHECKER-FIND-USIG-SYM ;
+   a u CHECKER-RECORD-SYM? {: sym:n :}
+   sym CHECKER-FIND-USIG-SYM 0= IF RES-FALSE EXIT THEN
+   sym FEP-OFF@ 1 - PE-ROW-EFF? 0= ;
 
 \ The guard's shape question, for a replayed definition that makes a does>
 \ clause when CLAUSE is true (a definer, or an export of one); CHECKER-CERT-DUP?
@@ -16813,23 +16884,7 @@ private
 : RECORD-FIXED-DEFAULT-INSTALL ( -- )
    [: RECORD-FIXED-UNAVAILABLE ;] is RECORD-FIXED-READ-XT ;
 RECORD-FIXED-DEFAULT-INSTALL
-;package
-\ A replacement checker starts before native/dict.f can install its own
-\ reader. Borrow the source owner's exact-record reader for that window.
-package CHECKER-REG
-CAST: AS-RECORD-FIXED-READ ( n -- [ ptr n -- n n bool ] )
 ' RECORD-FIXED-READ-XT DECLARATIONS CHECKER-OWNER-ABI:RECORD-FIXED-READ-OFF + xt!
-: RECORD-FIXED-SOURCE-INSTALL ( -- )
-   SOURCE-OWNER-A @ {: owner:ptr :}
-   owner NULL-PTR = IF EXIT THEN
-   owner CHECKER-OWNER-ABI:HEADER-BYTES - CELL-VIEW @
-      CHECKER-OWNER-ABI:MAGIC <> IF EXIT THEN
-   owner CELL - CELL-VIEW @
-      CHECKER-OWNER-ABI:RECORD-FIXED-READ-OFF CELL + < IF EXIT THEN
-   owner CHECKER-OWNER-ABI:RECORD-FIXED-READ-OFF + CELL-VIEW @
-      dup 0= IF drop EXIT THEN
-   AS-RECORD-FIXED-READ CHECKER-REG:RECORD-FIXED-USE ;
-RECORD-FIXED-SOURCE-INSTALL
 ;package
 PERSISTED-PTR-VARIABLE RECORD-LINK-P
 NULL-PTR RECORD-LINK-P !
@@ -17607,7 +17662,8 @@ private
 
 \ A later annotation updates the record the registrar actually selected.
 \ Its symbol chooses the new control row only at this acceptance boundary;
-\ the contract query never follows a name to a newer row.
+\ the contract query never follows a name to a newer row. Its facts text, written
+\ before, lacks the new tag: a build holds the amendment for its file's end.
 : RECORD-CONTROL-AT! ( ptr n n -- ) {: rec:ptr sym:n :}
    rec NULL-PTR = IF EXIT THEN
    rec CHECKER-RESOLVE:REC>INDEX {: ord:n :}
@@ -17618,7 +17674,8 @@ private
    control RECORD-LINK-CONTROL-HI @ max RECORD-LINK-CONTROL-HI !
    sym DFER-FIND-SYM IF 1 ELSE 0 THEN row RLINK.DEFER cells + !
    ord PENDING-OWNER-RECORD
-   ord PENDING-DIRTY+ ;
+   ord PENDING-DIRTY+
+   ord sym CHECK:HOLD-AMENDED ;
 
 \ The name-keyed appender records NO intact evidence: every caller of it has
 \ none to give (the axioms below, a body that failed to check, a test pinning a
@@ -17627,12 +17684,16 @@ private
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
-\ An axiom's symbol is below SYM-PRIM-END: CHECKER-RESET-SOURCE keeps NORETS
-\ to NORET-PRIM-END but retires every symbol from SYM-PRIM-END.
+\ An axiom's symbol is in a build's prefix, below BUILD-SYM-END and so below
+\ SYM-PRIM-END: CHECKER-RESET-SOURCE keeps NORETS to NORET-PRIM-END but retires
+\ every symbol from SYM-PRIM-END. Inside a build this runs as the product's
+\ copy, whose table lacks the rows the building checker took
+\ (src/habu/interpret.f DECLARATION?) and checks nothing, so only a checker
+\ loaded outside a build is held to it.
 : NORET-AXIOM {: a:ptr u:n flag:n :}
    a u PE-SYM-OF {: sym:n :}
-   sym SYM-PRIM-END @ < 0= IF
-      s" checker: an axiom names a symbol past SYM-PRIM-END" 76 die
+   data-base BOOT:IMAGE-BASE-CELL + @ 0=  sym BUILD-SYM-END @ < 0=  and IF
+      s" checker: an axiom names a symbol past the build prefix" 76 die
    THEN
    sym flag 0 0 NORET-ADD-SYM ;
 
@@ -18236,65 +18297,37 @@ variable CURSYM
    a u s" pf-commit" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" pf-rollback" CORE-STR=CI ;
 
-\ --- unsafe-symbol set --------------------------------------------------------
+\ --- unsafe definers ----------------------------------------------------------
 \ Unsafety is a property of the word, not its spelling. UNSAFE-TOK? keeps the
 \ name list for the DO-TOK1 body reject and for the engine and syntax tokens
 \ that never intern a checker symbol ([, ], immediate, evaluate, trust,
-\ set-check, set-preflight). The definers and openers (deflinear, value-record,
-\ sumtype, enum, product, newtype, layout-buffer) intern one, so only they could
-\ get an EXPORT alias: UNSAFE-SET-SEAL interns their symbol ids at seal time and
-\ EXPORT-RESOLVE refuses to re-export any of them by identity, under any
-\ spelling or qualification. Ids keep the set snapshot-stable; it is monotonic
-\ and never rolled back, since these are permanent engine-prefix words above
-\ every checking watermark.
-32 constant UNSAFE-SYM-CAP
-create UNSAFE-SYMS UNSAFE-SYM-CAP cells allot
-variable UNSAFE-SYM-N
-0 UNSAFE-SYM-N !
-
-: UNSAFE-SYM-AT ( n -- ptr n ) {: i:n :}
-   UNSAFE-SYMS i cells + ;
+\ set-check, set-preflight). The global definers and openers below intern one,
+\ so only they could get an EXPORT alias: EXPORT-RESOLVE refuses to re-export
+\ any of them by identity, under any spelling or qualification. Each is found
+\ by name when asked, so every checker, a build's included, answers alike with
+\ no table to fill and a definer loaded later counts once it exists.
+: UNSAFE-NAME? ( n ptr u8 n -- bool ) {: sym:n a:ptr u:n :}
+   a u CHECKER-GLOBAL-SYM? sym = ;
 
 : UNSAFE-SYM? ( n -- bool ) {: sym:n :}
    sym 0= IF RES-FALSE EXIT THEN
-   0 BEGIN dup UNSAFE-SYM-N @ < WHILE
-      dup UNSAFE-SYM-AT @ sym = IF drop RES-TRUE EXIT THEN
-      1 +
-   REPEAT drop RES-FALSE ;
-
-: UNSAFE-SYM-ADD ( n -- ) {: sym:n :}
-   sym 0= IF EXIT THEN
-   sym UNSAFE-SYM? IF EXIT THEN
-   UNSAFE-SYM-N @ UNSAFE-SYM-CAP >= IF
-      s" checker: unsafe-symbol set full" 76 die
-   THEN
-   sym UNSAFE-SYM-N @ UNSAFE-SYM-AT !
-   UNSAFE-SYM-N @ 1 + UNSAFE-SYM-N ! ;
-
-: UNSAFE-NAME-ADD ( ptr u8 n -- )
-   CHECKER-FIND-ACTIVE-SYM UNSAFE-SYM-ADD ;
-
-\ Seal the aliasable unsafe words into the identity set. Called once after every
-\ definer/opener is interned (end of roles.f). Idempotent: UNSAFE-SYM-ADD dedups,
-\ and an unresolved name (symbol 0) is skipped.
-: UNSAFE-SET-SEAL ( -- )
-   s" deflinear"     UNSAFE-NAME-ADD
-   s" value-record"  UNSAFE-NAME-ADD
+   sym s" deflinear" UNSAFE-NAME?
+   sym s" value-record" UNSAFE-NAME? or
    \ `cast:` is an engine reader keyword, not a word, so there is no symbol for
-   \ an alias to resolve to and this row could only ever be a no-op. EXPORT still
-   \ refuses it on the NAME leg (EXPORT-RESOLVE asks UNSAFE-TOK? first).
-   s" sumtype"       UNSAFE-NAME-ADD
-   s" enum"          UNSAFE-NAME-ADD
-   s" product"       UNSAFE-NAME-ADD
-   s" newtype"    UNSAFE-NAME-ADD
-   s" layout-buffer" UNSAFE-NAME-ADD
-   s" defer-layout-buffer" UNSAFE-NAME-ADD
-   s" typed-buffer"  UNSAFE-NAME-ADD
-   s" dynamic-buffer" UNSAFE-NAME-ADD
-   s" typed-variable" UNSAFE-NAME-ADD
-   s" cwork-buffer"  UNSAFE-NAME-ADD
-   s" cwork-span"    UNSAFE-NAME-ADD
-   s" cwork-variable" UNSAFE-NAME-ADD ;
+   \ an alias to resolve to. EXPORT still refuses it on the NAME leg
+   \ (EXPORT-RESOLVE asks UNSAFE-TOK? first).
+   sym s" sumtype" UNSAFE-NAME? or
+   sym s" enum" UNSAFE-NAME? or
+   sym s" product" UNSAFE-NAME? or
+   sym s" newtype" UNSAFE-NAME? or
+   sym s" layout-buffer" UNSAFE-NAME? or
+   sym s" defer-layout-buffer" UNSAFE-NAME? or
+   sym s" typed-buffer" UNSAFE-NAME? or
+   sym s" dynamic-buffer" UNSAFE-NAME? or
+   sym s" typed-variable" UNSAFE-NAME? or
+   sym s" cwork-buffer" UNSAFE-NAME? or
+   sym s" cwork-span" UNSAFE-NAME? or
+   sym s" cwork-variable" UNSAFE-NAME? or ;
 
 : CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
    0 BEGIN dup u < WHILE
@@ -19638,10 +19671,10 @@ defer NAMED-OPERAND-XT ( -- )
 \ native compiler withholds the definition that used it. Otherwise the row
 \ applies while authority is unenforced or when it is an external declaration.
 \ Any other row records only the word's ABI (a build window records one for
-\ every prefix word): the primitive rows behind it decide. With none, a sealed
-\ checker refuses the call by name as well, and an unsealed one
-\ (CHECKER-EFFECT-AUTHORITY:SEALED?) applies the row unless it is a failed
-\ declaration's, which serves only its own run (RECOVERY-ROW? above).
+\ every prefix word): the primitive rows behind it decide. With none, the row
+\ applies unless it is a failed declaration's, which serves only its own run
+\ (RECOVERY-ROW? above): a kernel word's type is the one declared at its
+\ definition.
 \ OWNED-TICK-REFUSED? asks the same of a tick.
 0 constant CALL-REFUSED
 1 constant CALL-APPLIES
@@ -19655,7 +19688,6 @@ defer NAMED-OPERAND-XT ( -- )
    sym EFFECT-EXTERNAL-SYM? IF CALL-APPLIES EXIT THEN
    sym PRIM-ROWS-SYM? IF CALL-PRIMS EXIT THEN
    FEP @ ER.ACTIVE @ EFF-RECOVERY = IF CALL-REFUSED EXIT THEN
-   CHECKER-EFFECT-AUTHORITY:SEALED? IF CALL-REFUSED EXIT THEN
    CALL-APPLIES ;
 
 \ A trusted scan still refuses this primitive. Before that refusal, borrow the
@@ -19809,8 +19841,12 @@ variable CHECKER-PREFIX-ROLLBACK
    \ a call to a definer, counted for the straight-line-wrapper rule above. One
    \ per-symbol head load, on the resolved symbol: a tick is not a call here
    \ (BTICK-TOK never reaches this word) and the create-family tokens leave
-   \ through DEFINER-TOK before it, so neither is counted.
-   CURSYM @ NORET-CREATES@ dup 0 <> IF WRAPC !  WRAPN @ 1 + WRAPN ! ELSE drop THEN
+   \ through DEFINER-TOK before it, so neither is counted. Nor is a top-level
+   \ step's: it walks no body, and the next record published is the one the
+   \ definer makes when it runs, which is no wrapper.
+   TOP-STEP @ 0= IF
+      CURSYM @ NORET-CREATES@ dup 0 <> IF WRAPC !  WRAPN @ 1 + WRAPN ! ELSE drop THEN
+   THEN
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
    FEP-HIT? IF FEP @ TOK-EFF ! THEN
@@ -22562,13 +22598,28 @@ package CHECKER-REG
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ TRUST-PUBLIC-CLAIMS? EXIT THEN
    a u TRUST-RECORD-WL CK-WL-CLAIMS? ;
 
+\ The record a resolved row names, in the wordlist TRUST-RESOLVES? asks.
+: TRUST-REC ( ptr u8 n -- ptr n )
+   {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF
+      CHECKER-QPKG$ BOOT:NAMESPACE-WL search-wl {: wid:n :}
+      CHECKER-QTAIL$ wid CHECKER-RESOLVE:WL-PROBE EXIT
+   THEN
+   a u TRUST-RECORD-WL CHECKER-RESOLVE:WL-PROBE ;
+
 \ Declare a word's effect without checking its body (TRUSTED:); callers are
 \ checked against it. Usage: s" myword" s" n n -- n" trust
+\ A linked file's record is read first, as a lookup reads it, so the amend
+\ keeps the tags its facts text carries.
 : TRUST {: na:ptr nu:n sa:ptr su:n :}
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
+   na nu TRUST-REC FACTS-READ-XT
    0 DL-NEW !
-   na nu sa su TRUST-USIG! IF DL-AMEND  na nu CHECKER-RECORD-SYM? CHECK:HOLD-TRUSTED EXIT THEN
+   na nu sa su TRUST-USIG! IF
+      DL-AMEND  na nu TRUST-REC CHECKER-RESOLVE:REC>INDEX  na nu CHECKER-RECORD-SYM? CHECK:HOLD-AMENDED
+      EXIT
+   THEN
    SIG-UNRES @ SGBAD @ 0= and IF E-ADD-UNRESOLVED
    ELSE SIG-UNRES-CLEAR THEN ;
 
@@ -22705,13 +22756,20 @@ CHECKER-REG:}SCRATCH
 \ and contributes no runtime step (GRID: eats one header token, WHERE eats
 \ three). Only a live immediate with an exact `( -- )` semantic row is admitted.
 \ A wrong count skips live code or eats real tokens, so `parse-imm` is
-\ UNSAFE-TOK?-listed: top-level declarations only. Symbol-keyed like
-\ UNSAFE-SYMS and never rolled back: a retired symbol id is never reused.
+\ UNSAFE-TOK?-listed: top-level declarations only. Symbol-keyed and never
+\ rolled back: a retired symbol id is never reused. A build numbers its symbols
+\ anew, so it gets empty tables of its own, as DFERS.
 16 constant PIMM-CAP
-create PIMM-SYMS PIMM-CAP cells allot
-create PIMM-NS PIMM-CAP cells allot
-variable PIMM-N
+create PIMM-SYMS-BOOT PIMM-CAP cells allot
+create PIMM-NS-BOOT PIMM-CAP cells allot
+PERSISTED-PTR-VARIABLE PIMM-SYMS-P   PERSISTED-PTR-VARIABLE PIMM-NS-P
+variable PIMM-CAP-V   variable PIMM-N
+PIMM-SYMS-BOOT PIMM-SYMS-P !   PIMM-NS-BOOT PIMM-NS-P !   PIMM-CAP PIMM-CAP-V !
 0 PIMM-N !
+: PIMM-SYMS ( -- ptr n ) PIMM-SYMS-P @ ;
+: PIMM-NS ( -- ptr n ) PIMM-NS-P @ ;
+PIMM-SYMS-P PIMM-CAP-V CELL PIMM-N CHECK:STORE+
+PIMM-NS-P PIMM-CAP-V CELL CHECK:TABLE+
 
 : PIMM-IX ( n -- n ) {: sym:n :}   \ declaration index for sym, -1 = undeclared
    sym 0= IF -1 EXIT THEN
@@ -22821,14 +22879,17 @@ variable ACTIVE
 
 ;package
 
-: PARSE-IMM ( ptr u8 n n -- ) {: a:ptr u:n cnt:n :}
+: PIMM-ADD ( n n -- ) {: sym:n cnt:n :}
    PIMM-N @ PIMM-CAP < 0= IF s" checker: parse-imm table full" 76 die THEN
-   cnt 0 < IF s" checker: parse-imm needs a non-negative token count" 76 die THEN
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym 0= IF s" checker: parse-imm names an unknown word" 76 die THEN
    sym PIMM-N @ cells PIMM-SYMS + !
    cnt PIMM-N @ cells PIMM-NS + !
    PIMM-N @ 1 + PIMM-N ! ;
+
+: PARSE-IMM ( ptr u8 n n -- ) {: a:ptr u:n cnt:n :}
+   cnt 0 < IF s" checker: parse-imm needs a non-negative token count" 76 die THEN
+   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
+   sym 0= IF s" checker: parse-imm names an unknown word" 76 die THEN
+   sym cnt PIMM-ADD ;
 \ The TRUST row keeps parse-imm out of the internal-word marking: a library
 \ declares its parsing immediates at top level (UNSAFE-TOK? bars it from
 \ checked bodies).
@@ -23066,12 +23127,16 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
 \ and its control word. A deferred word has BINDING-DEFER set. A selected
 \ cold dictionary record may have no checker symbol or visible effect record;
 \ its captured control still answers here. A refusal, missing binding,
-\ invisible symbol or tombstone answers three zeroes.
-: TOP-BINDING ( ptr u8 n -- n n n )
+\ invisible symbol or tombstone answers three zeroes. TOP-BINDING-REC answers
+\ the dictionary record the selection binds after them, NULL-PTR with the
+\ zeroes: VIS-PICK puts BIND-REC back, so it does not hold that record.
+: TOP-BINDING-REC ( ptr u8 n -- n n n ptr n )
    {: a:ptr u:n :}
-   a u CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK rot drop
-   {: sym:n eff1:n ctl:n found:bool :}
-   found IF sym eff1 ctl ELSE 0 0 0 THEN ;
+   a u CHECKER-OWNER-ABI:VISIBLE-TOP RES-TRUE VIS-PICK
+   {: sym:n eff1:n drec:ptr ctl:n found:bool :}
+   found IF sym eff1 ctl drec ELSE 0 0 0 NULL-PTR THEN ;
+
+: TOP-BINDING ( ptr u8 n -- n n n ) TOP-BINDING-REC drop ;
 
 \ The source pre-pass asks for a binding without reporting or marking a use.
 \ VIS-PICK restores the resolver's scratch before the pre-pass resumes.
@@ -27126,11 +27191,6 @@ public
 
 package CHECKER-DECL-FRAME
 
-PPRIM: CHECKER-DECL-FRAME START PE-N PE-IN CLOSE-PRIVATE
-PPRIM: CHECKER-DECL-FRAME PREPARE PE-N PE-IN  PE-F PE-OUT CLOSE-PRIVATE
-PPRIM: CHECKER-DECL-FRAME ROLLBACK PE-N PE-IN CLOSE-PRIVATE
-PPRIM: CHECKER-DECL-FRAME RELEASE CLOSE-PRIVATE
-
 defer TYPES-READY-XT ( n -- bool )
 defer TYPES-RESTORE-XT ( -- )
 defer TYPES-RELEASE-XT ( -- )
@@ -28357,7 +28417,7 @@ NAMES-DIAG-DEFAULT
 : CHECKER-NAMES-ROW ( ptr u8 n ptr u8 n -- )
    {: ka:ptr ku:n ta:ptr tu:n :}
    tu 0= IF ka ku PARSES-NO-TARGET NAMES-REFUSE EXIT THEN
-   ta tu TOP-BINDING {: sym:n eff1:n ctl:n :}
+   ta tu TOP-BINDING-REC {: sym:n eff1:n ctl:n selected:ptr :}
    sym 0= IF
       ctl 0 <> IF EXIT THEN
       ta tu ROW-UNBOUND {: kind:n :}
@@ -28366,7 +28426,6 @@ NAMES-DIAG-DEFAULT
    THEN
    sym ta tu NAV-USE-NOW
    sym eff1 NAMES-TAKES-STRING? 0= IF ta tu NAMES-NO-STRING NAMES-REFUSE EXIT THEN
-   BIND-REC @ {: selected:ptr :}
    sym  sym CTL-FLAGS-SYM CTL-NAMES or  sym CTL-MASKS-SYM  NORET-ADD-SYM
    selected sym RECORD-CONTROL-AT! ;
 
@@ -31447,17 +31506,6 @@ CHECKER-REG:}SCRATCH
    0 TOP-WRITE-END !  0 TOP-READ-END !  0 TOP-ROW-TV !  0 TOP-ROW-RV !  0 TOP-SCOPE-SEEN !
    0 TOP-LIVE !  0 TOP-BASE !  0 TOP-COPYING ! ;
 
-\ The hook's rows, owned by package TOP-ROW (src/core/top-row.f): its checked
-\ TR-HOOK calls these bare and no other checked scope resolves them, so no
-\ checked word can forge the saved row's types.
-PPRIM: TOP-ROW CHECKER-TOP-SEGMENT PE-N PE-IN CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-FORGET CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-WIDEN PE-PTR-U8 PE-IN PE-N PE-IN CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-SAVE CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-WORD PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-TICK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
-PPRIM: TOP-ROW CHECKER-TOP-PUSH PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
-
 \ ---- the surface a capture keeps ---------------------------------------------
 \ A capture keeps a checker symbol, and every row keyed on it, only when some
 \ spelling can still reach it in the engine it writes. Two reasons are this
@@ -31745,24 +31793,12 @@ variable MARK-U                          \ the map's length in bytes
       i DFER-REC * {: at:n :}
       at bnd = IF DST @ RBF-BND-REC RBF.DFEREND ! THEN
       DFERS at + DFER.SYM @ SYM-RETIRED? 0= IF
-         at DST @ <> IF DFERS at + DFERS DST @ + DFER-REC ARENA-COPY THEN
+         at DST @ <> IF DFERS at + BYTE-VIEW DFERS DST @ + BYTE-VIEW DFER-REC ARENA-COPY THEN
          DST @ DFER-REC + DST !
       THEN
    loop
    bnd oldend = IF DST @ RBF-BND-REC RBF.DFEREND ! THEN
    DST @ DFER-REWIND ;
-
-: UNSAFE-FILTER ( -- )
-   0 DST !
-   UNSAFE-SYM-N @ 0 ?do
-      i UNSAFE-SYM-AT @ {: sym:n :}
-      sym SYM-RETIRED? 0= IF
-         sym DST @ UNSAFE-SYM-AT !
-         DST @ 1 + DST !
-      THEN
-   loop
-   UNSAFE-SYM-N @ DST @ ?do 0 i UNSAFE-SYM-AT ! loop
-   DST @ UNSAFE-SYM-N ! ;
 
 : PIMM-FILTER ( -- )
    0 DST !
@@ -31789,7 +31825,6 @@ public
    STRINGS
    RETIRE-BINDINGS
    DEFER-FILTER
-   UNSAFE-FILTER
    PIMM-FILTER
    0 HIDX-VALID ! ;
 
@@ -32207,3 +32242,293 @@ CLAIM-COLD-SOURCE
 \ process that made it, and a built hb numbers its records anew.
 s" CHECKER-DEFRECORD" scope-find drop drop drop NOMINAL-ADD-REC
 s" CHECKER-DEFLINEAR" scope-find drop drop drop NOMINAL-ADD-REC
+
+
+\ ---- the facts reader ---------------------------------------------------------
+\ A record's facts text (CHECK:FACTS@) is read into the stores the first time a
+\ lookup binds the record (LIVE-BIND), and an export's when the linker links it.
+package CHECK
+
+\ Per wordlist id, one plus the index of the newest namespace record whose public
+\ or private wordlist it is, 0 for none, over the records below NS-SEEN. A lookup
+\ first indexes the records made since; it indexes from 0 again when the count
+\ went down, or when the answer is missing or no longer holds, as after a package
+\ gains its private wordlist. The cells rest in a scratch span: SR-RETIRE empties it.
+CHECKER-REG:SCRATCH{
+PTR-VARIABLE NS-ROWS-P   variable NS-CAP   variable NS-SEEN
+CHECKER-REG:}SCRATCH
+
+: NS-ENSURE ( n -- ) {: need:n :}
+   need NS-CAP @ <= IF EXIT THEN
+   need NS-CAP @ 2 * max 64 max {: nc:n :}
+   NS-ROWS-P @ NS-CAP @ cells nc cells SR-GROW NS-ROWS-P !
+   nc NS-CAP ! ;
+
+: NS-PUT ( n n -- ) {: wid:n i:n :}
+   wid 0 <= IF EXIT THEN
+   wid 1 + NS-ENSURE
+   i 1 +  NS-ROWS-P @ wid cells + ! ;
+
+: NS-NOTE ( n -- ) {: i:n :}
+   i CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   ns CK-REC-WID BOOT:NAMESPACE-WL <> IF EXIT THEN
+   ns @ i NS-PUT  ns CELL + @ i NS-PUT ;
+
+: NS-CLEAR ( -- ) NS-ROWS-P @ 0 NS-CAP @ ARENA-CELLS-ZERO  0 NS-SEEN ! ;
+
+: NS-INDEX ( -- )
+   ndict@ NS-SEEN @ < IF NS-CLEAR THEN
+   ndict@ NS-SEEN @ ?DO i NS-NOTE LOOP
+   ndict@ NS-SEEN ! ;
+
+: NS-ROW@ ( n -- n ) {: wid:n :}
+   wid 0 >  wid NS-CAP @ <  and IF NS-ROWS-P @ wid cells + @ ELSE 0 THEN ;
+
+: NS-HOLDS? ( n n -- bool ) {: wid:n row:n :}
+   row 0= IF RES-FALSE EXIT THEN
+   row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
+
+\ One plus the index of the newest namespace record holding wid, 0 for none. The
+\ global and namespace wordlists are no package's: a miss on them would index
+\ every record again.
+: NS-FIND ( n -- n ) {: wid:n :}
+   wid BOOT:GLOBAL-WL =  wid BOOT:NAMESPACE-WL =  or IF 0 EXIT THEN
+   NS-INDEX
+   wid  wid NS-ROW@  NS-HOLDS? 0= IF NS-CLEAR NS-INDEX THEN
+   wid NS-ROW@ {: row:n :}
+   wid row NS-HOLDS? IF row ELSE 0 THEN ;
+
+\ The checker symbol of record rec, interned: a global's, else the package
+\ symbol of the newest namespace whose public or private wordlist holds it; 0
+\ when none does.
+: REC-SYM ( ptr n -- n ) {: rec:ptr :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
+   rec CK-REC-WID {: wid:n :}
+   nameu 0= wid -2 = or IF 0 EXIT THEN
+   wid BOOT:GLOBAL-WL = IF name nameu CHECKER-GLOBAL-SYM EXIT THEN
+   wid NS-FIND {: row:n :}
+   row 0= IF 0 EXIT THEN
+   row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
+   ns CHECKER-RESOLVE:CK-REC-NAME$
+   wid ns @ = IF SYM-PUBLIC ELSE SYM-PRIVATE THEN
+   name nameu CHECKER-PKG-SYM ;
+
+
+\ A read runs inside a caller's check, between its tokens, so it is a guest
+\ there, as a top step is (TOP-GUEST): it parses above the term pools' marks,
+\ and the parser's and recorder's cells, which the caller may hold, are saved
+\ and given back however the read ends. One read is open at a time.
+512 constant GUEST-CAP
+80 constant GUEST-PTRS-CAP
+CHECKER-REG:SCRATCH{
+create GUEST-SAVED GUEST-CAP cells allot
+GUEST-PTRS-CAP PTR-U8-TABLE GUEST-SAVED-PTRS
+variable GUEST-OPEN
+CHECKER-REG:}SCRATCH
+
+\ Copies the cnt cells at p to the saved cells from k on when save holds, else
+\ back; answers the next k.
+: GUEST-CELLS ( n ptr n n bool -- n )
+   {: k:n p:ptr cnt:n save:bool :}
+   k cnt + GUEST-CAP > IF s" checker: guest cells full" 76 die THEN
+   cnt 0 ?DO
+      save IF i cells p + @  k i + cells GUEST-SAVED + !
+      ELSE k i + cells GUEST-SAVED + @  i cells p + ! THEN
+   LOOP
+   k cnt + ;
+
+: GUEST-CELL ( n ptr n bool -- n ) {: p:ptr save:bool :} p 1 save GUEST-CELLS ;
+
+: GUEST-PTRS ( n ptr ptr u8 n bool -- n )
+   {: k:n p:ptr cnt:n save:bool :}
+   k cnt + GUEST-PTRS-CAP > IF s" checker: guest pointers full" 76 die THEN
+   cnt 0 ?DO
+      save IF i cells p + 0 ptr-field @  k i + cells GUEST-SAVED-PTRS + 0 ptr-field !
+      ELSE k i + cells GUEST-SAVED-PTRS + 0 ptr-field @  i cells p + 0 ptr-field ! THEN
+   LOOP
+   k cnt + ;
+
+\ The term pools' counters, FV first: READ-LEAVE clears the variables above it.
+: GUEST-POOLS ( n bool -- n ) {: save:bool :}
+   FV save GUEST-CELL  SPN save GUEST-CELL  QEN save GUEST-CELL  PTRN save GUEST-CELL
+   STLN save GUEST-CELL  ATOMN save GUEST-CELL  TERM-NAME-N save GUEST-CELL
+   PARAMN save GUEST-CELL  PARAM-SCR-N save GUEST-CELL  PARG-N save GUEST-CELL
+   RIGID-N save GUEST-CELL  RGN-N save GUEST-CELL  EXT-N save GUEST-CELL
+   GEN-N save GUEST-CELL  RGN-MARK save GUEST-CELL  FB-N save GUEST-CELL ;
+
+\ The signature parser's cells (PSIG, PARSE-FACTS).
+: GUEST-PARSER ( n bool -- n ) {: save:bool :}
+   PD-IN save GUEST-CELL  PR-IN save GUEST-CELL  PD-OUT save GUEST-CELL  PR-OUT save GUEST-CELL
+   PD-BASE save GUEST-CELL  PD-ATOM0 save GUEST-CELL  SGHASR save GUEST-CELL
+   RR-SHARED save GUEST-CELL  SL save GUEST-CELL  SI save GUEST-CELL  PKU save GUEST-CELL
+   PKHAVE save GUEST-CELL  BIND-DEPTH save GUEST-CELL
+   BIND-DOMAINS BINDER-DEPTH-MAX save GUEST-CELLS
+   NMAP TYPE-VAR-MAX 3 + save GUEST-CELLS  ROWMAP 26 save GUEST-CELLS
+   FAM-N save GUEST-CELL  FAM-I save GUEST-CELL  FAM-K save GUEST-CELL
+   FAM-U FAM-CAP save GUEST-CELLS
+   NRES save GUEST-CELL  NDI save GUEST-CELL  NDH save GUEST-CELL
+   SGBAD save GUEST-CELL  SGBAD-U save GUEST-CELL  SGBAD-KIND save GUEST-CELL
+   SGBAD-AR-DECL save GUEST-CELL  SGBAD-AR-GOT save GUEST-CELL  SGBAD-SIZE save GUEST-CELL
+   SIG-UNRES save GUEST-CELL  SIG-UNRES-U save GUEST-CELL
+   SIG-RAW-MODE save GUEST-CELL  SIG-FACTS-MODE save GUEST-CELL  SIG-CTL save GUEST-CELL
+   SIG-PE save GUEST-CELL  SIG-PIMM save GUEST-CELL  SIG-CREATES-U save GUEST-CELL
+   SIGSCOPE-ON save GUEST-CELL  SIGSCOPE-U save GUEST-CELL ;
+
+\ The latches E-ADD-EFFECT sets for the record the engine publishes next.
+: GUEST-LATCHES ( n bool -- n ) {: save:bool :}
+   DL-NEW save GUEST-CELL  RECW save GUEST-CELL  RECMI save GUEST-CELL
+   LBUF-EVAL-OFF save GUEST-CELL  CHECKER-REC-SYM save GUEST-CELL ;
+
+: GUEST-POINTERS ( bool -- ) {: save:bool :}
+   0  SB 1 save GUEST-PTRS  SS 1 save GUEST-PTRS  PKA 1 save GUEST-PTRS
+   SGBAD-A 1 save GUEST-PTRS  SIG-UNRES-A 1 save GUEST-PTRS
+   SIG-CREATES-A 1 save GUEST-PTRS  SIGSCOPE-P 1 save GUEST-PTRS
+   FAM-A FAM-CAP save GUEST-PTRS  drop ;
+
+: GUEST-KEEP ( bool -- ) {: save:bool :}
+   0 save GUEST-POOLS save GUEST-PARSER save GUEST-LATCHES drop
+   save GUEST-POINTERS ;
+
+: READ-ENTER ( -- )
+   GUEST-OPEN @ IF s" checker: a facts read inside another" 76 die THEN
+   RES-TRUE GUEST-KEEP  -1 GUEST-OPEN !
+   0 SIG-RAW-MODE ! ;
+
+: READ-LEAVE ( -- )
+   GUEST-SAVED @ TV-CLEAR-FROM
+   RES-FALSE GUEST-KEEP  0 GUEST-OPEN ! ;
+
+
+\ Facts text a u parsed; false when the parse refuses it, names a type no
+\ package declares here, or no record holds it.
+: READ-ROWS ( ptr u8 n -- n n n n bool )
+   {: a:ptr u:n :}
+   SGBAD-CLEAR
+   a u PARSE-SIG-RAW {: din:n dout:n rin:n rout:n :}
+   SGBAD @ 0 <>  SIG-UNRES @ 0 <> or IF
+      din dout rin rout RES-FALSE EXIT
+   THEN
+   a u din dout rin rout SGBAD-UNFIT!
+   din dout rin rout SGBAD @ 0= ;
+
+\ Refuses text a u stored for name na nu, as a bad stored signature.
+: READ-REFUSE ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n na:ptr nu:n :}
+   SGBAD @ 0= IF a u SGBAD-SYNTAX! THEN
+   a u na nu na nu USIG-ADD-BAD ;
+
+\ The created words' effect, offset+1, under symbol 0 as render.f FACTS-BUILD
+\ builds one; 0 for none. False when its text is refused.
+: READ-MADE ( ptr u8 n -- n bool )
+   {: ca:ptr cu:n :}
+   cu 0= IF 0 RES-TRUE EXIT THEN
+   ca cu READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
+   ok 0= IF 0 RES-FALSE EXIT THEN
+   0 CHECKER-REC-SYM !
+   din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + RES-TRUE ;
+
+\ A primitive row's tags (render.f REND-PE) state that row again over the effect
+\ just read, as PE-CLOSE-SYM does, so TRY-PRIMS and PRIM-TRUSTED-SYM? answer a
+\ caller as in the compile. The caller's PE-LAST stays: a read is its guest.
+: READ-PE ( n n -- ) {: sym:n pe:n :}
+   pe 0=  sym PREFIX-SYM? or IF EXIT THEN
+   PE-LAST @ {: last:n :}
+   sym  sym USIG-NEWEST 1 -  pe PE-ACTIVE or  PRIM-ADD
+   last PE-LAST !
+   HIDX-VALID @ IF  HIDX-EPOCH @ 1- sym HT-PRM-E HIDX-CELL !  THEN ;
+
+\ A text's control bits beside the ones storing an effect derives from its rows.
+: READ-FLAGS ( n n -- n )
+   {: sym:n ctl:n :}
+   sym CTL-FLAGS-SYM  CTL-BARRIER EFFECT-EXTERNAL or  and
+   ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER invert and  or ;
+
+: READ-BODY ( ptr u8 n n -- )
+   {: a:ptr u:n ix:n :}
+   ix CHECKER-RESOLVE:REC-AT {: rec:ptr :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: name:ptr nameu:n :}
+   rec REC-SYM {: sym:n :}
+   sym 0= IF a u name nameu READ-REFUSE EXIT THEN
+   sym SYM-PKG$ SIGSCOPE!
+   RES-TRUE SIG-FACTS!
+   a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
+   ok 0= IF a u name nameu READ-REFUSE EXIT THEN
+   SIG-CTL @  SIG-PIMM @  SIG-PE @  SIG-CREATES-A @  SIG-CREATES-U @  SGHASR @
+      {: ctl:n pimm:n pe:n ca:ptr cu:n hasr:bool :}
+   sym CHECKER-REC-SYM !
+   din dout rin rout hasr RES-TRUE E-ADD-EFFECT
+   sym pe READ-PE
+   ca cu READ-MADE {: made:n good:bool :}
+   good 0= IF a u name nameu READ-REFUSE EXIT THEN
+   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES
+   ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
+   pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
+   ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
+   ix RECORD-LINK-CURRENT? IF ix rec RECORD-LINK-FIXED! THEN ;
+
+\ Whether record ix has a link row: its compile, or a read, taught the checker.
+: LINKED? ( n -- bool ) {: ix:n :}
+   ix RECORD-LINK-CAP @ < 0= IF RES-FALSE EXIT THEN
+   ix RECORD-LINK-CELL RLINK.OCC cells + @ 0 <> ;
+
+\ What a compile of the file that made record ix taught the checker, read back
+\ from the record's facts text, so a later file's compile can call it.
+: READ-IX ( n -- ) {: ix:n :}
+   ix FACTS@ ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
+
+\ Reads record rec's facts text when it has one and no link.
+: READ-BOUND ( ptr n -- ) {: rec:ptr :}
+   rec CK-REC-FACTS-SLOT cells + @ 0= IF EXIT THEN
+   rec NULL-PTR - dbase@ - CK-DREC / {: ix:n :}
+   ix LINKED? IF EXIT THEN
+   ix READ-IX ;
+
+: FACTS-READ-INSTALL ( -- ) [: READ-BOUND ;] is FACTS-READ-XT ;
+FACTS-READ-INSTALL
+
+\ EXPORT-META-COPY for symbols, which a link has where a compile has a spelling.
+: EXPORT-META-SYM ( n n -- ) {: sym:n src:n :}
+   src DFER-FIND-SYM IF sym RES-TRUE DFER-ADD-SYM THEN
+   src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
+   src CTL-MASKS-SYM {: dm:n rm:n :}
+   src NORET-CREATES@ {: creates:n :}
+   sym ctl dm rm creates src CHECKER-SYM-SOURCE NORET-APPEND ;
+
+\ An export's facts are its source's, as CHECKER-EXPORT-ROW records them.
+: ALIAS-BODY ( n n -- )
+   {: ix:n src:n :}
+   ix CHECKER-RESOLVE:REC-AT REC-SYM {: sym:n :}
+   src CHECKER-RESOLVE:REC-AT REC-SYM {: from:n :}
+   sym 0=  from 0= or IF E-EXPORT-UNDEFINED throw THEN
+   from USIG-NEWEST {: eff:n :}
+   eff 0= IF E-EXPORT-UNDEFINED throw THEN
+   eff 1 - E-PTR EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
+   sym CHECKER-REC-SYM !
+   din dout rin rout hasr from EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
+   from CHECKER-ASIG-EXPORT
+   sym from EXPORT-META-SYM
+   ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
+   ix RECORD-LINK-CURRENT? IF ix ix CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED! THEN ;
+
+public
+\ The index of the newest package record whose public or private wordlist is wid,
+\ and true; false when none is.
+: WORDLIST-PACKAGE ( n -- n bool )
+   NS-FIND {: row:n :}
+   row 0= IF 0 RES-FALSE EXIT THEN
+   row 1 - RES-TRUE ;
+
+\ Export record ix of record src, as a compile of its file recorded it; src's
+\ facts are read first.
+: READ-ALIAS ( n n -- ) {: ix:n src:n :}
+   src CHECKER-RESOLVE:REC-AT READ-BOUND
+   ix src  READ-ENTER  [: ALIAS-BODY ;] [: READ-LEAVE ;] finally ;
+
+\ Reads text a u as record ix's facts now, over what a compile or a read taught:
+\ an earlier file's record whose text a later file's `TRUST` row rewrote.
+: READ-FACTS ( ptr u8 n n -- )
+   {: a:ptr u:n ix:n :}
+   u 0= IF EXIT THEN
+   a u ix  READ-ENTER  [: READ-BODY ;] [: READ-LEAVE ;] finally ;
+;package

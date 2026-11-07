@@ -181,6 +181,7 @@ private
 \ belongs to this declaration: a body that refuses before TDECL-REQUIRE-FIT
 \ reads it would otherwise leave it set for the next replay entry.
 : TDECL-RUN ( [ -- ] -- )
+   READ-PENDING                     \ no type entry is read inside the declaration
    TDECL-MARK
    -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
@@ -1283,11 +1284,7 @@ private
    r TDPLAN.DEF-OFF @ 2 -  r TDPLAN.DEF-U @ 3 +  TDPLAN-SPAN$ ;
 
 \ Arms the sealed field-projection window for one generated definition.
-\ FIELD-PROJ! binds TYPE-DECL's private row (checker.f), so this caller is
-\ checked code. ARENA (arena.f) arms its NAME-NEW and NAME-RELEASE through it
-\ too. sumtype.f loads before check-hook.f, so FIELD-ARM has no checker effect
-\ and the sealed checker refuses a checked call of it: only the compiled calls
-\ here and in arena.f reach it.
+\ ARENA (arena.f) arms its NAME-NEW and NAME-RELEASE through it too.
 public
 : FIELD-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
 private

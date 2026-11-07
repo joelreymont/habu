@@ -446,7 +446,9 @@ private
 \ boundary. Runtime allocation stays checked; LBUF-EVAL! checks the generated
 \ accessor under the existing one-shot storage window. Every form's element is
 \ one CHECKER-DYNAMIC-INFO admits: the mapping moves, so an element that lives
-\ in place is refused for a variable too.
+\ in place is refused for a variable too. The generated text ends with a call
+\ of PLACE, which takes the bytes: inside a build hb runs this word, so the
+\ text, not hb's own workspace, places the product's storage.
 TRUSTED: DECLARE ( n n -- ) {: operand:n kind:n :}
    STORAGE-LINE-TOKEN {: name:ptr nameu:n :}
    nameu 0= if
@@ -470,9 +472,7 @@ TRUSTED: DECLARE ( n n -- ) {: operand:n kind:n :}
       operand LIMIT LBUF-W @ / > if E-LAYOUT-BUFFER throw then
       operand LBUF-W @ *
    then {: bytes:n :}
-   bytes TAKE {: off:n :}
    LBUF-ALIGN
-   here {: base:ptr :}
    ndict@ {: desc:n :}
    LBUF-CLEAR
    s" variable " LBUF-APP name nameu LBUF-BASE,
@@ -489,14 +489,14 @@ TRUSTED: DECLARE ( n n -- ) {: operand:n kind:n :}
    kind BUFFER-KIND = if
       s" swap " LBUF-APP LBUF-W @ LBUF-DEC, s"  * + " LBUF-APP
    then
-   s" ;" LBUF-APP
+   s" ; " LBUF-APP name nameu LBUF-BASE, s"  " LBUF-APP bytes LBUF-DEC,
+   \ LBUF-DEC, writes digits alone: a negative default is its complement.
+   s"  " LBUF-APP kind VARIABLE-KIND = if operand else 0 then {: value:n :}
+   value 0 >= if value LBUF-DEC, else value invert LBUF-DEC, s"  invert" LBUF-APP then
+   s"  CWORK:PLACE" LBUF-APP
    LBUF-GEN LBUF-GEN-U @ pna pnu LBUF-EVAL! drop
-   off base !
    ndict@ 1- {: decl:n :}
-   desc 1+ decl <> if E-LAYOUT-BUFFER throw then
-   decl desc off bytes APPEND-ALLOC
-      ALLOC-EVENT swap 0 0 APPEND-EVENT
-   kind VARIABLE-KIND = operand 0<> and if off operand DEFAULT then ;
+   desc 1+ decl <> if E-LAYOUT-BUFFER throw then ;
 
 \ Global introduction forms keep their existing checker identities. Their
 \ compiled calls retain these closed bridges after the names are retired.
@@ -504,6 +504,17 @@ public
 : BUFFER ( n -- ) BUFFER-KIND DECLARE ;
 : SPAN ( n -- ) SPAN-KIND DECLARE ;
 : VARIABLE ( n -- ) VARIABLE-KIND DECLARE ;
+
+\ The generated text's last word, run in the program the text defines into:
+\ takes the bytes, stores their offset in the descriptor and records the
+\ allocation, then a variable's nonzero default.
+: PLACE ( ptr n n n -- ) {: base:ptr bytes:n value:n :}
+   bytes TAKE {: off:n :}
+   off base !
+   ndict@ 1- {: decl:n :}
+   decl decl 1- off bytes APPEND-ALLOC
+      ALLOC-EVENT swap 0 0 APPEND-EVENT
+   value 0<> if off value DEFAULT then ;
 ;package
 
 : CWORK-BUFFER ( n -- ) CWORK:BUFFER ;

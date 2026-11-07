@@ -266,8 +266,13 @@ s" : UT-WRONG ( UTB:import-id -- UTB:import-id ) UTC:KEEP ;" UCE-CATCH E-REJECT 
 s" using UTA using UTA : UT-REPEAT ( import-id -- import-id ) ; ;using ;using" UCE-CATCH 0 T=
 s" using UTA using UTB : UT-TAMB ( import-id -- import-id ) ; ;using ;using" UCE-CATCH E-REJECT T=
 s" using UTP : UT-SECRET ( secret-id -- secret-id ) ; ;using" UCE-CATCH E-REJECT T=
-\ Closing the import restores the ambiguous legacy public fallback.
+\ A closed import no longer names its types.
 s" using UTA ;using : UT-CLOSED ( import-id -- import-id ) ;" UCE-CATCH E-REJECT T=
+\ A public family no other package declares still needs its package imported
+\ or named: bare outside it is refused, under `using` it resolves.
+package UTD public NEWTYPE solo-id ;package
+s" : UT-SOLO-BARE ( solo-id -- solo-id ) ;" UCE-CATCH E-REJECT T=
+s" using UTD : UT-SOLO-USED ( solo-id -- solo-id ) ; ;using" UCE-CATCH 0 T=
 \ The current package still wins before imported families.
 s" package UTB using UTA public : OWN ( import-id -- import-id ) ; ;package" UCE-CATCH 0 T=
 s" : UT-OWN ( UTB:import-id -- UTB:import-id ) UTB:OWN ;" UCE-CATCH 0 T=

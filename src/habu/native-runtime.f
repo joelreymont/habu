@@ -128,68 +128,27 @@ public
 defer SEAL-TARGET ( -- )
 ;package
 
-package NATIVE-RUNTIME
-
-: LOAD-T0 ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
-   s" src/habu/runtime-arm64.f" required ;
-
-' LOAD-T0
-;package
-execute
-package NATIVE-RUNTIME
-
-: LOAD-REPL-TERM ( -- )
-   HB-TARGET-LINUX? if
-      s" src/os/linux/repl-term.f" required
-      exit
-   then
-   HB-TARGET-MACOS? if
-      s" src/os/macos/repl-term.f" required
-      exit
-   then
-   HB-TARGET-LINUX-X86-64? if
-      s" src/os/linux-x86-64/repl-term.f" required
-      exit
-   then
-   s" native-runtime: unknown target" 76 die ;
-
-' LOAD-REPL-TERM
-;package
-execute
+HB-TARGET-KNOWN? 0= [if] s" native-runtime: unknown target" 76 die [then]
+HB-TARGET-LINUX-X86-64? 0= [if] s" src/habu/runtime-arm64.f" required [then]
+HB-TARGET-LINUX? [if] s" src/os/linux/repl-term.f" required [then]
+HB-TARGET-MACOS? [if] s" src/os/macos/repl-term.f" required [then]
+HB-TARGET-LINUX-X86-64? [if] s" src/os/linux-x86-64/repl-term.f" required [then]
 s" src/habu/repl.f" required
 s" src/habu/code-bytes.f" required
 s" src/habu/debug-watch.f" required
 s" src/habu/stepper.f" required
-package NATIVE-RUNTIME
-
 \ Breakpoints plant A64 BRK words, and only the ARM64 engine's SIGTRAP handler
 \ (src/habu/habu2.f EMIT-TRAPH) serves them; the x86-64 kernel sends SIGTRAP
 \ to its crash dump (src/habu/boot-x64.f INSTALL-CRASH,). That product bakes
 \ the watch cells and the stepper without them.
-: LOAD-BREAKPOINTS ( -- )
-   HB-TARGET-LINUX-X86-64? if exit then
-   s" src/habu/debug.f" required ;
-
-' LOAD-BREAKPOINTS
-;package
-execute
+HB-TARGET-LINUX-X86-64? 0= [if] s" src/habu/debug.f" required [then]
 s" src/core/top-row.f" required
 s" src/lib/c2-owner.f" required
 s" src/lib/executable-build.f" required
 
-package NATIVE-RUNTIME
-
 \ The Habu loop is x86-64's evaluate, startup and command line; ARM64 keeps
 \ the kernel's bodies for them and captures none of the loop's files.
-: LOAD-HABU-LOOP ( -- )
-   HB-TARGET-LINUX-X86-64? if
-      s" src/habu/runtime-x64.f" required
-   then ;
-
-' LOAD-HABU-LOOP
-;package
-execute
+HB-TARGET-LINUX-X86-64? [if] s" src/habu/runtime-x64.f" required [then]
 
 package NATIVE-RUNTIME
 

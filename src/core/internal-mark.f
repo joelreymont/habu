@@ -1,6 +1,6 @@
-\ internal-mark.f - seal source authority and classify the image. It changes no
-\ record an earlier file made: a word is restricted by its package's private
-\ section, and the checker refuses a checked call it has no row for.
+\ internal-mark.f - classify the image. It changes no record an earlier file
+\ made: a word is restricted by its package's private section, and the checker
+\ refuses a checked call it has no row for.
 \ prefix-boundary.f installs the checker's FIRST-RECORD-XT as it loads.
 require src/core/prefix-boundary.f
 require src/habu/boot-cells.f
@@ -14,17 +14,13 @@ package ENGINE-INTERNAL
 \ The pass writes its verdict into IMK-CLASS and the capture bakes it, so later
 \ readers (the build's smoke run in tools/native-build-core.f, SEAL-PACKAGES
 \ below) read the image, never the request.
-0 constant IMAGE-SEALED         \ the pass ran: the checker's authority is sealed
-1 constant IMAGE-WHITEBOX       \ the pass stood down: the authority stays open
+0 constant IMAGE-SEALED         \ the pass ran: the capture seals the packages
+1 constant IMAGE-WHITEBOX       \ the pass stood down: they stay open
 variable IMK-CLASS
 
-\ The sealed arm closes the checker's authority gate: until the seal, a checked
-\ body naming an internal word is checked against the build's row
-\ (src/core/checker.f CALL-AUTHORITY). The whitebox arm leaves it open.
 : IMK-PASS ( -- )
    ENGINE-UNSEAL? IF IMAGE-WHITEBOX IMK-CLASS ! EXIT THEN
-   IMAGE-SEALED IMK-CLASS !
-   CHECKER-EFFECT-AUTHORITY:SEAL ;
+   IMAGE-SEALED IMK-CLASS ! ;
 
 public
 

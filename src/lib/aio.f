@@ -1450,7 +1450,7 @@ public
 \ Defines one group:  AIO:GROUP WAITERS   \ WAITERS ( -- AIO:group )
 : GROUP ( -- )
    create G-REGISTER ,
-   does> ( -- group ) @ >GROUP ;
+   does> ( -- AIO:group ) @ >GROUP ;
 
 \ Adds a ticket of the calling task's. A group belongs to the task that adds to
 \ it while empty until it is empty again; any other task's GROUP+, GROUP- or

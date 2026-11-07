@@ -84,6 +84,66 @@ private
    PEND-CELL CELL@ 0<> if UNIT-REFUSE then
    0 UNIT-EV-END UNIT-EVENT drop ;
 
+\ Inside a build the product's checker files are product text, so a
+\ declaration word found there is the product's copy, which records into a
+\ checker that checks nothing. A declaration runs the building hb's word of
+\ that spelling instead, as `:` and `create` run hb's definers, so the checker
+\ that checks the build records it. A declaration that keeps state of its own
+\ leaves it to its generated text, which runs the product's words
+\ (src/compiler/workspace.f CWORK:PLACE). A PRIM: or PPRIM: row reads its own
+\ tokens (src/core/checker.f PE-READ). hb's global wordlist is 0, as every
+\ linked program's is (src/habu/linker.f writes a build's as 0).
+: DECLARATION? ( -- bool )
+   s" trust" TOKEN-IS? if true exit then
+   s" prim:" TOKEN-IS? if true exit then
+   s" pprim:" TOKEN-IS? if true exit then
+   s" prim-top-only!" TOKEN-IS? if true exit then
+   s" prim-trusted-only!" TOKEN-IS? if true exit then
+   s" intrinsic" TOKEN-IS? if true exit then
+   s" nominal-provider" TOKEN-IS? if true exit then
+   s" parse-imm" TOKEN-IS? if true exit then
+   s" names:" TOKEN-IS? if true exit then
+   s" parses:" TOKEN-IS? if true exit then
+   s" parses-through:" TOKEN-IS? if true exit then
+   s" generates:" TOKEN-IS? if true exit then
+   s" typed-variable" TOKEN-IS? if true exit then
+   s" typed-buffer" TOKEN-IS? if true exit then
+   s" layout-buffer" TOKEN-IS? if true exit then
+   s" defer-layout-buffer" TOKEN-IS? if true exit then
+   s" dynamic-buffer" TOKEN-IS? if true exit then
+   s" cwork-buffer" TOKEN-IS? if true exit then
+   s" cwork-span" TOKEN-IS? if true exit then
+   s" cwork-variable" TOKEN-IS? if true exit then
+   s" structure" TOKEN-IS? if true exit then
+   s" enum" TOKEN-IS? if true exit then
+   s" sumtype" TOKEN-IS? if true exit then
+   s" newtype" TOKEN-IS? if true exit then
+   s" deftype" TOKEN-IS? if true exit then
+   s" product" TOKEN-IS? if true exit then
+   s" arena" TOKEN-IS? if true exit then
+   s" heap" TOKEN-IS? ;
+
+\ A file loader found in product text is the product's include.f, which would
+\ record the file in the product's own registry, at addresses outside the
+\ build. hb's loader of that spelling runs the file through the build instead
+\ (src/habu/linker.f RUN-FILE).
+: LOADER? ( -- bool )
+   s" include" TOKEN-IS? if true exit then
+   s" require" TOKEN-IS? if true exit then
+   s" included" TOKEN-IS? if true exit then
+   s" required" TOKEN-IS? if true exit then
+   s" provided" TOKEN-IS? ;
+
+\ The product's `undefine` (src/habu/xref.f) would retire the name from the
+\ product's checker, which checks nothing; hb's retires it from the checker
+\ that checks the build.
+: HOST-WORD? ( -- bool )
+   data-base BOOT:IMAGE-BASE-CELL + @ 0= if false exit then
+   DECLARATION? LOADER? or  s" undefine" TOKEN-IS? or  0= if false exit then
+   TOKEN$ 0 XREF-FIND-WL REC !
+   REC @ XREF-FOUND? 0= if UNDEFINED then
+   true ;
+
 : STEP ( -- )
    \ A parser word owns its next token, even when it spells a comment opener.
    BODY-RAW-NEXT @ if COMPILING? drop exit then
@@ -94,6 +154,7 @@ private
    LITERAL? if exit then
    PACKAGE? if exit then
    DEFINE? if exit then
+   HOST-WORD? if RUN-FOUND exit then
    found if RUN-FOUND exit then
    DISPATCH ;
 

@@ -33,7 +33,6 @@ require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
 require src/compiler/native/publish.f
 require src/habu/link-band.f
-require src/core/facts-read.f
 
 \ The linker's failed build: -9690..-9699, minted here, beside the package its
 \ codes belong to (docs/forth-card.md § 6).
@@ -72,6 +71,7 @@ variable SAVED-DPHW
 variable SAVED-DATA-FLOOR
 variable SAVED-GLOBAL-WL
 variable SAVED-NAMESPACE-WL
+variable SAVED-TYPES-WL
 variable SAVED-COMMA-RUN
 variable SAVED-COMMA-END
 variable SAVED-COMMA-BASE
@@ -198,6 +198,7 @@ variable LISTED-N
 \ (MARKS).
 variable FILE-REC
 variable FILE-HELD
+variable FILE-TFAM                   \ TFAM:TFAM-N@ as the running piece starts
 variable FILE-ROW
 variable FILE-EM
 variable FILE-DP
@@ -227,6 +228,7 @@ TYPED-VARIABLE UNLINKABLE bool
 3 constant KIND-DOES                 \ a `does>` definer's `;does` record
 4 constant KIND-PRIVATE              \ a package gaining its private wordlist after its record
 5 constant KIND-SEALED               \ an earlier file's package this file sealed
+6 constant KIND-TYPE                 \ a type entry: a family's record in the types wordlist
 
 \ NAMES maps each name the build's records define, by its NAME-SUM, to the BUILT row holding the
 \ record, -1 for a record the build's body made (INDEX-RECS), and to its package's key when the
@@ -777,13 +779,14 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
    w 0<>  w rec XREF-PKG-PUBLIC 1 + =  and ;
 
 \ The wordlist's role: 0 global, 1 primitives, 2 package names, 3 or 4 a package's
-\ public or private one, then the package, which is the build's and below the record.
+\ public or private one, then the package, which is the build's and below the record; 5 types.
 : WORDLIST+ ( n -- )
    {: idx:n :}
    idx MADE-WID {: wid:n :}
    wid BOOT:GLOBAL-WL = if 0 PIECES U64+ exit then
    wid WL:PRIMITIVES = if 1 PIECES U64+ exit then
    wid BOOT:NAMESPACE-WL = if 2 PIECES U64+ exit then
+   wid BOOT:TYPES-WL = if 5 PIECES U64+ exit then
    wid CHECK:WORDLIST-PACKAGE {: pkg:n hit:bool :}
    hit 0=  pkg FIRST-REC @ <  or  pkg idx >=  or if E-COMP-STATE throw then
    pkg XREF-REC XREF-PKG-PUBLIC wid = if 3 else 4 then PIECES U64+
@@ -822,6 +825,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
       row NSHADOW:ENTRY@ 0 > if KIND-DOES else KIND-DEF then exit
    then
    idx PKG? if KIND-PACKAGE exit then
+   idx MADE-WID BOOT:TYPES-WL = if KIND-TYPE exit then
    KIND-ALIAS ;
 
 \ A definition's or does record's emission, numbered from the file's first.
@@ -836,8 +840,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    REFUSAL  rec XREF-NAME$ SAY  s" 's dispatch cell is " SAY  cell false VALUE.  REFUSED ;
 
 \ The kind, the name, the flags without the name length and EXT, the wordlist (WORDLIST+), then
-\ the kind's fields (DISPATCH+, OWN-PRIVATE?); a KIND-PRIVATE entry is LATE+'s, a KIND-SEALED
-\ one SEAL+'s.
+\ the kind's fields (DISPATCH+, OWN-PRIVATE?, none for KIND-TYPE); a KIND-PRIVATE entry is
+\ LATE+'s, a KIND-SEALED one SEAL+'s.
 : RECORD+ ( n -- )
    {: idx:n :}
    idx XREF-REC {: rec:ptr :}
@@ -852,6 +856,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    kind KIND-PACKAGE = if
       idx OWN-PRIVATE? if 1 else 0 then PIECES U64+ exit
    then
+   kind KIND-TYPE = if exit then
    idx ALIAS-SOURCE REF+ ;
 
 \ The late private wordlists in id order, 16 bytes each: the id, then the package.
@@ -1091,14 +1096,15 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          above FILE-DP that ends past them is E-COMP-STATE
 \   N, then N string rows  a body's offset from FILE-DP, then its length; offsets ascending,
 \                          only bodies whose length cell and bytes lie inside the D bytes
-\   S, then S store rows   each cell below FILE-DP the compile stored into or gave an address-cell
-\                          row, ascending by address: its reference (tag 3 with a FILES row, or
-\                          4), kind (ROW-KIND, 3 for none), bytes (the cell's value for kind 3,
-\                          else 0), its value's reference (CELL-REF+ for kinds 0-2, else 5)
+\   S, then S store rows   each cell below FILE-DP the compile stored into, other than a scratch
+\                          cell, or gave an address-cell row, ascending by address: its
+\                          reference (tag 3 with a FILES row, or 4), kind (ROW-KIND, 3 for
+\                          none), bytes (the cell's value for kind 3, else 0), its value's
+\                          reference (CELL-REF+ for kinds 0-2, else 5)
 \   F, then F facts rows   each entry the file's compile held, in order (FACTS+): CHECK:HELD-RETIRED
-\                          then the retired record's reference (REF+); CHECK:HELD-TRUSTED, an
-\                          earlier file's record's reference and the text a `TRUST` row wrote
-\                          for it; else the record's index from FILE-REC, or CHECK:HELD-LAID
+\                          then the retired record's reference (REF+); CHECK:HELD-AMENDED, an
+\                          earlier file's record's reference and the text a `TRUST` row or an
+\                          amender wrote again for it; else the record's index from FILE-REC, or CHECK:HELD-LAID
 \                          for a laid text or CHECK:HELD-UNDEFINE for an `undefine`, then the
 \                          text as a FIELD+
 : DATA+ ( -- )
@@ -1216,14 +1222,31 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    v STORED-N @ STORED !  1 STORED-N +! ;
 
 
-\ Each cell of [from, to) that differs from the copy at OLD-AT, into STORED.
+\ The space's address-cell row of the cell at v, and true; false when it has none.
+: ROW-OF ( n -- n bool )
+   {: v:n :}
+   ROWS {: rows:ptr count:n :}
+   count 0 ?do
+      rows i cells + @ {: row:n :}
+      row ROW-AT v = if row true unloop exit then
+   loop
+   0 false ;
+
+
+\ Whether the cell at v has a scratch row: its value is one process's, and a link
+\ writes it zero.
+: SCRATCH-CELL? ( n -- bool ) ROW-OF if SCRATCH-ROW? else drop false then ;
+
+
+\ Each cell of [from, to) that differs from the copy at OLD-AT, into STORED, other than a
+\ scratch cell.
 : COMPARE-RANGE ( n n -- )
    {: from:n to:n :}
    OLD-SPACE BYTES$ drop OLD-AT @ + {: old:ptr :}
    from SPACE-BYTES {: now:ptr :}
    to from - CELL / 0 ?do
       old i cells + CELL-VIEW @  now i cells + CELL-VIEW @  <> if
-         BASE @ from + i cells + STORED+
+         BASE @ from + i cells + dup SCRATCH-CELL? if drop else STORED+ then
       then
    loop
    to from - OLD-AT +! ;
@@ -1244,8 +1267,9 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    loop  STORED-N ! ;
 
 
-\ STORED, ascending: each changed cell below FILE-DP and each new row's cell there, aligned (else
-\ E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the header holds.
+\ STORED, ascending: each changed cell below FILE-DP but a scratch one, and each new row's cell
+\ there, aligned (else E-COMP-STATE, as in DATA+); E-STORE for a cell no earlier file or the
+\ header holds.
 : FIND-STORES ( -- )
    0 STORED-N !  0 OLD-AT !
    [: COMPARE-RANGE ;] EACH-RANGE
@@ -1261,17 +1285,6 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    n 0 > if 0 STORED n [: < ;] SORT:SORT! then
    DEDUPE
    STORED-N @ 0 ?do i STORED @ HELD? 0= if E-STORE throw then loop ;
-
-
-\ The space's address-cell row of the cell at v, and true; false when it has none.
-: ROW-OF ( n -- n bool )
-   {: v:n :}
-   ROWS {: rows:ptr count:n :}
-   count 0 ?do
-      rows i cells + @ {: row:n :}
-      row ROW-AT v = if row true unloop exit then
-   loop
-   0 false ;
 
 
 \ STORES, after STRINGS (DATA+).
@@ -1304,11 +1317,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 
 
 \ Every laid text is kept, every text for an earlier file's record, and a record's last text: an
-\ earlier one is never read. A trusted symbol is not: the text written for it is.
+\ earlier one is never read. An amended record's entry is not: the text written again for it is.
 : KEPT? ( n -- bool )
    {: k:n :}
    k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
-   ix CHECK:HELD-TRUSTED = if false exit then
+   ix CHECK:HELD-AMENDED = if false exit then
    ix FILE-REC @ < if true exit then
    ix FILE-REC @ - LAST-HELD @  k = ;
 
@@ -1322,18 +1335,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
       ix PIECES U64+  k CHECK:HELD-RETIRED@ drop REF+  exit
    then
    ix 0 >=  ix FILE-REC @ <  and if
-      CHECK:HELD-TRUSTED PIECES U64+  ix REF+  a u PIECES FIELD+  exit
+      CHECK:HELD-AMENDED PIECES U64+  ix REF+  a u PIECES FIELD+  exit
    then
    ix 0< if ix else ix FILE-REC @ - then PIECES U64+
    a u PIECES FIELD+ ;
 
-
-\ The texts of the records the piece's `TRUST` rows recorded effects for, held after its entries.
-: TRUSTED-FACTS! ( -- )
-   CHECK:HELD-FACTS FILE-HELD @ ?do
-      i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
-      ix CHECK:HELD-TRUSTED = if  i CHECK:HELD-TRUSTED@ LOWER-CERT-HOOK:SYM-FACTS!  then
-   loop ;
 
 \ FACTS, after STORES, in held order. Each text is copied before anything writes facts,
 \ which can overwrite it (CHECK:HELD-FACT@).
@@ -1900,13 +1906,15 @@ variable RD-END
 : FLAGS-CK ( -- ) RD-U64  DNAME-LEN-MASK DNAME-EXT or  and 0<> if BAD then ;
 
 
-\ The wordlist role (WORDLIST+) of an entry of the kind: 2 for KIND-PACKAGE, else 0, 1, or 3 or
-\ 4 then its package; a role 4 package has a private wordlist, as ROLE-WID requires.
+\ The wordlist role (WORDLIST+) of an entry of the kind: 2 for KIND-PACKAGE, 5 for KIND-TYPE,
+\ else 0, 1, or 3 or 4 then its package; a role 4 package has a private wordlist, as ROLE-WID
+\ requires.
 : ROLE-CK ( n -- )
    {: kind:n :}
    RD-U64 {: role:n :}
-   role 0<  role 4 >  or if BAD exit then
+   role 0<  role 5 >  or if BAD exit then
    role 2 =  kind KIND-PACKAGE =  xor if BAD exit then
+   role 5 =  kind KIND-TYPE =  xor if BAD exit then
    role 3 = if PKG-REF-CK 2drop exit then
    role 4 <> if exit then
    PKG-REF-CK {: file:n idx:n :}
@@ -1962,7 +1970,7 @@ variable RD-END
    {: i:n :}
    RD-AT @ i ENTRY-OFFS !
    RD-U64 {: kind:n :}
-   kind 0<  kind KIND-SEALED >  or if BAD exit then
+   kind 0<  kind KIND-TYPE >  or if BAD exit then
    kind KIND-PRIVATE = if
       \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it).
       PKG-REF-CK {: file:n idx:n :}
@@ -2166,10 +2174,10 @@ variable RD-END
    RD-AT @ FACTS-AT !
    16 RD-COUNT 0 ?do
       RD-U64 {: ix:n :}
-      ix CHECK:HELD-RETIRED =  ix CHECK:HELD-TRUSTED =  or if
+      ix CHECK:HELD-RETIRED =  ix CHECK:HELD-AMENDED =  or if
          RD-U64 RD-U64 {: file:n idx:n :}
          file idx RECS-N @ REC-REF-CK
-         ix CHECK:HELD-TRUSTED = if RD-U64 RD-SKIP then
+         ix CHECK:HELD-AMENDED = if RD-U64 RD-SKIP then
       else
          ix CHECK:HELD-UNDEFINE <  ix RECS-N @ >=  or if BAD then
          RD-U64 RD-SKIP
@@ -2486,6 +2494,7 @@ variable LINK-EM                     \ that emission's number in this object, -1
    role 0 = if BOOT:GLOBAL-WL exit then
    role 1 = if WL:PRIMITIVES exit then
    role 2 = if BOOT:NAMESPACE-WL exit then
+   role 5 = if BOOT:TYPES-WL exit then
    role 3 <>  role 4 <>  and if E-COMP-STATE throw then
    RD-U64 RD-U64 REC-INDEX XREF-REC {: rec:ptr :}
    role 3 = if rec XREF-PKG-PUBLIC else rec XREF-PKG-PRIVATE then {: wid:n :}
@@ -2544,6 +2553,32 @@ variable LINK-EM                     \ that emission's number in this object, -1
    flags want SET-FLAGS
    ALIASES-N @ 2 + ALIASES-RESERVE
    want ALIASES-N @ ALIASES !  src ALIASES-N @ 1 + ALIASES !  2 ALIASES-N +! ;
+
+\ The build's TFAM:TYPE-WORD, the word every type entry's record runs.
+: TYPE-SOURCE ( -- n )
+   s" TFAM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   -1  pkg XREF-FOUND? if
+      drop  s" TYPE-WORD" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE CHECKER-RESOLVE:REC>INDEX
+   then {: src:n :}
+   src FIRST-REC @ < if
+      REFUSAL  s" a type entry needs the build's own TFAM:TYPE-WORD" SAY SAY-CR  E-COMP-STATE throw
+   then
+   src ;
+
+
+\ Entry i, a type entry (RECORD+), as the next record; LINK-FACTS gives it its text.
+: LINK-TYPE ( n -- )
+   {: i:n :}
+   i ENTRY-OFFS @  OBJECT BYTES$ nip  RD-OPEN
+   RD-U64 KIND-TYPE <> if E-COMP-STATE throw then
+   RD-NAME {: a:ptr u:n :}
+   RD-U64 {: flags:n :}
+   ROLE-WID {: wid:n :}
+   GOOD? 0= if E-COMP-STATE throw then
+   ndict@ {: want:n :}
+   a u TYPE-SOURCE wid OUTER:ALIAS-RECORD
+   flags want SET-FLAGS
+   TFAM:ENTRY-LINKED ;
 
 \ ---- linking code --------------------------------------------------------------
 \ A definition's code entries: its record, its shadow emission as the compile filed it, and its
@@ -2750,6 +2785,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    kind KIND-ALIAS = if i LINK-ALIAS exit then
    kind KIND-PRIVATE = if i LINK-PRIVATE exit then
    kind KIND-SEALED = if i LINK-SEALED exit then
+   kind KIND-TYPE = if i LINK-TYPE exit then
    kind KIND-DOES = if exit then
    E-COMP-STATE throw ;
 
@@ -2781,8 +2817,9 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    loop
    E-COMP-STATE throw ;
 
-\ A trusted row's text held again for the earlier file's record it names, and read back.
-: LINK-TRUSTED ( bool -- )
+\ An earlier file's record's text, written again by a `TRUST` row or an amender, held again for
+\ that record and read back.
+: LINK-EARLIER ( bool -- )
    {: read:bool :}
    RD-U64 RD-U64 {: file:n idx:n :}
    RD-NAME {: a:ptr u:n :}
@@ -2793,24 +2830,22 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 
 \ OBJECT's FACTS held again, then placed at here with the rest the file held: a cold build
 \ places from the object it wrote, a warm one from the object it read, so both lay one text.
-\ A link also reads each record's text back into the checker, an earlier file's record's too, and
-\ replays each `undefine` and retirement in the compile's order; a cold build applied them as it
-\ held them.
+\ A link also replays each `undefine` and retirement in the compile's order, and reads back
+\ into the checker an earlier file's record's text a later `TRUST` row or amender rewrote; a record's own
+\ text is read when a lookup first binds it (the checker's READ-BOUND). A cold build applied
+\ them as it held them.
 : LINK-FACTS ( bool -- )
    {: read:bool :}
    FACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: ix:n :}
       ix CHECK:HELD-RETIRED = if read LINK-RETIRED else
-      ix CHECK:HELD-TRUSTED = if read LINK-TRUSTED else
+      ix CHECK:HELD-AMENDED = if read LINK-EARLIER else
          RD-NAME {: a:ptr u:n :}
          GOOD? 0= if E-COMP-STATE throw then
          ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
          ix CHECK:HELD-UNDEFINE =  read  and if a u CHECK:READ-UNDEFINE then
-         ix 0 >= if
-            a u FILE-REC @ ix + CHECK:FACTS!
-            read if a u FILE-REC @ ix + CHECK:READ-FACTS then
-         then
+         ix 0 >= if a u FILE-REC @ ix + CHECK:FACTS! then
       then then
    loop
    GOOD? 0= if E-COMP-STATE throw then
@@ -2859,6 +2894,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    DATA-FLOOR-CELL HOST@ SAVED-DATA-FLOOR !
    BOOT:GLOBAL-WL-CELL HOST@ SAVED-GLOBAL-WL !
    BOOT:NAMESPACE-WL-CELL HOST@ SAVED-NAMESPACE-WL !
+   BOOT:TYPES-WL-CELL HOST@ SAVED-TYPES-WL !
    COMMA-RUN-CELL HOST@ SAVED-COMMA-RUN !
    COMMA-END-CELL HOST@ SAVED-COMMA-END !
    COMMA-BASE-CELL HOST@ SAVED-COMMA-BASE !
@@ -2870,7 +2906,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ DATA-FLOOR-CELL is an offset from hb's data-base (layout.f). The wordlists
 \ come before any host cell moves: `wordlist` throws OVERLAY-OPEN in a replay.
 : MOVE-IN ( -- )
-   wordlist wordlist negate {: global:n ns:n :}
+   wordlist wordlist negate wordlist {: global:n ns:n types:n :}
    ndict@ FIRST-REC !
    SAVE
    BASE @ DATA-START + {: start:n :}
@@ -2884,6 +2920,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    0 AOT-CELLS:SIG-LEN-CELL HOST!
    global BOOT:GLOBAL-WL-CELL HOST!
    ns BOOT:NAMESPACE-WL-CELL HOST!
+   types BOOT:TYPES-WL-CELL HOST!
    global set-current
    construct step moved PROGRESS ! ;
 
@@ -2935,6 +2972,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ As a file's load or its piece after a request starts.
 : MARKS ( -- )
    ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !
+   TFAM:TFAM-N@ FILE-TFAM !
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
@@ -3026,13 +3064,27 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    linked ;
 
 
+\ A type entry for each family the piece declared; its name sits at CP, so `here` stays.
+: TYPE-ENTRIES ( -- )
+   TFAM:TFAM-N@ FILE-TFAM @ ?do
+      i TFAM:ENTRY? 0= if
+         ndict@ {: ix:n :}
+         i TFAM:ENTRY-NAME$ TYPE-SOURCE BOOT:TYPES-WL OUTER:ALIAS-RECORD
+         i TFAM:ENTRY-TEXT$ ix CHECK:FACTS!
+         i ix TFAM:ENTRY!
+      then
+   loop ;
+
+
 \ The running piece's checks, then the piece into PIECES (PIECE+): E-FAILED once DP moved back,
 \ E-STORE (CHECK-EARLIER, FIND-STORES), E-WORDLIST for an id no record accounts for.
 : PIECE-END ( n -- )
    {: req:n :}
    DPHW-CELL HOST@ 0<> if E-FAILED throw then
+   FILE-HELD @ LOWER-CERT-HOOK:AMENDED   \ the facts its `TRUST` rows and amenders changed
+   TYPE-ENTRIES
    here NULL-PTR - FILE-END !
-   TRUSTED-FACTS!  RETIRED!  CHECK-EARLIER  FIND-STORES
+   RETIRED!  CHECK-EARLIER  FIND-STORES
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
    ids held > if E-WORDLIST throw then
    ids held < if E-COMP-STATE throw then
@@ -3215,6 +3267,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    SAVED-DATA-FLOOR @ DATA-FLOOR-CELL HOST!
    SAVED-GLOBAL-WL @ BOOT:GLOBAL-WL-CELL HOST!
    SAVED-NAMESPACE-WL @ BOOT:NAMESPACE-WL-CELL HOST!
+   SAVED-TYPES-WL @ BOOT:TYPES-WL-CELL HOST!
    SAVED-COMMA-RUN @ COMMA-RUN-CELL HOST!
    SAVED-COMMA-END @ COMMA-END-CELL HOST!
    SAVED-COMMA-BASE @ COMMA-BASE-CELL HOST!

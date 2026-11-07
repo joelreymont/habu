@@ -214,9 +214,3 @@ variable VRDEF-I
       VRDEF-TOKEN+
    AGAIN ;
 NOMINAL-PROVIDER
-
-\ Seal the aliasable-unsafe words (DEFLINEAR/VALUE-RECORD here and the sumtype.f
-\ and type-family.f openers) into the checker's identity set so EXPORT rejects
-\ re-exporting any of them by symbol, not only by canonical spelling. Every
-\ definer is interned by now, so each name resolves to its permanent symbol.
-UNSAFE-SET-SEAL

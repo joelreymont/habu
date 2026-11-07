@@ -234,8 +234,8 @@ s" MD29=" type 29 MD-BODY CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-DEPTH" type cr
 
 \ Scope: family resolution is signature scope (eliminability = nameability),
-\ unlike construct's owner-only rule. In-package private matches; cross-package
-\ public matches bare and qualified.
+\ unlike construct's owner-only rule. In-package private matches; a cross-package
+\ public family matches qualified or imported, not bare.
 package mscp
 private
 SUMTYPE msec
@@ -249,7 +249,7 @@ SUMTYPE mpres
   VARIANT yes n ;VARIANT
 ;SUMTYPE
 ;package
-s" MS2=" type s" S2 ( mpub:mpres -- n ) MATCH mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" MS2=" type s" S2 ( mpub:mpres -- n ) MATCH mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MS3=" type s" S3 ( mpub:mpres -- n ) MATCH mpub:mpres yes OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-SCOPE" type cr
 

@@ -1305,7 +1305,7 @@ DICT-CAP 1+ cells constant STATE-BYTES
 ;package
 \ The x86-64 port's three header cells take $2D98..$2DA8, past
 \ SUSP-PREFLIGHT-CELL ($2D88) and NSTR-ABI:INTERN-CELL ($2D90). DPHW-CELL takes
-\ $2D58 and NDICT-HW-CELL $2D60; $2D78 is unclaimed.
+\ $2D58, NDICT-HW-CELL $2D60 and BOOT:TYPES-WL-CELL $2D78.
 \ The two shadow cells hold the native compiler's fixed and does> shadow
 \ callbacks; TASK-CHAIN-CELL heads the x86-64 task chain. No captured image
 \ keeps a live stack address.

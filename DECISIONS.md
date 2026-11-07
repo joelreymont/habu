@@ -158,7 +158,46 @@ learned live in the docs for their subject.
   type name is still a word, prove me wrong!" No case was found where a type
   name must resolve differently: a bare type name is found as a bare word is
   (the open package, the globals, `using` imports), the fallback goes, and its
-  users name the package or import it.
+  users name the package or import it. On 2026-11-07, shown that making types
+  entries in their package's word wordlists left 55 types sharing a name with
+  a word of their package, nearly all a word that makes or reads a value of
+  the type (NUM:BYTE-LEN makes a byte-len, TCP4:ADDRESS an address,
+  QUEUE:QUEUE defines a queue), 33 of them public and 4 called by tender, zen,
+  maki or etch, and asked to rename those words, Joel asked "is this really the
+  best approach for long term? how can we avoid types clashing with regular
+  words? how do other languages handle this?" Shown that a type name appears
+  only where a type is expected (an effect, a local, a type argument, a
+  declaration's fields) and that Rust, Haskell, OCaml and TypeScript keep
+  types and values in separate name spaces under one set of scope rules, he
+  chose "Own name space (Recommended)": "Types found by word rules in their
+  own wordlist; no renames, no client changes." A type is an entry in a
+  wordlist of types beside its package's word wordlists, as package names have
+  a wordlist of their own; a type lookup searches those by the word rules and
+  a word lookup never finds a type, so a type and a word may share a name.
+- 2026-11-07, when a type's text is read: under Joel's words of 2026-11-06
+  ("make your own judgement and do everything without asking me. apply the
+  what's best for long term criteria"), the lead chose that a type entry's
+  text is read when a lookup first misses it, except that before a
+  declaration runs every entry the registry lacks is read. A read inside an
+  open declaration would land among that declaration's own variant and field
+  rows and inside its field transaction, where the rows it adds stay
+  unreadable until the declaration commits; reading first keeps the
+  declaration front ends and the field transaction as they are.
+- 2026-11-07, choosing a file by target: shown that a load run from inside a
+  word during a build reaches the product's own loader instead of the build's
+  (compiler.f's LOAD-PASSES loaded passes.f a second time), and offered a
+  header cell naming the running program's loader, Joel asked "what is a load
+  inside a word? why would a word load anything?" Shown that the 16 words in
+  src that load a file each run once at their file's top level, 15 to choose a
+  file by target because Habu has no conditional outside a word and one to
+  wrap a load in FFI's maker scope, and offered `[if]` and `[then]` instead,
+  he asked "what's best for long term and why?" The lead chose `[if]` and
+  `[then]`, standard Forth's: `[if] ( bool -- )` skips the text up to its
+  matching `[then]` when the answer is false, so a file chooses what it loads
+  at its top level (`HB-TARGET-MACOS? [if] require src/lib/secret/macos.f
+  [then]`), no word loads a file during a build, the build's loader does every
+  load, and no header cell holds a loader. C's `#ifdef`, Rust's `#[cfg]` and
+  Go's build tags choose files the same way.
 - 2026-11-06, where a word's facts text is laid: shown that a text laid at
   `here` while `create`, `variable` or a definer's run-time `create` has its
   body open becomes that body's first bytes (src/habu/definers.f DEF-ADDR
@@ -1430,7 +1469,9 @@ learned live in the docs for their subject.
   engine at tier 0, rebuilds hb only when a file built into it changed, and
   checks each change by the load stop it clears; once arm-to-arm works, the
   cross-built hb rebuilds itself byte for byte and the full suite runs on it,
-  then the stack is pushed as precise commits.
+  then the stack is pushed as precise commits. Later that day Joel wrote "kep going" with
+  /fastest: until arm-to-arm works its own measure, how far hb's startup files
+  load inside one build, is the only check, and the rest runs once at the end.
 - 2026-10-31, startup reuse: asked to approve a public word that compares the
   tree's source hashes with the engine's so hb-build could skip its 3.3 s
   startup reload, Joel answered "why are we developing incremental building if

@@ -90,12 +90,14 @@ DYNAMIC-BUFFER FACT-TYPE-FIRST n
 DYNAMIC-BUFFER FACT-TYPE-READY n
 DYNAMIC-BUFFER FACT-TYPES n
 
-variable OWNER-INSTALLED
-variable PRIOR-INVALIDATE
-variable PRIOR-FACTS
-variable KERNEL-BEGIN
-variable KERNEL-END
-variable SEEDED-N
+\ One process's install state (INSTALL): a save or a file's object writes it
+\ zero, as CAPTURE-PREPARE leaves it.
+variable OWNER-INSTALLED    OWNER-INSTALLED scratch-cell-mark
+variable PRIOR-INVALIDATE   PRIOR-INVALIDATE scratch-cell-mark
+variable PRIOR-FACTS        PRIOR-FACTS scratch-cell-mark
+variable KERNEL-BEGIN       KERNEL-BEGIN scratch-cell-mark
+variable KERNEL-END         KERNEL-END scratch-cell-mark
+variable SEEDED-N           SEEDED-N scratch-cell-mark
 CAST: AS-INVALIDATE ( n -- [ n n -- ] )
 CAST: AS-FACTS ( n -- [ n ptr n n n -- n bool ] )
 1 constant NUMBER-CON      \ checker.f CC-N, encoded by PRIM-SPEC:A-NUM

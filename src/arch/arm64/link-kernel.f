@@ -10,39 +10,26 @@ require src/arch/arm64/mnem.f
 require src/habu/layout.f
 require src/habu/xref.f
 
-package LINKER
-private
-: LOAD-SYS ( -- )
-   HB-TARGET-LINUX? if s" src/os/linux/sys.f" required exit then
-   HB-TARGET-MACOS? if s" src/os/macos/sys.f" required exit then
-   s" link-kernel: unknown target" 76 die ;
-' LOAD-SYS
-;package
-execute
+HB-TARGET-LINUX? HB-TARGET-MACOS? or 0= [if] s" link-kernel: unknown target" 76 die [then]
+HB-TARGET-LINUX? [if] require src/os/linux/sys.f [then]
+HB-TARGET-MACOS? [if] require src/os/macos/sys.f [then]
 
 require src/os/script-argv.f
 require src/habu/rt.f
 require src/habu/crash.f
 
-package LINKER
-private
-: LOAD-IMAGE ( -- )
-   HB-TARGET-LINUX? if
-      s" src/os/linux/elf.f" required
-      s" src/os/linux/sign.f" required
-      s" src/os/linux/proc-watch.f" required
-      s" src/os/linux/proc-control.f" required exit
-   then
-   HB-TARGET-MACOS? if
-      s" src/os/macos/macho.f" required
-      s" src/os/macos/sign2.f" required
-      s" src/os/macos/proc-watch.f" required
-      s" src/os/macos/proc-control.f" required exit
-   then
-   s" link-kernel: unknown target" 76 die ;
-' LOAD-IMAGE
-;package
-execute
+HB-TARGET-LINUX? [if]
+   require src/os/linux/elf.f
+   require src/os/linux/sign.f
+   require src/os/linux/proc-watch.f
+   require src/os/linux/proc-control.f
+[then]
+HB-TARGET-MACOS? [if]
+   require src/os/macos/macho.f
+   require src/os/macos/sign2.f
+   require src/os/macos/proc-watch.f
+   require src/os/macos/proc-control.f
+[then]
 
 require src/habu/regalloc.f
 require src/habu/habu1.f

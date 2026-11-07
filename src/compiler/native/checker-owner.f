@@ -42,6 +42,7 @@ defer SOURCE-WRITE-WINDOW ( n -- )
 defer SOURCE-REPORT-RESET ( -- )
 defer SOURCE-JSON-REPORTED ( -- bool )
 defer SOURCE-DOES-UNJUDGED ( ptr u8 n ptr u8 n -- n )
+defer SOURCE-DOES-CHECK ( ptr u8 n ptr u8 n -- n )
 defer SOURCE-DOES-REPORT ( n ptr u8 n -- n )
 
 : REFUSE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -86,39 +87,50 @@ CAST: AS-FAMILY-NAME ( n -- [ n -- ptr u8 n ] )
 \ hb-host refuses a checked body naming CHECKER-OWNER-ABI:CHECK-OFF with
 \ E-UNDEFINED, while NCOMP-DISPATCH:DECL-CHECK-OFF certifies there.
 
-\ Bound once while this source compiler and its checker are paired. The engine
-\ refuses a tick of an internal pre-hook word and a checked body may not call a
-\ trust-boundary one (CHECKER-CHECK-REPORT, E-CAP-TRUSTED), so the owner's
-\ callable field is the binding. A field is read only after the guard bounds
-\ the record and its recorded extent.
-: SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
-   RECORD off CELL + CHECKER-OWNER-GUARD:VALIDATE {: rec:ptr :}
+\ A field is read only after the guard bounds the record and its recorded
+\ extent.
+: RECORD-FIELD ( ptr u8 n ptr u8 n -- n ) {: r:ptr off:n a:ptr u:n :}
+   r off CELL + CHECKER-OWNER-GUARD:VALIDATE {: rec:ptr :}
    rec off + CELL-VIEW @ {: xt:n :}
    xt 0= if a u REFUSE then
    xt ;
 
+\ A field of the live owner, read per call, so a captured compiler follows a
+\ replacement checker.
+: SOURCE-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
+   RECORD off a u RECORD-FIELD ;
+
+\ Bound once while this source compiler and its checker are paired. The engine
+\ refuses a tick of an internal pre-hook word and a checked body may not call a
+\ trust-boundary one (CHECKER-CHECK-REPORT, E-CAP-TRUSTED), so the owner's
+\ callable field is the binding. The record is this tree's checker's, found by
+\ name: inside a build the live record is the building hb's.
+: PAIRED-FIELD ( n ptr u8 n -- n ) {: off:n a:ptr u:n :}
+   CHECKER-REG:DECLARATIONS BYTE-VIEW off a u RECORD-FIELD ;
+
 : BIND-SOURCE-CALLS ( -- )
-   NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" source unjudged scan" SOURCE-FIELD AS-CHECK is SOURCE-UNJUDGED
-   NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" source call cells" SOURCE-FIELD AS-CELLS is SOURCE-CALL-CELLS
-   NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" source call binding" SOURCE-FIELD AS-BINDING is SOURCE-CALL-BINDING
-   NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" source unjudged binding" SOURCE-FIELD AS-BINDING is SOURCE-UNJUDGED-BINDING
-   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" SOURCE-FIELD AS-N is SOURCE-BINDING-WINDOW
-   NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" source call glue" SOURCE-FIELD AS-CELLS is SOURCE-CALL-GLUE
-   NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" source match payload" SOURCE-FIELD AS-CELLS is SOURCE-MATCH-PAYLOAD
-   NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" source quotation inputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-IN
-   NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" source quotation outputs" SOURCE-FIELD AS-QUOT-CELLS is SOURCE-QUOT-OUT
-   NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" SOURCE-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
-   NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" SOURCE-FIELD AS-CELLS is SOURCE-FIELD-SPAN
-   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" source C2 stow" SOURCE-FIELD AS-CELLS is SOURCE-C2-STOW
-   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" SOURCE-FIELD AS-ACTION is SOURCE-REPORT
-   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF s" source declared row" SOURCE-FIELD AS-DECLARATION is SOURCE-DECLARED-ROW
-   NCOMP-DISPATCH:DECL-ROWS-END-OFF s" source rows end" SOURCE-FIELD AS-N is SOURCE-ROWS-END
-   NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" SOURCE-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
-   NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" SOURCE-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
-   NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" SOURCE-FIELD AS-ACTION is SOURCE-REPORT-RESET
-   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" SOURCE-FIELD AS-BOOL is SOURCE-JSON-REPORTED
-   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" SOURCE-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED
-   NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF s" source does> report" SOURCE-FIELD AS-DOES-REPORT is SOURCE-DOES-REPORT ;
+   NCOMP-DISPATCH:DECL-CHECK-UNJUDGED-OFF s" source unjudged scan" PAIRED-FIELD AS-CHECK is SOURCE-UNJUDGED
+   NCOMP-DISPATCH:DECL-CALL-CELLS-OFF s" source call cells" PAIRED-FIELD AS-CELLS is SOURCE-CALL-CELLS
+   NCOMP-DISPATCH:DECL-CALL-BINDING-OFF s" source call binding" PAIRED-FIELD AS-BINDING is SOURCE-CALL-BINDING
+   NCOMP-DISPATCH:DECL-UNJUDGED-BINDING-OFF s" source unjudged binding" PAIRED-FIELD AS-BINDING is SOURCE-UNJUDGED-BINDING
+   CHECKER-OWNER-ABI:BINDING-WINDOW-OFF s" source binding window" PAIRED-FIELD AS-N is SOURCE-BINDING-WINDOW
+   NCOMP-DISPATCH:DECL-CALL-GLUE-OFF s" source call glue" PAIRED-FIELD AS-CELLS is SOURCE-CALL-GLUE
+   NCOMP-DISPATCH:DECL-CALL-MATCH-OFF s" source match payload" PAIRED-FIELD AS-CELLS is SOURCE-MATCH-PAYLOAD
+   NCOMP-DISPATCH:DECL-CALL-QUOT-IN-OFF s" source quotation inputs" PAIRED-FIELD AS-QUOT-CELLS is SOURCE-QUOT-IN
+   NCOMP-DISPATCH:DECL-CALL-QUOT-OUT-OFF s" source quotation outputs" PAIRED-FIELD AS-QUOT-CELLS is SOURCE-QUOT-OUT
+   NCOMP-DISPATCH:DECL-INIT-LAYOUT-OFF s" source init layout" PAIRED-FIELD AS-INIT-LAYOUT is SOURCE-INIT-LAYOUT
+   NCOMP-DISPATCH:DECL-FIELD-SPAN-OFF s" source field span" PAIRED-FIELD AS-CELLS is SOURCE-FIELD-SPAN
+   NCOMP-DISPATCH:DECL-C2-STOW-OFF s" source C2 stow" PAIRED-FIELD AS-CELLS is SOURCE-C2-STOW
+   NCOMP-DISPATCH:DECL-CHECK-REPORT-OFF s" source scan report" PAIRED-FIELD AS-ACTION is SOURCE-REPORT
+   NCOMP-DISPATCH:DECL-DECLARED-ROW-OFF s" source declared row" PAIRED-FIELD AS-DECLARATION is SOURCE-DECLARED-ROW
+   NCOMP-DISPATCH:DECL-ROWS-END-OFF s" source rows end" PAIRED-FIELD AS-N is SOURCE-ROWS-END
+   NCOMP-DISPATCH:DECL-RETRACT-ROWS-OFF s" source rows retract" PAIRED-FIELD AS-MARK-ACTION is SOURCE-RETRACT-ROWS
+   NCOMP-DISPATCH:DECL-WRITE-WINDOW-OFF s" source write window" PAIRED-FIELD AS-MARK-ACTION is SOURCE-WRITE-WINDOW
+   NCOMP-DISPATCH:DECL-RESET-REPORT-OFF s" source report reset" PAIRED-FIELD AS-ACTION is SOURCE-REPORT-RESET
+   NCOMP-DISPATCH:DECL-JSON-REPORTED-OFF s" source JSON report" PAIRED-FIELD AS-BOOL is SOURCE-JSON-REPORTED
+   NCOMP-DISPATCH:DECL-DOES-UNJUDGED-OFF s" source unjudged does> split" PAIRED-FIELD AS-DOES-CHECK is SOURCE-DOES-UNJUDGED
+   NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" source does> split" PAIRED-FIELD AS-DOES-CHECK is SOURCE-DOES-CHECK
+   NCOMP-DISPATCH:DECL-NATIVE-DOES-REPORT-OFF s" source does> report" PAIRED-FIELD AS-DOES-REPORT is SOURCE-DOES-REPORT ;
 BIND-SOURCE-CALLS
 
 \ Zero selects this source compiler's by-name binding; a captured compiler
@@ -227,11 +239,10 @@ public
    dup 0= if drop SOURCE-DOES-UNJUDGED exit then
    AS-DOES-CHECK execute ;
 
-\ CHECK-DOES! binds CHECKER-OWNER's private row (src/core/checker.f).
 : DOES-CHECK ( ptr u8 n ptr u8 n -- n )
    BIND-UNJUDGED @ 0<> if DOES-UNJUDGED exit then
    NCOMP-DISPATCH:DECL-DOES-CHECK-OFF s" does> split" FIELD
-   dup 0= if drop CHECK-DOES! exit then
+   dup 0= if drop SOURCE-DOES-CHECK exit then
    AS-DOES-CHECK execute ;
 
 \ The split's scan renders nothing, so the reason for a clause it refused is

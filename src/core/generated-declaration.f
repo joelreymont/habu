@@ -660,6 +660,7 @@ private
 \ catch): the quotation is stack-preserving, so the xt is dropped after it.
 : DRIVE ( ptr u8 n [ -- ] -- n )
    {: ta:ptr tu:n body :}
+   TFAM:READ-PENDING                \ no type entry is read inside the declaration
    MISS-CLEAR RESET
    body [: dup TDECL-TXN-XT ;] catch {: rc:n :} drop
    rc 0= IF RESET 0 EXIT THEN

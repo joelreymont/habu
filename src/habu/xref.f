@@ -596,15 +596,22 @@ DOES-COMPANION-INSTALL
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
 
+\ The seal watermark of the dictionary being loaded: while a build writes an
+\ image, the image's, where a header store goes (habu2.f ROUTE-HEADER), 0 until
+\ the product seals; else hb's.
+: SEAL-NDICT@ ( -- n )
+   data-base BOOT:IMAGE-BASE-CELL + @ {: image:n :}
+   image 0 <> if NULL-PTR BYTE-VIEW image + SEAL-NDICT-CELL + CELL-VIEW @ exit then
+   data-base SEAL-NDICT-CELL + @ ;
+
 \ Sealed-dictionary truncation guard: once the namespace watermark is set, a
 \ FORGET/HIDE lowering ndict below it would retire engine definitions and
 \ (FORGET) rewind CP into engine code, so it fails closed with
 \ ENGINE-ERROR:SEAL-VIOLATION. A zero watermark is the open build namespace;
-\ post-seal marks at or above the watermark pass.
-: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
-
+\ post-seal marks at or above the watermark pass. The floor is hb's own, in a
+\ build too.
 : SEAL-DICT-GUARD ( n -- n )
-   SEAL-NDICT@ {: floor:n :}
+   data-base SEAL-NDICT-CELL + @ {: floor:n :}
    floor 0= if exit then
    dup floor < if
       s" seal: cannot FORGET/HIDE sealed engine definitions" ENGINE-ERROR:SEAL-VIOLATION die

@@ -24,29 +24,11 @@ require src/compiler/native/callback-stub.f
 require src/compiler/native/prof.f
 require src/compiler/session/lease.f
 
-package NCOMP
-private
-
 \ The target predicates are read as this file loads: the running engine's, or in
 \ a build window the window's own src/os/*/target.f.
-: LOAD-PASSES ( -- )
-   HB-TARGET-LINUX? if
-      s" src/arch/arm64/passes.f" required
-      exit
-   then
-   HB-TARGET-MACOS? if
-      s" src/arch/arm64/passes.f" required
-      exit
-   then
-   HB-TARGET-LINUX-X86-64? if
-      s" src/arch/x86-64/passes.f" required
-      exit
-   then
-   E-CTGT-ABI throw ;
-
-' LOAD-PASSES
-;package
-execute
+HB-TARGET-KNOWN? 0= [if] E-CTGT-ABI throw [then]
+HB-TARGET-LINUX? HB-TARGET-MACOS? or [if] require src/arch/arm64/passes.f [then]
+HB-TARGET-LINUX-X86-64? [if] require src/arch/x86-64/passes.f [then]
 
 package NCOMP
 using NDEFINITION

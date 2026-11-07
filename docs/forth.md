@@ -588,8 +588,8 @@ multi-cell type rationale is `docs/design.md` "Types".
   whose family arguments are still open is `E-MATCH-OPEN-ARGS`; and `MATCH` in
   a `[: ;]` quotation is `E-MATCH-QUOTATION` ("quotation rows cannot carry a
   scrutinee"), because a quotation's row is inferred forward. The family
-  resolves as in a signature (own package, then the unique public family,
-  `PKG:tail` accepted): whatever is nameable can be matched, unlike
+  resolves as a bare word does in a signature (own package, globals, `using`
+  imports, or `PKG:tail`): whatever is nameable can be matched, unlike
   `construct`. Every compiled `MATCH` ends in a die a well-typed value never
   reaches: a tag forged through a `TRUSTED:` constructor writes `hb: bad
   <family> tag` and exits (`ENGINE-ERROR:BAD-TAG`).

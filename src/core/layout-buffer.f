@@ -513,6 +513,14 @@ variable DBUF-W
 : DBUF-CTL, ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu LBUF-APP  DBUF-CTL$ LBUF-APP ;
 
+\ The control cells describe the head's mapping, so a save or a file's object
+\ writes them zero with the head (scratch-cell-mark): the record it holds is
+\ released.
+: DBUF-MARKS, ( -- )
+   DBUF-CTRL-BYTES CELL / 1- 0 ?do
+      s"  here " LBUF-APP  i cells LBUF-DEC,  s"  + scratch-cell-mark" LBUF-APP
+   loop ;
+
 : DBUF-RECORD, ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu LBUF-BASE,  s"  " LBUF-APP  name nameu DBUF-CTL, ;
 
@@ -526,7 +534,7 @@ variable DBUF-W
    {: name:ptr nameu:n type:ptr typeu:n :}
    LBUF-CLEAR
    s" PTR-VARIABLE " LBUF-APP name nameu LBUF-BASE,
-   s"  create " LBUF-APP name nameu DBUF-CTL,  DBUF-CTRL-BYTES CELL - LBUF-ALLOT,
+   s"  create " LBUF-APP name nameu DBUF-CTL,  DBUF-MARKS,  DBUF-CTRL-BYTES CELL - LBUF-ALLOT,
    s"  : " LBUF-APP name nameu LBUF-NAME, {: pna:ptr pnu:n :}
    s"  ( n -- ptr " LBUF-APP type typeu LBUF-APP
    s"  ) " LBUF-APP name nameu DBUF-RECORD,

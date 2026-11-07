@@ -18,7 +18,8 @@ package CODEGEN
 private
 
 \ Header: [cap][cap-err][val-err], then a dynamic control record
-\ (src/core/dynamic-storage.f: the head cell and its CONTROL-CELLS count cells).
+\ (src/core/dynamic-storage.f: the head cell and its CONTROL-CELLS count cells),
+\ scratch as DYNAMIC-BUFFER's: a save or a file's object holds it released.
 \ cap-err is thrown when an append would overflow, val-err when APPEND-DECIMAL
 \ gets a negative value.
 3 cells constant CB-RECORD
@@ -41,7 +42,8 @@ CAST: CB-HEAD-CELL ( ptr n -- ptr ptr u8 )
 : CB-DATA  ( ptr n -- ptr u8 )  CB-MAP CELL + ;   \ content bytes past the length
 
 : CB-HEADER, ( n n n -- )   \ cap cap-err val-err --
-   >r >r , r> , r> ,  CB-CELLS CB-RECORD CELL / - 0 ?do 0 , loop ;
+   >r >r , r> , r> ,
+   CB-CELLS CB-RECORD CELL / - 0 ?do here scratch-cell-mark 0 , loop ;
 
 public
 

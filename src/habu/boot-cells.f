@@ -15,6 +15,10 @@ $7F0 constant GLOBAL-WL-CELL
 $7F8 constant NAMESPACE-WL-CELL
 : GLOBAL-WL ( -- n ) data-base GLOBAL-WL-CELL + @ ;
 : NAMESPACE-WL ( -- n ) data-base NAMESPACE-WL-CELL + @ ;
+\ The wordlist of type entries, `pkg:tail` (a global type bare), and its reader:
+\ 0, never a types wid, while the program has none (src/core/type-family.f).
+$2D78 constant TYPES-WL-CELL
+: TYPES-WL ( -- n ) data-base TYPES-WL-CELL + @ ;
 \ 0, as every arm64 boot writes it, unless a build is writing an image; then the
 \ host address of the image's DATA, whose header holds its address-cell table.
 $6C8 constant IMAGE-BASE-CELL

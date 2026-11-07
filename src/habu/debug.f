@@ -62,19 +62,25 @@ CAST: N>XT ( n -- [ -- ] )
 \ A persistent breakpoint whose first instruction the handler does not emulate
 \ runs that instruction out of line (src/habu/habu2.f C-BP-EMULATE): slot idx
 \ owns the two words at [BPTRAMP-CELL] + idx * 8, the instruction and a `b` back
-\ to the one after it. The block is reserved in the code band once, here at
-\ load, so the branch reaches anywhere in the region (REGION is far inside b's
-\ 128 MB) and nothing is ever freed while a slot points at it: reserving at CP
-\ during BPADD would hand the block to a failed REPL line's CP rollback. Each
+\ to the one after it. The block is reserved in the code band once, before any
+\ breakpoint, so the branch reaches anywhere in the region (REGION is far inside
+\ b's 128 MB) and nothing is ever freed while a slot points at it: reserving at
+\ CP during BPADD would hand the block to a failed REPL line's CP rollback. Each
 \ word starts as a BRK, so a stray jump traps and a capture's walk over the gap
 \ finds no fall-through into the next definition. xt! declares the cell, so a
 \ snapshot and the product capture move it with the code. An instruction that
 \ reads or sets PC cannot run out of line: its breakpoint degrades to one-shot.
+\ An engine the old builder makes reserves the block here, at load. Inside a
+\ build the code band is the building hb's, so the load reserves nothing and
+\ the written program's cell stays 0 until the start-up that maps its live
+\ code region reserves the block; until then BPADD refuses a persistent
+\ breakpoint there.
 8 constant TRAMP-BYTES
 
 : TRAMP@ ( -- n ) data-base BPTRAMP-CELL + @ ;
 
 : TRAMP-INSTALL ( -- )
+   data-base BOOT:IMAGE-BASE-CELL + @ 0<> if exit then
    cp@ {: base :}
    base MAXBP TRAMP-BYTES * + cp!
    MAXBP TRAMP-BYTES * 0 ?do BRK0 base i + CODE! 4 +loop
@@ -122,6 +128,7 @@ TRAMP-INSTALL
       E-BP-TARGET throw
    then
    at FIND 0 < 0= IF exit THEN                \ already set
+   ctrl 1 and 0<>  TRAMP@ 0=  and if E-BP-TARGET throw then
    FREE dup 0 < IF drop s" bp: table full (8)" type 76 throw THEN   \ recoverable in the REPL
    {: idx :}
    at 4 CODE-BYTES:AT drop {: xt:ptr :}

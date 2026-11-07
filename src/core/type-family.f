@@ -331,10 +331,12 @@ private
 \ TF.OPAQUE: nonzero when the family's generated words take the private-family
 \ placement (the OPAQUE header clause, structure-decl.f OPAQUE-CLAUSE).
 20 cells constant TF.OPAQUE-OFF
+\ TF.ENTRY: the family's type entry, its record index + 1; 0 when it has none.
+21 cells constant TF.ENTRY-OFF
 
 public
 
-21 cells constant TF-REC
+22 cells constant TF-REC
 private
 
 : TF.PKG-OFF ( ptr a -- ptr a ) TF.PKG-OFF-AT + ;
@@ -364,6 +366,7 @@ private
 : TF.DERIVE ( ptr a -- ptr a ) TF.DERIVE-OFF + ;
 : TF.TAILNEXT ( ptr a -- ptr a ) TF.TAILNEXT-OFF + ;
 : TF.OPAQUE ( ptr a -- ptr a ) TF.OPAQUE-OFF + ;
+: TF.ENTRY ( ptr a -- ptr a ) TF.ENTRY-OFF + ;
 
 
 4 constant TF-CAP-INIT
@@ -376,6 +379,10 @@ PERSISTED-PTR-VARIABLE TF-A-P   TF-A-BOOT TF-A-P !
 public
 
 variable TFAM-N   0 TFAM-N !
+
+\ Set while the program's types wordlist may hold an entry the registry lacks:
+\ a program starts with its entries unread (TFAM-FIND, READ-PENDING).
+variable ENTRIES-PENDING   -1 ENTRIES-PENDING !
 
 private
 
@@ -568,12 +575,12 @@ private
 : TFAM-NAME-MATCH? ( ptr u8 n n -- bool ) {: na:ptr nu:n id:n :}
    id TFAM-NAME$ na nu CORE-STR= ;
 
-\ --- tail index (TFX). TFAM-FIND-IN and TFAM-FIND-PUBLIC each ask about one
-\ tail, so they walk the rows sharing its hash bucket instead of [0, TFAM-N).
-\ Rows are pushed on their bucket in id order and retired newest-first, so a
-\ retired row is always at its bucket head and rewinding TFAM-N is the chain's
-\ retirement. The bucket count follows the record arena's capacity; a capacity
-\ change or a rewind outside the retire seam rebuilds the whole index.
+\ --- tail index (TFX). TFAM-FIND-IN asks about one tail, so it walks the rows
+\ sharing its hash bucket instead of [0, TFAM-N). Rows are pushed on their
+\ bucket in id order and retired newest-first, so a retired row is always at its
+\ bucket head and rewinding TFAM-N is the chain's retirement. The bucket count
+\ follows the record arena's capacity; a capacity change or a rewind outside the
+\ retire seam rebuilds the whole index.
 
 public
 
@@ -720,72 +727,6 @@ public
 
 : FILE-FIND ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 
-\ PUBLIC package family with this tail. Global rows are lexical and are resolved
-\ separately by TFAM-RESOLVE, so they never enter this fallback set. A
-\ (package,tail) pair is unique (TFAM-DECL rejects DUP), so two matches are always
-\ different packages: that is a genuine unqualified ambiguity and throws
-\ E-TFAM-AMBIG rather than silently picking the lowest id. Exactly one package
-\ public match resolves; none is false.
-: TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
-   -1 TF-PUB !
-   TFX-ENSURE
-   na nu TFX-HASH TFX-BKT @ TFX-CUR !
-   BEGIN TFX-CUR @ 0 <> WHILE
-      TFX-CUR @ 1 - {: id:n :}
-      id TFAM-PUBLIC? IF
-         id TFAM-PKG$ nip 0 <> IF
-            na nu id TFAM-NAME-MATCH? IF
-               TF-PUB @ 0< IF id TF-PUB !
-               ELSE E-TFAM-AMBIG throw THEN
-            THEN
-         THEN
-      THEN
-      id TF-REC@ TF.TAILNEXT @ TFX-CUR !
-   REPEAT
-   TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
-
-private
-
-\ Explicit imports choose a public family before the implicit public fallback.
-\ Repeating an import still names the same family; two distinct matches reject.
-: TFAM-FIND-USED ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
-   -1 TF-PUB !
-   CHECKER-USING-N 0 ?DO
-      i CHECKER-USING$ na nu TFAM-FIND-IN IF
-         {: id:n :}
-         id TFAM-PUBLIC? IF
-            TF-PUB @ 0< IF id TF-PUB !
-            ELSE id TF-PUB @ <> IF E-TFAM-AMBIG throw THEN THEN
-         THEN
-      ELSE drop THEN
-   LOOP
-   TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
-
-public
-
-\ Unqualified lexical order is the active package's exact row (private or
-\ public), inside a part `A:B` the row of its package A, the exact global
-\ row, explicit imports, then the unique public fallback. Multiple eligible
-\ families at either import/fallback step throw E-TFAM-AMBIG. At top level
-\ the first exact lookup is already global. Compaction-hidden `@name` tokens
-\ never resolve.
-: TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
-   {: pa:ptr pu:n na:ptr nu:n :}
-   na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
-   pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
-   drop
-   pa pu CHECKER-COLON-SCAN drop 0 <> IF
-      pa pu CHECKER-RESOLVE:TOP$ na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
-      drop
-   THEN
-   pu 0 <> IF
-      s" " na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
-      drop
-   THEN
-   na nu TFAM-FIND-USED IF RES-TRUE EXIT THEN
-   drop
-   na nu TFAM-FIND-PUBLIC ;
-
 \ --- declaration. Storage only ever sees canonical lowercase tails.
 
 private
@@ -828,6 +769,7 @@ public
    0 r TF.DERIVE !
    0 r TF.TAILNEXT !
    0 r TF.OPAQUE !
+   0 r TF.ENTRY !
    id TFX-ADD                             \ the row's tail is written: it can be found now
    arity TFAM-PK-RESERVE
    id ;
@@ -3196,6 +3138,16 @@ public
    dup PARAM>FAM C2-INIT-FAM @ <> IF drop 0 0 RES-FALSE EXIT THEN
    1 PARAM>ARG INIT-ELEM-LAYOUT? ;
 
+private
+
+\ A retired family read from its type entry can be read again.
+: ENTRIES-RETIRED ( n n -- ) {: lo:n hi:n :}
+   hi lo ?do
+      i TF-REC@ TF.ENTRY @ 0 <> IF -1 ENTRIES-PENDING ! THEN
+   loop ;
+
+public
+
 \ base-state reset. Refuses while a field transaction is live, so a frame is
 \ never discarded under its token holder, and does not rewind PF-TX-SERIAL: the
 \ token counter stays monotonic for the process, so a token minted before a
@@ -3208,6 +3160,7 @@ public
    0 VNX-READY !                         \ ... and every row the variant tail index chains
    0 FVX-READY !                         \ ... and every row the field owner index chains
    TFM-EPOCH+                            \ ... and every family a memoized fact describes
+   0 TFAM-N @ ENTRIES-RETIRED
    0 TFAM-N @ TF-SCRUB   0 TF-STR-U @ TF-STR-SCRUB   0 TF-PK-N @ TF-PK-SCRUB
    0 SUMV-N @ SUMV-SCRUB   0 PF-N @ PF-SCRUB   0 LAY-N @ LAY-SCRUB   \ scrub the rows it retires
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
@@ -3233,6 +3186,7 @@ TFAM-RESET
 : TFAM-REWIND ( n n n n n -- ) {: tfamn:n stru:n pkn:n sumvn:n layn:n :}
    tfamn TFAM-N @ < stru TF-STR-U @ < or IF UNIT-FAM-RESET-XT THEN
    C2-STOW-FAM @ tfamn >= IF -1 C2-STOW-FAM ! THEN
+   tfamn TFAM-N @ ENTRIES-RETIRED
    tfamn TFX-RETIRE                      \ unchain the rows before their ids go out of range
    sumvn SVX-TRUNCATE                    \ and the constructor heads those rows own
    sumvn VNX-RETIRE                      \ and the tail chains
@@ -4677,7 +4631,7 @@ private
 
 : PTX-FAM-ID ( ptr u8 n -- n )   \ resolve a GLOBAL family name to its id (0 if none)
    {: na:ptr nu:n :}
-   s" " na nu TFAM-RESOLVE IF ELSE drop 0 THEN ;
+   s" " na nu TFAM-FIND-IN IF ELSE drop 0 THEN ;
 s" tile"    PTX-FAM-ID PTX-TILE-FAM !
 s" uniform" PTX-FAM-ID PTX-UNIFORM-FAM !
 \ The WAIT step ( cpp-committed<p> -- cpp-ready<p> ) retires the copy group and
@@ -4825,6 +4779,505 @@ REGISTER-INIT
 REGISTER-RECORDS
 REGISTER-STOW
 REGISTER-ARENA-HEAD
+
+\ --- type entries. Inside a build each family a file declares gets a record,
+\ its type entry, named `pkg:tail` (a global's `tail`) in the program's types
+\ wordlist BOOT:TYPES-WL; its facts text is the family's rows written out
+\ (ENTRY-TEXT$). A lookup that misses reads the entry into the registry
+\ (TFAM-FIND). A declaration first reads every entry the registry lacks
+\ (READ-PENDING): a read inside one would land among its own rows.
+\
+\ The text is tokens split by one blank, `-` for an empty name, a family
+\ written `pkg:tail`:
+\   kind vis arity pk... layout slots tagw derive opaque
+\   ndeps family...   (every other family its schemas name, read first)
+\   nvar (name tag paycells ctor-pkg ctor-sym nroots node...)...
+\   nfld (name variant slot cells byte-off bytes align flags node)...
+\   nlay (policy size align tagw)...
+\ A ctor-sym is `-` or `vis pkg tail`; a field's variant is its ordinal, -1
+\ for none. A node is `P index`, `C con`, `* node`, `A family count node...`,
+\ `Q hasr node node node node` or `R count node...`.
+
+private
+
+7114 constant E-TFAM-TYPE-WORD   \ a type entry run as a word
+
+public
+
+\ The word every type entry's record runs: a type is never a word.
+: TYPE-WORD ( -- ) E-TFAM-TYPE-WORD throw ;
+
+: ENTRY? ( n -- bool ) TF-REC@ TF.ENTRY @ 0 <> ;
+\ Family id's type entry is record ix.
+: ENTRY! ( n n -- ) {: id:n ix:n :} ix 1 + id TF-REC@ TF.ENTRY ! ;
+\ The linker made a type entry the registry lacks.
+: ENTRY-LINKED ( -- ) -1 ENTRIES-PENDING ! ;
+
+private
+
+PTR-VARIABLE ET-BUF   variable ET-CAP   variable ET-N    \ the text being written
+PTR-VARIABLE EN-BUF   variable EN-CAP   variable EN-N    \ an entry's name
+PTR-VARIABLE ED-BUF   variable ED-CAP   variable ED-N    \ a family's dependencies
+PTR-VARIABLE ES-BUF   variable ES-CAP   variable ES-N    \ schema nodes read, not yet rooted
+create ET-CH 8 allot
+
+\ Room for need bytes in the store pv points at, its cap in bytes; a capture
+\ nulls pv, not its cap.
+: ENTRY-ROOM ( ptr ptr a ptr n n -- ) {: pv:ptr capv:ptr need:n :}
+   pv @ NULL-PTR - 0= IF 0 capv ! THEN
+   need capv @ <= IF EXIT THEN
+   need capv @ 2 * max 512 max {: nc:n :}
+   pv capv @ nc REG-GROW1
+   nc capv ! ;
+
+\ Appends a u to the byte store pv, whose length cell is nv.
+: ENTRY-S, ( ptr u8 n ptr ptr u8 ptr n ptr n -- )
+   {: a:ptr u:n pv:ptr capv:ptr nv:ptr :}
+   pv capv  nv @ u +  ENTRY-ROOM
+   u 0 ?do a i + c@  pv @ nv @ i + +  c! loop
+   nv @ u + nv ! ;
+
+: ET-S, ( ptr u8 n -- ) ET-BUF ET-CAP ET-N ENTRY-S, ;
+: ET-C, ( n -- ) ET-CH c!  ET-CH 1 ET-S, ;
+: ET-SEP ( -- ) ET-N @ 0 <> IF 32 ET-C, THEN ;
+
+
+: ET-DIGITS ( n -- ) {: m:n :}
+   m 9 > IF m 10 / recurse THEN
+   m 10 mod 48 + ET-C, ;
+
+
+: ET-NUM ( n -- ) {: v:n :}
+   ET-SEP
+   v 0 < 0= IF v ET-DIGITS EXIT THEN
+   v negate 0 < IF s" tfam: type entry number out of range" 76 die THEN
+   45 ET-C,  v negate ET-DIGITS ;
+
+
+: ET-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   ET-SEP
+   u 0= IF 45 ET-C, EXIT THEN
+   a u ET-S, ;
+
+
+: ET-FAM ( n -- ) {: id:n :}
+   ET-SEP
+   id TFAM-PKG$ {: pa:ptr pu:n :}
+   pu 0 <> IF pa pu ET-S,  58 ET-C, THEN
+   id TFAM-NAME$ ET-S, ;
+
+
+: EN-NAME ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n na:ptr nu:n :}
+   0 EN-N !
+   pu 0 <> IF
+      pa pu EN-BUF EN-CAP EN-N ENTRY-S,
+      s" :" EN-BUF EN-CAP EN-N ENTRY-S,
+   THEN
+   na nu EN-BUF EN-CAP EN-N ENTRY-S,
+   EN-BUF @ EN-N @ ;
+
+
+: ED-HAS? ( n -- bool ) {: fam:n :}
+   ED-N @ 0 ?do
+      ED-BUF @ i cells + @ fam = IF RES-TRUE unloop EXIT THEN
+   loop
+   RES-FALSE ;
+
+
+: ED-ADD ( n n -- ) {: fam:n self:n :}
+   fam self = IF EXIT THEN
+   fam ED-HAS? IF EXIT THEN
+   ED-BUF ED-CAP ED-N @ 1 + cells ENTRY-ROOM
+   fam ED-BUF @ ED-N @ cells + !
+   ED-N @ 1 + ED-N ! ;
+
+
+\ Adds the families schema node names, but self.
+: ED-NODE ( n n -- ) {: node:n self:n :}
+   node SCHEMA-TAG@ {: tag:n :}
+   tag SCH-PTR = IF node SCHEMA-A@ self recurse EXIT THEN
+   tag SCH-APP = IF
+      node SCHEMA-A@ self ED-ADD
+      node SCHEMA-C@ 0 ?do node SCHEMA-B@ i + SCHEMA-ROOT@ self recurse loop EXIT
+   THEN
+   tag SCH-QUOT = IF
+      node SCHEMA-C@ 0 ?do node SCHEMA-B@ i + SCHEMA-ROOT@ self recurse loop EXIT
+   THEN
+   tag SCH-ROW = IF
+      node SCHEMA-B@ 0 ?do node SCHEMA-A@ i + SCHEMA-ROOT@ self recurse loop
+   THEN ;
+
+
+: ED-VARIANT ( n n -- ) {: v:n self:n :}
+   v SUMV-SCH-COUNT@ 0 ?do v SUMV-SCH-START@ i + SCHEMA-ROOT@ self ED-NODE loop ;
+
+
+: ED-COLLECT ( n -- ) {: id:n :}
+   0 ED-N !
+   id TFAM-VAR-COUNT@ 0 ?do id TFAM-VAR-START@ i + id ED-VARIANT loop
+   id TFAM-FLD-COUNT@ 0 ?do
+      id TFAM-FLD-START@ i + PF-SCH@ SCHEMA-ROOT@ id ED-NODE
+   loop ;
+
+
+: ET-NODE ( n -- ) {: node:n :}
+   node SCHEMA-TAG@ {: tag:n :}
+   tag SCH-PARAM = IF s" P" ET-NAME node SCHEMA-A@ ET-NUM EXIT THEN
+   tag SCH-CON = IF s" C" ET-NAME node SCHEMA-A@ CT-NAME$ ET-NAME EXIT THEN
+   tag SCH-PTR = IF s" *" ET-NAME node SCHEMA-A@ recurse EXIT THEN
+   tag SCH-APP = IF
+      s" A" ET-NAME node SCHEMA-A@ ET-FAM node SCHEMA-C@ ET-NUM
+      node SCHEMA-C@ 0 ?do node SCHEMA-B@ i + SCHEMA-ROOT@ recurse loop EXIT
+   THEN
+   tag SCH-QUOT = IF
+      s" Q" ET-NAME node SCHEMA-A@ ET-NUM
+      node SCHEMA-C@ 0 ?do node SCHEMA-B@ i + SCHEMA-ROOT@ recurse loop EXIT
+   THEN
+   tag SCH-ROW = IF
+      s" R" ET-NAME node SCHEMA-B@ ET-NUM
+      node SCHEMA-B@ 0 ?do node SCHEMA-A@ i + SCHEMA-ROOT@ recurse loop EXIT
+   THEN
+   s" tfam: type entry of a bad schema node" 76 die ;
+
+
+: ET-SYM ( n -- ) {: sym:n :}
+   sym 0= IF s" " ET-NAME EXIT THEN
+   sym CHECKER-SYM-IDENTITY {: pa:ptr pu:n ta:ptr tu:n vis:n :}
+   vis ET-NUM  pa pu ET-NAME  ta tu ET-NAME ;
+
+
+: ET-VARIANT ( n -- ) {: v:n :}
+   v SUMV-NAME$ ET-NAME  v SUMV-TAG@ ET-NUM  v SUMV-RAW-PAYCELLS@ ET-NUM
+   v SUMV-CTOR-PKG$ ET-NAME  v SUMV-CTOR-SYM@ ET-SYM
+   v SUMV-SCH-COUNT@ ET-NUM
+   v SUMV-SCH-COUNT@ 0 ?do v SUMV-SCH-START@ i + SCHEMA-ROOT@ ET-NODE loop ;
+
+
+: ET-FIELD ( n n -- ) {: f:n vstart:n :}
+   f PF-NAME$ ET-NAME
+   f PF-VAR@ dup PF-NO-VARIANT = IF ELSE vstart - THEN ET-NUM
+   f PF-SLOT@ ET-NUM  f PF-CELLS@ ET-NUM  f PF-BYTE-OFF@ ET-NUM
+   f PF-BYTES@ ET-NUM  f PF-ALIGN@ ET-NUM  f PF-FLAGS@ ET-NUM
+   f PF-SCH@ SCHEMA-ROOT@ ET-NODE ;
+
+
+: ET-LAY ( n -- ) {: l:n :}
+   l LAY-POLICY@ ET-NUM  l LAY-SIZE@ ET-NUM  l LAY-ALIGN@ ET-NUM  l LAY-TAGW@ ET-NUM ;
+
+public
+
+\ Family id's entry name.
+: ENTRY-NAME$ ( n -- ptr u8 n ) {: id:n :} id TFAM-PKG$ id TFAM-NAME$ EN-NAME ;
+
+
+\ Family id's rows as its entry's text, held until the next text is written.
+: ENTRY-TEXT$ ( n -- ptr u8 n ) {: id:n :}
+   id ED-COLLECT
+   0 ET-N !
+   id TFAM-KIND@ ET-NUM  id TFAM-VIS@ ET-NUM  id TFAM-ARITY@ ET-NUM
+   id TFAM-ARITY@ 0 ?do id i TFAM-PK@ ET-NUM loop
+   id TFAM-LAYOUT-POLICY@ ET-NUM  id TFAM-SLOTS@ ET-NUM  id TFAM-TAGW@ ET-NUM
+   id TFAM-DERIVE@ ET-NUM  id TF-REC@ TF.OPAQUE @ ET-NUM
+   ED-N @ ET-NUM
+   ED-N @ 0 ?do ED-BUF @ i cells + @ ET-FAM loop
+   id TFAM-VAR-COUNT@ ET-NUM
+   id TFAM-VAR-COUNT@ 0 ?do id TFAM-VAR-START@ i + ET-VARIANT loop
+   id TFAM-FLD-COUNT@ ET-NUM
+   id TFAM-FLD-COUNT@ 0 ?do id TFAM-FLD-START@ i + id TFAM-VAR-START@ ET-FIELD loop
+   id LAY-FIND IF 1 ET-NUM ET-LAY ELSE drop 0 ET-NUM THEN
+   ET-BUF @ ET-N @ ;
+
+private
+
+PTR-VARIABLE ER-P   variable ER-U          \ the rest of the text being read
+PTR-VARIABLE ER-NAME   variable ER-NAME-U  \ its entry's name
+200 constant ER-MSG-CAP
+create ER-MSG ER-MSG-CAP allot
+
+\ A text this tree's writer did not write: the build is broken.
+: ER-BAD ( -- )
+   s" tfam: bad type entry " {: a:ptr u:n :}
+   u 0 ?do a i + c@ ER-MSG i + c! loop
+   ER-NAME-U @ ER-MSG-CAP u - min {: k:n :}
+   k 0 ?do ER-NAME @ i + c@ ER-MSG u + i + c! loop
+   ER-MSG u k + 76 die ;
+
+
+\ The index of the last ':' in a name, -1 for none.
+: LAST-COLON ( ptr u8 n -- n ) {: a:ptr u:n :}
+   -1 0 BEGIN dup u < WHILE
+      {: i:n :}
+      a i + c@ 58 = IF drop i THEN
+      i 1 +
+   REPEAT drop ;
+
+
+\ `pkg:tail` as package and tail, split at the last colon; a bare tail is
+\ package "". False for an edge colon.
+: SPLIT-NAME ( ptr u8 n -- ptr u8 n ptr u8 n bool ) {: a:ptr u:n :}
+   a u LAST-COLON {: c:n :}
+   c 0 < IF a 0 a u RES-TRUE EXIT THEN
+   c 0 = c u 1 - = or IF a 0 a u RES-FALSE EXIT THEN
+   a c  a c + 1 +  u c - 1 -  RES-TRUE ;
+
+
+\ The bytes before the first blank.
+: ER-LEN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ 32 = IF EXIT THEN
+      1 +
+   REPEAT ;
+
+
+: ER-TOKEN ( -- ptr u8 n )
+   ER-U @ 1 < IF ER-BAD THEN
+   ER-P @ ER-U @ {: a:ptr u:n :}
+   a u ER-LEN {: k:n :}
+   k 0= IF ER-BAD THEN
+   k u < IF a k + 1 + ER-P !  u k - 1 - ER-U !
+   ELSE a u + ER-P !  0 ER-U ! THEN
+   a k ;
+
+
+: ER-DIGITS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 1 < IF ER-BAD THEN
+   0 0 BEGIN dup u < WHILE
+      {: acc:n i:n :}
+      a i + c@ 48 - {: d:n :}
+      d 0 < d 9 > or IF ER-BAD THEN
+      acc 10 * d +  i 1 +
+   REPEAT drop ;
+
+
+: ER-INT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a c@ 45 = IF a 1 + u 1 - ER-DIGITS negate EXIT THEN
+   a u ER-DIGITS ;
+: ER-NUM ( -- n ) ER-TOKEN ER-INT ;
+
+
+: ER-NAME$ ( -- ptr u8 n )
+   ER-TOKEN {: a:ptr u:n :}
+   u 1 = IF a c@ 45 = IF a 0 EXIT THEN THEN
+   a u ;
+
+
+\ A family the registry holds, by its exact name.
+: ER-FAM ( -- n )
+   ER-TOKEN SPLIT-NAME 0= IF ER-BAD THEN
+   TFAM-FIND-IN 0= IF ER-BAD THEN ;
+
+
+: ES-PUSH ( n -- ) {: node:n :}
+   ES-BUF ES-CAP ES-N @ 1 + cells ENTRY-ROOM
+   node ES-BUF @ ES-N @ cells + !
+   ES-N @ 1 + ES-N ! ;
+: ES@ ( n -- n ) {: k:n :} ES-BUF @ k cells + @ ;
+
+
+\ Roots the nodes staged from mark on, contiguously, and unstages them.
+: ES-ROOTS ( n -- n ) {: mark:n :}
+   SCHEMA-ROOT-N@ {: start:n :}
+   ES-N @ mark ?do i ES@ SCHEMA-ROOT+ drop loop
+   mark ES-N !
+   start ;
+
+
+\ A node's children are built and staged before its own roots are pushed, so
+\ each node's roots stay contiguous.
+: ER-NODE ( -- n )
+   ER-TOKEN {: a:ptr u:n :}
+   u 1 <> IF ER-BAD THEN
+   a c@ {: c:n :}
+   c 80 = IF ER-NUM SCHEMA-PARAM EXIT THEN
+   c 67 = IF
+      ER-TOKEN CT-FIND {: con:n :}
+      con 0= IF ER-BAD THEN
+      con SCHEMA-CON EXIT
+   THEN
+   c 42 = IF recurse SCHEMA-PTR EXIT THEN
+   c 65 = IF
+      ER-FAM {: fam:n :}
+      ER-NUM {: k:n :}
+      ES-N @ {: mark:n :}
+      k 0 ?do recurse ES-PUSH loop
+      fam  mark ES-ROOTS  k SCHEMA-APP EXIT
+   THEN
+   c 81 = IF
+      ER-NUM {: hasr:n :}
+      ES-N @ {: mark:n :}
+      SCH-QUOT-ROWS 0 ?do recurse ES-PUSH loop
+      mark ES@  mark 1 + ES@  mark 2 + ES@  mark 3 + ES@  hasr
+      mark ES-N !
+      SCHEMA-QUOT EXIT
+   THEN
+   c 82 = IF
+      ER-NUM {: k:n :}
+      ES-N @ {: mark:n :}
+      k 0 ?do recurse ES-PUSH loop
+      mark ES-ROOTS k SCHEMA-ROW EXIT
+   THEN
+   ER-BAD ;
+
+
+: ER-SYM ( -- n )
+   ER-TOKEN {: a:ptr u:n :}
+   u 1 = IF a c@ 45 = IF 0 EXIT THEN THEN
+   a u ER-INT {: vis:n :}
+   ER-NAME$ {: pa:ptr pu:n :}
+   ER-TOKEN {: ta:ptr tu:n :}
+   pa pu vis ta tu CHECKER-PKG-SYM ;
+
+
+: ER-VARIANT ( n -- ) {: id:n :}
+   ER-TOKEN {: na:ptr nu:n :}
+   ER-NUM {: tag:n :}
+   ER-NUM {: pc:n :}
+   ER-NAME$ {: ca:ptr cu:n :}
+   ER-SYM {: sym:n :}
+   ER-NUM {: k:n :}
+   ES-N @ {: mark:n :}
+   k 0 ?do ER-NODE ES-PUSH loop
+   mark ES-ROOTS {: ss:n :}
+   id na nu tag ss k pc SUMV-ADD {: v:n :}
+   cu 0 <> IF v ca cu TF-INTERN cu SUMV-CTOR-PKG! THEN
+   sym 0 <> IF v sym SUMV-CTOR-SYM! THEN ;
+
+
+: ER-FIELD ( n n n -- n ) {: tx:n id:n vstart:n :}
+   ER-TOKEN {: na:ptr nu:n :}
+   ER-NUM {: vo:n :}
+   vo 0 < IF PF-NO-VARIANT ELSE vstart vo + THEN {: var:n :}
+   ER-NUM {: slot:n :}
+   ER-NUM {: nc:n :}
+   ER-NUM {: boff:n :}
+   ER-NUM {: nb:n :}
+   ER-NUM {: al:n :}
+   ER-NUM {: flags:n :}
+   ER-NODE SCHEMA-ROOT+ {: root:n :}
+   tx id var na nu root slot nc boff nb al flags TYPE-FIELD-OWNER:ADD ;
+
+
+\ The family's declaration and its scalar rows, before the families it names.
+: ER-HEAD ( ptr u8 n ptr u8 n n -- n ) {: pa:ptr pu:n ta:ptr tu:n ix:n :}
+   ER-NUM {: kind:n :}
+   ER-NUM {: vis:n :}
+   ER-NUM {: arity:n :}
+   pa pu vis ta tu arity kind TFAM-DECL {: id:n :}
+   id ix ENTRY!
+   arity 0 ?do id i ER-NUM TFAM-PK! loop
+   id ER-NUM TFAM-LAYOUT!
+   id ER-NUM TFAM-SLOTS!
+   id ER-NUM TFAM-TAGW!
+   ER-NUM id TF-REC@ TF.DERIVE !
+   ER-NUM id TF-REC@ TF.OPAQUE !
+   id ;
+
+
+\ Variants, fields and layout, after the families they name.
+: ER-BODY ( n -- ) {: id:n :}
+   SUMV-N@ {: vstart:n :}
+   ER-NUM {: nv:n :}
+   nv 0 ?do id ER-VARIANT loop
+   id vstart nv TFAM-VAR-RANGE!
+   ER-NUM {: nf:n :}
+   nf 0 > IF
+      TYPE-FIELD:COUNT {: base:n :}
+      TYPE-FIELD-OWNER:OPEN
+      nf 0 ?do id vstart ER-FIELD loop {: tx:n :}
+      tx TYPE-FIELD-OWNER:COMMIT
+      id base nf TFAM-FLD-RANGE!
+      tx TYPE-FIELD-OWNER:FINALIZE
+   THEN
+   ER-NUM 0 ?do id ER-NUM ER-NUM ER-NUM ER-NUM LAY-ADD drop loop
+   ER-U @ 0 <> IF ER-BAD THEN ;
+
+public
+
+\ TFAM-FIND-IN, else the type entry `pkg:tail` read into the registry; the
+\ rows read are written out again and must equal the entry's text.
+: TFAM-FIND ( ptr u8 n ptr u8 n -- n bool )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN drop
+   ENTRIES-PENDING @ 0= IF 0 RES-FALSE EXIT THEN
+   BOOT:TYPES-WL {: wid:n :}
+   wid 0= IF 0 RES-FALSE EXIT THEN
+   pa pu na nu EN-NAME wid CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   rec NULL-PTR = IF 0 RES-FALSE EXIT THEN
+   PF-TX-DEPTH @ 0 <> IF s" tfam: type entry read inside a declaration" 76 die THEN
+   ER-P @ ER-U @ ER-NAME @ ER-NAME-U @ {: sp:ptr su:n sn:ptr snu:n :}
+   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   rec CHECKER-RESOLVE:CK-REC-NAME$ {: ra:ptr ru:n :}
+   ra ER-NAME !  ru ER-NAME-U !
+   ix CHECK:FACTS@ ER-U ! ER-P !
+   ra ru SPLIT-NAME 0= IF ER-BAD THEN
+   ix ER-HEAD {: id:n :}
+   ER-NUM 0 ?do
+      ER-TOKEN SPLIT-NAME 0= IF ER-BAD THEN
+      recurse 0= IF ER-BAD THEN drop
+   loop
+   id ER-BODY
+   id ENTRY-TEXT$ ix CHECK:FACTS@ CORE-STR= 0= IF ER-BAD THEN
+   sp ER-P !  su ER-U !  sn ER-NAME !  snu ER-NAME-U !
+   id RES-TRUE ;
+
+
+\ Reads every type entry the registry lacks, so no lookup inside a declaration
+\ that follows reads one.
+: READ-PENDING ( -- )
+   ENTRIES-PENDING @ 0= IF EXIT THEN
+   BOOT:TYPES-WL {: wid:n :}
+   wid 0 <> IF
+      ndict@ 0 ?do
+         i CHECKER-RESOLVE:REC-AT {: rec:ptr :}
+         rec CK-REC-WID wid = IF
+            rec CHECKER-RESOLVE:CK-REC-NAME$ SPLIT-NAME 0= IF
+               s" tfam: bad type entry name" 76 die THEN
+            TFAM-FIND drop drop
+         THEN
+      loop
+   THEN
+   0 ENTRIES-PENDING ! ;
+
+
+private
+
+\ A `using` import names its package's public families. Repeating an import
+\ still names the same family; two distinct matches throw E-TFAM-AMBIG.
+: TFAM-FIND-USED ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
+   -1 TF-PUB !
+   CHECKER-USING-N 0 ?DO
+      i CHECKER-USING$ na nu TFAM-FIND IF
+         {: id:n :}
+         id TFAM-PUBLIC? IF
+            TF-PUB @ 0< IF id TF-PUB !
+            ELSE id TF-PUB @ <> IF E-TFAM-AMBIG throw THEN THEN
+         THEN
+      ELSE drop THEN
+   LOOP
+   TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
+
+public
+
+\ A bare tail resolves as a bare word does: the active package's exact row
+\ (private or public), inside a part `A:B` the row of its package A, the exact
+\ global row, then the `using` imports; another package's family needs
+\ `PKG:tail` or an import. At top level the first exact lookup is already
+\ global. Compaction-hidden `@name` tokens never resolve.
+: TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
+   pa pu na nu TFAM-FIND IF RES-TRUE EXIT THEN
+   drop
+   pa pu CHECKER-COLON-SCAN drop 0 <> IF
+      pa pu CHECKER-RESOLVE:TOP$ na nu TFAM-FIND IF RES-TRUE EXIT THEN
+      drop
+   THEN
+   pu 0 <> IF
+      s" " na nu TFAM-FIND IF RES-TRUE EXIT THEN
+      drop
+   THEN
+   na nu TFAM-FIND-USED ;
+
 public
 
 $100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
@@ -4875,7 +5328,7 @@ variable TFSR-HIDDEN
 : TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
    TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
    TFQ-BUF TFQ-U @ TFQ-HEAD$ {: qa:ptr qu:n :}
-   qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
+   qa qu TFQ-TA @ TFQ-TU @ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
    qa qu pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
@@ -4897,15 +5350,8 @@ private
 \ Facts text (render.f FAM-QNAME-REND) names a family exactly: a bare tail is
 \ package "", else path:tail split at the last colon; no scope or fallback.
 : FACTS-RESOLVE ( ptr u8 n -- n bool )
-   {: a:ptr u:n :}
-   -1 0 BEGIN dup u < WHILE
-      {: i:n :}
-      a i + c@ 58 = IF drop i THEN
-      i 1 +
-   REPEAT drop {: c:n :}
-   c 0 < IF s" " a u TFAM-FIND-IN EXIT THEN
-   c 0 = c u 1 - = or IF 0 RES-FALSE EXIT THEN
-   a c  a c + 1 +  u c - 1 -  TFAM-FIND-IN ;
+   SPLIT-NAME 0= IF 2drop 2drop 0 RES-FALSE EXIT THEN
+   TFAM-FIND ;
 
 public
 
@@ -4950,6 +5396,7 @@ private
 \ Some scope reads this signature token as a family, which a DEFLINEAR or
 \ VALUE-RECORD name may not be (forth.md "Declaring your own scalar types").
 : TFAM-CLAIMED? ( ptr u8 n -- bool ) {: na:ptr nu:n :}
+   READ-PENDING
    na nu TF-HIDDEN? IF RES-FALSE EXIT THEN
    na nu TFQ-SPLIT? IF TFQ-TA @ TFQ-TU @ TFQ-BUF TFQ-U @
    ELSE na nu NULL-PTR 0 THEN {: ta:ptr tu:n qa:ptr qu:n :}
@@ -5478,7 +5925,7 @@ public
 private
 
 : TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
-   TFAM-ACTIVE-PKG$ na nu TFAM-FIND-IN 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ na nu TFAM-FIND 0= IF drop MD-CON-FAM MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-SUM? id TFAM-ENUM? or 0= IF MD-CON-KIND MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
@@ -5630,11 +6077,11 @@ private
 
 \ MATCH resolution (docs/forth.md "Structures And Enums") follows signature
 \ scope, not construct's owner-only rule: a family matches wherever a stack
-\ signature can name it (own package private and public, else the unique public
-\ family, qualified PKG:tail included), since a value of it arrives only through
-\ such a signature. Only sum and enum kinds match. The arm payload row
-\ instantiates the variant schema over the scrutinee's argument terms in the TFC
-\ scratch vars, consumed at OF, so construct and nested matches may interleave.
+\ signature can name it (TFAM-RESOLVE's scope, or PKG:tail), since a value of it
+\ arrives only through such a signature. Only sum and enum kinds match. The arm
+\ payload row instantiates the variant schema over the scrutinee's argument terms
+\ in the TFC scratch vars, consumed at OF, so construct and nested matches may
+\ interleave.
 : TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
    TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop MD-FAM-UNKNOWN MDIAG-COMPILE! 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -5760,7 +6207,7 @@ public
 ;package
 
 : TFL-CON-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ owner-only scope
-   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
+   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-FIND 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
    id RES-TRUE ;
@@ -7089,6 +7536,7 @@ FVX-READY 0 CHECK:CELL-ROW+
 FVX-HI 0 CHECK:CELL-ROW+
 FVX-CAP 0 CHECK:CELL-ROW+
 LAY-A-P LAY-CAP-V LAY-REC LAY-N CHECK:STORE+
+ENTRIES-PENDING 0 CHECK:CELL-ROW+
 ;package
 
 package SCHEMA-REG

@@ -26,7 +26,7 @@ CAP BUFFER: ERR-K
 
 \ The word the map names for an engine name; a row is a failed case.
 : WORD$ ( ptr u8 n -- ptr u8 n )
-   WKERNEL:PROVIDER MATCH provider
+   WKERNEL:PROVIDER MATCH WKERNEL:provider
       row OF drop  s" the map answers a word" T-LABEL  false TTRUE  s" " ENDOF
       word OF ENDOF
    ;MATCH ;
@@ -127,7 +127,7 @@ CAP BUFFER: ERR-K
 
 \ A name no provider answers is refused with E-WLINK-UNRESOLVED.
 : UNANSWERED ( -- )
-   s" key" WKERNEL:PROVIDER MATCH provider
+   s" key" WKERNEL:PROVIDER MATCH WKERNEL:provider
       row OF drop ENDOF
       word OF 2drop ENDOF
    ;MATCH ;

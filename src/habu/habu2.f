@@ -1978,7 +1978,7 @@ variable LDEFHINT
 \ No newline: the LCOMPILEDIE tail appends the location and it.
 : HINT$ ( -- ptr u8 n )   s" hb: is: parsing words resolve outside using-imports; qualify the target" ;
 ;package
-variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LRECMIQ  variable LP2CLAUSE
+variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LP2CLAUSE
 variable LNSTRINTERN
 
 \ The native compiler seam's labels hold its qualified spelling, its
@@ -2119,7 +2119,7 @@ public
    LKEYNONAME LABEL@ LBL, KEYNONAME$ BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUSTDECL LABEL@ LBL, TRUSTDECL$ BYTES,      LKWTRUSTRAW LABEL@ LBL, TRUSTRAW$ BYTES,
-   LKWDUPDEF LABEL@ LBL, KWDUPDEF$ BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, DEFER-DIAG:NOTOKEN$ BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, DEFER-DIAG:NOTFOUND$ BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, DEFER-DIAG:NOTDEFER$ BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, DEFER-DIAG:HINT$ BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, DEFER-DIAG:NONAME$ BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, RECWPUB$ BYTES,  LRECMIQ LABEL@ LBL, RECMIQ$ BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, UNSET-MSG$ BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, NCOMP-EMIT:NEUTRAL$ BYTES,
+   LKWDUPDEF LABEL@ LBL, KWDUPDEF$ BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  DEFER-DIAG:LDEFNOTOKEN LABEL@ LBL, DEFER-DIAG:NOTOKEN$ BYTES,  DEFER-DIAG:LDEFNOTFOUND LABEL@ LBL, DEFER-DIAG:NOTFOUND$ BYTES,  DEFER-DIAG:LDEFNOTDEFER LABEL@ LBL, DEFER-DIAG:NOTDEFER$ BYTES,  DEFER-DIAG:LDEFHINT LABEL@ LBL, DEFER-DIAG:HINT$ BYTES,  DEFER-DIAG:LDEFNONAME LABEL@ LBL, DEFER-DIAG:NONAME$ BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  NCOMP-EMIT:LWORD LABEL@ LBL, s" NCOMP:COMPILE" BYTES,  NCOMP-EMIT:LUNSET LABEL@ LBL, UNSET-MSG$ BYTES,  NCOMP-EMIT:LNEUTRAL LABEL@ LBL, NCOMP-EMIT:NEUTRAL$ BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, CHKEXPORT$ BYTES,
    LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -2919,31 +2919,6 @@ public
    C-CALL-X11-SAVED
    done LBL, ;
 
-\ After ndict++ the checker's rec-wide-publish consumes the RECW latch for this
-\ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. Hook
-\ guarded: the engine prefix self-load has no hook and no wide-effect rows;
-\ prefix records certified between check-hook.f and the seal carry no min-in,
-\ and the checker's top-level row judges their calls (src/core/top-row.f). The
-\ same tail drains the RECMI
-\ latch through rec-min-in@ (checker.f, loaded before check-hook.f) into
-\ DNAME-MIN-IN (flags bits 52-59) through the alias, so interpret-find fails
-\ closed on a bare underdepth call; min-in 0 (unchecked) pokes nothing.
-: EM-REC-WIDE-PUBLISH ( -- )
-   LBL LBL {: nohook:label nomark:label :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   LRECWPUB RECWPUB$ nip C-FIND-GLOBAL
-   C-CALL-X11-SAVED
-   LRECMIQ RECMIQ$ nip C-FIND-GLOBAL
-   C-CALL-X11-SAVED
-   10 G-POP                                            \ x10 = latched min-in cells (0 = none)
-   10 nomark CBZ,
-      9 NDICT 0 ADDI,  9 9 1 SUBI,  12 DREC MOVZ,  9 9 12 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1] (x10 latch survives via kernel x2-x15)
-      10 10 $FF ANDI,  10 10 52 LSLI,                  \ min-in byte -> DNAME-MIN-IN bits 52-59
-      11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
-      12 11 16 LDR,  12 12 10 ORR,  12 11 16 STR,
-   nomark LBL,
-   nohook LBL, ;
-
 \ x11 = the operation at OFF in the source owner's record. An owner whose record
 \ ends before OFF (its byte size at [record-8], as EM-RECORD-LINK-SEED reads it)
 \ or holds 0 there writes the line MA MU to fd 2 and exits 70. Nothing is found
@@ -2961,6 +2936,31 @@ public
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  ma mu BYTES,
    ready LBL, ;
+
+\ After ndict++ the checker's rec-wide-publish consumes the RECW latch for this
+\ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. Hook
+\ guarded: the engine prefix self-load has no hook and no wide-effect rows;
+\ prefix records certified between check-hook.f and the seal carry no min-in,
+\ and the checker's top-level row judges their calls (src/core/top-row.f). The
+\ same tail drains the RECMI
+\ latch through rec-min-in@ (checker.f, loaded before check-hook.f) into
+\ DNAME-MIN-IN (flags bits 52-59) through the alias, so interpret-find fails
+\ closed on a bare underdepth call; min-in 0 (unchecked) pokes nothing.
+: EM-REC-WIDE-PUBLISH ( -- )
+   LBL LBL {: nohook:label nomark:label :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   NCOMP-DISPATCH:DECL-REC-WIDE-PUBLISH-OFF RECWPUB$ C-OWNER-FIELD
+   C-CALL-X11-SAVED
+   NCOMP-DISPATCH:DECL-REC-MIN-IN-OFF RECMIQ$ C-OWNER-FIELD
+   C-CALL-X11-SAVED
+   10 G-POP                                            \ x10 = latched min-in cells (0 = none)
+   10 nomark CBZ,
+      9 NDICT 0 ADDI,  9 9 1 SUBI,  12 DREC MOVZ,  9 9 12 MUL,  9 DBASE 9 ADD,   \ x9 = &record[NDICT-1] (x10 latch survives via kernel x2-x15)
+      10 10 $FF ANDI,  10 10 52 LSLI,                  \ min-in byte -> DNAME-MIN-IN bits 52-59
+      11 DATA REGION-ALIAS:DELTA-CELL LDR,  11 9 11 ADD,   \ x11 = the record through the alias
+      12 11 16 LDR,  12 12 10 ORR,  12 11 16 STR,
+   nomark LBL,
+   nohook LBL, ;
 
 : C-DIE-DOES ( -- )                                   \ does>-body checker reject: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level
    0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 KWDOES$ nip MOVZ,  NR-WRITE SYS,
@@ -13394,7 +13394,7 @@ package LABELS
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !  LBL LKWSEALPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2CLAUSE !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL NCOMP-EMIT:LWORD !  LBL NCOMP-EMIT:LUNSET !  LBL NCOMP-EMIT:LNEUTRAL !  LBL NCOMP-EMIT:LENTRY !  LBL LP2CLAUSE !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LKWDESIGNEND !  LBL LCHKUSING !  LBL LFINDUSED !  LBL LFINDUSED-CORE !  LBL LSCOPEREC !
    LBL INTERP-EMIT:LFINDSHADOW !  LBL DEFWRITE:LREPLAYTRAP !

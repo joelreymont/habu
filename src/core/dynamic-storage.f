@@ -3,8 +3,10 @@
 \ mapping, `ptr ptr a`) and the control block NAME#ctl behind it (capacity,
 \ registry slot + 1, width tag, bound for that width; `ptr n`). No word views a
 \ pointer cell as bytes or cells. Release zeroes the record, so no process
-\ address survives capture. It loads below the core-prefix mark: rewound
-\ generated declarations call it.
+\ address survives capture; the head and the control cells are scratch, so a
+\ save or a file's object holds every record released and the registry empty
+\ even while this process keeps them. It loads below the core-prefix mark:
+\ rewound generated declarations call it.
 package DYNAMIC-STORAGE
 public
 
@@ -58,8 +60,8 @@ $40 constant REG-INIT
 \ included. Row i holds a record's head address at cell 2i and its control
 \ block's address at cell 2i+1; REG-CAP counts rows.
 PTR-U8-TABLE-VARIABLE REG
-variable REG-CAP
-variable REG-U
+variable REG-CAP   REG-CAP scratch-cell-mark
+variable REG-U   REG-U scratch-cell-mark
 \ The newest live arena's first chunk, NULL-PTR when none is live (ARENA-NEW).
 PTR-VARIABLE ARENAS
 here data-base - negate 7 and allot

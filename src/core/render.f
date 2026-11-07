@@ -1070,7 +1070,7 @@ variable MDV-I   variable MDV-F
       MD-VAR-DUP      of s" Remove the repeated variant branch; each variant may appear once." endof
       MD-VAR-UNKNOWN  of s" Use a variant declared by this family, lowercase as declared." endof
       MD-CON-VAR      of s" Use a variant declared by this family, lowercase as declared." endof
-      MD-FAM-UNKNOWN  of s" Name a visible sum family: own package first, else a unique public family." endof
+      MD-FAM-UNKNOWN  of s" Name a visible sum family: own package, a global, a `using` import, or PKG:tail." endof
       MD-CON-FAM      of s" construct resolves only families declared in the active package." endof
       MD-FAM-KIND     of s" MATCH eliminates sum or enum families only." endof
       MD-CON-KIND     of s" construct builds sum or enum families only." endof

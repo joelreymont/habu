@@ -2071,7 +2071,7 @@ private
 : SEMAPHORE ( -- )
    TASK-ALIGN8
    create TASK-SEMAPHORE-BYTES allot
-   does> ( -- sem ) FFI:>CELL >SEM ;
+   does> ( -- TASK:sem ) FFI:>CELL >SEM ;
 
 \ ---- sleeping ----------------------------------------------------------------
 \ SLEEP replaces a TASK:PAUSE loop against mono-ns, which burns a core for the

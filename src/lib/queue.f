@@ -242,7 +242,7 @@ Q-MAX constant MAX-QUEUES
    dup Q-CHECK-CAP
    Q-ALIGN8
    create Q-REC,
-   does> ( -- queue ) @ >QUEUE ;
+   does> ( -- QUEUE:queue ) @ >QUEUE ;
 
 \ Empties the queue and opens the three semaphores it borrows from package TASK.
 \ Initializing a live queue is E-QUEUE-STATE; every other word needs a live one.

@@ -5660,9 +5660,9 @@ JMP-BYTES 1+ constant PATCH-SLOT       \ the jump and the return
 \ With the check hook armed, the checker's tail for the record a definition
 \ published (habu2.f EM-REC-WIDE-PUBLISH): its rec-wide-publish, then its
 \ rec-min-in@, whose nonzero answer lands in the DNAME-MIN-IN bits of record
-\ NDICT-1 between two flips, as min-in-mark stores it. ARM64 finds the two by
-\ name; this kernel reads them from the active checker's record, and a missing
-\ one ends the process naming it, as a missing word does there.
+\ NDICT-1 between two flips, as min-in-mark stores it. Both kernels read the
+\ two from the active checker's record; a missing one ends the process naming
+\ it.
 : WIDE-PUBLISH, ( -- )
    X64CODE:LBL {: done:label :}
    RAX HOOK-CELL CELL@,

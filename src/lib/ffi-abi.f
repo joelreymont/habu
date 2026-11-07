@@ -71,13 +71,11 @@ $41C8 constant FFI-SCRATCH-END
 : FFI-STACK-LEN-BUF ( -- ptr n )
    data-base FFI-STACK-LEN-BUF-OFF + ;
 
-\ The identity axioms FFI-PTR>CELL / FFI-CELL>PTR are declared in
-\ src/core/checker.f with an owner-private row admitting this package alone:
-\ `( ptr a -- n )` is no CAST: (a type-variable pointee is E-CAST-LINEAR). CELL>PTR
-\ stays private: a foreign address carries no length, so only a word that knows
-\ the callee's width may publish one.
-: PTR>CELL ( ptr a -- n ) FFI-PTR>CELL ;
-: CELL>PTR ( n -- ptr u8 ) FFI-CELL>PTR ;
+\ A foreign call takes and returns raw machine cells. CELL>PTR stays private: a
+\ foreign address carries no length, so only a word that knows the callee's
+\ width may publish one.
+: PTR>CELL ( ptr a -- n ) NULL-PTR - ;
+CAST: CELL>PTR ( n -- ptr u8 )
 
 \ ---- argument marshalling -------------------------------------------------
 \ Integer slot 8 is x8, the AAPCS64 indirect-result register. Stack slots are

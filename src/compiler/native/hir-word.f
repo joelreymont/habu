@@ -111,7 +111,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    endcase ;
 
 : CTRL-CODE ( HIR:ctrl -- n )
-   MATCH ctrl
+   MATCH HIR:ctrl
       open-if      OF 0 ENDOF
       close-if     OF 1 ENDOF
       open-begin   OF 2 ENDOF
@@ -190,7 +190,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 \ The codes start at zero because they are read out of a payload cell this
 \ meaning owns outright.
 : RSTACK-CODE ( HIR:rmove -- n )
-   MATCH rmove
+   MATCH HIR:rmove
       to-r    OF 0 ENDOF
       from-r  OF 1 ENDOF
       fetch-r OF 2 ENDOF
@@ -205,7 +205,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    endcase ;
 
 : EXPAND-CODE ( HIR:expand -- n )
-   MATCH expand
+   MATCH HIR:expand
       cell-index OF 0 ENDOF
       modulo     OF 1 ENDOF
       maximum    OF 2 ENDOF

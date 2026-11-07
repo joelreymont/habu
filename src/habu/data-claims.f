@@ -251,6 +251,7 @@ create TAB
    BOOT:DP-CEILING-CELL               1 cells                 CLAIM BOOT-DP-CEILING
    BOOT:GLOBAL-WL-CELL                1 cells                 CLAIM BOOT-GLOBAL-WL
    BOOT:NAMESPACE-WL-CELL             1 cells                 CLAIM BOOT-NAMESPACE-WL
+   BOOT:TYPES-WL-CELL                 1 cells                 CLAIM BOOT-TYPES-WL
    BOOT:IMAGE-BASE-CELL               1 cells                 CLAIM BOOT-IMAGE-BASE
    STACK-ABI:CAP-CELL                 1 cells                 CLAIM STACK-ABI-CAP
    STACK-ABI:REPL-BASE-CELL           1 cells                 CLAIM STACK-ABI-REPL-BASE
