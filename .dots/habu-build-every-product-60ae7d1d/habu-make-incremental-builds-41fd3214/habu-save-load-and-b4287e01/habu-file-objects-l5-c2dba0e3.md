@@ -1,9 +1,11 @@
 ---
 title: "File objects L5: a warm build after an edit"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-06T12:21:51.556348+02:00"
+closed-at: "2026-11-07T04:41:40.167111+02:00"
+close-reason: "Landed in 'Rebuild every file after an edit': a warm build links every file or compiles every file, decided at its first file from the load list; objects carry a prefix SHA-256 and a checksum. Four suites rc 0; Fable feature review accepted after its fold."
 ---
 
 Problem: after L4 a warm build links only when nothing changed before a file: an edit to any file but the first is LINKER:E-STALE on every later build until the out root is deleted; an earlier file that recompiles can make a later linked file's object refuse mid-link (78, then E-FAILED, every later build; L4 review probe /tmp/carl-rev-l4w/probe-c.f); a flipped or cut byte in an object can link silently.

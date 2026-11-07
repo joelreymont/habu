@@ -3,9 +3,11 @@
 \ registered stores to the build's (CHECK:OPEN), routes every file load to the
 \ build's runner (SOURCE-UNIT:USE), runs the body there with no package of
 \ hb's open and closes it. The close undoes exactly the open steps that ran,
-\ in reverse. The runner links a file whose object under the out root is
-\ fresh and compiles any other, writing its object there, unless a file was
-\ linked before it (E-STALE).
+\ in reverse. A build writes <out>/loads, the files whose load started, in
+\ order; the next build's first file load checks each listed file's object
+\ (WALK) and links every file when all are fresh, else compiles every file,
+\ writing its object under the out root. A file stale after a linked one ends
+\ the build (E-STALE).
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -45,14 +47,15 @@ private
 ENUM step none mapped shadowed moved checked required objects routed open loading failed ;ENUM
 TYPED-VARIABLE PROGRESS step
 
-\ What the build did with its files so far: a compile after a link is E-STALE (NEXT-MODE).
-ENUM link-mode none compiled linked ;ENUM
+\ How files load (LINKS?): unread, WALK has not run; open, no file decided yet; compiling, every
+\ file compiles; linking, a file linked; stale, a file was stale after a link (E-STALE).
+ENUM link-mode unread open compiling linking stale ;ENUM
 TYPED-VARIABLE SO-FAR link-mode
 
 public
--9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes nothing" ERROR:CODE E-FAILED
+-9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes no object or program" ERROR:CODE E-FAILED
 -9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
--9692 s" a file of this build has no fresh object but an earlier file was linked: a build cannot compile after a link" ERROR:CODE E-STALE
+-9692 s" a file of this build has no fresh object after a linked file; the next build compiles every file" ERROR:CODE E-STALE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
 private
 
@@ -123,15 +126,19 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ ---- the object ----------------------------------------------------------------
 \ LOADERS stacks the key of each file whose compile is running; LOADS holds a
 \ row per load: the loader's key, zeros for the build's body, then the SHA-256
-\ of the path under its root. BUILT holds a row per file compiled or linked:
-\ its key, its first and end record index, its object's SHA-256, its first and
-\ end emission, and the data pointer as its load starts and returns.
+\ of the path under its root. BUILT holds a row per file compiled or linked: its
+\ key, its first and end record index, its object's SHA-256, its first and end
+\ emission, and the data pointer as its load starts and returns.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
 ROW-BYTES 48 + constant BUILT-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
+create STARTED BUF:HDR-BYTES allot   \ a row per started load, in start order: its key, its source's SHA-256
 create BUILT BUF:HDR-BYTES allot
+create LOAD-LIST BUF:HDR-BYTES allot \ <out>/loads: HABULOAD, then per started load, in start order,
+                                     \ its key's KEY-BYTES bytes, then its path and root, each a FIELD+
+create WALK-SRC BUF:HDR-BYTES allot  \ a listed file's source as WALK reads it
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
 create OBJECT BUF:HDR-BYTES allot    \ a key's fields, then an object's bytes
@@ -141,7 +148,9 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
 KEY-BYTES BUFFER: INPUT-SUM
-KEY-BYTES BUFFER: OBJECT-SUM
+KEY-BYTES BUFFER: PREFIX-SUM
+KEY-BYTES BUFFER: OBJECT-SUM         \ the object's SHA-256 (BUILT+)
+KEY-BYTES BUFFER: CK-SUM             \ the SHA-256 of the object past its checksum (HEADER-CK)
 KEY-BYTES 2 * BUFFER: KEY-HEX
 DYNAMIC-BUFFER ENTRY-OFFS n          \ a read object's entries' offsets in OBJECT (FRESH?)
 DYNAMIC-BUFFER EM-OFFS n             \ its emissions' offsets in OBJECT, each at its S
@@ -175,11 +184,12 @@ variable FILE-WID                    \ the first wordlist id the file's compile 
 variable FILE-END                    \ here's distance as the file's load returns
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 
-\ The magic, the key, and an offset from the file's start and a length for each
-\ of INPUT FILES REQUESTS NAMES PIECES, 0 0 while empty; then the sections in
-\ the order INPUT FILES PIECES. Every number is eight bytes, low byte first.
-8 KEY-BYTES + 5 2 * 8 * + constant HEADER-BYTES
-8 KEY-BYTES + constant INPUT-BYTES   \ the source's size, then its SHA-256
+\ The magic, the key, the SHA-256 of every byte after this checksum, and an offset
+\ from the file's start and a length for each of INPUT FILES REQUESTS NAMES PIECES,
+\ 0 0 while empty; then the sections in the order INPUT FILES PIECES. Every number
+\ is eight bytes, low byte first.
+8 KEY-BYTES 2 * + 5 2 * 8 * + constant HEADER-BYTES
+8 KEY-BYTES 2 * + constant INPUT-BYTES   \ the source's size, its SHA-256, then the prefix (START-SUMS)
 
 \ A record's kind in PIECES.
 0 constant KIND-DEF
@@ -194,12 +204,16 @@ variable FILE-CELLS                  \ the space's address-cell rows as the file
    HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE
    CODE-COPY BUF:DISPOSE  OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  PIECES BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
-   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE ;
+   WALK-SRC BUF:DISPOSE  LOAD-LIST BUF:DISPOSE
+   STARTED BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
    LOADS 256 BUF:N>BLEN BUF:INIT
+   STARTED 256 BUF:N>BLEN BUF:INIT
    BUILT 256 BUF:N>BLEN BUF:INIT
+   LOAD-LIST 256 BUF:N>BLEN BUF:INIT
+   WALK-SRC 256 BUF:N>BLEN BUF:INIT
    REFS 256 BUF:N>BLEN BUF:INIT
    PIECES 256 BUF:N>BLEN BUF:INIT
    OBJECT 256 BUF:N>BLEN BUF:INIT
@@ -276,6 +290,22 @@ variable FILE-CELLS                  \ the space's address-cell rows as the file
    LOADER$ {: top:ptr topu:n :}
    top FILE-KEY topu BYTE-COPY
    LOADERS BYTES$ KEY-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
+
+\ After KEY! and before FRESH?: the sums HEADER-CK and WRITE-OBJECT read; the prefix covers
+\ only loads started before this one.
+: START-SUMS ( ptr u8 n -- )
+   {: src:ptr srcu:n :}
+   SHA-CTX src srcu INPUT-SUM SHA256-IN
+   SHA-CTX STARTED BYTES$ PREFIX-SUM SHA256-IN
+   FILE-KEY KEY-BYTES STARTED SPAN+
+   INPUT-SUM KEY-BYTES STARTED SPAN+ ;
+
+\ After KEY!, given the path and the root the runner received: FILE-KEY's row onto LOAD-LIST.
+: LIST-ROW+ ( ptr u8 n ptr u8 n -- )
+   {: path:ptr pathu:n root:ptr rootu:n :}
+   FILE-KEY KEY-BYTES LOAD-LIST SPAN+
+   path pathu LOAD-LIST FIELD+
+   root rootu LOAD-LIST FIELD+ ;
 
 \ ---- the records ---------------------------------------------------------------
 \ No address reaches PIECES: a record is named by file and index, code and data by
@@ -885,10 +915,10 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    CODE+  DATA+  STORES+
    -1 PIECES U64+ ;
 
-\ FILE-KEY's object; INPUT sums the bytes the runner gets (`#!` read as `\ `).
-: WRITE-OBJECT ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
-   SHA-CTX src srcu INPUT-SUM SHA256-IN
+\ FILE-KEY's object, given its source's size, with INPUT-SUM and PREFIX-SUM as START-SUMS
+\ left them; its checksum sums every byte after it.
+: WRITE-OBJECT ( n -- )
+   {: srcu:n :}
    PIECES!
    REFS BYTES$ {: refs:ptr refsu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
@@ -896,14 +926,18 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
    FILE-KEY KEY-BYTES OBJECT SPAN+
+   KEY-BYTES 0 ?do 0 OBJECT BUF:APPEND-BYTE loop
    HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
    4 0 ?do 0 OBJECT U64+ loop          \ REQUESTS NAMES, empty
    files-at refsu + OBJECT U64+  piecesu OBJECT U64+
    srcu OBJECT U64+
    INPUT-SUM KEY-BYTES OBJECT SPAN+
+   PREFIX-SUM KEY-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
+   OBJECT BYTES$ {: obj:ptr len:n :}
+   SHA-CTX  obj 8 KEY-BYTES 2 * + +  len 8 - KEY-BYTES 2 * -  obj 8 KEY-BYTES + +  SHA256-IN
    FILE-KEY KEY-HEX SHA256>HEX
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  OBJECT BYTES$  FS:ATOMIC-WRITE-FILE ;
 
@@ -1125,9 +1159,10 @@ variable RD-END
    loop ;
 
 
-\ The header, INPUT against the runner's source bytes and FILES, as WRITE-OBJECT lays them.
-: HEADER-CK ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
+\ The header, its checksum, INPUT against the source's size, INPUT-SUM and PREFIX-SUM, and
+\ FILES, as WRITE-OBJECT lays them.
+: HEADER-CK ( n -- )
+   {: srcu:n :}
    0 FILES-N !
    OBJECT BYTES$ nip {: len:n :}
    0 len RD-OPEN
@@ -1135,6 +1170,10 @@ variable RD-END
    len files-at < if BAD exit then
    s" HABUFOBJ" RD-SAME
    FILE-KEY KEY-BYTES RD-SAME
+   GOOD? 0= if exit then
+   OBJECT BYTES$ drop {: obj:ptr :}
+   SHA-CTX  obj 8 KEY-BYTES 2 * + +  len 8 - KEY-BYTES 2 * -  CK-SUM  SHA256-IN
+   CK-SUM KEY-BYTES RD-SAME
    HEADER-BYTES RD-EQ  INPUT-BYTES RD-EQ
    RD-U64 RD-U64 {: off:n refsu:n :}
    refsu 0<  refsu ROW-BYTES mod 0<>  or  refsu len files-at - >  or if BAD exit then
@@ -1142,9 +1181,8 @@ variable RD-END
    4 0 ?do 0 RD-EQ loop
    files-at refsu + RD-EQ  len files-at - refsu - RD-EQ
    srcu RD-EQ
-   GOOD? 0= if exit then
-   SHA-CTX src srcu INPUT-SUM SHA256-IN
    INPUT-SUM KEY-BYTES RD-SAME
+   PREFIX-SUM KEY-BYTES RD-SAME
    refsu FILES-CK ;
 
 
@@ -1393,34 +1431,130 @@ variable RD-END
    OWN-DATA-MAX @ d > if BAD then ;
 
 
-\ FILE-KEY's object, whole, into OBJECT through one descriptor, so a build renaming a
-\ new object over the path cannot tear the read; false when it is missing. Takes and
-\ drops a flag, READ-OBJECT's answer should it throw.
-: READ-AT ( bool -- bool )
-   drop
-   FILE-KEY KEY-HEX SHA256>HEX
-   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ FS:OPEN-SIZED {: file:fd size:n found:bool :}
+\ The file at the path, whole, into the buffer through one descriptor, so a build renaming
+\ a new file over the path cannot tear the read; false when it is missing.
+: READ-INTO ( ptr u8 n ptr a -- bool )
+   {: path:ptr pathu:n buf:ptr :}
+   path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
-   OBJECT BUF:CLEAR
-   file  OBJECT size BUF:N>BLEN BUF:GROW SPAN:$  FS:READ-SIZED
+   buf BUF:CLEAR
+   file  buf size BUF:N>BLEN BUF:GROW SPAN:$  FS:READ-SIZED
    true ;
 
-\ FILE-KEY's object, whole, into OBJECT; false when it is missing or cannot be opened or
-\ read, so the file compiles and its write replaces the object. Any other throw passes.
-: READ-OBJECT ( -- bool )
-   false ['] READ-AT catch {: ok code:n :}
+\ READ-INTO with its inputs kept beneath its answer, so a catch around it keeps the stack's shape.
+: READ-KEEPING ( ptr u8 n ptr a bool -- ptr u8 n ptr a bool )
+   drop {: path:ptr pathu:n buf:ptr :}
+   path pathu buf  path pathu buf READ-INTO ;
+
+\ READ-INTO, false also when the path cannot be opened (too long, a 0 byte) or the file read;
+\ any other throw passes.
+: READ-WHOLE ( ptr u8 n ptr a -- bool )
+   false ['] READ-KEEPING catch {: path pathu buf ok code:n :}
    code 0= if ok exit then
-   code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or if false exit then
+   code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or
+   code E-FS-PATH = or  code E-FFI-NUL = or  if false exit then
    code throw ;
 
+\ FILE-KEY's object, whole, into OBJECT; false when it is missing or cannot be opened or
+\ read, so the file compiles and its write replaces the object.
+: READ-OBJECT ( -- bool )
+   FILE-KEY KEY-HEX SHA256>HEX
+   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ OBJECT READ-WHOLE ;
 
-\ After KEY!, given the runner's source bytes: true when FILE-KEY's object reads whole and
-\ checks. It applies nothing; a false answer means the file compiles.
-: FRESH? ( ptr u8 n -- bool )
-   {: src:ptr srcu:n :}
+
+\ After START-SUMS, given the source's size: true when FILE-KEY's object reads whole and its
+\ header, INPUT and FILES check (HEADER-CK).
+: HEADER-FRESH? ( n -- bool )
+   {: srcu:n :}
    READ-OBJECT 0= if false exit then
-   src srcu HEADER-CK  ENTRIES-CK  CODE-CK  DATA-CK
+   srcu HEADER-CK  GOOD? ;
+
+
+\ After START-SUMS, given the source's size: true when FILE-KEY's object reads whole and
+\ checks. It applies nothing.
+: FRESH? ( n -- bool )
+   HEADER-FRESH? 0= if false exit then
+   ENTRIES-CK  CODE-CK  DATA-CK
    GOOD? ;
+
+\ ---- the load list -------------------------------------------------------------
+PATH-CAP BUFFER: LIST-PATH
+variable LIST-AT                     \ the walk's offset in LOAD-LIST
+
+: LIST-PATH$ ( -- ptr u8 n )
+   BUILD-OUT:BASE$ s" loads" LIST-PATH FS:JOIN-PATH {: u:n :}
+   LIST-PATH u ;
+
+\ LOAD-LIST to <out>/loads, which the next build's WALK reads.
+: WRITE-LIST ( -- ) LIST-PATH$ LOAD-LIST BYTES$ FS:ATOMIC-WRITE-FILE ;
+: LIST-RESET ( -- ) LOAD-LIST BUF:CLEAR  s" HABULOAD" LOAD-LIST SPAN+ ;
+
+
+\ The next u bytes of LOAD-LIST at LIST-AT, past them, and true; false when fewer remain.
+: LIST-TAKE ( n -- ptr u8 n bool )
+   {: u:n :}
+   LOAD-LIST BYTES$ {: a:ptr len:n :}
+   LIST-AT @ {: at:n :}
+   u 0<  u len at - >  or if a 0 false exit then
+   u LIST-AT +!
+   a at +  u  true ;
+
+
+\ The next FIELD+ of LOAD-LIST, and true; false when it does not read whole.
+: LIST-FIELD ( -- ptr u8 n bool )
+   8 LIST-TAKE {: a:ptr u:n ok:bool :}
+   ok 0= if a 0 false exit then
+   a LE:U64@ LIST-TAKE ;
+
+
+\ The next row of LOAD-LIST: true when it reads whole, its source reads from the OS and its object's
+\ header is fresh (HEADER-FRESH?), then BUILT+; other SOURCE-INPUT bytes mean compiling or E-STALE once.
+: WALK-ROW ( -- bool )
+   KEY-BYTES LIST-TAKE {: key:ptr keyu:n key-ok:bool :}
+   LIST-FIELD {: path:ptr pathu:n path-ok:bool :}
+   LIST-FIELD {: root:ptr rootu:n root-ok:bool :}
+   key-ok path-ok and root-ok and 0= if false exit then
+   key FILE-KEY keyu BYTE-COPY
+   path pathu WALK-SRC READ-WHOLE 0= if false exit then
+   WALK-SRC BYTES$ {: src:ptr srcu:n :}
+   src srcu SOURCE-ROOT:SHEBANG-COMMENT
+   src srcu START-SUMS
+   srcu HEADER-FRESH? 0= if false exit then
+   BUILT+ true ;
+
+
+\ True when LOAD-LIST holds the magic and at least one row, and every row is fresh (WALK-ROW).
+: WALK-ROWS ( -- bool )
+   0 LIST-AT !
+   8 LIST-TAKE {: m:ptr mu:n ok:bool :}
+   ok 0= if false exit then
+   m mu s" HABULOAD" STR= 0= if false exit then
+   LOAD-LIST BYTES$ nip {: len:n :}
+   LIST-AT @ len = if false exit then
+   begin LIST-AT @ len < while
+      WALK-ROW 0= if false exit then
+   repeat
+   true ;
+
+
+\ No ENTRIES-CK, CODE-CK or DATA-CK: they read what linking the earlier files makes, and a
+\ checksum, source, prefix and FILES rows that match name the object a compile wrote.
+: WALK ( -- )
+   LIST-PATH$ LOAD-LIST READ-WHOLE if WALK-ROWS else false then
+   if construct link-mode open else construct link-mode compiling then SO-FAR !
+   BUILT BUF:CLEAR  STARTED BUF:CLEAR  OBJECT BUF:CLEAR
+   LIST-RESET ;
+
+\ WALK at the build's first file, before its KEY!: a build starting no load reads no list.
+: WALK-ONCE ( -- )
+   SO-FAR @
+   MATCH link-mode
+      unread OF WALK ENDOF
+      open OF E-COMP-STATE throw ENDOF
+      compiling OF ENDOF
+      linking OF ENDOF
+      stale OF E-COMP-STATE throw ENDOF
+   ;MATCH ;
 
 \ ---- linking an object ---------------------------------------------------------
 \ The words a link of a fresh object applies it with, once FRESH? answers true: each
@@ -1880,17 +2014,27 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ;MATCH ;
 
 
-\ Given whether the file's object is fresh: a link from any mode is linked; a compile after a link is
-\ E-STALE, the step failed first so a later GOING throws E-FAILED.
-: NEXT-MODE ( bool -- )
-   if construct link-mode linked SO-FAR ! exit then
+\ After START-SUMS, given the source's size: true when the file links. A stale file while linking
+\ sets the mode stale and the step failed before E-STALE, so a later GOING throws E-FAILED.
+: LINKS? ( n -- bool )
+   {: srcu:n :}
    SO-FAR @
    MATCH link-mode
-      none OF ENDOF
-      compiled OF ENDOF
-      linked OF construct step failed PROGRESS !  E-STALE throw ENDOF
-   ;MATCH
-   construct link-mode compiled SO-FAR ! ;
+      unread OF E-COMP-STATE throw ENDOF
+      open OF
+         srcu FRESH? dup if construct link-mode linking else construct link-mode compiling then
+         SO-FAR !
+      ENDOF
+      compiling OF false ENDOF
+      linking OF
+         srcu FRESH? 0= if
+            construct link-mode stale SO-FAR !
+            construct step failed PROGRESS !  E-STALE throw
+         then
+         true
+      ENDOF
+      stale OF E-COMP-STATE throw ENDOF
+   ;MATCH ;
 
 
 \ The fresh object as the file's result, added to BUILT; a throw leaves the step at loading.
@@ -1901,20 +2045,21 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    construct step open PROGRESS ! ;
 
 
-\ A file whose object is fresh is linked (LINK-FILE); any other compiles, unless a file was linked
-\ before it (NEXT-MODE), and is counted and written when DP never moved back. Any throw after GOING ends the build, the next GOING throwing E-FAILED.
+\ Links the file or compiles it as the mode says (LINKS?), counting and writing a compile when DP
+\ never moved back. Any throw after GOING ends the build, the next GOING throwing E-FAILED.
 : RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    LOADER$ nip 0<> if E-COMP-STATE throw then
    GOING
    construct step loading PROGRESS !
+   WALK-ONCE
    path pathu root rootu UNDER-ROOT KEY!
+   path pathu root rootu LIST-ROW+
    ndict@ FILE-REC !  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !   \ hb's DATA, where namespace-record and namespace-private mint ids
-   source sourceu FRESH? {: fresh:bool :}
-   fresh NEXT-MODE
-   fresh if LINK-FILE exit then
+   source sourceu START-SUMS
+   sourceu LINKS? if LINK-FILE exit then
    COPY-BELOW
    PUSH-KEY
    0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
@@ -1927,7 +2072,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ids held > if construct step failed PROGRESS !  E-WORDLIST throw then
    ids held < if E-COMP-STATE throw then
    1 COMPILED-N +!
-   source sourceu WRITE-OBJECT
+   sourceu WRITE-OBJECT
    BUILT+
    construct step open PROGRESS ! ;
 
@@ -1947,7 +2092,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    construct step open PROGRESS ! ;
 
 : OPEN ( -- )
-   0 COMPILED-N !  construct link-mode none SO-FAR !
+   0 COMPILED-N !  construct link-mode unread SO-FAR !
    INSTALL-LOOP
    MAP SHADOW MOVE-IN CHECK-IN REQUIRE-FRESH OBJECTS-IN ROUTE IMAGE-IN ;
 
@@ -2015,7 +2160,19 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 : CLOSE ( -- )
    begin UNDO 0= until ;
 
-: RUN ( -- ) OPEN BODY @ execute ;
+\ The list is written once a load started, even when the body throws; a stale build writes the
+\ magic alone, so the next build compiles every file. A throw from the write passes.
+: WRITE-STARTED ( -- )
+   SO-FAR @
+   MATCH link-mode
+      unread OF ENDOF
+      open OF WRITE-LIST ENDOF
+      compiling OF WRITE-LIST ENDOF
+      linking OF WRITE-LIST ENDOF
+      stale OF LIST-RESET WRITE-LIST ENDOF
+   ;MATCH ;
+
+: RUN ( -- ) OPEN [: BODY @ execute ;] [: WRITE-STARTED ;] finally ;
 
 : IDLE? ( -- bool )
    PROGRESS @

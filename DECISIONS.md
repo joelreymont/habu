@@ -1175,14 +1175,32 @@ learned live in the docs for their subject.
   definition and any emission the shadow has not filed, the build fails
   (LINKER:E-FAILED), and its close drops the shadow emissions, records and code
   the link made. A file found stale after a linked one ends the build with
-  `-9692 LINKER:E-STALE` until a restart lands: rerunning the build's body would
-  print its output twice and break a body that catches. A file that makes a
+  `-9692 LINKER:E-STALE`, not a restart: rerunning the build's body would print
+  its output twice and break a body that catches. A file that makes a
   wordlist its records do not account for ends the build with `-9693
   LINKER:E-WORDLIST`. LINKER:WRITE sorts the program's address-cell list by
   offset, so the program does not depend on the order cells were marked. Left to
   later steps: a does> slot a clause patched, the error-code chain, loader state
-  at a file's start, checker facts for a compile after a link, and freshness
-  against earlier files an object does not reference.
+  at a file's start, and checker facts for a compile after a link.
+- 2026-11-07, a warm build after an edit: under the same words of Joel's ("i'm
+  leaving for the night so make your own judgement and do everything without
+  asking me. apply the what's best for long term criteria", then "get the
+  incremental builds done already") the lead settled what a warm build does
+  after an edit. Until a file can compile after a linked one, a build decides
+  at its first file whether it links every file or compiles every file. A build
+  that started a file's load writes `<out>/loads`: `HABULOAD`, then per started
+  load its key, path and root. The next build's first file reads it and checks
+  each listed file's object; the build links every file only when all are
+  fresh, and compiles every file when one is stale or the list is missing,
+  unreadable or malformed. A build that loads no file reads and writes no list.
+  A file's freshness covers every file loaded before it: an object records a
+  SHA-256 over the keys and source sums of the files loaded before it in its
+  build. An object carries a SHA-256 over its own bytes, checked before
+  anything else; a mismatch makes its file compile. A file stale after a linked
+  one, when the body loads other files or another order than the list's or a
+  source reader serves other bytes than the file's, ends the build with
+  LINKER:E-STALE, and that build writes an empty list, so the next build
+  compiles every file.
 - 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
   for DP, kept only by the old string store so a failed line's rollback never
   drops DP below strings compiled code points at, and asked when it should go,
