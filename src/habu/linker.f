@@ -148,6 +148,8 @@ create SRC-COPY BUF:HDR-BYTES allot  \ a checked request's bytes as the loader r
 create OBJECT BUF:HDR-BYTES allot    \ a key's fields, then an object's bytes
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
 create LATE BUF:HDR-BYTES allot      \ the file's late private wordlists
+create LOAD-PATHS BUF:HDR-BYTES allot \ each load's key, then its path below its root as a FIELD+
+DYNAMIC-BUFFER BUILT-PATHS n         \ BUILT row r's path: its FIELD+'s offset in LOAD-PATHS
 SHA256-CTX-BYTES BUFFER: SHA-CTX
 KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
@@ -255,7 +257,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
-   CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
+   BUILT-PATHS-RELEASE  LOAD-PATHS BUF:DISPOSE  CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
    PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE
    PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
@@ -278,6 +280,7 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    OBJECT 256 BUF:N>BLEN BUF:INIT
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
    LATE 256 BUF:N>BLEN BUF:INIT
+   LOAD-PATHS 256 BUF:N>BLEN BUF:INIT
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
@@ -355,6 +358,22 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    {: path:ptr pathu:n :}
    pathu PATH-CAP min {: u:n :}
    path FILE-PATH u BYTE-COPY  u FILE-PATH-N ! ;
+
+\ FILE-KEY's load into LOAD-PATHS, with the path below the root that resolved it, as the
+\ program's map names the file.
+: PATH+ ( ptr u8 n ptr u8 n -- )
+   SOURCE-ROOT:RELATIVE {: rel:ptr relu:n :}
+   FILE-KEY KEY-BYTES LOAD-PATHS SPAN+
+   rel relu LOAD-PATHS FIELD+ ;
+
+\ The offset in LOAD-PATHS of FILE-KEY's path; a piece's BUILT row follows its file's load.
+: KEY-PATH ( -- n )
+   LOAD-PATHS BYTES$ {: a:ptr u:n :}
+   0 begin dup u < while
+      a over + KEY-BYTES  FILE-KEY KEY-BYTES  STR= if KEY-BYTES + exit then
+      KEY-BYTES +  a over + LE:U64@ +  8 +
+   repeat
+   drop E-COMP-STATE throw ;
 
 \ ---- the records ---------------------------------------------------------------
 \ No address reaches PIECES: a record is named by file and index, code and data by
@@ -1432,10 +1451,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 \ The checksum of OBJECT, the object written or read.
 : OBJECT-SUM ( -- ptr u8 ) OBJECT BYTES$ drop 8 KEY-BYTES + + ;
 
-\ The piece's BUILT row with its sum; NAMES takes its records.
+\ The piece's BUILT row with its sum and its file's path; NAMES takes its records.
 : BUILT+ ( ptr u8 -- )
    {: sum:ptr :}
    ndict@ BUILT-N INDEX-RECS
+   BUILT-N 1 + BUILT-PATHS-RESERVE  KEY-PATH BUILT-N BUILT-PATHS !
    FILE-KEY KEY-BYTES BUILT SPAN+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
    sum KEY-BYTES BUILT SPAN+
@@ -3075,6 +3095,7 @@ HEADER-BYTES 16 - constant PIECES-FIELD
    {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
    path pathu KEY!
    path pathu PATH!
+   path pathu root rootu PATH+
    MARKS
    source sourceu INPUT!
    NAMED!

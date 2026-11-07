@@ -35,9 +35,10 @@
 \ and main.f's literal with the bytes of HI's text lies at that text. Objects
 \ carry texts by value: D's, A's and C's shared objects stay byte-equal. A's
 \ program prints Hi and ok and exits 0, run in its own process: the boundary
-\ under test is the written file. Then five warm builds in A's out root. A2
-\ compiles none, prints A's state and writes A's program byte for byte, A's
-\ objects unchanged and its records' texts A's. A3, after one byte of the string green in an object
+\ under test is the written file. A's map lists RUN as main.f's. Then
+\ five warm builds in A's out root. A2 compiles none, prints A's state and
+\ writes A's program and map byte for byte, A's objects unchanged and its
+\ records' texts A's. A3, after one byte of the string green in an object
 \ changes, A4, after count.f's object is cut to half its length, and A5, on
 \ macOS, after it grows to 2^48 bytes, more than a build can hold, each compile
 \ the damaged file alone, whose object comes back with its old bytes, so the
@@ -336,6 +337,14 @@ variable INPUT-N                         \ those holding count.f's INPUT
    ;MATCH {: lineu:n :}
    rest lineu text textu ENDS-WITH? ;
 
+\ A's map lists RUN as a word main.f loaded; a map lists only the code its
+\ program holds.
+: CHECK-MAP ( -- )
+   s" A" WHICH!
+   A$ s" prog.map" IN$ PROG-1 PROG-CAP FS:READ-ALL {: u:n :}
+   s" the map lists RUN as main.f's" LABEL
+   PROG-1 u s\"  RUN word loaded test/fixtures/file-objects/main.f\n" CONTAINS? TTRUE ;
+
 \ A file's texts and the body's are placed, and a later file's literal finds an earlier file's text.
 : CHECK-FACTS ( -- )
    s" A" WHICH!
@@ -393,12 +402,14 @@ variable INPUT-N                         \ those holding count.f's INPUT
    NAMES-B NAMES-B-U @ s" .hfo" COUNT-SUB FILES-B T=
    s" the names are eight keys" LABEL  NAMES-B-U @ FILES-B LISTING-BYTES T=
    s" A" WHICH!  B-NAMES  SAME-AS-D
-   CHECK-FACTS CHECK-STOP CHECK-EDIT CHECK-E ;
+   CHECK-MAP CHECK-FACTS CHECK-STOP CHECK-EDIT CHECK-E ;
 
-\ Moves A's program to prog-cold, so A2 writes its own.
+\ Moves A's program and map to prog-cold and prog-cold.map, so A2 writes its own.
 : COLD-ASIDE ( -- )
    A$ s" prog-cold" JOINED-2 FS:JOIN-PATH {: u:n :}
-   A$ s" prog" IN$ JOINED-2 u FS:RENAME-FILE ;
+   A$ s" prog" IN$ JOINED-2 u FS:RENAME-FILE
+   A$ s" prog-cold.map" JOINED-2 FS:JOIN-PATH {: v:n :}
+   A$ s" prog.map" IN$ JOINED-2 v FS:RENAME-FILE ;
 
 \ Moves E's program to prog-cold, so E2 writes its own.
 : COLD-ASIDE-E ( -- )
@@ -419,13 +430,15 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" the program has E's bytes" LABEL  E$ s" prog" E$ s" prog-cold" SAME-FILE? TTRUE ;
 
 \ A build of A's files in A's out root, whose last line is the given one:
-\ it prints A's state, writes A's program and leaves A's objects with D's bytes.
+\ it prints A's state, writes A's program and map and leaves A's objects with
+\ D's bytes.
 : WARM ( CMD:command ptr u8 n -- CMD:command )
    {: last:ptr lastu:n :}
    A$ s" " last lastu STATE-W BUILD {: u:n :}
    u 0 < if exit then
    s" the build prints A's state" LABEL  STATE-W u STATE-A STATE-A-U @ T$=
    s" the program has A's bytes" LABEL  A$ s" prog" A$ s" prog-cold" SAME-FILE? TTRUE
+   s" the map has A's bytes" LABEL  A$ s" prog.map" A$ s" prog-cold.map" SAME-FILE? TTRUE
    RELIST-A
    s" A's root still holds seven objects" LABEL  NAMES-A-U @ FILES LISTING-BYTES T=
    SAME-AS-D ;

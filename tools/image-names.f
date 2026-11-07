@@ -157,7 +157,8 @@ public
    INDEX-ROWS ;
 
 \ The ordered rows must tile the physical app/code region without a duplicate
-\ or a gap; a map from another image attributes nothing unless they do.
+\ or a gap; a map from another image attributes nothing unless they do. An
+\ alias row names code a row before it charged.
 : CODE-ATTR ( n -- bool ) {: size:n :}
    0 ATTR-TOTAL ! 0 ATTR-BAKED ! 0 ATTR-LOADED !
    0 ATTR-GENERATED ! 0 ATTR-UNKNOWN ! 0 ATTR-OK !
@@ -173,7 +174,8 @@ public
          row rowu bytes ORIGIN+
          ATTR-TOTAL @ bytes + ATTR-TOTAL !
       else
-         row rowu COL-KIND @ FIELD$ s" namespace" STR= 0= if false exit then
+         row rowu COL-KIND @ FIELD$ {: kind:ptr kindu:n :}
+         kind kindu s" namespace" STR=  kind kindu s" alias" STR= or 0= if false exit then
       then
    repeat
    ATTR-TOTAL @ size = dup ATTR-OK ! ;

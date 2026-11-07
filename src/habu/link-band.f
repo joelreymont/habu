@@ -20,6 +20,10 @@ private
 DYNAMIC-BUFFER OFFSETS n
 : OFFSET@ ( n -- n ) OFFSETS @ ;
 
+\ The band's first byte, where the kernel ends, and the byte after its last (LAYOUT).
+variable BAND-AT
+variable BAND-END
+
 \ The host-entry table over HM: a shadow record's host entry to the record.
 DYNAMIC-BUFFER ENTRY-KEYS n
 DYNAMIC-BUFFER ENTRY-USED n
@@ -333,7 +337,7 @@ variable UNSAFE-COUNT
 \ Each placed emission from A64ICODE:ASM-LEN on, in emission order.
 : LAYOUT ( -- )
    NSHADOW:EMISSIONS OFFSETS-RESERVE
-   A64ICODE:ASM-LEN
+   A64ICODE:ASM-LEN  dup BAND-AT !
    NSHADOW:EMISSIONS 0 ?do
       i PLACED @ 0= if
          -1 i OFFSETS !
@@ -345,7 +349,7 @@ variable UNSAFE-COUNT
          dup i OFFSETS !  i NSHADOW:SIZE +
       then
    loop
-   drop ;
+   BAND-END ! ;
 
 
 \ A host address's link address: a placed product routine's entry, a kernel

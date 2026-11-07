@@ -293,11 +293,20 @@ public
    ENGINE-EMIT:KERNEL HOST-ENTRIES ;
 
 
-\ The product kernel offset of the primitive that enters the running hb at the
+\ The kernel's first byte, where the start-up ends; CUT keeps the start-up whole.
+: KERNEL-AT ( -- n ) K0 @ 4 * ;
+
+
+\ The product kernel row of the primitive that enters the running hb at the
 \ host address, or -1 when no host-entry row enters exactly there.
-: KERNEL-ENTRY ( n -- n )
+: KERNEL-ROW ( n -- n )
    FIND dup 0 < if exit then
-   ROWS @ PRIM-OFFSET ;
+   ROWS @ ;
+
+\ That primitive's product kernel offset, or -1.
+: KERNEL-ENTRY ( n -- n )
+   KERNEL-ROW dup 0 < if exit then
+   PRIM-OFFSET ;
 
 
 \ Keeps the kernel code at a label; one bound outside the kernel keeps nothing.

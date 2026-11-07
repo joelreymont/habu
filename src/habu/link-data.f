@@ -25,6 +25,7 @@ require src/habu/crash.f
 require src/habu/habu2.f
 require src/habu/linker.f
 require src/habu/link-band.f
+require src/habu/link-map.f
 
 package LINKER
 private
@@ -190,36 +191,13 @@ DYNAMIC-BUFFER NAME-AT n
    CODE-END-CELL A64ICODE:DCQ, ;
 
 
-\ ---- an engine's records and wordlist ids ---------------------------------------
-\ A record index holds only in the process that made it, and so does a wordlist
-\ id: the product numbers its kernel's primitives [0, P) as EMIT-DICT lays them
-\ and each build record r at P + (r - FIRST-REC). The build's global and
-\ namespace marker become the product's (0, WL:NAMESPACE), the ids the build
-\ minted follow FIRST-DYNAMIC-WID in mint order, and the engine's own ids below
-\ it and the retired markers stay. An object names neither: the shift probe
-\ moves no object cell by a wordlist id.
-
-\ The first id the build minted after its global and namespace (MOVE-IN).
-: FIRST-WID ( -- n ) BOOT:GLOBAL-WL  BOOT:NAMESPACE-WL negate  max 1 + ;
+\ ---- an engine's records ------------------------------------------------------------
+\ A record index holds only in the process that made it: the product numbers its
+\ kernel's primitives [0, P) as EMIT-DICT lays them and each build record r at
+\ P + (r - FIRST-REC). link-map.f WID-MAP numbers the product's wordlist ids.
 
 \ The product's WIDN-CELL.
 : PRODUCT-WIDN ( -- n ) FIRST-DYNAMIC-WID  WIDN-CELL HOST@ +  FIRST-WID - ;
-
-: BAD-WID ( n n -- )
-   {: wid:n r:n :}
-   s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  holds wordlist " SAY wid SAY-INT
-   s" , which the build did not make" SAY SAY-CR
-   s" link: a record holds a wordlist the product cannot name" 74 die ;
-
-\ Build record r's wordlist id wid as the product numbers it.
-: WID-MAP ( n n -- n )
-   {: wid:n r:n :}
-   wid BOOT:GLOBAL-WL = if 0 exit then
-   wid BOOT:NAMESPACE-WL = if WL:NAMESPACE exit then
-   wid 0 >=  wid FIRST-DYNAMIC-WID < and if wid exit then
-   wid XREF:RETIRED-WL? if wid exit then
-   wid FIRST-WID >=  wid WIDN-CELL HOST@ < and if FIRST-DYNAMIC-WID wid + FIRST-WID - exit then
-   wid r BAD-WID ;
 
 
 \ The product kernel's primitive count and record k's cell, as EMIT-DICT laid
@@ -433,8 +411,9 @@ public
 
 \ Link the open space's program and write it, signed, to the path; the caller
 \ first stores its entry, a stripped program's as app-image-core.f START! does,
-\ an engine's in ENGINE-MAIN:XT-CELL. The facts texts the build's body held lie
-\ after every file, so no file's literal can name one.
+\ an engine's in ENGINE-MAIN:XT-CELL, and writes its names beside it as
+\ <path>.map. The facts texts the build's body held lie after every file, so
+\ no file's literal can name one.
 : WRITE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    false GOING
@@ -444,6 +423,7 @@ public
       s" link: the build stored no entry for the program" 74 die
    then
    ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
-   SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE ;
+   SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE
+   path pathu DATA-IMAGE-AT WRITE-MAP ;
 
 ;package
