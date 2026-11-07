@@ -12800,10 +12800,10 @@ public
 ;package
 
 package CHECK
+public
 \ While a build's space is open no record holds a text: one laid then lands in
 \ DATA only if no earlier file of the build has it.
 : BUILDING? ( -- bool ) data-base BOOT:IMAGE-BASE-CELL + @ 0 <> ;
-public
 \ Stores the interned text's offset in the record's bytes 32-39.
 : FACTS! ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
@@ -12813,6 +12813,15 @@ public
 : LAY-FACTS ( ptr u8 n -- )
    BUILDING? IF 2drop EXIT THEN
    INTERN:TEXT drop ;
+\ Stores the offset of the text if it is interned, else 0; an empty text stores
+\ 0. A created word only finds its definer's text, and must not keep a stale one.
+: FIND-FACTS! ( ptr u8 n n -- )
+   {: a:ptr u:n ix:n :}
+   BUILDING? IF EXIT THEN
+   u 0= IF 0 ix record-facts! EXIT THEN
+   a u INTERN:FIND {: body:n :}
+   body 0= IF 0 ELSE body data-base NULL-PTR - - THEN
+   ix record-facts! ;
 ;package
 
 package CHECKER-RESOLVE

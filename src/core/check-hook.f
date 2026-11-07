@@ -109,6 +109,18 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    CHECK-RC throw ;
 
 
+\ Whether sym's newest effect has a facts text that says it, left in RSBUF.
+: FACTS-TEXT? ( n -- bool )
+   {: sym:n :}
+   sym 0= if RES-FALSE exit then
+   sym USIG-NEWEST {: rec1:n :}
+   rec1 0= if RES-FALSE exit then
+   rec1 1 - E-PTR ER.ACTIVE @ EFF-ACTIVE <> if RES-FALSE exit then
+   sym FACTS-SAME? 0= if RES-FALSE exit then
+   sym FACTS-TAGS
+   RQM @ 0= ;
+
+
 \ The does> field entry, once the definer's record ndict@ 1 - is appended: it
 \ refuses nothing and writes facts only there, as `: PKG:X` hands it the tail X.
 : DOES-PUBLISHED ( ptr u8 n bool -- )
@@ -116,21 +128,36 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    a u committed CHECKER-NATIVE-DOES-FINISH
    committed 0= if exit then
    a u CHECKER-RECORD-SYM? {: sym:n :}
-   sym 0= if exit then
-   sym USIG-NEWEST {: rec1:n :}
-   rec1 0= if exit then
-   rec1 1 - E-PTR ER.ACTIVE @ EFF-ACTIVE <> if exit then
+   sym FACTS-TEXT? 0= if exit then
    sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
    ix ndict@ 1 - <> if exit then
-   sym FACTS-SAME? 0= if exit then
-   sym FACTS-TAGS
-   RQM @ 0 <> if exit then
    RSBUF RSN @ ix CHECK:FACTS!
    sym NORET-CREATES@ {: made:n :}
    made 0= if exit then
    0 RSN !  made 1 - REND-RECORD
    RQM @ 0 <> if 2drop exit then
    CHECK:LAY-FACTS ;
+
+
+\ checker.f's TRUST-RAW, the registrar RAW-OFF held before RAW-DECLARED: a
+\ checked body cannot name it (UNSAFE-TOK?), so the entry calls its token.
+variable RAW-REG
+CAST: RAW-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
+
+
+\ The raw registrar's field entry. A created word or constant gets the text its
+\ definer laid, looked up and never laid here, and 0 when none says its effect.
+: RAW-DECLARED ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su RAW-REG @ RAW-XT execute
+   CHECK:BUILDING? if exit then
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or if exit then
+   data-base CHECKER-REG:CK-LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
+   rec NULL-PTR = if exit then
+   rec CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   ix 0 < if exit then
+   LASTC-LINK-SYM FACTS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then
+   ix CHECK:FIND-FACTS! ;
 
 
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject
@@ -165,8 +192,11 @@ TRUSTED: INSTALL ( -- )
    ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;
 
-\ Replaces checker.f's CHECKER-NATIVE-DOES-FINISH now that the renderer exists.
+\ Replace checker.f's CHECKER-NATIVE-DOES-FINISH and TRUST-RAW now that the
+\ renderer exists.
 ' DOES-PUBLISHED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
+CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + CELL-VIEW @ RAW-REG xt!
+' RAW-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + xt!
 INSTALL
 
 ;package
