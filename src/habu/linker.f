@@ -33,6 +33,7 @@ require src/compiler/native/abi.f
 require src/compiler/native/shadow.f
 require src/compiler/native/publish.f
 require src/habu/link-band.f
+require src/core/facts-read.f
 
 \ The linker's failed build: -9690..-9699, minted here, beside the package its
 \ codes belong to (docs/forth-card.md § 6).
@@ -2030,13 +2031,18 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 
 \ OBJECT's FACTS held again, then placed at here with the rest the file held: a cold build
 \ places from the object it wrote, a warm one from the object it read, so both lay one text.
-: LINK-FACTS ( -- )
+\ A link also reads each record's text back into the checker, as its compile taught it.
+: LINK-FACTS ( bool -- )
+   {: read:bool :}
    FACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: ix:n :}
       RD-NAME {: a:ptr u:n :}
       GOOD? 0= if E-COMP-STATE throw then
-      ix 0< if a u CHECK:LAY-FACTS else a u FILE-REC @ ix + CHECK:FACTS! then
+      ix 0< if a u CHECK:LAY-FACTS else
+         a u FILE-REC @ ix + CHECK:FACTS!
+         read if a u FILE-REC @ ix + CHECK:READ-FACTS then
+      then
    loop
    GOOD? 0= if E-COMP-STATE throw then
    FILE-HELD @ CHECK:PLACE-FACTS ;
@@ -2172,7 +2178,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
 \ The fresh object as the file's result, added to BUILT with its placed texts; a throw leaves
 \ the step at loading.
 : LINK-FILE ( -- )
-   LINK-OBJECT  LINK-FACTS
+   LINK-OBJECT  true LINK-FACTS
    here NULL-PTR - FILE-END !
    BUILT+
    construct step open PROGRESS ! ;
@@ -2207,7 +2213,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ids held < if E-COMP-STATE throw then
    1 COMPILED-N +!
    sourceu WRITE-OBJECT
-   FILE-HELD @ CHECK:DROP-FACTS  LINK-FACTS
+   FILE-HELD @ CHECK:DROP-FACTS  false LINK-FACTS
    here NULL-PTR - FILE-END !          \ the file's span ends after its texts
    BUILT+
    construct step open PROGRESS ! ;
