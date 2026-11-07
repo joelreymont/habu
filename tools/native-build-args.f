@@ -27,9 +27,11 @@ variable TARGET-EXPLICIT
 : WHITEBOX-ARG$ ( -- ptr u8 n ) s" whitebox" ;
 
 \ `whitebox` after the output path asks for the unsealed host. Answers the index
-\ of the next argument, which the target parser accepts or refuses.
+\ of the next argument, which the target parser accepts or refuses. Name
+\ stripping is off (DECISIONS.md "privacy"), so every build is whitebox and the
+\ argument changes nothing until the dot habu-re-enable-hb-a2404c26 lands.
 : CLASS-ARG! ( -- n )
-   CLASS-SEALED CLASS-WANTED !
+   CLASS-WHITEBOX CLASS-WANTED !
    SCRIPT-ARGC 2 < if 1 exit then
    1 SCRIPT-ARGV$ WHITEBOX-ARG$ STR= 0= if 1 exit then
    CLASS-WHITEBOX CLASS-WANTED ! 2 ;

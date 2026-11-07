@@ -391,7 +391,13 @@ learned live in the docs for their subject.
   build strips private names. On 2026-11-06, told that the installed hb keeps
   its private names and that nothing strips them, Joel wrote "we need to
   deploy T0 ASAP and can tweak sealing and stripping later": the hb the
-  cross-build writes keeps its private names until after the T0 release.
+  cross-build writes keeps its private names until after the T0 release. On
+  2026-11-07, shown that the hb build's seal drops the name of a public checker
+  word with no effect row, so the linker's new words and a probe of them cost a
+  second, unsealed build and a hunt, Joel wrote "disable name stripping if it's
+  slowing you down and make a dot to re-enable it later". It was: the hb build
+  keeps every name until the privacy design strips private names again; a dot
+  tracks re-enabling it.
 - 2026-10-27, formats: "why do you need to version any schemas? we have no
   legacy. hard cutover only!" On 2026-11-03, told that a cached native unit
   file carries a format number that the family-words change alters, and that
