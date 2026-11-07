@@ -1434,14 +1434,28 @@ variable RD-END
    OWN-DATA-MAX @ d > if BAD then ;
 
 
+variable READ-FD                     \ READ-INTO's open descriptor until FS:READ-SIZED owns it
+
+\ The buffer grown to the file's size, then the file read into it; a size the buffer cannot
+\ hold throws before FS:READ-SIZED owns the descriptor.
+: READ-BODY ( fd n ptr a -- )
+   {: file:fd size:n buf:ptr :}
+   buf BUF:CLEAR
+   file  buf size BUF:N>BLEN BUF:GROW SPAN:$
+   -1 READ-FD !  FS:READ-SIZED ;
+
+: READ-DONE ( -- )
+   READ-FD @ 0 >= if READ-FD @ close then
+   -1 READ-FD ! ;
+
 \ The file at the path, whole, into the buffer through one descriptor, so a build renaming
 \ a new file over the path cannot tear the read; false when it is missing.
 : READ-INTO ( ptr u8 n ptr a -- bool )
    {: path:ptr pathu:n buf:ptr :}
    path pathu FS:OPEN-SIZED {: file:fd size:n found:bool :}
    found 0= if false exit then
-   buf BUF:CLEAR
-   file  buf size BUF:N>BLEN BUF:GROW SPAN:$  FS:READ-SIZED
+   file FD>N READ-FD !
+   file size buf [: READ-BODY ;] [: READ-DONE ;] finally
    true ;
 
 \ READ-INTO with its inputs kept beneath its answer, so a catch around it keeps the stack's shape.
@@ -1449,13 +1463,13 @@ variable RD-END
    drop {: path:ptr pathu:n buf:ptr :}
    path pathu buf  path pathu buf READ-INTO ;
 
-\ READ-INTO, false also when the path cannot be opened (too long, a 0 byte) or the file read;
-\ any other throw passes.
+\ READ-INTO, false also when the path cannot be opened (too long, a 0 byte), the file read or
+\ a buffer of its size mapped (E-MEM-MAP); any other throw passes.
 : READ-WHOLE ( ptr u8 n ptr a -- bool )
    false ['] READ-KEEPING catch {: path pathu buf ok code:n :}
    code 0= if ok exit then
    code E-FS-OPEN =  code E-FS-STAT = or  code E-FS-IO = or
-   code E-FS-PATH = or  code E-FFI-NUL = or  if false exit then
+   code E-FS-PATH = or  code E-FFI-NUL = or  code E-MEM-MAP = or  if false exit then
    code throw ;
 
 \ FILE-KEY's object, whole, into OBJECT; false when it is missing or cannot be opened or

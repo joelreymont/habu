@@ -16,10 +16,11 @@
 \ eight objects, and the two whose names A also wrote, count.f's and shape.f's,
 \ have A's bytes: a refused file writes none. A's program prints Hi and ok and
 \ exits 0, run in its own process: the boundary under test is the written file.
-\ Then four warm builds in A's out root. A2 compiles none, prints A's state and
+\ Then five warm builds in A's out root. A2 compiles none, prints A's state and
 \ writes A's program byte for byte, A's objects unchanged. A3, after one byte of
-\ the string green in an object changes, and A4, after count.f's object is cut
-\ to half its length, each compile all seven with A2's outcome. B2, in `second`
+\ the string green in an object changes, A4, after count.f's object is cut to
+\ half its length, and A5, on macOS, after it grows to 2^48 bytes, more than a
+\ build can hold, each compile all seven with A2's outcome. B2, in `second`
 \ mode, loads pad.f, which A's builds never loaded, first, so it compiles all
 \ eight, prints B's state, writes B's program and leaves A's root holding B's
 \ objects. Each warm build compares its program's bytes, its printed state and
@@ -30,6 +31,7 @@ require src/lib/string.f
 require src/lib/test.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fd.f
 require src/lib/fs-list.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
@@ -331,11 +333,16 @@ variable INPUT-N                         \ those holding count.f's INPUT
    ;MATCH
    k A-OBJ$ BYTES-A u FS:WRITE-ALL ;
 
-\ A4's edit: count.f's object, found by its INPUT, cut to half its length.
-: CUT ( -- )
+\ The listing index of count.f's object, found by its INPUT, or -1 after a failed check.
+: COUNT-OBJ ( -- n )
    s" test/fixtures/file-objects/count.f" EXPECT!
    EXPECT INPUT-BYTES HOLDING {: k:n :}
    s" one of A's objects holds count.f's size and SHA-256" LABEL  k 0 >= TTRUE
+   k ;
+
+\ A4's edit: count.f's object cut to half its length.
+: CUT ( -- )
+   COUNT-OBJ {: k:n :}
    k 0 < if exit then
    k A-OBJECT {: u:n :}
    k A-OBJ$ BYTES-A u 2 / FS:WRITE-ALL ;
@@ -343,8 +350,22 @@ variable INPUT-N                         \ those holding count.f's INPUT
 : WARM-FLIP ( CMD:command -- CMD:command )
    s" A3" WHICH!  FLIP  s\" compiled 7\n" WARM ;
 
+\ A5's edit: count.f's object grown in place to 2^48 bytes, past what mmap maps on an arm64
+\ host; the bytes added are a hole, so the disk holds none.
+: GROW ( -- )
+   COUNT-OBJ {: k:n :}
+   k 0 < if exit then
+   k A-OBJ$ FS:OPEN-APPEND-FD >FD {: f:fd :}
+   f 1 48 lshift FD:RESIZE
+   f FD>N close ;
+
 : WARM-CUT ( CMD:command -- CMD:command )
    s" A4" WHICH!  CUT  s\" compiled 7\n" WARM ;
+
+\ macOS only: Linux ext4 refuses a file past 16 TiB, so FD:RESIZE throws E-FS-IO there.
+: WARM-GROW ( CMD:command -- CMD:command )
+   HB-TARGET-MACOS? 0= if exit then
+   s" A5" WHICH!  GROW  s\" compiled 7\n" WARM ;
 
 : WARM-B ( CMD:command -- CMD:command )
    s" B2" WHICH!
@@ -359,7 +380,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
 : CHECKS ( -- )
    [: COLD ;] CMD:WITH-COMMAND
    CHECK-COLD
-   [: WARM-A WARM-FLIP WARM-CUT WARM-B ;] CMD:WITH-COMMAND ;
+   [: WARM-A WARM-FLIP WARM-CUT WARM-GROW WARM-B ;] CMD:WITH-COMMAND ;
 
 
 : REMOVE-A ( -- ) A$ FS:REMOVE-TREE ;
