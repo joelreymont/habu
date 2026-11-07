@@ -1,10 +1,13 @@
 \ link-band.f - the arm64 shadow emissions a program's roots reach, or every one
 \ for an engine, laid out back to back after the kernel in A64ICODE's code
-\ buffer and placed at TEXT-VA plus their offset there. Words visible only
+\ buffer and placed at TEXT-VA plus their offset there; a defer's emission is
+\ followed by its trailer, as publish.f COMMIT-DEFER lays it. Words visible only
 \ inside LINKER.
 
 require src/lib/hashmap.f
+require src/habu/layout.f
 require src/habu/xref.f
+require src/compiler/native/dict.f
 require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
@@ -19,6 +22,10 @@ private
 \ Emission e's byte offset in A64ICODE's code buffer, -1 when it is not placed.
 DYNAMIC-BUFFER OFFSETS n
 : OFFSET@ ( n -- n ) OFFSETS @ ;
+
+\ Emission e's defer trailer: the host dispatch cell it names, 0 for none (LAYOUT).
+DYNAMIC-BUFFER TRAILERS n
+2 cells constant TRAILER-BYTES
 
 \ The band's first byte, where the kernel ends, and the byte after its last (LAYOUT).
 variable BAND-AT
@@ -334,11 +341,33 @@ variable UNSAFE-COUNT
    NSHADOW:EMISSIONS 0 ?do 1 i PLACED ! loop ;
 
 
-\ Each placed emission from A64ICODE:ASM-LEN on, in emission order.
+\ The dispatch cell of the defer whose record emission e holds, or 0. The record
+\ spans the whole emission, so the product's entry plus its length is the trailer,
+\ where dict.f TRAILER-CELL reads it.
+: EM-TRAILER ( n -- n )
+   {: e:n :}
+   e EM-FIRST @
+   begin dup 0 >= while
+      dup NSHADOW:RECORD@ XREF-REC {: rec:ptr :}
+      rec NDICT:TRAILER-CELL {: cell:n :}
+      cell 0<> if
+         NSHADOW:ENTRY@ rec XREF-LEN +  e NSHADOW:SIZE <> if
+            s" link: the defer " SAY rec XREF-NAME$ SAY s"  does not end its routine" SAY SAY-CR
+            s" link: a defer does not end its routine" 74 die
+         then
+         cell exit
+      then
+      REC-NEXT @
+   repeat
+   drop 0 ;
+
+\ Each placed emission from A64ICODE:ASM-LEN on, in emission order, a defer's
+\ with room for its trailer.
 : LAYOUT ( -- )
-   NSHADOW:EMISSIONS OFFSETS-RESERVE
+   NSHADOW:EMISSIONS OFFSETS-RESERVE  NSHADOW:EMISSIONS TRAILERS-RESERVE
    A64ICODE:ASM-LEN  dup BAND-AT !
    NSHADOW:EMISSIONS 0 ?do
+      0 i TRAILERS !
       i PLACED @ 0= if
          -1 i OFFSETS !
       else
@@ -347,6 +376,9 @@ variable UNSAFE-COUNT
             s" link: a routine is not whole 4-byte words" 74 die
          then
          dup i OFFSETS !  i NSHADOW:SIZE +
+         i EM-TRAILER {: cell:n :}
+         cell i TRAILERS !
+         cell 0<> if TRAILER-BYTES + then
       then
    loop
    BAND-END ! ;
@@ -382,6 +414,8 @@ variable UNSAFE-COUNT
    s" link: a product routine names a word outside the product" 74 die ;
 
 
+\ Emission e's code, then a defer's trailer: DEFER-MAGIC and its dispatch cell
+\ through data.
 : PLACE-ONE ( n [ n -- n ] -- )
    {: e:n data :}
    e NSHADOW:SIZE 4 / {: words:n :}
@@ -389,7 +423,9 @@ variable UNSAFE-COUNT
    e PLACING !
    e  A64ICODE:CODE e OFFSET@ +  TEXT-VA e OFFSET@ +  data  ['] TARGET-ADDRESS
    ARM64:PLACE
-   words A64ICODE:ASM-CP +! ;
+   words A64ICODE:ASM-CP +!
+   e TRAILERS @ {: cell:n :}
+   cell 0<> if DEFER-MAGIC A64ICODE:DCQ,  cell data execute A64ICODE:DCQ, then ;
 
 
 \ Each placed emission, after the kernel ARM64:KERNEL wrote, its data addresses
