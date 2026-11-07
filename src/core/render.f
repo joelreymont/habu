@@ -8,20 +8,23 @@ using TFAM
 
 create ECH 1 allot
 variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
-\ RSBUF and RSN outlive no record: RSBUF is mapped on first use and released
-\ at snapshot (REND-SNAPSHOT-RESET); snap-lib.f SND-ZERO-LIVE zeroes RSN in an
+\ RSBUF and RSN outlive no record. RSBUF is mapped on first use;
+\ REND-SNAPSHOT-RESET releases it, and snap-lib.f SND-ZERO-LIVE zeroes RSN in an
 \ image.
 16384 constant RSBUF-FIRST                \ bytes of the first mapping
 PERSISTED-PTR-VARIABLE RSBUF-P   NULL-PTR RSBUF-P !
 variable RSBUF-CAP   0 RSBUF-CAP !        \ bytes mapped at RSBUF-P, 0 for none
 variable RSN
 
+
 : RSBUF-MAP ( -- )
    RSBUF-FIRST ARENA-ALLOC-BYTES RSBUF-P !  RSBUF-FIRST RSBUF-CAP ! ;
+
 
 : RSBUF ( -- ptr u8 )
    RSBUF-CAP @ 0= IF RSBUF-MAP THEN
    RSBUF-P @ ;
+
 
 \ Doubles RSBUF, keeping its bytes; a span taken from it before is stale.
 : RSBUF-GROW ( -- )
@@ -29,6 +32,8 @@ variable RSN
    RSBUF-CAP @ {: oc:n :}
    RSBUF-P @ oc oc 2 * ARENA-BYTES-GROW RSBUF-P !
    oc 2 * RSBUF-CAP ! ;
+
+
 \ RQM: the text cannot say the effect, so REC-SIG does not record it; set where the
 \ text writes `?` and where it meets a type or row no signature spells.
 variable RQM
@@ -413,13 +418,12 @@ create RROW-KEY RROW-CAP cells allot   variable RROW-N   0 RROW-N !
 
 \ RPOS holds a (tail, owner) pair per row REND-EFFECT's first pass visits: owner
 \ 0 is the effect's data rows, 1 its return rows, 2v and 2v+1 the v-th quotation's.
-\ It is mapped on first use and released at snapshot (REND-SNAPSHOT-RESET).
+\ It is mapped on first use; REND-SNAPSHOT-RESET releases it.
 PERSISTED-PTR-VARIABLE RPOS-P   NULL-PTR RPOS-P !
 variable RPOS-CAP   0 RPOS-CAP !          \ pairs mapped at RPOS-P, 0 for none
 variable RPOS-N   variable RVISIT
 : RPOS ( -- ptr n ) RPOS-P @ ;
 
-\ ARENA-ROWS-ENSURE maps 64 pairs first, then doubles RPOS, keeping its pairs.
 : RPOS+ ( n n -- )
    {: t:n owner:n :}
    RPOS-P RPOS-CAP RPOS-N @ 1 + 2 ARENA-ROWS-ENSURE
@@ -881,9 +885,8 @@ variable DSUGE  variable DSUGA
 \ hold it (TAIL-ROW), so a join whose two callables read alike still says which
 \ side escaped. MDIAG gates every read, so a capture an abandoned trial made is
 \ never rendered.
-\ TCAP is mapped by the first capture and released at snapshot
-\ (REND-SNAPSHOT-RESET); its lengths are 0 until a capture, so a reader reads
-\ nothing.
+\ TCAP is mapped by the first capture; REND-SNAPSHOT-RESET releases it. Its
+\ lengths are 0 until a capture, so a reader reads nothing.
 4096 constant TCAP-FIRST                  \ bytes of the first mapping
 PERSISTED-PTR-VARIABLE TCAP-P   NULL-PTR TCAP-P !
 variable TCAP-CAP   0 TCAP-CAP !          \ bytes mapped at TCAP-P, 0 for none
@@ -932,6 +935,9 @@ variable TCAP-INF   variable TCAP-EXP   variable TCAP-ACT   variable TCAP-HELD
 TAIL-CAPTURE-INSTALL
 
 
+\ Releases every render buffer, so no mapping's address enters an image. It runs
+\ through REG-SCRATCH-SNAP-XT at image capture (CHECKER-QUIESCE-END) and at
+\ every file boundary (CHECKER-REG:FILE-SCRATCH-RETIRE).
 : REND-SNAPSHOT-RESET ( -- )
    SEEN-RELEASE
    RSBUF-P @ RSBUF-CAP @ ARENA-UNMAP  NULL-PTR RSBUF-P !  0 RSBUF-CAP !  0 RSN !

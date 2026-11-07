@@ -156,7 +156,7 @@ CAST: >WIDE ( n -- wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
    s" its inferred effect is the body's up to the refusal, not the declared one" T-LABEL
    s" -1 JSON-DIAGS ! : CS-K22 ( x -- x n n ) [: 1 ;] CHECKER-SOUNDNESS:TAIL-ONCE ;" 70
    s" a -- a [ -- n ] " SUBJECT:REFUSED? TTRUE
-   s" a capture past the render buffers' first sizes grows them and keeps later row tails" T-LABEL
+   s" a capture past the render buffers' first sizes grows them and leaves later renders without row tails" T-LABEL
    CAPTURE-PAST$ CHECK-QUIET-CANDIDATE! 0 T=
    \ The subject is a fork of this process, so it renders with the grown buffers.
    s" : CS-K91 ( -- ) [: CHECKER-SOUNDNESS:TAKE-U8 ;] CHECKER-SOUNDNESS:CALL-I64 ;" 70

@@ -642,7 +642,8 @@ s" wrong-effect recursion rejects" T-LABEL
 s" CREC-BAD ( n -- n ) dup recurse" CHECK-QUIET-CANDIDATE! 0 T=
 s" sig-less recursion stays uncheckable" T-LABEL
 s" CREC-SIGLESS dup recurse" CHECK-QUIET-CANDIDATE! 1 T=
-\ An effect's text longer than the first render buffer, about 18 KB, records.
+\ An effect's text longer than the first render buffer, about 18 KB, records;
+\ TQ:QQ below, with 80 quotation inputs, takes RPOS past its first 64 pairs.
 VALUE-RECORD rsw3-wide-value-rec f10aaaaaaaaaaaaa n f11aaaaaaaaaaaaa n f12aaaaaaaaaaaaa n f13aaaaaaaaaaaaa n f14aaaaaaaaaaaaa n f15aaaaaaaaaaaaa n f16aaaaaaaaaaaaa n f17aaaaaaaaaaaaa n f18aaaaaaaaaaaaa n f19aaaaaaaaaaaaa n f20aaaaaaaaaaaaa n f21aaaaaaaaaaaaa n f22aaaaaaaaaaaaa n f23aaaaaaaaaaaaa n f24aaaaaaaaaaaaa n f25aaaaaaaaaaaaa n f26aaaaaaaaaaaaa n f27aaaaaaaaaaaaa n f28aaaaaaaaaaaaa n f29aaaaaaaaaaaaa n f30aaaaaaaaaaaaa n f31aaaaaaaaaaaaa n f32aaaaaaaaaaaaa n f33aaaaaaaaaaaaa n f34aaaaaaaaaaaaa n f35aaaaaaaaaaaaa n f36aaaaaaaaaaaaa n f37aaaaaaaaaaaaa n f38aaaaaaaaaaaaa n f39aaaaaaaaaaaaa n f40aaaaaaaaaaaaa n f41aaaaaaaaaaaaa n f42aaaaaaaaaaaaa n f43aaaaaaaaaaaaa n f44aaaaaaaaaaaaa n f45aaaaaaaaaaaaa n f46aaaaaaaaaaaaa n f47aaaaaaaaaaaaa n f48aaaaaaaaaaaaa n f49aaaaaaaaaaaaa n f50aaaaaaaaaaaaa n f51aaaaaaaaaaaaa n f52aaaaaaaaaaaaa n f53aaaaaaaaaaaaa n f54aaaaaaaaaaaaa n f55aaaaaaaaaaaaa n f56aaaaaaaaaaaaa n f57aaaaaaaaaaaaa n f58aaaaaaaaaaaaa n f59aaaaaaaaaaaaa n f60aaaaaaaaaaaaa n f61aaaaaaaaaaaaa n f62aaaaaaaaaaaaa n f63aaaaaaaaaaaaa n f64aaaaaaaaaaaaa n f65aaaaaaaaaaaaa n f66aaaaaaaaaaaaa n f67aaaaaaaaaaaaa n f68aaaaaaaaaaaaa n f69aaaaaaaaaaaaa n END-VALUE-RECORD
 : RSW3 ( rsw3-wide-value-rec rsw3-wide-value-rec rsw3-wide-value-rec -- rsw3-wide-value-rec rsw3-wide-value-rec rsw3-wide-value-rec ) ;
 s" a caller of a word whose facts text passes 16 KB calls the recorded word" T-LABEL
