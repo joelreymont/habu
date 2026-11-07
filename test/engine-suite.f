@@ -603,7 +603,8 @@ DIAG-BUFFER$ s" effect not recorded" CONTAINS? TFALSE
 \ Past its 23 letters an effect's text names a type variable or binder by its
 \ ordinal, so a word with up to TYPE-VAR-MAX names records; past that it does not.
 defer T-V14 ( -- a b c d e g h i j k l m o p )
-\ RSV28C and RSB24C certify against the recorded effects of RSV28 and RSB24.
+\ A caller of an unrecorded word is E-UNDEFINED, so RSV28C and RSB24C certify
+\ only when RSV28 and RSB24 recorded.
 : RSV28 T-V14 T-V14 ;
 s" a caller of RSV28 calls the recorded word" T-LABEL
 s" RSV28C RSV28" CHECK-QUIET-CANDIDATE! -1 T=
@@ -622,6 +623,15 @@ s" 276 type variables: the refusal names the word" T-LABEL
 DIAG-BUFFER$ s" rsq276" CONTAINS? TTRUE
 s" 276 type variables: the refusal names the reason" T-LABEL
 DIAG-BUFFER$ s" more than 256 type variables or binders" CONTAINS? TTRUE
+\ RSF33's inferred effect nests one binder per call of T-UN, 33 in all.
+defer T-MK ( -- a )
+: T-UN ( forall<p,[ a -- ]> -- a ) drop T-MK ;
+s" 33 nested binders certify" T-LABEL
+s" RSF33 T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN T-UN" CHECK-QUIET-CANDIDATE! -1 T=
+s" 33 nested binders: the refusal names the word" T-LABEL
+DIAG-BUFFER$ s" rsf33" CONTAINS? TTRUE
+s" 33 nested binders: the refusal names the reason" T-LABEL
+DIAG-BUFFER$ s" more than 32 nested binders" CONTAINS? TTRUE
 DIAG-BUFFER-OFF
 s" a source signature cannot name a type variable by its ordinal" T-LABEL
 s" RSO23 ( 23 -- 23 )" CHECK-QUIET-CANDIDATE! -1 = TFALSE

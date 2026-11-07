@@ -1743,10 +1743,9 @@ BADSIG-DIAG-INSTALL
    RSBUF-FLUSH ;
 
 \ Why a certified sig-less word stays unrecorded: more than TYPE-VAR-MAX names
-\ (VAR-NAME wrote '?', not an unmodeled tag), more than BINDER-DEPTH-MAX nested
-\ binders (RBIND-FULL), a row the text cannot say (RROW-UNSAID), or any other RQM
-\ cause, as an unmodeled tag. Digits, letters and spaces only, so one word serves
-\ the prose line and the JSON string.
+\ ('?' stood for a name past it, not an unmodeled tag), more than
+\ BINDER-DEPTH-MAX nested binders (RBIND-FULL), a row the text cannot say
+\ (RROW-UNSAID), or any other RQM cause, as an unmodeled tag.
 : REC-REFUSE-WHY ( -- )
    NLET @ TYPE-VAR-MAX > IF
       s" more than " DTXT  TYPE-VAR-MAX JNUM
