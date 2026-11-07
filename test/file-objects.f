@@ -15,7 +15,7 @@
 \ sequence's fourth build, of d.f alone, compiles 1: d.f's object's prefix sums
 \ c.f. Two files named a.f in two directories, each built alone in turn twice,
 \ compile 1, 1, 0 and 0: each keeps an object of its own. The crafted
-\ sequence's builds of e.f over four objects the link refuses or links wrong,
+\ sequence's builds of e.f over seven objects the link refuses or links wrong,
 \ each with its checksum written again, compile 1, and a plain build after them
 \ links. C writes eleven objects, and the two whose names A also wrote,
 \ count.f's and shape.f's, have A's bytes: a refused file writes none. A's
@@ -283,8 +283,8 @@ variable INPUT-N                         \ those holding count.f's INPUT
    STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" CONTAINS? TTRUE
    s" the twin builds compile 1, 1, 0 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
-   s" the crafted builds compile 1, 1, 1, 1, 1 and 0 files" LABEL
-   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 0\n" CONTAINS? TTRUE ;
+   s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE ;
 
 : COLD ( CMD:command -- CMD:command )
    s" A" WHICH!  A$ s" " s\" compiled 7\n" STATE-A BUILD 0 max STATE-A-U !

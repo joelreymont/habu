@@ -1301,7 +1301,9 @@ variable RD-END
    RD-U64 {: kind:n :}
    kind 0<  kind KIND-PRIVATE >  or if BAD exit then
    kind KIND-PRIVATE = if
-      PKG-REF-CK  GOOD? if PRIV+ else 2drop then
+      \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it).
+      PKG-REF-CK {: file:n idx:n :}
+      GOOD? if file idx PRIVATE? if BAD else file idx PRIV+ then then
       -1 LAST-EM ! exit
    then
    NAME-CK  FLAGS-CK  kind ROLE-CK
@@ -1367,15 +1369,18 @@ variable RD-END
    BAD ;
 
 
-\ The does> slot: -1, or its site and its target's reference.
+\ The does> slot: -1, or its site, holding the zeroed slot EMISSION-CODE+ writes, and its target,
+\ none: the link links no slot a clause patched (NEMIT-FILL).
 : SLOT-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: p:n :}
    p -1 = if exit then
    p 0<  p 3 and 0<>  or  p s 4 - >  or if BAD exit then
+   GOOD? if
+      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  p +  LE:U32@ 0<> if BAD then
+   then
    RD-REF {: tag:n x:n y:n z:n :}
-   tag 5 = if exit then
-   tag x y z top  top EM-RECS @ 1 +  CODE-REF-CK ;
+   tag 5 <> if BAD then ;
 
 
 \ Emission e (EMISSION-CODE+): its offset into EM-OFFS, then S, R, S bytes, F offsets, calls,
