@@ -1545,8 +1545,8 @@ variable RD-END
    BAD ;
 
 
-\ The does> slot: -1, or its site, holding the zeroed slot EMISSION-CODE+ writes, and its target,
-\ none: the link links no slot a clause patched (NEMIT-FILL).
+\ The does> slot: -1, or its site, holding the zeroed slot EMISSION-CODE+ writes, and its target:
+\ none while no clause patched it, else the clause's entry, checked as a call's.
 : SLOT-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: p:n :}
@@ -1556,7 +1556,8 @@ variable RD-END
       OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  p +  LE:U32@ 0<> if BAD then
    then
    RD-REF {: tag:n x:n y:n z:n :}
-   tag 5 <> if BAD then ;
+   tag 5 = if exit then
+   tag x y z top  top EM-RECS @ 1 +  CODE-REF-CK ;
 
 
 \ Emission e (EMISSION-CODE+): its offset into EM-OFFS, then S, R, S bytes, F offsets, calls,
@@ -1889,7 +1890,8 @@ variable LINK-EM                     \ that emission's number in this object, -1
 
 \ This object's emission e (CODE+) sealed in NEMIT over CODE-COPY, as its compile sealed it: each
 \ call site the compile's unplaced call, each address chain its value, the does> slot a return.
-: NEMIT-FILL ( n -- )
+\ The answer is the entry of the clause that patched the slot, 0 for none.
+: NEMIT-FILL ( n -- n )
    {: e:n :}
    e EM-OFFS @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 RD-U64 {: s:n r:n :}
@@ -1922,16 +1924,17 @@ variable LINK-EM                     \ that emission's number in this object, -1
       site nk -1 NEMIT:ADDR-SITE+
       k 0<> if site HOST-ADDR+ then
    loop
-   \ A slot a clause patched is not linked yet.
    RD-U64 {: p:n :}
    p 0 >= if
       RD-REF {: tag:n x:n y:n z:n :}
-      tag 5 <> if E-COMP-STATE throw then
       A64ASM:ENC-RET  copy p +  LE:U32!
       p NEMIT:PATCH-SLOT!
-   then
+      tag 5 = if 0 else tag x y z RESOLVE then
+   else
+      0
+   then {: patch:n :}
    GOOD? 0= if E-COMP-STATE throw then
-   NEMIT:SEAL ;
+   NEMIT:SEAL  patch ;
 
 
 \ The function of this object's emission e, from 1, that starts off bytes in (DOES-ENTRY-CK).
@@ -1969,11 +1972,13 @@ variable LINK-EM                     \ that emission's number in this object, -1
    a u wid  flags  DKIND:MASK DNAME-CELL or DNAME-ALLOC or  and  OUTER:DEF-RECORD
    NPUB:NEXT-SLOT {: fn:n :}
    want LINK-SELF !  fn LINK-FN !  e LINK-EM !
-   e NEMIT-FILL
+   e NEMIT-FILL {: patch:n :}
    does if j NSHADOW:TAKE-DOES else NSHADOW:TAKE then
    fn NSHADOW:SOURCE-FUNS
    NEMIT:CLEAR
    want NSHADOW:PUBLISH
+   \ As the does> primitive's patch: PLACE then writes the slot as a branch to the clause.
+   patch 0<> if want patch NSHADOW:PATCH-DOES then
    CODE-COPY BYTES$ drop {: copy:ptr :}
    \ The call targets and chains already hold host values, so both resolvers answer what they get.
    NSHADOW:EMISSIONS 1 -  copy  fn  [: ;] [: ;]  ARM64:PLACE
