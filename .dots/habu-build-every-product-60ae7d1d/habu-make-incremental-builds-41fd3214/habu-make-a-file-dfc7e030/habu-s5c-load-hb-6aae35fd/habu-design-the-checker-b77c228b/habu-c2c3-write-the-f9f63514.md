@@ -1,9 +1,11 @@
 ---
 title: "C2c3: write the facts of defers, casts, created words and definers"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-11-06T23:55:34.819909+02:00"
+closed-at: "2026-11-07T07:18:08.071143+02:00"
+close-reason: "landed (lanes 1-3): gate /tmp/jc.ZV gen2=gen3, suite 292/293 (svg-pdf red from cairo's deflated CreationDate, fixed dd05aba7); lane reviews and landing review ACCEPT"
 blocks:
   - habu-c2c2-store-a-34061842
 ---

@@ -237,6 +237,14 @@ learned live in the docs for their subject.
   typed data: every save writes them null and the saved program maps a fresh
   table on its first lookup. A text laid before the save stays in DATA; the
   fresh table does not hold it, so interning that text again lays a copy.
+  Under the same words the lead chose that only a colon definition's text is
+  refused at its `;` when it does not say what the body proved: a does> definer,
+  a created word, a constant, a TRUSTED: word, a defer, a `cast:` and a
+  `linear:` declaration whose text does not say its effect store 0, which fails
+  closed once a program the new linker wrote reads it; their named refusals come
+  with C2e, and a does> definer's before its publication with C5. A registrar a
+  checked body cannot name (`trust-raw`, `trust-decl`, `checker-defcast`) is run
+  through the token its field held before check-hook.f's entry replaced it.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package

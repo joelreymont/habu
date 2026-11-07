@@ -139,17 +139,19 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    CHECK:LAY-FACTS ;
 
 
-\ checker.f's TRUST-RAW, the registrar RAW-OFF held before RAW-DECLARED: a
-\ checked body cannot name it (UNSAFE-TOK?), so the entry calls its token.
+\ checker.f's TRUST-RAW, TRUST-DECL and CHECKER-DEFCAST, which the fields held:
+\ a checked body cannot name them (UNSAFE-TOK?), so each entry calls its token.
 variable RAW-REG
-CAST: RAW-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
+variable DECL-REG
+variable DEFCAST-REG
+CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 
 \ The raw registrar's field entry. A created word or constant gets the text its
 \ definer laid, looked up and never laid here, and 0 when none says its effect.
 : RAW-DECLARED ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
-   na nu sa su RAW-REG @ RAW-XT execute
+   na nu sa su RAW-REG @ REG-XT execute
    CHECK:BUILDING? if exit then
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or if exit then
    data-base CHECKER-REG:CK-LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
@@ -158,6 +160,43 @@ CAST: RAW-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
    ix 0 < if exit then
    LASTC-LINK-SYM FACTS-TEXT? if RSBUF RSN @ else NULL-PTR 0 then
    ix CHECK:FIND-FACTS! ;
+
+
+\ The pending record's facts once a registrar recorded the live window for this
+\ name; an unsaid text stores 0, so no earlier registrar's text stays.
+: PENDING-FACTS ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   CHECK:BUILDING? if exit then
+   CK-LIVE-PEND? 0= if exit then
+   CK-CLOSED-OPEN @ 0= if exit then
+   DOES-SPLIT @ 0 <> if exit then
+   CK-CLOSED-SYM @ CK-CLOSED-IX @ CK-CLOSED-OFF@ CK-PEND-SYM {: sym:n :}
+   sym 0= if exit then
+   a u CHECKER-RECORD-SYM? sym <> if exit then
+   sym FACTS-TEXT? if RSBUF RSN @ CK-CLOSED-IX @ CHECK:FACTS!
+   else NULL-PTR 0 CK-CLOSED-IX @ CHECK:FIND-FACTS! then ;
+
+
+\ The declaration registrars' field entries: each runs its registrar, then lays
+\ the declared name's facts.
+: DECLARED ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su DECL-REG @ REG-XT execute  na nu PENDING-FACTS ;
+
+
+: DEFERRED ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u CHECKER-DEFER  a u PENDING-FACTS ;
+
+
+: CAST-DECLARED ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su DEFCAST-REG @ REG-XT execute  na nu PENDING-FACTS ;
+
+
+: LINEAR-DECLARED ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su CHECKER-LINEAR  na nu PENDING-FACTS ;
 
 
 \ In multi-error mode CHECK already emitted the diagnostic, counted the reject
@@ -192,11 +231,18 @@ TRUSTED: INSTALL ( -- )
    ['] PREFLIGHT set-preflight
    ['] HOOK set-check ;
 
-\ Replace checker.f's CHECKER-NATIVE-DOES-FINISH and TRUST-RAW now that the
-\ renderer exists.
+\ Replace checker.f's CHECKER-NATIVE-DOES-FINISH, TRUST-RAW, TRUST-DECL,
+\ CHECKER-DEFER, CHECKER-DEFCAST and CHECKER-LINEAR, now the renderer exists.
 ' DOES-PUBLISHED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:NATIVE-DOES-FINISH-OFF + xt!
 CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + CELL-VIEW @ RAW-REG xt!
+CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + CELL-VIEW @ DECL-REG xt!
+CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + CELL-VIEW @ DEFCAST-REG xt!
 ' RAW-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:RAW-OFF + xt!
+' DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:EFFECT-OFF + xt!
+' DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:TRUST-DECL-OFF + xt!
+' DEFERRED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:DEFER-OFF + xt!
+' CAST-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:CAST-OFF + xt!
+' LINEAR-DECLARED CHECKER-REG:DECLARATIONS CHECKER-OWNER-ABI:LINEAR-OFF + xt!
 INSTALL
 
 ;package
