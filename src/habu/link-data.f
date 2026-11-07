@@ -8,6 +8,7 @@
 
 require src/lib/error.f
 require src/lib/le.f
+require src/lib/sort.f
 require src/habu/layout.f
 require src/habu/boot-cells.f
 require src/habu/wl.f
@@ -86,6 +87,15 @@ variable LLIST-END
    p 0 COPY-AT u BYTE-COPY ;
 
 
+\ The copy's rows in cell order, not the build's mark order: the product's first
+\ MARK rebuilds the index HEADER-CELLS zeroes.
+: SORT-ROWS ( -- )
+   SNAP-RELOC:XTCELL-N-CELL ADDRESS-CELLS:BASE-FIELD +  SPACE-AT @ CELL /
+   {: at:n :}
+   ROWS nip {: n:n :}
+   n 0 > if at COPY-CELLS n [: ROW-OFF swap ROW-OFF swap < ;] SORT:SORT! then ;
+
+
 \ The link address xt cell off's value v gives the image.
 : XT-VALUE ( n n -- n )
    {: off:n v:n :}
@@ -114,12 +124,19 @@ variable LLIST-END
    off v XT-VALUE off COPY-AT LE:U64! ;
 
 
-\ A cell holding 0 holds no code address and is not listed.
+\ A cell holding 0 holds no code address and is not listed. LIST, sorts the list
+\ and SORT-ROWS the copied rows by cell: neither follows the build's mark order.
 : LIST-ROW ( n -- )
    {: row:n :}
    row XT-ROW? 0= if exit then
    row CELL-VALUE 0= if exit then
-   row ROW-OFF A64ICODE:DCQ, ;
+   LISTED-N @ 1 + LISTED-RESERVE
+   row ROW-OFF LISTED-N @ LISTED !  1 LISTED-N +! ;
+
+: LIST, ( -- )
+   LISTED-N @ {: n:n :}
+   n 0 > if 0 LISTED n [: < ;] SORT:SORT! then
+   n 0 ?do i LISTED @ A64ICODE:DCQ, loop ;
 
 
 \ A cell the build stored into would be written and slid twice.
@@ -191,12 +208,14 @@ variable LLIST-END
    PAD8
    LIMAGE A64ICODE:LABEL@ A64ICODE:LBL,
    FILL-COPY
+   SORT-ROWS
    ['] COPY-ROW EACH-ROW
    HEADER-CELLS
    RUNS,
    LIMAGE-END A64ICODE:LABEL@ A64ICODE:LBL,
    LLIST A64ICODE:LABEL@ A64ICODE:LBL,
-   ['] LIST-ROW EACH-ROW
+   0 LISTED-N !  ['] LIST-ROW EACH-ROW
+   LIST,
    LIST-HEADER
    LLIST-END A64ICODE:LABEL@ A64ICODE:LBL, ;
 

@@ -362,6 +362,20 @@ public
    NHOST:PUBLISH-TAKEN
    at ;
 
+\ A prepared defer body: its record spans the whole body; the trailer naming `cell` follows at
+\ fn + size, the code pointer where COMMIT-DEFER lays it: an arm64 code slot is one instruction word.
+: IMPORT-PENDING-DEFER ( ptr u8 n ptr n n ptr n n bool n n -- n )
+   {: code:ptr size:n calls:ptr calln:n
+      addrs:ptr addrn:n wide:bool minin:n cell:n :}
+   minin MIN-IN-CK
+   code size  size CODE-SPAN:EXACT  calls calln addrs addrn TRAILER-BYTES IMPORT-CODE
+      {: idx:n fn:n :}
+   cell fn size + TRAILER-PLACE
+   idx APPEND-PENDING
+   idx wide minin IMPORT-MARKS
+   NHOST:PUBLISH-TAKEN
+   idx ;
+
 : IMPORT-FILE-UNIT ( ptr u8 n ptr u8 n ptr n n ptr n n -- )
    IMPORT-UNIT ;
 

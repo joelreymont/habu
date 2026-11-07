@@ -44,12 +44,14 @@ variable TOK-BODY-RAW
 \ `linear:` and `defer` heads' alone.
 TRUSTED: DEF-TRUST-SIG ( ptr u8 n -- ) trust-sig! ;
 
+public
 \ Ending or abandoning a definition also ends the capture's lexical state.
 \ No local outlives its definition, as habu2.f C-CLEAR-LOCALS ends them on
 \ arm64: x86-64's def-close (kernel-x64.f DEF-CLOSE-BODY) leaves the locals
 \ count, so `;` clears it here. def-abort clears it on both.
 : DEF-CLOSE ( -- ) def-close  0 LOCN-CELL CELL!  BODY-LEX-RESET ;
 : DEF-ABORT ( -- ) def-abort BODY-LEX-RESET ;
+private
 
 \ The engine's cells hold the compiler entries, the preflight, the def and body
 \ hooks and the checker's declaration operations as raw execution tokens.
@@ -347,12 +349,9 @@ private
    DEF-COMPILER 0<> if exit then
    s" hb: native compiler dispatch unset" ENGINE-ERROR:AOT-SEED FAIL-CLOSED ;
 
-\ The tail and its wordlist pass the wall, the room and the duplicate test,
-\ then the name's code room, before def-open writes anything (habu2.f
-\ EMIT-QUALIFY-DEF, EMIT-STORE-DEF-NAME). The
-\ refusals name the token, but the wall and the code room name the tail. The
-\ kind is the record's: 0 for a body the compiler compiles, DKIND:ADDR for a
-\ created word, DKIND:VAL for a constant, DKIND:CAST for a retype.
+public
+\ The tail passes the wall, room, duplicate and code room tests before def-open writes; the wall
+\ and code room name the tail, the rest the token. kind: 0 (compiled), DKIND:ADDR, VAL or CAST.
 : DEF-RECORD ( ptr u8 n n n -- ) {: a:ptr u:n wid:n kind:n :}
    a u DEF-WALL
    PKG-DICT-ROOM
@@ -361,6 +360,7 @@ private
    then
    a u PKG-CODE-ROOM
    a u wid kind def-open ;
+private
 
 \ The capture seeded with the name, the spelling the checker is told.
 : DEF-SEED ( -- )

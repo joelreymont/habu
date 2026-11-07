@@ -219,6 +219,17 @@ SPACE-IMAGE IMAGE-LIFECYCLE:PROCESS-CELL
 SPACE-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
 OWN-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
 
+public
+\ A file object's link puts a body the build's data holds, as EACH-STRING hands it,
+\ into the table; no build space open, or a body whose text it holds, is E-COMP-STATE.
+: ADOPT ( n -- )
+   {: body:n :}
+   SPACE? 0= if E-COMP-STATE throw then
+   data-base DPHW-CELL + @ 0<> if E-INTERN-REWIND throw then
+   body SPACE-ADOPT 0<> if E-COMP-STATE throw then ;
+
+private
+
 \ ---- putting one in ------------------------------------------------------------
 \ The last segment cannot take the body: open the pool's next one behind it. A
 \ closed pool's would land past its window's end, outside the image.

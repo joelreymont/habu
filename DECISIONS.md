@@ -1103,6 +1103,37 @@ learned live in the docs for their subject.
   file holds, ends the build with `LINKER:E-STORE`, and an address cell below
   its data off a cell boundary ends it with E-COMP-STATE, as one in its own
   data does.
+- 2026-11-07, linking a file's object: Joel had written the night before "i'm
+  leaving for the night so make your own judgement and do everything without
+  asking me. apply the what's best for long term criteria", and then "get the
+  incremental builds done already". Under those words the lead settled how a
+  warm build links an unchanged file's object instead of compiling it. A file
+  links when its object reads whole and checks before anything is applied: its
+  key, the size and SHA-256 of the runner's bytes, its sections in bounds, every
+  reference resolvable, and each earlier file it names found in this build by
+  key with an equal object SHA-256; any other file compiles. An object the build
+  cannot open or read counts as stale, and its file compiles. The link remakes
+  the compile's result through the owners' words, with no owner rows and no new
+  object section: `OUTER:DEF-RECORD ( ptr u8 n n n -- )`, `OUTER:PACKAGE-RECORD
+  ( ptr u8 n bool -- n )`, `OUTER:PACKAGE-PRIVATE ( n -- )`, `OUTER:ALIAS-RECORD
+  ( ptr u8 n n n -- )`, `OUTER:DEF-CLOSE ( -- )` and `OUTER:DEF-ABORT ( -- )`
+  are public; `INTERN:ADOPT ( n -- )` adds each string the file laid; NEMIT's
+  fill words and NSHADOW's take, pairing and publish file the shadow emission;
+  ARM64:PLACE places the host copy, and `NPUB:IMPORT-PENDING`,
+  `IMPORT-PENDING-DOES` and `IMPORT-PENDING-DEFER` import it. The host copy
+  lists only its data address chains: ARM64:PLACE turns a code chain into
+  adrp+add, which moves with the code. A link that throws drops its open
+  definition and any emission the shadow has not filed, the build fails
+  (LINKER:E-FAILED), and its close drops the shadow emissions, records and code
+  the link made. A file found stale after a linked one ends the build with
+  `-9692 LINKER:E-STALE` until a restart lands: rerunning the build's body would
+  print its output twice and break a body that catches. A file that makes a
+  wordlist its records do not account for ends the build with `-9693
+  LINKER:E-WORDLIST`. LINKER:WRITE sorts the program's address-cell list by
+  offset, so the program does not depend on the order cells were marked. Left to
+  later steps: a does> slot a clause patched, the error-code chain, loader state
+  at a file's start, checker facts for a compile after a link, and freshness
+  against earlier files an object does not reference.
 - 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
   for DP, kept only by the old string store so a failed line's rollback never
   drops DP below strings compiled code points at, and asked when it should go,

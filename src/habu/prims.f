@@ -849,7 +849,7 @@ EPPRIM: OUTER namespace-private PE-N PE-IN ECLOSE-PRIVATE
 \ alias-record ( ptr u8 n n n -- ) name, source index, wid: publish a record
 \ carrying the source's [0] and [8], its DNAME-IMM, DNAME-WIDE and DNAME-MIN-IN
 \ bits and, from a DKIND:VAL source, that kind, as `export` does. It refuses
-\ wid -1 or -2, a source at or above NDICT, unsigned, and a namespace, retired
+\ a negative wid, a source at or above NDICT, unsigned, and a namespace, retired
 \ or DNAME-INT source. An internal body has no checker-known effect, and
 \ DNAME-INT is what keeps it inside a TRUSTED: boundary; an alias without the
 \ bit would run it from the interpret loop. `export` never reaches one: its
@@ -876,7 +876,7 @@ EPPRIM: OUTER package-scope! PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
 \ the wid in [40]; PEND-CELL is that record; TSIG, TCSIG, DOESB, CLAUSE and
 \ TRUSTED clear; DEF-TIER-CELL takes the tier latch (TIER-LATCH); LASTC-CELL
 \ waits for the body (def-close, def-create). It refuses a kind with a bit
-\ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, wid -1 or -2, and CP at or
+\ outside DKIND:MASK, DNAME-CELL and DNAME-ALLOC, a negative wid, and CP at or
 \ past the code ceiling. Latched to the JIT it opens the record only: the JIT's
 \ own head (its frame and resets) is not this row's.
 EPRIM: def-open PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN EPRIM;

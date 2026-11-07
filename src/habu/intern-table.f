@@ -227,4 +227,17 @@ private
 \ src/habu/intern.f STRING's entry while SPACE? holds.
 : SPACE-STRING ( ptr u8 n -- n ) TEXT ;
 
+
+\ src/habu/intern.f ADOPT's entry while SPACE? holds: puts a body the space's data
+\ already holds into its table and answers 0; when the table holds its text, puts
+\ nothing and answers that body.
+: SPACE-ADOPT ( n -- n )
+   {: body:n :}
+   TABLE {: t:ptr :}
+   t  t body BODY$ SLOT-FOR  SLOT-CELL @ {: held:n :}
+   held 0 <> if held exit then
+   t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
+   t body SLOT-PUT
+   0 ;
+
 ;package

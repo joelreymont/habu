@@ -4,8 +4,8 @@
 \ DEF-WL, PKG-*) exits 83: rows, scope and aliases go through the prims.f
 \ writers and CUR through set-current; the using band, DEF-TKA, DEF-TKL and
 \ layout.f PKG-OUTSIDE-CELL are not sealed and are written here. A writer
-\ refuses silently, so each engine refusal is made here. It also exports
-\ OUTER:WITHOUT-PACKAGE, which runs a quotation as at top level.
+\ refuses silently, so the words here refuse first where they can. It also
+\ exports OUTER:WITHOUT-PACKAGE, which runs a quotation as at top level.
 
 require src/lib/prelude.f
 require src/habu/boot-cells.f
@@ -173,6 +173,17 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    row XREF-PKG-PRIVATE 0= if ix namespace-private then
    ix ;
 
+public
+\ A file object's link gives package record n the private wordlist its file made;
+\ n outside the dictionary, a non-package or one holding one is E-COMP-STATE.
+: PACKAGE-PRIVATE ( n -- )
+   {: ix:n :}
+   ix 0 <  ix ndict@ >=  or if E-COMP-STATE throw then
+   ix XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL <> if E-COMP-STATE throw then
+   ix XREF-REC XREF-PKG-PRIVATE 0<> if E-COMP-STATE throw then
+   ix namespace-private ;
+private
+
 \ The index of the row `package` opens (habu2.f C-PACKAGE-ENSURE); a new row
 \ takes a public and a private wid.
 : PKG-ENSURE ( -- n )
@@ -182,6 +193,31 @@ CAST: PKG-AS-EXPORT-ACTION ( n -- [ ptr u8 n n -- ] )
    PKG-DICT-ROOM
    TOKEN$ PKG-CODE-ROOM
    TOKEN$ true namespace-record ;
+
+\ namespace-record's name refusals, as E-COMP-STATE: a colon at either edge and a
+\ second colon.
+: PKG-PATH-CK ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   a u 0 COLON-AT {: q:n :}
+   q 0 < if exit then
+   q 0=  q 1+ u =  or if E-COMP-STATE throw then
+   a u q 1+ COLON-AT 0 < 0= if E-COMP-STATE throw then ;
+
+public
+\ A file object's link records package a u, which must lie in the caller's buffer, with
+\ its private wordlist right after the public one when the flag is set, as PKG-ENSURE does.
+: PACKAGE-RECORD ( ptr u8 n bool -- n )
+   {: a:ptr u:n own:bool :}
+   u 1 < if E-COMP-STATE throw then
+   a u PKG-PATH-CK
+   PKG-DICT-ROOM
+   a u PKG-CODE-ROOM
+   a u BOOT:NAMESPACE-WL WL-PROBE XREF-FOUND? if
+      s" duplicate definition: " ERROR-TEXT:TYPE
+      a u ERROR-TEXT:TYPE PKG-RC-DUPLICATE THROW-AT
+   then
+   a u own namespace-record ;
+private
 
 \ CHECKER-RESOLVE:PART-GUARD and PART-PATH's E-PKG-CONTEXT is the engine's
 \ `package` refusal; any other code goes on.
@@ -378,6 +414,27 @@ variable USE-FLOOR
 : PKG-CLAUSE-ALIAS ( n -- ) {: k:n :}
    k XREF-REC XREF-NAME$ {: a:ptr u:n :}
    a u k get-current alias-record ;
+
+public
+\ A file object's link publishes name a u, which must lie in the caller's buffer, for record
+\ src in wordlist wid. Its own refusals are E-COMP-STATE; room and duplicate ones are PKG-EXPORT's.
+: ALIAS-RECORD ( ptr u8 n n n -- )
+   {: a:ptr u:n src:n wid:n :}
+   u 1 <  wid 0 <  or if E-COMP-STATE throw then
+   SEAL-NDICT@ 0<>  wid XREF-WID-PROTECTED?  and if E-COMP-STATE throw then
+   src 0 <  src ndict@ >=  or if E-COMP-STATE throw then
+   src XREF-REC {: rec:ptr :}
+   rec XREF-WORDLIST {: swid:n :}
+   swid XREF:PACKAGE-WL?  swid XREF:RETIRED-WL?  or if E-COMP-STATE throw then
+   rec XREF-FLAGS DNAME-INT and 0<> if E-COMP-STATE throw then
+   PKG-DICT-ROOM
+   a u PKG-CODE-ROOM
+   a u wid WL-PROBE XREF-FOUND? if
+      s" duplicate definition: " ERROR-TEXT:TYPE
+      a u ERROR-TEXT:TYPE PKG-RC-DUPLICATE THROW-AT
+   then
+   a u src wid alias-record ;
+private
 
 \ In a package, publish an existing word under its tail into the current
 \ wordlist: its code, its immediate, wide and certified-input bits, and a
