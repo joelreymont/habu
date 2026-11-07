@@ -7,13 +7,13 @@
 \ so its records, emissions, wordlist ids and data sit elsewhere, and writes
 \ seven with A's bytes: an absolute index or address in an object shows as
 \ different bytes. B loads pad.f first and writes eight, under A's names and
-\ pad.f's. Build C, in `stop` mode, runs its refused builds, its stale builds,
-\ three edit sequences, the twins and the crafted sequence in one out root: the
-\ stale build writes a load list of 8 bytes, the magic alone, the build of
-\ count.f and shape.f after it compiles 2, and so does one over a list whose
-\ path holds a 0 byte; each edit sequence compiles 2, 2 and 0, and the tail
-\ sequence's fourth build, of d.f alone, compiles 1: d.f's object's prefix sums
-\ c.f. Two files named a.f in two directories, each built alone in turn twice,
+\ pad.f's. Build C, in `stop` mode, runs its refused builds, its mixed builds,
+\ three edit sequences, the twins and the crafted sequence in one out root: a
+\ build of count.f alone links it, one of count.f and shape.f then compiles
+\ shape.f alone, after count.f links, and the next compiles none; the edit and
+\ share sequences, whose first file is edited, compile 2, 2 and 0, and the tail
+\ sequence, whose second file is, 2, 1 and 0; its fourth build, of d.f alone,
+\ compiles 1: d.f's object's prefix sums c.f. Two files named a.f in two directories, each built alone in turn twice,
 \ compile 1, 1, 0 and 0: each keeps an object of its own. The crafted
 \ sequence's builds of e.f over seven objects the link refuses or links wrong,
 \ each with its checksum written again, compile 1, and a plain build after them
@@ -29,7 +29,8 @@
 \ objects unchanged and its records' texts A's. A3, after one byte of the string green in an object
 \ changes, A4, after count.f's object is cut to half its length, and A5, on
 \ macOS, after it grows to 2^48 bytes, more than a build can hold, each compile
-\ all seven with A2's outcome. B2, in `second` mode, loads pad.f, which A's
+\ the damaged file alone, whose object comes back with its old bytes, so the
+\ later files link, with A2's outcome. B2, in `second` mode, loads pad.f, which A's
 \ builds never loaded, first, so it compiles all eight, prints B's state,
 \ writes B's program and leaves A's root holding B's objects. Each warm build
 \ compares its program's bytes, its printed state and the objects' bytes with a
@@ -277,21 +278,17 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" A wrote two of C's objects" LABEL  SHARED-N @ 2 T=
    s" one of them holds count.f's size and SHA-256" LABEL  INPUT-N @ 1 T= ;
 
-\ A stale list holds the magic alone. A corrupt list, an edited file, a first file loaded without
-\ the files its object's prefix sums, or an object the link refuses or links wrong makes the build
-\ compile every file.
+\ A file compiles when it or a file loaded before it is edited, when it is loaded without the
+\ files its object's prefix sums, or when the link refuses its object or would link it wrong; any
+\ other file links, a compile after it included.
 : CHECK-EDIT ( -- )
    s" C" WHICH!
-   s" the stale build writes an empty list" LABEL
-   STATE-W STATE-W-U @ s\" stale list: 8\n" CONTAINS? TTRUE
-   s" the stale build compiles 2 files" LABEL
-   STATE-W STATE-W-U @ s\" stale: compiled 2\n" CONTAINS? TTRUE
-   s" a corrupt list compiles every file" LABEL
-   STATE-W STATE-W-U @ s\" corrupt: compiled 2\n" CONTAINS? TTRUE
+   s" the mixed builds compile 0, 1 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" mixed: compiled 0 1 0\n" CONTAINS? TTRUE
    s" the edit builds compile 2, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" edit: compiled 2 2 0\n" CONTAINS? TTRUE
-   s" the tail builds compile 2, 2, 0 and 1 files" LABEL
-   STATE-W STATE-W-U @ s\" tail: compiled 2 2 0 1\n" CONTAINS? TTRUE
+   s" the tail builds compile 2, 1, 0 and 1 files" LABEL
+   STATE-W STATE-W-U @ s\" tail: compiled 2 1 0 1\n" CONTAINS? TTRUE
    s" the share builds compile 2, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" CONTAINS? TTRUE
    s" the twin builds compile 1, 1, 0 and 0 files" LABEL
@@ -442,7 +439,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
    k A-OBJ$ BYTES-A u 2 / FS:WRITE-ALL ;
 
 : WARM-FLIP ( CMD:command -- CMD:command )
-   s" A3" WHICH!  FLIP  s\" compiled 7\n" WARM ;
+   s" A3" WHICH!  FLIP  s\" compiled 1\n" WARM ;
 
 \ A5's edit: count.f's object grown in place to 2^48 bytes, past what mmap maps on an arm64
 \ host; the bytes added are a hole, so the disk holds none.
@@ -454,12 +451,12 @@ variable INPUT-N                         \ those holding count.f's INPUT
    f FD>N close ;
 
 : WARM-CUT ( CMD:command -- CMD:command )
-   s" A4" WHICH!  CUT  s\" compiled 7\n" WARM ;
+   s" A4" WHICH!  CUT  s\" compiled 1\n" WARM ;
 
 \ macOS only: Linux ext4 refuses a file past 16 TiB, so FD:RESIZE throws E-FS-IO there.
 : WARM-GROW ( CMD:command -- CMD:command )
    HB-TARGET-MACOS? 0= if exit then
-   s" A5" WHICH!  GROW  s\" compiled 7\n" WARM ;
+   s" A5" WHICH!  GROW  s\" compiled 1\n" WARM ;
 
 : WARM-B ( CMD:command -- CMD:command )
    s" B2" WHICH!

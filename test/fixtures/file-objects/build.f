@@ -16,12 +16,9 @@
 \ STOP-GAP's file stores into a cell the body laid, which no file holds,
 \ LINKER:E-STORE, STOP-STRADDLE's file stores into a cell straddling the
 \ header's entry cell, E-COMP-STATE, STOP-WORDLIST's file makes a wordlist,
-\ LINKER:E-WORDLIST, and STOP-STALE, after a build of count.f alone, loads
-\ count.f and then shape.f, which has no object there: LINKER:E-STALE, and a
-\ later write LINKER:E-FAILED. `stale list: ` then prints the size in bytes of the
-\ load list STOP-STALE wrote. The next build of the same two files prints
-\ `stale: compiled ` and its result. Over a load list whose one row's path holds
-\ a 0 byte, the build after it prints `corrupt: compiled ` and its result. Three
+\ LINKER:E-WORDLIST. A build of count.f alone, then two of count.f and
+\ shape.f, which has no object there before them, print `mixed: compiled `
+\ and their results: shape.f compiles after count.f links. Three
 \ sequences of three builds then each load two files, one edited after the first
 \ build: edit/a.f under the out root, edited, and edit-b.f beside build.f;
 \ tail/c.f and tail/d.f under the out root with d.f edited, then a fourth
@@ -130,8 +127,6 @@ PATH-CAP BUFFER: PROG-BUF
    ['] PAST catch E-COMP-STATE
    s" build: STOP-PAST: an address cell past its file's end was not refused" EXPECT ;
 
-\ A file with no object after a linked one can be LINKER:E-STALE, so these
-\ builds' refused file is their first.
 : STOP-STORE ( -- )
    ['] FLAG catch LINKER:E-STORE
    s" build: STOP-STORE: a flag set on hb's newest record was not refused" EXPECT ;
@@ -148,13 +143,6 @@ PATH-CAP BUFFER: PROG-BUF
 : STOP-WORDLIST ( -- )
    ['] NEW-WORDLIST catch LINKER:E-WORDLIST
    s" build: STOP-WORDLIST: a file that made a wordlist was not refused" EXPECT ;
-
-: STOP-STALE ( -- )
-   s" test/fixtures/file-objects/count.f" included
-   ['] SHAPE catch LINKER:E-STALE
-   s" build: STOP-STALE: a file with no object after a linked one was not refused" EXPECT
-   [: PROG$ LINKER:WRITE ;] catch LINKER:E-FAILED
-   s" build: STOP-STALE: a write after a stale file ran" EXPECT ;
 
 \ ---- the build's state, printed so a cold and a warm build compare as text ----
 variable STRINGS                      \ the bodies INTERN:EACH-STRING visited
@@ -185,7 +173,7 @@ CAST: >TEXT ( n -- ptr u8 )
 : RECORD. ( n -- )
    XREF-REC {: rec:ptr :}
    rec XREF-NAME$ type cr
-   rec XREF-FLAGS .  rec XREF-WORDLIST .  rec XREF-RAW-LEN .
+   rec XREF-FLAGS FMT:.INT space  rec XREF-WORDLIST FMT:.INT space  rec XREF-RAW-LEN FMT:.INT space
    rec FACTS-ADDR {: at:n :}
    at 0= if s" -" type else at TEXT. then cr ;
 
@@ -208,7 +196,7 @@ CAST: >TEXT ( n -- ptr u8 )
 : SHARED. ( -- )
    s" FILE-OBJECTS-MAIN:HI-TEXT" ENTRY >LITERAL execute drop NULL-PTR -
    s" FILE-OBJECTS-COUNT:HI" XREF-FIND-INDEX XREF-REC FACTS-ADDR =
-   s" shared " type  bool>n . cr ;
+   s" shared " type  bool>n FMT:.INT space cr ;
 
 : BODY ( -- )
    ndict@ {: first:n :}
@@ -228,7 +216,7 @@ CAST: >TEXT ( n -- ptr u8 )
    PROG$ LINKER:WRITE
    first STATE.  RUN-WORDS  SHARED. ;
 
-\ ---- stop mode's later builds: stale and corrupt lists, edit sequences, the twins ----
+\ ---- stop mode's later builds: a compile after a link, edit sequences, the twins ----
 PATH-CAP BUFFER: DIR-BUF
 PATH-CAP BUFFER: FIRST-BUF
 PATH-CAP BUFFER: SECOND-BUF
@@ -260,51 +248,17 @@ PATH-CAP BUFFER: SECOND-BUF
    {: a:ptr u:n one:n two:n three:n :}
    a u type  one FMT:.INT space  two FMT:.INT space  three FMT:.INT ;
 
-: STALE-BUILD ( -- n )
+: MIXED-BUILD ( -- n )
    [: s" app" [: s" test/fixtures/file-objects/count.f" included  SHAPE ;] LINKER:WITH ;]
    catch RESULT ;
 
-PATH-CAP BUFFER: LOADS-BUF
-
-\ The load list a build writes and the next build's first file reads.
-: LOADS$ ( -- ptr u8 n )
-   BUILD-OUT:BASE$ s" loads" LOADS-BUF FS:JOIN-PATH {: u:n :}
-   LOADS-BUF u ;
-
-\ count.f alone, then STOP-STALE's count.f and shape.f, then those two again.
-: STALES ( -- )
-   s" app" [: s" test/fixtures/file-objects/count.f" included ;] LINKER:WITH
-   s" app" [: STOP-STALE ;] LINKER:WITH
-   s" stale list: " type  LOADS$ FS:FILE-SIZE FMT:.INT cr
-   s" stale: compiled " type  STALE-BUILD FMT:.INT cr ;
-
-80 BUFFER: LIST-BUF                   \ CORRUPT's 67 bytes; zeroed, so its key bytes are 0
-variable LIST-N
-
-: LIST+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   a LIST-BUF LIST-N @ + u BYTE-COPY  u LIST-N +! ;
-
-\ A list field: its length as eight bytes, low byte first, then its bytes.
-: LIST-FIELD+ ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   u LIST-BUF LIST-N @ + LE:U64!  8 LIST-N +!  a u LIST+ ;
-
-8 BUFFER: NUL-PATH
-
-\ count, a 0 byte, then .f.
-: NUL-PATH$ ( -- ptr u8 n )
-   s" count" NUL-PATH swap BYTE-COPY  0 NUL-PATH 5 + c!
-   s" .f" NUL-PATH 6 + swap BYTE-COPY
-   NUL-PATH 8 ;
-
-\ The magic, then one row: 32 key bytes, the path NUL-PATH$ and the root app.
-: CORRUPT ( -- )
-   0 LIST-N !
-   s" HABULOAD" LIST+  32 LIST-N +!
-   NUL-PATH$ LIST-FIELD+  s" app" LIST-FIELD+
-   LOADS$ LIST-BUF LIST-N @ FS:WRITE-ALL
-   s" corrupt: compiled " type  STALE-BUILD FMT:.INT cr ;
+\ count.f alone, then count.f and shape.f twice: shape.f compiles after count.f links.
+: MIXED ( -- )
+   [: s" app" [: s" test/fixtures/file-objects/count.f" included ;] LINKER:WITH ;]
+   catch RESULT {: one:n :}
+   MIXED-BUILD {: two:n :}
+   MIXED-BUILD {: three:n :}
+   s" mixed: compiled " one two three RESULTS. cr ;
 
 : EDIT-BUILD ( -- n )
    [: s" app" [: EDIT-A$ included  s" test/fixtures/file-objects/edit-b.f" included ;]
@@ -596,7 +550,7 @@ variable SLOT-S                          \ and their count
    s" app" [: STOP-GAP ;] LINKER:WITH
    s" app" [: STOP-STRADDLE ;] LINKER:WITH
    s" app" [: STOP-WORDLIST ;] LINKER:WITH
-   STALES CORRUPT EDITS TAILS SHARES TWINS CRAFTS
+   MIXED EDITS TAILS SHARES TWINS CRAFTS
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----

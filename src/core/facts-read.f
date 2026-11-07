@@ -94,6 +94,32 @@ variable READ-WAS   \ CHECKER-REC-SYM while a read runs
 : READ-CLEAN ( -- )
    RES-FALSE SIG-FACTS!  SIGSCOPE-OFF  READ-WAS @ CHECKER-REC-SYM ! ;
 
+\ EXPORT-META-COPY for symbols, which a link has where a compile has a spelling.
+: EXPORT-META-SYM ( n n -- ) {: sym:n src:n :}
+   src DFER-FIND-SYM IF sym RES-TRUE DFER-ADD-SYM THEN
+   src CTL-FLAGS-SYM CTL-IDENTITY invert and {: ctl:n :}
+   src CTL-MASKS-SYM {: dm:n rm:n :}
+   src NORET-CREATES@ {: creates:n :}
+   sym ctl dm rm creates src CHECKER-SYM-SOURCE NORET-APPEND ;
+
+\ An export's facts are its source's, as CHECKER-EXPORT-ROW records them.
+: ALIAS-BODY ( n n -- )
+   {: ix:n src:n :}
+   ix CHECKER-RESOLVE:REC-AT REC-SYM {: sym:n :}
+   src CHECKER-RESOLVE:REC-AT REC-SYM {: from:n :}
+   sym 0=  from 0= or IF E-EXPORT-UNDEFINED throw THEN
+   from USIG-NEWEST {: eff:n :}
+   eff 0= IF E-EXPORT-UNDEFINED throw THEN
+   NEW
+   eff 1 - E-PTR EXPORT-EFF-INST {: din:n dout:n rin:n rout:n hasr:bool :}
+   sym CHECKER-REC-SYM !
+   din dout rin rout hasr from EFFECT-EXTERNAL-SYM? E-ADD-EFFECT
+   0 DL-NEW !  0 RECW !  0 RECMI !
+   from CHECKER-ASIG-EXPORT
+   sym from EXPORT-META-SYM
+   ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
+   ix RECORD-LINK-CURRENT? IF ix ix CHECKER-RESOLVE:REC-AT RECORD-LINK-FIXED! THEN ;
+
 public
 \ What a compile of the file that made record ix taught the checker, read back
 \ from the record's facts text a u, so a later file's compile can call it.
@@ -102,4 +128,10 @@ public
    u 0= IF EXIT THEN
    CHECKER-REC-SYM @ READ-WAS !
    a u ix [: READ-BODY ;] [: READ-CLEAN ;] finally ;
+
+\ Export record ix of record src, as a compile of its file recorded it; src's
+\ facts are read first.
+: READ-ALIAS ( n n -- )
+   CHECKER-REC-SYM @ READ-WAS !
+   [: ALIAS-BODY ;] [: READ-WAS @ CHECKER-REC-SYM ! ;] finally ;
 ;package
