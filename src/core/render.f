@@ -339,10 +339,12 @@ variable HRC  variable HRI  variable HRF  variable HRS
 \ A quotation's row renders its top RBUF-CAP values, as a top-level row does: the
 \ renderer recurses once per value, so a quotation leaving 10000 cells faulted
 \ the data stack (exit 102) and one leaving 8000 filled RSBUF.
-6 constant QDEPTH-MAX
+6 constant QDEPTH-MAX                        \ a diagnostic's nesting budget
 64 constant RBUF-CAP                         \ row render budget (values), top-level or nested
-create QPATH QDEPTH-MAX 1 + cells allot      \ node on the current render path, by depth
-create RBIND QDEPTH-MAX cells allot
+create RBIND 23 cells allot                  \ one RLETTER letter per binder in scope
+
+\ An effect's text (RNAMES nonzero) says every level a record holds.
+: QDEPTH-CAP ( -- n ) RNAMES @ 0 <> IF EFFECT-DEPTH-MAX ELSE QDEPTH-MAX THEN ;
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
@@ -431,14 +433,6 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
    124 EMIT1 32 EMIT1  l EMIT1 32 EMIT1  45 EMIT1 45 EMIT1 32 EMIT1  l EMIT1 32 EMIT1 ;
 
 
-\ A node already on QPATH below depth d is a type-graph cycle.
-: QANCESTOR? {: r:n d:n :}
-   0 BEGIN dup d < WHILE
-      dup cells QPATH + @ r = IF drop -1 EXIT THEN
-      1 +
-   REPEAT drop 0 ;
-
-
 \ QREND ( x d mode -- ): mode>0 renders a row bottom-to-top, each value followed
 \ by a space, from its mode-th value down to its RBUF-CAP-th; mode=0 renders a
 \ type.
@@ -484,8 +478,7 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
         s" stale<" RSTR  r STALE>INNER d 0 RECURSE  62 EMIT1
       endof
       T-QUOT of
-        d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
-           r d cells QPATH + !
+        d QDEPTH-CAP < IF
            RTAILS @ 0 <> {: named:bool :}
            RNAMES @ 0 <> IF RVISIT @ 1 + RVISIT ! THEN  RVISIT @ 2 * {: owner:n :}
            91 EMIT1 32 EMIT1  named IF r Q>DIN QTAIL THEN
@@ -503,9 +496,9 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
       T-FORALL of
         NLET @ 23 >= IF
            NLET @ 1 + NLET ! EMIT-UNSAID
-        ELSE RBIND-N @ QDEPTH-MAX <  d QDEPTH-MAX <  and  r d QANCESTOR? 0=  and IF
-           r d cells QPATH + !
-           NLET @ RLETTER {: letter:n :}
+        ELSE d QDEPTH-CAP < IF
+           NLET @ {: idx:n :}
+           idx RLETTER {: letter:n :}
            letter RBIND-N @ cells RBIND + !
            NLET @ 1 + NLET !
            r F>DOMAIN BIND-REGION = IF s" forall-region<" ELSE s" forall<" THEN RSTR letter EMIT1
@@ -517,6 +510,8 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
            44 EMIT1
            r F>BODY d 1+ 0 RECURSE 62 EMIT1
            RBIND-N @ 1 - RBIND-N !
+           \ A body that lettered no free variable frees the letter for a sibling.
+           NLET @ idx 1 + = IF idx NLET ! THEN
         ELSE EMIT-UNSAID THEN THEN
       endof
       T-BVAR of
@@ -532,8 +527,7 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
       \ A family applied to no arguments renders as its bare name, the spelling a
       \ signature uses: a bare family token reads back as `name<>`.
       T-PARAM of
-        d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
-           r d cells QPATH + !
+        d QDEPTH-CAP < IF
            r PARAM-HEAD
            r PARAM>ARGC 0 > IF
               60 EMIT1

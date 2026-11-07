@@ -593,21 +593,13 @@ create RSD-BUF RSD-CAP allot
    CHECK-CANDIDATE! 0 T=
    DIAG-BUFFER$ ta tu CONTAINS? TTRUE
    DIAG-BUFFER-OFF ;
-\ Quotation effects render recursively to QDEPTH-MAX levels: a triple-nested
-\ quot renders fully and records (no '?', RQM stays 0), while a quot nested
-\ past the budget caps at '?' and refuses recording via the unmodeled tag.
+\ An effect's text renders quotation effects to EFFECT-DEPTH-MAX levels, so a
+\ quot nested past a diagnostic's QDEPTH-MAX budget still records.
 RSD-BUF RSD-CAP DIAG-BUFFER!
-s" triple-nested quot certifies" T-LABEL
-s" RSQ3 [: [: [: ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
-s" triple-nested quot renders fully and records (no unmodeled-tag refusal)" T-LABEL
-DIAG-BUFFER$ s" unmodeled type tag" CONTAINS? TFALSE
-RSD-BUF RSD-CAP DIAG-BUFFER!
-s" quot nested past the render budget still certifies" T-LABEL
+s" quot nested past the diagnostic budget certifies" T-LABEL
 s" RSQ7 [: [: [: [: [: [: [: ;] ;] ;] ;] ;] ;] ;]" CHECK-QUIET-CANDIDATE! -1 T=
-s" over-budget quot refuses recording and names the word" T-LABEL
-DIAG-BUFFER$ s" rsq7" CONTAINS? TTRUE
-s" over-budget quot refusal names the unmodeled-tag reason" T-LABEL
-DIAG-BUFFER$ s" unmodeled type tag" CONTAINS? TTRUE
+s" quot nested past the diagnostic budget records" T-LABEL
+DIAG-BUFFER$ s" effect not recorded" CONTAINS? TFALSE
 defer T-V14 ( -- a b c d e g h i j k l m o p )
 RSD-BUF RSD-CAP DIAG-BUFFER!
 s" rec-refuse var overflow still certifies" T-LABEL

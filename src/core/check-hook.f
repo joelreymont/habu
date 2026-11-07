@@ -83,7 +83,8 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    rec1 1 - mark < if exit then
    rec1 1 - E-PTR ER.ACTIVE @ EFF-ACTIVE <> if exit then
    sym FACTS-SAME? if exit then
-   s" hook: facts text differs: " ERROR-TEXT:TYPE
+   RQM @ 0 <> if s" hook: facts text cannot say: " else s" hook: facts text differs: " then
+   ERROR-TEXT:TYPE
    NMB NMU @ ERROR-TEXT:TYPE
    s" : " ERROR-TEXT:TYPE
    RSBUF RSN @ ERROR-TEXT:TYPE
