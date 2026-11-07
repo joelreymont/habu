@@ -587,6 +587,15 @@ learned live in the docs for their subject.
   field in place of its pending flag; JSON:WRITE-COMMA writes nothing right
   after a START, and WRITE-COMMA, WRITE-OBJECT-END or WRITE-ARRAY-END right
   after a written comma is E-JSON-WRITE-STATE.
+- 2026-11-07, naming a JSON token kind (relayed by kevin from Tender): three
+  Tender files had grown their own word naming a token kind for a LOG line
+  ("Zen's reply has a string where an object was expected"). Under Joel's
+  words of the night before ("make your own judgement and do everything
+  without asking me. apply the what's best for long term criteria") the lead
+  approved the public `JSON:KIND$ ( n -- ptr u8 n )` beside T-OBJ..T-END:
+  each kind's name as a diagnostic phrase ("an object", "a number with a
+  fraction or exponent", "the text's end"), and "no token kind" for any other
+  number.
 - 2026-11-01, a client token's lifetime (relayed by kevin from Tender): Joel
   chose "Token word gives lifetime (Recommended)": "BEARER:TOKEN also returns
   expires_in; tenderd renews before expiry. One changed Habu word."

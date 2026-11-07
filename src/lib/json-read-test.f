@@ -342,6 +342,25 @@ create JRT-DEEP-BUF JRT-DEEP-CAP allot
    JSON:READ-NEXT JSON:T-END T=
    JSON:READ-CLOSE ;
 
+\ Every token kind of one document, then a number outside the kinds, named
+\ for a diagnostic.
+: JRT-TEST-KIND-NAMES ( -- )
+   s\" {\"k\":[\"s\",1,0.5,true,false,null]}" JRT-OPEN-A
+   JSON:READ-NEXT JSON:KIND$ s" an object" T$=
+   JSON:READ-NEXT JSON:KIND$ s" a key" T$=
+   JSON:READ-NEXT JSON:KIND$ s" an array" T$=
+   JSON:READ-NEXT JSON:KIND$ s" a string" T$=
+   JSON:READ-NEXT JSON:KIND$ s" an integer" T$=
+   JSON:READ-NEXT JSON:KIND$ s" a number with a fraction or exponent" T$=
+   JSON:READ-NEXT JSON:KIND$ s" true" T$=
+   JSON:READ-NEXT JSON:KIND$ s" false" T$=
+   JSON:READ-NEXT JSON:KIND$ s" null" T$=
+   JSON:READ-NEXT JSON:KIND$ s" an array's end" T$=
+   JSON:READ-NEXT JSON:KIND$ s" an object's end" T$=
+   JSON:READ-NEXT JSON:KIND$ s" the text's end" T$=
+   JSON:READ-CLOSE
+   JSON:T-END 1+ JSON:KIND$ s" no token kind" T$= ;
+
 : JRT-TEST-VALUE-SPAN ( -- )
    JRT-VALUE-SPAN$ JRT-OPEN-A
    JSON:READ-NEXT JSON:T-OBJ T=
@@ -1080,6 +1099,7 @@ STRUCTURE held DERIVE addr FIELD record JSON:cursor ;STRUCTURE
    JRT-TEST-EMPTY
    JRT-TEST-NESTED
    JRT-TEST-VALUE-SPAN
+   JRT-TEST-KIND-NAMES
    JRT-TEST-WS
    JRT-TEST-DEEP
    JRT-TEST-END-SPAN

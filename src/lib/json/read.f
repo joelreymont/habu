@@ -127,6 +127,24 @@ public
 10 constant T-NULL
 11 constant T-END
 
+\ A token kind's name for a diagnostic.
+: KIND$ ( n -- ptr u8 n )
+   case
+      T-OBJ of s" an object" endof
+      T-OBJ-END of s" an object's end" endof
+      T-ARR of s" an array" endof
+      T-ARR-END of s" an array's end" endof
+      T-KEY of s" a key" endof
+      T-STR of s" a string" endof
+      T-INT of s" an integer" endof
+      T-FLOAT of s" a number with a fraction or exponent" endof
+      T-TRUE of s" true" endof
+      T-FALSE of s" false" endof
+      T-NULL of s" null" endof
+      T-END of s" the text's end" endof
+      s" no token kind" rot
+   endcase ;
+
 private
 
 99 constant RETRY
