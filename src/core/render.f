@@ -336,15 +336,42 @@ variable HRC  variable HRI  variable HRF  variable HRS
    REPEAT
    HRF @ 0 <> IF HRC @ P>REST RES-TRUE ELSE node P>REST RES-FALSE THEN ;
 
-\ A quotation's row renders its top RBUF-CAP values, as a top-level row does: the
-\ renderer recurses once per value, so a quotation leaving 10000 cells faulted
-\ the data stack (exit 102) and one leaving 8000 filled RSBUF.
 6 constant QDEPTH-MAX                        \ a diagnostic's nesting budget
-64 constant RBUF-CAP                         \ row render budget (values), top-level or nested
+64 constant RBUF-CAP                         \ values a diagnostic shows of one row
 create RBIND 23 cells allot                  \ one RLETTER letter per binder in scope
+\ A row renders from RBUF without recursion: a nested quotation's row pushes
+\ above the rows that hold it, so QREND recurses once per level, never per value.
+create RBUF EFFECT-DEPTH-MAX cells allot   variable RBN
 
 \ An effect's text (RNAMES nonzero) says every level a record holds.
 : QDEPTH-CAP ( -- n ) RNAMES @ 0 <> IF EFFECT-DEPTH-MAX ELSE QDEPTH-MAX THEN ;
+
+
+\ A push past RBUF's end sets RQM: an effect's text that cannot hold every value
+\ is refused as unsayable, never cut.
+: RBUF+ ( n -- )
+   RBN @ EFFECT-DEPTH-MAX >= IF drop 1 RQM ! EXIT THEN
+   RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
+
+
+\ Push row s's values on RBUF from RBN, its bottom value last. A diagnostic
+\ (RNAMES 0) pushes a row's top RBUF-CAP values; an effect's text pushes all.
+: RBUF-ROW ( n -- )
+   {: s:n :}
+   RBN @ RBUF-CAP + {: stop:n :}
+   s
+   BEGIN R-RES dup TAG S-PUSH =  RNAMES @ 0 <>  RBN @ stop <  or  and WHILE
+     dup P>TYPE T-RES HIDDEN-PARAM? IF
+        dup HID-RUN-REST IF
+           swap P>TYPE T-RES MK-LOGICAL  HRS @ IF MK-STALE THEN  RBUF+
+        ELSE
+           swap P>TYPE RBUF+
+        THEN
+     ELSE
+        dup P>TYPE RBUF+  P>REST
+     THEN
+   REPEAT drop ;
+
 
 : QRET? ( n -- bool ) {: q:n :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
@@ -433,36 +460,15 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
    124 EMIT1 32 EMIT1  l EMIT1 32 EMIT1  45 EMIT1 45 EMIT1 32 EMIT1  l EMIT1 32 EMIT1 ;
 
 
-\ QREND ( x d mode -- ): mode>0 renders a row bottom-to-top, each value followed
-\ by a space, from its mode-th value down to its RBUF-CAP-th; mode=0 renders a
-\ type.
+\ QREND ( x d mode -- ): mode>0 renders row x bottom value first, each value
+\ followed by a space; mode=0 renders a type.
 : QREND ( n n n -- )
    {: x:n d:n mode:n :}
    mode 0 > IF
-      x R-RES dup TAG S-PUSH = IF                 \ ( node )
-         dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (type-family.f TFAM-WIDTH@)
-            dup HID-RUN-REST IF                   \ ( node rest ) full run -> logical type
-               swap P>TYPE T-RES MK-LOGICAL        \ read HRS before a nested run resets it
-               HRS @ IF MK-STALE THEN              \ ( rest logical )
-               swap dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
-                  d mode 1 + RECURSE
-               ELSE drop THEN
-               d 0 RECURSE
-            ELSE                                  \ ( node rest ) lone/malformed -> '@' cell
-               drop
-               dup P>REST dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
-                  d mode 1 + RECURSE
-               ELSE drop THEN
-               P>TYPE d 0 RECURSE
-            THEN
-         ELSE
-            dup P>REST dup R-RES TAG S-PUSH =  mode RBUF-CAP <  and IF
-               d mode 1 + RECURSE
-            ELSE drop THEN
-            P>TYPE d 0 RECURSE
-         THEN
-         32 EMIT1
-      ELSE drop THEN
+      RBN @ {: base:n :}
+      x RBUF-ROW
+      RBN @ BEGIN dup base > WHILE 1 - dup cells RBUF + @ d 0 RECURSE 32 EMIT1 REPEAT drop
+      base RBN !
       EXIT
    THEN
    x T-RES {: r:n :}
@@ -544,28 +550,9 @@ create RPOS RPOS-CAP 2 * cells allot   variable RPOS-N   variable RVISIT
 
 
 : REND-TYPE {: t:n :}  t 0 0 QREND ;
-create RBUF RBUF-CAP cells allot   variable RBN
 variable RSHOW-DST
 
-\ A row past RBUF-CAP values is truncated: a reject diagnostic must fail closed,
-\ and overflowing RBUF into adjacent DATA gave garbage type pointers and a SIGSEGV
-\ in REND-TYPE. The checker still rejects with its normal diagnostic and rc.
-: RBUF+ ( n -- )
-   RBN @ RBUF-CAP >= IF drop EXIT THEN
-   RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
-
-: REND-COLLECT {: s:n :}  0 RBN !  s
-   BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
-     dup P>TYPE T-RES HIDDEN-PARAM? IF
-        dup HID-RUN-REST IF
-           swap P>TYPE T-RES MK-LOGICAL  HRS @ IF MK-STALE THEN  RBUF+
-        ELSE
-           swap P>TYPE RBUF+
-        THEN
-     ELSE
-        dup P>TYPE RBUF+  P>REST
-     THEN
-   REPEAT drop ;
+: REND-COLLECT ( n -- )  0 RBN !  RBUF-ROW ;
 
 : RENDER  SEEN-RESET RATOM-RESET 0 NLET !  DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
