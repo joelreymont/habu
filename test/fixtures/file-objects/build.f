@@ -18,15 +18,21 @@
 \ header's entry cell, E-COMP-STATE, STOP-WORDLIST's file makes a wordlist,
 \ LINKER:E-WORDLIST. A build of count.f alone, then two of count.f and
 \ shape.f, which has no object there before them, print `mixed: compiled `
-\ and their results: shape.f compiles after count.f links. Four
-\ sequences of three builds then each load two files, one edited after the first
+\ and their results: shape.f compiles after count.f links. Six
+\ sequences of three builds then each load files, one edited after the first
 \ build: edit/a.f under the out root, edited, and edit-b.f beside build.f;
 \ tail/c.f and tail/d.f under the out root with d.f edited, then a fourth
 \ build of d.f alone; share/p.f and share/q.f under the out root with p.f
 \ edited to declare q.f's package too; laid/r.f and laid/s.f with r.f edited to
-\ lay s.f's string. Then twin-x/a.f and twin-y/a.f under the
+\ lay s.f's string; private/p.f and private/q.f with p.f's private HELPER, a
+\ name q.f spells, edited; parts/a.f, parts/b.f and parts/c.f with b.f's
+\ private K, which c.f reads, edited; scope/a.f, which leaves its package open,
+\ and scope/b.f, which closes it, with b.f edited. Then four builds of
+\ inside/i.f: inside the package inside/p.f leaves open and inside/q.f closes,
+\ alone, inside again, alone. Then twin-x/a.f and twin-y/a.f under the
 \ out root, one name in two directories, are each built alone in turn x, y, x,
-\ y. `edit: compiled `, `tail: compiled `, `share: compiled `, `laid: compiled `
+\ y. `edit: compiled `, `tail: compiled `, `share: compiled `, `laid: compiled `,
+\ `private: compiled `, `parts: compiled `, `scope: compiled `, `inside: compiled `
 \ and `twins: compiled ` print each build's result: its LINKER:COMPILED, or the
 \ code it threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
 \ over an edit of its object the link refuses or links wrong, then a plain
@@ -221,6 +227,7 @@ CAST: >TEXT ( n -- ptr u8 )
 PATH-CAP BUFFER: DIR-BUF
 PATH-CAP BUFFER: FIRST-BUF
 PATH-CAP BUFFER: SECOND-BUF
+PATH-CAP BUFFER: THIRD-BUF
 
 : DIR$ ( ptr u8 n -- ptr u8 n )
    {: d:ptr du:n :}
@@ -240,6 +247,16 @@ PATH-CAP BUFFER: SECOND-BUF
 : SHARE-Q$ ( -- ptr u8 n ) s" share" s" q.f" SECOND-BUF FILE-IN ;
 : LAID-R$ ( -- ptr u8 n ) s" laid" s" r.f" FIRST-BUF FILE-IN ;
 : LAID-S$ ( -- ptr u8 n ) s" laid" s" s.f" SECOND-BUF FILE-IN ;
+: PRIV-P$ ( -- ptr u8 n ) s" private" s" p.f" FIRST-BUF FILE-IN ;
+: PRIV-Q$ ( -- ptr u8 n ) s" private" s" q.f" SECOND-BUF FILE-IN ;
+: PARTS-A$ ( -- ptr u8 n ) s" parts" s" a.f" FIRST-BUF FILE-IN ;
+: PARTS-B$ ( -- ptr u8 n ) s" parts" s" b.f" SECOND-BUF FILE-IN ;
+: PARTS-C$ ( -- ptr u8 n ) s" parts" s" c.f" THIRD-BUF FILE-IN ;
+: SCOPE-A$ ( -- ptr u8 n ) s" scope" s" a.f" FIRST-BUF FILE-IN ;
+: SCOPE-B$ ( -- ptr u8 n ) s" scope" s" b.f" SECOND-BUF FILE-IN ;
+: INSIDE-P$ ( -- ptr u8 n ) s" inside" s" p.f" FIRST-BUF FILE-IN ;
+: INSIDE-I$ ( -- ptr u8 n ) s" inside" s" i.f" SECOND-BUF FILE-IN ;
+: INSIDE-Q$ ( -- ptr u8 n ) s" inside" s" q.f" THIRD-BUF FILE-IN ;
 : TWIN-X$ ( -- ptr u8 n ) s" twin-x" s" a.f" FIRST-BUF FILE-IN ;
 : TWIN-Y$ ( -- ptr u8 n ) s" twin-y" s" a.f" SECOND-BUF FILE-IN ;
 
@@ -327,6 +344,77 @@ PATH-CAP BUFFER: SECOND-BUF
    LAID-BUILD {: two:n :}
    LAID-BUILD {: three:n :}
    s" laid: compiled " one two three RESULTS. cr ;
+
+: PRIV-BUILD ( -- n )
+   [: s" app" [: PRIV-P$ included  PRIV-Q$ included ;] LINKER:WITH ;] catch RESULT ;
+
+\ p.f, the earlier file, changes its private HELPER, a name q.f spells for a word of its own
+\ package: q.f opens no package of p.f's, so it links.
+: PRIVS ( -- )
+   s" private" DIR$ FS:MAKE-DIR
+   PRIV-P$ s\" package FILE-OBJECTS-PRIV-P : HELPER ( -- n ) 1 ; public : ONE ( -- n ) HELPER ; ;package\n"
+   FS:WRITE-ALL
+   PRIV-Q$ s\" package FILE-OBJECTS-PRIV-Q : HELPER ( -- n ) 2 ; public : TWO ( -- n ) HELPER ; ;package\n"
+   FS:WRITE-ALL
+   PRIV-BUILD {: one:n :}
+   PRIV-P$ s\" package FILE-OBJECTS-PRIV-P : HELPER ( -- n ) 3 ; public : ONE ( -- n ) HELPER ; ;package\n"
+   FS:WRITE-ALL
+   PRIV-BUILD {: two:n :}
+   PRIV-BUILD {: three:n :}
+   s" private: compiled " one two three RESULTS. cr ;
+
+: PARTS-BUILD ( -- n )
+   [: s" app" [: PARTS-A$ included  PARTS-B$ included  PARTS-C$ included ;] LINKER:WITH ;]
+   catch RESULT ;
+
+\ b.f, a part of a.f's package, changes its private constant K, which c.f reopens the package
+\ to store into its own V: no reference names b.f, so c.f compiles only because it spells K.
+: PARTS ( -- )
+   s" parts" DIR$ FS:MAKE-DIR
+   PARTS-A$ s\" package FILE-OBJECTS-PARTS public : ONE ( -- n ) 1 ; ;package\n" FS:WRITE-ALL
+   PARTS-B$ s\" package FILE-OBJECTS-PARTS 5 constant K ;package\n" FS:WRITE-ALL
+   PARTS-C$ s\" package FILE-OBJECTS-PARTS-C public variable V ;package\n" FS:WRITE-ALL
+   PARTS-C$ s\" package FILE-OBJECTS-PARTS K FILE-OBJECTS-PARTS-C:V ! ;package\n" FS:APPEND-FILE
+   PARTS-BUILD {: one:n :}
+   PARTS-B$ s\" package FILE-OBJECTS-PARTS 6 constant K ;package\n" FS:WRITE-ALL
+   PARTS-BUILD {: two:n :}
+   PARTS-BUILD {: three:n :}
+   s" parts: compiled " one two three RESULTS. cr ;
+
+: SCOPE-BUILD ( -- n )
+   [: s" app" [: SCOPE-A$ included  SCOPE-B$ included ;] LINKER:WITH ;] catch RESULT ;
+
+\ a.f leaves its package open, and b.f, the next file, defines a public word of it from a.f's
+\ private one, then closes it; b.f is then edited. Neither writes an object, so both compile
+\ each time: a link of a.f would leave no package open for b.f's compile.
+: SCOPES ( -- )
+   s" scope" DIR$ FS:MAKE-DIR
+   SCOPE-A$ s\" package FILE-OBJECTS-SCOPE : HIDDEN ( -- n ) 7 ;\n" FS:WRITE-ALL
+   SCOPE-B$ s\" public : SEVEN ( -- n ) HIDDEN ;\n;package\n" FS:WRITE-ALL
+   SCOPE-BUILD {: one:n :}
+   SCOPE-B$ s\" public : SEVEN ( -- n ) HIDDEN 1 + ;\n;package\n" FS:WRITE-ALL
+   SCOPE-BUILD {: two:n :}
+   SCOPE-BUILD {: three:n :}
+   s" scope: compiled " one two three RESULTS. cr ;
+
+: INSIDE-BUILD ( -- n )
+   [: s" app" [: INSIDE-P$ included  INSIDE-I$ included  INSIDE-Q$ included ;] LINKER:WITH ;]
+   catch RESULT ;
+
+: OUTSIDE-BUILD ( -- n ) [: s" app" [: INSIDE-I$ included ;] LINKER:WITH ;] catch RESULT ;
+
+\ i.f loaded inside the package p.f leaves open and q.f closes, alone, inside again, then alone:
+\ a load inside a package writes no object and links none, so only the last build links i.f.
+: INSIDES ( -- )
+   s" inside" DIR$ FS:MAKE-DIR
+   INSIDE-P$ s\" package FILE-OBJECTS-INSIDE\n" FS:WRITE-ALL
+   INSIDE-I$ s\" : FILE-OBJECTS-INNER ( -- n ) 1 ;\n" FS:WRITE-ALL
+   INSIDE-Q$ s\" ;package\n" FS:WRITE-ALL
+   INSIDE-BUILD {: one:n :}
+   OUTSIDE-BUILD {: two:n :}
+   INSIDE-BUILD {: three:n :}
+   OUTSIDE-BUILD {: four:n :}
+   s" inside: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
 : TWIN-X-BUILD ( -- n ) [: s" app" [: TWIN-X$ included ;] LINKER:WITH ;] catch RESULT ;
 : TWIN-Y-BUILD ( -- n ) [: s" app" [: TWIN-Y$ included ;] LINKER:WITH ;] catch RESULT ;
@@ -571,7 +659,7 @@ variable SLOT-S                          \ and their count
    s" app" [: STOP-GAP ;] LINKER:WITH
    s" app" [: STOP-STRADDLE ;] LINKER:WITH
    s" app" [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES LAIDS TWINS CRAFTS
+   MIXED EDITS TAILS SHARES LAIDS PRIVS PARTS SCOPES INSIDES TWINS CRAFTS
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----

@@ -7902,7 +7902,6 @@ variable VREC-AT
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
    name nameu fields fieldsu CHECKER-TRY-RECORD {: at:n msg:ptr msgu:n :}
    msgu 0 <> IF msg msgu 70 die THEN ;
-ndict@ 1- constant DEFRECORD-REC-ID
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
@@ -8643,6 +8642,7 @@ variable HIDX-EPOCH
 variable HIDX-EFF-HI
 variable HIDX-CTL-HI
 variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollback sync)
+variable HIDX-DFR-FULL  \ the epoch whose defer answers cover every row (DFER-FILL)
 variable HIDX-H
 variable HIDX-I
 variable HIDX-CUR
@@ -11025,9 +11025,6 @@ CHECKER-REG:}SCRATCH
    sa su CHECKER-ASIG-CAPTURE
    RES-TRUE ;
 
-: USIG-DELETE ( ptr u8 n -- )
-   2drop E-ADD-DELETED ;
-
 : USIG-SYM@ ( ptr u8 -- n )
    ER.SYM @ ;
 
@@ -12800,8 +12797,15 @@ public
 ;package
 
 package CHECK
-\ A build's facts writes, in order: per entry the record index (-1 for a laid
-\ text), the text's offset in HELD-TEXT and its length. Only a build appends.
+public
+\ A held entry's kind, where a record's facts carry the record's index.
+-1 constant HELD-LAID                \ a laid text
+-2 constant HELD-UNDEFINE            \ an `undefine`: the symbol's identity (HOLD-UNDEFINE)
+-3 constant HELD-RETIRED             \ a retired record: its index and wordlist cell before
+-4 constant HELD-TRUSTED             \ a `TRUST` row's symbol, whose facts the linker writes
+private
+\ A build's facts writes and retirements, in order: per entry its kind or record
+\ index, the text's offset in HELD-TEXT and its length. Only a build appends.
 3 cells constant HELD-ROW
 PERSISTED-PTR-VARIABLE HELD-P   variable HELD-CAP   variable HELD-N
 NULL-PTR HELD-P !   $1000 HELD-CAP !   0 HELD-N !
@@ -12834,15 +12838,21 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
    THEN ;
 
 
-\ Copies the text: a caller's buffer (RSBUF) is reused before the linker reads it.
-: HOLD-FACTS ( ptr u8 n n -- )
-   {: a:ptr u:n ix:n :}
+\ Appends an entry of kind ix with u text bytes, and answers its text to fill.
+: HOLD ( n n -- ptr u8 )
+   {: u:n ix:n :}
    HELD-N @ {: k:n :}
    HELD-TEXT-N @ {: off:n :}
    k 1+  off u +  HELD-ROOM
-   a  HELD-TEXT off +  u ARENA-COPY
    ix k 0 HELD-CELL !   off k 1 HELD-CELL !   u k 2 HELD-CELL !
-   k 1+ HELD-N !   off u + HELD-TEXT-N ! ;
+   k 1+ HELD-N !   off u + HELD-TEXT-N !
+   HELD-TEXT off + ;
+
+
+\ Copies the text: a caller's buffer (RSBUF) is reused before the linker reads it.
+: HOLD-FACTS ( ptr u8 n n -- )
+   {: a:ptr u:n ix:n :}
+   a  u ix HOLD  u ARENA-COPY ;
 
 
 \ A bad index is a linker defect, never a program's, so it dies.
@@ -12866,10 +12876,12 @@ HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
 
 
 \ A laid text is interned only; a record takes its text's offset from the
-\ build's image base, or 0 for an empty text.
+\ build's image base, or 0 for an empty text. A retirement places nothing: it
+\ applied as it was held. Nor does a trusted symbol: its text is a later write.
 : PLACE-FACT ( n -- )
    HELD-ENTRY {: ix:n a:ptr u:n :}
-   ix 0 < IF a u INTERN:TEXT drop EXIT THEN
+   ix HELD-LAID = IF a u INTERN:TEXT drop EXIT THEN
+   ix 0 < IF EXIT THEN
    u 0= IF 0 ix record-facts! EXIT THEN
    a u INTERN:TEXT IMAGE-BASE - ix record-facts! ;
 \ While a build's space is open the facts words hold each write for the linker:
@@ -12895,10 +12907,39 @@ public
    body 0= IF 0 ELSE body data-base NULL-PTR - - THEN
    ix record-facts! ;
 
-\ The linker's view of the held writes. HELD-FACT@ answers entry k's index (-1
-\ for a laid text) and its text, until a facts write unmaps or overwrites it.
+\ The linker's view of the held writes. HELD-FACT@ answers entry k's kind or
+\ index and its text, until a facts write unmaps or overwrites it.
 : HELD-FACTS ( -- n ) HELD-N @ ;
 : HELD-FACT@ ( n -- n ptr u8 n ) dup HELD-N @ HELD-RANGE HELD-ENTRY ;
+\ While a build's space is open, holds record ix's retirement from wordlist cell
+\ wid, a native cell each, in order with the facts writes.
+: HOLD-RETIRED ( n n -- )
+   {: ix:n wid:n :}
+   BUILDING? 0= IF EXIT THEN
+   2 cells HELD-RETIRED HOLD {: at:ptr :}
+   ix at CELL-VIEW !   wid at CELL + CELL-VIEW ! ;
+\ Entry k's retired record and the wordlist cell it had.
+: HELD-RETIRED@ ( n -- n n )
+   HELD-FACT@ {: ix:n a:ptr u:n :}
+   ix HELD-RETIRED <>  u 2 cells <>  or IF
+      s" checker: held entry is not a retired record" 76 die
+   THEN
+   a CELL-VIEW @   a CELL + CELL-VIEW @ ;
+\ While a build's space is open, holds the symbol a `TRUST` row recorded an
+\ effect for. A row cannot write its facts text here, before the renderer: the
+\ linker writes it at the piece's end (LOWER-CERT-HOOK:SYM-FACTS!).
+: HOLD-TRUSTED ( n -- )
+   {: sym:n :}
+   BUILDING? 0=  sym 0=  or IF EXIT THEN
+   1 cells HELD-TRUSTED HOLD {: at:ptr :}
+   sym at CELL-VIEW ! ;
+\ Entry k's trusted symbol.
+: HELD-TRUSTED@ ( n -- n )
+   HELD-FACT@ {: ix:n a:ptr u:n :}
+   ix HELD-TRUSTED <>  u 1 cells <>  or IF
+      s" checker: held entry is not a trusted symbol" 76 die
+   THEN
+   a CELL-VIEW @ ;
 \ Keeps the first n entries.
 : DROP-FACTS ( n -- ) dup HELD-N @ 1+ HELD-RANGE HELD-KEEP ;
 \ Interns entries n and on in order, then keeps the first n. A created word's
@@ -15750,26 +15791,16 @@ RESOLUTION-LIFETIME-DEFAULT
 : DFER-SYM@ ( ptr n -- n )
    DFER.SYM @ ;
 
-: DFER-END? ( ptr n -- bool )
-   @ 0= ;
-
-: DFER-MATCH-SYM? ( ptr n n -- bool ) {: rec:ptr sym:n :}
-   rec DFER-SYM@ sym = ;
-
-variable DFER-HIT
-variable DFER-VALUE
-
-variable DFER-POS
-
-: DFER-SCAN-SYM ( n -- ) {: sym:n :}
-   0 DFER-POS !
-   begin DFERS DFER-POS @ + DFER-END? 0= while
-      DFERS DFER-POS @ + sym DFER-MATCH-SYM? IF
-         RES-TRUE DFER-HIT !
-         DFERS DFER-POS @ + DFER-FLAG@ DFER-VALUE !
-      THEN
-      DFER-POS @ DFER-REC + DFER-POS !
-   repeat ;
+\ Answers every symbol the table holds for this epoch in one pass, newest row
+\ last, so a lookup that then finds no answer has no row. A scan per missing
+\ answer read the whole table once for each new symbol.
+: DFER-FILL ( -- )
+   DFER-END @ DFER-REC / 0 ?do
+      DFERS i DFER-REC * + {: rec:ptr :}
+      rec DFER-FLAG@ rec DFER-SYM@ HIDX-DFR!
+   loop
+   DFER-END @ HIDX-DFR-DEP+
+   HIDX-EPOCH @ HIDX-DFR-FULL ! ;
 
 : DFER-FIND-SYM ( n -- bool ) {: sym:n :}
    sym 0= IF RES-FALSE EXIT THEN
@@ -15777,12 +15808,9 @@ variable DFER-POS
    HIDX-DFR-SYNC
    sym HIDX-DFR@ {: cached:bool hit:bool :}
    hit IF cached EXIT THEN
-   RES-FALSE DFER-HIT !
-   RES-FALSE DFER-VALUE !
-   sym DFER-SCAN-SYM
-   DFER-HIT @ IF DFER-VALUE @ ELSE RES-FALSE THEN
-   dup sym HIDX-DFR!
-   DFER-END @ HIDX-DFR-DEP+ ;
+   HIDX-DFR-FULL @ HIDX-EPOCH @ = IF RES-FALSE EXIT THEN
+   DFER-FILL
+   sym HIDX-DFR@ drop ;
 
 \ Only a change of defer state needs rollback history. Ordinary undefine and
 \ owner transfer also publish false for symbols that have never been deferred.
@@ -15801,14 +15829,8 @@ variable DFER-POS
       DFER-END @ HIDX-DFR-DEP+
    THEN ;
 
-: DFER-ADD-FLAG ( ptr u8 n bool -- ) {: a:ptr u:n flag:bool :}
-   a u CHECKER-RECORD-SYM flag DFER-ADD-SYM ;
-
 : DFER-ADD ( ptr u8 n -- )
-   RES-TRUE DFER-ADD-FLAG ;
-
-: DFER-DELETE ( ptr u8 n -- )
-   RES-FALSE DFER-ADD-FLAG ;
+   CHECKER-RECORD-SYM RES-TRUE DFER-ADD-SYM ;
 
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
@@ -17733,22 +17755,59 @@ NORET-P NORET-CAP-U 1 NORET-END STORE+
    sym ctl XFER-FLAGS ctl XFER-DMASK ctl XFER-RMASK
    off NORET-CELL NORET.CREATES @ 0 NORET-APPEND ;
 
+package CHECK
 \ Undefining retires every fact the name carried, through NORET-APPEND: the
 \ carry-forward of NORET-ADD-SYM would keep a definer's created effect or an
 \ export's link alive under a retired name. It also retires every link naming
 \ the word (NORET-SOURCE-RETIRE): the name defined afresh takes the symbol,
 \ while an export of the old word still runs that word. The walk reads the
 \ entries present before it and appends past them; a rollback rewinds them and
-\ a capture compacts them. Inside the verifier window the replayed `undefine`
-\ also retires the engine records of the name (CHECKER-OVERLAY:RETIRE).
+\ a capture compacts them.
+: UNDEFINE-SYM ( n -- )
+   {: sym:n :}
+   sym CHECKER-REC-SYM !
+   E-ADD-DELETED
+   sym RES-FALSE DFER-ADD-SYM
+   sym 0 0 0 0 0 NORET-APPEND
+   NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * sym NORET-SOURCE-RETIRE loop ;
+
+
+\ HELD-UNDEFINE's text: the visibility and the package's length, a byte each,
+\ then the package and the tail (CHECKER-SYM-IDENTITY); a package name is
+\ shorter than CHECKER-PACKAGE-CAP.
+: HOLD-UNDEFINE ( n -- )
+   CHECKER-SYM-IDENTITY {: pkg:ptr pkgu:n name:ptr nameu:n vis:n :}
+   2 pkgu + nameu +  HELD-UNDEFINE HOLD {: at:ptr :}
+   vis at c!   pkgu at 1 + c!
+   pkg  at 2 +  pkgu ARENA-COPY
+   name  at 2 + pkgu +  nameu ARENA-COPY ;
+public
+\ `undefine` of the name the checker resolved to sym, held while a build's
+\ space is open, so a link of the file's object replays it (READ-UNDEFINE).
+: UNDEFINE ( n -- )
+   {: sym:n :}
+   BUILDING? IF sym HOLD-UNDEFINE THEN
+   sym UNDEFINE-SYM ;
+\ The `undefine` held as text a u (HOLD-UNDEFINE) replayed. A malformed text is
+\ a linker defect, never a program's, so it dies.
+: READ-UNDEFINE ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   u 3 < IF s" checker: bad held undefine" 76 die THEN
+   a c@ {: vis:n :}
+   a 1 + c@ {: pkgu:n :}
+   u 3 - pkgu <  vis SYM-PUBLIC >  or IF s" checker: bad held undefine" 76 die THEN
+   a 2 + pkgu vis  a 2 + pkgu +  u 2 - pkgu -  SYM-INTERN {: sym:n :}
+   CHECKER-REC-SYM @ {: was:n :}
+   sym UNDEFINE-SYM
+   was CHECKER-REC-SYM ! ;
+;package
+
+\ Inside the verifier window the replayed `undefine` also retires the engine
+\ records of the name (CHECKER-OVERLAY:RETIRE).
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-UNDEFINE-GUARD
-   a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
-   name nameu USIG-DELETE
-   name nameu DFER-DELETE
-   name nameu CHECKER-RECORD-SYM {: sym:n :}
-   sym 0 0 0 0 0 NORET-APPEND
-   NORET-END @ NORET-ENTRY / 0 ?do i NORET-ENTRY * sym NORET-SOURCE-RETIRE loop
+   a u CHECKER-RECORD-NAME 2drop
+   CHECKER-REC-SYM @ CHECK:UNDEFINE
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF a u CHECKER-OVERLAY:RETIRE THEN ;
 
 package CHECKER-REG
@@ -17763,7 +17822,6 @@ CON-DECLARED-DEFAULT
 : CHECKER-DEFLINEAR ( ptr u8 n -- )
    CHECKER-AUTH-PACKAGE$ CT-ADD-LINEAR
    CTN @ 1- CHECKER-REG:CON-DECLARED-XT ;
-ndict@ 1- constant DEFLINEAR-REC-ID
 
 CHECKER-REG:SCRATCH{
 variable NORET-FMEND
@@ -22568,7 +22626,7 @@ REG-PROTECT
    na nu CK-NAME-SPAN? 0= IF na 0 TRUST-STALE EXIT THEN
    na nu TRUST-RESOLVES? 0= IF na nu TRUST-STALE EXIT THEN
    0 DL-NEW !
-   na nu sa su TRUST-USIG! IF DL-AMEND EXIT THEN
+   na nu sa su TRUST-USIG! IF DL-AMEND  na nu CHECKER-RECORD-SYM? CHECK:HOLD-TRUSTED EXIT THEN
    SIG-UNRES @ SGBAD @ 0= and IF E-ADD-UNRESOLVED
    ELSE SIG-UNRES-CLEAR THEN ;
 
@@ -23038,7 +23096,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    HIDX-H @ HIDX-I @ HIDX-CUR @ USX-BP @ USX-BN @ {: s-hh:n s-hi:n s-hc:n s-xp:n s-xn:n :}
    PRM-FIRST @ PE-I @ NORET-CTL @ NORET-FMEND @ NRX-POS @
    {: s-pf:n s-pe:n s-nc:n s-nf:n s-np:n :}
-   DFER-HIT @ DFER-VALUE @ DFER-POS @ {: s-dh:n s-dv:n s-dp:n :}
    kind CHECKER-OWNER-ABI:VISIBLE-TOP = IF a u VIS-TOP-PICK ELSE a u VIS-BODY-PICK THEN
    {: sym:n rec1:n drec:ptr ok:bool :}
    controls IF
@@ -23060,7 +23117,6 @@ defer VIS-VISIT ( ptr u8 n n n n -- )
    s-ub USING-UNBOUND !  s-wr WALK-REC !
    s-hh HIDX-H !  s-hi HIDX-I !  s-hc HIDX-CUR !  s-xp USX-BP !  s-xn USX-BN !
    s-pf PRM-FIRST !  s-pe PE-I !  s-nc NORET-CTL !  s-nf NORET-FMEND !  s-np NRX-POS !
-   s-dh DFER-HIT !  s-dv DFER-VALUE !  s-dp DFER-POS !
    controls live 0= and IF 0 0 NULL-PTR 0 RES-FALSE EXIT THEN
    sym rec1 drec ctl ok ;
 
@@ -32195,6 +32251,7 @@ CLAIM-COLD-SOURCE
    s" checker: nominal provider wordlist has no package" 76 die ;
 
 : NOMINAL-ADD-REC ( ptr n -- ) {: rec:ptr :}
+   rec NULL-PTR = IF s" checker: nominal provider not found" 76 die THEN
    rec NOMINAL-REC-SYM {: sym:n :}
    sym sym CTL-FLAGS-SYM CTL-NOMINAL or
       sym CTL-MASKS-SYM NORET-ADD-SYM
@@ -32207,6 +32264,8 @@ CLAIM-COLD-SOURCE
 : NOMINAL-PROVIDER ( -- )
    ndict@ 0= IF s" checker: nominal provider has no dictionary record" 76 die THEN
    ndict@ 1- CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC ;
-DEFRECORD-REC-ID CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC
-DEFLINEAR-REC-ID CHECKER-RESOLVE:REC-AT NOMINAL-ADD-REC
+\ The registrars above are found by name: a record's index holds only in the
+\ process that made it, and a built hb numbers its records anew.
+s" CHECKER-DEFRECORD" scope-find drop drop drop NOMINAL-ADD-REC
+s" CHECKER-DEFLINEAR" scope-find drop drop drop NOMINAL-ADD-REC
 REG-PROTECT

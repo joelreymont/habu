@@ -1213,7 +1213,31 @@ learned live in the docs for their subject.
   gaining its private wordlist, or earlier code, or stores into a cell no
   file holds, ends the build with `LINKER:E-STORE`, and an address cell below
   its data off a cell boundary ends it with E-COMP-STATE, as one in its own
-  data does.
+  data does. On 2026-11-07, under Joel's words relayed by otto ("i'm out for
+  2 hours, tell everyone to decide themselves, without asking me, using the
+  "what's best for long term?" rule"), the lead chose how a file's
+  `undefine` of an earlier file's record or its own is carried: while a
+  build's space is open, the checker's held writes, in order, also hold each
+  undefine (the symbol the checker resolved) and each record retired (by
+  XREF:RETIRE, with its wordlist before); the object's FACTS carries both in
+  held order, a retired record by reference, and a link replays them there
+  through the checker and XREF:RETIRE; a file's own retired record is written
+  as it was made. Under the same words the lead chose how a file's `TRUST`
+  row, or any other top-level row that changes what the checker knows about a
+  word the file did not make (cell-effects.f re-trusts PTR-VARIABLE, which
+  pointer-storage.f made), is carried: the row writes that word's facts text
+  again, the object's FACTS carries the write with the record by reference,
+  and a link replays it through CHECK:FACTS! and CHECK:READ-FACTS. Dropping
+  cell-effects.f's rows for words the build has already checked was rejected:
+  hb's boot from source would then differ from the cross-build, and the other
+  rows of the kind would still go uncarried. On 2026-11-07, shown that
+  generated-declaration.f's `seal-package` seals CHECKER-DECL-FRAME, a package
+  checker.f made, and under Joel's words of 2026-11-06 on a saved format
+  ("what is best for long term? why are you asking me before asking that
+  yourself?"), the lead chose that a package being sealed is allowed beside
+  its gaining a private wordlist: the object lists each earlier package record
+  its file sealed, and a link seals it again. Refusing a later file's seal of
+  an earlier package would restrict the language to suit the linker.
 - 2026-11-07, linking a file's object: Joel had written the night before "i'm
   leaving for the night so make your own judgement and do everything without
   asking me. apply the what's best for long term criteria", and then "get the
@@ -1236,33 +1260,33 @@ learned live in the docs for their subject.
   adrp+add, which moves with the code. A link that throws drops its open
   definition and any emission the shadow has not filed, the build fails
   (LINKER:E-FAILED), and its close drops the shadow emissions, records and code
-  the link made. A file found stale after a linked one ends the build with
-  `-9692 LINKER:E-STALE`, not a restart: rerunning the build's body would print
-  its output twice and break a body that catches. A file that makes a
+  the link made. A file found stale after a linked one compiles (the next
+  entry), so `-9692 LINKER:E-STALE` no longer ends a build for it. A file that makes a
   wordlist its records do not account for ends the build with `-9693
   LINKER:E-WORDLIST`. LINKER:WRITE sorts the program's address-cell list by
   offset, so the program does not depend on the order cells were marked. Left to
-  later steps: a does> slot a clause patched, the error-code chain, loader state
-  at a file's start, and checker facts for a compile after a link.
-- 2026-11-07, a warm build after an edit: under the same words of Joel's ("i'm
-  leaving for the night so make your own judgement and do everything without
-  asking me. apply the what's best for long term criteria", then "get the
-  incremental builds done already") the lead settled what a warm build does
-  after an edit. Until a file can compile after a linked one, a build decides
-  at its first file whether it links every file or compiles every file. A build
-  that started a file's load writes `<out>/loads`: `HABULOAD`, then per started
-  load its key, path and root. The next build's first file reads it and checks
-  each listed file's object; the build links every file only when all are
-  fresh, and compiles every file when one is stale or the list is missing,
-  unreadable or malformed. A build that loads no file reads and writes no list.
-  A file's freshness covers every file loaded before it: an object records a
-  SHA-256 over the keys and source sums of the files loaded before it in its
-  build. An object carries a SHA-256 over its own bytes, checked before
-  anything else; a mismatch makes its file compile. A file stale after a linked
-  one, when the body loads other files or another order than the list's or a
-  source reader serves other bytes than the file's, ends the build with
-  LINKER:E-STALE, and that build writes an empty list, so the next build
-  compiles every file.
+  later steps: a does> slot a clause patched, the error-code chain and loader
+  state at a file's start.
+- 2026-11-07, a warm build after an edit: shown that a build read
+  `<out>/loads`, the previous build's started loads, at its first file and
+  then linked every file or compiled every file, each object stale once any
+  file loaded before it changed, Joel asked "what is a load list? how is it put
+  together? what's the difference between that and your current approach?
+  what's best for long term? also, make sure it's only "files that use its
+  public names"". Shown that a file can compile after linked ones once its
+  checker facts travel in its object, he chose "Per file (Recommended)":
+  "Make-like; no load list; public names, plus reopened packages' private
+  names." Each file decides at its own load: it links when its object checks
+  and every earlier file it depends on is found in this build unchanged (the
+  entry above), and compiles otherwise, after linked files too. A file depends
+  on an earlier file whose words or data its compiled code refers to, and on
+  one that defines a public name its source spells outside comment lines; for
+  a file that reopens a package, that package's private names count too: its
+  parts share scope, and a constant T0 copies inline leaves no reference.
+  `<out>/loads`, the build-wide mode and the sum over every earlier file go. An
+  object carries a SHA-256 over its own bytes, checked before anything else; a
+  mismatch makes its file compile. A file whose check or link throws loses its
+  object, so the next build compiles it.
 - 2026-11-05, the old builders: shown that DATA-FLOOR-CELL is a second floor
   for DP, kept only by the old string store so a failed line's rollback never
   drops DP below strings compiled code points at, and asked when it should go,

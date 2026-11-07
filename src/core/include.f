@@ -1425,13 +1425,14 @@ variable GEN
 
 SOURCE-UNIT:RESET
 
-\ Source-composition event log: one event per loader act, so a restricted
-\ discovery pass can rebuild include multiplicity and require/provided registry
-\ state in order. Recorded only while EVENT-ON?. During discovery the walker
-\ runs DISCOVERY-ON and passes the loader-token span to DISC-TOK!; a real load
-\ reads TKA-CELL and TKL-CELL.
+\ Source-composition event log: one event per loader act, the request as spelled
+\ and the path it resolved to, so a restricted discovery pass can rebuild include
+\ multiplicity and require/provided registry state in order, and a build's
+\ linker can carry the acts in a file's object. Recorded only while EVENT-ON?.
+\ During discovery the walker runs DISCOVERY-ON and passes the loader-token span
+\ to DISC-TOK!; a real load reads TKA-CELL and TKL-CELL.
 
-8 constant EVENT-FIELDS
+10 constant EVENT-FIELDS
 EVENT-FIELDS cells constant EVENT-BYTES          \ one record
 $1000 constant EVENT-ROOM-MIN                    \ a first mapping's bytes
 $4D constant INCLUDE-EVENT-RC
@@ -1442,7 +1443,7 @@ $4D constant INCLUDE-EVENT-RC
 0 constant EV-STATE-FRESH
 1 constant EV-STATE-KNOWN
 
-\ The records, and the pool that holds each event's path and, unless an
+\ The records, and the pool that holds each event's paths and, unless an
 \ earlier event stored the same one, the root it resolved under, are mappings
 \ that grow as events arrive, so a discovery records every act however many
 \ there are. Each CAP counts the bytes its mapping holds, 0 while unmapped.
@@ -1568,18 +1569,22 @@ public
 
 ;package
 
-: EVENT-RECORD ( ptr u8 n n n -- ) {: kd:n st:n :}
-   EVENT-ON? 0= if 2drop exit then
+: EVENT-RECORD ( ptr u8 n ptr u8 n n n -- )
+   {: a:ptr u:n path:ptr pathu:n kd:n st:n :}
+   EVENT-ON? 0= if exit then
    EVENT-RECS-ROOM
    EVENT-N @ {: ix:n :}
    EVENT-SPAN {: toka:n toku:n :}
-   EVENT-COPY-PATH {: off:n len:n :}
+   path pathu EVENT-COPY-PATH {: off:n len:n :}
+   a u EVENT-COPY-PATH {: soff:n slen:n :}
    kd    ix 0 EVENT-FIELD!
    off   ix 1 EVENT-FIELD!
    len   ix 2 EVENT-FIELD!
    toka  ix 3 EVENT-FIELD!
    toku  ix 4 EVENT-FIELD!
    st    ix 5 EVENT-FIELD!
+   soff  ix 8 EVENT-FIELD!
+   slen  ix 9 EVENT-FIELD!
    ix SOURCE-EVENT:STORE-ROOT
    ix 1 + EVENT-N ! ;
 
@@ -1592,6 +1597,9 @@ public
 : EVENT-PATH@ ( n -- ptr u8 n ) {: ix:n :}
    ix 1 EVENT-FIELD@ EVENT-POOL-AT
    ix 2 EVENT-FIELD@ ;
+: EVENT-SPELLED@ ( n -- ptr u8 n ) {: ix:n :}
+   ix 8 EVENT-FIELD@ EVENT-POOL-AT
+   ix 9 EVENT-FIELD@ ;
 : EVENT-TOK@ ( n -- n n ) {: ix:n :}
    ix 3 EVENT-FIELD@ ix 4 EVENT-FIELD@ ;
 
@@ -2113,24 +2121,26 @@ public
 : INCLUDE-LOAD ( ptr u8 n -- bool n ) LOAD-RESULT ;
 
 : included ( ptr u8 n -- )
-   2dup 0 -rot SOURCE-ROOT:ACTION!
-   RESOLVE drop
-   2dup EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
-   DISCOVERY? if 2drop exit then
-   INCLUDE-LOAD {: committed:bool rc:n :}
+   {: a:ptr u:n :}
+   0 a u SOURCE-ROOT:ACTION!
+   a u RESOLVE drop {: path:ptr pathu:n :}
+   a u path pathu EV-INCLUDED EV-STATE-FRESH EVENT-RECORD
+   DISCOVERY? if exit then
+   path pathu INCLUDE-LOAD {: committed:bool rc:n :}
    rc 0 <> if rc throw then ;
 
 create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
 ' included SOURCE-ORIGINAL-INCLUDED-ENTRY xt!
 
-\ One body for both spellings. A path the registry already holds is skipped, so
-\ the pending flag has to be cleared on every exit or it would leak into the
-\ next unrelated load.
-: REQUIRE-BODY ( ptr u8 n bool -- ) {: known:bool :}
-   2dup EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
-   known if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
+\ One body for both spellings, given the path as spelled and as resolved. A path
+\ the registry already holds is skipped, so the pending flag has to be cleared on
+\ every exit or it would leak into the next unrelated load.
+: REQUIRE-BODY ( ptr u8 n ptr u8 n bool -- )
+   {: a:ptr u:n path:ptr pathu:n known:bool :}
+   a u path pathu EV-REQUIRED known REQUIRE-STATE EVENT-RECORD
+   known if INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    REQUIRE-REG:MARK {: row:n epoch:n :}
-   REQUIRE-STORE
+   path pathu REQUIRE-STORE
    DISCOVERY? if 2drop INCLUDE-FALSE SCRIPT-NAMED-PEND! exit then
    INCLUDE-LOAD {: committed:bool rc:n :}
    rc 0 <> if
@@ -2139,9 +2149,10 @@ create SOURCE-ORIGINAL-INCLUDED-ENTRY 0 ,
    then ;
 
 : required ( ptr u8 n -- )
-   2dup 1 -rot SOURCE-ROOT:ACTION!
+   {: a:ptr u:n :}
+   1 a u SOURCE-ROOT:ACTION!
    INCLUDE-FALSE SCRIPT-NAMED-PEND!
-   RESOLVE REQUIRE-BODY ;
+   a u  a u RESOLVE  REQUIRE-BODY ;
 
 create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 ' required SOURCE-ORIGINAL-REQUIRED-ENTRY xt!
@@ -2149,17 +2160,19 @@ create SOURCE-ORIGINAL-REQUIRED-ENTRY 0 ,
 \ The `--load` argv row. Same load, and it records that the command line is
 \ what asked for it.
 : script-required ( ptr u8 n -- )
+   {: a:ptr u:n :}
    INCLUDE-TRUE SCRIPT-NAMED-PEND!
-   ENTRY-RESOLVE REQUIRE-BODY ;
+   a u  a u ENTRY-RESOLVE  REQUIRE-BODY ;
 
 : SCRIPT-NAMED-LOAD? ( -- bool )
    SOURCE-ROOT:NAMED? ;
 
 : provided ( ptr u8 n -- )
-   RESOLVE {: known:bool :}
-   2dup EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
-   known if 2drop exit then
-   REQUIRE-STORE 2drop ;
+   {: a:ptr u:n :}
+   a u RESOLVE {: path:ptr pathu:n known:bool :}
+   a u path pathu EV-PROVIDED known REQUIRE-STATE EVENT-RECORD
+   known if exit then
+   path pathu REQUIRE-STORE 2drop ;
 
 : include ( -- )
    parse-name INCLUDE-CHECK-PATH included ;

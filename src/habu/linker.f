@@ -4,7 +4,10 @@
 \ build's runner (SOURCE-UNIT:USE), runs the body there with no package of
 \ hb's open and closes it. The close undoes exactly the open steps that ran,
 \ in reverse. Each file load links the file's object when it is fresh (FRESH?)
-\ and otherwise compiles the file, writing its object under the out root.
+\ and otherwise compiles the file, writing its object under the out root. An
+\ object whose file requested others is fresh only when theirs are too. The
+\ loader's log (include.f EVENT-RECORD) names a compile's requests and its
+\ registry acts, which its object carries and a link repeats.
 
 require src/lib/prelude.f
 require src/lib/error.f
@@ -41,13 +44,15 @@ package LINKER
 private
 
 \ The open's progress, the last step completed. Past open, loading: a file's load runs, from its key
-\ to its BUILT row, and a throw out of it stays there; failed: DP moved back, E-STORE or E-WORDLIST.
-ENUM step none mapped shadowed moved checked required objects routed open loading failed ;ENUM
+\ to its last BUILT row, the loads it requests included; returned: a load's body returned (LEFT);
+\ failed: a load threw, DP moved back, E-STORE or E-WORDLIST.
+ENUM step none mapped shadowed moved checked required objects routed open loading returned failed ;ENUM
 TYPED-VARIABLE PROGRESS step
 
 public
 -9690 s" a file of this build failed or DP moved back in its space: the build loads no other file and writes no object or program" ERROR:CODE E-FAILED
 -9691 s" a file of this build changed an earlier record or code, or stored into a cell no file holds" ERROR:CODE E-STORE
+-9692 s" a file a linked file requested, or a linked file's later part, did not check at its turn: the next build compiles them" ERROR:CODE E-STALE
 -9693 s" a file of this build made a wordlist no package of it holds" ERROR:CODE E-WORDLIST
 private
 
@@ -116,19 +121,30 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 : HINT ( -- n ) DATA-N DATA-SIZE + ;
 
 \ ---- the object ----------------------------------------------------------------
-\ LOADERS stacks the key of each file whose compile is running; LOADS holds a
-\ row per load: the loader's key, zeros for the build's body, then the SHA-256
-\ of the path. BUILT holds a row per file compiled or linked: its key, its
-\ first and end record index, its object's checksum, its first and end emission,
-\ and the data pointer as its load starts and returns.
+\ LOADERS stacks a row per file whose compile or link is running: its key, then 1
+\ for a link, 0 for a compile. LOADS holds a row per load: the loader's key,
+\ zeros for the build's body, then the SHA-256 of the path. BUILT holds a row per
+\ piece compiled or linked: its file's key, its first and end record index, its
+\ sum (the object's checksum for a file's last piece, PIECE-SUM! for an earlier
+\ one), its first and end emission, and the data pointer as the piece starts and
+\ ends.
 32 constant KEY-BYTES
 KEY-BYTES 2 * constant ROW-BYTES
 ROW-BYTES 48 + constant BUILT-BYTES
+KEY-BYTES 8 + constant LOADER-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
 create BUILT BUF:HDR-BYTES allot
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
+create REQUESTS BUF:HDR-BYTES allot  \ the object's REQUESTS rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
+create NAMED-ROWS BUF:HDR-BYTES allot \ the BUILT rows the compiling file's source names, 8 bytes each
+create FRAMES BUF:HDR-BYTES allot    \ each compiling loader's object so far while its request loads
+create PARKED BUF:HDR-BYTES allot    \ each checked or linking file's object while its request is checked or loads
+create PENDING BUF:HDR-BYTES allot   \ the pieces a root's check passed, in load order: key, then sum
+create PENDING-PATHS BUF:HDR-BYTES allot \ the paths those pieces registered, each a FIELD+
+create REQ-PATH BUF:HDR-BYTES allot  \ the path a linked request spells
+create SRC-COPY BUF:HDR-BYTES allot  \ a checked request's bytes as the loader runs them
 create OBJECT BUF:HDR-BYTES allot    \ a key's fields, then an object's bytes
 create CODE-COPY BUF:HDR-BYTES allot \ an emission's bytes as the link fills and places them
 create LATE BUF:HDR-BYTES allot      \ the file's late private wordlists
@@ -137,12 +153,18 @@ KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
 KEY-BYTES BUFFER: INPUT-SUM
 KEY-BYTES BUFFER: CK-SUM             \ the SHA-256 of the object past its checksum (HEADER-CK)
+KEY-BYTES BUFFER: PIECE-SUM          \ the sum of a piece a request ends (PIECE-SUM!)
+KEY-BYTES BUFFER: WANT-KEY           \ a checked request's key and sum, as its loader's FILES row names them
+KEY-BYTES BUFFER: WANT-SUM
+variable REQ-N                       \ the compiling file's requests so far, REQUESTS' rows
 KEY-BYTES 2 * BUFFER: KEY-HEX
 DYNAMIC-BUFFER ENTRY-OFFS n          \ a read object's entries' offsets in OBJECT (FRESH?)
 DYNAMIC-BUFFER REC-KINDS n           \ its record r's kind
 DYNAMIC-BUFFER EM-RECS n             \ its emission e's record index
 DYNAMIC-BUFFER PRIVS n               \ the packages holding a private wordlist: file, index
 variable PRIVS-N
+DYNAMIC-BUFFER GRANTS n              \ the built packages a checked piece gives a private wordlist, by record
+variable GRANTS-N
 DYNAMIC-BUFFER EM-OFFS n             \ its emissions' offsets in OBJECT, each at its S
 DYNAMIC-BUFFER FILE-ROWS n           \ its FILES row k, from 1, as that file's BUILT row index
 DYNAMIC-BUFFER DOES-AT n             \ its KIND-DOES entries' emission fields' offsets in OBJECT
@@ -154,38 +176,45 @@ DYNAMIC-BUFFER HOST-ADDRS n          \ its data address sites
 variable HOST-ADDRS-N
 
 \ As a file's compile starts (COPY-BELOW): the space's cells below its data, the records
-\ [FIRST-REC - 1, FILE-REC), and each emission's size, patch site and bytes.
+\ [FIRST-REC - 1, FILE-REC), and NSHADOW:PATCHES.
 create OLD-SPACE BUF:HDR-BYTES allot
 create OLD-RECS BUF:HDR-BYTES allot
-create OLD-EMS BUF:HDR-BYTES allot
+variable OLD-PATCHES
 DYNAMIC-BUFFER STORED n              \ the stores' cells as distances from NULL-PTR (FIND-STORES)
 variable STORED-N
 DYNAMIC-BUFFER STRS n                \ the file's string bodies as distances from NULL-PTR (DATA+)
 variable STRS-N
 DYNAMIC-BUFFER LAST-HELD n           \ a file's record r's last held facts entry, -1 for none (FACTS+)
+DYNAMIC-BUFFER RETIRED n             \ the piece's retired records (RETIRED!): index, then wordlist cell
+variable RETIRED-N                   \ its records
 DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-data.f), zero-padded cells
 DYNAMIC-BUFFER LISTED n              \ the DATA list's offsets, sorted before WRITE lays them (link-data.f)
 variable LISTED-N
 
-\ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR
-\ and WIDN-CELL as a file's load starts; RUN-FILE refuses a nested file, whose marks would
-\ overwrite them.
+\ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR,
+\ WIDN-CELL and the loader's EVENT-COUNT as a file's load or its piece after a request starts
+\ (MARKS).
 variable FILE-REC
 variable FILE-HELD
 variable FILE-ROW
 variable FILE-EM
 variable FILE-DP
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
-variable FILE-END                    \ here's distance as the file's load returns
+variable FILE-EVENT                  \ the first event of the loader's log the piece made
+variable FILE-END                    \ here's distance as the piece ends
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
 PATH-CAP BUFFER: FILE-PATH           \ the file's path, which a refused reference names
 variable FILE-PATH-N
-variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the object written or read
+variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the piece placed or object read
+variable ACTS-AT                    \ the offset in OBJECT of ACTS' count, of the piece checked
+\ The compiling file's object is not written, so the file compiles in every build: a piece starts
+\ or ends off TOP-SCOPE?, or a load it asked for never reached the build's runner (ACTS+).
+TYPED-VARIABLE UNLINKABLE bool
 
 \ The magic, the key, the SHA-256 of every byte after this checksum, and an offset
 \ from the file's start and a length for each of INPUT FILES REQUESTS NAMES PIECES,
-\ 0 0 while empty; then the sections in the order INPUT FILES PIECES. Every number
-\ is eight bytes, low byte first.
+\ 0 0 while empty; then the sections in the order INPUT FILES REQUESTS PIECES. Every
+\ number is eight bytes, low byte first.
 8 KEY-BYTES 2 * + 5 2 * 8 * + constant HEADER-BYTES
 8 KEY-BYTES + constant INPUT-BYTES  \ the source's size, then its SHA-256 (INPUT!)
 
@@ -198,47 +227,60 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
 5 constant KIND-SEALED               \ an earlier file's package this file sealed
 
 \ NAMES maps each name the build's records define, by its NAME-SUM, to the BUILT row holding the
-\ record, -1 for a record the build's body made (INDEX-RECS); HITS marks the rows whose records
-\ the running file's source names (NAMED).
-DYNAMIC-BUFFER NAMES n               \ slot s: the sum at 2s, 0 while empty, then the row
+\ record, -1 for a record the build's body made (INDEX-RECS), and to its package's key when the
+\ record is private (NAME-PKG); HITS marks the rows whose records the running file's source names
+\ (NAMED).
+DYNAMIC-BUFFER NAMES n               \ slot s: the sum at 3s, 0 while empty, the row, the package key
 DYNAMIC-BUFFER OLD-NAMES n           \ NAMES' slots as it grows
 variable NAMES-CAP                   \ its slots, a power of two
 variable NAMES-N                     \ its filled slots
 variable INDEXED                     \ the record index NAMES holds every record below
+DYNAMIC-BUFFER OPENED n              \ the keys of the packages the running file's source opens
+variable OPENED-N
 DYNAMIC-BUFFER HITS n                \ BUILT row r's mark: 0, or named by the running file's source
 TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's body made
 
-: SLOT-SUM ( n -- ptr n ) 2 * NAMES ;
-: SLOT-ROW ( n -- ptr n ) 2 * 1 + NAMES ;
+: SLOT-SUM ( n -- ptr n ) 3 * NAMES ;
+: SLOT-ROW ( n -- ptr n ) 3 * 1 + NAMES ;
+: SLOT-PKG ( n -- ptr n ) 3 * 2 + NAMES ;
 
 \ NAMES with cap slots, all empty.
 : NAMES-CLEAR ( n -- )
    {: cap:n :}
-   cap 2 * NAMES-RESERVE
-   cap 2 * 0 ?do 0 i NAMES ! loop
+   cap 3 * NAMES-RESERVE
+   cap 3 * 0 ?do 0 i NAMES ! loop
    cap NAMES-CAP !  0 NAMES-N ! ;
 
 : DISPOSE-OBJECTS ( -- )
-   LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  STRS-RELEASE  STORED-RELEASE
-   ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  EM-OFFS-RELEASE
+   LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  RETIRED-RELEASE  STRS-RELEASE  STORED-RELEASE
+   ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  GRANTS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
-   CODE-COPY BUF:DISPOSE  OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
-   LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  PIECES BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
-   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  HITS-RELEASE  OLD-NAMES-RELEASE  NAMES-RELEASE ;
+   CODE-COPY BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
+   LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  SRC-COPY BUF:DISPOSE  REQ-PATH BUF:DISPOSE
+   PENDING-PATHS BUF:DISPOSE  PENDING BUF:DISPOSE  PARKED BUF:DISPOSE  FRAMES BUF:DISPOSE  NAMED-ROWS BUF:DISPOSE
+   PIECES BUF:DISPOSE  REQUESTS BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
+   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  HITS-RELEASE  OPENED-RELEASE  OLD-NAMES-RELEASE  NAMES-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
    LOADS 256 BUF:N>BLEN BUF:INIT
    BUILT 256 BUF:N>BLEN BUF:INIT
    REFS 256 BUF:N>BLEN BUF:INIT
+   REQUESTS 256 BUF:N>BLEN BUF:INIT
    PIECES 256 BUF:N>BLEN BUF:INIT
+   NAMED-ROWS 256 BUF:N>BLEN BUF:INIT
+   FRAMES 256 BUF:N>BLEN BUF:INIT
+   PARKED 256 BUF:N>BLEN BUF:INIT
+   PENDING 256 BUF:N>BLEN BUF:INIT
+   PENDING-PATHS 256 BUF:N>BLEN BUF:INIT
+   REQ-PATH 256 BUF:N>BLEN BUF:INIT
+   SRC-COPY 256 BUF:N>BLEN BUF:INIT
    OBJECT 256 BUF:N>BLEN BUF:INIT
    CODE-COPY 256 BUF:N>BLEN BUF:INIT
    LATE 256 BUF:N>BLEN BUF:INIT
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
-   OLD-EMS 256 BUF:N>BLEN BUF:INIT
-   0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !
+   0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !  0 GRANTS-N !
    1024 NAMES-CLEAR  FIRST-REC @ INDEXED ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
@@ -254,17 +296,23 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
 
 \ n as eight bytes, low byte first.
 : U64+ ( n ptr a -- ) {: v:n buf:ptr :}
-   8 0 ?do v i 8 * rshift $FF and buf BUF:APPEND-BYTE loop ;
+   v  buf 8 BUF:N>BLEN BUF:GROW SPAN:$ drop  LE:U64! ;
 
 \ A key field: its length as a U64+, then its bytes.
 : FIELD+ ( ptr u8 n ptr a -- ) {: a:ptr u:n buf:ptr :}
    u buf U64+  a u buf SPAN+ ;
 
-\ The key of the file whose compile is running, empty for the build's body.
+\ The key of the file whose compile or link is running, empty for the build's body.
 : LOADER$ ( -- ptr u8 n )
    LOADERS BYTES$ {: a:ptr u:n :}
    u 0= if a 0 exit then
-   a u KEY-BYTES - +  KEY-BYTES ;
+   a u LOADER-BYTES - +  KEY-BYTES ;
+
+\ The running file is being linked, so a file it requests links too.
+: LINKING? ( -- bool )
+   LOADERS BYTES$ {: a:ptr u:n :}
+   u 0= if false exit then
+   a u 8 - + LE:U64@ 1 = ;
 
 \ The loads already recorded with ROW's loader and path.
 : SEEN ( -- n )
@@ -294,13 +342,22 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    SHA-CTX OBJECT BYTES$ FILE-KEY SHA256-IN
    ROW ROW-BYTES LOADS SPAN+ ;
 
-: PUSH-KEY ( -- ) FILE-KEY KEY-BYTES LOADERS SPAN+ ;
+\ FILE-KEY onto the stack, true for a link.
+: PUSH-KEY ( bool -- )
+   {: link:bool :}
+   FILE-KEY KEY-BYTES LOADERS SPAN+
+   link if 1 else 0 then LOADERS U64+ ;
 
 \ The stack's top back into FILE-KEY, and off the stack.
 : POP-KEY ( -- )
    LOADER$ {: top:ptr topu:n :}
    top FILE-KEY topu BYTE-COPY
-   LOADERS BYTES$ KEY-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
+   LOADERS BYTES$ LOADER-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
+
+: PATH! ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   pathu PATH-CAP min {: u:n :}
+   path FILE-PATH u BYTE-COPY  u FILE-PATH-N ! ;
 
 \ ---- the records ---------------------------------------------------------------
 \ No address reaches PIECES: a record is named by file and index, code and data by
@@ -352,14 +409,17 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    loop
    0 false ;
 
-\ The FILES row naming the BUILT row's file, 1-based; added on first use.
+\ The FILES row naming the BUILT row's piece by its file's key and its sum, 1-based; added on
+\ first use.
 : REF-FILE ( n -- n )
    {: row:n :}
    row BUILT-AT {: at:ptr :}
    REFS BYTES$ {: refs:ptr refsu:n :}
    refsu ROW-BYTES / {: n:n :}
    n 0 ?do
-      refs i ROW-BYTES * + KEY-BYTES  at KEY-BYTES  STR= if i 1 + unloop exit then
+      refs i ROW-BYTES * + {: r:ptr :}
+      r KEY-BYTES  at KEY-BYTES  STR=
+      r KEY-BYTES +  KEY-BYTES  at KEY-BYTES 16 + +  KEY-BYTES  STR=  and if i 1 + unloop exit then
    loop
    at KEY-BYTES REFS SPAN+
    at KEY-BYTES 16 + + KEY-BYTES REFS SPAN+
@@ -377,8 +437,9 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
 
 \ ---- dependencies by name -------------------------------------------------------
 \ A file depends on the files its object references and on every earlier file that defines a
-\ name its source spells: a value T0 inlined, a word that now shadows another and a package an
-\ earlier file now declares change a compile without leaving a reference.
+\ public name its source spells, or a private name of a package its source opens after
+\ `package`, whose parts share scope: a value T0 inlined, a word that now shadows another and a
+\ package an earlier file now declares change a compile without leaving a reference.
 
 \ FNV-1a over the name folded to upper case, as the dictionary compares names; never 0.
 : NAME-SUM ( ptr u8 n -- n )
@@ -389,48 +450,64 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    loop
    dup 0= if 1 + then ;
 
-: SAME-PAIR? ( n n n -- bool )
-   {: s:n sum:n row:n :}
-   s SLOT-SUM @ sum =  s SLOT-ROW @ row =  and ;
+: SAME? ( n n n n -- bool )
+   {: s:n sum:n row:n pkg:n :}
+   s SLOT-SUM @ sum =  s SLOT-ROW @ row =  and  s SLOT-PKG @ pkg =  and ;
 
-: TAKEN? ( n n n -- bool )
-   {: s:n sum:n row:n :}
-   s SLOT-SUM @ 0<>  s sum row SAME-PAIR? 0=  and ;
+: TAKEN? ( n n n n -- bool )
+   {: s:n sum:n row:n pkg:n :}
+   s SLOT-SUM @ 0<>  s sum row pkg SAME? 0=  and ;
 
-\ The slot holding the pair, else the first empty one from the sum's.
-: SLOT-OF ( n n -- n )
-   {: sum:n row:n :}
+\ The slot holding the name, else the first empty one from the sum's.
+: SLOT-OF ( n n n -- n )
+   {: sum:n row:n pkg:n :}
    NAMES-CAP @ 1 - {: mask:n :}
    sum mask and
-   begin dup sum row TAKEN? while 1 + mask and repeat ;
+   begin dup sum row pkg TAKEN? while 1 + mask and repeat ;
 
-: PUT-NAME ( n n -- )
-   {: sum:n row:n :}
-   sum row SLOT-OF {: s:n :}
+: PUT-NAME ( n n n -- )
+   {: sum:n row:n pkg:n :}
+   sum row pkg SLOT-OF {: s:n :}
    s SLOT-SUM @ 0<> if exit then
-   sum s SLOT-SUM !  row s SLOT-ROW !  1 NAMES-N +! ;
+   sum s SLOT-SUM !  row s SLOT-ROW !  pkg s SLOT-PKG !  1 NAMES-N +! ;
 
-\ NAMES with twice its slots, its pairs put again.
+\ NAMES with twice its slots, its names put again.
 : GROW-NAMES ( -- )
    NAMES-CAP @ {: cap:n :}
-   cap 2 * OLD-NAMES-RESERVE
-   cap 2 * 0 ?do i NAMES @  i OLD-NAMES ! loop
+   cap 3 * OLD-NAMES-RESERVE
+   cap 3 * 0 ?do i NAMES @  i OLD-NAMES ! loop
    cap 2 * NAMES-CLEAR
    cap 0 ?do
-      i 2 * OLD-NAMES @ {: sum:n :}
-      sum 0<> if sum  i 2 * 1 + OLD-NAMES @  PUT-NAME then
+      i 3 * OLD-NAMES @ {: sum:n :}
+      sum 0<> if sum  i 3 * 1 + OLD-NAMES @  i 3 * 2 + OLD-NAMES @  PUT-NAME then
    loop ;
 
 \ Half NAMES' slots at most are filled, so a probe always ends.
-: NAME+ ( n n -- )
+: NAME+ ( n n n -- )
    NAMES-N @ 1 + 2 *  NAMES-CAP @ > if GROW-NAMES then  PUT-NAME ;
+
+\ A package's name up to its first ':', the top-level package a part belongs to.
+: TOP-NAME ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   u 0 ?do a i + c@ 58 = if a i unloop exit then loop
+   a u ;
+
+\ The key of the package whose private wordlist holds the record, its top-level name's
+\ NAME-SUM; 0 for a record any file may name.
+: NAME-PKG ( n -- n )
+   {: idx:n :}
+   idx XREF-REC XREF-WORDLIST {: wid:n :}
+   wid CHECK:WORDLIST-PACKAGE {: p:n hit:bool :}
+   hit 0= if 0 exit then
+   p XREF-REC XREF-PKG-PRIVATE wid <> if 0 exit then
+   p XREF-REC XREF-NAME$ TOP-NAME NAME-SUM ;
 
 \ The records [INDEXED, end) into NAMES as the row's.
 : INDEX-RECS ( n n -- )
    {: end:n row:n :}
    end INDEXED @ ?do
       i XREF-REC XREF-NAME$ {: a:ptr u:n :}
-      u 0<> if a u NAME-SUM row NAME+ then
+      u 0<> if a u NAME-SUM row i NAME-PKG NAME+ then
    loop
    end INDEXED ! ;
 
@@ -438,13 +515,26 @@ TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's bod
    {: row:n :}
    row 0< if true BODY-HIT ! else 1 row HITS ! then ;
 
-\ Marks every row NAMES holds the sum for.
+\ True for a public name's key, 0, and for a package the running file's source opened.
+: OPEN? ( n -- bool )
+   {: pkg:n :}
+   pkg 0= if true exit then
+   OPENED-N @ 0 ?do i OPENED @ pkg = if true unloop exit then loop
+   false ;
+
+: OPENED+ ( n -- )
+   OPENED-N @ 1 + OPENED-RESERVE
+   OPENED-N @ OPENED !  1 OPENED-N +! ;
+
+\ Marks every row NAMES holds the sum for, a private name's only once its package is open.
 : HIT ( n -- )
    {: sum:n :}
    NAMES-CAP @ 1 - {: mask:n :}
    sum mask and
    begin dup SLOT-SUM @ 0<> while
-      dup SLOT-SUM @ sum = if dup SLOT-ROW @ MARK-ROW then
+      dup SLOT-SUM @ sum = if
+         dup SLOT-PKG @ OPEN? if dup SLOT-ROW @ MARK-ROW then
+      then
       1 + mask and
    repeat drop ;
 
@@ -458,6 +548,7 @@ variable WORD-AT                     \ its running word's
 TYPED-VARIABLE JOINED bool           \ the running word holds a ':' or '"'
 TYPED-VARIABLE FIRST-WORD bool       \ no word has ended on the running line
 TYPED-VARIABLE SKIP bool             \ the running line is a comment
+TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 
 \ HIT for the source's bytes [from, to) when there are any.
 : HIT-SPAN ( ptr u8 n n -- )
@@ -470,13 +561,20 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
    {: src:ptr from:n to:n :}
    FIRST-WORD @  to from - 1 =  and if src from + c@ 92 = else false then ;
 
+\ The word [from, to), not empty: the package it names opens when it follows `package`.
+: OPENS ( ptr u8 n n -- )
+   {: src:ptr from:n to:n :}
+   src from +  to from - {: a:ptr u:n :}
+   AFTER-PACKAGE @ if a u NAME-SUM OPENED+ then
+   a u s" package" XREF-STR=CI AFTER-PACKAGE ! ;
+
 \ The running word ends at byte i, the blank c.
 : WORD-END ( ptr u8 n n -- )
    {: src:ptr i:n c:n :}
    src WORD-AT @ i COMMENT?  c 10 <>  and if true SKIP ! exit then
    src PART-AT @ i HIT-SPAN
    JOINED @ if src WORD-AT @ i HIT-SPAN then
-   i WORD-AT @ > if false FIRST-WORD ! then
+   i WORD-AT @ > if src WORD-AT @ i OPENS  false FIRST-WORD ! then
    c 10 = if true FIRST-WORD ! then
    i 1 + PART-AT !  i 1 + WORD-AT !  false JOINED ! ;
 
@@ -486,6 +584,7 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
 : SPELLED ( ptr u8 n -- )
    {: src:ptr u:n :}
    0 PART-AT !  0 WORD-AT !  false JOINED !  true FIRST-WORD !  false SKIP !
+   false AFTER-PACKAGE !  0 OPENED-N !
    u 0 ?do
       src i + c@ {: c:n :}
       SKIP @ if
@@ -509,8 +608,15 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
    false BODY-HIT !
    src u SPELLED ;
 
-\ FILES gains each earlier file the source names, after the files PIECES references.
-: NAMED+ ( -- ) BUILT-N 0 ?do i HITS @ 0<> if i REF-FILE drop then loop ;
+\ After INPUT!, before FRESH?: NAMED-ROWS from HITS, which a requested file's INPUT! overwrites.
+: NAMED! ( -- )
+   NAMED-ROWS BUF:CLEAR
+   BUILT-N 0 ?do i HITS @ 0<> if i NAMED-ROWS U64+ then loop ;
+
+\ FILES gains each earlier file the source names, after the files PIECES and REQUESTS reference.
+: NAMED+ ( -- )
+   NAMED-ROWS BYTES$ {: a:ptr u:n :}
+   u 8 / 0 ?do a i 8 * + LE:U64@ REF-FILE drop loop ;
 
 
 \ A data address's reference, and true: a file's data, or the open's header data; false,
@@ -615,7 +721,35 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
    s"  holds " SAY  v code VALUE.  REFUSED ;
 
 
-: PKG? ( n -- bool ) XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = ;
+\ RETIRED from the piece's held retirements, in held order (CHECK:HOLD-RETIRED).
+: RETIRED! ( -- )
+   0 RETIRED-N !
+   CHECK:HELD-FACTS FILE-HELD @ ?do
+      i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+      ix CHECK:HELD-RETIRED = if
+         i CHECK:HELD-RETIRED@ {: idx:n wid:n :}
+         RETIRED-N @ 1 + 2 * RETIRED-RESERVE
+         idx  RETIRED-N @ 2 * RETIRED !   wid  RETIRED-N @ 2 * 1 + RETIRED !
+         1 RETIRED-N +!
+      then
+   loop ;
+
+\ The first of RETIRED's rows retiring record idx, and true; false when the piece retired none.
+: RETIRED-AT ( n -- n bool )
+   {: idx:n :}
+   RETIRED-N @ 0 ?do
+      i 2 * RETIRED @ idx = if i true unloop exit then
+   loop
+   0 false ;
+
+\ The wordlist cell record idx was made with, before the piece retired it.
+: MADE-WID ( n -- n )
+   {: idx:n :}
+   idx RETIRED-AT {: k:n hit:bool :}
+   hit if k 2 * 1 + RETIRED @ exit then
+   idx XREF-REC XREF-WORDLIST ;
+
+: PKG? ( n -- bool ) MADE-WID BOOT:NAMESPACE-WL = ;
 
 \ A package record of this file whose private wordlist it minted right after its
 \ public one: made with a private section, or given one with nothing minted between.
@@ -630,7 +764,7 @@ TYPED-VARIABLE SKIP bool             \ the running line is a comment
 \ public or private one, then the package, which is the build's and below the record.
 : WORDLIST+ ( n -- )
    {: idx:n :}
-   idx XREF-REC XREF-WORDLIST {: wid:n :}
+   idx MADE-WID {: wid:n :}
    wid BOOT:GLOBAL-WL = if 0 PIECES U64+ exit then
    wid WL:PRIMITIVES = if 1 PIECES U64+ exit then
    wid BOOT:NAMESPACE-WL = if 2 PIECES U64+ exit then
@@ -671,7 +805,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    row 0 >= if
       row NSHADOW:ENTRY@ 0 > if KIND-DOES else KIND-DEF then exit
    then
-   idx XREF-REC XREF-WORDLIST BOOT:NAMESPACE-WL = if KIND-PACKAGE exit then
+   idx PKG? if KIND-PACKAGE exit then
    KIND-ALIAS ;
 
 \ A definition's or does record's emission, numbered from the file's first.
@@ -788,9 +922,9 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \ A record's mark: a package record's public id, the first it mints; any other
 \ record's wordlist id plus one, so that wordlist comes before it.
 : RECORD-MARK ( n -- n )
-   XREF-REC {: rec:ptr :}
-   rec XREF-WORDLIST BOOT:NAMESPACE-WL = if rec XREF-PKG-PUBLIC exit then
-   rec XREF-WORDLIST 1 + ;
+   {: idx:n :}
+   idx PKG? if idx XREF-REC XREF-PKG-PUBLIC exit then
+   idx MADE-WID 1 + ;
 
 \ A code address's reference, and true: a record's entry, a quotation's function, or hb's
 \ own code, last since a record's host copy may lie inside hb's code range; false, writing
@@ -945,8 +1079,12 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          row, ascending by address: its reference (tag 3 with a FILES row, or
 \                          4), kind (ROW-KIND, 3 for none), bytes (the cell's value for kind 3,
 \                          else 0), its value's reference (CELL-REF+ for kinds 0-2, else 5)
-\   F, then F facts rows   each facts text the file's compile held (FACTS+): its record's index
-\                          from FILE-REC, -1 for a laid text, then the text as a FIELD+
+\   F, then F facts rows   each entry the file's compile held, in order (FACTS+): CHECK:HELD-RETIRED
+\                          then the retired record's reference (REF+); CHECK:HELD-TRUSTED, an
+\                          earlier file's record's reference and the text a `TRUST` row wrote
+\                          for it; else the record's index from FILE-REC, or CHECK:HELD-LAID
+\                          for a laid text or CHECK:HELD-UNDEFINE for an `undefine`, then the
+\                          text as a FIELD+
 : DATA+ ( -- )
    FILE-DATA {: a:ptr d:n :}
    d PIECES U64+  a d PIECES SPAN+
@@ -980,8 +1118,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 
 \ ---- the stores ----------------------------------------------------------------
 \ A file's compile may store into cells below its data, but must leave earlier records and
-\ emissions alone; REFUSE-STORE ends the build as E-FAILED does.
-: REFUSE-STORE ( -- ) construct step failed PROGRESS !  E-STORE throw ;
+\ emissions alone: E-STORE, which fails the build as any throw out of a load does (RUN-FILE).
 
 \ The space's cells a store can reach, as [from, to) offsets from BASE: [0, FILE-DP) less
 \ INDEX-CELL and the address-cell header and boot rows, which EMIT-MARK writes.
@@ -1001,19 +1138,12 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    from SPACE-BYTES  to from -  OLD-SPACE SPAN+ ;
 
 
-: COPY-EM ( n -- )
-   {: e:n :}
-   e NSHADOW:SIZE {: s:n :}
-   s OLD-EMS U64+  e NSHADOW:PATCH-SITE@ OLD-EMS U64+
-   s 0 > if e NSHADOW:BYTES s OLD-EMS SPAN+ then ;
-
-
 \ What the file's compile may change below its own data, as it starts.
 : COPY-BELOW ( -- )
-   OLD-SPACE BUF:CLEAR  OLD-RECS BUF:CLEAR  OLD-EMS BUF:CLEAR
+   OLD-SPACE BUF:CLEAR  OLD-RECS BUF:CLEAR
    [: COPY-RANGE ;] EACH-RANGE
    FILE-REC @ FIRST-REC @ 1 - ?do i COPY-REC loop
-   FILE-EM @ 0 ?do i COPY-EM loop
+   NSHADOW:PATCHES OLD-PATCHES !
    ROWS nip FILE-CELLS ! ;
 
 
@@ -1036,38 +1166,30 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    was now xor DNAME-SEALED =  now DNAME-SEALED and 0<>  and ;
 
 
-\ True when a cell of the record differs from its copy, other than a late private wordlist (LATE?)
-\ or a seal (SEALED-NOW?).
+\ True when a cell of the record differs from its copy, other than a late private wordlist (LATE?),
+\ a seal (SEALED-NOW?) or a retirement (RETIRED).
 : REC-CHANGED? ( ptr u8 n -- bool )
    {: old:ptr idx:n :}
    idx XREF-REC BYTE-VIEW {: rec:ptr :}
+   idx RETIRED-AT nip {: retired:bool :}
    DREC CELL / 0 ?do
       old i cells + CELL-VIEW @  rec i cells + CELL-VIEW @  <> if
          i XREF-LEN-SLOT =  idx LATE?  and
          i XREF-FLAGS-SLOT =  old idx SEALED-NOW?  and  or
+         i XREF-WORDLIST-SLOT =  retired  and  or
          0= if true unloop exit then
       then
    loop
    false ;
 
 
-\ The emission's entry in the copy, its length and whether the size, patch site or bytes differ.
-: EM-CHANGED? ( ptr u8 n -- n bool )
-   {: at:ptr e:n :}
-   at LE:U64@ {: s:n :}
-   s 16 +
-   s e NSHADOW:SIZE <>  at 8 + LE:U64@ e NSHADOW:PATCH-SITE@ <>  or if true exit then
-   s 0= if false exit then
-   at 16 + s  e NSHADOW:BYTES s  STR= 0= ;
-
-
-\ E-STORE when the compile changed an earlier record or emission.
+\ E-STORE when the compile changed an earlier record or patched an earlier emission's does>
+\ slot. The shadow changes no other part of an emission once it is published.
 : CHECK-EARLIER ( -- )
-   OLD-RECS-N 0 ?do i OLD-REC REC-CHANGED? if REFUSE-STORE then loop
-   OLD-EMS BYTES$ drop {: ems:ptr :}
-   0  FILE-EM @ 0 ?do
-      ems over +  i EM-CHANGED? if REFUSE-STORE then +
-   loop drop ;
+   OLD-RECS-N 0 ?do i OLD-REC REC-CHANGED? if E-STORE throw then loop
+   NSHADOW:PATCHES OLD-PATCHES @ ?do
+      i NSHADOW:PATCHED@ FILE-EM @ < if E-STORE throw then
+   loop ;
 
 
 variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
@@ -1082,8 +1204,9 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 : COMPARE-RANGE ( n n -- )
    {: from:n to:n :}
    OLD-SPACE BYTES$ drop OLD-AT @ + {: old:ptr :}
+   from SPACE-BYTES {: now:ptr :}
    to from - CELL / 0 ?do
-      old i cells + CELL-VIEW @  from i cells + SPACE-AT @  <> if
+      old i cells + CELL-VIEW @  now i cells + CELL-VIEW @  <> if
          BASE @ from + i cells + STORED+
       then
    loop
@@ -1121,7 +1244,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    STORED-N @ {: n:n :}
    n 0 > if 0 STORED n [: < ;] SORT:SORT! then
    DEDUPE
-   STORED-N @ 0 ?do i STORED @ HELD? 0= if REFUSE-STORE then loop ;
+   STORED-N @ 0 ?do i STORED @ HELD? 0= if E-STORE throw then loop ;
 
 
 \ The space's address-cell row of the cell at v, and true; false when it has none.
@@ -1151,41 +1274,57 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
 
 
 \ ---- the facts texts ------------------------------------------------------------
-\ LAST-HELD from the entries the file's compile held; E-STORE for one naming a record outside
-\ the file's.
+\ LAST-HELD from the entries the file's compile held; E-STORE for one naming a record no file
+\ made.
 : LAST-HELD! ( -- )
    ndict@ FILE-REC @ - {: recs:n :}
    recs 0 > if recs LAST-HELD-RESERVE then
    recs 0 ?do -1 i LAST-HELD ! loop
    CHECK:HELD-FACTS FILE-HELD @ ?do
       i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
-      ix 0 >= if
-         ix FILE-REC @ <  ix ndict@ >=  or if REFUSE-STORE then
-         i  ix FILE-REC @ - LAST-HELD !
-      then
+      ix ndict@ >= if E-STORE throw then
+      ix FILE-REC @ >= if  i  ix FILE-REC @ - LAST-HELD !  then
    loop ;
 
 
-\ Every laid text is kept, and a record's last text: an earlier one is never read.
+\ Every laid text is kept, every text for an earlier file's record, and a record's last text: an
+\ earlier one is never read. A trusted symbol is not: the text written for it is.
 : KEPT? ( n -- bool )
    {: k:n :}
    k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
-   ix 0< if true exit then
+   ix CHECK:HELD-TRUSTED = if false exit then
+   ix FILE-REC @ < if true exit then
    ix FILE-REC @ - LAST-HELD @  k = ;
 
+
+\ A facts row: a retirement's kind and record, an earlier file's record's text by reference, any
+\ other kind's or record's text.
+: FACT+ ( n -- )
+   {: k:n :}
+   k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+   ix CHECK:HELD-RETIRED = if
+      ix PIECES U64+  k CHECK:HELD-RETIRED@ drop REF+  exit
+   then
+   ix 0 >=  ix FILE-REC @ <  and if
+      CHECK:HELD-TRUSTED PIECES U64+  ix REF+  a u PIECES FIELD+  exit
+   then
+   ix 0< if ix else ix FILE-REC @ - then PIECES U64+
+   a u PIECES FIELD+ ;
+
+
+\ The texts of the records the piece's `TRUST` rows recorded effects for, held after its entries.
+: TRUSTED-FACTS! ( -- )
+   CHECK:HELD-FACTS FILE-HELD @ ?do
+      i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+      ix CHECK:HELD-TRUSTED = if  i CHECK:HELD-TRUSTED@ LOWER-CERT-HOOK:SYM-FACTS!  then
+   loop ;
 
 \ FACTS, after STORES, in held order. Each text is copied before anything writes facts,
 \ which can overwrite it (CHECK:HELD-FACT@).
 : FACTS+ ( -- )
    LAST-HELD!
    0  CHECK:HELD-FACTS FILE-HELD @ ?do i KEPT? if 1 + then loop  PIECES U64+
-   CHECK:HELD-FACTS FILE-HELD @ ?do
-      i KEPT? if
-         i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
-         ix 0< if -1 else ix FILE-REC @ - then PIECES U64+
-         a u PIECES FIELD+
-      then
-   loop ;
+   CHECK:HELD-FACTS FILE-HELD @ ?do  i KEPT? if i FACT+ then  loop ;
 
 
 : SEALED-N ( -- n ) 0  OLD-RECS-N 0 ?do i OLD-REC SEALED-NOW? if 1 + then loop ;
@@ -1197,56 +1336,112 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    KIND-SEALED PIECES U64+  idx REF+ ;
 
 
-\ Piece count 1 (RUN-FILE); entry count; records by index, each late private wordlist (by id) before
-\ the first record marked above its id, so ids mint in entry order; each earlier package the file
-\ sealed, after every record, so a link seals it once the file's definitions are in; CODE; DATA;
-\ STRINGS; STORES; FACTS, whose offset in PIECES it leaves in FACTS-AT; REQUEST -1.
-: PIECES! ( -- )
-   PIECES BUF:CLEAR  REFS BUF:CLEAR  LATE BUF:CLEAR
+\ An event of the loader's log an ACTS row carries: a require the registry already held, or a
+\ provide.
+: ACT? ( n -- bool )
+   {: ev:n :}
+   ev EVENT-KIND@ EV-PROVIDED =
+   ev EVENT-KIND@ EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-KNOWN =  and  or ;
+
+\ ACTS, the registry acts of the piece ending with REQUESTS row req, or of the last (-1), from the
+\ loader's log (include.f EVENT-RECORD): their count, then each its kind, EV-REQUIRED or
+\ EV-PROVIDED, and the path as spelled (FIELD+). The newest event of a piece a request ends is that
+\ request's own. Any other event is a load the source caught before the build's runner ran it,
+\ which a link could not repeat: the file is UNLINKABLE. E-COMP-STATE when the log stopped.
+: ACTS+ ( n -- )
+   {: req:n :}
+   EVENT-COUNT  req 0 >= if 1 - then {: end:n :}
+   EVENT-ON? 0=  end FILE-EVENT @ <  or if E-COMP-STATE throw then
+   0  end FILE-EVENT @ ?do i ACT? if 1 + then loop  PIECES U64+
+   end FILE-EVENT @ ?do
+      i ACT? if
+         i EVENT-KIND@ PIECES U64+  i EVENT-SPELLED@ PIECES FIELD+
+      else
+         true UNLINKABLE !
+      then
+   loop ;
+
+
+\ The running piece into PIECES: entry count; records by index, each late private wordlist (by id)
+\ before the first record marked above its id, so ids mint in entry order; each earlier package the
+\ piece sealed, after every record, so a link seals it once the piece's definitions are in; CODE;
+\ DATA; STRINGS; STORES; FACTS, whose offset in PIECES it leaves in FACTS-AT; ACTS; then the
+\ REQUESTS row that ends the piece, from 0, or -1 after the file's last piece.
+: PIECE+ ( n -- )
+   {: req:n :}
+   LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
    LATE-COLLECT
-   1 PIECES U64+
    ndict@ FILE-REC @ -  LATE-N +  SEALED-N +  PIECES U64+
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
    LATE-REST
    OLD-RECS-N 0 ?do i OLD-REC SEAL+ loop
    CODE+  DATA+  STORES+
    PIECES BYTES$ nip FACTS-AT !  FACTS+
-   -1 PIECES U64+ ;
+   req ACTS+
+   req PIECES U64+ ;
 
-\ FILE-KEY's object, given its source's size, with INPUT-SUM and FILES as INPUT! left them;
-\ its checksum sums every byte after it.
+\ As the file's compile starts: no FILES, REQUESTS or piece yet, and PIECES' piece count 0 until
+\ WRITE-OBJECT.
+: OBJECT-OPEN ( -- )
+   REFS BUF:CLEAR  REQUESTS BUF:CLEAR  PIECES BUF:CLEAR  0 REQ-N !
+   0 PIECES U64+ ;
+
+\ OBJECT as REFS then PIECES, FACTS-AT moved into it, and PIECE-SUM their SHA-256: the sum of the
+\ piece a request ends, by which a later file's FILES row names it.
+: PIECE-SUM! ( -- )
+   REFS BYTES$ {: refs:ptr refsu:n :}
+   OBJECT BUF:CLEAR  refs refsu OBJECT SPAN+  PIECES BYTES$ OBJECT SPAN+
+   refsu FACTS-AT +!
+   SHA-CTX OBJECT BYTES$ PIECE-SUM SHA256-IN ;
+
+\ FILE-KEY's object after its last piece, given its source's size, with INPUT-SUM as INPUT! left it;
+\ its checksum sums every byte after it; written only when the file is not UNLINKABLE, but built for
+\ its sum, which names its last piece in BUILT. A REQUESTS row: the sum of the piece the request ends
+\ (PIECE-SUM!), the kind (SOURCE-UNIT:LOAD-INCLUDE or LOAD-REQUIRE), the path as spelled and the
+\ path loaded, each a FIELD+, then the FILES row of the requested file's last piece. A sibling renamed
+\ into place, unsynced: an object a crash cut short fails its checksum, and its file compiles.
 : WRITE-OBJECT ( n -- )
    {: srcu:n :}
-   PIECES!  NAMED+
+   NAMED+
+   REQ-N @ 1 +  PIECES BYTES$ drop  LE:U64!
    REFS BYTES$ {: refs:ptr refsu:n :}
+   REQUESTS BYTES$ {: reqs:ptr requ:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
+   files-at refsu + {: reqs-at:n :}
+   reqs-at requ + {: pieces-at:n :}
    OBJECT BUF:CLEAR
    s" HABUFOBJ" OBJECT SPAN+
    FILE-KEY KEY-BYTES OBJECT SPAN+
    KEY-BYTES 0 ?do 0 OBJECT BUF:APPEND-BYTE loop
    HEADER-BYTES OBJECT U64+  INPUT-BYTES OBJECT U64+
    refsu 0<> if files-at else 0 then OBJECT U64+  refsu OBJECT U64+
-   4 0 ?do 0 OBJECT U64+ loop          \ REQUESTS NAMES, empty
-   files-at refsu + OBJECT U64+  piecesu OBJECT U64+
+   requ 0<> if reqs-at else 0 then OBJECT U64+  requ OBJECT U64+
+   0 OBJECT U64+  0 OBJECT U64+        \ NAMES, empty
+   pieces-at OBJECT U64+  piecesu OBJECT U64+
    srcu OBJECT U64+
    INPUT-SUM KEY-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
+   reqs requ OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
-   files-at refsu + FACTS-AT +!        \ PIECES follow FILES
+   pieces-at FACTS-AT +!
    OBJECT BYTES$ {: obj:ptr len:n :}
    SHA-CTX  obj 8 KEY-BYTES 2 * + +  len 8 - KEY-BYTES 2 * -  obj 8 KEY-BYTES + +  SHA256-IN
+   UNLINKABLE @ if exit then
    FILE-KEY KEY-HEX SHA256>HEX
-   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  OBJECT BYTES$  FS:ATOMIC-WRITE-FILE ;
+   KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  [: OBJECT BYTES$ FS:WRITE-ALL ;] FS:REPLACE-STAGED ;
 
-\ The loaded file's BUILT row, with the checksum of OBJECT, the object written or read; NAMES
-\ takes its records.
-: BUILT+ ( -- )
+\ The checksum of OBJECT, the object written or read.
+: OBJECT-SUM ( -- ptr u8 ) OBJECT BYTES$ drop 8 KEY-BYTES + + ;
+
+\ The piece's BUILT row with its sum; NAMES takes its records.
+: BUILT+ ( ptr u8 -- )
+   {: sum:ptr :}
    ndict@ BUILT-N INDEX-RECS
    FILE-KEY KEY-BYTES BUILT SPAN+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
-   OBJECT BYTES$ drop 8 KEY-BYTES + +  KEY-BYTES BUILT SPAN+
+   sum KEY-BYTES BUILT SPAN+
    FILE-EM @ BUILT U64+  NSHADOW:EMISSIONS BUILT U64+
    FILE-DP @ BUILT U64+  FILE-END @ BUILT U64+ ;
 
@@ -1260,6 +1455,9 @@ variable DATA-AT                      \ the offset in OBJECT of DATA's D
 variable CELLS-AT                     \ of its K
 variable STRS-AT                      \ of STRINGS' N
 variable STORES-AT                    \ of STORES' S
+variable REQS-AT                      \ the offset in OBJECT of its REQUESTS
+variable REQS-N                       \ its REQUESTS rows; it has one piece more
+variable PIECE-AT                     \ the offset in OBJECT of the next piece to check
 \ Only the check uses these and DOES-AT.
 variable FILES-N                      \ its FILES rows
 variable DEFS-N                       \ the KIND-DEF entries read so far
@@ -1330,15 +1528,32 @@ variable RD-END
 : OBJ@ ( n -- n ) OBJECT BYTES$ drop swap + LE:U64@ ;
 
 
-\ FILES row k's BUILT row's number at the byte offset (BUILT's layout).
+\ FILE-ROWS' value for a FILES row whose piece a root's check passed but no BUILT row holds yet
+\ (PENDING), and for one no BUILT row holds and no check passed.
+-1 constant ROW-PENDING
+-2 constant ROW-ABSENT
+
+\ FILES row k's BUILT row's number at the byte offset (BUILT's layout); not for a pending row.
 : BUILT@ ( n n -- n )
    {: k:n off:n :}
    k FILE-ROWS @ BUILT-AT off + LE:U64@ ;
 
 
-: FILE-IN? ( n -- bool )
+: FILE-ROW? ( n -- bool )
    {: k:n :}
    k 1 >=  k FILES-N @ <=  and ;
+
+\ A FILES row a reference may name: built, or pending.
+: FILE-IN? ( n -- bool )
+   {: k:n :}
+   k FILE-ROW? 0= if false exit then
+   k FILE-ROWS @ ROW-ABSENT <> ;
+
+\ A FILES row naming a pending piece: the reference is checked again as that file links.
+: PENDING? ( n -- bool )
+   {: k:n :}
+   k FILE-ROW? 0= if false exit then
+   k FILE-ROWS @ ROW-PENDING = ;
 
 
 : FILE-RECS ( n -- n )
@@ -1396,6 +1611,7 @@ variable RD-END
    idx 0< if BAD exit then
    file 0= if idx bound >= if BAD then exit then
    file FILE-IN? 0= if BAD exit then
+   file PENDING? if exit then
    idx file FILE-RECS >= if BAD then ;
 
 
@@ -1408,6 +1624,7 @@ variable RD-END
       f e OWN-FUNS >= if BAD then exit
    then
    file FILE-IN? 0= if BAD exit then
+   file PENDING? if exit then
    e file FILE-EMS >= if BAD exit then
    f  file ROW-BYTES 16 + BUILT@ e + NSHADOW:FUNCTIONS  >= if BAD then ;
 
@@ -1421,6 +1638,7 @@ variable RD-END
       x y bound REC-REF-CK
       GOOD? 0= if exit then
       x 0= if y REC-KIND KIND-PACKAGE = if BAD then exit then
+      x PENDING? if exit then
       x KEY-BYTES BUILT@ y + PKG? if BAD then exit
    then
    tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
@@ -1436,6 +1654,7 @@ variable RD-END
       y 0< if BAD exit then
       x 0= if y OWN-DATA-MAX @ max OWN-DATA-MAX ! exit then
       x FILE-IN? 0= if BAD exit then
+      x PENDING? if exit then
       y x FILE-BYTES > if BAD then exit
    then
    tag 4 = if
@@ -1455,21 +1674,49 @@ variable RD-END
    0 false ;
 
 
-\ FILES' rows, u bytes, into FILE-ROWS from 1.
+\ FILES row k, from 1, in OBJECT.
+: FILES-ROW ( n -- ptr u8 )
+   {: k:n :}
+   OBJECT BYTES$ drop  HEADER-BYTES INPUT-BYTES +  k 1 - ROW-BYTES * +  + ;
+
+
+: PENDING-HAS? ( ptr u8 -- bool )
+   {: at:ptr :}
+   PENDING BYTES$ {: a:ptr u:n :}
+   u ROW-BYTES / 0 ?do
+      a i ROW-BYTES * + ROW-BYTES  at ROW-BYTES  STR= if true unloop exit then
+   loop
+   false ;
+
+
+\ FILE-ROWS from 1 for OBJECT's FILES rows: each its BUILT row, else ROW-PENDING or ROW-ABSENT.
+: MAP-FILES ( -- )
+   FILES-N @ 0 ?do
+      i 1 + FILES-ROW {: at:ptr :}
+      at BUILT-MATCH if
+         i 1 + FILE-ROWS !
+      else
+         drop  at PENDING-HAS? if ROW-PENDING else ROW-ABSENT then  i 1 + FILE-ROWS !
+      then
+   loop ;
+
+
+\ FILES' rows, u bytes, mapped (MAP-FILES). A row may name a piece the root's check has not reached,
+\ so only the last piece's check (ROWS-CK) requires every row.
 : FILES-CK ( n -- )
    {: u:n :}
    0 FILES-N !
    GOOD? 0= if exit then
    u ROW-BYTES / {: n:n :}
+   u RD-SKIP
+   GOOD? 0= if exit then
    n FILES-N !
    n 1 + FILE-ROWS-RESERVE
-   n 0 ?do
-      RD-AT @ {: at:n :}
-      ROW-BYTES RD-SKIP
-      GOOD? if
-         OBJECT BYTES$ drop at + BUILT-MATCH if i 1 + FILE-ROWS ! else drop BAD then
-      then
-   loop ;
+   MAP-FILES ;
+
+
+: ROWS-CK ( -- )
+   FILES-N @ 0 ?do i 1 + FILE-ROWS @ ROW-ABSENT = if BAD unloop exit then loop ;
 
 
 \ After FILES-CK: bad when the source names a record of the build's body or of a file FILES
@@ -1479,16 +1726,73 @@ variable RD-END
    BODY-HIT @ if BAD exit then
    FILES-N @ 0 ?do
       i 1 + FILE-ROWS @ {: row:n :}
-      row HITS @ 0<> if 2 row HITS ! then
+      row 0 >= if  row HITS @ 0<> if 2 row HITS ! then  then
    loop
    BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
 
 
-\ The header, its checksum, INPUT against the source's size and INPUT-SUM, and FILES, as
-\ WRITE-OBJECT lays them, covering every file the source names.
+\ A name: its length, at least 1, then its bytes.
+: NAME-CK ( -- ) RD-U64 {: u:n :}  u 1 < if BAD exit then  u RD-SKIP ;
+
+\ A name: its length, then its bytes, which stay in OBJECT.
+: RD-NAME ( -- ptr u8 n )
+   RD-U64 {: u:n :}
+   OBJECT BYTES$ drop RD-AT @ + {: a:ptr :}
+   u RD-SKIP
+   a u ;
+
+
+\ REQUESTS' rows, u bytes from RD-AT (WRITE-OBJECT), counted into REQS-N.
+: REQUESTS-CK ( n -- )
+   {: u:n :}
+   0 REQS-N !
+   RD-AT @ u + {: end:n :}
+   begin GOOD?  RD-AT @ end <  and while
+      KEY-BYTES RD-SKIP
+      RD-U64 {: kind:n :}
+      kind SOURCE-UNIT:LOAD-INCLUDE <>  kind SOURCE-UNIT:LOAD-REQUIRE <>  and if BAD then
+      NAME-CK  NAME-CK
+      RD-U64 FILE-ROW? 0= if BAD then
+      1 REQS-N +!
+   repeat
+   RD-AT @ end <> if BAD then ;
+
+
+\ REQUESTS row k's offset in OBJECT, from 0; the row starts with the sum of the piece it ends.
+: REQ-AT ( n -- n )
+   {: k:n :}
+   REQS-AT @  k 0 ?do
+      KEY-BYTES 8 + +  dup OBJ@ 8 + +  dup OBJ@ 8 + +  8 +
+   loop ;
+
+
+\ REQUESTS row k's kind, the offsets of its spelled and loaded paths, and its FILES row.
+: REQ-FIELDS ( n -- n n n n )
+   REQ-AT KEY-BYTES + {: at:n :}
+   at 8 + {: spelled:n :}
+   spelled 8 + spelled OBJ@ + {: loaded:n :}
+   at OBJ@  spelled  loaded  loaded 8 + loaded OBJ@ + OBJ@ ;
+
+
+\ The FIELD+ at the offset in OBJECT.
+: FIELD$ ( n -- ptr u8 n )
+   {: at:n :}
+   OBJECT BYTES$ drop at 8 + +  at OBJ@ ;
+
+
+\ The sum of the piece that ends with REQUESTS row req, or of the last (-1): the object's checksum.
+: PIECE-SUM$ ( n -- ptr u8 )
+   {: req:n :}
+   req 0< if OBJECT-SUM exit then
+   OBJECT BYTES$ drop  req REQ-AT + ;
+
+
+\ The header, its checksum, INPUT against the source's size and INPUT-SUM, FILES, covering every
+\ file the source names, REQUESTS and the piece count, as WRITE-OBJECT lays them; PIECE-AT is then
+\ the first piece's offset.
 : HEADER-CK ( n -- )
    {: srcu:n :}
-   0 FILES-N !
+   0 FILES-N !  0 REQS-N !
    OBJECT BYTES$ nip {: len:n :}
    0 len RD-OPEN
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
@@ -1503,11 +1807,19 @@ variable RD-END
    RD-U64 RD-U64 {: off:n refsu:n :}
    refsu 0<  refsu ROW-BYTES mod 0<>  or  refsu len files-at - >  or if BAD exit then
    off  refsu 0<> if files-at else 0 then  <> if BAD then
-   4 0 ?do 0 RD-EQ loop
-   files-at refsu + RD-EQ  len files-at - refsu - RD-EQ
+   files-at refsu + {: reqs-at:n :}
+   RD-U64 RD-U64 {: roff:n requ:n :}
+   requ 0<  requ len reqs-at - >  or if BAD exit then
+   roff  requ 0<> if reqs-at else 0 then  <> if BAD then
+   0 RD-EQ  0 RD-EQ                    \ NAMES
+   reqs-at requ + RD-EQ  len reqs-at - requ - RD-EQ
    srcu RD-EQ
    INPUT-SUM KEY-BYTES RD-SAME
-   refsu FILES-CK  NAMED-CK ;
+   refsu FILES-CK
+   reqs-at REQS-AT !  requ REQUESTS-CK
+   NAMED-CK
+   REQS-N @ 1 + RD-EQ
+   RD-AT @ PIECE-AT ! ;
 
 
 \ A record reference naming a package: an earlier entry of KIND-PACKAGE, or an earlier file's
@@ -1519,7 +1831,7 @@ variable RD-END
       file 0= if
          idx REC-KIND KIND-PACKAGE <> if BAD then
       else
-         file KEY-BYTES BUILT@ idx + PKG? 0= if BAD then
+         file PENDING? 0= if  file KEY-BYTES BUILT@ idx + PKG? 0= if BAD then  then
       then
    then
    file idx ;
@@ -1532,15 +1844,29 @@ variable RD-END
    1 PRIVS-N +! ;
 
 
-\ Whether the package a reference names has a private wordlist: an earlier entry gave it one, or
-\ it is an earlier file's package record holding one.
+\ A built package, by record index, a piece the root's check passed gave a private wordlist.
+: GRANT+ ( n -- )
+   GRANTS-N @ 1 + GRANTS-RESERVE
+   GRANTS-N @ GRANTS !  1 GRANTS-N +! ;
+
+: GRANTED? ( n -- bool )
+   {: r:n :}
+   GRANTS-N @ 0 ?do i GRANTS @ r = if true unloop exit then loop
+   false ;
+
+
+\ Whether the package a reference names has a private wordlist: an earlier entry gave it one, it is
+\ an earlier file's package record holding one or granted one (GRANT+), or a pending piece's,
+\ which its link checks again.
 : PRIVATE? ( n n -- bool )
    {: file:n idx:n :}
    PRIVS-N @ 0 ?do
       i 2 * PRIVS @ file =  i 2 * 1 + PRIVS @ idx =  and if true unloop exit then
    loop
    file 0= if false exit then
-   file KEY-BYTES BUILT@ idx + XREF-REC XREF-PKG-PRIVATE 0<> ;
+   file PENDING? if true exit then
+   file KEY-BYTES BUILT@ idx + {: r:n :}
+   r GRANTED?  r XREF-REC XREF-PKG-PRIVATE 0<>  or ;
 
 
 \ A KIND-SEALED entry's package: an earlier file's, unsealed until the link seals it. A package of
@@ -1549,11 +1875,9 @@ variable RD-END
    PKG-REF-CK {: file:n idx:n :}
    GOOD? 0= if exit then
    file 0= if BAD exit then
+   file PENDING? if exit then
    file KEY-BYTES BUILT@ idx + XREF-REC XREF:SEALED? if BAD then ;
 
-
-\ A name: its length, at least 1, then its bytes.
-: NAME-CK ( -- ) RD-U64 {: u:n :}  u 1 < if BAD exit then  u RD-SKIP ;
 
 \ An entry's flags, which RECORD+ writes without the name length and EXT.
 : FLAGS-CK ( -- ) RD-U64  DNAME-LEN-MASK DNAME-EXT or  and 0<> if BAD then ;
@@ -1625,7 +1949,16 @@ variable RD-END
    kind KIND-PRIVATE = if
       \ A package holding a private wordlist gains none (OUTER:PACKAGE-PRIVATE refuses it).
       PKG-REF-CK {: file:n idx:n :}
-      GOOD? if file idx PRIVATE? if BAD else file idx PRIV+ then then
+      GOOD? if
+         file PENDING? if
+            file idx PRIV+
+         else
+            file idx PRIVATE? if BAD else
+               file idx PRIV+
+               file 0<> if  file KEY-BYTES BUILT@ idx + GRANT+  then
+            then
+         then
+      then
       -1 LAST-EM ! exit
    then
    kind KIND-SEALED = if SEALED-CK  -1 LAST-EM ! exit then
@@ -1641,10 +1974,8 @@ variable RD-END
    1 RECS-N +! ;
 
 
-\ The piece count, 1, then the entries (PIECES!); 24 bytes is a KIND-PRIVATE or KIND-SEALED entry's
-\ size.
+\ A piece's entries (PIECE+); 24 bytes is a KIND-PRIVATE or KIND-SEALED entry's size.
 : ENTRIES-CK ( -- )
-   1 RD-EQ
    24 RD-COUNT {: n:n :}
    n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  0 PRIVS-N !  -1 LAST-EM !
    0 OWN-DATA-MAX !
@@ -1694,7 +2025,7 @@ variable RD-END
 
 
 \ The does> slot: -1, or its site, holding the zeroed slot EMISSION-CODE+ writes, and its target:
-\ none while no clause patched it, else the clause's entry, checked as a call's.
+\ none while no clause patched it, else the record of a does> clause, checked as a call's.
 : SLOT-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: p:n :}
@@ -1705,7 +2036,14 @@ variable RD-END
    then
    RD-REF {: tag:n x:n y:n z:n :}
    tag 5 = if exit then
-   tag x y z top  top EM-RECS @ 1 +  CODE-REF-CK ;
+   tag 0 <> if BAD exit then
+   tag x y z top  top EM-RECS @ 1 +  CODE-REF-CK
+   GOOD? 0= if exit then
+   x 0= if  y REC-KIND KIND-DOES <> if BAD then  exit  then
+   x PENDING? if exit then
+   x KEY-BYTES BUILT@ y + {: r:n :}
+   r 1 <  if BAD exit then
+   r 1 - XREF-DOES-COMPANION? 0= if BAD then ;
 
 
 \ Emission e (EMISSION-CODE+): its offset into EM-OFFS, then S, R, S bytes, F offsets, calls,
@@ -1780,7 +2118,10 @@ variable RD-END
    tag 3 =  x 1 >=  and  tag 4 =  or 0= if BAD exit then
    tag x y z DATA-REF-CK
    GOOD? 0= if exit then
-   tag 3 = if y 7 and 0<>  y x FILE-BYTES >=  or if BAD exit then then
+   tag 3 = if
+      y 7 and 0<> if BAD exit then
+      x PENDING? 0= if  y x FILE-BYTES >= if BAD exit then  then
+   then
    tag 4 = if x 7 and 0<> if BAD exit then then
    RD-U64 RD-U64 {: kind:n v:n :}
    kind 3 = if RD-REF {: t:n a:n b:n c:n :}  t 5 <> if BAD then exit then
@@ -1802,17 +2143,44 @@ variable RD-END
    OWN-DATA-MAX @ d > if BAD then ;
 
 
-\ FACTS (FACTS+), each index -1 or one of the object's records, then the request list's -1 at
-\ the object's end.
+\ FACTS (FACTS+): each row a retirement of a record reference, a text for a record reference, or
+\ a text of a kind or of one of the object's records.
 : FACTS-CK ( -- )
    RD-AT @ FACTS-AT !
    16 RD-COUNT 0 ?do
       RD-U64 {: ix:n :}
-      ix -1 <  ix RECS-N @ >=  or if BAD then
-      RD-U64 RD-SKIP
-   loop
-   -1 RD-EQ
-   RD-AT @ RD-END @ <> if BAD then ;
+      ix CHECK:HELD-RETIRED =  ix CHECK:HELD-TRUSTED =  or if
+         RD-U64 RD-U64 {: file:n idx:n :}
+         file idx RECS-N @ REC-REF-CK
+         ix CHECK:HELD-TRUSTED = if RD-U64 RD-SKIP then
+      else
+         ix CHECK:HELD-UNDEFINE <  ix RECS-N @ >=  or if BAD then
+         RD-U64 RD-SKIP
+      then
+   loop ;
+
+
+\ ACTS (ACTS+): each row a kind, EV-REQUIRED or EV-PROVIDED, and a path.
+: ACTS-CK ( -- )
+   RD-AT @ ACTS-AT !
+   16 RD-COUNT 0 ?do
+      RD-U64 {: kind:n :}
+      kind EV-REQUIRED <>  kind EV-PROVIDED <>  and if BAD then
+      NAME-CK
+   loop ;
+
+
+\ The piece at PIECE-AT after MAP-FILES, then the REQUESTS row req that ends it, or -1 at the
+\ object's end; PIECE-AT then the next piece's offset.
+: PIECE-CK ( n -- )
+   {: req:n :}
+   GOOD? 0= if exit then
+   PIECE-AT @  OBJECT BYTES$ nip  RD-OPEN
+   ENTRIES-CK  CODE-CK  DATA-CK  FACTS-CK  ACTS-CK
+   req RD-EQ
+   req 0<  RD-AT @ RD-END @ <>  and if BAD then
+   req 0< if ROWS-CK then
+   RD-AT @ PIECE-AT ! ;
 
 
 variable READ-FD                     \ READ-INTO's open descriptor until FS:READ-SIZED owns it
@@ -1868,11 +2236,161 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    srcu HEADER-CK  GOOD? ;
 
 
-\ After INPUT!, given the source's size: true when FILE-KEY's object reads whole and
-\ checks. It applies nothing.
+\ ---- checking a file's requests --------------------------------------------------
+\ A linked piece's request loads its file before the next piece links, and no piece compiles after
+\ a linked one: so a file links only when every file its requests loaded, and theirs, checks too.
+\ The check walks them in load order before anything links, each piece once MAP-FILES maps the
+\ pieces passed before it (PENDING), and applies nothing.
+
+\ The checked or linking file's object and place in it onto PARKED while its request is checked or
+\ loads: OBJECT, FILE-PATH, FILE-KEY and INPUT-SUM, then PARK-TAIL bytes: the object's and the
+\ path's lengths, PIECE-AT, FILES-N, REQS-N and REQS-AT.
+6 8 * constant PARK-TAIL
+
+: PARK ( -- )
+   OBJECT BYTES$ {: a:ptr u:n :}
+   a u PARKED SPAN+
+   FILE-PATH FILE-PATH-N @ PARKED SPAN+
+   FILE-KEY KEY-BYTES PARKED SPAN+
+   INPUT-SUM KEY-BYTES PARKED SPAN+
+   u PARKED U64+  FILE-PATH-N @ PARKED U64+
+   PIECE-AT @ PARKED U64+  FILES-N @ PARKED U64+  REQS-N @ PARKED U64+  REQS-AT @ PARKED U64+ ;
+
+
+\ The top of PARKED back (PARK), and off it.
+: UNPARK ( -- )
+   PARKED BYTES$ {: f:ptr fu:n :}
+   f fu + PARK-TAIL - {: t:ptr :}
+   t LE:U64@  t 8 + LE:U64@ {: u:n pn:n :}
+   fu PARK-TAIL -  KEY-BYTES 2 * -  pn -  u - {: start:n :}
+   f start +  u BUF:N>BLEN  OBJECT BUF:REPLACE
+   f start + u + {: at:ptr :}
+   at FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
+   at pn + FILE-KEY KEY-BYTES BYTE-COPY
+   at pn + KEY-BYTES + INPUT-SUM KEY-BYTES BYTE-COPY
+   t 16 + LE:U64@ PIECE-AT !  t 24 + LE:U64@ FILES-N !
+   t 32 + LE:U64@ REQS-N !  t 40 + LE:U64@ REQS-AT !
+   f start BUF:N>BLEN PARKED BUF:REPLACE ;
+
+
+\ The piece ending with REQUESTS row req, or the last (-1), passed: PENDING gains FILE-KEY and its sum.
+: PENDING+ ( n -- )
+   {: req:n :}
+   FILE-KEY KEY-BYTES PENDING SPAN+
+   req PIECE-SUM$ KEY-BYTES PENDING SPAN+ ;
+
+
+\ The bytes as the loader runs them: a copy in SRC-COPY whose `#!` line is a comment when they
+\ start with one (SOURCE-ROOT:SHEBANG-COMMENT).
+: EXEC-BYTES ( ptr u8 n -- ptr u8 n )
+   {: a:ptr u:n :}
+   u 2 < if a u exit then
+   a c@ $23 <>  a 1 + c@ $21 <>  or if a u exit then
+   SRC-COPY BUF:CLEAR  a u SRC-COPY SPAN+
+   SRC-COPY BYTES$ SOURCE-ROOT:SHEBANG-COMMENT
+   SRC-COPY BYTES$ ;
+
+
+\ Forward: a request's check runs its file's pieces (CHECK-PIECES).
+defer CHECK-OBJECT ( -- )
+
+\ A requested file's bytes and path, from SOURCE-ROOT:WITH-BYTES: its object, under the key and with
+\ the sum its loader's FILES row names, checked as its loader's.
+: CHECKED ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n path:ptr pathu:n :}
+   WANT-KEY FILE-KEY KEY-BYTES BYTE-COPY
+   path pathu PATH!
+   src srcu EXEC-BYTES INPUT!
+   srcu HEADER-FRESH? 0= if BAD exit then
+   CK-SUM KEY-BYTES  WANT-SUM KEY-BYTES  STR= 0= if BAD exit then
+   CHECK-OBJECT ;
+
+: CHECK-FILE ( ptr u8 n -- ) [: CHECKED ;] SOURCE-ROOT:WITH-BYTES ;
+
+
+\ Whether a piece the check passed registered the path (PENDING-PATHS).
+: PENDING-PATH? ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   PENDING-PATHS BYTES$ {: p:ptr pu:n :}
+   0 begin dup pu < while
+      {: at:n :}
+      p at + LE:U64@ {: len:n :}
+      p at + 8 + len  a u  STR= if true exit then
+      at 8 + len +
+   repeat drop
+   false ;
+
+\ Whether the registry holds the path, or a piece the check passed registered it, as a compile of
+\ the checked file would find it.
+: REGISTERED? ( ptr u8 n bool -- bool )
+   {: a:ptr u:n known:bool :}
+   known if true exit then
+   a u PENDING-PATH? ;
+
+
+\ REQUESTS row k: the path it spells resolves, as a load from the checked file resolves it, to the
+\ path it loaded, a require's not REGISTERED? yet and then registered; then that file checks.
+\ SOURCE-ROOT:RESOLVE is the last loader call before WITH-BYTES, which enters the root it resolved
+\ through.
+: CHECK-REQUEST ( n -- )
+   {: k:n :}
+   k REQ-FIELDS {: kind:n spelled:n loaded:n file:n :}
+   file FILES-ROW {: at:ptr :}
+   at WANT-KEY KEY-BYTES BYTE-COPY
+   at KEY-BYTES + WANT-SUM KEY-BYTES BYTE-COPY
+   spelled FIELD$ SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
+   canon canonu  loaded FIELD$  STR= 0= if BAD exit then
+   canon canonu FS:FILE? 0= if BAD exit then
+   kind SOURCE-UNIT:LOAD-REQUIRE = if
+      canon canonu known REGISTERED? if BAD exit then
+      canon canonu PENDING-PATHS FIELD+
+   then
+   PARK
+   canon canonu ['] CHECK-FILE ['] UNPARK finally ;
+
+
+\ The piece's ACTS rows (ACTS-CK), each path resolved as a load from the checked file resolves
+\ it: a require's must be REGISTERED?, as its compile found it; a provide's is registered.
+: ACTS-WALK ( -- )
+   ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
+   RD-U64 0 ?do
+      RD-U64 {: kind:n :}
+      RD-NAME SOURCE-ROOT:RESOLVE {: canon:ptr canonu:n known:bool :}
+      kind EV-PROVIDED = if
+         canon canonu PENDING-PATHS FIELD+
+      else
+         canon canonu known REGISTERED? 0= if BAD unloop exit then
+      then
+   loop ;
+
+
+\ The checked file's pieces in load order, each request's file checked after the piece it ends.
+: CHECK-PIECES ( -- )
+   REQS-N @ 1 + 0 ?do
+      GOOD? 0= if unloop exit then
+      i REQS-N @ < if i else -1 then {: req:n :}
+      MAP-FILES
+      req PIECE-CK
+      GOOD? if ACTS-WALK then
+      GOOD? if
+         req PENDING+
+         req 0 >= if req CHECK-REQUEST then
+      then
+   loop ;
+
+: INSTALL-CHECK ( -- ) [: CHECK-PIECES ;] is CHECK-OBJECT ;
+INSTALL-CHECK
+
+
+\ After INPUT!, given the source's size: true when FILE-KEY's object reads whole and checks, with
+\ the files its requests loaded (CHECK-OBJECT). It applies nothing. Under a linking file, which
+\ checked it, only the header: each piece checks again as it links (LINK-FILE).
 : FRESH? ( n -- bool )
    HEADER-FRESH? 0= if false exit then
-   ENTRIES-CK  CODE-CK  DATA-CK  FACTS-CK
+   LINKING? if true exit then
+   PENDING BUF:CLEAR  PENDING-PATHS BUF:CLEAR  0 GRANTS-N !
+   CHECK-OBJECT
+   PENDING BUF:CLEAR  PENDING-PATHS BUF:CLEAR  0 GRANTS-N !
    GOOD? ;
 
 \ ---- linking an object ---------------------------------------------------------
@@ -1942,14 +2460,6 @@ variable LINK-EM                     \ that emission's number in this object, -1
    {: saved:n idx:n :}
    idx REC-FLAGS {: at:ptr :}
    at @  DNAME-LEN-MASK DNAME-EXT or  and  saved or  at ! ;
-
-
-\ A name: its length, then its bytes, which stay in OBJECT.
-: RD-NAME ( -- ptr u8 n )
-   RD-U64 {: u:n :}
-   OBJECT BYTES$ drop RD-AT @ + {: a:ptr :}
-   u RD-SKIP
-   a u ;
 
 
 \ The wordlist a role names (WORDLIST+); roles 3 and 4 are then the package's reference,
@@ -2235,20 +2745,56 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    LINK-DATA ;
 
 
+\ A retirement row's record retired again (XREF:RETIRE), as the file's compile retired it.
+: LINK-RETIRED ( bool -- )
+   {: read:bool :}
+   RD-U64 RD-U64 {: file:n idx:n :}
+   GOOD? 0= if E-COMP-STATE throw then
+   read if file idx REC-INDEX XREF-REC XREF:RETIRE then ;
+
+\ The BUILT row REFS' FILES row k, from 1, names: a cold build places from the object it wrote,
+\ whose rows no FILES-CK mapped.
+: REFS-ROW ( n -- n )
+   {: k:n :}
+   REFS BYTES$ drop  k 1 - ROW-BYTES * + {: r:ptr :}
+   BUILT-N 0 ?do
+      i BUILT-AT {: at:ptr :}
+      r KEY-BYTES  at KEY-BYTES  STR=
+      r KEY-BYTES +  KEY-BYTES  at KEY-BYTES 16 + +  KEY-BYTES  STR=  and if i unloop exit then
+   loop
+   E-COMP-STATE throw ;
+
+\ A trusted row's text held again for the earlier file's record it names, and read back.
+: LINK-TRUSTED ( bool -- )
+   {: read:bool :}
+   RD-U64 RD-U64 {: file:n idx:n :}
+   RD-NAME {: a:ptr u:n :}
+   GOOD? 0=  file 0=  or if E-COMP-STATE throw then
+   read if file idx REC-INDEX else  file REFS-ROW BUILT-AT KEY-BYTES + LE:U64@ idx +  then {: r:n :}
+   a u r CHECK:FACTS!
+   read if a u r CHECK:READ-FACTS then ;
+
 \ OBJECT's FACTS held again, then placed at here with the rest the file held: a cold build
 \ places from the object it wrote, a warm one from the object it read, so both lay one text.
-\ A link also reads each record's text back into the checker, as its compile taught it.
+\ A link also reads each record's text back into the checker, an earlier file's record's too, and
+\ replays each `undefine` and retirement in the compile's order; a cold build applied them as it
+\ held them.
 : LINK-FACTS ( bool -- )
    {: read:bool :}
    FACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
    RD-U64 0 ?do
       RD-U64 {: ix:n :}
-      RD-NAME {: a:ptr u:n :}
-      GOOD? 0= if E-COMP-STATE throw then
-      ix 0< if a u CHECK:LAY-FACTS else
-         a u FILE-REC @ ix + CHECK:FACTS!
-         read if a u FILE-REC @ ix + CHECK:READ-FACTS then
-      then
+      ix CHECK:HELD-RETIRED = if read LINK-RETIRED else
+      ix CHECK:HELD-TRUSTED = if read LINK-TRUSTED else
+         RD-NAME {: a:ptr u:n :}
+         GOOD? 0= if E-COMP-STATE throw then
+         ix CHECK:HELD-LAID = if a u CHECK:LAY-FACTS then
+         ix CHECK:HELD-UNDEFINE =  read  and if a u CHECK:READ-UNDEFINE then
+         ix 0 >= if
+            a u FILE-REC @ ix + CHECK:FACTS!
+            read if a u FILE-REC @ ix + CHECK:READ-FACTS then
+         then
+      then then
    loop
    GOOD? 0= if E-COMP-STATE throw then
    FILE-HELD @ CHECK:PLACE-FACTS ;
@@ -2328,16 +2874,20 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    CHECK:OPEN
    construct step checked PROGRESS ! ;
 
+\ The build's registry starts empty (include.f REQUIRE-SNAPSHOT) and the loader logs each act,
+\ which a compiling file's object carries (ACTS+).
 : REQUIRE-FRESH ( -- )
-   REQUIRE-SNAPSHOT
+   REQUIRE-SNAPSHOT  EVENTS-RESET EVENT-ON
    construct step required PROGRESS ! ;
 
 \ `[: execute ;]` here is E-EXEC-OPAQUE-XT; a quotation parameter is typed.
 : RUN-UNIT ( n n [ n n -- ] -- ) execute ;
 
-\ E-FAILED once a file's load threw or DP moved back in the space (PROGRESS loading, failed): a failed
-\ build loads and writes nothing more. E-COMP-STATE with no build open.
-: GOING ( -- )
+\ A load may start: a top-level one while the build is open; a nested one, or a compiling file's
+\ tail, while its loader's load runs. E-FAILED once a load threw or DP moved back in the space
+\ (failed): a failed build loads and writes nothing more. E-COMP-STATE in any other step.
+: GOING ( bool -- )
+   {: nested:bool :}
    PROGRESS @
    MATCH step
       none OF E-COMP-STATE throw ENDOF
@@ -2349,11 +2899,13 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       objects OF E-COMP-STATE throw ENDOF
       routed OF E-COMP-STATE throw ENDOF
       open OF
+         nested if E-COMP-STATE throw then
          DPHW-CELL HOST@ 0<> if
             construct step failed PROGRESS !  E-FAILED throw
          then
       ENDOF
-      loading OF E-FAILED throw ENDOF
+      loading OF nested 0= if E-COMP-STATE throw then ENDOF
+      returned OF E-COMP-STATE throw ENDOF
       failed OF E-FAILED throw ENDOF
    ;MATCH ;
 
@@ -2363,13 +2915,79 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ALIASES-N @ 0 ?do  i ALIASES @  i 1 + ALIASES @  CHECK:READ-ALIAS  2 +loop ;
 
 
-\ The fresh object as the file's result, added to BUILT with its placed texts; a throw leaves
-\ the step at loading.
+\ As a file's load or its piece after a request starts.
+: MARKS ( -- )
+   ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !  0 RETIRED-N !
+   NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
+   here NULL-PTR - FILE-DP !
+   WIDN-CELL HOST@ FILE-WID !     \ hb's DATA, where namespace-record and namespace-private mint ids
+   EVENT-COUNT FILE-EVENT ! ;
+
+
+\ The scope a build's top-level file starts in: no package or part open, the build's global
+\ wordlist current (MOVE-IN) and no `using` open. A compile's records, sections and lookups
+\ follow the scope, which an object does not record, and a link opens no package: so a file
+\ links only when its load starts in this scope, and a file with a piece that starts or ends
+\ in another (a package it leaves open, a request inside a package) is UNLINKABLE.
+: TOP-SCOPE? ( -- bool )
+   PKG-REC-CELL HOST@ 0=  get-current BOOT:GLOBAL-WL =  and  USE-DEPTH-CELL HOST@ 0=  and ;
+
+: SCOPE-CK ( -- ) TOP-SCOPE? 0= if true UNLINKABLE ! then ;
+
+
+\ The header's last pair: PIECES' offset, then its length.
+HEADER-BYTES 16 - constant PIECES-FIELD
+
+\ After a linked request's load, whether it returned or threw: the linking file's key and object.
+: RETURNED ( -- ) POP-KEY UNPARK ;
+
+
+\ REQUESTS row k of the linking file: the path it spells loads again, as the compile's request
+\ loaded it, under the linking file's key, so the requested file links; it must end with the BUILT
+\ row of the FILES row the request names, else E-STALE.
+: LINK-REQUEST ( n -- )
+   REQ-FIELDS {: kind:n spelled:n loaded:n file:n :}
+   REQ-PATH BUF:CLEAR
+   spelled FIELD$ REQ-PATH SPAN+       \ OBJECT is the requested file's while it loads
+   PARK
+   true PUSH-KEY
+   kind REQ-PATH BYTES$ ['] SOURCE-UNIT:LOAD-PATH ['] RETURNED finally
+   file FILES-ROW BUILT-MATCH {: row:n hit:bool :}
+   hit 0=  row BUILT-N 1 - <>  or if E-STALE throw then ;
+
+
+\ The piece's ACTS rows (ACTS-CK) applied as its compile made them: a provide through
+\ `provided`; a require the registry must hold by now, else E-STALE.
+: LINK-ACTS ( -- )
+   ACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
+   RD-U64 0 ?do
+      RD-U64 {: kind:n :}
+      RD-NAME {: a:ptr u:n :}
+      GOOD? 0= if E-COMP-STATE throw then
+      kind EV-PROVIDED = if
+         a u provided
+      else
+         a u SOURCE-ROOT:RESOLVE nip nip 0= if E-STALE throw then
+      then
+   loop ;
+
+
+\ The fresh object as the file's result, piece by piece: each piece checked against the files
+\ linked before it, linked with its registry acts and added to BUILT with its placed texts and its
+\ sum, then the file its request loaded linked in turn (LINK-REQUEST).
 : LINK-FILE ( -- )
-   LINK-OBJECT  true LINK-FACTS  READ-ALIASES
-   here NULL-PTR - FILE-END !
-   BUILT+
-   construct step open PROGRESS ! ;
+   PIECES-FIELD OBJ@ 8 + PIECE-AT !
+   REQS-N @ 1 + 0 ?do
+      i 0 > if MARKS then
+      i REQS-N @ < if i else -1 then {: req:n :}
+      MAP-FILES
+      req PIECE-CK
+      GOOD? 0= if E-STALE throw then
+      LINK-OBJECT  true LINK-FACTS  READ-ALIASES  LINK-ACTS
+      here NULL-PTR - FILE-END !
+      req PIECE-SUM$ BUILT+
+      req 0 >= if req LINK-REQUEST then
+   loop ;
 
 
 \ FILE-KEY's object removed, so the next build compiles its file.
@@ -2391,38 +3009,163 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    linked ;
 
 
-\ Links the file when its object is fresh, else compiles it, counting and writing a compile when DP
-\ never moved back. Any throw after GOING ends the build, the next GOING throwing E-FAILED.
-: RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
-   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
-   LOADER$ nip 0<> if E-COMP-STATE throw then
-   GOING
-   construct step loading PROGRESS !
-   path pathu KEY!
-   path FILE-PATH  pathu PATH-CAP min dup FILE-PATH-N !  BYTE-COPY
-   ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !
-   NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
-   here NULL-PTR - FILE-DP !
-   WIDN-CELL HOST@ FILE-WID !   \ hb's DATA, where namespace-record and namespace-private mint ids
-   source sourceu INPUT!
-   sourceu LINKED? if exit then
-   COPY-BELOW
-   PUSH-KEY
-   0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
-   DPHW-CELL HOST@ 0<> if
-      construct step failed PROGRESS !  E-FAILED throw
-   then
+\ The running piece's checks, then the piece into PIECES (PIECE+): E-FAILED once DP moved back,
+\ E-STORE (CHECK-EARLIER, FIND-STORES), E-WORDLIST for an id no record accounts for.
+: PIECE-END ( n -- )
+   {: req:n :}
+   DPHW-CELL HOST@ 0<> if E-FAILED throw then
    here NULL-PTR - FILE-END !
-   CHECK-EARLIER  FIND-STORES
+   TRUSTED-FACTS!  RETIRED!  CHECK-EARLIER  FIND-STORES
    WIDN-CELL HOST@ FILE-WID @ -  MINTED {: ids:n held:n :}
-   ids held > if construct step failed PROGRESS !  E-WORDLIST throw then
+   ids held > if E-WORDLIST throw then
    ids held < if E-COMP-STATE throw then
+   req PIECE+ ;
+
+
+\ The piece's texts placed from OBJECT, as a link places them, then its BUILT row with the sum.
+: PIECE-PLACE ( ptr u8 -- )
+   {: sum:ptr :}
+   FILE-HELD @ CHECK:DROP-FACTS  false LINK-FACTS
+   here NULL-PTR - FILE-END !          \ the piece's span ends after its texts
+   sum BUILT+ ;
+
+
+\ The compiling file's object so far onto FRAMES while a file it requested loads: PIECES, REFS,
+\ REQUESTS, NAMED-ROWS, INPUT-SUM and FILE-PATH, then FRAME-TAIL bytes of their lengths, REQ-N
+\ and UNLINKABLE.
+7 8 * constant FRAME-TAIL
+
+: SAVE+ ( ptr a -- n )
+   {: buf:ptr :}
+   buf BYTES$ {: a:ptr u:n :}
+   a u FRAMES SPAN+  u ;
+
+: PUSH-FRAME ( -- )
+   PIECES SAVE+  REFS SAVE+  REQUESTS SAVE+  NAMED-ROWS SAVE+ {: p:n r:n rq:n m:n :}
+   INPUT-SUM KEY-BYTES FRAMES SPAN+
+   FILE-PATH FILE-PATH-N @ FRAMES SPAN+
+   p FRAMES U64+  r FRAMES U64+  rq FRAMES U64+  m FRAMES U64+
+   FILE-PATH-N @ FRAMES U64+  REQ-N @ FRAMES U64+
+   UNLINKABLE @ if 1 else 0 then FRAMES U64+ ;
+
+
+\ FRAMES' u bytes from at into the buffer, and the offset after them.
+: RESTORE+ ( n n ptr a -- n )
+   {: at:n u:n buf:ptr :}
+   FRAMES BYTES$ drop at +  u BUF:N>BLEN  buf BUF:REPLACE
+   at u + ;
+
+
+\ The top frame back into the compiling file's buffers (PUSH-FRAME), and off FRAMES.
+: POP-FRAME ( -- )
+   FRAMES BYTES$ {: f:ptr fu:n :}
+   f fu + FRAME-TAIL - {: t:ptr :}
+   t LE:U64@  t 8 + LE:U64@  t 16 + LE:U64@  t 24 + LE:U64@ {: p:n r:n rq:n m:n :}
+   t 32 + LE:U64@  t 40 + LE:U64@  t 48 + LE:U64@ {: pn:n reqs:n unlinkable:n :}
+   fu FRAME-TAIL -  p r + rq + m + KEY-BYTES + pn + - {: start:n :}
+   start p PIECES RESTORE+  r REFS RESTORE+  rq REQUESTS RESTORE+  m NAMED-ROWS RESTORE+ {: at:n :}
+   f at + INPUT-SUM KEY-BYTES BYTE-COPY
+   f at + KEY-BYTES + FILE-PATH pn BYTE-COPY  pn FILE-PATH-N !
+   reqs REQ-N !  unlinkable 0<> UNLINKABLE !
+   f start BUF:N>BLEN FRAMES BUF:REPLACE ;
+
+
+\ The file's load: its key and marks, then a link of its fresh object when it starts in TOP-SCOPE?,
+\ else a compile of its source, which NEST cuts into pieces at each request, ending with its last
+\ piece and its object. A file a linking file requested links or ends the build with E-STALE: no
+\ piece compiles after a linked one.
+: LOAD ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   path pathu KEY!
+   path pathu PATH!
+   MARKS
+   source sourceu INPUT!
+   NAMED!
+   TOP-SCOPE? if sourceu LINKED? if exit then then
+   LINKING? if E-STALE throw then
+   OBJECT-OPEN  COPY-BELOW
+   false UNLINKABLE !  SCOPE-CK
+   false PUSH-KEY
+   0 sourceu q ['] RUN-UNIT ['] POP-KEY finally
+   true GOING                          \ E-FAILED: a request failed and the source caught it
+   SCOPE-CK
+   -1 PIECE-END
    1 COMPILED-N +!
    sourceu WRITE-OBJECT
-   FILE-HELD @ CHECK:DROP-FACTS  false LINK-FACTS
-   here NULL-PTR - FILE-END !          \ the file's span ends after its texts
-   BUILT+
-   construct step open PROGRESS ! ;
+   OBJECT-SUM PIECE-PLACE ;
+
+
+\ Whether event ev of the loader's log is the request that loads path: the piece's, an include or a
+\ require the registry did not hold, for that path.
+: REQUEST? ( n ptr u8 n -- bool )
+   {: ev:n path:ptr pathu:n :}
+   ev FILE-EVENT @ < if false exit then
+   ev EVENT-KIND@ {: kind:n :}
+   kind EV-INCLUDED =
+   kind EV-REQUIRED =  ev EVENT-STATE@ EV-STATE-FRESH =  and  or
+   ev EVENT-PATH@ path pathu STR=  and ;
+
+
+\ A request of the compiling file, the newest event of the loader's log (REQUEST?, else
+\ E-COMP-STATE): its piece ends here, placed with its sum, which starts the request's row with its
+\ kind and the path as spelled and as loaded; its object so far waits on FRAMES while the file
+\ loads; then the row ends with the FILES row of that file's last piece, and the next piece starts
+\ at a cell boundary, as a load leaves here (include.f LOAD-UNIT).
+: NEST ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   {: path:ptr pathu:n root:ptr rootu:n source:ptr sourceu:n q :}
+   EVENT-COUNT 1 - {: ev:n :}
+   ev path pathu REQUEST? 0= if E-COMP-STATE throw then
+   ev EVENT-KIND@ EV-INCLUDED = if SOURCE-UNIT:LOAD-INCLUDE else SOURCE-UNIT:LOAD-REQUIRE then {: mode:n :}
+   SCOPE-CK
+   REQ-N @ PIECE-END
+   PIECE-SUM!  PIECE-SUM PIECE-PLACE
+   PIECE-SUM KEY-BYTES REQUESTS SPAN+  mode REQUESTS U64+
+   ev EVENT-SPELLED@ REQUESTS FIELD+  path pathu REQUESTS FIELD+
+   1 REQ-N +!
+   align
+   PUSH-FRAME
+   path pathu root rootu source sourceu q LOAD
+   POP-FRAME
+   BUILT-N 1 - REF-FILE REQUESTS U64+
+   LOADER$ {: k:ptr ku:n :}
+   k FILE-KEY ku BYTE-COPY
+   align
+   MARKS  COPY-BELOW  SCOPE-CK ;
+
+
+\ The load, nested when a compiling file requested it.
+: ENTER ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   LOADER$ nip 0<>  LINKING? 0=  and if NEST else LOAD then
+   construct step returned PROGRESS ! ;
+
+\ After a load, whether it returned or threw: one that returned leaves the build open, or its
+\ loader's load running; one that threw fails the build, so every later load throws E-FAILED.
+: LEFT ( -- )
+   PROGRESS @
+   MATCH step
+      none OF E-COMP-STATE throw ENDOF
+      mapped OF E-COMP-STATE throw ENDOF
+      shadowed OF E-COMP-STATE throw ENDOF
+      moved OF E-COMP-STATE throw ENDOF
+      checked OF E-COMP-STATE throw ENDOF
+      required OF E-COMP-STATE throw ENDOF
+      objects OF E-COMP-STATE throw ENDOF
+      routed OF E-COMP-STATE throw ENDOF
+      open OF E-COMP-STATE throw ENDOF
+      loading OF construct step failed PROGRESS ! ENDOF
+      returned OF
+         LOADER$ nip 0<> if construct step loading else construct step open then PROGRESS !
+      ENDOF
+      failed OF ENDOF
+   ;MATCH ;
+
+
+\ Links the file when its object is fresh, else compiles it, counting and writing a compile; a
+\ request of a compiling file nests (NEST).
+: RUN-FILE ( ptr u8 n ptr u8 n ptr u8 n [ n n -- ] -- )
+   LOADER$ nip 0<> GOING
+   construct step loading PROGRESS !
+   ['] ENTER ['] LEFT finally ;
 
 : OBJECTS-IN ( -- )
    INIT-OBJECTS
@@ -2469,7 +3212,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    FIRST-REC @ ndict!
    floor CODE-RECLAIM:TRUNCATE ;
 
-\ Undo IMAGE-IN, from open or from a file's loading or failed step.
+\ Undo IMAGE-IN, from open or from a file's loading, returned or failed step.
 : IMAGE-OUT ( -- bool )
    0 BOOT:IMAGE-BASE-CELL HOST!  INTERN:CLEANUP
    construct step routed PROGRESS ! true ;
@@ -2492,7 +3235,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
          CHECK:CLOSE construct step moved PROGRESS ! true
       ENDOF
       required OF
-         REQUIRE-RESTORE construct step checked PROGRESS ! true
+         EVENT-OFF EVENTS-RESET REQUIRE-RESTORE construct step checked PROGRESS ! true
       ENDOF
       objects OF
          DISPOSE-OBJECTS construct step required PROGRESS ! true
@@ -2502,6 +3245,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       ENDOF
       open OF IMAGE-OUT ENDOF
       loading OF IMAGE-OUT ENDOF
+      returned OF IMAGE-OUT ENDOF
       failed OF IMAGE-OUT ENDOF
    ;MATCH ;
 
@@ -2523,6 +3267,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
       routed OF false ENDOF
       open OF false ENDOF
       loading OF false ENDOF
+      returned OF false ENDOF
       failed OF false ENDOF
    ;MATCH ;
 

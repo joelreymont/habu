@@ -43,8 +43,11 @@ CHECKER-REG:}SCRATCH
    row 1 - CHECKER-RESOLVE:REC-AT {: ns:ptr :}
    ns CK-REC-WID BOOT:NAMESPACE-WL =  wid ns @ =  wid ns CELL + @ =  or  and ;
 
-\ One plus the index of the newest namespace record holding wid, 0 for none.
+\ One plus the index of the newest namespace record holding wid, 0 for none. The
+\ global and namespace wordlists are no package's: a miss on them would index
+\ every record again.
 : NS-FIND ( n -- n ) {: wid:n :}
+   wid BOOT:GLOBAL-WL =  wid BOOT:NAMESPACE-WL =  or IF 0 EXIT THEN
    NS-INDEX
    wid  wid NS-ROW@  NS-HOLDS? 0= IF NS-CLEAR NS-INDEX THEN
    wid NS-ROW@ {: row:n :}

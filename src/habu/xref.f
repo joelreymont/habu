@@ -462,8 +462,6 @@ seal-package
 package XREF
 private
 
-CAST: RETIRE-XT ( n -- [ ptr n -- ] )
-
 : RETIRE-RAW ( ptr n -- ) {: rec:ptr :}
    rec XREF-WORDLIST-SLOT cells + {: wl:ptr :}
    XREF-RETIRED-WL wl patch32
@@ -495,16 +493,10 @@ CAST: GRID-RETIRE-XT ( n -- [ ptr n -- ] )
 
 public
 
-variable RETIRE-HOOK
-
-: BEFORE-RETIRE! ( n -- ) RETIRE-HOOK ! ;
-
-: BEFORE-RETIRE ( ptr n -- ) {: rec:ptr :}
-   RETIRE-HOOK @ dup 0= if drop exit then
-   RETIRE-XT rec swap execute ;
-
+\ A build holds the retirement (CHECK:HOLD-RETIRED) before the grid action drops
+\ the record's checker link, so a link replays the two in the compile's order.
 : RETIRE ( ptr n -- ) {: rec:ptr :}
-   rec BEFORE-RETIRE
+   rec CHECKER-RESOLVE:REC>INDEX  rec XREF-WORDLIST  CHECK:HOLD-RETIRED
    rec GRID-RETIRE
    rec RETIRE-RAW ;
 

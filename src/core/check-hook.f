@@ -223,6 +223,19 @@ public
       then
       CHECK-RC throw then ;
 
+\ The facts of the record a `TRUST` row recorded sym's effect for, from that
+\ newest effect, as a definition's are (CHECK:HELD-TRUSTED). A text that cannot
+\ say the effect, or a symbol no record holds, fails the build: a link would
+\ read the record's older facts.
+: SYM-FACTS! ( n -- )
+   {: sym:n :}
+   sym VIS-SYM-REC CHECKER-RESOLVE:REC>INDEX {: ix:n :}
+   ix 0 >=  sym FACTS-TEXT?  and if RSBUF RSN @ ix CHECK:FACTS! exit then
+   s" hook: facts text cannot say: " ERROR-TEXT:TYPE
+   sym SYM-NAME$ ERROR-TEXT:TYPE
+   S\" \n" ERROR-TEXT:TYPE
+   CHECK-RC throw ;
+
 \ Dynamic preflight/hook installation asserts the canonical checker identities;
 \ ordinary checked code cannot type execution-token installation.
 TRUSTED: INSTALL ( -- )

@@ -1,9 +1,11 @@
-\ link-data.f - a stripped build's DATA: a copy of the open space's cells, each
+\ link-data.f - a build's DATA: a copy of the open space's cells, each
 \ declared cell given its value at DATA-VA, appended to A64ICODE's code buffer
 \ after the routine band as its non-zero runs, then the DATA list, the offset
 \ from DATA-VA of every cell holding a code address, which start-up adds the
 \ load offset to. The link also writes the header cells HEADER-CELLS names and
-\ lists the code ones.
+\ lists the code ones. An engine's link adds the records: the product kernel's
+\ primitives, then the build's, each build record and wordlist id renumbered
+\ for the product (RECORD-IMAGE), and the record list.
 \ LINKER:WRITE writes the linked program; the other words are LINKER's own.
 
 require src/lib/error.f
@@ -33,6 +35,17 @@ variable LIMAGE
 variable LIMAGE-END
 variable LLIST
 variable LLIST-END
+\ An engine's: the record image's start and end, the record list's start and end.
+variable LRECS
+variable LRECS-END
+variable LRLIST
+variable LRLIST-END
+
+\ The record list's offsets from the dictionary band, ascending as the records
+\ are laid; the code offset of each build record's out-of-line name.
+DYNAMIC-BUFFER RLISTED n
+variable RLISTED-N
+DYNAMIC-BUFFER NAME-AT n
 
 
 \ A bound label's byte offset in A64ICODE's code buffer.
@@ -177,6 +190,165 @@ variable LLIST-END
    CODE-END-CELL A64ICODE:DCQ, ;
 
 
+\ ---- an engine's records and wordlist ids ---------------------------------------
+\ A record index holds only in the process that made it, and so does a wordlist
+\ id: the product numbers its kernel's primitives [0, P) as EMIT-DICT lays them
+\ and each build record r at P + (r - FIRST-REC). The build's global and
+\ namespace marker become the product's (0, WL:NAMESPACE), the ids the build
+\ minted follow FIRST-DYNAMIC-WID in mint order, and the engine's own ids below
+\ it and the retired markers stay. An object names neither: the shift probe
+\ moves no object cell by a wordlist id.
+
+\ The first id the build minted after its global and namespace (MOVE-IN).
+: FIRST-WID ( -- n ) BOOT:GLOBAL-WL  BOOT:NAMESPACE-WL negate  max 1 + ;
+
+\ The product's WIDN-CELL.
+: PRODUCT-WIDN ( -- n ) FIRST-DYNAMIC-WID  WIDN-CELL HOST@ +  FIRST-WID - ;
+
+: BAD-WID ( n n -- )
+   {: wid:n r:n :}
+   s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  holds wordlist " SAY wid SAY-INT
+   s" , which the build did not make" SAY SAY-CR
+   s" link: a record holds a wordlist the product cannot name" 74 die ;
+
+\ Build record r's wordlist id wid as the product numbers it.
+: WID-MAP ( n n -- n )
+   {: wid:n r:n :}
+   wid BOOT:GLOBAL-WL = if 0 exit then
+   wid BOOT:NAMESPACE-WL = if WL:NAMESPACE exit then
+   wid 0 >=  wid FIRST-DYNAMIC-WID < and if wid exit then
+   wid XREF:RETIRED-WL? if wid exit then
+   wid FIRST-WID >=  wid WIDN-CELL HOST@ < and if FIRST-DYNAMIC-WID wid + FIRST-WID - exit then
+   wid r BAD-WID ;
+
+
+\ The product kernel's primitive count and record k's cell, as EMIT-DICT laid
+\ them: [0] and [8] the entry's and the last word's code offsets, [24] an
+\ out-of-line name's.
+: PRIMS ( -- n ) A64ICODE:CODE LNCOUNT LABEL-OFFSET + LE:U64@ ;
+
+: PRIM@ ( n n -- n )
+   {: k:n slot:n :}
+   A64ICODE:CODE LDICT LABEL-OFFSET +  k DREC * +  slot cells +  LE:U64@ ;
+
+: RLIST+ ( n -- )
+   RLISTED-N @ 1 + RLISTED-RESERVE
+   RLISTED-N @ RLISTED !  1 RLISTED-N +! ;
+
+\ A cell holding a code address at band offset off: listed, so start-up slides it.
+: CODE-CELL, ( n n -- )
+   {: v:n off:n :}
+   v A64ICODE:DCQ,  off RLIST+ ;
+
+
+\ As habu2.f EM-SEED-DICT seeds it: [8] the body's length, a package row's
+\ [0] and [8] its wordlist ids.
+: PRIM-REC, ( n -- )
+   {: k:n :}
+   k DREC * {: at:n :}
+   k 0 PRIM@ {: first:n :}
+   k 5 PRIM@ {: wid:n :}
+   wid WL:NAMESPACE = if
+      first A64ICODE:DCQ,  k 1 PRIM@ A64ICODE:DCQ,
+   else
+      TEXT-VA first + at CODE-CELL,
+      k 1 PRIM@ first - 4 - A64ICODE:DCQ,
+   then
+   k 2 PRIM@ {: flags:n :}
+   flags A64ICODE:DCQ,
+   flags DNAME-EXT and 0<> if
+      TEXT-VA k 3 PRIM@ +  at 24 + CODE-CELL,
+   else
+      k 3 PRIM@ A64ICODE:DCQ,
+   then
+   k 4 PRIM@ A64ICODE:DCQ,
+   wid A64ICODE:DCQ, ;
+
+
+\ Build record r's entry at the product's link address; 0 stays 0.
+: ENTRY-ADDRESS ( n -- n )
+   {: r:n :}
+   r XREF-REC XREF-START {: a:n :}
+   a 0= if 0 exit then
+   a LINK-ADDRESS {: to:n :}
+   to -1 <> if to exit then
+   s" link: record " SAY r XREF-REC XREF-NAME$ SAY s"  enters at " SAY a SAY-INT
+   s" , which the product does not place" SAY SAY-CR
+   s" link: a record enters code the product does not place" 74 die ;
+
+
+\ Build record r at product index k: [32], the facts text's offset from the
+\ image's DATA, holds in the product's.
+: BUILD-REC, ( n n -- )
+   {: r:n k:n :}
+   r XREF-REC {: rec:ptr :}
+   k DREC * {: at:n :}
+   rec XREF-WORDLIST {: wid:n :}
+   wid XREF:PACKAGE-WL? if
+      rec XREF-PKG-PUBLIC r WID-MAP A64ICODE:DCQ,
+      rec XREF-PKG-PRIVATE r WID-MAP A64ICODE:DCQ,
+   else
+      r ENTRY-ADDRESS {: entry:n :}
+      entry 0<> if entry at CODE-CELL, else 0 A64ICODE:DCQ, then
+      rec XREF-RAW-LEN A64ICODE:DCQ,
+   then
+   rec XREF-FLAGS A64ICODE:DCQ,
+   rec XREF-EXT? if
+      TEXT-VA  r FIRST-REC @ - NAME-AT @ +  at 24 + CODE-CELL,
+   else
+      rec XREF-NAME-SLOT XREF-CELL@ A64ICODE:DCQ,
+   then
+   rec CK-REC-FACTS-SLOT XREF-CELL@ A64ICODE:DCQ,
+   wid r WID-MAP A64ICODE:DCQ, ;
+
+
+\ Each build record's out-of-line name, once, before the records.
+: NAME-POOL ( -- )
+   ndict@ FIRST-REC @ - NAME-AT-RESERVE
+   ndict@ FIRST-REC @ ?do
+      i XREF-REC {: rec:ptr :}
+      rec XREF-EXT? if
+         A64ICODE:ASM-LEN  i FIRST-REC @ - NAME-AT !
+         rec XREF-NAME$ A64ICODE:BYTES,
+      then
+   loop ;
+
+
+\ The product's record count.
+: PRODUCT-NDICT ( -- n ) PRIMS  ndict@ +  FIRST-REC @ - ;
+
+
+\ After DATA-IMAGE: the names, then at an 8-byte boundary the records, then
+\ the record list.
+: RECORD-IMAGE ( -- )
+   NAME-POOL
+   PAD8
+   0 RLISTED-N !
+   LRECS A64ICODE:LABEL@ A64ICODE:LBL,
+   PRIMS 0 ?do i PRIM-REC, loop
+   ndict@ FIRST-REC @ ?do  i  PRIMS i + FIRST-REC @ -  BUILD-REC,  loop
+   LRECS-END A64ICODE:LABEL@ A64ICODE:LBL,
+   LRLIST A64ICODE:LABEL@ A64ICODE:LBL,
+   RLISTED-N @ 0 ?do i RLISTED @ A64ICODE:DCQ, loop
+   LRLIST-END A64ICODE:LABEL@ A64ICODE:LBL,
+   RLISTED-RELEASE  NAME-AT-RELEASE ;
+
+
+\ An engine's header cells beside HEADER-CELLS': the record count the seal
+\ covers, the wordlist counter, and process state a build's own cells name in
+\ hb (the index, the current package and record, the policy's watermark).
+: ENGINE-CELLS ( -- )
+   PRODUCT-NDICT SEAL-NDICT-CELL HEADER!
+   PRODUCT-WIDN WIDN-CELL HEADER!
+   0 CUR-CELL HEADER!
+   0 HIDXP-CELL HEADER!
+   0 HIDX:CLAIMS HEADER!
+   0 LASTC-CELL HEADER!
+   0 PKG-REC-CELL HEADER!
+   0 ENCLOSING:REC HEADER!
+   0 POLICY-NDICT-CELL HEADER! ;
+
+
 : SET? ( n -- bool ) COPY-CELLS @ 0<> ;
 
 \ The first non-zero cell at or after cell i, or COPY-N.
@@ -210,6 +382,7 @@ variable LLIST-END
    SORT-ROWS
    ['] COPY-ROW EACH-ROW
    HEADER-CELLS
+   ENGINE? @ if ENGINE-CELLS then
    RUNS,
    LIMAGE-END A64ICODE:LABEL@ A64ICODE:LBL,
    LLIST A64ICODE:LABEL@ A64ICODE:LBL,
@@ -237,20 +410,40 @@ variable LLIST-END
    DATA-IMAGE ;
 
 
+\ An engine's code: the start-up, the whole kernel, every routine, DATA, then
+\ the records.
+: LINK-ENGINE ( -- )
+   ARM64:OPEN
+   A64ICODE:LBL LIMAGE !  A64ICODE:LBL LIMAGE-END !
+   A64ICODE:LBL LLIST !  A64ICODE:LBL LLIST-END !
+   A64ICODE:LBL LRECS !  A64ICODE:LBL LRECS-END !
+   A64ICODE:LBL LRLIST !  A64ICODE:LBL LRLIST-END !
+   TEXT-VA  LIMAGE A64ICODE:LABEL@  LIMAGE-END A64ICODE:LABEL@
+   LLIST A64ICODE:LABEL@  LLIST-END A64ICODE:LABEL@
+   LRECS A64ICODE:LABEL@  LRECS-END A64ICODE:LABEL@
+   LRLIST A64ICODE:LABEL@  LRLIST-END A64ICODE:LABEL@  A64BOOT:ENGINE-START,
+   ARM64:KERNEL
+   ROUTINES REACH-ALL
+   ['] DATA-ADDRESS PLACE-ROUTINES
+   DATA-IMAGE
+   RECORD-IMAGE ;
+
+
 public
 
 \ Link the open space's program and write it, signed, to the path; the caller
-\ first stores its entry as app-image-core.f START! does. The facts texts the
-\ build's body held lie after every file, so no file's literal can name one.
+\ first stores its entry, a stripped program's as app-image-core.f START! does,
+\ an engine's in ENGINE-MAIN:XT-CELL. The facts texts the build's body held lie
+\ after every file, so no file's literal can name one.
 : WRITE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
-   GOING
-   ENGINE? @ if E-COMP-STATE throw then
+   false GOING
    0 CHECK:PLACE-FACTS
-   APP-ENTRY:XT-CELL SPACE-AT @ 0= if
-      s" link: the build stored no entry in APP-ENTRY:XT-CELL" 74 die
+   ENGINE? @ if ENGINE-MAIN:XT-CELL else APP-ENTRY:XT-CELL then {: entry:n :}
+   entry SPACE-AT @ 0= if
+      s" link: the build stored no entry for the program" 74 die
    then
-   LINK-STRIPPED
+   ENGINE? @ if LINK-ENGINE else LINK-STRIPPED then
    SIGN-ID:PROG$ path pathu DRV-EMIT-IMAGE ;
 
 ;package

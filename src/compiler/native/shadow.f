@@ -80,6 +80,10 @@ DYNAMIC-BUFFER REC-IDX n             \ the dictionary record
 DYNAMIC-BUFFER REC-EM n              \ the emission that is its routine
 DYNAMIC-BUFFER REC-ENTRY n           \ where in that emission the record enters
 
+\ Each emission PATCH-DOES changed, in the order it changed them.
+variable N-PATCHES
+DYNAMIC-BUFFER PATCHED n
+
 \ A definer and its `does>` companion are the most records one routine is.
 2 constant RECS-MAX
 
@@ -243,6 +247,10 @@ $E9 constant TAIL-OP
    N-RECS @ RECS-MAX + {: n:n :}
    n REC-IDX-RESERVE  n REC-EM-RESERVE  n REC-ENTRY-RESERVE ;
 
+: PATCH+ ( n -- ) {: e:n :}
+   N-PATCHES @ 1+ PATCHED-RESERVE
+   e N-PATCHES @ PATCHED !  1 N-PATCHES +! ;
+
 \ Whether COPY returns a native shadow's placed emission to the unplaced form,
 \ which needs NATIVE-ADDRS!.
 : UNPLACE? ( -- bool )
@@ -273,7 +281,7 @@ $E9 constant TAIL-OP
 : CLEAR ( -- )
    construct pending none PENDING !  0 PEND-ENTRY !
    0 CODE-N !  0 N-EMS !  0 N-FUNS !  0 N-CALLS !  0 N-ADDRS !  0 N-RECS !
-   0 SOURCE-CAP !  0 SOURCE-N ! ;
+   0 SOURCE-CAP !  0 SOURCE-N !  0 N-PATCHES ! ;
 
 : RELEASE-ROWS ( -- )
    CODE-BUF-RELEASE
@@ -286,7 +294,7 @@ $E9 constant TAIL-OP
    CALL-OFF-RELEASE  CALL-KIND-RELEASE  CALL-TGT-RELEASE
    ADDR-OFF-RELEASE  ADDR-KIND-RELEASE
    SOURCE-KEYS-RELEASE  SOURCE-USED-RELEASE  SOURCE-EM-RELEASE  SOURCE-FUN-RELEASE
-   REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE ;
+   REC-IDX-RELEASE  REC-EM-RELEASE  REC-ENTRY-RELEASE  PATCHED-RELEASE ;
 
 : SUB-ROW ( n n n -- n ) {: k:n first:n count:n :}
    k count ROW-CK first + ;
@@ -471,12 +479,14 @@ public
 \ resolves the tail call through the clause companion's row like any other
 \ tail site. A backend with no slot (Wasm) cannot carry the clause, and since
 \ a later replacement can still clear the target, nothing is dropped here:
-\ ROUTINE? answers the capture when the map is read.
+\ ROUTINE? answers the capture when the map is read. The patched emission joins
+\ PATCHES.
 : PATCH-DOES ( n n -- ) {: idx:n target:n :}
    OPEN? 0= if exit then
    N-RECS @ 0 ?do
       i REC-IDX @ idx = if
          target i REC-EM @ EM-PATCH-TGT !
+         i REC-EM @ PATCH+
          unloop exit
       then
    loop
@@ -497,6 +507,13 @@ public
 
 : EMISSION@ ( n -- n )
    REC-CK REC-EM @ ;
+
+\ The does> patches since the shadow opened, and the emission the k-th changed.
+: PATCHES ( -- n )
+   OPEN-CK N-PATCHES @ ;
+
+: PATCHED@ ( n -- n )
+   OPEN-CK N-PATCHES @ ROW-CK PATCHED @ ;
 
 \ Where in that emission it enters: zero for a definition, the clause function's
 \ start for a `does>` companion.

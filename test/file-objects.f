@@ -15,11 +15,20 @@
 \ second file reads the first's variable, spells the package the first comes to
 \ declare, or lays the string the first comes to lay. The tail sequence, whose
 \ second file is edited, compiles 2, 1 and 0; its fourth build, of d.f alone,
-\ compiles 1: d.f's object names c.f, which defines V, a name d.f spells. Two files named a.f in two directories, each built alone in turn twice,
+\ compiles 1: d.f's object names c.f, which defines V, a name d.f spells. The
+\ private sequence, whose first file's private word changes, compiles 2, 1 and
+\ 0: the second spells that word's name for its own package's word. The parts
+\ sequence, whose second file's private constant changes, compiles 3, 2 and 0:
+\ the third reopens their package and reads the constant, which leaves no
+\ reference. The scope sequence, whose first file leaves its package open for
+\ the second, which is edited, compiles 2, 2 and 2: neither writes an object.
+\ i.f, built inside a package one file leaves open and another closes, then
+\ alone, inside again and alone, compiles 3, 1, 3 and 0: only a load at top
+\ level writes or links an object. Two files named a.f in two directories, each built alone in turn twice,
 \ compile 1, 1, 0 and 0: each keeps an object of its own. The crafted
 \ sequence's builds of e.f over seven objects the link refuses or links wrong,
 \ each with its checksum written again, compile 1, and a plain build after them
-\ links. C writes thirteen objects, and the two whose names A also wrote,
+\ links. C writes nineteen objects, and the two whose names A also wrote,
 \ count.f's and shape.f's, have A's bytes: a refused file writes none. A's
 \ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
 \ and FILE-OBJECTS-BODY-SUM's, which the build's body defines, `( n n -- n ) `,
@@ -59,7 +68,7 @@ package FILE-OBJECTS-TEST
 
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
-13 constant FILES-C                      \ build C's: count.f's, shape.f's, two per sequence, the twins', e.f's
+19 constant FILES-C                      \ build C's: count.f's, shape.f's, each sequence's, the twins', e.f's
 68 constant NAME-BYTES                   \ <hex key>.hfo
 \ The names, newline-separated.
 : LISTING-BYTES ( n -- n ) NAME-BYTES 1 + * 1 - ;
@@ -268,11 +277,11 @@ variable INPUT-N                         \ those holding count.f's INPUT
    A$ name nameu OBJ$ BYTES-A CAP FS:READ-ALL {: au:n :}
    s" each object A also wrote has A's bytes" LABEL  BYTES-A au BYTES-B cu T$= ;
 
-\ Build C's objects: each sequence's two, the twins', e.f's, and count.f's and shape.f's,
+\ Build C's objects: each sequence's, the twins', e.f's, and count.f's and shape.f's,
 \ whose names A also wrote; count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote thirteen objects" LABEL  NAMES-C-U @ FILES-C LISTING-BYTES T=
+   s" the build wrote nineteen objects" LABEL  NAMES-C-U @ FILES-C LISTING-BYTES T=
    NAMES-C-U @ NAME-COUNT {: n:n :}
    NAMES-C-U @ n LISTING-BYTES <> if exit then
    s" test/fixtures/file-objects/count.f" EXPECT!
@@ -281,8 +290,8 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" A wrote two of C's objects" LABEL  SHARED-N @ 2 T=
    s" one of them holds count.f's size and SHA-256" LABEL  INPUT-N @ 1 T= ;
 
-\ A file compiles when it, a file its object references or an earlier file that defines a name
-\ it spells is edited, when an earlier file lays a string its object lays, when it is loaded
+\ A file compiles when it, a file its object references or an earlier file that defines a public
+\ name it spells, or a private name of a package it opens, is edited, when an earlier file lays a string its object lays, when it is loaded
 \ without the files its object names, or when the link refuses its object or would link it
 \ wrong; any other file links, a compile after it included.
 : CHECK-EDIT ( -- )
@@ -297,6 +306,14 @@ variable INPUT-N                         \ those holding count.f's INPUT
    STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" CONTAINS? TTRUE
    s" the laid builds compile 2, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" laid: compiled 2 2 0\n" CONTAINS? TTRUE
+   s" the private builds compile 2, 1 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" private: compiled 2 1 0\n" CONTAINS? TTRUE
+   s" the parts builds compile 3, 2 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" parts: compiled 3 2 0\n" CONTAINS? TTRUE
+   s" the scope builds compile 2, 2 and 2 files" LABEL
+   STATE-W STATE-W-U @ s\" scope: compiled 2 2 2\n" CONTAINS? TTRUE
+   s" the inside builds compile 3, 1, 3 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" inside: compiled 3 1 3 0\n" CONTAINS? TTRUE
    s" the twin builds compile 1, 1, 0 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
