@@ -1425,6 +1425,14 @@ learned live in the docs for their subject.
   machine while this Mac ran at load 26 on 12 cores, Joel wrote "spark is
   doing nothing". A before-and-after timing runs on an idle host (spark, Linux
   arm64), both sides on the same machine and engine, not on the shared Mac.
+- 2026-11-07, where TLA+ checks run: shown that an engine build took 289 s of
+  wall time for 132 s of CPU on the shared Mac at load 30-68, whose largest
+  load was a TLA+ model check at 450% CPU for 38 minutes, Joel chose "TLC on
+  spark (Recommended)": "Every session runs TLA+ checks on spark; the Mac
+  keeps builds and suites", and wrote "tell everyone that TLA is on the spark
+  only". Asked whether the Mac's `tlc` should stay as a launcher that copies a
+  spec's files to spark and runs TLC there, or go so that each session runs
+  TLC on spark over ssh itself, he chose "Keep launcher (Recommended)".
 - 2026-10-27, evidence: "so make it happen in your branch and test it out!"
   and "you should be focusing on this, prove me wrong!" When a decision lacks
   evidence because a capability does not exist yet, build it in a branch and
