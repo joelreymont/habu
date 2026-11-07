@@ -1,9 +1,0 @@
----
-title: Compile an ENUM fetch from typed storage for wasm32
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-11-07T00:33:02.691507+02:00"
----
-
-Problem (reported by tim for Maki, 2026-11-07, on the installed hb of 2026-11-06 22:42; not rerun by carl, as Wasm gets no builds or runs until arm64-to-arm64 works, DECISIONS 'arm64 first'): on wasm32 tier 1 refuses `@` of an ENUM-typed cell with 'ncomp: cannot compile STEP' and uncaught -8286 E-HIR-UNMODELED, while the same file loads and runs natively. Reproducer: `package PROBE3 private ENUM drag no-drag orbit pan ;ENUM TYPED-VARIABLE MODE drag public : STEP ( -- ) construct drag orbit MODE ! MODE @ drop ; ;package` built with `bin/hb --load tools/wasm-build.f -- p3.f PROBE3:STEP p3.wasm` (rc 67). Same refusal for an ENUM STRUCTURE field fetch, a public ENUM in a TYPED-VARIABLE, and `: GET ( ptr drag -- drag ) @ ;`; a store alone and MATCH over a stack value compile. Probes: /Users/joel/Work/maki/.jj-ws.noindex/sm-viewer/.out/probe/ (p3, p6, p8, pb1 fail; p4, p5 pass); report /tmp/tim-wasm-enum-fetch.md. Unchecked guess (Maki's worker): VALIDATE-FETCH (src/compiler/native/elaborate.f:3608) needs NFETCH-CHECK:TAGS, which wasm32 lacks. Same refusal class as archived habu-model-a-nominal-05d89f50 (native-build window, closed obsolete 2026-10-22 pending a fresh reproducer; this is one). Wasm compiles through tier 1, so the fix is in tier 1 (DECISIONS 'tier 1 bugs before Wasm moves to T0'). Blocks Maki's viewer drag and selection state as ENUMs. Acceptance: the four probes compile and run under test/wasm/run.mjs; one rejected-or-accepted case in the wasm suite fetching an ENUM from a TYPED-VARIABLE and a STRUCTURE field. Files: src/compiler/native/elaborate.f (VALIDATE-FETCH), the wasm32 fetch-check tags, test/wasm/. Verify: wasm-build of p3.f exits 0 and the module runs; the wasm suite. Depends: arm64-to-arm64 cross-build working (Wasm pause). Ownership: carl. Claim: unassigned.
