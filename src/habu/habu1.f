@@ -4595,6 +4595,24 @@ package ENGINE-EMIT
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
    C 12 16 LDR,  C C DNAME-REP ORRI,  C 12 16 STR, ;
 
+\ record-facts! ( n n -- ) offset, index: stores the facts offset in bytes 32-39
+\ of a record from the seal floor (as BNDAPPEND tests it) to the pending one.
+: BRECFACTS ( -- )
+   LBL LBL LBL {: done:label bad:label floor-ok:label :}
+   B-TASK-GUARD
+   A G-POP  B G-POP                              \ x9 = record index, x10 = offset
+   A NDICT CMP,  C-HI bad BCOND,                 \ negative, or past the pending record
+   14 DICT-CAP LIT64,  A 14 CMP,  C-CS bad BCOND,  \ slot DICT-CAP is the control-flow band
+   14 DATA SEAL-NDICT-CELL LDR,  14 floor-ok CBZ,
+   A 14 CMP,  C-CC bad BCOND,
+   floor-ok LBL,
+   C DREC MOVZ,  A A C MUL,  A DBASE A ADD,      \ x9 = &record[n]
+   12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 A 12 ADD,   \ x12 = the record through the alias
+   B 12 32 STR,
+   done B,
+   bad LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   done LBL, ;
+
 \ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
 \ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The seal-time pass
 \ (src/core/internal-mark.f) sets it on every engine-prefix record with a
@@ -5070,6 +5088,7 @@ package ENGINE-EMIT
    s" seal-captured?" ['] BSEALCAPQ FPRIM-L
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
+   s" record-facts!" ['] BRECFACTS FPRIM
    s" int-mark" ['] BINTMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" rep-mark" ['] BREPMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID
    s" min-in-mark" ['] BMININMARK ENGINE-PRIMS:GLOBAL-INT-WID FPRIM-WID

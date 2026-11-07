@@ -1062,6 +1062,9 @@ EPRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT EPRIM; REACH source
 \ with a second decoder (src/compiler/native/feed.f).
 EPRIM: num-parse      PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PE-F PE-OUT EPRIM; REACH memory
 EPRIM: wide-mark EPRIM;
+\ record-facts! ( n n -- ) offset, index: stores where a record's facts text
+\ lies (habu1.f BRECFACTS); the row lets every checked program call it.
+EPRIM: record-facts! PE-N PE-IN PE-N PE-IN EPRIM;
 EPRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;
 ETRUSTED-ONLY!
 EPRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT EPRIM;

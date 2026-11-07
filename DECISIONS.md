@@ -206,14 +206,29 @@ learned live in the docs for their subject.
   place, so the accessor's text became the storage's first bytes, the lead
   chose: `CHECK:FACTS!` stores through a kernel primitive `record-facts! ( n n
   -- )`, offset then record index, which writes through the alias and refuses
-  an index past the pending record or a call off the main task. It has no
-  checker row, so only the kernel's checker calls it and a checked caller is
-  E-UNDEFINED, with no owner row or mark; x86-64 refuses it until x86-64 moves
-  onto the linker. Each of the six definers allots its storage in its
-  generated text right after the `create`, so a definition in that text comes
-  after the storage, and the guards that refused a moved `here` go. A program
-  that lays data after a definition gets Forth's result, the data after the
-  text, with no refusal.
+  an index past the pending record or at DICT-CAP, a sealed record (below the
+  seal floor, as the record append refuses) or a call off the main task. It
+  has a plain global checker row `( n n -- )`, like `wide-mark`'s global row,
+  with no owner row or mark: the engine build checks checker.f's bodies, so
+  with no row `CHECK:FACTS!` itself was E-UNDEFINED. Until it is a private
+  name that the strip Joel put after T0 removes ("privacy"), any checked
+  program can rewrite bytes 32-39 of an unsealed record with it. x86-64
+  refuses it until x86-64 moves onto the linker. Each of the six definers
+  allots its storage in its generated text right after the `create`, so a
+  definition in that text comes after the storage, and the guards that refused
+  a moved `here` go. A program that lays data after a definition gets Forth's
+  result, the data after the text, with no refusal. The same day, under the
+  same words, shown that the registrars of a defer, a `TRUSTED:` word, a
+  `cast:` or `linear:` declaration, a created word and a does> definer live in
+  checker.f, which loads before the renderer (render.f needs type-family.f),
+  so they cannot write facts text, the lead chose: check-hook.f defines one
+  entry word per registrar that runs it and then writes its record's facts,
+  and puts it in the declaration owner's field that both interpret loops
+  already call, where checking is switched on; records made before then keep 0.
+  A defer's text is written again by its defer step, with the defer tag; a
+  created word only looks its text up, which finds its definer's tail (the two
+  render alike, probed); a definer also lays its created words' text as a
+  string of its own.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package
