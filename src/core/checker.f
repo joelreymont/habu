@@ -12800,28 +12800,114 @@ public
 ;package
 
 package CHECK
+\ A build's facts writes, in order: per entry the record index (-1 for a laid
+\ text), the text's offset in HELD-TEXT and its length. Only a build appends.
+3 cells constant HELD-ROW
+PERSISTED-PTR-VARIABLE HELD-P   variable HELD-CAP   variable HELD-N
+NULL-PTR HELD-P !   $1000 HELD-CAP !   0 HELD-N !
+PERSISTED-PTR-VARIABLE HELD-TEXT-P
+variable HELD-TEXT-CAP   variable HELD-TEXT-N
+NULL-PTR HELD-TEXT-P !   $10000 HELD-TEXT-CAP !   0 HELD-TEXT-N !
+HELD-P HELD-CAP HELD-ROW HELD-N STORE+
+HELD-TEXT-P HELD-TEXT-CAP 1 HELD-TEXT-N STORE+
+
+: IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
+: HELD-ROWS ( -- ptr u8 ) HELD-P @ ;
+: HELD-TEXT ( -- ptr u8 ) HELD-TEXT-P @ ;
+: HELD-CELL ( n n -- ptr n )
+   {: k:n field:n :}
+   HELD-ROWS k HELD-ROW * + field cells + CELL-VIEW ;
+
+
+\ Room for NEED entries and BYTES text bytes; a store past its capacity doubles.
+: HELD-ROOM ( n n -- )
+   {: need:n bytes:n :}
+   need HELD-CAP @ > IF
+      need HELD-CAP @ 2 * max {: cap:n :}
+      HELD-ROWS HELD-CAP @ HELD-ROW * cap HELD-ROW * ARENA-BYTES-GROW HELD-P !
+      cap HELD-CAP !
+   THEN
+   bytes HELD-TEXT-CAP @ > IF
+      bytes HELD-TEXT-CAP @ 2 * max {: tcap:n :}
+      HELD-TEXT HELD-TEXT-CAP @ tcap ARENA-BYTES-GROW HELD-TEXT-P !
+      tcap HELD-TEXT-CAP !
+   THEN ;
+
+
+\ Copies the text: a caller's buffer (RSBUF) is reused before the linker reads it.
+: HOLD-FACTS ( ptr u8 n n -- )
+   {: a:ptr u:n ix:n :}
+   HELD-N @ {: k:n :}
+   HELD-TEXT-N @ {: off:n :}
+   k 1+  off u +  HELD-ROOM
+   a  HELD-TEXT off +  u ARENA-COPY
+   ix k 0 HELD-CELL !   off k 1 HELD-CELL !   u k 2 HELD-CELL !
+   k 1+ HELD-N !   off u + HELD-TEXT-N ! ;
+
+
+\ A bad index is a linker defect, never a program's, so it dies.
+: HELD-RANGE ( n n -- )
+   {: k:n limit:n :}
+   k 0 < k limit < 0= or IF
+      s" checker: held facts index out of range" 76 die
+   THEN ;
+
+
+: HELD-ENTRY ( n -- n ptr u8 n )
+   {: k:n :}
+   k 0 HELD-CELL @   HELD-TEXT k 1 HELD-CELL @ +   k 2 HELD-CELL @ ;
+
+
+\ Keeps the first N entries; texts lie in entry order, so theirs end with entry N-1's.
+: HELD-KEEP ( n -- )
+   {: n:n :}
+   n 0= IF 0 ELSE n 1- 1 HELD-CELL @  n 1- 2 HELD-CELL @ + THEN HELD-TEXT-N !
+   n HELD-N ! ;
+
+
+\ A laid text is interned only; a record takes its text's offset from the
+\ build's image base, or 0 for an empty text.
+: PLACE-FACT ( n -- )
+   HELD-ENTRY {: ix:n a:ptr u:n :}
+   ix 0 < IF a u INTERN:TEXT drop EXIT THEN
+   u 0= IF 0 ix record-facts! EXIT THEN
+   a u INTERN:TEXT IMAGE-BASE - ix record-facts! ;
+\ While a build's space is open the facts words hold each write for the linker:
+\ a text laid then lands in DATA only if no earlier file of the build has it.
+: BUILDING? ( -- bool ) IMAGE-BASE 0 <> ;
 public
-\ While a build's space is open no record holds a text: one laid then lands in
-\ DATA only if no earlier file of the build has it.
-: BUILDING? ( -- bool ) data-base BOOT:IMAGE-BASE-CELL + @ 0 <> ;
 \ Stores the interned text's offset in the record's bytes 32-39.
 : FACTS! ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
-   BUILDING? IF EXIT THEN
+   BUILDING? IF a u ix HOLD-FACTS EXIT THEN
    a u INTERN:TEXT  data-base NULL-PTR - -  ix record-facts! ;
 \ Interns a text no record holds: a definer's created effect its words look up.
 : LAY-FACTS ( ptr u8 n -- )
-   BUILDING? IF 2drop EXIT THEN
+   BUILDING? IF -1 HOLD-FACTS EXIT THEN
    INTERN:TEXT drop ;
-\ Stores the offset of the text if it is interned, else 0; an empty text stores
-\ 0. A created word only finds its definer's text, and must not keep a stale one.
+\ Stores the text's offset if it is interned, else 0, so no stale one stays; an
+\ empty text stores 0. It never lays a text: a created body is open at `here`.
 : FIND-FACTS! ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
-   BUILDING? IF EXIT THEN
+   BUILDING? IF a u ix HOLD-FACTS EXIT THEN
    u 0= IF 0 ix record-facts! EXIT THEN
    a u INTERN:FIND {: body:n :}
    body 0= IF 0 ELSE body data-base NULL-PTR - - THEN
    ix record-facts! ;
+
+\ The linker's view of the held writes. HELD-FACT@ answers entry k's index (-1
+\ for a laid text) and its text, until a facts write unmaps or overwrites it.
+: HELD-FACTS ( -- n ) HELD-N @ ;
+: HELD-FACT@ ( n -- n ptr u8 n ) dup HELD-N @ HELD-RANGE HELD-ENTRY ;
+\ Keeps the first n entries.
+: DROP-FACTS ( n -- ) dup HELD-N @ 1+ HELD-RANGE HELD-KEEP ;
+\ Interns entries n and on in order, then keeps the first n. A created word's
+\ text is laid too: the linker places where no created body is open, after GOING.
+: PLACE-FACTS ( n -- )
+   {: from:n :}
+   from HELD-N @ 1+ HELD-RANGE
+   HELD-N @ from ?do i PLACE-FACT loop
+   from HELD-KEEP ;
 ;package
 
 package CHECKER-RESOLVE

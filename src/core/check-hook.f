@@ -147,12 +147,11 @@ variable DEFCAST-REG
 CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
 
 
-\ The raw registrar's field entry. A created word or constant gets the text its
-\ definer laid, looked up and never laid here, and 0 when none says its effect.
+\ The raw registrar's field entry: a created word or constant takes its text
+\ through CHECK:FIND-FACTS!, or 0 when none says its effect.
 : RAW-DECLARED ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
    na nu sa su RAW-REG @ REG-XT execute
-   CHECK:BUILDING? if exit then
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> CHK-CAND @ 0 <> or if exit then
    data-base CHECKER-REG:CK-LASTC-CELL + 0 ptr-field @ {: rec:ptr :}
    rec NULL-PTR = if exit then
@@ -166,7 +165,6 @@ CAST: REG-XT ( n -- [ ptr u8 n ptr u8 n -- ] )
 \ name; an unsaid text stores 0, so no earlier registrar's text stays.
 : PENDING-FACTS ( ptr u8 n -- )
    {: a:ptr u:n :}
-   CHECK:BUILDING? if exit then
    CK-LIVE-PEND? 0= if exit then
    CK-CLOSED-OPEN @ 0= if exit then
    DOES-SPLIT @ 0 <> if exit then
