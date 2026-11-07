@@ -576,17 +576,22 @@ learned live in the docs for their subject.
   forth style guide", and "habu library needs to be brushed up, yes. not
   necessarily everything right now. json would be sufficient for now". JSON
   reading and writing are one package, JSON, and card §1 states the rule.
-- 2026-11-07, the JSON writer's separators (relayed by stuart from Tender):
-  Joel had written the night before "i'm leaving for the night so make your
-  own judgement and do everything without asking me. apply the what's best
-  for long term criteria". The writer wrote a comma after a START, a second
-  comma and a comma before an END, all invalid JSON, so Tender guarded the
-  comma before each repeated element with its own count. Under those words
-  the lead chose a writer that knows its separator: the public `ENUM
-  writer-layout valued opened separated ;ENUM` types the writer's layout
-  field in place of its pending flag; JSON:WRITE-COMMA writes nothing right
-  after a START, and WRITE-COMMA, WRITE-OBJECT-END or WRITE-ARRAY-END right
-  after a written comma is E-JSON-WRITE-STATE.
+- 2026-11-07, the JSON writer's layout (relayed by stuart from Tender): Joel
+  had written the night before "i'm leaving for the night so make your own
+  judgement and do everything without asking me. apply the what's best for
+  long term criteria". The writer wrote a comma after a START, a second comma
+  and a comma before an END, all invalid JSON, so Tender guarded the comma
+  before each repeated element with its own count; it also wrote a comma
+  after a key, before any token or inside an open string. Under those words
+  the lead chose a writer that knows what it wrote last: the public `ENUM
+  writer-layout fresh valued opened separated keyed quoting ;ENUM` types the
+  writer's layout field in place of its pending flag; JSON:WRITE-COMMA
+  writes nothing right after a START, and E-JSON-WRITE-STATE refuses, before
+  any byte, a COMMA before any token, after a comma or a key or inside an
+  open string; an END after a comma or a key or inside an open string; a
+  string part or end outside an open string; and any other token inside one,
+  numbers included: a number inside a string is written as `FMT:INT$
+  JSON:WRITE-STRING-PART`.
 - 2026-11-07, naming a JSON token kind (relayed by kevin from Tender): three
   Tender files had grown their own word naming a token kind for a LOG line
   ("Zen's reply has a string where an object was expected"). Under Joel's

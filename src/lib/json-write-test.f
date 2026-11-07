@@ -645,14 +645,14 @@ create JWT-UTF8-OK $C3 c, $A9 c, $E2 c, $82 c, $AC c, $F0 c, $9F c, $98 c, $80 c
    JWT-GROW-W JWT-GROW-BUF WRITE-OPEN-BUF JWT-NESTED WRITTEN$ JWT-COMPACT$ T$=
    JWT-GROW-W WRITE-CLOSE JWT-GROW-BUF BUF:DISPOSE ;
 
-\ A string in parts never breaks, even after a part ending in a comma and RAW
-\ inside it; the COMMA after it puts the number on its own line.
+\ A string in parts never breaks, even after a part ending in a comma; the
+\ COMMA after it puts the number on its own line.
 : JWT-TEST-PART-LAYOUT ( -- )
    JWT-OPEN-A 2 WRITE-INDENT! WRITE-ARRAY-START
-   WRITE-STRING-START s" a," WRITE-STRING-PART s" x" WRITE-RAW
+   WRITE-STRING-START s" a," WRITE-STRING-PART
    s" b" WRITE-STRING-PART WRITE-STRING-END
    WRITE-COMMA 1 WRITE-U WRITE-ARRAY-END
-   WRITTEN$ s\" [\n  \"a,xb\",\n  1\n]" T$= ;
+   WRITTEN$ s\" [\n  \"a,b\",\n  1\n]" T$= ;
 
 \ WRITE-RESET right after a START keeps the width and forgets the open object
 \ and its due break.
@@ -676,11 +676,14 @@ create JWT-PARTS-WANT
    WRITE-STRING-END WRITTEN$ JWT-PARTS-WANT 10 T$=
    JWT-OPEN-B JWT-PARTS 6 WRITE-STRING WRITTEN$ JWT-PARTS-WANT 10 T$= ;
 
-: JWT-PART-FF ( -- ) JWT-OPEN-AB JWT-FFFE 1 WRITE-STRING-PART drop ;
-: JWT-PART-HALF ( -- ) JWT-OPEN-AB JWT-PARTS 4 + 1 WRITE-STRING-PART drop ;
+: JWT-PART-FF ( -- )
+   JWT-OPEN-A WRITE-STRING-START JWT-FFFE 1 WRITE-STRING-PART drop ;
+: JWT-PART-HALF ( -- )
+   JWT-OPEN-A WRITE-STRING-START JWT-PARTS 4 + 1 WRITE-STRING-PART drop ;
 : JWT-INDENT!-NEG ( -- ) JWT-OPEN-AB -1 WRITE-INDENT! drop ;
 : JWT-PART-FULL ( -- )   \ room for the two raw bytes, not their three escaped
-   JWT-OPEN-SMALL s" abcdef" WRITE-RAW JWT-RUN-IN 2 WRITE-STRING-PART drop ;
+   JWT-OPEN-SMALL s" abcde" WRITE-RAW WRITE-STRING-START
+   JWT-RUN-IN 2 WRITE-STRING-PART drop ;
 : JWT-KEY-FULL ( -- )   \ room for the break before the key, not for the key
    JWT-OPEN-SMALL 2 WRITE-INDENT! WRITE-OBJECT-START s" k" WRITE-KEY drop ;
 : JWT-BREAK-WRAP ( -- )   \ two levels of MEM-MAX-N spaces overflow a cell
@@ -711,10 +714,12 @@ create JWT-PARTS-WANT
    JWT-A WRITE-NULL WRITTEN$ s\" {\n  null" T$= ;
 
 : JWT-TEST-LAYOUT-REFUSALS ( -- )
-   [: JWT-PART-FF ;] JWT-BYTE-REFUSED
-   [: JWT-PART-HALF ;] JWT-BYTE-REFUSED
+   [: JWT-PART-FF ;] E-JSON-WRITE-BYTE TTHROWSQ
+   JWT-A WRITTEN$ s\" \"" T$=
+   [: JWT-PART-HALF ;] E-JSON-WRITE-BYTE TTHROWSQ
+   JWT-A WRITTEN$ s\" \"" T$=
    [: JWT-INDENT!-NEG ;] JWT-BYTE-REFUSED
-   [: JWT-PART-FULL ;] s" abcdef" JWT-REFUSED-KEEPS$
+   [: JWT-PART-FULL ;] s\" abcde\"" JWT-REFUSED-KEEPS$
    [: JWT-BREAK-WRAP ;] s" ab[[" JWT-REFUSED-KEEPS$
    [: JWT-OBJECT-END-TOP ;] JWT-STATE-REFUSED
    [: JWT-ARRAY-END-TOP ;] JWT-STATE-REFUSED
@@ -779,6 +784,54 @@ create JWT-PARTS-WANT
    [: JWT-CLOSED-OPEN-COMMA ;] E-JSON-WRITE-STATE TTHROWSQ ;
 
 
+\ Calls the layout refuses, each on JWT-A; JWT-KEYED$ and JWT-QUOTING$ are
+\ what JWT-A holds when the refused call comes.
+: JWT-EMPTY$ ( -- ptr u8 n ) JWT-NAME 0 ;
+: JWT-KEYED ( -- ptr writer ) JWT-OPEN-A WRITE-OBJECT-START s" k" WRITE-KEY ;
+: JWT-KEYED$ ( -- ptr u8 n ) s\" {\"k\":" ;
+: JWT-QUOTING ( -- ptr writer )
+   JWT-OPEN-A WRITE-STRING-START s" ab" WRITE-STRING-PART ;
+: JWT-QUOTING$ ( -- ptr u8 n ) s\" \"ab" ;
+: JWT-COMMA-FRESH ( -- ) JWT-OPEN-A WRITE-COMMA drop ;
+: JWT-COMMA-RESET ( -- )
+   JWT-OPEN-A s" x" WRITE-RAW WRITE-RESET WRITE-COMMA drop ;
+: JWT-COMMA-KEYED ( -- ) JWT-KEYED WRITE-COMMA drop ;
+: JWT-COMMA-QUOTING ( -- ) JWT-QUOTING WRITE-COMMA drop ;
+: JWT-PART-FRESH ( -- ) JWT-OPEN-A s" x" WRITE-STRING-PART drop ;
+: JWT-END-FRESH ( -- ) JWT-OPEN-A WRITE-STRING-END drop ;
+: JWT-PART-VALUED ( -- ) JWT-OPEN-A 1 WRITE-U s" x" WRITE-STRING-PART drop ;
+: JWT-END-VALUED ( -- ) JWT-OPEN-A 1 WRITE-U WRITE-STRING-END drop ;
+: JWT-OBJECT-END-KEYED ( -- ) JWT-KEYED WRITE-OBJECT-END drop ;
+: JWT-NULL-QUOTING ( -- ) JWT-QUOTING WRITE-NULL drop ;
+: JWT-KEY-QUOTING ( -- ) JWT-QUOTING s" k" WRITE-KEY drop ;
+
+: JWT-PIECED ( ptr writer -- ptr writer )
+   WRITE-OBJECT-START s" k" WRITE-KEY WRITE-STRING-START
+   s" a" WRITE-STRING-PART s" b" WRITE-STRING-PART WRITE-STRING-END
+   WRITE-OBJECT-END ;
+
+: JWT-PAIR ( ptr writer -- ptr writer )
+   WRITE-ARRAY-START 1 WRITE-U WRITE-COMMA s" x" WRITE-STRING WRITE-ARRAY-END ;
+
+
+\ A comma, string piece, END or token where JSON takes none is refused whole.
+: JWT-TEST-LAYOUT-STATES ( -- )
+   [: JWT-COMMA-FRESH ;] JWT-EMPTY$ JWT-STATE-KEEPS$
+   [: JWT-COMMA-RESET ;] JWT-EMPTY$ JWT-STATE-KEEPS$
+   [: JWT-COMMA-KEYED ;] JWT-KEYED$ JWT-STATE-KEEPS$
+   [: JWT-COMMA-QUOTING ;] JWT-QUOTING$ JWT-STATE-KEEPS$
+   [: JWT-PART-FRESH ;] JWT-EMPTY$ JWT-STATE-KEEPS$
+   [: JWT-END-FRESH ;] JWT-EMPTY$ JWT-STATE-KEEPS$
+   [: JWT-PART-VALUED ;] s" 1" JWT-STATE-KEEPS$
+   [: JWT-END-VALUED ;] s" 1" JWT-STATE-KEEPS$
+   [: JWT-OBJECT-END-KEYED ;] JWT-KEYED$ JWT-STATE-KEEPS$
+   [: JWT-NULL-QUOTING ;] JWT-QUOTING$ JWT-STATE-KEEPS$
+   [: JWT-KEY-QUOTING ;] JWT-QUOTING$ JWT-STATE-KEEPS$
+   JWT-OPEN-A JWT-PIECED WRITTEN$ s\" {\"k\":\"ab\"}" T$=
+   JWT-OPEN-A JWT-PAIR WRITTEN$ s\" [1,\"x\"]" T$=
+   JWT-OPEN-A 2 WRITE-INDENT! JWT-PAIR WRITTEN$ s\" [\n  1,\n  \"x\"\n]" T$= ;
+
+
 \ The handle is nominal: a raw cell is not a writer.
 : JWT-TEST-CHECKER ( -- )
    s" JWT-OK ( ptr writer -- ptr writer ) WRITE-OBJECT-START WRITE-OBJECT-END" JWT-CHECK-ACCEPTS
@@ -829,6 +882,7 @@ create JWT-PARTS-WANT
    JWT-TEST-LAYOUT-REFUSALS
    JWT-TEST-COMMA-FIRST
    JWT-TEST-COMMA-REFUSALS
+   JWT-TEST-LAYOUT-STATES
    JWT-TEST-CHECKER
    T-REPORT
    s" json-write-test: ok" type cr ;

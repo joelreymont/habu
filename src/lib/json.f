@@ -15,8 +15,13 @@
 \ When indented, a START or COMMA puts the next key, value, RAW or START on a
 \ new line indented by depth times width; an END closes on its own line, except
 \ `{}` and `[]`; string parts never break. Width 0 is compact.
-\ A COMMA right after a START writes nothing. An END with no open container,
-\ or a COMMA or END right after a written comma, is E-JSON-WRITE-STATE.
+\ A COMMA right after a START writes nothing; after a value it writes the
+\ comma. Between WRITE-STRING-START and WRITE-STRING-END only string parts
+\ and the end are taken. These are E-JSON-WRITE-STATE, refused before any byte
+\ is written: a COMMA before any token, after a comma or a key, or inside an
+\ open string; an END with no open container, after a comma or a key, or
+\ inside an open string; any other token inside an open string; a string part
+\ or end outside one.
 \ WRITE-KEY writes `"k": ` when indented and `"k":` when compact.
 \ WRITE-STRING-START appends the opening quote of a string written in parts.
 \ WRITE-STRING-PART appends whole UTF-8 scalars, escaped as WRITE-STRING does.

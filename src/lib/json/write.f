@@ -10,10 +10,11 @@ package JSON
 
 public
 
-\ opened: the last token is a START; separated: a comma was written after the
-\ last token; valued: any other, or none yet. Unless valued, a break is due
-\ before the next token other than an END.
-ENUM writer-layout valued opened separated ;ENUM
+\ fresh: nothing written since WRITE-OPEN, WRITE-OPEN-BUF or WRITE-RESET;
+\ valued: a value last; opened: a START last; separated: a comma last; keyed:
+\ a key last, its value due; quoting: inside WRITE-STRING-START's open string.
+\ A break is due before the next token only when opened or separated.
+ENUM writer-layout fresh valued opened separated keyed quoting ;ENUM
 
 \ Fixed output uses out/cap/len. Growable output uses the caller's BUF header
 \ through buf. A closed writer keeps CLOSED-CAP. indent is the spaces per
@@ -191,12 +192,37 @@ create JW-ESC-W
    w JW-LIVE 2drop drop
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    layout MATCH writer-layout
+      fresh OF 0 ENDOF
       valued OF 0 ENDOF
       opened OF indent depth JW-BREAK-N ENDOF
       separated OF indent depth JW-BREAK-N ENDOF
+      keyed OF 0 ENDOF
+      quoting OF E-JSON-WRITE-STATE throw ENDOF
    ;MATCH {: brk:n :}
    w count brk JW-BREAK-AT
    depth construct writer-layout valued JW-LAYOUT!
+   w ;
+
+\ Set the layout, keeping the depth.
+: JW-MARK ( ptr writer writer-layout -- ptr writer )
+   {: w layout:writer-layout :}
+   w JW-LAYOUT@ drop nip {: depth:n :}
+   w depth layout JW-LAYOUT!
+   w ;
+
+\ Refused unless a string WRITE-STRING-START opened is still open.
+: JW-QUOTING ( ptr writer -- ptr writer )
+   {: w :}
+   w JW-LIVE 2drop drop
+   w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
+   layout MATCH writer-layout
+      fresh OF E-JSON-WRITE-STATE throw ENDOF
+      valued OF E-JSON-WRITE-STATE throw ENDOF
+      opened OF E-JSON-WRITE-STATE throw ENDOF
+      separated OF E-JSON-WRITE-STATE throw ENDOF
+      keyed OF E-JSON-WRITE-STATE throw ENDOF
+      quoting OF ENDOF
+   ;MATCH
    w ;
 
 \ A START opens a container: its bracket, one level deeper, a break due.
@@ -207,17 +233,20 @@ create JW-ESC-W
    w depth 1+ construct writer-layout opened JW-LAYOUT!
    w ;
 
-\ An END closes on its own line at the outer depth, or right after its START;
-\ right after a written comma it is refused.
+\ An END closes on its own line at the outer depth after a value, or right
+\ after its START; anywhere else it is refused.
 : JW-END ( ptr writer n -- ptr writer )
    {: w c:n :}
    w JW-LIVE 2drop drop
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    depth 0= if E-JSON-WRITE-STATE throw then
    layout MATCH writer-layout
+      fresh OF E-JSON-WRITE-STATE throw ENDOF
       valued OF indent depth 1- JW-BREAK-N ENDOF
       opened OF 0 ENDOF
       separated OF E-JSON-WRITE-STATE throw ENDOF
+      keyed OF E-JSON-WRITE-STATE throw ENDOF
+      quoting OF E-JSON-WRITE-STATE throw ENDOF
    ;MATCH {: brk:n :}
    w 1 brk JW-BREAK-AT c JW-C drop
    w depth 1- construct writer-layout valued JW-LAYOUT!
@@ -232,7 +261,7 @@ public
    {: w vp:ptr cap:n :}
    vp 0= if E-JSON-WRITE-OUTPUT throw then
    cap 0 < if E-JSON-WRITE-OUTPUT throw then
-   vp cap 0 NULL-PTR 0 0 construct writer-layout valued JSON-WRITER:MAKE w !
+   vp cap 0 NULL-PTR 0 0 construct writer-layout fresh JSON-WRITER:MAKE w !
    w ;
 
 \ Clears the BUF and grows it as needed, including when an emitter reads bytes
@@ -242,7 +271,7 @@ public
    {: w buf:ptr :}
    buf 0= if E-JSON-WRITE-OUTPUT throw then
    buf BUF:CLEAR
-   NULL-PTR 0 0 buf 0 0 construct writer-layout valued JSON-WRITER:MAKE w !
+   NULL-PTR 0 0 buf 0 0 construct writer-layout fresh JSON-WRITER:MAKE w !
    w ;
 
 : WRITE-RESET ( ptr writer -- ptr writer )
@@ -254,7 +283,7 @@ public
    else
       buf BUF:CLEAR
    then
-   w 0 construct writer-layout valued JW-LAYOUT!
+   w 0 construct writer-layout fresh JW-LAYOUT!
    w ;
 
 : WRITE-CLOSE ( ptr writer -- ) {: w :}
@@ -379,16 +408,17 @@ public
 
 : WRITE-KEY ( ptr writer ptr u8 n -- ptr writer ) {: w a:ptr u:n :}
    w JW-LAYOUT@ 2drop 0 > if JW-COLON-SP-N else JW-COLON-N then {: sep:n :}
-   w a u true sep JW-QUOTED ;
+   w a u true sep JW-QUOTED construct writer-layout keyed JW-MARK ;
 
 : WRITE-STRING-START ( ptr writer -- ptr writer )
-   1 JW-TOKEN JW-DQ JW-C ;
+   1 JW-TOKEN JW-DQ JW-C construct writer-layout quoting JW-MARK ;
 
 : WRITE-STRING-PART ( ptr writer ptr u8 n -- ptr writer )
-   false 0 JW-QUOTED ;
+   {: w a:ptr u:n :}
+   w JW-QUOTING a u false 0 JW-QUOTED ;
 
 : WRITE-STRING-END ( ptr writer -- ptr writer )
-   JW-DQ JW-C ;
+   JW-QUOTING JW-DQ JW-C construct writer-layout valued JW-MARK ;
 
 : WRITE-OBJECT-START ( ptr writer -- ptr writer )
    JW-LBRACE JW-START ;
@@ -402,19 +432,22 @@ public
 : WRITE-ARRAY-END ( ptr writer -- ptr writer )
    JW-RBRACK JW-END ;
 
-\ The separator: nothing right after a START, refused right after a written
-\ comma, else a comma.
+\ The separator: a comma after a value, nothing right after a START, refused
+\ anywhere else.
 : WRITE-COMMA ( ptr writer -- ptr writer )
    {: w :}
    w JW-LIVE 2drop drop
    w JW-LAYOUT@ {: indent:n depth:n layout:writer-layout :}
    layout MATCH writer-layout
+      fresh OF E-JSON-WRITE-STATE throw ENDOF
       valued OF
          w JW-COMMA-C JW-C drop
          w depth construct writer-layout separated JW-LAYOUT!
       ENDOF
       opened OF ENDOF
       separated OF E-JSON-WRITE-STATE throw ENDOF
+      keyed OF E-JSON-WRITE-STATE throw ENDOF
+      quoting OF E-JSON-WRITE-STATE throw ENDOF
    ;MATCH
    w ;
 
