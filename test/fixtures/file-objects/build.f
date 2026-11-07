@@ -29,7 +29,9 @@
 \ out root, one name in two directories, are each built alone in turn x, y, x,
 \ y. `edit: compiled `, `tail: compiled `, `share: compiled ` and
 \ `twins: compiled ` print each build's result: its LINKER:COMPILED, or the
-\ code it threw.
+\ code it threw. `crafted: compiled ` prints six: crafted/e.f's build, four
+\ over an edit of its object the link refuses or links wrong, then a plain
+\ build.
 \ The build's files load from its body: in a build's file `require` is
 \ E-UNDEFINED (rc 70), and creating through a `does>` definer ends the process
 \ at rec-wide-publish (rc 70).
@@ -38,9 +40,11 @@ require src/lib/error.f
 require src/lib/string.f
 require src/lib/fs.f
 require src/lib/fs-mutate.f
+require src/lib/fs-list.f
 require src/lib/fmt.f
 require src/lib/le.f
 require src/lib/build-out.f
+require src/core/sha256.f
 require src/habu/boot-cells.f
 require src/habu/xref.f
 require src/habu/intern.f
@@ -331,6 +335,169 @@ variable LIST-N
    TWIN-Y-BUILD {: four:n :}
    s" twins: compiled " one two three RESULTS.  space four FMT:.INT cr ;
 
+\ ---- objects the link refuses or links wrong, each with its checksum written again ----
+\ Each edit starts from the object e.f's first build wrote (CRAFT-FIRST): a build reads one edit.
+8192 constant CRAFT-CAP
+68 constant OBJ-NAME-BYTES               \ <hex key>.hfo
+136 constant PIECES-FIELD                \ the header's PIECES offset (linker.f WRITE-OBJECT)
+40 constant SUM-AT                       \ the checksum, a SHA-256 of every byte from SUMMED-AT
+72 constant SUMMED-AT
+PATH-CAP BUFFER: CRAFT-BUF
+PATH-CAP BUFFER: CRAFT-DIR
+PATH-CAP BUFFER: CRAFT-PATH   variable CRAFT-PATH-U
+CRAFT-CAP BUFFER: CRAFT-NAMES
+CRAFT-CAP BUFFER: CRAFT-FIRST   variable CRAFT-U
+CRAFT-CAP BUFFER: CRAFT-OBJ
+SHA256-CTX-BYTES BUFFER: CRAFT-CTX
+variable AT                              \ the walk's offset in CRAFT-OBJ
+variable RECS                            \ the records walked
+variable FLAG-AT                         \ the package entry's own-private flag's offset
+variable MID-EM
+variable PKG-REC
+variable LOW-REC
+variable HIGH-REC
+variable BYTES-AT                        \ MID's emission's bytes' offset
+variable SITE-AT                         \ MID's call row of LOW: its site's offset
+variable INDEX-AT                        \ and its reference's index's offset
+
+: CRAFT-E$ ( -- ptr u8 n ) s" crafted" s" e.f" CRAFT-BUF FILE-IN ;
+
+: CRAFT-BUILD ( -- n )
+   [: s" app" [: CRAFT-E$ included ;] LINKER:WITH ;] catch RESULT ;
+
+: OBJ@ ( n -- n ) CRAFT-OBJ swap + LE:U64@ ;
+: OBJ! ( n n -- ) CRAFT-OBJ swap + LE:U64! ;
+: OBJ-U64 ( -- n ) AT @ OBJ@  8 AT +! ;
+: OBJ-SKIP ( n -- ) 8 * AT +! ;
+
+\ A reference: its tag, then 2, 1, 3, 2, 1 or 0 fields for tags 0-5 (linker.f CODE+).
+: REF-SKIP ( -- )
+   OBJ-U64 {: tag:n :}
+   tag 0 =  tag 3 =  or if 2 OBJ-SKIP exit then
+   tag 1 =  tag 4 =  or if 1 OBJ-SKIP exit then
+   tag 2 = if 3 OBJ-SKIP then ;
+
+
+\ An entry (linker.f RECORD+, LATE+); kind 4 is a late private wordlist, no record.
+: ENTRY-WALK ( -- )
+   OBJ-U64 {: kind:n :}
+   kind 4 = if 2 OBJ-SKIP exit then
+   OBJ-U64 {: u:n :}
+   CRAFT-OBJ AT @ + u {: name:ptr nu:n :}
+   u AT +!  1 OBJ-SKIP
+   OBJ-U64 3 >= if 2 OBJ-SKIP then        \ a role 3 or 4 names its package
+   name nu s" LOW" STR= if RECS @ LOW-REC ! then
+   name nu s" HIGH" STR= if RECS @ HIGH-REC ! then
+   kind 1 = if RECS @ PKG-REC ! then
+   1 RECS +!
+   kind 0 = if
+      OBJ-U64 {: e:n :}
+      name nu s" MID" STR= if e MID-EM ! then
+      REF-SKIP exit
+   then
+   kind 1 = if AT @ FLAG-AT !  1 OBJ-SKIP exit then
+   2 OBJ-SKIP ;
+
+
+\ A call row of emission e: site, kind, reference; MID's row naming LOW (tag 0, file 0) is kept.
+: CALL-ROW ( n -- )
+   {: e:n :}
+   AT @ {: site:n :}
+   2 OBJ-SKIP
+   AT @ {: ref:n :}
+   REF-SKIP
+   e MID-EM @ <> if exit then
+   ref OBJ@ 0=  ref 8 + OBJ@ 0=  and  ref 16 + OBJ@ LOW-REC @ =  and if
+      site SITE-AT !  ref 16 + INDEX-AT !
+   then ;
+
+
+\ Emission e (linker.f CODE+): S, R, the bytes, F offsets, call rows, address rows, P.
+: EMISSION-WALK ( n -- )
+   {: e:n :}
+   OBJ-U64 {: s:n :}
+   1 OBJ-SKIP
+   e MID-EM @ = if AT @ BYTES-AT ! then
+   s AT +!
+   OBJ-U64 OBJ-SKIP
+   OBJ-U64 0 ?do e CALL-ROW loop
+   OBJ-U64 0 ?do 2 OBJ-SKIP REF-SKIP loop
+   OBJ-U64 0 >= if REF-SKIP then ;
+
+
+\ CRAFT-FIRST into CRAFT-OBJ, then its fields' offsets; the build ends rc 1 when one is missing.
+: CRAFT-WALK ( -- )
+   CRAFT-FIRST CRAFT-OBJ CRAFT-U @ BYTE-COPY
+   PIECES-FIELD OBJ@ AT !  1 OBJ-SKIP
+   0 RECS !  -1 FLAG-AT !  -1 MID-EM !  -1 PKG-REC !  -1 LOW-REC !  -1 HIGH-REC !
+   -1 BYTES-AT !  -1 SITE-AT !  -1 INDEX-AT !
+   OBJ-U64 0 ?do ENTRY-WALK loop
+   OBJ-U64 0 ?do i EMISSION-WALK loop
+   FLAG-AT @ 0<  PKG-REC @ 0<  or  HIGH-REC @ 0<  or  SITE-AT @ 0<  or if
+      s" build: CRAFTS: e.f's object lacks a field the edits need" 1 die
+   then ;
+
+
+\ The edited object, its checksum written again, into e.f's object; then a build.
+: CRAFTED-BUILD ( -- n )
+   CRAFT-CTX  CRAFT-OBJ SUMMED-AT +  CRAFT-U @ SUMMED-AT -  CRAFT-OBJ SUM-AT +  SHA256-IN
+   CRAFT-PATH CRAFT-PATH-U @ CRAFT-OBJ CRAFT-U @ FS:WRITE-ALL
+   CRAFT-BUILD ;
+
+
+\ Whether the listing's object at index i, read into CRAFT-FIRST, holds FILE-OBJECTS-CRAFT.
+: CRAFT-HOLDS? ( n n -- bool )
+   {: du:n i:n :}
+   CRAFT-DIR du  CRAFT-NAMES i OBJ-NAME-BYTES 1 + * +  OBJ-NAME-BYTES  CRAFT-PATH FS:JOIN-PATH
+   CRAFT-PATH-U !
+   CRAFT-PATH CRAFT-PATH-U @ CRAFT-FIRST CRAFT-CAP FS:READ-ALL {: u:n :}
+   u CRAFT-U !
+   CRAFT-FIRST u s" FILE-OBJECTS-CRAFT" CONTAINS? ;
+
+\ e.f's object under <out>/obj, into CRAFT-FIRST and CRAFT-PATH.
+: CRAFT-FIND ( -- )
+   BUILD-OUT:BASE$ s" obj" CRAFT-DIR FS:JOIN-PATH {: du:n :}
+   CRAFT-DIR du CRAFT-NAMES CRAFT-CAP FS-LIST:NAMES {: lu:n :}
+   lu 1 + OBJ-NAME-BYTES 1 + / 0 ?do
+      du i CRAFT-HOLDS? if unloop exit then
+   loop
+   s" build: CRAFTS: no object holds FILE-OBJECTS-CRAFT" 1 die ;
+
+
+\ The package's own-private flag 0 while LOW, a later entry, names its private wordlist.
+: NO-PRIVATE ( -- n ) CRAFT-WALK  0 FLAG-AT @ OBJ!  CRAFTED-BUILD ;
+
+\ MID's call row's site on the instruction after the call, whose bytes are not 0.
+: SITE-MOVED ( -- n )
+   CRAFT-WALK
+   SITE-AT @ OBJ@ 4 + {: site:n :}
+   CRAFT-OBJ BYTES-AT @ + site + LE:U32@ 0= if
+      s" build: CRAFTS: the instruction after MID's call is 0" 1 die
+   then
+   site SITE-AT @ OBJ!  CRAFTED-BUILD ;
+
+\ MID's call row naming HIGH, a record made after MID.
+: LATER-RECORD ( -- n ) CRAFT-WALK  HIGH-REC @ INDEX-AT @ OBJ!  CRAFTED-BUILD ;
+
+\ MID's call row naming the package's own record.
+: PACKAGE-RECORD ( -- n ) CRAFT-WALK  PKG-REC @ INDEX-AT @ OBJ!  CRAFTED-BUILD ;
+
+
+\ e.f's first build, four builds each over one crafted object, then a plain build.
+: CRAFTS ( -- )
+   s" crafted" DIR$ FS:MAKE-DIR
+   CRAFT-E$ s\" package FILE-OBJECTS-CRAFT private : LOW ( -- n ) 1 ;\n" FS:WRITE-ALL
+   CRAFT-E$ s\" public : MID ( -- n ) LOW 1 + ; : HIGH ( -- n ) 3 ; ;package\n" FS:APPEND-FILE
+   CRAFT-BUILD {: one:n :}
+   CRAFT-FIND
+   NO-PRIVATE {: two:n :}
+   SITE-MOVED {: three:n :}
+   LATER-RECORD {: four:n :}
+   PACKAGE-RECORD {: five:n :}
+   CRAFT-BUILD {: six:n :}
+   s" crafted: compiled " one two three RESULTS.
+   space four FMT:.INT  space five FMT:.INT  space six FMT:.INT cr ;
+
 : STOPS ( -- )
    s" app" [: STOP-FILE ;] LINKER:WITH
    s" app" [: STOP-BODY ;] LINKER:WITH
@@ -341,7 +508,7 @@ variable LIST-N
    s" app" [: STOP-GAP ;] LINKER:WITH
    s" app" [: STOP-STRADDLE ;] LINKER:WITH
    s" app" [: STOP-WORDLIST ;] LINKER:WITH
-   STALES CORRUPT EDITS TAILS SHARES TWINS
+   STALES CORRUPT EDITS TAILS SHARES TWINS CRAFTS
    s" stopped" type cr ;
 
 public

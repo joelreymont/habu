@@ -153,6 +153,10 @@ KEY-BYTES BUFFER: OBJECT-SUM         \ the object's SHA-256 (BUILT+)
 KEY-BYTES BUFFER: CK-SUM             \ the SHA-256 of the object past its checksum (HEADER-CK)
 KEY-BYTES 2 * BUFFER: KEY-HEX
 DYNAMIC-BUFFER ENTRY-OFFS n          \ a read object's entries' offsets in OBJECT (FRESH?)
+DYNAMIC-BUFFER REC-KINDS n           \ its record r's kind
+DYNAMIC-BUFFER EM-RECS n             \ its emission e's record index
+DYNAMIC-BUFFER PRIVS n               \ the packages holding a private wordlist: file, index
+variable PRIVS-N
 DYNAMIC-BUFFER EM-OFFS n             \ its emissions' offsets in OBJECT, each at its S
 DYNAMIC-BUFFER FILE-ROWS n           \ its FILES row k, from 1, as that file's BUILT row index
 DYNAMIC-BUFFER DOES-AT n             \ its KIND-DOES entries' emission fields' offsets in OBJECT
@@ -200,8 +204,8 @@ variable FILE-CELLS                  \ the space's address-cell rows as the file
 
 : DISPOSE-OBJECTS ( -- )
    LISTED-RELEASE  COPY-CELLS-RELEASE  STRS-RELEASE  STORED-RELEASE
-   ENTRY-OFFS-RELEASE  EM-OFFS-RELEASE  FILE-ROWS-RELEASE  DOES-AT-RELEASE
-   HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE
+   ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  EM-OFFS-RELEASE
+   FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE
    CODE-COPY BUF:DISPOSE  OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  PIECES BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
    WALK-SRC BUF:DISPOSE  LOAD-LIST BUF:DISPOSE
@@ -1075,6 +1079,13 @@ variable RD-END
    BAD tag 0 0 0 ;
 
 
+\ The kind of this object's record r, an entry already read; -1 for none.
+: REC-KIND ( n -- n )
+   {: r:n :}
+   r 0<  r RECS-N @ >=  or if -1 exit then
+   r REC-KINDS @ ;
+
+
 \ A record reference (file, index): this file's index below the bound, or an
 \ earlier file's below its record count.
 : REC-REF-CK ( n n n -- )
@@ -1099,11 +1110,17 @@ variable RD-END
    f  file ROW-BYTES 16 + BUILT@ e + NSHADOW:FUNCTIONS  >= if BAD then ;
 
 
-\ A code reference (RD-REF) whose own emission is at most top.
-: CODE-REF-CK ( n n n n n -- )
-   {: tag:n x:n y:n z:n top:n :}
+\ A code reference (RD-REF) whose own emission is at most top and own record below bound: the
+\ records RESOLVE finds when the link resolves it. It names no package, which RESOLVE refuses.
+: CODE-REF-CK ( n n n n n n -- )
+   {: tag:n x:n y:n z:n top:n bound:n :}
    GOOD? 0= if exit then
-   tag 0 = if x y RECS-N @ REC-REF-CK exit then
+   tag 0 = if
+      x y bound REC-REF-CK
+      GOOD? 0= if exit then
+      x 0= if y REC-KIND KIND-PACKAGE = if BAD then exit then
+      x KEY-BYTES BUILT@ y + PKG? if BAD then exit
+   then
    tag 1 = if rbase x + ARM64:HOST-KERNEL? 0= if BAD then exit then
    tag 2 = if x y z top FN-REF-CK exit then
    BAD ;
@@ -1180,27 +1197,37 @@ variable RD-END
    refsu FILES-CK ;
 
 
-\ The kind of this object's record r, an entry already read.
-: REC-KIND ( n -- n )
-   {: r:n :}
-   0  ENTRIES-N @ 0 ?do
-      i ENTRY-OFFS @ OBJ@ {: kind:n :}
-      kind KIND-PRIVATE <> if
-         dup r = if drop kind unloop exit then
-         1 +
-      then
-   loop
-   drop -1 ;
-
-
 \ A record reference naming a package: an earlier entry of KIND-PACKAGE, or an earlier file's
-\ package record.
-: PKG-REF-CK ( -- )
+\ package record. It answers the file and index it read.
+: PKG-REF-CK ( -- n n )
    RD-U64 RD-U64 {: file:n idx:n :}
    file idx RECS-N @ REC-REF-CK
-   GOOD? 0= if exit then
-   file 0= if idx REC-KIND KIND-PACKAGE <> if BAD then exit then
-   file KEY-BYTES BUILT@ idx + PKG? 0= if BAD then ;
+   GOOD? if
+      file 0= if
+         idx REC-KIND KIND-PACKAGE <> if BAD then
+      else
+         file KEY-BYTES BUILT@ idx + PKG? 0= if BAD then
+      then
+   then
+   file idx ;
+
+
+\ A package holding a private wordlist, by the file and index a reference names it with.
+: PRIV+ ( n n -- )
+   {: file:n idx:n :}
+   file PRIVS-N @ 2 * PRIVS !  idx PRIVS-N @ 2 * 1 + PRIVS !
+   1 PRIVS-N +! ;
+
+
+\ Whether the package a reference names has a private wordlist: an earlier entry gave it one, or
+\ it is an earlier file's package record holding one.
+: PRIVATE? ( n n -- bool )
+   {: file:n idx:n :}
+   PRIVS-N @ 0 ?do
+      i 2 * PRIVS @ file =  i 2 * 1 + PRIVS @ idx =  and if true unloop exit then
+   loop
+   file 0= if false exit then
+   file KEY-BYTES BUILT@ idx + XREF-REC XREF-PKG-PRIVATE 0<> ;
 
 
 \ A name: its length, at least 1, then its bytes.
@@ -1211,13 +1238,17 @@ variable RD-END
 
 
 \ The wordlist role (WORDLIST+) of an entry of the kind: 2 for KIND-PACKAGE, else 0, 1, or 3 or
-\ 4 then its package.
+\ 4 then its package; a role 4 package has a private wordlist, as ROLE-WID requires.
 : ROLE-CK ( n -- )
    {: kind:n :}
    RD-U64 {: role:n :}
    role 0<  role 4 >  or if BAD exit then
    role 2 =  kind KIND-PACKAGE =  xor if BAD exit then
-   role 3 >= if PKG-REF-CK then ;
+   role 3 = if PKG-REF-CK 2drop exit then
+   role 4 <> if exit then
+   PKG-REF-CK {: file:n idx:n :}
+   GOOD? 0= if exit then
+   file idx PRIVATE? 0= if BAD then ;
 
 
 \ A KIND-DEF entry's emission: NSHADOW:PUBLISH files one emission per definition, so it is the
@@ -1228,7 +1259,11 @@ variable RD-END
    1 DEFS-N +!  e ;
 
 
-: PKG-FLAG-CK ( -- ) RD-U64 {: f:n :}  f 0<>  f 1 <>  and if BAD then ;
+\ A package entry's own-private flag; a 1 adds the package, the next record, to PRIVS.
+: PKG-FLAG-CK ( -- )
+   RD-U64 {: f:n :}
+   f 0<>  f 1 <>  and if BAD then
+   f 1 = if 0 RECS-N @ PRIV+ then ;
 
 
 \ A does record's emission, its definer's just before it, then its entry offset (DOES-ENTRY-CK).
@@ -1245,7 +1280,7 @@ variable RD-END
    {: kind:n :}
    RD-REF {: tag:n x:n y:n z:n :}
    tag 5 = if kind 0<  kind 2 >  or if BAD then exit then
-   kind 0= if tag x y z EMS-N @ 1 - CODE-REF-CK exit then
+   kind 0= if tag x y z EMS-N @ 1 - RECS-N @ CODE-REF-CK exit then
    kind 1 = if tag x y z DATA-REF-CK exit then
    BAD ;
 
@@ -1265,14 +1300,19 @@ variable RD-END
    RD-AT @ i ENTRY-OFFS !
    RD-U64 {: kind:n :}
    kind 0<  kind KIND-PRIVATE >  or if BAD exit then
-   kind KIND-PRIVATE = if PKG-REF-CK  -1 LAST-EM ! exit then
+   kind KIND-PRIVATE = if
+      PKG-REF-CK  GOOD? if PRIV+ else 2drop then
+      -1 LAST-EM ! exit
+   then
    NAME-CK  FLAGS-CK  kind ROLE-CK
    kind KIND-DEF = if EM-NAMED else -1 then {: em:n :}
+   kind KIND-DEF =  GOOD? and if RECS-N @ em EM-RECS ! then
    kind KIND-DEF = if DISPATCH-CK then
    kind KIND-PACKAGE = if PKG-FLAG-CK then
    kind KIND-ALIAS = if RD-U64 RD-U64 RECS-N @ REC-REF-CK then
    kind KIND-DOES = if DOES-CK then
    em LAST-EM !
+   kind RECS-N @ REC-KINDS !
    1 RECS-N +! ;
 
 
@@ -1280,19 +1320,26 @@ variable RD-END
 : ENTRIES-CK ( -- )
    1 RD-EQ
    24 RD-COUNT {: n:n :}
-   n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  -1 LAST-EM !  0 OWN-DATA-MAX !
-   n 0 > if n ENTRY-OFFS-RESERVE then
+   n ENTRIES-N !  0 RECS-N !  0 DEFS-N !  0 DOES-N !  0 PRIVS-N !  -1 LAST-EM !
+   0 OWN-DATA-MAX !
+   n 0 > if
+      n ENTRY-OFFS-RESERVE  n REC-KINDS-RESERVE  n EM-RECS-RESERVE  n 2 * PRIVS-RESERVE
+   then
    n 0 ?do i ENTRY-CK loop ;
 
 
-\ A call row of an emission of s bytes, numbered top.
+\ A call row of an emission of s bytes, numbered top; its site in the object's copy of the
+\ emission holds the zeroed call EMISSION-CODE+ writes.
 : CALL-CK ( n n -- )
    {: s:n top:n :}
    RD-U64 {: site:n :}
    site 0<  site 3 and 0<>  or  site s 4 - >  or if BAD then
+   GOOD? if
+      OBJECT BYTES$ drop  top EM-OFFS @ 16 + +  site +  LE:U32@ 0<> if BAD then
+   then
    RD-U64 {: kind:n :}
    kind 0<>  kind 1 <>  and if BAD then
-   RD-REF top CODE-REF-CK ;
+   RD-REF top  top EM-RECS @ 1 +  CODE-REF-CK ;
 
 
 \ ADDRESS-CARRIER:CHAIN-SIZE (0, 12 or 16) of the chain at an address row's site in the object's
@@ -1315,7 +1362,7 @@ variable RD-END
       kind 0=  size ADDRESS-CARRIER:ADDR-CHAIN-BYTES <>  and if BAD then
       kind 1 =  size 0=  and if BAD then
    then
-   kind 0= if RD-REF top CODE-REF-CK exit then
+   kind 0= if RD-REF top  top EM-RECS @ 1 +  CODE-REF-CK exit then
    kind 1 = if RD-REF DATA-REF-CK exit then
    BAD ;
 
@@ -1328,7 +1375,7 @@ variable RD-END
    p 0<  p 3 and 0<>  or  p s 4 - >  or if BAD exit then
    RD-REF {: tag:n x:n y:n z:n :}
    tag 5 = if exit then
-   tag x y z top CODE-REF-CK ;
+   tag x y z top  top EM-RECS @ 1 +  CODE-REF-CK ;
 
 
 \ Emission e (EMISSION-CODE+): its offset into EM-OFFS, then S, R, S bytes, F offsets, calls,
