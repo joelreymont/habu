@@ -39,6 +39,15 @@ DEFTYPE HTTP-STATUS
    rc 5 = rc 6 = or rc 7 = or rc 18 = or rc 28 = or
    rc 52 = or rc 55 = or rc 56 = or rc 92 = or ;
 
+\ This side failed or ended a transfer: setup (2, 4, 34, 43, 48, 49), memory (27), interface (45),
+\ streams, callbacks (23, 26, 65, 88, 93), TLS (53, 54, 58, 59, 66, 77, 82), poll (99), end (42).
+: LOCAL? ( code -- bool )
+   CODE>N {: rc:n :}
+   rc 2 = rc 4 = or rc 23 = or rc 26 = or rc 27 = or rc 34 = or
+   rc 42 = or rc 43 = or rc 45 = or rc 48 = or rc 49 = or rc 53 = or
+   rc 54 = or rc 58 = or rc 59 = or rc 65 = or rc 66 = or rc 77 = or
+   rc 82 = or rc 88 = or rc 93 = or rc 99 = or ;
+
 SUMTYPE init-result
    VARIANT ready handle ;VARIANT
    VARIANT failed code ;VARIANT

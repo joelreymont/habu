@@ -425,7 +425,15 @@ learned live in the docs for their subject.
   A lookup fault (5, 6) stays lost although libcurl gives it too for a name
   that does not exist: a dropped network fails every lookup at once, where a
   cut-off handshake fails one request. It does not say whether the server ran
-  the request.
+  the request. So that a transfer this side broke is never taken for the
+  server's fault, the lead chose beside it (2026-11-07, under the same words)
+  `CURL:LOCAL? ( code -- bool )`: true when this side failed or ended the
+  transfer, its own setup (2, 4, 34, 43, 48, 49), memory (27), streams and
+  callbacks (23, 26, 65, 88, 93), interface (45), TLS engine, cipher, client
+  certificate, CA or CRL file (53, 54, 58, 59, 66, 77, 82), poll (99) or an
+  end it asked for (42, which CURL also gives every transfer when its loop
+  fails and one a halt or CANCEL ends), false for every other code. No code
+  is both lost and local.
 - 2026-11-06, Maki's load cost (relayed by tim from Maki): shown that the
   checker costs about 116k instructions per token on Maki's 17.6 MB generated
   design (type unification, re-walked stack rows, guards on the checker's own

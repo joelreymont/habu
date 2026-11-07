@@ -1579,10 +1579,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
-   s" a port nobody listens on fails as CURLE_COULDNT_CONNECT, lost" T-LABEL
+   s" a port nobody listens on fails as CURLE_COULDNT_CONNECT, lost, not local" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 7 T=
-   LAST-CODE @ CURL:>CODE CURL:LOST? TTRUE ;
+   LAST-CODE @ CURL:>CODE CURL:LOST? TTRUE
+   LAST-CODE @ CURL:>CODE CURL:LOCAL? TFALSE ;
 
 
 \ libcurl refuses a URL it cannot parse before it tries any server.
@@ -1592,12 +1593,14 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject REQUEST-MS >MS CURL:TIMEOUT! EXPECT-OK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
-   s" a malformed URL fails as CURLE_URL_MALFORMAT, not lost" T-LABEL
+   s" a malformed URL fails as CURLE_URL_MALFORMAT, neither lost nor local" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 3 T=
    LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE
-   s" success is not lost" T-LABEL
-   0 CURL:>CODE CURL:LOST? TFALSE ;
+   LAST-CODE @ CURL:>CODE CURL:LOCAL? TFALSE
+   s" success is neither lost nor local" T-LABEL
+   0 CURL:>CODE CURL:LOST? TFALSE
+   0 CURL:>CODE CURL:LOCAL? TFALSE ;
 
 
 \ A wait polled to DEADLINE that passes it names itself on stdout and throws
@@ -1660,10 +1663,11 @@ TASK:MIN-STACK TASK:TASK PLAIN-TASK
    subject BODY-CAP >LEN FETCH
    subject CURL:CLEANUP
    PLAIN-TASK AWAIT-END PLAIN-TASK TASK:KILL
-   s" a plain HTTP answer to a TLS handshake fails as CURLE_SSL_CONNECT_ERROR, not lost" T-LABEL
+   s" a plain HTTP answer to a TLS handshake fails as CURLE_SSL_CONNECT_ERROR, neither lost nor local" T-LABEL
    LAST-KIND @ KIND-FAILED T=
    LAST-CODE @ 35 T=
-   LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE ;
+   LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE
+   LAST-CODE @ CURL:>CODE CURL:LOCAL? TFALSE ;
 
 
 \ A client its ceiling ended can return while the serial server still drains
@@ -1905,13 +1909,14 @@ variable LONG-ANSWER
    ['] LONG-SETTERS catch
    LONG-CLOSE
    0 T=
-   s" a URL past libcurl's input limit answers failed with its code" T-LABEL
+   s" a URL past libcurl's input limit answers failed with its code, local" T-LABEL
    -1 LONG-ANSWER !
    PAST-CURL-INPUT LONG-OPEN
    ['] LONG-URL catch
    LONG-CLOSE
    0 T=
-   LONG-ANSWER @ CURLE-BAD-ARGUMENT T= ;
+   LONG-ANSWER @ CURLE-BAD-ARGUMENT T=
+   LONG-ANSWER @ CURL:>CODE CURL:LOCAL? TTRUE ;
 
 
 \ No more: macOS caps listen queues at kern.ipc.somaxconn = 128; HTTP/1.1 connects per transfer
@@ -2565,9 +2570,11 @@ variable BOUNDED-MOST                    \ the largest memstream length after a 
    subject AWAIT-ONE
    subject HEADER-REFUSED
    subject CURL:CLEANUP
-   s" a cancelled transfer in flight ends as CURLE_ABORTED_BY_CALLBACK" T-LABEL
+   s" a cancelled transfer in flight ends as CURLE_ABORTED_BY_CALLBACK, local, not lost" T-LABEL
    LAST-KIND @ KIND-FAILED T=
-   LAST-CODE @ 42 T= ;
+   LAST-CODE @ 42 T=
+   LAST-CODE @ CURL:>CODE CURL:LOCAL? TTRUE
+   LAST-CODE @ CURL:>CODE CURL:LOST? TFALSE ;
 
 
 : OWNER-WORK ( -- )
