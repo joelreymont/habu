@@ -145,6 +145,8 @@ HB-TARGET-LINUX-X86-64? 0= [if] s" src/habu/debug.f" required [then]
 s" src/core/top-row.f" required
 s" src/lib/c2-owner.f" required
 s" src/lib/executable-build.f" required
+\ The cross-build's linker, which writes arm64 programs (src/habu/link-data.f).
+HB-TARGET-LINUX-X86-64? 0= [if] s" src/habu/link-data.f" required [then]
 
 \ The Habu loop is x86-64's evaluate, startup and command line; ARM64 keeps
 \ the kernel's bodies for them and captures none of the loop's files.
