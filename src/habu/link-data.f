@@ -185,12 +185,26 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
 
 
-\ The header cells HEADER-CELLS gives a code address.
+\ An engine's throw recoveries, as hb's boot stores them (habu2.f
+\ EM-STARTUP-RUNTIME-STATE): its kernel's throw branches through these cells
+\ inside an evaluate, at a live tty REPL and after a data-stack underdepth. A
+\ stripped program's cut keeps none of the three.
+: RECOVERY-CELLS ( -- )
+   TEXT-VA LEVALREC LABEL-OFFSET +  EVALREC-CELL HEADER!
+   TEXT-VA LRREC LABEL-OFFSET +  RRECP-CELL HEADER!
+   TEXT-VA LFLOORREC LABEL-OFFSET +  FLOORREC-CELL HEADER! ;
+
+\ The header cells HEADER-CELLS and RECOVERY-CELLS give a code address.
 : LIST-HEADER ( -- )
    RBASE-CELL A64ICODE:DCQ,
    UNCGH-CELL A64ICODE:DCQ,
    SIGNAL-ABI:STUB-CELL A64ICODE:DCQ,
-   CODE-END-CELL A64ICODE:DCQ, ;
+   CODE-END-CELL A64ICODE:DCQ,
+   ENGINE? @ if
+      EVALREC-CELL A64ICODE:DCQ,
+      RRECP-CELL A64ICODE:DCQ,
+      FLOORREC-CELL A64ICODE:DCQ,
+   then ;
 
 
 \ ---- an engine's records ------------------------------------------------------------
@@ -389,7 +403,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
    SORT-ROWS
    ['] COPY-ROW EACH-ROW
    HEADER-CELLS
-   ENGINE? @ if ENGINE-CELLS then
+   ENGINE? @ if ENGINE-CELLS RECOVERY-CELLS then
    RUNS,
    LIMAGE-END A64ICODE:LABEL@ A64ICODE:LBL,
    LLIST A64ICODE:LABEL@ A64ICODE:LBL,
