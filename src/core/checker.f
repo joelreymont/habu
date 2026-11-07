@@ -2096,6 +2096,7 @@ ROW-CAP PTR-U8-TABLE SAVED-PTRS
    row ;
 
 
+public
 \ Records a store with a count cell; the count now is the store's prefix.
 : STORE+ ( ptr ptr a ptr n n ptr n -- )
    {: countv:ptr :}
@@ -2107,6 +2108,7 @@ ROW-CAP PTR-U8-TABLE SAVED-PTRS
 \ A table has no count and no prefix: its count field holds 0, the null link,
 \ since a field's distance to another cell is never 0.
 : TABLE+ ( ptr ptr a ptr n n -- ) ROW+ drop ;
+private
 : COUNTED? ( n -- bool ) ROW.COUNT @ 0 <> ;
 
 64 constant CELL-ROW-CAP
@@ -2125,6 +2127,7 @@ variable CELL-ROW-N   0 CELL-ROW-N !
 : CELL-ROW.SAVED ( n -- ptr n ) 2 CELL-ROW ;
 
 
+public
 \ Records a cell that holds V during every build.
 : CELL-ROW+ ( ptr n n -- )
    {: cv:ptr v:n :}
