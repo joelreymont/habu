@@ -4,6 +4,7 @@
 \ span (DG), so digests run on one thread at a time.
 
 require src/lib/error.f
+require src/lib/le.f
 require src/compiler/workspace.f
 
 package CDIGEST
@@ -27,8 +28,7 @@ private
 OUT-BYTES CWORK-SPAN DG u8
 SHA256-CTX-BYTES CWORK-SPAN SHA-CTX u8   \ this package's digest context
 
-\ The host memory order is independent of the compilation target. An aligned
-\ native cell is a canonical slot only on an eight-byte little-endian host.
+\ LE:U64@'s test (src/lib/le.f NATIVE-SLOT?), for the runs of slots below.
 create HOST-ORDER 1 ,
 HOST-ORDER c@ 1 = CELL SLOT-BYTES = and constant NATIVE-SLOTS?
 
@@ -37,22 +37,8 @@ HOST-ORDER c@ 1 = CELL SLOT-BYTES = and constant NATIVE-SLOTS?
 
 public
 
-: SLOT! ( n ptr u8 n -- )
-   {: v:n base:ptr slot:n :}
-   base slot SLOT-BYTES * + {: at:ptr :}
-   at NATIVE-SLOT? if v at CELL-VIEW ! exit then
-   SLOT-BYTES 0 ?do
-      v i 8 * rshift $FF and  at i + c!
-   loop ;
-
-: SLOT@ ( ptr u8 n -- n )
-   {: base:ptr slot:n :}
-   base slot SLOT-BYTES * + {: at:ptr :}
-   at NATIVE-SLOT? if at CELL-VIEW @ exit then
-   0
-   SLOT-BYTES 0 ?do
-      at i + c@  i 8 * lshift  or
-   loop ;
+: SLOT! ( n ptr u8 n -- ) SLOT-BYTES * + LE:U64! ;
+: SLOT@ ( ptr u8 n -- n ) SLOT-BYTES * + LE:U64@ ;
 
 \ ---- whole runs of slots -----------------------------------------------------
 \ A run whose first slot is a native cell has every slot a native cell, so these

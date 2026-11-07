@@ -1,10 +1,13 @@
 \ kernel-words.f - WKWORDS, engine primitives a Wasm module calls, written in
 \ checked Habu over the kernel's rows; WKERNEL's map (src/arch/wasm/kernel.f)
 \ names each by the engine name it answers for. The Wasm driver loads this file
-\ into the capture window ahead of the program, so each word uses only words HIR
-\ models, the rows emit, map-anon, munmap and one another.
+\ into the capture window ahead of the program, so each word it loads uses only
+\ words HIR models, the rows emit, map-anon, munmap, die and one another.
 
 require src/arch/wasm/profile.f
+\ Tier 1 stages a call to NFETCH-CHECK:TAGS before a module fetches a tagged
+\ value (src/compiler/native/elaborate.f VALIDATE-FETCH).
+require src/compiler/native/fetch-check.f
 
 package WKWORDS
 private

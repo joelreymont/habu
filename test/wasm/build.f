@@ -187,6 +187,23 @@ DYNAMIC-BUFFER MODULE u8
    RAN 0 T=
    WASM-HARNESS:OUT$ S\" -37\n" T$= ;
 
+\ ---- a fetched tag -----------------------------------------------------------
+\ A fetch of an ENUM value through a pointer runs the tag check first.
+: FETCH! ( -- )
+   SB-RESET
+   S\" package PROBE\npublic\nENUM shade dark light grey ;ENUM\nTYPED-VARIABLE V shade\n" SB-APPEND
+   S\" private\nCAST: >CELL ( ptr shade -- ptr n )\npublic\n: TONE@ ( ptr shade -- shade ) @ ;\n" SB-APPEND
+   S\" : CODE ( -- n ) V TONE@ MATCH shade dark OF 0 ENDOF light OF 1 ENDOF grey OF 2 ENDOF ;MATCH ;\n" SB-APPEND
+   S\" : MAIN ( -- ) construct shade grey V ! CODE .  7 V >CELL ! CODE . ;\n;package\n" SB-APPEND
+   SB$ s" fetch.f" SOURCE! ;
+
+: FETCH-CASES ( -- )
+   FETCH!
+   s" an ENUM fetched through a pointer passes its tag check, then a stored 7 fails it" T-LABEL
+   s" PROBE:MAIN" s" fetch.wasm" BUILD 0 T=
+   RAN 2 T=
+   WASM-HARNESS:OUT$ S\" 2\nhb: bad layout tag" T$= ;
+
 \ ---- checked memory ---------------------------------------------------------
 65536 constant PAGE-BYTES
 5 constant SEC-MEMORY
@@ -253,6 +270,7 @@ public
    USAGE-CASE
    REFUSAL-CASES
    CELL-CASES
+   FETCH-CASES
    MEMORY-CASES
    T-REPORT ;
 

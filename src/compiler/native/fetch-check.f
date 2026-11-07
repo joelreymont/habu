@@ -2,7 +2,7 @@
 require src/lib/error.f
 require src/lib/prelude.f
 require src/core/engine-error.f
-require src/compiler/digest.f
+require src/lib/le.f
 
 package NFETCH-CHECK
 public
@@ -19,6 +19,8 @@ private
 CAST: >FROZEN ( n -- frozen )
 CAST: FROZEN>N ( frozen -- n )
 
+: SLOT@ ( ptr u8 n -- n ) 8 * + LE:U64@ ;
+
 : BAD-DESCRIPTOR ( -- )
    s" hb: bad layout descriptor" 76 die ;
 
@@ -32,7 +34,7 @@ CAST: FROZEN>N ( frozen -- n )
 
 : CELL@ ( ptr u8 n n -- n ) {: data:ptr count:n index:n :}
    index count IN-DOMAIN? 0= if BAD-DESCRIPTOR then
-   data index CDIGEST:SLOT@ ;
+   data index SLOT@ ;
 
 : FIELD-CK ( n n n -- ) {: offset:n limit:n width:n :}
    offset width IN-DOMAIN? 0= limit 0 <= or if BAD-DESCRIPTOR then ;
@@ -58,22 +60,22 @@ CAST: FROZEN>N ( frozen -- n )
    next ;
 
 : TAG@ ( ptr u8 n n -- n ) {: base:ptr offset:n limit:n :}
-   base offset CDIGEST:SLOT@ dup limit IN-DOMAIN? 0= if BAD-TAG then ;
+   base offset SLOT@ dup limit IN-DOMAIN? 0= if BAD-TAG then ;
 
 : ACTIVE? ( ptr u8 ptr u8 n n -- bool )
    {: base:ptr data:ptr index:n guards:n :}
    guards 0 ?do
       index i 3 * + {: row:n :}
-      base data row CDIGEST:SLOT@ data row 2 + CDIGEST:SLOT@ TAG@
-      data row 1+ CDIGEST:SLOT@ <> if false unloop exit then
+      base data row SLOT@ data row 2 + SLOT@ TAG@
+      data row 1+ SLOT@ <> if false unloop exit then
    loop
    true ;
 
 : RUN-ROW ( ptr u8 ptr u8 n -- n )
    {: base:ptr data:ptr index:n :}
-   data index 2 + CDIGEST:SLOT@ {: guards:n :}
+   data index 2 + SLOT@ {: guards:n :}
    base data index 3 + guards ACTIVE? if
-      base data index CDIGEST:SLOT@ data index 1+ CDIGEST:SLOT@ TAG@ drop
+      base data index SLOT@ data index 1+ SLOT@ TAG@ drop
    then
    index 3 + guards 3 * + ;
 
@@ -99,7 +101,7 @@ public
 : TAGS ( ptr u8 frozen -- ) {: base:ptr desc:frozen :}
    NULL-PTR BYTE-VIEW desc FROZEN>N + {: data:ptr :}
    1
-   data 0 CDIGEST:SLOT@ 0 ?do base data rot RUN-ROW loop
+   data 0 SLOT@ 0 ?do base data rot RUN-ROW loop
    drop ;
 
 : CHECK ( ptr u8 ptr u8 n n -- )
