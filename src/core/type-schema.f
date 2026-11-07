@@ -60,36 +60,35 @@ private
 4 constant SCH-CAP-INIT         \ small seed; grows geometrically (doubles) on demand
 4 constant SCH-ROOT-INIT        \ small seed schema-root pool cells; grows on demand
 
-\ Registry control cells are REG-PROTECTed (src/core/util.f): read them through
-\ SCHEMA-N@ / SCHEMA-ROOT-N@.
+\ Read the registry control cells through SCHEMA-N@ / SCHEMA-ROOT-N@.
 public
 
-variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !   REG-PROTECT
+variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !
 
 private
 
 : SCH-CAP ( -- n ) SCH-CAP-V @ ;
-create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE SCH-A-P    SCH-A-BOOT SCH-A-P !   REG-PROTECT
+create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot
+PERSISTED-PTR-VARIABLE SCH-A-P    SCH-A-BOOT SCH-A-P !
 
 public
 
 : SCH-BASE ( -- ptr n ) SCH-A-P @ ;
 
-variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !   REG-PROTECT
+variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !
 
 private
 
 : SCH-ROOT-CAP ( -- n ) SCH-ROOT-CAP-V @ ;
-create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !   REG-PROTECT
+create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot
+PERSISTED-PTR-VARIABLE SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !
 
 public
 
 : SCH-ROOT-BASE ( -- ptr n ) SCH-ROOT-P @ ;
 
-variable SCH-N   REG-PROTECT        \ next node id; 1 leaves node 0 as the nil sentinel
-variable SCH-ROOT-N   REG-PROTECT   \ next schema-root index
+variable SCH-N   \ next node id; 1 leaves node 0 as the nil sentinel
+variable SCH-ROOT-N   \ next schema-root index
 
 private
 
@@ -281,11 +280,11 @@ PERSISTED-PTR-VARIABLE SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
 : SCH-RBF-BASE ( -- ptr n ) SCH-RBF-P @ ;
 
 \ The frame depth has readers outside this file (type-family.f
-\ SCHEMA-REG:AT-REST, CHECKER-DECL-FRAME:TYPES-READY), so it is public and
-\ REG-PROTECTed, as PF-TX-DEPTH is.
+\ SCHEMA-REG:AT-REST, CHECKER-DECL-FRAME:TYPES-READY), so it is public, as
+\ PF-TX-DEPTH is.
 public
 
-variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !   REG-PROTECT
+variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
 
 private
 

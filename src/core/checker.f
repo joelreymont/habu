@@ -1104,13 +1104,13 @@ defer MATCH-VCOUNT-XT ( n -- n )                        \ family id -> variant c
 defer MATCH-PAY-XT ( n n n -- n )                        \ vid famterm row -- row + instantiated payload
 defer FIELD-PROJ-XT ( n n n -- n bool )                 \ field-id off famterm -- fieldterm ok : instantiated field type from a committed field id + the input pointer's family args
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
-variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM ! REG-PROTECT
-variable C2-READ-FAM   -1 C2-READ-FAM ! REG-PROTECT \ reserved bounded shared-view family
-variable C2-MUT-FAM    -1 C2-MUT-FAM ! REG-PROTECT  \ reserved bounded exclusive-view family
-variable C2-INIT-FAM   -1 C2-INIT-FAM ! REG-PROTECT \ reserved initialized-storage element family
-variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! REG-PROTECT \ reserved initialized table control
-variable C2-STOW-FAM -1 C2-STOW-FAM ! REG-PROTECT \ private C2 descriptor product
-variable ARENA-HEAD-FAM -1 ARENA-HEAD-FAM ! REG-PROTECT \ DYNAMIC-STORAGE:arena-head, lives in place
+variable LOAN-FIELD-FAM -1 LOAN-FIELD-FAM !
+variable C2-READ-FAM   -1 C2-READ-FAM ! \ reserved bounded shared-view family
+variable C2-MUT-FAM    -1 C2-MUT-FAM ! \ reserved bounded exclusive-view family
+variable C2-INIT-FAM   -1 C2-INIT-FAM ! \ reserved initialized-storage element family
+variable C2-RECORDS-FAM -1 C2-RECORDS-FAM ! \ reserved initialized table control
+variable C2-STOW-FAM -1 C2-STOW-FAM ! \ private C2 descriptor product
+variable ARENA-HEAD-FAM -1 ARENA-HEAD-FAM ! \ DYNAMIC-STORAGE:arena-head, lives in place
 
 \ The `tile` and `uniform` family ids, captured by type-family.f at
 \ registration. A word whose declared effect consumes a `tile` and produces a
@@ -1589,7 +1589,6 @@ variable WRITE-WINDOW   0 WRITE-WINDOW !   \ 0 shut, else the code a write throw
 \ Sealed as CHECKER-RETRACT-ROWS is: from top level it would open or shut the
 \ window under a compilation.
 : CHECKER-WRITE-WINDOW! ( n -- ) WRITE-WINDOW ! ;
-REG-PROTECT
 
 \ --- extent-role product registry (docs/design.md "Type substrate").
 \ EXT-PROD-FAM and EXT-REDX-FAM are the built-in `extprod` and `redx` family
@@ -3145,20 +3144,17 @@ CHECKER-REG:}SCRATCH
 \ accessor word name; it fires once at the `field-project` token in that body
 \ and disarms. Its trusted-only effect and record protection keep the arming
 \ boundary closed even when source-owner transfer supplies a user signature.
-PTR-VARIABLE FIELD-PROJ-A   REG-PROTECT
-variable FIELD-PROJ-U   REG-PROTECT   0 FIELD-PROJ-U !   \ armed accessor word name span
-variable FIELD-PROJ-FID REG-PROTECT   \ committed field id (the authority: offset/type/role derive from it)
-variable FIELD-PROJ-OFF REG-PROTECT   \ baked byte offset (cross-checked against the committed offset)
+PTR-VARIABLE FIELD-PROJ-A
+variable FIELD-PROJ-U   0 FIELD-PROJ-U !   \ armed accessor word name span
+variable FIELD-PROJ-FID \ committed field id (the authority: offset/type/role derive from it)
+variable FIELD-PROJ-OFF \ baked byte offset (cross-checked against the committed offset)
 
 \ The retained owner enforces these cells' policy during a native rebuild too.
 \ Keep raw state access here; the matching and schema checks remain checked.
 TRUSTED: FIELD-PROJ-SCRATCH-RESET ( -- )
    NULL-PTR FIELD-PROJ-A !  0 FIELD-PROJ-U !  0 FIELD-PROJ-FID !  0 FIELD-PROJ-OFF ! ;
-REG-PROTECT
 TRUSTED: FIELD-PROJ-NAME$ ( -- ptr u8 n ) FIELD-PROJ-A @ FIELD-PROJ-U @ ;
-REG-PROTECT
 TRUSTED: FIELD-PROJ-SCHEMA ( -- n n ) FIELD-PROJ-FID @ FIELD-PROJ-OFF @ ;
-REG-PROTECT
 PTR-VARIABLE LBUF-PEND-A
 variable LBUF-PEND-U   0 LBUF-PEND-U !
 variable LBUF-EVAL-OFF  0 LBUF-EVAL-OFF !  \ accessor effect offset + 1 in this eval window
@@ -6352,7 +6348,6 @@ variable TORDER-DEPTH
    oldscan TORDER-SCAN-UNKNOWN !
    rc 0 <> IF rc throw THEN
    uncertain ;
-REG-PROTECT
 \ Declared-effect parametricity seal, set by NP-CHECK after the body: the body
 \ specialized a declared quantifier to a sealed nominal or layout family, or
 \ unified two declared quantifiers.
@@ -11763,9 +11758,7 @@ variable PE-EFF-ID
 \ (verify-source.f scans it, source-lex.f classifies it, check-all-errors-core.f
 \ names it in the unterminated-row hint).
 \ A primitive may have its private row alone: its global record has no top-level
-\ row, and internal-mark.f classifies it by this row (EFFECT-OWNED-MIN-IN)
-\ instead of marking it DNAME-INT, which native/dict.f CALL-BINDING would refuse
-\ from every checked body.
+\ row.
 : CLOSE-PRIVATE ( -- )
    PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
    PE-CLOSE-SYM ;
@@ -12021,9 +12014,9 @@ PRIM: CHECKER-SCOPE-DONE PRIM;
 PRIM: CHECKER-SCOPE-DEPTH PE-N PE-OUT PRIM;
 PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ CHECK-QUIET-CANDIDATE! is the probing form of the line above: one verdict with
-\ the rejection text suppressed. An axiom, as CHECK and CHECK! are: the seal-time
-\ internal-word pass leaves only checker-known names callable, and probes are
-\ called from source loaded after that seal. A harness cannot bump DIAG-QUIET
+\ the rejection text suppressed. An axiom, as CHECK and CHECK! are: the sealed
+\ checker refuses a name it has no row for, and probes are called from source
+\ loaded after that seal. A harness cannot bump DIAG-QUIET
 \ instead: a bare `variable` publishes its effect only once the check hook
 \ exists (habu2.f LASTC-TRUST:FIND-ACTIVE), so an engine booting its prefix from
 \ source has DIAG-QUIET checker-unknown (E-UNDEFINED) while a capture-baked one
@@ -12042,14 +12035,14 @@ PRIM: SYM-PRIVATE PE-N PE-OUT PRIM;
 PRIM: SYM-PUBLIC PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEF-STOPPED? PE-N PE-IN PE-F PE-OUT PRIM;
 \ CHECK / CHECK! are the public verdict words (`s" ..." CHECK! .` is the
-\ documented top-level probing idiom); the axioms keep them checker-known so the
-\ seal-time internal-word marking pass leaves them executable at top level.
+\ documented top-level probing idiom); the axioms keep them checker-known, so top level
+\ may run them.
 PRIM: CHECK  PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ TYPE-RESERVED? answers "may a DEFLINEAR or VALUE-RECORD declaration take this
 \ name", which tools/check-core.f must ask before the registration that would
 \ die on it. Its own `TRUST` row cannot supply the
-\ answer: the row runs long after the marking pass, and a row can only record an
+\ answer: the row runs long after the seal, and a row can only record an
 \ effect for a name that still resolves, so without the axiom the CLI dies
 \ E-TRUST-UNRESOLVED before it has looked at a single file.
 PRIM: TYPE-RESERVED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -12073,9 +12066,7 @@ PRIM: FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM-TRUSTED-ONLY!
 \ The type declarer arms the window for each generated accessor
 \ (src/core/sumtype.f FIELD-ARM), as checked code inside TYPE-DECL. That
-\ caller compiles before the seal: FIELD-PROJ! is REG-PROTECT, so the seal
-\ marks its record DNAME-INT, and after that no checked body calls it, its
-\ owner's included.
+\ caller compiles before the seal.
 PPRIM: TYPE-DECL FIELD-PROJ! PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN CLOSE-PRIVATE
 \ The same restriction covers direct access to the armer's private storage.
 PRIM: FIELD-PROJ-A PE-PTR-U8 PE-PTR PE-OUT PRIM;
@@ -12187,8 +12178,8 @@ PRIM: CHECKER-REG-AOT-CLOSE PRIM;
 PRIM: CHECKER-REG-AOT-SAVE PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 \ CHECKER-DEFCAST ( name$ effect$ -- ) is the whole `cast:` declaration, checker
 \ side (defined beside CHECK-DOES! below). The ENGINE looks it up by name at
-\ every cast, exactly as it looks up `trust-decl`, so it needs the same axiom to
-\ survive the seal-time internal-word marking pass and stay findable;
+\ every cast, exactly as it looks up `trust-decl`, so it needs the same axiom to stay
+\ callable once the checker is sealed;
 \ UNSAFE-TOK? rejects `checker-defcast` inside checked bodies exactly like
 \ `trust-decl`, so the axiom adds no checked-code capability.
 PRIM: CHECKER-DEFCAST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -12203,9 +12194,9 @@ PRIM: GENR-SIG-CAP PE-N PE-OUT PRIM;
 \ `generates:` itself, the top-level word a row is written with, is TRUSTED:
 \ beside the registrar. An engine that boots its prefix from source compiles
 \ this file before src/core/check-hook.f installs a checker, so that header
-\ publishes no effect there, and without this axiom the seal marks the word
-\ DNAME-INT: every row, src/lib/task.f's among them, dies `hb: internal engine
-\ word: generates:`, rc 70, on tools/build-fixpoint.f's hb-host and hb-stdin.
+\ publishes no effect there, and without this axiom the sealed checker
+\ refuses the word: every row, src/lib/task.f's among them, would die rc 70 on
+\ tools/build-fixpoint.f's hb-host and hb-stdin.
 \ UNSAFE-TOK? rejects `generates:` inside checked bodies, so the axiom adds no
 \ checked-code capability.
 PRIM: generates: PRIM;
@@ -12252,14 +12243,12 @@ PRIM: CHECK-DOES-DOUT-SLOT PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECK-UNRECORDED-DIN PE-N PE-OUT PRIM;
 PRIM: CHECK-UNRECORDED-DOUT PE-N PE-OUT PRIM;
 \ TRUST is the public top-level effect-declaration word ( name$ effect$ -- ).
-\ The axiom keeps it checker-known so the seal-time internal-word marking pass
-\ (src/core/internal-mark.f) leaves it executable at top level; UNSAFE-TOK?
+\ The axiom keeps it checker-known, so top level may run it; UNSAFE-TOK?
 \ still rejects `trust` inside checked bodies, so it adds no checked-code
 \ capability.
 PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ TRUST-DECL ( name$ effect$ -- ): TRUST's registration, called by the engine
-\ from its publish tail and the pre-trust defer drain, never from source: the
-\ word is sealed (REG-PROTECT). The axiom gives the TRUSTED: front end
+\ from its publish tail and the pre-trust defer drain. The axiom gives the TRUSTED: front end
 \ (checker-owner.f DECLARED-EFFECT) its call window; the source verifier reaches
 \ TRUST-DECL? through its declaration owner (verify-source.f DECL-SIGNATURE).
 \ UNSAFE-TOK? rejects `trust-decl` in checked bodies like `trust`, so the axiom
@@ -12270,8 +12259,8 @@ PRIM: TRUST-DECL PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ publish site and sealed like TRUST-DECL; UNSAFE-TOK? rejects `trust-raw` in
 \ checked bodies.
 PRIM: TRUST-RAW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-\ type-family.f is `package TFAM`, so these rows are PPRIM: and the checker and
-\ the marking pass key on TFAM:TFAM-N@. TFAM-NAME$ stays PRIM: at global scope:
+\ type-family.f is `package TFAM`, so these rows are PPRIM: and the checker keys
+\ on TFAM:TFAM-N@. TFAM-NAME$ stays PRIM: at global scope:
 \ habu2.f C-FIND-GLOBAL resolves it by bare spelling for `;match`.
 PPRIM: TFAM TFAM-N@ PE-N PE-OUT PPRIM;
 PPRIM: TFAM TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PPRIM;
@@ -12372,8 +12361,8 @@ PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 \ The canonical re-arm. check-hook.f declares `TRUSTED: INSTALL ( -- )`, but it
 \ loads before the hook it installs, so the declaration never reaches the
-\ effect store. Without this row the seal (internal-mark.f) marks INSTALL
-\ internal and every top-level `LOWER-CERT-HOOK:INSTALL` dies rc 70
+\ effect store. Without this row the sealed checker refuses INSTALL and
+\ every top-level `LOWER-CERT-HOOK:INSTALL` dies rc 70
 \ (tools/check-core.f, tools/lint/text.f, the tools/build-fixpoint.f output, the
 \ re-arm tools/checked-boundary-lint-core.f tells authors to write).
 PPRIM: LOWER-CERT-HOOK INSTALL PPRIM;
@@ -12383,8 +12372,8 @@ PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 \ hook to grant its declared public effect to later checked callers.
 PPRIM: CHECKER-REG RECORD-SNAPSHOT-COPY PE-PTR-U8 PE-IN PE-N PE-IN PPRIM;
 \ The x86-64 Habu loop's definers (src/habu/definers.f DEF-PREFIX-BIND, a
-\ TRUSTED: body) load after capture too; without a row the seal marks this
-\ public internal and an ARM64 product, which captures no caller, strips it.
+\ TRUSTED: body) load after capture too; without a row the sealed checker
+\ refuses this public.
 PPRIM: CHECKER-PREFIX BIND? PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-F PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
 \ The capture's keep policy (checker-surface.f), installed once. It answers per
@@ -12437,7 +12426,7 @@ PPRIM: TFAM LAY-N@ PE-N PE-OUT PPRIM;
 \ type-schema.f is package SCHEMA-REG, so these rows are PPRIM: (key
 \ SCHEMA-REG:SCHEMA-N@). The two high-water reads are the package's whole
 \ checked surface; every other public is reached only from a pre-hook body or a
-\ TRUSTED: forwarder and stays DNAME-INT.
+\ TRUSTED: forwarder.
 PPRIM: SCHEMA-REG SCHEMA-N@ PE-N PE-OUT PPRIM;
 PPRIM: SCHEMA-REG SCHEMA-ROOT-N@ PE-N PE-OUT PPRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -12451,14 +12440,11 @@ PRIM: CHECKER-END-PACKAGE PRIM;
 \ ---- package FFI's two retypes ----------------------------------------------
 \ Rows for the two identity words defined above PTABLE-START. Each is the word's
 \ only primitive row and package FFI owns it, so only a CHECKED body compiled
-\ inside FFI resolves it. The seal classifies each record by that row
-\ (EFFECT-OWNED-MIN-IN), which keeps it callable for the owner.
+\ inside FFI resolves it.
 PPRIM: FFI FFI-PTR>CELL PE-PTR-A PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 \ FFI-CELL>PTR's result carries no length: every consumer pairs it with the
 \ width it knows (errno is 4 bytes).
 PPRIM: FFI FFI-CELL>PTR PE-N PE-IN  PE-PTR-U8 PE-OUT CLOSE-PRIVATE
-\ The seal's own question, asked only by src/core/internal-mark.f's pass.
-PPRIM: ENGINE-INTERNAL EFFECT-OWNED-MIN-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT CLOSE-PRIVATE
 \ The `linear:` registrar for the source pre-pass (src/habu/verify-source.f
 \ LINEAR-DECLARATION); the engine reaches it through LINEAR-OFF. It certifies
 \ against the live package and section, so a reopened VERIFY gains nothing.
@@ -12476,8 +12462,8 @@ PRIM: ."     PRIM;
 PRIM: s\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c\"    PE-PTR-U8 PE-OUT PRIM;
 PRIM: .\"    PRIM;
-\ ESC-DECODE's row, public: without it the seal marks the decoder DNAME-INT and
-\ no checked reader of an escaped literal could call it. It writes at most n
+\ ESC-DECODE's row, public: without it the sealed checker refuses the decoder
+\ and no checked reader of an escaped literal could call it. It writes at most n
 \ bytes at the caller's n-byte destination and answers the count written and
 \ whether every escape was valid.
 PRIM: ESC-DECODE PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PE-F PE-OUT PRIM;
@@ -12496,8 +12482,7 @@ PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ ---- what the boot prefix answers the native chain ---------------------------
 \ The type family registry (type-family.f) and the effect store (this file) are
 \ read by the native compiler (checker-owner.f) through signature-less colon
-\ words the seal marks internal; without a row a checked body naming one is
-\ E-UNDEFINED. A row states the effect the reader's own definition declares.
+\ words; without a row the sealed checker refuses a checked body naming one. A row states the effect the reader's own definition declares.
 \ Rows need not be engine primitives: a row interns a symbol and stores an
 \ effect, as for EXT-MARK-FREE-TAIL and CHECKER-DEFFAMILY.
 \
@@ -12576,8 +12561,8 @@ PPRIM: CHECKER-BOUND REWIND PPRIM;
 \ to the prefix's first record and the signature store must return to offset
 \ zero. REWIND returns to the prefix's end; used there it builds a stage-1
 \ engine that cannot boot (measured: silent rc 78). The row exists because
-\ `USIGS` has no effect, so the seal marks it DNAME-INT and a TRUSTED: body
-\ naming it loses the record in a stripped image.
+\ `USIGS` has no effect, and a TRUSTED: body naming it loses the record in a
+\ stripped image.
 \
 \ It takes no argument by design: the seam USIGS-RESTORE-END takes the new end,
 \ and declaring it would hand a trusted build word a store write at any offset.
@@ -13891,20 +13876,6 @@ package CHECKER-REG
 \ fixed scanners call them from named TRUSTED boundaries, and their rows are
 \ trusted-only, so checked code cannot activate the provider.
 \
-\ The row is why the name also needs a seal: a zero-cell PRIM: row marked
-\ PRIM-TRUSTED-ONLY! lets the native compiler compile the call from that
-\ TRUSTED caller, but it makes SIG-MIN-IN answer 0, which internal-mark.f
-\ IMK-MARK reads as known and leaves executable (a file holding only
-\ CHECKER-VERIFY-PKG-START ran and exited 0). REG-PROTECT records the word for
-\ IMK-SEAL-REGISTRY, which marks it DNAME-INT: interpret and tick fail closed
-\ (`hb: internal engine word`, rc 70) while dict.f CALL-TARGET admits a call
-\ from a TRUSTED: body.
-\
-\ The pass is not taught that a trusted-only row is unknown: trusted-only means
-\ checked code may not call the word, and some rows carry it so a top-level
-\ build driver still can (`set-check` in prims.f); that rule would also seal
-\ CHECK-DOES! and LOWER-CERT:BYTES. REG-PROTECT takes the record it follows, so
-\ the seal cannot drift off the word.
 : CHECKER-VERIFY-PKG-START ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
    CHECKER-RESOLVE:AUTHORITY 0= IF E-PKG-CONTEXT throw THEN 2drop drop
@@ -13912,7 +13883,6 @@ package CHECKER-REG
    1 CHECKER-VERIFY-PKG-DEPTH !
    PASS-FLOOR @ VERIFY-FLOOR0 !  -1 PASS-FLOOR !
    CK-USE-ENGINE-DEPTH CHECKER-USE:SOURCE-FLOOR ! ;
-REG-PROTECT
 
 : CHECKER-VERIFY-PKG-DONE ( -- )
    CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
@@ -13920,7 +13890,6 @@ REG-PROTECT
    0 BIND-HORIZON !
    VERIFY-FLOOR0 @ PASS-FLOOR !
    0 CHECKER-VERIFY-PKG-DEPTH ! ;
-REG-PROTECT
 
 \ A source loaded inside an active verifier window inherits its caller's
 \ package and imports. On a clean return it keeps no import it opened, as the
@@ -13939,7 +13908,6 @@ REG-PROTECT
    frame CHECKER-OVERLAY:SCOPE-BYTES munmap {: release:n :}
    rc 0= 0= IF rc throw THEN
    release 0= 0= IF s" checker: file scope release failed" 76 die THEN ;
-REG-PROTECT
 
 package CHECKER-REG
 ' CHECKER-VERIFY-PKG-START DECLARATIONS CHECKER-OWNER-ABI:VERIFY-START-OFF + xt!
@@ -14857,7 +14825,6 @@ package CHECKER-REG
 \ Sealed as CHECKER-DECLARED-ROW! is: from top level the cut would drop any
 \ name's rows.
 : CHECKER-ROWS-END ( -- n ) UEND @ ;
-REG-PROTECT
 
 : CHECKER-RETRACT-ROWS ( n -- )
    {: mark:n :}
@@ -14865,7 +14832,6 @@ REG-PROTECT
       CK-CLOSED-OFF @ mark > IF 0 CK-CLOSED-SYM ! THEN
       mark USIGS-RESTORE-END
    THEN ;
-REG-PROTECT
 
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
    FEP-CLEAR
@@ -14883,7 +14849,7 @@ REG-PROTECT
    CHECKER-FIND-ACTIVE-SYM FIND-SIG-SYM ;
 
 \ ABI query: din cell count for the active effect, including an unjudged scan.
-\ Source authority is a separate question, answered by EFFECT-EXTERNAL-MIN-IN.
+\ Source authority is a separate question (CALL-AUTHORITY).
 : SIG-MIN-IN ( ptr u8 n -- n )
    FIND-SIG 0= IF -1 EXIT THEN
    FEP @ E-MINI@ ;
@@ -14892,8 +14858,8 @@ REG-PROTECT
 \ The one query surface on the effect store outside this file (the native
 \ compiler reads it through the owner record, checker-owner-abi.f
 \ EFFECT-QUERY-OFF onward): FIND-SIG, E-DIN@/E-DOUT@, E-PTR and the EN-*
-\ accessors are sig-less, so internal-mark.f marks them DNAME-INT. Each PUBLIC
-\ PRIM: row, so internal-mark leaves it top-level callable. Read-only.
+\ accessors are sig-less, so the sealed checker refuses them. Each PUBLIC word
+\ has a PRIM: row, so top level may call it. Read-only.
 \ Three answers: a row's term count and per-term family; its width in stack
 \ cells (EFFECT-DIN-CELLS / EFFECT-DOUT-CELLS: what a call site moves and what
 \ src/compiler/native/dict.f asks for); and which cell of a multi-cell value
@@ -18154,18 +18120,6 @@ seal-package
    rec E-HASR@ 0 <> RES-TRUE E-ADD-EFFECT DL-TAKE
    RES-TRUE ;
 
-\ A PRIM declaration grants its own effect, never an ABI-only user row's shape.
-\ Trusted-only is a checked-call restriction; explicit REG-PROTECT still owns
-\ interpret/tick restrictions on such entries.
-: EFFECT-EXTERNAL-MIN-IN ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u CHECKER-FIND-ACTIVE-SYM {: sym:n :}
-   sym SYM-EFFECT-UNRESOLVED? IF -1 EXIT THEN
-   sym CHECKER-FIND-USIG-SYM IF
-      sym EFFECT-EXTERNAL-SYM? IF FEP @ E-MINI@ EXIT THEN
-   THEN
-   sym PRIM-FIRST-IDX dup 0= IF drop -1 EXIT THEN
-   1 - PE-EFF@ E-PTR E-MINI@ ;
-
 \ Whether control comes back from a call to the word this spelling denotes. The
 \ bit encoding is this file's: src/compiler/native/dict.f asks through this
 \ word, and DEAD-CUR? asks the same of the walk's current symbol.
@@ -18972,15 +18926,6 @@ CHECKER-REG:}SCRATCH
       a u i PE-OWNS-GLOBAL? IF i unloop EXIT THEN
    loop
    -1 ;
-
-\ The minimum input arity a package's private primitive row gives the global
-\ record `a u` names, -1 when no such row reaches it. src/core/internal-mark.f
-\ asks it of a global record no top-level row types: that record is still a
-\ package's primitive, callable from checked code inside its owner, so the seal
-\ classifies it by this row and keeps DNAME-INT for records no row types at all.
-: EFFECT-OWNED-MIN-IN ( ptr u8 n -- n )
-   PE-OWNER-ROW dup 0 < IF EXIT THEN
-   PE-EFF@ E-PTR E-MINI@ ;
 
 \ Eliminate one lexical binder. A bound reference at this binder's depth
 \ becomes the fresh scope; references to outer binders shift down one level.
@@ -22403,7 +22348,6 @@ PTR-VARIABLE DCLOSE-A  variable DCLOSE-U
       p DSRC-A @ - 0 0= EXIT
    THEN
    0 0 0= 0= ;
-REG-PROTECT
 
 \ The pre-verifier needs the pinned token in the source it read, not in its
 \ reused body buffer: it may check a does> parent after its clause, then report
@@ -22513,10 +22457,8 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 \ the accepted pair instead.
 \ The step is unconditional: a latch in any other state dies here.
 \ Source cannot call it: a row registered here asks nothing, so it would record
-\ any effect for a name in the open section's wordlist. REG-PROTECT seals it as
-\ it seals CHECKER-VERIFY-PKG-START: interpret and tick refuse it (`hb: internal
-\ engine word`, rc 70), and only a TRUSTED: body compiles a call. The engine and
-\ stage0 call it without the interpret path.
+\ any effect for a name in the open section's wordlist. The engine and stage0 call
+\ it without the interpret path.
 : TRUST-DECL? ( ptr u8 n ptr u8 n -- bool )
    {: na:ptr nu:n sa:ptr su:n :}
    WRITE-WINDOW-CK                       \ before the does> latch steps
@@ -22541,7 +22483,6 @@ DIAG-NO-FILE$ DIAG-FILE-COPY
 \ asks, through VERIFY-DECL-OFF (src/habu/verify-source.f DECL-SIGNATURE).
 : TRUST-DECL ( ptr u8 n ptr u8 n -- )
    TRUST-DECL? drop ;
-REG-PROTECT
 package CHECKER-REG
 ' TRUST-DECL DECLARATIONS EFFECT-OFF + xt!
 ;package
@@ -22585,7 +22526,6 @@ package CHECKER-REG
       sym sym CTL-FLAGS-SYM CTL-THROW or 0 0 NORET-ADD-SYM
    THEN
    sym CK-CLOSE! ;
-REG-PROTECT
 
 : CHECKER-DECLARED-ROW! ( ptr u8 n ptr u8 n -- )
    {: na:ptr nu:n sa:ptr su:n :}
@@ -22593,7 +22533,6 @@ REG-PROTECT
    na nu CHECKER-CERT-DUP? IF EXIT THEN
    na nu CHECKER-RECORD-NAME 2drop
    CHECKER-REC-SYM @ sa su CK-DECLARED-SYM! ;
-REG-PROTECT
 
 
 \ The wordlist a bare row's record lands in: the open section's, or the global
@@ -22691,7 +22630,6 @@ REG-PROTECT
    THEN
    effect sym NORET-NEWEST data-base CHECKER-REG:CK-LASTC-CELL +
       0 ptr-field @ RECORD-CREATED-XT ;
-REG-PROTECT   \ as TRUST-DECL: a row registered here asks nothing
 package CHECKER-REG
 ' TRUST-RAW DECLARATIONS RAW-OFF + xt!
 ;package
@@ -22841,8 +22779,8 @@ variable PIMM-N
    a u EFFECT-QUERY 0= IF RES-FALSE EXIT THEN
    EFFECT-DIN-N 0=
    EFFECT-DOUT-N 0= and ;
-\ The native compiler asks this prefix API after internal-mark has sealed the
-\ engine. Its declared row is what keeps that one shared decision callable.
+\ The native compiler asks this prefix API after internal-mark.f has sealed the
+\ checker's authority. Its declared row is what keeps that one shared decision callable.
 s" neutral-parse-imm?" s" ptr u8 n -- bool" TRUST
 
 package CHECKER-PREFLIGHT
@@ -23702,7 +23640,6 @@ variable IS-PEND-U                   \ and its length
 \ class mint. The runtime is a plain pointer+offset add the generator supplies.
 TRUSTED: FIELD-PROJ! ( ptr u8 n n n -- ) {: a:ptr u:n fid:n off:n :}   \ arm: accessor name span + committed field id + baked byte offset
    a FIELD-PROJ-A !  u FIELD-PROJ-U !  fid FIELD-PROJ-FID !  off FIELD-PROJ-OFF ! ;
-REG-PROTECT
 TRUSTED: FIELD-PROJ-CLEAR ( -- ) 0 FIELD-PROJ-U ! ;
 : FIELD-PROJ-MATCH? ( -- bool )   \ armed AND the word under check is the armed accessor
    FIELD-PROJ-NAME$ {: a:ptr u:n :}
@@ -27097,7 +27034,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-ASIG-RESET
    SYMS-RETIRE-SOURCE
    0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL
-REG-PROTECT
 package CHECKER-REG
 ' CHECKER-RESET-SOURCE DECLARATIONS RESET-OFF + xt!
 ;package
@@ -32268,4 +32204,3 @@ CLAIM-COLD-SOURCE
 \ process that made it, and a built hb numbers its records anew.
 s" CHECKER-DEFRECORD" scope-find drop drop drop NOMINAL-ADD-REC
 s" CHECKER-DEFLINEAR" scope-find drop drop drop NOMINAL-ADD-REC
-REG-PROTECT

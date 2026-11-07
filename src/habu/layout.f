@@ -175,10 +175,10 @@ $0000200000000000 constant DNAME-SEALED
 19 constant DNAME-FLAG-BITS
 -1 DNAME-FLAG-BITS rshift constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
-\ certification (checker RECMI latch -> publish tails / seal-time internal-mark
-\ pass). LFIND folds the byte into x13 bits 8-15; EM-INTERPRET-FIND fails closed
+\ certification (checker RECMI latch -> publish tails). LFIND folds the byte into x13 bits 8-15; EM-INTERPRET-FIND fails closed
 \ before the BLR when the interpret stack holds fewer cells. 0 = unmarked
-\ (unchecked words and words without signatures). Compiled calls inside checked
+\ (unchecked words, words without signatures and the source prefix's words,
+\ whose top-level calls the checker's row judges: src/core/top-row.f). Compiled calls inside checked
 \ words are checker-proven and carry no guard. Flags cell [16]: IMM/EXT/WIDE/INT
 \ 60-63, min-in 52-59, definer kind 50-51, DNAME-OWNED 49, DNAME-CELL 48,
 \ DNAME-ALLOC 47, DNAME-REP 46, DNAME-SEALED 45, name length 0-44.
@@ -192,11 +192,8 @@ $2000000000000000 constant DNAME-EXT
 \ prim (habu1.f BWIDEMARK). Compiled calls inside checked definitions are
 \ unaffected.
 $4000000000000000 constant DNAME-WIDE
-\ DNAME-INT (bit 63): an engine-prefix COLON record with no checker-known effect
-\ (no certified or trusted signature, no primitive axiom), set by the seal-time
-\ pass (src/core/internal-mark.f) so the executable top-level names equal the
-\ checker's. Data records are exempt: push-only bodies, auto-trusted by
-\ LASTC-TRUST:PUBLISH whenever a hook is installed. LFIND folds the bit into x13
+\ DNAME-INT (bit 63): a kernel primitive or engine helper no source may run,
+\ stamped as the primitive registry emits its record (ENGINE-PRIMS:DNAME). LFIND folds the bit into x13
 \ bit 4; EM-INTERPRET-FIND and interpret ' fail closed with `hb: internal engine
 \ word: <token>` rc 70. Compile-mode references (unchecked code, TRUSTED:
 \ bodies) are declared trusted boundaries and unaffected.

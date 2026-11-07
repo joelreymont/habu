@@ -1108,11 +1108,10 @@ $18 constant CINL-LDRLIT-OP      \   bits 29:27 = 011 and 25:24 = 00
    PFX-LOAD-SCRIPT-ARGV
    done LBL, ;
 
-\ internal-mark.f is the LAST prefix source:
-\ its marking pass must see every prefix definition and every recorded effect
+\ internal-mark.f is the LAST prefix source before top-row.f: it seals the
+\ checker's authority once every prefix definition and every recorded effect
 \ (cell/pointer-storage effect rows, checked structure words, xref/script-argv
-\ signatures) before it
-\ classifies the remaining sig-less prefix words as DNAME-INT internal.
+\ signatures) is in.
 : PFX-LOAD-INTMARK ( -- )
    BOOT-FILES:INTERNAL ['] PFX-LOAD-ROW BOOT-FILES:EACH ;
 
@@ -2923,8 +2922,9 @@ public
 \ After ndict++ the checker's rec-wide-publish consumes the RECW latch for this
 \ definition's effect and, when wide, marks record ndict-1 DNAME-WIDE. Hook
 \ guarded: the engine prefix self-load has no hook and no wide-effect rows;
-\ prefix records certified between check-hook.f and the seal are marked by the
-\ seal-time pass (src/core/internal-mark.f). The same tail drains the RECMI
+\ prefix records certified between check-hook.f and the seal carry no min-in,
+\ and the checker's top-level row judges their calls (src/core/top-row.f). The
+\ same tail drains the RECMI
 \ latch through rec-min-in@ (checker.f, loaded before check-hook.f) into
 \ DNAME-MIN-IN (flags bits 52-59) through the alias, so interpret-find fails
 \ closed on a bare underdepth call; min-in 0 (unchecked) pokes nothing.

@@ -219,24 +219,23 @@ roles stay in the CT table, where a global name is what they are.
 
 ## Registry protection
 
-**The hole.** Registry control cells are `variable`/`create` records, which a
-seal-time pass over colon records alone would leave executable at top level,
-where a bare store corrupts a registry past its public API. Checked code naming
-a cell directly is refused, because the cells are defined before the checker
-installs and are never certified.
+**The hole.** Registry control cells are `variable`/`create` records; a bare
+store into one corrupts a registry past its public API.
 
-**Name authority closes direct routes.** Each registry cell is tagged as
-protected at its definition (`src/core/util.f`); the seal pass marks it
-internal, and a bare use or `'` fails closed with `hb: internal engine word`.
-Whole-file packages close the rest: a cell nothing outside its package names is
-private and unreachable by name. Reads go through certified accessors.
+**Privacy closes direct routes.** A registry cell belongs in its package's
+private section, where nothing outside the package names it: a bare use or `'`
+is E-UNDEFINED at top level and in a checked body alike (DECISIONS.md
+"privacy"). Reads and writes go through the package's certified words.
 
 **The checker closes the laundered route.** `variable V  ' W V !  : F V @
 execute ;` would certify as a pure `( -- )` while the real xt ran, letting
-checked source write a protected cell or run a definer. Executing or catching
-an xt fetched from untyped memory is refused, and a tick of a protected target
-is refused at the tick. The fix is provenance-blind: it closes the whole class
-of laundered calls at check time.
+checked source write a private cell or run a definer. Executing or catching an
+xt fetched from untyped memory is refused. The fix is provenance-blind: it
+closes the whole class of laundered calls at check time.
+
+Neither route is a boundary against a program that turns checking off
+(`0 set-check`) or computes addresses; both keep checked code from reaching a
+registry by name.
 
 **A guarded memory band was rejected.** Moving the cells into a write-trapped
 band would require a guard-bypass writer for legitimate declaration-time
@@ -245,8 +244,8 @@ Forth-callable word with no effect, which is exactly what the laundered route
 reached; the band would only trade one route for another. An engine band is
 safe for a different reason: its writers are inline machine code inside
 compiler primitives, never standalone words. Protection of a
-Forth-level registry is therefore name authority plus the checker's refusal of
-opaque execution.
+Forth-level registry is therefore privacy plus the checker's refusal of opaque
+execution.
 
 ## Typed top level
 

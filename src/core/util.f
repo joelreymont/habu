@@ -15,34 +15,9 @@ variable IMK-NDICT0
 \ The scope-find flag bit set when two used publics hold the tail.
 2 constant SCOPE-FIND-AMBIGUOUS
 
-\ --- checker registry write-protection. A registry control cell is a din=0 data
-\ record, which the seal pass (src/core/internal-mark.f) exempts, so its bare
-\ name would stay executable (`99 PF-COMMIT-N !` corrupted TYPE-FIELD:COUNT).
-\ REG-PROTECT records the last-defined data record's index and internal-mark.f
-\ IMK-SEAL-REGISTRY sets DNAME-INT on each after the cold prefix loads; compiled
-\ core callers keep working. Read a registry through its certified accessor; the
-\ laundered ['] -> execute route is docs/design.md "Registry protection". A
-\ package's public data or defer record needs REG-PROTECT too: internal-mark.f
-\ classifies only colon records. An index holds only in the loading process, so
-\ the pass retires the table (internal-mark.f IMK-PASS).
-192 constant REG-PROT-CAP
-create REG-PROT-IDX  REG-PROT-CAP cells allot
-variable REG-PROT-N   0 REG-PROT-N !
-: REG-PROTECT ( -- )   \ tag the just-defined data record for seal-time internal-marking
-   REG-PROT-N @ REG-PROT-CAP >= IF s" registry protect overflow" 76 die THEN
-   ndict@ 1 -  REG-PROT-IDX REG-PROT-N @ cells + !
-   1 REG-PROT-N +! ;
-\ The seal pass reads the registrations through these and retires them.
-: REG-PROT-COUNT ( -- n ) REG-PROT-N @ ;
-: REG-PROT-RECORD ( n -- n ) cells REG-PROT-IDX + @ ;
-: REG-PROT-RETIRE ( -- )
-   REG-PROT-N @ 0 ?do 0 i cells REG-PROT-IDX + ! loop
-   0 REG-PROT-N ! ;
-
-\ Set by the build that loads this prefix as its target when the product keeps
-\ its internal words reachable; every other load leaves it 0.
+\ Set by the build that loads this prefix as its target when the product leaves
+\ the checker's authority open; every other load leaves it 0.
 variable ENGINE-UNSEAL
-REG-PROTECT
 \ The seal pass reads the request through this: a checked body on a cold boot
 \ cannot name the cell, which has no row.
 : ENGINE-UNSEAL? ( -- bool ) ENGINE-UNSEAL @ 0= 0= ;

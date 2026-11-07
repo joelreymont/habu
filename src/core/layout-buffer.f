@@ -298,8 +298,7 @@ $36A0 constant STGT-INP-CELL
    src srcu pna pnu LBUF-EVAL! {: handle:n :}
    handle base LBUF-N @ type typeu hasaddr STORAGE-BIND ;
 
-\ The axiom keeps LAYOUT-BUFFER executable at top level after the internal-mark.f
-\ seal pass; UNSAFE-TOK? refuses it inside checked bodies (it evaluates generated
+\ The axiom keeps LAYOUT-BUFFER checker-known, so top level may run it; UNSAFE-TOK? refuses it inside checked bodies (it evaluates generated
 \ source), so the axiom adds no checked-code capability.
 PRIM: LAYOUT-BUFFER PE-N PE-IN PRIM;
 

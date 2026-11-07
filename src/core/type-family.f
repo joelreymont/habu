@@ -182,18 +182,18 @@ public
 private
 
 32 constant TF-STR-INIT          \ small seed byte pool; grows (doubles) on demand
-variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !   REG-PROTECT
+variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !
 : TF-STR-CAP ( -- n ) TF-STR-CAP-V @ ;
-create TF-STR-BOOT   TF-STR-INIT allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE TF-STR-P   TF-STR-BOOT TF-STR-P !   REG-PROTECT
+create TF-STR-BOOT   TF-STR-INIT allot
+PERSISTED-PTR-VARIABLE TF-STR-P   TF-STR-BOOT TF-STR-P !
 : TF-STR ( -- ptr u8 ) TF-STR-P @ ;
 \ The string pool's home, the DATA block it was last baked in (REG-POOL-PERSIST).
-PERSISTED-PTR-VARIABLE TF-STR-HOME   TF-STR-BOOT TF-STR-HOME !   REG-PROTECT
-variable TF-STR-HOME-CAP   TF-STR-INIT TF-STR-HOME-CAP !   REG-PROTECT
+PERSISTED-PTR-VARIABLE TF-STR-HOME   TF-STR-BOOT TF-STR-HOME !
+variable TF-STR-HOME-CAP   TF-STR-INIT TF-STR-HOME-CAP !
 
 public
 
-variable TF-STR-U   0 TF-STR-U !   REG-PROTECT
+variable TF-STR-U   0 TF-STR-U !
 
 private
 
@@ -275,15 +275,15 @@ public
 private
 
 4 constant TF-PK-INIT            \ small seed param-kind pool; grows on demand
-variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !   REG-PROTECT
+variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !
 : TF-PK-CAP ( -- n ) TF-PK-CAP-V @ ;
-create TF-PK-BOOT   TF-PK-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE TF-PK-P   TF-PK-BOOT TF-PK-P !   REG-PROTECT
+create TF-PK-BOOT   TF-PK-INIT cells allot
+PERSISTED-PTR-VARIABLE TF-PK-P   TF-PK-BOOT TF-PK-P !
 : TF-PK-BASE ( -- ptr n ) TF-PK-P @ ;
 
 public
 
-variable TF-PK-N   0 TF-PK-N !   REG-PROTECT
+variable TF-PK-N   0 TF-PK-N !
 
 private
 
@@ -367,15 +367,15 @@ private
 
 
 4 constant TF-CAP-INIT
-variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !   REG-PROTECT
+variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !
 : TF-CAP ( -- n ) TF-CAP-V @ ;
-create TF-A-BOOT   TF-CAP-INIT TF-REC * allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE TF-A-P   TF-A-BOOT TF-A-P !   REG-PROTECT
+create TF-A-BOOT   TF-CAP-INIT TF-REC * allot
+PERSISTED-PTR-VARIABLE TF-A-P   TF-A-BOOT TF-A-P !
 : TF-BASE ( -- ptr n ) TF-A-P @ ;
 
 public
 
-variable TFAM-N   0 TFAM-N !   REG-PROTECT
+variable TFAM-N   0 TFAM-N !
 
 private
 
@@ -527,7 +527,7 @@ public
 
 private
 
-variable TFM-EPOCH   1 TFM-EPOCH !   REG-PROTECT
+variable TFM-EPOCH   1 TFM-EPOCH !
 
 public
 
@@ -581,7 +581,7 @@ public
 
 private
 
-variable TFX-SLOTS-V   TFX-SLOTS-INIT TFX-SLOTS-V !   REG-PROTECT
+variable TFX-SLOTS-V   TFX-SLOTS-INIT TFX-SLOTS-V !
 
 public
 
@@ -589,18 +589,18 @@ public
 
 private
 
-create TFX-A-BOOT   TFX-SLOTS-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE TFX-A-P   TFX-A-BOOT TFX-A-P !   REG-PROTECT
+create TFX-A-BOOT   TFX-SLOTS-INIT cells allot
+PERSISTED-PTR-VARIABLE TFX-A-P   TFX-A-BOOT TFX-A-P !
 : TFX-BASE ( -- ptr n ) TFX-A-P @ ;
-variable TFX-READY   0 TFX-READY !   REG-PROTECT
+variable TFX-READY   0 TFX-READY !
 
 public
 
-variable TFX-HI      0 TFX-HI !       REG-PROTECT
+variable TFX-HI      0 TFX-HI !
 
 private
 
-variable TFX-CAP     0 TFX-CAP !      REG-PROTECT   \ the TF-CAP the buckets were sized for
+variable TFX-CAP     0 TFX-CAP !      \ the TF-CAP the buckets were sized for
 variable TFX-H                \ private hash accumulator
 variable TFX-I                \ private build/retire index
 variable TFX-CUR              \ private bucket-walk cursor
@@ -866,15 +866,15 @@ private
 
 
 4 constant SUMV-CAP-INIT
-variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !   REG-PROTECT
+variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !
 : SUMV-CAP ( -- n ) SUMV-CAP-V @ ;
-create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE SUMV-A-P   SUMV-A-BOOT SUMV-A-P !   REG-PROTECT
+create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot
+PERSISTED-PTR-VARIABLE SUMV-A-P   SUMV-A-BOOT SUMV-A-P !
 : SUMV-BASE ( -- ptr n ) SUMV-A-P @ ;
 
 public
 
-variable SUMV-N   0 SUMV-N !   REG-PROTECT
+variable SUMV-N   0 SUMV-N !
 
 private
 
@@ -937,9 +937,7 @@ variable SVX-GEN
 
 public
 
-\ REG-PROTECT: `99999 SVX-HI !` turned a catchable duplicate-family reject into
-\ `tfam: ctor index retired after its rows went`, exit 76.
-variable SVX-HI   REG-PROTECT
+variable SVX-HI
 0 SVX-GEN !   0 SVX-HI !
 
 : SVX@ ( n -- n ) HT-SVX IDX-HEAD@ ;
@@ -1023,22 +1021,22 @@ public
 private
 
 8 constant VNX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
-variable VNX-SLOTS-V   VNX-SLOTS-INIT VNX-SLOTS-V !   REG-PROTECT
+variable VNX-SLOTS-V   VNX-SLOTS-INIT VNX-SLOTS-V !
 : VNX-SLOTS ( -- n ) VNX-SLOTS-V @ ;
-create VNX-B-BOOT   VNX-SLOTS-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE VNX-B-P   VNX-B-BOOT VNX-B-P !   REG-PROTECT
-create VNX-L-BOOT   SUMV-CAP-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE VNX-L-P   VNX-L-BOOT VNX-L-P !   REG-PROTECT
-variable VNX-LCAP   SUMV-CAP-INIT VNX-LCAP !   REG-PROTECT   \ rows the link array holds
-variable VNX-READY   0 VNX-READY !   REG-PROTECT
+create VNX-B-BOOT   VNX-SLOTS-INIT cells allot
+PERSISTED-PTR-VARIABLE VNX-B-P   VNX-B-BOOT VNX-B-P !
+create VNX-L-BOOT   SUMV-CAP-INIT cells allot
+PERSISTED-PTR-VARIABLE VNX-L-P   VNX-L-BOOT VNX-L-P !
+variable VNX-LCAP   SUMV-CAP-INIT VNX-LCAP !   \ rows the link array holds
+variable VNX-READY   0 VNX-READY !
 
 public
 
-variable VNX-HI      0 VNX-HI !      REG-PROTECT   \ SUMV-N the chains cover
+variable VNX-HI      0 VNX-HI !      \ SUMV-N the chains cover
 
 private
 
-variable VNX-CAP     0 VNX-CAP !     REG-PROTECT   \ SUMV-CAP the buckets were sized for
+variable VNX-CAP     0 VNX-CAP !     \ SUMV-CAP the buckets were sized for
 variable VNX-CUR              \ private bucket-walk cursor
 
 : VNX-BKT ( n -- ptr n ) {: slot:n :}   \ bucket head: row id + 1, 0 = empty
@@ -1461,15 +1459,10 @@ public
 : PF.FLAGS ( ptr a -- ptr a ) PF.FLAGS-OFF + ;
 
 
-\ --- REG-PROTECT / IMK-SEAL-REGISTRY (util.f, internal-mark.f) seal each
-\ registry control cell DNAME-INT, so a bare `<cell> @`/`<cell> !` or
-\ `' <cell>` fails closed (`hb: internal engine word`, rc 70). Measured on the
-\ product-field arena: `99 PF-COMMIT-N !` corrupted TYPE-FIELD:COUNT.
-
 private
 
 4 constant PF-CAP-INIT
-variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !   REG-PROTECT
+variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
 
 public
 
@@ -1477,14 +1470,14 @@ public
 
 private
 
-create PF-A-BOOT   PF-CAP-INIT PF-REC * allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE PF-A-P   PF-A-BOOT PF-A-P !   REG-PROTECT
+create PF-A-BOOT   PF-CAP-INIT PF-REC * allot
+PERSISTED-PTR-VARIABLE PF-A-P   PF-A-BOOT PF-A-P !
 
 public
 
 : PF-BASE ( -- ptr n ) PF-A-P @ ;
-variable PF-N   0 PF-N !   REG-PROTECT
-variable PF-COMMIT-N   0 PF-COMMIT-N !   REG-PROTECT
+variable PF-N   0 PF-N !
+variable PF-COMMIT-N   0 PF-COMMIT-N !
 
 private
 
@@ -1565,16 +1558,16 @@ public
 private
 
 8 constant FVX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
-variable FVX-SLOTS-V   FVX-SLOTS-INIT FVX-SLOTS-V !   REG-PROTECT
+variable FVX-SLOTS-V   FVX-SLOTS-INIT FVX-SLOTS-V !
 : FVX-SLOTS ( -- n ) FVX-SLOTS-V @ ;
-create FVX-B-BOOT   FVX-SLOTS-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE FVX-B-P   FVX-B-BOOT FVX-B-P !   REG-PROTECT
-create FVX-L-BOOT   PF-CAP-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE FVX-L-P   FVX-L-BOOT FVX-L-P !   REG-PROTECT
-variable FVX-LCAP   PF-CAP-INIT FVX-LCAP !   REG-PROTECT   \ rows the link array holds
-variable FVX-READY   0 FVX-READY !   REG-PROTECT
-variable FVX-HI      0 FVX-HI !      REG-PROTECT   \ PF-N the chains cover
-variable FVX-CAP     0 FVX-CAP !     REG-PROTECT   \ PF-CAP the buckets were sized for
+create FVX-B-BOOT   FVX-SLOTS-INIT cells allot
+PERSISTED-PTR-VARIABLE FVX-B-P   FVX-B-BOOT FVX-B-P !
+create FVX-L-BOOT   PF-CAP-INIT cells allot
+PERSISTED-PTR-VARIABLE FVX-L-P   FVX-L-BOOT FVX-L-P !
+variable FVX-LCAP   PF-CAP-INIT FVX-LCAP !   \ rows the link array holds
+variable FVX-READY   0 FVX-READY !
+variable FVX-HI      0 FVX-HI !      \ PF-N the chains cover
+variable FVX-CAP     0 FVX-CAP !     \ PF-CAP the buckets were sized for
 
 : FVX-BKT ( n -- ptr n ) {: slot:n :}   \ bucket head: row id + 1, 0 = empty
    slot cells FVX-B-P @ + ;
@@ -1695,9 +1688,9 @@ private
 2 constant TFM-WIDTH
 3 constant TFM-STORE
 8 cells constant TFM-REC                    \ (stamp, answer) per fact
-create TFM-BOOT   TF-CAP-INIT TFM-REC * allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE TFM-P   TFM-BOOT TFM-P !   REG-PROTECT
-variable TFM-CAP   TF-CAP-INIT TFM-CAP !   REG-PROTECT   \ families TFM-P holds
+create TFM-BOOT   TF-CAP-INIT TFM-REC * allot
+PERSISTED-PTR-VARIABLE TFM-P   TFM-BOOT TFM-P !
+variable TFM-CAP   TF-CAP-INIT TFM-CAP !   \ families TFM-P holds
 
 \ Grown with the family store. The new rows are zeroed, and zero is never a
 \ current stamp.
@@ -1870,9 +1863,9 @@ public
 private
 
 16 constant TFW-INIT
-create TFW-BOOT   TFW-INIT cells allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE TFW-P   TFW-BOOT TFW-P !   REG-PROTECT
-variable TFW-CAP   TFW-INIT TFW-CAP !   REG-PROTECT   \ cells TFW-P holds
+create TFW-BOOT   TFW-INIT cells allot
+PERSISTED-PTR-VARIABLE TFW-P   TFW-BOOT TFW-P !
+variable TFW-CAP   TFW-INIT TFW-CAP !   \ cells TFW-P holds
 
 \ Grown, never zeroed: every frame cell is written before it is read.
 : TFW-ENSURE ( n -- ) {: need:n :}
@@ -2184,17 +2177,17 @@ private
 
 public
 
-variable PF-TX-CAP-V   PF-TX-CAP-INIT PF-TX-CAP-V !   REG-PROTECT
+variable PF-TX-CAP-V   PF-TX-CAP-INIT PF-TX-CAP-V !
 
 private
 
-create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot   REG-PROTECT
+create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot
 
 public
 
-PERSISTED-PTR-VARIABLE PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
-variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
-variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
+PERSISTED-PTR-VARIABLE PF-TX-P   PF-TX-BOOT PF-TX-P !
+variable PF-TX-DEPTH   0 PF-TX-DEPTH !
+variable PF-TX-SERIAL   0 PF-TX-SERIAL !
 
 \ Here because only this package sees PF-TX-BOOT.
 : PF-TX-ENSURE ( -- )
@@ -3079,15 +3072,15 @@ private
 
 
 4 constant LAY-CAP-INIT
-variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !   REG-PROTECT
+variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !
 : LAY-CAP ( -- n ) LAY-CAP-V @ ;
-create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot   REG-PROTECT
-PERSISTED-PTR-VARIABLE LAY-A-P   LAY-A-BOOT LAY-A-P !   REG-PROTECT
+create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot
+PERSISTED-PTR-VARIABLE LAY-A-P   LAY-A-BOOT LAY-A-P !
 : LAY-BASE ( -- ptr n ) LAY-A-P @ ;
 
 public
 
-variable LAY-N   0 LAY-N !   REG-PROTECT
+variable LAY-N   0 LAY-N !
 
 private
 
@@ -3299,7 +3292,7 @@ PERSISTED-PTR-VARIABLE TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
 
 public
 
-variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !   REG-PROTECT
+variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 
 private
 

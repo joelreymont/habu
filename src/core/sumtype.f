@@ -150,7 +150,7 @@ private
 
 public
 
-variable TDECL-FAM-REG   REG-PROTECT   \ family id registered by the LAST successful sum (-1 = none)
+variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 = none)
 
 \ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields inside the
 \ one declaration transaction, whose event participant owns the field frame
@@ -854,20 +854,18 @@ variable TDP-EVT
 
 public
 
-\ TDECL-TXN-ARMED carries REG-PROTECT: its only writer, TXN-INSTALL, stores in
-\ compile mode, which REG-PROTECT leaves open (it closes interpret and tick).
-defer TDECL-TXN-XT ( [ -- ] -- )   REG-PROTECT
-variable TDECL-TXN-ARMED   REG-PROTECT
+defer TDECL-TXN-XT ( [ -- ] -- )
+variable TDECL-TXN-ARMED
 \ The declaration owner installs its runner once, at load; a second install is refused,
 \ so the public word cannot replace the transaction runner afterwards.
 : TXN-INSTALL ( [ [ -- ] -- ] -- )
    TDECL-TXN-ARMED @ IF s" sumtype: declaration transaction already installed" 76 die THEN
    is TDECL-TXN-XT  -1 TDECL-TXN-ARMED ! ;
-defer TDECL-EVENT-CURRENT-XT ( -- n )   REG-PROTECT
-defer TDECL-EVENT-DECL-XT ( n n -- n )   REG-PROTECT
-defer TDECL-EVENT-ARITY-XT ( n n n -- n )   REG-PROTECT
-defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )   REG-PROTECT
-defer TDECL-EVENT-ARMED ( -- bool )   REG-PROTECT
+defer TDECL-EVENT-CURRENT-XT ( -- n )
+defer TDECL-EVENT-DECL-XT ( n n -- n )
+defer TDECL-EVENT-ARITY-XT ( n n n -- n )
+defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )
+defer TDECL-EVENT-ARMED ( -- bool )
 
 
 private
@@ -1015,11 +1013,9 @@ public
 
 \ include.f binds TDECL-EVAL-XT, the evaluator of core declarations' generated source.
 \ A defer cannot be probed: TDECL-EVAL-ARMED says it is bound.
-defer TDECL-EVAL-XT ( ptr u8 n -- )   REG-PROTECT
-defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )   REG-PROTECT
-defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )   REG-PROTECT
-\ No REG-PROTECT: include.f arms it at top level, where a REG-PROTECT cell dies
-\ `hb: internal engine word`, rc 70; user source meets E-UNDEFINED or rc 76.
+defer TDECL-EVAL-XT ( ptr u8 n -- )
+defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
+defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
 variable TDECL-EVAL-ARMED
 
 
@@ -1075,7 +1071,7 @@ variable TDPLAN-U
 
 public
 
-variable TDPLAN-N   REG-PROTECT
+variable TDPLAN-N
 
 private
 
@@ -1084,7 +1080,7 @@ variable TDPLAN-SYM-HI        \ the largest symbol a row of this plan holds
 
 public
 
-defer TDECL-OWNER-SNAPSHOT-XT ( -- )   REG-PROTECT
+defer TDECL-OWNER-SNAPSHOT-XT ( -- )
 
 private
 
@@ -1290,8 +1286,8 @@ private
 \ FIELD-PROJ! binds TYPE-DECL's private row (checker.f), so this caller is
 \ checked code. ARENA (arena.f) arms its NAME-NEW and NAME-RELEASE through it
 \ too. sumtype.f loads before check-hook.f, so FIELD-ARM has no checker effect
-\ and the boot seal marks it internal: only the compiled calls here and in
-\ arena.f reach it.
+\ and the sealed checker refuses a checked call of it: only the compiled calls
+\ here and in arena.f reach it.
 public
 : FIELD-ARM ( ptr u8 n n n -- ) FIELD-PROJ! ;
 private
@@ -2507,9 +2503,8 @@ NOMINAL-PROVIDER
 NOMINAL-PROVIDER
 
 \ The block openers parse their own body tokens up to the ;NAME closer, so their
-\ cell effect is ( -- ). The axiom rows keep them checker-known: the seal-time
-\ marking pass (internal-mark.f) fails closed on any engine-prefix word without
-\ a checker-known effect. UNSAFE-TOK? rejects the openers inside checked bodies
+\ cell effect is ( -- ). The axiom rows keep them checker-known: the sealed
+\ checker refuses a word it has no row for. UNSAFE-TOK? rejects the openers inside checked bodies
 \ (they parse the live input and mutate the type registry at run time, which
 \ ( -- ) does not express), so the axioms add no checked-code capability. ENUM
 \ has no row: it is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN,

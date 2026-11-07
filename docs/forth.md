@@ -2564,13 +2564,14 @@ sections above.
   terminator and continues. `NEWTYPE` and `DEFTYPE` generate no constructor
   and are admitted; a declaration after `check@ 0 set-check … set-check` is
   ordinary.
-- **A sealed from-source prefix needs external rows for pre-hook words.** A
-  word defined before the check hook is internal without a `PRIM:` axiom or a
-  `TRUSTED:` declaration after the checker claiming it. A checked or
-  top-level use is `E-UNDEFINED` or `hb: internal engine word: NAME` before
-  the checker runs. A `TRUSTED:` or data word before the hook gains no such
-  declaration. A top-level step that reads one is refused the same way, so
-  its row goes in `src/core/cell-effects.f`.
+- **A sealed image needs external rows for pre-hook words.** A word defined
+  before the check hook has no authority without a `PRIM:` axiom or a
+  `TRUSTED:` declaration after the checker claiming it. On a sealed image a
+  checked or top-level use is refused before it runs with `E-CAP-TRUSTED`
+  (call it only from a `TRUSTED:` definition); a whitebox image runs it. A
+  `TRUSTED:` or data word before the hook gains no such declaration. A
+  top-level step that reads one is refused the same way, so its row goes in
+  `src/core/cell-effects.f`.
 - **A signature compiled with the hook empty is a row without authority.**
   This applies to cold prefix and `0 set-check` definitions at either tier.
   An unsealed checker can use the declared effect to check callers, rejecting

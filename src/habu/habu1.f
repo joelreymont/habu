@@ -4573,12 +4573,9 @@ package ENGINE-EMIT
    12 DATA REGION-ALIAS:DELTA-CELL LDR,  12 9 12 ADD,   \ x12 = the record through the alias
    10 12 16 LDR,  10 10 DNAME-WIDE ORRI,  10 12 16 STR, ;
 
-\ int-mark ( n -- ): set DNAME-INT on record n, for the seal-time internal-word
-\ pass (src/core/internal-mark.f), which marks engine-prefix records with no
-\ checker-known effect; interpret-mode execute and tick refuse them (habu2.f
-\ LINTERNAL). Stored through the alias as in BWIDEMARK. Monotonic: no clear
-\ prim exists. The pass marks its host record last; the primitive registry also
-\ marks the newly emitted record so saved images stay sealed.
+\ int-mark ( n -- ): set DNAME-INT on record n; interpret-mode execute and tick
+\ refuse it (habu2.f LINTERNAL). Stored through the alias as in BWIDEMARK.
+\ Monotonic: no clear prim exists.
 : BINTMARK ( -- )
    A G-POP
    C DREC MOVZ,  A A C MUL,  A DBASE A ADD,   \ x9 = &record[n]
@@ -4614,11 +4611,11 @@ package ENGINE-EMIT
    done LBL, ;
 
 \ min-in-mark ( rec-idx min -- ): OR the certified minimum input arity into
-\ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The seal-time pass
-\ (src/core/internal-mark.f) sets it on every engine-prefix record with a
-\ checker-known effect, and EM-INTERPRET-FIND refuses a bare call with fewer
+\ DNAME-MIN-IN (flags bits 52-59) of record rec-idx. The publisher
+\ (src/compiler/native/publish.f MIN-IN-REC) and the Habu loop's definers set it
+\ on a certified word, and EM-INTERPRET-FIND refuses a bare call with fewer
 \ interpret-stack cells. Stored through the alias as in BINTMARK; monotonic.
-\ The pass marks this prim's own record internal, so user source cannot
+\ The registry stamps this prim's own record DNAME-INT, so user source cannot
 \ re-drive it.
 : BMININMARK ( -- )
    B G-POP                               \ x10 = min-in cells

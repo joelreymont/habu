@@ -10,9 +10,9 @@
 \ The DATA cell at an offset the engine layout reserves, declared as a cell that
 \ holds a byte pointer. `ptr-field` (src/habu/prims.f) is the declared door
 \ from an address to a pointer cell, so no cast stands behind this word. It is
-\ a public colon word with no checker row, so the seal (internal-mark.f
-\ IMK-CLASSIFY-PUB) marks it DNAME-INT, and checked source reaches it only
-\ through the RESERVED-PTR-U8-CELL definer below. The null, NULL-PTR, is an
+\ a public colon word with no checker row, so the sealed checker refuses a
+\ checked call of it, and checked source reaches it only through the
+\ RESERVED-PTR-U8-CELL definer below. The null, NULL-PTR, is an
 \ engine primitive (src/habu/prims.f) and needs no cell.
 package POINTER-STORAGE
 public
@@ -36,8 +36,8 @@ public
 \ arms TDECL-EVAL-ARMED; a clause is compiled, so it works in the boot prefix,
 \ where the checker's own pointer tables are declared. A new definer needs two
 \ rows, because a definer written before the checker exists is invisible to it:
-\ src/core/cell-effects.f states its own effect (without it the seal marks the
-\ name DNAME-INT and `hb --load` answers `internal engine word`), and
+\ src/core/cell-effects.f states its own effect (without it the sealed checker
+\ refuses a checked call of the name), and
 \ src/habu/verify-source.f states what it publishes for the created word.
 
 \ A table of byte pointers: `n` cells, each holding a `ptr u8`. `n PTR-U8-TABLE

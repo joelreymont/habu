@@ -70,8 +70,7 @@ variable DTC-SIG-U
 \ express. UNSAFE-TOK? rejects the bare tokens in checked bodies before the usig
 \ is consulted (DO-TOK1 order) and EXPORT refuses a qualified alias
 \ (E-EXPORT-UNSAFE), so the usig adds no checked capability; it keeps the
-\ definers checker-known so src/core/internal-mark.f leaves them executable at
-\ top level.
+\ definers checker-known, so top level may run them.
 
 CAST: >IDX ( n -- idx )
 CAST: IDX>N ( idx -- n )

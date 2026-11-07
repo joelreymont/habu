@@ -1,126 +1,11 @@
-\ internal-mark.f - seal source authority and record its call arity.
-\ Dictionary reads use XREF; private engine boundaries apply the flags and
-\ read checker registries before the runtime is sealed.
+\ internal-mark.f - seal source authority and classify the image. It changes no
+\ record an earlier file made: a word is restricted by its package's private
+\ section, and the checker refuses a checked call it has no row for.
+\ prefix-boundary.f installs the checker's FIRST-RECORD-XT as it loads.
 require src/core/prefix-boundary.f
 require src/habu/boot-cells.f
 
 package ENGINE-INTERNAL
-
-\ THE PASS LEAVES NO RECORD NUMBER IN DATA: a record number is the host's
-\ (docs/bootstrap.md, "Generation Chain Check"). So the cursors are loop
-\ indices, the prefix's first record is a local, and IMK-PASS retires the
-\ REG-PROTECT registrations (src/core/util.f) once it has decided what to do
-\ with them.
-
-: IMK-REC ( n -- ptr n )
-   XREF-REC ;
-
-: IMK-FLAGS@ ( n -- n )
-   IMK-REC XREF-FLAGS ;
-
-: IMK-WID ( n -- n )
-   IMK-REC XREF-WORDLIST ;
-
-: IMK-NAME-A ( n -- ptr u8 )
-   IMK-REC XREF-NAME-A ;
-
-: IMK-NAME-U ( n -- n )
-   IMK-FLAGS@ DNAME-LEN-MASK and ;
-
-\ Definers carry an explicit dictionary kind, preserved by native publication
-\ and capture. Every other non-namespace entry requires source authority;
-\ neither a particular prologue nor an inferred native call shape grants it.
-: IMK-EXECUTABLE? ( n -- bool )
-   IMK-FLAGS@ DKIND:MASK and 0 = ;
-
-: IMK-GLOBAL-EXECUTABLE? ( n -- bool )
-   dup IMK-WID BOOT:GLOBAL-WL = IF IMK-EXECUTABLE?
-   ELSE drop 0 0= 0= THEN ;
-
-TRUSTED: MARK-INTERNAL ( n -- ) int-mark ;
-TRUSTED: MARK-MIN-IN ( n n -- ) min-in-mark ;
-
-: IMK-MIN-IN ( n -- n )
-   dup IMK-NAME-A swap IMK-NAME-U EFFECT-EXTERNAL-MIN-IN ;
-
-\ A GLOBAL RECORD NO TOP-LEVEL ROW TYPES MAY STILL BE A PACKAGE'S PRIMITIVE: a
-\ package-private row (checker.f CLOSE-PRIVATE) types it for checked code inside
-\ the owner, where the engine binds the name to this record. Marking it DNAME-INT
-\ would refuse that caller too, so the record takes the owner's row instead, and
-\ DNAME-INT stays the mark of a record no row types anywhere.
-: IMK-OWNED-MIN-IN ( n -- n )
-   dup IMK-NAME-A swap IMK-NAME-U EFFECT-OWNED-MIN-IN ;
-
-: IMK-MARK ( n n -- ) {: i:n m:n :}   \ unknown -> DNAME-INT; known din>0 -> DNAME-MIN-IN
-   m 0 < IF i MARK-INTERNAL EXIT THEN
-   m 0 > IF i m MARK-MIN-IN THEN ;
-
-: IMK-CLASSIFY ( n -- ) {: i:n :}   \ a global record, under its bare name
-   i IMK-GLOBAL-EXECUTABLE? 0= IF EXIT THEN
-   i IMK-MIN-IN dup 0 < IF drop i IMK-OWNED-MIN-IN THEN
-   i swap IMK-MARK ;
-
-: IMK-WALK ( n -- )          \ classify every source-prefix record, from the first
-   ndict@ swap ?do i IMK-CLASSIFY loop ;
-
-\ ---- package publics, under their qualified name ---------------------------
-\ IMK-WALK misses package words, which sit in their package's wordlist; only
-\ publics have a qualified spelling (habu1.f LFIND).
-1024 constant IMK-QCAP        \ qualified-name scratch: package + ':' + tail
-create IMK-QBUF IMK-QCAP allot
-variable IMK-QU
-variable IMK-QI
-
-: IMK-Q+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   IMK-QU @ u + IMK-QCAP > IF
-      s" internal-mark: qualified name exceeds scratch" 76 die THEN
-   0 IMK-QI !
-   BEGIN IMK-QI @ u < WHILE
-      a IMK-QI @ + c@ IMK-QBUF IMK-QU @ + c!
-      IMK-QU @ 1 + IMK-QU !
-      IMK-QI @ 1 + IMK-QI !
-   REPEAT ;
-
-: IMK-QUAL ( n n -- ptr u8 n ) {: p:n i:n :}   \ package row, word record -> PKG:TAIL
-   0 IMK-QU !
-   p IMK-NAME-A p IMK-NAME-U IMK-Q+
-   s" :" IMK-Q+
-   i IMK-NAME-A i IMK-NAME-U IMK-Q+
-   IMK-QBUF IMK-QU @ ;
-
-: IMK-CLASSIFY-PUB ( n n -- ) {: p:n i:n :}
-   i IMK-EXECUTABLE? 0= IF EXIT THEN
-   i p i IMK-QUAL EFFECT-EXTERNAL-MIN-IN IMK-MARK ;
-
-\ Package row p's public colon records, from p or the prefix's first record:
-\ habu2.f C-PACKAGE-NEW-RECORD makes a row's wids as it publishes the row.
-: IMK-PKG-PUBLICS ( n n -- ) {: p:n first:n :}
-   p IMK-REC XREF-PKG-PUBLIC {: pub:n :}
-   ndict@ p 1 + first max ?do
-      i IMK-WID pub = IF p i IMK-CLASSIFY-PUB THEN
-   loop ;
-
-: IMK-WALK-PACKAGES ( n -- ) {: first:n :}   \ classify every package's public wordlist
-   ndict@ 0 ?do
-      i IMK-WID BOOT:NAMESPACE-WL = IF i first IMK-PKG-PUBLICS THEN
-   loop ;
-
-: IMK-NAMED? ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
-   i IMK-NAME-U u = IF i IMK-NAME-A i IMK-NAME-U a u CORE-STR= ELSE 0 0= 0= THEN ;
-
-: IMK-PRIM? ( n -- bool )    \ record n is one of the marking prims themselves
-   dup s" int-mark" IMK-NAMED? IF drop 0 0= EXIT THEN
-   dup s" min-in-mark" IMK-NAMED? IF drop 0 0= EXIT THEN
-   s" rep-mark" IMK-NAMED? ;
-
-: IMK-SEAL-PRIM ( n -- )      \ close the loop: the marking prims are themselves internal
-   0 ?do i IMK-PRIM? IF i -1 IMK-MARK THEN loop ;
-
-\ Registry write-protection (src/core/util.f REG-PROTECT): int-mark each
-\ registered data record so interpret and tick fail closed on its bare name;
-\ compiled core callers resolved before this pass keep working.
-: IMK-SEAL-REGISTRY ( -- )
-   REG-PROT-COUNT 0 ?do i REG-PROT-RECORD -1 IMK-MARK loop ;
 
 \ ---- the whitebox image ----------------------------------------------------
 \ A whitebox build sets ENGINE-UNSEAL (src/core/util.f) before this file loads
@@ -128,29 +13,18 @@ variable IMK-QI
 
 \ The pass writes its verdict into IMK-CLASS and the capture bakes it, so later
 \ readers (the build's smoke run in tools/native-build-core.f, SEAL-PACKAGES
-\ below) read the image, never the request. A cold engine reruns the pass at
-\ every boot; only a seeded image carries a verdict its build wrote.
-0 constant IMAGE-SEALED         \ the pass ran: internal names are DNAME-INT
-1 constant IMAGE-WHITEBOX       \ the pass stood down: they are ordinary words
+\ below) read the image, never the request.
+0 constant IMAGE-SEALED         \ the pass ran: the checker's authority is sealed
+1 constant IMAGE-WHITEBOX       \ the pass stood down: the authority stays open
 variable IMK-CLASS
 
-\ The sealed arm also closes the checker's authority gate: until the seal, a
-\ checked body naming an internal word is checked against the build's row
+\ The sealed arm closes the checker's authority gate: until the seal, a checked
+\ body naming an internal word is checked against the build's row
 \ (src/core/checker.f CALL-AUTHORITY). The whitebox arm leaves it open.
-: IMK-SEAL ( -- )
-   IMAGE-SEALED IMK-CLASS !
-   CHECKER-EFFECT-AUTHORITY:SEAL
-   CORE-PREFIX:FIRST-RECORD {: first:n :}
-   first IMK-WALK
-   first IMK-WALK-PACKAGES
-   IMK-SEAL-REGISTRY
-   first IMK-SEAL-PRIM ;
-
-\ Either class ends the registrations: the seal has read them, and a whitebox
-\ image has no seal to read them.
 : IMK-PASS ( -- )
-   ENGINE-UNSEAL? IF IMAGE-WHITEBOX IMK-CLASS ! ELSE IMK-SEAL THEN
-   REG-PROT-RETIRE ;
+   ENGINE-UNSEAL? IF IMAGE-WHITEBOX IMK-CLASS ! EXIT THEN
+   IMAGE-SEALED IMK-CLASS !
+   CHECKER-EFFECT-AUTHORITY:SEAL ;
 
 public
 

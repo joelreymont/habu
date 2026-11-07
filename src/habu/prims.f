@@ -699,14 +699,12 @@ EPRIM: addrmap-set   PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ the same, for an address chain the publisher just wrote
 EPPRIM: NPUB addrmap-set PE-N PE-IN ECLOSE-PRIVATE
 EPPRIM: NPUB xref-retarget PE-N PE-IN PE-N PE-IN PE-N PE-IN ECLOSE-PRIVATE
-\ The seal's own two record writers. A row here is what lets the OPTIMIZING
-\ compiler build the call window from src/core/internal-mark.f's TRUSTED:
-\ wrappers, the same reason CHECKER-VERIFY-PKG-START below carries one: that
-\ compiler reads a callee's cell widths out of this table for every name a body
-\ writes, and a primitive is the one kind of name no scan can ever supply.
-\ The row is TRUSTED-only:
-\ a CHECKED caller is refused here, and the emitted records carry DNAME-INT
-\ (ENGINE-PRIMS:GLOBAL-INT-WID) so neither name is executable or tickable.
+\ Record writers. A row here is what lets the OPTIMIZING compiler build a
+\ TRUSTED: caller's call window (src/core/checker.f MARK-REP): that compiler
+\ reads a callee's cell widths out of this table for every name a body writes,
+\ and a primitive is the one kind of name no scan can ever supply. The rows are
+\ TRUSTED-only: a CHECKED caller is refused here, and the emitted records carry
+\ DNAME-INT (ENGINE-PRIMS:GLOBAL-INT-WID), so no name is executable or tickable.
 EPRIM: int-mark      PE-N PE-IN EPRIM;
 ETRUSTED-ONLY!                       \ sets DNAME-INT on one live record
 EPRIM: rep-mark      PE-N PE-IN EPRIM;
