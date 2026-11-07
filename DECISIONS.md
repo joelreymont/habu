@@ -1437,6 +1437,20 @@ learned live in the docs for their subject.
   and that O_NONBLOCK's number is written in fd.f, process.f and tcp4.f, Joel
   chose "Add FD:NONBLOCK! (Recommended)": "One public word in FD, E-FS-IO on
   refusal; signal.f uses it." FD:NONBLOCK! ( fd -- ).
+- 2026-11-07, ending a capture: Joel had written the night before "i'm
+  leaving for the night so make your own judgement and do everything without
+  asking me. apply the what's best for long term criteria". tim showed (from
+  Maki) that PROCESS:KILL-CAPTURE and a capture's deadline SIGKILL the child's
+  whole tree, so a root that cleans up on SIGTERM (test/db/pg-cluster.f, which
+  stops its PostgreSQL) never does and leaves shared memory and directories
+  behind. The lead chose that a capture's end, by KILL-CAPTURE or by its
+  deadline, sends SIGTERM to a root that catches it, waits until the root
+  exits or a private 10 s grace passes, then kills the tree; a root that does
+  not catch SIGTERM is killed at once, since its default action would leave
+  what it spawned. No public word is added: kill(1) also asks with SIGTERM by
+  default. test/gate-pool.f keeps its own copy, which asks every row before
+  it awaits any, so the graces run side by side; making it call PROCESS needs
+  public ask and await words (dot habu-end-gate-pool-c59edab7).
 
 ## Tests
 

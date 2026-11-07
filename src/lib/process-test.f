@@ -10,6 +10,7 @@ require src/lib/fs-mutate.f
 require src/lib/process.f
 require src/lib/process-fork.f
 require src/lib/process-argv.f
+require src/lib/signal.f
 require src/lib/task.f
 require src/lib/test/ending.f
 require src/lib/test/wait.f
@@ -28,6 +29,7 @@ variable PT-CAPTURE-HANG-U
 variable PT-CAPTURE-ERR-LONG-U
 variable PT-CAPTURE-FALSE-U
 variable PT-CAPTURE-EOF-U
+variable PT-TERM-MARKER-U
 variable PT-FORK-CELL
 create PT-BUF 32 allot
 create PT-OUT 32 allot
@@ -41,6 +43,7 @@ create PT-CAPTURE-HANG-BUF PATH-CAP allot
 create PT-CAPTURE-ERR-LONG-BUF PATH-CAP allot
 create PT-CAPTURE-FALSE-BUF PATH-CAP allot
 create PT-CAPTURE-EOF-BUF PATH-CAP allot
+create PT-TERM-MARKER-BUF PATH-CAP allot
 4096 constant PT-CHUNK                   \ one PROCESS:STDIN-CHUNK-CAP write
 1024 constant PT-FILL-MAX                \ bounds the pipe fill at 4 MiB
 create PT-CHUNK-BUF PT-CHUNK allot
@@ -79,6 +82,9 @@ create PT-DRAIN-BUF PT-CHUNK allot
 : PT-CAPTURE-EOF ( -- ptr u8 n )
    PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U @ ;
 
+: PT-TERM-MARKER ( -- ptr u8 n )
+   PT-TERM-MARKER-BUF PT-TERM-MARKER-U @ ;
+
 : PT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
@@ -95,7 +101,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT s" capture-hang.f" PT-CAPTURE-HANG-BUF PT-CAPTURE-HANG-U PT-PATH!
    PT-ROOT s" capture-err-long.f" PT-CAPTURE-ERR-LONG-BUF PT-CAPTURE-ERR-LONG-U PT-PATH!
    PT-ROOT s" capture-false.f" PT-CAPTURE-FALSE-BUF PT-CAPTURE-FALSE-U PT-PATH!
-   PT-ROOT s" capture-eof.f" PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U PT-PATH! ;
+   PT-ROOT s" capture-eof.f" PT-CAPTURE-EOF-BUF PT-CAPTURE-EOF-U PT-PATH!
+   PT-ROOT s" term-marker" PT-TERM-MARKER-BUF PT-TERM-MARKER-U PT-PATH! ;
 
 : PT-WRITE-SCRIPT ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu FS:WRITE-ALL
@@ -114,7 +121,8 @@ create PT-DRAIN-BUF PT-CHUNK allot
    PT-ROOT!
    PT-ROOT FS:CLEANUP-DIR+
    PT-PATHS!
-   PT-WRITE-SCRIPTS ;
+   PT-WRITE-SCRIPTS
+   PT-TERM-MARKER FS:CLEANUP+ ;            \ the stay and plain cases leave it
 
 : PT-CLEANUP ( -- )
    FS:CLEANUP-RUN
@@ -721,6 +729,81 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    killed 0 T=
    PT-UNMARKED-SCRIPT s" " s" " oc PROCESS:SIGKILL T-ENDING-SIGNALED= ;
 
+\ test/process-term-child.f removes the marker only in its SIGTERM answer.
+10000 constant PT-TERM-GRACE-MS          \ src/lib/process.f END-GRACE-MS
+5 constant PT-READY-U                    \ the child's `ready`
+
+\ A capture of the child in mode, with no deadline. A child not `ready` in time
+\ fails the case without a throw, so the case still kills it.
+: PT-TERM-START ( ptr u8 n -- ) {: mode:ptr modeu:n :}
+   PT-TERM-MARKER s" marker" FS:WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/process-term-child.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   PT-TERM-MARKER >LEN PROC-ARGV+
+   mode modeu >LEN PROC-ARGV+
+   s" bin/hb" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROCESS:WAIT-FOREVER PROCESS:CAPTURE-BEGIN
+   pathz argv PROC-SPAWN-ARGV-CAPTURE
+   PROCESS:OUT-R @ >FD PT-HB-TIMEOUT-MS >MS PROCESS:POLL-IN COUNT>N
+   {: ready:n :}
+   ready 1 = if PROCESS:OUT-R @ PT-BUF PT-READY-U read else -1 then
+   PT-READY-U T= ;
+
+: PT-TERM-KILL ( -- )
+   PROCESS:KILL-CAPTURE
+   PROCESS:CLOSE-ALL-CAPTURE-FDS ;
+
+: PT-SINCE-MS ( n -- n )
+   mono-ns swap - PROCESS:NS-PER-MS / ;
+
+: PT-TERM-ENDED= ( ptr u8 n n -- ) {: what:ptr whatu:n sig:n :}
+   what whatu s" " s" " PROCESS:CAPTURE-ENDING sig T-ENDING-SIGNALED= ;
+
+: TEST-KILL-CAPTURE-ASKS ( -- )
+   s" exit" PT-TERM-START
+   PT-TERM-KILL
+   s" kill-capture: a child that catches SIGTERM" SIGNAL:SIGTERM PT-TERM-ENDED=
+   s" kill-capture: the child's answer removed the marker" T-LABEL
+   PT-TERM-MARKER FS:EXISTS? TFALSE ;
+
+: PT-TERM-RUN-LATE ( -- )
+   PT-SHORT-TIMEOUT-MS >MS PROCESS:CAPTURE-DEADLINE!
+   PT-OUT 32 >LEN PT-ERR 32 >LEN PROCESS:RUN-CAPTURE-LOOP ;
+
+\ RUN-CAPTURE's loop, past its deadline.
+: TEST-CAPTURE-DEADLINE-ASKS ( -- )
+   s" exit" PT-TERM-START
+   [: PT-TERM-RUN-LATE ;] E-PROC-TIMEOUT TTHROWSQ
+   s" capture deadline: a child that catches SIGTERM"
+   SIGNAL:SIGTERM PT-TERM-ENDED=
+   s" capture deadline: the child's answer removed the marker" T-LABEL
+   PT-TERM-MARKER FS:EXISTS? TFALSE ;
+
+\ The bound, then the walk's whole window (PROC-TREE SETTLE-MS) twice over.
+: TEST-KILL-CAPTURE-GRACE ( -- )
+   s" stay" PT-TERM-START
+   mono-ns {: t0:n :}
+   PT-TERM-KILL
+   t0 PT-SINCE-MS {: ms:n :}
+   s" kill-capture: a child that catches SIGTERM and stays"
+   PROCESS:SIGKILL PT-TERM-ENDED=
+   s" kill-capture: a staying child is held for the grace bound" T-LABEL
+   ms PT-TERM-GRACE-MS >= TTRUE
+   s" kill-capture: a staying child is killed once the bound passes" T-LABEL
+   ms PT-TERM-GRACE-MS 4000 + < TTRUE ;
+
+: TEST-KILL-CAPTURE-PLAIN ( -- )
+   s" plain" PT-TERM-START
+   mono-ns {: t0:n :}
+   PT-TERM-KILL
+   t0 PT-SINCE-MS {: ms:n :}
+   s" kill-capture: a child that does not catch SIGTERM"
+   PROCESS:SIGKILL PT-TERM-ENDED=
+   s" kill-capture: a child that does not catch SIGTERM is not held" T-LABEL
+   ms PT-TERM-GRACE-MS < TTRUE ;
+
 : PROCESS-TEST-MAIN ( -- )
    T-RESET
    PT-PREPARE
@@ -766,6 +849,10 @@ create PT-SPAWN-ERR PT-SPAWN-ERR-CAP allot
    TEST-RUN-CAPTURE-RESULT-OK
    TEST-RUN-CAPTURE-RESULT-ERR
    TEST-RUN-CAPTURE-RESULT-TYPES
+   TEST-KILL-CAPTURE-ASKS
+   TEST-CAPTURE-DEADLINE-ASKS
+   TEST-KILL-CAPTURE-GRACE
+   TEST-KILL-CAPTURE-PLAIN
    [: TEST-PROC-READ-NEG-LEN ;] E-PROC-TRUNCATED TTHROWSQ
    [: TEST-PROC-READ-HIGH-LEN ;] E-PROC-TRUNCATED TTHROWSQ
    TEST-ZCOPY-EXACT

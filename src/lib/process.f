@@ -34,14 +34,8 @@ private
 
 package PROCESS
 public
-\ ending - how the child's run ended, or that it had not by the deadline.
-\ timeout carries nothing: no terminal status was collected before the
-\ deadline. After a timeout a capture has killed its child's tree with SIGKILL
-\ and reaped the child; WAIT-BOUNDED leaves the child running and the pid with
-\ its caller to reap. A reader that turns an ending into a status or a test
-\ verdict throws E-PROC-TIMEOUT for a timeout (ENDING>RC, the asserts in
-\ src/lib/test/ending.f), so a deadline under a gate row leaves the row
-\ uncaught; only a caller that acts on the deadline itself MATCHes it as data.
+\ ending - how the child's run ended, or that it had not by the deadline. After
+\ a timeout a capture has ended its child's tree and reaped the child.
 ENUM ending
   VARIANT exited FIELD code n ;VARIANT
   VARIANT signaled FIELD signal n ;VARIANT
@@ -232,9 +226,8 @@ public
    then
    term PROCESS-ENDING:signaled ;
 
-\ The child's rc: its exit code, or 128 + the signal that ended it, so a
-\ deliberate kill reads 137. A timeout throws E-PROC-TIMEOUT: read as the 137 of
-\ its SIGKILL, an assertion on it would fail like any wrong answer.
+\ A timeout throws E-PROC-TIMEOUT rather than reading as an rc, so an assertion
+\ on it fails as a deadline.
 : ENDING>RC ( ending -- rc )
    MATCH ending
      exited OF >RC ENDOF
@@ -379,8 +372,8 @@ public
    FFI:ERRNO FD:EINTR# <> if E-PROC-WAIT throw then
    0 0= 0= ;
 
-\ pid must be a pid_t above zero: waitpid's C int would narrow a wider cell to
-\ another process or a process group.
+\ pid must be a pid_t above zero (waitpid's C int would narrow a wider one); a
+\ timeout leaves the child running, its pid for the caller to reap.
 : WAIT-BOUNDED ( pid ms -- ending )
    {: pid:pid timeout:ms :}
    pid PID>N 0 <= if E-PROC-WAIT throw then
@@ -470,13 +463,8 @@ public
    then
    REAP-DISARM ;
 
-\ A child is killed for its caller's reason (a capture's deadline, an overflow,
-\ a refused reaper arm, a stop, a pty reap's expiry, a session's teardown) and
-\ the caller acts on it: tools/check.f names a run past its deadline, and
-\ src/lib/process-pty-io.f's scope hands its slot back. A tree walk that throws
-\ there must neither replace that reason nor vanish: stderr gets one line naming
-\ its code, written in pieces from constant text so it takes no storage two
-\ tasks could share.
+\ A throw while a child is ended must neither replace its caller's reason nor
+\ vanish: CODE-REPORT names it on stderr from constant text, sharing no storage.
 
 private
 : DIAG ( ptr u8 n -- )
@@ -489,12 +477,17 @@ private
    v -10 <= if v 10 / RECURSE then
    s" 0123456789" drop v 10 mod negate + 1 DIAG ;
 
-: WALK-REPORT ( n -- )
-   {: code:n :}
+: CODE-REPORT ( ptr u8 n n -- )
+   {: what:ptr whatu:n code:n :}
    code 0= if exit then
-   s" process: process tree of a killed child not walked, throw " DIAG
+   what whatu DIAG
    code 0 < if s" -" DIAG code else code negate then DIAG-DIGITS
    s\" \n" DIAG ;
+
+: WALK-REPORT ( n -- )
+   {: code:n :}
+   s" process: process tree of a killed child not walked, throw "
+   code CODE-REPORT ;
 
 public
 \ Never throws. A spawned child leads a process group of its own, and so does
@@ -506,9 +499,46 @@ public
 : KILL-TREE ( pid -- )
    [: dup PROC-TREE:KILL-TREE ;] catch WALK-REPORT drop ;
 
+private
+\ SIGNAL:SIGTERM's number: src/lib/signal.f requires this file.
+15 constant SIGTERM
+\ Outlasts test/db/pg-cluster.f ANSWER's QUIT-MS wait.
+10000 constant END-GRACE-MS
+
+\ The flag rides beside the pid through the catch, so both arms leave the same
+\ depth and no storage two tasks could share holds it.
+: CATCHES-TERM? ( pid -- bool ) {: pid:pid :}
+   false pid [: nip dup SIGTERM PROC-TREE:CATCHES? swap ;] catch {: code:n :}
+   code 0= if drop exit then
+   2drop
+   s" process: signals of a killed child not read, throw " code CODE-REPORT
+   false ;
+
+\ Until the asked child exits or END-GRACE-MS passes; proc-watch-open's negative
+\ errno (on macOS, a child already gone) or a failed poll ends the wait.
+: AWAIT-END ( pid -- ) {: pid:pid :}
+   END-GRACE-MS >MS DEADLINE-AT {: deadline:n :}
+   pid PID>N proc-watch-open {: w:n :}
+   w 0 < if exit then
+   w >FD FD:POLLIN PFD!
+   1 deadline LEFT-MS MS>N deadline POLL-RESTART drop
+   w close ;
+
+\ Never throws. Asks only a child that catches SIGTERM (PROC-TREE:CATCHES? says
+\ why); unreaped, its pid names no other process when its tree is killed.
+: END-TREE ( pid -- ) {: pid:pid :}
+   pid CATCHES-TERM? if
+      pid SIGTERM KILL-RAW drop
+      pid AWAIT-END
+   then
+   pid KILL-TREE ;
+
+public
+\ Ends the capture child's tree and reaps the child; only the reap throws
+\ (E-PROC-WAIT). It waits up to END-GRACE-MS on a child that catches SIGTERM.
 : KILL-CAPTURE ( -- )
    PID @ 0 > if
-      PID @ >PID KILL-TREE
+      PID @ >PID END-TREE
       REAP-CAPTURE
    then ;
 
