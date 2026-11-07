@@ -135,9 +135,10 @@ FUNCTION: SIGNAL-CALL signal ( n n -- n ) ;FUNCTION
    PROC-ENV-INHERIT-MISSING ;
 : RETRY ( -- )
    WRITE-VALID
-   \ All page data fits; the final byte of a complete PDF does not. This
-   \ exercises the real finalization sink after earlier pages can be emitted.
-   DEST$ PDF-READ nip 1- FINISH-LIMIT !
+   \ All page data fits; the trailer's last 16 bytes do not. This exercises the
+   \ real finalization sink after earlier pages can be emitted. cairo deflates
+   \ the creation date, so two writes a second apart differ by a few bytes.
+   DEST$ PDF-READ nip 16 - FINISH-LIMIT !
    RESET-COMMAND s" --check" ARG DEST$ ARG s" qpdf" COMMAND 2drop ;
 : COUNT-FILE ( ptr u8 n -- ) 2drop 1 FILES +! ;
 : FILES# ( -- n )
