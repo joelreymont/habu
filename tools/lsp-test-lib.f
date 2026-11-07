@@ -2314,10 +2314,11 @@ CK-USE-MAX 1 + constant OVER-USINGS
    A-PATH 1 EXPECT 4 2 4 3 1 s" E-SHADOWED-ARITY" DIAG+
    6 16 6 17 1 s" E-MISMATCH" DIAG+ PUBLISHES ;
 
-\ LSPT-WIDE's inferred effect has more type variables than a record holds: the
-\ check verifies it and warns at its name that the effect is not recorded.
+\ LSPT-WIDE's inferred effect has 276 type variables, more than the 256 an effect
+\ text names: the check verifies it and warns at its name that the effect is not
+\ recorded.
 : WIDENS ( -- ptr u8 n )
-   s\" defer LSPT-V14 ( -- a b c d e g h i j k l m o p )\n: LSPT-WIDE LSPT-V14 LSPT-V14 ;\n" ;
+   s\" defer LSPT-V23 ( -- a b c d e g h i j k l m o p q s t u v w x y z )\n: LSPT-WIDE LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 LSPT-V23 ;\n" ;
 
 : NOT-RECORDED-TURNS ( -- )
    SESSION-INITIALIZE
