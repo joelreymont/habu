@@ -353,6 +353,10 @@ either tier, in a package or under `evaluate`, until a `does>` the definer then
 reaches replaces it with the clause effect; a branch that `exit`s before
 `does>` leaves `-- ptr a`.
 
+Lay a created body's data right after its `create`, before the next definition
+or row: a definition's `;` may lay its facts text at `here`, so data laid after
+it no longer follows the body.
+
 A definer that writes its word as text (`+USER`) states what it makes with
 `generates: D ( effect )` after D's definition, so `tools/check.f` checks that
 word's uses before the run; what no row states is left to the run (§ 3). `FUNCTION:` needs no row.

@@ -34,9 +34,12 @@ variable HV
 
 \ A build's data space is open while BOOT:IMAGE-BASE-CELL is nonzero
 \ (boot-cells.f says when it is 0); its close frees its table (CLEANUP).
+\ These cells name memory this process mapped, so a save writes them null
+\ (scratch-cell-mark) and the saved program's TABLE maps a fresh table.
 variable SPACE-IMAGE     \ the image base the space's table serves, 0 for none
-create SPACE-TABLE 4 cells allot
-create OWN-TABLE 4 cells allot
+SPACE-IMAGE scratch-cell-mark
+create SPACE-TABLE here scratch-cell-mark 4 cells allot
+create OWN-TABLE here scratch-cell-mark 4 cells allot
 
 : IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
 : SPACE? ( -- bool ) IMAGE-BASE 0 <> ;
@@ -127,8 +130,8 @@ create OWN-TABLE 4 cells allot
    t  t SIZE-CELL @ 2 *  -1 1 rshift  REBUILD ;
 
 
-\ One `allot` checks the bounds and zeroes before the copy; no `,`, so the
-\ length cell never joins a created body's cell grid (BCOMMA).
+\ One `allot` checks the bounds and zeroes before the copy; no `,`, so the length
+\ cell never joins a created body's grid (BCOMMA). It ends aligned, as `create`.
 : LAY ( ptr n ptr u8 n -- n )
    {: t:ptr a:ptr u:n :}
    t FILLED-CELL @ 1+ 2 *  t SIZE-CELL @ > if t WIDEN then
@@ -138,6 +141,7 @@ create OWN-TABLE 4 cells allot
    head CELL + {: address:n :}
    NULL-PTR BYTE-VIEW address + {: dst:ptr :}
    u 0 ?do a i + c@ dst i + c! loop
+   align
    t address SLOT-PUT
    address ;
 

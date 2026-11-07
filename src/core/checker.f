@@ -5025,13 +5025,13 @@ CTL-INTRINSIC-MASK or CTL-NAMES or CTL-GENERATES or
 
 
 \ The facts tag of control word bit n, empty for CTL-THROW's and the intrinsic
-\ id's bits, whose tags carry operands (render.f REND-CTL, SIG-CTL-TAG).
+\ id's bits, whose tags carry operands (render.f REND-CTL, SIG-CTL-TAG), and for
+\ CTL-BARRIER and EFFECT-EXTERNAL, which follow from the rows and from a text
+\ being stored: a created word's text then equals the one its definer laid.
 : CTL-BIT>TAG$ ( n -- ptr u8 n )
    {: bit:n :}
    1 bit lshift {: f:n :}
    f CTL-DEAD = IF s" noret" EXIT THEN
-   f CTL-BARRIER = IF s" barrier" EXIT THEN
-   f EFFECT-EXTERNAL = IF s" external" EXIT THEN
    f CTL-CORE-OP = IF s" core-op" EXIT THEN
    f CTL-ZERO-TRUE = IF s" zero-true" EXIT THEN
    f CTL-ZERO-FALSE = IF s" zero-false" EXIT THEN
@@ -10553,6 +10553,9 @@ CUR-DEFAULT
 \ TRUSTED: definer's publication steps it (TRUST-DECL); on a throw it clears.
 variable DOESEFF   0 DOESEFF !
 variable DOESPEND  0 DOESPEND !
+\ 1 from CHECKER-NATIVE-DOES-BEGIN to CHECKER-NATIVE-DOES-FINISH: CHECK-FACTS
+\ writes no facts text while a does> head and its clause are checked apart.
+variable DOES-SPLIT   0 DOES-SPLIT !
 
 : DOES-EFF-CLEAR ( -- )
    0 DOESEFF !  0 DOESPEND ! ;
@@ -12762,6 +12765,7 @@ public
 \ Dictionary record slots and flags (src/habu/layout.f DREC).
 2 constant CK-REC-FLAGS-SLOT                \ = xref.f XREF-FLAGS-SLOT
 3 constant CK-REC-NAME-SLOT                 \ = xref.f XREF-NAME-SLOT
+4 constant CK-REC-FACTS-SLOT                \ the facts text's offset from data-base, 0 for none
 $00001FFFFFFFFFFF constant CK-REC-LEN-MASK  \ = layout.f DNAME-LEN-MASK
 $2000000000000000 constant CK-REC-EXT       \ = layout.f DNAME-EXT
 
@@ -12793,6 +12797,16 @@ public
    flags CK-REC-LEN-MASK and {: u:n :}
    flags CK-REC-EXT and 0 <> IF rec REC-CELLS CK-REC-NAME-SLOT ptr-field @ u EXIT THEN
    rec CK-REC-NAME-SLOT cells + BYTE-VIEW u ;
+;package
+
+package CHECK
+public
+\ Stores the interned text's offset in the record's bytes 32-39. While a build's
+\ space is open it keeps 0: a text laid then lands only if no earlier file has it.
+: FACTS! ( ptr u8 n n -- )
+   {: a:ptr u:n ix:n :}
+   data-base BOOT:IMAGE-BASE-CELL + @ 0 <> IF EXIT THEN
+   a u INTERN:TEXT  data-base NULL-PTR - -  ix record-facts! ;
 ;package
 
 package CHECKER-RESOLVE
@@ -27939,17 +27953,10 @@ variable TOP-ASK-ANSWER
    rc 0 <> IF rc DEF-REFUSED  1 MULTI-ERR-N +!  0 EXIT THEN
    TOP-ASK-ANSWER @ ;
 
-\ Native compilation scans the parent first to keep the observer tape in source
-\ order, so its accepted clause arrives after the parent's effect record. The
-\ checker rollback frame spans that split and native publication: a failed
-\ clause or later compile error restores the prior effect, control and symbol
-\ state together, any earlier version of the same symbol included. An open
-\ frame keeps RBF-DEPTH nonzero, so snapshot/compaction cannot relocate its
-\ saved cursors. On success the publisher associates the accepted clause with
-\ the accepted parent, then finalizes the frame after all dictionary rows and
-\ pending facts publish.
+\ One rollback frame spans the head's scan, the clause's and publication; while
+\ open, RBF-DEPTH stays nonzero so compaction relocates none of its cursors.
 : CHECKER-NATIVE-DOES-BEGIN ( -- )
-   RBF-PUSH ;
+   RBF-PUSH  1 DOES-SPLIT ! ;
 
 : CHECKER-NATIVE-DOES-PUBLISH ( ptr u8 n -- ) {: a:ptr u:n :}
    DOESPEND @ 1 <> IF DOES-EFF-CLEAR EXIT THEN
@@ -27965,6 +27972,7 @@ variable TOP-ASK-ANSWER
 
 : CHECKER-NATIVE-DOES-FINISH ( ptr u8 n bool -- )
    {: a:ptr u:n committed:bool :}
+   0 DOES-SPLIT !
    committed 0= IF
       DOES-EFF-CLEAR WRAP-CLEAR RBF-POP EXIT
    THEN

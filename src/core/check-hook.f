@@ -72,6 +72,18 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    S\" \n" ERROR-TEXT:TYPE ;
 
 
+\ Appends sym's tags at RSN, after the effect FACTS-SAME? left in RSBUF.
+: FACTS-TAGS ( n -- )
+   {: sym:n :}
+   sym CTL-WORD-SYM  sym DFER-FIND-SYM if CHECKER-OWNER-ABI:BINDING-DEFER or then
+   REND-CTL 2drop
+   sym PRIM-FIRST-IDX {: prim:n :}
+   prim 0 <> if prim 1 - PE-FLAGS@ else 0 then REND-PE 2drop
+   sym PIMM-IX {: ix:n :}
+   ix 0 < if -1 else ix PIMM-CNT@ then REND-PIMM 2drop
+   sym NORET-CREATES@ REND-CREATES 2drop ;
+
+
 \ Only a record this check published, at or above MARK and still active, is
 \ asked: a duplicate or an unrecorded effect publishes none.
 : CHECK-FACTS ( ptr u8 n n -- )
@@ -82,7 +94,12 @@ $2850 RESERVED-PTR-U8-CELL SRC-NAME
    rec1 0= if exit then
    rec1 1 - mark < if exit then
    rec1 1 - E-PTR ER.ACTIVE @ EFF-ACTIVE <> if exit then
-   sym FACTS-SAME? if exit then
+   sym FACTS-SAME? if
+      CK-LIVE-PEND? 0= if exit then
+      DOES-SPLIT @ 0 <> if exit then
+      sym FACTS-TAGS
+      RQM @ 0= if RSBUF RSN @ ndict@ CHECK:FACTS! exit then
+   then
    RQM @ 0 <> if s" hook: facts text cannot say: " else s" hook: facts text differs: " then
    ERROR-TEXT:TYPE
    NMB NMU @ ERROR-TEXT:TYPE

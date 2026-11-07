@@ -228,7 +228,15 @@ learned live in the docs for their subject.
   A defer's text is written again by its defer step, with the defer tag; a
   created word only looks its text up, which finds its definer's tail (the two
   render alike, probed); a definer also lays its created words' text as a
-  string of its own.
+  string of its own. The same day, under the same words, shown that an engine
+  build which interned facts texts saved the address of hb's own table's slots,
+  which live in memory mapped outside DATA as Joel ruled for the table, so the
+  built hb's first lookup read an unmapped page and crashed, the lead chose
+  that the table's cells naming mapped memory (each table's slots address and
+  the image base a build's table serves) are scratch cells, as Joel ruled for
+  typed data: every save writes them null and the saved program maps a fresh
+  table on its first lookup. A text laid before the save stays in DATA; the
+  fresh table does not hold it, so interning that text again lays a copy.
 - 2026-11-03, state machines: asked to approve a package STATE-MACHINE with
   one definer, `MACHINE <name> ( context ) <states> <inputs> ... ;MACHINE`,
   and one error code for a badly formed table, Joel answered "call package

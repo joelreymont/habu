@@ -9,7 +9,6 @@
 require src/lib/prelude.f
 require src/lib/error.f
 require src/lib/string.f
-require src/lib/image-lifecycle.f
 require src/habu/layout.f
 require src/habu/intern-table.f
 
@@ -213,11 +212,6 @@ variable SOURCE-ON
 
 : SLOT-CLEAR ( -- )
    SLOTS 0 ?do 0 i cells SLOT + ! loop ;
-
-\ The cells are src/habu/intern-table.f's; image-lifecycle.f loads after it.
-SPACE-IMAGE IMAGE-LIFECYCLE:PROCESS-CELL
-SPACE-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
-OWN-TABLE IMAGE-LIFECYCLE:PROCESS-CELL
 
 public
 \ A file object's link puts a body the build's data holds, as EACH-STRING hands it,

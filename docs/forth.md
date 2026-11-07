@@ -2183,6 +2183,10 @@ documentation-only edits need no rebuild.
   of its own. `allot`, `c,` and `,` never realign: storage carved after
   byte-sized data is misaligned unless `align` precedes it, and a cell-typed
   reader refuses it.
+- **A created body's data follows its `create` before the next definition or
+  row.** A colon definition's `;` may lay its facts text at `here`, a length
+  cell then its bytes, then `align`; data written after that `;` lands past
+  the text instead of after the body.
 - **A created body's `,` cells are its cell grid; `CELL-BODY` names the
   rest.** On ARM64, the cells `,` writes from a created body's start up to
   the first other allocation are that body's grid, closed at the next created

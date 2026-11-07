@@ -2,6 +2,7 @@
 \ publishing it, and the surrounding source keeps its earlier definitions.
 1 set-tier
 require src/habu/layout.f
+require src/habu/xref.f
 
 : SHADOW-RECOVERY ( n -- n ) 1+ ;
 : TOP-RECOVERY ( n -- n ) 1+ ;
@@ -63,16 +64,51 @@ START
 TRUSTED: TRUSTED-FOLLOW ( n -- n ) TRUSTED-BAD ;
 CHECK-TRUSTED
 
-\ A definer whose head binds a recovery row is withheld, though its does>
-\ clause, checked after the head, binds none.
+\ A definer whose head binds a recovery row is withheld, though its clause binds
+\ none, and so is a word that calls it, with no second report.
 : CHECK-DEFINER ( -- )
    FINISH 1 <> if s" native definer recovery count" 1 die then
-   s" DEFINER-FOLLOW" get-current search-wl 0<> if s" native definer dependent published" 1 die then ;
+   s" DEFINER-FOLLOW" get-current search-wl 0<> if s" native definer dependent published" 1 die then
+   s" DEFINER-USE" get-current search-wl 0<> if s" native definer recovery chain published" 1 die then ;
 
 START
 : DEFINER-BAD ( n -- n ) drop ;
 : DEFINER-FOLLOW ( n -- ) DEFINER-BAD drop create 0 , does> ( -- n ) @ ;
+: DEFINER-USE ( -- ) 3 DEFINER-FOLLOW ;
 CHECK-DEFINER
+
+\ A definer whose does> clause alone binds a recovery row is rolled back, so a
+\ word that calls it is reported undefined.
+: CHECK-CLAUSE-DEFINER ( -- )
+   FINISH 2 <> if s" native clause definer recovery count" 1 die then
+   s" CLAUSE-DEFINER" get-current search-wl 0<> if s" native clause definer published" 1 die then
+   s" CLAUSE-USE" get-current search-wl 0<> if s" native clause definer caller published" 1 die then ;
+
+START
+: CLAUSE-BAD ( n -- n ) drop ;
+: CLAUSE-DEFINER ( n -- ) create , does> ( -- n ) @ CLAUSE-BAD ;
+: CLAUSE-USE ( -- ) 3 CLAUSE-DEFINER ;
+CHECK-CLAUSE-DEFINER
+
+\ A TRUSTED: definer whose head binds a recovery row is rolled back, as its
+\ declared row has no recovery mark; a word that calls it is reported undefined.
+: CHECK-TRUSTED-DEFINER ( -- )
+   FINISH 2 <> if s" native trusted definer recovery count" 1 die then
+   s" TRUSTED-DEFINER" get-current search-wl 0<> if s" native trusted definer published" 1 die then
+   s" TRUSTED-DEFINER-USE" get-current search-wl 0<> if s" native trusted definer caller published" 1 die then ;
+
+START
+: TRUSTED-DEFINER-BAD ( n -- n ) drop ;
+TRUSTED: TRUSTED-DEFINER ( n -- ) TRUSTED-DEFINER-BAD drop create 0 , does> ( -- n ) @ ;
+: TRUSTED-DEFINER-USE ( -- ) 3 TRUSTED-DEFINER ;
+CHECK-TRUSTED-DEFINER
+
+\ The withheld definer's does> frame ends with it, so a later definition's `;`
+\ still stores its facts text.
+: CHECK-DEFINER-FACTS ( -- )
+   LATEST CK-REC-FACTS-SLOT XREF-CELL@ 0= if s" native definer recovery left its does> frame open" 1 die then ;
+: DEFINER-AFTER ( -- n ) 5 ;
+CHECK-DEFINER-FACTS
 
 \ A top-level step runs at once, so it is typed against the global word the
 \ engine runs, not the refused definition's recovery row: `c@` on its cell is

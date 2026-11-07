@@ -535,6 +535,11 @@ TKA-CELL RESERVED-PTR-U8-CELL READ-AT
    rc E-T0-MATCH = or  rc E-T0-DEFER = or
    TRUSTED? M-UNJUDGED @ -1 <> or and ;
 
+\ A recovery-bound head's scan marks its record (checker.f RECOVERY-RECORD)
+\ unless deferred; a TRUSTED: head's newer TRUST-DECL row has none.
+: HEAD-MARKED? ( -- bool )
+   M-HEAD-RECOVERY @ TRUSTED? 0= and ;
+
 public
 
 \ The `;` that ends the definition: the token the engine read last, whose
@@ -549,7 +554,16 @@ public
       M-DOES-FRAME @ 0<> if NULL-PTR 0 false CHECKER-OWNER:DOES-FINISH then
       entry-rc throw
    then
-   rc E-COMP-RECOVERY = if rc throw then
+   rc E-COMP-RECOVERY = if
+      \ A HEAD-MARKED? definer keeps its rows, as a withheld colon word does;
+      \ every other withheld definer is rolled back.
+      M-DOES-FRAME @ 0<> if
+         NULL-PTR 0 HEAD-MARKED? CHECKER-OWNER:DOES-FINISH
+         HEAD-MARKED? if CHECKER-OWNER:DOES-COMMIT then
+         0 M-DOES-FRAME !
+      then
+      rc throw
+   then
    undefined if
       a u p REPORT-FAILURE
       a u p REPORT-UNDEFINED

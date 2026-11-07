@@ -1,6 +1,7 @@
 \ Evaluation rollback retires declarations by address, not registration order.
 require src/lib/test.f
 require src/habu/address-cells.f
+require src/habu/xref.f
 
 package ADDRESS-CELL-ROLLBACK
 variable BASE-N
@@ -101,6 +102,20 @@ DYNAMIC-BUFFER SAVED n
    START [: FAIL-TEXT ;] catch RESTORED
    s" address-cell-rollback-text" INTERN:FIND 0 T= ;
 
+\ The facts text `;` stores for ACR-FACTS; no other word in hb has this effect.
+: FACTS$ ( -- ptr u8 n ) s" ( u16 i64 u8 -- u32 u16 ) " ;
+: ACR-SOURCE$ ( -- ptr u8 n ) s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ;" ;
+: FAIL-FACTS ( -- )
+   s" : ACR-FACTS ( u16 i64 u8 -- u32 u16 ) nip swap ; 12345 throw" INCLUDE-EVALUATE ;
+: FACTS-GONE ( -- )
+   s" a failed line's facts text leaves the string table" T-LABEL
+   FACTS$ INTERN:FIND 0 T=
+   START [: FAIL-FACTS ;] catch RESTORED
+   FACTS$ INTERN:FIND 0 T=
+   s" a published definition's record holds its facts text's offset" T-LABEL
+   ACR-SOURCE$ INCLUDE-EVALUATE
+   LATEST CK-REC-FACTS-SLOT XREF-CELL@  FACTS$ INTERN:FIND data-base NULL-PTR - -  T= ;
+
 \ here lands 3 bytes into the text's length cell.
 : CUT-TEXT ( -- )
    s" a negative allot into a text forgets it" T-LABEL
@@ -110,6 +125,6 @@ DYNAMIC-BUFFER SAVED n
    align ;
 
 : RUN ( -- )
-   T-RESET THREE-SHAPES UNORDERED NESTED BACKING TEXT-GONE CUT-TEXT T-REPORT ;
+   T-RESET THREE-SHAPES UNORDERED NESTED BACKING TEXT-GONE FACTS-GONE CUT-TEXT T-REPORT ;
 RUN
 ;package
