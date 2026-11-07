@@ -1,10 +1,11 @@
 \ build.f - test/file-objects.f's child: a build of count.f, shape.f, main.f,
 \ reopen.f and mark.f written as the program `prog` under the out root, with
 \ again.f loaded twice in the same build, then host.f loaded after the build
-\ closes. After the write the build prints its state and runs three of its
-\ words (STATE., RUN-WORDS); the last line is `compiled ` and LINKER:COMPILED.
-\ The body lays one cell between shape.f and main.f, which no file's data
-\ holds. With the script argument `second` the build loads pad.f first; with
+\ closes. After the write the build prints its state, each record's facts text
+\ among it, runs three of its words (STATE., RUN-WORDS) and prints `shared -1`
+\ when main.f's literal lies at count.f's HI's text (SHARED.); the last line is
+\ `compiled ` and LINKER:COMPILED. Between shape.f and main.f the body defines
+\ FILE-OBJECTS-BODY-SUM and lays one cell, which no file's data holds. With the script argument `second` the build loads pad.f first; with
 \ `shifted` it declares a package and lays three cells before count.f. With
 \ `stop`, these builds run in the one out root. Ten fail: in
 \ STOP-FILE and STOP-BODY every later load and write is LINKER:E-FAILED,
@@ -153,16 +154,32 @@ variable STRINGS                      \ the bodies INTERN:EACH-STRING visited
 CAST: >DOUBLE ( n -- [ n -- n ] )
 CAST: >CELL ( n -- [ -- ptr n ] )
 CAST: >RUN ( n -- [ -- ] )
+CAST: >LITERAL ( n -- [ -- ptr u8 n ] )
+CAST: >TEXT ( n -- ptr u8 )
 
 \ The host entry of the build's word named by the string.
 : ENTRY ( ptr u8 n -- n ) XREF-FIND-INDEX XREF-REC XREF-START ;
 
 : IMAGE-BASE ( -- n ) data-base BOOT:IMAGE-BASE-CELL + @ ;
 
+\ The record's facts text's address: bytes 32-39 hold its offset from the image base, 0 for none.
+: FACTS-ADDR ( ptr n -- n )
+   4 XREF-CELL@ {: off:n :}
+   off 0= if 0 exit then
+   IMAGE-BASE off + ;
+
+\ An interned text: its bytes, after the cell holding their count.
+: TEXT. ( n -- )
+   >TEXT {: t:ptr :}
+   t  t 8 - LE:U64@  type ;
+
+\ The record's name, then its fields and its facts text, `-` for none.
 : RECORD. ( n -- )
    XREF-REC {: rec:ptr :}
    rec XREF-NAME$ type cr
-   rec XREF-FLAGS .  rec XREF-WORDLIST .  rec XREF-RAW-LEN . ;
+   rec XREF-FLAGS .  rec XREF-WORDLIST .  rec XREF-RAW-LEN .
+   rec FACTS-ADDR {: at:n :}
+   at 0= if s" -" type else at TEXT. then cr ;
 
 \ Each record from the first, then the counts of emissions and interned
 \ strings, then DP's offset in the space.
@@ -179,6 +196,12 @@ CAST: >RUN ( n -- [ -- ] )
    s" FILE-OBJECTS-COUNT:TALLY" ENTRY >CELL execute @ .
    s" FILE-OBJECTS-COUNT:HI" ENTRY >RUN execute ;
 
+\ -1 when main.f's literal, the bytes of count.f's facts text `( -- ) `, lies at HI's text.
+: SHARED. ( -- )
+   s" FILE-OBJECTS-MAIN:HI-TEXT" ENTRY >LITERAL execute drop NULL-PTR -
+   s" FILE-OBJECTS-COUNT:HI" XREF-FIND-INDEX XREF-REC FACTS-ADDR =
+   s" shared " type  bool>n . cr ;
+
 : BODY ( -- )
    ndict@ {: first:n :}
    SECOND? if PAD then
@@ -188,13 +211,14 @@ CAST: >RUN ( n -- [ -- ] )
    then
    s" test/fixtures/file-objects/count.f" included
    SHAPE
+   s" : FILE-OBJECTS-BODY-SUM ( n n -- n ) + ;" evaluate-closed
    8 allot
    s" test/fixtures/file-objects/main.f" included
    s" test/fixtures/file-objects/reopen.f" included
    MARK
    LOAD-AGAIN LOAD-AGAIN
    PROG$ LINKER:WRITE
-   first STATE.  RUN-WORDS ;
+   first STATE.  RUN-WORDS  SHARED. ;
 
 \ ---- stop mode's later builds: stale and corrupt lists, edit sequences, the twins ----
 PATH-CAP BUFFER: DIR-BUF

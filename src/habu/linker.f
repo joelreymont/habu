@@ -174,19 +174,23 @@ DYNAMIC-BUFFER STORED n              \ the stores' cells as distances from NULL-
 variable STORED-N
 DYNAMIC-BUFFER STRS n                \ the file's string bodies as distances from NULL-PTR (DATA+)
 variable STRS-N
+DYNAMIC-BUFFER LAST-HELD n           \ a file's record r's last held facts entry, -1 for none (FACTS+)
 DYNAMIC-BUFFER COPY-CELLS n          \ the image copy WRITE patches (link-data.f), zero-padded cells
 DYNAMIC-BUFFER LISTED n              \ the DATA list's offsets, sorted before WRITE lays them (link-data.f)
 variable LISTED-N
 
-\ ndict@, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR and WIDN-CELL
-\ as a file's load starts; RUN-FILE refuses a nested file, whose marks would overwrite them.
+\ ndict@, CHECK:HELD-FACTS, NSHADOW:RECORDS, NSHADOW:EMISSIONS, here's distance from NULL-PTR
+\ and WIDN-CELL as a file's load starts; RUN-FILE refuses a nested file, whose marks would
+\ overwrite them.
 variable FILE-REC
+variable FILE-HELD
 variable FILE-ROW
 variable FILE-EM
 variable FILE-DP
 variable FILE-WID                    \ the first wordlist id the file's compile can mint
 variable FILE-END                    \ here's distance as the file's load returns
 variable FILE-CELLS                  \ the space's address-cell rows as the file's compile starts
+variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of the object written or read
 
 \ The magic, the key, the SHA-256 of every byte after this checksum, and an offset
 \ from the file's start and a length for each of INPUT FILES REQUESTS NAMES PIECES,
@@ -203,7 +207,7 @@ variable FILE-CELLS                  \ the space's address-cell rows as the file
 4 constant KIND-PRIVATE              \ a package gaining its private wordlist after its record
 
 : DISPOSE-OBJECTS ( -- )
-   LISTED-RELEASE  COPY-CELLS-RELEASE  STRS-RELEASE  STORED-RELEASE
+   LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE
    CODE-COPY BUF:DISPOSE  OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
@@ -703,7 +707,7 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
    STRS-N @ 1 + STRS-RESERVE
    b STRS-N @ STRS !  1 STRS-N +! ;
 
-\ DATA, STRINGS and STORES, after CODE:
+\ DATA, STRINGS, STORES and FACTS, after CODE:
 \   D                      the bytes the file's compile laid, FILE-END - FILE-DP
 \   D raw bytes            from FILE-DP, unpadded; each address cell's 8 bytes written as 0
 \   K, then K cell rows    offset from FILE-DP, a multiple of 8 (else E-COMP-STATE), kind
@@ -716,6 +720,8 @@ variable SHADOW-AT                   \ SHADOW-ROW's cursor in the file's shadow 
 \                          row, ascending by address: its reference (tag 3 with a FILES row, or
 \                          4), kind (ROW-KIND, 3 for none), bytes (the cell's value for kind 3,
 \                          else 0), its value's reference (CELL-REF+ for kinds 0-2, else 5)
+\   F, then F facts rows   each facts text the file's compile held (FACTS+): its record's index
+\                          from FILE-REC, -1 for a laid text, then the text as a FIELD+
 : DATA+ ( -- )
    FILE-DATA {: a:ptr d:n :}
    d PIECES U64+  a d PIECES SPAN+
@@ -900,8 +906,47 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    loop ;
 
 
+\ ---- the facts texts ------------------------------------------------------------
+\ LAST-HELD from the entries the file's compile held; E-STORE for one naming a record outside
+\ the file's.
+: LAST-HELD! ( -- )
+   ndict@ FILE-REC @ - {: recs:n :}
+   recs 0 > if recs LAST-HELD-RESERVE then
+   recs 0 ?do -1 i LAST-HELD ! loop
+   CHECK:HELD-FACTS FILE-HELD @ ?do
+      i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+      ix 0 >= if
+         ix FILE-REC @ <  ix ndict@ >=  or if REFUSE-STORE then
+         i  ix FILE-REC @ - LAST-HELD !
+      then
+   loop ;
+
+
+\ Every laid text is kept, and a record's last text: an earlier one is never read.
+: KEPT? ( n -- bool )
+   {: k:n :}
+   k CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+   ix 0< if true exit then
+   ix FILE-REC @ - LAST-HELD @  k = ;
+
+
+\ FACTS, after STORES, in held order. Each text is copied before anything writes facts,
+\ which can overwrite it (CHECK:HELD-FACT@).
+: FACTS+ ( -- )
+   LAST-HELD!
+   0  CHECK:HELD-FACTS FILE-HELD @ ?do i KEPT? if 1 + then loop  PIECES U64+
+   CHECK:HELD-FACTS FILE-HELD @ ?do
+      i KEPT? if
+         i CHECK:HELD-FACT@ {: ix:n a:ptr u:n :}
+         ix 0< if -1 else ix FILE-REC @ - then PIECES U64+
+         a u PIECES FIELD+
+      then
+   loop ;
+
+
 \ Piece count 1 (RUN-FILE); entry count; records by index, each late private wordlist (by id) before
-\ the first record marked above its id, so ids mint in entry order; CODE; DATA; STRINGS; STORES; REQUEST -1.
+\ the first record marked above its id, so ids mint in entry order; CODE; DATA; STRINGS; STORES;
+\ FACTS, whose offset in PIECES it leaves in FACTS-AT; REQUEST -1.
 : PIECES! ( -- )
    PIECES BUF:CLEAR  REFS BUF:CLEAR  LATE BUF:CLEAR
    FILE-ROW @ SHADOW-AT !
@@ -911,6 +956,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    0  ndict@ FILE-REC @ ?do  i RECORD-MARK LATE-BELOW  i RECORD+  loop
    LATE-REST
    CODE+  DATA+  STORES+
+   PIECES BYTES$ nip FACTS-AT !  FACTS+
    -1 PIECES U64+ ;
 
 \ FILE-KEY's object, given its source's size, with INPUT-SUM and PREFIX-SUM as START-SUMS
@@ -934,6 +980,7 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    PREFIX-SUM KEY-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
+   files-at refsu + FACTS-AT +!        \ PIECES follow FILES
    OBJECT BYTES$ {: obj:ptr len:n :}
    SHA-CTX  obj 8 KEY-BYTES 2 * + +  len 8 - KEY-BYTES 2 * -  obj 8 KEY-BYTES + +  SHA256-IN
    FILE-KEY KEY-HEX SHA256>HEX
@@ -1461,7 +1508,7 @@ variable RD-END
    kind CELL-REF-CK ;
 
 
-\ DATA, STRINGS and STORES (DATA+, STORES+), then the request list's -1 at the object's end.
+\ DATA, STRINGS and STORES (DATA+, STORES+).
 : DATA-CK ( -- )
    RD-AT @ DATA-AT !
    RD-U64 {: d:n :}
@@ -1472,9 +1519,20 @@ variable RD-END
    0  16 RD-COUNT 0 ?do d STRING-CK loop drop
    RD-AT @ STORES-AT !
    40 RD-COUNT 0 ?do STORE-CK loop
-   -1 RD-EQ
-   RD-AT @ RD-END @ <> if BAD then
    OWN-DATA-MAX @ d > if BAD then ;
+
+
+\ FACTS (FACTS+), each index -1 or one of the object's records, then the request list's -1 at
+\ the object's end.
+: FACTS-CK ( -- )
+   RD-AT @ FACTS-AT !
+   16 RD-COUNT 0 ?do
+      RD-U64 {: ix:n :}
+      ix -1 <  ix RECS-N @ >=  or if BAD then
+      RD-U64 RD-SKIP
+   loop
+   -1 RD-EQ
+   RD-AT @ RD-END @ <> if BAD then ;
 
 
 variable READ-FD                     \ READ-INTO's open descriptor until FS:READ-SIZED owns it
@@ -1534,7 +1592,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
 \ checks. It applies nothing.
 : FRESH? ( n -- bool )
    HEADER-FRESH? 0= if false exit then
-   ENTRIES-CK  CODE-CK  DATA-CK
+   ENTRIES-CK  CODE-CK  DATA-CK  FACTS-CK
    GOOD? ;
 
 \ ---- the load list -------------------------------------------------------------
@@ -1969,6 +2027,20 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ENTRIES-N @ 0 ?do i LINK-ENTRY loop
    LINK-DATA ;
 
+
+\ OBJECT's FACTS held again, then placed at here with the rest the file held: a cold build
+\ places from the object it wrote, a warm one from the object it read, so both lay one text.
+: LINK-FACTS ( -- )
+   FACTS-AT @  OBJECT BYTES$ nip  RD-OPEN
+   RD-U64 0 ?do
+      RD-U64 {: ix:n :}
+      RD-NAME {: a:ptr u:n :}
+      GOOD? 0= if E-COMP-STATE throw then
+      ix 0< if a u CHECK:LAY-FACTS else a u FILE-REC @ ix + CHECK:FACTS! then
+   loop
+   GOOD? 0= if E-COMP-STATE throw then
+   FILE-HELD @ CHECK:PLACE-FACTS ;
+
 \ ---- the open ------------------------------------------------------------------
 \ Installed while IMAGE-BASE-CELL is 0, so its xt! stores reach hb's own cells.
 \ Installing again adds no address-cell row: EMIT-MARK keeps one row per cell.
@@ -2097,9 +2169,10 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ;MATCH ;
 
 
-\ The fresh object as the file's result, added to BUILT; a throw leaves the step at loading.
+\ The fresh object as the file's result, added to BUILT with its placed texts; a throw leaves
+\ the step at loading.
 : LINK-FILE ( -- )
-   LINK-OBJECT
+   LINK-OBJECT  LINK-FACTS
    here NULL-PTR - FILE-END !
    BUILT+
    construct step open PROGRESS ! ;
@@ -2115,7 +2188,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    WALK-ONCE
    path pathu KEY!
    path pathu root rootu LIST-ROW+
-   ndict@ FILE-REC !  NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
+   ndict@ FILE-REC !  CHECK:HELD-FACTS FILE-HELD !
+   NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !   \ hb's DATA, where namespace-record and namespace-private mint ids
    source sourceu START-SUMS
@@ -2133,6 +2207,8 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    ids held < if E-COMP-STATE throw then
    1 COMPILED-N +!
    sourceu WRITE-OBJECT
+   FILE-HELD @ CHECK:DROP-FACTS  LINK-FACTS
+   here NULL-PTR - FILE-END !          \ the file's span ends after its texts
    BUILT+
    construct step open PROGRESS ! ;
 

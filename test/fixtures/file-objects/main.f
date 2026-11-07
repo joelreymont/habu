@@ -3,8 +3,10 @@
 \ the count is 7 and ok when DOUBLE agrees. AT-EDGE answers shape.f's EDGE,
 \ which build.f's cell parts from main.f's data. The top level also lays a data
 \ cell naming its own Q, one naming count.f's TALLY, a scratch cell and a data
-\ cell holding 0; COLORS holds three strings. After the package the top level
-\ stores RUN as the program's entry, as APP-IMAGE:START! does.
+\ cell holding 0; COLORS holds three strings. HI-TEXT's literal has the bytes of
+\ count.f's facts text, so it names that text in count.f's span. After the
+\ package the top level stores RUN as the program's entry, as APP-IMAGE:START!
+\ does.
 
 package FILE-OBJECTS-MAIN
 private
@@ -23,6 +25,7 @@ variable NOWHERE  NOWHERE ptr-cell-mark
 variable KEEP-COLORS  ' COLORS KEEP-COLORS xt!
 variable KEEP-EDGE  ' AT-EDGE KEEP-EDGE xt!
 public
+: HI-TEXT ( -- ptr u8 n ) s" ( -- ) " ;
 : RUN ( -- )
    FILE-OBJECTS-SHAPE:BUMP  Q @ XT execute
    FILE-OBJECTS-COUNT:TALLY @ 7 = if FILE-OBJECTS-COUNT:HI then

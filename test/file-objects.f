@@ -19,10 +19,14 @@
 \ each with its checksum written again, compile 1, and a plain build after them
 \ links. C writes eleven objects, and the two whose names A also wrote,
 \ count.f's and shape.f's, have A's bytes: a refused file writes none. A's
+\ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
+\ and FILE-OBJECTS-BODY-SUM's, which the build's body defines, `( n n -- n ) `,
+\ and main.f's literal with the bytes of HI's text lies at that text. Objects
+\ carry texts by value: D's, A's and C's shared objects stay byte-equal. A's
 \ program prints Hi and ok and exits 0, run in its own process: the boundary
 \ under test is the written file. Then five warm builds in A's out root. A2
 \ compiles none, prints A's state and writes A's program byte for byte, A's
-\ objects unchanged. A3, after one byte of the string green in an object
+\ objects unchanged and its records' texts A's. A3, after one byte of the string green in an object
 \ changes, A4, after count.f's object is cut to half its length, and A5, on
 \ macOS, after it grows to 2^48 bytes, more than a build can hold, each compile
 \ all seven with A2's outcome. B2, in `second` mode, loads pad.f, which A's
@@ -286,6 +290,33 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" crafted: compiled 1 1 1 1 1 1 1 1 0\n" CONTAINS? TTRUE ;
 
+\ Whether A's printed state holds the line, a record's name line with its newlines, followed
+\ by a fields line that ends in the text, the record's facts text.
+: FACTS-OF? ( ptr u8 n ptr u8 n -- bool )
+   {: name:ptr nameu:n text:ptr textu:n :}
+   STATE-A STATE-A-U @ {: s:ptr su:n :}
+   s su name nameu FIND-SUB MATCH option
+      none OF -1 ENDOF
+      some OF IDX>N nameu + ENDOF
+   ;MATCH {: at:n :}
+   at 0< if false exit then
+   s at +  su at - {: rest:ptr restu:n :}
+   rest restu s\" \n" FIND-SUB MATCH option
+      none OF restu ENDOF
+      some OF IDX>N ENDOF
+   ;MATCH {: lineu:n :}
+   rest lineu text textu ENDS-WITH? ;
+
+\ A file's texts and the body's are placed, and a later file's literal finds an earlier file's text.
+: CHECK-FACTS ( -- )
+   s" A" WHICH!
+   s" HI's record holds its facts text" LABEL
+   s\" \nHI\n" s" ( -- ) " FACTS-OF? TTRUE
+   s" the body's word's record holds its facts text" LABEL
+   s\" \nFILE-OBJECTS-BODY-SUM\n" s" ( n n -- n ) " FACTS-OF? TTRUE
+   s" main.f's literal lies at HI's text" LABEL
+   STATE-A STATE-A-U @ s\" shared -1 \n" CONTAINS? TTRUE ;
+
 : COLD ( CMD:command -- CMD:command )
    s" A" WHICH!  A$ s" " s\" compiled 7\n" STATE-A BUILD 0 max STATE-A-U !
    A$ RUN-PROG
@@ -307,7 +338,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
    NAMES-B NAMES-B-U @ s" .hfo" COUNT-SUB FILES-B T=
    s" the names are eight keys" LABEL  NAMES-B-U @ FILES-B LISTING-BYTES T=
    s" A" WHICH!  B-NAMES  SAME-AS-D
-   CHECK-STOP CHECK-EDIT ;
+   CHECK-FACTS CHECK-STOP CHECK-EDIT ;
 
 \ Moves A's program to prog-cold, so A2 writes its own.
 : COLD-ASIDE ( -- )

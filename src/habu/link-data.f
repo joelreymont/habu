@@ -241,11 +241,13 @@ variable LLIST-END
 public
 
 \ Link the open space's program and write it, signed, to the path; the caller
-\ first stores its entry as app-image-core.f START! does.
+\ first stores its entry as app-image-core.f START! does. The facts texts the
+\ build's body held lie after every file, so no file's literal can name one.
 : WRITE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    GOING
    ENGINE? @ if E-COMP-STATE throw then
+   0 CHECK:PLACE-FACTS
    APP-ENTRY:XT-CELL SPACE-AT @ 0= if
       s" link: the build stored no entry in APP-ENTRY:XT-CELL" 74 die
    then
