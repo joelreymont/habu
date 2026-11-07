@@ -126,7 +126,6 @@ KEY-BYTES 2 * constant ROW-BYTES
 ROW-BYTES 48 + constant BUILT-BYTES
 create LOADERS BUF:HDR-BYTES allot
 create LOADS BUF:HDR-BYTES allot
-create STARTED BUF:HDR-BYTES allot   \ a row per started load, in start order: its key, its source's SHA-256
 create BUILT BUF:HDR-BYTES allot
 create REFS BUF:HDR-BYTES allot      \ the object's FILES rows
 create PIECES BUF:HDR-BYTES allot    \ the object's PIECES
@@ -137,7 +136,6 @@ SHA256-CTX-BYTES BUFFER: SHA-CTX
 KEY-BYTES BUFFER: FILE-KEY
 ROW-BYTES BUFFER: ROW
 KEY-BYTES BUFFER: INPUT-SUM
-KEY-BYTES BUFFER: PREFIX-SUM
 KEY-BYTES BUFFER: OBJECT-SUM         \ the object's SHA-256 (BUILT+)
 KEY-BYTES BUFFER: CK-SUM             \ the SHA-256 of the object past its checksum (HEADER-CK)
 KEY-BYTES 2 * BUFFER: KEY-HEX
@@ -188,7 +186,7 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
 \ 0 0 while empty; then the sections in the order INPUT FILES PIECES. Every number
 \ is eight bytes, low byte first.
 8 KEY-BYTES 2 * + 5 2 * 8 * + constant HEADER-BYTES
-8 KEY-BYTES 2 * + constant INPUT-BYTES   \ the source's size, its SHA-256, then the prefix (START-SUMS)
+8 KEY-BYTES + constant INPUT-BYTES  \ the source's size, then its SHA-256 (INPUT!)
 
 \ A record's kind in PIECES.
 0 constant KIND-DEF
@@ -197,18 +195,38 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
 3 constant KIND-DOES                 \ a `does>` definer's `;does` record
 4 constant KIND-PRIVATE              \ a package gaining its private wordlist after its record
 
+\ NAMES maps each name the build's records define, by its NAME-SUM, to the BUILT row holding the
+\ record, -1 for a record the build's body made (INDEX-RECS); HITS marks the rows whose records
+\ the running file's source names (NAMED).
+DYNAMIC-BUFFER NAMES n               \ slot s: the sum at 2s, 0 while empty, then the row
+DYNAMIC-BUFFER OLD-NAMES n           \ NAMES' slots as it grows
+variable NAMES-CAP                   \ its slots, a power of two
+variable NAMES-N                     \ its filled slots
+variable INDEXED                     \ the record index NAMES holds every record below
+DYNAMIC-BUFFER HITS n                \ BUILT row r's mark: 0, or named by the running file's source
+TYPED-VARIABLE BODY-HIT bool         \ the source names a record the build's body made
+
+: SLOT-SUM ( n -- ptr n ) 2 * NAMES ;
+: SLOT-ROW ( n -- ptr n ) 2 * 1 + NAMES ;
+
+\ NAMES with cap slots, all empty.
+: NAMES-CLEAR ( n -- )
+   {: cap:n :}
+   cap 2 * NAMES-RESERVE
+   cap 2 * 0 ?do 0 i NAMES ! loop
+   cap NAMES-CAP !  0 NAMES-N ! ;
+
 : DISPOSE-OBJECTS ( -- )
    LISTED-RELEASE  COPY-CELLS-RELEASE  LAST-HELD-RELEASE  STRS-RELEASE  STORED-RELEASE
    ENTRY-OFFS-RELEASE  REC-KINDS-RELEASE  EM-RECS-RELEASE  PRIVS-RELEASE  EM-OFFS-RELEASE
    FILE-ROWS-RELEASE  DOES-AT-RELEASE  HOST-CALLS-RELEASE  HOST-ADDRS-RELEASE  ALIASES-RELEASE
    CODE-COPY BUF:DISPOSE  OLD-EMS BUF:DISPOSE  OLD-RECS BUF:DISPOSE  OLD-SPACE BUF:DISPOSE
    LATE BUF:DISPOSE  OBJECT BUF:DISPOSE  PIECES BUF:DISPOSE  REFS BUF:DISPOSE  BUILT BUF:DISPOSE
-   STARTED BUF:DISPOSE  LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE ;
+   LOADS BUF:DISPOSE  LOADERS BUF:DISPOSE  HITS-RELEASE  OLD-NAMES-RELEASE  NAMES-RELEASE ;
 
 : INIT-BUFFERS ( -- )
    LOADERS 64 BUF:N>BLEN BUF:INIT
    LOADS 256 BUF:N>BLEN BUF:INIT
-   STARTED 256 BUF:N>BLEN BUF:INIT
    BUILT 256 BUF:N>BLEN BUF:INIT
    REFS 256 BUF:N>BLEN BUF:INIT
    PIECES 256 BUF:N>BLEN BUF:INIT
@@ -218,7 +236,8 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
    OLD-SPACE 256 BUF:N>BLEN BUF:INIT
    OLD-RECS 256 BUF:N>BLEN BUF:INIT
    OLD-EMS 256 BUF:N>BLEN BUF:INIT
-   0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N ! ;
+   0 STORED-N !  0 HOST-CALLS-N !  0 HOST-ADDRS-N !  0 ALIASES-N !
+   1024 NAMES-CLEAR  FIRST-REC @ INDEXED ! ;
 
 \ All or none: disposing a header never set up, or disposed, is a no-op.
 : INIT-OBJECTS ( -- )
@@ -277,15 +296,6 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
    LOADER$ {: top:ptr topu:n :}
    top FILE-KEY topu BYTE-COPY
    LOADERS BYTES$ KEY-BYTES - BUF:N>BLEN LOADERS BUF:REPLACE ;
-
-\ After KEY! and before FRESH?: the sums HEADER-CK and WRITE-OBJECT read; the prefix covers
-\ only loads started before this one.
-: START-SUMS ( ptr u8 n -- )
-   {: src:ptr srcu:n :}
-   SHA-CTX src srcu INPUT-SUM SHA256-IN
-   SHA-CTX STARTED BYTES$ PREFIX-SUM SHA256-IN
-   FILE-KEY KEY-BYTES STARTED SPAN+
-   INPUT-SUM KEY-BYTES STARTED SPAN+ ;
 
 \ ---- the records ---------------------------------------------------------------
 \ No address reaches PIECES: a record is named by file and index, code and data by
@@ -359,6 +369,143 @@ variable FACTS-AT                    \ the offset in OBJECT of FACTS' count, of 
    idx BUILT-ROW {: row:n :}
    row REF-FILE PIECES U64+
    idx  row BUILT-AT KEY-BYTES + LE:U64@ -  PIECES U64+ ;
+
+\ ---- dependencies by name -------------------------------------------------------
+\ A file depends on the files its object references and on every earlier file that defines a
+\ name its source spells: a value T0 inlined, a word that now shadows another and a package an
+\ earlier file now declares change a compile without leaving a reference.
+
+\ FNV-1a over the name folded to upper case, as the dictionary compares names; never 0.
+: NAME-SUM ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   $811C9DC5  u 0 ?do
+      a i + c@ {: c:n :}
+      c 97 >=  c 122 <=  and if c 32 - else c then  xor  $1000193 *
+   loop
+   dup 0= if 1 + then ;
+
+: SAME-PAIR? ( n n n -- bool )
+   {: s:n sum:n row:n :}
+   s SLOT-SUM @ sum =  s SLOT-ROW @ row =  and ;
+
+: TAKEN? ( n n n -- bool )
+   {: s:n sum:n row:n :}
+   s SLOT-SUM @ 0<>  s sum row SAME-PAIR? 0=  and ;
+
+\ The slot holding the pair, else the first empty one from the sum's.
+: SLOT-OF ( n n -- n )
+   {: sum:n row:n :}
+   NAMES-CAP @ 1 - {: mask:n :}
+   sum mask and
+   begin dup sum row TAKEN? while 1 + mask and repeat ;
+
+: PUT-NAME ( n n -- )
+   {: sum:n row:n :}
+   sum row SLOT-OF {: s:n :}
+   s SLOT-SUM @ 0<> if exit then
+   sum s SLOT-SUM !  row s SLOT-ROW !  1 NAMES-N +! ;
+
+\ NAMES with twice its slots, its pairs put again.
+: GROW-NAMES ( -- )
+   NAMES-CAP @ {: cap:n :}
+   cap 2 * OLD-NAMES-RESERVE
+   cap 2 * 0 ?do i NAMES @  i OLD-NAMES ! loop
+   cap 2 * NAMES-CLEAR
+   cap 0 ?do
+      i 2 * OLD-NAMES @ {: sum:n :}
+      sum 0<> if sum  i 2 * 1 + OLD-NAMES @  PUT-NAME then
+   loop ;
+
+\ Half NAMES' slots at most are filled, so a probe always ends.
+: NAME+ ( n n -- )
+   NAMES-N @ 1 + 2 *  NAMES-CAP @ > if GROW-NAMES then  PUT-NAME ;
+
+\ The records [INDEXED, end) into NAMES as the row's.
+: INDEX-RECS ( n n -- )
+   {: end:n row:n :}
+   end INDEXED @ ?do
+      i XREF-REC XREF-NAME$ {: a:ptr u:n :}
+      u 0<> if a u NAME-SUM row NAME+ then
+   loop
+   end INDEXED ! ;
+
+: MARK-ROW ( n -- )
+   {: row:n :}
+   row 0< if true BODY-HIT ! else 1 row HITS ! then ;
+
+\ Marks every row NAMES holds the sum for.
+: HIT ( n -- )
+   {: sum:n :}
+   NAMES-CAP @ 1 - {: mask:n :}
+   sum mask and
+   begin dup SLOT-SUM @ 0<> while
+      dup SLOT-SUM @ sum = if dup SLOT-ROW @ MARK-ROW then
+      1 + mask and
+   repeat drop ;
+
+\ A byte that ends a spelled name: white space, or ':' and '"', which join a package to its
+\ word and a string's quote to its first word.
+: BLANK? ( n -- bool ) {: c:n :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
+: CUT? ( n -- bool ) {: c:n :}  c BLANK?  c 58 = or  c 34 = or ;
+
+variable PART-AT                     \ SPELLED's running part's first byte
+variable WORD-AT                     \ its running word's
+TYPED-VARIABLE JOINED bool           \ the running word holds a ':' or '"'
+TYPED-VARIABLE FIRST-WORD bool       \ no word has ended on the running line
+TYPED-VARIABLE SKIP bool             \ the running line is a comment
+
+\ HIT for the source's bytes [from, to) when there are any.
+: HIT-SPAN ( ptr u8 n n -- )
+   {: src:ptr from:n to:n :}
+   to from > if src from +  to from -  NAME-SUM HIT then ;
+
+\ True when the word [from, to) is `\` and its line's first: the line is a comment. A `\` later
+\ in a line may be text a parsing word takes (`[char] \ INDEX-OF`), so it starts none.
+: COMMENT? ( ptr u8 n n -- bool )
+   {: src:ptr from:n to:n :}
+   FIRST-WORD @  to from - 1 =  and if src from + c@ 92 = else false then ;
+
+\ The running word ends at byte i, the blank c.
+: WORD-END ( ptr u8 n n -- )
+   {: src:ptr i:n c:n :}
+   src WORD-AT @ i COMMENT?  c 10 <>  and if true SKIP ! exit then
+   src PART-AT @ i HIT-SPAN
+   JOINED @ if src WORD-AT @ i HIT-SPAN then
+   i WORD-AT @ > if false FIRST-WORD ! then
+   c 10 = if true FIRST-WORD ! then
+   i 1 + PART-AT !  i 1 + WORD-AT !  false JOINED ! ;
+
+\ HIT for each name the source spells outside its comment lines: every run of bytes between
+\ CUT? bytes, and every run between white space that holds a ':' or '"', so `P:W` names P, W
+\ and P:W.
+: SPELLED ( ptr u8 n -- )
+   {: src:ptr u:n :}
+   0 PART-AT !  0 WORD-AT !  false JOINED !  true FIRST-WORD !  false SKIP !
+   u 0 ?do
+      src i + c@ {: c:n :}
+      SKIP @ if
+         c 10 = if false SKIP !  true FIRST-WORD !  i 1 + PART-AT !  i 1 + WORD-AT ! then
+      else
+         c BLANK? if src i c WORD-END else
+            c CUT? if src PART-AT @ i HIT-SPAN  i 1 + PART-AT !  true JOINED ! then
+         then
+      then
+   loop
+   SKIP @ 0= if src u 32 WORD-END then ;
+
+\ After KEY!, before FRESH? and the compile: INPUT-SUM, and HITS and BODY-HIT for the source,
+\ NAMES first taking the records the build's body made since the last file.
+: INPUT! ( ptr u8 n -- )
+   {: src:ptr u:n :}
+   SHA-CTX src u INPUT-SUM SHA256-IN
+   FILE-REC @ -1 INDEX-RECS
+   BUILT-N 1 + HITS-RESERVE
+   BUILT-N 0 ?do 0 i HITS ! loop
+   false BODY-HIT !
+   src u SPELLED ;
+
+\ FILES gains each earlier file the source names, after the files PIECES references.
+: NAMED+ ( -- ) BUILT-N 0 ?do i HITS @ 0<> if i REF-FILE drop then loop ;
 
 
 \ A data address's reference: a file's data, or the open's header data. A file's end
@@ -940,11 +1087,11 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    PIECES BYTES$ nip FACTS-AT !  FACTS+
    -1 PIECES U64+ ;
 
-\ FILE-KEY's object, given its source's size, with INPUT-SUM and PREFIX-SUM as START-SUMS
-\ left them; its checksum sums every byte after it.
+\ FILE-KEY's object, given its source's size, with INPUT-SUM and FILES as INPUT! left them;
+\ its checksum sums every byte after it.
 : WRITE-OBJECT ( n -- )
    {: srcu:n :}
-   PIECES!
+   PIECES!  NAMED+
    REFS BYTES$ {: refs:ptr refsu:n :}
    PIECES BYTES$ {: pieces:ptr piecesu:n :}
    HEADER-BYTES INPUT-BYTES + {: files-at:n :}
@@ -958,7 +1105,6 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    files-at refsu + OBJECT U64+  piecesu OBJECT U64+
    srcu OBJECT U64+
    INPUT-SUM KEY-BYTES OBJECT SPAN+
-   PREFIX-SUM KEY-BYTES OBJECT SPAN+
    refs refsu OBJECT SPAN+
    pieces piecesu OBJECT SPAN+
    files-at refsu + FACTS-AT +!        \ PIECES follow FILES
@@ -967,8 +1113,9 @@ variable OLD-AT                      \ COMPARE-RANGE's offset in OLD-SPACE
    FILE-KEY KEY-HEX SHA256>HEX
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$  OBJECT BYTES$  FS:ATOMIC-WRITE-FILE ;
 
-\ The loaded file's BUILT row, summing OBJECT, the object written or read.
+\ The loaded file's BUILT row, summing OBJECT, the object written or read; NAMES takes its records.
 : BUILT+ ( -- )
+   ndict@ BUILT-N INDEX-RECS
    SHA-CTX OBJECT BYTES$ OBJECT-SUM SHA256-IN
    FILE-KEY KEY-BYTES BUILT SPAN+
    FILE-REC @ BUILT U64+  ndict@ BUILT U64+
@@ -1198,8 +1345,20 @@ variable RD-END
    loop ;
 
 
-\ The header, its checksum, INPUT against the source's size, INPUT-SUM and PREFIX-SUM, and
-\ FILES, as WRITE-OBJECT lays them.
+\ After FILES-CK: bad when the source names a record of the build's body or of a file FILES
+\ does not list (INPUT!).
+: NAMED-CK ( -- )
+   GOOD? 0= if exit then
+   BODY-HIT @ if BAD exit then
+   FILES-N @ 0 ?do
+      i 1 + FILE-ROWS @ {: row:n :}
+      row HITS @ 0<> if 2 row HITS ! then
+   loop
+   BUILT-N 0 ?do i HITS @ 1 = if BAD then loop ;
+
+
+\ The header, its checksum, INPUT against the source's size and INPUT-SUM, and FILES, as
+\ WRITE-OBJECT lays them, covering every file the source names.
 : HEADER-CK ( n -- )
    {: srcu:n :}
    0 FILES-N !
@@ -1221,8 +1380,7 @@ variable RD-END
    files-at refsu + RD-EQ  len files-at - refsu - RD-EQ
    srcu RD-EQ
    INPUT-SUM KEY-BYTES RD-SAME
-   PREFIX-SUM KEY-BYTES RD-SAME
-   refsu FILES-CK ;
+   refsu FILES-CK  NAMED-CK ;
 
 
 \ A record reference naming a package: an earlier entry of KIND-PACKAGE, or an earlier file's
@@ -1464,13 +1622,15 @@ variable RD-END
    RD-U64 CELL-REF-CK ;
 
 
-\ A string row after one at offset prev: the 8 bytes before its body in D hold its length.
+\ A string row after one at offset prev: the 8 bytes before its body in D hold its length. A
+\ string the table already holds was laid by an earlier file since, so the file compiles.
 : STRING-CK ( n n -- n )
    {: prev:n d:n :}
    RD-U64 RD-U64 {: off:n u:n :}
    GOOD? 0= if prev exit then
    off prev <=  off 8 <  or  off d >  or  u 0<  or  u d off - >  or if BAD prev exit then
    DATA-AT @ off + OBJ@ u <> if BAD then
+   GOOD? if  OBJECT BYTES$ drop DATA-AT @ 8 + off + +  u  INTERN:FIND 0<> if BAD then  then
    off ;
 
 
@@ -1561,7 +1721,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ OBJECT READ-WHOLE ;
 
 
-\ After START-SUMS, given the source's size: true when FILE-KEY's object reads whole and its
+\ After INPUT!, given the source's size: true when FILE-KEY's object reads whole and its
 \ header, INPUT and FILES check (HEADER-CK).
 : HEADER-FRESH? ( n -- bool )
    {: srcu:n :}
@@ -1569,7 +1729,7 @@ variable READ-FD                     \ READ-INTO's open descriptor until FS:READ
    srcu HEADER-CK  GOOD? ;
 
 
-\ After START-SUMS, given the source's size: true when FILE-KEY's object reads whole and
+\ After INPUT!, given the source's size: true when FILE-KEY's object reads whole and
 \ checks. It applies nothing.
 : FRESH? ( n -- bool )
    HEADER-FRESH? 0= if false exit then
@@ -2076,7 +2236,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    KEY-HEX KEY-BYTES 2 * BUILD-OUT:OBJ$ FS:REMOVE-FILE ;
 
 
-\ After START-SUMS, given the source's size: true once the file's object was fresh and linked. A
+\ After INPUT!, given the source's size: true once the file's object was fresh and linked. A
 \ throw out of the check or the link removes the object before it passes, so the next build
 \ compiles the file instead of failing the same way.
 : TRY-LINK ( bool n -- bool n )
@@ -2101,7 +2261,7 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    NSHADOW:RECORDS FILE-ROW !  NSHADOW:EMISSIONS FILE-EM !
    here NULL-PTR - FILE-DP !
    WIDN-CELL HOST@ FILE-WID !   \ hb's DATA, where namespace-record and namespace-private mint ids
-   source sourceu START-SUMS
+   source sourceu INPUT!
    sourceu LINKED? if exit then
    COPY-BELOW
    PUSH-KEY

@@ -18,15 +18,16 @@
 \ header's entry cell, E-COMP-STATE, STOP-WORDLIST's file makes a wordlist,
 \ LINKER:E-WORDLIST. A build of count.f alone, then two of count.f and
 \ shape.f, which has no object there before them, print `mixed: compiled `
-\ and their results: shape.f compiles after count.f links. Three
+\ and their results: shape.f compiles after count.f links. Four
 \ sequences of three builds then each load two files, one edited after the first
 \ build: edit/a.f under the out root, edited, and edit-b.f beside build.f;
 \ tail/c.f and tail/d.f under the out root with d.f edited, then a fourth
 \ build of d.f alone; share/p.f and share/q.f under the out root with p.f
-\ edited to declare q.f's package too. Then twin-x/a.f and twin-y/a.f under the
+\ edited to declare q.f's package too; laid/r.f and laid/s.f with r.f edited to
+\ lay s.f's string. Then twin-x/a.f and twin-y/a.f under the
 \ out root, one name in two directories, are each built alone in turn x, y, x,
-\ y. `edit: compiled `, `tail: compiled `, `share: compiled ` and
-\ `twins: compiled ` print each build's result: its LINKER:COMPILED, or the
+\ y. `edit: compiled `, `tail: compiled `, `share: compiled `, `laid: compiled `
+\ and `twins: compiled ` print each build's result: its LINKER:COMPILED, or the
 \ code it threw. `crafted: compiled ` prints nine: crafted/e.f's build, seven
 \ over an edit of its object the link refuses or links wrong, then a plain
 \ build. With `facts`, a build loads count.f and facts.f, then its body compiles
@@ -237,6 +238,8 @@ PATH-CAP BUFFER: SECOND-BUF
 : TAIL-D$ ( -- ptr u8 n ) s" tail" s" d.f" SECOND-BUF FILE-IN ;
 : SHARE-P$ ( -- ptr u8 n ) s" share" s" p.f" FIRST-BUF FILE-IN ;
 : SHARE-Q$ ( -- ptr u8 n ) s" share" s" q.f" SECOND-BUF FILE-IN ;
+: LAID-R$ ( -- ptr u8 n ) s" laid" s" r.f" FIRST-BUF FILE-IN ;
+: LAID-S$ ( -- ptr u8 n ) s" laid" s" s.f" SECOND-BUF FILE-IN ;
 : TWIN-X$ ( -- ptr u8 n ) s" twin-x" s" a.f" FIRST-BUF FILE-IN ;
 : TWIN-Y$ ( -- ptr u8 n ) s" twin-y" s" a.f" SECOND-BUF FILE-IN ;
 
@@ -280,7 +283,7 @@ PATH-CAP BUFFER: SECOND-BUF
    [: s" app" [: TAIL-C$ included  TAIL-D$ included ;] LINKER:WITH ;] catch RESULT ;
 
 \ d.f, the later file, gains a variable before its first. The fourth build loads
-\ d.f alone: its object's prefix sums c.f, so it compiles.
+\ d.f alone: its object names c.f, which defines V, a name d.f spells, so it compiles.
 : TAILS ( -- )
    s" tail" DIR$ FS:MAKE-DIR
    TAIL-C$ s\" package FILE-OBJECTS-TAIL-C public variable V ;package\n" FS:WRITE-ALL
@@ -296,16 +299,34 @@ PATH-CAP BUFFER: SECOND-BUF
 : SHARE-BUILD ( -- n )
    [: s" app" [: SHARE-P$ included  SHARE-Q$ included ;] LINKER:WITH ;] catch RESULT ;
 
-\ p.f, the earlier file, comes to declare q.f's package too, as q.f's object does.
+\ p.f, the earlier file, comes to declare q.f's package too, as q.f's object does: q.f
+\ spells no other name of p.f's.
 : SHARES ( -- )
    s" share" DIR$ FS:MAKE-DIR
    SHARE-P$ s\" package FILE-OBJECTS-SHARE-P public variable V ;package\n" FS:WRITE-ALL
-   SHARE-Q$ s\" package FILE-OBJECTS-SHARE-Q public variable V ;package\n" FS:WRITE-ALL
+   SHARE-Q$ s\" package FILE-OBJECTS-SHARE-Q public variable U ;package\n" FS:WRITE-ALL
    SHARE-BUILD {: one:n :}
    SHARE-P$ s\" package FILE-OBJECTS-SHARE-Q public variable W ;package\n" FS:APPEND-FILE
    SHARE-BUILD {: two:n :}
    SHARE-BUILD {: three:n :}
    s" share: compiled " one two three RESULTS. cr ;
+
+: LAID-BUILD ( -- n )
+   [: s" app" [: LAID-R$ included  LAID-S$ included ;] LINKER:WITH ;] catch RESULT ;
+
+\ r.f, the earlier file, comes to lay the string s.f's object lays, and spells none of s.f's
+\ names.
+: LAIDS ( -- )
+   s" laid" DIR$ FS:MAKE-DIR
+   LAID-R$ s\" package FILE-OBJECTS-LAID-R public variable V ;package\n" FS:WRITE-ALL
+   LAID-S$ s\" package FILE-OBJECTS-LAID-S public : SAY ( -- ptr u8 n ) s\" late\" ; ;package\n"
+   FS:WRITE-ALL
+   LAID-BUILD {: one:n :}
+   LAID-R$ s\" package FILE-OBJECTS-LAID-R : WORDS ( -- ) s\" late\" type ; ;package\n"
+   FS:APPEND-FILE
+   LAID-BUILD {: two:n :}
+   LAID-BUILD {: three:n :}
+   s" laid: compiled " one two three RESULTS. cr ;
 
 : TWIN-X-BUILD ( -- n ) [: s" app" [: TWIN-X$ included ;] LINKER:WITH ;] catch RESULT ;
 : TWIN-Y-BUILD ( -- n ) [: s" app" [: TWIN-Y$ included ;] LINKER:WITH ;] catch RESULT ;
@@ -550,7 +571,7 @@ variable SLOT-S                          \ and their count
    s" app" [: STOP-GAP ;] LINKER:WITH
    s" app" [: STOP-STRADDLE ;] LINKER:WITH
    s" app" [: STOP-WORDLIST ;] LINKER:WITH
-   MIXED EDITS TAILS SHARES TWINS CRAFTS
+   MIXED EDITS TAILS SHARES LAIDS TWINS CRAFTS
    s" stopped" type cr ;
 
 \ ---- facts mode: a body compiled against the words count.f and facts.f define ----

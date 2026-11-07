@@ -10,14 +10,16 @@
 \ pad.f's. Build C, in `stop` mode, runs its refused builds, its mixed builds,
 \ three edit sequences, the twins and the crafted sequence in one out root: a
 \ build of count.f alone links it, one of count.f and shape.f then compiles
-\ shape.f alone, after count.f links, and the next compiles none; the edit and
-\ share sequences, whose first file is edited, compile 2, 2 and 0, and the tail
-\ sequence, whose second file is, 2, 1 and 0; its fourth build, of d.f alone,
-\ compiles 1: d.f's object's prefix sums c.f. Two files named a.f in two directories, each built alone in turn twice,
+\ shape.f alone, after count.f links, and the next compiles none; the edit,
+\ share and laid sequences, whose first file is edited, compile 2, 2 and 0: the
+\ second file reads the first's variable, spells the package the first comes to
+\ declare, or lays the string the first comes to lay. The tail sequence, whose
+\ second file is edited, compiles 2, 1 and 0; its fourth build, of d.f alone,
+\ compiles 1: d.f's object names c.f, which defines V, a name d.f spells. Two files named a.f in two directories, each built alone in turn twice,
 \ compile 1, 1, 0 and 0: each keeps an object of its own. The crafted
 \ sequence's builds of e.f over seven objects the link refuses or links wrong,
 \ each with its checksum written again, compile 1, and a plain build after them
-\ links. C writes eleven objects, and the two whose names A also wrote,
+\ links. C writes thirteen objects, and the two whose names A also wrote,
 \ count.f's and shape.f's, have A's bytes: a refused file writes none. A's
 \ printed state gives FILE-OBJECTS-COUNT:HI's record the facts text `( -- ) `
 \ and FILE-OBJECTS-BODY-SUM's, which the build's body defines, `( n n -- n ) `,
@@ -31,7 +33,8 @@
 \ macOS, after it grows to 2^48 bytes, more than a build can hold, each compile
 \ the damaged file alone, whose object comes back with its old bytes, so the
 \ later files link, with A2's outcome. B2, in `second` mode, loads pad.f, which A's
-\ builds never loaded, first, so it compiles all eight, prints B's state,
+\ builds never loaded, first, so it compiles pad.f and the files that spell its
+\ SCRATCH and FIRST, main.f and mark.f, links the other five, prints B's state,
 \ writes B's program and leaves A's root holding B's objects. Each warm build
 \ compares its program's bytes, its printed state and the objects' bytes with a
 \ cold build's. Build E, in `facts` mode in its own out root, loads count.f and
@@ -56,7 +59,7 @@ package FILE-OBJECTS-TEST
 
 7 constant FILES                         \ build A's objects, and D's
 8 constant FILES-B                       \ build B's: A's and pad.f's
-11 constant FILES-C                      \ build C's: count.f's, shape.f's, two per sequence, the twins', e.f's
+13 constant FILES-C                      \ build C's: count.f's, shape.f's, two per sequence, the twins', e.f's
 68 constant NAME-BYTES                   \ <hex key>.hfo
 \ The names, newline-separated.
 : LISTING-BYTES ( n -- n ) NAME-BYTES 1 + * 1 - ;
@@ -269,7 +272,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
 \ whose names A also wrote; count.f's holds its INPUT.
 : CHECK-STOP ( -- )
    s" C" WHICH!
-   s" the build wrote eleven objects" LABEL  NAMES-C-U @ FILES-C LISTING-BYTES T=
+   s" the build wrote thirteen objects" LABEL  NAMES-C-U @ FILES-C LISTING-BYTES T=
    NAMES-C-U @ NAME-COUNT {: n:n :}
    NAMES-C-U @ n LISTING-BYTES <> if exit then
    s" test/fixtures/file-objects/count.f" EXPECT!
@@ -278,9 +281,10 @@ variable INPUT-N                         \ those holding count.f's INPUT
    s" A wrote two of C's objects" LABEL  SHARED-N @ 2 T=
    s" one of them holds count.f's size and SHA-256" LABEL  INPUT-N @ 1 T= ;
 
-\ A file compiles when it or a file loaded before it is edited, when it is loaded without the
-\ files its object's prefix sums, or when the link refuses its object or would link it wrong; any
-\ other file links, a compile after it included.
+\ A file compiles when it, a file its object references or an earlier file that defines a name
+\ it spells is edited, when an earlier file lays a string its object lays, when it is loaded
+\ without the files its object names, or when the link refuses its object or would link it
+\ wrong; any other file links, a compile after it included.
 : CHECK-EDIT ( -- )
    s" C" WHICH!
    s" the mixed builds compile 0, 1 and 0 files" LABEL
@@ -291,6 +295,8 @@ variable INPUT-N                         \ those holding count.f's INPUT
    STATE-W STATE-W-U @ s\" tail: compiled 2 1 0 1\n" CONTAINS? TTRUE
    s" the share builds compile 2, 2 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" share: compiled 2 2 0\n" CONTAINS? TTRUE
+   s" the laid builds compile 2, 2 and 0 files" LABEL
+   STATE-W STATE-W-U @ s\" laid: compiled 2 2 0\n" CONTAINS? TTRUE
    s" the twin builds compile 1, 1, 0 and 0 files" LABEL
    STATE-W STATE-W-U @ s\" twins: compiled 1 1 0 0\n" CONTAINS? TTRUE
    s" the crafted builds compile 1, 1, 1, 1, 1, 1, 1, 1 and 0 files" LABEL
@@ -460,7 +466,7 @@ variable INPUT-N                         \ those holding count.f's INPUT
 
 : WARM-B ( CMD:command -- CMD:command )
    s" B2" WHICH!
-   A$ s" second" s\" compiled 8\n" STATE-W BUILD {: u:n :}
+   A$ s" second" s\" compiled 3\n" STATE-W BUILD {: u:n :}
    u 0 < if exit then
    s" the build prints B's state" LABEL  STATE-W u STATE-B STATE-B-U @ T$=
    s" the program has B's bytes" LABEL  A$ s" prog" B$ s" prog" SAME-FILE? TTRUE
