@@ -132,6 +132,7 @@ public
    16 DBASE 17 ADD,  linked text0 rlist rlist-end 16 SLIDE-AT,
    linked text0 image image-end list list-end DATA,
    17 DATA REGION-ALIAS:DELTA-CELL STR,
+   EM-DEF-OCC:LINIT LABEL@ BL,
    text0 STACKS,
    LHIDXBUILD LABEL@ BL,                    \ habu1.f: maps the index, keys [0, NDICT)
    ENGINE-MAIN:XT-CELL CALL-EXIT, ;
