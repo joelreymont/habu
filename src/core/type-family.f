@@ -181,7 +181,7 @@ public
 
 private
 
-32 constant TF-STR-INIT          \ small seed byte pool; grows (doubles) on demand
+512 constant TF-STR-INIT         \ bytes; holds the built-ins' names (TF-CAP-INIT)
 variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !
 : TF-STR-CAP ( -- n ) TF-STR-CAP-V @ ;
 create TF-STR-BOOT   TF-STR-INIT allot
@@ -274,7 +274,7 @@ public
 
 private
 
-4 constant TF-PK-INIT            \ small seed param-kind pool; grows on demand
+128 constant TF-PK-INIT          \ holds the built-ins' param kinds (TF-CAP-INIT)
 variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !
 : TF-PK-CAP ( -- n ) TF-PK-CAP-V @ ;
 create TF-PK-BOOT   TF-PK-INIT cells allot
@@ -369,7 +369,9 @@ private
 : TF.ENTRY ( ptr a -- ptr a ) TF.ENTRY-OFF + ;
 
 
-4 constant TF-CAP-INIT
+\ Each boot store holds the built-in families this file declares, so a written
+\ program keeps them in its DATA: the linker refuses a cell into mapped memory.
+64 constant TF-CAP-INIT
 variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !
 : TF-CAP ( -- n ) TF-CAP-V @ ;
 create TF-A-BOOT   TF-CAP-INIT TF-REC * allot
@@ -584,7 +586,7 @@ private
 
 public
 
-64 constant TFX-SLOTS-INIT              \ power of two; grown to keep load <= 1/2
+128 constant TFX-SLOTS-INIT             \ power of two; grown to keep load <= 1/2
 
 private
 
@@ -1403,7 +1405,7 @@ public
 
 private
 
-4 constant PF-CAP-INIT
+16 constant PF-CAP-INIT            \ holds the built-ins' fields (TF-CAP-INIT)
 variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
 
 public
@@ -1499,7 +1501,7 @@ public
 
 private
 
-8 constant FVX-SLOTS-INIT               \ power of two; grown to keep load <= 1/2
+32 constant FVX-SLOTS-INIT              \ power of two; grown to keep load <= 1/2
 variable FVX-SLOTS-V   FVX-SLOTS-INIT FVX-SLOTS-V !
 : FVX-SLOTS ( -- n ) FVX-SLOTS-V @ ;
 create FVX-B-BOOT   FVX-SLOTS-INIT cells allot

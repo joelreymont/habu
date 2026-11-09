@@ -57,8 +57,8 @@ private
 : SCH.B ( ptr a -- ptr a ) SCH.B-OFF + ;
 : SCH.C ( ptr a -- ptr a ) SCH.C-OFF + ;
 
-4 constant SCH-CAP-INIT         \ small seed; grows geometrically (doubles) on demand
-4 constant SCH-ROOT-INIT        \ small seed schema-root pool cells; grows on demand
+16 constant SCH-CAP-INIT        \ holds the built-ins' schemas (TF-CAP-INIT)
+16 constant SCH-ROOT-INIT       \ cells; holds the built-ins' schema roots
 
 \ Read the registry control cells through SCHEMA-N@ / SCHEMA-ROOT-N@.
 public
