@@ -473,6 +473,29 @@ $300000 constant BIG-U
    S\" ],\qincomplete_details\q:null,\qerror\q:null}" JSON:WRITE-RAW ;
 
 
+\ Tool reply output items: reasoning with encrypted content, a function call,
+\ a plain message, a refusal message and an item of a type no tools call reads.
+: REASONING$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[],\qencrypted_content\q:\qgAAAAB\q}" ;
+: FUNCTION-CALL$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qfunction_call\q,\qid\q:\qfc_1\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{\\\qq\\\q:\\\qx\\\q}\q,\qstatus\q:\qcompleted\q}" ;
+: TEXT-ITEM$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\q{\\\qanswer\\\q:true}\q,\qannotations\q:[]}]}" ;
+: REFUSAL-ITEM$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qrefusal\q,\qrefusal\q:\qcannot comply\q}]}" ;
+: OTHER-ITEM$ ( -- ptr u8 n )
+   S\" {\qtype\q:\qweb_search_call\q,\qid\q:\qws_1\q,\qstatus\q:\qcompleted\q}" ;
+
+
+\ A completed reply's members through its first output item, REASONING$.
+: TOOL-HEAD ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[" JSON:WRITE-RAW
+   REASONING$ JSON:WRITE-RAW ;
+: NEXT-ITEM ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: a:ptr u:n :}
+   s" ," JSON:WRITE-RAW a u JSON:WRITE-RAW ;
+
+
 \ A message whose output_text holds the content and whose phase member, after
 \ its content as the provider sends it, is the JSON value text.
 : PHASED ( ptr JSON:writer ptr u8 n ptr u8 n -- ptr JSON:writer )
@@ -504,6 +527,35 @@ $300000 constant BIG-U
 : COMPLETED$ ( -- ptr u8 n ) s" response.completed" ;
 : INCOMPLETE$ ( -- ptr u8 n ) s" response.incomplete" ;
 : FAILED$ ( -- ptr u8 n ) s" response.failed" ;
+
+
+\ Answers a tool scenario by its name, or answers false.
+: TOOL-REPLY? ( HTTP:response ptr u8 n -- bool )
+   {: response:HTTP:response t:ptr t-u:n :}
+   t t-u s" tool-call" STR= if
+      response [: TOOL-HEAD FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;] COMPLETED$ STREAMED
+      true exit
+   then
+   t t-u s" tool-message" STR= if
+      response [: TOOL-HEAD TEXT-ITEM$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
+      COMPLETED$ STREAMED true exit
+   then
+   t t-u s" tool-none" STR= if
+      response [: TOOL-HEAD REPLY-TAIL ;] COMPLETED$ STREAMED true exit
+   then
+   t t-u s" tool-two" STR= if
+      response [: TOOL-HEAD FUNCTION-CALL$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
+      COMPLETED$ STREAMED true exit
+   then
+   t t-u s" tool-refusal" STR= if
+      response [: TOOL-HEAD REFUSAL-ITEM$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
+      COMPLETED$ STREAMED true exit
+   then
+   t t-u s" tool-other" STR= if
+      response [: TOOL-HEAD OTHER-ITEM$ NEXT-ITEM FUNCTION-CALL$ NEXT-ITEM REPLY-TAIL ;]
+      COMPLETED$ STREAMED true exit
+   then
+   false ;
 
 
 \ A 200 reply that is JSON, not an event stream.
@@ -539,6 +591,7 @@ $300000 constant BIG-U
 : REPLY ( HTTP:request HTTP:response -- )
    {: r:HTTP:request response:HTTP:response :}
    r FIRST-TEXT {: t:ptr t-u:n :}
+   response t t-u TOOL-REPLY? if exit then
    t t-u s" image" STR= if
       r IMAGE-ECHO
       response [: ECHO$ COMPLETED ;] COMPLETED$ STREAMED exit
@@ -862,6 +915,8 @@ public
 EXPORT LONG-FINISH$
 EXPORT REFUSAL$
 EXPORT BAD-CONTENT$
+EXPORT REASONING$
+EXPORT FUNCTION-CALL$
 EXPORT BIG$
 EXPORT PLAIN$
 EXPORT BAD-TYPE$
@@ -2268,27 +2323,46 @@ variable ASKED-U
    S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" ;
 
 
-\ A call with parts and no items: its journal input, by which a saved record
-\ is found, and its sent body, byte for byte.
-: PINNED ( -- )
-   s" valid" ASK
+\ A journal input's members through its instructions and the key naming its
+\ form, into SB.
+: INPUT-HEAD ( ptr u8 n -- )
+   {: key:ptr key-u:n :}
    SB-RESET
    S\" {\qkind\q:\qgeneration\q,\qconfiguration\q:{\qbackend\q:\qopenai-responses\q," SB-APPEND
    S\" \qmodel\q:\qtest-generation\q,\qendpoint\q:\q" SB-APPEND
    MODEL-PEER:BASE-URL$ SB-APPEND
-   S\" /responses\q},\qinstructions\q:\qRead source evidence.\q,\qschema\q:" SB-APPEND
-   SCHEMA$ SB-APPEND
-   S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
-   ASKED$ SB$ STR= ASSERT
-   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   S\" /responses\q},\qinstructions\q:\qRead source evidence.\q,\q" SB-APPEND
+   key key-u SB-APPEND S\" \q:" SB-APPEND ;
+
+
+\ A request's members through its head message of the one text part, into SB.
+: REQUEST-HEAD ( ptr u8 n -- )
+   {: t:ptr t-u:n :}
    SB-RESET
    S\" {\qmodel\q:\qtest-generation\q,\qstore\q:false,\qstream\q:true," SB-APPEND
    S\" \qinstructions\q:\qRead source evidence.\q,\qinput\q:[" SB-APPEND
-   HEAD$ SB-APPEND
+   S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\q" SB-APPEND
+   t t-u SB-APPEND S\" \q}]}" SB-APPEND ;
+
+
+\ The body of a schema call of the part "valid", into SB.
+: SCHEMA-REQUEST ( -- )
+   s" valid" REQUEST-HEAD
    S\" ],\qtext\q:{\qformat\q:{\qtype\q:\qjson_schema\q,\qname\q:\qanswer\q," SB-APPEND
    S\" \qstrict\q:true,\qschema\q:" SB-APPEND
    SCHEMA$ SB-APPEND
-   s" }}}" SB-APPEND
+   s" }}}" SB-APPEND ;
+
+
+\ A call with parts and no items: its journal input, by which a saved record
+\ is found, and its sent body, byte for byte.
+: PINNED ( -- )
+   s" valid" ASK
+   s" schema" INPUT-HEAD SCHEMA$ SB-APPEND
+   S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
+   ASKED$ SB$ STR= ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   SCHEMA-REQUEST
    MODEL-PEER:SENT$ SB$ STR= ASSERT ;
 
 
@@ -2366,6 +2440,108 @@ variable ASKED-U
    SB-RESET s" [" SB-APPEND HEAD$ SB-APPEND s" ," SB-APPEND
    CALLED$ SB-APPEND s" ]" SB-APPEND
    s" input" SENT SB$ RAW-IS ;
+
+
+\ One strict function tool in OpenAI's shape.
+: TOOLS$ ( -- ptr u8 n )
+   S\" [{\qtype\q:\qfunction\q,\qname\q:\qlookup\q,\qdescription\q:\qLooks a term up.\q,\qparameters\q:{\qtype\q:\qobject\q,\qproperties\q:{\qq\q:{\qtype\q:\qstring\q}},\qrequired\q:[\qq\q],\qadditionalProperties\q:false},\qstrict\q:true}]" ;
+: TOOLS ( -- ) TOOLS$ M MODEL:TOOLS! ;
+
+
+\ The body of a tools call of the part "tool-call", into SB.
+: TOOLS-REQUEST ( -- )
+   s" tool-call" REQUEST-HEAD
+   S\" ],\qtools\q:" SB-APPEND TOOLS$ SB-APPEND
+   S\" ,\qtool_choice\q:\qrequired\q,\qparallel_tool_calls\q:false," SB-APPEND
+   S\" \qinclude\q:[\qreasoning.encrypted_content\q]}" SB-APPEND ;
+
+
+\ The output array of the peer's reply to "tool-call", into SB.
+: TOOL-OUTPUT ( -- )
+   SB-RESET s" [" SB-APPEND MODEL-PEER:REASONING$ SB-APPEND
+   s" ," SB-APPEND MODEL-PEER:FUNCTION-CALL$ SB-APPEND s" ]" SB-APPEND ;
+
+
+\ A tools call sends its tools verbatim, one required call, encrypted reasoning
+\ and no text format; OUTPUT$ is the reply's output array, the content empty.
+: TOOLS-BODY ( -- )
+   TOOLS s" tool-call" PREP
+   M MODEL:CHAT nip 0= ASSERT
+   TOOLS-REQUEST MODEL-PEER:SENT$ SB$ STR= ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT ;
+
+
+\ The last of SCHEMA! and TOOLS! decides the call's form.
+: FORM-LAST ( -- )
+   TOOLS SCHEMA$ M MODEL:SCHEMA!
+   CHAT
+   SCHEMA-REQUEST MODEL-PEER:SENT$ SB$ STR= ASSERT ;
+
+
+: TOOLS-CODE ( ptr u8 n -- n ) M MODEL:TOOLS! s" tool-call" PREP CHAT-CODE ;
+
+
+\ Tools other than one non-empty JSON array of objects, and neither schema nor
+\ tools, are E-CONFIG at CHAT with no request sent; that call has no output.
+: TOOLS-REFUSALS ( -- )
+   MODEL-PEER:CALLS@ {: before:n :}
+   s" {}" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" []" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" [1]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   S\" \q\q" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" [{},1]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" [{}][]" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   s" [{}" TOOLS-CODE MODEL:E-CONFIG = ASSERT
+   1 CALL {: c:ptr :}
+   c MODEL:OPEN
+   MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
+   s" test-generation" c MODEL:GENERATION-MODEL!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
+   s" Read source evidence." c MODEL:SYSTEM!
+   c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
+   c [: dup MODEL:CHAT 2drop ;] catch {: chat-code:n :} drop chat-code MODEL:E-CONFIG = ASSERT
+   c [: dup MODEL:OUTPUT$ 2drop ;] catch {: output-code:n :} drop output-code MODEL:E-STATE = ASSERT
+   c MODEL:CLOSE
+   MODEL-PEER:CALLS@ before = ASSERT ;
+
+
+\ A tools reply of anything but one function call is E-RESPONSE, a refusal
+\ E-REFUSED; a schema call's reply of one call has no answer: E-RESPONSE.
+: TOOL-REPLIES ( -- )
+   TOOLS
+   s" tool-message" MODEL:E-RESPONSE FAILS
+   s" tool-none" MODEL:E-RESPONSE FAILS
+   s" tool-two" MODEL:E-RESPONSE FAILS
+   s" tool-other" MODEL:E-RESPONSE FAILS
+   s" tool-refusal" MODEL:E-REFUSED FAILS
+   SCHEMA$ M MODEL:SCHEMA!
+   s" tool-call" MODEL:E-RESPONSE FAILS ;
+
+
+\ A tools call's journal input names its tools where a schema call's names its
+\ schema, then its parts and items.
+: TOOLS-JOURNAL ( -- )
+   TOOLS
+   M MODEL:PARTS-RESET s" valid" M MODEL:TEXT+ CALLED$ ITEM
+   M MODEL:JOURNAL-INPUT$ {: a:ptr u:n :}
+   s" tools" INPUT-HEAD TOOLS$ SB-APPEND
+   S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
+   CALLED$ SB-APPEND s" ]}" SB-APPEND
+   a u SB$ STR= ASSERT ;
+
+
+\ The record a tools call saved holds empty content and replays with no
+\ request and the same output.
+: TOOLS-REPLAY ( -- )
+   CAPTURE
+   TOOLS s" tool-call" PREP
+   M MODEL:CHAT nip 0= ASSERT
+   RECORD$ s" content" MEMBER s" " STR-IS
+   MODEL-PEER:CALLS@ {: calls:n :}
+   s" tool-call" ASK
+   RECORD$ M MODEL:REPLAY nip 0= ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT ;
 
 
 \ Both producer configurations name this base.
@@ -2509,6 +2685,8 @@ variable ASKED-U
    SETUP RECORDED-CALLS REPLAYED-CALLS REFUSAL-PUT-FAULT CALLER-JOURNAL
    M MODEL:CLOSE
    SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REFUSALS PINNED
+   M MODEL:CLOSE
+   SETUP TOOLS-BODY FORM-LAST TOOLS-REFUSALS TOOL-REPLIES TOOLS-JOURNAL TOOLS-REPLAY
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS
    M MODEL:CLOSE

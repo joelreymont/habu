@@ -1,6 +1,8 @@
 \ model.f - package MODEL, a Habu library: a client for model providers over
 \ CURL. Chat speaks OpenAI's Responses protocol; embeddings go to an
-\ OpenAI-shaped provider or Ollama's native route. Its API key is read from
+\ OpenAI-shaped provider or Ollama's native route. A chat call answers a
+\ schema with one JSON object (CONTENT$) or offers tools and answers one tool
+\ call (OUTPUT$). The client's API key is read from
 \ the native credential store through SECRET, with a caller's journal and
 \ recorder and bounded inputs. Each failure the provider or the transport
 \ caused is logged through LOG (tag `model`), never the request body.
@@ -74,6 +76,8 @@ ENUM receive-rest reading dropping ;ENUM
 \ A call's chat input: none, building (PARTS-RESET started it, every write
 \ done), broken (a write did not complete) or finished (PART-FINISH closed it).
 ENUM input-state none building broken finished ;ENUM
+\ What a call's reply answers: nothing set yet, its schema or its tools.
+ENUM reply-form none schema tools ;ENUM
 public
 \ From CHAT and EMBED, a provider's 404 to the request (an unknown model) is
 \ also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS keeps the status.
@@ -143,6 +147,7 @@ STRUCTURE call DERIVE addr
    FIELD result call-result
    FIELD parts-count n
    FIELD chat-input input-state
+   FIELD form reply-form
    FIELD content-seen bool
    FIELD parsed-index n
    FIELD vector-seen bool
@@ -239,8 +244,8 @@ SCRATCH-BASE-AT 1 cells + constant GEN-HDR-AT
 GEN-HDR-AT BUF:HDR-BYTES + constant EMBED-HDR-AT
 EMBED-HDR-AT BUF:HDR-BYTES + constant KEY-SPEC-HDR-AT
 KEY-SPEC-HDR-AT BUF:HDR-BYTES + constant SYSTEM-HDR-AT
-SYSTEM-HDR-AT BUF:HDR-BYTES + constant SCHEMA-HDR-AT
-SCHEMA-HDR-AT BUF:HDR-BYTES + constant PARTS-HDR-AT
+SYSTEM-HDR-AT BUF:HDR-BYTES + constant FORM-HDR-AT
+FORM-HDR-AT BUF:HDR-BYTES + constant PARTS-HDR-AT
 PARTS-HDR-AT BUF:HDR-BYTES + constant JOURNAL-PARTS-HDR-AT
 JOURNAL-PARTS-HDR-AT BUF:HDR-BYTES + constant ITEMS-HDR-AT
 ITEMS-HDR-AT BUF:HDR-BYTES + constant BODY-HDR-AT
@@ -300,7 +305,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base EMBED-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base KEY-SPEC-HDR-AT + CELL-VIEW 64 BUF:N>BLEN BUF:INIT
    base SYSTEM-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
-   base SCHEMA-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
+   base FORM-HDR-AT + CELL-VIEW 128 BUF:N>BLEN BUF:INIT
    base PARTS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base JOURNAL-PARTS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
    base ITEMS-HDR-AT + CELL-VIEW SCRATCH-INITIAL BUF:N>BLEN BUF:INIT
@@ -340,7 +345,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    base EMBED-HDR-AT + CELL-VIEW BUF:DISPOSE
    base KEY-SPEC-HDR-AT + CELL-VIEW BUF:DISPOSE
    base SYSTEM-HDR-AT + CELL-VIEW BUF:DISPOSE
-   base SCHEMA-HDR-AT + CELL-VIEW BUF:DISPOSE
+   base FORM-HDR-AT + CELL-VIEW BUF:DISPOSE
    base PARTS-HDR-AT + CELL-VIEW BUF:DISPOSE
    base JOURNAL-PARTS-HDR-AT + CELL-VIEW BUF:DISPOSE
    base ITEMS-HDR-AT + CELL-VIEW BUF:DISPOSE
@@ -395,7 +400,8 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : EMBED-BUF ( ptr call -- ptr n ) EMBED-HDR-AT HEADER ;
 : KEY-SPEC-BUF ( ptr call -- ptr n ) KEY-SPEC-HDR-AT HEADER ;
 : SYSTEM-BUF ( ptr call -- ptr n ) SYSTEM-HDR-AT HEADER ;
-: SCHEMA-BUF ( ptr call -- ptr n ) SCHEMA-HDR-AT HEADER ;
+\ The schema or the tools, as the call's form names.
+: FORM-BUF ( ptr call -- ptr n ) FORM-HDR-AT HEADER ;
 : PARTS-BUF ( ptr call -- ptr n ) PARTS-HDR-AT HEADER ;
 \ The parts as the journal input names them: an image by its digest.
 : JOURNAL-PARTS-BUF ( ptr call -- ptr n ) JOURNAL-PARTS-HDR-AT HEADER ;
@@ -549,7 +555,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
 : EMBED-MODEL$ ( ptr call -- ptr u8 n ) EMBED-BUF BUFFER$ ;
 : KEY-SPEC$ ( ptr call -- ptr u8 n ) KEY-SPEC-BUF BUFFER$ ;
 : SYSTEM$ ( ptr call -- ptr u8 n ) SYSTEM-BUF BUFFER$ ;
-: SCHEMA$ ( ptr call -- ptr u8 n ) SCHEMA-BUF BUFFER$ ;
+: FORM$ ( ptr call -- ptr u8 n ) FORM-BUF BUFFER$ ;
 : PARTS$ ( ptr call -- ptr u8 n ) PARTS-BUF BUFFER$ ;
 : JOURNAL-PARTS$ ( ptr call -- ptr u8 n ) JOURNAL-PARTS-BUF BUFFER$ ;
 : ITEMS$ ( ptr call -- ptr u8 n ) ITEMS-BUF BUFFER$ ;
@@ -693,6 +699,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    0 c MODEL-CALL:INCOMPLETE-U !
    0 c MODEL-CALL:PARTS-COUNT !
    construct input-state none c MODEL-CALL:CHAT-INPUT !
+   construct reply-form none c MODEL-CALL:FORM !
    construct call-result none c MODEL-CALL:RESULT !
    false c MODEL-CALL:JOURNAL-READY !
    OPTION:NONE c MODEL-CALL:REPLAY-KIND !
@@ -932,7 +939,16 @@ public
 : SCHEMA! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
    c UNPREPARE drop
-   a u c SCHEMA-BUF REPLACE-SOME ;
+   a u c FORM-BUF REPLACE-SOME
+   construct reply-form schema c MODEL-CALL:FORM ! ;
+
+\ The tools a call offers, a JSON array of OpenAI function tools checked when
+\ the request is finished; the last of SCHEMA! and TOOLS! decides its form.
+: TOOLS! ( ptr u8 n ptr call -- )
+   {: a:ptr u:n c :}
+   c UNPREPARE drop
+   a u c FORM-BUF REPLACE-SOME
+   construct reply-form tools c MODEL-CALL:FORM ! ;
 
 \ Model settings a host files in the native credential store under one
 \ service of its choice, one generic-password item per fixed account:
@@ -1297,6 +1313,28 @@ private
    code JSON-FAULT? if E-CONFIG throw then
    code 0<> if code throw then ;
 
+: JSON-TOOLS? ( ptr u8 n ptr call -- bool )
+   {: a:ptr u:n c :}
+   c MODEL-CALL:READER a u JSON:READ-INIT
+   JSON:READ-NEXT JSON:T-ARR <> if JSON:READ-CLOSE false exit then
+   JSON:READ-NEXT JSON:T-OBJ <> if JSON:READ-CLOSE false exit then
+   begin JSON:READ-SKIP-VALUE JSON:READ-NEXT dup JSON:T-OBJ = while drop repeat
+   JSON:T-ARR-END = if JSON:READ-NEXT JSON:T-END = else false then
+   {: valid:bool :}
+   JSON:READ-CLOSE valid ;
+
+: TOOLS-STEP ( ptr u8 n ptr call -- ptr u8 n ptr call )
+   {: a:ptr u:n c :}
+   a u c JSON-TOOLS? 0= if E-CONFIG throw then
+   a u c ;
+
+\ Bytes that are not one non-empty JSON array of objects, a reader fault
+\ included, are E-CONFIG.
+: CHECK-TOOLS ( ptr u8 n ptr call -- )
+   [: TOOLS-STEP ;] catch {: code:n :} drop 2drop
+   code JSON-FAULT? if E-CONFIG throw then
+   code 0<> if code throw then ;
+
 public
 
 \ One history item in OpenAI's shape; E-CONFIG unless one JSON object. Items
@@ -1322,7 +1360,11 @@ private
    c SYSTEM$ nip 0= or empty or if
       E-CONFIG throw
    then
-   c SCHEMA$ c CHECK-OBJECT ;
+   c MODEL-CALL:FORM @ MATCH reply-form
+      none OF E-CONFIG throw ENDOF
+      schema OF c FORM$ c CHECK-OBJECT ENDOF
+      tools OF c FORM$ c CHECK-TOOLS ENDOF
+   ;MATCH ;
 
 : BODY-OPEN ( ptr call -- )
    {: c :}
@@ -1332,6 +1374,36 @@ private
 : BODY-DONE ( ptr call -- )
    {: c :}
    c WRITER JSON:WRITE-CLOSE ;
+
+\ The members after a schema call's input: its strict JSON schema format.
+: SCHEMA-TAIL ( ptr JSON:writer ptr call -- ptr JSON:writer )
+   {: c :}
+   JSON:WRITE-COMMA
+   s" text" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" format" JSON:WRITE-KEY
+   JSON:WRITE-OBJECT-START
+   s" type" s" json_schema" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" name" s" answer" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA
+   s" strict" true JSON:WRITE-FIELD-BOOL
+   JSON:WRITE-COMMA
+   s" schema" c FORM$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-OBJECT-END
+   JSON:WRITE-OBJECT-END ;
+
+\ The members after a tools call's input: one required call to one of its
+\ tools, with the reasoning items a later turn sends back.
+: TOOLS-TAIL ( ptr JSON:writer ptr call -- ptr JSON:writer )
+   {: c :}
+   JSON:WRITE-COMMA s" tools" c FORM$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-COMMA s" tool_choice" s" required" JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" parallel_tool_calls" false JSON:WRITE-FIELD-BOOL
+   JSON:WRITE-COMMA s" include" JSON:WRITE-KEY
+   JSON:WRITE-ARRAY-START
+   s" reasoning.encrypted_content" JSON:WRITE-STRING
+   JSON:WRITE-ARRAY-END ;
 
 : CHAT-BODY ( ptr call -- )
    {: c :}
@@ -1370,20 +1442,11 @@ private
       c ITEMS$ JSON:WRITE-RAW
    then
    JSON:WRITE-ARRAY-END
-   JSON:WRITE-COMMA
-   s" text" JSON:WRITE-KEY
-   JSON:WRITE-OBJECT-START
-   s" format" JSON:WRITE-KEY
-   JSON:WRITE-OBJECT-START
-   s" type" s" json_schema" JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" name" s" answer" JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA
-   s" strict" true JSON:WRITE-FIELD-BOOL
-   JSON:WRITE-COMMA
-   s" schema" c SCHEMA$ JSON:WRITE-FIELD-RAW
-   JSON:WRITE-OBJECT-END
-   JSON:WRITE-OBJECT-END
+   c MODEL-CALL:FORM @ MATCH reply-form
+      none OF E-CONFIG throw ENDOF
+      schema OF c SCHEMA-TAIL ENDOF
+      tools OF c TOOLS-TAIL ENDOF
+   ;MATCH
    JSON:WRITE-OBJECT-END drop
    c BODY-DONE ;
 
@@ -1457,6 +1520,14 @@ public
 
 private
 
+\ The member that carries the form's text in a chat's journal input.
+: FORM-KEY$ ( ptr call -- ptr u8 n )
+   MODEL-CALL:FORM @ MATCH reply-form
+      none OF E-CONFIG throw ENDOF
+      schema OF s" schema" ENDOF
+      tools OF s" tools" ENDOF
+   ;MATCH ;
+
 : JOURNAL-GEN-INPUT ( ptr call -- )
    {: c :}
    c JOURNAL-INPUT-BUF c RESET-SCRATCH
@@ -1471,7 +1542,7 @@ private
    JSON:WRITE-COMMA s" endpoint" c CHAT-URL$ JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END
    JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" schema" c SCHEMA$ JSON:WRITE-FIELD-RAW
+   JSON:WRITE-COMMA c FORM-KEY$ c FORM$ JSON:WRITE-FIELD-RAW
    JSON:WRITE-COMMA s" parts" c JOURNAL-PARTS$ JSON:WRITE-FIELD-RAW
    c ITEMS$ nip 0<> if
       JSON:WRITE-COMMA s" items" JSON:WRITE-KEY
@@ -1906,6 +1977,44 @@ private
    0 begin dup c READ-ITEM while 1+ repeat drop
    c MODEL-CALL:CONTENT-SEEN @ 0= if E-RESPONSE throw then ;
 
+\ Reads the content part at the index of the message item at the index; false
+\ past the last part, E-REFUSED on a refusal.
+: PART-REFUSED ( n n ptr call -- bool )
+   {: idx:n part:n c :}
+   idx part c PART 0= if JSON:READ-CLOSE false exit then
+   TYPE-AT s" refusal" JSON:READ-STR-EQ? {: refused:bool :}
+   JSON:READ-CLOSE
+   refused if E-REFUSED throw then
+   true ;
+
+\ A message in a tools reply: E-REFUSED if a part refuses, else E-RESPONSE.
+: TOOL-MESSAGE ( n ptr call -- )
+   {: idx:n c :}
+   0 begin idx over c PART-REFUSED while 1+ repeat drop
+   E-RESPONSE throw ;
+
+\ Counts a function call at the index and skips reasoning; a message is
+\ TOOL-MESSAGE's, any other type E-RESPONSE; false past the last item.
+: READ-TOOL ( n n ptr call -- n n bool )
+   {: idx:n count:n c :}
+   idx c ITEM 0= if JSON:READ-CLOSE idx count false exit then
+   TYPE-AT
+   s" function_call" JSON:READ-STR-EQ? {: called:bool :}
+   s" reasoning" JSON:READ-STR-EQ? {: thought:bool :}
+   s" message" JSON:READ-STR-EQ? {: message:bool :}
+   JSON:READ-CLOSE
+   message if idx c TOOL-MESSAGE then
+   called thought or 0= if E-RESPONSE throw then
+   idx count called if 1+ then true ;
+
+\ A tools reply answers exactly one function call, read whole by OUTPUT$; it
+\ leaves no content.
+: READ-TOOLS ( ptr call -- )
+   {: c :}
+   0 c MODEL-CALL:CONTENT-U !
+   0 0 begin c READ-TOOL while swap 1+ swap repeat nip
+   1 <> if E-RESPONSE throw then ;
+
 \ An incomplete reply keeps its reason in the content buffer: it has no
 \ content, and its decoded reason is no longer than the response that holds it.
 : READ-INCOMPLETE ( ptr call -- )
@@ -1953,9 +2062,15 @@ private
    {: c :}
    c RESPONSE$ c JSON-OBJECT? 0= if E-RESPONSE throw then
    c REPLY-STATUS
-   c READ-OUTPUT
-   c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
-   c JSON-OBJECT? 0= if E-RESPONSE throw then ;
+   c MODEL-CALL:FORM @ MATCH reply-form
+      none OF E-RESPONSE throw ENDOF
+      schema OF
+         c READ-OUTPUT
+         c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$
+         c JSON-OBJECT? 0= if E-RESPONSE throw then
+      ENDOF
+      tools OF c READ-TOOLS ENDOF
+   ;MATCH ;
 
 : VECTORS-U ( ptr call -- n ) VECTORS-BUF BUF:LEN@ BUF:BLEN>N ;
 
@@ -2890,8 +3005,8 @@ ENUM poll none fed spoiled done ;ENUM
    ;MATCH ;
 
 
-\ The sha256 hex of the model, system text and schema every generation
-\ request of a purpose starts with, NUL-separated.
+\ The sha256 hex of the model, system text and schema or tools every
+\ generation request of a purpose starts with, NUL-separated.
 : PREFIX-HASH$ ( ptr call -- ptr u8 n )
    {: c :}
    c HASH-WORK {: w :}
@@ -2900,7 +3015,7 @@ ENUM poll none fed spoiled done ;ENUM
    w s\" \x00" SHA256-FEED
    w c SYSTEM$ SHA256-FEED
    w s\" \x00" SHA256-FEED
-   w c SCHEMA$ SHA256-FEED
+   w c FORM$ SHA256-FEED
    w w SHA256-CTX-BYTES + SHA256-END
    w SHA256-CTX-BYTES + w SHA256-CTX-BYTES + 32 + SHA256>HEX
    w SHA256-CTX-BYTES + 32 + 64 ;
@@ -2949,7 +3064,7 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF
          JSON:WRITE-COMMA s" prefix_bytes"
-         c GEN$ nip c SYSTEM$ nip + c SCHEMA$ nip + JSON:WRITE-FIELD-INT
+         c GEN$ nip c SYSTEM$ nip + c FORM$ nip + JSON:WRITE-FIELD-INT
          JSON:WRITE-COMMA s" prefix_hash" c PREFIX-HASH$ JSON:WRITE-FIELD-S
       ENDOF
       embed OF ENDOF
@@ -3534,6 +3649,14 @@ public
    ;MATCH
    c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ;
 
+\ The output array of the chat reply last awaited or replayed, its own bytes,
+\ read and borrowed as CONTENT$ is; ITEM+ takes each item for the next turn.
+: OUTPUT$ ( ptr call -- ptr u8 n )
+   {: c :}
+   c CONTENT$ 2drop
+   s" output" c REPLY-AT JSON:READ-VALUE-SPAN$ {: a:ptr u:n :}
+   JSON:READ-CLOSE a u ;
+
 \ Finishes the chat request built since PARTS-RESET as CHAT does before its
 \ journal lookup and answers the journal input a journal's get and put receive
 \ for it, valid until the next JOURNAL-INPUT$, CHAT, START, EMBED, START-EMBED
@@ -3541,8 +3664,8 @@ public
 \ PURPOSE! comes first. A second call answers the same input. The next CHAT or
 \ START sends that request, or REPLAY restores a saved reply for it. A call
 \ that changes the chat request (PARTS-RESET, TEXT+, IMAGE+, ITEM+, PURPOSE!,
-\ PURPOSE-MODEL! and the generation model, base URL, system, schema, effort,
-\ service tier and cache key setters) or EMBED or START-EMBED first discards
+\ PURPOSE-MODEL! and the generation model, base URL, system, schema, tools,
+\ effort, service tier and cache key setters) or EMBED or START-EMBED first discards
 \ it, and the request is built again from PARTS-RESET.
 : JOURNAL-INPUT$ ( ptr call -- ptr u8 n )
    {: c :}

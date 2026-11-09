@@ -5,7 +5,8 @@
 \ reply, which MODEL:CHAT reads. Each terminal reply carries fixed usage, input
 \ 11 tokens (4 cached), output 6 (2 reasoning), total 17, so a test may assert
 \ them. The host routes the request to its own handler and calls one of them
-\ there.
+\ there. OUTPUT! answers an output array the test gives whole, such as a tool
+\ call.
 \ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a stream
 \ body and its writer, whose buffer a slot's first reply makes and the process
 \ keeps; a body stays in its row, as HTTP:BODY! borrows it, until the slot's
@@ -112,6 +113,14 @@ HTTP:MAX-WORKERS TYPED-BUFFER WRITER JSON:writer
    MESSAGE-CLOSE ;
 
 
+: OUTPUT-REPLY ( ptr JSON:writer ptr u8 n -- ptr JSON:writer )
+   {: items:ptr items-u:n :}
+   S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:" JSON:WRITE-RAW
+   items items-u JSON:WRITE-RAW
+   S\" ,\qincomplete_details\q:null,\qerror\q:null" JSON:WRITE-RAW USAGE
+   s" }" JSON:WRITE-RAW ;
+
+
 \ Answers with resp_1's opening events and then the terminal event of the
 \ type, carrying the reply the body writes from the text, as the whole body.
 : STREAMED ( HTTP:response ptr u8 n [ ptr JSON:writer ptr u8 n -- ptr JSON:writer ] ptr u8 n -- )
@@ -141,5 +150,10 @@ public
 \ the text.
 : REFUSAL! ( HTTP:response ptr u8 n -- )
    [: REFUSAL-REPLY ;] s" response.completed" STREAMED ;
+
+
+\ A stream ending in a completed reply whose output is exactly the JSON array.
+: OUTPUT! ( HTTP:response ptr u8 n -- )
+   [: OUTPUT-REPLY ;] s" response.completed" STREAMED ;
 
 ;package
