@@ -21,7 +21,7 @@ $50 constant SOURCE-ROW-OFF
 $58 constant SOURCE-CON-OFF
 $60 constant EXPORT-OFF
 $68 constant WIDE-OFF
-$70 constant RESET-OFF
+\ $70 is vacant.
 $78 constant CAPTURE-OFF
 $80 constant CHECK-OFF
 $88 constant TAPE-INSTALL-OFF

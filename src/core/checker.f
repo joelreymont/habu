@@ -26,7 +26,6 @@ CHECKER-OWNER-ABI:SOURCE-ROW-OFF constant SOURCE-ROW-OFF
 CHECKER-OWNER-ABI:SOURCE-CON-OFF constant SOURCE-CON-OFF
 CHECKER-OWNER-ABI:EXPORT-OFF constant EXPORT-OFF
 CHECKER-OWNER-ABI:WIDE-OFF constant WIDE-OFF
-CHECKER-OWNER-ABI:RESET-OFF constant RESET-OFF
 CHECKER-OWNER-ABI:CAPTURE-OFF constant CAPTURE-OFF
 \ The optimizing front end's half of the owner record; offsets come from
 \ checker-owner-abi.f. A new field goes on the end, whatever its group: the
@@ -8502,7 +8501,6 @@ PERSISTED-PTR-VARIABLE SYM-STR-HOME   SYM-STR-BOOT SYM-STR-HOME !
 variable SYM-STR-HOME-CAP   SYM-STR-INIT SYM-STR-HOME-CAP !
 variable SYM-N
 variable SYM-STR-U
-variable SYM-PRIM-END
 variable SYM-ID
 
 : SYMS ( -- ptr u8 ) SYMS-P @ ;
@@ -11915,7 +11913,6 @@ variable PE-QDOUT
 \ the new boundary states that, instead of leaving prim-region heads behind.
 : PTABLE-END ( -- )
    UEND @ USIGS-USER-OFF !
-   SYM-N @ SYM-PRIM-END !
    0 USX-GEN !
    UTERM! ;
 
@@ -12126,7 +12123,6 @@ SYMS-P SYM-CAP-V SYM-REC SYM-N STORE+
 SYM-STR-P SYM-STR-CAP-V 1 SYM-STR-U STORE+
 USIGS-P USIGS-CAP-U 1 UEND STORE+
 PES-P PE-CAP-V PE-REC #PE STORE+
-SYM-PRIM-END BUILD-SYM-END @ CELL-ROW+
 USIGS-USER-OFF UEND @ CELL-ROW+
 ;package
 
@@ -12231,8 +12227,6 @@ PRIM: CHECKER-VERIFY-PKG-DONE PRIM;
 PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
-PRIM: CHECKER-RESET-SOURCE PRIM;
-PRIM-TRUSTED-ONLY!
 PRIM: CHECKER-TRUSTED-TICK? PE-PTR-U8 PE-IN PE-N PE-IN PE-F PE-OUT PRIM;
 PRIM-TRUSTED-ONLY!
 \ The field-projection armer's storage; FIELD-PROJ! writes it.
@@ -17745,9 +17739,6 @@ private
 : NORET-ADD {: a:ptr u:n flag:n :}
    a u CHECKER-RECORD-SYM flag 0 0 NORET-ADD-SYM ;
 
-\ An axiom's symbol is in a build's prefix, below BUILD-SYM-END and so below
-\ SYM-PRIM-END: CHECKER-RESET-SOURCE keeps NORETS to NORET-PRIM-END but retires
-\ every symbol from SYM-PRIM-END.
 : NORET-AXIOM {: a:ptr u:n flag:n :}
    a u PE-SYM-OF {: sym:n :}
    sym BUILD-SYM-END @ < 0= IF
@@ -27160,27 +27151,6 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.VPRSN @ VERIFY-PARSES-N !
    r RBF.DFEREND @ DFER-REWIND ;
 
-\ Source replay discards the dictionary tail but retains the compiler's type
-\ graph. Its constructor/defer/control metadata names symbol IDs, so retired
-\ source names must not donate those IDs to the replacement definitions.
-: SYMS-RETIRE-SOURCE ( -- )
-   SYM-N @ SYM-PRIM-END @ ?do i SYM-RETIRE loop
-   0 HIDX-VALID ! ;
-
-\ Primitive symbols survive, but user overrides of their effects, control
-\ flags, defer flags and capture signatures belong to the discarded source.
-: CHECKER-RESET-SOURCE ( -- )
-   0 BWIN-VALID !  0 UWIN-VALID !
-   USIGS-USER-OFF @ USIGS-RESTORE-END
-   NORET-PRIM-END NORET-RESTORE-END
-   0 DFER-REWIND
-   CHECKER-ASIG-RESET
-   SYMS-RETIRE-SOURCE
-   0 data-base $368 + ! ;  \ NCOMP-DISPATCH:TARGET-DECL-CELL
-package CHECKER-REG
-' CHECKER-RESET-SOURCE DECLARATIONS RESET-OFF + xt!
-;package
-
 : RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
    RBF-ENSURE
    RBF-CUR RBF-SAVE-INTO
@@ -28600,9 +28570,8 @@ CAST: AS-SOURCE-LINK ( n -- [ n -- ptr n ] )
 \ interns its name when this owner lacks it, so copy order is image order. A
 \ host numbers every name it holds a PRIM: row for ahead of all others, so a
 \ walk by source id makes the image depend on the host's primitive count. The
-\ host certified the prefix in source order after CHECKER-RESET-SOURCE rewound
-\ its user records, so EW.NEXT (the store offset just past each record) orders
-\ the copies the same way on every host.
+\ host certified the prefix in source order, so EW.NEXT (the store offset just
+\ past each record) orders the copies the same way on every host.
 \ ORDER-P: ORDER-N rows of handles, then ORDER-RUNS runs of ORDER-N pairs; a
 \ private mapping TRANSFER-CHECKED releases on every way out, never imaged.
 4 cells constant ORDER-ROW

@@ -933,7 +933,7 @@ TRUSTED: DEF-XT! ( n n -- ) xt! ;
 \ With both owner cells zero the engine's loop still holds the defer, while
 \ NCOMP below refuses it ("ncomp: cannot compile"): no checker knows its
 \ effect. No build reaches that state: NCOMP:INSTALL sets both cells as the
-\ engine completes, and checker.f CHECKER-RESET-SOURCE zeroes only the target's.
+\ engine completes.
 : DEFER-READY? ( -- bool )
    NCOMP-DISPATCH:DECL-EFFECT-OFF PKG-TARGET 0<>
    NCOMP-DISPATCH:DECL-DEFER-OFF PKG-TARGET 0<> and ;
