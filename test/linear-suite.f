@@ -313,6 +313,7 @@ variable PROG-U
 
 : REOPEN ( -- )
    0 PROG-U !
+   s" require " PROG+  PATH$ PROG+  10 PROG-C+
    S\" package LIM\nLINEAR: MINT ( n -- LIM:tok )\nLINEAR: ERASE ( LIM:tok -- n )\n" PROG+
    S\" : RT ( n -- n ) MINT ERASE ;\n42 RT .\n;package\n" PROG+
    S\" package LIM-X\nLINEAR: XM ( n -- LIM:tok )\n;package\n" PROG+
@@ -347,7 +348,7 @@ variable PROG-U
    SAVE
    RC @ 0 T=
    IMAGE$ FS:EXECUTABLE? TTRUE
-   s" so its reopened owner mints and erases, and another package may not" T-LABEL
+   s" so it knows its source, its reopened owner mints and erases, and another package may not" T-LABEL
    REOPEN
    OUT$ s\" 42\n" CONTAINS? TTRUE
    ERR$ S\" E-LINEAR-OWNER habu: linear: 'XM': the linear type belongs to package 'LIM'\nhb: uncaught throw code 7196\n" CONTAINS? TTRUE

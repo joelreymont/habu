@@ -141,14 +141,25 @@ variable TEXT-U
    a TEXT-U @ TEXT u BYTE-COPY
    u TEXT-U +! ;
 
-\ A registry row below the tree root, by its tree-relative name.
-: REG-ROW ( ptr u8 n -- )
+\ A row's bytes inside the end file's s\" literal: `"` and `\` take a backslash.
+: ROW+ ( ptr u8 n -- )
    {: a:ptr u:n :}
+   u 0 ?do
+      a i + c@ dup 34 = swap 92 = or if s" \" TEXT+ then
+      a i + 1 TEXT+
+   loop ;
+
+\ A registry row below the tree root by its tree-relative name. A program's row
+\ outside it keeps its canonical path (include.f REQUIRE-STORE); hb's is refused.
+: REG-ROW ( ptr u8 n bool -- )
+   {: a:ptr u:n engine:bool :}
    SOURCE-ROOT:CWD$ {: c:ptr cu:n :}
    u cu 1 + > if a cu c cu STR= a cu + c@ FS:SLASH = and else false then
-   0= if s" hb-build: a registry row outside the tree: " type a u type cr
-      s" hb-build: build failed" 1 die then
-   s\" s\" " TEXT+  a cu + 1 + u cu - 1 - TEXT+  s\" \" REQUIRE-REG:APPEND\n" TEXT+ ;
+   {: below:bool :}
+   below 0= engine and if a ROW-PATH !  u ROW-LEN !  E-BUILD-PATH throw then
+   s\" s\\\" " TEXT+
+   below if a cu + 1 + u cu - 1 - ROW+ else a u ROW+ then
+   s\" \" REQUIRE-REG:APPEND\n" TEXT+ ;
 
 
 \ The end file's name carries its text's SHA-256, so builds sharing an out root
@@ -168,11 +179,11 @@ variable TEXT-U
 \ IMAGE-LIFECYCLE:PREPARE releases what its files' top levels acquired in this
 \ process (FFI's library handles, mappings), which the written program must not
 \ carry.
-: END-WRITE ( bool -- )
-   {: entry:bool :}
+: END-WRITE ( n bool -- )
+   {: app:n entry:bool :}
    0 TEXT-U !
    s\" REQUIRE-BOOT-OPEN\n" TEXT+
-   REQUIRE-N @ REQUIRE-BASE @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ REG-ROW loop
+   REQUIRE-N @ REQUIRE-BASE @ ?do i REQUIRE-SLOT i REQUIRE-LEN@ i app < REG-ROW loop
    s\" REQUIRE-BOOT-FREEZE\nREQUIRE-REG:PERSIST\nRUNTIME:INSTALL\n" TEXT+
    entry if s\" ' MAIN APP-ENTRY:XT!\n" TEXT+ then
    s\" IMAGE-LIFECYCLE:PREPARE\n" TEXT+
@@ -184,7 +195,7 @@ variable TEXT-U
 : ENGINE-BODY ( -- )
    STARTUP
    RUNTIME-FILES
-   false END-WRITE
+   REQUIRE-N @ false END-WRITE
    END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
@@ -192,8 +203,9 @@ variable TEXT-U
 : REPL-BODY ( -- )
    STARTUP
    RUNTIME-FILES
-   SRC$ INCLUDE-FILE
-   true END-WRITE
+   REQUIRE-N @ {: app:n :}
+   SRC$ REQUIRE-FILE
+   app true END-WRITE
    END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
