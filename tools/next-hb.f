@@ -74,14 +74,16 @@ create END-PATH PATH-CAP allot  variable END-U
 
 \ hb's startup files: habu2.f EMIT-HOST-LOAD-PREFIX's loads and provide rows.
 \ The provide rows go to the build's registry, which `provided` writes inside a build.
+\ They come before the loads, so the first boot file is the registry's first row, by
+\ which hb finds its tree (include.f ENGINE-FIND-FOR), not a file a startup file requires.
 : STARTUP ( -- )
-   BOOT-FILES:CHECKER ['] ROW BOOT-FILES:EACH
-   BOOT-FILES:DECL ['] ROW BOOT-FILES:EACH
-   BOOT-FILES:CORE BOOT-FILES:DYNAMIC or ['] ROW BOOT-FILES:EACH
    BOOT-FILES:CHECKER ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:DECL ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:CORE BOOT-FILES:DYNAMIC or BOOT-FILES:SEAL or BOOT-FILES:ARGV or
       BOOT-FILES:INTERNAL or BOOT-FILES:TOPROW or ['] PROVIDE BOOT-FILES:EACH
+   BOOT-FILES:CHECKER ['] ROW BOOT-FILES:EACH
+   BOOT-FILES:DECL ['] ROW BOOT-FILES:EACH
+   BOOT-FILES:CORE BOOT-FILES:DYNAMIC or ['] ROW BOOT-FILES:EACH
    BOOT-FILES:OWNER ['] ROW BOOT-FILES:EACH
    BOOT-FILES:OWNER ['] PROVIDE BOOT-FILES:EACH
    BOOT-FILES:SEAL ['] ROW BOOT-FILES:EACH
