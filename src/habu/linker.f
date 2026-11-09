@@ -2110,18 +2110,27 @@ variable RD-END
 
 
 \ REACHED's u bytes from RD-AT, each a FILES row; bad when a piece that stored into header data or
-\ into a reached piece's data (STORERS) is not reached, as RAN-FILES+ would now reach it.
+\ into a reached piece's data (STORERS) is not reached, as RAN-FILES+ would now reach it, or when
+\ the reached pieces are built in another order than RAN-FILES+ listed them: of two stores into
+\ one cell the later holds.
 : REACHED-CK ( n -- )
    {: u:n :}
    GOOD? 0= if exit then
    u 0= if exit then
    BUILT-N 1 + WALKED-RESERVE  BUILT-N 0 ?do 0 i WALKED ! loop
-   u 8 / 0 ?do
+   -1  u 8 / 0 ?do
+      {: last:n :}
       RD-U64 {: k:n :}
       k FILE-ROW? 0= if BAD unloop exit then
       k FILE-ROWS @ {: row:n :}
-      row 0 >= if 1 row WALKED ! then
+      row 0 >= if
+         row last <= if BAD unloop exit then
+         1 row WALKED !  row
+      else
+         last
+      then
    loop
+   drop
    STORERS-N @ 0 ?do
       i 2 * STORERS @ {: held:n :}
       held -1 = if true else held WALKED @ 0<> then if
