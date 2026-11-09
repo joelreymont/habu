@@ -1649,6 +1649,17 @@ learned live in the docs for their subject.
   Independent work goes to parallel workers without proofs in their briefs;
   work that does not move the measure (a second comment pass, doc prose,
   dead-code removal the lanes found) waits as dots until after landing.
+- 2026-11-09, hashing with the CPU's instructions: shown that SHA-256 took
+  36.7% of a 2.83 s warm rebuild of hb after a one-line edit (1,042 of 2,833
+  samples: each source's sum, each object's self-check and signing), that
+  src/core/sha256.f's block function runs at 71 MB/s against 2.52 GB/s for
+  the M2 Max's SHA-256 instructions, and a design for an engine word that
+  compresses many 64-byte blocks with them, Joel chose "Approve sha256-blocks
+  (Recommended)": "Warm rebuild ~1.8 s from 2.83 s; every hash kept; arm64
+  now." `sha256-blocks ( ptr n ptr u8 n -- n )` takes the state cells, the
+  bytes and a block count and answers how many blocks it compressed: all of
+  them where the CPU has the instructions, 0 elsewhere, and sha256.f's own
+  code compresses what is left. x86-64's body answers 0 until it gets one.
 
 ## Processes
 

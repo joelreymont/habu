@@ -168,6 +168,15 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
    cv 6 SHA-H@ g + W32 and  cv 6 SHA-H!
    cv 7 SHA-H@ h + W32 and  cv 7 SHA-H! ;
 
+\ The CPU's SHA-256 instructions compress what blocks they can (sha256-blocks
+\ answers 0 on a machine without them); SHA-BLOCK compresses the rest.
+: SHA-COMPRESS ( ptr u8 ptr u8 n -- )
+   {: ctx blk n:n :}
+   ctx CELL-VIEW blk n sha256-blocks {: done:n :}
+   n done - 0 > if
+      n done DO  ctx blk i $40 * ZPTR+ SHA-BLOCK  LOOP
+   then ;
+
 : SHA256-BEGIN ( ptr u8 -- )
    CELL-VIEW {: cv :}
    8 0 DO  HH0 i cells + @  cv i SHA-H!  LOOP
@@ -190,17 +199,16 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
       a u ZPTR+ 0 exit
    then
    ctx a need SHA-TAKE-TAIL
-   ctx ctx SHA-TAIL-A SHA-BLOCK
+   ctx ctx SHA-TAIL-A 1 SHA-COMPRESS
    0 cv SHA-TAIL-U!
    a need ZPTR+  u need - ;
 
 \ compress every whole block of [a,u); answers the short span left over
-: SHA-BLOCKS ( ptr u8 ptr u8 n -- ptr u8 n ) {: ctx a u:n :}
-   a u
-   begin dup $40 >= while
-      over ctx swap SHA-BLOCK
-      swap $40 ZPTR+ swap $40 -
-   repeat ;
+: SHA-BLOCKS ( ptr u8 ptr u8 n -- ptr u8 n )
+   {: ctx a u:n :}
+   u $40 / {: nb:n :}
+   ctx a nb SHA-COMPRESS
+   a nb $40 * ZPTR+  u nb $40 * - ;
 
 : SHA256-FEED ( ptr u8 ptr u8 n -- ) {: ctx a u:n :}
    ctx CELL-VIEW {: cv :}
@@ -224,8 +232,7 @@ SHA-FILE-PATH-OFF PATH-CAP + CELL + constant SHA256-FILE-CTX-BYTES
 : SHA256-END ( ptr u8 ptr u8 -- ) {: ctx out :}
    ctx CELL-VIEW {: cv :}
    ctx cv SHA-TOTAL@ SHA-PAD {: nblk:n :}
-   ctx ctx SHA-PBLK-A SHA-BLOCK
-   nblk 1 > if ctx ctx SHA-PBLK-A $40 ZPTR+ SHA-BLOCK then
+   ctx ctx SHA-PBLK-A nblk SHA-COMPRESS
    8 0 DO  cv i SHA-H@  out i 4 * ZPTR+ BE32!  LOOP ;
 
 : SHA256-IN ( ptr u8 ptr u8 n ptr u8 -- ) {: ctx a u:n out :}
