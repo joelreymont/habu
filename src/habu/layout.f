@@ -1316,8 +1316,9 @@ DICT-CAP 1+ cells constant STATE-BYTES
 \ TEXT-SIZE, src/habu/snap-lib.f ENGINE-TEXT-SIZE) read it rather than the layout
 \ constants they were loaded with: a build window for another OS loads that OS's
 \ header offsets. A size, not an address, so snapshots carry it unzeroed. Every
-\ boot stores it before a word runs: arm64 habu2.f EM-TEXT-SIZE at cold boot and
-\ after snapshot restore, x86-64 boot-x64.f DATA-INIT on every entry.
+\ boot stores it before a word runs: arm64 habu2.f EM-TEXT-SIZE at cold boot,
+\ after snapshot restore and in a linked program's start-up (src/arch/arm64/boot.f
+\ DATA,), x86-64 boot-x64.f DATA-INIT on every entry.
 $2D50 constant TEXT-SIZE-CELL
 \ DPHW-CELL: the release high-water, the highest DP (a DATA offset) that any
 \ path lowering DP has lowered it from. Every such path updates it: habu1.f

@@ -82,12 +82,14 @@ using A64ICODE
    STACK-ABI:BOOT-BYTES XDS STACK-GUARD:EMIT-MAP ;   \ rt.f
 
 \ DATA mapped (x20), its image's runs stored and its listed code addresses slid.
+\ The text size is read from the header the slid RBASE-CELL finds.
 : DATA, ( n label label label label label -- )
    {: linked:n text0:label image:label image-end:label list:label list-end:label :}
    EM-MMAP-DATA-REGION  DATA 0 0 ADDI,      \ habu2.f
    text0 image image-end COPY-DATA,
    linked text0 list list-end SLIDE,
-   RUNTIME-CELLS, ;                         \ as habu2.f EM-DATA-INIT writes them
+   RUNTIME-CELLS,                           \ as habu2.f EM-DATA-INIT writes them
+   EM-TEXT-SIZE ;                           \ habu2.f
 
 \ The return and loop stacks, then the crash handler.
 : STACKS, ( label -- )
