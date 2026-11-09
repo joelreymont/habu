@@ -53,6 +53,9 @@
 \ compiles 2. E2, in E's root after E's program moves aside, compiles none and
 \ prints E's lines, E's refusals on stderr and writes E's program byte for byte:
 \ its body's code is checked against the linked words as against compiled ones.
+\ Every build links the tree's stripped kernel object, which this process
+\ writes once (HB-BUILD-CORE:KERNEL-BUILD) and passes as build.f's first
+\ argument, so the out roots hold only the files' objects.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -64,6 +67,7 @@ require src/lib/fs-list.f
 require src/lib/process-command.f
 require src/lib/engine-candidate.f
 require src/core/sha256.f
+require tools/hb-build-core.f
 
 package FILE-OBJECTS-TEST
 
@@ -159,13 +163,15 @@ variable INPUT-N                         \ those holding count.f's INPUT
    -1 +loop
    0 ;
 
-\ build.f with the mode, if any, as its argument; dst gets the output before the
-\ given last line. Answers its length, -1 if it did not exit 0 or overflowed dst.
+\ build.f with the kernel object and the mode, if any, as its arguments; dst
+\ gets the output before the given last line. Answers its length, -1 if it did
+\ not exit 0 or overflowed dst.
 : BUILD ( CMD:command ptr u8 n ptr u8 n ptr u8 n ptr u8 -- CMD:command n )
    {: out:ptr outu:n mode:ptr modeu:n last:ptr lastu:n dst:ptr :}
    CMD:RESET
    s" --load" CMD:ARG+  s" test/fixtures/file-objects/build.f" CMD:ARG+
-   modeu 0<> if s" --" CMD:ARG+  mode modeu CMD:ARG+ then
+   s" --" CMD:ARG+  HB-BUILD-CORE:KERNEL$ CMD:ARG+
+   modeu 0<> if mode modeu CMD:ARG+ then
    s" HABU_OUT" out outu CMD:ENV+
    ENGINE-CANDIDATE:PATH$ 120000 >MS CMD:RUN-OUTCOME
    PROCESS:ENDING>RC RC>N {: rc:n :}
@@ -540,6 +546,7 @@ public
 
 : RUN ( -- )
    T-RESET
+   false HB-BUILD-CORE:KERNEL-BUILD
    s" habu-file-objects-a" FS:MKTEMP-DIR {: a:ptr u:n :}
    a OUT-A u BYTE-COPY  u OUT-A-U !
    ['] WITH-B ['] REMOVE-A finally

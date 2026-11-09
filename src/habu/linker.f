@@ -58,7 +58,9 @@ public
 private
 
 TYPED-VARIABLE ENGINE? bool          \ the mode is "engine"
+TYPED-VARIABLE KERNEL? bool          \ the mode is "kernel": hb's own layout, no program
 variable BASE                        \ the space's address, its distance from NULL-PTR
+variable SPACE-SIZE                  \ the space's size, as MAP mapped it
 variable FIRST-REC                   \ ndict@ at the open: records from here are the space's
 variable OPEN-DP                     \ here's distance once open; header data is [BASE, OPEN-DP)
 TYPED-VARIABLE BODY [ -- ]
@@ -117,11 +119,28 @@ $40 constant NORESERVE               \ macOS MAP_NORESERVE
 \ the space's table (habu2.f EMIT-MARK) and its index is released unlocked.
 : UNMAP ( -- )
    ADDRESS-CELLS:INDEX-CELL SPACE-AT ADDRESS-CELLS:INDEX-RELEASE
-   NULL-PTR BYTE-VIEW BASE @ + DATA-SIZE munmap
+   NULL-PTR BYTE-VIEW BASE @ + SPACE-SIZE @ munmap
    0<> if E-MEM-UNMAP throw then ;
 
 \ Above hb's DATA: below it CHECKER-OWNER-GUARD refuses with E-COMP-OWNER.
 : HINT ( -- n ) DATA-N DATA-SIZE + ;
+
+\ The space's DATA starts, ends and stops DP where the kernel the link adopts
+\ reads them (ARM64:READ); a kernel build's, or one no object was read for,
+\ where hb's does.
+: OBJECT-LAYOUT? ( -- bool ) KERNEL? @ 0= ARM64:READ? and ;
+
+: LAYOUT-START ( -- n )
+   OBJECT-LAYOUT? if s" DATA-START" ARM64:SYM exit then
+   DATA-START ;
+
+: LAYOUT-SIZE ( -- n )
+   OBJECT-LAYOUT? if s" DATA-SIZE" ARM64:SYM exit then
+   DATA-SIZE ;
+
+: LAYOUT-CEILING ( -- n )
+   OBJECT-LAYOUT? if s" DP-CEILING-OFF" ARM64:SYM exit then
+   DATA-SIZE PROF-CNT-BYTES - ;
 
 \ ---- the object ----------------------------------------------------------------
 \ LOADERS stacks a row per file whose compile or link is running: its key, then 1
@@ -709,7 +728,7 @@ TYPED-VARIABLE AFTER-PACKAGE bool    \ the last word ended was `package`
 : DATA-VALUE. ( n -- )
    {: v:n :}
    v DATA-N >=  v DATA-N DATA-SIZE + <  and if s" hb's data +" SAY  v DATA-N - SAY-INT exit then
-   v BASE @ >=  v BASE @ DATA-SIZE + <  and if
+   v BASE @ >=  v BASE @ SPACE-SIZE @ + <  and if
       s" the build's space +" SAY  v BASE @ - SAY-INT  s" , in no file's data" SAY exit
    then
    v SAY-INT  s" , outside hb's data and the build's space" SAY ;
@@ -2906,10 +2925,11 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    0 h ADDRESS-CELLS:MODE-FIELD + SPACE-AT ! ;
 
 : MAP ( -- )
-   HINT DATA-SIZE MEM-PROT-RW MEM-MAP-PRIVATE-ANON NORESERVE or
+   LAYOUT-SIZE {: size:n :}
+   HINT size MEM-PROT-RW MEM-MAP-PRIVATE-ANON NORESERVE or
    MEM-ANON-FD MEM-OFF-ZERO mmap {: at:n :}
    at 0 < if E-MEM-MAP throw then
-   at BASE !
+   at BASE !  size SPACE-SIZE !
    at HINT < if UNMAP E-MEM-MAP throw then
    construct step mapped PROGRESS !
    LAY-ADDRESS-HEADER ;
@@ -2946,10 +2966,10 @@ CAST: >XT-CELL ( ptr n -- ptr [ -- ] )
    wordlist wordlist negate wordlist {: global:n ns:n types:n :}
    ndict@ FIRST-REC !
    SAVE
-   BASE @ DATA-START + {: start:n :}
+   BASE @ LAYOUT-START + {: start:n :}
    start DP-CELL HOST!
    start BOOT:DP-FLOOR-CELL HOST!
-   BASE @ DATA-SIZE + PROF-CNT-BYTES - BOOT:DP-CEILING-CELL HOST!
+   BASE @ LAYOUT-CEILING + BOOT:DP-CEILING-CELL HOST!
    0 DPHW-CELL HOST!
    0 LASTC-CELL HOST!
    start DATA-N - DATA-FLOOR-CELL HOST!
@@ -3486,12 +3506,18 @@ public
 
 \ Run the body in a build's space with no package of hb's open, close on every
 \ exit, reopen the caller's package, rethrow; E-COMP-STATE while a build is open.
+\ The mode is "engine", "kernel" for a kernel build, or a stripped program's.
 : WITH ( ptr u8 n [ -- ] -- )
    {: mode:ptr modeu:n body :}
    IDLE? 0= if E-COMP-STATE throw then
    mode modeu s" engine" STR= ENGINE? !
+   mode modeu s" kernel" STR= KERNEL? !
    body BODY !
    [: ['] RUN ['] CLOSE finally ;] OUTER:WITHOUT-PACKAGE ;
+
+\ The kernel object at the path, written by a kernel build: the engine and
+\ program builds that follow lay their space as its kernel reads it and link it.
+: KERNEL ( ptr u8 n -- ) ARM64:READ ;
 
 \ The files the last build compiled and linked, from its open until the next open.
 : COMPILED ( -- n ) COMPILED-N @ ;

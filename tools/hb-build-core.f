@@ -1,6 +1,8 @@
 \ hb-build-core.f - builds this tree's arm64 hb, hb with a program's files
 \ (--repl), or a stripped program, as a cross-build in the running hb
-\ (LINKER:WITH) and writes it with its map beside it. Each loads hb's startup
+\ (LINKER:WITH) and writes it with its map beside it. A kernel build first
+\ compiles the tree's kernel writer and writes the kernel object the build
+\ then links (KERNEL-BUILD). Each loads hb's startup
 \ files in hb's own order (src/habu/habu2.f EMIT-HOST-LOAD-PREFIX); hb then loads
 \ the runtime's files, --repl the program's source, and both their registry and
 \ installs; a stripped program loads its source and its entry.
@@ -36,6 +38,8 @@ create END-NAME 70 allot                \ end-, 64 hex digits, .f
 create END-SHA SHA256-CTX-BYTES allot
 create END-DIGEST 32 allot
 create APP-END-PATH PATH-CAP allot  variable APP-END-U
+create KERNEL-PATH PATH-CAP allot  variable KERNEL-U
+TYPED-VARIABLE KERNEL-ENGINE? bool     \ the kernel build writes an engine's kernel
 DYNAMIC-BUFFER TEXT u8                  \ the end file's text until it is written
 variable TEXT-U
 
@@ -222,7 +226,36 @@ variable TEXT-U
    APP-END$ INCLUDE-FILE
    OUT$ LINKER:WRITE ;
 
+\ The tree's KERNEL-OBJECT:WRITE, which the kernel build compiled.
+CAST: >WRITER ( n -- [ ptr u8 n ptr u8 bool -- n ] )
+
+: WRITER ( -- [ ptr u8 n ptr u8 bool -- n ] )
+   s" KERNEL-OBJECT" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
+   pkg XREF-FOUND? 0= if s" hb-build: the tree has no package KERNEL-OBJECT" 1 die then
+   s" WRITE" pkg XREF-PKG-PUBLIC CHECKER-RESOLVE:WL-PROBE {: rec:ptr :}
+   rec XREF-FOUND? 0= if s" hb-build: KERNEL-OBJECT has no public WRITE" 1 die then
+   rec XREF-START >WRITER ;
+
+: KERNEL-BODY ( -- )
+   STARTUP
+   s" src/arch/arm64/kernel-object.f" REQUIRE-FILE
+   DIR DIR-U @ KERNEL-PATH KERNEL-ENGINE? @ WRITER execute KERNEL-U ! ;
+
 public
+
+\ Writes this tree's kernel object, an engine's or a stripped program's, under
+\ <out>/hb-build/ and reads it for the builds that follow. A build's
+\ registry starts empty, so the writer's files load from this tree; a kernel
+\ build shares a program build's objects.
+: KERNEL-BUILD ( bool -- )
+   KERNEL-ENGINE? !
+   PATHS
+   s" kernel" ['] KERNEL-BODY LINKER:WITH
+   KERNEL-PATH KERNEL-U @ LINKER:KERNEL ;
+
+\ The kernel object the last KERNEL-BUILD wrote, for a child process's
+\ LINKER:KERNEL.
+: KERNEL$ ( -- ptr u8 n ) KERNEL-PATH KERNEL-U @ ;
 
 \ The file the last build was loading, for the message of a build that threw.
 : ROW$ ( -- ptr u8 n ) ROW-PATH @ ROW-LEN @ ;
@@ -231,7 +264,7 @@ public
 : ENGINE ( ptr u8 n -- )
    {: out:ptr outu:n :}
    out OUT-PATH !  outu OUT-LEN !
-   PATHS
+   true KERNEL-BUILD
    s" engine" ['] ENGINE-BODY LINKER:WITH ;
 
 \ Build hb with the source's files, the source's MAIN its entry, and write it to
@@ -239,14 +272,14 @@ public
 : REPL ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
-   PATHS
+   true KERNEL-BUILD
    s" engine" ['] REPL-BODY LINKER:WITH ;
 
 \ Build the source as a stripped program and write it to the second path.
 : APP ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n out:ptr outu:n :}
    src SRC-PATH !  srcu SRC-LEN !  out OUT-PATH !  outu OUT-LEN !
-   PATHS  APP-END-WRITE
+   false KERNEL-BUILD  APP-END-WRITE
    s" app" ['] APP-BODY LINKER:WITH ;
 
 ;package

@@ -4,7 +4,44 @@
 \ the build stored. ENGINE-START, first maps the code region, copies the record
 \ image into its dictionary band and slides the record list, then builds the
 \ name index and enters the engine's main. Its caller binds the tail's labels.
-require src/arch/arm64/link-kernel.f
+require src/lib/le.f
+require src/lib/string.f
+require src/arch/arm64/asm.f
+require src/arch/arm64/icode.f
+require src/arch/arm64/mnem.f
+require src/habu/layout.f
+require src/habu/xref.f
+
+HB-TARGET-LINUX? HB-TARGET-MACOS? or 0= [if] s" boot: unknown target" 76 die [then]
+HB-TARGET-LINUX? [if] require src/os/linux/sys.f [then]
+HB-TARGET-MACOS? [if] require src/os/macos/sys.f [then]
+
+require src/os/script-argv.f
+require src/habu/rt.f
+require src/habu/crash.f
+
+HB-TARGET-LINUX? [if]
+   require src/os/linux/elf.f
+   require src/os/linux/sign.f
+   require src/os/linux/proc-watch.f
+   require src/os/linux/proc-control.f
+[then]
+HB-TARGET-MACOS? [if]
+   require src/os/macos/macho.f
+   require src/os/macos/sign2.f
+   require src/os/macos/proc-watch.f
+   require src/os/macos/proc-control.f
+[then]
+
+require src/habu/regalloc.f
+require src/habu/habu1.f
+require src/habu/jit.f
+require src/habu/prof.f
+require src/habu/fdio.f
+require src/habu/aot-decl.f
+require src/habu/aot-ident.f
+require src/habu/aot-owned.f
+require src/habu/habu2.f
 
 package A64BOOT
 using A64ASM

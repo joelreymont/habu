@@ -1454,6 +1454,25 @@ learned live in the docs for their subject.
   the writer's files get real packages, their internals private, so hb
   carries the linker without adding a global name; no test renames around
   them.
+- 2026-11-09, the kernel a build writes: shown that the first hb built from
+  master's body-text change by the linker paired the tree's Habu code with the
+  kernel and start-up compiled into the hb running the build, and crashed on
+  its first colon definition, Joel wrote "always fix the cause and not the
+  symptoms! rca and troubelshoot" and, of the build writing the new hb's
+  kernel and start-up from the tree being built, as gcc and Go build their
+  runtime from the source being compiled, "this is the way". A build writes
+  its program's kernel and start-up from the tree it builds, never from the
+  builder's built-in copy, so a kernel change lands in one build. Shown the
+  design, Joel chose "Approve (Recommended)": "Kernel, start-up, layout from
+  the tree in one build; writer leaves hb." Each engine or app build first
+  runs a kernel build, a build space that compiles the tree's kernel writer
+  and runs it to write a kernel object under the out root (the start-up and
+  kernel code, the labels and pending fixups the linker needs, where DATA
+  starts and its size, the header cells' offsets); the build then opens with
+  that DATA start and links the object in place of a kernel it emits. hb no
+  longer carries the writer. Code layout, records, wordlist numbering and the
+  address list stay the builder's compiler's, so a change to them, or a body
+  calling a primitive its own change adds, still takes two builds.
 - 2026-10-29, recovery: asked "Which recovery route for arm64?", Joel chose
   "Cross-build from a running hb (Recommended)": "Recovery starts from a
   released hb, as Intel does today; the Gforth seed retires with the JIT."

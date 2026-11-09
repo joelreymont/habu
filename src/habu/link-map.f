@@ -69,17 +69,17 @@ variable MAP-REC                     \ the next map row's rec
 variable MAP-AT                      \ the first code byte no row written so far spans
 
 \ Kernel primitive k is row k, build record r row P + (r - FIRST-REC).
-: MAP-N ( -- n ) ENGINE-PRIMS:COUNT  ndict@ +  FIRST-REC @ - ;
+: MAP-N ( -- n ) ARM64:ROW-N  ndict@ +  FIRST-REC @ - ;
 
 
 \ Kernel row k's code, -1 0 when CUT removed it. CUT unbinds its last label when
 \ it removes the code after the body; MAP-ENDS then ends it.
 : KERNEL-SPAN ( n -- n n )
    {: k:n :}
-   k ENGINE-PRIMS:FIRST-LABEL {: first:label :}
+   k ARM64:ROW-FIRST {: first:label :}
    first A64ICODE:LBL-BOUND? 0= if -1 0 exit then
    first ARM64:OFFSET {: at:n :}
-   k ENGINE-PRIMS:LAST-LABEL {: last:label :}
+   k ARM64:ROW-LAST {: last:label :}
    last A64ICODE:LBL-BOUND? 0= if at -1 exit then
    at  last ARM64:OFFSET at - ;
 
@@ -116,10 +116,10 @@ variable MAP-AT                      \ the first code byte no row written so far
 
 : MAP-FILL ( -- )
    MAP-N MAP-START-RESERVE  MAP-N MAP-BYTES-RESERVE  MAP-N MAP-FILE-RESERVE
-   ENGINE-PRIMS:COUNT 0 ?do i KERNEL-SPAN i MAP-BYTES ! i MAP-START !  -1 i MAP-FILE ! loop
+   ARM64:ROW-N 0 ?do i KERNEL-SPAN i MAP-BYTES ! i MAP-START !  -1 i MAP-FILE ! loop
    0 MAP-WALK !
    ndict@ FIRST-REC @ ?do
-      i FIRST-REC @ - ENGINE-PRIMS:COUNT + {: k:n :}
+      i FIRST-REC @ - ARM64:ROW-N + {: k:n :}
       i XREF-REC XREF-WORDLIST XREF:PACKAGE-WL? if -1 0 else i RECORD-SPAN then
       k MAP-BYTES !  k MAP-START !
       i REC-FILE k MAP-FILE !
@@ -230,13 +230,13 @@ variable MAP-AT                      \ the first code byte no row written so far
 
 : KERNEL-ROW+ ( n -- )
    {: k:n :}
-   REC+ NAMED  k MAP-START @  k MAP-LEN  k ENGINE-PRIMS:HELPER-WID MAP-WID  MAP-HEAD
-   k ENGINE-PRIMS:NAME$ MAP-NAME+  k MAP-KIND$ MAP+  s" baked -" MAP+  MAP-NL ;
+   REC+ NAMED  k MAP-START @  k MAP-LEN  k ARM64:ROW-WID MAP-WID  MAP-HEAD
+   k ARM64:ROW-NAME$ MAP-NAME+  k MAP-KIND$ MAP+  s" baked -" MAP+  MAP-NL ;
 
 \ Row k, a build record with code.
 : RECORD-ROW+ ( n -- )
    {: k:n :}
-   k ENGINE-PRIMS:COUNT - FIRST-REC @ + {: r:n :}
+   k ARM64:ROW-N - FIRST-REC @ + {: r:n :}
    r XREF-REC {: rec:ptr :}
    REC+ NAMED  k MAP-START @  k MAP-LEN  rec XREF-WORDLIST r WID-MAP MAP-WID  MAP-HEAD
    rec XREF-NAME$ MAP-NAME+  k MAP-KIND$ MAP+  ORIGIN$ MAP+
@@ -245,13 +245,13 @@ variable MAP-AT                      \ the first code byte no row written so far
 \ Row k, a package: its public and private wid in the start and len columns.
 : PACKAGE-ROW+ ( n -- )
    {: k:n :}
-   k ENGINE-PRIMS:COUNT - FIRST-REC @ + {: r:n :}
+   k ARM64:ROW-N - FIRST-REC @ + {: r:n :}
    r XREF-REC {: rec:ptr :}
    REC+ NAMED  rec XREF-PKG-PUBLIC r WID-MAP  rec XREF-PKG-PRIVATE r WID-MAP  -1 MAP-HEAD
    rec XREF-NAME$ MAP-NAME+  s"  namespace " MAP+  ORIGIN$ MAP+
    k MAP-FILE @ FILE-PATH$ MAP-ESC+  MAP-NL ;
 
-: CODE-ROW+ ( n -- ) dup ENGINE-PRIMS:COUNT < if KERNEL-ROW+ else RECORD-ROW+ then ;
+: CODE-ROW+ ( n -- ) dup ARM64:ROW-N < if KERNEL-ROW+ else RECORD-ROW+ then ;
 
 
 \ The code bytes [at, end) the link wrote for no record, if any.
@@ -293,7 +293,7 @@ variable MAP-AT                      \ the first code byte no row written so far
 : PACKAGE-ROWS ( -- )
    ndict@ FIRST-REC @ ?do
       i XREF-REC XREF-WORDLIST XREF:PACKAGE-WL? if
-         i FIRST-REC @ - ENGINE-PRIMS:COUNT + PACKAGE-ROW+
+         i FIRST-REC @ - ARM64:ROW-N + PACKAGE-ROW+
       then
    loop ;
 

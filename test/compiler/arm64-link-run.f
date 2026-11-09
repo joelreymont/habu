@@ -1,4 +1,5 @@
-\ arm64-link-run.f - LINKER:WRITE's stripped programs, run. One build stores
+\ arm64-link-run.f - LINKER:WRITE's stripped programs, run, their kernel the
+\ tree's kernel object (HB-BUILD-CORE:KERNEL-BUILD). One build stores
 \ each of four entries with xt! into APP-ENTRY:XT-CELL and writes a program
 \ for it: LR-HI prints `Hi` and exits 0; LR-THROW prints nothing and exits 3,
 \ its uncaught throw code; LR-XT stores a quotation with xt! at run time and
@@ -21,6 +22,7 @@ require src/habu/layout.f
 require src/habu/xref.f
 require src/habu/linker.f
 require src/habu/link-data.f
+require tools/hb-build-core.f
 
 package ARM64-LINK-RUN
 
@@ -106,6 +108,7 @@ public
    [: s" x" LINKER:WRITE ;] E-COMP-STATE TTHROWSQ
    s" habu-link-run" FS:MKTEMP-DIR {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
+   false HB-BUILD-CORE:KERNEL-BUILD
    s" app" [: BODY ;] LINKER:WITH
    [: RUN-HI ;] CMD:WITH-COMMAND
    [: RUN-THROW ;] CMD:WITH-COMMAND

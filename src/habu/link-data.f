@@ -18,26 +18,28 @@ require src/habu/wl.f
 require src/habu/address-cells.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link-kernel.f
-require src/habu/regalloc.f
-require src/arch/arm64/boot.f
 require src/habu/fdio.f
 require src/habu/sign-id.f
+HB-TARGET-LINUX? [if]
+   require src/os/linux/elf.f
+   require src/os/linux/sign.f
+[then]
+HB-TARGET-MACOS? [if]
+   require src/os/macos/macho.f
+   require src/os/macos/sign2.f
+[then]
 require src/habu/driver-io.f
-require src/habu/crash.f
-require src/habu/habu2.f
 require src/habu/linker.f
 require src/habu/link-band.f
 require src/habu/link-map.f
-using CRASH
 using DRIVER
-using ENGINE-EMIT
-using REGALLOC
 
 package LINKER
 private
 
-\ The tail's labels, which A64BOOT:START, reads: the DATA image's start and
-\ end, the DATA list's start and end.
+\ The kernel object's labels (src/arch/arm64/kernel-object.f), which ADOPT-LABELS
+\ sets. The tail's, which the start-up reads: the DATA image's start and end,
+\ the DATA list's start and end.
 variable LIMAGE
 variable LIMAGE-END
 variable LLIST
@@ -47,6 +49,15 @@ variable LRECS
 variable LRECS-END
 variable LRLIST
 variable LRLIST-END
+\ The kernel's uncaught-throw reporter, signal handler, primitive count and
+\ dictionary table; an engine's throw recoveries.
+variable LUNCAUGHT
+variable LSIGH
+variable LNCOUNT
+variable LDICT
+variable LEVALREC
+variable LRREC
+variable LFLOORREC
 \ The kernel's code end, in bytes from the text's start: the product's words follow.
 variable KERNEL-END
 
@@ -76,7 +87,7 @@ DYNAMIC-BUFFER PRIM-FACTS-AT n
 : DATA-ADDRESS ( n -- n )
    {: v:n :}
    v BASE @ - {: off:n :}
-   off 0 >=  off DATA-SIZE < and if DATA-VA VA>N off + exit then
+   off 0 >=  off SPACE-SIZE @ < and if DATA-VA VA>N off + exit then
    s" link: a DATA pointer outside the build's space: " SAY v SAY-INT SAY-CR
    s" link: a DATA pointer outside the build's space" 74 die ;
 
@@ -142,7 +153,7 @@ variable STR-N
 : UNIT-OF ( n -- n )
    {: v:n :}
    v BASE @ - {: off:n :}
-   off 0<  off DATA-SIZE >= or if -1 exit then
+   off 0<  off SPACE-SIZE @ >= or if -1 exit then
    v OPEN-DP @ < if HEADER-UNIT exit then
    v DP-ROW {: row:n hit:bool :}
    hit if row ROW-UNIT @ exit then
@@ -451,22 +462,22 @@ variable STR-N
    v off COPY-AT LE:U64! ;
 
 
-\ Header cells valued as hb's boot writes them (habu2.f EM-DATA-INIT,
-\ EM-STARTUP-RUNTIME-STATE); CODE-END-CELL ends the kernel, before the product's words.
+\ Header cells valued as the product's boot leaves them (habu2.f EM-DATA-INIT,
+\ EM-STARTUP-RUNTIME-STATE), at the kernel object's offsets, and the cells it
+\ presets; CODE-END-CELL ends the kernel, before the product's words.
 : HEADER-CELLS ( -- )
    DATA-VA VA>N {: va:n :}
-   va DATA-IMAGE-LEN +  DP-CELL HEADER!
-   va DATA-START +  BOOT:DP-FLOOR-CELL HEADER!
-   va DATA-SIZE + PROF-CNT-BYTES -  BOOT:DP-CEILING-CELL HEADER!
-   DATA-START BOOT:HEAP-START-CELL HEADER!
-   0 BOOT:GLOBAL-WL-CELL HEADER!
-   0 BOOT:IMAGE-BASE-CELL HEADER!
-   WL:NAMESPACE BOOT:NAMESPACE-WL-CELL HEADER!
-   va SIGNAL-ABI:FD-CELL +  SIGNAL-ABI:FD-PTR-CELL HEADER!
-   TEXT-VA RBASE-CELL HEADER!
-   TEXT-VA LUNCAUGHT LABEL-OFFSET +  UNCGH-CELL HEADER!
-   TEXT-VA LSIGH LABEL-OFFSET +  SIGNAL-ABI:STUB-CELL HEADER!
-   TEXT-VA KERNEL-END @ +  CODE-END-CELL HEADER!
+   s" DATA-START" ARM64:SYM {: start:n :}
+   va DATA-IMAGE-LEN +  s" DP-CELL" ARM64:SYM HEADER!
+   va start +  s" DP-FLOOR-CELL" ARM64:SYM HEADER!
+   va s" DP-CEILING-OFF" ARM64:SYM +  s" DP-CEILING-CELL" ARM64:SYM HEADER!
+   start s" HEAP-START-CELL" ARM64:SYM HEADER!
+   ARM64:PRESET-N 0 ?do i ARM64:PRESET@ HEADER! loop
+   va s" FD-CELL" ARM64:SYM +  s" FD-PTR-CELL" ARM64:SYM HEADER!
+   TEXT-VA s" RBASE-CELL" ARM64:SYM HEADER!
+   TEXT-VA LUNCAUGHT LABEL-OFFSET +  s" UNCGH-CELL" ARM64:SYM HEADER!
+   TEXT-VA LSIGH LABEL-OFFSET +  s" STUB-CELL" ARM64:SYM HEADER!
+   TEXT-VA KERNEL-END @ +  s" CODE-END-CELL" ARM64:SYM HEADER!
    \ The build's MARK left its own index mapping's address here; the product's
    \ first MARK builds one from 0.
    0 ADDRESS-CELLS:INDEX-CELL COPY-AT LE:U64! ;
@@ -477,20 +488,20 @@ variable STR-N
 \ inside an evaluate, at a live tty REPL and after a data-stack underdepth. A
 \ stripped program's cut keeps none of the three.
 : RECOVERY-CELLS ( -- )
-   TEXT-VA LEVALREC LABEL-OFFSET +  EVALREC-CELL HEADER!
-   TEXT-VA LRREC LABEL-OFFSET +  RRECP-CELL HEADER!
-   TEXT-VA LFLOORREC LABEL-OFFSET +  FLOORREC-CELL HEADER! ;
+   TEXT-VA LEVALREC LABEL-OFFSET +  s" EVALREC-CELL" ARM64:SYM HEADER!
+   TEXT-VA LRREC LABEL-OFFSET +  s" RRECP-CELL" ARM64:SYM HEADER!
+   TEXT-VA LFLOORREC LABEL-OFFSET +  s" FLOORREC-CELL" ARM64:SYM HEADER! ;
 
 \ The header cells HEADER-CELLS and RECOVERY-CELLS give a code address.
 : LIST-HEADER ( -- )
-   RBASE-CELL A64ICODE:DCQ,
-   UNCGH-CELL A64ICODE:DCQ,
-   SIGNAL-ABI:STUB-CELL A64ICODE:DCQ,
-   CODE-END-CELL A64ICODE:DCQ,
+   s" RBASE-CELL" ARM64:SYM A64ICODE:DCQ,
+   s" UNCGH-CELL" ARM64:SYM A64ICODE:DCQ,
+   s" STUB-CELL" ARM64:SYM A64ICODE:DCQ,
+   s" CODE-END-CELL" ARM64:SYM A64ICODE:DCQ,
    ENGINE? @ if
-      EVALREC-CELL A64ICODE:DCQ,
-      RRECP-CELL A64ICODE:DCQ,
-      FLOORREC-CELL A64ICODE:DCQ,
+      s" EVALREC-CELL" ARM64:SYM A64ICODE:DCQ,
+      s" RRECP-CELL" ARM64:SYM A64ICODE:DCQ,
+      s" FLOORREC-CELL" ARM64:SYM A64ICODE:DCQ,
    then ;
 
 
@@ -548,6 +559,9 @@ variable STR-N
    v A64ICODE:DCQ,  off RLIST+ ;
 
 
+\ Primitive k's body length, as PRIM-REC, writes it.
+: PRIM-LEN ( n -- n ) dup 1 PRIM@ swap 0 PRIM@ - 4 - ;
+
 \ As habu2.f EM-SEED-DICT seeds it: [8] the body's length, a package row's
 \ [0] and [8] its wordlist ids; [32] the facts text PRIM-TEXTS laid.
 : PRIM-REC, ( n -- )
@@ -559,7 +573,7 @@ variable STR-N
       first A64ICODE:DCQ,  k 1 PRIM@ A64ICODE:DCQ,
    else
       TEXT-VA first + at CODE-CELL,
-      k 1 PRIM@ first - 4 - A64ICODE:DCQ,
+      k PRIM-LEN A64ICODE:DCQ,
    then
    k 2 PRIM@ {: flags:n :}
    flags A64ICODE:DCQ,
@@ -570,6 +584,15 @@ variable STR-N
    then
    k PRIM-FACTS-AT @ A64ICODE:DCQ,
    wid A64ICODE:DCQ, ;
+
+
+\ Build record rec's length: the product kernel's for a record entering a
+\ kernel primitive, else its own.
+: BUILD-LEN ( ptr n -- n )
+   {: rec:ptr :}
+   rec XREF-START ARM64:KERNEL-ROW {: k:n :}
+   k 0 >= if k PRIM-LEN exit then
+   rec XREF-RAW-LEN ;
 
 
 \ Build record r's entry at the product's link address; 0 stays 0.
@@ -597,7 +620,7 @@ variable STR-N
    else
       r ENTRY-ADDRESS {: entry:n :}
       entry 0<> if entry at CODE-CELL, else 0 A64ICODE:DCQ, then
-      rec XREF-RAW-LEN A64ICODE:DCQ,
+      rec BUILD-LEN A64ICODE:DCQ,
    then
    rec XREF-FLAGS A64ICODE:DCQ,
    rec XREF-EXT? if
@@ -642,23 +665,12 @@ variable STR-N
 
 
 \ An engine's header cells beside HEADER-CELLS': the record count the seal
-\ covers, the wordlist counter, process state a build's own cells name in hb
-\ (the index, the current package and record, the policy's watermark), and
-\ the register pools all free, as a definition's start and abort leave them
-\ (habu2.f EM-ABORT-COMPILE-STATE).
+\ covers, the wordlist counter and the types wordlist, as the product numbers them.
 : ENGINE-CELLS ( -- )
-   PRODUCT-NDICT SEAL-NDICT-CELL HEADER!
-   PRODUCT-WIDN WIDN-CELL HEADER!
-   FIRST-DYNAMIC-WID BOOT:TYPES-WL FIRST-WID - +  BOOT:TYPES-WL-CELL HEADER!   \ as WID-MAP numbers a minted id
-   0 CUR-CELL HEADER!
-   0 HIDXP-CELL HEADER!
-   0 HIDX:CLAIMS HEADER!
-   0 LASTC-CELL HEADER!
-   0 PKG-REC-CELL HEADER!
-   0 ENCLOSING:REC HEADER!
-   0 POLICY-NDICT-CELL HEADER!
-   VRALL REGALLOC-ABI:VRFREE-CELL HEADER!
-   FRALL REGALLOC-ABI:FRFREE-CELL HEADER! ;
+   PRODUCT-NDICT s" SEAL-NDICT-CELL" ARM64:SYM HEADER!
+   PRODUCT-WIDN s" WIDN-CELL" ARM64:SYM HEADER!
+   \ as WID-MAP numbers a minted id
+   FIRST-DYNAMIC-WID BOOT:TYPES-WL FIRST-WID - +  s" TYPES-WL-CELL" ARM64:SYM HEADER! ;
 
 
 : SET? ( n -- bool ) COPY-CELLS @ 0<> ;
@@ -705,16 +717,32 @@ variable STR-N
    LLIST-END A64ICODE:LABEL@ A64ICODE:LBL, ;
 
 
+\ The kernel object's start-up and kernel, adopted, and the labels the link reads.
+: ADOPT-LABELS ( -- )
+   ARM64:ADOPT
+   s" IMAGE" ARM64:SYM-LABEL LIMAGE A64ICODE:LABEL!
+   s" IMAGE-END" ARM64:SYM-LABEL LIMAGE-END A64ICODE:LABEL!
+   s" LIST" ARM64:SYM-LABEL LLIST A64ICODE:LABEL!
+   s" LIST-END" ARM64:SYM-LABEL LLIST-END A64ICODE:LABEL!
+   s" UNCAUGHT" ARM64:SYM-LABEL LUNCAUGHT A64ICODE:LABEL!
+   s" SIGH" ARM64:SYM-LABEL LSIGH A64ICODE:LABEL!
+   s" NCOUNT" ARM64:SYM-LABEL LNCOUNT A64ICODE:LABEL!
+   s" DICT" ARM64:SYM-LABEL LDICT A64ICODE:LABEL!
+   ENGINE? @ 0= if exit then
+   s" RECS" ARM64:SYM-LABEL LRECS A64ICODE:LABEL!
+   s" RECS-END" ARM64:SYM-LABEL LRECS-END A64ICODE:LABEL!
+   s" RLIST" ARM64:SYM-LABEL LRLIST A64ICODE:LABEL!
+   s" RLIST-END" ARM64:SYM-LABEL LRLIST-END A64ICODE:LABEL!
+   s" EVALREC" ARM64:SYM-LABEL LEVALREC A64ICODE:LABEL!
+   s" RREC" ARM64:SYM-LABEL LRREC A64ICODE:LABEL!
+   s" FLOORREC" ARM64:SYM-LABEL LFLOORREC A64ICODE:LABEL! ;
+
+
 \ A stripped program's code: the start-up, the kernel code the program reaches,
 \ the routines and the data it reaches. HEADER-CELLS reads LUNCAUGHT and LSIGH
 \ after the cut.
 : LINK-STRIPPED ( -- )
-   ARM64:OPEN
-   A64ICODE:LBL LIMAGE !  A64ICODE:LBL LIMAGE-END !
-   A64ICODE:LBL LLIST !  A64ICODE:LBL LLIST-END !
-   TEXT-VA  LIMAGE A64ICODE:LABEL@  LIMAGE-END A64ICODE:LABEL@
-   LLIST A64ICODE:LABEL@  LLIST-END A64ICODE:LABEL@  A64BOOT:START,
-   ARM64:KERNEL
+   ADOPT-LABELS
    ROUTINES
    REACH-DATA
    LUNCAUGHT A64ICODE:LABEL@ ARM64:ROOT-LABEL
@@ -749,12 +777,12 @@ variable STR-N
    then
    rec XREF-START LINK-ADDRESS {: to:n :}
    to -1 = if s" link: a C2-MEM scope entry is code the product does not place" 74 die then
-   k ENGINE-EMIT:SCOPE-ENTRY-SITE ARM64:OFFSET {: at:n :}
+   k ARM64:SCOPE-SITE ARM64:OFFSET {: at:n :}
    to  TEXT-VA at +  A64ICODE:CODE at +  ARM64:CODE-ADDRESS! ;
 
 
-\ After PLACE-ROUTINES, scope-kind?'s chains (ENGINE-EMIT:LINK-SCOPE-ENTRIES)
-\ name C2-MEM's entries; a product without C2-MEM leaves them 0.
+\ After PLACE-ROUTINES, scope-kind?'s chains (src/arch/arm64/kernel-object.f
+\ EMIT) name C2-MEM's entries; a product without C2-MEM leaves them 0.
 : SCOPE-ENTRIES ( -- )
    s" C2-MEM" BOOT:NAMESPACE-WL CHECKER-RESOLVE:WL-PROBE {: pkg:ptr :}
    pkg XREF-FOUND? 0= if exit then
@@ -765,16 +793,7 @@ variable STR-N
 \ An engine's code: the start-up, the whole kernel, every routine, DATA, then
 \ the records.
 : LINK-ENGINE ( -- )
-   ARM64:OPEN  ENGINE-EMIT:LINK-SCOPE-ENTRIES
-   A64ICODE:LBL LIMAGE !  A64ICODE:LBL LIMAGE-END !
-   A64ICODE:LBL LLIST !  A64ICODE:LBL LLIST-END !
-   A64ICODE:LBL LRECS !  A64ICODE:LBL LRECS-END !
-   A64ICODE:LBL LRLIST !  A64ICODE:LBL LRLIST-END !
-   TEXT-VA  LIMAGE A64ICODE:LABEL@  LIMAGE-END A64ICODE:LABEL@
-   LLIST A64ICODE:LABEL@  LLIST-END A64ICODE:LABEL@
-   LRECS A64ICODE:LABEL@  LRECS-END A64ICODE:LABEL@
-   LRLIST A64ICODE:LABEL@  LRLIST-END A64ICODE:LABEL@  A64BOOT:ENGINE-START,
-   ARM64:KERNEL
+   ADOPT-LABELS
    A64ICODE:ASM-CP @ 4 * KERNEL-END !
    PRIM-TEXTS
    ROUTINES REACH-ALL
@@ -783,6 +802,14 @@ variable STR-N
    DATA-IMAGE
    RECORD-IMAGE ;
 
+
+\ The kernel object READ read is the kind of kernel this build links.
+: OBJECT-KIND ( -- )
+   KERNEL? @ if s" link: a kernel build writes no program" 74 die then
+   ARM64:READ? 0= if s" link: no kernel object was read for this build" 74 die then
+   ENGINE? @ if 1 else 0 then  s" ENGINE" ARM64:SYM <> if
+      s" link: the kernel object is another kind of build's" 74 die
+   then ;
 
 public
 
@@ -795,8 +822,9 @@ public
 : WRITE ( ptr u8 n -- )
    {: path:ptr pathu:n :}
    false GOING
+   OBJECT-KIND
    0 CHECK:PLACE-FACTS
-   ENGINE? @ if ENGINE-MAIN:XT-CELL else APP-ENTRY:XT-CELL then {: entry:n :}
+   s" ENTRY-CELL" ARM64:SYM {: entry:n :}
    entry SPACE-AT @ 0= if
       s" link: the build stored no entry for the program" 74 die
    then
@@ -805,7 +833,4 @@ public
    path pathu DATA-IMAGE-AT WRITE-MAP ;
 
 ;package
-;using
-;using
-;using
 ;using

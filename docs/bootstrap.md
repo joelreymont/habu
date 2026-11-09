@@ -8,7 +8,10 @@ How `hb` builds `hb`, and how a missing or broken `bin/hb` is recovered.
 the running hb and writes it, with its `.map`, to `<out>`
 (tools/hb-build-core.f). The build is a cross-build whose target is the
 running machine: the product is data the build writes, never a slice of the
-running hb's memory (DECISIONS.md "how Habu builds Habu").
+running hb's memory (DECISIONS.md "how Habu builds Habu"). Its start-up,
+kernel and layout come from the tree too: a kernel build first compiles the
+tree's src/arch/arm64/kernel-object.f and writes a kernel object under the out
+root, which the build then links (DECISIONS.md "the kernel a build writes").
 
 Build from the tree's root: a build opens its boot files under the working
 directory and refuses one outside the engine root. Builds write their objects
@@ -72,13 +75,23 @@ seed and product.
 
 ## Staged hosts
 
-When the tree's build needs something the running hb lacks, build a stage
-first, from a revision that adds it but does not yet need it, with the running
+A change to the kernel, the start-up or the layout lands in one build unless it
+moves where DATA starts. One to what the running hb's compiler does with the
+tree's code (code layout, records, wordlist numbering, the address list), or a
+body that calls a primitive its own change adds, needs a stage: build it first,
+from a revision that adds the change but does not yet need it, with the running
 hb; then build the tree with that stage:
 
     jj workspace add --name stage -r <revision> "$TMP/stage"
     (cd "$TMP/stage" && TMPDIR="$TMP" hb --load tools/hb-build.f -- --engine -o "$TMP/stage-hb")
     TMPDIR="$TMP" "$TMP/stage-hb" --load tools/hb-build.f -- --engine -o "$OUT"
+
+The link refuses a kernel object the running hb cannot take
+(src/arch/arm64/link-kernel.f READ). A change to the object's format needs a
+stage that changes the reader before the tree changes the writer. A layout that
+moves where DATA starts cannot be built, staged or not: the hb building it
+sends a build's xt! and ptr-cell! stores into its header to the image only
+below its own DATA start (src/habu/habu2.f ROUTE-HEADER).
 
 ## What the engine carries
 

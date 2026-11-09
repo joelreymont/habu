@@ -2,8 +2,9 @@
 \ first script argument: `data`, a cell declared as a DATA pointer that holds an
 \ address outside the build's space, read by the entry, since a stripped link
 \ checks only the data its entry reaches; `header`, a build's xt! into a header cell
-\ the link writes; `eval`, an entry that calls `evaluate-closed`.
-\ test/compiler/arm64-link-data.f runs each and checks it.
+\ the link writes; `eval`, an entry that calls `evaluate-closed`. The second
+\ argument is the kernel object the link adopts. test/compiler/arm64-link-data.f
+\ runs each and checks it.
 
 require src/lib/error.f
 require src/lib/string.f
@@ -55,6 +56,7 @@ CAST: ENTRY-XT ( n -- [ -- ] )
 public
 
 : RUN ( -- )
+   1 SCRIPT-ARGV$ LINKER:KERNEL
    0 SCRIPT-ARGV$ {: at:ptr u:n :}
    at u s" data" STR= if s" app" [: DATA-BODY ;] LINKER:WITH exit then
    at u s" header" STR= if s" app" [: HEADER-BODY ;] LINKER:WITH exit then

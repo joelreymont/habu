@@ -28,9 +28,9 @@ public
 \    TADR, adds the text base to a LOFF, offset), so it has one aggregate budget,
 \    AOT-SECTION-CAP, which src/habu/aot-decl.f AOT-SECTION enforces.
 \ This file loads before layout.f and habu2.f, so the terms are spelled out here.
-\ CODE is a demand-paged anonymous mapping taken on first emit and nothing walks
-\ the span, so the window costs reserved address space only. A B/BL across the
-\ window must fit REL26-HI words (128 MiB).
+\ CODE is a demand-paged anonymous mapping taken on first use and returned by
+\ ASM-RELEASE; nothing walks the span, so the window costs reserved address
+\ space only. A B/BL across the window must fit REL26-HI words (128 MiB).
 \
 \   AOT-SECTION-CAP >= AOT-BUF:AOT-BLOB-CAP (= CODE-BAND:BYTES)
 \                      + 136 header + 272 section table + 40 scalars
@@ -94,7 +94,10 @@ variable NREF
 \ a cut word; ASM-CP's own cell holds the new end.
 DYNAMIC-BUFFER CUT-MAP n
 
-\ Stack only: BR-EMIT reads BKIND and BBASE after it.
+public
+
+\ Stack only: BR-EMIT reads BKIND and BBASE after it. Callers add records in
+\ ascending site order (REFS).
 : REF+ ( n label n -- )                          \ ( site label kind -- )
    NREF @ 1 + REF-SITES-RESERVE
    NREF @ 1 + REF-LABELS-RESERVE
@@ -103,8 +106,6 @@ DYNAMIC-BUFFER CUT-MAP n
    LABEL>N NREF @ REF-LABELS !
    NREF @ REF-SITES !
    NREF @ 1 + NREF ! ;
-
-public
 
 : ARESET ( -- )
    CODE drop
@@ -158,13 +159,29 @@ variable FX-NEW
    -1 FX-FREE !
    0 FX-NEW ! ;
 
-: ASM-INIT ( -- )
-   ARESET
+private
+
+: ICODE-UNMAP ( ptr a n -- )
+   munmap 0 <> if s" icode: unmap failed" ICODE-EXIT-RC die then ;
+
+: BUFFERS-RELEASE ( -- )
    LBLP-RELEASE FXH-RELEASE
    REF-SITES-RELEASE REF-LABELS-RELEASE REF-KINDS-RELEASE CUT-MAP-RELEASE
-   0 NLBL !
-   0 NFX !
-   FX-INIT ;
+   0 NREF !  0 NLBL !  0 NFX !  FX-INIT ;
+
+public
+
+: ASM-INIT ( -- ) ARESET BUFFERS-RELEASE ;
+
+\ Unmaps the window and the tables the assembler fills; the next emit maps again.
+: ASM-RELEASE ( -- )
+   CODE-A @ NULL-PTR <> if
+      CODE-A @ CODE-CAP-BYTES ICODE-UNMAP  NULL-PTR CODE-A !
+   then
+   ICODE-TAB-A @ NULL-PTR <> if
+      ICODE-TAB-A @ ICODE-TAB-BYTES ICODE-UNMAP  NULL-PTR ICODE-TAB-A !
+   then
+   0 ASM-CP !  BUFFERS-RELEASE ;
 
 : FX-FREE-BAD? ( -- bool )
    FX-NEW @ 0 <
@@ -201,11 +218,12 @@ variable FX-NEW
 : ?LBL-UNBOUND ( label -- )
    LBL-BOUND? if s" icode: label redefined" ICODE-EXIT-RC die then ;
 
-\ Records ascend by site: each is appended at ASM-CP, and CUT keeps their order
-\ below its new end.
+\ Records ascend by site: each is appended at ASM-CP or, by an adopting link, in
+\ the object's order, and CUT keeps their order below its new end.
 : REFS ( -- n ) NREF @ ;
 : REF-SITE ( n -- n ) REF-SITES @ ;
 : REF-LABEL ( n -- label ) REF-LABELS @ >LABEL ;
+: REF-KIND ( n -- n ) REF-KINDS @ ;
 
 : FX-TAKE ( -- n )
    FX?

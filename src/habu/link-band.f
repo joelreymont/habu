@@ -12,13 +12,9 @@ require src/compiler/native/shadow.f
 require src/arch/arm64/icode.f
 require src/arch/arm64/link.f
 require src/arch/arm64/link-kernel.f
-using EXECUTABLE
 
 package LINKER
 private
-
-\ The address __text is linked at, where offset 0 of A64ICODE's code runs.
-: TEXT-VA ( -- n ) VMBASE CODE-OFF + ;
 
 \ Emission e's byte offset in A64ICODE's code buffer, -1 when it is not placed.
 DYNAMIC-BUFFER OFFSETS n
@@ -69,16 +65,6 @@ variable UNSAFE-COUNT
    ENTRY-SLOT {: s:n :}
    s ENTRY-USED @ 0= if -1 exit then
    s ENTRY-RECS @ ;
-
-
-\ The linker's error lines go whole to the error output, as error.f's do.
-: SAY ( ptr u8 n -- ) ERROR-TEXT:TYPE ;
-
-: SAY-INT ( n -- )
-   dup 0< if s" -" SAY then
-   ERROR-TEXT:DIGITS$ SAY ;
-
-: SAY-CR ( -- ) s\" \n" SAY ;
 
 
 \ The name of the record entering emission e at its first byte.
@@ -429,7 +415,7 @@ variable UNSAFE-COUNT
    cell 0<> if DEFER-MAGIC A64ICODE:DCQ,  cell data execute A64ICODE:DCQ, then ;
 
 
-\ Each placed emission, after the kernel ARM64:KERNEL wrote, its data addresses
+\ Each placed emission, after the kernel ARM64:ADOPT laid, its data addresses
 \ through data.
 : PLACE-ROUTINES ( [ n -- n ] -- )
    {: data :}
@@ -437,4 +423,3 @@ variable UNSAFE-COUNT
    NSHADOW:EMISSIONS 0 ?do i PLACED @ 0<> if i data PLACE-ONE then loop ;
 
 ;package
-;using

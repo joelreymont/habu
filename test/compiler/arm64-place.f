@@ -1,6 +1,7 @@
-\ arm64-place.f - LINKER's arm64 link of a build's code. ARM64:KERNEL writes the
-\ kernel at the head of the code buffer and ARM64:KERNEL-ENTRY maps the running
-\ hb's kernel primitive entries to the same primitives' entries there.
+\ arm64-place.f - LINKER's arm64 link of a build's code. ARM64:ADOPT lays the
+\ tree's stripped kernel object (HB-BUILD-CORE:KERNEL-BUILD) at the head of the
+\ code buffer and ARM64:KERNEL-ENTRY maps the running hb's kernel primitive
+\ entries to the same primitives' entries there.
 \ ARM64:PLACE copies a fixture word's shadow emission: at the host routine's entry
 \ it matches the routine T0 placed there, code address chains aside; elsewhere
 \ its calls and chains reach what the shadow named. After REACH-ALL,
@@ -33,6 +34,7 @@ require src/arch/arm64/icode.f
 require src/compiler/native/dict.f
 require src/arch/arm64/link-kernel.f
 require src/habu/link-band.f
+require tools/hb-build-core.f
 
 package LINKER
 private
@@ -66,7 +68,7 @@ variable MAPPED
 variable COMPARED
 variable SAME
 variable PCREL
-variable KERNEL-END                  \ A64ICODE:ASM-LEN after ARM64:KERNEL
+variable KERNEL-END                  \ A64ICODE:ASM-LEN after ARM64:ADOPT
 variable PRODUCT-CALLS
 variable KERNEL-CALLS
 DYNAMIC-BUFFER FIRST-BAND u8         \ the first placement's band
@@ -601,8 +603,8 @@ public
 : RUN ( -- )
    T-RESET
    TIER-CK
-   ARM64:OPEN
-   ARM64:KERNEL
+   false HB-BUILD-CORE:KERNEL-BUILD
+   ARM64:ADOPT
    A64ICODE:ASM-LEN KERNEL-END !
    ENTRIES-CASE
    NAMED-CASE

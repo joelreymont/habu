@@ -5,9 +5,11 @@
 \ among it, runs three of its words (STATE., RUN-WORDS) and prints `shared -1`
 \ when main.f's literal lies at count.f's HI's text (SHARED.); the last line is
 \ `compiled ` and LINKER:COMPILED. Between shape.f and main.f the body defines
-\ FILE-OBJECTS-BODY-SUM and lays one cell, which no file's data holds. With the script argument `second` the build loads pad.f first; with
-\ `shifted` it declares a package and lays three cells before count.f. With
-\ `stop`, these builds run in the one out root. Ten fail: in
+\ FILE-OBJECTS-BODY-SUM and lays one cell, which no file's data holds. The first
+\ script argument is the kernel object every build links (test/file-objects.f
+\ passes HB-BUILD-CORE:KERNEL$). With a second argument `second` the build
+\ loads pad.f first; with `shifted` it declares a package and lays three cells
+\ before count.f. With `stop`, these builds run in the one out root. Ten fail: in
 \ STOP-FILE and STOP-BODY every later load and write is LINKER:E-FAILED,
 \ STOP-INSIDE's file moves DP back and its own load is LINKER:E-FAILED,
 \ STOP-ALIGN's file marks a cell its object cannot place, E-COMP-STATE,
@@ -88,14 +90,14 @@ PATH-CAP BUFFER: PROG-BUF
 : GAP ( -- ) s" test/fixtures/file-objects/gap.f" included ;
 : NEW-WORDLIST ( -- ) s" test/fixtures/file-objects/wordlist.f" included ;
 
-\ The one argument, second, shifted, stop or facts, or empty; any other ends the build, rc 1.
+\ The second argument, second, shifted, stop or facts, or none; any other ends the build, rc 1.
 : MODE$ ( -- ptr u8 n )
-   SCRIPT-ARGC 0 = if s" " exit then
-   SCRIPT-ARGC 1 = if
-      0 SCRIPT-ARGV$ s" second" STR= if s" second" exit then
-      0 SCRIPT-ARGV$ s" shifted" STR= if s" shifted" exit then
-      0 SCRIPT-ARGV$ s" stop" STR= if s" stop" exit then
-      0 SCRIPT-ARGV$ s" facts" STR= if s" facts" exit then
+   SCRIPT-ARGC 1 = if s" " exit then
+   SCRIPT-ARGC 2 = if
+      1 SCRIPT-ARGV$ s" second" STR= if s" second" exit then
+      1 SCRIPT-ARGV$ s" shifted" STR= if s" shifted" exit then
+      1 SCRIPT-ARGV$ s" stop" STR= if s" stop" exit then
+      1 SCRIPT-ARGV$ s" facts" STR= if s" facts" exit then
    then
    s" build: unknown argument" 1 die ;
 
@@ -705,6 +707,8 @@ variable SLOT-S                          \ and their count
 public
 
 : RUN ( -- )
+   SCRIPT-ARGC 0 = if s" build: the first argument is the kernel object" 1 die then
+   0 SCRIPT-ARGV$ LINKER:KERNEL
    STOP? if STOPS exit then
    FACTS? if FACTS exit then
    s" app" [: BODY ;] LINKER:WITH
