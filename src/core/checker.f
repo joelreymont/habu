@@ -32455,23 +32455,36 @@ CHECKER-REG:}SCRATCH
    0 CHECKER-REC-SYM !
    din dout rin rout SGHASR @ E-BUILD-EFFECT 1 + RES-TRUE ;
 
-\ A primitive row's tags (render.f REND-PE) state that row again over the effect
-\ just read, as PE-CLOSE-SYM does, so TRY-PRIMS and PRIM-TRUSTED-SYM? answer a
-\ caller as in the compile; so does a first row with more after it, since a
-\ symbol with rows calls through TRY-PRIMS (CALL-AUTHORITY). The caller's
-\ PE-LAST stays: a read is its guest.
-: READ-PE ( n n bool -- ) {: sym:n pe:n more:bool :}
-   pe 0=  more 0=  and  sym PREFIX-SYM? or IF EXIT THEN
-   PE-LAST @ {: last:n :}
-   sym  sym USIG-NEWEST 1 -  pe PE-ACTIVE or  PRIM-ADD
-   last PE-LAST !
+\ A primitive row of sym, the effect din dout rin rout with PE tags, stated as
+\ the table states one (PE-CLOSE-SYM) but with its record built under symbol 0,
+\ as a table row lies below the user store (PTABLE-END): no lookup of sym finds
+\ it, so a call tries every row (TRY-PRIMS) under any authority, as for hb's
+\ own primitives. Sym's cached first row goes.
+: READ-ROW ( n n n n bool n n -- )
+   {: din:n dout:n rin:n rout:n hasr:bool sym:n pe:n :}
+   0 CHECKER-REC-SYM !
+   sym  din dout rin rout hasr E-BUILD-EFFECT  pe PE-ACTIVE or  PRIM-ADD
    HIDX-VALID @ IF  HIDX-EPOCH @ 1- sym HT-PRM-E HIDX-CELL !  THEN ;
+
+\ The first row of sym's text: a primitive row (READ-ROW) when the text has
+\ primitive tags (render.f REND-PE) or rows after it, else the word's external
+\ declaration. A prefix symbol's rows are the build's prefix's. The caller's
+\ PE-LAST stays: a read is its guest.
+: READ-FIRST ( n n n n bool n n bool -- )
+   {: din:n dout:n rin:n rout:n hasr:bool sym:n pe:n more:bool :}
+   pe 0=  more 0=  and  sym PREFIX-SYM? or IF
+      sym CHECKER-REC-SYM !
+      din dout rin rout hasr RES-TRUE E-ADD-EFFECT EXIT
+   THEN
+   PE-LAST @ {: last:n :}
+   din dout rin rout hasr sym pe READ-ROW
+   last PE-LAST ! ;
 
 
 \ One more primitive row of sym from the text after `overload` (render.f
-\ REND-OVERLOAD): its effect and PE tags, stated as PE-CLOSE-SYM states a row.
-\ Answers the text of the row after it; false when the text is refused or
-\ carries a tag only a first row may.
+\ REND-OVERLOAD): its effect and PE tags (READ-ROW). Answers the text of the
+\ row after it; false when the text is refused or carries a tag only a first
+\ row may.
 : READ-OVERLOAD ( ptr u8 n n -- ptr u8 n bool )
    {: a:ptr u:n sym:n :}
    a u READ-ROWS {: din:n dout:n rin:n rout:n ok:bool :}
@@ -32479,8 +32492,7 @@ CHECKER-REG:}SCRATCH
    ok 0=  SIG-TAGS-ONLY @ or  SIG-CTL @ 0 <> or  SIG-PIMM @ 0 >= or  SIG-CREATES-U @ 0 <> or IF
       NULL-PTR 0 RES-FALSE EXIT
    THEN
-   sym CHECKER-REC-SYM !
-   sym  din dout rin rout hasr E-BUILD-EFFECT  pe PE-ACTIVE or  PRIM-ADD
+   din dout rin rout hasr sym pe READ-ROW
    ra ru RES-TRUE ;
 
 \ Sym's rows after its first, from text a u; false when one is refused.
@@ -32499,13 +32511,23 @@ CHECKER-REG:}SCRATCH
    sym CTL-FLAGS-SYM  CTL-BARRIER EFFECT-EXTERNAL or  and
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER invert and  or ;
 
-\ A text of tags alone states sym's control word only, and links record ix with
-\ no effect: LINKED? answers it read, RECORD-LINK-CURRENT? does not.
-: READ-TAGS ( n n n -- ) {: ix:n sym:n ctl:n :}
-   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
+\ Links record ix, sym's, with sym's newest effect and control entry. With no
+\ effect, as for a text of tags alone or of primitive rows, the link names
+\ none: LINKED? answers it read, RECORD-LINK-CURRENT? does not.
+: READ-LINK ( ptr n n n -- ) {: rec:ptr ix:n sym:n :}
+   sym USIG-NEWEST 0 <> IF
+      ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
+      ix RECORD-LINK-CURRENT? IF ix rec RECORD-LINK-FIXED! THEN
+      EXIT
+   THEN
    ix RECORD-LINK-OCC {: slot:n occurrence:n :}
    slot ix <> IF EXIT THEN
-   ix 0 sym NORET-NEWEST RES-FALSE occurrence RECORD-LINK-WRITE ;
+   ix 0 sym NORET-NEWEST sym DFER-FIND-SYM occurrence RECORD-LINK-WRITE ;
+
+\ A text of tags alone states sym's control word only.
+: READ-TAGS ( ptr n n n n -- ) {: rec:ptr ix:n sym:n ctl:n :}
+   sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK 0 NORET-ADD-CREATES
+   rec ix sym READ-LINK ;
 
 : READ-BODY ( ptr u8 n n -- )
    {: a:ptr u:n ix:n :}
@@ -32525,19 +32547,16 @@ CHECKER-REG:}SCRATCH
       ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> or IF
          a u name nameu READ-REFUSE EXIT
       THEN
-      ix sym ctl READ-TAGS EXIT
+      rec ix sym ctl READ-TAGS EXIT
    THEN
-   sym CHECKER-REC-SYM !
-   din dout rin rout hasr RES-TRUE E-ADD-EFFECT
-   sym pe ou 0 <> READ-PE
+   din dout rin rout hasr sym pe ou 0 <> READ-FIRST
    oa ou sym READ-OVERLOADS 0= IF a u name nameu READ-REFUSE EXIT THEN
    ca cu READ-MADE {: made:n good:bool :}
    good 0= IF a u name nameu READ-REFUSE EXIT THEN
    sym sym ctl READ-FLAGS ctl XFER-DMASK ctl XFER-RMASK made NORET-ADD-CREATES
    ctl XFER-FLAGS CHECKER-OWNER-ABI:BINDING-DEFER and 0 <> IF sym RES-TRUE DFER-ADD-SYM THEN
    pimm 0 >=  sym PIMM-IX 0 <  and IF sym pimm PIMM-ADD THEN
-   ix sym USIG-NEWEST sym NORET-NEWEST sym DFER-FIND-SYM RECORD-LINK-SET
-   ix RECORD-LINK-CURRENT? IF ix rec RECORD-LINK-FIXED! THEN ;
+   rec ix sym READ-LINK ;
 
 \ Whether record ix has a link row: its compile, or a read, taught the checker.
 : LINKED? ( n -- bool ) {: ix:n :}
