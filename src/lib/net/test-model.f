@@ -7,8 +7,10 @@
 \ 11 tokens (4 cached), output 6 (2 reasoning), total 17, so a test may assert
 \ them. OUTPUT! answers an output array the test gives whole, such as a tool
 \ call. INPUT-TOKENS! answers a POST /responses/input_tokens with the count it
-\ is given, as plain JSON, which MODEL:COUNT-INPUT reads. The host routes the
-\ request to its own handler and calls one of them there.
+\ is given, as plain JSON, which MODEL:COUNT-INPUT reads. COMPACTION! answers
+\ a POST /responses/compact with an output array the test gives whole and the
+\ same fixed usage, as plain JSON, which MODEL:COMPACT reads. The host routes
+\ the request to its own handler and calls one of them there.
 \ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a reply
 \ body and its writer, whose buffer a slot's first reply makes and the process
 \ keeps; a body stays in its row, as HTTP:BODY! borrows it, until the slot's
@@ -167,6 +169,20 @@ public
    SLOT WRITER ROW JSON:WRITE-OPEN-BUF
    S\" {\qobject\q:\qresponse.input_tokens\q,\qinput_tokens\q:" JSON:WRITE-RAW
    tokens JSON:WRITE-U s" }" JSON:WRITE-RAW
+   JSON:WRITE-CLOSE
+   answer s" Content-Type" s" application/json" HTTP:HEADER!
+   answer ROW$ HTTP:BODY! ;
+
+
+\ A compaction of the request's input, the reply OpenAI gives at
+\ /responses/compact: one JSON object, no event stream, whose output is
+\ exactly the JSON array and whose usage is the terminal replies' own.
+: COMPACTION! ( HTTP:response ptr u8 n -- )
+   {: answer:HTTP:response items:ptr items-u:n :}
+   READY
+   SLOT WRITER ROW JSON:WRITE-OPEN-BUF
+   S\" {\qid\q:\qcmp_1\q,\qobject\q:\qresponse.compaction\q,\qcreated_at\q:0,\qoutput\q:" JSON:WRITE-RAW
+   items items-u JSON:WRITE-RAW USAGE s" }" JSON:WRITE-RAW
    JSON:WRITE-CLOSE
    answer s" Content-Type" s" application/json" HTTP:HEADER!
    answer ROW$ HTTP:BODY! ;

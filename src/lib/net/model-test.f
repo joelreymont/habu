@@ -139,7 +139,8 @@ variable BASE-URL-U
 variable OLLAMA-URL-U
 variable CALLS
 PTR-VARIABLE BIG
-\ The last chat, count or embedding request body, or -1 after one past SENT-CAP.
+\ The last chat, count, compaction or embedding request body, or -1 after one
+\ past SENT-CAP.
 65536 constant SENT-CAP
 create SENT-BODY SENT-CAP allot
 variable SENT-U
@@ -445,9 +446,13 @@ $300000 constant BIG-U
    S\" {\qid\q:\qresp_1\q,\qobject\q:\qresponse\q,\qstatus\q:\qcompleted\q,\qoutput\q:[{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qmessage\q,\qid\q:\qmsg_1\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\q{\\\qanswer\\\q:true}\q,\qannotations\q:[]}]}]" JSON:WRITE-RAW ;
 
 
+\ A reply's usage member, its fixed counts, after a member before it.
+: FIXED-USAGE ( ptr JSON:writer -- ptr JSON:writer )
+   S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}" JSON:WRITE-RAW ;
+
+
 : USAGE-RESPONSE ( ptr JSON:writer -- ptr JSON:writer )
-   TRUE-HEAD
-   S\" ,\qusage\q:{\qinput_tokens\q:11,\qinput_tokens_details\q:{\qcached_tokens\q:4},\qoutput_tokens\q:6,\qoutput_tokens_details\q:{\qreasoning_tokens\q:2},\qtotal_tokens\q:17}}" JSON:WRITE-RAW ;
+   TRUE-HEAD FIXED-USAGE s" }" JSON:WRITE-RAW ;
 
 
 \ A response whose service_tier member is the JSON value text.
@@ -762,6 +767,82 @@ variable COUNTED-U    \ the byte length of the last count request's body
    response [: COUNTED ;] HTTP:JSON! ;
 
 
+variable COMPACTED-U    \ the byte length of the last compaction request's body
+create KEPT 64 allot    \ the last compaction request's first text
+variable KEPT-U
+: KEPT$ ( -- ptr u8 n ) KEPT KEPT-U @ ;
+
+
+\ A compaction reply's members through its output's opener.
+: WINDOW-OPEN ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qid\q:\qcmp_1\q,\qobject\q:\qresponse.compaction\q,\qcreated_at\q:0,\qoutput\q:[" JSON:WRITE-RAW ;
+
+
+\ A compaction reply's members through its output's first item, the kept user
+\ message of KEPT$, as a provider keeps the user messages it compacts.
+: WINDOW-HEAD ( ptr JSON:writer -- ptr JSON:writer )
+   WINDOW-OPEN
+   S\" {\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\q" JSON:WRITE-RAW
+   KEPT$ JSON:WRITE-RAW S\" \q}]}" JSON:WRITE-RAW ;
+
+
+\ A compaction item after an item, whose content names COMPACTED-U, so two
+\ inputs compact apart.
+: COMPACTION-ITEM ( ptr JSON:writer -- ptr JSON:writer )
+   S\" ,{\qtype\q:\qcompaction\q,\qid\q:\qcmp_item\q,\qencrypted_content\q:\qlen-" JSON:WRITE-RAW
+   COMPACTED-U @ JSON:WRITE-U S\" \q}" JSON:WRITE-RAW ;
+
+
+\ OpenAI's compaction reply: the kept message, then a compaction item.
+: WINDOW ( ptr JSON:writer -- ptr JSON:writer )
+   WINDOW-HEAD COMPACTION-ITEM s" ]" JSON:WRITE-RAW
+   FIXED-USAGE s" }" JSON:WRITE-RAW ;
+
+
+\ A compaction reply whose output holds no compaction item, naming flex as the
+\ tier that served it.
+: NO-WINDOW ( ptr JSON:writer -- ptr JSON:writer )
+   WINDOW-HEAD s" ]" JSON:WRITE-RAW
+   FIXED-USAGE S\" ,\qservice_tier\q:\qflex\q}" JSON:WRITE-RAW ;
+
+
+\ A compaction reply whose output is empty.
+: EMPTY-WINDOW ( ptr JSON:writer -- ptr JSON:writer )
+   WINDOW-OPEN s" ]" JSON:WRITE-RAW FIXED-USAGE s" }" JSON:WRITE-RAW ;
+
+
+\ A compaction reply whose output holds a number after the kept message.
+: NUMBER-WINDOW ( ptr JSON:writer -- ptr JSON:writer )
+   WINDOW-HEAD s" ,7]" JSON:WRITE-RAW FIXED-USAGE s" }" JSON:WRITE-RAW ;
+
+
+\ A compaction reply whose compaction item has a message after it.
+: LATE-WINDOW ( ptr JSON:writer -- ptr JSON:writer )
+   WINDOW-HEAD COMPACTION-ITEM
+   S\" ,{\qtype\q:\qmessage\q,\qrole\q:\qassistant\q,\qcontent\q:[{\qtype\q:\qoutput_text\q,\qtext\q:\qlate\q}]}]" JSON:WRITE-RAW
+   FIXED-USAGE s" }" JSON:WRITE-RAW ;
+
+
+\ Compacts a request's input by its first text: too-large past the model's
+\ context, bad-compact with no compaction item, empty-window, number-window and
+\ late-window into their writers, any other into WINDOW.
+: COMPACTS ( HTTP:request HTTP:response -- )
+   {: r:HTTP:request response:HTTP:response :}
+   1 CALLS atomic-add drop
+   r KEEP-BODY
+   r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
+   r FIRST-TEXT {: t:ptr t-u:n :}
+   t t-u s" too-large" STR= if response TOO-LARGE exit then
+   t-u 64 > if FAIL then
+   t t-u KEPT 64 SPAN:MAKE SPAN:COPY t-u KEPT-U !
+   r HTTP:BODY$ nip COMPACTED-U !
+   t t-u s" bad-compact" STR= if response [: NO-WINDOW ;] HTTP:JSON! exit then
+   t t-u s" empty-window" STR= if response [: EMPTY-WINDOW ;] HTTP:JSON! exit then
+   t t-u s" number-window" STR= if response [: NUMBER-WINDOW ;] HTTP:JSON! exit then
+   t t-u s" late-window" STR= if response [: LATE-WINDOW ;] HTTP:JSON! exit then
+   response [: WINDOW ;] HTTP:JSON! ;
+
+
 \ One vector whose first component is the input's byte length.
 : LENGTH-VECTOR ( ptr JSON:writer -- ptr JSON:writer )
    S\" {\qobject\q:\qlist\q,\qdata\q:[{\qindex\q:0,\qembedding\q:[" JSON:WRITE-RAW
@@ -952,8 +1033,8 @@ EXPORT WIDE-DIMS
 : OLLAMA-URL$ ( -- ptr u8 n ) OLLAMA-URL OLLAMA-URL-U @ ;
 \ Requests the peer received, refused or served.
 : CALLS@ ( -- n ) CALLS atomic@ ;
-\ The last chat, count or embedding request the peer received; one past
-\ SENT-CAP fails the test.
+\ The last chat, count, compaction or embedding request the peer received;
+\ one past SENT-CAP fails the test.
 : SENT$ ( -- ptr u8 n ) SENT-U @ dup 0< if FAIL then SENT-BODY swap ;
 \ Waits until the peer has sent the held response's in_progress event.
 : AWAIT-HOLD ( -- ) HELD TAKE ;
@@ -970,6 +1051,7 @@ EXPORT WIDE-DIMS
    HTTP:ROUTES-RESET
    s" POST" s" /responses" [: [: CHAT ;] ALONE ;] HTTP:ROUTE
    s" POST" s" /responses/input_tokens" [: [: INPUT-TOKENS ;] ALONE ;] HTTP:ROUTE
+   s" POST" s" /responses/compact" [: [: COMPACTS ;] ALONE ;] HTTP:ROUTE
    s" POST" s" /embeddings" [: [: EMBEDDINGS ;] ALONE ;] HTTP:ROUTE
    s" POST" s" /api/embed" [: [: OLLAMA ;] ALONE ;] HTTP:ROUTE
    $7F000001 0 4 1000 HTTP:START
@@ -2711,6 +2793,190 @@ variable COUNTED-U
    MODEL-PEER:CALLS@ before = ASSERT ;
 
 
+: COMPACT-CODE ( ptr MODEL:call -- n )
+   [: dup MODEL:COMPACT ;] catch {: code:n :} drop code ;
+
+
+\ The window the peer answers a compaction whose first text is t and whose
+\ body is n bytes, into SB.
+: WINDOW ( ptr u8 n n -- )
+   {: t:ptr t-u:n body-u:n :}
+   SB-RESET
+   S\" [{\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\q" SB-APPEND
+   t t-u SB-APPEND
+   S\" \q}]},{\qtype\q:\qcompaction\q,\qid\q:\qcmp_item\q,\qencrypted_content\q:\qlen-" SB-APPEND
+   body-u FMT:SB-U S\" \q}]" SB-APPEND ;
+
+
+\ A compaction sends exactly model, prompt_cache_key, service_tier,
+\ instructions and input: no tools, reasoning, text, store, stream or include.
+: COMPACT-BODY ( -- )
+   TOOLS s" high" M MODEL:EFFORT!
+   s" test:compact" M MODEL:CACHE-KEY! s" flex" M MODEL:SERVICE-TIER!
+   s" valid" PREP CALLED$ ITEM
+   M MODEL:COMPACT
+   SB-RESET
+   S\" {\qmodel\q:\qtest-generation\q,\qprompt_cache_key\q:\qtest:compact\q," SB-APPEND
+   S\" \qservice_tier\q:\qflex\q,\qinstructions\q:\qRead source evidence.\q,\qinput\q:[" SB-APPEND
+   S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}," SB-APPEND
+   CALLED$ SB-APPEND s" ]}" SB-APPEND
+   MODEL-PEER:SENT$ SB$ STR= ASSERT
+   s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER!
+   SCHEMA$ M MODEL:SCHEMA! ;
+
+
+\ A compaction leaves its window as the call's finished input: a TOOLS! after
+\ it keeps it, the count and the CHAT after it send the window byte for byte
+\ with the tools set, and the CHAT reads the tools reply as any tools call.
+: COMPACT-THEN-CHAT ( -- )
+   TOOLS s" tool-call" PREP CALLED$ ITEM OUTPUT$ ITEM
+   M MODEL:COUNT-INPUT drop
+   M MODEL:COMPACT
+   MODEL-PEER:SENT$ nip {: body-u:n :}
+   TOOLS
+   M MODEL:COUNT-INPUT drop
+   s" tool-call" body-u WINDOW s" input" SENT SB$ RAW-IS
+   M MODEL:CHAT nip 0= ASSERT
+   s" tool-call" body-u WINDOW s" input" SENT SB$ RAW-IS
+   s" tools" SENT TOOLS$ RAW-IS
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT
+   SCHEMA$ M MODEL:SCHEMA! ;
+
+
+\ A compaction's journal input is kind compaction with the compact endpoint,
+\ the parts and items as built and no effort, schema or tools; its record holds
+\ empty content and a configuration with no effort, and the recorder records it
+\ as kind compaction with the reply's usage and no effort. The same compaction
+\ again replays from the journal with no request, after which
+\ GENERATION-CONFIG$ still carries the effort, and leaves the live window,
+\ which the count after it sends. The recorder stays until OPEN, so the call
+\ is opened again for the cases after.
+: COMPACT-JOURNAL ( -- )
+   CAPTURE
+   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   0 ROWS-MADE ! false ROW-FAIL !
+   s" high" M MODEL:EFFORT!
+   PURPOSE s" valid" PREP CALLED$ ITEM
+   M MODEL:COMPACT
+   MODEL-PEER:SENT$ nip {: body-u:n :}
+   ROWS-MADE @ 1 = ASSERT
+   s" kind" ROW s" compaction" STR-IS
+   s" effort" ROW NULL-IS
+   RECORD$ s" configuration" MEMBER s" effort" JSON:READ-FIND-KEY 0= ASSERT JSON:READ-CLOSE
+   s" input_tokens" ROW 11 INT-IS
+   s" kind" USAGE s" compaction" STR-IS
+   s" input_tokens" USAGE 11 INT-IS
+   RECORD$ s" content" MEMBER s" " STR-IS
+   SB-RESET
+   S\" {\qkind\q:\qcompaction\q,\qconfiguration\q:{\qbackend\q:\qopenai-responses\q," SB-APPEND
+   S\" \qmodel\q:\qtest-generation\q,\qendpoint\q:\q" SB-APPEND
+   MODEL-PEER:BASE-URL$ SB-APPEND
+   S\" /responses/compact\q},\qinstructions\q:\qRead source evidence.\q," SB-APPEND
+   S\" \qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}],\qitems\q:[" SB-APPEND
+   CALLED$ SB-APPEND s" ]}" SB-APPEND
+   INPUT$ SB$ STR= ASSERT
+   MODEL-PEER:CALLS@ {: calls:n :}
+   true JOURNAL-READY !
+   0 [: JOURNAL-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
+   PURPOSE s" valid" PREP CALLED$ ITEM
+   M MODEL:COMPACT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   M MODEL:GENERATION-CONFIG$ s" effort" MEMBER s" high" STR-IS
+   CAPTURE
+   PURPOSE M MODEL:COUNT-INPUT drop
+   s" valid" body-u WINDOW s" input" SENT SB$ RAW-IS
+   M MODEL:CLOSE SETUP ;
+
+
+\ A request JOURNAL-INPUT$ finished is not compacted: COMPACT is E-STATE and
+\ sends nothing, and the finished request still sends with CHAT.
+: COMPACT-PREPARED ( -- )
+   CAPTURE
+   MODEL-PEER:CALLS@ {: before:n :}
+   s" valid" ASK
+   M COMPACT-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT ;
+
+
+\ OpenAI's refusal of a compaction over the model's context is E-CAPACITY.
+: COMPACT-TOO-LARGE ( -- )
+   s" too-large" PREP
+   M COMPACT-CODE MODEL:E-CAPACITY = ASSERT ;
+
+
+\ A compaction has no content: CONTENT$ and OUTPUT$ after it are E-STATE, and
+\ its usage is the reply's. A call with neither schema nor tools compacts. A
+\ compaction with no request built, as after a CHAT, is E-STATE and sends
+\ nothing.
+: COMPACT-RESULT ( -- )
+   s" valid" PREP M MODEL:COMPACT
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   M [: dup MODEL:OUTPUT$ 2drop ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
+   M MODEL:INPUT-TOKENS 11 = ASSERT
+   M MODEL:CACHED-TOKENS 4 = ASSERT
+   1 CALL {: c:ptr :}
+   c MODEL:OPEN
+   MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
+   s" test-generation" c MODEL:GENERATION-MODEL!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
+   s" Read source evidence." c MODEL:SYSTEM!
+   c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
+   c COMPACT-CODE 0= ASSERT
+   c MODEL:CLOSE
+   CHAT
+   MODEL-PEER:CALLS@ {: before:n :}
+   M COMPACT-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT ;
+
+
+\ The count after a compaction that failed E-RESPONSE sends the input as built:
+\ one user message of the text.
+: UNTOUCHED ( ptr u8 n -- )
+   {: t:ptr t-u:n :}
+   M MODEL:COUNT-INPUT drop
+   SB-RESET
+   S\" [{\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\q" SB-APPEND
+   t t-u SB-APPEND S\" \q}]}]" SB-APPEND
+   s" input" SENT SB$ RAW-IS ;
+
+
+\ A compaction of the text whose reply is E-RESPONSE leaves the input as built.
+: BAD-WINDOW ( ptr u8 n -- )
+   {: t:ptr t-u:n :}
+   t t-u PREP
+   M COMPACT-CODE MODEL:E-RESPONSE = ASSERT
+   t t-u UNTOUCHED ;
+
+
+\ A compaction reply whose output ends in no compaction item is E-RESPONSE,
+\ leaves the input as built, and is recorded with the reply's usage, the
+\ requested tier and the tier the reply names. The recorder stays until OPEN,
+\ so the call is opened again for the cases after.
+: COMPACT-REPLY ( -- )
+   CAPTURE
+   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   0 ROWS-MADE ! false ROW-FAIL !
+   s" auto" M MODEL:SERVICE-TIER!
+   PURPOSE s" bad-compact" PREP
+   M COMPACT-CODE MODEL:E-RESPONSE = ASSERT
+   ROWS-MADE @ 1 = ASSERT
+   s" input_tokens" ROW 11 INT-IS
+   s" requested_tier" ROW s" auto" STR-IS
+   s" service_tier" ROW s" flex" STR-IS
+   PURPOSE s" bad-compact" UNTOUCHED
+   M MODEL:CLOSE SETUP ;
+
+
+\ A compaction reply whose output is empty, holds a non-object or has an item
+\ after its compaction item is E-RESPONSE and leaves the input as built.
+: COMPACT-WINDOWS ( -- )
+   s" empty-window" BAD-WINDOW
+   s" number-window" BAD-WINDOW
+   s" late-window" BAD-WINDOW ;
+
+
 \ Both producer configurations name this base.
 : BASE-IS ( ptr u8 n -- )
    {: want:ptr want-u:n :}
@@ -2856,6 +3122,8 @@ variable COUNTED-U
    SETUP TOOLS-BODY FORM-LAST TOOLS-REFUSALS TOOL-REPLIES TOOLS-JOURNAL TOOLS-REPLAY
    M MODEL:CLOSE
    SETUP COUNT-BODY COUNT-THEN-CHAT COUNT-JOURNAL COUNT-PREPARED COUNT-TOO-LARGE COUNT-RESULT
+   M MODEL:CLOSE
+   SETUP COMPACT-BODY COMPACT-THEN-CHAT COMPACT-JOURNAL COMPACT-PREPARED COMPACT-TOO-LARGE COMPACT-RESULT COMPACT-REPLY COMPACT-WINDOWS
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS
    M MODEL:CLOSE

@@ -2,10 +2,10 @@
 \ /responses routes answer through TEST-MODEL: a completed reply gives its text,
 \ JSON escapes included; an incomplete one MODEL:E-INCOMPLETE with its reason;
 \ a refusal MODEL:E-REFUSED; a tool reply answers its output array whole; a
-\ count answers the input tokens the server counted; a halt in the recorder
-\ leaves the call free to close. Every key item reads as
-\ one key from a store the test binds with SECRET:STORE!, so none reaches the
-\ desktop store.
+\ count answers the input tokens the server counted; a compaction's usage
+\ reaches the call; a halt in the recorder leaves the call free to close. Every
+\ key item reads as one key from a store the test binds with SECRET:STORE!, so
+\ none reaches the desktop store.
 \ Run: bin/hb --load src/lib/net/test-model-test.f
 
 require src/lib/test.f
@@ -48,6 +48,11 @@ TASK:SEMAPHORE GO
    S\" [{\qtype\q:\qreasoning\q,\qid\q:\qrs_1\q,\qsummary\q:[]},{\qtype\q:\qfunction_call\q,\qid\q:\qfc_1\q,\qcall_id\q:\qcall_1\q,\qname\q:\qlookup\q,\qarguments\q:\q{}\q,\qstatus\q:\qcompleted\q}]" ;
 
 
+\ A compaction's window: one kept user message, then the compaction item.
+: WINDOW$ ( -- ptr u8 n )
+   S\" [{\qtype\q:\qmessage\q,\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qkept\q}]},{\qtype\q:\qcompaction\q,\qid\q:\qcmp_item\q,\qencrypted_content\q:\qsealed\q}]" ;
+
+
 \ Every item holds KEY$; a span too short for it is SECRET:E-CAPACITY, which
 \ MODEL answers by reading again into more room.
 : STORE-READ ( ptr u8 n ptr u8 n SPAN:span<u8> -- n bool )
@@ -72,7 +77,8 @@ TASK:SEMAPHORE GO
    s" POST" s" /incomplete/responses" [: nip REASON$ TEST-MODEL:INCOMPLETE! ;] HTTP:ROUTE
    s" POST" s" /refusal/responses" [: nip s" cannot comply" TEST-MODEL:REFUSAL! ;] HTTP:ROUTE
    s" POST" s" /tools/responses" [: nip TOOL-OUTPUT$ TEST-MODEL:OUTPUT! ;] HTTP:ROUTE
-   s" POST" s" /count/responses/input_tokens" [: nip 11 TEST-MODEL:INPUT-TOKENS! ;] HTTP:ROUTE ;
+   s" POST" s" /count/responses/input_tokens" [: nip 11 TEST-MODEL:INPUT-TOKENS! ;] HTTP:ROUTE
+   s" POST" s" /compact/responses/compact" [: nip WINDOW$ TEST-MODEL:COMPACTION! ;] HTTP:ROUTE ;
 
 
 \ Points the call at this server's routes under the path and asks one text.
@@ -130,6 +136,14 @@ TASK:SEMAPHORE GO
    M MODEL:COUNT-INPUT 11 T= ;
 
 
+\ A one-part schema call, as COUNTED leaves it.
+: COMPACTED ( -- )
+   s" a compaction's usage reaches the call" T-LABEL
+   s" /compact" AT
+   M MODEL:COMPACT
+   M MODEL:INPUT-TOKENS 11 T= ;
+
+
 : RECORD ( n ptr u8 n -- n )
    2drop drop
    IN-REC TASK:SIGNAL-SEM
@@ -181,7 +195,7 @@ TASK:SEMAPHORE GO
    ROUTES
    LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
    SETUP
-   COMPLETED INCOMPLETE REFUSAL TOOLS COUNTED HALTED
+   COMPLETED INCOMPLETE REFUSAL TOOLS COUNTED COMPACTED HALTED
    HTTP:STOP
    CURL:LOOP-STOP
    AIO:STOP ;
