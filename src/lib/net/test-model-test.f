@@ -2,7 +2,8 @@
 \ /responses routes answer through TEST-MODEL: a completed reply gives its text,
 \ JSON escapes included; an incomplete one MODEL:E-INCOMPLETE with its reason;
 \ a refusal MODEL:E-REFUSED; a tool reply answers its output array whole; a
-\ halt in the recorder leaves the call free to close. Every key item reads as
+\ count answers the input tokens the server counted; a halt in the recorder
+\ leaves the call free to close. Every key item reads as
 \ one key from a store the test binds with SECRET:STORE!, so none reaches the
 \ desktop store.
 \ Run: bin/hb --load src/lib/net/test-model-test.f
@@ -70,7 +71,8 @@ TASK:SEMAPHORE GO
    s" POST" s" /completed/responses" [: nip TEXT$ TEST-MODEL:COMPLETED! ;] HTTP:ROUTE
    s" POST" s" /incomplete/responses" [: nip REASON$ TEST-MODEL:INCOMPLETE! ;] HTTP:ROUTE
    s" POST" s" /refusal/responses" [: nip s" cannot comply" TEST-MODEL:REFUSAL! ;] HTTP:ROUTE
-   s" POST" s" /tools/responses" [: nip TOOL-OUTPUT$ TEST-MODEL:OUTPUT! ;] HTTP:ROUTE ;
+   s" POST" s" /tools/responses" [: nip TOOL-OUTPUT$ TEST-MODEL:OUTPUT! ;] HTTP:ROUTE
+   s" POST" s" /count/responses/input_tokens" [: nip 11 TEST-MODEL:INPUT-TOKENS! ;] HTTP:ROUTE ;
 
 
 \ Points the call at this server's routes under the path and asks one text.
@@ -119,6 +121,13 @@ TASK:SEMAPHORE GO
    M MODEL:CHAT nip 0 T=
    M MODEL:OUTPUT$ TOOL-OUTPUT$ T$=
    SCHEMA$ M MODEL:SCHEMA! ;
+
+
+\ The call is a schema call, as SETUP and TOOLS leave it.
+: COUNTED ( -- )
+   s" a count answers the input tokens the server counted" T-LABEL
+   s" /count" AT
+   M MODEL:COUNT-INPUT 11 T= ;
 
 
 : RECORD ( n ptr u8 n -- n )
@@ -172,7 +181,7 @@ TASK:SEMAPHORE GO
    ROUTES
    LOOPBACK 0 TWO-WORKERS IDLE-MS HTTP:START
    SETUP
-   COMPLETED INCOMPLETE REFUSAL TOOLS HALTED
+   COMPLETED INCOMPLETE REFUSAL TOOLS COUNTED HALTED
    HTTP:STOP
    CURL:LOOP-STOP
    AIO:STOP ;

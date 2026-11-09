@@ -2,10 +2,11 @@
 \ CURL. Chat speaks OpenAI's Responses protocol; embeddings go to an
 \ OpenAI-shaped provider or Ollama's native route. A chat call answers a
 \ schema with one JSON object (CONTENT$) or offers tools and answers one tool
-\ call (OUTPUT$). The client's API key is read from
-\ the native credential store through SECRET, with a caller's journal and
-\ recorder and bounded inputs. Each failure the provider or the transport
-\ caused is logged through LOG (tag `model`), never the request body.
+\ call (OUTPUT$); COUNT-INPUT counts a chat request's input tokens without
+\ generating. The client's API key is read from the native credential store
+\ through SECRET, with a caller's journal and recorder and bounded inputs.
+\ Each failure the provider or the transport caused is logged through LOG
+\ (tag `model`), never the request body.
 \ Test: src/lib/net/model-test.f.
 \ STORAGE CLASS. CALLER-OWNED: each call and settings record, and the arena
 \ OPEN allocates for a call until CLOSE; the module keeps no state.
@@ -29,17 +30,19 @@ require src/lib/task.f
 require src/lib/time.f
 
 \ One exclusive call context per worker. Results borrow its arena until the
-\ next CHAT, START, EMBED, START-EMBED, REPLAY or CLOSE. CANCEL and
-\ REQUEST-STOP may run concurrently with a call. Generation and embedding are
-\ each configured explicitly, with no implicit model or fallback. The caller
+\ next CHAT, START, COUNT-INPUT, EMBED, START-EMBED, REPLAY or CLOSE. CANCEL
+\ and REQUEST-STOP may run concurrently with a call. Generation and embedding
+\ are each configured explicitly, with no implicit model or fallback. The caller
 \ starts Habu's AIO and CURL loops before HTTP calls and keeps model work
 \ outside PostgreSQL transactions. No API key reaches a request body,
 \ response, error, log line or producer record: a key is read only into the
 \ HTTP header, which is wiped once libcurl copies it.
 \ A caller that looks its journal up itself, such as on another task, finishes
 \ the request with JOURNAL-INPUT$, looks that input up, then sends the request
-\ with CHAT or restores the saved record with REPLAY. A task drives many calls
-\ by STARTing each, SERVEing each until it answers true, then AWAITing it. It
+\ with CHAT or restores the saved record with REPLAY. COUNT-INPUT counts a
+\ built request and leaves it built for the CHAT or START that sends it. A
+\ task drives many calls by STARTing each, SERVEing each until it answers
+\ true, then AWAITing it. It
 \ TASK:WAITs only straight after a round in which every SERVE answered false:
 \ landing a call runs its journal and recorder, and a wait there takes the
 \ CURL loop's hint for another call. SERVE and AWAIT of a started call run on
@@ -64,28 +67,31 @@ package MODEL
 private
 -9700 constant E-FIRST
 -9799 constant E-LAST
-\ idle; prepared: JOURNAL-INPUT$ finished the chat request; started: START or
-\ START-EMBED began it; landed: ended, not yet awaited. Busy: started or landed.
+\ idle; prepared: JOURNAL-INPUT$ finished the chat request; started: START,
+\ START-EMBED or COUNT-INPUT began it; landed: ended, not yet awaited. Busy:
+\ started or landed.
 ENUM call-state idle prepared started landed ;ENUM
-ENUM call-kind chat embed ;ENUM
+ENUM call-kind chat embed tally ;ENUM
 \ What the last awaited call left for CONTENT$ or VECTOR@.
 ENUM call-result none content vectors ;ENUM
 \ How SERVE and AWAIT resume a started call's transfer: reading feeds each
 \ chunk; dropping discards them until it ends.
 ENUM receive-rest reading dropping ;ENUM
 \ A call's chat input: none, building (PARTS-RESET started it, every write
-\ done), broken (a write did not complete) or finished (PART-FINISH closed it).
+\ done), broken (a write did not complete) or finished (PART-FINISH closed it;
+\ a count keeps it finished for the CHAT or START that sends it).
 ENUM input-state none building broken finished ;ENUM
 \ What a call's reply answers: nothing set yet, its schema or its tools.
 ENUM reply-form none schema tools ;ENUM
 public
-\ From CHAT and EMBED, a provider's 404 to the request (an unknown model) is
-\ also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS keeps the status.
+\ From CHAT, COUNT-INPUT and EMBED, a provider's 404 to the request (an
+\ unknown model) is also E-CONFIG and its 401 or 403 E-KEY; HTTP-STATUS keeps
+\ the status.
 -9700 constant E-CONFIG
 -9701 constant E-KEY
-\ From CHAT and EMBED: the provider refused the request for its size; INPUT+
-\ also refuses an input past INPUT-MAX with it. An invalid setter or builder
-\ argument is E-CONFIG.
+\ From CHAT, COUNT-INPUT and EMBED: the provider refused the request for its
+\ size; INPUT+ also refuses an input past INPUT-MAX with it. An invalid setter
+\ or builder argument is E-CONFIG.
 -9702 constant E-CAPACITY
 \ The transfer failed, stalled, or its stream ended before the response did;
 \ the provider may still finish and bill the response.
@@ -109,7 +115,7 @@ public
 \ response's error code rate_limit_exceeded or server_error.
 -9711 constant E-UNAVAILABLE
 \ OpenAI's limits: https://platform.openai.com/docs/api-reference/embeddings
-\ MODEL counts no tokens; INPUT-MAX bounds an Ollama call too.
+\ MODEL counts no embed input's tokens; INPUT-MAX bounds an Ollama call too.
 \ The most inputs one EMBED call takes.
 2048 constant INPUT-MAX
 \ The most tokens one EMBED call's inputs may sum to.
@@ -139,6 +145,7 @@ STRUCTURE call DERIVE addr
    FIELD dims n
    FIELD input-tokens n
    FIELD cached-tokens n
+   FIELD counted n
    FIELD response-u n
    FIELD content-u n
    FIELD input-count n
@@ -604,22 +611,23 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    ;MATCH ;
 
 
+\ Whether a kind's call runs the generation configuration: a chat and a count
+\ do.
+: GENERATES? ( call-kind -- bool )
+   MATCH call-kind
+      chat OF true ENDOF
+      embed OF false ENDOF
+      tally OF true ENDOF
+   ;MATCH ;
+
+
 \ Whether kind k's configuration is the one the last call restored from a
 \ journal record, with no setter of it since.
 : REPLAYED? ( call-kind ptr call -- bool )
    {: k:call-kind c :}
    c MODEL-CALL:REPLAY-KIND @ MATCH option
       none OF false ENDOF
-      some OF
-         MATCH call-kind
-            chat OF
-               k MATCH call-kind chat OF true ENDOF embed OF false ENDOF ;MATCH
-            ENDOF
-            embed OF
-               k MATCH call-kind chat OF false ENDOF embed OF true ENDOF ;MATCH
-            ENDOF
-         ;MATCH
-      ENDOF
+      some OF GENERATES? bool>n k GENERATES? bool>n = ENDOF
    ;MATCH ;
 
 
@@ -706,6 +714,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    0 c PICK-CELL !
    0 c MODEL-CALL:INPUT-TOKENS !
    0 c MODEL-CALL:CACHED-TOKENS !
+   0 c MODEL-CALL:COUNTED !
    c RESET-USAGE
    c ;
 
@@ -759,6 +768,10 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
    {: c :}
    s" /embeddings" c URL$ ;
 
+: COUNT-URL$ ( ptr call -- ptr u8 n )
+   {: c :}
+   s" /responses/input_tokens" c URL$ ;
+
 : REQUEST-URL$ ( ptr call -- ptr u8 n )
    {: c :}
    c MODEL-CALL:KIND @ MATCH call-kind
@@ -767,6 +780,7 @@ VECTOR-LEN-AT INPUT-MAX cells + constant ARENA-BYTES
          c MODEL-CALL:EMBEDDING-KIND @ OLLAMA =
          if c ENDPOINT$ else c EMBED-URL$ then
       ENDOF
+      tally OF c COUNT-URL$ ENDOF
    ;MATCH ;
 
 public
@@ -818,7 +832,8 @@ public
    reject l LEDGER-REJECT !
    true l LEDGER-READY ! ;
 
-\ What the next CHAT, START, EMBED, START-EMBED or REPLAY is for: nonblank.
+\ What the next CHAT, START, COUNT-INPUT, EMBED, START-EMBED or REPLAY is
+\ for: nonblank.
 \ Each consumes it; with a recorder installed, one without a purpose is E-STATE.
 : PURPOSE? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
@@ -840,7 +855,7 @@ public
    a u + 1- c@ [char] / = if false exit then
    true u 0 ?do a i + c@ BASE-BYTE? 0= if drop false then loop ;
 
-\ The OpenAI-compatible base the chat and embedding routes extend; empty
+\ The OpenAI-compatible base the chat, count and embedding routes extend; empty
 \ restores OpenAI's.
 : BASE-URL! ( ptr u8 n ptr call -- )
    {: a:ptr u:n c :}
@@ -916,13 +931,14 @@ public
    OPENAI c MODEL-CALL:EMBEDDING-KIND ! ;
 
 \ Names the native credential store's item, by service and account, holding
-\ the API key: the only source of a key. Each CHAT and EMBED reads it with
-\ SECRET:READ into the request header. An open call that is idle or holds a
-\ finished request is required, else E-STATE; an empty service or account is
-\ E-CONFIG. At CHAT and EMBED a missing, empty or non-printable item is E-KEY,
-\ and SECRET:E-CONFIG, SECRET:E-ACCESS and SECRET:E-UNAVAILABLE pass through;
-\ a call with no item named fails there with E-CONFIG. The key spec holds the
-\ service, then the account from byte key-split.
+\ the API key: the only source of a key. Each CHAT, COUNT-INPUT and EMBED
+\ reads it with SECRET:READ into the request header. An open call that is idle
+\ or holds a finished request is required, else E-STATE; an empty service or
+\ account is E-CONFIG. At CHAT, COUNT-INPUT and EMBED a missing, empty or
+\ non-printable item is E-KEY, and SECRET:E-CONFIG, SECRET:E-ACCESS and
+\ SECRET:E-UNAVAILABLE pass through; a call with no item named fails there
+\ with E-CONFIG. The key spec holds the service, then the account from byte
+\ key-split.
 : API-KEY! ( ptr u8 n ptr u8 n ptr call -- )
    {: svc:ptr su:n acct:ptr au:n c :}
    c REQUIRE-REST
@@ -1178,6 +1194,16 @@ private
    c JOURNAL-PART-WRITER JSON:WRITE-ARRAY-END JSON:WRITE-CLOSE
    construct input-state finished c MODEL-CALL:CHAT-INPUT ! ;
 
+\ Finishes a building input and passes a finished one, as a count leaves it.
+: FINISH-INPUT ( ptr call -- )
+   {: c :}
+   c MODEL-CALL:CHAT-INPUT @ MATCH input-state
+      none OF E-STATE throw ENDOF
+      building OF c PART-FINISH ENDOF
+      broken OF E-STATE throw ENDOF
+      finished OF ENDOF
+   ;MATCH ;
+
 : PART-COMMA ( ptr call -- )
    {: c :}
    c MODEL-CALL:PARTS-COUNT @ 0 > if
@@ -1394,37 +1420,26 @@ private
    JSON:WRITE-OBJECT-END ;
 
 \ The members after a tools call's input: one required call to one of its
-\ tools, with the reasoning items a later turn sends back.
-: TOOLS-TAIL ( ptr JSON:writer ptr call -- ptr JSON:writer )
+\ tools.
+: TOOL-MEMBERS ( ptr JSON:writer ptr call -- ptr JSON:writer )
    {: c :}
    JSON:WRITE-COMMA s" tools" c FORM$ JSON:WRITE-FIELD-RAW
    JSON:WRITE-COMMA s" tool_choice" s" required" JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" parallel_tool_calls" false JSON:WRITE-FIELD-BOOL
-   JSON:WRITE-COMMA s" include" JSON:WRITE-KEY
-   JSON:WRITE-ARRAY-START
-   s" reasoning.encrypted_content" JSON:WRITE-STRING
-   JSON:WRITE-ARRAY-END ;
+   JSON:WRITE-COMMA s" parallel_tool_calls" false JSON:WRITE-FIELD-BOOL ;
 
-: CHAT-BODY ( ptr call -- )
+\ The effort member, when the call sends one.
+: EFFORT-MEMBER ( ptr JSON:writer ptr call -- ptr JSON:writer )
    {: c :}
-   c BODY-OPEN
-   c WRITER
-   JSON:WRITE-OBJECT-START
-   s" model" c GEN$ JSON:WRITE-FIELD-S
-   JSON:WRITE-COMMA s" store" false JSON:WRITE-FIELD-BOOL
-   JSON:WRITE-COMMA s" stream" true JSON:WRITE-FIELD-BOOL
    c EFFORT$ nip 0<> if
       JSON:WRITE-COMMA s" reasoning" JSON:WRITE-KEY
       JSON:WRITE-OBJECT-START
       s" effort" c EFFORT$ JSON:WRITE-FIELD-S
       JSON:WRITE-OBJECT-END
-   then
-   c CACHE-KEY$ nip 0<> if
-      JSON:WRITE-COMMA s" prompt_cache_key" c CACHE-KEY$ JSON:WRITE-FIELD-S
-   then
-   c TIER$ nip 0<> if
-      JSON:WRITE-COMMA s" service_tier" c TIER$ JSON:WRITE-FIELD-S
-   then
+   then ;
+
+\ The instructions and the input: the parts' message, then the items.
+: INPUT-MEMBERS ( ptr JSON:writer ptr call -- ptr JSON:writer )
+   {: c :}
    JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA
    s" input" JSON:WRITE-KEY
@@ -1441,11 +1456,53 @@ private
       head if JSON:WRITE-COMMA then
       c ITEMS$ JSON:WRITE-RAW
    then
-   JSON:WRITE-ARRAY-END
+   JSON:WRITE-ARRAY-END ;
+
+: CHAT-BODY ( ptr call -- )
+   {: c :}
+   c BODY-OPEN
+   c WRITER
+   JSON:WRITE-OBJECT-START
+   s" model" c GEN$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" store" false JSON:WRITE-FIELD-BOOL
+   JSON:WRITE-COMMA s" stream" true JSON:WRITE-FIELD-BOOL
+   c EFFORT-MEMBER
+   c CACHE-KEY$ nip 0<> if
+      JSON:WRITE-COMMA s" prompt_cache_key" c CACHE-KEY$ JSON:WRITE-FIELD-S
+   then
+   c TIER$ nip 0<> if
+      JSON:WRITE-COMMA s" service_tier" c TIER$ JSON:WRITE-FIELD-S
+   then
+   c INPUT-MEMBERS
    c MODEL-CALL:FORM @ MATCH reply-form
       none OF E-CONFIG throw ENDOF
       schema OF c SCHEMA-TAIL ENDOF
-      tools OF c TOOLS-TAIL ENDOF
+      tools OF
+         \ The reasoning items a later turn sends back.
+         c TOOL-MEMBERS
+         JSON:WRITE-COMMA s" include" JSON:WRITE-KEY
+         JSON:WRITE-ARRAY-START
+         s" reasoning.encrypted_content" JSON:WRITE-STRING
+         JSON:WRITE-ARRAY-END
+      ENDOF
+   ;MATCH
+   JSON:WRITE-OBJECT-END drop
+   c BODY-DONE ;
+
+\ A count's body: the chat body's members the count endpoint takes, without
+\ store, stream, include, prompt_cache_key or service_tier.
+: COUNT-BODY ( ptr call -- )
+   {: c :}
+   c BODY-OPEN
+   c WRITER
+   JSON:WRITE-OBJECT-START
+   s" model" c GEN$ JSON:WRITE-FIELD-S
+   c EFFORT-MEMBER
+   c INPUT-MEMBERS
+   c MODEL-CALL:FORM @ MATCH reply-form
+      none OF E-CONFIG throw ENDOF
+      schema OF c SCHEMA-TAIL ENDOF
+      tools OF c TOOL-MEMBERS ENDOF
    ;MATCH
    JSON:WRITE-OBJECT-END drop
    c BODY-DONE ;
@@ -1528,18 +1585,19 @@ private
       tools OF s" tools" ENDOF
    ;MATCH ;
 
-: JOURNAL-GEN-INPUT ( ptr call -- )
-   {: c :}
+\ A generation input's journal input under kind, sent to endpoint.
+: JOURNAL-GEN-INPUT ( ptr u8 n ptr u8 n ptr call -- )
+   {: kind:ptr kind-u:n url:ptr url-u:n c :}
    c JOURNAL-INPUT-BUF c RESET-SCRATCH
    c WRITER c JOURNAL-INPUT-BUF JSON:WRITE-OPEN-BUF drop
    c WRITER JSON:WRITE-OBJECT-START
-   s" kind" s" generation" JSON:WRITE-FIELD-S
+   s" kind" kind kind-u JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" configuration" JSON:WRITE-KEY
    JSON:WRITE-OBJECT-START
    s" backend" s" openai-responses" JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" model" c GEN$ JSON:WRITE-FIELD-S
    c EFFORT$ nip 0<> if JSON:WRITE-COMMA s" effort" c EFFORT$ JSON:WRITE-FIELD-S then
-   JSON:WRITE-COMMA s" endpoint" c CHAT-URL$ JSON:WRITE-FIELD-S
+   JSON:WRITE-COMMA s" endpoint" url url-u JSON:WRITE-FIELD-S
    JSON:WRITE-OBJECT-END
    JSON:WRITE-COMMA s" instructions" c SYSTEM$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA c FORM-KEY$ c FORM$ JSON:WRITE-FIELD-RAW
@@ -1680,6 +1738,7 @@ private
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF true ENDOF
       embed OF c MODEL-CALL:EMBEDDING-KIND @ OLLAMA <> ENDOF
+      tally OF true ENDOF
    ;MATCH if
       h c [: KEY-HEADER-KEEP ;] catch {: fault:n :} 2drop
       fault c WIPE-AFTER
@@ -2323,8 +2382,9 @@ private
    JSON:READ-FIND-KEY 0= if OPTION:NONE exit then
    USAGE-COUNT ;
 
-\ The count at the key of the usage object the bytes hold. Each count reads
-\ the object again, as providers order its members freely.
+\ The count at the key of the JSON object the bytes hold, such as a usage
+\ object. Each count reads the object again, as providers order its members
+\ freely.
 : USAGE-AT ( ptr u8 n ptr call ptr u8 n -- option<n> )
    {: a:ptr u:n c key:ptr key-u:n :}
    c MODEL-CALL:READER a u JSON:READ-INIT
@@ -2640,14 +2700,14 @@ ENUM poll none fed spoiled done ;ENUM
    fault r RECEIPT-FAULT ! ;
 
 
-\ The response buffer's room past the bytes received: an embed read lands
-\ there, and appending it from where it lies adds it to them.
+\ The response buffer's room past the bytes received: an embed or count read
+\ lands there, and appending it from where it lies adds it to them.
 : REPLY-ROOM ( ptr call -- ptr u8 n )
    RESPONSE-BUF {: buf:ptr :}
    buf HELD buf BUF:LEN@ BUF:BLEN>N SPAN:SKIP SPAN:$ ;
 
 
-\ Room for the next read of an embed reply; a fault spoils the reply.
+\ Room for the next read of an embed or count reply; a fault spoils the reply.
 : MAKE-ROOM ( ptr call -- answer )
    {: c :}
    c [: GROW-REPLY ;] catch {: fault:n :} drop
@@ -2663,6 +2723,7 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF construct answer fed ENDOF
       embed OF c MAKE-ROOM ENDOF
+      tally OF c MAKE-ROOM ENDOF
    ;MATCH ;
 
 
@@ -2699,6 +2760,7 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c STREAM STREAM-DONE @ ENDOF
       embed OF false ENDOF
+      tally OF false ENDOF
    ;MATCH
    if 200 CURL:>HTTP-STATUS 0 0 c KEEP-ENDING exit then
    0 CURL:>HTTP-STATUS rc 0 c KEEP-ENDING ;
@@ -2711,6 +2773,7 @@ ENUM poll none fed spoiled done ;ENUM
          c MODEL-CALL:KIND @ MATCH call-kind
             chat OF got c CHAT-CHUNK ENDOF
             embed OF drop got c EMBED-CHUNK ENDOF
+            tally OF drop got c EMBED-CHUNK ENDOF
          ;MATCH
       ENDOF
       response OF 0 0 c KEEP-ENDING construct answer done ENDOF
@@ -2757,11 +2820,12 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c CHUNK-BUF HELD SPAN:$ ENDOF
       embed OF c REPLY-ROOM ENDOF
+      tally OF c REPLY-ROOM ENDOF
    ;MATCH >LEN CURL:NEXT-ARM ;
 
 
-\ Either kind drains into the chunk buffer, so the bytes of a dropped embed
-\ reply stay as they arrived.
+\ Every kind drains into the chunk buffer, so the bytes of a dropped embed or
+\ count reply stay as they arrived.
 : REARM-DROP ( ptr call -- )
    {: c :}
    c CALL-HANDLE c CHUNK-BUF HELD SPAN:$ >LEN CURL:NEXT-ARM ;
@@ -2827,6 +2891,21 @@ ENUM poll none fed spoiled done ;ENUM
       a u c [: EMBED-TOKENS ;] catch {: code:n :} 2drop drop
       code RESPONSE-ERROR
    then
+   c ;
+
+\ A count reply's input_tokens, at its top level: an integer.
+: ACCEPT-COUNT ( ptr call -- )
+   {: c :}
+   c RESPONSE$ c s" input_tokens" USAGE-AT MATCH option
+      none OF E-RESPONSE throw ENDOF
+      some OF c MODEL-CALL:COUNTED ! ENDOF
+   ;MATCH ;
+
+\ Reads a count reply's input tokens into COUNTED.
+: COUNT-PARSE ( ptr call -- ptr call )
+   {: c :}
+   c [: dup ACCEPT-COUNT ;] catch {: code:n :} drop
+   code RESPONSE-ERROR
    c ;
 
 : JOURNAL-GET? ( ptr call -- bool )
@@ -2913,6 +2992,7 @@ ENUM poll none fed spoiled done ;ENUM
    config config-u BUF:N>BLEN c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN-CONFIG-BUF ENDOF
       embed OF c EMBED-CONFIG-BUF ENDOF
+      tally OF c GEN-CONFIG-BUF ENDOF
    ;MATCH BUF:REPLACE
    c JOURNAL-RESPONSE
    s" content" c REPLAY-CONTENT-BUF c JOURNAL-STRING-BUF
@@ -2925,6 +3005,10 @@ ENUM poll none fed spoiled done ;ENUM
       embed OF
          c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
          c PARSE-EMBED 2drop drop
+      ENDOF
+      tally OF
+         c REPLAY-CONTENT$ nip 0<> if E-RESPONSE throw then
+         c COUNT-PARSE drop
       ENDOF
    ;MATCH
    c JOURNAL-CALL-ID c LEDGER LEDGER-CALL-ID !
@@ -2947,10 +3031,12 @@ ENUM poll none fed spoiled done ;ENUM
    s" kind" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" generation" ENDOF
       embed OF s" embedding" ENDOF
+      tally OF s" input_tokens" ENDOF
    ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" model" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN$ ENDOF
       embed OF c EMBED-MODEL$ ENDOF
+      tally OF c GEN$ ENDOF
    ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" input_tokens" c TOKENS TOKENS-INPUT @ COUNT-FIELD
    JSON:WRITE-COMMA s" cached_tokens" c TOKENS TOKENS-CACHED @ COUNT-FIELD
@@ -2964,6 +3050,7 @@ ENUM poll none fed spoiled done ;ENUM
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c BUILD-GEN-CONFIG ENDOF
       embed OF c BUILD-EMBED-CONFIG ENDOF
+      tally OF c BUILD-GEN-CONFIG ENDOF
    ;MATCH
    c JOURNAL-RECORD-BUF c RESET-SCRATCH
    c WRITER c JOURNAL-RECORD-BUF JSON:WRITE-OPEN-BUF drop
@@ -2971,6 +3058,7 @@ ENUM poll none fed spoiled done ;ENUM
    s" configuration" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN-CONFIG$ ENDOF
       embed OF c EMBED-CONFIG$ ENDOF
+      tally OF c GEN-CONFIG$ ENDOF
    ;MATCH JSON:WRITE-FIELD-RAW ;
 
 : JOURNAL-RECORD ( ptr call -- )
@@ -2979,6 +3067,7 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:WRITE-COMMA s" content" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c CONTENT-BUF HELD c MODEL-CALL:CONTENT-U @ SPAN:TAKE SPAN:$ ENDOF
       embed OF s" " ENDOF
+      tally OF s" " ENDOF
    ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" response" c RESPONSE$ JSON:WRITE-FIELD-S
    c USAGE-FIELD
@@ -3002,6 +3091,7 @@ ENUM poll none fed spoiled done ;ENUM
          c MODEL-CALL:EMBEDDING-KIND @ OLLAMA =
          if s" ollama" else s" openai" then
       ENDOF
+      tally OF s" openai" ENDOF
    ;MATCH ;
 
 
@@ -3031,15 +3121,18 @@ ENUM poll none fed spoiled done ;ENUM
    s" kind" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" generation" ENDOF
       embed OF s" embedding" ENDOF
+      tally OF s" input_tokens" ENDOF
    ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" backend" c BACKEND$ JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" model" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c GEN$ ENDOF
       embed OF c EMBED-MODEL$ ENDOF
+      tally OF c GEN$ ENDOF
    ;MATCH JSON:WRITE-FIELD-S
    JSON:WRITE-COMMA s" effort" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c EFFORT$ nip 0<> ENDOF
       embed OF false ENDOF
+      tally OF c EFFORT$ nip 0<> ENDOF
    ;MATCH if
       c EFFORT$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
@@ -3049,6 +3142,7 @@ ENUM poll none fed spoiled done ;ENUM
    JSON:WRITE-COMMA s" requested_tier" c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c TIER$ nip 0<> ENDOF
       embed OF false ENDOF
+      tally OF false ENDOF
    ;MATCH if
       c TIER$ JSON:WRITE-FIELD-S
    else JSON:WRITE-FIELD-NULL then
@@ -3068,6 +3162,7 @@ ENUM poll none fed spoiled done ;ENUM
          JSON:WRITE-COMMA s" prefix_hash" c PREFIX-HASH$ JSON:WRITE-FIELD-S
       ENDOF
       embed OF ENDOF
+      tally OF ENDOF
    ;MATCH
    JSON:WRITE-COMMA s" duration_ms" TIME:MONO-NS l LEDGER-STARTED-NS @ - NS-PER-MS /
    JSON:WRITE-FIELD-INT
@@ -3151,8 +3246,15 @@ ENUM poll none fed spoiled done ;ENUM
    {: c :}
    c REQUIRE-REST
    c CHECK-CHAT
-   c PART-FINISH
-   c JOURNAL-GEN-INPUT ;
+   c FINISH-INPUT
+   s" generation" c CHAT-URL$ c JOURNAL-GEN-INPUT ;
+
+: PREP-JOURNAL-COUNT ( ptr call -- )
+   {: c :}
+   c REQUIRE-REST
+   c CHECK-CHAT
+   c FINISH-INPUT
+   s" input_tokens" c COUNT-URL$ c JOURNAL-GEN-INPUT ;
 
 : PREP-JOURNAL-EMBED ( ptr call -- )
    {: c :}
@@ -3239,14 +3341,15 @@ private
    at c LEDGER LEDGER-STARTED-NS @ - NS-PER-MS / LOG:INT+ s"  ms" LOG:TEXT+ ;
 
 
-\ One line for a failed chat or embed call: its model and URL, response id
-\ once known, the code's name and cause, and a chat stream's events.
+\ One line for a failed chat, embed or count call: its model and URL, response
+\ id once known, the code's name and cause, and a chat stream's events.
 : REPORT ( n ptr call -- )
    {: code:n c :}
    code REFUSAL? if LOG:WARN else LOG:ERROR then s" model" LOG:LINE
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF s" chat " LOG:TEXT+ c GEN$ ENDOF
       embed OF s" embed " LOG:TEXT+ c EMBED-MODEL$ ENDOF
+      tally OF s" count " LOG:TEXT+ c GEN$ ENDOF
    ;MATCH LOG:TEXT+
    s"  " LOG:TEXT+ c REQUEST-URL$ LOG:TEXT+
    c RESPONSE-ID$ nip 0<> if s"  " LOG:TEXT+ c RESPONSE-ID$ LOG:TEXT+ then
@@ -3297,6 +3400,7 @@ ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
       c MODEL-CALL:KIND @ MATCH call-kind
          chat OF c [: STREAM-CHECK ;] CHECK-STEP ENDOF
          embed OF ENDOF
+         tally OF ENDOF
       ;MATCH
    then
    c MODEL-CALL:HANDLE @ MATCH option
@@ -3313,6 +3417,7 @@ ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
       c MODEL-CALL:KIND @ MATCH call-kind
          chat OF c [: CHAT-PARSE ;] CHECK-STEP ENDOF
          embed OF c [: EMBED-PARSE ;] CHECK-STEP ENDOF
+         tally OF c [: COUNT-PARSE ;] CHECK-STEP ENDOF
       ;MATCH
    then
    c END-CALL {: cancelled:bool :}
@@ -3352,7 +3457,7 @@ ENUM ending cut replayed replay-failed served unsent refused failed ;ENUM
 
 : LAND-FAILED ( ptr call -- ) dup RECEIPT RECEIPT-OUTCOME @ swap REPORT ;
 
-\ Lands a chat or embed call once its run ends: what each ending reports, saves
+\ Lands a call once its run ends: what each ending reports, saves
 \ and leaves as the outcome.
 FSM:DEFINE LAND-MACHINE ( ptr call ) land-step ending
    IN settling  SETTLE-SENSE
@@ -3392,6 +3497,7 @@ ENUM send-event missed replayed armed faulted ;ENUM
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c CHAT-BODY ENDOF
       embed OF c EMBED-BODY ENDOF
+      tally OF c COUNT-BODY ENDOF
    ;MATCH
    0 c MODEL-CALL:RESPONSE-U !
    0 c MODEL-CALL:HTTP-STATUS !
@@ -3405,6 +3511,7 @@ ENUM send-event missed replayed armed faulted ;ENUM
          c DECODER-STORAGE SSE:OPEN OPTION:SOME c STREAM STREAM-DECODER !
       ENDOF
       embed OF ENDOF
+      tally OF ENDOF
    ;MATCH
    c START-TRANSFER
    c ARM
@@ -3570,7 +3677,7 @@ public
          c PREP-JOURNAL-CHAT
       else
          c CHECK-CHAT
-         c PART-FINISH
+         c FINISH-INPUT
       then
    then
    0 c MODEL-CALL:INPUT-TOKENS !
@@ -3609,7 +3716,8 @@ public
    ;MATCH ;
 
 \ Waits for a started call to land, makes it idle and throws its fault, else
-\ keeps its result for CONTENT$ or VECTOR@.
+\ keeps its result for CONTENT$ or VECTOR@. A count keeps its finished input
+\ for the next CHAT or START and leaves no result.
 : AWAIT ( ptr call -- )
    {: c :}
    c REQUIRE-OPEN
@@ -3623,16 +3731,18 @@ public
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF c USED ENDOF
       embed OF ENDOF
+      tally OF ENDOF
    ;MATCH
    c RECEIPT RECEIPT-OUTCOME @ {: fault:n :}
    fault 0<> if fault throw then
    c MODEL-CALL:KIND @ MATCH call-kind
       chat OF construct call-result content ENDOF
       embed OF construct call-result vectors ENDOF
+      tally OF construct call-result none ENDOF
    ;MATCH c MODEL-CALL:RESULT ! ;
 
 \ The content of the chat AWAIT last ended, read on an idle call and borrowed
-\ until the next CHAT, START, EMBED, START-EMBED, REPLAY or CLOSE.
+\ until the next CHAT, START, COUNT-INPUT, EMBED, START-EMBED, REPLAY or CLOSE.
 : CONTENT$ ( ptr call -- ptr u8 n )
    {: c :}
    c REQUIRE-OPEN
@@ -3659,8 +3769,8 @@ public
 
 \ Finishes the chat request built since PARTS-RESET as CHAT does before its
 \ journal lookup and answers the journal input a journal's get and put receive
-\ for it, valid until the next JOURNAL-INPUT$, CHAT, START, EMBED, START-EMBED
-\ or CLOSE. The pending purpose selects the model and effort as at CHAT, so
+\ for it, valid until the next JOURNAL-INPUT$, CHAT, START, COUNT-INPUT, EMBED,
+\ START-EMBED or CLOSE. The pending purpose selects the model and effort as at CHAT, so
 \ PURPOSE! comes first. A second call answers the same input. The next CHAT or
 \ START sends that request, or REPLAY restores a saved reply for it. A call
 \ that changes the chat request (PARTS-RESET, TEXT+, IMAGE+, ITEM+, PURPOSE!,
@@ -3689,6 +3799,36 @@ public
    c START
    c AWAIT
    c CONTENT$ ;
+
+\ Counts the input tokens of the chat request built since PARTS-RESET without
+\ generating: the request stays finished, so the next CHAT or START sends what
+\ was counted. Recorded and journaled as a call; it consumes the pending purpose
+\ and leaves no result. A prepared, started or landed call is E-STATE.
+: COUNT-INPUT ( ptr call -- n )
+   {: c :}
+   c REQUIRE-OPEN
+   c MODEL-CALL:STATE @ MATCH call-state
+      idle OF ENDOF
+      prepared OF E-STATE throw ENDOF
+      started OF E-STATE throw ENDOF
+      landed OF E-STATE throw ENDOF
+   ;MATCH
+   construct call-result none c MODEL-CALL:RESULT !
+   c START-LEDGER
+   c REQUIRE-GOING
+   c MODEL-CALL:JOURNAL-READY @ if
+      c PREP-JOURNAL-COUNT
+   else
+      c CHECK-CHAT
+      c FINISH-INPUT
+   then
+   0 c MODEL-CALL:INPUT-TOKENS !
+   0 c MODEL-CALL:CACHED-TOKENS !
+   0 c MODEL-CALL:COUNTED !
+   construct call-kind tally c MODEL-CALL:KIND !
+   c BEGIN-SEND
+   c AWAIT
+   c MODEL-CALL:COUNTED @ ;
 
 \ Restores, for the request JOURNAL-INPUT$ finished, a record a journal's put
 \ received for a chat call, as a journal hit does: its configuration, response,
@@ -3721,7 +3861,7 @@ public
    c AWAIT ;
 
 \ Input idx's vector: DIMS little-endian IEEE-754 binary32 values, borrowed
-\ until the next CHAT, START, EMBED, START-EMBED, REPLAY or CLOSE.
+\ until the next CHAT, START, COUNT-INPUT, EMBED, START-EMBED, REPLAY or CLOSE.
 : VECTOR@ ( n ptr call -- ptr u8 n )
    {: idx:n c :}
    c MODEL-CALL:RESULT @ MATCH call-result

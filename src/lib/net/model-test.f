@@ -139,7 +139,7 @@ variable BASE-URL-U
 variable OLLAMA-URL-U
 variable CALLS
 PTR-VARIABLE BIG
-\ The last chat or embedding request body, or -1 after one past SENT-CAP.
+\ The last chat, count or embedding request body, or -1 after one past SENT-CAP.
 65536 constant SENT-CAP
 create SENT-BODY SENT-CAP allot
 variable SENT-U
@@ -587,6 +587,13 @@ $300000 constant BIG-U
    response swap STREAM! ;
 
 
+\ OpenAI's refusal of a chat or count request over the model's context.
+: TOO-LARGE ( HTTP:response -- )
+   {: response:HTTP:response :}
+   response 400 HTTP:STATUS!
+   response [: S\" {\qerror\q:{\qmessage\q:\qYour input exceeds the context window of this model.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:\qinput\q,\qcode\q:\qcontext_length_exceeded\q}}" JSON:WRITE-RAW ;] HTTP:JSON! ;
+
+
 \ Responds by the request's first text, which names its scenario.
 : REPLY ( HTTP:request HTTP:response -- )
    {: r:HTTP:request response:HTTP:response :}
@@ -709,12 +716,7 @@ $300000 constant BIG-U
       exit
    then
    t t-u s" forbidden" STR= if response 403 HTTP:STATUS! exit then
-   \ OpenAI's refusal of a chat request over the model's context.
-   t t-u s" too-large" STR= if
-      response 400 HTTP:STATUS!
-      response [: S\" {\qerror\q:{\qmessage\q:\qYour input exceeds the context window of this model.\q,\qtype\q:\qinvalid_request_error\q,\qparam\q:\qinput\q,\qcode\q:\qcontext_length_exceeded\q}}" JSON:WRITE-RAW ;] HTTP:JSON!
-      exit
-   then
+   t t-u s" too-large" STR= if response TOO-LARGE exit then
    t t-u s" oversized" STR= if response 413 HTTP:STATUS! exit then
    t t-u s" big" STR= if response [: BIG$ COMPLETED ;] COMPLETED$ STREAMED exit then
    \ Every other scenario, the journal's long text included, starts "valid".
@@ -736,6 +738,28 @@ $300000 constant BIG-U
    r KEEP-BODY
    r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
    r response REPLY ;
+
+
+variable COUNTED-U    \ the byte length of the last count request's body
+
+
+\ OpenAI's count reply; this peer's count is COUNTED-U, so two inputs count
+\ apart and a test computes the count from SENT$.
+: COUNTED ( ptr JSON:writer -- ptr JSON:writer )
+   S\" {\qobject\q:\qresponse.input_tokens\q,\qinput_tokens\q:" JSON:WRITE-RAW
+   COUNTED-U @ JSON:WRITE-U s" }" JSON:WRITE-RAW ;
+
+
+\ Counts a request's input by its first text: too-large past the model's
+\ context, any other its body's byte length.
+: INPUT-TOKENS ( HTTP:request HTTP:response -- )
+   {: r:HTTP:request response:HTTP:response :}
+   1 CALLS atomic-add drop
+   r KEEP-BODY
+   r AUTHORIZED? 0= if response 401 HTTP:STATUS! exit then
+   r FIRST-TEXT s" too-large" STR= if response TOO-LARGE exit then
+   r HTTP:BODY$ nip COUNTED-U !
+   response [: COUNTED ;] HTTP:JSON! ;
 
 
 \ One vector whose first component is the input's byte length.
@@ -928,8 +952,8 @@ EXPORT WIDE-DIMS
 : OLLAMA-URL$ ( -- ptr u8 n ) OLLAMA-URL OLLAMA-URL-U @ ;
 \ Requests the peer received, refused or served.
 : CALLS@ ( -- n ) CALLS atomic@ ;
-\ The last chat or embedding request the peer received; one past SENT-CAP
-\ fails the test.
+\ The last chat, count or embedding request the peer received; one past
+\ SENT-CAP fails the test.
 : SENT$ ( -- ptr u8 n ) SENT-U @ dup 0< if FAIL then SENT-BODY swap ;
 \ Waits until the peer has sent the held response's in_progress event.
 : AWAIT-HOLD ( -- ) HELD TAKE ;
@@ -945,6 +969,7 @@ EXPORT WIDE-DIMS
    STREAM-B 1 BUF:N>BLEN BUF:INIT
    HTTP:ROUTES-RESET
    s" POST" s" /responses" [: [: CHAT ;] ALONE ;] HTTP:ROUTE
+   s" POST" s" /responses/input_tokens" [: [: INPUT-TOKENS ;] ALONE ;] HTTP:ROUTE
    s" POST" s" /embeddings" [: [: EMBEDDINGS ;] ALONE ;] HTTP:ROUTE
    s" POST" s" /api/embed" [: [: OLLAMA ;] ALONE ;] HTTP:ROUTE
    $7F000001 0 4 1000 HTTP:START
@@ -2544,6 +2569,148 @@ variable ASKED-U
    TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT ;
 
 
+: COUNT-CODE ( ptr MODEL:call -- n )
+   [: dup MODEL:COUNT-INPUT drop ;] catch {: code:n :} drop code ;
+
+
+\ A count body's members through its instructions and the head message of the
+\ one text part, the effort high, into SB.
+: COUNT-HEAD ( ptr u8 n -- )
+   {: t:ptr t-u:n :}
+   SB-RESET
+   S\" {\qmodel\q:\qtest-generation\q,\qreasoning\q:{\qeffort\q:\qhigh\q}," SB-APPEND
+   S\" \qinstructions\q:\qRead source evidence.\q,\qinput\q:[" SB-APPEND
+   S\" {\qrole\q:\quser\q,\qcontent\q:[{\qtype\q:\qinput_text\q,\qtext\q:\q" SB-APPEND
+   t t-u SB-APPEND S\" \q}]}" SB-APPEND ;
+
+
+\ A count sends the members the count endpoint accepts in the chat body's
+\ order, with no store, stream, include, service_tier or prompt_cache_key: a
+\ tools call its tools, one required call and no parallel calls, a schema call
+\ its text format. It answers the peer's count, the body's length.
+: COUNT-BODY ( -- )
+   TOOLS s" high" M MODEL:EFFORT!
+   s" test:count" M MODEL:CACHE-KEY! s" flex" M MODEL:SERVICE-TIER!
+   s" tool-call" PREP CALLED$ ITEM
+   M MODEL:COUNT-INPUT {: tools-n:n :}
+   s" tool-call" COUNT-HEAD s" ," SB-APPEND CALLED$ SB-APPEND
+   S\" ],\qtools\q:" SB-APPEND TOOLS$ SB-APPEND
+   S\" ,\qtool_choice\q:\qrequired\q,\qparallel_tool_calls\q:false}" SB-APPEND
+   MODEL-PEER:SENT$ SB$ STR= ASSERT
+   tools-n MODEL-PEER:SENT$ nip = ASSERT
+   SCHEMA$ M MODEL:SCHEMA!
+   s" valid" PREP
+   M MODEL:COUNT-INPUT {: schema-n:n :}
+   s" valid" COUNT-HEAD
+   S\" ],\qtext\q:{\qformat\q:{\qtype\q:\qjson_schema\q,\qname\q:\qanswer\q," SB-APPEND
+   S\" \qstrict\q:true,\qschema\q:" SB-APPEND SCHEMA$ SB-APPEND s" }}}" SB-APPEND
+   MODEL-PEER:SENT$ SB$ STR= ASSERT
+   schema-n MODEL-PEER:SENT$ nip = ASSERT
+   s" " M MODEL:EFFORT! s" " M MODEL:CACHE-KEY! s" " M MODEL:SERVICE-TIER! ;
+
+
+create COUNTED 32768 allot    \ the input member of the last count body kept
+variable COUNTED-U
+: COUNTED$ ( -- ptr u8 n ) COUNTED COUNTED-U @ ;
+
+
+\ A count leaves its request built: the CHAT after it sends the counted input
+\ byte for byte and reads the tools reply as any tools call does.
+: COUNT-THEN-CHAT ( -- )
+   TOOLS s" tool-call" PREP CALLED$ ITEM
+   M MODEL:COUNT-INPUT drop
+   s" input" SENT JSON:READ-VALUE-SPAN$ {: a:ptr u:n :}
+   u 32768 <= ASSERT
+   a u COUNTED 32768 SPAN:MAKE SPAN:COPY u COUNTED-U !
+   JSON:READ-CLOSE
+   M MODEL:CHAT nip 0= ASSERT
+   s" input" SENT COUNTED$ RAW-IS
+   TOOL-OUTPUT M MODEL:OUTPUT$ SB$ STR= ASSERT
+   SCHEMA$ M MODEL:SCHEMA! ;
+
+
+\ A count's journal input is a generation input's with kind input_tokens and
+\ the count endpoint; its record holds empty content and the recorder records
+\ it as kind input_tokens. The same count again replays from the journal with
+\ no request and no row and answers the same count. A journaled CHAT then sends
+\ the counted request unrebuilt, under the journal input a fresh build gives.
+\ The recorder stays until OPEN, so the call is opened again for the cases after.
+: COUNT-JOURNAL ( -- )
+   CAPTURE
+   0 [: TEST-RECORD ;] [: TEST-REJECT ;] M MODEL:RECORDER!
+   0 ROWS-MADE ! false ROW-FAIL !
+   PURPOSE s" valid" PREP
+   M MODEL:COUNT-INPUT {: tokens:n :}
+   tokens MODEL-PEER:SENT$ nip = ASSERT
+   ROWS-MADE @ 1 = ASSERT
+   s" kind" ROW s" input_tokens" STR-IS
+   RECORD$ s" content" MEMBER s" " STR-IS
+   SB-RESET
+   S\" {\qkind\q:\qinput_tokens\q,\qconfiguration\q:{\qbackend\q:\qopenai-responses\q," SB-APPEND
+   S\" \qmodel\q:\qtest-generation\q,\qendpoint\q:\q" SB-APPEND
+   MODEL-PEER:BASE-URL$ SB-APPEND
+   S\" /responses/input_tokens\q},\qinstructions\q:\qRead source evidence.\q,\qschema\q:" SB-APPEND
+   SCHEMA$ SB-APPEND
+   S\" ,\qparts\q:[{\qtype\q:\qinput_text\q,\qtext\q:\qvalid\q}]}" SB-APPEND
+   INPUT$ SB$ STR= ASSERT
+   MODEL-PEER:CALLS@ {: calls:n :}
+   true JOURNAL-READY !
+   0 [: JOURNAL-GET ;] [: JOURNAL-PUT ;] M MODEL:JOURNAL!
+   PURPOSE s" valid" PREP
+   M MODEL:COUNT-INPUT tokens = ASSERT
+   MODEL-PEER:CALLS@ calls = ASSERT
+   ROWS-MADE @ 1 = ASSERT
+   CAPTURE
+   PURPOSE M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   PURPOSE s" valid" ASK
+   ASKED$ INPUT$ STR= ASSERT
+   M MODEL:CLOSE SETUP ;
+
+
+\ A request JOURNAL-INPUT$ finished is not counted: COUNT-INPUT is E-STATE and
+\ sends nothing, and the finished request still sends with CHAT or replays.
+: COUNT-PREPARED ( -- )
+   CAPTURE
+   MODEL-PEER:CALLS@ {: before:n :}
+   s" valid" ASK
+   M COUNT-CODE MODEL:E-STATE = ASSERT
+   MODEL-PEER:CALLS@ before = ASSERT
+   M MODEL:CHAT TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT
+   s" valid" ASK
+   M COUNT-CODE MODEL:E-STATE = ASSERT
+   RECORD$ M MODEL:REPLAY TRUE-CONTENT$ STR= ASSERT
+   MODEL-PEER:CALLS@ before 1+ = ASSERT ;
+
+
+\ OpenAI's refusal of a count over the model's context is E-CAPACITY.
+: COUNT-TOO-LARGE ( -- )
+   s" too-large" PREP
+   M COUNT-CODE MODEL:E-CAPACITY = ASSERT ;
+
+
+\ A count has no content: CONTENT$ and OUTPUT$ after it are E-STATE. A count
+\ with no request built, as after a CHAT, is E-STATE, and one of a call with
+\ neither schema nor tools E-CONFIG, each sending nothing.
+: COUNT-RESULT ( -- )
+   s" valid" PREP M MODEL:COUNT-INPUT drop
+   CONTENT-CODE MODEL:E-STATE = ASSERT
+   M [: dup MODEL:OUTPUT$ 2drop ;] catch {: code:n :} drop code MODEL:E-STATE = ASSERT
+   CHAT
+   MODEL-PEER:CALLS@ {: before:n :}
+   M COUNT-CODE MODEL:E-STATE = ASSERT
+   1 CALL {: c:ptr :}
+   c MODEL:OPEN
+   MODEL-PEER:BASE-URL$ c MODEL:BASE-URL!
+   s" test-generation" c MODEL:GENERATION-MODEL!
+   KEY-SERVICE$ KEY-ACCOUNT$ c MODEL:API-KEY!
+   s" Read source evidence." c MODEL:SYSTEM!
+   c MODEL:PARTS-RESET s" valid" c MODEL:TEXT+
+   c COUNT-CODE MODEL:E-CONFIG = ASSERT
+   c MODEL:CLOSE
+   MODEL-PEER:CALLS@ before = ASSERT ;
+
+
 \ Both producer configurations name this base.
 : BASE-IS ( ptr u8 n -- )
    {: want:ptr want-u:n :}
@@ -2687,6 +2854,8 @@ variable ASKED-U
    SETUP ITEM-TURNS ITEM-ORDER ITEMS-ONLY ITEM-REFUSALS PINNED
    M MODEL:CLOSE
    SETUP TOOLS-BODY FORM-LAST TOOLS-REFUSALS TOOL-REPLIES TOOLS-JOURNAL TOOLS-REPLAY
+   M MODEL:CLOSE
+   SETUP COUNT-BODY COUNT-THEN-CHAT COUNT-JOURNAL COUNT-PREPARED COUNT-TOO-LARGE COUNT-RESULT
    M MODEL:CLOSE
    SETUP EFFORTS CACHE-KEYS
    M MODEL:CLOSE

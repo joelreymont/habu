@@ -1,13 +1,15 @@
 \ test-model.f - a model server's replies for tests, never a production one:
-\ each public word answers one POST /responses on Habu's HTTP server as
-\ OpenAI's Responses API streams it, an event stream of response resp_1's
+\ each public word answers one request on Habu's HTTP server as OpenAI's
+\ Responses API does. COMPLETED!, INCOMPLETE!, REFUSAL! and OUTPUT! answer a
+\ POST /responses as it streams it, an event stream of response resp_1's
 \ created and in_progress events and then the terminal event carrying the
 \ reply, which MODEL:CHAT reads. Each terminal reply carries fixed usage, input
 \ 11 tokens (4 cached), output 6 (2 reasoning), total 17, so a test may assert
-\ them. The host routes the request to its own handler and calls one of them
-\ there. OUTPUT! answers an output array the test gives whole, such as a tool
-\ call.
-\ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a stream
+\ them. OUTPUT! answers an output array the test gives whole, such as a tool
+\ call. INPUT-TOKENS! answers a POST /responses/input_tokens with the count it
+\ is given, as plain JSON, which MODEL:COUNT-INPUT reads. The host routes the
+\ request to its own handler and calls one of them there.
+\ STORAGE CLASS. PROCESS-WIDE: rows indexed by HTTP:WORKER-SLOT, each a reply
 \ body and its writer, whose buffer a slot's first reply makes and the process
 \ keeps; a body stays in its row, as HTTP:BODY! borrows it, until the slot's
 \ next reply.
@@ -155,5 +157,18 @@ public
 \ A stream ending in a completed reply whose output is exactly the JSON array.
 : OUTPUT! ( HTTP:response ptr u8 n -- )
    [: OUTPUT-REPLY ;] s" response.completed" STREAMED ;
+
+
+\ A count of the request's input tokens, the reply OpenAI gives at
+\ /responses/input_tokens: one JSON object, no event stream and no usage.
+: INPUT-TOKENS! ( HTTP:response n -- )
+   {: answer:HTTP:response tokens:n :}
+   READY
+   SLOT WRITER ROW JSON:WRITE-OPEN-BUF
+   S\" {\qobject\q:\qresponse.input_tokens\q,\qinput_tokens\q:" JSON:WRITE-RAW
+   tokens JSON:WRITE-U s" }" JSON:WRITE-RAW
+   JSON:WRITE-CLOSE
+   answer s" Content-Type" s" application/json" HTTP:HEADER!
+   answer ROW$ HTTP:BODY! ;
 
 ;package
